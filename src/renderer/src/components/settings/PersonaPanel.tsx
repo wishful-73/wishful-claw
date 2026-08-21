@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Sparkles, Copy } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { usePersonaStore } from '@renderer/stores/persona-store'
 import type { PersonaConfig } from '@renderer/lib/persona/persona-types'
 import { PersonaList } from './persona/PersonaList'
@@ -72,8 +73,15 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
   const handleSelectPersona = useCallback(
     (id: string) => {
       if (dirty && draft) {
-        const ok = window.confirm(t('persona.unsavedConfirm', { defaultValue: '有未保存的更改，确定切换吗？' }))
-        if (!ok) return
+        void confirm({
+          title: t('persona.unsavedConfirm', { defaultValue: '有未保存的更改，确定切换吗？' }),
+          confirmLabel: t('persona.unsavedConfirmLeave', { defaultValue: '放弃更改并切换' }),
+          cancelLabel: t('action.cancel', { ns: 'common' }),
+          variant: 'destructive'
+        }).then((ok) => {
+          if (ok) selectPersona(id, wf)
+        })
+        return
       }
       selectPersona(id, wf)
     },
@@ -82,8 +90,15 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
 
   const handleNewPersona = useCallback(() => {
     if (dirty && draft) {
-      const ok = window.confirm(t('persona.unsavedConfirm', { defaultValue: '有未保存的更改，确定切换吗？' }))
-      if (!ok) return
+      void confirm({
+        title: t('persona.unsavedConfirm', { defaultValue: '有未保存的更改，确定切换吗？' }),
+        confirmLabel: t('persona.unsavedConfirmLeave', { defaultValue: '放弃更改并切换' }),
+        cancelLabel: t('action.cancel', { ns: 'common' }),
+        variant: 'destructive'
+      }).then((ok) => {
+        if (ok) startNewPersona()
+      })
+      return
     }
     startNewPersona()
   }, [dirty, draft, startNewPersona, t])

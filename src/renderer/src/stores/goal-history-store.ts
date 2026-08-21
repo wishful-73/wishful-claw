@@ -1,8 +1,10 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import {
   DB_GOALS_LIST_PAGE_MSGPACK_CHANNEL,
   DB_GOAL_EVENTS_LIST_PAGE_MSGPACK_CHANNEL,
-  DB_GOAL_PLAN_TASKS_LIST_MSGPACK_CHANNEL
+  DB_GOAL_PLAN_TASKS_LIST_MSGPACK_CHANNEL,
+  DB_GOAL_PLANS_LIST_MSGPACK_CHANNEL,
+  DB_GOAL_TASKS_LIST_MSGPACK_CHANNEL
 } from '@shared/messagepack/binary-ipc'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import {
@@ -10,12 +12,18 @@ import {
   rowToEvent,
   rowToGoal,
   rowToPlanTask,
+  rowToPlan,
+  rowToTask,
   type GoalEventPageResult,
   type GoalPageResult,
   type SessionGoal,
   type SessionGoalEvent,
+  type SessionGoalPlan,
   type SessionGoalPlanTask,
-  type SessionGoalPlanTaskRow
+  type SessionGoalPlanTaskRow,
+  type SessionGoalPlanRow,
+  type SessionGoalTask,
+  type SessionGoalTaskRow
 } from './goal-store-helpers'
 import { applyGoalStatusToProjects } from './goal-state-transitions'
 
@@ -34,6 +42,8 @@ interface GoalHistoryState {
   goalsByProject: Record<string, SessionGoal[]>
   eventsByGoal: Record<string, SessionGoalEvent[]>
   planTasksByGoal: Record<string, SessionGoalPlanTask[]>
+  plansByGoal: Record<string, SessionGoalPlan[]>
+  tasksByPlan: Record<string, SessionGoalTask[]>
   goalCursorsByProject: Record<string, GoalPageCursor | null>
   eventCursorsByGoal: Record<string, GoalEventPageCursor | null>
   goalHasMoreByProject: Record<string, boolean>
@@ -59,6 +69,8 @@ interface GoalHistoryState {
   ) => Promise<SessionGoalEvent[]>
   loadMoreGoalEvents: (sessionId: string, goalId: string) => Promise<SessionGoalEvent[]>
   loadGoalPlanTasks: (sessionId: string, goalId: string, force?: boolean) => Promise<SessionGoalPlanTask[]>
+  loadGoalPlans: (sessionId: string, goalId: string, force?: boolean) => Promise<SessionGoalPlan[]>
+  loadPlanTasks: (sessionId: string, goalId: string, planId: string, force?: boolean) => Promise<SessionGoalTask[]>
 }
 
 export function goalProjectKey(projectId: string | null): string {
@@ -69,10 +81,16 @@ export function goalHistoryKey(sessionId: string, goalId: string): string {
   return `${sessionId}\u0000${goalId}`
 }
 
+export function goalPlanKey(sessionId: string, goalId: string, planId: string): string {
+  return `${sessionId}\u0000${goalId}\u0000${planId}`
+}
+
 export const useGoalHistoryStore = create<GoalHistoryState>((set, get) => ({
   goalsByProject: {},
   eventsByGoal: {},
   planTasksByGoal: {},
+  plansByGoal: {},
+  tasksByPlan: {},
   goalCursorsByProject: {},
   eventCursorsByGoal: {},
   goalHasMoreByProject: {},
@@ -292,6 +310,46 @@ export const useGoalHistoryStore = create<GoalHistoryState>((set, get) => ({
       return tasks
     } catch {
       set((state) => ({ loadingGoals: { ...state.loadingGoals, [key]: false } }))
+      return cached ?? []
+    }
+  },
+
+  loadGoalPlans: async (sessionId, goalId, force = false) => {
+    const key = goalHistoryKey(sessionId, goalId)
+    const cached = get().plansByGoal[key]
+    if (cached && !force) return cached
+
+    try {
+      const rows = await invokeMessagePackBinary<SessionGoalPlanRow[]>(
+        DB_GOAL_PLANS_LIST_MSGPACK_CHANNEL,
+        { sessionId, goalId }
+      )
+      const plans = (rows ?? []).map(rowToPlan).sort((a, b) => a.ordinal - b.ordinal)
+      set((state) => ({
+        plansByGoal: { ...state.plansByGoal, [key]: plans }
+      }))
+      return plans
+    } catch {
+      return cached ?? []
+    }
+  },
+
+  loadPlanTasks: async (sessionId, goalId, planId, force = false) => {
+    const key = goalPlanKey(sessionId, goalId, planId)
+    const cached = get().tasksByPlan[key]
+    if (cached && !force) return cached
+
+    try {
+      const rows = await invokeMessagePackBinary<SessionGoalTaskRow[]>(
+        DB_GOAL_TASKS_LIST_MSGPACK_CHANNEL,
+        { sessionId, goalId, planId }
+      )
+      const tasks = (rows ?? []).map(rowToTask).sort((a, b) => a.ordinal - b.ordinal)
+      set((state) => ({
+        tasksByPlan: { ...state.tasksByPlan, [key]: tasks }
+      }))
+      return tasks
+    } catch {
       return cached ?? []
     }
   }

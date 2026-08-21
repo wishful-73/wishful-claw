@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+﻿import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 
@@ -370,6 +370,47 @@ registerWebSearchHandlers()
   registerMessagePackHandler<Record<string, unknown>, unknown[]>(
     'db:goal-plan-tasks:list:msgpack',
     async (args) => getNativeWorker().request('db/goal-plan-tasks-list', args)
+  )
+  // -- Goal plans/tasks/execution-runs handlers --
+  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
+    'db:goal-plans:list:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plans-list', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-plans:get:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plans-get', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-plans:update-status:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plans-update-status', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-plans:update-retry:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plans-update-retry', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
+    'db:goal-tasks:list:msgpack',
+    async (args) => getNativeWorker().request('db/goal-tasks-list', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-tasks:get:msgpack',
+    async (args) => getNativeWorker().request('db/goal-tasks-get', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-tasks:update-status:msgpack',
+    async (args) => getNativeWorker().request('db/goal-tasks-update-status', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-execution-runs:insert:msgpack',
+    async (args) => getNativeWorker().request('db/goal-execution-runs-insert', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-execution-runs:finish:msgpack',
+    async (args) => getNativeWorker().request('db/goal-execution-runs-finish', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
+    'db:goal-execution-runs:list:msgpack',
+    async (args) => getNativeWorker().request('db/goal-execution-runs-list', args)
   )
   // -- Goal control handlers --
   registerMessagePackHandler<Record<string, unknown>, unknown>(

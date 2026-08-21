@@ -55,3 +55,7 @@ scripts/
 
 # Local scratch
 tmp/
+\"node_out.txt\"  
+\"root_out.txt\"  
+\"stderr.txt\"  
+\"stdout.txt\" 

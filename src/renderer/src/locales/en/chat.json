@@ -417,13 +417,14 @@
     "status": {
       "pending": "pending",
       "active": "active",
+      "running": "Running",
       "paused": "paused",
       "blocked": "blocked",
       "usage_limited": "limited by usage",
       "budget_limited": "limited by budget",
       "complete": "complete",
       "aborted": "cancelled",
-        "interrupted": "Interrupted",
+      "interrupted": "Interrupted",
       "failed": "failed"
     },
     "errors": {
@@ -492,7 +493,7 @@
       "iterationStep": "iteration {{iteration}}",
       "noRoundRecords": "No per-round records for this plan (legacy goal or records purged)",
       "tasks": "Tasks",
-      "taskStatus": { "interrupted": "Interrupted", "pending": "Pending", "active": "Executing", "executing": "Executing", "completed": "Completed", "complete": "Completed", "failed": "Failed", "aborted": "Aborted" },
+      "taskStatus": { "interrupted": "Interrupted", "pending": "Pending", "active": "Executing", "executing": "Executing", "completed": "Completed", "complete": "Completed", "failed": "Failed", "aborted": "Aborted", "superseded": "Adjusted" },
       "filters": {
         "all": "All",
         "current": "Active",

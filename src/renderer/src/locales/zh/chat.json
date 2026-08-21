@@ -416,6 +416,7 @@
     "status": {
       "pending": "待确认",
       "active": "进行中",
+      "running": "执行中",
       "paused": "已暂停",
       "blocked": "已阻塞",
       "usage_limited": "受配额限制",
@@ -491,7 +492,7 @@
       "iterationStep": "第 {{iteration}} 步迭代",
       "noRoundRecords": "该计划暂无每轮执行记录（旧版本 Goal 或记录已清理）",
       "tasks": "任务",
-      "taskStatus": { "interrupted": "已中断", "pending": "待执行", "active": "执行中", "executing": "执行中", "completed": "已完成", "complete": "已完成", "failed": "失败", "aborted": "已中止" },
+      "taskStatus": { "interrupted": "已中断", "pending": "待执行", "active": "执行中", "executing": "执行中", "completed": "已完成", "complete": "已完成", "failed": "失败", "aborted": "已中止", "superseded": "已调整" },
       "filters": {
         "all": "全部",
         "current": "进行中",

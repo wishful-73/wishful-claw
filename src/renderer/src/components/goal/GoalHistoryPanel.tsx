@@ -12,6 +12,7 @@ import {
 import { formatGoalElapsedSeconds, formatGoalTokens } from '@renderer/lib/agent/goal-context'
 import { GoalEventTimeline, useGoalActions } from './goal-session-views'
 import { getGoalRuntimeControls, GoalStatusBadge } from './goal-session-utils'
+import { useLiveGoalElapsedSeconds } from './goal-session-utils'
 import { cancelGoalConfirm } from '@renderer/lib/tools/goal-native-ui'
 import {
   useGoalStore,
@@ -172,6 +173,13 @@ export function GoalHistoryPanel({
   const liveActivities = useGoalStore((state) =>
     selectedGoal ? state.goalActivitiesByGoal[selectedGoal.goalId] ?? EMPTY_ACTIVITIES : EMPTY_ACTIVITIES
   )
+  // Live elapsed timer while the goal is running; falls back to the DB value.
+  const activeRunStartedAt = useGoalStore((s) => {
+    if (!selectedGoal) return null
+    const activeRun = s.activeGoalRunsBySession[selectedGoal.sessionId]
+    return activeRun && activeRun.goalId === selectedGoal.goalId ? activeRun.startedAt : null
+  })
+  const liveElapsedSeconds = useLiveGoalElapsedSeconds(selectedGoal ?? undefined, activeRunStartedAt, selectedRunState)
 
   React.useEffect(() => {
     if (!selectedGoal) return
@@ -256,9 +264,8 @@ export function GoalHistoryPanel({
 
   if (selectedGoal) {
     const session = sessions.find((item) => item.id === selectedGoal.sessionId)
-    const plansJsonParsed = parsePlans(selectedGoal)
-    // Prefer goal_plans table data (three-tier) when available; fall back to plansJson.
-    const plans: GoalPlanSummary[] = goalPlans.length > 0
+    const plansJsonParsed = parsePlans(selectedGoal)    // Prefer goal_plans table data (three-tier) when available; fall back to plansJson.
+    const allPlans: GoalPlanSummary[] = goalPlans.length > 0
       ? goalPlans.map((p) => ({
           planId: p.planId,
           originalPlanId: p.originalPlanId,
@@ -267,6 +274,39 @@ export function GoalHistoryPanel({
           resultSummary: p.resultSummary
         }))
       : plansJsonParsed
+    // Adjust replaces the planId and marks the old row superseded — collapse
+    // each chain (root → adjusted versions) into its latest card so the list
+    // doesn't show a stale duplicate next to the live one.
+    const latestByChainRoot = new Map<string, GoalPlanSummary>()
+    for (const plan of allPlans) {
+      const root = planTaskChainRoot(plan.planId, plan.originalPlanId) || plan.planId || `plan-${allPlans.indexOf(plan)}`
+      const existing = latestByChainRoot.get(root)
+      if (!existing || (plan.status !== 'superseded' && existing.status === 'superseded')) {
+        latestByChainRoot.set(root, plan)
+      }
+    }
+    const plans = Array.from(latestByChainRoot.values())
+    // Progress counters derived from the plan rows themselves — the
+    // session_goals row is only refreshed on poll and lags behind.
+    const completedPlanCount = plans.filter((p) => p.status === 'complete').length
+    const executingPlanCount = plans.filter((p) => p.status === 'active').length
+    // Elapsed: live timer while running; otherwise derive from plan timeline
+    // (first started → last finished) since session_goals.time_used_seconds
+    // is never accounted (the usage channel has no caller yet).
+    const planStartedAt = allPlans
+      .map((p) => goalPlans.find((row) => row.planId === p.planId)?.startedAt ?? null)
+      .filter((v): v is number => typeof v === 'number')
+      .sort((a, b) => a - b)[0] ?? null
+    const planFinishedAt = allPlans
+      .map((p) => goalPlans.find((row) => row.planId === p.planId)?.completedAt ?? null)
+      .filter((v): v is number => typeof v === 'number')
+      .sort((a, b) => b - a)[0] ?? null
+    const derivedElapsedSeconds = planStartedAt
+      ? Math.max(0, Math.floor(((planFinishedAt ?? Date.now()) - planStartedAt) / 1000))
+      : selectedGoal.timeUsedSeconds
+    const liveElapsedText = formatGoalElapsedSeconds(
+      liveElapsedSeconds > 0 ? liveElapsedSeconds : derivedElapsedSeconds
+    )
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
@@ -277,7 +317,18 @@ export function GoalHistoryPanel({
             <div className="truncate text-xs font-medium">{session?.title ?? t('goal.history.deletedSession')}</div>
             <div className="truncate text-[10px] text-muted-foreground">{selectedGoal.sessionId}</div>
           </div>
-          <GoalStatusBadge status={selectedGoal.status} />
+          {selectedRunState === 'running' ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-300">
+              <Loader2 className="size-2.5 animate-spin" />
+              {t('goal.status.running', { defaultValue: 'Running' })}
+            </span>
+          ) : selectedRunState === 'paused' ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300">
+              {t('goal.status.paused')}
+            </span>
+          ) : (
+            <GoalStatusBadge status={selectedGoal.status} />
+          )}
         </div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
           <section className="space-y-2">
@@ -286,8 +337,13 @@ export function GoalHistoryPanel({
           </section>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <Metric label={t('goal.tokensLabel')} value={formatGoalTokens(selectedGoal.tokensUsed)} />
-            <Metric label={t('goal.timeLabel')} value={formatGoalElapsedSeconds(selectedGoal.timeUsedSeconds)} />
-            <Metric label={t('goal.history.plans')} value={`${selectedGoal.completedPlanCount} / ${selectedGoal.planCount}`} />
+            <Metric label={t('goal.timeLabel')} value={liveElapsedText} />
+            <Metric
+              label={t('goal.history.plans')}
+              value={executingPlanCount > 0
+                ? `${completedPlanCount} / ${plans.length} · ${executingPlanCount} ${t('goal.history.taskStatus.active')}`
+                : `${completedPlanCount} / ${plans.length}`}
+            />
             <Metric label={t('goal.updatedAt')} value={new Date(selectedGoal.updatedAt).toLocaleString()} />
           </div>
           {selectedGoal.status === 'pending' || selectedGoal.status === 'active' ? (

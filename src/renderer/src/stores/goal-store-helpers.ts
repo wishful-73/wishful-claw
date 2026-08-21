@@ -425,7 +425,7 @@ export interface SessionGoalPlan {
   title: string
   description: string
   contentJson?: string | null
-  status: 'pending' | 'active' | 'complete' | 'aborted' | 'interrupted'
+  status: 'pending' | 'active' | 'complete' | 'aborted' | 'interrupted' | 'superseded'
   retryCount: number
   resultSummary?: string | null
   createdAt: number
@@ -462,7 +462,7 @@ export function rowToPlan(row: SessionGoalPlanRow): SessionGoalPlan {
     title: row.title,
     description: row.description,
     contentJson: row.contentJson,
-    status: (['pending', 'active', 'complete', 'aborted', 'interrupted'] as const).includes(row.status as SessionGoalPlan['status'])
+    status: (['pending', 'active', 'complete', 'aborted', 'interrupted', 'superseded'] as const).includes(row.status as SessionGoalPlan['status'])
       ? row.status as SessionGoalPlan['status']
       : 'pending',
     retryCount: row.retryCount,

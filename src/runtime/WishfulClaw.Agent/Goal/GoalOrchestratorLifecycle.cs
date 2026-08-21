@@ -334,6 +334,9 @@ public static partial class GoalOrchestrator
             goal.CancellationTokenSource.Cancel();
             goal.RuntimeState?.Cancel("goal aborted");
 
+            // Propagate aborted status down to goal_plans and goal_tasks (best-effort)
+            GoalOrchestratorMaterialize.AbortSubtree(goal, BuildResumeParameters(goal));
+
             if (runTask == null)
             {
                 FinalizeIdleTerminal(goal, GoalStatusValues.Aborted, "Goal aborted");

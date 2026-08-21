@@ -86,4 +86,45 @@ public static class GoalOrchestratorMaterialize
             WorkerLog.Warn($"FinishRun failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Abort all non-terminal plans and tasks for a goal (best-effort).
+    /// Called when the Goal itself is aborted — propagates the aborted
+    /// status down to goal_plans and goal_tasks.
+    /// </summary>
+    public static void AbortSubtree(GoalContext goal, JsonElement parameters)
+    {
+        try
+        {
+            var db = DbClient.GetClient(parameters);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            // Abort all non-terminal plans
+            db.Execute(
+                "UPDATE goal_plans SET status = 'aborted', updated_at = @now, completed_at = @now " +
+                "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN ('complete', 'aborted')",
+                new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
+                new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
+                new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId));
+
+            // Abort all non-terminal tasks
+            db.Execute(
+                "UPDATE goal_tasks SET status = 'aborted', updated_at = @now, completed_at = @now " +
+                "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN ('complete', 'aborted')",
+                new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
+                new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
+                new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId));
+
+            // Mark any executing attempts as interrupted
+            db.Execute(
+                "UPDATE goal_execution_runs SET status = 'interrupted', finished_at = @now " +
+                "WHERE goal_id = @gid AND status = 'executing'",
+                new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
+                new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId));
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn($"AbortSubtree failed: {ex.Message}");
+        }
+    }
 }

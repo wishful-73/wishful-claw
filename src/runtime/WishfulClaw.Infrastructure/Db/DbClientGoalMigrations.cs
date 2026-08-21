@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Data.Sqlite;
 
@@ -139,6 +139,21 @@ public static partial class DbClient
 
         _db.Execute(
             "UPDATE goal_plan_tasks SET status = 'interrupted', finished_at = @now WHERE status = 'executing'",
+            new SqliteParameter("@now", now));
+
+        // Sweep goal_plans: any plan still 'active' was interrupted by the shutdown.
+        _db.Execute(
+            "UPDATE goal_plans SET status = 'active', updated_at = @now WHERE status = 'active' AND started_at IS NOT NULL",
+            new SqliteParameter("@now", now));
+
+        // Sweep goal_tasks: same logic — interrupted but stays active (resumable).
+        _db.Execute(
+            "UPDATE goal_tasks SET status = 'active', updated_at = @now WHERE status = 'active' AND started_at IS NOT NULL",
+            new SqliteParameter("@now", now));
+
+        // Sweep goal_execution_runs: mark executing attempts as interrupted.
+        _db.Execute(
+            "UPDATE goal_execution_runs SET status = 'interrupted', finished_at = @now WHERE status = 'executing'",
             new SqliteParameter("@now", now));
     }
 

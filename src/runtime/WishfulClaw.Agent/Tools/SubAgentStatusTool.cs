@@ -4,20 +4,22 @@ using WishfulClaw.Core.Tools;
 namespace WishfulClaw.Agent.Tools;
 
 /// <summary>
-/// Query the brief status of any sub-agent (foreground or background).
+/// Query the status of any sub-agent (foreground or background).
 /// Returns: ID, name, description, mode, status, tool call count, iterations, elapsed.
-/// Does NOT include output or tool call details — use SubAgentDetail for that.
+/// For finished sub-agents the final report is included (truncated at 2000 chars).
 /// </summary>
 public sealed class SubAgentStatusTool : IToolExecutor
 {
     public string Name => "SubAgentStatus";
 
     public string Description =>
-        "Check the brief status of a sub-agent by its toolUseId. " +
-        "Returns a short summary: ID, name, description, mode (foreground/background), " +
+        "Check the status of a sub-agent by its toolUseId. " +
+        "Returns: ID, name, description, mode (foreground/background), " +
         "status (running/completed/failed/cancelled), tool call count, iterations, elapsed time. " +
+        "If the sub-agent has finished, its final report is included directly (truncated) — " +
+        "so one call answers both 'is it done' and 'what did it find'. " +
         "If no toolUseId is provided, lists all sub-agents with one-line summaries. " +
-        "For full output report and step-by-step tool call log, use SubAgentDetail instead.";
+        "For the complete untruncated report and step-by-step tool call log, use SubAgentDetail.";
 
     public JsonElement InputSchema { get; } = JsonDocument.Parse(
         """

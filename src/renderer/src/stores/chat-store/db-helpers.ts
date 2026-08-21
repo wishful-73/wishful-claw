@@ -372,6 +372,13 @@ export async function dbGetMessageCount(sessionId: string): Promise<number> {
 }
 
 /**
+ * Delete a single message by id. Safe no-op when the row was never persisted.
+ */
+export async function dbDeleteMessage(sessionId: string, messageId: string): Promise<void> {
+  await window.api.workerRequest('db/messages-delete', { sessionId, messageId })
+}
+
+/**
  * Delete last message of a given role from DB.
  */
 export async function dbDeleteLastMessage(sessionId: string, role: string): Promise<void> {

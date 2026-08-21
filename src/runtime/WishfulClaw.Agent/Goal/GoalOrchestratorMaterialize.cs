@@ -54,6 +54,49 @@ public static class GoalOrchestratorMaterialize
     }
 
     /// <summary>
+    /// Materialize tasks for a plan into goal_tasks with status=pending (idempotent).
+    /// </summary>
+    public static void MaterializeTasks(GoalContext goal, GoalPlanItem plan, JsonElement parameters,
+        List<(string taskId, string title, string description)> tasks)
+    {
+        try
+        {
+            var taskEntities = tasks.Select((t, idx) => new GoalTaskEntity
+            {
+                TaskId = t.taskId,
+                GoalId = goal.GoalId,
+                PlanId = plan.PlanId,
+                SessionId = goal.SessionId,
+                Ordinal = idx,
+                Title = t.title,
+                Description = t.description,
+                Status = GoalPlanStatusValues.Pending,
+            }).ToList();
+            DbGoalTaskTools.MaterializeTasks(parameters, goal.GoalId, plan.PlanId, goal.SessionId, taskEntities);
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn($"MaterializeTasks failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Update a task's status in goal_tasks.
+    /// </summary>
+    public static void UpdateTaskStatus(GoalContext goal, GoalPlanItem plan, string taskId,
+        string status, string? resultSummary)
+    {
+        try
+        {
+            DbGoalTaskTools.UpdateTaskStatus(taskId, goal.GoalId, plan.PlanId, goal.SessionId, status, resultSummary);
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn($"UpdateTaskStatus({status}) failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Insert an execution attempt row into goal_execution_runs.
     /// Returns the attempt id, or null on failure.
     /// </summary>

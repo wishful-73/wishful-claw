@@ -120,64 +120,114 @@ public static partial class GoalOrchestrator
     {
         var maxRetries = MaxPlanRetries;
 
+        // Decompose plan into tasks and materialize them before execution.
+        // This happens once per plan (not per retry). On retry/adjust, the
+        // same task set is re-executed with updated descriptions.
+        var tasks = await DecomposePlanToTasksAsync(goal, plan, parameters, parentState, context, ct);
+        await ReachSafePointAsync(goal, context, ct);
+        GoalOrchestratorMaterialize.MaterializeTasks(goal, plan, parameters, tasks);
+        await EmitGoalEventAsync(goal, GoalEventType.PlanStarted,
+            $"Plan {planIndex + 1} decomposed into {tasks.Count} task(s): {plan.Title}", context);
+
         while (plan.RetryCount <= maxRetries)
         {
             await ReachSafePointAsync(goal, context, ct);
 
-            // Mirror this execution round into goal_plan_tasks (best-effort)
-            var roundTaskId = GoalPlanRecorder.StartRound(parameters, goal, plan, plan.RetryCount + 1);
+            // Execute tasks sequentially
+            var taskResults = new List<string>();
+            var allTasksSucceeded = true;
+            string? lastError = null;
+            bool was429 = false;
 
-            // Start an execution attempt row in goal_execution_runs (best-effort)
-            string? attemptId = GoalOrchestratorMaterialize.StartExecutionAttempt(goal, plan, plan.RetryCount + 1);
+            foreach (var task in tasks)
+            {
+                await ReachSafePointAsync(goal, context, ct);
 
-            // Execute the plan
-            var result = await ExecutePlanAsync(
-                goal, plan, parameters, parentState, context, ct);
-            await ReachSafePointAsync(goal, context, ct);
+                // Mark task as active
+                GoalOrchestratorMaterialize.UpdateTaskStatus(goal, plan, task.taskId, GoalPlanStatusValues.Active, null);
 
-            // Handle 429: backoff and retry
-            if (result.Is429)
+                // Start execution attempt
+                string? attemptId = GoalOrchestratorMaterialize.StartExecutionAttempt(goal, plan, plan.RetryCount + 1);
+
+                // Mirror into goal_plan_tasks (legacy round records)
+                var roundTaskId = GoalPlanRecorder.StartRound(parameters, goal, plan, plan.RetryCount + 1);
+
+                // Execute the task
+                var result = await ExecuteTaskAsync(goal, plan, task, parameters, parentState, context, ct);
+                await ReachSafePointAsync(goal, context, ct);
+
+                // Handle 429
+                if (result.Is429)
+                {
+                    was429 = true;
+                    lastError = result.Error;
+                    GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Interrupted, result.Summary, "429");
+                    GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Failed, result.Summary, "429 backoff", false);
+                    GoalOrchestratorMaterialize.UpdateTaskStatus(goal, plan, task.taskId, GoalPlanStatusValues.Active, "429 backoff");
+                    break;
+                }
+
+                // Finish attempt and round record
+                var attemptStatus = result.Status == GoalPlanStatusValues.Complete
+                    ? GoalExecutionAttemptStatusValues.Completed
+                    : GoalExecutionAttemptStatusValues.Failed;
+                GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, attemptStatus, result.Summary, result.Error);
+                GoalPlanRecorder.FinishRound(parameters, roundTaskId, attemptStatus, result.Summary, result.Error, attemptStatus == GoalExecutionAttemptStatusValues.Completed);
+
+                if (result.Status == GoalPlanStatusValues.Complete)
+                {
+                    GoalOrchestratorMaterialize.UpdateTaskStatus(goal, plan, task.taskId, GoalPlanStatusValues.Complete, result.Summary);
+                    taskResults.Add($"✓ {task.title}: {result.Summary}");
+                }
+                else
+                {
+                    allTasksSucceeded = false;
+                    lastError = result.Error;
+                    GoalOrchestratorMaterialize.UpdateTaskStatus(goal, plan, task.taskId, GoalPlanStatusValues.Active, result.Error);
+                    taskResults.Add($"✗ {task.title}: {result.Error}");
+                    break;
+                }
+            }
+
+            // Handle 429 backoff
+            if (was429)
             {
                 var (backoffOutcome, backoffResult) = await Handle429BackoffAsync(
-                    goal, plan, planIndex, result, parameters, parentState, context, ct);
+                    goal, plan, planIndex,
+                    new PlanExecutionResult { Is429 = true, Error = lastError, RetryAfterHint = null },
+                    parameters, parentState, context, ct);
                 await ReachSafePointAsync(goal, context, ct);
 
                 if (backoffOutcome == BackoffOutcome.Timeout)
                 {
                     plan.Status = GoalPlanStatusValues.Active;
                     plan.ResultSummary = "Rate limit timeout after 6 hours";
-                    GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Interrupted, plan.ResultSummary, null);
                     GoalOrchestratorMaterialize.UpdatePlanStatus(goal, plan, GoalPlanStatusValues.Active, plan.ResultSummary);
                     await EmitGoalEventAsync(goal, GoalEventType.PlanFailed,
                         $"Plan {planIndex + 1} failed: rate limit timeout", context);
                     return;
                 }
-                // Use the test execution result from backoff, avoid re-executing
                 if (backoffResult != null)
                 {
-                    GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Completed, backoffResult.Summary, null);
-                    result = backoffResult;
-                }
-                else
-                {
-                    GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Interrupted, result.Summary, "429 retry loop");
+                    // 429 resolved — continue to retry the remaining tasks
                     continue;
                 }
+                continue;
             }
 
-            // Self-check evaluation
+            // Self-check evaluation of the combined task results
+            var combinedResult = string.Join("\n", taskResults);
             var evaluation = await EvaluateResultAsync(
-                goal, plan, result, parameters, parentState, context, ct);
+                goal, plan,
+                new PlanExecutionResult { Summary = combinedResult, Status = allTasksSucceeded ? GoalPlanStatusValues.Complete : GoalExecutionAttemptStatusValues.Failed },
+                parameters, parentState, context, ct);
             await ReachSafePointAsync(goal, context, ct);
 
             if (evaluation.Satisfied)
             {
-                // Plan completed successfully
                 plan.Status = GoalPlanStatusValues.Complete;
-                plan.ResultSummary = evaluation.Reasoning ?? result.Summary;
-                GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Completed, plan.ResultSummary, evaluation.Reasoning);
+                plan.ResultSummary = evaluation.Reasoning ?? combinedResult;
                 GoalOrchestratorMaterialize.UpdatePlanStatus(goal, plan, GoalPlanStatusValues.Complete, plan.ResultSummary);
-                GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Completed, plan.ResultSummary, evaluation.Reasoning, true);
                 GoalPlanTracker.FinishPlan(goal.WorkingFolder, goal.GoalId, plan);
                 await EmitGoalEventAsync(goal, GoalEventType.PlanCompleted,
                     $"Plan {planIndex + 1} completed: {plan.Title}. {plan.ResultSummary}", context);
@@ -191,9 +241,7 @@ public static partial class GoalOrchestrator
             {
                 plan.Status = GoalPlanStatusValues.Active;
                 plan.ResultSummary = $"Failed after {maxRetries} retries: {evaluation.Reasoning}";
-                GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Failed, plan.ResultSummary, evaluation.Reasoning);
                 GoalOrchestratorMaterialize.UpdatePlanStatus(goal, plan, GoalPlanStatusValues.Active, plan.ResultSummary);
-                GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Failed, plan.ResultSummary, evaluation.Reasoning, false);
                 GoalPlanTracker.FinishPlan(goal.WorkingFolder, goal.GoalId, plan);
                 await EmitGoalEventAsync(goal, GoalEventType.PlanFailed,
                     $"Plan {planIndex + 1} failed after {maxRetries} retries: {evaluation.Reasoning}", context);
@@ -201,11 +249,6 @@ public static partial class GoalOrchestrator
                 SyncGoalToDb(goal, parameters);
                 return;
             }
-
-            // Round did not satisfy the evaluation - record it, then retry/adjust
-            GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Failed, result.Summary, evaluation.Reasoning);
-            GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Failed,
-                result.Summary, evaluation.Reasoning, false);
 
             // Adjust plan based on evaluation
             await ReachSafePointAsync(goal, context, ct);
@@ -217,7 +260,7 @@ public static partial class GoalOrchestrator
                 plan.PlanId = $"plan-{Guid.NewGuid():N}".Substring(0, 16);
                 await EmitGoalEventAsync(goal, GoalEventType.PlanAdjusted,
                     $"Plan {planIndex + 1} adjusted (retry {plan.RetryCount}): {evaluation.Reasoning}", context);
-                    GoalPlanTracker.AppendLog(goal.WorkingFolder, goal.GoalId, plan.PlanId, $"Adjusted (retry {plan.RetryCount}): {evaluation.Reasoning}");
+                GoalPlanTracker.AppendLog(goal.WorkingFolder, goal.GoalId, plan.PlanId, $"Adjusted (retry {plan.RetryCount}): {evaluation.Reasoning}");
             }
             else
             {

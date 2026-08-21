@@ -1,4 +1,4 @@
-namespace WishfulClaw.Agent;
+﻿namespace WishfulClaw.Agent;
 
 /// <summary>
 /// Prompt templates for GoalOrchestrator.
@@ -109,5 +109,69 @@ Return ONLY a JSON object. No markdown, no explanation.";
                $"Execution Result:\n{executionResult}\n\n" +
                "Evaluate whether the plan's requirements are satisfied. " +
                "Return JSON: {\"satisfied\": bool, \"reasoning\": string, \"nextAction\": \"proceed\"|\"retry\"|\"adjust\", \"adjustedDescription\": string?}";
+    }
+
+    /// <summary>
+    /// System prompt for plan-to-task decomposition sub-agent.
+    /// </summary>
+    public const string TaskDecompositionSystemPrompt = @"You are a Task Decomposition Agent. Your task is to break a single plan into a series of sequential, executable tasks.
+
+Rules:
+- Break the plan into 1-5 tasks, each a concrete unit of work a sub-agent can execute autonomously.
+- Tasks must be sequential (task N depends on task N-1 being done).
+- Each task title should be concise (3-8 words).
+- Each task description must be detailed enough for a sub-agent to execute without further context.
+- Include verification criteria in the description (e.g., 'compile succeeds', 'file exists').
+- If the plan is simple enough for a single sub-agent execution, return just one task.
+
+Return ONLY a JSON array. No markdown, no explanation.";
+
+    /// <summary>
+    /// Build the task decomposition user prompt.
+    /// </summary>
+    public static string BuildTaskDecompositionUserPrompt(string goalText, string planTitle, string planDescription)
+    {
+        return $"Goal: {goalText}\n\n" +
+               $"Plan: {planTitle}\n" +
+               $"Plan Description: {planDescription}\n\n" +
+               "Break this plan into sequential tasks. For each task, provide:\n" +
+               "- title: A short title (3-8 words)\n" +
+               "- description: What the task should accomplish, detailed enough for autonomous execution. Include verification criteria.\n\n" +
+               "Return ONLY a JSON array. Example:\n" +
+               "[\n" +
+               "  {\"title\": \"Read Existing Code\", \"description\": \"Read the relevant source files to understand the current implementation. Verify: can describe the architecture.\"},\n" +
+               "  {\"title\": \"Implement Changes\", \"description\": \"Implement the required code changes. Verify: dotnet build succeeds with zero errors.\"}\n" +
+               "]";
+    }
+
+    /// <summary>
+    /// System prompt for task execution sub-agent.
+    /// </summary>
+    public const string TaskExecutionSystemPrompt = @"You are an autonomous development agent working on a specific task within a plan.
+
+Your role:
+- You receive a specific task as part of a larger plan.
+- Work autonomously — explore the codebase, implement changes, run verification.
+- Use available tools directly: read files, write code, run shell commands, search.
+- Do NOT use plan mode tools — just work directly.
+- No user confirmation is needed — make decisions yourself.
+- After finishing, provide a clear summary of what you did and whether verification passed.
+
+Workflow:
+1. Understand the task in the context of the plan.
+2. Explore relevant code if needed.
+3. Implement the required changes.
+4. Run verification (compile, test, type-check).
+5. Report the final result.";
+
+    /// <summary>
+    /// Build the task execution user prompt.
+    /// </summary>
+    public static string BuildTaskExecutionUserPrompt(string planTitle, string taskTitle, string taskDescription)
+    {
+        return $"Plan: {planTitle}\n\n" +
+               $"Task: {taskTitle}\n\n" +
+               $"Description:\n{taskDescription}\n\n" +
+               "Work on this task autonomously. Explore the codebase, implement the changes, verify, and report the result.";
     }
 }

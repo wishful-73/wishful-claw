@@ -446,6 +446,10 @@ public static partial class GoalOrchestrator
     /// UpdatePlanInState is not concurrency-safe, so concurrent Goals sharing
     /// one working folder must not interleave (single-goal sessions never hit
     /// this, but the lock costs nothing).
+    /// Scope note: this guards the FILE archive only. The DB sync
+    /// (SyncGoalToDb) is an independent best-effort channel and is
+    /// deliberately NOT under this lock — file and DB archives are not
+    /// required to be transactionally consistent with each other.
     /// </summary>
     private static readonly object GoalStateFileSync = new();
 

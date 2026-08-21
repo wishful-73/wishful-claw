@@ -172,29 +172,31 @@ public static partial class GoalOrchestrator
         IWorkerRequestContext context)
     {
         WorkerLog.Info($"EmitPendingGoalAsync goalId={goalId} sessionId={sessionId} goalText={goalText.Substring(0, Math.Min(50, goalText.Length))}");
-            var eventPayload = new AgentRuntimeStreamEvent(
-                "goal_progress",
-                SubAgentName: $"Goal: {goalText.Substring(0, Math.Min(50, goalText.Length))}",
-                ToolUseId: goalId,
-                Input: WorkerJsonHelper.BuildJsonElement(w =>
-                {
-                    w.WriteStartObject();
-                    w.WriteString("goalId", goalId);
-                    w.WriteString("sessionId", sessionId);
-                    w.WriteString("objective", goalText);
-                    w.WriteString("eventType", "GoalPending");
-                    w.WriteString("message", $"Goal created: {goalText}. Awaiting your confirmation.");
-                    w.WriteString("status", "pending");
-                    w.WriteNumber("currentPlanIndex", -1);
-                    w.WriteNumber("planCount", 0);
-                    w.WriteNumber("completedPlans", 0);
-                    w.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-                    w.WriteEndObject();
-                }));
+        var eventPayload = new AgentRuntimeStreamEvent(
+            "goal_progress",
+            SubAgentName: $"Goal: {goalText.Substring(0, Math.Min(50, goalText.Length))}",
+            ToolUseId: goalId,
+            Input: WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("goalId", goalId);
+                w.WriteString("sessionId", sessionId);
+                w.WriteString("objective", goalText);
+                w.WriteString("eventType", "GoalPending");
+                w.WriteString("message", $"Goal created: {goalText}. Awaiting your confirmation.");
+                w.WriteString("status", "pending");
+                w.WriteNumber("currentPlanIndex", -1);
+                w.WriteNumber("planCount", 0);
+                w.WriteNumber("completedPlans", 0);
+                w.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                w.WriteEndObject();
+            }));
 
         // Pending goals have no GoalContext yet; the confirmation-card event
         // uses a throwaway run state disposed right after this single emit.
-        var runState = new AgentRuntimeRunState($"goal-{goalId}", sessionId);
+        // goalId already carries the "goal-" prefix — same runId formula as
+        // the active phase's EventRunState, so the stream identity matches.
+        var runState = new AgentRuntimeRunState(goalId, sessionId);
         try
         {
             await AgentRuntimeTools.EmitAsync(runState, context, eventPayload);

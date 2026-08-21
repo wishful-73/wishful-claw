@@ -1,4 +1,4 @@
-# Verification Report — v2-iter-19
+﻿# Verification Report — v2-iter-19
 
 验证时间：2026-08-20
 
@@ -22,6 +22,16 @@
 - 步骤8/9 编译：C# `dotnet build` 0 错误；TS 三配置全零错误（含 goal-store / chat-store / GoalHistoryPanel 改动）
 - goal_activity 事件链：SubAgentExecutor.CreateCollector 转发（带 GoalEventContext 的 run）→ AgentRuntimeStreamEvent.Input(JsonElement) 携带 goalId/planId/round/kind/toolName → chat-store index.ts 分流 → useGoalStore.applyGoalActivity → GoalHistoryPanel 计划卡片活动流（链根 planId 过滤，最近 30 条）
 - 降噪：Goal 运行时 CreateCollector 跳过 text_delta 逐条转发（静态核对）
+
+## 补充验证（review-06 修复功能单元，2026-08-21）
+
+commit `1af53c1`（GL-1..16）+ 审查修正 commit：
+
+- C#：`dotnet build src/runtime/WishfulClaw.sln -v q` → **0 警告 0 错误**（修复后 + 审查修正后各一次）
+- TypeScript 三配置全零错误（本次未改前端，按规范照跑）：web / node / root 均 PASS
+- BOM 扫描：Edit 工具两次引入 BOM 回归（13 文件 + 4 文件），均在 commit 前按字节剥离，HEAD 对比确认非历史遗留
+- 独立 subagent 审查：见 `review_report_review06_fixes.md`，❌ 项 0
+- 静态核验：前端 `envelope.runId` 仅用于 seq 连续性检测与消息匹配（agent-stream-receiver.ts:109-137），goal 事件按 payload 字段路由（chat-store index.ts:442-465），runId 格式变更无消费方影响
 
 ## 运行时验证（待用户实测）
 

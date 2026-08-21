@@ -81,15 +81,9 @@ public static partial class GoalOrchestrator
         JsonElement parameters,
         string eventMessage)
     {
-        try
-        {
-            WriteGoalState(goal);
-        }
-        catch (Exception ex)
-        {
-            WorkerLog.Warn($"Failed to write terminal goal state: {ex.Message}");
-        }
-
+        // WriteGoalState is already best-effort (try-catch + Warn inside);
+        // SyncGoalToDb likewise. Both channels are independent archives.
+        WriteGoalState(goal);
         SyncGoalToDb(goal, parameters, eventMessage);
     }
 

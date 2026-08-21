@@ -83,7 +83,9 @@ public sealed class GoalContext
     {
         var existing = _eventRunState;
         if (existing != null) return existing;
-        var created = new AgentRuntimeRunState($"goal-{GoalId}", SessionId);
+        // GoalId already carries the "goal-" prefix — use it as the runId
+        // verbatim so pending and active phases share one stream identity.
+        var created = new AgentRuntimeRunState(GoalId, SessionId);
         var winner = Interlocked.CompareExchange(ref _eventRunState, created, null);
         if (winner != null)
         {

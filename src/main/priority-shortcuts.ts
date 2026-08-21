@@ -1,4 +1,4 @@
-import { app, globalShortcut } from 'electron'
+import { app, globalShortcut, type BrowserWindow } from 'electron'
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import * as fs from 'fs'
 import { join } from 'path'
@@ -197,6 +197,21 @@ public static class PriorityHotkeyBridge
             }
         }
         return activated;
+    }
+
+    // Force-activate one of our own windows (quick launcher). Windows denies
+    // SetForegroundWindow from a background process while another app owns
+    // the foreground — the same SPI timeout reset + Alt workaround used by
+    // EnsureForeground is required to win the race.
+    public static bool ActivateSelf(long windowValue)
+    {
+        IntPtr target = new IntPtr(windowValue);
+        if (target == IntPtr.Zero || !IsWindow(target))
+        {
+            Console.Error.WriteLine("activate-self: invalid target window " + windowValue);
+            return false;
+        }
+        return EnsureForeground(target);
     }
 
     private static bool EnsureForeground(IntPtr target)
@@ -544,6 +559,9 @@ try {
     if ($message.type -eq 'configure') {
       $entries = @($message.shortcuts | ForEach-Object { "$($_.id)|$($_.accelerator)" })
       [PriorityHotkeyBridge]::Configure([string[]]$entries)
+    } elseif ($message.type -eq 'activate-self') {
+      $activated = [PriorityHotkeyBridge]::ActivateSelf([long]$message.window)
+      if (-not $activated) { Write-Error "activate-self failed for window $($message.window)" }
     } elseif ($message.type -eq 'paste') {
       if ($message.inject -eq $false) {
         $restored = [PriorityHotkeyBridge]::ActivateOnly([long]$message.foregroundWindow, [long]$message.focusWindow, [bool]$message.clearMenu)
@@ -713,4 +731,22 @@ export function pasteToForegroundWindow(foregroundWindow: string | null, focusWi
   if (process.platform !== 'win32' || !foregroundWindow || foregroundWindow === '0') return false
   ensureWindowsBridge()
   return sendToBridge({ type: 'paste', foregroundWindow, focusWindow: focusWindow ?? '0', inject: injectKeys, clearMenu })
+}
+
+/**
+ * Force-activate one of our own windows (quick launcher) even when another
+ * process owns the Windows foreground. Uses the PowerShell bridge's
+ * EnsureForeground chain (foreground-lock timeout reset + Alt workaround) —
+ * plain win.show()/win.focus() loses that race once the launched app or an
+ * agent window holds the foreground.
+ */
+export function forceActivateWindow(win: BrowserWindow): boolean {
+  if (process.platform !== 'win32') {
+    win.show()
+    win.focus()
+    return true
+  }
+  const hwnd = win.getNativeWindowHandle().readBigInt64LE()
+  if (!ensureWindowsBridge()) return false
+  return sendToBridge({ type: 'activate-self', window: hwnd.toString() })
 }

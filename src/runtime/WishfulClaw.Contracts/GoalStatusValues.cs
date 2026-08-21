@@ -1,4 +1,4 @@
-﻿namespace WishfulClaw.Contracts;
+namespace WishfulClaw.Contracts;
 
 public static class GoalStatusValues
 {
@@ -26,6 +26,10 @@ public static class GoalPlanStatusValues
     public const string Active = "active";
     public const string Complete = "complete";
     public const string Aborted = "aborted";
+    /// <summary>Plan row replaced by an adjusted plan (original_plan_id chain).</summary>
+    public const string Superseded = "superseded";
+    /// <summary>Runtime sweep state: plan was executing when the app shut down.</summary>
+    public const string Interrupted = "interrupted";
 }
 
 public static class GoalExecutionAttemptStatusValues

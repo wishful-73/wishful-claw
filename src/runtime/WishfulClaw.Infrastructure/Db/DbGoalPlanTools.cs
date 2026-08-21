@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Wishful Claw 自研：Goal 编排层 Plan 定义（goal_plans）读写工具。
  * 一行 = 一个计划定义（不是执行尝试）。Plan 定义与 goal_plan_tasks 的每轮执行记录分离。
  */
@@ -186,6 +186,57 @@ public static partial class DbGoalPlanTools
     }
 
     /// <summary>
+    /// 插入单个 Plan 行（adjust 换 planId 后由编排层调用，保证新 id 有 DB 行）。
+    /// 幂等：已存在的 plan_id 跳过。
+    /// </summary>
+    public static void InsertPlan(GoalPlanEntity plan)
+    {
+        DbClient.EnsureInitialized();
+        var db = DbClient.GetClient();
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        db.ExecuteInTransaction((connection, transaction) =>
+        {
+            plan.CreatedAt = now;
+            plan.UpdatedAt = now;
+
+            var exists = db.QueryScalar<int>(
+                connection,
+                transaction,
+                "SELECT COUNT(*) FROM goal_plans WHERE plan_id = @pid AND session_id = @sid",
+                new SqliteParameter("@pid", plan.PlanId),
+                new SqliteParameter("@sid", plan.SessionId));
+
+            if (exists > 0)
+                return;
+
+            db.Execute(
+                connection,
+                transaction,
+                "INSERT INTO goal_plans " +
+                "(plan_id, goal_id, session_id, ordinal, original_plan_id, title, description, content_json, " +
+                "status, retry_count, result_summary, created_at, updated_at, started_at, completed_at) " +
+                "VALUES (@pid, @gid, @sid, @ord, @opid, @title, @desc, @cj, " +
+                "@status, @rc, @rs, @ca, @ua, @sa, @ca2)",
+                new SqliteParameter("@pid", plan.PlanId),
+                new SqliteParameter("@gid", plan.GoalId),
+                new SqliteParameter("@sid", plan.SessionId),
+                new SqliteParameter("@ord", plan.Ordinal),
+                new SqliteParameter("@opid", (object?)plan.OriginalPlanId ?? DBNull.Value),
+                new SqliteParameter("@title", plan.Title),
+                new SqliteParameter("@desc", plan.Description),
+                new SqliteParameter("@cj", (object?)plan.ContentJson ?? DBNull.Value),
+                new SqliteParameter("@status", plan.Status),
+                new SqliteParameter("@rc", plan.RetryCount),
+                new SqliteParameter("@rs", (object?)plan.ResultSummary ?? DBNull.Value),
+                new SqliteParameter("@ca", now),
+                new SqliteParameter("@ua", now),
+                new SqliteParameter("@sa", (object?)plan.StartedAt ?? DBNull.Value),
+                new SqliteParameter("@ca2", (object?)plan.CompletedAt ?? DBNull.Value));
+        });
+    }
+
+    /// <summary>
     /// 查询某 Goal 的全部 Plans（按 ordinal 排序）。
     /// </summary>
     public static List<GoalPlanRow> ListPlans(string goalId, string sessionId)
@@ -236,6 +287,7 @@ public static partial class DbGoalPlanTools
         DbService db, string planId, string goalId, string sessionId, string status, string? resultSummary)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        GoalPlanEntity? entity = null;
 
         db.ExecuteInTransaction((connection, transaction) =>
         {
@@ -256,14 +308,18 @@ public static partial class DbGoalPlanTools
 
             if (changed != 1)
                 throw new InvalidOperationException("Plan not found or changed during update");
-        });
 
-        var entity = db.QueryFirstOrDefault(
-            "SELECT * FROM goal_plans WHERE plan_id = @pid AND goal_id = @gid AND session_id = @sid LIMIT 1",
-            EntityMappers.MapGoalPlan,
-            new SqliteParameter("@pid", planId),
-            new SqliteParameter("@gid", goalId),
-            new SqliteParameter("@sid", sessionId));
+            // Read back inside the same transaction to avoid a race window
+            // between UPDATE and SELECT.
+            entity = db.QueryFirstOrDefault(
+                connection,
+                transaction,
+                "SELECT * FROM goal_plans WHERE plan_id = @pid AND goal_id = @gid AND session_id = @sid LIMIT 1",
+                EntityMappers.MapGoalPlan,
+                new SqliteParameter("@pid", planId),
+                new SqliteParameter("@gid", goalId),
+                new SqliteParameter("@sid", sessionId));
+        });
 
         return entity;
     }

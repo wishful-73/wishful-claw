@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -129,12 +129,17 @@ public static partial class GoalOrchestrator
         await EmitGoalEventAsync(goal, GoalEventType.PlanStarted,
             $"Plan {planIndex + 1} decomposed into {tasks.Count} task(s): {plan.Title}", context);
 
+        // Cross-round state: completed tasks survive retries and 429 backoff so
+        // the foreach below resumes from the first incomplete task instead of
+        // re-executing everything from scratch.
+        var completedTaskIds = new HashSet<string>();
+        var taskResultsById = new Dictionary<string, string>();
+
         while (plan.RetryCount <= maxRetries)
         {
             await ReachSafePointAsync(goal, context, ct);
 
             // Execute tasks sequentially
-            var taskResults = new List<string>();
             var allTasksSucceeded = true;
             string? lastError = null;
             bool was429 = false;
@@ -142,6 +147,9 @@ public static partial class GoalOrchestrator
             foreach (var task in tasks)
             {
                 await ReachSafePointAsync(goal, context, ct);
+
+                // Resume support: skip tasks already completed in an earlier round.
+                if (completedTaskIds.Contains(task.taskId)) continue;
 
                 // Mark task as active
                 GoalOrchestratorMaterialize.UpdateTaskStatus(goal, plan, task.taskId, GoalPlanStatusValues.Active, null);
@@ -177,14 +185,15 @@ public static partial class GoalOrchestrator
                 if (result.Status == GoalPlanStatusValues.Complete)
                 {
                     GoalOrchestratorMaterialize.UpdateTaskStatus(goal, plan, task.taskId, GoalPlanStatusValues.Complete, result.Summary);
-                    taskResults.Add($"✓ {task.title}: {result.Summary}");
+                    completedTaskIds.Add(task.taskId);
+                    taskResultsById[task.taskId] = $"✓ {task.title}: {result.Summary}";
                 }
                 else
                 {
                     allTasksSucceeded = false;
                     lastError = result.Error;
                     GoalOrchestratorMaterialize.UpdateTaskStatus(goal, plan, task.taskId, GoalPlanStatusValues.Active, result.Error);
-                    taskResults.Add($"✗ {task.title}: {result.Error}");
+                    taskResultsById[task.taskId] = $"✗ {task.title}: {result.Error}";
                     break;
                 }
             }
@@ -192,7 +201,7 @@ public static partial class GoalOrchestrator
             // Handle 429 backoff
             if (was429)
             {
-                var (backoffOutcome, backoffResult) = await Handle429BackoffAsync(
+                var backoffOutcome = await Handle429BackoffAsync(
                     goal, plan, planIndex,
                     new PlanExecutionResult { Is429 = true, Error = lastError, RetryAfterHint = null },
                     parameters, parentState, context, ct);
@@ -207,16 +216,13 @@ public static partial class GoalOrchestrator
                         $"Plan {planIndex + 1} failed: rate limit timeout", context);
                     return;
                 }
-                if (backoffResult != null)
-                {
-                    // 429 resolved — continue to retry the remaining tasks
-                    continue;
-                }
+                // 429 resolved — the while loop re-enters the foreach, which
+                // resumes from the first incomplete task (completed ones skip).
                 continue;
             }
 
             // Self-check evaluation of the combined task results
-            var combinedResult = string.Join("\n", taskResults);
+            var combinedResult = string.Join("\n", taskResultsById.Values);
             var evaluation = await EvaluateResultAsync(
                 goal, plan,
                 new PlanExecutionResult { Summary = combinedResult, Status = allTasksSucceeded ? GoalPlanStatusValues.Complete : GoalExecutionAttemptStatusValues.Failed },
@@ -255,9 +261,20 @@ public static partial class GoalOrchestrator
             plan.RetryCount++;
             if (evaluation.NextAction == "adjust" && !string.IsNullOrEmpty(evaluation.AdjustedDescription))
             {
+                // Close the DB loop before switching identity: mark the old
+                // goal_plans row superseded, re-parent its tasks to the new
+                // id, then insert the new plan row so subsequent
+                // UpdatePlanStatus / UpdateTaskStatus calls find real rows.
+                var oldPlanId = plan.PlanId;
+                var newPlanId = $"plan-{Guid.NewGuid():N}";
+                var supersededSummary = $"Superseded by adjust (retry {plan.RetryCount}): {evaluation.Reasoning}";
+                GoalOrchestratorMaterialize.MarkPlanSuperseded(goal, oldPlanId, supersededSummary);
+                GoalOrchestratorMaterialize.ReparentTasksToPlan(goal, oldPlanId, newPlanId);
+
                 plan.Description = evaluation.AdjustedDescription;
-                plan.OriginalPlanId ??= plan.PlanId;
-                plan.PlanId = $"plan-{Guid.NewGuid():N}".Substring(0, 16);
+                plan.OriginalPlanId ??= oldPlanId;
+                plan.PlanId = newPlanId;
+                GoalOrchestratorMaterialize.InsertAdjustedPlan(goal, plan, planIndex);
                 await EmitGoalEventAsync(goal, GoalEventType.PlanAdjusted,
                     $"Plan {planIndex + 1} adjusted (retry {plan.RetryCount}): {evaluation.Reasoning}", context);
                 GoalPlanTracker.AppendLog(goal.WorkingFolder, goal.GoalId, plan.PlanId, $"Adjusted (retry {plan.RetryCount}): {evaluation.Reasoning}");
@@ -278,7 +295,7 @@ public static partial class GoalOrchestrator
 
     private enum BackoffOutcome { Resolved, Timeout }
 
-    private static async Task<(BackoffOutcome outcome, PlanExecutionResult? result)> Handle429BackoffAsync(
+    private static async Task<BackoffOutcome> Handle429BackoffAsync(
         GoalContext goal,
         GoalPlanItem plan,
         int planIndex,
@@ -303,7 +320,7 @@ public static partial class GoalOrchestrator
                 await EmitGoalEventAsync(goal, GoalEventType.BackoffStarted,
                     GoalBackoffStrategy.GetStatusMessage(attempt, phase, totalWaitedSeconds), context);
                 GoalPlanTracker.AppendLog(goal.WorkingFolder, goal.GoalId, plan.PlanId, $"429 backoff: {GoalBackoffStrategy.GetStatusMessage(attempt, phase, totalWaitedSeconds)}");
-                return (BackoffOutcome.Timeout, null);
+                return BackoffOutcome.Timeout;
             }
 
             await EmitGoalEventAsync(goal, GoalEventType.BackoffStarted,
@@ -313,24 +330,55 @@ public static partial class GoalOrchestrator
             totalWaitedSeconds += delaySeconds;
             await ReachSafePointAsync(goal, context, ct);
 
-            // Try a quick test request to see if 429 is resolved
-            // Re-execute the plan — if it succeeds, backoff is resolved
-            // If it fails with 429 again, continue the backoff loop
-            var retryResult = await ExecutePlanAsync(
-                goal, plan, parameters, parentState, context, ct);
-            await ReachSafePointAsync(goal, context, ct);
-
-            if (!retryResult.Is429)
+            // Probe with a minimal LLM ping — never re-execute the plan here.
+            // The old approach ran the whole plan as the "test request",
+            // duplicating every side effect; the real retry happens in the
+            // caller's loop, which resumes from the first incomplete task.
+            if (await ProbeRateLimitResolvedAsync(goal, parameters, parentState, context, ct))
             {
                 await EmitGoalEventAsync(goal, GoalEventType.BackoffResolved,
                     $"Rate limit resolved after {totalWaitedSeconds / 60} min", context);
-                // Return the test result so the caller can use it for evaluation
-                return (BackoffOutcome.Resolved, retryResult);
+                return BackoffOutcome.Resolved;
             }
 
             attempt++;
             await EmitGoalEventAsync(goal, GoalEventType.BackoffProgress,
                 GoalBackoffStrategy.GetStatusMessage(attempt, phase, totalWaitedSeconds), context);
+        }
+    }
+
+    /// <summary>
+    /// Minimal rate-limit probe: a tiny sub-agent LLM call. Returns true when
+    /// the provider no longer returns a structured HTTP 429 error. Any other
+    /// failure (network blip, parse issue) counts as "resolved" so the caller
+    /// retries the real task and surfaces the actual error there.
+    /// </summary>
+    private static async Task<bool> ProbeRateLimitResolvedAsync(
+        GoalContext goal,
+        JsonElement parameters,
+        AgentRuntimeRunState parentState,
+        IWorkerRequestContext context,
+        CancellationToken ct)
+    {
+        try
+        {
+            var input = CreateTaskInput(
+                "Reply with the single word: ok",
+                "Rate limit probe",
+                "custom",
+                "You are a health-check probe. Reply with exactly: ok");
+            var toolCallId = $"goal-429-probe-{Guid.NewGuid():N}";
+            var result = await SubAgentExecutor.ExecuteAsync(
+                input, parameters, parentState, context, toolCallId);
+            return !IsRateLimitText(result.Content?.Trim());
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return !IsRateLimitText(ex.Message);
         }
     }
 
@@ -397,13 +445,12 @@ public static partial class GoalOrchestrator
         {
             var result = await SubAgentExecutor.ExecuteAsync(
                 input, parameters, parentState, context, toolCallId);
-            parentState.GoalEventContext = null;
             ct.ThrowIfCancellationRequested();
 
             stopwatch.Stop();
             var output = result.Content?.Trim() ?? string.Empty;
 
-            if (output.Contains("429") || output.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase))
+            if (IsRateLimitText(output))
             {
                 return new PlanExecutionResult
                 {
@@ -441,10 +488,16 @@ public static partial class GoalOrchestrator
                 Title = plan.Title,
                 Status = GoalExecutionAttemptStatusValues.Failed,
                 Error = ex.Message,
-                Is429 = ex.Message.Contains("429") || ex.Message.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase),
+                Is429 = IsRateLimitText(ex.Message),
                 RetryCount = plan.RetryCount,
                 ElapsedMs = stopwatch.ElapsedMilliseconds
             };
+        }
+        finally
+        {
+            // Always clear the goal context — a leftover context would mis-tag
+            // the next unrelated sub-agent call's events as goal_activity.
+            parentState.GoalEventContext = null;
         }
     }
 

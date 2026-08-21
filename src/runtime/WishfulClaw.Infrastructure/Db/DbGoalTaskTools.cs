@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Wishful Claw 自研：Goal 编排层 Task 定义（goal_tasks）读写工具。
  * 一行 = 一个任务定义（不是执行尝试）。Task 定义与 goal_plan_tasks 的每轮执行记录分离。
  */
@@ -185,6 +185,29 @@ public static partial class DbGoalTaskTools
     }
 
     /// <summary>
+    /// 将某 Plan 下所有非终态 Task 重新挂到新 planId（adjust 换 planId 后调用）。
+    /// 已完成/中止的 Task 保持原样，保留历史归属。
+    /// </summary>
+    public static void ReparentTasks(string goalId, string sessionId, string oldPlanId, string newPlanId)
+    {
+        DbClient.EnsureInitialized();
+        var db = DbClient.GetClient();
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        db.Execute(
+            "UPDATE goal_tasks SET plan_id = @newPid, updated_at = @ua " +
+            "WHERE goal_id = @gid AND session_id = @sid AND plan_id = @oldPid " +
+            "AND status NOT IN (@complete, @aborted)",
+            new SqliteParameter("@newPid", newPlanId),
+            new SqliteParameter("@ua", now),
+            new SqliteParameter("@gid", goalId),
+            new SqliteParameter("@sid", sessionId),
+            new SqliteParameter("@oldPid", oldPlanId),
+            new SqliteParameter("@complete", GoalPlanStatusValues.Complete),
+            new SqliteParameter("@aborted", GoalPlanStatusValues.Aborted));
+    }
+
+    /// <summary>
     /// 按 taskId 精确查询单个 Task。
     /// </summary>
     public static GoalTaskRow? GetTask(string taskId, string goalId, string planId, string sessionId)
@@ -218,6 +241,7 @@ public static partial class DbGoalTaskTools
         DbService db, string taskId, string goalId, string planId, string sessionId, string status, string? resultSummary)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        GoalTaskEntity? entity = null;
 
         db.ExecuteInTransaction((connection, transaction) =>
         {
@@ -239,15 +263,19 @@ public static partial class DbGoalTaskTools
 
             if (changed != 1)
                 throw new InvalidOperationException("Task not found or changed during update");
-        });
 
-        var entity = db.QueryFirstOrDefault(
-            "SELECT * FROM goal_tasks WHERE task_id = @tid AND goal_id = @gid AND plan_id = @pid AND session_id = @sid LIMIT 1",
-            EntityMappers.MapGoalTask,
-            new SqliteParameter("@tid", taskId),
-            new SqliteParameter("@gid", goalId),
-            new SqliteParameter("@pid", planId),
-            new SqliteParameter("@sid", sessionId));
+            // Read back inside the same transaction to avoid a race window
+            // between UPDATE and SELECT.
+            entity = db.QueryFirstOrDefault(
+                connection,
+                transaction,
+                "SELECT * FROM goal_tasks WHERE task_id = @tid AND goal_id = @gid AND plan_id = @pid AND session_id = @sid LIMIT 1",
+                EntityMappers.MapGoalTask,
+                new SqliteParameter("@tid", taskId),
+                new SqliteParameter("@gid", goalId),
+                new SqliteParameter("@pid", planId),
+                new SqliteParameter("@sid", sessionId));
+        });
 
         return entity;
     }

@@ -254,9 +254,9 @@ public static partial class SubAgentExecutor
     /// <summary>
     /// Build a "goal_activity" stream event from a sub-agent event for the Goal
     /// panel. Only meaningful activity is forwarded: tool calls (name + brief
-    /// input summary) and iterations. Text deltas are NOT forwarded one by one
-    /// (they caused thousands of events per minute); a throttled text snapshot
-    /// is emitted instead so the panel can still show live progress text.
+    /// input summary) and iterations. Text deltas are NOT forwarded at all
+    /// (they caused thousands of events per minute); live progress text is
+    /// dropped for goal runs — the final report arrives with sub_agent_end.
     /// </summary>
     private static AgentRuntimeStreamEvent? BuildGoalActivityEvent(
         GoalEventContext goalCtx,

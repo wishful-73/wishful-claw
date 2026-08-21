@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { ArrowLeft, Loader2, Pause, Play, RefreshCw, Target, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
@@ -194,7 +194,14 @@ export function GoalHistoryPanel({
       .loadPlanTasks(selectedGoal.sessionId, selectedGoal.goalId, expandedPlanId)
   }, [selectedGoal?.goalId, selectedGoal?.sessionId, expandedPlanId])
 
-  // 刷新事件时（loadMore / 轮询）同步刷新每轮执行记录，保证进行中 goal 实时更新
+  // 刷新事件时（loadMore / 轮询）同步刷新每轮执行记录，保证进行中 goal 实时更新。
+  // goalPlans 通过 ref 读取：直接放进依赖数组会形成"轮询结果重置轮询计时器"
+  // 的自触发循环（每次 loadGoalPlans 都产生新数组引用）。
+  const goalPlansRef = React.useRef(goalPlans)
+  React.useEffect(() => {
+    goalPlansRef.current = goalPlans
+  }, [goalPlans])
+
   React.useEffect(() => {
     if (!selectedGoal || selectedGoal.status !== 'active') return
     const timer = window.setInterval(() => {
@@ -205,8 +212,8 @@ export function GoalHistoryPanel({
         .getState()
         .loadGoalPlans(selectedGoal.sessionId, selectedGoal.goalId, true)
       // Refresh tasks for the expanded plan (if any)
-      if (expandedPlanId && selectedGoal) {
-        const plan = goalPlans.find((p) => p.planId === expandedPlanId)
+      if (expandedPlanId) {
+        const plan = goalPlansRef.current.find((p) => p.planId === expandedPlanId)
         if (plan) {
           void useGoalHistoryStore.getState().loadPlanTasks(
             selectedGoal.sessionId, selectedGoal.goalId, plan.planId, true
@@ -218,7 +225,7 @@ export function GoalHistoryPanel({
       void useGoalHistoryStore.getState().loadProjectGoals(projectId, true)
     }, 10000)
     return () => window.clearInterval(timer)
-  }, [projectId, selectedGoal?.goalId, selectedGoal?.sessionId, selectedGoal?.status, expandedPlanId, goalPlans])
+  }, [projectId, selectedGoal?.goalId, selectedGoal?.sessionId, selectedGoal?.status, expandedPlanId])
 
   const cancelSelectedGoal = React.useCallback(async (): Promise<void> => {
     if (!selectedGoal) return
@@ -363,7 +370,7 @@ export function GoalHistoryPanel({
                                       {task.ordinal + 1}. {task.title}
                                     </span>
                                     <span className="shrink-0 text-[10px] text-muted-foreground">
-                                      {task.status}
+                                      {t(`goal.history.taskStatus.${task.status}`)}
                                     </span>
                                   </div>
                                   {task.resultSummary ? (

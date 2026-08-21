@@ -491,7 +491,8 @@
       "liveActivity": "Live activity",
       "iterationStep": "iteration {{iteration}}",
       "noRoundRecords": "No per-round records for this plan (legacy goal or records purged)",
-      "taskStatus": { "interrupted": "Interrupted", "pending": "Pending", "executing": "Executing", "completed": "Completed", "failed": "Failed" },
+      "tasks": "Tasks",
+      "taskStatus": { "interrupted": "Interrupted", "pending": "Pending", "active": "Executing", "executing": "Executing", "completed": "Completed", "complete": "Completed", "failed": "Failed", "aborted": "Aborted" },
       "filters": {
         "all": "All",
         "current": "Active",

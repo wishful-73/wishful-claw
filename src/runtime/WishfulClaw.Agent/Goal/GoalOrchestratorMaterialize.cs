@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
@@ -8,10 +8,38 @@ namespace WishfulClaw.Agent;
 /// <summary>
 /// Best-effort DB materialization for the three-tier goal hierarchy
 /// (goal_plans / goal_plan_tasks / goal_execution_runs). Failures are
-/// logged only — they never break the orchestration loop.
+/// logged only — they never break the orchestration loop. A failure
+/// counter escalates to an exception after repeated consecutive
+/// failures so "best-effort" cannot silently swallow a broken DB link.
 /// </summary>
 public static class GoalOrchestratorMaterialize
 {
+    /// <summary>
+    /// Consecutive failed materialization calls before we stop swallowing
+    /// errors and let the exception reach the orchestration loop (which
+    /// marks the goal failed instead of silently losing state).
+    /// </summary>
+    private const int MaxConsecutiveFailures = 5;
+
+    private static int _consecutiveFailures;
+
+    private static void ReportFailure(string operation, Exception ex)
+    {
+        _consecutiveFailures++;
+        WorkerLog.Warn($"[{operation}] materialize failed ({_consecutiveFailures}/{MaxConsecutiveFailures}): {ex.Message}");
+        if (_consecutiveFailures >= MaxConsecutiveFailures)
+        {
+            var message = $"Goal DB materialization failed {_consecutiveFailures} times in a row ({operation}): {ex.Message}";
+            _consecutiveFailures = 0;
+            throw new InvalidOperationException(message, ex);
+        }
+    }
+
+    private static void ReportSuccess()
+    {
+        _consecutiveFailures = 0;
+    }
+
     /// <summary>
     /// Insert all plans into goal_plans with status=pending (idempotent).
     /// </summary>
@@ -31,10 +59,78 @@ public static class GoalOrchestratorMaterialize
                 Status = GoalPlanStatusValues.Pending,
             }).ToList();
             DbGoalPlanTools.MaterializePlans(parameters, goal.GoalId, goal.SessionId, planEntities);
+            ReportSuccess();
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"MaterializePlans failed: {ex.Message}");
+            ReportFailure(nameof(MaterializePlans), ex);
+        }
+    }
+
+    /// <summary>
+    /// Mark the old goal_plans row as superseded when an adjust step replaces
+    /// the plan identity. Without this the old row stays active forever and
+    /// the panel shows a stale "executing" plan.
+    /// </summary>
+    public static void MarkPlanSuperseded(GoalContext goal, string oldPlanId, string? resultSummary)
+    {
+        try
+        {
+            DbGoalPlanTools.UpdatePlanStatus(oldPlanId, goal.GoalId, goal.SessionId,
+                GoalPlanStatusValues.Superseded, resultSummary);
+            ReportSuccess();
+        }
+        catch (Exception ex)
+        {
+            ReportFailure(nameof(MarkPlanSuperseded), ex);
+        }
+    }
+
+    /// <summary>
+    /// Insert the goal_plans row for a plan created by an adjust step.
+    /// The old row was already marked superseded by the caller; without
+    /// this insert the new planId has no DB row and every subsequent
+    /// status update would silently miss.
+    /// </summary>
+    public static void InsertAdjustedPlan(GoalContext goal, GoalPlanItem plan, int planIndex)
+    {
+        try
+        {
+            var entity = new GoalPlanEntity
+            {
+                PlanId = plan.PlanId,
+                GoalId = goal.GoalId,
+                SessionId = goal.SessionId,
+                Ordinal = planIndex,
+                OriginalPlanId = plan.OriginalPlanId,
+                Title = plan.Title,
+                Description = plan.Description,
+                Status = GoalPlanStatusValues.Active,
+                RetryCount = plan.RetryCount,
+            };
+            DbGoalPlanTools.InsertPlan(entity);
+            ReportSuccess();
+        }
+        catch (Exception ex)
+        {
+            ReportFailure(nameof(InsertAdjustedPlan), ex);
+        }
+    }
+
+    /// <summary>
+    /// Re-parent already-materialized goal_tasks rows from the old planId
+    /// to the adjusted planId so task status updates keep hitting real rows.
+    /// </summary>
+    public static void ReparentTasksToPlan(GoalContext goal, string oldPlanId, string newPlanId)
+    {
+        try
+        {
+            DbGoalTaskTools.ReparentTasks(goal.GoalId, goal.SessionId, oldPlanId, newPlanId);
+            ReportSuccess();
+        }
+        catch (Exception ex)
+        {
+            ReportFailure(nameof(ReparentTasksToPlan), ex);
         }
     }
 
@@ -46,10 +142,11 @@ public static class GoalOrchestratorMaterialize
         try
         {
             DbGoalPlanTools.UpdatePlanStatus(plan.PlanId, goal.GoalId, goal.SessionId, status, resultSummary);
+            ReportSuccess();
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"UpdatePlanStatus({status}) failed: {ex.Message}");
+            ReportFailure(nameof(UpdatePlanStatus), ex);
         }
     }
 
@@ -73,10 +170,11 @@ public static class GoalOrchestratorMaterialize
                 Status = GoalPlanStatusValues.Pending,
             }).ToList();
             DbGoalTaskTools.MaterializeTasks(parameters, goal.GoalId, plan.PlanId, goal.SessionId, taskEntities);
+            ReportSuccess();
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"MaterializeTasks failed: {ex.Message}");
+            ReportFailure(nameof(MaterializeTasks), ex);
         }
     }
 
@@ -89,10 +187,11 @@ public static class GoalOrchestratorMaterialize
         try
         {
             DbGoalTaskTools.UpdateTaskStatus(taskId, goal.GoalId, plan.PlanId, goal.SessionId, status, resultSummary);
+            ReportSuccess();
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"UpdateTaskStatus({status}) failed: {ex.Message}");
+            ReportFailure(nameof(UpdateTaskStatus), ex);
         }
     }
 
@@ -104,11 +203,13 @@ public static class GoalOrchestratorMaterialize
     {
         try
         {
-            return DbGoalExecutionRunTools.InsertRun(goal.GoalId, plan.PlanId, null, attemptNo);
+            var attemptId = DbGoalExecutionRunTools.InsertRun(goal.GoalId, plan.PlanId, null, attemptNo);
+            ReportSuccess();
+            return attemptId;
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"InsertRun failed: {ex.Message}");
+            ReportFailure(nameof(StartExecutionAttempt), ex);
             return null;
         }
     }
@@ -123,10 +224,11 @@ public static class GoalOrchestratorMaterialize
         try
         {
             DbGoalExecutionRunTools.FinishRun(attemptId, status, summary, error);
+            ReportSuccess();
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"FinishRun failed: {ex.Message}");
+            ReportFailure(nameof(FinishExecutionAttempt), ex);
         }
     }
 
@@ -142,32 +244,45 @@ public static class GoalOrchestratorMaterialize
             var db = DbClient.GetClient(parameters);
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            // Abort all non-terminal plans
+            // Abort all non-terminal plans (superseded/interrupted rows are terminal too)
             db.Execute(
-                "UPDATE goal_plans SET status = 'aborted', updated_at = @now, completed_at = @now " +
-                "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN ('complete', 'aborted')",
+                "UPDATE goal_plans SET status = @aborted, updated_at = @now, completed_at = @now " +
+                "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN (@complete, @aborted, @superseded, @interrupted)",
+                new Microsoft.Data.Sqlite.SqliteParameter("@aborted", GoalPlanStatusValues.Aborted),
                 new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
                 new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
-                new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId));
+                new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId),
+                new Microsoft.Data.Sqlite.SqliteParameter("@complete", GoalPlanStatusValues.Complete),
+                new Microsoft.Data.Sqlite.SqliteParameter("@aborted", GoalPlanStatusValues.Aborted),
+                new Microsoft.Data.Sqlite.SqliteParameter("@superseded", GoalPlanStatusValues.Superseded),
+                new Microsoft.Data.Sqlite.SqliteParameter("@interrupted", GoalPlanStatusValues.Interrupted));
 
             // Abort all non-terminal tasks
             db.Execute(
-                "UPDATE goal_tasks SET status = 'aborted', updated_at = @now, completed_at = @now " +
-                "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN ('complete', 'aborted')",
+                "UPDATE goal_tasks SET status = @aborted, updated_at = @now, completed_at = @now " +
+                "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN (@complete, @aborted, @interrupted)",
+                new Microsoft.Data.Sqlite.SqliteParameter("@aborted", GoalPlanStatusValues.Aborted),
                 new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
                 new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
-                new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId));
+                new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId),
+                new Microsoft.Data.Sqlite.SqliteParameter("@complete", GoalPlanStatusValues.Complete),
+                new Microsoft.Data.Sqlite.SqliteParameter("@aborted", GoalPlanStatusValues.Aborted),
+                new Microsoft.Data.Sqlite.SqliteParameter("@interrupted", GoalPlanStatusValues.Interrupted));
 
             // Mark any executing attempts as interrupted
             db.Execute(
-                "UPDATE goal_execution_runs SET status = 'interrupted', finished_at = @now " +
-                "WHERE goal_id = @gid AND status = 'executing'",
+                "UPDATE goal_execution_runs SET status = @interrupted, finished_at = @now " +
+                "WHERE goal_id = @gid AND status = @executing",
+                new Microsoft.Data.Sqlite.SqliteParameter("@interrupted", GoalExecutionAttemptStatusValues.Interrupted),
                 new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
-                new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId));
+                new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
+                new Microsoft.Data.Sqlite.SqliteParameter("@executing", GoalExecutionAttemptStatusValues.Executing));
+
+            ReportSuccess();
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"AbortSubtree failed: {ex.Message}");
+            ReportFailure(nameof(AbortSubtree), ex);
         }
     }
 }

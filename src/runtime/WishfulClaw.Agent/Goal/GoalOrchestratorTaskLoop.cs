@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -12,6 +12,21 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static partial class GoalOrchestrator
 {
+    /// <summary>
+    /// Detects provider rate-limit failures from error text. Matches only
+    /// structured HTTP-status patterns (e.g. "HTTP 429" as emitted by
+    /// ProviderHttpException) plus the canonical "Too Many Requests" reason
+    /// phrase — a bare "429" substring would false-positive on natural
+    /// language output that merely mentions the number.
+    /// </summary>
+    private static bool IsRateLimitText(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        return text.Contains("HTTP 429", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("status code 429", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Decompose a plan into tasks using a sub-agent LLM call.
     /// Returns a list of (taskId, title, description) tuples.
@@ -76,6 +91,14 @@ public static partial class GoalOrchestrator
             tasks.Add((fallbackTaskId, plan.Title, plan.Description));
         }
 
+        // Fallback: parse failure or an empty array both degrade to a single
+        // task = the plan itself, so the loop never evaluates an empty input.
+        if (tasks.Count == 0)
+        {
+            var fallbackTaskId = $"task-{Guid.NewGuid():N}".Substring(0, 21);
+            tasks.Add((fallbackTaskId, plan.Title, plan.Description));
+        }
+
         return tasks;
     }
 
@@ -110,13 +133,12 @@ public static partial class GoalOrchestrator
         {
             var result = await SubAgentExecutor.ExecuteAsync(
                 input, parameters, parentState, context, toolCallId);
-            parentState.GoalEventContext = null;
             ct.ThrowIfCancellationRequested();
 
             stopwatch.Stop();
             var output = result.Content?.Trim() ?? string.Empty;
 
-            if (output.Contains("429") || output.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase))
+            if (IsRateLimitText(output))
             {
                 return new PlanExecutionResult
                 {
@@ -154,10 +176,16 @@ public static partial class GoalOrchestrator
                 Title = task.title,
                 Status = GoalExecutionAttemptStatusValues.Failed,
                 Error = ex.Message,
-                Is429 = ex.Message.Contains("429") || ex.Message.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase),
+                Is429 = IsRateLimitText(ex.Message),
                 RetryCount = plan.RetryCount,
                 ElapsedMs = stopwatch.ElapsedMilliseconds
             };
+        }
+        finally
+        {
+            // Always clear the goal context — a leftover context would mis-tag
+            // the next unrelated sub-agent call's events as goal_activity.
+            parentState.GoalEventContext = null;
         }
     }
 }

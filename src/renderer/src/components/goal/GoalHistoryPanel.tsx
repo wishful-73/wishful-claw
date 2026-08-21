@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { ArrowLeft, Loader2, Pause, Play, RefreshCw, Target, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
@@ -18,12 +18,17 @@ import {
   type SessionGoal,
   type SessionGoalStatus
 } from '@renderer/stores/goal-store'
-import { type SessionGoalEvent, type SessionGoalPlanTask } from '@renderer/stores/goal-store-helpers'
+import {
+  type SessionGoalEvent,
+  type SessionGoalPlanTask,
+  type SessionGoalPlan
+} from '@renderer/stores/goal-store-helpers'
 import type { GoalActivity } from '@renderer/stores/goal-store-helpers'
 
 const EMPTY_GOALS: SessionGoal[] = []
 const EMPTY_EVENTS: SessionGoalEvent[] = []
 const EMPTY_PLAN_TASKS: SessionGoalPlanTask[] = []
+const EMPTY_PLANS: SessionGoalPlan[] = []
 const EMPTY_ACTIVITIES: GoalActivity[] = []
 
 interface GoalHistoryPanelProps {
@@ -151,6 +156,9 @@ export function GoalHistoryPanel({
   const planTasks = useGoalHistoryStore((state) =>
     selectedKey ? state.planTasksByGoal[selectedKey] ?? EMPTY_PLAN_TASKS : EMPTY_PLAN_TASKS
   )
+  const goalPlans = useGoalHistoryStore((state) =>
+    selectedKey ? state.plansByGoal[selectedKey] ?? EMPTY_PLANS : EMPTY_PLANS
+  )
   const liveActivities = useGoalStore((state) =>
     selectedGoal ? state.goalActivitiesByGoal[selectedGoal.goalId] ?? EMPTY_ACTIVITIES : EMPTY_ACTIVITIES
   )
@@ -163,6 +171,9 @@ export function GoalHistoryPanel({
     void useGoalHistoryStore
       .getState()
       .loadGoalPlanTasks(selectedGoal.sessionId, selectedGoal.goalId)
+    void useGoalHistoryStore
+      .getState()
+      .loadGoalPlans(selectedGoal.sessionId, selectedGoal.goalId)
   }, [selectedGoal?.goalId, selectedGoal?.sessionId])
 
   // 刷新事件时（loadMore / 轮询）同步刷新每轮执行记录，保证进行中 goal 实时更新
@@ -208,7 +219,17 @@ export function GoalHistoryPanel({
 
   if (selectedGoal) {
     const session = sessions.find((item) => item.id === selectedGoal.sessionId)
-    const plans = parsePlans(selectedGoal)
+    const plansJsonParsed = parsePlans(selectedGoal)
+    // Prefer goal_plans table data (three-tier) when available; fall back to plansJson.
+    const plans: GoalPlanSummary[] = goalPlans.length > 0
+      ? goalPlans.map((p) => ({
+          planId: p.planId,
+          originalPlanId: p.originalPlanId,
+          title: p.title,
+          status: p.status,
+          resultSummary: p.resultSummary
+        }))
+      : plansJsonParsed
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">

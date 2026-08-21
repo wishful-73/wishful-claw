@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -198,7 +198,7 @@ public static partial class AgentRuntimeGoalExecutor
                         goalId,
                         sessionId,
                         GoalStatusValues.Active,
-                        GoalStatusValues.Failed,
+                        GoalStatusValues.Active,
                         "Goal confirmation could not start the orchestrator");
                     return EncodeError("Goal confirmation could not start the orchestrator.");
                 }
@@ -223,7 +223,7 @@ public static partial class AgentRuntimeGoalExecutor
             FinalizeConfirmationFailure(
                 goalId,
                 sessionId,
-                GoalStatusValues.Failed,
+                GoalStatusValues.Active,
                 $"Goal confirmation failed: {ex.Message}");
             return EncodeError($"Goal confirmation failed: {ex.Message}");
         }
@@ -304,7 +304,7 @@ public static partial class AgentRuntimeGoalExecutor
                 reopened.GoalId,
                 sessionId,
                 GoalStatusValues.Pending,
-                GoalStatusValues.Failed,
+                GoalStatusValues.Active,
                 $"Reopened goal could not enter pending runtime state: {ex.Message}");
             return EncodeError($"Reopened goal could not enter pending runtime state: {ex.Message}");
         }
@@ -335,7 +335,6 @@ public static partial class AgentRuntimeGoalExecutor
         if (!string.IsNullOrEmpty(status)
             && status is not GoalStatusValues.Active
                 and not GoalStatusValues.Complete
-                and not GoalStatusValues.Failed
                 and not GoalStatusValues.Aborted)
         {
             return EncodeError($"Unsupported goal status: {status}");
@@ -349,7 +348,7 @@ public static partial class AgentRuntimeGoalExecutor
 
         var activeContext = GoalOrchestrator.GetContext(row.GoalId);
         if (!string.IsNullOrEmpty(objective)
-            && status is GoalStatusValues.Complete or GoalStatusValues.Failed or GoalStatusValues.Aborted)
+            && status is GoalStatusValues.Complete or GoalStatusValues.Aborted)
         {
             var objectiveParams = BuildUpdateParameters(
                 parameters,
@@ -364,7 +363,7 @@ public static partial class AgentRuntimeGoalExecutor
         }
 
         GoalActionResult? action = null;
-        if (status is GoalStatusValues.Complete or GoalStatusValues.Failed or GoalStatusValues.Aborted)
+        if (status is GoalStatusValues.Complete or GoalStatusValues.Aborted)
         {
             if (GoalOrchestrator.GetContext(row.GoalId) == null
                 && !GoalStatusValues.IsTerminal(row.Status))
@@ -433,8 +432,8 @@ public static partial class AgentRuntimeGoalExecutor
             return new GoalToolProgress(
                 context.Plans.Count,
                 context.CurrentPlanIndex,
-                context.Plans.Count(p => p.Status == GoalPlanStatusValues.Completed),
-                context.Plans.Count(p => p.Status == GoalPlanStatusValues.Failed),
+                context.Plans.Count(p => p.Status == GoalPlanStatusValues.Complete),
+                context.Plans.Count(p => p.Status == GoalPlanStatusValues.Aborted),
                 context.Status,
                 context.RunState,
                 context.StartedAt.ToString("O"));
@@ -448,7 +447,7 @@ public static partial class AgentRuntimeGoalExecutor
                 var plans = JsonSerializer.Deserialize(
                     row.PlansJson,
                     AgentRuntimeJsonContext.Default.ListGoalPlanItem);
-                failedPlans = plans?.Count(p => p.Status == GoalPlanStatusValues.Failed) ?? 0;
+                failedPlans = plans?.Count(p => p.Status == GoalPlanStatusValues.Aborted) ?? 0;
             }
             catch (JsonException)
             {

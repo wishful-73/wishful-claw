@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Agent;
 using WishfulClaw.Agent.Tools.Providers;
 using WishfulClaw.Contracts;
@@ -112,9 +112,9 @@ internal static partial class Program
             var failedGoalId = failingContext.GoalId;
             Assert(!string.IsNullOrEmpty(failedGoalId),
                 "startup failure still identifies the pending goal");
-            AssertEqual(GoalStatusValues.Failed,
+            AssertEqual(GoalStatusValues.Aborted,
                 DbGoalTools.GetByGoalId(failedGoalId!, "session-lifecycle")?.Status,
-                "confirmation startup failure persists failed");
+                "confirmation startup failure persists aborted");
             Assert(GoalOrchestrator.GetContext(failedGoalId!) == null,
                 "confirmation startup failure leaves no active zombie");
             AssertEqual(0, AgentRuntimeReverseRequests.PendingCount,
@@ -178,7 +178,6 @@ internal static partial class Program
             foreach (var terminalStatus in new[]
                      {
                          GoalStatusValues.Complete,
-                         GoalStatusValues.Failed,
                          GoalStatusValues.Aborted
                      })
             {

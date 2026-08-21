@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -39,7 +39,7 @@ public static partial class GoalOrchestrator
             if (!decomposition.Success || decomposition.Plans.Count == 0)
             {
                 return new GoalRunOutcome(
-                    GoalStatusValues.Failed,
+                    GoalStatusValues.Active,
                     GoalEventType.GoalFailed,
                     $"Goal failed: {decomposition.Error ?? "No plans generated"}");
             }
@@ -80,10 +80,10 @@ public static partial class GoalOrchestrator
             // Mark the plan as executing and sync immediately so the panel
             // reflects "executing" (and an up-to-date progress count) while
             // the round runs, not only after it finishes.
-            if (plan.Status != GoalPlanStatusValues.Completed
-                && plan.Status != GoalPlanStatusValues.Failed)
+            if (plan.Status != GoalPlanStatusValues.Complete
+                && plan.Status != GoalPlanStatusValues.Aborted)
             {
-                plan.Status = GoalPlanStatusValues.Executing;
+                plan.Status = GoalPlanStatusValues.Active;
                 SyncGoalToDb(goal, parameters);
             }
 
@@ -93,7 +93,7 @@ public static partial class GoalOrchestrator
         }
 
         // 3. Goal completion check
-        var allCompleted = goal.Plans.All(p => p.Status == GoalPlanStatusValues.Completed);
+        var allCompleted = goal.Plans.All(p => p.Status == GoalPlanStatusValues.Complete);
         if (allCompleted)
         {
             return new GoalRunOutcome(
@@ -102,9 +102,9 @@ public static partial class GoalOrchestrator
                 "All plans completed successfully");
         }
 
-        var failedCount = goal.Plans.Count(p => p.Status != GoalPlanStatusValues.Completed);
+        var failedCount = goal.Plans.Count(p => p.Status != GoalPlanStatusValues.Complete);
         return new GoalRunOutcome(
-            GoalStatusValues.Failed,
+            GoalStatusValues.Active,
             GoalEventType.GoalFailed,
             $"Goal failed with {failedCount} incomplete plan(s)");
     }
@@ -144,7 +144,7 @@ public static partial class GoalOrchestrator
 
                 if (backoffOutcome == BackoffOutcome.Timeout)
                 {
-                    plan.Status = "failed";
+                    plan.Status = GoalPlanStatusValues.Active;
                     plan.ResultSummary = "Rate limit timeout after 6 hours";
                     await EmitGoalEventAsync(goal, GoalEventType.PlanFailed,
                         $"Plan {planIndex + 1} failed: rate limit timeout", context);
@@ -169,9 +169,9 @@ public static partial class GoalOrchestrator
             if (evaluation.Satisfied)
             {
                 // Plan completed successfully
-                plan.Status = "completed";
+                plan.Status = GoalPlanStatusValues.Complete;
                 plan.ResultSummary = evaluation.Reasoning ?? result.Summary;
-                GoalPlanRecorder.FinishRound(parameters, roundTaskId, "completed", plan.ResultSummary, evaluation.Reasoning, true);
+                GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Completed, plan.ResultSummary, evaluation.Reasoning, true);
                 GoalPlanTracker.FinishPlan(goal.WorkingFolder, goal.GoalId, plan);
                 await EmitGoalEventAsync(goal, GoalEventType.PlanCompleted,
                     $"Plan {planIndex + 1} completed: {plan.Title}. {plan.ResultSummary}", context);
@@ -183,9 +183,9 @@ public static partial class GoalOrchestrator
             // Not satisfied: retry or adjust
             if (plan.RetryCount >= maxRetries)
             {
-                plan.Status = "failed";
+                plan.Status = GoalPlanStatusValues.Active;
                 plan.ResultSummary = $"Failed after {maxRetries} retries: {evaluation.Reasoning}";
-                GoalPlanRecorder.FinishRound(parameters, roundTaskId, "failed", plan.ResultSummary, evaluation.Reasoning, false);
+                GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Failed, plan.ResultSummary, evaluation.Reasoning, false);
                 GoalPlanTracker.FinishPlan(goal.WorkingFolder, goal.GoalId, plan);
                 await EmitGoalEventAsync(goal, GoalEventType.PlanFailed,
                     $"Plan {planIndex + 1} failed after {maxRetries} retries: {evaluation.Reasoning}", context);
@@ -195,7 +195,7 @@ public static partial class GoalOrchestrator
             }
 
             // Round did not satisfy the evaluation - record it, then retry/adjust
-            GoalPlanRecorder.FinishRound(parameters, roundTaskId, "failed",
+            GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Failed,
                 result.Summary, evaluation.Reasoning, false);
 
             // Adjust plan based on evaluation
@@ -447,7 +447,7 @@ public static partial class GoalOrchestrator
                 w.WriteString("status", goal.Status);
                 w.WriteNumber("currentPlanIndex", goal.CurrentPlanIndex);
                 w.WriteNumber("planCount", goal.Plans.Count);
-                w.WriteNumber("completedPlanCount", goal.Plans.Count(p => p.Status == GoalPlanStatusValues.Completed));
+                w.WriteNumber("completedPlanCount", goal.Plans.Count(p => p.Status == GoalPlanStatusValues.Complete));
                 if (goal.Plans.Count > 0)
                 {
                     w.WritePropertyName("plansJson");

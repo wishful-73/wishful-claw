@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 
 namespace WishfulClaw.Agent;
@@ -14,7 +14,7 @@ public sealed class PlanExecutionResult
 {
     public string PlanId { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
-    public string Status { get; set; } = GoalPlanStatusValues.Pending; // pending | executing | completed | failed
+    public string Status { get; set; } = GoalPlanStatusValues.Pending; // pending | active | complete | aborted
     public string? Summary { get; set; }
     public string? Error { get; set; }
     public bool Is429 { get; set; }
@@ -51,10 +51,10 @@ public sealed class GoalContext
     public string SessionId { get; set; } = string.Empty;
     public string GoalText { get; set; } = string.Empty;
     public string? WorkingFolder { get; set; }
-    /// <summary>目标状态：active（进行中）| complete | failed | aborted（终态）。</summary>
+    /// <summary>数据库 Goal 状态：pending | active | complete | aborted。</summary>
     public string Status { get; set; } = GoalStatusValues.Active;
     private string _runState = GoalRunStateValues.Idle;
-    /// <summary>执行状态（仅内存）：idle（未运行）| running（编排中）| paused（暂停）。</summary>
+    /// <summary>前端/编排器运行态（不写入数据库）：idle | running | paused | interrupted。</summary>
     public string RunState
     {
         get => Volatile.Read(ref _runState);

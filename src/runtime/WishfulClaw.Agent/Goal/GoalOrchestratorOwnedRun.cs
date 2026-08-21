@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
@@ -107,7 +107,7 @@ public static partial class GoalOrchestrator
         catch (Exception ex)
         {
             outcome = new GoalRunOutcome(
-                GoalStatusValues.Failed,
+                GoalStatusValues.Active,
                 GoalEventType.GoalFailed,
                 $"Goal failed: {ex.Message}");
         }

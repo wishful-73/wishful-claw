@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
@@ -267,7 +267,7 @@ public static partial class GoalOrchestrator
         if (status == GoalStatusValues.Aborted)
             return await AbortFromToolAsync(goalId, context);
 
-        if (status is not GoalStatusValues.Complete and not GoalStatusValues.Failed)
+        if (status is not GoalStatusValues.Complete and not GoalStatusValues.Aborted)
         {
             return new GoalActionResult(
                 false,
@@ -275,7 +275,7 @@ public static partial class GoalOrchestrator
                 status,
                 GoalRunStateValues.Idle,
                 goalId,
-                "Only complete, failed, or aborted are terminal statuses.");
+                "Only complete or aborted are terminal statuses.");
         }
 
         if (!ActiveGoals.TryGetValue(goalId, out var goal))

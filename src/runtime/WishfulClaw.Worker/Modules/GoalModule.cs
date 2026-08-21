@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
@@ -166,7 +166,7 @@ public sealed class GoalModule : IWorkerModule
                 goalId,
                 sessionId,
                 GoalStatusValues.Active,
-                GoalStatusValues.Failed,
+                GoalStatusValues.Aborted,
                 "Goal confirmation could not start the orchestrator");
         }
         else
@@ -197,7 +197,7 @@ public sealed class GoalModule : IWorkerModule
             goalId,
             ctx?.CurrentPlanIndex ?? -1,
             ctx?.Plans.Count ?? 0,
-            ctx?.Plans.Count(p => p.Status == GoalPlanStatusValues.Completed) ?? 0), WishfulClawJsonContext.Default.GoalStatusResponse);
+            ctx?.Plans.Count(p => p.Status == GoalPlanStatusValues.Complete) ?? 0), WishfulClawJsonContext.Default.GoalStatusResponse);
     }
 
     private static GoalActionResult MissingGoalId(string action)

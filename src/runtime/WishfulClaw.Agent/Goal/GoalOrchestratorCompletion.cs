@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
@@ -21,6 +21,7 @@ public static partial class GoalOrchestrator
     {
         GoalEventType eventType;
         string message;
+        bool isTerminal;
         lock (goal.LifecycleSync)
         {
             if (goal.RunGeneration != generation)
@@ -29,9 +30,12 @@ public static partial class GoalOrchestrator
                 return;
             }
 
+            // Failure outcomes keep the Goal active (not terminal); only
+            // complete/aborted are persisted as terminal business states.
             if (!GoalStatusValues.IsTerminal(goal.Status))
                 goal.Status = outcome.Status;
 
+            isTerminal = GoalStatusValues.IsTerminal(goal.Status);
             goal.RunState = GoalRunStateValues.Idle;
             (eventType, message) = ResolveTerminalEvent(goal.Status, outcome);
         }
@@ -46,7 +50,10 @@ public static partial class GoalOrchestrator
                 goal.RunTask = null;
                 goal.RuntimeState = null;
                 goal.RunState = GoalRunStateValues.Idle;
-                if (IsCurrentGoalContext(goal))
+                // Only remove from ActiveGoals when the Goal is truly terminal.
+                // A failed-but-active Goal stays in ActiveGoals so get_goal
+                // can still report its runtime state and the user can Resume.
+                if (isTerminal && IsCurrentGoalContext(goal))
                     ActiveGoals.TryRemove(goal.GoalId, out _);
             }
         }
@@ -93,7 +100,7 @@ public static partial class GoalOrchestrator
         return status switch
         {
             GoalStatusValues.Complete => (GoalEventType.GoalCompleted, "All plans completed successfully"),
-            GoalStatusValues.Failed => (GoalEventType.GoalFailed, "Goal failed"),
+            _ when outcome.EventType == GoalEventType.GoalFailed => (GoalEventType.GoalFailed, outcome.Message),
             GoalStatusValues.Aborted => (GoalEventType.GoalAborted, "Goal aborted"),
             _ => (outcome.EventType, outcome.Message)
         };

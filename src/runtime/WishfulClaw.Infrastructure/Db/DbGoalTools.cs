@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -353,7 +353,7 @@ public static partial class DbGoalTools
         => currentStatus switch
         {
             GoalStatusValues.Complete => ("completed", eventMessage ?? "Goal completed"),
-            GoalStatusValues.Failed => ("failed", eventMessage ?? "Goal failed"),
+            "failed" => ("failed", eventMessage ?? "Goal failed"),
             GoalStatusValues.Aborted => ("aborted", eventMessage ?? "Goal aborted"),
             _ => ("status_changed", eventMessage ?? $"Status changed: {previousStatus} -> {currentStatus}")
         };

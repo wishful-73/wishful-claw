@@ -517,6 +517,7 @@
     "manageWhitelist": "管理白名单规则…",
     "fullAccessConfirmTitle": "切换到完全访问权限？",
     "fullAccessConfirmDesc": "所有工具调用（包括危险操作）都将自动执行，不再向你确认。",
+    "fullAccessConfirmAction": "确认切换",
     "dangerous": "危险",
     "caution": "注意",
     "safe": "安全",

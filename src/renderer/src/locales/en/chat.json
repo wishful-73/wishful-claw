@@ -518,6 +518,7 @@
     "manageWhitelist": "Manage whitelist rules…",
     "fullAccessConfirmTitle": "Switch to full access?",
     "fullAccessConfirmDesc": "All tool calls, including dangerous operations, will execute automatically without asking for confirmation.",
+    "fullAccessConfirmAction": "Switch",
     "dangerous": "Dangerous",
     "caution": "Caution",
     "safe": "Safe",

@@ -414,6 +414,8 @@
     "tokensWithBudget": "{{used}} / {{budget}} tokens",
     "cancelConfirmTitle": "Cancel this goal?",
     "cancelConfirmDesc": "The goal will stop and be archived as cancelled. Its objective and event history remain available.",
+    "cancelConfirmYes": "Cancel goal",
+    "cancelConfirmNo": "Keep goal",
     "status": {
       "pending": "pending",
       "active": "active",

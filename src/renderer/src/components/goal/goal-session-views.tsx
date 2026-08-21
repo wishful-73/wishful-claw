@@ -226,7 +226,8 @@ export function useGoalActions(
     const confirmed = await confirm({
       title: t('goal.cancelConfirmTitle'),
       description: t('goal.cancelConfirmDesc'),
-      confirmLabel: tCommon('action.cancel'),
+      confirmLabel: t('goal.cancelConfirmYes'),
+      cancelLabel: t('goal.cancelConfirmNo'),
       variant: 'destructive'
     })
     if (!confirmed) return

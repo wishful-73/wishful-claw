@@ -413,6 +413,8 @@
     "tokensWithBudget": "{{used}} / {{budget}} tokens",
     "cancelConfirmTitle": "取消这个 Goal？",
     "cancelConfirmDesc": "Goal 会停止运行并归档为已取消，目标与事件历史将永久保留。",
+    "cancelConfirmYes": "确认取消",
+    "cancelConfirmNo": "保留目标",
     "status": {
       "pending": "待确认",
       "active": "进行中",

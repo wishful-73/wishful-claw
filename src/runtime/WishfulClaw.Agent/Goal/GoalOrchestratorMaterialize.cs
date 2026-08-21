@@ -246,9 +246,9 @@ public static class GoalOrchestratorMaterialize
 
             // Abort all non-terminal plans (superseded/interrupted rows are terminal too)
             db.Execute(
-                "UPDATE goal_plans SET status = @aborted, updated_at = @now, completed_at = @now " +
+                "UPDATE goal_plans SET status = @status, updated_at = @now, completed_at = @now " +
                 "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN (@complete, @aborted, @superseded, @interrupted)",
-                new Microsoft.Data.Sqlite.SqliteParameter("@aborted", GoalPlanStatusValues.Aborted),
+                new Microsoft.Data.Sqlite.SqliteParameter("@status", GoalPlanStatusValues.Aborted),
                 new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
                 new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
                 new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId),
@@ -259,9 +259,9 @@ public static class GoalOrchestratorMaterialize
 
             // Abort all non-terminal tasks
             db.Execute(
-                "UPDATE goal_tasks SET status = @aborted, updated_at = @now, completed_at = @now " +
+                "UPDATE goal_tasks SET status = @status, updated_at = @now, completed_at = @now " +
                 "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN (@complete, @aborted, @interrupted)",
-                new Microsoft.Data.Sqlite.SqliteParameter("@aborted", GoalPlanStatusValues.Aborted),
+                new Microsoft.Data.Sqlite.SqliteParameter("@status", GoalPlanStatusValues.Aborted),
                 new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
                 new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
                 new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId),

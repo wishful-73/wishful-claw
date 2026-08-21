@@ -220,10 +220,13 @@ public static partial class AgentRuntimeGoalExecutor
         }
         catch (Exception ex)
         {
+            // A goal whose orchestrator never started must not linger as
+            // active — persist it as aborted so the panel and Resume path
+            // treat it as a dead run instead of a fake "executing" one.
             FinalizeConfirmationFailure(
                 goalId,
                 sessionId,
-                GoalStatusValues.Active,
+                GoalStatusValues.Aborted,
                 $"Goal confirmation failed: {ex.Message}");
             return EncodeError($"Goal confirmation failed: {ex.Message}");
         }

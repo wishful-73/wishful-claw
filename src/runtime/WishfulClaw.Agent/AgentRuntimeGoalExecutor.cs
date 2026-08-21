@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -220,13 +220,14 @@ public static partial class AgentRuntimeGoalExecutor
         }
         catch (Exception ex)
         {
-            // A goal whose orchestrator never started must not linger as
-            // active — persist it as aborted so the panel and Resume path
-            // treat it as a dead run instead of a fake "executing" one.
+            // Startup failure is a system-side event: the business status
+            // stays active (only a user cancel produces aborted). The goal
+            // remains resumable; FinalizeConfirmationFailure only clears the
+            // pending-goal memory and records the failure event.
             FinalizeConfirmationFailure(
                 goalId,
                 sessionId,
-                GoalStatusValues.Aborted,
+                GoalStatusValues.Active,
                 $"Goal confirmation failed: {ex.Message}");
             return EncodeError($"Goal confirmation failed: {ex.Message}");
         }

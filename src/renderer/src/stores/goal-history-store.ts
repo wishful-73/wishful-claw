@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import {
   DB_GOALS_LIST_PAGE_MSGPACK_CHANNEL,
   DB_GOAL_EVENTS_LIST_PAGE_MSGPACK_CHANNEL,

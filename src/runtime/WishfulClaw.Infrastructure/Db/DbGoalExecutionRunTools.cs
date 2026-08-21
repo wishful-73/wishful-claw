@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Wishful Claw 自研：Goal 编排层执行尝试记录（goal_execution_runs）读写工具。
  * 一行 = 一次执行尝试（attempt）。与 goal_plan_tasks 的每轮执行记录互补：
  *   - goal_plan_tasks 记录每个 Plan 每一轮的整体执行结果（plan-level round）。

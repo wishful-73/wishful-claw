@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Wishful Claw 自研：Goal 编排每轮执行记录（goal_plan_tasks）读写工具。
  * 一行 = 一个计划的一轮执行（round = retry + 1）。
  * 与 goal_execution_runs（attempt-level）互补：

@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 

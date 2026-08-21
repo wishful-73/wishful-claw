@@ -1,4 +1,4 @@
-﻿namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent;
 
 /// <summary>
 /// Prompt templates for GoalOrchestrator.

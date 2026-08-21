@@ -289,7 +289,6 @@ export function GoalHistoryPanel({
     // Progress counters derived from the plan rows themselves — the
     // session_goals row is only refreshed on poll and lags behind.
     const completedPlanCount = plans.filter((p) => p.status === 'complete').length
-    const executingPlanCount = plans.filter((p) => p.status === 'active').length
     // Elapsed: live timer while running; otherwise derive from plan timeline
     // (first started → last finished) since session_goals.time_used_seconds
     // is never accounted (the usage channel has no caller yet).
@@ -338,12 +337,7 @@ export function GoalHistoryPanel({
           <div className="grid grid-cols-2 gap-2 text-xs">
             <Metric label={t('goal.tokensLabel')} value={formatGoalTokens(selectedGoal.tokensUsed)} />
             <Metric label={t('goal.timeLabel')} value={liveElapsedText} />
-            <Metric
-              label={t('goal.history.plans')}
-              value={executingPlanCount > 0
-                ? `${completedPlanCount} / ${plans.length} · ${executingPlanCount} ${t('goal.history.taskStatus.active')}`
-                : `${completedPlanCount} / ${plans.length}`}
-            />
+            <Metric label={t('goal.history.plans')} value={`${completedPlanCount} / ${plans.length}`} />
             <Metric label={t('goal.updatedAt')} value={new Date(selectedGoal.updatedAt).toLocaleString()} />
           </div>
           {selectedGoal.status === 'pending' || selectedGoal.status === 'active' ? (

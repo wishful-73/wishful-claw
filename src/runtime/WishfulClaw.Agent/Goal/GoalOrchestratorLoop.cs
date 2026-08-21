@@ -404,6 +404,7 @@ public static partial class GoalOrchestrator
             plan.Title,
             plan.Description,
             executionResultText,
+            result.Status == GoalPlanStatusValues.Complete,
             parameters,
             parentState,
             context,

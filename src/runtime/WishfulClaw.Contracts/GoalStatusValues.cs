@@ -4,6 +4,7 @@ public static class GoalStatusValues
 {
     public const string Pending = "pending";
     public const string Active = "active";
+    public const string Paused = "paused";
     public const string Complete = "complete";
     public const string Aborted = "aborted";
     // Interrupted is a runtime/attempt state, not a persisted Goal lifecycle state.
@@ -24,6 +25,7 @@ public static class GoalPlanStatusValues
 {
     public const string Pending = "pending";
     public const string Active = "active";
+    public const string Paused = "paused";
     public const string Complete = "complete";
     public const string Aborted = "aborted";
     /// <summary>Plan row replaced by an adjusted plan (original_plan_id chain).</summary>

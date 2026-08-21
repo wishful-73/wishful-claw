@@ -99,6 +99,7 @@ public static partial class GoalOrchestrator
         string planTitle,
         string planDescription,
         string executionResult,
+        bool executionSucceeded,
         JsonElement parameters,
         AgentRuntimeRunState parentState,
         IWorkerRequestContext context,
@@ -133,8 +134,16 @@ public static partial class GoalOrchestrator
                 output = output.Trim();
             }
 
+            // The evaluator sub-agent may itself fail and answer in prose
+            // ("Sub-agent failed: ..."). Try to salvage a JSON object from the
+            // text before giving up — otherwise a broken evaluator poisons
+            // every retry and the plan can never complete.
+            var jsonCandidate = ExtractJsonObject(output) ?? output;
+            if (jsonCandidate.Length == 0)
+                return HeuristicEvaluation(executionSucceeded, "evaluator returned no output");
+
             // Parse JSON evaluation result
-            using var doc = JsonDocument.Parse(output);
+            using var doc = JsonDocument.Parse(jsonCandidate);
             var root = doc.RootElement;
 
             return new EvaluationResult
@@ -151,14 +160,53 @@ public static partial class GoalOrchestrator
         }
         catch (Exception ex)
         {
-            // Fallback to heuristic evaluation if LLM fails
-            return new EvaluationResult
-            {
-                Satisfied = false,
-                Reasoning = $"LLM evaluation failed: {ex.Message}. Falling back to heuristic.",
-                NextAction = "retry"
-            };
+            return HeuristicEvaluation(executionSucceeded, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// Fallback when the evaluator LLM call fails or returns unparseable
+    /// output. Trusts the executor's own success flag instead of forcing a
+    /// retry — a broken evaluator must not turn a completed plan into an
+    /// endless retry loop.
+    /// </summary>
+    private static EvaluationResult HeuristicEvaluation(bool executionSucceeded, string reason)
+    {
+        return new EvaluationResult
+        {
+            Satisfied = executionSucceeded,
+            Reasoning = $"LLM evaluation failed ({reason}). Falling back to executor result.",
+            NextAction = executionSucceeded ? "proceed" : "retry"
+        };
+    }
+
+    /// <summary>
+    /// Extract the first balanced {...} block from free-form text, or null.
+    /// </summary>
+    private static string? ExtractJsonObject(string text)
+    {
+        var start = text.IndexOf('{');
+        if (start < 0) return null;
+        var depth = 0;
+        var inString = false;
+        for (var i = start; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (inString)
+            {
+                if (c == '\\') i++;
+                else if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') inString = true;
+            else if (c == '{') depth++;
+            else if (c == '}')
+            {
+                depth--;
+                if (depth == 0) return text.Substring(start, i - start + 1);
+            }
+        }
+        return null;
     }
 
     /// <summary>

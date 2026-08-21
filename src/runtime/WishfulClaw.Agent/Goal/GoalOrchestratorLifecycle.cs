@@ -56,6 +56,9 @@ public static partial class GoalOrchestrator
 
     /// <summary>
     /// Pause a running Goal without replacing its owned orchestration loop.
+    /// An idle goal (loop already exited, e.g. after a failed-but-active run)
+    /// is paused directly — the user asked for paused, so honor it instead of
+    /// returning a silent "no running loop" error.
     /// </summary>
     public static GoalActionResult Pause(string goalId)
     {
@@ -73,11 +76,34 @@ public static partial class GoalOrchestrator
             if (goal.RunState == GoalRunStateValues.Paused)
                 return GoalAction(goal, true, "already_paused");
 
-            if (goal.RunState != GoalRunStateValues.Running || goal.RunTask is not { IsCompleted: false })
-                return GoalAction(goal, false, "idle", "Goal has no running orchestration loop to pause.");
+            // Loop still running: pause takes effect at the next safe point.
+            if (goal.RunState == GoalRunStateValues.Running && goal.RunTask is { IsCompleted: false })
+            {
+                goal.RunState = GoalRunStateValues.Paused;
+                return GoalAction(goal, true, "paused");
+            }
 
+            // Idle loop (previous run ended without completing): flip the
+            // business status to paused so Resume can pick it up cleanly.
+            goal.Status = GoalStatusValues.Paused;
             goal.RunState = GoalRunStateValues.Paused;
+            PersistGoalStatus(goal);
             return GoalAction(goal, true, "paused");
+        }
+    }
+
+    /// <summary>
+    /// Best-effort persist of an idle-loop status change (pause path).
+    /// </summary>
+    private static void PersistGoalStatus(GoalContext goal)
+    {
+        try
+        {
+            SyncGoalToDb(goal, BuildResumeParameters(goal), $"Goal paused ({goal.Status})");
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn($"Failed to persist paused status: {ex.Message}");
         }
     }
 

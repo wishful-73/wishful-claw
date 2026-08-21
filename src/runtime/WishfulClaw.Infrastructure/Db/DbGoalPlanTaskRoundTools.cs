@@ -131,15 +131,14 @@ public static partial class DbGoalPlanTaskRoundTools
             stepsJson = System.Text.Encoding.UTF8.GetString(buffer.ToArray());
         }
 
-        // Reuse an unfinished row for the same round (chain-root plan match) so a
-        // paused/interrupted goal that resumes does not create a duplicate
-        // "executing" entry for the same round. started_at is refreshed to now
-        // because the round is being re-executed from scratch.
+        // Reuse the latest row for the same round (chain-root plan match) so
+        // sequential tasks within one round share a single record instead of
+        // inserting near-identical duplicates. started_at is refreshed and the
+        // row re-opened as executing because the round is being re-run.
         var chainRoot = originalPlanId ?? planId;
         var existingId = db.QueryScalar<long?>(
             "SELECT id FROM goal_plan_tasks " +
             "WHERE session_id = @sid AND goal_id = @gid AND round = @round " +
-            "AND status = 'executing' AND finished_at IS NULL " +
             "AND COALESCE(original_plan_id, plan_id) = @root " +
             "ORDER BY id DESC LIMIT 1",
             new SqliteParameter("@sid", sessionId),
@@ -149,7 +148,9 @@ public static partial class DbGoalPlanTaskRoundTools
         if (existingId is > 0)
         {
             db.Execute(
-                "UPDATE goal_plan_tasks SET started_at = @started, description = @desc, steps_json = @steps WHERE id = @id",
+                "UPDATE goal_plan_tasks SET status = 'executing', finished_at = NULL, " +
+                "summary = NULL, evaluation_reasoning = NULL, evaluation_satisfied = NULL, " +
+                "started_at = @started, description = @desc, steps_json = @steps WHERE id = @id",
                 new SqliteParameter("@started", now),
                 new SqliteParameter("@desc", (object?)description ?? DBNull.Value),
                 new SqliteParameter("@steps", (object?)stepsJson ?? DBNull.Value),

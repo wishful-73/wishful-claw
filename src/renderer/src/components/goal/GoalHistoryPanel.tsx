@@ -21,14 +21,17 @@ import {
 import {
   type SessionGoalEvent,
   type SessionGoalPlanTask,
-  type SessionGoalPlan
+  type SessionGoalPlan,
+  type SessionGoalTask
 } from '@renderer/stores/goal-store-helpers'
 import type { GoalActivity } from '@renderer/stores/goal-store-helpers'
+import { goalPlanKey } from '@renderer/stores/goal-history-store'
 
 const EMPTY_GOALS: SessionGoal[] = []
 const EMPTY_EVENTS: SessionGoalEvent[] = []
 const EMPTY_PLAN_TASKS: SessionGoalPlanTask[] = []
 const EMPTY_PLANS: SessionGoalPlan[] = []
+const EMPTY_TASKS: SessionGoalTask[] = []
 const EMPTY_ACTIVITIES: GoalActivity[] = []
 
 interface GoalHistoryPanelProps {
@@ -159,6 +162,13 @@ export function GoalHistoryPanel({
   const goalPlans = useGoalHistoryStore((state) =>
     selectedKey ? state.plansByGoal[selectedKey] ?? EMPTY_PLANS : EMPTY_PLANS
   )
+  // Tasks for the currently expanded plan (three-tier tree)
+  const expandedPlanTaskKey = (selectedGoal && expandedPlanId)
+    ? goalPlanKey(selectedGoal.sessionId, selectedGoal.goalId, expandedPlanId)
+    : ''
+  const expandedPlanTasks = useGoalHistoryStore((state) =>
+    expandedPlanTaskKey ? state.tasksByPlan[expandedPlanTaskKey] ?? EMPTY_TASKS : EMPTY_TASKS
+  )
   const liveActivities = useGoalStore((state) =>
     selectedGoal ? state.goalActivitiesByGoal[selectedGoal.goalId] ?? EMPTY_ACTIVITIES : EMPTY_ACTIVITIES
   )
@@ -176,6 +186,14 @@ export function GoalHistoryPanel({
       .loadGoalPlans(selectedGoal.sessionId, selectedGoal.goalId)
   }, [selectedGoal?.goalId, selectedGoal?.sessionId])
 
+  // Load tasks for a plan when it is expanded
+  React.useEffect(() => {
+    if (!selectedGoal || !expandedPlanId) return
+    void useGoalHistoryStore
+      .getState()
+      .loadPlanTasks(selectedGoal.sessionId, selectedGoal.goalId, expandedPlanId)
+  }, [selectedGoal?.goalId, selectedGoal?.sessionId, expandedPlanId])
+
   // 刷新事件时（loadMore / 轮询）同步刷新每轮执行记录，保证进行中 goal 实时更新
   React.useEffect(() => {
     if (!selectedGoal || selectedGoal.status !== 'active') return
@@ -183,12 +201,24 @@ export function GoalHistoryPanel({
       void useGoalHistoryStore
         .getState()
         .loadGoalPlanTasks(selectedGoal.sessionId, selectedGoal.goalId, true)
+      void useGoalHistoryStore
+        .getState()
+        .loadGoalPlans(selectedGoal.sessionId, selectedGoal.goalId, true)
+      // Refresh tasks for the expanded plan (if any)
+      if (expandedPlanId && selectedGoal) {
+        const plan = goalPlans.find((p) => p.planId === expandedPlanId)
+        if (plan) {
+          void useGoalHistoryStore.getState().loadPlanTasks(
+            selectedGoal.sessionId, selectedGoal.goalId, plan.planId, true
+          )
+        }
+      }
       // Also refresh the goal row itself: plan statuses (pending → executing →
       // completed) and progress counters live in session_goals, not plan tasks.
       void useGoalHistoryStore.getState().loadProjectGoals(projectId, true)
     }, 10000)
     return () => window.clearInterval(timer)
-  }, [projectId, selectedGoal?.goalId, selectedGoal?.sessionId, selectedGoal?.status])
+  }, [projectId, selectedGoal?.goalId, selectedGoal?.sessionId, selectedGoal?.status, expandedPlanId, goalPlans])
 
   const cancelSelectedGoal = React.useCallback(async (): Promise<void> => {
     if (!selectedGoal) return
@@ -321,6 +351,28 @@ export function GoalHistoryPanel({
                           )}
                           isActive={selectedGoal?.status === 'active'}
                         />
+                        {expandedPlanTasks.length > 0 ? (
+                            <div className="mt-2 space-y-1 border-t border-border/40 pt-2">
+                              <p className="mb-1 text-[10px] font-medium text-muted-foreground">
+                                {t('goal.history.tasks', { defaultValue: 'Tasks' })}
+                              </p>
+                              {expandedPlanTasks.map((task) => (
+                                <div key={task.taskId} className="rounded-sm bg-muted/30 px-2 py-1">
+                                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                                    <span className="min-w-0 truncate font-medium">
+                                      {task.ordinal + 1}. {task.title}
+                                    </span>
+                                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                                      {task.status}
+                                    </span>
+                                  </div>
+                                  {task.resultSummary ? (
+                                    <p className="mt-0.5 text-[10px] text-muted-foreground/80">{task.resultSummary}</p>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         {planRounds.length > 0 ? (
                           <div className="mt-2 space-y-1.5 border-t border-border/40 pt-2">
                             {planRounds.map((task) => (

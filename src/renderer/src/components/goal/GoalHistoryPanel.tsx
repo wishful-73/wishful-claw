@@ -14,6 +14,7 @@ import { GoalEventTimeline, useGoalActions } from './goal-session-views'
 import { getGoalRuntimeControls, GoalStatusBadge } from './goal-session-utils'
 import { useLiveGoalElapsedSeconds } from './goal-session-utils'
 import { cancelGoalConfirm } from '@renderer/lib/tools/goal-native-ui'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 import {
   useGoalStore,
   type SessionGoal,
@@ -238,7 +239,7 @@ export function GoalHistoryPanel({
   const cancelSelectedGoal = React.useCallback(async (): Promise<void> => {
     if (!selectedGoal) return
     if (selectedGoal.status === 'pending') {
-      const confirmed = await (confirm as any)({
+      const confirmed = await confirm({
         title: t('goal.cancelConfirmTitle'),
         description: t('goal.cancelConfirmDesc'),
         confirmLabel: tCommon('action.cancel'),

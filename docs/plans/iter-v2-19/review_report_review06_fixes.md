@@ -1,4 +1,4 @@
-﻿# Review Report — v2-iter-19 追加功能单元：review-06 Goal 审查修复
+# Review Report — v2-iter-19 追加功能单元：review-06 Goal 审查修复
 
 审查时间：2026-08-21　方式：独立 subagent 逐项审查 commit `1af53c1` + 主会话复核
 审查对象：docs/reviews/review-06-goal.md GL-1~GL-16 共 16 条修复

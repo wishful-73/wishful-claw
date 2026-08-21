@@ -1,4 +1,4 @@
-﻿# Verification Report — v2-iter-19
+# Verification Report — v2-iter-19
 
 验证时间：2026-08-20
 

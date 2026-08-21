@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
-import { Bot, Loader2, Square } from 'lucide-react'
+import { ArrowLeft, Bot, Loader2, Square } from 'lucide-react'
 import { FadeIn, spring } from '@renderer/components/animate-ui/transitions'
 import { agentBridge } from '@renderer/lib/ipc/agent-bridge'
 import { useAgentStore, type SubAgentState } from '@renderer/stores/agent-store'
@@ -238,9 +238,17 @@ export function SubAgentsPanel({
   const completedSubAgents = useAgentStore((state) => state.completedSubAgents)
   const subAgentHistory = useAgentStore((state) => state.subAgentHistory)
 
-  const selectedToolUseId = useUIStore((state) => state.selectedSubAgentToolUseId)
-  const inlineText = useUIStore((state) => state.subAgentExecutionDetailInlineText)
+  // Selected agent = the per-agent subagent tab that is currently active
+  // (toolUseId set on the tab), not a global single-selection field.
+  const rightPanelTabs = useUIStore((state) => state.rightPanelTabs)
+  const rightPanelActiveTabId = useUIStore((state) => state.rightPanelActiveTabId)
+  const activeSubAgentTab = rightPanelTabs.find(
+    (tab) => tab.kind === 'subagent' && tab.id === rightPanelActiveTabId && tab.toolUseId
+  )
+  const selectedToolUseId = activeSubAgentTab?.toolUseId ?? null
+  const inlineText = activeSubAgentTab?.inlineText ?? null
   const openSubAgentExecutionDetail = useUIStore((state) => state.openSubAgentExecutionDetail)
+  const setRightPanelActiveTab = useUIStore((state) => state.setRightPanelActiveTab)
   const [now, setNow] = React.useState(() => Date.now())
 
   const allAgents = React.useMemo(() => {
@@ -298,6 +306,18 @@ export function SubAgentsPanel({
     [activeSessionId, openSubAgentExecutionDetail]
   )
 
+  const backToList = React.useCallback(() => {
+    const overviewTab = rightPanelTabs.find(
+      (tab) => tab.kind === 'subagent' && !tab.toolUseId && (tab.sessionId ?? null) === (activeSessionId ?? null)
+    )
+    if (overviewTab) {
+      setRightPanelActiveTab(overviewTab.id)
+      return
+    }
+    // No overview tab yet — create one without a toolUseId.
+    openSubAgentExecutionDetail('', null, 'SubAgents', activeSessionId ?? undefined)
+  }, [rightPanelTabs, activeSessionId, setRightPanelActiveTab, openSubAgentExecutionDetail])
+
   const stopAgent = React.useCallback(
     (agent: SubAgentState) => {
       const agentSessionId = agent.sessionId ?? activeSessionId ?? undefined
@@ -319,12 +339,26 @@ export function SubAgentsPanel({
         duration={0.15}
         className="h-full min-h-0 bg-background"
       >
-        <SubAgentExecutionDetail
-          embedded
-          toolUseId={selectedAgent.toolUseId}
-          inlineText={inlineText ?? undefined}
-          sessionId={activeSessionId}
-        />
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-3 py-1.5">
+            <button
+              type="button"
+              onClick={backToList}
+              className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <ArrowLeft className="size-3" />
+              {t('subAgentsPanel.backToList', { defaultValue: 'Back to SubAgents' })}
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <SubAgentExecutionDetail
+              embedded
+              toolUseId={selectedAgent.toolUseId}
+              inlineText={inlineText ?? undefined}
+              sessionId={activeSessionId}
+            />
+          </div>
+        </div>
       </FadeIn>
     )
   } else if (selectedToolUseId) {

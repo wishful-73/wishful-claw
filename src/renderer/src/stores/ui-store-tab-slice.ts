@@ -19,18 +19,19 @@ export function createTabSlice(set: SetFn, get: GetFn) {
           useChatStore.getState().activeSessionId ??
           null
         const tabScopeId = sessionId ?? 'global'
-        const tabId = `subagent:${tabScopeId}:overview`
-        const existing = state.rightPanelTabs.find(
-          (tab: any) => tab.kind === 'subagent' && (tab.sessionId ?? null) === sessionId
-        )
+        // Each sub-agent gets its own tab so multiple agents can be inspected
+        // side by side; toolUseId=null is the shared list (overview) tab.
+        const tabId = toolUseId
+          ? `subagent:${tabScopeId}:${toolUseId}`
+          : `subagent:${tabScopeId}:overview`
+        const existing = state.rightPanelTabs.find((tab: any) => tab.id === tabId)
         const tab: RightPanelTabInstance = existing
           ? {
               ...existing,
-              id: tabId,
               sessionId: sessionId ?? existing.sessionId ?? null,
-              title: title?.trim() || 'SubAgents',
+              title: title?.trim() || existing.title,
               toolUseId: toolUseId ?? null,
-              inlineText: inlineText?.trim() ? inlineText : null
+              inlineText: inlineText?.trim() ? inlineText : existing.inlineText
             }
           : {
               id: tabId,
@@ -42,22 +43,10 @@ export function createTabSlice(set: SetFn, get: GetFn) {
               inlineText: inlineText?.trim() ? inlineText : null,
               createdAt: Date.now()
             }
-        const tabsWithoutScopedDuplicates = state.rightPanelTabs.filter(
-          (item: any) =>
-            item.kind !== 'subagent' ||
-            item === existing ||
-            (item.sessionId ?? null) !== sessionId
-        )
-        const rightPanelTabs = ensureRightPanelTabs(
-          existing
-            ? tabsWithoutScopedDuplicates.map((item: any) => (item === existing ? tab : item))
-            : [...tabsWithoutScopedDuplicates, tab]
-        )
+        const rightPanelTabs = existing
+          ? state.rightPanelTabs.map((item: any) => (item.id === tabId ? tab : item))
+          : [...state.rightPanelTabs, tab]
         return {
-          selectedSubAgentToolUseId: toolUseId ?? null,
-          subAgentExecutionDetailOpen: false,
-          subAgentExecutionDetailToolUseId: toolUseId ?? null,
-          subAgentExecutionDetailInlineText: inlineText?.trim() ? inlineText : null,
           rightPanelTabs,
           rightPanelActiveTabId: tabId,
           rightPanelOpen: true

@@ -266,7 +266,7 @@ public static partial class GoalOrchestrator
                 // id, then insert the new plan row so subsequent
                 // UpdatePlanStatus / UpdateTaskStatus calls find real rows.
                 var oldPlanId = plan.PlanId;
-                var newPlanId = $"plan-{Guid.NewGuid():N}";
+                var newPlanId = GoalIds.NewPlanId();
                 var supersededSummary = $"Superseded by adjust (retry {plan.RetryCount}): {evaluation.Reasoning}";
                 GoalOrchestratorMaterialize.MarkPlanSuperseded(goal, oldPlanId, supersededSummary);
                 GoalOrchestratorMaterialize.ReparentTasksToPlan(goal, oldPlanId, newPlanId);
@@ -317,7 +317,7 @@ public static partial class GoalOrchestrator
 
             if (phase == "timeout")
             {
-                await EmitGoalEventAsync(goal, GoalEventType.BackoffStarted,
+                await EmitGoalEventAsync(goal, GoalEventType.BackoffTimedOut,
                     GoalBackoffStrategy.GetStatusMessage(attempt, phase, totalWaitedSeconds), context);
                 GoalPlanTracker.AppendLog(goal.WorkingFolder, goal.GoalId, plan.PlanId, $"429 backoff: {GoalBackoffStrategy.GetStatusMessage(attempt, phase, totalWaitedSeconds)}");
                 return BackoffOutcome.Timeout;
@@ -326,8 +326,13 @@ public static partial class GoalOrchestrator
             await EmitGoalEventAsync(goal, GoalEventType.BackoffStarted,
                 GoalBackoffStrategy.GetStatusMessage(attempt, phase, totalWaitedSeconds), context);
 
-            await Task.Delay(delaySeconds * 1000, ct);
-            totalWaitedSeconds += delaySeconds;
+            // Sliced wait: a Pause flips RunState mid-wait and takes effect at
+            // the ReachSafePoint below, instead of after the full delay (the
+            // minute-polling phase waits up to 10 minutes per attempt).
+            var waitStopwatch = Stopwatch.StartNew();
+            await DelayInterruptibleAsync(goal, delaySeconds, ct);
+            waitStopwatch.Stop();
+            totalWaitedSeconds += (long)waitStopwatch.Elapsed.TotalSeconds;
             await ReachSafePointAsync(goal, context, ct);
 
             // Probe with a minimal LLM ping — never re-execute the plan here.
@@ -344,6 +349,27 @@ public static partial class GoalOrchestrator
             attempt++;
             await EmitGoalEventAsync(goal, GoalEventType.BackoffProgress,
                 GoalBackoffStrategy.GetStatusMessage(attempt, phase, totalWaitedSeconds), context);
+        }
+    }
+
+    /// <summary>
+    /// Wait in 1-second slices so a Pause request interrupts the backoff wait
+    /// within ~1s instead of after the full delay (up to 10 minutes during
+    /// minute polling). Cancellation still throws immediately.
+    /// </summary>
+    private static async Task DelayInterruptibleAsync(GoalContext goal, int totalSeconds, CancellationToken ct)
+    {
+        var remaining = TimeSpan.FromSeconds(totalSeconds);
+        while (remaining > TimeSpan.Zero)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (goal.RunState == GoalRunStateValues.Paused) return;
+
+            var slice = remaining > TimeSpan.FromSeconds(1)
+                ? TimeSpan.FromSeconds(1)
+                : remaining;
+            await Task.Delay(slice, ct);
+            remaining -= slice;
         }
     }
 
@@ -413,116 +439,46 @@ public static partial class GoalOrchestrator
         return evaluation;
     }
 
-    // ─── Plan Execution ───
-
-    private static async Task<PlanExecutionResult> ExecutePlanAsync(
-        GoalContext goal,
-        GoalPlanItem plan,
-        JsonElement parameters,
-        AgentRuntimeRunState parentState,
-        IWorkerRequestContext context,
-        CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        var stopwatch = Stopwatch.StartNew();
-        await EmitGoalEventAsync(goal, GoalEventType.PlanStarted,
-            $"Plan started: {plan.Title}", context);
-
-        GoalPlanTracker.StartPlan(goal.WorkingFolder, goal.GoalId, plan);
-        var prompt = BuildPlanExecutionPrompt(plan.Title, plan.Description);
-        var input = CreateTaskInput(
-            prompt,
-            $"Plan: {plan.Title}",
-            "custom",
-            GoalPromptTemplates.ExecutionSystemPrompt);
-        var toolCallId = $"goal-plan-{plan.PlanId}-{Guid.NewGuid():N}";
-
-        // Tag this run with the goal context so forwarded sub-agent events
-        // also reach the Goal panel as goal_activity events (live feed).
-        parentState.GoalEventContext = new GoalEventContext(
-            goal.GoalId, plan.PlanId, plan.RetryCount + 1, plan.Title);
-
-        try
-        {
-            var result = await SubAgentExecutor.ExecuteAsync(
-                input, parameters, parentState, context, toolCallId);
-            ct.ThrowIfCancellationRequested();
-
-            stopwatch.Stop();
-            var output = result.Content?.Trim() ?? string.Empty;
-
-            if (IsRateLimitText(output))
-            {
-                return new PlanExecutionResult
-                {
-                    PlanId = plan.PlanId,
-                    Title = plan.Title,
-                    Status = GoalExecutionAttemptStatusValues.Failed,
-                    Error = output,
-                    Is429 = true,
-                    RetryCount = plan.RetryCount,
-                    ElapsedMs = stopwatch.ElapsedMilliseconds
-                };
-            }
-
-            return new PlanExecutionResult
-            {
-                PlanId = plan.PlanId,
-                Title = plan.Title,
-                Status = GoalPlanStatusValues.Complete,
-                Summary = output.Length > 500 ? output.Substring(0, 500) + "..." : output,
-                RetryCount = plan.RetryCount,
-                ElapsedMs = stopwatch.ElapsedMilliseconds
-            };
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            stopwatch.Stop();
-            throw;
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            return new PlanExecutionResult
-            {
-                PlanId = plan.PlanId,
-                Title = plan.Title,
-                Status = GoalExecutionAttemptStatusValues.Failed,
-                Error = ex.Message,
-                Is429 = IsRateLimitText(ex.Message),
-                RetryCount = plan.RetryCount,
-                ElapsedMs = stopwatch.ElapsedMilliseconds
-            };
-        }
-        finally
-        {
-            // Always clear the goal context — a leftover context would mis-tag
-            // the next unrelated sub-agent call's events as goal_activity.
-            parentState.GoalEventContext = null;
-        }
-    }
-
-
     // ─── State Persistence ───
+
+    /// <summary>
+    /// Serialize state.json writes: the read-modify-write cycle in
+    /// UpdatePlanInState is not concurrency-safe, so concurrent Goals sharing
+    /// one working folder must not interleave (single-goal sessions never hit
+    /// this, but the lock costs nothing).
+    /// </summary>
+    private static readonly object GoalStateFileSync = new();
 
     private static void WriteGoalState(GoalContext goal)
     {
         if (string.IsNullOrEmpty(goal.WorkingFolder))
             return;
 
-        GoalFileTools.WriteGoalFile(goal.WorkingFolder, goal.GoalId, goal.GoalText, goal.Plans);
-        var state = GoalFileTools.ReadGoalState(goal.WorkingFolder, goal.GoalId) ?? new GoalState
+        try
         {
-            GoalId = goal.GoalId,
-            GoalText = goal.GoalText,
-            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-        };
+            lock (GoalStateFileSync)
+            {
+                GoalFileTools.WriteGoalFile(goal.WorkingFolder, goal.GoalId, goal.GoalText, goal.Plans);
+                var state = GoalFileTools.ReadGoalState(goal.WorkingFolder, goal.GoalId) ?? new GoalState
+                {
+                    GoalId = goal.GoalId,
+                    GoalText = goal.GoalText,
+                    CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
 
-        state.Status = goal.Status;
-        state.CurrentPlanIndex = goal.CurrentPlanIndex;
-        state.Plans = goal.Plans;
-        state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        GoalFileTools.WriteGoalState(goal.WorkingFolder, goal.GoalId, state);
+                state.Status = goal.Status;
+                state.CurrentPlanIndex = goal.CurrentPlanIndex;
+                state.Plans = goal.Plans;
+                state.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                GoalFileTools.WriteGoalState(goal.WorkingFolder, goal.GoalId, state);
+            }
+        }
+        catch (Exception ex)
+        {
+            // File archive is best-effort — same contract as the DB sync below.
+            // A read-only folder or locked file must not kill the orchestration loop.
+            WorkerLog.Warn($"Failed to write goal state file (goal={goal.GoalId}): {ex.Message}");
+        }
     }
 
     // ─── DB Persistence ───

@@ -36,12 +36,14 @@ public static partial class GoalOrchestrator
 
     /// <summary>
     /// Get the active goal ID for a session, if one exists.
+    /// Linear scan is fine here: ActiveGoals holds only live goals (a handful
+    /// per process); an index would be over-engineering.
     /// </summary>
     public static string? GetActiveGoalId(string sessionId)
     {
         foreach (var kvp in ActiveGoals)
         {
-            if (kvp.Value.SessionId == sessionId && kvp.Value.Status == "active")
+            if (kvp.Value.SessionId == sessionId && kvp.Value.Status == GoalStatusValues.Active)
                 return kvp.Key;
         }
         return null;
@@ -117,19 +119,21 @@ public static partial class GoalOrchestrator
                     w.WriteString("runState", goal.RunState);
                     w.WriteNumber("currentPlanIndex", goal.CurrentPlanIndex);
                     w.WriteNumber("planCount", goal.Plans.Count);
-                    w.WriteNumber("completedPlans", goal.Plans.Count(p => p.Status == "completed"));
+                    w.WriteNumber("completedPlans", goal.Plans.Count(p => p.Status == GoalPlanStatusValues.Complete));
                     w.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                     w.WriteEndObject();
                 }));
 
             await AgentRuntimeTools.EmitAsync(
-                new AgentRuntimeRunState($"goal-{goal.GoalId}", goal.SessionId),
+                goal.GetOrCreateEventRunState(),
                 context,
                 eventPayload);
         }
-        catch
+        catch (Exception ex)
         {
-            // Event emission failures should not crash the orchestration loop
+            // Event emission failures should not crash the orchestration loop,
+            // but a persistently broken channel must leave a trace.
+            WorkerLog.Warn($"Failed to emit goal_progress (goal={goal.GoalId}, type={eventType}): {ex.Message}");
         }
     }
 
@@ -167,9 +171,7 @@ public static partial class GoalOrchestrator
         string goalText,
         IWorkerRequestContext context)
     {
-        try
-        {
-            WorkerLog.Info($"EmitPendingGoalAsync goalId={goalId} sessionId={sessionId} goalText={goalText.Substring(0, Math.Min(50, goalText.Length))}");
+        WorkerLog.Info($"EmitPendingGoalAsync goalId={goalId} sessionId={sessionId} goalText={goalText.Substring(0, Math.Min(50, goalText.Length))}");
             var eventPayload = new AgentRuntimeStreamEvent(
                 "goal_progress",
                 SubAgentName: $"Goal: {goalText.Substring(0, Math.Min(50, goalText.Length))}",
@@ -190,14 +192,21 @@ public static partial class GoalOrchestrator
                     w.WriteEndObject();
                 }));
 
-            await AgentRuntimeTools.EmitAsync(
-                new AgentRuntimeRunState($"goal-{goalId}", sessionId),
-                context,
-                eventPayload);
-        }
-        catch
+        // Pending goals have no GoalContext yet; the confirmation-card event
+        // uses a throwaway run state disposed right after this single emit.
+        var runState = new AgentRuntimeRunState($"goal-{goalId}", sessionId);
+        try
         {
-            // Event emission failures should not crash goal creation
+            await AgentRuntimeTools.EmitAsync(runState, context, eventPayload);
+        }
+        catch (Exception ex)
+        {
+            // Event emission failures should not crash goal creation.
+            WorkerLog.Warn($"Failed to emit pending goal_progress (goal={goalId}): {ex.Message}");
+        }
+        finally
+        {
+            runState.Dispose();
         }
     }
 

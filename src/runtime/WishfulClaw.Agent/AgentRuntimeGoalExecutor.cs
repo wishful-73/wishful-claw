@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -53,8 +53,8 @@ public static partial class AgentRuntimeGoalExecutor
                 sessionId,
                 state.Parameters,
                 context),
-            "pause_goal" => PauseGoal(sessionId),
-            "resume_goal" => ResumeGoal(sessionId, context),
+            "pause_goal" => await PauseGoalAsync(sessionId, context),
+            "resume_goal" => await ResumeGoalViaToolAsync(sessionId, context),
             "abort_goal" => await AbortGoalAsync(sessionId, context),
             _ => EncodeError($"Unsupported goal tool: {call.Name}")
         };
@@ -117,7 +117,7 @@ public static partial class AgentRuntimeGoalExecutor
             return EncodePersistedGoal(persisted);
 
         var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
-        var goalId = $"goal-{Guid.NewGuid():N}".Substring(0, 21);
+        var goalId = GoalIds.NewGoalId();
         try
         {
             DbGoalTools.CreateCurrentGoal(BuildCreateParameters(
@@ -479,19 +479,24 @@ public static partial class AgentRuntimeGoalExecutor
     private static GoalToolProgress PendingProgress()
         => new(0, -1, 0, 0, "pending", GoalRunStateValues.Idle);
 
-    private static string PauseGoal(string sessionId)
+    private static async Task<string> PauseGoalAsync(
+        string sessionId,
+        IWorkerRequestContext context)
     {
         var row = DbGoalTools.GetBySessionId(sessionId);
         if (row == null)
             return EncodeError("No goal to pause.");
 
         var action = GoalOrchestrator.Pause(row.GoalId);
+        // Same event contract as the HTTP path (GoalModule): the frontend run
+        // badge must update no matter which path performed the action.
+        await GoalOrchestrator.EmitRunStateChangedAsync(sessionId, action, context);
         return action.Success
             ? EncodeActionResult(row, action)
             : EncodeActionFailure(row, action);
     }
 
-    private static string ResumeGoal(
+    private static async Task<string> ResumeGoalViaToolAsync(
         string sessionId,
         IWorkerRequestContext context)
     {
@@ -500,6 +505,7 @@ public static partial class AgentRuntimeGoalExecutor
             return EncodeError("No goal to resume.");
 
         var action = GoalOrchestrator.Resume(row.GoalId, sessionId, context);
+        await GoalOrchestrator.EmitRunStateChangedAsync(sessionId, action, context);
         return action.Success
             ? EncodeActionResult(row, action)
             : EncodeActionFailure(row, action);

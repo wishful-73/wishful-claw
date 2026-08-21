@@ -54,7 +54,10 @@ public static partial class GoalOrchestrator
                 // A failed-but-active Goal stays in ActiveGoals so get_goal
                 // can still report its runtime state and the user can Resume.
                 if (isTerminal && IsCurrentGoalContext(goal))
+                {
                     ActiveGoals.TryRemove(goal.GoalId, out _);
+                    goal.DisposeEventRunState();
+                }
             }
         }
 
@@ -69,8 +72,8 @@ public static partial class GoalOrchestrator
         goal.Status = status;
         goal.RunState = GoalRunStateValues.Idle;
         PersistTerminalState(goal, BuildResumeParameters(goal), message);
-        if (IsCurrentGoalContext(goal))
-            ActiveGoals.TryRemove(goal.GoalId, out _);
+        if (IsCurrentGoalContext(goal) && ActiveGoals.TryRemove(goal.GoalId, out _))
+            goal.DisposeEventRunState();
     }
 
     private static void PersistTerminalState(

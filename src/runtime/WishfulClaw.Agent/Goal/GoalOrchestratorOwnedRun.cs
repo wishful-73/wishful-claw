@@ -63,8 +63,8 @@ public static partial class GoalOrchestrator
                 goal.RunTask = null;
                 goal.RuntimeState = null;
                 goal.RunState = GoalRunStateValues.Idle;
-                if (IsCurrentGoalContext(goal))
-                    ActiveGoals.TryRemove(goal.GoalId, out _);
+                if (IsCurrentGoalContext(goal) && ActiveGoals.TryRemove(goal.GoalId, out _))
+                    goal.DisposeEventRunState();
                 throw;
             }
         }

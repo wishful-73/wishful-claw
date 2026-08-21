@@ -15,6 +15,8 @@ public static class GoalBackoffStrategy
     private const int FastBackoffMaxRetries = 4;
     private const int MinutePollingIntervalSeconds = 600; // 10 minutes
     private const int MinutePollingMaxHours = 6;
+    /// <summary>Minute-poll attempts before giving up, derived from the constants above.</summary>
+    private const int MinutePollingMaxAttempts = MinutePollingMaxHours * 3600 / MinutePollingIntervalSeconds;
     private static readonly int[] FastBackoffDelays = { 2, 4, 8, 16 };
 
     /// <summary>
@@ -34,11 +36,10 @@ public static class GoalBackoffStrategy
             return (FastBackoffDelays[attempt], "fast");
         }
 
-        // Check if we've exceeded the 6-hour timeout
         // attempt 4 = first minute poll, each takes 600s
-        // 6 hours = 21600 seconds / 600 = 36 attempts
+        // 6 hours = 21600 seconds / 600 = 36 attempts (derived via MinutePollingMaxAttempts)
         var minuteAttempts = attempt - FastBackoffMaxRetries;
-        if (minuteAttempts >= 36)
+        if (minuteAttempts >= MinutePollingMaxAttempts)
             return (0, "timeout");
 
         return (MinutePollingIntervalSeconds, "minute");

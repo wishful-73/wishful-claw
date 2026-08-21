@@ -386,7 +386,7 @@ public static partial class GoalOrchestrator
                 foreach (var plan in plans)
                 {
                     if (string.IsNullOrEmpty(plan.PlanId))
-                        plan.PlanId = $"plan-{Guid.NewGuid():N}".Substring(0, 16);
+                        plan.PlanId = GoalIds.NewPlanId();
                 }
             }
             catch (Exception ex)
@@ -401,7 +401,10 @@ public static partial class GoalOrchestrator
             SessionId = row.SessionId,
             GoalText = row.Objective,
             WorkingFolder = row.WorkingFolder,
-            Status = row.Status == "paused" ? GoalStatusValues.Active : row.Status,
+            // Deliberate: "paused" is not preserved across restart. A restored
+            // goal comes back as active-idle so it is visible/resumable via the
+            // normal Resume path; the user re-issues Pause if still wanted.
+            Status = row.Status == GoalStatusValues.Paused ? GoalStatusValues.Active : row.Status,
             RunState = GoalRunStateValues.Idle,
             Plans = plans,
             CurrentPlanIndex = plans.Count > 0 ? row.CurrentPlanIndex : -1,

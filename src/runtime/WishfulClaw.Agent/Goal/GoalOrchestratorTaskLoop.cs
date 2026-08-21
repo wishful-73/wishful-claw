@@ -55,17 +55,7 @@ public static partial class GoalOrchestrator
         ct.ThrowIfCancellationRequested();
 
         var output = result.Content?.Trim() ?? string.Empty;
-
-        // Strip markdown code fences
-        if (output.StartsWith("```"))
-        {
-            var firstNewline = output.IndexOf('\n');
-            if (firstNewline >= 0)
-                output = output.Substring(firstNewline + 1);
-            if (output.EndsWith("```"))
-                output = output.Substring(0, output.Length - 3);
-            output = output.Trim();
-        }
+        output = GoalOrchestrator.StripCodeFence(output);
 
         var tasks = new List<(string taskId, string title, string description)>();
         try
@@ -73,7 +63,7 @@ public static partial class GoalOrchestrator
             using var doc = JsonDocument.Parse(output);
             foreach (var element in doc.RootElement.EnumerateArray())
             {
-                var taskId = $"task-{Guid.NewGuid():N}".Substring(0, 21);
+                var taskId = GoalIds.NewTaskId();
                 var title = element.TryGetProperty("title", out var t)
                     ? t.GetString() ?? "Untitled"
                     : "Untitled";
@@ -87,16 +77,14 @@ public static partial class GoalOrchestrator
         {
             WorkerLog.Warn($"Task decomposition parse failed: {ex.Message}");
             // Fallback: single task = the plan itself
-            var fallbackTaskId = $"task-{Guid.NewGuid():N}".Substring(0, 21);
-            tasks.Add((fallbackTaskId, plan.Title, plan.Description));
+            tasks.Add((GoalIds.NewTaskId(), plan.Title, plan.Description));
         }
 
         // Fallback: parse failure or an empty array both degrade to a single
         // task = the plan itself, so the loop never evaluates an empty input.
         if (tasks.Count == 0)
         {
-            var fallbackTaskId = $"task-{Guid.NewGuid():N}".Substring(0, 21);
-            tasks.Add((fallbackTaskId, plan.Title, plan.Description));
+            tasks.Add((GoalIds.NewTaskId(), plan.Title, plan.Description));
         }
 
         return tasks;

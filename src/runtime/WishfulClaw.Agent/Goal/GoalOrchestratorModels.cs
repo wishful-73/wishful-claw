@@ -70,6 +70,31 @@ public sealed class GoalContext
     internal Task? RunTask { get; set; }
     internal AgentRuntimeRunState? RuntimeState { get; set; }
     internal long RunGeneration { get; set; }
+
+    private AgentRuntimeRunState? _eventRunState;
+
+    /// <summary>
+    /// Long-lived event stream state for goal_progress events. One instance per
+    /// Goal lifetime: the envelope seq stays continuous across the whole Goal
+    /// (instead of resetting to 1 on every event) and no per-event CTS leaks.
+    /// Disposed when the Goal is removed from ActiveGoals.
+    /// </summary>
+    internal AgentRuntimeRunState GetOrCreateEventRunState()
+    {
+        var existing = _eventRunState;
+        if (existing != null) return existing;
+        var created = new AgentRuntimeRunState($"goal-{GoalId}", SessionId);
+        var winner = Interlocked.CompareExchange(ref _eventRunState, created, null);
+        if (winner != null)
+        {
+            created.Dispose();
+            return winner;
+        }
+        return created;
+    }
+
+    internal void DisposeEventRunState()
+        => Interlocked.Exchange(ref _eventRunState, null)?.Dispose();
 }
 
 /// <summary>
@@ -86,6 +111,8 @@ public enum GoalEventType
     BackoffStarted,
     BackoffProgress,
     BackoffResolved,
+    /// <summary>Backoff gave up after the max polling window (6h) — distinct from BackoffStarted so consumers can tell "waiting" from "gave up".</summary>
+    BackoffTimedOut,
     GoalPaused,
     GoalResumed,
     GoalAborted,

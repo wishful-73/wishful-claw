@@ -36,17 +36,7 @@ public static partial class GoalOrchestrator
         cancellationToken.ThrowIfCancellationRequested();
 
         var output = result.Content?.Trim() ?? string.Empty;
-
-        // Strip markdown code fences if present
-        if (output.StartsWith("```"))
-        {
-            var firstNewline = output.IndexOf('\n');
-            if (firstNewline >= 0)
-                output = output.Substring(firstNewline + 1);
-            if (output.EndsWith("```"))
-                output = output.Substring(0, output.Length - 3);
-            output = output.Trim();
-        }
+        output = StripCodeFence(output);
 
         // Parse JSON array from output
         try
@@ -55,10 +45,9 @@ public static partial class GoalOrchestrator
             using var doc = JsonDocument.Parse(output);
             foreach (var element in doc.RootElement.EnumerateArray())
             {
-                var planId = $"plan-{Guid.NewGuid():N}".Substring(0, 16);
                 plans.Add(new GoalPlanItem
                 {
-                    PlanId = planId,
+                    PlanId = GoalIds.NewPlanId(),
                     Title = element.TryGetProperty("title", out var t) ? t.GetString() ?? "Untitled" : "Untitled",
                     Description = element.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "",
                     Status = GoalPlanStatusValues.Pending
@@ -80,14 +69,6 @@ public static partial class GoalOrchestrator
                 Error = $"Failed to parse decomposition result: {ex.Message}. Raw output: {output.Substring(0, Math.Min(500, output.Length))}"
             };
         }
-    }
-
-    /// <summary>
-    /// Build the execution prompt for a plan using GoalPromptTemplates.
-    /// </summary>
-    internal static string BuildPlanExecutionPrompt(string title, string description)
-    {
-        return GoalPromptTemplates.BuildExecutionUserPrompt(title, description);
     }
 
     /// <summary>
@@ -122,17 +103,7 @@ public static partial class GoalOrchestrator
             ct.ThrowIfCancellationRequested();
 
             var output = result.Content?.Trim() ?? string.Empty;
-
-            // Strip markdown code fences
-            if (output.StartsWith("```"))
-            {
-                var firstNewline = output.IndexOf('\n');
-                if (firstNewline >= 0)
-                    output = output.Substring(firstNewline + 1);
-                if (output.EndsWith("```"))
-                    output = output.Substring(0, output.Length - 3);
-                output = output.Trim();
-            }
+            output = StripCodeFence(output);
 
             // The evaluator sub-agent may itself fail and answer in prose
             // ("Sub-agent failed: ..."). Try to salvage a JSON object from the
@@ -178,6 +149,22 @@ public static partial class GoalOrchestrator
             Reasoning = $"LLM evaluation failed ({reason}). Falling back to executor result.",
             NextAction = executionSucceeded ? "proceed" : "retry"
         };
+    }
+
+    /// <summary>
+    /// Strip a wrapping markdown code fence (```json ... ``` or ``` ... ```)
+    /// from LLM output. Models routinely ignore "Return ONLY a JSON array"
+    /// and fence their answer; all JSON-expecting call sites share this.
+    /// </summary>
+    internal static string StripCodeFence(string output)
+    {
+        if (!output.StartsWith("```")) return output;
+        var firstNewline = output.IndexOf('\n');
+        if (firstNewline < 0) return output;
+        var inner = output.Substring(firstNewline + 1);
+        if (inner.EndsWith("```"))
+            inner = inner.Substring(0, inner.Length - 3);
+        return inner.Trim();
     }
 
     /// <summary>

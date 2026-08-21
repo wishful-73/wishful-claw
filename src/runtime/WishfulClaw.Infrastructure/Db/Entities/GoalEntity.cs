@@ -280,13 +280,32 @@ public sealed record GoalPlanRow(
     string PlanId, string GoalId, string SessionId, int Ordinal,
     string? OriginalPlanId, string Title, string Description, string? ContentJson,
     string Status, int RetryCount, string? ResultSummary,
-    long CreatedAt, long UpdatedAt, long? StartedAt, long? CompletedAt);
+    long CreatedAt, long UpdatedAt, long? StartedAt, long? CompletedAt)
+{
+    public static GoalPlanRow FromEntity(GoalPlanEntity e) => new(
+        e.PlanId, e.GoalId, e.SessionId, e.Ordinal,
+        e.OriginalPlanId, e.Title, e.Description, e.ContentJson,
+        e.Status, e.RetryCount, e.ResultSummary,
+        e.CreatedAt, e.UpdatedAt, e.StartedAt, e.CompletedAt);
+}
 
 public sealed record GoalTaskRow(
     string TaskId, string GoalId, string PlanId, string SessionId, int Ordinal,
     string Title, string Description, string? ContentJson, string Status,
     int RetryCount, string? ResultSummary,
-    long CreatedAt, long UpdatedAt, long? StartedAt, long? CompletedAt);
+    long CreatedAt, long UpdatedAt, long? StartedAt, long? CompletedAt)
+{
+    public static GoalTaskRow FromEntity(GoalTaskEntity e) => new(
+        e.TaskId, e.GoalId, e.PlanId, e.SessionId, e.Ordinal,
+        e.Title, e.Description, e.ContentJson, e.Status,
+        e.RetryCount, e.ResultSummary,
+        e.CreatedAt, e.UpdatedAt, e.StartedAt, e.CompletedAt);
+}
+
+public sealed record GoalPlanFindResult(bool Success, GoalPlanRow? Plan, string? Error);
+public sealed record GoalPlanMutationResult(bool Success, GoalPlanRow? Plan, string? Error);
+public sealed record GoalTaskFindResult(bool Success, GoalTaskRow? Task, string? Error);
+public sealed record GoalTaskMutationResult(bool Success, GoalTaskRow? Task, string? Error);
 
 public sealed record GoalHierarchyResult(
     bool Success, List<GoalPlanRow> Plans, List<GoalTaskRow> Tasks, string? Error);

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
@@ -25,7 +25,7 @@ public static class GoalPlanRecorder
     {
         try
         {
-            return DbGoalTaskTools.InsertPlanTask(
+            return DbGoalPlanTaskRoundTools.InsertPlanTask(
                 parameters,
                 goal.SessionId,
                 goal.GoalId,
@@ -58,7 +58,7 @@ public static class GoalPlanRecorder
         if (taskId <= 0) return;
         try
         {
-            DbGoalTaskTools.FinishPlanTask(parameters, taskId, status, summary, evaluationReasoning, evaluationSatisfied);
+            DbGoalPlanTaskRoundTools.FinishPlanTask(parameters, taskId, status, summary, evaluationReasoning, evaluationSatisfied);
         }
         catch (Exception ex)
         {

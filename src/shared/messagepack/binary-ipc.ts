@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -58,6 +58,16 @@ export const DB_GOAL_EVENTS_LIST_MSGPACK_CHANNEL = 'db:goal-events:list:msgpack'
 export const DB_GOAL_EVENTS_LIST_PAGE_MSGPACK_CHANNEL = 'db:goal-events:list-page:msgpack'
 export const DB_GOAL_EVENTS_ADD_MSGPACK_CHANNEL = 'db:goal-events:add:msgpack'
 export const DB_GOAL_PLAN_TASKS_LIST_MSGPACK_CHANNEL = 'db:goal-plan-tasks:list:msgpack'
+export const DB_GOAL_PLANS_LIST_MSGPACK_CHANNEL = 'db:goal-plans:list:msgpack'
+export const DB_GOAL_PLANS_GET_MSGPACK_CHANNEL = 'db:goal-plans:get:msgpack'
+export const DB_GOAL_PLANS_UPDATE_STATUS_MSGPACK_CHANNEL = 'db:goal-plans:update-status:msgpack'
+export const DB_GOAL_PLANS_UPDATE_RETRY_MSGPACK_CHANNEL = 'db:goal-plans:update-retry:msgpack'
+export const DB_GOAL_TASKS_LIST_MSGPACK_CHANNEL = 'db:goal-tasks:list:msgpack'
+export const DB_GOAL_TASKS_GET_MSGPACK_CHANNEL = 'db:goal-tasks:get:msgpack'
+export const DB_GOAL_TASKS_UPDATE_STATUS_MSGPACK_CHANNEL = 'db:goal-tasks:update-status:msgpack'
+export const DB_GOAL_EXECUTION_RUNS_INSERT_MSGPACK_CHANNEL = 'db:goal-execution-runs:insert:msgpack'
+export const DB_GOAL_EXECUTION_RUNS_FINISH_MSGPACK_CHANNEL = 'db:goal-execution-runs:finish:msgpack'
+export const DB_GOAL_EXECUTION_RUNS_LIST_MSGPACK_CHANNEL = 'db:goal-execution-runs:list:msgpack'
 export const GOAL_PAUSE_MSGPACK_CHANNEL = 'goal:pause:msgpack'
 export const GOAL_RESUME_MSGPACK_CHANNEL = 'goal:resume:msgpack'
 export const GOAL_ABORT_MSGPACK_CHANNEL = 'goal:abort:msgpack'

@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -87,6 +87,19 @@ public sealed class DbService
     {
         using var conn = CreateConnection();
         using var cmd = BuildCommand(conn, sql, parameters);
+        var result = cmd.ExecuteScalar();
+        return result == null || result == DBNull.Value
+            ? default!
+            : (T)Convert.ChangeType(result, typeof(T));
+    }
+
+    public T QueryScalar<T>(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql,
+        params SqliteParameter[] parameters)
+    {
+        using var cmd = BuildCommand(connection, sql, parameters, transaction);
         var result = cmd.ExecuteScalar();
         return result == null || result == DBNull.Value
             ? default!

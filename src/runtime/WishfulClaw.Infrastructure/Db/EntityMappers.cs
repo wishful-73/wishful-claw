@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -123,6 +123,58 @@ public static class EntityMappers
         EvaluationReasoning = r.GetNullableString("evaluation_reasoning"),
         EvaluationSatisfied = r.GetNullableInt32("evaluation_satisfied") is int v && v != 0,
         Adjusted = r.GetBoolAsInt("adjusted") != 0,
+        StartedAt = r.GetInt64("started_at"),
+        FinishedAt = r.GetNullableInt64("finished_at")
+    };
+
+    public static GoalPlanEntity MapGoalPlan(SqliteDataReader r) => new()
+    {
+        PlanId = r.GetString("plan_id"),
+        GoalId = r.GetString("goal_id"),
+        SessionId = r.GetString("session_id"),
+        Ordinal = r.GetInt32("ordinal"),
+        OriginalPlanId = r.GetNullableString("original_plan_id"),
+        Title = r.GetString("title"),
+        Description = r.GetString("description"),
+        ContentJson = r.GetNullableString("content_json"),
+        Status = r.GetString("status"),
+        RetryCount = r.GetInt32("retry_count"),
+        ResultSummary = r.GetNullableString("result_summary"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at"),
+        StartedAt = r.GetNullableInt64("started_at"),
+        CompletedAt = r.GetNullableInt64("completed_at")
+    };
+
+    public static GoalTaskEntity MapGoalTask(SqliteDataReader r) => new()
+    {
+        TaskId = r.GetString("task_id"),
+        GoalId = r.GetString("goal_id"),
+        PlanId = r.GetString("plan_id"),
+        SessionId = r.GetString("session_id"),
+        Ordinal = r.GetInt32("ordinal"),
+        Title = r.GetString("title"),
+        Description = r.GetString("description"),
+        ContentJson = r.GetNullableString("content_json"),
+        Status = r.GetString("status"),
+        RetryCount = r.GetInt32("retry_count"),
+        ResultSummary = r.GetNullableString("result_summary"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at"),
+        StartedAt = r.GetNullableInt64("started_at"),
+        CompletedAt = r.GetNullableInt64("completed_at")
+    };
+
+    public static GoalExecutionRunEntity MapGoalExecutionRun(SqliteDataReader r) => new()
+    {
+        AttemptId = r.GetString("attempt_id"),
+        GoalId = r.GetString("goal_id"),
+        PlanId = r.GetNullableString("plan_id"),
+        TaskId = r.GetNullableString("task_id"),
+        AttemptNo = r.GetInt32("attempt_no"),
+        Status = r.GetString("status"),
+        Summary = r.GetNullableString("summary"),
+        Error = r.GetNullableString("error"),
         StartedAt = r.GetInt64("started_at"),
         FinishedAt = r.GetNullableInt64("finished_at")
     };

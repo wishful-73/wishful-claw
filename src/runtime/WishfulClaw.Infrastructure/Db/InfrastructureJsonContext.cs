@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Contracts;
 
@@ -22,6 +22,19 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(List<GoalPlanTaskRow>))]
 [JsonSerializable(typeof(GoalPlanTaskFindResult))]
 [JsonSerializable(typeof(GoalPlanTaskMutationResult))]
+[JsonSerializable(typeof(GoalPlanRow))]
+[JsonSerializable(typeof(List<GoalPlanRow>))]
+[JsonSerializable(typeof(GoalPlanFindResult))]
+[JsonSerializable(typeof(GoalPlanMutationResult))]
+[JsonSerializable(typeof(GoalTaskRow))]
+[JsonSerializable(typeof(List<GoalTaskRow>))]
+[JsonSerializable(typeof(GoalTaskFindResult))]
+[JsonSerializable(typeof(GoalTaskMutationResult))]
+[JsonSerializable(typeof(ExecutionRunRow))]
+[JsonSerializable(typeof(List<ExecutionRunRow>))]
+[JsonSerializable(typeof(ExecutionRunInsertResult))]
+[JsonSerializable(typeof(ExecutionRunFindResult))]
+[JsonSerializable(typeof(ExecutionRunMutationResult))]
 [JsonSerializable(typeof(MessageCompactResult))]
 [JsonSerializable(typeof(MessageCountResult))]
 [JsonSerializable(typeof(MessageDeleteLastResult))]

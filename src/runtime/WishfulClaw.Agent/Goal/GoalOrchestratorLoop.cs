@@ -17,9 +17,6 @@ public static partial class GoalOrchestrator
 {
     private const int MaxPlanRetries = 3;
 
-    /// <summary>
-    /// Main orchestration loop. Runs until goal is completed or aborted.
-    /// </summary>
     private static async Task<GoalRunOutcome> RunAsync(
         GoalContext goal,
         JsonElement parameters,
@@ -48,6 +45,8 @@ public static partial class GoalOrchestrator
             // Persist immediately so the panel shows the plan list while
             // the first plan is still executing (not 30 min later).
             SyncGoalToDb(goal, parameters);
+            // Materialize all plans to goal_plans (best-effort, pending)
+            GoalOrchestratorMaterialize.MaterializePlans(goal, parameters);
             await EmitGoalEventAsync(goal, GoalEventType.GoalStarted,
                 $"Goal started: {goal.GoalText}. {goal.Plans.Count} plans generated.", context);
         }
@@ -66,7 +65,7 @@ public static partial class GoalOrchestrator
             : 0;
         // If the current plan was still executing (not completed/failed), re-execute it
         if (goal.CurrentPlanIndex >= 0 && goal.CurrentPlanIndex < goal.Plans.Count
-            && goal.Plans[goal.CurrentPlanIndex].Status is "pending" or "executing")
+            && goal.Plans[goal.CurrentPlanIndex].Status is GoalPlanStatusValues.Pending or GoalPlanStatusValues.Active)
         {
             startIndex = goal.CurrentPlanIndex;
         }
@@ -84,6 +83,7 @@ public static partial class GoalOrchestrator
                 && plan.Status != GoalPlanStatusValues.Aborted)
             {
                 plan.Status = GoalPlanStatusValues.Active;
+                GoalOrchestratorMaterialize.UpdatePlanStatus(goal, plan, GoalPlanStatusValues.Active, null);
                 SyncGoalToDb(goal, parameters);
             }
 
@@ -109,9 +109,6 @@ public static partial class GoalOrchestrator
             $"Goal failed with {failedCount} incomplete plan(s)");
     }
 
-    /// <summary>
-    /// Execute a plan with self-check evaluation and retry logic.
-    /// </summary>
     private static async Task ExecutePlanWithRetryAsync(
         GoalContext goal,
         GoalPlanItem plan,
@@ -130,6 +127,9 @@ public static partial class GoalOrchestrator
             // Mirror this execution round into goal_plan_tasks (best-effort)
             var roundTaskId = GoalPlanRecorder.StartRound(parameters, goal, plan, plan.RetryCount + 1);
 
+            // Start an execution attempt row in goal_execution_runs (best-effort)
+            string? attemptId = GoalOrchestratorMaterialize.StartExecutionAttempt(goal, plan, plan.RetryCount + 1);
+
             // Execute the plan
             var result = await ExecutePlanAsync(
                 goal, plan, parameters, parentState, context, ct);
@@ -146,6 +146,8 @@ public static partial class GoalOrchestrator
                 {
                     plan.Status = GoalPlanStatusValues.Active;
                     plan.ResultSummary = "Rate limit timeout after 6 hours";
+                    GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Interrupted, plan.ResultSummary, null);
+                    GoalOrchestratorMaterialize.UpdatePlanStatus(goal, plan, GoalPlanStatusValues.Active, plan.ResultSummary);
                     await EmitGoalEventAsync(goal, GoalEventType.PlanFailed,
                         $"Plan {planIndex + 1} failed: rate limit timeout", context);
                     return;
@@ -153,10 +155,12 @@ public static partial class GoalOrchestrator
                 // Use the test execution result from backoff, avoid re-executing
                 if (backoffResult != null)
                 {
+                    GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Completed, backoffResult.Summary, null);
                     result = backoffResult;
                 }
                 else
                 {
+                    GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Interrupted, result.Summary, "429 retry loop");
                     continue;
                 }
             }
@@ -171,6 +175,8 @@ public static partial class GoalOrchestrator
                 // Plan completed successfully
                 plan.Status = GoalPlanStatusValues.Complete;
                 plan.ResultSummary = evaluation.Reasoning ?? result.Summary;
+                GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Completed, plan.ResultSummary, evaluation.Reasoning);
+                GoalOrchestratorMaterialize.UpdatePlanStatus(goal, plan, GoalPlanStatusValues.Complete, plan.ResultSummary);
                 GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Completed, plan.ResultSummary, evaluation.Reasoning, true);
                 GoalPlanTracker.FinishPlan(goal.WorkingFolder, goal.GoalId, plan);
                 await EmitGoalEventAsync(goal, GoalEventType.PlanCompleted,
@@ -185,6 +191,8 @@ public static partial class GoalOrchestrator
             {
                 plan.Status = GoalPlanStatusValues.Active;
                 plan.ResultSummary = $"Failed after {maxRetries} retries: {evaluation.Reasoning}";
+                GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Failed, plan.ResultSummary, evaluation.Reasoning);
+                GoalOrchestratorMaterialize.UpdatePlanStatus(goal, plan, GoalPlanStatusValues.Active, plan.ResultSummary);
                 GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Failed, plan.ResultSummary, evaluation.Reasoning, false);
                 GoalPlanTracker.FinishPlan(goal.WorkingFolder, goal.GoalId, plan);
                 await EmitGoalEventAsync(goal, GoalEventType.PlanFailed,
@@ -195,6 +203,7 @@ public static partial class GoalOrchestrator
             }
 
             // Round did not satisfy the evaluation - record it, then retry/adjust
+            GoalOrchestratorMaterialize.FinishExecutionAttempt(goal, plan, attemptId, GoalExecutionAttemptStatusValues.Failed, result.Summary, evaluation.Reasoning);
             GoalPlanRecorder.FinishRound(parameters, roundTaskId, GoalExecutionAttemptStatusValues.Failed,
                 result.Summary, evaluation.Reasoning, false);
 
@@ -218,7 +227,7 @@ public static partial class GoalOrchestrator
             }
 
             WriteGoalState(goal);
-        SyncGoalToDb(goal, parameters);
+            SyncGoalToDb(goal, parameters);
         }
     }
 
@@ -314,9 +323,6 @@ public static partial class GoalOrchestrator
 
     // ─── Plan Execution ───
 
-    /// <summary>
-    /// Execute a single plan via sub-agent.
-    /// </summary>
     private static async Task<PlanExecutionResult> ExecutePlanAsync(
         GoalContext goal,
         GoalPlanItem plan,
@@ -360,7 +366,7 @@ public static partial class GoalOrchestrator
                 {
                     PlanId = plan.PlanId,
                     Title = plan.Title,
-                    Status = "failed",
+                    Status = GoalExecutionAttemptStatusValues.Failed,
                     Error = output,
                     Is429 = true,
                     RetryCount = plan.RetryCount,
@@ -372,7 +378,7 @@ public static partial class GoalOrchestrator
             {
                 PlanId = plan.PlanId,
                 Title = plan.Title,
-                Status = "completed",
+                Status = GoalPlanStatusValues.Complete,
                 Summary = output.Length > 500 ? output.Substring(0, 500) + "..." : output,
                 RetryCount = plan.RetryCount,
                 ElapsedMs = stopwatch.ElapsedMilliseconds
@@ -390,7 +396,7 @@ public static partial class GoalOrchestrator
             {
                 PlanId = plan.PlanId,
                 Title = plan.Title,
-                Status = "failed",
+                Status = GoalExecutionAttemptStatusValues.Failed,
                 Error = ex.Message,
                 Is429 = ex.Message.Contains("429") || ex.Message.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase),
                 RetryCount = plan.RetryCount,
@@ -424,10 +430,6 @@ public static partial class GoalOrchestrator
 
     // ─── DB Persistence ───
 
-    /// <summary>
-    /// Sync the goal's current state to the SQLite DB.
-    /// Called after each state change (status, plan progress, etc.).
-    /// </summary>
     private static void SyncGoalToDb(
         GoalContext goal,
         JsonElement parameters,

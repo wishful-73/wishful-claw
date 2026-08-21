@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
@@ -61,7 +61,7 @@ public static partial class GoalOrchestrator
                     PlanId = planId,
                     Title = element.TryGetProperty("title", out var t) ? t.GetString() ?? "Untitled" : "Untitled",
                     Description = element.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "",
-                    Status = "pending"
+                    Status = GoalPlanStatusValues.Pending
                 });
             }
 

@@ -30,6 +30,7 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(AgentRuntimeCancelResult))]
 [JsonSerializable(typeof(AgentRuntimeStopResult))]
 [JsonSerializable(typeof(AgentRuntimeAppendMessagesResult))]
+[JsonSerializable(typeof(AgentRuntimeDrainResult))]
 [JsonSerializable(typeof(ClearSessionResult))]
 [JsonSerializable(typeof(ProviderTestResult))]
 [JsonSerializable(typeof(ProviderTestModelsResult))]

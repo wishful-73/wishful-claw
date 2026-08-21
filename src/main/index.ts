@@ -355,6 +355,10 @@ registerWebSearchHandlers()
     'db:goals:account:msgpack',
     async (args) => getNativeWorker().request('db/goals-account', args)
   )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'agent:drain-sub-agent-notifications',
+    async (args) => getNativeWorker().request('agent/drain-sub-agent-notifications', args)
+  )
   registerMessagePackHandler<Record<string, unknown>, unknown[]>(
     'db:goal-events:list:msgpack',
     async (args) => getNativeWorker().request('db/goal-events-list', args)

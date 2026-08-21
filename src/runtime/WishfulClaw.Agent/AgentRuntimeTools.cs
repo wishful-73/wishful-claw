@@ -124,6 +124,30 @@ public static class AgentRuntimeTools
     }
 
     /// <summary>
+    /// Drain buffered background sub-agent completion notifications for a
+    /// session whose main run already finalized. Called by the renderer right
+    /// before waking the main agent so the reports ride along with the wake
+    /// message instead of being lost.
+    /// </summary>
+    public static WorkerResponse DrainSubAgentNotifications(JsonElement parameters)
+    {
+        var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return WorkerResponse.Json(
+                new AgentRuntimeDrainResult(false, new List<JsonElement>()),
+                AgentRuntimeJsonContext.Default.AgentRuntimeDrainResult);
+        }
+
+        var messages = BackgroundSubAgentNotifications.Drain(sessionId);
+        WorkerLog.Info(
+            $"drained background sub-agent notifications sessionId={sessionId} count={messages.Count}");
+        return WorkerResponse.Json(
+            new AgentRuntimeDrainResult(true, messages),
+            AgentRuntimeJsonContext.Default.AgentRuntimeDrainResult);
+    }
+
+    /// <summary>
     /// Find the first active run for a session and return its parameters (including provider config).
     /// Used by GoalOrchestrator.Resume when the goal has no saved OriginalParameters.
     /// </summary>

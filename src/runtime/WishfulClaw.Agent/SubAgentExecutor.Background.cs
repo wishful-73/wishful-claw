@@ -74,11 +74,42 @@ public static partial class SubAgentExecutor
                         Result: resultJson));
 
                 // Inject completion notification into parent's message queue
-                // so the main agent gets informed in its next iteration
+                // so the main agent gets informed in its next iteration. When
+                // the parent run already finalized, its queue is closed and
+                // the injection would be silently dropped — buffer it on the
+                // session instead so the renderer can wake the main agent
+                // with the report attached.
                 var notificationMsg = BuildSubAgentCompletionMessage(
                     toolCallId, definition.Name, description, output, collector);
 
-                parentState.EnqueueMessages(notificationMsg);
+                var injected = false;
+                try
+                {
+                    injected = parentState.EnqueueMessages(
+                        WorkerJsonHelper.BuildJsonElement(w =>
+                        {
+                            w.WriteStartObject();
+                            w.WritePropertyName("messages");
+                            w.WriteStartArray();
+                            notificationMsg.WriteTo(w);
+                            w.WriteEndArray();
+                            w.WriteEndObject();
+                        })) > 0;
+                }
+                catch
+                {
+                    // Parameters may already be disposed after run finalization.
+                }
+
+                if (!injected)
+                {
+                    // Parent queue closed (run finalized) — keep the report for
+                    // the session so nothing is lost.
+                    BackgroundSubAgentNotifications.Add(parentState.SessionId, notificationMsg);
+                    WorkerLog.Info(
+                        $"background sub-agent completion buffered session={parentState.SessionId} " +
+                        $"toolUseId={toolCallId} (parent run already finalized)");
+                }
 
                 WorkerLog.Info(
                     $"background sub-agent completed parentRunId={parentState.RunId} " +

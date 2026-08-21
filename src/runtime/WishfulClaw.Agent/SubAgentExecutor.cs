@@ -235,17 +235,34 @@ public static partial class SubAgentExecutor
                     SubAgentName = agentName,
                     ToolUseId = toolCallId
                 };
-                await AgentRuntimeTools.EmitAsync(parentState, context, wrappedEvent);
 
-                // Goal-orchestrated execution: also tag the event with the goal
-                // context so the Goal panel can render a live activity feed.
-                if (parentState.GoalEventContext is { } goalCtx)
+                // The parent run may have finalized (completed normally or
+                // stopped) while a background sub-agent is still running; its
+                // transport/observer are disposed at that point. A forwarding
+                // failure must NEVER propagate into the child loop or the
+                // whole sub-agent would die just because the parent went away
+                // — swallow and keep running so it can still deliver its
+                // result through the session notification path.
+                try
                 {
-                    var activity = BuildGoalActivityEvent(goalCtx, evt);
-                    if (activity is not null)
+                    await AgentRuntimeTools.EmitAsync(parentState, context, wrappedEvent);
+
+                    // Goal-orchestrated execution: also tag the event with the goal
+                    // context so the Goal panel can render a live activity feed.
+                    if (parentState.GoalEventContext is { } goalCtx)
                     {
-                        await AgentRuntimeTools.EmitAsync(parentState, context, activity);
+                        var activity = BuildGoalActivityEvent(goalCtx, evt);
+                        if (activity is not null)
+                        {
+                            await AgentRuntimeTools.EmitAsync(parentState, context, activity);
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    WorkerLog.Debug(
+                        $"sub-agent event forward skipped parentGone=true toolUseId={toolCallId} " +
+                        $"eventType={evt.Type} error={ex.GetType().Name}: {ex.Message}");
                 }
             }
         };

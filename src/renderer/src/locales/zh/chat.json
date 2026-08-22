@@ -494,6 +494,8 @@
       "liveActivity": "实时活动",
       "iterationStep": "第 {{iteration}} 步迭代",
       "noRoundRecords": "该计划暂无每轮执行记录（旧版本 Goal 或记录已清理）",
+    "liveExecuting": "正在执行：{{title}}",
+    "liveDeciding": "正在决定下一步动作…",
       "tasks": "任务",
       "taskStatus": { "interrupted": "已中断", "pending": "待执行", "active": "执行中", "executing": "执行中", "completed": "已完成", "complete": "已完成", "failed": "失败", "aborted": "已中止", "superseded": "已调整" },
       "filters": {

@@ -375,6 +375,11 @@ registerWebSearchHandlers()
     'db:goal-plan-tasks:list:msgpack',
     async (args) => getNativeWorker().request('db/goal-plan-tasks-list', args)
   )
+  // In-memory live snapshot for the panel's 1s poll (no SQLite round-trip).
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'goal:live:msgpack',
+    async (args) => getNativeWorker().request('goal/live', args)
+  )
   // -- Goal plans/tasks/execution-runs handlers --
   registerMessagePackHandler<Record<string, unknown>, unknown[]>(
     'db:goal-plans:list:msgpack',

@@ -4,7 +4,8 @@ import {
   DB_GOAL_EVENTS_LIST_PAGE_MSGPACK_CHANNEL,
   DB_GOAL_PLAN_TASKS_LIST_MSGPACK_CHANNEL,
   DB_GOAL_PLANS_LIST_MSGPACK_CHANNEL,
-  DB_GOAL_TASKS_LIST_MSGPACK_CHANNEL
+  DB_GOAL_TASKS_LIST_MSGPACK_CHANNEL,
+  GOAL_LIVE_MSGPACK_CHANNEL
 } from '@shared/messagepack/binary-ipc'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import {
@@ -44,6 +45,7 @@ interface GoalHistoryState {
   planTasksByGoal: Record<string, SessionGoalPlanTask[]>
   plansByGoal: Record<string, SessionGoalPlan[]>
   tasksByPlan: Record<string, SessionGoalTask[]>
+  liveByGoal: Record<string, GoalLiveSnapshot | null>
   goalCursorsByProject: Record<string, GoalPageCursor | null>
   eventCursorsByGoal: Record<string, GoalEventPageCursor | null>
   goalHasMoreByProject: Record<string, boolean>
@@ -71,6 +73,22 @@ interface GoalHistoryState {
   loadGoalPlanTasks: (sessionId: string, goalId: string, force?: boolean) => Promise<SessionGoalPlanTask[]>
   loadGoalPlans: (sessionId: string, goalId: string, force?: boolean) => Promise<SessionGoalPlan[]>
   loadPlanTasks: (sessionId: string, goalId: string, planId: string, force?: boolean) => Promise<SessionGoalTask[]>
+  loadGoalLive: (goalId: string) => Promise<GoalLiveSnapshot | null>
+}
+
+/** In-memory live snapshot served by goal/live (Worker memory, not SQLite). */
+export interface GoalLiveStep {
+  step: number
+  title: string
+  succeeded: boolean
+  summary?: string | null
+  timestampMs: number
+}
+
+export interface GoalLiveSnapshot {
+  currentAction: string
+  currentTitle?: string | null
+  steps: GoalLiveStep[]
 }
 
 export function goalProjectKey(projectId: string | null): string {
@@ -351,6 +369,21 @@ export const useGoalHistoryStore = create<GoalHistoryState>((set, get) => ({
       return tasks
     } catch {
       return cached ?? []
+    }
+  },
+
+  liveByGoal: {},
+  loadGoalLive: async (goalId) => {
+    try {
+      const result = await invokeMessagePackBinary<{ live: GoalLiveSnapshot | null }>(
+        GOAL_LIVE_MSGPACK_CHANNEL,
+        { goalId }
+      )
+      const live = result?.live ?? null
+      set((state) => ({ liveByGoal: { ...state.liveByGoal, [goalId]: live } }))
+      return live
+    } catch {
+      return get().liveByGoal[goalId] ?? null
     }
   }
 }))

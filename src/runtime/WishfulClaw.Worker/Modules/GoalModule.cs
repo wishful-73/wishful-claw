@@ -18,6 +18,25 @@ public sealed class GoalModule : IWorkerModule
         context.Register("goal/abort", AbortGoal);
         context.Register("goal/status", GetGoalStatus);
         context.Register("goal/confirm", ConfirmGoal);
+        context.Register("goal/live", GetGoalLive);
+    }
+
+    /// <summary>
+    /// In-memory live snapshot for the panel's 1s poll. Serves the adaptive
+    /// run state (current action + executed steps) straight from memory —
+    /// no SQLite round-trip. live=null means the goal is not running in this
+    /// process and the client should fall back to DB history queries.
+    /// </summary>
+    private static WorkerResponse GetGoalLive(JsonElement parameters)
+    {
+        var goalId = parameters.TryGetProperty("goalId", out var id) ? id.GetString() : null;
+        if (string.IsNullOrEmpty(goalId))
+            return WorkerResponse.Json(new GoalLiveResponse(null), WishfulClawJsonContext.Default.GoalLiveResponse);
+
+        var snapshot = GoalOrchestrator.GetLiveSnapshot(goalId);
+        return WorkerResponse.Json(
+            new GoalLiveResponse(snapshot),
+            WishfulClawJsonContext.Default.GoalLiveResponse);
     }
 
     /// <summary>
@@ -203,3 +222,9 @@ public sealed class GoalModule : IWorkerModule
     private static GoalActionResult MissingGoalId(string action)
         => new(false, "not_found", "unknown", "unknown", Error: $"goalId is required for {action}.");
 }
+
+/// <summary>
+/// Response for goal/live: the in-memory adaptive snapshot, or live=null when
+/// the goal is not running in this process (client falls back to DB history).
+/// </summary>
+public sealed record GoalLiveResponse(WishfulClaw.Agent.GoalAdaptiveLiveSnapshot? Live);

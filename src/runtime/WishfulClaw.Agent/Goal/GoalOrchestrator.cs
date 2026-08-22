@@ -57,6 +57,18 @@ public static partial class GoalOrchestrator
         return ActiveGoals.TryGetValue(goalId, out var goal) ? goal : null;
     }
 
+    /// <summary>
+    /// In-memory live snapshot for the panel's 1s poll — no DB involved.
+    /// Returns null when the goal is not in memory (terminal or never run in
+    /// this process); the caller falls back to DB queries for history.
+    /// </summary>
+    public static GoalAdaptiveLiveSnapshot? GetLiveSnapshot(string goalId)
+    {
+        return ActiveGoals.TryGetValue(goalId, out var goal)
+            ? goal.AdaptiveLive?.Snapshot()
+            : null;
+    }
+
     // ── Event emission ──
 
     public static async Task EmitRunStateChangedAsync(

@@ -72,10 +72,13 @@ public static partial class GoalOrchestrator
         var log = new List<AdaptiveStepRecord>();
         var consecutiveParseFailures = 0;
         var stopwatch = Stopwatch.StartNew();
+        var live = new GoalAdaptiveLiveState();
+        goal.AdaptiveLive = live;
 
         for (var step = 1; step <= AdaptiveMaxSteps; step++)
         {
             await ReachSafePointAsync(goal, context, ct);
+            live.SetCurrent("deciding", null);
 
             // ── Decide the next action ──
             var decision = await DecideNextActionAsync(
@@ -116,6 +119,7 @@ public static partial class GoalOrchestrator
             var task = (taskId: GoalIds.NewTaskId(),
                         taskTitle: decision.Title ?? $"Step {step}",
                         taskDescription: decision.Description ?? goal.GoalText);
+            live.SetCurrent("executing", task.taskTitle);
             var result = await ExecuteTaskAsync(goal, plan, task, parameters, parentState, context, ct);
             await ReachSafePointAsync(goal, context, ct);
 
@@ -139,6 +143,7 @@ public static partial class GoalOrchestrator
                 ? $"DONE. Report:\n{result.Summary}"
                 : $"FAILED. Error:\n{result.Error ?? "(no error text)"}";
             log.Add(new AdaptiveStepRecord(step, task.taskTitle, task.taskDescription, outcomeText));
+            live.AddStep(step, task.taskTitle, result.Status == GoalPlanStatusValues.Complete, result.Summary ?? result.Error);
 
             // Record into goal_plan_tasks / goal_execution_runs for panel queries.
             RecordAdaptiveRound(goal, plan, step, task.taskTitle,

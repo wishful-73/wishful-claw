@@ -73,6 +73,7 @@ export const GOAL_RESUME_MSGPACK_CHANNEL = 'goal:resume:msgpack'
 export const GOAL_ABORT_MSGPACK_CHANNEL = 'goal:abort:msgpack'
 export const GOAL_STATUS_MSGPACK_CHANNEL = 'goal:status:msgpack'
 export const GOAL_CONFIRM_MSGPACK_CHANNEL = 'goal:confirm:msgpack'
+export const GOAL_LIVE_MSGPACK_CHANNEL = 'goal:live:msgpack'
 
 export const DB_DRAW_RUNS_LIST_MSGPACK_CHANNEL = 'db:draw-runs:list:msgpack'
 export const DB_DRAW_RUNS_SAVE_MSGPACK_CHANNEL = 'db:draw-runs:save:msgpack'

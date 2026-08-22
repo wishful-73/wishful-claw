@@ -174,6 +174,11 @@ export function GoalHistoryPanel({
   const expandedPlanTasks = useGoalHistoryStore((state) =>
     expandedPlanTaskKey ? state.tasksByPlan[expandedPlanTaskKey] ?? EMPTY_TASKS : EMPTY_TASKS
   )
+  // Live in-memory snapshot (goal/live): 1s poll while the selected goal is
+  // running — Worker memory, no SQLite round-trip.
+  const liveSnapshot = useGoalHistoryStore((state) =>
+    selectedGoal ? state.liveByGoal[selectedGoal.goalId] ?? null : null
+  )
   // Live elapsed timer while the goal is running; falls back to the DB value.
   const activeRunStartedAt = useGoalStore((s) => {
     if (!selectedGoal) return null
@@ -213,14 +218,19 @@ export function GoalHistoryPanel({
 
   React.useEffect(() => {
     if (!selectedGoal || selectedGoal.status !== 'active') return
-    const timer = window.setInterval(() => {
+    // Primary poll: 1s in-memory live snapshot (goal/live) — no DB cost.
+    const liveTimer = window.setInterval(() => {
+      void useGoalHistoryStore.getState().loadGoalLive(selectedGoal.goalId)
+    }, 1000)
+    // Fallback poll: 15s DB refresh keeps persisted history (plans/tasks/goal
+    // row) in sync for the moment the goal finishes and live goes null.
+    const dbTimer = window.setInterval(() => {
       void useGoalHistoryStore
         .getState()
         .loadGoalPlanTasks(selectedGoal.sessionId, selectedGoal.goalId, true)
       void useGoalHistoryStore
         .getState()
         .loadGoalPlans(selectedGoal.sessionId, selectedGoal.goalId, true)
-      // Refresh tasks for the expanded plan (if any)
       if (expandedPlanId) {
         const plan = goalPlansRef.current.find((p) => p.planId === expandedPlanId)
         if (plan) {
@@ -229,11 +239,12 @@ export function GoalHistoryPanel({
           )
         }
       }
-      // Pull-based checker: the panel polls while open and a goal is active;
-      // there is no push stream for goal runs anymore (background-first UX).
       void useGoalHistoryStore.getState().loadProjectGoals(projectId, true)
-    }, 5000)
-    return () => window.clearInterval(timer)
+    }, 15000)
+    return () => {
+      window.clearInterval(liveTimer)
+      window.clearInterval(dbTimer)
+    }
   }, [projectId, selectedGoal?.goalId, selectedGoal?.sessionId, selectedGoal?.status, expandedPlanId])
 
   const cancelSelectedGoal = React.useCallback(async (): Promise<void> => {
@@ -423,6 +434,31 @@ export function GoalHistoryPanel({
                       {plan.resultSummary ? <p className="mt-1 text-[11px] text-muted-foreground">{plan.resultSummary}</p> : null}
                       {expanded ? (
                         <>
+                        {liveSnapshot ? (
+                          <div className="mt-2 rounded-sm bg-blue-500/5 px-2 py-1.5">
+                            <p className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+                              <Loader2 className="size-3 animate-spin" />
+                              {liveSnapshot.currentAction === 'executing'
+                                ? t('goal.history.liveExecuting', { title: liveSnapshot.currentTitle ?? '', defaultValue: `Executing: ${liveSnapshot.currentTitle ?? ''}` })
+                                : liveSnapshot.currentAction === 'deciding'
+                                  ? t('goal.history.liveDeciding', { defaultValue: 'Deciding next action…' })
+                                  : liveSnapshot.currentAction}
+                            </p>
+                            {liveSnapshot.steps.length > 0 ? (
+                              <div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto pr-1">
+                                {[...liveSnapshot.steps].reverse().map((s) => (
+                                  <div key={s.step} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                    <span className="shrink-0 font-mono">#{s.step}</span>
+                                    <span className={cn('shrink-0', s.succeeded ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500')}>
+                                      {s.succeeded ? '✓' : '✗'}
+                                    </span>
+                                    <span className="min-w-0 truncate">{s.title}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {expandedPlanTasks.length > 0 ? (
                             <div className="mt-2 space-y-1 border-t border-border/40 pt-2">
                               <p className="mb-1 text-[10px] font-medium text-muted-foreground">

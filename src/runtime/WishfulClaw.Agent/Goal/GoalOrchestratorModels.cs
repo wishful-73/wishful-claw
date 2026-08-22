@@ -99,7 +99,68 @@ public sealed class GoalContext
 
     internal void DisposeEventRunState()
         => Interlocked.Exchange(ref _eventRunState, null)?.Dispose();
+
+    /// <summary>
+    /// In-memory adaptive run state for the live endpoint: the orchestrator
+    /// appends one record per executed step so goal/live can serve the panel
+    /// without touching the DB. Cleared when the goal is removed.
+    /// </summary>
+    internal GoalAdaptiveLiveState? AdaptiveLive { get; set; }
 }
+
+/// <summary>
+/// Volatile per-goal adaptive execution snapshot (host memory only — never
+/// serialized to the DB). The panel's 1s live poll reads this instead of
+/// querying SQLite.
+/// </summary>
+public sealed class GoalAdaptiveLiveState
+{
+    private readonly object _sync = new();
+    private readonly List<GoalAdaptiveLiveStep> _steps = [];
+
+    public string CurrentAction { get; private set; } = "starting";
+    public string? CurrentTitle { get; private set; }
+
+    public void SetCurrent(string action, string? title)
+    {
+        lock (_sync)
+        {
+            CurrentAction = action;
+            CurrentTitle = title;
+        }
+    }
+
+    public void AddStep(int step, string title, bool succeeded, string? summary)
+    {
+        lock (_sync)
+        {
+            _steps.Add(new GoalAdaptiveLiveStep(step, title, succeeded, summary, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+        }
+    }
+
+    public GoalAdaptiveLiveSnapshot Snapshot()
+    {
+        lock (_sync)
+        {
+            return new GoalAdaptiveLiveSnapshot(
+                CurrentAction,
+                CurrentTitle,
+                [.. _steps]);
+        }
+    }
+}
+
+public sealed record GoalAdaptiveLiveStep(
+    int Step,
+    string Title,
+    bool Succeeded,
+    string? Summary,
+    long TimestampMs);
+
+public sealed record GoalAdaptiveLiveSnapshot(
+    string CurrentAction,
+    string? CurrentTitle,
+    IReadOnlyList<GoalAdaptiveLiveStep> Steps);
 
 /// <summary>
 /// Event types for goal progress tracking.

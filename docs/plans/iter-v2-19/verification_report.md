@@ -62,6 +62,14 @@ commit `7a23d6f`（用户实测 4 问题）：
 - RunAsync 路由到自适应循环；旧固定管线改名 RunLegacyFixedPipelineAsync 标注 superseded 保留（iter-20 清理）
 - 前端去推送：SubAgentExecutor goal 运行时不再转发任何事件（goal_activity 断供）；chat-store 移除 goal_activity 路由；面板移除实时活动流块 + 死代码清理；轮询 10s→5s 仅选中运行中时
 
+## 补充验证（plan-3 追加：1s 内存 live 轮询，2026-08-22）
+
+用户要求：面板轮询查内存而非 DB。
+
+- 后端：GoalContext.AdaptiveLive（GoalAdaptiveLiveState，纯内存）← RunAdaptiveAsync 每步 SetCurrent/AddStep；GoalOrchestrator.GetLiveSnapshot；GoalModule 新端点 goal/live（GoalLiveResponse + JsonContext 注册，AOT 合规）
+- 前端：goal/live msgpack 通道（main 桥接 + binary-ipc 常量）；goal-history-store.liveByGoal + loadGoalLive；面板选中运行中 goal 时 1s 拉 live 快照（当前动作 + 步骤列表倒序渲染），DB 轮询降为 15s 兜底
+- C# build 0 警告 0 错误；TS 三配置全零错误；BOM 已剥离
+
 ## 运行时验证（待用户实测）
 
 以下需要真实模型调用，无法自动完成，留待用户人工验证：

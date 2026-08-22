@@ -50,7 +50,6 @@ export function applyGoalProgressState(
   now = Date.now()
 ): GoalRuntimeState {
   const terminal = progress.status === 'complete'
-    || progress.status === 'failed'
     || progress.status === 'aborted'
   const goalsBySession = { ...state.goalsBySession }
   const goalProgressBySession = { ...state.goalProgressBySession }

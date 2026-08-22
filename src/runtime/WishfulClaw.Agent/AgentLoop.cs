@@ -53,7 +53,11 @@ internal static partial class AgentLoop
         // versa). Isolate sub-agent conversations under their runId instead.
         var sessionModeForConv = JsonHelpers.GetString(parameters, "sessionMode");
         var isSubAgentLoop = string.Equals(sessionModeForConv, "subAgent", StringComparison.Ordinal);
-        var conversationKey = isSubAgentLoop ? $"__subagent__{state.RunId}" : sessionId;
+        var isGoalSubAgentLoop = string.Equals(sessionModeForConv, "goalSubAgent", StringComparison.Ordinal);
+        var goalContextId = JsonHelpers.GetString(parameters, "goalContextId");
+        var conversationKey = isGoalSubAgentLoop && !string.IsNullOrWhiteSpace(goalContextId)
+            ? $"__goal__{goalContextId}"
+            : isSubAgentLoop ? $"__subagent__{state.RunId}" : sessionId;
         var sessionConv = SessionConversationManager.GetOrCreate(conversationKey);
 
         List<AgentRuntimeChatMessage> conversation;

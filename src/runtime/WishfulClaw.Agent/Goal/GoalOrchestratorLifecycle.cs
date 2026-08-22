@@ -27,6 +27,7 @@ public static partial class GoalOrchestrator
         var goal = new GoalContext
         {
             GoalId = goalId,
+            GoalContextId = $"goal-context:{goalId}",
             SessionId = sessionId,
             GoalText = goalText,
             WorkingFolder = workingFolder,
@@ -188,6 +189,17 @@ public static partial class GoalOrchestrator
                     "Terminal goals cannot be resumed.");
             }
 
+            if (!string.Equals(row.Status, GoalStatusValues.Active, StringComparison.Ordinal))
+            {
+                return new GoalActionResult(
+                    false,
+                    "not_resumable",
+                    row.Status,
+                    GoalRunStateValues.Idle,
+                    goalId,
+                    "Only active Goals are restored after a worker restart.");
+            }
+
             var restoredGoal = RestoreGoalContext(row);
             ActiveGoals.TryAdd(goalId, restoredGoal);
             if (!ActiveGoals.TryGetValue(goalId, out goal))
@@ -208,7 +220,7 @@ public static partial class GoalOrchestrator
             return Task.FromResult(true);
 
         var row = DbGoalTools.GetByGoalId(goalId, sessionId);
-        if (row == null || GoalStatusValues.IsTerminal(row.Status))
+        if (row == null || !string.Equals(row.Status, GoalStatusValues.Active, StringComparison.Ordinal))
         {
             return Task.FromResult(false);
         }
@@ -402,6 +414,7 @@ public static partial class GoalOrchestrator
         return new GoalContext
         {
             GoalId = row.GoalId,
+            GoalContextId = $"goal-context:{row.GoalId}",
             SessionId = row.SessionId,
             GoalText = row.Objective,
             WorkingFolder = row.WorkingFolder,

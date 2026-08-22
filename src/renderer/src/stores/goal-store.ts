@@ -296,7 +296,7 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
 
   applySyncedGoal: (goal) => {
     useGoalHistoryStore.getState().applyGoalSnapshot(goal)
-    if (goal.status === 'complete' || goal.status === 'failed' || goal.status === 'aborted') {
+    if (goal.status === 'complete' || goal.status === 'aborted') {
       set((state) => removeRuntimeGoalState(state, goal.sessionId, goal.goalId))
       return
     }

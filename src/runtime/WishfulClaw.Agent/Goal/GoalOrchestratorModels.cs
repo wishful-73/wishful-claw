@@ -50,6 +50,8 @@ public sealed class GoalDecompositionResult
 public sealed class GoalContext
 {
     public string GoalId { get; set; } = string.Empty;
+    /// <summary>Stable, private AgentLoop conversation identity for this Goal.</summary>
+    public string GoalContextId { get; set; } = string.Empty;
     public string SessionId { get; set; } = string.Empty;
     public string GoalText { get; set; } = string.Empty;
     public string? WorkingFolder { get; set; }

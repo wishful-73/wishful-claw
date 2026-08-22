@@ -98,5 +98,22 @@ public sealed class GoalToolProvider : IToolProvider
             "Abort/cancel the current goal execution permanently.",
             ToolSchemaBuilder.Object(),
             availableModes: ["goal"]));
+
+        // Goal-orchestrator-only: progress recording inside a running Goal.
+        // Dispatched via ToolDispatchRouter → GoalProgressTool; requires
+        // state.GoalEventContext (set by the adaptive loop before spawning).
+        registry.Register(new ToolDefinitionPlaceholder(
+            GoalProgressTool.ToolName,
+            "Record the completion status of one goal step. Call this after finishing each step of your plan so progress is persisted. status must be one of: pending, active, complete.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["stepTitle"] = ToolSchemaBuilder.String("Short title of the step that was worked on."),
+                    ["status"] = ToolSchemaBuilder.String(
+                        "Step status.", [GoalPlanStatusValues.Pending, GoalPlanStatusValues.Active, GoalPlanStatusValues.Complete]),
+                    ["summary"] = ToolSchemaBuilder.String("Brief result summary for this step.")
+                },
+                ["stepTitle", "status"]),
+            availableModes: ["subAgent"]));
     }
 }

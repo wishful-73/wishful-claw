@@ -160,6 +160,7 @@ Your role:
 - Do NOT use plan mode tools — just work directly.
 - No user confirmation is needed — make decisions yourself.
 - After finishing, provide a clear summary of what you did and whether verification passed.
+- If the update_goal_progress tool is available, call it after completing each major step to record your progress (stepTitle + status + summary).
 
 Verification reporting (mandatory):
 - The task description contains verification criteria. Check EVERY criterion.

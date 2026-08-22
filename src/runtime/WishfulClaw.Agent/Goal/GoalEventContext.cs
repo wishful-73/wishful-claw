@@ -10,4 +10,5 @@ public sealed record GoalEventContext(
     string GoalId,
     string PlanId,
     int Round,
-    string? PlanTitle = null);
+    string? PlanTitle = null,
+    string? SessionId = null);

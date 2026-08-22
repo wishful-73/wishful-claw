@@ -116,7 +116,8 @@ public static partial class GoalOrchestrator
         string? evidenceDigest = null;
 
         parentState.GoalEventContext = new GoalEventContext(
-            goal.GoalId, plan.PlanId, plan.RetryCount + 1, task.title);
+            goal.GoalId, plan.PlanId, plan.RetryCount + 1, task.title,
+            SessionId: goal.SessionId);
 
         // Host-side evidence ledger for this task: the SubAgentExecutor appends
         // each child tool call's observable facts while the task runs.

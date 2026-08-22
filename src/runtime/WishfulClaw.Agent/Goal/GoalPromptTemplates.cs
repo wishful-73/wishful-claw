@@ -206,12 +206,13 @@ Decision rules:
 - When ALL verification criteria of the overall goal are met with evidence in the log, choose complete.
 - If the goal is impossible or stuck after genuine, varied attempts, choose failed with the reason.
 
-Return ONLY a JSON object:
-{""action"": ""execute"" | ""complete"" | ""failed"",
- ""title"": ""short action title (3-8 words)"",            // required for execute
- ""description"": ""what to do + verification criteria"",   // required for execute
- ""summary"": ""final outcome summary"",                    // required for complete/failed
- ""reason"": ""why this action now (one line)""}";          // optional
+Return ONLY a JSON object — no prose before or after, no markdown fences. Examples:
+
+{""action"": ""execute"", ""title"": ""Check existing files"", ""description"": ""List the working folder and read any existing index.html. Verify: you can state which files exist and their current content."", ""reason"": ""need the starting state before building""}
+
+{""action"": ""complete"", ""summary"": ""Gold Miner game built in index.html; opens without errors; mechanics verified in final code"", ""reason"": ""all verification criteria met""}
+
+{""action"": ""failed"", ""summary"": ""Required assets unavailable offline after varied attempts"", ""reason"": ""blocked on an external dependency""}";
 
     /// <summary>
     /// Build the adaptive decision user prompt: goal + full execution log.

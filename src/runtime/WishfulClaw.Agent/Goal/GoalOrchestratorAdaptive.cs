@@ -320,23 +320,39 @@ public static partial class GoalOrchestrator
                 continue;
             }
 
-            var jsonCandidate = ExtractJsonObject(output) ?? output;
-            if (jsonCandidate.Length == 0)
+            // Parse leniently: models routinely prepend reasoning text before
+            // the JSON ("The goal is to build... {\"action\":..."). Scan for
+            // the first balanced {...} that parses AND carries a known action;
+            // fall back to the raw output.
+            var decision = TryParseDecision(output)
+                ?? TryParseDecision(ExtractJsonObject(output) ?? string.Empty);
+            if (decision == null)
             {
                 WorkerLog.Warn($"adaptive decide unparseable output: {HeadTail(output, 300)}");
                 return null;
             }
+            return decision;
+        }
+    }
 
+    /// <summary>
+    /// Parse a decision from text: direct parse first, then every balanced
+    /// {...} block in the text (models often wrap the JSON in reasoning prose).
+    /// Returns null when no block yields a known action.
+    /// </summary>
+    private static AdaptiveDecision? TryParseDecision(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return null;
+
+        foreach (var candidate in JsonCandidates(output))
+        {
             try
             {
-                using var doc = JsonDocument.Parse(jsonCandidate);
+                using var doc = JsonDocument.Parse(candidate);
                 var root = doc.RootElement;
+                if (root.ValueKind != JsonValueKind.Object) continue;
                 var action = root.TryGetProperty("action", out var a) ? a.GetString() ?? "" : "";
-                if (action is not ("execute" or "complete" or "failed"))
-                {
-                    WorkerLog.Warn($"adaptive decide unknown action: {HeadTail(output, 300)}");
-                    return null;
-                }
+                if (action is not ("execute" or "complete" or "failed")) continue;
 
                 return new AdaptiveDecision(
                     Action: action,
@@ -347,9 +363,48 @@ public static partial class GoalOrchestrator
             }
             catch (JsonException)
             {
-                WorkerLog.Warn($"adaptive decide unparseable JSON: {HeadTail(output, 300)}");
-                return null;
+                // try the next candidate
             }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Yields parse candidates: the full text first, then every balanced
+    /// {...} block (outermost only, string-aware — same scanner as
+    /// ExtractJsonObject but yielding all top-level objects).
+    /// </summary>
+    private static IEnumerable<string> JsonCandidates(string text)
+    {
+        yield return text;
+        var start = 0;
+        while ((start = text.IndexOf('{', start)) >= 0)
+        {
+            var depth = 0;
+            var inString = false;
+            for (var i = start; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (inString)
+                {
+                    if (c == '\\') i++;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') inString = true;
+                else if (c == '{') depth++;
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        yield return text.Substring(start, i - start + 1);
+                        start = i + 1;
+                        break;
+                    }
+                }
+            }
+            if (depth != 0) break; // unbalanced tail — no more candidates
         }
     }
 

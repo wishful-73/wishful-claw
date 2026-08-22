@@ -20,7 +20,7 @@ public static partial class SubAgentExecutor
             return SubAgentDefinitionLoader.CreateCustomDefinition(workingFolder);
         }
 
-        if (subAgentType is "goal-decomposer" or "goal-evaluator")
+        if (subAgentType is "goal-decomposer" or "goal-evaluator" or "goal-orchestrator" or "task-decomposer")
         {
             var systemPrompt = JsonHelpers.GetString(input, "systemPrompt")
                 ?? "Return only the requested structured JSON.";

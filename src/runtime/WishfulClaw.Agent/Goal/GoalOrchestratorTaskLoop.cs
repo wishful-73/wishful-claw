@@ -145,7 +145,9 @@ public static partial class GoalOrchestrator
                 PlanId = plan.PlanId,
                 Title = task.title,
                 Status = GoalPlanStatusValues.Complete,
-                Summary = output.Length > 500 ? output.Substring(0, 500) + "..." : output,
+                // Keep enough tail (Verification lines) for the evaluator to
+                // check criteria against evidence; 500 chars cut them off.
+                Summary = output.Length > 2000 ? output.Substring(0, 2000) + "..." : output,
                 RetryCount = plan.RetryCount,
                 ElapsedMs = stopwatch.ElapsedMilliseconds
             };

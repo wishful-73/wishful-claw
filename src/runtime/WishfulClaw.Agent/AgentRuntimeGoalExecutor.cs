@@ -203,6 +203,19 @@ public static partial class AgentRuntimeGoalExecutor
                     return EncodeError("Goal confirmation could not start the orchestrator.");
                 }
 
+                // Same event contract as the HTTP confirm path (GoalModule):
+                // the frontend run badge must flip to running immediately,
+                // not when the first goal_progress arrives after decomposition.
+                await GoalOrchestrator.EmitRunStateChangedAsync(
+                    sessionId,
+                    new GoalActionResult(
+                        true,
+                        "started",
+                        GoalStatusValues.Active,
+                        GoalRunStateValues.Running,
+                        goalId),
+                    context);
+
                 return EncodePersistedGoal(row);
             }
 

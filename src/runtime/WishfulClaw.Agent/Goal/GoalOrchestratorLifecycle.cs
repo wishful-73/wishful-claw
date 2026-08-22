@@ -47,10 +47,14 @@ public static partial class GoalOrchestrator
             return Task.FromResult(goalId);
         }
 
+        // Start the owned loop FIRST so RunState is already Running when the
+        // "Goal created" event goes out — emitting before StartOrResumeRun made
+        // the first event carry runState=idle and left the frontend showing
+        // idle until decomposition finished (~10s).
+        StartOrResumeRun(goal, parameters, context);
+
         _ = EmitGoalEventAsync(goal, GoalEventType.GoalStarted,
             $"Goal created: {goalText}. Decomposing into plans...", context);
-
-        StartOrResumeRun(goal, parameters, context);
         return Task.FromResult(goalId);
     }
 

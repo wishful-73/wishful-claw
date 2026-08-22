@@ -19,6 +19,7 @@ Rules:
 - Include verification criteria in the description (e.g., 'compile succeeds', 'tests pass').
 - If the goal involves code changes, include exploration and verification plans.
 - Do not create plans that are too small (single file edit) or too large (entire feature).
+- If the goal asks for anything beyond pure investigation (build, fix, implement, create, change), you MUST include at least one plan that produces the artifact itself and one plan that verifies the final state. A goal must never consist of exploration plans only — exploring is preparation, not completion.
 
 Return ONLY a JSON array. No markdown, no explanation.";
 
@@ -81,14 +82,15 @@ Workflow:
     /// </summary>
     public const string EvaluationSystemPrompt = @"You are a Goal Evaluation Agent. Your task is to evaluate whether a plan's execution result satisfies the plan's requirements.
 
-Evaluation criteria:
-- Did the sub-agent complete all described steps?
-- Did verification pass (compile, tests, etc.)?
-- Is the result aligned with the plan's description and the overall goal?
+Evaluation procedure:
+1. Extract every verification criterion from the plan description.
+2. For each criterion, look for concrete evidence in the Execution Result (command output, file paths, test results, 'Verification: ... — PASS' lines).
+3. A criterion without evidence counts as NOT met. The executor's claim of success is not evidence by itself.
+4. Reading or browsing files does NOT satisfy criteria about creating, changing, building, or running something.
 
 Return a JSON object with:
-- satisfied: true/false — whether the plan's requirements are met
-- reasoning: brief explanation of the evaluation
+- satisfied: true/false — whether ALL verification criteria are met with evidence
+- reasoning: brief explanation, citing which criteria passed/failed and their evidence
 - nextAction: 'proceed' (satisfied), 'retry' (try again with same plan), or 'adjust' (modify plan description and retry)
 - adjustedDescription: (only if nextAction='adjust') a revised plan description
 
@@ -107,7 +109,8 @@ Return ONLY a JSON object. No markdown, no explanation.";
                $"Plan: {planTitle}\n" +
                $"Plan Description: {planDescription}\n\n" +
                $"Execution Result:\n{executionResult}\n\n" +
-               "Evaluate whether the plan's requirements are satisfied. " +
+               "Evaluate whether EVERY verification criterion in the plan description is met with concrete evidence in the execution result. " +
+               "A criterion without evidence counts as not met. " +
                "Return JSON: {\"satisfied\": bool, \"reasoning\": string, \"nextAction\": \"proceed\"|\"retry\"|\"adjust\", \"adjustedDescription\": string?}";
     }
 
@@ -157,12 +160,19 @@ Your role:
 - No user confirmation is needed — make decisions yourself.
 - After finishing, provide a clear summary of what you did and whether verification passed.
 
+Verification reporting (mandatory):
+- The task description contains verification criteria. Check EVERY criterion.
+- End your report with one line per criterion in the exact format:
+  Verification: <criterion> — PASS (<evidence>) | FAIL (<evidence>)
+- Evidence means concrete output you actually produced: command output, file paths you wrote, test results. Quoting what you intended is not evidence.
+- If any criterion is FAIL or unverified, say so explicitly in your summary. Never claim a task is complete when a criterion lacks evidence.
+
 Workflow:
 1. Understand the task in the context of the plan.
 2. Explore relevant code if needed.
 3. Implement the required changes.
 4. Run verification (compile, test, type-check).
-5. Report the final result.";
+5. Report the final result with the Verification lines.";
 
     /// <summary>
     /// Build the task execution user prompt.
@@ -172,6 +182,7 @@ Workflow:
         return $"Plan: {planTitle}\n\n" +
                $"Task: {taskTitle}\n\n" +
                $"Description:\n{taskDescription}\n\n" +
-               "Work on this task autonomously. Explore the codebase, implement the changes, verify, and report the result.";
+               "Work on this task autonomously. Explore the codebase, implement the changes, verify, and report the result. " +
+               "End your report with one 'Verification: <criterion> — PASS/FAIL (<evidence>)' line for every verification criterion in the description.";
     }
 }

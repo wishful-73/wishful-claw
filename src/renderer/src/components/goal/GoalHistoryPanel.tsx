@@ -36,6 +36,11 @@ const EMPTY_PLANS: SessionGoalPlan[] = []
 const EMPTY_TASKS: SessionGoalTask[] = []
 const EMPTY_ACTIVITIES: GoalActivity[] = []
 
+/** Terminal DB statuses keep their badge; everything else renders by runState. */
+function GoalStatusValuesIsTerminal(status: SessionGoalStatus): boolean {
+  return status === 'complete' || status === 'aborted'
+}
+
 interface GoalHistoryPanelProps {
   projectId?: string | null
   initialSessionId?: string | null
@@ -327,6 +332,13 @@ export function GoalHistoryPanel({
             <span className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300">
               {t('goal.status.paused')}
             </span>
+          ) : !GoalStatusValuesIsTerminal(selectedGoal.status) ? (
+            // Non-terminal goal not currently running: show the RUNTIME state
+            // (idle), not the DB business status — "进行中" would falsely imply
+            // the orchestrator is executing right now.
+            <span className="inline-flex shrink-0 items-center gap-1 rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              {t('goal.status.idle', { defaultValue: 'Idle' })}
+            </span>
           ) : (
             <GoalStatusBadge status={selectedGoal.status} />
           )}
@@ -401,7 +413,15 @@ export function GoalHistoryPanel({
                               {t('goal.history.roundsCount', { count: planRounds.length })}
                             </span>
                           ) : null}
-                          <span className="text-[10px] text-muted-foreground">{t(`goal.history.taskStatus.${plan.status ?? 'pending'}`)}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {t(`goal.history.taskStatus.${
+                              plan.status === 'active' && selectedRunState !== 'running'
+                                ? // Goal not running: an "active" plan is not executing
+                                  // right now — show interrupted instead of a false 执行中.
+                                  'interrupted'
+                                : plan.status ?? 'pending'
+                            }`)}
+                          </span>
                           <span className="text-[10px] text-muted-foreground">{expanded ? '▴' : '▾'}</span>
                         </span>
                       </button>

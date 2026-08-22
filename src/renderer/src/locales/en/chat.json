@@ -420,6 +420,7 @@
       "pending": "pending",
       "active": "active",
       "running": "Running",
+      "idle": "Idle",
       "paused": "paused",
       "blocked": "blocked",
       "usage_limited": "limited by usage",

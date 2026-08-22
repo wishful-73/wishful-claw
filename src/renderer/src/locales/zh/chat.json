@@ -419,6 +419,7 @@
       "pending": "待确认",
       "active": "进行中",
       "running": "执行中",
+      "idle": "空闲",
       "paused": "已暂停",
       "blocked": "已阻塞",
       "usage_limited": "受配额限制",

@@ -80,6 +80,17 @@ commit `7a23d6f`（用户实测 4 问题）：
 - 里程碑时间线：每 5 个成功步骤写一条 goal_event（eventType=goal_milestone，聚合近 5 步标题），复用现有 goal_events 表与面板时间线
 - 决策提示词补长时运行语义（瞬态失败由宿主处理勿重启已完成工作）
 
+## 补充验证（全面审查修正，2026-08-22）
+
+独立 subagent 全链路审查后修复（P0×2 + P1×2）：
+
+- **P0 429 结果丢弃**：execute 遇 429 时子 agent 已真实执行（有副作用），原代码只退避不记录 → 决策器看不到该次尝试导致重复执行。现在 429 尝试照常入 log/live/DB（标记 INTERRUPTED），退避后重新决策时能看到完整历史
+- **P0 429 语义错位**：429 检测在执行完成后才判定（子 agent 跑完才告知限流）。根治需 provider 层短路（大改），本轮先保证结果不丢；provider 层短路列入 iter-20
+- **P1 JSON 取块顺序**：JsonCandidates 从左到右取第一个，reasoning 模型的 thinking JSON 在前会被误取。改为取**最后一个**含合法 action 的块（最终决策在末尾）
+- **P1 MaxTurns=2 饿死 reasoning 模型**：结构化子 agent 2 轮上限，reasoning 模型首轮 thinking 无文本输出 → "completed but produced no output"。提到 6 轮
+- P2 采纳：execute 缺 description 时 fallback 截断 2000 字符；提示词示例加"勿照抄"语境（随 few-shot 重写已覆盖）
+- P2 记录待办：FailAdaptive 的 failed-but-active 面板语义、评估器死代码清理、provider 层 429 短路 → iter-20
+
 ## 运行时验证（待用户实测）
 
 以下需要真实模型调用，无法自动完成，留待用户人工验证：

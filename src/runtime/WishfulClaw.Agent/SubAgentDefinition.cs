@@ -124,7 +124,10 @@ internal static partial class SubAgentDefinitionLoader
         string name,
         string description,
         string systemPrompt)
-        => new(name, description, systemPrompt, 2, Temperature: 0, ProviderTurnOnly: true);
+        // MaxTurns 6: reasoning models spend early turns on thinking (which
+        // produces no text output); 2 turns starved them into "completed but
+        // produced no output". 6 leaves room for think → answer.
+        => new(name, description, systemPrompt, 6, Temperature: 0, ProviderTurnOnly: true);
 
     /// <summary>
     /// Default system prompt for custom sub-agents.

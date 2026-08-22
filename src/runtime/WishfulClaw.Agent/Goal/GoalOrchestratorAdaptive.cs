@@ -139,14 +139,25 @@ public static partial class GoalOrchestrator
             // ── action == "execute": run the task via the existing pipeline ──
             var task = (taskId: GoalIds.NewTaskId(),
                         taskTitle: decision.Title ?? $"Step {step}",
-                        taskDescription: decision.Description ?? goal.GoalText);
+                        taskDescription: decision.Description is { Length: > 0 } d && d.Length <= 2000
+                            ? d
+                            : HeadTail(decision.Description ?? goal.GoalText, 2000));
             live.SetCurrent("executing", task.taskTitle);
             var result = await ExecuteTaskAsync(goal, plan, task, parameters, parentState, context, ct);
             await ReachSafePointAsync(goal, context, ct);
 
-            // 429: hand over to the shared backoff, then retry this step.
+            // 429: the sub-agent already ran (side effects may exist), so the
+            // attempt IS recorded before handing over to the shared backoff.
+            // After backoff resolves, step-- re-runs the decision — which now
+            // sees this attempt in its log and can decide to continue or
+            // re-verify instead of blindly repeating.
             if (result.Is429)
             {
+                var outcome429 = $"INTERRUPTED by provider rate limit. Error:\n{result.Error ?? "(no error text)"}";
+                log.Add(new AdaptiveStepRecord(step, task.taskTitle, task.taskDescription, outcome429));
+                live.AddStep(step, task.taskTitle, false, result.Error);
+                RecordAdaptiveRound(goal, plan, step, task.taskTitle, false, result.Error ?? "429", parameters);
+
                 var backoffOutcome = await Handle429BackoffAsync(
                     goal, plan, 0,
                     new PlanExecutionResult { Is429 = true, Error = result.Error, RetryAfterHint = result.RetryAfterHint },
@@ -156,7 +167,7 @@ public static partial class GoalOrchestrator
                 {
                     return FailAdaptive(goal, plan, parameters, "Rate limit timeout after 6 hours");
                 }
-                step--; // retry the same step index; the decision will re-run
+                step--; // re-decide with the interrupted attempt now in the log
                 continue;
             }
 
@@ -336,37 +347,46 @@ public static partial class GoalOrchestrator
     }
 
     /// <summary>
-    /// Parse a decision from text: direct parse first, then every balanced
-    /// {...} block in the text (models often wrap the JSON in reasoning prose).
-    /// Returns null when no block yields a known action.
+    /// Parse a decision from text: scan every balanced {...} block and accept
+    /// the LAST one carrying a known action. Reasoning models put their final
+    /// decision at the END (thinking/prose first), so right-to-left is the
+    /// correct priority order. A bare prose answer still fails but logs its
+    /// head/tail for diagnosis.
     /// </summary>
     private static AdaptiveDecision? TryParseDecision(string output)
     {
         if (string.IsNullOrWhiteSpace(output)) return null;
 
+        AdaptiveDecision? last = null;
         foreach (var candidate in JsonCandidates(output))
         {
-            try
-            {
-                using var doc = JsonDocument.Parse(candidate);
-                var root = doc.RootElement;
-                if (root.ValueKind != JsonValueKind.Object) continue;
-                var action = root.TryGetProperty("action", out var a) ? a.GetString() ?? "" : "";
-                if (action is not ("execute" or "complete" or "failed")) continue;
-
-                return new AdaptiveDecision(
-                    Action: action,
-                    Title: root.TryGetProperty("title", out var t) ? t.GetString() : null,
-                    Description: root.TryGetProperty("description", out var d) ? d.GetString() : null,
-                    Summary: root.TryGetProperty("summary", out var s) ? s.GetString() : null,
-                    Reason: root.TryGetProperty("reason", out var r) ? r.GetString() : null);
-            }
-            catch (JsonException)
-            {
-                // try the next candidate
-            }
+            var parsed = TryParseDecisionJson(candidate);
+            if (parsed != null) last = parsed; // keep scanning — later blocks win
         }
-        return null;
+        return last;
+    }
+
+    private static AdaptiveDecision? TryParseDecisionJson(string candidate)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(candidate);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return null;
+            var action = root.TryGetProperty("action", out var a) ? a.GetString() ?? "" : "";
+            if (action is not ("execute" or "complete" or "failed")) return null;
+
+            return new AdaptiveDecision(
+                Action: action,
+                Title: root.TryGetProperty("title", out var t) ? t.GetString() : null,
+                Description: root.TryGetProperty("description", out var d) ? d.GetString() : null,
+                Summary: root.TryGetProperty("summary", out var s) ? s.GetString() : null,
+                Reason: root.TryGetProperty("reason", out var r) ? r.GetString() : null);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

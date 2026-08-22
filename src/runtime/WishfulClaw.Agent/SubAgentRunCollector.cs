@@ -13,6 +13,7 @@ namespace WishfulClaw.Agent;
 public sealed class SubAgentRunCollector
 {
     private readonly List<string> _textParts = [];
+    private readonly List<string> _thinkingParts = [];
     private int _toolCallCount;
     private int _iterations;
     private readonly List<ToolCallSummary> _toolCallSummaries = [];
@@ -40,6 +41,10 @@ public sealed class SubAgentRunCollector
                 break;
 
             case "thinking_delta":
+                if (!string.IsNullOrEmpty(evt.Thinking))
+                {
+                    _thinkingParts.Add(evt.Thinking);
+                }
                 await ForwardAsync(new AgentRuntimeStreamEvent(
                     "sub_agent_thinking_delta",
                     Thinking: evt.Thinking));
@@ -118,17 +123,25 @@ public sealed class SubAgentRunCollector
     /// <summary>
     /// Returns the final assistant text output.
     /// The text events come in deltas, so we concatenate all parts.
-    /// The last text before a loop_end (with no tool calls after it)
-    /// is the final report.
+    /// Fallback: when no text was emitted (reasoning models can spend every
+    /// turn thinking), return the accumulated thinking content — the answer
+    /// is often embedded there. Empty only when neither exists.
     /// </summary>
     public string GetFinalOutput()
     {
-        if (_textParts.Count == 0)
+        if (_textParts.Count > 0)
         {
-            return string.Empty;
+            return string.Concat(_textParts);
         }
-
-        return string.Concat(_textParts);
+        if (_thinkingParts.Count > 0)
+        {
+            var thinking = string.Concat(_thinkingParts);
+            // Cap: thinking can be very long; the tail holds the conclusion.
+            return thinking.Length > 8000
+                ? "[reasoning-only output]\n…" + thinking[^8000..]
+                : "[reasoning-only output]\n" + thinking;
+        }
+        return string.Empty;
     }
 
     /// <summary>

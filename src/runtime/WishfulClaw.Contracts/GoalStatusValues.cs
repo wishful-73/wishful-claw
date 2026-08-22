@@ -40,4 +40,10 @@ public static class GoalExecutionAttemptStatusValues
     public const string Completed = "completed";
     public const string Failed = "failed";
     public const string Interrupted = "interrupted";
+
+    public static bool IsKnown(string? status)
+        => status is Executing or Completed or Failed or Interrupted;
+
+    public static bool IsTerminal(string? status)
+        => status is Completed or Failed or Interrupted;
 }

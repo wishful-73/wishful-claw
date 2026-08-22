@@ -44,6 +44,16 @@ public static partial class DbClient
                 transaction,
                 "CREATE INDEX IF NOT EXISTS ix_goal_events_goal_created_id " +
                 "ON goal_events(goal_id, created_at DESC, id DESC)");
+            _db.Execute(
+                connection,
+                transaction,
+                "CREATE INDEX IF NOT EXISTS ix_goal_plans_goal_updated " +
+                "ON goal_plans(goal_id, updated_at DESC, ordinal DESC)");
+            _db.Execute(
+                connection,
+                transaction,
+                "CREATE INDEX IF NOT EXISTS ix_goal_execution_runs_goal_started " +
+                "ON goal_execution_runs(goal_id, started_at DESC, attempt_no DESC)");
         });
     }
 

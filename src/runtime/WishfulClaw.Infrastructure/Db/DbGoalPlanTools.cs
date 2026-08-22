@@ -126,6 +126,27 @@ public static partial class DbGoalPlanTools
         }
     }
 
+    public static WorkerResponse UpdatePlanSnapshot(JsonElement parameters)
+    {
+        try
+        {
+            DbClient.EnsureInitialized(parameters);
+            var sessionId = GetString(parameters, "sessionId") ?? throw new InvalidOperationException("sessionId is required");
+            var goalId = GetString(parameters, "goalId") ?? throw new InvalidOperationException("goalId is required");
+            var planId = GetString(parameters, "planId") ?? throw new InvalidOperationException("planId is required");
+            var contentJson = parameters.TryGetProperty("contentJson", out var content)
+                ? content.GetRawText()
+                : throw new InvalidOperationException("contentJson is required");
+            var result = UpdatePlanSnapshot(planId, goalId, sessionId, contentJson);
+            return WorkerResponse.Json(result, InfrastructureJsonContext.Default.GoalPlanSnapshotMutationResult);
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Error($"DbGoalPlanTools.UpdatePlanSnapshot failed: {ex.Message}");
+            return WorkerResponse.Error(ex.Message);
+        }
+    }
+
     // ─── Agent 编排层内部调用（非端点） ───
 
     /// <summary>
@@ -322,6 +343,47 @@ public static partial class DbGoalPlanTools
         });
 
         return entity;
+    }
+
+    /// <summary>
+    /// 更新一个可调整的 Plan snapshot。content_json 是宿主恢复事实的一部分。
+    /// </summary>
+    public static GoalPlanSnapshotMutationResult UpdatePlanSnapshot(
+        string planId, string goalId, string sessionId, string contentJson)
+    {
+        DbClient.EnsureInitialized();
+        var db = DbClient.GetClient();
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        GoalPlanEntity? entity = null;
+        var changed = db.ExecuteInTransaction((connection, transaction) =>
+        {
+            var count = db.Execute(
+                connection,
+                transaction,
+                "UPDATE goal_plans SET content_json = @content, updated_at = @updatedAt " +
+                "WHERE plan_id = @planId AND goal_id = @goalId AND session_id = @sessionId",
+                new SqliteParameter("@content", contentJson),
+                new SqliteParameter("@updatedAt", now),
+                new SqliteParameter("@planId", planId),
+                new SqliteParameter("@goalId", goalId),
+                new SqliteParameter("@sessionId", sessionId));
+            if (count != 1)
+                return false;
+
+            entity = db.QueryFirstOrDefault(
+                connection,
+                transaction,
+                "SELECT * FROM goal_plans WHERE plan_id = @planId AND goal_id = @goalId AND session_id = @sessionId LIMIT 1",
+                EntityMappers.MapGoalPlan,
+                new SqliteParameter("@planId", planId),
+                new SqliteParameter("@goalId", goalId),
+                new SqliteParameter("@sessionId", sessionId));
+            return entity != null;
+        });
+
+        return changed && entity != null
+            ? new GoalPlanSnapshotMutationResult(true, GoalPlanRow.FromEntity(entity), null)
+            : new GoalPlanSnapshotMutationResult(false, null, "Plan not found");
     }
 
     /// <summary>

@@ -55,8 +55,8 @@ public static partial class DbGoalExecutionRunTools
             var summary = GetString(parameters, "summary");
             var error = GetString(parameters, "error");
 
-            FinishRun(attemptId, status, summary, error);
-            return WorkerResponse.Json(new ExecutionRunMutationResult(true, null, null),
+            var result = FinishRun(attemptId, status, summary, error);
+            return WorkerResponse.Json(result,
                 InfrastructureJsonContext.Default.ExecutionRunMutationResult);
         }
         catch (Exception ex)
@@ -146,20 +146,56 @@ public static partial class DbGoalExecutionRunTools
     /// <summary>
     /// 完成执行尝试。
     /// </summary>
-    public static void FinishRun(string attemptId, string status, string? summary, string? error)
+    public static ExecutionRunMutationResult FinishRun(string attemptId, string status, string? summary, string? error)
     {
         DbClient.EnsureInitialized();
         var db = DbClient.GetClient();
 
+        if (!GoalExecutionAttemptStatusValues.IsKnown(status))
+            throw new ArgumentException($"Unknown execution status: {status}", nameof(status));
+        if (status == GoalExecutionAttemptStatusValues.Executing)
+            throw new ArgumentException("FinishRun requires a terminal execution status", nameof(status));
+
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        db.Execute(
+        var changed = db.Execute(
             "UPDATE goal_execution_runs SET status = @status, summary = @summary, error = @error, finished_at = @fa " +
-            "WHERE attempt_id = @aid",
+            "WHERE attempt_id = @aid AND status = @executing",
             new SqliteParameter("@status", status),
             new SqliteParameter("@summary", (object?)summary ?? DBNull.Value),
             new SqliteParameter("@error", (object?)error ?? DBNull.Value),
             new SqliteParameter("@fa", now),
-            new SqliteParameter("@aid", attemptId));
+            new SqliteParameter("@aid", attemptId),
+            new SqliteParameter("@executing", GoalExecutionAttemptStatusValues.Executing));
+
+        if (changed == 0)
+        {
+            var existing = GetRunInternal(attemptId);
+            return existing == null
+                ? new ExecutionRunMutationResult(false, null, "Execution run not found")
+                : new ExecutionRunMutationResult(false, ExecutionRunRow.FromEntity(existing), "Execution run is already finished");
+        }
+
+        var entity = GetRunInternal(attemptId);
+        return entity == null
+            ? new ExecutionRunMutationResult(false, null, "Execution run disappeared after update")
+            : new ExecutionRunMutationResult(true, ExecutionRunRow.FromEntity(entity), null);
+    }
+
+    /// <summary>
+    /// 查询某 Goal 的所有尚未完成的执行尝试。失败和中断仍是可恢复的 attempt 账本记录。
+    /// </summary>
+    public static List<ExecutionRunRow> ListIncompleteRuns(string goalId, int limit = 100)
+    {
+        DbClient.EnsureInitialized();
+        var db = DbClient.GetClient();
+        var entities = db.Query(
+            "SELECT * FROM goal_execution_runs WHERE goal_id = @gid AND status <> @completed " +
+            "ORDER BY started_at DESC, attempt_id DESC LIMIT @limit",
+            EntityMappers.MapGoalExecutionRun,
+            new SqliteParameter("@gid", goalId),
+            new SqliteParameter("@completed", GoalExecutionAttemptStatusValues.Completed),
+            new SqliteParameter("@limit", Math.Clamp(limit, 1, 200)));
+        return entities.Select(ExecutionRunRow.FromEntity).ToList();
     }
 
     /// <summary>
@@ -184,17 +220,17 @@ public static partial class DbGoalExecutionRunTools
         SqliteParameter[] p;
         if (planId is not null && taskId is not null)
         {
-            sql = "SELECT * FROM goal_execution_runs WHERE goal_id = @gid AND plan_id = @pid AND task_id = @tid ORDER BY attempt_no DESC LIMIT 1";
+            sql = "SELECT * FROM goal_execution_runs WHERE goal_id = @gid AND plan_id = @pid AND task_id = @tid ORDER BY started_at DESC, attempt_no DESC LIMIT 1";
             p = [new SqliteParameter("@gid", goalId), new SqliteParameter("@pid", planId), new SqliteParameter("@tid", taskId)];
         }
         else if (planId is not null)
         {
-            sql = "SELECT * FROM goal_execution_runs WHERE goal_id = @gid AND plan_id = @pid ORDER BY attempt_no DESC LIMIT 1";
+            sql = "SELECT * FROM goal_execution_runs WHERE goal_id = @gid AND plan_id = @pid ORDER BY started_at DESC, attempt_no DESC LIMIT 1";
             p = [new SqliteParameter("@gid", goalId), new SqliteParameter("@pid", planId)];
         }
         else
         {
-            sql = "SELECT * FROM goal_execution_runs WHERE goal_id = @gid ORDER BY attempt_no DESC LIMIT 1";
+            sql = "SELECT * FROM goal_execution_runs WHERE goal_id = @gid ORDER BY started_at DESC, attempt_no DESC LIMIT 1";
             p = [new SqliteParameter("@gid", goalId)];
         }
 
@@ -290,3 +326,9 @@ public sealed record ExecutionRunRow(
 public sealed record ExecutionRunInsertResult(string AttemptId);
 public sealed record ExecutionRunFindResult(bool Success, ExecutionRunRow? Run, string? Error);
 public sealed record ExecutionRunMutationResult(bool Success, ExecutionRunRow? Run, string? Error);
+public sealed record GoalLedgerSnapshot(
+    GoalRow Goal,
+    GoalPlanRow? LatestPlan,
+    ExecutionRunRow? LatestExecution,
+    List<ExecutionRunRow> IncompleteExecutions);
+public sealed record GoalLedgerFindResult(bool Success, GoalLedgerSnapshot? Snapshot, string? Error);

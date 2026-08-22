@@ -221,6 +221,43 @@ public static partial class DbGoalTools
         }
     }
 
+    public static WorkerResponse GetLedger(JsonElement parameters)
+    {
+        try
+        {
+            DbClient.EnsureInitialized(parameters);
+            var goalId = GetString(parameters, "goalId")
+                ?? throw new InvalidOperationException("goalId is required");
+            var sessionId = GetString(parameters, "sessionId")
+                ?? throw new InvalidOperationException("sessionId is required");
+            var goal = GetByGoalId(goalId, sessionId);
+            if (goal == null)
+            {
+                return WorkerResponse.Json(
+                    new GoalLedgerFindResult(false, null, "Goal not found"),
+                    InfrastructureJsonContext.Default.GoalLedgerFindResult);
+            }
+
+            var latestPlan = DbGoalPlanTools.ListPlans(goalId, sessionId)
+                .OrderByDescending(plan => plan.UpdatedAt)
+                .ThenByDescending(plan => plan.Ordinal)
+                .FirstOrDefault();
+            var latestExecution = DbGoalExecutionRunTools.GetLatestRun(goalId, null, null);
+            var incompleteExecutions = DbGoalExecutionRunTools.ListIncompleteRuns(goalId);
+            return WorkerResponse.Json(
+                new GoalLedgerFindResult(
+                    true,
+                    new GoalLedgerSnapshot(goal, latestPlan, latestExecution, incompleteExecutions),
+                    null),
+                InfrastructureJsonContext.Default.GoalLedgerFindResult);
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Error($"DbGoalTools.GetLedger failed: {ex.Message}");
+            return WorkerResponse.Error(ex.Message);
+        }
+    }
+
     public static GoalRow? GetBySessionId(string sessionId)
     {
         var entity = DbClient.GetClient().QueryFirstOrDefault(

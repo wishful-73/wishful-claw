@@ -304,6 +304,7 @@ public sealed record GoalTaskRow(
 
 public sealed record GoalPlanFindResult(bool Success, GoalPlanRow? Plan, string? Error);
 public sealed record GoalPlanMutationResult(bool Success, GoalPlanRow? Plan, string? Error);
+public sealed record GoalPlanSnapshotMutationResult(bool Success, GoalPlanRow? Plan, string? Error);
 public sealed record GoalTaskFindResult(bool Success, GoalTaskRow? Task, string? Error);
 public sealed record GoalTaskMutationResult(bool Success, GoalTaskRow? Task, string? Error);
 

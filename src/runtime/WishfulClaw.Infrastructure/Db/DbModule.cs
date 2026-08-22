@@ -106,6 +106,7 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/goal-plans-get", DbGoalPlanTools.GetPlan);
         context.Register("db/goal-plans-update-status", DbGoalPlanTools.UpdatePlanStatus);
         context.Register("db/goal-plans-update-retry", DbGoalPlanTools.UpdatePlanRetry);
+        context.Register("db/goal-plans-update-snapshot", DbGoalPlanTools.UpdatePlanSnapshot);
 
         // ── Goal Tasks (task definitions) ──
         context.Register("db/goal-tasks-list", DbGoalTaskTools.ListTasks);
@@ -117,6 +118,7 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/goal-execution-runs-finish", DbGoalExecutionRunTools.FinishRun);
         context.Register("db/goal-execution-runs-get", DbGoalExecutionRunTools.GetRun);
         context.Register("db/goal-execution-runs-list", DbGoalExecutionRunTools.ListRuns);
+        context.Register("db/goal-ledger-get", DbGoalTools.GetLedger);
 
         // ── Plugin Sessions ──
         context.Register("db/plugin-normal-projects", DbPluginSessionTools.ListNormalProjects);

@@ -84,7 +84,6 @@ public static partial class GoalOrchestrator
             var decision = await DecideNextActionAsync(
                 goal, log, step, parameters, parentState, context, ct);
             await ReachSafePointAsync(goal, context, ct);
-
             if (decision == null)
             {
                 consecutiveParseFailures++;
@@ -94,6 +93,9 @@ public static partial class GoalOrchestrator
                     return FailAdaptive(goal, plan, parameters,
                         $"Orchestrator decision failed {consecutiveParseFailures} times in a row after {log.Count} executed step(s).");
                 }
+                // Back off between decision retries — a rate-limited provider
+                // must not have its 3 attempts burned within one millisecond.
+                await DelayInterruptibleAsync(goal, 2 * consecutiveParseFailures, ct);
                 continue;
             }
             consecutiveParseFailures = 0;
@@ -198,7 +200,9 @@ public static partial class GoalOrchestrator
 
     /// <summary>
     /// LLM decision call: given the goal and the full step log, pick the next
-    /// action. Returns null when the output cannot be parsed.
+    /// action. Returns null when the output cannot be parsed (counted against
+    /// the circuit breaker). A provider 429 is NOT a parse failure: it runs
+    /// the shared backoff loop and then retries the decision transparently.
     /// </summary>
     private static async Task<AdaptiveDecision?> DecideNextActionAsync(
         GoalContext goal,
@@ -221,36 +225,73 @@ public static partial class GoalOrchestrator
             GoalPromptTemplates.AdaptiveOrchestratorSystemPrompt);
         var toolCallId = $"goal-decide-{Guid.NewGuid():N}";
 
-        try
+        while (true)
         {
-            var result = await SubAgentExecutor.ExecuteAsync(
-                input, parameters, parentState, context, toolCallId);
-            ct.ThrowIfCancellationRequested();
+            string output;
+            try
+            {
+                var result = await SubAgentExecutor.ExecuteAsync(
+                    input, parameters, parentState, context, toolCallId);
+                ct.ThrowIfCancellationRequested();
+                output = StripCodeFence(result.Content?.Trim() ?? string.Empty);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                output = ex.Message;
+            }
 
-            var output = StripCodeFence(result.Content?.Trim() ?? string.Empty);
+            // Provider rate-limited: run the shared backoff (fast → minute
+            // polling → 6h timeout) and retry the same decision. This is not a
+            // parse failure and must not consume circuit-breaker attempts.
+            if (IsRateLimitText(output))
+            {
+                var backoffOutcome = await Handle429BackoffAsync(
+                    goal, goal.Plans.Count > 0 ? goal.Plans[0] : new GoalPlanItem { PlanId = GoalIds.NewPlanId(), Title = "Adaptive execution", Description = goal.GoalText },
+                    step - 1,
+                    new PlanExecutionResult { Is429 = true, Error = output },
+                    parameters, parentState, context, ct);
+                await ReachSafePointAsync(goal, context, ct);
+                if (backoffOutcome == BackoffOutcome.Timeout)
+                {
+                    return null; // caller's breaker will fail the goal with the count
+                }
+                continue;
+            }
+
             var jsonCandidate = ExtractJsonObject(output) ?? output;
-            if (jsonCandidate.Length == 0) return null;
+            if (jsonCandidate.Length == 0)
+            {
+                WorkerLog.Warn($"adaptive decide unparseable output: {HeadTail(output, 300)}");
+                return null;
+            }
 
-            using var doc = JsonDocument.Parse(jsonCandidate);
-            var root = doc.RootElement;
-            var action = root.TryGetProperty("action", out var a) ? a.GetString() ?? "" : "";
-            if (action is not ("execute" or "complete" or "failed")) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonCandidate);
+                var root = doc.RootElement;
+                var action = root.TryGetProperty("action", out var a) ? a.GetString() ?? "" : "";
+                if (action is not ("execute" or "complete" or "failed"))
+                {
+                    WorkerLog.Warn($"adaptive decide unknown action: {HeadTail(output, 300)}");
+                    return null;
+                }
 
-            return new AdaptiveDecision(
-                Action: action,
-                Title: root.TryGetProperty("title", out var t) ? t.GetString() : null,
-                Description: root.TryGetProperty("description", out var d) ? d.GetString() : null,
-                Summary: root.TryGetProperty("summary", out var s) ? s.GetString() : null,
-                Reason: root.TryGetProperty("reason", out var r) ? r.GetString() : null);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            WorkerLog.Warn($"adaptive decision call failed: {ex.Message}");
-            return null;
+                return new AdaptiveDecision(
+                    Action: action,
+                    Title: root.TryGetProperty("title", out var t) ? t.GetString() : null,
+                    Description: root.TryGetProperty("description", out var d) ? d.GetString() : null,
+                    Summary: root.TryGetProperty("summary", out var s) ? s.GetString() : null,
+                    Reason: root.TryGetProperty("reason", out var r) ? r.GetString() : null);
+            }
+            catch (JsonException)
+            {
+                WorkerLog.Warn($"adaptive decide unparseable JSON: {HeadTail(output, 300)}");
+                return null;
+            }
         }
     }
 

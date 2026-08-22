@@ -17,11 +17,32 @@ public static partial class GoalOrchestrator
 {
     private const int MaxPlanRetries = 3;
 
-    private static async Task<GoalRunOutcome> RunAsync(
+    /// <summary>
+    /// Orchestration entry point. Routes to the free-form adaptive loop
+    /// (LLM decides every step, plans adapt mid-flight). The legacy fixed
+    /// pipeline (decompose → fixed plan list → sequential tasks) is superseded;
+    /// kept until iter-20 cleanup confirms the adaptive loop in production.
+    /// </summary>
+    private static Task<GoalRunOutcome> RunAsync(
         GoalContext goal,
         JsonElement parameters,
         AgentRuntimeRunState parentState,
         IWorkerRequestContext context)
+    {
+        return RunAdaptiveAsync(goal, parameters, parentState, context);
+    }
+
+    /// <summary>
+    /// SUPERSEDED fixed pipeline — kept for reference only. See
+    /// GoalOrchestratorAdaptive.RunAdaptiveAsync for the active orchestration.
+    /// </summary>
+#pragma warning disable CS8321 // unused local function retained deliberately
+    private static async Task<GoalRunOutcome> RunLegacyFixedPipelineAsync(
+        GoalContext goal,
+        JsonElement parameters,
+        AgentRuntimeRunState parentState,
+        IWorkerRequestContext context)
+#pragma warning restore CS8321
     {
         var ct = parentState.CancellationToken;
         await ReachSafePointAsync(goal, context, ct);

@@ -228,14 +228,13 @@ public static partial class SubAgentExecutor
         {
             ForwardEvent = async (evt) =>
             {
-                // Goal-orchestrated plan runs stream thousands of text deltas
-                // (one per token batch). For goal runs, skip per-delta
-                // forwarding entirely — the goal panel consumes goal_activity
-                // events instead, and the final report arrives with the
-                // sub_agent_end result. This kills the seq explosion and the
-                // dev-console log flood without touching normal sub-agents.
-                if (parentState.GoalEventContext is not null &&
-                    evt.Type == "sub_agent_text_delta")
+                // Goal-orchestrated runs are background-only (user-directed
+                // redesign): no per-event forwarding at all — no text deltas,
+                // no tool_call/iteration goal_activity feed. The panel is a
+                // pull-based checker (polls the DB); the final report lands in
+                // goal_plan_tasks via the orchestrator. This kills the seq
+                // flood and the push traffic entirely for goal runs.
+                if (parentState.GoalEventContext is not null)
                 {
                     return;
                 }

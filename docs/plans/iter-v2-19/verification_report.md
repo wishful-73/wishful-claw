@@ -53,6 +53,15 @@ commit `7a23d6f`（用户实测 4 问题）：
 - 5c EvidenceDigest：AgentRuntimeRunState.GoalEvidenceSink（新）← SubAgentExecutor 从 collector.ToolCallSummaries 喂收据 → GoalTaskEvidence.ToDigest()（mutations/reads 分组、40 行上限）→ PlanExecutionResult.EvidenceDigest → 评估提示词"Host-observed evidence"段；评估提示词新增规则 5（宿主证据与自报矛盾时信宿主）
 - AOT：GoalTaskEvidence 纯内存对象无序列化，无需 JsonContext 注册
 
+## 补充验证（plan-3：自由编排 + 后台优先重构，2026-08-22）
+
+用户定位修正：Goal = 纯后台自治任务，面板 = 按需查询器（轮询可、推送不要），计划/任务随执行自行调整。
+
+- C# `dotnet build` 0 警告 0 错误；TS 三配置全零错误（BOM 剥离前后各验一次）
+- 后端：新 GoalOrchestratorAdaptive.RunAdaptiveAsync — 不预分解计划，每步 DecideNextActionAsync（execute/complete/failed JSON 决策）；单合成计划"Adaptive execution"兼容现有 DB 三层表与面板查询；复用 ExecuteTaskAsync（Verification 行）+ 429 退避 + ReachSafePoint 暂停/取消；决策连续失败 3 次熔断；24 步上限；步骤历史 HeadTail(3000/条) 回喂
+- RunAsync 路由到自适应循环；旧固定管线改名 RunLegacyFixedPipelineAsync 标注 superseded 保留（iter-20 清理）
+- 前端去推送：SubAgentExecutor goal 运行时不再转发任何事件（goal_activity 断供）；chat-store 移除 goal_activity 路由；面板移除实时活动流块 + 死代码清理；轮询 10s→5s 仅选中运行中时
+
 ## 运行时验证（待用户实测）
 
 以下需要真实模型调用，无法自动完成，留待用户人工验证：

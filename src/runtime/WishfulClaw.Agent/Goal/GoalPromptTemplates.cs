@@ -186,4 +186,38 @@ Workflow:
                "Work on this task autonomously. Explore the codebase, implement the changes, verify, and report the result. " +
                "End your report with one 'Verification: <criterion> — PASS/FAIL (<evidence>)' line for every verification criterion in the description.";
     }
+
+    // ─── Adaptive orchestration (free-form, LLM decides every step) ───
+
+    /// <summary>
+    /// System prompt for the adaptive orchestrator's per-step decision call.
+    /// The orchestrator does NOT pre-decompose the goal: each step it sees the
+    /// objective plus everything executed so far and chooses the next action.
+    /// </summary>
+    public const string AdaptiveOrchestratorSystemPrompt = @"You are a Goal Orchestrator Agent running an autonomous background task. You decide ONE next action at a time; the host executes it with a sub-agent, appends the result to your log, and asks you again.
+
+Decision rules:
+- Choose the smallest next action that makes real progress toward the goal. Prefer concrete, verifiable actions over broad ones.
+- Every execute action's description MUST contain explicit verification criteria (e.g. 'dotnet build exits 0', 'the file X contains Y').
+- Adapt freely: if earlier results reveal the plan was wrong, change direction — add, skip, or re-scope actions. You are never locked into an initial plan.
+- Do not repeat an action that already succeeded or failed identically. If something failed twice the same way, change approach or declare failure.
+- When ALL verification criteria of the overall goal are met with evidence in the log, choose complete.
+- If the goal is impossible or stuck after genuine attempts, choose failed with the reason.
+
+Return ONLY a JSON object:
+{""action"": ""execute"" | ""complete"" | ""failed"",
+ ""title"": ""short action title (3-8 words)"",            // required for execute
+ ""description"": ""what to do + verification criteria"",   // required for execute
+ ""summary"": ""final outcome summary"",                    // required for complete/failed
+ ""reason"": ""why this action now (one line)""}";          // optional
+
+    /// <summary>
+    /// Build the adaptive decision user prompt: goal + full execution log.
+    /// </summary>
+    public static string BuildAdaptiveDecisionUserPrompt(string goalText, string stepLog, int stepCount, int maxSteps)
+    {
+        return $"Goal: {goalText}\n\n" +
+               $"Steps executed so far ({stepCount} of max {maxSteps}):\n{stepLog}\n\n" +
+               "Decide the single next action. Return JSON only.";
+    }
 }

@@ -27,7 +27,6 @@ import { setLastDebugInfo } from '@renderer/lib/debug-store'
 import { adaptSubAgentEvent } from './adapt-sub-agent-event'
 
 import { useAgentStore } from '@renderer/stores/agent-store'
-import type { GoalActivity } from '@renderer/stores/goal-store-helpers'
 
 
 
@@ -494,35 +493,9 @@ export const useChatStore = create<ChatStore>()(
           continue
         }
 
-        // Route goal_activity events (live plan execution feed) to the goal store.
-        // Like goal_progress these carry their own sessionId in the payload.
-        if (eventType === 'goal_activity') {
-          const ga = event as {
-            input?: Record<string, unknown>
-            toolUseId?: string
-            subAgentName?: string
-            iteration?: number
-          }
-          const input = (ga.input ?? {}) as Record<string, unknown>
-          const gaSessionId = (input.sessionId ?? targetSessionId) as string | undefined
-          const gaGoalId = (input.goalId ?? ga.toolUseId) as string | undefined
-          if (gaSessionId && gaGoalId) {
-            useGoalStore.getState().applyGoalActivity({
-              id: `${gaGoalId}:${input.planId ?? ''}:${input.round ?? 1}:${input.kind ?? ''}:${ga.toolUseId ?? ''}:${Date.now()}`,
-              sessionId: gaSessionId,
-              goalId: gaGoalId,
-              planId: (input.planId ?? '') as string,
-              round: (input.round ?? 1) as number,
-              kind: (input.kind ?? 'tool_call') as GoalActivity['kind'],
-              toolName: (input.toolName ?? null) as string | null,
-              toolCallId: (input.toolCallId ?? null) as string | null,
-              status: (input.status ?? null) as string | null,
-              iteration: ga.iteration ?? null,
-              timestamp: Date.now()
-            })
-          }
-          continue
-        }
+        // goal_activity push events are retired (background-first redesign):
+        // the goal panel is a pull-based checker that polls the DB, so the
+        // per-tool-call live feed no longer has a consumer.
 
       if (!targetSessionId) return
 

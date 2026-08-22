@@ -26,7 +26,6 @@ import {
   type SessionGoalPlan,
   type SessionGoalTask
 } from '@renderer/stores/goal-store-helpers'
-import type { GoalActivity } from '@renderer/stores/goal-store-helpers'
 import { goalPlanKey } from '@renderer/stores/goal-history-store'
 
 const EMPTY_GOALS: SessionGoal[] = []
@@ -34,7 +33,6 @@ const EMPTY_EVENTS: SessionGoalEvent[] = []
 const EMPTY_PLAN_TASKS: SessionGoalPlanTask[] = []
 const EMPTY_PLANS: SessionGoalPlan[] = []
 const EMPTY_TASKS: SessionGoalTask[] = []
-const EMPTY_ACTIVITIES: GoalActivity[] = []
 
 /** Terminal DB statuses keep their badge; everything else renders by runState. */
 function GoalStatusValuesIsTerminal(status: SessionGoalStatus): boolean {
@@ -176,9 +174,6 @@ export function GoalHistoryPanel({
   const expandedPlanTasks = useGoalHistoryStore((state) =>
     expandedPlanTaskKey ? state.tasksByPlan[expandedPlanTaskKey] ?? EMPTY_TASKS : EMPTY_TASKS
   )
-  const liveActivities = useGoalStore((state) =>
-    selectedGoal ? state.goalActivitiesByGoal[selectedGoal.goalId] ?? EMPTY_ACTIVITIES : EMPTY_ACTIVITIES
-  )
   // Live elapsed timer while the goal is running; falls back to the DB value.
   const activeRunStartedAt = useGoalStore((s) => {
     if (!selectedGoal) return null
@@ -234,10 +229,10 @@ export function GoalHistoryPanel({
           )
         }
       }
-      // Also refresh the goal row itself: plan statuses (pending → executing →
-      // completed) and progress counters live in session_goals, not plan tasks.
+      // Pull-based checker: the panel polls while open and a goal is active;
+      // there is no push stream for goal runs anymore (background-first UX).
       void useGoalHistoryStore.getState().loadProjectGoals(projectId, true)
-    }, 10000)
+    }, 5000)
     return () => window.clearInterval(timer)
   }, [projectId, selectedGoal?.goalId, selectedGoal?.sessionId, selectedGoal?.status, expandedPlanId])
 
@@ -428,12 +423,6 @@ export function GoalHistoryPanel({
                       {plan.resultSummary ? <p className="mt-1 text-[11px] text-muted-foreground">{plan.resultSummary}</p> : null}
                       {expanded ? (
                         <>
-                        <GoalPlanLiveActivities
-                          activities={liveActivities.filter(
-                            (a) => planTaskChainRoot(a.planId) === planRoot || a.planId === plan.planId
-                          )}
-                          isActive={selectedGoal?.status === 'active'}
-                        />
                         {expandedPlanTasks.length > 0 ? (
                             <div className="mt-2 space-y-1 border-t border-border/40 pt-2">
                               <p className="mb-1 text-[10px] font-medium text-muted-foreground">
@@ -618,42 +607,6 @@ function Metric({ label, value }: { label: string; value: string }): React.JSX.E
     <div className="rounded-md border border-border/60 p-2">
       <div className="text-[10px] text-muted-foreground">{label}</div>
       <div className="mt-1 break-words font-medium">{value}</div>
-    </div>
-  )
-}
-
-function GoalPlanLiveActivities({
-  activities,
-  isActive
-}: {
-  activities: GoalActivity[]
-  isActive: boolean
-}) {
-  const { t } = useTranslation('goal')
-  if (activities.length === 0) return null
-  const recent = activities.slice(-30)
-  return (
-    <div className="mt-2 border-t border-border/40 pt-2">
-      <p className="mb-1 flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
-        {isActive ? <Loader2 className="size-3 animate-spin" /> : null}
-        {t('goal.history.liveActivity')}
-      </p>
-      <div className="max-h-44 space-y-0.5 overflow-y-auto pr-1">
-        {recent.map((a) => (
-          <div key={a.id} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <span className="shrink-0 rounded-sm bg-muted px-1 font-mono">R{a.round}</span>
-            <span className="shrink-0 text-muted-foreground/70">
-              {a.kind === 'tool_call' ? '→' : a.kind === 'tool_result' ? '✓' : '⟳'}
-            </span>
-            <span className="min-w-0 truncate">
-              {a.kind === 'iteration'
-                ? t('goal.history.iterationStep', { iteration: a.iteration ?? '-' })
-                : a.toolName ?? a.kind}
-              {a.kind === 'tool_result' && a.status ? ` (${a.status})` : ''}
-            </span>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }

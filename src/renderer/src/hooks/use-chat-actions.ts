@@ -3,6 +3,9 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
 import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
+import { useChannelStore } from '@renderer/stores/channel-store'
+import { useUIStore } from '@renderer/stores/ui-store'
+import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
 
 export interface SendMessageOptions {
@@ -22,23 +25,25 @@ export function useChatActions() {
 
   const handleSendMessage = useCallback(
     async ({ text, images: _images, sessionId, opts }: { text: string | { text: string; images?: unknown[]; skill?: string | null; selectedFiles?: unknown[] }; images?: unknown[]; sessionId?: string; opts?: SendMessageOptions }) => {
-      const providerStore = useProviderStore.getState()
-      const activeProvider = providerStore.getActiveProvider()
-      if (!activeProvider) {
-        console.error('[ChatActions] No provider selected')
-        return
-      }
-      const modelId = providerStore.activeModelId || activeProvider.defaultModel || activeProvider.models.find((m: any) => m.enabled)?.id
-      if (!modelId) {
-        console.error('[ChatActions] No model selected')
-        return
-      }
       const chatStore = useChatStore.getState()
       const targetSessionId = sessionId ?? chatStore.activeSessionId
       if (!targetSessionId) {
         console.error('[ChatActions] No active session')
         return
       }
+
+      // Resolve provider/model through the same session-aware path the UI
+      // displays (ModelSwitcher / InputArea). Previously this read the global
+      // provider store directly, so a session-bound model switch updated the
+      // UI but the request still went out with the stale global model.
+      const settingsStore = useSettingsStore.getState()
+      const resolved = resolveSendModel(targetSessionId)
+      if (!resolved) {
+        console.error('[ChatActions] No provider/model selected')
+        return
+      }
+      const activeProvider = resolved.provider
+      const modelId = resolved.modelId
 
       // Clear activities for new turn
       useActivityStore.getState().clearActivities()
@@ -60,7 +65,7 @@ export function useChatActions() {
       // initialization; if tools aren't ready yet, send without them —
       // the agent can still respond, just without tool-calling capability.
       const toolPreset = opts?.toolPreset ?? (workingFolder ? 'coding' : 'chat')
-      const settings = useSettingsStore.getState()
+      const settings = settingsStore
 
       // For special presets (e.g. skill-installer), fetch async to ensure
       // the correct tool list is used. For default presets, use cache + background fetch.
@@ -175,11 +180,60 @@ export function subscribePendingSessionMessages(onStoreChange: () => void): () =
   return () => { _pendingListeners.delete(onStoreChange) }
 }
 
+// Shared provider type used by the send paths (buildProviderPayload's input).
+type SendProvider = NonNullable<ReturnType<ReturnType<typeof useProviderStore.getState>['getActiveProvider']>>
+
+// Resolve the provider/model a send will actually use, mirroring exactly what
+// the UI displays (ModelSwitcher / InputArea via resolveSessionModelSelection).
+// Session-bound model switches used to update only the UI while sends kept
+// reading the global provider store, so requests went out with the stale
+// global model. Returns null when no usable provider/model exists.
+function resolveSendModel(sessionId: string): { provider: SendProvider; modelId: string } | null {
+  const providerStore = useProviderStore.getState()
+  const chatStore = useChatStore.getState()
+  const settings = useSettingsStore.getState()
+  const session = chatStore.sessions.find((s) => s.id === sessionId)
+  const channel = session?.pluginId
+    ? (useChannelStore.getState().channels.find((c) => c.id === session.pluginId) ?? null)
+    : null
+  const selection = resolveSessionModelSelection({
+    session,
+    providers: providerStore.providers,
+    activeProviderId: providerStore.activeProviderId,
+    activeModelId: providerStore.activeModelId,
+    globalMode: settings.mainModelSelectionMode,
+    channelProviderId: channel?.providerId,
+    channelModelId: channel?.model
+  })
+  const autoSelection = useUIStore.getState().autoModelSelectionsBySession[sessionId] ?? null
+  const resolvedProviderId = selection.isAutoModeActive && autoSelection?.providerId
+    ? autoSelection.providerId
+    : selection.providerId
+  let resolvedModelId: string | null = selection.isAutoModeActive && autoSelection?.modelId
+    ? autoSelection.modelId
+    : selection.modelId
+  let provider = resolvedProviderId
+    ? (providerStore.providers.find((p) => p.id === resolvedProviderId) ?? null)
+    : null
+  if (!provider) {
+    provider = providerStore.getActiveProvider() ?? null
+    // Fell back to the global provider — realign the model with it too
+    resolvedModelId = null
+  }
+  if (!provider) return null
+  const modelId = resolvedModelId
+    || providerStore.activeModelId
+    || provider.defaultModel
+    || provider.models.find((m: any) => m.enabled)?.id
+  if (!modelId) return null
+  return { provider, modelId }
+}
+
 // Build a complete provider object matching handleSendMessage's logic.
 // Both sendImplementPlan and sendPlanRevision need this -- they bypass
 // handleSendMessage but must send the same provider shape to agent/run.
 export function buildProviderPayload(
-  activeProvider: ReturnType<ReturnType<typeof useProviderStore.getState>['getActiveProvider']>,
+  activeProvider: SendProvider,
   modelId: string,
   settings: ReturnType<typeof useSettingsStore.getState>
 ): Record<string, unknown> {
@@ -217,7 +271,6 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
   const planStore = (await import('@renderer/stores/plan-store')).usePlanStore.getState()
   const uiStore = (await import('@renderer/stores/ui-store')).useUIStore.getState()
   const chatStore = useChatStore.getState()
-  const providerStore = (await import('@renderer/stores/provider-store')).useProviderStore.getState()
   const settingsStore = (await import('@renderer/stores/settings-store')).useSettingsStore.getState()
 
   const plan = planStore.plans[planId]
@@ -230,11 +283,10 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
   // Exit plan mode
   uiStore.exitPlanMode(sessionId)
 
-  // Get provider and session info
-  const activeProvider = providerStore.getActiveProvider()
-  if (!activeProvider) return
-  const modelId = providerStore.activeModelId || activeProvider.defaultModel || activeProvider.models.find((m: any) => m.enabled)?.id
-  if (!modelId) return
+  // Get provider and session info — session-aware, same resolution the UI shows
+  const resolved = resolveSendModel(sessionId)
+  if (!resolved) return
+  const { provider: activeProvider, modelId } = resolved
   const session = chatStore.sessions.find((s) => s.id === sessionId)
   const workingFolder = session?.workingFolder ?? undefined
   const sshConnectionId = session?.sshConnectionId ?? undefined
@@ -272,7 +324,6 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
   const planStore = (await import('@renderer/stores/plan-store')).usePlanStore.getState()
   const uiStore = (await import('@renderer/stores/ui-store')).useUIStore.getState()
   const chatStore = useChatStore.getState()
-  const providerStore = (await import('@renderer/stores/provider-store')).useProviderStore.getState()
   const settingsStore = (await import('@renderer/stores/settings-store')).useSettingsStore.getState()
 
   const plan = planStore.plans[planId]
@@ -284,11 +335,10 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
   // Re-enter plan mode for revision
   uiStore.enterPlanMode(sessionId)
 
-  // Get provider and session info
-  const activeProvider = providerStore.getActiveProvider()
-  if (!activeProvider) return
-  const modelId = providerStore.activeModelId || activeProvider.defaultModel || activeProvider.models.find((m: any) => m.enabled)?.id
-  if (!modelId) return
+  // Get provider and session info — session-aware, same resolution the UI shows
+  const resolved = resolveSendModel(sessionId)
+  if (!resolved) return
+  const { provider: activeProvider, modelId } = resolved
   const session = chatStore.sessions.find((s) => s.id === sessionId)
   const workingFolder = session?.workingFolder ?? undefined
   const sshConnectionId = session?.sshConnectionId ?? undefined

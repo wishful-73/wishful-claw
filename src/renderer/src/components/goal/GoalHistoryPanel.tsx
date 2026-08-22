@@ -382,6 +382,10 @@ export function GoalHistoryPanel({
                       planTaskChainRoot(task.planId, task.originalPlanId) === planRoot ||
                       task.planId === plan.planId
                   )
+                  // While a round is still executing it has no summary/evaluation
+                  // yet — its title duplicates the task row below, so hide just
+                  // the executing row and keep finished rounds visible.
+                  const visibleRounds = planRounds.filter((r) => r.status !== 'executing')
                   const expanded = expandedPlanId === planKey
                   return (
                     <div key={planKey} className="rounded-md border border-border/60 px-2.5 py-2">
@@ -421,7 +425,10 @@ export function GoalHistoryPanel({
                                     <span className="min-w-0 truncate font-medium">
                                       {task.ordinal + 1}. {task.title}
                                     </span>
-                                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                                    <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+                                      {task.status === 'active' && task.startedAt
+                                        ? formatRoundDuration(task.startedAt, null)
+                                        : null}
                                       {t(`goal.history.taskStatus.${task.status}`)}
                                     </span>
                                   </div>
@@ -432,9 +439,11 @@ export function GoalHistoryPanel({
                               ))}
                             </div>
                           ) : null}
-                        {planRounds.length > 0 ? (
+                        {visibleRounds.length > 0 ? (
+                          // Finished rounds only — an executing round has no summary yet and its
+                          // title duplicates the task row above, so it stays hidden while running.
                           <div className="mt-2 space-y-1.5 border-t border-border/40 pt-2">
-                            {planRounds.map((task) => (
+                            {visibleRounds.map((task) => (
                               <div key={task.id} className="rounded-sm bg-muted/40 px-2 py-1.5">
                                 <div className="flex items-center justify-between gap-2 text-[11px]">
                                   <span className="flex items-center gap-1.5 font-medium">
@@ -466,11 +475,11 @@ export function GoalHistoryPanel({
                               </div>
                             ))}
                           </div>
-                        ) : (
+                        ) : expandedPlanTasks.length === 0 ? (
                           <p className="mt-2 border-t border-border/40 pt-2 text-[11px] text-muted-foreground/70">
                             {t('goal.history.noRoundRecords')}
                           </p>
-                        )}
+                        ) : null}
                         </>
                       ) : null}
                     </div>

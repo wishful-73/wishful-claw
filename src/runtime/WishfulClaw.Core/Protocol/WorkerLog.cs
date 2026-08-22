@@ -6,6 +6,16 @@ public static class WorkerLog
 {
     private const int DefaultSlowRequestMs = 750;
 
+    /// <summary>
+    /// High-frequency polling methods whose success logs would flood the
+    /// console (the goal panel polls goal/live every second). Failures and
+    /// slow requests for these methods are still logged.
+    /// </summary>
+    private static readonly HashSet<string> SilentPollingMethods = new(StringComparer.Ordinal)
+    {
+        "goal/live"
+    };
+
     public static bool DebugEnabled { get; } = ResolveDebugEnabled();
 
     public static int SlowRequestMs { get; } = ResolveSlowRequestMs();
@@ -69,6 +79,13 @@ public static class WorkerLog
         if (elapsedMs >= SlowRequestMs)
         {
             Warn($"slow {message}");
+            return;
+        }
+
+        // High-frequency polls: success is the expected steady state — logging
+        // every tick would drown the console. Only failures/slow calls log.
+        if (SilentPollingMethods.Contains(method))
+        {
             return;
         }
 

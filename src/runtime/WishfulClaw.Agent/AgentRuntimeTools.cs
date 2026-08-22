@@ -217,9 +217,15 @@ public static class AgentRuntimeTools
         var messagePackEvent = AgentStreamMessagePackEmitter.Encode(envelope);
         await context.EmitMessagePackEventAsync(messagePackEvent.EventName, messagePackEvent.Payload);
 
-        WorkerLog.Debug(
-            $"agent stream emitted runId={state.RunId} seq={envelope.Seq} " +
-            $"events={events.Length} bytes={messagePackEvent.Payload.Length}");
+        // Per-envelope DEBUG floods the console for high-throughput runs
+        // (streaming deltas, goal sub-agent forwarding). Only slow or
+        // unusually large envelopes are worth a trace line.
+        if (messagePackEvent.Payload.Length > 64 * 1024)
+        {
+            WorkerLog.Debug(
+                $"agent stream emitted runId={state.RunId} seq={envelope.Seq} " +
+                $"events={events.Length} bytes={messagePackEvent.Payload.Length}");
+        }
     }
 
     // ── Internal execution ──

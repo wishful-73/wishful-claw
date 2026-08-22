@@ -1,4 +1,4 @@
-# Verification Report — v2-iter-19
+﻿# Verification Report — v2-iter-19
 
 验证时间：2026-08-20
 
@@ -32,6 +32,16 @@ commit `1af53c1`（GL-1..16）+ 审查修正 commit：
 - BOM 扫描：Edit 工具两次引入 BOM 回归（13 文件 + 4 文件），均在 commit 前按字节剥离，HEAD 对比确认非历史遗留
 - 独立 subagent 审查：见 `review_report_review06_fixes.md`，❌ 项 0
 - 静态核验：前端 `envelope.runId` 仅用于 seq 连续性检测与消息匹配（agent-stream-receiver.ts:109-137），goal 事件按 payload 字段路由（chat-store index.ts:442-465），runId 格式变更无消费方影响
+
+## 补充验证（plan-2 运行时真实性与评估强化，2026-08-22）
+
+commit `7a23d6f`（用户实测 4 问题）：
+
+- C# `dotnet build` 0 警告 0 错误；TS 三配置全零错误
+- 步骤1：confirm 工具路径补发 started/running 事件；StartAsync 事件移至 StartOrResumeRun 之后（首发事件 runState=running）
+- 步骤2：面板头部徽章 terminal 用 DB 徽章、其余按 runState 渲染（新增 goal.status.idle zh/en）；计划卡片 active+非 running 显示 interrupted
+- 步骤3：分解提示词禁止单探索计划；任务执行要求逐条 Verification: PASS/FAIL(evidence)；评估器无证据判不满足；任务结果截断 500→2000
+- BOM：7 个触碰文件全部被 Edit 工具注入，已剥离后复验编译
 
 ## 运行时验证（待用户实测）
 

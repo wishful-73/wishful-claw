@@ -3,15 +3,25 @@ using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.Agent;
 
 /// <summary>
 /// Free-form adaptive orchestration loop (user-directed redesign): the goal is
-/// NOT pre-decomposed into a fixed plan list. Instead, each step an LLM
-/// decision call sees the objective plus everything executed so far and picks
-/// the next action — execute a task, declare complete, or declare failure.
-/// This lets the run adapt to what it discovers mid-flight.
+/// a long-running autonomous sub-agent that may run for days. It is NOT
+/// pre-decomposed into a fixed plan list; each step an LLM decision call sees
+/// the objective plus everything executed so far and picks the next action —
+/// execute a task, declare complete, or declare failure.
+///
+/// Termination contract (user-confirmed):
+///   - the LLM itself declares complete/failed,
+///   - the user aborts the goal, or
+///   - (future) the optional token budget runs out.
+/// Infrastructure failures NEVER terminate the run: decision failures retry
+/// with exponential backoff (capped at 10 minutes); 429s use the shared
+/// backoff. A repetition-detector injects system reminders when the loop
+/// spins instead of hard-killing it.
 ///
 /// DB compatibility: everything is recorded under one synthetic plan row
 /// ("Adaptive execution") so the existing goal_plans/goal_tasks tables and
@@ -19,8 +29,12 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static partial class GoalOrchestrator
 {
-    private const int AdaptiveMaxSteps = 24;
-    private const int AdaptiveMaxConsecutiveParseFailures = 3;
+    /// <summary>Backoff ceiling for decision retries (10 minutes).</summary>
+    private const int AdaptiveDecisionRetryCapSeconds = 600;
+    /// <summary>Consecutive near-identical actions before a spin reminder is injected.</summary>
+    private const int AdaptiveSpinReminderThreshold = 5;
+    /// <summary>A milestone event is recorded every N successful steps.</summary>
+    private const int AdaptiveMilestoneEverySuccesses = 5;
 
     /// <summary>
     /// One entry in the adaptive execution log fed back to every decision call.
@@ -70,13 +84,20 @@ public static partial class GoalOrchestrator
         WriteGoalState(goal);
 
         var log = new List<AdaptiveStepRecord>();
-        var consecutiveParseFailures = 0;
+        var decisionRetrySeconds = 0;
+        var successesSinceMilestone = 0;
+        var milestoneBase = 0;
         var stopwatch = Stopwatch.StartNew();
         var live = new GoalAdaptiveLiveState();
         goal.AdaptiveLive = live;
 
-        for (var step = 1; step <= AdaptiveMaxSteps; step++)
+        // Long-running loop: no step cap. Termination is the LLM's own
+        // complete/failed declaration or a user abort — infrastructure
+        // failures only ever delay the next attempt (user-confirmed contract).
+        var step = 0;
+        while (true)
         {
+            step++;
             await ReachSafePointAsync(goal, context, ct);
             live.SetCurrent("deciding", null);
 
@@ -86,19 +107,17 @@ public static partial class GoalOrchestrator
             await ReachSafePointAsync(goal, context, ct);
             if (decision == null)
             {
-                consecutiveParseFailures++;
-                WorkerLog.Warn($"adaptive decide failed ({consecutiveParseFailures}/{AdaptiveMaxConsecutiveParseFailures})");
-                if (consecutiveParseFailures >= AdaptiveMaxConsecutiveParseFailures)
-                {
-                    return FailAdaptive(goal, plan, parameters,
-                        $"Orchestrator decision failed {consecutiveParseFailures} times in a row after {log.Count} executed step(s).");
-                }
-                // Back off between decision retries — a rate-limited provider
-                // must not have its 3 attempts burned within one millisecond.
-                await DelayInterruptibleAsync(goal, 2 * consecutiveParseFailures, ct);
+                // Infrastructure/parse failure: exponential backoff, retry
+                // forever. Never terminates the run (user-confirmed contract).
+                decisionRetrySeconds = decisionRetrySeconds == 0
+                    ? 2
+                    : Math.Min(decisionRetrySeconds * 2, AdaptiveDecisionRetryCapSeconds);
+                WorkerLog.Warn($"adaptive decide failed; retrying in {decisionRetrySeconds}s (step {step}, {log.Count} executed)");
+                await DelayInterruptibleAsync(goal, decisionRetrySeconds, ct);
+                step--; // retry the same step number
                 continue;
             }
-            consecutiveParseFailures = 0;
+            decisionRetrySeconds = 0;
 
             if (decision.Action == "complete")
             {
@@ -141,21 +160,60 @@ public static partial class GoalOrchestrator
                 continue;
             }
 
-            var outcomeText = result.Status == GoalPlanStatusValues.Complete
+            var succeeded = result.Status == GoalPlanStatusValues.Complete;
+            var outcomeText = succeeded
                 ? $"DONE. Report:\n{result.Summary}"
                 : $"FAILED. Error:\n{result.Error ?? "(no error text)"}";
             log.Add(new AdaptiveStepRecord(step, task.taskTitle, task.taskDescription, outcomeText));
-            live.AddStep(step, task.taskTitle, result.Status == GoalPlanStatusValues.Complete, result.Summary ?? result.Error);
+            live.AddStep(step, task.taskTitle, succeeded, result.Summary ?? result.Error);
 
             // Record into goal_plan_tasks / goal_execution_runs for panel queries.
             RecordAdaptiveRound(goal, plan, step, task.taskTitle,
-                result.Status == GoalPlanStatusValues.Complete, result.Summary ?? result.Error, parameters);
+                succeeded, result.Summary ?? result.Error, parameters);
+
+            // Milestone timeline: one lightweight goal_event per N successes.
+            if (succeeded)
+            {
+                successesSinceMilestone++;
+                if (successesSinceMilestone >= AdaptiveMilestoneEverySuccesses)
+                {
+                    RecordAdaptiveMilestone(goal, parameters, milestoneBase + successesSinceMilestone, log);
+                    milestoneBase += successesSinceMilestone;
+                    successesSinceMilestone = 0;
+                }
+            }
 
             WriteGoalState(goal);
         }
+    }
 
-        return FailAdaptive(goal, plan, parameters,
-            $"Reached the {AdaptiveMaxSteps}-step limit without completing the goal.");
+    /// <summary>
+    /// Record a milestone goal_event summarizing the last N successful steps —
+    /// a lightweight timeline entry for long runs (no notification spam).
+    /// </summary>
+    private static void RecordAdaptiveMilestone(
+        GoalContext goal, JsonElement parameters, int stepsDone, List<AdaptiveStepRecord> log)
+    {
+        try
+        {
+            var recentTitles = string.Join("; ", log.TakeLast(AdaptiveMilestoneEverySuccesses).Select(s => s.Title));
+            var message = $"Milestone: {stepsDone} steps completed. Recent: {recentTitles}";
+            var eventParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", goal.SessionId);
+                w.WriteString("goalId", goal.GoalId);
+                w.WriteString("eventType", "goal_milestone");
+                w.WriteString("message", message);
+                w.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                w.WriteEndObject();
+            });
+            DbGoalTools.AddEvent(eventParams);
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn($"adaptive milestone event failed: {ex.Message}");
+        }
     }
 
     private static GoalRunOutcome FailAdaptive(
@@ -216,7 +274,7 @@ public static partial class GoalOrchestrator
         ct.ThrowIfCancellationRequested();
         var stepLog = RenderStepLog(log);
         var prompt = GoalPromptTemplates.BuildAdaptiveDecisionUserPrompt(
-            goal.GoalText, stepLog, log.Count, AdaptiveMaxSteps);
+            goal.GoalText, stepLog, log.Count);
 
         var input = CreateTaskInput(
             prompt,
@@ -297,11 +355,25 @@ public static partial class GoalOrchestrator
 
     private static string RenderStepLog(List<AdaptiveStepRecord> log)
     {
+        var sb = new StringBuilder();
+
+        // Spin detector (reminder-based, user-confirmed): when the last N
+        // actions look near-identical, inject a system reminder so the LLM
+        // changes approach itself — the host never hard-kills for this.
+        if (log.Count >= AdaptiveSpinReminderThreshold && IsSpinning(log))
+        {
+            sb.AppendLine($"<system-reminder event=\"adaptive_spin\">Your last {AdaptiveSpinReminderThreshold} actions were near-identical and produced no new progress. You are spinning. Change approach: try a fundamentally different method, split the work into smaller concrete steps, or declare failed with a reason if the goal is truly blocked.</system-reminder>");
+            sb.AppendLine();
+            WorkerLog.Warn($"adaptive spin detected after {log.Count} steps — reminder injected");
+        }
+
         if (log.Count == 0)
-            return "(nothing executed yet — this is the first action)";
+        {
+            sb.AppendLine("(nothing executed yet — this is the first action)");
+            return sb.ToString();
+        }
 
         const int maxCharsPerStep = 3000;
-        var sb = new StringBuilder();
         foreach (var entry in log)
         {
             sb.AppendLine($"--- Step {entry.Step}: {entry.Title} ---");
@@ -310,6 +382,24 @@ public static partial class GoalOrchestrator
         }
         return sb.ToString();
     }
+
+    /// <summary>
+    /// True when the trailing window of executed actions is near-identical:
+    /// same normalized title AND every one of them failed. Repeating a
+    /// *succeeding* action is legitimate progress and never counts as spinning.
+    /// </summary>
+    private static bool IsSpinning(List<AdaptiveStepRecord> log)
+    {
+        var window = log.TakeLast(AdaptiveSpinReminderThreshold).ToList();
+        if (window.Count < AdaptiveSpinReminderThreshold) return false;
+        var normalized = NormalizeTitle(window[0].Title);
+        return window.All(s => NormalizeTitle(s.Title) == normalized)
+            && window.All(s => s.Outcome.StartsWith("FAILED", StringComparison.Ordinal));
+    }
+
+    /// <summary>Lowercase, digits/underscores collapsed — tolerant title match.</summary>
+    private static string NormalizeTitle(string title)
+        => System.Text.RegularExpressions.Regex.Replace(title.Trim().ToLowerInvariant(), @"[\d_]+", "#");
 
     private sealed record AdaptiveDecision(
         string Action,

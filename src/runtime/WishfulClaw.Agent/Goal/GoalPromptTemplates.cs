@@ -194,15 +194,17 @@ Workflow:
     /// The orchestrator does NOT pre-decompose the goal: each step it sees the
     /// objective plus everything executed so far and chooses the next action.
     /// </summary>
-    public const string AdaptiveOrchestratorSystemPrompt = @"You are a Goal Orchestrator Agent running an autonomous background task. You decide ONE next action at a time; the host executes it with a sub-agent, appends the result to your log, and asks you again.
+    public const string AdaptiveOrchestratorSystemPrompt = @"You are a Goal Orchestrator Agent running an autonomous background task that may run for a long time (hours to days). You decide ONE next action at a time; the host executes it with a sub-agent, appends the result to your log, and asks you again.
 
 Decision rules:
 - Choose the smallest next action that makes real progress toward the goal. Prefer concrete, verifiable actions over broad ones.
 - Every execute action's description MUST contain explicit verification criteria (e.g. 'dotnet build exits 0', 'the file X contains Y').
 - Adapt freely: if earlier results reveal the plan was wrong, change direction — add, skip, or re-scope actions. You are never locked into an initial plan.
 - Do not repeat an action that already succeeded or failed identically. If something failed twice the same way, change approach or declare failure.
+- If a system-reminder tells you that you are spinning, take it seriously: change method or re-scope immediately.
+- Transient failures (rate limits, network errors) are handled by the host — just pick up where the log left off; never restart work that already succeeded.
 - When ALL verification criteria of the overall goal are met with evidence in the log, choose complete.
-- If the goal is impossible or stuck after genuine attempts, choose failed with the reason.
+- If the goal is impossible or stuck after genuine, varied attempts, choose failed with the reason.
 
 Return ONLY a JSON object:
 {""action"": ""execute"" | ""complete"" | ""failed"",
@@ -214,10 +216,15 @@ Return ONLY a JSON object:
     /// <summary>
     /// Build the adaptive decision user prompt: goal + full execution log.
     /// </summary>
-    public static string BuildAdaptiveDecisionUserPrompt(string goalText, string stepLog, int stepCount, int maxSteps)
+    /// <summary>
+    /// Build the adaptive decision user prompt: goal + full execution log.
+    /// The run is designed to be long-lived (days); there is no step budget —
+    /// the loop ends only via complete/failed or a user abort.
+    /// </summary>
+    public static string BuildAdaptiveDecisionUserPrompt(string goalText, string stepLog, int stepCount)
     {
         return $"Goal: {goalText}\n\n" +
-               $"Steps executed so far ({stepCount} of max {maxSteps}):\n{stepLog}\n\n" +
+               $"Steps executed so far ({stepCount} total):\n{stepLog}\n\n" +
                "Decide the single next action. Return JSON only.";
     }
 }

@@ -70,6 +70,16 @@ commit `7a23d6f`（用户实测 4 问题）：
 - 前端：goal/live msgpack 通道（main 桥接 + binary-ipc 常量）；goal-history-store.liveByGoal + loadGoalLive；面板选中运行中 goal 时 1s 拉 live 快照（当前动作 + 步骤列表倒序渲染），DB 轮询降为 15s 兜底
 - C# build 0 警告 0 错误；TS 三配置全零错误；BOM 已剥离
 
+## 补充验证（plan-4：长时自治化，2026-08-22）
+
+用户定位再修正：Goal = 可跑几天的自治子 agent，基础设施失败永不判死。
+
+- C# `dotnet build` 0 警告 0 错误（BOM 剥离前后各验一次）
+- 无限重试：删 AdaptiveMaxSteps 步数上限与决策熔断；决策失败指数退避 2s→…→600s 封顶、成功归零；429 保持共享退避（不占重试计数）；终止条件收敛为 LLM 自主 complete/failed 或用户 abort
+- 提醒制防打转：连续 5 次标题归一化相同且全部失败 → RenderStepLog 注入 system-reminder 让 LLM 自行换方法/拆细/宣告失败；成功中的重复不算打转
+- 里程碑时间线：每 5 个成功步骤写一条 goal_event（eventType=goal_milestone，聚合近 5 步标题），复用现有 goal_events 表与面板时间线
+- 决策提示词补长时运行语义（瞬态失败由宿主处理勿重启已完成工作）
+
 ## 运行时验证（待用户实测）
 
 以下需要真实模型调用，无法自动完成，留待用户人工验证：

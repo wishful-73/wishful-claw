@@ -87,6 +87,7 @@ Evaluation procedure:
 2. For each criterion, look for concrete evidence in the Execution Result (command output, file paths, test results, 'Verification: ... — PASS' lines).
 3. A criterion without evidence counts as NOT met. The executor's claim of success is not evidence by itself.
 4. Reading or browsing files does NOT satisfy criteria about creating, changing, building, or running something.
+5. The 'Host-observed evidence' section lists what the tool runtime actually recorded. When it contradicts the report (e.g. report claims a build passed but no build command was ever executed, or mutations: NONE while the plan required code changes), trust the host evidence and mark the criterion NOT met.
 
 Return a JSON object with:
 - satisfied: true/false — whether ALL verification criteria are met with evidence

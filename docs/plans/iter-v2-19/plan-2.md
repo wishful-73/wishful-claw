@@ -26,23 +26,29 @@
 
 ## 步骤清单
 
-- [ ] 步骤1：工具路径 confirm 补发 run-state + 消除 StartAsync 竞态
+- [x] 步骤1：工具路径 confirm 补发 run-state + 消除 StartAsync 竞态
   - `AwaitGoalConfirmationAsync` 确认成功后 `await EmitRunStateChangedAsync(sessionId, new GoalActionResult(true,"started",Active,Running,goalId), context)`
   - `StartAsync` 把 "Goal created" 事件移到 `StartOrResumeRun` 之后发（此时 RunState 已是 Running）
   - 验证：`dotnet build` 0 错误
-- [ ] 步骤2：面板状态徽章按运行态渲染（问题 2+4）
+- [x] 步骤2：面板状态徽章按运行态渲染（问题 2+4）
   - 详情页头徽章：terminal（complete/aborted）→ DB 徽章；否则按 runState 显示 运行中/已暂停/空闲（新增 `goal.status.idle` i18n，en+zh）
   - 计划卡片状态：`plan.status==='active' && selectedRunState!=='running'` 时显示为 interrupted（复用现有 `taskStatus.interrupted` 文案），如实表达"未在跑"
   - 验证：tsc 三配置 0 错误
-- [ ] 步骤3：评估链路强化（问题 3）
+- [x] 步骤3：评估链路强化（问题 3）
   - `DecompositionSystemPrompt`：实现类目标禁止坍缩为单一探索计划，必须含 implement + verify 计划（最少 2 个）
   - `TaskExecutionSystemPrompt`/`BuildTaskExecutionUserPrompt`：要求逐条核对验证标准，输出 `Verification: <标准> PASS/FAIL <证据>`；无证据禁止宣称完成
   - `EvaluationSystemPrompt`/`BuildEvaluationUserPrompt`：逐条对照验证标准；结果缺证据 → satisfied=false + retry；纯浏览/读取不满足实现类声明
   - 任务结果截断 500→2000 字符，给评估器更完整证据
   - 验证：`dotnet build` 0 错误
-- [ ] 步骤4：收尾验证
+- [x] 步骤4：收尾验证
   - C# build + tsc 三配置 + 触碰文件 BOM 扫描
   - 更新 verification_report.md 补充段
+- [x] 步骤5：任务结果回传规范化（参照 DeepSeek-Reasonix task.go/evidence 设计，用户拍板方案 B）
+  - 5a. 去掉 ExecuteTaskAsync 的 Substring(0,2000)：完整结果入库（goal_plan_tasks.summary / goal_execution_runs），DB TEXT 无长度压力
+  - 5b. 评估器入参兜底改 head+tail 截断（参照 Reasonix truncateToolOutput：保留首尾各半 + 省略标注），Verification 行在尾部永不丢失
+  - 5c. EvidenceDigest：TaskLoop 执行任务期间聚合宿主收据（写文件路径、shell 命令及成败），附到 PlanExecutionResult.Evidence，评估提示词同看"模型自报 + 宿主事实"
+  - 验证：dotnet build 0 错误
+- [x] 步骤6：收尾验证（同步骤4）
 
 ## 涉及文件
 - `src/runtime/WishfulClaw.Agent/AgentRuntimeGoalExecutor.cs` — 步骤1

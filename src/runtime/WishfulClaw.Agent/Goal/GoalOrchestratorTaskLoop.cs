@@ -113,9 +113,15 @@ public static partial class GoalOrchestrator
             "custom",
             GoalPromptTemplates.TaskExecutionSystemPrompt);
         var toolCallId = $"goal-task-{task.taskId}-{Guid.NewGuid():N}";
+        string? evidenceDigest = null;
 
         parentState.GoalEventContext = new GoalEventContext(
             goal.GoalId, plan.PlanId, plan.RetryCount + 1, task.title);
+
+        // Host-side evidence ledger for this task: the SubAgentExecutor appends
+        // each child tool call's observable facts while the task runs.
+        var evidence = new GoalTaskEvidence();
+        parentState.GoalEvidenceSink = evidence;
 
         try
         {
@@ -125,6 +131,7 @@ public static partial class GoalOrchestrator
 
             stopwatch.Stop();
             var output = result.Content?.Trim() ?? string.Empty;
+            evidenceDigest = evidence.HasAnyEntry() ? evidence.ToDigest() : null;
 
             if (IsRateLimitText(output))
             {
@@ -135,6 +142,7 @@ public static partial class GoalOrchestrator
                     Status = GoalExecutionAttemptStatusValues.Failed,
                     Error = output,
                     Is429 = true,
+                    EvidenceDigest = evidenceDigest,
                     RetryCount = plan.RetryCount,
                     ElapsedMs = stopwatch.ElapsedMilliseconds
                 };
@@ -145,9 +153,11 @@ public static partial class GoalOrchestrator
                 PlanId = plan.PlanId,
                 Title = task.title,
                 Status = GoalPlanStatusValues.Complete,
-                // Keep enough tail (Verification lines) for the evaluator to
-                // check criteria against evidence; 500 chars cut them off.
-                Summary = output.Length > 2000 ? output.Substring(0, 2000) + "..." : output,
+                // Full report — no truncation. The DB TEXT columns have no
+                // length pressure and the evaluator needs the Verification
+                // lines (which live at the tail) intact.
+                Summary = output,
+                EvidenceDigest = evidenceDigest,
                 RetryCount = plan.RetryCount,
                 ElapsedMs = stopwatch.ElapsedMilliseconds
             };
@@ -167,6 +177,7 @@ public static partial class GoalOrchestrator
                 Status = GoalExecutionAttemptStatusValues.Failed,
                 Error = ex.Message,
                 Is429 = IsRateLimitText(ex.Message),
+                EvidenceDigest = evidenceDigest,
                 RetryCount = plan.RetryCount,
                 ElapsedMs = stopwatch.ElapsedMilliseconds
             };
@@ -176,6 +187,7 @@ public static partial class GoalOrchestrator
             // Always clear the goal context — a leftover context would mis-tag
             // the next unrelated sub-agent call's events as goal_activity.
             parentState.GoalEventContext = null;
+            parentState.GoalEvidenceSink = null;
         }
     }
 }

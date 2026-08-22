@@ -424,6 +424,18 @@ public static partial class GoalOrchestrator
             ? result.Summary
             : result.Error ?? "No output";
 
+        // Give the evaluator the host-observed receipts alongside the model's
+        // own report: claims are checked against what actually ran.
+        if (!string.IsNullOrEmpty(result.EvidenceDigest))
+        {
+            executionResultText += "\n\n=== Host-observed evidence (from the tool runtime, not the model) ===\n"
+                + result.EvidenceDigest;
+        }
+
+        // Head+tail bound for the evaluation prompt: keeps the report's tail
+        // (Verification lines) instead of a head-only Substring cut.
+        executionResultText = StripCodeFence(HeadTail(executionResultText));
+
         ct.ThrowIfCancellationRequested();
         var evaluation = await EvaluateViaLlmAsync(
             goal.GoalText,

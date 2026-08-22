@@ -152,6 +152,21 @@ public static partial class GoalOrchestrator
     }
 
     /// <summary>
+    /// Head+tail truncation for evaluator input (modeled after
+    /// DeepSeek-Reasonix's truncateToolOutput): keeps the report's opening and
+    /// — critically — its trailing "Verification: ... PASS/FAIL" lines, which a
+    /// plain Substring(0, n) would always cut off. Marks the elided middle.
+    /// </summary>
+    internal static string HeadTail(string text, int maxChars = 12000)
+    {
+        if (text.Length <= maxChars) return text;
+        var keep = maxChars / 2;
+        return text[..keep] +
+               $"\n\n…[truncated {text.Length - maxChars} of {text.Length} chars in the middle; the tail below is preserved]…\n\n" +
+               text[^keep..];
+    }
+
+    /// <summary>
     /// Strip a wrapping markdown code fence (```json ... ``` or ``` ... ```)
     /// from LLM output. Models routinely ignore "Return ONLY a JSON array"
     /// and fence their answer; all JSON-expecting call sites share this.

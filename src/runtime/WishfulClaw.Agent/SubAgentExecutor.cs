@@ -179,6 +179,16 @@ public static partial class SubAgentExecutor
                 collector.Iterations, BuildToolCallEntries(collector.ToolCallSummaries));
         }
 
+        // Goal-orchestrated run: hand the host-observed tool receipts to the
+        // orchestrator's evidence sink so the evaluator sees what actually ran.
+        if (parentState.GoalEvidenceSink is { } sink)
+        {
+            foreach (var s in collector.ToolCallSummaries)
+            {
+                sink.Record(s.Name, ExtractKeyParam(s.Name, s.Input), s.Status == "completed");
+            }
+        }
+
         var toolCallSummary = BuildToolCallSummary(collector.ToolCallSummaries);
         var toolResultText = string.IsNullOrEmpty(toolCallSummary)
             ? subAgentOutput

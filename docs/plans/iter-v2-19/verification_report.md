@@ -43,6 +43,16 @@ commit `7a23d6f`（用户实测 4 问题）：
 - 步骤3：分解提示词禁止单探索计划；任务执行要求逐条 Verification: PASS/FAIL(evidence)；评估器无证据判不满足；任务结果截断 500→2000
 - BOM：7 个触碰文件全部被 Edit 工具注入，已剥离后复验编译
 
+## 补充验证（plan-2 步骤5：任务结果回传规范化，2026-08-22）
+
+参照 DeepSeek-Reasonix task.go/evidence 设计（用户拍板方案 B）：
+
+- C# `dotnet build` 0 警告 0 错误（BOM 剥离前后各验一次）
+- 5a 去截断：ExecuteTaskAsync 完整结果入 PlanExecutionResult.Summary → goal_plan_tasks.summary / goal_execution_runs
+- 5b head+tail：GoalOrchestratorLLM.HeadTail(12000) 保留报告首尾（Verification 行在尾部永不丢），替代头部 Substring
+- 5c EvidenceDigest：AgentRuntimeRunState.GoalEvidenceSink（新）← SubAgentExecutor 从 collector.ToolCallSummaries 喂收据 → GoalTaskEvidence.ToDigest()（mutations/reads 分组、40 行上限）→ PlanExecutionResult.EvidenceDigest → 评估提示词"Host-observed evidence"段；评估提示词新增规则 5（宿主证据与自报矛盾时信宿主）
+- AOT：GoalTaskEvidence 纯内存对象无序列化，无需 JsonContext 注册
+
 ## 运行时验证（待用户实测）
 
 以下需要真实模型调用，无法自动完成，留待用户人工验证：

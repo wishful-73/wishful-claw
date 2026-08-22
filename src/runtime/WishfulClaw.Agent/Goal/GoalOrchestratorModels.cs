@@ -19,6 +19,8 @@ public sealed class PlanExecutionResult
     public string? Error { get; set; }
     public bool Is429 { get; set; }
     public string? RetryAfterHint { get; set; }
+    /// <summary>Host-observed tool receipts digest (what actually ran), separate from the model's own report.</summary>
+    public string? EvidenceDigest { get; set; }
     public int RetryCount { get; set; }
     public long ElapsedMs { get; set; }
 

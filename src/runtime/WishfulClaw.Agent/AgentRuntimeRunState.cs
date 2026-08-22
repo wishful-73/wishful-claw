@@ -46,6 +46,16 @@ public sealed class AgentRuntimeRunState : IDisposable
     public GoalEventContext? GoalEventContext { get; set; }
 
     /// <summary>
+    /// Host-side evidence sink for Goal-orchestrated sub-agent runs. The
+    /// SubAgentExecutor appends each child tool call's observable facts
+    /// (tool name, key argument, success) here so the orchestrator can hand
+    /// the evaluator host-observed receipts alongside the model's own report —
+    /// evaluation then checks claims against what actually ran (inspired by
+    /// DeepSeek-Reasonix's evidence ledger).
+    /// </summary>
+    public GoalTaskEvidence? GoalEvidenceSink { get; set; }
+
+    /// <summary>
     /// Identifies the source of usage events: "executor", "subagent", "compaction", etc.
     /// Default is "executor". Set by the caller before executing a provider turn.
     /// </summary>

@@ -68,6 +68,7 @@ internal static class GoalSubAgentExecutor
                 foreach (var property in parentParameters.EnumerateObject())
                 {
                     if (property.NameEquals("messages") ||
+                        property.NameEquals("provider") ||
                         property.NameEquals("personaId") ||
                         property.NameEquals("userRules") ||
                         property.NameEquals("providerTurnOnly") ||

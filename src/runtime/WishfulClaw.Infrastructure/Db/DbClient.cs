@@ -152,6 +152,7 @@ public static partial class DbClient
                     completed_plan_count INTEGER NOT NULL DEFAULT 0,
                     current_plan_index INTEGER NOT NULL DEFAULT -1,
                     working_folder TEXT,
+                    model_config_json TEXT,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );",
@@ -313,6 +314,7 @@ public static partial class DbClient
             EnsureColumn("goals", "completed_plan_count", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("goals", "current_plan_index", "INTEGER NOT NULL DEFAULT -1");
             EnsureColumn("goals", "working_folder", "TEXT");
+            EnsureColumn("goals", "model_config_json", "TEXT");
             EnsureColumn("goals", "token_budget", "INTEGER");
             EnsureColumn("goals", "time_used_seconds", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("goals", "project_id", "TEXT");

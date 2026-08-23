@@ -199,7 +199,11 @@ export interface GoalStore {
     sessionId: string,
     patch: Partial<Pick<SessionGoal, 'objective' | 'status' | 'tokenBudget'>>
   ) => Promise<{ success: boolean; goal?: SessionGoal; error?: string }>
-  confirmGoal: (sessionId: string, goalId: string) => Promise<{ success: boolean; error?: string }>
+  confirmGoal: (
+    sessionId: string,
+    goalId: string,
+    modelConfig?: Record<string, unknown>
+  ) => Promise<{ success: boolean; error?: string }>
   cancelGoal: (
     sessionId: string,
     goalId?: string | null

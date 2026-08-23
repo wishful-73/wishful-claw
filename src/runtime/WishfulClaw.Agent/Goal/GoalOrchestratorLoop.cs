@@ -540,6 +540,8 @@ public static partial class GoalOrchestrator
                 w.WriteNumber("currentPlanIndex", goal.CurrentPlanIndex);
                 w.WriteNumber("planCount", goal.Plans.Count);
                 w.WriteNumber("completedPlanCount", goal.Plans.Count(p => p.Status == GoalPlanStatusValues.Complete));
+                if (!string.IsNullOrWhiteSpace(goal.ModelConfigJson))
+                    w.WriteString("modelConfigJson", goal.ModelConfigJson);
                 if (goal.Plans.Count > 0)
                 {
                     w.WritePropertyName("plansJson");

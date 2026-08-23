@@ -171,11 +171,11 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
     }
   },
 
-  confirmGoal: async (sessionId, goalId) => {
+  confirmGoal: async (sessionId, goalId, modelConfig) => {
     try {
       const result = await invokeMessagePackBinary<{ success: boolean; error?: string }>(
         GOAL_CONFIRM_MSGPACK_CHANNEL,
-        { sessionId, goalId }
+        { sessionId, goalId, ...(modelConfig ? { modelConfig } : {}) }
       )
       if (result.success) {
         // Optimistically flip the goal to active so the banner transitions immediately.

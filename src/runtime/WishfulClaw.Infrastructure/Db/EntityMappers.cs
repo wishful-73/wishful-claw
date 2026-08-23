@@ -103,6 +103,7 @@ public static class EntityMappers
         CompletedPlanCount = r.GetInt32("completed_plan_count"),
         CurrentPlanIndex = r.GetInt32("current_plan_index"),
         WorkingFolder = r.GetNullableString("working_folder"),
+        ModelConfigJson = r.GetNullableString("model_config_json"),
         CreatedAt = r.GetInt64("created_at"),
         UpdatedAt = r.GetInt64("updated_at")
     };

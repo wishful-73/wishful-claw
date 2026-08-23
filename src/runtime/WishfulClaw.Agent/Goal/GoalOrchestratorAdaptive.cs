@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -70,121 +70,82 @@ public static partial class GoalOrchestrator
         }
 
         // ── Synthetic plan: keeps DB three-tier + panel queries compatible ──
-        var plan = new GoalPlanItem
+        // Idempotent per goal: reuse the existing adaptive plan row instead of
+        // inserting a new one on every start/resume (multiple "Adaptive
+        // execution" rows made the panel show several concurrent plans).
+        var plan = goal.Plans.FirstOrDefault(p => p.Title == "Adaptive execution")
+            ?? goal.Plans.FirstOrDefault();
+        if (plan == null)
         {
-            PlanId = GoalIds.NewPlanId(),
-            Title = "Adaptive execution",
-            Description = goal.GoalText,
-            Status = GoalPlanStatusValues.Active
-        };
-        goal.Plans = [plan];
-        goal.CurrentPlanIndex = 0;
-        SyncGoalToDb(goal, parameters);
-        GoalOrchestratorMaterialize.MaterializePlans(goal, parameters);
+            plan = new GoalPlanItem
+            {
+                PlanId = GoalIds.NewPlanId(),
+                Title = "Adaptive execution",
+                Description = goal.GoalText,
+                Status = GoalPlanStatusValues.Active
+            };
+            goal.Plans = [plan];
+            goal.CurrentPlanIndex = 0;
+            SyncGoalToDb(goal, parameters);
+            GoalOrchestratorMaterialize.MaterializePlans(goal, parameters);
+            PersistAdaptiveProgressStrict(goal, plan, parameters);
+        }
+        else if (plan.Status != GoalPlanStatusValues.Active)
+        {
+            plan.Status = GoalPlanStatusValues.Active;
+            GoalOrchestratorMaterialize.UpdatePlanStatus(goal, plan, GoalPlanStatusValues.Active, null);
+            SyncGoalToDb(goal, parameters);
+        }
         WriteGoalState(goal);
 
         var log = new List<AdaptiveStepRecord>();
         var decisionRetrySeconds = 0;
         var successesSinceMilestone = 0;
         var milestoneBase = 0;
-        var stopwatch = Stopwatch.StartNew();
         var live = new GoalAdaptiveLiveState();
         goal.AdaptiveLive = live;
-
-        // Long-running loop: no step cap. Termination is the LLM's own
-        // complete/failed declaration or a user abort — infrastructure
-        // failures only ever delay the next attempt (user-confirmed contract).
         var step = 0;
+
+        // One continuous AgentLoop conversation owns the Goal. Each turn gets
+        // its own execution ledger row, but the Goal context remains stable.
         while (true)
         {
             step++;
             await ReachSafePointAsync(goal, context, ct);
-            live.SetCurrent("deciding", null);
-
-            // ── Decide the next action ──
-            var decision = await DecideNextActionAsync(
-                goal, log, step, parameters, parentState, context, ct);
-            await ReachSafePointAsync(goal, context, ct);
-            if (decision == null)
+            live.SetCurrent("executing", "Goal sub-agent turn");
+            var attemptId = DbGoalExecutionRunTools.InsertRun(goal.GoalId, plan.PlanId, null, step);
+            var turnPrompt = BuildGoalTurnPrompt(goal, plan, log, step);
+            GoalSubAgentExecutor.TurnResult turn;
+            try
             {
-                // Infrastructure/parse failure: exponential backoff, retry
-                // forever. Never terminates the run (user-confirmed contract).
-                decisionRetrySeconds = decisionRetrySeconds == 0
-                    ? 2
-                    : Math.Min(decisionRetrySeconds * 2, AdaptiveDecisionRetryCapSeconds);
-                WorkerLog.Warn($"adaptive decide failed; retrying in {decisionRetrySeconds}s (step {step}, {log.Count} executed)");
-                await DelayInterruptibleAsync(goal, decisionRetrySeconds, ct);
-                step--; // retry the same step number
-                continue;
-            }
-            decisionRetrySeconds = 0;
+                turn = await GoalSubAgentExecutor.ExecuteTurnAsync(
+                    goal, parameters, parentState, context, turnPrompt);
+                var output = turn.Output?.Trim() ?? string.Empty;
+                var complete = TryReadGoalCompletion(output, out var completionSummary);
+                var summary = string.IsNullOrWhiteSpace(output) ? "Goal turn produced no report" : output;
+                var turnSucceeded = !string.IsNullOrWhiteSpace(output);
+                var finish = DbGoalExecutionRunTools.FinishRun(
+                    attemptId,
+                    turnSucceeded ? GoalExecutionAttemptStatusValues.Completed : GoalExecutionAttemptStatusValues.Failed,
+                    summary,
+                    turnSucceeded ? null : "Goal turn produced no report");
+                EnsureExecutionPersisted(finish, attemptId);
 
-            if (decision.Action == "complete")
-            {
-                plan.Status = GoalPlanStatusValues.Complete;
-                plan.ResultSummary = decision.Summary ?? "Goal completed";
-                FinishAdaptivePlan(goal, plan, parameters);
-                return new GoalRunOutcome(
-                    GoalStatusValues.Complete,
-                    GoalEventType.GoalCompleted,
-                    decision.Summary ?? "Goal completed");
-            }
+                log.Add(new AdaptiveStepRecord(step, "Goal sub-agent turn", turnPrompt, summary));
+                live.AddStep(step, "Goal sub-agent turn", complete, summary);
+                plan.ResultSummary = summary;
+                plan.Status = complete ? GoalPlanStatusValues.Complete : GoalPlanStatusValues.Active;
+                PersistAdaptiveProgressStrict(goal, plan, parameters);
 
-            if (decision.Action == "failed")
-            {
-                return FailAdaptive(goal, plan, parameters,
-                    decision.Summary ?? decision.Reason ?? "Goal failed by orchestrator decision");
-            }
-
-            // ── action == "execute": run the task via the existing pipeline ──
-            var task = (taskId: GoalIds.NewTaskId(),
-                        taskTitle: decision.Title ?? $"Step {step}",
-                        taskDescription: decision.Description is { Length: > 0 } d && d.Length <= 2000
-                            ? d
-                            : HeadTail(decision.Description ?? goal.GoalText, 2000));
-            live.SetCurrent("executing", task.taskTitle);
-            var result = await ExecuteTaskAsync(goal, plan, task, parameters, parentState, context, ct);
-            await ReachSafePointAsync(goal, context, ct);
-
-            // 429: the sub-agent already ran (side effects may exist), so the
-            // attempt IS recorded before handing over to the shared backoff.
-            // After backoff resolves, step-- re-runs the decision — which now
-            // sees this attempt in its log and can decide to continue or
-            // re-verify instead of blindly repeating.
-            if (result.Is429)
-            {
-                var outcome429 = $"INTERRUPTED by provider rate limit. Error:\n{result.Error ?? "(no error text)"}";
-                log.Add(new AdaptiveStepRecord(step, task.taskTitle, task.taskDescription, outcome429));
-                live.AddStep(step, task.taskTitle, false, result.Error);
-                RecordAdaptiveRound(goal, plan, step, task.taskTitle, false, result.Error ?? "429", parameters);
-
-                var backoffOutcome = await Handle429BackoffAsync(
-                    goal, plan, 0,
-                    new PlanExecutionResult { Is429 = true, Error = result.Error, RetryAfterHint = result.RetryAfterHint },
-                    parameters, parentState, context, ct);
-                await ReachSafePointAsync(goal, context, ct);
-                if (backoffOutcome == BackoffOutcome.Timeout)
+                if (complete)
                 {
-                    return FailAdaptive(goal, plan, parameters, "Rate limit timeout after 6 hours");
+                    return new GoalRunOutcome(
+                        GoalStatusValues.Complete,
+                        GoalEventType.GoalCompleted,
+                        completionSummary ?? summary);
                 }
-                step--; // re-decide with the interrupted attempt now in the log
-                continue;
-            }
 
-            var succeeded = result.Status == GoalPlanStatusValues.Complete;
-            var outcomeText = succeeded
-                ? $"DONE. Report:\n{result.Summary}"
-                : $"FAILED. Error:\n{result.Error ?? "(no error text)"}";
-            log.Add(new AdaptiveStepRecord(step, task.taskTitle, task.taskDescription, outcomeText));
-            live.AddStep(step, task.taskTitle, succeeded, result.Summary ?? result.Error);
-
-            // Record into goal_plan_tasks / goal_execution_runs for panel queries.
-            RecordAdaptiveRound(goal, plan, step, task.taskTitle,
-                succeeded, result.Summary ?? result.Error, parameters);
-
-            // Milestone timeline: one lightweight goal_event per N successes.
-            if (succeeded)
-            {
+                decisionRetrySeconds = 0;
                 successesSinceMilestone++;
                 if (successesSinceMilestone >= AdaptiveMilestoneEverySuccesses)
                 {
@@ -192,10 +153,118 @@ public static partial class GoalOrchestrator
                     milestoneBase += successesSinceMilestone;
                     successesSinceMilestone = 0;
                 }
+                live.SetCurrent("idle", null);
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                var finish = DbGoalExecutionRunTools.FinishRun(
+                    attemptId, GoalExecutionAttemptStatusValues.Interrupted,
+                    "Goal turn interrupted", "Cancellation requested");
+                EnsureExecutionPersisted(finish, attemptId);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var finish = DbGoalExecutionRunTools.FinishRun(
+                    attemptId, GoalExecutionAttemptStatusValues.Failed,
+                    null, ex.Message);
+                EnsureExecutionPersisted(finish, attemptId);
+                log.Add(new AdaptiveStepRecord(step, "Goal sub-agent turn", turnPrompt, $"FAILED. Error:\n{ex.Message}"));
+                live.AddStep(step, "Goal sub-agent turn", false, ex.Message);
+                plan.Status = GoalPlanStatusValues.Active;
+                plan.ResultSummary = ex.Message;
+                PersistAdaptiveProgressStrict(goal, plan, parameters);
 
-            WriteGoalState(goal);
+                decisionRetrySeconds = decisionRetrySeconds == 0
+                    ? 2
+                    : Math.Min(decisionRetrySeconds * 2, AdaptiveDecisionRetryCapSeconds);
+                WorkerLog.Warn($"goal sub-agent turn failed; Goal remains active and retries in {decisionRetrySeconds}s");
+                live.SetCurrent("idle", null);
+                await DelayInterruptibleAsync(goal, decisionRetrySeconds, ct);
+            }
         }
+    }
+
+    private static string BuildGoalTurnPrompt(
+        GoalContext goal,
+        GoalPlanItem plan,
+        List<AdaptiveStepRecord> log,
+        int step)
+    {
+        var history = RenderStepLog(log);
+        return $"Goal: {goal.GoalText}\n\n" +
+               $"Current turn: {step}\n" +
+               $"Persisted plan: {plan.Title}\n{plan.Description}\n\n" +
+               $"Previous Goal Agent reports:\n{HeadTail(history, 12000)}\n\n" +
+               "Continue from the current workspace and Goal context. Make one concrete, verifiable unit of progress in this turn, then report evidence and the next continuation point.";
+    }
+
+    private static bool TryReadGoalCompletion(string output, out string? summary)
+    {
+        summary = null;
+        const string prefix = "<goal-complete>";
+        const string suffix = "</goal-complete>";
+        var start = output.LastIndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return false;
+        var end = output.IndexOf(suffix, start + prefix.Length, StringComparison.OrdinalIgnoreCase);
+        if (end < 0) return false;
+        summary = output[(start + prefix.Length)..end].Trim();
+        return summary.Length > 0;
+    }
+
+    private static void EnsureExecutionPersisted(
+        ExecutionRunMutationResult result,
+        string attemptId)
+    {
+        if (!result.Success)
+            throw new InvalidOperationException(
+                $"Execution persistence failed for {attemptId}: {result.Error ?? "unknown error"}");
+    }
+
+    private static void PersistAdaptiveProgressStrict(
+        GoalContext goal,
+        GoalPlanItem plan,
+        JsonElement parameters)
+    {
+        var plansJson = JsonSerializer.Serialize(
+            goal.Plans,
+            AgentRuntimeJsonContext.Default.ListGoalPlanItem);
+        var updateParams = WorkerJsonHelper.BuildJsonElement(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("sessionId", goal.SessionId);
+            writer.WriteString("goalId", goal.GoalId);
+            writer.WriteString("statusEventMessage", "Goal sub-agent progress persisted");
+            writer.WriteStartObject("patch");
+            writer.WriteString("status", GoalStatusValues.Active);
+            writer.WriteNumber("currentPlanIndex", goal.CurrentPlanIndex);
+            writer.WriteNumber("planCount", goal.Plans.Count);
+            writer.WriteNumber("completedPlanCount", goal.Plans.Count(p => p.Status == GoalPlanStatusValues.Complete));
+            if (!string.IsNullOrWhiteSpace(goal.ModelConfigJson))
+                writer.WriteString("modelConfigJson", goal.ModelConfigJson);
+            writer.WriteString("plansJson", plansJson);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        });
+
+        var updatedGoal = DbGoalTools.UpdateByGoalId(updateParams)
+            ?? throw new InvalidOperationException($"Goal persistence failed for {goal.GoalId}");
+        if (!string.Equals(updatedGoal.Status, GoalStatusValues.Active, StringComparison.Ordinal))
+            throw new InvalidOperationException($"Goal persistence returned unexpected status {updatedGoal.Status}");
+
+        var planMutation = DbGoalPlanTools.UpdatePlanStatus(
+            plan.PlanId, goal.GoalId, goal.SessionId, plan.Status, plan.ResultSummary);
+        if (planMutation is null)
+            throw new InvalidOperationException($"Plan status persistence failed for {plan.PlanId}");
+
+        var snapshotJson = JsonSerializer.Serialize(
+            plan,
+            AgentRuntimeJsonContext.Default.GoalPlanItem);
+        var snapshot = DbGoalPlanTools.UpdatePlanSnapshot(
+            plan.PlanId, goal.GoalId, goal.SessionId, snapshotJson);
+        if (!snapshot.Success)
+            throw new InvalidOperationException(
+                $"Plan snapshot persistence failed for {plan.PlanId}: {snapshot.Error ?? "unknown error"}");
     }
 
     /// <summary>

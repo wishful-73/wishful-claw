@@ -77,7 +77,7 @@ public static partial class DbGoalTools
                 transaction,
                 "UPDATE goals SET objective = @obj, status = @status, token_budget = @tb, plans_json = @pj, " +
                 "plan_count = @pc, completed_plan_count = @cpc, current_plan_index = @cpi, " +
-                "working_folder = @wf, updated_at = @ua WHERE goal_id = @gid AND session_id = @sid",
+                "working_folder = @wf, model_config_json = @mcj, updated_at = @ua WHERE goal_id = @gid AND session_id = @sid",
                 new SqliteParameter("@obj", current.Objective),
                 new SqliteParameter("@status", current.Status),
                 new SqliteParameter("@tb", (object?)current.TokenBudget ?? DBNull.Value),
@@ -86,6 +86,7 @@ public static partial class DbGoalTools
                 new SqliteParameter("@cpc", current.CompletedPlanCount),
                 new SqliteParameter("@cpi", current.CurrentPlanIndex),
                 new SqliteParameter("@wf", (object?)current.WorkingFolder ?? DBNull.Value),
+                new SqliteParameter("@mcj", (object?)current.ModelConfigJson ?? DBNull.Value),
                 new SqliteParameter("@ua", current.UpdatedAt),
                 new SqliteParameter("@gid", goalId),
                 new SqliteParameter("@sid", sessionId));
@@ -281,8 +282,8 @@ public static partial class DbGoalTools
                 transaction,
                 "INSERT INTO goals (goal_id, session_id, project_id, objective, status, token_budget, tokens_used, " +
                 "time_used_seconds, plans_json, plan_count, completed_plan_count, current_plan_index, " +
-                "working_folder, created_at, updated_at) " +
-                "VALUES (@gid, @sid, @pid, @obj, @status, @tb, 0, 0, @pj, @pc, @cpc, @cpi, @wf, @ca, @ua)",
+                "working_folder, model_config_json, created_at, updated_at) " +
+                "VALUES (@gid, @sid, @pid, @obj, @status, @tb, 0, 0, @pj, @pc, @cpc, @cpi, @wf, @mcj, @ca, @ua)",
                 new SqliteParameter("@gid", goalId),
                 new SqliteParameter("@sid", sessionId),
                 new SqliteParameter("@pid", (object?)entity.ProjectId ?? DBNull.Value),
@@ -294,6 +295,7 @@ public static partial class DbGoalTools
                 new SqliteParameter("@cpc", entity.CompletedPlanCount),
                 new SqliteParameter("@cpi", entity.CurrentPlanIndex),
                 new SqliteParameter("@wf", (object?)entity.WorkingFolder ?? DBNull.Value),
+                new SqliteParameter("@mcj", (object?)entity.ModelConfigJson ?? DBNull.Value),
                 new SqliteParameter("@ca", now),
                 new SqliteParameter("@ua", now));
             InsertEvent(db, connection, transaction, sessionId, goalId, eventType, eventMessage, null, now);
@@ -379,6 +381,8 @@ public static partial class DbGoalTools
             entity.CurrentPlanIndex = currentPlanIndex.GetInt32();
         if (patch.TryGetProperty("workingFolder", out var workingFolder))
             entity.WorkingFolder = workingFolder.ValueKind == JsonValueKind.Null ? null : workingFolder.GetString();
+        if (patch.TryGetProperty("modelConfigJson", out var modelConfigJson))
+            entity.ModelConfigJson = modelConfigJson.ValueKind == JsonValueKind.Null ? null : GetJsonText(modelConfigJson);
     }
 
     private static string? GetJsonText(JsonElement element, string name)

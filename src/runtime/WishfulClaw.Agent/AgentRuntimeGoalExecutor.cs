@@ -171,17 +171,21 @@ public static partial class AgentRuntimeGoalExecutor
                 context, "goal/confirm-request", confirmParams, cancellationToken);
 
             var confirmed = response.TryGetProperty("confirmed", out var c) && c.GetBoolean();
+            var modelConfigJson = response.TryGetProperty("modelConfig", out var modelConfig)
+                ? BuildGoalModelConfigJson(modelConfig)
+                : null;
+            if (confirmed && string.IsNullOrWhiteSpace(modelConfigJson))
+                return EncodeError("A provider and model must be selected before confirming the Goal.");
             if (confirmed)
             {
                 var pending = GoalOrchestrator.GetPendingGoal(goalId);
                 if (pending == null)
                     return EncodeError("Pending goal no longer exists.");
 
-                var row = DbGoalTools.SetStatusByGoalId(
+                var row = DbGoalTools.ConfirmByGoalId(
                     goalId,
                     sessionId,
-                    GoalStatusValues.Pending,
-                    GoalStatusValues.Active,
+                    modelConfigJson,
                     "Goal confirmed and started");
                 if (row == null)
                     return EncodeError("Pending goal changed before confirmation.");
@@ -191,15 +195,17 @@ public static partial class AgentRuntimeGoalExecutor
                     sessionId,
                     pending.WorkingFolder,
                     pending.Parameters,
-                    context);
+                    context,
+                    modelConfigJson);
                 if (!started)
                 {
+                    GoalOrchestrator.RemovePendingGoal(goalId);
                     DbGoalTools.SetStatusByGoalId(
                         goalId,
                         sessionId,
                         GoalStatusValues.Active,
                         GoalStatusValues.Active,
-                        "Goal confirmation could not start the orchestrator");
+                        "Goal confirmation could not start the orchestrator; Goal remains resumable");
                     return EncodeError("Goal confirmation could not start the orchestrator.");
                 }
 
@@ -587,21 +593,21 @@ public static partial class AgentRuntimeGoalExecutor
         string activeTerminalStatus,
         string message)
     {
-        var pending = DbGoalTools.SetStatusByGoalId(
+        // A system-side confirmation failure must not turn the Goal into a
+        // terminal aborted record. Keep it active and resumable; only an
+        // explicit user cancellation uses the pending -> aborted transition.
+        DbGoalTools.SetStatusByGoalId(
             goalId,
             sessionId,
             GoalStatusValues.Pending,
-            GoalStatusValues.Aborted,
+            activeTerminalStatus,
             message);
-        if (pending == null)
-        {
-            DbGoalTools.SetStatusByGoalId(
-                goalId,
-                sessionId,
-                GoalStatusValues.Active,
-                activeTerminalStatus,
-                message);
-        }
+        DbGoalTools.SetStatusByGoalId(
+            goalId,
+            sessionId,
+            GoalStatusValues.Active,
+            activeTerminalStatus,
+            message);
         GoalOrchestrator.RemovePendingGoal(goalId);
     }
 

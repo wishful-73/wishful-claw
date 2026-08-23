@@ -13,6 +13,65 @@ namespace WishfulClaw.Agent;
 
 public static partial class AgentRuntimeGoalExecutor
 {
+    public static string? BuildGoalModelConfigJson(JsonElement modelConfig)
+    {
+        if (modelConfig.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var providerId = JsonHelpers.GetString(modelConfig, "providerId")?.Trim();
+        var providerType = JsonHelpers.GetString(modelConfig, "providerType")?.Trim();
+        var model = JsonHelpers.GetString(modelConfig, "model")?.Trim();
+        if (string.IsNullOrEmpty(providerId) || string.IsNullOrEmpty(providerType) || string.IsNullOrEmpty(model))
+            return null;
+
+        return WorkerJsonHelper.BuildJsonString(w =>
+        {
+            w.WriteStartObject();
+            w.WriteString("providerId", providerId);
+            w.WriteString("providerType", providerType);
+            w.WriteString("model", model);
+            CopyString(w, modelConfig, "baseUrl");
+            CopyNumberOrNull(w, modelConfig, "temperature");
+            CopyNumberOrNull(w, modelConfig, "maxTokens");
+            CopyBoolean(w, modelConfig, "thinkingEnabled");
+            CopyObject(w, modelConfig, "thinkingConfig");
+            CopyString(w, modelConfig, "reasoningEffort");
+            CopyNumberOrNull(w, modelConfig, "requestTimeoutSeconds");
+            CopyNumberOrNull(w, modelConfig, "requestMaxRetries");
+            w.WriteEndObject();
+        });
+    }
+
+    private static void CopyBoolean(Utf8JsonWriter writer, JsonElement source, string name)
+    {
+        if (source.ValueKind == JsonValueKind.Object
+            && source.TryGetProperty(name, out var value)
+            && (value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False))
+        {
+            writer.WriteBoolean(name, value.GetBoolean());
+        }
+    }
+
+    private static void CopyNumberOrNull(Utf8JsonWriter writer, JsonElement source, string name)
+    {
+        if (source.ValueKind == JsonValueKind.Object && source.TryGetProperty(name, out var value)
+            && (value.ValueKind == JsonValueKind.Number || value.ValueKind == JsonValueKind.Null))
+        {
+            writer.WritePropertyName(name);
+            value.WriteTo(writer);
+        }
+    }
+
+    private static void CopyObject(Utf8JsonWriter writer, JsonElement source, string name)
+    {
+        if (source.ValueKind == JsonValueKind.Object && source.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.Object)
+        {
+            writer.WritePropertyName(name);
+            value.WriteTo(writer);
+        }
+    }
+
     private static JsonElement BuildCreateParameters(
         string sessionId,
         string goalId,

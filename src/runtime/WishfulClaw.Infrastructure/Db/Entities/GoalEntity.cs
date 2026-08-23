@@ -1,4 +1,5 @@
 
+using System.Text.Json.Serialization;
 using WishfulClaw.Contracts;
 
 namespace WishfulClaw.Infrastructure.Db;
@@ -39,6 +40,12 @@ public class GoalEntity
     public int CurrentPlanIndex { get; set; } = -1;
 
     public string? WorkingFolder { get; set; }
+
+    /// <summary>
+    /// Goal-owned non-secret provider/model snapshot. API keys are never stored here.
+    /// </summary>
+    [JsonIgnore]
+    public string? ModelConfigJson { get; set; }
 
     public long CreatedAt { get; set; }
 
@@ -86,6 +93,8 @@ public sealed class GoalRow
     public int CompletedPlanCount { get; set; }
     public int CurrentPlanIndex { get; set; } = -1;
     public string? WorkingFolder { get; set; }
+    [JsonIgnore]
+    public string? ModelConfigJson { get; set; }
     public long CreatedAt { get; set; }
     public long UpdatedAt { get; set; }
 
@@ -104,6 +113,7 @@ public sealed class GoalRow
     CompletedPlanCount = e.CompletedPlanCount,
     CurrentPlanIndex = e.CurrentPlanIndex,
     WorkingFolder = e.WorkingFolder,
+    ModelConfigJson = e.ModelConfigJson,
     CreatedAt = e.CreatedAt,
     UpdatedAt = e.UpdatedAt
     };

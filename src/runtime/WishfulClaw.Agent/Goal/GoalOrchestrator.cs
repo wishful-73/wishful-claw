@@ -232,25 +232,44 @@ public static partial class GoalOrchestrator
         string sessionId,
         string? workingFolder,
         JsonElement parameters,
-        IWorkerRequestContext context)
+        IWorkerRequestContext context,
+        string? modelConfigJson = null)
     {
-        if (!PendingGoals.TryRemove(goalId, out var pending))
+        if (!PendingGoals.TryGetValue(goalId, out var pending))
             return false;
 
-        // Use provided parameters (from confirm) or fall back to pending's saved parameters
-        var actualParameters = parameters.ValueKind == JsonValueKind.Object
-            ? parameters
-            : pending.Parameters;
+        // Build and validate Goal-owned parameters before consuming the pending
+        // confirmation. If the provider was deleted or the snapshot is invalid,
+        // the pending request must remain retryable instead of disappearing.
+        var actualParameters = !string.IsNullOrWhiteSpace(modelConfigJson)
+            ? BuildParametersForConfirmedGoal(
+                pending.Parameters,
+                modelConfigJson,
+                workingFolder ?? pending.WorkingFolder)
+            : parameters.ValueKind == JsonValueKind.Object
+                ? parameters
+                : pending.Parameters;
 
-        await StartAsync(
-            pending.GoalText,
-            sessionId,
-            workingFolder ?? pending.WorkingFolder,
-            goalId,
-            actualParameters,
-            context);
+        if (!PendingGoals.TryRemove(new KeyValuePair<string, PendingGoal>(goalId, pending)))
+            return false;
 
-        return true;
+        try
+        {
+            await StartAsync(
+                pending.GoalText,
+                sessionId,
+                workingFolder ?? pending.WorkingFolder,
+                goalId,
+                actualParameters,
+                context,
+                modelConfigJson);
+            return true;
+        }
+        catch
+        {
+            PendingGoals.TryAdd(goalId, pending);
+            throw;
+        }
     }
 
     /// <summary>

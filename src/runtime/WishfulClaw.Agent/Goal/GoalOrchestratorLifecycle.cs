@@ -2,6 +2,7 @@ using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -22,7 +23,8 @@ public static partial class GoalOrchestrator
         string? workingFolder,
         string goalId,
         JsonElement parameters,
-        IWorkerRequestContext context)
+        IWorkerRequestContext context,
+        string? modelConfigJson = null)
     {
         var goal = new GoalContext
         {
@@ -38,6 +40,7 @@ public static partial class GoalOrchestrator
 
         if (parameters.ValueKind == JsonValueKind.Object)
             goal.OriginalParameters = parameters.Clone();
+        goal.ModelConfigJson = modelConfigJson;
 
         if (!ActiveGoals.TryAdd(goalId, goal))
         {
@@ -418,6 +421,7 @@ public static partial class GoalOrchestrator
             SessionId = row.SessionId,
             GoalText = row.Objective,
             WorkingFolder = row.WorkingFolder,
+            ModelConfigJson = row.ModelConfigJson,
             // Deliberate: "paused" is not preserved across restart. A restored
             // goal comes back as active-idle so it is visible/resumable via the
             // normal Resume path; the user re-issues Pause if still wanted.
@@ -433,7 +437,20 @@ public static partial class GoalOrchestrator
         GoalContext goal,
         JsonElement? providerOverride = null)
     {
-        // 1. 前端传入的 provider 覆盖（最高优先级） — 合并到 workingFolder 参数
+        // A confirmed Goal owns its provider/model. The optional frontend provider
+        // is only a legacy fallback for Goals created before model_config_json.
+        if (!string.IsNullOrWhiteSpace(goal.ModelConfigJson))
+        {
+            return BuildGoalOwnedParameters(goal);
+        }
+
+        // Legacy fallback: use the original in-memory parameters before session state.
+        if (goal.OriginalParameters.HasValue
+            && goal.OriginalParameters.Value.ValueKind == JsonValueKind.Object)
+        {
+            return goal.OriginalParameters.Value.Clone();
+        }
+
         if (providerOverride.HasValue
             && providerOverride.Value.ValueKind == JsonValueKind.Object)
         {
@@ -448,14 +465,7 @@ public static partial class GoalOrchestrator
             });
         }
 
-        // 2. 优先使用创建时保存的原始参数（含 provider 配置）
-        if (goal.OriginalParameters.HasValue
-            && goal.OriginalParameters.Value.ValueKind == JsonValueKind.Object)
-        {
-            return goal.OriginalParameters.Value.Clone();
-        }
-
-        // 3. 回退到当前活跃 Agent 运行中该会话的 provider 配置
+        // Last provider fallback for old Goals: current session Agent parameters.
         if (AgentRuntimeTools.TryGetSessionParameters(goal.SessionId, out var sessionParams)
             && sessionParams.ValueKind == JsonValueKind.Object)
         {
@@ -472,6 +482,77 @@ public static partial class GoalOrchestrator
                 w.WriteEndObject();
             });
     }
+
+    internal static JsonElement BuildParametersForConfirmedGoal(
+        JsonElement parameters,
+        string modelConfigJson,
+        string? workingFolder)
+    {
+        using var configDocument = JsonDocument.Parse(modelConfigJson);
+        var config = configDocument.RootElement;
+        var providerId = JsonHelpers.GetString(config, "providerId") ?? string.Empty;
+        var provider = ProviderStore.GetProviderJson(providerId);
+        if (!provider.HasValue || provider.Value.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException($"Goal provider is no longer available: {providerId}");
+        return MergeGoalProvider(parameters, provider.Value, config, workingFolder);
+    }
+
+    private static JsonElement BuildGoalOwnedParameters(GoalContext goal)
+    {
+        using var configDocument = JsonDocument.Parse(goal.ModelConfigJson!);
+        var config = configDocument.RootElement;
+        var providerId = JsonHelpers.GetString(config, "providerId") ?? string.Empty;
+        var provider = ProviderStore.GetProviderJson(providerId);
+        if (!provider.HasValue || provider.Value.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException($"Goal provider is no longer available: {providerId}");
+
+        var baseParameters = goal.OriginalParameters is { ValueKind: JsonValueKind.Object } original
+            ? original
+            : AgentRuntimeTools.TryGetSessionParameters(goal.SessionId, out var sessionParameters)
+                && sessionParameters.ValueKind == JsonValueKind.Object
+                ? sessionParameters
+                : default;
+        return MergeGoalProvider(baseParameters, provider.Value, config, goal.WorkingFolder);
+    }
+
+    private static JsonElement MergeGoalProvider(
+        JsonElement baseParameters,
+        JsonElement provider,
+        JsonElement config,
+        string? workingFolder)
+        => WorkerJsonHelper.BuildJsonElement(w =>
+        {
+            w.WriteStartObject();
+            if (baseParameters.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in baseParameters.EnumerateObject())
+                {
+                    if (property.NameEquals("provider")) continue;
+                    property.WriteTo(w);
+                }
+            }
+            if (!string.IsNullOrEmpty(workingFolder))
+            {
+                w.WriteString("workingFolder", workingFolder);
+            }
+            w.WritePropertyName("provider");
+            w.WriteStartObject();
+            foreach (var property in provider.EnumerateObject())
+            {
+                if (property.NameEquals("type") || property.NameEquals("model") || property.NameEquals("baseUrl"))
+                    continue;
+                property.WriteTo(w);
+            }
+            foreach (var property in config.EnumerateObject())
+            {
+                if (property.NameEquals("providerId")) continue;
+                var name = property.NameEquals("providerType") ? "type" : property.Name;
+                w.WritePropertyName(name);
+                property.Value.WriteTo(w);
+            }
+            w.WriteEndObject();
+            w.WriteEndObject();
+        });
 
     private static bool IsCurrentGoalContext(GoalContext goal)
         => ActiveGoals.TryGetValue(goal.GoalId, out var activeGoal)

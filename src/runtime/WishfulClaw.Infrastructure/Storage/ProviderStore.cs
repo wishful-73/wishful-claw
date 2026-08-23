@@ -49,6 +49,20 @@ public static class ProviderStore
         }
     }
 
+    /// <summary>
+    /// Reads one provider for runtime use. The caller must not expose the returned
+    /// JSON to renderer or persist it in Goal data because it may contain secrets.
+    /// </summary>
+    public static JsonElement? GetProviderJson(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        lock (Sync)
+        {
+            var provider = ReadProviderFile(id);
+            return provider is null ? null : JsonDocument.Parse(provider.ToJsonString()).RootElement.Clone();
+        }
+    }
+
     public static WorkerResponse Get(JsonElement parameters)
     {
         var id = JsonHelpers.GetString(parameters, "id");

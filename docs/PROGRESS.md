@@ -1,11 +1,14 @@
-# 开发进度
+﻿# 开发进度
 
 ## v2-iter-19：Goal 编排记录可视化 + 三层生命周期收口
-- 状态：进行中，代码完成待实测
-- 分支：dev/v2-iter-19
+- 状态：已完成，已合并 main
+- 分支：dev/v2-iter-19（合并后清理）
 - Plan: docs/plans/iter-v2-19/ + .plan/vUakoMqaW0Wz.md
-- VERDICT: —（待用户实测）
-- 日期: 2026-08-20
+- VERDICT: PASS（编译验证 + 用户人工验证）
+- 产品版本: 0.2.19
+- Tag: v0.2.19
+- Commit: e31b66a（merge）
+- 日期: 2026-08-23
 - 备注：
   - **goal_plan_tasks 表** — 每行 = 一个计划的一轮执行（round = retry+1）：description/steps/summary/评估 reasoning/是否 satisfied/adjusted/起止时间；偏离排期为单表设计（两表方案其中一表语义空洞），已获老大确认
   - **编排写入** — GoalPlanRecorder（best-effort，失败仅 Warn 不阻断编排）挂接 GoalOrchestratorLoop 四节点；与 GoalPlanTracker 的 md 落盘并行镜像
@@ -16,7 +19,10 @@
   - **步骤8：goal_activity 实时事件链** — GoalEventContext(GoalId/PlanId/Round) 挂 RunState；SubAgentExecutor.CreateCollector 将子 agent tool_call/tool_result/iteration 以 goal_activity 事件转发（复用 Input(JsonElement) 字段，不改协议）；前端 chat-store 分流 → goal-store.applyGoalActivity（每 goal 保留 200 条）→ GoalHistoryPanel 计划卡片展开显示实时活动流（最近 30 条，按链根 planId 过滤，active 时带转圈）
   - **步骤9：流式降噪** — Goal 运行时子 agent text_delta 不逐条转发，消除 seq 爆炸刷屏（最终报告仍随 sub_agent_end 到达）
   - **三层生命周期收口** — Goal→Plan→Task 三层统一四态（pending/active/complete/aborted）；新增 goal_plans/goal_tasks/goal_execution_runs 三表 + Entity/Row/Mapper/DB 工具 + IPC 端点 + main 桥接；编排循环 MaterializePlans + execution attempts；FinalizeOwnedRunAsync 失败保持 active 不移除 ActiveGoals；AbortSubtree 取消向下传播；SweepInterruptedGoals 重启清扫三层；前端 SessionGoalPlan/SessionGoalTask/GoalExecutionRun 类型 + store 查询层
-  - 验证：C# build 0 错误；TS 3/3 零错误；BOM 0 残留；运行时待用户实测
+  - **SSE 流空闲超时** — AgentRuntimeRequestTimeout.ReadLineAsync 复用 requestTimeoutSeconds 作为逐行空闲超时（OpenAI Chat/Responses + Anthropic）；停滞流抛 TimeoutException 走重试而非永久挂死
+  - **Goal 暂停立即中断当前 turn** — pause watcher 250ms 轮询 RunState，Paused 时取消 in-flight 子 agent turn（含 provider 重试循环），GoalContext.CurrentTurnState 跟踪
+  - **其他** — 无限重试长时自主运行 + 里程碑、Goal 确认卡片模型选择 UI、ProviderStore encodeURIComponent 路径兼容、架构 review 文档 review-02..08 入库、清理误提交的 node_out/root_out/stderr/stdout.txt
+  - 验证：C# build 0 错误；TS 3/3 零错误；BOM 0 残留；用户实测通过
 
 ## v2-iter-18：429重试配置化 + 输入框状态独立显示 + 默认模式工具审批
 - 状态：已完成，已合并 main

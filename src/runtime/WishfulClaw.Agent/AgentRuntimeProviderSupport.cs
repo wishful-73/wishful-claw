@@ -50,4 +50,20 @@ public static class AgentRuntimeProviderSupport
         using var document = JsonDocument.Parse(buffer.WrittenMemory);
         return document.RootElement.Clone();
     }
+
+    public static JsonElement CreateArrayElement(IEnumerable<JsonElement> elements)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
+        {
+            writer.WriteStartArray();
+            foreach (var element in elements)
+            {
+                element.WriteTo(writer);
+            }
+            writer.WriteEndArray();
+        }
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
+    }
 }

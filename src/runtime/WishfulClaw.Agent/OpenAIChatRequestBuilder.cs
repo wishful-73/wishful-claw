@@ -157,6 +157,7 @@ internal static partial class OpenAIChatProvider
                     {
                         writer.WriteString("reasoning_content", message.ReasoningContent);
                     }
+                    WriteOpenRouterReasoningDetails(writer, message, provider);
                     writer.WritePropertyName("tool_calls");
                     writer.WriteStartArray();
                     foreach (var toolUse in message.ToolUses)
@@ -176,6 +177,7 @@ internal static partial class OpenAIChatProvider
                 else
                 {
                     writer.WriteString("content", message.Text);
+                    WriteOpenRouterReasoningDetails(writer, message, provider);
                 }
                 writer.WriteEndObject();
                 continue;
@@ -212,6 +214,30 @@ internal static partial class OpenAIChatProvider
         writer.WriteEndArray();
     }
 
+    private static void WriteOpenRouterReasoningDetails(
+        Utf8JsonWriter writer,
+        AgentRuntimeChatMessage message,
+        JsonElement provider)
+    {
+        if (!IsOpenRouterProvider(provider) ||
+            message.ReasoningDetails is not { } reasoningDetails ||
+            reasoningDetails.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        writer.WritePropertyName("reasoning_details");
+        reasoningDetails.WriteTo(writer);
+    }
+
+    private static bool IsOpenRouterProvider(JsonElement provider)
+    {
+        var baseUrl = JsonHelpers.GetString(provider, "baseUrl");
+        return Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) &&
+            (uri.Host.Equals("openrouter.ai", StringComparison.OrdinalIgnoreCase) ||
+             uri.Host.EndsWith(".openrouter.ai", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static void WriteThinkingConfig(Utf8JsonWriter writer, JsonElement provider, HashSet<string> omitted)
     {
         if (!provider.TryGetProperty("thinkingConfig", out var thinkingConfig) ||
@@ -225,16 +251,49 @@ internal static partial class OpenAIChatProvider
         // When thinking is enabled, merge bodyParams from thinkingConfig into the request body.
         // This writes provider-specific fields like { "thinking": { "type": "enabled" } } or
         // { "enable_thinking": true } depending on the model's configuration.
+        var isOpenRouter = IsOpenRouterProvider(provider);
+        var reasoningEffort = JsonHelpers.GetString(provider, "reasoningEffort") ??
+                              JsonHelpers.GetString(thinkingConfig, "defaultReasoningEffort");
+        var effectiveEffort = !string.IsNullOrEmpty(reasoningEffort)
+            ? JsonHelpers.ResolveEffectiveReasoningEffort(reasoningEffort, thinkingConfig)
+            : null;
+
         if (thinkingEnabled &&
             thinkingConfig.TryGetProperty("bodyParams", out var bodyParams) &&
             bodyParams.ValueKind == JsonValueKind.Object)
         {
             foreach (var prop in bodyParams.EnumerateObject())
             {
+                if (isOpenRouter && prop.Name == "reasoning")
+                {
+                    continue;
+                }
                 if (!omitted.Contains(prop.Name))
                 {
                     prop.WriteTo(writer);
                 }
+            }
+
+            if (isOpenRouter && !omitted.Contains("reasoning"))
+            {
+                writer.WritePropertyName("reasoning");
+                writer.WriteStartObject();
+                if (bodyParams.TryGetProperty("reasoning", out var reasoning) &&
+                    reasoning.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var prop in reasoning.EnumerateObject())
+                    {
+                        if (prop.Name != "effort")
+                        {
+                            prop.WriteTo(writer);
+                        }
+                    }
+                }
+                if (!string.IsNullOrEmpty(effectiveEffort))
+                {
+                    writer.WriteString("effort", effectiveEffort);
+                }
+                writer.WriteEndObject();
             }
         }
         else if (!thinkingEnabled &&
@@ -250,16 +309,12 @@ internal static partial class OpenAIChatProvider
             }
         }
 
-        // Write reasoning_effort: prefer the resolved value from provider, fall back to default
-        var reasoningEffort = JsonHelpers.GetString(provider, "reasoningEffort") ??
-                              JsonHelpers.GetString(thinkingConfig, "defaultReasoningEffort");
-        if (!string.IsNullOrEmpty(reasoningEffort) && !omitted.Contains("reasoning_effort"))
+        // OpenRouter accepts reasoning.effort as the canonical form. Keep the
+        // legacy top-level shorthand for other OpenAI-compatible providers.
+        if (!isOpenRouter && !string.IsNullOrEmpty(effectiveEffort) &&
+            !omitted.Contains("reasoning_effort"))
         {
-            var effectiveEffort = JsonHelpers.ResolveEffectiveReasoningEffort(reasoningEffort, thinkingConfig);
-            if (!string.IsNullOrEmpty(effectiveEffort))
-            {
-                writer.WriteString("reasoning_effort", effectiveEffort);
-            }
+            writer.WriteString("reasoning_effort", effectiveEffort);
         }
     }
 }

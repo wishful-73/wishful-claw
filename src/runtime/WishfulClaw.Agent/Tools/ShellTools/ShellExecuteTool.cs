@@ -33,22 +33,11 @@ public sealed partial class ShellExecuteTool : IToolExecutor
 
         "Execute a shell command and return stdout, stderr, exit code, and timing. " +
 
-        "On Windows, PowerShell is the default and recommended shell for reliable Unicode support. " +
+        "Prefer dedicated file tools (Glob, Grep, Read, LS, Edit, Write) over shell commands for file operations. " +
 
-        "Avoid cmd.exe unless specifically needed — its UTF-8 piping is unreliable for non-ASCII text. " +
+        "Pass sshConnectionId to run remotely via SSH (see SshListConnections); pass local=true to force local execution when a project has a bound SSH connection. " +
 
-        "Supports choosing the shell (PowerShell, cmd, bash, zsh), setting a working directory, " +
-
-        "and environment variables. Use for builds, tests, git, package managers, and other shell workflows. To search/read/list/edit files, prefer the dedicated tools (Glob, Grep, Read, LS, Edit, Write) over shell grep/cat/ls/find. " +
-
-        "When sshConnectionId is provided, the command executes on the remote SSH server instead of locally. " +
-
-        "Use SshListConnections to discover available connection IDs. " +
-
-        "When the project has a bound SSH connection, pass \"local\": true to force local execution instead." +
-        "IMPORTANT: When using the default PowerShell engine, do NOT use '&&' to chain commands \u2014 " +
-        "PowerShell does not support it. Use ';' to separate commands instead. " +
-        "If you need bash syntax (&&, ||, $()), set shell to 'bash' explicitly.";
+        "Note: PowerShell does not support '&&' — use ';' to chain commands, or set shell to 'bash' for bash syntax.";
 
 
 
@@ -110,7 +99,7 @@ public sealed partial class ShellExecuteTool : IToolExecutor
 
               "type": "string",
 
-              "description": "SSH connection ID. When provided, the command executes on the remote server via SSH instead of locally. Use SshListConnections to get available IDs. If the project has a bound SSH connection, this parameter is auto-filled."
+              "description": "SSH connection ID — runs the command on the remote server via SSH. Use SshListConnections to get IDs; auto-filled when the project has a bound connection."
 
             },
 
@@ -118,7 +107,7 @@ public sealed partial class ShellExecuteTool : IToolExecutor
 
               "type": "boolean",
 
-              "description": "Force local execution. Set to true to run the command on the LOCAL machine instead of the remote SSH server, even when the project has a bound SSH connection. Useful for local file operations, local git, and other local tasks.",
+              "description": "Force local execution even when the project has a bound SSH connection.",
 
               "default": false
 

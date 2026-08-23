@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -35,6 +35,16 @@ internal static class GoalSubAgentExecutor
             static state => ((AgentRuntimeRunState)state!).Cancel("goal parent"),
             childState);
 
+        // Pause must interrupt an in-flight turn (including a provider retry
+        // loop inside it), otherwise Pause only takes effect between turns and
+        // a stuck retry cycle never reaches the safe point. Polling RunState
+        // and cancelling the child state drops the turn; the adaptive loop
+        // then parks at ReachSafePointAsync until Resume.
+        goal.CurrentTurnState = childState;
+        using var pauseWatcher = new Timer(
+            static s => { var g = (GoalContext)s!; if (g.RunState == GoalRunStateValues.Paused) g.CurrentTurnState?.Cancel("goal paused"); },
+            goal, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
+
         try
         {
             await AgentLoop.ExecuteLoopAsync(childParameters, childState, context);
@@ -51,6 +61,10 @@ internal static class GoalSubAgentExecutor
         {
             WorkerLog.Warn($"goal sub-agent turn failed goal={goal.GoalId} error={ex.GetType().Name}: {ex.Message}");
             throw;
+        }
+        finally
+        {
+            goal.CurrentTurnState = null;
         }
     }
 

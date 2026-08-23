@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 
 namespace WishfulClaw.Agent;
@@ -76,6 +76,12 @@ public sealed class GoalContext
     internal object LifecycleSync { get; } = new();
     internal Task? RunTask { get; set; }
     internal AgentRuntimeRunState? RuntimeState { get; set; }
+    /// <summary>
+    /// Run state of the in-flight sub-agent turn (set by GoalSubAgentExecutor
+    /// while a turn executes). The pause watcher cancels it so Pause interrupts
+    /// the current turn — including its provider retry loop — immediately.
+    /// </summary>
+    internal volatile AgentRuntimeRunState? CurrentTurnState;
     internal long RunGeneration { get; set; }
 
     private AgentRuntimeRunState? _eventRunState;

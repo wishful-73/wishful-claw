@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -73,6 +73,41 @@ internal static class AgentRuntimeRequestTimeout
                 $"{providerLabel} did not return response headers within {timeout.TotalSeconds:0}s. " +
                 "Raise the API request timeout in Settings (0 waits indefinitely) if this model " +
                 "needs longer before it starts responding.",
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// Reads one SSE line bounded by the same configured timeout, applied as an
+    /// idle deadline: it restarts for every line, so a stream that keeps producing
+    /// events is never cut off, but a stalled connection (headers arrived, no data)
+    /// fails after the timeout instead of hanging forever.
+    /// </summary>
+    public static async Task<string?> ReadLineAsync(
+        StreamReader reader,
+        JsonElement provider,
+        string providerLabel,
+        CancellationToken cancellationToken)
+    {
+        var timeout = Resolve(provider);
+
+        if (timeout is not { } idleTimeout)
+        {
+            return await reader.ReadLineAsync(cancellationToken);
+        }
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(idleTimeout);
+        try
+        {
+            return await reader.ReadLineAsync(deadline.Token);
+        }
+        catch (OperationCanceledException ex)
+            when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"{providerLabel} stream idle for {idleTimeout.TotalSeconds:0}s with no data; " +
+                "connection appears stalled.",
                 ex);
         }
     }

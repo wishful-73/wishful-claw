@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -66,6 +66,14 @@ internal static partial class OpenAIResponsesProvider
 
         FlushPendingToolCalls(parseState);
         var totalMs = ElapsedMs(startedAt);
+        AgentLoop.EnsureProviderTurnHasOutput(
+            "openai-responses",
+            parseState.StopReason,
+            parseState.AssistantText.ToString(),
+            null,
+            parseState.ToolCalls,
+            parseState.Usage,
+            totalMs);
         if (parseState.Usage is { } usage)
         {
             WorkerLog.Debug(
@@ -146,7 +154,8 @@ internal static partial class OpenAIResponsesProvider
         var dataBuilder = new StringBuilder();
         string? eventName = null;
         string? line;
-        while ((line = await reader.ReadLineAsync(state.CancellationToken)) is not null)
+        while ((line = await AgentRuntimeRequestTimeout.ReadLineAsync(
+            reader, provider, "OpenAI Responses", state.CancellationToken)) is not null)
         {
             if (line.Length == 0)
             {

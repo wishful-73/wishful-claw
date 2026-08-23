@@ -16,11 +16,7 @@ public sealed class CodeCompatibleToolProvider : IToolProvider
         registry.Register(new ToolDefinitionPlaceholder(
             "PowerShell",
             "Execute a PowerShell command on the local system. " +
-            "IMPORTANT PowerShell syntax notes: " +
-            "Do NOT use '&&' to chain commands — PowerShell does not support it. " +
-            "Use ';' to separate commands, or 'if ($LASTEXITCODE -eq 0) { ... }' for conditional execution. " +
-            "Use '|' for piping. Use '$()' for subexpressions instead of backticks. " +
-            "String interpolation uses double quotes; single quotes are literal.",
+            "Note: PowerShell does not support '&&' — use ';' to chain commands.",
             ToolSchemaBuilder.Object(
                 new()
                 {

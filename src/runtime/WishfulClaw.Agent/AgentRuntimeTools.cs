@@ -75,7 +75,8 @@ public static class AgentRuntimeTools
                     // but if EmitAsync itself fails (e.g. client disconnected),
                     // the exception would escape as an unobserved task exception.
                     // Catch it here to prevent process crash.
-                    WorkerLog.Error($"agent run outer crash runId={state.RunId} error={ex.GetType().Name}: {ex.Message}");
+                    WorkerLog.Error(
+                        $"agent run outer crash runId={state.RunId} error={FormatExceptionSummary(ex)}");
                     try { ActiveRuns.TryRemove(state.RunId, out _); } catch { }
                     try { RunSlots.Release(); } catch { }
                     try { state.Dispose(); } catch { }
@@ -250,15 +251,16 @@ public static class AgentRuntimeTools
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"agent run failed runId={state.RunId} error={ex.GetType().Name}: {ex.Message}");
+            var errorSummary = FormatExceptionSummary(ex);
+            WorkerLog.Warn($"agent run failed runId={state.RunId} error={errorSummary}");
             await EmitAsync(
                 state,
                 context,
                 new AgentRuntimeStreamEvent(
                     "error",
-                    Message: ex.Message,
+                    Message: errorSummary,
                     ErrorType: ex.GetType().Name,
-                    Details: ex.Message,
+                    Details: errorSummary,
                     StackTrace: ex.StackTrace));
             await AgentLoop.EmitLoopEndAsync(state, context, "error");
         }
@@ -327,5 +329,55 @@ public static class AgentRuntimeTools
     private static string FormatLogValue(string? value)
     {
         return string.IsNullOrEmpty(value) ? "<empty>" : value;
+    }
+
+    private static string FormatExceptionSummary(Exception exception)
+    {
+        const int maxDepth = 4;
+        const int maxSummaryLength = 1_500;
+        var parts = new List<string>(maxDepth);
+        Exception? current = exception;
+        var depth = 0;
+
+        while (current is not null && depth < maxDepth)
+        {
+            var message = SanitizeExceptionMessage(current.Message);
+            parts.Add($"{current.GetType().Name}: {message}");
+            current = current.InnerException;
+            depth++;
+        }
+
+        if (current is not null)
+        {
+            parts.Add("...");
+        }
+
+        var summary = string.Join(" -> ", parts);
+        return summary.Length <= maxSummaryLength
+            ? summary
+            : summary[..maxSummaryLength] + "...";
+    }
+
+    private static string SanitizeExceptionMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "<no message>";
+        }
+
+        var sanitized = string.Join(' ', message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        sanitized = System.Text.RegularExpressions.Regex.Replace(
+            sanitized,
+            "(?i)(Bearer\\s+)[^\\s,;]+",
+            "$1<redacted>");
+        sanitized = System.Text.RegularExpressions.Regex.Replace(
+            sanitized,
+            "(?i)([?&](?:api[_-]?key|access[_-]?token|token|key)=)[^&\\s]+",
+            "$1<redacted>");
+        sanitized = System.Text.RegularExpressions.Regex.Replace(
+            sanitized,
+            "(?i)([\\\"']?(?:api[_-]?key|access[_-]?token|token|secret)[\\\"']?\\s*[:=]\\s*[\\\"']?)[^\\\"'&,\\s}]+",
+            "$1<redacted>");
+        return sanitized;
     }
 }

@@ -13,13 +13,8 @@ public sealed class SubAgentStatusTool : IToolExecutor
     public string Name => "SubAgentStatus";
 
     public string Description =>
-        "Check the status of a sub-agent by its toolUseId. " +
-        "Returns: ID, name, description, mode (foreground/background), " +
-        "status (running/completed/failed/cancelled), tool call count, iterations, elapsed time. " +
-        "If the sub-agent has finished, its final report is included directly (truncated) — " +
-        "so one call answers both 'is it done' and 'what did it find'. " +
-        "If no toolUseId is provided, lists all sub-agents with one-line summaries. " +
-        "For the complete untruncated report and step-by-step tool call log, use SubAgentDetail.";
+        "Check a sub-agent's status by toolUseId; includes its final report (truncated) when finished. " +
+        "Omit toolUseId to list all sub-agents. Use SubAgentDetail for the full report and tool call log.";
 
     public JsonElement InputSchema { get; } = JsonDocument.Parse(
         """
@@ -76,11 +71,8 @@ public sealed class SubAgentDetailTool : IToolExecutor
     public string Name => "SubAgentDetail";
 
     public string Description =>
-        "Get the full execution detail of a sub-agent by its toolUseId. " +
-        "Returns everything: status summary, complete output report, and a step-by-step " +
-        "tool call log (tool name, key parameter, execution status for each call). " +
-        "Use this when you need to review what a sub-agent actually did, not just its status. " +
-        "For a quick status check without the full output, use SubAgentStatus instead.";
+        "Get a sub-agent's full execution detail by toolUseId: complete output report and step-by-step tool call log. " +
+        "For a quick status check, use SubAgentStatus instead.";
 
     public JsonElement InputSchema { get; } = JsonDocument.Parse(
         """

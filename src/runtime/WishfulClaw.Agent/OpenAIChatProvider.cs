@@ -1,5 +1,6 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Diagnostics;
+using System.Net;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -68,93 +69,80 @@ internal static partial class OpenAIChatProvider
         var finalStopReason = "stop";
         var assistantText = new StringBuilder();
         var reasoningContent = new StringBuilder();
+        var reasoningDetails = new List<ReasoningDetailAccumulator>();
         var toolBuffers = new Dictionary<int, ToolCallBuffer>();
         var toolCalls = new List<AgentRuntimeNativeToolCall>();
+        string? nativeFinishReason = null;
 
-        using var response = await AgentRuntimeRequestTimeout.SendAsync(
-            Http, request, provider, "OpenAI Chat", state.CancellationToken);
-        if (!response.IsSuccessStatusCode)
+        // Connection aborts (unstable upstreams, e.g. OpenRouter stealth routes)
+        // surface as HttpRequestException. Convert to a retryable 502 when
+        // nothing has been emitted yet, so ProviderRetryPolicy backs off.
+        try
         {
-            throw await ProviderHttpException.CreateAsync(
+            await ReadProviderStreamAsync(
+                request, provider, state, context,
+                toolBuffers, toolCalls, assistantText, reasoningContent, reasoningDetails,
+                startedAt,
+                value => firstTokenMs ??= value,
+                value => estimatedOutputTokens += value,
+                value => finalUsage = value,
+                value => finalStopReason = value,
+                value => nativeFinishReason = value);
+        }
+        catch (HttpRequestException ex) when (
+            !state.CancellationToken.IsCancellationRequested &&
+            assistantText.Length == 0 &&
+            reasoningContent.Length == 0 &&
+            toolCalls.Count == 0 &&
+            toolBuffers.Count == 0)
+        {
+            WorkerLog.Warn(
+                $"openai-chat connection failure, retrying runId={state.RunId} " +
+                $"error={ex.GetBaseException().Message}");
+            throw new ProviderHttpException(
                 "OpenAI-compatible chat",
-                response,
-                state.CancellationToken);
+                HttpStatusCode.BadGateway,
+                $"connection error: {ex.GetBaseException().Message}",
+                retryAfter: null);
         }
 
-        await using var responseStream = await response.Content.ReadAsStreamAsync(state.CancellationToken);
-        using var reader = new StreamReader(responseStream, System.Text.Encoding.UTF8);
-        var dataBuilder = new StringBuilder();
-        var rawResponseBuilder = new StringBuilder();
-        var sawSsePayload = false;
-        string? line;
-
-        while ((line = await reader.ReadLineAsync(state.CancellationToken)) is not null)
+        // Dump the raw provider response when the turn produced nothing usable,
+        // so malformed/unexpected payloads are diagnosable from the log file.
+        if (string.IsNullOrWhiteSpace(assistantText.ToString()) && toolCalls.Count == 0)
         {
-            if (state.CancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
+            WorkerLog.Warn(
+                $"openai-chat empty turn runId={state.RunId} model={model} " +
+                $"stopReason={finalStopReason} nativeStopReason={nativeFinishReason ?? "<none>"} " +
+                $"reasoningLength={reasoningContent.Length} " +
+                $"reasoningDetails={reasoningDetails.Count} " +
+                $"hasUsage={finalUsage is not null}");
 
-            if (line.Length == 0)
+            // OpenRouter masks upstream failures as finish_reason="stop" and
+            // reports the real cause via native_finish_reason (e.g. network_error,
+            // provider_error, timeout). Nothing was emitted to the UI yet, so
+            // surface it as a retryable 502 and let ProviderRetryPolicy back off.
+            if (IsUpstreamFailureReason(nativeFinishReason, finalStopReason))
             {
-                if (dataBuilder.Length > 0)
-                {
-                    var shouldStop = await ProcessSseDataAsync(
-                        dataBuilder.ToString(),
-                        toolBuffers, toolCalls, assistantText, reasoningContent,
-                        state, context, startedAt,
-                        value => firstTokenMs ??= value,
-                        value => estimatedOutputTokens += value,
-                        value => finalUsage = value,
-                        value => finalStopReason = value);
-                    dataBuilder.Clear();
-                    sawSsePayload = true;
-                    if (shouldStop) break;
-                }
-                continue;
-            }
-
-            if (line.StartsWith("data:", StringComparison.Ordinal))
-            {
-                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
-                dataBuilder.Append(line[5..].TrimStart());
-                sawSsePayload = true;
-                continue;
-            }
-
-            if (!sawSsePayload && !line.StartsWith("event:", StringComparison.Ordinal))
-            {
-                if (rawResponseBuilder.Length > 0) rawResponseBuilder.Append('\n');
-                rawResponseBuilder.Append(line);
+                WorkerLog.Warn(
+                    $"openai-chat upstream failure, retrying runId={state.RunId} " +
+                    $"native_finish_reason={nativeFinishReason}");
+                throw new ProviderHttpException(
+                    "OpenAI-compatible chat",
+                    HttpStatusCode.BadGateway,
+                    $"upstream native_finish_reason={nativeFinishReason}",
+                    retryAfter: null);
             }
         }
-
-        if (dataBuilder.Length > 0)
-        {
-            await ProcessSseDataAsync(
-                dataBuilder.ToString(),
-                toolBuffers, toolCalls, assistantText, reasoningContent,
-                state, context, startedAt,
-                value => firstTokenMs ??= value,
-                value => estimatedOutputTokens += value,
-                value => finalUsage = value,
-                value => finalStopReason = value);
-        }
-        else if (!sawSsePayload && rawResponseBuilder.Length > 0)
-        {
-            await ProcessJsonResponseAsync(
-                rawResponseBuilder.ToString(),
-                toolCalls, assistantText, reasoningContent,
-                state, context, startedAt,
-                value => firstTokenMs ??= value,
-                value => estimatedOutputTokens += value,
-                value => finalUsage = value,
-                value => finalStopReason = value);
-        }
-
-        await FlushRemainingToolBuffersAsync(toolBuffers, toolCalls, state, context);
 
         var totalMs = AgentLoop.ElapsedMs(startedAt);
+        AgentLoop.EnsureProviderTurnHasOutput(
+            "openai-chat",
+            finalStopReason,
+            assistantText.ToString(),
+            reasoningContent.ToString(),
+            toolCalls,
+            finalUsage,
+            totalMs);
         // Accumulate cache tokens and attach session-cumulative counters + usage source.
         var emitUsage = finalUsage;
         if (emitUsage is not null && state.SessionConversation is { } sessConv)
@@ -188,10 +176,117 @@ internal static partial class OpenAIChatProvider
             .ToList();
 
         return new AgentRuntimeProviderTurnResult(
-            new AgentRuntimeChatMessage("assistant", assistantText.ToString(), assistantToolUses, [], ReasoningContent: reasoningContent.Length > 0 ? reasoningContent.ToString() : null),
+            new AgentRuntimeChatMessage(
+                "assistant",
+                assistantText.ToString(),
+                assistantToolUses,
+                [],
+                ReasoningContent: reasoningContent.Length > 0 ? reasoningContent.ToString() : null,
+                ReasoningDetails: reasoningDetails.Count > 0
+                    ? AgentRuntimeProviderSupport.CreateArrayElement(
+                        reasoningDetails.Select(acc => acc.ToJsonElement()))
+                    : null),
             toolCalls,
             finalStopReason,
             finalUsage);
+    }
+
+    // ── HTTP send + SSE stream reading ──
+
+    private static async Task ReadProviderStreamAsync(
+        HttpRequestMessage request,
+        JsonElement provider,
+        AgentRuntimeRunState state,
+        IWorkerRequestContext context,
+        Dictionary<int, ToolCallBuffer> toolBuffers,
+        List<AgentRuntimeNativeToolCall> toolCalls,
+        StringBuilder assistantText,
+        StringBuilder reasoningContent,
+        List<ReasoningDetailAccumulator> reasoningDetails,
+        long startedAt,
+        Action<long> markFirstTokenMs,
+        Action<int> addEstimatedOutputTokens,
+        Action<AgentRuntimeTokenUsage> setUsage,
+        Action<string> setStopReason,
+        Action<string> setNativeStopReason)
+    {
+        using var response = await AgentRuntimeRequestTimeout.SendAsync(
+            Http, request, provider, "OpenAI Chat", state.CancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await ProviderHttpException.CreateAsync(
+                "OpenAI-compatible chat",
+                response,
+                state.CancellationToken);
+        }
+
+        await using var responseStream = await response.Content.ReadAsStreamAsync(state.CancellationToken);
+        using var reader = new StreamReader(responseStream, System.Text.Encoding.UTF8);
+        var dataBuilder = new StringBuilder();
+        var rawResponseBuilder = new StringBuilder();
+        var sawSsePayload = false;
+        string? line;
+
+        while ((line = await AgentRuntimeRequestTimeout.ReadLineAsync(
+            reader, provider, "OpenAI Chat", state.CancellationToken)) is not null)
+        {
+            if (state.CancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            if (line.Length == 0)
+            {
+                if (dataBuilder.Length > 0)
+                {
+                    var shouldStop = await ProcessSseDataAsync(
+                        dataBuilder.ToString(),
+                        toolBuffers, toolCalls, assistantText, reasoningContent, reasoningDetails,
+                        state, context, startedAt,
+                        markFirstTokenMs, addEstimatedOutputTokens, setUsage, setStopReason,
+                        setNativeStopReason);
+                    dataBuilder.Clear();
+                    sawSsePayload = true;
+                    if (shouldStop) break;
+                }
+                continue;
+            }
+
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                var payload = line[5..].TrimStart();
+                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
+                dataBuilder.Append(payload);
+                sawSsePayload = true;
+                continue;
+            }
+
+            if (!sawSsePayload && !line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                if (rawResponseBuilder.Length > 0) rawResponseBuilder.Append('\n');
+                rawResponseBuilder.Append(line);
+            }
+        }
+
+        if (dataBuilder.Length > 0)
+        {
+            await ProcessSseDataAsync(
+                dataBuilder.ToString(),
+                toolBuffers, toolCalls, assistantText, reasoningContent, reasoningDetails,
+                state, context, startedAt,
+                markFirstTokenMs, addEstimatedOutputTokens, setUsage, setStopReason,
+                setNativeStopReason);
+        }
+        else if (!sawSsePayload && rawResponseBuilder.Length > 0)
+        {
+            await ProcessJsonResponseAsync(
+                rawResponseBuilder.ToString(),
+                toolCalls, assistantText, reasoningContent, reasoningDetails,
+                state, context, startedAt,
+                markFirstTokenMs, addEstimatedOutputTokens, setUsage, setStopReason);
+        }
+
+        await FlushRemainingToolBuffersAsync(toolBuffers, toolCalls, state, context);
     }
 
     // ── SSE processing ──
@@ -202,13 +297,15 @@ internal static partial class OpenAIChatProvider
         List<AgentRuntimeNativeToolCall> completedToolCalls,
         StringBuilder assistantText,
         StringBuilder reasoningContent,
+        List<ReasoningDetailAccumulator> reasoningDetails,
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
         long startedAt,
         Action<long> markFirstTokenMs,
         Action<int> addEstimatedOutputTokens,
         Action<AgentRuntimeTokenUsage> setUsage,
-        Action<string> setStopReason)
+        Action<string> setStopReason,
+        Action<string> setNativeStopReason)
     {
         if (data == "[DONE]")
         {
@@ -230,6 +327,7 @@ internal static partial class OpenAIChatProvider
         var choiceValue = choice.Value;
         if (choiceValue.TryGetProperty("delta", out var delta))
         {
+            AppendReasoningDetails(delta, reasoningDetails);
             var reasoning = AgentLoop.ReadString(delta, "reasoning_content") ??
                 AgentLoop.ReadString(delta, "reasoning");
             if (!string.IsNullOrEmpty(reasoning))
@@ -267,6 +365,13 @@ internal static partial class OpenAIChatProvider
 
         setStopReason(finishReason);
 
+        // OpenRouter appends native_finish_reason when the upstream provider's
+        // real finish differs (e.g. stop masking a network_error).
+        if (AgentLoop.ReadString(choiceValue, "native_finish_reason") is { Length: > 0 } nativeReason)
+        {
+            setNativeStopReason(nativeReason);
+        }
+
         // Flush tool buffers for tool_calls/function_call finish reasons.
         if (finishReason is "tool_calls" or "function_call")
         {
@@ -291,6 +396,7 @@ internal static partial class OpenAIChatProvider
         List<AgentRuntimeNativeToolCall> completedToolCalls,
         StringBuilder assistantText,
         StringBuilder reasoningContent,
+        List<ReasoningDetailAccumulator> reasoningDetails,
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
         long startedAt,
@@ -315,6 +421,7 @@ internal static partial class OpenAIChatProvider
         if (choiceValue.TryGetProperty("message", out var message) &&
             message.ValueKind == JsonValueKind.Object)
         {
+            AppendReasoningDetails(message, reasoningDetails);
             var reasoning = AgentLoop.ReadString(message, "reasoning_content") ??
                 AgentLoop.ReadString(message, "reasoning");
             if (!string.IsNullOrEmpty(reasoning))
@@ -363,5 +470,121 @@ internal static partial class OpenAIChatProvider
         }
 
         setStopReason(AgentLoop.ReadString(choiceValue, "finish_reason") ?? "stop");
+    }
+
+    /// <summary>
+    /// True when OpenRouter's native_finish_reason signals an upstream failure
+    /// that was masked by a benign finish_reason (e.g. stop over network_error).
+    /// </summary>
+    private static bool IsUpstreamFailureReason(string? nativeFinishReason, string finishReason)
+    {
+        if (string.IsNullOrEmpty(nativeFinishReason))
+        {
+            return false;
+        }
+        return !nativeFinishReason.Equals(finishReason, StringComparison.OrdinalIgnoreCase) &&
+            nativeFinishReason is not ("stop" or "length" or "tool_calls" or "function_call" or "content_filter");
+    }
+
+    private static void AppendReasoningDetails(JsonElement element, List<ReasoningDetailAccumulator> destination)
+    {
+        if (!element.TryGetProperty("reasoning_details", out var details) ||
+            details.ValueKind != JsonValueKind.Array)
+        {
+            return;
+        }
+
+        foreach (var detail in details.EnumerateArray())
+        {
+            MergeReasoningDetail(detail, destination);
+        }
+    }
+
+    /// <summary>
+    /// Merges a streaming reasoning_details fragment into the accumulated details.
+    /// OpenRouter emits one fragment per delta; fragments sharing the same index
+    /// must be merged before being passed back on the next request:
+    /// reasoning.text concatenates text, reasoning.encrypted concatenates base64 data.
+    /// Non-streaming responses already arrive merged and are adopted as-is.
+    /// </summary>
+    private static void MergeReasoningDetail(JsonElement detail, List<ReasoningDetailAccumulator> destination)
+    {
+        if (detail.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        var index = JsonHelpers.GetInt(detail, "index", 0);
+        var existing = destination.FirstOrDefault(acc => acc.Index == index);
+        if (existing is null)
+        {
+            existing = new ReasoningDetailAccumulator(index);
+            destination.Add(existing);
+        }
+        existing.Absorb(detail);
+    }
+
+    private sealed class ReasoningDetailAccumulator
+    {
+        private readonly StringBuilder _text = new();
+        private readonly StringBuilder _data = new();
+
+        public ReasoningDetailAccumulator(int index)
+        {
+            Index = index;
+        }
+
+        public int Index { get; }
+        public string Type { get; private set; } = string.Empty;
+        public string Format { get; private set; } = string.Empty;
+        public bool IsSummary { get; private set; }
+
+        public void Absorb(JsonElement detail)
+        {
+            if (JsonHelpers.GetString(detail, "type") is { Length: > 0 } type)
+            {
+                Type = type;
+            }
+            if (JsonHelpers.GetString(detail, "format") is { } format)
+            {
+                Format = format;
+            }
+            if (detail.TryGetProperty("summary", out var summary) &&
+                summary.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                IsSummary = summary.GetBoolean();
+            }
+
+            if (JsonHelpers.GetString(detail, "text") is { } text)
+            {
+                _text.Append(text);
+            }
+            if (JsonHelpers.GetString(detail, "data") is { } data)
+            {
+                _data.Append(data);
+            }
+        }
+
+        public JsonElement ToJsonElement()
+        {
+            return AgentRuntimeProviderSupport.CreateObjectElement(writer =>
+            {
+                writer.WriteString("type", Type);
+                if (_text.Length > 0)
+                {
+                    writer.WriteString("text", _text.ToString());
+                }
+                if (_data.Length > 0)
+                {
+                    writer.WriteString("data", _data.ToString());
+                }
+                writer.WriteString("format", Format);
+                writer.WriteNumber("index", Index);
+                if (IsSummary)
+                {
+                    writer.WriteBoolean("summary", true);
+                }
+            });
+        }
     }
 }

@@ -146,6 +146,31 @@ internal static partial class AgentLoop
         return durationMs <= 0 ? null : outputTokens / (durationMs / 1000.0);
     }
 
+    internal static void EnsureProviderTurnHasOutput(
+        string providerType,
+        string stopReason,
+        string assistantText,
+        string? reasoningContent,
+        IReadOnlyCollection<AgentRuntimeNativeToolCall> toolCalls,
+        AgentRuntimeTokenUsage? usage,
+        long elapsedMs)
+    {
+        var textLength = assistantText.Length;
+        var reasoningLength = reasoningContent?.Length ?? 0;
+        if (!string.IsNullOrWhiteSpace(assistantText) || toolCalls.Count > 0)
+        {
+            return;
+        }
+
+        WorkerLog.Warn(
+            $"provider response empty provider={providerType} stopReason={stopReason} " +
+            $"textLength={textLength} reasoningLength={reasoningLength} " +
+            $"toolCalls={toolCalls.Count} hasUsage={usage is not null} elapsedMs={elapsedMs}");
+        throw new InvalidOperationException(
+            $"{providerType} returned no usable assistant output " +
+            $"(stopReason={stopReason}, textLength={textLength}, toolCalls={toolCalls.Count}).");
+    }
+
     internal static bool IsReasoningModel(string model)
     {
         return model.StartsWith("o1", StringComparison.OrdinalIgnoreCase) ||

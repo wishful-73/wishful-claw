@@ -50,7 +50,7 @@ public sealed class GoalToolProvider : IToolProvider
 
         registry.Register(new ToolDefinitionPlaceholder(
             "create_goal",
-            "Create a new goal for the agent session. The goal is created in a pending state and will not start until the user confirms it via the frontend confirmation card. After confirmation, the goal orchestrator runs the goal in the background automatically - you do NOT execute the goal work yourself, only supervise and report progress.",
+            "Create a new goal in pending state. It starts only after the user confirms it in the frontend; the orchestrator then runs it in the background automatically — you only supervise and report progress.",
             ToolSchemaBuilder.Object(
                 new() { ["objective"] = ToolSchemaBuilder.String("The goal description.") },
                 ["objective"]),
@@ -58,7 +58,7 @@ public sealed class GoalToolProvider : IToolProvider
 
         registry.Register(new ToolDefinitionPlaceholder(
             "reopen_goal",
-            "Reopen a terminal goal without mutating its history. Creates a new pending goal linked to the source goal and waits for user confirmation before execution.",
+            "Reopen a terminal goal as a new pending goal linked to the source, without mutating its history. Requires user confirmation before execution.",
             ToolSchemaBuilder.Object(
                 new()
                 {
@@ -104,7 +104,7 @@ public sealed class GoalToolProvider : IToolProvider
         // state.GoalEventContext (set by the adaptive loop before spawning).
         registry.Register(new ToolDefinitionPlaceholder(
             GoalProgressTool.ToolName,
-            "Record the completion status of one goal step. Call this after finishing each step of your plan so progress is persisted. status must be one of: pending, active, complete.",
+            "Record the completion status of one goal step (status: pending, active, complete). Call after finishing each step so progress is persisted.",
             ToolSchemaBuilder.Object(
                 new()
                 {

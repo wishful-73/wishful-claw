@@ -57,6 +57,24 @@ export function applyGoalProgressState(
   const activeGoalRunsBySession = { ...state.activeGoalRunsBySession }
   const existingGoal = goalsBySession[progress.sessionId]
 
+  if ((!existingGoal || existingGoal.goalId !== progress.goalId) && !terminal) {
+    goalsBySession[progress.sessionId] = {
+      sessionId: progress.sessionId,
+      goalId: progress.goalId,
+      objective: progress.objective ?? '',
+      status: progress.status as SessionGoal['status'],
+      tokensUsed: 0,
+      timeUsedSeconds: 0,
+      plansJson: null,
+      planCount: progress.planCount,
+      completedPlanCount: progress.completedPlans,
+      currentPlanIndex: progress.currentPlanIndex,
+      workingFolder: null,
+      createdAt: progress.timestamp,
+      updatedAt: progress.timestamp
+    }
+  }
+
   if (existingGoal && existingGoal.goalId === progress.goalId && progress.status) {
     goalsBySession[progress.sessionId] = {
       ...existingGoal,

@@ -39,15 +39,9 @@ public sealed class MemoryHotWriteTool : IToolExecutor
 
         "Write, update, or delete a section in hot memory (MEMORY.md). " +
 
-        "If the section title exists, its content is replaced in place. " +
+        "Existing section titles are replaced in place; new sections are appended; empty content deletes the section. " +
 
-        "Otherwise a new section is appended. " +
-
-        "Set content to empty string to delete the section. " +
-
-        "Use this for important context that should always be loaded. " +
-
-        "When the user shares something worth remembering, call this tool to persist it — verbal acknowledgment alone saves nothing.";
+        "Use for important context that should always be loaded.";
 
 
 

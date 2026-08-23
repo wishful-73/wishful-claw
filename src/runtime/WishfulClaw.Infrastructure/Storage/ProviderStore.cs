@@ -198,7 +198,13 @@ public static class ProviderStore
     private static JsonObject? ReadProviderFile(string id)
     {
         var filePath = GetProviderFilePath(id);
-        if (!File.Exists(filePath)) return null;
+        if (!File.Exists(filePath))
+        {
+            // Compatibility with files written by the old sanitizer, which removed
+            // characters such as '_' instead of encoding them.
+            filePath = GetLegacyProviderFilePath(id);
+            if (!File.Exists(filePath)) return null;
+        }
 
         try
         {
@@ -229,7 +235,14 @@ public static class ProviderStore
 
     private static string GetProviderFilePath(string id)
     {
-        // Sanitize id to prevent path traversal
+        // Match Electron's encodeURIComponent-based provider file naming while
+        // keeping the ID confined to a single path segment.
+        var encodedId = Uri.EscapeDataString(id);
+        return Path.Combine(GetDataDirectory(), $"{ProviderFilePrefix}{encodedId}{ProviderFileSuffix}");
+    }
+
+    private static string GetLegacyProviderFilePath(string id)
+    {
         var safeId = string.Concat(id.Where(c => char.IsLetterOrDigit(c) || c == '-'));
         if (string.IsNullOrEmpty(safeId)) safeId = Guid.NewGuid().ToString("N");
         return Path.Combine(GetDataDirectory(), $"{ProviderFilePrefix}{safeId}{ProviderFileSuffix}");

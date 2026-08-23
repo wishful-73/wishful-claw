@@ -34,11 +34,9 @@ public sealed class MemoryHotReadTool : IToolExecutor
 
     public string Description =>
 
-        "Read the full hot memory (MEMORY.md). Returns the raw file content. " +
+        "Read the full hot memory (MEMORY.md) — the always-loaded key context. " +
 
-        "Hot memory contains the most important, always-loaded context. " +
-
-        "Call this when you need to refresh your understanding of key facts.";
+        "Call this to refresh your understanding of key facts.";
 
 
 

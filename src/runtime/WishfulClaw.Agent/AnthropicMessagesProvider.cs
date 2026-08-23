@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -86,7 +86,8 @@ internal static partial class AnthropicMessagesProvider
         string? eventName = null;
         string? line;
 
-        while ((line = await reader.ReadLineAsync(state.CancellationToken)) is not null)
+        while ((line = await AgentRuntimeRequestTimeout.ReadLineAsync(
+            reader, provider, "Anthropic Messages", state.CancellationToken)) is not null)
         {
             if (line.Length == 0)
             {
@@ -118,6 +119,14 @@ internal static partial class AnthropicMessagesProvider
         await FlushPendingToolCallsAsync(parseState, state, context);
 
         var totalMs = AgentLoop.ElapsedMs(startedAt);
+        AgentLoop.EnsureProviderTurnHasOutput(
+            "anthropic",
+            parseState.StopReason,
+            parseState.AssistantText.ToString(),
+            null,
+            parseState.ToolCalls,
+            parseState.Usage,
+            totalMs);
         // Accumulate cache tokens and attach session-cumulative counters + usage source.
         var emitUsage = parseState.Usage;
         if (emitUsage is not null && state.SessionConversation is { } sessConv)

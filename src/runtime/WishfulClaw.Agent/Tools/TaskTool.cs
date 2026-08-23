@@ -51,9 +51,7 @@ public sealed class TaskTool : IToolExecutor
         var sb = new StringBuilder();
 
         sb.AppendLine("Launch a sub-agent to handle a complex, multi-step task autonomously.");
-        sb.AppendLine();
-        sb.AppendLine("The sub-agent runs in its own session with a focused system prompt and ");
-        sb.AppendLine("inherits the parent agent's tools. Only its final answer is returned to you.");
+        sb.AppendLine("It runs in its own session, inherits the parent's tools, and only returns its final answer.");
         sb.AppendLine();
         sb.AppendLine("Available agent types:");
 
@@ -67,17 +65,14 @@ public sealed class TaskTool : IToolExecutor
             {
                 sb.AppendLine($"- {a.Name}: {a.Description}");
             }
-            sb.AppendLine("- custom: General-purpose sub-agent with a built-in default system prompt. Use this when none of the specialized agents are a clean fit.");
+            sb.AppendLine("- custom: General-purpose fallback when no specialized agent fits.");
         }
 
         sb.AppendLine();
         sb.AppendLine("Usage notes:");
-        sb.AppendLine("- For complex tasks (multi-file, cross-cutting, requires deep investigation): delegate immediately — do NOT investigate first and then delegate.");
-        sb.AppendLine("- For simple tasks (1-3 steps): do it yourself, don't delegate.");
-        sb.AppendLine("- Always include a short description (3-5 words) summarizing what the agent will do.");
-        sb.AppendLine("- Each sub-agent invocation is stateless: it does not see the current conversation history, so write self-contained prompts that include all context the sub-agent needs.");
-        sb.AppendLine("- Sub-agents inherit the parent's current tools, including Task when it is available, so they may delegate further when useful.");
-        sb.AppendLine("- Set background=true to run the sub-agent in the background without blocking the main conversation. Returns immediately with a sub-agent ID. Use SubAgentStatus to check progress and SubAgentDetail for full execution details.");
+        sb.AppendLine("- Delegate complex tasks immediately; do simple 1-3 step tasks yourself.");
+        sb.AppendLine("- Sub-agents are stateless and do not see this conversation — write self-contained prompts with all needed context.");
+        sb.AppendLine("- Set background=true to run without blocking; check progress with SubAgentStatus/SubAgentDetail.");
 
         return sb.ToString().TrimEnd();
     }
@@ -100,7 +95,7 @@ public sealed class TaskTool : IToolExecutor
             },
             "prompt": {
               "type": "string",
-              "description": "The task for the sub-agent to perform. Be specific about the deliverable — the sub-agent does not see this conversation. Include all necessary context."
+              "description": "The task for the sub-agent to perform. Self-contained — the sub-agent does not see this conversation."
             },
             "subagent_type": {
               "type": "string",
@@ -111,7 +106,7 @@ public sealed class TaskTool : IToolExecutor
             "background": {
               "type": "boolean",
               "default": false,
-              "description": "If true, the sub-agent runs in the background without blocking the main conversation. Returns immediately with a sub-agent ID. Use SubAgentStatus to check progress. If false (default), the main conversation waits for the sub-agent to complete and returns its final report."
+              "description": "If true, runs in the background and returns a sub-agent ID immediately; check progress with SubAgentStatus. If false (default), waits for completion."
             }
           },
           "required": ["description", "prompt"],

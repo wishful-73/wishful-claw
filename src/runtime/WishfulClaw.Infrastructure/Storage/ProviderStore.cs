@@ -49,6 +49,20 @@ public static class ProviderStore
         }
     }
 
+    /// <summary>
+    /// Reads one provider for runtime use. The caller must not expose the returned
+    /// JSON to renderer or persist it in Goal data because it may contain secrets.
+    /// </summary>
+    public static JsonElement? GetProviderJson(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        lock (Sync)
+        {
+            var provider = ReadProviderFile(id);
+            return provider is null ? null : JsonDocument.Parse(provider.ToJsonString()).RootElement.Clone();
+        }
+    }
+
     public static WorkerResponse Get(JsonElement parameters)
     {
         var id = JsonHelpers.GetString(parameters, "id");
@@ -184,7 +198,13 @@ public static class ProviderStore
     private static JsonObject? ReadProviderFile(string id)
     {
         var filePath = GetProviderFilePath(id);
-        if (!File.Exists(filePath)) return null;
+        if (!File.Exists(filePath))
+        {
+            // Compatibility with files written by the old sanitizer, which removed
+            // characters such as '_' instead of encoding them.
+            filePath = GetLegacyProviderFilePath(id);
+            if (!File.Exists(filePath)) return null;
+        }
 
         try
         {
@@ -215,7 +235,14 @@ public static class ProviderStore
 
     private static string GetProviderFilePath(string id)
     {
-        // Sanitize id to prevent path traversal
+        // Match Electron's encodeURIComponent-based provider file naming while
+        // keeping the ID confined to a single path segment.
+        var encodedId = Uri.EscapeDataString(id);
+        return Path.Combine(GetDataDirectory(), $"{ProviderFilePrefix}{encodedId}{ProviderFileSuffix}");
+    }
+
+    private static string GetLegacyProviderFilePath(string id)
+    {
         var safeId = string.Concat(id.Where(c => char.IsLetterOrDigit(c) || c == '-'));
         if (string.IsNullOrEmpty(safeId)) safeId = Guid.NewGuid().ToString("N");
         return Path.Combine(GetDataDirectory(), $"{ProviderFilePrefix}{safeId}{ProviderFileSuffix}");

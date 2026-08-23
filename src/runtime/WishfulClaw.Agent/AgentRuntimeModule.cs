@@ -24,6 +24,7 @@ public sealed class AgentRuntimeModule : IWorkerModule
         context.Register("agent/cancel", AgentRuntimeTools.Cancel);
         context.Register("agent/request-stop", AgentRuntimeTools.RequestStop);
         context.Register("agent/append-messages", AgentRuntimeTools.AppendMessages);
+        context.Register("agent/drain-sub-agent-notifications", AgentRuntimeTools.DrainSubAgentNotifications);
         context.Register("agent/reverse-response", AgentRuntimeTools.ReverseResponse);
         context.Register("agent/clear-session", AgentRuntimeTools.ClearSession);
         context.Register("agent/restore-session", SessionRestoreTools.RestoreSession);

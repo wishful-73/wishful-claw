@@ -21,7 +21,8 @@ public sealed record AgentRuntimeChatMessage(
     List<AgentRuntimeToolResult> ToolResults,
     string? ProviderResponseId = null,
     List<JsonElement>? ContentBlocks = null,
-    string? ReasoningContent = null)
+    string? ReasoningContent = null,
+    JsonElement? ReasoningDetails = null)
 {
     public static AgentRuntimeChatMessage UserToolResults(List<AgentRuntimeToolResult> toolResults)
     {

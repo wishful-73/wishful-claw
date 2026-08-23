@@ -162,7 +162,9 @@ public static class BackgroundSubAgentRegistry
 
     /// <summary>
     /// Short status info: ID, name, description, status, tool call count,
-    /// iterations, elapsed time. No output or tool call details.
+    /// iterations, elapsed time. For finished sub-agents the final report is
+    /// appended (truncated) so a single SubAgentStatus call answers "is it
+    /// done and what did it find" without a follow-up SubAgentDetail call.
     /// </summary>
     public static string FormatStatusInfo(SubAgentRecord r)
     {
@@ -183,6 +185,17 @@ public static class BackgroundSubAgentRegistry
 
         if (!string.IsNullOrEmpty(r.Error))
             lines.Add($"  Error: {r.Error}");
+
+        // Terminal states carry the result — include the report so the main
+        // agent gets the answer in one call. Running agents have no report yet.
+        if (r.Status != SubAgentRunStatus.Running && !string.IsNullOrEmpty(r.Output))
+        {
+            var report = r.Output;
+            if (report.Length > 2000)
+                report = report[..2000] + "\n... [truncated — use SubAgentDetail for the full report]";
+            lines.Add("  Report:");
+            lines.Add(Indent(report, "    "));
+        }
 
         return string.Join("\n", lines);
     }

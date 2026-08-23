@@ -20,12 +20,10 @@ public sealed class UseCapabilityToolProvider : IToolProvider
     {
         registry.Register(new ToolDefinitionPlaceholder(
             "use_capability",
-            "Stable capability proxy: discover MCP servers/tools, Skills, and proxied built-in tools. "
-            + "action=\"list\" returns paged summaries and supports type, category, query, cursor, and page_size filters. "
-            + "Use action=\"inspect\" with capability_id to retrieve one capability's complete input schema, "
-            + "or action=\"call\" with capability_id and arguments to execute. "
-            + "capability_id format: \"mcp-tool:serverName/toolName\" for MCP tools, "
-            + "\"skill:skillName\" for Skills, or \"builtin:toolName\" for proxied built-in tools.",
+            "Stable capability proxy for MCP tools, Skills, and proxied built-in tools. "
+            + "action=\"list\" returns paged summaries (filters: type, category, query, cursor, page_size); "
+            + "action=\"inspect\" returns one capability's full input schema; action=\"call\" executes it. "
+            + "capability_id format: \"mcp-tool:server/tool\", \"skill:name\", or \"builtin:toolName\".",
             ToolSchemaBuilder.Object(
                 new()
                 {

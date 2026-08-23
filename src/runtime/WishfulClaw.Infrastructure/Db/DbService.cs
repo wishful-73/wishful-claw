@@ -93,6 +93,19 @@ public sealed class DbService
             : (T)Convert.ChangeType(result, typeof(T));
     }
 
+    public T QueryScalar<T>(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql,
+        params SqliteParameter[] parameters)
+    {
+        using var cmd = BuildCommand(connection, sql, parameters, transaction);
+        var result = cmd.ExecuteScalar();
+        return result == null || result == DBNull.Value
+            ? default!
+            : (T)Convert.ChangeType(result, typeof(T));
+    }
+
     // ─── Execute ───
 
     /// <summary>

@@ -15,6 +15,7 @@ import {
   eventMetadataString
 } from './goal-session-utils'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { buildProviderPayload } from '@renderer/hooks/use-chat-actions'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import type { GoalActionResult } from '@renderer/stores/goal-store-helpers'
@@ -222,10 +223,11 @@ export function useGoalActions(
 
   const cancelGoal = React.useCallback(async (): Promise<void> => {
     if (!sessionId || !goal) return
-    const confirmed = await (confirm as any)({
+    const confirmed = await confirm({
       title: t('goal.cancelConfirmTitle'),
       description: t('goal.cancelConfirmDesc'),
-      confirmLabel: tCommon('action.cancel'),
+      confirmLabel: t('goal.cancelConfirmYes'),
+      cancelLabel: t('goal.cancelConfirmNo'),
       variant: 'destructive'
     })
     if (!confirmed) return

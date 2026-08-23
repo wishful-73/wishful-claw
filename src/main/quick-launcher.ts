@@ -14,7 +14,7 @@ import { join } from 'path'
 import * as fs from 'fs'
 import { pinyin } from 'pinyin-pro'
 import { registerMessagePackHandler } from './ipc/messagepack-handler'
-import { registerPriorityShortcut, unregisterPriorityShortcut } from './priority-shortcuts'
+import { registerPriorityShortcut, unregisterPriorityShortcut, forceActivateWindow } from './priority-shortcuts'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import { WINDOWS_SETTINGS } from './launcher-system-settings'
 import { extractPeIcon } from './pe-icon-extractor'
@@ -830,7 +830,14 @@ export function createLauncherWindow(): void {
       launcherWindow.hide()
     } else {
       launcherWindow.show()
-      launcherWindow.focus()
+      // Windows foreground lock: once a launched app (or an agent window)
+      // owns the foreground, plain focus() loses the race — the window shows
+      // but the keyboard target stays with the other process. Route through
+      // the PowerShell bridge's EnsureForeground chain (timeout reset + Alt
+      // workaround) to actually win activation.
+      if (!forceActivateWindow(launcherWindow)) {
+        launcherWindow.focus()
+      }
       // Reset/focus is driven by the 'show' event listener below (event-driven,
       // no fixed-delay race)
     }
@@ -866,12 +873,15 @@ export function createLauncherWindow(): void {
   })
 
   // Send reset event after show so renderer clears input and focuses.
-  // A short delay lets the window finish activating on Windows (transparent
-  // alwaysOnTop windows can drop the first focus call when shown too early).
+  // The bridge-based force activation wins the Windows foreground lock even
+  // when another app (just-launched software, an agent window) owns focus;
+  // the short delay only covers the initial show/activate settle.
   launcherWindow.on('show', () => {
     setTimeout(() => {
       if (!launcherWindow?.isVisible()) return
-      launcherWindow.focus()
+      if (!forceActivateWindow(launcherWindow)) {
+        launcherWindow.focus()
+      }
       safeSendMessagePackToWindow(launcherWindow, 'launcher:reset', null)
     }, 30)
   })
@@ -883,7 +893,9 @@ export function createLauncherWindow(): void {
   }
 
   launcherWindow.show()
-  launcherWindow.focus()
+  if (!forceActivateWindow(launcherWindow)) {
+    launcherWindow.focus()
+  }
 }
 
 // ── Init ──

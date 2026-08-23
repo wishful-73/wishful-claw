@@ -76,6 +76,8 @@ export function goalStatusLabel(status: SessionGoal['status']): string {
       return 'complete'
     case 'aborted':
       return 'aborted'
+    case 'interrupted':
+      return 'interrupted'
     case 'failed':
       return 'failed'
   }

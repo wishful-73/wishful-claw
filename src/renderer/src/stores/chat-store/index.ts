@@ -20,7 +20,7 @@ import { createStreamingSlice, type StreamingSlice } from './streaming-slice'
 import type { ChatMessage } from './types'
 import { writeLog } from '@renderer/lib/error-logger'
 
-import { dbUpsertMessage, dbUpdateSession, awaitSessionCreated } from './db-helpers'
+import { dbUpsertMessage, dbUpdateSession, dbDeleteMessage, awaitSessionCreated } from './db-helpers'
 
 import { setLastDebugInfo } from '@renderer/lib/debug-store'
 
@@ -381,19 +381,49 @@ export const useChatStore = create<ChatStore>()(
 
           if (msg.isStreaming) {
 
-            state.updateMessage(sessionId!, msg.id, {
+            const hasContent = Boolean(
 
-              isStreaming: false,
+              msg.text ||
 
-              text: msg.text || '[cancelled]'
+              msg.thinking ||
 
-            })
+              msg.error ||
 
-            // Persist the cancelled message so it survives session reload
+              (msg.toolCalls && msg.toolCalls.length > 0) ||
 
-            const sortOrder = session.messages.indexOf(msg)
+              (msg.segments && msg.segments.length > 0)
 
-            void dbUpsertMessage(sessionId!, msg, sortOrder)
+            )
+
+
+
+            if (hasContent) {
+
+              state.updateMessage(sessionId!, msg.id, {
+
+                isStreaming: false
+
+              })
+
+
+
+              // Persist the cancelled message so it survives session reload
+
+              const sortOrder = session.messages.indexOf(msg)
+
+              void dbUpsertMessage(sessionId!, msg, sortOrder)
+
+            } else {
+
+              // Cancelled before any content arrived — drop the empty message
+
+              // instead of rendering a [cancelled] placeholder
+
+              state.removeMessageById(sessionId!, msg.id)
+
+              void dbDeleteMessage(sessionId!, msg.id)
+
+            }
 
           }
 
@@ -462,6 +492,10 @@ export const useChatStore = create<ChatStore>()(
           }
           continue
         }
+
+        // goal_activity push events are retired (background-first redesign):
+        // the goal panel is a pull-based checker that polls the DB, so the
+        // per-tool-call live feed no longer has a consumer.
 
       if (!targetSessionId) return
 

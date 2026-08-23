@@ -53,8 +53,8 @@ public static partial class AgentRuntimeGoalExecutor
                 sessionId,
                 state.Parameters,
                 context),
-            "pause_goal" => PauseGoal(sessionId),
-            "resume_goal" => ResumeGoal(sessionId, context),
+            "pause_goal" => await PauseGoalAsync(sessionId, context),
+            "resume_goal" => await ResumeGoalViaToolAsync(sessionId, context),
             "abort_goal" => await AbortGoalAsync(sessionId, context),
             _ => EncodeError($"Unsupported goal tool: {call.Name}")
         };
@@ -117,7 +117,7 @@ public static partial class AgentRuntimeGoalExecutor
             return EncodePersistedGoal(persisted);
 
         var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
-        var goalId = $"goal-{Guid.NewGuid():N}".Substring(0, 21);
+        var goalId = GoalIds.NewGoalId();
         try
         {
             DbGoalTools.CreateCurrentGoal(BuildCreateParameters(
@@ -171,17 +171,21 @@ public static partial class AgentRuntimeGoalExecutor
                 context, "goal/confirm-request", confirmParams, cancellationToken);
 
             var confirmed = response.TryGetProperty("confirmed", out var c) && c.GetBoolean();
+            var modelConfigJson = response.TryGetProperty("modelConfig", out var modelConfig)
+                ? BuildGoalModelConfigJson(modelConfig)
+                : null;
+            if (confirmed && string.IsNullOrWhiteSpace(modelConfigJson))
+                return EncodeError("A provider and model must be selected before confirming the Goal.");
             if (confirmed)
             {
                 var pending = GoalOrchestrator.GetPendingGoal(goalId);
                 if (pending == null)
                     return EncodeError("Pending goal no longer exists.");
 
-                var row = DbGoalTools.SetStatusByGoalId(
+                var row = DbGoalTools.ConfirmByGoalId(
                     goalId,
                     sessionId,
-                    GoalStatusValues.Pending,
-                    GoalStatusValues.Active,
+                    modelConfigJson,
                     "Goal confirmed and started");
                 if (row == null)
                     return EncodeError("Pending goal changed before confirmation.");
@@ -191,17 +195,32 @@ public static partial class AgentRuntimeGoalExecutor
                     sessionId,
                     pending.WorkingFolder,
                     pending.Parameters,
-                    context);
+                    context,
+                    modelConfigJson);
                 if (!started)
                 {
+                    GoalOrchestrator.RemovePendingGoal(goalId);
                     DbGoalTools.SetStatusByGoalId(
                         goalId,
                         sessionId,
                         GoalStatusValues.Active,
-                        GoalStatusValues.Failed,
-                        "Goal confirmation could not start the orchestrator");
+                        GoalStatusValues.Active,
+                        "Goal confirmation could not start the orchestrator; Goal remains resumable");
                     return EncodeError("Goal confirmation could not start the orchestrator.");
                 }
+
+                // Same event contract as the HTTP confirm path (GoalModule):
+                // the frontend run badge must flip to running immediately,
+                // not when the first goal_progress arrives after decomposition.
+                await GoalOrchestrator.EmitRunStateChangedAsync(
+                    sessionId,
+                    new GoalActionResult(
+                        true,
+                        "started",
+                        GoalStatusValues.Active,
+                        GoalRunStateValues.Running,
+                        goalId),
+                    context);
 
                 return EncodePersistedGoal(row);
             }
@@ -220,10 +239,14 @@ public static partial class AgentRuntimeGoalExecutor
         }
         catch (Exception ex)
         {
+            // Startup failure is a system-side event: the business status
+            // stays active (only a user cancel produces aborted). The goal
+            // remains resumable; FinalizeConfirmationFailure only clears the
+            // pending-goal memory and records the failure event.
             FinalizeConfirmationFailure(
                 goalId,
                 sessionId,
-                GoalStatusValues.Failed,
+                GoalStatusValues.Active,
                 $"Goal confirmation failed: {ex.Message}");
             return EncodeError($"Goal confirmation failed: {ex.Message}");
         }
@@ -304,7 +327,7 @@ public static partial class AgentRuntimeGoalExecutor
                 reopened.GoalId,
                 sessionId,
                 GoalStatusValues.Pending,
-                GoalStatusValues.Failed,
+                GoalStatusValues.Active,
                 $"Reopened goal could not enter pending runtime state: {ex.Message}");
             return EncodeError($"Reopened goal could not enter pending runtime state: {ex.Message}");
         }
@@ -335,7 +358,6 @@ public static partial class AgentRuntimeGoalExecutor
         if (!string.IsNullOrEmpty(status)
             && status is not GoalStatusValues.Active
                 and not GoalStatusValues.Complete
-                and not GoalStatusValues.Failed
                 and not GoalStatusValues.Aborted)
         {
             return EncodeError($"Unsupported goal status: {status}");
@@ -349,7 +371,7 @@ public static partial class AgentRuntimeGoalExecutor
 
         var activeContext = GoalOrchestrator.GetContext(row.GoalId);
         if (!string.IsNullOrEmpty(objective)
-            && status is GoalStatusValues.Complete or GoalStatusValues.Failed or GoalStatusValues.Aborted)
+            && status is GoalStatusValues.Complete or GoalStatusValues.Aborted)
         {
             var objectiveParams = BuildUpdateParameters(
                 parameters,
@@ -364,7 +386,7 @@ public static partial class AgentRuntimeGoalExecutor
         }
 
         GoalActionResult? action = null;
-        if (status is GoalStatusValues.Complete or GoalStatusValues.Failed or GoalStatusValues.Aborted)
+        if (status is GoalStatusValues.Complete or GoalStatusValues.Aborted)
         {
             if (GoalOrchestrator.GetContext(row.GoalId) == null
                 && !GoalStatusValues.IsTerminal(row.Status))
@@ -433,8 +455,8 @@ public static partial class AgentRuntimeGoalExecutor
             return new GoalToolProgress(
                 context.Plans.Count,
                 context.CurrentPlanIndex,
-                context.Plans.Count(p => p.Status == GoalPlanStatusValues.Completed),
-                context.Plans.Count(p => p.Status == GoalPlanStatusValues.Failed),
+                context.Plans.Count(p => p.Status == GoalPlanStatusValues.Complete),
+                context.Plans.Count(p => p.Status == GoalPlanStatusValues.Aborted),
                 context.Status,
                 context.RunState,
                 context.StartedAt.ToString("O"));
@@ -448,7 +470,7 @@ public static partial class AgentRuntimeGoalExecutor
                 var plans = JsonSerializer.Deserialize(
                     row.PlansJson,
                     AgentRuntimeJsonContext.Default.ListGoalPlanItem);
-                failedPlans = plans?.Count(p => p.Status == GoalPlanStatusValues.Failed) ?? 0;
+                failedPlans = plans?.Count(p => p.Status == GoalPlanStatusValues.Aborted) ?? 0;
             }
             catch (JsonException)
             {
@@ -476,19 +498,24 @@ public static partial class AgentRuntimeGoalExecutor
     private static GoalToolProgress PendingProgress()
         => new(0, -1, 0, 0, "pending", GoalRunStateValues.Idle);
 
-    private static string PauseGoal(string sessionId)
+    private static async Task<string> PauseGoalAsync(
+        string sessionId,
+        IWorkerRequestContext context)
     {
         var row = DbGoalTools.GetBySessionId(sessionId);
         if (row == null)
             return EncodeError("No goal to pause.");
 
         var action = GoalOrchestrator.Pause(row.GoalId);
+        // Same event contract as the HTTP path (GoalModule): the frontend run
+        // badge must update no matter which path performed the action.
+        await GoalOrchestrator.EmitRunStateChangedAsync(sessionId, action, context);
         return action.Success
             ? EncodeActionResult(row, action)
             : EncodeActionFailure(row, action);
     }
 
-    private static string ResumeGoal(
+    private static async Task<string> ResumeGoalViaToolAsync(
         string sessionId,
         IWorkerRequestContext context)
     {
@@ -497,6 +524,7 @@ public static partial class AgentRuntimeGoalExecutor
             return EncodeError("No goal to resume.");
 
         var action = GoalOrchestrator.Resume(row.GoalId, sessionId, context);
+        await GoalOrchestrator.EmitRunStateChangedAsync(sessionId, action, context);
         return action.Success
             ? EncodeActionResult(row, action)
             : EncodeActionFailure(row, action);
@@ -565,21 +593,21 @@ public static partial class AgentRuntimeGoalExecutor
         string activeTerminalStatus,
         string message)
     {
-        var pending = DbGoalTools.SetStatusByGoalId(
+        // A system-side confirmation failure must not turn the Goal into a
+        // terminal aborted record. Keep it active and resumable; only an
+        // explicit user cancellation uses the pending -> aborted transition.
+        DbGoalTools.SetStatusByGoalId(
             goalId,
             sessionId,
             GoalStatusValues.Pending,
-            GoalStatusValues.Aborted,
+            activeTerminalStatus,
             message);
-        if (pending == null)
-        {
-            DbGoalTools.SetStatusByGoalId(
-                goalId,
-                sessionId,
-                GoalStatusValues.Active,
-                activeTerminalStatus,
-                message);
-        }
+        DbGoalTools.SetStatusByGoalId(
+            goalId,
+            sessionId,
+            GoalStatusValues.Active,
+            activeTerminalStatus,
+            message);
         GoalOrchestrator.RemovePendingGoal(goalId);
     }
 

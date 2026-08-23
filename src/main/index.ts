@@ -355,6 +355,10 @@ registerWebSearchHandlers()
     'db:goals:account:msgpack',
     async (args) => getNativeWorker().request('db/goals-account', args)
   )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'agent:drain-sub-agent-notifications',
+    async (args) => getNativeWorker().request('agent/drain-sub-agent-notifications', args)
+  )
   registerMessagePackHandler<Record<string, unknown>, unknown[]>(
     'db:goal-events:list:msgpack',
     async (args) => getNativeWorker().request('db/goal-events-list', args)
@@ -366,6 +370,56 @@ registerWebSearchHandlers()
   registerMessagePackHandler<Record<string, unknown>, unknown>(
     'db:goal-events:add:msgpack',
     async (args) => getNativeWorker().request('db/goal-events-add', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
+    'db:goal-plan-tasks:list:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plan-tasks-list', args)
+  )
+  // In-memory live snapshot for the panel's 1s poll (no SQLite round-trip).
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'goal:live:msgpack',
+    async (args) => getNativeWorker().request('goal/live', args)
+  )
+  // -- Goal plans/tasks/execution-runs handlers --
+  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
+    'db:goal-plans:list:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plans-list', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-plans:get:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plans-get', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-plans:update-status:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plans-update-status', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-plans:update-retry:msgpack',
+    async (args) => getNativeWorker().request('db/goal-plans-update-retry', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
+    'db:goal-tasks:list:msgpack',
+    async (args) => getNativeWorker().request('db/goal-tasks-list', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-tasks:get:msgpack',
+    async (args) => getNativeWorker().request('db/goal-tasks-get', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-tasks:update-status:msgpack',
+    async (args) => getNativeWorker().request('db/goal-tasks-update-status', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-execution-runs:insert:msgpack',
+    async (args) => getNativeWorker().request('db/goal-execution-runs-insert', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:goal-execution-runs:finish:msgpack',
+    async (args) => getNativeWorker().request('db/goal-execution-runs-finish', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
+    'db:goal-execution-runs:list:msgpack',
+    async (args) => getNativeWorker().request('db/goal-execution-runs-list', args)
   )
   // -- Goal control handlers --
   registerMessagePackHandler<Record<string, unknown>, unknown>(

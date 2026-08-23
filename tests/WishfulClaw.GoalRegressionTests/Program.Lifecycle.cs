@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Agent;
 using WishfulClaw.Agent.Tools.Providers;
 using WishfulClaw.Contracts;
@@ -112,15 +112,30 @@ internal static partial class Program
             var failedGoalId = failingContext.GoalId;
             Assert(!string.IsNullOrEmpty(failedGoalId),
                 "startup failure still identifies the pending goal");
-            AssertEqual(GoalStatusValues.Failed,
+            // Startup failure is a system-side event: the business status
+            // stays active (only a user cancel produces aborted); the goal
+            // remains resumable and no runtime zombie is left behind.
+            AssertEqual(GoalStatusValues.Active,
                 DbGoalTools.GetByGoalId(failedGoalId!, "session-lifecycle")?.Status,
-                "confirmation startup failure persists failed");
+                "confirmation startup failure keeps the goal active");
             Assert(GoalOrchestrator.GetContext(failedGoalId!) == null,
                 "confirmation startup failure leaves no active zombie");
             AssertEqual(0, AgentRuntimeReverseRequests.PendingCount,
                 "confirmation startup failure releases the reverse resolver");
             Assert(GoalOrchestrator.GetPendingGoalId("session-lifecycle") == null,
                 "confirmation startup failure releases pending goal memory");
+
+            // The startup-failure goal legitimately stays active (system
+            // failures never produce aborted). Simulate the user cancelling
+            // it so later steps get a clean current-goal slot.
+            var cancelledAfterFailure = DbGoalTools.SetStatusByGoalId(
+                failedGoalId!,
+                "session-lifecycle",
+                GoalStatusValues.Active,
+                GoalStatusValues.Aborted,
+                "Startup-failure goal cancelled by regression cleanup");
+            AssertEqual(GoalStatusValues.Aborted, cancelledAfterFailure?.Status,
+                "user cancel archives the startup-failure goal");
 
             var listResult = ExecuteGoalTool(
                 dbPath,
@@ -178,7 +193,6 @@ internal static partial class Program
             foreach (var terminalStatus in new[]
                      {
                          GoalStatusValues.Complete,
-                         GoalStatusValues.Failed,
                          GoalStatusValues.Aborted
                      })
             {

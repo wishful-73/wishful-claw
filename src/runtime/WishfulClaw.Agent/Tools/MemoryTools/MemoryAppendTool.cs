@@ -35,17 +35,13 @@ public sealed class MemoryAppendTool : IToolExecutor
 
     public string Description =>
 
-        "Append a new memory entry to the database. " +
+        "Append a new memory entry to the database and return its id. " +
 
-        "Use this to record facts, decisions, or insights worth remembering across sessions. " +
+        "Record facts, decisions, or insights worth remembering across sessions. " +
 
-        "Specify priority: permanent (core identity, never demote), lasting (important decisions), " +
+        "Priority: permanent (core identity), lasting (important decisions), standard (default), ephemeral (transient). " +
 
-        "standard (general, default), ephemeral (transient info). " +
-
-        "Returns the entry id for future updates. " +
-
-        "When the user tells you something worth remembering, call this tool to persist it — saying 'got it' without calling the tool means nothing is saved.";
+        "When the user shares something worth remembering, call this tool — verbal acknowledgment alone saves nothing.";
 
 
 

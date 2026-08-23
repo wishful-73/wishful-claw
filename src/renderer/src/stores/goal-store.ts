@@ -24,6 +24,7 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
   activeGoalRunsBySession: {},
   goalProgressBySession: {},
   goalRunStatesBySession: {},
+  goalActivitiesByGoal: {},
   _loaded: false,
 
   loadGoalsFromDb: async () => {
@@ -170,11 +171,11 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
     }
   },
 
-  confirmGoal: async (sessionId, goalId) => {
+  confirmGoal: async (sessionId, goalId, modelConfig) => {
     try {
       const result = await invokeMessagePackBinary<{ success: boolean; error?: string }>(
         GOAL_CONFIRM_MSGPACK_CHANNEL,
-        { sessionId, goalId }
+        { sessionId, goalId, ...(modelConfig ? { modelConfig } : {}) }
       )
       if (result.success) {
         // Optimistically flip the goal to active so the banner transitions immediately.
@@ -295,7 +296,7 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
 
   applySyncedGoal: (goal) => {
     useGoalHistoryStore.getState().applyGoalSnapshot(goal)
-    if (goal.status === 'complete' || goal.status === 'failed' || goal.status === 'aborted') {
+    if (goal.status === 'complete' || goal.status === 'aborted') {
       set((state) => removeRuntimeGoalState(state, goal.sessionId, goal.goalId))
       return
     }
@@ -366,6 +367,25 @@ export const useGoalStore = create<GoalStore>((set, get) => ({
       const next = { ...state.goalProgressBySession }
       delete next[sessionId]
       return { goalProgressBySession: next }
+    })
+  },
+
+  applyGoalActivity: (activity) => {
+    set((state) => {
+      const key = activity.goalId
+      const existing = state.goalActivitiesByGoal[key] ?? []
+      // Keep the latest 200 entries per goal — a live feed, not a log archive.
+      const next = [...existing, activity].slice(-200)
+      return { goalActivitiesByGoal: { ...state.goalActivitiesByGoal, [key]: next } }
+    })
+  },
+
+  clearGoalActivities: (goalId: string) => {
+    set((state) => {
+      if (!state.goalActivitiesByGoal[goalId]) return {}
+      const next = { ...state.goalActivitiesByGoal }
+      delete next[goalId]
+      return { goalActivitiesByGoal: next }
     })
   }
 }))

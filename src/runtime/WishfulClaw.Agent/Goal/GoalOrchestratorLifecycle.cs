@@ -2,6 +2,7 @@ using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -22,11 +23,13 @@ public static partial class GoalOrchestrator
         string? workingFolder,
         string goalId,
         JsonElement parameters,
-        IWorkerRequestContext context)
+        IWorkerRequestContext context,
+        string? modelConfigJson = null)
     {
         var goal = new GoalContext
         {
             GoalId = goalId,
+            GoalContextId = $"goal-context:{goalId}",
             SessionId = sessionId,
             GoalText = goalText,
             WorkingFolder = workingFolder,
@@ -37,6 +40,7 @@ public static partial class GoalOrchestrator
 
         if (parameters.ValueKind == JsonValueKind.Object)
             goal.OriginalParameters = parameters.Clone();
+        goal.ModelConfigJson = modelConfigJson;
 
         if (!ActiveGoals.TryAdd(goalId, goal))
         {
@@ -47,15 +51,22 @@ public static partial class GoalOrchestrator
             return Task.FromResult(goalId);
         }
 
+        // Start the owned loop FIRST so RunState is already Running when the
+        // "Goal created" event goes out — emitting before StartOrResumeRun made
+        // the first event carry runState=idle and left the frontend showing
+        // idle until decomposition finished (~10s).
+        StartOrResumeRun(goal, parameters, context);
+
         _ = EmitGoalEventAsync(goal, GoalEventType.GoalStarted,
             $"Goal created: {goalText}. Decomposing into plans...", context);
-
-        StartOrResumeRun(goal, parameters, context);
         return Task.FromResult(goalId);
     }
 
     /// <summary>
     /// Pause a running Goal without replacing its owned orchestration loop.
+    /// An idle goal (loop already exited, e.g. after a failed-but-active run)
+    /// is paused directly — the user asked for paused, so honor it instead of
+    /// returning a silent "no running loop" error.
     /// </summary>
     public static GoalActionResult Pause(string goalId)
     {
@@ -73,11 +84,34 @@ public static partial class GoalOrchestrator
             if (goal.RunState == GoalRunStateValues.Paused)
                 return GoalAction(goal, true, "already_paused");
 
-            if (goal.RunState != GoalRunStateValues.Running || goal.RunTask is not { IsCompleted: false })
-                return GoalAction(goal, false, "idle", "Goal has no running orchestration loop to pause.");
+            // Loop still running: pause takes effect at the next safe point.
+            if (goal.RunState == GoalRunStateValues.Running && goal.RunTask is { IsCompleted: false })
+            {
+                goal.RunState = GoalRunStateValues.Paused;
+                return GoalAction(goal, true, "paused");
+            }
 
+            // Idle loop (previous run ended without completing): flip the
+            // business status to paused so Resume can pick it up cleanly.
+            goal.Status = GoalStatusValues.Paused;
             goal.RunState = GoalRunStateValues.Paused;
+            PersistGoalStatus(goal);
             return GoalAction(goal, true, "paused");
+        }
+    }
+
+    /// <summary>
+    /// Best-effort persist of an idle-loop status change (pause path).
+    /// </summary>
+    private static void PersistGoalStatus(GoalContext goal)
+    {
+        try
+        {
+            SyncGoalToDb(goal, BuildResumeParameters(goal), $"Goal paused ({goal.Status})");
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn($"Failed to persist paused status: {ex.Message}");
         }
     }
 
@@ -158,6 +192,17 @@ public static partial class GoalOrchestrator
                     "Terminal goals cannot be resumed.");
             }
 
+            if (!string.Equals(row.Status, GoalStatusValues.Active, StringComparison.Ordinal))
+            {
+                return new GoalActionResult(
+                    false,
+                    "not_resumable",
+                    row.Status,
+                    GoalRunStateValues.Idle,
+                    goalId,
+                    "Only active Goals are restored after a worker restart.");
+            }
+
             var restoredGoal = RestoreGoalContext(row);
             ActiveGoals.TryAdd(goalId, restoredGoal);
             if (!ActiveGoals.TryGetValue(goalId, out goal))
@@ -178,7 +223,7 @@ public static partial class GoalOrchestrator
             return Task.FromResult(true);
 
         var row = DbGoalTools.GetByGoalId(goalId, sessionId);
-        if (row == null || GoalStatusValues.IsTerminal(row.Status))
+        if (row == null || !string.Equals(row.Status, GoalStatusValues.Active, StringComparison.Ordinal))
         {
             return Task.FromResult(false);
         }
@@ -267,7 +312,7 @@ public static partial class GoalOrchestrator
         if (status == GoalStatusValues.Aborted)
             return await AbortFromToolAsync(goalId, context);
 
-        if (status is not GoalStatusValues.Complete and not GoalStatusValues.Failed)
+        if (status is not GoalStatusValues.Complete and not GoalStatusValues.Aborted)
         {
             return new GoalActionResult(
                 false,
@@ -275,7 +320,7 @@ public static partial class GoalOrchestrator
                 status,
                 GoalRunStateValues.Idle,
                 goalId,
-                "Only complete, failed, or aborted are terminal statuses.");
+                "Only complete or aborted are terminal statuses.");
         }
 
         if (!ActiveGoals.TryGetValue(goalId, out var goal))
@@ -334,6 +379,9 @@ public static partial class GoalOrchestrator
             goal.CancellationTokenSource.Cancel();
             goal.RuntimeState?.Cancel("goal aborted");
 
+            // Propagate aborted status down to goal_plans and goal_tasks (best-effort)
+            GoalOrchestratorMaterialize.AbortSubtree(goal, BuildResumeParameters(goal));
+
             if (runTask == null)
             {
                 FinalizeIdleTerminal(goal, GoalStatusValues.Aborted, "Goal aborted");
@@ -357,7 +405,7 @@ public static partial class GoalOrchestrator
                 foreach (var plan in plans)
                 {
                     if (string.IsNullOrEmpty(plan.PlanId))
-                        plan.PlanId = $"plan-{Guid.NewGuid():N}".Substring(0, 16);
+                        plan.PlanId = GoalIds.NewPlanId();
                 }
             }
             catch (Exception ex)
@@ -369,10 +417,15 @@ public static partial class GoalOrchestrator
         return new GoalContext
         {
             GoalId = row.GoalId,
+            GoalContextId = $"goal-context:{row.GoalId}",
             SessionId = row.SessionId,
             GoalText = row.Objective,
             WorkingFolder = row.WorkingFolder,
-            Status = row.Status == "paused" ? GoalStatusValues.Active : row.Status,
+            ModelConfigJson = row.ModelConfigJson,
+            // Deliberate: "paused" is not preserved across restart. A restored
+            // goal comes back as active-idle so it is visible/resumable via the
+            // normal Resume path; the user re-issues Pause if still wanted.
+            Status = row.Status == GoalStatusValues.Paused ? GoalStatusValues.Active : row.Status,
             RunState = GoalRunStateValues.Idle,
             Plans = plans,
             CurrentPlanIndex = plans.Count > 0 ? row.CurrentPlanIndex : -1,
@@ -384,7 +437,20 @@ public static partial class GoalOrchestrator
         GoalContext goal,
         JsonElement? providerOverride = null)
     {
-        // 1. 前端传入的 provider 覆盖（最高优先级） — 合并到 workingFolder 参数
+        // A confirmed Goal owns its provider/model. The optional frontend provider
+        // is only a legacy fallback for Goals created before model_config_json.
+        if (!string.IsNullOrWhiteSpace(goal.ModelConfigJson))
+        {
+            return BuildGoalOwnedParameters(goal);
+        }
+
+        // Legacy fallback: use the original in-memory parameters before session state.
+        if (goal.OriginalParameters.HasValue
+            && goal.OriginalParameters.Value.ValueKind == JsonValueKind.Object)
+        {
+            return goal.OriginalParameters.Value.Clone();
+        }
+
         if (providerOverride.HasValue
             && providerOverride.Value.ValueKind == JsonValueKind.Object)
         {
@@ -399,14 +465,7 @@ public static partial class GoalOrchestrator
             });
         }
 
-        // 2. 优先使用创建时保存的原始参数（含 provider 配置）
-        if (goal.OriginalParameters.HasValue
-            && goal.OriginalParameters.Value.ValueKind == JsonValueKind.Object)
-        {
-            return goal.OriginalParameters.Value.Clone();
-        }
-
-        // 3. 回退到当前活跃 Agent 运行中该会话的 provider 配置
+        // Last provider fallback for old Goals: current session Agent parameters.
         if (AgentRuntimeTools.TryGetSessionParameters(goal.SessionId, out var sessionParams)
             && sessionParams.ValueKind == JsonValueKind.Object)
         {
@@ -423,6 +482,77 @@ public static partial class GoalOrchestrator
                 w.WriteEndObject();
             });
     }
+
+    internal static JsonElement BuildParametersForConfirmedGoal(
+        JsonElement parameters,
+        string modelConfigJson,
+        string? workingFolder)
+    {
+        using var configDocument = JsonDocument.Parse(modelConfigJson);
+        var config = configDocument.RootElement;
+        var providerId = JsonHelpers.GetString(config, "providerId") ?? string.Empty;
+        var provider = ProviderStore.GetProviderJson(providerId);
+        if (!provider.HasValue || provider.Value.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException($"Goal provider is no longer available: {providerId}");
+        return MergeGoalProvider(parameters, provider.Value, config, workingFolder);
+    }
+
+    private static JsonElement BuildGoalOwnedParameters(GoalContext goal)
+    {
+        using var configDocument = JsonDocument.Parse(goal.ModelConfigJson!);
+        var config = configDocument.RootElement;
+        var providerId = JsonHelpers.GetString(config, "providerId") ?? string.Empty;
+        var provider = ProviderStore.GetProviderJson(providerId);
+        if (!provider.HasValue || provider.Value.ValueKind != JsonValueKind.Object)
+            throw new InvalidOperationException($"Goal provider is no longer available: {providerId}");
+
+        var baseParameters = goal.OriginalParameters is { ValueKind: JsonValueKind.Object } original
+            ? original
+            : AgentRuntimeTools.TryGetSessionParameters(goal.SessionId, out var sessionParameters)
+                && sessionParameters.ValueKind == JsonValueKind.Object
+                ? sessionParameters
+                : default;
+        return MergeGoalProvider(baseParameters, provider.Value, config, goal.WorkingFolder);
+    }
+
+    private static JsonElement MergeGoalProvider(
+        JsonElement baseParameters,
+        JsonElement provider,
+        JsonElement config,
+        string? workingFolder)
+        => WorkerJsonHelper.BuildJsonElement(w =>
+        {
+            w.WriteStartObject();
+            if (baseParameters.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in baseParameters.EnumerateObject())
+                {
+                    if (property.NameEquals("provider")) continue;
+                    property.WriteTo(w);
+                }
+            }
+            if (!string.IsNullOrEmpty(workingFolder))
+            {
+                w.WriteString("workingFolder", workingFolder);
+            }
+            w.WritePropertyName("provider");
+            w.WriteStartObject();
+            foreach (var property in provider.EnumerateObject())
+            {
+                if (property.NameEquals("type") || property.NameEquals("model") || property.NameEquals("baseUrl"))
+                    continue;
+                property.WriteTo(w);
+            }
+            foreach (var property in config.EnumerateObject())
+            {
+                if (property.NameEquals("providerId")) continue;
+                var name = property.NameEquals("providerType") ? "type" : property.Name;
+                w.WritePropertyName(name);
+                property.Value.WriteTo(w);
+            }
+            w.WriteEndObject();
+            w.WriteEndObject();
+        });
 
     private static bool IsCurrentGoalContext(GoalContext goal)
         => ActiveGoals.TryGetValue(goal.GoalId, out var activeGoal)

@@ -464,6 +464,19 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
+        else if (GoalProgressTool.IsGoalProgressTool(toolCall.Name))
+        {
+            try
+            {
+                toolOutput = await GoalProgressTool.ExecuteAsync(toolCall, state, context);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Goal progress recording failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
         else if (registry is not null && registry.TryGetExecutor(toolCall.Name, out var executor))
         {
             try

@@ -65,7 +65,8 @@ internal static partial class AgentLoop
                     content.GetString() ?? string.Empty,
                     [],
                     [],
-                    JsonHelpers.GetString(message, "providerResponseId")));
+                    JsonHelpers.GetString(message, "providerResponseId"),
+                    ReasoningDetails: ReadReasoningDetails(message)));
                 continue;
             }
 
@@ -128,7 +129,8 @@ internal static partial class AgentLoop
                 toolUses,
                 toolResults,
                 JsonHelpers.GetString(message, "providerResponseId"),
-                contentBlocks));
+                contentBlocks,
+                ReasoningDetails: ReadReasoningDetails(message)));
         }
 
         return result;
@@ -151,12 +153,26 @@ internal static partial class AgentLoop
             {
                 writer.WriteString("providerResponseId", message.ProviderResponseId);
             }
+            if (message.ReasoningDetails is { } reasoningDetails &&
+                reasoningDetails.ValueKind == JsonValueKind.Array)
+            {
+                writer.WritePropertyName("reasoning_details");
+                reasoningDetails.WriteTo(writer);
+            }
             if (usage is not null)
             {
                 writer.WritePropertyName("usage");
                 WriteUsage(writer, usage);
             }
         });
+    }
+
+    private static JsonElement? ReadReasoningDetails(JsonElement message)
+    {
+        return message.TryGetProperty("reasoning_details", out var details) &&
+               details.ValueKind == JsonValueKind.Array
+            ? details.Clone()
+            : null;
     }
 
     private static void WriteAssistantWireContent(Utf8JsonWriter writer, AgentRuntimeChatMessage message)

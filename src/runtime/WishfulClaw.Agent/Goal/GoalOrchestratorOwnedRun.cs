@@ -63,8 +63,8 @@ public static partial class GoalOrchestrator
                 goal.RunTask = null;
                 goal.RuntimeState = null;
                 goal.RunState = GoalRunStateValues.Idle;
-                if (IsCurrentGoalContext(goal))
-                    ActiveGoals.TryRemove(goal.GoalId, out _);
+                if (IsCurrentGoalContext(goal) && ActiveGoals.TryRemove(goal.GoalId, out _))
+                    goal.DisposeEventRunState();
                 throw;
             }
         }
@@ -107,7 +107,7 @@ public static partial class GoalOrchestrator
         catch (Exception ex)
         {
             outcome = new GoalRunOutcome(
-                GoalStatusValues.Failed,
+                GoalStatusValues.Active,
                 GoalEventType.GoalFailed,
                 $"Goal failed: {ex.Message}");
         }

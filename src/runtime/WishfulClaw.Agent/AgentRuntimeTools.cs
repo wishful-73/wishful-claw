@@ -75,7 +75,8 @@ public static class AgentRuntimeTools
                     // but if EmitAsync itself fails (e.g. client disconnected),
                     // the exception would escape as an unobserved task exception.
                     // Catch it here to prevent process crash.
-                    WorkerLog.Error($"agent run outer crash runId={state.RunId} error={ex.GetType().Name}: {ex.Message}");
+                    WorkerLog.Error(
+                        $"agent run outer crash runId={state.RunId} error={FormatExceptionSummary(ex)}");
                     try { ActiveRuns.TryRemove(state.RunId, out _); } catch { }
                     try { RunSlots.Release(); } catch { }
                     try { state.Dispose(); } catch { }
@@ -121,6 +122,30 @@ public static class AgentRuntimeTools
         state.RequestStop("user");
         WorkerLog.Info($"agent run stop requested runId={runId}");
         return WorkerResponse.Json(new AgentRuntimeStopResult(true, runId), AgentRuntimeJsonContext.Default.AgentRuntimeStopResult);
+    }
+
+    /// <summary>
+    /// Drain buffered background sub-agent completion notifications for a
+    /// session whose main run already finalized. Called by the renderer right
+    /// before waking the main agent so the reports ride along with the wake
+    /// message instead of being lost.
+    /// </summary>
+    public static WorkerResponse DrainSubAgentNotifications(JsonElement parameters)
+    {
+        var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return WorkerResponse.Json(
+                new AgentRuntimeDrainResult(false, new List<JsonElement>()),
+                AgentRuntimeJsonContext.Default.AgentRuntimeDrainResult);
+        }
+
+        var messages = BackgroundSubAgentNotifications.Drain(sessionId);
+        WorkerLog.Info(
+            $"drained background sub-agent notifications sessionId={sessionId} count={messages.Count}");
+        return WorkerResponse.Json(
+            new AgentRuntimeDrainResult(true, messages),
+            AgentRuntimeJsonContext.Default.AgentRuntimeDrainResult);
     }
 
     /// <summary>
@@ -193,9 +218,15 @@ public static class AgentRuntimeTools
         var messagePackEvent = AgentStreamMessagePackEmitter.Encode(envelope);
         await context.EmitMessagePackEventAsync(messagePackEvent.EventName, messagePackEvent.Payload);
 
-        WorkerLog.Debug(
-            $"agent stream emitted runId={state.RunId} seq={envelope.Seq} " +
-            $"events={events.Length} bytes={messagePackEvent.Payload.Length}");
+        // Per-envelope DEBUG floods the console for high-throughput runs
+        // (streaming deltas, goal sub-agent forwarding). Only slow or
+        // unusually large envelopes are worth a trace line.
+        if (messagePackEvent.Payload.Length > 64 * 1024)
+        {
+            WorkerLog.Debug(
+                $"agent stream emitted runId={state.RunId} seq={envelope.Seq} " +
+                $"events={events.Length} bytes={messagePackEvent.Payload.Length}");
+        }
     }
 
     // ── Internal execution ──
@@ -220,15 +251,16 @@ public static class AgentRuntimeTools
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"agent run failed runId={state.RunId} error={ex.GetType().Name}: {ex.Message}");
+            var errorSummary = FormatExceptionSummary(ex);
+            WorkerLog.Warn($"agent run failed runId={state.RunId} error={errorSummary}");
             await EmitAsync(
                 state,
                 context,
                 new AgentRuntimeStreamEvent(
                     "error",
-                    Message: ex.Message,
+                    Message: errorSummary,
                     ErrorType: ex.GetType().Name,
-                    Details: ex.Message,
+                    Details: errorSummary,
                     StackTrace: ex.StackTrace));
             await AgentLoop.EmitLoopEndAsync(state, context, "error");
         }
@@ -297,5 +329,55 @@ public static class AgentRuntimeTools
     private static string FormatLogValue(string? value)
     {
         return string.IsNullOrEmpty(value) ? "<empty>" : value;
+    }
+
+    private static string FormatExceptionSummary(Exception exception)
+    {
+        const int maxDepth = 4;
+        const int maxSummaryLength = 1_500;
+        var parts = new List<string>(maxDepth);
+        Exception? current = exception;
+        var depth = 0;
+
+        while (current is not null && depth < maxDepth)
+        {
+            var message = SanitizeExceptionMessage(current.Message);
+            parts.Add($"{current.GetType().Name}: {message}");
+            current = current.InnerException;
+            depth++;
+        }
+
+        if (current is not null)
+        {
+            parts.Add("...");
+        }
+
+        var summary = string.Join(" -> ", parts);
+        return summary.Length <= maxSummaryLength
+            ? summary
+            : summary[..maxSummaryLength] + "...";
+    }
+
+    private static string SanitizeExceptionMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "<no message>";
+        }
+
+        var sanitized = string.Join(' ', message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        sanitized = System.Text.RegularExpressions.Regex.Replace(
+            sanitized,
+            "(?i)(Bearer\\s+)[^\\s,;]+",
+            "$1<redacted>");
+        sanitized = System.Text.RegularExpressions.Regex.Replace(
+            sanitized,
+            "(?i)([?&](?:api[_-]?key|access[_-]?token|token|key)=)[^&\\s]+",
+            "$1<redacted>");
+        sanitized = System.Text.RegularExpressions.Regex.Replace(
+            sanitized,
+            "(?i)([\\\"']?(?:api[_-]?key|access[_-]?token|token|secret)[\\\"']?\\s*[:=]\\s*[\\\"']?)[^\\\"'&,\\s}]+",
+            "$1<redacted>");
+        return sanitized;
     }
 }

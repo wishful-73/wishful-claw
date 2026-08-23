@@ -36,12 +36,14 @@ public static partial class GoalOrchestrator
 
     /// <summary>
     /// Get the active goal ID for a session, if one exists.
+    /// Linear scan is fine here: ActiveGoals holds only live goals (a handful
+    /// per process); an index would be over-engineering.
     /// </summary>
     public static string? GetActiveGoalId(string sessionId)
     {
         foreach (var kvp in ActiveGoals)
         {
-            if (kvp.Value.SessionId == sessionId && kvp.Value.Status == "active")
+            if (kvp.Value.SessionId == sessionId && kvp.Value.Status == GoalStatusValues.Active)
                 return kvp.Key;
         }
         return null;
@@ -53,6 +55,18 @@ public static partial class GoalOrchestrator
     public static GoalContext? GetContext(string goalId)
     {
         return ActiveGoals.TryGetValue(goalId, out var goal) ? goal : null;
+    }
+
+    /// <summary>
+    /// In-memory live snapshot for the panel's 1s poll — no DB involved.
+    /// Returns null when the goal is not in memory (terminal or never run in
+    /// this process); the caller falls back to DB queries for history.
+    /// </summary>
+    public static GoalAdaptiveLiveSnapshot? GetLiveSnapshot(string goalId)
+    {
+        return ActiveGoals.TryGetValue(goalId, out var goal)
+            ? goal.AdaptiveLive?.Snapshot()
+            : null;
     }
 
     // ── Event emission ──
@@ -117,19 +131,21 @@ public static partial class GoalOrchestrator
                     w.WriteString("runState", goal.RunState);
                     w.WriteNumber("currentPlanIndex", goal.CurrentPlanIndex);
                     w.WriteNumber("planCount", goal.Plans.Count);
-                    w.WriteNumber("completedPlans", goal.Plans.Count(p => p.Status == "completed"));
+                    w.WriteNumber("completedPlans", goal.Plans.Count(p => p.Status == GoalPlanStatusValues.Complete));
                     w.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
                     w.WriteEndObject();
                 }));
 
             await AgentRuntimeTools.EmitAsync(
-                new AgentRuntimeRunState($"goal-{goal.GoalId}", goal.SessionId),
+                goal.GetOrCreateEventRunState(),
                 context,
                 eventPayload);
         }
-        catch
+        catch (Exception ex)
         {
-            // Event emission failures should not crash the orchestration loop
+            // Event emission failures should not crash the orchestration loop,
+            // but a persistently broken channel must leave a trace.
+            WorkerLog.Warn($"Failed to emit goal_progress (goal={goal.GoalId}, type={eventType}): {ex.Message}");
         }
     }
 
@@ -167,37 +183,44 @@ public static partial class GoalOrchestrator
         string goalText,
         IWorkerRequestContext context)
     {
+        WorkerLog.Info($"EmitPendingGoalAsync goalId={goalId} sessionId={sessionId} goalText={goalText.Substring(0, Math.Min(50, goalText.Length))}");
+        var eventPayload = new AgentRuntimeStreamEvent(
+            "goal_progress",
+            SubAgentName: $"Goal: {goalText.Substring(0, Math.Min(50, goalText.Length))}",
+            ToolUseId: goalId,
+            Input: WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("goalId", goalId);
+                w.WriteString("sessionId", sessionId);
+                w.WriteString("objective", goalText);
+                w.WriteString("eventType", "GoalPending");
+                w.WriteString("message", $"Goal created: {goalText}. Awaiting your confirmation.");
+                w.WriteString("status", "pending");
+                w.WriteNumber("currentPlanIndex", -1);
+                w.WriteNumber("planCount", 0);
+                w.WriteNumber("completedPlans", 0);
+                w.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                w.WriteEndObject();
+            }));
+
+        // Pending goals have no GoalContext yet; the confirmation-card event
+        // uses a throwaway run state disposed right after this single emit.
+        // goalId already carries the "goal-" prefix — same runId formula as
+        // the active phase's EventRunState, so the stream identity matches.
+        var runState = new AgentRuntimeRunState(goalId, sessionId);
         try
         {
-            WorkerLog.Info($"EmitPendingGoalAsync goalId={goalId} sessionId={sessionId} goalText={goalText.Substring(0, Math.Min(50, goalText.Length))}");
-            var eventPayload = new AgentRuntimeStreamEvent(
-                "goal_progress",
-                SubAgentName: $"Goal: {goalText.Substring(0, Math.Min(50, goalText.Length))}",
-                ToolUseId: goalId,
-                Input: WorkerJsonHelper.BuildJsonElement(w =>
-                {
-                    w.WriteStartObject();
-                    w.WriteString("goalId", goalId);
-                    w.WriteString("sessionId", sessionId);
-                    w.WriteString("objective", goalText);
-                    w.WriteString("eventType", "GoalPending");
-                    w.WriteString("message", $"Goal created: {goalText}. Awaiting your confirmation.");
-                    w.WriteString("status", "pending");
-                    w.WriteNumber("currentPlanIndex", -1);
-                    w.WriteNumber("planCount", 0);
-                    w.WriteNumber("completedPlans", 0);
-                    w.WriteNumber("timestamp", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-                    w.WriteEndObject();
-                }));
-
-            await AgentRuntimeTools.EmitAsync(
-                new AgentRuntimeRunState($"goal-{goalId}", sessionId),
-                context,
-                eventPayload);
+            await AgentRuntimeTools.EmitAsync(runState, context, eventPayload);
         }
-        catch
+        catch (Exception ex)
         {
-            // Event emission failures should not crash goal creation
+            // Event emission failures should not crash goal creation.
+            WorkerLog.Warn($"Failed to emit pending goal_progress (goal={goalId}): {ex.Message}");
+        }
+        finally
+        {
+            runState.Dispose();
         }
     }
 
@@ -209,25 +232,44 @@ public static partial class GoalOrchestrator
         string sessionId,
         string? workingFolder,
         JsonElement parameters,
-        IWorkerRequestContext context)
+        IWorkerRequestContext context,
+        string? modelConfigJson = null)
     {
-        if (!PendingGoals.TryRemove(goalId, out var pending))
+        if (!PendingGoals.TryGetValue(goalId, out var pending))
             return false;
 
-        // Use provided parameters (from confirm) or fall back to pending's saved parameters
-        var actualParameters = parameters.ValueKind == JsonValueKind.Object
-            ? parameters
-            : pending.Parameters;
+        // Build and validate Goal-owned parameters before consuming the pending
+        // confirmation. If the provider was deleted or the snapshot is invalid,
+        // the pending request must remain retryable instead of disappearing.
+        var actualParameters = !string.IsNullOrWhiteSpace(modelConfigJson)
+            ? BuildParametersForConfirmedGoal(
+                pending.Parameters,
+                modelConfigJson,
+                workingFolder ?? pending.WorkingFolder)
+            : parameters.ValueKind == JsonValueKind.Object
+                ? parameters
+                : pending.Parameters;
 
-        await StartAsync(
-            pending.GoalText,
-            sessionId,
-            workingFolder ?? pending.WorkingFolder,
-            goalId,
-            actualParameters,
-            context);
+        if (!PendingGoals.TryRemove(new KeyValuePair<string, PendingGoal>(goalId, pending)))
+            return false;
 
-        return true;
+        try
+        {
+            await StartAsync(
+                pending.GoalText,
+                sessionId,
+                workingFolder ?? pending.WorkingFolder,
+                goalId,
+                actualParameters,
+                context,
+                modelConfigJson);
+            return true;
+        }
+        catch
+        {
+            PendingGoals.TryAdd(goalId, pending);
+            throw;
+        }
     }
 
     /// <summary>

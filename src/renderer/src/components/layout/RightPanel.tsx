@@ -11,6 +11,7 @@ import { RightPanelHeader } from './RightPanelHeader'
 import { ActivityPanel } from '@renderer/components/activity/ActivityPanel'
 import { MemoryPanel } from '@renderer/components/memory/MemoryPanel'
 import { SubAgentsPanel } from '@renderer/components/layout/SubAgentsPanel'
+import { SubAgentExecutionDetail } from '@renderer/components/layout/SubAgentExecutionDetail'
 import { BrowserPanel } from '@renderer/components/layout/BrowserPanel'
 import { PreviewPanel } from '@renderer/components/layout/PreviewPanel'
 import { AgentFilesPanel } from '@renderer/components/layout/AgentFilesPanel'
@@ -140,6 +141,18 @@ export function RightPanel(): React.JSX.Element {
       return <MemoryPanel workingFolder={workingFolder} />
     }
     if (tab.kind === 'subagent') {
+      // Per-agent tabs (toolUseId set) render the execution detail directly;
+      // the overview tab (no toolUseId) renders the agent list.
+      if (tab.toolUseId) {
+        return (
+          <SubAgentExecutionDetail
+            embedded
+            toolUseId={tab.toolUseId}
+            inlineText={tab.inlineText ?? undefined}
+            sessionId={tab.sessionId ?? panelSessionId}
+          />
+        )
+      }
       return <SubAgentsPanel sessionId={tab.sessionId ?? panelSessionId} />
     }
     if (tab.kind === 'browser') return null  // BrowserPanel is rendered as persistent layer

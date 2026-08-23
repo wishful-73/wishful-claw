@@ -124,7 +124,14 @@ internal static partial class SubAgentDefinitionLoader
         string name,
         string description,
         string systemPrompt)
-        => new(name, description, systemPrompt, 2, Temperature: 0, ProviderTurnOnly: true);
+        // MaxTurns 0 = unlimited (AgentLoop treats <=0 as no iteration cap).
+        // Structured sub-agents are single-shot decision/evaluation calls with
+        // tools disabled (ProviderTurnOnly); a turn cap only exists to force-
+        // stop runaway models, but reasoning models legitimately spend early
+        // turns thinking before emitting text — MaxTurns=2 starved them into
+        // "completed but produced no output". The parent's cancellation token
+        // is the real safety net; the loop ends when the model answers.
+        => new(name, description, systemPrompt, 0, Temperature: 0, ProviderTurnOnly: true);
 
     /// <summary>
     /// Default system prompt for custom sub-agents.

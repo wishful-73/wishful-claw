@@ -6,12 +6,17 @@ import { GoalConfirmResolvers, type GoalConfirmResponse } from './goal-confirm-r
 // to the renderer. The renderer shows the confirmation card and waits
 // for the user to confirm or discard. The response goes back to the agent.
 
-export type { GoalConfirmResponse } from './goal-confirm-resolvers'
+export type { GoalConfirmResponse, GoalConfirmModelConfig } from './goal-confirm-resolvers'
 
 const goalConfirmResolvers = new GoalConfirmResolvers()
 
-export function resolveGoalConfirm(goalId: string, confirmed: boolean, sessionId?: string): void {
-  goalConfirmResolvers.resolve(goalId, confirmed)
+export function resolveGoalConfirm(
+  goalId: string,
+  confirmed: boolean,
+  sessionId?: string,
+  modelConfig?: GoalConfirmResponse['modelConfig']
+): void {
+  goalConfirmResolvers.resolve(goalId, confirmed, modelConfig)
   // Clear progress so the GoalConfirmCard hides after confirmation
   if (confirmed && sessionId) {
     useGoalStore.getState().clearGoalProgress(sessionId, goalId)

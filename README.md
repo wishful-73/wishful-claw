@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <h1 align="center">Wishful Claw</h1>
   <p align="center">
     <strong>Agent 编程软件 — 融合记忆系统与人格系统的桌面 AI 助手</strong><br>
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.2.18-orange" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.2.19-orange" alt="Version">
   <img src="https://img.shields.io/badge/.NET-10-blue" alt=".NET">
   <img src="https://img.shields.io/badge/Electron-35-blue" alt="Electron">
   <img src="https://img.shields.io/badge/React-19-blue" alt="React">
@@ -51,7 +51,7 @@
 ### 🎭 人格系统
 
 - **Identity + Soul 双层** — 身份定义"我是谁"，灵魂定义"我怎么说话"
-- **6 套内置预设** — 极简执行者、深度分析师、创意伙伴、耐心向导、务实顾问、均衡默认
+- **6 套内置预设** — 桃子、老郑、贾维斯、小爪、婷姐、阿明
 - **PromptBuilder 分段组装** — Base Instruction + Profile Overlay + Context Files + Character Budget
 - **会话级切换** — 不同会话可以绑定不同人格
 - **AI 辅助创建** — 描述你想要的人格，自动生成 Identity / Soul 文件

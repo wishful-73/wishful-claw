@@ -8,6 +8,7 @@ export type SessionGoalStatus =
   | 'budget_limited'
   | 'complete'
   | 'aborted'
+  | 'interrupted'
   | 'failed'
 export type GoalRunState = 'idle' | 'running' | 'paused'
 export type SessionGoalEventType =
@@ -152,12 +153,27 @@ export interface GoalProgressState {
   timestamp: number
 }
 
+export interface GoalActivity {
+  id: string
+  sessionId: string
+  goalId: string
+  planId: string
+  round: number
+  kind: 'tool_call' | 'tool_result' | 'iteration'
+  toolName: string | null
+  toolCallId: string | null
+  status: string | null
+  iteration: number | null
+  timestamp: number
+}
+
 export interface GoalStore {
   goalsBySession: Record<string, SessionGoal>
   goalEventsBySession: Record<string, SessionGoalEvent[]>
   activeGoalRunsBySession: Record<string, ActiveGoalRun>
   goalProgressBySession: Record<string, GoalProgressState>
   goalRunStatesBySession: Record<string, GoalRunState>
+  goalActivitiesByGoal: Record<string, GoalActivity[]>
   _loaded: boolean
 
   loadGoalsFromDb: () => Promise<void>
@@ -183,7 +199,11 @@ export interface GoalStore {
     sessionId: string,
     patch: Partial<Pick<SessionGoal, 'objective' | 'status' | 'tokenBudget'>>
   ) => Promise<{ success: boolean; goal?: SessionGoal; error?: string }>
-  confirmGoal: (sessionId: string, goalId: string) => Promise<{ success: boolean; error?: string }>
+  confirmGoal: (
+    sessionId: string,
+    goalId: string,
+    modelConfig?: Record<string, unknown>
+  ) => Promise<{ success: boolean; error?: string }>
   cancelGoal: (
     sessionId: string,
     goalId?: string | null
@@ -212,6 +232,8 @@ export interface GoalStore {
   }) => void
   applyGoalProgress: (progress: GoalProgressState) => void
   clearGoalProgress: (sessionId: string, goalId?: string | null) => void
+  applyGoalActivity: (activity: GoalActivity) => void
+  clearGoalActivities: (goalId: string) => void
 }
 
 export function rowToGoal(row: SessionGoalRow): SessionGoal {
@@ -322,3 +344,239 @@ export function upsertGoalEvent(setState: GoalStoreSetter, event: SessionGoalEve
   })
 }
 
+
+// ─── Goal Plan Task（每轮执行记录）───
+
+export interface SessionGoalPlanTask {
+  id: string
+  sessionId: string
+  goalId: string
+  planId: string
+  originalPlanId?: string | null
+  planTitle?: string | null
+  round: number
+  status: 'executing' | 'completed' | 'failed' | 'interrupted'
+  description?: string | null
+  steps?: string[] | null
+  summary?: string | null
+  evaluationReasoning?: string | null
+  evaluationSatisfied?: boolean | null
+  adjusted: boolean
+  startedAt: number
+  finishedAt?: number | null
+}
+
+export interface SessionGoalPlanTaskRow {
+  id: number
+  sessionId: string
+  goalId: string
+  planId: string
+  originalPlanId: string | null
+  planTitle: string | null
+  round: number
+  status: string
+  description: string | null
+  stepsJson: string | null
+  summary: string | null
+  evaluationReasoning: string | null
+  evaluationSatisfied: boolean | null
+  adjusted: boolean
+  startedAt: number
+  finishedAt: number | null
+}
+
+export function rowToPlanTask(row: SessionGoalPlanTaskRow): SessionGoalPlanTask {
+  let steps: string[] | null = null
+  if (row.stepsJson) {
+    try {
+      const parsed = JSON.parse(row.stepsJson)
+      if (Array.isArray(parsed)) steps = parsed.filter((s): s is string => typeof s === 'string')
+    } catch {
+      steps = null
+    }
+  }
+  return {
+    id: String(row.id),
+    sessionId: row.sessionId,
+    goalId: row.goalId,
+    planId: row.planId,
+    originalPlanId: row.originalPlanId,
+    planTitle: row.planTitle,
+    round: row.round,
+    status: (['executing', 'completed', 'failed', 'interrupted'] as const).includes(
+      row.status as SessionGoalPlanTask['status']
+    )
+      ? (row.status as SessionGoalPlanTask['status'])
+      : 'executing',
+    description: row.description,
+    steps,
+    summary: row.summary,
+    evaluationReasoning: row.evaluationReasoning,
+    evaluationSatisfied: row.evaluationSatisfied,
+    adjusted: row.adjusted || (row.originalPlanId != null && row.originalPlanId !== row.planId && row.round > 1),
+    startedAt: row.startedAt,
+    finishedAt: row.finishedAt
+  }
+}
+
+// ─── Goal Plan (definition, not execution attempt) ───
+export interface SessionGoalPlan {
+  planId: string
+  goalId: string
+  sessionId: string
+  ordinal: number
+  originalPlanId?: string | null
+  title: string
+  description: string
+  contentJson?: string | null
+  status: 'pending' | 'active' | 'complete' | 'aborted' | 'interrupted' | 'superseded'
+  retryCount: number
+  resultSummary?: string | null
+  createdAt: number
+  updatedAt: number
+  startedAt?: number | null
+  completedAt?: number | null
+}
+
+export interface SessionGoalPlanRow {
+  planId: string
+  goalId: string
+  sessionId: string
+  ordinal: number
+  originalPlanId: string | null
+  title: string
+  description: string
+  contentJson: string | null
+  status: string
+  retryCount: number
+  resultSummary: string | null
+  createdAt: number
+  updatedAt: number
+  startedAt: number | null
+  completedAt: number | null
+}
+
+export function rowToPlan(row: SessionGoalPlanRow): SessionGoalPlan {
+  return {
+    planId: row.planId,
+    goalId: row.goalId,
+    sessionId: row.sessionId,
+    ordinal: row.ordinal,
+    originalPlanId: row.originalPlanId,
+    title: row.title,
+    description: row.description,
+    contentJson: row.contentJson,
+    status: (['pending', 'active', 'complete', 'aborted', 'interrupted', 'superseded'] as const).includes(row.status as SessionGoalPlan['status'])
+      ? row.status as SessionGoalPlan['status']
+      : 'pending',
+    retryCount: row.retryCount,
+    resultSummary: row.resultSummary,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt
+  }
+}
+
+// ─── Goal Task (definition, not execution attempt) ───
+export interface SessionGoalTask {
+  taskId: string
+  goalId: string
+  planId: string
+  sessionId: string
+  ordinal: number
+  title: string
+  description: string
+  contentJson?: string | null
+  status: 'pending' | 'active' | 'complete' | 'aborted' | 'interrupted'
+  retryCount: number
+  resultSummary?: string | null
+  createdAt: number
+  updatedAt: number
+  startedAt?: number | null
+  completedAt?: number | null
+}
+
+export interface SessionGoalTaskRow {
+  taskId: string
+  goalId: string
+  planId: string
+  sessionId: string
+  ordinal: number
+  title: string
+  description: string
+  contentJson: string | null
+  status: string
+  retryCount: number
+  resultSummary: string | null
+  createdAt: number
+  updatedAt: number
+  startedAt: number | null
+  completedAt: number | null
+}
+
+export function rowToTask(row: SessionGoalTaskRow): SessionGoalTask {
+  return {
+    taskId: row.taskId,
+    goalId: row.goalId,
+    planId: row.planId,
+    sessionId: row.sessionId,
+    ordinal: row.ordinal,
+    title: row.title,
+    description: row.description,
+    contentJson: row.contentJson,
+    status: (['pending', 'active', 'complete', 'aborted', 'interrupted'] as const).includes(row.status as SessionGoalTask['status'])
+      ? row.status as SessionGoalTask['status']
+      : 'pending',
+    retryCount: row.retryCount,
+    resultSummary: row.resultSummary,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt
+  }
+}
+
+// ─── Goal Execution Run (attempt) ───
+export interface GoalExecutionRun {
+  attemptId: string
+  goalId: string
+  planId?: string | null
+  taskId?: string | null
+  attemptNo: number
+  status: 'executing' | 'completed' | 'failed' | 'interrupted'
+  summary?: string | null
+  error?: string | null
+  startedAt: number
+  finishedAt?: number | null
+}
+
+export interface GoalExecutionRunRow {
+  attemptId: string
+  goalId: string
+  planId: string | null
+  taskId: string | null
+  attemptNo: number
+  status: string
+  summary: string | null
+  error: string | null
+  startedAt: number
+  finishedAt: number | null
+}
+
+export function rowToExecutionRun(row: GoalExecutionRunRow): GoalExecutionRun {
+  return {
+    attemptId: row.attemptId,
+    goalId: row.goalId,
+    planId: row.planId,
+    taskId: row.taskId,
+    attemptNo: row.attemptNo,
+    status: (['executing', 'completed', 'failed', 'interrupted'] as const).includes(row.status as GoalExecutionRun['status'])
+      ? row.status as GoalExecutionRun['status']
+      : 'executing',
+    summary: row.summary,
+    error: row.error,
+    startedAt: row.startedAt,
+    finishedAt: row.finishedAt
+  }
+}

@@ -20,6 +20,7 @@ import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { registerBrowserTool } from '@renderer/lib/tools/browser-tool'
 import { registerAllViewers } from '@renderer/lib/preview/register-viewers'
 import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
+import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
 
 // Initialize provider store — ensures builtin presets exist
 initProviderStore()
@@ -69,6 +70,10 @@ function App(): React.JSX.Element | null {
 
   // Mount channel auto-reply listener (plugin:session-task → Agent Loop → reply)
   useChannelAutoReply()
+
+  // Wake an idle main session when a background sub-agent completes, so its
+  // report is processed instead of being dropped after the run finalized.
+  useBackgroundSubAgentWakeup()
 
   // Sync language changes
   useEffect(() => {

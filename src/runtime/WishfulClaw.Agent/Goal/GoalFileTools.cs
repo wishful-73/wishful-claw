@@ -51,12 +51,14 @@ public static class GoalFileTools
         for (int i = 0; i < plans.Count; i++)
         {
             var plan = plans[i];
+            // Keys must come from GoalPlanStatusValues — hand-written literals
+            // drifted from the real vocabulary once already (GL-3).
             var statusIcon = plan.Status switch
             {
-                "pending" => "[ ]",
-                "executing" => "[~]",
-                "completed" => "[x]",
-                "failed" => "[!]",
+                GoalPlanStatusValues.Pending => "[ ]",
+                GoalPlanStatusValues.Active => "[~]",
+                GoalPlanStatusValues.Complete => "[x]",
+                GoalPlanStatusValues.Aborted or GoalPlanStatusValues.Interrupted => "[!]",
                 _ => "[ ]"
             };
             sb.AppendLine($"{i + 1}. {statusIcon} **{plan.Title}** (id: `{plan.PlanId}`)");

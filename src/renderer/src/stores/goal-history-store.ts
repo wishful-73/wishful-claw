@@ -1,17 +1,30 @@
 import { create } from 'zustand'
 import {
   DB_GOALS_LIST_PAGE_MSGPACK_CHANNEL,
-  DB_GOAL_EVENTS_LIST_PAGE_MSGPACK_CHANNEL
+  DB_GOAL_EVENTS_LIST_PAGE_MSGPACK_CHANNEL,
+  DB_GOAL_PLAN_TASKS_LIST_MSGPACK_CHANNEL,
+  DB_GOAL_PLANS_LIST_MSGPACK_CHANNEL,
+  DB_GOAL_TASKS_LIST_MSGPACK_CHANNEL,
+  GOAL_LIVE_MSGPACK_CHANNEL
 } from '@shared/messagepack/binary-ipc'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import {
   mutationError,
   rowToEvent,
   rowToGoal,
+  rowToPlanTask,
+  rowToPlan,
+  rowToTask,
   type GoalEventPageResult,
   type GoalPageResult,
   type SessionGoal,
-  type SessionGoalEvent
+  type SessionGoalEvent,
+  type SessionGoalPlan,
+  type SessionGoalPlanTask,
+  type SessionGoalPlanTaskRow,
+  type SessionGoalPlanRow,
+  type SessionGoalTask,
+  type SessionGoalTaskRow
 } from './goal-store-helpers'
 import { applyGoalStatusToProjects } from './goal-state-transitions'
 
@@ -29,6 +42,10 @@ interface GoalEventPageCursor {
 interface GoalHistoryState {
   goalsByProject: Record<string, SessionGoal[]>
   eventsByGoal: Record<string, SessionGoalEvent[]>
+  planTasksByGoal: Record<string, SessionGoalPlanTask[]>
+  plansByGoal: Record<string, SessionGoalPlan[]>
+  tasksByPlan: Record<string, SessionGoalTask[]>
+  liveByGoal: Record<string, GoalLiveSnapshot | null>
   goalCursorsByProject: Record<string, GoalPageCursor | null>
   eventCursorsByGoal: Record<string, GoalEventPageCursor | null>
   goalHasMoreByProject: Record<string, boolean>
@@ -53,6 +70,25 @@ interface GoalHistoryState {
     force?: boolean
   ) => Promise<SessionGoalEvent[]>
   loadMoreGoalEvents: (sessionId: string, goalId: string) => Promise<SessionGoalEvent[]>
+  loadGoalPlanTasks: (sessionId: string, goalId: string, force?: boolean) => Promise<SessionGoalPlanTask[]>
+  loadGoalPlans: (sessionId: string, goalId: string, force?: boolean) => Promise<SessionGoalPlan[]>
+  loadPlanTasks: (sessionId: string, goalId: string, planId: string, force?: boolean) => Promise<SessionGoalTask[]>
+  loadGoalLive: (goalId: string) => Promise<GoalLiveSnapshot | null>
+}
+
+/** In-memory live snapshot served by goal/live (Worker memory, not SQLite). */
+export interface GoalLiveStep {
+  step: number
+  title: string
+  succeeded: boolean
+  summary?: string | null
+  timestampMs: number
+}
+
+export interface GoalLiveSnapshot {
+  currentAction: string
+  currentTitle?: string | null
+  steps: GoalLiveStep[]
 }
 
 export function goalProjectKey(projectId: string | null): string {
@@ -63,9 +99,16 @@ export function goalHistoryKey(sessionId: string, goalId: string): string {
   return `${sessionId}\u0000${goalId}`
 }
 
+export function goalPlanKey(sessionId: string, goalId: string, planId: string): string {
+  return `${sessionId}\u0000${goalId}\u0000${planId}`
+}
+
 export const useGoalHistoryStore = create<GoalHistoryState>((set, get) => ({
   goalsByProject: {},
   eventsByGoal: {},
+  planTasksByGoal: {},
+  plansByGoal: {},
+  tasksByPlan: {},
   goalCursorsByProject: {},
   eventCursorsByGoal: {},
   goalHasMoreByProject: {},
@@ -263,6 +306,84 @@ export const useGoalHistoryStore = create<GoalHistoryState>((set, get) => ({
     } catch {
       set((current) => ({ loadingGoals: { ...current.loadingGoals, [key]: false } }))
       return cached
+    }
+  },
+
+  loadGoalPlanTasks: async (sessionId, goalId, force = false) => {
+    const key = goalHistoryKey(sessionId, goalId)
+    const cached = get().planTasksByGoal[key]
+    if (cached && !force) return cached
+
+    set((state) => ({ loadingGoals: { ...state.loadingGoals, [key]: true } }))
+    try {
+      const rows = await invokeMessagePackBinary<SessionGoalPlanTaskRow[]>(
+        DB_GOAL_PLAN_TASKS_LIST_MSGPACK_CHANNEL,
+        { sessionId, goalId }
+      )
+      const tasks = (rows ?? []).map(rowToPlanTask)
+      set((state) => ({
+        planTasksByGoal: { ...state.planTasksByGoal, [key]: tasks },
+        loadingGoals: { ...state.loadingGoals, [key]: false }
+      }))
+      return tasks
+    } catch {
+      set((state) => ({ loadingGoals: { ...state.loadingGoals, [key]: false } }))
+      return cached ?? []
+    }
+  },
+
+  loadGoalPlans: async (sessionId, goalId, force = false) => {
+    const key = goalHistoryKey(sessionId, goalId)
+    const cached = get().plansByGoal[key]
+    if (cached && !force) return cached
+
+    try {
+      const rows = await invokeMessagePackBinary<SessionGoalPlanRow[]>(
+        DB_GOAL_PLANS_LIST_MSGPACK_CHANNEL,
+        { sessionId, goalId }
+      )
+      const plans = (rows ?? []).map(rowToPlan).sort((a, b) => a.ordinal - b.ordinal)
+      set((state) => ({
+        plansByGoal: { ...state.plansByGoal, [key]: plans }
+      }))
+      return plans
+    } catch {
+      return cached ?? []
+    }
+  },
+
+  loadPlanTasks: async (sessionId, goalId, planId, force = false) => {
+    const key = goalPlanKey(sessionId, goalId, planId)
+    const cached = get().tasksByPlan[key]
+    if (cached && !force) return cached
+
+    try {
+      const rows = await invokeMessagePackBinary<SessionGoalTaskRow[]>(
+        DB_GOAL_TASKS_LIST_MSGPACK_CHANNEL,
+        { sessionId, goalId, planId }
+      )
+      const tasks = (rows ?? []).map(rowToTask).sort((a, b) => a.ordinal - b.ordinal)
+      set((state) => ({
+        tasksByPlan: { ...state.tasksByPlan, [key]: tasks }
+      }))
+      return tasks
+    } catch {
+      return cached ?? []
+    }
+  },
+
+  liveByGoal: {},
+  loadGoalLive: async (goalId) => {
+    try {
+      const result = await invokeMessagePackBinary<{ live: GoalLiveSnapshot | null }>(
+        GOAL_LIVE_MSGPACK_CHANNEL,
+        { goalId }
+      )
+      const live = result?.live ?? null
+      set((state) => ({ liveByGoal: { ...state.liveByGoal, [goalId]: live } }))
+      return live
+    } catch {
+      return get().liveByGoal[goalId] ?? null
     }
   }
 }))

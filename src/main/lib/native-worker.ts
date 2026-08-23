@@ -347,7 +347,10 @@ function createEndpoint(): string {
 function resolveWorkerLogLevel(): string {
   const override = process.env['WISHFUL_CLAW_LOG_LEVEL']
   if (override) return override
-  return app.isPackaged ? 'warn' : 'debug'
+  // Dev default is info: DEBUG-level per-event traces flood the console
+  // during goal/sub-agent runs. Set WISHFUL_CLAW_LOG_LEVEL=debug explicitly
+  // when deep diagnosis is needed.
+  return app.isPackaged ? 'warn' : 'info'
 }
 
 function resolveWorkerPath(): string | null {

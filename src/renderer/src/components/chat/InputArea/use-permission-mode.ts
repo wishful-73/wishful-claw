@@ -25,7 +25,7 @@ export function usePermissionMode(opts: UsePermissionModeOptions) {
         const ok = await confirm({
           title: opts.t('permission.fullAccessConfirmTitle'),
           description: opts.t('permission.fullAccessConfirmDesc'),
-          confirmLabel: opts.t('permission.fullAccess'),
+          confirmLabel: opts.t('permission.fullAccessConfirmAction'),
           variant: 'destructive'
         })
         if (!ok) return

@@ -96,6 +96,30 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/goal-events-list-page", DbGoalTools.ListEventsPage);
         context.Register("db/goal-events-add", DbGoalTools.AddEvent);
 
+        // ── Goal Plan Tasks (per-round execution records) ──
+        context.Register("db/goal-plan-tasks-list", DbGoalPlanTaskRoundTools.ListPlanTasks);
+        context.Register("db/goal-plan-tasks-get", DbGoalPlanTaskRoundTools.GetPlanTask);
+        context.Register("db/goal-plan-tasks-list-by-plan", DbGoalPlanTaskRoundTools.ListPlanTasksByPlan);
+
+        // ── Goal Plans (plan definitions) ──
+        context.Register("db/goal-plans-list", DbGoalPlanTools.ListPlans);
+        context.Register("db/goal-plans-get", DbGoalPlanTools.GetPlan);
+        context.Register("db/goal-plans-update-status", DbGoalPlanTools.UpdatePlanStatus);
+        context.Register("db/goal-plans-update-retry", DbGoalPlanTools.UpdatePlanRetry);
+        context.Register("db/goal-plans-update-snapshot", DbGoalPlanTools.UpdatePlanSnapshot);
+
+        // ── Goal Tasks (task definitions) ──
+        context.Register("db/goal-tasks-list", DbGoalTaskTools.ListTasks);
+        context.Register("db/goal-tasks-get", DbGoalTaskTools.GetTask);
+        context.Register("db/goal-tasks-update-status", DbGoalTaskTools.UpdateTaskStatus);
+
+        // ── Goal Execution Runs (execution attempts) ──
+        context.Register("db/goal-execution-runs-insert", DbGoalExecutionRunTools.InsertRun);
+        context.Register("db/goal-execution-runs-finish", DbGoalExecutionRunTools.FinishRun);
+        context.Register("db/goal-execution-runs-get", DbGoalExecutionRunTools.GetRun);
+        context.Register("db/goal-execution-runs-list", DbGoalExecutionRunTools.ListRuns);
+        context.Register("db/goal-ledger-get", DbGoalTools.GetLedger);
+
         // ── Plugin Sessions ──
         context.Register("db/plugin-normal-projects", DbPluginSessionTools.ListNormalProjects);
         context.Register("db/plugin-sync-session-models", DbPluginSessionTools.SyncPluginSessionModels);

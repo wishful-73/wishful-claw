@@ -20,7 +20,7 @@ public static partial class SubAgentExecutor
             return SubAgentDefinitionLoader.CreateCustomDefinition(workingFolder);
         }
 
-        if (subAgentType is "goal-decomposer" or "goal-evaluator")
+        if (subAgentType is "goal-decomposer" or "goal-evaluator" or "goal-orchestrator" or "task-decomposer")
         {
             var systemPrompt = JsonHelpers.GetString(input, "systemPrompt")
                 ?? "Return only the requested structured JSON.";
@@ -40,7 +40,9 @@ public static partial class SubAgentExecutor
         JsonElement parentParameters,
         SubAgentDefinition definition,
         string prompt,
-        int childDepth)
+        int childDepth,
+        string sessionMode = "subAgent",
+        string? goalContextId = null)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, WriteOptions))
@@ -71,7 +73,9 @@ public static partial class SubAgentExecutor
 
             // Sub-agents use "subAgent" mode - they should not inherit
             // plan tools (normal mode) or goal tools (goal mode)
-            writer.WriteString("sessionMode", "subAgent");
+            writer.WriteString("sessionMode", sessionMode);
+            if (!string.IsNullOrWhiteSpace(goalContextId))
+                writer.WriteString("goalContextId", goalContextId);
 
             // Override system prompt in provider
             var provider = AgentLoop.GetObject(parentParameters, "provider");

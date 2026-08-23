@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -92,6 +92,26 @@ public static class ProviderRetryPolicy
             {
                 return await execute();
             }
+            catch (TimeoutException ex) when (!state.IsCancellationRequested)
+            {
+                // Idle/TTFB timeout from AgentRuntimeRequestTimeout — treat as
+                // transient and let the same backoff schedule handle it.
+                var attempt = retryAttempt + 1;
+                var delayMs = ComputeDelayMs(attempt, null);
+                WorkerLog.Warn(
+                    $"provider request timed out ({ex.Message}); retrying in {delayMs}ms " +
+                    $"attempt={attempt}{(isUnlimited ? "/unlimited" : $"/{maxAttempts}")}");
+                await AgentRuntimeTools.EmitAsync(
+                    state,
+                    context,
+                    new AgentRuntimeStreamEvent(
+                        "request_retry",
+                        Reason: "timeout",
+                        Attempt: attempt,
+                        MaxAttempts: isUnlimited ? 0 : maxAttempts,
+                        DelayMs: delayMs));
+                await Task.Delay(delayMs, state.CancellationToken);
+            }
             catch (ProviderHttpException ex) when (
                 IsRetryableStatus(ex.StatusCode) &&
                 (isUnlimited || retryAttempt < maxAttempts) &&
@@ -100,7 +120,7 @@ public static class ProviderRetryPolicy
                 var attempt = retryAttempt + 1;
                 var delayMs = ComputeDelayMs(attempt, ex.RetryAfter);
                 WorkerLog.Warn(
-                    $"provider request HTTP {ex.StatusCode}; retrying in {delayMs}ms " +
+                    $"provider request failed ({ex.Message}); retrying in {delayMs}ms " +
                     $"attempt={attempt}{(isUnlimited ? "/unlimited" : $"/{maxAttempts}")}");
                 await AgentRuntimeTools.EmitAsync(
                     state,

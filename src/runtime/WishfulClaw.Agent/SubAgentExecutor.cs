@@ -155,6 +155,9 @@ public static partial class SubAgentExecutor
         }
         finally
         {
+            // The sub-agent conversation is isolated under its runId (see
+            // AgentLoop); remove it so isolated conversations don't leak.
+            SessionConversationManager.Remove($"__subagent__{childRunId}");
             childState.Dispose();
         }
 
@@ -174,6 +177,16 @@ public static partial class SubAgentExecutor
             BackgroundSubAgentRegistry.Complete(
                 toolCallId, subAgentOutput, collector.ToolCallCount,
                 collector.Iterations, BuildToolCallEntries(collector.ToolCallSummaries));
+        }
+
+        // Goal-orchestrated run: hand the host-observed tool receipts to the
+        // orchestrator's evidence sink so the evaluator sees what actually ran.
+        if (parentState.GoalEvidenceSink is { } sink)
+        {
+            foreach (var s in collector.ToolCallSummaries)
+            {
+                sink.Record(s.Name, ExtractKeyParam(s.Name, s.Input), s.Status == "completed");
+            }
         }
 
         var toolCallSummary = BuildToolCallSummary(collector.ToolCallSummaries);
@@ -215,14 +228,126 @@ public static partial class SubAgentExecutor
         {
             ForwardEvent = async (evt) =>
             {
+                // Goal-orchestrated runs are background-only (user-directed
+                // redesign): no per-event forwarding at all — no text deltas,
+                // no tool_call/iteration goal_activity feed. The panel is a
+                // pull-based checker (polls the DB); the final report lands in
+                // goal_plan_tasks via the orchestrator. This kills the seq
+                // flood and the push traffic entirely for goal runs.
+                if (parentState.GoalEventContext is not null)
+                {
+                    return;
+                }
+
                 var wrappedEvent = evt with
                 {
                     SubAgentName = agentName,
                     ToolUseId = toolCallId
                 };
-                await AgentRuntimeTools.EmitAsync(parentState, context, wrappedEvent);
+
+                // The parent run may have finalized (completed normally or
+                // stopped) while a background sub-agent is still running; its
+                // transport/observer are disposed at that point. A forwarding
+                // failure must NEVER propagate into the child loop or the
+                // whole sub-agent would die just because the parent went away
+                // — swallow and keep running so it can still deliver its
+                // result through the session notification path.
+                try
+                {
+                    await AgentRuntimeTools.EmitAsync(parentState, context, wrappedEvent);
+
+                    // Goal-orchestrated execution: also tag the event with the goal
+                    // context so the Goal panel can render a live activity feed.
+                    if (parentState.GoalEventContext is { } goalCtx)
+                    {
+                        var activity = BuildGoalActivityEvent(goalCtx, evt);
+                        if (activity is not null)
+                        {
+                            await AgentRuntimeTools.EmitAsync(parentState, context, activity);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    WorkerLog.Debug(
+                        $"sub-agent event forward skipped parentGone=true toolUseId={toolCallId} " +
+                        $"eventType={evt.Type} error={ex.GetType().Name}: {ex.Message}");
+                }
             }
         };
+    }
+
+    /// <summary>
+    /// Build a "goal_activity" stream event from a sub-agent event for the Goal
+    /// panel. Only meaningful activity is forwarded: tool calls (name + brief
+    /// input summary) and iterations. Text deltas are NOT forwarded at all
+    /// (they caused thousands of events per minute); live progress text is
+    /// dropped for goal runs — the final report arrives with sub_agent_end.
+    /// </summary>
+    private static AgentRuntimeStreamEvent? BuildGoalActivityEvent(
+        GoalEventContext goalCtx,
+        AgentRuntimeStreamEvent evt)
+    {
+        switch (evt.Type)
+        {
+            case "sub_agent_tool_call":
+                if (evt.ToolCall is not { } toolCall) return null;
+                return new AgentRuntimeStreamEvent(
+                    "goal_activity",
+                    ToolUseId: goalCtx.GoalId,
+                    SubAgentName: goalCtx.PlanTitle,
+                    Input: WorkerJsonHelper.BuildJsonElement(w =>
+                    {
+                        w.WriteStartObject();
+                        w.WriteString("goalId", goalCtx.GoalId);
+                        w.WriteString("planId", goalCtx.PlanId);
+                        w.WriteNumber("round", goalCtx.Round);
+                        w.WriteString("kind", "tool_call");
+                        w.WriteString("toolCallId", toolCall.Id);
+                        w.WriteString("toolName", toolCall.Name);
+                        w.WriteString("status", toolCall.Status);
+                        w.WriteEndObject();
+                    }));
+
+            case "sub_agent_tool_call_result":
+                if (evt.ToolCall is not { } doneCall) return null;
+                return new AgentRuntimeStreamEvent(
+                    "goal_activity",
+                    ToolUseId: goalCtx.GoalId,
+                    SubAgentName: goalCtx.PlanTitle,
+                    Input: WorkerJsonHelper.BuildJsonElement(w =>
+                    {
+                        w.WriteStartObject();
+                        w.WriteString("goalId", goalCtx.GoalId);
+                        w.WriteString("planId", goalCtx.PlanId);
+                        w.WriteNumber("round", goalCtx.Round);
+                        w.WriteString("kind", "tool_result");
+                        w.WriteString("toolCallId", doneCall.Id);
+                        w.WriteString("toolName", doneCall.Name);
+                        w.WriteString("status", doneCall.Status);
+                        w.WriteEndObject();
+                    }));
+
+            case "sub_agent_iteration":
+                return new AgentRuntimeStreamEvent(
+                    "goal_activity",
+                    Iteration: evt.Iteration,
+                    ToolUseId: goalCtx.GoalId,
+                    SubAgentName: goalCtx.PlanTitle,
+                    Input: WorkerJsonHelper.BuildJsonElement(w =>
+                    {
+                        w.WriteStartObject();
+                        w.WriteString("goalId", goalCtx.GoalId);
+                        w.WriteString("planId", goalCtx.PlanId);
+                        w.WriteNumber("round", goalCtx.Round);
+                        w.WriteString("kind", "iteration");
+                        w.WriteNumber("iteration", evt.Iteration ?? 0);
+                        w.WriteEndObject();
+                    }));
+
+            default:
+                return null;
+        }
     }
 
     /// <summary>

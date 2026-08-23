@@ -4,7 +4,25 @@ import { cn } from '@renderer/lib/utils'
 import { Button } from '@renderer/components/ui/button'
 import { Target, Loader2, Play, X } from 'lucide-react'
 import { useGoalStore } from '@renderer/stores/goal-store'
-import { resolveGoalConfirm, cancelGoalConfirm } from '@renderer/lib/tools/goal-native-ui'
+import { resolveGoalConfirm, cancelGoalConfirm, type GoalConfirmModelConfig } from '@renderer/lib/tools/goal-native-ui'
+import { isProviderAvailableForModelSelection, useProviderStore } from '@renderer/stores/provider-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import { useChatStore } from '@renderer/stores/chat-store'
+import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@renderer/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@renderer/components/ui/select'
 
 interface GoalConfirmCardProps {
   sessionId?: string | null
@@ -16,6 +34,63 @@ export function GoalConfirmCard({ sessionId, className }: GoalConfirmCardProps):
   const progress = useGoalStore((s) => (sessionId ? s.goalProgressBySession[sessionId] : undefined))
   const [confirming, setConfirming] = React.useState(false)
   const [cancelling, setCancelling] = React.useState(false)
+  const [open, setOpen] = React.useState(false)
+  const [selectedProviderId, setSelectedProviderId] = React.useState('')
+  const [selectedModelId, setSelectedModelId] = React.useState('')
+
+  const providers = useProviderStore((state) => state.providers)
+  const activeProviderId = useProviderStore((state) => state.activeProviderId)
+  const activeModelId = useProviderStore((state) => state.activeModelId)
+  const mainModelSelectionMode = useSettingsStore((state) => state.mainModelSelectionMode)
+  const session = useChatStore((state) =>
+    sessionId ? state.sessions.find((item) => item.id === sessionId) : undefined
+  )
+  const selectedProvider = providers.find((provider) => provider.id === selectedProviderId)
+  const selectedModel = selectedProvider?.models.find((model) => model.id === selectedModelId)
+  const selectableProviders = React.useMemo(
+    () => providers.filter((provider) => isProviderAvailableForModelSelection(provider) && provider.models.length > 0),
+    [providers]
+  )
+
+  React.useEffect(() => {
+    if (!sessionId || open) return
+    const selection = resolveSessionModelSelection({
+      session,
+      providers,
+      activeProviderId,
+      activeModelId,
+      globalMode: mainModelSelectionMode
+    })
+    const providerId = selection.providerId && selectableProviders.some((provider) => provider.id === selection.providerId)
+      ? selection.providerId
+      : selectableProviders[0]?.id ?? ''
+    const provider = providers.find((item) => item.id === providerId)
+    const modelId = selection.modelId && provider?.models.some((model) => model.enabled && model.id === selection.modelId)
+      ? selection.modelId
+      : provider?.defaultModel && provider.models.some((model) => model.enabled && model.id === provider.defaultModel)
+        ? provider.defaultModel
+        : provider?.models.find((model) => model.enabled)?.id ?? ''
+    setSelectedProviderId(providerId)
+    setSelectedModelId(modelId)
+  }, [activeModelId, activeProviderId, mainModelSelectionMode, open, providers, selectableProviders, session, sessionId])
+
+  const modelConfig = React.useMemo<GoalConfirmModelConfig | undefined>(() => {
+    if (!selectedProvider || !selectedModel) return undefined
+    const settings = useSettingsStore.getState()
+    return {
+      providerId: selectedProvider.id,
+      providerType: selectedProvider.type,
+      model: selectedModel.id,
+      baseUrl: selectedProvider.baseUrl,
+      temperature: settings.temperature ?? undefined,
+      maxTokens: settings.maxTokens ?? undefined,
+      thinkingEnabled: settings.thinkingEnabled,
+      thinkingConfig: selectedModel.thinkingConfig as Record<string, unknown> | undefined,
+      reasoningEffort: settings.reasoningEffort ?? undefined,
+      requestTimeoutSeconds: settings.apiRequestTimeoutSeconds ?? 100,
+      requestMaxRetries: settings.requestMaxRetries ?? 10
+    }
+  }, [selectedModel, selectedProvider])
 
   if (!sessionId || !progress || progress.status !== 'pending') return null
 
@@ -23,8 +98,10 @@ export function GoalConfirmCard({ sessionId, className }: GoalConfirmCardProps):
   const objective = progress.objective ?? ''
 
   const handleConfirm = async (): Promise<void> => {
+    if (!modelConfig) return
     setConfirming(true)
-    resolveGoalConfirm(goalId, true, sessionId)
+    setOpen(false)
+    resolveGoalConfirm(goalId, true, sessionId, modelConfig)
   }
 
   const handleDiscard = async (): Promise<void> => {
@@ -62,8 +139,8 @@ export function GoalConfirmCard({ sessionId, className }: GoalConfirmCardProps):
           <Button
             size="sm"
             className="h-8 gap-1.5 bg-sky-600 text-white hover:bg-sky-700"
-            disabled={confirming}
-            onClick={handleConfirm}
+            disabled={confirming || !modelConfig}
+            onClick={() => setOpen(true)}
           >
             {confirming ? (
               <Loader2 className="size-3.5 animate-spin" />
@@ -74,6 +151,71 @@ export function GoalConfirmCard({ sessionId, className }: GoalConfirmCardProps):
           </Button>
         </div>
       </div>
+      <Dialog open={open} onOpenChange={(nextOpen) => !confirming && setOpen(nextOpen)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('goal.modelConfirmTitle', { defaultValue: 'Choose the Goal model' })}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md border border-border/70 bg-muted/30 p-3">
+              <div className="text-xs font-medium text-muted-foreground">
+                {t('goal.objectiveLabel', { defaultValue: 'Goal' })}
+              </div>
+              <div className="mt-1 whitespace-pre-wrap break-words text-sm">{objective}</div>
+            </div>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                {t('goal.providerLabel', { defaultValue: 'API provider' })}
+              </span>
+              <Select
+                value={selectedProviderId}
+                onValueChange={(providerId) => {
+                  setSelectedProviderId(providerId)
+                  const provider = providers.find((item) => item.id === providerId)
+                  setSelectedModelId(
+                    provider?.defaultModel && provider.models.some((model) => model.enabled && model.id === provider.defaultModel)
+                      ? provider.defaultModel
+                      : provider?.models.find((model) => model.enabled)?.id ?? ''
+                  )
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t('goal.providerPlaceholder', { defaultValue: 'Select a provider' })} />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectableProviders.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                {t('goal.modelLabel', { defaultValue: 'Model' })}
+              </span>
+              <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={!selectedProvider}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t('goal.modelPlaceholder', { defaultValue: 'Select a model' })} />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedProvider?.models.filter((model) => model.enabled).map((model) => (
+                    <SelectItem key={model.id} value={model.id}>{model.name || model.id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)} disabled={confirming}>
+              {t('common.action.cancel', { defaultValue: 'Cancel' })}
+            </Button>
+            <Button onClick={handleConfirm} disabled={confirming || !modelConfig}>
+              {confirming ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
+              {t('goal.confirmRun', { defaultValue: 'Confirm & start' })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

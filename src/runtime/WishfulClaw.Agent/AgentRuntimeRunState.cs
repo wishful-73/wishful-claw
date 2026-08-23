@@ -38,6 +38,24 @@ public sealed class AgentRuntimeRunState : IDisposable
     public bool SuppressTransportEvents { get; set; }
 
     /// <summary>
+    /// When set, this run is a Goal-orchestrated plan execution. Sub-agent
+    /// events forwarded to the parent stream are additionally tagged with this
+    /// context (emitted as "goal_activity") so the Goal panel can render a
+    /// live activity feed for the executing plan.
+    /// </summary>
+    public GoalEventContext? GoalEventContext { get; set; }
+
+    /// <summary>
+    /// Host-side evidence sink for Goal-orchestrated sub-agent runs. The
+    /// SubAgentExecutor appends each child tool call's observable facts
+    /// (tool name, key argument, success) here so the orchestrator can hand
+    /// the evaluator host-observed receipts alongside the model's own report —
+    /// evaluation then checks claims against what actually ran (inspired by
+    /// DeepSeek-Reasonix's evidence ledger).
+    /// </summary>
+    public GoalTaskEvidence? GoalEvidenceSink { get; set; }
+
+    /// <summary>
     /// Identifies the source of usage events: "executor", "subagent", "compaction", etc.
     /// Default is "executor". Set by the caller before executing a provider turn.
     /// </summary>

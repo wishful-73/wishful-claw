@@ -152,9 +152,80 @@ public static partial class DbClient
                     completed_plan_count INTEGER NOT NULL DEFAULT 0,
                     current_plan_index INTEGER NOT NULL DEFAULT -1,
                     working_folder TEXT,
+                    model_config_json TEXT,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );",
+                @"CREATE TABLE IF NOT EXISTS goal_plan_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    goal_id TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    original_plan_id TEXT,
+                    plan_title TEXT,
+                    round INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'executing',
+                    description TEXT,
+                    steps_json TEXT,
+                    summary TEXT,
+                    evaluation_reasoning TEXT,
+                    evaluation_satisfied INTEGER,
+                    adjusted INTEGER NOT NULL DEFAULT 0,
+                    started_at INTEGER NOT NULL,
+                    finished_at INTEGER
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_goal_plan_tasks_goal_round " +
+                "ON goal_plan_tasks(goal_id, round);",
+                @"CREATE TABLE IF NOT EXISTS goal_plans (
+                    plan_id TEXT PRIMARY KEY NOT NULL,
+                    goal_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL DEFAULT 0,
+                    original_plan_id TEXT,
+                    title TEXT NOT NULL DEFAULT '',
+                    description TEXT NOT NULL DEFAULT '',
+                    content_json TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    result_summary TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    started_at INTEGER,
+                    completed_at INTEGER
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_goal_plans_goal_ordinal ON goal_plans(goal_id, ordinal);",
+                @"CREATE TABLE IF NOT EXISTS goal_tasks (
+                    task_id TEXT PRIMARY KEY NOT NULL,
+                    goal_id TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL DEFAULT 0,
+                    title TEXT NOT NULL DEFAULT '',
+                    description TEXT NOT NULL DEFAULT '',
+                    content_json TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    result_summary TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    started_at INTEGER,
+                    completed_at INTEGER
+                );",
+                @"CREATE UNIQUE INDEX IF NOT EXISTS ux_goal_tasks_plan_ordinal ON goal_tasks(plan_id, ordinal);",
+                @"CREATE INDEX IF NOT EXISTS ix_goal_tasks_goal_plan ON goal_tasks(goal_id, plan_id, ordinal);", 
+                @"CREATE TABLE IF NOT EXISTS goal_execution_runs (
+                    attempt_id TEXT PRIMARY KEY NOT NULL,
+                    goal_id TEXT NOT NULL,
+                    plan_id TEXT,
+                    task_id TEXT,
+                    attempt_no INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL DEFAULT 'executing',
+                    summary TEXT,
+                    error TEXT,
+                    started_at INTEGER NOT NULL,
+                    finished_at INTEGER
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_goal_execution_runs_task ON goal_execution_runs(task_id, attempt_no);", 
                 @"CREATE TABLE IF NOT EXISTS goal_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -243,6 +314,7 @@ public static partial class DbClient
             EnsureColumn("goals", "completed_plan_count", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("goals", "current_plan_index", "INTEGER NOT NULL DEFAULT -1");
             EnsureColumn("goals", "working_folder", "TEXT");
+            EnsureColumn("goals", "model_config_json", "TEXT");
             EnsureColumn("goals", "token_budget", "INTEGER");
             EnsureColumn("goals", "time_used_seconds", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("goals", "project_id", "TEXT");
@@ -250,6 +322,7 @@ public static partial class DbClient
             NormalizeGoalStatuses();
             NormalizeGoalPlansJson();
             EnsureGoalHistorySchema();
+            SweepInterruptedGoals();
             WorkerLog.Info("DbClient: migrations completed");
 
             _initialized = true;

@@ -115,6 +115,50 @@ public static partial class DbGoalTools
         return reopened;
     }
 
+    public static GoalRow? ConfirmByGoalId(
+        string goalId,
+        string sessionId,
+        string? modelConfigJson,
+        string eventMessage)
+    {
+        var db = DbClient.GetClient();
+        var entity = db.ExecuteInTransaction((connection, transaction) =>
+        {
+            var current = db.QueryFirstOrDefault(
+                connection,
+                transaction,
+                "SELECT * FROM goals WHERE goal_id = @goalId AND session_id = @sessionId LIMIT 1",
+                EntityMappers.MapGoal,
+                new SqliteParameter("@goalId", goalId),
+                new SqliteParameter("@sessionId", sessionId));
+            if (current == null || !string.Equals(current.Status, GoalStatusValues.Pending, StringComparison.Ordinal))
+                return null;
+
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var changed = db.Execute(
+                connection,
+                transaction,
+                "UPDATE goals SET status = @status, model_config_json = @modelConfigJson, updated_at = @updatedAt " +
+                "WHERE goal_id = @goalId AND session_id = @sessionId AND status = @expectedStatus",
+                new SqliteParameter("@status", GoalStatusValues.Active),
+                new SqliteParameter("@modelConfigJson", (object?)modelConfigJson ?? DBNull.Value),
+                new SqliteParameter("@updatedAt", now),
+                new SqliteParameter("@goalId", goalId),
+                new SqliteParameter("@sessionId", sessionId),
+                new SqliteParameter("@expectedStatus", GoalStatusValues.Pending));
+            if (changed != 1)
+                return null;
+
+            InsertEvent(db, connection, transaction, sessionId, goalId, "confirmed", eventMessage, null, now);
+            current.Status = GoalStatusValues.Active;
+            current.ModelConfigJson = modelConfigJson;
+            current.UpdatedAt = now;
+            return current;
+        });
+
+        return entity == null ? null : GoalRow.FromEntity(entity);
+    }
+
     public static GoalRow? SetStatusByGoalId(
         string goalId,
         string sessionId,

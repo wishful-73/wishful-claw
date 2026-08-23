@@ -1,4 +1,5 @@
 
+using System.Text.Json.Serialization;
 using WishfulClaw.Contracts;
 
 namespace WishfulClaw.Infrastructure.Db;
@@ -16,7 +17,7 @@ public class GoalEntity
     public string Objective { get; set; } = string.Empty;
 
     /// <summary>
-    /// pending | active | complete | failed | aborted
+    /// pending | active | complete | aborted
     /// </summary>
     public string Status { get; set; } = GoalStatusValues.Active;
 
@@ -39,6 +40,12 @@ public class GoalEntity
     public int CurrentPlanIndex { get; set; } = -1;
 
     public string? WorkingFolder { get; set; }
+
+    /// <summary>
+    /// Goal-owned non-secret provider/model snapshot. API keys are never stored here.
+    /// </summary>
+    [JsonIgnore]
+    public string? ModelConfigJson { get; set; }
 
     public long CreatedAt { get; set; }
 
@@ -86,6 +93,8 @@ public sealed class GoalRow
     public int CompletedPlanCount { get; set; }
     public int CurrentPlanIndex { get; set; } = -1;
     public string? WorkingFolder { get; set; }
+    [JsonIgnore]
+    public string? ModelConfigJson { get; set; }
     public long CreatedAt { get; set; }
     public long UpdatedAt { get; set; }
 
@@ -104,6 +113,7 @@ public sealed class GoalRow
     CompletedPlanCount = e.CompletedPlanCount,
     CurrentPlanIndex = e.CurrentPlanIndex,
     WorkingFolder = e.WorkingFolder,
+    ModelConfigJson = e.ModelConfigJson,
     CreatedAt = e.CreatedAt,
     UpdatedAt = e.UpdatedAt
     };
@@ -155,3 +165,158 @@ public sealed record GoalReopenResult(
     GoalRow? Goal = null,
     string? SourceGoalId = null,
     string? Error = null);
+
+// ─── Goal Plan Task Entity (per-round execution record) ───
+
+public class GoalPlanTaskEntity
+{
+    public long Id { get; set; }
+
+    public string SessionId { get; set; } = string.Empty;
+
+    public string GoalId { get; set; } = string.Empty;
+
+    public string PlanId { get; set; } = string.Empty;
+
+    public string? OriginalPlanId { get; set; }
+
+    public string? PlanTitle { get; set; }
+
+    public int Round { get; set; } = 1;
+
+    /// <summary>Execution attempt: executing | completed | failed | interrupted.</summary>
+    public string Status { get; set; } = GoalExecutionAttemptStatusValues.Executing;
+
+    public string? Description { get; set; }
+
+    public string? StepsJson { get; set; }
+
+    public string? Summary { get; set; }
+
+    public string? EvaluationReasoning { get; set; }
+
+    public bool? EvaluationSatisfied { get; set; }
+
+    public bool Adjusted { get; set; }
+
+    public long StartedAt { get; set; }
+
+    public long? FinishedAt { get; set; }
+}
+
+public sealed class GoalPlanTaskRow
+{
+    public long Id { get; set; }
+    public string SessionId { get; set; } = string.Empty;
+    public string GoalId { get; set; } = string.Empty;
+    public string PlanId { get; set; } = string.Empty;
+    public string? OriginalPlanId { get; set; }
+    public string? PlanTitle { get; set; }
+    public int Round { get; set; }
+    public string Status { get; set; } = GoalExecutionAttemptStatusValues.Executing;
+    public string? Description { get; set; }
+    public string? StepsJson { get; set; }
+    public string? Summary { get; set; }
+    public string? EvaluationReasoning { get; set; }
+    public bool? EvaluationSatisfied { get; set; }
+    public bool Adjusted { get; set; }
+    public long StartedAt { get; set; }
+    public long? FinishedAt { get; set; }
+
+    public static GoalPlanTaskRow FromEntity(GoalPlanTaskEntity e) => new()
+    {
+        Id = e.Id,
+        SessionId = e.SessionId,
+        GoalId = e.GoalId,
+        PlanId = e.PlanId,
+        OriginalPlanId = e.OriginalPlanId,
+        PlanTitle = e.PlanTitle,
+        Round = e.Round,
+        Status = e.Status,
+        Description = e.Description,
+        StepsJson = e.StepsJson,
+        Summary = e.Summary,
+        EvaluationReasoning = e.EvaluationReasoning,
+        EvaluationSatisfied = e.EvaluationSatisfied,
+        Adjusted = e.Adjusted,
+        StartedAt = e.StartedAt,
+        FinishedAt = e.FinishedAt
+    };
+}
+
+public sealed record GoalPlanTaskFindResult(bool Success, List<GoalPlanTaskRow> Tasks, string? Error);
+public sealed record GoalPlanTaskMutationResult(bool Success, GoalPlanTaskRow? Task, string? Error);
+
+// Goal-specific hierarchy records. These are definitions; execution attempts remain separate.
+public sealed class GoalPlanEntity
+{
+    public string PlanId { get; set; } = string.Empty;
+    public string GoalId { get; set; } = string.Empty;
+    public string SessionId { get; set; } = string.Empty;
+    public int Ordinal { get; set; }
+    public string? OriginalPlanId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string? ContentJson { get; set; }
+    public string Status { get; set; } = GoalPlanStatusValues.Pending;
+    public int RetryCount { get; set; }
+    public string? ResultSummary { get; set; }
+    public long CreatedAt { get; set; }
+    public long UpdatedAt { get; set; }
+    public long? StartedAt { get; set; }
+    public long? CompletedAt { get; set; }
+}
+
+public sealed class GoalTaskEntity
+{
+    public string TaskId { get; set; } = string.Empty;
+    public string GoalId { get; set; } = string.Empty;
+    public string PlanId { get; set; } = string.Empty;
+    public string SessionId { get; set; } = string.Empty;
+    public int Ordinal { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string? ContentJson { get; set; }
+    public string Status { get; set; } = GoalPlanStatusValues.Pending;
+    public int RetryCount { get; set; }
+    public string? ResultSummary { get; set; }
+    public long CreatedAt { get; set; }
+    public long UpdatedAt { get; set; }
+    public long? StartedAt { get; set; }
+    public long? CompletedAt { get; set; }
+}
+
+public sealed record GoalPlanRow(
+    string PlanId, string GoalId, string SessionId, int Ordinal,
+    string? OriginalPlanId, string Title, string Description, string? ContentJson,
+    string Status, int RetryCount, string? ResultSummary,
+    long CreatedAt, long UpdatedAt, long? StartedAt, long? CompletedAt)
+{
+    public static GoalPlanRow FromEntity(GoalPlanEntity e) => new(
+        e.PlanId, e.GoalId, e.SessionId, e.Ordinal,
+        e.OriginalPlanId, e.Title, e.Description, e.ContentJson,
+        e.Status, e.RetryCount, e.ResultSummary,
+        e.CreatedAt, e.UpdatedAt, e.StartedAt, e.CompletedAt);
+}
+
+public sealed record GoalTaskRow(
+    string TaskId, string GoalId, string PlanId, string SessionId, int Ordinal,
+    string Title, string Description, string? ContentJson, string Status,
+    int RetryCount, string? ResultSummary,
+    long CreatedAt, long UpdatedAt, long? StartedAt, long? CompletedAt)
+{
+    public static GoalTaskRow FromEntity(GoalTaskEntity e) => new(
+        e.TaskId, e.GoalId, e.PlanId, e.SessionId, e.Ordinal,
+        e.Title, e.Description, e.ContentJson, e.Status,
+        e.RetryCount, e.ResultSummary,
+        e.CreatedAt, e.UpdatedAt, e.StartedAt, e.CompletedAt);
+}
+
+public sealed record GoalPlanFindResult(bool Success, GoalPlanRow? Plan, string? Error);
+public sealed record GoalPlanMutationResult(bool Success, GoalPlanRow? Plan, string? Error);
+public sealed record GoalPlanSnapshotMutationResult(bool Success, GoalPlanRow? Plan, string? Error);
+public sealed record GoalTaskFindResult(bool Success, GoalTaskRow? Task, string? Error);
+public sealed record GoalTaskMutationResult(bool Success, GoalTaskRow? Task, string? Error);
+
+public sealed record GoalHierarchyResult(
+    bool Success, List<GoalPlanRow> Plans, List<GoalTaskRow> Tasks, string? Error);

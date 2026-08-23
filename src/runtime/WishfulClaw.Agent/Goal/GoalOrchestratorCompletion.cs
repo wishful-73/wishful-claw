@@ -21,6 +21,7 @@ public static partial class GoalOrchestrator
     {
         GoalEventType eventType;
         string message;
+        bool isTerminal;
         lock (goal.LifecycleSync)
         {
             if (goal.RunGeneration != generation)
@@ -29,9 +30,12 @@ public static partial class GoalOrchestrator
                 return;
             }
 
+            // Failure outcomes keep the Goal active (not terminal); only
+            // complete/aborted are persisted as terminal business states.
             if (!GoalStatusValues.IsTerminal(goal.Status))
                 goal.Status = outcome.Status;
 
+            isTerminal = GoalStatusValues.IsTerminal(goal.Status);
             goal.RunState = GoalRunStateValues.Idle;
             (eventType, message) = ResolveTerminalEvent(goal.Status, outcome);
         }
@@ -46,8 +50,14 @@ public static partial class GoalOrchestrator
                 goal.RunTask = null;
                 goal.RuntimeState = null;
                 goal.RunState = GoalRunStateValues.Idle;
-                if (IsCurrentGoalContext(goal))
+                // Only remove from ActiveGoals when the Goal is truly terminal.
+                // A failed-but-active Goal stays in ActiveGoals so get_goal
+                // can still report its runtime state and the user can Resume.
+                if (isTerminal && IsCurrentGoalContext(goal))
+                {
                     ActiveGoals.TryRemove(goal.GoalId, out _);
+                    goal.DisposeEventRunState();
+                }
             }
         }
 
@@ -62,8 +72,8 @@ public static partial class GoalOrchestrator
         goal.Status = status;
         goal.RunState = GoalRunStateValues.Idle;
         PersistTerminalState(goal, BuildResumeParameters(goal), message);
-        if (IsCurrentGoalContext(goal))
-            ActiveGoals.TryRemove(goal.GoalId, out _);
+        if (IsCurrentGoalContext(goal) && ActiveGoals.TryRemove(goal.GoalId, out _))
+            goal.DisposeEventRunState();
     }
 
     private static void PersistTerminalState(
@@ -71,15 +81,9 @@ public static partial class GoalOrchestrator
         JsonElement parameters,
         string eventMessage)
     {
-        try
-        {
-            WriteGoalState(goal);
-        }
-        catch (Exception ex)
-        {
-            WorkerLog.Warn($"Failed to write terminal goal state: {ex.Message}");
-        }
-
+        // WriteGoalState is already best-effort (try-catch + Warn inside);
+        // SyncGoalToDb likewise. Both channels are independent archives.
+        WriteGoalState(goal);
         SyncGoalToDb(goal, parameters, eventMessage);
     }
 
@@ -93,7 +97,7 @@ public static partial class GoalOrchestrator
         return status switch
         {
             GoalStatusValues.Complete => (GoalEventType.GoalCompleted, "All plans completed successfully"),
-            GoalStatusValues.Failed => (GoalEventType.GoalFailed, "Goal failed"),
+            _ when outcome.EventType == GoalEventType.GoalFailed => (GoalEventType.GoalFailed, outcome.Message),
             GoalStatusValues.Aborted => (GoalEventType.GoalAborted, "Goal aborted"),
             _ => (outcome.EventType, outcome.Message)
         };

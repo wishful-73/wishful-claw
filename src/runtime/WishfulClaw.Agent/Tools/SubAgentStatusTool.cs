@@ -4,20 +4,17 @@ using WishfulClaw.Core.Tools;
 namespace WishfulClaw.Agent.Tools;
 
 /// <summary>
-/// Query the brief status of any sub-agent (foreground or background).
+/// Query the status of any sub-agent (foreground or background).
 /// Returns: ID, name, description, mode, status, tool call count, iterations, elapsed.
-/// Does NOT include output or tool call details — use SubAgentDetail for that.
+/// For finished sub-agents the final report is included (truncated at 2000 chars).
 /// </summary>
 public sealed class SubAgentStatusTool : IToolExecutor
 {
     public string Name => "SubAgentStatus";
 
     public string Description =>
-        "Check the brief status of a sub-agent by its toolUseId. " +
-        "Returns a short summary: ID, name, description, mode (foreground/background), " +
-        "status (running/completed/failed/cancelled), tool call count, iterations, elapsed time. " +
-        "If no toolUseId is provided, lists all sub-agents with one-line summaries. " +
-        "For full output report and step-by-step tool call log, use SubAgentDetail instead.";
+        "Check a sub-agent's status by toolUseId; includes its final report (truncated) when finished. " +
+        "Omit toolUseId to list all sub-agents. Use SubAgentDetail for the full report and tool call log.";
 
     public JsonElement InputSchema { get; } = JsonDocument.Parse(
         """
@@ -74,11 +71,8 @@ public sealed class SubAgentDetailTool : IToolExecutor
     public string Name => "SubAgentDetail";
 
     public string Description =>
-        "Get the full execution detail of a sub-agent by its toolUseId. " +
-        "Returns everything: status summary, complete output report, and a step-by-step " +
-        "tool call log (tool name, key parameter, execution status for each call). " +
-        "Use this when you need to review what a sub-agent actually did, not just its status. " +
-        "For a quick status check without the full output, use SubAgentStatus instead.";
+        "Get a sub-agent's full execution detail by toolUseId: complete output report and step-by-step tool call log. " +
+        "For a quick status check, use SubAgentStatus instead.";
 
     public JsonElement InputSchema { get; } = JsonDocument.Parse(
         """

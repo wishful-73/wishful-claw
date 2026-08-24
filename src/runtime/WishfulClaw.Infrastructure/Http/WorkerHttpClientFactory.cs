@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -22,7 +22,8 @@ public static class WorkerHttpClientFactory
     public static HttpClient Create(
         TimeSpan? timeout = null,
         bool allowAutoRedirect = true,
-        int maxAutomaticRedirections = 10)
+        int maxAutomaticRedirections = 10,
+        bool allowInsecureTls = false)
     {
         var handler = new SocketsHttpHandler
         {
@@ -34,6 +35,12 @@ public static class WorkerHttpClientFactory
             UseProxy = true,
             AutomaticDecompression = DecompressionMethods.None
         };
+        // Only skip TLS certificate validation when explicitly opted in
+        // (e.g. self-hosted providers with self-signed certificates).
+        if (allowInsecureTls)
+        {
+            handler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+        }
         var client = new HttpClient(handler, disposeHandler: true);
         if (timeout.HasValue)
         {

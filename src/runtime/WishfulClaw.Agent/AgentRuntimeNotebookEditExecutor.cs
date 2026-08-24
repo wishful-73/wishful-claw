@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Agent;
@@ -30,54 +30,73 @@ public static class AgentRuntimeNotebookEditExecutor
         var newSource = JsonHelpers.GetString(call.Input, "new_source")?.Trim() ?? string.Empty;
 
         var json = await File.ReadAllTextAsync(path, cancellationToken);
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement.Clone();
-
-        using var ms = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
+        if (string.IsNullOrWhiteSpace(json))
         {
-            writer.WriteStartObject();
-            foreach (var prop in root.EnumerateObject())
-            {
-                if (prop.NameEquals("cells") && prop.Value.ValueKind == JsonValueKind.Array)
-                {
-                    writer.WritePropertyName("cells");
-                    writer.WriteStartArray();
-                    var edited = false;
-                    foreach (var cell in prop.Value.EnumerateArray())
-                    {
-                        if (ShouldEditCell(cell, cellId, cellType))
-                        {
-                            WriteEditedCell(writer, cell, newSource, editMode);
-                            edited = true;
-                        }
-                        else
-                        {
-                            cell.WriteTo(writer);
-                        }
-                    }
-                    if (!edited && editMode == "insert")
-                    {
-                        writer.WriteStartObject();
-                        writer.WriteString("cell_type", cellType ?? "code");
-                        writer.WritePropertyName("source");
-                        writer.WriteStartArray();
-                        writer.WriteStringValue(newSource);
-                        writer.WriteEndArray();
-                        writer.WriteEndObject();
-                    }
-                    writer.WriteEndArray();
-                }
-                else
-                {
-                    prop.WriteTo(writer);
-                }
-            }
-            writer.WriteEndObject();
+            return EncodeError(
+                $"Notebook file is empty (0 bytes): {path}. A valid .ipynb must contain a JSON object " +
+                "with a \"cells\" array. Create the notebook with content first, e.g. " +
+                "{\"cells\":[],\"metadata\":{},\"nbformat\":4,\"nbformat_minor\":5}.");
         }
 
-        var result = System.Text.Encoding.UTF8.GetString(ms.ToArray());
-        await File.WriteAllTextAsync(path, result, cancellationToken);
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(json);
+        }
+        catch (JsonException ex)
+        {
+            return EncodeError($"Notebook file is not valid JSON: {path}. Parse error: {ex.Message}");
+        }
+        using (doc)
+        {
+            var root = doc.RootElement.Clone();
+
+            using var ms = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
+            {
+                writer.WriteStartObject();
+                foreach (var prop in root.EnumerateObject())
+                {
+                    if (prop.NameEquals("cells") && prop.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        writer.WritePropertyName("cells");
+                        writer.WriteStartArray();
+                        var edited = false;
+                        foreach (var cell in prop.Value.EnumerateArray())
+                        {
+                            if (ShouldEditCell(cell, cellId, cellType))
+                            {
+                                WriteEditedCell(writer, cell, newSource, editMode);
+                                edited = true;
+                            }
+                            else
+                            {
+                                cell.WriteTo(writer);
+                            }
+                        }
+                        if (!edited && editMode == "insert")
+                        {
+                            writer.WriteStartObject();
+                            writer.WriteString("cell_type", cellType ?? "code");
+                            writer.WritePropertyName("source");
+                            writer.WriteStartArray();
+                            writer.WriteStringValue(newSource);
+                            writer.WriteEndArray();
+                            writer.WriteEndObject();
+                        }
+                        writer.WriteEndArray();
+                    }
+                    else
+                    {
+                        prop.WriteTo(writer);
+                    }
+                }
+                writer.WriteEndObject();
+            }
+
+            var result = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            await File.WriteAllTextAsync(path, result, cancellationToken);
+        }
 
         return "{\"success\":true,\"message\":\"Notebook cell updated.\"}";
     }

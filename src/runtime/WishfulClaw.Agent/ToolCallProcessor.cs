@@ -439,7 +439,16 @@ public static class ToolCallProcessor
         // their own autonomous policy).
         return defaultModeApproval
             && !state.SuppressTransportEvents
-            && DefaultModeApprovalTools.Contains(toolCall.Name);
+            && IsDefaultModeApprovalTool(toolCall.Name);
+    }
+
+    /// <summary>
+    /// Exposed for the use_capability proxy: a proxied built-in tool must be
+    /// checked against the same default-mode approval set as direct calls.
+    /// </summary>
+    public static bool IsDefaultModeApprovalTool(string toolName)
+    {
+        return DefaultModeApprovalTools.Contains(toolName);
     }
 
     private static readonly JsonWriterOptions WriteOptions = new()

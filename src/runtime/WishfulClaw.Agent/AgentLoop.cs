@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -184,6 +184,15 @@ internal static partial class AgentLoop
                     var originalCount = wireConversation.Count;
                     var (newConversation, newWireConversation) = await ContextCompression.CompactAsync(
                         conversation, wireConversation, provider, context, state.CancellationToken);
+                    if (newWireConversation.Count >= originalCount)
+                    {
+                        // AL-6: LLM summarization produced no reduction (nothing to
+                        // fold or skipped) — fall back to mechanical truncation so
+                        // the loop can still free context instead of retrying at
+                        // the same size every iteration.
+                        (newConversation, newWireConversation) = ContextCompression.TruncateMessages(
+                            conversation, wireConversation, provider);
+                    }
                     if (newWireConversation.Count < originalCount)
                     {
                         sessionConv.Replace(newConversation, newWireConversation);
@@ -198,6 +207,12 @@ internal static partial class AgentLoop
                         WorkerLog.Info(
                             $"agent context compression runId={state.RunId} " +
                             $"original={originalCount} compressed={newWireConversation.Count}");
+                    }
+                    else
+                    {
+                        WorkerLog.Warn(
+                            $"agent context compression made no progress runId={state.RunId} " +
+                            $"count={originalCount} (LLM summary and truncation both skipped)");
                     }
                     lastInputTokens = 0;
                 }

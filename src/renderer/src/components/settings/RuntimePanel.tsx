@@ -11,6 +11,7 @@ import {
 } from '@renderer/stores/settings-store'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
+import { Slider } from '@renderer/components/ui/slider'
 import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
 
 function RuntimePanel(): React.JSX.Element {
@@ -175,17 +176,15 @@ function RuntimePanel(): React.JSX.Element {
                   {Math.round(settings.contextCompressionThreshold * 100)}%
                 </span>
               </div>
-              <input
-                type="range"
+              <Slider
                 min={30}
                 max={90}
                 step={1}
-                value={Math.round(settings.contextCompressionThreshold * 100)}
-                onChange={(e) => {
-                  const ratio = Math.min(0.9, Math.max(0.3, parseInt(e.target.value) / 100))
+                value={[Math.round(settings.contextCompressionThreshold * 100)]}
+                onValueChange={([v]) => {
+                  const ratio = Math.min(0.9, Math.max(0.3, v / 100))
                   settings.updateSettings({ contextCompressionThreshold: ratio })
                 }}
-                className="w-full accent-primary"
               />
             </div>
           </>
@@ -216,14 +215,12 @@ function RuntimePanel(): React.JSX.Element {
             />
           }
         >
-          <input
-            type="range"
+          <Slider
             min={1}
             max={16}
             step={1}
-            value={settings.maxParallelToolCalls}
-            onChange={(e) => settings.updateSettings({ maxParallelToolCalls: parseInt(e.target.value) })}
-            className="w-full accent-primary"
+            value={[settings.maxParallelToolCalls]}
+            onValueChange={([v]) => settings.updateSettings({ maxParallelToolCalls: v })}
           />
         </SettingRow>
 
@@ -245,14 +242,12 @@ function RuntimePanel(): React.JSX.Element {
             />
           }
         >
-          <input
-            type="range"
+          <Slider
             min={1}
             max={100}
             step={1}
-            value={settings.maxToolCallsPerTurn}
-            onChange={(e) => settings.updateSettings({ maxToolCallsPerTurn: parseInt(e.target.value) })}
-            className="w-full accent-primary"
+            value={[settings.maxToolCallsPerTurn]}
+            onValueChange={([v]) => settings.updateSettings({ maxToolCallsPerTurn: v })}
           />
         </SettingRow>
 
@@ -274,14 +269,12 @@ function RuntimePanel(): React.JSX.Element {
             />
           }
         >
-          <input
-            type="range"
+          <Slider
             min={1}
             max={8}
             step={1}
-            value={settings.maxConcurrentSubAgents}
-            onChange={(e) => settings.updateSettings({ maxConcurrentSubAgents: parseInt(e.target.value) })}
-            className="w-full accent-primary"
+            value={[settings.maxConcurrentSubAgents]}
+            onValueChange={([v]) => settings.updateSettings({ maxConcurrentSubAgents: v })}
           />
         </SettingRow>
       </SettingsSection>

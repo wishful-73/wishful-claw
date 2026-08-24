@@ -22,6 +22,7 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { PresetCard } from './general-preset-card'
+import { SettingsSection } from './settings-primitives'
 
 const FONT_OPTIONS = [
   { label: '__default__', value: '__default__' },
@@ -54,7 +55,7 @@ function GeneralPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 px-8 pb-16 pt-10">
+    <div className="mx-auto max-w-2xl space-y-4 px-8 pb-16 pt-10">
       {/* Title */}
       <div>
         <h2 className="text-lg font-semibold">{t('general.title')}</h2>
@@ -62,11 +63,7 @@ function GeneralPanel(): React.JSX.Element {
       </div>
 
       {/* Language */}
-      <section id="sec-general-language" className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.language.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.language.desc')}</p>
-        </div>
+      <SettingsSection id="sec-general-language" title={t('general.language.label')} description={t('general.language.desc')}>
         <Select value={settings.language} onValueChange={handleLanguageChange}>
           <SelectTrigger className="w-60 text-xs">
             <SelectValue />
@@ -79,14 +76,10 @@ function GeneralPanel(): React.JSX.Element {
             ))}
           </SelectContent>
         </Select>
-      </section>
+      </SettingsSection>
 
       {/* Theme mode */}
-      <section id="sec-general-theme" className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.theme.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.theme.desc')}</p>
-        </div>
+      <SettingsSection id="sec-general-theme" title={t('general.theme.label')} description={t('general.theme.desc')}>
         <div className="grid grid-cols-3 gap-2">
           {MODE_OPTIONS.map((option) => {
             const active = settings.theme === option.value
@@ -109,14 +102,10 @@ function GeneralPanel(): React.JSX.Element {
             )
           })}
         </div>
-      </section>
+      </SettingsSection>
 
       {/* Theme preset */}
-      <section id="sec-general-preset" className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.preset.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.preset.desc')}</p>
-        </div>
+      <SettingsSection id="sec-general-preset" title={t('general.preset.label')} description={t('general.preset.desc')}>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {APP_THEME_PRESETS.map((preset) => (
             <PresetCard
@@ -132,10 +121,10 @@ function GeneralPanel(): React.JSX.Element {
             />
           ))}
         </div>
-      </section>
+      </SettingsSection>
 
       {/* Appearance */}
-      <section id="sec-general-appearance" className="space-y-4">
+      <SettingsSection id="sec-general-appearance" title={t('general.appearance.label')} description={t('general.appearance.desc')}>
         <div>
           <label className="text-sm font-medium">{t('general.appearance.label')}</label>
           <p className="text-xs text-muted-foreground">{t('general.appearance.desc')}</p>
@@ -228,7 +217,7 @@ function GeneralPanel(): React.JSX.Element {
             </button>
           </div>
         </div>
-      </section>
+      </SettingsSection>
 
     </div>
   )

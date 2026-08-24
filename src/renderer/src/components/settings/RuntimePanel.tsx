@@ -11,6 +11,7 @@ import {
 } from '@renderer/stores/settings-store'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
+import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
 
 function RuntimePanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
@@ -38,7 +39,7 @@ function RuntimePanel(): React.JSX.Element {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 px-8 pb-16 pt-10">
+    <div className="mx-auto max-w-2xl space-y-4 px-8 pb-16 pt-10">
       {/* Title */}
       <div>
         <h2 className="text-lg font-semibold">{t('runtimePage.title')}</h2>
@@ -48,18 +49,11 @@ function RuntimePanel(): React.JSX.Element {
       </div>
 
       {/* API Request Timeout */}
-      <section id="sec-runtime-timeout" className="space-y-3">
-        <div className="max-w-lg">
-          <label className="text-sm font-medium text-foreground">
-            {t('general.apiRequestTimeout', { defaultValue: 'API Request Timeout' })}
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {t('general.apiRequestTimeoutDesc', {
-              defaultValue:
-                'Maximum seconds to wait for response headers. Set 0 to wait indefinitely; an active stream is not cut off.'
-            })}
-          </p>
-        </div>
+      <SettingsSection
+        id="sec-runtime-timeout"
+        title={t('general.apiRequestTimeout')}
+        description={t('general.apiRequestTimeoutDesc')}
+      >
         <div className="flex max-w-lg items-center gap-3">
           <Input
             type="number"
@@ -76,14 +70,13 @@ function RuntimePanel(): React.JSX.Element {
           />
           <span className="text-xs text-muted-foreground">
             {settings.apiRequestTimeoutSeconds === 0
-              ? t('general.apiRequestTimeoutNoLimit', { defaultValue: 'No limit' })
+              ? t('general.apiRequestTimeoutNoLimit')
               : t('general.apiRequestTimeoutSeconds', {
-                  defaultValue: '{{count}} seconds',
                   count: settings.apiRequestTimeoutSeconds
                 })}
           </span>
         </div>
-        <div className="flex max-w-lg flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {[0, 30, DEFAULT_API_REQUEST_TIMEOUT_SECONDS, 300, 1800].map((value) => (
             <button
               key={value}
@@ -96,34 +89,22 @@ function RuntimePanel(): React.JSX.Element {
                   : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
             >
-              {value === 0
-                ? t('general.apiRequestTimeoutNoLimit', { defaultValue: 'No limit' })
-                : `${value}s`}
+              {value === 0 ? t('general.apiRequestTimeoutNoLimit') : `${value}s`}
             </button>
           ))}
         </div>
-        <p className="max-w-lg text-xs text-muted-foreground/70">
-          {t('general.apiRequestTimeoutHint', {
-            defaultValue: 'Default: {{default}} seconds. Applies to all providers.',
-            default: DEFAULT_API_REQUEST_TIMEOUT_SECONDS
-          })}
-        </p>
-      </section>
+        <SettingHint>
+          {t('general.apiRequestTimeoutHint', { default: DEFAULT_API_REQUEST_TIMEOUT_SECONDS })}
+        </SettingHint>
+      </SettingsSection>
 
       {/* Provider Max Retries */}
-      <section id="sec-runtime-retries" className="space-y-3">
-        <div className="max-w-lg">
-          <label className="text-sm font-medium text-foreground">
-            {t('general.requestMaxRetries', { defaultValue: 'Provider Max Retries' })}
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {t('general.requestMaxRetriesDesc', {
-              defaultValue:
-                'Retries on rate limits (429) and server errors (5xx). Set 0 to retry indefinitely; retries beyond 10 wait 1 minute each.'
-            })}
-          </p>
-        </div>
-        <div className="flex max-w-lg items-center gap-3">
+      <SettingsSection
+        id="sec-runtime-retries"
+        title={t('general.requestMaxRetries')}
+        description={t('general.requestMaxRetriesDesc')}
+      >
+        <div className="flex items-center gap-3">
           <Input
             type="number"
             min={0}
@@ -139,14 +120,11 @@ function RuntimePanel(): React.JSX.Element {
           />
           <span className="text-xs text-muted-foreground">
             {settings.requestMaxRetries === 0
-              ? t('general.requestMaxRetriesNoLimit', { defaultValue: 'Unlimited' })
-              : t('general.requestMaxRetriesCount', {
-                  defaultValue: '{{count}} attempts',
-                  count: settings.requestMaxRetries
-                })}
+              ? t('general.requestMaxRetriesNoLimit')
+              : t('general.requestMaxRetriesCount', { count: settings.requestMaxRetries })}
           </span>
         </div>
-        <div className="flex max-w-lg flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {[0, 10, 20, 50].map((value) => (
             <button
               key={value}
@@ -159,39 +137,30 @@ function RuntimePanel(): React.JSX.Element {
                   : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
             >
-              {value === 0
-                ? t('general.requestMaxRetriesNoLimit', { defaultValue: 'Unlimited' })
-                : `${value}`}
+              {value === 0 ? t('general.requestMaxRetriesNoLimit') : `${value}`}
             </button>
           ))}
         </div>
-        <p className="max-w-lg text-xs text-muted-foreground/70">
-          {t('general.requestMaxRetriesHint', {
-            defaultValue: 'Default: 10 attempts. Applies to all providers.',
-            default: 10
-          })}
-        </p>
-      </section>
+        <SettingHint>{t('general.requestMaxRetriesHint')}</SettingHint>
+      </SettingsSection>
 
       {/* Context Compression */}
-      <section id="sec-runtime-compression" className="space-y-3">
-        <div className="flex items-center justify-between max-w-lg">
-          <div>
-            <div className="text-sm font-medium text-foreground">{t('general.contextCompression.label')}</div>
-            <p className="text-xs text-muted-foreground">{t('general.contextCompression.desc')}</p>
-          </div>
+      <SettingsSection
+        id="sec-runtime-compression"
+        title={t('general.contextCompression.label')}
+        description={t('general.contextCompression.desc')}
+        actions={
           <Switch
             checked={settings.contextCompressionEnabled}
             onCheckedChange={(checked) =>
               settings.updateSettings({ contextCompressionEnabled: checked })
             }
           />
-        </div>
+        }
+      >
         {settings.contextCompressionEnabled && (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground/70">
-              {t('general.contextCompression.enabled')}
-            </p>
+          <>
+            <SettingHint>{t('general.contextCompression.enabled')}</SettingHint>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div>
@@ -219,35 +188,21 @@ function RuntimePanel(): React.JSX.Element {
                 className="w-full accent-primary"
               />
             </div>
-          </div>
+          </>
         )}
-      </section>
-      {/* Tool Execution */}
-      <section id="sec-runtime-tools" className="space-y-4">
-        <div>
-          <label className="text-sm font-medium">{t('general.toolExecution.label')}</label>
-          <p className="text-xs text-muted-foreground">{t('general.toolExecution.desc')}</p>
-        </div>
+      </SettingsSection>
 
+      {/* Tool Execution */}
+      <SettingsSection
+        id="sec-runtime-tools"
+        title={t('general.toolExecution.label')}
+        description={t('general.toolExecution.desc')}
+      >
         {/* Max Parallel Tools */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxParallel.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxParallel.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxParallelToolCalls}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={16}
-              step={1}
-              value={settings.maxParallelToolCalls}
-              onChange={(e) => settings.updateSettings({ maxParallelToolCalls: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
+        <SettingRow
+          label={t('general.toolExecution.maxParallel.label')}
+          description={t('general.toolExecution.maxParallel.desc')}
+          control={
             <Input
               type="number"
               min={1}
@@ -259,28 +214,24 @@ function RuntimePanel(): React.JSX.Element {
               }}
               className="max-w-24 text-xs"
             />
-          </div>
-        </div>
+          }
+        >
+          <input
+            type="range"
+            min={1}
+            max={16}
+            step={1}
+            value={settings.maxParallelToolCalls}
+            onChange={(e) => settings.updateSettings({ maxParallelToolCalls: parseInt(e.target.value) })}
+            className="w-full accent-primary"
+          />
+        </SettingRow>
 
         {/* Max Tool Calls Per Turn */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxPerTurn.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxPerTurn.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxToolCallsPerTurn}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={100}
-              step={1}
-              value={settings.maxToolCallsPerTurn}
-              onChange={(e) => settings.updateSettings({ maxToolCallsPerTurn: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
+        <SettingRow
+          label={t('general.toolExecution.maxPerTurn.label')}
+          description={t('general.toolExecution.maxPerTurn.desc')}
+          control={
             <Input
               type="number"
               min={1}
@@ -292,28 +243,24 @@ function RuntimePanel(): React.JSX.Element {
               }}
               className="max-w-24 text-xs"
             />
-          </div>
-        </div>
+          }
+        >
+          <input
+            type="range"
+            min={1}
+            max={100}
+            step={1}
+            value={settings.maxToolCallsPerTurn}
+            onChange={(e) => settings.updateSettings({ maxToolCallsPerTurn: parseInt(e.target.value) })}
+            className="w-full accent-primary"
+          />
+        </SettingRow>
 
         {/* Max Concurrent Sub-Agents */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxSubAgents.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxSubAgents.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxConcurrentSubAgents}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={8}
-              step={1}
-              value={settings.maxConcurrentSubAgents}
-              onChange={(e) => settings.updateSettings({ maxConcurrentSubAgents: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
+        <SettingRow
+          label={t('general.toolExecution.maxSubAgents.label')}
+          description={t('general.toolExecution.maxSubAgents.desc')}
+          control={
             <Input
               type="number"
               min={1}
@@ -325,44 +272,57 @@ function RuntimePanel(): React.JSX.Element {
               }}
               className="max-w-24 text-xs"
             />
-          </div>
-        </div>
-      </section>
+          }
+        >
+          <input
+            type="range"
+            min={1}
+            max={8}
+            step={1}
+            value={settings.maxConcurrentSubAgents}
+            onChange={(e) => settings.updateSettings({ maxConcurrentSubAgents: parseInt(e.target.value) })}
+            className="w-full accent-primary"
+          />
+        </SettingRow>
+      </SettingsSection>
 
       {/* Developer Mode */}
-      <section id="sec-runtime-devmode" className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.developerMode.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.developerMode.desc')}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={settings.devMode}
-            onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
-          />
-          <span className="text-xs text-muted-foreground">
+      <SettingsSection id="sec-runtime-devmode" title={t('general.developerMode.label')}>
+        <SettingRow
+          label={t('general.developerMode.label')}
+          description={t('general.developerMode.desc')}
+          control={
+            <Switch
+              checked={settings.devMode}
+              onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
+            />
+          }
+        >
+          <SettingHint>
             {settings.devMode ? t('general.developerMode.enabled') : t('general.developerMode.disabled')}
-          </span>
-        </div>
-      </section>
+          </SettingHint>
+        </SettingRow>
+      </SettingsSection>
+
       {/* Launch at Login */}
-      <section id="sec-runtime-autostart" className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.launchAtLogin.label', { defaultValue: 'Launch at Startup' })}</div>
-          <p className="text-xs text-muted-foreground">{t('general.launchAtLogin.desc', { defaultValue: 'Automatically start WishfulClaw when you log in to your computer' })}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={launchAtLoginChecked}
-            onCheckedChange={handleLaunchAtLoginChange}
-          />
-          <span className="text-xs text-muted-foreground">
+      <SettingsSection id="sec-runtime-autostart" title={t('general.launchAtLogin.label')}>
+        <SettingRow
+          label={t('general.launchAtLogin.label')}
+          description={t('general.launchAtLogin.desc')}
+          control={
+            <Switch
+              checked={launchAtLoginChecked}
+              onCheckedChange={handleLaunchAtLoginChange}
+            />
+          }
+        >
+          <SettingHint>
             {launchAtLoginChecked
-              ? t('general.launchAtLogin.enabled', { defaultValue: 'Enabled' })
-              : t('general.launchAtLogin.disabled', { defaultValue: 'Disabled' })}
-          </span>
-        </div>
-      </section>
+              ? t('general.launchAtLogin.enabled')
+              : t('general.launchAtLogin.disabled')}
+          </SettingHint>
+        </SettingRow>
+      </SettingsSection>
     </div>
   )
 }

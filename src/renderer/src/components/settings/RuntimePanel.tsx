@@ -287,41 +287,39 @@ function RuntimePanel(): React.JSX.Element {
       </SettingsSection>
 
       {/* Developer Mode */}
-      <SettingsSection id="sec-runtime-devmode" title={t('general.developerMode.label')}>
-        <SettingRow
-          label={t('general.developerMode.label')}
-          description={t('general.developerMode.desc')}
-          control={
-            <Switch
-              checked={settings.devMode}
-              onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
-            />
-          }
-        >
-          <SettingHint>
-            {settings.devMode ? t('general.developerMode.enabled') : t('general.developerMode.disabled')}
-          </SettingHint>
-        </SettingRow>
+      <SettingsSection
+        id="sec-runtime-devmode"
+        title={t('general.developerMode.label')}
+        description={t('general.developerMode.desc')}
+        actions={
+          <Switch
+            checked={settings.devMode}
+            onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
+          />
+        }
+      >
+        <SettingHint>
+          {settings.devMode ? t('general.developerMode.enabled') : t('general.developerMode.disabled')}
+        </SettingHint>
       </SettingsSection>
 
       {/* Launch at Login */}
-      <SettingsSection id="sec-runtime-autostart" title={t('general.launchAtLogin.label')}>
-        <SettingRow
-          label={t('general.launchAtLogin.label')}
-          description={t('general.launchAtLogin.desc')}
-          control={
-            <Switch
-              checked={launchAtLoginChecked}
-              onCheckedChange={handleLaunchAtLoginChange}
-            />
-          }
-        >
-          <SettingHint>
-            {launchAtLoginChecked
-              ? t('general.launchAtLogin.enabled')
-              : t('general.launchAtLogin.disabled')}
-          </SettingHint>
-        </SettingRow>
+      <SettingsSection
+        id="sec-runtime-autostart"
+        title={t('general.launchAtLogin.label')}
+        description={t('general.launchAtLogin.desc')}
+        actions={
+          <Switch
+            checked={launchAtLoginChecked}
+            onCheckedChange={handleLaunchAtLoginChange}
+          />
+        }
+      >
+        <SettingHint>
+          {launchAtLoginChecked
+            ? t('general.launchAtLogin.enabled')
+            : t('general.launchAtLogin.disabled')}
+        </SettingHint>
       </SettingsSection>
     </div>
   )

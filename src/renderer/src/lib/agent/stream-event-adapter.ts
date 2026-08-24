@@ -1,6 +1,23 @@
-import type { AgentStreamEvent } from '../../../../shared/agent-stream-protocol'
+﻿import type { AgentStreamEvent } from '../../../../shared/agent-stream-protocol'
 import type { AgentEvent } from './types'
 import type { SubAgentEvent } from './sub-agents/types'
+import { isUseCapabilityTool, resolveProxyDisplay } from './use-capability-proxy'
+
+/**
+ * use_capability proxy rewrite: streaming-phase events carry the raw LLM tool
+ * name before the Worker's ToolCallProcessor can rewrite display events. Apply
+ * the same resolution here so every downstream store sees the real tool name.
+ */
+function rewriteProxyEvent<T extends Record<string, unknown>>(event: T): T {
+  const name = event.name
+  if (typeof name !== 'string' || !isUseCapabilityTool(name)) return event
+  const input = event.input
+  const resolved = resolveProxyDisplay(
+    input && typeof input === 'object' ? (input as Record<string, unknown>) : undefined
+  )
+  if (!resolved) return event
+  return { ...event, name: resolved.name, input: resolved.input }
+}
 
 export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
   switch (e.type) {
@@ -23,13 +40,19 @@ export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
         thinkingEncryptedProvider: e.provider
       }
 
-    case 'tool_use_streaming_start':
+    case 'tool_use_streaming_start': {
+      const rewritten = rewriteProxyEvent({
+        toolCallId: e.toolCallId,
+        name: e.toolName,
+        input: {}
+      })
       return {
         type: 'tool_use_streaming_start',
         toolCallId: e.toolCallId,
-        toolName: e.toolName,
+        toolName: (rewritten.name as string) ?? e.toolName,
         toolCallExtraContent: e.extraContent
       } as AgentEvent
+    }
 
     case 'error':
       return {
@@ -45,15 +68,31 @@ export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
     case 'image_error':
     case 'web_search':
     case 'message_end':
-    case 'tool_use_generated':
-    case 'tool_call_start':
-    case 'tool_call_update':
-    case 'tool_call_approval_needed':
-    case 'tool_call_result':
     case 'iteration_end':
     case 'request_debug':
     case 'context_compressed':
       return e as unknown as AgentEvent
+
+    case 'tool_use_generated': {
+      const block = (e as { toolUseBlock?: { id: string; name: string; input?: Record<string, unknown> } })
+        .toolUseBlock
+      if (block && isUseCapabilityTool(block.name)) {
+        const resolved = resolveProxyDisplay(block.input)
+        if (resolved) {
+          return {
+            ...e,
+            toolUseBlock: { ...block, name: resolved.name, input: resolved.input }
+          } as unknown as AgentEvent
+        }
+      }
+      return e as unknown as AgentEvent
+    }
+
+    case 'tool_call_start':
+    case 'tool_call_update':
+    case 'tool_call_approval_needed':
+    case 'tool_call_result':
+      return rewriteProxyEvent(e as unknown as Record<string, unknown>) as unknown as AgentEvent
 
     case 'loop_end':
       return e as unknown as AgentEvent

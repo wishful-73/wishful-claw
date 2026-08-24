@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -35,8 +35,13 @@ public static partial class SubAgentExecutor
         childState.EventObserver = collector.ObserveAsync;
         childState.ReplaceParameters(childParameters);
 
-        // Register parent cancellation → child cancellation
-        parentState.CancellationToken.Register(
+        // Register parent cancellation → child cancellation. SA-2: keep the
+        // registration and dispose it in the background task's finally — a
+        // dropped registration leaves the callback on the parent token after
+        // the child state is disposed, and a later parent cancel would call
+        // Cancel() on a disposed CTS (ObjectDisposedException inside the
+        // cancellation callback).
+        var cancellationRegistration = parentState.CancellationToken.Register(
             static state => ((AgentRuntimeRunState)state!).Cancel("parent"),
             childState);
 
@@ -141,15 +146,27 @@ public static partial class SubAgentExecutor
                     toolCallId, ex.Message, collector.ToolCallCount, collector.Iterations,
                     BuildToolCallEntries(collector.ToolCallSummaries));
 
-                await AgentRuntimeTools.EmitAsync(
-                    parentState, context,
-                    new AgentRuntimeStreamEvent(
-                        "sub_agent_end",
-                        SubAgentName: definition.Name,
-                        ToolUseId: toolCallId,
-                        Result: BuildResultJson(
-                            definition.Name, toolCallId, $"Sub-agent failed: {ex.Message}",
-                            false, "error", collector.ToolCallCount, collector.Iterations)));
+                try
+                {
+                    await AgentRuntimeTools.EmitAsync(
+                        parentState, context,
+                        new AgentRuntimeStreamEvent(
+                            "sub_agent_end",
+                            SubAgentName: definition.Name,
+                            ToolUseId: toolCallId,
+                            Result: BuildResultJson(
+                                definition.Name, toolCallId, $"Sub-agent failed: {ex.Message}",
+                                false, "error", collector.ToolCallCount, collector.Iterations)));
+                }
+                catch (Exception emitEx)
+                {
+                    // SA-6: if the failure was a dead transport, EmitAsync would
+                    // throw again inside this catch and escape as an unobserved
+                    // task exception. Swallow and log instead.
+                    WorkerLog.Warn(
+                        $"background sub-agent failure emit also failed parentRunId={parentState.RunId} " +
+                        $"toolUseId={toolCallId} emitError={emitEx.GetType().Name}: {emitEx.Message}");
+                }
 
                 WorkerLog.Warn(
                     $"background sub-agent failed parentRunId={parentState.RunId} " +
@@ -157,6 +174,9 @@ public static partial class SubAgentExecutor
             }
             finally
             {
+                // SA-2: detach the parent-cancellation callback before the
+                // child state dies (see registration comment above).
+                try { cancellationRegistration.Dispose(); } catch { }
                 // The sub-agent conversation is isolated under its runId (see
                 // AgentLoop); remove it so isolated conversations don't leak.
                 SessionConversationManager.Remove($"__subagent__{childRunId}");

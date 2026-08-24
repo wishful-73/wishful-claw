@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 
 import { immer } from 'zustand/middleware/immer'
 
@@ -445,20 +445,20 @@ export const useChatStore = create<ChatStore>()(
 
 
 
-      // Find the session that has this runId as its streaming message
+      // RC-1: the envelope carries its sessionId from the worker — trust it
+      // first. The streamingMessages reverse lookup is only a fallback for
+      // envelopes whose sessionId is missing (e.g. older protocol), because
+      // the lookup drops events for sessions that aren't currently streaming
+      // (background sub-agent completions after a reload, etc.).
+      let targetSessionId: string | null = (envelope.sessionId ?? '').trim() || null
 
-      let targetSessionId: string | null = null
-
-      for (const [sid, msgId] of Object.entries(state.streamingMessages)) {
-
-        if (msgId === envelope.runId) {
-
-          targetSessionId = sid
-
-          break
-
+      if (!targetSessionId) {
+        for (const [sid, msgId] of Object.entries(state.streamingMessages)) {
+          if (msgId === envelope.runId) {
+            targetSessionId = sid
+            break
+          }
         }
-
       }
 
       for (const event of envelope.events) {
@@ -1001,6 +1001,11 @@ export const useChatStore = create<ChatStore>()(
 
                   if (existing) {
 
+                    // use_capability proxy: streaming_start arrived with the raw
+                    // LLM tool name; tool_call_start carries the rewritten real
+                    // tool name, so keep it in sync.
+                    existing.name = event.toolCall.name
+
                     existing.input = event.toolCall.input
 
                     existing.status = 'running'
@@ -1034,6 +1039,9 @@ export const useChatStore = create<ChatStore>()(
                   const seg = msg.segments.find((s) => s.type === 'tool_use' && s.toolCallId === event.toolCall.id)
 
                   if (seg) {
+
+                    // Keep display name in sync (use_capability proxy rewrite)
+                    seg.toolName = event.toolCall.name
 
                     seg.input = event.toolCall.input
 

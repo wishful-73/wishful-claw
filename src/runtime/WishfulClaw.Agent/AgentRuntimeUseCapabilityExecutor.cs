@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -46,6 +46,68 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
     public static bool IsUseCapabilityTool(string toolName)
     {
         return string.Equals(toolName, ToolName, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Resolves the display identity of a proxied call: the real tool name and
+    /// its arguments. Returns null when the capability_id cannot be resolved —
+    /// callers keep showing "use_capability" in that case so errors stay visible.
+    /// </summary>
+    public static (string Name, JsonElement Input)? ResolveProxyDisplay(
+        string? capabilityId, JsonElement input)
+    {
+        if (string.IsNullOrWhiteSpace(capabilityId))
+        {
+            return null;
+        }
+
+        // builtin:ToolName → ToolName with arguments as-is
+        if (capabilityId.StartsWith("builtin:", StringComparison.Ordinal))
+        {
+            var toolName = capabilityId["builtin:".Length..];
+            var args = input.TryGetProperty("arguments", out var a) && a.ValueKind == JsonValueKind.Object
+                ? a
+                : AgentRuntimeProviderSupport.CreateEmptyObjectElement();
+            return (toolName, args);
+        }
+
+        // skill:name → Skill tool with SkillName input
+        if (capabilityId.StartsWith("skill:", StringComparison.Ordinal))
+        {
+            var skillName = capabilityId["skill:".Length..];
+            return ("Skill", WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("SkillName", skillName);
+                w.WriteEndObject();
+            }));
+        }
+
+        // mcp-tool:server/tool → mcp__server__tool (matches renderer's isMcpTool)
+        if (capabilityId.StartsWith("mcp-tool:", StringComparison.Ordinal))
+        {
+            var (serverId, toolName) = ParseMcpToolIdStatic(capabilityId);
+            if (serverId is not null)
+            {
+                return ($"mcp__{serverId}__{toolName}",
+                    input.TryGetProperty("arguments", out var ma) && ma.ValueKind == JsonValueKind.Object
+                        ? ma
+                        : AgentRuntimeProviderSupport.CreateEmptyObjectElement());
+            }
+        }
+
+        return null;
+    }
+
+    private static (string? ServerId, string ToolName) ParseMcpToolIdStatic(string capabilityId)
+    {
+        var rest = capabilityId["mcp-tool:".Length..];
+        var slashIdx = rest.IndexOf('/');
+        if (slashIdx <= 0 || slashIdx + 1 >= rest.Length)
+        {
+            return (null, string.Empty);
+        }
+        return (rest[..slashIdx], rest[(slashIdx + 1)..]);
     }
 
     public static async Task<string> ExecuteAsync(
@@ -248,6 +310,24 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
                 return EncodeError($"Tool '{toolName}' is not available through the capability proxy in this session mode.");
             }
 
+            // Approval parity: a proxied built-in tool must honor the same
+            // default-mode approval policy as a direct call. Without this,
+            // write-class tools (NotebookEdit, Desktop*, …) bypass the user
+            // confirmation the permission mode promises.
+            var permissionMode = JsonHelpers.GetString(state.Parameters, "permissionMode");
+            var needsApproval = string.Equals(permissionMode, "default", StringComparison.OrdinalIgnoreCase)
+                && !state.SuppressTransportEvents
+                && ToolCallProcessor.IsDefaultModeApprovalTool(toolName);
+            if (needsApproval)
+            {
+                var approved = await RequestProxyApprovalAsync(
+                    call.Id, toolName, arguments, state, context, cancellationToken);
+                if (!approved)
+                {
+                    return EncodeError($"Tool call rejected by user: {toolName} (via use_capability)");
+                }
+            }
+
             var builtinCall = new AgentRuntimeNativeToolCall(
                 call.Id,
                 toolName,
@@ -256,9 +336,41 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
             var (output, isError) = await ToolDispatchRouter.DispatchAsync(
                 builtinCall, state, context, registry, workingFolder, projectId, sshConnectionId);
 
-            return isError && IsJsonError(output) ? output : output;
+            return output;
         }
 
         return EncodeError($"Unknown capability_id format for call: {capabilityId}");
+    }
+
+    /// <summary>
+    /// Approval parity for proxied built-in tools: sends the same reverse-request
+    /// the main loop uses and waits for the user's decision.
+    /// </summary>
+    private static async Task<bool> RequestProxyApprovalAsync(
+        string toolCallId,
+        string toolName,
+        JsonElement arguments,
+        AgentRuntimeRunState state,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var approvalParams = WorkerJsonHelper.BuildJsonElement(w =>
+        {
+            w.WriteStartObject();
+            w.WriteString("toolCallId", toolCallId);
+            w.WriteString("toolName", toolName);
+            w.WriteString("source", "default-mode");
+            w.WriteString("viaProxy", "use_capability");
+            w.WritePropertyName("input");
+            arguments.WriteTo(w);
+            w.WriteEndObject();
+        });
+
+        var approvalResult = await AgentRuntimeReverseRequests.RequestAsync(
+            context, "sub-agent:approve-tool", approvalParams, cancellationToken);
+
+        return approvalResult.ValueKind == JsonValueKind.Object &&
+               approvalResult.TryGetProperty("approved", out var approvedVal) &&
+               approvedVal.ValueKind == JsonValueKind.True;
     }
 }

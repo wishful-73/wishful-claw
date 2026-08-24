@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace WishfulClaw.Agent;
@@ -44,6 +44,35 @@ public static class BackgroundSubAgentRegistry
         IReadOnlyList<SubAgentToolCallEntry> ToolCallEntries);
 
     private static readonly ConcurrentDictionary<string, SubAgentRecord> _records = new();
+
+    // SA-1: the worker is a long-lived process. Terminal records carry full
+    // output strings — without eviction they accumulate forever. Keep the most
+    // recent N terminal records; running records are never evicted.
+    private const int MaxTerminalRecords = 100;
+
+    private static void EvictOldTerminalRecords()
+    {
+        var terminal = new List<(string Id, DateTimeOffset CompletedAt)>();
+        foreach (var (id, record) in _records)
+        {
+            if (record.Status != SubAgentRunStatus.Running && record.CompletedAt.HasValue)
+            {
+                terminal.Add((id, record.CompletedAt.Value));
+            }
+        }
+
+        if (terminal.Count <= MaxTerminalRecords)
+        {
+            return;
+        }
+
+        foreach (var (id, _) in terminal
+                     .OrderByDescending(t => t.CompletedAt)
+                     .Skip(MaxTerminalRecords))
+        {
+            _records.TryRemove(id, out _);
+        }
+    }
 
     public static void Register(
         string toolUseId,
@@ -103,6 +132,7 @@ public static class BackgroundSubAgentRegistry
                 ToolCallEntries = toolCallEntries ?? existing.ToolCallEntries,
                 CompletedAt = DateTimeOffset.UtcNow
             };
+            EvictOldTerminalRecords();
         }
     }
 
@@ -124,6 +154,7 @@ public static class BackgroundSubAgentRegistry
                 ToolCallEntries = toolCallEntries ?? existing.ToolCallEntries,
                 CompletedAt = DateTimeOffset.UtcNow
             };
+            EvictOldTerminalRecords();
         }
     }
 
@@ -136,6 +167,7 @@ public static class BackgroundSubAgentRegistry
                 Status = SubAgentRunStatus.Cancelled,
                 CompletedAt = DateTimeOffset.UtcNow
             };
+            EvictOldTerminalRecords();
         }
     }
 
@@ -144,9 +176,13 @@ public static class BackgroundSubAgentRegistry
         return _records.TryGetValue(toolUseId, out var record) ? record : null;
     }
 
+    // SA-7: stable ordering (newest first) so repeated SubAgentStatus list
+    // calls return a deterministic sequence for the LLM.
     public static IReadOnlyList<SubAgentRecord> GetAll()
     {
-        return _records.Values.ToList();
+        return _records.Values
+            .OrderByDescending(r => r.StartedAt)
+            .ToList();
     }
 
     // ── Formatters ──

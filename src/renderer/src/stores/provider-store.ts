@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AIProvider, AIModelConfig, ProviderType } from '../../../shared/types/provider'
 import { aiProviderStorage } from '@renderer/lib/ipc/ai-provider-storage'
@@ -63,11 +63,30 @@ export const useProviderStore = create<ProviderState>()(
       deleteProvider: (id) => {
         set((state) => {
           const providers = state.providers.filter((p) => p.id !== id)
-          const activeProviderId =
+          let activeProviderId =
             state.activeProviderId === id
               ? (providers[0]?.id ?? null)
               : state.activeProviderId
-          return { providers, activeProviderId }
+          // Bug fix: when the deleted provider was active, fall back to an
+          // auth-ready provider first so the composer doesn't show a stale
+          // "no API key" banner while a fully configured provider exists.
+          if (state.activeProviderId === id && providers.length > 0) {
+            const authReady =
+              providers.find((p) => p.requiresApiKey === false || !!p.apiKey) ?? null
+            if (authReady) activeProviderId = authReady.id
+          }
+          // Keep activeModelId valid for the new active provider.
+          let activeModelId = state.activeModelId
+          const nextActive = providers.find((p) => p.id === activeProviderId)
+          if (nextActive && !nextActive.models.some((m) => m.id === activeModelId)) {
+            const fallbackModel =
+              nextActive.models.find((m: AIModelConfig) => m.id === nextActive.defaultModel) ??
+              nextActive.models.find((m: AIModelConfig) => m.enabled && (!m.category || m.category === 'chat')) ??
+              nextActive.models.find((m: AIModelConfig) => m.enabled) ??
+              nextActive.models[0]
+            activeModelId = fallbackModel?.id ?? ''
+          }
+          return { providers, activeProviderId, activeModelId }
         })
       },
 

@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -17,13 +17,8 @@ namespace WishfulClaw.Persona;
 /// </summary>
 public static class PersonaGenerator
 {
-    private static readonly HttpClient Http = new(new HttpClientHandler
-    {
-        ServerCertificateCustomValidationCallback = (_, _, _, _) => true
-    })
-    {
-        Timeout = TimeSpan.FromMinutes(2)
-    };
+    private static readonly HttpClient Http = WishfulClaw.Infrastructure.Http.WorkerHttpClientFactory.Create(
+        timeout: TimeSpan.FromMinutes(2));
 
     private static readonly JsonWriterOptions WriterOptions = new()
     {

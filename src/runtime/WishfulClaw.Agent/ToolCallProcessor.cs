@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -135,9 +135,21 @@ public static class ToolCallProcessor
         // Two semaphores: one for regular tools, one for sub-agent (Task) calls.
         // This prevents a burst of Task calls from consuming all parallel slots
         // and blocking regular tools (or vice versa).
+        //
+        // Approval gating: in "default" permission mode, tools that require
+        // approval must NOT run concurrently with other tools — a later tool
+        // (e.g. deleting the file an earlier edit creates) could execute before
+        // its dependency is even approved. Gate all calls behind a shared
+        // approval barrier: each call waits until every earlier call's approval
+        // (if any) has been resolved before it starts.
         var toolSemaphore = new SemaphoreSlim(maxParallelTools, maxParallelTools);
         var subAgentSemaphore = new SemaphoreSlim(maxConcurrentSubAgents, maxConcurrentSubAgents);
         var toolTasks = new List<Task<AgentRuntimeToolResult>>();
+
+        // Barrier task chain: each gated call awaits the previous gated call's
+        // approval phase. Ungated calls still run fully parallel.
+        Task? approvalBarrier = null;
+        var barrierLock = new object();
 
         foreach (var toolCall in toolCallsToExecute)
         {
@@ -146,14 +158,34 @@ public static class ToolCallProcessor
                 break;
             }
 
-            // Pick the right semaphore based on whether this is a Task (sub-agent) call
-            var isTaskTool = SubAgentExecutor.IsTaskTool(toolCall.Name);
-            var semaphore = isTaskTool ? subAgentSemaphore : toolSemaphore;
+            var needsGate = defaultModeApproval && !state.SuppressTransportEvents &&
+                IsDefaultModeApprovalTool(toolCall.Name);
 
-            await semaphore.WaitAsync(state.CancellationToken);
-            toolTasks.Add(ExecuteSingleAsync(
-                toolCall, workingFolder, projectId, sshConnectionId, state, context, semaphore, registry,
-                defaultModeApproval));
+            if (needsGate)
+            {
+                var prevBarrier = approvalBarrier;
+                var gateTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                approvalBarrier = gateTcs.Task;
+
+                var isTaskTool = SubAgentExecutor.IsTaskTool(toolCall.Name);
+                var semaphore = isTaskTool ? subAgentSemaphore : toolSemaphore;
+
+                await semaphore.WaitAsync(state.CancellationToken);
+                toolTasks.Add(ExecuteGatedAsync(
+                    toolCall, workingFolder, projectId, sshConnectionId, state, context, semaphore, registry,
+                    defaultModeApproval, prevBarrier, gateTcs));
+            }
+            else
+            {
+                // Pick the right semaphore based on whether this is a Task (sub-agent) call
+                var isTaskTool = SubAgentExecutor.IsTaskTool(toolCall.Name);
+                var semaphore = isTaskTool ? subAgentSemaphore : toolSemaphore;
+
+                await semaphore.WaitAsync(state.CancellationToken);
+                toolTasks.Add(ExecuteSingleAsync(
+                    toolCall, workingFolder, projectId, sshConnectionId, state, context, semaphore, registry,
+                    defaultModeApproval));
+            }
         }
 
         // Wait for all started tool tasks to complete
@@ -218,6 +250,45 @@ public static class ToolCallProcessor
     }
 
     /// <summary>
+    /// Executes an approval-gated tool call: waits for the previous gated call's
+    /// approval to be resolved before starting its own approval + execution, so
+    /// gated tools run strictly in LLM emission order even though they are
+    /// dispatched concurrently. The barrier is released as soon as this call's
+    /// approval phase completes (approved or rejected) — execution itself may
+    /// then overlap with the next gated call's user dialog.
+    /// </summary>
+    private static async Task<AgentRuntimeToolResult> ExecuteGatedAsync(
+        AgentRuntimeNativeToolCall toolCall,
+        string? workingFolder,
+        string? projectId,
+        string? sshConnectionId,
+        AgentRuntimeRunState state,
+        IWorkerRequestContext context,
+        SemaphoreSlim semaphore,
+        ToolRegistry? registry,
+        bool defaultModeApproval,
+        Task? prevBarrier,
+        TaskCompletionSource gateTcs)
+    {
+        try
+        {
+            if (prevBarrier is not null)
+            {
+                await prevBarrier.ConfigureAwait(false);
+            }
+            return await ExecuteSingleAsync(
+                toolCall, workingFolder, projectId, sshConnectionId, state, context, semaphore, registry,
+                defaultModeApproval).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Release the chain even on rejection/cancellation so later calls
+            // are not stuck behind a gate that never opens.
+            gateTcs.TrySetResult();
+        }
+    }
+
+    /// <summary>
     /// Executes a single tool call with event emission.
     /// The semaphore is released in a finally block to guarantee release on all paths.
     /// </summary>
@@ -235,6 +306,30 @@ public static class ToolCallProcessor
         try
         {
             var startedAt = AgentLoop.NowMs();
+            var userApproved = false;
+
+            // Proxy display rewrite: use_capability(action=call) is surfaced to
+            // the renderer as the underlying tool call (real name + arguments),
+            // so the chat shows a NotebookEdit/Desktop/... card instead of an
+            // opaque "use_capability" card. The LLM-facing result keeps the
+            // original use_capability id — only the display events are rewritten.
+            var displayName = toolCall.Name;
+            var displayInput = toolCall.Input;
+            if (AgentRuntimeUseCapabilityExecutor.IsUseCapabilityTool(toolCall.Name))
+            {
+                var action = (JsonHelpers.GetString(toolCall.Input, "action") ?? string.Empty).Trim();
+                if (string.Equals(action, "call", StringComparison.OrdinalIgnoreCase))
+                {
+                    var proxy = AgentRuntimeUseCapabilityExecutor.ResolveProxyDisplay(
+                        JsonHelpers.GetString(toolCall.Input, "capability_id"),
+                        toolCall.Input);
+                    if (proxy is { } p)
+                    {
+                        displayName = p.Name;
+                        displayInput = p.Input;
+                    }
+                }
+            }
 
             await AgentRuntimeTools.EmitAsync(
                 state, context,
@@ -242,8 +337,8 @@ public static class ToolCallProcessor
                     "tool_call_start",
                     ToolCall: new AgentRuntimeToolCallState(
                         toolCall.Id,
-                        toolCall.Name,
-                        toolCall.Input,
+                        displayName,
+                        displayInput,
                         "running",
                         null,
                         null,
@@ -264,8 +359,8 @@ public static class ToolCallProcessor
                         "tool_call_start",
                         ToolCall: new AgentRuntimeToolCallState(
                             toolCall.Id,
-                            toolCall.Name,
-                            toolCall.Input,
+                            displayName,
+                            displayInput,
                             "pending_approval",
                             null,
                             null,
@@ -274,8 +369,8 @@ public static class ToolCallProcessor
                             null)));
 
                 WorkerLog.Info(
-                    $"sub-agent tool approval requested runId={state.RunId} " +
-                    $"tool={toolCall.Name} id={toolCall.Id}");
+                    $"{(defaultModeApproval ? "default-mode" : "sub-agent")} tool approval requested " +
+                    $"runId={state.RunId} tool={displayName} id={toolCall.Id}");
 
                 // Send reverse-request to renderer and wait for response
                 var approvalParams = new ArrayBufferWriter<byte>();
@@ -283,10 +378,14 @@ public static class ToolCallProcessor
                 {
                     aw.WriteStartObject();
                     aw.WriteString("toolCallId", toolCall.Id);
-                    aw.WriteString("toolName", toolCall.Name);
+                    aw.WriteString("toolName", displayName);
                     aw.WriteString("source", defaultModeApproval ? "default-mode" : "sub-agent");
+                    // Concurrent tool calls emit approval requests independently;
+                    // IPC arrival order is nondeterministic. startedAt lets the
+                    // renderer queue dialogs in card order instead.
+                    aw.WriteNumber("startedAt", startedAt);
                     aw.WritePropertyName("input");
-                    toolCall.Input.WriteTo(aw);
+                    displayInput.WriteTo(aw);
                     aw.WriteEndObject();
                 }
                 using var approvalDoc = JsonDocument.Parse(approvalParams.WrittenMemory);
@@ -301,21 +400,29 @@ public static class ToolCallProcessor
                 {
                     approved = true;
                 }
+                userApproved = approved;
 
                 if (!approved)
                 {
-                    var rejectMsg = $"Tool call rejected by user: {toolCall.Name}";
+                    // The LLM must see WHY nothing happened: the user blocked
+                    // this step. Without this it assumes success and plans the
+                    // next action (e.g. deleting a file the rejected edit was
+                    // supposed to create) on a false premise.
+                    var rejectMsg =
+                        $"[USER REJECTED] The user declined to run {displayName}. " +
+                        "This tool call did NOT execute. Do not assume any effect from it. " +
+                        "Ask the user how to proceed or adjust your plan before retrying.";
                     var rejectAt = AgentLoop.NowMs();
                     await AgentRuntimeTools.EmitAsync(
                         state, context,
                         new AgentRuntimeStreamEvent(
                             "tool_call_result",
                             ToolCallId: toolCall.Id,
-                            ToolName: toolCall.Name,
+                            ToolName: displayName,
                             ToolCall: new AgentRuntimeToolCallState(
                                 toolCall.Id,
-                                toolCall.Name,
-                                toolCall.Input,
+                                displayName,
+                                displayInput,
                                 "rejected",
                                 AgentRuntimeProviderSupport.CreateStringElement(rejectMsg),
                                 rejectMsg,
@@ -336,8 +443,8 @@ public static class ToolCallProcessor
                         "tool_call_start",
                         ToolCall: new AgentRuntimeToolCallState(
                             toolCall.Id,
-                            toolCall.Name,
-                            toolCall.Input,
+                            displayName,
+                            displayInput,
                             "running",
                             null,
                             null,
@@ -350,6 +457,14 @@ public static class ToolCallProcessor
             var (toolOutput, isToolError) = await ToolDispatchRouter.DispatchAsync(
                 toolCall, state, context, registry, workingFolder, projectId, sshConnectionId);
 
+            // When this call went through user approval, tell the LLM explicitly:
+            // it paused here waiting for the user, and the user allowed this step.
+            // This closes the causal loop — otherwise approval is invisible to it.
+            if (userApproved)
+            {
+                toolOutput = "[USER APPROVED] The user reviewed and allowed this step.\n\n" + toolOutput;
+            }
+
             var completedAt = AgentLoop.NowMs();
 
             await AgentRuntimeTools.EmitAsync(
@@ -357,11 +472,11 @@ public static class ToolCallProcessor
                 new AgentRuntimeStreamEvent(
                     "tool_call_result",
                     ToolCallId: toolCall.Id,
-                    ToolName: toolCall.Name,
+                    ToolName: displayName,
                     ToolCall: new AgentRuntimeToolCallState(
                         toolCall.Id,
-                        toolCall.Name,
-                        toolCall.Input,
+                        displayName,
+                        displayInput,
                         isToolError ? "error" : "completed",
                         AgentRuntimeProviderSupport.CreateStringElement(toolOutput),
                         isToolError ? toolOutput : null,
@@ -417,10 +532,10 @@ public static class ToolCallProcessor
     /// </summary>
     private static readonly HashSet<string> DefaultModeApprovalTools = new(StringComparer.Ordinal)
     {
-        // File writes
-        "Write", "Edit",
+        // File writes (incl. notebook rewrites)
+        "Write", "Edit", "NotebookEdit",
         // Shell execution
-        "Bash", "Shell", "ShellExec", "PowerShell", "Monitor",
+        "Bash", "Shell", "ShellExec", "PowerShell",
         // Desktop input (executes real UI actions on the user's machine)
         "DesktopClick", "DesktopType", "DesktopScroll"
     };
@@ -439,7 +554,16 @@ public static class ToolCallProcessor
         // their own autonomous policy).
         return defaultModeApproval
             && !state.SuppressTransportEvents
-            && DefaultModeApprovalTools.Contains(toolCall.Name);
+            && IsDefaultModeApprovalTool(toolCall.Name);
+    }
+
+    /// <summary>
+    /// Exposed for the use_capability proxy: a proxied built-in tool must be
+    /// checked against the same default-mode approval set as direct calls.
+    /// </summary>
+    public static bool IsDefaultModeApprovalTool(string toolName)
+    {
+        return DefaultModeApprovalTools.Contains(toolName);
     }
 
     private static readonly JsonWriterOptions WriteOptions = new()

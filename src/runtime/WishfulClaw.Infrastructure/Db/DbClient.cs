@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Core.Protocol;
 
@@ -11,6 +11,7 @@ namespace WishfulClaw.Infrastructure.Db;
 /// </summary>
 public static partial class DbClient
 {
+    private static readonly object InitLock = new();
     private static DbService? _db;
     private static string? _dbPath;
     private static bool _initialized;
@@ -42,6 +43,10 @@ public static partial class DbClient
     public static DbInitializeResult Initialize(string? dbPathOverride = null)
     {
         var dbPath = dbPathOverride ?? ResolveDbPath();
+        // DB-1: concurrent first access (multiple modules hitting IPC at
+        // startup) must not run Initialize twice — guard with a lock.
+        lock (InitLock)
+        {
         try
         {
             var dir = Path.GetDirectoryName(dbPath);
@@ -335,6 +340,7 @@ public static partial class DbClient
             WorkerLog.Error($"DbClient: initialization FAILED at dbPath={dbPath} error={ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
             return new DbInitializeResult(false, dbPath, ex.Message);
         }
+        }
     }
 
     /// <summary>
@@ -370,7 +376,6 @@ public static partial class DbClient
             }
         }
     }
-
     /// <summary>
     /// Ensure DB is initialized (no-arg version, for non-IPC contexts).
     /// </summary>

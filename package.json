@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "wishful-claw",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "description": "Wishful Claw - Agent 编程软件",
   "main": "./out/main/index.js",
   "scripts": {

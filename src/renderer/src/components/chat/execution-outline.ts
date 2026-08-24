@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -105,6 +105,9 @@ const HIDDEN_TOOL_NAMES = new Set([
   // Memory tools are internal agent operations — not user-facing
   'memory_hot_read', 'memory_hot_write',
   'memory_append', 'memory_update', 'memory_search',
+  // Capability proxy: successfully resolved calls are re-emitted with the real
+  // tool name; an unresolved use_capability card is noise, so hide it.
+  'use_capability',
 ])
 const ORDINARY_CONTEXT_TOOL_NAMES = new Set([
   'Read',

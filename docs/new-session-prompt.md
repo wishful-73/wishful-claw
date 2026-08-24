@@ -67,6 +67,7 @@
 | v2-iter-17 | 缺陷修复迭代 — 左侧面板收起 React error #300 修复、启动器焦点偶发丢失修复、剪贴板粘贴未到目标/网页焦点丢失（Alt 系快捷键根因 + clearMenu 兼容层）、扩展菜单子项闪烁修复、提示词优化永久卡死修复、剪贴板交互增强（方向键+双击粘贴）、日志分级（打包版仅 error）、快速搜索匹配增强（UWP 应用扫描 + 系统设置入口 + 拼音首字母/历史优先/去重 + PE 图标提取）、BOM 回归修复（156 文件） | ✅ 已完成，产品版本 0.2.17，tag v0.2.17，已合并 main |
 | v2-iter-18 | 429重试配置化 + 输入框状态独立显示 + 默认模式工具审批 — maxRetries 配置 + 无限重试显示 attempt/∞、输入框独立运行状态指示（collectRuntimeOutputSnapshot 读流式 segments + think 标签 + GLM 空 thinking 兼容）、权限简化 default/fullAccess 两档 + 默认模式风险工具审批、requestMaxRetries 透传修复、会话/项目删除确认弹窗 + 侧栏流式指示器 + 会话折叠、Worker 日志级别随主进程透传 | ✅ 已完成，产品版本 0.2.18，tag v0.2.18，已合并 main |
 | v2-iter-19 | Goal 编排记录可视化与运行时加固 — goal_plan_tasks 表每轮执行记录 + 面板轮次详情/实时活动流、Goal→Plan→Task 三层生命周期收口（goal_plans/goal_tasks/goal_execution_runs 三表）、自适应编排循环（free-form adaptive）、后台子 agent 会话隔离修复、SSE 流空闲超时（复用 requestTimeoutSeconds）、Goal 暂停立即中断当前 turn（pause watcher 取消 in-flight turn 含重试循环）、无限重试长时自主运行 + 里程碑、Goal 确认卡片模型选择 UI、ProviderStore encodeURIComponent 路径兼容、架构 review 文档 review-02..08 入库 | ✅ 已完成，产品版本 0.2.19，tag v0.2.19，已合并 main |
+| v2-iter-20 | 审查修复·安全与运行时健壮性 — PV-1 TLS 收口工厂、MB-1 SSH 记忆 scope 校验、TL-6 NotebookEdit 入审批、AL-1 同 session 单活跃 run、DB-1 Initialize 加锁、SA-1/2/3/6/7 子 agent registry 并发修复、MB-3 MemoryStore scope 信号量、AL-2 persona 指纹缓存、PV-2/TL-5/GL-3/RC-1/DB-3 正确性修复；追加：桌面图标白角修复、删除服务商误报修复、use_capability 代理显示链路（Worker 改写 + 渲染端入口统一改写 + HIDDEN 兜底）、default-mode 审批链路（审批屏障串行门控 + confirm 弹窗队列化 + startedAt 排序 + 审批结果对 LLM 可见 [USER APPROVED/REJECTED]） | ✅ 已完成，产品版本 0.2.20，tag v0.2.20，已合并 main |
 
 ## 当前项目架构（7 层）
 
@@ -88,23 +89,23 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
 
 ## 当前状态
 
-- 当前分支：`main`，当前产品版本：`0.2.19`，最新 tag：`v0.2.19`
-- v2-iter-19（Goal 编排记录可视化与运行时加固）已完成，已合并 main 并打 tag v0.2.19，开发分支已清理
-- 验证：TypeScript 3/3 PASS；C# build 0 错误；用户人工验证通过
-- 下一步：先检查 `D:\koda\Obsidian\02-AI教学\wishfulclaw` 的最新 Bug/优化建议，再与老大讨论下一迭代范围
+- 当前分支：`main`，当前产品版本：`0.2.20`，最新 tag：`v0.2.20`
+- v2-iter-20（审查修复·安全与运行时健壮性）已完成，已合并 main 并打 tag v0.2.20，开发分支已清理
+- 验证：TypeScript 3/3 PASS；C# build 0 错误 0 警告；用户人工验证通过
+- 下一步：v2-iter-21（设置页重构 + 体验优化）已确认候选范围，见 PROGRESS.md
 
 
-## 下一步（需与老大讨论确认后确定）
+## 下一步（已确认的 iter-21 候选范围）
 
-当前已完成 v2-iter-19（产品版本 0.2.19，tag v0.2.19）。下一迭代范围待与老大讨论确认。
+当前已完成 v2-iter-20（产品版本 0.2.20，tag v0.2.20）。下一迭代 v2-iter-21 候选范围已在 PROGRESS.md 登记：
 
-1. 先检查 `D:\koda\Obsidian\02-AI教学\wishfulclaw` 中最新的 Bug 和优化建议。
-2. 听取老大新想法，整理优先级、范围、边界和验证标准。
-3. 以老大确认的实际需求为准，不直接照搬 `docs/iteration-plan.md` 的旧候选项。
+1. **设置页重构** — 拆出「运行与性能」区块入 AI 板块，GeneralPanel 瘦身
+2. **设置页锚点导航** — section 锚点 + 滚动联动高亮
+3. **AL-3 无限循环软提示** — 相似失败模式注入引导提示
+4. **Worker 优雅关闭**（EM-1）+ **崩溃自动重启**（EM-2）
+5. 其余备选：RC-2/RC-3/AL-6/TL-1/TL-4/SA-4
 
-后续独立 Plan 候选：模型管理页面、Goal 编排记录可视化、工具调用权限、Cron 自动化验证、虚拟列表 prepend 滚动位置闪烁修复。
-
-**开工前先与老大确认本次迭代具体做什么、优先级、边界。**
+**开工前从最新 main 切出 dev/v2-iter-21。**
 
 ## 关键技术备忘
 
@@ -139,7 +140,7 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
 
 ## 会话开始时请先执行
 
-1. `git status` + `git log --oneline -5` — 确认当前在 `main`，产品版本 `0.2.19`，最新 tag `v0.2.19`
+1. `git status` + `git log --oneline -5` — 确认当前在 `main`，产品版本 `0.2.20`，最新 tag `v0.2.20`
 2. 读 `AGENTS.md` — 查看 7 层架构和分层约定
 3. 读 `docs/iteration-plan.md` + `docs/PROGRESS.md` — 查看已完成迭代与历史计划
 4. 检查 `D:\koda\Obsidian\02-AI教学\wishfulclaw` 中最新的 Bug 和优化建议

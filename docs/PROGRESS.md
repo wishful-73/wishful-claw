@@ -1,6 +1,27 @@
 ﻿# 开发进度
 
-## v2-iter-21：设置页重构 + 体验优化（候选，未开始）
+## v2-iter-21：设置页重构 + 运行时健壮性补强
+- 状态：执行完成，待验证态（用户确认 VERDICT）
+- 分支：dev/v2-iter-21
+- Plan: docs/plans/iter-v2-21/
+- VERDICT: —
+- 产品版本: —（收尾时更新 0.2.21）
+- Tag: —
+- Commit: 见 git log v0.2.20..dev/v2-iter-21
+- 日期: 2026-08-24
+- 范围确认（老大）：设置页重构 + 备选项全做（RC-2/RC-3/AL-6/TL-1/TL-4/SA-4）；锚点导航、AL-3 软提示、EM-1/EM-2 本次不做
+- 备注：
+  - **FU-A 设置页重构** — 新建 RuntimePanel.tsx（AI 服务分组「运行与性能」），从 GeneralPanel 迁出 API 请求超时 / Provider 最大重试 / 上下文压缩三个 section，GeneralPanel 585→409 行；SettingsTab 增加 runtime；i18n zh/en tabs.runtime 键
+  - **RC-2** — chat-store cancelStream 支持可选 targetSessionId 参数，缺省仍用 activeSessionId
+  - **RC-3** — error 事件清理该 session 全部消息的 isStreaming 标记（原来只清 runId 匹配的那条，重载后残留流态），error 文案仍只写目标消息
+  - **AL-6** — AgentLoop 压缩块：CompactAsync 无缩减效果时降级 TruncateMessages 机械截断兜底，两者都无效才仅记 Warn
+  - **TL-1** — 新建 SearchFilter.cs：默认排除 node_modules/.git/dist/obj/bin/release/debug/vendor 等目录 + exclude_dirs 参数（支持通配段）；GrepTool/GlobTool 枚举接入，InputSchema 同步
+  - **TL-4** — FileReadTool 改 StreamReader 逐行流式读取，只保留 [offset, offset+limit) 窗口，不再 ReadAllText 全量进内存
+  - **SA-4** — SubAgentRunCollector.GetFinalOutput 文本超 12000 字符只保留末段（前缀标注 truncated），thinking 兜底逻辑不变
+  - 验证：C# build 0 错误（唯一警告为 -o 参数 NETSDK1194 非代码警告）；TS 3/3 零错误
+
+## v2-iter-21 原始候选记录（已被上方实际范围取代）
+
 - 状态：规划中
 - 分支：dev/v2-iter-21（待从 main 切出）
 - Plan: docs/plans/iter-v2-21/（待建）

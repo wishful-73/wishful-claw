@@ -1,5 +1,4 @@
-﻿import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+﻿import { useTranslation } from 'react-i18next'
 import { Monitor, MoonStar, SunMedium } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import {
@@ -22,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue
 } from '@renderer/components/ui/select'
-import { Switch } from '@renderer/components/ui/switch'
 import { PresetCard } from './general-preset-card'
 
 const FONT_OPTIONS = [
@@ -50,27 +48,6 @@ function GeneralPanel(): React.JSX.Element {
 
   const clampFontSize = (value: number): number => Math.min(20, Math.max(12, value))
 
-  // -- Launch at Login --
-  const [launchAtLoginChecked, setLaunchAtLoginChecked] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    void window.api.invoke<boolean>('app:get-login-item-settings', null).then((osEnabled) => {
-      if (cancelled) return
-      setLaunchAtLoginChecked(osEnabled)
-      if (osEnabled !== settings.launchAtLogin) {
-        settings.updateSettings({ launchAtLogin: osEnabled })
-      }
-    })
-    return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleLaunchAtLoginChange = (checked: boolean): void => {
-    setLaunchAtLoginChecked(checked)
-    settings.updateSettings({ launchAtLogin: checked })
-    void window.api.invoke<boolean>('app:set-login-item-settings', checked)
-  }
-
   const handleLanguageChange = (value: string): void => {
     settings.updateSettings({ language: value as typeof settings.language })
     changeI18nLanguage(value)
@@ -85,7 +62,7 @@ function GeneralPanel(): React.JSX.Element {
       </div>
 
       {/* Language */}
-      <section className="space-y-3">
+      <section id="sec-general-language" className="space-y-3">
         <div>
           <div className="text-sm font-medium text-foreground">{t('general.language.label')}</div>
           <p className="text-xs text-muted-foreground">{t('general.language.desc')}</p>
@@ -105,7 +82,7 @@ function GeneralPanel(): React.JSX.Element {
       </section>
 
       {/* Theme mode */}
-      <section className="space-y-3">
+      <section id="sec-general-theme" className="space-y-3">
         <div>
           <div className="text-sm font-medium text-foreground">{t('general.theme.label')}</div>
           <p className="text-xs text-muted-foreground">{t('general.theme.desc')}</p>
@@ -135,7 +112,7 @@ function GeneralPanel(): React.JSX.Element {
       </section>
 
       {/* Theme preset */}
-      <section className="space-y-3">
+      <section id="sec-general-preset" className="space-y-3">
         <div>
           <div className="text-sm font-medium text-foreground">{t('general.preset.label')}</div>
           <p className="text-xs text-muted-foreground">{t('general.preset.desc')}</p>
@@ -158,7 +135,7 @@ function GeneralPanel(): React.JSX.Element {
       </section>
 
       {/* Appearance */}
-      <section className="space-y-4">
+      <section id="sec-general-appearance" className="space-y-4">
         <div>
           <label className="text-sm font-medium">{t('general.appearance.label')}</label>
           <p className="text-xs text-muted-foreground">{t('general.appearance.desc')}</p>
@@ -250,149 +227,6 @@ function GeneralPanel(): React.JSX.Element {
               {t('general.reset')}
             </button>
           </div>
-        </div>
-      </section>
-
-      {/* Tool Execution */}
-      <section className="space-y-4">
-        <div>
-          <label className="text-sm font-medium">{t('general.toolExecution.label')}</label>
-          <p className="text-xs text-muted-foreground">{t('general.toolExecution.desc')}</p>
-        </div>
-
-        {/* Max Parallel Tools */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxParallel.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxParallel.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxParallelToolCalls}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={16}
-              step={1}
-              value={settings.maxParallelToolCalls}
-              onChange={(e) => settings.updateSettings({ maxParallelToolCalls: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
-            <Input
-              type="number"
-              min={1}
-              max={16}
-              value={settings.maxParallelToolCalls}
-              onChange={(e) => {
-                const next = Math.min(16, Math.max(1, parseInt(e.target.value, 10) || 8))
-                settings.updateSettings({ maxParallelToolCalls: next })
-              }}
-              className="max-w-24 text-xs"
-            />
-          </div>
-        </div>
-
-        {/* Max Tool Calls Per Turn */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxPerTurn.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxPerTurn.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxToolCallsPerTurn}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={100}
-              step={1}
-              value={settings.maxToolCallsPerTurn}
-              onChange={(e) => settings.updateSettings({ maxToolCallsPerTurn: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
-            <Input
-              type="number"
-              min={1}
-              max={100}
-              value={settings.maxToolCallsPerTurn}
-              onChange={(e) => {
-                const next = Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 20))
-                settings.updateSettings({ maxToolCallsPerTurn: next })
-              }}
-              className="max-w-24 text-xs"
-            />
-          </div>
-        </div>
-
-        {/* Max Concurrent Sub-Agents */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxSubAgents.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxSubAgents.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxConcurrentSubAgents}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={8}
-              step={1}
-              value={settings.maxConcurrentSubAgents}
-              onChange={(e) => settings.updateSettings({ maxConcurrentSubAgents: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
-            <Input
-              type="number"
-              min={1}
-              max={8}
-              value={settings.maxConcurrentSubAgents}
-              onChange={(e) => {
-                const next = Math.min(8, Math.max(1, parseInt(e.target.value, 10) || 2))
-                settings.updateSettings({ maxConcurrentSubAgents: next })
-              }}
-              className="max-w-24 text-xs"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Developer Mode */}
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.developerMode.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.developerMode.desc')}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={settings.devMode}
-            onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
-          />
-          <span className="text-xs text-muted-foreground">
-            {settings.devMode ? t('general.developerMode.enabled') : t('general.developerMode.disabled')}
-          </span>
-        </div>
-      </section>
-
-      {/* Launch at Login */}
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.launchAtLogin.label', { defaultValue: 'Launch at Startup' })}</div>
-          <p className="text-xs text-muted-foreground">{t('general.launchAtLogin.desc', { defaultValue: 'Automatically start WishfulClaw when you log in to your computer' })}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={launchAtLoginChecked}
-            onCheckedChange={handleLaunchAtLoginChange}
-          />
-          <span className="text-xs text-muted-foreground">
-            {launchAtLoginChecked
-              ? t('general.launchAtLogin.enabled', { defaultValue: 'Enabled' })
-              : t('general.launchAtLogin.disabled', { defaultValue: 'Disabled' })}
-          </span>
         </div>
       </section>
 

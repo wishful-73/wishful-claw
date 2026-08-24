@@ -46,6 +46,10 @@
       "label": "运行与性能",
       "desc": "API 请求超时、重试策略与上下文压缩"
     },
+    "runtimePage": {
+      "title": "运行与性能",
+      "subtitle": "Agent 运行时设置：请求超时、重试、工具执行与上下文压缩"
+    },
     "about": {
       "label": "关于",
       "desc": "版本信息"

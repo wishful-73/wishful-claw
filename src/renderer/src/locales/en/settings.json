@@ -46,6 +46,10 @@
       "label": "Runtime & Performance",
       "desc": "API request timeout, retry policy and context compression"
     },
+    "runtimePage": {
+      "title": "Runtime & Performance",
+      "subtitle": "Agent runtime settings: request timeout, retries, tool execution and context compression"
+    },
     "about": {
       "label": "About",
       "desc": "Version info"

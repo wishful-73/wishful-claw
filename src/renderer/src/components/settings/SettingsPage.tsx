@@ -16,13 +16,32 @@ import { SkillPanel } from '@renderer/components/settings/skill-panel'
 import { McpPanel } from '@renderer/components/settings/mcp-panel'
 import { ModelManagementPanel } from '@renderer/components/settings/model-management/ModelManagementPanel'
 import { ShortcutsPanel } from '@renderer/components/settings/ShortcutsPanel'
+import { SectionAnchorNav, type SectionAnchor } from '@renderer/components/settings/section-anchor-nav'
 import { Server as ServerIcon } from 'lucide-react'
+import { useRef } from 'react'
+
+const GENERAL_ANCHORS: SectionAnchor[] = [
+  { id: 'sec-general-language', label: 'Language' },
+  { id: 'sec-general-theme', label: 'Theme' },
+  { id: 'sec-general-preset', label: 'Presets' },
+  { id: 'sec-general-appearance', label: 'Appearance' }
+]
+
+const RUNTIME_ANCHORS: SectionAnchor[] = [
+  { id: 'sec-runtime-timeout', label: 'Timeout' },
+  { id: 'sec-runtime-retries', label: 'Retries' },
+  { id: 'sec-runtime-compression', label: 'Compression' },
+  { id: 'sec-runtime-tools', label: 'Tool Execution' },
+  { id: 'sec-runtime-devmode', label: 'Developer' },
+  { id: 'sec-runtime-autostart', label: 'Startup' }
+]
 
 function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const settingsTab = useUIStore((s) => s.settingsTab)
   const setSettingsTab = useUIStore((s) => s.setSettingsTab)
   const closeSettings = useUIStore((s) => s.closeSettings)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
   const menuGroups: Array<{
     label: string
@@ -143,16 +162,22 @@ function SettingsPage(): React.JSX.Element {
                 <ModelManagementPanel />
               </div>
             ) : settingsTab === 'runtime' ? (
-              <div className="flex-1 overflow-y-auto">
-                <RuntimePanel />
+              <div className="flex min-h-0 flex-1">
+                <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto">
+                  <RuntimePanel />
+                </div>
+                <SectionAnchorNav containerRef={scrollContainerRef} anchors={RUNTIME_ANCHORS} />
               </div>
             ) : settingsTab === 'shortcuts' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ShortcutsPanel />
               </div>
             ) : settingsTab === 'general' ? (
-              <div className="flex-1 overflow-y-auto">
-                <GeneralPanel />
+              <div className="flex min-h-0 flex-1">
+                <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto">
+                  <GeneralPanel />
+                </div>
+                <SectionAnchorNav containerRef={scrollContainerRef} anchors={GENERAL_ANCHORS} />
               </div>
             ) : settingsTab === 'persona' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">

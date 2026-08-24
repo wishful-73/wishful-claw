@@ -1,5 +1,22 @@
 ﻿# 开发进度
 
+## v2-iter-20：审查修复 · 安全与运行时健壮性
+- 状态：进行中（执行态完成，待审查/验证）
+- 分支：dev/v2-iter-20
+- Plan: docs/plans/iter-v2-20/
+- VERDICT: —
+- 产品版本: —
+- Tag: —
+- Commit: —
+- 日期: 2026-08-24
+- 备注：
+  - 来源：docs/reviews/review-02~08b 全项目审查；高优先级全修 + 配套中优
+  - FU1 安全：PV-1 TLS 收口工厂+allowInsecureTls 开关（默认关）；MB-1 SSH 记忆 scope 路径校验；TL-6 NotebookEdit 入审批、Monitor 移出
+  - FU2 并发：AL-1 同 session 单活跃 run；DB-1 DbClient.Initialize 加锁；SA-1 registry 终态淘汰(100)+排序；SA-2 后台取消注册 Dispose（顺带 SA-6 emit 兜底）；SA-3 ConcurrentDictionary；MB-3 MemoryStore 按 scope 信号量；GL-2 经核验已在 iter-19 修复
+  - FU3 静默错误：AL-2 缓存 key 纳入 persona 文件 mtime 指纹（Persona 层零改动）；GL-1/GL-3 已修于 main，补最后残留 "executing" 字面量；PV-2 await emit；TL-5 IsJsonError 忽略 null/空；RC-1 信封 sessionId 优先路由；DB-3 QueryScalar Nullable 特判
+  - 明确不做（用户确认）：SA-5b 子 agent 免审批为有意设计；AL-3 无限循环保留语义，改软提示方案归 iter-21
+  - 验证：C# build 0 错误 0 警告；TS 3/3 零错误
+
 ## v2-iter-19：Goal 编排记录可视化 + 三层生命周期收口
 - 状态：已完成，已合并 main
 - 分支：dev/v2-iter-19（合并后清理）

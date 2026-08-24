@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -50,7 +50,7 @@ internal static partial class AnthropicMessagesProvider
         switch (type)
         {
             case "content_block_start":
-                ProcessContentBlockStart(root, parseState, state, context);
+                await ProcessContentBlockStartAsync(root, parseState, state, context);
                 break;
 
             case "content_block_delta":
@@ -77,7 +77,7 @@ internal static partial class AnthropicMessagesProvider
         }
     }
 
-    private static void ProcessContentBlockStart(
+    private static async Task ProcessContentBlockStartAsync(
         JsonElement root,
         AnthropicParseState parseState,
         AgentRuntimeRunState state,
@@ -97,7 +97,9 @@ internal static partial class AnthropicMessagesProvider
             var id = JsonHelpers.GetString(block, "id") ?? $"toolu_{index}";
             var name = JsonHelpers.GetString(block, "name") ?? string.Empty;
             parseState.ToolBuffers[index] = new AnthropicToolBuffer(id, name);
-            _ = AgentRuntimeTools.EmitAsync(
+            // PV-2: awaited like every other emit — fire-and-forget broke event
+            // ordering and swallowed exceptions.
+            await AgentRuntimeTools.EmitAsync(
                 state, context,
                 new AgentRuntimeStreamEvent(
                     "tool_use_streaming_start",

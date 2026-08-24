@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Sub-agent tool approval handler.
  *
  * When a sub-agent executes a tool that requires approval (Write, Edit, Bash, etc.),
@@ -55,15 +55,9 @@ export async function handleSubAgentApprovalRequest(
     return { approved: false }
   }
 
-  console.warn('[SubAgentApproval] request received', {
-    toolCallId,
-    toolName,
-    source: record.source,
-    keys: Object.keys(record)
-  })
-
   // Default permission mode (main agent loop): no card UI is mounted for these
-  // approvals, so resolve synchronously via a confirm dialog.
+  // approvals, so resolve synchronously via a confirm dialog. sequence keeps
+  // concurrent dialogs in tool-card order despite IPC arrival randomness.
   if (record.source === 'default-mode') {
     const detail = inputSummary(toolName, input)
     const approved = await confirm({
@@ -71,7 +65,8 @@ export async function handleSubAgentApprovalRequest(
       description: detail ? `即将执行：${detail}` : '此工具需要你的确认后才会执行。',
       confirmLabel: '允许执行',
       cancelLabel: '拒绝',
-      variant: 'warning'
+      variant: 'warning',
+      sequence: typeof record.startedAt === 'number' ? record.startedAt : undefined
     })
     return { approved }
   }

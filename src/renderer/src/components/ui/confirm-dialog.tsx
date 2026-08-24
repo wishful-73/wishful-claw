@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
@@ -26,6 +26,8 @@ interface ConfirmOptions {
   imageEdit?: unknown
   status?: string
   maxToolCallsPerTurn?: number
+  /** Ordering key for concurrent dialogs (e.g. tool startedAt ms). Lower shows first. */
+  sequence?: number
   [key: string]: unknown
 }
 
@@ -34,6 +36,16 @@ type ResolveCallback = (confirmed: boolean) => void
 // ── Internal state (module-level singleton) ──
 
 let _setDialog: React.Dispatch<React.SetStateAction<DialogState | null>> | null = null
+
+// Concurrent confirm() calls queue up: the singleton dialog can only show one
+// at a time, and overwriting the state would leave earlier callers' promises
+// unresolved forever (e.g. three parallel tool approvals → stuck "running" cards).
+interface QueuedDialog {
+  options: ConfirmOptions
+  resolve: ResolveCallback
+}
+const _dialogQueue: QueuedDialog[] = []
+let _dialogActive = false
 
 interface DialogState {
   title: string
@@ -69,20 +81,49 @@ export async function confirm(options: ConfirmOptions): Promise<boolean> {
   }
 
   const approved = await new Promise<boolean>((resolve) => {
-    _setDialog!({
-      title,
-      description,
-      confirmLabel: options.confirmLabel ?? options.confirmText,
-      cancelLabel: options.cancelLabel ?? options.cancelText,
-      // warning is rendered like the default variant — it is a caution, not
-      // a destructive action.
-      variant: options.variant === 'destructive' ? 'destructive' : 'default',
-      resolve
-    })
+    // Insert by startedAt (ascending): concurrent tool approvals arrive via IPC
+    // in nondeterministic order, but dialogs should follow the tool card order.
+    const seq = typeof options.sequence === 'number' ? options.sequence : Number.MAX_SAFE_INTEGER
+    const insertAt = _dialogQueue.findIndex(
+      (entry) =>
+        typeof entry.options.sequence === 'number' && entry.options.sequence > seq
+    )
+    if (insertAt === -1) {
+      _dialogQueue.push({ options, resolve })
+    } else {
+      _dialogQueue.splice(insertAt, 0, { options, resolve })
+    }
+    pumpDialogQueue()
   })
 
   if (approved) await options.onConfirm?.()
   return approved
+}
+
+function pumpDialogQueue(): void {
+  if (_dialogActive || !_setDialog) return
+  const next = _dialogQueue.shift()
+  if (!next) return
+  _dialogActive = true
+  const { title, description } = next.options
+  _setDialog({
+    title: title ?? '',
+    description,
+    confirmLabel: next.options.confirmLabel ?? next.options.confirmText,
+    cancelLabel: next.options.cancelLabel ?? next.options.cancelText,
+    // warning is rendered like the default variant — it is a caution, not
+    // a destructive action.
+    variant: next.options.variant === 'destructive' ? 'destructive' : 'default',
+    resolve: (confirmed: boolean) => {
+      _dialogActive = false
+      _setDialog?.(null)
+      next.resolve(confirmed)
+      // Defer: the caller (handleConfirm/handleCancel) also calls setDialog(null)
+      // after resolve() returns. Pumping synchronously would get wiped by that
+      // trailing setDialog(null), leaving the next queued promise unresolved.
+      setTimeout(pumpDialogQueue, 0)
+    }
+  })
 }
 
 // ── Provider component (mount once at app root) ──

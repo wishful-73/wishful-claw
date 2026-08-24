@@ -1,3 +1,4 @@
+﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using WishfulClaw.Core.Protocol;
 
@@ -10,14 +11,19 @@ namespace WishfulClaw.Agent;
 ///
 /// The registry decouples Task tool definition (which lists available agent types)
 /// from SubAgentExecutor (which resolves a type name to a SubAgentDefinition).
+///
+/// SA-3: tool execution dispatches concurrently while skill management may
+/// mutate the registry at runtime — all access goes through ConcurrentDictionary
+/// and caches are rebuilt under a lock.
 /// </summary>
 public static class SubAgentRegistry
 {
     private const string CustomAgentType = "custom";
 
-    private static readonly Dictionary<string, SubAgentDefinition> _agents =
+    private static readonly ConcurrentDictionary<string, SubAgentDefinition> _agents =
         new(System.StringComparer.OrdinalIgnoreCase);
 
+    private static readonly object CacheLock = new();
     private static List<SubAgentDefinition>? _allCache;
     private static List<string>? _namesCache;
 
@@ -35,8 +41,11 @@ public static class SubAgentRegistry
     /// </summary>
     public static void Unregister(string name)
     {
-        if (_agents.Remove(name))
+        if (((ICollection<KeyValuePair<string, SubAgentDefinition>>)_agents).Remove(
+                new KeyValuePair<string, SubAgentDefinition>(name, _agents.TryGetValue(name, out var d) ? d : null!)))
+        {
             InvalidateCache();
+        }
     }
 
     /// <summary>
@@ -61,8 +70,11 @@ public static class SubAgentRegistry
     /// </summary>
     public static IReadOnlyList<SubAgentDefinition> GetAll()
     {
-        _allCache ??= new List<SubAgentDefinition>(_agents.Values);
-        return _allCache;
+        lock (CacheLock)
+        {
+            _allCache ??= new List<SubAgentDefinition>(_agents.Values);
+            return _allCache;
+        }
     }
 
     /// <summary>
@@ -71,8 +83,11 @@ public static class SubAgentRegistry
     /// </summary>
     public static IReadOnlyList<string> GetNames()
     {
-        _namesCache ??= new List<string>(_agents.Keys) { CustomAgentType };
-        return _namesCache;
+        lock (CacheLock)
+        {
+            _namesCache ??= new List<string>(_agents.Keys) { CustomAgentType };
+            return _namesCache;
+        }
     }
 
     /// <summary>
@@ -104,7 +119,10 @@ public static class SubAgentRegistry
 
     private static void InvalidateCache()
     {
-        _allCache = null;
-        _namesCache = null;
+        lock (CacheLock)
+        {
+            _allCache = null;
+            _namesCache = null;
+        }
     }
 }

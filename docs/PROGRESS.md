@@ -15,6 +15,7 @@
   - FU2 并发：AL-1 同 session 单活跃 run；DB-1 DbClient.Initialize 加锁；SA-1 registry 终态淘汰(100)+排序；SA-2 后台取消注册 Dispose（顺带 SA-6 emit 兜底）；SA-3 ConcurrentDictionary；MB-3 MemoryStore 按 scope 信号量；GL-2 经核验已在 iter-19 修复
   - FU3 静默错误：AL-2 缓存 key 纳入 persona 文件 mtime 指纹（Persona 层零改动）；GL-1/GL-3 已修于 main，补最后残留 "executing" 字面量；PV-2 await emit；TL-5 IsJsonError 忽略 null/空；RC-1 信封 sessionId 优先路由；DB-3 QueryScalar Nullable 特判
   - 明确不做（用户确认）：SA-5b 子 agent 免审批为有意设计；AL-3 无限循环保留语义，改软提示方案归 iter-21
+  - **追加 bug 修复（2026-08-24）** — ① 桌面图标白角：4 个图标资产（ico 5 尺寸 + png/512/256）圆角外像素 alpha 全为 255，统一置 0（16% 圆角半径），已验证角部透明/中心不透明；② 删除激活服务商后"未配置 API Key"误报：deleteProvider 回退时优先选 auth-ready 服务商而非 providers[0]，并校验 activeModelId 归属
   - 验证：C# build 0 错误 0 警告；TS 3/3 零错误
 
 ## v2-iter-19：Goal 编排记录可视化 + 三层生命周期收口

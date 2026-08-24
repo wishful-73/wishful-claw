@@ -1,4 +1,4 @@
-{
+﻿{
   "title": "Settings",
   "shortcuts": {
     "title": "Shortcuts",
@@ -41,6 +41,10 @@
     "provider": {
       "label": "AI Providers",
       "desc": "Configure API keys, base URLs, test connectivity"
+    },
+    "runtime": {
+      "label": "Runtime & Performance",
+      "desc": "API request timeout, retry policy and context compression"
     },
     "about": {
       "label": "About",

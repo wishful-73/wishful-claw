@@ -1,4 +1,4 @@
-{
+﻿{
   "title": "设置",
   "shortcuts": {
     "title": "快捷键",
@@ -41,6 +41,10 @@
     "provider": {
       "label": "AI 服务商",
       "desc": "配置 API Key、Base URL，测试连通性"
+    },
+    "runtime": {
+      "label": "运行与性能",
+      "desc": "API 请求超时、重试策略与上下文压缩"
     },
     "about": {
       "label": "关于",

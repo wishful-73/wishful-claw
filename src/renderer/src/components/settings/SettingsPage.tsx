@@ -42,7 +42,7 @@ function SettingsPage(): React.JSX.Element {
       items: [
         { id: 'provider', icon: <Server className="size-4" />, label: t('tabs.provider.label') },
         { id: 'modelManagement', icon: <Layers className="size-4" />, label: t('provider.modelManagement', { defaultValue: 'Model Management' }) },
-        { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label', { defaultValue: '运行与性能' }) }
+        { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') }
       ]
     },
     {

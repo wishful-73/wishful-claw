@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -502,14 +502,19 @@ public static class ToolDispatchRouter
     }
 
     /// <summary>
-    /// Checks if a JSON string contains an "error" property.
+    /// Checks if a JSON string contains an "error" property with a meaningful
+    /// value. TL-5: an "error": null (or empty) key is a success convention in
+    /// many APIs and must not be flagged as a tool error.
     /// </summary>
     public static bool IsJsonError(string json)
     {
         try
         {
             using var doc = JsonDocument.Parse(json);
-            return doc.RootElement.TryGetProperty("error", out _);
+            return doc.RootElement.TryGetProperty("error", out var errorEl) &&
+                   errorEl.ValueKind != JsonValueKind.Null &&
+                   errorEl.ValueKind != JsonValueKind.Undefined &&
+                   (errorEl.ValueKind != JsonValueKind.String || !string.IsNullOrWhiteSpace(errorEl.GetString()));
         }
         catch
         {

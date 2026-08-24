@@ -1,4 +1,4 @@
-namespace WishfulClaw.Workspace.Memory;
+﻿namespace WishfulClaw.Workspace.Memory;
 
 /// <summary>
 /// Resolves file paths for memory storage based on scope.
@@ -29,7 +29,24 @@ public static class MemoryPathResolver
         if (scope.StartsWith("project:ssh:", StringComparison.OrdinalIgnoreCase))
         {
             var projectId = scope["project:ssh:".Length..];
-            return Path.Combine(GlobalRoot, "projects", projectId);
+            // Defense in depth: reject path separators / rooted paths so the
+            // SSH scope stays confined to ~/.wishful-claw/projects/.
+            if (string.IsNullOrWhiteSpace(projectId)
+                || projectId.Contains('\\')
+                || projectId.Contains('/')
+                || Path.IsPathRooted(projectId)
+                || projectId.Contains(".."))
+            {
+                throw new ArgumentException($"Invalid SSH project scope: {scope}", nameof(scope));
+            }
+            var root = Path.Combine(GlobalRoot, "projects", projectId);
+            var fullRoot = Path.GetFullPath(root);
+            if (!fullRoot.StartsWith(Path.GetFullPath(Path.Combine(GlobalRoot, "projects")) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && !fullRoot.Equals(Path.GetFullPath(Path.Combine(GlobalRoot, "projects")), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"SSH project scope escapes projects root: {scope}", nameof(scope));
+            }
+            return fullRoot;
         }
 
         // Local project scope: "project:{workingFolder}" → {workingFolder}/.wishful-claw/

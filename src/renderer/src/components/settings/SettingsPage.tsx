@@ -163,7 +163,7 @@ function SettingsPage(): React.JSX.Element {
               </div>
             ) : settingsTab === 'runtime' ? (
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
-                <div className="mx-auto flex max-w-3xl items-start gap-2 px-8">
+                <div className="mx-auto flex max-w-5xl items-start gap-2 px-8">
                   <div className="min-w-0 flex-1">
                     <RuntimePanel />
                   </div>
@@ -176,7 +176,7 @@ function SettingsPage(): React.JSX.Element {
               </div>
             ) : settingsTab === 'general' ? (
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
-                <div className="mx-auto flex max-w-3xl items-start gap-2 px-8">
+                <div className="mx-auto flex max-w-5xl items-start gap-2 px-8">
                   <div className="min-w-0 flex-1">
                     <GeneralPanel />
                   </div>

@@ -55,7 +55,7 @@ function GeneralPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 px-8 pb-16 pt-10">
+    <div className="mx-auto max-w-4xl space-y-4 px-8 pb-16 pt-10">
       {/* Title */}
       <div>
         <h2 className="text-lg font-semibold">{t('general.title')}</h2>

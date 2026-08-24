@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -417,10 +417,10 @@ public static class ToolCallProcessor
     /// </summary>
     private static readonly HashSet<string> DefaultModeApprovalTools = new(StringComparer.Ordinal)
     {
-        // File writes
-        "Write", "Edit",
+        // File writes (incl. notebook rewrites)
+        "Write", "Edit", "NotebookEdit",
         // Shell execution
-        "Bash", "Shell", "ShellExec", "PowerShell", "Monitor",
+        "Bash", "Shell", "ShellExec", "PowerShell",
         // Desktop input (executes real UI actions on the user's machine)
         "DesktopClick", "DesktopType", "DesktopScroll"
     };

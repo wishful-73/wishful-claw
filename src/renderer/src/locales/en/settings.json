@@ -50,6 +50,18 @@
       "title": "Runtime & Performance",
       "subtitle": "Agent runtime settings: request timeout, retries, tool execution and context compression"
     },
+    "anchorNav": {
+      "language": "Language",
+      "theme": "Theme",
+      "presets": "Presets",
+      "appearance": "Appearance",
+      "timeout": "Timeout",
+      "retries": "Retries",
+      "compression": "Compression",
+      "toolExecution": "Tool Execution",
+      "developer": "Developer",
+      "startup": "Startup"
+    },
     "about": {
       "label": "About",
       "desc": "Version info"

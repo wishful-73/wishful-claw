@@ -21,19 +21,19 @@ import { Server as ServerIcon } from 'lucide-react'
 import { useRef } from 'react'
 
 const GENERAL_ANCHORS: SectionAnchor[] = [
-  { id: 'sec-general-language', label: 'Language' },
-  { id: 'sec-general-theme', label: 'Theme' },
-  { id: 'sec-general-preset', label: 'Presets' },
-  { id: 'sec-general-appearance', label: 'Appearance' }
+  { id: 'sec-general-language', label: 'anchorNav.language' },
+  { id: 'sec-general-theme', label: 'anchorNav.theme' },
+  { id: 'sec-general-preset', label: 'anchorNav.presets' },
+  { id: 'sec-general-appearance', label: 'anchorNav.appearance' }
 ]
 
 const RUNTIME_ANCHORS: SectionAnchor[] = [
-  { id: 'sec-runtime-timeout', label: 'Timeout' },
-  { id: 'sec-runtime-retries', label: 'Retries' },
-  { id: 'sec-runtime-compression', label: 'Compression' },
-  { id: 'sec-runtime-tools', label: 'Tool Execution' },
-  { id: 'sec-runtime-devmode', label: 'Developer' },
-  { id: 'sec-runtime-autostart', label: 'Startup' }
+  { id: 'sec-runtime-timeout', label: 'anchorNav.timeout' },
+  { id: 'sec-runtime-retries', label: 'anchorNav.retries' },
+  { id: 'sec-runtime-compression', label: 'anchorNav.compression' },
+  { id: 'sec-runtime-tools', label: 'anchorNav.toolExecution' },
+  { id: 'sec-runtime-devmode', label: 'anchorNav.developer' },
+  { id: 'sec-runtime-autostart', label: 'anchorNav.startup' }
 ]
 
 function SettingsPage(): React.JSX.Element {
@@ -162,22 +162,26 @@ function SettingsPage(): React.JSX.Element {
                 <ModelManagementPanel />
               </div>
             ) : settingsTab === 'runtime' ? (
-              <div className="flex min-h-0 flex-1">
-                <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto">
-                  <RuntimePanel />
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+                <div className="mx-auto flex max-w-3xl items-start gap-2 px-8">
+                  <div className="min-w-0 flex-1">
+                    <RuntimePanel />
+                  </div>
+                  <SectionAnchorNav containerRef={scrollContainerRef} anchors={RUNTIME_ANCHORS} />
                 </div>
-                <SectionAnchorNav containerRef={scrollContainerRef} anchors={RUNTIME_ANCHORS} />
               </div>
             ) : settingsTab === 'shortcuts' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ShortcutsPanel />
               </div>
             ) : settingsTab === 'general' ? (
-              <div className="flex min-h-0 flex-1">
-                <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto">
-                  <GeneralPanel />
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+                <div className="mx-auto flex max-w-3xl items-start gap-2 px-8">
+                  <div className="min-w-0 flex-1">
+                    <GeneralPanel />
+                  </div>
+                  <SectionAnchorNav containerRef={scrollContainerRef} anchors={GENERAL_ANCHORS} />
                 </div>
-                <SectionAnchorNav containerRef={scrollContainerRef} anchors={GENERAL_ANCHORS} />
               </div>
             ) : settingsTab === 'persona' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">

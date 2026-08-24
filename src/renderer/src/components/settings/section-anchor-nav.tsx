@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 
 export interface SectionAnchor {
@@ -18,6 +19,7 @@ interface SectionAnchorNavProps {
  * container highlights the anchor of the section currently in view.
  */
 function SectionAnchorNav({ containerRef, anchors }: SectionAnchorNavProps): React.JSX.Element | null {
+  const { t } = useTranslation('settings')
   const [activeId, setActiveId] = useState<string>(anchors[0]?.id ?? '')
   const clickingRef = useRef(false)
 
@@ -29,11 +31,11 @@ function SectionAnchorNav({ containerRef, anchors }: SectionAnchorNavProps): Rea
 
     const onScroll = (): void => {
       if (clickingRef.current) return
-      const scrollTop = container.scrollTop
+      const containerTop = container.getBoundingClientRect().top
       let current = anchors[0]?.id ?? ''
       for (const anchor of anchors) {
         const el = document.getElementById(anchor.id)
-        if (el && el.offsetTop - container.offsetTop <= scrollTop + 96) {
+        if (el && el.getBoundingClientRect().top - containerTop <= 96) {
           current = anchor.id
         }
       }
@@ -57,7 +59,7 @@ function SectionAnchorNav({ containerRef, anchors }: SectionAnchorNavProps): Rea
   }
 
   return (
-    <nav className="sticky top-0 flex w-32 shrink-0 flex-col gap-1 self-start py-10 pr-4">
+    <nav className="sticky top-6 flex w-28 shrink-0 flex-col gap-1 py-2 pr-2">
       {anchors.map((anchor) => (
         <button
           key={anchor.id}
@@ -70,7 +72,7 @@ function SectionAnchorNav({ containerRef, anchors }: SectionAnchorNavProps): Rea
               : 'text-muted-foreground/70 hover:text-foreground hover:bg-accent/50'
           )}
         >
-          {anchor.label}
+          {t(anchor.label)}
         </button>
       ))}
     </nav>

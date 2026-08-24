@@ -28,12 +28,12 @@ const GENERAL_ANCHORS: SectionAnchor[] = [
 ]
 
 const RUNTIME_ANCHORS: SectionAnchor[] = [
+  { id: 'sec-runtime-autostart', label: 'anchorNav.startup' },
+  { id: 'sec-runtime-devmode', label: 'anchorNav.developer' },
   { id: 'sec-runtime-timeout', label: 'anchorNav.timeout' },
   { id: 'sec-runtime-retries', label: 'anchorNav.retries' },
   { id: 'sec-runtime-compression', label: 'anchorNav.compression' },
-  { id: 'sec-runtime-tools', label: 'anchorNav.toolExecution' },
-  { id: 'sec-runtime-devmode', label: 'anchorNav.developer' },
-  { id: 'sec-runtime-autostart', label: 'anchorNav.startup' }
+  { id: 'sec-runtime-tools', label: 'anchorNav.toolExecution' }
 ]
 
 function SettingsPage(): React.JSX.Element {

@@ -49,6 +49,42 @@ function RuntimePanel(): React.JSX.Element {
         </p>
       </div>
 
+      {/* Launch at Login */}
+      <SettingsSection
+        id="sec-runtime-autostart"
+        title={t('general.launchAtLogin.label')}
+        description={t('general.launchAtLogin.desc')}
+        actions={
+          <Switch
+            checked={launchAtLoginChecked}
+            onCheckedChange={handleLaunchAtLoginChange}
+          />
+        }
+      >
+        <SettingHint>
+          {launchAtLoginChecked
+            ? t('general.launchAtLogin.enabled')
+            : t('general.launchAtLogin.disabled')}
+        </SettingHint>
+      </SettingsSection>
+
+      {/* Developer Mode */}
+      <SettingsSection
+        id="sec-runtime-devmode"
+        title={t('general.developerMode.label')}
+        description={t('general.developerMode.desc')}
+        actions={
+          <Switch
+            checked={settings.devMode}
+            onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
+          />
+        }
+      >
+        <SettingHint>
+          {settings.devMode ? t('general.developerMode.enabled') : t('general.developerMode.disabled')}
+        </SettingHint>
+      </SettingsSection>
+
       {/* API Request Timeout */}
       <SettingsSection
         id="sec-runtime-timeout"
@@ -211,7 +247,7 @@ function RuntimePanel(): React.JSX.Element {
                 const next = Math.min(16, Math.max(1, parseInt(e.target.value, 10) || 8))
                 settings.updateSettings({ maxParallelToolCalls: next })
               }}
-              className="max-w-24 text-xs"
+              className="w-20 text-xs"
             />
           }
         >
@@ -238,7 +274,7 @@ function RuntimePanel(): React.JSX.Element {
                 const next = Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 20))
                 settings.updateSettings({ maxToolCallsPerTurn: next })
               }}
-              className="max-w-24 text-xs"
+              className="w-20 text-xs"
             />
           }
         >
@@ -265,7 +301,7 @@ function RuntimePanel(): React.JSX.Element {
                 const next = Math.min(8, Math.max(1, parseInt(e.target.value, 10) || 2))
                 settings.updateSettings({ maxConcurrentSubAgents: next })
               }}
-              className="max-w-24 text-xs"
+              className="w-20 text-xs"
             />
           }
         >
@@ -277,42 +313,6 @@ function RuntimePanel(): React.JSX.Element {
             onValueChange={([v]) => settings.updateSettings({ maxConcurrentSubAgents: v })}
           />
         </SettingRow>
-      </SettingsSection>
-
-      {/* Developer Mode */}
-      <SettingsSection
-        id="sec-runtime-devmode"
-        title={t('general.developerMode.label')}
-        description={t('general.developerMode.desc')}
-        actions={
-          <Switch
-            checked={settings.devMode}
-            onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
-          />
-        }
-      >
-        <SettingHint>
-          {settings.devMode ? t('general.developerMode.enabled') : t('general.developerMode.disabled')}
-        </SettingHint>
-      </SettingsSection>
-
-      {/* Launch at Login */}
-      <SettingsSection
-        id="sec-runtime-autostart"
-        title={t('general.launchAtLogin.label')}
-        description={t('general.launchAtLogin.desc')}
-        actions={
-          <Switch
-            checked={launchAtLoginChecked}
-            onCheckedChange={handleLaunchAtLoginChange}
-          />
-        }
-      >
-        <SettingHint>
-          {launchAtLoginChecked
-            ? t('general.launchAtLogin.enabled')
-            : t('general.launchAtLogin.disabled')}
-        </SettingHint>
       </SettingsSection>
     </div>
   )

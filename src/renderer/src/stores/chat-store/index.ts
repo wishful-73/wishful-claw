@@ -1001,6 +1001,11 @@ export const useChatStore = create<ChatStore>()(
 
                   if (existing) {
 
+                    // use_capability proxy: streaming_start arrived with the raw
+                    // LLM tool name; tool_call_start carries the rewritten real
+                    // tool name, so keep it in sync.
+                    existing.name = event.toolCall.name
+
                     existing.input = event.toolCall.input
 
                     existing.status = 'running'
@@ -1034,6 +1039,9 @@ export const useChatStore = create<ChatStore>()(
                   const seg = msg.segments.find((s) => s.type === 'tool_use' && s.toolCallId === event.toolCall.id)
 
                   if (seg) {
+
+                    // Keep display name in sync (use_capability proxy rewrite)
+                    seg.toolName = event.toolCall.name
 
                     seg.input = event.toolCall.input
 

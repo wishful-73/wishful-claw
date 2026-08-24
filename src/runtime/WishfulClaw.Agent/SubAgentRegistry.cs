@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using WishfulClaw.Core.Protocol;
-
 namespace WishfulClaw.Agent;
 
 /// <summary>
@@ -41,8 +40,7 @@ public static class SubAgentRegistry
     /// </summary>
     public static void Unregister(string name)
     {
-        if (((ICollection<KeyValuePair<string, SubAgentDefinition>>)_agents).Remove(
-                new KeyValuePair<string, SubAgentDefinition>(name, _agents.TryGetValue(name, out var d) ? d : null!)))
+        if (_agents.TryRemove(name, out _))
         {
             InvalidateCache();
         }

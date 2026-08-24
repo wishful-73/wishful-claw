@@ -94,14 +94,6 @@ public static class AgentRuntimeTools
                     WorkerLog.Error(
                         $"agent run outer crash runId={state.RunId} error={FormatExceptionSummary(ex)}");
                     try { ActiveRuns.TryRemove(state.RunId, out _); } catch { }
-                    try
-                    {
-                        if (state.SessionId.Length > 0)
-                        {
-                            ActiveSessionRuns.TryRemove(state.SessionId, out _);
-                        }
-                    }
-                    catch { }
                     try { RunSlots.Release(); } catch { }
                     try { state.Dispose(); } catch { }
                 }
@@ -291,6 +283,13 @@ public static class AgentRuntimeTools
         finally
         {
             ActiveRuns.TryRemove(state.RunId, out _);
+            // AL-1: release the per-session slot on EVERY exit path — the
+            // outer Task.Run catch only covers crashes that escape
+            // ExecuteRunAsync, not normal completion.
+            if (state.SessionId.Length > 0)
+            {
+                ActiveSessionRuns.TryRemove(state.SessionId, out _);
+            }
             RunSlots.Release();
             state.Dispose();
             WorkerLog.Info($"agent run finalized runId={state.RunId}");

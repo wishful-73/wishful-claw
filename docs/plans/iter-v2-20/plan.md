@@ -24,12 +24,11 @@
 - [ ] 步骤7（SA-1）：BackgroundSubAgentRegistry 终态记录上限裁剪（保留最近 100 条终态，GetAll 按 StartedAt 排序，顺带 SA-7）；验证检查点：`dotnet build` 零错误
 - [ ] 步骤8（SA-2）：SubAgentExecutor.Background 后台取消注册 registration 在 finally 中 Dispose；验证检查点：`dotnet build` 零错误
 - [ ] 步骤9（SA-3）：SubAgentRegistry._agents 换 ConcurrentDictionary，缓存字段 Interlocked 维护；验证检查点：`dotnet build` 零错误
-- [ ] 步骤10（GL-2）：GoalContext 持有长驻 AgentRuntimeRunState 用于事件发射（消灭每事件 new RunState 的 seq 重置 + CTS 泄漏），临时实例 Dispose 兜底；验证检查点：`dotnet build` 零错误
+- [ ] 步骤10（GL-2）：GoalOrchestrator（GoalContext 为其嵌套类）持有长驻 AgentRuntimeRunState 用于事件发射（消灭每事件 new RunState 的 seq 重置 + CTS 泄漏），临时实例 Dispose 兜底；验证检查点：`dotnet build` 零错误
 - [ ] 步骤11（MB-3）：MemoryStore 按 scope 加 SemaphoreSlim 保护 Upsert/Delete 读改写；验证检查点：`dotnet build` 零错误
-
+- [ ] 步骤12（AL-2，合规修订版）：SystemPromptCache 失效机制——保持 Persona 层零改动：在 Agent 层消费侧解决——SystemPromptCache.ComputeKey 纳入 persona 文件与记忆文件的 mtime/内容 hash，使文件变更自然 miss；同时删除无调用方的 Invalidate/Clear 死 API 或在 Agent 层记忆 hot-write 路径调用；验证检查点：`dotnet build` 零错误 + 修改 persona 文件后新 run 的 cacheKey 变化可观测
 ### FU3 静默错误
 
-- [ ] 步骤12（AL-2）：SystemPromptCache 失效机制——PersonaStore 写入与记忆 hot-write 路径调用 Invalidate/Clear；验证检查点：`dotnet build` 零错误
 - [ ] 步骤13（GL-1/GL-3）：GoalOrchestrator.completedPlans 改用 GoalPlanStatusValues.Complete；GoalFileTools 状态图标映射改用常量值域（active/complete）；顺带清理 paused 死状态引用（DB-9 关联）；验证检查点：`dotnet build` 零错误 + grep 无 "completed"/"executing" 字面量残留于 Goal 模块
 - [ ] 步骤14（PV-2）：AnthropicMessagesEventParser tool_use_streaming_start 的 `_ = EmitAsync(...)` 改 await；验证检查点：`dotnet build` 零错误
 - [ ] 步骤15（TL-5）：ToolDispatchRouter.IsJsonError 增加 error 值非 null 且非空字符串判断；验证检查点：`dotnet build` 零错误
@@ -50,11 +49,11 @@
 - src/runtime/WishfulClaw.Agent/AgentRuntimeTools.cs（RunAsync 入口）— 修改（步骤5）
 - src/runtime/WishfulClaw.Infrastructure/Db/DbClient.cs、DbService.cs — 修改（步骤6、17）
 - src/runtime/WishfulClaw.Agent/SubAgentExecutor.Background.cs、BackgroundSubAgentRegistry.cs、SubAgentRegistry.cs — 修改（步骤7、8、9）
-- src/runtime/WishfulClaw.Agent/Goal/* — 修改（步骤10、13）
-- src/runtime/WishfulClaw.Persona/PromptBuilder.cs、PersonaStore.cs + SystemPromptCache.cs — 修改（步骤12）
+- src/runtime/WishfulClaw.Agent/Goal/GoalOrchestrator*.cs（GoalContext 为嵌套类）— 修改（步骤10、13）
+- src/runtime/WishfulClaw.Agent/SystemPromptCache.cs — 修改（步骤12，Agent 层；Persona 层零改动）
 - src/runtime/WishfulClaw.Agent/AnthropicMessagesEventParser.cs — 修改（步骤14）
 - src/runtime/WishfulClaw.Agent/ToolDispatchRouter.cs — 修改（步骤15）
-- src/renderer/.../chat-store/index.ts — 修改（步骤16）
+- src/renderer/src/stores/chat-store/index.ts — 修改（步骤16）
 
 ## 参考源码
 

@@ -1,5 +1,5 @@
-import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Layers, Keyboard } from 'lucide-react'
+﻿import { useTranslation } from 'react-i18next'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Layers, Keyboard, Gauge } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
@@ -7,6 +7,7 @@ import { useUIStore, type SettingsTab } from '@renderer/stores/ui-store'
 import { ProviderPanel } from '@renderer/components/settings/ProviderPanel'
 import { PluginPanel } from '@renderer/components/settings/PluginPanel'
 import { GeneralPanel } from '@renderer/components/settings/GeneralPanel'
+import { RuntimePanel } from '@renderer/components/settings/RuntimePanel'
 import { PersonaPanel } from '@renderer/components/settings/PersonaPanel'
 import { cn } from '@renderer/lib/utils'
 import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
@@ -40,7 +41,8 @@ function SettingsPage(): React.JSX.Element {
       label: t('tabs.groups.aiService'),
       items: [
         { id: 'provider', icon: <Server className="size-4" />, label: t('tabs.provider.label') },
-        { id: 'modelManagement', icon: <Layers className="size-4" />, label: t('provider.modelManagement', { defaultValue: 'Model Management' }) }
+        { id: 'modelManagement', icon: <Layers className="size-4" />, label: t('provider.modelManagement', { defaultValue: 'Model Management' }) },
+        { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label', { defaultValue: '运行与性能' }) }
       ]
     },
     {
@@ -139,6 +141,10 @@ function SettingsPage(): React.JSX.Element {
             ) : settingsTab === 'modelManagement' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ModelManagementPanel />
+              </div>
+            ) : settingsTab === 'runtime' ? (
+              <div className="flex-1 overflow-y-auto">
+                <RuntimePanel />
               </div>
             ) : settingsTab === 'shortcuts' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">

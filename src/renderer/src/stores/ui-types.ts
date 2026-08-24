@@ -1,4 +1,4 @@
-// ─── Types ───
+﻿// ─── Types ───
 
 export type AppMode = 'chat' | 'clarify' | 'cowork' | 'code' | 'acp'
 
@@ -87,6 +87,7 @@ export interface RightPanelTabInstance {
 export type SettingsTab =
   | 'provider'
   | 'modelManagement'
+  | 'runtime'
   | 'shortcuts'
   | 'general'
   | 'persona'

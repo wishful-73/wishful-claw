@@ -188,7 +188,7 @@ function RuntimePanel(): React.JSX.Element {
           />
         </div>
         {settings.contextCompressionEnabled && (
-          <div className="max-w-lg space-y-2">
+          <div className="space-y-2">
             <p className="text-xs text-muted-foreground/70">
               {t('general.contextCompression.enabled')}
             </p>
@@ -216,7 +216,7 @@ function RuntimePanel(): React.JSX.Element {
                   const ratio = Math.min(0.9, Math.max(0.3, parseInt(e.target.value) / 100))
                   settings.updateSettings({ contextCompressionThreshold: ratio })
                 }}
-                className="flex-1 max-w-lg accent-primary"
+                className="w-full accent-primary"
               />
             </div>
           </div>

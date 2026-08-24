@@ -48,6 +48,68 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         return string.Equals(toolName, ToolName, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Resolves the display identity of a proxied call: the real tool name and
+    /// its arguments. Returns null when the capability_id cannot be resolved —
+    /// callers keep showing "use_capability" in that case so errors stay visible.
+    /// </summary>
+    public static (string Name, JsonElement Input)? ResolveProxyDisplay(
+        string? capabilityId, JsonElement input)
+    {
+        if (string.IsNullOrWhiteSpace(capabilityId))
+        {
+            return null;
+        }
+
+        // builtin:ToolName → ToolName with arguments as-is
+        if (capabilityId.StartsWith("builtin:", StringComparison.Ordinal))
+        {
+            var toolName = capabilityId["builtin:".Length..];
+            var args = input.TryGetProperty("arguments", out var a) && a.ValueKind == JsonValueKind.Object
+                ? a
+                : AgentRuntimeProviderSupport.CreateEmptyObjectElement();
+            return (toolName, args);
+        }
+
+        // skill:name → Skill tool with SkillName input
+        if (capabilityId.StartsWith("skill:", StringComparison.Ordinal))
+        {
+            var skillName = capabilityId["skill:".Length..];
+            return ("Skill", WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("SkillName", skillName);
+                w.WriteEndObject();
+            }));
+        }
+
+        // mcp-tool:server/tool → mcp__server__tool (matches renderer's isMcpTool)
+        if (capabilityId.StartsWith("mcp-tool:", StringComparison.Ordinal))
+        {
+            var (serverId, toolName) = ParseMcpToolIdStatic(capabilityId);
+            if (serverId is not null)
+            {
+                return ($"mcp__{serverId}__{toolName}",
+                    input.TryGetProperty("arguments", out var ma) && ma.ValueKind == JsonValueKind.Object
+                        ? ma
+                        : AgentRuntimeProviderSupport.CreateEmptyObjectElement());
+            }
+        }
+
+        return null;
+    }
+
+    private static (string? ServerId, string ToolName) ParseMcpToolIdStatic(string capabilityId)
+    {
+        var rest = capabilityId["mcp-tool:".Length..];
+        var slashIdx = rest.IndexOf('/');
+        if (slashIdx <= 0 || slashIdx + 1 >= rest.Length)
+        {
+            return (null, string.Empty);
+        }
+        return (rest[..slashIdx], rest[(slashIdx + 1)..]);
+    }
+
     public static async Task<string> ExecuteAsync(
         AgentRuntimeNativeToolCall call,
         AgentRuntimeRunState state,

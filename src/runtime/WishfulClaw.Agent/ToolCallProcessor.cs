@@ -236,14 +236,37 @@ public static class ToolCallProcessor
         {
             var startedAt = AgentLoop.NowMs();
 
+            // Proxy display rewrite: use_capability(action=call) is surfaced to
+            // the renderer as the underlying tool call (real name + arguments),
+            // so the chat shows a NotebookEdit/Desktop/... card instead of an
+            // opaque "use_capability" card. The LLM-facing result keeps the
+            // original use_capability id — only the display events are rewritten.
+            var displayName = toolCall.Name;
+            var displayInput = toolCall.Input;
+            if (AgentRuntimeUseCapabilityExecutor.IsUseCapabilityTool(toolCall.Name))
+            {
+                var action = (JsonHelpers.GetString(toolCall.Input, "action") ?? string.Empty).Trim();
+                if (string.Equals(action, "call", StringComparison.OrdinalIgnoreCase))
+                {
+                    var proxy = AgentRuntimeUseCapabilityExecutor.ResolveProxyDisplay(
+                        JsonHelpers.GetString(toolCall.Input, "capability_id"),
+                        toolCall.Input);
+                    if (proxy is { } p)
+                    {
+                        displayName = p.Name;
+                        displayInput = p.Input;
+                    }
+                }
+            }
+
             await AgentRuntimeTools.EmitAsync(
                 state, context,
                 new AgentRuntimeStreamEvent(
                     "tool_call_start",
                     ToolCall: new AgentRuntimeToolCallState(
                         toolCall.Id,
-                        toolCall.Name,
-                        toolCall.Input,
+                        displayName,
+                        displayInput,
                         "running",
                         null,
                         null,
@@ -264,8 +287,8 @@ public static class ToolCallProcessor
                         "tool_call_start",
                         ToolCall: new AgentRuntimeToolCallState(
                             toolCall.Id,
-                            toolCall.Name,
-                            toolCall.Input,
+                            displayName,
+                            displayInput,
                             "pending_approval",
                             null,
                             null,
@@ -275,7 +298,7 @@ public static class ToolCallProcessor
 
                 WorkerLog.Info(
                     $"sub-agent tool approval requested runId={state.RunId} " +
-                    $"tool={toolCall.Name} id={toolCall.Id}");
+                    $"tool={displayName} id={toolCall.Id}");
 
                 // Send reverse-request to renderer and wait for response
                 var approvalParams = new ArrayBufferWriter<byte>();
@@ -283,10 +306,10 @@ public static class ToolCallProcessor
                 {
                     aw.WriteStartObject();
                     aw.WriteString("toolCallId", toolCall.Id);
-                    aw.WriteString("toolName", toolCall.Name);
+                    aw.WriteString("toolName", displayName);
                     aw.WriteString("source", defaultModeApproval ? "default-mode" : "sub-agent");
                     aw.WritePropertyName("input");
-                    toolCall.Input.WriteTo(aw);
+                    displayInput.WriteTo(aw);
                     aw.WriteEndObject();
                 }
                 using var approvalDoc = JsonDocument.Parse(approvalParams.WrittenMemory);
@@ -304,18 +327,18 @@ public static class ToolCallProcessor
 
                 if (!approved)
                 {
-                    var rejectMsg = $"Tool call rejected by user: {toolCall.Name}";
+                    var rejectMsg = $"Tool call rejected by user: {displayName}";
                     var rejectAt = AgentLoop.NowMs();
                     await AgentRuntimeTools.EmitAsync(
                         state, context,
                         new AgentRuntimeStreamEvent(
                             "tool_call_result",
                             ToolCallId: toolCall.Id,
-                            ToolName: toolCall.Name,
+                            ToolName: displayName,
                             ToolCall: new AgentRuntimeToolCallState(
                                 toolCall.Id,
-                                toolCall.Name,
-                                toolCall.Input,
+                                displayName,
+                                displayInput,
                                 "rejected",
                                 AgentRuntimeProviderSupport.CreateStringElement(rejectMsg),
                                 rejectMsg,
@@ -336,8 +359,8 @@ public static class ToolCallProcessor
                         "tool_call_start",
                         ToolCall: new AgentRuntimeToolCallState(
                             toolCall.Id,
-                            toolCall.Name,
-                            toolCall.Input,
+                            displayName,
+                            displayInput,
                             "running",
                             null,
                             null,
@@ -357,11 +380,11 @@ public static class ToolCallProcessor
                 new AgentRuntimeStreamEvent(
                     "tool_call_result",
                     ToolCallId: toolCall.Id,
-                    ToolName: toolCall.Name,
+                    ToolName: displayName,
                     ToolCall: new AgentRuntimeToolCallState(
                         toolCall.Id,
-                        toolCall.Name,
-                        toolCall.Input,
+                        displayName,
+                        displayInput,
                         isToolError ? "error" : "completed",
                         AgentRuntimeProviderSupport.CreateStringElement(toolOutput),
                         isToolError ? toolOutput : null,

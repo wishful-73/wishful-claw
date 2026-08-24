@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 using System.Collections.Generic;
 
@@ -50,7 +50,7 @@ public sealed class GlobTool : IToolExecutor
 
     public JsonElement InputSchema { get; } = ParseSchema(
 
-        """{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. **/*.cs, src/**/*.tsx)"},"path":{"type":"string","description":"Root directory to search from. Defaults to working folder."},"limit":{"type":"integer","description":"Maximum number of results. Default: 100","default":100}},"required":["pattern"]}""");
+        """{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. **/*.cs, src/**/*.tsx)"},"path":{"type":"string","description":"Root directory to search from. Defaults to working folder."},"limit":{"type":"integer","description":"Maximum number of results. Default: 100","default":100},"exclude_dirs":{"type":"array","items":{"type":"string"},"description":"Directory names to exclude from the search (e.g. [\"release\", \"docs\"]). Common dependency/build dirs are always excluded."}},"required":["pattern"]}""");
 
 
 
@@ -90,11 +90,13 @@ public sealed class GlobTool : IToolExecutor
 
             var limit = GetInt(input, "limit", DefaultLimit);
 
+            var excludeDirs = SearchFilter.ParseExcludeDirs(input);
+
             var totalChars = 0;
 
 
 
-            foreach (var file in EnumerateFiles(root, pattern))
+            foreach (var file in EnumerateFiles(root, pattern, excludeDirs))
 
             {
 
@@ -180,7 +182,7 @@ public sealed class GlobTool : IToolExecutor
 
     /// </summary>
 
-    private static IEnumerable<string> EnumerateFiles(string root, string pattern)
+    private static IEnumerable<string> EnumerateFiles(string root, string pattern, IReadOnlyList<string> excludeDirs)
 
     {
 
@@ -193,6 +195,18 @@ public sealed class GlobTool : IToolExecutor
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
 
         {
+
+            // TL-1: skip default dependency/build dirs and caller excludes
+
+            if (SearchFilter.IsExcluded(file, root, excludeDirs))
+
+            {
+
+                continue;
+
+            }
+
+
 
             var relativePath = Path.GetRelativePath(root, file).Replace('\\', '/');
 

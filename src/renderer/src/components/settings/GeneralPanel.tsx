@@ -126,11 +126,6 @@ function GeneralPanel(): React.JSX.Element {
 
       {/* Appearance */}
       <SettingsSection id="sec-general-appearance" title={t('general.appearance.label')} description={t('general.appearance.desc')}>
-        <div>
-          <label className="text-sm font-medium">{t('general.appearance.label')}</label>
-          <p className="text-xs text-muted-foreground">{t('general.appearance.desc')}</p>
-        </div>
-
         {/* Font family */}
         <div className="space-y-2">
           <div>

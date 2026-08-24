@@ -23,6 +23,7 @@ import {
 } from '@renderer/components/ui/select'
 import { PresetCard } from './general-preset-card'
 import { SettingsSection } from './settings-primitives'
+import { Slider } from '@renderer/components/ui/slider'
 
 const FONT_OPTIONS = [
   { label: '__default__', value: '__default__' },
@@ -165,14 +166,13 @@ function GeneralPanel(): React.JSX.Element {
             <span className="text-xs text-muted-foreground">{settings.fontSize}px</span>
           </div>
           <div className="flex items-center gap-3">
-            <input
-              type="range"
+            <Slider
               min={12}
               max={20}
               step={1}
-              value={settings.fontSize}
-              onChange={(e) => settings.updateSettings({ fontSize: clampFontSize(parseInt(e.target.value)) })}
-              className="flex-1 max-w-lg accent-primary"
+              value={[settings.fontSize]}
+              onValueChange={([v]) => settings.updateSettings({ fontSize: clampFontSize(v) })}
+              className="flex-1 max-w-lg"
             />
             <Input
               type="number"

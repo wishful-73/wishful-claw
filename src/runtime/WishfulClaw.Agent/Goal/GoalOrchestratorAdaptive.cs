@@ -112,7 +112,7 @@ public static partial class GoalOrchestrator
         {
             step++;
             await ReachSafePointAsync(goal, context, ct);
-            live.SetCurrent("executing", "Goal sub-agent turn");
+            live.SetCurrent(GoalPlanStatusValues.Active, "Goal sub-agent turn");
             var attemptId = DbGoalExecutionRunTools.InsertRun(goal.GoalId, plan.PlanId, null, step);
             var turnPrompt = BuildGoalTurnPrompt(goal, plan, log, step);
             GoalSubAgentExecutor.TurnResult turn;

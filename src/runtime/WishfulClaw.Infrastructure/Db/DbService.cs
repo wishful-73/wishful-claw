@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -82,6 +82,8 @@ public sealed class DbService
 
     /// <summary>
     /// Execute a query that returns a single scalar value (e.g. COUNT, MAX).
+    /// DB-3: Convert.ChangeType throws for Nullable&lt;T&gt; target types —
+    /// unwrap to the underlying type first.
     /// </summary>
     public T QueryScalar<T>(string sql, params SqliteParameter[] parameters)
     {
@@ -90,7 +92,7 @@ public sealed class DbService
         var result = cmd.ExecuteScalar();
         return result == null || result == DBNull.Value
             ? default!
-            : (T)Convert.ChangeType(result, typeof(T));
+            : (T)Convert.ChangeType(result, Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T));
     }
 
     public T QueryScalar<T>(
@@ -103,7 +105,7 @@ public sealed class DbService
         var result = cmd.ExecuteScalar();
         return result == null || result == DBNull.Value
             ? default!
-            : (T)Convert.ChangeType(result, typeof(T));
+            : (T)Convert.ChangeType(result, Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T));
     }
 
     // ─── Execute ───

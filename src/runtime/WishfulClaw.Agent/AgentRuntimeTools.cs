@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -22,6 +22,10 @@ public static class AgentRuntimeTools
     private const int ProtocolVersion = 1;
     private const int MaxConcurrentRuns = 8;
     private static readonly ConcurrentDictionary<string, AgentRuntimeRunState> ActiveRuns = new(StringComparer.Ordinal);
+    // AL-1: one active run per session. SessionConversation hands out live
+    // List references that the loop mutates in place — two concurrent runs on
+    // the same session would corrupt the shared history.
+    private static readonly ConcurrentDictionary<string, byte> ActiveSessionRuns = new(StringComparer.Ordinal);
     private static readonly SemaphoreSlim RunSlots = new(MaxConcurrentRuns, MaxConcurrentRuns);
     private static long _generatedRunId;
 
@@ -57,6 +61,18 @@ public static class AgentRuntimeTools
             return Task.FromResult(WorkerResponse.Error($"Agent run already exists: {runId}"));
         }
 
+        // AL-1: enforce single active run per session (empty sessionId runs are
+        // exempt — they never touch a shared SessionConversation).
+        var sessionKey = sessionId.Length > 0 ? sessionId : null;
+        if (sessionKey is not null && !ActiveSessionRuns.TryAdd(sessionKey, 0))
+        {
+            ActiveRuns.TryRemove(runId, out _);
+            RunSlots.Release();
+            state.Dispose();
+            return Task.FromResult(WorkerResponse.Error(
+                $"Session already has an active agent run: {sessionId}. Cancel or wait for it to finish before starting a new one."));
+        }
+
         WorkerLog.Debug(
             $"agent run accepted runId={runId} sessionId={FormatLogValue(sessionId)} " +
             $"messages={initialMessageCount} permissionMode={FormatLogValue(JsonHelpers.GetString(parameters, "permissionMode"))}");
@@ -78,6 +94,14 @@ public static class AgentRuntimeTools
                     WorkerLog.Error(
                         $"agent run outer crash runId={state.RunId} error={FormatExceptionSummary(ex)}");
                     try { ActiveRuns.TryRemove(state.RunId, out _); } catch { }
+                    try
+                    {
+                        if (state.SessionId.Length > 0)
+                        {
+                            ActiveSessionRuns.TryRemove(state.SessionId, out _);
+                        }
+                    }
+                    catch { }
                     try { RunSlots.Release(); } catch { }
                     try { state.Dispose(); } catch { }
                 }

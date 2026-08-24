@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace WishfulClaw.Agent;
 
@@ -121,17 +121,33 @@ public sealed class SubAgentRunCollector
     }
 
     /// <summary>
+    /// SA-4: cap on the final text output injected into the parent context.
+    /// Sub-agents can produce very long transcripts; the conclusion lives in
+    /// the tail, so keep only the last MaxFinalOutputChars characters.
+    /// </summary>
+    private const int MaxFinalOutputChars = 12_000;
+
+    /// <summary>
     /// Returns the final assistant text output.
     /// The text events come in deltas, so we concatenate all parts.
-    /// Fallback: when no text was emitted (reasoning models can spend every
-    /// turn thinking), return the accumulated thinking content — the answer
-    /// is often embedded there. Empty only when neither exists.
+    /// Oversized output is truncated to its tail (SA-4) — the final report's
+    /// conclusion is at the end, and the parent still has the tool-call
+    /// summary for detail. Fallback: when no text was emitted (reasoning
+    /// models can spend every turn thinking), return the accumulated
+    /// thinking content — the answer is often embedded there. Empty only
+    /// when neither exists.
     /// </summary>
     public string GetFinalOutput()
     {
         if (_textParts.Count > 0)
         {
-            return string.Concat(_textParts);
+            var text = string.Concat(_textParts);
+            if (text.Length > MaxFinalOutputChars)
+            {
+                return "[final report truncated — showing last " + MaxFinalOutputChars + " characters]\n…" +
+                       text[^MaxFinalOutputChars..];
+            }
+            return text;
         }
         if (_thinkingParts.Count > 0)
         {

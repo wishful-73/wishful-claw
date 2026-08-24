@@ -46,22 +46,6 @@
       "label": "运行与性能",
       "desc": "API 请求超时、重试策略与上下文压缩"
     },
-    "runtimePage": {
-      "title": "运行与性能",
-      "subtitle": "Agent 运行时设置：请求超时、重试、工具执行与上下文压缩"
-    },
-    "anchorNav": {
-      "language": "语言",
-      "theme": "主题",
-      "presets": "配色预设",
-      "appearance": "外观",
-      "timeout": "请求超时",
-      "retries": "重试策略",
-      "compression": "上下文压缩",
-      "toolExecution": "工具执行",
-      "developer": "开发者模式",
-      "startup": "开机启动"
-    },
     "about": {
       "label": "关于",
       "desc": "版本信息"
@@ -1104,5 +1088,21 @@
     "ended": "终端已结束",
     "selectToStart": "选择一个终端开始",
     "agentSshSession": "Agent SSH 会话"
+  },
+  "runtimePage": {
+    "title": "运行与性能",
+    "subtitle": "Agent 运行时设置：请求超时、重试、工具执行与上下文压缩"
+  },
+  "anchorNav": {
+    "language": "语言",
+    "theme": "主题",
+    "presets": "配色预设",
+    "appearance": "外观",
+    "timeout": "请求超时",
+    "retries": "重试策略",
+    "compression": "上下文压缩",
+    "toolExecution": "工具执行",
+    "developer": "开发者模式",
+    "startup": "开机启动"
   }
 }

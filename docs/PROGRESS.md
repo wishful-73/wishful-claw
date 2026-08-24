@@ -1,5 +1,17 @@
 ﻿# 开发进度
 
+## v2-iter-21：设置页重构 + 体验优化（候选，未开始）
+- 状态：规划中
+- 分支：dev/v2-iter-21（待从 main 切出）
+- Plan: docs/plans/iter-v2-21/（待建）
+- 备注（已确认的候选内容）：
+  - **设置页重构** — 从通用设置拆出「运行与性能」区块（API 请求超时、最大重试次数、上下文压缩等 AI 运行时相关项），挪入 AI 板块；GeneralPanel 当前 585 行需同步瘦身
+  - **设置页左侧锚点导航** — 各面板内 section 锚点 + 滚动位置联动高亮，锚点列表覆盖拆分后的目标面板
+  - **AL-3 无限循环软提示** — maxIterations=0 保持无限语义；检测连续多轮相似失败模式时注入 user-tail 提示引导换思路/询问用户，不强退
+  - **Worker 优雅关闭** — before-quit 通知 Worker 停止接受新 run → 等安全点落盘 → 超时强杀（EM-1）
+  - **Worker 崩溃自动重启** — 指数退避 + 连续崩溃熔断广播（EM-2）
+  - 其余 iter-21 备选：RC-2 cancelStream 指定 sessionId、RC-3 error 清流态、AL-6 压缩降级 TruncateMessages、TL-1 Grep/Glob 排除目录、TL-4 FileRead 流式读取、SA-4 子 agent 最终报告只取末段
+
 ## v2-iter-20：审查修复 · 安全与运行时健壮性
 - 状态：进行中（执行态完成，待审查/验证）
 - 分支：dev/v2-iter-20

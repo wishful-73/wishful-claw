@@ -16,13 +16,9 @@ namespace WishfulClaw.Agent;
 /// </summary>
 internal static partial class OpenAIChatProvider
 {
-    private static readonly HttpClient Http = new(new HttpClientHandler
-    {
-        ServerCertificateCustomValidationCallback = (_, _, _, _) => true
-    })
-    {
-        Timeout = Timeout.InfiniteTimeSpan
-    };
+    private static readonly HttpClient Http = WishfulClaw.Infrastructure.Http.WorkerHttpClientFactory.Create(
+        timeout: Timeout.InfiniteTimeSpan,
+        allowAutoRedirect: false);
 
     private static readonly JsonWriterOptions WriterOptions = new()
     {

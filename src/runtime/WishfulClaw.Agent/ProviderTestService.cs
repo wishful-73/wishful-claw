@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -13,14 +13,8 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static class ProviderTestService
 {
-    private static readonly HttpClient HttpClient = new(new HttpClientHandler
-    {
-        // Allow insecure TLS for self-hosted providers (e.g. Ollama)
-        ServerCertificateCustomValidationCallback = (_, _, _, _) => true
-    })
-    {
-        Timeout = TimeSpan.FromSeconds(30)
-    };
+    private static readonly HttpClient HttpClient = WishfulClaw.Infrastructure.Http.WorkerHttpClientFactory.Create(
+        timeout: TimeSpan.FromSeconds(30));
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

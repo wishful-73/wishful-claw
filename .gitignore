@@ -50,7 +50,9 @@ package-lock.json
 build_out
 release/
 dist-electron/
-scripts/
+!scripts/
+scripts/*
+!scripts/after-pack-remove-files.cjs
 .kb-update/
 
 # Local scratch

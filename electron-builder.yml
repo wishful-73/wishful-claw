@@ -1,10 +1,9 @@
-appId: com.wishfulclaw.app
+﻿appId: com.wishfulclaw.app
 productName: Wishful Claw
 directories:
   output: release
-  buildResources: build
 
-afterPack: build/after-pack-remove-files.cjs
+afterPack: scripts/after-pack-remove-files.cjs
 
 # ──────────────────────────────────────────────────────────────────
 # 打包文件规则：白名单策略

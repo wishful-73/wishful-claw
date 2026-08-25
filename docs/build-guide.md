@@ -138,7 +138,7 @@ files:
 | 配置 | 值 | 说明 |
 |------|------|------|
 | `electronLanguages` | `en-US`, `zh-CN` | 只保留中英文，删除其余 50+ 语言包，节省约 40MB |
-| `afterPack` | `build/after-pack-remove-files.cjs` | 打包后删除 `LICENSES.chromium.html`（~20MB） |
+| `afterPack` | `scripts/after-pack-remove-files.cjs` | 打包后删除 `LICENSES.chromium.html`（~20MB） |
 | `asarUnpack` | `resources/**`, `node-pty`, `@jitsi/robotjs`, `node-gyp-build` | 原生模块从 asar 解包（.node 文件不能在 asar 内运行） |
 | `npmRebuild` | `false` | 跳过原生模块重建，依赖 prebuilt 二进制文件 |
 

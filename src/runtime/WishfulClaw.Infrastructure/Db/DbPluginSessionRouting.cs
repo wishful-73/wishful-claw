@@ -15,6 +15,7 @@ public static class DbPluginSessionRouting
         {
             var pluginId = DbPluginSessionTools.RequireString(parameters, "pluginId");
             var chatId = DbPluginSessionTools.RequireString(parameters, "chatId");
+            var initialTitle = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "initialTitle"));
             var chatName = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "chatName"));
             var senderName = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "senderName"));
             var requestedProjectId = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "projectId"));
@@ -44,7 +45,7 @@ public static class DbPluginSessionRouting
             if (session is null)
             {
                 sessionId = DbPluginSessionTools.CreateSessionId();
-                sessionTitle = DbPluginSessionTools.FirstNonEmpty(chatName, senderName, chatId) ?? chatId;
+                sessionTitle = initialTitle ?? DbPluginSessionTools.FirstNonEmpty(chatName, senderName, chatId) ?? chatId;
                 sessionProjectId = project?.Id;
 
                 var entity = new SessionEntity
@@ -109,13 +110,6 @@ public static class DbPluginSessionRouting
                         new SqliteParameter("@id", sessionId));
                 }
 
-                var betterTitle = DbPluginSessionTools.FirstNonEmpty(chatName, senderName);
-                if (DbPluginSessionTools.ShouldReplaceSessionTitle(sessionTitle, betterTitle))
-                {
-                    db.Execute("UPDATE sessions SET title = @title WHERE id = @id",
-                        new SqliteParameter("@title", betterTitle!), new SqliteParameter("@id", sessionId));
-                    sessionTitle = betterTitle!;
-                }
             }
 
             return WorkerResponse.Json(new PluginRouteSessionResult(

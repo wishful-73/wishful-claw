@@ -83,6 +83,12 @@ export class FeishuService implements MessagingChannelService {
   private _userNameCache = new Map<string, string>()
   /** Bot's own open_id — fetched once at startup for reliable @mention detection */
   private _botOpenId = ''
+  /** Bot display name returned by Feishu's bot identity endpoint. */
+  private _botName = ''
+
+  get botName(): string | undefined {
+    return this._botName || this._instance.name.trim() || undefined
+  }
 
   constructor(instance: ChannelInstance, notify: (event: ChannelEvent) => void) {
     this._instance = instance
@@ -103,6 +109,7 @@ export class FeishuService implements MessagingChannelService {
     try {
       const botInfo = await this.api.getBotInfo()
       this._botOpenId = botInfo.openId
+      this._botName = botInfo.appName.trim()
       console.log(`[Feishu] Bot identity: ${botInfo.appName} (${botInfo.openId})`)
     } catch (err) {
       console.warn(

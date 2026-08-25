@@ -47,25 +47,6 @@ interface SessionTaskPayload {
   sshConnectionId?: string | null
 }
 
-// ── Channel type → display name prefix ──
-const CHANNEL_DISPLAY_NAMES: Record<string, string> = {
-  'feishu-bot': '飞书',
-  'weixin-official': '微信',
-  'qq-bot': 'QQ',
-  'dingtalk-bot': '钉钉',
-  'wecom-bot': '企业微信',
-  'telegram-bot': 'Telegram',
-  'discord-bot': 'Discord',
-  'whatsapp-bot': 'WhatsApp'
-}
-
-function buildSessionTitle(task: SessionTaskPayload): string {
-  const prefix = CHANNEL_DISPLAY_NAMES[task.pluginType] ?? ''
-  // Prefer chatName (group name or p2p counterpart name), then senderName, then chatId
-  const baseName = task.sessionTitle || task.chatName || task.senderName || task.chatId
-  return prefix ? `${prefix}: ${baseName}` : baseName
-}
-
 // ── State: track active auto-reply sessions ──
 
 interface ActiveAutoReply {
@@ -137,7 +118,7 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
     useChatStore.setState((state) => {
       state.sessions.push({
         id: sessionId,
-        title: buildSessionTitle(task),
+        title: task.sessionTitle || task.chatId,
         mode: 'cowork',
         messages: [],
         messageCount: 0,

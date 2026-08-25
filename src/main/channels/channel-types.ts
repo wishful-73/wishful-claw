@@ -136,6 +136,8 @@ export interface ChannelStreamingHandle {
 export interface MessagingChannelService {
   readonly pluginId: string
   readonly pluginType: string
+  /** Stable display name used when a channel session is created for the first time. */
+  readonly botName?: string
 
   // Lifecycle
   start(): Promise<void>

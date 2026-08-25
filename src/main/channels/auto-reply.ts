@@ -17,6 +17,24 @@ interface NativePluginRouteSessionResult {
 
 let _pluginManager: ChannelManager | null = null
 
+const CHANNEL_DISPLAY_NAMES: Record<string, string> = {
+  'feishu-bot': '飞书',
+  'weixin-official': '微信',
+  'qq-bot': 'QQ',
+  'dingtalk-bot': '钉钉',
+  'wecom-bot': '企业微信',
+  'telegram-bot': 'Telegram',
+  'discord-bot': 'Discord',
+  'whatsapp-bot': 'WhatsApp'
+}
+
+function buildInitialChannelSessionTitle(pluginType: string, botName?: string): string {
+  const prefix = CHANNEL_DISPLAY_NAMES[pluginType] ?? ''
+  const normalizedBotName = botName?.trim()
+  if (!prefix) return normalizedBotName || `${pluginType}对话`
+  return normalizedBotName ? `${prefix}:${normalizedBotName}` : `${prefix}对话`
+}
+
 /** Must be called once at startup to wire the plugin manager */
 export function setPluginManager(pm: ChannelManager): void {
   _pluginManager = pm
@@ -52,6 +70,10 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent): Promise<void> {
       {
         pluginId,
         chatId: data.chatId,
+        initialTitle: buildInitialChannelSessionTitle(
+          event.pluginType,
+          _pluginManager?.getService(pluginId)?.botName || pluginInstance?.name
+        ),
         chatName: data.chatName ?? null,
         senderName: data.senderName ?? null,
         projectId: null,
@@ -66,34 +88,11 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent): Promise<void> {
     }
 
     const sessionId = routedSession.sessionId
-    // Build a user-friendly title with channel prefix
-    const channelDisplayNames: Record<string, string> = {
-      'feishu-bot': '飞书',
-      'weixin-official': '微信',
-      'qq-bot': 'QQ',
-      'dingtalk-bot': '钉钉',
-      'wecom-bot': '企业微信',
-      'telegram-bot': 'Telegram',
-      'discord-bot': 'Discord',
-      'whatsapp-bot': 'WhatsApp'
-    }
-    const channelPrefix = channelDisplayNames[event.pluginType] ?? ''
-    const rawTitle = routedSession.sessionTitle || data.chatName || data.senderName || data.chatId
-    const sessionTitle = channelPrefix ? `${channelPrefix}: ${rawTitle}` : rawTitle
+    // The Worker creates the title once; every later message reuses the stored title.
+    const sessionTitle =
+      routedSession.sessionTitle || buildInitialChannelSessionTitle(event.pluginType, pluginInstance?.name)
     const pluginWorkDir = routedSession.workingFolder ?? ''
     const pluginSshConnectionId = routedSession.sshConnectionId ?? null
-
-    // Persist the prefixed title to DB if it differs from the stored one
-    if (channelPrefix && sessionTitle !== routedSession.sessionTitle) {
-      try {
-        await getNativeWorker().request('db/sessions-update', {
-          id: sessionId,
-          patch: { title: sessionTitle }
-        })
-      } catch {
-        // non-fatal — the title is still passed to the renderer via taskPayload
-      }
-    }
 
     // ── Command interception: handle /help, /new, /init, /status etc. before agent loop ──
     // Always attempt command parsing — tryHandleCommand handles @mention stripping internally

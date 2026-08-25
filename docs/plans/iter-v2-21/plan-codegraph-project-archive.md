@@ -40,6 +40,7 @@
   - 验证：TS web/node 零错误
 - [ ] 步骤 5：整体验证
   - `dotnet build src/runtime/WishfulClaw.sln` 0 错误
+  - AOT 编译验证：`node scripts/publish-aot-worker.mjs` 0 错误 0 警告（本次改动不新增序列化类型，如引入必须注册 JsonTypeInfo）
   - TS 三配置全零错误
   - 启动应用：开启 CodeGraph 插件 → 项目档案页执行索引 → 确认 DB 落在 `{workingFolder}/.wishful-claw/codegraph/graph.db` → explore 工具可用
   - 输出 verification_report

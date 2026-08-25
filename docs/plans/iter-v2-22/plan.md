@@ -37,7 +37,7 @@
 
 - [x] 步骤8：完善 cron:fire 到 Agent 的参数透传。新增 Renderer Cron runtime，监听 MessagePack `cron:fire`，保留 prompt、模型、工作目录、sessionId、maxIterations、deliveryMode、deliveryTarget、pluginId、pluginChatId，复用 Sidecar Agent 执行链；为 fired、run-started、run-progress、run-finished 统一事件 payload，运行完成/失败/取消后回写 DB 状态。运行事件不携带完整 prompt 或敏感凭据，摘要限制长度。验证：`ipcClient.on('cron:fire')` 路由、App 单次初始化/卸载、TypeScript web/node/全量三配置和 `git diff --check` 均通过；桌面/会话/微信/飞书实际 delivery 端到端验证留待步骤 9/10/15。实现提交：`773621f`。
 - [x] 步骤9：实现执行结果持久化和渠道通知。Agent 完成/失败/取消后统一生成结果摘要；支持 `desktop`（`notification:show`）、`session`（SQLite 消息持久化并同步已加载会话）、`plugin`（复用 `plugin:exec/sendMessage` 统一渠道边界）和 `none`。通知失败追加到任务 `last_error`，不改变 Agent 执行状态且不阻断周期任务后续触发；`deleteAfterRun` 任务触发时先停止并禁用，待执行、通知和状态持久化完成后再软删除归档并发出 `job_removed`。Worker `{ success:false, error }` 响应统一识别。验证：TypeScript 三配置、`git diff --check`、Infrastructure build 均通过（0 警告、0 错误；仅既有 .NET preview SDK 提示）；周期连续触发、Agent 失败恢复和微信/飞书成功/失败通知的真实运行证据留待步骤 10/15。实现提交：`4203f9e`。
-- [ ] 步骤10：补齐 Cron 功能测试与恢复测试。自动化子单元已新增独立 `WishfulClaw.CronRegressionTests`，使用系统临时目录和隔离 SQLite，覆盖新库完整 DDL、精简旧表迁移、create/get/list、软删除过滤、`includeDeleted`、`enabledOnly`、patch update、toggle、重复 mark-fired、mark-run-finished、软删除禁用、子进程重新打开后的配置与运行状态持久化，以及 Native `CronToolProvider` 的 at/every/cron、delivery/plugin/session/model/workingFolder/maxIterations/update patch schema。测试复现并修复两个生产问题：旧 `cron_tasks` 缺列时索引早于迁移创建会导致初始化失败；`DbCronTools.Update` 重复绑定 `@id` 导致 update 失败。自动化验证：Cron regression build 0 警告/0 错误，父进程 schema 35 项、旧库迁移/CRUD 63 项、进程重开 6 项、新库 DDL 5 项全部通过；TypeScript 三配置、Infrastructure build 和 `git diff --check` 通过。仍待 Electron 运行时冒烟：Main timer 的 at/every/cron 与时区、应用/Worker 重启恢复、真实 Agent 成功/失败、周期连续触发、deleteAfterRun 完成后归档、微信/飞书在线/断线及通知失败隔离；完成这些证据前步骤 10 保持未完成。自动化实现提交：`0413ee4`。
+- [ ] 步骤10：补齐 Cron 功能测试与恢复测试。自动化子单元已新增独立 `WishfulClaw.CronRegressionTests`，使用系统临时目录和隔离 SQLite，覆盖新库完整 DDL、精简旧表迁移、create/get/list、软删除过滤、`includeDeleted`、`enabledOnly`、patch update、toggle、重复 mark-fired、mark-run-finished、软删除禁用、子进程重新打开后的配置与运行状态持久化，以及 Native `CronToolProvider` 的 at/every/cron、delivery/plugin/session/model/workingFolder/maxIterations/update patch schema。测试复现并修复两个生产问题：旧 `cron_tasks` 缺列时索引早于迁移创建会导致初始化失败；`DbCronTools.Update` 重复绑定 `@id` 导致 update 失败。自动化验证：Cron regression build 0 警告/0 错误，父进程 schema 35 项、旧库迁移/CRUD 63 项、进程重开 6 项、新库 DDL 5 项全部通过；TypeScript 三配置、Infrastructure build 和 `git diff --check` 通过。Electron 开发版已用临时 Electron `userData` 和临时 Worker 副本成功启动，Main/Renderer/Worker IPC 正常，启动时 `db/crons-list` 成功返回；但 .NET `Environment.GetFolderPath(UserProfile)` 不服从 `USERPROFILE/HOME/APPDATA/LOCALAPPDATA` 覆盖，Worker 仍解析到真实 `~/.wishful-claw/index.db`，并读取真实 Goal/渠道配置、自动启动飞书。发现后已立即停止本次精确进程树（残留 0），未创建 Cron、未调用 Agent；真实库产生 SQLite WAL/SHM 连接文件。当前代码没有 Worker 全局数据目录环境变量，继续冒烟会触碰真实数据和外部渠道，因此运行时端到端判定为环境隔离阻塞。仍未验证：Main timer 的 at/every/cron 与时区、应用/Worker 重启恢复、真实 Agent 成功/失败、周期连续触发、deleteAfterRun 完成后归档、微信/飞书在线/断线及通知失败隔离；完成这些证据前步骤 10 保持未完成。自动化实现提交：`0413ee4`；自动化记录提交：`04485c1`。
 
 ### FU-E：定时任务 UI 重设计
 
@@ -53,8 +53,8 @@
 ## 当前执行状态
 
 - 已完成：步骤 1-9 / 15；步骤 10 自动化子单元已完成，已落地隔离 Cron 回归测试、Native schema 契约对齐、旧表迁移顺序修复和 update 参数修复。
-- 当前安全点：Cron regression build/run、TypeScript 三配置、Infrastructure build 和 `git diff --check` 已通过；自动化实现待提交。
-- 下一步：继续 FU-D 步骤 10 的 Electron 运行时冒烟，补 Main timer、应用/Worker 重启恢复、真实 Agent、周期连续触发、完成后归档及微信/飞书成功/失败证据。
+- 当前安全点：Cron regression build/run、TypeScript 三配置、Infrastructure build 和 `git diff --check` 已通过；自动化实现与 Plan 记录已提交（`0413ee4`、`04485c1`）。Electron 开发版启动链路已证明可运行，但 Worker 数据目录无法通过现有环境变量隔离；本次隔离进程树已全部停止，仓库工作区未被运行时修改。
+- 下一步：步骤 10 保持未完成并记录环境阻塞，继续 FU-E 步骤 11；Main timer、重启恢复、真实 Agent、周期连续触发、完成后归档及微信/飞书成功/失败证据留到步骤 15 的受控人工验收，或先另行实现并验证 Worker 全局数据目录覆盖能力。
 - 未执行：merge、tag、push、release；最终 PASS/FAIL/PARTIAL 仍由用户在步骤 15 验证后裁定。
 - 当前已知基线问题：全量 `WishfulClaw.sln` 构建仍受既有 CodeGraph 缺失符号影响（`CodeGraphModule`、`CodeGraphNativeLibraryResolver`），不归因于本迭代 Cron 改动。
 

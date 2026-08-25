@@ -1,6 +1,52 @@
 ﻿# 开发进度
 
-## v2-iter-21：设置页重构 + 体验优化（候选，未开始）
+## v2-iter-22+：OpenCowork 近期提交参考迁移候选（2026-08-24 调研，待排期）
+
+来源：D:\claw\OpenCowork git log 1.3.9 → 1.3.16（排除 CLI 与宠物体系）
+
+**高价值（正确性问题，建议优先）：**
+1. **工具结果即时持久化**（`56e888a6`）— tool_result 原等 30s 检查点/run 结束才落库，崩溃窗口内丢失已执行工具输出导致模型静默重跑；修复为工具边界立即 flush。我们 chat-store 流式消息同样存在此窗口
+2. **压缩水位线 + contextLength 回退**（`4d79734c` + `fe3f9e33`）— compact 水位线持久化防已总结轮次重入请求；无 contextLength 的模型回退默认窗口而非静默禁用自动压缩。我们 AgentLoop.ShouldCompress 的 `contextLength<=0 return false` 是同样的坑
+3. **渲染器空闲 CPU 忙循环**（`22eb6c4d`）— 侧边栏自动水合失败→改 state→重触发 effect 无限重试打满 CPU；iter-16 的侧边栏自动加载有同类隐患，值得排查
+4. **运行时恢复与失败反馈强化**（`b2a82d41` + `7b424686`）— 瞬态 provider 失败重试策略、压缩位置保持、完整执行错误透出
+
+**中价值：**
+5. 计划模式增强（`94c92277`/`329c822f`/`6fb35b8c`）— ExitPlanMode 可选 plan 参数、审查卡"请求修订"反馈、实施模型选择、重开计划而非 fork
+6. 子 agent 聊天内联可视化（`8424a162`）— 内联文件 diff、子 agent 实时活动
+7. 用户图片块转发 Gemini/OpenAI（`96b0532a`）— 多模态 wire 格式归一化
+8. ACP 主 agent 只读编排工具（`005e4e1c`）— 父 agent 可用 skills/memory/search 编排但禁写类工具
+
+**低优先：**
+- 渠道长回复分片与回复路由（`fa93aae6`）；Provider 预设更新（GLM-5.3/Grok 4.6/DeepSeek V4）；任务看板（与我们 todo 重叠）
+
+## v2-iter-21：设置页重构 + 运行时健壮性补强
+- 状态：已完成，已合并 main
+- 分支：dev/v2-iter-21（合并后清理）
+- Plan: docs/plans/iter-v2-21/（主计划 + 追加插件管理 Plan）
+- VERDICT: PASS（编译验证 + 用户人工验证）
+- 产品版本: 0.2.21
+- Tag: v0.2.21
+- Commit: 63d7191
+- 日期: 2026-08-25
+- 范围确认（老大）：设置页重构 + 备选项全做（RC-2/RC-3/AL-6/TL-1/TL-4/SA-4）；锚点导航、AL-3 软提示、EM-1/EM-2 本次不做
+- 备注：
+  - **FU-A 设置页重构（按老大反馈修正范围）** — RuntimePanel.tsx 迁入：API 请求超时 / Provider 最大重试 / 上下文压缩 / 工具执行（并行数、每轮上限、并发子 agent）/ 开发者模式 / 开机启动（含 launchAtLogin 状态逻辑）；GeneralPanel 只留语言/主题/预设/外观，585→233 行；SettingsTab 增加 runtime；i18n zh/en tabs.runtime + runtimePage 键
+  - **设置页锚点导航** — 新建 section-anchor-nav.tsx：面板右侧 sticky 锚点列，点击 smooth 滚动到 section、滚动联动高亮当前区块；GeneralPanel 4 锚点（语言/主题/预设/外观）+ RuntimePanel 6 锚点（超时/重试/压缩/工具执行/开发者/开机启动），section 注入 id
+  - **RC-2** — chat-store cancelStream 支持可选 targetSessionId 参数，缺省仍用 activeSessionId
+  - **RC-3** — error 事件清理该 session 全部消息的 isStreaming 标记（原来只清 runId 匹配的那条，重载后残留流态），error 文案仍只写目标消息
+  - **AL-6** — AgentLoop 压缩块：CompactAsync 无缩减效果时降级 TruncateMessages 机械截断兜底，两者都无效才仅记 Warn
+  - **TL-1** — 新建 SearchFilter.cs：默认排除 node_modules/.git/dist/obj/bin/release/debug/vendor 等目录 + exclude_dirs 参数（支持通配段）；GrepTool/GlobTool 枚举接入，InputSchema 同步
+  - **TL-4** — FileReadTool 改 StreamReader 逐行流式读取，只保留 [offset, offset+limit) 窗口，不再 ReadAllText 全量进内存
+  - **SA-4** — SubAgentRunCollector.GetFinalOutput 文本超 12000 字符只保留末段（前缀标注 truncated），thinking 兜底逻辑不变
+  - 验证：C# solution build 0 警告 0 错误；TS 3/3 零错误；git diff --check PASS
+  - **追加功能单元：插件管理与 Browser 加载闭环** — 设置页新增内置应用插件面板和自定义扩展管理入口；ExtensionPanel 覆盖安装/启停/配置/打开目录/移除；扩展工具按当前项目启用状态刷新名称快照，由 Native Worker 负责真实执行；Browser/Image/CodeGraph 注册在持久化 hydration 后同步，并监听开关变化即时注册/注销
+  - 追加文档：`docs/plans/iter-v2-21/review_report-plugin-management.md`、`verification_report-plugin-management.md`
+  - 追加验证：C# solution build 0 警告 0 错误；TS 3/3 零错误；git diff --check PASS；运行时人工验证待用户
+  - **追加功能单元：CodeGraph 项目档案入口 + 存储本地化** — 引擎从仓库根 codegraph/ 迁入 src/runtime/WishfulClaw.CodeGraph（sln/csproj 路径同步修正）；新增 CodeGraphDataRootRegistry，main IPC 层按 workingFolder 注入 dataRoot 使图谱 DB 落 `{workingFolder}/.wishful-claw/codegraph/`（SSH 项目回退 ~/.wishful-claw/projects/{id}/codegraph，与记忆同策略）；项目档案页新增「代码图谱」区块（未启用置灰引导 / 索引状态 / 索引+同步+进度条）；插件面板移除全局项目列表仅留资产诊断。Plan: plan-codegraph-project-archive.md
+  - 追加验证：C# build + AOT publish + TS 3/3 全零错误；运行时人工验证待用户
+
+## v2-iter-21 原始候选记录（已被上方实际范围取代）
+
 - 状态：规划中
 - 分支：dev/v2-iter-21（待从 main 切出）
 - Plan: docs/plans/iter-v2-21/（待建）

@@ -4,7 +4,8 @@ import {
   Check,
   Search,
   Loader2,
-  Globe2
+  Globe2,
+  ChevronDown
 } from 'lucide-react'
 import { isProviderAvailableForModelSelection, useProviderStore } from '@renderer/stores/provider-store'
 import {
@@ -296,23 +297,26 @@ export function ModelSwitcher({
           <HoverCardTrigger asChild>
             <PopoverTrigger asChild>
               <button
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-l-lg px-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                 aria-label={triggerAriaLabel}
+                title={triggerAriaLabel}
               >
                 {isAutoModeActive ? (
                   autoRoutingState === 'routing' ? (
-                    <Loader2 size={16} className="animate-spin text-amber-500" />
+                    <Loader2 size={15} className="shrink-0 animate-spin text-amber-500" />
                   ) : (
-                    <AutoModelIcon size={18} />
+                    <AutoModelIcon size={17} className="shrink-0" />
                   )
                 ) : (
                   <ModelIcon
                     icon={displayModel?.icon}
                     modelId={displayModelId ?? undefined}
                     providerBuiltinId={displayProvider?.builtinId}
-                    size={20}
+                    size={18}
                   />
                 )}
+                <span className="truncate text-xs font-medium">{triggerLabel}</span>
+                <ChevronDown className="size-3 shrink-0 opacity-60" />
               </button>
             </PopoverTrigger>
           </HoverCardTrigger>

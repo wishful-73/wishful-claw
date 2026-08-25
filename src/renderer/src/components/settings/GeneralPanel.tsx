@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+﻿import { useTranslation } from 'react-i18next'
 import { Monitor, MoonStar, SunMedium } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import {
@@ -10,12 +9,7 @@ import {
 import { cn } from '@renderer/lib/utils'
 import {
   useSettingsStore,
-  type ThemeMode,
-  clampApiRequestTimeoutSeconds,
-  DEFAULT_API_REQUEST_TIMEOUT_SECONDS,
-  clampRequestMaxRetries,
-  MIN_API_REQUEST_TIMEOUT_SECONDS,
-  MAX_API_REQUEST_TIMEOUT_SECONDS
+  type ThemeMode
 } from '@renderer/stores/settings-store'
 import { LANGUAGE_OPTIONS } from '@renderer/lib/i18n-language'
 import { changeI18nLanguage } from '@renderer/locales'
@@ -27,8 +21,9 @@ import {
   SelectTrigger,
   SelectValue
 } from '@renderer/components/ui/select'
-import { Switch } from '@renderer/components/ui/switch'
 import { PresetCard } from './general-preset-card'
+import { SettingsSection } from './settings-primitives'
+import { Slider } from '@renderer/components/ui/slider'
 
 const FONT_OPTIONS = [
   { label: '__default__', value: '__default__' },
@@ -55,34 +50,13 @@ function GeneralPanel(): React.JSX.Element {
 
   const clampFontSize = (value: number): number => Math.min(20, Math.max(12, value))
 
-  // -- Launch at Login --
-  const [launchAtLoginChecked, setLaunchAtLoginChecked] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    void window.api.invoke<boolean>('app:get-login-item-settings', null).then((osEnabled) => {
-      if (cancelled) return
-      setLaunchAtLoginChecked(osEnabled)
-      if (osEnabled !== settings.launchAtLogin) {
-        settings.updateSettings({ launchAtLogin: osEnabled })
-      }
-    })
-    return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleLaunchAtLoginChange = (checked: boolean): void => {
-    setLaunchAtLoginChecked(checked)
-    settings.updateSettings({ launchAtLogin: checked })
-    void window.api.invoke<boolean>('app:set-login-item-settings', checked)
-  }
-
   const handleLanguageChange = (value: string): void => {
     settings.updateSettings({ language: value as typeof settings.language })
     changeI18nLanguage(value)
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 px-8 pb-16 pt-10">
+    <div className="mx-auto max-w-4xl space-y-4 px-8 pb-16 pt-10">
       {/* Title */}
       <div>
         <h2 className="text-lg font-semibold">{t('general.title')}</h2>
@@ -90,11 +64,7 @@ function GeneralPanel(): React.JSX.Element {
       </div>
 
       {/* Language */}
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.language.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.language.desc')}</p>
-        </div>
+      <SettingsSection id="sec-general-language" title={t('general.language.label')} description={t('general.language.desc')}>
         <Select value={settings.language} onValueChange={handleLanguageChange}>
           <SelectTrigger className="w-60 text-xs">
             <SelectValue />
@@ -107,14 +77,10 @@ function GeneralPanel(): React.JSX.Element {
             ))}
           </SelectContent>
         </Select>
-      </section>
+      </SettingsSection>
 
       {/* Theme mode */}
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.theme.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.theme.desc')}</p>
-        </div>
+      <SettingsSection id="sec-general-theme" title={t('general.theme.label')} description={t('general.theme.desc')}>
         <div className="grid grid-cols-3 gap-2">
           {MODE_OPTIONS.map((option) => {
             const active = settings.theme === option.value
@@ -137,14 +103,10 @@ function GeneralPanel(): React.JSX.Element {
             )
           })}
         </div>
-      </section>
+      </SettingsSection>
 
       {/* Theme preset */}
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.preset.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.preset.desc')}</p>
-        </div>
+      <SettingsSection id="sec-general-preset" title={t('general.preset.label')} description={t('general.preset.desc')}>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {APP_THEME_PRESETS.map((preset) => (
             <PresetCard
@@ -160,15 +122,10 @@ function GeneralPanel(): React.JSX.Element {
             />
           ))}
         </div>
-      </section>
+      </SettingsSection>
 
       {/* Appearance */}
-      <section className="space-y-4">
-        <div>
-          <label className="text-sm font-medium">{t('general.appearance.label')}</label>
-          <p className="text-xs text-muted-foreground">{t('general.appearance.desc')}</p>
-        </div>
-
+      <SettingsSection id="sec-general-appearance" title={t('general.appearance.label')} description={t('general.appearance.desc')}>
         {/* Font family */}
         <div className="space-y-2">
           <div>
@@ -204,14 +161,13 @@ function GeneralPanel(): React.JSX.Element {
             <span className="text-xs text-muted-foreground">{settings.fontSize}px</span>
           </div>
           <div className="flex items-center gap-3">
-            <input
-              type="range"
+            <Slider
               min={12}
               max={20}
               step={1}
-              value={settings.fontSize}
-              onChange={(e) => settings.updateSettings({ fontSize: clampFontSize(parseInt(e.target.value)) })}
-              className="flex-1 max-w-lg accent-primary"
+              value={[settings.fontSize]}
+              onValueChange={([v]) => settings.updateSettings({ fontSize: clampFontSize(v) })}
+              className="flex-1 max-w-lg"
             />
             <Input
               type="number"
@@ -256,326 +212,7 @@ function GeneralPanel(): React.JSX.Element {
             </button>
           </div>
         </div>
-      </section>
-
-      {/* Tool Execution */}
-      <section className="space-y-4">
-        <div>
-          <label className="text-sm font-medium">{t('general.toolExecution.label')}</label>
-          <p className="text-xs text-muted-foreground">{t('general.toolExecution.desc')}</p>
-        </div>
-
-        {/* Max Parallel Tools */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxParallel.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxParallel.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxParallelToolCalls}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={16}
-              step={1}
-              value={settings.maxParallelToolCalls}
-              onChange={(e) => settings.updateSettings({ maxParallelToolCalls: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
-            <Input
-              type="number"
-              min={1}
-              max={16}
-              value={settings.maxParallelToolCalls}
-              onChange={(e) => {
-                const next = Math.min(16, Math.max(1, parseInt(e.target.value, 10) || 8))
-                settings.updateSettings({ maxParallelToolCalls: next })
-              }}
-              className="max-w-24 text-xs"
-            />
-          </div>
-        </div>
-
-        {/* Max Tool Calls Per Turn */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxPerTurn.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxPerTurn.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxToolCallsPerTurn}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={100}
-              step={1}
-              value={settings.maxToolCallsPerTurn}
-              onChange={(e) => settings.updateSettings({ maxToolCallsPerTurn: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
-            <Input
-              type="number"
-              min={1}
-              max={100}
-              value={settings.maxToolCallsPerTurn}
-              onChange={(e) => {
-                const next = Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 20))
-                settings.updateSettings({ maxToolCallsPerTurn: next })
-              }}
-              className="max-w-24 text-xs"
-            />
-          </div>
-        </div>
-
-        {/* Max Concurrent Sub-Agents */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between max-w-lg">
-            <div>
-              <label className="text-xs font-medium">{t('general.toolExecution.maxSubAgents.label')}</label>
-              <p className="text-xs text-muted-foreground">{t('general.toolExecution.maxSubAgents.desc')}</p>
-            </div>
-            <span className="text-xs text-muted-foreground">{settings.maxConcurrentSubAgents}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={1}
-              max={8}
-              step={1}
-              value={settings.maxConcurrentSubAgents}
-              onChange={(e) => settings.updateSettings({ maxConcurrentSubAgents: parseInt(e.target.value) })}
-              className="flex-1 max-w-lg accent-primary"
-            />
-            <Input
-              type="number"
-              min={1}
-              max={8}
-              value={settings.maxConcurrentSubAgents}
-              onChange={(e) => {
-                const next = Math.min(8, Math.max(1, parseInt(e.target.value, 10) || 2))
-                settings.updateSettings({ maxConcurrentSubAgents: next })
-              }}
-              className="max-w-24 text-xs"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* API Request Timeout */}
-      <section className="space-y-3">
-        <div className="max-w-lg">
-          <label className="text-sm font-medium text-foreground">
-            {t('general.apiRequestTimeout', { defaultValue: 'API Request Timeout' })}
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {t('general.apiRequestTimeoutDesc', {
-              defaultValue:
-                'Maximum seconds to wait for response headers. Set 0 to wait indefinitely; an active stream is not cut off.'
-            })}
-          </p>
-        </div>
-        <div className="flex max-w-lg items-center gap-3">
-          <Input
-            type="number"
-            min={MIN_API_REQUEST_TIMEOUT_SECONDS}
-            max={MAX_API_REQUEST_TIMEOUT_SECONDS}
-            step={10}
-            value={settings.apiRequestTimeoutSeconds}
-            onChange={(event) =>
-              settings.updateSettings({
-                apiRequestTimeoutSeconds: clampApiRequestTimeoutSeconds(Number(event.target.value))
-              })
-            }
-            className="w-28 text-xs"
-          />
-          <span className="text-xs text-muted-foreground">
-            {settings.apiRequestTimeoutSeconds === 0
-              ? t('general.apiRequestTimeoutNoLimit', { defaultValue: 'No limit' })
-              : t('general.apiRequestTimeoutSeconds', {
-                  defaultValue: '{{count}} seconds',
-                  count: settings.apiRequestTimeoutSeconds
-                })}
-          </span>
-        </div>
-        <div className="flex max-w-lg flex-wrap gap-1.5">
-          {[0, 30, DEFAULT_API_REQUEST_TIMEOUT_SECONDS, 300, 1800].map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => settings.updateSettings({ apiRequestTimeoutSeconds: value })}
-              className={cn(
-                'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
-                settings.apiRequestTimeoutSeconds === value
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-              )}
-            >
-              {value === 0
-                ? t('general.apiRequestTimeoutNoLimit', { defaultValue: 'No limit' })
-                : `${value}s`}
-            </button>
-          ))}
-        </div>
-        <p className="max-w-lg text-xs text-muted-foreground/70">
-          {t('general.apiRequestTimeoutHint', {
-            defaultValue: 'Default: {{default}} seconds. Applies to all providers.',
-            default: DEFAULT_API_REQUEST_TIMEOUT_SECONDS
-          })}
-        </p>
-      </section>
-
-      {/* Provider Max Retries */}
-      <section className="space-y-3">
-        <div className="max-w-lg">
-          <label className="text-sm font-medium text-foreground">
-            {t('general.requestMaxRetries', { defaultValue: 'Provider Max Retries' })}
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {t('general.requestMaxRetriesDesc', {
-              defaultValue:
-                'Retries on rate limits (429) and server errors (5xx). Set 0 to retry indefinitely; retries beyond 10 wait 1 minute each.'
-            })}
-          </p>
-        </div>
-        <div className="flex max-w-lg items-center gap-3">
-          <Input
-            type="number"
-            min={0}
-            max={100}
-            step={1}
-            value={settings.requestMaxRetries}
-            onChange={(event) =>
-              settings.updateSettings({
-                requestMaxRetries: clampRequestMaxRetries(Number(event.target.value))
-              })
-            }
-            className="w-28 text-xs"
-          />
-          <span className="text-xs text-muted-foreground">
-            {settings.requestMaxRetries === 0
-              ? t('general.requestMaxRetriesNoLimit', { defaultValue: 'Unlimited' })
-              : t('general.requestMaxRetriesCount', {
-                  defaultValue: '{{count}} attempts',
-                  count: settings.requestMaxRetries
-                })}
-          </span>
-        </div>
-        <div className="flex max-w-lg flex-wrap gap-1.5">
-          {[0, 10, 20, 50].map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => settings.updateSettings({ requestMaxRetries: value })}
-              className={cn(
-                'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
-                settings.requestMaxRetries === value
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-              )}
-            >
-              {value === 0
-                ? t('general.requestMaxRetriesNoLimit', { defaultValue: 'Unlimited' })
-                : `${value}`}
-            </button>
-          ))}
-        </div>
-        <p className="max-w-lg text-xs text-muted-foreground/70">
-          {t('general.requestMaxRetriesHint', {
-            defaultValue: 'Default: 10 attempts. Applies to all providers.',
-            default: 10
-          })}
-        </p>
-      </section>
-
-      {/* Context Compression */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between max-w-lg">
-          <div>
-            <div className="text-sm font-medium text-foreground">{t('general.contextCompression.label')}</div>
-            <p className="text-xs text-muted-foreground">{t('general.contextCompression.desc')}</p>
-          </div>
-          <Switch
-            checked={settings.contextCompressionEnabled}
-            onCheckedChange={(checked) =>
-              settings.updateSettings({ contextCompressionEnabled: checked })
-            }
-          />
-        </div>
-        {settings.contextCompressionEnabled && (
-          <div className="max-w-lg space-y-2">
-            <p className="text-xs text-muted-foreground/70">
-              {t('general.contextCompression.enabled')}
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="text-xs font-medium">
-                    {t('general.contextCompression.threshold.label')}
-                  </label>
-                  <p className="text-xs text-muted-foreground">
-                    {t('general.contextCompression.threshold.desc')}
-                  </p>
-                </div>
-                <span className="text-xs font-mono text-muted-foreground">
-                  {Math.round(settings.contextCompressionThreshold * 100)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min={30}
-                max={90}
-                step={1}
-                value={Math.round(settings.contextCompressionThreshold * 100)}
-                onChange={(e) => {
-                  const ratio = Math.min(0.9, Math.max(0.3, parseInt(e.target.value) / 100))
-                  settings.updateSettings({ contextCompressionThreshold: ratio })
-                }}
-                className="flex-1 max-w-lg accent-primary"
-              />
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* Developer Mode */}
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.developerMode.label')}</div>
-          <p className="text-xs text-muted-foreground">{t('general.developerMode.desc')}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={settings.devMode}
-            onCheckedChange={(checked) => settings.updateSettings({ devMode: checked })}
-          />
-          <span className="text-xs text-muted-foreground">
-            {settings.devMode ? t('general.developerMode.enabled') : t('general.developerMode.disabled')}
-          </span>
-        </div>
-      </section>
-
-      {/* Launch at Login */}
-      <section className="space-y-3">
-        <div>
-          <div className="text-sm font-medium text-foreground">{t('general.launchAtLogin.label', { defaultValue: 'Launch at Startup' })}</div>
-          <p className="text-xs text-muted-foreground">{t('general.launchAtLogin.desc', { defaultValue: 'Automatically start WishfulClaw when you log in to your computer' })}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Switch
-            checked={launchAtLoginChecked}
-            onCheckedChange={handleLaunchAtLoginChange}
-          />
-          <span className="text-xs text-muted-foreground">
-            {launchAtLoginChecked
-              ? t('general.launchAtLogin.enabled', { defaultValue: 'Enabled' })
-              : t('general.launchAtLogin.disabled', { defaultValue: 'Disabled' })}
-          </span>
-        </div>
-      </section>
+      </SettingsSection>
 
     </div>
   )

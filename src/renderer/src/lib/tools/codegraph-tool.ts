@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -73,9 +73,13 @@ const codegraphExploreHandler: ToolHandler = {
     const projectPath = readNonEmptyString(source.projectPath) ?? ctx.workingFolder
 
     try {
-      const result = await agentBridge.request('codegraph/explore', {
-        query,
-        ...(projectPath ? { projectPath } : {})
+      const result = await agentBridge.request('codegraph:tool', {
+        name: codegraphExploreHandler.definition.name,
+        input: {
+          query,
+          ...(projectPath ? { projectPath } : {})
+        },
+        ...(ctx.workingFolder ? { workingFolder: ctx.workingFolder } : {})
       })
       return encodeStructuredToolResult(
         result && typeof result === 'object' && !Array.isArray(result)
@@ -133,8 +137,6 @@ function makeCodeGraphToolHandler(
   description: string,
   rawSchema: Record<string, unknown>
 ): ToolHandler {
-  // codegraph_search -> codegraph/search etc. (the RPC surface mirrors tool names).
-  const rpcMethod = 'codegraph/' + name.replace(/^codegraph_/, '')
   const properties =
     rawSchema.properties && typeof rawSchema.properties === 'object'
       ? (rawSchema.properties as Record<string, unknown>)
@@ -152,9 +154,13 @@ function makeCodeGraphToolHandler(
       const source = (input ?? {}) as Record<string, unknown>
       const projectPath = readNonEmptyString(source.projectPath) ?? ctx.workingFolder
       try {
-        const result = await agentBridge.request(rpcMethod, {
-          ...source,
-          ...(projectPath ? { projectPath } : {})
+        const result = await agentBridge.request('codegraph:tool', {
+          name,
+          input: {
+            ...source,
+            ...(projectPath ? { projectPath } : {})
+          },
+          ...(ctx.workingFolder ? { workingFolder: ctx.workingFolder } : {})
         })
         return encodeStructuredToolResult(
           result && typeof result === 'object' && !Array.isArray(result)

@@ -1,29 +1,44 @@
+﻿'use client'
+
 import * as React from 'react'
+import { Slider as SliderPrimitive } from 'radix-ui'
 import { cn } from '@renderer/lib/utils'
 
-export interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
+export interface SliderProps extends Omit<
+  React.ComponentProps<typeof SliderPrimitive.Root>,
+  'value' | 'defaultValue'
+> {
   value?: number[]
   onValueChange?: (value: number[]) => void
-  min?: number
-  max?: number
-  step?: number
 }
 
-export const Slider = React.forwardRef<HTMLInputElement, SliderProps>(
-  ({ className, value, onValueChange, min, max, step, ...props }, ref) => (
-    <input
-      ref={ref}
-      type="range"
-      className={cn('w-full cursor-pointer appearance-none rounded-full bg-muted', className)}
-      value={value?.[0] ?? 0}
+/**
+ * Radix-based slider (style ported from OpenCowork): thin muted track with a
+ * primary-colored filled range and a white circular thumb with hover/focus ring.
+ */
+function Slider({ className, value, min = 0, max = 100, ...props }: SliderProps) {
+  return (
+    <SliderPrimitive.Root
+      data-slot="slider"
+      value={value}
       min={min}
       max={max}
-      step={step}
-      onChange={(e) => {
-        onValueChange?.([Number(e.target.value)])
-      }}
+      className={cn(
+        'relative flex w-full touch-none items-center select-none data-[disabled]:opacity-50',
+        className
+      )}
       {...props}
-    />
+    >
+      <SliderPrimitive.Track
+        className="bg-muted relative h-1.5 w-full grow overflow-hidden rounded-full"
+      >
+        <SliderPrimitive.Range className="bg-primary absolute h-full" />
+      </SliderPrimitive.Track>
+      <SliderPrimitive.Thumb className="border-primary ring-ring/50 block size-4 shrink-0 rounded-full border bg-white shadow-sm transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50" />
+    </SliderPrimitive.Root>
   )
-)
+}
+
 Slider.displayName = 'Slider'
+
+export { Slider }

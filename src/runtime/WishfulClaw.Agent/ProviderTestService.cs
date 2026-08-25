@@ -274,7 +274,12 @@ public static class ProviderTestService
                     continue;
                 }
 
-                models.Add(new ProviderModelInfo(id, id, true));
+                var displayName = JsonHelpers.GetString(item, "display_name")
+                    ?? JsonHelpers.GetString(item, "displayName")
+                    ?? JsonHelpers.GetString(item, "name")
+                    ?? id;
+
+                models.Add(new ProviderModelInfo(id, displayName, true));
             }
         }
 

@@ -1,9 +1,10 @@
-import { BrowserWindow, Notification, dialog, shell } from 'electron'
+﻿import { BrowserWindow, Notification, dialog, shell } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 import { getNativeWorker } from '../lib/native-worker'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { safeSendMessagePackToWindow } from '../window-ipc'
+import { resolveCodeGraphDataRoot } from './codegraph-handlers'
 
 /**
  * Register miscellaneous IPC handlers:
@@ -45,11 +46,27 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
   )
 
   // Generic worker request forwarder: renderer calls window.api.workerRequest(method, params)
-  // and main forwards to the worker via named pipe IPC.
+  // and main forwards to the worker via named pipe IPC. codegraph/* methods get the
+  // project-local dataRoot injected here (same routing as the agent reverse path),
+  // so every caller — archive page, explore tool, prompt hook — shares one storage.
   registerMessagePackHandler<{ method: string; params?: unknown; timeoutMs?: number }, unknown>(
     'worker:request',
     async (args) => {
       const worker = getNativeWorker()
+      const params = (args.params ?? {}) as Record<string, unknown>
+      if (args.method.startsWith('codegraph/')) {
+        const dataRoot = resolveCodeGraphDataRoot(
+          typeof params.workingFolder === 'string'
+            ? params.workingFolder
+            : typeof params.projectPath === 'string'
+              ? params.projectPath
+              : undefined,
+          params.dataRoot
+        )
+        if (dataRoot && params.dataRoot === undefined) {
+          params.dataRoot = dataRoot
+        }
+      }
       return worker.request(args.method, args.params ?? {}, args.timeoutMs)
     }
   )

@@ -1,4 +1,4 @@
-{
+﻿{
   "title": "Settings",
   "shortcuts": {
     "title": "Shortcuts",
@@ -42,6 +42,10 @@
       "label": "AI Providers",
       "desc": "Configure API keys, base URLs, test connectivity"
     },
+    "runtime": {
+      "label": "Runtime & Performance",
+      "desc": "API request timeout, retry policy and context compression"
+    },
     "about": {
       "label": "About",
       "desc": "Version info"
@@ -50,7 +54,7 @@
       "general": "General",
       "aiService": "AI Service",
       "about": "About",
-      "extensions": "Extensions"
+      "extensions": "Plugins"
     },
     "persona": {
       "label": "Persona",
@@ -718,6 +722,25 @@
     "kodaClaw": "KodaClaw — Memory System / Personality System Design",
     "openClaw": "OpenClaw — Active Memory Recall Mechanism"
   },
+  "plugin": {
+    "title": "Plugins", "subtitle": "Manage built-in plugins and tool registration.", "enabled": "Enabled", "disabled": "Disabled", "enable": "Enable plugin", "enableDesc": "When enabled, the plugin tools are registered for the current Agent.", "selectPlugin": "Select a plugin", "provider": "Image provider", "model": "Image model", "selectProvider": "Select provider", "selectModel": "Select model", "modelSource": "Image model source", "modelSourceDesc": "Use the global image model or select a plugin-specific model for Image.", "useGlobalModel": "Use global image model", "overrideModel": "Select a plugin-specific model", "globalModelMissing": "No usable global image model is configured.", "toolStatus": "Tool status", "toolStatusDesc": "ImageGenerate requires a configured image model.", "toolStatusDescBrowser": "Browser tools run through the built-in Browser/WebView path.", "toolStatusDescCodeGraph": "CodeGraph tools use the built-in runtime and project indexes.", "toolReadyCodeGraph": "Plugin ready. The Agent can call its tools.", "toolConstraintCodeGraph": "Use codegraph_explore first for code-navigation questions. Provide a focused query; projectPath is optional and defaults to the active working folder. The project must be indexed before results are available.", "toolStatusDescDesktop": "Desktop control tools are currently unavailable.",
+    "status": { "ready": "Ready", "not_ready": "Not ready", "disabled": "Disabled" },
+    "items": {
+      "image": { "title": "Image", "description": "Provides image generation tools to the Agent.", "promptTitle": "Image plugin", "promptDesc": "Configure an image provider and model before the Agent can call ImageGenerate." },
+      "browser": { "title": "Browser", "description": "Browse web pages and read content through the built-in Browser/WebView.", "promptTitle": "Browser plugin", "promptDesc": "Browser tools respect the allowed-domain and blocked-domain rules." },
+      "codegraph": { "title": "CodeGraph", "description": "Understand project structure, symbols, and call paths with a code graph.", "promptTitle": "CodeGraph plugin", "promptDesc": "The CodeGraph runtime ships with the app; each project must be indexed before use." },
+      "desktop-control": { "title": "Desktop Control", "description": "Desktop screenshot and input control tools.", "promptTitle": "Desktop control plugin", "promptDesc": "This plugin is currently hidden and disabled." }
+    },
+    "toolArgsMap": {
+      "ImageGenerate": "prompt, count, reference_images, size, quality", "BrowserNavigate": "url, action", "BrowserGetContent": "selector, type", "BrowserScreenshot": "no arguments", "BrowserSnapshot": "no arguments", "BrowserClick": "selector", "BrowserType": "selector, text, clear, submit", "BrowserScroll": "direction, amount", "codegraph_explore": "query, projectPath", "DesktopScreenshot": "no arguments", "DesktopClick": "x, y, button, action", "DesktopType": "text, key, hotkey", "DesktopScroll": "x, y, scrollX, scrollY", "DesktopWait": "delayMs"
+    },
+    "browser": {
+      "title": "Browser configuration", "desc": "Configure browser emulation, user data, and domain access rules.", "importCookies": "Import Cookies", "importingCookies": "Importing…", "clearCookies": "Clear Cookies", "clearingCookies": "Clearing…", "cookiesCleared": "Cookies cleared", "cookiesClearFailed": "Failed to clear Cookies", "cookiesImported": "Imported {{imported}} Cookies from {{browserName}}; skipped {{skipped}}", "cookiesImportFailed": "Failed to import Cookies", "userDataReuse": "Reuse browser user data", "userDataReuseDesc": "Reuse local browser profiles, Cookies, and sign-in state.", "userDataSource": "User data source", "userDataSourceDesc": "Choose which browser profiles should be detected and reused.", "restartRequired": "Restart the Browser session after changing this setting.", "activeProfile": "Using {{browserName}} profile {{profileName}}: {{path}}", "profileFallback": "No reusable browser profile detected; an isolated session will be used.", "isolatedStorage": "Isolated session directory: {{path}}", "blockedDomains": "Blocked domains", "blockedDomainsDesc": "Browser tools will not access these domains.", "allowedDomains": "Allowed domains", "allowedDomainsDesc": "When set, only these domains can be accessed; one per line.", "domainPlaceholder": "example.com\n*.example.org", "domainRuleHint": "Domains support exact matches and wildcards; one per line.", "sources": { "auto": "Auto detect", "chrome": "Chrome", "edge": "Edge", "firefox": "Firefox" }
+    },
+    "codegraph": {
+      "assetsTitle": "Built-in CodeGraph runtime", "assetsDesc": "The CodeGraph runtime and language grammars ship with the app; this shows status only and does not require a download.", "workerRunning": "Runtime running", "workerStopped": "Runtime stopped", "devMode": "Development grammars ready ({{count}})", "ready": "Built-in grammars ready ({{count}})", "availableLanguages": "Available languages: {{languages}}", "invalidFiles": "Invalid grammar files: {{files}}", "unrecognizedGrammars": "Unrecognized grammars: {{grammars}}", "missingLanguages": "Missing languages: {{languages}}", "workerMissing": "CodeGraph Worker is unavailable. Check the application installation.", "coreLibraryMissing": "The built-in tree-sitter runtime is missing or invalid.", "languageGrammarsMissing": "Built-in language grammars are missing.", "invalidGrammarPackage": "Some built-in grammar files are invalid.", "bundledUnavailable": "Built-in CodeGraph resources are currently unavailable."
+    }
+  },
   "persona": {
     "title": "Persona Management",
     "subtitle": "Manage global persona library, edit identity, soul, ontology and behavior rules",
@@ -970,5 +993,21 @@
     "ended": "Terminal ended",
     "selectToStart": "Select a terminal to get started",
     "agentSshSession": "Agent SSH Session"
+  },
+  "runtimePage": {
+    "title": "Runtime & Performance",
+    "subtitle": "Agent runtime settings: request timeout, retries, tool execution and context compression"
+  },
+  "anchorNav": {
+    "language": "Language",
+    "theme": "Theme",
+    "presets": "Presets",
+    "appearance": "Appearance",
+    "timeout": "Timeout",
+    "retries": "Retries",
+    "compression": "Compression",
+    "toolExecution": "Tool Execution",
+    "developer": "Developer",
+    "startup": "Startup"
   }
 }

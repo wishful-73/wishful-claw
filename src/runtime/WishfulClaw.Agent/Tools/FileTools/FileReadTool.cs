@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 using System.Globalization;
 
@@ -92,47 +92,46 @@ public sealed class FileReadTool : IToolExecutor
 
         {
 
-            var content = await File.ReadAllTextAsync(path, Encoding.UTF8, context.CancellationToken);
-
             var offset = Math.Max(1, GetInt(input, "offset", 1));
 
             var limit = Math.Max(1, Math.Min(GetInt(input, "limit", DefaultLimit), DefaultLimit));
 
-
-
-            var lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-
-            var start = Math.Min(offset - 1, lines.Length);
-
-            var end = Math.Min(start + limit, lines.Length);
-
-            var width = Math.Max(6, end.ToString(CultureInfo.InvariantCulture).Length);
-
-
-
+            // TL-4: stream the file line-by-line instead of ReadAllText so a
+            // huge file doesn't get fully loaded into memory — only the
+            // requested [offset, offset+limit) window is retained.
             var builder = new StringBuilder();
 
-            for (var index = start; index < end; index++)
+            var width = Math.Max(6, (offset + limit - 1).ToString(CultureInfo.InvariantCulture).Length);
 
+            using (var reader = new StreamReader(path, Encoding.UTF8))
             {
+                string? line;
+                var lineNumber = 0;
 
-                if (builder.Length > 0)
-
+                while ((line = reader.ReadLine()) is not null)
                 {
+                    lineNumber++;
 
-                    builder.Append('\n');
+                    if (lineNumber < offset)
+                    {
+                        continue;
+                    }
 
+                    if (lineNumber >= offset + limit)
+                    {
+                        break;
+                    }
+
+                    if (builder.Length > 0)
+                    {
+                        builder.Append('\n');
+                    }
+
+                    builder.Append(lineNumber.ToString(CultureInfo.InvariantCulture).PadLeft(width));
+                    builder.Append('\t');
+                    builder.Append(line);
                 }
-
-                builder.Append((index + 1).ToString(CultureInfo.InvariantCulture).PadLeft(width));
-
-                builder.Append('\t');
-
-                builder.Append(lines[index]);
-
             }
-
-
 
             return new ToolResult(builder.ToString());
 

@@ -34,6 +34,8 @@ import { safeSendMessagePackToWindow } from './window-ipc'
 import { setMainWindow } from './main-window-registry'
 import { registerLoginItemHandlers, registerWindowControlHandlers } from './ipc/window-handlers'
 import { registerMiscHandlers } from './ipc/misc-handlers'
+import { registerCodeGraphHandlers } from './ipc/codegraph-handlers'
+import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
 
 let mainWindow: BrowserWindow | null = null
 let channelManager: ChannelManager | null = null
@@ -235,6 +237,7 @@ if (!gotTheLock) {
   registerVideoHandlers()
   registerExtensionHandlers()
 registerWebSearchHandlers()
+registerCodeGraphHandlers()
 
   // ── Agent history handlers (forwarded to C# Worker SQLite) ──
   registerMessagePackHandler<{ toolUseId: string }, unknown>(
@@ -289,14 +292,23 @@ registerWebSearchHandlers()
   )
 
 
-  // ── Config stub handlers (key-value store, same pattern as settings) ──
+  // ── Config handlers (key-value store over the settings file, same pattern
+  //    as settings:get/set; backs the renderer's configStorage zustand stores,
+  //    e.g. the app-plugin store whose enabled flags gate CodeGraph tools) ──
   registerMessagePackHandler<string, unknown | null>(
     'config:get',
-    () => null
+    (key) => readPersistedSettings(key)
   )
   registerMessagePackHandler<{ key: string; value: unknown }, { success: boolean }>(
     'config:set',
-    () => ({ success: true })
+    ({ key, value }) => {
+      if (value === undefined) {
+        clearPersistedSettings(key)
+      } else {
+        writePersistedSettings(value, key)
+      }
+      return { success: true }
+    }
   )
 
   // ── Input draft stub handlers ──

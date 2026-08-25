@@ -58,6 +58,7 @@ export interface AgentActions {
 
     toolPreset?: string
     webSearchEnabled?: boolean
+    codegraphEnabled?: boolean
 
     workingFolder?: string
 
@@ -85,7 +86,7 @@ export interface AgentActions {
 
   }) => Promise<void>
 
-  cancelStream: () => Promise<void>
+  cancelStream: (targetSessionId?: string) => Promise<void>
 
   handleEnvelope: (envelope: AgentStreamEnvelope) => void
 
@@ -332,13 +333,15 @@ export const useChatStore = create<ChatStore>()(
 
 
 
-    cancelStream: async () => {
+    cancelStream: async (targetSessionId?: string) => {
 
       const get = args[1] as () => ChatStore
 
       const state = get()
 
-      const sessionId = state.activeSessionId
+      // RC-2: allow cancelling a specific session's stream; default to the
+      // active session so existing callers are unaffected.
+      const sessionId = targetSessionId ?? state.activeSessionId
       const runId = sessionId ? state.streamingMessages[sessionId] : null
 
       if (!runId) return
@@ -498,6 +501,49 @@ export const useChatStore = create<ChatStore>()(
         // per-tool-call live feed no longer has a consumer.
 
       if (!targetSessionId) return
+
+        if (eventType === 'context_compression_start' || eventType === 'context_compressed') {
+          const compressionEvent = event as {
+            type: 'context_compression_start' | 'context_compressed'
+            originalCount?: number
+            newCount?: number
+            keptMessageCount?: number
+          }
+          const now = Date.now()
+          const isCompleted = compressionEvent.type === 'context_compressed'
+          const compressionMessage: ChatMessage = {
+            id: `compression-${envelope.runId}-${now}`,
+            role: 'system',
+            text: '',
+            content: '',
+            createdAt: now,
+            meta: {
+              compressionStatus: {
+                state: isCompleted ? 'compressed' : 'compressing',
+                startedAt: now,
+                ...(isCompleted ? { completedAt: now } : {}),
+                ...(compressionEvent.keptMessageCount !== undefined
+                  ? { keptMessageCount: compressionEvent.keptMessageCount }
+                  : {}),
+                ...(compressionEvent.newCount !== undefined
+                  ? { newCount: compressionEvent.newCount }
+                  : {})
+              }
+            }
+          }
+          set((state) => {
+            const session = state.sessions.find((s) => s.id === targetSessionId)
+            if (!session) return
+            session.messages.push(compressionMessage)
+            session.messageCount = session.messages.length
+            session.updatedAt = now
+          })
+          const session = get().sessions.find((s) => s.id === targetSessionId)
+          if (session) {
+            void dbUpsertMessage(targetSessionId, compressionMessage, session.messages.length - 1)
+          }
+          continue
+        }
 
         // Route sub-agent events to the agent store's sub-agent handler
 
@@ -1343,13 +1389,31 @@ export const useChatStore = create<ChatStore>()(
 
               if (session) {
 
-                const msg = session.messages.find((m) => m.id === envelope.runId)
+                // RC-3: clear the streaming flag on ALL messages of the
+                // session (not just the runId match) so a stale stream state
+                // can't survive when the errored message was already dropped
+                // (e.g. after a reload).
+                for (const msg of session.messages) {
 
-                if (msg) {
+                  if (msg.isStreaming) {
 
-                  msg.isStreaming = false
+                    msg.isStreaming = false
 
-                  msg.error = event.message
+                    if (msg.id === envelope.runId) {
+
+                      msg.error = event.message
+
+                    }
+
+                  }
+
+                }
+
+                const errored = session.messages.find((m) => m.id === envelope.runId)
+
+                if (errored && !errored.error) {
+
+                  errored.error = event.message
 
                 }
 

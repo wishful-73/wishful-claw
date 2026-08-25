@@ -6,16 +6,6 @@
  * and are dispatched directly from reverse-handlers/index.ts.
  */
 
-// ── CodeGraph ──
-
-export async function handleCodeGraphTool(params: Record<string, unknown>): Promise<unknown> {
-  const action = params.action as string | undefined
-  return {
-    success: false,
-    error: `CodeGraph "${action}" failed: no code graph index available. Build a code graph first.`
-  }
-}
-
 // ── Extension ──
 
 export async function handleExtensionExecuteJsTool(params: Record<string, unknown>): Promise<unknown> {
@@ -70,9 +60,6 @@ export async function handleStubReverseRequest(
   params: unknown
 ): Promise<unknown> {
   const args = (params as Record<string, unknown>) ?? {}
-
-  // CodeGraph
-  if (method === 'codegraph:tool') return handleCodeGraphTool(args)
 
   // Extension
   if (method === 'extension:execute-js-tool') return handleExtensionExecuteJsTool(args)

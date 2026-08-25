@@ -43,6 +43,11 @@ TaskScheduler.UnobservedTaskException += (_, e) =>
 
 try
 {
+    // CodeGraph tree-sitter grammars resolve from the bundled grammars dir
+    // (WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR, or <binary>/grammars fallback);
+    // a missing grammar disables one language, never boot.
+    CodeGraphNativeLibraryResolver.Install();
+
     var endpoint = WorkerEndpoint.Parse(args);
     await WorkerHost.CreateDefault(endpoint).RunAsync();
     return 0;

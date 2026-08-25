@@ -1,4 +1,4 @@
-{
+﻿{
   "title": "设置",
   "shortcuts": {
     "title": "快捷键",
@@ -42,6 +42,10 @@
       "label": "AI 服务商",
       "desc": "配置 API Key、Base URL，测试连通性"
     },
+    "runtime": {
+      "label": "运行与性能",
+      "desc": "API 请求超时、重试策略与上下文压缩"
+    },
     "about": {
       "label": "关于",
       "desc": "版本信息"
@@ -51,7 +55,7 @@
       "aiService": "AI 服务",
       "about": "关于",
       "channels": "渠道",
-      "extensions": "扩展"
+      "extensions": "插件"
     },
     "persona": {
       "label": "人格管理",
@@ -723,6 +727,45 @@
     "kodaClaw": "KodaClaw — 记忆系统 / 人格系统设计",
     "openClaw": "OpenClaw — 记忆主动回忆机制"
   },
+  "plugin": {
+    "title": "插件",
+    "subtitle": "管理内置插件和工具注册状态。",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "enable": "启用插件",
+    "enableDesc": "启用后，插件提供的工具会注册到当前 Agent。",
+    "selectPlugin": "请选择一个插件",
+    "provider": "图像服务商",
+    "model": "图像模型",
+    "selectProvider": "选择服务商",
+    "selectModel": "选择模型",
+    "modelSource": "图像模型来源",
+    "modelSourceDesc": "使用全局图像模型，或为 Image 插件指定独立模型。",
+    "useGlobalModel": "使用全局图像模型",
+    "overrideModel": "为插件单独指定模型",
+    "globalModelMissing": "尚未配置可用的全局图像模型。",
+    "toolStatus": "工具状态",
+    "toolStatusDesc": "ImageGenerate 依赖已配置的图像模型。",
+    "toolStatusDescBrowser": "Browser 工具通过内置 Browser/WebView 链路执行。",
+    "toolStatusDescCodeGraph": "CodeGraph 工具使用内置运行时和项目索引。", "toolReadyCodeGraph": "插件已就绪，Agent 可以调用其工具。", "toolConstraintCodeGraph": "代码导航问题优先使用 codegraph_explore；请输入聚焦的问题，projectPath 可选，默认使用当前工作目录。项目需要先完成索引，工具才能返回结果。",
+    "toolStatusDescDesktop": "桌面控制工具当前不可用。",
+    "status": { "ready": "就绪", "not_ready": "未就绪", "disabled": "已停用" },
+    "items": {
+      "image": { "title": "Image", "description": "为 Agent 提供图像生成工具。", "promptTitle": "Image 插件说明", "promptDesc": "配置图像服务商和模型后，Agent 才能调用 ImageGenerate。" },
+      "browser": { "title": "Browser", "description": "通过内置 Browser/WebView 浏览网页并读取页面内容。", "promptTitle": "Browser 插件说明", "promptDesc": "Browser 工具会遵守允许域名和阻止域名规则。" },
+      "codegraph": { "title": "CodeGraph", "description": "使用代码图谱理解项目结构、符号关系和调用链。", "promptTitle": "CodeGraph 插件说明", "promptDesc": "CodeGraph 运行时随应用提供；需要先为项目建立索引。" },
+      "desktop-control": { "title": "Desktop Control", "description": "桌面截图和输入控制工具。", "promptTitle": "桌面控制插件说明", "promptDesc": "该插件当前隐藏且未启用。" }
+    },
+    "toolArgsMap": {
+      "ImageGenerate": "prompt、count、reference_images、size、quality", "BrowserNavigate": "url、action", "BrowserGetContent": "selector、type", "BrowserScreenshot": "无参数", "BrowserSnapshot": "无参数", "BrowserClick": "selector", "BrowserType": "selector、text、clear、submit", "BrowserScroll": "direction、amount", "codegraph_explore": "query、projectPath", "DesktopScreenshot": "无参数", "DesktopClick": "x、y、button、action", "DesktopType": "text、key、hotkey", "DesktopScroll": "x、y、scrollX、scrollY", "DesktopWait": "delayMs"
+    },
+    "browser": {
+      "title": "Browser 配置", "desc": "配置浏览器仿真、用户数据和域名访问规则。", "importCookies": "导入 Cookies", "importingCookies": "正在导入…", "clearCookies": "清理 Cookies", "clearingCookies": "正在清理…", "cookiesCleared": "Cookies 已清理", "cookiesClearFailed": "清理 Cookies 失败", "cookiesImported": "已从 {{browserName}} 导入 {{imported}} 个 Cookies，跳过 {{skipped}} 个", "cookiesImportFailed": "导入 Cookies 失败", "userDataReuse": "复用浏览器用户数据", "userDataReuseDesc": "复用本机浏览器配置、Cookies 和登录状态。", "userDataSource": "用户数据来源", "userDataSourceDesc": "选择要检测和复用的浏览器。", "restartRequired": "修改后需要重新启动 Browser 会话。", "activeProfile": "当前使用 {{browserName}} 配置 {{profileName}}：{{path}}", "profileFallback": "当前未检测到可复用的浏览器配置，将使用隔离会话。", "isolatedStorage": "隔离会话目录：{{path}}", "blockedDomains": "阻止域名", "blockedDomainsDesc": "这些域名不会被 Browser 工具访问。", "allowedDomains": "允许域名", "allowedDomainsDesc": "填写后仅允许访问这些域名；每行一个。", "domainPlaceholder": "example.com\n*.example.org", "domainRuleHint": "域名支持精确匹配和通配符；每行一个。", "sources": { "auto": "自动检测", "chrome": "Chrome", "edge": "Edge", "firefox": "Firefox" }
+    },
+    "codegraph": {
+      "assetsTitle": "内置 CodeGraph 运行时", "assetsDesc": "CodeGraph runtime 和语言 grammar 随应用提供，此处仅显示运行状态，不需要下载。", "workerRunning": "运行时已启动", "workerStopped": "运行时未启动", "devMode": "开发环境 grammar 已就绪（{{count}} 个）", "ready": "内置 grammar 已就绪（{{count}} 个）", "availableLanguages": "可用语言：{{languages}}", "invalidFiles": "无效 grammar 文件：{{files}}", "unrecognizedGrammars": "未识别 grammar：{{grammars}}", "missingLanguages": "缺少语言：{{languages}}", "workerMissing": "CodeGraph Worker 不可用，请检查应用安装内容。", "coreLibraryMissing": "内置 tree-sitter runtime 缺失或无效。", "languageGrammarsMissing": "内置语言 grammar 缺失。", "invalidGrammarPackage": "内置 grammar 文件无效。", "bundledUnavailable": "内置 CodeGraph 资源当前不可用。"
+    }
+  },
   "persona": {
     "title": "人格管理",
     "subtitle": "管理全局人格库，编辑人格的身份、灵魂、认知和行为准则",
@@ -1084,5 +1127,21 @@
     "ended": "终端已结束",
     "selectToStart": "选择一个终端开始",
     "agentSshSession": "Agent SSH 会话"
+  },
+  "runtimePage": {
+    "title": "运行与性能",
+    "subtitle": "Agent 运行时设置：请求超时、重试、工具执行与上下文压缩"
+  },
+  "anchorNav": {
+    "language": "语言",
+    "theme": "主题",
+    "presets": "配色预设",
+    "appearance": "外观",
+    "timeout": "请求超时",
+    "retries": "重试策略",
+    "compression": "上下文压缩",
+    "toolExecution": "工具执行",
+    "developer": "开发者模式",
+    "startup": "开机启动"
   }
 }

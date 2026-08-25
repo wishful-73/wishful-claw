@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronRight,
   Clock,
@@ -38,6 +38,7 @@ import {
   listDir
 } from './project-archive-helpers'
 import { PersonaFilePreview } from './PersonaFilePreview'
+import { CodeGraphProjectIndexSection } from './codegraph-project-index'
 
 
 const MEMORY_TABS: { id: ArchiveTabId; icon: typeof FileText; i18nKey: string }[] = [
@@ -416,6 +417,11 @@ export function ProjectArchivePage(): React.JSX.Element {
               {tCommon('action.refresh', { defaultValue: 'Refresh' })}
             </Button>
           </div>
+        </div>
+
+        {/* ── Code graph (per-project index) ── */}
+        <div className="pb-4">
+          <CodeGraphProjectIndexSection />
         </div>
 
         {/* ── Tab bar ── */}

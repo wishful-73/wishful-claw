@@ -1,4 +1,4 @@
-{
+﻿{
   "home": {
     "title": "今天我能帮你做什么？",
     "subtitle": "开始对话或选择下方快捷提示。",
@@ -986,6 +986,25 @@
       "noPersonas": "暂无项目专属人格，请通过人格设置页面添加。",
       "goToSettings": "人格设置",
       "selectFile": "选择一个人格文件预览"
+    },
+    "codegraph": {
+      "title": "代码图谱",
+      "desc": "为本项目建立代码图谱，Agent 无需逐文件阅读即可导航代码结构。",
+      "index": "索引",
+      "reindex": "重建索引",
+      "indexing": "索引中...",
+      "sync": "同步",
+      "syncing": "同步中...",
+      "goEnable": "去全局设置开启",
+      "disabledHint": "CodeGraph 当前未全局启用。请在设置中开启，Agent 才能获得代码导航工具。",
+      "working": "处理中...",
+      "loading": "正在加载插件状态...",
+      "statusComplete": "已完成",
+      "statusIndexing": "索引中",
+      "stats": "{{files}} 个文件 · {{nodes}} 个节点 · {{edges}} 条边",
+      "notIndexed": "尚未建立索引。点击「索引」构建代码图谱。",
+      "actionDone": "CodeGraph 操作完成",
+      "actionFailed": "CodeGraph 操作失败"
     }
   },
   "skills": {

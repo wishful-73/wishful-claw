@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Toaster } from '@renderer/components/ui/sonner'
 import { ThemeProvider } from '@renderer/components/theme-provider'
 import { ThemeRuntimeSync } from '@renderer/components/ThemeRuntimeSync'
@@ -14,10 +14,13 @@ import { MainLayout } from '@renderer/components/layout/MainLayout'
 import { SettingsPage } from '@renderer/components/settings/SettingsPage'
 import { attachRendererToolBridge } from '@renderer/lib/ipc/renderer-tool-bridge'
 import { registerAllTools, refreshDynamicToolCatalog } from '@renderer/lib/tools'
+import { initAppPluginStore, useAppPluginStore } from '@renderer/stores/app-plugin-store'
+import { updateAppPluginToolRegistration } from '@renderer/lib/app-plugin'
+import { initExtensionStore } from '@renderer/stores/extension-store'
+import { refreshExtensionTools } from '@renderer/lib/extensions/extension-tools'
 import { fetchToolDefinitions } from '@renderer/lib/tools/tool-cache'
 import { useMcpStore } from '@renderer/stores/mcp-store'
 import { useTerminalStore } from '@renderer/stores/terminal-store'
-import { registerBrowserTool } from '@renderer/lib/tools/browser-tool'
 import { registerAllViewers } from '@renderer/lib/preview/register-viewers'
 import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
 import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
@@ -40,9 +43,14 @@ function App(): React.JSX.Element | null {
         setI18nError(err)
       })
 
-    // Register frontend tool handlers (browser tools, etc.)
+    // Register renderer bridge and synchronize built-in app plugins after persistence hydration.
     attachRendererToolBridge()
-    registerBrowserTool()
+    initAppPluginStore()
+    const syncAppPlugins = (): void => updateAppPluginToolRegistration()
+    if (useAppPluginStore.persist.hasHydrated()) syncAppPlugins()
+    else useAppPluginStore.persist.onFinishHydration(syncAppPlugins)
+    const unsubscribeAppPluginChanges = useAppPluginStore.subscribe(syncAppPlugins)
+    void initExtensionStore().then(() => refreshExtensionTools())
 
     // Register preview viewers (image, markdown, code, etc.)
     registerAllViewers()
@@ -66,6 +74,10 @@ function App(): React.JSX.Element | null {
 
     // Pre-fetch tool definitions in background so first message doesn't wait
     fetchToolDefinitions('chat')
+
+    return () => {
+      unsubscribeAppPluginChanges()
+    }
   }, [])
 
   // Mount channel auto-reply listener (plugin:session-task → Agent Loop → reply)

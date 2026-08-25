@@ -80,6 +80,7 @@ function serializeMessage(msg: ChatMessage, sortOrder: number): {
   if (msg.segments && msg.segments.length > 0) meta.segments = msg.segments
   if (msg.error) meta.error = msg.error
   if (msg.preToolPhase) meta.preToolPhase = msg.preToolPhase
+  if (msg.meta) Object.assign(meta, msg.meta)
 
   return {
     id: msg.id,
@@ -112,6 +113,13 @@ function deserializeMessage(row: MessageRow): ChatMessage {
       if (meta.segments) msg.segments = meta.segments as ChatMessage["segments"]
       if (meta.error) msg.error = meta.error as string
       if (meta.preToolPhase) msg.preToolPhase = meta.preToolPhase as boolean
+      const messageMeta = { ...meta }
+      delete messageMeta.thinking
+      delete messageMeta.toolCalls
+      delete messageMeta.segments
+      delete messageMeta.error
+      delete messageMeta.preToolPhase
+      if (Object.keys(messageMeta).length > 0) msg.meta = messageMeta as ChatMessage['meta']
     } catch {
       // ignore parse errors
     }

@@ -1,12 +1,15 @@
-import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Layers, Keyboard } from 'lucide-react'
+﻿import { useTranslation } from 'react-i18next'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Layers, Keyboard, Gauge } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
 import { useUIStore, type SettingsTab } from '@renderer/stores/ui-store'
 import { ProviderPanel } from '@renderer/components/settings/ProviderPanel'
 import { PluginPanel } from '@renderer/components/settings/PluginPanel'
+import { ExtensionPanel } from '@renderer/components/settings/ExtensionPanel'
+import { AppPluginPanel } from '@renderer/components/settings/AppPluginPanel'
 import { GeneralPanel } from '@renderer/components/settings/GeneralPanel'
+import { RuntimePanel } from '@renderer/components/settings/RuntimePanel'
 import { PersonaPanel } from '@renderer/components/settings/PersonaPanel'
 import { cn } from '@renderer/lib/utils'
 import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
@@ -15,13 +18,32 @@ import { SkillPanel } from '@renderer/components/settings/skill-panel'
 import { McpPanel } from '@renderer/components/settings/mcp-panel'
 import { ModelManagementPanel } from '@renderer/components/settings/model-management/ModelManagementPanel'
 import { ShortcutsPanel } from '@renderer/components/settings/ShortcutsPanel'
+import { SectionAnchorNav, type SectionAnchor } from '@renderer/components/settings/section-anchor-nav'
 import { Server as ServerIcon } from 'lucide-react'
+import { useRef } from 'react'
+
+const GENERAL_ANCHORS: SectionAnchor[] = [
+  { id: 'sec-general-language', label: 'anchorNav.language' },
+  { id: 'sec-general-theme', label: 'anchorNav.theme' },
+  { id: 'sec-general-preset', label: 'anchorNav.presets' },
+  { id: 'sec-general-appearance', label: 'anchorNav.appearance' }
+]
+
+const RUNTIME_ANCHORS: SectionAnchor[] = [
+  { id: 'sec-runtime-autostart', label: 'anchorNav.startup' },
+  { id: 'sec-runtime-devmode', label: 'anchorNav.developer' },
+  { id: 'sec-runtime-timeout', label: 'anchorNav.timeout' },
+  { id: 'sec-runtime-retries', label: 'anchorNav.retries' },
+  { id: 'sec-runtime-compression', label: 'anchorNav.compression' },
+  { id: 'sec-runtime-tools', label: 'anchorNav.toolExecution' }
+]
 
 function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const settingsTab = useUIStore((s) => s.settingsTab)
   const setSettingsTab = useUIStore((s) => s.setSettingsTab)
   const closeSettings = useUIStore((s) => s.closeSettings)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
   const menuGroups: Array<{
     label: string
@@ -40,7 +62,8 @@ function SettingsPage(): React.JSX.Element {
       label: t('tabs.groups.aiService'),
       items: [
         { id: 'provider', icon: <Server className="size-4" />, label: t('tabs.provider.label') },
-        { id: 'modelManagement', icon: <Layers className="size-4" />, label: t('provider.modelManagement', { defaultValue: 'Model Management' }) }
+        { id: 'modelManagement', icon: <Layers className="size-4" />, label: t('provider.modelManagement', { defaultValue: 'Model Management' }) },
+        { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') }
       ]
     },
     {
@@ -50,8 +73,10 @@ function SettingsPage(): React.JSX.Element {
       ]
     },
     {
-      label: t('tabs.groups.extensions', { defaultValue: '扩展' }),
+      label: t('tabs.groups.extensions', { defaultValue: '插件' }),
       items: [
+        { id: 'plugin', icon: <Puzzle className="size-4" />, label: t('tabs.appPlugins.label', { defaultValue: '插件' }) },
+        { id: 'extension', icon: <Puzzle className="size-4" />, label: t('tabs.extensions.label', { defaultValue: '自定义扩展' }) },
         { id: 'skills', icon: <Puzzle className="size-4" />, label: t('tabs.skills.label', { defaultValue: 'Skills' }) },
         { id: 'mcp', icon: <Cable className="size-4" />, label: t('tabs.mcp.label', { defaultValue: 'MCP' }) }
       ]
@@ -140,17 +165,39 @@ function SettingsPage(): React.JSX.Element {
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ModelManagementPanel />
               </div>
+            ) : settingsTab === 'runtime' ? (
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+                <div className="mx-auto flex max-w-5xl items-start gap-2 px-8">
+                  <div className="min-w-0 flex-1">
+                    <RuntimePanel />
+                  </div>
+                  <SectionAnchorNav containerRef={scrollContainerRef} anchors={RUNTIME_ANCHORS} />
+                </div>
+              </div>
             ) : settingsTab === 'shortcuts' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ShortcutsPanel />
               </div>
             ) : settingsTab === 'general' ? (
-              <div className="flex-1 overflow-y-auto">
-                <GeneralPanel />
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+                <div className="mx-auto flex max-w-5xl items-start gap-2 px-8">
+                  <div className="min-w-0 flex-1">
+                    <GeneralPanel />
+                  </div>
+                  <SectionAnchorNav containerRef={scrollContainerRef} anchors={GENERAL_ANCHORS} />
+                </div>
               </div>
             ) : settingsTab === 'persona' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <PersonaPanel />
+              </div>
+            ) : settingsTab === 'plugin' ? (
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <AppPluginPanel />
+              </div>
+            ) : settingsTab === 'extension' ? (
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <ExtensionPanel />
               </div>
             ) : settingsTab === 'channel' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">

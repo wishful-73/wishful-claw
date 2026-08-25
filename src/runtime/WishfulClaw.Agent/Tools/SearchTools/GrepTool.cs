@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 using System.Collections.Generic;
 
@@ -56,7 +56,7 @@ public sealed class GrepTool : IToolExecutor
 
     public JsonElement InputSchema { get; } = ParseSchema(
 
-        """{"type":"object","properties":{"pattern":{"type":"string","description":"Regular expression pattern to search for"},"path":{"type":"string","description":"Root directory to search from. Defaults to working folder."},"file_pattern":{"type":"string","description":"File name pattern to filter (e.g. *.cs). Default: *","default":"*"},"case_insensitive":{"type":"boolean","description":"Case-insensitive search. Default: false","default":false},"context_lines":{"type":"integer","description":"Number of context lines before and after match. Default: 0","default":0},"limit":{"type":"integer","description":"Maximum number of matches. Default: 500","default":500}},"required":["pattern"]}""");
+        """{"type":"object","properties":{"pattern":{"type":"string","description":"Regular expression pattern to search for"},"path":{"type":"string","description":"Root directory to search from. Defaults to working folder."},"file_pattern":{"type":"string","description":"File name pattern to filter (e.g. *.cs). Default: *","default":"*"},"case_insensitive":{"type":"boolean","description":"Case-insensitive search. Default: false","default":false},"context_lines":{"type":"integer","description":"Number of context lines before and after match. Default: 0","default":0},"limit":{"type":"integer","description":"Maximum number of matches. Default: 500","default":500},"exclude_dirs":{"type":"array","items":{"type":"string"},"description":"Directory names to exclude from the search (e.g. [\"release\", \"docs\"]). Common dependency/build dirs are always excluded."}},"required":["pattern"]}""");
 
 
 
@@ -95,6 +95,8 @@ public sealed class GrepTool : IToolExecutor
         var contextLines = GetInt(input, "context_lines", DefaultContextLines);
 
         var maxResults = GetInt(input, "limit", MaxMatches);
+
+        var excludeDirs = SearchFilter.ParseExcludeDirs(input);
 
 
 
@@ -140,7 +142,7 @@ public sealed class GrepTool : IToolExecutor
 
 
 
-            foreach (var file in EnumerateSearchableFiles(root, filePattern))
+            foreach (var file in EnumerateSearchableFiles(root, filePattern, excludeDirs))
 
             {
 
@@ -334,13 +336,25 @@ public sealed class GrepTool : IToolExecutor
 
 
 
-    private static IEnumerable<string> EnumerateSearchableFiles(string root, string filePattern)
+    private static IEnumerable<string> EnumerateSearchableFiles(string root, string filePattern, IReadOnlyList<string> excludeDirs)
 
     {
 
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
 
         {
+
+            // TL-1: skip default dependency/build dirs and caller excludes
+
+            if (SearchFilter.IsExcluded(file, root, excludeDirs))
+
+            {
+
+                continue;
+
+            }
+
+
 
             var fileName = Path.GetFileName(file);
 

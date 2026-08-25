@@ -7,6 +7,7 @@ import {
   ChevronUp,
   CircleAlert,
   Loader2,
+  Pencil,
   Play,
   Plus,
   Power,
@@ -19,38 +20,8 @@ import { Switch } from '@renderer/components/ui/switch'
 import { toast } from 'sonner'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { cronEvents, type CronEvent } from '@renderer/lib/tools/cron-events'
-
-interface CronScheduleView {
-  kind: 'at' | 'every' | 'cron'
-  at?: number | string
-  every?: number
-  expr?: string
-  tz?: string
-}
-
-interface CronJobView {
-  id: string
-  name: string
-  schedule: CronScheduleView
-  prompt: string
-  model?: string
-  workingFolder?: string
-  deliveryMode?: string
-  deliveryTarget?: string | null
-  pluginId?: string | null
-  pluginType?: string | null
-  pluginChatId?: string | null
-  deleteAfterRun: boolean
-  maxIterations: number
-  enabled: boolean
-  deletedAt: number | null
-  lastFiredAt: number | null
-  lastRunAt: number | null
-  lastRunStatus?: string
-  lastRunSummary?: string
-  lastError?: string
-  fireCount: number
-}
+import { asCronJob, type CronJobView } from './cron-job-view'
+import { CronJobFormDialog } from './CronJobFormDialog'
 
 type StatusFilter = 'all' | 'enabled' | 'disabled' | 'success' | 'error'
 
@@ -58,36 +29,7 @@ interface CronJobResponse {
   error?: string
 }
 
-function asJob(value: unknown): CronJobView | null {
-  if (!value || typeof value !== 'object') return null
-  const record = value as Record<string, unknown>
-  if (typeof record.id !== 'string' || !record.schedule) return null
-  return {
-    id: record.id,
-    name: String(record.name ?? ''),
-    schedule: record.schedule as CronScheduleView,
-    prompt: String(record.prompt ?? ''),
-    model: record.model as string | undefined,
-    workingFolder: record.workingFolder as string | undefined,
-    deliveryMode: record.deliveryMode as string | undefined,
-    deliveryTarget: record.deliveryTarget as string | null | undefined,
-    pluginId: record.pluginId as string | null | undefined,
-    pluginType: record.pluginType as string | null | undefined,
-    pluginChatId: record.pluginChatId as string | null | undefined,
-    deleteAfterRun: Boolean(record.deleteAfterRun),
-    maxIterations: Number(record.maxIterations ?? 15),
-    enabled: Boolean(record.enabled),
-    deletedAt: (record.deletedAt as number | null) ?? null,
-    lastFiredAt: (record.lastFiredAt as number | null) ?? null,
-    lastRunAt: (record.lastRunAt as number | null) ?? null,
-    lastRunStatus: record.lastRunStatus as string | undefined,
-    lastRunSummary: record.lastRunSummary as string | undefined,
-    lastError: record.lastError as string | undefined,
-    fireCount: Number(record.fireCount ?? 0)
-  }
-}
-
-function formatSchedule(schedule: CronScheduleView): string {
+function formatSchedule(schedule: CronJobView['schedule']): string {
   if (schedule.kind === 'at') {
     const ts = typeof schedule.at === 'number' ? schedule.at : Date.parse(String(schedule.at))
     return Number.isNaN(ts) ? `at ${String(schedule.at)}` : new Date(ts).toLocaleString()
@@ -123,12 +65,14 @@ export function AutomationPage(): React.JSX.Element {
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set())
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingJob, setEditingJob] = useState<CronJobView | null>(null)
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
       const result = await ipcClient.invoke('cron:list', {})
       const list = Array.isArray(result) ? result : []
-      setJobs(list.map(asJob).filter((job): job is CronJobView => job !== null && !job.deletedAt))
+      setJobs(list.map(asCronJob).filter((job): job is CronJobView => job !== null && !job.deletedAt))
     } catch (error) {
       console.error('[AutomationPage] failed to load jobs:', error)
       toast.error(t('automation.loadFailed'))
@@ -149,31 +93,28 @@ export function AutomationPage(): React.JSX.Element {
           next.delete(event.jobId)
           return next
         })
-        if (event.type === 'run_finished' || event.type === 'job_removed') void refresh()
+        void refresh()
       }
     })
     return unsubscribe
   }, [refresh])
 
-  const toggleJob = useCallback(
-    async (job: CronJobView, enabled: boolean): Promise<void> => {
-      try {
-        const result = (await ipcClient.invoke('cron:toggle', {
-          jobId: job.id,
-          enabled
-        })) as CronJobResponse
-        if (result?.error) throw new Error(result.error)
-        setJobs((prev) =>
-          prev.map((candidate) =>
-            candidate.id === job.id ? { ...candidate, enabled } : candidate
-          )
+  const toggleJob = useCallback(async (job: CronJobView, enabled: boolean): Promise<void> => {
+    try {
+      const result = (await ipcClient.invoke('cron:toggle', {
+        jobId: job.id,
+        enabled
+      })) as CronJobResponse
+      if (result?.error) throw new Error(result.error)
+      setJobs((prev) =>
+        prev.map((candidate) =>
+          candidate.id === job.id ? { ...candidate, enabled } : candidate
         )
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : String(error))
-      }
-    },
-    []
-  )
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    }
+  }, [])
 
   const deleteJob = useCallback(
     async (job: CronJobView): Promise<void> => {
@@ -212,6 +153,16 @@ export function AutomationPage(): React.JSX.Element {
     [t]
   )
 
+  const openCreate = useCallback((): void => {
+    setEditingJob(null)
+    setFormOpen(true)
+  }, [])
+
+  const openEdit = useCallback((job: CronJobView): void => {
+    setEditingJob(job)
+    setFormOpen(true)
+  }, [])
+
   const filteredJobs = useMemo(() => {
     switch (filter) {
       case 'enabled':
@@ -241,7 +192,7 @@ export function AutomationPage(): React.JSX.Element {
           <Button variant="ghost" size="icon" onClick={() => void refresh()} title={t('automation.refresh')}>
             <RefreshCw className="size-4" />
           </Button>
-          <Button size="sm" disabled title={t('automation.formComingSoon')}>
+          <Button size="sm" onClick={openCreate}>
             <Plus className="mr-1 size-4" />
             {t('automation.newTask')}
           </Button>
@@ -334,6 +285,14 @@ export function AutomationPage(): React.JSX.Element {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => openEdit(job)}
+                        title={t('automation.edit')}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => void deleteJob(job)}
                         title={t('automation.delete')}
                       >
@@ -405,6 +364,14 @@ export function AutomationPage(): React.JSX.Element {
         <Power className="mr-1 inline size-3" />
         {t('automation.hint')}
       </div>
+
+      {/* Create / edit dialog */}
+      <CronJobFormDialog
+        open={formOpen}
+        editingJob={editingJob}
+        onClose={() => setFormOpen(false)}
+        onSaved={() => void refresh()}
+      />
     </div>
   )
 }

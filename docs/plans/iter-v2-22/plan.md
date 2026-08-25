@@ -42,7 +42,7 @@
 ### FU-E：定时任务 UI 重设计
 
 - [x] 步骤11：将 Automation 占位页替换为 Reasonix 风格的定时任务设置页。新增 `components/automation/AutomationPage.tsx`：任务列表（从 `cron:list` 加载）、状态筛选（全部/已启用/已禁用/最近成功/有错误）、Switch 启用禁用（`cron:toggle`）、删除（`cron:delete` 软删除）、运行一次（新增 Main 端 `cron:run-now`，复用 `fireJob` 触发完整执行链）、下次执行时间估算、最近运行状态图标、展开详情含 prompt 摘要/触发次数/通知方式/错误摘要；`cronEvents` 订阅 run_started/run_finished/job_removed 实时联动运行状态并刷新列表。MainLayout tasks 入口与 FEATURE_PAGES 均指向真实页面。新建任务按钮暂留禁用态（步骤 12 实现表单）。验证：TS web/node/root 三配置零错误；列表从 DB 加载待应用内人工确认。
-- [ ] 步骤12：实现创建/编辑任务表单。支持 at/every/cron 三种模式、时区、prompt、模型/工作目录、最大迭代次数、deleteAfterRun、通知方式；选择微信/飞书时展示插件和目标 chatId 配置，并对必填字段做前端校验。验证：UI 创建的任务能被 Agent 工具 CronList 读到，编辑后调度配置生效；中英文无裸 i18n key。
+- [x] 步骤12：实现创建/编辑任务表单。新增 `components/automation/CronJobFormDialog.tsx` + 共享类型 `cron-job-view.ts`：at（datetime-local）/every（分钟数）/cron（表达式+时区）三种模式、prompt、模型选择（provider-store，可跟随全局默认）、工作目录、最大迭代次数、deleteAfterRun、通知方式（desktop/session/plugin/none）；plugin 模式展示插件 ID 与 chatId 输入；name/prompt/schedule/sessionTarget/plugin 字段前端必填校验；创建走 `cron:add`、编辑走 `cron:update`（Main 反向请求），成功后刷新列表。中英文文案齐全无裸 key。验证：TS web/node/root 三配置零错误；UI 创建的任务能被 CronList 读到留待应用内人工确认。
 - [ ] 步骤13：将 OpenCowork Automation 日历作为预览视图并补执行反馈。列表、详情、表单和日历共享同一套 SQLite 任务数据与事件状态；日历只负责展示任务分布、下次执行时间和跳转详情，不引入第二套编辑/持久化逻辑。验证：任务触发时 UI 显示 fired/running/finished/error；页面切换回来状态仍从 DB 恢复。
 
 ### FU-F：审查与最终验证
@@ -52,7 +52,7 @@
 
 ## 当前执行状态
 
-- 已完成：步骤 1-9 / 15；步骤 10 自动化子单元已完成（运行时端到端证据因 Worker 数据目录无法隔离而阻塞）；步骤 11 已完成。
+- 已完成：步骤 1-9 / 15；步骤 10 自动化子单元已完成（运行时端到端证据因 Worker 数据目录无法隔离而阻塞）；步骤 11、12 已完成。
 - 当前安全点：Cron regression build/run、TypeScript 三配置、Infrastructure build 和 `git diff --check` 已通过；自动化实现与 Plan 记录已提交（`0413ee4`、`04485c1`）。Electron 开发版启动链路已证明可运行，但 Worker 数据目录无法通过现有环境变量隔离；本次隔离进程树已全部停止，仓库工作区未被运行时修改。
 - 下一步：步骤 10 保持未完成并记录环境阻塞，继续 FU-E 步骤 11；Main timer、重启恢复、真实 Agent、周期连续触发、完成后归档及微信/飞书成功/失败证据留到步骤 15 的受控人工验收，或先另行实现并验证 Worker 全局数据目录覆盖能力。
 - 未执行：merge、tag、push、release；最终 PASS/FAIL/PARTIAL 仍由用户在步骤 15 验证后裁定。

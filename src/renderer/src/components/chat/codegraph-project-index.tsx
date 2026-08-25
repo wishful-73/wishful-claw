@@ -64,8 +64,10 @@ export function CodeGraphProjectIndexSection(): React.JSX.Element {
   )
   const workingFolder = activeProject?.workingFolder ?? undefined
   // SSH projects cannot write .wishful-claw/ on the remote root; mirror the memory
-  // strategy and keep the graph DB under the app-home project dir instead.
-  const isSshProject = !workingFolder && Boolean(activeProject?.sshConnectionId)
+  // strategy (ProjectArchivePage memoryRoot) and keep the graph DB under the
+  // app-home project dir instead. SSH is keyed off sshConnectionId — a remote
+  // workingFolder may still be set, so it must not gate this check.
+  const isSshProject = Boolean(activeProject?.sshConnectionId)
   const dataRootOverride =
     isSshProject && activeProjectId ? `~/.wishful-claw/projects/${activeProjectId}/codegraph` : undefined
 

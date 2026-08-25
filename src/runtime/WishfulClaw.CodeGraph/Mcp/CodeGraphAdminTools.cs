@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 // Management surface for the plugin settings UI: enumerate every indexed project
 // (the centralized layout keys dirs by sha256(root); the root itself is read back
@@ -120,12 +120,22 @@ internal static class CodeGraphAdminTools
     public static WorkerResponse ListProjectsRpc(JsonElement _) =>
         WorkerResponse.Json(ListProjects(), CodeGraphJsonContext.Default.CodeGraphProjectListResult);
 
-    public static WorkerResponse RemoveProjectRpc(JsonElement args) =>
-        WorkerResponse.Json(
+    public static WorkerResponse RemoveProjectRpc(JsonElement args)
+    {
+        // Register before DropEngine/Remove so the delete targets the same dir the
+        // engine opened (project-local when the host maps one).
+        var root = JsonHelpers.GetString(args, "workingFolder") ?? JsonHelpers.GetString(args, "projectPath");
+        if (!string.IsNullOrWhiteSpace(root) && args.TryGetProperty("dataRoot", out var dr) && dr.ValueKind == JsonValueKind.String)
+        {
+            CodeGraphDataRootRegistry.Register(root, dr.GetString());
+        }
+
+        return WorkerResponse.Json(
             RemoveProject(
-                JsonHelpers.GetString(args, "workingFolder") ?? JsonHelpers.GetString(args, "projectPath"),
+                root,
                 JsonHelpers.GetString(args, "hash")),
             CodeGraphJsonContext.Default.CodeGraphRemoveProjectResult);
+    }
 
     private static long DbSizeWithSidecars(string dbPath)
     {

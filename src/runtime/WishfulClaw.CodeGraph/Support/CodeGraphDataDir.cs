@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 // =============================================================================
 // CodeGraphDataDir — the per-project graph-DB location resolver (reference/04
@@ -24,8 +24,22 @@ internal static class CodeGraphDataDir
     // The codegraph base under the app's data dir. `CODEGRAPH_HOME` overrides the
     // whole base (single dir) — chiefly a test hook so a suite does not scribble in
     // the developer's real ~/.wishful-claw/.
-    public static string CodeGraphBaseDir()
+    //
+    // WishfulClaw extension: a project registered in CodeGraphDataRootRegistry (the
+    // host maps {workingFolder} -> {workingFolder}/.wishful-claw/codegraph) stores its
+    // graph DB project-locally instead of the centralized base. Unregistered roots
+    // keep the vendored Decision 3 layout.
+    public static string CodeGraphBaseDir(string? projectRoot = null)
     {
+        if (!string.IsNullOrEmpty(projectRoot))
+        {
+            var local = CodeGraphDataRootRegistry.TryGet(projectRoot);
+            if (!string.IsNullOrEmpty(local))
+            {
+                return local;
+            }
+        }
+
         var overrideDir = Environment.GetEnvironmentVariable("CODEGRAPH_HOME");
         if (!string.IsNullOrEmpty(overrideDir))
         {
@@ -41,9 +55,21 @@ internal static class CodeGraphDataDir
         return Path.Combine(home, ".wishful-claw", "codegraph");
     }
 
-    // The per-project data directory (…/codegraph/<hash>).
-    public static string CodeGraphDir(string projectRoot) =>
-        Path.Combine(CodeGraphBaseDir(), HashRoot(projectRoot));
+    // The per-project data directory (…/codegraph/<hash>, or the registered
+    // project-local dir). Hashing is skipped entirely for registered roots — their
+    // dir IS the data dir, no per-project subdirectory.
+    public static string CodeGraphDir(string projectRoot)
+    {
+        var local = string.IsNullOrEmpty(projectRoot)
+            ? null
+            : CodeGraphDataRootRegistry.TryGet(projectRoot);
+        if (!string.IsNullOrEmpty(local))
+        {
+            return local;
+        }
+
+        return Path.Combine(CodeGraphBaseDir(), HashRoot(projectRoot));
+    }
 
     // The per-project graph DB path (…/codegraph/<hash>/graph.db). Its parent dir is
     // created lazily by CodeGraphConnectionFactory on open.

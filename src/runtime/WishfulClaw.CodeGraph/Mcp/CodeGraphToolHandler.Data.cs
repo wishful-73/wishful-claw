@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 // =============================================================================
 // CodeGraphToolHandler — structured (JSON DTO, NOT tool-shaped) read handlers that
@@ -393,23 +393,41 @@ internal static partial class CodeGraphToolHandler
 
     // ---- RPC adapters (module registration) ------------------------------------
 
-    internal static WorkerResponse IndexStatusRpc(JsonElement args) =>
-        WorkerResponse.Json(IndexStatus(args), CodeGraphJsonContext.Default.CodeGraphIndexStatus);
+    internal static WorkerResponse IndexStatusRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return WorkerResponse.Json(IndexStatus(args), CodeGraphJsonContext.Default.CodeGraphIndexStatus);
+    }
 
-    internal static WorkerResponse StatsRpc(JsonElement args) =>
-        WorkerResponse.Json(Stats(args), CodeGraphJsonContext.Default.CodeGraphStatsResult);
+    internal static WorkerResponse StatsRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return WorkerResponse.Json(Stats(args), CodeGraphJsonContext.Default.CodeGraphStatsResult);
+    }
 
-    internal static WorkerResponse AnalyticsRpc(JsonElement args) =>
-        WorkerResponse.Json(Analytics(args), CodeGraphJsonContext.Default.CodeGraphAnalyticsResult);
+    internal static WorkerResponse AnalyticsRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return WorkerResponse.Json(Analytics(args), CodeGraphJsonContext.Default.CodeGraphAnalyticsResult);
+    }
 
-    internal static WorkerResponse QueryNeighborsRpc(JsonElement args) =>
-        WorkerResponse.Json(QueryNeighbors(args), CodeGraphJsonContext.Default.CodeGraphSubgraphResult);
+    internal static WorkerResponse QueryNeighborsRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return WorkerResponse.Json(QueryNeighbors(args), CodeGraphJsonContext.Default.CodeGraphSubgraphResult);
+    }
 
-    internal static WorkerResponse FilesTreeRpc(JsonElement args) =>
-        WorkerResponse.Json(FilesTree(args), CodeGraphJsonContext.Default.CodeGraphFilesResult);
+    internal static WorkerResponse FilesTreeRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return WorkerResponse.Json(FilesTree(args), CodeGraphJsonContext.Default.CodeGraphFilesResult);
+    }
 
-    internal static WorkerResponse FileSymbolsRpc(JsonElement args) =>
-        WorkerResponse.Json(FileSymbols(args), CodeGraphJsonContext.Default.CodeGraphNodeListResult);
+    internal static WorkerResponse FileSymbolsRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return WorkerResponse.Json(FileSymbols(args), CodeGraphJsonContext.Default.CodeGraphNodeListResult);
+    }
 }
 
 // ---------------------------------------------------------------------------

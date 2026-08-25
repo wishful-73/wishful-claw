@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 
@@ -640,33 +640,68 @@ internal static partial class CodeGraphToolHandler
 
     // ===========================================================================
     // RPC wrappers (thin adapters: handler result -> WorkerResponse.Json). Referenced
-    // by CodeGraphModule.Register.
+    // by CodeGraphModule.Register. Each registers the host-supplied dataRoot (if any)
+    // before dispatch so engine opens land in the project-local dir.
     // ===========================================================================
 
-    internal static WorkerResponse ExploreRpc(JsonElement args) => Tool(Explore(args));
+    internal static WorkerResponse ExploreRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return Tool(Explore(args));
+    }
 
-    internal static WorkerResponse SearchRpc(JsonElement args) => Tool(Search(args));
+    internal static WorkerResponse SearchRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return Tool(Search(args));
+    }
 
-    internal static WorkerResponse StatusRpc(JsonElement args) => Tool(Status(args));
+    internal static WorkerResponse StatusRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return Tool(Status(args));
+    }
 
-    internal static WorkerResponse NodeRpc(JsonElement args) => Tool(Node(args));
+    internal static WorkerResponse NodeRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return Tool(Node(args));
+    }
 
-    internal static WorkerResponse CallersRpc(JsonElement args) => Tool(Callers(args));
+    internal static WorkerResponse CallersRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return Tool(Callers(args));
+    }
 
-    internal static WorkerResponse CalleesRpc(JsonElement args) => Tool(Callees(args));
+    internal static WorkerResponse CalleesRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return Tool(Callees(args));
+    }
 
-    internal static WorkerResponse ImpactRpc(JsonElement args) => Tool(Impact(args));
+    internal static WorkerResponse ImpactRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return Tool(Impact(args));
+    }
 
-    internal static WorkerResponse FilesRpc(JsonElement args) => Tool(Files(args));
+    internal static WorkerResponse FilesRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return Tool(Files(args));
+    }
 
     internal static async Task<WorkerResponse> IndexRpc(JsonElement args, IWorkerRequestContext ctx)
     {
+        RegisterDataRoot(args);
         var response = await Index(args, ctx, ctx.CancellationToken).ConfigureAwait(false);
         return WorkerResponse.Json(response, CodeGraphJsonContext.Default.CodeGraphIndexResponse);
     }
 
     internal static async Task<WorkerResponse> SyncRpc(JsonElement args, IWorkerRequestContext ctx)
     {
+        RegisterDataRoot(args);
         var response = await Sync(args, ctx, ctx.CancellationToken).ConfigureAwait(false);
         return WorkerResponse.Json(response, CodeGraphJsonContext.Default.CodeGraphSyncResponse);
     }
@@ -679,6 +714,7 @@ internal static partial class CodeGraphToolHandler
     // default/allowlist surface. Never auto-indexes — listing tools must stay cheap.
     internal static CodeGraphToolsListResult ToolsList(JsonElement args)
     {
+        RegisterDataRoot(args);
         var root = ResolveWorkingFolder(args);
         if (string.IsNullOrEmpty(root))
         {
@@ -716,6 +752,7 @@ internal static partial class CodeGraphToolHandler
 
     internal static WorkerResponse InstructionsRpc(JsonElement args)
     {
+        RegisterDataRoot(args);
         var root = ResolveWorkingFolder(args);
         var indexed = !string.IsNullOrEmpty(root) && CodeGraphEngine.IsInitialized(root);
         var text = indexed ? CodeGraphInstructions.Indexed : CodeGraphInstructions.NoRoot;
@@ -1008,6 +1045,24 @@ internal static partial class CodeGraphToolHandler
         }
 
         return string.IsNullOrWhiteSpace(wf) ? null : wf.Trim();
+    }
+
+    // WishfulClaw: the host (main-process IPC) may pass an explicit per-project data
+    // dir (`dataRoot`, e.g. {workingFolder}/.wishful-claw/codegraph). Registering it
+    // BEFORE any engine open / IsInitialized check routes the graph DB project-locally
+    // (see CodeGraphDataRootRegistry). Absent arg = centralized default.
+    private static void RegisterDataRoot(JsonElement args)
+    {
+        var root = ResolveWorkingFolder(args);
+        if (string.IsNullOrEmpty(root) || args.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        if (args.TryGetProperty("dataRoot", out var dr) && dr.ValueKind == JsonValueKind.String)
+        {
+            CodeGraphDataRootRegistry.Register(root, dr.GetString());
+        }
     }
 
     // Symbol -> candidate defs, narrowed by an optional file substring then an optional

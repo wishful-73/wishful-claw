@@ -6,6 +6,7 @@
 
 import type { ChannelInstance } from '../../channels/channel-types'
 import { ChannelManager } from '../../channels/channel-manager'
+import { extractMessage, extractStack, logError, logInfo } from '../../lib/logger'
 import {
   activeChannelManager,
   setActiveChannelManager,
@@ -34,6 +35,68 @@ let _handlersRegistered = false
 
 // ── Exported action executors (used by reverse-request dispatch) ──
 
+export interface SendChannelMessageArgs {
+  pluginId: string
+  /** Optional assertion used by background callers to avoid sending through a mismatched channel. */
+  pluginType?: string
+  chatId: string
+  content: string
+  isWakeup?: boolean
+  taskId?: string
+}
+
+/** Send a message through a running channel without depending on a renderer window. */
+export async function sendChannelMessage(args: SendChannelMessageArgs): Promise<{ messageId: string }> {
+  const taskId = args.taskId?.trim() || 'background'
+  const pluginId = args.pluginId.trim()
+  const pluginType = args.pluginType?.trim()
+  const chatId = args.chatId.trim()
+  const content = args.content.trim()
+
+  if (!pluginId) throw new Error('Missing pluginId for channel message')
+  if (!chatId) throw new Error('Missing chatId for channel message')
+  if (!content) throw new Error('Message content is empty')
+
+  const service = activeChannelManager?.getService(pluginId)
+  if (!service || !service.isRunning()) {
+    const error = new Error(`Plugin ${pluginId} is not running`)
+    logError('main', `[ChannelSend] Failed task=${taskId}`, {
+      stack: error.stack,
+      extra: { taskId, pluginId, pluginType: pluginType || service?.pluginType || null, chatId, contentLength: content.length, error: error.message }
+    })
+    throw error
+  }
+  if (pluginType && service.pluginType !== pluginType) {
+    const error = new Error(`Plugin ${pluginId} is type ${service.pluginType}, expected ${pluginType}`)
+    logError('main', `[ChannelSend] Failed task=${taskId}`, {
+      stack: error.stack,
+      extra: { taskId, pluginId, pluginType, chatId, contentLength: content.length, error: error.message }
+    })
+    throw error
+  }
+
+  try {
+    const target = service as typeof service & {
+      sendWakeupMessage?: (chatId: string, content: string) => Promise<{ messageId: string }>
+    }
+    const result =
+      args.isWakeup === true && typeof target.sendWakeupMessage === 'function'
+        ? await target.sendWakeupMessage(chatId, content)
+        : await service.sendMessage(chatId, content)
+    logInfo('main', `[ChannelSend] Succeeded task=${taskId}`, {
+      extra: { taskId, pluginId, pluginType: service.pluginType, chatId, contentLength: content.length, messageId: result.messageId }
+    })
+    return result
+  } catch (err) {
+    const error = extractMessage(err)
+    logError('main', `[ChannelSend] Failed task=${taskId}`, {
+      stack: extractStack(err),
+      extra: { taskId, pluginId, pluginType: service.pluginType, chatId, contentLength: content.length, error }
+    })
+    throw err
+  }
+}
+
 export async function executePluginAction(args: {
   pluginId: string
   action: string
@@ -47,13 +110,14 @@ export async function executePluginAction(args: {
 
   switch (action) {
     case 'sendMessage': {
-      const target = service as typeof service & {
-        sendWakeupMessage?: (chatId: string, content: string) => Promise<{ messageId: string }>
-      }
-      if (params.isWakeup === true && typeof target.sendWakeupMessage === 'function') {
-        return await target.sendWakeupMessage(params.chatId as string, params.content as string)
-      }
-      return await service.sendMessage(params.chatId as string, params.content as string)
+      return await sendChannelMessage({
+        pluginId,
+        pluginType: typeof params.pluginType === 'string' ? params.pluginType : undefined,
+        chatId: typeof params.chatId === 'string' ? params.chatId : '',
+        content: typeof params.content === 'string' ? params.content : '',
+        isWakeup: params.isWakeup === true,
+        taskId: typeof params.taskId === 'string' ? params.taskId : undefined
+      })
     }
     case 'replyMessage':
       return await service.replyMessage(params.messageId as string, params.content as string)

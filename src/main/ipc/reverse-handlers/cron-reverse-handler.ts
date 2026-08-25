@@ -458,6 +458,16 @@ export async function handleCronList(params: Record<string, unknown>): Promise<u
     .filter((job) => !params?.sessionId || job.sessionId === params.sessionId)
 }
 
+export async function handleCronRunNow(params: Record<string, unknown>): Promise<unknown> {
+  const jobId = (params.jobId ?? params.id) as string | undefined
+  if (!jobId) return { error: 'jobId is required' }
+  await restoreJobs()
+  const job = await loadJob(jobId)
+  if (!job || job.deletedAt) return { error: `Job "${jobId}" not found` }
+  fireJob(job)
+  return { success: true, jobId }
+}
+
 export function initializeCronScheduler(): Promise<void> {
   return restoreJobs()
 }
@@ -482,6 +492,8 @@ export async function handleCronReverseRequest(
       return handleCronToggle(args)
     case 'cron:list':
       return handleCronList(args)
+    case 'cron:run-now':
+      return handleCronRunNow(args)
     default:
       return { error: `Unknown cron method: ${method}` }
   }

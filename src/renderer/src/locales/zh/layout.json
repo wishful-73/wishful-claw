@@ -1,4 +1,4 @@
-{
+﻿{
   "splash": {
     "enterMain": "进入主页",
     "enterSettings": "AI 服务商设置",
@@ -271,6 +271,35 @@
   "placeholder": {
     "iteration": "计划于",
     "comingSoon": "此功能尚未实现，将在后续迭代中提供。"
+  },
+  "automation": {
+    "title": "定时任务",
+    "refresh": "刷新",
+    "newTask": "新建任务",
+    "formComingSoon": "任务创建表单将在下一步提供，当前可通过对话让 Agent 创建",
+    "loading": "加载中…",
+    "empty": "暂无定时任务。可在对话中让 Agent 创建（CronAdd）。",
+    "noMatch": "当前筛选条件下没有任务",
+    "filter": {
+      "all": "全部",
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "success": "最近成功",
+      "error": "有错误"
+    },
+    "nextRun": "下次执行",
+    "lastRun": "上次运行",
+    "runNow": "运行一次",
+    "delete": "删除",
+    "deleted": "任务已删除",
+    "runTriggered": "已触发「{{name}}」",
+    "fireCount": "触发次数",
+    "delivery": "通知方式",
+    "maxIterations": "最大迭代",
+    "model": "模型",
+    "workingFolder": "工作目录",
+    "loadFailed": "加载定时任务失败",
+    "hint": "调度器由主进程管理；一次性任务执行完成后自动归档。"
   },
   "layout": {
     "noSessionSelected": "未选择会话",

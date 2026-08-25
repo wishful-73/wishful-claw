@@ -286,9 +286,7 @@ public static partial class DbClient
                     fire_count INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
-                );",
-                @"CREATE INDEX IF NOT EXISTS ix_cron_tasks_enabled_next ON cron_tasks(enabled, deleted_at, updated_at);",
-                @"CREATE INDEX IF NOT EXISTS ix_cron_tasks_session ON cron_tasks(session_id);"
+                );"
             };
 
             foreach (var sql in tableSqls)
@@ -376,6 +374,8 @@ public static partial class DbClient
             EnsureColumn("cron_tasks", "fire_count", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("cron_tasks", "created_at", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("cron_tasks", "updated_at", "INTEGER NOT NULL DEFAULT 0");
+            _db.Execute("CREATE INDEX IF NOT EXISTS ix_cron_tasks_enabled_next ON cron_tasks(enabled, deleted_at, updated_at);");
+            _db.Execute("CREATE INDEX IF NOT EXISTS ix_cron_tasks_session ON cron_tasks(session_id);");
             NormalizeGoalNumericColumns();
             NormalizeGoalStatuses();
             NormalizeGoalPlansJson();

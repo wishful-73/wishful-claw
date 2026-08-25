@@ -9,6 +9,7 @@ namespace WishfulClaw.Infrastructure;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(DbInitializeResult))]
+[JsonSerializable(typeof(ErrorResult))]
 [JsonSerializable(typeof(GoalFindResult))]
 [JsonSerializable(typeof(GoalMutationResult))]
 [JsonSerializable(typeof(GoalRow))]

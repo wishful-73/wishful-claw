@@ -124,7 +124,7 @@ public static class DbCronTools
                 "delivery_target = @deliveryTarget, plugin_id = @pluginId, plugin_type = @pluginType, " +
                 "plugin_chat_id = @pluginChatId, delete_after_run = @deleteAfterRun, max_iterations = @maxIterations, " +
                 "enabled = @enabled, updated_at = @updatedAt WHERE id = @id",
-                Parameters(entity).Append(new SqliteParameter("@id", entity.Id)).ToArray());
+                Parameters(entity).ToArray());
 
             return WorkerResponse.Json(new CronMutationResult(changed == 1, changed, CronRow.FromEntity(entity),
                     changed == 1 ? null : "Cron task was not updated"),

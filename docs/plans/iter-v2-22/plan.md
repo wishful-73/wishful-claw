@@ -31,11 +31,11 @@
 
 - [x] 步骤5：设计并创建 Cron 数据表和迁移。新增 `CronEntity`/`CronRow`/`EntityMappers.MapCron`，字段覆盖任务配置（id/name/sessionId/scheduleJson/prompt/agentId/model/workingFolder/deliveryMode/deliveryTarget/pluginId/pluginType/pluginChatId/deleteAfterRun/maxIterations/enabled/deletedAt）和任务级运行状态（lastFiredAt/lastRunAt/lastRunStatus/lastRunSummary/lastError/fireCount/createdAt/updatedAt）。在 `DbClient` 增加 `cron_tasks` 的 `CREATE TABLE IF NOT EXISTS`、启停/软删除/更新时间索引和旧库 `EnsureColumn` 迁移；在 `InfrastructureJsonContext` 注册 `CronRow` 与 `List<CronRow>`，JSON 字段保持 opaque string，符合 AOT 分层约束。验证：DDL 覆盖新库初始化，`EnsureColumn` 覆盖已有库迁移路径；`git diff --check`、`npx tsc --noEmit -p tsconfig.node.json`、`npx tsc --noEmit -p tsconfig.web.json`、`npx tsc --noEmit -p tsconfig.json` 和 `set DOTNET_ROOT=D:\claw\dotnet-sdk && dotnet build src\\runtime\\WishfulClaw.Infrastructure\\WishfulClaw.Infrastructure.csproj --no-restore` 均通过（C# 0 错误、0 警告）。实现提交：`2677869`。
 - [x] 步骤6：实现 Worker Cron CRUD/状态端点。新增 `DbCronTools`，注册 list/get/create/update/delete/toggle/mark-fired/mark-run-finished 八个端点；默认过滤软删除记录，删除使用软删除，SQL 全部参数化，结果类型显式注册到 Infrastructure AOT JSON context。验证：TypeScript 三配置、`git diff --check`、Infrastructure build 均通过（0 警告、0 错误）；Worker 重启后 SQLite 持久化验证留待步骤 10/15 联调。实现提交：`5d79154`。
-- [x] 步骤7：改造 Main 调度器为 DB 驱动。Cron 创建/更新/删除/启停先通过 Worker DB 端点持久化，再注册或重排 timer；Main 启动时恢复 enabled 且未软删除任务；保留 at/every/cron 校验和时区逻辑，`+Ns/+Nm/+Nh/+Nd` 在落库前规范化为绝对毫秒；触发时记录 fired 状态，一次性任务软删除归档，并使用主窗口注册表发送事件。验证：TypeScript 三配置和 `git diff --check` 通过；真实应用重启/Worker 重启和三种调度端到端证据留待步骤 10/15。实现提交：待提交。
+- [x] 步骤7：改造 Main 调度器为 DB 驱动。Cron 创建/更新/删除/启停先通过 Worker DB 端点持久化，再注册或重排 timer；Main 启动时恢复 enabled 且未软删除任务；保留 at/every/cron 校验和时区逻辑，`+Ns/+Nm/+Nh/+Nd` 在落库前规范化为绝对毫秒；触发时记录 fired 状态，一次性任务软删除归档，并使用主窗口注册表发送事件。验证：TypeScript 三配置和 `git diff --check` 通过；真实应用重启/Worker 重启和三种调度端到端证据留待步骤 10/15。实现提交：`311d505`。
 
 ### FU-D：Cron 执行、渠道通知与失败恢复
 
-- [ ] 步骤8：完善 cron:fire 到 Agent 的参数透传。确保 prompt、模型、工作目录、sessionId、maxIterations、deliveryMode、deliveryTarget、pluginId、pluginChatId 全链路保留；为 fired、run-started、run-progress、run-finished 统一事件 payload。验证：桌面、会话、微信、飞书四种 delivery 分支参数均可在 renderer 侧还原；TypeScript web/node 零错误。
+- [x] 步骤8：完善 cron:fire 到 Agent 的参数透传。新增 Renderer Cron runtime，监听 MessagePack `cron:fire`，保留 prompt、模型、工作目录、sessionId、maxIterations、deliveryMode、deliveryTarget、pluginId、pluginChatId，复用 Sidecar Agent 执行链；为 fired、run-started、run-progress、run-finished 统一事件 payload，运行完成/失败/取消后回写 DB 状态。运行事件不携带完整 prompt 或敏感凭据，摘要限制长度。验证：`ipcClient.on('cron:fire')` 路由、App 单次初始化/卸载、TypeScript web/node/全量三配置和 `git diff --check` 均通过；桌面/会话/微信/飞书实际 delivery 端到端验证留待步骤 9/10/15。实现提交：`待提交`。
 - [ ] 步骤9：实现执行结果持久化和渠道通知。Agent 完成/失败/取消时更新任务级运行状态；deliveryMode=plugin 时调用统一渠道发送边界，发送成功记录结果，发送失败记录错误但不阻断周期任务；一次性任务只有在执行完成后按策略归档。验证：周期任务执行成功后连续触发；Agent 失败后下一次仍能执行；微信/飞书收到成功和失败通知；C# build + TS 三配置通过。
 - [ ] 步骤10：补齐 Cron 功能测试与恢复测试。覆盖 at/every/cron、时区、启停、编辑、删除、重复触发、deleteAfterRun、应用重启、Worker 重启、渠道断开、Agent 失败和通知失败。验证：形成可复现测试记录，不以“代码看起来正确”代替运行证据。
 
@@ -52,9 +52,9 @@
 
 ## 当前执行状态
 
-- 已完成：步骤 1-6 / 15，分别落地渠道会话标题、渠道主动发送、Cron SQLite 数据模型/DDL/迁移/AOT 注册和 Worker CRUD/状态端点。
-- 当前安全点：步骤 7 代码已验证，提交后更新为真实 commit。
-- 下一步：FU-D 步骤 8，补齐 cron:fire 到 Agent 的参数透传和统一执行事件 payload。
+- 已完成：步骤 1-8 / 15，已落地渠道会话标题、渠道主动发送、Cron SQLite 数据模型/DDL/迁移/AOT 注册、Worker CRUD/状态端点、DB 驱动调度恢复和 Renderer Cron Agent runtime。
+- 当前安全点：步骤 8 TypeScript 三配置和 `git diff --check` 已验证，提交后更新为真实 commit。
+- 下一步：FU-D 步骤 9，实现执行结果持久化与 plugin 渠道通知边界。
 - 未执行：merge、tag、push、release；最终 PASS/FAIL/PARTIAL 仍由用户在步骤 15 验证后裁定。
 - 当前已知基线问题：全量 `WishfulClaw.sln` 构建仍受既有 CodeGraph 缺失符号影响（`CodeGraphModule`、`CodeGraphNativeLibraryResolver`），不归因于本迭代 Cron 改动。
 

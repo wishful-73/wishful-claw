@@ -24,6 +24,7 @@ import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { registerAllViewers } from '@renderer/lib/preview/register-viewers'
 import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
 import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
+import { initializeCronRuntime } from '@renderer/lib/tools/cron-runtime'
 
 // Initialize provider store — ensures builtin presets exist
 initProviderStore()
@@ -72,11 +73,14 @@ function App(): React.JSX.Element | null {
     // so Agent SSH commands show in terminal even before user opens the panel
     useTerminalStore.getState().init()
 
+    const disposeCronRuntime = initializeCronRuntime()
+
     // Pre-fetch tool definitions in background so first message doesn't wait
     fetchToolDefinitions('chat')
 
     return () => {
       unsubscribeAppPluginChanges()
+      disposeCronRuntime()
     }
   }, [])
 

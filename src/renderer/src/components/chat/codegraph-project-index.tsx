@@ -28,9 +28,12 @@ interface CodeGraphIndexProgress {
   edgeCount: number
 }
 
+// The worker serializes CodeGraphIndexStatus as camelCase JSON; mirror those keys.
 interface CodeGraphIndexStatus {
   success?: boolean
+  indexed?: boolean
   state?: string | null
+  indexing?: boolean
   fileCount?: number
   nodeCount?: number
   edgeCount?: number
@@ -206,7 +209,7 @@ export function CodeGraphProjectIndexSection(): React.JSX.Element {
               variant="outline"
               size="sm"
               className="h-7 text-xs"
-              disabled={busy !== null}
+              disabled={busy !== null || !status?.success}
               onClick={() => void runAction('sync', 'codegraph/sync', 300_000, 'sync')}
             >
               {busy === 'sync'

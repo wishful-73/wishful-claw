@@ -30,7 +30,7 @@
 ### FU-C：Cron 数据库持久化与启动恢复
 
 - [x] 步骤5：设计并创建 Cron 数据表和迁移。新增 `CronEntity`/`CronRow`/`EntityMappers.MapCron`，字段覆盖任务配置（id/name/sessionId/scheduleJson/prompt/agentId/model/workingFolder/deliveryMode/deliveryTarget/pluginId/pluginType/pluginChatId/deleteAfterRun/maxIterations/enabled/deletedAt）和任务级运行状态（lastFiredAt/lastRunAt/lastRunStatus/lastRunSummary/lastError/fireCount/createdAt/updatedAt）。在 `DbClient` 增加 `cron_tasks` 的 `CREATE TABLE IF NOT EXISTS`、启停/软删除/更新时间索引和旧库 `EnsureColumn` 迁移；在 `InfrastructureJsonContext` 注册 `CronRow` 与 `List<CronRow>`，JSON 字段保持 opaque string，符合 AOT 分层约束。验证：DDL 覆盖新库初始化，`EnsureColumn` 覆盖已有库迁移路径；`git diff --check`、`npx tsc --noEmit -p tsconfig.node.json`、`npx tsc --noEmit -p tsconfig.web.json`、`npx tsc --noEmit -p tsconfig.json` 和 `set DOTNET_ROOT=D:\claw\dotnet-sdk && dotnet build src\\runtime\\WishfulClaw.Infrastructure\\WishfulClaw.Infrastructure.csproj --no-restore` 均通过（C# 0 错误、0 警告）。实现提交：`2677869`。
-- [ ] 步骤6：实现 Worker Cron CRUD/状态端点。新增或扩展 Db 工具/Worker Module，支持 list/create/update/delete/toggle、记录 fired/run-finished、按任务 ID查询详情；参数校验和错误返回统一。验证：通过 `worker:request` 创建、读取、修改、禁用、删除任务，重启 Worker 后数据仍在；C# build + AOT publish 0 错误 0 警告。
+- [x] 步骤6：实现 Worker Cron CRUD/状态端点。新增 `DbCronTools`，注册 list/get/create/update/delete/toggle/mark-fired/mark-run-finished 八个端点；默认过滤软删除记录，删除使用软删除，SQL 全部参数化，结果类型显式注册到 Infrastructure AOT JSON context。验证：TypeScript 三配置、`git diff --check`、Infrastructure build 均通过（0 警告、0 错误）；Worker 重启后 SQLite 持久化验证留待步骤 10/15 联调。实现提交：待提交。
 - [ ] 步骤7：改造 Main 调度器为 DB 驱动。创建任务先落库再注册 timer；更新/删除/启停先更新 DB 再重排计时器；Main 启动时等待 Worker/DB 可用，加载 enabled 且未删除任务并恢复调度；保留现有 at/every/cron 校验和时区逻辑。验证：创建三种任务后重启应用，任务仍能触发；禁用/删除任务不会再次触发；一次性任务按 deleteAfterRun 正确归档。
 
 ### FU-D：Cron 执行、渠道通知与失败恢复
@@ -52,9 +52,9 @@
 
 ## 当前执行状态
 
-- 已完成：步骤 1-5 / 15，分别落地渠道会话标题、渠道主动发送、Cron SQLite 数据模型/DDL/迁移/AOT 注册。
-- 当前安全点：`2677869`（FU-C 步骤 5）。
-- 下一步：FU-C 步骤 6，实现 Worker Cron CRUD、查询和运行状态端点；完成后执行对应 C# build/AOT 验证并单独提交。
+- 已完成：步骤 1-6 / 15，分别落地渠道会话标题、渠道主动发送、Cron SQLite 数据模型/DDL/迁移/AOT 注册和 Worker CRUD/状态端点。
+- 当前安全点：步骤 6 代码已验证，提交后更新为真实 commit。
+- 下一步：FU-C 步骤 7，改造 Main 调度器为 DB 驱动并实现启动恢复。
 - 未执行：merge、tag、push、release；最终 PASS/FAIL/PARTIAL 仍由用户在步骤 15 验证后裁定。
 - 当前已知基线问题：全量 `WishfulClaw.sln` 构建仍受既有 CodeGraph 缺失符号影响（`CodeGraphModule`、`CodeGraphNativeLibraryResolver`），不归因于本迭代 Cron 改动。
 

@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Contracts;
 
@@ -83,6 +83,8 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(SubAgentSimpleResult))]
 [JsonSerializable(typeof(SubAgentRunRow))]
 [JsonSerializable(typeof(List<SubAgentRunRow>))]
+[JsonSerializable(typeof(CronFindResult))]
+[JsonSerializable(typeof(CronMutationResult))]
 [JsonSerializable(typeof(CronRow))]
 [JsonSerializable(typeof(List<CronRow>))]
 public sealed partial class InfrastructureJsonContext : JsonSerializerContext

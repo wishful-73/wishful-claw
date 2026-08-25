@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -119,6 +119,16 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/goal-execution-runs-get", DbGoalExecutionRunTools.GetRun);
         context.Register("db/goal-execution-runs-list", DbGoalExecutionRunTools.ListRuns);
         context.Register("db/goal-ledger-get", DbGoalTools.GetLedger);
+
+        // ── Cron ──
+        context.Register("db/crons-list", DbCronTools.List);
+        context.Register("db/crons-get", DbCronTools.Get);
+        context.Register("db/crons-create", DbCronTools.Create);
+        context.Register("db/crons-update", DbCronTools.Update);
+        context.Register("db/crons-delete", DbCronTools.Delete);
+        context.Register("db/crons-toggle", DbCronTools.Toggle);
+        context.Register("db/crons-mark-fired", DbCronTools.MarkFired);
+        context.Register("db/crons-mark-run-finished", DbCronTools.MarkRunFinished);
 
         // ── Plugin Sessions ──
         context.Register("db/plugin-normal-projects", DbPluginSessionTools.ListNormalProjects);

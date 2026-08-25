@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -37,6 +37,7 @@ public sealed class ToolModule : IWorkerModule
             new Providers.AskUserToolProvider(),
             new Providers.BrowserToolProvider(),
             new Providers.ChannelPluginToolProvider(),
+            new Providers.CodeGraphToolProvider(),
             new Providers.CodeCompatibleToolProvider(),
             new Providers.CronToolProvider(),
             new Providers.DesktopToolProvider(),

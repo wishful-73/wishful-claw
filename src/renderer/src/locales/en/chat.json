@@ -1,4 +1,4 @@
-{
+﻿{
   "home": {
     "title": "How can I help you today?",
     "subtitle": "Start a conversation or pick a quick prompt below.",
@@ -987,6 +987,25 @@
       "noPersonas": "No project-specific personas yet. Add personas via the persona settings page.",
       "goToSettings": "Persona settings",
       "selectFile": "Select a persona file to preview"
+    },
+    "codegraph": {
+      "title": "Code graph",
+      "desc": "Index this project so the agent can navigate code structure without reading every file.",
+      "index": "Index",
+      "reindex": "Re-index",
+      "indexing": "Indexing...",
+      "sync": "Sync",
+      "syncing": "Syncing...",
+      "goEnable": "Enable globally in settings",
+      "disabledHint": "CodeGraph is disabled globally. Enable it in settings to give the agent code-navigation tools.",
+      "working": "Working...",
+      "loading": "Loading plugin status...",
+      "statusComplete": "Complete",
+      "statusIndexing": "Indexing...",
+      "stats": "{{files}} files · {{nodes}} nodes · {{edges}} edges",
+      "notIndexed": "Not indexed yet. Run Index to build the code graph.",
+      "actionDone": "CodeGraph action completed",
+      "actionFailed": "CodeGraph action failed"
     }
   },
   "skills": {

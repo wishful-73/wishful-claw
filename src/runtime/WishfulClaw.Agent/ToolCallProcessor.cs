@@ -158,6 +158,7 @@ public static class ToolCallProcessor
                 break;
             }
 
+            // fullAccess is YOLO: never create an approval barrier or dialog.
             var needsGate = defaultModeApproval && !state.SuppressTransportEvents &&
                 IsDefaultModeApprovalTool(toolCall.Name);
 
@@ -545,6 +546,13 @@ public static class ToolCallProcessor
         AgentRuntimeRunState state,
         bool defaultModeApproval)
     {
+        // fullAccess/YOLO must never pause for approval, including future
+        // sub-agent approval rules inherited by the main run.
+        if (!defaultModeApproval)
+        {
+            return false;
+        }
+
         if (state.SuppressTransportEvents && RequiresSubAgentApproval(toolCall.Name))
         {
             return true;

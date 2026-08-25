@@ -6,6 +6,8 @@ import { WindowControls } from '@renderer/components/layout/WindowControls'
 import { useUIStore, type SettingsTab } from '@renderer/stores/ui-store'
 import { ProviderPanel } from '@renderer/components/settings/ProviderPanel'
 import { PluginPanel } from '@renderer/components/settings/PluginPanel'
+import { ExtensionPanel } from '@renderer/components/settings/ExtensionPanel'
+import { AppPluginPanel } from '@renderer/components/settings/AppPluginPanel'
 import { GeneralPanel } from '@renderer/components/settings/GeneralPanel'
 import { RuntimePanel } from '@renderer/components/settings/RuntimePanel'
 import { PersonaPanel } from '@renderer/components/settings/PersonaPanel'
@@ -71,8 +73,10 @@ function SettingsPage(): React.JSX.Element {
       ]
     },
     {
-      label: t('tabs.groups.extensions', { defaultValue: '扩展' }),
+      label: t('tabs.groups.extensions', { defaultValue: '插件' }),
       items: [
+        { id: 'plugin', icon: <Puzzle className="size-4" />, label: t('tabs.appPlugins.label', { defaultValue: '插件' }) },
+        { id: 'extension', icon: <Puzzle className="size-4" />, label: t('tabs.extensions.label', { defaultValue: '自定义扩展' }) },
         { id: 'skills', icon: <Puzzle className="size-4" />, label: t('tabs.skills.label', { defaultValue: 'Skills' }) },
         { id: 'mcp', icon: <Cable className="size-4" />, label: t('tabs.mcp.label', { defaultValue: 'MCP' }) }
       ]
@@ -186,6 +190,14 @@ function SettingsPage(): React.JSX.Element {
             ) : settingsTab === 'persona' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <PersonaPanel />
+              </div>
+            ) : settingsTab === 'plugin' ? (
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <AppPluginPanel />
+              </div>
+            ) : settingsTab === 'extension' ? (
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <ExtensionPanel />
               </div>
             ) : settingsTab === 'channel' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">

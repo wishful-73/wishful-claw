@@ -1,10 +1,11 @@
-import { useCallback } from 'react'
+﻿import { useCallback } from 'react'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
 import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
 
@@ -66,6 +67,7 @@ export function useChatActions() {
       // the agent can still respond, just without tool-calling capability.
       const toolPreset = opts?.toolPreset ?? (workingFolder ? 'coding' : 'chat')
       const settings = settingsStore
+      const codegraphEnabled = useAppPluginStore.getState().isCodeGraphToolAvailable()
 
       // For special presets (e.g. skill-installer), fetch async to ensure
       // the correct tool list is used. For default presets, use cache + background fetch.
@@ -127,6 +129,7 @@ export function useChatActions() {
         sessionId: targetSessionId,
         toolPreset,
         webSearchEnabled,
+        codegraphEnabled,
         workingFolder,
         maxIterations: 0, // 0 = unlimited, agent runs until no more tool calls
         maxParallelTools: settings.maxParallelToolCalls,

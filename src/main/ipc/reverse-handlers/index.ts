@@ -9,6 +9,7 @@
 import { handleCronReverseRequest } from './cron-reverse-handler'
 import { handleImageGenerate } from './image-reverse-handler'
 import { handleStubReverseRequest } from './stub-reverse-handler'
+import { handleCodeGraphTool } from '../codegraph-handlers'
 import { executeMcpToolFromMain, readMcpResourceFromMain } from '../mcp-handlers'
 import {
   executePluginAction,
@@ -24,6 +25,7 @@ type ReverseHandler = (params: Record<string, unknown>) => Promise<unknown>
 // Direct method → handler mapping (no prefix matching needed)
 const directHandlers = new Map<string, ReverseHandler>([
   ['image:generate', (p) => handleImageGenerate(p)],
+  ['codegraph:tool', (p) => handleCodeGraphTool(p)],
   ['mcp:call-tool', (p) => executeMcpToolFromMain(p as { serverId: string; toolName: string; args: Record<string, unknown> })],
   ['mcp:read-resource', (p) => readMcpResourceFromMain(p as { serverId: string; uri?: string; resourceName?: string })],
   ['ssh:exec', async (p) => {
@@ -88,7 +90,6 @@ const pluginActionMethods = new Set([
 
 // Methods still dispatched to the stub handler (not yet implemented)
 const stubMethods = new Set([
-  'codegraph:tool',
   'extension:execute-js-tool',
   'team:send-message',
 ])
@@ -156,7 +157,7 @@ export async function dispatchReverseRequest(
     return { enabled }
   }
 
-  // Stub handlers (CodeGraph, Extension, Team)
+  // Stub handlers (Extension, Team)
   if (stubMethods.has(method)) {
     return await handleStubReverseRequest(method, args)
   }

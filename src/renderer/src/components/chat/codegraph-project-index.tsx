@@ -5,7 +5,11 @@ import { toast } from 'sonner'
 
 import { Button } from '@renderer/components/ui/button'
 import { useChatStore } from '@renderer/stores/chat-store'
-import { resolvePluginsForProject, useAppPluginStore } from '@renderer/stores/app-plugin-store'
+import {
+  GLOBAL_PROJECT_ID,
+  resolvePluginsForProject,
+  useAppPluginStore
+} from '@renderer/stores/app-plugin-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
@@ -54,17 +58,27 @@ export function CodeGraphProjectIndexSection(): React.JSX.Element {
     (s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null
   )
   const pluginsByProject = useAppPluginStore((state) => state.pluginsByProject)
+  const [pluginStoreHydrated, setPluginStoreHydrated] = useState(() =>
+    useAppPluginStore.persist.hasHydrated()
+  )
 
   const [busy, setBusy] = useState<string | null>(null)
   const [status, setStatus] = useState<CodeGraphIndexStatus | null>(null)
   const [statusLoading, setStatusLoading] = useState(false)
   const [progress, setProgress] = useState<CodeGraphIndexProgress | null>(null)
 
-  const pluginEnabled = Boolean(
-    resolvePluginsForProject(pluginsByProject, activeProjectId).find(
-      (p) => p.id === CODEGRAPH_PLUGIN_ID
-    )?.enabled
-  )
+  useEffect(() => {
+    if (useAppPluginStore.persist.hasHydrated()) return
+    return useAppPluginStore.persist.onFinishHydration(() => setPluginStoreHydrated(true))
+  }, [])
+
+  const pluginEnabled =
+    pluginStoreHydrated &&
+    Boolean(
+      resolvePluginsForProject(pluginsByProject, GLOBAL_PROJECT_ID).find(
+        (p) => p.id === CODEGRAPH_PLUGIN_ID
+      )?.enabled
+    )
   const workingFolder = activeProject?.workingFolder ?? undefined
   // SSH projects cannot write .wishful-claw/ on the remote root; mirror the memory
   // strategy (ProjectArchivePage memoryRoot) and keep the graph DB under the
@@ -165,13 +179,20 @@ export function CodeGraphProjectIndexSection(): React.JSX.Element {
   }
 
   const handleGoEnable = (): void => {
-    useUIStore.getState().openSettingsPage('plugin')
+    useUIStore.getState().openSettings('plugin')
   }
 
   const percentage =
     progress && progress.filesTotal > 0
       ? Math.min(100, Math.round((progress.filesDone / progress.filesTotal) * 100))
       : null
+
+  const statusLabel =
+    status?.state === 'complete'
+      ? t('projectArchive.codegraph.statusComplete', { defaultValue: 'Complete' })
+      : status?.state === 'indexing'
+        ? t('projectArchive.codegraph.statusIndexing', { defaultValue: 'Indexing...' })
+        : status?.state ?? ''
 
   return (
     <section className="space-y-3 rounded-xl border p-4">
@@ -190,7 +211,7 @@ export function CodeGraphProjectIndexSection(): React.JSX.Element {
             </p>
           </div>
         </div>
-        {pluginEnabled ? (
+        {pluginStoreHydrated && pluginEnabled ? (
           <div className="flex shrink-0 items-center gap-2">
             <Button
               variant="outline"
@@ -233,16 +254,21 @@ export function CodeGraphProjectIndexSection(): React.JSX.Element {
             className="h-7 shrink-0 text-xs"
             onClick={handleGoEnable}
           >
-            {t('projectArchive.codegraph.goEnable', { defaultValue: 'Enable in settings' })}
+            {t('projectArchive.codegraph.goEnable', { defaultValue: 'Enable globally in settings' })}
           </Button>
         )}
       </div>
 
-      {!pluginEnabled ? (
+      {!pluginStoreHydrated ? (
+        <p className="flex items-center gap-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+          {t('projectArchive.codegraph.loading', { defaultValue: 'Loading plugin status...' })}
+        </p>
+      ) : !pluginEnabled ? (
         <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground opacity-70">
           {t('projectArchive.codegraph.disabledHint', {
             defaultValue:
-              'CodeGraph is disabled for this project. Enable it to give the agent code-navigation tools.'
+              'CodeGraph is disabled globally. Enable it in settings to give the agent code-navigation tools.'
           })}
         </p>
       ) : progress ? (
@@ -272,7 +298,7 @@ export function CodeGraphProjectIndexSection(): React.JSX.Element {
                 : 'bg-muted text-muted-foreground'
             }`}
           >
-            {status.state}
+            {statusLabel}
           </span>
           <span>
             {t('projectArchive.codegraph.stats', {

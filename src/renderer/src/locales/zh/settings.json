@@ -729,7 +729,7 @@
   },
   "plugin": {
     "title": "插件",
-    "subtitle": "管理内置插件、工具注册状态和 CodeGraph 项目索引。",
+    "subtitle": "管理内置插件和工具注册状态。",
     "enabled": "已启用",
     "disabled": "已停用",
     "enable": "启用插件",
@@ -747,7 +747,7 @@
     "toolStatus": "工具状态",
     "toolStatusDesc": "ImageGenerate 依赖已配置的图像模型。",
     "toolStatusDescBrowser": "Browser 工具通过内置 Browser/WebView 链路执行。",
-    "toolStatusDescCodeGraph": "CodeGraph 工具使用内置运行时和项目索引。",
+    "toolStatusDescCodeGraph": "CodeGraph 工具使用内置运行时和项目索引。", "toolReadyCodeGraph": "插件已就绪，Agent 可以调用其工具。", "toolConstraintCodeGraph": "代码导航问题优先使用 codegraph_explore；请输入聚焦的问题，projectPath 可选，默认使用当前工作目录。项目需要先完成索引，工具才能返回结果。",
     "toolStatusDescDesktop": "桌面控制工具当前不可用。",
     "status": { "ready": "就绪", "not_ready": "未就绪", "disabled": "已停用" },
     "items": {
@@ -763,7 +763,7 @@
       "title": "Browser 配置", "desc": "配置浏览器仿真、用户数据和域名访问规则。", "importCookies": "导入 Cookies", "importingCookies": "正在导入…", "clearCookies": "清理 Cookies", "clearingCookies": "正在清理…", "cookiesCleared": "Cookies 已清理", "cookiesClearFailed": "清理 Cookies 失败", "cookiesImported": "已从 {{browserName}} 导入 {{imported}} 个 Cookies，跳过 {{skipped}} 个", "cookiesImportFailed": "导入 Cookies 失败", "userDataReuse": "复用浏览器用户数据", "userDataReuseDesc": "复用本机浏览器配置、Cookies 和登录状态。", "userDataSource": "用户数据来源", "userDataSourceDesc": "选择要检测和复用的浏览器。", "restartRequired": "修改后需要重新启动 Browser 会话。", "activeProfile": "当前使用 {{browserName}} 配置 {{profileName}}：{{path}}", "profileFallback": "当前未检测到可复用的浏览器配置，将使用隔离会话。", "isolatedStorage": "隔离会话目录：{{path}}", "blockedDomains": "阻止域名", "blockedDomainsDesc": "这些域名不会被 Browser 工具访问。", "allowedDomains": "允许域名", "allowedDomainsDesc": "填写后仅允许访问这些域名；每行一个。", "domainPlaceholder": "example.com\n*.example.org", "domainRuleHint": "域名支持精确匹配和通配符；每行一个。", "sources": { "auto": "自动检测", "chrome": "Chrome", "edge": "Edge", "firefox": "Firefox" }
     },
     "codegraph": {
-      "assetsTitle": "内置 CodeGraph 运行时", "assetsDesc": "CodeGraph runtime 和语言 grammar 随应用提供，此处仅显示运行状态，不需要下载。", "workerRunning": "运行时已启动", "workerStopped": "运行时未启动", "devMode": "开发环境 grammar 已就绪（{{count}} 个）", "ready": "内置 grammar 已就绪（{{count}} 个）", "availableLanguages": "可用语言：{{languages}}", "invalidFiles": "无效 grammar 文件：{{files}}", "unrecognizedGrammars": "未识别 grammar：{{grammars}}", "missingLanguages": "缺少语言：{{languages}}", "workerMissing": "CodeGraph Worker 不可用，请检查应用安装内容。", "coreLibraryMissing": "内置 tree-sitter runtime 缺失或无效。", "languageGrammarsMissing": "内置语言 grammar 缺失。", "invalidGrammarPackage": "内置 grammar 文件无效。", "bundledUnavailable": "内置 CodeGraph 资源当前不可用。", "projectsTitle": "项目索引", "projectsDesc": "管理当前运行时已建立的 CodeGraph 项目索引。", "projectsMovedToArchive": "项目索引已迁移至各项目的档案页——打开项目后使用其中的「代码图谱」区块进行索引与同步。"
+      "assetsTitle": "内置 CodeGraph 运行时", "assetsDesc": "CodeGraph runtime 和语言 grammar 随应用提供，此处仅显示运行状态，不需要下载。", "workerRunning": "运行时已启动", "workerStopped": "运行时未启动", "devMode": "开发环境 grammar 已就绪（{{count}} 个）", "ready": "内置 grammar 已就绪（{{count}} 个）", "availableLanguages": "可用语言：{{languages}}", "invalidFiles": "无效 grammar 文件：{{files}}", "unrecognizedGrammars": "未识别 grammar：{{grammars}}", "missingLanguages": "缺少语言：{{languages}}", "workerMissing": "CodeGraph Worker 不可用，请检查应用安装内容。", "coreLibraryMissing": "内置 tree-sitter runtime 缺失或无效。", "languageGrammarsMissing": "内置语言 grammar 缺失。", "invalidGrammarPackage": "内置 grammar 文件无效。", "bundledUnavailable": "内置 CodeGraph 资源当前不可用。"
     }
   },
   "persona": {

@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ProviderConfig } from '@renderer/lib/api/types'
 import { configStorage } from '@renderer/lib/ipc/config-storage'
@@ -26,7 +26,15 @@ function createDefaultPlugin(id: AppPluginId): AppPluginInstance {
   }
 }
 
-const GLOBAL_PROJECT_ID = '__global__'
+export const GLOBAL_PROJECT_ID = '__global__'
+
+function isGlobalPlugin(id: AppPluginId): boolean {
+  return id === CODEGRAPH_PLUGIN_ID
+}
+
+function resolvePluginScopeId(id: AppPluginId, projectId?: string | null): string {
+  return isGlobalPlugin(id) ? GLOBAL_PROJECT_ID : resolveProjectId(projectId)
+}
 
 const KNOWN_PLUGIN_IDS = new Set<string>(APP_PLUGIN_DESCRIPTORS.map((descriptor) => descriptor.id))
 
@@ -131,6 +139,7 @@ export function resolvePluginsForProject(
     : []
 
   return globalPlugins.map((plugin) => {
+    if (isGlobalPlugin(plugin.id)) return plugin
     const override = projectOverrides.find((item) => item.id === plugin.id)
     return override ? { ...plugin, ...override } : plugin
   })
@@ -206,7 +215,7 @@ export const useAppPluginStore = create<AppPluginStore>()(
           .find((plugin) => plugin.id === id) ?? null,
 
       updatePlugin: (id, patch, projectId) => {
-        const resolvedProjectId = resolveProjectId(projectId)
+        const resolvedProjectId = resolvePluginScopeId(id, projectId)
         set((state) => {
           const current = resolvePluginsForProject(state.pluginsByProject, resolvedProjectId)
           const next = current.map((plugin) =>
@@ -217,7 +226,7 @@ export const useAppPluginStore = create<AppPluginStore>()(
       },
 
       togglePluginEnabled: (id, projectId) => {
-        const resolvedProjectId = resolveProjectId(projectId)
+        const resolvedProjectId = resolvePluginScopeId(id, projectId)
         set((state) => {
           const current = resolvePluginsForProject(state.pluginsByProject, resolvedProjectId)
           const next = current.map((plugin) =>
@@ -309,6 +318,20 @@ function ensureBuiltinPlugins(): void {
       provisionBuiltinPlugins(Array.isArray(plugins) ? plugins : [])
     ])
   )
+  const globalPlugins = next[GLOBAL_PROJECT_ID] ?? provisionBuiltinPlugins([])
+  const legacyCodeGraphEnabled = Object.entries(next).some(
+    ([projectId, plugins]) =>
+      projectId !== GLOBAL_PROJECT_ID &&
+      plugins.some((plugin) => plugin.id === CODEGRAPH_PLUGIN_ID && plugin.enabled)
+  )
+  if (
+    legacyCodeGraphEnabled &&
+    !globalPlugins.some((plugin) => plugin.id === CODEGRAPH_PLUGIN_ID && plugin.enabled)
+  ) {
+    next[GLOBAL_PROJECT_ID] = globalPlugins.map((plugin) =>
+      plugin.id === CODEGRAPH_PLUGIN_ID ? { ...plugin, enabled: true } : plugin
+    )
+  }
   if (JSON.stringify(current) !== JSON.stringify(next)) {
     useAppPluginStore.setState({ pluginsByProject: next })
   }

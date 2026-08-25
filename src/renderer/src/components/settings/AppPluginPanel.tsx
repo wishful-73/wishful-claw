@@ -686,23 +686,6 @@ export function AppPluginPanel(): React.JSX.Element {
               </section>
             ) : null}
 
-            {selectedPluginId === CODEGRAPH_PLUGIN_ID ? (
-              <section className="space-y-3 rounded-xl border p-4">
-                <div>
-                  <p className="text-sm font-medium">{t('plugin.codegraph.projectsTitle')}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t('plugin.codegraph.projectsDesc')}
-                  </p>
-                </div>
-                <p className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
-                  {t('plugin.codegraph.projectsMovedToArchive', {
-                    defaultValue:
-                      'Project indexing moved to each project\'s archive page — open a project, then use its Code graph block.'
-                  })}
-                </p>
-              </section>
-            ) : null}
-
             {selectedPlugin.id === BROWSER_PLUGIN_ID ? (
               <section className="space-y-4 rounded-xl border p-4">
                 <div className="flex items-start justify-between gap-4">
@@ -858,6 +841,16 @@ export function AppPluginPanel(): React.JSX.Element {
                 <p className="text-xs text-muted-foreground">
                   {t(getToolStatusDescriptionKey(selectedDescriptor))}
                 </p>
+                {selectedPluginId === CODEGRAPH_PLUGIN_ID && activeState === 'ready' ? (
+                  <p className="text-xs text-emerald-600">
+                    {t('plugin.toolReadyCodeGraph')}
+                  </p>
+                ) : null}
+                {selectedPluginId === CODEGRAPH_PLUGIN_ID ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t('plugin.toolConstraintCodeGraph')}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-3">
                 {selectedDescriptor.toolNames.map((toolName) => (

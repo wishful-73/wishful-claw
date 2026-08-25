@@ -115,6 +115,17 @@ internal static partial class AgentLoop
                 .Where(t => t.Name != "WebSearch" && t.Name != "WebFetch")
                 .ToList();
         }
+
+        // CodeGraph is globally opt-in. Keep its static definition registered for
+        // tool discovery, but expose it to the Agent only when the global plugin
+        // state is enabled for this request.
+        var codegraphEnabled = JsonHelpers.GetBool(parameters, "codegraphEnabled", false);
+        if (!codegraphEnabled)
+        {
+            toolDefs = toolDefs
+                .Where(t => !t.Name.StartsWith("codegraph_", StringComparison.Ordinal))
+                .ToList();
+        }
         // ── Persona-aware system prompt ──
         var personaId = JsonHelpers.GetString(parameters, "personaId");
         if (!string.IsNullOrWhiteSpace(personaId))
@@ -167,7 +178,9 @@ internal static partial class AgentLoop
             }
 
             // ── Context compression (LLM summarization) ──
-            if (lastInputTokens > 0 && ShouldCompress(lastInputTokens, provider, parameters))
+            if (lastInputTokens > 0 &&
+                sessionConv.CompactionWatermark < wireConversation.Count &&
+                ShouldCompress(lastInputTokens, provider, parameters))
             {
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
@@ -182,6 +195,7 @@ internal static partial class AgentLoop
                 try
                 {
                     var originalCount = wireConversation.Count;
+                    sessionConv.MarkCompactionWatermark(originalCount);
                     var (newConversation, newWireConversation) = await ContextCompression.CompactAsync(
                         conversation, wireConversation, provider, context, state.CancellationToken);
                     if (newWireConversation.Count >= originalCount)
@@ -203,7 +217,8 @@ internal static partial class AgentLoop
                             new AgentRuntimeStreamEvent(
                                 "context_compressed",
                                 OriginalCount: originalCount,
-                                NewCount: newWireConversation.Count));
+                                NewCount: newWireConversation.Count,
+                                KeptMessageCount: Math.Max(0, originalCount - newWireConversation.Count)));
                         WorkerLog.Info(
                             $"agent context compression runId={state.RunId} " +
                             $"original={originalCount} compressed={newWireConversation.Count}");

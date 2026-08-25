@@ -8,6 +8,7 @@ import { decode, encode } from '@msgpack/msgpack'
 import { app } from 'electron'
 import { logError, logWarn } from './logger'
 import { readPersistedSettings, SETTINGS_STORAGE_KEY } from './settings-store'
+import { resolveCodeGraphGrammarsDir } from './codegraph-assets'
 
 const DEFAULT_TIMEOUT_MS = 60_000
 const CONNECT_TIMEOUT_MS = 10_000
@@ -135,6 +136,16 @@ class NativeWorkerManager {
         workerEnv.WISHFUL_SHELL = defaultShell
       }
     } catch { /* ignore — settings file may not exist yet */ }
+
+    // CodeGraph: point the worker at the resolved tree-sitter grammars dir
+    // (bundled beside the worker, or the NuGet cache in dev). A null result
+    // leaves the worker on its own <binary>/grammars fallback.
+    try {
+      const grammarsDir = resolveCodeGraphGrammarsDir()
+      if (grammarsDir) {
+        workerEnv.WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR = grammarsDir
+      }
+    } catch { /* ignore — grammars are optional for boot */ }
 
     const child = spawn(workerPath, ['--ipc', endpoint], {
       cwd: path.dirname(workerPath),
@@ -378,7 +389,7 @@ function resolveWorkerPath(): string | null {
     'WishfulClaw.Worker',
     'bin',
     'Debug',
-    'net10.0',
+    'net11.0',
     executableName
   )
 
@@ -394,7 +405,7 @@ function resolveWorkerPath(): string | null {
       'WishfulClaw.Worker',
       'bin',
       'Debug',
-      'net10.0',
+      'net11.0',
       'WishfulClaw.Worker.dll'
     )
     if (fs.existsSync(dllPath)) return dllPath
@@ -410,6 +421,15 @@ export function getNativeWorker(): NativeWorkerManager {
     workerManager = new NativeWorkerManager()
   }
   return workerManager
+}
+
+// Resolves the worker executable path without spawning (asset diagnostics).
+export function resolveNativeWorkerPath(): string | null {
+  return resolveWorkerPath()
+}
+
+export function isNativeWorkerRunning(): boolean {
+  return workerManager?.isRunning ?? false
 }
 
 export function latchNativeWorkerShutdown(): void {

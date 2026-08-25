@@ -142,12 +142,18 @@ export function resolveBuiltinModelFallback(modelId: string): AIModelConfig | un
 /**
  * Merge a raw discovered model with builtin metadata.
  * Builtin metadata (thinkingConfig, icon, supportsThinking, pricing, etc.) is used
- * as the base; discovered values (id, name, enabled) override.
+ * as the base; discovered values override it. A provider that returns the model ID
+ * as its name is treated as having no display name, so builtin friendly names win.
  */
 export function enrichDiscoveredModel(raw: AIModelConfig): AIModelConfig {
   const fallback = resolveBuiltinModelFallback(raw.id)
   if (!fallback) return ensureDefaultReasoningEffort(raw)
-  const merged = { ...fallback, ...raw }
+  const hasUsefulDiscoveredName = Boolean(raw.name?.trim()) && raw.name.trim() !== raw.id
+  const merged = {
+    ...fallback,
+    ...raw,
+    ...(hasUsefulDiscoveredName ? { name: raw.name } : { name: fallback.name })
+  }
   // If raw overrode thinkingConfig without reasoningEffortLevels, restore from fallback
   if (merged.supportsThinking && !merged.thinkingConfig?.reasoningEffortLevels?.length) {
     return ensureDefaultReasoningEffort(merged)

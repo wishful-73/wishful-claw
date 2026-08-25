@@ -20,14 +20,14 @@
 - 渠道长回复分片与回复路由（`fa93aae6`）；Provider 预设更新（GLM-5.3/Grok 4.6/DeepSeek V4）；任务看板（与我们 todo 重叠）
 
 ## v2-iter-21：设置页重构 + 运行时健壮性补强
-- 状态：执行完成，自动验证 PASS，待用户人工验证与 VERDICT
-- 分支：dev/v2-iter-21
+- 状态：已完成，已合并 main
+- 分支：dev/v2-iter-21（合并后清理）
 - Plan: docs/plans/iter-v2-21/（主计划 + 追加插件管理 Plan）
-- VERDICT: —（自动验证 PASS；人工验证待老大）
-- 产品版本: —（收尾时更新 0.2.21）
-- Tag: —
-- Commit: 见 git log v0.2.20..dev/v2-iter-21
-- 日期: 2026-08-24
+- VERDICT: PASS（编译验证 + 用户人工验证）
+- 产品版本: 0.2.21
+- Tag: v0.2.21
+- Commit: 待提交（收尾后回填）
+- 日期: 2026-08-25
 - 范围确认（老大）：设置页重构 + 备选项全做（RC-2/RC-3/AL-6/TL-1/TL-4/SA-4）；锚点导航、AL-3 软提示、EM-1/EM-2 本次不做
 - 备注：
   - **FU-A 设置页重构（按老大反馈修正范围）** — RuntimePanel.tsx 迁入：API 请求超时 / Provider 最大重试 / 上下文压缩 / 工具执行（并行数、每轮上限、并发子 agent）/ 开发者模式 / 开机启动（含 launchAtLogin 状态逻辑）；GeneralPanel 只留语言/主题/预设/外观，585→233 行；SettingsTab 增加 runtime；i18n zh/en tabs.runtime + runtimePage 键

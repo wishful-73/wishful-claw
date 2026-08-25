@@ -58,6 +58,7 @@ export interface AgentActions {
 
     toolPreset?: string
     webSearchEnabled?: boolean
+    codegraphEnabled?: boolean
 
     workingFolder?: string
 
@@ -500,6 +501,49 @@ export const useChatStore = create<ChatStore>()(
         // per-tool-call live feed no longer has a consumer.
 
       if (!targetSessionId) return
+
+        if (eventType === 'context_compression_start' || eventType === 'context_compressed') {
+          const compressionEvent = event as {
+            type: 'context_compression_start' | 'context_compressed'
+            originalCount?: number
+            newCount?: number
+            keptMessageCount?: number
+          }
+          const now = Date.now()
+          const isCompleted = compressionEvent.type === 'context_compressed'
+          const compressionMessage: ChatMessage = {
+            id: `compression-${envelope.runId}-${now}`,
+            role: 'system',
+            text: '',
+            content: '',
+            createdAt: now,
+            meta: {
+              compressionStatus: {
+                state: isCompleted ? 'compressed' : 'compressing',
+                startedAt: now,
+                ...(isCompleted ? { completedAt: now } : {}),
+                ...(compressionEvent.keptMessageCount !== undefined
+                  ? { keptMessageCount: compressionEvent.keptMessageCount }
+                  : {}),
+                ...(compressionEvent.newCount !== undefined
+                  ? { newCount: compressionEvent.newCount }
+                  : {})
+              }
+            }
+          }
+          set((state) => {
+            const session = state.sessions.find((s) => s.id === targetSessionId)
+            if (!session) return
+            session.messages.push(compressionMessage)
+            session.messageCount = session.messages.length
+            session.updatedAt = now
+          })
+          const session = get().sessions.find((s) => s.id === targetSessionId)
+          if (session) {
+            void dbUpsertMessage(targetSessionId, compressionMessage, session.messages.length - 1)
+          }
+          continue
+        }
 
         // Route sub-agent events to the agent store's sub-agent handler
 

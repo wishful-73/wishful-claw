@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace WishfulClaw.Agent;
@@ -20,6 +20,31 @@ public sealed class SessionConversation
     private List<AgentRuntimeChatMessage> _conversation = [];
     private List<JsonElement> _wireConversation = [];
     private long _version;
+    private int _compactionWatermark;
+
+    /// <summary>
+    /// Message count at the last completed/attempted compaction. Prevents the
+    /// same oversized conversation from re-entering compaction on every loop
+    /// iteration while still allowing a later turn to compact newly appended data.
+    /// </summary>
+    public int CompactionWatermark
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _compactionWatermark;
+            }
+        }
+    }
+
+    public void MarkCompactionWatermark(int messageCount)
+    {
+        lock (_lock)
+        {
+            _compactionWatermark = Math.Max(_compactionWatermark, messageCount);
+        }
+    }
 
     // Session-level cumulative cache counters (LA Reasonix's sessCacheHit/sessCacheMiss).
     // Atomic: the run loop accumulates them while the status bar reads them.
@@ -99,6 +124,7 @@ public sealed class SessionConversation
         {
             _wireConversation = [.. wireMessages];
             _conversation = conversation;
+            _compactionWatermark = 0;
             _version++;
         }
         // NOTE: Cache counters are NOT reset here. They accumulate across the
@@ -117,6 +143,9 @@ public sealed class SessionConversation
         {
             _wireConversation.AddRange(wireMessages);
             _conversation.AddRange(conversation);
+            // A new user turn makes the previous compaction watermark stale;
+            // allow the next oversized request to compact the newly grown context.
+            _compactionWatermark = 0;
             _version++;
         }
     }

@@ -292,6 +292,17 @@
     "runNow": "运行一次",
     "delete": "删除",
     "edit": "编辑",
+    "viewList": "列表视图",
+    "viewCalendar": "日历视图",
+    "calendar": {
+      "sun": "日",
+      "mon": "一",
+      "tue": "二",
+      "wed": "三",
+      "thu": "四",
+      "fri": "五",
+      "sat": "六"
+    },
     "deleted": "任务已删除",
     "created": "任务已创建",
     "updated": "任务已更新",

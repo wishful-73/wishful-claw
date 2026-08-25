@@ -263,16 +263,19 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
 
     await persistRunFinished(event, result)
 
-    if (event.deleteAfterRun) {
-      try {
-        const response = await window.api.workerRequest('db/crons-delete', { id: event.jobId })
-        assertWorkerSuccess(response)
+    try {
+      const completion = asRecord(await ipcClient.invoke('cron:run-complete', {
+        jobId: event.jobId,
+        fireId: event.fireId
+      }))
+      if (typeof completion.error === 'string' && completion.error) throw new Error(completion.error)
+      if (completion.archived === true) {
         cronEvents.emit({ type: 'job_removed', jobId: event.jobId, reason: 'delete_after_run' })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        result.error = appendError(result.error, `Archive failed: ${message}`)
-        await persistRunFinished(event, result)
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      result.error = appendError(result.error, `Completion failed: ${message}`)
+      await persistRunFinished(event, result)
     }
 
     publishRunFinished(event, runId, result)
@@ -282,7 +285,7 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
 
 function handleCronFire(raw: unknown): void {
   const event = asRecord(raw) as unknown as CronFiredEvent
-  if (!event.jobId) return
+  if (!event.jobId || !event.fireId) return
   cronEvents.emit({ type: 'fired', ...event })
   void executeCron(event)
 }

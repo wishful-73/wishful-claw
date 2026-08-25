@@ -205,10 +205,13 @@ public static class DbCronTools
             var db = DbClient.GetClient(parameters);
             var id = RequireString(parameters, "id");
             var firedAt = GetLong(parameters, "firedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            var disable = GetBool(parameters, "disable", false);
             var changed = db.Execute(
-                "UPDATE cron_tasks SET last_fired_at = @firedAt, fire_count = fire_count + 1, updated_at = @updatedAt " +
+                "UPDATE cron_tasks SET last_fired_at = @firedAt, fire_count = fire_count + 1, " +
+                "enabled = CASE WHEN @disable = 1 THEN 0 ELSE enabled END, updated_at = @updatedAt " +
                 "WHERE id = @id AND deleted_at IS NULL",
                 new SqliteParameter("@firedAt", firedAt),
+                new SqliteParameter("@disable", disable ? 1 : 0),
                 new SqliteParameter("@updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
                 new SqliteParameter("@id", id));
             return ReadMutation(db, id, changed, "Cron task not found or deleted");

@@ -2,10 +2,12 @@
 import { useTranslation } from 'react-i18next'
 import {
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   CircleAlert,
+  List,
   Loader2,
   Pencil,
   Play,
@@ -22,8 +24,10 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { cronEvents, type CronEvent } from '@renderer/lib/tools/cron-events'
 import { asCronJob, type CronJobView } from './cron-job-view'
 import { CronJobFormDialog } from './CronJobFormDialog'
+import { AutomationCalendar } from './AutomationCalendar'
 
 type StatusFilter = 'all' | 'enabled' | 'disabled' | 'success' | 'error'
+type ViewMode = 'list' | 'calendar'
 
 interface CronJobResponse {
   error?: string
@@ -43,19 +47,9 @@ function formatSchedule(schedule: CronJobView['schedule']): string {
   return `${schedule.expr}${schedule.tz ? ` (${schedule.tz})` : ''}`
 }
 
-/** Rough next-run estimate; exact timers live in the Main scheduler. */
-function estimateNextRun(job: CronJobView): string | null {
-  if (!job.enabled || job.deletedAt) return null
-  const { schedule } = job
-  if (schedule.kind === 'at') {
-    const ts = typeof schedule.at === 'number' ? schedule.at : Date.parse(String(schedule.at))
-    return Number.isNaN(ts) ? null : new Date(ts).toLocaleString()
-  }
-  if (schedule.kind === 'every' && job.lastFiredAt && schedule.every) {
-    const next = job.lastFiredAt + schedule.every
-    return next > Date.now() ? new Date(next).toLocaleString() : null
-  }
-  return null
+function formatNextRun(job: CronJobView): string | null {
+  if (!job.enabled || job.deletedAt || !job.nextRunAt) return null
+  return new Date(job.nextRunAt).toLocaleString()
 }
 
 export function AutomationPage(): React.JSX.Element {
@@ -67,6 +61,7 @@ export function AutomationPage(): React.JSX.Element {
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set())
   const [formOpen, setFormOpen] = useState(false)
   const [editingJob, setEditingJob] = useState<CronJobView | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
 
   const refresh = useCallback(async (): Promise<void> => {
     try {
@@ -85,7 +80,7 @@ export function AutomationPage(): React.JSX.Element {
     void refresh()
     // Live status updates from cron runtime events
     const unsubscribe = cronEvents.on((event: CronEvent): void => {
-      if (event.type === 'run_started') {
+      if (event.type === 'fired' || event.type === 'run_started') {
         setRunningIds((prev) => new Set(prev).add(event.jobId))
       } else if (event.type === 'run_finished' || event.type === 'job_removed') {
         setRunningIds((prev) => {
@@ -163,6 +158,20 @@ export function AutomationPage(): React.JSX.Element {
     setFormOpen(true)
   }, [])
 
+  const selectFromCalendar = useCallback(
+    (jobId: string): void => {
+      setViewMode('list')
+      setExpandedId(jobId)
+      const job = jobs.find((candidate) => candidate.id === jobId)
+      if (job) {
+        requestAnimationFrame(() => {
+          document.getElementById(`cron-job-${jobId}`)?.scrollIntoView({ block: 'nearest' })
+        })
+      }
+    },
+    [jobs]
+  )
+
   const filteredJobs = useMemo(() => {
     switch (filter) {
       case 'enabled':
@@ -192,6 +201,26 @@ export function AutomationPage(): React.JSX.Element {
           <Button variant="ghost" size="icon" onClick={() => void refresh()} title={t('automation.refresh')}>
             <RefreshCw className="size-4" />
           </Button>
+          <div className="flex items-center rounded-md border border-border p-0.5">
+            <Button
+              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+              size="icon"
+              className="size-7"
+              onClick={() => setViewMode('list')}
+              title={t('automation.viewList')}
+            >
+              <List className="size-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'calendar' ? 'secondary' : 'ghost'}
+              size="icon"
+              className="size-7"
+              onClick={() => setViewMode('calendar')}
+              title={t('automation.viewCalendar')}
+            >
+              <CalendarDays className="size-4" />
+            </Button>
+          </div>
           <Button size="sm" onClick={openCreate}>
             <Plus className="mr-1 size-4" />
             {t('automation.newTask')}
@@ -199,6 +228,17 @@ export function AutomationPage(): React.JSX.Element {
         </div>
       </div>
 
+      {/* Calendar view */}
+      {viewMode === 'calendar' ? (
+        <div className="min-h-0 flex-1 px-6 pb-6">
+          <AutomationCalendar
+            jobs={jobs}
+            runningIds={runningIds}
+            onSelectJob={selectFromCalendar}
+          />
+        </div>
+      ) : (
+        <div className="contents">
       {/* Filters */}
       <div className="flex items-center gap-1.5 px-6 py-3">
         {filters.map((candidate) => (
@@ -233,12 +273,13 @@ export function AutomationPage(): React.JSX.Element {
             {filteredJobs.map((job) => {
               const running = runningIds.has(job.id)
               const expanded = expandedId === job.id
-              const nextRun = estimateNextRun(job)
+              const nextRun = formatNextRun(job)
               return (
-                <div key={job.id} className="rounded-lg border border-border bg-card">
+                <div key={job.id} id={`cron-job-${job.id}`} className="rounded-lg border border-border bg-card">
                   <div className="flex items-center gap-3 px-4 py-3">
                     <Switch
                       checked={job.enabled}
+                      disabled={running}
                       onCheckedChange={(checked) => void toggleJob(job, checked)}
                     />
                     <button
@@ -285,6 +326,7 @@ export function AutomationPage(): React.JSX.Element {
                       <Button
                         variant="ghost"
                         size="icon"
+                        disabled={running}
                         onClick={() => openEdit(job)}
                         title={t('automation.edit')}
                       >
@@ -293,6 +335,7 @@ export function AutomationPage(): React.JSX.Element {
                       <Button
                         variant="ghost"
                         size="icon"
+                        disabled={running}
                         onClick={() => void deleteJob(job)}
                         title={t('automation.delete')}
                       >
@@ -357,7 +400,9 @@ export function AutomationPage(): React.JSX.Element {
             })}
           </div>
         )}
-      </div>
+        </div>
+        </div>
+      )}
 
       {/* Footer hint */}
       <div className="border-t border-border px-6 py-2 text-xs text-muted-foreground">

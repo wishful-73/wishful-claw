@@ -35,7 +35,11 @@ import { setMainWindow } from './main-window-registry'
 import { registerLoginItemHandlers, registerWindowControlHandlers } from './ipc/window-handlers'
 import { registerMiscHandlers } from './ipc/misc-handlers'
 import { registerCodeGraphHandlers } from './ipc/codegraph-handlers'
-import { initializeCronScheduler } from './ipc/reverse-handlers/cron-reverse-handler'
+import {
+  initializeCronScheduler,
+  registerCronHandlers,
+  releaseCronRunsAfterRendererExit
+} from './ipc/reverse-handlers/cron-reverse-handler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
 
 let mainWindow: BrowserWindow | null = null
@@ -96,6 +100,7 @@ function createWindow(): void {
   mainWindow.webContents.on("render-process-gone", (_e, details) => {
     console.error("[renderer:CRASH]", details.reason, details.exitCode)
     logError("renderer", `Render process gone: ${details.reason} (exit code: ${details.exitCode})`)
+    releaseCronRunsAfterRendererExit()
   })
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -135,6 +140,11 @@ function createTray(): void {
 }
 
 app.setName('WishfulClaw')
+
+const isolatedDataDirectory = process.env.WISHFULCLAW_DATA_DIR?.trim()
+if (isolatedDataDirectory) {
+  app.setPath('userData', join(isolatedDataDirectory, 'electron-user-data'))
+}
 
 // 单实例锁：双击 exe 时聚焦已有窗口，不启动新进程
 const gotTheLock = app.requestSingleInstanceLock()
@@ -235,6 +245,7 @@ if (!gotTheLock) {
   registerTerminalHandlers()
   registerAgentChangeHandlers()
   registerMcpHandlers()
+  registerCronHandlers()
   registerVideoHandlers()
   registerExtensionHandlers()
 registerWebSearchHandlers()

@@ -292,6 +292,17 @@
     "runNow": "Run once",
     "delete": "Delete",
     "edit": "Edit",
+    "viewList": "List view",
+    "viewCalendar": "Calendar view",
+    "calendar": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    },
     "deleted": "Task deleted",
     "created": "Task created",
     "updated": "Task updated",

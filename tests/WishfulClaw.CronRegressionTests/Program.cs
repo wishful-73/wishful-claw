@@ -13,6 +13,7 @@ internal static class Program
 {
     private const string PersistentJobId = "cron-persistent";
     private const string DisabledJobId = "cron-disabled";
+    private const string SmokeJobId = "cron-smoke-at";
     private static int _passed;
 
     public static int Main(string[] args)
@@ -64,6 +65,12 @@ internal static class Program
                     break;
                 case "--verify-new":
                     RunNewDatabaseSuite(dbPath);
+                    break;
+                case "--seed-smoke":
+                    SeedSmokeTask(dbPath);
+                    break;
+                case "--verify-smoke":
+                    VerifySmokeTask(dbPath);
                     break;
                 default:
                     throw new InvalidOperationException($"Unknown child mode: {mode}");
@@ -212,6 +219,22 @@ internal static class Program
         AssertEqual(2L, fired.GetProperty("cron").GetProperty("fire_count").GetInt64(), "mark-fired increments fire count");
         AssertEqual(1002L, fired.GetProperty("cron").GetProperty("last_fired_at").GetInt64(), "mark-fired stores latest timestamp");
 
+        AssertMutationSuccess(DbCronTools.Toggle(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("id", DisabledJobId);
+            writer.WriteBoolean("enabled", true);
+        })), "one-shot fixture can be enabled");
+        var consumed = ResultObject(DbCronTools.MarkFired(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("id", DisabledJobId);
+            writer.WriteNumber("firedAt", 1003L);
+            writer.WriteBoolean("disable", true);
+        })));
+        AssertEqual(1L, consumed.GetProperty("cron").GetProperty("fire_count").GetInt64(),
+            "mark-fired atomically increments a consumed one-shot task");
+        Assert(!consumed.GetProperty("cron").GetProperty("enabled").GetBoolean(),
+            "mark-fired atomically disables a consumed one-shot task");
+
         var finished = ResultObject(DbCronTools.MarkRunFinished(Parameters(dbPath, writer =>
         {
             writer.WriteString("id", PersistentJobId);
@@ -275,6 +298,48 @@ internal static class Program
             "new database creates enabled index");
         AssertEqual(1L, db.QueryScalar<long>("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_cron_tasks_session'"),
             "new database creates session index");
+    }
+
+    private static void SeedSmokeTask(string dbPath)
+    {
+        var initialization = DbClient.Initialize(dbPath);
+        Assert(initialization.Success, $"smoke database initializes: {initialization.Error}");
+        var fireAt = DateTimeOffset.UtcNow.AddSeconds(25).ToUnixTimeMilliseconds();
+        var result = ResultObject(DbCronTools.Create(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("id", SmokeJobId);
+            writer.WriteString("name", "Isolated Cron Smoke");
+            writer.WriteStartObject("scheduleJson");
+            writer.WriteString("kind", "at");
+            writer.WriteNumber("at", fireAt);
+            writer.WriteEndObject();
+            writer.WriteString("prompt", "Verify isolated Cron failure recovery");
+            writer.WriteString("deliveryMode", "none");
+            writer.WriteBoolean("deleteAfterRun", true);
+            writer.WriteNumber("maxIterations", 1);
+            writer.WriteBoolean("enabled", true);
+        })));
+        Assert(result.GetProperty("success").GetBoolean(), "smoke task is seeded");
+        Console.WriteLine($"SMOKE_FIRE_AT={fireAt}");
+    }
+
+    private static void VerifySmokeTask(string dbPath)
+    {
+        var initialization = DbClient.Initialize(dbPath);
+        Assert(initialization.Success, $"smoke database reopens: {initialization.Error}");
+        var result = ResultObject(DbCronTools.Get(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("id", SmokeJobId);
+            writer.WriteBoolean("includeDeleted", true);
+        })));
+        Assert(result.GetProperty("success").GetBoolean(), "smoke task remains queryable as history");
+        var cron = result.GetProperty("cron");
+        AssertEqual(1, cron.GetProperty("fire_count").GetInt32(), "smoke task fires exactly once");
+        AssertEqual("error", cron.GetProperty("last_run_status").GetString(), "smoke task records Agent failure");
+        Assert(cron.GetProperty("last_error").GetString()?.Contains("No enabled provider/model", StringComparison.Ordinal) == true,
+            "smoke task records isolated provider failure");
+        Assert(cron.GetProperty("deleted_at").ValueKind == JsonValueKind.Number, "smoke task is archived after completion");
+        Assert(!cron.GetProperty("enabled").GetBoolean(), "smoke task is disabled after archival");
     }
 
     private static JsonElement CreateParameters(string dbPath, string id, bool enabled)

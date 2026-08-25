@@ -7,7 +7,8 @@ import type { McpServerConfig } from '../mcp/mcp-types'
 
 // ── Config persistence (JSON file) ──
 
-const CONFIG_DIR = join(homedir(), '.wishful-claw')
+const isolatedDataDirectory = process.env.WISHFULCLAW_DATA_DIR?.trim()
+const CONFIG_DIR = isolatedDataDirectory || join(homedir(), '.wishful-claw')
 const CONFIG_FILE = join(CONFIG_DIR, 'mcp-servers.json')
 
 function readServers(): McpServerConfig[] {

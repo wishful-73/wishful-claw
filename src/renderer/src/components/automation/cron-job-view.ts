@@ -23,6 +23,7 @@ export interface CronJobView {
   enabled: boolean
   deletedAt: number | null
   lastFiredAt: number | null
+  nextRunAt: number | null
   lastRunAt: number | null
   lastRunStatus?: string
   lastRunSummary?: string
@@ -51,6 +52,7 @@ export function asCronJob(value: unknown): CronJobView | null {
     enabled: Boolean(record.enabled),
     deletedAt: (record.deletedAt as number | null) ?? null,
     lastFiredAt: (record.lastFiredAt as number | null) ?? null,
+    nextRunAt: (record.nextRunAt as number | null) ?? null,
     lastRunAt: (record.lastRunAt as number | null) ?? null,
     lastRunStatus: record.lastRunStatus as string | undefined,
     lastRunSummary: record.lastRunSummary as string | undefined,

@@ -44,7 +44,10 @@ let logDir: string = ''
 
 function getLogDir(): string {
   if (!logDir) {
-    logDir = join(os.homedir(), '.wishful-claw', 'logs')
+    const isolatedDataDirectory = process.env.WISHFULCLAW_DATA_DIR?.trim()
+    logDir = isolatedDataDirectory
+      ? join(isolatedDataDirectory, 'logs')
+      : join(os.homedir(), '.wishful-claw', 'logs')
   }
   return logDir
 }

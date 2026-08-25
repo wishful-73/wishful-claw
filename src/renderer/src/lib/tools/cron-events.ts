@@ -7,6 +7,7 @@
 
 type CronFiredEvent = {
   jobId: string
+  fireId: string
   sessionId?: string | null
   name?: string
   prompt?: string

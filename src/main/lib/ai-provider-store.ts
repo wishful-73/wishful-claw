@@ -219,7 +219,8 @@ function writeSplitProviderStore(dataDirectory: string, value: unknown): Persist
 }
 
 function getDefaultDataDirectory(): string {
-  return path.join(os.homedir(), DATA_DIRECTORY_NAME)
+  const override = process.env.WISHFULCLAW_DATA_DIR?.trim()
+  return override ? path.resolve(override) : path.join(os.homedir(), DATA_DIRECTORY_NAME)
 }
 
 export function readPersistedProviderStore(

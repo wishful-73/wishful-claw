@@ -13,6 +13,7 @@ import cron from 'node-cron'
 import { safeSendMessagePackToWindow } from '../../window-ipc'
 import { getMainWindow } from '../../main-window-registry'
 import { getNativeWorker } from '../../lib/native-worker'
+import { registerMessagePackHandler } from '../messagepack-handler'
 
 // ── Types ──
 
@@ -58,6 +59,9 @@ const jobs = new Map<string, CronJob>()
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 const intervals = new Map<string, ReturnType<typeof setInterval>>()
 const cronTasks = new Map<string, ReturnType<typeof cron.schedule>>()
+const nextRunTimes = new Map<string, number>()
+const runningJobIds = new Map<string, string>()
+const MAX_TIMEOUT_DELAY = 2_147_000_000
 
 let idCounter = 0
 let restorePromise: Promise<void> | null = null
@@ -222,47 +226,61 @@ function clearJobTimers(jobId: string): void {
   if (i) { clearInterval(i); intervals.delete(jobId) }
   const task = cronTasks.get(jobId)
   if (task) { task.stop(); cronTasks.delete(jobId) }
+  nextRunTimes.delete(jobId)
 }
 
-function fireJob(job: CronJob): void {
+async function fireJob(job: CronJob, consumeOneShot = false): Promise<boolean> {
+  if (runningJobIds.has(job.id)) return false
+
   const firedAt = Date.now()
+  const fireId = `${job.id}:${firedAt}:${Math.random().toString(36).slice(2, 10)}`
+  runningJobIds.set(job.id, fireId)
+  try {
+    await dbRequest('db/crons-mark-fired', { id: job.id, firedAt, disable: consumeOneShot })
+  } catch (error) {
+    runningJobIds.delete(job.id)
+    console.warn(`[Cron] failed to persist fired state for ${job.id}:`, error)
+    return false
+  }
+
   job.lastFiredAt = firedAt
   job.fireCount += 1
   job.updatedAt = firedAt
-  void dbRequest('db/crons-mark-fired', { id: job.id, firedAt }).catch((error) => {
-    console.warn(`[Cron] failed to persist fired state for ${job.id}:`, error)
-  })
+  if (consumeOneShot) {
+    job.enabled = false
+    clearJobTimers(job.id)
+  }
 
   const win = getMainWindow()
-  if (win) {
-    safeSendMessagePackToWindow(win, 'cron:fire', {
-      jobId: job.id,
-      name: job.name,
-      prompt: job.prompt,
-      agentId: job.agentId,
-      model: job.model,
-      workingFolder: job.workingFolder,
-      sessionId: job.sessionId,
-      firedAt,
-      deliveryMode: job.deliveryMode ?? 'desktop',
-      deliveryTarget: job.deliveryTarget,
-      deleteAfterRun: job.deleteAfterRun ?? false,
-      pluginId: job.pluginId,
-      pluginType: job.pluginType,
-      pluginChatId: job.pluginChatId,
-      maxIterations: job.maxIterations ?? 15
-    })
+  const sent = Boolean(win && safeSendMessagePackToWindow(win, 'cron:fire', {
+    jobId: job.id,
+    fireId,
+    name: job.name,
+    prompt: job.prompt,
+    agentId: job.agentId,
+    model: job.model,
+    workingFolder: job.workingFolder,
+    sessionId: job.sessionId,
+    firedAt,
+    deliveryMode: job.deliveryMode ?? 'desktop',
+    deliveryTarget: job.deliveryTarget,
+    deleteAfterRun: job.deleteAfterRun ?? false,
+    pluginId: job.pluginId,
+    pluginType: job.pluginType,
+    pluginChatId: job.pluginChatId,
+    maxIterations: job.maxIterations ?? 15
+  }))
+
+  if (!sent) {
+    runningJobIds.delete(job.id)
+    console.warn(`[Cron] renderer unavailable for job ${job.id}`)
+    return false
   }
 
   // One-shot jobs stop scheduling immediately, but stay queryable until the
-  // renderer finishes execution, delivery, and final state persistence.
-  if (job.deleteAfterRun) {
-    clearJobTimers(job.id)
-    job.enabled = false
-    void dbRequest('db/crons-toggle', { id: job.id, enabled: false }).catch((error) => {
-      console.warn(`[Cron] failed to disable one-shot job ${job.id}:`, error)
-    })
-  }
+  // renderer finishes execution and asks Main to archive the task.
+  if (job.deleteAfterRun) clearJobTimers(job.id)
+  return true
 }
 
 function scheduleJob(job: CronJob): boolean {
@@ -272,14 +290,28 @@ function scheduleJob(job: CronJob): boolean {
   if (schedule.kind === 'at') {
     const ts = resolveTimestamp(schedule.at)
     if (!ts || ts < Date.now()) return false
-    const delay = ts - Date.now()
-    timers.set(job.id, setTimeout(() => fireJob(job), delay))
+    nextRunTimes.set(job.id, ts)
+    const scheduleNextChunk = (): void => {
+      const remaining = ts - Date.now()
+      if (remaining <= 0) {
+        timers.delete(job.id)
+        nextRunTimes.delete(job.id)
+        void fireJob(job, true)
+        return
+      }
+      timers.set(job.id, setTimeout(scheduleNextChunk, Math.min(remaining, MAX_TIMEOUT_DELAY)))
+    }
+    scheduleNextChunk()
     return true
   }
 
   if (schedule.kind === 'every') {
     const ms = schedule.every!
-    intervals.set(job.id, setInterval(() => fireJob(job), ms))
+    nextRunTimes.set(job.id, Date.now() + ms)
+    intervals.set(job.id, setInterval(() => {
+      nextRunTimes.set(job.id, Date.now() + ms)
+      void fireJob(job)
+    }, ms))
     return true
   }
 
@@ -287,8 +319,15 @@ function scheduleJob(job: CronJob): boolean {
     const expr = schedule.expr!
     const tz = schedule.tz ?? 'UTC'
     try {
-      const task = cron.schedule(expr, () => fireJob(job), { timezone: tz })
+      const task = cron.schedule(expr, () => {
+        void fireJob(job)
+        const nextRun = task.getNextRun()
+        if (nextRun) nextRunTimes.set(job.id, nextRun.getTime())
+        else nextRunTimes.delete(job.id)
+      }, { timezone: tz })
       cronTasks.set(job.id, task)
+      const nextRun = task.getNextRun()
+      if (nextRun) nextRunTimes.set(job.id, nextRun.getTime())
       return true
     } catch {
       return false
@@ -364,6 +403,7 @@ function dbPatchFromCronPatch(patch: Record<string, unknown>): Record<string, un
 export async function handleCronUpdate(params: Record<string, unknown>): Promise<unknown> {
   const jobId = (params.jobId ?? params.id) as string | undefined
   if (!jobId) return { error: 'jobId is required' }
+  if (runningJobIds.has(jobId)) return { error: `Job "${jobId}" is currently running` }
   const patch = params.patch as Record<string, unknown> | undefined
   if (!patch || Object.keys(patch).length === 0) return { error: 'patch is required' }
 
@@ -413,6 +453,7 @@ export async function handleCronUpdate(params: Record<string, unknown>): Promise
 export async function handleCronDelete(params: Record<string, unknown>): Promise<unknown> {
   const jobId = (params.jobId ?? params.id) as string | undefined
   if (!jobId) return { error: 'jobId is required' }
+  if (runningJobIds.has(jobId)) return { error: `Job "${jobId}" is currently running` }
   await restoreJobs()
   const job = await loadJob(jobId)
   if (!job) return { error: `Job "${jobId}" not found` }
@@ -432,6 +473,7 @@ export async function handleCronDelete(params: Record<string, unknown>): Promise
 export async function handleCronToggle(params: Record<string, unknown>): Promise<unknown> {
   const jobId = (params.jobId ?? params.id) as string | undefined
   if (!jobId || typeof params.enabled !== 'boolean') return { error: 'jobId and enabled are required' }
+  if (runningJobIds.has(jobId)) return { error: `Job "${jobId}" is currently running` }
   await restoreJobs()
   const job = await loadJob(jobId)
   if (!job) return { error: `Job "${jobId}" not found` }
@@ -456,6 +498,7 @@ export async function handleCronList(params: Record<string, unknown>): Promise<u
   return (result ?? [])
     .map((row) => fromDbRow(row as Record<string, unknown>))
     .filter((job) => !params?.sessionId || job.sessionId === params.sessionId)
+    .map((job) => ({ ...job, nextRunAt: nextRunTimes.get(job.id) ?? null }))
 }
 
 export async function handleCronRunNow(params: Record<string, unknown>): Promise<unknown> {
@@ -464,8 +507,57 @@ export async function handleCronRunNow(params: Record<string, unknown>): Promise
   await restoreJobs()
   const job = await loadJob(jobId)
   if (!job || job.deletedAt) return { error: `Job "${jobId}" not found` }
-  fireJob(job)
+  if (runningJobIds.has(jobId)) return { error: `Job "${jobId}" is already running` }
+  if (!await fireJob(job)) return { error: `Failed to deliver job "${jobId}" to the renderer` }
   return { success: true, jobId }
+}
+
+export async function handleCronRunComplete(params: Record<string, unknown>): Promise<unknown> {
+  const jobId = (params.jobId ?? params.id) as string | undefined
+  const fireId = params.fireId as string | undefined
+  if (!jobId || !fireId) return { error: 'jobId and fireId are required' }
+  if (runningJobIds.get(jobId) !== fireId) {
+    return { error: `Job "${jobId}" completion does not match the active run` }
+  }
+  runningJobIds.delete(jobId)
+
+  const job = jobs.get(jobId) ?? await loadJob(jobId)
+  if (!job || job.deletedAt || !job.deleteAfterRun) {
+    return { success: true, jobId, archived: false }
+  }
+
+  try {
+    const result = await dbRequest<Record<string, unknown>>('db/crons-delete', { id: jobId })
+    if (result && result.success === false) return result
+    clearJobTimers(jobId)
+    job.deletedAt = Date.now()
+    job.enabled = false
+    jobs.set(jobId, job)
+    return { success: true, jobId, archived: true }
+  } catch (error) {
+    job.enabled = false
+    jobs.set(jobId, job)
+    await dbRequest('db/crons-toggle', { id: jobId, enabled: false }).catch((toggleError) => {
+      console.warn(`[Cron] failed to disable unarchived one-shot job ${jobId}:`, toggleError)
+    })
+    return { error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+export function registerCronHandlers(): void {
+  registerMessagePackHandler<Record<string, unknown>, unknown>('cron:add', handleCronAdd)
+  registerMessagePackHandler<Record<string, unknown>, unknown>('cron:update', handleCronUpdate)
+  registerMessagePackHandler<Record<string, unknown>, unknown>('cron:delete', handleCronDelete)
+  registerMessagePackHandler<Record<string, unknown>, unknown>('cron:toggle', handleCronToggle)
+  registerMessagePackHandler<Record<string, unknown>, unknown>('cron:list', handleCronList)
+  registerMessagePackHandler<Record<string, unknown>, unknown>('cron:run-now', handleCronRunNow)
+  registerMessagePackHandler<Record<string, unknown>, unknown>('cron:run-complete', handleCronRunComplete)
+}
+
+export function releaseCronRunsAfterRendererExit(): void {
+  if (runningJobIds.size === 0) return
+  console.warn(`[Cron] releasing ${runningJobIds.size} active run lock(s) after renderer exit`)
+  runningJobIds.clear()
 }
 
 export function initializeCronScheduler(): Promise<void> {
@@ -494,6 +586,8 @@ export async function handleCronReverseRequest(
       return handleCronList(args)
     case 'cron:run-now':
       return handleCronRunNow(args)
+    case 'cron:run-complete':
+      return handleCronRunComplete(args)
     default:
       return { error: `Unknown cron method: ${method}` }
   }

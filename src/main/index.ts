@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+﻿import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 
@@ -35,6 +35,7 @@ import { setMainWindow } from './main-window-registry'
 import { registerLoginItemHandlers, registerWindowControlHandlers } from './ipc/window-handlers'
 import { registerMiscHandlers } from './ipc/misc-handlers'
 import { registerCodeGraphHandlers } from './ipc/codegraph-handlers'
+import { initializeCronScheduler } from './ipc/reverse-handlers/cron-reverse-handler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
 
 let mainWindow: BrowserWindow | null = null
@@ -482,6 +483,9 @@ registerCodeGraphHandlers()
   // Clipboard Enhancer and Quick Launcher desktop utilities
   registerClipboardEnhancer()
   registerQuickLauncher()
+
+  // Restore persisted Cron jobs before auto-starting channels.
+  void initializeCronScheduler()
 
   // Auto-start enabled channels after window is ready
   if (channelManager) {

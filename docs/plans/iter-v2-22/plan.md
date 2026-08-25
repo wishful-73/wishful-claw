@@ -36,7 +36,7 @@
 ### FU-D：Cron 执行、渠道通知与失败恢复
 
 - [x] 步骤8：完善 cron:fire 到 Agent 的参数透传。新增 Renderer Cron runtime，监听 MessagePack `cron:fire`，保留 prompt、模型、工作目录、sessionId、maxIterations、deliveryMode、deliveryTarget、pluginId、pluginChatId，复用 Sidecar Agent 执行链；为 fired、run-started、run-progress、run-finished 统一事件 payload，运行完成/失败/取消后回写 DB 状态。运行事件不携带完整 prompt 或敏感凭据，摘要限制长度。验证：`ipcClient.on('cron:fire')` 路由、App 单次初始化/卸载、TypeScript web/node/全量三配置和 `git diff --check` 均通过；桌面/会话/微信/飞书实际 delivery 端到端验证留待步骤 9/10/15。实现提交：`773621f`。
-- [x] 步骤9：实现执行结果持久化和渠道通知。Agent 完成/失败/取消后统一生成结果摘要；支持 `desktop`（`notification:show`）、`session`（SQLite 消息持久化并同步已加载会话）、`plugin`（复用 `plugin:exec/sendMessage` 统一渠道边界）和 `none`。通知失败追加到任务 `last_error`，不改变 Agent 执行状态且不阻断周期任务后续触发；`deleteAfterRun` 任务触发时先停止并禁用，待执行、通知和状态持久化完成后再软删除归档并发出 `job_removed`。Worker `{ success:false, error }` 响应统一识别。验证：TypeScript 三配置、`git diff --check`、Infrastructure build 均通过（0 警告、0 错误；仅既有 .NET preview SDK 提示）；周期连续触发、Agent 失败恢复和微信/飞书成功/失败通知的真实运行证据留待步骤 10/15。实现提交：`待提交`。
+- [x] 步骤9：实现执行结果持久化和渠道通知。Agent 完成/失败/取消后统一生成结果摘要；支持 `desktop`（`notification:show`）、`session`（SQLite 消息持久化并同步已加载会话）、`plugin`（复用 `plugin:exec/sendMessage` 统一渠道边界）和 `none`。通知失败追加到任务 `last_error`，不改变 Agent 执行状态且不阻断周期任务后续触发；`deleteAfterRun` 任务触发时先停止并禁用，待执行、通知和状态持久化完成后再软删除归档并发出 `job_removed`。Worker `{ success:false, error }` 响应统一识别。验证：TypeScript 三配置、`git diff --check`、Infrastructure build 均通过（0 警告、0 错误；仅既有 .NET preview SDK 提示）；周期连续触发、Agent 失败恢复和微信/飞书成功/失败通知的真实运行证据留待步骤 10/15。实现提交：`4203f9e`。
 - [ ] 步骤10：补齐 Cron 功能测试与恢复测试。覆盖 at/every/cron、时区、启停、编辑、删除、重复触发、deleteAfterRun、应用重启、Worker 重启、渠道断开、Agent 失败和通知失败。验证：形成可复现测试记录，不以“代码看起来正确”代替运行证据。
 
 ### FU-E：定时任务 UI 重设计

@@ -35,7 +35,7 @@
 
 ### FU-D：Cron 执行、渠道通知与失败恢复
 
-- [x] 步骤8：完善 cron:fire 到 Agent 的参数透传。新增 Renderer Cron runtime，监听 MessagePack `cron:fire`，保留 prompt、模型、工作目录、sessionId、maxIterations、deliveryMode、deliveryTarget、pluginId、pluginChatId，复用 Sidecar Agent 执行链；为 fired、run-started、run-progress、run-finished 统一事件 payload，运行完成/失败/取消后回写 DB 状态。运行事件不携带完整 prompt 或敏感凭据，摘要限制长度。验证：`ipcClient.on('cron:fire')` 路由、App 单次初始化/卸载、TypeScript web/node/全量三配置和 `git diff --check` 均通过；桌面/会话/微信/飞书实际 delivery 端到端验证留待步骤 9/10/15。实现提交：`待提交`。
+- [x] 步骤8：完善 cron:fire 到 Agent 的参数透传。新增 Renderer Cron runtime，监听 MessagePack `cron:fire`，保留 prompt、模型、工作目录、sessionId、maxIterations、deliveryMode、deliveryTarget、pluginId、pluginChatId，复用 Sidecar Agent 执行链；为 fired、run-started、run-progress、run-finished 统一事件 payload，运行完成/失败/取消后回写 DB 状态。运行事件不携带完整 prompt 或敏感凭据，摘要限制长度。验证：`ipcClient.on('cron:fire')` 路由、App 单次初始化/卸载、TypeScript web/node/全量三配置和 `git diff --check` 均通过；桌面/会话/微信/飞书实际 delivery 端到端验证留待步骤 9/10/15。实现提交：`773621f`。
 - [ ] 步骤9：实现执行结果持久化和渠道通知。Agent 完成/失败/取消时更新任务级运行状态；deliveryMode=plugin 时调用统一渠道发送边界，发送成功记录结果，发送失败记录错误但不阻断周期任务；一次性任务只有在执行完成后按策略归档。验证：周期任务执行成功后连续触发；Agent 失败后下一次仍能执行；微信/飞书收到成功和失败通知；C# build + TS 三配置通过。
 - [ ] 步骤10：补齐 Cron 功能测试与恢复测试。覆盖 at/every/cron、时区、启停、编辑、删除、重复触发、deleteAfterRun、应用重启、Worker 重启、渠道断开、Agent 失败和通知失败。验证：形成可复现测试记录，不以“代码看起来正确”代替运行证据。
 

@@ -225,4 +225,33 @@ public static class EntityMappers
         CreatedAt = r.GetInt64("created_at"),
         ArchivedAt = r.GetInt64("archived_at")
     };
+
+    public static CronEntity MapCron(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        Name = r.GetString("name"),
+        SessionId = r.GetNullableString("session_id"),
+        ScheduleJson = r.GetString("schedule_json"),
+        Prompt = r.GetString("prompt"),
+        AgentId = r.GetNullableString("agent_id"),
+        Model = r.GetNullableString("model"),
+        WorkingFolder = r.GetNullableString("working_folder"),
+        DeliveryMode = r.GetString("delivery_mode"),
+        DeliveryTarget = r.GetNullableString("delivery_target"),
+        PluginId = r.GetNullableString("plugin_id"),
+        PluginType = r.GetNullableString("plugin_type"),
+        PluginChatId = r.GetNullableString("plugin_chat_id"),
+        DeleteAfterRun = r.GetBoolAsInt("delete_after_run") != 0,
+        MaxIterations = r.GetInt32("max_iterations"),
+        Enabled = r.GetBoolAsInt("enabled") != 0,
+        DeletedAt = r.GetNullableInt64("deleted_at"),
+        LastFiredAt = r.GetNullableInt64("last_fired_at"),
+        LastRunAt = r.GetNullableInt64("last_run_at"),
+        LastRunStatus = r.GetNullableString("last_run_status"),
+        LastRunSummary = r.GetNullableString("last_run_summary"),
+        LastError = r.GetNullableString("last_error"),
+        FireCount = r.GetInt64("fire_count"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at")
+    };
 }

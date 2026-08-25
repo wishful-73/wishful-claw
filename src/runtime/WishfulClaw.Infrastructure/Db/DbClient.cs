@@ -259,7 +259,36 @@ public static partial class DbClient
                     priority TEXT NOT NULL DEFAULT 'standard',
                     created_at INTEGER NOT NULL,
                     archived_at INTEGER NOT NULL
-                );"
+                );",
+                @"CREATE TABLE IF NOT EXISTS cron_tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL DEFAULT '',
+                    session_id TEXT,
+                    schedule_json TEXT NOT NULL DEFAULT '{}',
+                    prompt TEXT NOT NULL DEFAULT '',
+                    agent_id TEXT,
+                    model TEXT,
+                    working_folder TEXT,
+                    delivery_mode TEXT NOT NULL DEFAULT 'desktop',
+                    delivery_target TEXT,
+                    plugin_id TEXT,
+                    plugin_type TEXT,
+                    plugin_chat_id TEXT,
+                    delete_after_run INTEGER NOT NULL DEFAULT 0,
+                    max_iterations INTEGER NOT NULL DEFAULT 15,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    deleted_at INTEGER,
+                    last_fired_at INTEGER,
+                    last_run_at INTEGER,
+                    last_run_status TEXT,
+                    last_run_summary TEXT,
+                    last_error TEXT,
+                    fire_count INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_cron_tasks_enabled_next ON cron_tasks(enabled, deleted_at, updated_at);",
+                @"CREATE INDEX IF NOT EXISTS ix_cron_tasks_session ON cron_tasks(session_id);"
             };
 
             foreach (var sql in tableSqls)
@@ -323,6 +352,30 @@ public static partial class DbClient
             EnsureColumn("goals", "token_budget", "INTEGER");
             EnsureColumn("goals", "time_used_seconds", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("goals", "project_id", "TEXT");
+            EnsureColumn("cron_tasks", "name", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("cron_tasks", "session_id", "TEXT");
+            EnsureColumn("cron_tasks", "schedule_json", "TEXT NOT NULL DEFAULT '{}'");
+            EnsureColumn("cron_tasks", "prompt", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("cron_tasks", "agent_id", "TEXT");
+            EnsureColumn("cron_tasks", "model", "TEXT");
+            EnsureColumn("cron_tasks", "working_folder", "TEXT");
+            EnsureColumn("cron_tasks", "delivery_mode", "TEXT NOT NULL DEFAULT 'desktop'");
+            EnsureColumn("cron_tasks", "delivery_target", "TEXT");
+            EnsureColumn("cron_tasks", "plugin_id", "TEXT");
+            EnsureColumn("cron_tasks", "plugin_type", "TEXT");
+            EnsureColumn("cron_tasks", "plugin_chat_id", "TEXT");
+            EnsureColumn("cron_tasks", "delete_after_run", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("cron_tasks", "max_iterations", "INTEGER NOT NULL DEFAULT 15");
+            EnsureColumn("cron_tasks", "enabled", "INTEGER NOT NULL DEFAULT 1");
+            EnsureColumn("cron_tasks", "deleted_at", "INTEGER");
+            EnsureColumn("cron_tasks", "last_fired_at", "INTEGER");
+            EnsureColumn("cron_tasks", "last_run_at", "INTEGER");
+            EnsureColumn("cron_tasks", "last_run_status", "TEXT");
+            EnsureColumn("cron_tasks", "last_run_summary", "TEXT");
+            EnsureColumn("cron_tasks", "last_error", "TEXT");
+            EnsureColumn("cron_tasks", "fire_count", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("cron_tasks", "created_at", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("cron_tasks", "updated_at", "INTEGER NOT NULL DEFAULT 0");
             NormalizeGoalNumericColumns();
             NormalizeGoalStatuses();
             NormalizeGoalPlansJson();

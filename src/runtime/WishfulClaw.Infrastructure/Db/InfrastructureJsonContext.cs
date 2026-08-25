@@ -83,6 +83,8 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(SubAgentSimpleResult))]
 [JsonSerializable(typeof(SubAgentRunRow))]
 [JsonSerializable(typeof(List<SubAgentRunRow>))]
+[JsonSerializable(typeof(CronRow))]
+[JsonSerializable(typeof(List<CronRow>))]
 public sealed partial class InfrastructureJsonContext : JsonSerializerContext
 {
 }

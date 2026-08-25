@@ -106,7 +106,7 @@ const cronAddHandler: ToolHandler = {
         deliveryMode: {
           type: 'string',
           description:
-            '"desktop" (toast notification), "session" (inject into session), or "none". Default: "desktop"'
+            '"desktop" (toast notification), "session" (inject into session), "plugin" (send through pluginId/pluginChatId), or "none". Default: "desktop"'
         },
         deliveryTarget: {
           type: 'string',
@@ -123,7 +123,7 @@ const cronAddHandler: ToolHandler = {
         pluginId: {
           type: 'string',
           description:
-            'Optional messaging plugin ID to deliver the results through (e.g. cron reminders to WhatsApp).'
+            'Messaging plugin ID used when deliveryMode="plugin".'
         },
         pluginChatId: {
           type: 'string',

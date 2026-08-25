@@ -1,9 +1,13 @@
-﻿import type { AIProvider } from '@shared/types/provider'
+import type { AIProvider } from '@shared/types/provider'
 import type { AgentEvent } from '@renderer/lib/agent/types'
 import type { ProviderConfig, ToolDefinition, UnifiedMessage } from '@renderer/lib/api/types'
+import type { ChatMessage } from '@renderer/stores/chat-store/types'
 import { runAgentViaSidecar } from '@renderer/lib/agent/run-agent-via-sidecar'
+import { IPC } from '@renderer/lib/ipc/channels'
 import { buildSidecarAgentRunRequest } from '@renderer/lib/ipc/sidecar-protocol'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { useChatStore } from '@renderer/stores/chat-store'
+import { dbGetMessageCount, dbUpdateSession, dbUpsertMessage } from '@renderer/stores/chat-store/db-helpers'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { fetchToolDefinitionsAsync } from './tool-cache'
 import { cronEvents, type CronFiredEvent } from './cron-events'
@@ -20,10 +24,21 @@ interface CronRunResult {
   toolCallCount: number
 }
 
+function appendError(current: string | undefined, next: string): string {
+  return truncate(current ? `${current}; ${next}` : next)
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+function assertWorkerSuccess(value: unknown): void {
+  const result = asRecord(value)
+  if (result.success === false || typeof result.error === 'string') {
+    throw new Error(typeof result.error === 'string' ? result.error : 'Worker request failed')
+  }
 }
 
 function createRunId(jobId: string): string {
@@ -97,15 +112,73 @@ function publishRunFinished(event: CronFiredEvent, runId: string, result: CronRu
   })
 }
 
+function buildDeliveryMessage(event: CronFiredEvent, result: CronRunResult): string {
+  const title = event.name?.trim() || 'Scheduled task'
+  if (result.status === 'success') {
+    return result.summary ? `${title}\n\n${result.summary}` : `${title}\n\nCompleted successfully.`
+  }
+  const detail = result.error || result.summary || 'No error details were provided.'
+  return `${title}\n\n${result.status === 'aborted' ? 'Aborted' : 'Failed'}: ${detail}`
+}
+
+async function deliverToSession(sessionId: string, content: string, runId: string): Promise<void> {
+  const message: ChatMessage = {
+    id: `${runId}-delivery`,
+    role: 'assistant',
+    text: content,
+    createdAt: Date.now()
+  }
+  const sortOrder = await dbGetMessageCount(sessionId)
+  await dbUpsertMessage(sessionId, message, sortOrder)
+  await dbUpdateSession(sessionId, { updatedAt: message.createdAt })
+  const session = useChatStore.getState().sessions.find((candidate) => candidate.id === sessionId)
+  if (session) useChatStore.getState().addMessage(sessionId, message)
+}
+
+async function deliverResult(event: CronFiredEvent, result: CronRunResult, runId: string): Promise<void> {
+  const mode = event.deliveryMode ?? 'desktop'
+  if (mode === 'none') return
+  const content = buildDeliveryMessage(event, result)
+  if (mode === 'plugin') {
+    if (!event.pluginId || !event.pluginChatId) {
+      throw new Error('plugin delivery requires pluginId and pluginChatId')
+    }
+    await ipcClient.invoke(IPC.PLUGIN_EXEC, {
+      pluginId: event.pluginId,
+      action: 'sendMessage',
+      params: {
+        chatId: event.pluginChatId,
+        content,
+        pluginType: event.pluginType ?? undefined,
+        taskId: event.jobId
+      }
+    })
+    return
+  }
+  if (mode === 'session') {
+    const sessionId = event.deliveryTarget?.trim() || event.sessionId?.trim()
+    if (!sessionId) throw new Error('session delivery requires deliveryTarget or sessionId')
+    await deliverToSession(sessionId, content, runId)
+    return
+  }
+  const notification = await ipcClient.invoke('notification:show', {
+    title: event.name?.trim() || 'Scheduled task',
+    body: content,
+    type: result.status === 'success' ? 'success' : 'error'
+  }) as { success?: boolean }
+  if (notification.success === false) throw new Error('Desktop notifications are not supported')
+}
+
 async function persistRunFinished(event: CronFiredEvent, result: CronRunResult): Promise<void> {
   try {
-    await window.api.workerRequest('db/crons-mark-run-finished', {
+    const response = await window.api.workerRequest('db/crons-mark-run-finished', {
       id: event.jobId,
       runAt: Date.now(),
       status: result.status,
       summary: result.summary,
       error: result.error
     })
+    assertWorkerSuccess(response)
   } catch (error) {
     console.warn('[CronRuntime] failed to persist run state:', error)
   }
@@ -181,7 +254,27 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
       error: truncate(error instanceof Error ? error.message : String(error))
     }
   } finally {
+    try {
+      await deliverResult(event, result, runId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      result.error = appendError(result.error, `Delivery failed: ${message}`)
+    }
+
     await persistRunFinished(event, result)
+
+    if (event.deleteAfterRun) {
+      try {
+        const response = await window.api.workerRequest('db/crons-delete', { id: event.jobId })
+        assertWorkerSuccess(response)
+        cronEvents.emit({ type: 'job_removed', jobId: event.jobId, reason: 'delete_after_run' })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        result.error = appendError(result.error, `Archive failed: ${message}`)
+        await persistRunFinished(event, result)
+      }
+    }
+
     publishRunFinished(event, runId, result)
     activeRuns.delete(event.jobId)
   }

@@ -246,6 +246,7 @@ function fireJob(job: CronJob): void {
       firedAt,
       deliveryMode: job.deliveryMode ?? 'desktop',
       deliveryTarget: job.deliveryTarget,
+      deleteAfterRun: job.deleteAfterRun ?? false,
       pluginId: job.pluginId,
       pluginType: job.pluginType,
       pluginChatId: job.pluginChatId,
@@ -253,13 +254,13 @@ function fireJob(job: CronJob): void {
     })
   }
 
-  // Handle deleteAfterRun for one-shot jobs. The task is soft-deleted after it fires.
+  // One-shot jobs stop scheduling immediately, but stay queryable until the
+  // renderer finishes execution, delivery, and final state persistence.
   if (job.deleteAfterRun) {
     clearJobTimers(job.id)
-    job.deletedAt = firedAt
     job.enabled = false
-    void dbRequest('db/crons-delete', { id: job.id }).catch((error) => {
-      console.warn(`[Cron] failed to archive one-shot job ${job.id}:`, error)
+    void dbRequest('db/crons-toggle', { id: job.id, enabled: false }).catch((error) => {
+      console.warn(`[Cron] failed to disable one-shot job ${job.id}:`, error)
     })
   }
 }

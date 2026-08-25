@@ -15,10 +15,12 @@ type CronFiredEvent = {
   workingFolder?: string | null
   sshConnectionId?: string | null
   firedAt?: number
-  deliveryMode?: string
+  deliveryMode?: 'desktop' | 'session' | 'none' | 'plugin'
   deliveryTarget?: string | null
+  deleteAfterRun?: boolean
   maxIterations?: number
   pluginId?: string | null
+  pluginType?: string | null
   pluginChatId?: string | null
   error?: string
 }

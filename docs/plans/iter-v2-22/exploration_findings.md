@@ -5,7 +5,7 @@
 用户确认本迭代包含：
 
 - 微信/飞书渠道打磨；
-- 会话标题显示用户/群聊名称；
+- 会话首次创建时显示“渠道前缀 + 机器人名称”固定标题；
 - 避免重复拼接“飞书/微信”前缀；
 - 渠道会话主动发消息；
 - 定时任务功能测试与修复；
@@ -30,25 +30,26 @@
 - `src/main/channels/auto-reply.ts`
   - 接收入站 `incoming_message`；
   - 调用 Worker `db/plugin-route-session` 按 `pluginId + chatId` 路由会话；
-  - 将 `chatName`、`senderName`、`chatId` 传入路由；
   - 当前在 Main 侧生成渠道前缀标题，并尝试更新 DB；
-  - 发送 `plugin:session-task` 到 renderer。
+  - 发送 `plugin:session-task` 到 renderer；
+  - 本迭代标题规则改为首次创建时使用渠道连接配置中的机器人名称，后续消息复用已有标题。
 
 - `src/renderer/src/hooks/use-channel-auto-reply.ts`
   - 收到 `plugin:session-task` 后创建 renderer 会话快照；
   - 当前又调用 `buildSessionTitle` 生成一次渠道前缀标题；
   - Agent 完成后通过 `IPC.PLUGIN_EXEC` 的 `sendMessage` 将最终文本发回渠道。
 
-### 已有名称解析
+### 渠道机器人名称与会话标题
 
-- 飞书 `FeishuService` 已维护 `chat_id → chat name`、`user_id/open_id → display name` 缓存，并在入站消息中解析群名/发送者名称。
-- 微信服务已有入站轮询和文本发送能力；需要确认微信入站 payload 是否稳定提供会话显示名称，缺失时必须回退 `chatId`。
-- `DbPluginSessionTools` 已有会话路由、会话标题更新和外部聊天 ID 存储能力。
+- 飞书连接启动时可以取得 Agent 机器人名称，例如 `心相助手`；首次创建会话的标题应为 `飞书:心相助手`。
+- 微信使用同样规则，首次创建会话的标题应为 `微信:<机器人名称>`；名称缺失时回退为 `飞书对话`/`微信对话`。
+- `DbPluginSessionTools` 已有会话路由、会话标题更新和外部聊天 ID 存储能力；后续消息不得重新生成标题。
+- 用户名称、群聊名称、发送者名称不参与本迭代的会话标题生成，但仍可保留在消息元数据中。
 
 ### 已识别问题
 
-1. 标题构建逻辑重复存在于 Main 和 renderer 两处，容易出现 `飞书: 飞书: 用户`。
-2. `routedSession.sessionTitle`、`chatName`、`senderName`、`chatId` 的优先级和“已带前缀”判断没有集中在一个函数中。
+1. 标题构建逻辑重复存在于 Main 和 renderer 两处，容易出现 `飞书:飞书:心相助手`。
+2. 首次创建、已有会话复用和机器人名称缺失回退没有集中在一个函数中。
 3. 渠道主动消息底层能力已存在，但需要形成一个可被 Cron 调用的稳定发送边界，并将失败结果隔离，不得阻断调度器。
 
 ## Cron 现状
@@ -72,6 +73,7 @@
 - `src/renderer/src/lib/tools/cron-events.ts` 已定义 fired、run_started、run_progress、run_finished、job_removed 事件类型，但没有发现完整的 Cron 管理 UI 消费链路。
 - `src/renderer/src/components/layout/MainLayout.tsx` 中 `tasks` 仍显示 `PlaceholderPage`，标题为 Automation。
 - `WorkspaceSidebar` 已有 Automation 入口，调用 `openTasksPage`。
+- UI 设计方向已确定：Reasonix 风格设置页作为主管理入口，OpenCowork Automation 日历只作为预览视图，不创建第二套任务编辑或持久化逻辑。
 
 ### 已识别问题
 

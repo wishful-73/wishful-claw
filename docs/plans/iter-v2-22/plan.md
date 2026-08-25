@@ -24,12 +24,12 @@
 
 ### FU-B：渠道主动消息边界
 
-- [x] 步骤3：梳理并统一渠道主动发送 API。为 Main 内部后台通知建立显式参数模型，至少包含 `pluginId/pluginType/chatId/content`，微信需要保留发送所需 context token；复用现有 `plugin:exec sendMessage`，补齐飞书/微信参数校验、服务未启动和发送失败错误。验证：`sendChannelMessage` 已统一复用到 `plugin:exec sendMessage`，覆盖参数/服务状态/渠道类型校验；TS web/node/root、Infrastructure build 和 `diff --check` 通过。项目暂无 mock ChannelManager harness，真实微信/飞书发送留待端到端验收。实现提交：`待本功能单元提交`。
-- [x] 步骤4：补齐渠道主动消息日志和结果反馈。统一成功/失败日志字段（任务 ID、插件 ID、chatId、消息长度、错误），将发送结果回传给 Cron 任务状态层；不在日志中输出 token、secret 或完整消息内容。验证：`sendChannelMessage` 返回底层 `messageId`，成功/失败均写入统一 Main 日志，敏感字段和消息正文不进入日志；TypeScript 三配置和 `diff --check` 通过。Cron 状态回传将在 FU-D 接入。实现提交：`待本功能单元提交`。
+- [x] 步骤3：梳理并统一渠道主动发送 API。为 Main 内部后台通知建立显式参数模型，至少包含 `pluginId/pluginType/chatId/content`，微信需要保留发送所需 context token；复用现有 `plugin:exec sendMessage`，补齐飞书/微信参数校验、服务未启动和发送失败错误。验证：`sendChannelMessage` 已统一复用到 `plugin:exec sendMessage`，覆盖参数/服务状态/渠道类型校验；TS web/node/root、Infrastructure build 和 `diff --check` 通过。项目暂无 mock ChannelManager harness，真实微信/飞书发送留待端到端验收。实现提交：`b6ce3e7`。
+- [x] 步骤4：补齐渠道主动消息日志和结果反馈。统一成功/失败日志字段（任务 ID、插件 ID、chatId、消息长度、错误），将发送结果回传给 Cron 任务状态层；不在日志中输出 token、secret 或完整消息内容。验证：`sendChannelMessage` 返回底层 `messageId`，成功/失败均写入统一 Main 日志，敏感字段和消息正文不进入日志；TypeScript 三配置和 `diff --check` 通过。Cron 状态回传将在 FU-D 接入。实现提交：`b6ce3e7`。
 
 ### FU-C：Cron 数据库持久化与启动恢复
 
-- [x] 步骤5：设计并创建 Cron 数据表和迁移。新增 `CronEntity`/`CronRow`/`EntityMappers.MapCron`，字段覆盖任务配置（id/name/sessionId/scheduleJson/prompt/agentId/model/workingFolder/deliveryMode/deliveryTarget/pluginId/pluginType/pluginChatId/deleteAfterRun/maxIterations/enabled/deletedAt）和任务级运行状态（lastFiredAt/lastRunAt/lastRunStatus/lastRunSummary/lastError/fireCount/createdAt/updatedAt）。在 `DbClient` 增加 `cron_tasks` 的 `CREATE TABLE IF NOT EXISTS`、启停/软删除/更新时间索引和旧库 `EnsureColumn` 迁移；在 `InfrastructureJsonContext` 注册 `CronRow` 与 `List<CronRow>`，JSON 字段保持 opaque string，符合 AOT 分层约束。验证：DDL 覆盖新库初始化，`EnsureColumn` 覆盖已有库迁移路径；`git diff --check`、`npx tsc --noEmit -p tsconfig.node.json`、`npx tsc --noEmit -p tsconfig.web.json`、`npx tsc --noEmit -p tsconfig.json` 和 `set DOTNET_ROOT=D:\claw\dotnet-sdk && dotnet build src\\runtime\\WishfulClaw.Infrastructure\\WishfulClaw.Infrastructure.csproj --no-restore` 均通过（C# 0 错误、0 警告）。实现提交：`4292aa8`。
+- [x] 步骤5：设计并创建 Cron 数据表和迁移。新增 `CronEntity`/`CronRow`/`EntityMappers.MapCron`，字段覆盖任务配置（id/name/sessionId/scheduleJson/prompt/agentId/model/workingFolder/deliveryMode/deliveryTarget/pluginId/pluginType/pluginChatId/deleteAfterRun/maxIterations/enabled/deletedAt）和任务级运行状态（lastFiredAt/lastRunAt/lastRunStatus/lastRunSummary/lastError/fireCount/createdAt/updatedAt）。在 `DbClient` 增加 `cron_tasks` 的 `CREATE TABLE IF NOT EXISTS`、启停/软删除/更新时间索引和旧库 `EnsureColumn` 迁移；在 `InfrastructureJsonContext` 注册 `CronRow` 与 `List<CronRow>`，JSON 字段保持 opaque string，符合 AOT 分层约束。验证：DDL 覆盖新库初始化，`EnsureColumn` 覆盖已有库迁移路径；`git diff --check`、`npx tsc --noEmit -p tsconfig.node.json`、`npx tsc --noEmit -p tsconfig.web.json`、`npx tsc --noEmit -p tsconfig.json` 和 `set DOTNET_ROOT=D:\claw\dotnet-sdk && dotnet build src\\runtime\\WishfulClaw.Infrastructure\\WishfulClaw.Infrastructure.csproj --no-restore` 均通过（C# 0 错误、0 警告）。实现提交：`2677869`。
 - [ ] 步骤6：实现 Worker Cron CRUD/状态端点。新增或扩展 Db 工具/Worker Module，支持 list/create/update/delete/toggle、记录 fired/run-finished、按任务 ID查询详情；参数校验和错误返回统一。验证：通过 `worker:request` 创建、读取、修改、禁用、删除任务，重启 Worker 后数据仍在；C# build + AOT publish 0 错误 0 警告。
 - [ ] 步骤7：改造 Main 调度器为 DB 驱动。创建任务先落库再注册 timer；更新/删除/启停先更新 DB 再重排计时器；Main 启动时等待 Worker/DB 可用，加载 enabled 且未删除任务并恢复调度；保留现有 at/every/cron 校验和时区逻辑。验证：创建三种任务后重启应用，任务仍能触发；禁用/删除任务不会再次触发；一次性任务按 deleteAfterRun 正确归档。
 
@@ -49,6 +49,14 @@
 
 - [ ] 步骤14：独立审查代码和数据迁移。检查分层、AOT、敏感日志、并发更新、任务重复注册、启动竞态、渠道失败隔离、历史数据库兼容性；修正问题并输出 `review_report.md`。验证：审查报告 0 个阻断项。
 - [ ] 步骤15：完整编译、AOT、启动和人工验收。运行 C# solution build、AOT publish、TS 三配置、diff check；启动应用完成微信/飞书和 Cron 端到端冒烟，输出 `verification_report.md`。验证：由用户裁定 PASS/FAIL/PARTIAL，Agent 不自行判定迭代完成。
+
+## 当前执行状态
+
+- 已完成：步骤 1-5 / 15，分别落地渠道会话标题、渠道主动发送、Cron SQLite 数据模型/DDL/迁移/AOT 注册。
+- 当前安全点：`2677869`（FU-C 步骤 5）。
+- 下一步：FU-C 步骤 6，实现 Worker Cron CRUD、查询和运行状态端点；完成后执行对应 C# build/AOT 验证并单独提交。
+- 未执行：merge、tag、push、release；最终 PASS/FAIL/PARTIAL 仍由用户在步骤 15 验证后裁定。
+- 当前已知基线问题：全量 `WishfulClaw.sln` 构建仍受既有 CodeGraph 缺失符号影响（`CodeGraphModule`、`CodeGraphNativeLibraryResolver`），不归因于本迭代 Cron 改动。
 
 ## 涉及文件与模块
 

@@ -1,5 +1,25 @@
 ﻿# 开发进度
 
+## v2-iter-22：微信/飞书渠道与定时任务打磨（进行中）
+
+- 状态：执行中，尚未进入最终审查/验证态
+- 分支：`dev/v2-iter-22`
+- Plan：`docs/plans/iter-v2-22/plan.md`
+- 基线版本：`0.2.21`，最新正式 tag：`v0.2.21`
+- 当前 HEAD：`c38a623`（文档同步提交）；代码安全点：`2677869`（FU-C 步骤 5：Cron SQLite 数据模型、DDL、迁移、Mapper、AOT JSON 注册）
+- 已完成：步骤 1-5 / 15；渠道标题、渠道主动发送、Cron 数据层已分别形成提交检查点
+- 下一步：FU-C 步骤 6，实现 Worker Cron CRUD/查询/运行状态端点
+- 当前未执行：merge、tag、push、release；最终 VERDICT 待步骤 15 和用户裁定
+- 已知基线问题：全量 `WishfulClaw.sln` 构建受既有 CodeGraph 缺失符号（`CodeGraphModule`、`CodeGraphNativeLibraryResolver`）影响；此前 Infrastructure 单项目构建通过，不能将该 solution 失败归因于本迭代 Cron 改动
+
+### v2-iter-22 已提交功能单元
+
+| Commit | 内容 | 验证 |
+|---|---|---|
+| `121d52c` | 固定渠道会话标题、避免重复前缀 | TS 与 Infrastructure 验证通过；连续消息 E2E 待后续验收 |
+| `b6ce3e7` | 统一渠道后台主动发送、日志与结果反馈 | TS 三配置、Infrastructure build、diff check 通过 |
+| `2677869` | Cron SQLite 数据模型、DDL/迁移、Mapper、AOT JSON 注册 | TS 三配置、Infrastructure build、diff check 通过 |
+
 ## v2-iter-22+：OpenCowork 近期提交参考迁移候选（2026-08-24 调研，待排期）
 
 来源：D:\claw\OpenCowork git log 1.3.9 → 1.3.16（排除 CLI 与宠物体系）

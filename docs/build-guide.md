@@ -1,4 +1,4 @@
-# Wishful Claw 构建与打包指南
+﻿# Wishful Claw 构建与打包指南
 
 ## 构建工具链
 
@@ -11,7 +11,7 @@
 ## 前置条件
 
 - Node.js 20+
-- .NET 10 SDK
+- .NET 11 preview SDK（项目使用 11.0.100-preview.7；本机便携版：`D:\claw\dotnet-sdk`）
 - Visual Studio 2022 Build Tools（含 C++ 工具链，用于编译 node-pty 等原生模块和 Native AOT）
 
 ## 脚本命令

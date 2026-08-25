@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 
 // =============================================================================
@@ -224,8 +224,11 @@ internal static partial class CodeGraphToolHandler
         return doc.RootElement.Clone();
     }
 
-    internal static WorkerResponse PromptContextRpc(JsonElement args) =>
-        WorkerResponse.Json(PromptContext(args), CodeGraphJsonContext.Default.CodeGraphPromptContextResult);
+    internal static WorkerResponse PromptContextRpc(JsonElement args)
+    {
+        RegisterDataRoot(args);
+        return WorkerResponse.Json(PromptContext(args), CodeGraphJsonContext.Default.CodeGraphPromptContextResult);
+    }
 }
 
 // codegraph/prompt-context — the front-load hook envelope. Fired:false is the

@@ -25,6 +25,8 @@ internal static class CodeGraphDataRootRegistry
 
     // Register (or confirm) the explicit data dir for a project root. A null/empty/
     // whitespace dataRoot is a no-op (keep whatever is registered; default otherwise).
+    // A leading `~` expands to the user profile first — Path.GetFullPath does NOT
+    // expand it, and would otherwise anchor the dir under the process CWD.
     public static void Register(string projectRoot, string? dataRoot)
     {
         if (string.IsNullOrWhiteSpace(projectRoot) || string.IsNullOrWhiteSpace(dataRoot))
@@ -32,9 +34,33 @@ internal static class CodeGraphDataRootRegistry
             return;
         }
 
+        var trimmed = dataRoot.Trim();
+        if (trimmed == "~" || trimmed.StartsWith("~/", StringComparison.Ordinal) || trimmed.StartsWith("~\\", StringComparison.Ordinal))
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrEmpty(home))
+            {
+                home = Environment.GetEnvironmentVariable("HOME") ?? string.Empty;
+            }
+
+            if (!string.IsNullOrEmpty(home))
+            {
+                trimmed = Path.Combine(home, trimmed.Length == 1 ? string.Empty : trimmed[2..]);
+            }
+        }
+
         var key = Path.GetFullPath(projectRoot);
-        var value = Path.GetFullPath(dataRoot.Trim());
+        var value = Path.GetFullPath(trimmed);
+        var changed = !DataRoots.TryGetValue(key, out var existing) ||
+                      !string.Equals(existing, value, StringComparison.OrdinalIgnoreCase);
         DataRoots[key] = value;
+        if (changed)
+        {
+            // The mapping moved mid-session: any cached engine for this root was
+            // opened against the previous location — drop it so the next open lands
+            // in the registered dir instead of silently reading the old DB.
+            CodeGraphToolHandler.DropEngine(key);
+        }
     }
 
     // The explicit data dir for a root, or null when unmapped (centralized default).

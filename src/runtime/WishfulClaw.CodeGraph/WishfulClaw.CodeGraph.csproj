@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    CodeGraph engine, vendored from github.com/AIDotNet/CodeGraph
+    (OpenCowork.CodeGraph.Core). Global-namespace + all-internal convention is
+    kept as-is; WishfulClaw contract/host types are mapped via global usings so
+    CodeGraphModule plugs into the Worker catalog like any built-in module.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Features>runtime-async=on</Features>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- tree-sitter [LibraryImport] source-generated marshalling emits unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="WishfulClaw.Contracts" />
+    <Using Include="WishfulClaw.Core.Protocol" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WishfulClaw.Worker" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WishfulClaw.Contracts\WishfulClaw.Contracts.csproj" />
+    <ProjectReference Include="..\WishfulClaw.Core\WishfulClaw.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="11.0.0-preview.7.26381.103" />
+    <!-- Provides SQLitePCL.Batteries_V2 (called by CodeGraphConnectionFactory);
+         pulls the same lib.e_sqlite3 2.1.12 Infrastructure already uses. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+    <!-- Build-time asset source only. The publish script copies the supported
+         RID-specific native grammars into resources/worker/codegraph-worker/grammars. -->
+    <PackageReference Include="TreeSitter.DotNet" Version="1.3.0"
+                      GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
+  </ItemGroup>
+</Project>

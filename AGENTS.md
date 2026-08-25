@@ -1,4 +1,4 @@
-# Wishful Claw - Agents 指南
+﻿# Wishful Claw - Agents 指南
 
 本文档供 AI 编程助手阅读，帮助理解项目结构和开发约定。
 
@@ -17,12 +17,12 @@ OpenCowork 的代码经迁移和重构后已成为 WishfulClaw 的一部分；�
 ## 技术栈
 
 - **前端**：TypeScript + React 19 + Electron 35
-- **后端**：C# + .NET 10
+- **后端**：C# + .NET 11（preview SDK 11.0.100-preview.7；本机便携版位于 `D:\claw\dotnet-sdk`，构建/启动 Debug Worker 时需设 `DOTNET_ROOT` 指向它；打包产物为 AOT self-contained，不依赖运行时）
 - **通信**：IPC + MessagePack
 
 ## 项目结构（7 层架构）
 
-> 当前状态：7 项目已落地（Contracts / Core / Infrastructure / Workspace / Persona / Agent / Worker）。
+> 当前状态：7 项目已落地（Contracts / Core / Infrastructure / Workspace / Persona / Agent / Worker）；另有 `src/runtime/WishfulClaw.CodeGraph` vendored 项目（不参与 7 层依赖链，仅被 Worker 引用）。
 
 ```
 src/
@@ -32,6 +32,7 @@ src/
 ├── shared/         # 前后端共享类型定义（TS）
 └── runtime/                              # .NET 后端工程
     ├── WishfulClaw.sln
+    ├── WishfulClaw.CodeGraph/            # 0. CodeGraph 引擎（vendored自 github.com/AIDotNet/CodeGraph；代码图谱索引/检索，全局命名空间 + internal，194 个 .cs；不参与 7 层依赖链，仅被 Worker 引用）
     ├── WishfulClaw.Contracts/            # 1. 接口契约（纯接口，无实现）
     │   └── IWorkerModule / IWorkerModuleContext / IWorkerRequestContext / WorkerResponse
     │
@@ -71,9 +72,9 @@ src/
     │   └── StreamEventModels.cs          #   流式事件模型
     │
     └── WishfulClaw.Worker/               # 7. 进程入口（薄层 IPC 宿主）
-        ├── Program.cs                    #   入口
+        ├── Program.cs                    #   入口（含 CodeGraphNativeLibraryResolver.Install）
         ├── WorkerHost*.cs                #   宿主构建 + 模块装载
-        └── WorkerModuleCatalog.cs        #   模块注册（引用 Agent / Infrastructure 中的实现）
+        └── WorkerModuleCatalog.cs        #   模块注册（含 CodeGraphModule，引用 Agent / Infrastructure / WishfulClaw.CodeGraph 中的实现）
 ```
 
 ### 各项目文件数（当前实际）
@@ -87,6 +88,7 @@ src/
 | Persona | 9 | 人格系统 |
 | Agent | 141 | Agent 运行时（Loop / Provider / Executor / Compression / SubAgent / Tools / Modules） |
 | Worker | 12 | IPC 宿主（Program + Host + Catalog + 5 核心 Module） |
+| CodeGraph | 194 | 代码图谱引擎（vendored，索引/同步/探索/检索，经 Worker 注册 `codegraph/*` 方法） |
 
 > 统计不含 obj/ 目录下的自动生成文件。
 

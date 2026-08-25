@@ -20,10 +20,10 @@
 - 渠道长回复分片与回复路由（`fa93aae6`）；Provider 预设更新（GLM-5.3/Grok 4.6/DeepSeek V4）；任务看板（与我们 todo 重叠）
 
 ## v2-iter-21：设置页重构 + 运行时健壮性补强
-- 状态：执行完成，待验证态（用户确认 VERDICT）
+- 状态：执行完成，自动验证 PASS，待用户人工验证与 VERDICT
 - 分支：dev/v2-iter-21
-- Plan: docs/plans/iter-v2-21/
-- VERDICT: —
+- Plan: docs/plans/iter-v2-21/（主计划 + 追加插件管理 Plan）
+- VERDICT: —（自动验证 PASS；人工验证待老大）
 - 产品版本: —（收尾时更新 0.2.21）
 - Tag: —
 - Commit: 见 git log v0.2.20..dev/v2-iter-21
@@ -38,7 +38,12 @@
   - **TL-1** — 新建 SearchFilter.cs：默认排除 node_modules/.git/dist/obj/bin/release/debug/vendor 等目录 + exclude_dirs 参数（支持通配段）；GrepTool/GlobTool 枚举接入，InputSchema 同步
   - **TL-4** — FileReadTool 改 StreamReader 逐行流式读取，只保留 [offset, offset+limit) 窗口，不再 ReadAllText 全量进内存
   - **SA-4** — SubAgentRunCollector.GetFinalOutput 文本超 12000 字符只保留末段（前缀标注 truncated），thinking 兜底逻辑不变
-  - 验证：C# build 0 错误（唯一警告为 -o 参数 NETSDK1194 非代码警告）；TS 3/3 零错误
+  - 验证：C# solution build 0 警告 0 错误；TS 3/3 零错误；git diff --check PASS
+  - **追加功能单元：插件管理与 Browser 加载闭环** — 设置页新增内置应用插件面板和自定义扩展管理入口；ExtensionPanel 覆盖安装/启停/配置/打开目录/移除；扩展工具按当前项目启用状态刷新名称快照，由 Native Worker 负责真实执行；Browser/Image/CodeGraph 注册在持久化 hydration 后同步，并监听开关变化即时注册/注销
+  - 追加文档：`docs/plans/iter-v2-21/review_report-plugin-management.md`、`verification_report-plugin-management.md`
+  - 追加验证：C# solution build 0 警告 0 错误；TS 3/3 零错误；git diff --check PASS；运行时人工验证待用户
+  - **追加功能单元：CodeGraph 项目档案入口 + 存储本地化** — 引擎从仓库根 codegraph/ 迁入 src/runtime/WishfulClaw.CodeGraph（sln/csproj 路径同步修正）；新增 CodeGraphDataRootRegistry，main IPC 层按 workingFolder 注入 dataRoot 使图谱 DB 落 `{workingFolder}/.wishful-claw/codegraph/`（SSH 项目回退 ~/.wishful-claw/projects/{id}/codegraph，与记忆同策略）；项目档案页新增「代码图谱」区块（未启用置灰引导 / 索引状态 / 索引+同步+进度条）；插件面板移除全局项目列表仅留资产诊断。Plan: plan-codegraph-project-archive.md
+  - 追加验证：C# build + AOT publish + TS 3/3 全零错误；运行时人工验证待用户
 
 ## v2-iter-21 原始候选记录（已被上方实际范围取代）
 

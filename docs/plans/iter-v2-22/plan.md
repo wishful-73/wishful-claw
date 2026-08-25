@@ -37,26 +37,27 @@
 
 - [x] 步骤8：完善 cron:fire 到 Agent 的参数透传。新增 Renderer Cron runtime，监听 MessagePack `cron:fire`，保留 prompt、模型、工作目录、sessionId、maxIterations、deliveryMode、deliveryTarget、pluginId、pluginChatId，复用 Sidecar Agent 执行链；为 fired、run-started、run-progress、run-finished 统一事件 payload，运行完成/失败/取消后回写 DB 状态。运行事件不携带完整 prompt 或敏感凭据，摘要限制长度。验证：`ipcClient.on('cron:fire')` 路由、App 单次初始化/卸载、TypeScript web/node/全量三配置和 `git diff --check` 均通过；桌面/会话/微信/飞书实际 delivery 端到端验证留待步骤 9/10/15。实现提交：`773621f`。
 - [x] 步骤9：实现执行结果持久化和渠道通知。Agent 完成/失败/取消后统一生成结果摘要；支持 `desktop`（`notification:show`）、`session`（SQLite 消息持久化并同步已加载会话）、`plugin`（复用 `plugin:exec/sendMessage` 统一渠道边界）和 `none`。通知失败追加到任务 `last_error`，不改变 Agent 执行状态且不阻断周期任务后续触发；`deleteAfterRun` 任务触发时先停止并禁用，待执行、通知和状态持久化完成后再软删除归档并发出 `job_removed`。Worker `{ success:false, error }` 响应统一识别。验证：TypeScript 三配置、`git diff --check`、Infrastructure build 均通过（0 警告、0 错误；仅既有 .NET preview SDK 提示）；周期连续触发、Agent 失败恢复和微信/飞书成功/失败通知的真实运行证据留待步骤 10/15。实现提交：`4203f9e`。
-- [ ] 步骤10：补齐 Cron 功能测试与恢复测试。自动化子单元已新增独立 `WishfulClaw.CronRegressionTests`，使用系统临时目录和隔离 SQLite，覆盖新库完整 DDL、精简旧表迁移、create/get/list、软删除过滤、`includeDeleted`、`enabledOnly`、patch update、toggle、重复 mark-fired、mark-run-finished、软删除禁用、子进程重新打开后的配置与运行状态持久化，以及 Native `CronToolProvider` 的 at/every/cron、delivery/plugin/session/model/workingFolder/maxIterations/update patch schema。测试复现并修复两个生产问题：旧 `cron_tasks` 缺列时索引早于迁移创建会导致初始化失败；`DbCronTools.Update` 重复绑定 `@id` 导致 update 失败。自动化验证：Cron regression build 0 警告/0 错误，父进程 schema 35 项、旧库迁移/CRUD 63 项、进程重开 6 项、新库 DDL 5 项全部通过；TypeScript 三配置、Infrastructure build 和 `git diff --check` 通过。Electron 开发版已用临时 Electron `userData` 和临时 Worker 副本成功启动，Main/Renderer/Worker IPC 正常，启动时 `db/crons-list` 成功返回；但 .NET `Environment.GetFolderPath(UserProfile)` 不服从 `USERPROFILE/HOME/APPDATA/LOCALAPPDATA` 覆盖，Worker 仍解析到真实 `~/.wishful-claw/index.db`，并读取真实 Goal/渠道配置、自动启动飞书。发现后已立即停止本次精确进程树（残留 0），未创建 Cron、未调用 Agent；真实库产生 SQLite WAL/SHM 连接文件。当前代码没有 Worker 全局数据目录环境变量，继续冒烟会触碰真实数据和外部渠道，因此运行时端到端判定为环境隔离阻塞。仍未验证：Main timer 的 at/every/cron 与时区、应用/Worker 重启恢复、真实 Agent 成功/失败、周期连续触发、deleteAfterRun 完成后归档、微信/飞书在线/断线及通知失败隔离；完成这些证据前步骤 10 保持未完成。自动化实现提交：`0413ee4`；自动化记录提交：`04485c1`。
+- [x] 步骤10：补齐 Cron 功能测试与恢复测试。独立 `WishfulClaw.CronRegressionTests` 使用临时目录和隔离 SQLite，覆盖新库完整 DDL、精简旧表迁移、create/get/list、软删除过滤、`includeDeleted`、`enabledOnly`、patch update、toggle、重复 mark-fired、mark-run-finished、软删除禁用、子进程重开持久化，以及 Native `CronToolProvider` 的 at/every/cron 和完整执行参数 schema；追加断言验证 `mark-fired` 在单条 SQL 中原子递增计数并消费一次性任务。最终结果：父进程 38 项、旧库迁移/CRUD 66 项、进程重开 6 项、新库 DDL 5 项全部通过。新增 `WISHFULCLAW_DATA_DIR` 后，SQLite、Provider、settings、渠道配置、MCP、日志与 Electron userData 均可隔离；受控 Electron 冒烟验证一次性任务恰好触发一次、预期 Agent/Provider 失败写入、完成后软归档并禁用，且无测试进程残留、无真实 Home MCP 连接、无未处理异常。实现与最终修复提交：`5fc6788a`。
 
 ### FU-E：定时任务 UI 重设计
 
 - [x] 步骤11：将 Automation 占位页替换为 Reasonix 风格的定时任务设置页。新增 `components/automation/AutomationPage.tsx`：任务列表（从 `cron:list` 加载）、状态筛选（全部/已启用/已禁用/最近成功/有错误）、Switch 启用禁用（`cron:toggle`）、删除（`cron:delete` 软删除）、运行一次（新增 Main 端 `cron:run-now`，复用 `fireJob` 触发完整执行链）、下次执行时间估算、最近运行状态图标、展开详情含 prompt 摘要/触发次数/通知方式/错误摘要；`cronEvents` 订阅 run_started/run_finished/job_removed 实时联动运行状态并刷新列表。MainLayout tasks 入口与 FEATURE_PAGES 均指向真实页面。新建任务按钮暂留禁用态（步骤 12 实现表单）。验证：TS web/node/root 三配置零错误；列表从 DB 加载待应用内人工确认。
 - [x] 步骤12：实现创建/编辑任务表单。新增 `components/automation/CronJobFormDialog.tsx` + 共享类型 `cron-job-view.ts`：at（datetime-local）/every（分钟数）/cron（表达式+时区）三种模式、prompt、模型选择（provider-store，可跟随全局默认）、工作目录、最大迭代次数、deleteAfterRun、通知方式（desktop/session/plugin/none）；plugin 模式展示插件 ID 与 chatId 输入；name/prompt/schedule/sessionTarget/plugin 字段前端必填校验；创建走 `cron:add`、编辑走 `cron:update`（Main 反向请求），成功后刷新列表。中英文文案齐全无裸 key。验证：TS web/node/root 三配置零错误；UI 创建的任务能被 CronList 读到留待应用内人工确认。
-- [ ] 步骤13：将 OpenCowork Automation 日历作为预览视图并补执行反馈。列表、详情、表单和日历共享同一套 SQLite 任务数据与事件状态；日历只负责展示任务分布、下次执行时间和跳转详情，不引入第二套编辑/持久化逻辑。验证：任务触发时 UI 显示 fired/running/finished/error；页面切换回来状态仍从 DB 恢复。
+- [x] 步骤13：将 OpenCowork Automation 日历作为预览视图并补执行反馈。新增 `AutomationCalendar.tsx`，列表/日历可切换，支持月份导航、按 Main 调度器提供的真实 `nextRunAt` 展示下一次执行、运行/错误状态和点击跳转详情；列表、详情、表单和日历共享 SQLite 任务数据与 `cronEvents` 运行态，不引入第二套编辑或持久化逻辑。运行中 Switch、编辑和删除统一禁用。验证：TypeScript 三配置、Electron build 和隔离运行时冒烟通过。实现提交：`5fc6788a`。
 
 ### FU-F：审查与最终验证
 
-- [ ] 步骤14：独立审查代码和数据迁移。检查分层、AOT、敏感日志、并发更新、任务重复注册、启动竞态、渠道失败隔离、历史数据库兼容性；修正问题并输出 `review_report.md`。验证：审查报告 0 个阻断项。
-- [ ] 步骤15：完整编译、AOT、启动和人工验收。运行 C# solution build、AOT publish、TS 三配置、diff check；启动应用完成微信/飞书和 Cron 端到端冒烟，输出 `verification_report.md`。验证：由用户裁定 PASS/FAIL/PARTIAL，Agent 不自行判定迭代完成。
+- [x] 步骤14：独立审查代码和数据迁移。已检查分层、AOT、敏感日志、并发更新、任务重复注册、启动竞态、渠道失败隔离和历史数据库兼容性；修复 `cron:fire` 命名不一致、Renderer→Main Cron handlers 缺失、重复执行与 `deleteAfterRun` 竞态、超长 `at` timeout 溢出、fired/归档竞态、测试数据/MCP/userData 隔离，以及 completion 旧消息误释放运行锁问题；每次触发使用唯一 `fireId` 配对，Renderer 崩溃时释放运行锁。详见 `review_report.md`。验证：最终审查 0 个阻断项。
+- [ ] 步骤15：完整编译、AOT、启动和人工验收。技术验证已完成：C# solution build、AOT publish、TS 三配置、Electron build、Cron regression、diff check 和隔离 Electron 冒烟全部通过，详见 `verification_report.md`。当前状态为“技术验证通过，待用户最终裁定/确认迭代完结”；Agent 不自行将本迭代标记为 PASS 或完结。
 
 ## 当前执行状态
 
-- 已完成：步骤 1-9 / 15；步骤 10 自动化子单元已完成（运行时端到端证据因 Worker 数据目录无法隔离而阻塞）；步骤 11、12 已完成。
-- 当前安全点：Cron regression build/run、TypeScript 三配置、Infrastructure build 和 `git diff --check` 已通过；自动化实现与 Plan 记录已提交（`0413ee4`、`04485c1`）。Electron 开发版启动链路已证明可运行，但 Worker 数据目录无法通过现有环境变量隔离；本次隔离进程树已全部停止，仓库工作区未被运行时修改。
-- 下一步：步骤 10 保持未完成并记录环境阻塞，继续 FU-E 步骤 11；Main timer、重启恢复、真实 Agent、周期连续触发、完成后归档及微信/飞书成功/失败证据留到步骤 15 的受控人工验收，或先另行实现并验证 Worker 全局数据目录覆盖能力。
-- 未执行：merge、tag、push、release；最终 PASS/FAIL/PARTIAL 仍由用户在步骤 15 验证后裁定。
-- 当前已知基线问题：全量 `WishfulClaw.sln` 构建仍受既有 CodeGraph 缺失符号影响（`CodeGraphModule`、`CodeGraphNativeLibraryResolver`），不归因于本迭代 Cron 改动。
+- 已完成：步骤 1-14 / 15；步骤 15 的技术验证已通过，最终 PASS/FAIL/PARTIAL 与迭代完结仍待用户确认。
+- 当前安全点：代码提交 `5fc6788a`；TypeScript 三配置、Electron build、C# solution build（0 warning/0 error）、Cron regression（38/66/6/5）、Worker Native AOT（0 warning/0 error）、`git diff --check` 和隔离 Electron 冒烟均通过。
+- 运行时证据：隔离目录 `D:\claw\wishful-claw\.tmp\iter22-smoke-data-69209de3834545d9a05fdc2394a35e8e`；一次性任务恰好触发一次、记录预期 Provider 失败、完成后软归档并禁用；测试 Electron 根 PID `14524` 及其子进程已精确终止，`ROOT_RUNNING=False`、`RELATED_COUNT=0`，未触碰已安装版。
+- 下一步：由用户审阅 `review_report.md` / `verification_report.md` 并裁定迭代是否完结。
+- 未执行：merge、tag、push、release。
+- 既有 CodeGraph solution 基线断链已通过补回 Worker 项目引用修复；当前全量 solution 与 AOT 均通过。
 
 ## 涉及文件与模块
 

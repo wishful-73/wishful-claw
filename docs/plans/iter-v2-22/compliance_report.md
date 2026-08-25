@@ -29,7 +29,7 @@
 | 渠道目标持久化 | 通过 | 表字段包含 `deliveryMode/deliveryTarget/pluginId/pluginChatId`，FU-C 步骤5、FU-D 步骤8/9均要求保存和透传。 |
 | 任务级最近状态 | 通过 | 设计边界和步骤5明确 `lastFiredAt/lastRunAt/lastRunStatus/lastRunSummary/lastError/fireCount`；未扩大为本迭代的全量执行日志。 |
 | AOT 与分层约束 | 通过 | Plan 指定 Infrastructure/Worker 提供 AOT 安全模型和端点，明确补齐 JsonContext；探索报告记录了 Contracts → Core → Infrastructure → Workspace → Persona → Agent → Worker 依赖方向及禁止反射约束。 |
-| 每步验证点 | 规划通过，执行中 | 步骤 1-15 均包含明确验证内容；当前已完成步骤 1-5 的局部验证，步骤 6-15 尚未完成，最终 AOT publish、solution build 和人工联调仍待验证态。 |
+| 每步验证点 | 规划通过；此行为规划阶段快照 | 步骤 1-15 均包含明确验证内容；规划审查当时仅完成步骤 1-5。最终实现状态已更新至报告末尾，并以 `plan.md`、`review_report.md`、`verification_report.md` 为准。 |
 | v3 内容隔离 | 通过 | Plan 目标和“不在本 Plan 内”均明确排除快捷搜索扩展、扩展 Tab、URL 插件、在线翻译/DeepSeek、本地文件搜索、ZIP 容器、XinXiang JSBridge 等 v3 内容。 |
 | 执行边界控制 | 通过 | Plan 末尾明确正式发布、tag、push 不在本 Plan 内；当前仅按用户确认进入业务代码步骤，不执行 merge、tag、push 或发布。 |
 
@@ -67,4 +67,4 @@
 
 ## 后续门槛
 
-用户已确认执行 v2-iter-22；当前已完成步骤 1-5 并形成提交检查点，下一步为 FU-C 步骤 6。步骤 14/15 完成后才进入最终验证态，最终由用户裁定迭代 PASS/FAIL/PARTIAL。当前未执行 merge、tag、push 或 release。
+本报告保留为迭代开始时的规划合规审查历史记录。最终实现审查与技术验证已于 2026-08-25 完成，分别见 `review_report.md` 与 `verification_report.md`；步骤 1-14 已完成，步骤 15 技术验证通过，最终仍由用户裁定迭代 PASS/FAIL/PARTIAL。当前未执行 merge、tag、push 或 release。

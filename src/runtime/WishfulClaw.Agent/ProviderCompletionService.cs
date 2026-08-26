@@ -21,8 +21,9 @@ public static class ProviderCompletionService
     private static readonly HttpClient HttpClient = WishfulClaw.Infrastructure.Http.WorkerHttpClientFactory.Create(
         timeout: TimeSpan.FromSeconds(180));
 
-    public static async Task<WorkerResponse> CompleteAsync(JsonElement parameters)
+    public static async Task<WorkerResponse> CompleteAsync(JsonElement parameters, IWorkerRequestContext context)
     {
+        var cancellationToken = context.CancellationToken;
         var provider = ExtractProviderConfig(parameters);
         if (provider is null)
         {
@@ -47,8 +48,8 @@ public static class ProviderCompletionService
             using var request = await CloneRequestAsync(baseRequest);
             try
             {
-                using var response = await HttpClient.SendAsync(request);
-                var body = await response.Content.ReadAsStringAsync();
+                using var response = await HttpClient.SendAsync(request, cancellationToken);
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -72,6 +73,12 @@ public static class ProviderCompletionService
                     delayMs = Math.Max(delayMs, (int)retryAfter.TotalMilliseconds);
                 }
             }
+            catch (TaskCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Caller-initiated cancel (worker/cancel) — propagate so the
+                // dispatcher answers with "Worker request cancelled".
+                throw;
+            }
             catch (TaskCanceledException)
             {
                 return Fail("Request timed out (180s)");
@@ -87,7 +94,7 @@ public static class ProviderCompletionService
                 WorkerLog.Warn(
                     $"provider complete retryable failure attempt={attempt}/{MaxAttempts} " +
                     $"url={url} waiting={delayMs}ms error={lastError}");
-                await Task.Delay(delayMs);
+                await Task.Delay(delayMs, cancellationToken);
                 delayMs = Math.Min(delayMs * 2, 30_000);
             }
         }

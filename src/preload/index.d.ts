@@ -1,4 +1,4 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
+﻿import { ElectronAPI } from '@electron-toolkit/preload'
 
 declare global {
   interface Window {
@@ -7,6 +7,8 @@ declare global {
       ping: () => Promise<{ ok: boolean; pid: number }>
       invoke: <T = unknown>(channel: string, payload: unknown) => Promise<T>
       workerRequest: <T = unknown>(method: string, params?: unknown) => Promise<T>
+      workerRequestWithId: <T = unknown>(method: string, params?: unknown, cancelId?: string) => Promise<{ result: T; requestId: number }>
+      cancelWorkerRequest: (cancelId: string) => Promise<{ cancelled: boolean }>
       on: <T = unknown>(channel: string, callback: (payload: T) => void) => () => void
       onAgentStream: (callback: (payload: unknown) => void) => () => void
       /** Open a native folder selection dialog. Returns { folderPath, canceled }. */

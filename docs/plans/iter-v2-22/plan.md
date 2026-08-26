@@ -13,7 +13,7 @@
 - Worker/Infrastructure 提供 AOT 安全的 Cron 数据模型、DDL、CRUD 和查询端点。
 - Main 负责调度器启动恢复、触发通知和渠道 `sendMessage`。
 - Renderer 负责定时任务管理 UI、事件展示和 Agent 执行状态联动。
-- 暂不实现全量执行日志表；保留任务级 `lastRunAt/lastRunStatus/lastRunSummary/lastError/fireCount`，为后续执行历史迭代留接口。
+- 本次追加实现独立 `cron_runs` 执行记录表；任务级 `lastRunAt/lastRunStatus/lastRunSummary/lastError/fireCount` 继续保留作为快速摘要，`cron_runs` 负责逐次审计。
 
 ## 步骤清单
 
@@ -37,7 +37,7 @@
 
 - [x] 步骤8：完善 cron:fire 到 Agent 的参数透传。新增 Renderer Cron runtime，监听 MessagePack `cron:fire`，保留 prompt、模型、工作目录、sessionId、maxIterations、deliveryMode、deliveryTarget、pluginId、pluginChatId，复用 Sidecar Agent 执行链；为 fired、run-started、run-progress、run-finished 统一事件 payload，运行完成/失败/取消后回写 DB 状态。运行事件不携带完整 prompt 或敏感凭据，摘要限制长度。验证：`ipcClient.on('cron:fire')` 路由、App 单次初始化/卸载、TypeScript web/node/全量三配置和 `git diff --check` 均通过；桌面/会话/微信/飞书实际 delivery 端到端验证留待步骤 9/10/15。实现提交：`773621f`。
 - [x] 步骤9：实现执行结果持久化和渠道通知。Agent 完成/失败/取消后统一生成结果摘要；支持 `desktop`（`notification:show`）、`session`（SQLite 消息持久化并同步已加载会话）、`plugin`（复用 `plugin:exec/sendMessage` 统一渠道边界）和 `none`。通知失败追加到任务 `last_error`，不改变 Agent 执行状态且不阻断周期任务后续触发；`deleteAfterRun` 任务触发时先停止并禁用，待执行、通知和状态持久化完成后再软删除归档并发出 `job_removed`。Worker `{ success:false, error }` 响应统一识别。验证：TypeScript 三配置、`git diff --check`、Infrastructure build 均通过（0 警告、0 错误；仅既有 .NET preview SDK 提示）；周期连续触发、Agent 失败恢复和微信/飞书成功/失败通知的真实运行证据留待步骤 10/15。实现提交：`4203f9e`。
-- [x] 步骤10：补齐 Cron 功能测试与恢复测试。独立 `WishfulClaw.CronRegressionTests` 使用临时目录和隔离 SQLite，覆盖新库完整 DDL、精简旧表迁移、create/get/list、软删除过滤、`includeDeleted`、`enabledOnly`、patch update、toggle、重复 mark-fired、mark-run-finished、软删除禁用、子进程重开持久化，以及 Native `CronToolProvider` 的 at/every/cron 和完整执行参数 schema；追加断言验证 `mark-fired` 在单条 SQL 中原子递增计数并消费一次性任务。最终结果：父进程 38 项、旧库迁移/CRUD 66 项、进程重开 6 项、新库 DDL 5 项全部通过。新增 `WISHFULCLAW_DATA_DIR` 后，SQLite、Provider、settings、渠道配置、MCP、日志与 Electron userData 均可隔离；受控 Electron 冒烟验证一次性任务恰好触发一次、预期 Agent/Provider 失败写入、完成后软归档并禁用，且无测试进程残留、无真实 Home MCP 连接、无未处理异常。实现与最终修复提交：`5fc6788a`。
+- [x] 步骤10：补齐 Cron 功能测试与恢复测试。独立 `WishfulClaw.CronRegressionTests` 使用临时目录和隔离 SQLite，覆盖新库完整 DDL、精简旧表迁移、create/get/list、软删除过滤、`includeDeleted`、`enabledOnly`、patch update、toggle、重复 mark-fired、mark-run-finished、软删除禁用、子进程重开持久化，以及 Native `CronToolProvider` 的 at/every/cron 和完整执行参数 schema；追加断言验证 `mark-fired` 在单条 SQL 中原子递增计数并消费一次性任务。最终结果：父进程 38 项、旧库迁移/CRUD 76 项、进程重开 8 项、新库 DDL 8 项全部通过；新增独立 `cron_runs` 的 start/finish/list、会话过滤和重启恢复断言均通过。新增 `WISHFULCLAW_DATA_DIR` 后，SQLite、Provider、settings、渠道配置、MCP、日志与 Electron userData 均可隔离；受控 Electron 冒烟验证一次性任务恰好触发一次、预期 Agent/Provider 失败写入、完成后软归档并禁用，且无测试进程残留、无真实 Home MCP 连接、无未处理异常。基础实现提交：`5fc6788a`；本次审查补强尚未提交。
 
 ### FU-E：定时任务 UI 重设计
 
@@ -45,17 +45,49 @@
 - [x] 步骤12：实现创建/编辑任务表单。新增 `components/automation/CronJobFormDialog.tsx` + 共享类型 `cron-job-view.ts`：at（datetime-local）/every（分钟数）/cron（表达式+时区）三种模式、prompt、模型选择（provider-store，可跟随全局默认）、工作目录、最大迭代次数、deleteAfterRun、通知方式（desktop/session/plugin/none）；plugin 模式展示插件 ID 与 chatId 输入；name/prompt/schedule/sessionTarget/plugin 字段前端必填校验；创建走 `cron:add`、编辑走 `cron:update`（Main 反向请求），成功后刷新列表。中英文文案齐全无裸 key。验证：TS web/node/root 三配置零错误；UI 创建的任务能被 CronList 读到留待应用内人工确认。
 - [x] 步骤13：将 OpenCowork Automation 日历作为预览视图并补执行反馈。新增 `AutomationCalendar.tsx`，列表/日历可切换，支持月份导航、按 Main 调度器提供的真实 `nextRunAt` 展示下一次执行、运行/错误状态和点击跳转详情；列表、详情、表单和日历共享 SQLite 任务数据与 `cronEvents` 运行态，不引入第二套编辑或持久化逻辑。运行中 Switch、编辑和删除统一禁用。验证：TypeScript 三配置、Electron build 和隔离运行时冒烟通过。实现提交：`5fc6788a`。
 
+### FU-G：审查后补强：Cron 执行记录与会话关联
+
+- [x] 步骤16：新增 `cron_runs` 表、Worker start/finish/get/list 端点；每次 `cron:fire` 生成独立 `runId` 记录，持久化 `cronId/sessionId/fireId/status/summary/error/toolCallCount/startedAt/finishedAt`。
+- [x] 步骤17：Session 投递消息写入 `cronTaskId/cronRunId` 元数据，Automation 详情支持跳转关联 Session；补充新库 DDL、独立执行记录、过滤查询和重启恢复回归。
+
+### FU-H：Automation 信息架构重构与双执行模式（用户逐项确认的产品决策）
+
+> 本节记录 2026-08-26 与用户讨论后最终确认的决策与实现。这些是对步骤 11-13 表单的**有意推翻重做**，不是偏离计划；后续会话以此为准。
+
+最终确认的产品规则：
+
+1. 表单信息架构：标题 → 作用域（全局/项目）→ 提示词（含优化入口）→ Provider/Model → 执行权限 → 执行方式 → 输出目标。不向用户暴露 agentId/maxIterations/workingFolder/sessionId/pluginId/pluginChatId。
+2. 固定少量选项使用 Reasonix `set-seg` 风格 segmented control（单一轨道、按钮贴边、选中态轻背景），高度对齐 Select 的 h-9；动态数据源仍用 Select。封装为共享组件 `components/ui/segmented-control.tsx`。
+3. 执行频率为固定快捷项：一次性 / 固定间隔（数值+分钟/小时两字段）/ 每天 / 工作日 / 自定义（Cron+时区）；保存时转换为既有 at/every/cron 结构，编辑旧任务自动反解（本地时间格式化，避免 UTC 偏移）。
+4. 执行权限默认 YOLO：表单只读展示，运行时显式传 `permissionMode: 'fullAccess'`（`buildSidecarAgentRunRequest` 增加可选覆盖参数，普通聊天不受影响）。
+5. 执行方式双模式（`cron_tasks.run_mode`，默认 `background`）：
+   - **后台执行**：沿用旁路 sidecar 链路，过程不可见；
+   - **会话内执行**：复用 `chatStore.sendMessage` 主链路，全程流式可见；发送前确保 session 在 renderer store 中（重启后渠道会话由 Main 创建、store 缺失，必须注入并从 DB 恢复历史，否则 beginUserTurn 静默丢弃占位消息导致 delta 无处挂载）；目标为渠道会话时注册 `registerExternalChannelReply`，loop_end 后回复经 auto-reply 管道转发回飞书/微信；目标会话忙时跳过本次触发并记为 aborted。
+6. 输出目标四项：**不通知（none）/ 新建会话 / 复用会话 / 机器人**。「不通知」是后台模式下的合法选项（deliveryMode=none，零投递）；机器人固定走后台。
+7. 运行记录语义：会话内执行不在记录中重复存摘要（结果在会话里），记录提供「打开会话」跳转（按 run.sessionId，新建会话模式每次指向当次创建的会话）；后台执行记录保留摘要/错误/工具数。
+8. 孤儿 running 记录处理原则：**禁止在应用启动时清理 DB**（避免启动污染）。采用查询侧惰性归一化——renderer 查询 `db/cron-runs-list` 时携带内存活跃 `activeRunIds`，Worker 将不在集合中的 running 行标记 aborted；不做时间启发式判定。另以 fireId 去重防止重复投递产生重复记录。
+9. 列表/详情不展示内部实现字段；任务详情层不放「打开关联会话」按钮（执行记录中已有）。
+
+实现状态：
+
+- [x] 步骤18：数据层 `run_mode/scope/project_id/output_mode/reuse_session_id` 迁移与全链路 CRUD/fire 透传；Main 调度器与 renderer 契约同步。
+- [x] 步骤19：新表单 `AutomationTaskFormDialog.tsx` + `AutomationModelSelector.tsx` 替换旧 `CronJobFormDialog.tsx` 入口；列表详情改为用户层字段；执行记录面板（最近 10 条、状态图标四态、会话内可跳转）。
+- [x] 步骤20：会话内执行链路（sendMessage 复用、session 注入、渠道转发注册、忙时跳过、waitForStreamEnd 等待流结束）、fireId 去重、惰性孤儿归一化（`activeRunIds` 参数）、YOLO 权限覆盖链。
+- [ ] 步骤21：端到端人工验收——渠道会话实时渲染与飞书回包、非渠道会话回归、后台+各输出目标组合、一次性任务归档；Electron/AOT 完整验证并入步骤 15 统一收口。
+
 ### FU-F：审查与最终验证
 
-- [x] 步骤14：独立审查代码和数据迁移。已检查分层、AOT、敏感日志、并发更新、任务重复注册、启动竞态、渠道失败隔离和历史数据库兼容性；修复 `cron:fire` 命名不一致、Renderer→Main Cron handlers 缺失、重复执行与 `deleteAfterRun` 竞态、超长 `at` timeout 溢出、fired/归档竞态、测试数据/MCP/userData 隔离，以及 completion 旧消息误释放运行锁问题；每次触发使用唯一 `fireId` 配对，Renderer 崩溃时释放运行锁。详见 `review_report.md`。验证：最终审查 0 个阻断项。
-- [ ] 步骤15：完整编译、AOT、启动和人工验收。技术验证已完成：C# solution build、AOT publish、TS 三配置、Electron build、Cron regression、diff check 和隔离 Electron 冒烟全部通过，详见 `verification_report.md`。当前状态为“技术验证通过，待用户最终裁定/确认迭代完结”；Agent 不自行将本迭代标记为 PASS 或完结。
+- [x] 步骤14：独立审查代码和数据迁移，并按 review-09-iter22 逐项补强。已修复 I22-1 Cron 更新失败补偿、I22-2 一次性任务默认行为、I22-4 Automation 失败 refresh、I22-5 agentId 表单、SAQ-1 全局配置驱动 limiter，以及 SAQ-2/SAQ-3 FIFO/取消/释放/生命周期回归；I22-3 已补充生产 Main 协调器级 harness，真实 Electron Main/Renderer 进程级 harness 仍是集成覆盖缺口。I22-6 文档状态已统一。审查报告仍作为问题基线，当前不能表述为“0 个审查缺口”。
+- [ ] 步骤15：完整编译、AOT、启动和人工验收。本轮已重跑 C# solution build、TS 三配置、Goal/Cron regression、Cron Main 协调器 harness 与 diff check；Electron build、Worker Native AOT、隔离 Electron 冒烟和真实 Electron Main/Renderer 进程级 harness 仍待完成。当前状态为“技术验证部分通过，待用户最终裁定/确认迭代完结”；Agent 不自行将本迭代标记为 PASS 或完结。
 
 ## 当前执行状态
 
-- 已完成：步骤 1-14 / 15；步骤 15 的技术验证已通过，最终 PASS/FAIL/PARTIAL 与迭代完结仍待用户确认。
-- 当前安全点：代码提交 `5fc6788a`；TypeScript 三配置、Electron build、C# solution build（0 warning/0 error）、Cron regression（38/66/6/5）、Worker Native AOT（0 warning/0 error）、`git diff --check` 和隔离 Electron 冒烟均通过。
+- 已完成：步骤 1-14、16-20；FU-H（Automation 双执行模式重构）步骤 18-20 代码与静态验证已完成，步骤 21 端到端人工验收待用户执行。
+- FU-H 补充说明：本轮在迭代 22 基线上追加 Automation 信息架构重构（用户逐项确认，见 FU-H），涉及文件含 `AutomationTaskFormDialog.tsx`、`AutomationModelSelector.tsx`、`segmented-control.tsx`、`cron-runtime.ts`、`use-channel-auto-reply.ts`、`sidecar-mapping.ts` 及 Cron DB/Main/renderer 契约扩展；旧 `CronJobFormDialog.tsx` 不再被页面引用但保留未删。TypeScript 三配置、Infrastructure C# 构建、locale JSON 解析、`git diff --check` 均通过；Electron/AOT 完整验证并入步骤 15。
+- I22-3 的生产 Main 协调器级 harness 已补齐，但真实 Electron Main/Renderer 进程级 harness、步骤 15 剩余验证、人工验收、最终 PASS/FAIL/PARTIAL 与迭代完结仍待用户确认。
+- 当前安全点：基础代码提交 `5fc6788a` 之上存在未提交的审查补强与 FU-H 改动；TypeScript 三配置、Cron Main 协调器 harness（15）、C# solution build（0 warning/0 error）、Goal regression（113）、Cron regression（38/76/8/8）、`git diff --check` 均通过。此前 Electron build、Worker Native AOT 和隔离冒烟证据仍见 `verification_report.md`；本次补强尚未重新执行 Electron/AOT。
 - 运行时证据：隔离目录 `D:\claw\wishful-claw\.tmp\iter22-smoke-data-69209de3834545d9a05fdc2394a35e8e`；一次性任务恰好触发一次、记录预期 Provider 失败、完成后软归档并禁用；测试 Electron 根 PID `14524` 及其子进程已精确终止，`ROOT_RUNNING=False`、`RELATED_COUNT=0`，未触碰已安装版。
-- 下一步：由用户审阅 `review_report.md` / `verification_report.md` 并裁定迭代是否完结。
+- 下一步：用户验收 FU-H 步骤 21 场景清单 → 审阅 `docs/reviews/review-09-iter22.md` / `verification_report.md` → 裁定迭代是否完结。
 - 未执行：merge、tag、push、release。
 - 既有 CodeGraph solution 基线断链已通过补回 Worker 项目引用修复；当前全量 solution 与 AOT 均通过。
 
@@ -85,8 +117,13 @@
 - `src/renderer/src/components/layout/MainLayout.tsx` — Automation 页面入口替换。
 - `src/renderer/src/components/layout/WorkspaceSidebar.tsx` — 保持入口，必要时调整文案/状态。
 - `src/renderer/src/components/automation/*` — 新建任务列表、详情、表单、日历预览和执行状态组件。
+- `src/renderer/src/components/ui/segmented-control.tsx` — FU-H 新增：Reasonix 风格 segmented 单选共享组件。
+- `src/renderer/src/components/automation/AutomationTaskFormDialog.tsx` / `AutomationModelSelector.tsx` — FU-H 新表单与模型选择器（替代旧 `CronJobFormDialog.tsx`）。
+- `src/renderer/src/lib/tools/cron-runtime.ts` — 事件模型与订阅；FU-H 扩展双执行模式、fireId 去重、会话内执行链。
 - `src/renderer/src/lib/tools/cron-events.ts` — 事件模型与订阅。
 - `src/renderer/src/lib/tools/cron-tool.ts` — schema 与 DB 端点参数保持一致。
+- `src/renderer/src/hooks/use-channel-auto-reply.ts` — FU-H 扩展外部渠道回复注册（定时任务→飞书回包）。
+- `src/renderer/src/lib/ipc/sidecar-mapping.ts` — FU-H 增加 permissionMode 覆盖参数。
 - `src/renderer/src/lib/ipc/channels.ts` / `messagepack-channel-routing.ts` — 新增端点和事件常量。
 - `src/renderer/src/stores/ui-store.ts` 或新增 automation store — 页面状态，不重复持久化任务数据。
 - `src/renderer/src/locales/zh/layout.json`、`en/layout.json` 及相关设置文案。
@@ -96,7 +133,7 @@
 - `docs/plans/iter-v2-22/exploration_findings.md`
 - `docs/plans/iter-v2-22/plan.md`
 - `docs/plans/iter-v2-22/compliance_report.md`
-- `docs/plans/iter-v2-22/review_report.md`
+- `docs/reviews/review-09-iter22.md`
 - `docs/plans/iter-v2-22/verification_report.md`
 - `docs/PROGRESS.md`
 
@@ -109,5 +146,5 @@
 
 - 快捷搜索扩展数据源、扩展 Tab、在线翻译、DeepSeek 网页版。
 - URL 插件注册、用户自定义插件、ZIP 轻应用、XinXiang JSBridge。
-- 全量 Cron 执行日志和复杂统计报表。
+- Cron 执行记录的复杂统计报表、分页 UI 和完整逐事件轨迹可继续后续迭代；本次已完成逐次运行账本和会话关联。
 - 正式版 v2-iter-23 发布、打包、tag、GitHub Release。

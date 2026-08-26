@@ -11,12 +11,17 @@ public sealed class CronEntity
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string? SessionId { get; set; }
+    public string Scope { get; set; } = "global";
+    public string? ProjectId { get; set; }
     public string ScheduleJson { get; set; } = string.Empty;
     public string Prompt { get; set; } = string.Empty;
     public string? AgentId { get; set; }
     public string? Model { get; set; }
     public string? WorkingFolder { get; set; }
     public string DeliveryMode { get; set; } = "desktop";
+    public string OutputMode { get; set; } = "new_session";
+    public string? ReuseSessionId { get; set; }
+    public string RunMode { get; set; } = "background";
     public string? DeliveryTarget { get; set; }
     public string? PluginId { get; set; }
     public string? PluginType { get; set; }
@@ -46,6 +51,12 @@ public sealed class CronRow
     [JsonPropertyName("session_id")]
     public string? SessionId { get; set; }
 
+    [JsonPropertyName("scope")]
+    public string Scope { get; set; } = "global";
+
+    [JsonPropertyName("project_id")]
+    public string? ProjectId { get; set; }
+
     [JsonPropertyName("schedule_json")]
     public string ScheduleJson { get; set; } = string.Empty;
 
@@ -63,6 +74,15 @@ public sealed class CronRow
 
     [JsonPropertyName("delivery_mode")]
     public string DeliveryMode { get; set; } = "desktop";
+
+    [JsonPropertyName("output_mode")]
+    public string OutputMode { get; set; } = "new_session";
+
+    [JsonPropertyName("reuse_session_id")]
+    public string? ReuseSessionId { get; set; }
+
+    [JsonPropertyName("run_mode")]
+    public string RunMode { get; set; } = "background";
 
     [JsonPropertyName("delivery_target")]
     public string? DeliveryTarget { get; set; }
@@ -117,12 +137,17 @@ public sealed class CronRow
         Id = entity.Id,
         Name = entity.Name,
         SessionId = entity.SessionId,
+        Scope = entity.Scope,
+        ProjectId = entity.ProjectId,
         ScheduleJson = entity.ScheduleJson,
         Prompt = entity.Prompt,
         AgentId = entity.AgentId,
         Model = entity.Model,
         WorkingFolder = entity.WorkingFolder,
         DeliveryMode = entity.DeliveryMode,
+        OutputMode = entity.OutputMode,
+        ReuseSessionId = entity.ReuseSessionId,
+        RunMode = entity.RunMode,
         DeliveryTarget = entity.DeliveryTarget,
         PluginId = entity.PluginId,
         PluginType = entity.PluginType,

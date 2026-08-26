@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { Wand2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Spinner } from '@renderer/components/ui/spinner'
@@ -13,6 +13,7 @@ interface OptimizationDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   options: OptimizationOption[]
+  optimizingText?: string
   selectedOptionIndex: number
   onSelectOption: (index: number) => void
   onUseOption: (content: string) => void
@@ -24,6 +25,7 @@ export function OptimizationDialog({
   open,
   onOpenChange,
   options,
+  optimizingText,
   selectedOptionIndex,
   onSelectOption,
   onUseOption,
@@ -124,6 +126,12 @@ export function OptimizationDialog({
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed font-sans">
                   {options[selectedOptionIndex]?.content}
+                </div>
+              </div>
+            ) : optimizingText ? (
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed font-sans">
+                  {optimizingText}
                 </div>
               </div>
             ) : (

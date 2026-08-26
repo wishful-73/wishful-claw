@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -75,8 +75,17 @@ public sealed class PluginSessionRow
     [JsonPropertyName("plugin_id")]
     public string? PluginId { get; set; }
 
+    [JsonPropertyName("plugin_type")]
+    public string? PluginType { get; set; }
+
+    [JsonPropertyName("channel_route_key")]
+    public string? ChannelRouteKey { get; set; }
+
     [JsonPropertyName("external_chat_id")]
     public string? ExternalChatId { get; set; }
+
+    [JsonPropertyName("external_chat_type")]
+    public string? ExternalChatType { get; set; }
 
     [JsonPropertyName("provider_id")]
     public string? ProviderId { get; set; }

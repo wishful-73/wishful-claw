@@ -2,16 +2,16 @@
 
 ## v2-iter-22：微信/飞书渠道与定时任务打磨（技术收尾完成，待用户确认）
 
-- 状态：步骤 1-14 已完成；步骤 15 技术验证通过，最终 PASS/FAIL/PARTIAL 与迭代完结待用户确认
+- 状态：步骤 1-14、16-17 已完成；审查补强大部分通过，但 I22-3 Main/Renderer harness 仍待补；最终 PASS/FAIL/PARTIAL 与迭代完结待用户确认
 - 分支：`dev/v2-iter-22`
 - Plan：`docs/plans/iter-v2-22/plan.md`
-- 最终审查：`docs/plans/iter-v2-22/review_report.md`（0 个阻断项）
+- 最终审查基线：`docs/reviews/review-09-iter22.md`；I22-3 集成 harness 仍为未完成项
 - 最终验证：`docs/plans/iter-v2-22/verification_report.md`
 - 基线版本：`0.2.21`，最新正式 tag：`v0.2.21`
 - 代码收尾提交：`5fc6788a`（Automation 日历、Cron IPC/并发/归档修复、数据隔离、回归测试、CodeGraph/AOT 基线修复）
-- 验证：TS 3/3、Electron build、C# solution 0 warning/0 error、Cron regression 38/66/6/5、Worker Native AOT、diff check、隔离 Electron 冒烟全部通过
+- 验证：TS 3/3、C# solution 0 warning/0 error、Goal regression 113、Cron regression 38/76/8/8、diff check 通过；Electron build、Worker Native AOT、隔离 Electron 冒烟沿用此前通过证据，本次审查补强尚未重新执行这三项；I22-3 真实 Main/Renderer harness 尚未补齐
 - 冒烟安全：测试根 PID `14524` 及其子进程已精确终止，`ROOT_RUNNING=False`、`RELATED_COUNT=0`；未触碰已安装版、真实 Home DB/MCP 或真实渠道
-- 当前未执行：merge、tag、push、release
+- 当前未执行：commit、merge、tag、push、release
 
 ### v2-iter-22 最终功能单元
 

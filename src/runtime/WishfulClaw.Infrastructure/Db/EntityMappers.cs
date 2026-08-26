@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -35,7 +35,10 @@ public static class EntityMappers
         PlanId = r.GetNullableString("plan_id"),
         Pinned = r.GetInt32("pinned"),
         PluginId = r.GetNullableString("plugin_id"),
+        PluginType = r.GetNullableString("plugin_type"),
+        ChannelRouteKey = r.GetNullableString("channel_route_key"),
         ExternalChatId = r.GetNullableString("external_chat_id"),
+        ExternalChatType = r.GetNullableString("external_chat_type"),
         ProviderId = r.GetNullableString("provider_id"),
         ModelId = r.GetNullableString("model_id"),
         ModelSelectionMode = r.GetString("model_selection_mode"),
@@ -226,17 +229,36 @@ public static class EntityMappers
         ArchivedAt = r.GetInt64("archived_at")
     };
 
+    public static CronRunEntity MapCronRun(SqliteDataReader r) => new()
+    {
+        RunId = r.GetString("run_id"),
+        CronId = r.GetString("cron_id"),
+        SessionId = r.GetNullableString("session_id"),
+        FireId = r.GetString("fire_id"),
+        Status = r.GetString("status"),
+        Summary = r.GetNullableString("summary"),
+        Error = r.GetNullableString("error"),
+        ToolCallCount = r.GetInt32("tool_call_count"),
+        StartedAt = r.GetInt64("started_at"),
+        FinishedAt = r.GetNullableInt64("finished_at")
+    };
+
     public static CronEntity MapCron(SqliteDataReader r) => new()
     {
         Id = r.GetString("id"),
         Name = r.GetString("name"),
         SessionId = r.GetNullableString("session_id"),
+        Scope = r.GetString("scope"),
+        ProjectId = r.GetNullableString("project_id"),
         ScheduleJson = r.GetString("schedule_json"),
         Prompt = r.GetString("prompt"),
         AgentId = r.GetNullableString("agent_id"),
         Model = r.GetNullableString("model"),
         WorkingFolder = r.GetNullableString("working_folder"),
         DeliveryMode = r.GetString("delivery_mode"),
+        OutputMode = r.GetString("output_mode"),
+        ReuseSessionId = r.GetNullableString("reuse_session_id"),
+        RunMode = r.GetString("run_mode"),
         DeliveryTarget = r.GetNullableString("delivery_target"),
         PluginId = r.GetNullableString("plugin_id"),
         PluginType = r.GetNullableString("plugin_type"),

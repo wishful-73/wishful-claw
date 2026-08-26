@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -273,7 +273,9 @@ public static class DbPluginSessionTools
         CreatedAt = e.CreatedAt, UpdatedAt = e.UpdatedAt, ProjectId = e.ProjectId,
         WorkingFolder = e.WorkingFolder, SshConnectionId = e.SshConnectionId,
         PlanId = e.PlanId, Pinned = e.Pinned, PluginId = e.PluginId,
-        ExternalChatId = e.ExternalChatId, ProviderId = e.ProviderId, ModelId = e.ModelId,
+        PluginType = e.PluginType, ChannelRouteKey = e.ChannelRouteKey,
+        ExternalChatId = e.ExternalChatId, ExternalChatType = e.ExternalChatType,
+        ProviderId = e.ProviderId, ModelId = e.ModelId,
         ModelSelectionMode = e.ModelSelectionMode, MessageCount = e.MessageCount
     };
 

@@ -27,6 +27,15 @@ public static class ToolDispatchRouter
         var toolOutput = string.Empty;
         var isToolError = false;
 
+        // Cron/background runs are non-interactive: never wait for a renderer/user
+        // answer. Return a tool error so the model can continue autonomously.
+        if (AgentRuntimeAskUserExecutor.IsAskUserTool(toolCall.Name) &&
+            JsonHelpers.GetBool(state.Parameters, "nonInteractive", false))
+        {
+            const string message = "This is a background scheduled task and cannot wait for user answers. Continue without asking the user.";
+            return (message, true);
+        }
+
         // AskUserQuestion: route to renderer via reverse-request
         if (AgentRuntimeAskUserExecutor.IsAskUserTool(toolCall.Name))
         {

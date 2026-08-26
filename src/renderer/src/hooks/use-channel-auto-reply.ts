@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Channel Auto-Reply Hook
  *
  * Listens for `plugin:session-task` IPC events from the main process
@@ -59,6 +59,36 @@ interface ActiveAutoReply {
 }
 
 const activeAutoReplies = new Map<string, ActiveAutoReply>()
+
+/**
+ * Register an externally triggered run (e.g. Automation in-session execution)
+ * so its streamed reply is forwarded back to the channel chat on loop_end.
+ * Uses the same stream-listener pipeline as normal incoming channel messages.
+ */
+export function registerExternalChannelReply(
+  sessionId: string,
+  pluginId: string,
+  chatId: string
+): void {
+  activeAutoReplies.set(sessionId, {
+    pluginId,
+    chatId,
+    messageId: '',
+    textBuffer: '',
+    supportsStreaming: false,
+    runId: null
+  })
+}
+
+/** Unregister without sending (used when the run fails before starting). */
+export function unregisterExternalChannelReply(sessionId: string): void {
+  activeAutoReplies.delete(sessionId)
+}
+
+/** Whether this session already has a pending channel echo registration. */
+export function hasActiveExternalChannelReply(sessionId: string): boolean {
+  return activeAutoReplies.has(sessionId)
+}
 
 // Per-session task queue: ensure only one auto-reply runs per chat at a time
 const taskQueues = new Map<string, SessionTaskPayload[]>()

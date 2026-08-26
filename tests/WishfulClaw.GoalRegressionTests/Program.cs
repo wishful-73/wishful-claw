@@ -1,15 +1,30 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.GoalRegressionTests;
 
 internal static partial class Program
 {
     private static int _passed;
+
+    private static void SeedTestProvider()
+    {
+        var provider = WorkerJsonHelper.BuildJsonElement(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("id", "test-provider");
+            writer.WriteString("name", "Regression Provider");
+            writer.WriteString("type", "openai");
+            writer.WriteString("baseUrl", "http://127.0.0.1:1");
+            writer.WriteEndObject();
+        });
+        ProviderStore.Save(provider);
+    }
 
     public static int Main()
     {
@@ -18,12 +33,15 @@ internal static partial class Program
             $"wishful-goal-regression-{Guid.NewGuid():N}");
         Directory.CreateDirectory(testRoot);
         var dbPath = Path.Combine(testRoot, "legacy.db");
+        Environment.SetEnvironmentVariable("WISHFULCLAW_DATA_DIR", testRoot);
+        SeedTestProvider();
 
         try
         {
             SeedLegacyDatabase(dbPath);
             RunRegressionSuite(dbPath);
             RunLifecycleRegressionSuite(dbPath);
+            RunSubAgentConcurrencySuiteAsync().GetAwaiter().GetResult();
             Console.WriteLine($"Goal regression tests passed: {_passed}");
             return 0;
         }
@@ -34,6 +52,7 @@ internal static partial class Program
         }
         finally
         {
+            Environment.SetEnvironmentVariable("WISHFULCLAW_DATA_DIR", null);
             TryDeleteDirectory(testRoot);
         }
     }

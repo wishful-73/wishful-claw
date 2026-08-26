@@ -6,6 +6,7 @@ import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stor
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
+import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
 
@@ -51,6 +52,12 @@ export function useChatActions() {
 
       // Get session's working folder — fall back to project's workingFolder
       const session = chatStore.sessions.find((s) => s.id === targetSessionId)
+      // Channel-bound session: every reply echoes back to the external chat
+      // (Feishu/Weixin), regardless of whether the turn was triggered by an
+      // inbound channel message, a manual message here, or a scheduled task.
+      if (session?.pluginId && session?.externalChatId) {
+        registerExternalChannelReply(targetSessionId, session.pluginId, session.externalChatId)
+      }
       const projectId = session?.projectId
       const project = projectId ? chatStore.projects.find((p) => p.id === projectId) : null
       const workingFolder = session?.workingFolder ?? project?.workingFolder ?? undefined

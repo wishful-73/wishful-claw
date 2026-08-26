@@ -1,0 +1,16 @@
+﻿{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": "../..",
+    "outDir": "out"
+  },
+  "include": [
+    "program.ts",
+    "../../src/main/ipc/reverse-handlers/cron-execution-coordinator.ts"
+  ]
+}

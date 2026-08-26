@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization.Metadata;
+﻿using System.Text.Json.Serialization.Metadata;
 ﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
@@ -21,6 +21,8 @@ public static class DbPluginSessionRouting
             var requestedProjectId = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "projectId"));
             var providerId = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "providerId"));
             var modelId = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "modelId"));
+            var pluginType = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "pluginType"));
+            var chatType = DbPluginSessionTools.NormalizeOptional(JsonHelpers.GetString(parameters, "chatType"));
             var compositeKey = DbPluginSessionTools.BuildPluginMessageSessionKey(pluginId, chatId);
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -35,7 +37,9 @@ public static class DbPluginSessionRouting
             }
 
             var session = db.QueryFirstOrDefault(
-                "SELECT * FROM sessions WHERE external_chat_id = @key", EntityMappers.MapSession,
+                "SELECT * FROM sessions WHERE channel_route_key = @key " +
+                "OR (channel_route_key IS NULL AND external_chat_id = @key) LIMIT 1",
+                EntityMappers.MapSession,
                 new SqliteParameter("@key", compositeKey));
 
             var modelSelectionMode = providerId is not null && modelId is not null ? "manual" : "inherit";
@@ -53,7 +57,8 @@ public static class DbPluginSessionRouting
                     Id = sessionId, Title = sessionTitle, Mode = "cowork", CreatedAt = now, UpdatedAt = now,
                     ProjectId = project?.Id, WorkingFolder = DbPluginSessionTools.EmptyToNull(project?.WorkingFolder),
                     SshConnectionId = project?.SshConnectionId, Pinned = 0, PluginId = pluginId,
-                    ExternalChatId = compositeKey, ProviderId = providerId, ModelId = modelId,
+                    PluginType = pluginType, ChannelRouteKey = compositeKey, ExternalChatId = chatId,
+                    ExternalChatType = chatType, ProviderId = providerId, ModelId = modelId,
                     ModelSelectionMode = modelSelectionMode
                 };
                 WorkerJsonHelper.BuildJsonElement(w =>
@@ -69,7 +74,9 @@ public static class DbPluginSessionRouting
                     w.WriteString("sshConnectionId", entity.SshConnectionId);
                     w.WriteBoolean("pinned", false);
                     w.WriteString("pluginId", entity.PluginId);
+                    w.WriteString("channelRouteKey", entity.ChannelRouteKey);
                     w.WriteString("externalChatId", entity.ExternalChatId);
+                    w.WriteString("externalChatType", entity.ExternalChatType);
                     w.WriteString("providerId", entity.ProviderId);
                     w.WriteString("modelId", entity.ModelId);
                     w.WriteString("modelSelectionMode", entity.ModelSelectionMode);
@@ -99,6 +106,16 @@ public static class DbPluginSessionRouting
                     db.Execute("UPDATE sessions SET updated_at = @ua WHERE id = @id",
                         new SqliteParameter("@ua", now), new SqliteParameter("@id", sessionId));
                 }
+
+                db.Execute(
+                    "UPDATE sessions SET channel_route_key = @routeKey, external_chat_id = @chatId, " +
+                    "external_chat_type = @chatType, plugin_type = COALESCE(@pluginType, plugin_type) " +
+                    "WHERE id = @id",
+                    new SqliteParameter("@routeKey", compositeKey),
+                    new SqliteParameter("@chatId", chatId),
+                    new SqliteParameter("@chatType", (object?)chatType ?? DBNull.Value),
+                    new SqliteParameter("@pluginType", (object?)pluginType ?? DBNull.Value),
+                    new SqliteParameter("@id", sessionId));
 
                 if (providerId is not null || modelId is not null)
                 {

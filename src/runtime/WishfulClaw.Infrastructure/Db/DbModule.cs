@@ -129,6 +129,10 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/crons-toggle", DbCronTools.Toggle);
         context.Register("db/crons-mark-fired", DbCronTools.MarkFired);
         context.Register("db/crons-mark-run-finished", DbCronTools.MarkRunFinished);
+        context.Register("db/cron-runs-start", DbCronRunTools.Start);
+        context.Register("db/cron-runs-finish", DbCronRunTools.Finish);
+        context.Register("db/cron-runs-get", DbCronRunTools.Get);
+        context.Register("db/cron-runs-list", DbCronRunTools.List);
 
         // ── Plugin Sessions ──
         context.Register("db/plugin-normal-projects", DbPluginSessionTools.ListNormalProjects);

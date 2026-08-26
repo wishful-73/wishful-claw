@@ -88,6 +88,9 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(CronMutationResult))]
 [JsonSerializable(typeof(CronRow))]
 [JsonSerializable(typeof(List<CronRow>))]
+[JsonSerializable(typeof(CronRunMutationResult))]
+[JsonSerializable(typeof(CronRunRow))]
+[JsonSerializable(typeof(List<CronRunRow>))]
 public sealed partial class InfrastructureJsonContext : JsonSerializerContext
 {
 }

@@ -1,10 +1,10 @@
-/**
+﻿/**
  * Plugin CRUD + session management + streaming IPC handlers.
  *
  * Extracted from channel-handlers.ts.
  */
 
-import type { ChannelInstance } from '../../channels/channel-types'
+import type { ChannelInstance, MessagingChannelService } from '../../channels/channel-types'
 import { ChannelManager } from '../../channels/channel-manager'
 import { extractMessage, extractStack, logError, logInfo } from '../../lib/logger'
 import {
@@ -45,6 +45,43 @@ export interface SendChannelMessageArgs {
   taskId?: string
 }
 
+/**
+ * Resolve the running service that should deliver this message: prefer the
+ * recorded instance, fall back to any other running instance of the same
+ * channel type so scheduled replies survive instance replacement/rebinding.
+ */
+async function resolveSendService(
+  pluginId: string,
+  pluginTypeHint?: string
+): Promise<MessagingChannelService> {
+  const manager = activeChannelManager
+  const primary = manager?.getService(pluginId)
+  if (primary?.isRunning()) return primary
+
+  let type = pluginTypeHint
+  try {
+    const plugins = await readPlugins()
+    type = type || plugins.find((candidate) => candidate.id === pluginId)?.type
+    const fallback = plugins.find(
+      (candidate) =>
+        candidate.type === type &&
+        candidate.enabled &&
+        candidate.id !== pluginId &&
+        manager?.getService(candidate.id)?.isRunning()
+    )
+    if (fallback) {
+      console.warn(
+        `[ChannelSend] Primary plugin ${pluginId} unavailable; falling back to ${fallback.id} (${fallback.type})`
+      )
+      return manager!.getService(fallback.id)!
+    }
+  } catch {
+    /* fall through to the primary-not-running error */
+  }
+
+  throw new Error(`Plugin ${pluginId} is not running`)
+}
+
 /** Send a message through a running channel without depending on a renderer window. */
 export async function sendChannelMessage(args: SendChannelMessageArgs): Promise<{ messageId: string }> {
   const taskId = args.taskId?.trim() || 'background'
@@ -57,15 +94,7 @@ export async function sendChannelMessage(args: SendChannelMessageArgs): Promise<
   if (!chatId) throw new Error('Missing chatId for channel message')
   if (!content) throw new Error('Message content is empty')
 
-  const service = activeChannelManager?.getService(pluginId)
-  if (!service || !service.isRunning()) {
-    const error = new Error(`Plugin ${pluginId} is not running`)
-    logError('main', `[ChannelSend] Failed task=${taskId}`, {
-      stack: error.stack,
-      extra: { taskId, pluginId, pluginType: pluginType || service?.pluginType || null, chatId, contentLength: content.length, error: error.message }
-    })
-    throw error
-  }
+  const service = await resolveSendService(pluginId, pluginType)
   if (pluginType && service.pluginType !== pluginType) {
     const error = new Error(`Plugin ${pluginId} is type ${service.pluginType}, expected ${pluginType}`)
     logError('main', `[ChannelSend] Failed task=${taskId}`, {

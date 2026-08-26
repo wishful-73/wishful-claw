@@ -14,6 +14,7 @@ internal static class Program
     private const string PersistentJobId = "cron-persistent";
     private const string DisabledJobId = "cron-disabled";
     private const string SmokeJobId = "cron-smoke-at";
+    private const string RunId = "cron-run-regression-1";
     private static int _passed;
 
     public static int Main(string[] args)
@@ -250,6 +251,41 @@ internal static class Program
         AssertEqual("Short failure summary", finishedCron.GetProperty("last_run_summary").GetString(), "run completion stores summary");
         AssertEqual("notification unavailable", finishedCron.GetProperty("last_error").GetString(), "run completion stores error");
 
+        var startedRun = ResultObject(DbCronRunTools.Start(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("runId", RunId);
+            writer.WriteString("cronId", PersistentJobId);
+            writer.WriteString("sessionId", "session-cron");
+            writer.WriteString("fireId", "fire-regression-1");
+            writer.WriteNumber("startedAt", 3001L);
+        })));
+        Assert(startedRun.GetProperty("success").GetBoolean(), "cron run start creates an independent record");
+        var startedRow = startedRun.GetProperty("run");
+        AssertEqual(RunId, startedRow.GetProperty("runId").GetString(), "cron run stores run id");
+        AssertEqual("fire-regression-1", startedRow.GetProperty("fireId").GetString(), "cron run stores fire id");
+        AssertEqual("session-cron", startedRow.GetProperty("sessionId").GetString(), "cron run stores session id");
+        AssertEqual("running", startedRow.GetProperty("status").GetString(), "cron run starts as running");
+
+        var finishedRun = ResultObject(DbCronRunTools.Finish(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("runId", RunId);
+            writer.WriteString("status", "failed");
+            writer.WriteString("summary", "Independent run summary");
+            writer.WriteString("error", "run failure");
+            writer.WriteNumber("toolCallCount", 3);
+            writer.WriteNumber("finishedAt", 3002L);
+        })));
+        Assert(finishedRun.GetProperty("success").GetBoolean(), "cron run finish updates the independent record");
+        AssertEqual("failed", finishedRun.GetProperty("run").GetProperty("status").GetString(), "cron run stores terminal status");
+        AssertEqual(3, finishedRun.GetProperty("run").GetProperty("toolCallCount").GetInt32(), "cron run stores tool call count");
+        var listedRuns = ResultArray(DbCronRunTools.List(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("cronId", PersistentJobId);
+            writer.WriteString("sessionId", "session-cron");
+        })));
+        AssertEqual(1, listedRuns.Count, "cron run list filters by task and session");
+        AssertEqual(RunId, listedRuns[0].GetProperty("runId").GetString(), "cron run list returns the persisted run");
+
         AssertMutationSuccess(DbCronTools.Delete(Parameters(dbPath, writer => writer.WriteString("id", PersistentJobId))),
             "delete soft-deletes and disables a task");
         var defaultGet = ResultObject(DbCronTools.Get(Parameters(dbPath, writer => writer.WriteString("id", PersistentJobId))));
@@ -279,6 +315,10 @@ internal static class Program
             "fire count survives process restart");
         AssertEqual("failed", archived.GetProperty("cron").GetProperty("last_run_status").GetString(),
             "last run state survives process restart");
+        var reopenedRuns = ResultArray(DbCronRunTools.List(Parameters(dbPath, writer =>
+            writer.WriteString("cronId", PersistentJobId))));
+        AssertEqual(1, reopenedRuns.Count, "cron execution history survives process restart");
+        AssertEqual(RunId, reopenedRuns[0].GetProperty("runId").GetString(), "reopened history retains run id");
 
         var active = ResultObject(DbCronTools.Get(Parameters(dbPath, writer => writer.WriteString("id", DisabledJobId))));
         Assert(active.GetProperty("success").GetBoolean(), "non-deleted task survives process restart");
@@ -292,12 +332,18 @@ internal static class Program
         var db = DbClient.GetClient();
         AssertEqual(1L, db.QueryScalar<long>("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cron_tasks'"),
             "new database creates cron_tasks");
+        AssertEqual(1L, db.QueryScalar<long>("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='cron_runs'"),
+            "new database creates cron_runs");
         var columns = db.Query("PRAGMA table_info(cron_tasks);", reader => reader.GetString("name"));
         AssertEqual(ExpectedCronColumns().Length, columns.Count, "new cron table contains the complete column set");
         AssertEqual(1L, db.QueryScalar<long>("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_cron_tasks_enabled_next'"),
             "new database creates enabled index");
         AssertEqual(1L, db.QueryScalar<long>("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_cron_tasks_session'"),
             "new database creates session index");
+        AssertEqual(1L, db.QueryScalar<long>("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_cron_runs_cron_started'"),
+            "new database creates cron run task index");
+        AssertEqual(1L, db.QueryScalar<long>("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='ix_cron_runs_session_started'"),
+            "new database creates cron run session index");
     }
 
     private static void SeedSmokeTask(string dbPath)

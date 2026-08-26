@@ -1,4 +1,4 @@
-// ===== Unified API Type System =====
+﻿// ===== Unified API Type System =====
 // Import types locally for use in this file
 import type {
   ProviderType,
@@ -328,6 +328,8 @@ export interface MessageMeta {
   selectedFileReads?: SelectedFileReadsMeta
   compressionStatus?: CompressionStatusMeta
   requestModel?: MessageRequestModelMeta
+  cronTaskId?: string
+  cronRunId?: string
 }
 
 export interface UnifiedMessage {

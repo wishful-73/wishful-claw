@@ -1,4 +1,4 @@
-
+﻿
 import { normalizeSidecarRecord, normalizeMaxParallelTools, normalizePlanRevision, normalizePlanExecution, normalizeSlashCommand, normalizeSystemCommand, normalizePluginChannelContext, normalizeRequestContextTexts, isNativeSidecarProviderConfig, SidecarProviderInput, sanitizeSidecarToolInput } from './sidecar-protocol'
 import { toPermissionPolicySnapshot } from '../../../../shared/permission-policy'
 import { useProviderStore } from '@renderer/stores/provider-store'
@@ -222,6 +222,7 @@ export function buildSidecarAgentRunRequest(args: {
   workingFolder?: string
   maxIterations: number
   forceApproval: boolean
+  permissionMode?: 'default' | 'whitelist' | 'fullAccess'
   maxParallelTools?: number
   maxToolCallsPerTurn?: number
   compression?: CompressionConfig | null
@@ -319,7 +320,7 @@ export function buildSidecarAgentRunRequest(args: {
     ...(args.compression ? { compression: args.compression } : {}),
     maxIterations: args.maxIterations,
     forceApproval: args.forceApproval,
-    permissionMode: settings.autoApprove ? 'fullAccess' : 'default',
+    permissionMode: args.permissionMode ?? (settings.autoApprove ? 'fullAccess' : 'default'),
     ...(maxParallelTools !== undefined ? { maxParallelTools } : {}),
     ...(args.maxToolCallsPerTurn !== undefined ? { maxToolCallsPerTurn: args.maxToolCallsPerTurn } : {}),
     maxConcurrentSubAgents,

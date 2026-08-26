@@ -33,6 +33,7 @@ export interface CronJobFormValues {
   expr: string
   tz: string
   prompt: string
+  agentId: string
   model: string
   workingFolder: string
   maxIterations: number
@@ -56,6 +57,7 @@ const EMPTY_FORM: CronJobFormValues = {
   expr: '0 9 * * *',
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   prompt: '',
+  agentId: '',
   model: '',
   workingFolder: '',
   maxIterations: 15,
@@ -80,6 +82,7 @@ function jobToForm(job: CronJobView): CronJobFormValues {
     expr: schedule.expr ?? '0 9 * * *',
     tz: schedule.tz ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'),
     prompt: job.prompt,
+    agentId: job.agentId ?? '',
     model: job.model ?? '',
     workingFolder: job.workingFolder ?? '',
     maxIterations: job.maxIterations || 15,
@@ -178,6 +181,7 @@ export function CronJobFormDialog({
         deleteAfterRun: values.deleteAfterRun,
         maxIterations: values.maxIterations > 0 ? values.maxIterations : 15
       }
+      if (values.agentId.trim()) payload.agentId = values.agentId.trim()
       if (values.model.trim()) payload.model = values.model.trim()
       if (values.workingFolder.trim()) payload.workingFolder = values.workingFolder.trim()
       if (values.deliveryMode === 'session') payload.deliveryTarget = values.deliveryTarget.trim()
@@ -235,7 +239,13 @@ export function CronJobFormDialog({
             <span className="text-sm font-medium">{t('automation.form.schedule')}</span>
             <Select
               value={values.kind}
-              onValueChange={(kind) => patch({ kind: kind as CronJobFormValues['kind'] })}
+              onValueChange={(kind) => {
+                const nextKind = kind as CronJobFormValues['kind']
+                patch({
+                  kind: nextKind,
+                  deleteAfterRun: nextKind === 'at' ? true : values.deleteAfterRun
+                })
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -309,6 +319,16 @@ export function CronJobFormDialog({
             {fieldError('prompt') && (
               <span className="text-xs text-destructive">{fieldError('prompt')}</span>
             )}
+          </label>
+
+          {/* Agent */}
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">{t('automation.form.agentId')}</span>
+            <Input
+              value={values.agentId}
+              onChange={(e) => patch({ agentId: e.target.value })}
+              placeholder={t('automation.form.agentIdPlaceholder')}
+            />
           </label>
 
           {/* Model */}

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace WishfulClaw.Contracts;
 
@@ -36,6 +36,24 @@ public sealed record ProviderModelInfo(
 public sealed record ProviderTestModelsResult(
     bool Ok,
     List<ProviderModelInfo>? Models = null);
+
+/// <summary>
+/// One tool call requested by the model in a lightweight completion.
+/// </summary>
+public sealed record ProviderCompletionToolCall(
+    string Id,
+    string Name,
+    string ArgumentsJson);
+
+/// <summary>
+/// Result of a single-shot provider completion (provider/complete).
+/// No streaming, no agent loop — one request, one response.
+/// </summary>
+public sealed record ProviderCompletionResult(
+    bool Ok,
+    string? Text = null,
+    List<ProviderCompletionToolCall>? ToolCalls = null,
+    string? Error = null);
 
 // ── Goal module results ──
 public sealed record GoalSimpleResult(bool Success);

@@ -1,4 +1,4 @@
-import { getNativeWorker } from '../lib/native-worker'
+﻿import { getNativeWorker } from '../lib/native-worker'
 import { readChannelPlugins } from './channel-config-store'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
 import type { ChannelEvent, ChannelInstance, ChannelIncomingMessageData } from './channel-types'
@@ -69,7 +69,9 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent): Promise<void> {
       'db/plugin-route-session',
       {
         pluginId,
+        pluginType: event.pluginType,
         chatId: data.chatId,
+        chatType: data.chatType ?? null,
         initialTitle: buildInitialChannelSessionTitle(
           event.pluginType,
           _pluginManager?.getService(pluginId)?.botName || pluginInstance?.name

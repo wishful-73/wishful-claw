@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -21,6 +21,7 @@ public sealed class AgentRuntimeModule : IWorkerModule
     public void Register(IWorkerModuleContext context)
     {
         context.Register("agent/run", AgentRuntimeTools.RunAsync);
+        context.Register("agent/configure-runtime", AgentRuntimeTools.ConfigureRuntime);
         context.Register("agent/cancel", AgentRuntimeTools.Cancel);
         context.Register("agent/request-stop", AgentRuntimeTools.RequestStop);
         context.Register("agent/append-messages", AgentRuntimeTools.AppendMessages);

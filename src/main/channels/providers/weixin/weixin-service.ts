@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -14,6 +14,7 @@ import type {
   MessagingChannelService
 } from '../../channel-types'
 import { BasePluginService } from '../../base-plugin-service'
+import { readChannelPlugins, writeChannelPlugins } from '../../channel-config-store'
 import {
   WeixinApi,
   type WeixinInboundMessage,
@@ -108,8 +109,33 @@ export class WeixinService extends BasePluginService {
     this.pollPromise = null
   }
 
+  /**
+   * Context tokens are runtime credentials owned by the channel instance, not
+   * the session: they are refreshed by every inbound message and persisted in
+   * the channel config so a restart can retry with the last known value.
+   */
+  private async persistContextToken(chatId: string, contextToken: string): Promise<void> {
+    try {
+      const plugins = await readChannelPlugins()
+      const instance = plugins.find((candidate) => candidate.id === this.pluginId)
+      if (!instance) return
+      const key = `contextToken:${chatId}`
+      if (instance.config[key] === contextToken) return
+      instance.config[key] = contextToken
+      await writeChannelPlugins(plugins)
+    } catch (error) {
+      console.warn('[Weixin] Failed to persist context token:', error)
+    }
+  }
+
   private getContextTokenForChat(chatId: string): string {
     const accountId = this._instance.config.accountId || ''
+    // Config first (survives restarts / rebinds), memory as hot cache.
+    const persistedToken = this._instance.config[`contextToken:${chatId}`]
+    if (persistedToken) {
+      this.contextTokens.set(`${accountId}:${chatId}`, persistedToken)
+      return persistedToken
+    }
     const contextToken = this.contextTokens.get(`${accountId}:${chatId}`)
     if (!contextToken) {
       throw new Error(
@@ -309,6 +335,7 @@ export class WeixinService extends BasePluginService {
     if (contextToken) {
       const ctxKey = `${accountId}:${userId}`
       this.contextTokens.set(ctxKey, contextToken)
+      void this.persistContextToken(userId, contextToken)
       if (this.contextTokens.size > 500) {
         const oldest = this.contextTokens.keys().next().value
         if (oldest) {

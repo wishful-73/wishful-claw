@@ -80,6 +80,7 @@ export interface AgentActions {
     contextCompressionThreshold?: number
     sshConnectionId?: string
     permissionMode?: 'default' | 'whitelist' | 'fullAccess'
+    nonInteractive?: boolean
     projectId?: string
     enablePlanMode?: boolean
     sessionMode?: 'normal' | 'goal' | 'global'

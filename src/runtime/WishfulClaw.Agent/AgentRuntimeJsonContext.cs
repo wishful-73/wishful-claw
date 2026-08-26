@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using WishfulClaw.Contracts;
 using WishfulClaw.Agent.Modules.Git;
 using WishfulClaw.Agent.Modules.Extensions;
@@ -37,6 +37,9 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(ProviderTestModelsResult))]
 [JsonSerializable(typeof(ProviderModelInfo))]
 [JsonSerializable(typeof(List<ProviderModelInfo>))]
+[JsonSerializable(typeof(ProviderCompletionResult))]
+[JsonSerializable(typeof(ProviderCompletionToolCall))]
+[JsonSerializable(typeof(List<ProviderCompletionToolCall>))]
 [JsonSerializable(typeof(SessionRestoreResponse))]
 [JsonSerializable(typeof(GitExecResult))]
 [JsonSerializable(typeof(GitStatusDetailedResult))]

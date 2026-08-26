@@ -104,6 +104,21 @@ public static class AgentRuntimeTools
             new AgentRuntimeRunResult(true, runId), AgentRuntimeJsonContext.Default.AgentRuntimeRunResult));
     }
 
+    public static WorkerResponse ConfigureRuntime(JsonElement parameters)
+    {
+        var maxConcurrentSubAgents = Math.Max(
+            1,
+            JsonHelpers.GetInt(parameters, "maxConcurrentSubAgents", 1));
+        SubAgentConcurrencyLimiter.Configure(maxConcurrentSubAgents);
+        return WorkerResponse.FromWriter(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteBoolean("success", true);
+            writer.WriteNumber("maxConcurrentSubAgents", maxConcurrentSubAgents);
+            writer.WriteEndObject();
+        });
+    }
+
     public static WorkerResponse Cancel(JsonElement parameters)
     {
         var runId = JsonHelpers.GetString(parameters, "runId")?.Trim();

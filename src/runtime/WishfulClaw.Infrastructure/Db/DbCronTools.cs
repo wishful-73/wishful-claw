@@ -78,12 +78,12 @@ public static class DbCronTools
             var entity = ParseCreate(parameters);
             db.Execute(
                 "INSERT INTO cron_tasks " +
-                "(id, name, session_id, schedule_json, prompt, agent_id, model, working_folder, " +
-                "delivery_mode, delivery_target, plugin_id, plugin_type, plugin_chat_id, delete_after_run, " +
+                "(id, name, session_id, scope, project_id, schedule_json, prompt, agent_id, model, working_folder, " +
+                "delivery_mode, output_mode, reuse_session_id, run_mode, delivery_target, plugin_id, plugin_type, plugin_chat_id, delete_after_run, " +
                 "max_iterations, enabled, deleted_at, last_fired_at, last_run_at, last_run_status, " +
                 "last_run_summary, last_error, fire_count, created_at, updated_at) " +
-                "VALUES (@id, @name, @sid, @schedule, @prompt, @agent, @model, @folder, @deliveryMode, " +
-                "@deliveryTarget, @pluginId, @pluginType, @pluginChatId, @deleteAfterRun, @maxIterations, " +
+                "VALUES (@id, @name, @sid, @scope, @projectId, @schedule, @prompt, @agent, @model, @folder, @deliveryMode, " +
+                "@outputMode, @reuseSessionId, @runMode, @deliveryTarget, @pluginId, @pluginType, @pluginChatId, @deleteAfterRun, @maxIterations, " +
                 "@enabled, NULL, NULL, NULL, NULL, NULL, NULL, 0, @createdAt, @updatedAt)",
                 Parameters(entity).ToArray());
 
@@ -119,8 +119,9 @@ public static class DbCronTools
 
             entity.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var changed = db.Execute(
-                "UPDATE cron_tasks SET name = @name, session_id = @sid, schedule_json = @schedule, prompt = @prompt, " +
-                "agent_id = @agent, model = @model, working_folder = @folder, delivery_mode = @deliveryMode, " +
+                "UPDATE cron_tasks SET name = @name, session_id = @sid, scope = @scope, project_id = @projectId, " +
+                "schedule_json = @schedule, prompt = @prompt, agent_id = @agent, model = @model, working_folder = @folder, " +
+                "delivery_mode = @deliveryMode, output_mode = @outputMode, reuse_session_id = @reuseSessionId, run_mode = @runMode, " +
                 "delivery_target = @deliveryTarget, plugin_id = @pluginId, plugin_type = @pluginType, " +
                 "plugin_chat_id = @pluginChatId, delete_after_run = @deleteAfterRun, max_iterations = @maxIterations, " +
                 "enabled = @enabled, updated_at = @updatedAt WHERE id = @id",
@@ -274,12 +275,17 @@ public static class DbCronTools
             Id = GetNullableString(parameters, "id") ?? Guid.NewGuid().ToString("N"),
             Name = GetNullableString(parameters, "name") ?? string.Empty,
             SessionId = GetNullableString(parameters, "sessionId"),
+            Scope = GetNullableString(parameters, "scope") ?? "global",
+            ProjectId = GetNullableString(parameters, "projectId"),
             ScheduleJson = scheduleJson,
             Prompt = prompt,
             AgentId = GetNullableString(parameters, "agentId"),
             Model = GetNullableString(parameters, "model"),
             WorkingFolder = GetNullableString(parameters, "workingFolder"),
             DeliveryMode = GetNullableString(parameters, "deliveryMode") ?? "desktop",
+            OutputMode = GetNullableString(parameters, "outputMode") ?? "new_session",
+            ReuseSessionId = GetNullableString(parameters, "reuseSessionId"),
+            RunMode = GetNullableString(parameters, "runMode") ?? "background",
             DeliveryTarget = GetNullableString(parameters, "deliveryTarget"),
             PluginId = GetNullableString(parameters, "pluginId"),
             PluginType = GetNullableString(parameters, "pluginType"),
@@ -296,12 +302,17 @@ public static class DbCronTools
     {
         if (patch.TryGetProperty("name", out var name)) entity.Name = RequireValueString(name, "name");
         if (patch.TryGetProperty("sessionId", out var sessionId)) entity.SessionId = NullableValueString(sessionId);
+        if (patch.TryGetProperty("scope", out var scope)) entity.Scope = RequireValueString(scope, "scope");
+        if (patch.TryGetProperty("projectId", out var projectId)) entity.ProjectId = NullableValueString(projectId);
         if (patch.TryGetProperty("scheduleJson", out var schedule)) entity.ScheduleJson = RequireRawJson(schedule, "scheduleJson");
         if (patch.TryGetProperty("prompt", out var prompt)) entity.Prompt = RequireValueString(prompt, "prompt");
         if (patch.TryGetProperty("agentId", out var agentId)) entity.AgentId = NullableValueString(agentId);
         if (patch.TryGetProperty("model", out var model)) entity.Model = NullableValueString(model);
         if (patch.TryGetProperty("workingFolder", out var folder)) entity.WorkingFolder = NullableValueString(folder);
         if (patch.TryGetProperty("deliveryMode", out var mode)) entity.DeliveryMode = RequireValueString(mode, "deliveryMode");
+        if (patch.TryGetProperty("outputMode", out var outputMode)) entity.OutputMode = RequireValueString(outputMode, "outputMode");
+        if (patch.TryGetProperty("reuseSessionId", out var reuseSessionId)) entity.ReuseSessionId = NullableValueString(reuseSessionId);
+        if (patch.TryGetProperty("runMode", out var runMode)) entity.RunMode = RequireValueString(runMode, "runMode");
         if (patch.TryGetProperty("deliveryTarget", out var target)) entity.DeliveryTarget = NullableValueString(target);
         if (patch.TryGetProperty("pluginId", out var pluginId)) entity.PluginId = NullableValueString(pluginId);
         if (patch.TryGetProperty("pluginType", out var pluginType)) entity.PluginType = NullableValueString(pluginType);
@@ -318,12 +329,17 @@ public static class DbCronTools
             new SqliteParameter("@id", entity.Id),
             new SqliteParameter("@name", entity.Name),
             new SqliteParameter("@sid", (object?)entity.SessionId ?? DBNull.Value),
+            new SqliteParameter("@scope", entity.Scope),
+            new SqliteParameter("@projectId", (object?)entity.ProjectId ?? DBNull.Value),
             new SqliteParameter("@schedule", entity.ScheduleJson),
             new SqliteParameter("@prompt", entity.Prompt),
             new SqliteParameter("@agent", (object?)entity.AgentId ?? DBNull.Value),
             new SqliteParameter("@model", (object?)entity.Model ?? DBNull.Value),
             new SqliteParameter("@folder", (object?)entity.WorkingFolder ?? DBNull.Value),
             new SqliteParameter("@deliveryMode", entity.DeliveryMode),
+            new SqliteParameter("@outputMode", entity.OutputMode),
+            new SqliteParameter("@reuseSessionId", (object?)entity.ReuseSessionId ?? DBNull.Value),
+            new SqliteParameter("@runMode", entity.RunMode),
             new SqliteParameter("@deliveryTarget", (object?)entity.DeliveryTarget ?? DBNull.Value),
             new SqliteParameter("@pluginId", (object?)entity.PluginId ?? DBNull.Value),
             new SqliteParameter("@pluginType", (object?)entity.PluginType ?? DBNull.Value),

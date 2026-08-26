@@ -1,4 +1,4 @@
-// Extracted store selectors for InputArea to keep index.tsx under 500 lines
+﻿// Extracted store selectors for InputArea to keep index.tsx under 500 lines
 
 import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -205,14 +205,14 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   )
 
   // ── Auth ────────────────────────────────────────────────────────
-  const activeProviderForAuth = useProviderStore(
-    useShallow((s) => {
-      const provider = s.providers.find((p: any) => p.id === s.activeProviderId)
-      return provider ? { apiKey: provider.apiKey, requiresApiKey: provider.requiresApiKey } : null
-    })
+  const hasApiKey = useProviderStore((s) =>
+    // The banner means "no usable configured provider exists at all" — not
+    // "the currently selected provider lacks a key". Scanning all providers
+    // avoids the stale warning after deleting a freshly-added unkeyed
+    // provider while a fully configured one remains.
+    s.providers.length === 0 ||
+    s.providers.some((p: any) => p.requiresApiKey === false || !!p.apiKey)
   )
-  const providersCount = useProviderStore((s) => s.providers.length)
-  const hasApiKey = providersCount === 0 || !!activeProviderForAuth?.apiKey || activeProviderForAuth?.requiresApiKey === false
 
   return {
     language, mainModelSelectionMode, autoApprove, permissionWhitelistEnabled,

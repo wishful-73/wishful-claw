@@ -87,9 +87,9 @@
 
 - [x] 步骤22a：提示词优化器剥离 agent loop 改单次请求（provider/complete），强制恰好 3 个不同视角方案；修复成功判定竞态（setState updater 惰性执行导致误报失败）；结果弹窗固定高度（85vh/60vh）。实现见 optimizer.ts / use-prompt-optimizer.ts / optimization-dialog.tsx。
 - [x] 步骤22b：优化取消全链路贯通——渲染层 cancelKey 预生成随请求注册到 NativeWorkerManager（id 分配同刻注册消除时序竞态）→ worker/cancel → C# IWorkerRequestContext 取消令牌贯通 HTTP 与重试链。涉及 native-worker.ts / misc-handlers.ts / preload / ProviderCompletionService.cs / ProviderTestModule.cs / WorkerIpcHelpers.cs（诊断日志）。
-- [ ] 步骤23：删除服务商后"未配置 API Key"误报修复。新建服务商未配 Key 直接删除后聊天页持续误报；排查 provider-store 删除路径的状态清理与重扫描逻辑。
-- [ ] 步骤24：桌面图标白角透明化。圆角区域外白色边角；检查图标源文件 alpha 通道与 electron-builder 图标配置。
-- [ ] 步骤25：定时任务弹窗布局固定。新增/编辑弹窗标题与按钮固定、仅内容区滚动（对齐 optimization-dialog 固定高度做法）。
+- [x] 步骤23：删除服务商后"未配置 API Key"误报修复。横幅语义从"当前激活服务商缺 Key"改为"不存在任何已配置可用的服务商"（扫描全部 providers），删除无 Key 新建服务商后不再残留误报。实现提交：`24e5664`。
+- [x] 步骤24：桌面图标白角调查。逐像素检测 icon.ico 全部 5 尺寸与全部 PNG 资源四角 alpha 均为 0（完全透明），打包产物与仓库资源 md5 一致——**资产与构建链路无误，白角为 Windows 图标缓存残留**。处理方式：用户清图标缓存后观察；若仍复现需截图进一步定位。结论记录于 `.tmp/step24-icon-findings.md`，无代码改动。
+- [x] 步骤25：定时任务弹窗布局固定。新增/编辑弹窗标题与按钮固定、仅内容区滚动（DialogContent flex 列 + h-[88vh]，内容区 min-h-0 flex-1 overflow-y-auto，footer 加顶部分隔线）。实现提交：`35746a5`。
 - [ ] 步骤26：FU-I 收尾——TS 三配置 + C# solution build 全绿，更新知识库三文件状态，等待用户统一验收（并入步骤 15）。
 
 > 明确不纳入本批次（复杂度高或需用户进一步输入）：虚拟列表 prepend 闪烁（需方案重评估）、快速搜索内置应用扩展/简写匹配、工具并发队列、上下文压缩通知卡片、消息锚点吸附、Goal 编排可视化（已另列）、历史会话摘要体系、悬浮块重构、activity 占位面板（待用户确认来源）。

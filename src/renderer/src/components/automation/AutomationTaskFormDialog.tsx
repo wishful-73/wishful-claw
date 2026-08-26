@@ -316,8 +316,8 @@ export function AutomationTaskFormDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-[720px]">
-          <DialogHeader>
+        <DialogContent className="flex h-[88vh] max-h-[88vh] flex-col overflow-hidden sm:max-w-[720px]">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{t(editingJob
               ? 'automation.form.editTitle'
               : templateJob
@@ -326,7 +326,7 @@ export function AutomationTaskFormDialog({
             <DialogDescription>{t('automation.form.description')}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
             <section className="space-y-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium">{t('automation.form.name')}</span>
@@ -487,7 +487,7 @@ export function AutomationTaskFormDialog({
             </section>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-border pt-3">
             <Button variant="ghost" onClick={onClose} disabled={saving}>{t('automation.form.cancel')}</Button>
             <Button onClick={() => void save()} disabled={saving}>
               {saving && <Loader2 className="mr-1 size-4 animate-spin" />}

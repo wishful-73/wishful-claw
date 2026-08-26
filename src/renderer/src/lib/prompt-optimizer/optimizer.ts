@@ -25,7 +25,9 @@ Requirements for each optimized prompt option:
 - A clear, action-oriented title describing its focus (e.g. "Clarity-Focused", "Efficiency-Focused")
 - Structured content: context/objective/requirements/acceptance criteria as appropriate
 - Preserve the user's original intent; be specific and actionable
-- Provide 1-3 options, each with a distinct approach
+- Provide EXACTLY 3 options, each taking a clearly DIFFERENT approach
+  (e.g. one clarity/structure-focused, one detail/spec-focused, one concise/action-focused)
+- Never merge two approaches into one option; never repeat the same angle twice
 
 You MUST call the WriteOptimizedPrompts tool with the final result.`
 
@@ -55,35 +57,62 @@ async function completeOnce(args: {
   if (!initialized) {
     throw new Error('Sidecar unavailable')
   }
-  const result = (await agentBridge.request(
-    'provider/complete',
-    {
-      provider: {
-        type: args.provider.type,
-        baseUrl: args.provider.baseUrl,
-        apiKey: args.provider.apiKey
-      },
-      model: args.provider.model,
-      systemPrompt: args.systemPrompt,
-      message: args.message,
-      tools: args.tools
+
+  const params = {
+    provider: {
+      type: args.provider.type,
+      baseUrl: args.provider.baseUrl,
+      apiKey: args.provider.apiKey
     },
-    180_000
-  )) as CompletionResult
-  return result ?? { ok: false, error: 'Empty response from worker' }
+    model: args.provider.model,
+    systemPrompt: args.systemPrompt,
+    message: args.message,
+    tools: args.tools
+  }
+
+  // Abort must cancel the whole chain, not just abandon the wait: renderer
+  // promise → main-process forwarder → worker HTTP request (worker/cancel).
+  // Without the cancel round-trip the worker keeps burning provider tokens
+  // (and retrying rate limits) long after the user closed the dialog.
+  // cancelId is generated up front so it is known while the request is still
+  // in flight — the internal worker id is never exposed before completion.
+  if (args.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+
+  const cancelId = `prompt-opt-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  let settled = false
+  const onAbort = (): void => {
+    if (!settled) {
+      void window.api.cancelWorkerRequest(cancelId).catch(() => {})
+    }
+  }
+  args.signal?.addEventListener('abort', onAbort, { once: true })
+
+  try {
+    const response = await window.api.workerRequestWithId<CompletionResult>(
+      'provider/complete',
+      params,
+      cancelId
+    )
+    return response.result ?? { ok: false, error: 'Empty response from worker' }
+  } finally {
+    settled = true
+    args.signal?.removeEventListener('abort', onAbort)
+  }
 }
 
 const OPTIMIZER_TOOLS = [
   {
     name: 'WriteOptimizedPrompts',
     description:
-      'Write 1-3 optimized prompt options with different focuses. You MUST use this tool to provide the optimized results.',
+      'Write exactly 3 optimized prompt options, each with a different focus/approach. You MUST use this tool to provide the optimized results.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         options: {
           type: 'array',
-          description: 'Array of 1-3 optimized prompt options',
+          description: 'Array of exactly 3 optimized prompt options',
           items: {
             type: 'object',
             properties: {

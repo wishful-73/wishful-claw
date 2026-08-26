@@ -80,6 +80,20 @@
 - [x] 步骤14：独立审查代码和数据迁移，并按 review-09-iter22 逐项补强。已修复 I22-1 Cron 更新失败补偿、I22-2 一次性任务默认行为、I22-4 Automation 失败 refresh、I22-5 agentId 表单、SAQ-1 全局配置驱动 limiter，以及 SAQ-2/SAQ-3 FIFO/取消/释放/生命周期回归；I22-3 已补充生产 Main 协调器级 harness，真实 Electron Main/Renderer 进程级 harness 仍是集成覆盖缺口。I22-6 文档状态已统一。审查报告仍作为问题基线，当前不能表述为“0 个审查缺口”。
 - [ ] 步骤15：完整编译、AOT、启动和人工验收。本轮已重跑 C# solution build、TS 三配置、Goal/Cron regression、Cron Main 协调器 harness 与 diff check；Electron build、Worker Native AOT、隔离 Electron 冒烟和真实 Electron Main/Renderer 进程级 harness 仍待完成。当前状态为“技术验证部分通过，待用户最终裁定/确认迭代完结”；Agent 不自行将本迭代标记为 PASS 或完结。
 
+### FU-I：追加修复批次（2026-08-26 用户确认追加）
+
+> 来源：知识库 `D:\koda\Obsidian\02-AI教学\wishfulclaw\issues` 中筛选的简单可独立完成项 + 本轮提示词优化器重构收尾。
+> 原则：每步独立可回滚，TS/C# 双编译零错误后 commit。
+
+- [x] 步骤22a：提示词优化器剥离 agent loop 改单次请求（provider/complete），强制恰好 3 个不同视角方案；修复成功判定竞态（setState updater 惰性执行导致误报失败）；结果弹窗固定高度（85vh/60vh）。实现见 optimizer.ts / use-prompt-optimizer.ts / optimization-dialog.tsx。
+- [x] 步骤22b：优化取消全链路贯通——渲染层 cancelKey 预生成随请求注册到 NativeWorkerManager（id 分配同刻注册消除时序竞态）→ worker/cancel → C# IWorkerRequestContext 取消令牌贯通 HTTP 与重试链。涉及 native-worker.ts / misc-handlers.ts / preload / ProviderCompletionService.cs / ProviderTestModule.cs / WorkerIpcHelpers.cs（诊断日志）。
+- [ ] 步骤23：删除服务商后"未配置 API Key"误报修复。新建服务商未配 Key 直接删除后聊天页持续误报；排查 provider-store 删除路径的状态清理与重扫描逻辑。
+- [ ] 步骤24：桌面图标白角透明化。圆角区域外白色边角；检查图标源文件 alpha 通道与 electron-builder 图标配置。
+- [ ] 步骤25：定时任务弹窗布局固定。新增/编辑弹窗标题与按钮固定、仅内容区滚动（对齐 optimization-dialog 固定高度做法）。
+- [ ] 步骤26：FU-I 收尾——TS 三配置 + C# solution build 全绿，更新知识库三文件状态，等待用户统一验收（并入步骤 15）。
+
+> 明确不纳入本批次（复杂度高或需用户进一步输入）：虚拟列表 prepend 闪烁（需方案重评估）、快速搜索内置应用扩展/简写匹配、工具并发队列、上下文压缩通知卡片、消息锚点吸附、Goal 编排可视化（已另列）、历史会话摘要体系、悬浮块重构、activity 占位面板（待用户确认来源）。
+
 ## 当前执行状态
 
 - 已完成：步骤 1-14、16-20；FU-H（Automation 双执行模式重构）步骤 18-20 代码与静态验证已完成，步骤 21 端到端人工验收待用户执行。

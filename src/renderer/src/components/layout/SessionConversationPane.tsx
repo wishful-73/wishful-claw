@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Archive, Loader2, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
+import { Archive, FolderOpen, Loader2, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -54,6 +54,7 @@ export function SessionConversationPane({
     resolvedSessionId ? Boolean(s.bottomTerminalDockOpenBySessionId[resolvedSessionId]) : false
   )
   const toggleBottomTerminalDock = useUIStore((s) => s.toggleBottomTerminalDock)
+  const ensureFilesTab = useUIStore((s) => s.ensureFilesTab)
   const initTerminal = useTerminalStore((s) => s.init)
 
   // Ensure terminal store is initialized (also done in App.tsx, but safe to double-init)
@@ -101,6 +102,14 @@ export function SessionConversationPane({
     }
   }, [resolvedSessionId, toggleBottomTerminalDock])
 
+  // Open the right panel on the Files tab for the current workspace.
+  // Sessions without a working folder keep the button disabled instead of
+  // pretending the panel has anything to show.
+  const handleOpenFilesPanel = useCallback((): void => {
+    if (!resolvedSessionId) return
+    ensureFilesTab(resolvedSessionId)
+  }, [resolvedSessionId, ensureFilesTab])
+
   // Manual context compression entry (ContextRing in the composer toolbar).
   // The action returns an explicit compressed/skipped/blocked/failed status.
   const handleCompressContext = useCallback(() => {
@@ -123,6 +132,8 @@ export function SessionConversationPane({
       </div>
     )
   }
+
+  const hasWorkingFolder = Boolean(session.workingFolder ?? projectWorkingFolder)
 
   return (
     <div className="flex h-full min-h-0 flex-1 overflow-hidden">
@@ -172,6 +183,24 @@ export function SessionConversationPane({
               <TooltipContent side="left">
                 {contextCompressionStatusLabel ||
                   t('layout.compressContext', { defaultValue: 'Compress session' })}
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Open right panel on the Files tab */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleOpenFilesPanel}
+                  disabled={!hasWorkingFolder}
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <FolderOpen className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                {hasWorkingFolder
+                  ? t('layout.openFolderPanel', { defaultValue: 'Open files panel' })
+                  : t('sidebar.noWorkingFolder', { defaultValue: 'No working folder set' })}
               </TooltipContent>
             </Tooltip>
 

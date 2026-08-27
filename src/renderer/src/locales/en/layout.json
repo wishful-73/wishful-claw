@@ -430,7 +430,8 @@
   "layout": {
     "noSessionSelected": "No session selected",
     "conversationCleared": "Conversation cleared",
-    "compressContext": "Compress session"
+    "compressContext": "Compress session",
+    "openFolderPanel": "Open files panel"
   },
   "input": {
     "compressingContext": "Compressing context...",

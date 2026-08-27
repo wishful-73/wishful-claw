@@ -86,8 +86,8 @@
   - 验证：普通聊天、项目聊天、无消息、执行中、切换会话场景布局和状态正确；清除会话能力不被误删，应保留在其他明确入口或按产品决策移位。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [x] 步骤 15：接入“压缩会话”。实现：悬浮竖向块新增压缩按钮（`Archive` 图标，压缩中切 `Loader2` 旋转并 `disabled` 防重复点击），复用 `useContextCompression` 统一反馈 hook 与 `compressSessionContext` 统一手动压缩链路（与 ContextRing 同一端点/状态语义：运行中会话即时返回 blocked，不重复触发）；按钮 tooltip 优先显示状态文案（压缩中/已压缩/无需压缩/暂时无法压缩/失败，3.2 秒后回退），新增 `layout.compressContext` 与 `input.*` 压缩状态 i18n（zh/en layout.json，此前仅有 defaultValue 英文兜底）。
   - 验证：调用统一手动压缩链路，显示压缩中/成功/失败反馈，执行期间防重复点击。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
-- [ ] 步骤 16：接入“打开右侧文件夹”。
-  - 验证：有工作区时打开右侧面板并切换 Files tab；无工作区时禁用或提示，不伪造成功。
+- [x] 步骤 16：接入“打开右侧文件夹”。实现：悬浮竖向块新增 `FolderOpen` 按钮，点击调用已有 `ensureFilesTab(resolvedSessionId)`（打开右侧面板并激活 Files tab，tab 已存在时仅切换，文件树展开状态由持久层保留）；会话与工作区均无工作目录（`session.workingFolder ?? projectWorkingFolder`）时按钮 `disabled` 且 tooltip 提示“未设置工作目录”，不伪造成功；新增 `layout.openFolderPanel` i18n（zh/en）。
+  - 验证：有工作区时打开右侧面板并切换 Files tab；无工作区时禁用或提示，不伪造成功。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [ ] 步骤 17：接入聊天区域宽窄调节。
   - 验证：聊天内容区宽度可调，Composer 不溢出；右侧面板开关后重新 clamp；刷新/重启后按既定策略恢复。
 

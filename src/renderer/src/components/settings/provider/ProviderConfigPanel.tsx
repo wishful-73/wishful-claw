@@ -381,9 +381,37 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           {/* Model list */}
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
             {filteredModels.length === 0 ? (
-              <div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground">
-                {provider.models.length === 0 ? ts('provider.config.models.noModels') : ts('provider.config.models.noResults')}
-              </div>
+              provider.models.length === 0 ? (
+                // Empty provider: both actions are directly triggerable here.
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+                  <p className="text-xs text-muted-foreground">{ts('provider.config.models.noModels')}</p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 text-[11px]"
+                      onClick={handleFetchModels}
+                      disabled={fetchingModels}
+                    >
+                      {fetchingModels ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+                      {ts('provider.config.models.fetchModels')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 text-[11px]"
+                      onClick={() => { setEditingModel(null); setModelDialogOpen(true) }}
+                    >
+                      <Plus className="size-3" />
+                      {ts('provider.modelForm.addTitle')}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground">
+                  {ts('provider.config.models.noResults')}
+                </div>
+              )
             ) : (
               <div className="flex-1 overflow-y-auto">
                 {filteredModels.map((model) => {

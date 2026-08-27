@@ -229,7 +229,7 @@
         "label": "Models",
         "count": "{{total}} models, {{enabled}} enabled",
         "searchPlaceholder": "Search models...",
-        "noModels": "No models yet, click + to add or fetch",
+        "noModels": "Please fetch or add a model first",
         "noResults": "No matching results",
         "fetchModels": "Fetch Models",
         "fetchSuccess": "Fetched {{count}} models",

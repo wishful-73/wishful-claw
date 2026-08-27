@@ -340,7 +340,6 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
               <span className="flex-1 truncate text-xs font-medium">
                 {t('sidebar.conversations', { defaultValue: 'Conversations' })}
               </span>
-              <span className="text-[10px] text-muted-foreground/50">({sortedUnassigned.length})</span>
               <ChevronRight
                 className={cn(
                   'size-3.5 shrink-0 transition-transform',

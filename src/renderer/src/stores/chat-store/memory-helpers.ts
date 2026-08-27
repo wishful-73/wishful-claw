@@ -79,9 +79,18 @@ export async function memoryWrite(
   scope: string,
   section: string,
   content: string,
-  workingFolder?: string | null
+  workingFolder?: string | null,
+  sessionId?: string | null
 ): Promise<{ ok: boolean; key: string }> {
-  return window.api.workerRequest('memory/write', { scope, section, content, workingFolder })
+  // sessionId lets the worker announce the overwrite on the session's next
+  // turn (memory-update injection); omit it for session-independent writes.
+  return window.api.workerRequest('memory/write', {
+    scope,
+    section,
+    content,
+    workingFolder,
+    sessionId: sessionId ?? undefined
+  })
 }
 
 export async function memoryAppend(

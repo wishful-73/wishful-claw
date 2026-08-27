@@ -51,14 +51,14 @@ public sealed class WorkerHostBuilder
             module.Register(context);
         }
 
-        // Initialize all modules (async, fire-and-forget — modules that need
-        // startup initialization, like Goal recovery, run here)
+        // Initialize all modules in the background: modules that need startup
+        // initialization (Goal recovery) run here. We deliberately do NOT block
+        // the server on this — the main process verifies startup with a 10s
+        // worker/ping and a slow recovery would deadlock spawn. Failures are
+        // logged at error level and surfaced via WorkerHost.ModuleInitialization.
         var initTask = InitializeModulesAsync();
-        // Intentionally not awaited — initialization runs in background;
-        // the server starts accepting requests immediately.
-        _ = initTask;
 
-        return new WorkerHost(new LocalIpcWorkerServer(dispatcher, endpoint));
+        return new WorkerHost(new LocalIpcWorkerServer(dispatcher, endpoint), initTask);
     }
 
     private async Task InitializeModulesAsync()
@@ -67,22 +67,33 @@ public sealed class WorkerHostBuilder
         {
             // Initialize DB first so modules can read from it
             DbClient.GetClient();
-
-            foreach (var module in modules)
-            {
-                try
-                {
-                    await module.InitializeAsync();
-                }
-                catch (Exception ex)
-                {
-                    WorkerLog.Warn($"Module {module.Name} InitializeAsync failed: {ex.Message}");
-                }
-            }
         }
         catch (Exception ex)
         {
-            WorkerLog.Warn($"DB initialization for module init failed: {ex.Message}");
+            // Without the DB almost every module is broken — make this loud.
+            WorkerLog.Error($"DB initialization for module init failed: {ex.Message}");
+            return;
+        }
+
+        var failed = new List<string>();
+        foreach (var module in modules)
+        {
+            try
+            {
+                await module.InitializeAsync();
+            }
+            catch (Exception ex)
+            {
+                // Keep running (a dead worker loses every module, not just the
+                // failed one), but escalate to Error so startup damage is loud.
+                failed.Add(module.Name);
+                WorkerLog.Error($"Module {module.Name} InitializeAsync failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        if (failed.Count > 0)
+        {
+            WorkerLog.Error($"Worker module initialization finished with {failed.Count} failure(s): {string.Join(", ", failed)}");
         }
     }
 }

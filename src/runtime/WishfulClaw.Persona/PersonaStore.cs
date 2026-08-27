@@ -42,7 +42,27 @@ public sealed class PersonaStore
     /// </summary>
     public static string GetPersonaDirectory(string personaId, string? workingFolder)
     {
+        ValidatePersonaId(personaId);
         return Path.Combine(GetPersonasDirectory(workingFolder), personaId);
+    }
+
+    /// <summary>
+    /// personaId arrives via IPC — confine it to a safe filename shape so it
+    /// cannot escape the personas directory. Without this, persona/save could
+    /// write into arbitrary directories and persona/delete recursively remove
+    /// them (mirrors the MemoryPathResolver SSH-scope containment).
+    /// </summary>
+    private static void ValidatePersonaId(string personaId)
+    {
+        if (string.IsNullOrWhiteSpace(personaId)
+            || personaId.Contains('\\')
+            || personaId.Contains('/')
+            || personaId.Contains("..")
+            || Path.IsPathRooted(personaId)
+            || personaId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new ArgumentException($"Invalid persona id: {personaId}", nameof(personaId));
+        }
     }
 
     // ── List ──

@@ -82,7 +82,15 @@ internal sealed class MemoryModule : IWorkerModule
                 await File.WriteAllTextAsync(path, "# Long-Term Memory\n");
             }
             await File.WriteAllTextAsync(path, content);
-            MemoryUpdateQueue.Enqueue("", "Hot memory file was overwritten via memory/write endpoint.");
+            // memory/write is external to any agent run, so there is no implicit
+            // session. Callers pass sessionId when the overwrite should be
+            // announced at the next turn; without one the note would land in a
+            // queue that no session ever drains — skip the enqueue instead.
+            var sessionId = GetString(parameters, "sessionId");
+            if (!string.IsNullOrWhiteSpace(sessionId))
+            {
+                MemoryUpdateQueue.Enqueue(sessionId, "Hot memory file was overwritten via memory/write endpoint.");
+            }
             return WorkerResponse.Json(new SimpleOkResult(true), WishfulClawJsonContext.Default.SimpleOkResult);
         });
     }

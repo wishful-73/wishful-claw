@@ -53,7 +53,16 @@ public static class MemoryPathResolver
         if (scope.StartsWith("project:", StringComparison.OrdinalIgnoreCase))
         {
             var workingFolder = scope["project:".Length..];
-            return Path.Combine(workingFolder, ".wishful-claw");
+            // Same defense-in-depth as the SSH branch: require a rooted path
+            // without traversal segments so a crafted scope cannot smuggle a
+            // relative escape (e.g. "project:..\\..\\target").
+            if (string.IsNullOrWhiteSpace(workingFolder)
+                || !Path.IsPathRooted(workingFolder)
+                || workingFolder.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains(".."))
+            {
+                throw new ArgumentException($"Invalid local project scope: {scope}", nameof(scope));
+            }
+            return Path.Combine(Path.GetFullPath(workingFolder), ".wishful-claw");
         }
 
         return GlobalRoot;

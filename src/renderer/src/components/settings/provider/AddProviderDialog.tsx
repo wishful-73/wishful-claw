@@ -43,12 +43,12 @@ export function AddProviderDialog({
   const setActiveProvider = useProviderStore((s) => s.setActiveProvider)
 
   const handleAdd = (): void => {
-    if (!name.trim()) return
+    if (!name.trim() || !apiKey.trim()) return
     const provider = addCustomProvider(name.trim(), type, baseUrl.trim(), apiKey.trim())
     setActiveProvider(provider.id)
     toast.success(ts('provider.add.added', { name: name.trim() }))
     // Fire-and-forget model fetch right after adding: failures only toast and
-    // never block the add flow (the key can still be completed in the panel).
+    // never block the add flow.
     void fetchModels(provider)
       .then((models) => {
         if (models.length === 0) return
@@ -130,7 +130,7 @@ export function AddProviderDialog({
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>{tc('actions.cancel')}</Button>
-            <Button disabled={!name.trim()} onClick={handleAdd}>{tc('actions.add')}</Button>
+            <Button disabled={!name.trim() || !apiKey.trim()} onClick={handleAdd}>{tc('actions.add')}</Button>
           </div>
         </div>
       </DialogContent>

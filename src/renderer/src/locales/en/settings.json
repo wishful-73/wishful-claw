@@ -212,7 +212,7 @@
       "baseUrlPlaceholder": "https://api.example.com/v1",
       "baseUrlHint": "OpenAI-compatible API endpoint",
       "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter API Key (can be added later in settings)",
+      "apiKeyPlaceholder": "Enter API Key",
       "added": "Provider {{name}} added"
     },
     "config": {

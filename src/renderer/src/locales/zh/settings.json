@@ -217,7 +217,7 @@
       "baseUrlPlaceholder": "https://api.example.com/v1",
       "baseUrlHint": "兼容 OpenAI 格式的 API 地址",
       "apiKey": "API Key",
-      "apiKeyPlaceholder": "输入 API Key（可稍后在配置页补充）",
+      "apiKeyPlaceholder": "输入 API Key",
       "added": "服务商 {{name}} 已添加"
     },
     "config": {

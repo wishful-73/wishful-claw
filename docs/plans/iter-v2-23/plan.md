@@ -93,7 +93,7 @@
 
 ### Plan 23-6：工具结果即时持久化与崩溃恢复
 
-- [ ] 步骤 18：在 `tool_call_result` 工具完成边界形成可恢复状态。
+- [x] 步骤 18：在 `tool_call_result` 工具完成边界形成可恢复状态。实现：Renderer `chat-store` 在 `tool_call_result` 事件的内存更新后立即调用既有 `dbUpsertMessage`（与 `message_end`/`loop_end` 同一 upsert 路径），不再等待后续持久化边界；成功、错误、取消、审批拒绝、跳过结果全部经 `tool_call_result` 事件流（ToolCallProcessor 三处 emit 点）统一覆盖；稳定键为消息 id（runId），Worker `db/messages-upsert` 存在则 UPDATE、不存在则 INSERT，重复事件幂等，并发工具后写携带先写结果的超集，不互相覆盖。纯 Renderer 改动，无 C# 变更。
   - 验证：不等待 30 秒检查点、`message_end` 或 `loop_end`；成功、错误、取消、审批拒绝、跳过结果均可恢复。
 - [ ] 步骤 19：确定并实现 messages upsert 或 Worker durable journal 的最小方案。
   - 验证：重复事件、重试、多工具并发不会互相覆盖或重复写入；稳定键至少覆盖 session/run/tool。

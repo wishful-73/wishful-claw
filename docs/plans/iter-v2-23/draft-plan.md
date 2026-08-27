@@ -421,4 +421,5 @@ pinned prefix
 - 已执行：Plan 23-5 步骤 15 已完成：悬浮块接入“压缩会话”——复用 `useContextCompression` 统一反馈与 `compressSessionContext` 统一链路，压缩中防重复点击，状态文案走 tooltip；新增 layout.json 压缩相关 i18n；TS 三配置 0 错误。
 - 已执行：Plan 23-5 步骤 16 已完成：悬浮块接入“打开右侧文件夹”——调用 `ensureFilesTab` 打开右侧面板并激活 Files tab，无工作目录时禁用并提示，不伪造成功；TS 三配置 0 错误。
 - 已执行：Plan 23-5 步骤 17 已完成：悬浮块接入聊天区域宽窄调节——`conversationPanelFullWidth` 持久化到 settings-store（version 33 + 迁移守卫，刷新/重启恢复），悬浮块宽窄切换按钮同步驱动 MessageList 与 Composer 列宽（820px ↔ 全宽），右侧面板开关时弹性列自动重适配；同时清理 ui-store 中同名冗余死字段；TS 三配置 0 错误。Plan 23-5 全部完成。
-- 未执行：工具结果持久化、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-6 步骤 18 已完成：`tool_call_result` 工具完成边界立即形成可恢复状态——Renderer 在内存更新后立即复用既有 `dbUpsertMessage` 落库，不等 `message_end`/`loop_end`；五种结果状态（成功/错误/取消/审批拒绝/跳过）全经 `tool_call_result` 事件统一覆盖；稳定键为消息 id（runId），既有 upsert 幂等，并发工具后写携带先写结果超集不互相覆盖；定案采用最小 messages upsert 方案，暂不引入 Worker 独立 durable journal。TS 三配置 0 错误。
+- 未执行：恢复 reconciliation、中间记录清理策略、三路径覆盖验证、后续 push、merge、tag、打包、Release。

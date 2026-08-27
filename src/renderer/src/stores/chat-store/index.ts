@@ -1196,6 +1196,29 @@ export const useChatStore = create<ChatStore>()(
 
             })
 
+            // Persist immediately at the tool-completion boundary so finished
+            // results (success/error/cancelled/approval-rejected/skipped all
+            // flow through tool_call_result) survive a Renderer/Worker crash
+            // before the message_end/loop_end flush. Upsert keyed by the stable
+            // message id (runId) keeps duplicate events and concurrent tools
+            // idempotent — later writes carry the superset of earlier results.
+
+            {
+
+              const sess = get().sessions.find((s) => s.id === targetSessionId)
+
+              const msg = sess?.messages.find((m) => m.id === envelope.runId)
+
+              if (msg) {
+
+                const sortOrder = sess ? sess.messages.indexOf(msg) : 0
+
+                void dbUpsertMessage(targetSessionId, msg, sortOrder)
+
+              }
+
+            }
+
             break
 
           }

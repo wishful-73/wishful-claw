@@ -224,7 +224,10 @@ internal static partial class AgentLoop
                         wireConversation = sessionConv.GetWireConversation();
                         // Persist the durable snapshot for main sessions only — sub-agent
                         // loops share the parent's sessionId but run an isolated conversation.
-                        if (sessionId.Length > 0 && conversationKey == sessionId)
+                        // compactArtifacts == null marks the mechanical-truncation degrade,
+                        // whose outcome describes the pre-truncation conversation and must
+                        // never become the durable snapshot.
+                        if (sessionId.Length > 0 && conversationKey == sessionId && compactArtifacts is not null)
                         {
                             ContextCompression.PersistSnapshot(outcome, sessionId, "auto", lastInputTokens);
                         }

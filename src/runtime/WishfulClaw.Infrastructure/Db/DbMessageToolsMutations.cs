@@ -157,6 +157,15 @@ public static partial class DbMessageTools
                 new SqliteParameter("@meta", (object?)current.Meta ?? DBNull.Value),
                 new SqliteParameter("@usage", (object?)current.Usage ?? DBNull.Value),
                 new SqliteParameter("@id", id));
+            if (changed > 0)
+            {
+                // Content edits at a covered position invalidate the session snapshot,
+                // same rule as compact/truncate mutations.
+                DbCompactionSnapshotStore.InvalidateForCoveredPosition(
+                    db,
+                    current.SessionId,
+                    new DbCompactionSnapshotStore.MessagePosition(current.CreatedAt, current.SortOrder));
+            }
             return Mutation(changed);
         }
         catch (Exception ex)

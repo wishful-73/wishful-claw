@@ -134,6 +134,26 @@ public sealed class SessionConversation
     }
 
     /// <summary>
+    /// Initializes the conversation only when it is still empty, with the
+    /// emptiness check and the replacement performed under the same lock.
+    /// Returns false when messages already exist (a live run populated the
+    /// session, or a concurrent restore won the race) so a late restore can
+    /// never clobber in-flight conversation state.
+    /// </summary>
+    public bool InitializeIfEmpty(IReadOnlyList<JsonElement> wireMessages, List<AgentRuntimeChatMessage> conversation)
+    {
+        lock (_lock)
+        {
+            if (_wireConversation.Count > 0) return false;
+            _wireConversation = [.. wireMessages];
+            _conversation = conversation;
+            _compactionWatermark = 0;
+            _version++;
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Appends incremental wire messages and their parsed equivalents.
     /// The existing prefix is untouched — this is the cache-friendly path.
     /// </summary>

@@ -20,7 +20,7 @@ public static class DbMessageCompactTools
             var db = DbClient.GetClient(parameters);
 
             var messages = db.Query(
-                "SELECT * FROM messages WHERE session_id = @sid ORDER BY created_at ASC",
+                "SELECT * FROM messages WHERE session_id = @sid ORDER BY created_at ASC, sort_order ASC",
                 EntityMappers.MapMessage,
                 new SqliteParameter("@sid", sessionId));
 
@@ -45,7 +45,8 @@ public static class DbMessageCompactTools
                 compacted++;
 
                 // Historical content edits invalidate a snapshot covering the modified
-                // position; rows are iterated oldest-first, so the first hit is the earliest.
+                // position; rows are iterated oldest-first (created_at + sort_order), so
+                // the first hit is deterministically the earliest.
                 coveredPosition ??= new DbCompactionSnapshotStore.MessagePosition(row.CreatedAt, row.SortOrder);
             }
 

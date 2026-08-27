@@ -234,7 +234,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
         {pinnedTurnMessage && isPinnedTurnOverlayVisible && (
           <motion.div
             key="pinned-turn"
-            className="absolute left-0 right-0 top-0 z-20 pl-7 md:pl-9"
+            className="absolute left-0 right-0 top-0 z-20 pl-7 pr-14 md:pl-9"
             initial={animationsEnabled ? { opacity: 0, y: -6 } : false}
             animate={{ opacity: 1, y: 0 }}
             exit={animationsEnabled ? { opacity: 0, y: -6 } : undefined}

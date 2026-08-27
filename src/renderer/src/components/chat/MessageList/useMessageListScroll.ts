@@ -341,14 +341,14 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
         const oldScrollTop = ref?.scrollTop ?? 0
         const oldHeight = ref?.scrollHeight ?? 0
 
-        const { messages: newMessages, rangeStart, hasMore } = await useChatStore
+        const { messages: newMessages, rangeStart, hasMore, totalTurns } = await useChatStore
           .getState()
-          .fetchOlderMessages?.(activeSessionId) ?? { messages: [], rangeStart: 0, hasMore: false }
+          .fetchOlderMessages?.(activeSessionId) ?? { messages: [], rangeStart: 0, hasMore: false, totalTurns: 0 }
 
         if (newMessages.length === 0) return 0
 
         flushSync(() => {
-          useChatStore.getState().prependMessages?.(activeSessionId, newMessages, rangeStart, hasMore)
+          useChatStore.getState().prependMessages?.(activeSessionId, newMessages, rangeStart, hasMore, totalTurns)
         })
         if (ref) {
           const newHeight = ref.scrollHeight

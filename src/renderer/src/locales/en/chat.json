@@ -35,6 +35,11 @@
     "output": "Output"
   },
   "input": {
+    "compressingContext": "Compressing context...",
+    "contextCompressed": "Context compressed",
+    "contextCompressionSkipped": "No compression needed",
+    "contextCompressionBlocked": "Compression temporarily unavailable",
+    "contextCompressionFailed": "Compression failed",
     "placeholder": "Type a message...",
     "placeholderClarify": "Describe your idea and I will keep probing until the requirements are clear...",
     "placeholderCowork": "Ask the assistant to help with your project...",

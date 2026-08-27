@@ -147,17 +147,18 @@ internal static class SessionRestoreTools
             // Initialize the SessionConversation - but only if it's empty.
             // If the session already has messages (e.g. agent loop is running
             // or a previous turn already populated it), skip to avoid
-            // clobbering the live conversation state.
+            // clobbering the live conversation state. The emptiness check and
+            // the replacement happen atomically inside InitializeIfEmpty, so
+            // concurrent restores (fire-and-forget + explicit) can't race a
+            // newly started turn into losing its messages.
             var sessionConv = SessionConversationManager.GetOrCreate(sessionId);
-            if (sessionConv.MessageCount > 0)
+            if (!sessionConv.InitializeIfEmpty(wireMessages, conversation))
             {
                 WorkerLog.Info(
                     $"agent restore-session: skipped (session already has {sessionConv.MessageCount} messages) " +
                     $"session={FormatLogValue(sessionId)}");
                 return WorkerResponse.Json(new SessionRestoreResponse(true, sessionId, sessionConv.MessageCount, Skipped: true), AgentRuntimeJsonContext.Default.SessionRestoreResponse);
             }
-
-            sessionConv.Initialize(wireMessages, conversation);
             if (snapshot is not null)
             {
                 // Mirrors the manual compression path: don't re-fold the restored

@@ -35,6 +35,11 @@
     "output": "输出"
   },
   "input": {
+    "compressingContext": "正在压缩上下文...",
+    "contextCompressed": "上下文已压缩",
+    "contextCompressionSkipped": "无需压缩",
+    "contextCompressionBlocked": "暂时无法压缩",
+    "contextCompressionFailed": "压缩失败",
     "placeholder": "输入消息...",
     "placeholderClarify": "描述你的想法，我会先不断追问把需求问透...",
     "placeholderCowork": "让助手帮你处理项目...",

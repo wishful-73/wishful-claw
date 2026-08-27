@@ -125,6 +125,22 @@ public static class AgentRuntimeContextCompressionTools
                             Status: "skipped", Trigger: trigger));
                 }
 
+                // Re-check before Replace: the entry gate only covered the moment
+                // the request arrived, and a new run can start while compression
+                // is in flight. Replacing the conversation under a live loop would
+                // orphan the messages it keeps appending to the old lists.
+                if (sessionId.Length > 0 && AgentRuntimeTools.HasActiveSessionRun(sessionId))
+                {
+                    WorkerLog.Info(
+                        $"manual context compression blocked session={AgentLoop.FormatSessionId(sessionId)} " +
+                        "reason=run-started-during-compression");
+                    return BuildResponse(
+                        wireMessages,
+                        new ContextCompressionResult(false, originalCount, originalCount,
+                            Status: "blocked", Trigger: trigger,
+                            Error: "an agent run started during compression"));
+                }
+
                 // Sync the Worker session so the next turn runs on the compressed
                 // context — same as the automatic path's Replace in AgentLoop.
                 sessionConv?.Replace(newConversation, newWireConversation);
@@ -132,7 +148,10 @@ public static class AgentRuntimeContextCompressionTools
                 // Persist the durable snapshot only when the Worker holds the
                 // authoritative conversation; caller-supplied messages (stateless
                 // path) may not match the persisted history the cursor covers.
-                if (sessionConv is not null)
+                // compactArtifacts == null marks the mechanical-truncation degrade,
+                // whose outcome describes the pre-truncation conversation and must
+                // never become the durable snapshot.
+                if (sessionConv is not null && compactArtifacts is not null)
                 {
                     ContextCompression.PersistSnapshot(outcome, sessionId, trigger, preTokens);
                 }

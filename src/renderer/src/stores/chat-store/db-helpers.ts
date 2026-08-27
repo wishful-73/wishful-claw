@@ -319,18 +319,27 @@ const messageUpsertChains = new Map<string, Promise<void>>()
  * Upsert a message to DB. Called during streaming (message_end), at each
  * tool-completion boundary and for user messages.
  */
-export async function dbUpsertMessage(
+export function dbUpsertMessage(
   sessionId: string,
   msg: ChatMessage,
   sortOrder: number
 ): Promise<void> {
-  await ensureDbInitialized()
-  const data = serializeMessage(msg, sortOrder)
-  data.sessionId = sessionId
-  // Keep fire-and-forget semantics for callers — failures are isolated to
-  // this write and never block later snapshots in the queue.
+  const write = (async () => {
+    await ensureDbInitialized()
+    const data = serializeMessage(msg, sortOrder)
+    data.sessionId = sessionId
+    await window.api.workerRequest('db/messages-upsert', data)
+  })()
+  // A single failure must not break the per-message chain — later snapshots
+  // are supersets and still need to commit — so the chained copy swallows the
+  // rejection. The base write carries a logging handler so fire-and-forget
+  // callers never produce unhandled rejections, while awaiting callers (e.g.
+  // channel delivery) still receive the real error from the returned promise.
+  void write.catch((error) => {
+    console.error('[chat-store] message upsert failed', sessionId, msg.id, error)
+  })
   const chain = (messageUpsertChains.get(msg.id) ?? Promise.resolve()).then(() =>
-    window.api.workerRequest('db/messages-upsert', data).then(() => undefined).catch(() => undefined)
+    write.catch(() => undefined)
   )
   messageUpsertChains.set(msg.id, chain)
   void chain.finally(() => {
@@ -338,7 +347,7 @@ export async function dbUpsertMessage(
       messageUpsertChains.delete(msg.id)
     }
   })
-  return chain
+  return write
 }
 
 /**

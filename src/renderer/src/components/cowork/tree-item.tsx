@@ -143,7 +143,11 @@ export function TreeItem({
       )}
 
       {isDir ? (
-        <Folder className="size-[14px] shrink-0 text-muted-foreground/70" />
+        node.expanded ? (
+          <FolderOpen className="size-[14px] shrink-0 text-amber-400" />
+        ) : (
+          <Folder className="size-[14px] shrink-0 text-amber-400" />
+        )
       ) : (
         fileIcon(node.name)
       )}

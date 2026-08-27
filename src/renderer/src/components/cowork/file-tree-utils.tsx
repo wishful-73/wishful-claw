@@ -1,5 +1,5 @@
 import type React from 'react'
-import { File, FileCode, FileJson, FileText, Image } from 'lucide-react'
+import { File, FileCode, FileJson, FileText, FileCog, FileLock, Database, Image } from 'lucide-react'
 import type { FileEntry, TreeNode } from './file-tree-types'
 
 // --- File icon helper ---
@@ -9,20 +9,47 @@ const EXT_ICONS: Record<string, React.ReactNode> = {
   '.tsx': <FileCode className="size-3.5 text-blue-400" />,
   '.js': <FileCode className="size-3.5 text-yellow-500" />,
   '.jsx': <FileCode className="size-3.5 text-yellow-500" />,
+  '.mjs': <FileCode className="size-3.5 text-yellow-500" />,
+  '.cjs': <FileCode className="size-3.5 text-yellow-500" />,
   '.py': <FileCode className="size-3.5 text-green-500" />,
   '.rs': <FileCode className="size-3.5 text-orange-400" />,
   '.go': <FileCode className="size-3.5 text-cyan-400" />,
+  '.cs': <FileCode className="size-3.5 text-violet-400" />,
+  '.java': <FileCode className="size-3.5 text-red-400" />,
+  '.c': <FileCode className="size-3.5 text-sky-400" />,
+  '.h': <FileCode className="size-3.5 text-sky-400" />,
+  '.cpp': <FileCode className="size-3.5 text-sky-400" />,
+  '.sh': <FileCode className="size-3.5 text-emerald-400" />,
+  '.bat': <FileCode className="size-3.5 text-emerald-400" />,
+  '.ps1': <FileCode className="size-3.5 text-emerald-400" />,
   '.json': <FileJson className="size-3.5 text-amber-400" />,
+  '.jsonc': <FileJson className="size-3.5 text-amber-400" />,
   '.md': <FileText className="size-3.5 text-muted-foreground" />,
   '.txt': <FileText className="size-3.5 text-muted-foreground" />,
+  '.log': <FileText className="size-3.5 text-muted-foreground" />,
   '.yaml': <FileText className="size-3.5 text-pink-400" />,
   '.yml': <FileText className="size-3.5 text-pink-400" />,
+  '.toml': <FileText className="size-3.5 text-pink-400" />,
+  '.ini': <FileCog className="size-3.5 text-pink-400" />,
+  '.env': <FileCog className="size-3.5 text-teal-400" />,
   '.css': <FileCode className="size-3.5 text-purple-400" />,
+  '.scss': <FileCode className="size-3.5 text-purple-400" />,
+  '.less': <FileCode className="size-3.5 text-purple-400" />,
   '.html': <FileCode className="size-3.5 text-orange-400" />,
+  '.xml': <FileCode className="size-3.5 text-orange-300" />,
+  '.sql': <Database className="size-3.5 text-indigo-400" />,
+  '.db': <Database className="size-3.5 text-indigo-400" />,
+  '.sqlite': <Database className="size-3.5 text-indigo-400" />,
+  '.lock': <FileLock className="size-3.5 text-muted-foreground" />,
+  '.dll': <FileCog className="size-3.5 text-zinc-400" />,
+  '.exe': <FileCog className="size-3.5 text-zinc-400" />,
+  '.zip': <FileCog className="size-3.5 text-lime-400" />,
   '.svg': <Image className="size-3.5 text-green-400" />,
   '.png': <Image className="size-3.5 text-green-400" />,
   '.jpg': <Image className="size-3.5 text-green-400" />,
-  '.gif': <Image className="size-3.5 text-green-400" />
+  '.gif': <Image className="size-3.5 text-green-400" />,
+  '.ico': <Image className="size-3.5 text-green-400" />,
+  '.webp': <Image className="size-3.5 text-green-400" />
 }
 
 export const IGNORED_DIRS = new Set([

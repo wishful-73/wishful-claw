@@ -66,7 +66,7 @@ export function QueuedMessagesPanel({
   clearQueuedMessagesForActiveSession,
   summarizeQueuedMessage
 }: QueuedMessagesPanelProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation('chat')
 
   if (queuedMessages.length === 0) return null
 

@@ -52,6 +52,9 @@ export function initializeI18n(): Promise<void> {
       lng: language,
       supportedLngs: [...SUPPORTED_LANGUAGE_CODES],
       fallbackLng: 'en',
+      // Shared keys (action.*, status.*, etc.) live in common.json; other
+      // namespaces fall back to it instead of showing raw key names.
+      fallbackNS: 'common',
       nonExplicitSupportedLngs: true,
       defaultNS: 'common',
       load: 'currentOnly',

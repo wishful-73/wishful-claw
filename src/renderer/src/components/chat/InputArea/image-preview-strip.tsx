@@ -24,7 +24,7 @@ export function ImagePreviewStrip({
   removeImage,
   previewImage
 }: ImagePreviewStripProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation('chat')
 
   return (
     <>

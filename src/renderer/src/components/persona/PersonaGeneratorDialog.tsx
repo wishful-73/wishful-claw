@@ -20,7 +20,7 @@ export function PersonaGeneratorDialog({
   workingFolder,
   onSaved
 }: PersonaGeneratorDialogProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation('settings')
   const { generatePersona, savePersona } = usePersonaStore()
   const providerStore = useProviderStore()
 
@@ -36,12 +36,12 @@ export function PersonaGeneratorDialog({
     if (!prompt.trim()) return
     const activeProvider = providerStore.getActiveProvider()
     if (!activeProvider) {
-      setError(t('settings.persona.noProvider'))
+      setError(t('persona.noProvider'))
       return
     }
     const modelId = providerStore.activeModelId || activeProvider.defaultModel || activeProvider.models.find((m: any) => m.enabled)?.id
     if (!modelId) {
-      setError(t('settings.persona.noModel'))
+      setError(t('persona.noModel'))
       return
     }
 
@@ -121,7 +121,7 @@ export function PersonaGeneratorDialog({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
           <h2 className="text-base font-semibold text-white">
-            {t('settings.persona.aiCreate')}
+            {t('persona.aiCreate')}
           </h2>
           <button onClick={handleClose} className="text-white/50 hover:text-white">✕</button>
         </div>
@@ -129,17 +129,17 @@ export function PersonaGeneratorDialog({
         {!draft ? (
           /* ── Prompt input phase ── */
           <div className="flex flex-col gap-4 p-5">
-            <p className="text-sm text-white/60">{t('settings.persona.aiCreateDesc')}</p>
+            <p className="text-sm text-white/60">{t('persona.aiCreateDesc')}</p>
             <textarea
               className="h-24 w-full resize-none rounded border border-white/10 bg-black/20 p-3 text-sm text-white placeholder-white/30 focus:border-blue-500 focus:outline-none"
-              placeholder={t('settings.persona.promptPlaceholder')}
+              placeholder={t('persona.promptPlaceholder')}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               disabled={generating}
             />
             <input
               className="w-full rounded border border-white/10 bg-black/20 px-3 py-2 text-sm text-white placeholder-white/30 focus:border-blue-500 focus:outline-none"
-              placeholder={t('settings.persona.referencePlaceholder')}
+              placeholder={t('persona.referencePlaceholder')}
               value={referenceId}
               onChange={(e) => setReferenceId(e.target.value)}
               disabled={generating}
@@ -150,7 +150,7 @@ export function PersonaGeneratorDialog({
               disabled={generating || !prompt.trim()}
               className="self-end rounded bg-blue-600 px-5 py-2 text-sm text-white hover:bg-blue-500 disabled:opacity-40"
             >
-              {generating ? t('settings.persona.generating') : t('settings.persona.generate')}
+              {generating ? t('persona.generating') : t('persona.generate')}
             </button>
           </div>
         ) : (
@@ -160,20 +160,20 @@ export function PersonaGeneratorDialog({
               <div className="flex gap-3">
                 <input
                   className="flex-1 rounded border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  placeholder={t('settings.persona.name')}
+                  placeholder={t('persona.name')}
                   value={draft.name}
                   onChange={(e) => updateDraft('name', e.target.value)}
                 />
                 <input
                   className="flex-1 rounded border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  placeholder={t('settings.persona.tagline')}
+                  placeholder={t('persona.tagline')}
                   value={draft.tagline}
                   onChange={(e) => updateDraft('tagline', e.target.value)}
                 />
               </div>
               <input
                 className="w-full rounded border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
-                placeholder={t('settings.persona.description')}
+                placeholder={t('persona.description')}
                 value={draft.description}
                 onChange={(e) => updateDraft('description', e.target.value)}
               />
@@ -209,7 +209,7 @@ export function PersonaGeneratorDialog({
                 onClick={() => setDraft(null)}
                 className="text-sm text-white/50 hover:text-white"
               >
-                {t('settings.persona.regenerate')}
+                {t('persona.regenerate')}
               </button>
               <div className="flex gap-2">
                 {error && <p className="self-center text-sm text-red-400">{error}</p>}
@@ -217,14 +217,14 @@ export function PersonaGeneratorDialog({
                   onClick={handleClose}
                   className="rounded px-4 py-1.5 text-sm text-white/60 hover:text-white"
                 >
-                  {t('common.cancel')}
+                  {t('action.cancel')}
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={saving || !draft.name.trim()}
                   className="rounded bg-green-600 px-5 py-1.5 text-sm text-white hover:bg-green-500 disabled:opacity-40"
                 >
-                  {saving ? t('settings.persona.saving') : t('settings.persona.confirmSave')}
+                  {saving ? t('persona.saving') : t('persona.confirmSave')}
                 </button>
               </div>
             </div>

@@ -48,7 +48,7 @@ export function ComposerFlyovers({
   slashListRef,
   applySlashSuggestion
 }: ComposerFlyoversProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation('chat')
 
   return (
     <>

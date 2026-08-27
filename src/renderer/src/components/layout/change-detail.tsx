@@ -9,7 +9,7 @@ import { isErrorResult } from './session-change-utils'
 import { loadAggregatedChangeContent } from '../chat/change-summary-utils'
 
 export function CopyIconButton({ text }: { text: string }): React.JSX.Element {
-  const { t } = useTranslation('common')
+  const { t } = useTranslation('layout')
   const [copied, setCopied] = React.useState(false)
 
   return (

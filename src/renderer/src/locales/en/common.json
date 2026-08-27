@@ -1,4 +1,4 @@
-{
+﻿{
   "appName": "Wishful Claw",
   "appDescription": "AI Agent Programming Assistant",
   "actions": {
@@ -79,11 +79,20 @@
     "unpin": "Unpin",
     "showMore": "Show more",
     "showLess": "Show less",
-    "more": "More"
+    "more": "More",
+    "edit": "Edit",
+    "generate": "Generate"
   },
   "unit": {
     "folders": "folders",
     "files": "files",
-    "matches": "matches"
+    "matches": "matches",
+    "tokens": "Tokens",
+    "reasoning": "Reasoning"
+  },
+  "showMore": "Show more",
+  "showLess": "Show less",
+  "error": {
+    "label": "Error"
   }
 }

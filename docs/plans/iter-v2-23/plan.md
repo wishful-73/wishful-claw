@@ -64,8 +64,8 @@
 
 - [x] 步骤 7：实现 Worker 手动压缩端点，复用自动压缩核心逻辑。实现：`AgentRuntimeContextCompressionTools.CompressAsync` 增强为支持 `sessionId`——优先压缩 Worker 内存 `SessionConversation` 并在成功后 `Replace` + 更新水位（与自动压缩同一 `ContextCompression.CompactAsync` 核心）；会话有运行中 run 或重复触发时返回 `blocked`，取消/跳过/失败返回 `cancelled`/`skipped`/`failed` 明确状态；前端新增 `compressSessionContext` 动作并接入 `SessionConversationPane` 的 ContextRing，复用 `useContextCompression` 状态反馈与防重复触发。
   - 验证：悬浮块/ContextRing 点击可实际触发压缩；压缩中不可重复触发；取消、跳过、失败和降级均返回明确结果。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
-- [ ] 步骤 8：统一压缩完成产物。
-  - 验证：自动/手动都能产生同格式的压缩上下文、摘要正文、边界元数据和持久化快照。
+- [x] 步骤 8：统一压缩完成产物。实现：`ContextCompression.CompactAsync` 改为返回结构化 `CompactionOutcome`（压缩会话 + wire 会话 + Compacted/SummarizerFailed/MessagesSummarized/SummaryMessageId）；摘要消息带稳定 id 与 `meta.compactSummary`（`CreateSummaryWireMessage` 新重载）；新增 `ContextCompression.Artifacts.BuildCompactArtifacts` 从同一产物派生 [边界消息, 摘要消息] 聊天产物（边界含 trigger/preTokens/messagesSummarized/preservedSegment.headId 插入锚点）；自动压缩路径（AgentLoop）与手动压缩端点均消费同一产物，`context_compressed` 事件与手动响应统一携带 Trigger/SummarizerFailed/MessagesSummarized/CompactArtifacts，机械截断降级时标记 `summarizerFailed` 并清空产物；MessagePack emitter 与事件模型同步新增三字段编码（跳过 null，兼容旧客户端）。持久化快照落库由步骤 10 承接。
+  - 验证：自动/手动产生同格式的压缩上下文、摘要正文与边界元数据（持久化快照落库由步骤 10 验证）。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [ ] 步骤 9：完善压缩事件和聊天窗摘要卡。
   - 验证：聊天窗显示压缩开始状态；完成后显示可展开的“上下文摘要”正文、压缩数量/范围、保留信息和降级状态；重载历史后仍可查看；不依赖 Activity 面板。
 - [ ] 步骤 10：压缩结果持久化与 Worker 会话同步。

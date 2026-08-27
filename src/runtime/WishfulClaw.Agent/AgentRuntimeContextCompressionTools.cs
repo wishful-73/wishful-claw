@@ -92,12 +92,17 @@ public static class AgentRuntimeContextCompressionTools
 
             try
             {
-                var (newConversation, newWireConversation) = await ContextCompression.CompactAsync(
+                var preTokens = ContextCompression.EstimateMessagesTokens(conversation);
+                var outcome = await ContextCompression.CompactAsync(
                     conversation,
                     wireMessages,
                     provider,
                     context,
                     context.CancellationToken);
+                var newConversation = outcome.Conversation;
+                var newWireConversation = outcome.WireConversation;
+                var summarizerFailed = outcome.SummarizerFailed;
+                var compactArtifacts = ContextCompression.BuildCompactArtifacts(outcome, trigger, preTokens);
 
                 if (newWireConversation.Count >= originalCount)
                 {
@@ -105,6 +110,8 @@ public static class AgentRuntimeContextCompressionTools
                     // fall back to mechanical truncation before giving up.
                     (newConversation, newWireConversation) = ContextCompression.TruncateMessages(
                         conversation, wireMessages, provider);
+                    summarizerFailed = true;
+                    compactArtifacts = null;
                 }
 
                 if (newWireConversation.Count >= originalCount)
@@ -125,13 +132,15 @@ public static class AgentRuntimeContextCompressionTools
 
                 WorkerLog.Info(
                     $"manual context compression completed session={AgentLoop.FormatSessionId(sessionId)} " +
-                    $"original={originalCount} new={newWireConversation.Count}");
+                    $"original={originalCount} new={newWireConversation.Count} summarizerFailed={summarizerFailed}");
 
                 return BuildResponse(
                     newWireConversation,
                     new ContextCompressionResult(true, originalCount, newWireConversation.Count,
-                        MessagesSummarized: Math.Max(0, originalCount - newWireConversation.Count),
-                        Status: "compressed", Trigger: trigger));
+                        MessagesSummarized: outcome.MessagesSummarized > 0 ? outcome.MessagesSummarized : null,
+                        Status: "compressed", Trigger: trigger,
+                        SummarizerFailed: summarizerFailed ? true : null),
+                    compactArtifacts);
             }
             catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
             {
@@ -161,17 +170,20 @@ public static class AgentRuntimeContextCompressionTools
 
     private static WorkerResponse BuildResponse(
         List<JsonElement> messages,
-        ContextCompressionResult result)
+        ContextCompressionResult result,
+        JsonElement[]? compactArtifacts = null)
     {
         return WorkerResponse.Json(
-            new ContextCompressionResponse(messages, result),
+            new ContextCompressionResponse(messages, result,
+                compactArtifacts is null ? null : [.. compactArtifacts]),
             AgentRuntimeJsonContext.Default.ContextCompressionResponse);
     }
 }
 
 public sealed record ContextCompressionResponse(
     List<JsonElement> Messages,
-    ContextCompressionResult Result);
+    ContextCompressionResult Result,
+    List<JsonElement>? CompactArtifacts = null);
 
 public sealed record ContextCompressionResult(
     bool Compressed,
@@ -180,4 +192,5 @@ public sealed record ContextCompressionResult(
     int? MessagesSummarized = null,
     string? Error = null,
     string? Status = null,
-    string? Trigger = null);
+    string? Trigger = null,
+    bool? SummarizerFailed = null);

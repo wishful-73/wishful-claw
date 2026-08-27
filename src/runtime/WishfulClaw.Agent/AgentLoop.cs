@@ -184,7 +184,7 @@ internal static partial class AgentLoop
             {
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
-                    new AgentRuntimeStreamEvent("context_compression_start"));
+                    new AgentRuntimeStreamEvent("context_compression_start", Trigger: "auto"));
 
                 if (state.IsCancellationRequested)
                 {
@@ -196,8 +196,13 @@ internal static partial class AgentLoop
                 {
                     var originalCount = wireConversation.Count;
                     sessionConv.MarkCompactionWatermark(originalCount);
-                    var (newConversation, newWireConversation) = await ContextCompression.CompactAsync(
+                    var outcome = await ContextCompression.CompactAsync(
                         conversation, wireConversation, provider, context, state.CancellationToken);
+                    var newConversation = outcome.Conversation;
+                    var newWireConversation = outcome.WireConversation;
+                    var summarizerFailed = outcome.SummarizerFailed;
+                    var messagesSummarized = outcome.MessagesSummarized;
+                    var compactArtifacts = ContextCompression.BuildCompactArtifacts(outcome, "auto", lastInputTokens);
                     if (newWireConversation.Count >= originalCount)
                     {
                         // AL-6: LLM summarization produced no reduction (nothing to
@@ -206,6 +211,11 @@ internal static partial class AgentLoop
                         // the same size every iteration.
                         (newConversation, newWireConversation) = ContextCompression.TruncateMessages(
                             conversation, wireConversation, provider);
+                        // Truncation carries no summary — flag the degraded result so
+                        // the UI never presents it as an LLM summary.
+                        summarizerFailed = true;
+                        messagesSummarized = 0;
+                        compactArtifacts = null;
                     }
                     if (newWireConversation.Count < originalCount)
                     {
@@ -218,10 +228,15 @@ internal static partial class AgentLoop
                                 "context_compressed",
                                 OriginalCount: originalCount,
                                 NewCount: newWireConversation.Count,
-                                KeptMessageCount: Math.Max(0, originalCount - newWireConversation.Count)));
+                                KeptMessageCount: Math.Max(0, originalCount - newWireConversation.Count),
+                                Trigger: "auto",
+                                SummarizerFailed: summarizerFailed,
+                                MessagesSummarized: messagesSummarized > 0 ? messagesSummarized : null,
+                                CompactArtifacts: compactArtifacts));
                         WorkerLog.Info(
                             $"agent context compression runId={state.RunId} " +
-                            $"original={originalCount} compressed={newWireConversation.Count}");
+                            $"original={originalCount} compressed={newWireConversation.Count} " +
+                            $"summarizerFailed={summarizerFailed}");
                     }
                     else
                     {

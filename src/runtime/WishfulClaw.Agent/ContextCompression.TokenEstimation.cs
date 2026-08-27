@@ -66,4 +66,36 @@ public static partial class ContextCompression
         return doc.RootElement.Clone();
     }
 
+    /// <summary>
+    /// Builds the summary wire message with a stable id and meta.compactSummary so
+    /// the chat window, the persistence snapshot and restore all reference the same
+    /// artifact (contract: compression-contract.md §4.2).
+    /// </summary>
+    internal static JsonElement CreateSummaryWireMessage(
+        string id,
+        string content,
+        int messagesSummarized,
+        bool recentMessagesPreserved)
+    {
+        var json = WorkerJsonHelper.BuildJsonString(w =>
+        {
+            w.WriteStartObject();
+            w.WriteString("id", id);
+            w.WriteString("role", "user");
+            w.WriteString("content", content);
+            w.WriteNumber("createdAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            w.WritePropertyName("meta");
+            w.WriteStartObject();
+            w.WritePropertyName("compactSummary");
+            w.WriteStartObject();
+            w.WriteNumber("messagesSummarized", messagesSummarized);
+            w.WriteBoolean("recentMessagesPreserved", recentMessagesPreserved);
+            w.WriteEndObject();
+            w.WriteEndObject();
+            w.WriteEndObject();
+        });
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
 }

@@ -43,6 +43,10 @@ public sealed record AgentRuntimeStreamEvent(
     int? OriginalCount = null,
     int? NewCount = null,
     int? KeptMessageCount = null,
+    // Context compression metadata (context_compression_start / context_compressed)
+    string? Trigger = null,
+    bool? SummarizerFailed = null,
+    int? MessagesSummarized = null,
     JsonElement[]? Messages = null,
     JsonElement[]? CompactArtifacts = null,
     string? ToolUseId = null,

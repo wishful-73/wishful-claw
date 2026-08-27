@@ -79,6 +79,9 @@ public static class AgentStreamMessagePackEmitter
         WriteOptionalInt(writer, "originalCount", streamEvent.OriginalCount);
         WriteOptionalInt(writer, "newCount", streamEvent.NewCount);
         WriteOptionalInt(writer, "keptMessageCount", streamEvent.KeptMessageCount);
+        WriteOptionalString(writer, "trigger", streamEvent.Trigger);
+        WriteOptionalBool(writer, "summarizerFailed", streamEvent.SummarizerFailed);
+        WriteOptionalInt(writer, "messagesSummarized", streamEvent.MessagesSummarized);
         WriteOptionalMessages(writer, "compactArtifacts", streamEvent.CompactArtifacts);
         WriteOptionalMessages(writer, "messages", streamEvent.Messages);
         WriteOptionalString(writer, "toolUseId", streamEvent.ToolUseId);
@@ -122,6 +125,9 @@ public static class AgentStreamMessagePackEmitter
         if (streamEvent.OriginalCount.HasValue) count++;
         if (streamEvent.NewCount.HasValue) count++;
         if (streamEvent.KeptMessageCount.HasValue) count++;
+        if (streamEvent.Trigger is not null) count++;
+        if (streamEvent.SummarizerFailed.HasValue) count++;
+        if (streamEvent.MessagesSummarized.HasValue) count++;
         if (streamEvent.CompactArtifacts is not null) count++;
         if (streamEvent.Messages is not null) count++;
         if (streamEvent.ToolUseId is not null) count++;
@@ -153,6 +159,13 @@ public static class AgentStreamMessagePackEmitter
         if (value is null) return;
         writer.WriteString(name);
         writer.WriteString(value);
+    }
+
+    private static void WriteOptionalBool(WorkerMessagePackWriter writer, string name, bool? value)
+    {
+        if (!value.HasValue) return;
+        writer.WriteString(name);
+        writer.WriteBoolean(value.Value);
     }
 
     private static void WriteOptionalJson(WorkerMessagePackWriter writer, string name, JsonElement? value)

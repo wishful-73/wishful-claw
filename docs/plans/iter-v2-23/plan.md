@@ -133,7 +133,7 @@
 - [x] 步骤 31：左侧面板对话命名/图标 + 扩展/自动化图标。
   - 实现：① 左侧面板“全局对话”分区展示对齐 OpenCowork（当前直接展开），“会话”命名改“对话”并增加图标；② 扩展入口图标从文件夹改为 OpenCowork 扩展图标；③ 自动化入口图标从日历改为时钟。
   - 验证：各入口图标/标题正确，导航功能不受影响，i18n 双语完整。TS 三配置 0 错误。
-- 已实现：① `WorkspaceSidebar` 全局对话分区头部加 `MessageSquare` 图标（对齐 OpenCowork `SessionListPanel` 头部；会话计数后按用户反馈移除），zh `sidebar.conversations` 由“会话”改“对话”（en 保持 Conversations，键仅单处引用）；② 扩展入口图标 `FolderOpen` → `Plug`（对齐 OpenCowork 扩展触发器）；③ 自动化项图标 `CalendarDays` → `Clock3`（对齐 OpenCowork automation nav item）；项目排序下拉的 `CalendarDays` 语义不变保留。导航/点击链路未动。后续补齐：“对话”分区改为与项目行同款可收起/展开——点击分区行切换全局会话列表显示（默认展开，展开时子列表 `ml-3 pl-2` 缩进与项目子列表一致，chevron 旋转指示，保留“加载更多”逻辑）。TS 三配置 0 错误。
+- 已实现：① `WorkspaceSidebar` 全局对话分区头部加 `MessageSquare` 图标（对齐 OpenCowork `SessionListPanel` 头部；会话计数后按用户反馈移除），zh `sidebar.conversations` 由“会话”改“对话”（en 保持 Conversations，键仅单处引用）；② 扩展入口图标 `FolderOpen` → `Plug`（对齐 OpenCowork 扩展触发器）；③ 自动化项图标 `CalendarDays` → `Clock3`（对齐 OpenCowork automation nav item）；项目排序下拉的 `CalendarDays` 语义不变保留。导航/点击链路未动。后续补齐：“对话”分区改为与项目行同款可收起/展开——点击分区行切换全局会话列表显示（默认展开，展开时子列表 `ml-3 pl-2` 缩进与项目子列表一致，chevron 旋转指示，保留“加载更多”逻辑）。后续补齐（用户反馈“对话图标也要色彩”）：“对话”分区行 `MessageSquare` 图标加 `text-sky-500 dark:text-sky-400`，与项目行目录图标同色同向。TS 三配置 0 错误。
 
 > 每步骤一个本地 commit，不 push；纯前端步骤验证以 TS 三配置为准。
 

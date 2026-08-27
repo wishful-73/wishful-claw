@@ -336,7 +336,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
               onClick={() => setConversationsExpanded((v) => !v)}
               className="group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
             >
-              <MessageSquare className="size-3.5 shrink-0" />
+              <MessageSquare className="size-3.5 shrink-0 text-sky-500 dark:text-sky-400" />
               <span className="flex-1 truncate text-xs font-medium">
                 {t('sidebar.conversations', { defaultValue: 'Conversations' })}
               </span>

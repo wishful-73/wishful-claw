@@ -73,8 +73,8 @@
 
 ### Plan 23-4：历史恢复、前端分页解耦与当前轮吸附
 
-- [ ] 步骤 11：改造 `SessionRestoreTools` 使用快照/全量兼容恢复策略。
-  - 验证：有快照恢复快照 + 后续消息；无快照全量恢复；加载更早 UI 历史不触发 Worker 恢复。
+- [x] 步骤 11：改造 `SessionRestoreTools` 使用快照/全量兼容恢复策略。实现：`DbCompactionSnapshotTools.TryGetValidSnapshot` 提取为共享校验读取（版本/载荷/游标三重校验，问题降级为 null+reason 并记日志），`Get` 端点改为委派调用；`RestoreSession` 优先快照路径——反序列化 `wire_conversation` + 契约 §3.1 游标后增量查询，增量按 id 去重（防时间戳重定位后的摘要行重复）并跳过聊天专用产物（compactBoundary/compressionStatus 不入模型上下文），恢复后 `MarkCompactionWatermark` 防止立刻重折摘要；快照缺失/不支持/损坏/游标无效/读取异常均回退全量恢复（全量路径同样跳过聊天专用产物）；响应新增 `FromSnapshot` 诊断字段，日志标注 source=snapshot/full。前端分页加载更早历史（`fetchOlderMessages`）本就不调用 `agent/restore-session`，仅首次加载触发恢复，无需改动。
+  - 验证：有快照恢复快照 + 后续消息；无快照全量恢复；加载更早 UI 历史不触发 Worker 恢复。252 断言快照回归测试全过；C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [ ] 步骤 12：历史加载改为点击触发。
   - 验证：移除滚动触顶自动加载；顶部按钮可连续加载更早 5 轮；显示总轮数/已加载范围；不重新引入 prepend 闪烁专项重构。
 - [ ] 步骤 13：实现进行中当前轮 user message 吸附。

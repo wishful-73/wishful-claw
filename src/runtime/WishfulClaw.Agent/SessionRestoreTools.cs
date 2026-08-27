@@ -14,13 +14,19 @@ namespace WishfulClaw.Agent;
 /// Called when the user switches to an existing session whose backend state
 /// is empty (e.g. after process restart). Mirrors Reasonix's
 /// LoadSession(path) + SetSession(loaded) pattern.
+///
+/// Strategy (snapshot-contract.md §六): a valid compaction snapshot restores
+/// the compressed wire conversation plus the incremental messages after the
+/// snapshot cursor; any snapshot problem (missing/unsupported/corrupt/cursor
+/// invalid) falls back to full message recovery. Chat-only artifacts
+/// (compact boundary / compression status cards) never enter the model context.
 /// </summary>
 internal static class SessionRestoreTools
 {
     /// <summary>
-    /// Restore a session from the DB. Reads all messages for the given
-    /// sessionId, converts them to wire-format JsonElements, and calls
-    /// SessionConversation.Initialize().
+    /// Restore a session from the DB. Prefers the compaction snapshot + post-cursor
+    /// incremental messages; falls back to loading all messages. Converts the result
+    /// to wire-format JsonElements and calls SessionConversation.Initialize().
     /// </summary>
     public static WorkerResponse RestoreSession(JsonElement parameters)
     {
@@ -35,24 +41,79 @@ internal static class SessionRestoreTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            // Load all messages ordered by sort_order
-            var entities = db.Query(
-                "SELECT * FROM messages WHERE session_id = @sid ORDER BY created_at ASC, sort_order ASC",
-                EntityMappers.MapMessage, new SqliteParameter("@sid", sessionId));
-
-            if (entities.Count == 0)
+            // Snapshot path: validated read (version/payload/cursor) shared with the
+            // db endpoint; any problem downgrades to full recovery (reason is logged
+            // inside TryGetValidSnapshot).
+            CompactionSnapshotEntity? snapshot = null;
+            try
             {
-                // No messages in DB — nothing to restore, leave session empty
-                WorkerLog.Info($"agent restore-session: no messages for session={FormatLogValue(sessionId)}");
-                return WorkerResponse.Json(new SessionRestoreResponse(true, sessionId, 0), AgentRuntimeJsonContext.Default.SessionRestoreResponse);
+                snapshot = DbCompactionSnapshotTools.TryGetValidSnapshot(db, sessionId, out _);
+            }
+            catch (Exception ex)
+            {
+                WorkerLog.Warn(
+                    $"agent restore-session: snapshot read failed, falling back to full recovery " +
+                    $"session={FormatLogValue(sessionId)} error={ex.GetType().Name}: {ex.Message}");
             }
 
-            // Convert DB rows to wire-format JsonElements
             var wireMessages = new List<JsonElement>();
-            foreach (var entity in entities)
+            if (snapshot is not null)
             {
-                var wire = ConvertToWireMessage(entity);
-                wireMessages.Add(wire);
+                wireMessages.AddRange(
+                    JsonSerializer.Deserialize(snapshot.WireConversation, AgentRuntimeJsonContext.Default.ListJsonElement)
+                    ?? []);
+
+                // Ids already covered by the snapshot — dedupes the summary row whose
+                // timestamp was relocated into the covered range by the chat store.
+                var snapshotIds = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var message in wireMessages)
+                {
+                    if (message.ValueKind == JsonValueKind.Object &&
+                        message.TryGetProperty("id", out var idProperty) &&
+                        idProperty.ValueKind == JsonValueKind.String &&
+                        idProperty.GetString() is { Length: > 0 } id)
+                    {
+                        snapshotIds.Add(id);
+                    }
+                }
+
+                // Incremental messages strictly after the snapshot cursor
+                // (snapshot-contract.md §3.1).
+                var incremental = db.Query(
+                    "SELECT * FROM messages WHERE session_id = @sid AND " +
+                    "(created_at > @tca OR (created_at = @tca AND sort_order > @tso)) " +
+                    "ORDER BY created_at ASC, sort_order ASC",
+                    EntityMappers.MapMessage,
+                    new SqliteParameter("@sid", sessionId),
+                    new SqliteParameter("@tca", snapshot.ThroughCreatedAt),
+                    new SqliteParameter("@tso", snapshot.ThroughSortOrder));
+
+                foreach (var entity in incremental)
+                {
+                    if (snapshotIds.Contains(entity.Id)) continue;
+                    if (IsChatOnlyArtifact(entity.Meta)) continue;
+                    wireMessages.Add(ConvertToWireMessage(entity));
+                }
+            }
+            else
+            {
+                // Full recovery: load all messages ordered by (created_at, sort_order)
+                var entities = db.Query(
+                    "SELECT * FROM messages WHERE session_id = @sid ORDER BY created_at ASC, sort_order ASC",
+                    EntityMappers.MapMessage, new SqliteParameter("@sid", sessionId));
+
+                if (entities.Count == 0)
+                {
+                    // No messages in DB — nothing to restore, leave session empty
+                    WorkerLog.Info($"agent restore-session: no messages for session={FormatLogValue(sessionId)}");
+                    return WorkerResponse.Json(new SessionRestoreResponse(true, sessionId, 0), AgentRuntimeJsonContext.Default.SessionRestoreResponse);
+                }
+
+                foreach (var entity in entities)
+                {
+                    if (IsChatOnlyArtifact(entity.Meta)) continue;
+                    wireMessages.Add(ConvertToWireMessage(entity));
+                }
             }
 
             // Parse to AgentRuntimeChatMessage list
@@ -72,12 +133,22 @@ internal static class SessionRestoreTools
             }
 
             sessionConv.Initialize(wireMessages, conversation);
+            if (snapshot is not null)
+            {
+                // Mirrors the manual compression path: don't re-fold the restored
+                // summary until new messages are appended beyond it.
+                sessionConv.MarkCompactionWatermark(wireMessages.Count);
+            }
 
             WorkerLog.Info(
                 $"agent restore-session: loaded {wireMessages.Count} messages " +
+                $"source={(snapshot is not null ? "snapshot" : "full")} " +
                 $"for session={FormatLogValue(sessionId)}");
 
-            return WorkerResponse.Json(new SessionRestoreResponse(true, sessionId, wireMessages.Count), AgentRuntimeJsonContext.Default.SessionRestoreResponse);
+            return WorkerResponse.Json(
+                new SessionRestoreResponse(true, sessionId, wireMessages.Count,
+                    FromSnapshot: snapshot is not null ? true : null),
+                AgentRuntimeJsonContext.Default.SessionRestoreResponse);
         }
         catch (Exception ex)
         {
@@ -85,6 +156,27 @@ internal static class SessionRestoreTools
                 $"agent restore-session failed session={FormatLogValue(sessionId)} " +
                 $"error={ex.GetType().Name}: {ex.Message}");
             return WorkerResponse.Error($"Restore failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Chat-window display artifacts (compact boundary separator, compression status
+    /// card) are never part of the model context — skip them on every restore path.
+    /// </summary>
+    private static bool IsChatOnlyArtifact(string? metaJson)
+    {
+        if (string.IsNullOrEmpty(metaJson)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(metaJson);
+            var meta = doc.RootElement;
+            return meta.ValueKind == JsonValueKind.Object &&
+                   (meta.TryGetProperty("compactBoundary", out _) ||
+                    meta.TryGetProperty("compressionStatus", out _));
+        }
+        catch
+        {
+            return false;
         }
     }
 

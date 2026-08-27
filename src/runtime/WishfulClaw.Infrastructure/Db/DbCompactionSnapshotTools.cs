@@ -36,31 +36,10 @@ public static class DbCompactionSnapshotTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            var entity = db.QueryFirstOrDefault(
-                "SELECT * FROM session_compaction_snapshots WHERE session_id = @sid",
-                EntityMappers.MapCompactionSnapshot,
-                new SqliteParameter("@sid", sessionId));
+            var entity = TryGetValidSnapshot(db, sessionId, out var reason);
             if (entity is null)
             {
-                return Result(null, null);
-            }
-
-            if (entity.Version != DbCompactionSnapshotStore.SupportedVersion)
-            {
-                DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, $"{ReasonUnsupportedVersion} version={entity.Version}");
-                return Result(null, ReasonUnsupportedVersion);
-            }
-
-            if (!IsPayloadWellFormed(entity))
-            {
-                DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, ReasonCorrupt);
-                return Result(null, ReasonCorrupt);
-            }
-
-            if (!IsCursorConsistent(db, sessionId, entity))
-            {
-                DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, ReasonInvalidCursor);
-                return Result(null, ReasonInvalidCursor);
+                return Result(null, reason);
             }
 
             return Result(CompactionSnapshotRow.FromEntity(entity), null);
@@ -71,6 +50,48 @@ public static class DbCompactionSnapshotTools
                 new CompactionSnapshotGetResult(false, null, null, ex.Message),
                 InfrastructureJsonContext.Default.CompactionSnapshotGetResult);
         }
+    }
+
+    /// <summary>
+    /// Shared validated read used by the endpoint and the agent restore path
+    /// (snapshot-contract.md §六): version check, payload well-formedness and cursor
+    /// consistency. Returns null plus a downgrade reason on any problem; problems are
+    /// logged and never thrown — callers fall back to full message recovery.
+    /// </summary>
+    public static CompactionSnapshotEntity? TryGetValidSnapshot(DbService db, string sessionId, out string? reason)
+    {
+        reason = null;
+        var entity = db.QueryFirstOrDefault(
+            "SELECT * FROM session_compaction_snapshots WHERE session_id = @sid",
+            EntityMappers.MapCompactionSnapshot,
+            new SqliteParameter("@sid", sessionId));
+        if (entity is null)
+        {
+            return null;
+        }
+
+        if (entity.Version != DbCompactionSnapshotStore.SupportedVersion)
+        {
+            DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, $"{ReasonUnsupportedVersion} version={entity.Version}");
+            reason = ReasonUnsupportedVersion;
+            return null;
+        }
+
+        if (!IsPayloadWellFormed(entity))
+        {
+            DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, ReasonCorrupt);
+            reason = ReasonCorrupt;
+            return null;
+        }
+
+        if (!IsCursorConsistent(db, sessionId, entity))
+        {
+            DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, ReasonInvalidCursor);
+            reason = ReasonInvalidCursor;
+            return null;
+        }
+
+        return entity;
     }
 
     /// <summary>

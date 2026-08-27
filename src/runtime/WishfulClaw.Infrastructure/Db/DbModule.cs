@@ -45,6 +45,7 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-list-page", DbMessageTools.ListPage);
         context.Register("db/messages-list-locator", DbMessageTools.ListLocator);
         context.Register("db/messages-list-by-turns", DbMessageTools.ListByTurns);
+        context.Register("db/messages-list-after-cursor", DbMessageTools.ListAfterCursor);
         context.Register("db/messages-add", DbMessageTools.Add);
         context.Register("db/messages-add-batch", DbMessageTools.AddBatch);
         context.Register("db/messages-upsert", DbMessageTools.Upsert);

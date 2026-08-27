@@ -133,6 +133,40 @@ public static partial class DbMessageTools
         }
     }
 
+    /// <summary>
+    /// Incremental restore query: messages persisted strictly after the
+    /// (afterCreatedAt, afterSortOrder) cursor, in canonical order.
+    /// Used with a valid compaction snapshot to rebuild the tail after the coverage boundary.
+    /// </summary>
+    public static WorkerResponse ListAfterCursor(JsonElement parameters)
+    {
+        try
+        {
+            var sessionId = RequireString(parameters, "sessionId");
+            var afterCreatedAt = JsonHelpers.GetLong(parameters, "afterCreatedAt", 0);
+            var afterSortOrder = JsonHelpers.GetInt(parameters, "afterSortOrder", -1);
+
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+
+            var entities = db.Query(
+                "SELECT * FROM messages WHERE session_id = @sid " +
+                "AND (created_at > @ca OR (created_at = @ca AND sort_order > @so)) " +
+                "ORDER BY created_at ASC, sort_order ASC",
+                EntityMappers.MapMessage,
+                new SqliteParameter("@sid", sessionId),
+                new SqliteParameter("@ca", afterCreatedAt),
+                new SqliteParameter("@so", afterSortOrder));
+
+            var rows = entities.Select(MessageRow.FromEntity).ToList();
+            return WorkerResponse.Json(rows, InfrastructureJsonContext.Default.ListMessageRow);
+        }
+        catch
+        {
+            return WorkerResponse.Json(new List<MessageRow>(), InfrastructureJsonContext.Default.ListMessageRow);
+        }
+    }
+
     // ─── Search ───
 
     /// <summary>

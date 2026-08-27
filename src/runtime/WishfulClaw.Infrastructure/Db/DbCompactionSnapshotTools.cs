@@ -13,6 +13,21 @@ namespace WishfulClaw.Infrastructure.Db;
 /// </summary>
 public static class DbCompactionSnapshotTools
 {
+    /// <summary>Read reason: unsupported snapshot format version.</summary>
+    public const string ReasonUnsupportedVersion = "unsupported_version";
+
+    /// <summary>Read reason: snapshot JSON payload is corrupt or structurally invalid.</summary>
+    public const string ReasonCorrupt = "corrupt";
+
+    /// <summary>Read reason: coverage cursor no longer matches persisted messages.</summary>
+    public const string ReasonInvalidCursor = "invalid_cursor";
+
+    /// <summary>
+    /// Read the session snapshot with safety validation. Any problem (unsupported version,
+    /// corrupt JSON, dangling cursor) downgrades to <c>Snapshot = null</c> plus a reason so
+    /// the restore path falls back to full message recovery; corrupt rows are kept for
+    /// diagnostics and never auto-deleted. Read failures never block opening a session.
+    /// </summary>
     public static WorkerResponse Get(JsonElement parameters)
     {
         try
@@ -25,9 +40,30 @@ public static class DbCompactionSnapshotTools
                 "SELECT * FROM session_compaction_snapshots WHERE session_id = @sid",
                 EntityMappers.MapCompactionSnapshot,
                 new SqliteParameter("@sid", sessionId));
-            return WorkerResponse.Json(
-                new CompactionSnapshotGetResult(true, entity is null ? null : CompactionSnapshotRow.FromEntity(entity), null, null),
-                InfrastructureJsonContext.Default.CompactionSnapshotGetResult);
+            if (entity is null)
+            {
+                return Result(null, null);
+            }
+
+            if (entity.Version != DbCompactionSnapshotStore.SupportedVersion)
+            {
+                DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, $"{ReasonUnsupportedVersion} version={entity.Version}");
+                return Result(null, ReasonUnsupportedVersion);
+            }
+
+            if (!IsPayloadWellFormed(entity))
+            {
+                DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, ReasonCorrupt);
+                return Result(null, ReasonCorrupt);
+            }
+
+            if (!IsCursorConsistent(db, sessionId, entity))
+            {
+                DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, ReasonInvalidCursor);
+                return Result(null, ReasonInvalidCursor);
+            }
+
+            return Result(CompactionSnapshotRow.FromEntity(entity), null);
         }
         catch (Exception ex)
         {
@@ -35,6 +71,76 @@ public static class DbCompactionSnapshotTools
                 new CompactionSnapshotGetResult(false, null, null, ex.Message),
                 InfrastructureJsonContext.Default.CompactionSnapshotGetResult);
         }
+    }
+
+    /// <summary>
+    /// Structural payload check: wire conversation and compact artifacts must be JSON arrays;
+    /// the optional summary message must be a JSON object when present.
+    /// </summary>
+    private static bool IsPayloadWellFormed(CompactionSnapshotEntity entity)
+    {
+        if (!IsJsonArray(entity.WireConversation)) return false;
+        if (!IsJsonArray(entity.CompactArtifacts)) return false;
+        if (entity.SummaryMessage is not null && !IsJsonObject(entity.SummaryMessage)) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Cursor consistency: the anchor message at the cursor position must still exist, and the
+    /// session's newest persisted message must not predate the cursor (deleted/truncated
+    /// history makes the snapshot unsafe to reuse).
+    /// </summary>
+    private static bool IsCursorConsistent(DbService db, string sessionId, CompactionSnapshotEntity entity)
+    {
+        var anchorExists = db.Exists(
+            "SELECT 1 FROM messages WHERE session_id = @sid AND created_at = @ca AND sort_order = @so LIMIT 1",
+            new SqliteParameter("@sid", sessionId),
+            new SqliteParameter("@ca", entity.ThroughCreatedAt),
+            new SqliteParameter("@so", entity.ThroughSortOrder));
+        if (!anchorExists) return false;
+
+        var newest = db.QueryFirstOrDefault(
+            "SELECT created_at, sort_order FROM messages WHERE session_id = @sid " +
+            "ORDER BY created_at DESC, sort_order DESC LIMIT 1",
+            r => new DbCompactionSnapshotStore.MessagePosition(r.GetInt64("created_at"), r.GetInt32("sort_order")),
+            new SqliteParameter("@sid", sessionId));
+        if (newest is null) return false;
+
+        return newest.CreatedAt > entity.ThroughCreatedAt ||
+               (newest.CreatedAt == entity.ThroughCreatedAt && newest.SortOrder >= entity.ThroughSortOrder);
+    }
+
+    private static bool IsJsonArray(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Array;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsJsonObject(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static WorkerResponse Result(CompactionSnapshotRow? snapshot, string? reason)
+    {
+        return WorkerResponse.Json(
+            new CompactionSnapshotGetResult(true, snapshot, reason, null),
+            InfrastructureJsonContext.Default.CompactionSnapshotGetResult);
     }
 
     /// <summary>

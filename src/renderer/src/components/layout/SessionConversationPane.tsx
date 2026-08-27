@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Archive, ChevronsLeftRight, ChevronsRightLeft, FolderOpen, Loader2, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
+import { Archive, Maximize2, Minimize2, FolderOpen, Loader2, MoreHorizontal, ScrollText, Trash2, Pencil, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -117,6 +117,13 @@ export function SessionConversationPane({
     ensureFilesTab(resolvedSessionId)
   }, [resolvedSessionId, ensureFilesTab])
 
+  // Open the right panel on the Summary tab — shows the latest context
+  // compression summary of the current session ("暂无摘要" if never compressed).
+  const handleOpenSummaryPanel = useCallback((): void => {
+    if (!resolvedSessionId) return
+    useUIStore.getState().ensureSummaryTab(resolvedSessionId)
+  }, [resolvedSessionId])
+
   // Toggle between the standard 820px message column and full panel width.
   // The chat column is a flex lane, so opening/closing the right panel just
   // re-clamps the available space automatically.
@@ -218,6 +225,21 @@ export function SessionConversationPane({
               </Tooltip>
             )}
 
+            {/* View session summary in the right panel */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleOpenSummaryPanel}
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <ScrollText className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                {t('layout.viewSessionSummary', { defaultValue: 'View session summary' })}
+              </TooltipContent>
+            </Tooltip>
+
             {/* Chat column width toggle */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -226,9 +248,9 @@ export function SessionConversationPane({
                   className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
                 >
                   {conversationFullWidth ? (
-                    <ChevronsRightLeft className="size-4" />
+                    <Minimize2 className="size-4" />
                   ) : (
-                    <ChevronsLeftRight className="size-4" />
+                    <Maximize2 className="size-4" />
                   )}
                 </button>
               </TooltipTrigger>

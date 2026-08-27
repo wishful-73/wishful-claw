@@ -276,6 +276,7 @@ export interface UIStore {
   ) => void
   ensureTerminalTab: () => void
   ensureFilesTab: (sessionId?: string | null) => void
+  ensureSummaryTab: (sessionId?: string | null) => void
   getBrowserWebviewRef: (sessionId?: string | null, projectId?: string | null) => React.RefObject<Electron.WebviewTag | null> | null
   openBrowserTab: (
     url?: string,

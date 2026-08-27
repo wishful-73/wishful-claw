@@ -88,7 +88,7 @@
   - 验证：调用统一手动压缩链路，显示压缩中/成功/失败反馈，执行期间防重复点击。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [x] 步骤 16：接入“打开右侧文件夹”。实现：悬浮竖向块新增 `FolderOpen` 按钮，点击调用已有 `ensureFilesTab(resolvedSessionId)`（打开右侧面板并激活 Files tab，tab 已存在时仅切换，文件树展开状态由持久层保留）；会话与工作区均无工作目录（`session.workingFolder ?? projectWorkingFolder`，如全局对话）时按钮直接不渲染，不伪造成功；新增 `layout.openFolderPanel` i18n（zh/en）。后续补齐（用户反馈“全局对话时该按钮应直接不显示”+“文件树在文件管理器打开没生效”）：无工作目录（全局对话）时按钮由 `disabled` 改为直接不渲染；同批修复 `shell:openPath`/`shell:showItemInFolder` 参数失配——主进程 handler 期望 `{ path }` 对象，渲染端 6 处调用（文件树打开/在资源管理器显示、项目右键换目录、预览面板与两个 viewer 的系统应用打开）均传裸字符串导致全部不生效，统一改传 `{ path }`，主进程 `shell:openPath` handler 同时回传 `shell.openPath` 错误字符串以支撑渲染端失败 toast。TS 三配置 0 错误。
   - 验证：有工作区时打开右侧面板并切换 Files tab；无工作区（全局对话）时按钮不出现，不伪造成功。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
-- [x] 步骤 17：接入聊天区域宽窄调节。实现：`conversationPanelFullWidth` 偏好持久化到 settings-store（version 32→33 + 迁移守卫，刷新/重启按既定策略恢复）；悬浮竖向块新增宽窄切换按钮（窄态 `ChevronsLeftRight` / 宽态 `ChevronsRightLeft`），同一布尔值同时驱动 `MessageList fullWidth` 与 `InputArea fullWidth`（820px 标准列 ↔ 全宽，Composer 与消息列同宽不溢出）；聊天列为弹性列，右侧面板开关后 `max-w-none` 自然随可用宽度重适配；顺带清理 ui-store 中从未使用的同名冗余字段；新增 `layout.widenChat`/`layout.standardChatWidth` i18n（zh/en）。
+- [x] 步骤 17：接入聊天区域宽窄调节。实现：`conversationPanelFullWidth` 偏好持久化到 settings-store（version 32→33 + 迁移守卫，刷新/重启按既定策略恢复）；悬浮竖向块新增宽窄切换按钮（窄态 `ChevronsLeftRight` / 宽态 `ChevronsRightLeft`），同一布尔值同时驱动 `MessageList fullWidth` 与 `InputArea fullWidth`（820px 标准列 ↔ 全宽，Composer 与消息列同宽不溢出）；聊天列为弹性列，右侧面板开关后 `max-w-none` 自然随可用宽度重适配；顺带清理 ui-store 中从未使用的同名冗余字段；新增 `layout.widenChat`/`layout.standardChatWidth` i18n（zh/en）。后续补齐（用户反馈“扩宽聊天区图标不满意”）：宽窄切换按钮图标换成终端面板同款全屏/收起风格（窄态 `Maximize2` / 宽态 `Minimize2`），tooltip 文案不变。TS 三配置 0 错误。
   - 验证：聊天内容区宽度可调，Composer 不溢出；右侧面板开关后重新 clamp；刷新/重启后按既定策略恢复。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 
 ### Plan 23-6：工具结果即时持久化与崩溃恢复
@@ -133,6 +133,9 @@
 - [x] 步骤 31：左侧面板对话命名/图标 + 扩展/自动化图标。
   - 实现：① 左侧面板“全局对话”分区展示对齐 OpenCowork（当前直接展开），“会话”命名改“对话”并增加图标；② 扩展入口图标从文件夹改为 OpenCowork 扩展图标；③ 自动化入口图标从日历改为时钟。
   - 验证：各入口图标/标题正确，导航功能不受影响，i18n 双语完整。TS 三配置 0 错误。
+- [x] 步骤 32：查看会话摘要（用户核验反馈新增需求）。
+  - 实现：悬浮竖向块新增“查看会话摘要”按钮（`ScrollText`，任何会话均显示），点击在右侧面板打开新增 `summary` tab（单例 tab，`ensureSummaryTab(sessionId)` 绑定会话并在重复打开时刷新绑定）；新组件 `SessionSummaryPanel` 解析该会话最新上下文压缩摘要（先扫内存消息，未命中再经 `dbLoadMessages` 全量扫 DB 历史，`messageCount` 变化触发重扫），命中时渲染 Markdown 全文与“已总结 N 条消息”徽章，无摘要时显示“暂无摘要”；`RightPanelHeader` 摘要 tab 图标 `ScrollText`（紫色，静态类名双模式）；新增 `layout.viewSessionSummary` / `rightPanel.summary` / `summaryEmpty` / `summaryMessages` i18n（zh/en）。
+  - 验证：任何会话浮块可见入口；有压缩历史的会话展示最新摘要全文，无压缩的显示“暂无摘要”；tab 可关闭可重复打开。TS 三配置 0 错误。
 - 已实现：① `WorkspaceSidebar` 全局对话分区头部加 `MessageSquare` 图标（对齐 OpenCowork `SessionListPanel` 头部；会话计数后按用户反馈移除），zh `sidebar.conversations` 由“会话”改“对话”（en 保持 Conversations，键仅单处引用）；② 扩展入口图标 `FolderOpen` → `Plug`（对齐 OpenCowork 扩展触发器）；③ 自动化项图标 `CalendarDays` → `Clock3`（对齐 OpenCowork automation nav item）；项目排序下拉的 `CalendarDays` 语义不变保留。导航/点击链路未动。后续补齐：“对话”分区改为与项目行同款可收起/展开——点击分区行切换全局会话列表显示（默认展开，展开时子列表 `ml-3 pl-2` 缩进与项目子列表一致，chevron 旋转指示，保留“加载更多”逻辑）。后续补齐（用户反馈“对话图标也要色彩”）：“对话”分区行 `MessageSquare` 图标加 `text-sky-500 dark:text-sky-400`，与项目行目录图标同色同向。TS 三配置 0 错误。
 
 > 每步骤一个本地 commit，不 push；纯前端步骤验证以 TS 三配置为准。

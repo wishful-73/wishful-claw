@@ -62,6 +62,7 @@ export type RightPanelTabKind =
   | 'subagent'
   | 'terminal'
   | 'goal'
+  | 'summary'
 
 export interface RightPanelTabInstance {
   id: string

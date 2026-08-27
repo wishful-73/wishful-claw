@@ -432,6 +432,7 @@
     "conversationCleared": "对话已清空",
     "compressContext": "压缩会话",
     "openFolderPanel": "打开右侧文件夹",
+    "viewSessionSummary": "查看会话摘要",
     "widenChat": "加宽聊天区域",
     "standardChatWidth": "恢复标准宽度"
   },
@@ -476,7 +477,10 @@
     "browserEmptyState": "输入网址开始浏览",
     "openFile": "打开文件",
     "preview": "预览",
-    "previewEmpty": "无预览内容"
+    "previewEmpty": "无预览内容",
+    "summary": "会话摘要",
+    "summaryEmpty": "暂无摘要",
+    "summaryMessages": "已总结前 {{count}} 条消息"
   },
   "rightPanelAction": {
     "closePanel": "关闭面板"

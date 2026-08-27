@@ -432,6 +432,7 @@
     "conversationCleared": "Conversation cleared",
     "compressContext": "Compress session",
     "openFolderPanel": "Open files panel",
+    "viewSessionSummary": "View session summary",
     "widenChat": "Widen chat area",
     "standardChatWidth": "Restore standard width"
   },
@@ -476,7 +477,10 @@
     "browserEmptyState": "Enter a URL to start browsing",
     "openFile": "Open file",
     "preview": "Preview",
-    "previewEmpty": "No preview content"
+    "previewEmpty": "No preview content",
+    "summary": "Summary",
+    "summaryEmpty": "No summary yet",
+    "summaryMessages": "Earlier {{count}} messages summarized"
   },
   "rightPanelAction": {
     "closePanel": "Close panel"

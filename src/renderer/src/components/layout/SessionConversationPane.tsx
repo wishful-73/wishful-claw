@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Eraser, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
+import { MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -16,7 +16,6 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatActions, compressSessionContext, type SendMessageOptions } from '@renderer/hooks/use-chat-actions'
 import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { BottomTerminalDock } from '@renderer/components/terminal/BottomTerminalDock'
-import { toast } from 'sonner'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 
 interface SessionConversationPaneProps {
@@ -32,7 +31,6 @@ export function SessionConversationPane({
   const session = useChatStore((s) =>
     s.sessions.find((sess) => sess.id === resolvedSessionId)
   )
-  const clearSessionMessages = useChatStore((s) => s.clearSessionMessages)
   const deleteSession = useChatStore((s) => s.deleteSession)
   const renameSession = useChatStore((s) => s.renameSession)
   const { sendMessage, stopStreaming } = useChatActions()
@@ -69,14 +67,6 @@ export function SessionConversationPane({
     },
     [resolvedSessionId, sendMessage]
   )
-
-  const handleClear = useCallback(() => {
-    if (!resolvedSessionId) return
-    if (session && session.messageCount > 0) {
-      clearSessionMessages(resolvedSessionId)
-      toast.success(t('layout.conversationCleared', { defaultValue: 'Conversation cleared' }))
-    }
-  }, [resolvedSessionId, session, clearSessionMessages, t])
 
   const handleDelete = useCallback(async () => {
     if (!resolvedSessionId) return
@@ -125,15 +115,16 @@ export function SessionConversationPane({
     )
   }
 
-  const hasMessages = (session.messageCount ?? 0) > 0
-
   return (
     <div className="flex h-full min-h-0 flex-1 overflow-hidden">
       {/* Left: Chat area */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Session action bar (no title — TitleBar already shows it) */}
-        <div className="flex shrink-0 items-center justify-end gap-1 px-3 py-1.5">
-          <div className="flex items-center rounded-lg border border-border/60 bg-background/70 p-0.5 shadow-sm backdrop-blur-sm">
+        {/* Messages — the session action block floats over the top-right corner */}
+        <div className="relative flex flex-1 min-h-0">
+          <MessageList />
+
+          {/* Floating vertical session action block */}
+          <div className="absolute right-3 top-3 z-30 flex flex-col items-center gap-0.5 rounded-lg border border-border/60 bg-background/70 p-0.5 shadow-sm backdrop-blur-sm">
             {/* Terminal toggle */}
             <Tooltip>
               <TooltipTrigger asChild>
@@ -149,27 +140,12 @@ export function SessionConversationPane({
                   <SquareTerminal className="size-4" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">
+              <TooltipContent side="left">
                 {bottomTerminalDockOpen ? 'Hide terminal' : 'Show terminal'}
               </TooltipContent>
             </Tooltip>
 
-            <div className="mx-0.5 h-4 w-px bg-border/60" />
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleClear}
-                  disabled={!hasMessages || isStreaming}
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-                >
-                  <Eraser className="size-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('sidebar.clearMessages', { defaultValue: 'Clear messages' })}</TooltipContent>
-            </Tooltip>
-
-            <div className="mx-0.5 h-4 w-px bg-border/60" />
+            <div className="my-0.5 h-px w-4 bg-border/60" />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -182,10 +158,6 @@ export function SessionConversationPane({
                   <Pencil className="mr-2 size-4" />
                   {t('sidebar.rename', { defaultValue: 'Rename' })}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleClear} disabled={!hasMessages}>
-                  <Eraser className="mr-2 size-4" />
-                  {t('sidebar.clearMessages', { defaultValue: 'Clear messages' })}
-                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleDelete} className="text-destructive">
                   <Trash2 className="mr-2 size-4" />
@@ -194,11 +166,6 @@ export function SessionConversationPane({
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex flex-1 min-h-0">
-          <MessageList />
         </div>
 
         {/* Input */}

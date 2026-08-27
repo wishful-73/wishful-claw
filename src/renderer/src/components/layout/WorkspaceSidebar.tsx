@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MessageSquare, Settings, Plus, Search, FolderOpen, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban } from 'lucide-react'
+import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuLabel } from '@renderer/components/ui/dropdown-menu'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -187,7 +187,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
   // ─── Extension items ───
   const extensionItems = [
     { id: 'draw', icon: <Image className="size-4" />, label: t('sidebar.drawLabel', { defaultValue: 'Draw' }), onClick: openDrawPage },
-    { id: 'automation', icon: <CalendarDays className="size-4" />, label: t('sidebar.automationLabel', { defaultValue: 'Automation' }), onClick: openTasksPage },
+    { id: 'automation', icon: <Clock3 className="size-4" />, label: t('sidebar.automationLabel', { defaultValue: 'Automation' }), onClick: openTasksPage },
     { id: 'taskboard', icon: <SquareKanban className="size-4" />, label: t('sidebar.taskBoardLabel', { defaultValue: 'Task Board' }), onClick: openTaskBoardPage }
   ]
 
@@ -224,7 +224,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
                     : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
                 )}
               >
-                <FolderOpen className="size-4 shrink-0" />
+                <Plug className="size-4 shrink-0" />
                 <span className="truncate">{t('sidebar.extensionsLabel', { defaultValue: 'Extensions' })}</span>
                 <ChevronRight className="ml-auto size-3.5 shrink-0" />
               </button>
@@ -328,8 +328,14 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
         {/* Unassigned sessions */}
         {sortedUnassigned.length > 0 && (
           <div className="mt-2">
-            <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">
-              {t('sidebar.conversations', { defaultValue: 'Conversations' })}
+            <div className="flex items-center gap-1.5 px-2 py-1">
+              <MessageSquare className="size-3 text-muted-foreground/60" />
+              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">
+                {t('sidebar.conversations', { defaultValue: 'Conversations' })}
+              </span>
+              {sortedUnassigned.length > 0 && (
+                <span className="text-[10px] text-muted-foreground/50">({sortedUnassigned.length})</span>
+              )}
             </div>
             {visibleUnassigned.map((session) => (
               <SessionItem

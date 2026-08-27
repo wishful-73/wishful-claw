@@ -130,9 +130,10 @@
   - 实现：i18n 中文标题（zh/en）；文件树 tab 与左侧面板项目树图标换为彩色图标（对齐 OpenCowork）。
   - 验证：tab 展示对齐，切换/折叠功能不受影响。TS 三配置 0 错误。
 - 已实现：① `RightPanel` tabs useMemo 补 files 分支（`t('rightPanel.files', { defaultValue: 'Files' })`），zh/en layout.json 新增 `rightPanel.files` 键（“文件”/“Files”），tab 标题随语言切换；② `RightPanelHeader` TabIcon 的 files 分支与“打开文件”下拉项加 `text-sky-400`（对齐 OpenCowork `WorkbenchTabButton`）；③ `workspace-sidebar-items.tsx` 项目行主图标（展开 `FolderOpen`/收起 `Folder`）同加 `text-sky-400`。tab 创建处硬编码标题保留，运行时被 i18n 覆盖；切换/折叠逻辑未动。TS 三配置 0 错误。
-- [ ] 步骤 31：左侧面板对话命名/图标 + 扩展/自动化图标。
+- [x] 步骤 31：左侧面板对话命名/图标 + 扩展/自动化图标。
   - 实现：① 左侧面板“全局对话”分区展示对齐 OpenCowork（当前直接展开），“会话”命名改“对话”并增加图标；② 扩展入口图标从文件夹改为 OpenCowork 扩展图标；③ 自动化入口图标从日历改为时钟。
   - 验证：各入口图标/标题正确，导航功能不受影响，i18n 双语完整。TS 三配置 0 错误。
+- 已实现：① `WorkspaceSidebar` 全局对话分区头部加 `MessageSquare` 图标与会话计数（对齐 OpenCowork `SessionListPanel` 头部），zh `sidebar.conversations` 由“会话”改“对话”（en 保持 Conversations，键仅单处引用）；② 扩展入口图标 `FolderOpen` → `Plug`（对齐 OpenCowork 扩展触发器）；③ 自动化项图标 `CalendarDays` → `Clock3`（对齐 OpenCowork automation nav item）；项目排序下拉的 `CalendarDays` 语义不变保留。导航/点击链路未动。TS 三配置 0 错误。
 
 > 每步骤一个本地 commit，不 push；纯前端步骤验证以 TS 三配置为准。
 

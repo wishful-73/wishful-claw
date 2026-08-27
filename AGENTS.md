@@ -280,7 +280,7 @@ Worker
 - **提交前必须测试**：编译通过 + 能启动 + 核心流程能跑，用户确认 OK 后才 commit
 - **Plan 执行期间只 commit 不 push**：每个功能单元 commit 后不 push，本地 commit 就是防误操作的检查点
 - **Plan 完成后才 push**：一个 Plan 的所有功能单元都完成并通过验证后，一次性 push
-- **Push 需要代理**：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
+- **Push 优先直连**：先尝试 `git push origin <branch>`，若连接超时或被拒再走代理：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
 
 ### 分支管理
 
@@ -306,15 +306,20 @@ git merge dev/v2-iter-{N} --no-ff -m "merge: v2-iter-{N} - {迭代名称}"
 # 2. 打 tag
 git tag -a v0.2.{N} -m "v2-iter-{N}: {迭代名称} - 验证通过"
 
-# 3. 推送远程（需要代理）
-git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin main
-git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin v0.2.{N}
+# 3. 推送远程（优先直连，失败时走代理）
+git push origin main
+git push origin v0.2.{N}
+# 若直连失败，改用代理：
+# git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin main
+# git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin v0.2.{N}
 
 # 4. 删除本地迭代分支
 git branch -d dev/v2-iter-{N}
 
 # 5. 删除远程迭代分支（如果之前 push 过）
-git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin --delete dev/v2-iter-{N}
+git push origin --delete dev/v2-iter-{N}
+# 若直连失败，改用代理：
+# git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin --delete dev/v2-iter-{N}
 ```
 
 6. 更新 `docs/new-session-prompt.md` — 新会话提示词中的迭代表格状态、最新 tag、当前状态、候选迭代、会话开始指令等。
@@ -331,13 +336,15 @@ git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 pus
 
 收尾的最后一步是发布版本：
 
-1. **推送 main 和 tag**：`git -c http.proxy=... push origin main` + `push origin v0.2.{N}`（走代理，见上文步骤 3）
+1. **推送 main 和 tag**：`git push origin main` + `push origin v0.2.{N}`（优先直连，失败时走代理，见上文步骤 3）
 2. **创建 GitHub Release**：使用本地便携版 gh CLI（固定路径 `D:\claw\tools\gh\bin\gh.exe`，须保留勿删，登录凭据存于系统 keyring）：
 
    ```bash
    # 用 git log 提取本迭代变更，按功能单元汇总成 notes 后：
-   HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe release create v0.2.{N} \
+   /d/claw/tools/gh/bin/gh.exe release create v0.2.{N} \
      --repo wishful-73/wishful-claw --title "v0.2.{N}" --notes-file <notes文件>
+   # 若直连失败，加代理前缀：
+   # HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe release create v0.2.{N} \
    ```
 
    - notes 按本迭代的功能单元汇总，用 `git log v0.2.{N-1}..v0.2.{N} --oneline` 提取
@@ -347,8 +354,10 @@ git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 pus
    ```bash
    npm run pack:installer:full   # AOT Worker + 前端 + electron-builder NSIS
    # 产物： release/wishful-claw-{N}-setup.exe
-   HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
+   /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
      --repo wishful-73/wishful-claw "release/wishful-claw-0.2.17-setup.exe"
+   # 若直连失败，加代理前缀：
+   # HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
    ```
 
    - 打包前确认无残留 WishfulClaw/electron 测试进程（`tasklist` 检查），否则旧 `release/win-unpacked/` 被锁报 EBUSY

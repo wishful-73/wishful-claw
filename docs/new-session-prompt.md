@@ -116,7 +116,7 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
   - `npx tsc --noEmit -p tsconfig.json`（根配置）
   - 必须带 `-p`！不带 `-p` 只走 references 不检查文件内容，等于没验证
 - **TS 零报错规则**：每次写完代码必须跑 tsc 验证，不允许用 @ts-ignore 偷懒（可选依赖 mammoth/react-pdf/xlsx 除外）
-- **Git push 需要代理**：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
+- **Git push 优先直连**：先尝试 `git push origin <branch>`，若连接超时或被拒再走代理：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
 - **分支管理规则**：新分支必须从最新 main 拆出，前一个迭代分支必须已合并 main 并打 tag
 - **日志路径**：`%AppData%/WishfulClaw/logs/`
 - **DB 路径**：`%USERPROFILE%/.wishful-claw/index.db`
@@ -128,7 +128,7 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
 - **功能单元测试通过后才 commit**，不要改一点就提交
 - Plan 执行期间只 commit 不 push，Plan 完成后才 push
 - 迭代是否完结由用户确认，Agent 不得自行合并 main / 打 tag / 删分支
-- Push 需要代理：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
+- Push 优先直连，失败时走代理：`git push origin <branch>`，超时再 `git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
 
 ## 代码规范
 

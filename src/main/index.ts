@@ -6,7 +6,7 @@ import * as fs from 'fs'
 // 参考 OpenCowork 的做法（src/main/index.ts 第 28 行）
 import appIcon from '../../resources/icon-256.png?asset'
 
-import { getNativeWorker } from './lib/native-worker'
+import { getNativeWorker, latchNativeWorkerShutdown } from './lib/native-worker'
 import { logError, logWarn, logInfo, logDebug, installGlobalExceptionHandlers, readRecentLogs } from './lib/logger'
 import { registerMessagePackHandler } from './ipc/messagepack-handler'
 import { registerAiProviderHandlers } from './ipc/ai-provider-handlers'
@@ -15,9 +15,9 @@ import { registerAgentStreamForwarder } from './ipc/agent-stream-handler'
 import { registerNativeAgentRuntimeHandlers } from './ipc/native-agent-runtime'
 import { registerGitHandlers } from './ipc/git-handlers'
 import { registerFsHandlers } from './ipc/fs-handlers'
-import { registerTerminalHandlers } from './ipc/terminal-handlers'
+import { registerTerminalHandlers, killAllTerminalSessions } from './ipc/terminal-handlers'
 import { registerAgentChangeHandlers } from './ipc/agent-change-handlers'
-import { registerMcpHandlers } from './ipc/mcp-handlers'
+import { registerMcpHandlers, shutdownMcp } from './ipc/mcp-handlers'
 import { registerVideoHandlers } from './ipc/video-handlers'
 import { registerExtensionHandlers } from './ipc/extension-handlers'
 import { registerWebSearchHandlers } from './ipc/web-search-handlers'
@@ -153,7 +153,7 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
@@ -193,9 +193,9 @@ if (!gotTheLock) {
     'dialog:openFolder',
     async (_args, event) => {
       const win = BrowserWindow.fromWebContents(event.sender)
-      const result = await dialog.showOpenDialog(win!, {
-        properties: ['openDirectory']
-      })
+      const result = win
+        ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+        : await dialog.showOpenDialog({ properties: ['openDirectory'] })
       return {
         folderPath: result.canceled ? null : result.filePaths[0] ?? null,
         canceled: result.canceled
@@ -212,7 +212,9 @@ if (!gotTheLock) {
       if (args && typeof args.defaultPath === 'string') {
         opts.defaultPath = args.defaultPath
       }
-      const result = await dialog.showOpenDialog(win!, opts)
+      const result = win
+        ? await dialog.showOpenDialog(win, opts)
+        : await dialog.showOpenDialog(opts)
       return {
         canceled: result.canceled,
         path: result.canceled ? undefined : result.filePaths[0]
@@ -503,4 +505,11 @@ app.on('before-quit', () => {
   if (channelManager) {
     void channelManager.stopAll()
   }
+  // Terminate every child process class before exit — none of these may
+  // survive app quit (worker / MCP stdio servers / pty terminals).
+  killAllTerminalSessions()
+  latchNativeWorkerShutdown()
+  void shutdownMcp().catch((err) => {
+    logWarn('main', `MCP shutdown failed: ${String(err)}`)
+  })
 })

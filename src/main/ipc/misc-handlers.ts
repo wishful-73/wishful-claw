@@ -110,10 +110,22 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
   )
 
   // -- Shell handlers --
+  // Only safe protocols may leave the app — rejects file://, javascript: and
+  // custom schemes so a crafted link cannot launch local executables.
+  const ALLOWED_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
   registerMessagePackHandler<string, void>(
     'shell:openExternal',
     async (args) => {
-      await shell.openExternal(args)
+      let url: URL
+      try {
+        url = new URL(args)
+      } catch {
+        throw new Error(`Invalid external URL: ${args}`)
+      }
+      if (!ALLOWED_EXTERNAL_PROTOCOLS.has(url.protocol)) {
+        throw new Error(`Blocked openExternal for protocol: ${url.protocol}`)
+      }
+      await shell.openExternal(url.toString())
     }
   )
 
@@ -140,11 +152,13 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
     }
   )
 
-  registerMessagePackHandler<{ path: string; appId?: string }, void>(
+  registerMessagePackHandler<{ path: string; appId?: string }, string>(
     'shell:openWithApp',
     async (args) => {
-      // Open file with default app (appId ignored for now, uses OS default)
-      await shell.openPath(args.path)
+      // Open file with default app (appId ignored for now, uses OS default).
+      // openPath resolves to '' on success or an error message — return it so
+      // the renderer can surface a failure toast instead of failing silently.
+      return await shell.openPath(args.path)
     }
   )
 
@@ -154,9 +168,11 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
     async (args) => {
       const properties: ('openFile' | 'multiSelections')[] = ['openFile']
       if (args?.multiSelections) properties.push('multiSelections')
-      const result = await dialog.showOpenDialog(getMainWindow()!, {
-        properties: properties as ('openFile' | 'multiSelections')[]
-      })
+      const parent = getMainWindow()
+      const options = { properties: properties as ('openFile' | 'multiSelections')[] }
+      const result = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options)
       return {
         canceled: result.canceled,
         path: result.filePaths[0] ?? '',
@@ -178,16 +194,28 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
       try {
         const watcher = fs.watch(filePath, { persistent: false }, (eventType) => {
           if (eventType === 'change') {
-            safeSendMessagePackToWindow(getMainWindow()!, 'fs:file-changed', { path: filePath })
+            const win = getMainWindow()
+            if (win && !win.isDestroyed()) {
+              safeSendMessagePackToWindow(win, 'fs:file-changed', { path: filePath })
+            }
           }
         })
         watcher.on('error', () => {
+          // Close before dropping the reference — an FSWatcher with no error
+          // listener crashes the main process on the next error event.
           watchedFiles.delete(filePath)
+          try {
+            watcher.close()
+          } catch {
+            // already closed
+          }
         })
         watchedFiles.set(filePath, watcher)
         return { path: filePath }
-      } catch {
-        return { path: filePath }
+      } catch (err) {
+        // Surface the failure (path missing / not watchable) instead of
+        // pretending the watch is active — callers treat a throw as "no watch".
+        throw new Error(`Failed to watch file: ${err instanceof Error ? err.message : String(err)}`)
       }
     }
   )

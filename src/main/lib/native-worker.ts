@@ -21,6 +21,8 @@ type PendingRequest = {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
+  /** Caller-supplied cancel key, kept so normal completion can unregister it. */
+  cancelKey?: string
   /** Set after cancelPendingRequest() so late responses are ignored. */
   cancelled?: boolean
 }
@@ -118,7 +120,7 @@ class NativeWorkerManager {
         reject(new Error(`Worker request timed out: ${method} (${effectiveTimeoutMs}ms)`))
       }, effectiveTimeoutMs)
 
-      this.pending.set(id, { method, resolve: resolve as (value: unknown) => void, reject, timer })
+      this.pending.set(id, { method, resolve: resolve as (value: unknown) => void, reject, timer, cancelKey })
       socket.write(frame)
     })
   }
@@ -263,13 +265,22 @@ class NativeWorkerManager {
           })
         })
 
-        // Only attach data/close handlers after successful connection
+        // Only attach data/close/error handlers after successful connection.
+        // The error listener is mandatory: an unhandled socket error becomes
+        // an uncaught exception and crashes the main process.
         this.socket = socket
         socket.on('data', (chunk: Buffer) => {
           this.handleSocketData(chunk)
         })
+        socket.on('error', (error) => {
+          console.error('[Worker] socket error', error)
+          logError('worker', `Worker IPC socket error: ${error.message}`)
+          this.closeWorker(error)
+        })
         socket.on('close', () => {
-          if (!this.socket?.destroyed) {
+          // After closeWorker() this.socket is null — only treat a close we
+          // did not initiate as a disconnect failure.
+          if (this.socket && !this.socket.destroyed) {
             this.closeWorker(new Error('Worker IPC closed'))
           }
         })
@@ -361,6 +372,11 @@ class NativeWorkerManager {
     if (typeof response.id !== 'number') return
     const pending = this.pending.get(response.id)
     if (!pending) return
+    // Normal completion must also unregister the cancel key, otherwise the
+    // map grows with one stale entry per completed request.
+    if (pending.cancelKey) {
+      this.cancelKeys.delete(pending.cancelKey)
+    }
     // A cancelled request already rejected its promise — drop the late reply.
     if (pending.cancelled) {
       clearTimeout(pending.timer)
@@ -380,6 +396,15 @@ class NativeWorkerManager {
   private closeWorker(error: Error): void {
     this.socket?.destroy()
     this.socket = null
+    // Kill the child before dropping the reference — otherwise a disconnect
+    // or invalid-frame path leaves the .NET worker process orphaned.
+    if (this.child && this.child.exitCode === null && !this.child.killed) {
+      try {
+        this.child.kill()
+      } catch (err) {
+        console.warn('[Worker] kill failed:', err)
+      }
+    }
     this.child = null
     this._endpoint = null
     this.readChunks = []
@@ -391,6 +416,29 @@ class NativeWorkerManager {
       pending.reject(error)
     }
     this.pending.clear()
+  }
+
+  /**
+   * Deliberate teardown (app exit): close the socket and kill the child
+   * without rejecting in-flight requests — the process is going away.
+   */
+  shutdown(): void {
+    this.socket?.destroy()
+    this.socket = null
+    if (this.child && this.child.exitCode === null && !this.child.killed) {
+      try {
+        this.child.kill()
+      } catch (err) {
+        console.warn('[Worker] shutdown kill failed:', err)
+      }
+    }
+    this.child = null
+    this._endpoint = null
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer)
+    }
+    this.pending.clear()
+    this.cancelKeys.clear()
   }
 }
 
@@ -486,7 +534,9 @@ export function isNativeWorkerRunning(): boolean {
 }
 
 export function latchNativeWorkerShutdown(): void {
-  // Placeholder for graceful shutdown
+  // Graceful shutdown hook wired into before-quit: tear down the IPC socket
+  // and kill the worker child process so it never survives app exit.
+  workerManager?.shutdown()
 }
 
 function extractEventParameters(eventName: string, decoded: Record<string, unknown>): unknown {

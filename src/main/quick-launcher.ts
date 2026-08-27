@@ -766,11 +766,16 @@ function registerLauncherIpc(): void {
   })
 
   registerMessagePackHandler<void, { canceled: boolean; path?: string; name?: string }>('launcher:pick-exe', async () => {
-    const result = await dialog.showOpenDialog(launcherWindow!, {
+    // launcherWindow may have been destroyed between the click and the dialog;
+    // fall back to a parentless dialog instead of asserting.
+    const options: Electron.OpenDialogOptions = {
       title: '选择应用程序',
       filters: [{ name: '应用程序', extensions: ['exe', 'bat', 'cmd'] }],
       properties: ['openFile']
-    })
+    }
+    const result = launcherWindow
+      ? await dialog.showOpenDialog(launcherWindow, options)
+      : await dialog.showOpenDialog(options)
     if (result.canceled || result.filePaths.length === 0) {
       return { canceled: true }
     }

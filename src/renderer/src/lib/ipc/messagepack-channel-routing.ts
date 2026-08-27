@@ -383,6 +383,7 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'pet:tts-stream-event',
   'fs:file-changed',
   'fs:dir-changed',
+  'codegraph:index-progress',
   'shell:started',
   'shell:output',
   'process:output',

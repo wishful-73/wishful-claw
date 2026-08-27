@@ -5,6 +5,12 @@ import { registerMessagePackHandler } from './messagepack-handler'
 import AdmZip from 'adm-zip'
 import { join } from 'path'
 import { app } from 'electron'
+import { getMainWindow } from '../main-window-registry'
+import { safeSendMessagePackToWindow } from '../window-ipc'
+
+// Cap binary reads: the payload crosses IPC as base64 (~33% inflation) and
+// viewers/streaming use the oc-media protocol for anything larger.
+const MAX_BINARY_READ_BYTES = 64 * 1024 * 1024
 
 function formatLocalDateFolderName(date = new Date()): string {
   const year = date.getFullYear()
@@ -160,6 +166,10 @@ export function registerFsHandlers(): void {
       'fs:read-file-binary',
       async (args) => {
         try {
+          const stat = await fs.promises.stat(args.path)
+          if (stat.size > MAX_BINARY_READ_BYTES) {
+            return { error: `File too large to read into memory (${stat.size} bytes)` }
+          }
           const buffer = await fs.promises.readFile(args.path)
           return { data: buffer.toString('base64') }
         } catch (err) {
@@ -352,10 +362,21 @@ export function registerFsHandlers(): void {
         if (watchedDirs.has(key)) return
         try {
           const watcher = fs.watch(args.path, { recursive: args.recursive ?? false }, (_eventType, filename) => {
-            const { BrowserWindow } = require('electron')
-            const win = BrowserWindow.getAllWindows()[0]
+            // Route through the registered main window — getAllWindows()[0] may
+            // be an auxiliary window (clipboard enhancer, quick launcher).
+            const win = getMainWindow()
             if (win && !win.isDestroyed()) {
-              win.webContents.send('fs:dir-changed:msgpack', { path: args.path, changedPath: filename })
+              safeSendMessagePackToWindow(win, 'fs:dir-changed', { path: args.path, changedPath: filename })
+            }
+          })
+          watcher.on('error', () => {
+            // Without an error listener a failing FSWatcher crashes the main
+            // process; drop the watcher instead.
+            watchedDirs.delete(key)
+            try {
+              watcher.close()
+            } catch {
+              // already closed
             }
           })
           watchedDirs.set(key, watcher)

@@ -314,7 +314,9 @@ export function useFileTreeActions(state: FileTreeState, options: UseFileTreeAct
         path: nodePath,
         appId: 'vscode'
       })
-      const error = getIpcError(result)
+      // shell.openPath resolves to '' on success or an error message string.
+      const error =
+        typeof result === 'string' && result.length > 0 ? result : getIpcError(result)
       if (error) {
         toast.error(t('fileTree.openWithCodeFailed', { defaultValue: 'Open in VS Code failed' }), {
           description: error

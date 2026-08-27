@@ -48,8 +48,8 @@
   - 验证：`agent/compress-context` 已在 `AgentRuntimeModule` 注册，输入为 `provider/messages`，输出为压缩后的 `messages` + `ContextCompressionResult`；取消沿 `IWorkerRequestContext.CancellationToken` 传播，压缩结果支持 `compressed`/未压缩和显式 `error`；C# solution 0 warning/0 error，TypeScript web/node/root 0 error，`git diff --check` 通过。手动按钮的上层调用接入、blocked/skipped/failed 的完整 UI 状态闭环留在 Plan 23-3。
 - [x] 步骤 2：确定压缩摘要、压缩状态卡、压缩快照三者的数据关系。契约见 `compression-contract.md`：完整 wire conversation 是 Agent 恢复权威，compact boundary/summary artifacts 负责聊天展示，compression status 只负责生命周期反馈，SQLite 快照保存同一压缩结果和游标。
   - 验证：自动和手动压缩使用同一摘要语义；完成事件通过可选 `messages/compactArtifacts` 关联摘要正文、压缩范围、保留信息和降级状态；现有 MessagePack encoder 已支持可选 messages/artifacts，Renderer 已有 compactBoundary/compactSummary/compressionStatus 类型；AOT DTO 必须使用具名 record 并注册 JsonContext。
-- [ ] 步骤 3：确定压缩快照存储、游标、版本、失效和失败回退策略。
-  - 验证：明确未压缩旧会话全量恢复、有效快照恢复、损坏/未知版本快照回退的行为；输出正式数据契约。
+- [x] 步骤 3：确定压缩快照存储、游标、版本、失效和失败回退策略。契约见 `snapshot-contract.md`：独立 `session_compaction_snapshots` 表、每会话最新快照、`created_at + sort_order` 二元游标、version 1、破坏性历史修改失效、损坏/未知版本回退全量恢复。
+  - 验证：已明确无快照全量恢复、有效快照+增量恢复、损坏/未知版本回退；快照写入失败保留旧快照和内存状态；清空/删除/整体替换删除快照，快照覆盖区内的删除/截断/重试使快照失效；fork/duplicate 不继承快照；正式契约记录于 `snapshot-contract.md`。
 
 ### Plan 23-2：压缩快照数据层与旧库迁移
 

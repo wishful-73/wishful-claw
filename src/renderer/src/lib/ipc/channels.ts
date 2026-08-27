@@ -360,11 +360,6 @@ export const IPC = {
   BROWSER_EMULATION_STATUS: 'browser:emulation-status',
   BROWSER_IMPORT_COOKIES: 'browser:import-cookies',
 
-  // OAuth
-  OAUTH_START: 'oauth:start',
-  OAUTH_STOP: 'oauth:stop',
-  OAUTH_CALLBACK: 'oauth:callback',
-
   // SSH Management
   SSH_GROUP_LIST: 'ssh:group:list',
   SSH_GROUP_CREATE: 'ssh:group:create',

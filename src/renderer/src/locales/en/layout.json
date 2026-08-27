@@ -429,7 +429,15 @@
   },
   "layout": {
     "noSessionSelected": "No session selected",
-    "conversationCleared": "Conversation cleared"
+    "conversationCleared": "Conversation cleared",
+    "compressContext": "Compress session"
+  },
+  "input": {
+    "compressingContext": "Compressing context...",
+    "contextCompressed": "Context compressed",
+    "contextCompressionSkipped": "No compression needed",
+    "contextCompressionBlocked": "Compression temporarily unavailable",
+    "contextCompressionFailed": "Compression failed"
   },
   "memory": {
     "title": "Memory",

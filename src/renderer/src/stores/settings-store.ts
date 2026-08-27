@@ -201,10 +201,6 @@ interface SettingsStore {
   // Network Settings
   systemProxyUrl: string
 
-  // Skills Market Settings
-  skillsMarketProvider: 'skillsmp'
-  skillsMarketApiKey: string
-
   // Prompt Recommendation Settings
   promptRecommendationModels: PromptRecommendationModelBindings
   newSessionDefaultModel: SessionDefaultModelBinding | null
@@ -327,10 +323,6 @@ export const useSettingsStore = create<SettingsStore>()(
 
       // Network Settings
       systemProxyUrl: '',
-
-      // Skills Market Settings
-      skillsMarketProvider: 'skillsmp',
-      skillsMarketApiKey: '',
 
       // Prompt Recommendation Settings
       promptRecommendationModels: {
@@ -476,9 +468,6 @@ export const useSettingsStore = create<SettingsStore>()(
         codegraphFullToolSurface: state.codegraphFullToolSurface,
         // Network Settings
         systemProxyUrl: state.systemProxyUrl,
-        // Skills Market Settings
-        skillsMarketProvider: state.skillsMarketProvider,
-        skillsMarketApiKey: state.skillsMarketApiKey,
         // Prompt Recommendation Settings
         promptRecommendationModels: state.promptRecommendationModels,
         newSessionDefaultModel: state.newSessionDefaultModel,

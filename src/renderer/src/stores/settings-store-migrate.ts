@@ -113,11 +113,6 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.codegraphFullToolSurface === undefined) {
     state.codegraphFullToolSurface = false
   }
-  // Add skills market settings if missing
-  if (state.skillsMarketProvider === undefined || state.skillsMarketProvider !== 'skillsmp') {
-    state.skillsMarketProvider = 'skillsmp'
-    state.skillsMarketApiKey = state.skillsMarketApiKey ?? ''
-  }
   if (state.promptRecommendationModels === undefined) {
     state.promptRecommendationModels = {
       chat: null,

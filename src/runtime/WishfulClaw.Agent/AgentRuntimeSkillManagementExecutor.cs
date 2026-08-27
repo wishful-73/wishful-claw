@@ -4,16 +4,14 @@ using WishfulClaw.Contracts;
 namespace WishfulClaw.Agent;
 
 /// <summary>
-/// Executes skill management tools (list_installed_skills, search_skill_market, install_skill)
+/// Executes the skill management tool (list_installed_skills)
 /// by routing to the renderer via reverse-request.
 /// </summary>
 public static class AgentRuntimeSkillManagementExecutor
 {
     private static readonly HashSet<string> SkillManagementTools = new(StringComparer.Ordinal)
     {
-        "list_installed_skills",
-        "search_skill_market",
-        "install_skill"
+        "list_installed_skills"
     };
 
     public static bool IsSkillManagementTool(string toolName)

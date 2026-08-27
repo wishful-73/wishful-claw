@@ -124,11 +124,15 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
   const authReady = provider.requiresApiKey === false || Boolean(provider.apiKey)
 
   const filteredModels = useMemo(() => {
-    if (!modelSearch) return provider.models
     const q = modelSearch.toLowerCase()
-    return provider.models.filter(
-      (m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
-    )
+    const list = modelSearch
+      ? provider.models.filter(
+          (m) => m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
+        )
+      : provider.models
+    // Display order: enabled models first; within each group the store order
+    // is preserved (Array.prototype.sort is stable).
+    return [...list].sort((a, b) => Number(b.enabled) - Number(a.enabled))
   }, [provider.models, modelSearch])
 
   const handleSetAllModelsEnabled = (enabled: boolean): void => {

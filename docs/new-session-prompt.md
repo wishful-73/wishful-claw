@@ -69,7 +69,7 @@
 | v2-iter-19 | Goal 编排记录可视化与运行时加固 — goal_plan_tasks 表每轮执行记录 + 面板轮次详情/实时活动流、Goal→Plan→Task 三层生命周期收口（goal_plans/goal_tasks/goal_execution_runs 三表）、自适应编排循环（free-form adaptive）、后台子 agent 会话隔离修复、SSE 流空闲超时（复用 requestTimeoutSeconds）、Goal 暂停立即中断当前 turn（pause watcher 取消 in-flight turn 含重试循环）、无限重试长时自主运行 + 里程碑、Goal 确认卡片模型选择 UI、ProviderStore encodeURIComponent 路径兼容、架构 review 文档 review-02..08 入库 | ✅ 已完成，产品版本 0.2.19，tag v0.2.19，已合并 main |
 | v2-iter-20 | 审查修复·安全与运行时健壮性 — PV-1 TLS 收口工厂、MB-1 SSH 记忆 scope 校验、TL-6 NotebookEdit 入审批、AL-1 同 session 单活跃 run、DB-1 Initialize 加锁、SA-1/2/3/6/7 子 agent registry 并发修复、MB-3 MemoryStore scope 信号量、AL-2 persona 指纹缓存、PV-2/TL-5/GL-3/RC-1/DB-3 正确性修复；追加：桌面图标白角修复、删除服务商误报修复、use_capability 代理显示链路（Worker 改写 + 渲染端入口统一改写 + HIDDEN 兜底）、default-mode 审批链路（审批屏障串行门控 + confirm 弹窗队列化 + startedAt 排序 + 审批结果对 LLM 可见 [USER APPROVED/REJECTED]） | ✅ 已完成，产品版本 0.2.20，tag v0.2.20，已合并 main |
 | v2-iter-21 | 设置页重构 + 运行时健壮性补强 — 设置页运行与性能区块、锚点导航、会话取消/流态清理、压缩截断兜底、搜索排除目录、流式文件读取、子 Agent 输出截断、插件管理与 Browser/Image/CodeGraph 加载闭环、CodeGraph 项目档案入口与项目本地存储 | ✅ 已完成，产品版本 0.2.21，tag v0.2.21，已合并 main |
-| v2-iter-22 | 微信/飞书渠道与 Cron 定时任务打磨 — 渠道标题/主动发送、Cron SQLite 与启动恢复、Automation 列表/表单/日历、运行状态/通知/归档、隔离测试与并发修复 | 🟡 技术收尾完成，`dev/v2-iter-22`，步骤 1-14 完成、步骤 15 技术验证通过，待用户最终确认；代码提交 `5fc6788a` |
+| v2-iter-22 | 微信/飞书渠道与 Cron 定时任务打磨 — 渠道标题/主动发送、Cron SQLite 与启动恢复、Automation 列表/表单/日历、运行状态/通知/归档、隔离测试与并发修复、ActivityPanel 迁入右侧 Tab | ✅ 已完成，产品版本 0.2.22，tag v0.2.22，已合并 main |
 
 ## 当前项目架构（7 层）
 
@@ -91,19 +91,14 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
 
 ## 当前状态
 
-- 当前分支：`dev/v2-iter-22`，产品基线版本：`0.2.21`，最新正式 tag：`v0.2.21`
-- v2-iter-22 步骤 1-14 已完成；步骤 15 的技术验证已通过，最终 PASS/FAIL/PARTIAL 与迭代完结待用户确认
-- 代码收尾提交：`5fc6788a feat(v2-iter-22): finalize cron automation`
-- 最终验证：TS 3/3、Electron build、C# solution 0 warning/0 error、Cron regression 38/66/6/5、Worker Native AOT、diff check、隔离 Electron 冒烟通过
-- 最终审查：0 个阻断项；报告见 `docs/plans/iter-v2-22/review_report.md` 与 `verification_report.md`
-- 当前未 push、未 merge、未 tag、未发布；不要自行执行这些操作
-- CodeGraph solution/AOT 基线断链已修复，不再是已知阻塞
-- 详细状态：`docs/PROGRESS.md` 与 `docs/plans/iter-v2-22/plan.md`
+- 当前分支：`main`，产品版本：`0.2.22`，最新正式 tag：`v0.2.22`
+- v2-iter-22 已完成并合并 main，迭代分支已清理
+- 下一阶段候选范围见 PROGRESS.md；开工前先与老大确认范围，再从最新 main 切出开发分支
 
 
 ## 下一阶段候选范围
 
-当前已完成 v2-iter-21（产品版本 0.2.21，tag v0.2.21）。下一阶段候选范围已在 PROGRESS.md 登记：
+当前已完成 v2-iter-22（产品版本 0.2.22，tag v0.2.22）。下一阶段候选范围已在 PROGRESS.md 登记：
 
 1. **工具结果即时持久化** — 工具边界立即 flush，缩小崩溃丢失窗口
 2. **压缩水位线 + contextLength 回退** — 防止已总结轮次重入并恢复无窗口模型的压缩能力
@@ -146,7 +141,7 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
 
 ## 会话开始时请先执行
 
-1. `git status` + `git log --oneline -5` — 确认当前在 `dev/v2-iter-22`，代码收尾提交包含 `5fc6788a`，仅允许存在未提交的受控文档或 `.tmp` 清理状态；读取 `docs/PROGRESS.md`、Plan、`review_report.md` 与 `verification_report.md`
+1. `git status` + `git log --oneline -5` — 确认当前在 `main`，最新 commit 为 v2-iter-22 merge（`528c728`），工作树干净；读取 `docs/PROGRESS.md` 了解已完成迭代
 2. 读 `AGENTS.md` — 查看 7 层架构和分层约定
 3. 读 `docs/iteration-plan.md` + `docs/PROGRESS.md` — 查看已完成迭代与历史计划
 4. 检查 `D:\koda\Obsidian\02-AI教学\wishfulclaw` 中最新的 Bug 和优化建议

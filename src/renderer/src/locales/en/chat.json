@@ -917,6 +917,7 @@
     "loadOlder": "Load 5 earlier turns",
     "loadingOlder": "Loading earlier messages...",
     "loadProgress": "Loaded {{loadedTurns}}/{{totalTurns}} turns · {{loadedMessages}}/{{totalMessages}} messages",
+    "pinnedTurnEmpty": "(image/attachment message)",
     "pendingRetryTitle": "Reconnecting to the model",
     "pendingTeamTitle": "Coordinating teammates",
     "scrollToBottom": "Scroll to bottom",

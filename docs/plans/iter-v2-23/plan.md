@@ -77,8 +77,8 @@
   - 验证：有快照恢复快照 + 后续消息；无快照全量恢复；加载更早 UI 历史不触发 Worker 恢复。252 断言快照回归测试全过；C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [x] 步骤 12：历史加载改为点击触发。实现：`handleListScroll` 移除滚动触顶自动加载（删除 `OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD` 门限与高度变化/程序滚动守卫，滚动仅同步底部状态与 assistant rail）；顶部按钮保留并改为唯一入口，点击加载更早 5 轮（`fetchOlderMessages` 防重入 + flushSync 后 scrollHeight 差值补偿 scrollTop，不重新引入 prepend 闪烁专项重构）；`db/messages-list-by-turns` 新增 `TotalTurns` 返回（user 消息总数），前端 `Session.totalTurns` 随首次/增量/窗口加载更新，按钮下方显示“已加载 X/Y 轮 · M/N 条消息”（`loadProgress` 新 i18n，zh/en 同步；修复旧 `loadOlder` 把时间戳当 count 传参的问题）。
   - 验证：移除滚动触顶自动加载；顶部按钮可连续加载更早 5 轮；显示总轮数/已加载范围；不重新引入 prepend 闪烁专项重构。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
-- [ ] 步骤 13：实现进行中当前轮 user message 吸附。
-  - 验证：当前轮执行时 user message 固定在可视区域顶部；thinking/tool/output 增长在其下方；完成/取消/失败/切换会话后解除；历史折叠会话不启用。
+- [x] 步骤 13：实现进行中当前轮 user message 吸附。实现：`useMessageListData` 新增 `pinnedTurnMessage`——仅在 `isAgentExecutionActive`（运行/流式/团队执行中）时取最后一条普通 user 消息（排除压缩摘要消息与 team 消息），历史折叠会话无运行态自然不启用；`useMessageListScroll` 新增吸附可见性同步（锚点消息已渲染时用 `getBoundingClientRect` 判断滚出可视区顶部，未渲染时按虚拟行索引与首个可见行比较；滚动事件/总高度变化/行数变化时重算，切换会话重置）与 `handleJumpToPinnedMessage`（点击吸附卡平滑滚回原消息并高亮，未渲染时走 `scrollToIndex`）；`VirtualListContent` 在列表容器顶部渲染吸附卡（`AnimatePresence` 淡入、与消息列对齐、两行截断、点击跳回，原消息仍在流内不重复展示）；执行完成/取消/失败后 `isAgentExecutionActive` 转假自动解除。新增 `pinnedTurnEmpty` i18n（zh/en，图片/附件消息兜底文案）。
+  - 验证：当前轮执行时 user message 固定在可视区域顶部；thinking/tool/output 增长在其下方；完成/取消/失败/切换会话后解除；历史折叠会话不启用。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 
 ### Plan 23-5：聊天窗右上角悬浮操作块重构
 

@@ -916,6 +916,7 @@
     "loadOlder": "加载更早 5 轮",
     "loadingOlder": "正在加载更早消息...",
     "loadProgress": "已加载 {{loadedTurns}}/{{totalTurns}} 轮 · {{loadedMessages}}/{{totalMessages}} 条消息",
+    "pinnedTurnEmpty": "（图片/附件消息）",
     "pendingRetryTitle": "正在重新连接模型",
     "pendingTeamTitle": "正在协调队友",
     "scrollToBottom": "滚动到底部",

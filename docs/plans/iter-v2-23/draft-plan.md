@@ -416,4 +416,5 @@ pinned prefix
 - 已执行：Plan 23-3 步骤 10 已完成：`UpsertSnapshot` 共享写入器 + `ContextCompression.PersistSnapshot`，自动（仅主会话）与手动（仅权威会话）压缩在 Replace 后落持久化快照，失败记日志保留旧快照；C#/TS 编译验证通过。Plan 23-3 全部完成。
 - 已执行：Plan 23-4 步骤 11 已完成：`RestoreSession` 改为快照/全量兼容恢复（`TryGetValidSnapshot` 共享校验读取 + 游标后增量去重/跳过聊天产物 + 恢复后打水印），问题均回退全量；252 断言快照回归测试全过；C#/TS 编译验证通过。
 - 已执行：Plan 23-4 步骤 12 已完成：历史加载改为点击触发（移除滚动触顶自动加载），`db/messages-list-by-turns` 返回总轮数，顶部按钮下方显示“已加载 X/Y 轮 · M/N 条消息”；C#/TS 编译验证通过。
-- 未执行：当前轮吸附、悬浮块、工具结果持久化、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-4 步骤 13 已完成：进行中当前轮 user message 吸附——执行中取最后一条普通 user 消息作为锚点，滚出可视区顶部时显示顶部吸附卡（点击可跳回并高亮），执行结束/切换会话自动解除，历史折叠会话不启用；TS 三配置 0 错误 + C# 0 警告 0 错误。Plan 23-4 全部完成。
+- 未执行：悬浮块、工具结果持久化、后续 push、merge、tag、打包、Release。

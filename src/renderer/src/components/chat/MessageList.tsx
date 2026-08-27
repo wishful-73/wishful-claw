@@ -60,6 +60,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     hasLoadOlderRow: data.hasLoadOlderRow,
     loadedRangeStart: data.loadedRangeStart,
     streamingMessageId,
+    pinnedMessageId: data.pinnedTurnMessage?.id ?? null,
     isSessionOutputting: data.isSessionOutputting,
     canSessionTriggerStreamingAutoScroll: data.canSessionTriggerStreamingAutoScroll,
     pendingAskUserQuestion: data.pendingAskUserQuestion,
@@ -147,6 +148,9 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       loadedTurns={data.loadedTurns}
       loadedMessageCount={data.messages.length}
       totalMessageCount={data.messageCount}
+      pinnedTurnMessage={data.pinnedTurnMessage}
+      isPinnedTurnOverlayVisible={scroll.isPinnedTurnOverlayVisible}
+      onJumpToPinnedMessage={scroll.handleJumpToPinnedMessage}
       rows={data.rows}
       lastMessageRowIndex={data.rows.length - 1}
       messageLookup={data.messageLookup}

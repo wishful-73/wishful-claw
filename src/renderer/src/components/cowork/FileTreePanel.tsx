@@ -51,7 +51,7 @@ export function FileTreePanel({
         depth={agentSurface ? 1 : 0}
         icon={
           newItemType === 'file' ? (
-            <File className="size-3.5 text-muted-foreground/60" />
+            <File className="size-3.5 text-blue-500 dark:text-blue-400" />
           ) : (
             <Folder className="size-3.5 text-sky-500 dark:text-sky-400" />
           )

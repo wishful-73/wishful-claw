@@ -420,4 +420,5 @@ pinned prefix
 - 已执行：Plan 23-5 步骤 14 已完成：`SessionConversationPane` 右上角操作块改为悬浮竖向布局（不占聊天区高度，z-30 盖在 assistant rail 之上），移除其中两处清除会话入口（能力保留在侧边栏与输入区菜单）；TS 三配置 0 错误。
 - 已执行：Plan 23-5 步骤 15 已完成：悬浮块接入“压缩会话”——复用 `useContextCompression` 统一反馈与 `compressSessionContext` 统一链路，压缩中防重复点击，状态文案走 tooltip；新增 layout.json 压缩相关 i18n；TS 三配置 0 错误。
 - 已执行：Plan 23-5 步骤 16 已完成：悬浮块接入“打开右侧文件夹”——调用 `ensureFilesTab` 打开右侧面板并激活 Files tab，无工作目录时禁用并提示，不伪造成功；TS 三配置 0 错误。
-- 未执行：宽窄调节入口、工具结果持久化、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-5 步骤 17 已完成：悬浮块接入聊天区域宽窄调节——`conversationPanelFullWidth` 持久化到 settings-store（version 33 + 迁移守卫，刷新/重启恢复），悬浮块宽窄切换按钮同步驱动 MessageList 与 Composer 列宽（820px ↔ 全宽），右侧面板开关时弹性列自动重适配；同时清理 ui-store 中同名冗余死字段；TS 三配置 0 错误。Plan 23-5 全部完成。
+- 未执行：工具结果持久化、后续 push、merge、tag、打包、Release。

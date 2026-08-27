@@ -166,6 +166,8 @@ interface SettingsStore {
   liveOutputAnimationStyle: LiveOutputAnimationStyle
   toolbarCollapsedByDefault: boolean
   leftSidebarWidth: number
+  /** Chat column fills the whole conversation panel instead of the 820px cap. */
+  conversationPanelFullWidth: boolean
 
   // Web Search Settings
   webSearchEnabled: boolean
@@ -303,6 +305,7 @@ export const useSettingsStore = create<SettingsStore>()(
       liveOutputAnimationStyle: 'agile',
       toolbarCollapsedByDefault: false,
       leftSidebarWidth: LEFT_SIDEBAR_DEFAULT_WIDTH,
+      conversationPanelFullWidth: false,
 
       // Web Search Settings
       webSearchEnabled: false,
@@ -385,7 +388,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 32,
+      version: 33,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -456,6 +459,7 @@ export const useSettingsStore = create<SettingsStore>()(
         liveOutputAnimationStyle: state.liveOutputAnimationStyle,
         toolbarCollapsedByDefault: state.toolbarCollapsedByDefault,
         leftSidebarWidth: clampLeftSidebarWidth(state.leftSidebarWidth),
+        conversationPanelFullWidth: state.conversationPanelFullWidth,
         // Web Search Settings
         webSearchEnabled: state.webSearchEnabled,
         webSearchProvider: state.webSearchProvider,

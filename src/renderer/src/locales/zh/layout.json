@@ -431,7 +431,9 @@
     "noSessionSelected": "未选择会话",
     "conversationCleared": "对话已清空",
     "compressContext": "压缩会话",
-    "openFolderPanel": "打开右侧文件夹"
+    "openFolderPanel": "打开右侧文件夹",
+    "widenChat": "加宽聊天区域",
+    "standardChatWidth": "恢复标准宽度"
   },
   "input": {
     "compressingContext": "正在压缩上下文...",

@@ -47,10 +47,6 @@ export interface UIStore {
   setLeftSidebarOpen: (open: boolean) => void
   setLeftSidebarWidth: (width: number) => void
 
-  // Conversation panel
-  conversationPanelFullWidth: boolean
-  setConversationPanelFullWidth: (fullWidth: boolean) => void
-
   // Right panel
   rightPanelOpen: boolean
   toggleRightPanel: () => void

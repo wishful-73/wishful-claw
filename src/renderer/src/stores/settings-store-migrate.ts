@@ -224,6 +224,9 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   } else {
     state.leftSidebarWidth = clampLeftSidebarWidth(state.leftSidebarWidth as number)
   }
+  if (state.conversationPanelFullWidth === undefined) {
+    state.conversationPanelFullWidth = false
+  }
   if (state.autoUpdateEnabled === undefined) {
     state.autoUpdateEnabled = true
   }

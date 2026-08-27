@@ -431,7 +431,9 @@
     "noSessionSelected": "No session selected",
     "conversationCleared": "Conversation cleared",
     "compressContext": "Compress session",
-    "openFolderPanel": "Open files panel"
+    "openFolderPanel": "Open files panel",
+    "widenChat": "Widen chat area",
+    "standardChatWidth": "Restore standard width"
   },
   "input": {
     "compressingContext": "Compressing context...",

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Archive, FolderOpen, Loader2, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
+import { Archive, ChevronsLeftRight, ChevronsRightLeft, FolderOpen, Loader2, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -13,6 +13,7 @@ import { MessageList } from '@renderer/components/chat/MessageList'
 import { InputArea } from '@renderer/components/chat/InputArea'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChatActions, compressSessionContext, type SendMessageOptions } from '@renderer/hooks/use-chat-actions'
 import { useContextCompression } from '@renderer/components/chat/InputArea/use-context-compression'
 import { useTerminalStore } from '@renderer/stores/terminal-store'
@@ -56,6 +57,12 @@ export function SessionConversationPane({
   const toggleBottomTerminalDock = useUIStore((s) => s.toggleBottomTerminalDock)
   const ensureFilesTab = useUIStore((s) => s.ensureFilesTab)
   const initTerminal = useTerminalStore((s) => s.init)
+
+  // Chat column width preference — persisted in the settings store so it
+  // survives refresh/restart; MessageList and InputArea share the same flag
+  // so the composer never outgrows the message column.
+  const conversationFullWidth = useSettingsStore((s) => s.conversationPanelFullWidth)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
 
   // Ensure terminal store is initialized (also done in App.tsx, but safe to double-init)
   useState(() => {
@@ -110,6 +117,13 @@ export function SessionConversationPane({
     ensureFilesTab(resolvedSessionId)
   }, [resolvedSessionId, ensureFilesTab])
 
+  // Toggle between the standard 820px message column and full panel width.
+  // The chat column is a flex lane, so opening/closing the right panel just
+  // re-clamps the available space automatically.
+  const handleToggleChatWidth = useCallback((): void => {
+    updateSettings({ conversationPanelFullWidth: !conversationFullWidth })
+  }, [conversationFullWidth, updateSettings])
+
   // Manual context compression entry (ContextRing in the composer toolbar).
   // The action returns an explicit compressed/skipped/blocked/failed status.
   const handleCompressContext = useCallback(() => {
@@ -141,7 +155,7 @@ export function SessionConversationPane({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Messages — the session action block floats over the top-right corner */}
         <div className="relative flex flex-1 min-h-0">
-          <MessageList />
+          <MessageList fullWidth={conversationFullWidth} />
 
           {/* Floating vertical session action block */}
           <div className="absolute right-3 top-3 z-30 flex flex-col items-center gap-0.5 rounded-lg border border-border/60 bg-background/70 p-0.5 shadow-sm backdrop-blur-sm">
@@ -204,6 +218,27 @@ export function SessionConversationPane({
               </TooltipContent>
             </Tooltip>
 
+            {/* Chat column width toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleToggleChatWidth}
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  {conversationFullWidth ? (
+                    <ChevronsRightLeft className="size-4" />
+                  ) : (
+                    <ChevronsLeftRight className="size-4" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                {conversationFullWidth
+                  ? t('layout.standardChatWidth', { defaultValue: 'Restore standard width' })
+                  : t('layout.widenChat', { defaultValue: 'Widen chat area' })}
+              </TooltipContent>
+            </Tooltip>
+
             <div className="my-0.5 h-px w-4 bg-border/60" />
 
             <DropdownMenu>
@@ -236,6 +271,7 @@ export function SessionConversationPane({
           workingFolder={session?.workingFolder ?? projectWorkingFolder}
           onCompressContext={handleCompressContext}
           hideWorkingFolderIndicator
+          fullWidth={conversationFullWidth}
         />
 
         {/* Bottom terminal dock - keep mounted, hide via CSS to preserve state */}

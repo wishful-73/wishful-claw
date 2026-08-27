@@ -68,10 +68,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
   setLeftSidebarOpen: (open: any) => set({ leftSidebarOpen: open }),
   setLeftSidebarWidth: (width: any) => set({ leftSidebarWidth: clampLeftSidebarWidth(width) }),
 
-  // Conversation panel
-  conversationPanelFullWidth: false,
-  setConversationPanelFullWidth: (fullWidth: any) => set({ conversationPanelFullWidth: fullWidth }),
-
   // Right panel
   rightPanelOpen: false,
   toggleRightPanel: () => set((state: any) => ({ rightPanelOpen: !state.rightPanelOpen })),

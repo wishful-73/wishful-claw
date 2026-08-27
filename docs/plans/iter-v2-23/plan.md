@@ -88,8 +88,8 @@
   - 验证：调用统一手动压缩链路，显示压缩中/成功/失败反馈，执行期间防重复点击。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [x] 步骤 16：接入“打开右侧文件夹”。实现：悬浮竖向块新增 `FolderOpen` 按钮，点击调用已有 `ensureFilesTab(resolvedSessionId)`（打开右侧面板并激活 Files tab，tab 已存在时仅切换，文件树展开状态由持久层保留）；会话与工作区均无工作目录（`session.workingFolder ?? projectWorkingFolder`）时按钮 `disabled` 且 tooltip 提示“未设置工作目录”，不伪造成功；新增 `layout.openFolderPanel` i18n（zh/en）。
   - 验证：有工作区时打开右侧面板并切换 Files tab；无工作区时禁用或提示，不伪造成功。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
-- [ ] 步骤 17：接入聊天区域宽窄调节。
-  - 验证：聊天内容区宽度可调，Composer 不溢出；右侧面板开关后重新 clamp；刷新/重启后按既定策略恢复。
+- [x] 步骤 17：接入聊天区域宽窄调节。实现：`conversationPanelFullWidth` 偏好持久化到 settings-store（version 32→33 + 迁移守卫，刷新/重启按既定策略恢复）；悬浮竖向块新增宽窄切换按钮（窄态 `ChevronsLeftRight` / 宽态 `ChevronsRightLeft`），同一布尔值同时驱动 `MessageList fullWidth` 与 `InputArea fullWidth`（820px 标准列 ↔ 全宽，Composer 与消息列同宽不溢出）；聊天列为弹性列，右侧面板开关后 `max-w-none` 自然随可用宽度重适配；顺带清理 ui-store 中从未使用的同名冗余字段；新增 `layout.widenChat`/`layout.standardChatWidth` i18n（zh/en）。
+  - 验证：聊天内容区宽度可调，Composer 不溢出；右侧面板开关后重新 clamp；刷新/重启后按既定策略恢复。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 
 ### Plan 23-6：工具结果即时持久化与崩溃恢复
 

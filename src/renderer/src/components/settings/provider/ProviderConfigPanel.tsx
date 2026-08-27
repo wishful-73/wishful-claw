@@ -218,10 +218,12 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
         </div>
       </div>
 
-      {/* Config body */}
-      <div className="flex flex-1 min-h-0 flex-col overflow-y-auto overflow-x-hidden px-5 pt-4 pb-20">
+      {/* Config body: upper sections keep natural height; the models section is
+          the last element and stretches to fill all remaining vertical space,
+          so only the model list itself scrolls. */}
+      <div className="flex flex-1 min-h-0 flex-col overflow-x-hidden px-5 pt-4 pb-4">
         {/* API Key */}
-        <section className="space-y-2">
+        <section className="shrink-0 space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-sm font-medium">{ts('provider.config.apiKey')}</label>
           </div>
@@ -248,7 +250,7 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
         </section>
 
         {/* Base URL */}
-        <section className="mt-4 space-y-2">
+        <section className="mt-4 shrink-0 space-y-2">
           <label className="text-sm font-medium">{ts('provider.config.baseUrl')}</label>
           <Input
             placeholder="https://api.openai.com/v1"
@@ -260,7 +262,7 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
 
         {/* Protocol type (for custom providers) */}
         {!provider.builtinId && (
-          <section className="mt-5 space-y-2">
+          <section className="mt-5 shrink-0 space-y-2">
             <label className="text-sm font-medium">{ts('provider.config.protocolType')}</label>
             <Select
               value={provider.type}
@@ -282,7 +284,7 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
 
         {/* Anthropic cache TTL (provider-level) */}
         {provider.type === 'anthropic' && (
-          <section className="mt-5 space-y-2">
+          <section className="mt-5 shrink-0 space-y-2">
             <label className="text-sm font-medium">{ts('provider.config.cacheTtl')}</label>
             <Select
               value={provider.cacheTtl ?? '5m'}
@@ -300,12 +302,12 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           </section>
         )}
 
-        <Separator className="my-5" />
+        <Separator className="my-5 shrink-0" />
 
-        {/* Models section */}
-        <section className="space-y-3">
+        {/* Models section (fills the remaining height) */}
+        <section className="flex min-h-0 flex-1 flex-col gap-3">
           {/* Model header with count + search + actions */}
-          <div className="space-y-3">
+          <div className="shrink-0 space-y-3">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
                 <label className="text-sm font-medium">{ts('provider.config.models.label')}</label>
@@ -373,7 +375,7 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           </div>
 
           {/* Model list */}
-          <div className="flex min-h-[320px] max-h-[420px] flex-col overflow-hidden rounded-xl border bg-background">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-background">
             {filteredModels.length === 0 ? (
               <div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground">
                 {provider.models.length === 0 ? ts('provider.config.models.noModels') : ts('provider.config.models.noResults')}

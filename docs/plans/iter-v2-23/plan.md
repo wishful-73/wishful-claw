@@ -119,7 +119,7 @@
 - [x] 步骤 28：新建服务商弹窗改造。
   - 实现：① `AddProviderDialog` 增加 API Key 输入（随 `addCustomProvider` 落库）；② 保存后立即触发一次 `fetchModels`（错误仅 toast 不阻断）；③ `ProviderConfigPanel` 取消原“连接测试”下拉框整行，改为模型列表项 hover 时显示“检查连接”图标按钮（复用 `testConnection` + 既有 toast 反馈）。
   - 验证：新建时可填 Key、保存即拉模型列表；连接测试能力不丢失，入口换到模型行。TS 三配置 0 错误。
-  - 已实现：① `AddProviderDialog` 新增 API Key 密码输入（可切换明文），`addCustomProvider`/`createCustomProvider` 增加可选 `apiKey` 参数随服务商落库；② 保存后 fire-and-forget `fetchModels`，成功非空时 `setModels` + toast，失败仅 toast 不阻断；③ `ProviderConfigPanel` 移除连接测试下拉框整行与结果横幅（清理 `testModelId`/`testResult` 状态与废弃 i18n 键），模型行操作区新增 hover “检查连接”闪电图标按钮（`testingModelId` 单模型级转圈，无 Key 禁用，复用 `testConnection` + 原 toast 文案）；zh/en 新增 `provider.add.apiKey*` 与 `models.checkConnection`。后续补齐（用户反馈“API Key 是必须的”）：占位提示去掉“（可稍后在配置页补充）”，添加按钮与提交校验改为名称 + API Key 均必填。TS 三配置 0 错误。
+  - 已实现：① `AddProviderDialog` 新增 API Key 密码输入（可切换明文），`addCustomProvider`/`createCustomProvider` 增加可选 `apiKey` 参数随服务商落库；② 保存后 fire-and-forget `fetchModels`，成功非空时 `setModels` + toast，失败仅 toast 不阻断；③ `ProviderConfigPanel` 移除连接测试下拉框整行与结果横幅（清理 `testModelId`/`testResult` 状态与废弃 i18n 键），模型行操作区新增 hover “检查连接”闪电图标按钮（`testingModelId` 单模型级转圈，无 Key 禁用，复用 `testConnection` + 原 toast 文案）；zh/en 新增 `provider.add.apiKey*` 与 `models.checkConnection`。后续补齐（用户反馈“API Key 是必须的”）：占位提示去掉“（可稍后在配置页补充）”，添加按钮与提交校验改为名称 + API Key 均必填。二次补齐（用户反馈“模型列表没占完高度”）：`ProviderConfigPanel` 配置区去掉外层整页滚动与 `pb-20`，模型区改 `flex-1 min-h-0` 占满剩余高度（列表容器去掉 `min-h-[320px] max-h-[420px]` 固定区间），上方 API Key/Base URL/协议/分隔线全部 `shrink-0` 不被压缩，滚动只发生在模型列表内部。TS 三配置 0 错误。
 - [x] 步骤 29：模型编辑弹窗图标选择器引入真实图标。
   - 现状：`ModelFormDialog` 图标选择器所有 `MODEL_ICON_OPTIONS` key 渲染为 `Server` 占位。
   - 实现：复用 `provider-icons` 的 `ModelIcon` 渲染各 key；核对覆盖度，缺失的 key 补齐图标资源/分支；选择交互不变。

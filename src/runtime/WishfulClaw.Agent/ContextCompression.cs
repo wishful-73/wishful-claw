@@ -131,6 +131,16 @@ public static partial class ContextCompression
         {
             summary = await SummarizeAsync(fold, provider, cancellationToken);
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // SummaryTimeout fired (linked CTS CancelAfter) while the caller is
+            // still running — degrade to mechanical fold instead of letting the
+            // OCE escape and fail the whole run. Caller-initiated cancellation
+            // (token requested) is rethrown below.
+            WorkerLog.Warn("context compression summarization timed out; falling back to mechanical fold");
+            summary = MechanicalFoldDigest(fold.Count);
+            summarizerFailed = true;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             WorkerLog.Warn($"context compression LLM summarization failed: {ex.GetType().Name}: {ex.Message}");
@@ -397,6 +407,12 @@ public static partial class ContextCompression
                     "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token),
                     _ => throw new InvalidOperationException($"Unsupported provider for summarization: {providerType}")
                 };
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Linked-CTS timeout — the caller is still running, so stop
+                // retrying and let CompactAsync degrade to mechanical fold.
+                break;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

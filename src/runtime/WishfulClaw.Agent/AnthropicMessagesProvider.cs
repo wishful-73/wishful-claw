@@ -6,6 +6,7 @@
  */
 
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -66,53 +67,73 @@ internal static partial class AnthropicMessagesProvider
         var parseState = new AnthropicParseState();
         WorkerLog.Debug($"anthropic messages request start model={model} url={url}");
 
-        using var response = await AgentRuntimeRequestTimeout.SendAsync(
-            Http, request, provider, "Anthropic Messages", state.CancellationToken);
-        if (!response.IsSuccessStatusCode)
+        // Connection aborts surface as HttpRequestException. Convert to a
+        // retryable 502 when nothing has been emitted yet, so
+        // ProviderRetryPolicy backs off (mirrors OpenAIChatProvider).
+        try
         {
-            throw await ProviderHttpException.CreateAsync(
-                "Anthropic Messages",
-                response,
-                state.CancellationToken);
-        }
-
-        await using var responseStream = await response.Content.ReadAsStreamAsync(state.CancellationToken);
-        using var reader = new StreamReader(responseStream, Encoding.UTF8);
-        var dataBuilder = new StringBuilder();
-        string? eventName = null;
-        string? line;
-
-        while ((line = await AgentRuntimeRequestTimeout.ReadLineAsync(
-            reader, provider, "Anthropic Messages", state.CancellationToken)) is not null)
-        {
-            if (line.Length == 0)
+            using var response = await AgentRuntimeRequestTimeout.SendAsync(
+                Http, request, provider, "Anthropic Messages", state.CancellationToken);
+            if (!response.IsSuccessStatusCode)
             {
-                if (dataBuilder.Length > 0)
+                throw await ProviderHttpException.CreateAsync(
+                    "Anthropic Messages",
+                    response,
+                    state.CancellationToken);
+            }
+
+            await using var responseStream = await response.Content.ReadAsStreamAsync(state.CancellationToken);
+            using var reader = new StreamReader(responseStream, Encoding.UTF8);
+            var dataBuilder = new StringBuilder();
+            string? eventName = null;
+            string? line;
+
+            while ((line = await AgentRuntimeRequestTimeout.ReadLineAsync(
+                reader, provider, "Anthropic Messages", state.CancellationToken)) is not null)
+            {
+                if (line.Length == 0)
                 {
-                    var data = dataBuilder.ToString();
-                    dataBuilder.Clear();
-                    if (data != "[DONE]")
+                    if (dataBuilder.Length > 0)
                     {
-                        await ProcessJsonEventAsync(eventName, data, parseState, state, context, startedAt);
+                        var data = dataBuilder.ToString();
+                        dataBuilder.Clear();
+                        if (data != "[DONE]")
+                        {
+                            await ProcessJsonEventAsync(eventName, data, parseState, state, context, startedAt);
+                        }
+                        eventName = null;
                     }
-                    eventName = null;
+                    continue;
                 }
-                continue;
+
+                if (line.StartsWith("event:", StringComparison.Ordinal))
+                {
+                    eventName = line[6..].TrimStart();
+                    continue;
+                }
+                if (line.StartsWith("data:", StringComparison.Ordinal))
+                {
+                    if (dataBuilder.Length > 0) dataBuilder.Append('\n');
+                    dataBuilder.Append(line[5..].TrimStart());
+                }
             }
 
-            if (line.StartsWith("event:", StringComparison.Ordinal))
-            {
-                eventName = line[6..].TrimStart();
-                continue;
-            }
-            if (line.StartsWith("data:", StringComparison.Ordinal))
-            {
-                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
-                dataBuilder.Append(line[5..].TrimStart());
-            }
+            await FlushPendingToolCallsAsync(parseState, state, context);
         }
-
-        await FlushPendingToolCallsAsync(parseState, state, context);
+        catch (HttpRequestException ex) when (
+            !state.CancellationToken.IsCancellationRequested &&
+            parseState.AssistantText.Length == 0 &&
+            parseState.ToolCalls.Count == 0)
+        {
+            WorkerLog.Warn(
+                $"anthropic connection failure, retrying runId={state.RunId} " +
+                $"error={ex.GetBaseException().Message}");
+            throw new ProviderHttpException(
+                "Anthropic Messages",
+                HttpStatusCode.BadGateway,
+                $"connection error: {ex.GetBaseException().Message}",
+                retryAfter: null);
+        }
 
         var totalMs = AgentLoop.ElapsedMs(startedAt);
         AgentLoop.EnsureProviderTurnHasOutput(

@@ -430,4 +430,5 @@ pinned prefix
 - 已执行：Plan 23-8 步骤 27 已完成：`input-draft:*` 五端点实装（草稿存 `~/.wishful-claw/input-drafts.json` 单文件 JSON map，兼容隔离数据目录，空内容转删除 + 30 天过期清理）；`useInputDraftPersistence` 实装（缓存优先读盘、请求序号防竞态、空草稿转 remove），既有防抖保存/水合/发送后清除链路直接生效；TS 三配置 0 错误。
 - 已执行：Plan 23-8 步骤 28 已完成：新建服务商弹窗新增 API Key 输入（随服务商落库）+ 保存即拉模型列表（失败仅 toast）；`ProviderConfigPanel` 移除连接测试下拉框整行，改为模型行 hover “检查连接”图标按钮（复用 `testConnection`）；清理废弃状态与 i18n 键，zh/en 补齐新键；TS 三配置 0 错误。
 - 已执行：Plan 23-8 步骤 29 已完成：`ModelFormDialog` 图标选择器改用 `ModelIcon` 真实系列图标（23 个 key 在 `modelIconSlugMap` 全覆盖，无需新增资源），选择交互不变，模型列表/消息头自动生效；TS 三配置 0 错误。
-- 未执行：Plan 23-8 步骤 30-31、Plan 23-7（全量验证与 v1.0.0 发布）、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-8 步骤 30 已完成：`RightPanel` tabs useMemo 补 files i18n 分支 + zh/en layout.json 新增 `rightPanel.files`（“文件”/“Files”）；`RightPanelHeader` files tab 图标与“打开文件”下拉项、左侧面板项目行图标统一上 `text-sky-400`（对齐 OpenCowork）；切换/折叠逻辑未动；TS 三配置 0 错误。
+- 未执行：Plan 23-8 步骤 31、Plan 23-7（全量验证与 v1.0.0 发布）、后续 push、merge、tag、打包、Release。

@@ -61,6 +61,9 @@ export function RightPanel(): React.JSX.Element {
       if (tab.kind === 'memory') {
         return { ...tab, title: t('memory.tabMemory', { defaultValue: 'Memory' }) }
       }
+      if (tab.kind === 'files') {
+        return { ...tab, title: t('rightPanel.files', { defaultValue: 'Files' }) }
+      }
       if (tab.kind === 'browser') {
         return { ...tab, title: t('rightPanel.browser', { defaultValue: 'Browser' }) }
       }

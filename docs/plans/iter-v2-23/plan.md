@@ -125,10 +125,11 @@
   - 实现：复用 `provider-icons` 的 `ModelIcon` 渲染各 key；核对覆盖度，缺失的 key 补齐图标资源/分支；选择交互不变。
   - 验证：选择器显示真实系列图标，选择结果在模型列表与消息头生效。TS 三配置 0 错误。
   - 已实现：`ModelFormDialog` 图标选择器由 `Server` 占位改为 `<ModelIcon icon={key} size={16} />`（复用 `provider-icons` 的 lobehub 静态图标链路，自动跟随明暗主题）；覆盖度核对：`MODEL_ICON_OPTIONS` 23 个 key 在 `modelIconSlugMap` 全部有映射（bigmodel→chatglm、mimo→xiaomimimo 等），无需新增资源/分支；选择交互与保存链路不变，既有 `ModelIcon` 消费 `icon` 字段，模型列表与消息头自动生效。TS 三配置 0 错误。
-- [ ] 步骤 30：文件树 tab 彩色图标与中文标题。
+- [x] 步骤 30：文件树 tab 彩色图标与中文标题。
   - 现状：`RightPanelHeader` files tab 用无颜色 `FolderOpen` + 英文标题。
   - 实现：i18n 中文标题（zh/en）；文件树 tab 与左侧面板项目树图标换为彩色图标（对齐 OpenCowork）。
   - 验证：tab 展示对齐，切换/折叠功能不受影响。TS 三配置 0 错误。
+- 已实现：① `RightPanel` tabs useMemo 补 files 分支（`t('rightPanel.files', { defaultValue: 'Files' })`），zh/en layout.json 新增 `rightPanel.files` 键（“文件”/“Files”），tab 标题随语言切换；② `RightPanelHeader` TabIcon 的 files 分支与“打开文件”下拉项加 `text-sky-400`（对齐 OpenCowork `WorkbenchTabButton`）；③ `workspace-sidebar-items.tsx` 项目行主图标（展开 `FolderOpen`/收起 `Folder`）同加 `text-sky-400`。tab 创建处硬编码标题保留，运行时被 i18n 覆盖；切换/折叠逻辑未动。TS 三配置 0 错误。
 - [ ] 步骤 31：左侧面板对话命名/图标 + 扩展/自动化图标。
   - 实现：① 左侧面板“全局对话”分区展示对齐 OpenCowork（当前直接展开），“会话”命名改“对话”并增加图标；② 扩展入口图标从文件夹改为 OpenCowork 扩展图标；③ 自动化入口图标从日历改为时钟。
   - 验证：各入口图标/标题正确，导航功能不受影响，i18n 双语完整。TS 三配置 0 错误。

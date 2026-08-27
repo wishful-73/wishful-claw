@@ -469,6 +469,7 @@
   },
   "rightPanel": {
     "goals": "Goals",
+    "files": "Files",
     "browser": "Browser",
     "browserLoadFailed": "Failed to load page",
     "browserRetry": "Retry",

@@ -469,6 +469,7 @@
   },
   "rightPanel": {
     "goals": "Goals",
+    "files": "文件",
     "browser": "浏览器",
     "browserLoadFailed": "页面加载失败",
     "browserRetry": "重试",

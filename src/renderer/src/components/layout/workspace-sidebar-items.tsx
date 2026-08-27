@@ -405,7 +405,7 @@ export function ProjectItem({ project, sessions, isExpanded, onToggleExpand }: P
             )}
           >
             {project.pinned && <Pin className="size-3 shrink-0 text-primary/60" />}
-            {isExpanded ? <FolderOpen className="size-3.5 shrink-0" /> : <Folder className="size-3.5 shrink-0" />}
+            {isExpanded ? <FolderOpen className="size-3.5 shrink-0 text-sky-400" /> : <Folder className="size-3.5 shrink-0 text-sky-400" />}
             {hasStreamingSession && (
               <Loader2 className="size-3 shrink-0 animate-spin text-primary" />
             )}

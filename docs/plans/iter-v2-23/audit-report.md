@@ -14,7 +14,7 @@
 | 批次 | Commit | 覆盖范围 |
 |------|--------|----------|
 | 1 | `1f23f11` | H1/H2/M2–M9/M21，附带 L1 `fs:watch-file` 伪成功、L2 `cancelKeys` 泄漏 |
-| 2 | `f3fd9d2` | H3/H4/M30–M32 |
+| 2 | `f3fd9d2` | H3/H4/M30–M32（M30 后回滚：用户确认 400 可重试为有意设计） |
 | 3 | `7ecacff` | H5/M33–M36 |
 | 4 | `282b007` | M10–M20 |
 | 5 | `68f16f2` | M22–M29 |
@@ -28,6 +28,7 @@
 
 ### 未修与遗留（有意保留）
 
+- **M30** HTTP 400 可重试——**用户确认保留（2026-08-28）**：部分服务商对瞬时故障返回 400，批2 的整改已回滚，`IsRetryableStatus` 注释已标注防误改
 - **M37** SSH 明文密码回传渲染端——**用户确认保留（2026-08-28）**：本地单用户产品，编辑场景明文回显属有意设计，不修；`repository.ts` 注释已同步更正（原注释"plaintext secrets are never sent to the renderer"与实际设计矛盾）
 - ~~**L5/L6** i18n 键缺失~~ —— **已修（批10 `5c8e252`）**：180 键双语补齐（含 `settings:channel.*` 整块英译）、新建 `agent`/`ssh` 两个命名空间、`fallbackNS: 'common'` 兜底、7 处组件 ns 错配代码修正；静态校验脚本 MISSING zh/en 归零，TS 三配置 0 错误
 - ~~**L12**（其余 C# 低危项）/**L13**（AOT 裸 `JsonSerializerOptions` 7 处）/**L14**（死代码清理）/**L15**（打包字段）/**L16**（hydration 注销函数）~~ —— **已修（批9 `dcd317d`）**：L12 八项全修、L13 七处全部改走 `WorkerJsonHelper` 共享 options、L14 删除 `sidecar-handlers.ts` 全文件与 `installAgentRuntimeSyncListener` 及两个未用字段、L15 补 `author` 字段并删除 `publish-aot.bat`、L16 捕获注销函数；dotnet build 0 警告 0 错误 + TS 三配置 0 错误
@@ -138,7 +139,7 @@
 
 | # | 位置 | 问题 |
 |---|------|------|
-| M30 | `Providers/ProviderRetryPolicy.cs:161-164` | HTTP 400（客户端错误）被判为可重试，结合 H3 形成无效重试风暴 |
+| M30 | `Providers/ProviderRetryPolicy.cs:161-164` | HTTP 400（客户端错误）被判为可重试，结合 H3 形成无效重试风暴——**处置（用户确认 2026-08-28）**：部分服务商会将瞬时故障（过载/隐性限流）返回 400，400 可重试为有意设计，批2 的整改已回滚并加防误改注释 |
 | M31 | `Providers/AnthropicMessagesProvider.cs:69-113` | 缺 HttpRequestException→ProviderHttpException 转换（OpenAIChatProvider 有），网络错误不进重试策略 |
 | M32 | `AgentLoop.cs:58-60` | `__goal__{id}` 会话键只创建从不移除（对比 `__subagent__` 键有清理），长进程字典持续增长 |
 | M33 | `Infrastructure/Db/DbClient.cs:49-477` | Initialize 无幂等早退；失败后 `_db` 已赋值而 `_initialized=false`，`GetClient` 每次重建；首次成功前不同 `dbPath` 参数可静默切换全局 DB |

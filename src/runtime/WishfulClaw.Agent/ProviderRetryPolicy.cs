@@ -165,9 +165,12 @@ public static class ProviderRetryPolicy
 
     private static bool IsRetryableStatus(int statusCode)
     {
-        // 400 is a client error (bad request shape) — retrying just burns
-        // tokens; only rate limits and server errors are transient.
-        return statusCode == 429 || statusCode >= 500;
+        // 400 is intentionally retryable: several providers misbehave and
+        // return 400 for transient conditions (overload, hidden rate limits,
+        // momentary context hiccups) that succeed on retry. User-confirmed
+        // design (audit M30 retracted 2026-08-28) — do not tighten this
+        // back to "429/5xx only" without a product decision.
+        return statusCode is 400 or 429 || statusCode >= 500;
     }
 
     /// <summary>

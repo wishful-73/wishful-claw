@@ -117,10 +117,12 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
     }
   )
 
-  registerMessagePackHandler<{ path: string }, void>(
+  registerMessagePackHandler<{ path: string }, string>(
     'shell:openPath',
     async (args) => {
-      await shell.openPath(args.path)
+      // shell.openPath resolves to '' on success, or an error message; the
+      // renderer uses that string to surface a failure toast.
+      return await shell.openPath(args.path)
     }
   )
 

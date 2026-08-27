@@ -348,7 +348,7 @@ export function ProjectItem({ project, sessions, isExpanded, onToggleExpand }: P
       return
     }
     // shell.openPath returns string (empty on success, error message on failure)
-    const result = await ipcClient.invoke(IPC.SHELL_OPEN_PATH, project.workingFolder)
+    const result = await ipcClient.invoke(IPC.SHELL_OPEN_PATH, { path: project.workingFolder })
     if (typeof result === 'string' && result.length > 0) {
       toast.error(t('sidebar.openFailed', { defaultValue: 'Failed to open folder' }), {
         description: result

@@ -219,7 +219,7 @@ export function PreviewPanel({
   const handleOpenInSystem = async (): Promise<void> => {
     if (!activeTab?.filePath || activeTab.sshConnectionId) return
     try {
-      await ipcClient.invoke(IPC.SHELL_OPEN_PATH, activeTab.filePath)
+      await ipcClient.invoke(IPC.SHELL_OPEN_PATH, { path: activeTab.filePath })
     } catch (err) {
       console.error('[PreviewPanel] Open in system app failed:', err)
     }

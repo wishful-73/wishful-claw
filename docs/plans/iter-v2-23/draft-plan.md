@@ -419,7 +419,7 @@ pinned prefix
 - 已执行：Plan 23-4 步骤 13 已完成：进行中当前轮 user message 吸附——执行中取最后一条普通 user 消息作为锚点，滚出可视区顶部时显示顶部吸附卡（点击可跳回并高亮），执行结束/切换会话自动解除，历史折叠会话不启用；TS 三配置 0 错误 + C# 0 警告 0 错误。Plan 23-4 全部完成。
 - 已执行：Plan 23-5 步骤 14 已完成：`SessionConversationPane` 右上角操作块改为悬浮竖向布局（不占聊天区高度，z-30 盖在 assistant rail 之上），移除其中两处清除会话入口（能力保留在侧边栏与输入区菜单）；TS 三配置 0 错误。
 - 已执行：Plan 23-5 步骤 15 已完成：悬浮块接入“压缩会话”——复用 `useContextCompression` 统一反馈与 `compressSessionContext` 统一链路，压缩中防重复点击，状态文案走 tooltip；新增 layout.json 压缩相关 i18n；TS 三配置 0 错误。
-- 已执行：Plan 23-5 步骤 16 已完成：悬浮块接入“打开右侧文件夹”——调用 `ensureFilesTab` 打开右侧面板并激活 Files tab，无工作目录时禁用并提示，不伪造成功；TS 三配置 0 错误。
+- 已执行：Plan 23-5 步骤 16 已完成：悬浮块接入“打开右侧文件夹”——调用 `ensureFilesTab` 打开右侧面板并激活 Files tab，无工作目录时禁用并提示，不伪造成功；TS 三配置 0 错误。后续补齐（用户反馈）：全局对话（无工作目录）时该按钮直接不渲染而非禁用；同批修复 `shell:openPath`/`shell:showItemInFolder` 参数失配（渲染端 6 处裸字符串→`{ path }`），主进程回传错误字符串支撑失败 toast，文件树“在文件管理器打开”恢复生效。
 - 已执行：Plan 23-5 步骤 17 已完成：悬浮块接入聊天区域宽窄调节——`conversationPanelFullWidth` 持久化到 settings-store（version 33 + 迁移守卫，刷新/重启恢复），悬浮块宽窄切换按钮同步驱动 MessageList 与 Composer 列宽（820px ↔ 全宽），右侧面板开关时弹性列自动重适配；同时清理 ui-store 中同名冗余死字段；TS 三配置 0 错误。Plan 23-5 全部完成。
 - 已执行：Plan 23-6 步骤 18 已完成：`tool_call_result` 工具完成边界立即形成可恢复状态——Renderer 在内存更新后立即复用既有 `dbUpsertMessage` 落库，不等 `message_end`/`loop_end`；五种结果状态（成功/错误/取消/审批拒绝/跳过）全经 `tool_call_result` 事件统一覆盖；稳定键为消息 id（runId），既有 upsert 幂等，并发工具后写携带先写结果超集不互相覆盖；定案采用最小 messages upsert 方案，暂不引入 Worker 独立 durable journal。TS 三配置 0 错误。
 - 已执行：Plan 23-6 步骤 19 已完成：最小方案定案为 messages upsert（不引入 Worker 独立 journal）；`dbUpsertMessage` 增加按消息 id 的串行写入队列，工具边界/`message_end`/`loop_end` 写入严格按发起顺序提交，旧快照不会回退新结果，单次失败隔离；稳定键覆盖 session/run（runId 主键）/tool（toolCallId 内嵌消息体），重复事件与重试只 UPDATE 同一行。TS 三配置 0 错误。

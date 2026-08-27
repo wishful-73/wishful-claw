@@ -110,8 +110,8 @@ export function SessionConversationPane({
   }, [resolvedSessionId, toggleBottomTerminalDock])
 
   // Open the right panel on the Files tab for the current workspace.
-  // Sessions without a working folder keep the button disabled instead of
-  // pretending the panel has anything to show.
+  // Sessions without a working folder (global conversations) hide the
+  // button entirely instead of pretending the panel has anything to show.
   const handleOpenFilesPanel = useCallback((): void => {
     if (!resolvedSessionId) return
     ensureFilesTab(resolvedSessionId)
@@ -200,23 +200,23 @@ export function SessionConversationPane({
               </TooltipContent>
             </Tooltip>
 
-            {/* Open right panel on the Files tab */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleOpenFilesPanel}
-                  disabled={!hasWorkingFolder}
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <FolderOpen className="size-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                {hasWorkingFolder
-                  ? t('layout.openFolderPanel', { defaultValue: 'Open files panel' })
-                  : t('sidebar.noWorkingFolder', { defaultValue: 'No working folder set' })}
-              </TooltipContent>
-            </Tooltip>
+            {/* Open right panel on the Files tab — hidden for sessions
+                without a working folder (global conversations) */}
+            {hasWorkingFolder && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleOpenFilesPanel}
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <FolderOpen className="size-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  {t('layout.openFolderPanel', { defaultValue: 'Open files panel' })}
+                </TooltipContent>
+              </Tooltip>
+            )}
 
             {/* Chat column width toggle */}
             <Tooltip>

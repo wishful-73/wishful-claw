@@ -275,7 +275,7 @@ export function useFileTreeActions(state: FileTreeState, options: UseFileTreeAct
         return
       }
 
-      const result = await ipcClient.invoke(IPC.SHELL_OPEN_PATH, nodePath)
+      const result = await ipcClient.invoke(IPC.SHELL_OPEN_PATH, { path: nodePath })
       if (typeof result === 'string' && result.length > 0) {
         toast.error(t('fileTree.openFailed', { defaultValue: 'Open failed' }), {
           description: result
@@ -292,7 +292,7 @@ export function useFileTreeActions(state: FileTreeState, options: UseFileTreeAct
         return
       }
 
-      const result = await ipcClient.invoke(IPC.SHELL_SHOW_ITEM_IN_FOLDER, nodePath)
+      const result = await ipcClient.invoke(IPC.SHELL_SHOW_ITEM_IN_FOLDER, { path: nodePath })
       const error = getIpcError(result)
       if (error) {
         toast.error(t('fileTree.revealFailed', { defaultValue: 'Reveal failed' }), {

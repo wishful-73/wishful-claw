@@ -264,7 +264,9 @@ export function queryGit(
   const request = nativeGitRequest<GitQueryResult>('git/query', target, params)
     .then((result) => {
       const ttl = gitQueryTtl(params)
-      if (gitQueryRevision(target) === requestRevision) {
+      // Only cache successful results — caching a failure would mask the
+      // transient error for the whole TTL window.
+      if (result.success && gitQueryRevision(target) === requestRevision) {
         gitQueryCache.set(cacheKey, { expiresAt: Date.now() + ttl, result })
         pruneGitQueryCache()
       }

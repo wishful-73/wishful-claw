@@ -34,6 +34,19 @@ const POLL_INTERVAL_MS = 4000
 const MAX_WAIT_MS = 10 * 60 * 1000
 const jobs = new Map<string, VideoJob>()
 
+// Cap the number of retained finished jobs so long-running sessions do not
+// accumulate job records indefinitely.
+const MAX_FINISHED_JOBS = 50
+
+function evictOldFinishedJobs(): void {
+  const finished = [...jobs.values()].filter((job) => job.done)
+  while (finished.length > MAX_FINISHED_JOBS) {
+    const doomed = finished.shift()
+    if (!doomed) break
+    jobs.delete(doomed.jobId)
+  }
+}
+
 type VideoOperation = 'generate' | 'status' | 'download'
 
 function getWorkerMethod(provider: unknown, operation: VideoOperation): string {
@@ -164,6 +177,7 @@ export function registerVideoHandlers(): void {
         done: false
       }
       jobs.set(jobId, job)
+      evictOldFinishedJobs()
       void pollJob(job, args.provider)
       return { jobId, status: 'queued' }
     } catch (error) {

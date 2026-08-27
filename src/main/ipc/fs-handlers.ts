@@ -300,8 +300,11 @@ export function registerFsHandlers(): void {
           }
           await walk(cwd, 0)
           return results
-        } catch {
-          return []
+        } catch (err) {
+          // Surface the failure instead of silently returning an empty list;
+          // callers guard with Array.isArray and fall back to "no results".
+          console.warn('[fs:search-files] Search failed:', err)
+          throw new Error(`File search failed: ${err instanceof Error ? err.message : String(err)}`)
         }
       }
     )

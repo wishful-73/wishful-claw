@@ -171,14 +171,19 @@ export function useGitPageHandlers(opts: GitPageHandlersOptions) {
   const handleCommit = async (): Promise<void> => {
     if (!selectedRepoPath || !commitMessage.trim()) return
     setCommitting(true)
-    const result = await store.commit(selectedRepoPath, commitMessage.trim())
-    setCommitting(false)
-    if (!result.success) {
-      toast.error(result.error)
-      return
+    try {
+      const result = await store.commit(selectedRepoPath, commitMessage.trim())
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setCommitMessage('')
+      toast.success(t('commitDone'))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCommitting(false)
     }
-    setCommitMessage('')
-    toast.success(t('commitDone'))
   }
 
   const handleAiCommitMessage = useCallback(async (): Promise<void> => {

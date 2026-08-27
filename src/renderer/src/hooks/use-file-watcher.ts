@@ -139,7 +139,11 @@ export function useFileWatcher(
           ? normalizeWatchPath(resolvedWatchPath)
           : requestedWatchPath
       })
-      .catch(() => {})
+      .catch((err) => {
+        // Watch registration failed — auto-refresh will not work for this
+        // file; surface it in the console instead of failing silently.
+        console.warn('[useFileWatcher] Failed to register watch for', filePath, err)
+      })
 
     const handler = (...args: unknown[]): void => {
       const changedPath = getChangedPath(args)

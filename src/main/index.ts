@@ -39,7 +39,8 @@ import { registerCodeGraphHandlers } from './ipc/codegraph-handlers'
 import {
   initializeCronScheduler,
   registerCronHandlers,
-  releaseCronRunsAfterRendererExit
+  releaseCronRunsAfterRendererExit,
+  shutdownCronScheduler
 } from './ipc/reverse-handlers/cron-reverse-handler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
 
@@ -502,6 +503,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   cleanupSshHandlers()
+  shutdownCronScheduler()
   if (channelManager) {
     void channelManager.stopAll()
   }

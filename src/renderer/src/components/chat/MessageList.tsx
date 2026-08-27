@@ -143,7 +143,10 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       hasLoadOlderRow={data.hasLoadOlderRow}
       loadOlderMessages={scroll.loadOlderMessages}
       isLoadingOlderMessages={scroll.isLoadingOlderMessages}
-      loadedRangeStart={data.loadedRangeStart}
+      totalTurns={data.totalTurns}
+      loadedTurns={data.loadedTurns}
+      loadedMessageCount={data.messages.length}
+      totalMessageCount={data.messageCount}
       rows={data.rows}
       lastMessageRowIndex={data.rows.length - 1}
       messageLookup={data.messageLookup}

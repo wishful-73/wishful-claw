@@ -65,6 +65,8 @@ export interface Session {
   messagesLoaded: boolean
   loadedRangeStart: number
   loadedRangeEnd: number
+  // Total conversation turns (user messages) reported by the last turn-based load.
+  totalTurns?: number
   lastKnownMessageCount?: number
   createdAt: number
   updatedAt: number
@@ -139,6 +141,7 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     messagesLoaded: session.messagesLoaded,
     loadedRangeStart: session.loadedRangeStart,
     loadedRangeEnd: session.loadedRangeEnd,
+    totalTurns: session.totalTurns,
     lastKnownMessageCount: session.lastKnownMessageCount,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,

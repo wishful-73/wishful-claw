@@ -70,6 +70,12 @@ public static partial class DbMessageTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
+            // Total conversation turns (user messages) — lets the UI show the
+            // loaded/total range without an extra round trip.
+            var totalTurns = db.QueryScalar<int>(
+                "SELECT COUNT(*) FROM messages WHERE session_id = @sid AND role = 'user'",
+                new SqliteParameter("@sid", sessionId));
+
             // Step 1: Find the created_at of the N most recent user messages before beforeCreatedAt
             List<long> userTimestamps;
             if (beforeCreatedAt.HasValue)
@@ -93,7 +99,7 @@ public static partial class DbMessageTools
             if (userTimestamps.Count == 0)
             {
                 return WorkerResponse.Json(
-                    new MessageListByTurnsResult(true, new List<MessageRow>(), 0, false, null),
+                    new MessageListByTurnsResult(true, new List<MessageRow>(), 0, false, null, totalTurns),
                     InfrastructureJsonContext.Default.MessageListByTurnsResult);
             }
 
@@ -122,7 +128,7 @@ public static partial class DbMessageTools
 
             var rows = messages.Select(MessageRow.FromEntity).ToList();
             return WorkerResponse.Json(
-                new MessageListByTurnsResult(true, rows, rangeStart, hasMore, null),
+                new MessageListByTurnsResult(true, rows, rangeStart, hasMore, null, totalTurns),
                 InfrastructureJsonContext.Default.MessageListByTurnsResult);
         }
         catch (Exception ex)

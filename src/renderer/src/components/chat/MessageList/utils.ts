@@ -217,7 +217,6 @@ export const USER_LOCATOR_HIGHLIGHT_MS = 1400
 export const ASSISTANT_RAIL_PREVIEW_LIMIT = 120
 export const ASSISTANT_RAIL_SCROLL_OFFSET = 28
 export const ASSISTANT_RAIL_DENSE_THRESHOLD = 80
-export const OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD = 72
 export const MIN_RENDERABLE_HISTORY_ROWS = 3
 export const VIRTUAL_ROW_ESTIMATED_HEIGHT = 180
 export const VIRTUAL_ROW_OVERSCAN = 8
@@ -247,6 +246,7 @@ export interface MessageListSessionSelection {
   messageCount: number
   workingFolder?: string
   loadedRangeStart: number
+  totalTurns: number
   projectId?: string
 }
 
@@ -263,6 +263,7 @@ export const EMPTY_MESSAGE_LIST_SESSION_SELECTION: MessageListSessionSelection =
   messagesLoaded: false,
   messageCount: 0,
   loadedRangeStart: 0,
+  totalTurns: 0,
   projectId: undefined,
   workingFolder: undefined
 }
@@ -523,6 +524,7 @@ export function selectMessageListSession(
     messageCount: session.messageCount ?? 0,
     workingFolder: session.workingFolder,
     loadedRangeStart: session.loadedRangeStart ?? 0,
+    totalTurns: session.totalTurns ?? 0,
     projectId: session.projectId
   }
 }

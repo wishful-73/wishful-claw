@@ -56,4 +56,4 @@ public sealed record MessageCountResult(bool Success, int Count, string? Error);
 public sealed record MessageDeleteLastResult(bool Success, MessageRow? Message, string? Error);
 public sealed record MessageCompactResult(bool Success, int TotalMessages, int Compacted, string? Error);
 public sealed record MessageUsageStatsResult(bool Success, bool HasUsage, double TotalInput, double TotalOutput, double TotalCacheCreation, double TotalCacheRead, double TotalReasoning, double TotalDurationMs, int RequestCount, int AssistantReplies, long? FirstCreatedAt, long? LastCreatedAt, string? Error);
-public sealed record MessageListByTurnsResult(bool Success, List<MessageRow> Messages, long RangeStart, bool HasMore, string? Error);
+public sealed record MessageListByTurnsResult(bool Success, List<MessageRow> Messages, long RangeStart, bool HasMore, string? Error, int TotalTurns = 0);

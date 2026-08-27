@@ -40,6 +40,8 @@ export interface MessageListDataOutput {
   messageCount: number
   workingFolder: string | null
   loadedRangeStart: number
+  totalTurns: number
+  loadedTurns: number
   projectId: string | null
   transcriptAnalysis: ReturnType<typeof buildTranscriptStaticAnalysis>
   renderableMessages: ChatRenderableMessageMeta[]
@@ -108,8 +110,15 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     messageCount: activeSessionMessageCount,
     workingFolder: activeWorkingFolder,
     loadedRangeStart,
+    totalTurns,
     projectId: activeProjectId
   } = sessionSelection
+
+  // Loaded turns = user messages currently in memory (one turn per user message).
+  const loadedTurns = React.useMemo(
+    () => messages.reduce((count, message) => (message.role === 'user' ? count + 1 : count), 0),
+    [messages]
+  )
 
   const activeProjectName = useChatStore((s) => {
     if (!activeProjectId) return null
@@ -434,6 +443,8 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     messageCount: activeSessionMessageCount,
     workingFolder: activeWorkingFolder ?? null,
     loadedRangeStart,
+    totalTurns,
+    loadedTurns,
     projectId: activeProjectId ?? null,
     transcriptAnalysis,
     renderableMessages,

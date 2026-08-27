@@ -29,7 +29,10 @@ interface VirtualListContentProps {
   hasLoadOlderRow: boolean
   loadOlderMessages: (preserveResidentHistory?: boolean) => Promise<number>
   isLoadingOlderMessages: boolean
-  loadedRangeStart: number
+  totalTurns: number
+  loadedTurns: number
+  loadedMessageCount: number
+  totalMessageCount: number
   rows: MessageListRow[]
   lastMessageRowIndex: number
   messageLookup: Map<string, UnifiedMessage>
@@ -68,7 +71,10 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     hasLoadOlderRow,
     loadOlderMessages,
     isLoadingOlderMessages,
-    loadedRangeStart,
+    totalTurns,
+    loadedTurns,
+    loadedMessageCount,
+    totalMessageCount,
     rows,
     lastMessageRowIndex,
     messageLookup,
@@ -125,7 +131,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
               >
                 {isLoadOlderRow ? (
                   <div
-                    className={`${getMessageColumnClass(fullWidth)} flex justify-center pb-3 pt-3 animate-in fade-in-0 duration-200`}
+                    className={`${getMessageColumnClass(fullWidth)} flex flex-col items-center gap-1.5 pb-3 pt-3 animate-in fade-in-0 duration-200`}
                   >
                     <button
                       type="button"
@@ -135,8 +141,16 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                     >
                       {isLoadingOlderMessages
                         ? t('messageList.loadingOlder')
-                        : t('messageList.loadOlder', { count: loadedRangeStart })}
+                        : t('messageList.loadOlder')}
                     </button>
+                    <span className="text-[11px] text-muted-foreground/80">
+                      {t('messageList.loadProgress', {
+                        loadedTurns,
+                        totalTurns,
+                        loadedMessages: loadedMessageCount,
+                        totalMessages: totalMessageCount
+                      })}
+                    </span>
                   </div>
                 ) : (
                   (() => {

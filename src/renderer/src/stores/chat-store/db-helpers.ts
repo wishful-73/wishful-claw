@@ -354,13 +354,14 @@ export async function dbListMessagesByTurns(args: {
   sessionId: string
   turns?: number
   beforeCreatedAt?: number
-}): Promise<{ messages: ChatMessage[]; rangeStart: number; hasMore: boolean }> {
+}): Promise<{ messages: ChatMessage[]; rangeStart: number; hasMore: boolean; totalTurns: number }> {
   await ensureDbInitialized()
   const result = await window.api.workerRequest<{
     success: boolean
     messages: MessageRow[]
     rangeStart: number
     hasMore: boolean
+    totalTurns?: number
     error: string | null
   }>('db/messages-list-by-turns', {
     sessionId: args.sessionId,
@@ -370,7 +371,8 @@ export async function dbListMessagesByTurns(args: {
   return {
     messages: (result.messages ?? []).map(deserializeMessage),
     rangeStart: result.rangeStart ?? 0,
-    hasMore: result.hasMore ?? false
+    hasMore: result.hasMore ?? false,
+    totalTurns: result.totalTurns ?? 0
   }
 }
 

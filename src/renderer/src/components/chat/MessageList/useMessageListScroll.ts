@@ -8,7 +8,6 @@ import {
   getDistanceToBottom,
   AUTO_SCROLL_BOTTOM_THRESHOLD,
   INITIAL_TAIL_RENDER_COUNT,
-  OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD,
   PROGRAMMATIC_SCROLL_GUARD_MS,
   STREAMING_AUTO_SCROLL_BOTTOM_THRESHOLD,
   VIRTUAL_ROW_ESTIMATED_HEIGHT,
@@ -89,7 +88,6 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   const programmaticScrollUntilRef = React.useRef(0)
   const wasSessionOutputtingRef = React.useRef(isSessionOutputting)
   const isLoadingOlderMessagesRef = React.useRef(false)
-  const prevScrollHeightRef = React.useRef(0)
 
   // ── State ───────────────────────────────────────────────────────
   const [isAtBottom, setIsAtBottom] = React.useState(true)
@@ -299,28 +297,11 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
 
   // ── Scroll handler ──────────────────────────────────────────────
   const handleListScroll = React.useCallback(() => {
+    // Older history is loaded only via the explicit top button (click-triggered);
+    // scrolling to the top never fetches anything by itself.
     syncBottomState()
     requestAssistantRailSync()
-    const ref = listRef.current
-    if (!ref) return
-    const currentScrollHeight = ref.scrollHeight
-    const currentScrollTop = ref.scrollTop
-    const prevHeight = prevScrollHeightRef.current
-    const heightChanged = currentScrollHeight !== prevHeight
-    prevScrollHeightRef.current = currentScrollHeight
-    // 渲染/测量过程中不触发加载
-    if (heightChanged) return
-    // 程序滚动期间（scrollToBottom 等）不触发加载
-    const isProg = window.performance.now() < programmaticScrollUntilRef.current
-    if (isProg) return
-    if (
-      !isLoadingOlderMessagesRef.current &&
-      loadedRangeStart > 0 &&
-      currentScrollTop <= OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD
-    ) {
-      void loadOlderMessages()
-    }
-  }, [loadOlderMessages, loadedRangeStart, requestAssistantRailSync, syncBottomState])
+  }, [requestAssistantRailSync, syncBottomState])
 
   // ── Load recent messages on session change ──────────────────────
   React.useEffect(() => {

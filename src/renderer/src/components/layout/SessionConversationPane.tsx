@@ -14,8 +14,6 @@ import { InputArea } from '@renderer/components/chat/InputArea'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatActions, type SendMessageOptions } from '@renderer/hooks/use-chat-actions'
-import { ActivityPanel } from '@renderer/components/activity/ActivityPanel'
-import { useActivityStore } from '@renderer/stores/activity-store'
 import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { BottomTerminalDock } from '@renderer/components/terminal/BottomTerminalDock'
 import { toast } from 'sonner'
@@ -41,7 +39,6 @@ export function SessionConversationPane({
   const isStreaming = useChatStore((s) =>
     resolvedSessionId ? Boolean(s.streamingMessages[resolvedSessionId]) : false
   )
-  const activities = useActivityStore((s) => s.activities)
 
   // Project info for terminal dock
   const project = useChatStore((s) => {
@@ -221,13 +218,6 @@ export function SessionConversationPane({
           </div>
         )}
       </div>
-
-      {/* Right: Activity panel (only show if activities exist) */}
-      {activities.length > 0 && (
-        <div className="w-72 shrink-0 border-l">
-          <ActivityPanel />
-        </div>
-      )}
     </div>
   )
 }

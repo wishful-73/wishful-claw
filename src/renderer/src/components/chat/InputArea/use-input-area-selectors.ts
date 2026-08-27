@@ -207,11 +207,11 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   // ── Auth ────────────────────────────────────────────────────────
   const hasApiKey = useProviderStore((s) =>
     // The banner means "no usable configured provider exists at all" — not
-    // "the currently selected provider lacks a key". Scanning all providers
-    // avoids the stale warning after deleting a freshly-added unkeyed
-    // provider while a fully configured one remains.
-    s.providers.length === 0 ||
-    s.providers.some((p: any) => p.requiresApiKey === false || !!p.apiKey)
+    // "the currently selected provider lacks a key". Scan every enabled
+    // provider so disabled credentials do not suppress the warning.
+    s.providers.some((p: any) =>
+      p.enabled && (p.requiresApiKey === false || !!p.apiKey)
+    )
   )
 
   return {

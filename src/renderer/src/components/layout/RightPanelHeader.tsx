@@ -38,6 +38,7 @@ interface RightPanelHeaderProps {
   browserEnabled: boolean
   onSelectTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
+  onAddActivity: () => void
   onAddBrowser: () => void
   onAddGoals: () => void
   onOpenFile: () => void
@@ -152,6 +153,7 @@ export function RightPanelHeader({
   browserEnabled,
   onSelectTab,
   onCloseTab,
+  onAddActivity,
   onAddBrowser,
   onAddGoals,
   onOpenFile,
@@ -199,6 +201,10 @@ export function RightPanelHeader({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuItem onSelect={onAddActivity}>
+            <Activity className="size-4" />
+            {t('sectionExecution.title', { defaultValue: 'Activity' })}
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={onOpenFile}>
             <FolderOpen className="size-4" />
             {t('rightPanel.openFile', { defaultValue: 'Open file' })}

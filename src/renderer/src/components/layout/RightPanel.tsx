@@ -30,6 +30,7 @@ export function RightPanel(): React.JSX.Element {
   const setRightPanelWidth = useUIStore((state) => state.setRightPanelWidth)
   const setRightPanelActiveTab = useUIStore((state) => state.setRightPanelActiveTab)
   const closeRightPanelTab = useUIStore((state) => state.closeRightPanelTab)
+  const ensureActivityTab = useUIStore((state) => state.ensureActivityTab)
   const ensureBrowserTab = useUIStore((state) => state.ensureBrowserTab)
   const activeScopedSessionId = useUIStore((state) => state.activeScopedSessionId)
 
@@ -198,6 +199,7 @@ export function RightPanel(): React.JSX.Element {
               browserEnabled={browserPluginEnabled}
               onSelectTab={setRightPanelActiveTab}
               onCloseTab={closeRightPanelTab}
+              onAddActivity={ensureActivityTab}
               onAddBrowser={() => ensureBrowserTab(undefined, panelSessionId)}
               onAddGoals={() => useUIStore.getState().openGoalPanel(panelSessionId, activeProjectId)}
               onOpenFile={() => {

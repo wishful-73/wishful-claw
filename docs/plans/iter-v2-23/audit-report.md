@@ -5,6 +5,32 @@
 - 覆盖范围：渲染进程全部组件与 43 个 store、主进程 36 个 IPC handler 与外围模块、channels 11 文件、Worker 7 层 C#、i18n 双语、打包链路
 - 本报告只查不改；修复清单由用户确认后另起步骤实施
 
+---
+
+## 修复状态汇总（2026-08-27 更新）
+
+用户决策：**高中危全修 + 低危静默失败类择修**；技能市场保留"内置浏览器 + 安装小助手"路线、平台登录死代码移除。八批修复已全部完成并本地提交（未 push）：
+
+| 批次 | Commit | 覆盖范围 |
+|------|--------|----------|
+| 1 | `1f23f11` | H1/H2/M2–M9/M21，附带 L1 `fs:watch-file` 伪成功、L2 `cancelKeys` 泄漏 |
+| 2 | `f3fd9d2` | H3/H4/M30–M32 |
+| 3 | `7ecacff` | H5/M33–M36 |
+| 4 | `282b007` | M10–M20 |
+| 5 | `68f16f2` | M22–M29 |
+| 6 | `5faa16b` | H6 + H7（移除平台登录死代码，保留 token 刷新活路径） |
+| 7 | `b6546f8` | H8（技能市场死代码通道清理，保留 `list_installed_skills` 与浏览器入口） |
+| 8 | `c0adb01` | L1–L4/L7–L11 低危静默失败类 |
+
+每批验证门槛：TS 三配置（web/node/根）零错误；涉及 C# 的批次另过 `dotnet build` 0 警告 0 错误。
+
+### 未修与遗留（有意保留）
+
+- **M37** SSH 明文密码回传渲染端——存疑区 #2，待用户确认是否编辑场景有意设计，未列入批次
+- **L5/L6** i18n 键缺失（`settings:channel.*` 76 英文键、代码用而文件缺 155 键）——非静默失败类，留待专门 i18n 补齐任务
+- **L12**（其余 C# 低危项）/**L13**（AOT 裸 `JsonSerializerOptions` 7 处，功能无害）/**L14**（死代码清理）/**L15**（打包字段）/**L16**（hydration 注销函数）——择修范围外，视需要另起批次
+- 存疑区其余条目（#3–#9）维持待实测/待用户确认状态
+
 ## 核实口径说明
 
 子代理结论已全部经过本人代码级复核，其中两条被纠正降级：
@@ -56,11 +82,13 @@
 - 位置：调用方 `src/renderer/src/lib/auth/channel.ts:49,83,108`、`oauth.ts:134`、`copilot.ts:184`、`kimi.ts:139`；src/main 全库 0 注册
 - 影响：若 vcode/oauth/copilot/kimi 登录入口在 UI 可达，点击必然失败
 - 修复建议：确认这些登录流程是否为正式版功能——是则补 handler，否则移除/隐藏入口（需用户决策，标"需实测确认入口可达性"）
+- **处置（批6 `5faa16b`）**：用户决策移除——删除 `channel.ts`/`kimi.ts` 与全部零调用登录入口（`startOAuthFlow`/`startProviderOAuth`/通道码登录/账号导入导出），清理 `api:request`/`oauth:*` 白名单与 `OAUTH_*` 常量；保留 `ensureProviderAuthReady→refreshOAuthFlow` 活路径（translate/pet 在用）
 
 ### H8 技能市场通道无 handler，功能整体不可用
 - 位置：调用方 `skills-store.ts:284,334`、`skill-management-tool.ts:113,197`；`skills:market-list`/`skills:download-remote` 主进程 0 注册
 - 影响：技能市场列表永远空白（且 `skills-store` 的 catch 静默吞掉失败），Agent 的技能管理工具对应分支必失败
 - 修复建议：补 handler 或在正式版隐藏市场入口（需用户决策）
+- **处置（批7 `b6546f8`）**：用户确认产品路线为"内置浏览器固定访问技能市场 + 复制安装语句由技能安装小助手执行"（路线通畅），死通道不再补全——删除市场死 actions、`search_skill_market`/`install_skill` 工具（含 Worker 占位定义）、`skills:market-list`/`download-remote`/`cleanup-temp` 通道与废弃设置项；保留 `list_installed_skills`
 
 ---
 

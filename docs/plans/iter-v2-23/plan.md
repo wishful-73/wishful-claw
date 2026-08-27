@@ -143,6 +143,7 @@
 - [x] 步骤 34：上线前全量排查（Plan 23-9，用户要求）。
   - 方式：5 组并行子代理初审（IPC 形状/静默失败、主进程全层、渲染端全层、Worker C#/AOT、i18n/打包）+ 逐项代码级核实 + 镜像同步/竞态/持久化三项自查；只查不改。
   - 产出：`docs/plans/iter-v2-23/audit-report.md`——高危 8（退出清理缺失、socket error 监听、超时无限重试、摘要 OCE 逃逸、persona 路径遍历、Bash 产物卡裸字符串、登录/技能市场通道缺失待决策）、中危 36、低危 16 组、存疑 9；Hooks/泄漏/变异/AOT/打包/模块注册六大机械检查全部通过。修复清单待用户确认后另起步骤实施。
+  - 修复实施（用户决策：高中危全修 + 低危静默失败类择修）：八批全部完成并本地提交——批1 `1f23f11`（H1/H2/M2–M9/M21）、批2 `f3fd9d2`（H3/H4/M30–M32）、批3 `7ecacff`（H5/M33–M36）、批4 `282b007`（M10–M20）、批5 `68f16f2`（M22–M29）、批6 `5faa16b`（H6+H7 移除平台登录死代码）、批7 `b6546f8`（H8 技能市场死通道清理，产品路线保留内置浏览器+安装小助手）、批8 `c0adb01`（L1–L4/L7–L11）；每批过 TS 三配置（涉 C# 批次另过 dotnet build 0 警告）。遗留：M37 待用户确认、L5/L6 i18n 与 L12–L16 择修范围外，详见报告修复状态汇总。
 - 已实现：① `WorkspaceSidebar` 全局对话分区头部加 `MessageSquare` 图标（对齐 OpenCowork `SessionListPanel` 头部；会话计数后按用户反馈移除），zh `sidebar.conversations` 由“会话”改“对话”（en 保持 Conversations，键仅单处引用）；② 扩展入口图标 `FolderOpen` → `Plug`（对齐 OpenCowork 扩展触发器）；③ 自动化项图标 `CalendarDays` → `Clock3`（对齐 OpenCowork automation nav item）；项目排序下拉的 `CalendarDays` 语义不变保留。导航/点击链路未动。后续补齐：“对话”分区改为与项目行同款可收起/展开——点击分区行切换全局会话列表显示（默认展开，展开时子列表 `ml-3 pl-2` 缩进与项目子列表一致，chevron 旋转指示，保留“加载更多”逻辑）。后续补齐（用户反馈“对话图标也要色彩”）：“对话”分区行 `MessageSquare` 图标加 `text-sky-500 dark:text-sky-400`，与项目行目录图标同色同向。TS 三配置 0 错误。
 
 > 每步骤一个本地 commit，不 push；纯前端步骤验证以 TS 三配置为准。

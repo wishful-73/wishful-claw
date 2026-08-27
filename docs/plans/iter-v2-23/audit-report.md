@@ -9,7 +9,7 @@
 
 ## 修复状态汇总（2026-08-27 更新）
 
-用户决策：**高中危全修 + 低危静默失败类择修**；技能市场保留"内置浏览器 + 安装小助手"路线、平台登录死代码移除。八批修复已全部完成并本地提交（未 push）：
+用户决策：**高中危全修 + 低危静默失败类择修**；技能市场保留"内置浏览器 + 安装小助手"路线、平台登录死代码移除。随后用户追加指示处理剩余项（L12–L16、L5/L6）。十批修复已全部完成并本地提交（未 push）：
 
 | 批次 | Commit | 覆盖范围 |
 |------|--------|----------|
@@ -21,14 +21,16 @@
 | 6 | `5faa16b` | H6 + H7（移除平台登录死代码，保留 token 刷新活路径） |
 | 7 | `b6546f8` | H8（技能市场死代码通道清理，保留 `list_installed_skills` 与浏览器入口） |
 | 8 | `c0adb01` | L1–L4/L7–L11 低危静默失败类 |
+| 9 | `dcd317d` | L12–L16（C# 低危 8 项、AOT 裸 `JsonSerializerOptions` 7 处、死代码清理、打包字段、hydration 注销函数） |
+| 10 | `5c8e252` | L5/L6 i18n 键缺失补齐（180 键双语 + 新建 `agent`/`ssh` ns + `fallbackNS: 'common'` + 7 处组件 ns 错配修正） |
 
 每批验证门槛：TS 三配置（web/node/根）零错误；涉及 C# 的批次另过 `dotnet build` 0 警告 0 错误。
 
 ### 未修与遗留（有意保留）
 
 - **M37** SSH 明文密码回传渲染端——存疑区 #2，待用户确认是否编辑场景有意设计，未列入批次
-- **L5/L6** i18n 键缺失（`settings:channel.*` 76 英文键、代码用而文件缺 155 键）——非静默失败类，留待专门 i18n 补齐任务
-- **L12**（其余 C# 低危项）/**L13**（AOT 裸 `JsonSerializerOptions` 7 处，功能无害）/**L14**（死代码清理）/**L15**（打包字段）/**L16**（hydration 注销函数）——择修范围外，视需要另起批次
+- ~~**L5/L6** i18n 键缺失~~ —— **已修（批10 `5c8e252`）**：180 键双语补齐（含 `settings:channel.*` 整块英译）、新建 `agent`/`ssh` 两个命名空间、`fallbackNS: 'common'` 兜底、7 处组件 ns 错配代码修正；静态校验脚本 MISSING zh/en 归零，TS 三配置 0 错误
+- ~~**L12**（其余 C# 低危项）/**L13**（AOT 裸 `JsonSerializerOptions` 7 处）/**L14**（死代码清理）/**L15**（打包字段）/**L16**（hydration 注销函数）~~ —— **已修（批9 `dcd317d`）**：L12 八项全修、L13 七处全部改走 `WorkerJsonHelper` 共享 options、L14 删除 `sidecar-handlers.ts` 全文件与 `installAgentRuntimeSyncListener` 及两个未用字段、L15 补 `author` 字段并删除 `publish-aot.bat`、L16 捕获注销函数；dotnet build 0 警告 0 错误 + TS 三配置 0 错误
 - 存疑区其余条目（#3–#9）维持待实测/待用户确认状态
 
 ## 核实口径说明
@@ -153,18 +155,18 @@
 - L2 `native-worker.ts`：请求正常完成不从 `cancelKeys` 删除（缓慢内存泄漏）；`video-handlers.ts:35` jobs Map 永不清理
 - L3 `ipc/git-cache.ts:264-273`：失败结果也写入 TTL 缓存（错误响应缓存 1.5–5 秒）
 - L4 `cron-reverse-handler.ts:64-67/295-299`：退出时 timers 无人清理；主窗口不可用时一次性任务触发静默丢失
-- L5 `settings:channel.*` 76 键英文侧整体缺失（英文用户渠道设置页全回退中文）；`chat:goal.pendingTitle` zh 缺失
-- L6 i18n 代码用而文件缺 155 键：整个 `agent` ns 无文件（压缩组件全靠 defaultValue）；`ssh:connectionFailed` 无 defaultValue 直接显示键名；`common` ns 43 键实际写在 `chat` 里（ns 不匹配）；`chat` 31 键、`settings` 33 键、`layout` 12 键、动态 ns 20 键
+- L5 `settings:channel.*` 76 键英文侧整体缺失（英文用户渠道设置页全回退中文）；`chat:goal.pendingTitle` zh 缺失 —— **处置（批10 `5c8e252`）**：channel 块从 zh 整块英译补入 en，`goal.pendingTitle` 补齐
+- L6 i18n 代码用而文件缺 155 键：整个 `agent` ns 无文件（压缩组件全靠 defaultValue）；`ssh:connectionFailed` 无 defaultValue 直接显示键名；`common` ns 43 键实际写在 `chat` 里（ns 不匹配）；`chat` 31 键、`settings` 33 键、`layout` 12 键、动态 ns 20 键 —— **处置（批10 `5c8e252`）**：逐键核实归属（排除继承 `t`/`ns:` 选项/复数后缀等误判）后补齐 180 键；新建 `agent.json`/`ssh.json`；`fallbackNS: 'common'`；修正 7 处组件 ns 错配
 - L7 `git-page-handlers.ts:173`：`handleCommit` 无 try/finally，reject 时按钮永久 loading
 - L8 `BottomTerminalDock.tsx:99-111`：自动建终端失败静默且当轮不重试，依赖数组省略导致陈旧闭包窗口
 - L9 `mcp-store.ts:208`：`removeServer` 未捕获（同文件其他方法均有）
 - L10 `use-file-watcher.ts:131`：监视注册失败空 catch，预览自动刷新静默失效
 - L11 `BrowserPanel.tsx:309`：裸 `invoke` 无 await/无 catch（unhandled rejection）
-- L12 C# 低危：`OpenAIChatProvider.cs:311` SSE 行 `JsonDocument.Parse` 无 try；`RunState.Cancel` 忽略 reason；`DbService.cs:152` Rollback 抛异常掩盖原始异常；`LocalIpcWorkerServer.cs:285` 关闭时任务枚举竞态；`PersonaGenerator` 无 CancellationToken（取消后挂到 2 分钟超时）；`PersonaStore.SavePersona` 4 文件顺序写非原子；`MemoryModule.cs:209` 死分支；`MemoryFtsService.cs:44` catch 吞全部异常
-- L13 AOT 规范偏离（功能无害）：7 处裸 `new JsonSerializerOptions()`（QqSessionStore/ProviderStore/ConfigStore/ChannelConfigStore/SkillCatalog + 2 处死代码声明）
-- L14 死代码清理项：`sidecar-handlers.ts` 全文件（已核实非故障）、`agent-runtime-sync.ts installAgentRuntimeSyncListener`、`ExtensionManifestStore.cs:32`/`ProviderTestService.cs:19` 未使用字段
-- L15 打包：`package.json` 缺 `author` 字段（builder 告警）；`publish-aot.bat` 硬编码本机路径且未被任何 script 引用
-- L16 `App.tsx:56`：`persist.onFinishHydration` 注销函数未捕获（实际无害）
+- L12 C# 低危：`OpenAIChatProvider.cs:311` SSE 行 `JsonDocument.Parse` 无 try；`RunState.Cancel` 忽略 reason；`DbService.cs:152` Rollback 抛异常掩盖原始异常；`LocalIpcWorkerServer.cs:285` 关闭时任务枚举竞态；`PersonaGenerator` 无 CancellationToken（取消后挂到 2 分钟超时）；`PersonaStore.SavePersona` 4 文件顺序写非原子；`MemoryModule.cs:209` 死分支；`MemoryFtsService.cs:44` catch 吞全部异常 —— **处置（批9 `dcd317d`）**：八项全修
+- L13 AOT 规范偏离（功能无害）：7 处裸 `new JsonSerializerOptions()`（QqSessionStore/ProviderStore/ConfigStore/ChannelConfigStore/SkillCatalog + 2 处死代码声明）—— **处置（批9 `dcd317d`）**：全部改走 `WorkerJsonHelper.ConfigureAotResolver` 共享 options
+- L14 死代码清理项：`sidecar-handlers.ts` 全文件（已核实非故障）、`agent-runtime-sync.ts installAgentRuntimeSyncListener`、`ExtensionManifestStore.cs:32`/`ProviderTestService.cs:19` 未使用字段 —— **处置（批9 `dcd317d`）**：全部删除（含注册点）
+- L15 打包：`package.json` 缺 `author` 字段（builder 告警）；`publish-aot.bat` 硬编码本机路径且未被任何 script 引用 —— **处置（批9 `dcd317d`）**：补 `author`、删除 bat
+- L16 `App.tsx:56`：`persist.onFinishHydration` 注销函数未捕获（实际无害）—— **处置（批9 `dcd317d`）**：捕获并在卸载时调用
 
 ---
 

@@ -60,6 +60,9 @@ function buildStdioEnv(
  * auto-fallback from Streamable HTTP → SSE, and capability caching.
  */
 export class McpClientWrapper {
+  /** A transport that never completes its handshake must not hang connect(). */
+  private static readonly CONNECT_TIMEOUT_MS = 30_000
+
   private client: Client | null = null
   private transport:
     | InstanceType<typeof StdioClientTransport>
@@ -140,7 +143,33 @@ export class McpClientWrapper {
     this.client = new Client({ name: 'wishful-claw', version: '1.0.0' }, { capabilities: {} })
 
     this.transport = this.createTransport(transportType)
-    await this.client.connect(this.transport)
+
+    // Cap the handshake: an unresponsive stdio child or dead HTTP endpoint
+    // would otherwise leave connect() pending forever.
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`MCP connect timed out after ${McpClientWrapper.CONNECT_TIMEOUT_MS}ms`))
+      }, McpClientWrapper.CONNECT_TIMEOUT_MS)
+      this.client!.connect(this.transport!)
+        .then(() => {
+          clearTimeout(timer)
+          resolve()
+        })
+        .catch((err) => {
+          clearTimeout(timer)
+          reject(err)
+        })
+    })
+
+    // Surface server-side disconnects — without this the wrapper keeps
+    // reporting 'connected' after the process/endpoint dies.
+    this.transport.onclose = () => {
+      if (this._status === 'connected') {
+        this._status = 'disconnected'
+        this._error = 'MCP server connection closed'
+        console.warn(`[MCP:${this.config.name}] Transport closed unexpectedly`)
+      }
+    }
 
     this._status = 'connected'
     this._error = undefined

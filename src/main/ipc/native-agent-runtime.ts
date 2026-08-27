@@ -1,4 +1,4 @@
-import { Notification } from 'electron'
+import { Notification, ipcMain, type BrowserWindow } from 'electron'
 import { getNativeWorker } from '../lib/native-worker'
 import { safeSendMessagePackToWindow } from '../window-ipc'
 import {
@@ -7,7 +7,6 @@ import {
   decodeMessagePackPayload,
   toMessagePackChannel
 } from '../../shared/messagepack/binary-ipc'
-import { ipcMain } from 'electron'
 import {
   captureDesktopScreenshot,
   desktopInputClick,
@@ -23,7 +22,12 @@ import { getMainWindow } from '../main-window-registry'
 
 const SIDECAR_RENDERER_REQUEST_TIMEOUT_MS = 30_000
 
-// Methods that wait for explicit user interaction — no timeout.
+// User-interaction methods genuinely wait for a human, but "no timeout" must
+// not mean "forever": if the renderer crashes or the user walks away, the
+// worker would otherwise hang on the reverse request indefinitely.
+const USER_INTERACTION_TIMEOUT_MS = 30 * 60 * 1000
+
+// Methods that wait for explicit user interaction — generous timeout.
 const USER_INTERACTION_METHODS = new Set([
   'ask-user/request',
   'plan/review-request',
@@ -41,9 +45,23 @@ type PendingRendererToolRequest = {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
   timer?: ReturnType<typeof setTimeout>
+  window?: BrowserWindow
+  onWindowClosed?: () => void
 }
 
 const pendingRendererToolRequests = new Map<string, PendingRendererToolRequest>()
+
+/** Remove a pending request and release its timer + window listener. */
+function removePendingRendererToolRequest(requestId: string): PendingRendererToolRequest | undefined {
+  const pending = pendingRendererToolRequests.get(requestId)
+  if (!pending) return undefined
+  pendingRendererToolRequests.delete(requestId)
+  if (pending.timer) clearTimeout(pending.timer)
+  if (pending.window && pending.onWindowClosed) {
+    pending.window.removeListener('closed', pending.onWindowClosed)
+  }
+  return pending
+}
 
 /**
  * Routes reverse-request events from the native worker to the renderer.
@@ -63,11 +81,9 @@ export function registerNativeAgentRuntimeHandlers(): void {
     const request = params as RendererToolRequest
     const id = request?.id
     if (typeof id !== 'number' && typeof id !== 'string') return
-    const pending = pendingRendererToolRequests.get(String(id))
+    const pending = removePendingRendererToolRequest(String(id))
     if (pending) {
-      clearTimeout(pending.timer)
       pending.reject(new Error('Reverse request cancelled by worker'))
-      pendingRendererToolRequests.delete(String(id))
     }
   })
 
@@ -183,15 +199,33 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
 
     try {
       const result = await new Promise<unknown>((resolve, reject) => {
-        const noTimeout = USER_INTERACTION_METHODS.has(method)
-        const timer = noTimeout
-          ? undefined
-          : setTimeout(() => {
-              pendingRendererToolRequests.delete(requestId)
-              reject(new Error(`Renderer tool request timed out: ${method}`))
-            }, SIDECAR_RENDERER_REQUEST_TIMEOUT_MS)
+        // Every request gets a timeout; user-interaction methods just get a
+        // much longer one so a crashed renderer can't leak the entry forever.
+        const timeoutMs = USER_INTERACTION_METHODS.has(method)
+          ? USER_INTERACTION_TIMEOUT_MS
+          : SIDECAR_RENDERER_REQUEST_TIMEOUT_MS
+        const timer = setTimeout(() => {
+          removePendingRendererToolRequest(requestId)
+          reject(new Error(`Renderer tool request timed out: ${method}`))
+        }, timeoutMs)
 
-        pendingRendererToolRequests.set(requestId, { resolve, reject, timer })
+        // If the target window goes away before answering (renderer crash,
+        // user closed it), fail fast instead of waiting for the timeout.
+        const onWindowClosed = (): void => {
+          const pending = removePendingRendererToolRequest(requestId)
+          if (pending) {
+            pending.reject(new Error(`Renderer window closed before responding: ${method}`))
+          }
+        }
+        targetWindow.once('closed', onWindowClosed)
+
+        pendingRendererToolRequests.set(requestId, {
+          resolve,
+          reject,
+          timer,
+          window: targetWindow,
+          onWindowClosed
+        })
 
         const sent = safeSendMessagePackToWindow(
           targetWindow,
@@ -204,8 +238,7 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
         )
 
         if (!sent) {
-          if (timer) clearTimeout(timer)
-          pendingRendererToolRequests.delete(requestId)
+          removePendingRendererToolRequest(requestId)
           reject(new Error(`Failed to deliver renderer tool request: ${method}`))
         }
       })
@@ -228,11 +261,8 @@ function completeRendererToolResponse(payload: {
   result?: unknown
   error?: string
 }): { ok: boolean } {
-  const pending = pendingRendererToolRequests.get(payload.requestId)
+  const pending = removePendingRendererToolRequest(payload.requestId)
   if (!pending) return { ok: false }
-
-  clearTimeout(pending.timer)
-  pendingRendererToolRequests.delete(payload.requestId)
 
   if (payload.error) {
     pending.reject(new Error(payload.error))

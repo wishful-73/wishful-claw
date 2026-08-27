@@ -317,15 +317,27 @@ function registerClipboardIpc(): void {
  *  moved to whatever the user clicked, so leave it alone. */
 function hideClipboardWindow(restoreFocus = true): void {
   if (!clipboardWindow || !clipboardWindow.isVisible()) return
+  const win = clipboardWindow
   const targetWindow = previousForegroundWindow
   const targetFocus = previousFocusWindow
   const clearMenu = openedWithAlt
   previousForegroundWindow = null
   previousFocusWindow = null
+  let focusSent = false
   if (restoreFocus && targetWindow) {
-    pasteToForegroundWindow(targetWindow, targetFocus, false, clearMenu)
+    focusSent = pasteToForegroundWindow(targetWindow, targetFocus, false, clearMenu)
   }
-  clipboardWindow.hide()
+  if (focusSent) {
+    // The focus restore is an asynchronous bridge message — hiding in the
+    // same tick races it (the bridge may re-activate us after hide, or the
+    // OS window switch triggered by hide may beat the activation). Give the
+    // message a beat to land before hiding.
+    setTimeout(() => {
+      if (!win.isDestroyed() && win.isVisible()) win.hide()
+    }, 150)
+  } else {
+    win.hide()
+  }
 }
 
 export function createClipboardWindow(foregroundWindow: string | null = null, focusWindow: string | null = null): void {
@@ -384,10 +396,21 @@ export function createClipboardWindow(foregroundWindow: string | null = null, fo
   previousFocusWindow = focusWindow
   clipboardWindow.show()
   clipboardWindow.focus()
-  setTimeout(() => {
+  // Push initial data once the renderer actually loaded — a fixed 200ms
+  // timer loses the first paint on slow loads. The fallback covers pages
+  // whose load events never fire.
+  let initialPushDone = false
+  const pushInitialData = (): void => {
+    if (initialPushDone) return
+    initialPushDone = true
     pushThemeRefresh()
     pushHistoryUpdate()
-  }, 200)
+  }
+  clipboardWindow.webContents.once('did-finish-load', () => {
+    // Small settle delay so the renderer's IPC listeners are attached.
+    setTimeout(pushInitialData, 100)
+  })
+  setTimeout(pushInitialData, 2000)
 }
 
 // ── Init ──

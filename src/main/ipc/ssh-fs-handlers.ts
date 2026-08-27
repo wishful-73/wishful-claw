@@ -54,7 +54,11 @@ export function registerSshFsHandlers(): void {
           })
         })
       } catch (err) {
-        return { error: String(err) } as unknown as { name: string; type: 'file' | 'directory'; path: string }[]
+        // Return an empty list, never an { error } object: the declared type
+        // is an array and the renderer iterates it directly (a non-array
+        // crashes the file tree). Matches local fs:list-dir behavior.
+        console.warn(`[SSH-FS] list-dir failed for ${args.path}:`, String(err))
+        return []
       }
     }
   )

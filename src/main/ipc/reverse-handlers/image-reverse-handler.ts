@@ -23,6 +23,10 @@ interface ImageGenerateResult {
   error?: string
 }
 
+// Image generation is slow, but a hung network must not block the reverse
+// request (and its tool slot) forever.
+const IMAGE_REQUEST_TIMEOUT_MS = 120_000
+
 export async function handleImageGenerate(
   params: Record<string, unknown>
 ): Promise<ImageGenerateResult> {
@@ -54,6 +58,9 @@ export async function handleImageGenerate(
   const baseUrl = ((openaiProvider.baseUrl as string) || 'https://api.openai.com/v1').replace(/\/$/, '')
   const url = `${baseUrl}/images/generations`
 
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), IMAGE_REQUEST_TIMEOUT_MS)
+
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -68,7 +75,8 @@ export async function handleImageGenerate(
         quality,
         style,
         n
-      })
+      }),
+      signal: controller.signal
     })
 
     if (!response.ok) {
@@ -89,7 +97,15 @@ export async function handleImageGenerate(
       })) ?? []
     }
   } catch (err) {
+    if (controller.signal.aborted) {
+      return {
+        success: false,
+        error: `Image generation timed out after ${IMAGE_REQUEST_TIMEOUT_MS / 1000}s`
+      }
+    }
     const msg = err instanceof Error ? err.message : String(err)
     return { success: false, error: `Image generation request failed: ${msg}` }
+  } finally {
+    clearTimeout(timer)
   }
 }

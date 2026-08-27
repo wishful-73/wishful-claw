@@ -27,9 +27,17 @@ let bridge: ChildProcessWithoutNullStreams | null = null
 let stdoutBuffer = ''
 let appQuitting = false
 let bridgeScriptPath: string | null = null
+// Restart budget: a permanently crashing bridge must not loop forever.
+const MAX_BRIDGE_RESTART_ATTEMPTS = 5
+let bridgeRestartAttempts = 0
+let bridgeRestartTimer: NodeJS.Timeout | null = null
 
 app.on('will-quit', () => {
   appQuitting = true
+  if (bridgeRestartTimer) {
+    clearTimeout(bridgeRestartTimer)
+    bridgeRestartTimer = null
+  }
   cleanupBridgeScript()
 })
 
@@ -610,6 +618,10 @@ function handleBridgeOutput(chunk: Buffer): void {
       try {
         const message = JSON.parse(line) as BridgeMessage
         if (message.type === 'ready') {
+          // The bridge is healthy again — drop restart accounting and any
+          // degraded globalShortcut fallbacks so hotkeys don't fire twice.
+          bridgeRestartAttempts = 0
+          unregisterAllFallbacks()
           syncBridge()
         } else if (message.type === 'pressed' && message.id) {
           registrations.get(message.id)?.callback({
@@ -656,6 +668,11 @@ function ensureWindowsBridge(): boolean {
       windowsHide: true
     })
     bridge = child
+    // Writing to a dead bridge's stdin raises an 'error' event; without a
+    // listener that throws uncaught in the main process.
+    child.stdin.on('error', (error) => {
+      logWarn('main', `Priority shortcut bridge stdin error: ${error.message}`)
+    })
     child.stdout.on('data', handleBridgeOutput)
     child.stderr.on('data', (chunk: Buffer) => {
       const message = chunk.toString('utf8').trim()
@@ -668,18 +685,47 @@ function ensureWindowsBridge(): boolean {
     child.on('exit', (code) => {
       if (bridge === child) bridge = null
       stdoutBuffer = ''
-      if (registrations.size > 0 && !appQuitting) {
-        logWarn('main', `Priority shortcut bridge exited: code=${String(code)}`)
-        setTimeout(() => {
-          ensureWindowsBridge()
-        }, 1000)
+      if (bridgeRestartTimer || registrations.size === 0 || appQuitting) return
+      if (bridgeRestartAttempts >= MAX_BRIDGE_RESTART_ATTEMPTS) {
+        // Budget exhausted — stop restarting and degrade to globalShortcut
+        // so the hotkeys keep working (a crashing bridge would otherwise
+        // silently disable them forever).
+        logWarn(
+          'main',
+          `Priority shortcut bridge exited: code=${String(code)}; restart budget exhausted, falling back to globalShortcut`
+        )
+        registerAllFallbacks()
+        return
       }
+      bridgeRestartAttempts += 1
+      const delay = Math.min(1000 * 2 ** (bridgeRestartAttempts - 1), 30_000)
+      logWarn(
+        'main',
+        `Priority shortcut bridge exited: code=${String(code)}; restart #${bridgeRestartAttempts} in ${delay}ms`
+      )
+      bridgeRestartTimer = setTimeout(() => {
+        bridgeRestartTimer = null
+        if (!appQuitting) ensureWindowsBridge()
+      }, delay)
     })
     return true
   } catch (error) {
     bridge = null
     logWarn('main', `Priority shortcut bridge could not start: ${String(error)}`)
     return false
+  }
+}
+
+function registerAllFallbacks(): void {
+  for (const [id, registration] of registrations) {
+    registerFallback(id, registration)
+  }
+}
+
+function unregisterAllFallbacks(): void {
+  for (const [id, accelerator] of fallbackAccelerators) {
+    globalShortcut.unregister(accelerator)
+    fallbackAccelerators.delete(id)
   }
 }
 

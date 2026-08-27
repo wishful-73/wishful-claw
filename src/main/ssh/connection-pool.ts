@@ -122,7 +122,9 @@ async function doConnect(handle: ConnectionHandle): Promise<void> {
       if (err) {
         handle.state = 'failed'
         handle.lastError = err.message
-        handle.reconnectAttempts = 0
+        // Do NOT reset reconnectAttempts here: consecutive failures must
+        // accumulate so MAX_RECONNECT_ATTEMPTS actually stops the loop.
+        // Only a successful connect (below) resets the counter.
         scheduleReconnect(handle)
         resolve()
       } else {

@@ -62,6 +62,22 @@ async function requestNativeWeb<T>(
   }
 }
 
+/** Only http(s) may be loaded in the render window — file://, javascript:
+ *  and custom schemes must never reach a BrowserWindow from renderer input. */
+function isRenderableHttpUrl(url: unknown): url is string {
+  if (typeof url !== 'string' || !url.trim()) return false
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/** Upper bound for the post-load JS render wait — renderer-supplied values
+ *  must not stretch the total request budget. */
+const MAX_RENDER_WAIT_MS = 10_000
+
 /**
  * Fetch a URL using a hidden BrowserWindow so JavaScript can render.
  * Used for search engines that block plain HTTP (Baidu CAPTCHA) or
@@ -76,7 +92,10 @@ async function fetchRenderedPage(url: string, waitMs: number): Promise<{ content
     show: false,
     width: 1280,
     height: 800,
-    webPreferences: { sandbox: false, contextIsolation: false }
+    // The window only ever loads third-party http(s) pages for their DOM —
+    // no preload/node access, isolation on (executeJavaScript still reads
+    // the page world).
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
   })
 
   try {
@@ -127,7 +146,13 @@ export function registerWebSearchHandlers(): void {
   // Browser-rendered fetch for engines that need JS execution
   registerMessagePackHandler<{ url: string; waitMs?: number }>(
     'web:fetch-rendered',
-    async (args) => fetchRenderedPage(args.url, args.waitMs ?? 3000)
+    async (args) => {
+      if (!isRenderableHttpUrl(args.url)) {
+        return { error: 'Only http(s) URLs can be fetched' }
+      }
+      const waitMs = Math.min(Math.max(Math.trunc(args.waitMs ?? 3000) || 0, 0), MAX_RENDER_WAIT_MS)
+      return fetchRenderedPage(args.url, waitMs)
+    }
   )
 
   registerMessagePackHandler<undefined, { providers: WebSearchProvider[] }>(

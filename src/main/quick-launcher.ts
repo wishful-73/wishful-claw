@@ -247,6 +247,14 @@ function isAppsFolderPath(path: string): boolean {
 /** Marker prefix for system settings/tools entries (not file paths). */
 const SYS_CMD_PREFIX = 'syscmd:'
 
+/** spawn with an error listener — without one, ENOENT etc. throw uncaught. */
+function spawnHidden(command: string, args: string[]): void {
+  const child = spawn(command, args, { windowsHide: true })
+  child.on('error', (err) => {
+    console.warn(`[QuickLauncher] Failed to spawn ${command}: ${err.message}`)
+  })
+}
+
 function isSystemCommandPath(path: string): boolean {
   return path.startsWith(SYS_CMD_PREFIX)
 }
@@ -259,22 +267,22 @@ function launchSystemCommand(command: string): void {
     return
   }
   if (command.toLowerCase().startsWith('shell:')) {
-    spawn('explorer.exe', [command], { windowsHide: true })
+    spawnHidden('explorer.exe', [command])
     return
   }
   const space = command.indexOf(' ')
   if (space > 0) {
     // Command line with arguments (rundll32 sysdm.cpl,..., control.exe keyboard)
-    spawn(command.slice(0, space), [command.slice(space + 1)], { windowsHide: true })
+    spawnHidden(command.slice(0, space), [command.slice(space + 1)])
     return
   }
   const lower = command.toLowerCase()
   if (lower.endsWith('.msc')) {
-    spawn('mmc.exe', [command], { windowsHide: true })
+    spawnHidden('mmc.exe', [command])
     return
   }
   if (lower.endsWith('.cpl')) {
-    spawn('control.exe', [command], { windowsHide: true })
+    spawnHidden('control.exe', [command])
     return
   }
   shell.openPath(command)
@@ -740,14 +748,25 @@ function registerLauncherIpc(): void {
     return Promise.all(recent.map(async (entry) => withIcon({ name: entry.name, path: entry.path })))
   })
 
-  registerMessagePackHandler<string, boolean>('launcher:launch', (appPath) => {
+  registerMessagePackHandler<string, boolean>('launcher:launch', async (appPath) => {
+    let launchError = ''
     if (isSystemCommandPath(appPath)) {
       launchSystemCommand(appPath.slice(SYS_CMD_PREFIX.length))
     } else if (isAppsFolderPath(appPath)) {
       // shell: pseudo-paths don't go through shell.openPath; explorer handles them.
-      spawn('explorer.exe', [appPath], { windowsHide: true })
+      spawnHidden('explorer.exe', [appPath])
     } else {
-      shell.openPath(appPath)
+      // shell.openPath resolves to '' on success, an error string otherwise —
+      // checking it is the only way to notice a failed launch.
+      launchError = await shell.openPath(appPath)
+      if (launchError) {
+        console.warn(`[QuickLauncher] Failed to launch ${appPath}: ${launchError}`)
+      }
+    }
+    if (launchError) {
+      // Don't record failed launches in history and keep the panel open so
+      // the user can retry instead of believing the launch succeeded.
+      return false
     }
     // Record launch history
     const apps = getOrRefreshAppList()

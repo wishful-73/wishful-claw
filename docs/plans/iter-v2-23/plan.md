@@ -46,8 +46,8 @@
 
 - [x] 步骤 1：确认 `agent/compress-context` 的 Worker 端点归属、输入输出、取消和错误协议；清理或收口前端重复 stub。实现：新增 `AgentRuntimeContextCompressionTools.CompressAsync`，注册 Worker endpoint；开放共享 wire message parser；补 AOT result records；前端移除重复抛异常 stub并统一使用实际 bridge。
   - 验证：`agent/compress-context` 已在 `AgentRuntimeModule` 注册，输入为 `provider/messages`，输出为压缩后的 `messages` + `ContextCompressionResult`；取消沿 `IWorkerRequestContext.CancellationToken` 传播，压缩结果支持 `compressed`/未压缩和显式 `error`；C# solution 0 warning/0 error，TypeScript web/node/root 0 error，`git diff --check` 通过。手动按钮的上层调用接入、blocked/skipped/failed 的完整 UI 状态闭环留在 Plan 23-3。
-- [ ] 步骤 2：确定压缩摘要、压缩状态卡、压缩快照三者的数据关系。
-  - 验证：自动和手动压缩使用同一摘要语义；完成事件能关联摘要正文、压缩范围、保留信息和降级状态；AOT/MessagePack 传输边界明确。
+- [x] 步骤 2：确定压缩摘要、压缩状态卡、压缩快照三者的数据关系。契约见 `compression-contract.md`：完整 wire conversation 是 Agent 恢复权威，compact boundary/summary artifacts 负责聊天展示，compression status 只负责生命周期反馈，SQLite 快照保存同一压缩结果和游标。
+  - 验证：自动和手动压缩使用同一摘要语义；完成事件通过可选 `messages/compactArtifacts` 关联摘要正文、压缩范围、保留信息和降级状态；现有 MessagePack encoder 已支持可选 messages/artifacts，Renderer 已有 compactBoundary/compactSummary/compressionStatus 类型；AOT DTO 必须使用具名 record 并注册 JsonContext。
 - [ ] 步骤 3：确定压缩快照存储、游标、版本、失效和失败回退策略。
   - 验证：明确未压缩旧会话全量恢复、有效快照恢复、损坏/未知版本快照回退的行为；输出正式数据契约。
 

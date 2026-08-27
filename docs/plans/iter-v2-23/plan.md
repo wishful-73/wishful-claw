@@ -129,7 +129,7 @@
   - 现状：`RightPanelHeader` files tab 用无颜色 `FolderOpen` + 英文标题。
   - 实现：i18n 中文标题（zh/en）；文件树 tab 与左侧面板项目树图标换为彩色图标（对齐 OpenCowork）。
   - 验证：tab 展示对齐，切换/折叠功能不受影响。TS 三配置 0 错误。
-- 已实现：① `RightPanel` tabs useMemo 补 files 分支（`t('rightPanel.files', { defaultValue: 'Files' })`），zh/en layout.json 新增 `rightPanel.files` 键（“文件”/“Files”），tab 标题随语言切换；② `RightPanelHeader` TabIcon 的 files 分支与“打开文件”下拉项加 `text-sky-400`（对齐 OpenCowork `WorkbenchTabButton`）；③ `workspace-sidebar-items.tsx` 项目行主图标（展开 `FolderOpen`/收起 `Folder`）同加 `text-sky-400`。tab 创建处硬编码标题保留，运行时被 i18n 覆盖；切换/折叠逻辑未动。后续补齐：文件树组件内部图标同步上色——目录图标由灰色改琥珀色并按展开状态切 `Folder`/`FolderOpen`（对齐项目行风格），`EXT_ICONS` 扩充常见扩展类型着色覆盖（.cs/.sh/.bat/.sql/.env/.lock/.exe/.zip 等）。TS 三配置 0 错误。
+- 已实现：① `RightPanel` tabs useMemo 补 files 分支（`t('rightPanel.files', { defaultValue: 'Files' })`），zh/en layout.json 新增 `rightPanel.files` 键（“文件”/“Files”），tab 标题随语言切换；② `RightPanelHeader` TabIcon 的 files 分支与“打开文件”下拉项加 `text-sky-500 dark:text-sky-400`（对齐 OpenCowork `WorkbenchTabButton`，明暗双模式）；③ `workspace-sidebar-items.tsx` 项目行主图标（展开 `FolderOpen`/收起 `Folder`）同色。tab 创建处硬编码标题保留，运行时被 i18n 覆盖；切换/折叠逻辑未动。后续补齐：文件树组件内部图标同步上色并对齐 tab 色彩方向——目录图标统一 `text-sky-500 dark:text-sky-400`（树节点/搜索结果/新建输入/工作目录头部，与 files tab 及左侧项目行同向），`EXT_ICONS` 扩充常见扩展类型着色并按状态色惯例改 `500/dark:400` 双模式（静态字面量类名表，兼容 Tailwind v4 扫描与 6 套主题预设明暗模式）。TS 三配置 0 错误。
 - [x] 步骤 31：左侧面板对话命名/图标 + 扩展/自动化图标。
   - 实现：① 左侧面板“全局对话”分区展示对齐 OpenCowork（当前直接展开），“会话”命名改“对话”并增加图标；② 扩展入口图标从文件夹改为 OpenCowork 扩展图标；③ 自动化入口图标从日历改为时钟。
   - 验证：各入口图标/标题正确，导航功能不受影响，i18n 双语完整。TS 三配置 0 错误。

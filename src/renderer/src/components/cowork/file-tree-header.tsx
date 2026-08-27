@@ -35,8 +35,8 @@ export function FileTreeHeader({
     return (
       <>
         <div className="flex items-start gap-2">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10">
-            <FolderOpen className="size-4 text-amber-400" />
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-500/20 bg-sky-500/10">
+            <FolderOpen className="size-4 text-sky-500 dark:text-sky-400" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -118,8 +118,8 @@ export function FileTreeHeader({
   // compactSheetSurface (sheet or agent)
   return (
     <div className="mb-3 flex items-center gap-2">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10">
-        <FolderOpen className="size-3.5 text-amber-400" />
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-sky-500/20 bg-sky-500/10">
+        <FolderOpen className="size-3.5 text-sky-500 dark:text-sky-400" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-foreground" title={workingFolder}>

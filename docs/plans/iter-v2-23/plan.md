@@ -99,7 +99,7 @@
   - 验证：重复事件、重试、多工具并发不会互相覆盖或重复写入；稳定键至少覆盖 session/run/tool。
 - [x] 步骤 20：实现恢复 reconciliation 和中间记录清理。实现：`SessionRestoreTools` 恢复链路（快照增量路径与全量路径共用）在实体转 wire 消息时补配工具结果——assistant 行的 `meta.toolCalls` 中已完成结果（`completed`/`error`，含 output）原位恢复为独立 user `tool_result` wire 消息（与 live 路径 `CreateToolResultsWireMessage` 同构），未完成调用（`running`/`streaming`/无状态，即崩溃中断）补 `[INTERRUPTED]` 占位结果（`isError`），保证恢复后的对话对 Provider API 合法（每个 `tool_use` 必配 `tool_result`）。合成只在恢复时内存中进行，不回写 DB、不重放工具；旧格式（user 行携带 toolCalls 的 split 存储）通过预扫 `providedResultIds` 去重，不产生重复结果。中间记录清理：步骤 19 定案不引入 journal，本步骤无新增持久化中间记录，合成产物随恢复结束释放，不存在无限增长问题；快照失效沿用步骤 10 的 `InvalidateIfUpsertCovered`。纯 C# 改动（WishfulClaw.Agent），C# solution 0 warning/0 error。
   - 验证：已有 tool_use 缺 tool_result 时能找回已完成结果；不会因恢复重放重复执行工具；journal/中间记录不会无限增长。
-- [ ] 步骤 21：覆盖前台、后台 Cron、渠道会话和异常退出。
+- [x] 步骤 21：覆盖前台、后台 Cron、渠道会话和异常退出。审计结论：三路径均汇入 chat-store 事件链——前台 `sendMessage`；Cron in-session 模式 `runInSession` → `sendMessage`（发送前 `loadRecentSessionMessages(force)` 触发 restore）；渠道 `plugin:session-task` → `handleSessionTask` → `sendMessage`，步骤 18/19 的持久化边界（工具完成/`message_end`/`loop_end` + 串行队列）天然全覆盖。Cron 静默 sidecar 模式按设计不存会话，仅持久化投递摘要（`deliverToSession`）与 `cron_runs` 运行记录。发现并修复缺口：渠道重启后注入 store 的会话未加载历史也未触发 `agent/restore-session`，Worker 会话为空导致新轮丢失全部历史——`handleSessionTask` 发送前若消息列表为空先 `await loadRecentSessionMessages` + `await agent/restore-session`（参照 `runInSession`），保证 Worker 状态先于 `agent/run` 落位；restore 幂等（`MessageCount > 0` 跳过）常态零开销。异常退出：Renderer 崩溃→工具边界结果已落库（步骤 18）重开可见；Worker 崩溃→上一工具边界快照在库，未找回结果由步骤 20 占位补齐；恢复只读不重放（`RestoreSession` 不触及工具执行器，无静默重跑）；cron 中断 run 留 `running` 行由查询侧孤儿归一化，不自动重跑。纯 TS 改动，TS 三配置 0 错误。
   - 验证：三种执行路径持久化行为一致；Renderer/Worker 在工具完成后异常退出，重开后结果可见且不静默重跑。
 
 ### Plan 23-7：正式版全量验证与 v1.0.0 发布

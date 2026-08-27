@@ -1,10 +1,10 @@
 # Plan: v2-iter-23 — 会话可靠性收口与正式版发布（待确认）
 
-> 状态：规划稿，等待独立合规审查和用户确认
+> 状态：规划审查 PASS，用户已确认，执行中
 >
 > 基线：`main`，产品版本 `0.2.22`，最新 tag `v0.2.22`
 >
-> 本 Plan 尚未授权执行产品代码改动、数据库迁移、版本升级或发布动作。
+> 用户已授权进入产品代码执行态；版本升级、合并 main、tag 和发布动作仍需等待迭代最终验收确认。
 
 ## 目标
 
@@ -146,7 +146,10 @@
 - `src/renderer/src/components/layout/RightPanel.tsx`
 - `src/renderer/src/stores/ui-store*.ts`
 - `src/shared/agent-stream-protocol.ts`
-- 必要的 `src/main` Cron/channel/background handlers
+- `src/main/ipc/reverse-handlers/cron-reverse-handler.ts`
+- `src/main/channels/auto-reply.ts`
+- `src/main/ipc/sidecar-handlers.ts`
+- 仅在探索确认需要时修改其他具体 Cron/channel/background handler，禁止扩大到无关 Main 逻辑
 
 ### 文档 / 测试 / 发布
 
@@ -186,3 +189,4 @@
 - 规划合规审查必须 0 个阻断项。
 - 用户确认 Plan 方向后，才创建或切换 `dev/v2-iter-23` 执行分支。
 - 用户未确认迭代完结前，不合并 main、不打 tag、不 push 发布、不创建 `v1.0.0` Release。
+- `v1.0.0` 是用户确认正式版完结后对现行 `0.2.N` 规则的版本迁移例外；执行期间仍保持产品版本 `0.2.22`，不得提前创建 `v0.2.23` 或 `v1.0.0` tag。

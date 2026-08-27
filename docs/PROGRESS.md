@@ -1,4 +1,22 @@
-﻿# 开发进度
+# 开发进度
+
+## v2-iter-23：会话可靠性收口与正式版发布（执行中）
+
+- 状态：规划审查通过，用户已确认 Plan，进入执行态
+- 分支：`dev/v2-iter-23`
+- Plan：`docs/plans/iter-v2-23/plan.md`
+- 探索报告：`docs/plans/iter-v2-23/exploration_findings.md`
+- 临时讨论稿：`docs/plans/iter-v2-23/draft-plan.md`
+- 合规审查：`docs/plans/iter-v2-23/compliance_report.md`
+- VERDICT：—（规划审查 PASS；迭代最终 VERDICT 待用户确认）
+- 产品版本：`0.2.22`（执行完成并经用户确认后再迁移至 `1.0.0`）
+- Tag：`v0.2.22`（尚未创建 `v1.0.0`）
+- Commit：`7583851d`（规划文档）
+- 日期：2026-08-27
+- 范围：压缩快照与历史恢复、手动/自动压缩统一、聊天窗上下文摘要、前端历史分页解耦、当前轮 user message 吸附、右上角悬浮操作块重构、工具结果即时持久化、正式版验证
+- 规划审查：PASS，0 个阻断项
+- 网络备注：直连和代理 `git pull origin main` 均失败；本地 main 与 origin/main 在分支创建前已确认一致，待网络恢复后重新核对
+- 下一步：执行 Plan 23-1 步骤 1，收口手动压缩 Worker 端点和协议契约
 
 ## v2-iter-22：微信/飞书渠道与定时任务打磨（已完成，已合并 main）
 

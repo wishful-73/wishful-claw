@@ -120,10 +120,11 @@
   - 实现：① `AddProviderDialog` 增加 API Key 输入（随 `addCustomProvider` 落库）；② 保存后立即触发一次 `fetchModels`（错误仅 toast 不阻断）；③ `ProviderConfigPanel` 取消原“连接测试”下拉框整行，改为模型列表项 hover 时显示“检查连接”图标按钮（复用 `testConnection` + 既有 toast 反馈）。
   - 验证：新建时可填 Key、保存即拉模型列表；连接测试能力不丢失，入口换到模型行。TS 三配置 0 错误。
   - 已实现：① `AddProviderDialog` 新增 API Key 密码输入（可切换明文），`addCustomProvider`/`createCustomProvider` 增加可选 `apiKey` 参数随服务商落库；② 保存后 fire-and-forget `fetchModels`，成功非空时 `setModels` + toast，失败仅 toast 不阻断；③ `ProviderConfigPanel` 移除连接测试下拉框整行与结果横幅（清理 `testModelId`/`testResult` 状态与废弃 i18n 键），模型行操作区新增 hover “检查连接”闪电图标按钮（`testingModelId` 单模型级转圈，无 Key 禁用，复用 `testConnection` + 原 toast 文案）；zh/en 新增 `provider.add.apiKey*` 与 `models.checkConnection`。TS 三配置 0 错误。
-- [ ] 步骤 29：模型编辑弹窗图标选择器引入真实图标。
+- [x] 步骤 29：模型编辑弹窗图标选择器引入真实图标。
   - 现状：`ModelFormDialog` 图标选择器所有 `MODEL_ICON_OPTIONS` key 渲染为 `Server` 占位。
   - 实现：复用 `provider-icons` 的 `ModelIcon` 渲染各 key；核对覆盖度，缺失的 key 补齐图标资源/分支；选择交互不变。
   - 验证：选择器显示真实系列图标，选择结果在模型列表与消息头生效。TS 三配置 0 错误。
+  - 已实现：`ModelFormDialog` 图标选择器由 `Server` 占位改为 `<ModelIcon icon={key} size={16} />`（复用 `provider-icons` 的 lobehub 静态图标链路，自动跟随明暗主题）；覆盖度核对：`MODEL_ICON_OPTIONS` 23 个 key 在 `modelIconSlugMap` 全部有映射（bigmodel→chatglm、mimo→xiaomimimo 等），无需新增资源/分支；选择交互与保存链路不变，既有 `ModelIcon` 消费 `icon` 字段，模型列表与消息头自动生效。TS 三配置 0 错误。
 - [ ] 步骤 30：文件树 tab 彩色图标与中文标题。
   - 现状：`RightPanelHeader` files tab 用无颜色 `FolderOpen` + 英文标题。
   - 实现：i18n 中文标题（zh/en）；文件树 tab 与左侧面板项目树图标换为彩色图标（对齐 OpenCowork）。

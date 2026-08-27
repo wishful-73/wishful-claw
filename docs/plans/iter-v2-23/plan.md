@@ -95,7 +95,7 @@
 
 - [x] 步骤 18：在 `tool_call_result` 工具完成边界形成可恢复状态。实现：Renderer `chat-store` 在 `tool_call_result` 事件的内存更新后立即调用既有 `dbUpsertMessage`（与 `message_end`/`loop_end` 同一 upsert 路径），不再等待后续持久化边界；成功、错误、取消、审批拒绝、跳过结果全部经 `tool_call_result` 事件流（ToolCallProcessor 三处 emit 点）统一覆盖；稳定键为消息 id（runId），Worker `db/messages-upsert` 存在则 UPDATE、不存在则 INSERT，重复事件幂等，并发工具后写携带先写结果的超集，不互相覆盖。纯 Renderer 改动，无 C# 变更。
   - 验证：不等待 30 秒检查点、`message_end` 或 `loop_end`；成功、错误、取消、审批拒绝、跳过结果均可恢复。
-- [ ] 步骤 19：确定并实现 messages upsert 或 Worker durable journal 的最小方案。
+- [x] 步骤 19：确定并实现 messages upsert 或 Worker durable journal 的最小方案。定案：采用最小 messages upsert 方案，不引入 Worker 独立 durable journal（不新增双重数据源）。实现：`dbUpsertMessage` 增加按消息 id 的串行写入队列（`messageUpsertChains`），工具边界/`message_end`/`loop_end` 的 fire-and-forget upsert 严格按发起顺序提交，后写快照携带先写结果超集，即使 Worker 并发分发也不会出现旧快照回退；单次写入失败隔离不阻塞后续快照；保持调用方 fire-and-forget 语义。稳定键覆盖：session（`session_id`）/ run（消息 id = runId，`messages.id` 主键）/ tool（toolCallId 内嵌于消息 content/segments，与 tool_use 一一对应）；重复事件与 Provider 重试复用同一 runId，只 UPDATE 同一行不产生重复消息。
   - 验证：重复事件、重试、多工具并发不会互相覆盖或重复写入；稳定键至少覆盖 session/run/tool。
 - [ ] 步骤 20：实现恢复 reconciliation 和中间记录清理。
   - 验证：已有 tool_use 缺 tool_result 时能找回已完成结果；不会因恢复重放重复执行工具；journal/中间记录不会无限增长。

@@ -306,7 +306,18 @@ export async function dbUpdateProject(
 // ─── Message DB Operations ───
 
 /**
- * Upsert a message to DB. Called during streaming (message_end) and for user messages.
+ * Per-message upsert queue. Tool-completion, message_end and loop_end
+ * boundaries all fire-and-forget upserts of the same assistant message;
+ * chaining them per message id guarantees commit order (later snapshots
+ * always carry the superset of earlier results), so duplicate events,
+ * provider retries and concurrent tools never regress the row — even when
+ * the Worker dispatches requests concurrently.
+ */
+const messageUpsertChains = new Map<string, Promise<void>>()
+
+/**
+ * Upsert a message to DB. Called during streaming (message_end), at each
+ * tool-completion boundary and for user messages.
  */
 export async function dbUpsertMessage(
   sessionId: string,
@@ -316,7 +327,18 @@ export async function dbUpsertMessage(
   await ensureDbInitialized()
   const data = serializeMessage(msg, sortOrder)
   data.sessionId = sessionId
-  await window.api.workerRequest('db/messages-upsert', data)
+  // Keep fire-and-forget semantics for callers — failures are isolated to
+  // this write and never block later snapshots in the queue.
+  const chain = (messageUpsertChains.get(msg.id) ?? Promise.resolve()).then(() =>
+    window.api.workerRequest('db/messages-upsert', data).then(() => undefined).catch(() => undefined)
+  )
+  messageUpsertChains.set(msg.id, chain)
+  void chain.finally(() => {
+    if (messageUpsertChains.get(msg.id) === chain) {
+      messageUpsertChains.delete(msg.id)
+    }
+  })
+  return chain
 }
 
 /**

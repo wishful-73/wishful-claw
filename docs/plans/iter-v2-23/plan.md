@@ -111,10 +111,11 @@
   - 实现：`joinFsPath` 平台感知（win32 用 `\`，其余用 `/`），展示路径与实际读写路径同一拼接结果；排查 ProjectArchivePage 其余直接拼接点。
   - 验证：项目档案页各路径统一为系统分隔符；记忆/人格/日常文件读写正常。TS 三配置 0 错误。
   - 已实现：`project-archive-helpers.ts` 的 `joinFsPath` 改为平台感知拼接——首段去尾部分隔符、后续段去首尾分隔符，分隔符优先取 base 路径已有分隔符，无则按 `window.electron.process.platform === 'win32'` 取 `\`，否则 `/`（对齐 `memory-files.ts` 既有实现风格）；排查确认 `ProjectArchivePage`/`PersonaFilePreview` 所有路径（memory/daily/persona 文件）均经 `joinFsPath`，无其他直接拼接点。TS 三配置 0 错误。
-- [ ] 步骤 27：输入草稿持久化实装（切页不丢输入内容）。
+- [x] 步骤 27：输入草稿持久化实装（切页不丢输入内容）。
   - 现状：main 侧 `input-draft:*` 五个 handler 全为空 stub，renderer `useInputDraftPersistence` 是 no-op；draft 类型与 IPC 通道均已就位。
   - 实现：main 侧实现草稿 JSON 文件持久化（`~/.wishful-claw/` 下，get/set/remove/list/cleanup）；renderer hook 实装：输入变化防抖保存、挂载恢复、发送成功后清除；沿用现有 draftKey（session/project/home）。
   - 验证：输入内容→切设置页→回来内容保留；会话/项目各自独立；发送成功后草稿清除。TS 三配置 0 错误。
+  - 已实现：新增 `src/main/ipc/input-draft-handlers.ts`——草稿存于 `~/.wishful-claw/input-drafts.json`（兼容 `WISHFULCLAW_DATA_DIR` 隔离目录）单文件 JSON map（draftKey → draft + updatedAt），get/set/remove/list/cleanup 五端点实装（空内容 set 转为删除，cleanup 清 30 天前旧草稿），替换 `index.ts` 空 stub；`use-input-draft-persistence.ts` 实装：draftKey 变更时先读内存缓存再读盘（请求序号防竞态）、`saveDraft` 空内容转 remove、`removeDraft` 同步清本地状态；既有 `use-input-area-effects` 的 400ms 防抖保存/挂载恢复/`resetComposer` 发送后清除链路无需改动直接生效。TS 三配置 0 错误。
 - [ ] 步骤 28：新建服务商弹窗改造。
   - 实现：① `AddProviderDialog` 增加 API Key 输入（随 `addCustomProvider` 落库）；② 保存后立即触发一次 `fetchModels`（错误仅 toast 不阻断）；③ `ProviderConfigPanel` 取消原“连接测试”下拉框整行，改为模型列表项 hover 时显示“检查连接”图标按钮（复用 `testConnection` + 既有 toast 反馈）。
   - 验证：新建时可填 Key、保存即拉模型列表；连接测试能力不丢失，入口换到模型行。TS 三配置 0 错误。

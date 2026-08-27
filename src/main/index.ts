@@ -34,6 +34,7 @@ import { safeSendMessagePackToWindow } from './window-ipc'
 import { setMainWindow } from './main-window-registry'
 import { registerLoginItemHandlers, registerWindowControlHandlers } from './ipc/window-handlers'
 import { registerMiscHandlers } from './ipc/misc-handlers'
+import { registerInputDraftHandlers } from './ipc/input-draft-handlers'
 import { registerCodeGraphHandlers } from './ipc/codegraph-handlers'
 import {
   initializeCronScheduler,
@@ -323,27 +324,8 @@ registerCodeGraphHandlers()
     }
   )
 
-  // ── Input draft stub handlers ──
-  registerMessagePackHandler<string, unknown | null>(
-    'input-draft:get',
-    () => null
-  )
-  registerMessagePackHandler<unknown, void>(
-    'input-draft:set',
-    () => undefined
-  )
-  registerMessagePackHandler<string, void>(
-    'input-draft:remove',
-    () => undefined
-  )
-  registerMessagePackHandler<void, unknown[]>(
-    'input-draft:list',
-    () => []
-  )
-  registerMessagePackHandler<void, void>(
-    'input-draft:cleanup',
-    () => undefined
-  )
+  // ── Input draft persistence (JSON map under ~/.wishful-claw/) ──
+  registerInputDraftHandlers()
 
   // ── DB locator (forwarded to Worker) ──
   registerMessagePackHandler<string, unknown[]>(

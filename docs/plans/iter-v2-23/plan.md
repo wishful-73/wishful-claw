@@ -106,10 +106,11 @@
 
 > 来源：`D:\koda\Obsidian\02-AI教学\wishfulclaw\issues`（bugs.md + 改进.md，2026-08-27 新增项）。其中 08-26/08-24 的悬浮块/历史摘要/点击加载/压缩卡片四项已被 Plan 23-2/23-4/23-5 覆盖；桌面图标白角项调查结论为 Windows 图标缓存残留，代码侧无可修复项（待用户清缓存确认）；Goal 编排可视化原排后续迭代、滚动锚点吸附为独立大交互优化，均不纳入本追加。本 Plan 在 Plan 23-7 全量回归之前实施，使回归覆盖新增代码。
 
-- [ ] 步骤 26：修复项目档案路径斜杠混用。
+- [x] 步骤 26：修复项目档案路径斜杠混用。
   - 现状：`project-archive-helpers.ts` 的 `joinFsPath` 一律用 `/` 拼接，与 Windows 反斜杠 `workingFolder` 混出 `D:\gy\Obsidian/.wishful-claw/MEMORY.md`。
   - 实现：`joinFsPath` 平台感知（win32 用 `\`，其余用 `/`），展示路径与实际读写路径同一拼接结果；排查 ProjectArchivePage 其余直接拼接点。
   - 验证：项目档案页各路径统一为系统分隔符；记忆/人格/日常文件读写正常。TS 三配置 0 错误。
+  - 已实现：`project-archive-helpers.ts` 的 `joinFsPath` 改为平台感知拼接——首段去尾部分隔符、后续段去首尾分隔符，分隔符优先取 base 路径已有分隔符，无则按 `window.electron.process.platform === 'win32'` 取 `\`，否则 `/`（对齐 `memory-files.ts` 既有实现风格）；排查确认 `ProjectArchivePage`/`PersonaFilePreview` 所有路径（memory/daily/persona 文件）均经 `joinFsPath`，无其他直接拼接点。TS 三配置 0 错误。
 - [ ] 步骤 27：输入草稿持久化实装（切页不丢输入内容）。
   - 现状：main 侧 `input-draft:*` 五个 handler 全为空 stub，renderer `useInputDraftPersistence` 是 no-op；draft 类型与 IPC 通道均已就位。
   - 实现：main 侧实现草稿 JSON 文件持久化（`~/.wishful-claw/` 下，get/set/remove/list/cleanup）；renderer hook 实装：输入变化防抖保存、挂载恢复、发送成功后清除；沿用现有 draftKey（session/project/home）。

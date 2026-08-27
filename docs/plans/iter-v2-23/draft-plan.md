@@ -426,4 +426,5 @@ pinned prefix
 - 已执行：Plan 23-6 步骤 20 已完成：恢复 reconciliation——`SessionRestoreTools` 两条恢复路径在实体转 wire 时，从 assistant 行 `meta.toolCalls` 原位找回已完成结果（合成独立 user `tool_result` wire 消息，与 live 路径同构），中断未完成调用补 `[INTERRUPTED]` 占位结果，保证每个 `tool_use` 必配 `tool_result`、恢复对话对 Provider API 合法；合成只在内存进行，不回写 DB、不重放工具；旧格式 user 结果行预扫去重；无 journal 故无中间记录增长问题。纯 C# 改动，C# solution 0 警告 0 错误。
 - 已执行：Plan 23-6 步骤 21 已完成：三路径覆盖审计——前台、Cron in-session、渠道均汇入 `sendMessage` → chat-store 事件链，步骤 18/19 持久化边界天然全覆盖；Cron 静默 sidecar 模式按设计仅存投递摘要与 `cron_runs` 记录。修复发现的缺口：渠道重启后注入的会话未触发历史加载/`agent/restore-session`，发送前补 `await` 加载+恢复（参照 `runInSession`，restore 幂等零开销）；异常退出结论：崩溃重开结果可见（工具边界已落库 + 恢复占位补齐）、恢复只读不重放、cron 中断 run 孤儿归一化不自动重跑。TS 三配置 0 错误。Plan 23-6 全部完成。
 - 已执行：Plan 23-8 追加计划已制定（来源：issues 库 2026-08-27 新增）：步骤 26 项目档案路径斜杠混用、步骤 27 输入草稿持久化实装、步骤 28 新建服务商弹窗改造、步骤 29 模型图标选择器引入真实图标、步骤 30 文件树 tab 彩色图标与中文标题、步骤 31 左侧面板对话命名/扩展/自动化图标；在 Plan 23-7 全量回归前实施。不纳入：桌面图标白角（待用户清缓存确认）、Goal 编排可视化、滚动锚点吸附。
-- 未执行：Plan 23-8 实施、Plan 23-7（全量验证与 v1.0.0 发布）、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-8 步骤 26 已完成：`project-archive-helpers.ts` 的 `joinFsPath` 改为平台感知拼接（分隔符优先跟随 base 路径，无则按 win32 取 `\`），项目档案页记忆/人格/日常路径展示与读写同一拼接结果，无其他直接拼接点；TS 三配置 0 错误。
+- 未执行：Plan 23-8 步骤 27-31、Plan 23-7（全量验证与 v1.0.0 发布）、后续 push、merge、tag、打包、Release。

@@ -61,8 +61,27 @@ Temporary context for today. Can be consolidated into MEMORY.md later.
 
 // ─── Path helpers ───
 
+/**
+ * Platform-aware join: keep the same separator as the base path (Windows
+ * workingFolder uses `\`), falling back to the OS separator. Mirrors
+ * memory-files.ts joinFsPath so displayed and read/write paths agree.
+ */
 export function joinFsPath(...segments: string[]): string {
-  return segments.join('/')
+  const normalized = segments
+    .map((segment, index) =>
+      index === 0
+        ? segment.replace(/[\\/]+$/, '')
+        : segment.replace(/^[\\/]+|[\\/]+$/g, '')
+    )
+    .filter(Boolean)
+  if (normalized.length === 0) return ''
+  const base = normalized[0]
+  const separator = base.includes('\\')
+    ? '\\'
+    : window.electron?.process?.platform === 'win32'
+      ? '\\'
+      : '/'
+  return normalized.join(separator)
 }
 
 export function getTodayDate(): string {

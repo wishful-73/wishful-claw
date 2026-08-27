@@ -97,7 +97,7 @@
   - 验证：不等待 30 秒检查点、`message_end` 或 `loop_end`；成功、错误、取消、审批拒绝、跳过结果均可恢复。
 - [x] 步骤 19：确定并实现 messages upsert 或 Worker durable journal 的最小方案。定案：采用最小 messages upsert 方案，不引入 Worker 独立 durable journal（不新增双重数据源）。实现：`dbUpsertMessage` 增加按消息 id 的串行写入队列（`messageUpsertChains`），工具边界/`message_end`/`loop_end` 的 fire-and-forget upsert 严格按发起顺序提交，后写快照携带先写结果超集，即使 Worker 并发分发也不会出现旧快照回退；单次写入失败隔离不阻塞后续快照；保持调用方 fire-and-forget 语义。稳定键覆盖：session（`session_id`）/ run（消息 id = runId，`messages.id` 主键）/ tool（toolCallId 内嵌于消息 content/segments，与 tool_use 一一对应）；重复事件与 Provider 重试复用同一 runId，只 UPDATE 同一行不产生重复消息。
   - 验证：重复事件、重试、多工具并发不会互相覆盖或重复写入；稳定键至少覆盖 session/run/tool。
-- [ ] 步骤 20：实现恢复 reconciliation 和中间记录清理。
+- [x] 步骤 20：实现恢复 reconciliation 和中间记录清理。实现：`SessionRestoreTools` 恢复链路（快照增量路径与全量路径共用）在实体转 wire 消息时补配工具结果——assistant 行的 `meta.toolCalls` 中已完成结果（`completed`/`error`，含 output）原位恢复为独立 user `tool_result` wire 消息（与 live 路径 `CreateToolResultsWireMessage` 同构），未完成调用（`running`/`streaming`/无状态，即崩溃中断）补 `[INTERRUPTED]` 占位结果（`isError`），保证恢复后的对话对 Provider API 合法（每个 `tool_use` 必配 `tool_result`）。合成只在恢复时内存中进行，不回写 DB、不重放工具；旧格式（user 行携带 toolCalls 的 split 存储）通过预扫 `providedResultIds` 去重，不产生重复结果。中间记录清理：步骤 19 定案不引入 journal，本步骤无新增持久化中间记录，合成产物随恢复结束释放，不存在无限增长问题；快照失效沿用步骤 10 的 `InvalidateIfUpsertCovered`。纯 C# 改动（WishfulClaw.Agent），C# solution 0 warning/0 error。
   - 验证：已有 tool_use 缺 tool_result 时能找回已完成结果；不会因恢复重放重复执行工具；journal/中间记录不会无限增长。
 - [ ] 步骤 21：覆盖前台、后台 Cron、渠道会话和异常退出。
   - 验证：三种执行路径持久化行为一致；Renderer/Worker 在工具完成后异常退出，重开后结果可见且不静默重跑。

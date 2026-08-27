@@ -20,6 +20,14 @@ namespace WishfulClaw.Agent;
 /// snapshot cursor; any snapshot problem (missing/unsupported/corrupt/cursor
 /// invalid) falls back to full message recovery. Chat-only artifacts
 /// (compact boundary / compression status cards) never enter the model context.
+///
+/// Reconciliation: the chat store keeps tool calls and their results in the
+/// same assistant row (meta.toolCalls), but the wire conversation needs a
+/// separate user tool_result message after every assistant tool_use message.
+/// On restore those result messages are synthesized in memory from the stored
+/// results (so completed results survive a crash) with a placeholder for any
+/// call that never finished — nothing is re-executed and nothing is written
+/// back to the DB, so no intermediate records accumulate.
 /// </summary>
 internal static class SessionRestoreTools
 {
@@ -57,6 +65,12 @@ internal static class SessionRestoreTools
             }
 
             var wireMessages = new List<JsonElement>();
+
+            // Tool-call ids already covered by a stored tool_result row (legacy
+            // split format) — pre-scanned so the synthesized results for the
+            // preceding assistant rows don't duplicate them.
+            var providedResultIds = new HashSet<string>(StringComparer.Ordinal);
+
             if (snapshot is not null)
             {
                 wireMessages.AddRange(
@@ -88,11 +102,17 @@ internal static class SessionRestoreTools
                     new SqliteParameter("@tca", snapshot.ThroughCreatedAt),
                     new SqliteParameter("@tso", snapshot.ThroughSortOrder));
 
-                foreach (var entity in incremental)
+                // Tool-call ids already covered by a stored tool_result row
+                // (legacy split format) — suppresses duplicate synthesized results.
+                var filteredIncremental = incremental
+                    .Where(entity => !snapshotIds.Contains(entity.Id) && !IsChatOnlyArtifact(entity.Meta))
+                    .ToList();
+
+                CollectProvidedResultIds(filteredIncremental, providedResultIds);
+
+                foreach (var entity in filteredIncremental)
                 {
-                    if (snapshotIds.Contains(entity.Id)) continue;
-                    if (IsChatOnlyArtifact(entity.Meta)) continue;
-                    wireMessages.Add(ConvertToWireMessage(entity));
+                    AddEntityWireMessages(wireMessages, entity, providedResultIds);
                 }
             }
             else
@@ -109,10 +129,15 @@ internal static class SessionRestoreTools
                     return WorkerResponse.Json(new SessionRestoreResponse(true, sessionId, 0), AgentRuntimeJsonContext.Default.SessionRestoreResponse);
                 }
 
-                foreach (var entity in entities)
+                var filteredEntities = entities
+                    .Where(entity => !IsChatOnlyArtifact(entity.Meta))
+                    .ToList();
+
+                CollectProvidedResultIds(filteredEntities, providedResultIds);
+
+                foreach (var entity in filteredEntities)
                 {
-                    if (IsChatOnlyArtifact(entity.Meta)) continue;
-                    wireMessages.Add(ConvertToWireMessage(entity));
+                    AddEntityWireMessages(wireMessages, entity, providedResultIds);
                 }
             }
 
@@ -156,6 +181,170 @@ internal static class SessionRestoreTools
                 $"agent restore-session failed session={FormatLogValue(sessionId)} " +
                 $"error={ex.GetType().Name}: {ex.Message}");
             return WorkerResponse.Error($"Restore failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Append the wire message(es) for one DB entity, reconciling tool results:
+    /// an assistant row with tool calls also emits a synthesized user tool_result
+    /// message so every restored tool_use block is paired with a result, exactly
+    /// like the live loop's CreateToolResultsWireMessage. Stored results are
+    /// recovered as-is; calls that never finished get an interruption placeholder
+    /// so the restored conversation stays valid for the provider API.
+    /// </summary>
+    private static void AddEntityWireMessages(
+        List<JsonElement> wireMessages,
+        MessageEntity entity,
+        IReadOnlySet<string> providedResultIds)
+    {
+        wireMessages.Add(ConvertToWireMessage(entity));
+
+        if (entity.Role != "assistant") return;
+
+        var synthesized = SynthesizeToolResultsWireMessage(entity, providedResultIds);
+        if (synthesized is not null)
+        {
+            wireMessages.Add(synthesized.Value);
+        }
+    }
+
+    /// <summary>
+    /// Pre-scan pass: collect the tool-call ids that legacy user rows already
+    /// carry as stored tool results, so synthesis can skip them.
+    /// </summary>
+    private static void CollectProvidedResultIds(
+        IReadOnlyList<MessageEntity> entities,
+        HashSet<string> providedResultIds)
+    {
+        foreach (var entity in entities)
+        {
+            if (entity.Role != "user") continue;
+            foreach (var id in ReadToolCallIds(entity.Meta))
+            {
+                providedResultIds.Add(id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Build the synthesized user tool_result wire message for an assistant row's
+    /// meta.toolCalls, or null when nothing needs synthesizing.
+    /// </summary>
+    private static JsonElement? SynthesizeToolResultsWireMessage(
+        MessageEntity entity,
+        IReadOnlySet<string> providedResultIds)
+    {
+        if (string.IsNullOrEmpty(entity.Meta)) return null;
+
+        JsonElement toolCallsEl;
+        try
+        {
+            using var doc = JsonDocument.Parse(entity.Meta);
+            var meta = doc.RootElement;
+            if (meta.ValueKind != JsonValueKind.Object ||
+                !meta.TryGetProperty("toolCalls", out var toolCalls) ||
+                toolCalls.ValueKind != JsonValueKind.Array ||
+                toolCalls.GetArrayLength() == 0)
+            {
+                return null;
+            }
+            toolCallsEl = toolCalls.Clone();
+        }
+        catch
+        {
+            return null;
+        }
+
+        var buffer = new ArrayBufferWriter<byte>();
+        var wroteAny = false;
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("id", entity.Id + "-tool-results");
+            writer.WriteString("role", "user");
+            writer.WritePropertyName("content");
+            writer.WriteStartArray();
+
+            foreach (var tc in toolCallsEl.EnumerateArray())
+            {
+                var tcId = JsonHelpers.GetString(tc, "id");
+                if (string.IsNullOrEmpty(tcId)) continue;
+                if (providedResultIds.Contains(tcId)) continue;
+
+                var status = JsonHelpers.GetString(tc, "status");
+                var output = JsonHelpers.GetString(tc, "output");
+                var error = JsonHelpers.GetString(tc, "error");
+
+                string content;
+                bool isError;
+                if (status == "completed" || status == "error")
+                {
+                    // Finished before the crash — recover the stored result as-is.
+                    content = output ?? error ?? string.Empty;
+                    isError = status == "error";
+                }
+                else
+                {
+                    // Never finished (running/streaming/no status) — placeholder so
+                    // the model knows there is no result and can re-invoke if needed.
+                    content =
+                        "[INTERRUPTED] This tool call was interrupted before it completed; " +
+                        "no result is available. Re-invoke the tool if you still need it.";
+                    isError = true;
+                }
+
+                writer.WriteStartObject();
+                writer.WriteString("type", "tool_result");
+                writer.WriteString("toolUseId", tcId);
+                writer.WriteString("content", content);
+                if (isError)
+                {
+                    writer.WriteBoolean("isError", true);
+                }
+                writer.WriteEndObject();
+                wroteAny = true;
+            }
+
+            writer.WriteEndArray();
+            writer.WriteNumber("createdAt", entity.CreatedAt);
+            writer.WriteEndObject();
+        }
+
+        if (!wroteAny) return null;
+
+        using var resultDoc = JsonDocument.Parse(buffer.WrittenMemory);
+        return resultDoc.RootElement.Clone();
+    }
+
+    private static IEnumerable<string> ReadToolCallIds(string? metaJson)
+    {
+        if (string.IsNullOrEmpty(metaJson)) yield break;
+
+        JsonElement toolCallsEl;
+        try
+        {
+            using var doc = JsonDocument.Parse(metaJson);
+            var meta = doc.RootElement;
+            if (meta.ValueKind != JsonValueKind.Object ||
+                !meta.TryGetProperty("toolCalls", out var toolCalls) ||
+                toolCalls.ValueKind != JsonValueKind.Array)
+            {
+                yield break;
+            }
+            toolCallsEl = toolCalls.Clone();
+        }
+        catch
+        {
+            yield break;
+        }
+
+        foreach (var tc in toolCallsEl.EnumerateArray())
+        {
+            var id = JsonHelpers.GetString(tc, "id");
+            if (!string.IsNullOrEmpty(id)) yield return id;
         }
     }
 

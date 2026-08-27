@@ -423,4 +423,5 @@ pinned prefix
 - 已执行：Plan 23-5 步骤 17 已完成：悬浮块接入聊天区域宽窄调节——`conversationPanelFullWidth` 持久化到 settings-store（version 33 + 迁移守卫，刷新/重启恢复），悬浮块宽窄切换按钮同步驱动 MessageList 与 Composer 列宽（820px ↔ 全宽），右侧面板开关时弹性列自动重适配；同时清理 ui-store 中同名冗余死字段；TS 三配置 0 错误。Plan 23-5 全部完成。
 - 已执行：Plan 23-6 步骤 18 已完成：`tool_call_result` 工具完成边界立即形成可恢复状态——Renderer 在内存更新后立即复用既有 `dbUpsertMessage` 落库，不等 `message_end`/`loop_end`；五种结果状态（成功/错误/取消/审批拒绝/跳过）全经 `tool_call_result` 事件统一覆盖；稳定键为消息 id（runId），既有 upsert 幂等，并发工具后写携带先写结果超集不互相覆盖；定案采用最小 messages upsert 方案，暂不引入 Worker 独立 durable journal。TS 三配置 0 错误。
 - 已执行：Plan 23-6 步骤 19 已完成：最小方案定案为 messages upsert（不引入 Worker 独立 journal）；`dbUpsertMessage` 增加按消息 id 的串行写入队列，工具边界/`message_end`/`loop_end` 写入严格按发起顺序提交，旧快照不会回退新结果，单次失败隔离；稳定键覆盖 session/run（runId 主键）/tool（toolCallId 内嵌消息体），重复事件与重试只 UPDATE 同一行。TS 三配置 0 错误。
-- 未执行：恢复 reconciliation、中间记录清理策略、三路径覆盖验证、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-6 步骤 20 已完成：恢复 reconciliation——`SessionRestoreTools` 两条恢复路径在实体转 wire 时，从 assistant 行 `meta.toolCalls` 原位找回已完成结果（合成独立 user `tool_result` wire 消息，与 live 路径同构），中断未完成调用补 `[INTERRUPTED]` 占位结果，保证每个 `tool_use` 必配 `tool_result`、恢复对话对 Provider API 合法；合成只在内存进行，不回写 DB、不重放工具；旧格式 user 结果行预扫去重；无 journal 故无中间记录增长问题。纯 C# 改动，C# solution 0 警告 0 错误。
+- 未执行：三路径覆盖验证、后续 push、merge、tag、打包、Release。

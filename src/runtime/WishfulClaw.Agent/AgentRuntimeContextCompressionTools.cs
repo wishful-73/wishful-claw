@@ -129,6 +129,13 @@ public static class AgentRuntimeContextCompressionTools
                 // context — same as the automatic path's Replace in AgentLoop.
                 sessionConv?.Replace(newConversation, newWireConversation);
                 sessionConv?.MarkCompactionWatermark(newWireConversation.Count);
+                // Persist the durable snapshot only when the Worker holds the
+                // authoritative conversation; caller-supplied messages (stateless
+                // path) may not match the persisted history the cursor covers.
+                if (sessionConv is not null)
+                {
+                    ContextCompression.PersistSnapshot(outcome, sessionId, trigger, preTokens);
+                }
 
                 WorkerLog.Info(
                     $"manual context compression completed session={AgentLoop.FormatSessionId(sessionId)} " +

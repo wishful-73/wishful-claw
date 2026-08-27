@@ -222,6 +222,12 @@ internal static partial class AgentLoop
                         sessionConv.Replace(newConversation, newWireConversation);
                         conversation = sessionConv.GetConversation();
                         wireConversation = sessionConv.GetWireConversation();
+                        // Persist the durable snapshot for main sessions only — sub-agent
+                        // loops share the parent's sessionId but run an isolated conversation.
+                        if (sessionId.Length > 0 && conversationKey == sessionId)
+                        {
+                            ContextCompression.PersistSnapshot(outcome, sessionId, "auto", lastInputTokens);
+                        }
                         await AgentRuntimeTools.EmitAsync(
                             state, context,
                             new AgentRuntimeStreamEvent(

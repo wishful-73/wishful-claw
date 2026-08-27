@@ -68,8 +68,8 @@
   - 验证：自动/手动产生同格式的压缩上下文、摘要正文与边界元数据（持久化快照落库由步骤 10 验证）。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [x] 步骤 9：完善压缩事件和聊天窗摘要卡。实现：chat-store 的 `context_compressed` 事件接入新字段（trigger/summarizerFailed/messagesSummarized/compactArtifacts），完成时经 `applyCompactArtifactsToSession` 将边界+摘要产物对合入会话转写（`mergeCompressedMessagesKeepHistory`）并 `dbUpsertMessage` 落库，落库前按 (created_at, sort_order) 排序语义重定位产物时间戳（插到保留段头消息之前，重载后仍在压缩点）；手动压缩路径复用同一 `recordCompressionStatusMessage` + `applyCompactArtifactsToSession` 产出同形状状态卡与产物；新增 `CompactBoundaryMessage` 边界分隔线（触发方式/摘要条数/触发 token），`CompressionStatusMessage` 增加触发徽章与降级警示（summarizerFailed 琥珀色降级提示）；`CompressionStatusMeta`/`CompressionResult` 扩展 trigger/messagesSummarized/summarizerFailed；transcript 过滤器放行 compressionStatus/compactBoundary 系统消息。loop_end 不替换会话消息，产物不会被冲掉。
   - 验证：聊天窗显示压缩开始状态；完成后显示可展开的“上下文摘要”正文、压缩数量/范围、保留信息和降级状态；重载历史后仍可查看；不依赖 Activity 面板。
-- [ ] 步骤 10：压缩结果持久化与 Worker 会话同步。
-  - 验证：内存 `SessionConversation`、SQLite 快照、聊天摘要消息语义一致；持久化失败不静默吞掉，按已定策略回退或保留旧快照。
+- [x] 步骤 10：压缩结果持久化与 Worker 会话同步。实现：`DbCompactionSnapshotStore.UpsertSnapshot` 提取为共享写入器（事务内从最新持久化消息派生游标 + `ON CONFLICT(session_id) DO UPDATE` 替换旧行，失败保留旧快照），`DbCompactionSnapshotTools.Upsert` 端点改为委派调用；新增 `ContextCompression.Persistence.PersistSnapshot`——从同一 `CompactionOutcome` 派生 wireConversation/compactArtifacts JSON 数组与 summaryMessage/summaryText（按稳定 SummaryMessageId 定位），仅在有效压缩（非机械截断降级、非未压缩）时落库，异常记 `CompactionSnapshot: persist` 警告不传播；AgentLoop 自动压缩在 `sessionConv.Replace` 后落快照（仅主会话——子 Agent 循环共享父 sessionId 但会话隔离），手动端点在 Worker 持有权威会话时落快照（stateless 回退路径不落，避免调用方消息与游标覆盖的持久化历史不一致）。
+  - 验证：内存 `SessionConversation`、SQLite 快照、聊天摘要消息语义一致；持久化失败不静默吞掉，按已定策略回退或保留旧快照。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 
 ### Plan 23-4：历史恢复、前端分页解耦与当前轮吸附
 

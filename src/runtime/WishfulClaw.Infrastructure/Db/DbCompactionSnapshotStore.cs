@@ -95,6 +95,65 @@ public static class DbCompactionSnapshotStore
         });
     }
 
+    /// <summary>
+    /// Atomically replace the session snapshot. The coverage cursor is derived from the
+    /// newest persisted message inside the same transaction as the upsert; a session
+    /// without messages cannot hold a snapshot. The previous row is replaced, never
+    /// deleted first, so a failed write keeps the old snapshot intact.
+    /// Shared by the Worker endpoint (DbCompactionSnapshotTools.Upsert) and the agent
+    /// compression paths (ContextCompression.PersistSnapshot).
+    /// </summary>
+    public static void UpsertSnapshot(
+        DbService db,
+        string sessionId,
+        int version,
+        string trigger,
+        string wireConversationJson,
+        string compactArtifactsJson,
+        string? summaryMessageJson,
+        string? summaryText,
+        int originalCount,
+        int newCount,
+        int messagesSummarized,
+        bool summarizerFailed)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        db.ExecuteInTransaction((conn, tx) =>
+        {
+            var boundary = GetMaxMessagePosition(db, conn, tx, sessionId)
+                ?? throw new InvalidOperationException("Cannot snapshot a session without persisted messages");
+
+            db.Execute(conn, tx,
+                "INSERT INTO session_compaction_snapshots (session_id, version, \"trigger\", wire_conversation, " +
+                "compact_artifacts, summary_message, summary_text, through_created_at, through_sort_order, " +
+                "original_count, new_count, messages_summarized, summarizer_failed, created_at, updated_at) " +
+                "VALUES (@sid, @version, @trigger, @wire, @artifacts, @summaryMessage, @summaryText, " +
+                "@tca, @tso, @originalCount, @newCount, @messagesSummarized, @summarizerFailed, @ca, @ua) " +
+                "ON CONFLICT(session_id) DO UPDATE SET " +
+                "version = @version, \"trigger\" = @trigger, wire_conversation = @wire, " +
+                "compact_artifacts = @artifacts, summary_message = @summaryMessage, summary_text = @summaryText, " +
+                "through_created_at = @tca, through_sort_order = @tso, " +
+                "original_count = @originalCount, new_count = @newCount, " +
+                "messages_summarized = @messagesSummarized, summarizer_failed = @summarizerFailed, " +
+                "updated_at = @ua",
+                new SqliteParameter("@sid", sessionId),
+                new SqliteParameter("@version", version),
+                new SqliteParameter("@trigger", trigger),
+                new SqliteParameter("@wire", wireConversationJson),
+                new SqliteParameter("@artifacts", compactArtifactsJson),
+                new SqliteParameter("@summaryMessage", (object?)summaryMessageJson ?? DBNull.Value),
+                new SqliteParameter("@summaryText", (object?)summaryText ?? DBNull.Value),
+                new SqliteParameter("@tca", boundary.CreatedAt),
+                new SqliteParameter("@tso", boundary.SortOrder),
+                new SqliteParameter("@originalCount", originalCount),
+                new SqliteParameter("@newCount", newCount),
+                new SqliteParameter("@messagesSummarized", messagesSummarized),
+                new SqliteParameter("@summarizerFailed", summarizerFailed ? 1 : 0),
+                new SqliteParameter("@ca", now),
+                new SqliteParameter("@ua", now));
+        });
+    }
+
     /// <summary>Query the newest message position of a session; null when the session has no messages.</summary>
     public static MessagePosition? GetMaxMessagePosition(DbService db, SqliteConnection conn, SqliteTransaction tx, string sessionId)
     {

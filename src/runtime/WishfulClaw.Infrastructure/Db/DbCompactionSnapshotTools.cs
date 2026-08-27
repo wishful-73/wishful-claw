@@ -144,9 +144,9 @@ public static class DbCompactionSnapshotTools
     }
 
     /// <summary>
-    /// Atomically replace the session snapshot. The coverage cursor is computed from the
-    /// newest persisted message inside the same transaction as the upsert; a session without
-    /// messages cannot hold a snapshot. The previous row is replaced, never deleted first.
+    /// Atomically replace the session snapshot. Delegates to the shared writer
+    /// (<see cref="DbCompactionSnapshotStore.UpsertSnapshot"/>), which derives the
+    /// coverage cursor from the newest persisted message inside the same transaction.
     /// </summary>
     public static WorkerResponse Upsert(JsonElement parameters)
     {
@@ -166,44 +166,12 @@ public static class DbCompactionSnapshotTools
 
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var createdAt = JsonHelpers.GetLong(parameters, "createdAt", now);
-            var updatedAt = JsonHelpers.GetLong(parameters, "updatedAt", now);
 
-            db.ExecuteInTransaction((conn, tx) =>
-            {
-                var boundary = DbCompactionSnapshotStore.GetMaxMessagePosition(db, conn, tx, sessionId)
-                    ?? throw new InvalidOperationException("Cannot snapshot a session without persisted messages");
-
-                db.Execute(conn, tx,
-                    "INSERT INTO session_compaction_snapshots (session_id, version, \"trigger\", wire_conversation, " +
-                    "compact_artifacts, summary_message, summary_text, through_created_at, through_sort_order, " +
-                    "original_count, new_count, messages_summarized, summarizer_failed, created_at, updated_at) " +
-                    "VALUES (@sid, @version, @trigger, @wire, @artifacts, @summaryMessage, @summaryText, " +
-                    "@tca, @tso, @originalCount, @newCount, @messagesSummarized, @summarizerFailed, @ca, @ua) " +
-                    "ON CONFLICT(session_id) DO UPDATE SET " +
-                    "version = @version, \"trigger\" = @trigger, wire_conversation = @wire, " +
-                    "compact_artifacts = @artifacts, summary_message = @summaryMessage, summary_text = @summaryText, " +
-                    "through_created_at = @tca, through_sort_order = @tso, " +
-                    "original_count = @originalCount, new_count = @newCount, " +
-                    "messages_summarized = @messagesSummarized, summarizer_failed = @summarizerFailed, " +
-                    "updated_at = @ua",
-                    new SqliteParameter("@sid", sessionId),
-                    new SqliteParameter("@version", version),
-                    new SqliteParameter("@trigger", trigger),
-                    new SqliteParameter("@wire", wireConversation),
-                    new SqliteParameter("@artifacts", compactArtifacts),
-                    new SqliteParameter("@summaryMessage", (object?)summaryMessage ?? DBNull.Value),
-                    new SqliteParameter("@summaryText", (object?)summaryText ?? DBNull.Value),
-                    new SqliteParameter("@tca", boundary.CreatedAt),
-                    new SqliteParameter("@tso", boundary.SortOrder),
-                    new SqliteParameter("@originalCount", originalCount),
-                    new SqliteParameter("@newCount", newCount),
-                    new SqliteParameter("@messagesSummarized", messagesSummarized),
-                    new SqliteParameter("@summarizerFailed", summarizerFailed ? 1 : 0),
-                    new SqliteParameter("@ca", createdAt),
-                    new SqliteParameter("@ua", updatedAt));
-            });
+            DbCompactionSnapshotStore.UpsertSnapshot(
+                db, sessionId, version, trigger,
+                wireConversation, compactArtifacts,
+                summaryMessage, summaryText,
+                originalCount, newCount, messagesSummarized, summarizerFailed);
 
             return Mutation(1);
         }

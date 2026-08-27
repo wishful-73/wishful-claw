@@ -8,6 +8,7 @@ import {
 import { useChatStore } from '@renderer/stores/chat-store'
 import { updateBrowserStateForSession } from './browser-session-helpers'
 import { createPreviewPanelSlice } from './preview-panel-slice'
+import { activatePreviewTab } from './preview-panel-helpers'
 import { createBrowserSlice } from './ui-store-browser-slice'
 import { createTabSlice } from './ui-store-tab-slice'
 import type { UIStore } from './ui-store-interface'
@@ -80,8 +81,33 @@ export const useUIStore = create<UIStore>((set, get) => ({
   setRightPanelSection: (section: any) => set({ rightPanelSection: section }),
   rightPanelTabs: getDefaultRightPanelTabs(),
   rightPanelActiveTabId: '',
-  setRightPanelActiveTab: (tabId: any) => set({ rightPanelActiveTabId: tabId }),
+  setRightPanelActiveTab: (tabId: any) =>
+    set((state: any) => {
+      const tab = state.rightPanelTabs.find((t: any) => t.id === tabId)
+      // Preview right-panel tabs mirror a preview-panel tab; activating one must
+      // also activate the underlying preview tab so PreviewPanel renders it.
+      if (
+        tab?.kind === 'preview' &&
+        tab.previewTabId &&
+        tab.previewTabId !== state.activePreviewPanelTabId
+      ) {
+        return {
+          rightPanelActiveTabId: tabId,
+          activePreviewPanelTabId: tab.previewTabId,
+          previewPanelState: activatePreviewTab(state.previewPanelTabs, tab.previewTabId),
+          previewPanelOpen: true
+        }
+      }
+      return { rightPanelActiveTabId: tabId }
+    }),
   closeRightPanelTab: (tabId: any) => {
+    const tab = get().rightPanelTabs.find((t: any) => t.id === tabId)
+    if (tab?.kind === 'preview' && tab.previewTabId) {
+      // Preview tabs live in two layers (previewPanelTabs + rightPanelTabs);
+      // closePreviewTab removes both and reassigns activation consistently.
+      get().closePreviewTab(tab.previewTabId)
+      return
+    }
     const tabs = get().rightPanelTabs.filter((t: any) => t.id !== tabId)
     if (tabs.length === 0) {
       // Last tab closed — collapse the right panel

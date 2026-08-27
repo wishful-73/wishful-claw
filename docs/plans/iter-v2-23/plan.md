@@ -136,6 +136,10 @@
 - [x] 步骤 32：查看会话摘要（用户核验反馈新增需求）。
   - 实现：悬浮竖向块新增“查看会话摘要”按钮（`ScrollText`，任何会话均显示），点击在右侧面板打开新增 `summary` tab（单例 tab，`ensureSummaryTab(sessionId)` 绑定会话并在重复打开时刷新绑定）；新组件 `SessionSummaryPanel` 解析该会话最新上下文压缩摘要（先扫内存消息，未命中再经 `dbLoadMessages` 全量扫 DB 历史，`messageCount` 变化触发重扫），命中时渲染 Markdown 全文与“已总结 N 条消息”徽章，无摘要时显示“暂无摘要”；`RightPanelHeader` 摘要 tab 图标 `ScrollText`（紫色，静态类名双模式）；新增 `layout.viewSessionSummary` / `rightPanel.summary` / `summaryEmpty` / `summaryMessages` i18n（zh/en）。
   - 验证：任何会话浮块可见入口；有压缩历史的会话展示最新摘要全文，无压缩的显示“暂无摘要”；tab 可关闭可重复打开。TS 三配置 0 错误。
+- [x] 步骤 33：预览多 tab 切换内容错位修复（用户核验反馈）。
+  - 根因：预览为双层 tab（右侧面板 `preview:*` tab 镜像 `previewPanelTabs`，靠 `previewTabId` 关联），`setRightPanelActiveTab` 只更新右侧面板激活 id，不同步 `activePreviewPanelTabId`，导致切换任意预览 tab 时 `PreviewPanel` 始终渲染最后打开的文档。
+  - 修复：`setRightPanelActiveTab` 命中 preview tab 时同步激活底层预览 tab 与 `previewPanelState`；`closeRightPanelTab` 对 preview tab 委托 `closePreviewTab`，保证双层 tab 与激活态一致清理。预览内层 tab 条的反向同步既有逻辑不变。
+  - 验证：打开多个文档预览，切换每个右侧面板 tab 与内层 tab 条均显示对应文档；从右侧面板关闭预览 tab 双层同步移除。TS 三配置 0 错误。
 - 已实现：① `WorkspaceSidebar` 全局对话分区头部加 `MessageSquare` 图标（对齐 OpenCowork `SessionListPanel` 头部；会话计数后按用户反馈移除），zh `sidebar.conversations` 由“会话”改“对话”（en 保持 Conversations，键仅单处引用）；② 扩展入口图标 `FolderOpen` → `Plug`（对齐 OpenCowork 扩展触发器）；③ 自动化项图标 `CalendarDays` → `Clock3`（对齐 OpenCowork automation nav item）；项目排序下拉的 `CalendarDays` 语义不变保留。导航/点击链路未动。后续补齐：“对话”分区改为与项目行同款可收起/展开——点击分区行切换全局会话列表显示（默认展开，展开时子列表 `ml-3 pl-2` 缩进与项目子列表一致，chevron 旋转指示，保留“加载更多”逻辑）。后续补齐（用户反馈“对话图标也要色彩”）：“对话”分区行 `MessageSquare` 图标加 `text-sky-500 dark:text-sky-400`，与项目行目录图标同色同向。TS 三配置 0 错误。
 
 > 每步骤一个本地 commit，不 push；纯前端步骤验证以 TS 三配置为准。

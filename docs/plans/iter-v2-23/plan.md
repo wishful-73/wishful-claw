@@ -102,6 +102,35 @@
 - [x] 步骤 21：覆盖前台、后台 Cron、渠道会话和异常退出。审计结论：三路径均汇入 chat-store 事件链——前台 `sendMessage`；Cron in-session 模式 `runInSession` → `sendMessage`（发送前 `loadRecentSessionMessages(force)` 触发 restore）；渠道 `plugin:session-task` → `handleSessionTask` → `sendMessage`，步骤 18/19 的持久化边界（工具完成/`message_end`/`loop_end` + 串行队列）天然全覆盖。Cron 静默 sidecar 模式按设计不存会话，仅持久化投递摘要（`deliverToSession`）与 `cron_runs` 运行记录。发现并修复缺口：渠道重启后注入 store 的会话未加载历史也未触发 `agent/restore-session`，Worker 会话为空导致新轮丢失全部历史——`handleSessionTask` 发送前若消息列表为空先 `await loadRecentSessionMessages` + `await agent/restore-session`（参照 `runInSession`），保证 Worker 状态先于 `agent/run` 落位；restore 幂等（`MessageCount > 0` 跳过）常态零开销。异常退出：Renderer 崩溃→工具边界结果已落库（步骤 18）重开可见；Worker 崩溃→上一工具边界快照在库，未找回结果由步骤 20 占位补齐；恢复只读不重放（`RestoreSession` 不触及工具执行器，无静默重跑）；cron 中断 run 留 `running` 行由查询侧孤儿归一化，不自动重跑。纯 TS 改动，TS 三配置 0 错误。
   - 验证：三种执行路径持久化行为一致；Renderer/Worker 在工具完成后异常退出，重开后结果可见且不静默重跑。
 
+### Plan 23-8：追加 Issue 修复与体验改进（issues 库 2026-08-27 新增）
+
+> 来源：`D:\koda\Obsidian\02-AI教学\wishfulclaw\issues`（bugs.md + 改进.md，2026-08-27 新增项）。其中 08-26/08-24 的悬浮块/历史摘要/点击加载/压缩卡片四项已被 Plan 23-2/23-4/23-5 覆盖；桌面图标白角项调查结论为 Windows 图标缓存残留，代码侧无可修复项（待用户清缓存确认）；Goal 编排可视化原排后续迭代、滚动锚点吸附为独立大交互优化，均不纳入本追加。本 Plan 在 Plan 23-7 全量回归之前实施，使回归覆盖新增代码。
+
+- [ ] 步骤 26：修复项目档案路径斜杠混用。
+  - 现状：`project-archive-helpers.ts` 的 `joinFsPath` 一律用 `/` 拼接，与 Windows 反斜杠 `workingFolder` 混出 `D:\gy\Obsidian/.wishful-claw/MEMORY.md`。
+  - 实现：`joinFsPath` 平台感知（win32 用 `\`，其余用 `/`），展示路径与实际读写路径同一拼接结果；排查 ProjectArchivePage 其余直接拼接点。
+  - 验证：项目档案页各路径统一为系统分隔符；记忆/人格/日常文件读写正常。TS 三配置 0 错误。
+- [ ] 步骤 27：输入草稿持久化实装（切页不丢输入内容）。
+  - 现状：main 侧 `input-draft:*` 五个 handler 全为空 stub，renderer `useInputDraftPersistence` 是 no-op；draft 类型与 IPC 通道均已就位。
+  - 实现：main 侧实现草稿 JSON 文件持久化（`~/.wishful-claw/` 下，get/set/remove/list/cleanup）；renderer hook 实装：输入变化防抖保存、挂载恢复、发送成功后清除；沿用现有 draftKey（session/project/home）。
+  - 验证：输入内容→切设置页→回来内容保留；会话/项目各自独立；发送成功后草稿清除。TS 三配置 0 错误。
+- [ ] 步骤 28：新建服务商弹窗改造。
+  - 实现：① `AddProviderDialog` 增加 API Key 输入（随 `addCustomProvider` 落库）；② 保存后立即触发一次 `fetchModels`（错误仅 toast 不阻断）；③ `ProviderConfigPanel` 取消原“连接测试”下拉框整行，改为模型列表项 hover 时显示“检查连接”图标按钮（复用 `testConnection` + 既有 toast 反馈）。
+  - 验证：新建时可填 Key、保存即拉模型列表；连接测试能力不丢失，入口换到模型行。TS 三配置 0 错误。
+- [ ] 步骤 29：模型编辑弹窗图标选择器引入真实图标。
+  - 现状：`ModelFormDialog` 图标选择器所有 `MODEL_ICON_OPTIONS` key 渲染为 `Server` 占位。
+  - 实现：复用 `provider-icons` 的 `ModelIcon` 渲染各 key；核对覆盖度，缺失的 key 补齐图标资源/分支；选择交互不变。
+  - 验证：选择器显示真实系列图标，选择结果在模型列表与消息头生效。TS 三配置 0 错误。
+- [ ] 步骤 30：文件树 tab 彩色图标与中文标题。
+  - 现状：`RightPanelHeader` files tab 用无颜色 `FolderOpen` + 英文标题。
+  - 实现：i18n 中文标题（zh/en）；文件树 tab 与左侧面板项目树图标换为彩色图标（对齐 OpenCowork）。
+  - 验证：tab 展示对齐，切换/折叠功能不受影响。TS 三配置 0 错误。
+- [ ] 步骤 31：左侧面板对话命名/图标 + 扩展/自动化图标。
+  - 实现：① 左侧面板“全局对话”分区展示对齐 OpenCowork（当前直接展开），“会话”命名改“对话”并增加图标；② 扩展入口图标从文件夹改为 OpenCowork 扩展图标；③ 自动化入口图标从日历改为时钟。
+  - 验证：各入口图标/标题正确，导航功能不受影响，i18n 双语完整。TS 三配置 0 错误。
+
+> 每步骤一个本地 commit，不 push；纯前端步骤验证以 TS 三配置为准。
+
 ### Plan 23-7：正式版全量验证与 v1.0.0 发布
 
 - [ ] 步骤 22：完整构建和回归验证。

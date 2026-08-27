@@ -21,7 +21,7 @@ internal static partial class AgentLoop
 
     // ── Wire conversation reading ──
 
-    private static List<JsonElement> ReadWireConversation(JsonElement parameters)
+    internal static List<JsonElement> ReadWireConversation(JsonElement parameters)
     {
         var result = new List<JsonElement>();
         if (parameters.ValueKind != JsonValueKind.Object ||
@@ -41,7 +41,7 @@ internal static partial class AgentLoop
         return result;
     }
 
-    private static List<AgentRuntimeChatMessage> ReadConversation(IReadOnlyList<JsonElement> messages)
+    internal static List<AgentRuntimeChatMessage> ReadConversation(IReadOnlyList<JsonElement> messages)
     {
         var result = new List<AgentRuntimeChatMessage>();
 

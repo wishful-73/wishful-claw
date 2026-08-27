@@ -44,8 +44,8 @@
 
 ### Plan 23-1：压缩/恢复/持久化链路探索与契约定案
 
-- [ ] 步骤 1：确认 `agent/compress-context` 的 Worker 端点归属、输入输出、取消和错误协议；清理或收口前端重复 stub。
-  - 验证：端点注册/调用链有明确源码证据；手动压缩状态覆盖 compressed/skipped/blocked/failed/cancelled；不修改产品行为前先完成契约记录。
+- [x] 步骤 1：确认 `agent/compress-context` 的 Worker 端点归属、输入输出、取消和错误协议；清理或收口前端重复 stub。实现：新增 `AgentRuntimeContextCompressionTools.CompressAsync`，注册 Worker endpoint；开放共享 wire message parser；补 AOT result records；前端移除重复抛异常 stub并统一使用实际 bridge。
+  - 验证：`agent/compress-context` 已在 `AgentRuntimeModule` 注册，输入为 `provider/messages`，输出为压缩后的 `messages` + `ContextCompressionResult`；取消沿 `IWorkerRequestContext.CancellationToken` 传播，压缩结果支持 `compressed`/未压缩和显式 `error`；C# solution 0 warning/0 error，TypeScript web/node/root 0 error，`git diff --check` 通过。手动按钮的上层调用接入、blocked/skipped/failed 的完整 UI 状态闭环留在 Plan 23-3。
 - [ ] 步骤 2：确定压缩摘要、压缩状态卡、压缩快照三者的数据关系。
   - 验证：自动和手动压缩使用同一摘要语义；完成事件能关联摘要正文、压缩范围、保留信息和降级状态；AOT/MessagePack 传输边界明确。
 - [ ] 步骤 3：确定压缩快照存储、游标、版本、失效和失败回退策略。

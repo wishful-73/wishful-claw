@@ -417,7 +417,7 @@ pinned prefix
 - 已执行：Plan 23-4 步骤 11 已完成：`RestoreSession` 改为快照/全量兼容恢复（`TryGetValidSnapshot` 共享校验读取 + 游标后增量去重/跳过聊天产物 + 恢复后打水印），问题均回退全量；252 断言快照回归测试全过；C#/TS 编译验证通过。
 - 已执行：Plan 23-4 步骤 12 已完成：历史加载改为点击触发（移除滚动触顶自动加载），`db/messages-list-by-turns` 返回总轮数，顶部按钮下方显示“已加载 X/Y 轮 · M/N 条消息”；C#/TS 编译验证通过。
 - 已执行：Plan 23-4 步骤 13 已完成：进行中当前轮 user message 吸附——执行中取最后一条普通 user 消息作为锚点，滚出可视区顶部时显示顶部吸附卡（点击可跳回并高亮），执行结束/切换会话自动解除，历史折叠会话不启用；TS 三配置 0 错误 + C# 0 警告 0 错误。Plan 23-4 全部完成。
-- 已执行：Plan 23-5 步骤 14 已完成：`SessionConversationPane` 右上角操作块改为悬浮竖向布局（不占聊天区高度，z-30 盖在 assistant rail 之上），移除其中两处清除会话入口（能力保留在侧边栏与输入区菜单）；TS 三配置 0 错误。
+- 已执行：Plan 23-5 步骤 14 已完成：`SessionConversationPane` 右上角操作块改为悬浮竖向布局（不占聊天区高度，z-30 盖在 assistant rail 之上），移除其中两处清除会话入口（能力保留在侧边栏与输入区菜单）；TS 三配置 0 错误。后续补齐（用户反馈）：全局会话（无项目）终端 dock 挂载去掉 `projectId` 门槛，无工作目录时终端以用户主目录为 cwd 正常开启。
 - 已执行：Plan 23-5 步骤 15 已完成：悬浮块接入“压缩会话”——复用 `useContextCompression` 统一反馈与 `compressSessionContext` 统一链路，压缩中防重复点击，状态文案走 tooltip；新增 layout.json 压缩相关 i18n；TS 三配置 0 错误。
 - 已执行：Plan 23-5 步骤 16 已完成：悬浮块接入“打开右侧文件夹”——调用 `ensureFilesTab` 打开右侧面板并激活 Files tab，无工作目录时禁用并提示，不伪造成功；TS 三配置 0 错误。后续补齐（用户反馈）：全局对话（无工作目录）时该按钮直接不渲染而非禁用；同批修复 `shell:openPath`/`shell:showItemInFolder` 参数失配（渲染端 6 处裸字符串→`{ path }`），主进程回传错误字符串支撑失败 toast，文件树“在文件管理器打开”恢复生效。
 - 已执行：Plan 23-5 步骤 17 已完成：悬浮块接入聊天区域宽窄调节——`conversationPanelFullWidth` 持久化到 settings-store（version 33 + 迁移守卫，刷新/重启恢复），悬浮块宽窄切换按钮同步驱动 MessageList 与 Composer 列宽（820px ↔ 全宽），右侧面板开关时弹性列自动重适配；同时清理 ui-store 中同名冗余死字段；TS 三配置 0 错误。Plan 23-5 全部完成。

@@ -82,7 +82,7 @@
 
 ### Plan 23-5：聊天窗右上角悬浮操作块重构
 
-- [x] 步骤 14：将 `SessionConversationPane` 右上角操作块改为竖向布局，移除其中的清除会话入口。实现：原顶部横条（占用聊天区一行高度）改为消息区右上角悬浮竖向块（`absolute right-3 top-3 z-30`，不占布局空间，盖在 assistant rail 之上保证可点击，tooltip 改向左弹出）；移除悬浮块中两处清除会话入口（独立 Eraser 按钮与更多菜单的 Clear messages 项）及关联 `handleClear`/`toast`/`hasMessages` 代码——清除能力保留在侧边栏会话菜单与输入区菜单（`workspace-sidebar-items.tsx` / `InputArea`），非误删；保留终端开关与更多菜单（重命名/删除会话），竖向容器为后续步骤 15/16/17（压缩会话/打开文件夹/宽窄调节）预留扩展位。
+- [x] 步骤 14：将 `SessionConversationPane` 右上角操作块改为竖向布局，移除其中的清除会话入口。实现：原顶部横条（占用聊天区一行高度）改为消息区右上角悬浮竖向块（`absolute right-3 top-3 z-30`，不占布局空间，盖在 assistant rail 之上保证可点击，tooltip 改向左弹出）；移除悬浮块中两处清除会话入口（独立 Eraser 按钮与更多菜单的 Clear messages 项）及关联 `handleClear`/`toast`/`hasMessages` 代码——清除能力保留在侧边栏会话菜单与输入区菜单（`workspace-sidebar-items.tsx` / `InputArea`），非误删；保留终端开关与更多菜单（重命名/删除会话），竖向容器为后续步骤 15/16/17（压缩会话/打开文件夹/宽窄调节）预留扩展位。后续补齐（用户反馈“全局会话点终端报错，希望无工作目录也能开终端”）：`SessionConversationPane` 底部终端 dock 挂载条件去掉 `projectId` 门槛——全局会话（无项目）也可打开终端，复用 `BottomTerminalDock` 既有无工作目录兜底分支（`createTab(undefined, ...)`），主进程 `resolveCwd` 未指定 cwd 时回退用户主目录；TS 三配置 0 错误。
   - 验证：普通聊天、项目聊天、无消息、执行中、切换会话场景布局和状态正确；清除会话能力不被误删，应保留在其他明确入口或按产品决策移位。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [x] 步骤 15：接入“压缩会话”。实现：悬浮竖向块新增压缩按钮（`Archive` 图标，压缩中切 `Loader2` 旋转并 `disabled` 防重复点击），复用 `useContextCompression` 统一反馈 hook 与 `compressSessionContext` 统一手动压缩链路（与 ContextRing 同一端点/状态语义：运行中会话即时返回 blocked，不重复触发）；按钮 tooltip 优先显示状态文案（压缩中/已压缩/无需压缩/暂时无法压缩/失败，3.2 秒后回退），新增 `layout.compressContext` 与 `input.*` 压缩状态 i18n（zh/en layout.json，此前仅有 defaultValue 英文兜底）。审查修复：`input.*` 压缩状态键补入 zh/en chat.json（InputArea 走 chat 命名空间，此前仅 layout.json 补齐）。
   - 验证：调用统一手动压缩链路，显示压缩中/成功/失败反馈，执行期间防重复点击。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。

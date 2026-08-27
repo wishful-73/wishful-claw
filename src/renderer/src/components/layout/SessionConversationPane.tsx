@@ -274,11 +274,13 @@ export function SessionConversationPane({
           fullWidth={conversationFullWidth}
         />
 
-        {/* Bottom terminal dock - keep mounted, hide via CSS to preserve state */}
-        {resolvedSessionId && projectId && (
+        {/* Bottom terminal dock - keep mounted, hide via CSS to preserve state.
+            Global conversations (no project) still get a dock: the terminal
+            falls back to the user home directory as cwd. */}
+        {resolvedSessionId && (
           <div className={bottomTerminalDockOpen ? "shrink-0 border-t" : "hidden"}>
             <BottomTerminalDock
-              projectId={projectId}
+              projectId={projectId ?? ''}
               sessionId={resolvedSessionId}
               projectName={projectName}
               workingFolder={projectWorkingFolder ?? null}

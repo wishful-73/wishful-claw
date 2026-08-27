@@ -95,9 +95,14 @@ public static class DbPluginSessionTools
             var deletedMessages = 0;
             if (sessionIds.Count > 0)
             {
-                var ph = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
-                deletedMessages = db.Execute($"DELETE FROM messages WHERE session_id IN ({ph})",
-                    sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray());
+                deletedMessages = db.ExecuteInTransaction((conn, tx) =>
+                {
+                    var ph = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
+                    var removed = db.Execute(conn, tx, $"DELETE FROM messages WHERE session_id IN ({ph})",
+                        sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray());
+                    DbCompactionSnapshotStore.DeleteForSessions(db, conn, tx, sessionIds);
+                    return removed;
+                });
             }
             var deletedSessions = db.Execute("DELETE FROM sessions WHERE plugin_id = @pid", new SqliteParameter("@pid", pluginId));
             var deletedProjects = db.Execute("DELETE FROM projects WHERE plugin_id = @pid", new SqliteParameter("@pid", pluginId));
@@ -224,7 +229,12 @@ public static class DbPluginSessionTools
             var sessionId = RequireString(parameters, "sessionId");
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
-            var deleted = db.Execute("DELETE FROM messages WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
+            var deleted = db.ExecuteInTransaction((conn, tx) =>
+            {
+                var removed = db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
+                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
+                return removed;
+            });
             db.Execute("UPDATE sessions SET message_count = 0 WHERE id = @id", new SqliteParameter("@id", sessionId));
             return Mutation(0, deleted);
         }
@@ -238,8 +248,13 @@ public static class DbPluginSessionTools
             var sessionId = RequireString(parameters, "sessionId");
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
-            var deletedMessages = db.Execute("DELETE FROM messages WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
-            var deletedSessions = db.Execute("DELETE FROM sessions WHERE id = @id", new SqliteParameter("@id", sessionId));
+            var (deletedSessions, deletedMessages) = db.ExecuteInTransaction((conn, tx) =>
+            {
+                var removedMessages = db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
+                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
+                var removedSessions = db.Execute(conn, tx, "DELETE FROM sessions WHERE id = @id", new SqliteParameter("@id", sessionId));
+                return (removedSessions, removedMessages);
+            });
             return Mutation(deletedSessions, deletedMessages);
         }
         catch (Exception ex) { return MutationError(ex.Message); }

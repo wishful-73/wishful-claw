@@ -283,6 +283,25 @@ public static partial class DbClient
                     created_at INTEGER NOT NULL,
                     archived_at INTEGER NOT NULL
                 );",
+                @"CREATE TABLE IF NOT EXISTS session_compaction_snapshots (
+                    session_id TEXT PRIMARY KEY NOT NULL,
+                    version INTEGER NOT NULL,
+                    ""trigger"" TEXT NOT NULL,
+                    wire_conversation TEXT NOT NULL,
+                    compact_artifacts TEXT NOT NULL,
+                    summary_message TEXT,
+                    summary_text TEXT,
+                    through_created_at INTEGER NOT NULL,
+                    through_sort_order INTEGER NOT NULL,
+                    original_count INTEGER NOT NULL,
+                    new_count INTEGER NOT NULL,
+                    messages_summarized INTEGER NOT NULL,
+                    summarizer_failed INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );",
+                @"CREATE INDEX IF NOT EXISTS idx_session_compaction_updated
+                ON session_compaction_snapshots(updated_at DESC);",
                 @"CREATE TABLE IF NOT EXISTS cron_tasks (
                     id TEXT PRIMARY KEY NOT NULL,
                     name TEXT NOT NULL DEFAULT '',

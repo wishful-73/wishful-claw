@@ -58,6 +58,11 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-usage-stats", DbMessageCompactTools.UsageStats);
         context.Register("db/messages-search-content", DbMessageTools.SearchContent);
 
+        // ── Compaction Snapshots ──
+        context.Register("db/compaction-snapshots-get", DbCompactionSnapshotTools.Get);
+        context.Register("db/compaction-snapshots-upsert", DbCompactionSnapshotTools.Upsert);
+        context.Register("db/compaction-snapshots-delete", DbCompactionSnapshotTools.Delete);
+
         // ── Sub-Agent Runs ──
         context.Register("db/sub-agent-read-by-tool-use-id", DbSubAgentTools.ReadByToolUseId);
         context.Register("db/sub-agent-read-session", DbSubAgentTools.ReadSession);

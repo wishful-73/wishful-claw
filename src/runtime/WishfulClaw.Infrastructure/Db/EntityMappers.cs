@@ -57,6 +57,25 @@ public static class EntityMappers
         SortOrder = r.GetInt32("sort_order")
     };
 
+    public static CompactionSnapshotEntity MapCompactionSnapshot(SqliteDataReader r) => new()
+    {
+        SessionId = r.GetString("session_id"),
+        Version = r.GetInt32("version"),
+        Trigger = r.GetString("trigger"),
+        WireConversation = r.GetString("wire_conversation"),
+        CompactArtifacts = r.GetString("compact_artifacts"),
+        SummaryMessage = r.GetNullableString("summary_message"),
+        SummaryText = r.GetNullableString("summary_text"),
+        ThroughCreatedAt = r.GetInt64("through_created_at"),
+        ThroughSortOrder = r.GetInt32("through_sort_order"),
+        OriginalCount = r.GetInt32("original_count"),
+        NewCount = r.GetInt32("new_count"),
+        MessagesSummarized = r.GetInt32("messages_summarized"),
+        SummarizerFailed = r.GetInt32("summarizer_failed") != 0,
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at")
+    };
+
     public static SshConnectionEntity MapSshConnection(SqliteDataReader r) => new()
     {
         Id = r.GetString("id"),

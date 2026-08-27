@@ -433,7 +433,8 @@ export async function compressMessages(
   focusPrompt?: string,
   pinnedContext?: string,
   trigger: CompactBoundaryMeta['trigger'] = 'manual',
-  preTokens = 0
+  preTokens = 0,
+  sessionId?: string
 ): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
   if (signal?.aborted) {
     throw new Error('aborted')
@@ -449,7 +450,8 @@ export async function compressMessages(
       : {}),
     ...(trigger ? { trigger } : {}),
     ...(typeof preTokens === 'number' && Number.isFinite(preTokens) ? { preTokens } : {}),
-    ...(pinnedContext?.trim() ? { pinnedContext: pinnedContext.trim() } : {})
+    ...(pinnedContext?.trim() ? { pinnedContext: pinnedContext.trim() } : {}),
+    ...(sessionId ? { sessionId } : {})
   })
 
   if (signal?.aborted) {

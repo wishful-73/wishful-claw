@@ -13,7 +13,7 @@ import { MessageList } from '@renderer/components/chat/MessageList'
 import { InputArea } from '@renderer/components/chat/InputArea'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { useChatActions, type SendMessageOptions } from '@renderer/hooks/use-chat-actions'
+import { useChatActions, compressSessionContext, type SendMessageOptions } from '@renderer/hooks/use-chat-actions'
 import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { BottomTerminalDock } from '@renderer/components/terminal/BottomTerminalDock'
 import { toast } from 'sonner'
@@ -110,6 +110,13 @@ export function SessionConversationPane({
     }
   }, [resolvedSessionId, toggleBottomTerminalDock])
 
+  // Manual context compression entry (ContextRing in the composer toolbar).
+  // The action returns an explicit compressed/skipped/blocked/failed status.
+  const handleCompressContext = useCallback(() => {
+    if (!resolvedSessionId) return 'blocked' as const
+    return compressSessionContext(resolvedSessionId)
+  }, [resolvedSessionId])
+
   if (!session) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -201,6 +208,7 @@ export function SessionConversationPane({
           onStop={stopStreaming}
           sessionId={resolvedSessionId ?? undefined}
           workingFolder={session?.workingFolder ?? projectWorkingFolder}
+          onCompressContext={handleCompressContext}
           hideWorkingFolderIndicator
         />
 

@@ -53,17 +53,17 @@
 
 ### Plan 23-2：压缩快照数据层与旧库迁移
 
-- [ ] 步骤 4：实现压缩快照 schema、Entity/Row/Mapper、查询/写入端点和 AOT JSON 注册。
+- [x] 步骤 4：实现压缩快照 schema、Entity/Row/Mapper、查询/写入端点和 AOT JSON 注册。实现：新增 `session_compaction_snapshots` 表 DDL + 旧库迁移；`CompactionSnapshotEntity`/EntityMappers；`DbCompactionSnapshotStore` + `DbCompactionSnapshotTools` 读写端点；`InfrastructureJsonContext` AOT 注册；破坏性变更失效钩子接入 `DbMessageToolsMutations`/`DbSessionTools`/`DbProjectTools`/`DbPluginSessionTools`。
   - 验证：新库 DDL、旧库迁移、参数化 SQL、AOT 序列化检查通过。
-- [ ] 步骤 5：实现快照游标后的消息增量查询和损坏快照安全回退。
+- [x] 步骤 5：实现快照游标后的消息增量查询和损坏快照安全回退。实现：`created_at + sort_order` 二元游标增量查询端点；快照损坏/版本不兼容/游标无效时安全回退全量恢复并记录日志。
   - 验证：无快照全量恢复；有效快照 + 增量恢复；快照损坏、版本不支持、游标无效时回退全量且有日志。
-- [ ] 步骤 6：补数据库回归测试。
+- [x] 步骤 6：补数据库回归测试。实现：新增 `tests/WishfulClaw.CompactionSnapshotRegressionTests`，覆盖新库、`0.2.22` 旧库迁移、快照 CRUD、空值、损坏 JSON、版本不兼容、消息删除/清空/fork 失效规则，252 断言全过。
   - 验证：覆盖新库、`0.2.22` 旧库迁移、快照 CRUD、空值、损坏 JSON、版本不兼容、消息删除/清空/fork 失效规则。
 
 ### Plan 23-3：统一手动/自动压缩与聊天窗上下文摘要
 
-- [ ] 步骤 7：实现 Worker 手动压缩端点，复用自动压缩核心逻辑。
-  - 验证：悬浮块/ContextRing 点击可实际触发压缩；压缩中不可重复触发；取消、跳过、失败和降级均返回明确结果。
+- [x] 步骤 7：实现 Worker 手动压缩端点，复用自动压缩核心逻辑。实现：`AgentRuntimeContextCompressionTools.CompressAsync` 增强为支持 `sessionId`——优先压缩 Worker 内存 `SessionConversation` 并在成功后 `Replace` + 更新水位（与自动压缩同一 `ContextCompression.CompactAsync` 核心）；会话有运行中 run 或重复触发时返回 `blocked`，取消/跳过/失败返回 `cancelled`/`skipped`/`failed` 明确状态；前端新增 `compressSessionContext` 动作并接入 `SessionConversationPane` 的 ContextRing，复用 `useContextCompression` 状态反馈与防重复触发。
+  - 验证：悬浮块/ContextRing 点击可实际触发压缩；压缩中不可重复触发；取消、跳过、失败和降级均返回明确结果。C# solution 0 warning/0 error，TypeScript web/node/root 0 error。
 - [ ] 步骤 8：统一压缩完成产物。
   - 验证：自动/手动都能产生同格式的压缩上下文、摘要正文、边界元数据和持久化快照。
 - [ ] 步骤 9：完善压缩事件和聊天窗摘要卡。

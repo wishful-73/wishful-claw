@@ -409,4 +409,6 @@ pinned prefix
 - 未确认：快照数据模型、手动压缩真实闭环、错误回滚策略、工具结果持久化责任层、最终 Plan 边界。
 - 已执行：创建本地迭代分支 `dev/v2-iter-23`，提交探索与规划文档；规划合规审查 PASS，用户已确认继续推进。
 - 已执行：Plan 23-1 步骤 1 已接通 `agent/compress-context` Worker 端点，开放共享消息解析并清理前端重复 stub；步骤 2 已完成压缩摘要/状态卡/快照单一数据契约；步骤 3 已完成快照存储、游标、版本、失效和失败回退策略；C#/TS Mini 验证通过。
-- 未执行：数据库迁移、压缩快照实现、聊天摘要卡、悬浮块、工具结果持久化、执行步骤后续 commit、push、merge、tag、打包、Release。
+- 已执行：Plan 23-2 步骤 4/5/6 已完成：压缩快照数据层、游标增量查询与安全回退、252 断言回归测试全过。
+- 已执行：Plan 23-3 步骤 7 已完成：手动压缩端点支持会话内存压缩与 blocked/cancelled/skipped/failed 明确状态，前端 `compressSessionContext` 接入 ContextRing；C#/TS 编译验证通过。
+- 未执行：统一压缩产物、聊天摘要卡、快照持久化同步、历史恢复、悬浮块、工具结果持久化、后续 push、merge、tag、打包、Release。

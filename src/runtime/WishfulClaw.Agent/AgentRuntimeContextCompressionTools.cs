@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -6,12 +7,20 @@ namespace WishfulClaw.Agent;
 
 /// <summary>
 /// Handles explicit context compression requests from the renderer.
-/// The endpoint is intentionally stateless: it returns the compressed wire
-/// conversation to the caller. Session persistence and conversation replacement
-/// are coordinated by the caller in the follow-up compression plan.
+/// When a sessionId is supplied and the Worker still holds the session's
+/// in-memory conversation, compression runs against that authoritative state
+/// and replaces it on success — mirroring the automatic compression path in
+/// the agent loop. Caller-supplied messages are only used as a fallback when
+/// the Worker has no live conversation for the session (step 10 adds the
+/// durable snapshot so a Worker restart can recover the compressed state).
 /// </summary>
 public static class AgentRuntimeContextCompressionTools
 {
+    // One manual compression per session at a time — mirrors the one-active-run
+    // rule: CompactAsync + Replace must not interleave with another compaction
+    // on the same SessionConversation.
+    private static readonly ConcurrentDictionary<string, byte> ActiveCompressions = new(StringComparer.Ordinal);
+
     public static async Task<WorkerResponse> CompressAsync(
         JsonElement parameters,
         IWorkerRequestContext context)
@@ -22,66 +31,141 @@ public static class AgentRuntimeContextCompressionTools
             return WorkerResponse.Error("provider is required.");
         }
 
-        var wireMessages = AgentLoop.ReadWireConversation(parameters);
-        if (wireMessages.Count == 0)
+        var sessionId = JsonHelpers.GetString(parameters, "sessionId") ?? "";
+        var trigger = string.Equals(JsonHelpers.GetString(parameters, "trigger"), "auto", StringComparison.Ordinal)
+            ? "auto"
+            : "manual";
+
+        // Blocked: the session currently has an active agent run. Replacing the
+        // conversation mid-run would corrupt the live loop's message lists.
+        if (sessionId.Length > 0 && AgentRuntimeTools.HasActiveSessionRun(sessionId))
         {
-            return WorkerResponse.Json(
-                new ContextCompressionResponse(
-                    Messages: wireMessages,
-                    Result: new ContextCompressionResult(false, 0, 0)),
-                AgentRuntimeJsonContext.Default.ContextCompressionResponse);
+            WorkerLog.Info(
+                $"manual context compression blocked session={AgentLoop.FormatSessionId(sessionId)} " +
+                "reason=active-run");
+            return BuildResponse(
+                [],
+                new ContextCompressionResult(false, 0, 0, Status: "blocked", Trigger: trigger,
+                    Error: "session has an active agent run"));
         }
 
-        var conversation = AgentLoop.ReadConversation(wireMessages);
-        var originalCount = wireMessages.Count;
+        // Blocked: another manual compression for this session is already in flight.
+        var compressionKey = sessionId.Length > 0 ? sessionId : "__stateless__";
+        if (!ActiveCompressions.TryAdd(compressionKey, 0))
+        {
+            WorkerLog.Info(
+                $"manual context compression blocked session={AgentLoop.FormatSessionId(sessionId)} " +
+                "reason=already-compressing");
+            return BuildResponse(
+                [],
+                new ContextCompressionResult(false, 0, 0, Status: "blocked", Trigger: trigger,
+                    Error: "compression already in progress"));
+        }
 
         try
         {
-            var compression = await ContextCompression.CompactAsync(
-                conversation,
-                wireMessages,
-                provider,
-                context,
-                context.CancellationToken);
-            var compressedWireMessages = compression.wireConversation;
-
-            if (compressedWireMessages.Count >= originalCount)
+            // Prefer the Worker's authoritative in-memory conversation; the
+            // caller's messages are only a fallback for sessions the Worker
+            // has not restored yet.
+            var sessionConv = sessionId.Length > 0 ? SessionConversationManager.TryGet(sessionId) : null;
+            List<JsonElement> wireMessages;
+            if (sessionConv is not null && sessionConv.MessageCount > 0)
             {
-                compressedWireMessages = ContextCompression.TruncateMessages(
-                    conversation,
-                    wireMessages,
-                    provider).wireConversation;
+                wireMessages = [.. sessionConv.GetWireConversation()];
+            }
+            else
+            {
+                sessionConv = null; // stateless path — do not replace later
+                wireMessages = AgentLoop.ReadWireConversation(parameters);
             }
 
-            var compressed = compressedWireMessages.Count < originalCount;
-            WorkerLog.Info(
-                $"manual context compression completed original={originalCount} " +
-                $"new={compressedWireMessages.Count} compressed={compressed}");
+            if (wireMessages.Count == 0)
+            {
+                return BuildResponse(
+                    wireMessages,
+                    new ContextCompressionResult(false, 0, 0, Status: "skipped", Trigger: trigger,
+                        Error: "nothing to compress"));
+            }
 
-            return WorkerResponse.Json(
-                new ContextCompressionResponse(
-                    Messages: compressedWireMessages,
-                    Result: new ContextCompressionResult(
-                        compressed,
-                        originalCount,
-                        compressedWireMessages.Count,
-                        compressed ? Math.Max(0, originalCount - compressedWireMessages.Count) : null)),
-                AgentRuntimeJsonContext.Default.ContextCompressionResponse);
+            var conversation = AgentLoop.ReadConversation(wireMessages);
+            var originalCount = wireMessages.Count;
+
+            try
+            {
+                var (newConversation, newWireConversation) = await ContextCompression.CompactAsync(
+                    conversation,
+                    wireMessages,
+                    provider,
+                    context,
+                    context.CancellationToken);
+
+                if (newWireConversation.Count >= originalCount)
+                {
+                    // AL-6 equivalent: LLM summarization produced no reduction —
+                    // fall back to mechanical truncation before giving up.
+                    (newConversation, newWireConversation) = ContextCompression.TruncateMessages(
+                        conversation, wireMessages, provider);
+                }
+
+                if (newWireConversation.Count >= originalCount)
+                {
+                    WorkerLog.Info(
+                        $"manual context compression skipped session={AgentLoop.FormatSessionId(sessionId)} " +
+                        $"count={originalCount} (nothing foldable)");
+                    return BuildResponse(
+                        wireMessages,
+                        new ContextCompressionResult(false, originalCount, originalCount,
+                            Status: "skipped", Trigger: trigger));
+                }
+
+                // Sync the Worker session so the next turn runs on the compressed
+                // context — same as the automatic path's Replace in AgentLoop.
+                sessionConv?.Replace(newConversation, newWireConversation);
+                sessionConv?.MarkCompactionWatermark(newWireConversation.Count);
+
+                WorkerLog.Info(
+                    $"manual context compression completed session={AgentLoop.FormatSessionId(sessionId)} " +
+                    $"original={originalCount} new={newWireConversation.Count}");
+
+                return BuildResponse(
+                    newWireConversation,
+                    new ContextCompressionResult(true, originalCount, newWireConversation.Count,
+                        MessagesSummarized: Math.Max(0, originalCount - newWireConversation.Count),
+                        Status: "compressed", Trigger: trigger));
+            }
+            catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+            {
+                WorkerLog.Info(
+                    $"manual context compression cancelled session={AgentLoop.FormatSessionId(sessionId)}");
+                return BuildResponse(
+                    wireMessages,
+                    new ContextCompressionResult(false, originalCount, originalCount,
+                        Status: "cancelled", Trigger: trigger));
+            }
+            catch (Exception ex)
+            {
+                WorkerLog.Warn(
+                    $"manual context compression failed session={AgentLoop.FormatSessionId(sessionId)} " +
+                    $"error={ex.GetType().Name}: {ex.Message}");
+                return BuildResponse(
+                    wireMessages,
+                    new ContextCompressionResult(false, originalCount, originalCount,
+                        Status: "failed", Trigger: trigger, Error: ex.Message));
+            }
         }
-        catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
+        finally
         {
-            throw;
+            ActiveCompressions.TryRemove(compressionKey, out _);
         }
-        catch (Exception ex)
-        {
-            WorkerLog.Warn(
-                $"manual context compression failed error={ex.GetType().Name}: {ex.Message}");
-            return WorkerResponse.Json(
-                new ContextCompressionResponse(
-                    Messages: wireMessages,
-                    Result: new ContextCompressionResult(false, originalCount, originalCount, Error: ex.Message)),
-                AgentRuntimeJsonContext.Default.ContextCompressionResponse);
-        }
+    }
+
+    private static WorkerResponse BuildResponse(
+        List<JsonElement> messages,
+        ContextCompressionResult result)
+    {
+        return WorkerResponse.Json(
+            new ContextCompressionResponse(messages, result),
+            AgentRuntimeJsonContext.Default.ContextCompressionResponse);
     }
 }
 
@@ -94,4 +178,6 @@ public sealed record ContextCompressionResult(
     int OriginalCount,
     int NewCount,
     int? MessagesSummarized = null,
-    string? Error = null);
+    string? Error = null,
+    string? Status = null,
+    string? Trigger = null);

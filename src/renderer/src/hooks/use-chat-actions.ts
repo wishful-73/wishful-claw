@@ -9,6 +9,8 @@ import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
+import { compressMessages } from '@renderer/lib/agent/context-compression'
+import type { ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -478,6 +480,70 @@ export interface PendingSessionMessageItem {
 }
 
 export type ManualCompressionResult = 'compressed' | 'skipped' | 'blocked' | 'failed'
+
+/**
+ * Manual context compression for a session (floating block / ContextRing entry).
+ * The Worker endpoint prefers its own in-memory SessionConversation and only
+ * falls back to the UI transcript when the Worker has not restored the session.
+ * Returns an explicit status so the UI can distinguish compressed / skipped /
+ * blocked / failed instead of collapsing everything into an error.
+ */
+export async function compressSessionContext(sessionId: string): Promise<ManualCompressionResult> {
+  const chatStore = useChatStore.getState()
+  const session = chatStore.sessions.find((s) => s.id === sessionId)
+  if (!session) return 'blocked'
+
+  // Never compress while the session has an active run — the Worker would
+  // reject it too, but checking here gives instant feedback without a round trip.
+  if (chatStore.streamingMessages[sessionId]) return 'blocked'
+
+  const messages = session.messages ?? []
+  if (messages.length === 0) return 'skipped'
+
+  const resolved = resolveSendModel(sessionId)
+  if (!resolved) return 'blocked'
+
+  const settingsStore = useSettingsStore.getState()
+  const providerPayload = buildProviderPayload(resolved.provider, resolved.modelId, settingsStore)
+  const modelConfig = resolved.provider.models.find((m: any) => m.id === resolved.modelId)
+  const provider = {
+    ...providerPayload,
+    contextLength: modelConfig?.contextLength ?? undefined
+  } as unknown as ProviderConfig
+
+  // Fallback wire messages for the stateless path — the Worker ignores them
+  // when it already holds the session conversation.
+  const fallbackMessages: UnifiedMessage[] = messages.map((m) => ({
+    id: m.id,
+    role: m.role,
+    content: m.content ?? m.text ?? '',
+    createdAt: m.createdAt,
+    ...(m.meta ? { meta: m.meta } : {})
+  }))
+
+  try {
+    const { result } = await compressMessages(
+      fallbackMessages,
+      provider,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      'manual',
+      0,
+      sessionId
+    )
+    const status = result.status ?? (result.compressed ? 'compressed' : 'skipped')
+    if (status === 'compressed') return 'compressed'
+    if (status === 'blocked') return 'blocked'
+    if (status === 'skipped' || status === 'cancelled') return 'skipped'
+    console.warn('[ChatActions] Manual compression failed', result.error)
+    return 'failed'
+  } catch (error) {
+    console.error('[ChatActions] Manual compression error', error)
+    return 'failed'
+  }
+}
 
 const _pendingMessages = new Map<string, PendingSessionMessageItem[]>()
 const _pendingListeners = new Set<() => void>()

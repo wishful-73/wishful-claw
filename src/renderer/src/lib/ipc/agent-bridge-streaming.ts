@@ -389,6 +389,7 @@ export async function runSidecarContextCompression(args: {
   pinnedContext?: string
   trigger?: 'auto' | 'manual'
   preTokens?: number
+  sessionId?: string
 }): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
   if (args.signal?.aborted) {
     throw new Error('aborted')
@@ -418,7 +419,8 @@ export async function runSidecarContextCompression(args: {
       ...(args.trigger ? { trigger: args.trigger } : {}),
       ...(typeof args.preTokens === 'number' && Number.isFinite(args.preTokens)
         ? { preTokens: args.preTokens }
-        : {})
+        : {}),
+      ...(args.sessionId ? { sessionId: args.sessionId } : {})
     }
   })
 

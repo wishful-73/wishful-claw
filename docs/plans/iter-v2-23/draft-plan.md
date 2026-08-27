@@ -432,4 +432,5 @@ pinned prefix
 - 已执行：Plan 23-8 步骤 29 已完成：`ModelFormDialog` 图标选择器改用 `ModelIcon` 真实系列图标（23 个 key 在 `modelIconSlugMap` 全覆盖，无需新增资源），选择交互不变，模型列表/消息头自动生效；TS 三配置 0 错误。
 - 已执行：Plan 23-8 步骤 30 已完成：`RightPanel` tabs useMemo 补 files i18n 分支 + zh/en layout.json 新增 `rightPanel.files`（“文件”/“Files”）；`RightPanelHeader` files tab 图标与“打开文件”下拉项、左侧面板项目行图标统一上 `text-sky-400`（对齐 OpenCowork）；切换/折叠逻辑未动；TS 三配置 0 错误。
 - 已执行：Plan 23-8 步骤 31 已完成：全局对话分区头部加 `MessageSquare` 图标与计数（对齐 OpenCowork），zh `sidebar.conversations` “会话”→“对话”；扩展入口 `FolderOpen`→`Plug`、自动化 `CalendarDays`→`Clock3`（均对齐 OpenCowork）；导航链路未动；TS 三配置 0 错误。Plan 23-8 全部完成。
-- 未执行：Plan 23-7（全量验证与 v1.0.0 发布，需用户确认）、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-8 步骤 26-31 代码审查完成（审查子代理 + 逐项核实）：发现并修复 1 中 3 低问题——草稿生命周期缺口（启动清扫 + 删会话清草稿）、草稿写盘改原子替换、`hasInputDraftContent` 纳入 `selectedFiles`、`bigmodel` 图标映射补齐；步骤 26/28/30/31 审查通过，无新增安全风险。TS 三配置 0 错误。
+- 未执行：用户人工核验步骤 26-31、Plan 23-7（全量验证与 v1.0.0 发布，需用户确认）、后续 push、merge、tag、打包、Release。

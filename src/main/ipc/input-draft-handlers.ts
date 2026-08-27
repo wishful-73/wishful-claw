@@ -53,7 +53,11 @@ function readDraftFile(): InputDraftFile {
 function writeDraftFile(file: InputDraftFile): void {
   const filePath = getDraftFilePath()
   fs.mkdirSync(dirname(filePath), { recursive: true })
-  fs.writeFileSync(filePath, JSON.stringify(file), 'utf-8')
+  // Atomic replace: write to a temp file first so a crash mid-write can
+  // never truncate the real draft store.
+  const tmpPath = `${filePath}.tmp`
+  fs.writeFileSync(tmpPath, JSON.stringify(file), 'utf-8')
+  fs.renameSync(tmpPath, filePath)
 }
 
 function normalizeDraft(draft: Partial<InputDraftValue>): InputDraftValue {
@@ -72,6 +76,20 @@ function hasDraftContent(draft: InputDraftValue): boolean {
     draft.selectedFiles.length > 0 ||
     draft.skill !== null
   )
+}
+
+function cleanupExpiredDrafts(): number {
+  const file = readDraftFile()
+  const cutoff = Date.now() - CLEANUP_MAX_AGE_MS
+  let removed = 0
+  for (const [draftKey, entry] of Object.entries(file)) {
+    if (entry.updatedAt < cutoff) {
+      delete file[draftKey]
+      removed += 1
+    }
+  }
+  if (removed > 0) writeDraftFile(file)
+  return removed
 }
 
 export function registerInputDraftHandlers(): void {
@@ -126,18 +144,14 @@ export function registerInputDraftHandlers(): void {
 
   registerMessagePackHandler<void, { success: boolean; removed: number }>(
     'input-draft:cleanup',
-    () => {
-      const file = readDraftFile()
-      const cutoff = Date.now() - CLEANUP_MAX_AGE_MS
-      let removed = 0
-      for (const [draftKey, entry] of Object.entries(file)) {
-        if (entry.updatedAt < cutoff) {
-          delete file[draftKey]
-          removed += 1
-        }
-      }
-      if (removed > 0) writeDraftFile(file)
-      return { success: true, removed }
-    }
+    () => ({ success: true, removed: cleanupExpiredDrafts() })
   )
+
+  // Expired drafts accumulate across deleted sessions, so sweep once at
+  // startup to keep input-drafts.json bounded.
+  try {
+    cleanupExpiredDrafts()
+  } catch {
+    // Startup cleanup must never block app launch.
+  }
 }

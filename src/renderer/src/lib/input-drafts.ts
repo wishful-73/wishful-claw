@@ -48,9 +48,14 @@ export function getProjectInputDraftKey(projectId: string): string {
 }
 
 export function hasInputDraftContent(
-  draft: Pick<InputDraftValue, 'text' | 'images' | 'skill'>
+  draft: Pick<InputDraftValue, 'text' | 'images' | 'selectedFiles' | 'skill'>
 ): boolean {
-  return draft.text.length > 0 || draft.images.length > 0 || draft.skill !== null
+  return (
+    draft.text.length > 0 ||
+    draft.images.length > 0 ||
+    draft.selectedFiles.length > 0 ||
+    draft.skill !== null
+  )
 }
 
 export function getCachedInputDraft(draftKey: string | null | undefined): InputDraftValue | null {

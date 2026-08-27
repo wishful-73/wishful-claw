@@ -115,7 +115,7 @@
   - 现状：main 侧 `input-draft:*` 五个 handler 全为空 stub，renderer `useInputDraftPersistence` 是 no-op；draft 类型与 IPC 通道均已就位。
   - 实现：main 侧实现草稿 JSON 文件持久化（`~/.wishful-claw/` 下，get/set/remove/list/cleanup）；renderer hook 实装：输入变化防抖保存、挂载恢复、发送成功后清除；沿用现有 draftKey（session/project/home）。
   - 验证：输入内容→切设置页→回来内容保留；会话/项目各自独立；发送成功后草稿清除。TS 三配置 0 错误。
-  - 已实现：新增 `src/main/ipc/input-draft-handlers.ts`——草稿存于 `~/.wishful-claw/input-drafts.json`（兼容 `WISHFULCLAW_DATA_DIR` 隔离目录）单文件 JSON map（draftKey → draft + updatedAt），get/set/remove/list/cleanup 五端点实装（空内容 set 转为删除，cleanup 清 30 天前旧草稿），替换 `index.ts` 空 stub；`use-input-draft-persistence.ts` 实装：draftKey 变更时先读内存缓存再读盘（请求序号防竞态）、`saveDraft` 空内容转 remove、`removeDraft` 同步清本地状态；既有 `use-input-area-effects` 的 400ms 防抖保存/挂载恢复/`resetComposer` 发送后清除链路无需改动直接生效。TS 三配置 0 错误。
+  - 已实现：新增 `src/main/ipc/input-draft-handlers.ts`——草稿存于 `~/.wishful-claw/input-drafts.json`（兼容 `WISHFULCLAW_DATA_DIR` 隔离目录）单文件 JSON map（draftKey → draft + updatedAt），get/set/remove/list/cleanup 五端点实装（空内容 set 转为删除，cleanup 清 30 天前旧草稿），替换 `index.ts` 空 stub；`use-input-draft-persistence.ts` 实装：draftKey 变更时先读内存缓存再读盘（请求序号防竞态）、`saveDraft` 空内容转 remove、`removeDraft` 同步清本地状态；既有 `use-input-area-effects` 的 400ms 防抖保存/挂载恢复/`resetComposer` 发送后清除链路无需改动直接生效。后续审查修复：写盘改临时文件 + `rename` 原子替换；注册时启动清扫一次过期草稿；`deleteSession` 同步删除对应 `session:*` 草稿；`hasInputDraftContent` 纳入 `selectedFiles` 与主进程判定一致。TS 三配置 0 错误。
 - [x] 步骤 28：新建服务商弹窗改造。
   - 实现：① `AddProviderDialog` 增加 API Key 输入（随 `addCustomProvider` 落库）；② 保存后立即触发一次 `fetchModels`（错误仅 toast 不阻断）；③ `ProviderConfigPanel` 取消原“连接测试”下拉框整行，改为模型列表项 hover 时显示“检查连接”图标按钮（复用 `testConnection` + 既有 toast 反馈）。
   - 验证：新建时可填 Key、保存即拉模型列表；连接测试能力不丢失，入口换到模型行。TS 三配置 0 错误。
@@ -124,7 +124,7 @@
   - 现状：`ModelFormDialog` 图标选择器所有 `MODEL_ICON_OPTIONS` key 渲染为 `Server` 占位。
   - 实现：复用 `provider-icons` 的 `ModelIcon` 渲染各 key；核对覆盖度，缺失的 key 补齐图标资源/分支；选择交互不变。
   - 验证：选择器显示真实系列图标，选择结果在模型列表与消息头生效。TS 三配置 0 错误。
-  - 已实现：`ModelFormDialog` 图标选择器由 `Server` 占位改为 `<ModelIcon icon={key} size={16} />`（复用 `provider-icons` 的 lobehub 静态图标链路，自动跟随明暗主题）；覆盖度核对：`MODEL_ICON_OPTIONS` 23 个 key 在 `modelIconSlugMap` 全部有映射（bigmodel→chatglm、mimo→xiaomimimo 等），无需新增资源/分支；选择交互与保存链路不变，既有 `ModelIcon` 消费 `icon` 字段，模型列表与消息头自动生效。TS 三配置 0 错误。
+  - 已实现：`ModelFormDialog` 图标选择器由 `Server` 占位改为 `<ModelIcon icon={key} size={16} />`（复用 `provider-icons` 的 lobehub 静态图标链路，自动跟随明暗主题）；覆盖度核对：`MODEL_ICON_OPTIONS` 23 个 key 在 `modelIconSlugMap` 全部有映射（bigmodel→chatglm、mimo→xiaomimimo 等，审查后补 `bigmodel` 映射遗漏），无需新增资源/分支；选择交互与保存链路不变，既有 `ModelIcon` 消费 `icon` 字段，模型列表与消息头自动生效。TS 三配置 0 错误。
 - [x] 步骤 30：文件树 tab 彩色图标与中文标题。
   - 现状：`RightPanelHeader` files tab 用无颜色 `FolderOpen` + 英文标题。
   - 实现：i18n 中文标题（zh/en）；文件树 tab 与左侧面板项目树图标换为彩色图标（对齐 OpenCowork）。

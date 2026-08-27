@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
+import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 
 export interface SessionSlice {
   sessions: Session[]
@@ -141,6 +142,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     })
     void dbDeleteSession(id)
     void window.api.workerRequest('agent/clear-session', { sessionId: id })
+    // Drop the persisted composer draft so deleted sessions leave no orphans.
+    void removeSessionInputDraft(id)
   },
 
   setActiveSession: (id) => {

@@ -13,6 +13,7 @@ import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
 import { ContextCompressionMessage } from './ContextCompressionMessage'
 import { CompressionStatusMessage } from './CompressionStatusMessage'
+import { CompactBoundaryMessage } from './CompactBoundaryMessage'
 import type { UnifiedMessage, ToolResultContent } from '@renderer/lib/api/types'
 import type { RequestRetryState, ToolCallState } from '@renderer/lib/agent/types'
 import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
@@ -212,7 +213,10 @@ function MessageItemInner({
         if (message.meta?.compressionStatus) {
           return <CompressionStatusMessage message={message} />
         }
-        return <ContextCompressionMessage message={message} />
+        if (message.meta?.compactBoundary) {
+          return <CompactBoundaryMessage message={message} />
+        }
+        return null
       default:
         return null
     }

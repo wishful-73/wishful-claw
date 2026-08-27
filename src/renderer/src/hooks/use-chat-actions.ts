@@ -1,5 +1,9 @@
 ﻿import { useCallback } from 'react'
-import { useChatStore } from '@renderer/stores/chat-store'
+import {
+  useChatStore,
+  recordCompressionStatusMessage,
+  applyCompactArtifactsToSession
+} from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
 import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
@@ -522,7 +526,7 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
   }))
 
   try {
-    const { result } = await compressMessages(
+    const { result, compactArtifacts } = await compressMessages(
       fallbackMessages,
       provider,
       undefined,
@@ -534,7 +538,25 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       sessionId
     )
     const status = result.status ?? (result.compressed ? 'compressed' : 'skipped')
-    if (status === 'compressed') return 'compressed'
+    if (status === 'compressed') {
+      // Manual runs emit no stream events — record the same status card and
+      // boundary/summary pair the auto path produces via context_compressed.
+      const now = Date.now()
+      recordCompressionStatusMessage(sessionId, {
+        state: 'compressed',
+        startedAt: now,
+        completedAt: now,
+        trigger: result.trigger ?? 'manual',
+        ...(typeof result.messagesSummarized === 'number'
+          ? { messagesSummarized: result.messagesSummarized }
+          : {}),
+        ...(result.summarizerFailed ? { summarizerFailed: true } : {})
+      }, `manual-${now}`)
+      if (compactArtifacts?.length) {
+        applyCompactArtifactsToSession(sessionId, compactArtifacts)
+      }
+      return 'compressed'
+    }
     if (status === 'blocked') return 'blocked'
     if (status === 'skipped' || status === 'cancelled') return 'skipped'
     console.warn('[ChatActions] Manual compression failed', result.error)

@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 
 /**
@@ -45,11 +45,29 @@ export function CompressionStatusMessage({
 
   return (
     <div className="my-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border bg-muted/25 px-3 py-2 text-[12px]">
-      <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+      {status.summarizerFailed ? (
+        <AlertTriangle className="size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+      ) : (
+        <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+      )}
       <span className="font-medium text-foreground">
         {t('contextCompression.compressed', { defaultValue: 'Context compressed' })}
       </span>
-      {typeof status.keptMessageCount === 'number' && status.keptMessageCount > 0 ? (
+      {status.trigger ? (
+        <span className="rounded border border-border/70 bg-background/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          {status.trigger === 'manual'
+            ? t('contextCompression.triggerManual', { defaultValue: 'Manual' })
+            : t('contextCompression.triggerAuto', { defaultValue: 'Auto' })}
+        </span>
+      ) : null}
+      {typeof status.messagesSummarized === 'number' && status.messagesSummarized > 0 ? (
+        <span className="text-[11px] text-muted-foreground">
+          {t('contextCompression.compressedDetail', {
+            defaultValue: '{{count}} messages compressed',
+            count: status.messagesSummarized
+          })}
+        </span>
+      ) : typeof status.keptMessageCount === 'number' && status.keptMessageCount > 0 ? (
         <span className="text-[11px] text-muted-foreground">
           {t('contextCompression.compressedDetail', {
             defaultValue: '{{count}} messages compressed',
@@ -62,6 +80,13 @@ export function CompressionStatusMessage({
           {t('contextCompression.boundaryPreTokens', {
             defaultValue: '{{tokens}} tokens at trigger',
             tokens: tokenFormatter.format(status.preTokens)
+          })}
+        </span>
+      ) : null}
+      {status.summarizerFailed ? (
+        <span className="text-[11px] text-amber-600 dark:text-amber-400">
+          {t('contextCompression.summarizerFailed', {
+            defaultValue: 'Fallback summary used (summarizer unavailable)'
           })}
         </span>
       ) : null}

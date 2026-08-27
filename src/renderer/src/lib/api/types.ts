@@ -284,6 +284,12 @@ export interface CompressionStatusMeta {
   keptMessageCount?: number
   preTokens?: number
   newCount?: number
+  /** What triggered the compression — auto threshold or user action. */
+  trigger?: 'auto' | 'manual'
+  /** Number of older messages folded into the summary. */
+  messagesSummarized?: number
+  /** True when the LLM summarizer failed and a mechanical fallback digest was used. */
+  summarizerFailed?: boolean
 }
 
 export interface SelectedFileReference {

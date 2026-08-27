@@ -66,7 +66,12 @@ export function shouldRenderInMessageList(
   message: UnifiedMessage,
   activeCompactSummaryId: string | null
 ): boolean {
-  if (message.role === 'system') return false
+  if (message.role === 'system') {
+    // Compression lifecycle cards (status + boundary divider) are the only
+    // system messages with chat-window representation; everything else stays
+    // hidden metadata.
+    return Boolean(message.meta?.compressionStatus ?? message.meta?.compactBoundary)
+  }
   if (isCompactSummaryLikeMessage(message)) return message.id === activeCompactSummaryId
   if (isToolResultOnlyUserMessage(message)) return false
   if (message.role !== 'assistant') return true

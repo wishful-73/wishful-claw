@@ -412,4 +412,5 @@ pinned prefix
 - 已执行：Plan 23-2 步骤 4/5/6 已完成：压缩快照数据层、游标增量查询与安全回退、252 断言回归测试全过。
 - 已执行：Plan 23-3 步骤 7 已完成：手动压缩端点支持会话内存压缩与 blocked/cancelled/skipped/failed 明确状态，前端 `compressSessionContext` 接入 ContextRing；C#/TS 编译验证通过。
 - 已执行：Plan 23-3 步骤 8 已完成：`CompactAsync` 返回结构化 `CompactionOutcome`，新增 `BuildCompactArtifacts` 统一边界/摘要聊天产物，自动与手动路径消费同一产物并携带 Trigger/SummarizerFailed/MessagesSummarized/CompactArtifacts；C#/TS 编译验证通过。
-- 未执行：聊天摘要卡、快照持久化同步、历史恢复、悬浮块、工具结果持久化、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-3 步骤 9 已完成：`context_compressed` 事件与手动压缩响应接入聊天窗——状态卡（触发/降级）+ 边界分隔线 + 可展开摘要卡，产物合入转写并按 (created_at, sort_order) 重定位时间戳后落库，重载历史仍可查看；TS 三配置 0 错误。
+- 未执行：快照持久化同步、历史恢复、悬浮块、工具结果持久化、后续 push、merge、tag、打包、Release。

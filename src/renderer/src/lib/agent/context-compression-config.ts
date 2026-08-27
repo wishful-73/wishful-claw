@@ -24,6 +24,7 @@ export interface CompressionResult {
   error?: string
   status?: CompressionStatus
   trigger?: 'auto' | 'manual'
+  summarizerFailed?: boolean
 }
 
 export const DEFAULT_CONTEXT_COMPRESSION_LIMIT = 200_000

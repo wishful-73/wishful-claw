@@ -390,7 +390,11 @@ export async function runSidecarContextCompression(args: {
   trigger?: 'auto' | 'manual'
   preTokens?: number
   sessionId?: string
-}): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
+}): Promise<{
+  messages: UnifiedMessage[]
+  result: CompressionResult
+  compactArtifacts?: UnifiedMessage[]
+}> {
   if (args.signal?.aborted) {
     throw new Error('aborted')
   }
@@ -428,5 +432,9 @@ export async function runSidecarContextCompression(args: {
     throw new Error('aborted')
   }
 
-  return result as { messages: UnifiedMessage[]; result: CompressionResult }
+  return result as {
+    messages: UnifiedMessage[]
+    result: CompressionResult
+    compactArtifacts?: UnifiedMessage[]
+  }
 }

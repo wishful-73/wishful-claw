@@ -435,7 +435,11 @@ export async function compressMessages(
   trigger: CompactBoundaryMeta['trigger'] = 'manual',
   preTokens = 0,
   sessionId?: string
-): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
+): Promise<{
+  messages: UnifiedMessage[]
+  result: CompressionResult
+  compactArtifacts?: UnifiedMessage[]
+}> {
   if (signal?.aborted) {
     throw new Error('aborted')
   }

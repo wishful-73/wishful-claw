@@ -20,6 +20,9 @@ import { createStreamingSlice, type StreamingSlice } from './streaming-slice'
 import type { ChatMessage } from './types'
 import { writeLog } from '@renderer/lib/error-logger'
 
+import { mergeCompressedMessagesKeepHistory } from '@renderer/lib/agent/context-compression'
+import type { CompressionStatusMeta, UnifiedMessage } from '@renderer/lib/api/types'
+
 import { dbUpsertMessage, dbUpdateSession, dbDeleteMessage, awaitSessionCreated } from './db-helpers'
 
 import { setLastDebugInfo } from '@renderer/lib/debug-store'
@@ -509,39 +512,34 @@ export const useChatStore = create<ChatStore>()(
             originalCount?: number
             newCount?: number
             keptMessageCount?: number
+            trigger?: 'auto' | 'manual'
+            summarizerFailed?: boolean
+            messagesSummarized?: number
+            compactArtifacts?: UnifiedMessage[]
           }
           const now = Date.now()
           const isCompleted = compressionEvent.type === 'context_compressed'
-          const compressionMessage: ChatMessage = {
-            id: `compression-${envelope.runId}-${now}`,
-            role: 'system',
-            text: '',
-            content: '',
-            createdAt: now,
-            meta: {
-              compressionStatus: {
-                state: isCompleted ? 'compressed' : 'compressing',
-                startedAt: now,
-                ...(isCompleted ? { completedAt: now } : {}),
-                ...(compressionEvent.keptMessageCount !== undefined
-                  ? { keptMessageCount: compressionEvent.keptMessageCount }
-                  : {}),
-                ...(compressionEvent.newCount !== undefined
-                  ? { newCount: compressionEvent.newCount }
-                  : {})
-              }
-            }
-          }
-          set((state) => {
-            const session = state.sessions.find((s) => s.id === targetSessionId)
-            if (!session) return
-            session.messages.push(compressionMessage)
-            session.messageCount = session.messages.length
-            session.updatedAt = now
-          })
-          const session = get().sessions.find((s) => s.id === targetSessionId)
-          if (session) {
-            void dbUpsertMessage(targetSessionId, compressionMessage, session.messages.length - 1)
+          recordCompressionStatusMessage(targetSessionId, {
+            state: isCompleted ? 'compressed' : 'compressing',
+            startedAt: now,
+            ...(isCompleted ? { completedAt: now } : {}),
+            ...(compressionEvent.keptMessageCount !== undefined
+              ? { keptMessageCount: compressionEvent.keptMessageCount }
+              : {}),
+            ...(compressionEvent.newCount !== undefined
+              ? { newCount: compressionEvent.newCount }
+              : {}),
+            ...(compressionEvent.trigger ? { trigger: compressionEvent.trigger } : {}),
+            ...(compressionEvent.messagesSummarized !== undefined
+              ? { messagesSummarized: compressionEvent.messagesSummarized }
+              : {}),
+            ...(compressionEvent.summarizerFailed ? { summarizerFailed: true } : {})
+          }, envelope.runId)
+          // The completion event carries the boundary + summary artifact pair —
+          // merge it into the transcript so the chat window shows the same
+          // summary the model now runs on (contract §五.3).
+          if (isCompleted && compressionEvent.compactArtifacts?.length) {
+            applyCompactArtifactsToSession(targetSessionId, compressionEvent.compactArtifacts)
           }
           continue
         }
@@ -1433,6 +1431,127 @@ export const useChatStore = create<ChatStore>()(
   }))
 
 )
+
+
+
+// ─── Compression artifacts (Plan 23-3 step 9) ───
+
+function artifactToChatMessage(artifact: UnifiedMessage): ChatMessage {
+  const text = typeof artifact.content === 'string' ? artifact.content : ''
+  return {
+    id: artifact.id,
+    role: artifact.role === 'tool' ? 'system' : artifact.role,
+    text,
+    content: artifact.content,
+    createdAt: artifact.createdAt,
+    ...(artifact.meta ? { meta: artifact.meta } : {})
+  }
+}
+
+/**
+ * Record a compression lifecycle status message (compressing/compressed) in the
+ * session transcript and persist it, so the status card survives reloads.
+ * Shared by the streaming event path and the manual compression path so both
+ * produce the identical message shape (contract §四.3).
+ */
+export function recordCompressionStatusMessage(
+  sessionId: string,
+  meta: CompressionStatusMeta,
+  idSuffix: string
+): void {
+  const now = Date.now()
+  const statusMessage: ChatMessage = {
+    id: `compression-${idSuffix}-${now}`,
+    role: 'system',
+    text: '',
+    content: '',
+    createdAt: now,
+    meta: { compressionStatus: meta }
+  }
+  useChatStore.setState((state) => {
+    const session = state.sessions.find((s) => s.id === sessionId)
+    if (!session) return
+    session.messages.push(statusMessage)
+    session.messageCount = session.messages.length
+    session.updatedAt = now
+  })
+  const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
+  if (session) {
+    void dbUpsertMessage(sessionId, statusMessage, session.messages.length - 1)
+  }
+}
+
+/**
+ * The DB orders messages by (created_at, sort_order). Freshly merged artifacts
+ * carry "now" timestamps, which would push them to the end of the transcript
+ * on reload — relocate them just before the preserved-tail head so the boundary
+ * stays at the compression point.
+ */
+function adjustCompactArtifactTimestamps(messages: ChatMessage[], boundaryIndex: number): void {
+  const summaryIndex = boundaryIndex + 1
+  if (summaryIndex >= messages.length) return
+  const prev = messages[boundaryIndex - 1]
+  const next = messages[summaryIndex + 1]
+  if (!next) return // appended at the end — fresh timestamps are already correct
+  const lower = prev ? prev.createdAt : 0
+  const upper = next.createdAt
+  if (upper - lower >= 3) {
+    messages[boundaryIndex].createdAt = upper - 2
+    messages[summaryIndex].createdAt = upper - 1
+  } else if (prev) {
+    // No millisecond room — share the predecessor's timestamp; the artifacts'
+    // sort_order (their transcript index) is higher than the predecessor's
+    // upsert index, so the tiebreak still lands them after it.
+    messages[boundaryIndex].createdAt = prev.createdAt
+    messages[summaryIndex].createdAt = prev.createdAt
+  }
+}
+
+/**
+ * Merge the boundary + summary artifact pair emitted by a completed compression
+ * into the session transcript — the full history stays visible, the pair marks
+ * where the model context switched to the compressed view — and persist both
+ * messages so reloads render the same summary card.
+ */
+export function applyCompactArtifactsToSession(
+  sessionId: string,
+  artifacts: UnifiedMessage[]
+): void {
+  const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
+  if (!session) return
+  const artifactMessages = artifacts.map(artifactToChatMessage)
+  const boundaryId = artifactMessages[0]?.id
+  if (!boundaryId) return
+  const isNewBoundary = !session.messages.some((m) => m.id === boundaryId)
+  const merged = mergeCompressedMessagesKeepHistory(
+    session.messages as unknown as UnifiedMessage[],
+    artifactMessages as unknown as UnifiedMessage[]
+  )
+  if (!merged) return
+  const mergedMessages = merged as unknown as ChatMessage[]
+  if (isNewBoundary) {
+    const boundaryIndex = mergedMessages.findIndex((m) => m.id === boundaryId)
+    if (boundaryIndex >= 0) {
+      adjustCompactArtifactTimestamps(mergedMessages, boundaryIndex)
+    }
+  }
+  const now = Date.now()
+  useChatStore.setState((state) => {
+    const target = state.sessions.find((s) => s.id === sessionId)
+    if (!target) return
+    target.messages = mergedMessages
+    target.messageCount = mergedMessages.length
+    target.updatedAt = now
+  })
+  const updated = useChatStore.getState().sessions.find((s) => s.id === sessionId)
+  if (!updated) return
+  for (const artifact of artifactMessages) {
+    const index = updated.messages.findIndex((m) => m.id === artifact.id)
+    if (index >= 0) {
+      void dbUpsertMessage(sessionId, updated.messages[index], index)
+    }
+  }
+}
 
 
 

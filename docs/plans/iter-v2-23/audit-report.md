@@ -28,7 +28,7 @@
 
 ### 未修与遗留（有意保留）
 
-- **M37** SSH 明文密码回传渲染端——存疑区 #2，待用户确认是否编辑场景有意设计，未列入批次
+- **M37** SSH 明文密码回传渲染端——**用户确认保留（2026-08-28）**：本地单用户产品，编辑场景明文回显属有意设计，不修；`repository.ts` 注释已同步更正（原注释"plaintext secrets are never sent to the renderer"与实际设计矛盾）
 - ~~**L5/L6** i18n 键缺失~~ —— **已修（批10 `5c8e252`）**：180 键双语补齐（含 `settings:channel.*` 整块英译）、新建 `agent`/`ssh` 两个命名空间、`fallbackNS: 'common'` 兜底、7 处组件 ns 错配代码修正；静态校验脚本 MISSING zh/en 归零，TS 三配置 0 错误
 - ~~**L12**（其余 C# 低危项）/**L13**（AOT 裸 `JsonSerializerOptions` 7 处）/**L14**（死代码清理）/**L15**（打包字段）/**L16**（hydration 注销函数）~~ —— **已修（批9 `dcd317d`）**：L12 八项全修、L13 七处全部改走 `WorkerJsonHelper` 共享 options、L14 删除 `sidecar-handlers.ts` 全文件与 `installAgentRuntimeSyncListener` 及两个未用字段、L15 补 `author` 字段并删除 `publish-aot.bat`、L16 捕获注销函数；dotnet build 0 警告 0 错误 + TS 三配置 0 错误
 - 存疑区其余条目（#3–#9）维持待实测/待用户确认状态
@@ -145,7 +145,7 @@
 | M34 | `Worker/WorkerHostBuilder.cs:56-59` | 模块初始化 fire-and-forget，服务器初始化完成前即接受请求（Goal 恢复等可能读到空状态）；单模块初始化失败仅 Warn 不熔断 |
 | M35 | `Workspace/Memory/MemoryModule.cs:85` | `MemoryUpdateQueue.Enqueue("", ...)` 传空 sessionId 被静默丢弃——memory/write 覆写事件永远不会注入下一轮对话 |
 | M36 | `Workspace/Memory/MemoryPathResolver.cs:53-56` | local project scope 无任何路径校验（SSH scope 有），可指向任意目录创建 `.wishful-claw` 写入（与 H5 同类的双标不一致） |
-| M37 | `ssh/...`（ssh-handlers.ts:35-59 `toMeta`） | 明文 password/passphrase 回传渲染端，与 `repository.ts` 注释"plaintext secrets are never sent to the renderer"矛盾——需确认是否编辑场景的有意设计 |
+| M37 | `ssh/...`（ssh-handlers.ts:35-59 `toMeta`） | 明文 password/passphrase 回传渲染端，与 `repository.ts` 注释"plaintext secrets are never sent to the renderer"矛盾——**处置（用户确认 2026-08-28）**：本地单用户产品，编辑场景明文回显为有意设计，保留；注释已更正对齐 |
 
 ---
 
@@ -173,7 +173,7 @@
 ## 存疑区（需用户决策或实测确认）
 
 1. **H7 的登录流程是否仍为正式版功能**——决定补 handler 还是移除入口
-2. **M37 SSH 明文密码回传渲染端**——是否编辑场景的有意设计
+2. ~~**M37 SSH 明文密码回传渲染端**——是否编辑场景的有意设计~~ —— 已确认：本地单用户产品，明文回显为有意设计，保留
 3. `oauth-utils.ts:106` `app:system-info` 无 handler 但有显式降级注释——有意设计还是掩盖缺失
 4. `db-helpers.ts:338` 消息落盘失败仅日志——注释表明有意（后续快照为超集），但用户不可感知
 5. `SessionConversationPane.tsx:68-70` `useState(() => initTerminal())` 渲染期副作用，StrictMode 双渲染下初始化跑两次——需实测幂等性

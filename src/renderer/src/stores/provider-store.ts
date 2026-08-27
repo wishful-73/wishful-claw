@@ -43,8 +43,8 @@ export const useProviderStore = create<ProviderState>()(
         return provider
       },
 
-      addCustomProvider: (name, type, baseUrl) => {
-        const provider = createCustomProvider(name, type, baseUrl)
+      addCustomProvider: (name, type, baseUrl, apiKey) => {
+        const provider = createCustomProvider(name, type, baseUrl, apiKey)
         set((state) => ({
           providers: [...state.providers, provider],
           activeProviderId: state.activeProviderId ?? provider.id

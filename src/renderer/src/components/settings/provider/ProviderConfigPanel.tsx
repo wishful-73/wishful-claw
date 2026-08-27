@@ -8,8 +8,6 @@ import {
   Loader2,
   Trash2,
   RefreshCw,
-  CheckCircle2,
-  XCircle,
   Pencil,
   Brain,
   Code2,
@@ -18,7 +16,8 @@ import {
   Video,
   Shapes,
   MonitorSmartphone,
-  Sparkles
+  Sparkles,
+  Zap
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
@@ -110,8 +109,7 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
   const fetchModels = useProviderStore((s) => s.fetchModels)
 
   const [showKey, setShowKey] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null)
+  const [testingModelId, setTestingModelId] = useState<string | null>(null)
   const [fetchingModels, setFetchingModels] = useState(false)
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<AIModelConfig | null>(null)
@@ -119,9 +117,6 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
   const [modelSearch, setModelSearch] = useState('')
   const [showDeleteProvider, setShowDeleteProvider] = useState(false)
   const [deleteModelTarget, setDeleteModelTarget] = useState<AIModelConfig | null>(null)
-  const [testModelId, setTestModelId] = useState(
-    provider.models.find((m) => m.enabled)?.id ?? provider.models[0]?.id ?? ''
-  )
 
   const enabledModelCount = provider.models.filter((m) => m.enabled).length
   const hasEnabledModels = enabledModelCount > 0
@@ -143,12 +138,10 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
     )
   }
 
-  const handleTest = async (): Promise<void> => {
-    setTesting(true)
-    setTestResult(null)
+  const handleTestModel = async (modelId: string): Promise<void> => {
+    setTestingModelId(modelId)
     try {
-      const result = await testConnection(provider, testModelId)
-      setTestResult(result)
+      const result = await testConnection(provider, modelId)
       if (result.ok) {
         toast.success(ts('provider.config.testSuccess'))
       } else {
@@ -156,10 +149,9 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
       }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
-      setTestResult({ ok: false, error })
       toast.error(ts('provider.config.testFailed'), { description: error })
     } finally {
-      setTesting(false)
+      setTestingModelId(null)
     }
   }
 
@@ -265,59 +257,6 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
             className="text-xs"
           />
         </section>
-
-        {/* Connection check */}
-        <section className="mt-4 space-y-2">
-          <label className="text-sm font-medium">{ts('provider.config.connectionTest')}</label>
-          <div className="flex items-center gap-2">
-            <Select value={testModelId} onValueChange={setTestModelId}>
-              <SelectTrigger className="flex-1 text-xs">
-                <SelectValue placeholder={provider.models[0]?.id || ts('provider.config.noModels')} />
-              </SelectTrigger>
-              <SelectContent>
-                {(provider.models.some((m) => m.enabled)
-                  ? provider.models.filter((m) => m.enabled)
-                  : provider.models
-                ).map((m) => (
-                  <SelectItem key={m.id} value={m.id} className="text-xs">
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 shrink-0 gap-1.5 text-xs"
-              disabled={!authReady || testing}
-              onClick={handleTest}
-            >
-              {testing ? <Loader2 className="size-3 animate-spin" /> : null}
-              {testing ? ts('provider.config.testing') : tc('actions.test')}
-            </Button>
-          </div>
-        </section>
-
-        {/* Test result */}
-        {testResult && (
-          <div
-            className={cn(
-              'mt-3 flex items-center gap-2 rounded-lg border p-3 text-sm',
-              testResult.ok
-                ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400'
-                : 'border-destructive/30 bg-destructive/5 text-destructive'
-            )}
-          >
-            {testResult.ok ? (
-              <CheckCircle2 className="size-4 shrink-0" />
-            ) : (
-              <XCircle className="size-4 shrink-0" />
-            )}
-            <span className="min-w-0 truncate">
-              {testResult.ok ? ts('provider.config.connectionSuccess') : testResult.error ?? ts('provider.config.testFailed')}
-            </span>
-          </div>
-        )}
 
         {/* Protocol type (for custom providers) */}
         {!provider.builtinId && (
@@ -512,6 +451,22 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
                         </div>
                       </div>
                       <div className="ml-auto flex items-center gap-1.5 self-start pl-2">
+                        {/* Check connection */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex size-7 items-center justify-center rounded-full border border-transparent text-muted-foreground/40 transition-all hover:border-border hover:bg-background hover:text-foreground group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-40 sm:opacity-0"
+                              disabled={!authReady || testingModelId !== null}
+                              onClick={() => handleTestModel(model.id)}
+                            >
+                              {testingModelId === model.id
+                                ? <Loader2 className="size-3.5 animate-spin" />
+                                : <Zap className="size-3.5" />}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-[11px]">{ts('provider.config.models.checkConnection')}</TooltipContent>
+                        </Tooltip>
                         {/* Edit model */}
                         <Tooltip>
                           <TooltipTrigger asChild>

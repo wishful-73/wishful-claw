@@ -24,7 +24,7 @@ export interface ProviderState {
 
   // ── Mutations ──
   addProviderFromPreset: (preset: BuiltinProviderPreset) => AIProvider
-  addCustomProvider: (name: string, type: ProviderType, baseUrl: string) => AIProvider
+  addCustomProvider: (name: string, type: ProviderType, baseUrl: string, apiKey?: string) => AIProvider
   updateProvider: (id: string, updates: Partial<AIProvider>) => void
   deleteProvider: (id: string) => void
   setActiveProvider: (id: string) => void
@@ -161,12 +161,12 @@ export function enrichDiscoveredModel(raw: AIModelConfig): AIModelConfig {
   return merged
 }
 
-export function createCustomProvider(name: string, type: ProviderType, baseUrl: string): AIProvider {
+export function createCustomProvider(name: string, type: ProviderType, baseUrl: string, apiKey = ''): AIProvider {
   return {
     id: nanoid(),
     name,
     type,
-    apiKey: '',
+    apiKey,
     baseUrl,
     enabled: true,
     models: [],

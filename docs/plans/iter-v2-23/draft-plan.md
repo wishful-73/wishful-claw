@@ -428,4 +428,5 @@ pinned prefix
 - 已执行：Plan 23-8 追加计划已制定（来源：issues 库 2026-08-27 新增）：步骤 26 项目档案路径斜杠混用、步骤 27 输入草稿持久化实装、步骤 28 新建服务商弹窗改造、步骤 29 模型图标选择器引入真实图标、步骤 30 文件树 tab 彩色图标与中文标题、步骤 31 左侧面板对话命名/扩展/自动化图标；在 Plan 23-7 全量回归前实施。不纳入：桌面图标白角（待用户清缓存确认）、Goal 编排可视化、滚动锚点吸附。
 - 已执行：Plan 23-8 步骤 26 已完成：`project-archive-helpers.ts` 的 `joinFsPath` 改为平台感知拼接（分隔符优先跟随 base 路径，无则按 win32 取 `\`），项目档案页记忆/人格/日常路径展示与读写同一拼接结果，无其他直接拼接点；TS 三配置 0 错误。
 - 已执行：Plan 23-8 步骤 27 已完成：`input-draft:*` 五端点实装（草稿存 `~/.wishful-claw/input-drafts.json` 单文件 JSON map，兼容隔离数据目录，空内容转删除 + 30 天过期清理）；`useInputDraftPersistence` 实装（缓存优先读盘、请求序号防竞态、空草稿转 remove），既有防抖保存/水合/发送后清除链路直接生效；TS 三配置 0 错误。
-- 未执行：Plan 23-8 步骤 28-31、Plan 23-7（全量验证与 v1.0.0 发布）、后续 push、merge、tag、打包、Release。
+- 已执行：Plan 23-8 步骤 28 已完成：新建服务商弹窗新增 API Key 输入（随服务商落库）+ 保存即拉模型列表（失败仅 toast）；`ProviderConfigPanel` 移除连接测试下拉框整行，改为模型行 hover “检查连接”图标按钮（复用 `testConnection`）；清理废弃状态与 i18n 键，zh/en 补齐新键；TS 三配置 0 错误。
+- 未执行：Plan 23-8 步骤 29-31、Plan 23-7（全量验证与 v1.0.0 发布）、后续 push、merge、tag、打包、Release。

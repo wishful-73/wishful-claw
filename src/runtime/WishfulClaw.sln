@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.GoalRegressionT
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.CodeGraph", "WishfulClaw.CodeGraph\WishfulClaw.CodeGraph.csproj", "{770F9908-15D6-4F36-AABB-8B0FE6A658B5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.CompactionSnapshotRegressionTests", "..\..\tests\WishfulClaw.CompactionSnapshotRegressionTests\WishfulClaw.CompactionSnapshotRegressionTests.csproj", "{38928155-DC27-444C-AAB6-247D8DEED36E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -139,6 +141,18 @@ Global
 		{770F9908-15D6-4F36-AABB-8B0FE6A658B5}.Release|x64.Build.0 = Release|Any CPU
 		{770F9908-15D6-4F36-AABB-8B0FE6A658B5}.Release|x86.ActiveCfg = Release|Any CPU
 		{770F9908-15D6-4F36-AABB-8B0FE6A658B5}.Release|x86.Build.0 = Release|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Debug|x64.Build.0 = Debug|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Debug|x86.Build.0 = Debug|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Release|x64.ActiveCfg = Release|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Release|x64.Build.0 = Release|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Release|x86.ActiveCfg = Release|Any CPU
+		{38928155-DC27-444C-AAB6-247D8DEED36E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

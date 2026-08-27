@@ -212,14 +212,19 @@ export function RightPanel(): React.JSX.Element {
               onAddGoals={() => useUIStore.getState().openGoalPanel(panelSessionId, activeProjectId)}
               onOpenFile={() => {
                 import('@renderer/lib/ipc/ipc-client').then(({ ipcClient }) => {
-                  ipcClient.invoke('fs:select-file', { multiSelections: true }).then((result) => {
-                    const r = result as { canceled?: boolean; paths?: string[]; path?: string }
-                    if (r.canceled) return
-                    const selectedPaths = r.paths?.length ? r.paths : r.path ? [r.path] : []
-                    for (const p of selectedPaths) {
-                      useUIStore.getState().openFilePreview(p)
-                    }
-                  })
+                  ipcClient
+                    .invoke('fs:select-file', { multiSelections: true })
+                    .then((result) => {
+                      const r = result as { canceled?: boolean; paths?: string[]; path?: string }
+                      if (r.canceled) return
+                      const selectedPaths = r.paths?.length ? r.paths : r.path ? [r.path] : []
+                      for (const p of selectedPaths) {
+                        useUIStore.getState().openFilePreview(p)
+                      }
+                    })
+                    .catch((err) => {
+                      console.error('[RightPanel] Failed to open file dialog:', err)
+                    })
                 })
               }}
               onClosePanel={() => setRightPanelOpen(false)}

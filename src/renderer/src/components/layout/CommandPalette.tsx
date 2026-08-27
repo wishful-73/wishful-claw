@@ -43,6 +43,15 @@ export function CommandPalette(): React.JSX.Element | null {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  // Reset query/selection every time the palette opens so a stale highlight
+  // from the previous invocation never carries over.
+  useEffect(() => {
+    if (open) {
+      setQuery('')
+      setSelectedIndex(0)
+    }
+  }, [open])
+
   const commands: CommandItem[] = [
     {
       id: 'new-chat',
@@ -96,6 +105,8 @@ export function CommandPalette(): React.JSX.Element | null {
   )
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // With no results, modulo-by-zero would produce a NaN selection index.
+    if (filtered.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setSelectedIndex((prev) => (prev + 1) % filtered.length)

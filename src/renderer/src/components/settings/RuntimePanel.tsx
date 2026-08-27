@@ -33,10 +33,23 @@ function RuntimePanel(): React.JSX.Element {
     return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleLaunchAtLoginChange = (checked: boolean): void => {
+  const handleLaunchAtLoginChange = async (checked: boolean): Promise<void> => {
     setLaunchAtLoginChecked(checked)
-    settings.updateSettings({ launchAtLogin: checked })
-    void window.api.invoke<boolean>('app:set-login-item-settings', checked)
+    try {
+      // The handler returns the actual OS state after applying the change —
+      // the switch must mirror that, not the optimistic value.
+      const osEnabled = await window.api.invoke<boolean>('app:set-login-item-settings', checked)
+      if (osEnabled !== checked) {
+        setLaunchAtLoginChecked(osEnabled)
+        settings.updateSettings({ launchAtLogin: osEnabled })
+      } else {
+        settings.updateSettings({ launchAtLogin: checked })
+      }
+    } catch {
+      // Apply failed — revert to the last known OS state.
+      setLaunchAtLoginChecked(!checked)
+      settings.updateSettings({ launchAtLogin: !checked })
+    }
   }
 
   return (

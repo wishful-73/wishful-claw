@@ -107,6 +107,10 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
         if (result.id) {
           await get().selectPersona(result.id, workingFolder)
         }
+      } else {
+        // Business failure (success: false) must surface in the error banner
+        // too — previously only thrown exceptions wrote `error`.
+        set({ error: result.error || 'Failed to save persona' })
       }
 
       return result
@@ -133,6 +137,8 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
         }
         // Refresh list
         await get().listPersonas(workingFolder)
+      } else {
+        set({ error: result.error || 'Failed to delete persona' })
       }
 
       return result
@@ -150,6 +156,10 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
         personaId: personaId ?? null,
         projectFolder
       })) as { success: boolean; count?: number; error?: string }
+
+      if (!result.success) {
+        set({ error: result.error || 'Failed to apply persona to project' })
+      }
 
       return result
     } catch (err) {

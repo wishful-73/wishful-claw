@@ -117,6 +117,20 @@ export const useUIStore = create<UIStore>((set, get) => ({
     const nextActive = tabs[Math.max(0, tabs.length - 1)].id
     set({ rightPanelTabs: tabs, rightPanelActiveTabId: nextActive })
   },
+  removeRightPanelTabsForSession: (sessionId: any) => {
+    // Deleting a session must also drop every panel tab bound to it
+    // (summary/review/subagent/goal/browser/preview) — otherwise stale tabs
+    // pointing at the removed session linger in the right panel.
+    const doomedIds = get()
+      .rightPanelTabs.filter((t: any) => t.sessionId === sessionId)
+      .map((t: any) => t.id)
+    for (const tabId of doomedIds) {
+      // Re-read each time: closing a preview tab mutates the tab list.
+      if (get().rightPanelTabs.some((t: any) => t.id === tabId)) {
+        get().closeRightPanelTab(tabId)
+      }
+    }
+  },
   rightPanelRailWidth: 48,
 
   // Runtime status panel

@@ -61,6 +61,7 @@ export interface UIStore {
   rightPanelActiveTabId: string
   setRightPanelActiveTab: (tabId: string) => void
   closeRightPanelTab: (tabId: string) => void
+  removeRightPanelTabsForSession: (sessionId: string) => void
   rightPanelRailWidth: number
 
   // Runtime status panel

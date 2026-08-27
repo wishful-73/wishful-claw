@@ -82,6 +82,7 @@ export function PreviewPanel({
     content: fileContent,
     setContent,
     loading: fileLoading,
+    error: fileReadError,
     reload,
     version: fileVersion
   } = useFileWatcher(watchedFilePath, activeTab?.sshConnectionId, {
@@ -246,15 +247,28 @@ export function PreviewPanel({
 
   const handleCopyMarkdown = (): void => {
     if (!activeTab?.markdownContent) return
-    navigator.clipboard.writeText(activeTab.markdownContent)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1500)
+    // Only show the "copied" feedback after the write actually succeeds.
+    navigator.clipboard
+      .writeText(activeTab.markdownContent)
+      .then(() => {
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1500)
+      })
+      .catch((err) => {
+        console.error('[PreviewPanel] Failed to copy markdown:', err)
+      })
   }
 
   const handleOpenLocalFiles = async (): Promise<void> => {
-    const result = (await ipcClient.invoke(IPC.FS_SELECT_FILE, {
-      multiSelections: true
-    })) as { canceled?: boolean; path?: string; paths?: string[] }
+    let result: { canceled?: boolean; path?: string; paths?: string[] }
+    try {
+      result = (await ipcClient.invoke(IPC.FS_SELECT_FILE, {
+        multiSelections: true
+      })) as { canceled?: boolean; path?: string; paths?: string[] }
+    } catch (err) {
+      console.error('[PreviewPanel] Failed to open file dialog:', err)
+      return
+    }
     if (result.canceled) return
 
     const selectedPaths = result.paths?.length ? result.paths : result.path ? [result.path] : []
@@ -414,6 +428,11 @@ export function PreviewPanel({
         onOpenInSystem={() => void handleOpenInSystem()}
         onSendPathToChat={handleSendPathToChat}
       />
+      {fileReadError && !fileLoading ? (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+          {fileReadError}
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {isDiff ? (
           <Suspense

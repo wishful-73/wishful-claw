@@ -144,6 +144,15 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     void window.api.workerRequest('agent/clear-session', { sessionId: id })
     // Drop the persisted composer draft so deleted sessions leave no orphans.
     void removeSessionInputDraft(id)
+    // Close any right-panel tabs still bound to the deleted session (dynamic
+    // import avoids a chat-store → ui-store circular dependency at load time).
+    void import('@renderer/stores/ui-store')
+      .then(({ useUIStore }) => {
+        useUIStore.getState().removeRightPanelTabsForSession(id)
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clean right-panel tabs for deleted session:', err)
+      })
   },
 
   setActiveSession: (id) => {

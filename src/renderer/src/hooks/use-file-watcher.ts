@@ -17,6 +17,8 @@ interface UseFileWatcherResult {
   content: string
   setContent: Dispatch<SetStateAction<string>>
   loading: boolean
+  /** Read failure message, or null. Distinguishes "read failed" from "empty file". */
+  error: string | null
   reload: () => Promise<void>
   version: number
 }
@@ -65,6 +67,7 @@ export function useFileWatcher(
   const readContent = options.readContent ?? true
   const [content, setContent] = useState<string>('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
   const requestIdRef = useRef(0)
   const watchedPathRef = useRef<string | null>(null)
@@ -73,11 +76,13 @@ export function useFileWatcher(
     const requestId = ++requestIdRef.current
     if (!filePath) {
       setContent('')
+      setError(null)
       setLoading(false)
       return
     }
     if (!readContent) {
       setContent('')
+      setError(null)
       setLoading(false)
       return
     }
@@ -92,10 +97,16 @@ export function useFileWatcher(
       if (readError) {
         throw new Error(readError)
       }
-      if (requestId === requestIdRef.current) setContent(String(result))
+      if (requestId === requestIdRef.current) {
+        setContent(String(result))
+        setError(null)
+      }
     } catch (err) {
       console.error('[useFileWatcher] Failed to read file:', err)
-      if (requestId === requestIdRef.current) setContent('')
+      if (requestId === requestIdRef.current) {
+        setContent('')
+        setError(err instanceof Error ? err.message : String(err))
+      }
     } finally {
       if (requestId === requestIdRef.current) setLoading(false)
     }
@@ -147,5 +158,5 @@ export function useFileWatcher(
     }
   }, [filePath, loadContent, readContent, sshConnectionId])
 
-  return { content, setContent, loading, reload, version }
+  return { content, setContent, loading, error, reload, version }
 }

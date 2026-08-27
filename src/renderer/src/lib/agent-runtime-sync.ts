@@ -66,11 +66,3 @@ export function emitAgentRuntimeSync(event: AgentRuntimeSyncEvent): void {
   if (isAgentRuntimeSyncSuppressed()) return
   ipcClient.send(IPC.AGENT_RUNTIME_SYNC, event)
 }
-
-export function installAgentRuntimeSyncListener(
-  onEvent: (event: AgentRuntimeSyncEvent) => void
-): () => void {
-  return ipcClient.on(IPC.AGENT_RUNTIME_SYNC, (data: unknown) => {
-    onEvent(data as AgentRuntimeSyncEvent)
-  })
-}

@@ -282,7 +282,15 @@ public sealed class LocalIpcWorkerServer
             }
             try
             {
-                await Task.WhenAll(dispatchTasks.Keys);
+                // Drain with snapshots: dispatch tasks may still be added while
+                // we wait (reads raced with the accept loop), so keep waiting
+                // until the dictionary is empty.
+                while (!dispatchTasks.IsEmpty)
+                {
+                    var pending = dispatchTasks.Keys.ToArray();
+                    if (pending.Length == 0) break;
+                    await Task.WhenAll(pending);
+                }
             }
             catch (Exception ex)
             {

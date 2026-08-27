@@ -98,7 +98,7 @@ internal sealed class MemoryModule : IWorkerModule
     private static Task<WorkerResponse> MemorySearch(JsonElement parameters)
     {
         var query = GetString(parameters, "query") ?? "";
-        var scope = GetScope(parameters, allowNull: true);
+        var scope = GetScope(parameters);
         var limit = GetInt(parameters, "limit", 10);
         var includeDeprecated = GetBool(parameters, "include_deprecated", false);
         var search = GetSearch();
@@ -180,7 +180,7 @@ internal sealed class MemoryModule : IWorkerModule
 private static IMemorySearch GetSearch() =>
         ToolModuleState.MemorySearch ?? throw new InvalidOperationException("Memory search service not initialized");
 
-    private static string GetScope(JsonElement parameters, bool allowNull = false)
+    private static string GetScope(JsonElement parameters)
     {
         var scope = GetString(parameters, "scope");
         if (!string.IsNullOrWhiteSpace(scope))
@@ -214,7 +214,7 @@ private static IMemorySearch GetSearch() =>
         }
         if (!string.IsNullOrWhiteSpace(wf))
             return $"project:{wf}";
-        return allowNull ? "global" : "global";
+        return "global";
     }
 
     private static string? GetString(JsonElement element, string name)

@@ -22,11 +22,6 @@ public static partial class SkillCatalog
 {
     private const string SkillFileName = "SKILL.md";
     private static readonly object Sync = new();
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = false
-    };
 
     // ── Public API (sync handlers) ──
 
@@ -485,7 +480,7 @@ public static partial class SkillCatalog
 
     internal static WorkerResponse ToResponse(JsonNode node)
     {
-        return WorkerResponse.RawJson(node.ToJsonString(JsonOptions));
+        return WorkerResponse.RawJson(node.ToJsonString(WorkerJsonHelper.JsonOptions));
     }
 
     // ── Regex (generated) ──

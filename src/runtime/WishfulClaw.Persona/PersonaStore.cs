@@ -162,18 +162,27 @@ public sealed class PersonaStore
 
     /// <summary>
     /// Saves a persona config to disk (creates directory if needed).
+    /// Each file is written to a temp path first and then moved into place,
+    /// so a crash mid-save never leaves a half-written persona file.
     /// </summary>
     public void SavePersona(PersonaConfig config, string? workingFolder)
     {
         var dir = GetPersonaDirectory(config.Id, workingFolder);
         Directory.CreateDirectory(dir);
 
-        File.WriteAllText(Path.Combine(dir, PersonaFileLayout.IdentityFile), config.IdentityMarkdown);
-        File.WriteAllText(Path.Combine(dir, PersonaFileLayout.SoulFile), config.SoulMarkdown);
-        File.WriteAllText(Path.Combine(dir, PersonaFileLayout.OntologyFile), config.OntologyMarkdown);
-        File.WriteAllText(Path.Combine(dir, PersonaFileLayout.AgentsFile), config.AgentsMarkdown);
+        WriteAtomic(Path.Combine(dir, PersonaFileLayout.IdentityFile), config.IdentityMarkdown);
+        WriteAtomic(Path.Combine(dir, PersonaFileLayout.SoulFile), config.SoulMarkdown);
+        WriteAtomic(Path.Combine(dir, PersonaFileLayout.OntologyFile), config.OntologyMarkdown);
+        WriteAtomic(Path.Combine(dir, PersonaFileLayout.AgentsFile), config.AgentsMarkdown);
 
         WorkerLog.Info($"persona saved id={config.Id} scope={(string.IsNullOrWhiteSpace(workingFolder) ? "global" : "project")}");
+    }
+
+    private static void WriteAtomic(string path, string content)
+    {
+        var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(tempPath, content);
+        File.Move(tempPath, path, overwrite: true);
     }
 
     // ── Delete ──

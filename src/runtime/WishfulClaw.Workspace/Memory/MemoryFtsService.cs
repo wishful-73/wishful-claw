@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Workspace.Memory;
 
@@ -41,9 +42,16 @@ public sealed class MemoryFtsService : IMemorySearch
                 results.Add(RowToResult(reader));
             }
         }
-        catch
+        catch (OperationCanceledException)
         {
-            // FTS failed — will fall through to LIKE
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // FTS failed — log it and fall through to LIKE with a clean slate
+            // (drop any partial rows read before the failure).
+            WorkerLog.Warn($"memory fts search failed, falling back to LIKE: {ex.GetType().Name}: {ex.Message}");
+            results.Clear();
         }
 
         // ── Method 2: LIKE fallback ──

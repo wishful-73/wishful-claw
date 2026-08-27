@@ -52,8 +52,10 @@ function App(): React.JSX.Element | null {
     attachRendererToolBridge()
     initAppPluginStore()
     const syncAppPlugins = (): void => updateAppPluginToolRegistration()
+    const unsubscribeAppPluginHydration = useAppPluginStore.persist.hasHydrated()
+      ? undefined
+      : useAppPluginStore.persist.onFinishHydration(syncAppPlugins)
     if (useAppPluginStore.persist.hasHydrated()) syncAppPlugins()
-    else useAppPluginStore.persist.onFinishHydration(syncAppPlugins)
     const unsubscribeAppPluginChanges = useAppPluginStore.subscribe(syncAppPlugins)
     void initExtensionStore().then(() => refreshExtensionTools())
 
@@ -112,6 +114,7 @@ function App(): React.JSX.Element | null {
 
     return () => {
       unsubscribeAppPluginChanges()
+      unsubscribeAppPluginHydration?.()
       unsubscribeSettingsHydration?.()
       unsubscribeRuntimeSettings()
       unsubscribeRuntimeLifecycle()

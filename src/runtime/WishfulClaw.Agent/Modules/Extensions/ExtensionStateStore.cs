@@ -273,7 +273,7 @@ public static partial class ExtensionManifestStore
     {
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
         var tempPath = $"{filePath}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tempPath, node.ToJsonString(ManagementJsonOptions));
+        File.WriteAllText(tempPath, node.ToJsonString(WorkerJsonHelper.IndentedJsonOptions));
         File.Move(tempPath, filePath, true);
     }
 

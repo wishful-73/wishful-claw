@@ -20,11 +20,6 @@ public static class QqSessionStore
     private const string SessionsDirectoryName = "sessions";
     private const long SessionExpireMs = 5 * 60 * 1000;
     private static readonly object Sync = new();
-    private static readonly JsonSerializerOptions WriteOptions = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = true
-    };
 
     public static WorkerResponse Load(JsonElement parameters)
     {
@@ -92,7 +87,7 @@ public static class QqSessionStore
                 Directory.CreateDirectory(GetSessionsDirectory());
                 state["accountId"] = accountId;
                 state["savedAt"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                File.WriteAllText(GetSessionPath(accountId), state.ToJsonString(WriteOptions));
+                File.WriteAllText(GetSessionPath(accountId), state.ToJsonString(WorkerJsonHelper.IndentedJsonOptions));
                 WorkerLog.Debug($"qq session save accountId={accountId}");
                 return ToResponse(Mutation(true, null));
             }
@@ -204,6 +199,6 @@ public static class QqSessionStore
 
     private static WorkerResponse ToResponse(JsonNode node)
     {
-        return WorkerResponse.RawJson(node.ToJsonString(WriteOptions));
+        return WorkerResponse.RawJson(node.ToJsonString(WorkerJsonHelper.IndentedJsonOptions));
     }
 }

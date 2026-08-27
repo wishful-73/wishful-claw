@@ -20,11 +20,6 @@ public static class ChannelConfigStore
     private const string ConfigFileName = "plugins.json";
     private static readonly object Sync = new();
     private static readonly JsonFileNodeCache<JsonArray> Cache = new();
-    private static readonly JsonSerializerOptions WriteOptions = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = true
-    };
 
     public static WorkerResponse List(JsonElement parameters)
     {
@@ -179,7 +174,7 @@ public static class ChannelConfigStore
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
         var tempPath = $"{filePath}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tempPath, plugins.ToJsonString(WriteOptions));
+        File.WriteAllText(tempPath, plugins.ToJsonString(WorkerJsonHelper.IndentedJsonOptions));
         File.Move(tempPath, filePath, true);
         Cache.Store(filePath, plugins);
     }

@@ -16,6 +16,7 @@ public sealed class AgentRuntimeRunState : IDisposable
     private int _queuedMessageCount;
     private int _stopRequested;
     private bool _messageQueueClosed;
+    private string? _cancelReason;
 
     public AgentRuntimeRunState(string runId, string sessionId)
     {
@@ -91,6 +92,12 @@ public sealed class AgentRuntimeRunState : IDisposable
     public bool IsCancellationRequested => _cancellation.IsCancellationRequested;
     public bool IsStopRequested => Volatile.Read(ref _stopRequested) != 0;
     public string? StopReason { get; private set; }
+
+    /// <summary>
+    /// The reason of the first Cancel call (diagnostics only). Later cancels
+    /// still propagate but do not overwrite the original reason.
+    /// </summary>
+    public string? CancelReason => Volatile.Read(ref _cancelReason);
 
     public void ReplaceParameters(JsonElement parameters)
     {
@@ -169,7 +176,19 @@ public sealed class AgentRuntimeRunState : IDisposable
 
     public void Cancel(string reason)
     {
-        _cancellation.Cancel();
+        Interlocked.CompareExchange(
+            ref _cancelReason,
+            string.IsNullOrWhiteSpace(reason) ? "cancelled" : reason,
+            null);
+        try
+        {
+            _cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Run state already disposed (e.g. a parent cancel callback fired
+            // after the child run finalized); nothing left to cancel.
+        }
     }
 
     public void RequestStop(string reason)

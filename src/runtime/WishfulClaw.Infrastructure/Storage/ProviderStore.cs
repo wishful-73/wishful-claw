@@ -20,11 +20,6 @@ public static class ProviderStore
 
     private static readonly object Sync = new();
     private static readonly JsonFileNodeCache<JsonObject> IndexCache = new();
-    private static readonly JsonSerializerOptions WriteOptions = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = true
-    };
 
     // ── Public API ──
 
@@ -196,7 +191,7 @@ public static class ProviderStore
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
         var tempPath = $"{filePath}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tempPath, index.ToJsonString(WriteOptions));
+        File.WriteAllText(tempPath, index.ToJsonString(WorkerJsonHelper.IndentedJsonOptions));
         File.Move(tempPath, filePath, overwrite: true);
         IndexCache.Store(filePath, index);
     }
@@ -230,7 +225,7 @@ public static class ProviderStore
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
         var tempPath = $"{filePath}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tempPath, provider.ToJsonString(WriteOptions));
+        File.WriteAllText(tempPath, provider.ToJsonString(WorkerJsonHelper.IndentedJsonOptions));
         File.Move(tempPath, filePath, overwrite: true);
     }
 

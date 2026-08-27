@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Channel Auto-Reply Hook
  *
  * Listens for `plugin:session-task` IPC events from the main process
@@ -47,25 +47,6 @@ interface SessionTaskPayload {
   sshConnectionId?: string | null
 }
 
-// ── Channel type → display name prefix ──
-const CHANNEL_DISPLAY_NAMES: Record<string, string> = {
-  'feishu-bot': '飞书',
-  'weixin-official': '微信',
-  'qq-bot': 'QQ',
-  'dingtalk-bot': '钉钉',
-  'wecom-bot': '企业微信',
-  'telegram-bot': 'Telegram',
-  'discord-bot': 'Discord',
-  'whatsapp-bot': 'WhatsApp'
-}
-
-function buildSessionTitle(task: SessionTaskPayload): string {
-  const prefix = CHANNEL_DISPLAY_NAMES[task.pluginType] ?? ''
-  // Prefer chatName (group name or p2p counterpart name), then senderName, then chatId
-  const baseName = task.sessionTitle || task.chatName || task.senderName || task.chatId
-  return prefix ? `${prefix}: ${baseName}` : baseName
-}
-
 // ── State: track active auto-reply sessions ──
 
 interface ActiveAutoReply {
@@ -78,6 +59,36 @@ interface ActiveAutoReply {
 }
 
 const activeAutoReplies = new Map<string, ActiveAutoReply>()
+
+/**
+ * Register an externally triggered run (e.g. Automation in-session execution)
+ * so its streamed reply is forwarded back to the channel chat on loop_end.
+ * Uses the same stream-listener pipeline as normal incoming channel messages.
+ */
+export function registerExternalChannelReply(
+  sessionId: string,
+  pluginId: string,
+  chatId: string
+): void {
+  activeAutoReplies.set(sessionId, {
+    pluginId,
+    chatId,
+    messageId: '',
+    textBuffer: '',
+    supportsStreaming: false,
+    runId: null
+  })
+}
+
+/** Unregister without sending (used when the run fails before starting). */
+export function unregisterExternalChannelReply(sessionId: string): void {
+  activeAutoReplies.delete(sessionId)
+}
+
+/** Whether this session already has a pending channel echo registration. */
+export function hasActiveExternalChannelReply(sessionId: string): boolean {
+  return activeAutoReplies.has(sessionId)
+}
 
 // Per-session task queue: ensure only one auto-reply runs per chat at a time
 const taskQueues = new Map<string, SessionTaskPayload[]>()
@@ -137,7 +148,7 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
     useChatStore.setState((state) => {
       state.sessions.push({
         id: sessionId,
-        title: buildSessionTitle(task),
+        title: task.sessionTitle || task.chatId,
         mode: 'cowork',
         messages: [],
         messageCount: 0,

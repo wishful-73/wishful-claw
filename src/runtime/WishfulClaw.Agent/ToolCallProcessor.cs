@@ -109,7 +109,6 @@ public static class ToolCallProcessor
         var sshConnectionId = JsonHelpers.GetString(parameters, "sshConnectionId");
         var maxParallelTools = Math.Max(1, JsonHelpers.GetInt(parameters, "maxParallelTools", 1));
         var maxToolCallsPerTurn = JsonHelpers.GetInt(parameters, "maxToolCallsPerTurn", 0); // 0 = unlimited
-        var maxConcurrentSubAgents = Math.Max(1, JsonHelpers.GetInt(parameters, "maxConcurrentSubAgents", 2));
         var registry = ToolModuleState.Registry;
         // "default" permission mode asks the user to confirm write/delete/execute
         // class tools before execution. "whitelist"/"fullAccess" never pause here
@@ -143,7 +142,6 @@ public static class ToolCallProcessor
         // approval barrier: each call waits until every earlier call's approval
         // (if any) has been resolved before it starts.
         var toolSemaphore = new SemaphoreSlim(maxParallelTools, maxParallelTools);
-        var subAgentSemaphore = new SemaphoreSlim(maxConcurrentSubAgents, maxConcurrentSubAgents);
         var toolTasks = new List<Task<AgentRuntimeToolResult>>();
 
         // Barrier task chain: each gated call awaits the previous gated call's
@@ -169,22 +167,26 @@ public static class ToolCallProcessor
                 approvalBarrier = gateTcs.Task;
 
                 var isTaskTool = SubAgentExecutor.IsTaskTool(toolCall.Name);
-                var semaphore = isTaskTool ? subAgentSemaphore : toolSemaphore;
-
-                await semaphore.WaitAsync(state.CancellationToken);
+                if (!isTaskTool)
+                {
+                    await toolSemaphore.WaitAsync(state.CancellationToken);
+                }
                 toolTasks.Add(ExecuteGatedAsync(
-                    toolCall, workingFolder, projectId, sshConnectionId, state, context, semaphore, registry,
+                    toolCall, workingFolder, projectId, sshConnectionId, state, context,
+                    isTaskTool ? null : toolSemaphore, registry,
                     defaultModeApproval, prevBarrier, gateTcs));
             }
             else
             {
                 // Pick the right semaphore based on whether this is a Task (sub-agent) call
                 var isTaskTool = SubAgentExecutor.IsTaskTool(toolCall.Name);
-                var semaphore = isTaskTool ? subAgentSemaphore : toolSemaphore;
-
-                await semaphore.WaitAsync(state.CancellationToken);
+                if (!isTaskTool)
+                {
+                    await toolSemaphore.WaitAsync(state.CancellationToken);
+                }
                 toolTasks.Add(ExecuteSingleAsync(
-                    toolCall, workingFolder, projectId, sshConnectionId, state, context, semaphore, registry,
+                    toolCall, workingFolder, projectId, sshConnectionId, state, context,
+                    isTaskTool ? null : toolSemaphore, registry,
                     defaultModeApproval));
             }
         }
@@ -265,7 +267,7 @@ public static class ToolCallProcessor
         string? sshConnectionId,
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
-        SemaphoreSlim semaphore,
+        SemaphoreSlim? semaphore,
         ToolRegistry? registry,
         bool defaultModeApproval,
         Task? prevBarrier,
@@ -300,7 +302,7 @@ public static class ToolCallProcessor
         string? sshConnectionId,
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
-        SemaphoreSlim semaphore,
+        SemaphoreSlim? semaphore,
         ToolRegistry? registry,
         bool defaultModeApproval = false)
     {
@@ -505,7 +507,7 @@ public static class ToolCallProcessor
         }
         finally
         {
-            semaphore.Release();
+            semaphore?.Release();
         }
     }
 

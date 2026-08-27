@@ -1,4 +1,4 @@
-using WishfulClaw.Contracts;
+﻿using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Agent;
@@ -11,5 +11,7 @@ public sealed class ProviderTestModule : IWorkerModule
     {
         context.Register("provider/test", ProviderTestService.TestAsync);
         context.Register("provider/fetch-models", ProviderTestService.FetchModelsAsync);
+        context.Register("provider/complete",
+            (parameters, requestContext) => ProviderCompletionService.CompleteAsync(parameters, requestContext));
     }
 }

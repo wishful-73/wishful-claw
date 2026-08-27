@@ -1,27 +1,13 @@
 import { useActivityStore } from '@renderer/stores/activity-store'
-import { PanelRightClose, Activity } from 'lucide-react'
+import { Activity } from 'lucide-react'
 
 export function ActivityPanel() {
   const activities = useActivityStore((s) => s.activities)
-  const isVisible = useActivityStore((s) => s.isVisible)
-  const toggleVisible = useActivityStore((s) => s.toggleVisible)
   const currentIteration = useActivityStore((s) => s.currentIteration)
   const clearActivities = useActivityStore((s) => s.clearActivities)
 
-  if (!isVisible) {
-    return (
-      <button
-        onClick={toggleVisible}
-        className="fixed right-2 top-2 z-50 rounded-lg border border-border bg-background p-2 shadow-sm hover:bg-accent transition-colors"
-        title="Show activity panel"
-      >
-        <Activity className="h-4 w-4" />
-      </button>
-    )
-  }
-
   return (
-    <div className="flex w-72 flex-col border-l border-border bg-card/50">
+    <div className="flex h-full min-h-0 flex-col bg-card/50">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <div className="flex items-center gap-1.5">
@@ -33,22 +19,13 @@ export function ActivityPanel() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={clearActivities}
-            className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-            title="Clear"
-          >
-            <span className="text-xs">Clear</span>
-          </button>
-          <button
-            onClick={toggleVisible}
-            className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
-            title="Hide"
-          >
-            <PanelRightClose className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <button
+          onClick={clearActivities}
+          className="rounded p-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          title="Clear"
+        >
+          Clear
+        </button>
       </div>
 
       {/* Activity list */}

@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "wishful-claw",
-  "version": "0.2.21",
+  "version": "0.2.22",
   "description": "Wishful Claw - Agent 编程软件",
   "main": "./out/main/index.js",
   "scripts": {
@@ -17,7 +17,8 @@
     "pack:installer:full": "npm run build:worker:prod && electron-vite build && electron-builder --win",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web"
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "test:cron-integration": "tsc --noEmit false -p tests/cron-integration/tsconfig.json && node tests/cron-integration/out/tests/cron-integration/program.js"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

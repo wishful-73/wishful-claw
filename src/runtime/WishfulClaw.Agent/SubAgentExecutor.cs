@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -131,6 +131,8 @@ public static partial class SubAgentExecutor
 
         try
         {
+            using var concurrencyLease = await SubAgentConcurrencyLimiter.AcquireAsync(
+                childState.CancellationToken);
             await AgentLoop.ExecuteLoopAsync(childParameters, childState, context);
             subAgentOutput = collector.GetFinalOutput();
 

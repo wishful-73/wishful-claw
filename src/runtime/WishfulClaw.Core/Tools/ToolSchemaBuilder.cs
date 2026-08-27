@@ -83,6 +83,20 @@ public static class ToolSchemaBuilder
         return doc.RootElement.Clone();
     }
 
+    public static JsonElement Integer(string description)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("type", "integer");
+            writer.WriteString("description", description);
+            writer.WriteEndObject();
+        }
+        using var doc = JsonDocument.Parse(buffer.WrittenMemory);
+        return doc.RootElement.Clone();
+    }
+
     public static JsonElement Boolean(string description)
     {
         var buffer = new ArrayBufferWriter<byte>();

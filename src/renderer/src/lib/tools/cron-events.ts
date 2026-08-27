@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -7,7 +7,13 @@
 
 type CronFiredEvent = {
   jobId: string
+  fireId: string
   sessionId?: string | null
+  scope?: 'global' | 'project'
+  projectId?: string | null
+  outputMode?: 'new_session' | 'reuse_session' | 'bot'
+  reuseSessionId?: string | null
+  runMode?: 'background' | 'session'
   name?: string
   prompt?: string
   agentId?: string | null
@@ -15,10 +21,12 @@ type CronFiredEvent = {
   workingFolder?: string | null
   sshConnectionId?: string | null
   firedAt?: number
-  deliveryMode?: string
+  deliveryMode?: 'desktop' | 'session' | 'none' | 'plugin'
   deliveryTarget?: string | null
+  deleteAfterRun?: boolean
   maxIterations?: number
   pluginId?: string | null
+  pluginType?: string | null
   pluginChatId?: string | null
   error?: string
 }

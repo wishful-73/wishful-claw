@@ -1,4 +1,4 @@
-import type { Session, Project, ChatMessage } from './types'
+﻿import type { Session, Project, ChatMessage } from './types'
 
 /**
  * DB persistence helpers — SQLite via Worker IPC (workerRequest → db/*).
@@ -38,7 +38,9 @@ interface SessionRow {
   planId: string | null
   pinned: boolean
   pluginId: string | null
+  pluginType: string | null
   externalChatId: string | null
+  externalChatType: string | null
   providerId: string | null
   modelId: string | null
   modelSelectionMode: string | null
@@ -159,6 +161,7 @@ function rowToSession(row: SessionRow): Session {
     planId: row.planId ?? undefined,
     pinned: row.pinned,
     pluginId: row.pluginId ?? undefined,
+    pluginType: row.pluginType ?? undefined,
     externalChatId: row.externalChatId ?? undefined,
     providerId: row.providerId ?? undefined,
     modelId: row.modelId ?? undefined,
@@ -401,6 +404,16 @@ export async function dbClearMessages(sessionId: string): Promise<void> {
 }
 
 // ─── Load All (startup) ───
+
+/** Fetch a single session row (channel metadata included) by id. */
+export async function dbGetSession(sessionId: string): Promise<Session | null> {
+  await ensureDbInitialized()
+  const result = await window.api.workerRequest<{ success: boolean; session: SessionRow | null }>(
+    'db/sessions-get',
+    { id: sessionId }
+  )
+  return result?.session ? rowToSession(result.session) : null
+}
 
 export async function dbLoadAll(): Promise<{ projects: Project[]; sessions: Session[] } | null> {
   try {

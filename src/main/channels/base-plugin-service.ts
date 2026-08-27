@@ -23,6 +23,7 @@ import { WebSocketTransport } from './ws-transport'
 export abstract class BasePluginService implements MessagingChannelService {
   readonly pluginId: string
   abstract readonly pluginType: string
+  readonly botName: string
 
   protected _instance: ChannelInstance
   private _notify: (event: ChannelEvent) => void
@@ -34,6 +35,7 @@ export abstract class BasePluginService implements MessagingChannelService {
     this._instance = instance
     this._notify = notify
     this.pluginId = instance.id
+    this.botName = instance.name.trim()
   }
 
   get instance(): ChannelInstance {

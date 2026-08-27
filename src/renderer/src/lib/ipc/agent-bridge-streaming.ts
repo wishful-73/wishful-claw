@@ -1,4 +1,4 @@
-import { agentBridge, canSidecarHandle } from './agent-bridge'
+﻿import { agentBridge, canSidecarHandle } from './agent-bridge'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { CompressionResult } from '../agent/context-compression-config'
 import { toAgentEvent } from '../agent/stream-event-adapter'
@@ -9,6 +9,21 @@ import { mapAgentEventToProviderEvents, toProviderErrorEvent } from './agent-bri
 import { agentStream } from './agent-stream-receiver'
 import { buildSidecarAgentRunRequest, isNativeSidecarProviderConfig, sanitizeSidecarMessageMeta } from './sidecar-protocol'
 import { SidecarSlashCommandContext, SidecarSystemCommandContext } from './sidecar-protocol-types'
+import { writeLog } from '@renderer/lib/error-logger'
+
+/** One-line JSON for renderer log files (avoids "[object Object]" in captures). */
+function logOptimizerTrace(level: 'info' | 'warn' | 'error', message: string, data?: unknown): void {
+  const line = data === undefined ? message : `${message} ${JSON.stringify(data)}`
+  if (level === 'error') {
+    console.error(`[AgentBridge] ${line}`)
+    writeLog('error', `[AgentBridge] ${line}`)
+  } else if (level === 'warn') {
+    console.warn(`[AgentBridge] ${line}`)
+    writeLog('warn', `[AgentBridge] ${line}`)
+  } else {
+    console.log(`[AgentBridge] ${line}`)
+  }
+}
 
 const DEBUG_BODY_READ_TIMEOUT_MS = 15_000
 
@@ -169,18 +184,31 @@ export async function* streamSidecarProviderTurn(args: {
     try {
       const result = await agentBridge.runAgent(sidecarRequest)
       runId = result.runId
-      console.log('[AgentBridge] sidecar provider turn started', {
+      logOptimizerTrace('info', 'sidecar provider turn started', {
         runId,
         providerType: args.provider.type,
-        model: args.provider.model
+        model: args.provider.model,
+        tools: args.tools.map((tool) => tool.name),
+        providerTurnOnly: true,
+        signalAlreadyAborted: args.signal?.aborted === true,
+        bufferedForeignEvents: pendingEvents.filter((pending) => pending.runId !== runId).length
       })
 
       if (args.signal) {
         if (args.signal.aborted) {
+          logOptimizerTrace('warn', 'signal already aborted at start — cancelling own run', {
+            runId,
+            reason: args.signal.reason instanceof Error ? args.signal.reason.message : String(args.signal.reason ?? 'unknown')
+          })
           void agentBridge.cancelAgent(runId).catch(() => {})
           finished = true
         } else {
           const onAbort = (): void => {
+            const reason = args.signal?.reason
+            logOptimizerTrace('warn', 'abort signalled mid-turn — cancelling run', {
+              runId,
+              reason: reason instanceof Error ? reason.message : String(reason ?? 'unknown')
+            })
             void agentBridge.cancelAgent(runId).catch(() => {})
             finished = true
             wake()
@@ -206,6 +234,11 @@ export async function* streamSidecarProviderTurn(args: {
         const next = queue.shift()
         if (next) yield next
       }
+      logOptimizerTrace('info', 'sidecar provider turn stream ended', {
+        runId,
+        queuedLeftover: queue.length,
+        sawLoopEnd: finished
+      })
     } finally {
       abortCleanup?.()
       unsubscribe()

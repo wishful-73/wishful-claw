@@ -11,6 +11,26 @@ type GetFn = () => UIStore
 
 export function createTabSlice(set: SetFn, get: GetFn) {
   return {
+    ensureActivityTab: () =>
+      set((state: any) => {
+        const existing = state.rightPanelTabs.find((tab: any) => tab.kind === 'activity')
+        if (existing) {
+          return { rightPanelActiveTabId: existing.id, rightPanelOpen: true }
+        }
+        const tab: RightPanelTabInstance = {
+          id: 'activity',
+          kind: 'activity',
+          title: 'Activity',
+          closable: true,
+          createdAt: Date.now()
+        }
+        return {
+          rightPanelTabs: ensureRightPanelTabs([...state.rightPanelTabs, tab]),
+          rightPanelActiveTabId: tab.id,
+          rightPanelOpen: true
+        }
+      }),
+
     ensureSubAgentTab: (toolUseId: any, inlineText: any, title: any, requestedSessionId: any) =>
       set((state: any) => {
         const sessionId =

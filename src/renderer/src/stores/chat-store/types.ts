@@ -1,4 +1,4 @@
-import type { TokenUsageWire, RequestTimingWire } from '@shared/agent-stream-protocol'
+﻿import type { TokenUsageWire, RequestTimingWire } from '@shared/agent-stream-protocol'
 import type { RequestDebugInfo, MessageMeta, ContentBlock } from '@renderer/lib/api/types'
 
 // ─── Session Mode ───
@@ -74,6 +74,7 @@ export interface Session {
   planId?: string
   pinned?: boolean
   pluginId?: string
+  pluginType?: string
   externalChatId?: string
   pluginChatType?: 'p2p' | 'group'
   pluginSenderId?: string

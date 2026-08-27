@@ -24,6 +24,11 @@ import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { registerAllViewers } from '@renderer/lib/preview/register-viewers'
 import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
 import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
+import { initializeCronRuntime } from '@renderer/lib/tools/cron-runtime'
+import { agentBridge } from '@renderer/lib/ipc/agent-bridge'
+import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { getAgentStreamReceiver } from '@renderer/lib/ipc/agent-stream-receiver'
+import { useActivityStore } from '@renderer/stores/activity-store'
 
 // Initialize provider store — ensures builtin presets exist
 initProviderStore()
@@ -72,11 +77,45 @@ function App(): React.JSX.Element | null {
     // so Agent SSH commands show in terminal even before user opens the panel
     useTerminalStore.getState().init()
 
+    const receiver = getAgentStreamReceiver()
+    receiver.start((envelope) => {
+      useActivityStore.getState().handleEnvelope(envelope)
+    })
+    const disposeCronRuntime = initializeCronRuntime()
+
+    const syncRuntimeSettings = (maxConcurrentSubAgents: number): void => {
+      void agentBridge.request('agent/configure-runtime', { maxConcurrentSubAgents }).catch((error) => {
+        console.warn('runtime settings sync failed:', error)
+      })
+    }
+    const syncHydratedRuntimeSettings = (): void => {
+      syncRuntimeSettings(useSettingsStore.getState().maxConcurrentSubAgents)
+    }
+    const unsubscribeSettingsHydration = useSettingsStore.persist.hasHydrated()
+      ? undefined
+      : useSettingsStore.persist.onFinishHydration(syncHydratedRuntimeSettings)
+    if (useSettingsStore.persist.hasHydrated()) syncHydratedRuntimeSettings()
+    const unsubscribeRuntimeSettings = useSettingsStore.subscribe(
+      (state, previous) => {
+        if (state.maxConcurrentSubAgents !== previous.maxConcurrentSubAgents) {
+          syncRuntimeSettings(state.maxConcurrentSubAgents)
+        }
+      }
+    )
+    const unsubscribeRuntimeLifecycle = ipcClient.on('sidecar:lifecycle', (payload) => {
+      const state = (payload as { state?: string } | undefined)?.state
+      if (state === 'reconnected') syncHydratedRuntimeSettings()
+    })
+
     // Pre-fetch tool definitions in background so first message doesn't wait
     fetchToolDefinitions('chat')
 
     return () => {
       unsubscribeAppPluginChanges()
+      unsubscribeSettingsHydration?.()
+      unsubscribeRuntimeSettings()
+      unsubscribeRuntimeLifecycle()
+      disposeCronRuntime()
     }
   }, [])
 

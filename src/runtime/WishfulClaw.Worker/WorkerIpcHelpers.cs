@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
@@ -163,6 +163,10 @@ internal static class WorkerIpcHelpers
         if (key is not null && activeRequests.TryGetValue(key, out var requestCts))
         {
             requestCts.Cancel();
+        }
+        else
+        {
+            WorkerLog.Warn($"worker/cancel target not found key={key ?? "null"}");
         }
     }
 

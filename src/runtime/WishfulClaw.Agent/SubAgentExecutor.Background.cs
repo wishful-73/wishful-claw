@@ -50,6 +50,8 @@ public static partial class SubAgentExecutor
         {
             try
             {
+                using var concurrencyLease = await SubAgentConcurrencyLimiter.AcquireAsync(
+                    childState.CancellationToken);
                 await AgentLoop.ExecuteLoopAsync(childParameters, childState, context);
 
                 // Update progress before completing
@@ -182,7 +184,7 @@ public static partial class SubAgentExecutor
                 SessionConversationManager.Remove($"__subagent__{childRunId}");
                 childState.Dispose();
             }
-        }, parentState.CancellationToken);
+        });
 
         // Return immediately with a placeholder result
         var placeholder =

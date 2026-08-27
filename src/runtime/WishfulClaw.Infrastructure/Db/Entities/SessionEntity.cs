@@ -1,4 +1,4 @@
-
+﻿
 namespace WishfulClaw.Infrastructure.Db;
 
 // ─── Session Entity ───
@@ -31,7 +31,13 @@ public class SessionEntity
 
     public string? PluginId { get; set; }
 
+    public string? PluginType { get; set; }
+
+    public string? ChannelRouteKey { get; set; }
+
     public string? ExternalChatId { get; set; }
+
+    public string? ExternalChatType { get; set; }
 
     public string? ProviderId { get; set; }
 
@@ -59,7 +65,10 @@ public sealed class SessionRow
     public string? PlanId { get; set; }
     public bool Pinned { get; set; }
     public string? PluginId { get; set; }
+    public string? PluginType { get; set; }
+    public string? ChannelRouteKey { get; set; }
     public string? ExternalChatId { get; set; }
+    public string? ExternalChatType { get; set; }
     public string? ProviderId { get; set; }
     public string? ModelId { get; set; }
     public string? ModelSelectionMode { get; set; }
@@ -80,7 +89,10 @@ public sealed class SessionRow
     PlanId = e.PlanId,
     Pinned = e.Pinned != 0,
     PluginId = e.PluginId,
+    PluginType = e.PluginType,
+    ChannelRouteKey = e.ChannelRouteKey,
     ExternalChatId = e.ExternalChatId,
+    ExternalChatType = e.ExternalChatType,
     ProviderId = e.ProviderId,
     ModelId = e.ModelId,
     ModelSelectionMode = e.ModelSelectionMode,

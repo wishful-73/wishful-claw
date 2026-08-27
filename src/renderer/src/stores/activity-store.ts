@@ -18,19 +18,15 @@ export interface ActivityItem {
 
 interface ActivityState {
   activities: ActivityItem[]
-  isVisible: boolean
   currentIteration: number
 
   addActivity: (item: ActivityItem) => void
   clearActivities: () => void
-  toggleVisible: () => void
-  setVisible: (visible: boolean) => void
   handleEnvelope: (envelope: AgentStreamEnvelope) => void
 }
 
 export const useActivityStore = create<ActivityState>((set, get) => ({
   activities: [],
-  isVisible: true,
   currentIteration: 0,
 
   addActivity: (item) => {
@@ -39,14 +35,6 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
 
   clearActivities: () => {
     set({ activities: [], currentIteration: 0 })
-  },
-
-  toggleVisible: () => {
-    set((state) => ({ isVisible: !state.isVisible }))
-  },
-
-  setVisible: (visible) => {
-    set({ isVisible: visible })
   },
 
   handleEnvelope: (envelope) => {

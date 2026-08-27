@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Contracts;
 
@@ -9,6 +9,7 @@ namespace WishfulClaw.Infrastructure;
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(DbInitializeResult))]
+[JsonSerializable(typeof(ErrorResult))]
 [JsonSerializable(typeof(GoalFindResult))]
 [JsonSerializable(typeof(GoalMutationResult))]
 [JsonSerializable(typeof(GoalRow))]
@@ -83,6 +84,13 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(SubAgentSimpleResult))]
 [JsonSerializable(typeof(SubAgentRunRow))]
 [JsonSerializable(typeof(List<SubAgentRunRow>))]
+[JsonSerializable(typeof(CronFindResult))]
+[JsonSerializable(typeof(CronMutationResult))]
+[JsonSerializable(typeof(CronRow))]
+[JsonSerializable(typeof(List<CronRow>))]
+[JsonSerializable(typeof(CronRunMutationResult))]
+[JsonSerializable(typeof(CronRunRow))]
+[JsonSerializable(typeof(List<CronRunRow>))]
 public sealed partial class InfrastructureJsonContext : JsonSerializerContext
 {
 }

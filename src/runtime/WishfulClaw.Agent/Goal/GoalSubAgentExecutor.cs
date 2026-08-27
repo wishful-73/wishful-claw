@@ -47,6 +47,8 @@ internal static class GoalSubAgentExecutor
 
         try
         {
+            using var concurrencyLease = await SubAgentConcurrencyLimiter.AcquireAsync(
+                childState.CancellationToken);
             await AgentLoop.ExecuteLoopAsync(childParameters, childState, context);
             return new TurnResult(
                 collector.GetFinalOutput(),

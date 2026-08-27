@@ -1,12 +1,12 @@
-# Wishful Claw 项目规划文档
+﻿# Wishful Claw 项目规划文档
 
 ## 一、项目概述
 
 Wishful Claw 是一个 Agent 编程软件项目，目标是打造一个适合自己的"贾维斯"。项目从零构建，参考五个开源 Agent 项目的优点，融合为一体。
 
 - **项目路径**：`D:\claw\wishful-claw`
-- **GitHub**：https://github.com/731471991/wishful-claw
-- **技术栈**：React + .NET 10（同 OpenCowork）
+- **GitHub**：https://github.com/wishful-73/wishful-claw
+- **技术栈**：React 19 + Electron 35 + .NET 11 preview Native AOT + MessagePack
 
 ## 二、项目背景
 

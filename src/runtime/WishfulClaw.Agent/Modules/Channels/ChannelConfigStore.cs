@@ -186,6 +186,12 @@ public static class ChannelConfigStore
 
     private static string GetConfigPath()
     {
+        var dataDirectory = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
+        if (!string.IsNullOrWhiteSpace(dataDirectory))
+        {
+            return Path.Combine(Path.GetFullPath(dataDirectory), ConfigFileName);
+        }
+
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             DataDirectoryName,

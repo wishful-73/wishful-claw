@@ -166,6 +166,12 @@ public static class ProviderStore
 
     public static string GetDataDirectory()
     {
+        var dataDirectory = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
+        if (!string.IsNullOrWhiteSpace(dataDirectory))
+        {
+            return Path.Combine(Path.GetFullPath(dataDirectory), ProviderDirectoryName);
+        }
+
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             DataDirectoryName,

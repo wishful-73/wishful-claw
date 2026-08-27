@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
@@ -344,6 +344,14 @@ internal static partial class Program
                     writer.WriteString("id", request.Id);
                     writer.WriteStartObject("result");
                     writer.WriteBoolean("confirmed", confirmed);
+                    if (confirmed)
+                    {
+                        writer.WriteStartObject("modelConfig");
+                        writer.WriteString("providerId", "test-provider");
+                        writer.WriteString("providerType", "openai");
+                        writer.WriteString("model", "test-model");
+                        writer.WriteEndObject();
+                    }
                     writer.WriteEndObject();
                     writer.WriteEndObject();
                 }));

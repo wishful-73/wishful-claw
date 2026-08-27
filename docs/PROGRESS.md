@@ -1,5 +1,27 @@
 ﻿# 开发进度
 
+## v2-iter-22：微信/飞书渠道与定时任务打磨（技术收尾完成，待用户确认）
+
+- 状态：步骤 1-14、16-17 已完成；审查补强大部分通过，但 I22-3 Main/Renderer harness 仍待补；最终 PASS/FAIL/PARTIAL 与迭代完结待用户确认
+- 分支：`dev/v2-iter-22`
+- Plan：`docs/plans/iter-v2-22/plan.md`
+- 最终审查基线：`docs/reviews/review-09-iter22.md`；I22-3 集成 harness 仍为未完成项
+- 最终验证：`docs/plans/iter-v2-22/verification_report.md`
+- 基线版本：`0.2.21`，最新正式 tag：`v0.2.21`
+- 代码收尾提交：`5fc6788a`（Automation 日历、Cron IPC/并发/归档修复、数据隔离、回归测试、CodeGraph/AOT 基线修复）
+- 验证：TS 3/3、C# solution 0 warning/0 error、Goal regression 113、Cron regression 38/76/8/8、diff check 通过；Electron build、Worker Native AOT、隔离 Electron 冒烟沿用此前通过证据，本次审查补强尚未重新执行这三项；I22-3 真实 Main/Renderer harness 尚未补齐
+- 冒烟安全：测试根 PID `14524` 及其子进程已精确终止，`ROOT_RUNNING=False`、`RELATED_COUNT=0`；未触碰已安装版、真实 Home DB/MCP 或真实渠道
+- 当前未执行：commit、merge、tag、push、release
+
+### v2-iter-22 最终功能单元
+
+| Commit | 内容 | 验证 |
+|---|---|---|
+| `121d52c` | 固定渠道会话标题、避免重复前缀 | TS 与 Infrastructure 验证通过 |
+| `b6ce3e7` | 统一渠道后台主动发送、日志与结果反馈 | TS 三配置、Infrastructure build、diff check 通过 |
+| `2677869` | Cron SQLite 数据模型、DDL/迁移、Mapper、AOT JSON 注册 | TS 三配置、Infrastructure build、diff check 通过 |
+| `5fc6788a` | 完成 Automation 日历、Cron handlers/运行互斥/原子 fired、长期 at、数据隔离与最终回归 | 最终完整验证矩阵与隔离冒烟通过 |
+
 ## v2-iter-22+：OpenCowork 近期提交参考迁移候选（2026-08-24 调研，待排期）
 
 来源：D:\claw\OpenCowork git log 1.3.9 → 1.3.16（排除 CLI 与宠物体系）

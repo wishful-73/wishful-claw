@@ -30,6 +30,12 @@ public static partial class DbClient
             return Path.GetFullPath(dbPathEl.GetString()!);
         }
 
+        var dataDirectory = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
+        if (!string.IsNullOrWhiteSpace(dataDirectory))
+        {
+            return Path.Combine(Path.GetFullPath(dataDirectory), "index.db");
+        }
+
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".wishful-claw",
@@ -88,7 +94,10 @@ public static partial class DbClient
                     plan_id TEXT,
                     pinned INTEGER NOT NULL DEFAULT 0,
                     plugin_id TEXT,
+                    plugin_type TEXT,
+                    channel_route_key TEXT,
                     external_chat_id TEXT,
+                    external_chat_type TEXT,
                     provider_id TEXT,
                     model_id TEXT,
                     model_selection_mode TEXT NOT NULL DEFAULT 'inherit',
@@ -231,6 +240,20 @@ public static partial class DbClient
                     finished_at INTEGER
                 );",
                 @"CREATE INDEX IF NOT EXISTS ix_goal_execution_runs_task ON goal_execution_runs(task_id, attempt_no);", 
+                @"CREATE TABLE IF NOT EXISTS cron_runs (
+                    run_id TEXT PRIMARY KEY NOT NULL,
+                    cron_id TEXT NOT NULL,
+                    session_id TEXT,
+                    fire_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'running',
+                    summary TEXT,
+                    error TEXT,
+                    tool_call_count INTEGER NOT NULL DEFAULT 0,
+                    started_at INTEGER NOT NULL,
+                    finished_at INTEGER
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_cron_runs_cron_started ON cron_runs(cron_id, started_at DESC);",
+                @"CREATE INDEX IF NOT EXISTS ix_cron_runs_session_started ON cron_runs(session_id, started_at DESC);",
                 @"CREATE TABLE IF NOT EXISTS goal_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT NOT NULL,
@@ -259,6 +282,38 @@ public static partial class DbClient
                     priority TEXT NOT NULL DEFAULT 'standard',
                     created_at INTEGER NOT NULL,
                     archived_at INTEGER NOT NULL
+                );",
+                @"CREATE TABLE IF NOT EXISTS cron_tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL DEFAULT '',
+                    session_id TEXT,
+                    scope TEXT NOT NULL DEFAULT 'global',
+                    project_id TEXT,
+                    schedule_json TEXT NOT NULL DEFAULT '{}',
+                    prompt TEXT NOT NULL DEFAULT '',
+                    agent_id TEXT,
+                    model TEXT,
+                    working_folder TEXT,
+                    delivery_mode TEXT NOT NULL DEFAULT 'desktop',
+                    output_mode TEXT NOT NULL DEFAULT 'new_session',
+                    reuse_session_id TEXT,
+                    run_mode TEXT NOT NULL DEFAULT 'background',
+                    delivery_target TEXT,
+                    plugin_id TEXT,
+                    plugin_type TEXT,
+                    plugin_chat_id TEXT,
+                    delete_after_run INTEGER NOT NULL DEFAULT 0,
+                    max_iterations INTEGER NOT NULL DEFAULT 15,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    deleted_at INTEGER,
+                    last_fired_at INTEGER,
+                    last_run_at INTEGER,
+                    last_run_status TEXT,
+                    last_run_summary TEXT,
+                    last_error TEXT,
+                    fire_count INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
                 );"
             };
 
@@ -302,7 +357,10 @@ public static partial class DbClient
             WorkerLog.Info("DbClient: running EnsureColumn migrations");
             EnsureColumn("sessions", "persona_id", "TEXT");
             EnsureColumn("sessions", "plan_id", "TEXT");
+            EnsureColumn("sessions", "plugin_type", "TEXT");
+            EnsureColumn("sessions", "channel_route_key", "TEXT");
             EnsureColumn("sessions", "external_chat_id", "TEXT");
+            EnsureColumn("sessions", "external_chat_type", "TEXT");
             EnsureColumn("sessions", "provider_id", "TEXT");
             EnsureColumn("sessions", "model_id", "TEXT");
             EnsureColumn("sessions", "model_selection_mode", "TEXT");
@@ -314,6 +372,8 @@ public static partial class DbClient
             EnsureColumn("projects", "plugin_id", "TEXT");
             EnsureColumn("messages", "usage", "TEXT");
             EnsureColumn("messages", "sort_order", "INTEGER");
+            NormalizeChannelSessionMetadata();
+            _db.Execute("CREATE INDEX IF NOT EXISTS ix_sessions_channel_route ON sessions(channel_route_key);");
             EnsureColumn("goals", "plans_json", "TEXT");
             EnsureColumn("goals", "plan_count", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("goals", "completed_plan_count", "INTEGER NOT NULL DEFAULT 0");
@@ -323,6 +383,42 @@ public static partial class DbClient
             EnsureColumn("goals", "token_budget", "INTEGER");
             EnsureColumn("goals", "time_used_seconds", "INTEGER NOT NULL DEFAULT 0");
             EnsureColumn("goals", "project_id", "TEXT");
+            EnsureColumn("cron_tasks", "name", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("cron_tasks", "session_id", "TEXT");
+            EnsureColumn("cron_tasks", "scope", "TEXT NOT NULL DEFAULT 'global'");
+            EnsureColumn("cron_tasks", "project_id", "TEXT");
+            EnsureColumn("cron_tasks", "schedule_json", "TEXT NOT NULL DEFAULT '{}'");
+            EnsureColumn("cron_tasks", "prompt", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn("cron_tasks", "agent_id", "TEXT");
+            EnsureColumn("cron_tasks", "model", "TEXT");
+            EnsureColumn("cron_tasks", "working_folder", "TEXT");
+            EnsureColumn("cron_tasks", "delivery_mode", "TEXT NOT NULL DEFAULT 'desktop'");
+            EnsureColumn("cron_tasks", "output_mode", "TEXT NOT NULL DEFAULT 'new_session'");
+            EnsureColumn("cron_tasks", "reuse_session_id", "TEXT");
+            EnsureColumn("cron_tasks", "run_mode", "TEXT NOT NULL DEFAULT 'background'");
+            EnsureColumn("cron_tasks", "delivery_target", "TEXT");
+            EnsureColumn("cron_tasks", "plugin_id", "TEXT");
+            EnsureColumn("cron_tasks", "plugin_type", "TEXT");
+            EnsureColumn("cron_tasks", "plugin_chat_id", "TEXT");
+            EnsureColumn("cron_tasks", "delete_after_run", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("cron_tasks", "max_iterations", "INTEGER NOT NULL DEFAULT 15");
+            EnsureColumn("cron_tasks", "enabled", "INTEGER NOT NULL DEFAULT 1");
+            EnsureColumn("cron_tasks", "deleted_at", "INTEGER");
+            EnsureColumn("cron_tasks", "last_fired_at", "INTEGER");
+            EnsureColumn("cron_tasks", "last_run_at", "INTEGER");
+            EnsureColumn("cron_tasks", "last_run_status", "TEXT");
+            EnsureColumn("cron_tasks", "last_run_summary", "TEXT");
+            EnsureColumn("cron_tasks", "last_error", "TEXT");
+            EnsureColumn("cron_tasks", "fire_count", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("cron_tasks", "created_at", "INTEGER NOT NULL DEFAULT 0");
+            EnsureColumn("cron_tasks", "updated_at", "INTEGER NOT NULL DEFAULT 0");
+            _db.Execute("UPDATE cron_tasks SET output_mode = 'reuse_session' WHERE output_mode = 'new_session' AND delivery_mode = 'session' AND delivery_target IS NOT NULL AND reuse_session_id IS NULL;");
+            _db.Execute("UPDATE cron_tasks SET output_mode = 'bot' WHERE output_mode = 'new_session' AND plugin_id IS NOT NULL;");
+            _db.Execute("CREATE INDEX IF NOT EXISTS ix_cron_tasks_enabled_next ON cron_tasks(enabled, deleted_at, updated_at);");
+            _db.Execute("CREATE INDEX IF NOT EXISTS ix_cron_tasks_session ON cron_tasks(session_id);");
+            _db.Execute("CREATE INDEX IF NOT EXISTS ix_cron_tasks_project ON cron_tasks(project_id, scope);");
+            _db.Execute("CREATE INDEX IF NOT EXISTS ix_cron_runs_cron_started ON cron_runs(cron_id, started_at DESC);");
+            _db.Execute("CREATE INDEX IF NOT EXISTS ix_cron_runs_session_started ON cron_runs(session_id, started_at DESC);");
             NormalizeGoalNumericColumns();
             NormalizeGoalStatuses();
             NormalizeGoalPlansJson();

@@ -1,4 +1,4 @@
-// Prompt optimization state and handlers for InputArea
+﻿// Prompt optimization state and handlers for InputArea
 
 import * as React from 'react'
 import { toast } from 'sonner'
@@ -21,7 +21,7 @@ export interface OptimizationOption {
 export function usePromptOptimizer(opts: UsePromptOptimizerOptions) {
   const { text, currentLanguage, setText, focusInputAtEnd } = opts
   const [isOptimizing, setIsOptimizing] = React.useState(false)
-  const [, setOptimizingText] = React.useState('')
+  const [optimizingText, setOptimizingText] = React.useState('')
   const [optimizationOptions, setOptimizationOptions] = React.useState<OptimizationOption[]>([])
   const [showOptimizationDialog, setShowOptimizationDialog] = React.useState(false)
   const [selectedOptionIndex, setSelectedOptionIndex] = React.useState(0)
@@ -43,8 +43,12 @@ export function usePromptOptimizer(opts: UsePromptOptimizerOptions) {
 
     const controller = new AbortController()
     abortRef.current = controller
-    // Hard timeout so a hung request cannot keep isOptimizing=true forever
-    const timeout = setTimeout(() => controller.abort(new Error('Optimization timed out')), 120_000)
+    // Hard timeout so a hung request cannot keep isOptimizing=true forever.
+    // The optimizer is a single-shot provider/complete call (worker-side retry
+    // chain can take a few minutes on rate-limited providers); the bridge
+    // timeout (280s) fires first so the error surfaces cleanly — user cancel
+    // still works at any time.
+    const timeout = setTimeout(() => controller.abort(new Error('Optimization timed out')), 300_000)
 
     try {
       const { optimizePrompt } = await import('@renderer/lib/prompt-optimizer/optimizer')
@@ -88,21 +92,39 @@ export function usePromptOptimizer(opts: UsePromptOptimizerOptions) {
         systemPrompt: ''
       }
 
+      // Track success locally — reading it back from a setState updater is
+      // racy because updaters run lazily during render, not synchronously.
+      let receivedOptions = false
+
       for await (const event of optimizePrompt(trimmed, providerConfig, currentLanguage, controller.signal)) {
         if (controller.signal.aborted) break
         if (event.type === 'text') {
           setOptimizingText((prev) => prev + event.content)
         } else if (event.type === 'tool_call' && event.options && event.options.length > 0) {
           // Progressive: add options as they arrive
+          receivedOptions = true
           setOptimizationOptions((prev) => [...prev, ...event.options!])
         } else if (event.type === 'result' && event.options && event.options.length > 0) {
           // Final batch — only set if we don't already have options from tool_call
-          setOptimizationOptions((prev) => prev.length > 0 ? prev : event.options!)
+          if (!receivedOptions) {
+            receivedOptions = true
+            setOptimizationOptions(event.options!)
+          }
           setSelectedOptionIndex(0)
         }
       }
+
+      // Stream ended without usable options (provider error / model ignored the
+      // tool). Close the dialog instead of leaving it spinning forever.
+      if (!receivedOptions) {
+        setShowOptimizationDialog(false)
+        toast.error('Optimization failed', {
+          description: 'The model did not return optimized prompt options. Please try again.'
+        })
+      }
     } catch (error) {
       if (!controller.signal.aborted) {
+        setShowOptimizationDialog(false)
         toast.error('Optimization failed', {
           description: error instanceof Error ? error.message : String(error)
         })
@@ -153,6 +175,7 @@ export function usePromptOptimizer(opts: UsePromptOptimizerOptions) {
 
   return {
     isOptimizing,
+    optimizingText,
     optimizationOptions,
     showOptimizationDialog,
     setShowOptimizationDialog: handleDialogOpenChange,

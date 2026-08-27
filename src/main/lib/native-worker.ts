@@ -1,4 +1,4 @@
-// Electron types available via electron-vite/node
+﻿// Electron types available via electron-vite/node
 import { spawn, type ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { EventEmitter } from 'events'
@@ -21,6 +21,8 @@ type PendingRequest = {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
+  /** Set after cancelPendingRequest() so late responses are ignored. */
+  cancelled?: boolean
 }
 
 type NativeWorkerResponse = {
@@ -45,6 +47,8 @@ class NativeWorkerManager {
   get endpoint(): string | null { return this._endpoint }
   private events = new EventEmitter()
   private pending = new Map<number, PendingRequest>()
+  /** Caller-supplied cancel keys → internal request ids (registered at id assignment). */
+  private cancelKeys = new Map<string, number>()
   private readChunks: Buffer[] = []
   private readBufferedBytes = 0
   private pendingFrameLength = -1
@@ -83,7 +87,8 @@ class NativeWorkerManager {
   async request<T = unknown>(
     method: string,
     params?: unknown,
-    timeoutMs?: number
+    timeoutMs?: number,
+    cancelKey?: string
   ): Promise<T> {
     const effectiveTimeoutMs =
       typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
@@ -98,18 +103,60 @@ class NativeWorkerManager {
     }
 
     const id = this.nextId++
+    // Register the cancel key at the same moment the id is assigned — callers
+    // can cancel while the request is in flight (the id is internal otherwise).
+    if (cancelKey) {
+      this.cancelKeys.set(cancelKey, id)
+    }
     const payload = encode({ id, method, params: params ?? {} })
     const frame = createFrame(payload)
 
     return await new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
+        this.cancelKeys.delete(cancelKey ?? '')
         reject(new Error(`Worker request timed out: ${method} (${effectiveTimeoutMs}ms)`))
       }, effectiveTimeoutMs)
 
       this.pending.set(id, { method, resolve: resolve as (value: unknown) => void, reject, timer })
       socket.write(frame)
     })
+  }
+
+  /**
+   * Best-effort cancellation of an in-flight worker request. Sends
+   * `worker/cancel` (fire-and-forget — the worker does not reply to it),
+   * clears the timeout and rejects the original promise immediately.
+   */
+  cancelByKey(cancelKey: string): boolean {
+    const requestId = this.cancelKeys.get(cancelKey)
+    if (requestId === undefined) {
+      console.warn('[Worker] cancel key not registered:', cancelKey)
+      return false
+    }
+    this.cancelKeys.delete(cancelKey)
+    this.cancelRequest(requestId)
+    return true
+  }
+
+  cancelRequest(requestId: number): void {
+    const pending = this.pending.get(requestId)
+    if (!pending || pending.cancelled) return
+
+    const socket = this.socket
+    if (socket && this.isRunning) {
+      try {
+        const payload = encode({ id: this.nextId++, method: 'worker/cancel', params: { requestId } })
+        socket.write(createFrame(payload))
+      } catch (error) {
+        console.warn('[Worker] failed to send worker/cancel:', error)
+      }
+    }
+
+    pending.cancelled = true
+    clearTimeout(pending.timer)
+    this.pending.delete(requestId)
+    pending.reject(new Error(`Worker request cancelled: ${pending.method}`))
   }
 
   private async start(): Promise<void> {
@@ -314,6 +361,12 @@ class NativeWorkerManager {
     if (typeof response.id !== 'number') return
     const pending = this.pending.get(response.id)
     if (!pending) return
+    // A cancelled request already rejected its promise — drop the late reply.
+    if (pending.cancelled) {
+      clearTimeout(pending.timer)
+      this.pending.delete(response.id)
+      return
+    }
 
     clearTimeout(pending.timer)
     this.pending.delete(response.id)

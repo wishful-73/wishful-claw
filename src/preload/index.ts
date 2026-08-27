@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+﻿import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import {
   decodeMessagePackPayload,
@@ -42,6 +42,23 @@ const api = {
   // Worker request forwarder — main process forwards to worker via named pipe
   workerRequest: <T = unknown>(method: string, params?: unknown): Promise<T> =>
     invokeMessagePackBinary<T>('worker:request', { method, params: params ?? {} }),
+
+  // Worker request forwarder that registers the in-flight request under a
+  // caller-supplied cancelId, so it can be cancelled while still running.
+  workerRequestWithId: <T = unknown>(
+    method: string,
+    params?: unknown,
+    cancelId?: string
+  ): Promise<{ result: T; requestId: number }> =>
+    invokeMessagePackBinary<{ result: T; requestId: number }>('worker:request:with-id', {
+      method,
+      params: params ?? {},
+      cancelId
+    }),
+
+  // Cancel an in-flight worker request previously registered with cancelId
+  cancelWorkerRequest: (cancelId: string): Promise<{ cancelled: boolean }> =>
+    invokeMessagePackBinary<{ cancelled: boolean }>('worker:request:cancel', { cancelId }),
 
   // Listen for main → renderer push events (e.g. window:maximized)
   on: <T = unknown>(channel: string, callback: (payload: T) => void): (() => void) =>

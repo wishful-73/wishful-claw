@@ -71,6 +71,44 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
     }
   )
 
+  // Same forwarder but registers the in-flight request under a caller-supplied
+  // cancelKey inside the worker manager, so the renderer can cancel it via
+  // worker:request:cancel while it is still running.
+  registerMessagePackHandler<
+    { method: string; params?: unknown; timeoutMs?: number; cancelId?: string },
+    unknown
+  >('worker:request:with-id', async (args) => {
+    const worker = getNativeWorker()
+    const params = (args.params ?? {}) as Record<string, unknown>
+    if (args.method.startsWith('codegraph/')) {
+      const dataRoot = resolveCodeGraphDataRoot(
+        typeof params.workingFolder === 'string'
+          ? params.workingFolder
+          : typeof params.projectPath === 'string'
+            ? params.projectPath
+            : undefined,
+        params.dataRoot
+      )
+      if (dataRoot && params.dataRoot === undefined) {
+        params.dataRoot = dataRoot
+      }
+    }
+    return worker.request(args.method, args.params ?? {}, args.timeoutMs, args.cancelId)
+  })
+
+  // Cancel an in-flight worker request by its cancelKey (registered when the
+  // request was dispatched). Sends worker/cancel to the native worker.
+  registerMessagePackHandler<{ cancelId: string }, { cancelled: boolean }>(
+    'worker:request:cancel',
+    async (args) => {
+      const cancelled = getNativeWorker().cancelByKey(args.cancelId)
+      if (!cancelled) {
+        console.warn('[Worker] cancel requested but no in-flight match:', args.cancelId)
+      }
+      return { cancelled }
+    }
+  )
+
   // -- Shell handlers --
   registerMessagePackHandler<string, void>(
     'shell:openExternal',

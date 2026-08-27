@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { Wand2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Spinner } from '@renderer/components/ui/spinner'
@@ -13,6 +13,7 @@ interface OptimizationDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   options: OptimizationOption[]
+  optimizingText?: string
   selectedOptionIndex: number
   onSelectOption: (index: number) => void
   onUseOption: (content: string) => void
@@ -24,6 +25,7 @@ export function OptimizationDialog({
   open,
   onOpenChange,
   options,
+  optimizingText,
   selectedOptionIndex,
   onSelectOption,
   onUseOption,
@@ -35,7 +37,7 @@ export function OptimizationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col gap-4 sm:max-w-7xl">
+      <DialogContent className="max-w-7xl h-[85vh] max-h-[90vh] overflow-hidden flex flex-col gap-4 sm:max-w-7xl">
         <DialogHeader className="space-y-2 shrink-0">
           <DialogTitle className="text-xl flex items-center gap-2">
             <Wand2 className="size-5 text-primary" />
@@ -118,12 +120,18 @@ export function OptimizationDialog({
           {/* Content Area */}
           <div
             ref={contentScrollRef}
-            className="flex-1 min-h-0 mt-2 overflow-y-auto rounded-lg border border-border bg-background px-6 py-4"
+            className="flex-1 min-h-0 mt-2 h-[60vh] overflow-y-auto rounded-lg border border-border bg-background px-6 py-4"
           >
             {options[selectedOptionIndex] ? (
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed font-sans">
                   {options[selectedOptionIndex]?.content}
+                </div>
+              </div>
+            ) : optimizingText ? (
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed font-sans">
+                  {optimizingText}
                 </div>
               </div>
             ) : (

@@ -1,4 +1,4 @@
-// Composer editor area: skill tag, optimizing indicator, optimization dialog,
+﻿// Composer editor area: skill tag, optimizing indicator, optimization dialog,
 // drag overlay, FileAwareEditor, flyovers, hidden file input
 
 import * as React from 'react'
@@ -62,6 +62,7 @@ export interface ComposerEditorAreaProps {
   showOptimizationDialog: boolean
   setShowOptimizationDialog: (open: boolean) => void
   optimizationOptions: OptimizationOption[]
+  optimizingText?: string
   selectedOptionIndex: number
   setSelectedOptionIndex: React.Dispatch<React.SetStateAction<number>>
   onUseOption: (content: string) => void
@@ -134,6 +135,7 @@ export function ComposerEditorArea(props: ComposerEditorAreaProps) {
         open={props.showOptimizationDialog}
         onOpenChange={props.setShowOptimizationDialog}
         options={props.optimizationOptions}
+        optimizingText={props.optimizingText}
         selectedOptionIndex={props.selectedOptionIndex}
         onSelectOption={props.setSelectedOptionIndex}
         onUseOption={props.onUseOption}

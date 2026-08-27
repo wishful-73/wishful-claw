@@ -1,4 +1,4 @@
-// InputArea: main composer component with editor, toolbar, and controls
+﻿// InputArea: main composer component with editor, toolbar, and controls
 
 import * as React from 'react'
 import type { SendMessageOptions } from '@renderer/hooks/use-chat-actions'
@@ -139,7 +139,7 @@ export function InputArea({
   })
 
   const {
-    isOptimizing, optimizationOptions, showOptimizationDialog,
+    isOptimizing, optimizingText, optimizationOptions, showOptimizationDialog,
     setShowOptimizationDialog, selectedOptionIndex, setSelectedOptionIndex,
     handleOptimizePrompt, handleSelectOption, handleCancelOptimization
   } = usePromptOptimizer({ text, currentLanguage: currentLanguage as 'en' | 'zh', setText, focusInputAtEnd })
@@ -428,6 +428,7 @@ export function InputArea({
             showOptimizationDialog={showOptimizationDialog}
             setShowOptimizationDialog={setShowOptimizationDialog}
             optimizationOptions={optimizationOptions}
+            optimizingText={optimizingText}
             selectedOptionIndex={selectedOptionIndex}
             setSelectedOptionIndex={setSelectedOptionIndex}
             onUseOption={handleSelectOption}

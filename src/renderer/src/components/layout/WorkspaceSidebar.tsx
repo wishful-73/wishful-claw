@@ -111,6 +111,10 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
   }, [])
   const sortedUnassigned = useMemo(() => sortSessions(unassignedSessions), [unassignedSessions])
 
+  // Global conversations section collapses like a project row; expanded by
+  // default since it is the primary unscoped session list.
+  const [conversationsExpanded, setConversationsExpanded] = useState(true)
+
   const toggleProjectExpand = useCallback((projectId: string) => {
     setExpandedProjects((prev) => {
       const next = new Set(prev)
@@ -325,37 +329,48 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
           />
         ))}
 
-        {/* Unassigned sessions */}
+        {/* Unassigned sessions — collapsible section row, same interaction as projects */}
         {sortedUnassigned.length > 0 && (
-          <div className="mt-2">
-            <div className="flex items-center gap-1.5 px-2 py-1">
-              <MessageSquare className="size-3 text-muted-foreground/60" />
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">
+          <div className="mt-2 select-none">
+            <div
+              onClick={() => setConversationsExpanded((v) => !v)}
+              className="group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+            >
+              <MessageSquare className="size-3.5 shrink-0" />
+              <span className="flex-1 truncate text-xs font-medium">
                 {t('sidebar.conversations', { defaultValue: 'Conversations' })}
               </span>
-              {sortedUnassigned.length > 0 && (
-                <span className="text-[10px] text-muted-foreground/50">({sortedUnassigned.length})</span>
-              )}
-            </div>
-            {visibleUnassigned.map((session) => (
-              <SessionItem
-                key={session.id}
-                session={session}
-                isActive={activeSessionId === session.id}
-                onClick={() => navigateToSession(session.id)}
+              <span className="text-[10px] text-muted-foreground/50">({sortedUnassigned.length})</span>
+              <ChevronRight
+                className={cn(
+                  'size-3.5 shrink-0 transition-transform',
+                  conversationsExpanded && 'rotate-90'
+                )}
               />
-            ))}
-            {hasHiddenUnassigned && (
-              <button
-                type="button"
-                onClick={() => setShowAllUnassigned(true)}
-                className="mt-0.5 rounded px-2 py-1 text-left text-[10px] text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-              >
-                {t('sidebar.loadMoreSessions', {
-                  defaultValue: 'Load more ({{count}} hidden)',
-                  count: sortedUnassigned.length - UNASSIGNED_COLLAPSE_COUNT
-                })}
-              </button>
+            </div>
+            {conversationsExpanded && (
+              <div className="ml-3 mt-0.5 flex flex-col gap-0.5 pl-2">
+                {visibleUnassigned.map((session) => (
+                  <SessionItem
+                    key={session.id}
+                    session={session}
+                    isActive={activeSessionId === session.id}
+                    onClick={() => navigateToSession(session.id)}
+                  />
+                ))}
+                {hasHiddenUnassigned && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllUnassigned(true)}
+                    className="mt-0.5 rounded px-2 py-1 text-left text-[10px] text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    {t('sidebar.loadMoreSessions', {
+                      defaultValue: 'Load more ({{count}} hidden)',
+                      count: sortedUnassigned.length - UNASSIGNED_COLLAPSE_COUNT
+                    })}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}

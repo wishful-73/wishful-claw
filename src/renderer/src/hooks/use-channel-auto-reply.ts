@@ -188,18 +188,11 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
   }
 
   // After an app restart the store session exists but its message list is
-  // empty and the Worker's SessionConversation is gone — reload from DB, which
-  // also triggers agent/restore-session. Await the restore explicitly so the
-  // worker state is committed before agent/run arrives (otherwise the new turn
-  // would start a fresh conversation and lose all prior history). Mirrors the
-  // Automation in-session path (cron-runtime runInSession).
+  // empty — reload it for rendering. The Worker's SessionConversation is
+  // rebuilt lazily and synchronously inside agent/run on this send, so no
+  // explicit restore call is needed (InitializeIfEmpty guards the race).
   if ((session?.messages.length ?? 0) === 0) {
     await useChatStore.getState().loadRecentSessionMessages(sessionId)
-    try {
-      await window.api.workerRequest('agent/restore-session', { sessionId })
-    } catch {
-      // Best effort: without the restore the turn still runs, just without history.
-    }
   }
 
   const settings = useSettingsStore.getState()

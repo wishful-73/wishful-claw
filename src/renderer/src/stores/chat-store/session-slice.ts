@@ -526,8 +526,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         target.totalTurns = totalTurns
         target.lastKnownMessageCount = actualCount
       })
-      // Restore backend session from DB
-      void window.api.workerRequest('agent/restore-session', { sessionId })
+      // No backend rebuild here: the Worker conversation is restored lazily
+      // inside agent/run on the first send of the session.
     } catch (err) {
       console.error('[DB] loadRecentSessionMessages failed:', err)
       set((state) => {

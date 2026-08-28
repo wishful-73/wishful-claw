@@ -10,10 +10,22 @@ using WishfulClaw.Infrastructure.Db;
 namespace WishfulClaw.Agent;
 
 /// <summary>
+/// Result of the DB restore core (<see cref="SessionRestoreTools.RestoreFromDb"/>):
+/// the wire messages, their parsed conversation, and whether a compaction
+/// snapshot supplied the prefix. Internal-only; never serialized.
+/// </summary>
+internal sealed record SessionRestoreCoreResult(
+    List<JsonElement> WireMessages,
+    List<AgentRuntimeChatMessage> Conversation,
+    bool FromSnapshot);
+
+/// <summary>
 /// Session restore: load messages from DB and rebuild SessionConversation.
-/// Called when the user switches to an existing session whose backend state
-/// is empty (e.g. after process restart). Mirrors Reasonix's
-/// LoadSession(path) + SetSession(loaded) pattern.
+/// Backs both the agent/restore-session endpoint and the agent loop's lazy
+/// first-turn initialization (the backend conversation is rebuilt on the first
+/// agent/run after a restart or session switch, not when the user merely
+/// opens the session). Mirrors Reasonix's LoadSession(path) + SetSession(loaded)
+/// pattern.
 ///
 /// Strategy (snapshot-contract.md §六): a valid compaction snapshot restores
 /// the compressed wire conversation plus the incremental messages after the
@@ -49,100 +61,14 @@ internal static class SessionRestoreTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            // Snapshot path: validated read (version/payload/cursor) shared with the
-            // db endpoint; any problem downgrades to full recovery (reason is logged
-            // inside TryGetValidSnapshot).
-            CompactionSnapshotEntity? snapshot = null;
-            try
+            var restored = RestoreFromDb(db, sessionId);
+            var wireMessages = restored.WireMessages;
+            if (wireMessages.Count == 0)
             {
-                snapshot = DbCompactionSnapshotTools.TryGetValidSnapshot(db, sessionId, out _);
+                // No messages in DB — nothing to restore, leave session empty
+                WorkerLog.Info($"agent restore-session: no messages for session={FormatLogValue(sessionId)}");
+                return WorkerResponse.Json(new SessionRestoreResponse(true, sessionId, 0), AgentRuntimeJsonContext.Default.SessionRestoreResponse);
             }
-            catch (Exception ex)
-            {
-                WorkerLog.Warn(
-                    $"agent restore-session: snapshot read failed, falling back to full recovery " +
-                    $"session={FormatLogValue(sessionId)} error={ex.GetType().Name}: {ex.Message}");
-            }
-
-            var wireMessages = new List<JsonElement>();
-
-            // Tool-call ids already covered by a stored tool_result row (legacy
-            // split format) — pre-scanned so the synthesized results for the
-            // preceding assistant rows don't duplicate them.
-            var providedResultIds = new HashSet<string>(StringComparer.Ordinal);
-
-            if (snapshot is not null)
-            {
-                wireMessages.AddRange(
-                    JsonSerializer.Deserialize(snapshot.WireConversation, AgentRuntimeJsonContext.Default.ListJsonElement)
-                    ?? []);
-
-                // Ids already covered by the snapshot — dedupes the summary row whose
-                // timestamp was relocated into the covered range by the chat store.
-                var snapshotIds = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var message in wireMessages)
-                {
-                    if (message.ValueKind == JsonValueKind.Object &&
-                        message.TryGetProperty("id", out var idProperty) &&
-                        idProperty.ValueKind == JsonValueKind.String &&
-                        idProperty.GetString() is { Length: > 0 } id)
-                    {
-                        snapshotIds.Add(id);
-                    }
-                }
-
-                // Incremental messages strictly after the snapshot cursor
-                // (snapshot-contract.md §3.1).
-                var incremental = db.Query(
-                    "SELECT * FROM messages WHERE session_id = @sid AND " +
-                    "(created_at > @tca OR (created_at = @tca AND sort_order > @tso)) " +
-                    "ORDER BY created_at ASC, sort_order ASC",
-                    EntityMappers.MapMessage,
-                    new SqliteParameter("@sid", sessionId),
-                    new SqliteParameter("@tca", snapshot.ThroughCreatedAt),
-                    new SqliteParameter("@tso", snapshot.ThroughSortOrder));
-
-                // Tool-call ids already covered by a stored tool_result row
-                // (legacy split format) — suppresses duplicate synthesized results.
-                var filteredIncremental = incremental
-                    .Where(entity => !snapshotIds.Contains(entity.Id) && !IsChatOnlyArtifact(entity))
-                    .ToList();
-
-                CollectProvidedResultIds(filteredIncremental, providedResultIds);
-
-                foreach (var entity in filteredIncremental)
-                {
-                    AddEntityWireMessages(wireMessages, entity, providedResultIds);
-                }
-            }
-            else
-            {
-                // Full recovery: load all messages ordered by (created_at, sort_order)
-                var entities = db.Query(
-                    "SELECT * FROM messages WHERE session_id = @sid ORDER BY created_at ASC, sort_order ASC",
-                    EntityMappers.MapMessage, new SqliteParameter("@sid", sessionId));
-
-                if (entities.Count == 0)
-                {
-                    // No messages in DB — nothing to restore, leave session empty
-                    WorkerLog.Info($"agent restore-session: no messages for session={FormatLogValue(sessionId)}");
-                    return WorkerResponse.Json(new SessionRestoreResponse(true, sessionId, 0), AgentRuntimeJsonContext.Default.SessionRestoreResponse);
-                }
-
-                var filteredEntities = entities
-                    .Where(entity => !IsChatOnlyArtifact(entity))
-                    .ToList();
-
-                CollectProvidedResultIds(filteredEntities, providedResultIds);
-
-                foreach (var entity in filteredEntities)
-                {
-                    AddEntityWireMessages(wireMessages, entity, providedResultIds);
-                }
-            }
-
-            // Parse to AgentRuntimeChatMessage list
-            var conversation = ParseWireMessages(wireMessages);
 
             // Initialize the SessionConversation - but only if it's empty.
             // If the session already has messages (e.g. agent loop is running
@@ -152,14 +78,14 @@ internal static class SessionRestoreTools
             // concurrent restores (fire-and-forget + explicit) can't race a
             // newly started turn into losing its messages.
             var sessionConv = SessionConversationManager.GetOrCreate(sessionId);
-            if (!sessionConv.InitializeIfEmpty(wireMessages, conversation))
+            if (!sessionConv.InitializeIfEmpty(wireMessages, restored.Conversation))
             {
                 WorkerLog.Info(
                     $"agent restore-session: skipped (session already has {sessionConv.MessageCount} messages) " +
                     $"session={FormatLogValue(sessionId)}");
                 return WorkerResponse.Json(new SessionRestoreResponse(true, sessionId, sessionConv.MessageCount, Skipped: true), AgentRuntimeJsonContext.Default.SessionRestoreResponse);
             }
-            if (snapshot is not null)
+            if (restored.FromSnapshot)
             {
                 // Mirrors the manual compression path: don't re-fold the restored
                 // summary until new messages are appended beyond it.
@@ -168,12 +94,12 @@ internal static class SessionRestoreTools
 
             WorkerLog.Info(
                 $"agent restore-session: loaded {wireMessages.Count} messages " +
-                $"source={(snapshot is not null ? "snapshot" : "full")} " +
+                $"source={(restored.FromSnapshot ? "snapshot" : "full")} " +
                 $"for session={FormatLogValue(sessionId)}");
 
             return WorkerResponse.Json(
                 new SessionRestoreResponse(true, sessionId, wireMessages.Count,
-                    FromSnapshot: snapshot is not null ? true : null),
+                    FromSnapshot: restored.FromSnapshot ? true : null),
                 AgentRuntimeJsonContext.Default.SessionRestoreResponse);
         }
         catch (Exception ex)
@@ -183,6 +109,109 @@ internal static class SessionRestoreTools
                 $"error={ex.GetType().Name}: {ex.Message}");
             return WorkerResponse.Error($"Restore failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Restore core shared by the agent/restore-session endpoint and the agent
+    /// loop's lazy first-turn initialization: snapshot + post-cursor increment,
+    /// full-history fallback, and tool-result reconciliation (snapshot-contract.md
+    /// §六). Pure DB read — never touches SessionConversation and returns no
+    /// WorkerResponse; the caller decides how to apply the result. An empty
+    /// WireMessages list means the session has no persisted messages.
+    /// </summary>
+    internal static SessionRestoreCoreResult RestoreFromDb(DbService db, string sessionId)
+    {
+        // Snapshot path: validated read (version/payload/cursor) shared with the
+        // db endpoint; any problem downgrades to full recovery (reason is logged
+        // inside TryGetValidSnapshot).
+        CompactionSnapshotEntity? snapshot = null;
+        try
+        {
+            snapshot = DbCompactionSnapshotTools.TryGetValidSnapshot(db, sessionId, out _);
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn(
+                $"agent restore: snapshot read failed, falling back to full recovery " +
+                $"session={FormatLogValue(sessionId)} error={ex.GetType().Name}: {ex.Message}");
+        }
+
+        var wireMessages = new List<JsonElement>();
+
+        // Tool-call ids already covered by a stored tool_result row (legacy
+        // split format) — pre-scanned so the synthesized results for the
+        // preceding assistant rows don't duplicate them.
+        var providedResultIds = new HashSet<string>(StringComparer.Ordinal);
+
+        if (snapshot is not null)
+        {
+            wireMessages.AddRange(
+                JsonSerializer.Deserialize(snapshot.WireConversation, AgentRuntimeJsonContext.Default.ListJsonElement)
+                ?? []);
+
+            // Ids already covered by the snapshot — dedupes the summary row whose
+            // timestamp was relocated into the covered range by the chat store.
+            var snapshotIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var message in wireMessages)
+            {
+                if (message.ValueKind == JsonValueKind.Object &&
+                    message.TryGetProperty("id", out var idProperty) &&
+                    idProperty.ValueKind == JsonValueKind.String &&
+                    idProperty.GetString() is { Length: > 0 } id)
+                {
+                    snapshotIds.Add(id);
+                }
+            }
+
+            // Incremental messages strictly after the snapshot cursor
+            // (snapshot-contract.md §3.1).
+            var incremental = db.Query(
+                "SELECT * FROM messages WHERE session_id = @sid AND " +
+                "(created_at > @tca OR (created_at = @tca AND sort_order > @tso)) " +
+                "ORDER BY created_at ASC, sort_order ASC",
+                EntityMappers.MapMessage,
+                new SqliteParameter("@sid", sessionId),
+                new SqliteParameter("@tca", snapshot.ThroughCreatedAt),
+                new SqliteParameter("@tso", snapshot.ThroughSortOrder));
+
+            // Tool-call ids already covered by a stored tool_result row
+            // (legacy split format) — suppresses duplicate synthesized results.
+            var filteredIncremental = incremental
+                .Where(entity => !snapshotIds.Contains(entity.Id) && !IsChatOnlyArtifact(entity))
+                .ToList();
+
+            CollectProvidedResultIds(filteredIncremental, providedResultIds);
+
+            foreach (var entity in filteredIncremental)
+            {
+                AddEntityWireMessages(wireMessages, entity, providedResultIds);
+            }
+        }
+        else
+        {
+            // Full recovery: load all messages ordered by (created_at, sort_order)
+            var entities = db.Query(
+                "SELECT * FROM messages WHERE session_id = @sid ORDER BY created_at ASC, sort_order ASC",
+                EntityMappers.MapMessage, new SqliteParameter("@sid", sessionId));
+
+            if (entities.Count == 0)
+            {
+                return new SessionRestoreCoreResult(wireMessages, [], false);
+            }
+
+            var filteredEntities = entities
+                .Where(entity => !IsChatOnlyArtifact(entity))
+                .ToList();
+
+            CollectProvidedResultIds(filteredEntities, providedResultIds);
+
+            foreach (var entity in filteredEntities)
+            {
+                AddEntityWireMessages(wireMessages, entity, providedResultIds);
+            }
+        }
+
+        return new SessionRestoreCoreResult(wireMessages, ParseWireMessages(wireMessages), snapshot is not null);
     }
 
     /// <summary>

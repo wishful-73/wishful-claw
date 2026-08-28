@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\runtime\WishfulClaw.Infrastructure\WishfulClaw.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\runtime\WishfulClaw.Agent\WishfulClaw.Agent.csproj" />
   </ItemGroup>
 
 </Project>

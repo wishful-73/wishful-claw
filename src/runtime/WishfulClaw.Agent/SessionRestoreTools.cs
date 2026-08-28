@@ -105,7 +105,7 @@ internal static class SessionRestoreTools
                 // Tool-call ids already covered by a stored tool_result row
                 // (legacy split format) — suppresses duplicate synthesized results.
                 var filteredIncremental = incremental
-                    .Where(entity => !snapshotIds.Contains(entity.Id) && !IsChatOnlyArtifact(entity.Meta))
+                    .Where(entity => !snapshotIds.Contains(entity.Id) && !IsChatOnlyArtifact(entity))
                     .ToList();
 
                 CollectProvidedResultIds(filteredIncremental, providedResultIds);
@@ -130,7 +130,7 @@ internal static class SessionRestoreTools
                 }
 
                 var filteredEntities = entities
-                    .Where(entity => !IsChatOnlyArtifact(entity.Meta))
+                    .Where(entity => !IsChatOnlyArtifact(entity))
                     .ToList();
 
                 CollectProvidedResultIds(filteredEntities, providedResultIds);
@@ -351,23 +351,38 @@ internal static class SessionRestoreTools
 
     /// <summary>
     /// Chat-window display artifacts (compact boundary separator, compression status
-    /// card) are never part of the model context — skip them on every restore path.
+    /// card) and compression summary messages never enter the model context on
+    /// restore. The boundary/status rows are display-only; the summary row is
+    /// redundant because the summarized history is restored alongside it (without
+    /// a snapshot the full history is loaded, with one the wire conversation
+    /// already carries the summary) — re-injecting it would double the content
+    /// and undo the compression. Legacy summary rows carry only the wrapped
+    /// &lt;compaction-summary&gt; text without meta.compactSummary (compression-contract.md §4.2).
     /// </summary>
-    private static bool IsChatOnlyArtifact(string? metaJson)
+    private static bool IsChatOnlyArtifact(MessageEntity entity)
     {
-        if (string.IsNullOrEmpty(metaJson)) return false;
-        try
+        if (!string.IsNullOrEmpty(entity.Meta))
         {
-            using var doc = JsonDocument.Parse(metaJson);
-            var meta = doc.RootElement;
-            return meta.ValueKind == JsonValueKind.Object &&
-                   (meta.TryGetProperty("compactBoundary", out _) ||
-                    meta.TryGetProperty("compressionStatus", out _));
+            try
+            {
+                using var doc = JsonDocument.Parse(entity.Meta);
+                var meta = doc.RootElement;
+                if (meta.ValueKind == JsonValueKind.Object &&
+                    (meta.TryGetProperty("compactBoundary", out _) ||
+                     meta.TryGetProperty("compressionStatus", out _) ||
+                     meta.TryGetProperty("compactSummary", out _)))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // Unparseable meta falls through to the legacy text check.
+            }
         }
-        catch
-        {
-            return false;
-        }
+
+        return entity.Role == "user" &&
+               entity.Content.AsSpan().TrimStart().StartsWith("<compaction-summary>", StringComparison.Ordinal);
     }
 
     /// <summary>

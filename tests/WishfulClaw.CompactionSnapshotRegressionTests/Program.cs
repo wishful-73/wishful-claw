@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure;
@@ -213,6 +214,9 @@ internal static class Program
 
         // ── Invalidation rules ──
         RunInvalidationSuite(dbPath, prefix, sessionA);
+
+        // ── Restore filtering (summary/artifact rows never enter model context) ──
+        RunRestoreFilterSuite(dbPath, prefix);
 
         // ── fork/duplicate does not inherit snapshots ──
         RunForkSuite(dbPath, prefix);
@@ -528,6 +532,75 @@ internal static class Program
         AssertNoSnapshot(dbPath, sessionE, "project cascade delete removes the snapshot");
     }
 
+    // ─── Suite: restore filtering (artifacts never enter model context) ───
+
+    private static void RunRestoreFilterSuite(string dbPath, string prefix)
+    {
+        // Full recovery path: summary/boundary/status rows stay out of the wire.
+        var fullSession = $"{prefix}-restore-full";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", fullSession);
+            writer.WriteString("title", "Restore Full Session");
+        })), "restore (full) session is created");
+        AddMessage(dbPath, fullSession, $"{prefix}-rf-m1", 3100, 0);
+        AddMessage(dbPath, fullSession, $"{prefix}-rf-m2", 3101, 1);
+        AddMetaMessage(dbPath, fullSession, $"{prefix}-rf-summary", 3102, 2, "user",
+            "<compaction-summary>old history summary</compaction-summary>",
+            @"{""compactSummary"":{""text"":""old history summary""}}");
+        AddMetaMessage(dbPath, fullSession, $"{prefix}-rf-boundary", 3102, 3, "system", "",
+            @"{""compactBoundary"":{""trigger"":""auto""}}");
+        AddMetaMessage(dbPath, fullSession, $"{prefix}-rf-status", 3102, 4, "system", "",
+            @"{""compressionStatus"":{""operationId"":""op-r1"",""state"":""compressed""}}");
+        AddMetaMessage(dbPath, fullSession, $"{prefix}-rf-legacy-summary", 3103, 5, "user",
+            "   <compaction-summary>legacy summary</compaction-summary>", null);
+        AddMessage(dbPath, fullSession, $"{prefix}-rf-m3", 3104, 6);
+
+        var fullRestore = ResultObject(SessionRestoreTools.RestoreSession(Params(dbPath, writer =>
+            writer.WriteString("sessionId", fullSession))));
+        Assert(fullRestore.GetProperty("restored").GetBoolean(), "full-path restore succeeds");
+        AssertEqual(3, fullRestore.GetProperty("messageCount").GetInt32(),
+            "full-path restore filters summary/boundary/status rows out of the model context");
+        Assert(!fullRestore.TryGetProperty("fromSnapshot", out var fullFromSnapshot)
+                || fullFromSnapshot.ValueKind == JsonValueKind.Null,
+            "full-path restore reports no snapshot");
+
+        // Snapshot path: snapshot wire + only the regular post-cursor messages.
+        var snapSession = $"{prefix}-restore-snap";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", snapSession);
+            writer.WriteString("title", "Restore Snapshot Session");
+        })), "restore (snapshot) session is created");
+        AddMessage(dbPath, snapSession, $"{prefix}-rs-m0", 3200, 0);
+        UpsertSnapshot(dbPath, snapSession);
+        AddMetaMessage(dbPath, snapSession, $"{prefix}-rs-summary", 3201, 1, "user",
+            "<compaction-summary>post-cursor summary</compaction-summary>",
+            @"{""compactSummary"":{""text"":""post-cursor summary""}}");
+        AddMetaMessage(dbPath, snapSession, $"{prefix}-rs-boundary", 3201, 2, "system", "",
+            @"{""compactBoundary"":{""trigger"":""auto""}}");
+        AddMessage(dbPath, snapSession, $"{prefix}-rs-m1", 3202, 3);
+
+        var snapRestore = ResultObject(SessionRestoreTools.RestoreSession(Params(dbPath, writer =>
+            writer.WriteString("sessionId", snapSession))));
+        Assert(snapRestore.GetProperty("restored").GetBoolean(), "snapshot-path restore succeeds");
+        AssertEqual(2, snapRestore.GetProperty("messageCount").GetInt32(),
+            "snapshot-path restore keeps the snapshot wire plus only regular post-cursor messages");
+        Assert(snapRestore.TryGetProperty("fromSnapshot", out var snapFromSnapshot)
+                && snapFromSnapshot.ValueKind == JsonValueKind.True,
+            "snapshot-path restore reports the snapshot source");
+        AssertHasSnapshot(dbPath, snapSession, "restore does not disturb the snapshot");
+
+        // A second restore must not clobber the live conversation.
+        var repeatRestore = ResultObject(SessionRestoreTools.RestoreSession(Params(dbPath, writer =>
+            writer.WriteString("sessionId", snapSession))));
+        Assert(repeatRestore.GetProperty("restored").GetBoolean(), "repeat restore succeeds");
+        Assert(repeatRestore.TryGetProperty("skipped", out var skipped) && skipped.GetBoolean(),
+            "repeat restore skips an already-initialized session");
+        AssertEqual(2, repeatRestore.GetProperty("messageCount").GetInt32(),
+            "repeat restore keeps the original message count");
+    }
+
     private static void RunForkSuite(string dbPath, string prefix)
     {
         var source = $"{prefix}-fork-source";
@@ -562,6 +635,20 @@ internal static class Program
             writer.WriteString("sessionId", sessionId);
             writer.WriteString("role", sortOrder % 2 == 0 ? "user" : "assistant");
             writer.WriteString("content", $"message {id}");
+            writer.WriteNumber("createdAt", createdAt);
+            writer.WriteNumber("sortOrder", sortOrder);
+        })), $"message {id} is inserted");
+    }
+
+    private static void AddMetaMessage(string dbPath, string sessionId, string id, long createdAt, int sortOrder, string role, string content, string? meta)
+    {
+        AssertMutationSuccess(DbMessageTools.Add(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", id);
+            writer.WriteString("sessionId", sessionId);
+            writer.WriteString("role", role);
+            writer.WriteString("content", content);
+            if (meta is not null) writer.WriteString("meta", meta);
             writer.WriteNumber("createdAt", createdAt);
             writer.WriteNumber("sortOrder", sortOrder);
         })), $"message {id} is inserted");

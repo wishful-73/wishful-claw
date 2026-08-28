@@ -28,6 +28,7 @@ export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
     case 'thinking_delta':
     case 'translation_buffer_update':
     case 'image_generation_started':
+    case 'context_compression_started':
     case 'context_compression_start':
     case 'tool_use_args_delta':
     case 'request_retry':
@@ -120,6 +121,18 @@ export function isChatStreamEvent(event: unknown): boolean {
 export function isActivityPanelEvent(event: unknown): boolean {
   if (typeof event !== 'object' || event === null) return false
   const e = event as { type?: string }
-  const activityTypes = ['tool_call_start', 'tool_call_result', 'text_delta', 'thinking_delta', 'message_end', 'loop_start', 'loop_end', 'error']
+  const activityTypes = [
+    'tool_call_start',
+    'tool_call_result',
+    'text_delta',
+    'thinking_delta',
+    'message_end',
+    'loop_start',
+    'loop_end',
+    'error',
+    'context_compression_started',
+    'context_compression_start',
+    'context_compressed'
+  ]
   return typeof e.type === 'string' && activityTypes.includes(e.type)
 }

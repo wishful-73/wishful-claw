@@ -40,13 +40,17 @@ public sealed record AgentRuntimeStreamEvent(
     AgentRuntimeTokenUsage? Usage = null,
     AgentRuntimeRequestTiming? Timing = null,
     string? ProviderResponseId = null,
+    string? OperationId = null,
     int? OriginalCount = null,
     int? NewCount = null,
     int? KeptMessageCount = null,
-    // Context compression metadata (context_compression_start / context_compressed)
+    // Context compression metadata (context_compression_started / context_compressed)
     string? Trigger = null,
+    string? CompressionStatus = null,
+    int? PreTokens = null,
     bool? SummarizerFailed = null,
     int? MessagesSummarized = null,
+    string? CompressionError = null,
     JsonElement[]? Messages = null,
     JsonElement[]? CompactArtifacts = null,
     string? ToolUseId = null,

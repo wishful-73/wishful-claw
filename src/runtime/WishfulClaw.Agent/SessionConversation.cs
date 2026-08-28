@@ -24,9 +24,9 @@ public sealed class SessionConversation
     private int _compactionWatermark;
 
     /// <summary>
-    /// Message count at the last completed/attempted compaction. Prevents the
-    /// same oversized conversation from re-entering compaction on every loop
-    /// iteration while still allowing a later turn to compact newly appended data.
+    /// Message count at the last successfully applied compaction. Prevents the
+    /// same compressed conversation from re-entering compaction immediately while
+    /// still allowing a later turn to compact newly appended data.
     /// </summary>
     public int CompactionWatermark
     {

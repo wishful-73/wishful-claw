@@ -452,7 +452,7 @@ public static partial class ContextCompression
         {
             w.WriteStartObject();
             w.WriteString("model", model);
-            w.WriteNumber("max_tokens", 4096);
+            w.WriteNumber("max_tokens", 1536);
             w.WriteString("system", SummarySystemPrompt);
             w.WritePropertyName("messages");
             w.WriteStartArray();
@@ -505,7 +505,7 @@ public static partial class ContextCompression
         {
             w.WriteStartObject();
             w.WriteString("model", model);
-            w.WriteNumber("max_tokens", 4096);
+            w.WriteNumber("max_tokens", 1536);
             w.WritePropertyName("messages");
             w.WriteStartArray();
             w.WriteStartObject();

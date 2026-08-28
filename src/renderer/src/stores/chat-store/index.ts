@@ -20,10 +20,15 @@ import { createStreamingSlice, type StreamingSlice } from './streaming-slice'
 import type { ChatMessage } from './types'
 import { writeLog } from '@renderer/lib/error-logger'
 
-import { mergeCompressedMessagesKeepHistory } from '@renderer/lib/agent/context-compression'
+import {
+  getCompactSummaryDisplayText,
+  isCompactSummaryLikeMessage,
+  mergeCompressedMessagesKeepHistory
+} from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, UnifiedMessage } from '@renderer/lib/api/types'
 
 import { dbUpsertMessage, dbUpdateSession, dbDeleteMessage, awaitSessionCreated } from './db-helpers'
+import { trackCompressionStatus } from './compression-status-registry'
 
 import { setLastDebugInfo } from '@renderer/lib/debug-store'
 
@@ -544,39 +549,74 @@ export const useChatStore = create<ChatStore>()(
 
       if (!targetSessionId) return
 
-        if (eventType === 'context_compression_start' || eventType === 'context_compressed') {
+        if (
+          eventType === 'context_compression_started' ||
+          eventType === 'context_compression_start' ||
+          eventType === 'context_compressed'
+        ) {
           const compressionEvent = event as {
-            type: 'context_compression_start' | 'context_compressed'
+            type: 'context_compression_started' | 'context_compression_start' | 'context_compressed'
+            operationId?: string
             originalCount?: number
             newCount?: number
             keptMessageCount?: number
             trigger?: 'auto' | 'manual'
+            preTokens?: number
+            compressionStatus?: 'compressed' | 'skipped' | 'failed' | 'blocked' | 'cancelled'
             summarizerFailed?: boolean
             messagesSummarized?: number
+            error?: string
             compactArtifacts?: UnifiedMessage[]
           }
           const now = Date.now()
-          const isCompleted = compressionEvent.type === 'context_compressed'
-          recordCompressionStatusMessage(targetSessionId, {
-            state: isCompleted ? 'compressed' : 'compressing',
-            startedAt: now,
-            ...(isCompleted ? { completedAt: now } : {}),
-            ...(compressionEvent.keptMessageCount !== undefined
-              ? { keptMessageCount: compressionEvent.keptMessageCount }
-              : {}),
-            ...(compressionEvent.newCount !== undefined
-              ? { newCount: compressionEvent.newCount }
-              : {}),
-            ...(compressionEvent.trigger ? { trigger: compressionEvent.trigger } : {}),
-            ...(compressionEvent.messagesSummarized !== undefined
-              ? { messagesSummarized: compressionEvent.messagesSummarized }
-              : {}),
-            ...(compressionEvent.summarizerFailed ? { summarizerFailed: true } : {})
-          }, envelope.runId)
+          const isStarted =
+            compressionEvent.type === 'context_compression_started' ||
+            compressionEvent.type === 'context_compression_start'
+          const operationId =
+            compressionEvent.operationId ??
+            `${envelope.runId}:compression:${compressionEvent.originalCount ?? 'unknown'}`
+          const summaryArtifact = compressionEvent.compactArtifacts?.find((artifact) =>
+            isCompactSummaryLikeMessage(artifact)
+          )
+          const summaryText = summaryArtifact
+            ? getCompactSummaryDisplayText(summaryArtifact).trim()
+            : undefined
+          recordCompressionStatusMessage(
+            targetSessionId,
+            {
+              operationId,
+              state: isStarted
+                ? 'compressing'
+                : (compressionEvent.compressionStatus ?? 'compressed'),
+              startedAt: now,
+              ...(isStarted ? {} : { completedAt: now }),
+              ...(compressionEvent.originalCount !== undefined
+                ? { originalCount: compressionEvent.originalCount }
+                : {}),
+              ...(compressionEvent.keptMessageCount !== undefined
+                ? { keptMessageCount: compressionEvent.keptMessageCount }
+                : {}),
+              ...(compressionEvent.newCount !== undefined
+                ? { newCount: compressionEvent.newCount }
+                : {}),
+              ...(compressionEvent.preTokens !== undefined
+                ? { preTokens: compressionEvent.preTokens }
+                : {}),
+              ...(compressionEvent.trigger ? { trigger: compressionEvent.trigger } : {}),
+              ...(compressionEvent.messagesSummarized !== undefined
+                ? { messagesSummarized: compressionEvent.messagesSummarized }
+                : {}),
+              ...(compressionEvent.summarizerFailed ? { summarizerFailed: true } : {}),
+              ...(compressionEvent.error ? { error: compressionEvent.error } : {}),
+              ...(summaryText ? { summaryText } : {}),
+              ...(summaryArtifact ? { summaryMessageId: summaryArtifact.id } : {})
+            },
+            operationId
+          )
           // The completion event carries the boundary + summary artifact pair —
-          // merge it into the transcript so the chat window shows the same
-          // summary the model now runs on (contract §五.3).
-          if (isCompleted && compressionEvent.compactArtifacts?.length) {
+          // merge it into the transcript so the chat window keeps the full
+          // history and the independent boundary divider.
+          if (!isStarted && compressionEvent.compactArtifacts?.length) {
             applyCompactArtifactsToSession(targetSessionId, compressionEvent.compactArtifacts)
           }
           continue
@@ -724,39 +764,43 @@ export const useChatStore = create<ChatStore>()(
 
                 if (msg) {
 
-                  msg.usage = accumulateUsageSnapshot(msg.usage, event.usage)
-
-                  msg.timing = event.timing
+                  const completedAt = Date.now()
+                  let completedThinking = false
+                  const nextSegments = msg.segments?.map((seg) => {
+                    if (!completedThinking && seg.type === 'thinking' && !seg.completedAt) {
+                      completedThinking = true
+                      return { ...seg, completedAt }
+                    }
+                    return seg
+                  })
+                  const nextMessage = {
+                    ...msg,
+                    usage: accumulateUsageSnapshot(msg.usage, event.usage),
+                    timing: event.timing,
+                    ...(nextSegments ? { segments: nextSegments } : {})
+                  }
+                  const sessionIndex = state.sessions.indexOf(session)
+                  const nextSession = {
+                    ...session,
+                    messages: session.messages.map((candidate) =>
+                      candidate.id === msg.id ? nextMessage : candidate
+                    )
+                  }
 
                   // Store session-cumulative cache counters from backend
                   if (event.usage?.sessionCacheHitTokens != null) {
-                    session.sessionCacheHit = event.usage.sessionCacheHitTokens
+                    nextSession.sessionCacheHit = event.usage.sessionCacheHitTokens
                   }
                   if (event.usage?.sessionCacheMissTokens != null) {
-                    session.sessionCacheMiss = event.usage.sessionCacheMissTokens
-                  }
-
-                  // Mark the last thinking segment as completed
-
-                  if (msg.segments) {
-
-                    for (let i = msg.segments.length - 1; i >= 0; i--) {
-
-                      const seg = msg.segments[i]
-
-                      if (seg.type === 'thinking' && !seg.completedAt) {
-
-                        seg.completedAt = Date.now()
-
-                        break
-
-                      }
-
-                    }
-
+                    nextSession.sessionCacheMiss = event.usage.sessionCacheMissTokens
                   }
 
                   // isStreaming stays true — loop_end will set it false
+                  if (sessionIndex >= 0) {
+                    const nextSessions = [...state.sessions]
+                    nextSessions[sessionIndex] = nextSession
+                    state.sessions = nextSessions
+                  }
 
                 }
 
@@ -1595,27 +1639,60 @@ function artifactToChatMessage(artifact: UnifiedMessage): ChatMessage {
 export function recordCompressionStatusMessage(
   sessionId: string,
   meta: CompressionStatusMeta,
-  idSuffix: string
+  operationId: string
 ): void {
   const now = Date.now()
-  const statusMessage: ChatMessage = {
-    id: `compression-${idSuffix}-${now}`,
-    role: 'system',
-    text: '',
-    content: '',
-    createdAt: now,
-    meta: { compressionStatus: meta }
-  }
+  const stableOperationId = meta.operationId ?? operationId
+  const stableMessageId = `compression-${stableOperationId}`
+  let updatedMessage: ChatMessage | undefined
+  let updatedIndex = -1
+
   useChatStore.setState((state) => {
     const session = state.sessions.find((s) => s.id === sessionId)
     if (!session) return
-    session.messages.push(statusMessage)
+
+    const existingIndex = session.messages.findIndex(
+      (message) =>
+        message.meta?.compressionStatus?.operationId === stableOperationId ||
+        message.id === stableMessageId
+    )
+    const existing =
+      existingIndex >= 0 ? (session.messages[existingIndex] as unknown as ChatMessage) : undefined
+    const existingStatus = existing?.meta?.compressionStatus
+    const createdAt = existing?.createdAt ?? meta.startedAt
+    const mergedMeta: CompressionStatusMeta = {
+      ...(existingStatus ?? {}),
+      ...meta,
+      operationId: stableOperationId,
+      startedAt: existingStatus?.startedAt ?? meta.startedAt
+    }
+    trackCompressionStatus(mergedMeta)
+    const nextMessage: ChatMessage = {
+      ...(existing ?? {
+        id: stableMessageId,
+        role: 'system',
+        text: '',
+        content: '',
+        createdAt
+      }),
+      meta: { ...(existing?.meta ?? {}), compressionStatus: mergedMeta },
+      createdAt
+    }
+
+    if (existingIndex >= 0) {
+      session.messages[existingIndex] = nextMessage
+      updatedIndex = existingIndex
+    } else {
+      session.messages.push(nextMessage)
+      updatedIndex = session.messages.length - 1
+    }
     session.messageCount = session.messages.length
     session.updatedAt = now
+    updatedMessage = nextMessage
   })
-  const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
-  if (session) {
-    void dbUpsertMessage(sessionId, statusMessage, session.messages.length - 1)
+
+  if (updatedMessage && updatedIndex >= 0) {
+    void dbUpsertMessage(sessionId, updatedMessage, updatedIndex)
   }
 }
 
@@ -1709,8 +1786,18 @@ export function updateSessionContextTokens(
     const message = messages[index]
     if (!message?.usage) continue
     if ((message.usage.contextTokens ?? 0) === contextTokens) return
-    message.usage = { ...message.usage, contextTokens }
-    void dbUpsertMessage(sessionId, message, index)
+    const updatedMessage = {
+      ...message,
+      usage: { ...message.usage, contextTokens }
+    }
+    const nextMessages = [...messages]
+    nextMessages[index] = updatedMessage
+    useChatStore.setState((state) => {
+      const target = state.sessions.find((candidate) => candidate.id === sessionId)
+      if (!target) return
+      target.messages = nextMessages
+    })
+    void dbUpsertMessage(sessionId, updatedMessage, index)
     return
   }
 }

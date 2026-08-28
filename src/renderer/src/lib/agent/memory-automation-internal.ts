@@ -35,8 +35,12 @@ export const _maState = {
 export async function recordEntry(
   input: MemoryAutomationRecordInput
 ): Promise<null> {
+  const diagnostics = [
+    input.targetPath ? `path=${input.targetPath}` : '',
+    input.error ? `error=${input.error}` : ''
+  ].filter(Boolean)
   console.info(
-    `[MemoryAutomation] entry: ${input.status}${input.filterReason ? ` (${input.filterReason})` : ''} target=${input.target}: ${input.content}`
+    `[MemoryAutomation] entry: ${input.status}${input.filterReason ? ` (${input.filterReason})` : ''} target=${input.target}: ${input.content}${diagnostics.length ? ` (${diagnostics.join(' | ')})` : ''}`
   )
   return null
 }

@@ -1,4 +1,4 @@
-// Main content renderer: handles string, empty, and block-by-block rendering
+﻿// Main content renderer: handles string, empty, and block-by-block rendering
 
 import * as React from 'react'
 import { Eraser, Pencil } from 'lucide-react'
@@ -13,7 +13,6 @@ import {
 } from '../execution-outline'
 import { ThinkingBlock } from '../ThinkingBlock'
 import { CollapsibleHeightPanel } from '../CollapsibleHeightPanel'
-import { ContextCompressionMessage } from '../ContextCompressionMessage'
 import { WebSearchBlock } from '../WebSearchBlock'
 import { ImageGeneratingLoader } from '../ImageGeneratingLoader'
 import { ImagePreview } from '../ImagePreview'
@@ -305,12 +304,7 @@ export function ContentRenderer({
 
   const renderItem = (item: AssistantRenderItemWithInlineSummary): React.JSX.Element | null => {
     if (item.kind === 'compact-summary') {
-      return (
-        <ContextCompressionMessage
-          key={`compact-summary-${item.message.id}`}
-          message={item.message}
-        />
-      )
+      return null
     }
 
     if (item.kind === 'block') {

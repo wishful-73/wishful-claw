@@ -2,7 +2,9 @@
 
 import { runSidecarTextRequest } from '@renderer/lib/ipc/agent-bridge'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import type { ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
+import type { AIModelConfig } from '../../../../shared/types/provider'
 import {
   getProjectMemoryCandidatePaths,
   type LayeredMemorySnapshot
@@ -221,7 +223,46 @@ export function hasUsableProvider(provider: ProviderConfig | null): provider is 
 
 export function resolveAutomationProvider(): ProviderConfig | null {
   const providerStore = useProviderStore.getState()
-  return providerStore.getFastProviderConfig() ?? (providerStore.getActiveProvider() as any)
+  const fastSelection = providerStore.getFastProviderConfig()
+  const provider = fastSelection
+    ? providerStore.getProviderById(fastSelection.providerId)
+    : providerStore.getActiveProvider()
+  if (!provider) return null
+
+  const modelId = fastSelection?.model ||
+    (provider.id === providerStore.activeProviderId ? providerStore.activeModelId : '') ||
+    provider.defaultModel ||
+    provider.models.find((model: AIModelConfig) => model.enabled && (!model.category || model.category === 'chat'))?.id ||
+    provider.models.find((model: AIModelConfig) => model.enabled)?.id
+  if (!modelId) return null
+
+  const model = provider.models.find((candidate: AIModelConfig) => candidate.id === modelId)
+  const settings = useSettingsStore.getState()
+  const thinkingEnabled = settings.thinkingEnabled && Boolean(model?.thinkingConfig)
+  const temperature =
+    provider.type === 'anthropic' && thinkingEnabled
+      ? model?.thinkingConfig?.forceTemperature ?? 1
+      : settings.temperature
+  return {
+    type: model?.type ?? provider.type,
+    apiKey: provider.apiKey,
+    baseUrl: provider.baseUrl,
+    model: modelId,
+    contextLength: model?.contextLength,
+    category: model?.category,
+    providerId: provider.id,
+    providerBuiltinId: provider.builtinId,
+    maxTokens: model?.maxOutputTokens,
+    ...(temperature !== undefined ? { temperature } : {}),
+    thinkingEnabled,
+    thinkingConfig: model?.thinkingConfig,
+    requestOverrides: model?.requestOverrides ?? provider.requestOverrides,
+    useSystemProxy: provider.useSystemProxy,
+    allowInsecureTls: provider.allowInsecureTls,
+    userAgent: provider.userAgent,
+    requestTimeoutSeconds: settings.apiRequestTimeoutSeconds ?? 100,
+    requestMaxRetries: settings.requestMaxRetries ?? 10
+  }
 }
 
 export function hasSecretLikeText(content: string): boolean {

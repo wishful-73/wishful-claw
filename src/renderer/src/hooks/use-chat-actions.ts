@@ -16,7 +16,8 @@ import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-r
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
 import { compressMessages } from '@renderer/lib/agent/context-compression'
-import type { ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
+import type { CompressionStatusMeta, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
+import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -555,15 +556,52 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
   const session = chatStore.sessions.find((s) => s.id === sessionId)
   if (!session) return 'blocked'
 
+  const operationId = `manual:${sessionId}:${Date.now()}`
+  const startedAt = Date.now()
+  const updateStatus = (meta: CompressionStatusMeta): void => {
+    recordCompressionStatusMessage(sessionId, meta, operationId)
+  }
+  updateStatus({ operationId, state: 'compressing', startedAt, trigger: 'manual' })
+
   // Never compress while the session has an active run — the Worker would
   // reject it too, but checking here gives instant feedback without a round trip.
-  if (chatStore.streamingMessages[sessionId]) return 'blocked'
+  if (chatStore.streamingMessages[sessionId]) {
+    updateStatus({
+      operationId,
+      state: 'blocked',
+      startedAt,
+      completedAt: Date.now(),
+      trigger: 'manual',
+      error: 'session has an active agent run'
+    })
+    return 'blocked'
+  }
 
   const messages = session.messages ?? []
-  if (messages.length === 0) return 'skipped'
+  if (messages.length === 0) {
+    updateStatus({
+      operationId,
+      state: 'skipped',
+      startedAt,
+      completedAt: Date.now(),
+      trigger: 'manual',
+      error: 'nothing to compress'
+    })
+    return 'skipped'
+  }
 
   const resolved = resolveSendModel(sessionId)
-  if (!resolved) return 'blocked'
+  if (!resolved) {
+    updateStatus({
+      operationId,
+      state: 'blocked',
+      startedAt,
+      completedAt: Date.now(),
+      trigger: 'manual',
+      error: 'no provider or model selected'
+    })
+    return 'blocked'
+  }
 
   const settingsStore = useSettingsStore.getState()
   const providerPayload = buildProviderPayload(resolved.provider, resolved.modelId, settingsStore)
@@ -597,22 +635,33 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
     )
     const status = result.status ?? (result.compressed ? 'compressed' : 'skipped')
     if (status === 'compressed') {
-      // Manual runs emit no stream events — record the same status card and
-      // boundary/summary pair the auto path produces via context_compressed.
+      const summaryArtifact = compactArtifacts?.find((artifact) =>
+        isCompactSummaryLikeMessage(artifact)
+      )
       const now = Date.now()
-      recordCompressionStatusMessage(sessionId, {
-        state: 'compressed',
-        startedAt: now,
-        completedAt: now,
-        trigger: result.trigger ?? 'manual',
-        ...(typeof result.messagesSummarized === 'number'
-          ? { messagesSummarized: result.messagesSummarized }
-          : {}),
-        ...(result.summarizerFailed ? { summarizerFailed: true } : {})
-      }, `manual-${now}`)
       if (compactArtifacts?.length) {
         applyCompactArtifactsToSession(sessionId, compactArtifacts)
       }
+      updateStatus({
+        operationId,
+        state: 'compressed',
+        startedAt,
+        completedAt: now,
+        trigger: result.trigger ?? 'manual',
+        originalCount: result.originalCount,
+        newCount: result.newCount,
+        preTokens: result.estimatedPreTokens,
+        ...(typeof result.messagesSummarized === 'number'
+          ? { messagesSummarized: result.messagesSummarized }
+          : {}),
+        ...(result.summarizerFailed ? { summarizerFailed: true } : {}),
+        ...(summaryArtifact
+          ? {
+              summaryText: getCompactSummaryDisplayText(summaryArtifact).trim(),
+              summaryMessageId: summaryArtifact.id
+            }
+          : {})
+      })
       // Manual compression emits no message_end event — refresh the last
       // usage-bearing message's contextTokens so ContextRing updates now
       // instead of after the next turn.
@@ -621,12 +670,38 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       }
       return 'compressed'
     }
+    const terminalState = status === 'blocked'
+      ? 'blocked'
+      : status === 'cancelled'
+        ? 'cancelled'
+        : status === 'skipped'
+          ? 'skipped'
+          : 'failed'
+    updateStatus({
+      operationId,
+      state: terminalState,
+      startedAt,
+      completedAt: Date.now(),
+      trigger: result.trigger ?? 'manual',
+      originalCount: result.originalCount,
+      newCount: result.newCount,
+      preTokens: result.estimatedPreTokens,
+      ...(result.error ? { error: result.error } : {})
+    })
     if (status === 'blocked') return 'blocked'
     if (status === 'skipped' || status === 'cancelled') return 'skipped'
     console.warn('[ChatActions] Manual compression failed', result.error)
     return 'failed'
   } catch (error) {
     console.error('[ChatActions] Manual compression error', error)
+    updateStatus({
+      operationId,
+      state: 'failed',
+      startedAt,
+      completedAt: Date.now(),
+      trigger: 'manual',
+      error: error instanceof Error ? error.message : 'compression failed'
+    })
     return 'failed'
   }
 }

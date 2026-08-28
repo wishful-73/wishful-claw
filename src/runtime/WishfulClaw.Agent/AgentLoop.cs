@@ -182,9 +182,16 @@ internal static partial class AgentLoop
                 sessionConv.CompactionWatermark < wireConversation.Count &&
                 ShouldCompress(lastInputTokens, provider, parameters))
             {
+                var compressionOperationId =
+                    $"{state.RunId}:compression:{iteration}:{wireConversation.Count}";
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
-                    new AgentRuntimeStreamEvent("context_compression_start", Trigger: "auto"));
+                    new AgentRuntimeStreamEvent(
+                        "context_compression_started",
+                        OperationId: compressionOperationId,
+                        Trigger: "auto",
+                        PreTokens: lastInputTokens,
+                        OriginalCount: wireConversation.Count));
 
                 if (state.IsCancellationRequested)
                 {
@@ -195,7 +202,6 @@ internal static partial class AgentLoop
                 try
                 {
                     var originalCount = wireConversation.Count;
-                    sessionConv.MarkCompactionWatermark(originalCount);
                     var outcome = await ContextCompression.CompactAsync(
                         conversation, wireConversation, provider, context, state.CancellationToken);
                     var newConversation = outcome.Conversation;
@@ -220,6 +226,7 @@ internal static partial class AgentLoop
                     if (newWireConversation.Count < originalCount)
                     {
                         sessionConv.Replace(newConversation, newWireConversation);
+                        sessionConv.MarkCompactionWatermark(newWireConversation.Count);
                         conversation = sessionConv.GetConversation();
                         wireConversation = sessionConv.GetWireConversation();
                         // Persist the durable snapshot for main sessions only — sub-agent
@@ -235,10 +242,13 @@ internal static partial class AgentLoop
                             state, context,
                             new AgentRuntimeStreamEvent(
                                 "context_compressed",
+                                OperationId: compressionOperationId,
+                                CompressionStatus: "compressed",
                                 OriginalCount: originalCount,
                                 NewCount: newWireConversation.Count,
                                 KeptMessageCount: Math.Max(0, originalCount - newWireConversation.Count),
                                 Trigger: "auto",
+                                PreTokens: lastInputTokens,
                                 SummarizerFailed: summarizerFailed,
                                 MessagesSummarized: messagesSummarized > 0 ? messagesSummarized : null,
                                 CompactArtifacts: compactArtifacts));
@@ -252,14 +262,47 @@ internal static partial class AgentLoop
                         WorkerLog.Warn(
                             $"agent context compression made no progress runId={state.RunId} " +
                             $"count={originalCount} (LLM summary and truncation both skipped)");
+                        await AgentRuntimeTools.EmitAsync(
+                            state, context,
+                            new AgentRuntimeStreamEvent(
+                                "context_compressed",
+                                OperationId: compressionOperationId,
+                                CompressionStatus: "skipped",
+                                OriginalCount: originalCount,
+                                NewCount: originalCount,
+                                Trigger: "auto",
+                                PreTokens: lastInputTokens,
+                                CompressionError: "nothing to compress"));
                     }
                     lastInputTokens = 0;
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (OperationCanceledException) when (state.CancellationToken.IsCancellationRequested)
+                {
+                    await AgentRuntimeTools.EmitAsync(
+                        state, context,
+                        new AgentRuntimeStreamEvent(
+                            "context_compressed",
+                            OperationId: compressionOperationId,
+                            CompressionStatus: "cancelled",
+                            Trigger: "auto",
+                            PreTokens: lastInputTokens,
+                            CompressionError: "compression cancelled"));
+                    throw;
+                }
+                catch (Exception ex)
                 {
                     WorkerLog.Warn(
                         $"agent context compression failed runId={state.RunId} " +
                         $"error={ex.GetType().Name}: {ex.Message}");
+                    await AgentRuntimeTools.EmitAsync(
+                        state, context,
+                        new AgentRuntimeStreamEvent(
+                            "context_compressed",
+                            OperationId: compressionOperationId,
+                            CompressionStatus: "failed",
+                            Trigger: "auto",
+                            PreTokens: lastInputTokens,
+                            CompressionError: $"{ex.GetType().Name}: compression failed"));
                 }
             }
 

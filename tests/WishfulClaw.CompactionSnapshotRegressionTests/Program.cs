@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
@@ -280,6 +280,65 @@ internal static class Program
     private static void RunInvalidationSuite(string dbPath, string prefix, string sessionA)
     {
         var db = DbClient.GetClient();
+
+        // Usage-only persistence updates are display metadata and must keep the snapshot.
+        var usageSession = $"{prefix}-session-usage";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", usageSession);
+            writer.WriteString("title", "Usage Session");
+        })), "usage session is created");
+        AddMessage(dbPath, usageSession, $"{prefix}-usage-message", 2500, 0);
+        UpsertSnapshot(dbPath, usageSession);
+        AssertMutationSuccess(DbMessageTools.Upsert(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-usage-message");
+            writer.WriteString("sessionId", usageSession);
+            writer.WriteString("role", "user");
+            writer.WriteString("content", $"message {prefix}-usage-message");
+            writer.WriteNumber("createdAt", 2500);
+            writer.WriteNumber("sortOrder", 0);
+            writer.WriteString("usage", "{\"contextTokens\":123}");
+        })), "usage-only upsert succeeds");
+        AssertHasSnapshot(dbPath, usageSession, "usage-only upsert keeps the snapshot");
+
+        AssertMutationSuccess(DbMessageTools.Upsert(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-usage-message");
+            writer.WriteString("sessionId", usageSession);
+            writer.WriteString("role", "user");
+            writer.WriteString("content", "edited content");
+            writer.WriteNumber("createdAt", 2500);
+            writer.WriteNumber("sortOrder", 0);
+            writer.WriteString("usage", "{\"contextTokens\":456}");
+        })), "content-changing upsert succeeds");
+        AssertNoSnapshot(dbPath, usageSession, "content-changing upsert invalidates the snapshot");
+
+        var updateSession = $"{prefix}-session-update";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", updateSession);
+            writer.WriteString("title", "Update Session");
+        })), "update session is created");
+        AddMessage(dbPath, updateSession, $"{prefix}-update-message", 2600, 0);
+        UpsertSnapshot(dbPath, updateSession);
+        AssertMutationSuccess(DbMessageTools.Update(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-update-message");
+            writer.WriteStartObject("patch");
+            writer.WriteString("usage", "{\"contextTokens\":789}");
+            writer.WriteEndObject();
+        })), "usage-only message update succeeds");
+        AssertHasSnapshot(dbPath, updateSession, "usage-only message update keeps the snapshot");
+
+        AssertMutationSuccess(DbMessageTools.Update(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-update-message");
+            writer.WriteStartObject("patch");
+            writer.WriteString("meta", "{\"toolResult\":true}");
+            writer.WriteEndObject();
+        })), "meta-changing message update succeeds");
+        AssertNoSnapshot(dbPath, updateSession, "meta-changing message update invalidates the snapshot");
 
         // Deleting a covered message removes the snapshot.
         UpsertSnapshot(dbPath, sessionA);

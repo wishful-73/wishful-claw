@@ -62,11 +62,15 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
           })
           break
 
+        case 'context_compression_started':
         case 'context_compression_start':
           get().addActivity({
             id: `compress_start_${envelope.seq}`,
-            type: 'context_compression_start',
-            timestamp: Date.now()
+            type: 'context_compression_started',
+            timestamp: Date.now(),
+            details: event.originalCount !== undefined
+              ? `${event.originalCount} messages`
+              : undefined
           })
           break
 

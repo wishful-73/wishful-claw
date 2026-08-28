@@ -1,4 +1,5 @@
 ﻿import type { Session, Project, ChatMessage } from './types'
+import { isCompressionOperationKnown } from './compression-status-registry'
 
 /**
  * DB persistence helpers — SQLite via Worker IPC (workerRequest → db/*).
@@ -324,23 +325,20 @@ export function dbUpsertMessage(
   msg: ChatMessage,
   sortOrder: number
 ): Promise<void> {
-  const write = (async () => {
+  const previous = messageUpsertChains.get(msg.id) ?? Promise.resolve()
+  const write = previous.then(async () => {
     await ensureDbInitialized()
     const data = serializeMessage(msg, sortOrder)
     data.sessionId = sessionId
     await window.api.workerRequest('db/messages-upsert', data)
-  })()
+  })
   // A single failure must not break the per-message chain — later snapshots
   // are supersets and still need to commit — so the chained copy swallows the
-  // rejection. The base write carries a logging handler so fire-and-forget
-  // callers never produce unhandled rejections, while awaiting callers (e.g.
-  // channel delivery) still receive the real error from the returned promise.
-  void write.catch((error) => {
+  // rejection. The returned promise still carries the real error to awaiting
+  // callers, while fire-and-forget callers get an explicit log.
+  const chain = write.catch((error) => {
     console.error('[chat-store] message upsert failed', sessionId, msg.id, error)
   })
-  const chain = (messageUpsertChains.get(msg.id) ?? Promise.resolve()).then(() =>
-    write.catch(() => undefined)
-  )
   messageUpsertChains.set(msg.id, chain)
   void chain.finally(() => {
     if (messageUpsertChains.get(msg.id) === chain) {
@@ -350,13 +348,45 @@ export function dbUpsertMessage(
   return write
 }
 
+const STALE_COMPRESSION_ERROR = 'Compression did not complete before the application closed.'
+
+function reconcileLoadedMessages(sessionId: string, rows: MessageRow[]): ChatMessage[] {
+  const messages = rows.map(deserializeMessage)
+  const repairedAt = Date.now()
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index]
+    const status = message.meta?.compressionStatus
+    if (!status || status.state !== 'compressing' || isCompressionOperationKnown(status.operationId)) {
+      continue
+    }
+
+    const repairedMessage: ChatMessage = {
+      ...message,
+      meta: {
+        ...(message.meta ?? {}),
+        compressionStatus: {
+          ...status,
+          state: 'failed',
+          completedAt: status.completedAt ?? repairedAt,
+          error: status.error ?? STALE_COMPRESSION_ERROR
+        }
+      }
+    }
+    messages[index] = repairedMessage
+    void dbUpsertMessage(sessionId, repairedMessage, rows[index]?.sortOrder ?? index)
+  }
+
+  return messages
+}
+
 /**
  * Load messages for a session from DB.
  */
 export async function dbLoadMessages(sessionId: string): Promise<ChatMessage[]> {
   await ensureDbInitialized()
   const rows = await window.api.workerRequest<MessageRow[]>('db/messages-list', { sessionId })
-  return rows.map(deserializeMessage)
+  return reconcileLoadedMessages(sessionId, rows)
 }
 
 /**
@@ -373,7 +403,7 @@ export async function dbListMessagesPage(args: {
     limit: args.limit,
     offset: args.offset
   })
-  return rows.map(deserializeMessage)
+  return reconcileLoadedMessages(args.sessionId, rows)
 }
 
 /**
@@ -400,7 +430,7 @@ export async function dbListMessagesByTurns(args: {
     beforeCreatedAt: args.beforeCreatedAt
   })
   return {
-    messages: (result.messages ?? []).map(deserializeMessage),
+    messages: reconcileLoadedMessages(args.sessionId, result.messages ?? []),
     rangeStart: result.rangeStart ?? 0,
     hasMore: result.hasMore ?? false,
     totalTurns: result.totalTurns ?? 0

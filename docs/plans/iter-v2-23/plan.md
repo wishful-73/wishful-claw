@@ -37,6 +37,8 @@
   ↓
 23-6 工具结果即时持久化与恢复
   ↓
+23-10 惰性后端会话初始化（压缩会话失效修复）
+  ↓
 23-7 当前迭代全量验证与后续交接
 ```
 
@@ -149,6 +151,35 @@
 
 > 每步骤一个本地 commit，不 push；纯前端步骤验证以 TS 三配置为准。
 
+### Plan 23-10：惰性后端会话初始化——修复压缩会话失效（2026-08-29 用户报告新增）
+
+> 探索报告：`exploration-lazy-init.md`。目标语义：进入历史会话只做前端渲染；发送消息进入后端时才惰性初始化会话——上下文空间不够先压缩再继续；空间够且有压缩快照用"最近压缩 + 压缩后新消息"；无快照走常规全量初始化。
+>
+> 前置：执行前先将当前未提交的压缩状态事件增强 WIP 提交为检查点（步骤 35 依赖其稳定 operationId 状态卡语义）。
+
+- [ ] 步骤 35：聊天展示产物不再触发快照失效（修复根因 1）。
+  - 现状：压缩开始落库的状态卡成为快照游标锚点；完成态 upsert 改 meta → `DbMessageToolsMutations.Upsert` UPDATE 分支 `HasModelInputChanged` 命中 → `InvalidateIfUpsertCovered` 删除刚写入的快照（每次压缩必然发生）。
+  - 实现：`DbCompactionSnapshotStore` 新增共享判定 `IsChatOnlyArtifactMeta`（meta 含 `compressionStatus` 或 `compactBoundary`）；`Upsert` UPDATE 分支中，聊天展示产物行且**仅 meta 发生变化**（role/content/位置不变）时跳过失效判定——这些行从不进入模型上下文，对齐契约 §7.4"不影响模型输入的展示字段更新不使快照失效"；内容/角色/位置变化仍按 §7.2 失效（保守策略）。注意：`compactSummary` 摘要行属于模型输入（快照 wire 会话成员），**不纳入**跳过集合，其内容改写仍使快照失效。
+  - 验证：`tests/WishfulClaw.CompactionSnapshotRegressionTests` 新增用例——覆盖区内状态卡 meta upsert 不删快照、普通消息内容修改仍删快照、产物行 content 改写仍删快照；既有用例不回退。dotnet build 0 警告 0 错误。
+- [ ] 步骤 36：全量恢复过滤压缩摘要消息（修复根因 2）。
+  - 现状：快照失效后全量恢复把旧历史 + `compactSummary` 摘要双份注入模型上下文，等于撤销压缩。
+  - 实现：`SessionRestoreTools.IsChatOnlyArtifact` 增加 `compactSummary` meta 识别 + 旧版 `<compaction-summary>` 文本兜底识别（仅作用于恢复过滤，不影响聊天窗展示）；快照路径与全量路径共用。测试落点：`CompactionSnapshotRegressionTests` 现仅引用 Infrastructure，够不到 Agent 层 internal 的 `SessionRestoreTools`——为该工程补 `WishfulClaw.Agent` 项目引用，并在 Agent csproj 的 `InternalsVisibleTo` 中追加该工程（现有先例：GoalRegressionTests）。
+  - 验证：回归测试新增用例（全量恢复不注入摘要行与旧版文本摘要行；快照路径增量同样过滤）；dotnet build 0 警告 0 错误。
+- [ ] 步骤 37：AgentLoop 惰性会话初始化（核心改造）。
+  - 实现：① 从 `SessionRestoreTools.RestoreSession` 提取恢复核心 `RestoreFromDb(db, sessionId)`——快照+增量 / 全量回退 / 工具结果 reconciliation 不变，返回 (wireMessages, conversation, fromSnapshot)，不写 SessionConversation、不产生 WorkerResponse；`agent/restore-session` 端点改为薄封装（幂等语义不变，前端解耦后无调用方但保留备用）。② `AgentLoop` `MessageCount == 0` 分支加惰性恢复，守卫 `sessionId.Length > 0 && conversationKey == sessionId`（排除空 sessionId 的 `__default__` 共享实例与 `__subagent__`/`__goal__` key）：`DbClient.EnsureInitialized(parameters)` 后调恢复核心；DB 无消息 → 维持现首轮逻辑；有消息 → `InitializeIfEmpty`（防竞态，与端点同一守卫）；快照路径的 `MarkCompactionWatermark` 会被随后 `Append` 归零（已知行为，归零后压缩门控由 token 阈值主导，无害，注明即可）。③ 恢复后 `Append` 本轮新消息，`ContextCompression.EstimateMessagesTokens` 估算整体 token 种子化 `lastInputTokens` → 迭代 1 现有压缩块经 `ShouldCompress` 自然门控：超阈值先压缩（压缩输入含新消息、尾部保留新消息）再请求，不超则直接"快照+增量+新消息"或"全量+新消息"。压缩事件沿用现有 `context_compression_started`/`context_compressed` 链路。若实现中引入新 record 经 `WorkerResponse.Json` 返回，必须注册对应 `JsonSerializerContext`（AOT 规范 §3/§5）。
+  - 验证：dotnet build 0 警告 0 错误；回归测试通过；Worker 日志可区分 source=snapshot/full/first-turn。
+- [ ] 步骤 38：前端进入会话与后端重建解耦。
+  - 实现：`session-slice.ts` `loadRecentSessionMessages` 移除 fire-and-forget `agent/restore-session`（根因 3：急切重建 + 竞态）；`use-channel-auto-reply.ts` 移除发送前显式 `await agent/restore-session`（后端惰性初始化在 `agent/run` 内同步完成，`InitializeIfEmpty` 幂等防竞态）；其余入口（`MainLayout` / `search-dialog` / `floating-chat-window` / `useMessageListScroll` / `session-runtime-router` / `cron-runtime`）均经 `loadRecentSessionMessages` 间接触发，单点移除即全覆盖。前端加载历史仍为纯 DB 分页渲染。
+  - 验证：TS 三配置 0 错误；进入/切换会话不再产生 Worker restore 日志；发送消息后出现惰性恢复日志。
+- [ ] 步骤 39：端到端场景验证（人工验收）。
+  - 场景 A：压缩成功 → 立即查 `session_compaction_snapshots` 表 → 快照仍在（根因 1 修复证据）。
+  - 场景 B：压缩后切换会话再切回 → 发送新消息 → Worker 日志 source=snapshot，模型上下文为快照+增量，旧历史不回灌。
+  - 场景 C：重启应用 → 进入压缩过的会话（前端正常渲染）→ 发送消息 → 快照恢复，回复体现压缩后上下文。
+  - 场景 D：无快照长历史会话 → 进入后发送 → 估算超阈值时迭代 1 先自动压缩（聊天窗出现压缩状态卡）再回复。
+  - 场景 E：空新会话首轮、无快照普通会话全量恢复行为不回退；手动压缩按钮在未初始化会话上走 stateless 回退仍可用。
+  - 场景 F：绑定会话的 Cron 自动化运行 → 惰性初始化使历史注入从"取决于 UI 是否访问过（竞态）"变为确定性注入，核对 cron 运行记录与 Worker 日志 source 标记符合预期（语义变化点，需确认不回退）。
+  - 验证：以上场景逐一通过并留存日志证据；用户确认是否解决压缩会话失效。
+
 ### Plan 23-7：当前迭代全量验证与后续交接
 
 - [ ] 步骤 22：完整构建和回归验证。
@@ -172,9 +203,12 @@
 - `src/runtime/WishfulClaw.Agent/ToolCallProcessor.cs`
 - `src/runtime/WishfulClaw.Agent/StreamEventModels*.cs`
 - `src/runtime/WishfulClaw.Infrastructure/Db/DbClient.cs`
+- `src/runtime/WishfulClaw.Infrastructure/Db/DbCompactionSnapshotStore.cs`（Plan 23-10）
+- `src/runtime/WishfulClaw.Infrastructure/Db/DbMessageToolsMutations.cs`（Plan 23-10）
 - `src/runtime/WishfulClaw.Infrastructure/Db/Entities/*`
 - `src/runtime/WishfulClaw.Infrastructure/Db/Db*Tools*.cs`
 - 对应 `InfrastructureJsonContext` / `AgentRuntimeJsonContext`
+- `tests/WishfulClaw.CompactionSnapshotRegressionTests/Program.cs`（Plan 23-10）
 
 ### Renderer / Main / Shared
 
@@ -185,6 +219,7 @@
 - `src/renderer/src/stores/chat-store/index.ts`
 - `src/renderer/src/stores/chat-store/session-slice.ts`
 - `src/renderer/src/stores/chat-store/db-helpers.ts`
+- `src/renderer/src/hooks/use-channel-auto-reply.ts`（Plan 23-10）
 - `src/renderer/src/components/chat/CompressionStatusMessage.tsx`
 - `src/renderer/src/components/chat/ContextCompressionMessage.tsx`
 - `src/renderer/src/components/chat/MessageList/useMessageListScroll.ts`

@@ -89,6 +89,7 @@ export type SettingsTab =
   | 'provider'
   | 'modelManagement'
   | 'runtime'
+  | 'memory'
   | 'shortcuts'
   | 'general'
   | 'persona'

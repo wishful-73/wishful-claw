@@ -334,7 +334,13 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     async (_preserveResidentHistory = false): Promise<number> => {
       if (!activeSessionId || isLoadingOlderMessagesRef.current || loadedRangeStart <= 0) return 0
       autoScrollModeRef.current = 'off'
+      pendingInitialScrollSessionIdRef.current = null
+      if (initialTailReleaseFrameRef.current !== null) {
+        window.clearTimeout(initialTailReleaseFrameRef.current as unknown as number)
+        initialTailReleaseFrameRef.current = null
+      }
       isLoadingOlderMessagesRef.current = true
+      setIsAtBottom(false)
       setIsLoadingOlderMessages(true)
       try {
         const ref = listRef.current

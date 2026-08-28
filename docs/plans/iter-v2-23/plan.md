@@ -1,14 +1,14 @@
-# Plan: v2-iter-23 — 会话可靠性收口与正式版发布（待确认）
+﻿# Plan: v2-iter-23 — 会话可靠性与缺陷收口（执行中）
 
 > 状态：规划审查 PASS，用户已确认，执行中
 >
 > 基线：`main`，产品版本 `0.2.22`，最新 tag `v0.2.22`
 >
-> 用户已授权进入产品代码执行态；版本升级、合并 main、tag 和发布动作仍需等待迭代最终验收确认。
+> 用户已授权进入产品代码执行态；本迭代不执行正式版版本迁移、正式版 tag 或 Release，合并与普通迭代收尾仍需等待最终验收确认。
 
 ## 目标
 
-围绕上下文压缩、历史会话恢复、聊天窗执行体验和工具结果可靠性完成正式版前收口；验证通过且用户确认迭代完结后，再将产品升级为 `1.0.0` 并发布 Windows 安装包及 GitHub Release。
+围绕上下文压缩、历史会话恢复、聊天窗执行体验、工具结果可靠性和全项目缺陷治理完成本迭代收口，为后续功能补齐与稳定性迭代建立可靠基线。
 
 ## 已确认的产品边界
 
@@ -20,7 +20,7 @@
 - 进行中当前轮的 user message 吸附在聊天可视区域顶部；历史会话和已完成轮次继续使用折叠展示。
 - 右上角悬浮操作块改为竖向，包含压缩会话、打开右侧文件夹、聊天区域宽窄调节；移除该悬浮块中的清除会话入口。
 - 工具结果需要在工具完成边界形成可恢复状态，覆盖前台、后台 Cron 和渠道会话。
-- 发布目标为 `v1.0.0`；发布动作必须等用户确认迭代完结后执行。
+- 正式版发布已延期：v2-iter-24 负责功能补齐与遗留问题推进，v2-iter-25 负责集中修复、完整回归和 Release Candidate 准备，v2-iter-26 满足发布门槛并经用户确认后再执行正式版发布。
 
 ## 依赖顺序
 
@@ -37,7 +37,7 @@
   ↓
 23-6 工具结果即时持久化与恢复
   ↓
-23-7 全量验证与 v1.0.0 发布
+23-7 当前迭代全量验证与后续交接
 ```
 
 ## 步骤清单
@@ -100,7 +100,8 @@
 - [x] 步骤 20：实现恢复 reconciliation 和中间记录清理。实现：`SessionRestoreTools` 恢复链路（快照增量路径与全量路径共用）在实体转 wire 消息时补配工具结果——assistant 行的 `meta.toolCalls` 中已完成结果（`completed`/`error`，含 output）原位恢复为独立 user `tool_result` wire 消息（与 live 路径 `CreateToolResultsWireMessage` 同构），未完成调用（`running`/`streaming`/无状态，即崩溃中断）补 `[INTERRUPTED]` 占位结果（`isError`），保证恢复后的对话对 Provider API 合法（每个 `tool_use` 必配 `tool_result`）。合成只在恢复时内存中进行，不回写 DB、不重放工具；旧格式（user 行携带 toolCalls 的 split 存储）通过预扫 `providedResultIds` 去重，不产生重复结果。中间记录清理：步骤 19 定案不引入 journal，本步骤无新增持久化中间记录，合成产物随恢复结束释放，不存在无限增长问题；快照失效沿用步骤 10 的 `InvalidateIfUpsertCovered`。纯 C# 改动（WishfulClaw.Agent），C# solution 0 warning/0 error。
   - 验证：已有 tool_use 缺 tool_result 时能找回已完成结果；不会因恢复重放重复执行工具；journal/中间记录不会无限增长。
 - [x] 步骤 21：覆盖前台、后台 Cron、渠道会话和异常退出。审计结论：三路径均汇入 chat-store 事件链——前台 `sendMessage`；Cron in-session 模式 `runInSession` → `sendMessage`（发送前 `loadRecentSessionMessages(force)` 触发 restore）；渠道 `plugin:session-task` → `handleSessionTask` → `sendMessage`，步骤 18/19 的持久化边界（工具完成/`message_end`/`loop_end` + 串行队列）天然全覆盖。Cron 静默 sidecar 模式按设计不存会话，仅持久化投递摘要（`deliverToSession`）与 `cron_runs` 运行记录。发现并修复缺口：渠道重启后注入 store 的会话未加载历史也未触发 `agent/restore-session`，Worker 会话为空导致新轮丢失全部历史——`handleSessionTask` 发送前若消息列表为空先 `await loadRecentSessionMessages` + `await agent/restore-session`（参照 `runInSession`），保证 Worker 状态先于 `agent/run` 落位；restore 幂等（`MessageCount > 0` 跳过）常态零开销。异常退出：Renderer 崩溃→工具边界结果已落库（步骤 18）重开可见；Worker 崩溃→上一工具边界快照在库，未找回结果由步骤 20 占位补齐；恢复只读不重放（`RestoreSession` 不触及工具执行器，无静默重跑）；cron 中断 run 留 `running` 行由查询侧孤儿归一化，不自动重跑。纯 TS 改动，TS 三配置 0 错误。审查修复：新增 `SessionConversation.InitializeIfEmpty` 原子守卫（锁内空检查+替换）替代 check-then-act，消除双 `restore-session` 并发时先发晚完成覆盖新轮对话的竞态。
-  - 验证：三种执行路径持久化行为一致；Renderer/Worker 在工具完成后异常退出，重开后结果可见且不静默重跑。
+  - 可靠性补项（Bug #4 方案 C，2026-08-28，代码已实施、待人工验收）：仅拦截 `useChatActions` 的用户 UI 发送；同一 session 处于 streaming/running/retrying 或首次发送预处理窗口时，将高层请求（文本、图片、options）进入独立可见的 per-session FIFO pending queue，不调用 `beginUserTurn`、不覆盖 `streamingMessages`、不启动第二个 Worker run。正常 `loop_end` 清理后延迟派发队首，重新走完整发送链并生成新 user/assistant turn 与新 runId；Worker 门禁竞态下保留队首并延迟重试，只有 `started:true` 才出队。Stop、`error` 或中断型 `loop_end` 暂停队列，保留编辑/删除/清空并由现有面板“继续发送”；删除/清空会话同步清理队列。Cron、渠道、SubAgent 等直接调用 `chatStore.sendMessage` 的后台路径不进入前端队列；不采用 `agent/append-messages`，不迁移 `interrupt_next`。
+  - 验证：三种执行路径持久化行为一致；Renderer/Worker 在工具完成后异常退出，重开后结果可见且不静默重跑；Bug #4 需人工覆盖连续 Enter、FIFO 自动派发、Stop/error 暂停与继续、快速双 Enter、编辑/删除/清空、删除 session 无残留 queue。
 
 ### Plan 23-8：追加 Issue 修复与体验改进（issues 库 2026-08-27 新增）
 
@@ -140,7 +141,7 @@
   - 根因：预览为双层 tab（右侧面板 `preview:*` tab 镜像 `previewPanelTabs`，靠 `previewTabId` 关联），`setRightPanelActiveTab` 只更新右侧面板激活 id，不同步 `activePreviewPanelTabId`，导致切换任意预览 tab 时 `PreviewPanel` 始终渲染最后打开的文档。
   - 修复：`setRightPanelActiveTab` 命中 preview tab 时同步激活底层预览 tab 与 `previewPanelState`；`closeRightPanelTab` 对 preview tab 委托 `closePreviewTab`，保证双层 tab 与激活态一致清理。预览内层 tab 条的反向同步既有逻辑不变。
   - 验证：打开多个文档预览，切换每个右侧面板 tab 与内层 tab 条均显示对应文档；从右侧面板关闭预览 tab 双层同步移除。TS 三配置 0 错误。
-- [x] 步骤 34：上线前全量排查（Plan 23-9，用户要求）。
+- [x] 步骤 34：全量质量排查（Plan 23-9，用户要求）。
   - 方式：5 组并行子代理初审（IPC 形状/静默失败、主进程全层、渲染端全层、Worker C#/AOT、i18n/打包）+ 逐项代码级核实 + 镜像同步/竞态/持久化三项自查；只查不改。
   - 产出：`docs/plans/iter-v2-23/audit-report.md`——高危 8（退出清理缺失、socket error 监听、超时无限重试、摘要 OCE 逃逸、persona 路径遍历、Bash 产物卡裸字符串、登录/技能市场通道缺失待决策）、中危 36、低危 16 组、存疑 9；Hooks/泄漏/变异/AOT/打包/模块注册六大机械检查全部通过。修复清单待用户确认后另起步骤实施。
   - 修复实施（用户决策：高中危全修 + 低危静默失败类择修；后续追加指示处理剩余项）：十批全部完成并本地提交——批1 `1f23f11`（H1/H2/M2–M9/M21）、批2 `f3fd9d2`（H3/H4/M30–M32，M30 后回滚：用户确认 400 可重试为有意设计）、批3 `7ecacff`（H5/M33–M36）、批4 `282b007`（M10–M20）、批5 `68f16f2`（M22–M29）、批6 `5faa16b`（H6+H7 移除平台登录死代码）、批7 `b6546f8`（H8 技能市场死通道清理，产品路线保留内置浏览器+安装小助手）、批8 `c0adb01`（L1–L4/L7–L11）、批9 `dcd317d`（L12–L16：C# 低危/AOT options/死代码/打包字段/hydration）、批10 `5c8e252`（L5/L6 i18n：180 键双语 + 新建 agent/ssh ns + fallbackNS + 7 处 ns 错配修正）；每批过 TS 三配置（涉 C# 批次另过 dotnet build 0 警告）。遗留：审计修复清单已全部闭环（M37 明文回传、M30 HTTP 400 可重试均用户确认为有意设计，不修），详见报告修复状态汇总。
@@ -148,16 +149,16 @@
 
 > 每步骤一个本地 commit，不 push；纯前端步骤验证以 TS 三配置为准。
 
-### Plan 23-7：正式版全量验证与 v1.0.0 发布
+### Plan 23-7：当前迭代全量验证与后续交接
 
 - [ ] 步骤 22：完整构建和回归验证。
   - 验证：TypeScript web/node/root 三配置 0 error；C# solution 0 warning/0 error；Native AOT 0 warning；压缩/恢复/DB/工具结果测试通过；`git diff --check` 通过。
 - [ ] 步骤 23：真实 Electron Main/Renderer 进程级 harness 和隔离冒烟。
   - 验证：补齐 v2-iter-22 的 I22-3 缺口；验证压缩事件聊天展示、历史恢复、悬浮块、当前轮吸附、Cron/渠道消息链；无测试进程残留、无真实 Home 数据污染。
-- [ ] 步骤 24：正式版安装验证。
-  - 验证：AOT Worker、Windows NSIS、覆盖升级、旧库迁移、托盘、图标、Worker 启动、卸载/重装通过。
-- [ ] 步骤 25：用户最终人工验收后更新版本和发布元数据。
-  - 验证：仅在用户确认迭代完结后将 `package.json`/README/文档规则更新为 `1.0.0`，创建 `v1.0.0`，推送 main/tag，创建 GitHub Release 并上传安装包。
+- [ ] 步骤 24：整理当前功能缺口、未关闭问题和人工验收结果，形成 v2-iter-24/25 输入清单。
+  - 验证：功能缺口与缺陷均有明确归属、优先级和复现/验收口径；不把未验证事项包装为已完成。
+- [ ] 步骤 25：输出 v2-iter-23 收口结论并等待用户确认。
+  - 验证：明确已完成项、未完成项、验证证据和后续迭代边界；本迭代不修改产品版本、不创建正式版 tag、不 push、不创建 Release。
 
 ## 涉及文件和模块
 
@@ -197,15 +198,12 @@
 - `src/main/ipc/sidecar-handlers.ts`
 - 仅在探索确认需要时修改其他具体 Cron/channel/background handler，禁止扩大到无关 Main 逻辑
 
-### 文档 / 测试 / 发布
+### 文档 / 测试
 
 - `docs/plans/iter-v2-23/`
 - `docs/PROGRESS.md`
 - `docs/new-session-prompt.md`
 - `docs/iteration-plan.md`
-- `AGENTS.md`
-- `README.md`
-- `package.json`
 - 现有 Goal/Cron/Agent 回归测试和新增 Electron harness
 
 ## 参考源码
@@ -234,5 +232,5 @@
 - 阶段一探索报告已产出：`exploration_findings.md`。
 - 规划合规审查必须 0 个阻断项。
 - 用户确认 Plan 方向后，才创建或切换 `dev/v2-iter-23` 执行分支。
-- 用户未确认迭代完结前，不合并 main、不打 tag、不 push 发布、不创建 `v1.0.0` Release。
-- `v1.0.0` 是用户确认正式版完结后对现行 `0.2.N` 规则的版本迁移例外；执行期间仍保持产品版本 `0.2.22`，不得提前创建 `v0.2.23` 或 `v1.0.0` tag。
+- 用户未确认迭代完结前，不合并 main、不打 tag、不 push。
+- 本迭代保持现行 `0.2.N` 版本规则，不执行正式版版本迁移；正式版版本、tag、安装包与 Release 统一由 v2-iter-26 承接，且仍需用户最终确认。

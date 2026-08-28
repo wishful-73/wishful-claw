@@ -2,7 +2,7 @@
 
 import { Allow, parse as parsePartialJSON } from 'partial-json'
 import { INVALID_MEMORY_JSON_ERROR } from './memory-automation-utils'
-import type { ConsolidationOutput, PipelineScopeOutput } from './memory-automation-utils'
+import type { ConsolidationOutput, OrganizationOutput, PipelineScopeOutput } from './memory-automation-utils'
 import { rolloutSlugFromSession } from './memory-automation-utils'
 
 export function normalizeJsonTextCandidate(raw: string): string {
@@ -153,6 +153,23 @@ export function parseConsolidationJson(raw: string): ConsolidationOutput | null 
   if (typeof record.summary_markdown === 'string') output.summaryMarkdown = record.summary_markdown
   if (Array.isArray(record.written_items)) {
     output.writtenItems = record.written_items.filter((item): item is string => typeof item === 'string')
+  }
+  return output
+}
+
+export function parseOrganizationJson(raw: string): OrganizationOutput | null {
+  const parsed = parseJsonPayload(raw)
+  if (!parsed || typeof parsed !== 'object') return null
+  const record = parsed as Record<string, unknown>
+  const output: OrganizationOutput = {}
+  if (typeof record.memory_markdown === 'string') output.memoryMarkdown = record.memory_markdown
+  if (Array.isArray(record.outdated_paragraphs)) {
+    output.outdatedParagraphs = record.outdated_paragraphs.filter(
+      (item): item is string => typeof item === 'string' && item.trim().length > 0
+    )
+  }
+  if (typeof record.organization_summary === 'string') {
+    output.organizationSummary = record.organization_summary
   }
   return output
 }

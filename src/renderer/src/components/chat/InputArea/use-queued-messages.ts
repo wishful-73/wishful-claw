@@ -1,4 +1,4 @@
-// Queued messages state and handlers for InputArea
+﻿// Queued messages state and handlers for InputArea
 
 import * as React from 'react'
 import { toast } from 'sonner'
@@ -15,7 +15,6 @@ import {
   dispatchNextQueuedMessageForSession,
   getPendingSessionMessages,
   isPendingSessionDispatchPaused,
-  quotePendingSessionMessageIntoConversation,
   removePendingSessionMessage,
   subscribePendingSessionMessages,
   updatePendingSessionMessageDraft,
@@ -159,21 +158,6 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
     dispatchNextQueuedMessageForSession(activeSessionId)
   }, [activeSessionId])
 
-  const quoteQueuedMessage = React.useCallback(
-    (id: string) => {
-      if (!activeSessionId) return
-      const quoted = quotePendingSessionMessageIntoConversation(activeSessionId, id)
-      if (!quoted) return
-      if (editingQueueItemId === id) {
-        setEditingQueueItemId(null)
-        setEditingQueueText('')
-        setEditingQueueImages([])
-      }
-      toast.success(t('input.queueQuoted', { defaultValue: 'Inserted into conversation' }))
-    },
-    [activeSessionId, editingQueueItemId, t]
-  )
-
   const handleQueueEditPaste = React.useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>): void => {
       const imageFiles = getPastedImageFiles(e.clipboardData)
@@ -234,7 +218,6 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
     clearQueuedMessagesForActiveSession,
     handleClearQueuedMessages,
     resumeQueuedMessages,
-    quoteQueuedMessage,
     handleQueueEditPaste
   }
 }

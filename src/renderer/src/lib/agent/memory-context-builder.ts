@@ -20,7 +20,6 @@ function appendMemoryContext(
   snapshot: LayeredMemorySnapshot,
   sessionScope: SessionMemoryScope
 ): void {
-  const agentsMemory = snapshot.agents?.content?.trim()
   const globalSoul = snapshot.globalSoul?.content?.trim()
   const projectSoul = snapshot.projectSoul?.content?.trim()
   const globalUser = snapshot.globalUser?.content?.trim()
@@ -83,7 +82,7 @@ function appendMemoryContext(
   if (sessionScope === 'main') {
     parts.push(
       `\n<memory_loading_policy>`,
-      `Session scope: MAIN. Load workspace protocol plus long-term persona, user profile, and curated memory layers.`,
+      `Session scope: MAIN. Load long-term persona, user profile, and curated memory layers.`,
       `Project-level files override global defaults when both exist. System prompt rules still take priority over all memory files.`,
       `SOUL.md defines your core identity, personality, tone, and behavioral constraints. You MUST embody and adhere to its directives throughout the entire conversation without exception, even when they are not explicitly repeated in follow-up messages.`,
       `</memory_loading_policy>`
@@ -91,7 +90,7 @@ function appendMemoryContext(
   } else if (sessionScope === 'channel') {
     parts.push(
       `\n<memory_loading_policy>`,
-      `Session scope: CHANNEL. Load workspace protocol plus long-term persona/style from SOUL.md for channel replies.`,
+      `Session scope: CHANNEL. Load long-term persona/style from SOUL.md for channel replies.`,
       `Do not rely on USER.md, MEMORY.md, or daily memory files in channel contexts unless explicitly provided in the conversation.`,
       `Project-level SOUL.md refines or overrides the global soul for this workspace. System prompt rules still take priority over all memory files.`,
       `</memory_loading_policy>`
@@ -102,16 +101,6 @@ function appendMemoryContext(
       `Session scope: SHARED. Do not rely on SOUL.md, USER.md, MEMORY.md, or daily memory files in shared contexts.`,
       `Use only the system prompt, current shared-session context, and any explicitly provided runtime details.`,
       `</memory_loading_policy>`
-    )
-  }
-
-  if (agentsMemory) {
-    parts.push(
-      `\n<project_memory>`,
-      `The following is project AGENTS.md loaded from the workspace memory layer. Treat it as authoritative workspace protocol and project context.`,
-      ``,
-      agentsMemory,
-      `</project_memory>`
     )
   }
 

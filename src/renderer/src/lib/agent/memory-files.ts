@@ -6,10 +6,10 @@ interface ReadTextFileResult {
   error?: string
 }
 
-export const PROJECT_MEMORY_DIRNAME = '.agents'
+export const PROJECT_MEMORY_DIRNAME = '.wishful-claw'
 
 export type SessionMemoryScope = 'main' | 'shared' | 'channel'
-export type ProjectMemoryPathSource = 'agents-dir' | 'workspace-root'
+export type ProjectMemoryPathSource = 'wishful-claw-dir'
 
 export interface GlobalMemorySnapshot {
   path?: string
@@ -31,7 +31,6 @@ export interface DailyMemoryEntry extends MemoryLayerEntry {
 export interface LayeredMemorySnapshot {
   globalHomePath?: string
   projectRootPath?: string
-  agents?: MemoryLayerEntry
   globalSoul?: MemoryLayerEntry
   projectSoul?: MemoryLayerEntry
   globalUser?: MemoryLayerEntry
@@ -48,7 +47,6 @@ export interface LayeredMemorySnapshot {
 
 export interface ProjectMemoryCandidatePaths {
   preferredPath: string
-  fallbackPath: string
 }
 
 export interface ResolvedProjectMemoryFile {
@@ -168,7 +166,7 @@ export async function loadProjectDailyMemoryEntries(
 
   const entries = await Promise.all(
     buildDailyMemoryDates().map(async (date) => {
-      const resolved = await resolveProjectMemoryTextFileForTarget(
+      const resolved = await resolveProjectMemoryTextFile(
         ipc,
         projectRootPath,
         sshConnectionId,
@@ -223,8 +221,7 @@ export function getProjectMemoryCandidatePaths(
   ...segments: string[]
 ): ProjectMemoryCandidatePaths {
   return {
-    preferredPath: joinFsPath(projectRootPath, PROJECT_MEMORY_DIRNAME, ...segments),
-    fallbackPath: joinFsPath(projectRootPath, ...segments)
+    preferredPath: joinFsPath(projectRootPath, PROJECT_MEMORY_DIRNAME, ...segments)
   }
 }
 
@@ -259,56 +256,6 @@ export async function readTextFile(
   }
 }
 
-export async function resolveTextFileWithFallbackPaths(options: {
-  readFile: (path: string) => Promise<ReadTextFileResult>
-  preferredPath: string
-  fallbackPath: string
-}): Promise<ResolvedProjectMemoryFile> {
-  const preferred = await options.readFile(options.preferredPath)
-  if (!preferred.error) {
-    return {
-      path: options.preferredPath,
-      content: preferred.content ?? '',
-      missingFile: false,
-      source: 'agents-dir'
-    }
-  }
-
-  if (!isMissingFileErrorMessage(preferred.error)) {
-    return {
-      path: options.preferredPath,
-      error: preferred.error,
-      missingFile: false,
-      source: 'agents-dir'
-    }
-  }
-
-  const fallback = await options.readFile(options.fallbackPath)
-  if (!fallback.error) {
-    return {
-      path: options.fallbackPath,
-      content: fallback.content ?? '',
-      missingFile: false,
-      source: 'workspace-root'
-    }
-  }
-
-  if (!isMissingFileErrorMessage(fallback.error)) {
-    return {
-      path: options.fallbackPath,
-      error: fallback.error,
-      missingFile: false,
-      source: 'workspace-root'
-    }
-  }
-
-  return {
-    path: options.preferredPath,
-    missingFile: true,
-    source: 'agents-dir'
-  }
-}
-
 export async function loadOptionalMemoryFile(
   ipc: IPCClient,
   filePath: string
@@ -323,28 +270,26 @@ export async function loadOptionalMemoryFile(
 export async function resolveProjectMemoryTextFile(
   ipc: IPCClient,
   projectRootPath: string,
-  ...segments: string[]
-): Promise<ResolvedProjectMemoryFile> {
-  return resolveProjectMemoryTextFileForTarget(ipc, projectRootPath, null, ...segments)
-}
-
-export async function resolveProjectMemoryTextFileForTarget(
-  ipc: IPCClient,
-  projectRootPath: string,
   sshConnectionId: string | null | undefined,
   ...segments: string[]
 ): Promise<ResolvedProjectMemoryFile> {
-  const { preferredPath, fallbackPath } = getProjectMemoryCandidatePaths(
-    projectRootPath,
-    ...segments
-  )
-  return resolveTextFileWithFallbackPaths({
-    readFile: (path) => readTextFile(ipc, path, sshConnectionId),
-    preferredPath,
-    fallbackPath
-  })
+  const { preferredPath } = getProjectMemoryCandidatePaths(projectRootPath, ...segments)
+  const result = await readTextFile(ipc, preferredPath, sshConnectionId)
+  if (!result.error) {
+    return {
+      path: preferredPath,
+      content: result.content ?? '',
+      missingFile: false,
+      source: 'wishful-claw-dir'
+    }
+  }
+  return {
+    path: preferredPath,
+    error: isMissingFileErrorMessage(result.error) ? undefined : result.error,
+    missingFile: isMissingFileErrorMessage(result.error),
+    source: 'wishful-claw-dir'
+  }
 }
-
 
 // Re-export snapshot functions from separate module
 export { getLayeredMemorySnapshot, getGlobalMemorySnapshot, subscribeLayeredMemoryUpdates, subscribeGlobalMemoryUpdates, loadLayeredMemorySnapshot, loadGlobalMemorySnapshot } from './memory-snapshot'

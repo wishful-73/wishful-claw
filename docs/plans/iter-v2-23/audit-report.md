@@ -1,9 +1,10 @@
-# 迭代 23 上线前全量排查报告（Plan 23-9）
+# 迭代 23 全量质量排查报告（Plan 23-9）
 
 - 排查时间：2026-08-27
 - 排查方式：5 组并行子代理初审（IPC 形状/静默失败、主进程全层、渲染端全层、Worker C#/AOT、i18n/打包）+ 本人逐项代码级核实 + 三项横切自查（镜像同步/竞态/持久化）
 - 覆盖范围：渲染进程全部组件与 43 个 store、主进程 36 个 IPC handler 与外围模块、channels 11 文件、Worker 7 层 C#、i18n 双语、打包链路
-- 本报告只查不改；修复清单由用户确认后另起步骤实施
+- 本报告最初只查不改；修复清单已按用户确认另起步骤实施
+- 路线更新（2026-08-28）：本次排查作为质量收口与后续迭代输入，不再代表 v2-iter-23 将直接上线；正式发布移至 v2-iter-26
 
 ---
 
@@ -43,7 +44,7 @@
 
 ---
 
-## 高危（上线前必须处理）
+## 高危（进入 Release Candidate 前必须处理）
 
 ### H1 退出清理系统性缺失——三类子进程退出即成孤儿
 - 位置：`src/main/index.ts:501-506`（before-quit 只清 SSH 与 channels）
@@ -84,13 +85,13 @@
 ### H7 平台登录通道 `api:request` 主进程无 handler
 - 位置：调用方 `src/renderer/src/lib/auth/channel.ts:49,83,108`、`oauth.ts:134`、`copilot.ts:184`、`kimi.ts:139`；src/main 全库 0 注册
 - 影响：若 vcode/oauth/copilot/kimi 登录入口在 UI 可达，点击必然失败
-- 修复建议：确认这些登录流程是否为正式版功能——是则补 handler，否则移除/隐藏入口（需用户决策，标"需实测确认入口可达性"）
+- 修复建议：确认这些登录流程是否为后续正式版范围——是则补 handler，否则移除/隐藏入口（需用户决策，标"需实测确认入口可达性"）
 - **处置（批6 `5faa16b`）**：用户决策移除——删除 `channel.ts`/`kimi.ts` 与全部零调用登录入口（`startOAuthFlow`/`startProviderOAuth`/通道码登录/账号导入导出），清理 `api:request`/`oauth:*` 白名单与 `OAUTH_*` 常量；保留 `ensureProviderAuthReady→refreshOAuthFlow` 活路径（translate/pet 在用）
 
 ### H8 技能市场通道无 handler，功能整体不可用
 - 位置：调用方 `skills-store.ts:284,334`、`skill-management-tool.ts:113,197`；`skills:market-list`/`skills:download-remote` 主进程 0 注册
 - 影响：技能市场列表永远空白（且 `skills-store` 的 catch 静默吞掉失败），Agent 的技能管理工具对应分支必失败
-- 修复建议：补 handler 或在正式版隐藏市场入口（需用户决策）
+- 修复建议：补 handler 或在后续正式版范围中隐藏市场入口（需用户决策）
 - **处置（批7 `b6546f8`）**：用户确认产品路线为"内置浏览器固定访问技能市场 + 复制安装语句由技能安装小助手执行"（路线通畅），死通道不再补全——删除市场死 actions、`search_skill_market`/`install_skill` 工具（含 Worker 占位定义）、`skills:market-list`/`download-remote`/`cleanup-temp` 通道与废弃设置项；保留 `list_installed_skills`
 
 ---

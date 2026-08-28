@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid'
+﻿import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
@@ -144,6 +144,11 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     void window.api.workerRequest('agent/clear-session', { sessionId: id })
     // Drop the persisted composer draft so deleted sessions leave no orphans.
     void removeSessionInputDraft(id)
+    void import('@renderer/hooks/use-chat-actions')
+      .then(({ clearPendingSessionMessages }) => clearPendingSessionMessages(id))
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear queued messages for deleted session:', err)
+      })
     // Close any right-panel tabs still bound to the deleted session (dynamic
     // import avoids a chat-store → ui-store circular dependency at load time).
     void import('@renderer/stores/ui-store')
@@ -217,6 +222,11 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       }
     })
     void window.api.workerRequest("agent/clear-session", { sessionId })
+    void import('@renderer/hooks/use-chat-actions')
+      .then(({ clearPendingSessionMessages }) => clearPendingSessionMessages(sessionId))
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear queued messages for cleared session:', err)
+      })
   },
 
   clearSessionPromptSnapshot: (_sessionId: string) => {
@@ -269,11 +279,19 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   },
 
   clearAllSessions: () => {
+    const sessionIds = get().sessions.map((session) => session.id)
     set((state) => {
       state.sessions = []
       state.sessionsById = {}
       state.activeSessionId = null
     })
+    void import('@renderer/hooks/use-chat-actions')
+      .then(({ clearPendingSessionMessages }) => {
+        for (const sessionId of sessionIds) clearPendingSessionMessages(sessionId)
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear queued messages for all sessions:', err)
+      })
   },
 
   addMessage: (sessionId, msg) => {

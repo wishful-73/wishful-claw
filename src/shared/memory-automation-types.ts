@@ -159,18 +159,3 @@ export interface MemoryAutomationRecordResult {
   error?: string | null
   entry?: MemoryAutomationEntry | null
 }
-
-export interface MemoryAutomationListResult {
-  entries: MemoryAutomationEntry[]
-  [key: string]: unknown
-}
-
-export interface MemoryAutomationRunRollupResult {
-  alreadyProcessed: boolean
-  [key: string]: unknown
-}
-
-export interface MemoryAutomationUndoResult {
-  success: boolean
-  error?: string
-}

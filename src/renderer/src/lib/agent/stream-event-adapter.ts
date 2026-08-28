@@ -71,6 +71,7 @@ export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
     case 'iteration_end':
     case 'request_debug':
     case 'context_compressed':
+    case 'memory_recall':
       return e as unknown as AgentEvent
 
     case 'tool_use_generated': {

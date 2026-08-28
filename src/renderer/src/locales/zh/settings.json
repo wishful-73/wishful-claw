@@ -46,6 +46,10 @@
       "label": "运行与性能",
       "desc": "API 请求超时、重试策略与上下文压缩"
     },
+    "memory": {
+      "label": "记忆",
+      "desc": "主动记忆、自动整理、分层阈值与主动回忆"
+    },
     "about": {
       "label": "关于",
       "desc": "版本信息"
@@ -1262,7 +1266,78 @@
     "compression": "上下文压缩",
     "toolExecution": "工具执行",
     "developer": "开发者模式",
-    "startup": "开机启动"
+    "startup": "开机启动",
+    "memoryAutoExtract": "主动记忆",
+    "memoryOrganization": "自动整理",
+    "memoryTiers": "分层阈值",
+    "memoryRecall": "主动回忆"
+  },
+  "memoryPage": {
+    "title": "记忆",
+    "subtitle": "主动记忆提取、每日自动整理、分层降级阈值与主动回忆参数",
+    "autoExtract": {
+      "title": "主动记忆",
+      "desc": "会话轮次结束后自动提取值得记住的内容，写入记忆",
+      "generate": {
+        "label": "自动生成记忆",
+        "desc": "由模型从对话中提炼记忆并巩固进 MEMORY.md"
+      },
+      "mainOnly": {
+        "label": "仅主会话",
+        "desc": "跳过插件/渠道会话，只对主会话提取记忆"
+      }
+    },
+    "organization": {
+      "title": "每日自动整理",
+      "desc": "定时整理记忆：MEMORY.md 去重合并、过期条目分层降级（降级不删除，可恢复）",
+      "disabledHint": "已关闭自动整理，可随时在记忆面板手动触发",
+      "schedule": {
+        "label": "触发模式",
+        "desc": "选择整理任务的触发时机",
+        "nightly": "凌晨",
+        "startup": "启动后"
+      },
+      "time": {
+        "label": "凌晨触发时刻",
+        "desc": "应用保持运行并在该时刻附近触发整理；错过时启动后补跑一次"
+      },
+      "startupHint": "启动后延迟触发；距上次整理不足 20 小时则跳过，避免频繁重启重复执行"
+    },
+    "tiers": {
+      "title": "分层降级阈值",
+      "desc": "记忆条目按优先级 × 闲置天数自动降层：热（active）→ 温（warm，仍可召回）→ 冷（cold，默认不召回）",
+      "warm": "降为温层",
+      "cold": "降为冷层",
+      "ephemeral": "临时（ephemeral）",
+      "standard": "标准（standard）",
+      "lasting": "持久（lasting）",
+      "days": "天",
+      "hint": "优先级越高越耐放；permanent 永不降级。被召回使用的记忆会自动复热。"
+    },
+    "recall": {
+      "title": "主动回忆",
+      "desc": "对话开始时自动检索相关记忆并注入上下文",
+      "maxNotes": {
+        "label": "召回条数上限",
+        "desc": "每次最多注入的记忆条数"
+      },
+      "maxChars": {
+        "label": "注入预算（字符）",
+        "desc": "注入内容的总字符上限"
+      },
+      "minScore": {
+        "label": "相关性门槛",
+        "desc": "低于该分数的记忆不注入；0 表示不过滤"
+      },
+      "fallback": {
+        "label": "跨作用域兜底",
+        "desc": "项目记忆零命中时回退搜全局记忆"
+      },
+      "visibility": {
+        "label": "召回可见性",
+        "desc": "在会话中展示本次召回了哪些记忆（或未召回的原因）"
+      }
+    }
   },
   "analytics": {
     "outputTokens": "输出 Tokens",

@@ -96,6 +96,9 @@ public static class AgentStreamMessagePackEmitter
         WriteOptionalJson(writer, "input", streamEvent.Input);
         WriteOptionalJson(writer, "promptMessage", streamEvent.PromptMessage);
         WriteOptionalJson(writer, "result", streamEvent.Result);
+        // Memory recall visibility
+        WriteOptionalInt(writer, "recallCount", streamEvent.RecallCount);
+        WriteOptionalStringArray(writer, "recallHits", streamEvent.RecallHits);
     }
 
     private static int CountEventProperties(AgentRuntimeStreamEvent streamEvent)
@@ -142,6 +145,9 @@ public static class AgentStreamMessagePackEmitter
         if (HasJson(streamEvent.Input)) count++;
         if (HasJson(streamEvent.PromptMessage)) count++;
         if (HasJson(streamEvent.Result)) count++;
+        // Memory recall visibility
+        if (streamEvent.RecallCount.HasValue) count++;
+        if (streamEvent.RecallHits is not null) count++;
         return count;
     }
 
@@ -166,6 +172,17 @@ public static class AgentStreamMessagePackEmitter
         if (!value.HasValue) return;
         writer.WriteString(name);
         writer.WriteBoolean(value.Value);
+    }
+
+    private static void WriteOptionalStringArray(WorkerMessagePackWriter writer, string name, string[]? values)
+    {
+        if (values is null) return;
+        writer.WriteString(name);
+        writer.WriteArrayHeader(values.Length);
+        foreach (var value in values)
+        {
+            writer.WriteString(value);
+        }
     }
 
     private static void WriteOptionalJson(WorkerMessagePackWriter writer, string name, JsonElement? value)

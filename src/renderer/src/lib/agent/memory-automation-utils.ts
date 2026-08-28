@@ -76,12 +76,6 @@ export interface RunSessionOptions {
   manual?: boolean
 }
 
-export interface DailyRollupOptions {
-  projectRootPath?: string | null
-  sshConnectionId?: string | null
-  global?: boolean
-}
-
 export interface PipelineScopeOutput {
   scope: MemoryRootScope
   rawMemory: string
@@ -94,6 +88,16 @@ export interface ConsolidationOutput {
   memoryMarkdown?: string
   summaryMarkdown?: string
   writtenItems?: string[]
+}
+
+/**
+ * Pure-organization mode output (no new raw input): the reorganized
+ * MEMORY.md plus paragraphs the model judged outdated and removed.
+ */
+export interface OrganizationOutput {
+  memoryMarkdown?: string
+  outdatedParagraphs?: string[]
+  organizationSummary?: string
 }
 
 export interface Stage1BuildResult {
@@ -112,12 +116,6 @@ export interface TargetDescriptor {
 
 export function todayString(date = new Date()): string {
   return date.toISOString().slice(0, 10)
-}
-
-export function yesterdayString(date = new Date()): string {
-  const previous = new Date(date)
-  previous.setDate(previous.getDate() - 1)
-  return todayString(previous)
 }
 
 export function normalizeMemoryText(value: string): string {
@@ -285,7 +283,7 @@ export function sanitizeMemoryPayload(content: string): {
 
 import { parseStage1Json } from './memory-json-parsers'
 
-export { parseConsolidationJson, getErrorMessage } from './memory-json-parsers'
+export { parseConsolidationJson, parseOrganizationJson, getErrorMessage } from './memory-json-parsers'
 
 
 export function targetForRoot(root: MemoryRootDescriptor): MemoryAutomationTarget {
@@ -521,11 +519,29 @@ export function buildConsolidationPrompt(args: {
   ].join('\n')
 }
 
-export function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 export function resolveProjectSummaryPath(projectRootPath: string): string {
   return getProjectMemoryCandidatePaths(projectRootPath, 'memory_summary.md').preferredPath
+}
+
+export function buildOrganizationPrompt(args: {
+  root: MemoryRootDescriptor
+  memoryMarkdown: string
+}): string {
+  return [
+    'You are the WishfulClaw daily memory organizer.',
+    'Reorganize the existing MEMORY.md for exactly one memory root. Do not add new information.',
+    `Root scope: ${args.root.scope}. Root id: ${args.root.id}.`,
+    args.root.scope === 'project'
+      ? 'This is project memory. Keep repository decisions, paths, commands, conventions, and project-specific recurring errors.'
+      : 'This is global memory. Keep only cross-project preferences, habits, and broadly recurring errors.',
+    'Tasks: deduplicate repeated facts, merge similar bullets, compress verbose wording, and keep the existing section structure.',
+    'Identify outdated paragraphs: facts that are superseded, expired, or no longer useful. Remove them from memory_markdown and list their original text in outdated_paragraphs so they can be archived to a colder tier.',
+    'Return strict JSON only with keys: memory_markdown (full reorganized Markdown document), outdated_paragraphs (array of removed paragraph texts, may be empty), organization_summary (one short sentence describing what changed).',
+    'Do not invent details that are not present in the input. Never include secrets, tokens, private keys, passwords, or private identity details.',
+    '',
+    '<current_MEMORY_md>',
+    args.memoryMarkdown.slice(0, 120_000),
+    '</current_MEMORY_md>'
+  ].join('\n')
 }
 

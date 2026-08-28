@@ -153,8 +153,8 @@ export function createTabSlice(set: SetFn, get: GetFn) {
         }
       }),
 
-    // Session summary tab — singleton like the files tab; the panel resolves
-    // the latest compression summary of the bound session itself.
+    // Context & progress tab — keep the existing summary kind for persisted
+    // panel-state compatibility; the session summary is rendered at the bottom.
     ensureSummaryTab: (sessionId: any) =>
       set((state: any) => {
         const existing = state.rightPanelTabs.find((tab: any) => tab.kind === 'summary')
@@ -167,7 +167,7 @@ export function createTabSlice(set: SetFn, get: GetFn) {
         const tab: RightPanelTabInstance = {
           id: 'summary',
           kind: 'summary',
-          title: 'Summary',
+          title: 'Context & progress',
           closable: true,
           createdAt: Date.now(),
           sessionId: sessionId ?? null

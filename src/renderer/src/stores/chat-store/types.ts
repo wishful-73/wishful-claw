@@ -33,6 +33,13 @@ export interface ContentSegment {
   completedAt?: number
 }
 
+export interface MemoryRecallInfo {
+  /** One of: injected, already_injected, no_match, filtered_by_threshold, empty_message. */
+  reason: string
+  /** Titles (or #id) of entries actually injected. */
+  hits: string[]
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
@@ -47,6 +54,7 @@ export interface ChatMessage {
   segments?: ContentSegment[]
   currentIteration?: number
   debugInfo?: RequestDebugInfo
+  memoryRecall?: MemoryRecallInfo
   meta?: MessageMeta
   content?: string | ContentBlock[]
   preToolPhase?: boolean

@@ -62,7 +62,8 @@ export function AssistantMessage({
   requestDebugInfo,
   meta,
   createdAt,
-  preToolPhase
+  preToolPhase,
+  memoryRecall
 }: AssistantMessageProps): React.JSX.Element {
   const { t } = useTranslation('chat')
   const devMode = useSettingsStore((s) => s.devMode)
@@ -602,6 +603,7 @@ export function AssistantMessage({
       createdAt={createdAt}
       t={t}
       preToolPhase={preToolPhase}
+      memoryRecall={memoryRecall}
     />
   )
 }

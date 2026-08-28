@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -165,7 +165,9 @@ public static class AgentRuntimeContextCompressionTools
                     new ContextCompressionResult(true, originalCount, newWireConversation.Count,
                         MessagesSummarized: outcome.MessagesSummarized > 0 ? outcome.MessagesSummarized : null,
                         Status: "compressed", Trigger: trigger,
-                        SummarizerFailed: summarizerFailed ? true : null),
+                        SummarizerFailed: summarizerFailed ? true : null,
+                        EstimatedPreTokens: preTokens,
+                        EstimatedNewTokens: ContextCompression.EstimateMessagesTokens(newConversation)),
                     compactArtifacts);
             }
             catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested)
@@ -219,4 +221,6 @@ public sealed record ContextCompressionResult(
     string? Error = null,
     string? Status = null,
     string? Trigger = null,
-    bool? SummarizerFailed = null);
+    bool? SummarizerFailed = null,
+    int? EstimatedPreTokens = null,
+    int? EstimatedNewTokens = null);

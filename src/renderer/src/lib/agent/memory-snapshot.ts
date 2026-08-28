@@ -1,6 +1,6 @@
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { IPCClient } from '@renderer/lib/tools/tool-types'
-import { GlobalMemorySnapshot, LayeredMemorySnapshot, SessionMemoryScope, joinFsPath, layeredMemoryListeners, loadDailyMemoryEntries, loadOptionalMemoryFile, loadProjectDailyMemoryEntries, normalizeWatchPath, resolveProjectMemoryTextFileForTarget, snapshotsEqual, toOptionalEntry, _memState } from './memory-files'
+import { GlobalMemorySnapshot, LayeredMemorySnapshot, SessionMemoryScope, joinFsPath, layeredMemoryListeners, loadDailyMemoryEntries, loadOptionalMemoryFile, loadProjectDailyMemoryEntries, normalizeWatchPath, resolveProjectMemoryTextFile, snapshotsEqual, toOptionalEntry, _memState } from './memory-files'
 
 
 export function getLayeredMemorySnapshot(): LayeredMemorySnapshot {
@@ -106,7 +106,6 @@ async function buildLayeredMemorySnapshot(
     : undefined
 
   const [
-    projectAgentsFile,
     globalSoulContent,
     projectSoulFile,
     globalUserContent,
@@ -118,19 +117,11 @@ async function buildLayeredMemorySnapshot(
     globalDailyMemory,
     projectDailyMemory
   ] = await Promise.all([
-    projectRootPath
-      ? resolveProjectMemoryTextFileForTarget(
-          ipc,
-          projectRootPath,
-          projectSshConnectionId,
-          'AGENTS.md'
-        )
-      : Promise.resolve(undefined),
     scope !== 'shared' && globalSoulPath
       ? loadOptionalMemoryFile(ipc, globalSoulPath)
       : Promise.resolve(undefined),
     scope !== 'shared' && projectRootPath
-      ? resolveProjectMemoryTextFileForTarget(
+      ? resolveProjectMemoryTextFile(
           ipc,
           projectRootPath,
           projectSshConnectionId,
@@ -141,7 +132,7 @@ async function buildLayeredMemorySnapshot(
       ? loadOptionalMemoryFile(ipc, globalUserPath)
       : Promise.resolve(undefined),
     scope === 'main' && projectRootPath
-      ? resolveProjectMemoryTextFileForTarget(
+      ? resolveProjectMemoryTextFile(
           ipc,
           projectRootPath,
           projectSshConnectionId,
@@ -152,7 +143,7 @@ async function buildLayeredMemorySnapshot(
       ? loadOptionalMemoryFile(ipc, globalMemoryPath)
       : Promise.resolve(undefined),
     scope === 'main' && projectRootPath
-      ? resolveProjectMemoryTextFileForTarget(
+      ? resolveProjectMemoryTextFile(
           ipc,
           projectRootPath,
           projectSshConnectionId,
@@ -163,7 +154,7 @@ async function buildLayeredMemorySnapshot(
       ? loadOptionalMemoryFile(ipc, globalMemorySummaryPath)
       : Promise.resolve(undefined),
     scope === 'main' && projectRootPath
-      ? resolveProjectMemoryTextFileForTarget(
+      ? resolveProjectMemoryTextFile(
           ipc,
           projectRootPath,
           projectSshConnectionId,
@@ -179,10 +170,6 @@ async function buildLayeredMemorySnapshot(
   return {
     globalHomePath,
     projectRootPath,
-    agents:
-      projectAgentsFile && !projectAgentsFile.error
-        ? toOptionalEntry(projectAgentsFile.path, projectAgentsFile.content)
-        : undefined,
     globalSoul: globalSoulPath ? toOptionalEntry(globalSoulPath, globalSoulContent) : undefined,
     projectSoul:
       projectSoulFile && !projectSoulFile.error
@@ -293,8 +280,7 @@ export async function loadLayeredMemorySnapshot(
       _memState.cachedLayeredSnapshot.globalUser?.path
     : _memState.cachedLayeredSnapshot.globalMemory?.path ||
       _memState.cachedLayeredSnapshot.globalSoul?.path ||
-      _memState.cachedLayeredSnapshot.globalUser?.path ||
-      _memState.cachedLayeredSnapshot.agents?.path
+      _memState.cachedLayeredSnapshot.globalUser?.path
 
   await ensurePrimaryMemoryWatcher(ipc, primaryWatchPath)
 

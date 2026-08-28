@@ -42,6 +42,10 @@ import {
   releaseCronRunsAfterRendererExit,
   shutdownCronScheduler
 } from './ipc/reverse-handlers/cron-reverse-handler'
+import {
+  installMemoryOrganizationScheduler,
+  shutdownMemoryOrganizationScheduler
+} from './ipc/memory-organization-scheduler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
 
 let mainWindow: BrowserWindow | null = null
@@ -483,6 +487,9 @@ registerCodeGraphHandlers()
   // Restore persisted Cron jobs before auto-starting channels.
   void initializeCronScheduler()
 
+  // Daily memory organization triggers (startup throttle + nightly crossing).
+  installMemoryOrganizationScheduler()
+
   // Auto-start enabled channels after window is ready
   if (channelManager) {
     void autoStartChannels(channelManager)
@@ -504,6 +511,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   cleanupSshHandlers()
   shutdownCronScheduler()
+  shutdownMemoryOrganizationScheduler()
   if (channelManager) {
     void channelManager.stopAll()
   }

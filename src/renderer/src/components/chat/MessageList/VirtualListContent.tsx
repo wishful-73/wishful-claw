@@ -32,8 +32,6 @@ interface VirtualListContentProps {
   isLoadingOlderMessages: boolean
   totalTurns: number
   loadedTurns: number
-  loadedMessageCount: number
-  totalMessageCount: number
   pinnedTurnMessage: UnifiedMessage | null
   isPinnedTurnOverlayVisible: boolean
   onJumpToPinnedMessage: () => void
@@ -77,8 +75,6 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     isLoadingOlderMessages,
     totalTurns,
     loadedTurns,
-    loadedMessageCount,
-    totalMessageCount,
     pinnedTurnMessage,
     isPinnedTurnOverlayVisible,
     onJumpToPinnedMessage,
@@ -138,7 +134,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
               >
                 {isLoadOlderRow ? (
                   <div
-                    className={`${getMessageColumnClass(fullWidth)} flex flex-col items-center gap-1.5 pb-3 pt-3 animate-in fade-in-0 duration-200`}
+                    className={`${getMessageColumnClass(fullWidth)} flex justify-center pb-3 pt-3 animate-in fade-in-0 duration-200`}
                   >
                     <button
                       type="button"
@@ -146,18 +142,13 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                       onClick={() => void loadOlderMessages(true)}
                       disabled={isLoadingOlderMessages}
                     >
-                      {isLoadingOlderMessages
-                        ? t('messageList.loadingOlder')
-                        : t('messageList.loadOlder')}
+                      {t(
+                        isLoadingOlderMessages
+                          ? 'messageList.loadingOlderProgress'
+                          : 'messageList.loadOlderProgress',
+                        { loadedTurns, totalTurns }
+                      )}
                     </button>
-                    <span className="text-[11px] text-muted-foreground/80">
-                      {t('messageList.loadProgress', {
-                        loadedTurns,
-                        totalTurns,
-                        loadedMessages: loadedMessageCount,
-                        totalMessages: totalMessageCount
-                      })}
-                    </span>
                   </div>
                 ) : (
                   (() => {

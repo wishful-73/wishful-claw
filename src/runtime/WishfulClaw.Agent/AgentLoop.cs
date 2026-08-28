@@ -287,7 +287,7 @@ internal static partial class AgentLoop
             // ── Memory recall injection (iteration 7) ──
             if (iteration == 1)
             {
-                await TryInjectMemoryRecallAsync(parameters, conversation, state, context);
+                await TryInjectMemoryRecallAsync(parameters, conversation, sessionConv, state, context);
             }
 
             // ── Execute provider turn (with retry policy for 429/5xx) ──

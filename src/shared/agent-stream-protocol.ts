@@ -154,6 +154,13 @@ export type AgentStreamEvent =
       newCount: number
       keptMessageCount?: number
     }
+  // Memory recall visibility
+  | {
+      type: 'memory_recall'
+      reason: 'injected' | 'no_match' | 'filtered_by_threshold' | 'empty_message' | string
+      recallCount?: number
+      recallHits?: string[]
+    }
 
 export type AgentStreamEventType = AgentStreamEvent['type']
 

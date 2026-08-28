@@ -1,11 +1,13 @@
-﻿import { useCallback } from 'react'
+﻿import { useCallback, useEffect } from 'react'
 import {
   useChatStore,
   recordCompressionStatusMessage,
-  applyCompactArtifactsToSession
+  applyCompactArtifactsToSession,
+  updateSessionContextTokens
 } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
+import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -26,20 +28,50 @@ export interface SendMessageOptions {
   [key: string]: unknown
 }
 
+interface SendMessageRequest {
+  text: string | {
+    text: string
+    images?: unknown[]
+    skill?: string | null
+    selectedFiles?: unknown[]
+  }
+  images?: unknown[]
+  sessionId?: string
+  opts?: SendMessageOptions
+  queuedDispatch?: boolean
+}
+
+type SendMessageHandler = (request: SendMessageRequest) => Promise<boolean>
+
+const _sendMessageHandlers = new Set<SendMessageHandler>()
+const _startingSessionSends = new Set<string>()
+const _dispatchingPendingSessions = new Set<string>()
+const _pausedPendingSessionDispatch = new Set<string>()
 
 export function useChatActions() {
   const sendMessage = useChatStore((s) => s.sendMessage)
   const cancelStream = useChatStore((s) => s.cancelStream)
 
   const handleSendMessage = useCallback(
-    async ({ text, images: _images, sessionId, opts }: { text: string | { text: string; images?: unknown[]; skill?: string | null; selectedFiles?: unknown[] }; images?: unknown[]; sessionId?: string; opts?: SendMessageOptions }) => {
+    async ({ text, images: _images, sessionId, opts, queuedDispatch = false }: SendMessageRequest): Promise<boolean> => {
       const chatStore = useChatStore.getState()
       const targetSessionId = sessionId ?? chatStore.activeSessionId
       if (!targetSessionId) {
         console.error('[ChatActions] No active session')
-        return
+        return false
       }
 
+      const request: SendMessageRequest = { text, images: _images, sessionId: targetSessionId, opts }
+      if (
+        hasActiveSessionRunForSession(targetSessionId) ||
+        (!queuedDispatch && hasPendingSessionMessagesForSession(targetSessionId))
+      ) {
+        if (!queuedDispatch) enqueuePendingSessionMessage(request, targetSessionId)
+        return false
+      }
+
+      _startingSessionSends.add(targetSessionId)
+      try {
       // Resolve provider/model through the same session-aware path the UI
       // displays (ModelSwitcher / InputArea). Previously this read the global
       // provider store directly, so a session-bound model switch updated the
@@ -48,7 +80,8 @@ export function useChatActions() {
       const resolved = resolveSendModel(targetSessionId)
       if (!resolved) {
         console.error('[ChatActions] No provider/model selected')
-        return
+        pausePendingSessionDispatch(targetSessionId)
+        return false
       }
       const activeProvider = resolved.provider
       const modelId = resolved.modelId
@@ -136,7 +169,7 @@ export function useChatActions() {
         requestMaxRetries: settings.requestMaxRetries ?? undefined
       }
 
-      await sendMessage({
+      const started = await sendMessage({
         provider,
         messages: [{ role: 'user', content: userContent }],
         sessionId: targetSessionId,
@@ -159,13 +192,29 @@ export function useChatActions() {
         sessionMode: opts?.sessionMode,
         permissionMode: settings.autoApprove ? 'fullAccess' : 'default'
       })
-
-      void opts
+      if (!started) pausePendingSessionDispatch(targetSessionId)
+      return started
+      } catch (error) {
+        console.error('[ChatActions] Failed to send message', error)
+        pausePendingSessionDispatch(targetSessionId)
+        return false
+      } finally {
+        _startingSessionSends.delete(targetSessionId)
+      }
     },
     [sendMessage]
   )
 
+  useEffect(() => {
+    _sendMessageHandlers.add(handleSendMessage)
+    return () => {
+      _sendMessageHandlers.delete(handleSendMessage)
+    }
+  }, [handleSendMessage])
+
   const stopStreaming = useCallback(async () => {
+    const sessionId = useChatStore.getState().activeSessionId
+    if (sessionId) pausePendingSessionDispatch(sessionId)
     await cancelStream()
   }, [cancelStream])
 
@@ -181,14 +230,16 @@ export function abortSession(sessionId: string): void {
 }
 
 export function clearPendingSessionMessages(sessionId: string): number {
-  void sessionId
-  // Placeholder — 迭代四实现 pending message queue
-  return 0
+  const count = _pendingMessages.get(sessionId)?.length ?? 0
+  if (count === 0 && !_pausedPendingSessionDispatch.has(sessionId)) return 0
+  _pendingMessages.delete(sessionId)
+  _pausedPendingSessionDispatch.delete(sessionId)
+  notifyPendingSessionMessageListeners()
+  return count
 }
 
 export function getPendingSessionMessageCountForSession(sessionId: string): number {
-  void sessionId
-  return 0
+  return _pendingMessages.get(sessionId)?.length ?? 0
 }
 
 export function subscribePendingSessionMessages(onStoreChange: () => void): () => void {
@@ -479,6 +530,13 @@ export interface PendingSessionMessageItem {
   images: import('@renderer/lib/image-attachments').ImageAttachment[]
   skill?: string | null
   selectedFiles?: unknown[]
+  opts?: SendMessageOptions
+  requestText: string | {
+    text: string
+    images?: unknown[]
+    skill?: string | null
+    selectedFiles?: unknown[]
+  }
   createdAt: number
   draft?: string
 }
@@ -555,6 +613,12 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       if (compactArtifacts?.length) {
         applyCompactArtifactsToSession(sessionId, compactArtifacts)
       }
+      // Manual compression emits no message_end event — refresh the last
+      // usage-bearing message's contextTokens so ContextRing updates now
+      // instead of after the next turn.
+      if (typeof result.estimatedNewTokens === 'number' && result.estimatedNewTokens > 0) {
+        updateSessionContextTokens(sessionId, result.estimatedNewTokens)
+      }
       return 'compressed'
     }
     if (status === 'blocked') return 'blocked'
@@ -570,20 +634,74 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
 const _pendingMessages = new Map<string, PendingSessionMessageItem[]>()
 const _pendingListeners = new Set<() => void>()
 
+function notifyPendingSessionMessageListeners(): void {
+  _pendingListeners.forEach((listener) => listener())
+}
+
+function getRequestText(request: SendMessageRequest): {
+  text: string
+  images: unknown[]
+  skill?: string | null
+  selectedFiles?: unknown[]
+} {
+  if (typeof request.text === 'string') {
+    return { text: request.text, images: request.images ?? [] }
+  }
+  return {
+    text: request.text.text,
+    images: request.images ?? request.text.images ?? [],
+    skill: request.text.skill,
+    selectedFiles: request.text.selectedFiles
+  }
+}
+
+function enqueuePendingSessionMessage(request: SendMessageRequest, sessionId: string): void {
+  const normalized = getRequestText(request)
+  const now = Date.now()
+  const item: PendingSessionMessageItem = {
+    id: `pending-${now}-${Math.random().toString(36).slice(2, 8)}`,
+    sessionId,
+    role: 'user',
+    content: normalized.text,
+    text: normalized.text,
+    images: normalized.images as import('@renderer/lib/image-attachments').ImageAttachment[],
+    skill: normalized.skill,
+    selectedFiles: normalized.selectedFiles,
+    opts: request.opts ? { ...request.opts } : undefined,
+    requestText: typeof request.text === 'string' ? request.text : { ...request.text },
+    createdAt: now
+  }
+  const list = _pendingMessages.get(sessionId) ?? []
+  _pendingMessages.set(sessionId, [...list, item])
+  notifyPendingSessionMessageListeners()
+}
+
 export function getPendingSessionMessages(sessionId: string): PendingSessionMessageItem[] {
   return _pendingMessages.get(sessionId) ?? []
 }
 
-export function isPendingSessionDispatchPaused(_sessionId: string): boolean {
-  return false
+export function isPendingSessionDispatchPaused(sessionId: string): boolean {
+  return _pausedPendingSessionDispatch.has(sessionId)
+}
+
+export function pausePendingSessionDispatch(sessionId: string): void {
+  if ((_pendingMessages.get(sessionId)?.length ?? 0) === 0) return
+  if (_pausedPendingSessionDispatch.has(sessionId)) return
+  _pausedPendingSessionDispatch.add(sessionId)
+  notifyPendingSessionMessageListeners()
 }
 
 export function removePendingSessionMessage(sessionId: string, messageId: string): boolean {
   const list = _pendingMessages.get(sessionId) ?? []
-  const filtered = list.filter((m) => m.id !== messageId)
-  _pendingMessages.set(sessionId, filtered)
-  _pendingListeners.forEach((fn) => fn())
-  return filtered.length < list.length
+  const filtered = list.filter((message) => message.id !== messageId)
+  if (filtered.length === list.length) return false
+  if (filtered.length > 0) _pendingMessages.set(sessionId, filtered)
+  else {
+    _pendingMessages.delete(sessionId)
+    _pausedPendingSessionDispatch.delete(sessionId)
+  }
+  notifyPendingSessionMessageListeners()
+  return true
 }
 
 export function updatePendingSessionMessageDraft(
@@ -592,33 +710,119 @@ export function updatePendingSessionMessageDraft(
   draft: unknown
 ): void {
   const list = _pendingMessages.get(sessionId) ?? []
-  const msg = list.find((m) => m.id === messageId)
-  if (msg) {
-    if (typeof draft === 'string') {
-      msg.draft = draft
-    } else if (draft && typeof draft === 'object') {
-      const d = draft as { text?: string; images?: unknown[]; command?: unknown }
-      msg.draft = d.text ?? ''
-      if (d.images) msg.images = d.images as any[]
-      if (d.command) msg.command = d.command as any
-    }
-    _pendingListeners.forEach((fn) => fn())
+  const index = list.findIndex((message) => message.id === messageId)
+  if (index < 0) return
+
+  const current = list[index]
+  let text = current.text
+  let images = current.images
+  let command = current.command
+  if (typeof draft === 'string') {
+    text = draft
+  } else if (draft && typeof draft === 'object') {
+    const nextDraft = draft as { text?: string; images?: unknown[]; command?: unknown }
+    text = nextDraft.text ?? ''
+    images = (nextDraft.images ?? current.images) as import('@renderer/lib/image-attachments').ImageAttachment[]
+    command = (nextDraft.command ?? current.command) as PendingSessionMessageItem['command']
   }
+
+  const requestText = typeof current.requestText === 'string'
+    ? text
+    : { ...current.requestText, text, images }
+  const updated: PendingSessionMessageItem = {
+    ...current,
+    content: text,
+    text,
+    images: [...images],
+    command,
+    requestText,
+    draft: text
+  }
+  _pendingMessages.set(sessionId, [
+    ...list.slice(0, index),
+    updated,
+    ...list.slice(index + 1)
+  ])
+  notifyPendingSessionMessageListeners()
 }
 
 export function quotePendingSessionMessageIntoConversation(
   _sessionId: string,
   _messageId: string
-): unknown {
-  return null
-}
-
-export function dispatchNextQueuedMessageForSession(_sessionId: string): boolean {
+): false {
   return false
 }
 
-export function hasActiveSessionRunForSession(_sessionId: string): boolean {
-  return false
+export function dispatchNextQueuedMessageForSession(
+  sessionId: string,
+  resumePaused = true
+): boolean {
+  if (_dispatchingPendingSessions.has(sessionId)) return false
+  if (_pausedPendingSessionDispatch.has(sessionId)) {
+    if (!resumePaused || hasActiveSessionRunForSession(sessionId)) return false
+    _pausedPendingSessionDispatch.delete(sessionId)
+    notifyPendingSessionMessageListeners()
+  }
+  if (hasActiveSessionRunForSession(sessionId)) return false
+  if ((_pendingMessages.get(sessionId)?.length ?? 0) === 0) return false
+  if (_sendMessageHandlers.size === 0) {
+    pausePendingSessionDispatch(sessionId)
+    return false
+  }
+
+  _dispatchingPendingSessions.add(sessionId)
+  setTimeout(async () => {
+    let retryAfterDelay = false
+    try {
+      if (_pausedPendingSessionDispatch.has(sessionId)) return
+      if (hasActiveSessionRunForSession(sessionId)) {
+        retryAfterDelay = true
+        return
+      }
+      const item = _pendingMessages.get(sessionId)?.[0]
+      const handler = Array.from(_sendMessageHandlers).at(-1)
+      if (!item || !handler) return
+      const started = await handler({
+        text: item.requestText,
+        images: item.images,
+        sessionId,
+        opts: item.opts,
+        queuedDispatch: true
+      })
+      if (!started) {
+        pausePendingSessionDispatch(sessionId)
+        return
+      }
+      const current = _pendingMessages.get(sessionId) ?? []
+      if (current[0]?.id === item.id) {
+        const remaining = current.slice(1)
+        if (remaining.length > 0) _pendingMessages.set(sessionId, remaining)
+        else _pendingMessages.delete(sessionId)
+        notifyPendingSessionMessageListeners()
+      }
+    } catch (error) {
+      console.error('[ChatActions] Failed to dispatch queued message', error)
+      pausePendingSessionDispatch(sessionId)
+    } finally {
+      _dispatchingPendingSessions.delete(sessionId)
+      const hasPending = (_pendingMessages.get(sessionId)?.length ?? 0) > 0
+      if (
+        hasPending &&
+        !_pausedPendingSessionDispatch.has(sessionId) &&
+        (retryAfterDelay || !hasActiveSessionRunForSession(sessionId))
+      ) {
+        setTimeout(() => dispatchNextQueuedMessageForSession(sessionId, false), 50)
+      }
+    }
+  }, 50)
+  return true
+}
+
+export function hasActiveSessionRunForSession(sessionId: string): boolean {
+  if (_startingSessionSends.has(sessionId)) return true
+  if (useChatStore.getState().streamingMessages[sessionId]) return true
+  const status = useAgentStore.getState().runningSessions[sessionId]
+  return status === 'running' || status === 'retrying'
 }
 
 export function hasPendingSessionMessagesForSession(sessionId: string): boolean {

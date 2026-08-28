@@ -206,7 +206,8 @@ function MessageItemInner({
             requestRetryState={isLastAssistantMessage ? requestRetryState : null}
             requestDebugInfo={message.debugInfo}
             meta={message.meta}
-            preToolPhase={(message as any).preToolPhase}
+            preToolPhase={message.preToolPhase}
+            memoryRecall={message.memoryRecall}
           />
         )
       case 'system':

@@ -348,6 +348,10 @@ export interface UnifiedMessage {
   providerResponseId?: string
   source?: 'team' | 'queued' | 'quoted'
   meta?: MessageMeta
+  /** Text generated before tool execution (planning phase, rendered dimmed). */
+  preToolPhase?: boolean
+  /** Memory recall outcome for this turn: reason + injected entry titles. */
+  memoryRecall?: { reason: string; hits: string[] }
   _revision?: number
 }
 

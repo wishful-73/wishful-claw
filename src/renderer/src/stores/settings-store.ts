@@ -25,7 +25,7 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type MemoryAutomationWritePolicy, type MemoryScopeMode, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type MemoryAutomationWritePolicy, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
 
 // Re-export types for consumers
 export type {
@@ -37,6 +37,7 @@ export type {
   LiveOutputAnimationStyle,
   MainModelSelectionMode,
   MemoryAutomationWritePolicy,
+  MemoryOrganizationSchedule,
   MemoryScopeMode,
   ModelBinding,
   OnboardingLanguage,
@@ -147,7 +148,6 @@ interface SettingsStore {
   memoryAutomationWritePolicy: MemoryAutomationWritePolicy
   memoryAutomationMainSessionsOnly: boolean
   memoryAutomationSummaryBudgetTokens: number
-  memoryAutomationDailyRollupEnabled: boolean
   memoryUseMemories: boolean
   memoryGenerateMemories: boolean
   memoryScopeMode: MemoryScopeMode
@@ -156,7 +156,22 @@ interface SettingsStore {
   memoryMaxRawMemoriesForConsolidation: number
   memoryMaxUnusedDays: number
   memorySummaryBudgetTokens: number
-  memoryDailyRollupEnabled: boolean
+
+  // Memory organization & recall settings
+  memoryOrganizationEnabled: boolean
+  memoryOrganizationSchedule: MemoryOrganizationSchedule
+  memoryOrganizationNightlyTime: string
+  memoryWarmThresholdEphemeral: number
+  memoryWarmThresholdStandard: number
+  memoryWarmThresholdLasting: number
+  memoryColdThresholdEphemeral: number
+  memoryColdThresholdStandard: number
+  memoryColdThresholdLasting: number
+  memoryRecallMaxNotes: number
+  memoryRecallMaxChars: number
+  memoryRecallMinScore: number
+  memoryRecallGlobalFallback: boolean
+  memoryRecallVisibility: boolean
 
   // Appearance Settings
   backgroundColor: string
@@ -282,7 +297,6 @@ export const useSettingsStore = create<SettingsStore>()(
       memoryAutomationWritePolicy: 'auto',
       memoryAutomationMainSessionsOnly: true,
       memoryAutomationSummaryBudgetTokens: 12_000,
-      memoryAutomationDailyRollupEnabled: true,
       memoryUseMemories: true,
       memoryGenerateMemories: true,
       memoryScopeMode: 'hybrid',
@@ -291,7 +305,22 @@ export const useSettingsStore = create<SettingsStore>()(
       memoryMaxRawMemoriesForConsolidation: 500,
       memoryMaxUnusedDays: 180,
       memorySummaryBudgetTokens: 12_000,
-      memoryDailyRollupEnabled: true,
+
+      // Memory organization & recall settings
+      memoryOrganizationEnabled: true,
+      memoryOrganizationSchedule: 'nightly',
+      memoryOrganizationNightlyTime: '00:00',
+      memoryWarmThresholdEphemeral: 7,
+      memoryWarmThresholdStandard: 30,
+      memoryWarmThresholdLasting: 90,
+      memoryColdThresholdEphemeral: 21,
+      memoryColdThresholdStandard: 90,
+      memoryColdThresholdLasting: 180,
+      memoryRecallMaxNotes: 5,
+      memoryRecallMaxChars: 4000,
+      memoryRecallMinScore: 0,
+      memoryRecallGlobalFallback: true,
+      memoryRecallVisibility: true,
 
       // Appearance Settings
       backgroundColor: '',
@@ -433,7 +462,6 @@ export const useSettingsStore = create<SettingsStore>()(
         memoryAutomationWritePolicy: 'auto' as const,
         memoryAutomationMainSessionsOnly: state.memoryAutomationMainSessionsOnly,
         memoryAutomationSummaryBudgetTokens: state.memoryAutomationSummaryBudgetTokens,
-        memoryAutomationDailyRollupEnabled: state.memoryAutomationDailyRollupEnabled,
         memoryUseMemories: state.memoryUseMemories,
         memoryGenerateMemories: state.memoryGenerateMemories,
         memoryScopeMode: 'hybrid' as const,
@@ -442,7 +470,20 @@ export const useSettingsStore = create<SettingsStore>()(
         memoryMaxRawMemoriesForConsolidation: state.memoryMaxRawMemoriesForConsolidation,
         memoryMaxUnusedDays: state.memoryMaxUnusedDays,
         memorySummaryBudgetTokens: state.memorySummaryBudgetTokens,
-        memoryDailyRollupEnabled: state.memoryDailyRollupEnabled,
+        memoryOrganizationEnabled: state.memoryOrganizationEnabled,
+        memoryOrganizationSchedule: state.memoryOrganizationSchedule,
+        memoryOrganizationNightlyTime: state.memoryOrganizationNightlyTime,
+        memoryWarmThresholdEphemeral: state.memoryWarmThresholdEphemeral,
+        memoryWarmThresholdStandard: state.memoryWarmThresholdStandard,
+        memoryWarmThresholdLasting: state.memoryWarmThresholdLasting,
+        memoryColdThresholdEphemeral: state.memoryColdThresholdEphemeral,
+        memoryColdThresholdStandard: state.memoryColdThresholdStandard,
+        memoryColdThresholdLasting: state.memoryColdThresholdLasting,
+        memoryRecallMaxNotes: state.memoryRecallMaxNotes,
+        memoryRecallMaxChars: state.memoryRecallMaxChars,
+        memoryRecallMinScore: state.memoryRecallMinScore,
+        memoryRecallGlobalFallback: state.memoryRecallGlobalFallback,
+        memoryRecallVisibility: state.memoryRecallVisibility,
         // Appearance Settings
         backgroundColor: state.backgroundColor,
         fontFamily: state.fontFamily,

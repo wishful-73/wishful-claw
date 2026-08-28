@@ -4,6 +4,7 @@ import type { ContentBlock, RequestDebugInfo, UnifiedMessage } from '@renderer/l
 import type { ToolCallState, ToolCallStatus, RequestRetryState } from '@renderer/lib/agent/types'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
 import type { ToolResultContent, TokenUsage, MessageMeta } from '@renderer/lib/api/types'
+import type { MemoryRecallInfo } from '@renderer/stores/chat-store/types'
 
 export type AssistantRenderMode = 'default' | 'transcript' | 'static'
 
@@ -32,6 +33,7 @@ export interface AssistantMessageProps {
   requestDebugInfo?: RequestDebugInfo
   meta?: MessageMeta
   preToolPhase?: boolean
+  memoryRecall?: MemoryRecallInfo
 }
 
 export type AssistantRenderItem = { kind: 'block'; index: number } | { kind: 'tool-run'; runId: string }

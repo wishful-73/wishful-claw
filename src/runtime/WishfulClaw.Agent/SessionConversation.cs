@@ -19,6 +19,7 @@ public sealed class SessionConversation
     private readonly object _lock = new();
     private List<AgentRuntimeChatMessage> _conversation = [];
     private List<JsonElement> _wireConversation = [];
+    private readonly Dictionary<long, string> _injectedMemoryFingerprints = [];
     private long _version;
     private int _compactionWatermark;
 
@@ -43,6 +44,23 @@ public sealed class SessionConversation
         lock (_lock)
         {
             _compactionWatermark = Math.Max(_compactionWatermark, messageCount);
+        }
+    }
+
+    public bool NeedsMemoryInjection(long memoryId, string contentFingerprint)
+    {
+        lock (_lock)
+        {
+            return !_injectedMemoryFingerprints.TryGetValue(memoryId, out var current)
+                || !string.Equals(current, contentFingerprint, StringComparison.Ordinal);
+        }
+    }
+
+    public void MarkMemoryInjected(long memoryId, string contentFingerprint)
+    {
+        lock (_lock)
+        {
+            _injectedMemoryFingerprints[memoryId] = contentFingerprint;
         }
     }
 
@@ -124,6 +142,7 @@ public sealed class SessionConversation
         {
             _wireConversation = [.. wireMessages];
             _conversation = conversation;
+            _injectedMemoryFingerprints.Clear();
             _compactionWatermark = 0;
             _version++;
         }
@@ -147,6 +166,7 @@ public sealed class SessionConversation
             if (_wireConversation.Count > 0) return false;
             _wireConversation = [.. wireMessages];
             _conversation = conversation;
+            _injectedMemoryFingerprints.Clear();
             _compactionWatermark = 0;
             _version++;
             return true;
@@ -194,6 +214,7 @@ public sealed class SessionConversation
         {
             _conversation = conversation;
             _wireConversation = wireConversation;
+            _injectedMemoryFingerprints.Clear();
             _version++;
         }
     }
@@ -207,6 +228,7 @@ public sealed class SessionConversation
         {
             _conversation = [];
             _wireConversation = [];
+            _injectedMemoryFingerprints.Clear();
             _version++;
         }
         ResetCacheTotals();

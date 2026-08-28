@@ -187,6 +187,12 @@ export type AgentEvent =
       compactArtifacts?: UnifiedMessage[]
       messages?: UnifiedMessage[]
     }
+  | {
+      type: 'memory_recall'
+      reason: string
+      recallCount?: number
+      recallHits?: string[]
+    }
 
 // --- Agent Loop Stop Reasons ---
 

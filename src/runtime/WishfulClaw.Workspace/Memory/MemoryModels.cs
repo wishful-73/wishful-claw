@@ -1,21 +1,10 @@
-namespace WishfulClaw.Workspace.Memory;
+﻿namespace WishfulClaw.Workspace.Memory;
 
 /// <summary>
-/// Memory tier — lifecycle stage of a memory entry.
-/// Hot: active in MEMORY.md, loaded at startup.
-/// Warm: demoted to dormant/, searchable but not auto-loaded.
-/// Cold: archived to SQLite,检索 only.
-/// </summary>
-public enum MemoryTier
-{
-    Hot,
-    Warm,
-    Cold
-}
-
-/// <summary>
-/// Memory priority — influences demotion behaviour.
+/// Memory priority — influences retention/demotion behaviour.
 /// Directly adopted from KodaClaw's priority system.
+/// Demotion is driven by priority weight × idle time against memory_entries.status
+/// (active → warm → cold); see the daily memory organization plan.
 /// </summary>
 public enum MemoryPriority
 {
@@ -33,7 +22,7 @@ public enum MemoryPriority
 }
 
 /// <summary>
-/// A single memory entry parsed from MEMORY.md or a dormant file.
+/// A single memory entry parsed from MEMORY.md.
 /// </summary>
 public sealed record MemoryEntry
 {
@@ -48,9 +37,6 @@ public sealed record MemoryEntry
 
     /// <summary>Priority level.</summary>
     public MemoryPriority Priority { get; init; } = MemoryPriority.Standard;
-
-    /// <summary>Current tier (Hot/Warm/Cold).</summary>
-    public MemoryTier Tier { get; init; } = MemoryTier.Hot;
 
     /// <summary>Scope: "global" or "project:{projectId}".</summary>
     public required string Scope { get; init; }
@@ -77,6 +63,28 @@ public sealed record MemorySearchResult
     public required string Priority { get; init; }
     public required string Status { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
+
+    /// <summary>
+    /// Relevance score (higher = more relevant). Derived from FTS5 bm25 rank
+    /// for trigram matches; null for LIKE fallback hits which have no rank.
+    /// </summary>
+    public double? Score { get; init; }
+}
+
+/// <summary>
+/// Structured recall outcome for visibility: what was injected (if anything)
+/// and why nothing was injected otherwise.
+/// </summary>
+public sealed record MemoryRecallOutcome
+{
+    /// <summary>Formatted injection block, or null when nothing was injected.</summary>
+    public string? InjectedText { get; init; }
+
+    /// <summary>Entries that were actually injected.</summary>
+    public IReadOnlyList<MemorySearchResult> InjectedHits { get; init; } = [];
+
+    /// <summary>One of: injected, already_injected, no_match, filtered_by_threshold, empty_message.</summary>
+    public required string Reason { get; init; }
 }
 
 /// <summary>

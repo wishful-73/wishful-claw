@@ -1,4 +1,4 @@
-﻿# Plan: v2-iter-22 — 微信/飞书渠道与定时任务打磨
+# Plan: v2-iter-22 — 微信/飞书渠道与定时任务打磨
 
 ## 目标
 
@@ -161,4 +161,4 @@
 - 快捷搜索扩展数据源、扩展 Tab、在线翻译、DeepSeek 网页版。
 - URL 插件注册、用户自定义插件、ZIP 轻应用、XinXiang JSBridge。
 - Cron 执行记录的复杂统计报表、分页 UI 和完整逐事件轨迹可继续后续迭代；本次已完成逐次运行账本和会话关联。
-- 正式版 v2-iter-23 发布、打包、tag、GitHub Release。
+- 正式版发布不再绑定 v2-iter-23；按 2026-08-28 路线调整，v2-iter-25 负责 Release Candidate 准备，v2-iter-26 负责正式版发布、打包、tag 与 GitHub Release。

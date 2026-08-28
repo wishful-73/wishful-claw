@@ -70,8 +70,8 @@ export function InputArea({
     webSearchEnabled, canToggleWebSearch,
     supportsVision, composerModelCfg,
     mode, openSettings, openFilePreview,
-    activeProjectId, activeSshConnectionId, activeSessionId, hasMessages, clearSessionMessages,
-    draftSessionId, projectScoped, workspaceReady,
+    activeProjectId, activeSessionId, hasMessages, clearSessionMessages,
+    draftSessionId, projectScoped,
     planMode, hasActiveGoal, pendingReviewPlanId, hasApiKey
   } = sel
   const [pendingCollabMode, setPendingCollabMode] = React.useState<CollabMode | null>(null)
@@ -85,7 +85,6 @@ export function InputArea({
 
   const [selectedSkill, setSelectedSkill] = React.useState<string | null>(null)
   const [autoAcceptCountdown, setAutoAcceptCountdown] = React.useState<number | null>(null)
-  const [isWorkspaceAgentsMissing, setIsWorkspaceAgentsMissing] = React.useState(false)
   const [, setPendingPlanMode] = React.useState(false)
   const [, setPendingGoalMode] = React.useState(false)
   const removePersistedDraftRef = React.useRef<(() => void) | null>(null)
@@ -156,10 +155,7 @@ export function InputArea({
   })
 
   const hasFileReferences = React.useMemo(() => selectedFiles.length > 0, [selectedFiles])
-  const shouldRecommendInit = workspaceReady && !activeSshConnectionId && isWorkspaceAgentsMissing
-  const recommendationFallback = shouldRecommendInit
-    ? t('input.recommendationInitWorkspace')
-    : t(defaultRecommendationKeys[mode as never])
+  const recommendationFallback = t(defaultRecommendationKeys[mode as never])
   const shouldAutoAcceptRecommendation =
     mode === 'clarify' && clarifyAutoAcceptRecommended && !disabled && !isOptimizingLocked && !isStreaming
   const getCaretAtEnd = React.useCallback(() => {
@@ -215,12 +211,12 @@ export function InputArea({
   const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-full max-w-[820px]'
 
   ;(useInputAreaEffects as any)({
-    draftSessionId, hasActiveGoal, workspaceReady, activeSshConnectionId, workingFolder, isHomeComposer,
+    draftSessionId, hasActiveGoal, workingFolder, isHomeComposer,
     shouldAutoAcceptRecommendation, suggestionText, text, acceptSuggestion,
     applyEditorStateFromSerializedText, selectedFiles, focusInputAtEnd, handleRecommendationSelectionChange,
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
     attachedImages, selectedSkill, savePersistedDraft,
-    setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown, setIsWorkspaceAgentsMissing,
+    setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
     editorRef, rootRef, draftSaveTimerRef, draftReadyKeyRef, isStreaming, disabled, replaceSelectionWithText,
   })
@@ -234,7 +230,7 @@ export function InputArea({
     editingQueueImages, setEditingQueueImages, queueClearConfirmOpen, setQueueClearConfirmOpen,
     queueFileInputRef, startEditQueuedMessage, cancelEditQueuedMessage, removeQueuedMessage,
     addQueuedImages, removeQueuedImage, saveQueuedMessage, clearQueuedMessagesForActiveSession,
-    quoteQueuedMessage, handleQueueEditPaste
+    handleClearQueuedMessages, resumeQueuedMessages, isQueueDispatchPaused, handleQueueEditPaste
   } = useQueuedMessages({
     activeSessionId, suppressPendingQueue, t, isStreaming, getPastedImageFiles, setPreviewImage
   })
@@ -318,7 +314,7 @@ export function InputArea({
 
   const editorPlaceholder = pendingReviewPlanId
     ? t('input.placeholderPlanReview', { defaultValue: 'Enter suggestions for this plan...' })
-    : (effectivePlaceholder ?? (shouldRecommendInit ? t('input.placeholderInitWorkspace') : t(placeholderKeys[mode as never] ?? 'input.placeholder')))
+    : (effectivePlaceholder ?? t(placeholderKeys[mode as never] ?? 'input.placeholder'))
 
   const composerIconControlClass = 'composer-control rounded-xl'
   const debouncedTokens = useDebouncedTokens(finalSerializedText)
@@ -347,7 +343,8 @@ export function InputArea({
         saveQueuedMessage={saveQueuedMessage} cancelEditQueuedMessage={cancelEditQueuedMessage}
         removeQueuedImage={removeQueuedImage} handleQueueEditPaste={handleQueueEditPaste}
         editQueuedMessage={startEditQueuedMessage} removePendingSessionMessage={removeQueuedMessage}
-        quotePendingSessionMessageIntoConversation={quoteQueuedMessage} queueClearConfirmOpen={queueClearConfirmOpen}
+        isQueueDispatchPaused={isQueueDispatchPaused} resumeQueuedMessages={resumeQueuedMessages}
+        handleClearQueuedMessages={handleClearQueuedMessages} queueClearConfirmOpen={queueClearConfirmOpen}
         setQueueClearConfirmOpen={setQueueClearConfirmOpen} clearQueuedMessagesForActiveSession={clearQueuedMessagesForActiveSession}
         summarizeQueuedMessage={summarizeQueuedMessage}
       />

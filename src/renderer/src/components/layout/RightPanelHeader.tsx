@@ -12,10 +12,10 @@ import {
   FileCode,
   FileDiff,
   FolderOpen,
+  GitCompare,
   Globe,
   PanelRightClose,
   Plus,
-  ScrollText,
   SquareTerminal,
   Target,
   X
@@ -56,7 +56,7 @@ function TabIcon({ tab }: { tab: RightPanelTabInstance }): React.JSX.Element {
   if (tab.kind === 'subagent') return <Bot className="size-3.5" />
   if (tab.kind === 'terminal') return <SquareTerminal className="size-3.5" />
   if (tab.kind === 'goal') return <Target className="size-3.5" />
-  if (tab.kind === 'summary') return <ScrollText className="size-3.5 text-violet-500 dark:text-violet-400" />
+  if (tab.kind === 'summary') return <GitCompare className="size-3.5 text-violet-500 dark:text-violet-400" />
   return <FileCode className="size-3.5" />
 }
 

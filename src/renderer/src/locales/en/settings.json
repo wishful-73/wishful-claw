@@ -46,6 +46,10 @@
       "label": "Runtime & Performance",
       "desc": "API request timeout, retry policy and context compression"
     },
+    "memory": {
+      "label": "Memory",
+      "desc": "Proactive memory, auto organization, tier thresholds and proactive recall"
+    },
     "about": {
       "label": "About",
       "desc": "Version info"
@@ -1141,7 +1145,78 @@
     "compression": "Compression",
     "toolExecution": "Tool Execution",
     "developer": "Developer",
-    "startup": "Startup"
+    "startup": "Startup",
+    "memoryAutoExtract": "Proactive Memory",
+    "memoryOrganization": "Auto Organization",
+    "memoryTiers": "Tier Thresholds",
+    "memoryRecall": "Proactive Recall"
+  },
+  "memoryPage": {
+    "title": "Memory",
+    "subtitle": "Proactive memory extraction, daily auto organization, tier demotion thresholds and proactive recall parameters",
+    "autoExtract": {
+      "title": "Proactive Memory",
+      "desc": "Automatically extract worth-remembering content after each conversation turn and write it into memory",
+      "generate": {
+        "label": "Auto-generate memories",
+        "desc": "Let the model distill memories from the conversation and consolidate them into MEMORY.md"
+      },
+      "mainOnly": {
+        "label": "Main sessions only",
+        "desc": "Skip plugin/channel sessions and only extract memories for main sessions"
+      }
+    },
+    "organization": {
+      "title": "Daily Auto Organization",
+      "desc": "Scheduled memory organization: deduplicate/merge MEMORY.md and demote stale entries across tiers (demotion never deletes and is recoverable)",
+      "disabledHint": "Auto organization is off; you can still trigger it manually from the memory panel",
+      "schedule": {
+        "label": "Trigger mode",
+        "desc": "Choose when the organization task is triggered",
+        "nightly": "Nightly",
+        "startup": "After startup"
+      },
+      "time": {
+        "label": "Nightly trigger time",
+        "desc": "Triggers while the app is running near this time; a missed run is caught up once after startup"
+      },
+      "startupHint": "Triggered with a delay after startup; skipped if the last run was less than 20 hours ago to avoid repeats on frequent restarts"
+    },
+    "tiers": {
+      "title": "Tier Demotion Thresholds",
+      "desc": "Memory entries are demoted automatically by priority x idle days: hot (active) -> warm (still recallable) -> cold (not recalled by default)",
+      "warm": "Demote to warm",
+      "cold": "Demote to cold",
+      "ephemeral": "Ephemeral",
+      "standard": "Standard",
+      "lasting": "Lasting",
+      "days": "days",
+      "hint": "Higher priority lasts longer; permanent entries are never demoted. Recalled memories are automatically re-heated."
+    },
+    "recall": {
+      "title": "Proactive Recall",
+      "desc": "Automatically retrieve relevant memories and inject them into context at conversation start",
+      "maxNotes": {
+        "label": "Max recalled entries",
+        "desc": "Maximum number of memory entries injected each time"
+      },
+      "maxChars": {
+        "label": "Injection budget (chars)",
+        "desc": "Total character cap for injected content"
+      },
+      "minScore": {
+        "label": "Relevance threshold",
+        "desc": "Memories scoring below this are not injected; 0 means no filtering"
+      },
+      "fallback": {
+        "label": "Cross-scope fallback",
+        "desc": "Fall back to searching global memories when project memory has zero hits"
+      },
+      "visibility": {
+        "label": "Recall visibility",
+        "desc": "Show which memories were recalled in the session (or why none were)"
+      }
+    }
   },
   "analytics": {
     "outputTokens": "Output Tokens",

@@ -65,4 +65,7 @@ public sealed record AgentRuntimeStreamEvent(
     int? SessionCacheHit = null,
     int? SessionCacheMiss = null,
     // Usage source: "executor", "subagent", "compaction", etc.
-    string? UsageSource = null);
+    string? UsageSource = null,
+    // Memory recall visibility (memory_recall events)
+    int? RecallCount = null,
+    string[]? RecallHits = null);

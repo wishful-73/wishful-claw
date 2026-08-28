@@ -1,13 +1,11 @@
-import { IPC } from '@renderer/lib/ipc/channels'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
-import type { ProviderConfig } from '@renderer/lib/api/types'
-import { recordSyntheticEntry, prepareSessionPipeline, completeStage1, runPhase2ForRoot, runningSessionAutomations, _maState } from './memory-automation-internal'
-import { AUTO_RUN_DEBOUNCE_MS, INVALID_MEMORY_JSON_ERROR, RunSessionOptions, TargetDescriptor, buildConversationExcerpt, buildMemoryRootInputs, buildStage1Input, findRootForScope, fingerprintContent, hasUsableProvider, resolveAutomationProvider, summarizeMemorySnapshot, targetForRoot, extractStage1Outputs } from './memory-automation-utils'
+import { recordSyntheticEntry, resolveMemoryRoots, appendStage1Outputs, runPhase2ForRoot, runningSessionAutomations, _maState } from './memory-automation-internal'
+import { AUTO_RUN_DEBOUNCE_MS, INVALID_MEMORY_JSON_ERROR, RunSessionOptions, buildConversationExcerpt, buildMemoryRootInputs, buildStage1Input, hasUsableProvider, resolveAutomationProvider, summarizeMemorySnapshot, targetForRoot, extractStage1Outputs } from './memory-automation-utils'
 import { loadLayeredMemorySnapshot } from './memory-files'
 import { getErrorMessage } from './memory-json-parsers'
-import type { MemoryStage1OutputInput, MemoryRootDescriptor, MemoryAutomationRunRollupResult } from '../../../../shared/memory-automation-types'
+import type { MemoryRootScope, MemoryStage1OutputInput } from '../../../../shared/memory-automation-types'
 
 
 export async function runMemoryAutomationForSession(options: RunSessionOptions): Promise<void> {
@@ -32,7 +30,6 @@ export async function runMemoryAutomationForSession(options: RunSessionOptions):
 
   if (runningSessionAutomations.has(options.sessionId)) return
   runningSessionAutomations.add(options.sessionId)
-  let stage1JobId: string | null = null
 
   try {
     const chatState = useChatStore.getState()
@@ -93,12 +90,7 @@ export async function runMemoryAutomationForSession(options: RunSessionOptions):
       return
     }
 
-    const prepared = await prepareSessionPipeline({
-      sessionId: options.sessionId,
-      roots: rootInputs
-    })
-    if (!prepared.success) throw new Error(prepared.error ?? 'Failed to prepare memory pipeline')
-    stage1JobId = prepared.job?.id ?? null
+    const roots = resolveMemoryRoots(rootInputs)
 
     const scopeOutputs = await extractStage1Outputs({
       provider,
@@ -108,10 +100,10 @@ export async function runMemoryAutomationForSession(options: RunSessionOptions):
       sessionId: options.sessionId
     })
 
-    const stage1Inputs: MemoryStage1OutputInput[] = []
+    const stage1ByScope = new Map<MemoryRootScope, MemoryStage1OutputInput[]>()
     for (const scopeOutput of scopeOutputs) {
       if (scopeOutput.scope === 'project' && !snapshot.projectRootPath) continue
-      const root = findRootForScope(prepared.roots, scopeOutput.scope)
+      const root = roots.find((item) => item.scope === scopeOutput.scope)
       if (!root) continue
       const built = buildStage1Input({
         root,
@@ -120,7 +112,9 @@ export async function runMemoryAutomationForSession(options: RunSessionOptions):
         sourceUpdatedAt: session.updatedAt
       })
       if (built.input) {
-        stage1Inputs.push(built.input)
+        const bucket = stage1ByScope.get(root.scope) ?? []
+        bucket.push(built.input)
+        stage1ByScope.set(root.scope, bucket)
       }
       if (!built.input || built.input.status === 'filtered') {
         await recordSyntheticEntry({
@@ -129,7 +123,6 @@ export async function runMemoryAutomationForSession(options: RunSessionOptions):
           sourceSessionId: options.sessionId,
           rootScope: root.scope,
           memoryRootId: root.id,
-          jobId: stage1JobId,
           projectId: root.projectId ?? null,
           target: targetForRoot(root),
           content: built.content || 'Stage 1 output was empty after safety filtering'
@@ -137,30 +130,41 @@ export async function runMemoryAutomationForSession(options: RunSessionOptions):
       }
     }
 
-    const activeStage1Inputs = stage1Inputs.filter((input) => input.status !== 'filtered')
-    const completed = await completeStage1({
-      sessionId: options.sessionId,
-      jobId: stage1JobId,
-      status: activeStage1Inputs.length > 0 ? 'succeeded' : 'succeeded_no_output',
-      outputs: stage1Inputs
-    })
-    if (!completed.success) throw new Error(completed.error ?? 'Failed to complete stage 1')
-
-    if (stage1Inputs.length === 0) {
+    if (stage1ByScope.size === 0) {
       await recordSyntheticEntry({
         status: 'skipped',
         reason: 'no_candidates',
         sourceSessionId: options.sessionId,
-        jobId: stage1JobId,
         content: 'Model returned no durable memory outputs'
       })
       return
     }
-    if (activeStage1Inputs.length === 0) return
 
-    const touchedRootIds = new Set(activeStage1Inputs.map((input) => input.memoryRootId))
-    for (const root of prepared.roots ?? []) {
-      if (!touchedRootIds.has(root.id)) continue
+    for (const root of roots) {
+      const outputs = stage1ByScope.get(root.scope)
+      if (!outputs || outputs.length === 0) continue
+      const activeOutputs = outputs.filter((output) => output.status !== 'filtered')
+      if (activeOutputs.length === 0) continue
+      const appendError = await appendStage1Outputs({
+        root,
+        outputs: activeOutputs,
+        sourceSessionId: options.sessionId
+      })
+      if (appendError) {
+        await recordSyntheticEntry({
+          status: 'error',
+          reason: 'write_error',
+          sourceSessionId: options.sessionId,
+          rootScope: root.scope,
+          memoryRootId: root.id,
+          projectId: root.projectId ?? null,
+          target: targetForRoot(root),
+          content: 'Failed to append stage 1 raw memories',
+          targetPath: root.rootPath,
+          error: appendError
+        })
+        continue
+      }
       await runPhase2ForRoot({
         root,
         provider,
@@ -169,20 +173,10 @@ export async function runMemoryAutomationForSession(options: RunSessionOptions):
     }
   } catch (error) {
     const message = getErrorMessage(error)
-    if (stage1JobId) {
-      await completeStage1({
-        sessionId: options.sessionId,
-        jobId: stage1JobId,
-        status: 'failed',
-        error: message === INVALID_MEMORY_JSON_ERROR ? INVALID_MEMORY_JSON_ERROR : message,
-        outputs: []
-      }).catch(() => {})
-    }
     await recordSyntheticEntry({
       status: 'error',
       reason: message === INVALID_MEMORY_JSON_ERROR ? 'invalid_json' : 'write_error',
       sourceSessionId: options.sessionId,
-      jobId: stage1JobId,
       target: 'global_memory',
       content: 'Memory pipeline failed',
       error: message
@@ -191,90 +185,3 @@ export async function runMemoryAutomationForSession(options: RunSessionOptions):
     runningSessionAutomations.delete(options.sessionId)
   }
 }
-
-export async function runRollupForDescriptor(args: {
-  root: MemoryRootDescriptor
-  descriptor: TargetDescriptor
-  sourceDate: string
-  provider: ProviderConfig
-}): Promise<void> {
-  if (!args.descriptor.content.trim()) return
-  const contentHash = fingerprintContent(args.descriptor.content)
-  const watermark = (await ipcClient.invoke(IPC.MEMORY_AUTOMATION_RUN_ROLLUP, {
-    action: 'get-watermark',
-    scope: 'main',
-    targetPath: args.descriptor.path,
-    sourceDate: args.sourceDate,
-    contentHash
-  })) as MemoryAutomationRunRollupResult
-  if (watermark.alreadyProcessed) {
-    await recordSyntheticEntry({
-      status: 'skipped',
-      reason: 'rollup_already_processed',
-      sourceSessionId: `rollup:${args.sourceDate}`,
-      rootScope: args.root.scope,
-      memoryRootId: args.root.id,
-      projectId: args.root.projectId ?? null,
-      target: targetForRoot(args.root),
-      content: `Daily rollup already processed for ${args.descriptor.path}`,
-      targetPath: args.descriptor.path
-    })
-    return
-  }
-
-  const built = buildStage1Input({
-    root: args.root,
-    scopeOutput: {
-      scope: args.root.scope,
-      rawMemory: args.descriptor.content,
-      rolloutSummary: `Daily memory rollup from ${args.sourceDate}`,
-      rolloutSlug: `${args.sourceDate}-${args.root.scope}-daily-rollup`
-    },
-    sourceSessionId: `rollup:${args.sourceDate}`
-  })
-  if (!built.input || built.input.status === 'filtered') {
-    if (built.reason) {
-      await recordSyntheticEntry({
-        status: 'filtered',
-        reason: built.reason,
-        sourceSessionId: `rollup:${args.sourceDate}`,
-        rootScope: args.root.scope,
-        memoryRootId: args.root.id,
-        projectId: args.root.projectId ?? null,
-        target: targetForRoot(args.root),
-        content: built.content || 'Daily rollup was filtered'
-      })
-    }
-    return
-  }
-
-  await completeStage1({
-    sessionId: `rollup:${args.sourceDate}`,
-    status: 'succeeded',
-    outputs: [built.input]
-  })
-  await runPhase2ForRoot({
-    root: args.root,
-    provider: args.provider,
-    sourceSessionId: `rollup:${args.sourceDate}`
-  })
-  await ipcClient.invoke(IPC.MEMORY_AUTOMATION_RUN_ROLLUP, {
-    action: 'mark-watermark',
-    scope: 'main',
-    targetPath: args.descriptor.path,
-    sourceDate: args.sourceDate,
-    contentHash
-  })
-}
-
-
-// Daily rollup and manual automation extracted to memory-automation-rollup.ts
-export {
-  runDailyMemoryRollup,
-  undoMemoryAutomationEntry,
-  runManualMemoryAutomationForActiveSession,
-} from './memory-automation-rollup'
-
-export {
-  installMemoryAutomationDailyRollup,
-} from './memory-automation-rollup'

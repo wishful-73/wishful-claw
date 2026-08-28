@@ -1,5 +1,5 @@
 ﻿import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Layers, Keyboard, Gauge } from 'lucide-react'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Layers, Keyboard, Gauge, Brain } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
@@ -10,6 +10,7 @@ import { ExtensionPanel } from '@renderer/components/settings/ExtensionPanel'
 import { AppPluginPanel } from '@renderer/components/settings/AppPluginPanel'
 import { GeneralPanel } from '@renderer/components/settings/GeneralPanel'
 import { RuntimePanel } from '@renderer/components/settings/RuntimePanel'
+import { MemorySettingsPanel } from '@renderer/components/settings/MemorySettingsPanel'
 import { PersonaPanel } from '@renderer/components/settings/PersonaPanel'
 import { cn } from '@renderer/lib/utils'
 import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
@@ -38,6 +39,13 @@ const RUNTIME_ANCHORS: SectionAnchor[] = [
   { id: 'sec-runtime-tools', label: 'anchorNav.toolExecution' }
 ]
 
+const MEMORY_ANCHORS: SectionAnchor[] = [
+  { id: 'sec-memory-autoextract', label: 'anchorNav.memoryAutoExtract' },
+  { id: 'sec-memory-organization', label: 'anchorNav.memoryOrganization' },
+  { id: 'sec-memory-tiers', label: 'anchorNav.memoryTiers' },
+  { id: 'sec-memory-recall', label: 'anchorNav.memoryRecall' }
+]
+
 function SettingsPage(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const settingsTab = useUIStore((s) => s.settingsTab)
@@ -63,7 +71,8 @@ function SettingsPage(): React.JSX.Element {
       items: [
         { id: 'provider', icon: <Server className="size-4" />, label: t('tabs.provider.label') },
         { id: 'modelManagement', icon: <Layers className="size-4" />, label: t('provider.modelManagement', { defaultValue: 'Model Management' }) },
-        { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') }
+        { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') },
+        { id: 'memory', icon: <Brain className="size-4" />, label: t('tabs.memory.label', { defaultValue: '记忆' }) }
       ]
     },
     {
@@ -172,6 +181,15 @@ function SettingsPage(): React.JSX.Element {
                     <RuntimePanel />
                   </div>
                   <SectionAnchorNav containerRef={scrollContainerRef} anchors={RUNTIME_ANCHORS} />
+                </div>
+              </div>
+            ) : settingsTab === 'memory' ? (
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+                <div className="mx-auto flex max-w-5xl items-start gap-2 px-8">
+                  <div className="min-w-0 flex-1">
+                    <MemorySettingsPanel />
+                  </div>
+                  <SectionAnchorNav containerRef={scrollContainerRef} anchors={MEMORY_ANCHORS} />
                 </div>
               </div>
             ) : settingsTab === 'shortcuts' ? (

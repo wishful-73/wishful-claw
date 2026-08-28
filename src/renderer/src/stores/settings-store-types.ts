@@ -42,6 +42,7 @@ export type PromptRecommendationModelBindings = Record<
 export type MainModelSelectionMode = 'auto' | 'manual'
 export type MemoryAutomationWritePolicy = 'auto'
 export type MemoryScopeMode = 'hybrid'
+export type MemoryOrganizationSchedule = 'nightly' | 'startup'
 export type ClarifyPlanModeAutoSwitchTarget = 'off' | 'code' | 'acp'
 export type ProjectDefaultDirectoryMode = 'last-used' | 'custom'
 export type FileDiffViewMode = 'split' | 'inline' | 'code' | 'preview'

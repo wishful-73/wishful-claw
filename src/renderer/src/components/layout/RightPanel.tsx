@@ -44,10 +44,17 @@ export function RightPanel(): React.JSX.Element {
   })
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const panelSessionId = activeScopedSessionId ?? activeSessionId ?? null
-  const workingFolder = useChatStore((state) => {
-    const project = state.projects.find((p) => p.id === state.activeProjectId)
-    return project?.workingFolder ?? null
+  const memoryProject = useChatStore((state) => {
+    const targetSessionId = activeScopedSessionId ?? state.activeSessionId
+    const targetSession = targetSessionId
+      ? state.sessions.find((item) => item.id === targetSessionId)
+      : null
+    const projectId = targetSession?.projectId ?? state.activeProjectId
+    return state.projects.find((project) => project.id === projectId) ?? null
   })
+  const workingFolder = memoryProject?.workingFolder ?? null
+  const memoryProjectId = memoryProject?.id ?? null
+  const memorySshConnectionId = memoryProject?.sshConnectionId ?? null
   const browserPluginEnabled = useAppPluginStore((state) =>
     Boolean(state.getPlugin(BROWSER_PLUGIN_ID, activeProjectId)?.enabled)
   )
@@ -69,7 +76,10 @@ export function RightPanel(): React.JSX.Element {
         return { ...tab, title: t('rightPanel.browser', { defaultValue: 'Browser' }) }
       }
       if (tab.kind === 'summary') {
-        return { ...tab, title: t('rightPanel.summary', { defaultValue: 'Session summary' }) }
+        return {
+          ...tab,
+          title: t('rightPanel.contextProgress', { defaultValue: 'Context & progress' })
+        }
       }
       // subagent tabs keep their own title (set from task description)
       return tab
@@ -146,7 +156,13 @@ export function RightPanel(): React.JSX.Element {
       return <ActivityPanel />
     }
     if (tab.kind === 'memory') {
-      return <MemoryPanel workingFolder={workingFolder} />
+      return (
+        <MemoryPanel
+          workingFolder={workingFolder}
+          projectId={memoryProjectId}
+          sshConnectionId={memorySshConnectionId}
+        />
+      )
     }
     if (tab.kind === 'subagent') {
       // Per-agent tabs (toolUseId set) render the execution detail directly;

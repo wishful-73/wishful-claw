@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Archive, Maximize2, Minimize2, FolderOpen, Loader2, MoreHorizontal, ScrollText, Trash2, Pencil, SquareTerminal } from 'lucide-react'
+import { Archive, GitCompare, Maximize2, Minimize2, FolderOpen, Loader2, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -117,8 +117,8 @@ export function SessionConversationPane({
     ensureFilesTab(resolvedSessionId)
   }, [resolvedSessionId, ensureFilesTab])
 
-  // Open the right panel on the Summary tab — shows the latest context
-  // compression summary of the current session ("暂无摘要" if never compressed).
+  // Open the right panel on the Context & Progress tab. The existing summary
+  // tab kind is retained so persisted panel state remains compatible.
   const handleOpenSummaryPanel = useCallback((): void => {
     if (!resolvedSessionId) return
     useUIStore.getState().ensureSummaryTab(resolvedSessionId)
@@ -225,18 +225,21 @@ export function SessionConversationPane({
               </Tooltip>
             )}
 
-            {/* View session summary in the right panel */}
+            {/* View context and progress in the right panel */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   onClick={handleOpenSummaryPanel}
+                  aria-label={t('layout.viewContextProgress', {
+                    defaultValue: 'View context & progress'
+                  })}
                   className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
                 >
-                  <ScrollText className="size-4" />
+                  <GitCompare className="size-4" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="left">
-                {t('layout.viewSessionSummary', { defaultValue: 'View session summary' })}
+                {t('layout.viewContextProgress', { defaultValue: 'View context & progress' })}
               </TooltipContent>
             </Tooltip>
 

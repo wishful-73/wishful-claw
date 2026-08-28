@@ -486,11 +486,19 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
     }
 
     if (msg.usage) result.usage = msg.usage as UnifiedMessage['usage']
+    if (msg.debugInfo) result.debugInfo = msg.debugInfo as UnifiedMessage['debugInfo']
+    if (msg.meta) result.meta = msg.meta as UnifiedMessage['meta']
+    if (msg.preToolPhase) result.preToolPhase = true
+    if (msg.memoryRecall) result.memoryRecall = msg.memoryRecall as UnifiedMessage['memoryRecall']
     // Use text length as revision so structural signature changes when
     // streaming text grows (buildStructuralSignature uses _revision).
     // This ensures renderableMessageIds is rebuilt when assistant text
-    // goes from empty to non-empty.
-    result._revision = (text.length) + (thinking?.length ?? 0) + (toolCalls?.length ?? 0)
+    // goes from empty to non-empty. The recall outcome is included so the
+    // memoized row re-renders the moment the recall banner data arrives.
+    const recallFingerprint = msg.memoryRecall
+      ? 1 + ((msg.memoryRecall as { hits?: string[] }).hits?.length ?? 0)
+      : 0
+    result._revision = (text.length) + (thinking?.length ?? 0) + (toolCalls?.length ?? 0) + recallFingerprint
     if (msg.error) {
       // Represent errors as an agent_error block
       result.content = [{ type: 'agent_error', code: 'runtime_error', message: msg.error as string }]

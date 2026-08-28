@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -493,8 +493,13 @@ public static partial class ContextCompression
     {
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
-        var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.openai.com").Trim().TrimEnd('/');
-        var url = $"{baseUrl}/v1/chat/completions";
+        // Mirror OpenAIChatProvider's URL convention: baseUrl already includes
+        // the version segment (default https://api.openai.com/v1), so append
+        // /chat/completions directly — appending another /v1 here produced
+        // .../v1/v1/chat/completions and 404s on versioned gateways (e.g. Gemini's
+        // OpenAI-compatible endpoint), degrading every summary to mechanical fold.
+        var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.openai.com/v1").Trim().TrimEnd('/');
+        var url = $"{baseUrl}/chat/completions";
 
         var bodyJson = WorkerJsonHelper.BuildJsonString(w =>
         {

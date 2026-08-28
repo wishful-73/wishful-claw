@@ -27,6 +27,8 @@ import { dbUpsertMessage, dbUpdateSession, dbDeleteMessage, awaitSessionCreated 
 
 import { setLastDebugInfo } from '@renderer/lib/debug-store'
 
+import { useSettingsStore } from '@renderer/stores/settings-store'
+
 import { adaptSubAgentEvent } from './adapt-sub-agent-event'
 
 import { useAgentStore } from '@renderer/stores/agent-store'
@@ -87,8 +89,13 @@ export interface AgentActions {
     projectId?: string
     enablePlanMode?: boolean
     sessionMode?: 'normal' | 'goal' | 'global'
+    memoryRecallMaxNotes?: number
+    memoryRecallMaxChars?: number
+    memoryRecallMinScore?: number
+    memoryRecallGlobalFallback?: boolean
+    memoryRecallVisibility?: boolean
 
-  }) => Promise<void>
+  }) => Promise<boolean>
 
   cancelStream: (targetSessionId?: string) => Promise<void>
 
@@ -152,7 +159,7 @@ export const useChatStore = create<ChatStore>()(
 
       const sessionId = params.sessionId ?? state.activeSessionId
 
-      if (!sessionId) return
+      if (!sessionId) return false
 
 
 
@@ -289,13 +296,24 @@ export const useChatStore = create<ChatStore>()(
 
       try {
 
-        // Pass runId to the worker so it uses ours instead of generating one
+        // Pass runId to the worker so it uses ours instead of generating one.
+        // Recall tuning rides along from settings (caller params take precedence).
+
+        const recallSettings = useSettingsStore.getState()
 
         const result = await window.api.workerRequest<{ started: boolean; runId: string }>(
 
           'agent/run',
 
-          { ...params, runId }
+          {
+            ...params,
+            runId,
+            memoryRecallMaxNotes: params.memoryRecallMaxNotes ?? recallSettings.memoryRecallMaxNotes,
+            memoryRecallMaxChars: params.memoryRecallMaxChars ?? recallSettings.memoryRecallMaxChars,
+            memoryRecallMinScore: params.memoryRecallMinScore ?? recallSettings.memoryRecallMinScore,
+            memoryRecallGlobalFallback: params.memoryRecallGlobalFallback ?? recallSettings.memoryRecallGlobalFallback,
+            memoryRecallVisibility: params.memoryRecallVisibility ?? recallSettings.memoryRecallVisibility
+          }
 
         )
 
@@ -306,22 +324,32 @@ export const useChatStore = create<ChatStore>()(
           state.setStreamingMessageId(sessionId, null)
 
           useAgentStore.getState().resetLiveSessionExecution(sessionId)
+          useAgentStore.getState().setSessionStatus(sessionId, null)
 
           state.updateMessage(sessionId, runId, {
 
             isStreaming: false,
 
-            error: 'Agent run was not started'
+            // The Worker serializes rejections as result.error (the top-level
+            // error field is empty here), so surface the real reason. Kept
+            // local to this branch on purpose — many other callers rely on
+            // result.error being resolved instead of thrown.
+            error: (result as { error?: string }).error || 'Agent run was not started'
 
           })
 
+          return false
+
         }
+
+        return true
 
       } catch (err) {
 
         state.setStreamingMessageId(sessionId, null)
 
         useAgentStore.getState().resetLiveSessionExecution(sessionId)
+        useAgentStore.getState().setSessionStatus(sessionId, null)
 
         state.updateMessage(sessionId, runId, {
 
@@ -330,6 +358,8 @@ export const useChatStore = create<ChatStore>()(
           error: err instanceof Error ? err.message : String(err)
 
         })
+
+        return false
 
       }
 
@@ -350,7 +380,14 @@ export const useChatStore = create<ChatStore>()(
 
       if (!runId) return
 
-
+      if (sessionId) {
+        try {
+          const { pausePendingSessionDispatch } = await import('@renderer/hooks/use-chat-actions')
+          pausePendingSessionDispatch(sessionId)
+        } catch (err) {
+          console.warn('[chat-store] Failed to pause queued messages before cancel:', err)
+        }
+      }
 
       try {
 
@@ -367,6 +404,7 @@ export const useChatStore = create<ChatStore>()(
       if (sessionId) {
 
         useAgentStore.getState().setSessionRequestRetryState(sessionId, null)
+        useAgentStore.getState().setSessionStatus(sessionId, null)
 
         state.setStreamingMessageId(sessionId, null)
 
@@ -1232,6 +1270,7 @@ export const useChatStore = create<ChatStore>()(
             // Request completed successfully — clear retry state
 
             useAgentStore.getState().setSessionRequestRetryState(targetSessionId, null)
+            useAgentStore.getState().setSessionStatus(targetSessionId, null)
 
             // Flush any pending stream deltas before clearing streaming state
 
@@ -1331,6 +1370,45 @@ export const useChatStore = create<ChatStore>()(
               })
             }
 
+            // Proactive memory extraction: fire-and-forget once the assistant
+            // turn finishes. Switches, debounce and main-session-only checks
+            // are enforced inside; failures only log. Dynamic import avoids a
+            // chat-store <-> memory-automation circular dependency.
+            {
+              const memoryReason = event.reason ?? 'completed'
+              if (memoryReason === 'completed' || memoryReason === 'max_iterations') {
+                const memorySessionId = targetSessionId
+                const memoryAssistantMessageId = envelope.runId
+                void import('@renderer/lib/agent/memory-automation')
+                  .then(({ runMemoryAutomationForSession }) =>
+                    runMemoryAutomationForSession({
+                      sessionId: memorySessionId,
+                      assistantMessageId: memoryAssistantMessageId,
+                      source: 'turn_end'
+                    })
+                  )
+                  .catch((err) => {
+                    console.warn('[MemoryAutomation] auto extraction failed:', err)
+                  })
+              }
+            }
+
+            if (event.reason === 'aborted' || event.reason === 'error') {
+              void import('@renderer/hooks/use-chat-actions')
+                .then(({ pausePendingSessionDispatch }) => pausePendingSessionDispatch(targetSessionId))
+                .catch((err) => {
+                  console.warn('[chat-store] Failed to pause queued messages after interrupted loop:', err)
+                })
+            } else {
+              void import('@renderer/hooks/use-chat-actions')
+                .then(({ dispatchNextQueuedMessageForSession }) => {
+                  dispatchNextQueuedMessageForSession(targetSessionId, false)
+                })
+                .catch((err) => {
+                  console.warn('[chat-store] Failed to dispatch queued message after loop end:', err)
+                })
+            }
+
             break
 
 
@@ -1389,11 +1467,42 @@ export const useChatStore = create<ChatStore>()(
 
 
 
+          case 'memory_recall': {
+
+            const recallReason = event.reason ?? 'no_match'
+
+            const recallHits = event.recallHits ?? []
+
+            set((state) => {
+
+              const session = state.sessions.find((s) => s.id === targetSessionId)
+
+              if (session) {
+
+                const msg = session.messages.find((m) => m.id === envelope.runId)
+
+                if (msg) {
+
+                  msg.memoryRecall = { reason: recallReason, hits: recallHits }
+
+                }
+
+              }
+
+            })
+
+            break
+
+          }
+
+
+
           case 'error':
 
             // Request failed — clear retry state
 
             useAgentStore.getState().setSessionRequestRetryState(targetSessionId, null)
+            useAgentStore.getState().setSessionStatus(targetSessionId, null)
 
             // Flush any pending stream deltas before clearing streaming state
 
@@ -1442,6 +1551,12 @@ export const useChatStore = create<ChatStore>()(
               }
 
             })
+
+            void import('@renderer/hooks/use-chat-actions')
+              .then(({ pausePendingSessionDispatch }) => pausePendingSessionDispatch(targetSessionId))
+              .catch((err) => {
+                console.warn('[chat-store] Failed to pause queued messages after run error:', err)
+              })
 
             break
 
@@ -1573,6 +1688,30 @@ export function applyCompactArtifactsToSession(
     if (index >= 0) {
       void dbUpsertMessage(sessionId, updated.messages[index], index)
     }
+  }
+}
+
+/**
+ * Refresh the contextTokens estimate on the last usage-bearing message so the
+ * ContextRing updates immediately after a manual compression — that path emits
+ * no message_end event, which is the only other writer of usage.contextTokens.
+ * Persists the patched message so reloads keep the refreshed estimate.
+ */
+export function updateSessionContextTokens(
+  sessionId: string,
+  contextTokens: number
+): void {
+  if (!Number.isFinite(contextTokens) || contextTokens <= 0) return
+  const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
+  if (!session) return
+  const messages = session.messages
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (!message?.usage) continue
+    if ((message.usage.contextTokens ?? 0) === contextTokens) return
+    message.usage = { ...message.usage, contextTokens }
+    void dbUpsertMessage(sessionId, message, index)
+    return
   }
 }
 

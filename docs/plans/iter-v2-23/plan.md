@@ -157,18 +157,18 @@
 >
 > 前置：执行前先将当前未提交的压缩状态事件增强 WIP 提交为检查点（步骤 35 依赖其稳定 operationId 状态卡语义）。
 
-- [ ] 步骤 35：聊天展示产物不再触发快照失效（修复根因 1）。
+- [x] 步骤 35：聊天展示产物不再触发快照失效（修复根因 1）。【已执行：5a039e8；回归 legacy 180/new 194 全绿】
   - 现状：压缩开始落库的状态卡成为快照游标锚点；完成态 upsert 改 meta → `DbMessageToolsMutations.Upsert` UPDATE 分支 `HasModelInputChanged` 命中 → `InvalidateIfUpsertCovered` 删除刚写入的快照（每次压缩必然发生）。
   - 实现：`DbCompactionSnapshotStore` 新增共享判定 `IsChatOnlyArtifactMeta`（meta 含 `compressionStatus` 或 `compactBoundary`）；`Upsert` UPDATE 分支中，聊天展示产物行且**仅 meta 发生变化**（role/content/位置不变）时跳过失效判定——这些行从不进入模型上下文，对齐契约 §7.4"不影响模型输入的展示字段更新不使快照失效"；内容/角色/位置变化仍按 §7.2 失效（保守策略）。注意：`compactSummary` 摘要行属于模型输入（快照 wire 会话成员），**不纳入**跳过集合，其内容改写仍使快照失效。
   - 验证：`tests/WishfulClaw.CompactionSnapshotRegressionTests` 新增用例——覆盖区内状态卡 meta upsert 不删快照、普通消息内容修改仍删快照、产物行 content 改写仍删快照；既有用例不回退。dotnet build 0 警告 0 错误。
-- [ ] 步骤 36：全量恢复过滤压缩摘要消息（修复根因 2）。
+- [x] 步骤 36：全量恢复过滤压缩摘要消息（修复根因 2）。【已执行：fe81134；RunRestoreFilterSuite 两套件全绿】
   - 现状：快照失效后全量恢复把旧历史 + `compactSummary` 摘要双份注入模型上下文，等于撤销压缩。
   - 实现：`SessionRestoreTools.IsChatOnlyArtifact` 增加 `compactSummary` meta 识别 + 旧版 `<compaction-summary>` 文本兜底识别（仅作用于恢复过滤，不影响聊天窗展示）；快照路径与全量路径共用。测试落点：`CompactionSnapshotRegressionTests` 现仅引用 Infrastructure，够不到 Agent 层 internal 的 `SessionRestoreTools`——为该工程补 `WishfulClaw.Agent` 项目引用，并在 Agent csproj 的 `InternalsVisibleTo` 中追加该工程（现有先例：GoalRegressionTests）。
   - 验证：回归测试新增用例（全量恢复不注入摘要行与旧版文本摘要行；快照路径增量同样过滤）；dotnet build 0 警告 0 错误。
-- [ ] 步骤 37：AgentLoop 惰性会话初始化（核心改造）。
+- [x] 步骤 37：AgentLoop 惰性会话初始化（核心改造）。【已执行：fecd6b1；全解 0 警告 0 错误，Compaction/Goal/Memory 回归全绿；Cron 回归存在与本次无关的既有列集断言漂移（main 同样失败）】
   - 实现：① 从 `SessionRestoreTools.RestoreSession` 提取恢复核心 `RestoreFromDb(db, sessionId)`——快照+增量 / 全量回退 / 工具结果 reconciliation 不变，返回 (wireMessages, conversation, fromSnapshot)，不写 SessionConversation、不产生 WorkerResponse；`agent/restore-session` 端点改为薄封装（幂等语义不变，前端解耦后无调用方但保留备用）。② `AgentLoop` `MessageCount == 0` 分支加惰性恢复，守卫 `sessionId.Length > 0 && conversationKey == sessionId`（排除空 sessionId 的 `__default__` 共享实例与 `__subagent__`/`__goal__` key）：`DbClient.EnsureInitialized(parameters)` 后调恢复核心；DB 无消息 → 维持现首轮逻辑；有消息 → `InitializeIfEmpty`（防竞态，与端点同一守卫）；快照路径的 `MarkCompactionWatermark` 会被随后 `Append` 归零（已知行为，归零后压缩门控由 token 阈值主导，无害，注明即可）。③ 恢复后 `Append` 本轮新消息，`ContextCompression.EstimateMessagesTokens` 估算整体 token 种子化 `lastInputTokens` → 迭代 1 现有压缩块经 `ShouldCompress` 自然门控：超阈值先压缩（压缩输入含新消息、尾部保留新消息）再请求，不超则直接"快照+增量+新消息"或"全量+新消息"。压缩事件沿用现有 `context_compression_started`/`context_compressed` 链路。若实现中引入新 record 经 `WorkerResponse.Json` 返回，必须注册对应 `JsonSerializerContext`（AOT 规范 §3/§5）。
   - 验证：dotnet build 0 警告 0 错误；回归测试通过；Worker 日志可区分 source=snapshot/full/first-turn。
-- [ ] 步骤 38：前端进入会话与后端重建解耦。
+- [x] 步骤 38：前端进入会话与后端重建解耦。【已执行：96a2548；TS 三配置 0 错误；前端已无 restore-session 调用方】
   - 实现：`session-slice.ts` `loadRecentSessionMessages` 移除 fire-and-forget `agent/restore-session`（根因 3：急切重建 + 竞态）；`use-channel-auto-reply.ts` 移除发送前显式 `await agent/restore-session`（后端惰性初始化在 `agent/run` 内同步完成，`InitializeIfEmpty` 幂等防竞态）；其余入口（`MainLayout` / `search-dialog` / `floating-chat-window` / `useMessageListScroll` / `session-runtime-router` / `cron-runtime`）均经 `loadRecentSessionMessages` 间接触发，单点移除即全覆盖。前端加载历史仍为纯 DB 分页渲染。
   - 验证：TS 三配置 0 错误；进入/切换会话不再产生 Worker restore 日志；发送消息后出现惰性恢复日志。
 - [ ] 步骤 39：端到端场景验证（人工验收）。

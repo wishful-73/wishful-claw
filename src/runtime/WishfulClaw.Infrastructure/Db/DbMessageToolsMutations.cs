@@ -88,7 +88,14 @@ public static partial class DbMessageTools
 
             if (existing is not null)
             {
-                var modelInputChanged = HasModelInputChanged(existing, message);
+                var positionUnchanged = string.Equals(existing.SessionId, message.SessionId, StringComparison.Ordinal) &&
+                                        existing.CreatedAt == message.CreatedAt &&
+                                        existing.SortOrder == message.SortOrder;
+                var artifactMetaOnlyChange = positionUnchanged &&
+                                             string.Equals(existing.Role, message.Role, StringComparison.Ordinal) &&
+                                             string.Equals(existing.Content, message.Content, StringComparison.Ordinal) &&
+                                             DbCompactionSnapshotStore.IsChatOnlyArtifactMeta(existing.Meta);
+                var modelInputChanged = HasModelInputChanged(existing, message) && !artifactMetaOnlyChange;
                 var existingPosition = new DbCompactionSnapshotStore.MessagePosition(existing.CreatedAt, existing.SortOrder);
                 var incomingPosition = new DbCompactionSnapshotStore.MessagePosition(message.CreatedAt, message.SortOrder);
 

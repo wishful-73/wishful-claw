@@ -340,6 +340,91 @@ internal static class Program
         })), "meta-changing message update succeeds");
         AssertNoSnapshot(dbPath, updateSession, "meta-changing message update invalidates the snapshot");
 
+        // Chat-only display artifacts (compression status card / compact boundary)
+        // never reach the model context — meta-only lifecycle updates must keep the
+        // snapshot (snapshot-contract.md §7.4), while content rewrites still
+        // invalidate it. Regression for the "snapshot deleted the moment compression
+        // completes" defect: the status card is inserted before PersistSnapshot, so
+        // the snapshot cursor anchors on it, and the completion-state merge used to
+        // delete the snapshot it was reporting on.
+        var artifactSession = $"{prefix}-session-artifact";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", artifactSession);
+            writer.WriteString("title", "Artifact Session");
+        })), "artifact session is created");
+        AddMessage(dbPath, artifactSession, $"{prefix}-artifact-message", 2700, 0);
+        AssertMutationSuccess(DbMessageTools.Add(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-artifact-status");
+            writer.WriteString("sessionId", artifactSession);
+            writer.WriteString("role", "system");
+            writer.WriteString("content", "");
+            writer.WriteString("meta", "{\"compressionStatus\":{\"operationId\":\"op-1\",\"state\":\"compressing\",\"startedAt\":2700}}");
+            writer.WriteNumber("createdAt", 2700);
+            writer.WriteNumber("sortOrder", 1);
+        })), "compression status card is inserted");
+        UpsertSnapshot(dbPath, artifactSession);
+        AssertMutationSuccess(DbMessageTools.Upsert(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-artifact-status");
+            writer.WriteString("sessionId", artifactSession);
+            writer.WriteString("role", "system");
+            writer.WriteString("content", "");
+            writer.WriteString("meta", "{\"compressionStatus\":{\"operationId\":\"op-1\",\"state\":\"compressed\",\"startedAt\":2700,\"completedAt\":2701}}");
+            writer.WriteNumber("createdAt", 2700);
+            writer.WriteNumber("sortOrder", 1);
+        })), "status card completion-state upsert succeeds");
+        AssertHasSnapshot(dbPath, artifactSession, "status card meta-only upsert keeps the snapshot");
+
+        AssertMutationSuccess(DbMessageTools.Add(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-artifact-boundary");
+            writer.WriteString("sessionId", artifactSession);
+            writer.WriteString("role", "system");
+            writer.WriteString("content", "");
+            writer.WriteString("meta", "{\"compactBoundary\":{\"trigger\":\"auto\"}}");
+            writer.WriteNumber("createdAt", 2700);
+            writer.WriteNumber("sortOrder", 2);
+        })), "compact boundary row is inserted");
+        UpsertSnapshot(dbPath, artifactSession);
+        AssertMutationSuccess(DbMessageTools.Upsert(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-artifact-boundary");
+            writer.WriteString("sessionId", artifactSession);
+            writer.WriteString("role", "system");
+            writer.WriteString("content", "");
+            writer.WriteString("meta", "{\"compactBoundary\":{\"trigger\":\"manual\",\"preTokens\":123}}");
+            writer.WriteNumber("createdAt", 2700);
+            writer.WriteNumber("sortOrder", 2);
+        })), "boundary meta-only upsert succeeds");
+        AssertHasSnapshot(dbPath, artifactSession, "boundary meta-only upsert keeps the snapshot");
+
+        AssertMutationSuccess(DbMessageTools.Upsert(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-artifact-status");
+            writer.WriteString("sessionId", artifactSession);
+            writer.WriteString("role", "system");
+            writer.WriteString("content", "rewritten artifact content");
+            writer.WriteString("meta", "{\"compressionStatus\":{\"operationId\":\"op-1\",\"state\":\"compressed\",\"startedAt\":2700,\"completedAt\":2701}}");
+            writer.WriteNumber("createdAt", 2700);
+            writer.WriteNumber("sortOrder", 1);
+        })), "artifact content rewrite upsert succeeds");
+        AssertNoSnapshot(dbPath, artifactSession, "artifact content rewrite still invalidates the snapshot");
+
+        UpsertSnapshot(dbPath, artifactSession);
+        AssertMutationSuccess(DbMessageTools.Upsert(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-artifact-message");
+            writer.WriteString("sessionId", artifactSession);
+            writer.WriteString("role", "user");
+            writer.WriteString("content", $"message {prefix}-artifact-message");
+            writer.WriteString("meta", "{\"toolResult\":true}");
+            writer.WriteNumber("createdAt", 2700);
+            writer.WriteNumber("sortOrder", 0);
+        })), "regular message meta-only upsert succeeds");
+        AssertNoSnapshot(dbPath, artifactSession, "regular message meta-only upsert still invalidates the snapshot");
+
         // Deleting a covered message removes the snapshot.
         UpsertSnapshot(dbPath, sessionA);
         AssertMutationSuccess(DbMessageTools.Delete(Params(dbPath, writer =>

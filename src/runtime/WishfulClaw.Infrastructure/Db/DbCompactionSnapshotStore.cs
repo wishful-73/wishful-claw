@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Infrastructure.Db;
@@ -163,6 +164,29 @@ public static class DbCompactionSnapshotStore
             "ORDER BY created_at DESC, sort_order DESC LIMIT 1",
             r => new MessagePosition(r.GetInt64("created_at"), r.GetInt32("sort_order")),
             new SqliteParameter("@sid", sessionId));
+    }
+
+    /// <summary>
+    /// True when the message meta marks a chat-window display artifact (compression
+    /// status card / compact boundary divider). These rows never enter the model
+    /// context, so meta-only lifecycle updates (e.g. compressing → compressed) must
+    /// not invalidate the snapshot (snapshot-contract.md §7.4).
+    /// </summary>
+    public static bool IsChatOnlyArtifactMeta(string? metaJson)
+    {
+        if (string.IsNullOrEmpty(metaJson)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(metaJson);
+            var meta = doc.RootElement;
+            return meta.ValueKind == JsonValueKind.Object &&
+                   (meta.TryGetProperty("compressionStatus", out _) ||
+                    meta.TryGetProperty("compactBoundary", out _));
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

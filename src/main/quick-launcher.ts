@@ -8,18 +8,22 @@
  * modified from both the main settings page and (future) the launcher window.
  */
 
-import { app, BrowserWindow, shell, screen, dialog } from 'electron'
+import { app, BrowserWindow, shell, dialog } from 'electron'
 import { spawn } from 'child_process'
 import { join } from 'path'
 import * as fs from 'fs'
 import { pinyin } from 'pinyin-pro'
 import { registerMessagePackHandler } from './ipc/messagepack-handler'
-import { registerPriorityShortcut, unregisterPriorityShortcut, forceActivateWindow } from './priority-shortcuts'
+import { registerPriorityShortcut, unregisterPriorityShortcut, forceActivateWindow, type ShortcutContext } from './priority-shortcuts'
+import { getAuxiliaryWindowBounds } from './aux-window-screen'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import { WINDOWS_SETTINGS } from './launcher-system-settings'
 import { extractPeIcon } from './pe-icon-extractor'
 
 let launcherWindow: BrowserWindow | null = null
+let launcherBlurHideTimer: NodeJS.Timeout | null = null
+let launcherActivationTimer: NodeJS.Timeout | null = null
+let launcherGraceUntil = 0
 let appListCache: AppShortcut[] | null = null
 let cacheTime = 0
 let config: LauncherConfig
@@ -145,8 +149,8 @@ function registerShortcut(): boolean {
   let allOk = true
   for (let i = 0; i < config.accelerators.length; i++) {
     const id = `quick-launcher-${i}`
-    const ok = registerPriorityShortcut(id, config.accelerators[i], () => {
-      createLauncherWindow()
+    const ok = registerPriorityShortcut(id, config.accelerators[i], (context) => {
+      createLauncherWindow(context)
     })
     registeredIds.push(id)
     if (!ok) allOk = false
@@ -780,7 +784,7 @@ function registerLauncherIpc(): void {
       // History ordering changed — rebuild the merged list on next search.
       appListCache = null
     }
-    launcherWindow?.hide()
+    hideLauncherWindow()
     return true
   })
 
@@ -806,6 +810,10 @@ function registerLauncherIpc(): void {
   // ── Config IPC ──
 
   registerMessagePackHandler<void, LauncherConfig>('launcher:get-config', () => config)
+
+  registerMessagePackHandler<void, void>('launcher:hide', () => {
+    hideLauncherWindow()
+  })
 
   registerMessagePackHandler<void, CustomApp[]>('launcher:get-custom-apps', () => config.customApps)
 
@@ -846,13 +854,77 @@ function registerLauncherIpc(): void {
 
 // ── Window ──
 
-export function createLauncherWindow(): void {
+const LAUNCHER_BLUR_CONFIRM_MS = 120
+const LAUNCHER_ACTIVATION_GRACE_MS = 250
+const LAUNCHER_WIDTH = 600
+const LAUNCHER_HEIGHT = 400
+
+function clearLauncherBlurHideTimer(): void {
+  if (launcherBlurHideTimer) {
+    clearTimeout(launcherBlurHideTimer)
+    launcherBlurHideTimer = null
+  }
+}
+
+function clearLauncherActivationTimer(): void {
+  if (launcherActivationTimer) {
+    clearTimeout(launcherActivationTimer)
+    launcherActivationTimer = null
+  }
+}
+
+function clearLauncherTimers(): void {
+  clearLauncherBlurHideTimer()
+  clearLauncherActivationTimer()
+}
+
+function hideLauncherWindow(): void {
+  clearLauncherTimers()
+  launcherGraceUntil = 0
+  if (launcherWindow && !launcherWindow.isDestroyed() && launcherWindow.isVisible()) {
+    launcherWindow.hide()
+  }
+}
+
+function scheduleLauncherBlurHide(): void {
+  clearLauncherBlurHideTimer()
+  const delay = Math.max(LAUNCHER_BLUR_CONFIRM_MS, launcherGraceUntil - Date.now())
+  launcherBlurHideTimer = setTimeout(() => {
+    launcherBlurHideTimer = null
+    const win = launcherWindow
+    if (!win || win.isDestroyed() || !win.isVisible()) return
+    if (win.isFocused()) return
+    if (Date.now() < launcherGraceUntil) {
+      scheduleLauncherBlurHide()
+      return
+    }
+    hideLauncherWindow()
+  }, delay)
+}
+
+function positionLauncherWindow(context: ShortcutContext): void {
+  if (!launcherWindow || launcherWindow.isDestroyed()) return
+  const bounds = getAuxiliaryWindowBounds(context, LAUNCHER_WIDTH, LAUNCHER_HEIGHT, 'launcher')
+  launcherWindow.setBounds(bounds)
+}
+
+export function createLauncherWindow(context: ShortcutContext = {
+  foregroundWindow: null,
+  focusWindow: null,
+  foregroundWindowRect: null,
+  focusWindowRect: null,
+  caretRect: null,
+  mousePoint: null
+}): void {
   registerLauncherIpc()
 
   if (launcherWindow) {
     if (launcherWindow.isVisible()) {
-      launcherWindow.hide()
+      hideLauncherWindow()
     } else {
+      clearLauncherTimers()
+      positionLauncherWindow(context)
+      launcherGraceUntil = Date.now() + LAUNCHER_ACTIVATION_GRACE_MS
       launcherWindow.show()
       // Windows foreground lock: once a launched app (or an agent window)
       // owns the foreground, plain focus() loses the race — the window shows
@@ -862,21 +934,13 @@ export function createLauncherWindow(): void {
       if (!forceActivateWindow(launcherWindow)) {
         launcherWindow.focus()
       }
-      // Reset/focus is driven by the 'show' event listener below (event-driven,
-      // no fixed-delay race)
     }
     return
   }
 
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
-  const winWidth = 600
-  const winHeight = 400
-
+  const bounds = getAuxiliaryWindowBounds(context, LAUNCHER_WIDTH, LAUNCHER_HEIGHT, 'launcher')
   launcherWindow = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
-    x: Math.round((screenWidth - winWidth) / 2),
-    y: Math.round((screenHeight - winHeight) / 2 - 100),
+    ...bounds,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -893,7 +957,19 @@ export function createLauncherWindow(): void {
   })
 
   launcherWindow.on('blur', () => {
-    launcherWindow?.hide()
+    scheduleLauncherBlurHide()
+  })
+  launcherWindow.on('focus', () => {
+    clearLauncherBlurHideTimer()
+    launcherGraceUntil = 0
+  })
+  launcherWindow.on('close', () => {
+    clearLauncherTimers()
+  })
+  launcherWindow.on('closed', () => {
+    clearLauncherTimers()
+    launcherWindow = null
+    launcherGraceUntil = 0
   })
 
   // Send reset event after show so renderer clears input and focuses.
@@ -901,12 +977,16 @@ export function createLauncherWindow(): void {
   // when another app (just-launched software, an agent window) owns focus;
   // the short delay only covers the initial show/activate settle.
   launcherWindow.on('show', () => {
-    setTimeout(() => {
-      if (!launcherWindow?.isVisible()) return
-      if (!forceActivateWindow(launcherWindow)) {
-        launcherWindow.focus()
+    launcherGraceUntil = Date.now() + LAUNCHER_ACTIVATION_GRACE_MS
+    clearLauncherTimers()
+    launcherActivationTimer = setTimeout(() => {
+      launcherActivationTimer = null
+      const win = launcherWindow
+      if (!win || win.isDestroyed() || !win.isVisible()) return
+      if (!forceActivateWindow(win)) {
+        win.focus()
       }
-      safeSendMessagePackToWindow(launcherWindow, 'launcher:reset', null)
+      safeSendMessagePackToWindow(win, 'launcher:reset', null)
     }, 30)
   })
 
@@ -916,6 +996,7 @@ export function createLauncherWindow(): void {
     launcherWindow.loadFile(join(__dirname, '../renderer/launcher.html'))
   }
 
+  launcherGraceUntil = Date.now() + LAUNCHER_ACTIVATION_GRACE_MS
   launcherWindow.show()
   if (!forceActivateWindow(launcherWindow)) {
     launcherWindow.focus()
@@ -930,6 +1011,7 @@ export function registerQuickLauncher(): void {
   registerShortcut()
 
   app.on('will-quit', () => {
+    clearLauncherTimers()
     unregisterShortcut()
   })
 }

@@ -121,7 +121,7 @@ function QuickLauncher(): React.JSX.Element {
       if (query) {
         setQuery('')
       } else {
-        void window.api.invoke('clipboard:hide', null)
+        void window.api.invoke('launcher:hide', null)
       }
     }
   }

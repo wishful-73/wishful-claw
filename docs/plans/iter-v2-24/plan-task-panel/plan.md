@@ -30,7 +30,7 @@
 
 - [ ] **步骤2：Worker DB 工具 + IPC 通道**
   - 参考现有 `Db*Tools` 模式，新建 `DbGlobalTaskTools`（list / create / update / delete），注册进 `WorkerModuleCatalog`
-  - 主进程 `messagepack-handler` 注册 `db:global-tasks:list/create/update/delete` 通道，preload 暴露给渲染进程
+  - 通道常量定义在 `shared/messagepack/binary-ipc.ts`（项目惯例），主进程 `messagepack-handler` 注册 `db:global-tasks:list/create/update/delete` 通道，preload 暴露给渲染进程
   - 验证：TS node 配置编译零错误；手工 invoke 通道 CRUD 正常（日志核验）
 
 - [ ] **步骤3：渲染进程 store**
@@ -52,11 +52,11 @@
   - 验证：`dotnet build` 零错误 + AOT 0 警告（`scripts/publish-aot-worker.mjs`）；会话中让 agent 调用工具建任务成功
 
 - [ ] **步骤6：Prompt 引导**
-  - PromptBuilder 增加 `<task_management>` 段（仅当全局任务工具可用时注入）：接到用户任务先查已有任务（防重复）→ 复杂任务建全局任务 → 完成后回写状态，未完成不得标 completed
+  - PromptBuilder 增加 `<task_management>` 段（仅当全局任务工具可用时注入）：接到用户任务先查已有任务（防重复）→ 复杂任务建全局任务 → 完成后回写状态，未完成不得标 completed；工具可用标记由调用方（Worker/AgentLoop）经 `parameters` 传入 PromptBuilder
   - 验证：会话中观察 system prompt 含该段（日志核验）
 
 - [ ] **步骤7：工具写入后的实时同步**
-  - 工具写库成功后经现有流式事件机制广播 `global_task_changed` 事件；`task-board-store` 监听并刷新
+  - 工具写库成功后经现有流式事件机制广播 `global_task_changed` 事件（参考 `memory_recall` 事件的扩展先例）；`task-board-store` 监听并刷新；同步改动流式事件编码器与前端事件 codec（`ConversationCodec` / `agent-stream-protocol.ts` 链路）
   - 验证：agent 工具建任务后，不刷新页面，Task Board 面板即时出现新任务
 
 ## 涉及文件
@@ -67,6 +67,7 @@
 - `src/runtime/WishfulClaw.Agent/Tools/GlobalTaskTools/*.cs` — 新建（4 个工具，一文件一工具）
 - `src/runtime/WishfulClaw.Worker/WorkerModuleCatalog.cs` — 修改（注册）
 - `src/runtime/WishfulClaw.Persona/PromptBuilder.cs` — 修改（task_management 段）
+- `src/shared/messagepack/binary-ipc.ts` — 修改（通道常量）
 - `src/main/ipc/messagepack-handler.ts` — 修改（通道注册）
 - `src/preload/index.ts` + `index.d.ts` — 修改（暴露）
 - `src/renderer/src/stores/task-board-store.ts` — 新建

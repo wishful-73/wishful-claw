@@ -345,7 +345,25 @@ public static partial class DbClient
                     fire_count INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
-                );"
+                );",
+                @"CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    session_id TEXT NOT NULL,
+                    plan_id TEXT,
+                    subject TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    active_form TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    owner TEXT,
+                    blocks TEXT DEFAULT '[]',
+                    blocked_by TEXT DEFAULT '[]',
+                    metadata TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_tasks_session ON tasks(session_id);",
+                @"CREATE INDEX IF NOT EXISTS ix_tasks_plan ON tasks(plan_id);"
             };
 
             foreach (var sql in tableSqls)

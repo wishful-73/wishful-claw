@@ -393,6 +393,31 @@ registerCodeGraphHandlers()
     'goal:live:msgpack',
     async (args) => getNativeWorker().request('goal/live', args)
   )
+  // ── Session-scoped agent task (Todo) DB handlers (forwarded to Worker) ──
+  registerMessagePackHandler<string, unknown[]>(
+    'db:tasks:list-by-session:msgpack',
+    async (sessionId) => getNativeWorker().request('db/tasks-list-by-session', { sessionId })
+  )
+  registerMessagePackHandler<string, unknown>(
+    'db:tasks:get:msgpack',
+    async (id) => getNativeWorker().request('db/tasks-get', { id })
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:tasks:create:msgpack',
+    async (args) => getNativeWorker().request('db/tasks-create', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:tasks:update:msgpack',
+    async (args) => getNativeWorker().request('db/tasks-update', args)
+  )
+  registerMessagePackHandler<string, unknown>(
+    'db:tasks:delete:msgpack',
+    async (id) => getNativeWorker().request('db/tasks-delete', { id })
+  )
+  registerMessagePackHandler<string, unknown>(
+    'db:tasks:delete-by-session:msgpack',
+    async (sessionId) => getNativeWorker().request('db/tasks-delete-by-session', { sessionId })
+  )
   // -- Goal plans/tasks/execution-runs handlers --
   registerMessagePackHandler<Record<string, unknown>, unknown[]>(
     'db:goal-plans:list:msgpack',

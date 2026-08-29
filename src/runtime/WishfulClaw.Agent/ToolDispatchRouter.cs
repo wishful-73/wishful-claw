@@ -208,7 +208,7 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
-        // Task: in-memory task management
+        // Task: session-scoped agent Todo (SQLite-backed, OpenCowork semantics)
         else if (AgentRuntimeTaskExecutor.IsTaskTool(toolCall.Name))
         {
             toolOutput = AgentRuntimeTaskExecutor.Execute(toolCall, state.Parameters);

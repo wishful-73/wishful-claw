@@ -86,6 +86,14 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/plans-update", DbPlanTools.Update);
         context.Register("db/plans-delete", DbPlanTools.Delete);
 
+        // ── Tasks (session-scoped agent Todo, OpenCowork semantics) ──
+        context.Register("db/tasks-list-by-session", DbTaskTools.ListBySession);
+        context.Register("db/tasks-get", DbTaskTools.Get);
+        context.Register("db/tasks-create", DbTaskTools.Create);
+        context.Register("db/tasks-update", DbTaskTools.Update);
+        context.Register("db/tasks-delete", DbTaskTools.Delete);
+        context.Register("db/tasks-delete-by-session", DbTaskTools.DeleteBySession);
+
         // ── Goals ──
         context.Register("db/goals-list", DbGoalTools.List);
         context.Register("db/goals-list-page", DbGoalTools.ListPage);

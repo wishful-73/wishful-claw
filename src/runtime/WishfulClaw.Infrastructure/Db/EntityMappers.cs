@@ -57,6 +57,24 @@ public static class EntityMappers
         SortOrder = r.GetInt32("sort_order")
     };
 
+    public static TaskEntity MapTask(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        SessionId = r.GetString("session_id"),
+        PlanId = r.GetNullableString("plan_id"),
+        Subject = r.GetString("subject"),
+        Description = r.GetString("description"),
+        ActiveForm = r.GetNullableString("active_form"),
+        Status = r.GetString("status"),
+        Owner = r.GetNullableString("owner"),
+        Blocks = r.GetNullableString("blocks") ?? "[]",
+        BlockedBy = r.GetNullableString("blocked_by") ?? "[]",
+        Metadata = r.GetNullableString("metadata"),
+        SortOrder = r.GetInt32("sort_order"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at")
+    };
+
     public static CompactionSnapshotEntity MapCompactionSnapshot(SqliteDataReader r) => new()
     {
         SessionId = r.GetString("session_id"),

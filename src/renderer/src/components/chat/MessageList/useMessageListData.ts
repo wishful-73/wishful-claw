@@ -8,7 +8,8 @@ import { useTeamStore } from '@renderer/stores/team-store'
 import { selectSessionScopedAgentState } from '@renderer/lib/agent/session-scoped-agent-state'
 import { buildOrchestrationRuns } from '@renderer/lib/orchestration/build-runs'
 import {
-  resolveActiveCompactArtifacts
+  resolveActiveCompactArtifacts,
+  isCompactSummaryLikeMessage
 } from '@renderer/lib/agent/context-compression'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import { DB_MESSAGES_LIST_LOCATOR_MSGPACK_CHANNEL } from '../../../../../shared/messagepack/binary-ipc'
@@ -40,6 +41,8 @@ export interface MessageListDataOutput {
   messageCount: number
   workingFolder: string | null
   loadedRangeStart: number
+  totalTurns: number
+  loadedTurns: number
   projectId: string | null
   transcriptAnalysis: ReturnType<typeof buildTranscriptStaticAnalysis>
   renderableMessages: ChatRenderableMessageMeta[]
@@ -60,6 +63,7 @@ export interface MessageListDataOutput {
   assistantRailLayoutRows: AssistantRailLayoutRow[]
   rows: MessageListRow[]
   hasLoadOlderRow: boolean
+  pinnedTurnMessage: UnifiedMessage | null
   duplicatePlanReviewToolUseIds: Set<string>
   continueAssistantMessageId: string | null
   pendingAskUserQuestion: ReturnType<typeof findPendingAskUserQuestion>
@@ -108,8 +112,15 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     messageCount: activeSessionMessageCount,
     workingFolder: activeWorkingFolder,
     loadedRangeStart,
+    totalTurns,
     projectId: activeProjectId
   } = sessionSelection
+
+  // Loaded turns = user messages currently in memory (one turn per user message).
+  const loadedTurns = React.useMemo(
+    () => messages.reduce((count, message) => (message.role === 'user' ? count + 1 : count), 0),
+    [messages]
+  )
 
   const activeProjectName = useChatStore((s) => {
     if (!activeProjectId) return null
@@ -416,6 +427,21 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
 
   const hasLoadOlderRow = loadedRangeStart > 0
 
+  // ── Pinned current-turn user message ────────────────────────────
+  // 仅在执行中的当前轮次启用：最后一条普通 user 消息作为任务锚点；
+  // 历史折叠会话（无运行态）与压缩摘要/团队消息不参与吸附。
+  const pinnedTurnMessage = React.useMemo(() => {
+    if (!isAgentExecutionActive) return null
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      if (message.role !== 'user') continue
+      if (message.source === 'team') continue
+      if (isCompactSummaryLikeMessage(message)) continue
+      return message
+    }
+    return null
+  }, [isAgentExecutionActive, messages])
+
   // ── Pending ask user question ───────────────────────────────────
   const pendingAskUserQuestion = React.useMemo(
     () => findPendingAskUserQuestion(rows, toolResultsLookup, messageLookup),
@@ -434,6 +460,8 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     messageCount: activeSessionMessageCount,
     workingFolder: activeWorkingFolder ?? null,
     loadedRangeStart,
+    totalTurns,
+    loadedTurns,
     projectId: activeProjectId ?? null,
     transcriptAnalysis,
     renderableMessages,
@@ -451,6 +479,7 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     assistantRailLayoutRows: assistantRailLayout.rows,
     rows,
     hasLoadOlderRow,
+    pinnedTurnMessage,
     duplicatePlanReviewToolUseIds,
     continueAssistantMessageId,
     pendingAskUserQuestion,

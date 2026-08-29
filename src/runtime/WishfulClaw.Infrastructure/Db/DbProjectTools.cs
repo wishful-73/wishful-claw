@@ -179,10 +179,14 @@ public static class DbProjectTools
 
             if (sessionIds.Count > 0)
             {
-                // Delete messages for all sessions in this project
-                var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
-                var msgParams = sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray();
-                db.Execute($"DELETE FROM messages WHERE session_id IN ({placeholders})", msgParams);
+                // Delete messages and compaction snapshots for all sessions in this project
+                db.ExecuteInTransaction((conn, tx) =>
+                {
+                    var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
+                    var msgParams = sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray();
+                    db.Execute(conn, tx, $"DELETE FROM messages WHERE session_id IN ({placeholders})", msgParams);
+                    DbCompactionSnapshotStore.DeleteForSessions(db, conn, tx, sessionIds);
+                });
             }
 
             db.Execute("DELETE FROM sessions WHERE project_id = @id",

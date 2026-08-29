@@ -15,6 +15,7 @@ import {
   writeChannelPlugins
 } from '../../channels/channel-config-store'
 import { safeSendMessagePackToAllWindows } from '../../window-ipc'
+import { logError, extractMessage, extractStack } from '../../lib/logger'
 import {
   decodeMessagePackPayload,
   encodeMessagePackPayload,
@@ -104,8 +105,19 @@ export function registerChannelMessagePackHandler<TArgs>(
   handler: (args: TArgs) => Promise<unknown>
 ): void {
   ipcMain.handle(toMessagePackChannel(channel), async (_event, bytes: Uint8Array) => {
-    const args = decodeMessagePackPayload<TArgs>(bytes)
-    return encodeMessagePackPayload(await handler(args))
+    try {
+      const args = decodeMessagePackPayload<TArgs>(bytes)
+      return encodeMessagePackPayload(await handler(args))
+    } catch (err) {
+      // Match registerMessagePackHandler's contract: return an { error }
+      // payload instead of rejecting, so renderer consumers of plugin:* channels
+      // that check result.error see the failure instead of a thrown invoke.
+      const msg = extractMessage(err)
+      const stack = extractStack(err)
+      console.error(`[IPC] Channel handler error for '${channel}':`, msg)
+      logError('ipc', `Channel handler error for '${channel}': ${msg}`, { stack, extra: { channel } })
+      return encodeMessagePackPayload({ error: msg })
+    }
   })
 }
 

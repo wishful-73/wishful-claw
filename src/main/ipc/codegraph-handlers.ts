@@ -1,9 +1,10 @@
-﻿import { BrowserWindow, ipcMain } from 'electron'
+﻿import { ipcMain } from 'electron'
 import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { getCodeGraphAssetStatus } from '../lib/codegraph-assets'
 import { getNativeWorker } from '../lib/native-worker'
 import { readPersistedSettings } from '../lib/settings-store'
+import { safeSendMessagePackToAllWindows } from '../window-ipc'
 
 // Channel names mirror IPC.CODEGRAPH_* in src/renderer/src/lib/ipc/channels.ts.
 const ASSET_STATUS = 'codegraph:asset-status'
@@ -20,10 +21,9 @@ const CODEGRAPH_PLUGIN_ID = 'codegraph'
 let indexProgressForwardingRegistered = false
 
 function broadcast(channel: string, payload: unknown): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (win.isDestroyed()) continue
-    win.webContents.send(channel, payload)
-  }
+  // postMessage-based fan-out: webContents.send() can raise an uncatchable
+  // async error when the target render frame is mid-disposal (Electron 35+).
+  safeSendMessagePackToAllWindows(channel, payload)
 }
 
 // Subscribe once to the worker's index progress/complete events and relay them to

@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ProviderType, ReasoningEffortLevel } from '../lib/api/types'
 import { ipcStorage } from '../lib/ipc/ipc-storage'
@@ -25,7 +25,7 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type MemoryAutomationWritePolicy, type MemoryScopeMode, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
 
 // Re-export types for consumers
 export type {
@@ -36,7 +36,7 @@ export type {
   FileDiffViewMode,
   LiveOutputAnimationStyle,
   MainModelSelectionMode,
-  MemoryAutomationWritePolicy,
+  MemoryOrganizationSchedule,
   MemoryScopeMode,
   ModelBinding,
   OnboardingLanguage,
@@ -143,20 +143,29 @@ interface SettingsStore {
   defaultSoulTemplateId: string
   defaultPersonaId: string
   conversationGuideSeen: boolean
-  memoryAutomationEnabled: boolean
-  memoryAutomationWritePolicy: MemoryAutomationWritePolicy
-  memoryAutomationMainSessionsOnly: boolean
-  memoryAutomationSummaryBudgetTokens: number
-  memoryAutomationDailyRollupEnabled: boolean
   memoryUseMemories: boolean
-  memoryGenerateMemories: boolean
   memoryScopeMode: MemoryScopeMode
   memoryMaxRolloutsPerStartup: number
   memoryMinRolloutIdleHours: number
   memoryMaxRawMemoriesForConsolidation: number
   memoryMaxUnusedDays: number
   memorySummaryBudgetTokens: number
-  memoryDailyRollupEnabled: boolean
+
+  // Memory organization & recall settings
+  memoryOrganizationEnabled: boolean
+  memoryOrganizationSchedule: MemoryOrganizationSchedule
+  memoryOrganizationNightlyTime: string
+  memoryWarmThresholdEphemeral: number
+  memoryWarmThresholdStandard: number
+  memoryWarmThresholdLasting: number
+  memoryColdThresholdEphemeral: number
+  memoryColdThresholdStandard: number
+  memoryColdThresholdLasting: number
+  memoryRecallMaxNotes: number
+  memoryRecallMaxChars: number
+  memoryRecallMinScore: number
+  memoryRecallGlobalFallback: boolean
+  memoryRecallVisibility: boolean
 
   // Appearance Settings
   backgroundColor: string
@@ -166,6 +175,8 @@ interface SettingsStore {
   liveOutputAnimationStyle: LiveOutputAnimationStyle
   toolbarCollapsedByDefault: boolean
   leftSidebarWidth: number
+  /** Chat column fills the whole conversation panel instead of the 820px cap. */
+  conversationPanelFullWidth: boolean
 
   // Web Search Settings
   webSearchEnabled: boolean
@@ -198,10 +209,6 @@ interface SettingsStore {
 
   // Network Settings
   systemProxyUrl: string
-
-  // Skills Market Settings
-  skillsMarketProvider: 'skillsmp'
-  skillsMarketApiKey: string
 
   // Prompt Recommendation Settings
   promptRecommendationModels: PromptRecommendationModelBindings
@@ -280,20 +287,29 @@ export const useSettingsStore = create<SettingsStore>()(
       defaultSoulTemplateId: '',
       defaultPersonaId: '',
       conversationGuideSeen: false,
-      memoryAutomationEnabled: true,
-      memoryAutomationWritePolicy: 'auto',
-      memoryAutomationMainSessionsOnly: true,
-      memoryAutomationSummaryBudgetTokens: 12_000,
-      memoryAutomationDailyRollupEnabled: true,
       memoryUseMemories: true,
-      memoryGenerateMemories: true,
       memoryScopeMode: 'hybrid',
       memoryMaxRolloutsPerStartup: 8,
       memoryMinRolloutIdleHours: 0,
       memoryMaxRawMemoriesForConsolidation: 500,
       memoryMaxUnusedDays: 180,
       memorySummaryBudgetTokens: 12_000,
-      memoryDailyRollupEnabled: true,
+
+      // Memory organization & recall settings
+      memoryOrganizationEnabled: true,
+      memoryOrganizationSchedule: 'nightly',
+      memoryOrganizationNightlyTime: '00:00',
+      memoryWarmThresholdEphemeral: 7,
+      memoryWarmThresholdStandard: 30,
+      memoryWarmThresholdLasting: 90,
+      memoryColdThresholdEphemeral: 21,
+      memoryColdThresholdStandard: 90,
+      memoryColdThresholdLasting: 180,
+      memoryRecallMaxNotes: 5,
+      memoryRecallMaxChars: 4000,
+      memoryRecallMinScore: 0,
+      memoryRecallGlobalFallback: true,
+      memoryRecallVisibility: true,
 
       // Appearance Settings
       backgroundColor: '',
@@ -303,6 +319,7 @@ export const useSettingsStore = create<SettingsStore>()(
       liveOutputAnimationStyle: 'agile',
       toolbarCollapsedByDefault: false,
       leftSidebarWidth: LEFT_SIDEBAR_DEFAULT_WIDTH,
+      conversationPanelFullWidth: false,
 
       // Web Search Settings
       webSearchEnabled: false,
@@ -324,10 +341,6 @@ export const useSettingsStore = create<SettingsStore>()(
 
       // Network Settings
       systemProxyUrl: '',
-
-      // Skills Market Settings
-      skillsMarketProvider: 'skillsmp',
-      skillsMarketApiKey: '',
 
       // Prompt Recommendation Settings
       promptRecommendationModels: {
@@ -385,7 +398,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 32,
+      version: 33,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -434,20 +447,27 @@ export const useSettingsStore = create<SettingsStore>()(
         defaultSoulTemplateId: state.defaultSoulTemplateId,
         defaultPersonaId: state.defaultPersonaId,
         conversationGuideSeen: state.conversationGuideSeen,
-        memoryAutomationEnabled: state.memoryAutomationEnabled,
-        memoryAutomationWritePolicy: 'auto' as const,
-        memoryAutomationMainSessionsOnly: state.memoryAutomationMainSessionsOnly,
-        memoryAutomationSummaryBudgetTokens: state.memoryAutomationSummaryBudgetTokens,
-        memoryAutomationDailyRollupEnabled: state.memoryAutomationDailyRollupEnabled,
         memoryUseMemories: state.memoryUseMemories,
-        memoryGenerateMemories: state.memoryGenerateMemories,
         memoryScopeMode: 'hybrid' as const,
         memoryMaxRolloutsPerStartup: state.memoryMaxRolloutsPerStartup,
         memoryMinRolloutIdleHours: state.memoryMinRolloutIdleHours,
         memoryMaxRawMemoriesForConsolidation: state.memoryMaxRawMemoriesForConsolidation,
         memoryMaxUnusedDays: state.memoryMaxUnusedDays,
         memorySummaryBudgetTokens: state.memorySummaryBudgetTokens,
-        memoryDailyRollupEnabled: state.memoryDailyRollupEnabled,
+        memoryOrganizationEnabled: state.memoryOrganizationEnabled,
+        memoryOrganizationSchedule: state.memoryOrganizationSchedule,
+        memoryOrganizationNightlyTime: state.memoryOrganizationNightlyTime,
+        memoryWarmThresholdEphemeral: state.memoryWarmThresholdEphemeral,
+        memoryWarmThresholdStandard: state.memoryWarmThresholdStandard,
+        memoryWarmThresholdLasting: state.memoryWarmThresholdLasting,
+        memoryColdThresholdEphemeral: state.memoryColdThresholdEphemeral,
+        memoryColdThresholdStandard: state.memoryColdThresholdStandard,
+        memoryColdThresholdLasting: state.memoryColdThresholdLasting,
+        memoryRecallMaxNotes: state.memoryRecallMaxNotes,
+        memoryRecallMaxChars: state.memoryRecallMaxChars,
+        memoryRecallMinScore: state.memoryRecallMinScore,
+        memoryRecallGlobalFallback: state.memoryRecallGlobalFallback,
+        memoryRecallVisibility: state.memoryRecallVisibility,
         // Appearance Settings
         backgroundColor: state.backgroundColor,
         fontFamily: state.fontFamily,
@@ -456,6 +476,7 @@ export const useSettingsStore = create<SettingsStore>()(
         liveOutputAnimationStyle: state.liveOutputAnimationStyle,
         toolbarCollapsedByDefault: state.toolbarCollapsedByDefault,
         leftSidebarWidth: clampLeftSidebarWidth(state.leftSidebarWidth),
+        conversationPanelFullWidth: state.conversationPanelFullWidth,
         // Web Search Settings
         webSearchEnabled: state.webSearchEnabled,
         webSearchProvider: state.webSearchProvider,
@@ -472,9 +493,6 @@ export const useSettingsStore = create<SettingsStore>()(
         codegraphFullToolSurface: state.codegraphFullToolSurface,
         // Network Settings
         systemProxyUrl: state.systemProxyUrl,
-        // Skills Market Settings
-        skillsMarketProvider: state.skillsMarketProvider,
-        skillsMarketApiKey: state.skillsMarketApiKey,
         // Prompt Recommendation Settings
         promptRecommendationModels: state.promptRecommendationModels,
         newSessionDefaultModel: state.newSessionDefaultModel,

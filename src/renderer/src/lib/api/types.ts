@@ -277,13 +277,36 @@ export interface CompactSummaryMeta {
   }
 }
 
+export type CompressionStatusState =
+  | 'compressing'
+  | 'compressed'
+  | 'skipped'
+  | 'failed'
+  | 'blocked'
+  | 'cancelled'
+
 export interface CompressionStatusMeta {
-  state: 'compressing' | 'compressed'
+  /** Stable key shared by started and terminal updates for one compression operation. */
+  operationId?: string
+  state: CompressionStatusState
   startedAt: number
   completedAt?: number
   keptMessageCount?: number
   preTokens?: number
   newCount?: number
+  originalCount?: number
+  /** What triggered the compression — auto threshold or user action. */
+  trigger?: 'auto' | 'manual'
+  /** Number of older messages folded into the summary. */
+  messagesSummarized?: number
+  /** True when the LLM summarizer failed and a mechanical fallback digest was used. */
+  summarizerFailed?: boolean
+  /** Final safe error/reason shown for failed, blocked, skipped, or cancelled operations. */
+  error?: string
+  /** Complete summary text copied from the compact summary artifact for card expansion. */
+  summaryText?: string
+  /** Stable compact summary artifact id, when one was produced. */
+  summaryMessageId?: string
 }
 
 export interface SelectedFileReference {
@@ -342,6 +365,10 @@ export interface UnifiedMessage {
   providerResponseId?: string
   source?: 'team' | 'queued' | 'quoted'
   meta?: MessageMeta
+  /** Text generated before tool execution (planning phase, rendered dimmed). */
+  preToolPhase?: boolean
+  /** Memory recall outcome for this turn: reason + injected entry titles. */
+  memoryRecall?: { reason: string; hits: string[] }
   _revision?: number
 }
 

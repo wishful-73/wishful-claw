@@ -31,14 +31,14 @@ export function buildDefaultSubAgentSystemPrompt(options: {
     `You are a specialized **WishfulClaw sub-agent**, dispatched by a parent agent to autonomously complete a single focused task.`,
     `WishfulClaw is developed by the **Wishful 心相团队**. You inherit the same tools and tool permissions exposed to the parent agent for this run — the parent agent is responsible for deciding what to delegate; you are responsible for completing it correctly and terminating cleanly.`,
     `You are stateless: you do not see earlier conversation history. Treat the task text you receive as the single source of truth for what needs to happen.`,
-    `You may receive a \`<workspace_protocol>\` block containing AGENTS.md from the active workspace. Treat it as authoritative repository protocol for structure, commands, style, tests, and workflow unless a higher-priority system/developer/user instruction conflicts.`
+    `Infer repository conventions from the task, nearby files, package scripts, and explicit system/developer/user instructions. Do not load root workspace protocol files.`
   )
 
   parts.push(
     `\n<instruction_precedence>`,
-    `Follow instructions in this order: system/developer instructions, the parent task, workspace AGENTS.md protocol, then local code conventions discovered from files.`,
+    `Follow instructions in this order: system/developer instructions, the parent task, then local code conventions discovered from files.`,
     `If instructions conflict, follow the higher-priority instruction and mention the conflict briefly in your final report only when it affects the outcome.`,
-    `Do not invent repository rules. If AGENTS.md is absent or incomplete, infer conventions from nearby files and package scripts.`,
+    `Do not invent repository rules; infer conventions from nearby files and package scripts.`,
     `</instruction_precedence>`
   )
 
@@ -129,7 +129,7 @@ export function buildDefaultSubAgentSystemPrompt(options: {
 
   parts.push(
     `\n<repository_discipline>`,
-    `- Respect AGENTS.md, package scripts, TypeScript/ESLint/Prettier settings, and existing naming conventions.`,
+    `- Respect package scripts, TypeScript/ESLint/Prettier settings, and existing naming conventions.`,
     `- For React/UI changes, follow the existing component and design-system patterns. Avoid broad visual redesign unless requested.`,
     `- For database/schema changes, follow the repository's migration strategy and preserve backward compatibility.`,
     `- For IPC or shared contract changes, update all affected main/preload/renderer/shared types together.`,

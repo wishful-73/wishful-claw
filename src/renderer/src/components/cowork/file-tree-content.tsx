@@ -82,7 +82,7 @@ export function FileTreeContent(props: FileTreeContentProps): React.JSX.Element 
               onClick={() => { if (file.type !== 'directory') handlePreview(file.path) }}
               title={file.path}
             >
-              {file.type === 'directory' ? <Folder className="size-3.5 text-amber-400/80" /> : fileIcon(file.name)}
+              {file.type === 'directory' ? <Folder className="size-3.5 text-sky-500 dark:text-sky-400" /> : fileIcon(file.name)}
               <div className="min-w-0 flex-1">
                 <div
                   className={cn(

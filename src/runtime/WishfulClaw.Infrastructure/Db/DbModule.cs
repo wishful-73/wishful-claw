@@ -45,6 +45,7 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-list-page", DbMessageTools.ListPage);
         context.Register("db/messages-list-locator", DbMessageTools.ListLocator);
         context.Register("db/messages-list-by-turns", DbMessageTools.ListByTurns);
+        context.Register("db/messages-list-after-cursor", DbMessageTools.ListAfterCursor);
         context.Register("db/messages-add", DbMessageTools.Add);
         context.Register("db/messages-add-batch", DbMessageTools.AddBatch);
         context.Register("db/messages-upsert", DbMessageTools.Upsert);
@@ -57,6 +58,11 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-compact-session", DbMessageCompactTools.CompactSession);
         context.Register("db/messages-usage-stats", DbMessageCompactTools.UsageStats);
         context.Register("db/messages-search-content", DbMessageTools.SearchContent);
+
+        // ── Compaction Snapshots ──
+        context.Register("db/compaction-snapshots-get", DbCompactionSnapshotTools.Get);
+        context.Register("db/compaction-snapshots-upsert", DbCompactionSnapshotTools.Upsert);
+        context.Register("db/compaction-snapshots-delete", DbCompactionSnapshotTools.Delete);
 
         // ── Sub-Agent Runs ──
         context.Register("db/sub-agent-read-by-tool-use-id", DbSubAgentTools.ReadByToolUseId);

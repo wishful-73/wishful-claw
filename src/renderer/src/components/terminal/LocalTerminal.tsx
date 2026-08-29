@@ -137,7 +137,12 @@ export function LocalTerminal({
     const dataDisposable = readOnly
       ? { dispose: () => {} }
       : term.onData((data) => {
-          void ipcClient.invoke(IPC.TERMINAL_INPUT, { id: terminalId, data })
+          void ipcClient
+            .invoke(IPC.TERMINAL_INPUT, { id: terminalId, data })
+            .catch((err) => {
+              // Without this, keystrokes die silently on a dead terminal.
+              console.warn('[LocalTerminal] Failed to write terminal input:', err)
+            })
         })
 
     const resizeDisposable = term.onResize(({ cols, rows }) => {

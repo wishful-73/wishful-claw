@@ -29,11 +29,6 @@ public static partial class ExtensionManifestStore
 
     private static readonly object ManagementSync = new();
     private static bool builtinsInitialized;
-    private static readonly JsonSerializerOptions ManagementJsonOptions = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = true
-    };
 
     // ── Public IPC handlers ──
 

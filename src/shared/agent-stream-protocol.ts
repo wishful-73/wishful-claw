@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent stream protocol — wire format for main→renderer event streaming.
  * Simplified from WishfulClaw: no SubAgent/Image/WebSearch/Translation events.
  */
@@ -147,12 +147,45 @@ export type AgentStreamEvent =
     }
   // Debug / compression
   | { type: 'request_debug'; debugInfo: RequestDebugInfoWire }
-  | { type: 'context_compression_start' }
+  | {
+      type: 'context_compression_started'
+      operationId: string
+      trigger?: 'auto' | 'manual'
+      preTokens?: number
+      originalCount?: number
+      attempt?: number
+      maxAttempts?: number
+    }
+  | {
+      type: 'context_compression_start'
+      operationId?: string
+      trigger?: 'auto' | 'manual'
+      preTokens?: number
+      originalCount?: number
+      attempt?: number
+      maxAttempts?: number
+    }
   | {
       type: 'context_compressed'
+      operationId?: string
+      compressionStatus?: 'compressed' | 'skipped' | 'failed' | 'blocked' | 'cancelled'
       originalCount: number
       newCount: number
       keptMessageCount?: number
+      trigger?: 'auto' | 'manual'
+      preTokens?: number
+      messagesSummarized?: number
+      summarizerFailed?: boolean
+      error?: string
+      compactArtifacts?: unknown[]
+      messages?: unknown[]
+    }
+  // Memory recall visibility
+  | {
+      type: 'memory_recall'
+      reason: 'injected' | 'no_match' | 'filtered_by_threshold' | 'empty_message' | string
+      recallCount?: number
+      recallHits?: string[]
     }
 
 export type AgentStreamEventType = AgentStreamEvent['type']
@@ -181,6 +214,7 @@ export const ACTIVITY_PANEL_EVENTS: ReadonlySet<string> = new Set([
   'tool_use_generated',
   'tool_call_start',
   'tool_call_result',
+  'context_compression_started',
   'context_compression_start',
   'context_compressed',
   'request_debug',

@@ -6,10 +6,9 @@ import type { ToolContext } from './tool-types'
 /**
  * Bridge for skill-management:execute reverse-request from Worker.
  *
- * The Worker registers placeholder tool definitions (list_installed_skills,
- * search_skill_market, install_skill) but execution lives in the renderer
- * (skill-management-tool.ts). This bridge dispatches to the renderer-side
- * toolRegistry handlers.
+ * The Worker registers a placeholder tool definition (list_installed_skills)
+ * but execution lives in the renderer (skill-management-tool.ts). This bridge
+ * dispatches to the renderer-side toolRegistry handlers.
  */
 
 interface SkillManagementRequest {

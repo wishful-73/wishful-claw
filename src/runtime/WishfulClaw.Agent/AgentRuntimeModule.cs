@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -29,5 +29,6 @@ public sealed class AgentRuntimeModule : IWorkerModule
         context.Register("agent/reverse-response", AgentRuntimeTools.ReverseResponse);
         context.Register("agent/clear-session", AgentRuntimeTools.ClearSession);
         context.Register("agent/restore-session", SessionRestoreTools.RestoreSession);
+        context.Register("agent/compress-context", AgentRuntimeContextCompressionTools.CompressAsync);
     }
 }

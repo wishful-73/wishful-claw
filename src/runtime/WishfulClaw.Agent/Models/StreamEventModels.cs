@@ -40,9 +40,17 @@ public sealed record AgentRuntimeStreamEvent(
     AgentRuntimeTokenUsage? Usage = null,
     AgentRuntimeRequestTiming? Timing = null,
     string? ProviderResponseId = null,
+    string? OperationId = null,
     int? OriginalCount = null,
     int? NewCount = null,
     int? KeptMessageCount = null,
+    // Context compression metadata (context_compression_started / context_compressed)
+    string? Trigger = null,
+    string? CompressionStatus = null,
+    int? PreTokens = null,
+    bool? SummarizerFailed = null,
+    int? MessagesSummarized = null,
+    string? CompressionError = null,
     JsonElement[]? Messages = null,
     JsonElement[]? CompactArtifacts = null,
     string? ToolUseId = null,
@@ -61,4 +69,7 @@ public sealed record AgentRuntimeStreamEvent(
     int? SessionCacheHit = null,
     int? SessionCacheMiss = null,
     // Usage source: "executor", "subagent", "compaction", etc.
-    string? UsageSource = null);
+    string? UsageSource = null,
+    // Memory recall visibility (memory_recall events)
+    int? RecallCount = null,
+    string[]? RecallHits = null);

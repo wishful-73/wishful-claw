@@ -165,7 +165,7 @@ public sealed class PersonaModule : IWorkerModule
 
     // ── Generate (AI-assisted) ──
 
-    private static async Task<WorkerResponse> GenerateAsync(JsonElement parameters)
+    private static async Task<WorkerResponse> GenerateAsync(JsonElement parameters, IWorkerRequestContext context)
     {
         var prompt = JsonHelpers.GetString(parameters, "prompt");
         if (string.IsNullOrWhiteSpace(prompt))
@@ -186,7 +186,7 @@ public sealed class PersonaModule : IWorkerModule
         try
         {
             var draft = await PersonaGenerator.GenerateAsync(
-                providerEl, prompt, referencePersonaId, workingFolder);
+                providerEl, prompt, referencePersonaId, workingFolder, context.CancellationToken);
 
             return ToResponse(draft);
         }

@@ -35,6 +35,11 @@
     "output": "输出"
   },
   "input": {
+    "compressingContext": "正在压缩上下文...",
+    "contextCompressed": "上下文已压缩",
+    "contextCompressionSkipped": "无需压缩",
+    "contextCompressionBlocked": "暂时无法压缩",
+    "contextCompressionFailed": "压缩失败",
     "placeholder": "输入消息...",
     "placeholderClarify": "描述你的想法，我会先不断追问把需求问透...",
     "placeholderCowork": "让助手帮你处理项目...",
@@ -114,7 +119,8 @@
       "cost": "{{label}}：{{cost}}",
       "tpsHint": "每秒生成的输出 Token 数",
       "ttftHint": "首个 Token 返回耗时",
-      "totalCost": "消费"
+      "totalCost": "消费",
+      "total": "总"
     },
     "runtimeStatus": {
       "ready": "就绪",
@@ -187,7 +193,17 @@
     "startAcpDesc": "先澄清目标、背景、约束和验收标准，再做架构设计与任务分派，最后再进入实现。",
     "homeTitleAcp": "ACP 模式",
     "homeDescAcp": "ACP 模式下先把目标、背景、约束和验收标准问清楚，再进行架构设计与任务拆分，最后才进入编码。",
-    "stop": "停止"
+    "stop": "停止",
+    "modelResolving": "模型待定",
+    "readOnlyModelWithProvider": "子代理模型：{{model}} · {{provider}}",
+    "readOnlyModel": "子代理模型：{{model}}",
+    "fileSearch": "文件搜索——选择后插入 @文件 引用",
+    "loadingFiles": "正在搜索文件...",
+    "noFilesFound": "没有匹配的文件",
+    "loadingSuggestions": "正在加载建议...",
+    "noSuggestions": "没有匹配的建议",
+    "doubleClickCompressContext": "双击压缩上下文",
+    "queueRemoveImages": "移除图片"
   },
   "message": {
     "thinking": "思考中",
@@ -446,7 +462,8 @@
       "objectiveInvalid": "Goal 目标无效",
       "budgetInvalid": "Goal 预算无效",
       "budgetStillExhausted": "Goal 预算仍然耗尽",
-      "increaseBudget": "请先提高 token 预算再继续。"
+      "increaseBudget": "请先提高 token 预算再继续。",
+      "confirmFailed": "确认目标失败"
     },
     "events": {
       "created": "Goal 已创建",
@@ -499,10 +516,20 @@
       "liveActivity": "实时活动",
       "iterationStep": "第 {{iteration}} 步迭代",
       "noRoundRecords": "该计划暂无每轮执行记录（旧版本 Goal 或记录已清理）",
-    "liveExecuting": "正在执行：{{title}}",
-    "liveDeciding": "正在决定下一步动作…",
+      "liveExecuting": "正在执行：{{title}}",
+      "liveDeciding": "正在决定下一步动作…",
       "tasks": "任务",
-      "taskStatus": { "interrupted": "已中断", "pending": "待执行", "active": "执行中", "executing": "执行中", "completed": "已完成", "complete": "已完成", "failed": "失败", "aborted": "已中止", "superseded": "已调整" },
+      "taskStatus": {
+        "interrupted": "已中断",
+        "pending": "待执行",
+        "active": "执行中",
+        "executing": "执行中",
+        "completed": "已完成",
+        "complete": "已完成",
+        "failed": "失败",
+        "aborted": "已中止",
+        "superseded": "已调整"
+      },
       "filters": {
         "all": "全部",
         "current": "进行中",
@@ -786,7 +813,9 @@
         "typeSubmit": "{{selector}} · 提交",
         "scrollY": "Y {{value}}"
       }
-    }
+    },
+    "canceled": "已取消",
+    "noResult": "暂无工具结果"
   },
   "subAgent": {
     "label": "子代理",
@@ -913,8 +942,9 @@
     "exporting": "导出中...",
     "copyAll": "复制全部",
     "copied": "已复制！",
-    "loadOlder": "加载更早消息（还有 {{count}} 条）",
-    "loadingOlder": "正在加载更早消息...",
+    "loadOlderProgress": "已加载 {{loadedTurns}}/{{totalTurns}} 轮 · 点击再加载 5 轮",
+    "loadingOlderProgress": "已加载 {{loadedTurns}}/{{totalTurns}} 轮 · 正在加载更早消息...",
+    "pinnedTurnEmpty": "（图片/附件消息）",
     "pendingRetryTitle": "正在重新连接模型",
     "pendingTeamTitle": "正在协调队友",
     "scrollToBottom": "滚动到底部",
@@ -1077,7 +1107,9 @@
     "selectedFileReadSkipped": "路径引用",
     "selectedFileReadSkippedPdf": "PDF 已作为路径引用插入，未直接读取文件内容",
     "selectedFileReadSkippedNonText": "已作为路径引用插入，未直接读取二进制或文档文件内容",
-    "selectedFileReadFailed": "读取失败"
+    "selectedFileReadFailed": "读取失败",
+    "hideCommand": "收起命令",
+    "showCommand": "展开命令"
   },
   "assistantMessage": {
     "changedFiles_one": "编辑了 {{count}} 个文件",
@@ -1172,7 +1204,17 @@
       "copy": "复制",
       "copied": "已复制"
     },
-    "planningPhase": "计划中"
+    "planningPhase": "计划中",
+    "recallInjected_one": "召回了 {{count}} 条记忆",
+    "recallInjected_other": "召回了 {{count}} 条记忆",
+    "recallNoMatch": "未召回到相关记忆",
+    "recallFilteredByThreshold": "召回结果相关度不足，未注入",
+    "recallEmptyMessage": "消息为空，未进行记忆召回",
+    "editImage": "编辑图片",
+    "maskEditImage": "蒙版编辑",
+    "cancelledExecution": "用户取消，中断执行",
+    "maskBrush": "画笔",
+    "imageEditPrompt": "描述要修改的内容"
   },
   "messageActions": {
     "fork": "分叉",
@@ -1358,7 +1400,9 @@
     "title": "生成的文件",
     "reveal": "在 Finder 中显示",
     "open": "打开",
-    "more": "还有 {{count}} 个"
+    "more": "还有 {{count}} 个",
+    "revealFailed": "无法在文件管理器中显示文件",
+    "openFailed": "打开文件失败"
   },
   "chat": {
     "personaSwitcher": {
@@ -1366,5 +1410,44 @@
       "none": "默认",
       "empty": "暂无人格可用"
     }
-  }
+  },
+  "workbench": {
+    "summaryCommands": "运行了 {{count}} 个命令",
+    "summaryReads": "查看了 {{count}} 个文件",
+    "summaryEdits": "编辑了 {{count}} 个文件",
+    "summaryBrowser": "{{count}} 个浏览器操作",
+    "summaryDesktop": "{{count}} 个桌面操作",
+    "summaryOrchestration": "调用了 {{count}} 个子 Agent",
+    "summaryMcp": "{{count}} 个 MCP 工具",
+    "summaryInteractive": "{{count}} 个用户交互",
+    "summaryVisual": "生成了 {{count}} 个可视化",
+    "summarySkill": "{{count}} 个技能调用",
+    "summaryOther": "执行了 {{count}} 个操作"
+  },
+  "diffViewer": {
+    "inline": "内联",
+    "sideBySide": "分栏",
+    "before": "修改前",
+    "after": "修改后",
+    "unchangedLines": "显示 {{count}} 行未更改内容"
+  },
+  "collab": {
+    "mode": {
+      "normal": "常规",
+      "normalDesc": "普通聊天，可开启 Plan 模式",
+      "goal": "目标",
+      "goalDesc": "Goal 模式，设定目标后自主执行"
+    }
+  },
+  "executionOutline": {
+    "awaitingApproval": "等待审批：{{tool}}{{detail}}",
+    "receiving": "正在接收 {{tool}}{{detail}}",
+    "running": "正在执行 {{tool}}{{detail}}"
+  },
+  "personaSwitcher": {
+    "title": "切换人格",
+    "none": "无人格",
+    "empty": "暂无可用人格"
+  },
+  "Glob": "Glob"
 }

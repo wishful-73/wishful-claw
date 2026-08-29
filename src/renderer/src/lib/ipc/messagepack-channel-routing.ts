@@ -121,8 +121,6 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'desktop:input:click',
   'desktop:input:type',
   'desktop:input:scroll',
-  'oauth:start',
-  'oauth:stop',
   'goal-runtime:can-mark-blocked',
   'ssh:group:list',
   'ssh:group:create',
@@ -168,7 +166,6 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'image:persist-generated',
   'image:download',
   'image:create-gif-from-grid',
-  'api:request',
   'web:search',
   'web:fetch',
   'web:fetch-rendered',
@@ -198,16 +195,6 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'mcp:get-prompt',
   'mcp:list-prompts',
   'mcp:refresh-capabilities',
-  'memory-automation:list',
-  'memory-automation:record',
-  'memory-automation:undo',
-  'memory-automation:run-session',
-  'memory-automation:run-rollup',
-  'memory-pipeline:run',
-  'memory-pipeline:list-roots',
-  'memory-pipeline:list-jobs',
-  'memory-pipeline:clear-root',
-  'memory:record-citation-usage',
   'skills:ensure-builtin',
   'skills:list',
   'skills:load',
@@ -218,9 +205,6 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'skills:add-from-folder',
   'skills:save',
   'skills:scan',
-  'skills:market-list',
-  'skills:download-remote',
-  'skills:cleanup-temp',
   'skills:set-enabled',
   'cron:add',
   'cron:update',
@@ -359,7 +343,8 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'update:check',
   'update:download',
   'update:status',
-  'update:install'
+  'update:install',
+  'memory-organization:settings-changed'
 ])
 
 const MESSAGEPACK_SEND_CHANNELS = new Set<string>([
@@ -383,6 +368,7 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'pet:tts-stream-event',
   'fs:file-changed',
   'fs:dir-changed',
+  'codegraph:index-progress',
   'shell:started',
   'shell:output',
   'process:output',
@@ -405,7 +391,6 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'ssh:status',
   'ssh:connect:log',
   'ssh:config:changed',
-  'oauth:callback',
   'cron:fire',
   'plugin:incoming-message',
   'plugin:session-task',
@@ -423,7 +408,8 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'update:available',
   'update:download-progress',
   'update:downloaded',
-  'update:error'
+  'update:error',
+  'memory-organization:run'
 ])
 
 export function shouldUseMessagePackInvoke(channel: string, argCount: number): boolean {

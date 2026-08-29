@@ -21,7 +21,9 @@
       "hint": "You can modify or create new personas in Settings anytime",
       "start": "Get Started",
       "saved": "Setup complete",
-      "builtin": "Built-in"
+      "builtin": "Built-in",
+      "noContent": "(No content)",
+      "viewDetail": "View details"
     },
     "start": "Get Started",
     "next": "Next",
@@ -195,7 +197,9 @@
     "openInspector": "Open inspector",
     "closeRuntimeStatus": "Hide context and progress",
     "openRuntimeStatus": "Show context and progress",
-    "help": "Open guide"
+    "help": "Open guide",
+    "files": "Files",
+    "terminal": "Terminal"
   },
   "sidebar": {
     "newChat": "New Chat",
@@ -254,7 +258,8 @@
     "deleteSessionConfirmDesc": "\"{{title}}\" and its message history will be permanently deleted. This cannot be undone.",
     "deleteProjectConfirmTitle": "Delete this project?",
     "deleteProjectConfirmDesc": "Project \"{{name}}\" and its sessions will be removed from the app. Files on disk are NOT deleted.",
-    "loadMoreSessions": "Load more ({{count}} hidden)"
+    "loadMoreSessions": "Load more ({{count}} hidden)",
+    "openFailed": "Failed to open folder"
   },
   "sectionExecution": {
     "title": "Execution"
@@ -425,11 +430,25 @@
       },
       "cancel": "Cancel",
       "save": "Save"
-    }
+    },
+    "maxIterations": "Max iterations"
   },
   "layout": {
     "noSessionSelected": "No session selected",
-    "conversationCleared": "Conversation cleared"
+    "conversationCleared": "Conversation cleared",
+    "compressContext": "Compress session",
+    "openFolderPanel": "Open files panel",
+    "viewSessionSummary": "View session summary",
+    "viewContextProgress": "View context & progress",
+    "widenChat": "Widen chat area",
+    "standardChatWidth": "Restore standard width"
+  },
+  "input": {
+    "compressingContext": "Compressing context...",
+    "contextCompressed": "Context compressed",
+    "contextCompressionSkipped": "No compression needed",
+    "contextCompressionBlocked": "Compression temporarily unavailable",
+    "contextCompressionFailed": "Compression failed"
   },
   "memory": {
     "title": "Memory",
@@ -446,6 +465,24 @@
     "idle": "Search memory or use memory tools in chat.",
     "loading": "Loading...",
     "consolidate": "Consolidate memory index",
+    "organize": "Organize now",
+    "organizing": "Organizing...",
+    "organizeResult": "Organized {{scopes}} scopes; {{warm}} demoted to warm, {{cold}} to cold.",
+    "organizeFailed": "Memory organization failed.",
+    "organizeNoProvider": "Organization skipped: no usable text provider.",
+    "organizeBusy": "An organization run is already in progress.",
+    "recoverFailed": "Memory recovery failed.",
+    "organizationStatus": "Organization schedule",
+    "lastOrganized": "Last organized: ",
+    "nextOrganized": "Next: ",
+    "never": "Never",
+    "disabled": "Disabled",
+    "onStartup": "After startup",
+    "recentReports": "Recent organization reports",
+    "noReports": "No organization reports yet.",
+    "recoveryTitle": "Warm / Cold memory",
+    "restoreWarm": "Restore warm",
+    "restoreHot": "Restore hot",
     "tier": {
       "hot": "hot",
       "warm": "warm",
@@ -458,13 +495,54 @@
   },
   "rightPanel": {
     "goals": "Goals",
+    "files": "Files",
     "browser": "Browser",
     "browserLoadFailed": "Failed to load page",
     "browserRetry": "Retry",
     "browserEmptyState": "Enter a URL to start browsing",
     "openFile": "Open file",
     "preview": "Preview",
-    "previewEmpty": "No preview content"
+    "previewEmpty": "No preview content",
+    "contextProgress": "Context & progress",
+    "summary": "Session summary",
+    "summaryEmpty": "No summary yet",
+    "summaryMessages": "Earlier {{count}} messages summarized",
+    "reviewEmptyTitle": "No file changes yet",
+    "reviewEmptyDesc": "Latest diffs are unavailable. File changes for this session will appear here.",
+    "artifacts": "Artifacts",
+    "reviewSessionDesc": "Review the latest file changes captured in the current session. Expand a file to inspect the diff."
+  },
+  "contextProgress": {
+    "environment": "Environment",
+    "session": "Session",
+    "project": "Project",
+    "target": "Connection",
+    "workingFolder": "Folder",
+    "branch": "Branch",
+    "changes": "Changes",
+    "sync": "Commit / push",
+    "sources": "Context files",
+    "local": "Local",
+    "ssh": "SSH",
+    "sshNamed": "SSH · {{name}}",
+    "gitLoading": "Loading",
+    "gitUnavailable": "Git unavailable",
+    "unknownBranch": "Unknown",
+    "unknown": "Unknown",
+    "noProject": "No project",
+    "clean": "Clean",
+    "commitPending": "Commit pending",
+    "pushPending": "Push pending",
+    "pullPending": "Pull pending",
+    "synced": "Synced",
+    "changedFiles": "{{count}} files",
+    "noWorkingFolder": "Not selected",
+    "noSources": "No context files",
+    "sourcesSummary": "{{first}}, {{second}} and {{count}} more",
+    "subAgents": "SubAgents",
+    "subAgentsRunning": "{{count}} running",
+    "subAgentsCompleted": "{{count}} completed",
+    "runningTerminals": "Running terminals"
   },
   "rightPanelAction": {
     "closePanel": "Close panel"
@@ -509,7 +587,8 @@
     "discard": "Discard",
     "diffSplit": "Split",
     "diffInline": "Inline",
-    "sendToChat": "Send path to chat"
+    "sendToChat": "Send path to chat",
+    "docxCompatibilityHint": "This DOCX document is rendered in compatibility mode; complex formatting may be incomplete."
   },
   "agentFiles": {
     "files": "Files",
@@ -636,5 +715,17 @@
     "toggleRightPanel": "Toggle Right Panel",
     "toggleTheme": "Toggle Theme",
     "recentSessions": "Recent Sessions"
+  },
+  "fileChange": {
+    "loadDiffFailed": "Failed to load the full diff"
+  },
+  "thinking": {
+    "thinkingEllipsis": "Thinking…"
+  },
+  "detailPanel": {
+    "loadingSubAgent": "Loading sub-agent details...",
+    "noSubAgentRecords": "No sub-agent records",
+    "error": "Failed",
+    "subAgentActivity": "Sub-agent activity will appear here"
   }
 }

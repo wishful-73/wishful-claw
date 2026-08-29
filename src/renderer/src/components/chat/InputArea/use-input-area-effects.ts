@@ -3,9 +3,7 @@
 import * as React from 'react'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { type CollabMode } from '../CollabModeSwitcher'
-import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { cloneImageAttachments, type ImageAttachment } from '@renderer/lib/image-attachments'
-import { resolveProjectMemoryTextFile } from '@renderer/lib/agent/memory-files'
 import { deserializeEditorState } from '@renderer/lib/select-file-editor'
 import { selectFileTextToPlainText } from '@renderer/lib/select-file-tags'
 import type { FileAwareEditorHandle } from '../file-aware-editor-utils'
@@ -14,8 +12,6 @@ import { isReferenceOnlyDocument } from './utils'
 export interface InputAreaEffectsInput {
   draftSessionId: string | null
   hasActiveGoal: boolean
-  workspaceReady: boolean
-  activeSshConnectionId: string | null
   workingFolder?: string | null
   isHomeComposer: boolean
 
@@ -31,6 +27,7 @@ export interface InputAreaEffectsInput {
 
   // Draft persistence
   inputDraftHydrated: boolean
+  userEditedDraftKeyRef: React.MutableRefObject<string | null>
   persistedDraft: { text?: string; selectedFiles?: unknown[]; skill?: string | null; images?: ImageAttachment[] } | null
   activeDraftKey: string
   finalSerializedText: string
@@ -44,7 +41,6 @@ export interface InputAreaEffectsInput {
   pendingCollabMode: CollabMode | null
   setPendingCollabMode: React.Dispatch<React.SetStateAction<CollabMode | null>>
   setAutoAcceptCountdown: React.Dispatch<React.SetStateAction<number | null>>
-  setIsWorkspaceAgentsMissing: React.Dispatch<React.SetStateAction<boolean>>
   setAttachedImages: React.Dispatch<React.SetStateAction<ImageAttachment[]>>
   setPreviewImage: React.Dispatch<React.SetStateAction<ImageAttachment | null>>
   setSelectedSkill: React.Dispatch<React.SetStateAction<string | null>>
@@ -65,14 +61,15 @@ export interface InputAreaEffectsInput {
 
 export function useInputAreaEffects(input: InputAreaEffectsInput): void {
   const {
-    draftSessionId, hasActiveGoal, workspaceReady, activeSshConnectionId, workingFolder,
+    draftSessionId, hasActiveGoal, workingFolder,
     isHomeComposer,
     shouldAutoAcceptRecommendation, suggestionText, text, acceptSuggestion,
     applyEditorStateFromSerializedText, selectedFiles, focusInputAtEnd,
     handleRecommendationSelectionChange,
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
+    userEditedDraftKeyRef,
     attachedImages, selectedSkill, savePersistedDraft,
-    setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown, setIsWorkspaceAgentsMissing,
+    setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
     editorRef, rootRef, draftSaveTimerRef, draftReadyKeyRef,
     isStreaming, disabled, replaceSelectionWithText,
@@ -95,17 +92,6 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
   React.useEffect(() => {
     if (hasActiveGoal) setPendingGoalMode(false)
   }, [hasActiveGoal, setPendingGoalMode])
-
-  // ── Workspace agents check ──────────────────────────────────────
-  React.useEffect(() => {
-    let cancelled = false
-    if (!workspaceReady || activeSshConnectionId) { setIsWorkspaceAgentsMissing(false); return }
-    setIsWorkspaceAgentsMissing(false)
-    void resolveProjectMemoryTextFile(ipcClient, workingFolder ?? '', 'AGENTS.md').then(
-      ({ missingFile }) => { if (!cancelled) setIsWorkspaceAgentsMissing(missingFile) }
-    )
-    return () => { cancelled = true }
-  }, [activeSshConnectionId, workspaceReady, workingFolder, setIsWorkspaceAgentsMissing])
 
   // ── Auto-accept recommendation ──────────────────────────────────
   React.useEffect(() => {
@@ -137,8 +123,11 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
     const shouldReset = isHomeComposer && !persistedDraft?.skill &&
       (persistedDraft?.images?.length ?? 0) === 0 &&
       isReferenceOnlyDocument(deserializeEditorState(persistedText, workingFolder ?? undefined, persistedSelectedFiles as any).document)
+    const userEditedCurrentDraft = userEditedDraftKeyRef.current === activeDraftKey
     draftReadyKeyRef.current = null
-    applyEditorStateFromSerializedText(shouldReset ? '' : persistedText, shouldReset ? [] : persistedSelectedFiles)
+    if (!userEditedCurrentDraft) {
+      applyEditorStateFromSerializedText(shouldReset ? '' : persistedText, shouldReset ? [] : persistedSelectedFiles)
+    }
     setAttachedImages(persistedDraft?.images ? cloneImageAttachments(persistedDraft.images) : [])
     setPreviewImage(null)
     setSelectedSkill(persistedDraft?.skill ?? null)

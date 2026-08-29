@@ -29,6 +29,27 @@ export function TitleBar({
     currentSessionId ? Boolean(s.bottomTerminalDockOpenBySessionId[currentSessionId]) : false
   )
 
+  // Session title is only shown when the content area actually renders the
+  // session conversation pane (mirrors MainLayout ContentArea conditions).
+  const isSessionPage = useUIStore(
+    (s) =>
+      !s.settingsPageOpen &&
+      s.activeNavItem === 'chat' &&
+      !s.skillsPageOpen &&
+      !s.soulsPageOpen &&
+      !s.syncPageOpen &&
+      !s.resourcesPageOpen &&
+      !s.translatePageOpen &&
+      !s.drawPageOpen &&
+      !s.tasksPageOpen &&
+      !s.taskBoardPageOpen &&
+      !s.codeGraphPageOpen &&
+      s.chatView === 'session'
+  )
+  const sessionTitle = useChatStore(
+    (s) => s.sessions.find((item) => item.id === s.activeSessionId)?.title ?? ''
+  )
+
   // Only show file/terminal buttons in project-level sessions (has workingFolder)
   const hasProject = useChatStore((s) => {
     const session = s.sessions.find((item) => item.id === s.activeSessionId)
@@ -43,8 +64,8 @@ export function TitleBar({
 
   return (
     <header className="titlebar-drag flex h-10 shrink-0 items-center justify-between border-b bg-background/90 backdrop-blur">
-      {/* Left: sidebar toggle (always visible) */}
-      <div className="flex items-center gap-1 px-2">
+      {/* Left: sidebar toggle (always visible) + session title (session page only) */}
+      <div className="flex min-w-0 items-center gap-1 px-2">
         {showSidebarToggle && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -57,6 +78,15 @@ export function TitleBar({
             </TooltipTrigger>
             <TooltipContent side="bottom">{t('topbar.toggleSidebar', { defaultValue: 'Toggle sidebar' })}</TooltipContent>
           </Tooltip>
+        )}
+
+        {isSessionPage && sessionTitle && (
+          <span
+            title={sessionTitle}
+            className="max-w-[40vw] truncate text-sm font-medium text-foreground/85"
+          >
+            {sessionTitle}
+          </span>
         )}
       </div>
 

@@ -1,12 +1,11 @@
-// Pure utility functions, constants, and types extracted from memory-automation.ts
+﻿// Pure utility functions, constants, and types extracted from memory-automation.ts
 
 import { runSidecarTextRequest } from '@renderer/lib/ipc/agent-bridge'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import type { ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
-import {
-  getProjectMemoryCandidatePaths,
-  type LayeredMemorySnapshot
-} from './memory-files'
+import type { AIModelConfig } from '../../../../shared/types/provider'
+import { getProjectMemoryCandidatePaths, type LayeredMemorySnapshot } from './memory-files'
 import type {
   MemoryAutomationFilterReason,
   MemoryAutomationTarget,
@@ -22,13 +21,6 @@ export const MAX_MESSAGE_CHARS = 3200
 export const AUTO_RUN_DEBOUNCE_MS = 5000
 export const INVALID_MEMORY_JSON_ERROR = 'invalid_json'
 
-export const GLOBAL_USER_TEMPLATE = `# USER.md
-
-This file captures durable user preferences and collaboration style.
-
-## Preferences
-`
-
 export const GLOBAL_MEMORY_TEMPLATE = `# MEMORY.md
 
 This file stores global durable memory shared across WishfulClaw sessions.
@@ -40,13 +32,6 @@ This file stores global durable memory shared across WishfulClaw sessions.
 ## Recurring Errors
 
 ## Durable Decisions
-`
-
-export const PROJECT_USER_TEMPLATE = `# USER.md
-
-This file captures workspace-specific preferences for the human you are helping.
-
-## Preferences
 `
 
 export const PROJECT_MEMORY_TEMPLATE = `# MEMORY.md
@@ -62,6 +47,20 @@ This file stores project-scoped durable memory.
 ## Context
 `
 
+export const GLOBAL_USER_TEMPLATE = `# USER.md
+
+This file captures durable user preferences and collaboration style.
+
+## Preferences
+`
+
+export const PROJECT_USER_TEMPLATE = `# USER.md
+
+This file captures workspace-specific preferences for the human you are helping.
+
+## Preferences
+`
+
 export const SUMMARY_TEMPLATE = `# Memory Summary
 
 ## Summary
@@ -74,12 +73,6 @@ export interface RunSessionOptions {
   source?: string
   aborted?: boolean
   manual?: boolean
-}
-
-export interface DailyRollupOptions {
-  projectRootPath?: string | null
-  sshConnectionId?: string | null
-  global?: boolean
 }
 
 export interface PipelineScopeOutput {
@@ -102,6 +95,16 @@ export interface Stage1BuildResult {
   content?: string
 }
 
+/**
+ * Pure-organization mode output: the reorganized MEMORY.md plus paragraphs
+ * the model judged outdated and removed.
+ */
+export interface OrganizationOutput {
+  memoryMarkdown?: string
+  outdatedParagraphs?: string[]
+  organizationSummary?: string
+}
+
 export interface TargetDescriptor {
   target: MemoryAutomationTarget
   path: string
@@ -114,10 +117,10 @@ export function todayString(date = new Date()): string {
   return date.toISOString().slice(0, 10)
 }
 
-export function yesterdayString(date = new Date()): string {
-  const previous = new Date(date)
-  previous.setDate(previous.getDate() - 1)
-  return todayString(previous)
+export function rolloutSlugFromSession(sessionId: string, scope: MemoryRootScope): string {
+  const date = todayString()
+  const safeSession = sessionId.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 48)
+  return `${date}-${scope}-${safeSession || 'session'}`
 }
 
 export function normalizeMemoryText(value: string): string {
@@ -139,21 +142,24 @@ export function fingerprintContent(value: string): string {
   return `mem-${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
-export function rolloutSlugFromSession(sessionId: string, scope: MemoryRootScope): string {
-  const date = todayString()
-  const safeSession = sessionId.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 48)
-  return `${date}-${scope}-${safeSession || 'session'}`
-}
-
 export function trimForPrompt(value: string, maxChars: number): string {
   const trimmed = value.replace(/\s+/g, ' ').trim()
   if (trimmed.length <= maxChars) return trimmed
   return `${trimmed.slice(0, maxChars)}...`
 }
 
-export function contentBlocksToText(blocks: ContentBlock[]): string {
+type PromptMessage = {
+  id: string
+  role: UnifiedMessage['role']
+  content?: unknown
+  text?: unknown
+}
+
+export function contentBlocksToText(value: unknown): string {
+  if (!Array.isArray(value)) return ''
+
   const parts: string[] = []
-  for (const block of blocks) {
+  for (const block of value as ContentBlock[]) {
     if (block.type === 'text') {
       parts.push(block.text)
     } else if (block.type === 'agent_error') {
@@ -171,14 +177,20 @@ export function contentBlocksToText(blocks: ContentBlock[]): string {
   return parts.join('\n')
 }
 
-export function messageToPromptLine(message: UnifiedMessage): string {
+export function messageToPromptLine(message: PromptMessage): string {
   const raw =
-    typeof message.content === 'string' ? message.content : contentBlocksToText(message.content)
+    typeof message.content === 'string'
+      ? message.content
+      : Array.isArray(message.content)
+        ? contentBlocksToText(message.content)
+        : typeof message.text === 'string'
+          ? message.text
+          : ''
   return `${message.role}: ${trimForPrompt(raw, MAX_MESSAGE_CHARS)}`
 }
 
 export function buildConversationExcerpt(
-  messages: UnifiedMessage[],
+  messages: PromptMessage[],
   assistantMessageId?: string | null
 ): string {
   const filtered = messages.filter((message) => message.role !== 'system')
@@ -200,9 +212,7 @@ export function summarizeMemorySnapshot(snapshot: LayeredMemorySnapshot): string
     snapshot.globalMemorySummary?.path ? `global_summary=${snapshot.globalMemorySummary.path}` : '',
     snapshot.projectUser?.path ? `project_user=${snapshot.projectUser.path}` : '',
     snapshot.projectMemory?.path ? `project_memory=${snapshot.projectMemory.path}` : '',
-    snapshot.projectMemorySummary?.path
-      ? `project_summary=${snapshot.projectMemorySummary.path}`
-      : '',
+    snapshot.projectMemorySummary?.path ? `project_summary=${snapshot.projectMemorySummary.path}` : '',
     snapshot.globalDailyMemory.length
       ? `global_daily=${snapshot.globalDailyMemory.map((entry) => entry.path).join(', ')}`
       : '',
@@ -223,7 +233,46 @@ export function hasUsableProvider(provider: ProviderConfig | null): provider is 
 
 export function resolveAutomationProvider(): ProviderConfig | null {
   const providerStore = useProviderStore.getState()
-  return providerStore.getFastProviderConfig() ?? (providerStore.getActiveProvider() as any)
+  const fastSelection = providerStore.getFastProviderConfig()
+  const provider = fastSelection
+    ? providerStore.getProviderById(fastSelection.providerId)
+    : providerStore.getActiveProvider()
+  if (!provider) return null
+
+  const modelId = fastSelection?.model ||
+    (provider.id === providerStore.activeProviderId ? providerStore.activeModelId : '') ||
+    provider.defaultModel ||
+    provider.models.find((model: AIModelConfig) => model.enabled && (!model.category || model.category === 'chat'))?.id ||
+    provider.models.find((model: AIModelConfig) => model.enabled)?.id
+  if (!modelId) return null
+
+  const model = provider.models.find((candidate: AIModelConfig) => candidate.id === modelId)
+  const settings = useSettingsStore.getState()
+  const thinkingEnabled = settings.thinkingEnabled && Boolean(model?.thinkingConfig)
+  const temperature =
+    provider.type === 'anthropic' && thinkingEnabled
+      ? model?.thinkingConfig?.forceTemperature ?? 1
+      : settings.temperature
+  return {
+    type: model?.type ?? provider.type,
+    apiKey: provider.apiKey,
+    baseUrl: provider.baseUrl,
+    model: modelId,
+    contextLength: model?.contextLength,
+    category: model?.category,
+    providerId: provider.id,
+    providerBuiltinId: provider.builtinId,
+    maxTokens: model?.maxOutputTokens,
+    ...(temperature !== undefined ? { temperature } : {}),
+    thinkingEnabled,
+    thinkingConfig: model?.thinkingConfig,
+    requestOverrides: model?.requestOverrides ?? provider.requestOverrides,
+    useSystemProxy: provider.useSystemProxy,
+    allowInsecureTls: provider.allowInsecureTls,
+    userAgent: provider.userAgent,
+    requestTimeoutSeconds: settings.apiRequestTimeoutSeconds ?? 100,
+    requestMaxRetries: settings.requestMaxRetries ?? 10
+  }
 }
 
 export function hasSecretLikeText(content: string): boolean {
@@ -285,7 +334,7 @@ export function sanitizeMemoryPayload(content: string): {
 
 import { parseStage1Json } from './memory-json-parsers'
 
-export { parseConsolidationJson, getErrorMessage } from './memory-json-parsers'
+export { parseConsolidationJson, parseOrganizationJson, getErrorMessage } from './memory-json-parsers'
 
 
 export function targetForRoot(root: MemoryRootDescriptor): MemoryAutomationTarget {
@@ -521,11 +570,29 @@ export function buildConsolidationPrompt(args: {
   ].join('\n')
 }
 
-export function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 export function resolveProjectSummaryPath(projectRootPath: string): string {
   return getProjectMemoryCandidatePaths(projectRootPath, 'memory_summary.md').preferredPath
+}
+
+export function buildOrganizationPrompt(args: {
+  root: MemoryRootDescriptor
+  memoryMarkdown: string
+}): string {
+  return [
+    'You are the WishfulClaw daily memory organizer.',
+    'Reorganize the existing MEMORY.md for exactly one memory root. Do not add new information.',
+    `Root scope: ${args.root.scope}. Root id: ${args.root.id}.`,
+    args.root.scope === 'project'
+      ? 'This is project memory. Keep repository decisions, paths, commands, conventions, and project-specific recurring errors.'
+      : 'This is global memory. Keep only cross-project preferences, habits, and broadly recurring errors.',
+    'Tasks: deduplicate repeated facts, merge similar bullets, compress verbose wording, and keep the existing section structure.',
+    'Identify outdated paragraphs: facts that are superseded, expired, or no longer useful. Remove them from memory_markdown and list their original text in outdated_paragraphs so they can be archived to a colder tier.',
+    'Return strict JSON only with keys: memory_markdown (full reorganized Markdown document), outdated_paragraphs (array of removed paragraph texts, may be empty), organization_summary (one short sentence describing what changed).',
+    'Do not invent details that are not present in the input. Never include secrets, tokens, private keys, passwords, or private identity details.',
+    '',
+    '<current_MEMORY_md>',
+    args.memoryMarkdown.slice(0, 120_000),
+    '</current_MEMORY_md>'
+  ].join('\n')
 }
 

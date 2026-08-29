@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import type { TFunction } from 'i18next'
 import type { ContextCompressionStatus } from './types'
 import type { ManualCompressionResult } from '@renderer/hooks/use-chat-actions'
@@ -12,11 +12,13 @@ export function useContextCompression(opts: UseContextCompressionOptions) {
   const [contextCompressionStatus, setContextCompressionStatus] =
     React.useState<ContextCompressionStatus>('idle')
   const contextCompressionStatusTimerRef = React.useRef<ReturnType<typeof setTimeout>>(undefined)
+  const contextCompressionInFlightRef = React.useRef(false)
   const isContextCompressing = contextCompressionStatus === 'compressing'
 
   const handleCompressContext = React.useCallback(() => {
-    if (!opts.onCompressContext || isContextCompressing) return
+    if (!opts.onCompressContext || isContextCompressing || contextCompressionInFlightRef.current) return
 
+    contextCompressionInFlightRef.current = true
     clearTimeout(contextCompressionStatusTimerRef.current)
     setContextCompressionStatus('compressing')
     void Promise.resolve()
@@ -29,6 +31,7 @@ export function useContextCompression(opts: UseContextCompressionOptions) {
         setContextCompressionStatus('failed')
       })
       .finally(() => {
+        contextCompressionInFlightRef.current = false
         contextCompressionStatusTimerRef.current = setTimeout(() => {
           setContextCompressionStatus('idle')
         }, 3200)

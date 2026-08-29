@@ -19,7 +19,7 @@
  * back to `app.getFileIcon`.
  */
 
-import { readFileSync } from 'fs'
+import { readFileSync, statSync } from 'fs'
 
 /** Pick the best-sized icon from a group: prefer 32px, then 48, 16, then the
  *  largest entry not exceeding 64, then simply the largest one. */
@@ -32,6 +32,9 @@ interface GroupEntry {
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const MAX_ICON_BYTES = 512 * 1024 // sanity cap for a single icon entry
+// Don't pull absurdly large executables fully into memory just for an icon —
+// this runs on the main process for every launcher search result.
+const MAX_PE_FILE_BYTES = 100 * 1024 * 1024
 
 function pickBestEntry(entries: GroupEntry[]): GroupEntry | null {
   if (entries.length === 0) return null
@@ -47,10 +50,22 @@ function pickBestEntry(entries: GroupEntry[]): GroupEntry | null {
 export function extractPeIcon(exePath: string): string | null {
   let buf: Buffer
   try {
+    const size = statSync(exePath).size
+    if (size === 0 || size > MAX_PE_FILE_BYTES) return null
     buf = readFileSync(exePath)
   } catch {
     return null
   }
+  try {
+    return parsePeIcon(buf)
+  } catch {
+    // Malformed PE headers can still land out-of-bounds reads — any parse
+    // failure simply means "no icon", never a crash.
+    return null
+  }
+}
+
+function parsePeIcon(buf: Buffer): string | null {
   if (buf.length < 0x40 || buf.readUInt16LE(0) !== 0x5a4d) return null // 'MZ'
 
   const peOff = buf.readUInt32LE(0x3c)
@@ -59,12 +74,14 @@ export function extractPeIcon(exePath: string): string | null {
   // Optional header layout depends on magic (PE32 vs PE32+); the data
   // directory array starts at optHeader + 96 / 112 respectively.
   const optOff = peOff + 24
+  if (optOff + 2 > buf.length) return null
   const magic = buf.readUInt16LE(optOff)
   const dataDirOff = optOff + (magic === 0x20b ? 112 : 96)
   const numSections = buf.readUInt16LE(peOff + 6)
   const optSize = buf.readUInt16LE(peOff + 20)
   const sectionOff = optOff + optSize
 
+  if (dataDirOff + 2 * 8 + 4 > buf.length) return null
   const resRva = buf.readUInt32LE(dataDirOff + 2 * 8)
   if (!resRva) return null
 

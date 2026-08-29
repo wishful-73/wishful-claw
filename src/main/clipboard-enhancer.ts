@@ -8,11 +8,17 @@
  * - Independent config file (not in settings-store)
  */
 
-import { app, BrowserWindow, clipboard, screen } from 'electron'
+import { app, BrowserWindow, clipboard } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 import { registerMessagePackHandler } from './ipc/messagepack-handler'
-import { pasteToForegroundWindow, registerPriorityShortcut, unregisterPriorityShortcut } from './priority-shortcuts'
+import {
+  pasteToForegroundWindow,
+  registerPriorityShortcut,
+  unregisterPriorityShortcut,
+  type ShortcutContext
+} from './priority-shortcuts'
+import { getAuxiliaryWindowBounds } from './aux-window-screen'
 import { safeSendMessagePackToWindow } from './window-ipc'
 
 let clipboardWindow: BrowserWindow | null = null
@@ -204,9 +210,9 @@ function registerShortcut(): boolean {
   for (let index = 0; index < config.accelerators.length; index++) {
     const id = `clipboard-enhancer-${index}`
     const accelerator = config.accelerators[index]
-    const registered = registerPriorityShortcut(id, accelerator, ({ foregroundWindow, focusWindow }) => {
+    const registered = registerPriorityShortcut(id, accelerator, (context) => {
       openedWithAlt = accelerator.toLowerCase().includes('alt')
-      createClipboardWindow(foregroundWindow, focusWindow)
+      createClipboardWindow(context)
     })
     registeredShortcutIds.push(id)
     if (!registered) allRegistered = false
@@ -317,26 +323,50 @@ function registerClipboardIpc(): void {
  *  moved to whatever the user clicked, so leave it alone. */
 function hideClipboardWindow(restoreFocus = true): void {
   if (!clipboardWindow || !clipboardWindow.isVisible()) return
+  const win = clipboardWindow
   const targetWindow = previousForegroundWindow
   const targetFocus = previousFocusWindow
   const clearMenu = openedWithAlt
   previousForegroundWindow = null
   previousFocusWindow = null
+  let focusSent = false
   if (restoreFocus && targetWindow) {
-    pasteToForegroundWindow(targetWindow, targetFocus, false, clearMenu)
+    focusSent = pasteToForegroundWindow(targetWindow, targetFocus, false, clearMenu)
   }
-  clipboardWindow.hide()
+  if (focusSent) {
+    // The focus restore is an asynchronous bridge message — hiding in the
+    // same tick races it (the bridge may re-activate us after hide, or the
+    // OS window switch triggered by hide may beat the activation). Give the
+    // message a beat to land before hiding.
+    setTimeout(() => {
+      if (!win.isDestroyed() && win.isVisible()) win.hide()
+    }, 150)
+  } else {
+    win.hide()
+  }
 }
 
-export function createClipboardWindow(foregroundWindow: string | null = null, focusWindow: string | null = null): void {
+export function createClipboardWindow(context: ShortcutContext = {
+  foregroundWindow: null,
+  focusWindow: null,
+  foregroundWindowRect: null,
+  focusWindowRect: null,
+  caretRect: null,
+  mousePoint: null
+}): void {
   registerClipboardIpc()
+
+  const winWidth = 420
+  const winHeight = 560
+  const bounds = getAuxiliaryWindowBounds(context, winWidth, winHeight, 'clipboard')
 
   if (clipboardWindow) {
     if (clipboardWindow.isVisible()) {
       hideClipboardWindow()
     } else {
-      previousForegroundWindow = foregroundWindow
-      previousFocusWindow = focusWindow
+      previousForegroundWindow = context.foregroundWindow
+      previousFocusWindow = context.focusWindow
+      clipboardWindow.setBounds(bounds)
       clipboardWindow.show()
       clipboardWindow.focus()
       pushThemeRefresh()
@@ -345,15 +375,8 @@ export function createClipboardWindow(foregroundWindow: string | null = null, fo
     return
   }
 
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
-  const winWidth = 420
-  const winHeight = 560
-
   clipboardWindow = new BrowserWindow({
-    width: winWidth,
-    height: winHeight,
-    x: Math.round((screenWidth - winWidth) / 2),
-    y: Math.round((screenHeight - winHeight) / 2 - 50),
+    ...bounds,
     frame: false,
     transparent: true,
     resizable: false,
@@ -380,14 +403,25 @@ export function createClipboardWindow(foregroundWindow: string | null = null, fo
     clipboardWindow.loadFile(join(__dirname, '../renderer/clipboard.html'))
   }
 
-  previousForegroundWindow = foregroundWindow
-  previousFocusWindow = focusWindow
+  previousForegroundWindow = context.foregroundWindow
+  previousFocusWindow = context.focusWindow
   clipboardWindow.show()
   clipboardWindow.focus()
-  setTimeout(() => {
+  // Push initial data once the renderer actually loaded — a fixed 200ms
+  // timer loses the first paint on slow loads. The fallback covers pages
+  // whose load events never fire.
+  let initialPushDone = false
+  const pushInitialData = (): void => {
+    if (initialPushDone) return
+    initialPushDone = true
     pushThemeRefresh()
     pushHistoryUpdate()
-  }, 200)
+  }
+  clipboardWindow.webContents.once('did-finish-load', () => {
+    // Small settle delay so the renderer's IPC listeners are attached.
+    setTimeout(pushInitialData, 100)
+  })
+  setTimeout(pushInitialData, 2000)
 }
 
 // ── Init ──

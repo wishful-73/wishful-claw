@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MessageSquare, Settings, Plus, Search, FolderOpen, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban } from 'lucide-react'
+import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuLabel } from '@renderer/components/ui/dropdown-menu'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -111,6 +111,10 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
   }, [])
   const sortedUnassigned = useMemo(() => sortSessions(unassignedSessions), [unassignedSessions])
 
+  // Global conversations section collapses like a project row; expanded by
+  // default since it is the primary unscoped session list.
+  const [conversationsExpanded, setConversationsExpanded] = useState(true)
+
   const toggleProjectExpand = useCallback((projectId: string) => {
     setExpandedProjects((prev) => {
       const next = new Set(prev)
@@ -187,7 +191,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
   // ─── Extension items ───
   const extensionItems = [
     { id: 'draw', icon: <Image className="size-4" />, label: t('sidebar.drawLabel', { defaultValue: 'Draw' }), onClick: openDrawPage },
-    { id: 'automation', icon: <CalendarDays className="size-4" />, label: t('sidebar.automationLabel', { defaultValue: 'Automation' }), onClick: openTasksPage },
+    { id: 'automation', icon: <Clock3 className="size-4" />, label: t('sidebar.automationLabel', { defaultValue: 'Automation' }), onClick: openTasksPage },
     { id: 'taskboard', icon: <SquareKanban className="size-4" />, label: t('sidebar.taskBoardLabel', { defaultValue: 'Task Board' }), onClick: openTaskBoardPage }
   ]
 
@@ -224,7 +228,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
                     : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
                 )}
               >
-                <FolderOpen className="size-4 shrink-0" />
+                <Plug className="size-4 shrink-0" />
                 <span className="truncate">{t('sidebar.extensionsLabel', { defaultValue: 'Extensions' })}</span>
                 <ChevronRight className="ml-auto size-3.5 shrink-0" />
               </button>
@@ -325,31 +329,47 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
           />
         ))}
 
-        {/* Unassigned sessions */}
+        {/* Unassigned sessions — collapsible section row, same interaction as projects */}
         {sortedUnassigned.length > 0 && (
-          <div className="mt-2">
-            <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">
-              {t('sidebar.conversations', { defaultValue: 'Conversations' })}
-            </div>
-            {visibleUnassigned.map((session) => (
-              <SessionItem
-                key={session.id}
-                session={session}
-                isActive={activeSessionId === session.id}
-                onClick={() => navigateToSession(session.id)}
+          <div className="mt-2 select-none">
+            <div
+              onClick={() => setConversationsExpanded((v) => !v)}
+              className="group flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+            >
+              <MessageSquare className="size-3.5 shrink-0 text-sky-500 dark:text-sky-400" />
+              <span className="flex-1 truncate text-xs font-medium">
+                {t('sidebar.conversations', { defaultValue: 'Conversations' })}
+              </span>
+              <ChevronRight
+                className={cn(
+                  'size-3.5 shrink-0 transition-transform',
+                  conversationsExpanded && 'rotate-90'
+                )}
               />
-            ))}
-            {hasHiddenUnassigned && (
-              <button
-                type="button"
-                onClick={() => setShowAllUnassigned(true)}
-                className="mt-0.5 rounded px-2 py-1 text-left text-[10px] text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-              >
-                {t('sidebar.loadMoreSessions', {
-                  defaultValue: 'Load more ({{count}} hidden)',
-                  count: sortedUnassigned.length - UNASSIGNED_COLLAPSE_COUNT
-                })}
-              </button>
+            </div>
+            {conversationsExpanded && (
+              <div className="ml-3 mt-0.5 flex flex-col gap-0.5 pl-2">
+                {visibleUnassigned.map((session) => (
+                  <SessionItem
+                    key={session.id}
+                    session={session}
+                    isActive={activeSessionId === session.id}
+                    onClick={() => navigateToSession(session.id)}
+                  />
+                ))}
+                {hasHiddenUnassigned && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllUnassigned(true)}
+                    className="mt-0.5 rounded px-2 py-1 text-left text-[10px] text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    {t('sidebar.loadMoreSessions', {
+                      defaultValue: 'Load more ({{count}} hidden)',
+                      count: sortedUnassigned.length - UNASSIGNED_COLLAPSE_COUNT
+                    })}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}

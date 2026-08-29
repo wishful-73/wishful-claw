@@ -1,4 +1,4 @@
-import type { PermissionPolicy } from '../../../shared/permission-policy'
+﻿import type { PermissionPolicy } from '../../../shared/permission-policy'
 import { sanitizePermissionPolicy } from '../../../shared/permission-policy'
 import {
   DEFAULT_APP_THEME_PRESET,
@@ -113,11 +113,6 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.codegraphFullToolSurface === undefined) {
     state.codegraphFullToolSurface = false
   }
-  // Add skills market settings if missing
-  if (state.skillsMarketProvider === undefined || state.skillsMarketProvider !== 'skillsmp') {
-    state.skillsMarketProvider = 'skillsmp'
-    state.skillsMarketApiKey = state.skillsMarketApiKey ?? ''
-  }
   if (state.promptRecommendationModels === undefined) {
     state.promptRecommendationModels = {
       chat: null,
@@ -224,6 +219,9 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   } else {
     state.leftSidebarWidth = clampLeftSidebarWidth(state.leftSidebarWidth as number)
   }
+  if (state.conversationPanelFullWidth === undefined) {
+    state.conversationPanelFullWidth = false
+  }
   if (state.autoUpdateEnabled === undefined) {
     state.autoUpdateEnabled = true
   }
@@ -308,27 +306,8 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.conversationGuideSeen === undefined) {
     state.conversationGuideSeen = false
   }
-  if (state.memoryAutomationEnabled === undefined) {
-    state.memoryAutomationEnabled = true
-  }
-  state.memoryAutomationWritePolicy = 'auto'
-  if (state.memoryAutomationMainSessionsOnly === undefined) {
-    state.memoryAutomationMainSessionsOnly = true
-  }
-  if (
-    state.memoryAutomationSummaryBudgetTokens === undefined ||
-    typeof state.memoryAutomationSummaryBudgetTokens !== 'number'
-  ) {
-    state.memoryAutomationSummaryBudgetTokens = 12_000
-  }
-  if (state.memoryAutomationDailyRollupEnabled === undefined) {
-    state.memoryAutomationDailyRollupEnabled = true
-  }
   if (state.memoryUseMemories === undefined) {
     state.memoryUseMemories = true
-  }
-  if (state.memoryGenerateMemories === undefined) {
-    state.memoryGenerateMemories = state.memoryAutomationEnabled
   }
   state.memoryScopeMode = 'hybrid'
   if (
@@ -359,10 +338,51 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
     state.memorySummaryBudgetTokens === undefined ||
     typeof state.memorySummaryBudgetTokens !== 'number'
   ) {
-    state.memorySummaryBudgetTokens = state.memoryAutomationSummaryBudgetTokens
+    state.memorySummaryBudgetTokens = 12_000
   }
-  if (state.memoryDailyRollupEnabled === undefined) {
-    state.memoryDailyRollupEnabled = state.memoryAutomationDailyRollupEnabled
+
+  // Memory organization & recall settings (daily memory organization plan)
+  if (state.memoryOrganizationEnabled === undefined) {
+    state.memoryOrganizationEnabled = true
+  }
+  if (state.memoryOrganizationSchedule !== 'nightly' && state.memoryOrganizationSchedule !== 'startup') {
+    state.memoryOrganizationSchedule = 'nightly'
+  }
+  if (typeof state.memoryOrganizationNightlyTime !== 'string' || !/^\d{2}:\d{2}$/.test(state.memoryOrganizationNightlyTime)) {
+    state.memoryOrganizationNightlyTime = '00:00'
+  }
+  if (typeof state.memoryWarmThresholdEphemeral !== 'number') {
+    state.memoryWarmThresholdEphemeral = 7
+  }
+  if (typeof state.memoryWarmThresholdStandard !== 'number') {
+    state.memoryWarmThresholdStandard = 30
+  }
+  if (typeof state.memoryWarmThresholdLasting !== 'number') {
+    state.memoryWarmThresholdLasting = 90
+  }
+  if (typeof state.memoryColdThresholdEphemeral !== 'number') {
+    state.memoryColdThresholdEphemeral = 21
+  }
+  if (typeof state.memoryColdThresholdStandard !== 'number') {
+    state.memoryColdThresholdStandard = 90
+  }
+  if (typeof state.memoryColdThresholdLasting !== 'number') {
+    state.memoryColdThresholdLasting = 180
+  }
+  if (typeof state.memoryRecallMaxNotes !== 'number') {
+    state.memoryRecallMaxNotes = 5
+  }
+  if (typeof state.memoryRecallMaxChars !== 'number') {
+    state.memoryRecallMaxChars = 4000
+  }
+  if (typeof state.memoryRecallMinScore !== 'number') {
+    state.memoryRecallMinScore = 0
+  }
+  if (state.memoryRecallGlobalFallback === undefined) {
+    state.memoryRecallGlobalFallback = true
+  }
+  if (state.memoryRecallVisibility === undefined) {
+    state.memoryRecallVisibility = true
   }
   return state
 }

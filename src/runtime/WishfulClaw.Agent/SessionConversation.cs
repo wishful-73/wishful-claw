@@ -19,13 +19,14 @@ public sealed class SessionConversation
     private readonly object _lock = new();
     private List<AgentRuntimeChatMessage> _conversation = [];
     private List<JsonElement> _wireConversation = [];
+    private readonly Dictionary<long, string> _injectedMemoryFingerprints = [];
     private long _version;
     private int _compactionWatermark;
 
     /// <summary>
-    /// Message count at the last completed/attempted compaction. Prevents the
-    /// same oversized conversation from re-entering compaction on every loop
-    /// iteration while still allowing a later turn to compact newly appended data.
+    /// Message count at the last successfully applied compaction. Prevents the
+    /// same compressed conversation from re-entering compaction immediately while
+    /// still allowing a later turn to compact newly appended data.
     /// </summary>
     public int CompactionWatermark
     {
@@ -43,6 +44,23 @@ public sealed class SessionConversation
         lock (_lock)
         {
             _compactionWatermark = Math.Max(_compactionWatermark, messageCount);
+        }
+    }
+
+    public bool NeedsMemoryInjection(long memoryId, string contentFingerprint)
+    {
+        lock (_lock)
+        {
+            return !_injectedMemoryFingerprints.TryGetValue(memoryId, out var current)
+                || !string.Equals(current, contentFingerprint, StringComparison.Ordinal);
+        }
+    }
+
+    public void MarkMemoryInjected(long memoryId, string contentFingerprint)
+    {
+        lock (_lock)
+        {
+            _injectedMemoryFingerprints[memoryId] = contentFingerprint;
         }
     }
 
@@ -124,6 +142,7 @@ public sealed class SessionConversation
         {
             _wireConversation = [.. wireMessages];
             _conversation = conversation;
+            _injectedMemoryFingerprints.Clear();
             _compactionWatermark = 0;
             _version++;
         }
@@ -131,6 +150,27 @@ public sealed class SessionConversation
         // entire session lifetime and only reset on Clear() (session switch).
         // This matches Reasonix's design where sessCacheHit/sessCacheMiss
         // survive compaction and full re-init.
+    }
+
+    /// <summary>
+    /// Initializes the conversation only when it is still empty, with the
+    /// emptiness check and the replacement performed under the same lock.
+    /// Returns false when messages already exist (a live run populated the
+    /// session, or a concurrent restore won the race) so a late restore can
+    /// never clobber in-flight conversation state.
+    /// </summary>
+    public bool InitializeIfEmpty(IReadOnlyList<JsonElement> wireMessages, List<AgentRuntimeChatMessage> conversation)
+    {
+        lock (_lock)
+        {
+            if (_wireConversation.Count > 0) return false;
+            _wireConversation = [.. wireMessages];
+            _conversation = conversation;
+            _injectedMemoryFingerprints.Clear();
+            _compactionWatermark = 0;
+            _version++;
+            return true;
+        }
     }
 
     /// <summary>
@@ -174,6 +214,7 @@ public sealed class SessionConversation
         {
             _conversation = conversation;
             _wireConversation = wireConversation;
+            _injectedMemoryFingerprints.Clear();
             _version++;
         }
     }
@@ -187,6 +228,7 @@ public sealed class SessionConversation
         {
             _conversation = [];
             _wireConversation = [];
+            _injectedMemoryFingerprints.Clear();
             _version++;
         }
         ResetCacheTotals();

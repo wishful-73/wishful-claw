@@ -152,5 +152,31 @@ export function createTabSlice(set: SetFn, get: GetFn) {
           rightPanelOpen: true
         }
       }),
+
+    // Context & progress tab — keep the existing summary kind for persisted
+    // panel-state compatibility; the session summary is rendered at the bottom.
+    ensureSummaryTab: (sessionId: any) =>
+      set((state: any) => {
+        const existing = state.rightPanelTabs.find((tab: any) => tab.kind === 'summary')
+        if (existing) {
+          const rightPanelTabs = state.rightPanelTabs.map((tab: RightPanelTabInstance) =>
+            tab === existing ? { ...tab, sessionId: sessionId ?? tab.sessionId ?? null } : tab
+          )
+          return { rightPanelTabs, rightPanelActiveTabId: existing.id, rightPanelOpen: true }
+        }
+        const tab: RightPanelTabInstance = {
+          id: 'summary',
+          kind: 'summary',
+          title: 'Context & progress',
+          closable: true,
+          createdAt: Date.now(),
+          sessionId: sessionId ?? null
+        }
+        return {
+          rightPanelTabs: ensureRightPanelTabs([...state.rightPanelTabs, tab]),
+          rightPanelActiveTabId: tab.id,
+          rightPanelOpen: true
+        }
+      }),
   }
 }

@@ -7,15 +7,10 @@ import type { ProviderConfig } from '@renderer/lib/api/types'
 import { isMissingFileErrorMessage, joinFsPath, readTextFile } from './memory-files'
 import type {
   MemoryAutomationCandidateKind,
-  MemoryAutomationEntry,
   MemoryAutomationFilterReason,
   MemoryAutomationRecordInput,
-  MemoryAutomationRecordResult,
   MemoryAutomationStatus,
   MemoryAutomationTarget,
-  MemoryJobStatus,
-  MemoryPipelineJob,
-  MemoryPipelineRunResult,
   MemoryRootDescriptor,
   MemoryRootInput,
   MemoryRootScope,
@@ -23,31 +18,31 @@ import type {
   MemoryStage1OutputInput
 } from '../../../../shared/memory-automation-types'
 
-import { GLOBAL_USER_TEMPLATE, GLOBAL_MEMORY_TEMPLATE, PROJECT_USER_TEMPLATE, PROJECT_MEMORY_TEMPLATE, SUMMARY_TEMPLATE, fingerprintContent, sanitizeMemoryPayload, parseConsolidationJson, getErrorMessage, targetForRoot, userTargetForRoot, ensureMarkdownDocument, appendPipelineSection, buildRawMemoriesMarkdown, buildRolloutSummaryMarkdown, buildSummaryFallback, buildConsolidationPrompt, type ConsolidationOutput, type TargetDescriptor } from './memory-automation-utils'
+import { GLOBAL_USER_TEMPLATE, GLOBAL_MEMORY_TEMPLATE, PROJECT_USER_TEMPLATE, PROJECT_MEMORY_TEMPLATE, SUMMARY_TEMPLATE, sanitizeMemoryPayload, parseConsolidationJson, parseOrganizationJson, getErrorMessage, targetForRoot, userTargetForRoot, ensureMarkdownDocument, appendPipelineSection, buildRolloutSummaryMarkdown, buildSummaryFallback, buildConsolidationPrompt, buildOrganizationPrompt, type ConsolidationOutput, type OrganizationOutput, type TargetDescriptor } from './memory-automation-utils'
 
-
+const RAW_MEMORIES_DEFAULT = '# Raw Memories\n'
 
 export const runningSessionAutomations = new Set<string>()
 export const _maState = {
-  lastAutoRunBySession: new Map<string, number>(),
-  rollupInstalled: false
+  lastAutoRunBySession: new Map<string, number>()
 }
 
-
-
-
+/**
+ * Record a pipeline entry. The former IPC backend never existed; entries are
+ * logged locally. Organization reports additionally persist to
+ * ~/.wishful-claw/memory-organization-log.json via memory-organization.ts.
+ */
 export async function recordEntry(
   input: MemoryAutomationRecordInput
-): Promise<MemoryAutomationEntry | null> {
-  const result = (await ipcClient.invoke(
-    IPC.MEMORY_AUTOMATION_RECORD,
-    input
-  )) as MemoryAutomationRecordResult
-  if (!result.success) {
-    console.warn('[MemoryAutomation] Failed to record entry:', result.error)
-    return null
-  }
-  return result.entry ?? null
+): Promise<null> {
+  const diagnostics = [
+    input.targetPath ? `path=${input.targetPath}` : '',
+    input.error ? `error=${input.error}` : ''
+  ].filter(Boolean)
+  console.info(
+    `[MemoryAutomation] entry: ${input.status}${input.filterReason ? ` (${input.filterReason})` : ''} target=${input.target}: ${input.content}${diagnostics.length ? ` (${diagnostics.join(' | ')})` : ''}`
+  )
+  return null
 }
 
 export async function recordSyntheticEntry(args: {
@@ -57,7 +52,6 @@ export async function recordSyntheticEntry(args: {
   target?: MemoryAutomationTarget
   rootScope?: MemoryRootScope | null
   memoryRootId?: string | null
-  jobId?: string | null
   projectId?: string | null
   kind?: MemoryAutomationCandidateKind
   content: string
@@ -68,7 +62,6 @@ export async function recordSyntheticEntry(args: {
     scope: 'main',
     rootScope: args.rootScope ?? null,
     memoryRootId: args.memoryRootId ?? null,
-    jobId: args.jobId ?? null,
     projectId: args.projectId ?? null,
     target: args.target ?? (args.rootScope === 'project' ? 'project_memory' : 'global_memory'),
     kind: args.kind ?? 'daily_context',
@@ -78,87 +71,21 @@ export async function recordSyntheticEntry(args: {
     targetPath: args.targetPath ?? null,
     status: args.status,
     filterReason: args.reason,
-    fingerprint: fingerprintContent(`${args.reason ?? args.status}:${args.content}`),
+    fingerprint: `${args.reason ?? args.status}:${args.content.slice(0, 64)}`,
     error: args.error ?? null
   })
 }
 
-
-
-
-
-export async function pipelineRun(args: Record<string, unknown>): Promise<MemoryPipelineRunResult> {
-  return (await ipcClient.invoke(IPC.MEMORY_PIPELINE_RUN, args)) as MemoryPipelineRunResult
+/** Build local root descriptors from root inputs (no backend round-trip). */
+export function resolveMemoryRoots(inputs: MemoryRootInput[]): MemoryRootDescriptor[] {
+  return inputs.map((input) => ({
+    id: input.scope === 'project' ? 'project' : 'global',
+    scope: input.scope,
+    rootPath: input.rootPath,
+    projectId: input.projectId ?? null,
+    sshConnectionId: input.sshConnectionId ?? null
+  }))
 }
-
-export async function prepareSessionPipeline(args: {
-  sessionId: string
-  roots: MemoryRootInput[]
-}): Promise<MemoryPipelineRunResult> {
-  return pipelineRun({
-    action: 'prepare-session',
-    sessionId: args.sessionId,
-    roots: args.roots,
-    leaseOwner: 'renderer'
-  })
-}
-
-export async function completeStage1(args: {
-  sessionId: string
-  jobId?: string | null
-  status?: MemoryJobStatus
-  error?: string | null
-  outputs: MemoryStage1OutputInput[]
-}): Promise<MemoryPipelineRunResult> {
-  return pipelineRun({
-    action: 'complete-stage1',
-    sessionId: args.sessionId,
-    jobId: args.jobId,
-    status: args.status,
-    error: args.error,
-    stage1Outputs: args.outputs
-  })
-}
-
-export async function createPhase2Job(root: MemoryRootDescriptor, sessionId?: string | null): Promise<MemoryPipelineJob | null> {
-  const result = await pipelineRun({
-    action: 'record-job',
-    jobKind: 'phase2',
-    status: 'running',
-    memoryRootId: root.id,
-    sessionId,
-    leaseOwner: 'renderer'
-  })
-  return result.job ?? null
-}
-
-export async function completePhase2Job(args: {
-  root: MemoryRootDescriptor
-  jobId?: string | null
-  sessionId?: string | null
-  status: MemoryJobStatus
-  error?: string | null
-}): Promise<void> {
-  await pipelineRun({
-    action: 'complete-phase2',
-    memoryRootId: args.root.id,
-    jobId: args.jobId,
-    sessionId: args.sessionId,
-    status: args.status,
-    error: args.error
-  })
-}
-
-export async function listStage1Outputs(root: MemoryRootDescriptor): Promise<MemoryStage1Output[]> {
-  const settings = useSettingsStore.getState()
-  const result = await pipelineRun({
-    action: 'list-stage1-outputs',
-    memoryRootId: root.id,
-    limit: settings.memoryMaxRawMemoriesForConsolidation
-  })
-  return result.stage1Outputs ?? []
-}
-
 
 export async function readRootFile(
   root: MemoryRootDescriptor,
@@ -206,6 +133,53 @@ export async function writeTargetContent(
   return null
 }
 
+export async function writeWithRetry(descriptor: TargetDescriptor, nextContent: string): Promise<string | null> {
+  const before = descriptor.missingFile ? undefined : descriptor.content
+  let error = await writeTargetContent(descriptor, nextContent, before)
+  if (error?.includes('File changed since it was read')) {
+    const refreshed = await readTextFile(ipcClient, descriptor.path, descriptor.sshConnectionId)
+    if (!refreshed.error) {
+      error = await writeTargetContent(descriptor, nextContent, refreshed.content ?? '')
+    }
+  }
+  return error
+}
+
+/**
+ * Stage 1 persistence: append extracted raw memories (and per-rollout summary
+ * files) directly into the memory root via fs writes. Replaces the missing
+ * pipeline backend's complete-stage1/list-stage1-outputs round-trip.
+ */
+export async function appendStage1Outputs(args: {
+  root: MemoryRootDescriptor
+  outputs: MemoryStage1OutputInput[]
+  sourceSessionId: string
+}): Promise<string | null> {
+  const createdAt = Date.now()
+  const fullOutputs: MemoryStage1Output[] = args.outputs.map((output, index) => ({
+    ...output,
+    id: `${output.memoryRootId}-${output.sourceSessionId}-${createdAt}-${index}`,
+    createdAt
+  }))
+  const rawDescriptor = await readRootFile(args.root, 'raw_memories.md', RAW_MEMORIES_DEFAULT)
+  const section = appendPipelineSection(rawDescriptor.content, fullOutputs)
+  const rawError = await writeWithRetry(rawDescriptor, section)
+  if (rawError) return rawError
+
+  for (const output of fullOutputs) {
+    const rolloutDescriptor = await readRootFile(
+      args.root,
+      `rollout_summaries/${output.rolloutSlug}.md`,
+      ''
+    )
+    const rolloutError = await writeWithRetry(
+      rolloutDescriptor,
+      buildRolloutSummaryMarkdown(args.root, output)
+    )
+    if (rolloutError) return rolloutError
+  }
+  return null
+}
 
 export async function runConsolidation(args: {
   provider: ProviderConfig
@@ -230,33 +204,45 @@ export async function runConsolidation(args: {
   return parseConsolidationJson(raw)
 }
 
-export async function writeWithRetry(descriptor: TargetDescriptor, nextContent: string): Promise<string | null> {
-  const before = descriptor.missingFile ? undefined : descriptor.content
-  let error = await writeTargetContent(descriptor, nextContent, before)
-  if (error?.includes('File changed since it was read')) {
-    const refreshed = await readTextFile(ipcClient, descriptor.path, descriptor.sshConnectionId)
-    if (!refreshed.error) {
-      error = await writeTargetContent(descriptor, nextContent, refreshed.content ?? '')
-    }
-  }
-  return error
+/**
+ * Pure-organization mode of the consolidation machinery: no new raw input,
+ * just dedup/merge/compress of the existing MEMORY.md plus a list of
+ * outdated paragraphs to sink into the warm tier.
+ */
+export async function runOrganizationPass(args: {
+  provider: ProviderConfig
+  root: MemoryRootDescriptor
+  memoryMarkdown: string
+}): Promise<OrganizationOutput | null> {
+  const raw = await runSidecarTextRequest({
+    provider: args.provider,
+    messages: [
+      {
+        id: `memory-organize-${args.root.id}`,
+        role: 'user',
+        content: buildOrganizationPrompt(args),
+        createdAt: Date.now()
+      }
+    ],
+    maxIterations: 1
+  })
+  return parseOrganizationJson(raw)
 }
 
+/**
+ * Phase 2: read pending raw memories back from raw_memories.md, consolidate
+ * them into USER/MEMORY/summary via LLM (with deterministic fallback), then
+ * reset raw_memories.md so entries are not re-consolidated.
+ */
 export async function runPhase2ForRoot(args: {
   root: MemoryRootDescriptor
   provider: ProviderConfig
   sourceSessionId?: string | null
 }): Promise<void> {
-  const phase2Job = await createPhase2Job(args.root, args.sourceSessionId)
   try {
-    const outputs = await listStage1Outputs(args.root)
-    if (outputs.length === 0) {
-      await completePhase2Job({
-        root: args.root,
-        jobId: phase2Job?.id,
-        sessionId: args.sourceSessionId,
-        status: 'succeeded_no_output'
-      })
+    const rawDescriptor = await readRootFile(args.root, 'raw_memories.md', RAW_MEMORIES_DEFAULT)
+    const rawContent = rawDescriptor.content.trim()
+    if (!rawContent || rawContent === RAW_MEMORIES_DEFAULT.trim()) {
       return
     }
 
@@ -271,24 +257,6 @@ export async function runPhase2ForRoot(args: {
       args.root.scope === 'project' ? PROJECT_MEMORY_TEMPLATE : GLOBAL_MEMORY_TEMPLATE
     )
     const summaryDescriptor = await readRootFile(args.root, 'memory_summary.md', SUMMARY_TEMPLATE)
-    const rawDescriptor = await readRootFile(args.root, 'raw_memories.md', '# Raw Memories\n')
-
-    const rawMemoriesMarkdown = buildRawMemoriesMarkdown(args.root, outputs)
-    const rawWriteError = await writeWithRetry(rawDescriptor, rawMemoriesMarkdown)
-    if (rawWriteError) throw new Error(rawWriteError)
-
-    for (const output of outputs) {
-      const rolloutDescriptor = await readRootFile(
-        args.root,
-        `rollout_summaries/${output.rolloutSlug}.md`,
-        ''
-      )
-      const rolloutError = await writeWithRetry(
-        rolloutDescriptor,
-        buildRolloutSummaryMarkdown(args.root, output)
-      )
-      if (rolloutError) throw new Error(rolloutError)
-    }
 
     let consolidation: ConsolidationOutput | null = null
     try {
@@ -298,7 +266,7 @@ export async function runPhase2ForRoot(args: {
         userMarkdown: userDescriptor.content,
         memoryMarkdown: memoryDescriptor.content,
         summaryMarkdown: summaryDescriptor.content,
-        rawMemoriesMarkdown
+        rawMemoriesMarkdown: rawDescriptor.content
       })
     } catch (error) {
       console.warn('[MemoryAutomation] Phase 2 model consolidation failed, using fallback:', error)
@@ -309,10 +277,18 @@ export async function runPhase2ForRoot(args: {
         userDescriptor.content,
       userDescriptor.content
     )
-    const fallbackMemory = appendPipelineSection(memoryDescriptor.content, outputs)
+    const fallbackMemory = (() => {
+      // LLM consolidation unavailable: keep raw lines inside MEMORY.md so no memory is lost.
+      const lines = rawDescriptor.content
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^[-*#>]+\s*/, '').trim())
+        .filter(Boolean)
+        .map((line) => `- ${line}`)
+      if (lines.length === 0) return memoryDescriptor.content
+      return `${ensureMarkdownDocument(memoryDescriptor.content, GLOBAL_MEMORY_TEMPLATE).trimEnd()}\n${lines.join('\n')}\n`
+    })()
     const nextMemory = ensureMarkdownDocument(
-      sanitizeMemoryPayload(consolidation?.memoryMarkdown ?? fallbackMemory).content ||
-        fallbackMemory,
+      sanitizeMemoryPayload(consolidation?.memoryMarkdown ?? fallbackMemory).content || fallbackMemory,
       fallbackMemory
     )
     const needsSummary =
@@ -335,54 +311,40 @@ export async function runPhase2ForRoot(args: {
       if (error) throw new Error(error)
     }
 
+    // Raw memories are consolidated; reset the staging file.
+    if (rawDescriptor.content !== RAW_MEMORIES_DEFAULT) {
+      const resetError = await writeWithRetry(rawDescriptor, RAW_MEMORIES_DEFAULT)
+      if (resetError) throw new Error(resetError)
+    }
+
     await recordEntry({
       scope: 'main',
       rootScope: args.root.scope,
       memoryRootId: args.root.id,
-      jobId: phase2Job?.id ?? null,
       projectId: args.root.projectId ?? null,
       target: targetForRoot(args.root),
       kind: args.root.scope === 'project' ? 'project_decision' : 'workflow_habit',
-      content: `Consolidated ${outputs.length} raw memory item(s) for ${args.root.scope} memory`,
+      content: `Consolidated raw memories for ${args.root.scope} memory`,
       confidence: 1,
       sourceSessionId: args.sourceSessionId,
       targetPath: memoryDescriptor.path,
       status: 'written',
-      fingerprint: fingerprintContent(`${args.root.id}:${outputs.map((output) => output.id).join(':')}`),
-      evidence: {
-        memoryRootId: args.root.id,
-        stage1OutputIds: outputs.map((output) => output.id),
-        writtenItems: consolidation?.writtenItems ?? []
-      },
+      fingerprint: `${args.root.id}:phase2:${args.sourceSessionId ?? 'manual'}`,
+      evidence: { writtenItems: consolidation?.writtenItems ?? [] },
       writtenAt: Date.now(),
       beforeContent: memoryDescriptor.content,
       afterContent: nextMemory,
       appendedText: null,
       sshConnectionId: args.root.sshConnectionId ?? null
     })
-
-    await completePhase2Job({
-      root: args.root,
-      jobId: phase2Job?.id,
-      sessionId: args.sourceSessionId,
-      status: 'succeeded'
-    })
   } catch (error) {
     const message = getErrorMessage(error)
-    await completePhase2Job({
-      root: args.root,
-      jobId: phase2Job?.id,
-      sessionId: args.sourceSessionId,
-      status: 'failed',
-      error: message
-    })
     await recordSyntheticEntry({
       status: 'error',
       reason: 'write_error',
       sourceSessionId: args.sourceSessionId,
       rootScope: args.root.scope,
       memoryRootId: args.root.id,
-      jobId: phase2Job?.id ?? null,
       projectId: args.root.projectId ?? null,
       target: targetForRoot(args.root),
       content: 'Memory phase 2 consolidation failed',
@@ -391,4 +353,3 @@ export async function runPhase2ForRoot(args: {
     })
   }
 }
-

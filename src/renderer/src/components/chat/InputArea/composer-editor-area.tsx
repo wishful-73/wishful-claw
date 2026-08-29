@@ -1,4 +1,4 @@
-﻿// Composer editor area: skill tag, optimizing indicator, optimization dialog,
+// Composer editor area: skill tag, optimizing indicator, optimization dialog,
 // drag overlay, FileAwareEditor, flyovers, hidden file input
 
 import * as React from 'react'
@@ -52,6 +52,7 @@ export interface ComposerEditorAreaProps {
   onBlur: () => void
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void
   onPaste: (e: React.ClipboardEvent<HTMLDivElement>) => void
+  onUserEdit?: () => void
   onCompositionStart: () => void
   onCompositionEnd: () => void
   onReferencePreview: (fileId: string) => void
@@ -181,6 +182,7 @@ export function ComposerEditorArea(props: ComposerEditorAreaProps) {
             highlightedFileId={props.highlightedFileId}
             onDocumentChange={props.onDocumentChange}
             onSelectionChange={props.onSelectionChange}
+            onUserEdit={props.onUserEdit}
             onFocus={props.onFocus}
             onBlur={props.onBlur}
             onKeyDown={props.onKeyDown}

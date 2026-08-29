@@ -90,8 +90,12 @@ export function McpServerConfig({
       variant: 'destructive'
     })
     if (!confirmed) return
-    await removeServer(server.id)
-    toast.success(t('mcp.serverRemoved', { defaultValue: 'Server removed' }))
+    try {
+      await removeServer(server.id)
+      toast.success(t('mcp.serverRemoved', { defaultValue: 'Server removed' }))
+    } catch (err) {
+      toast.error(t('mcp.serverRemoveFailed', { defaultValue: 'Failed to remove server' }) + `: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   const handleRefresh = async (): Promise<void> => {

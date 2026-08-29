@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   AIModelConfig,
 } from '../api/types'
 
@@ -14,11 +14,21 @@ export interface CompressionConfig {
   reservedOutputBudget?: number
 }
 
+export type CompressionStatus = 'compressed' | 'skipped' | 'failed' | 'blocked' | 'cancelled'
+
 export interface CompressionResult {
   compressed: boolean
   originalCount: number
   newCount: number
   messagesSummarized?: number
+  error?: string
+  status?: CompressionStatus
+  trigger?: 'auto' | 'manual'
+  summarizerFailed?: boolean
+  /** Worker-side token estimate of the conversation before compression. */
+  estimatedPreTokens?: number
+  /** Worker-side token estimate of the compressed conversation. */
+  estimatedNewTokens?: number
 }
 
 export const DEFAULT_CONTEXT_COMPRESSION_LIMIT = 200_000

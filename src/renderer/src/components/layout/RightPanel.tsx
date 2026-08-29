@@ -16,6 +16,7 @@ import { BrowserPanel } from '@renderer/components/layout/BrowserPanel'
 import { PreviewPanel } from '@renderer/components/layout/PreviewPanel'
 import { AgentFilesPanel } from '@renderer/components/layout/AgentFilesPanel'
 import { SessionChangeReviewPanel } from '@renderer/components/layout/SessionChangeReviewPanel'
+import { SessionSummaryPanel } from '@renderer/components/layout/SessionSummaryPanel'
 import { GoalHistoryPanel } from '@renderer/components/goal/GoalHistoryPanel'
 import { RIGHT_PANEL_DEFAULT_WIDTH, clampRightPanelWidth } from './right-panel-defs'
 
@@ -43,10 +44,17 @@ export function RightPanel(): React.JSX.Element {
   })
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const panelSessionId = activeScopedSessionId ?? activeSessionId ?? null
-  const workingFolder = useChatStore((state) => {
-    const project = state.projects.find((p) => p.id === state.activeProjectId)
-    return project?.workingFolder ?? null
+  const memoryProject = useChatStore((state) => {
+    const targetSessionId = activeScopedSessionId ?? state.activeSessionId
+    const targetSession = targetSessionId
+      ? state.sessions.find((item) => item.id === targetSessionId)
+      : null
+    const projectId = targetSession?.projectId ?? state.activeProjectId
+    return state.projects.find((project) => project.id === projectId) ?? null
   })
+  const workingFolder = memoryProject?.workingFolder ?? null
+  const memoryProjectId = memoryProject?.id ?? null
+  const memorySshConnectionId = memoryProject?.sshConnectionId ?? null
   const browserPluginEnabled = useAppPluginStore((state) =>
     Boolean(state.getPlugin(BROWSER_PLUGIN_ID, activeProjectId)?.enabled)
   )
@@ -61,8 +69,17 @@ export function RightPanel(): React.JSX.Element {
       if (tab.kind === 'memory') {
         return { ...tab, title: t('memory.tabMemory', { defaultValue: 'Memory' }) }
       }
+      if (tab.kind === 'files') {
+        return { ...tab, title: t('rightPanel.files', { defaultValue: 'Files' }) }
+      }
       if (tab.kind === 'browser') {
         return { ...tab, title: t('rightPanel.browser', { defaultValue: 'Browser' }) }
+      }
+      if (tab.kind === 'summary') {
+        return {
+          ...tab,
+          title: t('rightPanel.contextProgress', { defaultValue: 'Context & progress' })
+        }
       }
       // subagent tabs keep their own title (set from task description)
       return tab
@@ -139,7 +156,13 @@ export function RightPanel(): React.JSX.Element {
       return <ActivityPanel />
     }
     if (tab.kind === 'memory') {
-      return <MemoryPanel workingFolder={workingFolder} />
+      return (
+        <MemoryPanel
+          workingFolder={workingFolder}
+          projectId={memoryProjectId}
+          sshConnectionId={memorySshConnectionId}
+        />
+      )
     }
     if (tab.kind === 'subagent') {
       // Per-agent tabs (toolUseId set) render the execution detail directly;
@@ -160,6 +183,7 @@ export function RightPanel(): React.JSX.Element {
     if (tab.kind === 'preview') return <PreviewPanel embedded />
     if (tab.kind === 'files') return null  // AgentFilesPanel is rendered as persistent layer
     if (tab.kind === 'review') return <SessionChangeReviewPanel sessionId={tab.sessionId ?? panelSessionId} />
+    if (tab.kind === 'summary') return <SessionSummaryPanel sessionId={tab.sessionId ?? panelSessionId} />
     if (tab.kind === 'goal') {
       return (
         <GoalHistoryPanel
@@ -204,14 +228,19 @@ export function RightPanel(): React.JSX.Element {
               onAddGoals={() => useUIStore.getState().openGoalPanel(panelSessionId, activeProjectId)}
               onOpenFile={() => {
                 import('@renderer/lib/ipc/ipc-client').then(({ ipcClient }) => {
-                  ipcClient.invoke('fs:select-file', { multiSelections: true }).then((result) => {
-                    const r = result as { canceled?: boolean; paths?: string[]; path?: string }
-                    if (r.canceled) return
-                    const selectedPaths = r.paths?.length ? r.paths : r.path ? [r.path] : []
-                    for (const p of selectedPaths) {
-                      useUIStore.getState().openFilePreview(p)
-                    }
-                  })
+                  ipcClient
+                    .invoke('fs:select-file', { multiSelections: true })
+                    .then((result) => {
+                      const r = result as { canceled?: boolean; paths?: string[]; path?: string }
+                      if (r.canceled) return
+                      const selectedPaths = r.paths?.length ? r.paths : r.path ? [r.path] : []
+                      for (const p of selectedPaths) {
+                        useUIStore.getState().openFilePreview(p)
+                      }
+                    })
+                    .catch((err) => {
+                      console.error('[RightPanel] Failed to open file dialog:', err)
+                    })
                 })
               }}
               onClosePanel={() => setRightPanelOpen(false)}

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -75,16 +75,33 @@ public static partial class ContextCompression
     // ── Public API ──
 
     /// <summary>
-    /// Compacts the conversation: summarizes the foldable middle, keeps pinned prefix and recent tail.
-    /// Returns the new (conversation, wireConversation) tuple. On LLM failure, falls back to mechanical fold.
+    /// Single logical result of one compression pass — the sole source for the
+    /// Agent memory replacement, the chat artifacts (boundary + summary) and the
+    /// persistence snapshot (contract: compression-contract.md §七).
     /// </summary>
-    public static async Task<(List<AgentRuntimeChatMessage> conversation, List<JsonElement> wireConversation)> CompactAsync(
+    public sealed record CompactionOutcome(
+        List<AgentRuntimeChatMessage> Conversation,
+        List<JsonElement> WireConversation,
+        bool Compacted,
+        bool SummarizerFailed,
+        int MessagesSummarized,
+        int OriginalCount,
+        string? SummaryMessageId);
+
+    /// <summary>
+    /// Compacts the conversation: summarizes the foldable middle, keeps pinned prefix and recent tail.
+    /// Returns a <see cref="CompactionOutcome"/>; <c>Compacted=false</c> means there was nothing
+    /// to fold. On LLM failure, falls back to mechanical fold (SummarizerFailed=true).
+    /// </summary>
+    public static async Task<CompactionOutcome> CompactAsync(
         List<AgentRuntimeChatMessage> conversation,
         List<JsonElement> wireConversation,
         JsonElement provider,
         IWorkerRequestContext context,
         CancellationToken cancellationToken)
     {
+        var originalCount = conversation.Count;
+
         var (head, start, ok) = PlanCompaction(conversation, provider, MinCompactMessages);
 
         if (!ok)
@@ -92,7 +109,7 @@ public static partial class ContextCompression
             // Try with min=1 for a single huge message
             (head, start, ok) = PlanCompaction(conversation, provider, 1);
             if (!ok)
-                return (conversation, wireConversation); // nothing to compact
+                return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
         }
 
         var region = conversation.Skip(head).Take(start - head).ToList();
@@ -101,22 +118,34 @@ public static partial class ContextCompression
         var (kept, fold) = PartitionFold(region, provider);
 
         if (fold.Count == 0)
-            return (conversation, wireConversation); // nothing to fold
+            return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
 
         // Economic check: skip if fold region too small
         if (EstimateMessagesTokens(fold) < MinFoldTokens)
-            return (conversation, wireConversation);
+            return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
 
         // Summarize the foldable region
         string summary;
+        var summarizerFailed = false;
         try
         {
             summary = await SummarizeAsync(fold, provider, cancellationToken);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // SummaryTimeout fired (linked CTS CancelAfter) while the caller is
+            // still running — degrade to mechanical fold instead of letting the
+            // OCE escape and fail the whole run. Caller-initiated cancellation
+            // (token requested) is rethrown below.
+            WorkerLog.Warn("context compression summarization timed out; falling back to mechanical fold");
+            summary = MechanicalFoldDigest(fold.Count);
+            summarizerFailed = true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             WorkerLog.Warn($"context compression LLM summarization failed: {ex.GetType().Name}: {ex.Message}");
             summary = MechanicalFoldDigest(fold.Count);
+            summarizerFailed = true;
         }
 
         // Build the compacted conversation
@@ -143,11 +172,14 @@ public static partial class ContextCompression
             }
         }
 
-        // Summary message
+        // Summary message — same id + meta flow into the chat artifacts and the
+        // persistence snapshot so restore never re-inserts a duplicate.
         var summaryContent = $"{SummaryTagOpen}\nSummary of earlier conversation (older messages were compacted to save context):\n{summary}\n{SummaryTagClose}";
         var summaryMessage = AgentRuntimeChatMessage.User(summaryContent);
+        var summaryMessageId = $"compact-summary-{Guid.NewGuid():N}";
         newConversation.Add(summaryMessage);
-        newWireConversation.Add(CreateSummaryWireMessage(summaryContent));
+        newWireConversation.Add(CreateSummaryWireMessage(
+            summaryMessageId, summaryContent, fold.Count, recentMessagesPreserved: start < conversation.Count));
 
         // Recent tail
         for (var i = start; i < conversation.Count; i++)
@@ -159,9 +191,16 @@ public static partial class ContextCompression
         WorkerLog.Info(
             $"context compression completed: original={conversation.Count} " +
             $"folded={fold.Count} kept={kept.Count} summary={summary.Length}chars " +
-            $"result={newConversation.Count}");
+            $"result={newConversation.Count} summarizerFailed={summarizerFailed}");
 
-        return (newConversation, newWireConversation);
+        return new CompactionOutcome(
+            newConversation,
+            newWireConversation,
+            true,
+            summarizerFailed,
+            fold.Count,
+            originalCount,
+            summaryMessageId);
     }
 
     // ── Legacy truncation (kept as fallback) ──
@@ -369,6 +408,12 @@ public static partial class ContextCompression
                     _ => throw new InvalidOperationException($"Unsupported provider for summarization: {providerType}")
                 };
             }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Linked-CTS timeout — the caller is still running, so stop
+                // retrying and let CompactAsync degrade to mechanical fold.
+                break;
+            }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 lastErr = ex;
@@ -407,7 +452,7 @@ public static partial class ContextCompression
         {
             w.WriteStartObject();
             w.WriteString("model", model);
-            w.WriteNumber("max_tokens", 4096);
+            w.WriteNumber("max_tokens", 1536);
             w.WriteString("system", SummarySystemPrompt);
             w.WritePropertyName("messages");
             w.WriteStartArray();
@@ -448,14 +493,19 @@ public static partial class ContextCompression
     {
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
-        var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.openai.com").Trim().TrimEnd('/');
-        var url = $"{baseUrl}/v1/chat/completions";
+        // Mirror OpenAIChatProvider's URL convention: baseUrl already includes
+        // the version segment (default https://api.openai.com/v1), so append
+        // /chat/completions directly — appending another /v1 here produced
+        // .../v1/v1/chat/completions and 404s on versioned gateways (e.g. Gemini's
+        // OpenAI-compatible endpoint), degrading every summary to mechanical fold.
+        var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.openai.com/v1").Trim().TrimEnd('/');
+        var url = $"{baseUrl}/chat/completions";
 
         var bodyJson = WorkerJsonHelper.BuildJsonString(w =>
         {
             w.WriteStartObject();
             w.WriteString("model", model);
-            w.WriteNumber("max_tokens", 4096);
+            w.WriteNumber("max_tokens", 1536);
             w.WritePropertyName("messages");
             w.WriteStartArray();
             w.WriteStartObject();

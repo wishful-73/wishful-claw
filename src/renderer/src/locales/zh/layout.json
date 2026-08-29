@@ -21,7 +21,9 @@
       "hint": "可以在设置中随时修改或创建新人格",
       "start": "开始使用",
       "saved": "设置完成",
-      "builtin": "内置"
+      "builtin": "内置",
+      "noContent": "（无内容）",
+      "viewDetail": "查看详情"
     },
     "start": "开始设置",
     "next": "下一步",
@@ -195,7 +197,9 @@
     "openInspector": "打开检查器",
     "closeRuntimeStatus": "收起上下文与进度",
     "openRuntimeStatus": "打开上下文与进度",
-    "help": "打开引导"
+    "help": "打开引导",
+    "files": "文件",
+    "terminal": "终端"
   },
   "sidebar": {
     "newChat": "新对话",
@@ -231,7 +235,7 @@
     "extensionsLabel": "扩展",
     "expand": "展开侧边栏",
     "projects": "项目",
-    "conversations": "会话",
+    "conversations": "对话",
     "resources": "资源",
     "skills": "技能",
     "souls": "人格",
@@ -254,7 +258,8 @@
     "deleteSessionConfirmDesc": "「{{title}}」及其全部消息记录将被永久删除，无法恢复。",
     "deleteProjectConfirmTitle": "删除这个项目？",
     "deleteProjectConfirmDesc": "项目「{{name}}」及其会话将从应用中移除（磁盘上的文件不会被删除）。",
-    "loadMoreSessions": "加载更多（还有 {{count}} 个）"
+    "loadMoreSessions": "加载更多（还有 {{count}} 个）",
+    "openFailed": "打开文件夹失败"
   },
   "sectionExecution": {
     "title": "执行"
@@ -425,11 +430,25 @@
       },
       "cancel": "取消",
       "save": "保存"
-    }
+    },
+    "maxIterations": "最大迭代次数"
   },
   "layout": {
     "noSessionSelected": "未选择会话",
-    "conversationCleared": "对话已清空"
+    "conversationCleared": "对话已清空",
+    "compressContext": "压缩会话",
+    "openFolderPanel": "打开右侧文件夹",
+    "viewSessionSummary": "查看会话摘要",
+    "viewContextProgress": "查看上下文与进度",
+    "widenChat": "加宽聊天区域",
+    "standardChatWidth": "恢复标准宽度"
+  },
+  "input": {
+    "compressingContext": "正在压缩上下文...",
+    "contextCompressed": "上下文已压缩",
+    "contextCompressionSkipped": "无需压缩",
+    "contextCompressionBlocked": "暂时无法压缩",
+    "contextCompressionFailed": "压缩失败"
   },
   "memory": {
     "title": "记忆",
@@ -446,6 +465,24 @@
     "idle": "搜索记忆或在对话中使用记忆工具。",
     "loading": "加载中...",
     "consolidate": "整合记忆索引",
+    "organize": "立即整理",
+    "organizing": "整理中...",
+    "organizeResult": "整理完成：{{scopes}} 个范围；{{warm}} 条降至温层，{{cold}} 条降至冷层。",
+    "organizeFailed": "记忆整理失败。",
+    "organizeNoProvider": "整理已跳过：没有可用的文本模型。",
+    "organizeBusy": "已有一次整理正在执行中。",
+    "recoverFailed": "记忆恢复失败。",
+    "organizationStatus": "整理计划",
+    "lastOrganized": "上次整理：",
+    "nextOrganized": "下次整理：",
+    "never": "从未",
+    "disabled": "已关闭",
+    "onStartup": "启动后",
+    "recentReports": "最近整理报告",
+    "noReports": "暂无整理报告。",
+    "recoveryTitle": "温层 / 冷层记忆",
+    "restoreWarm": "恢复温层",
+    "restoreHot": "恢复热层",
     "tier": {
       "hot": "热",
       "warm": "温",
@@ -458,13 +495,54 @@
   },
   "rightPanel": {
     "goals": "Goals",
+    "files": "文件",
     "browser": "浏览器",
     "browserLoadFailed": "页面加载失败",
     "browserRetry": "重试",
     "browserEmptyState": "输入网址开始浏览",
     "openFile": "打开文件",
     "preview": "预览",
-    "previewEmpty": "无预览内容"
+    "previewEmpty": "无预览内容",
+    "contextProgress": "上下文与进度",
+    "summary": "会话摘要",
+    "summaryEmpty": "暂无摘要",
+    "summaryMessages": "已总结前 {{count}} 条消息",
+    "reviewEmptyTitle": "暂无文件变更",
+    "reviewEmptyDesc": "暂时无法获取最新差异。本会话的文件变更将显示在这里。",
+    "artifacts": "产物",
+    "reviewSessionDesc": "审阅当前会话中记录的最新文件变更。展开文件可查看差异。"
+  },
+  "contextProgress": {
+    "environment": "环境信息",
+    "session": "会话",
+    "project": "项目",
+    "target": "连接",
+    "workingFolder": "目录",
+    "branch": "分支",
+    "changes": "变更",
+    "sync": "提交或推送",
+    "sources": "上下文文件",
+    "local": "本地",
+    "ssh": "SSH",
+    "sshNamed": "SSH · {{name}}",
+    "gitLoading": "读取中",
+    "gitUnavailable": "Git 不可用",
+    "unknownBranch": "未知",
+    "unknown": "未知",
+    "noProject": "未关联项目",
+    "clean": "无变更",
+    "commitPending": "待提交",
+    "pushPending": "待推送",
+    "pullPending": "待拉取",
+    "synced": "已同步",
+    "changedFiles": "{{count}} 个文件",
+    "noWorkingFolder": "未选择",
+    "noSources": "暂无上下文文件",
+    "sourcesSummary": "{{first}}、{{second}} 等 {{count}} 个",
+    "subAgents": "子 Agent",
+    "subAgentsRunning": "{{count}} 个运行中",
+    "subAgentsCompleted": "{{count}} 个已完成",
+    "runningTerminals": "运行中的终端"
   },
   "rightPanelAction": {
     "closePanel": "关闭面板"
@@ -509,7 +587,8 @@
     "discard": "丢弃",
     "diffSplit": "分屏",
     "diffInline": "内联",
-    "sendToChat": "发送地址到聊天输入框"
+    "sendToChat": "发送地址到聊天输入框",
+    "docxCompatibilityHint": "DOCX 文档以兼容模式渲染，复杂排版可能显示不完整。"
   },
   "agentFiles": {
     "files": "文件",
@@ -636,5 +715,17 @@
     "toggleRightPanel": "切换右侧面板",
     "toggleTheme": "切换主题",
     "recentSessions": "最近会话"
+  },
+  "fileChange": {
+    "loadDiffFailed": "加载完整差异失败"
+  },
+  "thinking": {
+    "thinkingEllipsis": "思考中…"
+  },
+  "detailPanel": {
+    "loadingSubAgent": "正在加载子代理详情...",
+    "noSubAgentRecords": "暂无子代理记录",
+    "error": "失败",
+    "subAgentActivity": "子代理活动将显示在这里"
   }
 }

@@ -11,8 +11,8 @@ import { Users, CircleUserRound, ChevronDown } from 'lucide-react'
 import { SlideIn } from '@renderer/components/animate-ui'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
-import { ContextCompressionMessage } from './ContextCompressionMessage'
 import { CompressionStatusMessage } from './CompressionStatusMessage'
+import { CompactBoundaryMessage } from './CompactBoundaryMessage'
 import type { UnifiedMessage, ToolResultContent } from '@renderer/lib/api/types'
 import type { RequestRetryState, ToolCallState } from '@renderer/lib/agent/types'
 import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
@@ -59,6 +59,27 @@ interface MessageItemProps {
 function getContentFallbackSignal(content: UnifiedMessage['content']): string {
   if (typeof content === 'string') return `s:${content.length}`
   return `a:${content.length}`
+}
+
+function getCompressionStatusSignal(message: UnifiedMessage): string {
+  const status = message.meta?.compressionStatus
+  if (!status) return ''
+  return [
+    status.operationId ?? '',
+    status.state,
+    status.startedAt,
+    status.completedAt ?? '',
+    status.originalCount ?? '',
+    status.newCount ?? '',
+    status.keptMessageCount ?? '',
+    status.messagesSummarized ?? '',
+    status.preTokens ?? '',
+    status.trigger ?? '',
+    status.summarizerFailed ? '1' : '0',
+    status.error ?? '',
+    status.summaryMessageId ?? '',
+    status.summaryText ?? ''
+  ].join('|')
 }
 
 function AgentWakeNotification({ content }: { content: string }): React.JSX.Element {
@@ -153,7 +174,7 @@ function MessageItemInner({
     switch (message.role) {
       case 'user': {
         if (isCompactSummaryLikeMessage(message)) {
-          return <ContextCompressionMessage message={message} />
+          return null
         }
         if (message.source === 'team') {
           return (
@@ -205,14 +226,18 @@ function MessageItemInner({
             requestRetryState={isLastAssistantMessage ? requestRetryState : null}
             requestDebugInfo={message.debugInfo}
             meta={message.meta}
-            preToolPhase={(message as any).preToolPhase}
+            preToolPhase={message.preToolPhase}
+            memoryRecall={message.memoryRecall}
           />
         )
       case 'system':
         if (message.meta?.compressionStatus) {
           return <CompressionStatusMessage message={message} />
         }
-        return <ContextCompressionMessage message={message} />
+        if (message.meta?.compactBoundary) {
+          return <CompactBoundaryMessage message={message} />
+        }
+        return null
       default:
         return null
     }
@@ -296,9 +321,13 @@ function areRequestRetryStatesEqual(
 }
 
 function areEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
+  const prevCompressionStatusSignal = getCompressionStatusSignal(prev.message)
+  const nextCompressionStatusSignal = getCompressionStatusSignal(next.message)
+
   // Fast path: same object reference => nothing to compare.
   if (prev.message === next.message) {
     return (
+      prevCompressionStatusSignal === nextCompressionStatusSignal &&
       prev.messageId === next.messageId &&
       prev.sessionId === next.sessionId &&
       areStringArraysEqual(prev.sessionAssistantMessageIds, next.sessionAssistantMessageIds) &&
@@ -342,6 +371,7 @@ function areEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
     : ''
 
   return (
+    prevCompressionStatusSignal === nextCompressionStatusSignal &&
     prev.messageId === next.messageId &&
     prev.sessionId === next.sessionId &&
     areStringArraysEqual(prev.sessionAssistantMessageIds, next.sessionAssistantMessageIds) &&

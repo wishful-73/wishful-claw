@@ -37,6 +37,7 @@ export interface FileAwareEditorProps {
   onBlur?: () => void
   onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>
   onPaste?: React.ClipboardEventHandler<HTMLDivElement>
+  onUserEdit?: () => void
   onCompositionStart?: React.CompositionEventHandler<HTMLDivElement>
   onCompositionEnd?: React.CompositionEventHandler<HTMLDivElement>
   onReferencePreview?: (fileId: string) => void
@@ -308,6 +309,14 @@ export function isSameDocument(left: EditorDocumentNode[], right: EditorDocument
 }
 
 export function parseDomToDocument(root: HTMLDivElement): EditorDocumentNode[] {
+  if (
+    root.childNodes.length === 1 &&
+    root.firstChild?.nodeType === Node.ELEMENT_NODE &&
+    (root.firstChild as Element).tagName === 'BR'
+  ) {
+    return []
+  }
+
   const nextDocument: EditorDocumentNode[] = []
 
   const appendText = (text: string): void => {

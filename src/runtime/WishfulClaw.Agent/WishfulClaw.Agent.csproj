@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="WishfulClaw.GoalRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.CompactionSnapshotRegressionTests" />
   </ItemGroup>
 
 </Project>

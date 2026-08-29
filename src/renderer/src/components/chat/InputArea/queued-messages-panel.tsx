@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
@@ -33,7 +33,9 @@ interface QueuedMessagesPanelProps {
   handleQueueEditPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void
   editQueuedMessage: (msg: PendingSessionMessageItem) => void
   removePendingSessionMessage: (id: string) => void
-  quotePendingSessionMessageIntoConversation: (id: string) => void
+  isQueueDispatchPaused: boolean
+  resumeQueuedMessages: () => void
+  handleClearQueuedMessages: () => void
 
   // Clear confirm dialog
   queueClearConfirmOpen: boolean
@@ -60,13 +62,15 @@ export function QueuedMessagesPanel({
   handleQueueEditPaste,
   editQueuedMessage,
   removePendingSessionMessage,
-  quotePendingSessionMessageIntoConversation,
+  isQueueDispatchPaused,
+  resumeQueuedMessages,
+  handleClearQueuedMessages,
   queueClearConfirmOpen,
   setQueueClearConfirmOpen,
   clearQueuedMessagesForActiveSession,
   summarizeQueuedMessage
 }: QueuedMessagesPanelProps) {
-  const { t } = useTranslation()
+  const { t } = useTranslation('chat')
 
   if (queuedMessages.length === 0) return null
 
@@ -78,6 +82,28 @@ export function QueuedMessagesPanel({
           'mb-2 overflow-hidden rounded-lg border border-border/50 bg-muted/20 shadow-sm backdrop-blur'
         )}
       >
+        <div className="flex items-center justify-between gap-3 border-b border-border/35 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-foreground/85">
+              {t('input.queueTitle', { defaultValue: 'Queued messages' })} ({queuedMessages.length})
+            </p>
+            <p className="truncate text-[10px] text-muted-foreground">
+              {isQueueDispatchPaused
+                ? t('input.queuePausedHint', { defaultValue: 'Paused — click to resume' })
+                : t('input.queueRunningHint', { defaultValue: 'Sent in order after the current turn completes' })}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {isQueueDispatchPaused && (
+              <Button type="button" variant="secondary" size="sm" className="h-7 px-2 text-[10px]" onClick={resumeQueuedMessages}>
+                {t('input.queueResume', { defaultValue: 'Resume' })}
+              </Button>
+            )}
+            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-[10px] text-muted-foreground" onClick={handleClearQueuedMessages}>
+              {t('action.clear', { ns: 'common' })}
+            </Button>
+          </div>
+        </div>
         <div className="max-h-40 overflow-y-auto py-1">
           <AnimatePresence initial={false}>
             {queuedMessages.map((msg, index) => {
@@ -88,7 +114,6 @@ export function QueuedMessagesPanel({
                 summaryText ||
                 commandLabel ||
                 t('input.queueImageOnly', { defaultValue: '[Images only]' })
-              const quoteLabel = t('input.queueQuote', { defaultValue: 'Quote' })
 
               return (
                 <motion.div
@@ -207,15 +232,6 @@ export function QueuedMessagesPanel({
                         {fallbackText}
                       </span>
                       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 rounded-md px-1.5 text-[10px] text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                          onClick={() => quotePendingSessionMessageIntoConversation(msg.id)}
-                        >
-                          {quoteLabel}
-                        </Button>
                         <Button
                           type="button"
                           variant="ghost"

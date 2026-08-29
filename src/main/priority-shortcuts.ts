@@ -4,9 +4,25 @@ import * as fs from 'fs'
 import { join } from 'path'
 import { logWarn } from './lib/logger'
 
-interface ShortcutContext {
+export interface ShortcutRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface ShortcutPoint {
+  x: number
+  y: number
+}
+
+export interface ShortcutContext {
   foregroundWindow: string | null
   focusWindow: string | null
+  foregroundWindowRect: ShortcutRect | null
+  focusWindowRect: ShortcutRect | null
+  caretRect: ShortcutRect | null
+  mousePoint: ShortcutPoint | null
 }
 
 interface ShortcutRegistration {
@@ -19,6 +35,10 @@ interface BridgeMessage {
   id?: string
   foregroundWindow?: string
   focusWindow?: string
+  foregroundWindowRect?: ShortcutRect | null
+  focusWindowRect?: ShortcutRect | null
+  caretRect?: ShortcutRect | null
+  mousePoint?: ShortcutPoint | null
 }
 
 const registrations = new Map<string, ShortcutRegistration>()
@@ -27,9 +47,17 @@ let bridge: ChildProcessWithoutNullStreams | null = null
 let stdoutBuffer = ''
 let appQuitting = false
 let bridgeScriptPath: string | null = null
+// Restart budget: a permanently crashing bridge must not loop forever.
+const MAX_BRIDGE_RESTART_ATTEMPTS = 5
+let bridgeRestartAttempts = 0
+let bridgeRestartTimer: NodeJS.Timeout | null = null
 
 app.on('will-quit', () => {
   appQuitting = true
+  if (bridgeRestartTimer) {
+    clearTimeout(bridgeRestartTimer)
+    bridgeRestartTimer = null
+  }
   cleanupBridgeScript()
 })
 
@@ -98,6 +126,18 @@ public static class PriorityHotkeyBridge
 
     public static void Start()
     {
+        // Keep Win32 screen coordinates in the same per-monitor space as the
+        // Electron display bounds. This bridge process has no windows of its
+        // own, so setting awareness before the hook thread starts is safe.
+        try
+        {
+            SetProcessDpiAwarenessContext(new IntPtr(-4));
+        }
+        catch (EntryPointNotFoundException)
+        {
+            // Older Windows versions may not expose this API; the bridge can
+            // still provide the existing shortcut/focus behavior.
+        }
         Thread thread = new Thread(HookThreadMain);
         thread.IsBackground = true;
         thread.Name = "WishfulClaw.PriorityHotkeys";
@@ -368,6 +408,38 @@ public static class PriorityHotkeyBridge
         _hook = IntPtr.Zero;
     }
 
+    private static string WindowRectJson(IntPtr window)
+    {
+        if (window == IntPtr.Zero || !IsWindow(window)) return "null";
+        RECT rect;
+        if (!GetWindowRect(window, out rect)) return "null";
+        int width = rect.right - rect.left;
+        int height = rect.bottom - rect.top;
+        if (width <= 0 || height <= 0) return "null";
+        return "{\"x\":" + rect.left + ",\"y\":" + rect.top + ",\"width\":" + width + ",\"height\":" + height + "}";
+    }
+
+    private static string CaretRectJson(GUITHREADINFO gui)
+    {
+        if (gui.hwndCaret == IntPtr.Zero || !IsWindow(gui.hwndCaret)) return "null";
+        RECT caret = gui.rcCaret;
+        if (caret.right <= caret.left || caret.bottom <= caret.top) return "null";
+        POINT topLeft = new POINT { x = caret.left, y = caret.top };
+        POINT bottomRight = new POINT { x = caret.right, y = caret.bottom };
+        if (!ClientToScreen(gui.hwndCaret, ref topLeft) || !ClientToScreen(gui.hwndCaret, ref bottomRight)) return "null";
+        int width = bottomRight.x - topLeft.x;
+        int height = bottomRight.y - topLeft.y;
+        if (width <= 0 || height <= 0) return "null";
+        return "{\"x\":" + topLeft.x + ",\"y\":" + topLeft.y + ",\"width\":" + width + ",\"height\":" + height + "}";
+    }
+
+    private static string MousePointJson()
+    {
+        POINT point;
+        if (!GetCursorPos(out point)) return "null";
+        return "{\"x\":" + point.x + ",\"y\":" + point.y + "}";
+    }
+
     private static IntPtr HookCallback(int code, IntPtr message, IntPtr data)
     {
         if (code < 0) return CallNextHookEx(_hook, code, message, data);
@@ -415,18 +487,27 @@ public static class PriorityHotkeyBridge
                     if (shift && IsPressed(VK_SHIFT)) { KeySend(VK_SHIFT, KEYEVENTF_KEYUP); ReleasedMods.Add(VK_SHIFT); }
                     if (alt && IsPressed(VK_MENU)) { KeySend(VK_MENU, KEYEVENTF_KEYUP); ReleasedMods.Add(VK_MENU); }
                 }
-                long foreground = GetForegroundWindow().ToInt64();
+                IntPtr foregroundHandle = GetForegroundWindow();
+                long foreground = foregroundHandle.ToInt64();
+                string foregroundRect = WindowRectJson(foregroundHandle);
                 // Capture the focused control (edit box etc.) inside the foreground
                 // window so paste can restore focus to it afterwards (Ditto-style).
                 long focus = 0;
-                uint fgThread = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
+                string focusRect = "null";
+                string caretRect = "null";
+                uint fgThread = GetWindowThreadProcessId(foregroundHandle, IntPtr.Zero);
                 GUITHREADINFO gui = new GUITHREADINFO();
                 gui.cbSize = (uint)Marshal.SizeOf(typeof(GUITHREADINFO));
-                if (GetGUIThreadInfo(fgThread, ref gui) && gui.hwndFocus != IntPtr.Zero)
+                if (fgThread != 0 && GetGUIThreadInfo(fgThread, ref gui))
                 {
-                    focus = gui.hwndFocus.ToInt64();
+                    if (gui.hwndFocus != IntPtr.Zero)
+                    {
+                        focus = gui.hwndFocus.ToInt64();
+                        focusRect = WindowRectJson(gui.hwndFocus);
+                    }
+                    caretRect = CaretRectJson(gui);
                 }
-                Console.WriteLine("{\"type\":\"pressed\",\"id\":\"" + spec.Id + "\",\"foregroundWindow\":\"" + foreground.ToString() + "\",\"focusWindow\":\"" + focus.ToString() + "\"}");
+                Console.WriteLine("{\"type\":\"pressed\",\"id\":\"" + spec.Id + "\",\"foregroundWindow\":\"" + foreground.ToString() + "\",\"focusWindow\":\"" + focus.ToString() + "\",\"foregroundWindowRect\":" + foregroundRect + ",\"focusWindowRect\":" + focusRect + ",\"caretRect\":" + caretRect + ",\"mousePoint\":" + MousePointJson() + "}");
                 return new IntPtr(1);
             }
         }
@@ -542,6 +623,10 @@ public static class PriorityHotkeyBridge
     [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint attachThread, uint attachToThread, bool attach);
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint inputCount, INPUT[] inputs, int inputSize);
     [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint threadId, ref GUITHREADINFO info);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out RECT rect);
+    [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr window, ref POINT point);
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")] private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiAwarenessContext);
     [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetFocus();
     [DllImport("user32.dll")] private static extern bool SystemParametersInfo(int action, int param, ref uint value, int init);
@@ -610,11 +695,19 @@ function handleBridgeOutput(chunk: Buffer): void {
       try {
         const message = JSON.parse(line) as BridgeMessage
         if (message.type === 'ready') {
+          // The bridge is healthy again — drop restart accounting and any
+          // degraded globalShortcut fallbacks so hotkeys don't fire twice.
+          bridgeRestartAttempts = 0
+          unregisterAllFallbacks()
           syncBridge()
         } else if (message.type === 'pressed' && message.id) {
           registrations.get(message.id)?.callback({
             foregroundWindow: message.foregroundWindow ?? null,
-            focusWindow: message.focusWindow ?? null
+            focusWindow: message.focusWindow ?? null,
+            foregroundWindowRect: message.foregroundWindowRect ?? null,
+            focusWindowRect: message.focusWindowRect ?? null,
+            caretRect: message.caretRect ?? null,
+            mousePoint: message.mousePoint ?? null
           })
         }
       } catch {
@@ -656,6 +749,11 @@ function ensureWindowsBridge(): boolean {
       windowsHide: true
     })
     bridge = child
+    // Writing to a dead bridge's stdin raises an 'error' event; without a
+    // listener that throws uncaught in the main process.
+    child.stdin.on('error', (error) => {
+      logWarn('main', `Priority shortcut bridge stdin error: ${error.message}`)
+    })
     child.stdout.on('data', handleBridgeOutput)
     child.stderr.on('data', (chunk: Buffer) => {
       const message = chunk.toString('utf8').trim()
@@ -668,12 +766,28 @@ function ensureWindowsBridge(): boolean {
     child.on('exit', (code) => {
       if (bridge === child) bridge = null
       stdoutBuffer = ''
-      if (registrations.size > 0 && !appQuitting) {
-        logWarn('main', `Priority shortcut bridge exited: code=${String(code)}`)
-        setTimeout(() => {
-          ensureWindowsBridge()
-        }, 1000)
+      if (bridgeRestartTimer || registrations.size === 0 || appQuitting) return
+      if (bridgeRestartAttempts >= MAX_BRIDGE_RESTART_ATTEMPTS) {
+        // Budget exhausted — stop restarting and degrade to globalShortcut
+        // so the hotkeys keep working (a crashing bridge would otherwise
+        // silently disable them forever).
+        logWarn(
+          'main',
+          `Priority shortcut bridge exited: code=${String(code)}; restart budget exhausted, falling back to globalShortcut`
+        )
+        registerAllFallbacks()
+        return
       }
+      bridgeRestartAttempts += 1
+      const delay = Math.min(1000 * 2 ** (bridgeRestartAttempts - 1), 30_000)
+      logWarn(
+        'main',
+        `Priority shortcut bridge exited: code=${String(code)}; restart #${bridgeRestartAttempts} in ${delay}ms`
+      )
+      bridgeRestartTimer = setTimeout(() => {
+        bridgeRestartTimer = null
+        if (!appQuitting) ensureWindowsBridge()
+      }, delay)
     })
     return true
   } catch (error) {
@@ -683,11 +797,31 @@ function ensureWindowsBridge(): boolean {
   }
 }
 
+function registerAllFallbacks(): void {
+  for (const [id, registration] of registrations) {
+    registerFallback(id, registration)
+  }
+}
+
+function unregisterAllFallbacks(): void {
+  for (const [id, accelerator] of fallbackAccelerators) {
+    globalShortcut.unregister(accelerator)
+    fallbackAccelerators.delete(id)
+  }
+}
+
 function registerFallback(id: string, registration: ShortcutRegistration): boolean {
   const oldAccelerator = fallbackAccelerators.get(id)
   if (oldAccelerator) globalShortcut.unregister(oldAccelerator)
   const registered = globalShortcut.register(registration.accelerator, () => {
-    registration.callback({ foregroundWindow: null, focusWindow: null })
+    registration.callback({
+      foregroundWindow: null,
+      focusWindow: null,
+      foregroundWindowRect: null,
+      focusWindowRect: null,
+      caretRect: null,
+      mousePoint: null
+    })
   })
   if (registered) fallbackAccelerators.set(id, registration.accelerator)
   else fallbackAccelerators.delete(id)

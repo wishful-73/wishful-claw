@@ -29,6 +29,14 @@ public static class AgentRuntimeTools
     private static readonly SemaphoreSlim RunSlots = new(MaxConcurrentRuns, MaxConcurrentRuns);
     private static long _generatedRunId;
 
+    /// <summary>
+    /// True when the session currently has an active agent run. Manual context
+    /// compression uses this to reject requests that would Replace the
+    /// conversation while the loop still holds live list references.
+    /// </summary>
+    public static bool HasActiveSessionRun(string sessionId) =>
+        sessionId.Length > 0 && ActiveSessionRuns.ContainsKey(sessionId);
+
     // ── Run management ──
 
     public static Task<WorkerResponse> RunAsync(JsonElement parameters, IWorkerRequestContext context)

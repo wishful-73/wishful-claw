@@ -24,7 +24,7 @@ export function OfficeOnlineViewer({ filePath, sshConnectionId }: ViewerProps): 
 
   const openInSystem = async (): Promise<void> => {
     if (sshConnectionId) return
-    await ipcClient.invoke(IPC.SHELL_OPEN_PATH, filePath)
+    await ipcClient.invoke(IPC.SHELL_OPEN_PATH, { path: filePath })
   }
 
   if (canUseOnlineViewer) {

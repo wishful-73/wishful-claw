@@ -23,7 +23,7 @@ function extension(filePath: string): string {
 export function BinaryFileViewer({ filePath, sshConnectionId }: ViewerProps): React.JSX.Element {
   const openInSystem = async (): Promise<void> => {
     if (sshConnectionId) return
-    await ipcClient.invoke(IPC.SHELL_OPEN_PATH, filePath)
+    await ipcClient.invoke(IPC.SHELL_OPEN_PATH, { path: filePath })
   }
 
   return (

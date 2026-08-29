@@ -226,6 +226,21 @@ function ClipboardEnhancer(): React.JSX.Element {
                 </button>
               </div>
 
+              {/* Clear history */}
+              <div className="border-t border-border pt-4">
+                <label className="mb-1.5 block text-sm text-foreground">清空历史</label>
+                <p className="mb-2 text-[11px] text-muted-foreground">删除全部剪贴板历史记录，此操作不可撤销</p>
+                <button
+                  onClick={() => {
+                    if (window.confirm('确定清空全部剪贴板历史记录吗？')) void handleClear()
+                  }}
+                  className="flex items-center gap-1.5 rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/10"
+                >
+                  <Trash2 className="size-3.5" />
+                  清空历史
+                </button>
+              </div>
+
             </div>
           ) : (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">加载中...</div>
@@ -251,16 +266,15 @@ function ClipboardEnhancer(): React.JSX.Element {
           <Settings className="size-3" />
           设置
         </button>
-        {history.length > 0 && (
-          <button
-            onClick={handleClear}
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
-          >
-            <Trash2 className="size-3" />
-            清空
-          </button>
-        )}
+        <button
+          onClick={() => void window.api.invoke('clipboard:hide', null)}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          title="收起剪贴板窗口"
+        >
+          <X className="size-3" />
+          收起
+        </button>
       </div>
 
       {/* Search */}
@@ -303,9 +317,9 @@ function ClipboardEnhancer(): React.JSX.Element {
                   <Pin className="size-2 text-primary" fill="currentColor" />
                 )}
               </span>
-              {index < 10 && (
+              {index < 9 && (
                 <span className="mt-0.5 shrink-0 w-4 text-center text-[10px] font-medium text-muted-foreground/60">
-                  {index === 9 ? 0 : index + 1}
+                  {index + 1}
                 </span>
               )}
               <div className="min-w-0 flex-1">

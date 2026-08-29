@@ -187,6 +187,14 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
     return
   }
 
+  // After an app restart the store session exists but its message list is
+  // empty — reload it for rendering. The Worker's SessionConversation is
+  // rebuilt lazily and synchronously inside agent/run on this send, so no
+  // explicit restore call is needed (InitializeIfEmpty guards the race).
+  if ((session?.messages.length ?? 0) === 0) {
+    await useChatStore.getState().loadRecentSessionMessages(sessionId)
+  }
+
   const settings = useSettingsStore.getState()
   const modelConfig = targetProvider.models.find((m: { id: string; thinkingConfig?: unknown }) => m.id === modelId)
   const thinkingConfig = modelConfig?.thinkingConfig as ThinkingConfig | undefined

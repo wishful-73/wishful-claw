@@ -6,7 +6,7 @@ import * as fs from 'fs'
 // 参考 OpenCowork 的做法（src/main/index.ts 第 28 行）
 import appIcon from '../../resources/icon-256.png?asset'
 
-import { getNativeWorker } from './lib/native-worker'
+import { getNativeWorker, latchNativeWorkerShutdown } from './lib/native-worker'
 import { logError, logWarn, logInfo, logDebug, installGlobalExceptionHandlers, readRecentLogs } from './lib/logger'
 import { registerMessagePackHandler } from './ipc/messagepack-handler'
 import { registerAiProviderHandlers } from './ipc/ai-provider-handlers'
@@ -15,9 +15,9 @@ import { registerAgentStreamForwarder } from './ipc/agent-stream-handler'
 import { registerNativeAgentRuntimeHandlers } from './ipc/native-agent-runtime'
 import { registerGitHandlers } from './ipc/git-handlers'
 import { registerFsHandlers } from './ipc/fs-handlers'
-import { registerTerminalHandlers } from './ipc/terminal-handlers'
+import { registerTerminalHandlers, killAllTerminalSessions } from './ipc/terminal-handlers'
 import { registerAgentChangeHandlers } from './ipc/agent-change-handlers'
-import { registerMcpHandlers } from './ipc/mcp-handlers'
+import { registerMcpHandlers, shutdownMcp } from './ipc/mcp-handlers'
 import { registerVideoHandlers } from './ipc/video-handlers'
 import { registerExtensionHandlers } from './ipc/extension-handlers'
 import { registerWebSearchHandlers } from './ipc/web-search-handlers'
@@ -34,12 +34,18 @@ import { safeSendMessagePackToWindow } from './window-ipc'
 import { setMainWindow } from './main-window-registry'
 import { registerLoginItemHandlers, registerWindowControlHandlers } from './ipc/window-handlers'
 import { registerMiscHandlers } from './ipc/misc-handlers'
+import { registerInputDraftHandlers } from './ipc/input-draft-handlers'
 import { registerCodeGraphHandlers } from './ipc/codegraph-handlers'
 import {
   initializeCronScheduler,
   registerCronHandlers,
-  releaseCronRunsAfterRendererExit
+  releaseCronRunsAfterRendererExit,
+  shutdownCronScheduler
 } from './ipc/reverse-handlers/cron-reverse-handler'
+import {
+  installMemoryOrganizationScheduler,
+  shutdownMemoryOrganizationScheduler
+} from './ipc/memory-organization-scheduler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
 
 let mainWindow: BrowserWindow | null = null
@@ -152,7 +158,7 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
@@ -192,9 +198,9 @@ if (!gotTheLock) {
     'dialog:openFolder',
     async (_args, event) => {
       const win = BrowserWindow.fromWebContents(event.sender)
-      const result = await dialog.showOpenDialog(win!, {
-        properties: ['openDirectory']
-      })
+      const result = win
+        ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+        : await dialog.showOpenDialog({ properties: ['openDirectory'] })
       return {
         folderPath: result.canceled ? null : result.filePaths[0] ?? null,
         canceled: result.canceled
@@ -211,7 +217,9 @@ if (!gotTheLock) {
       if (args && typeof args.defaultPath === 'string') {
         opts.defaultPath = args.defaultPath
       }
-      const result = await dialog.showOpenDialog(win!, opts)
+      const result = win
+        ? await dialog.showOpenDialog(win, opts)
+        : await dialog.showOpenDialog(opts)
       return {
         canceled: result.canceled,
         path: result.canceled ? undefined : result.filePaths[0]
@@ -323,27 +331,8 @@ registerCodeGraphHandlers()
     }
   )
 
-  // ── Input draft stub handlers ──
-  registerMessagePackHandler<string, unknown | null>(
-    'input-draft:get',
-    () => null
-  )
-  registerMessagePackHandler<unknown, void>(
-    'input-draft:set',
-    () => undefined
-  )
-  registerMessagePackHandler<string, void>(
-    'input-draft:remove',
-    () => undefined
-  )
-  registerMessagePackHandler<void, unknown[]>(
-    'input-draft:list',
-    () => []
-  )
-  registerMessagePackHandler<void, void>(
-    'input-draft:cleanup',
-    () => undefined
-  )
+  // ── Input draft persistence (JSON map under ~/.wishful-claw/) ──
+  registerInputDraftHandlers()
 
   // ── DB locator (forwarded to Worker) ──
   registerMessagePackHandler<string, unknown[]>(
@@ -498,6 +487,9 @@ registerCodeGraphHandlers()
   // Restore persisted Cron jobs before auto-starting channels.
   void initializeCronScheduler()
 
+  // Daily memory organization triggers (startup throttle + nightly crossing).
+  installMemoryOrganizationScheduler()
+
   // Auto-start enabled channels after window is ready
   if (channelManager) {
     void autoStartChannels(channelManager)
@@ -518,7 +510,16 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   cleanupSshHandlers()
+  shutdownCronScheduler()
+  shutdownMemoryOrganizationScheduler()
   if (channelManager) {
     void channelManager.stopAll()
   }
+  // Terminate every child process class before exit — none of these may
+  // survive app quit (worker / MCP stdio servers / pty terminals).
+  killAllTerminalSessions()
+  latchNativeWorkerShutdown()
+  void shutdownMcp().catch((err) => {
+    logWarn('main', `MCP shutdown failed: ${String(err)}`)
+  })
 })

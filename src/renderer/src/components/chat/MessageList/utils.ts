@@ -217,7 +217,6 @@ export const USER_LOCATOR_HIGHLIGHT_MS = 1400
 export const ASSISTANT_RAIL_PREVIEW_LIMIT = 120
 export const ASSISTANT_RAIL_SCROLL_OFFSET = 28
 export const ASSISTANT_RAIL_DENSE_THRESHOLD = 80
-export const OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD = 72
 export const MIN_RENDERABLE_HISTORY_ROWS = 3
 export const VIRTUAL_ROW_ESTIMATED_HEIGHT = 180
 export const VIRTUAL_ROW_OVERSCAN = 8
@@ -247,6 +246,7 @@ export interface MessageListSessionSelection {
   messageCount: number
   workingFolder?: string
   loadedRangeStart: number
+  totalTurns: number
   projectId?: string
 }
 
@@ -263,6 +263,7 @@ export const EMPTY_MESSAGE_LIST_SESSION_SELECTION: MessageListSessionSelection =
   messagesLoaded: false,
   messageCount: 0,
   loadedRangeStart: 0,
+  totalTurns: 0,
   projectId: undefined,
   workingFolder: undefined
 }
@@ -485,11 +486,19 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
     }
 
     if (msg.usage) result.usage = msg.usage as UnifiedMessage['usage']
+    if (msg.debugInfo) result.debugInfo = msg.debugInfo as UnifiedMessage['debugInfo']
+    if (msg.meta) result.meta = msg.meta as UnifiedMessage['meta']
+    if (msg.preToolPhase) result.preToolPhase = true
+    if (msg.memoryRecall) result.memoryRecall = msg.memoryRecall as UnifiedMessage['memoryRecall']
     // Use text length as revision so structural signature changes when
     // streaming text grows (buildStructuralSignature uses _revision).
     // This ensures renderableMessageIds is rebuilt when assistant text
-    // goes from empty to non-empty.
-    result._revision = (text.length) + (thinking?.length ?? 0) + (toolCalls?.length ?? 0)
+    // goes from empty to non-empty. The recall outcome is included so the
+    // memoized row re-renders the moment the recall banner data arrives.
+    const recallFingerprint = msg.memoryRecall
+      ? 1 + ((msg.memoryRecall as { hits?: string[] }).hits?.length ?? 0)
+      : 0
+    result._revision = (text.length) + (thinking?.length ?? 0) + (toolCalls?.length ?? 0) + recallFingerprint
     if (msg.error) {
       // Represent errors as an agent_error block
       result.content = [{ type: 'agent_error', code: 'runtime_error', message: msg.error as string }]
@@ -523,6 +532,7 @@ export function selectMessageListSession(
     messageCount: session.messageCount ?? 0,
     workingFolder: session.workingFolder,
     loadedRangeStart: session.loadedRangeStart ?? 0,
+    totalTurns: session.totalTurns ?? 0,
     projectId: session.projectId
   }
 }

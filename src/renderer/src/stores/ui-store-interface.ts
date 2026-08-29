@@ -47,10 +47,6 @@ export interface UIStore {
   setLeftSidebarOpen: (open: boolean) => void
   setLeftSidebarWidth: (width: number) => void
 
-  // Conversation panel
-  conversationPanelFullWidth: boolean
-  setConversationPanelFullWidth: (fullWidth: boolean) => void
-
   // Right panel
   rightPanelOpen: boolean
   toggleRightPanel: () => void
@@ -65,6 +61,7 @@ export interface UIStore {
   rightPanelActiveTabId: string
   setRightPanelActiveTab: (tabId: string) => void
   closeRightPanelTab: (tabId: string) => void
+  removeRightPanelTabsForSession: (sessionId: string) => void
   rightPanelRailWidth: number
 
   // Runtime status panel
@@ -280,6 +277,7 @@ export interface UIStore {
   ) => void
   ensureTerminalTab: () => void
   ensureFilesTab: (sessionId?: string | null) => void
+  ensureSummaryTab: (sessionId?: string | null) => void
   getBrowserWebviewRef: (sessionId?: string | null, projectId?: string | null) => React.RefObject<Electron.WebviewTag | null> | null
   openBrowserTab: (
     url?: string,

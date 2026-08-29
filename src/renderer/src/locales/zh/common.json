@@ -1,4 +1,4 @@
-{
+﻿{
   "appName": "Wishful Claw",
   "appDescription": "AI Agent 编程助手",
   "actions": {
@@ -79,11 +79,20 @@
     "unpin": "取消置顶",
     "showMore": "显示更多",
     "showLess": "收起",
-    "more": "更多"
+    "more": "更多",
+    "edit": "编辑",
+    "generate": "生成"
   },
   "unit": {
     "folders": "个文件夹",
     "files": "个文件",
-    "matches": "条匹配"
+    "matches": "条匹配",
+    "tokens": "Tokens",
+    "reasoning": "推理"
+  },
+  "showMore": "展开",
+  "showLess": "收起",
+  "error": {
+    "label": "错误"
   }
 }

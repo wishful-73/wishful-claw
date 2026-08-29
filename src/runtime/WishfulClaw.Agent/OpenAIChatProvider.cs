@@ -287,6 +287,19 @@ internal static partial class OpenAIChatProvider
 
     // ── SSE processing ──
 
+    private static JsonDocument? TryParseSseJson(string data)
+    {
+        try
+        {
+            return JsonDocument.Parse(data);
+        }
+        catch (JsonException ex)
+        {
+            WorkerLog.Warn($"openai-chat skipping malformed SSE line: {ex.Message}");
+            return null;
+        }
+    }
+
     private static async Task<bool> ProcessSseDataAsync(
         string data,
         Dictionary<int, ToolCallBuffer> toolBuffers,
@@ -308,7 +321,10 @@ internal static partial class OpenAIChatProvider
             return true;
         }
 
-        using var document = JsonDocument.Parse(data);
+        // Malformed SSE payloads (proxy error pages, truncated lines) must not
+        // kill the whole turn — skip the line and keep streaming.
+        using var document = TryParseSseJson(data);
+        if (document is null) return false;
         var root = document.RootElement;
 
         if (root.TryGetProperty("usage", out var usageElement) &&

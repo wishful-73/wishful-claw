@@ -8,9 +8,9 @@ import {
   getDistanceToBottom,
   AUTO_SCROLL_BOTTOM_THRESHOLD,
   INITIAL_TAIL_RENDER_COUNT,
-  OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD,
   PROGRAMMATIC_SCROLL_GUARD_MS,
   STREAMING_AUTO_SCROLL_BOTTOM_THRESHOLD,
+  USER_LOCATOR_HIGHLIGHT_MS,
   VIRTUAL_ROW_ESTIMATED_HEIGHT,
   VIRTUAL_ROW_OVERSCAN,
 } from './utils'
@@ -26,6 +26,7 @@ export interface MessageListScrollInput {
   hasLoadOlderRow: boolean
   loadedRangeStart: number
   streamingMessageId: string | null
+  pinnedMessageId: string | null
   isSessionOutputting: boolean
   canSessionTriggerStreamingAutoScroll: boolean
   pendingAskUserQuestion: ReturnType<typeof import('./utils').findPendingAskUserQuestion>
@@ -42,10 +43,12 @@ export interface MessageListScrollOutput {
   rowVirtualizer: ReturnType<typeof useVirtualizer>
   isAtBottom: boolean
   isLoadingOlderMessages: boolean
+  isPinnedTurnOverlayVisible: boolean
   activeAssistantRailMessageIds: Set<string>
   highlightedMessageId: string | null
   handleListScroll: () => void
   scrollToBottom: () => void
+  handleJumpToPinnedMessage: () => void
   handleJumpToAssistantMessage: (item: AssistantReplyRailItem) => Promise<void>
   loadOlderMessages: (preserveResidentHistory?: boolean) => Promise<number>
   requestAssistantRailSync: () => void
@@ -60,6 +63,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     hasLoadOlderRow,
     loadedRangeStart,
     streamingMessageId,
+    pinnedMessageId,
     isSessionOutputting,
     canSessionTriggerStreamingAutoScroll,
     pendingAskUserQuestion,
@@ -89,7 +93,6 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   const programmaticScrollUntilRef = React.useRef(0)
   const wasSessionOutputtingRef = React.useRef(isSessionOutputting)
   const isLoadingOlderMessagesRef = React.useRef(false)
-  const prevScrollHeightRef = React.useRef(0)
 
   // ── State ───────────────────────────────────────────────────────
   const [isAtBottom, setIsAtBottom] = React.useState(true)
@@ -98,6 +101,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   >(() => new Set())
   const [highlightedMessageId, setHighlightedMessageId] = React.useState<string | null>(null)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = React.useState(false)
+  const [isPinnedTurnOverlayVisible, setIsPinnedTurnOverlayVisible] = React.useState(false)
 
   // ── Helpers ─────────────────────────────────────────────────────
   const canAutoScroll = React.useCallback(() => {
@@ -201,6 +205,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     })
   }, [syncActiveAssistantRail])
 
+
   // ── shouldAdjustScrollPositionOnItemSizeChange ──────────────────
   const shouldAdjustScrollPositionOnItemSizeChange = React.useCallback(
     (item: { end: number }, _delta: number, instance: { scrollOffset: number | null }): boolean => {
@@ -236,6 +241,74 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange =
     shouldAdjustScrollPositionOnItemSizeChange
 
+  // ── Pinned current-turn overlay visibility ──────────────────────
+  // 当前轮 user message 滚出可视区顶部时显示顶部吸附卡；仍在可视区时不重复展示。
+  const setPinnedOverlay = React.useCallback((visible: boolean) => {
+    setIsPinnedTurnOverlayVisible((prev) => (prev === visible ? prev : visible))
+  }, [])
+
+  const syncPinnedTurnOverlay = React.useCallback(() => {
+    if (!pinnedMessageId) {
+      setPinnedOverlay(false)
+      return
+    }
+    const ref = listRef.current
+    if (!ref) return
+    const element = ref.querySelector<HTMLElement>(
+      `[data-message-id="${CSS.escape(pinnedMessageId)}"]`
+    )
+    if (element) {
+      const containerTop = ref.getBoundingClientRect().top
+      setPinnedOverlay(element.getBoundingClientRect().bottom <= containerTop + 1)
+      return
+    }
+    // 未渲染（超出 overscan）时按虚拟行索引判断在可视区上方还是下方。
+    const rowIndex = rows.findIndex((row) => row.key === pinnedMessageId)
+    if (rowIndex < 0) {
+      setPinnedOverlay(false)
+      return
+    }
+    const virtualIndex = rowIndex + (hasLoadOlderRow ? 1 : 0)
+    const items = rowVirtualizer.getVirtualItems()
+    const firstItem = items[0]
+    setPinnedOverlay(Boolean(firstItem && virtualIndex < firstItem.index))
+  }, [hasLoadOlderRow, pinnedMessageId, rows, rowVirtualizer, setPinnedOverlay])
+
+  // ── Jump back to the pinned current-turn user message ───────────
+  const handleJumpToPinnedMessage = React.useCallback(() => {
+    if (!pinnedMessageId) return
+    autoScrollModeRef.current = 'off'
+    setIsAtBottom(false)
+    const highlightTarget = (): void => {
+      setHighlightedMessageId(pinnedMessageId)
+      if (highlightedMessageTimerRef.current !== null) {
+        window.clearTimeout(highlightedMessageTimerRef.current)
+      }
+      highlightedMessageTimerRef.current = window.setTimeout(() => {
+        setHighlightedMessageId((prev) => (prev === pinnedMessageId ? null : prev))
+        highlightedMessageTimerRef.current = null
+      }, USER_LOCATOR_HIGHLIGHT_MS) as unknown as number
+    }
+    const ref = listRef.current
+    if (!ref) return
+    const target = ref.querySelector<HTMLElement>(
+      `[data-message-id="${CSS.escape(pinnedMessageId)}"]`
+    )
+    if (target) {
+      markProgrammaticScroll()
+      highlightTarget()
+      const targetTop =
+        ref.scrollTop + (target.getBoundingClientRect().top - ref.getBoundingClientRect().top)
+      ref.scrollTo({ top: Math.max(0, targetTop - 8), behavior: 'smooth' })
+      return
+    }
+    const rowIndex = rows.findIndex((row) => row.key === pinnedMessageId)
+    if (rowIndex < 0) return
+    markProgrammaticScroll()
+    highlightTarget()
+    rowVirtualizer.scrollToIndex(rowIndex + (hasLoadOlderRow ? 1 : 0), { align: 'start' })
+  }, [hasLoadOlderRow, markProgrammaticScroll, pinnedMessageId, rows, rowVirtualizer])
+
   // ── Jump to assistant message (delegated to scroll-utils) ──────
   const handleJumpToAssistantMessage = React.useCallback(
     createJumpToAssistantMessage({
@@ -261,21 +334,27 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     async (_preserveResidentHistory = false): Promise<number> => {
       if (!activeSessionId || isLoadingOlderMessagesRef.current || loadedRangeStart <= 0) return 0
       autoScrollModeRef.current = 'off'
+      pendingInitialScrollSessionIdRef.current = null
+      if (initialTailReleaseFrameRef.current !== null) {
+        window.clearTimeout(initialTailReleaseFrameRef.current as unknown as number)
+        initialTailReleaseFrameRef.current = null
+      }
       isLoadingOlderMessagesRef.current = true
+      setIsAtBottom(false)
       setIsLoadingOlderMessages(true)
       try {
         const ref = listRef.current
         const oldScrollTop = ref?.scrollTop ?? 0
         const oldHeight = ref?.scrollHeight ?? 0
 
-        const { messages: newMessages, rangeStart, hasMore } = await useChatStore
+        const { messages: newMessages, rangeStart, hasMore, totalTurns } = await useChatStore
           .getState()
-          .fetchOlderMessages?.(activeSessionId) ?? { messages: [], rangeStart: 0, hasMore: false }
+          .fetchOlderMessages?.(activeSessionId) ?? { messages: [], rangeStart: 0, hasMore: false, totalTurns: 0 }
 
         if (newMessages.length === 0) return 0
 
         flushSync(() => {
-          useChatStore.getState().prependMessages?.(activeSessionId, newMessages, rangeStart, hasMore)
+          useChatStore.getState().prependMessages?.(activeSessionId, newMessages, rangeStart, hasMore, totalTurns)
         })
         if (ref) {
           const newHeight = ref.scrollHeight
@@ -299,28 +378,12 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
 
   // ── Scroll handler ──────────────────────────────────────────────
   const handleListScroll = React.useCallback(() => {
+    // Older history is loaded only via the explicit top button (click-triggered);
+    // scrolling to the top never fetches anything by itself.
     syncBottomState()
+    syncPinnedTurnOverlay()
     requestAssistantRailSync()
-    const ref = listRef.current
-    if (!ref) return
-    const currentScrollHeight = ref.scrollHeight
-    const currentScrollTop = ref.scrollTop
-    const prevHeight = prevScrollHeightRef.current
-    const heightChanged = currentScrollHeight !== prevHeight
-    prevScrollHeightRef.current = currentScrollHeight
-    // 渲染/测量过程中不触发加载
-    if (heightChanged) return
-    // 程序滚动期间（scrollToBottom 等）不触发加载
-    const isProg = window.performance.now() < programmaticScrollUntilRef.current
-    if (isProg) return
-    if (
-      !isLoadingOlderMessagesRef.current &&
-      loadedRangeStart > 0 &&
-      currentScrollTop <= OLDER_MESSAGE_LOAD_SCROLL_THRESHOLD
-    ) {
-      void loadOlderMessages()
-    }
-  }, [loadOlderMessages, loadedRangeStart, requestAssistantRailSync, syncBottomState])
+  }, [requestAssistantRailSync, syncBottomState, syncPinnedTurnOverlay])
 
   // ── Load recent messages on session change ──────────────────────
   React.useEffect(() => {
@@ -342,6 +405,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     measuredMessageHeightsRef.current.clear()
     setAssistantRailMeasureVersion((version) => version + 1)
     setActiveAssistantRailIds(new Set())
+    setIsPinnedTurnOverlayVisible(false)
   }, [activeSessionId, setActiveAssistantRailIds])
 
   // ── Initial scroll to bottom ────────────────────────────────────
@@ -396,6 +460,11 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     scrollToBottomImmediate()
   }, [canAutoScroll, isAtBottom, pendingAskUserQuestion, scrollToBottomImmediate, virtualListTotalSize])
 
+  // ── Pinned overlay sync on anchor/layout changes ────────────────
+  React.useEffect(() => {
+    syncPinnedTurnOverlay()
+  }, [rows.length, syncPinnedTurnOverlay, virtualListTotalSize])
+
   // ── Resize observer ─────────────────────────────────────────────
   React.useEffect(() => {
     const viewport = listRef.current
@@ -440,10 +509,12 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     rowVirtualizer: rowVirtualizer as any,
     isAtBottom,
     isLoadingOlderMessages,
+    isPinnedTurnOverlayVisible,
     activeAssistantRailMessageIds,
     highlightedMessageId,
     handleListScroll,
     scrollToBottom,
+    handleJumpToPinnedMessage,
     handleJumpToAssistantMessage,
     loadOlderMessages,
     requestAssistantRailSync,

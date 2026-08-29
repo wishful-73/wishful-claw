@@ -35,6 +35,11 @@
     "output": "Output"
   },
   "input": {
+    "compressingContext": "Compressing context...",
+    "contextCompressed": "Context compressed",
+    "contextCompressionSkipped": "No compression needed",
+    "contextCompressionBlocked": "Compression temporarily unavailable",
+    "contextCompressionFailed": "Compression failed",
     "placeholder": "Type a message...",
     "placeholderClarify": "Describe your idea and I will keep probing until the requirements are clear...",
     "placeholderCowork": "Ask the assistant to help with your project...",
@@ -114,7 +119,8 @@
       "cost": "{{label}}: {{cost}}",
       "tpsHint": "Output tokens generated per second",
       "ttftHint": "Time to first token",
-      "totalCost": "Cost"
+      "totalCost": "Cost",
+      "total": "Total"
     },
     "runtimeStatus": {
       "ready": "Ready",
@@ -187,7 +193,17 @@
     "startAcpDesc": "First clarify the goal, background, constraints, and acceptance criteria. Then design the architecture and delegate tasks before writing code.",
     "homeTitleAcp": "ACP mode",
     "homeDescAcp": "In ACP mode, begin by clarifying goals, background, constraints, and acceptance criteria. Then propose an architecture and task breakdown before implementation.",
-    "stop": "Stop"
+    "stop": "Stop",
+    "modelResolving": "Model pending",
+    "readOnlyModelWithProvider": "Sub-agent model: {{model}} · {{provider}}",
+    "readOnlyModel": "Sub-agent model: {{model}}",
+    "fileSearch": "File search — select to insert @file reference",
+    "loadingFiles": "Searching files...",
+    "noFilesFound": "No matching files",
+    "loadingSuggestions": "Loading suggestions...",
+    "noSuggestions": "No matching suggestions",
+    "doubleClickCompressContext": "Double-click to compress context",
+    "queueRemoveImages": "Remove images"
   },
   "message": {
     "thinking": "Thinking",
@@ -447,7 +463,8 @@
       "objectiveInvalid": "Goal objective invalid",
       "budgetInvalid": "Goal budget invalid",
       "budgetStillExhausted": "Goal budget is still exhausted",
-      "increaseBudget": "Increase the token budget before resuming."
+      "increaseBudget": "Increase the token budget before resuming.",
+      "confirmFailed": "Failed to confirm goal"
     },
     "events": {
       "created": "Goal created",
@@ -500,10 +517,20 @@
       "liveActivity": "Live activity",
       "iterationStep": "iteration {{iteration}}",
       "noRoundRecords": "No per-round records for this plan (legacy goal or records purged)",
-    "liveExecuting": "Executing: {{title}}",
-    "liveDeciding": "Deciding next action…",
+      "liveExecuting": "Executing: {{title}}",
+      "liveDeciding": "Deciding next action…",
       "tasks": "Tasks",
-      "taskStatus": { "interrupted": "Interrupted", "pending": "Pending", "active": "Executing", "executing": "Executing", "completed": "Completed", "complete": "Completed", "failed": "Failed", "aborted": "Aborted", "superseded": "Adjusted" },
+      "taskStatus": {
+        "interrupted": "Interrupted",
+        "pending": "Pending",
+        "active": "Executing",
+        "executing": "Executing",
+        "completed": "Completed",
+        "complete": "Completed",
+        "failed": "Failed",
+        "aborted": "Aborted",
+        "superseded": "Adjusted"
+      },
       "filters": {
         "all": "All",
         "current": "Active",
@@ -787,7 +814,9 @@
         "typeSubmit": "{{selector}} · submit",
         "scrollY": "Y {{value}}"
       }
-    }
+    },
+    "canceled": "Canceled",
+    "noResult": "No tool result available"
   },
   "subAgent": {
     "label": "subAgent",
@@ -914,8 +943,9 @@
     "exporting": "Exporting...",
     "copyAll": "Copy All",
     "copied": "Copied!",
-    "loadOlder": "Load earlier messages ({{count}} hidden)",
-    "loadingOlder": "Loading earlier messages...",
+    "loadOlderProgress": "Loaded {{loadedTurns}}/{{totalTurns}} turns · Click to load 5 more",
+    "loadingOlderProgress": "Loaded {{loadedTurns}}/{{totalTurns}} turns · Loading earlier messages...",
+    "pinnedTurnEmpty": "(image/attachment message)",
     "pendingRetryTitle": "Reconnecting to the model",
     "pendingTeamTitle": "Coordinating teammates",
     "scrollToBottom": "Scroll to bottom",
@@ -1078,7 +1108,9 @@
     "selectedFileReadSkipped": "Path reference",
     "selectedFileReadSkippedPdf": "PDF path reference; file was not read directly",
     "selectedFileReadSkippedNonText": "Path reference; binary or document file was not read directly",
-    "selectedFileReadFailed": "Read failed"
+    "selectedFileReadFailed": "Read failed",
+    "hideCommand": "Collapse commands",
+    "showCommand": "Expand commands"
   },
   "assistantMessage": {
     "changedFiles_one": "Edited {{count}} file",
@@ -1174,7 +1206,17 @@
     },
     "ranCommandsInline_one": "Ran {{count}} command",
     "ranCommandsInline_other": "Ran {{count}} commands",
-    "planningPhase": "Planning"
+    "planningPhase": "Planning",
+    "recallInjected_one": "Recalled {{count}} memory",
+    "recallInjected_other": "Recalled {{count}} memories",
+    "recallNoMatch": "No relevant memories recalled",
+    "recallFilteredByThreshold": "Recall hits fell below the relevance threshold",
+    "recallEmptyMessage": "Empty message, memory recall skipped",
+    "editImage": "Edit image",
+    "maskEditImage": "Mask edit",
+    "cancelledExecution": "Execution cancelled by user",
+    "maskBrush": "Brush",
+    "imageEditPrompt": "Describe the change"
   },
   "messageActions": {
     "fork": "Fork",
@@ -1360,7 +1402,9 @@
     "title": "Files created",
     "reveal": "Reveal in Finder",
     "open": "Open",
-    "more": "+{{count}} more"
+    "more": "+{{count}} more",
+    "revealFailed": "Failed to reveal file",
+    "openFailed": "Failed to open file"
   },
   "chat": {
     "personaSwitcher": {
@@ -1368,5 +1412,44 @@
       "none": "Default",
       "empty": "No personas available"
     }
-  }
+  },
+  "workbench": {
+    "summaryCommands": "Ran {{count}} commands",
+    "summaryReads": "Viewed {{count}} files",
+    "summaryEdits": "Edited {{count}} files",
+    "summaryBrowser": "{{count}} browser actions",
+    "summaryDesktop": "{{count}} desktop actions",
+    "summaryOrchestration": "Dispatched {{count}} sub-agents",
+    "summaryMcp": "{{count}} MCP tools",
+    "summaryInteractive": "{{count}} user interactions",
+    "summaryVisual": "Generated {{count}} visualizations",
+    "summarySkill": "{{count}} skill invocations",
+    "summaryOther": "Performed {{count}} other actions"
+  },
+  "diffViewer": {
+    "inline": "Inline",
+    "sideBySide": "Split",
+    "before": "Before",
+    "after": "After",
+    "unchangedLines": "Show {{count}} unchanged lines"
+  },
+  "collab": {
+    "mode": {
+      "normal": "Normal",
+      "normalDesc": "Regular chat with optional Plan mode",
+      "goal": "Goal",
+      "goalDesc": "Goal mode — set a goal and let the agent work autonomously"
+    }
+  },
+  "executionOutline": {
+    "awaitingApproval": "Awaiting approval: {{tool}}{{detail}}",
+    "receiving": "Receiving {{tool}}{{detail}}",
+    "running": "Running {{tool}}{{detail}}"
+  },
+  "personaSwitcher": {
+    "title": "Switch persona",
+    "none": "No persona",
+    "empty": "No personas available"
+  },
+  "Glob": "Glob"
 }

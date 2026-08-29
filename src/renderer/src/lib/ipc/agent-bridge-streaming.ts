@@ -389,7 +389,12 @@ export async function runSidecarContextCompression(args: {
   pinnedContext?: string
   trigger?: 'auto' | 'manual'
   preTokens?: number
-}): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
+  sessionId?: string
+}): Promise<{
+  messages: UnifiedMessage[]
+  result: CompressionResult
+  compactArtifacts?: UnifiedMessage[]
+}> {
   if (args.signal?.aborted) {
     throw new Error('aborted')
   }
@@ -418,7 +423,8 @@ export async function runSidecarContextCompression(args: {
       ...(args.trigger ? { trigger: args.trigger } : {}),
       ...(typeof args.preTokens === 'number' && Number.isFinite(args.preTokens)
         ? { preTokens: args.preTokens }
-        : {})
+        : {}),
+      ...(args.sessionId ? { sessionId: args.sessionId } : {})
     }
   })
 
@@ -426,5 +432,9 @@ export async function runSidecarContextCompression(args: {
     throw new Error('aborted')
   }
 
-  return result as { messages: UnifiedMessage[]; result: CompressionResult }
+  return result as {
+    messages: UnifiedMessage[]
+    result: CompressionResult
+    compactArtifacts?: UnifiedMessage[]
+  }
 }

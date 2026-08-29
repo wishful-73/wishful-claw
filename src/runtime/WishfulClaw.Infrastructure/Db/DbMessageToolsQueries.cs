@@ -70,6 +70,12 @@ public static partial class DbMessageTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
+            // Total conversation turns (user messages) — lets the UI show the
+            // loaded/total range without an extra round trip.
+            var totalTurns = db.QueryScalar<int>(
+                "SELECT COUNT(*) FROM messages WHERE session_id = @sid AND role = 'user'",
+                new SqliteParameter("@sid", sessionId));
+
             // Step 1: Find the created_at of the N most recent user messages before beforeCreatedAt
             List<long> userTimestamps;
             if (beforeCreatedAt.HasValue)
@@ -93,7 +99,7 @@ public static partial class DbMessageTools
             if (userTimestamps.Count == 0)
             {
                 return WorkerResponse.Json(
-                    new MessageListByTurnsResult(true, new List<MessageRow>(), 0, false, null),
+                    new MessageListByTurnsResult(true, new List<MessageRow>(), 0, false, null, totalTurns),
                     InfrastructureJsonContext.Default.MessageListByTurnsResult);
             }
 
@@ -122,7 +128,7 @@ public static partial class DbMessageTools
 
             var rows = messages.Select(MessageRow.FromEntity).ToList();
             return WorkerResponse.Json(
-                new MessageListByTurnsResult(true, rows, rangeStart, hasMore, null),
+                new MessageListByTurnsResult(true, rows, rangeStart, hasMore, null, totalTurns),
                 InfrastructureJsonContext.Default.MessageListByTurnsResult);
         }
         catch (Exception ex)
@@ -130,6 +136,40 @@ public static partial class DbMessageTools
             return WorkerResponse.Json(
                 new MessageListByTurnsResult(false, new List<MessageRow>(), 0, false, ex.Message),
                 InfrastructureJsonContext.Default.MessageListByTurnsResult);
+        }
+    }
+
+    /// <summary>
+    /// Incremental restore query: messages persisted strictly after the
+    /// (afterCreatedAt, afterSortOrder) cursor, in canonical order.
+    /// Used with a valid compaction snapshot to rebuild the tail after the coverage boundary.
+    /// </summary>
+    public static WorkerResponse ListAfterCursor(JsonElement parameters)
+    {
+        try
+        {
+            var sessionId = RequireString(parameters, "sessionId");
+            var afterCreatedAt = JsonHelpers.GetLong(parameters, "afterCreatedAt", 0);
+            var afterSortOrder = JsonHelpers.GetInt(parameters, "afterSortOrder", -1);
+
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+
+            var entities = db.Query(
+                "SELECT * FROM messages WHERE session_id = @sid " +
+                "AND (created_at > @ca OR (created_at = @ca AND sort_order > @so)) " +
+                "ORDER BY created_at ASC, sort_order ASC",
+                EntityMappers.MapMessage,
+                new SqliteParameter("@sid", sessionId),
+                new SqliteParameter("@ca", afterCreatedAt),
+                new SqliteParameter("@so", afterSortOrder));
+
+            var rows = entities.Select(MessageRow.FromEntity).ToList();
+            return WorkerResponse.Json(rows, InfrastructureJsonContext.Default.ListMessageRow);
+        }
+        catch
+        {
+            return WorkerResponse.Json(new List<MessageRow>(), InfrastructureJsonContext.Default.ListMessageRow);
         }
     }
 

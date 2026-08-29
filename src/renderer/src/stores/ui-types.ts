@@ -62,6 +62,7 @@ export type RightPanelTabKind =
   | 'subagent'
   | 'terminal'
   | 'goal'
+  | 'summary'
 
 export interface RightPanelTabInstance {
   id: string
@@ -88,6 +89,7 @@ export type SettingsTab =
   | 'provider'
   | 'modelManagement'
   | 'runtime'
+  | 'memory'
   | 'shortcuts'
   | 'general'
   | 'persona'

@@ -33,6 +33,13 @@ export interface ContentSegment {
   completedAt?: number
 }
 
+export interface MemoryRecallInfo {
+  /** One of: injected, already_injected, no_match, filtered_by_threshold, empty_message. */
+  reason: string
+  /** Titles (or #id) of entries actually injected. */
+  hits: string[]
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
@@ -47,6 +54,7 @@ export interface ChatMessage {
   segments?: ContentSegment[]
   currentIteration?: number
   debugInfo?: RequestDebugInfo
+  memoryRecall?: MemoryRecallInfo
   meta?: MessageMeta
   content?: string | ContentBlock[]
   preToolPhase?: boolean
@@ -65,6 +73,8 @@ export interface Session {
   messagesLoaded: boolean
   loadedRangeStart: number
   loadedRangeEnd: number
+  // Total conversation turns (user messages) reported by the last turn-based load.
+  totalTurns?: number
   lastKnownMessageCount?: number
   createdAt: number
   updatedAt: number
@@ -139,6 +149,7 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     messagesLoaded: session.messagesLoaded,
     loadedRangeStart: session.loadedRangeStart,
     loadedRangeEnd: session.loadedRangeEnd,
+    totalTurns: session.totalTurns,
     lastKnownMessageCount: session.lastKnownMessageCount,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,

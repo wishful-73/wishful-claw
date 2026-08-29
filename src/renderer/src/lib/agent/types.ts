@@ -177,15 +177,45 @@ export type AgentEvent =
       stackTrace?: string
     }
   | { type: 'request_debug'; debugInfo: RequestDebugInfo }
-  | { type: 'context_compression_start' }
+  | {
+      type: 'context_compression_started'
+      operationId: string
+      trigger?: 'auto' | 'manual'
+      preTokens?: number
+      originalCount?: number
+      attempt?: number
+      maxAttempts?: number
+    }
+  | {
+      type: 'context_compression_start'
+      operationId?: string
+      trigger?: 'auto' | 'manual'
+      preTokens?: number
+      originalCount?: number
+      attempt?: number
+      maxAttempts?: number
+    }
   | {
       type: 'context_compressed'
+      operationId?: string
+      compressionStatus?: 'compressed' | 'skipped' | 'failed' | 'blocked' | 'cancelled'
       originalCount: number
       newCount: number
       /** Number of older messages that were summarized (kept visible in UI under the new model). */
       keptMessageCount?: number
+      trigger?: 'auto' | 'manual'
+      preTokens?: number
+      messagesSummarized?: number
+      summarizerFailed?: boolean
+      error?: string
       compactArtifacts?: UnifiedMessage[]
       messages?: UnifiedMessage[]
+    }
+  | {
+      type: 'memory_recall'
+      reason: string
+      recallCount?: number
+      recallHits?: string[]
     }
 
 // --- Agent Loop Stop Reasons ---

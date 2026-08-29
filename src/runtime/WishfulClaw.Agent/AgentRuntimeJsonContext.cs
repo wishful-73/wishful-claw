@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using WishfulClaw.Contracts;
 using WishfulClaw.Agent.Modules.Git;
 using WishfulClaw.Agent.Modules.Extensions;
@@ -47,6 +48,9 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(GitRepositorySummary))]
 [JsonSerializable(typeof(List<GitRepositorySummary>))]
 [JsonSerializable(typeof(NativeExtensionToolExecutionResult))]
+[JsonSerializable(typeof(ContextCompressionResponse))]
+[JsonSerializable(typeof(ContextCompressionResult))]
+[JsonSerializable(typeof(List<JsonElement>))]
 public sealed partial class AgentRuntimeJsonContext : JsonSerializerContext
 {
 }

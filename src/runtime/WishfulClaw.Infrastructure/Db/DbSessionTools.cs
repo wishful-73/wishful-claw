@@ -184,7 +184,11 @@ public static class DbSessionTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            db.Execute("DELETE FROM messages WHERE session_id = @id", new SqliteParameter("@id", id));
+            db.ExecuteInTransaction((conn, tx) =>
+            {
+                db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @id", new SqliteParameter("@id", id));
+                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, id);
+            });
             var changed = db.Execute("DELETE FROM sessions WHERE id = @id", new SqliteParameter("@id", id));
             return Mutation(changed);
         }
@@ -207,9 +211,13 @@ public static class DbSessionTools
 
             if (sessionIds.Count > 0)
             {
-                var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
-                var msgParams = sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray();
-                db.Execute($"DELETE FROM messages WHERE session_id IN ({placeholders})", msgParams);
+                db.ExecuteInTransaction((conn, tx) =>
+                {
+                    var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
+                    var msgParams = sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray();
+                    db.Execute(conn, tx, $"DELETE FROM messages WHERE session_id IN ({placeholders})", msgParams);
+                    DbCompactionSnapshotStore.DeleteForSessions(db, conn, tx, sessionIds);
+                });
             }
 
             var deletedSessions = db.Execute("DELETE FROM sessions WHERE plugin_id IS NULL");
@@ -236,9 +244,14 @@ public static class DbSessionTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            var deleted = db.Execute(
-                "DELETE FROM messages WHERE session_id = @id",
-                new SqliteParameter("@id", sessionId));
+            var deleted = db.ExecuteInTransaction((conn, tx) =>
+            {
+                var removed = db.Execute(conn, tx,
+                    "DELETE FROM messages WHERE session_id = @id",
+                    new SqliteParameter("@id", sessionId));
+                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
+                return removed;
+            });
 
             db.Execute(
                 "UPDATE sessions SET title = @title, updated_at = @ua, message_count = 0 WHERE id = @id",

@@ -1,9 +1,6 @@
-import { nanoid } from 'nanoid'
-import { getProviderById, resolveOAuthConfig, asString, setProviderAuth, extractEmailFromToken, isAccountRateLimited, getAccountsArray, REFRESH_SKEW_MS, parseManualOAuthPayload } from './provider-auth-utils'
-import type { AIProvider, ProviderOAuthAccount, OAuthToken, OAuthConfig, AccountRateLimit } from '@renderer/lib/api/types'
+import { getProviderById, setProviderAuth, isAccountRateLimited, getAccountsArray, REFRESH_SKEW_MS } from './provider-auth-utils'
+import type { AIProvider, ProviderOAuthAccount, OAuthToken, AccountRateLimit } from '@renderer/lib/api/types'
 import { clearCopilotQuota, isCopilotProvider, resolveCopilotApiKey, syncCopilotQuota, exchangeCopilotToken } from './copilot'
-import { StartOAuthFlowOptions } from './oauth-utils'
-import { startOAuthFlow } from './oauth'
 
 export function pickUsableAccount(provider: AIProvider): {
 
@@ -104,14 +101,6 @@ export function upsertAccountInList(
   return [...accounts, account]
 }
 
-function requiresOAuthConnectConfig(config: OAuthConfig | null): boolean {
-  if (!config?.tokenUrl || !config.clientId) return false
-  if ((config.flowType ?? 'authorization_code') === 'device_code') {
-    return !!config.deviceCodeUrl
-  }
-  return !!config.authorizeUrl
-}
-
 function getProviderApiKey(provider: AIProvider, token: OAuthToken): string {
   return isCopilotProvider(provider) ? resolveCopilotApiKey(token) : token.accessToken
 }
@@ -128,56 +117,6 @@ export async function finalizeOAuthToken(provider: AIProvider, token: OAuthToken
       : await exchangeCopilotToken(provider, token)
   syncCopilotQuota(provider, next)
   return next
-}
-
-/**
- * Start an OAuth login flow and add the resulting token as a NEW account entry.
- * If `email` is not supplied, we try to infer it from the id_token claim; if that
- * fails we fall back to a placeholder so the UI can prompt the user to complete it.
- *
- * Callers that still want single-account semantics can rely on the fact that the
- * active account is always set to the first entry when the list was previously empty.
- */
-export async function startProviderOAuth(
-  providerId: string,
-  options?: AbortSignal | StartOAuthFlowOptions,
-  email?: string
-): Promise<ProviderOAuthAccount> {
-  const provider = getProviderById(providerId)
-  if (!provider) throw new Error('Provider not found')
-  const config = resolveOAuthConfig(provider)
-  if (!requiresOAuthConnectConfig(config) || !config) {
-    throw new Error('OAuth config is incomplete')
-  }
-
-  const token = await startOAuthFlow(config, options)
-  const finalToken = await finalizeOAuthToken(provider, token)
-
-  const resolvedEmail =
-    email?.trim() || extractEmailFromToken(finalToken) || finalToken.accountId || 'unknown@local'
-
-  const account: ProviderOAuthAccount = {
-    id: nanoid(),
-    email: resolvedEmail ?? '',
-    oauth: finalToken,
-    createdAt: Date.now(),
-    lastUsedAt: Date.now()
-  }
-
-  const latest = getProviderById(providerId) ?? provider
-  const existing = getAccountsArray(latest)
-  const nextAccounts = [...existing, account]
-  setProviderAuth(
-    providerId,
-    buildAccountProjectionPatch(
-      latest,
-      nextAccounts,
-      latest.activeAccountId && existing.some((a) => a.id === latest.activeAccountId)
-        ? latest.activeAccountId
-        : account.id
-    )
-  )
-  return account
 }
 
 /** Remove a specific account. If it was active, the next usable account becomes active. */
@@ -331,87 +270,9 @@ export function clearAccountRateLimit(providerId: string, accountId: string): vo
   )
 }
 
-/**
- * Parse a single OAuth record. Reuses parseManualOAuthPayload but requires an `email` field
- * to be present either at the top level or as a sibling of the token keys.
- */
-export function parseImportRecord(record: unknown): { email: string; token: OAuthToken; label?: string } {
-  if (!record || typeof record !== 'object' || Array.isArray(record)) {
-    throw new Error('invalid_record')
-  }
-  const raw = record as Record<string, unknown>
-  const email = asString(raw.email)
-  if (!email) throw new Error('missing_email')
-  const label = asString(raw.label ?? raw.name ?? raw.nickname)
-  const token = parseManualOAuthPayload(JSON.stringify(raw))
-  if (!token) throw new Error('invalid_token')
-  return { email, token, ...(label ? { label } : {}) }
-}
-
-/** Apply a manually-pasted OAuth JSON as a NEW account (requires email). */
-export async function applyManualProviderOAuth(
-  providerId: string,
-  rawJson: string,
-  email?: string
-): Promise<ProviderOAuthAccount> {
-  const provider = getProviderById(providerId)
-  if (!provider) throw new Error('Provider not found')
-
-  // Backwards-compatible path: legacy single-account JSON without an email wrapper.
-  let resolvedEmail = email?.trim()
-  let token: OAuthToken | undefined
-  try {
-    // First try as a full import record with email.
-    const parsed = parseImportRecord(JSON.parse(rawJson))
-    resolvedEmail = resolvedEmail || parsed.email
-    token = parsed.token
-  } catch {
-    token = parseManualOAuthPayload(rawJson)
-    if (!token) throw new Error('Invalid OAuth payload')
-  }
-  const finalToken = await finalizeOAuthToken(provider, token)
-  if (!resolvedEmail) {
-    resolvedEmail = extractEmailFromToken(finalToken) || finalToken.accountId || 'unknown@local'
-  }
-
-  const account: ProviderOAuthAccount = {
-    id: nanoid(),
-    email: resolvedEmail ?? '',
-    oauth: finalToken,
-    createdAt: Date.now()
-  }
-  const latest = getProviderById(providerId) ?? provider
-  const nextAccounts = [...getAccountsArray(latest), account]
-  setProviderAuth(
-    providerId,
-    buildAccountProjectionPatch(
-      latest,
-      nextAccounts,
-      latest.activeAccountId &&
-        getAccountsArray(latest).some((a) => a.id === latest.activeAccountId)
-        ? latest.activeAccountId
-        : account.id
-    )
-  )
-  return account
-}
-
 
 // Import/export account functions extracted to provider-auth-accounts.ts
-export type {
-  ImportOAuthAccountsResult,
-} from './provider-auth-accounts'
-
 export {
-  importOauthAccountsFromJson,
   refreshProviderOAuth,
   ensureProviderAuthReady,
-  sendProviderChannelCode,
-  verifyProviderChannelCode,
-  refreshProviderChannelUserInfo,
-} from './provider-auth-accounts'
-
-export {
-  exportProviderAccounts,
-  clearProviderChannelAuth,
 } from './provider-auth-accounts'

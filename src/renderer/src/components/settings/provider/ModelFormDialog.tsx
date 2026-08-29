@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Server } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
@@ -32,6 +31,7 @@ import {
   DEFAULT_COMPRESSION_THRESHOLD,
   clampCompressionThreshold
 } from './constants'
+import { ModelIcon } from '../provider-icons'
 
 export function ModelFormDialog({
   open,
@@ -415,7 +415,7 @@ export function ModelFormDialog({
                   )}
                   title={key}
                 >
-                  <Server className="size-3.5 text-muted-foreground" />
+                  <ModelIcon icon={key} size={16} />
                 </button>
               ))}
             </div>

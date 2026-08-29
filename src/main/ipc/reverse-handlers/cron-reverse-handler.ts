@@ -66,8 +66,11 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>()
 const intervals = new Map<string, ReturnType<typeof setInterval>>()
 const cronTasks = new Map<string, ReturnType<typeof cron.schedule>>()
 const nextRunTimes = new Map<string, number>()
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const cronRunLock = new CronRunLock()
 const MAX_TIMEOUT_DELAY = 2_147_000_000
+const FIRE_RETRY_DELAY_MS = 30_000
+const MAX_FIRE_RETRIES = 10
 
 let idCounter = 0
 let restorePromise: Promise<void> | null = null
@@ -244,7 +247,56 @@ function clearJobTimers(jobId: string): void {
   if (i) { clearInterval(i); intervals.delete(jobId) }
   const task = cronTasks.get(jobId)
   if (task) { task.stop(); cronTasks.delete(jobId) }
+  const retry = retryTimers.get(jobId)
+  if (retry) { clearTimeout(retry); retryTimers.delete(jobId) }
   nextRunTimes.delete(jobId)
+}
+
+function buildFirePayload(job: CronJob, fireId: string, firedAt: number): Record<string, unknown> {
+  return {
+    jobId: job.id,
+    fireId,
+    name: job.name,
+    prompt: job.prompt,
+    agentId: job.agentId,
+    model: job.model,
+    workingFolder: job.workingFolder,
+    sessionId: job.sessionId,
+    scope: job.scope ?? 'global',
+    projectId: job.projectId,
+    outputMode: job.outputMode ?? 'new_session',
+    reuseSessionId: job.reuseSessionId,
+    runMode: job.runMode ?? 'background',
+    firedAt,
+    deliveryMode: job.deliveryMode ?? 'desktop',
+    deliveryTarget: job.deliveryTarget,
+    deleteAfterRun: job.deleteAfterRun ?? false,
+    pluginId: job.pluginId,
+    pluginType: job.pluginType,
+    pluginChatId: job.pluginChatId,
+    maxIterations: job.maxIterations ?? 15
+  }
+}
+
+/**
+ * Retry delivering a one-shot fire to the renderer. One-shot jobs get no
+ * second chance from the scheduler, so when the main window is unavailable
+ * at fire time the trigger would otherwise be silently lost.
+ */
+function scheduleFireRetry(job: CronJob, fireId: string, firedAt: number, attempt = 1): void {
+  if (attempt > MAX_FIRE_RETRIES) {
+    console.error(`[Cron] one-shot job ${job.id} delivery abandoned after ${MAX_FIRE_RETRIES} retries — trigger lost`)
+    return
+  }
+  const timer = setTimeout(() => {
+    retryTimers.delete(job.id)
+    const current = jobs.get(job.id)
+    if (!current || current.deletedAt) return
+    const win = getMainWindow()
+    const sent = Boolean(win && safeSendMessagePackToWindow(win, 'cron:fire', buildFirePayload(current, fireId, firedAt)))
+    if (!sent) scheduleFireRetry(job, fireId, firedAt, attempt + 1)
+  }, FIRE_RETRY_DELAY_MS)
+  retryTimers.set(job.id, timer)
 }
 
 async function fireJob(job: CronJob, consumeOneShot = false): Promise<boolean> {
@@ -268,33 +320,16 @@ async function fireJob(job: CronJob, consumeOneShot = false): Promise<boolean> {
   }
 
   const win = getMainWindow()
-  const sent = Boolean(win && safeSendMessagePackToWindow(win, 'cron:fire', {
-    jobId: job.id,
-    fireId,
-    name: job.name,
-    prompt: job.prompt,
-    agentId: job.agentId,
-    model: job.model,
-    workingFolder: job.workingFolder,
-    sessionId: job.sessionId,
-    scope: job.scope ?? 'global',
-    projectId: job.projectId,
-    outputMode: job.outputMode ?? 'new_session',
-    reuseSessionId: job.reuseSessionId,
-    runMode: job.runMode ?? 'background',
-    firedAt,
-    deliveryMode: job.deliveryMode ?? 'desktop',
-    deliveryTarget: job.deliveryTarget,
-    deleteAfterRun: job.deleteAfterRun ?? false,
-    pluginId: job.pluginId,
-    pluginType: job.pluginType,
-    pluginChatId: job.pluginChatId,
-    maxIterations: job.maxIterations ?? 15
-  }))
+  const sent = Boolean(win && safeSendMessagePackToWindow(win, 'cron:fire', buildFirePayload(job, fireId, firedAt)))
 
   if (!sent) {
     cronRunLock.release(job.id, fireId)
-    console.warn(`[Cron] renderer unavailable for job ${job.id}`)
+    if (consumeOneShot) {
+      scheduleFireRetry(job, fireId, firedAt)
+      console.warn(`[Cron] renderer unavailable for one-shot job ${job.id}, delivery retries scheduled`)
+    } else {
+      console.warn(`[Cron] renderer unavailable for job ${job.id}`)
+    }
     return false
   }
 
@@ -635,6 +670,19 @@ export function releaseCronRunsAfterRendererExit(): void {
 
 export function initializeCronScheduler(): Promise<void> {
   return restoreJobs()
+}
+
+/** Stop all scheduling timers and pending fire retries (called on app quit). */
+export function shutdownCronScheduler(): void {
+  for (const t of timers.values()) clearTimeout(t)
+  timers.clear()
+  for (const i of intervals.values()) clearInterval(i)
+  intervals.clear()
+  for (const task of cronTasks.values()) task.stop()
+  cronTasks.clear()
+  nextRunTimes.clear()
+  for (const t of retryTimers.values()) clearTimeout(t)
+  retryTimers.clear()
 }
 
 /** Cron handler dispatch — maps method name to handler function */

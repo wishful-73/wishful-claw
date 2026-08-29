@@ -3,19 +3,7 @@ import type {
   ProviderConfig,
   UnifiedMessage
 } from '../api/types'
-// TODO: implement sidecar context compression IPC bridge
-async function runSidecarContextCompression(_opts: {
-  messages: UnifiedMessage[]
-  provider: ProviderConfig
-  signal?: AbortSignal
-  focusPrompt?: string
-  preserveCount?: number
-  trigger?: CompactBoundaryMeta['trigger']
-  preTokens?: number
-  pinnedContext?: string
-}): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
-  throw new Error('Context compression not yet implemented in wishful-claw')
-}
+import { runSidecarContextCompression } from '../ipc/agent-bridge-streaming'
 
 // Config, constants, and simple helpers extracted to context-compression-config.ts
 export type {
@@ -445,8 +433,13 @@ export async function compressMessages(
   focusPrompt?: string,
   pinnedContext?: string,
   trigger: CompactBoundaryMeta['trigger'] = 'manual',
-  preTokens = 0
-): Promise<{ messages: UnifiedMessage[]; result: CompressionResult }> {
+  preTokens = 0,
+  sessionId?: string
+): Promise<{
+  messages: UnifiedMessage[]
+  result: CompressionResult
+  compactArtifacts?: UnifiedMessage[]
+}> {
   if (signal?.aborted) {
     throw new Error('aborted')
   }
@@ -461,7 +454,8 @@ export async function compressMessages(
       : {}),
     ...(trigger ? { trigger } : {}),
     ...(typeof preTokens === 'number' && Number.isFinite(preTokens) ? { preTokens } : {}),
-    ...(pinnedContext?.trim() ? { pinnedContext: pinnedContext.trim() } : {})
+    ...(pinnedContext?.trim() ? { pinnedContext: pinnedContext.trim() } : {}),
+    ...(sessionId ? { sessionId } : {})
   })
 
   if (signal?.aborted) {

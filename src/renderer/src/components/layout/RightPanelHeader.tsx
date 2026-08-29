@@ -12,6 +12,7 @@ import {
   FileCode,
   FileDiff,
   FolderOpen,
+  GitCompare,
   Globe,
   PanelRightClose,
   Plus,
@@ -50,11 +51,12 @@ function TabIcon({ tab }: { tab: RightPanelTabInstance }): React.JSX.Element {
   if (tab.kind === 'activity') return <Activity className="size-3.5" />
   if (tab.kind === 'memory') return <Brain className="size-3.5" />
   if (tab.kind === 'review') return <FileDiff className="size-3.5" />
-  if (tab.kind === 'files') return <FolderOpen className="size-3.5" />
+  if (tab.kind === 'files') return <FolderOpen className="size-3.5 text-sky-500 dark:text-sky-400" />
   if (tab.kind === 'browser') return <Globe className="size-3.5" />
   if (tab.kind === 'subagent') return <Bot className="size-3.5" />
   if (tab.kind === 'terminal') return <SquareTerminal className="size-3.5" />
   if (tab.kind === 'goal') return <Target className="size-3.5" />
+  if (tab.kind === 'summary') return <GitCompare className="size-3.5 text-violet-500 dark:text-violet-400" />
   return <FileCode className="size-3.5" />
 }
 
@@ -206,7 +208,7 @@ export function RightPanelHeader({
             {t('sectionExecution.title', { defaultValue: 'Activity' })}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onOpenFile}>
-            <FolderOpen className="size-4" />
+            <FolderOpen className="size-4 text-sky-500 dark:text-sky-400" />
             {t('rightPanel.openFile', { defaultValue: 'Open file' })}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={onAddGoals}>

@@ -25,6 +25,10 @@ import { registerAllViewers } from '@renderer/lib/preview/register-viewers'
 import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
 import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
 import { initializeCronRuntime } from '@renderer/lib/tools/cron-runtime'
+import {
+  initializeMemoryOrganizationRuntime,
+  notifyMemoryOrganizationSettingsChanged
+} from '@renderer/lib/agent/memory-organization'
 import { agentBridge } from '@renderer/lib/ipc/agent-bridge'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { getAgentStreamReceiver } from '@renderer/lib/ipc/agent-stream-receiver'
@@ -52,8 +56,10 @@ function App(): React.JSX.Element | null {
     attachRendererToolBridge()
     initAppPluginStore()
     const syncAppPlugins = (): void => updateAppPluginToolRegistration()
+    const unsubscribeAppPluginHydration = useAppPluginStore.persist.hasHydrated()
+      ? undefined
+      : useAppPluginStore.persist.onFinishHydration(syncAppPlugins)
     if (useAppPluginStore.persist.hasHydrated()) syncAppPlugins()
-    else useAppPluginStore.persist.onFinishHydration(syncAppPlugins)
     const unsubscribeAppPluginChanges = useAppPluginStore.subscribe(syncAppPlugins)
     void initExtensionStore().then(() => refreshExtensionTools())
 
@@ -82,6 +88,7 @@ function App(): React.JSX.Element | null {
       useActivityStore.getState().handleEnvelope(envelope)
     })
     const disposeCronRuntime = initializeCronRuntime()
+    const disposeMemoryOrganizationRuntime = initializeMemoryOrganizationRuntime()
 
     const syncRuntimeSettings = (maxConcurrentSubAgents: number): void => {
       void agentBridge.request('agent/configure-runtime', { maxConcurrentSubAgents }).catch((error) => {
@@ -102,6 +109,17 @@ function App(): React.JSX.Element | null {
         }
       }
     )
+    const unsubscribeOrganizationSettings = useSettingsStore.subscribe(
+      (state, previous) => {
+        if (
+          state.memoryOrganizationEnabled !== previous.memoryOrganizationEnabled ||
+          state.memoryOrganizationSchedule !== previous.memoryOrganizationSchedule ||
+          state.memoryOrganizationNightlyTime !== previous.memoryOrganizationNightlyTime
+        ) {
+          notifyMemoryOrganizationSettingsChanged()
+        }
+      }
+    )
     const unsubscribeRuntimeLifecycle = ipcClient.on('sidecar:lifecycle', (payload) => {
       const state = (payload as { state?: string } | undefined)?.state
       if (state === 'reconnected') syncHydratedRuntimeSettings()
@@ -112,10 +130,13 @@ function App(): React.JSX.Element | null {
 
     return () => {
       unsubscribeAppPluginChanges()
+      unsubscribeAppPluginHydration?.()
       unsubscribeSettingsHydration?.()
       unsubscribeRuntimeSettings()
+      unsubscribeOrganizationSettings()
       unsubscribeRuntimeLifecycle()
       disposeCronRuntime()
+      disposeMemoryOrganizationRuntime()
     }
   }, [])
 

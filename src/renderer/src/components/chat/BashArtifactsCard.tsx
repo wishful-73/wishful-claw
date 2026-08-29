@@ -6,6 +6,7 @@
  */
 
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { FileOutput, FolderOpen } from 'lucide-react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 
@@ -38,6 +39,34 @@ export function BashArtifactsCard({
 }: BashArtifactsCardProps): React.JSX.Element {
   const { t } = useTranslation('chat')
 
+  // The main-process handlers expect { path } — a bare string leaves
+  // args.path undefined and the call silently does nothing.
+  const handleReveal = (path: string): void => {
+    void ipcClient.invoke('shell:showItemInFolder', { path }).catch((err) => {
+      console.error('[BashArtifactsCard] Reveal in folder failed:', err)
+      toast.error(t('artifacts.revealFailed', { defaultValue: 'Failed to reveal file' }))
+    })
+  }
+
+  const handleOpen = async (path: string): Promise<void> => {
+    try {
+      // shell:openPath resolves to '' on success or an error message.
+      const result = await ipcClient.invoke('shell:openPath', { path })
+      const openError =
+        typeof result === 'string'
+          ? result
+          : ((result as { error?: string } | null)?.error ?? '')
+      if (openError) {
+        toast.error(t('artifacts.openFailed', { defaultValue: 'Failed to open file' }), {
+          description: openError
+        })
+      }
+    } catch (err) {
+      console.error('[BashArtifactsCard] Open file failed:', err)
+      toast.error(t('artifacts.openFailed', { defaultValue: 'Failed to open file' }))
+    }
+  }
+
   return (
     <div className="my-0 min-w-0 space-y-1.5 rounded-md border border-dashed px-2.5 py-2">
       <p className="text-xs font-medium text-muted-foreground">
@@ -62,7 +91,7 @@ export function BashArtifactsCard({
               <button
                 type="button"
                 className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-                onClick={() => void ipcClient.invoke('shell:showItemInFolder', artifact.path)}
+                onClick={() => handleReveal(artifact.path)}
               >
                 <FolderOpen className="size-3" />
                 {t('artifacts.reveal', { defaultValue: 'Reveal in Finder' })}
@@ -70,7 +99,7 @@ export function BashArtifactsCard({
               <button
                 type="button"
                 className="flex items-center gap-1 rounded px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-                onClick={() => void ipcClient.invoke('shell:openPath', artifact.path)}
+                onClick={() => void handleOpen(artifact.path)}
               >
                 <FileOutput className="size-3" />
                 {t('artifacts.open', { defaultValue: 'Open' })}

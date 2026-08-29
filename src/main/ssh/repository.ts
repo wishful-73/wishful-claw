@@ -10,8 +10,10 @@ import {
 // SSH config repository: the only owner of saved connections and their
 // secrets. Secrets are encrypted here with Electron safeStorage before they
 // leave the main process, so the sidecar and the database only ever see
-// ciphertext. Decryption happens on demand (connect / native payload injection)
-// and plaintext secrets are never sent to the renderer.
+// ciphertext. Decryption happens on demand (connect / native payload injection /
+// renderer read-back). Note: decrypted secrets are intentionally returned to the
+// renderer for the connection-edit scenario — this is a local single-user
+// product and plaintext display in the edit form is by design (audit M37).
 
 export type SshAuthType = 'password' | 'privateKey' | 'agent'
 

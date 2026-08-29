@@ -348,7 +348,7 @@ export function ProjectItem({ project, sessions, isExpanded, onToggleExpand }: P
       return
     }
     // shell.openPath returns string (empty on success, error message on failure)
-    const result = await ipcClient.invoke(IPC.SHELL_OPEN_PATH, project.workingFolder)
+    const result = await ipcClient.invoke(IPC.SHELL_OPEN_PATH, { path: project.workingFolder })
     if (typeof result === 'string' && result.length > 0) {
       toast.error(t('sidebar.openFailed', { defaultValue: 'Failed to open folder' }), {
         description: result
@@ -405,7 +405,7 @@ export function ProjectItem({ project, sessions, isExpanded, onToggleExpand }: P
             )}
           >
             {project.pinned && <Pin className="size-3 shrink-0 text-primary/60" />}
-            {isExpanded ? <FolderOpen className="size-3.5 shrink-0" /> : <Folder className="size-3.5 shrink-0" />}
+            {isExpanded ? <FolderOpen className="size-3.5 shrink-0 text-sky-500 dark:text-sky-400" /> : <Folder className="size-3.5 shrink-0 text-sky-500 dark:text-sky-400" />}
             {hasStreamingSession && (
               <Loader2 className="size-3 shrink-0 animate-spin text-primary" />
             )}

@@ -275,7 +275,7 @@ export function useFileTreeActions(state: FileTreeState, options: UseFileTreeAct
         return
       }
 
-      const result = await ipcClient.invoke(IPC.SHELL_OPEN_PATH, nodePath)
+      const result = await ipcClient.invoke(IPC.SHELL_OPEN_PATH, { path: nodePath })
       if (typeof result === 'string' && result.length > 0) {
         toast.error(t('fileTree.openFailed', { defaultValue: 'Open failed' }), {
           description: result
@@ -292,7 +292,7 @@ export function useFileTreeActions(state: FileTreeState, options: UseFileTreeAct
         return
       }
 
-      const result = await ipcClient.invoke(IPC.SHELL_SHOW_ITEM_IN_FOLDER, nodePath)
+      const result = await ipcClient.invoke(IPC.SHELL_SHOW_ITEM_IN_FOLDER, { path: nodePath })
       const error = getIpcError(result)
       if (error) {
         toast.error(t('fileTree.revealFailed', { defaultValue: 'Reveal failed' }), {
@@ -314,7 +314,9 @@ export function useFileTreeActions(state: FileTreeState, options: UseFileTreeAct
         path: nodePath,
         appId: 'vscode'
       })
-      const error = getIpcError(result)
+      // shell.openPath resolves to '' on success or an error message string.
+      const error =
+        typeof result === 'string' && result.length > 0 ? result : getIpcError(result)
       if (error) {
         toast.error(t('fileTree.openWithCodeFailed', { defaultValue: 'Open in VS Code failed' }), {
           description: error

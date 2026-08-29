@@ -92,10 +92,15 @@ public static class ProviderRetryPolicy
             {
                 return await execute();
             }
-            catch (TimeoutException ex) when (!state.IsCancellationRequested)
+            catch (TimeoutException ex) when (
+                (isUnlimited || retryAttempt < maxAttempts) &&
+                !state.IsCancellationRequested)
             {
                 // Idle/TTFB timeout from AgentRuntimeRequestTimeout — treat as
-                // transient and let the same backoff schedule handle it.
+                // transient and let the same backoff schedule handle it. The
+                // attempt guard matches the HTTP branch: without it a provider
+                // that keeps timing out retries forever, ignoring the user's
+                // requestMaxRetries setting.
                 var attempt = retryAttempt + 1;
                 var delayMs = ComputeDelayMs(attempt, null);
                 WorkerLog.Warn(
@@ -160,7 +165,12 @@ public static class ProviderRetryPolicy
 
     private static bool IsRetryableStatus(int statusCode)
     {
-        return statusCode == 400 || statusCode == 429 || statusCode >= 500;
+        // 400 is intentionally retryable: several providers misbehave and
+        // return 400 for transient conditions (overload, hidden rate limits,
+        // momentary context hiccups) that succeed on retry. User-confirmed
+        // design (audit M30 retracted 2026-08-28) — do not tighten this
+        // back to "429/5xx only" without a product decision.
+        return statusCode is 400 or 429 || statusCode >= 500;
     }
 
     /// <summary>

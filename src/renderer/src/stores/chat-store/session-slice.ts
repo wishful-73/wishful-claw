@@ -1,7 +1,8 @@
-import { nanoid } from 'nanoid'
+﻿import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
+import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 
 export interface SessionSlice {
   sessions: Session[]
@@ -56,8 +57,8 @@ export interface SessionSlice {
 
   // Message loading
   loadRecentSessionMessages: (sessionId: string, force?: boolean, limit?: number) => Promise<void>
-  fetchOlderMessages: (sessionId: string, limit?: number) => Promise<{ messages: ChatMessage[]; rangeStart: number; hasMore: boolean }>
-  prependMessages: (sessionId: string, messages: ChatMessage[], rangeStart: number, hasMore: boolean) => void
+  fetchOlderMessages: (sessionId: string, limit?: number) => Promise<{ messages: ChatMessage[]; rangeStart: number; hasMore: boolean; totalTurns: number }>
+  prependMessages: (sessionId: string, messages: ChatMessage[], rangeStart: number, hasMore: boolean, totalTurns?: number) => void
 }
 
 function syncSessionsById(state: { sessions: Session[]; sessionsById: Record<string, number> }): void {
@@ -100,6 +101,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       messagesLoaded: true,
       loadedRangeStart: 0,
       loadedRangeEnd: 0,
+      totalTurns: 0,
       lastKnownMessageCount: 0,
       createdAt: now,
       updatedAt: now,
@@ -140,6 +142,22 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     })
     void dbDeleteSession(id)
     void window.api.workerRequest('agent/clear-session', { sessionId: id })
+    // Drop the persisted composer draft so deleted sessions leave no orphans.
+    void removeSessionInputDraft(id)
+    void import('@renderer/hooks/use-chat-actions')
+      .then(({ clearPendingSessionMessages }) => clearPendingSessionMessages(id))
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear queued messages for deleted session:', err)
+      })
+    // Close any right-panel tabs still bound to the deleted session (dynamic
+    // import avoids a chat-store → ui-store circular dependency at load time).
+    void import('@renderer/stores/ui-store')
+      .then(({ useUIStore }) => {
+        useUIStore.getState().removeRightPanelTabsForSession(id)
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clean right-panel tabs for deleted session:', err)
+      })
   },
 
   setActiveSession: (id) => {
@@ -204,6 +222,11 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       }
     })
     void window.api.workerRequest("agent/clear-session", { sessionId })
+    void import('@renderer/hooks/use-chat-actions')
+      .then(({ clearPendingSessionMessages }) => clearPendingSessionMessages(sessionId))
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear queued messages for cleared session:', err)
+      })
   },
 
   clearSessionPromptSnapshot: (_sessionId: string) => {
@@ -256,11 +279,19 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   },
 
   clearAllSessions: () => {
+    const sessionIds = get().sessions.map((session) => session.id)
     set((state) => {
       state.sessions = []
       state.sessionsById = {}
       state.activeSessionId = null
     })
+    void import('@renderer/hooks/use-chat-actions')
+      .then(({ clearPendingSessionMessages }) => {
+        for (const sessionId of sessionIds) clearPendingSessionMessages(sessionId)
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear queued messages for all sessions:', err)
+      })
   },
 
   addMessage: (sessionId, msg) => {
@@ -471,12 +502,13 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
           target.messageCount = 0
           target.loadedRangeStart = 0
           target.loadedRangeEnd = 0
+          target.totalTurns = 0
           target.lastKnownMessageCount = 0
         })
         return
       }
 
-      const { messages, rangeStart, hasMore } = await dbListMessagesByTurns({
+      const { messages, rangeStart, hasMore, totalTurns } = await dbListMessagesByTurns({
         sessionId,
         turns: _limit ?? 5
       })
@@ -491,10 +523,11 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         // If hasMore is false, we've loaded everything from the beginning.
         target.loadedRangeStart = hasMore ? rangeStart : 0
         target.loadedRangeEnd = rangeStart + messages.length
+        target.totalTurns = totalTurns
         target.lastKnownMessageCount = actualCount
       })
-      // Restore backend session from DB
-      void window.api.workerRequest('agent/restore-session', { sessionId })
+      // No backend rebuild here: the Worker conversation is restored lazily
+      // inside agent/run on the first send of the session.
     } catch (err) {
       console.error('[DB] loadRecentSessionMessages failed:', err)
       set((state) => {
@@ -508,32 +541,35 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   fetchOlderMessages: async (sessionId, _limit) => {
     const state = get()
     const session = state.sessions.find((s) => s.id === sessionId)
-    if (!session) return { messages: [], rangeStart: 0, hasMore: false }
-    if (session.loadedRangeStart <= 0) return { messages: [], rangeStart: 0, hasMore: false }
+    if (!session) return { messages: [], rangeStart: 0, hasMore: false, totalTurns: 0 }
+    if (session.loadedRangeStart <= 0) return { messages: [], rangeStart: 0, hasMore: false, totalTurns: 0 }
 
     try {
-      const { messages, rangeStart, hasMore } = await dbListMessagesByTurns({
+      const { messages, rangeStart, hasMore, totalTurns } = await dbListMessagesByTurns({
         sessionId,
         turns: _limit ?? 5,
         beforeCreatedAt: session.loadedRangeStart
       })
-      if (messages.length === 0) return { messages: [], rangeStart: 0, hasMore: false }
+      if (messages.length === 0) return { messages: [], rangeStart: 0, hasMore: false, totalTurns }
       const existingIds = new Set(session.messages.map((m) => m.id))
       const newMessages = messages.filter((m) => !existingIds.has(m.id))
-      return { messages: newMessages, rangeStart, hasMore }
+      return { messages: newMessages, rangeStart, hasMore, totalTurns }
     } catch (err) {
       console.error('[DB] fetchOlderMessages failed:', err)
-      return { messages: [], rangeStart: 0, hasMore: false }
+      return { messages: [], rangeStart: 0, hasMore: false, totalTurns: 0 }
     }
   },
 
-  prependMessages: (sessionId, messages, rangeStart, hasMore) => {
+  prependMessages: (sessionId, messages, rangeStart, hasMore, totalTurns) => {
     set((state) => {
       const target = state.sessions.find((s) => s.id === sessionId)
       if (!target) return
       target.messages = [...messages, ...target.messages]
       target.loadedRangeStart = hasMore ? rangeStart : 0
       target.loadedRangeEnd = target.loadedRangeStart + target.messages.length
+      if (totalTurns !== undefined) {
+        target.totalTurns = totalTurns
+      }
     })
   },
 
@@ -553,7 +589,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
 
     try {
       // Load 5 turns ending just after the target (so the target is included)
-      const { messages, rangeStart, hasMore } = await dbListMessagesByTurns({
+      const { messages, rangeStart, hasMore, totalTurns } = await dbListMessagesByTurns({
         sessionId,
         turns: _windowSize ?? 5,
         // beforeSortOrder = target + 1 so the target is included in the range
@@ -569,6 +605,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         target.messagesLoaded = true
         target.loadedRangeStart = hasMore ? rangeStart : 0
         target.loadedRangeEnd = rangeStart + messages.length
+        target.totalTurns = totalTurns
       })
     } catch (err) {
       console.error('[DB] loadMessageWindowAround failed:', err)

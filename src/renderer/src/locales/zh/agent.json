@@ -1,0 +1,16 @@
+﻿{
+  "contextCompression": {
+    "triggerManual": "手动",
+    "triggerAuto": "自动",
+    "boundaryTitle": "从此处开始上下文已压缩",
+    "boundarySummarized": "已总结 {{count}} 条消息",
+    "compressing": "正在压缩上下文…",
+    "compressed": "上下文已压缩",
+    "compressedDetail": "已压缩 {{count}} 条消息",
+    "summaryCollapse": "折叠摘要",
+    "summaryExpand": "展开摘要",
+    "summaryTitle": "压缩上下文摘要",
+    "summaryMessages": "较早的 {{count}} 条消息",
+    "summaryRecentPreserved": "保留最近消息"
+  }
+}

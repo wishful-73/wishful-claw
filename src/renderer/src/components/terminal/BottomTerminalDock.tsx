@@ -95,21 +95,6 @@ export function BottomTerminalDock({
     : sessionTabs[0]?.id ?? null
   const activeTab = sessionTabs.find((t) => t.id === effectiveActiveTabId) ?? null
 
-  // Auto-create a terminal when dock opens and there are no session tabs
-  useEffect(() => {
-    if (!dockOpen) return
-    if (sessionTabs.length === 0 && !hasAutoCreatedRef.current) {
-      hasAutoCreatedRef.current = true
-      void handleAutoCreateTerminal()
-      return
-    }
-    // Reset auto-created flag when tabs become empty again (e.g., after closing all)
-    if (sessionTabs.length === 0) {
-      hasAutoCreatedRef.current = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionTabs.length, dockOpen])
-
   const handleAutoCreateTerminal = useCallback(async (): Promise<void> => {
     if (sshConnectionId) {
       // For SSH projects, don't auto-create a synthetic tab.
@@ -127,6 +112,25 @@ export function BottomTerminalDock({
     // Fallback: create terminal with no specific cwd
     await createTab(undefined, projectId, 'Terminal', sessionId)
   }, [sshConnectionId, workingFolder, projectId, projectName, sessionId, createTab])
+
+  // Auto-create a terminal when dock opens and there are no session tabs
+  useEffect(() => {
+    if (!dockOpen) return
+    if (sessionTabs.length === 0 && !hasAutoCreatedRef.current) {
+      hasAutoCreatedRef.current = true
+      handleAutoCreateTerminal().catch((err) => {
+        // Allow a retry on the next trigger instead of staying stuck with
+        // an empty dock after a transient create failure.
+        console.warn('[BottomTerminalDock] Auto-create terminal failed:', err)
+        hasAutoCreatedRef.current = false
+      })
+      return
+    }
+    // Reset auto-created flag when tabs become empty again (e.g., after closing all)
+    if (sessionTabs.length === 0) {
+      hasAutoCreatedRef.current = false
+    }
+  }, [sessionTabs.length, dockOpen, handleAutoCreateTerminal])
 
   // Resize handlers
   useEffect(() => {

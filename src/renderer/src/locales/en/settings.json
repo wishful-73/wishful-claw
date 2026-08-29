@@ -46,6 +46,10 @@
       "label": "Runtime & Performance",
       "desc": "API request timeout, retry policy and context compression"
     },
+    "memory": {
+      "label": "Memory",
+      "desc": "Proactive memory, auto organization, tier thresholds and proactive recall"
+    },
     "about": {
       "label": "About",
       "desc": "Version info"
@@ -54,7 +58,8 @@
       "general": "General",
       "aiService": "AI Service",
       "about": "About",
-      "extensions": "Plugins"
+      "extensions": "Plugins",
+      "channels": "Channels"
     },
     "persona": {
       "label": "Persona",
@@ -73,6 +78,15 @@
     "ssh": {
       "label": "SSH",
       "desc": "Manage remote server SSH connections"
+    },
+    "appPlugins": {
+      "label": "Plugins"
+    },
+    "extensions": {
+      "label": "Extensions"
+    },
+    "channel": {
+      "label": "Channels"
     }
   },
   "general": {
@@ -211,6 +225,8 @@
       "baseUrl": "Base URL",
       "baseUrlPlaceholder": "https://api.example.com/v1",
       "baseUrlHint": "OpenAI-compatible API endpoint",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter API Key",
       "added": "Provider {{name}} added"
     },
     "config": {
@@ -218,13 +234,8 @@
       "apiKeyPlaceholder": "Enter API Key",
       "apiKeyNotRequired": "API Key not required",
       "baseUrl": "Base URL",
-      "connectionTest": "Connection Test",
-      "testModel": "Test model",
-      "noModels": "No models available",
       "testSuccess": "Connection test succeeded",
       "testFailed": "Connection test failed",
-      "testing": "Checking...",
-      "connectionSuccess": "Connected",
       "protocolType": "Protocol Type",
       "cacheTtl": "Cache TTL",
       "cacheTtlHint": "Anthropic cache time-to-live, model-level config can override",
@@ -232,7 +243,7 @@
         "label": "Models",
         "count": "{{total}} models, {{enabled}} enabled",
         "searchPlaceholder": "Search models...",
-        "noModels": "No models yet, click + to add or fetch",
+        "noModels": "Please fetch or add a model first",
         "noResults": "No matching results",
         "fetchModels": "Fetch Models",
         "fetchSuccess": "Fetched {{count}} models",
@@ -240,6 +251,7 @@
         "fetchFailed": "Failed to fetch models",
         "addModel": "Add model",
         "editModel": "Edit model",
+        "checkConnection": "Check connection",
         "modelDeleted": "Model deleted",
         "thinkingConfig": "Thinking config",
         "editThinking": "Edit thinking config",
@@ -723,22 +735,124 @@
     "openClaw": "OpenClaw — Active Memory Recall Mechanism"
   },
   "plugin": {
-    "title": "Plugins", "subtitle": "Manage built-in plugins and tool registration.", "enabled": "Enabled", "disabled": "Disabled", "enable": "Enable plugin", "enableDesc": "When enabled, the plugin tools are registered for the current Agent.", "selectPlugin": "Select a plugin", "provider": "Image provider", "model": "Image model", "selectProvider": "Select provider", "selectModel": "Select model", "modelSource": "Image model source", "modelSourceDesc": "Use the global image model or select a plugin-specific model for Image.", "useGlobalModel": "Use global image model", "overrideModel": "Select a plugin-specific model", "globalModelMissing": "No usable global image model is configured.", "toolStatus": "Tool status", "toolStatusDesc": "ImageGenerate requires a configured image model.", "toolStatusDescBrowser": "Browser tools run through the built-in Browser/WebView path.", "toolStatusDescCodeGraph": "CodeGraph tools use the built-in runtime and project indexes.", "toolReadyCodeGraph": "Plugin ready. The Agent can call its tools.", "toolConstraintCodeGraph": "Use codegraph_explore first for code-navigation questions. Provide a focused query; projectPath is optional and defaults to the active working folder. The project must be indexed before results are available.", "toolStatusDescDesktop": "Desktop control tools are currently unavailable.",
-    "status": { "ready": "Ready", "not_ready": "Not ready", "disabled": "Disabled" },
+    "title": "Plugins",
+    "subtitle": "Manage built-in plugins and tool registration.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable plugin",
+    "enableDesc": "When enabled, the plugin tools are registered for the current Agent.",
+    "selectPlugin": "Select a plugin",
+    "provider": "Image provider",
+    "model": "Image model",
+    "selectProvider": "Select provider",
+    "selectModel": "Select model",
+    "modelSource": "Image model source",
+    "modelSourceDesc": "Use the global image model or select a plugin-specific model for Image.",
+    "useGlobalModel": "Use global image model",
+    "overrideModel": "Select a plugin-specific model",
+    "globalModelMissing": "No usable global image model is configured.",
+    "toolStatus": "Tool status",
+    "toolStatusDesc": "ImageGenerate requires a configured image model.",
+    "toolStatusDescBrowser": "Browser tools run through the built-in Browser/WebView path.",
+    "toolStatusDescCodeGraph": "CodeGraph tools use the built-in runtime and project indexes.",
+    "toolReadyCodeGraph": "Plugin ready. The Agent can call its tools.",
+    "toolConstraintCodeGraph": "Use codegraph_explore first for code-navigation questions. Provide a focused query; projectPath is optional and defaults to the active working folder. The project must be indexed before results are available.",
+    "toolStatusDescDesktop": "Desktop control tools are currently unavailable.",
+    "status": {
+      "ready": "Ready",
+      "not_ready": "Not ready",
+      "disabled": "Disabled"
+    },
     "items": {
-      "image": { "title": "Image", "description": "Provides image generation tools to the Agent.", "promptTitle": "Image plugin", "promptDesc": "Configure an image provider and model before the Agent can call ImageGenerate." },
-      "browser": { "title": "Browser", "description": "Browse web pages and read content through the built-in Browser/WebView.", "promptTitle": "Browser plugin", "promptDesc": "Browser tools respect the allowed-domain and blocked-domain rules." },
-      "codegraph": { "title": "CodeGraph", "description": "Understand project structure, symbols, and call paths with a code graph.", "promptTitle": "CodeGraph plugin", "promptDesc": "The CodeGraph runtime ships with the app; each project must be indexed before use." },
-      "desktop-control": { "title": "Desktop Control", "description": "Desktop screenshot and input control tools.", "promptTitle": "Desktop control plugin", "promptDesc": "This plugin is currently hidden and disabled." }
+      "image": {
+        "title": "Image",
+        "description": "Provides image generation tools to the Agent.",
+        "promptTitle": "Image plugin",
+        "promptDesc": "Configure an image provider and model before the Agent can call ImageGenerate."
+      },
+      "browser": {
+        "title": "Browser",
+        "description": "Browse web pages and read content through the built-in Browser/WebView.",
+        "promptTitle": "Browser plugin",
+        "promptDesc": "Browser tools respect the allowed-domain and blocked-domain rules."
+      },
+      "codegraph": {
+        "title": "CodeGraph",
+        "description": "Understand project structure, symbols, and call paths with a code graph.",
+        "promptTitle": "CodeGraph plugin",
+        "promptDesc": "The CodeGraph runtime ships with the app; each project must be indexed before use."
+      },
+      "desktop-control": {
+        "title": "Desktop Control",
+        "description": "Desktop screenshot and input control tools.",
+        "promptTitle": "Desktop control plugin",
+        "promptDesc": "This plugin is currently hidden and disabled."
+      }
     },
     "toolArgsMap": {
-      "ImageGenerate": "prompt, count, reference_images, size, quality", "BrowserNavigate": "url, action", "BrowserGetContent": "selector, type", "BrowserScreenshot": "no arguments", "BrowserSnapshot": "no arguments", "BrowserClick": "selector", "BrowserType": "selector, text, clear, submit", "BrowserScroll": "direction, amount", "codegraph_explore": "query, projectPath", "DesktopScreenshot": "no arguments", "DesktopClick": "x, y, button, action", "DesktopType": "text, key, hotkey", "DesktopScroll": "x, y, scrollX, scrollY", "DesktopWait": "delayMs"
+      "ImageGenerate": "prompt, count, reference_images, size, quality",
+      "BrowserNavigate": "url, action",
+      "BrowserGetContent": "selector, type",
+      "BrowserScreenshot": "no arguments",
+      "BrowserSnapshot": "no arguments",
+      "BrowserClick": "selector",
+      "BrowserType": "selector, text, clear, submit",
+      "BrowserScroll": "direction, amount",
+      "codegraph_explore": "query, projectPath",
+      "DesktopScreenshot": "no arguments",
+      "DesktopClick": "x, y, button, action",
+      "DesktopType": "text, key, hotkey",
+      "DesktopScroll": "x, y, scrollX, scrollY",
+      "DesktopWait": "delayMs"
     },
     "browser": {
-      "title": "Browser configuration", "desc": "Configure browser emulation, user data, and domain access rules.", "importCookies": "Import Cookies", "importingCookies": "Importing…", "clearCookies": "Clear Cookies", "clearingCookies": "Clearing…", "cookiesCleared": "Cookies cleared", "cookiesClearFailed": "Failed to clear Cookies", "cookiesImported": "Imported {{imported}} Cookies from {{browserName}}; skipped {{skipped}}", "cookiesImportFailed": "Failed to import Cookies", "userDataReuse": "Reuse browser user data", "userDataReuseDesc": "Reuse local browser profiles, Cookies, and sign-in state.", "userDataSource": "User data source", "userDataSourceDesc": "Choose which browser profiles should be detected and reused.", "restartRequired": "Restart the Browser session after changing this setting.", "activeProfile": "Using {{browserName}} profile {{profileName}}: {{path}}", "profileFallback": "No reusable browser profile detected; an isolated session will be used.", "isolatedStorage": "Isolated session directory: {{path}}", "blockedDomains": "Blocked domains", "blockedDomainsDesc": "Browser tools will not access these domains.", "allowedDomains": "Allowed domains", "allowedDomainsDesc": "When set, only these domains can be accessed; one per line.", "domainPlaceholder": "example.com\n*.example.org", "domainRuleHint": "Domains support exact matches and wildcards; one per line.", "sources": { "auto": "Auto detect", "chrome": "Chrome", "edge": "Edge", "firefox": "Firefox" }
+      "title": "Browser configuration",
+      "desc": "Configure browser emulation, user data, and domain access rules.",
+      "importCookies": "Import Cookies",
+      "importingCookies": "Importing…",
+      "clearCookies": "Clear Cookies",
+      "clearingCookies": "Clearing…",
+      "cookiesCleared": "Cookies cleared",
+      "cookiesClearFailed": "Failed to clear Cookies",
+      "cookiesImported": "Imported {{imported}} Cookies from {{browserName}}; skipped {{skipped}}",
+      "cookiesImportFailed": "Failed to import Cookies",
+      "userDataReuse": "Reuse browser user data",
+      "userDataReuseDesc": "Reuse local browser profiles, Cookies, and sign-in state.",
+      "userDataSource": "User data source",
+      "userDataSourceDesc": "Choose which browser profiles should be detected and reused.",
+      "restartRequired": "Restart the Browser session after changing this setting.",
+      "activeProfile": "Using {{browserName}} profile {{profileName}}: {{path}}",
+      "profileFallback": "No reusable browser profile detected; an isolated session will be used.",
+      "isolatedStorage": "Isolated session directory: {{path}}",
+      "blockedDomains": "Blocked domains",
+      "blockedDomainsDesc": "Browser tools will not access these domains.",
+      "allowedDomains": "Allowed domains",
+      "allowedDomainsDesc": "When set, only these domains can be accessed; one per line.",
+      "domainPlaceholder": "example.com\n*.example.org",
+      "domainRuleHint": "Domains support exact matches and wildcards; one per line.",
+      "sources": {
+        "auto": "Auto detect",
+        "chrome": "Chrome",
+        "edge": "Edge",
+        "firefox": "Firefox"
+      }
     },
     "codegraph": {
-      "assetsTitle": "Built-in CodeGraph runtime", "assetsDesc": "The CodeGraph runtime and language grammars ship with the app; this shows status only and does not require a download.", "workerRunning": "Runtime running", "workerStopped": "Runtime stopped", "devMode": "Development grammars ready ({{count}})", "ready": "Built-in grammars ready ({{count}})", "availableLanguages": "Available languages: {{languages}}", "invalidFiles": "Invalid grammar files: {{files}}", "unrecognizedGrammars": "Unrecognized grammars: {{grammars}}", "missingLanguages": "Missing languages: {{languages}}", "workerMissing": "CodeGraph Worker is unavailable. Check the application installation.", "coreLibraryMissing": "The built-in tree-sitter runtime is missing or invalid.", "languageGrammarsMissing": "Built-in language grammars are missing.", "invalidGrammarPackage": "Some built-in grammar files are invalid.", "bundledUnavailable": "Built-in CodeGraph resources are currently unavailable."
+      "assetsTitle": "Built-in CodeGraph runtime",
+      "assetsDesc": "The CodeGraph runtime and language grammars ship with the app; this shows status only and does not require a download.",
+      "workerRunning": "Runtime running",
+      "workerStopped": "Runtime stopped",
+      "devMode": "Development grammars ready ({{count}})",
+      "ready": "Built-in grammars ready ({{count}})",
+      "availableLanguages": "Available languages: {{languages}}",
+      "invalidFiles": "Invalid grammar files: {{files}}",
+      "unrecognizedGrammars": "Unrecognized grammars: {{grammars}}",
+      "missingLanguages": "Missing languages: {{languages}}",
+      "workerMissing": "CodeGraph Worker is unavailable. Check the application installation.",
+      "coreLibraryMissing": "The built-in tree-sitter runtime is missing or invalid.",
+      "languageGrammarsMissing": "Built-in language grammars are missing.",
+      "invalidGrammarPackage": "Some built-in grammar files are invalid.",
+      "bundledUnavailable": "Built-in CodeGraph resources are currently unavailable."
     }
   },
   "persona": {
@@ -772,7 +886,22 @@
     "deleteFailed": "Failed to delete",
     "projectTitle": "Project Persona Management",
     "projectSubtitle": "Manage project persona library, independent from global library",
-    "copyFromGlobal": "Copy from Global"
+    "copyFromGlobal": "Copy from Global",
+    "noProvider": "No AI provider configured",
+    "noModel": "No model configured",
+    "aiCreate": "AI Create Persona",
+    "aiCreateDesc": "Describe the assistant you want; AI will generate a persona for you.",
+    "promptPlaceholder": "Describe the persona you want, e.g. a patient coding mentor…",
+    "referencePlaceholder": "Optional: reference an existing persona ID",
+    "generating": "Generating…",
+    "generate": "Generate",
+    "name": "Name",
+    "tagline": "Tagline",
+    "description": "Description",
+    "regenerate": "Regenerate",
+    "saving": "Saving…",
+    "confirmSave": "Save",
+    "unsavedConfirmLeave": "Discard changes and switch"
   },
   "settings": {
     "persona": {
@@ -933,7 +1062,14 @@
       "installFailed": "Install failed",
       "noInstallablePackage": "No installable package",
       "cannotAutoInstall": "Cannot auto-install this server",
-      "requiresEnvVars": "This server requires configuration"
+      "requiresEnvVars": "This server requires configuration",
+      "tagAll": "All",
+      "tagFile": "File",
+      "tagSearch": "Search",
+      "tagDatabase": "Database",
+      "tagBrowser": "Browser",
+      "tagGit": "Git",
+      "tagMemory": "Memory"
     },
     "detail": {
       "repository": "Repository",
@@ -952,7 +1088,8 @@
       "installFailed": "Install failed",
       "fillRequired": "Please fill required fields",
       "cannotInstall": "Cannot install this server"
-    }
+    },
+    "serverRemoveFailed": "Failed to remove server"
   },
   "ssh": {
     "title": "SSH Connections",
@@ -1008,6 +1145,149 @@
     "compression": "Compression",
     "toolExecution": "Tool Execution",
     "developer": "Developer",
-    "startup": "Startup"
+    "startup": "Startup",
+    "memoryOrganization": "Auto Organization",
+    "memoryTiers": "Tier Thresholds",
+    "memoryRecall": "Proactive Recall"
+  },
+  "memoryPage": {
+    "title": "Memory",
+    "subtitle": "Daily auto organization, tier demotion thresholds and proactive recall parameters",
+    "organization": {
+      "title": "Daily Auto Organization",
+      "desc": "Scheduled memory organization: deduplicate/merge MEMORY.md and demote stale entries across tiers (demotion never deletes and is recoverable)",
+      "disabledHint": "Auto organization is off; you can still trigger it manually from the memory panel",
+      "schedule": {
+        "label": "Trigger mode",
+        "desc": "Choose when the organization task is triggered",
+        "nightly": "Nightly",
+        "startup": "After startup"
+      },
+      "time": {
+        "label": "Nightly trigger time",
+        "desc": "Triggers while the app is running near this time; a missed run is caught up once after startup"
+      },
+      "startupHint": "Triggered with a delay after startup; skipped if the last run was less than 20 hours ago to avoid repeats on frequent restarts"
+    },
+    "tiers": {
+      "title": "Tier Demotion Thresholds",
+      "desc": "Memory entries are demoted automatically by priority x idle days: hot (active) -> warm (still recallable) -> cold (not recalled by default)",
+      "warm": "Demote to warm",
+      "cold": "Demote to cold",
+      "ephemeral": "Ephemeral",
+      "standard": "Standard",
+      "lasting": "Lasting",
+      "days": "days",
+      "hint": "Higher priority lasts longer; permanent entries are never demoted. Recalled memories are automatically re-heated."
+    },
+    "recall": {
+      "title": "Proactive Recall",
+      "desc": "Automatically retrieve relevant memories and inject them into context at conversation start",
+      "maxNotes": {
+        "label": "Max recalled entries",
+        "desc": "Maximum number of memory entries injected each time"
+      },
+      "maxChars": {
+        "label": "Injection budget (chars)",
+        "desc": "Total character cap for injected content"
+      },
+      "minScore": {
+        "label": "Relevance threshold",
+        "desc": "Memories scoring below this are not injected; 0 means no filtering"
+      },
+      "fallback": {
+        "label": "Cross-scope fallback",
+        "desc": "Fall back to searching global memories when project memory has zero hits"
+      },
+      "visibility": {
+        "label": "Recall visibility",
+        "desc": "Show which memories were recalled in the session (or why none were)"
+      }
+    }
+  },
+  "analytics": {
+    "outputTokens": "Output Tokens",
+    "cacheTokenShare": "Cached Token Share"
+  },
+  "extension": {
+    "saved": "Extension settings saved",
+    "removeConfirm": "Remove this extension?",
+    "removed": "Extension removed",
+    "installed": "Extension installed",
+    "title": "Custom Extensions",
+    "subtitle": "Install and manage local extensions that provide tools and components for the agent."
+  },
+  "channel": {
+    "status": {
+      "unconfigured": "Unconfigured",
+      "running": "Running",
+      "stopped": "Stopped"
+    },
+    "global": {
+      "title": "Global Channel Settings",
+      "persona": "Reply Persona",
+      "personaDesc": "Persona used for auto-replies on all channels",
+      "noPersona": "Default (no persona)",
+      "model": "Reply Model",
+      "modelDesc": "AI model used for auto-replies on all channels",
+      "provider": "Provider",
+      "modelPlaceholder": "Select a model"
+    },
+    "list": {
+      "title": "Channel List"
+    },
+    "empty": "Select a channel on the left to configure",
+    "actions": {
+      "start": "Start",
+      "stop": "Stop"
+    },
+    "tabs": {
+      "qr": "QR Binding",
+      "credentials": "API Credentials",
+      "features": "Features"
+    },
+    "qr": {
+      "title": "QR Binding",
+      "placeholder": "Click the button below to get a QR code",
+      "waiting": "Scan the QR code with WeChat",
+      "connected": "Binding succeeded!",
+      "expired": "QR code expired, please refresh",
+      "failed": "Failed to fetch QR code",
+      "notSupported": "This channel does not support QR binding, please configure with API credentials",
+      "rebind": "Rebind",
+      "retry": "Retry",
+      "refresh": "Refresh QR code",
+      "weixinInstructions": "1. Click the \"Get QR code\" button\n2. Scan the displayed QR code with WeChat\n3. Confirm authorization on your phone\n4. The channel will start automatically once bound",
+      "feishuInstructions": "1. Scan the QR code with the Feishu app\n2. Confirm creating the application in Feishu\n3. App ID and App Secret are fetched automatically after authorization\n4. The channel will start automatically once bound",
+      "feishuWaiting": "Scan the QR code with Feishu to complete authorization",
+      "feishuConnected": "Feishu authorization succeeded!"
+    },
+    "credentials": {
+      "title": "API Credentials",
+      "save": "Save",
+      "saved": "Settings saved",
+      "saveFailed": "Failed to save"
+    },
+    "features": {
+      "title": "Features & Permissions",
+      "section": "Feature Switches",
+      "autoReply": "Auto Reply",
+      "autoReplyDesc": "Automatically reply with AI when a message is received",
+      "streamingReply": "Streaming Reply",
+      "streamingReplyDesc": "Stream reply content in real time (requires channel support)",
+      "autoStart": "Auto Start",
+      "autoStartDesc": "Automatically connect this channel when the app starts"
+    },
+    "permissions": {
+      "section": "Security Permissions",
+      "allowShell": "Shell Execution",
+      "allowShellDesc": "Allow AI to execute shell commands",
+      "allowReadHome": "Read Home Directory",
+      "allowReadHomeDesc": "Allow reading files outside the working directory",
+      "allowWriteOutside": "External Write",
+      "allowWriteOutsideDesc": "Allow writing files outside the working directory",
+      "allowSubAgents": "Sub-Agents",
+      "allowSubAgentsDesc": "Allow using sub-agent tools"
+    }
   }
 }

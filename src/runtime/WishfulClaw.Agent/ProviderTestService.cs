@@ -16,12 +16,6 @@ public static class ProviderTestService
     private static readonly HttpClient HttpClient = WishfulClaw.Infrastructure.Http.WorkerHttpClientFactory.Create(
         timeout: TimeSpan.FromSeconds(30));
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     // ── Test connectivity ──
 
     public static async Task<WorkerResponse> TestAsync(JsonElement parameters)

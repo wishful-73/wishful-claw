@@ -1,4 +1,4 @@
-﻿# 新会话启动提示语
+# 新会话启动提示语
 
 > 复制以下内容到新会话作为第一条消息发送。
 
@@ -14,7 +14,7 @@
 
 1. `AGENTS.md` — 项目结构（7 层架构）、分层约定、Git 提交规范、分支管理规则、大文件拆分规则
 2. `docs/dev-workflow.md` — 六阶段开发工作流 SOP
-3. `docs/iteration-plan.md` — 总体迭代计划（迭代一~十五 + MVP v2 迭代 v2-iter-1 ~ v2-iter-12）
+3. `docs/iteration-plan.md` — 总体迭代计划（含当前 v2-iter-24 与 v2-iter-25 ~ v2-iter-26 后续路线）
 4. `D:\koda\Obsidian\02-AI教学\wishfulclaw` — 老大持续更新的 Wishful Claw Bug 与优化建议知识库；规划新迭代前先检查最新内容
 
 ## 【最重要】每个新迭代开始，必须先与老大讨论确认
@@ -70,6 +70,7 @@
 | v2-iter-20 | 审查修复·安全与运行时健壮性 — PV-1 TLS 收口工厂、MB-1 SSH 记忆 scope 校验、TL-6 NotebookEdit 入审批、AL-1 同 session 单活跃 run、DB-1 Initialize 加锁、SA-1/2/3/6/7 子 agent registry 并发修复、MB-3 MemoryStore scope 信号量、AL-2 persona 指纹缓存、PV-2/TL-5/GL-3/RC-1/DB-3 正确性修复；追加：桌面图标白角修复、删除服务商误报修复、use_capability 代理显示链路（Worker 改写 + 渲染端入口统一改写 + HIDDEN 兜底）、default-mode 审批链路（审批屏障串行门控 + confirm 弹窗队列化 + startedAt 排序 + 审批结果对 LLM 可见 [USER APPROVED/REJECTED]） | ✅ 已完成，产品版本 0.2.20，tag v0.2.20，已合并 main |
 | v2-iter-21 | 设置页重构 + 运行时健壮性补强 — 设置页运行与性能区块、锚点导航、会话取消/流态清理、压缩截断兜底、搜索排除目录、流式文件读取、子 Agent 输出截断、插件管理与 Browser/Image/CodeGraph 加载闭环、CodeGraph 项目档案入口与项目本地存储 | ✅ 已完成，产品版本 0.2.21，tag v0.2.21，已合并 main |
 | v2-iter-22 | 微信/飞书渠道与 Cron 定时任务打磨 — 渠道标题/主动发送、Cron SQLite 与启动恢复、Automation 列表/表单/日历、运行状态/通知/归档、隔离测试与并发修复、ActivityPanel 迁入右侧 Tab | ✅ 已完成，产品版本 0.2.22，tag v0.2.22，已合并 main |
+| v2-iter-23 | 会话可靠性与缺陷收口 — 压缩快照体系（schema/增量查询/安全回退/回归测试 252 断言）、工具结果即时持久化 + messages upsert 队列、恢复 reconciliation、惰性会话初始化、上线前全量排查整改（高危 8/中危 36/低危 16 分批修复）、聊天体验（历史点击加载/吸附卡/悬浮操作块/摘要入口）、前端打磨（输入草稿/图标体系/服务商弹窗/文件树着色）、辅助窗口多屏定位（实机验收 PASS）；2026-08-29 老大授权解除“不发版”决策，按标准流程收尾 | ✅ 已完成，产品版本 0.2.23，tag v0.2.23，已合并 main |
 
 ## 当前项目架构（7 层）
 
@@ -91,22 +92,18 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
 
 ## 当前状态
 
-- 当前分支：`main`，产品版本：`0.2.22`，最新正式 tag：`v0.2.22`
-- v2-iter-22 已完成并合并 main，迭代分支已清理
-- 下一阶段候选范围见 PROGRESS.md；开工前先与老大确认范围，再从最新 main 切出开发分支
+- v2-iter-23 已完结：已合并 main、tag `v0.2.23`、产品版本 `0.2.23`，Release 与安装包已发布（2026-08-29）
+- 下个迭代从最新 main 拆出 `dev/v2-iter-24`：功能补齐与遗留问题推进（具体范围先与老大确认）
+- 正式产品版（1.0）仍延后：v2-iter-25 集中修复与 Release Candidate 准备，v2-iter-26 经老大确认后正式发布；各迭代收尾仍按标准流程打 0.2.x 版本与 tag
+- 2026-08-28 曾记录“iter-23 不发版”决策，2026-08-29 老大确认收尾时已解除，仅影响 1.0 正式版定位
 
+## 后续路线
 
-## 下一阶段候选范围
+1. **v2-iter-24：功能补齐与遗留问题推进** — 以老大确认的实际缺失功能和日常使用阻断问题为准；开工前先检查 Obsidian 知识库最新 Bug 与建议
+3. **v2-iter-25：集中修复与 Release Candidate 准备** — 冻结大功能，完成全量回归、真实 Electron 覆盖、AOT/NSIS、安装观察
+4. **v2-iter-26：正式版发布与收尾** — 达到门槛并经老大明确确认后，才执行版本迁移、tag、main/Release 和安装包发布
 
-当前已完成 v2-iter-22（产品版本 0.2.22，tag v0.2.22）。下一阶段候选范围已在 PROGRESS.md 登记：
-
-1. **工具结果即时持久化** — 工具边界立即 flush，缩小崩溃丢失窗口
-2. **压缩水位线 + contextLength 回退** — 防止已总结轮次重入并恢复无窗口模型的压缩能力
-3. **渲染器空闲 CPU 忙循环排查** — 处理自动水合失败后的重复 effect
-4. **运行时恢复与失败反馈强化** — Provider 瞬态失败重试、压缩位置保持、完整错误透出
-5. 其他候选：计划模式增强、子 agent 聊天内联、多模态图片块、ACP 只读编排工具
-
-**开工前先与老大确认下一阶段范围，再从最新 main 切出开发分支。**
+**每个后续迭代开工前都要重新与老大确认具体范围；不要把路线图草案当成直接执行授权。**
 
 ## 关键技术备忘
 
@@ -141,11 +138,10 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
 
 ## 会话开始时请先执行
 
-1. `git status` + `git log --oneline -5` — 确认当前在 `main`，最新 commit 为 v2-iter-22 merge（`528c728`），工作树干净；读取 `docs/PROGRESS.md` 了解已完成迭代
-2. 读 `AGENTS.md` — 查看 7 层架构和分层约定
-3. 读 `docs/iteration-plan.md` + `docs/PROGRESS.md` — 查看已完成迭代与历史计划
-4. 检查 `D:\koda\Obsidian\02-AI教学\wishfulclaw` 中最新的 Bug 和优化建议
-5. **与老大讨论确认本次迭代范围**（结合昨天的新想法，确认做什么、优先级、边界、验证标准），确认后再开工
-6. 新迭代从 main 创建分支：`git checkout main && git pull origin main && git checkout -b dev/v2-iter-{N}`
+1. `git checkout main` + `git pull origin main`（失败时走代理）+ `git log --oneline -5` — 确认 main 已含 v0.2.23
+2. 读 `AGENTS.md` — 查看 7 层架构和分层约定、分支管理规则（新分支必须从最新 main 拆出）
+3. 读 `docs/PROGRESS.md` + `docs/iteration-plan.md` — 查看已完结迭代（最新 v0.2.23）与 24~26 路线；开工前必须与老大确认 v2-iter-24 具体范围、优先级与验收标准，不得按计划文档默认开工
+4. 检查 `D:\koda\Obsidian\02-AI教学\wishfulclaw` 中最新的 Bug 和优化建议（若路径不存在则跳过并告知老大）
+5. 确认后 `git checkout -b dev/v2-iter-24` 开工；不得在 main 上直接开发，不得提前发布正式版（1.0）
 
 叫老大，我们是并肩协作的兄弟。

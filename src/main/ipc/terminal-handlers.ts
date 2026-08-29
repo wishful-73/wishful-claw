@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto'
 import { statSync, accessSync, constants } from 'fs'
 import { spawn, type IPty } from 'node-pty'
 import { safeSendMessagePackToWindow } from '../window-ipc'
+import { getMainWindow } from '../main-window-registry'
 import { registerMessagePackHandler } from './messagepack-handler'
 
 // ---------------------------------------------------------------------------
@@ -128,8 +129,11 @@ function createWindowEvent(windowId: number | null, channel: string, payload: un
   const win =
     (typeof windowId === 'number'
       ? BrowserWindow.getAllWindows().find((candidate) => candidate.id === windowId)
-      : null) ?? BrowserWindow.getAllWindows()[0]
-  if (!win) return
+      : null) ??
+    // Fall back to the registered main window — getAllWindows()[0] may be an
+    // auxiliary window (clipboard enhancer, quick launcher).
+    getMainWindow()
+  if (!win || win.isDestroyed()) return
   safeSendMessagePackToWindow(win, channel, payload)
 }
 

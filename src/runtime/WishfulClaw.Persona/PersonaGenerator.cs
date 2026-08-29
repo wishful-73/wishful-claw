@@ -32,15 +32,16 @@ public static class PersonaGenerator
         JsonElement provider,
         string prompt,
         string? referencePersonaId,
-        string? workingFolder)
+        string? workingFolder,
+        CancellationToken cancellationToken = default)
     {
         var providerType = JsonHelpers.GetString(provider, "type") ?? "openai-chat";
         var systemPrompt = PersonaGenerationPrompt.Build(referencePersonaId, workingFolder);
 
         var responseBody = providerType switch
         {
-            "anthropic" => await CallAnthropicAsync(provider, systemPrompt, prompt),
-            _ => await CallOpenAIAsync(provider, systemPrompt, prompt)
+            "anthropic" => await CallAnthropicAsync(provider, systemPrompt, prompt, cancellationToken),
+            _ => await CallOpenAIAsync(provider, systemPrompt, prompt, cancellationToken)
         };
 
         return ParseDraftResponse(responseBody);
@@ -49,7 +50,7 @@ public static class PersonaGenerator
     // ── LLM API calls (non-streaming) ──
 
     private static async Task<string> CallOpenAIAsync(
-        JsonElement provider, string systemPrompt, string userPrompt)
+        JsonElement provider, string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
         var model = JsonHelpers.GetString(provider, "model") ?? "gpt-4o-mini";
         var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.openai.com/v1")
@@ -66,8 +67,8 @@ public static class PersonaGenerator
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
         }
 
-        using var response = await Http.SendAsync(request);
-        var responseBody = await response.Content.ReadAsStringAsync();
+        using var response = await Http.SendAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(
@@ -78,7 +79,7 @@ public static class PersonaGenerator
     }
 
     private static async Task<string> CallAnthropicAsync(
-        JsonElement provider, string systemPrompt, string userPrompt)
+        JsonElement provider, string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
         var model = JsonHelpers.GetString(provider, "model") ?? "claude-3-5-haiku-20241022";
         var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.anthropic.com")
@@ -92,8 +93,8 @@ public static class PersonaGenerator
         request.Headers.Add("anthropic-version", "2023-06-01");
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
-        using var response = await Http.SendAsync(request);
-        var responseBody = await response.Content.ReadAsStringAsync();
+        using var response = await Http.SendAsync(request, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException(

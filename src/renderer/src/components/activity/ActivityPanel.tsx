@@ -77,7 +77,8 @@ function getActivityIcon(type: string): string {
   switch (type) {
     case 'iteration_start': return '▶'
     case 'iteration_end': return '■'
-    case 'context_compression_start': return '⤢'
+    case 'context_compression_started':
+    case 'context_compression_start':
     case 'context_compressed': return '⤢'
     case 'request_debug': return '⚙'
     case 'tool_use_streaming_start':
@@ -91,6 +92,7 @@ function getActivityLabel(type: string): string {
   switch (type) {
     case 'iteration_start': return 'Iteration Started'
     case 'iteration_end': return 'Iteration Ended'
+    case 'context_compression_started':
     case 'context_compression_start': return 'Compressing Context'
     case 'context_compressed': return 'Context Compressed'
     case 'request_debug': return 'Request Sent'

@@ -288,8 +288,8 @@ public static partial class ExtensionManifestStore
 
     private static bool JsonEquals(JsonNode? left, JsonNode? right)
     {
-        return (left?.ToJsonString(ManagementJsonOptions) ?? "null") ==
-            (right?.ToJsonString(ManagementJsonOptions) ?? "null");
+        return (left?.ToJsonString(WorkerJsonHelper.IndentedJsonOptions) ?? "null") ==
+            (right?.ToJsonString(WorkerJsonHelper.IndentedJsonOptions) ?? "null");
     }
 
     // ── Response helpers ──

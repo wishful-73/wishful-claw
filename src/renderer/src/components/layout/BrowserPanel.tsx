@@ -306,7 +306,9 @@ export function BrowserPanel({
     const onNewWindow = (e: Event & { url: string; preventDefault: () => void }): void => {
       e.preventDefault()
       if (!latestRef.current.canNavigateTo(e.url)) return
-      ipcClient.invoke(IPC.SHELL_OPEN_EXTERNAL, e.url)
+      ipcClient.invoke(IPC.SHELL_OPEN_EXTERNAL, e.url).catch((err) => {
+        console.error('[BrowserPanel] Failed to open external URL:', err)
+      })
     }
 
     const onRenderProcessGone = (e: Event & { reason?: string }): void => {

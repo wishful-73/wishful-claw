@@ -53,6 +53,18 @@ public static partial class DbClient
         // startup) must not run Initialize twice — guard with a lock.
         lock (InitLock)
         {
+            // Idempotent early-out: once initialized, a later call with a
+            // different dbPath must not silently re-point the global DB.
+            if (_initialized && _db is not null)
+            {
+                if (!string.Equals(_dbPath, dbPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    WorkerLog.Warn(
+                        $"DbClient: ignoring Initialize for different dbPath={dbPath}; keeping {_dbPath}");
+                }
+                return new DbInitializeResult(true, _dbPath!, null);
+            }
+
         try
         {
             var dir = Path.GetDirectoryName(dbPath);
@@ -283,6 +295,25 @@ public static partial class DbClient
                     created_at INTEGER NOT NULL,
                     archived_at INTEGER NOT NULL
                 );",
+                @"CREATE TABLE IF NOT EXISTS session_compaction_snapshots (
+                    session_id TEXT PRIMARY KEY NOT NULL,
+                    version INTEGER NOT NULL,
+                    ""trigger"" TEXT NOT NULL,
+                    wire_conversation TEXT NOT NULL,
+                    compact_artifacts TEXT NOT NULL,
+                    summary_message TEXT,
+                    summary_text TEXT,
+                    through_created_at INTEGER NOT NULL,
+                    through_sort_order INTEGER NOT NULL,
+                    original_count INTEGER NOT NULL,
+                    new_count INTEGER NOT NULL,
+                    messages_summarized INTEGER NOT NULL,
+                    summarizer_failed INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );",
+                @"CREATE INDEX IF NOT EXISTS idx_session_compaction_updated
+                ON session_compaction_snapshots(updated_at DESC);",
                 @"CREATE TABLE IF NOT EXISTS cron_tasks (
                     id TEXT PRIMARY KEY NOT NULL,
                     name TEXT NOT NULL DEFAULT '',
@@ -433,6 +464,9 @@ public static partial class DbClient
         catch (Exception ex)
         {
             _initialized = false;
+            // Drop the half-opened client so the next GetClient rebuilds from a
+            // clean slate instead of reusing a connection from a failed init.
+            _db = null;
             WorkerLog.Error($"DbClient: initialization FAILED at dbPath={dbPath} error={ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
             return new DbInitializeResult(false, dbPath, ex.Message);
         }

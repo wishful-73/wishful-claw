@@ -8,6 +8,7 @@ import {
   Languages, Volume2, Share2, GitFork, Trash2
 } from 'lucide-react'
 import type { RequestDebugInfo } from '@renderer/lib/api/types'
+import type { MemoryRecallInfo } from '@renderer/stores/chat-store/types'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useTranslateStore } from '@renderer/stores/translate-store'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -40,7 +41,7 @@ export interface ActionBarProps {
   renderContent: () => React.JSX.Element
   completionSummary: CompletionSummaryData | null
   t: (key: string, options?: Record<string, unknown>) => string
-  preToolPhase?: boolean
+  memoryRecall?: MemoryRecallInfo
 }
 
 export function AssistantActionBar({
@@ -62,8 +63,7 @@ export function AssistantActionBar({
   renderContent,
   completionSummary,
   createdAt,
-  t,
-  preToolPhase
+  t
 }: ActionBarProps): React.JSX.Element {
   const openTranslatePage = useUIStore((s) => s.openTranslatePage)
   const navigateToSession = useUIStore((s) => s.navigateToSession)
@@ -150,13 +150,7 @@ export function AssistantActionBar({
           </div>
         ) : (
           <>
-            {preToolPhase && plainText.trim() && (
-              <div className='mb-1.5 flex items-center gap-1.5 text-[10px] font-medium text-amber-600/80 dark:text-amber-400/80'>
-                <span className='inline-block size-1.5 rounded-full bg-amber-500/60' />
-                {t('assistantMessage.planningPhase', { defaultValue: 'Planning' })}
-              </div>
-            )}
-            <div className={preToolPhase ? 'opacity-70' : ''}>
+            <div>
               {renderContent()}
               {!isStreaming && renderMode !== 'transcript' && completionSummary && (
                 <CompletionSummaryBar summary={completionSummary} />

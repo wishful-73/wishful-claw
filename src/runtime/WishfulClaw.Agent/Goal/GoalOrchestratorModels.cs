@@ -109,7 +109,17 @@ public sealed class GoalContext
     }
 
     internal void DisposeEventRunState()
-        => Interlocked.Exchange(ref _eventRunState, null)?.Dispose();
+    {
+        Interlocked.Exchange(ref _eventRunState, null)?.Dispose();
+        // The goal sub-agent conversation is keyed by GoalContextId (see
+        // AgentLoop). Terminal removal is the only point where it will never
+        // be appended again — drop it so the manager dictionary doesn't grow
+        // unbounded across goals (mirrors the __subagent__ cleanup).
+        if (!string.IsNullOrWhiteSpace(GoalContextId))
+        {
+            SessionConversationManager.Remove($"__goal__{GoalContextId}");
+        }
+    }
 
     /// <summary>
     /// In-memory adaptive run state for the live endpoint: the orchestrator

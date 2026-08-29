@@ -143,7 +143,11 @@ export function TreeItem({
       )}
 
       {isDir ? (
-        <Folder className="size-[14px] shrink-0 text-muted-foreground/70" />
+        node.expanded ? (
+          <FolderOpen className="size-[14px] shrink-0 text-sky-500 dark:text-sky-400" />
+        ) : (
+          <Folder className="size-[14px] shrink-0 text-sky-500 dark:text-sky-400" />
+        )
       ) : (
         fileIcon(node.name)
       )}
@@ -314,9 +318,9 @@ export function TreeItem({
           depth={depth + 1}
           icon={
             safeEditState.newItemType === 'file' ? (
-              <File className="size-3.5 text-muted-foreground/60" />
+              <File className="size-3.5 text-blue-500 dark:text-blue-400" />
             ) : (
-              <Folder className="size-3.5 text-amber-400/70" />
+              <Folder className="size-3.5 text-sky-500 dark:text-sky-400" />
             )
           }
           onConfirm={actions.onNewItemConfirm}

@@ -523,7 +523,7 @@ export function ModelManagementPanel(): React.JSX.Element {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common:cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:action.cancel', { defaultValue: 'Cancel' })}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
@@ -533,7 +533,7 @@ export function ModelManagementPanel(): React.JSX.Element {
                 }
               }}
             >
-              {t('common:delete', { defaultValue: 'Delete' })}
+              {t('common:action.delete', { defaultValue: 'Delete' })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

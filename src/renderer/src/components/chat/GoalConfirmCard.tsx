@@ -207,7 +207,7 @@ export function GoalConfirmCard({ sessionId, className }: GoalConfirmCardProps):
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={confirming}>
-              {t('common.action.cancel', { defaultValue: 'Cancel' })}
+              {t('common:action.cancel', { defaultValue: 'Cancel' })}
             </Button>
             <Button onClick={handleConfirm} disabled={confirming || !modelConfig}>
               {confirming ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}

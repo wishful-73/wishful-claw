@@ -206,7 +206,12 @@ export const useMcpStore = create<McpStore>((set, get) => ({
   },
 
   removeServer: async (id) => {
-    await ipcClient.invoke(IPC.MCP_REMOVE, id)
+    try {
+      await ipcClient.invoke(IPC.MCP_REMOVE, id)
+    } catch (err) {
+      console.error('[mcp-store] Failed to remove server:', err)
+      throw err
+    }
     set((s) => ({
       servers: s.servers.filter((srv) => srv.id !== id),
       selectedServerId: s.selectedServerId === id ? null : s.selectedServerId,

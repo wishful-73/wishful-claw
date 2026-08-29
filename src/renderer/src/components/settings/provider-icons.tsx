@@ -51,6 +51,7 @@ const modelIconSlugMap: Record<string, string> = {
   qwen: 'qwen',
   chatglm: 'chatglm',
   glm: 'chatglm',
+  bigmodel: 'chatglm',
   minimax: 'minimax',
   kimi: 'kimi',
   moonshot: 'moonshot',

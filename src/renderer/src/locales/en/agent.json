@@ -1,0 +1,16 @@
+﻿{
+  "contextCompression": {
+    "triggerManual": "Manual",
+    "triggerAuto": "Auto",
+    "boundaryTitle": "Context compressed from here",
+    "boundarySummarized": "{{count}} messages summarized",
+    "compressing": "Compressing context…",
+    "compressed": "Context compressed",
+    "compressedDetail": "{{count}} messages compressed",
+    "summaryCollapse": "Collapse summary",
+    "summaryExpand": "Expand summary",
+    "summaryTitle": "Compressed Context Summary",
+    "summaryMessages": "Earlier {{count}} messages",
+    "summaryRecentPreserved": "Recent messages preserved"
+  }
+}

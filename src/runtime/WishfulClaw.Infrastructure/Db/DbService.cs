@@ -1,4 +1,5 @@
 ﻿using Microsoft.Data.Sqlite;
+using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -151,7 +152,15 @@ public sealed class DbService
         }
         catch
         {
-            transaction.Rollback();
+            try
+            {
+                transaction.Rollback();
+            }
+            catch (Exception rollbackEx)
+            {
+                // Don't let a failed rollback mask the original exception.
+                WorkerLog.Warn($"transaction rollback failed: {rollbackEx.GetType().Name}: {rollbackEx.Message}");
+            }
             throw;
         }
     }

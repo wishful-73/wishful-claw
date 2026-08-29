@@ -42,7 +42,27 @@ public sealed class PersonaStore
     /// </summary>
     public static string GetPersonaDirectory(string personaId, string? workingFolder)
     {
+        ValidatePersonaId(personaId);
         return Path.Combine(GetPersonasDirectory(workingFolder), personaId);
+    }
+
+    /// <summary>
+    /// personaId arrives via IPC — confine it to a safe filename shape so it
+    /// cannot escape the personas directory. Without this, persona/save could
+    /// write into arbitrary directories and persona/delete recursively remove
+    /// them (mirrors the MemoryPathResolver SSH-scope containment).
+    /// </summary>
+    private static void ValidatePersonaId(string personaId)
+    {
+        if (string.IsNullOrWhiteSpace(personaId)
+            || personaId.Contains('\\')
+            || personaId.Contains('/')
+            || personaId.Contains("..")
+            || Path.IsPathRooted(personaId)
+            || personaId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new ArgumentException($"Invalid persona id: {personaId}", nameof(personaId));
+        }
     }
 
     // ── List ──
@@ -142,18 +162,27 @@ public sealed class PersonaStore
 
     /// <summary>
     /// Saves a persona config to disk (creates directory if needed).
+    /// Each file is written to a temp path first and then moved into place,
+    /// so a crash mid-save never leaves a half-written persona file.
     /// </summary>
     public void SavePersona(PersonaConfig config, string? workingFolder)
     {
         var dir = GetPersonaDirectory(config.Id, workingFolder);
         Directory.CreateDirectory(dir);
 
-        File.WriteAllText(Path.Combine(dir, PersonaFileLayout.IdentityFile), config.IdentityMarkdown);
-        File.WriteAllText(Path.Combine(dir, PersonaFileLayout.SoulFile), config.SoulMarkdown);
-        File.WriteAllText(Path.Combine(dir, PersonaFileLayout.OntologyFile), config.OntologyMarkdown);
-        File.WriteAllText(Path.Combine(dir, PersonaFileLayout.AgentsFile), config.AgentsMarkdown);
+        WriteAtomic(Path.Combine(dir, PersonaFileLayout.IdentityFile), config.IdentityMarkdown);
+        WriteAtomic(Path.Combine(dir, PersonaFileLayout.SoulFile), config.SoulMarkdown);
+        WriteAtomic(Path.Combine(dir, PersonaFileLayout.OntologyFile), config.OntologyMarkdown);
+        WriteAtomic(Path.Combine(dir, PersonaFileLayout.AgentsFile), config.AgentsMarkdown);
 
         WorkerLog.Info($"persona saved id={config.Id} scope={(string.IsNullOrWhiteSpace(workingFolder) ? "global" : "project")}");
+    }
+
+    private static void WriteAtomic(string path, string content)
+    {
+        var tempPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(tempPath, content);
+        File.Move(tempPath, path, overwrite: true);
     }
 
     // ── Delete ──

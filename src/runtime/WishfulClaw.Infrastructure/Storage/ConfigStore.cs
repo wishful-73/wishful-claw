@@ -23,11 +23,6 @@ public static class ConfigStore
     private const string ConfigFileName = "config.json";
     private static readonly object Sync = new();
     private static readonly JsonFileNodeCache<JsonObject> Cache = new();
-    private static readonly JsonSerializerOptions WriteOptions = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        WriteIndented = true
-    };
 
     public static WorkerResponse Read(JsonElement parameters)
     {
@@ -176,7 +171,7 @@ public static class ConfigStore
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
         var tempPath = $"{filePath}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(tempPath, root.ToJsonString(WriteOptions));
+        File.WriteAllText(tempPath, root.ToJsonString(WorkerJsonHelper.IndentedJsonOptions));
         File.Move(tempPath, filePath, overwrite: true);
         Cache.Store(filePath, root);
     }

@@ -1,4 +1,4 @@
-namespace WishfulClaw.Workspace.Memory;
+﻿namespace WishfulClaw.Workspace.Memory;
 
 /// <summary>
 /// Memory recall service — automatically injects relevant memories
@@ -7,8 +7,9 @@ namespace WishfulClaw.Workspace.Memory;
 public interface IMemoryRecall
 {
     /// <summary>
-    /// Search for memories relevant to the user's message and return
-    /// an injected context block (or null if no relevant memories found).
+    /// Search for memories relevant to the user's message and return a
+    /// structured outcome: the injected context block (or null) plus the
+    /// reason, for recall visibility.
     ///
     /// The returned text is formatted as a User Message containing
     /// "[Relevant memory]" with "untrusted reference data" warning,
@@ -17,11 +18,19 @@ public interface IMemoryRecall
     /// <param name="userMessage">The user's latest message.</param>
     /// <param name="scope">Current project scope ("project:{id}") or "global".</param>
     /// <param name="maxChars">Maximum characters for the injected context.</param>
-    Task<string?> TryInjectRecallAsync(
+    /// <param name="maxNotes">Maximum entries to inject (clamped 1..32).</param>
+    /// <param name="minScore">Relevance threshold; 0 disables filtering.</param>
+    /// <param name="globalFallback">Retry without scope prefix when a project scope yields nothing.</param>
+    /// <param name="candidateFilter">Optional final filter for excluding entries already present in session context.</param>
+    Task<MemoryRecallOutcome> TryInjectRecallAsync(
         string userMessage,
         string? scope = null,
         int maxChars = 4000,
-        CancellationToken ct = default);
+        int maxNotes = 5,
+        double minScore = 0,
+        bool globalFallback = true,
+        CancellationToken ct = default,
+        Func<MemorySearchResult, bool>? candidateFilter = null);
 }
 
 /// <summary>

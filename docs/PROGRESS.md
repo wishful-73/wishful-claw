@@ -1,5 +1,16 @@
 # 开发进度
 
+## v2-iter-24：任务面板（全局任务 + 会话级任务）
+
+- 状态：进行中（2026-08-29 从 main f8b92e9 拆出分支，老大已确认范围）
+- 分支：`dev/v2-iter-24`
+- Plan：`docs/plans/iter-v2-24/plan-task-panel/`（全局任务：完整字段面板 + agent 工具自主维护）、`docs/plans/iter-v2-24/plan-session-tasks/`（会话级任务：参考 OpenCowork 的 agent 临时任务队列）
+- 范围要点：全新 `global_tasks` / `session_tasks` 表，与 Goal 模式表系完全无关；本迭代不做任务一键执行；入口为左侧扩展区已有的 Task Board 项
+- VERDICT: —
+- Tag: —
+- Commit: —
+- 日期: —
+
 ## v2-iter-23：会话可靠性与缺陷收口（已完成，已合并 main）
 
 - 状态：已完成，已合并 main（2026-08-29 老大确认完结并授权按标准流程收尾，此前“不发版”决策随之解除）

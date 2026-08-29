@@ -1,86 +1,201 @@
-# Plan: 全局任务面板（Task Board）
+# Plan A：全局 Agent 产品经理与全局任务工作台
 
-> v2-iter-24 · Plan A（共 2 个 Plan：A 全局任务 / B 会话级任务）
-> 本 Plan 与 Goal 模式的 `goal_plans` / `goal_tasks` 表**完全无关**，全部新建独立表。
+> v2-iter-24 · Plan A
+> 本 Plan 负责全局 Agent、全局任务、跨项目会话分派和 Task Board。
+> 会话 Agent 的内部临时 Todo 由 Plan B 负责，完全参考 OpenCowork；本 Plan 不读取、不管理、不统计目标会话的 `tasks`。
 
 ## 目标
 
-落地左侧"扩展"区已有的 Task Board 入口（当前是 PlaceholderPage）：全局任务的完整管理面板（查询/新建/修改/状态流转），并让 agent 通过任务工具在任意会话中自主维护全局任务（接到用户任务后自行建任务、推进、回写状态）。**本迭代不做"一键执行"（自动开会话跑任务）。**
+将左侧“扩展”区已有的 Task Board 入口从 PlaceholderPage 落地为全局 Agent 的工作台。
 
-## 需求决策记录（老大已确认，2026-08-29）
+全局 Agent 是一个独立的通用小助手/产品经理，拥有跨项目视野，负责维护自己的全局任务，并通过消息和工作请求协调具体项目会话。目标会话收到消息后，仍由目标会话 Agent 自己决定如何执行、是否建立临时 Todo，以及何时回复结果。
 
-| 决策点 | 结论 |
-|--------|------|
-| 本迭代范围 | 完整方案（全局任务 + 会话级任务） |
-| 全局任务字段 | 完整版：标题/状态/标签/优先级/截止时间/描述/关联会话·项目 |
-| agent 维护方式 | 工具自主维护（新增全局任务工具 + system prompt 引导） |
-| 任务执行 | 本迭代不做，仅回写状态 |
-| 面板入口 | 左侧面板"扩展"区已有的 Task Board 项（`openTaskBoardPage`） |
-| 数据结构 | 独立 `global_tasks` 表，与 Goal 表系零关系 |
+## 核心概念
+
+### 全局 Agent
+
+- 全局 Agent 是独立的全局会话角色，不等同于普通无项目聊天。
+- 全局 Agent 面向跨项目目标、产品事项和协调工作。
+- 全局 Agent 只维护全局任务及其分派记录。
+- 全局 Agent 可以查看项目和会话的基础信息、选择目标会话、发送消息/工作请求、接收会话回复并继续推动。
+- 全局 Agent 不读取目标会话的 `TaskList`，不读取 `tasks` 表，不读取 TodoCard，不计算会话内部 Todo 完成率。
+- 全局 Agent 不直接调用目标会话的 `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList`。
+
+### 全局任务
+
+全局任务是全局 Agent 的高层工作对象，例如产品目标、跨项目事项、持续跟进事项。它不代表某个会话内部的执行步骤，也不自动映射为会话 Todo。
+
+建议字段：
+
+`id, title, description, status, priority, tags, due_at, created_at, updated_at`
+
+状态：
+
+`pending / in_progress / blocked / completed / cancelled`
+
+### 全局任务分派
+
+一个全局任务可以分派给多个项目和多个会话。分派记录独立于会话 Todo，建议字段：
+
+`id, global_task_id, project_id, session_id, kind, instruction, status, latest_report, created_at, updated_at, completed_at`
+
+其中 `kind` 区分：
+
+- `message`：普通沟通、询问、提醒或追问；
+- `work_request`：要求目标会话处理一项明确工作。
+
+分派状态：
+
+`pending / sent / acknowledged / in_progress / completed / blocked / failed / cancelled`
+
+`latest_report` 记录目标会话 Agent 最近一次显式回复或结果摘要。它是全局 Agent 的跟进依据，不是目标会话 Todo 的自动汇总。
+
+## 任务与消息边界
+
+```text
+global_tasks
+    ↓
+global_task_dispatches
+    ↓ 外部消息/工作请求
+目标项目会话
+    ↓
+目标会话 Agent 自主处理
+    ↓ 显式回复/结果/阻塞说明
+全局 Agent 更新 global_task / dispatch 状态
+```
+
+目标会话收到外部工作请求后：
+
+- 以普通进入会话的工作消息处理；
+- 自己判断是否建立 OpenCowork 风格临时 Todo；
+- 不因消息类型被强制创建 Todo；
+- 不要求把内部 Todo 状态同步给全局 Agent；
+- 不允许全局 Agent直接修改目标会话内部 Todo。
+
+全局任务完成依据是全局 Agent 对目标会话显式回复的判断，不根据 `tasks` 状态自动推导。
+
+## 现状与缺口
+
+- 当前已有全局 Agent 的项目管理工具 `AgentRuntimeProjectExecutor`：`list_projects` 获取项目列表及会话/活跃会话数量；`get_project_details` 获取项目下最近会话并返回可用的 `activeSessionId`；`create_session` 可按项目创建会话。
+- 当前已有 `send_session_message` 工具：通过 `project/send-session-message` reverse-request 复用渲染端现有 `sendMessage` 链路，能够向项目下具体会话发送消息。Plan A 复用该能力，不新建第二套跨会话发送基础设施。
+- 当前已有项目、会话和消息的 SQLite/IPC 读写基础。
+- 当前已有全局会话/无项目会话相关路径，但需要明确全局 Agent 的身份标识，不能只以 `project_id IS NULL` 猜测。
+- 当前 Task Board 入口仍为 PlaceholderPage。
+- 当前没有全局任务表、全局任务与已有 `send_session_message` 的关联记录、全局任务工具和全局任务工作台。
+- 当前已有会话内 `TaskCreate/Get/Update/List` 链路，属于 Plan B，不作为本 Plan 的数据源。
 
 ## 步骤清单
 
-- [ ] **步骤1：DB 层 — `global_tasks` 表 + Entity**
-  - `DbClient.cs` 的 tableSqls 追加 `global_tasks` DDL：
-    `id TEXT PK, project_id TEXT, session_id TEXT, title TEXT, description TEXT DEFAULT '', status TEXT DEFAULT 'pending', priority TEXT DEFAULT 'normal', due_at INTEGER, tags TEXT DEFAULT '[]', sort_order INTEGER DEFAULT 0, created_at INTEGER, updated_at INTEGER`
-    + 索引 `ix_global_tasks_status`、`ix_global_tasks_project`
-  - 新建 `Infrastructure/Db/Entities/GlobalTaskEntity.cs`（具名类，符合 AOT 规范）
-  - 状态枚举：`pending / in_progress / completed / cancelled`
-  - 验证：`dotnet build src/runtime/WishfulClaw.sln` 零错误；删库冷启动后表自动创建
+- [ ] **步骤1：全局 Agent 宿主身份与会话上下文**
+  - 定义全局 Agent 的会话身份/模式，例如 `session.mode = 'global'` 或等价的稳定字段/配置，不与普通无项目会话混淆。
+  - 明确全局 Agent 的 provider/model/persona、工作目录和记忆 scope 使用规则。
+  - 为全局 Agent 注入专用 system prompt：跨项目产品协调、全局任务维护、消息分派、结果跟进；明确禁止访问会话内部 Todo。
+  - 确认全局 Agent 的工具可见范围只包含全局任务、项目/会话查询、消息/工作请求分派等能力。
+  - 验证：全局 Agent 可从固定入口进入；普通项目会话不会获得全局管理工具；全局 Agent 不注入会话 Todo 管理提示。
 
-- [ ] **步骤2：Worker DB 工具 + IPC 通道**
-  - 参考现有 `Db*Tools` 模式，新建 `DbGlobalTaskTools`（list / create / update / delete），注册进 `WorkerModuleCatalog`
-  - 通道常量定义在 `shared/messagepack/binary-ipc.ts`（项目惯例），主进程 `messagepack-handler` 注册 `db:global-tasks:list/create/update/delete` 通道，preload 暴露给渲染进程
-  - 验证：TS node 配置编译零错误；手工 invoke 通道 CRUD 正常（日志核验）
+- [ ] **步骤2：全局任务数据层**
+  - 在 `DbClient.cs` 增加 `global_tasks` 表，字段覆盖标题、描述、状态、优先级、标签、截止时间和时间戳。
+  - 增加 `global_task_dispatches` 表，记录全局任务与项目/会话的分派关系、消息类型、指令、分派状态、最近回复和完成时间。
+  - `global_task_dispatches` 不引用 `tasks.id`，不建立全局任务与会话内部 Todo 的父子关系。
+  - 约束：目标 session 必须存在；项目字段从目标会话/项目关系校验；全局任务删除时分派记录可级联清理或转为 cancelled，需在实现前固定一种策略。
+  - 新建具名 Entity/Row/Result，注册所有 AOT JSON 类型及 `List<T>` 类型。
+  - 验证：新库冷启动建表；旧库初始化迁移正常；全局任务和分派 CRUD 的数据关系符合约束；`dotnet build` 零错误。
 
-- [ ] **步骤3：渲染进程 store**
-  - 新建 `stores/task-board-store.ts`：按筛选条件加载列表、乐观更新、删除会话时联动清理关联字段
-  - 验证：web 配置编译零错误
+- [ ] **步骤3：Worker DB 工具与查询接口**
+  - 在 `Infrastructure/Db` 新建全局任务和分派 DB 工具，提供：全局任务列表/详情/创建/更新/删除、分派列表/详情/创建/更新/取消、按项目或会话筛选。
+  - 查询全局任务时可以返回分派摘要、目标项目、目标会话标题和最近回复，但不得返回目标会话内部 `tasks` 明细或完成率。
+  - 统一状态枚举、时间戳、标签/元数据 JSON 和错误返回契约。
+  - 在 Worker 模块目录中显式注册，不使用反射扫描。
+  - 验证：CRUD、筛选、关联查询和 AOT 编译通过；普通会话无法调用全局管理端点。
 
-- [ ] **步骤4：TaskBoardPage UI（完整版字段）**
-  - 新建 `components/taskboard/TaskBoardPage.tsx`（按职责拆文件，单文件 ≤500 行）：
-    - 列表视图：状态分组/筛选、标签筛选、优先级标识、截止时间（逾期标红）
-    - 新建/编辑对话框：标题、描述、状态、优先级、截止时间、标签、关联项目/会话
-    - 状态快捷切换（勾选完成 / 下拉改状态）
-  - `MainLayout.tsx` 中把 `taskBoardPageOpen` 的 PlaceholderPage 替换为 TaskBoardPage
-  - 验证：启动应用，从左侧"扩展"进入，增删改查 + 筛选全流程手工走通
+- [ ] **步骤4：全局 Agent 工具集**
+  - 新增仅对全局 Agent 可见的工具，至少包括：
+    - 查询项目；
+    - 查询会话；
+    - 创建/查询/更新全局任务；
+    - 向目标会话发送普通消息；
+    - 向目标会话发送工作请求并创建/更新 dispatch；
+    - 查询自己的分派记录和最近会话回复。
+  - 全局 Agent 通过这些工具选择目标项目和目标会话，不直接操作目标会话的临时 Todo。
+  - 工具描述明确区分 `message` 与 `work_request`：前者用于沟通/追问，后者用于可追踪的工作分派。
+  - 目标会话的回复需要能映射到对应 dispatch；无法可靠映射时不得静默标记完成。
+  - 验证：全局 Agent 可以创建一个全局任务并向不同项目的多个会话发送不同工作请求；普通项目 Agent 看不到这些工具。
 
-- [ ] **步骤5：agent 全局任务工具（工具自主维护）**
-  - Agent 层新建 `Tools/GlobalTaskTools/`：`GlobalTaskCreateTool` / `GlobalTaskUpdateTool` / `GlobalTaskListTool` / `GlobalTaskGetTool`，实现 `IToolExecutor`，在对应 Module 注册
-  - 工具直接读写 `global_tasks` 表（经 DbClient），工具描述中引导：接到用户多步任务时先建任务、推进时改状态、完成后回写
-  - AOT：涉及的序列化类型全部注册进对应 `JsonSerializerContext`（含 `List<GlobalTaskRow>` 泛型版本）
-  - 验证：`dotnet build` 零错误 + AOT 0 警告（`scripts/publish-aot-worker.mjs`）；会话中让 agent 调用工具建任务成功
+- [ ] **步骤5：跨会话外部消息/工作请求协议**
+  - 设计消息持久化和投递协议：保存发送者为全局 Agent、目标 `sessionId`、消息类型、关联 `globalTaskId/dispatchId`、正文、创建时间和投递状态。
+  - 外部消息进入目标会话后，必须沿现有消息持久化/恢复链路可见，并明确标识为全局 Agent 发来的消息或工作请求。
+  - 目标会话回复中保留关联信息，使全局 Agent 可以收到显式结果、阻塞原因或追问请求。
+  - 消息投递失败、目标会话不存在、目标会话已删除时，dispatch 必须得到明确失败状态和错误原因。
+  - 自动唤醒空闲目标会话：实现前单独确认产品策略；本 Plan 默认先完成可靠投递和可见闭环，不隐式新增后台自动执行。
+  - 验证：全局 Agent 发消息后目标会话可见；目标会话回复可回到全局 Agent；重启后未处理外部消息不丢失；失败状态可追踪。
 
-- [ ] **步骤6：Prompt 引导**
-  - PromptBuilder 增加 `<task_management>` 段（仅当全局任务工具可用时注入）：接到用户任务先查已有任务（防重复）→ 复杂任务建全局任务 → 完成后回写状态，未完成不得标 completed；工具可用标记由调用方（Worker/AgentLoop）经 `parameters` 传入 PromptBuilder
-  - 验证：会话中观察 system prompt 含该段（日志核验）
+- [ ] **步骤6：Task Board 全局工作台**
+  - 替换 `MainLayout.tsx` 中的 Task Board PlaceholderPage。
+  - 页面主数据源为 `global_tasks` + `global_task_dispatches`，不是会话 `tasks`。
+  - 支持：全局任务列表、状态/优先级/标签/截止时间展示、关键词筛选、任务详情、分派列表、目标项目/会话、最近回复、状态修改和删除/取消。
+  - 支持从任务详情向已有项目会话发送消息、下发工作请求、追问、打开目标会话。
+  - 不展示目标会话内部 Todo 数量、完成百分比、TodoCard 内容或 `TaskList` 结果。
+  - 页面需要明确区分“全局任务状态”和“分派状态”，避免把目标会话内部执行状态伪装成全局实时状态。
+  - 验证：从左侧扩展区进入 Task Board；创建全局任务；分派给多个项目会话；查看回复；继续推动；刷新/重启后数据保持。
 
-- [ ] **步骤7：工具写入后的实时同步**
-  - 工具写库成功后经现有流式事件机制广播 `global_task_changed` 事件（参考 `memory_recall` 事件的扩展先例）；`task-board-store` 监听并刷新；同步改动流式事件编码器与前端事件 codec（`ConversationCodec` / `agent-stream-protocol.ts` 链路）
-  - 验证：agent 工具建任务后，不刷新页面，Task Board 面板即时出现新任务
+- [ ] **步骤7：全局 Agent 运行结果和同步**
+  - 为全局 Agent 的任务/分派变化增加必要的流式事件或 IPC 刷新机制，例如 `global_task_changed`、`global_task_dispatch_changed`、`global_agent_message`。
+  - 事件只同步全局任务和分派记录；不把会话 Todo 事件转发给全局 Agent。
+  - Task Board 监听变化并刷新；后台目标会话产生回复时，关联分派记录可更新并在 Task Board 显示。
+  - 验证：全局任务创建、分派、回复、阻塞和完成操作无需手动重启页面即可反馈；无任务 Todo 泄漏。
+
+- [ ] **步骤8：端到端验收**
+  - 场景 A：用户在全局 Agent 会话提出跨项目目标，全局 Agent 创建全局任务。
+  - 场景 B：全局 Agent 向项目 A 的会话发送工作请求，目标会话收到消息并自主决定是否创建内部临时 Todo。
+  - 场景 C：目标会话 Agent 完成后发送显式结果，全局 Agent 能看到并更新 dispatch，而不读取目标 Todo。
+  - 场景 D：全局任务分派到多个项目/会话，其中一个完成、一个阻塞，全局 Agent 能分别处理。
+  - 场景 E：目标会话内部 Todo 在聊天中显示，但 Task Board 和全局 Agent 均不显示其明细/完成率。
+  - 场景 F：应用重启、目标会话不存在、消息投递失败时，数据和状态可恢复/可诊断。
 
 ## 涉及文件
 
-- `src/runtime/WishfulClaw.Infrastructure/Db/DbClient.cs` — 修改（DDL）
+- `src/runtime/WishfulClaw.Infrastructure/Db/DbClient.cs` — 修改（DDL/迁移）
 - `src/runtime/WishfulClaw.Infrastructure/Db/Entities/GlobalTaskEntity.cs` — 新建
+- `src/runtime/WishfulClaw.Infrastructure/Db/Entities/GlobalTaskDispatchEntity.cs` — 新建
 - `src/runtime/WishfulClaw.Infrastructure/Db/DbGlobalTaskTools.cs` — 新建
-- `src/runtime/WishfulClaw.Agent/Tools/GlobalTaskTools/*.cs` — 新建（4 个工具，一文件一工具）
+- `src/runtime/WishfulClaw.Infrastructure/Db/DbGlobalTaskDispatchTools.cs` — 新建
 - `src/runtime/WishfulClaw.Worker/WorkerModuleCatalog.cs` — 修改（注册）
-- `src/runtime/WishfulClaw.Persona/PromptBuilder.cs` — 修改（task_management 段）
-- `src/shared/messagepack/binary-ipc.ts` — 修改（通道常量）
-- `src/main/ipc/messagepack-handler.ts` — 修改（通道注册）
-- `src/preload/index.ts` + `index.d.ts` — 修改（暴露）
-- `src/renderer/src/stores/task-board-store.ts` — 新建
-- `src/renderer/src/components/taskboard/*.tsx` — 新建
+- `src/runtime/WishfulClaw.Agent/Tools/GlobalTaskTools/*.cs` — 新建（仅全局 Agent 可见）
+- `src/runtime/WishfulClaw.Agent/Tools/GlobalAgentTools/*.cs` — 新建（项目/会话查询与分派）
+- `src/runtime/WishfulClaw.Persona/PromptBuilder.cs` — 修改（仅全局 Agent prompt）
+- `src/runtime/WishfulClaw.Agent/StreamEventModels.cs` / `ConversationCodec.cs` — 按事件协议需要修改
+- `src/shared/messagepack/binary-ipc.ts` — 修改（全局任务/分派/消息通道）
+- `src/main/ipc/messagepack-handler.ts` — 修改（handler）
+- `src/main/ipc/*session*` / `src/main/ipc/*message*` — 按现有消息投递落点修改
+- `src/preload/index.ts` + `index.d.ts` — 按实际桥接缺口修改
 - `src/renderer/src/components/layout/MainLayout.tsx` — 修改（替换占位页）
+- `src/renderer/src/components/taskboard/*.tsx` — 新建/拆分
+- `src/renderer/src/stores/task-board-store.ts` — 新建（全局任务，不复用会话 task-store 作为主数据源）
+- `src/renderer/src/locales/zh/taskboard.json` / `en/taskboard.json` — 新建或修改
+
+## 本 Plan 不负责
+
+- 会话 Agent 的 `TaskCreate/Get/Update/List` 工具实现。
+- 会话 `tasks` 表持久化和 TodoCard 生命周期。
+- 全局 Agent 读取、修改、删除或统计目标会话内部 Todo。
+- 将全局任务自动映射成目标会话的 Todo。
+- 根据目标会话 Todo 状态自动计算全局任务状态。
+- 修改 Goal 任务体系或 Automation/Cron 任务体系。
+- 未经单独确认就让全局 Agent 自动并发唤醒所有目标会话执行。
 
 ## 参考源码
 
-- OpenCowork `sidecars\OpenCowork.Native.Worker\Modules\AgentRuntime\AgentRuntimeTaskExecutor.cs` — 任务工具直读 DB + 结果编码的参考
-- OpenCowork `src\renderer\src\stores\task-store.ts` — store 分层与按会话缓存的参考
-- 本项目现有 `Db*Tools` / `GoalPanel` 相关链路 — 分层与 IPC 模式对齐
+- `D:\claw\OpenCowork\sidecars\OpenCowork.Native.Worker\Modules\AgentRuntime\AgentRuntimeTaskExecutor.cs` — 仅参考会话临时 Todo 的边界，不照搬为全局任务。
+- `D:\claw\OpenCowork\sidecars\OpenCowork.Native.Worker\Modules\Db\DbTaskTools.cs` — 仅参考会话 Todo 字段和 SQLite 工具模式。
+- 本项目现有 `DbProjectTools.cs` / `DbSessionTools.cs` — 项目、会话查询和 Worker DB 工具模式。
+- 本项目现有消息持久化、Worker IPC 和流式事件链路 — 外部消息/回复关联的实现基础。
 
 ## 验证标准
 
-- TypeScript 三配置 + `dotnet build` + AOT 发布全部零错误零警告
-- 手工验收：UI 增删改查闭环；会话中 agent 能自主建任务并回写状态；面板实时同步
+- TypeScript 三配置、`dotnet build`、AOT 发布全部零错误零警告。
+- 全局 Agent 能跨项目查看项目/会话，创建和维护全局任务。
+- 全局 Agent 能向多个项目会话发送消息和可追踪工作请求，并接收显式回复。
+- Task Board 展示全局任务和分派记录，不展示或依赖会话内部 Todo。
+- 目标会话收到全局 Agent 消息后，仍自主决定是否建立 OpenCowork 风格临时 Todo。
+- 全局任务不会因会话 Todo 状态变化而自动改变；状态更新有明确的全局 Agent/会话回复依据。
+- 重启、失败投递、目标会话删除等边界场景可诊断、可恢复。

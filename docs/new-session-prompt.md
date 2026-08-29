@@ -93,7 +93,7 @@ Worker (12 文件)          — IPC 宿主 + 模块注册
 ## 当前状态
 
 - v2-iter-23 已完结：已合并 main、tag `v0.2.23`、产品版本 `0.2.23`，Release 与安装包已发布（2026-08-29）
-- v2-iter-24 已开工（2026-08-29）：任务面板——全局任务（完整字段面板 + agent 工具自主维护）+ 会话级任务（参考 OpenCowork 的 agent 临时任务队列）；全新表与 Goal 模式无关；本迭代不做任务一键执行；分支 `dev/v2-iter-24`，Plan 见 `docs/plans/iter-v2-24/`
+- v2-iter-24 当前需求重写中（2026-08-29）：全局产品经理 Agent + 会话临时 Todo。会话 Agent 的 `tasks` 完全参考 OpenCowork，面对用户或全局 Agent 消息时自主决定是否建立内部临时 Todo；用户和全局 Agent 都不读取、不管理、不统计。全局 Agent 使用独立 `global_tasks`，通过 `global_task_dispatches` 跨项目向具体会话发送消息/工作请求并根据显式回复推动工作；Task Board 展示全局任务和分派记录，不展示会话 Todo；本迭代默认不自动唤醒空闲会话；分支 `dev/v2-iter-24`，Plan 见 `docs/plans/iter-v2-24/`
 - 正式产品版（1.0）仍延后：v2-iter-25 集中修复与 Release Candidate 准备，v2-iter-26 经老大确认后正式发布；各迭代收尾仍按标准流程打 0.2.x 版本与 tag
 - 2026-08-28 曾记录“iter-23 不发版”决策，2026-08-29 老大确认收尾时已解除，仅影响 1.0 正式版定位
 

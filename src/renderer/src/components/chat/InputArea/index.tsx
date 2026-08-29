@@ -1,4 +1,4 @@
-﻿// InputArea: main composer component with editor, toolbar, and controls
+// InputArea: main composer component with editor, toolbar, and controls
 
 import * as React from 'react'
 import type { SendMessageOptions } from '@renderer/hooks/use-chat-actions'
@@ -92,6 +92,7 @@ export function InputArea({
   const slashListRef = React.useRef<HTMLDivElement | null>(null)
   const fileListRef = React.useRef<HTMLDivElement | null>(null)
   const draftReadyKeyRef = React.useRef<string | null>(null)
+  const userEditedDraftKeyRef = React.useRef<string | null>(null)
   const editorRef = React.useRef<FileAwareEditorHandle | null>(null)
   const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [attachedImages, setAttachedImages] = React.useState<ImageAttachment[]>([])
@@ -189,6 +190,16 @@ export function InputArea({
     return { scope: 'home', mode, workingFolder: wf }
   }, [activeProjectId, draftKeyOverride, draftSessionId, mode, workingFolder])
 
+  const handleUserEdit = React.useCallback(() => {
+    userEditedDraftKeyRef.current = activeDraftKey
+  }, [activeDraftKey])
+
+  React.useEffect(() => {
+    if (userEditedDraftKeyRef.current !== activeDraftKey) {
+      userEditedDraftKeyRef.current = null
+    }
+  }, [activeDraftKey])
+
   const {
     hydrated: inputDraftHydrated, loadedDraft: persistedDraft,
     saveDraft: savePersistedDraft, removeDraft: removePersistedDraft
@@ -215,6 +226,7 @@ export function InputArea({
     shouldAutoAcceptRecommendation, suggestionText, text, acceptSuggestion,
     applyEditorStateFromSerializedText, selectedFiles, focusInputAtEnd, handleRecommendationSelectionChange,
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
+    userEditedDraftKeyRef,
     attachedImages, selectedSkill, savePersistedDraft,
     setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
@@ -413,6 +425,7 @@ export function InputArea({
             highlightedFileId={highlightedFileId}
             onDocumentChange={handleEditorDocumentChange}
             onSelectionChange={handleEditorSelectionChange}
+            onUserEdit={handleUserEdit}
             onFocus={handleRecommendationFocus}
             onBlur={handleRecommendationBlur}
             onKeyDown={handleKeyDown}

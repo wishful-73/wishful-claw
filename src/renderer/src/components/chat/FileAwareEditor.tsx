@@ -19,6 +19,7 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       onBlur,
       onKeyDown,
       onPaste,
+      onUserEdit,
       onCompositionStart,
       onCompositionEnd,
       onReferencePreview,
@@ -36,11 +37,13 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
     const documentSyncFrameRef = React.useRef<number | null>(null)
     const compositionEndRafRef = React.useRef<number | null>(null)
     const isComposingRef = React.useRef(false)
+    const pendingUserInputRef = React.useRef(false)
     const pendingRenderAfterCompositionRef = React.useRef(false)
     const [compositionRenderVersion, bumpCompositionRenderVersion] = React.useReducer(
       (version: number) => version + 1,
       0
     )
+    const [hasLiveContent, setHasLiveContent] = React.useState(false)
     const handlersRef = React.useRef<
       Pick<FileAwareEditorProps, 'onReferencePreview' | 'onReferenceLocate' | 'onReferenceDelete'>
     >({})
@@ -53,6 +56,14 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
         onReferenceDelete
       }
     }, [onReferenceDelete, onReferenceLocate, onReferencePreview])
+
+    const syncLiveContent = React.useCallback(() => {
+      const root = editorRef.current
+      if (!root) return
+      const liveDocument = parseDomToDocument(root)
+      const livePlainText = editorDocumentToPlainText(liveDocument, files)
+      setHasLiveContent(livePlainText.length > 0)
+    }, [files])
 
     const syncSelection = React.useCallback(() => {
       const root = editorRef.current
@@ -72,6 +83,7 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
         syncSelection()
       })
     }, [syncSelection])
+
 
     React.useEffect(() => {
       const handleSelectionChange = (): void => {
@@ -173,6 +185,10 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
         return
       }
 
+      if (pendingUserInputRef.current) {
+        return
+      }
+
       const currentDocument = parseDomToDocument(root)
       const highlightChanged = lastRenderedHighlightRef.current !== highlightedFileId
       const shouldRender = highlightChanged || !isSameDocument(currentDocument, document)
@@ -186,11 +202,12 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
         highlightedFileId
       })
       lastRenderedHighlightRef.current = highlightedFileId
+      syncLiveContent()
 
       if (!focusedRef.current) return
       const selection = selectionRef.current
       setSelectionOffsets(root, selection.start, selection.end)
-    }, [compositionRenderVersion, document, files, highlightedFileId])
+    }, [compositionRenderVersion, document, files, highlightedFileId, syncLiveContent])
 
     const flushDocumentSync = React.useCallback(() => {
       const root = editorRef.current
@@ -201,78 +218,151 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       }
     }, [document, onDocumentChange])
 
-    const handleInput = React.useCallback(
-      (event: React.FormEvent<HTMLDivElement>) => {
-        const nativeEvent = event.nativeEvent as Event & { isComposing?: boolean }
-        if (isComposingRef.current || nativeEvent.isComposing) {
+    const scheduleDocumentSync = React.useCallback(() => {
+      if (documentSyncFrameRef.current !== null) return
+      documentSyncFrameRef.current = window.requestAnimationFrame(() => {
+        documentSyncFrameRef.current = null
+        if (isComposingRef.current) {
+          pendingRenderAfterCompositionRef.current = true
           return
         }
-
         syncSelection()
-        if (documentSyncFrameRef.current !== null) {
-          window.cancelAnimationFrame(documentSyncFrameRef.current)
-          documentSyncFrameRef.current = null
-        }
         flushDocumentSync()
+        pendingUserInputRef.current = false
+      })
+    }, [flushDocumentSync, syncSelection])
+
+    const handleInput = React.useCallback(
+      (event: React.FormEvent<HTMLDivElement>) => {
+        onUserEdit?.()
+        const nativeEvent = event.nativeEvent as Event & {
+          inputType?: string
+          isComposing?: boolean
+        }
+        const isCompositionInput =
+          nativeEvent.isComposing === true ||
+          nativeEvent.inputType === 'insertCompositionText' ||
+          nativeEvent.inputType === 'deleteCompositionText'
+        pendingUserInputRef.current = true
+        if (isCompositionInput) isComposingRef.current = true
+        syncLiveContent()
+        if (isComposingRef.current) return
+        scheduleDocumentSync()
       },
-      [flushDocumentSync, syncSelection]
+      [onUserEdit, scheduleDocumentSync, syncLiveContent]
     )
+
+    const handleBeforeInput = React.useCallback((event: React.FormEvent<HTMLDivElement>) => {
+      onUserEdit?.()
+      const nativeEvent = event.nativeEvent as Event & {
+        inputType?: string
+        isComposing?: boolean
+      }
+      const isCompositionInput =
+        nativeEvent.isComposing === true ||
+        nativeEvent.inputType === 'insertCompositionText' ||
+        nativeEvent.inputType === 'deleteCompositionText'
+      pendingUserInputRef.current = true
+      if (isCompositionInput) isComposingRef.current = true
+      syncLiveContent()
+      if (!isComposingRef.current) scheduleDocumentSync()
+    }, [onUserEdit, scheduleDocumentSync, syncLiveContent])
 
     const handleCompositionStartInternal = React.useCallback(
       (event: React.CompositionEvent<HTMLDivElement>) => {
+        onUserEdit?.()
         isComposingRef.current = true
         if (documentSyncFrameRef.current !== null) {
           window.cancelAnimationFrame(documentSyncFrameRef.current)
           documentSyncFrameRef.current = null
         }
+        pendingUserInputRef.current = true
+        syncLiveContent()
         onCompositionStart?.(event)
       },
-      [onCompositionStart]
+      [onCompositionStart, onUserEdit, syncLiveContent]
     )
 
     const handleCompositionUpdateInternal = React.useCallback(() => {
+      onUserEdit?.()
       pendingRenderAfterCompositionRef.current = true
-    }, [])
+      syncLiveContent()
+    }, [onUserEdit, syncLiveContent])
 
-    const handleCompositionEndInternal = React.useCallback(
+    const scheduleCompositionCommit = React.useCallback(
       (event: React.CompositionEvent<HTMLDivElement>) => {
-        isComposingRef.current = false
+        onUserEdit?.()
+        pendingUserInputRef.current = true
         onCompositionEnd?.(event)
         if (documentSyncFrameRef.current !== null) {
           window.cancelAnimationFrame(documentSyncFrameRef.current)
           documentSyncFrameRef.current = null
         }
-        // Defer flush to next animation frame. On Windows, some IMEs (Microsoft
-        // Pinyin, Sogou, etc.) update the DOM AFTER compositionend fires, so
-        // reading the DOM synchronously here captures intermediate pinyin state.
-        // requestAnimationFrame fires after the browser has finished updating
-        // the DOM and after the subsequent 'input' event, ensuring we read the
-        // final composed text.
+        // Keep the composing guard until this frame has read the final DOM. On
+        // Windows, some IMEs update the DOM after compositionend is dispatched.
         if (compositionEndRafRef.current !== null) {
           window.cancelAnimationFrame(compositionEndRafRef.current)
         }
         compositionEndRafRef.current = window.requestAnimationFrame(() => {
           compositionEndRafRef.current = null
+          syncLiveContent()
           flushDocumentSync()
           scheduleSelectionSync()
+          isComposingRef.current = false
+          pendingUserInputRef.current = false
           if (pendingRenderAfterCompositionRef.current) {
             pendingRenderAfterCompositionRef.current = false
             bumpCompositionRenderVersion()
           }
         })
       },
-      [flushDocumentSync, onCompositionEnd, scheduleSelectionSync]
+      [flushDocumentSync, onCompositionEnd, onUserEdit, scheduleSelectionSync, syncLiveContent]
     )
+
+    const handleCompositionEndInternal = React.useCallback(
+      (event: React.CompositionEvent<HTMLDivElement>) => {
+        scheduleCompositionCommit(event)
+      },
+      [scheduleCompositionCommit]
+    )
+
+    React.useEffect(() => {
+      const root = editorRef.current
+      if (!root) return
+      const handleCompositionCancel = (): void => {
+        onUserEdit?.()
+        if (compositionEndRafRef.current !== null) {
+          window.cancelAnimationFrame(compositionEndRafRef.current)
+        }
+        compositionEndRafRef.current = window.requestAnimationFrame(() => {
+          compositionEndRafRef.current = null
+          syncLiveContent()
+          flushDocumentSync()
+          scheduleSelectionSync()
+          isComposingRef.current = false
+          pendingUserInputRef.current = false
+          if (pendingRenderAfterCompositionRef.current) {
+            pendingRenderAfterCompositionRef.current = false
+            bumpCompositionRenderVersion()
+          }
+        })
+      }
+      root.addEventListener('compositioncancel', handleCompositionCancel)
+      return () => {
+        root.removeEventListener('compositioncancel', handleCompositionCancel)
+      }
+    }, [flushDocumentSync, onUserEdit, scheduleSelectionSync, syncLiveContent])
 
     const plainText = React.useMemo(
       () => editorDocumentToPlainText(document, files),
       [document, files]
     )
     const hasContent = document.length > 0 && plainText.length > 0
+    const showPlaceholder = !hasContent && !hasLiveContent && Boolean(placeholder)
 
     return (
       <div className={cn('relative flex min-h-0 min-w-0 flex-col overflow-hidden', className)}>
-        {!hasContent && placeholder && (
+        {showPlaceholder && (
           <div className="composer-editor-placeholder pointer-events-none absolute inset-0 p-2 pb-12 pr-3 text-base md:text-sm">
             {placeholder}
           </div>
@@ -294,6 +384,7 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
           data-gramm="false"
           className="composer-editor-content block min-h-[60px] min-w-0 max-h-full flex-1 overflow-x-hidden overflow-y-auto whitespace-pre-wrap break-words p-2 pb-12 pr-3 text-base outline-none md:text-sm"
           style={{ scrollbarGutter: 'stable' }}
+          onBeforeInput={handleBeforeInput}
           onInput={handleInput}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
@@ -304,7 +395,6 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
           }}
           onBlur={() => {
             focusedRef.current = false
-            isComposingRef.current = false
             onBlur?.()
           }}
           onClick={() => {

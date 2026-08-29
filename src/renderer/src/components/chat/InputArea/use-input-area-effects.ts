@@ -27,6 +27,7 @@ export interface InputAreaEffectsInput {
 
   // Draft persistence
   inputDraftHydrated: boolean
+  userEditedDraftKeyRef: React.MutableRefObject<string | null>
   persistedDraft: { text?: string; selectedFiles?: unknown[]; skill?: string | null; images?: ImageAttachment[] } | null
   activeDraftKey: string
   finalSerializedText: string
@@ -66,6 +67,7 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
     applyEditorStateFromSerializedText, selectedFiles, focusInputAtEnd,
     handleRecommendationSelectionChange,
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
+    userEditedDraftKeyRef,
     attachedImages, selectedSkill, savePersistedDraft,
     setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
@@ -121,8 +123,11 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
     const shouldReset = isHomeComposer && !persistedDraft?.skill &&
       (persistedDraft?.images?.length ?? 0) === 0 &&
       isReferenceOnlyDocument(deserializeEditorState(persistedText, workingFolder ?? undefined, persistedSelectedFiles as any).document)
+    const userEditedCurrentDraft = userEditedDraftKeyRef.current === activeDraftKey
     draftReadyKeyRef.current = null
-    applyEditorStateFromSerializedText(shouldReset ? '' : persistedText, shouldReset ? [] : persistedSelectedFiles)
+    if (!userEditedCurrentDraft) {
+      applyEditorStateFromSerializedText(shouldReset ? '' : persistedText, shouldReset ? [] : persistedSelectedFiles)
+    }
     setAttachedImages(persistedDraft?.images ? cloneImageAttachments(persistedDraft.images) : [])
     setPreviewImage(null)
     setSelectedSkill(persistedDraft?.skill ?? null)

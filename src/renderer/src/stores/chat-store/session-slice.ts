@@ -142,6 +142,21 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     })
     void dbDeleteSession(id)
     void window.api.workerRequest('agent/clear-session', { sessionId: id })
+    // Cascade: drop the deleted session's agent Todo rows (DB + memory cache).
+    // Dynamic import avoids a chat-store → task-store → chat-store cycle.
+    void import('@renderer/stores/task-store')
+      .then(({ useTaskStore }) => {
+        useTaskStore.getState().deleteSessionTasks(id)
+        // The fallback switch to sessions[0] above bypasses setActiveSession,
+        // so load the new active session's tasks here.
+        const nextActive = get().activeSessionId
+        if (nextActive) {
+          void useTaskStore.getState().loadTasksForSession(nextActive)
+        }
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clean tasks for deleted session:', err)
+      })
     // Drop the persisted composer draft so deleted sessions leave no orphans.
     void removeSessionInputDraft(id)
     void import('@renderer/hooks/use-chat-actions')
@@ -162,6 +177,18 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
 
   setActiveSession: (id) => {
     set({ activeSessionId: id })
+    // Keep the session-scoped task store in sync with the visible session.
+    void import('@renderer/stores/task-store')
+      .then(({ useTaskStore }) => {
+        if (id) {
+          void useTaskStore.getState().loadTasksForSession(id)
+        } else {
+          useTaskStore.getState().clearTasks()
+        }
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to sync session tasks:', err)
+      })
   },
 
   updateSessionTitle: (id, title) => {

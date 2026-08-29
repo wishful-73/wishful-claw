@@ -14,6 +14,8 @@ import { type ImageAttachment } from '@renderer/lib/image-attachments'
 import { type FileAwareEditorHandle } from '../file-aware-editor-utils'
 import { GoalSessionBar } from '@renderer/components/goal/GoalSessionControls'
 import { useGoalStore } from '@renderer/stores/goal-store'
+import { TodoStatusList } from '../TodoCard'
+import { useTaskStore } from '@renderer/stores/task-store'
 import { cn } from '@renderer/lib/utils'
 import type { AppPluginId } from '@renderer/lib/app-plugin/types'
 import {
@@ -75,6 +77,8 @@ export function InputArea({
     planMode, hasActiveGoal, pendingReviewPlanId, hasApiKey
   } = sel
   const [pendingCollabMode, setPendingCollabMode] = React.useState<CollabMode | null>(null)
+  // Session-scoped agent Todo shown above the composer (display-only).
+  const composerTasks = useTaskStore((s) => s.tasks)
   const collabMode = useUIStore((s) =>
     draftSessionId ? (s.collabModesBySession[draftSessionId] ?? 'normal') : 'normal'
   )
@@ -363,6 +367,11 @@ export function InputArea({
 
       {!hideGoalSessionBar && draftSessionId && (
         <GoalSessionBar sessionId={draftSessionId} className={cn('mb-2', fullWidth && 'max-w-none')} />
+      )}
+
+      {/* Session-scoped agent Todo — display-only, users cannot manage it */}
+      {draftSessionId && composerTasks.length > 0 && (
+        <TodoStatusList tasks={composerTasks} className={cn('mb-2', composerWidthClass)} />
       )}
 
       <div className={composerWidthClass}>

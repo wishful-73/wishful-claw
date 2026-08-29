@@ -40,6 +40,12 @@ import { useAgentStore } from '@renderer/stores/agent-store'
 
 
 
+// Session-scoped agent Todo tools (OpenCowork semantics). When any of these
+// completes, the tasks table is the source of truth — refresh the task store.
+const NATIVE_TASK_TOOL_NAMES = new Set(['TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList'])
+
+
+
 export type { Session, Project, ChatMessage, SessionMode, CreateSessionOptions, SessionPromptSnapshot, ToolCallInfo, SessionModelSelectionMode } from './types'
 
 export type { SessionSlice } from './session-slice'
@@ -1299,6 +1305,24 @@ export const useChatStore = create<ChatStore>()(
 
               }
 
+            }
+
+            // Refresh the session-scoped task store from DB when a task tool
+            // finishes (foreground session only — background sessions keep
+            // their cache and avoid stealing the visible task list).
+            if (
+              resultStatus === 'completed' &&
+              NATIVE_TASK_TOOL_NAMES.has(event.toolCall.name) &&
+              get().activeSessionId === targetSessionId
+            ) {
+              void import('@renderer/stores/task-store')
+                .then(({ useTaskStore }) => {
+                  void useTaskStore.getState().loadTasksForSession(targetSessionId)
+                })
+                .catch((err) => {
+                  console.warn('[chat-store] Failed to refresh session tasks:', err)
+                })
+              get().clearSessionPromptSnapshot(targetSessionId)
             }
 
             break

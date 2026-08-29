@@ -177,6 +177,14 @@ export function MainLayout(): React.JSX.Element {
         // Load messages for the active session (like WishfulClaw does)
         if (nextActiveSessionId) {
           await useChatStore.getState().loadRecentSessionMessages(nextActiveSessionId)
+          // Restore the active session's persisted agent Todo list.
+          void import('@renderer/stores/task-store')
+            .then(({ useTaskStore }) => {
+              void useTaskStore.getState().loadTasksForSession(nextActiveSessionId!)
+            })
+            .catch((err) => {
+              console.warn('[MainLayout] Failed to restore session tasks:', err)
+            })
           // Navigate to session view so user sees the conversation directly
           useUIStore.getState().navigateToSession(nextActiveSessionId)
         }

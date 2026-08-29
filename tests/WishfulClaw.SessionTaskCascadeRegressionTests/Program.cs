@@ -32,6 +32,12 @@ internal static class Program
                 AssertEqual(1L, db.QueryScalar<long>(
                         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tasks'"),
                     "tasks table exists");
+                AssertEqual(1L, db.QueryScalar<long>(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='global_tasks'"),
+                    "global_tasks table exists");
+                AssertEqual(1L, db.QueryScalar<long>(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='global_task_dispatches'"),
+                    "global_task_dispatches table exists");
 
                 RunSessionDeleteSuite(dbPath, db);
                 RunResetConversationSuite(dbPath, db);

@@ -363,7 +363,37 @@ public static partial class DbClient
                     updated_at INTEGER NOT NULL
                 );",
                 @"CREATE INDEX IF NOT EXISTS ix_tasks_session ON tasks(session_id);",
-                @"CREATE INDEX IF NOT EXISTS ix_tasks_plan ON tasks(plan_id);"
+                @"CREATE INDEX IF NOT EXISTS ix_tasks_plan ON tasks(plan_id);",
+                @"CREATE TABLE IF NOT EXISTS global_tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    priority TEXT NOT NULL DEFAULT 'normal',
+                    tags TEXT NOT NULL DEFAULT '[]',
+                    due_at INTEGER,
+                    archived INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_global_tasks_status ON global_tasks(status);",
+                @"CREATE INDEX IF NOT EXISTS ix_global_tasks_archived ON global_tasks(archived);",
+                @"CREATE TABLE IF NOT EXISTS global_task_dispatches (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    global_task_id TEXT NOT NULL,
+                    project_id TEXT,
+                    session_id TEXT NOT NULL,
+                    kind TEXT NOT NULL DEFAULT 'message',
+                    instruction TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    latest_report TEXT,
+                    error TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    completed_at INTEGER
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_task ON global_task_dispatches(global_task_id);",
+                @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_session ON global_task_dispatches(session_id);"
             };
 
             foreach (var sql in tableSqls)

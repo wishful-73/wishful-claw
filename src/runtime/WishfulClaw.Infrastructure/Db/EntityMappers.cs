@@ -75,6 +75,36 @@ public static class EntityMappers
         UpdatedAt = r.GetInt64("updated_at")
     };
 
+    public static GlobalTaskEntity MapGlobalTask(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        Title = r.GetString("title"),
+        Description = r.GetString("description"),
+        Status = r.GetString("status"),
+        Priority = r.GetString("priority"),
+        Tags = r.GetNullableString("tags") ?? "[]",
+        DueAt = r.GetNullableInt64("due_at"),
+        Archived = r.GetInt32("archived"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at")
+    };
+
+    public static GlobalTaskDispatchEntity MapGlobalTaskDispatch(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        GlobalTaskId = r.GetString("global_task_id"),
+        ProjectId = r.GetNullableString("project_id"),
+        SessionId = r.GetString("session_id"),
+        Kind = r.GetString("kind"),
+        Instruction = r.GetString("instruction"),
+        Status = r.GetString("status"),
+        LatestReport = r.GetNullableString("latest_report"),
+        Error = r.GetNullableString("error"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at"),
+        CompletedAt = r.GetNullableInt64("completed_at")
+    };
+
     public static CompactionSnapshotEntity MapCompactionSnapshot(SqliteDataReader r) => new()
     {
         SessionId = r.GetString("session_id"),

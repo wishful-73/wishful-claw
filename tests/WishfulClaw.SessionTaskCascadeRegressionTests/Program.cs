@@ -44,6 +44,7 @@ internal static class Program
                 RunProjectDeleteSuite(dbPath, db);
                 RunPluginSessionSuite(dbPath, db);
                 RunClearAllSuite(dbPath, db);
+                RunGlobalTaskSuite(dbPath, db);
                 RunDeleteBySessionSuite(dbPath, db);
             }
             finally
@@ -150,6 +151,102 @@ internal static class Program
         AssertEqual(1L, db.QueryScalar<long>("SELECT COUNT(*) FROM sessions WHERE id = 's-keep'"), "ClearAll keeps plugin session rows");
     }
 
+    // ─── Suite: global tasks + dispatches CRUD, constraints, archive ───
+
+    private static void RunGlobalTaskSuite(string dbPath, DbService db)
+    {
+        // Create + basic list
+        ExpectNoError(DbGlobalTaskTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gt-1");
+            w.WriteString("title", "Ship the roadmap");
+            w.WriteString("description", "Cross-project coordination");
+            w.WriteString("priority", "high");
+            w.WritePropertyName("tags");
+            w.WriteStartArray();
+            w.WriteStringValue("roadmap");
+            w.WriteEndArray();
+        })), "global task created");
+
+        var listed = ResultArray(DbGlobalTaskTools.List(Params(dbPath)));
+        AssertEqual(1, listed.Count, "global task list returns the created task");
+        AssertEqual("gt-1", listed[0].GetProperty("id").GetString(), "global task row id roundtrips");
+        AssertEqual("high", listed[0].GetProperty("priority").GetString(), "global task row priority roundtrips");
+        AssertEqual("[\"roadmap\"]", listed[0].GetProperty("tags").GetString(), "global task tags stored as JSON array text");
+
+        // Update via patch
+        ExpectNoError(DbGlobalTaskTools.Update(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gt-1");
+            w.WritePropertyName("patch");
+            w.WriteStartObject();
+            w.WriteString("status", "in_progress");
+            w.WriteNumber("dueAt", 123456789);
+            w.WriteEndObject();
+        })), "global task updated");
+        var updated = listed = ResultArray(DbGlobalTaskTools.List(Params(dbPath, w => w.WriteString("status", "in_progress"))));
+        AssertEqual(1, updated.Count, "status filter returns the updated task");
+        AssertEqual(123456789L, updated[0].GetProperty("due_at").GetInt64(), "due_at roundtrips in snake_case");
+
+        // Dispatch creation constraints
+        CreateSession(dbPath, "s-gt", title: "Global Dispatch Target", projectId: null);
+        var missingSession = DbGlobalTaskDispatchTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gd-missing-session");
+            w.WriteString("globalTaskId", "gt-1");
+            w.WriteString("sessionId", "no-such-session");
+        }));
+        ExpectFailure(missingSession, "Target session not found", "dispatch rejects missing target session");
+        var missingTask = DbGlobalTaskDispatchTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gd-missing-task");
+            w.WriteString("globalTaskId", "no-such-task");
+            w.WriteString("sessionId", "s-gt");
+        }));
+        ExpectFailure(missingTask, "Global task not found", "dispatch rejects missing global task");
+
+        // Valid dispatch (project inferred from the session)
+        ExpectNoError(DbGlobalTaskDispatchTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gd-1");
+            w.WriteString("globalTaskId", "gt-1");
+            w.WriteString("sessionId", "s-gt");
+            w.WriteString("kind", "work_request");
+            w.WriteString("instruction", "Implement the export feature");
+        })), "dispatch created");
+
+        // Update dispatch report/status
+        ExpectNoError(DbGlobalTaskDispatchTools.Update(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gd-1");
+            w.WritePropertyName("patch");
+            w.WriteStartObject();
+            w.WriteString("status", "completed");
+            w.WriteString("latestReport", "Export feature shipped");
+            w.WriteNumber("completedAt", 999);
+            w.WriteEndObject();
+        })), "dispatch updated");
+        var dispatch = ResultArray(DbGlobalTaskDispatchTools.List(Params(dbPath, w => w.WriteString("globalTaskId", "gt-1"))));
+        AssertEqual(1, dispatch.Count, "dispatch list filters by global task");
+        AssertEqual("Export feature shipped", dispatch[0].GetProperty("latest_report").GetString(), "latest_report roundtrips");
+        AssertEqual(999L, dispatch[0].GetProperty("completed_at").GetInt64(), "completed_at roundtrips");
+
+        // Cancel refuses completed dispatches
+        ExpectFailure(DbGlobalTaskDispatchTools.Cancel(Params(dbPath, w => w.WriteString("id", "gd-1"))),
+            "already completed/cancelled", "cancel refuses a completed dispatch");
+
+        // Archive hides from default list but keeps the row
+        ExpectNoError(DbGlobalTaskTools.Archive(Params(dbPath, w => w.WriteString("id", "gt-1"))), "global task archived");
+        AssertEqual(0, ResultArray(DbGlobalTaskTools.List(Params(dbPath))).Count, "archived task hidden from default list");
+        AssertEqual(1, ResultArray(DbGlobalTaskTools.List(Params(dbPath, w => w.WriteBoolean("includeArchived", true)))).Count,
+            "archived task visible with includeArchived");
+
+        // Dispatch records are permanent: session delete must NOT remove them
+        ExpectNoError(DbSessionTools.Delete(Params(dbPath, w => w.WriteString("id", "s-gt"))), "dispatch target session deleted");
+        AssertEqual(1, ResultArray(DbGlobalTaskDispatchTools.List(Params(dbPath, w => w.WriteString("globalTaskId", "gt-1")))).Count,
+            "dispatch record survives target session deletion");
+    }
+
     // ─── Suite: DbTaskTools.DeleteBySession ───
 
     private static void RunDeleteBySessionSuite(string dbPath, DbService db)
@@ -199,6 +296,22 @@ internal static class Program
             writeProperties?.Invoke(writer);
             writer.WriteEndObject();
         });
+
+    private static List<JsonElement> ResultArray(WorkerResponse response)
+    {
+        using var document = JsonDocument.Parse(response.ToJsonBytes(null));
+        return document.RootElement.GetProperty("result").EnumerateArray().Select(item => item.Clone()).ToList();
+    }
+
+    private static void ExpectFailure(WorkerResponse response, string expectedErrorFragment, string name)
+    {
+        using var document = JsonDocument.Parse(response.ToJsonBytes(null));
+        var result = document.RootElement.GetProperty("result");
+        var error = result.TryGetProperty("error", out var errorProp) ? errorProp.GetString() : null;
+        if (error is null || !error.Contains(expectedErrorFragment, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"{name}: expected error containing '{expectedErrorFragment}', got {result.GetRawText()}");
+        Assert(true, name);
+    }
 
     private static void ExpectNoError(WorkerResponse response, string name)
     {

@@ -94,6 +94,20 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/tasks-delete", DbTaskTools.Delete);
         context.Register("db/tasks-delete-by-session", DbTaskTools.DeleteBySession);
 
+        // ── Global Tasks (global agent work items, archive-not-delete) ──
+        context.Register("db/global-tasks-list", DbGlobalTaskTools.List);
+        context.Register("db/global-tasks-get", DbGlobalTaskTools.Get);
+        context.Register("db/global-tasks-create", DbGlobalTaskTools.Create);
+        context.Register("db/global-tasks-update", DbGlobalTaskTools.Update);
+        context.Register("db/global-tasks-archive", DbGlobalTaskTools.Archive);
+
+        // ── Global Task Dispatches (permanent dispatch records) ──
+        context.Register("db/global-task-dispatches-list", DbGlobalTaskDispatchTools.List);
+        context.Register("db/global-task-dispatches-get", DbGlobalTaskDispatchTools.Get);
+        context.Register("db/global-task-dispatches-create", DbGlobalTaskDispatchTools.Create);
+        context.Register("db/global-task-dispatches-update", DbGlobalTaskDispatchTools.Update);
+        context.Register("db/global-task-dispatches-cancel", DbGlobalTaskDispatchTools.Cancel);
+
         // ── Goals ──
         context.Register("db/goals-list", DbGoalTools.List);
         context.Register("db/goals-list-page", DbGoalTools.ListPage);

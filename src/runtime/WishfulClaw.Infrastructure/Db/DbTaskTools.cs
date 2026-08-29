@@ -87,7 +87,7 @@ public static class DbTaskTools
                 new SqliteParameter("@owner", (object?)GetString(parameters, "owner") ?? DBNull.Value),
                 new SqliteParameter("@blocks", RawArrayText(parameters, "blocks")),
                 new SqliteParameter("@blockedBy", RawArrayText(parameters, "blockedBy")),
-                new SqliteParameter("@metadata", RawObjectText(parameters, "metadata")),
+                new SqliteParameter("@metadata", (object?)RawObjectText(parameters, "metadata") ?? DBNull.Value),
                 new SqliteParameter("@sortOrder", GetInt(parameters, "sortOrder")),
                 new SqliteParameter("@createdAt", GetLong(parameters, "createdAt", now)),
                 new SqliteParameter("@updatedAt", GetLong(parameters, "updatedAt", now)));

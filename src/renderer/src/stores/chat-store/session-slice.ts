@@ -249,6 +249,15 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       }
     })
     void window.api.workerRequest("agent/clear-session", { sessionId })
+    // Clearing the conversation also drops its session-scoped agent Todos
+    // (DB rows are removed via db:tasks:delete-by-session inside the store).
+    void import('@renderer/stores/task-store')
+      .then(({ useTaskStore }) => {
+        useTaskStore.getState().deleteSessionTasks(sessionId)
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear tasks for cleared session:', err)
+      })
     void import('@renderer/hooks/use-chat-actions')
       .then(({ clearPendingSessionMessages }) => clearPendingSessionMessages(sessionId))
       .catch((err) => {

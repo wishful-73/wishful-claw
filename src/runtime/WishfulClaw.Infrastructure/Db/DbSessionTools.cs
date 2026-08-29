@@ -187,6 +187,7 @@ public static class DbSessionTools
             db.ExecuteInTransaction((conn, tx) =>
             {
                 db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @id", new SqliteParameter("@id", id));
+                db.Execute(conn, tx, "DELETE FROM tasks WHERE session_id = @id", new SqliteParameter("@id", id));
                 DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, id);
             });
             var changed = db.Execute("DELETE FROM sessions WHERE id = @id", new SqliteParameter("@id", id));
@@ -216,6 +217,8 @@ public static class DbSessionTools
                     var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
                     var msgParams = sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray();
                     db.Execute(conn, tx, $"DELETE FROM messages WHERE session_id IN ({placeholders})", msgParams);
+                    db.Execute(conn, tx, $"DELETE FROM tasks WHERE session_id IN ({placeholders})",
+                        sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray());
                     DbCompactionSnapshotStore.DeleteForSessions(db, conn, tx, sessionIds);
                 });
             }
@@ -248,6 +251,11 @@ public static class DbSessionTools
             {
                 var removed = db.Execute(conn, tx,
                     "DELETE FROM messages WHERE session_id = @id",
+                    new SqliteParameter("@id", sessionId));
+                // Resetting the conversation also drops the session's agent Todo
+                // list — a fresh conversation must not inherit stale Todos.
+                db.Execute(conn, tx,
+                    "DELETE FROM tasks WHERE session_id = @id",
                     new SqliteParameter("@id", sessionId));
                 DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
                 return removed;

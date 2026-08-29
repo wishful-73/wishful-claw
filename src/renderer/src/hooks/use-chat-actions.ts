@@ -12,6 +12,7 @@ import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stor
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
+import { useTaskStore } from '@renderer/stores/task-store'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
@@ -89,6 +90,18 @@ export function useChatActions() {
 
       // Clear activities for new turn
       useActivityStore.getState().clearActivities()
+
+      // OpenCowork semantics: at the start of a fresh normal turn, wipe the
+      // session's agent Todos only when every task is already completed.
+      // Incomplete / blocked / in-review Todos must survive across turns;
+      // queued dispatches and special paths (continue/team/subagent) never clear.
+      if (opts?.clearCompletedTasksOnTurnStart && !queuedDispatch) {
+        const taskStore = useTaskStore.getState()
+        const sessionTasks = taskStore.getTasksBySession(targetSessionId)
+        if (sessionTasks.length > 0 && sessionTasks.every((t) => t.status === 'completed')) {
+          taskStore.deleteSessionTasks(targetSessionId)
+        }
+      }
 
       // Get session's working folder — fall back to project's workingFolder
       const session = chatStore.sessions.find((s) => s.id === targetSessionId)

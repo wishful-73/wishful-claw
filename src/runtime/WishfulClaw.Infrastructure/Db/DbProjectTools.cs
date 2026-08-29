@@ -185,6 +185,8 @@ public static class DbProjectTools
                     var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
                     var msgParams = sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray();
                     db.Execute(conn, tx, $"DELETE FROM messages WHERE session_id IN ({placeholders})", msgParams);
+                    db.Execute(conn, tx, $"DELETE FROM tasks WHERE session_id IN ({placeholders})",
+                        sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray());
                     DbCompactionSnapshotStore.DeleteForSessions(db, conn, tx, sessionIds);
                 });
             }

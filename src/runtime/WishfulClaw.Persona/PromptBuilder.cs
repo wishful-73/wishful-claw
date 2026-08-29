@@ -34,7 +34,8 @@ public static class PromptBuilder
         string? workingFolder,
         string? language,
         string? userRules,
-        int? characterBudget = null)
+        int? characterBudget = null,
+        bool includeSessionTodoPrompt = true)
     {
         var parts = new List<string>();
 
@@ -77,6 +78,13 @@ public static class PromptBuilder
             parts.Add(BuildMemoryContext(parameters));
         }
         parts.Add(BuildToolCapability(parameters));
+
+        // ── Session Todo guidance (ordinary session agents only — the caller
+        // opts out for hosts like the global agent) ──
+        if (profile == PromptProfile.Main && includeSessionTodoPrompt)
+        {
+            parts.Add(BuildSessionTodoPrompt());
+        }
 
         // ── User Rules ──
         if (!string.IsNullOrWhiteSpace(userRules))
@@ -288,6 +296,24 @@ All relative paths should be resolved against this folder. Use this as the defau
 The following are user-defined rules that you MUST ALWAYS FOLLOW WITHOUT ANY EXCEPTION. These rules take precedence over any other instructions.
 {userRules}
 </user_rules>
+""";
+    }
+
+    // ── Session Todo guidance (temporary, session-scoped agent Todo) ──
+    private static string BuildSessionTodoPrompt()
+    {
+        return """
+<session_todo>
+You can maintain a small internal Todo list for THIS session using TaskCreate / TaskGet / TaskUpdate / TaskList. These Todos are a temporary execution aid for the current session only — they are NOT long-term tasks, and no other session or task board can see or manage them.
+
+Guidelines:
+- Before creating anything, call TaskList to check the current session's existing tasks and avoid duplicates.
+- Decide yourself whether a Todo is needed: use them for complex multi-step work or work that continues across multiple turns. Do NOT create Todos for simple, single-step requests.
+- When you start working on a task, set its status to "in_progress" (keep only one in progress at a time).
+- If progress is stuck on an obstacle, mark it "blocked"; use "in_review" when the work is done and awaiting user confirmation.
+- Mark a task "completed" only when it is truly finished and verified.
+- You own these Todos — never wait for the user or any external agent to create, update, or clean them up for you.
+</session_todo>
 """;
     }
 

@@ -183,9 +183,13 @@ internal static partial class AgentLoop
             var projectId = JsonHelpers.GetString(parameters, "projectId");
             WorkerLog.Warn($"agent run sshConnectionId={sshConnectionId ?? "(null)"} personaId={personaId} projectId={projectId ?? "(null)"}");
             var cacheKey = SystemPromptCache.ComputeKey(personaId, workingFolder, language, userRules, sshConnectionId, projectId, sessionMode);
+            // Session Todo guidance is for ordinary session agents; the global
+            // agent host opts out (its dispatch model is defined elsewhere).
+            var includeSessionTodoPrompt = sessionMode != "global";
             var builtPrompt = SystemPromptCache.GetOrBuild(cacheKey, () =>
                 PromptBuilder.Build(
-                    PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules));
+                    PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules,
+                    includeSessionTodoPrompt: includeSessionTodoPrompt));
             provider = InjectSystemPrompt(provider, builtPrompt);
             WorkerLog.Info($"persona system prompt (cached) id={personaId} length={builtPrompt.Length}");
         }

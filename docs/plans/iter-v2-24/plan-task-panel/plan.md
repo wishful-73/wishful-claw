@@ -27,7 +27,9 @@
 
 建议字段：
 
-`id, title, description, status, priority, tags, due_at, created_at, updated_at`
+`id, title, description, status, priority, tags, due_at, archived, created_at, updated_at`
+
+其中 `archived` 为归档标记（0/1）：**全局任务没有删除，只有归档**；分派记录永久保留，不随任务生命周期清理。
 
 状态：
 
@@ -97,12 +99,12 @@ global_task_dispatches
   - 在 `DbClient.cs` 增加 `global_tasks` 表，字段覆盖标题、描述、状态、优先级、标签、截止时间和时间戳。
   - 增加 `global_task_dispatches` 表，记录全局任务与项目/会话的分派关系、消息类型、指令、分派状态、最近回复和完成时间。
   - `global_task_dispatches` 不引用 `tasks.id`，不建立全局任务与会话内部 Todo 的父子关系。
-  - 约束：目标 session 必须存在；项目字段从目标会话/项目关系校验；全局任务删除时分派记录可级联清理或转为 cancelled，需在实现前固定一种策略。
+  - 约束：目标 session 必须存在；项目字段从目标会话/项目关系校验；**全局任务不删除只归档**（`archived=1`），分派记录永久保留；归档任务默认不在工作台主列表展示，提供单独的归档视图。
   - 新建具名 Entity/Row/Result，注册所有 AOT JSON 类型及 `List<T>` 类型。
   - 验证：新库冷启动建表；旧库初始化迁移正常；全局任务和分派 CRUD 的数据关系符合约束；`dotnet build` 零错误。
 
 - [ ] **步骤3：Worker DB 工具与查询接口**
-  - 在 `Infrastructure/Db` 新建全局任务和分派 DB 工具，提供：全局任务列表/详情/创建/更新/删除、分派列表/详情/创建/更新/取消、按项目或会话筛选。
+  - 在 `Infrastructure/Db` 新建全局任务和分派 DB 工具，提供：全局任务列表/详情/创建/更新/归档（不提供删除）、分派列表/详情/创建/更新/取消、按项目或会话筛选。
   - 查询全局任务时可以返回分派摘要、目标项目、目标会话标题和最近回复，但不得返回目标会话内部 `tasks` 明细或完成率。
   - 统一状态枚举、时间戳、标签/元数据 JSON 和错误返回契约。
   - 在 Worker 模块目录中显式注册，不使用反射扫描。
@@ -132,7 +134,7 @@ global_task_dispatches
 - [ ] **步骤6：Task Board 全局工作台**
   - 替换 `MainLayout.tsx` 中的 Task Board PlaceholderPage。
   - 页面主数据源为 `global_tasks` + `global_task_dispatches`，不是会话 `tasks`。
-  - 支持：全局任务列表、状态/优先级/标签/截止时间展示、关键词筛选、任务详情、分派列表、目标项目/会话、最近回复、状态修改和删除/取消。
+  - 支持：全局任务列表、状态/优先级/标签/截止时间展示、关键词筛选、任务详情、分派列表、目标项目/会话、最近回复、状态修改、任务归档与归档视图、分派取消。
   - 支持从任务详情向已有项目会话发送消息、下发工作请求、追问、打开目标会话。
   - 不展示目标会话内部 Todo 数量、完成百分比、TodoCard 内容或 `TaskList` 结果。
   - 页面需要明确区分“全局任务状态”和“分派状态”，避免把目标会话内部执行状态伪装成全局实时状态。

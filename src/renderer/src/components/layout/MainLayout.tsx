@@ -23,6 +23,7 @@ import { CommandPalette } from './CommandPalette'
 import { SessionConversationPane } from './SessionConversationPane'
 import { PlaceholderPage } from './PlaceholderPage'
 import { AutomationPage } from '@renderer/components/automation/AutomationPage'
+import { TaskBoardPage } from '@renderer/components/taskboard/TaskBoardPage'
 
 import { ChatHomePage } from '@renderer/components/chat/ChatHomePage'
 import { ProjectHomePage } from '@renderer/components/chat/ProjectHomePage'
@@ -86,7 +87,7 @@ function ContentArea(): React.JSX.Element {
   if (translatePageOpen) return <PlaceholderPage title="Translate" iterLabel="后续" icon={Languages} />
   if (drawPageOpen) return <PlaceholderPage title="Draw" iterLabel="后续" icon={PenTool} />
   if (tasksPageOpen) return <AutomationPage />
-  if (taskBoardPageOpen) return <PlaceholderPage title="Task Board" iterLabel="后续" icon={SquareKanban} />
+  if (taskBoardPageOpen) return <TaskBoardPage />
   if (codeGraphPageOpen) return <PlaceholderPage title="Code Graph" iterLabel="后续" icon={GitBranch} />
 
   // Chat views

@@ -1,0 +1,103 @@
+{
+  "title": "Task Board",
+  "subtitle": "Global agent tasks & dispatches",
+  "searchPlaceholder": "Search tasks…",
+  "allStatuses": "All statuses",
+  "archivedView": "Archived",
+  "refresh": "Refresh",
+  "newTask": "New global task",
+  "empty": "No global tasks yet",
+  "emptyHint": "Create one here, or ask the global agent in a no-project chat.",
+  "selectTaskHint": "Select a global task on the left to view details and dispatch records",
+  "status": {
+    "pending": "Pending",
+    "in_progress": "In progress",
+    "blocked": "Blocked",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "priority": {
+    "low": "Low",
+    "normal": "Normal",
+    "high": "High",
+    "urgent": "Urgent"
+  },
+  "dispatchStatus": {
+    "pending": "Pending",
+    "sent": "Sent",
+    "acknowledged": "Acknowledged",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "blocked": "Blocked",
+    "failed": "Delivery failed",
+    "cancelled": "Cancelled"
+  },
+  "kind": {
+    "message": "Message",
+    "work_request": "Work request"
+  },
+  "field": {
+    "title": "Title",
+    "titlePlaceholder": "e.g. Prepare the v2 release",
+    "description": "Description",
+    "descriptionPlaceholder": "Goal, background and acceptance criteria…",
+    "priority": "Priority",
+    "dueAt": "Due date",
+    "tags": "Tags",
+    "tagsPlaceholder": "Comma separated, e.g. release, product"
+  },
+  "dialog": {
+    "createTitle": "New global task",
+    "editTitle": "Edit global task",
+    "titleRequired": "Title is required",
+    "saved": "Saved",
+    "created": "Global task created",
+    "saveFailed": "Failed to save"
+  },
+  "detail": {
+    "dueAt": "Due",
+    "taskStatusLabel": "Global task status",
+    "dispatchTitle": "Dispatch records",
+    "sendMessage": "Send message",
+    "sendWorkRequest": "Send work request",
+    "noDispatches": "No dispatch records yet. Send a message or work request to a project session and it will show up here.",
+    "openSession": "Open target session",
+    "followUp": "Send a follow-up to this session",
+    "cancelDispatch": "Cancel dispatch",
+    "dispatchCancelled": "Dispatch cancelled",
+    "dispatchCancelFailed": "Cancel failed (already completed or cancelled?)",
+    "latestReport": "Latest reply from target session",
+    "updatedAt": "Updated",
+    "completedAt": "Completed",
+    "archive": "Archive",
+    "restore": "Restore from archive",
+    "archived": "Archived",
+    "restored": "Restored",
+    "updateFailed": "Update failed",
+    "sessionMissing": "(session deleted)"
+  },
+  "dispatch": {
+    "title": "Send to a project session",
+    "description": "Delivered on behalf of the global agent. The target session's agent decides on its own how to handle it.",
+    "targetSession": "Target session",
+    "selectSession": "Pick a project session…",
+    "noSessions": "No project sessions available",
+    "unknownProject": "Unknown project",
+    "kindLabel": "Type",
+    "kindWorkRequestHint": "Trackable work assignment: the target session reports back explicitly via reply_global_dispatch.",
+    "kindMessageHint": "Plain communication / reminder / follow-up, no explicit report expected.",
+    "instruction": "Content",
+    "instructionPlaceholder": "Describe the work or message for the target session…",
+    "send": "Send",
+    "sent": "Sent",
+    "sendFailed": "Failed to send",
+    "sessionRequired": "Please pick a target session",
+    "instructionRequired": "Content is required",
+    "sessionNotFound": "Target session does not exist"
+  },
+  "action": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "edit": "Edit"
+  }
+}

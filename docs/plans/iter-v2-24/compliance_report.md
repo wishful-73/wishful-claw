@@ -95,10 +95,11 @@ Task Board 的主数据源固定为 `global_tasks` + `global_task_dispatches`，
 ## 五、执行前注意事项
 
 1. 当前状态仍是“需求重写中/待确认”，本报告不代表已授权执行代码改造。
-2. Plan A 实现时需先确认全局 Agent 的稳定宿主身份、工具可见范围和回复关联协议；不得通过 `project_id IS NULL` 等不稳定条件猜测身份。
-3. 全局任务删除时，需在实现前固定 `global_task_dispatches` 的处理策略（级联清理或转为 `cancelled`），并在迁移与回归中验证。
+2. 全局 Agent 身份已确认复用既有 `sessionMode='global'` 机制（前端无项目会话自动标记 + 工具 `availableModes` 过滤 + PromptBuilder 按模式注入），不新建身份字段，不新增固定入口（2026-08-29 核实）。
+3. 全局任务已确认**不删除只归档**（`archived` 标记），分派记录永久保留（2026-08-29 老大拍板）。
 4. 自动唤醒空闲目标会话暂不默认实现；若要改变该边界，应单独确认并更新 Plan。
-5. 代码执行阶段仍需完成 TypeScript 三配置、C# solution、AOT、数据库迁移、IPC、重启恢复和核心端到端验证；本轮仅完成计划文档一致性核对。
+5. 执行顺序已确认：Plan B（会话 Todo 持久化）先行，Plan A（全局 Agent）后行（2026-08-29 老大确认）。
+6. 代码执行阶段仍需完成 TypeScript 三配置、C# solution、AOT、数据库迁移、IPC、重启恢复和核心端到端验证；本轮仅完成计划文档一致性核对。
 
 ---
 

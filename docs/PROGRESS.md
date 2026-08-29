@@ -2,7 +2,7 @@
 
 ## v2-iter-24：全局产品经理 Agent + 会话临时 Todo
 
-- 状态：需求重写中（原计划未执行；2026-08-29 已根据老大补充定义重新收敛范围）
+- 状态：范围已确认，待执行（2026-08-29 老大拍板：全局任务不删除只归档；全局 Agent 复用既有 `sessionMode='global'` 机制；执行顺序 Plan B → Plan A）
 - 分支：`dev/v2-iter-24`
 - Plan：`docs/plans/iter-v2-24/plan.md`（迭代总览）、`plan-session-tasks/`（OpenCowork 风格会话临时 Todo）、`plan-task-panel/`（全局 Agent、全局任务与 Task Board）
 - 范围要点：会话 Agent 使用 `tasks` 维护内部临时 Todo；全局 Agent 使用独立 `global_tasks` 维护跨项目任务，并通过 `global_task_dispatches` 向项目会话发送消息/工作请求；全局 Agent 不读取、不管理、不统计会话 Todo；Task Board 展示全局任务和分派记录；本迭代默认不自动唤醒空闲会话执行

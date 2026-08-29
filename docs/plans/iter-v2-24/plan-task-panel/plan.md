@@ -81,19 +81,22 @@ global_task_dispatches
 - 当前已有全局 Agent 的项目管理工具 `AgentRuntimeProjectExecutor`：`list_projects` 获取项目列表及会话/活跃会话数量；`get_project_details` 获取项目下最近会话并返回可用的 `activeSessionId`；`create_session` 可按项目创建会话。
 - 当前已有 `send_session_message` 工具：通过 `project/send-session-message` reverse-request 复用渲染端现有 `sendMessage` 链路，能够向项目下具体会话发送消息。Plan A 复用该能力，不新建第二套跨会话发送基础设施。
 - 当前已有项目、会话和消息的 SQLite/IPC 读写基础。
-- 当前已有全局会话/无项目会话相关路径，但需要明确全局 Agent 的身份标识，不能只以 `project_id IS NULL` 猜测。
+- 当前已有完整的 `sessionMode='global'` 机制：无项目会话自动标记为全局模式，工具按 `availableModes` 过滤，PromptBuilder 已有按模式注入先例（goal 段）；全局 Agent 身份直接复用该机制，不新建身份字段。
 - 当前 Task Board 入口仍为 PlaceholderPage。
 - 当前没有全局任务表、全局任务与已有 `send_session_message` 的关联记录、全局任务工具和全局任务工作台。
 - 当前已有会话内 `TaskCreate/Get/Update/List` 链路，属于 Plan B，不作为本 Plan 的数据源。
 
 ## 步骤清单
 
-- [ ] **步骤1：全局 Agent 宿主身份与会话上下文**
-  - 定义全局 Agent 的会话身份/模式，例如 `session.mode = 'global'` 或等价的稳定字段/配置，不与普通无项目会话混淆。
-  - 明确全局 Agent 的 provider/model/persona、工作目录和记忆 scope 使用规则。
-  - 为全局 Agent 注入专用 system prompt：跨项目产品协调、全局任务维护、消息分派、结果跟进；明确禁止访问会话内部 Todo。
-  - 确认全局 Agent 的工具可见范围只包含全局任务、项目/会话查询、消息/工作请求分派等能力。
-  - 验证：全局 Agent 可从固定入口进入；普通项目会话不会获得全局管理工具；全局 Agent 不注入会话 Todo 管理提示。
+- [ ] **步骤1：全局 Agent 身份与工具可见性（复用既有机制，不新建身份字段）**
+  - 项目已有端到端的 `sessionMode='global'` 机制，直接复用：
+    - 前端 `InputArea` 在无活跃项目时自动发送 `sessionMode: 'global'`（`InputArea/index.tsx` L274）；
+    - `AgentLoop.cs` 读 `parameters.sessionMode` 并按模式过滤工具（`GetToolDefinitions(toolPreset, sessionMode)`）；
+    - 工具注册已支持 `availableModes`（现有 `list_projects` 等四工具已声明 `availableModes: ["global"]`）。
+  - 新增的全局任务/分派工具一律声明 `availableModes: ["global"]`；普通项目会话（`normal`）与 Goal 会话（`goal`）自然看不到。
+  - PromptBuilder 仿照 `sessionMode == "goal" → BuildGoalModePrompt()` 先例，增加 `sessionMode == "global" → BuildGlobalAgentPrompt()`：跨项目产品协调、全局任务维护、消息分派、结果跟进；明确禁止访问会话内部 Todo。
+  - 入口：不新增固定入口——无项目会话即全局 Agent（现状语义），与 Task Board 工作台配套使用；如后续需要专属入口再单独确认。
+  - 验证：无项目会话能拿到全局工具且项目会话拿不到；全局 prompt 仅在 `sessionMode='global'` 注入（日志核验）。
 
 - [ ] **步骤2：全局任务数据层**
   - 在 `DbClient.cs` 增加 `global_tasks` 表，字段覆盖标题、描述、状态、优先级、标签、截止时间和时间戳。

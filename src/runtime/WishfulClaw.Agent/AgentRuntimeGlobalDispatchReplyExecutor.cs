@@ -89,6 +89,12 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
             if (!TryDbMutationOk(updateResponse, out var updateError))
                 return EncodeError(updateError ?? "Failed to record the dispatch reply");
 
+            await AgentRuntimeGlobalBoardEvents.EmitDispatchChangedAsync(
+                context,
+                dispatchId,
+                dispatch.GetProperty("global_task_id").GetString() ?? string.Empty,
+                "replied");
+
             // 3. Deliver the reply back to the global agent's session so it can
             // react in-conversation. Missing source session (legacy rows, deleted
             // global session) degrades to "recorded only" without failing.

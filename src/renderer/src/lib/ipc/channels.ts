@@ -229,6 +229,10 @@ export const IPC = {
   MEMORY_ORGANIZATION_RUN: 'memory-organization:run',
   MEMORY_ORGANIZATION_SETTINGS_CHANGED: 'memory-organization:settings-changed',
 
+  // Global agent Task Board (global task / dispatch change events)
+  GLOBAL_TASK_CHANGED: 'global:task-changed',
+  GLOBAL_DISPATCH_CHANGED: 'global:dispatch-changed',
+
   // Notify
   NOTIFY_DESKTOP: 'notify:desktop',
   NOTIFY_SESSION: 'notify:session',

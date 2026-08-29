@@ -35,11 +35,11 @@ public static class AgentRuntimeGlobalTaskExecutor
         return call.Name switch
         {
             "list_global_tasks" => ListGlobalTasks(call.Input, parameters),
-            "create_global_task" => CreateGlobalTask(call.Input, parameters),
-            "update_global_task" => UpdateGlobalTask(call.Input, parameters),
+            "create_global_task" => await CreateGlobalTaskAsync(call.Input, parameters, context),
+            "update_global_task" => await UpdateGlobalTaskAsync(call.Input, parameters, context),
             "list_global_dispatches" => ListGlobalDispatches(call.Input, parameters),
             "send_work_request" => await SendWorkRequestAsync(call.Input, parameters, context, cancellationToken),
-            "update_dispatch" => UpdateDispatch(call.Input, parameters),
+            "update_dispatch" => await UpdateDispatchAsync(call.Input, parameters, context),
             _ => EncodeError($"Global task tool not registered: {call.Name}")
         };
     }
@@ -69,7 +69,8 @@ public static class AgentRuntimeGlobalTaskExecutor
 
     // ── create_global_task ──
 
-    private static string CreateGlobalTask(JsonElement input, JsonElement parameters)
+    private static async Task<string> CreateGlobalTaskAsync(
+        JsonElement input, JsonElement parameters, IWorkerRequestContext context)
     {
         try
         {
@@ -93,6 +94,8 @@ public static class AgentRuntimeGlobalTaskExecutor
             if (!TryDbResult(response, out _, out var error))
                 return EncodeError(error ?? "Failed to create global task");
 
+            await AgentRuntimeGlobalBoardEvents.EmitTaskChangedAsync(context, taskId, "created");
+
             var result = JsonSerializer.Serialize(
                 new GlobalTaskCreateToolResult(taskId, title, GlobalTaskStatusValues.Pending, now),
                 WorkerJsonHelper.GetTypeInfo<GlobalTaskCreateToolResult>());
@@ -110,7 +113,8 @@ public static class AgentRuntimeGlobalTaskExecutor
 
     // ── update_global_task ──
 
-    private static string UpdateGlobalTask(JsonElement input, JsonElement parameters)
+    private static async Task<string> UpdateGlobalTaskAsync(
+        JsonElement input, JsonElement parameters, IWorkerRequestContext context)
     {
         try
         {
@@ -132,6 +136,8 @@ public static class AgentRuntimeGlobalTaskExecutor
                 return EncodeError(error ?? "Failed to update global task");
 
             var changed = result.TryGetProperty("changed", out var c) ? c.GetInt32() : 0;
+            if (changed > 0)
+                await AgentRuntimeGlobalBoardEvents.EmitTaskChangedAsync(context, taskId, "updated");
             return JsonSerializer.Serialize(
                 new GlobalTaskMutationToolResult(true, taskId, changed, null),
                 WorkerJsonHelper.GetTypeInfo<GlobalTaskMutationToolResult>());
@@ -209,6 +215,8 @@ public static class AgentRuntimeGlobalTaskExecutor
             if (!TryDbResult(createResponse, out _, out var createError))
                 return EncodeError(createError ?? "Failed to create dispatch record");
 
+            await AgentRuntimeGlobalBoardEvents.EmitDispatchChangedAsync(context, dispatchId, globalTaskId, "created");
+
             // 2. Deliver the instruction through the existing reverse-request channel.
             var content =
                 $"[GLOBAL AGENT WORK REQUEST] dispatch_id={dispatchId} global_task_id={globalTaskId}\n\n" +
@@ -239,6 +247,7 @@ public static class AgentRuntimeGlobalTaskExecutor
             {
                 // Delivery failed: record an explicit failure state on the dispatch.
                 MarkDispatchFailed(dispatchId, $"Delivery failed: {deliveryEx.Message}");
+                await AgentRuntimeGlobalBoardEvents.EmitDispatchChangedAsync(context, dispatchId, globalTaskId, "failed");
                 return EncodeError($"Work request delivery failed: {deliveryEx.Message}");
             }
 
@@ -249,6 +258,7 @@ public static class AgentRuntimeGlobalTaskExecutor
             if (deliveryFailure is not null)
             {
                 MarkDispatchFailed(dispatchId, $"Delivery rejected: {deliveryFailure}");
+                await AgentRuntimeGlobalBoardEvents.EmitDispatchChangedAsync(context, dispatchId, globalTaskId, "failed");
                 return EncodeError($"Work request delivery failed: {deliveryFailure}");
             }
 
@@ -264,6 +274,7 @@ public static class AgentRuntimeGlobalTaskExecutor
                 w.WriteEndObject();
             });
             DbGlobalTaskDispatchTools.Update(sentPatch);
+            await AgentRuntimeGlobalBoardEvents.EmitDispatchChangedAsync(context, dispatchId, globalTaskId, "sent");
 
             var result = JsonSerializer.Serialize(
                 new GlobalDispatchCreateToolResult(true, dispatchId, globalTaskId, sessionId,
@@ -284,7 +295,8 @@ public static class AgentRuntimeGlobalTaskExecutor
 
     // ── update_dispatch ──
 
-    private static string UpdateDispatch(JsonElement input, JsonElement parameters)
+    private static async Task<string> UpdateDispatchAsync(
+        JsonElement input, JsonElement parameters, IWorkerRequestContext context)
     {
         try
         {
@@ -307,6 +319,9 @@ public static class AgentRuntimeGlobalTaskExecutor
                 return EncodeError(error ?? "Failed to update dispatch");
 
             var changed = result.TryGetProperty("changed", out var c) ? c.GetInt32() : 0;
+            if (changed > 0)
+                await AgentRuntimeGlobalBoardEvents.EmitDispatchChangedAsync(
+                    context, dispatchId, LookupGlobalTaskId(dispatchId), "updated");
             return JsonSerializer.Serialize(
                 new GlobalDispatchUpdateToolResult(true, dispatchId, changed, null),
                 WorkerJsonHelper.GetTypeInfo<GlobalDispatchUpdateToolResult>());
@@ -369,6 +384,39 @@ public static class AgentRuntimeGlobalTaskExecutor
         catch (Exception ex)
         {
             WorkerLog.Error($"MarkDispatchFailed({dispatchId}) failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Best-effort lookup of the parent task id for change events; returns an
+    /// empty string when the dispatch row is unreadable (event stays useful).
+    /// </summary>
+    private static string LookupGlobalTaskId(string dispatchId)
+    {
+        try
+        {
+            var getParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("id", dispatchId);
+                w.WriteEndObject();
+            });
+            var response = DbGlobalTaskDispatchTools.Get(getParams);
+            using var document = JsonDocument.Parse(response.ToJsonBytes(null));
+            var root = document.RootElement;
+            if (root.TryGetProperty("result", out var result)
+                && result.TryGetProperty("dispatch", out var dispatch)
+                && dispatch.TryGetProperty("global_task_id", out var taskId)
+                && taskId.ValueKind == JsonValueKind.String)
+            {
+                return taskId.GetString() ?? string.Empty;
+            }
+            return string.Empty;
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Error($"LookupGlobalTaskId({dispatchId}) failed: {ex.Message}");
+            return string.Empty;
         }
     }
 

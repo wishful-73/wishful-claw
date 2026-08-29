@@ -50,6 +50,8 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(NativeExtensionToolExecutionResult))]
 [JsonSerializable(typeof(ContextCompressionResponse))]
 [JsonSerializable(typeof(ContextCompressionResult))]
+[JsonSerializable(typeof(GlobalBoardTaskChangedEvent))]
+[JsonSerializable(typeof(GlobalBoardDispatchChangedEvent))]
 [JsonSerializable(typeof(List<JsonElement>))]
 public sealed partial class AgentRuntimeJsonContext : JsonSerializerContext
 {

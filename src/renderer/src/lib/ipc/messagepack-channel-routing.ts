@@ -409,7 +409,9 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'update:download-progress',
   'update:downloaded',
   'update:error',
-  'memory-organization:run'
+  'memory-organization:run',
+  'global:task-changed',
+  'global:dispatch-changed'
 ])
 
 export function shouldUseMessagePackInvoke(channel: string, argCount: number): boolean {

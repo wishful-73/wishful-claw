@@ -18,6 +18,8 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { useTaskBoardStore } from '@renderer/stores/task-board-store'
+import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { IPC } from '@renderer/lib/ipc/channels'
 import {
   GLOBAL_TASK_STATUSES,
   parseTags,
@@ -59,6 +61,35 @@ export function TaskBoardPage(): React.JSX.Element {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // Worker-side mutations (global agent tools, dispatch replies) emit change
+  // events; subscribe so the board refreshes without polling. Dispatch events
+  // are debounced — a single send_work_request emits created/sent back-to-back.
+  useEffect(() => {
+    let dispatchTimer: ReturnType<typeof setTimeout> | null = null
+    const offTask = ipcClient.on(IPC.GLOBAL_TASK_CHANGED, () => {
+      void useTaskBoardStore.getState().loadTasks(true)
+    })
+    const offDispatch = ipcClient.on(IPC.GLOBAL_DISPATCH_CHANGED, (payload: unknown) => {
+      const eventTaskId =
+        payload && typeof payload === 'object'
+          ? ((payload as { globalTaskId?: unknown }).globalTaskId ?? null)
+          : null
+      if (dispatchTimer) clearTimeout(dispatchTimer)
+      dispatchTimer = setTimeout(() => {
+        const state = useTaskBoardStore.getState()
+        const targetId = state.selectedTaskId
+        if (targetId && (typeof eventTaskId !== 'string' || eventTaskId === targetId)) {
+          void state.loadDispatches(targetId)
+        }
+      }, 200)
+    })
+    return () => {
+      offTask()
+      offDispatch()
+      if (dispatchTimer) clearTimeout(dispatchTimer)
+    }
+  }, [])
 
   const visibleTasks = useMemo(() => {
     const lowered = keyword.trim().toLowerCase()

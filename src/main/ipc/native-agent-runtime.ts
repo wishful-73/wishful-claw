@@ -1,6 +1,6 @@
 import { Notification, ipcMain, type BrowserWindow } from 'electron'
 import { getNativeWorker } from '../lib/native-worker'
-import { safeSendMessagePackToWindow } from '../window-ipc'
+import { safeSendMessagePackToWindow, safeSendMessagePackToAllWindows } from '../window-ipc'
 import {
   SIDECAR_RENDERER_TOOL_REQUEST_MSGPACK_CHANNEL,
   SIDECAR_RENDERER_TOOL_RESPONSE_MSGPACK_CHANNEL,
@@ -85,6 +85,15 @@ export function registerNativeAgentRuntimeHandlers(): void {
     if (pending) {
       pending.reject(new Error('Reverse request cancelled by worker'))
     }
+  })
+
+  // Relay global agent Task Board change events (global tasks / dispatches
+  // only — never session-internal Todos) so the board refreshes without polling.
+  worker.onEvent('global/task-changed', (params: unknown) => {
+    safeSendMessagePackToAllWindows('global:task-changed', params)
+  })
+  worker.onEvent('global/dispatch-changed', (params: unknown) => {
+    safeSendMessagePackToAllWindows('global:dispatch-changed', params)
   })
 
   // Register IPC handler for renderer tool responses

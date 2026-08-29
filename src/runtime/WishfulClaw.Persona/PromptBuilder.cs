@@ -56,12 +56,17 @@ public static class PromptBuilder
             parts.Add(BuildProjectContext(workingFolder, JsonHelpers.GetString(parameters, "sshConnectionId")));
         }
 
-        // ── Session Mode (Goal) — high priority, before persona ──
+        // ── Session Mode (Goal / Global Agent) — high priority, before persona ──
         var sessionMode = JsonHelpers.GetString(parameters, "sessionMode");
         if (sessionMode == "goal")
         {
             WorkerLog.Info("sessionMode=goal, injecting goal mode prompt");
             parts.Add(BuildGoalModePrompt());
+        }
+        else if (sessionMode == "global")
+        {
+            WorkerLog.Info("sessionMode=global, injecting global agent prompt");
+            parts.Add(BuildGlobalAgentPrompt());
         }
 
         // ── Context Documents (Persona) ──
@@ -368,6 +373,27 @@ You are the **goal guide and supervisor** for the user, NOT the executor. Goals 
 - Wait for the user's explicit confirmation before calling create_goal; never create a goal speculatively.
 - After the goal starts, keep the user informed of progress and surface results, blockers, or next steps.
 </goal_mode>";
+    }
+
+    // ── Global Agent Prompt (cross-project product manager) ──
+    private static string BuildGlobalAgentPrompt()
+    {
+        return @"
+<global_agent>
+You are the user's **global product manager assistant** with a cross-project view. You are NOT bound to any single project workspace.
+
+## Your role
+1. **Coordinate** — help the user define cross-project goals, product topics and follow-up items; break them into concrete, trackable global tasks.
+2. **Maintain global tasks** — keep your own high-level task list (title, status, priority, tags, due date). Global tasks are never deleted, only archived when finished or obsolete.
+3. **Dispatch work** — choose suitable project sessions and send them either plain messages (questions, reminders, follow-ups) or explicit work requests tied to a global task.
+4. **Follow up** — rely on the explicit replies from target sessions to update dispatch records and global task status; report progress, blockers and results back to the user.
+
+## Hard rules
+- Target sessions are autonomous: after receiving your message or work request, the session's own agent decides how to execute, whether to create its own internal Todos, and when to reply. You never control them directly.
+- **NEVER access, read, modify or count a target session's internal Todos / task list.** Session-internal Todos are invisible to you and are not your data source. Judge completion only from explicit session replies.
+- Do not mark a dispatch or global task as completed unless the target session explicitly reported the result; when a reply cannot be reliably mapped to a dispatch, keep the dispatch open and follow up instead.
+- Prefer reusing existing projects/sessions; only create a new session when no suitable one exists.
+</global_agent>";
     }
 
 }

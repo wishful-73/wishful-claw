@@ -1414,29 +1414,6 @@ export const useChatStore = create<ChatStore>()(
               })
             }
 
-            // Proactive memory extraction: fire-and-forget once the assistant
-            // turn finishes. Switches, debounce and main-session-only checks
-            // are enforced inside; failures only log. Dynamic import avoids a
-            // chat-store <-> memory-automation circular dependency.
-            {
-              const memoryReason = event.reason ?? 'completed'
-              if (memoryReason === 'completed' || memoryReason === 'max_iterations') {
-                const memorySessionId = targetSessionId
-                const memoryAssistantMessageId = envelope.runId
-                void import('@renderer/lib/agent/memory-automation')
-                  .then(({ runMemoryAutomationForSession }) =>
-                    runMemoryAutomationForSession({
-                      sessionId: memorySessionId,
-                      assistantMessageId: memoryAssistantMessageId,
-                      source: 'turn_end'
-                    })
-                  )
-                  .catch((err) => {
-                    console.warn('[MemoryAutomation] auto extraction failed:', err)
-                  })
-              }
-            }
-
             if (event.reason === 'aborted' || event.reason === 'error') {
               void import('@renderer/hooks/use-chat-actions')
                 .then(({ pausePendingSessionDispatch }) => pausePendingSessionDispatch(targetSessionId))

@@ -1,4 +1,4 @@
-import type { PermissionPolicy } from '../../../shared/permission-policy'
+﻿import type { PermissionPolicy } from '../../../shared/permission-policy'
 import { sanitizePermissionPolicy } from '../../../shared/permission-policy'
 import {
   DEFAULT_APP_THEME_PRESET,
@@ -306,24 +306,8 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.conversationGuideSeen === undefined) {
     state.conversationGuideSeen = false
   }
-  if (state.memoryAutomationEnabled === undefined) {
-    state.memoryAutomationEnabled = true
-  }
-  state.memoryAutomationWritePolicy = 'auto'
-  if (state.memoryAutomationMainSessionsOnly === undefined) {
-    state.memoryAutomationMainSessionsOnly = true
-  }
-  if (
-    state.memoryAutomationSummaryBudgetTokens === undefined ||
-    typeof state.memoryAutomationSummaryBudgetTokens !== 'number'
-  ) {
-    state.memoryAutomationSummaryBudgetTokens = 12_000
-  }
   if (state.memoryUseMemories === undefined) {
     state.memoryUseMemories = true
-  }
-  if (state.memoryGenerateMemories === undefined) {
-    state.memoryGenerateMemories = state.memoryAutomationEnabled
   }
   state.memoryScopeMode = 'hybrid'
   if (
@@ -354,7 +338,7 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
     state.memorySummaryBudgetTokens === undefined ||
     typeof state.memorySummaryBudgetTokens !== 'number'
   ) {
-    state.memorySummaryBudgetTokens = state.memoryAutomationSummaryBudgetTokens
+    state.memorySummaryBudgetTokens = 12_000
   }
 
   // Memory organization & recall settings (daily memory organization plan)

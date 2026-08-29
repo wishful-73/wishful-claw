@@ -77,44 +77,6 @@ function MemorySettingsPanel(): React.JSX.Element {
         <p className="text-sm text-muted-foreground">{t('memoryPage.subtitle')}</p>
       </div>
 
-      {/* Proactive memory (auto extraction) */}
-      <SettingsSection
-        id="sec-memory-autoextract"
-        title={t('memoryPage.autoExtract.title')}
-        description={t('memoryPage.autoExtract.desc')}
-        actions={
-          <Switch
-            checked={settings.memoryAutomationEnabled}
-            onCheckedChange={(checked) => settings.updateSettings({ memoryAutomationEnabled: checked })}
-          />
-        }
-      >
-        <SettingRow
-          label={t('memoryPage.autoExtract.generate.label')}
-          description={t('memoryPage.autoExtract.generate.desc')}
-          control={
-            <Switch
-              disabled={!settings.memoryAutomationEnabled}
-              checked={settings.memoryGenerateMemories}
-              onCheckedChange={(checked) => settings.updateSettings({ memoryGenerateMemories: checked })}
-            />
-          }
-        />
-        <SettingRow
-          label={t('memoryPage.autoExtract.mainOnly.label')}
-          description={t('memoryPage.autoExtract.mainOnly.desc')}
-          control={
-            <Switch
-              disabled={!settings.memoryAutomationEnabled}
-              checked={settings.memoryAutomationMainSessionsOnly}
-              onCheckedChange={(checked) =>
-                settings.updateSettings({ memoryAutomationMainSessionsOnly: checked })
-              }
-            />
-          }
-        />
-      </SettingsSection>
-
       {/* Auto organization */}
       <SettingsSection
         id="sec-memory-organization"

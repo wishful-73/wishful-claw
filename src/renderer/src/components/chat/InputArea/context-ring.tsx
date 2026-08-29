@@ -74,6 +74,63 @@ export function ContextRing({
       }
     : null
 
+  const sessionKey = sessionId ?? ''
+  const latestUsage = React.useMemo(() => {
+    if (!activeSession?.messagesLoaded) return null
+    for (let index = activeSession.messages.length - 1; index >= 0; index -= 1) {
+      const message = activeSession.messages[index]
+      const contextTokens = message?.usage?.contextTokens ?? 0
+      if (contextTokens > 0) {
+        return {
+          messageId: message.id,
+          contextTokens
+        }
+      }
+    }
+    return null
+  }, [activeSession?.messages, activeSession?.messagesLoaded])
+  const contextUsageBaselineRef = React.useRef<{
+    sessionId: string
+    initialized: boolean
+    messageId: string | null
+    contextTokens: number
+  }>({ sessionId: '', initialized: false, messageId: null, contextTokens: 0 })
+  const [hasFreshContextUsage, setHasFreshContextUsage] = React.useState(false)
+
+  React.useEffect(() => {
+    let baseline = contextUsageBaselineRef.current
+    if (baseline.sessionId !== sessionKey) {
+      baseline = {
+        sessionId: sessionKey,
+        initialized: false,
+        messageId: null,
+        contextTokens: 0
+      }
+      contextUsageBaselineRef.current = baseline
+      setHasFreshContextUsage(false)
+    }
+    if (!activeSession?.messagesLoaded) return
+
+    if (!baseline.initialized) {
+      contextUsageBaselineRef.current = {
+        sessionId: sessionKey,
+        initialized: true,
+        messageId: latestUsage?.messageId ?? null,
+        contextTokens: latestUsage?.contextTokens ?? 0
+      }
+      setHasFreshContextUsage(false)
+      return
+    }
+
+    if (
+      latestUsage &&
+      (latestUsage.messageId !== baseline.messageId ||
+        latestUsage.contextTokens !== baseline.contextTokens)
+    ) {
+      setHasFreshContextUsage(true)
+    }
+  }, [activeSession?.messagesLoaded, latestUsage, sessionKey])
+
   const [ctxUsedRaw, ctxLimitRaw] = useStoreWithEqualityFn(
     useChatStore,
     React.useCallback(
@@ -103,8 +160,10 @@ export function ContextRing({
   const ctxUsed = ctxUsedRaw
   const ctxLimit = ctxLimitRaw ?? compressionConfig?.contextLength ?? null
   const ctxGaugeLimit = compressionConfig ? getEffectiveContextWindow(compressionConfig) : ctxLimit
+  const isCurrentSessionUsageFresh =
+    contextUsageBaselineRef.current.sessionId === sessionKey && hasFreshContextUsage
 
-  if (!ctxGaugeLimit) return null
+  if (!ctxGaugeLimit || !isCurrentSessionUsageFresh) return null
 
   const pct = Math.min((ctxUsed / ctxGaugeLimit) * 100, 100)
   const remaining = Math.max(ctxGaugeLimit - ctxUsed, 0)
@@ -154,21 +213,25 @@ export function ContextRing({
                 className="stroke-muted/30"
                 strokeWidth={strokeWidth}
               />
-              <circle
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                fill="none"
-                className={`${strokeColor} transition-all duration-500`}
-                strokeWidth={strokeWidth}
-                strokeDasharray={circumference}
-                strokeDashoffset={dashOffset}
-                strokeLinecap="round"
-              />
+              {isCurrentSessionUsageFresh && (
+                <circle
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={radius}
+                  fill="none"
+                  className={`${strokeColor} transition-all duration-500`}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={circumference}
+                  strokeDashoffset={dashOffset}
+                  strokeLinecap="round"
+                />
+              )}
             </svg>
-            <span className="absolute text-[7px] font-medium text-muted-foreground tabular-nums select-none">
-              {pct.toFixed(0)}%
-            </span>
+            {isCurrentSessionUsageFresh && (
+              <span className="absolute text-[7px] font-medium text-muted-foreground tabular-nums select-none">
+                {pct.toFixed(0)}%
+              </span>
+            )}
           </div>
         </button>
       </TooltipTrigger>

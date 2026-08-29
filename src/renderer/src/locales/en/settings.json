@@ -1146,26 +1146,13 @@
     "toolExecution": "Tool Execution",
     "developer": "Developer",
     "startup": "Startup",
-    "memoryAutoExtract": "Proactive Memory",
     "memoryOrganization": "Auto Organization",
     "memoryTiers": "Tier Thresholds",
     "memoryRecall": "Proactive Recall"
   },
   "memoryPage": {
     "title": "Memory",
-    "subtitle": "Proactive memory extraction, daily auto organization, tier demotion thresholds and proactive recall parameters",
-    "autoExtract": {
-      "title": "Proactive Memory",
-      "desc": "Automatically extract worth-remembering content after each conversation turn and write it into memory",
-      "generate": {
-        "label": "Auto-generate memories",
-        "desc": "Let the model distill memories from the conversation and consolidate them into MEMORY.md"
-      },
-      "mainOnly": {
-        "label": "Main sessions only",
-        "desc": "Skip plugin/channel sessions and only extract memories for main sessions"
-      }
-    },
+    "subtitle": "Daily auto organization, tier demotion thresholds and proactive recall parameters",
     "organization": {
       "title": "Daily Auto Organization",
       "desc": "Scheduled memory organization: deduplicate/merge MEMORY.md and demote stale entries across tiers (demotion never deletes and is recoverable)",

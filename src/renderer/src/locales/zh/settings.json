@@ -1267,26 +1267,13 @@
     "toolExecution": "工具执行",
     "developer": "开发者模式",
     "startup": "开机启动",
-    "memoryAutoExtract": "主动记忆",
     "memoryOrganization": "自动整理",
     "memoryTiers": "分层阈值",
     "memoryRecall": "主动回忆"
   },
   "memoryPage": {
     "title": "记忆",
-    "subtitle": "主动记忆提取、每日自动整理、分层降级阈值与主动回忆参数",
-    "autoExtract": {
-      "title": "主动记忆",
-      "desc": "会话轮次结束后自动提取值得记住的内容，写入记忆",
-      "generate": {
-        "label": "自动生成记忆",
-        "desc": "由模型从对话中提炼记忆并巩固进 MEMORY.md"
-      },
-      "mainOnly": {
-        "label": "仅主会话",
-        "desc": "跳过插件/渠道会话，只对主会话提取记忆"
-      }
-    },
+    "subtitle": "每日自动整理、分层降级阈值与主动回忆参数",
     "organization": {
       "title": "每日自动整理",
       "desc": "定时整理记忆：MEMORY.md 去重合并、过期条目分层降级（降级不删除，可恢复）",

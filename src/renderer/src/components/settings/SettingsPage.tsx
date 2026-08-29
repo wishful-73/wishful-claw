@@ -40,7 +40,6 @@ const RUNTIME_ANCHORS: SectionAnchor[] = [
 ]
 
 const MEMORY_ANCHORS: SectionAnchor[] = [
-  { id: 'sec-memory-autoextract', label: 'anchorNav.memoryAutoExtract' },
   { id: 'sec-memory-organization', label: 'anchorNav.memoryOrganization' },
   { id: 'sec-memory-tiers', label: 'anchorNav.memoryTiers' },
   { id: 'sec-memory-recall', label: 'anchorNav.memoryRecall' }

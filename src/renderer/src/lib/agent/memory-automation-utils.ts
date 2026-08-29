@@ -1,14 +1,11 @@
-// Pure utility functions, constants, and types extracted from memory-automation.ts
+﻿// Pure utility functions, constants, and types extracted from memory-automation.ts
 
 import { runSidecarTextRequest } from '@renderer/lib/ipc/agent-bridge'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import type { ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
 import type { AIModelConfig } from '../../../../shared/types/provider'
-import {
-  getProjectMemoryCandidatePaths,
-  type LayeredMemorySnapshot
-} from './memory-files'
+import { getProjectMemoryCandidatePaths, type LayeredMemorySnapshot } from './memory-files'
 import type {
   MemoryAutomationFilterReason,
   MemoryAutomationTarget,
@@ -24,13 +21,6 @@ export const MAX_MESSAGE_CHARS = 3200
 export const AUTO_RUN_DEBOUNCE_MS = 5000
 export const INVALID_MEMORY_JSON_ERROR = 'invalid_json'
 
-export const GLOBAL_USER_TEMPLATE = `# USER.md
-
-This file captures durable user preferences and collaboration style.
-
-## Preferences
-`
-
 export const GLOBAL_MEMORY_TEMPLATE = `# MEMORY.md
 
 This file stores global durable memory shared across WishfulClaw sessions.
@@ -44,13 +34,6 @@ This file stores global durable memory shared across WishfulClaw sessions.
 ## Durable Decisions
 `
 
-export const PROJECT_USER_TEMPLATE = `# USER.md
-
-This file captures workspace-specific preferences for the human you are helping.
-
-## Preferences
-`
-
 export const PROJECT_MEMORY_TEMPLATE = `# MEMORY.md
 
 This file stores project-scoped durable memory.
@@ -62,6 +45,20 @@ This file stores project-scoped durable memory.
 ## Recurring Errors
 
 ## Context
+`
+
+export const GLOBAL_USER_TEMPLATE = `# USER.md
+
+This file captures durable user preferences and collaboration style.
+
+## Preferences
+`
+
+export const PROJECT_USER_TEMPLATE = `# USER.md
+
+This file captures workspace-specific preferences for the human you are helping.
+
+## Preferences
 `
 
 export const SUMMARY_TEMPLATE = `# Memory Summary
@@ -92,20 +89,20 @@ export interface ConsolidationOutput {
   writtenItems?: string[]
 }
 
+export interface Stage1BuildResult {
+  input?: MemoryStage1OutputInput
+  reason?: MemoryAutomationFilterReason
+  content?: string
+}
+
 /**
- * Pure-organization mode output (no new raw input): the reorganized
- * MEMORY.md plus paragraphs the model judged outdated and removed.
+ * Pure-organization mode output: the reorganized MEMORY.md plus paragraphs
+ * the model judged outdated and removed.
  */
 export interface OrganizationOutput {
   memoryMarkdown?: string
   outdatedParagraphs?: string[]
   organizationSummary?: string
-}
-
-export interface Stage1BuildResult {
-  input?: MemoryStage1OutputInput
-  reason?: MemoryAutomationFilterReason
-  content?: string
 }
 
 export interface TargetDescriptor {
@@ -118,6 +115,12 @@ export interface TargetDescriptor {
 
 export function todayString(date = new Date()): string {
   return date.toISOString().slice(0, 10)
+}
+
+export function rolloutSlugFromSession(sessionId: string, scope: MemoryRootScope): string {
+  const date = todayString()
+  const safeSession = sessionId.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 48)
+  return `${date}-${scope}-${safeSession || 'session'}`
 }
 
 export function normalizeMemoryText(value: string): string {
@@ -139,21 +142,24 @@ export function fingerprintContent(value: string): string {
   return `mem-${(hash >>> 0).toString(16).padStart(8, '0')}`
 }
 
-export function rolloutSlugFromSession(sessionId: string, scope: MemoryRootScope): string {
-  const date = todayString()
-  const safeSession = sessionId.replace(/[^a-zA-Z0-9_-]+/g, '-').slice(0, 48)
-  return `${date}-${scope}-${safeSession || 'session'}`
-}
-
 export function trimForPrompt(value: string, maxChars: number): string {
   const trimmed = value.replace(/\s+/g, ' ').trim()
   if (trimmed.length <= maxChars) return trimmed
   return `${trimmed.slice(0, maxChars)}...`
 }
 
-export function contentBlocksToText(blocks: ContentBlock[]): string {
+type PromptMessage = {
+  id: string
+  role: UnifiedMessage['role']
+  content?: unknown
+  text?: unknown
+}
+
+export function contentBlocksToText(value: unknown): string {
+  if (!Array.isArray(value)) return ''
+
   const parts: string[] = []
-  for (const block of blocks) {
+  for (const block of value as ContentBlock[]) {
     if (block.type === 'text') {
       parts.push(block.text)
     } else if (block.type === 'agent_error') {
@@ -171,14 +177,20 @@ export function contentBlocksToText(blocks: ContentBlock[]): string {
   return parts.join('\n')
 }
 
-export function messageToPromptLine(message: UnifiedMessage): string {
+export function messageToPromptLine(message: PromptMessage): string {
   const raw =
-    typeof message.content === 'string' ? message.content : contentBlocksToText(message.content)
+    typeof message.content === 'string'
+      ? message.content
+      : Array.isArray(message.content)
+        ? contentBlocksToText(message.content)
+        : typeof message.text === 'string'
+          ? message.text
+          : ''
   return `${message.role}: ${trimForPrompt(raw, MAX_MESSAGE_CHARS)}`
 }
 
 export function buildConversationExcerpt(
-  messages: UnifiedMessage[],
+  messages: PromptMessage[],
   assistantMessageId?: string | null
 ): string {
   const filtered = messages.filter((message) => message.role !== 'system')
@@ -200,9 +212,7 @@ export function summarizeMemorySnapshot(snapshot: LayeredMemorySnapshot): string
     snapshot.globalMemorySummary?.path ? `global_summary=${snapshot.globalMemorySummary.path}` : '',
     snapshot.projectUser?.path ? `project_user=${snapshot.projectUser.path}` : '',
     snapshot.projectMemory?.path ? `project_memory=${snapshot.projectMemory.path}` : '',
-    snapshot.projectMemorySummary?.path
-      ? `project_summary=${snapshot.projectMemorySummary.path}`
-      : '',
+    snapshot.projectMemorySummary?.path ? `project_summary=${snapshot.projectMemorySummary.path}` : '',
     snapshot.globalDailyMemory.length
       ? `global_daily=${snapshot.globalDailyMemory.map((entry) => entry.path).join(', ')}`
       : '',

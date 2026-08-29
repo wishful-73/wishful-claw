@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react'
+﻿import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Archive, GitCompare, Maximize2, Minimize2, FolderOpen, Loader2, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
+import { GitCompare, Maximize2, Minimize2, FolderOpen, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -15,7 +15,6 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChatActions, compressSessionContext, type SendMessageOptions } from '@renderer/hooks/use-chat-actions'
-import { useContextCompression } from '@renderer/components/chat/InputArea/use-context-compression'
 import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { BottomTerminalDock } from '@renderer/components/terminal/BottomTerminalDock'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
@@ -138,14 +137,6 @@ export function SessionConversationPane({
     return compressSessionContext(resolvedSessionId)
   }, [resolvedSessionId])
 
-  // Floating-block compression button state — reuses the unified manual
-  // compression feedback hook (compressing/compressed/skipped/blocked/failed).
-  const {
-    isContextCompressing,
-    handleCompressContext: runCompressContext,
-    contextCompressionStatusLabel
-  } = useContextCompression({ onCompressContext: handleCompressContext, t })
-
   if (!session) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -183,27 +174,6 @@ export function SessionConversationPane({
               </TooltipTrigger>
               <TooltipContent side="left">
                 {bottomTerminalDockOpen ? 'Hide terminal' : 'Show terminal'}
-              </TooltipContent>
-            </Tooltip>
-
-            {/* Compress session context */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={runCompressContext}
-                  disabled={isContextCompressing}
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground disabled:cursor-wait disabled:opacity-60"
-                >
-                  {isContextCompressing ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Archive className="size-4" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                {contextCompressionStatusLabel ||
-                  t('layout.compressContext', { defaultValue: 'Compress session' })}
               </TooltipContent>
             </Tooltip>
 

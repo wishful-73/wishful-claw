@@ -1,4 +1,4 @@
-import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
+﻿import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
 import { type AppThemePreset, type SshTerminalThemePreset } from '../lib/theme-presets'
 import { type AppLanguage } from '@renderer/lib/i18n-language'
 
@@ -40,7 +40,6 @@ export type PromptRecommendationModelBindings = Record<
 >
 
 export type MainModelSelectionMode = 'auto' | 'manual'
-export type MemoryAutomationWritePolicy = 'auto'
 export type MemoryScopeMode = 'hybrid'
 export type MemoryOrganizationSchedule = 'nightly' | 'startup'
 export type ClarifyPlanModeAutoSwitchTarget = 'off' | 'code' | 'acp'

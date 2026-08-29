@@ -1,10 +1,28 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent;
+using WishfulClaw.Agent.Tools.Providers;
 using WishfulClaw.Contracts;
+using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure;
 using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.SessionTaskCascadeRegressionTests;
+
+/// <summary>
+/// Local AOT context for the global-task executor result records (registered in
+/// WishfulClawJsonContext at runtime; mirrored here so the test can resolve them).
+/// </summary>
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(GlobalTaskCreateToolResult))]
+[JsonSerializable(typeof(GlobalTaskMutationToolResult))]
+[JsonSerializable(typeof(GlobalDispatchCreateToolResult))]
+[JsonSerializable(typeof(GlobalDispatchUpdateToolResult))]
+internal partial class RegressionJsonContext : JsonSerializerContext
+{
+}
 
 /// <summary>
 /// Regression: session-scoped agent tasks (tasks table) must be cascade-deleted
@@ -15,11 +33,12 @@ internal static class Program
 {
     private static int _passed;
 
-    public static int Main()
+    public static async Task<int> Main()
     {
         try
         {
-            WorkerJsonHelper.ConfigureAotResolver(InfrastructureJsonContext.Default);
+            WorkerJsonHelper.ConfigureAotResolver(JsonTypeInfoResolver.Combine(
+                InfrastructureJsonContext.Default, RegressionJsonContext.Default));
             var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-task-cascade-regression-{Guid.NewGuid():N}");
             Directory.CreateDirectory(testRoot);
             try
@@ -45,6 +64,8 @@ internal static class Program
                 RunPluginSessionSuite(dbPath, db);
                 RunClearAllSuite(dbPath, db);
                 RunGlobalTaskSuite(dbPath, db);
+                RunGlobalToolProviderSuite();
+                await RunGlobalTaskExecutorSuiteAsync(dbPath);
                 RunDeleteBySessionSuite(dbPath, db);
             }
             finally
@@ -247,6 +268,131 @@ internal static class Program
             "dispatch record survives target session deletion");
     }
 
+    // ─── Suite: GlobalTaskToolsProvider registration ───
+
+    private static void RunGlobalToolProviderSuite()
+    {
+        var registry = new ToolRegistry();
+        new GlobalTaskToolsProvider().RegisterTools(registry);
+        var definitions = registry.GetToolDefinitions();
+        AssertEqual(6, definitions.Count, "global task provider registers 6 tools");
+
+        var expected = new HashSet<string>
+        {
+            "list_global_tasks", "create_global_task", "update_global_task",
+            "list_global_dispatches", "send_work_request", "update_dispatch"
+        };
+        foreach (var definition in definitions)
+        {
+            Assert(expected.Contains(definition.Name), $"registered global tool name: {definition.Name}");
+            Assert(registry.IsAvailableInMode(definition.Name, "global"),
+                $"{definition.Name} is available in global mode");
+            Assert(!registry.IsAvailableInMode(definition.Name, "normal"),
+                $"{definition.Name} is hidden in normal mode");
+        }
+    }
+
+    // ─── Suite: AgentRuntimeGlobalTaskExecutor glue (CRUD paths) ───
+
+    private static async Task RunGlobalTaskExecutorSuiteAsync(string dbPath)
+    {
+        CreateSession(dbPath, "s-gtx", title: "Executor Target", projectId: null);
+
+        // create_global_task generates its own id and returns an AOT-safe envelope
+        var createJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("create_global_task", w =>
+            {
+                w.WriteString("title", "Executor task");
+                w.WriteString("priority", "urgent");
+                w.WritePropertyName("tags");
+                w.WriteStartArray();
+                w.WriteStringValue("exec");
+                w.WriteEndArray();
+            }),
+            default, null!, CancellationToken.None);
+        using (var document = JsonDocument.Parse(createJson))
+        {
+            var root = document.RootElement;
+            Assert(!root.TryGetProperty("error", out _), "executor create_global_task succeeds");
+            AssertEqual("Executor task", root.GetProperty("title").GetString(), "executor create returns title");
+            AssertEqual("pending", root.GetProperty("status").GetString(), "executor create returns pending status");
+            Assert(root.GetProperty("taskId").GetString()!.StartsWith("gt_", StringComparison.Ordinal),
+                "executor create generates gt_ prefixed id");
+        }
+
+        // list_global_tasks sees the created task
+        var taskId = JsonDocument.Parse(createJson).RootElement.GetProperty("taskId").GetString()!;
+        var listJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("list_global_tasks", w => w.WriteString("keyword", "Executor")),
+            default, null!, CancellationToken.None);
+        Assert(listJson.Contains(taskId), "executor list_global_tasks returns the created task");
+
+        // update_global_task patch roundtrip (archive semantics covered at DB level)
+        var updateJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("update_global_task", w =>
+            {
+                w.WriteString("taskId", taskId);
+                w.WritePropertyName("patch");
+                w.WriteStartObject();
+                w.WriteString("status", "completed");
+                w.WriteEndObject();
+            }),
+            default, null!, CancellationToken.None);
+        using (var document = JsonDocument.Parse(updateJson))
+        {
+            var root = document.RootElement;
+            Assert(root.GetProperty("success").GetBoolean(), "executor update_global_task succeeds");
+            AssertEqual(taskId, root.GetProperty("taskId").GetString(), "executor update echoes task id");
+        }
+
+        // send_work_request without delivery: missing target session fails cleanly
+        var badDispatchJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("send_work_request", w =>
+            {
+                w.WriteString("globalTaskId", taskId);
+                w.WriteString("sessionId", "no-such-session");
+                w.WriteString("instruction", "do something");
+            }),
+            default, null!, CancellationToken.None);
+        using (var document = JsonDocument.Parse(badDispatchJson))
+        {
+            Assert(document.RootElement.TryGetProperty("error", out var error)
+                    && error.GetString()!.Contains("Target session not found", StringComparison.OrdinalIgnoreCase),
+                "executor send_work_request rejects missing session without context");
+        }
+
+        // update_dispatch stamps completedAt automatically when absent
+        CreateSession(dbPath, "s-gtx2", title: "Executor Target 2", projectId: null);
+        ExpectNoError(DbGlobalTaskDispatchTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gd-exec");
+            w.WriteString("globalTaskId", taskId);
+            w.WriteString("sessionId", "s-gtx2");
+            w.WriteString("kind", "work_request");
+            w.WriteString("instruction", "seeded for executor test");
+        })), "executor suite seeds dispatch gd-exec");
+
+        var dispatchUpdateJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("update_dispatch", w =>
+            {
+                w.WriteString("dispatchId", "gd-exec");
+                w.WritePropertyName("patch");
+                w.WriteStartObject();
+                w.WriteString("status", "completed");
+                w.WriteString("latestReport", "done by executor test");
+                w.WriteEndObject();
+            }),
+            default, null!, CancellationToken.None);
+        using (var document = JsonDocument.Parse(dispatchUpdateJson))
+        {
+            Assert(document.RootElement.GetProperty("success").GetBoolean(), "executor update_dispatch succeeds");
+        }
+        var dispatchRows = ResultArray(DbGlobalTaskDispatchTools.List(Params(dbPath, w => w.WriteString("status", "completed"))));
+        var gdExec = dispatchRows.Single(row => row.GetProperty("id").GetString() == "gd-exec");
+        Assert(gdExec.GetProperty("completed_at").GetInt64() > 0,
+            "executor auto-stamps completed_at when patch omits it");
+    }
+
     // ─── Suite: DbTaskTools.DeleteBySession ───
 
     private static void RunDeleteBySessionSuite(string dbPath, DbService db)
@@ -287,6 +433,14 @@ internal static class Program
     private static long TaskCount(DbService db, string sessionId)
         => db.QueryScalar<long>("SELECT COUNT(*) FROM tasks WHERE session_id = @sid",
             new SqliteParameter("@sid", sessionId));
+
+    private static AgentRuntimeNativeToolCall ToolCall(string name, Action<Utf8JsonWriter> writeProperties)
+        => new("tc-test", name, WorkerJsonHelper.BuildJsonElement(writer =>
+        {
+            writer.WriteStartObject();
+            writeProperties(writer);
+            writer.WriteEndObject();
+        }));
 
     private static JsonElement Params(string dbPath, Action<Utf8JsonWriter>? writeProperties = null)
         => WorkerJsonHelper.BuildJsonElement(writer =>

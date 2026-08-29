@@ -454,6 +454,23 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
+        // Global agent task tools: list_global_tasks / create_global_task / update_global_task /
+        // list_global_dispatches / send_work_request / update_dispatch
+        else if (AgentRuntimeGlobalTaskExecutor.IsGlobalTaskTool(toolCall.Name))
+        {
+            try
+            {
+                toolOutput = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+                    toolCall, state.Parameters, context, state.CancellationToken);
+                isToolError = IsJsonError(toolOutput);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Global task tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
         else if (SubAgentExecutor.IsTaskTool(toolCall.Name))
         {
             try

@@ -29,12 +29,18 @@ interface SendSessionMessageParams {
   content: string
   workingFolder?: string
   projectId?: string
+  /**
+   * Session mode for the simulated turn. Defaults to 'normal' (project target
+   * sessions); 'global' is used when delivering replies back to the global
+   * agent's own session so it keeps its identity prompt and global-only tools.
+   */
+  sessionMode?: 'normal' | 'goal' | 'global'
 }
 
 export async function handleProjectSendSessionMessage(
   params: unknown
 ): Promise<{ success: boolean; result?: string; error?: string }> {
-  const { sessionId, content, workingFolder, projectId } = params as SendSessionMessageParams
+  const { sessionId, content, workingFolder, projectId, sessionMode } = params as SendSessionMessageParams
 
   if (!sessionId || !content) {
     return { success: false, error: 'Missing required fields: sessionId, content' }
@@ -95,11 +101,11 @@ export async function handleProjectSendSessionMessage(
     // Fire-and-forget: don't await, let the target session execute in background
     writeLog('info', '[sendMsg] sending to session: ' + sessionId + ' content: ' + content)
     useChatStore.getState().sendMessage({
-      sessionMode: 'normal',
+      sessionMode: sessionMode ?? 'normal',
       provider,
       messages: [{ role: 'user', content }],
       sessionId,
-      toolPreset: workingFolder ? 'coding' : 'chat',
+      toolPreset: workingFolder && sessionMode !== 'global' ? 'coding' : 'chat',
       webSearchEnabled: settings.webSearchEnabled,
       workingFolder: workingFolder || undefined,
       projectId: projectId || undefined,

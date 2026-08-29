@@ -119,6 +119,10 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                     w.WriteString("content", content);
                     w.WriteString("workingFolder", string.Empty);
                     w.WriteString("projectId", string.Empty);
+                    // The source session is the global agent's own session —
+                    // deliver in global mode so it keeps its identity prompt
+                    // and global-only tools (update_dispatch, etc.).
+                    w.WriteString("sessionMode", "global");
                     w.WriteEndObject();
                 });
 

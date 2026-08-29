@@ -95,6 +95,7 @@ public static class EntityMappers
         GlobalTaskId = r.GetString("global_task_id"),
         ProjectId = r.GetNullableString("project_id"),
         SessionId = r.GetString("session_id"),
+        SourceSessionId = r.GetNullableString("source_session_id"),
         Kind = r.GetString("kind"),
         Instruction = r.GetString("instruction"),
         Status = r.GetString("status"),

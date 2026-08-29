@@ -138,6 +138,7 @@ namespace WishfulClaw.Worker;
 [JsonSerializable(typeof(GlobalTaskMutationToolResult))]
 [JsonSerializable(typeof(GlobalDispatchCreateToolResult))]
 [JsonSerializable(typeof(GlobalDispatchUpdateToolResult))]
+[JsonSerializable(typeof(GlobalDispatchReplyToolResult))]
 [JsonSerializable(typeof(List<ProjectListRow>))]
 [JsonSerializable(typeof(List<SessionListRow>))]
 [JsonSerializable(typeof(string))]

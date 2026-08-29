@@ -20,6 +20,7 @@ namespace WishfulClaw.SessionTaskCascadeRegressionTests;
 [JsonSerializable(typeof(GlobalTaskMutationToolResult))]
 [JsonSerializable(typeof(GlobalDispatchCreateToolResult))]
 [JsonSerializable(typeof(GlobalDispatchUpdateToolResult))]
+[JsonSerializable(typeof(GlobalDispatchReplyToolResult))]
 internal partial class RegressionJsonContext : JsonSerializerContext
 {
 }
@@ -66,6 +67,7 @@ internal static class Program
                 RunGlobalTaskSuite(dbPath, db);
                 RunGlobalToolProviderSuite();
                 await RunGlobalTaskExecutorSuiteAsync(dbPath);
+                await RunDispatchProtocolSuiteAsync(dbPath);
                 RunDeleteBySessionSuite(dbPath, db);
             }
             finally
@@ -391,6 +393,122 @@ internal static class Program
         var gdExec = dispatchRows.Single(row => row.GetProperty("id").GetString() == "gd-exec");
         Assert(gdExec.GetProperty("completed_at").GetInt64() > 0,
             "executor auto-stamps completed_at when patch omits it");
+    }
+
+    // ─── Suite: dispatch protocol (source session, delivery failure, reply tool) ───
+
+    private static async Task RunDispatchProtocolSuiteAsync(string dbPath)
+    {
+        // source_session_id roundtrip: dispatch records remember the global session
+        CreateSession(dbPath, "s-global-src", title: "Global Agent Session", projectId: null);
+        CreateSession(dbPath, "s-proto", title: "Protocol Target", projectId: null);
+        ExpectNoError(DbGlobalTaskTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gt-proto");
+            w.WriteString("title", "Protocol task");
+        })), "protocol suite creates global task");
+        ExpectNoError(DbGlobalTaskDispatchTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gd-proto");
+            w.WriteString("globalTaskId", "gt-proto");
+            w.WriteString("sessionId", "s-proto");
+            w.WriteString("sourceSessionId", "s-global-src");
+            w.WriteString("kind", "work_request");
+            w.WriteString("instruction", "protocol work");
+        })), "dispatch created with sourceSessionId");
+        var protoRows = ResultArray(DbGlobalTaskDispatchTools.List(Params(dbPath, w => w.WriteString("globalTaskId", "gt-proto"))));
+        AssertEqual("s-global-src", protoRows.Single().GetProperty("source_session_id").GetString(),
+            "source_session_id roundtrips on dispatch rows");
+
+        // Delivery failure detection: renderer-style envelopes
+        AssertEqual<string?>(null,
+            AgentRuntimeGlobalTaskExecutor.ExtractDeliveryFailure(JsonDocument.Parse("{\"success\":true}").RootElement),
+            "delivery success envelope passes");
+        AssertEqual("No active provider configured",
+            AgentRuntimeGlobalTaskExecutor.ExtractDeliveryFailure(
+                JsonDocument.Parse("{\"success\":false,\"error\":\"No active provider configured\"}").RootElement),
+            "delivery failure envelope is detected");
+        AssertEqual<string?>(null,
+            AgentRuntimeGlobalTaskExecutor.ExtractDeliveryFailure(JsonDocument.Parse("\"plain text\"").RootElement),
+            "non-object delivery response passes");
+
+        // reply_global_dispatch: recorded when no global session is reachable
+        ExpectNoError(DbGlobalTaskDispatchTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gd-reply");
+            w.WriteString("globalTaskId", "gt-proto");
+            w.WriteString("sessionId", "s-proto");
+            w.WriteString("kind", "work_request");
+            w.WriteString("instruction", "reply suite seed");
+        })), "reply suite seeds dispatch without source session");
+
+        var ackJson = await AgentRuntimeGlobalDispatchReplyExecutor.ExecuteAsync(
+            ToolCall("reply_global_dispatch", w =>
+            {
+                w.WriteString("dispatchId", "gd-reply");
+                w.WriteString("report", "acknowledged, starting work");
+            }),
+            default, null!, CancellationToken.None);
+        using (var document = JsonDocument.Parse(ackJson))
+        {
+            var root = document.RootElement;
+            Assert(root.GetProperty("success").GetBoolean(), "reply tool succeeds without source session");
+            AssertEqual("acknowledged", root.GetProperty("status").GetString(),
+                "reply without explicit status acknowledges a pending dispatch");
+            Assert(!root.GetProperty("deliveredToGlobalAgent").GetBoolean(),
+                "reply is not delivered when the dispatch has no source session");
+        }
+
+        var doneJson = await AgentRuntimeGlobalDispatchReplyExecutor.ExecuteAsync(
+            ToolCall("reply_global_dispatch", w =>
+            {
+                w.WriteString("dispatchId", "gd-reply");
+                w.WriteString("report", "work finished, all tests green");
+                w.WriteString("status", "completed");
+            }),
+            default, null!, CancellationToken.None);
+        using (var document = JsonDocument.Parse(doneJson))
+        {
+            AssertEqual("completed", document.RootElement.GetProperty("status").GetString(),
+                "reply with explicit completed status is honored");
+        }
+        var replyRows = ResultArray(DbGlobalTaskDispatchTools.List(Params(dbPath, w => w.WriteString("sessionId", "s-proto"))));
+        var gdReply = replyRows.Single(row => row.GetProperty("id").GetString() == "gd-reply");
+        AssertEqual("work finished, all tests green", gdReply.GetProperty("latest_report").GetString(),
+            "reply report is recorded on the dispatch");
+        Assert(gdReply.GetProperty("completed_at").GetInt64() > 0,
+            "completed reply stamps completed_at");
+
+        // Invalid replies are rejected without mutating the dispatch
+        var badStatusJson = await AgentRuntimeGlobalDispatchReplyExecutor.ExecuteAsync(
+            ToolCall("reply_global_dispatch", w =>
+            {
+                w.WriteString("dispatchId", "gd-reply");
+                w.WriteString("report", "bad");
+                w.WriteString("status", "sent");
+            }),
+            default, null!, CancellationToken.None);
+        Assert(JsonDocument.Parse(badStatusJson).RootElement.TryGetProperty("error", out _),
+            "reply rejects status values outside in_progress/completed/blocked");
+        var missingJson = await AgentRuntimeGlobalDispatchReplyExecutor.ExecuteAsync(
+            ToolCall("reply_global_dispatch", w =>
+            {
+                w.WriteString("dispatchId", "gd-nope");
+                w.WriteString("report", "missing");
+            }),
+            default, null!, CancellationToken.None);
+        Assert(JsonDocument.Parse(missingJson).RootElement.TryGetProperty("error", out _),
+            "reply rejects unknown dispatch ids");
+
+        // Reply tool visibility: normal/goal sessions only, never the global agent
+        var registry = new ToolRegistry();
+        new GlobalDispatchReplyToolProvider().RegisterTools(registry);
+        Assert(registry.IsAvailableInMode("reply_global_dispatch", "normal"),
+            "reply tool visible in normal mode");
+        Assert(registry.IsAvailableInMode("reply_global_dispatch", "goal"),
+            "reply tool visible in goal mode");
+        Assert(!registry.IsAvailableInMode("reply_global_dispatch", "global"),
+            "reply tool hidden from the global agent itself");
     }
 
     // ─── Suite: DbTaskTools.DeleteBySession ───

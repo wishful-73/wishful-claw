@@ -41,6 +41,7 @@ public sealed class ToolModule : IWorkerModule
             new Providers.CodeCompatibleToolProvider(),
             new Providers.CronToolProvider(),
             new Providers.DesktopToolProvider(),
+            new Providers.GlobalDispatchReplyToolProvider(),
             new Providers.GlobalTaskToolsProvider(),
             new Providers.GoalToolProvider(),
             new Providers.ImageGenerateToolProvider(),

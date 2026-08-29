@@ -37,6 +37,9 @@ public class GlobalTaskDispatchEntity
 
     public string SessionId { get; set; } = string.Empty;
 
+    /// <summary>The global agent session that created this dispatch (reply routing target).</summary>
+    public string? SourceSessionId { get; set; }
+
     public string Kind { get; set; } = GlobalTaskDispatchKindValues.Message;
 
     public string Instruction { get; set; } = string.Empty;
@@ -71,6 +74,9 @@ public sealed class GlobalTaskDispatchRow
     [JsonPropertyName("session_id")]
     public string SessionId { get; set; } = string.Empty;
 
+    [JsonPropertyName("source_session_id")]
+    public string? SourceSessionId { get; set; }
+
     public string Kind { get; set; } = GlobalTaskDispatchKindValues.Message;
 
     public string Instruction { get; set; } = string.Empty;
@@ -97,6 +103,7 @@ public sealed class GlobalTaskDispatchRow
         GlobalTaskId = e.GlobalTaskId,
         ProjectId = e.ProjectId,
         SessionId = e.SessionId,
+        SourceSessionId = e.SourceSessionId,
         Kind = e.Kind,
         Instruction = e.Instruction,
         Status = e.Status,

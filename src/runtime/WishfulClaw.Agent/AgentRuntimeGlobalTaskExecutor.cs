@@ -182,6 +182,9 @@ public static class AgentRuntimeGlobalTaskExecutor
             var sessionId = RequireString(input, "sessionId");
             var instruction = RequireString(input, "instruction");
             var projectId = JsonHelpers.GetString(input, "projectId")?.Trim();
+            // The global agent's own session id — stored on the dispatch so the
+            // target session's reply_global_dispatch can route results back here.
+            var sourceSessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
 
             var dispatchId = $"gd_{Guid.NewGuid():N}";
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -195,6 +198,8 @@ public static class AgentRuntimeGlobalTaskExecutor
                 w.WriteString("sessionId", sessionId);
                 if (!string.IsNullOrEmpty(projectId))
                     w.WriteString("projectId", projectId);
+                if (!string.IsNullOrEmpty(sourceSessionId))
+                    w.WriteString("sourceSessionId", sourceSessionId);
                 w.WriteString("kind", GlobalTaskDispatchKindValues.WorkRequest);
                 w.WriteString("instruction", instruction);
                 w.WriteString("status", GlobalTaskDispatchStatusValues.Pending);
@@ -209,8 +214,9 @@ public static class AgentRuntimeGlobalTaskExecutor
                 $"[GLOBAL AGENT WORK REQUEST] dispatch_id={dispatchId} global_task_id={globalTaskId}\n\n" +
                 $"{instruction}\n\n" +
                 "This work request was dispatched by the global agent. Decide yourself how to execute it " +
-                "(including whether to create your own temporary Todos). When you finish or get blocked, " +
-                "reply explicitly with the result or the blocker so the global agent can track it.";
+                "(including whether to create your own temporary Todos). When you finish, get blocked, or " +
+                "need to ask the global agent a follow-up question, call the reply_global_dispatch tool " +
+                $"with dispatchId '{dispatchId}' so the global agent can track the outcome.";
 
             var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
             {
@@ -222,9 +228,10 @@ public static class AgentRuntimeGlobalTaskExecutor
                 w.WriteEndObject();
             });
 
+            JsonElement deliveryResult;
             try
             {
-                await AgentRuntimeReverseRequests.RequestAsync(
+                deliveryResult = await AgentRuntimeReverseRequests.RequestAsync(
                     context, "project/send-session-message", reverseParams, cancellationToken);
             }
             catch (OperationCanceledException) { throw; }
@@ -233,6 +240,16 @@ public static class AgentRuntimeGlobalTaskExecutor
                 // Delivery failed: record an explicit failure state on the dispatch.
                 MarkDispatchFailed(dispatchId, $"Delivery failed: {deliveryEx.Message}");
                 return EncodeError($"Work request delivery failed: {deliveryEx.Message}");
+            }
+
+            // The renderer handler reports { success: false, error } as a normal
+            // response value (e.g. missing provider/session). Treat that as a
+            // delivery failure instead of silently marking the dispatch sent.
+            var deliveryFailure = ExtractDeliveryFailure(deliveryResult);
+            if (deliveryFailure is not null)
+            {
+                MarkDispatchFailed(dispatchId, $"Delivery rejected: {deliveryFailure}");
+                return EncodeError($"Work request delivery failed: {deliveryFailure}");
             }
 
             // 3. Mark the dispatch as sent.
@@ -353,6 +370,30 @@ public static class AgentRuntimeGlobalTaskExecutor
         {
             WorkerLog.Error($"MarkDispatchFailed({dispatchId}) failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Inspects a reverse-request response for a renderer-side delivery failure
+    /// ({ "success": false, "error": ... }). Returns the error message, or null
+    /// when the delivery was accepted.
+    /// </summary>
+    public static string? ExtractDeliveryFailure(JsonElement deliveryResult)
+    {
+        if (deliveryResult.ValueKind != JsonValueKind.Object)
+            return null;
+        if (!deliveryResult.TryGetProperty("success", out var success))
+            return null;
+        var isSuccess = success.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => true
+        };
+        if (isSuccess)
+            return null;
+        return deliveryResult.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.String
+            ? error.GetString() ?? "unknown delivery error"
+            : "unknown delivery error";
     }
 
     /// <summary>Returns the DB result JSON verbatim, or an encoded error envelope.</summary>

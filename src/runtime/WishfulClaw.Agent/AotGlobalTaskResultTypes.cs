@@ -29,3 +29,10 @@ public record GlobalDispatchUpdateToolResult(
     string DispatchId,
     int Changed,
     string? Error);
+
+public record GlobalDispatchReplyToolResult(
+    bool Success,
+    string DispatchId,
+    string Status,
+    bool DeliveredToGlobalAgent,
+    string? Note);

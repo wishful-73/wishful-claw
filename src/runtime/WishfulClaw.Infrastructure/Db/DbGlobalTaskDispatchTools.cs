@@ -14,7 +14,7 @@ namespace WishfulClaw.Infrastructure.Db;
 public static class DbGlobalTaskDispatchTools
 {
     private const string DispatchSelect =
-        "SELECT id, global_task_id, project_id, session_id, kind, instruction, status, latest_report, error, " +
+        "SELECT id, global_task_id, project_id, session_id, source_session_id, kind, instruction, status, latest_report, error, " +
         "created_at, updated_at, completed_at FROM global_task_dispatches";
 
     public static WorkerResponse List(JsonElement parameters)
@@ -117,13 +117,14 @@ public static class DbGlobalTaskDispatchTools
 
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var changed = db.Execute(
-                "INSERT INTO global_task_dispatches (id, global_task_id, project_id, session_id, kind, instruction, status, " +
+                "INSERT INTO global_task_dispatches (id, global_task_id, project_id, session_id, source_session_id, kind, instruction, status, " +
                 "latest_report, error, created_at, updated_at, completed_at) VALUES " +
-                "(@id, @gtid, @pid, @sid, @kind, @instruction, @status, NULL, NULL, @createdAt, @updatedAt, NULL)",
+                "(@id, @gtid, @pid, @sid, @srcid, @kind, @instruction, @status, NULL, NULL, @createdAt, @updatedAt, NULL)",
                 new SqliteParameter("@id", id),
                 new SqliteParameter("@gtid", globalTaskId),
                 new SqliteParameter("@pid", (object?)sessionProjectId ?? DBNull.Value),
                 new SqliteParameter("@sid", sessionId),
+                new SqliteParameter("@srcid", (object?)GetString(parameters, "sourceSessionId") ?? DBNull.Value),
                 new SqliteParameter("@kind", kind),
                 new SqliteParameter("@instruction", GetString(parameters, "instruction") ?? ""),
                 new SqliteParameter("@status", GetString(parameters, "status") ?? GlobalTaskDispatchStatusValues.Pending),

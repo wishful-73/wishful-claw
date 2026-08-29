@@ -383,6 +383,7 @@ public static partial class DbClient
                     global_task_id TEXT NOT NULL,
                     project_id TEXT,
                     session_id TEXT NOT NULL,
+                    source_session_id TEXT,
                     kind TEXT NOT NULL DEFAULT 'message',
                     instruction TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'pending',
@@ -449,6 +450,7 @@ public static partial class DbClient
             EnsureColumn("sessions", "icon", "TEXT");
             EnsureColumn("projects", "ssh_connection_id", "TEXT");
             EnsureColumn("projects", "plugin_id", "TEXT");
+            EnsureColumn("global_task_dispatches", "source_session_id", "TEXT");
             EnsureColumn("messages", "usage", "TEXT");
             EnsureColumn("messages", "sort_order", "INTEGER");
             NormalizeChannelSessionMetadata();

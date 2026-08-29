@@ -471,6 +471,22 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
+        // Global dispatch reply: target sessions report results back to the global agent
+        else if (AgentRuntimeGlobalDispatchReplyExecutor.IsGlobalDispatchReplyTool(toolCall.Name))
+        {
+            try
+            {
+                toolOutput = await AgentRuntimeGlobalDispatchReplyExecutor.ExecuteAsync(
+                    toolCall, state.Parameters, context, state.CancellationToken);
+                isToolError = IsJsonError(toolOutput);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Dispatch reply tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
         else if (SubAgentExecutor.IsTaskTool(toolCall.Name))
         {
             try

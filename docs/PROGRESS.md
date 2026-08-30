@@ -2,10 +2,14 @@
 
 ## v2-iter-24：全局产品经理 Agent + 会话临时 Todo
 
-- 状态：范围已确认，待执行（2026-08-29 老大拍板：全局任务不删除只归档；全局 Agent 复用既有 `sessionMode='global'` 机制；执行顺序 Plan B → Plan A）
+- 状态：进行中 — 共同前置已落地并完成最终验证；Plan A 全局任务工作台已开发完（待详细测试）；issues 批次已实现（待用户验证）
 - 分支：`dev/v2-iter-24`
-- Plan：`docs/plans/iter-v2-24/plan.md`（迭代总览）、`plan-session-tasks/`（OpenCowork 风格会话临时 Todo）、`plan-task-panel/`（全局 Agent、全局任务与 Task Board）
-- 范围要点：会话 Agent 使用 `tasks` 维护内部临时 Todo；全局 Agent 使用独立 `global_tasks` 维护跨项目任务，并通过 `global_task_dispatches` 向项目会话发送消息/工作请求；全局 Agent 不读取、不管理、不统计会话 Todo；Task Board 展示全局任务和分派记录；本迭代默认不自动唤醒空闲会话执行
+- Plan：`docs/plans/iter-v2-24/plan.md`（迭代总览）、`plan-session-tasks/`（Plan B：OpenCowork 风格会话临时 Todo）、`plan-task-panel/`（Plan A：全局 Agent、全局任务与 Task Board）、`plan-issue-fixes/`（issues 批次：侧边栏加载更多缺陷 + 项目树运行图标 + README 收口）
+- 范围要点（2026-08-29 老大拍板）：全局任务不删除只归档；全局 Agent 复用既有 `sessionMode='global'` 机制；执行顺序 Plan B → Plan A。会话 Agent 使用 `tasks` 维护内部临时 Todo；全局 Agent 使用独立 `global_tasks` 维护跨项目任务，并通过 `global_task_dispatches` 向项目会话发送消息/工作请求；全局 Agent 不读取、不管理、不统计会话 Todo；Task Board 展示全局任务和分派记录；本迭代默认不自动唤醒空闲会话执行
+- 进展（截至 2026-08-30）：
+  - **共同前置**（显式 SessionScope / CollaborationMode / PermissionMode / RuntimeRole + 新会话默认值）已落地：三套 TS、前端生产构建、Worker build（0 warning/0 error）与 Native AOT（无 IL/AOT warning）通过；Goal 113 / SessionTaskCascade 124 / MemoryRecall 18 / CompactionSnapshot 回归通过；真实 Electron E2E 因环境约束未运行（详见 `plans/iter-v2-24/plan.md` 当前实现状态）
+  - **Plan A** 步骤 1-7 已提交：全局会话角色与工具集、跨会话分派协议、Task Board 全局工作台、看板变更事件、全局模式分派回复路由（待详细测试）
+  - **issues 批次**（`plan-issue-fixes/`）：会话列表「加载更多」流式中不再重置收起（两处 reset effect 移除，参考 OpenCowork SessionListPanel）；项目文件夹图标位置接管运行态转圈；README 删减 Development Progress 整节 + OpenCowork「衍生」措辞改为「参考与借鉴」。编译验证 3/3 通过，运行态验证待用户（见 `plan-issue-fixes/verification_report.md`）
 - VERDICT: —
 - Tag: —
 - Commit: —

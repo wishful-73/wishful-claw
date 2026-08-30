@@ -297,12 +297,13 @@ export function ProjectItem({ project, sessions, isExpanded, onToggleExpand }: P
   )
 
   // Show the first N sessions by default; "load more" reveals the rest.
-  // Reset when the underlying list changes (session deleted/added).
+  // Expand state is user-controlled only — it must NOT reset when the sessions
+  // array changes identity: streaming updates (updatedAt etc.) produce new
+  // array references continuously, which would collapse the list right after
+  // the user clicks "load more" (OpenCowork keeps its visible-count state
+  // independent of session updates for the same reason).
   const SESSION_COLLAPSE_COUNT = 5
   const [showAllSessions, setShowAllSessions] = React.useState(false)
-  React.useEffect(() => {
-    setShowAllSessions(false)
-  }, [sessions])
   const hasHiddenSessions = !showAllSessions && sortedSessions.length > SESSION_COLLAPSE_COUNT
   const visibleSessions = hasHiddenSessions
     ? sortedSessions.slice(0, SESSION_COLLAPSE_COUNT)
@@ -405,9 +406,13 @@ export function ProjectItem({ project, sessions, isExpanded, onToggleExpand }: P
             )}
           >
             {project.pinned && <Pin className="size-3 shrink-0 text-primary/60" />}
-            {isExpanded ? <FolderOpen className="size-3.5 shrink-0 text-sky-500 dark:text-sky-400" /> : <Folder className="size-3.5 shrink-0 text-sky-500 dark:text-sky-400" />}
-            {hasStreamingSession && (
-              <Loader2 className="size-3 shrink-0 animate-spin text-primary" />
+            {/* Running state replaces the folder icon itself instead of sitting next to the title */}
+            {hasStreamingSession ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+            ) : isExpanded ? (
+              <FolderOpen className="size-3.5 shrink-0 text-sky-500 dark:text-sky-400" />
+            ) : (
+              <Folder className="size-3.5 shrink-0 text-sky-500 dark:text-sky-400" />
             )}
             <span className="flex-1 truncate text-xs font-medium">{project.name}</span>
             

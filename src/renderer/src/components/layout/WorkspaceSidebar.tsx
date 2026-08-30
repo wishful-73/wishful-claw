@@ -127,11 +127,10 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     })
   }, [])
   // Unassigned session list: show the first N by default, "load more" reveals the rest.
+  // Expand state is user-controlled only — resetting it on sessions-array changes
+  // would collapse the list during streaming (array identity churns continuously).
   const UNASSIGNED_COLLAPSE_COUNT = 5
   const [showAllUnassigned, setShowAllUnassigned] = React.useState(false)
-  React.useEffect(() => {
-    setShowAllUnassigned(false)
-  }, [sessions])
   const hasHiddenUnassigned =
     !showAllUnassigned && sortedUnassigned.length > UNASSIGNED_COLLAPSE_COUNT
   const visibleUnassigned = hasHiddenUnassigned

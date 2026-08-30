@@ -165,30 +165,11 @@ npm run dev
 
 > OpenCowork 的代码经迁移和重构后纳入 WishfulClaw 架构；其余项目主要借鉴设计思路和架构理念，代码由 WishfulClaw 自行实现。
 
-## 📈 Development Progress
-
-### MVP v1（已完成，v0.1.0 ~ v0.15.0）
-
-核心链路全部完成：Agent Loop + 工具链 + 记忆系统 + 人格系统 + 子 Agent + Skill 市场 + SSH 远程执行 + 终端面板 + 右侧面板 + 渠道系统。
-
-### MVP v2 — 架构重构与功能增强（进行中，v0.2.1 ~ v0.2.16）
-
-| 阶段 | 内容 |
-|------|------|
-| 架构重构 | 7 层分层架构（Contracts → Core → Infrastructure → Workspace → Persona → Agent → Worker），Worker 瘦身至薄层 |
-| AOT 编译 | SqlSugar → Microsoft.Data.Sqlite 迁移，全链路反射消除，Native AOT 打包 |
-| Goal 模式 | GoalOrchestrator 编排层 + plan→execute→verify 状态机 + 自检评估 + 可中断 + 前端进度面板 |
-| 计划模式 | explore→plan→confirm→execute→verify 人机协同执行引擎 + 计划文件落盘 + SubmitPlanReview |
-| Provider | Anthropic / OpenAI Chat / OpenAI Responses / Gemini / Vertex AI |
-| 渠道系统 | 飞书/微信扫码绑定 + auto-reply hook + 全局渠道设置 |
-| SSH 远程 | Agent SSH 长连接远程执行 + 终端面板实时旁观 |
-| 体验优化 | 快捷键系统 + 快速启动器 + 剪贴板增强 + 开机启动 + 历史消息反向分页 + 左侧面板搜索 |
-
 ## 📜 License
 
 本项目采用 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) 开源，Copyright 2026 **Wishful 心相团队**。
 
-本项目是 [OpenCowork](https://github.com/AIDotNet/OpenCowork)（Copyright 2026 AIDotNet，Apache 2.0）的衍生作品：Agent Loop、工具链、Provider、流式协议与 Worker 运行时等大量代码源自 OpenCowork，经迁移、拆分、适配与重构后纳入 WishfulClaw 架构。OpenCowork 的原始版权声明已在迁移文件头保留，完整第三方归属声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本项目大量参考与借鉴了 [OpenCowork](https://github.com/AIDotNet/OpenCowork)（Copyright 2026 AIDotNet，Apache 2.0）：Agent Loop、工具链、Provider、流式协议与 Worker 运行时等部分代码源自 OpenCowork，经迁移、拆分、适配与重构后纳入 WishfulClaw 架构。OpenCowork 的原始版权声明已在迁移文件头保留，完整第三方归属声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ---
 

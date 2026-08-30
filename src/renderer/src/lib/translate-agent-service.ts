@@ -241,6 +241,9 @@ export async function runTranslationAgent({
     provider: { ...providerConfig, systemPrompt, thinkingEnabled: false, temperature: 0.2 },
     maxIterations: MAX_ITERATIONS,
     forceApproval: false,
+    scope: 'global',
+    collaborationMode: 'chat',
+    runtimeRole: 'translation',
     translation: {
       enabled: true,
       sourceLanguage,

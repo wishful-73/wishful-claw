@@ -1,4 +1,4 @@
-﻿{
+{
   "home": {
     "title": "How can I help you today?",
     "subtitle": "Start a conversation or pick a quick prompt below.",
@@ -1435,6 +1435,10 @@
   },
   "collab": {
     "mode": {
+      "chat": "Chat",
+      "chatDesc": "Read-only collaboration for searching, browsing, and analysis",
+      "cowork": "Cowork",
+      "coworkDesc": "Full collaboration with actions allowed by the permission policy",
       "normal": "Normal",
       "normalDesc": "Regular chat with optional Plan mode",
       "goal": "Goal",

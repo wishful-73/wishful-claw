@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -104,12 +104,20 @@ public static class ToolCallProcessor
         AgentRuntimeRunState state,
         IWorkerRequestContext context)
     {
-        var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
-        var projectId = JsonHelpers.GetString(parameters, "projectId");
-        var sshConnectionId = JsonHelpers.GetString(parameters, "sshConnectionId");
+        var runContext = AgentRunContextPolicy.Resolve(parameters);
+        var workingFolder = runContext.Scope == "project"
+            ? JsonHelpers.GetString(parameters, "workingFolder")
+            : null;
+        var projectId = runContext.Scope == "project"
+            ? JsonHelpers.GetString(parameters, "projectId")
+            : null;
+        var sshConnectionId = runContext.Scope == "project"
+            ? JsonHelpers.GetString(parameters, "sshConnectionId")
+            : null;
         var maxParallelTools = Math.Max(1, JsonHelpers.GetInt(parameters, "maxParallelTools", 1));
         var maxToolCallsPerTurn = JsonHelpers.GetInt(parameters, "maxToolCallsPerTurn", 0); // 0 = unlimited
         var registry = ToolModuleState.Registry;
+        var availableMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, runContext);
         // "default" permission mode asks the user to confirm write/delete/execute
         // class tools before execution. "whitelist"/"fullAccess" never pause here
         // (whitelist rules are enforced on the renderer side).
@@ -154,6 +162,16 @@ public static class ToolCallProcessor
             if (state.IsCancellationRequested)
             {
                 break;
+            }
+
+            var category = registry?.GetCategory(toolCall.Name);
+            var allowedByContext = AgentRunContextPolicy.IsToolAllowed(runContext, toolCall.Name, category);
+            var allowedByMode = registry is null || registry.IsAvailableInMode(toolCall.Name, availableMode);
+            if (!allowedByContext || !allowedByMode)
+            {
+                toolTasks.Add(RejectUnavailableToolAsync(
+                    toolCall, state, context, runContext, allowedByContext));
+                continue;
             }
 
             // fullAccess is YOLO: never create an approval barrier or dialog.
@@ -250,6 +268,57 @@ public static class ToolCallProcessor
         }
 
         return results;
+    }
+
+    private static async Task<AgentRuntimeToolResult> RejectUnavailableToolAsync(
+        AgentRuntimeNativeToolCall toolCall,
+        AgentRuntimeRunState state,
+        IWorkerRequestContext context,
+        AgentRunContext runContext,
+        bool allowedByContext)
+    {
+        var startedAt = AgentLoop.NowMs();
+        var message = allowedByContext
+            ? $"Tool '{toolCall.Name}' is not available for runtime role '{runContext.RuntimeRole}'."
+            : $"Tool '{toolCall.Name}' is not available in {runContext.Scope}:{runContext.CollaborationMode} sessions.";
+
+        await AgentRuntimeTools.EmitAsync(
+            state, context,
+            new AgentRuntimeStreamEvent(
+                "tool_call_start",
+                ToolCall: new AgentRuntimeToolCallState(
+                    toolCall.Id,
+                    toolCall.Name,
+                    toolCall.Input,
+                    "running",
+                    null,
+                    null,
+                    false,
+                    startedAt,
+                    null)));
+
+        var completedAt = AgentLoop.NowMs();
+        await AgentRuntimeTools.EmitAsync(
+            state, context,
+            new AgentRuntimeStreamEvent(
+                "tool_call_result",
+                ToolCallId: toolCall.Id,
+                ToolName: toolCall.Name,
+                ToolCall: new AgentRuntimeToolCallState(
+                    toolCall.Id,
+                    toolCall.Name,
+                    toolCall.Input,
+                    "error",
+                    AgentRuntimeProviderSupport.CreateStringElement(message),
+                    message,
+                    false,
+                    startedAt,
+                    completedAt)));
+
+        return new AgentRuntimeToolResult(
+            toolCall.Id,
+            AgentRuntimeProviderSupport.CreateStringElement(message),
+            true);
     }
 
     /// <summary>

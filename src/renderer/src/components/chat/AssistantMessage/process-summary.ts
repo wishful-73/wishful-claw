@@ -9,6 +9,8 @@ import type { ContentBlock } from '@renderer/lib/api/types'
 import type { AssistantRenderItemWithInlineSummary } from './types'
 import type { TFunction } from 'i18next'
 
+const WEB_CONTEXT_TOOL_NAMES = new Set(['WebFetch', 'WebSearch', 'BrowserSearch'])
+
 interface CategoryCount {
   commands: number
   reads: number
@@ -24,6 +26,8 @@ interface CategoryCount {
 }
 
 function classifyItem(item: ToolExecutionItem): keyof CategoryCount {
+  if (WEB_CONTEXT_TOOL_NAMES.has(item.name) || item.name.startsWith('Browser')) return 'browser'
+
   switch (item.category) {
     case 'command': return 'commands'
     case 'context': return 'reads'

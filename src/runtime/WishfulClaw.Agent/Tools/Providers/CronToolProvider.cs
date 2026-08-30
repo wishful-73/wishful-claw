@@ -1,4 +1,4 @@
-using WishfulClaw.Agent.Tools;
+﻿using WishfulClaw.Agent.Tools;
 using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent.Tools.Providers;
@@ -82,6 +82,8 @@ public sealed class CronToolProvider : IToolProvider
         ["sessionId"] = ToolSchemaBuilder.String("Session associated with the task and default session delivery target."),
         ["agentId"] = ToolSchemaBuilder.String("Optional registered Agent override."),
         ["model"] = ToolSchemaBuilder.String("Optional model override."),
+        ["thinkingEnabled"] = ToolSchemaBuilder.Boolean("Optional task-level thinking override. Omit to follow the model default without sending thinking parameters."),
+        ["reasoningEffort"] = ToolSchemaBuilder.String("Optional reasoning effort used only when thinkingEnabled is true.", ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]),
         ["workingFolder"] = ToolSchemaBuilder.String("Working directory for the Agent run."),
         ["deliveryMode"] = ToolSchemaBuilder.String("Result delivery mode.", ["desktop", "session", "plugin", "none"]),
         ["deliveryTarget"] = ToolSchemaBuilder.String("Explicit delivery target; for session delivery this is the target session ID."),

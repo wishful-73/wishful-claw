@@ -1,7 +1,8 @@
-# Plan B：会话 Agent 临时 Todo（OpenCowork 语义）
+﻿# Plan B：会话 Agent 临时 Todo（OpenCowork 语义）
 
 > v2-iter-24 · Plan B
 > 本 Plan 只负责项目会话 Agent 的内部临时 Todo，不负责全局 Agent、全局任务或 Task Board。
+> 当前状态（2026-08-30）：共同会话上下文前置已实现并通过 TS/C#/AOT 与核心回归验证；本 Plan 的步骤 1–6 仍未开始，保持待实施。
 > 参考实现：`D:\claw\OpenCowork` 的 `tasks` 表、`AgentRuntimeTaskExecutor`、`task-store`、`TodoCard`。
 
 ## 目标
@@ -18,7 +19,8 @@
 
 ## 产品边界
 
-- Todo 绑定当前 `sessionId`，属于当前会话 Agent 的内部执行辅助。
+- Todo 绑定当前 `sessionId`，属于当前项目会话 Agent 的内部执行辅助；仅 `SessionScope='project'` 的会话使用本 Plan 的 Todo。
+- 项目 Chat/Cowork 都可维护会话 Todo；协作模式只限制实际工具能力，不改变 Todo 的所属关系。
 - 简单的一步请求可以不创建 Todo；复杂请求是否拆分由 Agent 自主判断，不设硬性步数门槛。
 - Todo 可以在一轮消息内创建并完成，也可以跨多轮消息继续推进。
 - 应用重启后，未完成 Todo 和仍需展示的任务可以恢复。
@@ -69,10 +71,11 @@
   - 验证：用户消息和全局 Agent 消息均能触发同一套会话 Todo 行为；切换会话加载正确；Task Board 不因本 Plan 自动读取这些 Todo。
 
 - [ ] **步骤5：会话 Agent 的任务管理 Prompt**
-  - `PromptBuilder` 只增加会话 Agent 的临时 Todo 引导，并通过调用方参数控制是否注入。
+  - `PromptBuilder` 只为显式 `SessionScope='project'` 的会话增加临时 Todo 引导，并通过结构化会话上下文控制是否注入，不能再依赖 `normal/global` 字符串猜测。
   - 文案明确：复杂/持续工作由 Agent 自主判断是否使用 `TaskCreate`；开始执行前更新 `in_progress`；遇到阻塞标记 `blocked`；确认真正完成后才标记 `completed`；先检查当前会话任务避免重复。
   - 明确禁止：为简单请求强制创建；把 Todo 当作长期任务；等待外部 Agent 管理内部 Todo。
-  - 验证：普通项目会话的 system prompt 含该段；全局 Agent 不注入本段，除非它本身作为普通会话 Agent 执行其他工作。
+  - 项目 Chat 与 Cowork 可使用同一套 Todo 管理语义；Chat 中的 Todo 只能规划和跟踪只读工作，不能借助 Todo 绕过协作模式调用写入工具。
+  - 验证：项目 Chat/Cowork 的 system prompt 均按 scope 注入本段；全局 Chat 不注入本段。
 
 - [ ] **步骤6：生命周期清理与回归**
   - 会话删除时删除 `tasks` 行及内存缓存。

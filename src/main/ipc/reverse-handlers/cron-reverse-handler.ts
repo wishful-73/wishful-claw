@@ -39,6 +39,8 @@ interface CronJob {
   prompt: string
   agentId?: string
   model?: string
+  thinkingEnabled?: boolean | null
+  reasoningEffort?: string | null
   workingFolder?: string
   deliveryMode?: 'desktop' | 'session' | 'none' | 'plugin'
   deliveryTarget?: string
@@ -89,6 +91,18 @@ function normalizeSchedule(schedule: CronSchedule): CronSchedule {
   return { ...schedule, at: Date.now() + Number(match[1]) * multipliers[match[2]] }
 }
 
+function usesTargetSessionModel(job: Pick<CronJob, 'runMode' | 'outputMode'>): boolean {
+  return job.runMode === 'session' && job.outputMode === 'reuse_session'
+}
+
+function clearTaskModel(job: CronJob): void {
+  if (!usesTargetSessionModel(job)) return
+  job.agentId = undefined
+  job.model = undefined
+  job.thinkingEnabled = null
+  job.reasoningEffort = null
+}
+
 function toDbArgs(job: CronJob): Record<string, unknown> {
   return {
     id: job.id,
@@ -103,6 +117,8 @@ function toDbArgs(job: CronJob): Record<string, unknown> {
     prompt: job.prompt,
     agentId: job.agentId,
     model: job.model,
+    thinkingEnabled: job.thinkingEnabled,
+    reasoningEffort: job.reasoningEffort,
     workingFolder: job.workingFolder,
     deliveryMode: job.deliveryMode ?? 'desktop',
     deliveryTarget: job.deliveryTarget,
@@ -132,6 +148,12 @@ function fromDbRow(row: Record<string, unknown>): CronJob {
     prompt: String(row.prompt ?? ''),
     agentId: row.agent_id as string | undefined ?? row.agentId as string | undefined,
     model: row.model as string | undefined,
+    thinkingEnabled: typeof (row.thinking_enabled ?? row.thinkingEnabled) === 'boolean'
+      ? (row.thinking_enabled ?? row.thinkingEnabled) as boolean
+      : null,
+    reasoningEffort: row.reasoning_effort as string | null | undefined
+      ?? row.reasoningEffort as string | null | undefined
+      ?? null,
     workingFolder: row.working_folder as string | undefined ?? row.workingFolder as string | undefined,
     deliveryMode: row.delivery_mode as CronJob['deliveryMode'] ?? row.deliveryMode as CronJob['deliveryMode'],
     deliveryTarget: row.delivery_target as string | undefined ?? row.deliveryTarget as string | undefined,
@@ -260,6 +282,8 @@ function buildFirePayload(job: CronJob, fireId: string, firedAt: number): Record
     prompt: job.prompt,
     agentId: job.agentId,
     model: job.model,
+    thinkingEnabled: job.thinkingEnabled,
+    reasoningEffort: job.reasoningEffort,
     workingFolder: job.workingFolder,
     sessionId: job.sessionId,
     scope: job.scope ?? 'global',
@@ -424,6 +448,8 @@ export async function handleCronAdd(params: Record<string, unknown>): Promise<un
     prompt,
     agentId: params.agentId as string | undefined,
     model: params.model as string | undefined,
+    thinkingEnabled: typeof params.thinkingEnabled === 'boolean' ? params.thinkingEnabled : null,
+    reasoningEffort: typeof params.reasoningEffort === 'string' ? params.reasoningEffort : null,
     workingFolder: params.workingFolder as string | undefined,
     deliveryMode: (params.deliveryMode as CronJob['deliveryMode']) ?? 'desktop',
     deliveryTarget: params.deliveryTarget as string | undefined,
@@ -440,6 +466,7 @@ export async function handleCronAdd(params: Record<string, unknown>): Promise<un
     createdAt: now,
     updatedAt: now
   }
+  clearTaskModel(job)
 
   try {
     await persistCreate(job)
@@ -469,6 +496,8 @@ function cronJobPatch(job: CronJob): Record<string, unknown> {
     prompt: job.prompt,
     agentId: job.agentId,
     model: job.model,
+    thinkingEnabled: job.thinkingEnabled,
+    reasoningEffort: job.reasoningEffort,
     workingFolder: job.workingFolder,
     scope: job.scope,
     projectId: job.projectId,
@@ -502,6 +531,12 @@ export async function handleCronUpdate(params: Record<string, unknown>): Promise
   if (patch.prompt !== undefined) next.prompt = patch.prompt as string
   if (patch.agentId !== undefined) next.agentId = patch.agentId as string | undefined
   if (patch.model !== undefined) next.model = patch.model as string | undefined
+  if (patch.thinkingEnabled !== undefined) {
+    next.thinkingEnabled = typeof patch.thinkingEnabled === 'boolean' ? patch.thinkingEnabled : null
+  }
+  if (patch.reasoningEffort !== undefined) {
+    next.reasoningEffort = typeof patch.reasoningEffort === 'string' ? patch.reasoningEffort : null
+  }
   if (patch.workingFolder !== undefined) next.workingFolder = patch.workingFolder as string | undefined
   if (patch.scope !== undefined) next.scope = patch.scope === 'project' ? 'project' : 'global'
   if (patch.projectId !== undefined) next.projectId = patch.projectId as string | undefined
@@ -520,6 +555,13 @@ export async function handleCronUpdate(params: Record<string, unknown>): Promise
 
   const schedErr = validateSchedule(next.schedule)
   if (schedErr) return { error: schedErr }
+  clearTaskModel(next)
+  if (usesTargetSessionModel(next)) {
+    patch.agentId = null
+    patch.model = null
+    patch.thinkingEnabled = null
+    patch.reasoningEffort = null
+  }
   next.updatedAt = Date.now()
 
   const oldJob = { ...current, schedule: { ...current.schedule } }

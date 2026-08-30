@@ -1,4 +1,4 @@
-﻿// Extracted store selectors for InputArea to keep index.tsx under 500 lines
+// Extracted store selectors for InputArea to keep index.tsx under 500 lines
 
 import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
@@ -74,7 +74,8 @@ export interface InputAreaSelectorsOutput {
 }
 
 type TargetSession = {
-  id: string; projectId: string | null; pluginId: string | null;
+  id: string; scope: 'global' | 'project'; collaborationMode: 'chat' | 'cowork';
+  permissionMode: 'default' | 'fullAccess'; projectId: string | null; pluginId: string | null;
   providerId: string | null; modelId: string | null; modelSelectionMode: string | null;
   messageCount: number; sshConnectionId: string | null
 }
@@ -85,7 +86,8 @@ function getTargetSession(s: ReturnType<typeof useChatStore.getState>, sessionId
   const session = idx !== undefined ? s.sessions[idx] : undefined
   if (!session) return undefined
   return {
-    id: session.id, projectId: session.projectId ?? null, pluginId: session.pluginId ?? null,
+    id: session.id, scope: session.scope, collaborationMode: session.collaborationMode,
+    permissionMode: session.permissionMode, projectId: session.projectId ?? null, pluginId: session.pluginId ?? null,
     providerId: session.providerId ?? null, modelId: session.modelId ?? null,
     modelSelectionMode: session.modelSelectionMode ?? null,
     messageCount: session.messageCount, sshConnectionId: session.sshConnectionId ?? null
@@ -166,12 +168,12 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   // ── Project / session IDs ───────────────────────────────────────
   const activeProjectId = useChatStore((s) => {
     const ts = getTargetSession(s, sessionId)
-    return ts?.projectId ?? s.activeProjectId
+    return ts ? ts.projectId : s.activeProjectId
   })
 
   const activeSshConnectionId = useChatStore((s) => {
     const ts = getTargetSession(s, sessionId)
-    const projectId = ts?.projectId ?? s.activeProjectId
+    const projectId = ts ? ts.projectId : s.activeProjectId
     const activeProject = projectId ? s.projects.find((project) => project.id === projectId) : undefined
     return ts?.sshConnectionId ?? activeProject?.sshConnectionId ?? null
   })

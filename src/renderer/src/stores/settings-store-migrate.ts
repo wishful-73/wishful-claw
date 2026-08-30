@@ -1,4 +1,4 @@
-﻿import type { PermissionPolicy } from '../../../shared/permission-policy'
+import type { PermissionPolicy } from '../../../shared/permission-policy'
 import { sanitizePermissionPolicy } from '../../../shared/permission-policy'
 import {
   DEFAULT_APP_THEME_PRESET,
@@ -154,6 +154,18 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   }
   if (state.mainModelSelectionMode === undefined) {
     state.mainModelSelectionMode = 'auto'
+  }
+  if (
+    state.projectSessionDefaultCollaborationMode !== 'chat' &&
+    state.projectSessionDefaultCollaborationMode !== 'cowork'
+  ) {
+    state.projectSessionDefaultCollaborationMode = 'cowork'
+  }
+  if (
+    state.coworkDefaultPermissionMode !== 'default' &&
+    state.coworkDefaultPermissionMode !== 'fullAccess'
+  ) {
+    state.coworkDefaultPermissionMode = 'fullAccess'
   }
   state.claudeCodeConfigs = sanitizeClaudeCodeConfigs(state.claudeCodeConfigs)
   state.codexConfigs = sanitizeCodexConfigs(state.codexConfigs)

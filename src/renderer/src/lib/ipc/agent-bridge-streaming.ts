@@ -1,4 +1,4 @@
-﻿import { agentBridge, canSidecarHandle } from './agent-bridge'
+import { agentBridge, canSidecarHandle } from './agent-bridge'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { CompressionResult } from '../agent/context-compression-config'
 import { toAgentEvent } from '../agent/stream-event-adapter'
@@ -83,6 +83,9 @@ export async function* streamSidecarProviderTurn(args: {
     tools: args.tools,
     maxIterations: 1,
     forceApproval: false,
+    scope: 'global',
+    collaborationMode: 'chat',
+    runtimeRole: 'providerTurn',
     planMode: args.planMode,
     slashCommand: args.slashCommand,
     systemCommand: args.systemCommand,
@@ -264,7 +267,10 @@ export async function runSidecarTextRequest(args: {
     provider,
     tools: [],
     maxIterations: args.maxIterations ?? 1,
-    forceApproval: false
+    forceApproval: false,
+    scope: 'global',
+    collaborationMode: 'chat',
+    runtimeRole: 'providerTurn'
   })
   if (!sidecarRequest) {
     throw new Error('Sidecar request build failed')

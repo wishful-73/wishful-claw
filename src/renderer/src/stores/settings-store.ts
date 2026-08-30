@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ProviderType, ReasoningEffortLevel } from '../lib/api/types'
 import { ipcStorage } from '../lib/ipc/ipc-storage'
@@ -25,7 +25,7 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
 
 // Re-export types for consumers
 export type {
@@ -36,6 +36,8 @@ export type {
   FileDiffViewMode,
   LiveOutputAnimationStyle,
   MainModelSelectionMode,
+  ProjectSessionDefaultCollaborationMode,
+  CoworkDefaultPermissionMode,
   MemoryOrganizationSchedule,
   MemoryScopeMode,
   ModelBinding,
@@ -214,6 +216,8 @@ interface SettingsStore {
   promptRecommendationModels: PromptRecommendationModelBindings
   newSessionDefaultModel: SessionDefaultModelBinding | null
   mainModelSelectionMode: MainModelSelectionMode
+  projectSessionDefaultCollaborationMode: ProjectSessionDefaultCollaborationMode
+  coworkDefaultPermissionMode: CoworkDefaultPermissionMode
   claudeCodeConfigs: ClaudeCodeConfig[]
   codexConfigs: CodexConfig[]
   projectDefaultDirectoryMode: ProjectDefaultDirectoryMode
@@ -352,6 +356,8 @@ export const useSettingsStore = create<SettingsStore>()(
       },
       newSessionDefaultModel: null,
       mainModelSelectionMode: 'auto',
+      projectSessionDefaultCollaborationMode: 'cowork',
+      coworkDefaultPermissionMode: 'fullAccess',
       claudeCodeConfigs: [createDefaultClaudeCodeConfig()],
       codexConfigs: [createDefaultCodexConfig()],
       projectDefaultDirectoryMode: 'last-used',
@@ -398,7 +404,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 33,
+      version: 34,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -497,6 +503,8 @@ export const useSettingsStore = create<SettingsStore>()(
         promptRecommendationModels: state.promptRecommendationModels,
         newSessionDefaultModel: state.newSessionDefaultModel,
         mainModelSelectionMode: state.mainModelSelectionMode,
+        projectSessionDefaultCollaborationMode: state.projectSessionDefaultCollaborationMode,
+        coworkDefaultPermissionMode: state.coworkDefaultPermissionMode,
         claudeCodeConfigs: state.claudeCodeConfigs,
         codexConfigs: state.codexConfigs,
         projectDefaultDirectoryMode: state.projectDefaultDirectoryMode,

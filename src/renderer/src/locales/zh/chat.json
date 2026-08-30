@@ -1,4 +1,4 @@
-﻿{
+{
   "home": {
     "title": "今天我能帮你做什么？",
     "subtitle": "开始对话或选择下方快捷提示。",
@@ -1433,6 +1433,10 @@
   },
   "collab": {
     "mode": {
+      "chat": "聊天",
+      "chatDesc": "只读协作，可搜索、浏览和分析",
+      "cowork": "协作",
+      "coworkDesc": "完整协作，可在权限策略内执行操作",
       "normal": "常规",
       "normalDesc": "普通聊天，可开启 Plan 模式",
       "goal": "目标",

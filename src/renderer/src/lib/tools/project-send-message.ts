@@ -23,6 +23,7 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { writeLog } from '@renderer/lib/error-logger'
+import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 
 interface SendSessionMessageParams {
   sessionId: string
@@ -49,26 +50,26 @@ export async function handleProjectSendSessionMessage(
   // 1. Ensure target session exists in the chat store
   //    (sendMessage's beginUserTurn silently fails if session is not in store)
   const chatStore = useChatStore.getState()
-  const existingSession = chatStore.sessions.find((s) => s.id === sessionId)
-  if (!existingSession) {
+  let targetSession = chatStore.sessions.find((s) => s.id === sessionId)
+  if (!targetSession) {
+    targetSession = await dbGetSession(sessionId) ?? undefined
+    if (!targetSession) {
+      return { success: false, error: `Target session "${sessionId}" does not exist.` }
+    }
     useChatStore.setState((state) => {
-      state.sessions.push({
-        id: sessionId,
-        title: 'Project Task',
-        mode: 'chat',
-        messages: [],
-        messageCount: 0,
-        messagesLoaded: false,
-        loadedRangeStart: 0,
-        loadedRangeEnd: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        projectId: projectId || undefined,
-        workingFolder: workingFolder || undefined,
-        modelSelectionMode: 'inherit'
-      })
+      if (!state.sessions.some((session) => session.id === sessionId)) {
+        state.sessions.push(targetSession!)
+        state.sessionsById[sessionId] = state.sessions.length - 1
+      }
     })
   }
+
+  const effectiveWorkingFolder = targetSession.scope === 'project'
+    ? targetSession.workingFolder || workingFolder || ''
+    : ''
+  const effectiveProjectId = targetSession.scope === 'project'
+    ? targetSession.projectId || projectId || ''
+    : ''
 
   // 2. Get provider config from store
   const providerStore = useProviderStore.getState()
@@ -105,10 +106,15 @@ export async function handleProjectSendSessionMessage(
       provider,
       messages: [{ role: 'user', content }],
       sessionId,
-      toolPreset: workingFolder && sessionMode !== 'global' ? 'coding' : 'chat',
+      toolPreset: targetSession.collaborationMode === 'cowork' && effectiveWorkingFolder ? 'coding' : 'chat',
       webSearchEnabled: settings.webSearchEnabled,
-      workingFolder: workingFolder || undefined,
-      projectId: projectId || undefined,
+      workingFolder: effectiveWorkingFolder || undefined,
+      sshConnectionId: targetSession.scope === 'project' ? targetSession.sshConnectionId ?? undefined : undefined,
+      projectId: effectiveProjectId || undefined,
+      scope: targetSession.scope,
+      collaborationMode: targetSession.collaborationMode,
+      runtimeRole: sessionMode === 'goal' ? 'goalRunner' : 'sessionAgent',
+      permissionMode: targetSession.permissionMode,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,
       maxToolCallsPerTurn: settings.maxToolCallsPerTurn,

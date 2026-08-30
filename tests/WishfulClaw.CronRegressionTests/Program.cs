@@ -114,9 +114,14 @@ internal static class Program
         foreach (var field in new[]
                  {
                      "sessionId", "agentId", "model", "workingFolder", "deliveryMode", "deliveryTarget",
-                     "pluginId", "pluginType", "pluginChatId", "deleteAfterRun", "maxIterations"
+                     "thinkingEnabled", "reasoningEffort", "pluginId", "pluginType", "pluginChatId",
+                     "deleteAfterRun", "maxIterations"
                  })
             Assert(createProperties.TryGetProperty(field, out _), $"CronCreate exposes {field}");
+        AssertEqual("boolean", createProperties.GetProperty("thinkingEnabled").GetProperty("type").GetString(),
+            "thinkingEnabled uses boolean schema");
+        AssertEqual("string", createProperties.GetProperty("reasoningEffort").GetProperty("type").GetString(),
+            "reasoningEffort uses string schema");
         AssertEqual("integer", createProperties.GetProperty("maxIterations").GetProperty("type").GetString(),
             "maxIterations uses integer schema");
         var deliveryModes = createProperties.GetProperty("deliveryMode").GetProperty("enum")
@@ -152,6 +157,13 @@ internal static class Program
             "legacy row receives delivery default");
         AssertEqual(15, migrated.GetProperty("cron").GetProperty("max_iterations").GetInt32(),
             "legacy row receives iteration default");
+        Assert(IsMissingOrNull(migrated.GetProperty("cron"), "thinking_enabled"),
+            "legacy row keeps thinking override unspecified");
+        Assert(IsMissingOrNull(migrated.GetProperty("cron"), "reasoning_effort"),
+            "legacy row keeps reasoning effort unspecified");
+        AssertEqual(1L, db.QueryScalar<long>(
+                "SELECT COUNT(*) FROM cron_tasks WHERE id = 'legacy-cron' AND thinking_enabled IS NULL AND reasoning_effort IS NULL"),
+            "legacy row stores unspecified thinking fields as database NULL");
         AssertMutationSuccess(DbCronTools.Delete(Parameters(dbPath, writer => writer.WriteString("id", "legacy-cron"))),
             "legacy row can be soft-deleted");
 
@@ -161,9 +173,38 @@ internal static class Program
         AssertEqual("plugin", createdCron.GetProperty("delivery_mode").GetString(), "create persists delivery mode");
         AssertEqual("feishu", createdCron.GetProperty("plugin_type").GetString(), "create persists plugin type");
         AssertEqual(21, createdCron.GetProperty("max_iterations").GetInt32(), "create persists max iterations");
+        Assert(createdCron.GetProperty("thinking_enabled").GetBoolean(), "create persists enabled thinking override");
+        AssertEqual("medium", createdCron.GetProperty("reasoning_effort").GetString(),
+            "create persists reasoning effort");
 
-        AssertMutationSuccess(DbCronTools.Create(CreateParameters(dbPath, DisabledJobId, enabled: false)),
-            "create supports disabled tasks");
+        var disabledCreated = ResultObject(DbCronTools.Create(CreateParameters(dbPath, DisabledJobId, enabled: false)));
+        Assert(disabledCreated.GetProperty("success").GetBoolean(), "create supports disabled tasks");
+        Assert(!disabledCreated.GetProperty("cron").GetProperty("thinking_enabled").GetBoolean(),
+            "create persists disabled thinking override");
+        Assert(IsMissingOrNull(disabledCreated.GetProperty("cron"), "reasoning_effort"),
+            "disabled thinking does not persist an enabled-state effort");
+        var clearedThinking = ResultObject(DbCronTools.Update(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("id", DisabledJobId);
+            writer.WriteStartObject("patch");
+            writer.WriteNull("agentId");
+            writer.WriteNull("model");
+            writer.WriteNull("thinkingEnabled");
+            writer.WriteNull("reasoningEffort");
+            writer.WriteEndObject();
+        })));
+        Assert(clearedThinking.GetProperty("success").GetBoolean(), "update clears task-level model configuration");
+        Assert(IsMissingOrNull(clearedThinking.GetProperty("cron"), "agent_id"),
+            "cleared provider round-trips as unspecified");
+        Assert(IsMissingOrNull(clearedThinking.GetProperty("cron"), "model"),
+            "cleared model round-trips as unspecified");
+        Assert(IsMissingOrNull(clearedThinking.GetProperty("cron"), "thinking_enabled"),
+            "cleared thinking override round-trips as unspecified");
+        Assert(IsMissingOrNull(clearedThinking.GetProperty("cron"), "reasoning_effort"),
+            "cleared reasoning effort round-trips as unspecified");
+        AssertEqual(1L, db.QueryScalar<long>(
+                $"SELECT COUNT(*) FROM cron_tasks WHERE id = '{DisabledJobId}' AND agent_id IS NULL AND model IS NULL AND thinking_enabled IS NULL AND reasoning_effort IS NULL"),
+            "cleared task model fields are stored as database NULL");
         var defaultList = ResultArray(DbCronTools.List(Parameters(dbPath)));
         AssertEqual(2, defaultList.Count, "list filters soft-deleted rows by default");
         var enabledList = ResultArray(DbCronTools.List(Parameters(dbPath, writer => writer.WriteBoolean("enabledOnly", true))));
@@ -315,6 +356,10 @@ internal static class Program
             "fire count survives process restart");
         AssertEqual("failed", archived.GetProperty("cron").GetProperty("last_run_status").GetString(),
             "last run state survives process restart");
+        Assert(archived.GetProperty("cron").GetProperty("thinking_enabled").GetBoolean(),
+            "thinking override survives process restart");
+        AssertEqual("medium", archived.GetProperty("cron").GetProperty("reasoning_effort").GetString(),
+            "reasoning effort survives process restart");
         var reopenedRuns = ResultArray(DbCronRunTools.List(Parameters(dbPath, writer =>
             writer.WriteString("cronId", PersistentJobId))));
         AssertEqual(1, reopenedRuns.Count, "cron execution history survives process restart");
@@ -323,6 +368,14 @@ internal static class Program
         var active = ResultObject(DbCronTools.Get(Parameters(dbPath, writer => writer.WriteString("id", DisabledJobId))));
         Assert(active.GetProperty("success").GetBoolean(), "non-deleted task survives process restart");
         Assert(!active.GetProperty("cron").GetProperty("enabled").GetBoolean(), "disabled state survives process restart");
+        Assert(IsMissingOrNull(active.GetProperty("cron"), "thinking_enabled"),
+            "unspecified thinking override survives process restart");
+        Assert(IsMissingOrNull(active.GetProperty("cron"), "reasoning_effort"),
+            "unspecified reasoning effort survives process restart");
+        var db = DbClient.GetClient();
+        AssertEqual(1L, db.QueryScalar<long>(
+                $"SELECT COUNT(*) FROM cron_tasks WHERE id = '{DisabledJobId}' AND thinking_enabled IS NULL AND reasoning_effort IS NULL"),
+            "unspecified thinking fields remain database NULL after restart");
     }
 
     private static void RunNewDatabaseSuite(string dbPath)
@@ -412,6 +465,9 @@ internal static class Program
             writer.WriteString("pluginChatId", "chat-target");
             writer.WriteBoolean("deleteAfterRun", false);
             writer.WriteNumber("maxIterations", 21);
+            writer.WriteBoolean("thinkingEnabled", id == PersistentJobId);
+            if (id == PersistentJobId)
+                writer.WriteString("reasoningEffort", "medium");
             writer.WriteBoolean("enabled", enabled);
         });
 
@@ -447,10 +503,14 @@ internal static class Program
             Assert(required.Contains(field), $"schema requires {field}");
     }
 
+    private static bool IsMissingOrNull(JsonElement element, string propertyName)
+        => !element.TryGetProperty(propertyName, out var value) || value.ValueKind == JsonValueKind.Null;
+
     private static string[] ExpectedCronColumns() =>
     [
-        "id", "name", "session_id", "schedule_json", "prompt", "agent_id", "model", "working_folder",
-        "delivery_mode", "delivery_target", "plugin_id", "plugin_type", "plugin_chat_id", "delete_after_run",
+        "id", "name", "session_id", "scope", "project_id", "schedule_json", "prompt", "agent_id", "model",
+        "thinking_enabled", "reasoning_effort", "working_folder", "delivery_mode", "output_mode", "reuse_session_id",
+        "run_mode", "delivery_target", "plugin_id", "plugin_type", "plugin_chat_id", "delete_after_run",
         "max_iterations", "enabled", "deleted_at", "last_fired_at", "last_run_at", "last_run_status",
         "last_run_summary", "last_error", "fire_count", "created_at", "updated_at"
     ];

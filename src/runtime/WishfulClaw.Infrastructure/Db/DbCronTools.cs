@@ -78,11 +78,11 @@ public static class DbCronTools
             var entity = ParseCreate(parameters);
             db.Execute(
                 "INSERT INTO cron_tasks " +
-                "(id, name, session_id, scope, project_id, schedule_json, prompt, agent_id, model, working_folder, " +
+                "(id, name, session_id, scope, project_id, schedule_json, prompt, agent_id, model, thinking_enabled, reasoning_effort, working_folder, " +
                 "delivery_mode, output_mode, reuse_session_id, run_mode, delivery_target, plugin_id, plugin_type, plugin_chat_id, delete_after_run, " +
                 "max_iterations, enabled, deleted_at, last_fired_at, last_run_at, last_run_status, " +
                 "last_run_summary, last_error, fire_count, created_at, updated_at) " +
-                "VALUES (@id, @name, @sid, @scope, @projectId, @schedule, @prompt, @agent, @model, @folder, @deliveryMode, " +
+                "VALUES (@id, @name, @sid, @scope, @projectId, @schedule, @prompt, @agent, @model, @thinkingEnabled, @reasoningEffort, @folder, @deliveryMode, " +
                 "@outputMode, @reuseSessionId, @runMode, @deliveryTarget, @pluginId, @pluginType, @pluginChatId, @deleteAfterRun, @maxIterations, " +
                 "@enabled, NULL, NULL, NULL, NULL, NULL, NULL, 0, @createdAt, @updatedAt)",
                 Parameters(entity).ToArray());
@@ -120,7 +120,8 @@ public static class DbCronTools
             entity.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var changed = db.Execute(
                 "UPDATE cron_tasks SET name = @name, session_id = @sid, scope = @scope, project_id = @projectId, " +
-                "schedule_json = @schedule, prompt = @prompt, agent_id = @agent, model = @model, working_folder = @folder, " +
+                "schedule_json = @schedule, prompt = @prompt, agent_id = @agent, model = @model, " +
+                "thinking_enabled = @thinkingEnabled, reasoning_effort = @reasoningEffort, working_folder = @folder, " +
                 "delivery_mode = @deliveryMode, output_mode = @outputMode, reuse_session_id = @reuseSessionId, run_mode = @runMode, " +
                 "delivery_target = @deliveryTarget, plugin_id = @pluginId, plugin_type = @pluginType, " +
                 "plugin_chat_id = @pluginChatId, delete_after_run = @deleteAfterRun, max_iterations = @maxIterations, " +
@@ -281,6 +282,8 @@ public static class DbCronTools
             Prompt = prompt,
             AgentId = GetNullableString(parameters, "agentId"),
             Model = GetNullableString(parameters, "model"),
+            ThinkingEnabled = GetNullableBool(parameters, "thinkingEnabled"),
+            ReasoningEffort = GetNullableString(parameters, "reasoningEffort"),
             WorkingFolder = GetNullableString(parameters, "workingFolder"),
             DeliveryMode = GetNullableString(parameters, "deliveryMode") ?? "desktop",
             OutputMode = GetNullableString(parameters, "outputMode") ?? "new_session",
@@ -308,6 +311,8 @@ public static class DbCronTools
         if (patch.TryGetProperty("prompt", out var prompt)) entity.Prompt = RequireValueString(prompt, "prompt");
         if (patch.TryGetProperty("agentId", out var agentId)) entity.AgentId = NullableValueString(agentId);
         if (patch.TryGetProperty("model", out var model)) entity.Model = NullableValueString(model);
+        if (patch.TryGetProperty("thinkingEnabled", out var thinkingEnabled)) entity.ThinkingEnabled = NullableValueBool(thinkingEnabled, "thinkingEnabled");
+        if (patch.TryGetProperty("reasoningEffort", out var reasoningEffort)) entity.ReasoningEffort = NullableValueString(reasoningEffort);
         if (patch.TryGetProperty("workingFolder", out var folder)) entity.WorkingFolder = NullableValueString(folder);
         if (patch.TryGetProperty("deliveryMode", out var mode)) entity.DeliveryMode = RequireValueString(mode, "deliveryMode");
         if (patch.TryGetProperty("outputMode", out var outputMode)) entity.OutputMode = RequireValueString(outputMode, "outputMode");
@@ -335,6 +340,10 @@ public static class DbCronTools
             new SqliteParameter("@prompt", entity.Prompt),
             new SqliteParameter("@agent", (object?)entity.AgentId ?? DBNull.Value),
             new SqliteParameter("@model", (object?)entity.Model ?? DBNull.Value),
+            new SqliteParameter("@thinkingEnabled", entity.ThinkingEnabled is bool thinkingEnabled
+                ? (object)(thinkingEnabled ? 1 : 0)
+                : DBNull.Value),
+            new SqliteParameter("@reasoningEffort", (object?)entity.ReasoningEffort ?? DBNull.Value),
             new SqliteParameter("@folder", (object?)entity.WorkingFolder ?? DBNull.Value),
             new SqliteParameter("@deliveryMode", entity.DeliveryMode),
             new SqliteParameter("@outputMode", entity.OutputMode),
@@ -376,6 +385,12 @@ public static class DbCronTools
 
     private static bool GetBool(JsonElement parameters, string name, bool fallback)
         => parameters.TryGetProperty(name, out var value) ? RequireBool(value, name) : fallback;
+
+    private static bool? GetNullableBool(JsonElement parameters, string name)
+        => parameters.TryGetProperty(name, out var value) ? NullableValueBool(value, name) : null;
+
+    private static bool? NullableValueBool(JsonElement value, string name)
+        => value.ValueKind == JsonValueKind.Null ? null : RequireBool(value, name);
 
     private static bool RequireBool(JsonElement value, string name)
         => value.ValueKind is JsonValueKind.True or JsonValueKind.False

@@ -219,7 +219,12 @@ export interface SidecarAgentRunRequest {
   subAgentProvider?: SidecarProviderConfig
   runId?: string
   sessionId?: string
+  projectId?: string
   workingFolder?: string
+  scope?: 'global' | 'project'
+  collaborationMode?: 'chat' | 'cowork'
+  runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation' | 'pet' | 'translation' | 'providerTurn'
+  toolPreset?: string
   maxIterations: number
   forceApproval: boolean
   permissionMode: 'default' | 'whitelist' | 'fullAccess'

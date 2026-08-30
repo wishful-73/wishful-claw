@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Net.Http;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
@@ -246,14 +246,22 @@ internal static partial class OpenAIChatProvider
             return;
         }
 
-        var thinkingEnabled = JsonHelpers.GetBool(provider, "thinkingEnabled", false);
+        if (!provider.TryGetProperty("thinkingEnabled", out var thinkingEnabledValue) ||
+            thinkingEnabledValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            return;
+        }
+
+        var thinkingEnabled = thinkingEnabledValue.GetBoolean();
 
         // When thinking is enabled, merge bodyParams from thinkingConfig into the request body.
         // This writes provider-specific fields like { "thinking": { "type": "enabled" } } or
         // { "enable_thinking": true } depending on the model's configuration.
         var isOpenRouter = IsOpenRouterProvider(provider);
-        var reasoningEffort = JsonHelpers.GetString(provider, "reasoningEffort") ??
-                              JsonHelpers.GetString(thinkingConfig, "defaultReasoningEffort");
+        var reasoningEffort = thinkingEnabled
+            ? JsonHelpers.GetString(provider, "reasoningEffort") ??
+              JsonHelpers.GetString(thinkingConfig, "defaultReasoningEffort")
+            : null;
         var effectiveEffort = !string.IsNullOrEmpty(reasoningEffort)
             ? JsonHelpers.ResolveEffectiveReasoningEffort(reasoningEffort, thinkingConfig)
             : null;

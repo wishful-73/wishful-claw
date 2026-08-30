@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Plugin CRUD + session management + streaming IPC handlers.
  *
  * Extracted from channel-handlers.ts.
@@ -206,7 +206,10 @@ export function registerPluginHandlers(channelManager: ChannelManager): void {
         force: args.force
       })
       return {
-        qrDataUrl: await normalizeQrDisplayUrl(result.qrcodeUrl),
+        qrDataUrl: await normalizeQrDisplayUrl(
+          result.qrcodeUrl,
+          args.baseUrl || DEFAULT_WEIXIN_BASE_URL
+        ),
         qrUrl: result.qrcodeUrl,
         message: result.message,
         sessionKey: result.sessionKey

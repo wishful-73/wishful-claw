@@ -7,7 +7,6 @@ import { updateWebSearchToolRegistration } from '@renderer/lib/tools'
 import { useDebouncedTokens } from '@renderer/hooks/use-estimated-tokens'
 import { usePromptRecommendation } from '@renderer/hooks/use-prompt-recommendation'
 import { useChatStore } from '@renderer/stores/chat-store'
-import { useUIStore } from '@renderer/stores/ui-store'
 import { type CollabMode } from '../CollabModeSwitcher'
 import { useTranslation } from 'react-i18next'
 import { type ImageAttachment } from '@renderer/lib/image-attachments'
@@ -67,30 +66,33 @@ export function InputArea({
   const sel = useInputAreaSelectors({ sessionId: sessionId ?? undefined, workingFolder: workingFolder as any, modelRoute })
   const {
     chatView, isHomeComposer,
-    language: currentLanguage, autoApprove,
+    language: currentLanguage,
     clarifyAutoAcceptRecommended, animationsEnabled,
     webSearchEnabled, canToggleWebSearch,
     supportsVision, composerModelCfg,
     mode, openSettings, openFilePreview,
     activeProjectId, activeSessionId, hasMessages, clearSessionMessages,
-    draftSessionId, projectScoped,
+    draftSessionId, targetSession, projectScoped,
     planMode, hasActiveGoal, pendingReviewPlanId, hasApiKey
   } = sel
+  const defaultProjectCollabMode = useSettingsStore((s) => s.projectSessionDefaultCollaborationMode)
+  const defaultCoworkPermissionMode = useSettingsStore((s) => s.coworkDefaultPermissionMode)
   const [pendingCollabMode, setPendingCollabMode] = React.useState<CollabMode | null>(null)
+  const [pendingPermissionMode, setPendingPermissionMode] = React.useState<'default' | 'fullAccess' | null>(null)
   // Session-scoped agent Todo shown above the composer (display-only).
   const composerTasks = useTaskStore((s) => s.tasks)
-  const collabMode = useUIStore((s) =>
-    draftSessionId ? (s.collabModesBySession[draftSessionId] ?? 'normal') : 'normal'
-  )
-  const isGoalMode = collabMode === 'goal' || pendingCollabMode === 'goal'
-  const effectiveCollabMode: CollabMode = draftSessionId ? collabMode : (pendingCollabMode ?? 'normal')
+  const effectiveCollabMode: CollabMode = targetSession?.collaborationMode ??
+    (projectScoped ? pendingCollabMode ?? defaultProjectCollabMode : 'chat')
+  const effectivePermissionMode = effectiveCollabMode === 'cowork'
+    ? targetSession?.permissionMode ?? pendingPermissionMode ?? defaultCoworkPermissionMode
+    : 'default'
 
   const needsWorkingFolder = projectScoped && !workingFolder && Boolean(onSelectFolder)
 
   const [selectedSkill, setSelectedSkill] = React.useState<string | null>(null)
   const [autoAcceptCountdown, setAutoAcceptCountdown] = React.useState<number | null>(null)
   const [, setPendingPlanMode] = React.useState(false)
-  const [, setPendingGoalMode] = React.useState(false)
+  const [pendingGoalMode, setPendingGoalMode] = React.useState(false)
   const removePersistedDraftRef = React.useRef<(() => void) | null>(null)
   const flyoutPointerRef = React.useRef<{ x: number; y: number } | null>(null)
   const slashListRef = React.useRef<HTMLDivElement | null>(null)
@@ -202,6 +204,8 @@ export function InputArea({
     if (userEditedDraftKeyRef.current !== activeDraftKey) {
       userEditedDraftKeyRef.current = null
     }
+    setPendingCollabMode(null)
+    setPendingPermissionMode(null)
   }, [activeDraftKey])
 
   const {
@@ -221,8 +225,8 @@ export function InputArea({
     setSelectedSkill, setSelectedFiles, setDocumentNodes, slashListRef
   })
 
-  const hasPendingGoalMode = isGoalMode && !hasActiveGoal && !useGoalStore.getState().goalProgressBySession[draftSessionId ?? '']
-  const goalModeEnabled = isGoalMode
+  const hasPendingGoalMode = pendingGoalMode && !hasActiveGoal && !useGoalStore.getState().goalProgressBySession[draftSessionId ?? '']
+  const goalModeEnabled = hasActiveGoal || pendingGoalMode
   const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-full max-w-[820px]'
 
   ;(useInputAreaEffects as any)({
@@ -232,7 +236,7 @@ export function InputArea({
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
     userEditedDraftKeyRef,
     attachedImages, selectedSkill, savePersistedDraft,
-    setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown,
+    setPendingPlanMode, setPendingGoalMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
     editorRef, rootRef, draftSaveTimerRef, draftReadyKeyRef, isStreaming, disabled, replaceSelectionWithText,
   })
@@ -275,27 +279,27 @@ export function InputArea({
     const sendOptions: SendMessageOptions = { clearCompletedTasksOnTurnStart: true, enablePlanMode: planMode || undefined }
     const selectedFileReferences = liveEditorState.selectedFiles.map(selectedFileItemToReference)
     if (selectedFileReferences.length > 0) sendOptions.selectedFileReferences = selectedFileReferences
-    sendOptions.sessionMode = isGoalMode ? 'goal' : (!activeProjectId ? 'global' : 'normal')
+    sendOptions.sessionMode = goalModeEnabled ? 'goal' : (!projectScoped ? 'global' : 'normal')
+    sendOptions.collaborationMode = effectiveCollabMode
+    sendOptions.permissionMode = effectivePermissionMode
     onSend?.(message, attachedImages.length > 0 ? attachedImages : undefined, sendOptions)
     resetComposer()
   }, [getLiveEditorState, attachedImages, disabled, needsWorkingFolder, pendingImageReads,
-      isGoalMode, cancelPromptRecommendation, selectedSkill, onSend, planMode, resetComposer, t])
+      goalModeEnabled, projectScoped, effectiveCollabMode, effectivePermissionMode,
+      cancelPromptRecommendation, selectedSkill, onSend, planMode, resetComposer, t])
 
   const { handlePlanModeChange, handleGoalModeChange } = useModeControls({
     projectScoped, draftSessionId, disabled, isStreaming, isOptimizingLocked, pendingImageReads, hasActiveGoal, focusInputAtEnd, setPendingPlanMode, setPendingGoalMode, t
   })
 
   const handleCollabModeChange = React.useCallback((nextMode: CollabMode): void => {
-    if (disabled || isStreaming || isOptimizingLocked || pendingImageReads > 0) return
-    if (nextMode === 'normal') {
-      if (draftSessionId) useUIStore.getState().setCollabMode(draftSessionId, 'normal')
-      setPendingCollabMode(null)
-    } else {
-      if (draftSessionId) useUIStore.getState().setCollabMode(draftSessionId, 'goal')
-      else setPendingCollabMode('goal')
-      requestAnimationFrame(() => focusInputAtEnd())
+    if (disabled || isStreaming || isOptimizingLocked || pendingImageReads > 0 || !projectScoped) return
+    if (!draftSessionId) {
+      setPendingCollabMode(nextMode)
+      if (nextMode === 'chat') setPendingPermissionMode('default')
     }
-  }, [disabled, isStreaming, isOptimizingLocked, pendingImageReads, draftSessionId, hasActiveGoal, focusInputAtEnd])
+    requestAnimationFrame(() => focusInputAtEnd())
+  }, [disabled, isStreaming, isOptimizingLocked, pendingImageReads, projectScoped, draftSessionId, focusInputAtEnd])
 
   const handleKeyDown = useComposerKeydown({
     isOptimizingLocked, fileMenuOpen, slashMenuOpen, fileSearchResults, selectedFileSearchIndex,
@@ -317,7 +321,12 @@ export function InputArea({
 
   const { dragging, handleDragOver, handleDragLeave, handleDropWrapped } = useDragDrop({ addFilesToEditor })
   const { contextCompressionStatus, isContextCompressing, handleCompressContext, contextCompressionStatusLabel } = useContextCompression({ onCompressContext, t })
-  const { permissionMode, handleSelectPermissionMode } = usePermissionMode({ autoApprove, t })
+  const { permissionMode, handleSelectPermissionMode } = usePermissionMode({
+    sessionId: draftSessionId,
+    permissionMode: effectivePermissionMode,
+    onPendingModeChange: setPendingPermissionMode,
+    t
+  })
 
   // Subscribe to external composer inject requests (e.g. from PreviewPanel)
   React.useEffect(() => {
@@ -369,8 +378,10 @@ export function InputArea({
         <GoalSessionBar sessionId={draftSessionId} className={cn('mb-2', fullWidth && 'max-w-none')} />
       )}
 
-      {/* Session-scoped agent Todo — display-only, users cannot manage it */}
-      {draftSessionId && composerTasks.length > 0 && (
+      {/* Session-scoped agent Todo — display-only, users cannot manage it.
+          Mirrors OpenCowork: only project sessions render the inline Todo list;
+          ordinary (non-project) sessions filter it out. */}
+      {projectScoped && draftSessionId && composerTasks.length > 0 && (
         <TodoStatusList tasks={composerTasks} className={cn('mb-2', composerWidthClass)} />
       )}
 
@@ -505,6 +516,7 @@ export function InputArea({
             handleOptimizePrompt={handleOptimizePrompt}
             hasText={Boolean(text.trim())}
             permissionMode={permissionMode}
+            showPermissionControl={projectScoped && effectiveCollabMode === 'cowork'}
             onSelectPermissionMode={handleSelectPermissionMode}
             onOpenSettings={(tab) => openSettings(tab as never)}
             onStop={onStop}

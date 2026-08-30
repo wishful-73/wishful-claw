@@ -529,6 +529,15 @@ export function ProjectItem({ project, sessions, isExpanded, onToggleExpand }: P
               })}
             </button>
           )}
+          {showAllSessions && sortedSessions.length > SESSION_COLLAPSE_COUNT && (
+            <button
+              type="button"
+              onClick={() => setShowAllSessions(false)}
+              className="mt-0.5 rounded px-2 py-1 text-left text-[10px] text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+            >
+              {t('sidebar.collapseSessions', { defaultValue: 'Collapse sessions' })}
+            </button>
+          )}
         </div>
       )}
       {isExpanded && sortedSessions.length === 0 && (

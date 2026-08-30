@@ -1,4 +1,4 @@
-﻿{
+{
   "splash": {
     "enterMain": "Enter Main",
     "enterSettings": "AI Provider Settings",
@@ -259,6 +259,7 @@
     "deleteProjectConfirmTitle": "Delete this project?",
     "deleteProjectConfirmDesc": "Project \"{{name}}\" and its sessions will be removed from the app. Files on disk are NOT deleted.",
     "loadMoreSessions": "Load more ({{count}} hidden)",
+    "collapseSessions": "Collapse sessions",
     "openFailed": "Failed to open folder"
   },
   "sectionExecution": {
@@ -412,6 +413,20 @@
       "agentIdPlaceholder": "Leave empty to use CronAgent",
       "model": "Model",
       "defaultModel": "Follow global default model",
+      "thinkingMode": "Thinking mode",
+      "thinkingDefault": "Follow model default",
+      "thinkingEnabled": "Enabled (model default effort)",
+      "thinkingDisabled": "Disabled",
+      "thinkingHint": "Following the model default sends no thinking parameters. Choose enabled, disabled, or an effort level only to override the model default.",
+      "reasoningEffort": {
+        "minimal": "Enabled · Minimal reasoning",
+        "low": "Enabled · Fast reasoning",
+        "medium": "Enabled · Balanced",
+        "high": "Enabled · Deep reasoning",
+        "xhigh": "Enabled · Maximum depth",
+        "max": "Enabled · Maximum effort",
+        "ultra": "Enabled · Ultra effort"
+      },
       "workingFolder": "Working folder",
       "workingFolderPlaceholder": "Leave empty to use current project folder",
       "deleteAfterRun": "Archive after first run",

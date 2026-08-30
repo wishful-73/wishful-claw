@@ -1,4 +1,6 @@
 ﻿import type { Session, Project, ChatMessage } from './types'
+import { normalizeSessionContext } from '@renderer/lib/session-context'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { isCompressionOperationKnown } from './compression-status-registry'
 
 /**
@@ -30,6 +32,9 @@ interface SessionRow {
   title: string
   icon: string | null
   mode: string
+  scope: string | null
+  collaborationMode: string | null
+  permissionMode: string | null
   createdAt: number
   updatedAt: number
   messageCount: number
@@ -142,12 +147,50 @@ function deserializeMessage(row: MessageRow): ChatMessage {
 /**
  * Convert DB SessionRow to frontend Session type.
  */
+function sessionContextNeedsMigration(row: SessionRow, session: Session): boolean {
+  return row.scope !== session.scope ||
+    row.collaborationMode !== session.collaborationMode ||
+    row.permissionMode !== session.permissionMode ||
+    (session.scope === 'global' && row.projectId !== null)
+}
+
+function persistNormalizedSessionContext(row: SessionRow, session: Session): void {
+  if (!sessionContextNeedsMigration(row, session)) return
+  void dbUpdateSession(session.id, {
+    scope: session.scope,
+    collaborationMode: session.collaborationMode,
+    permissionMode: session.permissionMode,
+    updatedAt: row.updatedAt,
+    projectId: session.projectId ?? null
+  }).catch((err) => {
+    console.warn('[DB] Failed to persist normalized session context:', err)
+  })
+}
+
 function rowToSession(row: SessionRow): Session {
-  return {
+  const settings = useSettingsStore.getState()
+  const context = normalizeSessionContext(
+    {
+      scope: row.scope as Session['scope'] | null,
+      collaborationMode: row.collaborationMode as Session['collaborationMode'] | null,
+      permissionMode: row.permissionMode as Session['permissionMode'] | null,
+      projectId: row.projectId
+    },
+    {
+      projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+      coworkPermissionMode:
+        row.permissionMode == null
+          ? settings.autoApprove ? 'fullAccess' : 'default'
+          : settings.coworkDefaultPermissionMode
+    }
+  )
+
+  const session: Session = {
     id: row.id,
     title: row.title,
     icon: row.icon ?? undefined,
     mode: row.mode as Session['mode'],
+    ...context,
     messages: [],
     messageCount: row.messageCount,
     messagesLoaded: false,
@@ -156,9 +199,8 @@ function rowToSession(row: SessionRow): Session {
     lastKnownMessageCount: row.messageCount,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    projectId: row.projectId ?? undefined,
-    workingFolder: row.workingFolder ?? undefined,
-    sshConnectionId: row.sshConnectionId ?? undefined,
+    workingFolder: context.scope === 'project' ? row.workingFolder ?? undefined : undefined,
+    sshConnectionId: context.scope === 'project' ? row.sshConnectionId ?? undefined : undefined,
     planId: row.planId ?? undefined,
     pinned: row.pinned,
     pluginId: row.pluginId ?? undefined,
@@ -169,6 +211,8 @@ function rowToSession(row: SessionRow): Session {
     modelSelectionMode: (row.modelSelectionMode ?? 'inherit') as Session['modelSelectionMode'],
     personaId: row.personaId ?? undefined
   }
+  persistNormalizedSessionContext(row, session)
+  return session
 }
 
 /**
@@ -222,6 +266,9 @@ export async function dbCreateSession(session: Session): Promise<void> {
     title: session.title,
     icon: session.icon ?? null,
     mode: session.mode,
+    scope: session.scope,
+    collaborationMode: session.collaborationMode,
+    permissionMode: session.permissionMode,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     projectId: session.projectId ?? null,
@@ -251,14 +298,23 @@ export async function dbDeleteSession(sessionId: string): Promise<void> {
   await window.api.workerRequest('db/sessions-delete', { id: sessionId })
 }
 
+type SessionDbPatch = Omit<Partial<Session>, 'projectId' | 'workingFolder' | 'sshConnectionId'> & {
+  projectId?: string | null
+  workingFolder?: string | null
+  sshConnectionId?: string | null
+}
+
 export async function dbUpdateSession(
   sessionId: string,
-  patch: Partial<Session>
+  patch: SessionDbPatch
 ): Promise<void> {
   const dbPatch: Record<string, unknown> = {}
   if (patch.title !== undefined) dbPatch.title = patch.title
   if (patch.icon !== undefined) dbPatch.icon = patch.icon
   if (patch.mode !== undefined) dbPatch.mode = patch.mode
+  if (patch.scope !== undefined) dbPatch.scope = patch.scope
+  if (patch.collaborationMode !== undefined) dbPatch.collaborationMode = patch.collaborationMode
+  if (patch.permissionMode !== undefined) dbPatch.permissionMode = patch.permissionMode
   if (patch.updatedAt !== undefined) dbPatch.updatedAt = patch.updatedAt
   if (patch.projectId !== undefined) dbPatch.projectId = patch.projectId
   if (patch.workingFolder !== undefined) dbPatch.workingFolder = patch.workingFolder

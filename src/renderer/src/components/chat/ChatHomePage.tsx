@@ -195,9 +195,14 @@ export function ChatHomePage(): React.JSX.Element {
         const sessionId =
           mode === 'chat' && !projectIdForSession
             ? chatStore.createSession(mode, null, {
+                scope: 'global',
                 preserveProjectless: true
               })
-            : chatStore.createSession(mode, projectIdForSession ?? activeProject?.id ?? undefined)
+            : chatStore.createSession(mode, projectIdForSession ?? activeProject?.id ?? undefined, {
+                scope: 'project',
+                collaborationMode: options?.collaborationMode,
+                permissionMode: options?.permissionMode
+              })
         useUIStore.getState().navigateToSession(sessionId)
         void sendMessage({ text, images, sessionId, opts: { ...options, clearCompletedTasksOnTurnStart: true } })
       })()

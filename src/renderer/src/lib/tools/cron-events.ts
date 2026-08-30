@@ -5,6 +5,8 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
+import type { ReasoningEffortLevel } from '@shared/types/provider'
+
 type CronFiredEvent = {
   jobId: string
   fireId: string
@@ -18,6 +20,8 @@ type CronFiredEvent = {
   prompt?: string
   agentId?: string | null
   model?: string | null
+  thinkingEnabled?: boolean | null
+  reasoningEffort?: ReasoningEffortLevel | null
   workingFolder?: string | null
   sshConnectionId?: string | null
   firedAt?: number

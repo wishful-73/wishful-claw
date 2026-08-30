@@ -55,7 +55,8 @@ async function wakeSession(sessionId: string): Promise<void> {
   const chatStore = useChatStore.getState()
 
   // Session gone (deleted while we waited) — drop the wake.
-  if (!chatStore.sessions.some((s) => s.id === sessionId)) return
+  const session = chatStore.sessions.find((candidate) => candidate.id === sessionId)
+  if (!session) return
 
   // Main run active — reports ride the normal queue; nothing to do.
   if (chatStore.streamingMessages[sessionId]) return
@@ -78,7 +79,14 @@ async function wakeSession(sessionId: string): Promise<void> {
     provider: buildProviderPayload(activeProvider, modelId, settings) as unknown as Record<string, unknown>,
     messages: [{ role: 'user', content }],
     sessionId,
-    toolPreset: 'chat',
+    toolPreset: session.collaborationMode === 'cowork' && session.workingFolder ? 'coding' : 'chat',
+    workingFolder: session.scope === 'project' ? session.workingFolder : undefined,
+    sshConnectionId: session.scope === 'project' ? session.sshConnectionId : undefined,
+    projectId: session.scope === 'project' ? session.projectId : undefined,
+    scope: session.scope,
+    collaborationMode: session.collaborationMode,
+    runtimeRole: 'sessionAgent',
+    permissionMode: session.permissionMode,
     maxIterations: 0,
     maxParallelTools: settings.maxParallelToolCalls,
     maxToolCallsPerTurn: settings.maxToolCallsPerTurn,

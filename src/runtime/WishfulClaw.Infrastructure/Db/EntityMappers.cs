@@ -26,6 +26,9 @@ public static class EntityMappers
         Title = r.GetString("title"),
         Icon = r.GetNullableString("icon"),
         Mode = r.GetString("mode"),
+        Scope = r.GetNullableString("scope"),
+        CollaborationMode = r.GetNullableString("collaboration_mode"),
+        PermissionMode = r.GetNullableString("permission_mode"),
         CreatedAt = r.GetInt64("created_at"),
         UpdatedAt = r.GetInt64("updated_at"),
         MessageCount = r.GetInt32("message_count"),
@@ -322,6 +325,10 @@ public static class EntityMappers
         Prompt = r.GetString("prompt"),
         AgentId = r.GetNullableString("agent_id"),
         Model = r.GetNullableString("model"),
+        ThinkingEnabled = r.GetNullableInt32("thinking_enabled") is int thinkingEnabled
+            ? thinkingEnabled != 0
+            : null,
+        ReasoningEffort = r.GetNullableString("reasoning_effort"),
         WorkingFolder = r.GetNullableString("working_folder"),
         DeliveryMode = r.GetString("delivery_mode"),
         OutputMode = r.GetString("output_mode"),

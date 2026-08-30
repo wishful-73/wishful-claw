@@ -17,6 +17,8 @@ public sealed class CronEntity
     public string Prompt { get; set; } = string.Empty;
     public string? AgentId { get; set; }
     public string? Model { get; set; }
+    public bool? ThinkingEnabled { get; set; }
+    public string? ReasoningEffort { get; set; }
     public string? WorkingFolder { get; set; }
     public string DeliveryMode { get; set; } = "desktop";
     public string OutputMode { get; set; } = "new_session";
@@ -68,6 +70,12 @@ public sealed class CronRow
 
     [JsonPropertyName("model")]
     public string? Model { get; set; }
+
+    [JsonPropertyName("thinking_enabled")]
+    public bool? ThinkingEnabled { get; set; }
+
+    [JsonPropertyName("reasoning_effort")]
+    public string? ReasoningEffort { get; set; }
 
     [JsonPropertyName("working_folder")]
     public string? WorkingFolder { get; set; }
@@ -143,6 +151,8 @@ public sealed class CronRow
         Prompt = entity.Prompt,
         AgentId = entity.AgentId,
         Model = entity.Model,
+        ThinkingEnabled = entity.ThinkingEnabled,
+        ReasoningEffort = entity.ReasoningEffort,
         WorkingFolder = entity.WorkingFolder,
         DeliveryMode = entity.DeliveryMode,
         OutputMode = entity.OutputMode,

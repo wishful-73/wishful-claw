@@ -57,6 +57,21 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
 
   const isWeixin = channel.type === 'weixin-official'
   const isFeishu = channel.type === 'feishu-bot'
+  const hasStoredBinding = isWeixin
+    ? Boolean(channel.config.token)
+    : Boolean(channel.config.appId && channel.config.appSecret)
+  const showBoundSummary =
+    loginStatus === 'connected' ||
+    (hasStoredBinding && loginStatus !== 'loading' && loginStatus !== 'waiting' && loginStatus !== 'error')
+  const boundChannelLabel = isWeixin
+    ? t('channel.qr.weixinChannel', { defaultValue: '微信' })
+    : t('channel.qr.feishuChannel', { defaultValue: '飞书' })
+  const boundAccount = isWeixin
+    ? channel.config.accountId || channel.config.userId || t('channel.qr.localCredential', { defaultValue: '本地微信凭证' })
+    : channel.config.appId || t('channel.qr.credentialReady', { defaultValue: '已配置' })
+  const boundScope = channel.projectId
+    ? t('channel.qr.projectScope', { defaultValue: '当前项目' })
+    : t('channel.qr.globalScope', { defaultValue: '全局' })
 
   const cleanup = useCallback(() => {
     pollRef.current?.abort()
@@ -91,8 +106,11 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
         setLoginStatus('waiting')
         setStatusMessage(t('channel.qr.waiting', { defaultValue: '请使用微信扫描二维码' }))
 
-        pollRef.current = new AbortController()
+        const controller = new AbortController()
+        pollRef.current = controller
         const poll = async (): Promise<void> => {
+          if (controller.signal.aborted) return
+
           try {
             const waitResult = (await ipcClient.invoke(IPC.PLUGIN_WEIXIN_LOGIN_WAIT, {
               pluginId: channel.id,
@@ -101,6 +119,8 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
               sessionKey: result.sessionKey || '',
               timeoutMs: 30000
             })) as { connected?: boolean; message?: string; botToken?: string; userId?: string; baseUrl?: string }
+
+            if (controller.signal.aborted) return
 
             if (waitResult.connected) {
               setLoginStatus('connected')
@@ -121,11 +141,11 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
               return
             }
 
-            if (pollRef.current?.signal.aborted) return
+            if (controller.signal.aborted) return
             setStatusMessage(waitResult.message || t('channel.qr.waiting', { defaultValue: '等待扫描...' }))
             void poll()
           } catch {
-            if (!pollRef.current?.signal.aborted) {
+            if (!controller.signal.aborted) {
               setLoginStatus('error')
               setStatusMessage(t('channel.qr.expired', { defaultValue: '二维码已过期，请刷新' }))
             }
@@ -234,13 +254,21 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
     }
   }, [channel, t, updateChannel, cleanup])
 
+  useEffect(() => {
+    cleanup()
+    setQrDataUrl(null)
+    setLoginStatus('idle')
+    setStatusMessage('')
+    setTimeLeft(0)
+    feishuInstallIdRef.current = null
+  }, [channel.id, cleanup])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       cleanup()
     }
   }, [cleanup])
-
 
   if (!isWeixin && !isFeishu) {
     return (
@@ -263,17 +291,73 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
       </h3>
 
       {/* QR Code display */}
-      <div className="flex flex-col items-center gap-3">
-        <div className="relative flex size-[240px] items-center justify-center rounded-lg border-2 border-dashed border-border bg-white p-2">
-          {loginStatus === 'connected' ? (
-            <div className="flex flex-col items-center gap-2 text-green-600">
-              <CheckCircle2 className="size-12" />
-              <span className="text-xs font-medium">
-                {t('channel.qr.connected', { defaultValue: '绑定成功!' })}
-              </span>
+      <div className="flex w-full flex-col items-center gap-3">
+        <div
+          className={cn(
+            'relative flex items-center justify-center rounded-lg',
+            showBoundSummary
+              ? 'w-full max-w-md border border-emerald-500/30 bg-emerald-500/5 p-5'
+              : 'size-[240px] border-2 border-dashed border-border bg-white p-2'
+          )}
+        >
+          {showBoundSummary ? (
+            <div className="w-full space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600">
+                  <CheckCircle2 className="size-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    {t('channel.qr.boundTitle', { defaultValue: '已绑定' })}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t('channel.qr.boundDescription', {
+                      defaultValue: '连接凭证已保存，可直接启动渠道或重新绑定。'
+                    })}
+                  </p>
+                </div>
+                <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                  {t('channel.qr.connectedStatus', { defaultValue: '连接已配置' })}
+                </span>
+              </div>
+
+              <div className="grid gap-3 rounded-lg border border-border/60 bg-background/80 p-3 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {t('channel.qr.channelLabel', { defaultValue: '渠道' })}
+                  </span>
+                  <p className="mt-1 text-xs font-medium text-foreground">{boundChannelLabel}</p>
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {t('channel.qr.accountLabel', { defaultValue: '账号标识' })}
+                  </span>
+                  <p className="mt-1 truncate text-xs font-medium text-foreground" title={boundAccount}>
+                    {boundAccount}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {t('channel.qr.scopeLabel', { defaultValue: '作用域' })}
+                  </span>
+                  <p className="mt-1 text-xs font-medium text-foreground">{boundScope}</p>
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {t('channel.qr.credentialLabel', { defaultValue: '凭证' })}
+                  </span>
+                  <p className="mt-1 text-xs font-medium text-foreground">
+                    {t('channel.qr.credentialSaved', { defaultValue: '已安全保存' })}
+                  </p>
+                </div>
+              </div>
             </div>
           ) : qrDataUrl ? (
-            <img src={qrDataUrl} alt="QR Code" className="size-[200px] rounded-md bg-white p-2" />
+            <img
+              src={qrDataUrl}
+              alt="QR Code"
+              className="aspect-square rounded-md bg-white p-2 object-contain"
+            />
           ) : loginStatus === 'loading' ? (
             <Spinner className="size-8" />
           ) : (
@@ -284,8 +368,6 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
               </span>
             </div>
           )}
-
-
         </div>
 
         {/* Status message + countdown */}
@@ -311,14 +393,14 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
         variant="outline"
         size="sm"
         onClick={() => void (isWeixin ? startWeixinLogin() : startFeishuInstall())}
-        disabled={loginStatus === 'loading' || loginStatus === 'waiting'}
+        disabled={loginStatus === 'loading'}
       >
         {loginStatus === 'loading' ? (
           <Loader2 className="mr-1.5 size-3.5 animate-spin" />
         ) : (
           <RefreshCw className="mr-1.5 size-3.5" />
         )}
-        {loginStatus === 'connected'
+        {showBoundSummary
           ? t('channel.qr.rebind', { defaultValue: '重新绑定' })
           : loginStatus === 'error'
             ? t('channel.qr.retry', { defaultValue: '重试' })
@@ -326,13 +408,15 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
       </Button>
 
       {/* Instructions */}
-      <div className="max-w-sm rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-        {isWeixin ? (
-          <p>{t('channel.qr.weixinInstructions', { defaultValue: '1. 点击"刷新二维码"获取二维码\n2. 使用微信扫描显示的二维码\n3. 在手机上确认授权\n4. 绑定成功后渠道将自动启用' })}</p>
-        ) : (
-          <p>{t('channel.qr.feishuInstructions', { defaultValue: '1. 使用飞书 App 扫描二维码\n2. 在飞书中确认授权创建应用\n3. 授权成功后自动获取 App ID 和 App Secret\n4. 绑定成功后渠道将自动启用' })}</p>
-        )}
-      </div>
+      {!showBoundSummary && (
+        <div className="max-w-sm rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+          {isWeixin ? (
+            <p>{t('channel.qr.weixinInstructions', { defaultValue: '1. 点击"刷新二维码"获取二维码\n2. 使用微信扫描显示的二维码\n3. 在手机上确认授权\n4. 绑定成功后渠道将自动启用' })}</p>
+          ) : (
+            <p>{t('channel.qr.feishuInstructions', { defaultValue: '1. 使用飞书 App 扫描二维码\n2. 在飞书中确认授权创建应用\n3. 授权成功后自动获取 App ID 和 App Secret\n4. 绑定成功后渠道将自动启用' })}</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }

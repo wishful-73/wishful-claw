@@ -95,15 +95,18 @@ public static class DbSessionTools
             ApplyProjectDefaults(db, input);
 
             db.Execute(
-                "INSERT INTO sessions (id, title, icon, mode, created_at, updated_at, message_count, " +
-                "project_id, working_folder, ssh_connection_id, plan_id, pinned, plugin_id, " +
-                "external_chat_id, provider_id, model_id, model_selection_mode, persona_id) " +
-                "VALUES (@id, @title, @icon, @mode, @ca, @ua, 0, @pid, @wf, @ssh, @plan, @pinned, @plugin, " +
-                "@ext, @prov, @model, @msm, @persona)",
+                "INSERT INTO sessions (id, title, icon, mode, scope, collaboration_mode, permission_mode, " +
+                "created_at, updated_at, message_count, project_id, working_folder, ssh_connection_id, plan_id, " +
+                "pinned, plugin_id, external_chat_id, provider_id, model_id, model_selection_mode, persona_id) " +
+                "VALUES (@id, @title, @icon, @mode, @scope, @collab, @permission, @ca, @ua, 0, @pid, @wf, " +
+                "@ssh, @plan, @pinned, @plugin, @ext, @prov, @model, @msm, @persona)",
                 new SqliteParameter("@id", input.Id),
                 new SqliteParameter("@title", input.Title),
                 new SqliteParameter("@icon", (object?)input.Icon ?? DBNull.Value),
                 new SqliteParameter("@mode", input.Mode),
+                new SqliteParameter("@scope", (object?)input.Scope ?? DBNull.Value),
+                new SqliteParameter("@collab", (object?)input.CollaborationMode ?? DBNull.Value),
+                new SqliteParameter("@permission", (object?)input.PermissionMode ?? DBNull.Value),
                 new SqliteParameter("@ca", input.CreatedAt),
                 new SqliteParameter("@ua", input.UpdatedAt),
                 new SqliteParameter("@pid", (object?)input.ProjectId ?? DBNull.Value),
@@ -149,13 +152,17 @@ public static class DbSessionTools
 
             ApplySessionPatch(patch, current);
             var changed = db.Execute(
-                "UPDATE sessions SET title = @title, icon = @icon, mode = @mode, updated_at = @ua, " +
+                "UPDATE sessions SET title = @title, icon = @icon, mode = @mode, scope = @scope, " +
+                "collaboration_mode = @collab, permission_mode = @permission, updated_at = @ua, " +
                 "project_id = @pid, working_folder = @wf, ssh_connection_id = @ssh, plan_id = @plan, " +
                 "plugin_id = @plugin, provider_id = @prov, model_id = @model, " +
                 "model_selection_mode = @msm, persona_id = @persona, pinned = @pinned WHERE id = @id",
                 new SqliteParameter("@title", current.Title),
                 new SqliteParameter("@icon", (object?)current.Icon ?? DBNull.Value),
                 new SqliteParameter("@mode", current.Mode),
+                new SqliteParameter("@scope", (object?)current.Scope ?? DBNull.Value),
+                new SqliteParameter("@collab", (object?)current.CollaborationMode ?? DBNull.Value),
+                new SqliteParameter("@permission", (object?)current.PermissionMode ?? DBNull.Value),
                 new SqliteParameter("@ua", current.UpdatedAt),
                 new SqliteParameter("@pid", (object?)current.ProjectId ?? DBNull.Value),
                 new SqliteParameter("@wf", (object?)current.WorkingFolder ?? DBNull.Value),
@@ -310,13 +317,15 @@ public static class DbSessionTools
         var providerId = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "providerId"));
         var modelId = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "modelId"));
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        return new SessionEntity
+        var input = new SessionEntity
         {
             Id = RequireString(parameters, "id"),
             Title = RequireString(parameters, "title"),
             Icon = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "icon")),
             Mode = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "mode")) ?? "chat",
+            Scope = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "scope")),
+            CollaborationMode = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "collaborationMode")),
+            PermissionMode = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "permissionMode")),
             CreatedAt = JsonHelpers.GetLong(parameters, "createdAt", now),
             UpdatedAt = JsonHelpers.GetLong(parameters, "updatedAt", now),
             MessageCount = 0,
@@ -332,6 +341,8 @@ public static class DbSessionTools
                 (providerId is not null && modelId is not null ? "manual" : "inherit"),
             PersonaId = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "personaId"))
         };
+        NormalizeSessionContext(input);
+        return input;
     }
 
     private static void ApplyProjectDefaults(DbService db, SessionEntity input)
@@ -357,6 +368,9 @@ public static class DbSessionTools
         TryPatchString(patch, "title", v => row.Title = v);
         TryPatchString(patch, "icon", v => row.Icon = v);
         TryPatchString(patch, "mode", v => row.Mode = v);
+        TryPatchNullableString(patch, "scope", v => row.Scope = v);
+        TryPatchNullableString(patch, "collaborationMode", v => row.CollaborationMode = v);
+        TryPatchNullableString(patch, "permissionMode", v => row.PermissionMode = v);
 
         if (JsonHelpers.GetLongNullable(patch, "updatedAt") is { } updatedAt)
         {
@@ -387,6 +401,39 @@ public static class DbSessionTools
                 _ => row.Pinned
             };
         }
+
+        NormalizeSessionContext(row);
+    }
+
+    private static void NormalizeSessionContext(SessionEntity session)
+    {
+        session.Scope = session.Scope is "global" or "project"
+            ? session.Scope
+            : session.ProjectId is null ? "global" : "project";
+
+        if (session.Scope == "global")
+        {
+            session.CollaborationMode = "chat";
+            session.PermissionMode = "default";
+            session.ProjectId = null;
+            session.WorkingFolder = null;
+            session.SshConnectionId = null;
+            return;
+        }
+
+        if (session.ProjectId is null)
+        {
+            throw new InvalidOperationException("Project sessions require projectId.");
+        }
+
+        session.CollaborationMode = session.CollaborationMode is "chat" or "cowork"
+            ? session.CollaborationMode
+            : "cowork";
+        session.PermissionMode = session.CollaborationMode == "chat"
+            ? "default"
+            : session.PermissionMode is "default" or "fullAccess"
+                ? session.PermissionMode
+                : "default";
     }
 
     private static void TryPatchString(JsonElement patch, string name, Action<string> setter)

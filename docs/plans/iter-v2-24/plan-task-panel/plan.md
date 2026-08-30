@@ -1,4 +1,4 @@
-# Plan A：全局 Agent 产品经理与全局任务工作台
+﻿# Plan A：全局 Agent 产品经理与全局任务工作台
 
 > v2-iter-24 · Plan A
 > 本 Plan 负责全局 Agent、全局任务、跨项目会话分派和 Task Board。
@@ -14,9 +14,10 @@
 
 ### 全局 Agent
 
-- 全局 Agent 是独立的全局会话角色，不等同于普通无项目聊天。
-- 全局 Agent 面向跨项目目标、产品事项和协调工作。
-- 全局 Agent 只维护全局任务及其分派记录。
+- 全局 Agent 是显式 `SessionScope='global'` 的独立会话角色，不通过“无 `projectId`”动态推导。
+- 全局会话固定使用 `CollaborationMode='chat'`，不允许切换为 Cowork，也不显示权限按钮。
+- 全局 Chat 面向跨项目目标、产品事项和协调工作，可以管理全局 Agent 自己的数据：全局任务、分派记录、项目/会话查询、跨会话消息和全局记忆。
+- 全局 Chat 不能直接修改项目工作区，不能因 `fullAccess`、ToolPreset 或导航状态获得项目文件写入、Shell、Git 等 Cowork 能力。
 - 全局 Agent 可以查看项目和会话的基础信息、选择目标会话、发送消息/工作请求、接收会话回复并继续推动。
 - 全局 Agent 不读取目标会话的 `TaskList`，不读取 `tasks` 表，不读取 TodoCard，不计算会话内部 Todo 完成率。
 - 全局 Agent 不直接调用目标会话的 `TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList`。
@@ -81,22 +82,28 @@ global_task_dispatches
 - 当前已有全局 Agent 的项目管理工具 `AgentRuntimeProjectExecutor`：`list_projects` 获取项目列表及会话/活跃会话数量；`get_project_details` 获取项目下最近会话并返回可用的 `activeSessionId`；`create_session` 可按项目创建会话。
 - 当前已有 `send_session_message` 工具：通过 `project/send-session-message` reverse-request 复用渲染端现有 `sendMessage` 链路，能够向项目下具体会话发送消息。Plan A 复用该能力，不新建第二套跨会话发送基础设施。
 - 当前已有项目、会话和消息的 SQLite/IPC 读写基础。
-- 当前已有完整的 `sessionMode='global'` 机制：无项目会话自动标记为全局模式，工具按 `availableModes` 过滤，PromptBuilder 已有按模式注入先例（goal 段）；全局 Agent 身份直接复用该机制，不新建身份字段。
+- 当前已有 `sessionMode='global'`、`availableModes` 和按模式注入 Prompt 的基础，但它把 scope、协作模式和 runtime role 混在同一字段中，只能作为迁移来源，不能作为目标模型。
+- 当前历史全局会话会被 `activeProjectId` fallback 污染，Worker 可能收到项目 `projectId` 并进入项目记忆作用域；必须先修复显式 scope 的持久化与恢复。
+- 当前 `chat` ToolPreset 不包含 `global-task` 类别，不能只依赖 `availableModes: ["global"]`；需要同时调整复合筛选和全局 Chat 能力集合。
 - 当前 Task Board 入口仍为 PlaceholderPage。
 - 当前没有全局任务表、全局任务与已有 `send_session_message` 的关联记录、全局任务工具和全局任务工作台。
 - 当前已有会话内 `TaskCreate/Get/Update/List` 链路，属于 Plan B，不作为本 Plan 的数据源。
 
 ## 步骤清单
 
-- [ ] **步骤1：全局 Agent 身份与工具可见性（复用既有机制，不新建身份字段）**
-  - 项目已有端到端的 `sessionMode='global'` 机制，直接复用：
-    - 前端 `InputArea` 在无活跃项目时自动发送 `sessionMode: 'global'`（`InputArea/index.tsx` L274）；
-    - `AgentLoop.cs` 读 `parameters.sessionMode` 并按模式过滤工具（`GetToolDefinitions(toolPreset, sessionMode)`）；
-    - 工具注册已支持 `availableModes`（现有 `list_projects` 等四工具已声明 `availableModes: ["global"]`）。
-  - 新增的全局任务/分派工具一律声明 `availableModes: ["global"]`；普通项目会话（`normal`）与 Goal 会话（`goal`）自然看不到。
-  - PromptBuilder 仿照 `sessionMode == "goal" → BuildGoalModePrompt()` 先例，增加 `sessionMode == "global" → BuildGlobalAgentPrompt()`：跨项目产品协调、全局任务维护、消息分派、结果跟进；明确禁止访问会话内部 Todo。
-  - 入口：不新增固定入口——无项目会话即全局 Agent（现状语义），与 Task Board 工作台配套使用；如后续需要专属入口再单独确认。
-  - 验证：无项目会话能拿到全局工具且项目会话拿不到；全局 prompt 仅在 `sessionMode='global'` 注入（日志核验）。
+- [x] **步骤1：显式会话上下文、默认设置与工具可见性**（2026-08-30 已实现并完成最终 TS/C#/AOT 验证）
+  - 为会话新增并持久化 `SessionScope = 'global' | 'project'`；`projectId` 只作为项目关联字段。
+  - 将用户可见协作模式收敛为 `CollaborationMode = 'chat' | 'cowork'`：全局固定 Chat，项目允许 Chat/Cowork；Plan、编程、ACP、Goal 和 SubAgent 不再作为并列协作模式。
+  - Cowork 会话持久化 `PermissionMode = 'default' | 'fullAccess'`；Chat 不显示权限按钮，非法 `chat + fullAccess` 也不得扩大能力。
+  - 在现有“运行与性能”页面（`RuntimePanel`）新增“会话默认值”：项目会话默认协作模式、Cowork 默认权限模式；产品默认按用户偏好为 `cowork + fullAccess/YOLO`。设置只影响新项目会话或一次性迁移缺失状态的数据，不覆盖已有会话；全局会话不受影响。
+  - 历史数据一次性迁移：可根据旧 `projectId` 补齐 scope；已有项目会话的 collaboration/permission 按兼容规则补齐后即持久化，运行时不得再动态推导。
+  - 修复启动恢复、侧栏导航、`navigateToSession`、输入区目标会话解析和请求构造，保证目标会话自身状态是唯一事实，不能回退到其他项目的 `activeProjectId`。
+  - Worker 请求上下文拆分为 scope、collaboration mode、runtime role；工具元数据从混杂的 `availableModes` 迁移为 `AvailableScopes`、`AvailableCollaborationModes`、`AvailableRuntimeRoles`。
+  - 工具按 scope → collaboration mode → runtime role → ToolPreset → 用户功能设置求交集；permission mode 只决定调用后的审批。为 `global:chat` 明确允许全局任务、分派、项目/会话查询、跨会话消息和全局记忆，明确禁止项目工作区写入工具。
+  - Prompt 和记忆作用域读取显式 scope；全局 Prompt 仅对 `global:chat` 注入。Goal 通过 `goalRunner/goalSubAgent` runtime role 注入 Goal Prompt，不再作为会话协作模式。
+  - Goal 实例创建时持久化自身权限快照，不随发起会话后续权限切换漂移；本步骤不重做 Goal 任务表。
+  - 验证：历史全局会话重启后仍为 `global:chat`；项目 Chat 只读且无权限按钮；项目 Cowork 可在默认审批/YOLO 间切换；新项目会话默认 `cowork + fullAccess`；修改设置不改变已有会话；普通项目会话看不到全局工具，全局 Chat 看不到项目写入工具。
+  - 实际验证：三套 TypeScript、前端生产构建、E2E TypeScript、Worker 独立输出 build（0 warning / 0 error）与独立输出 Native AOT（无 IL/AOT warning）均通过。Goal 回归 113 项、SessionTaskCascade 124 项、MemoryRecall 18 项、CompactionSnapshot 全部通过。Cron 仅剩既有的 25/30 列陈旧断言。真实 E2E 因测试使用真实用户数据、会启动新的 Electron/Worker 并在清理阶段强制终止新增 Worker而未运行。
 
 - [ ] **步骤2：全局任务数据层**
   - 在 `DbClient.cs` 增加 `global_tasks` 表，字段覆盖标题、描述、状态、优先级、标签、截止时间和时间戳。
@@ -159,6 +166,12 @@ global_task_dispatches
 
 ## 涉及文件
 
+- `src/renderer/src/stores/chat-store/types.ts` 及会话持久化/迁移链路 — 修改（显式 scope、collaboration mode、permission mode）
+- `src/renderer/src/stores/settings-store.ts` / `settings-store-types.ts` / `settings-store-migrate.ts` — 修改（新项目会话默认值，不复用当前会话状态）
+- `src/renderer/src/components/settings/RuntimePanel.tsx` / `SettingsPage.tsx` / 中英文 `settings.json` — 修改（“运行与性能”会话默认值区域与锚点）
+- `src/renderer/src/components/chat/InputArea/*` — 修改（协作模式、Cowork 权限按钮、按目标会话构造上下文）
+- `src/renderer/src/components/layout/MainLayout.tsx` / `src/renderer/src/stores/ui-store.ts` — 修改（恢复与导航同步，不用项目 fallback 改写会话身份）
+- Worker 工具注册/筛选与请求协议相关文件 — 修改（scope + collaboration mode + runtime role 正交筛选）
 - `src/runtime/WishfulClaw.Infrastructure/Db/DbClient.cs` — 修改（DDL/迁移）
 - `src/runtime/WishfulClaw.Infrastructure/Db/Entities/GlobalTaskEntity.cs` — 新建
 - `src/runtime/WishfulClaw.Infrastructure/Db/Entities/GlobalTaskDispatchEntity.cs` — 新建
@@ -198,6 +211,10 @@ global_task_dispatches
 ## 验证标准
 
 - TypeScript 三配置、`dotnet build`、AOT 发布全部零错误零警告。
+- Session scope、collaboration mode 和 Cowork permission mode 均可持久化并在重启后恢复；历史全局会话不再被项目导航状态污染。
+- “运行与性能”的项目会话默认值为 `cowork + fullAccess/YOLO`，只影响新项目会话，不覆盖已有会话；全局会话始终固定 Chat。
+- Chat 无权限按钮且无法看到/执行项目写入工具；Cowork 的 `default/fullAccess` 只改变审批行为。
+- Goal 以后台 runtime role 运行并持久化自身权限快照，不切换会话协作模式。
 - 全局 Agent 能跨项目查看项目/会话，创建和维护全局任务。
 - 全局 Agent 能向多个项目会话发送消息和可追踪工作请求，并接收显式回复。
 - Task Board 展示全局任务和分派记录，不展示或依赖会话内部 Todo。

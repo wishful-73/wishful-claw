@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -38,9 +38,16 @@ internal static partial class AgentLoop
             if (string.IsNullOrWhiteSpace(userMessage))
                 return;
 
-            var projectId = JsonHelpers.GetString(parameters, "projectId");
-            var sshConnectionId = JsonHelpers.GetString(parameters, "sshConnectionId");
-            var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
+            var runContext = AgentRunContextPolicy.Resolve(parameters);
+            var projectId = runContext.Scope == "project"
+                ? JsonHelpers.GetString(parameters, "projectId")
+                : null;
+            var sshConnectionId = runContext.Scope == "project"
+                ? JsonHelpers.GetString(parameters, "sshConnectionId")
+                : null;
+            var workingFolder = runContext.Scope == "project"
+                ? JsonHelpers.GetString(parameters, "workingFolder")
+                : null;
 
             string scope;
             if (!string.IsNullOrWhiteSpace(sshConnectionId))

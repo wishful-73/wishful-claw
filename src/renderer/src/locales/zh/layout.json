@@ -1,4 +1,4 @@
-﻿{
+{
   "splash": {
     "enterMain": "进入主页",
     "enterSettings": "AI 服务商设置",
@@ -259,6 +259,7 @@
     "deleteProjectConfirmTitle": "删除这个项目？",
     "deleteProjectConfirmDesc": "项目「{{name}}」及其会话将从应用中移除（磁盘上的文件不会被删除）。",
     "loadMoreSessions": "加载更多（还有 {{count}} 个）",
+    "collapseSessions": "收起会话",
     "openFailed": "打开文件夹失败"
   },
   "sectionExecution": {
@@ -412,6 +413,20 @@
       "agentIdPlaceholder": "留空使用 CronAgent",
       "model": "模型",
       "defaultModel": "跟随全局默认模型",
+      "thinkingMode": "思考模式",
+      "thinkingDefault": "跟随模型默认",
+      "thinkingEnabled": "开启（模型默认强度）",
+      "thinkingDisabled": "关闭",
+      "thinkingHint": "跟随模型默认时不发送任何思考参数；仅在明确选择开启、关闭或强度时覆盖模型默认行为。",
+      "reasoningEffort": {
+        "minimal": "开启 · 极简推理",
+        "low": "开启 · 快速推理",
+        "medium": "开启 · 均衡",
+        "high": "开启 · 深度推理",
+        "xhigh": "开启 · 最大深度",
+        "max": "开启 · 最高强度",
+        "ultra": "开启 · 极限强度"
+      },
       "workingFolder": "工作目录",
       "workingFolderPlaceholder": "留空使用当前项目目录",
       "deleteAfterRun": "执行一次后归档",

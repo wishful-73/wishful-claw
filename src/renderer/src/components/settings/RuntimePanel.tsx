@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import {
@@ -96,6 +96,61 @@ function RuntimePanel(): React.JSX.Element {
         <SettingHint>
           {settings.devMode ? t('general.developerMode.enabled') : t('general.developerMode.disabled')}
         </SettingHint>
+      </SettingsSection>
+
+      {/* Session Defaults */}
+      <SettingsSection
+        id="sec-runtime-session-defaults"
+        title={t('runtimePage.sessionDefaults.title')}
+        description={t('runtimePage.sessionDefaults.desc')}
+      >
+        <SettingRow
+          label={t('runtimePage.sessionDefaults.collaboration.label')}
+          description={t('runtimePage.sessionDefaults.collaboration.desc')}
+          control={
+            <div className="flex gap-1.5">
+              {(['chat', 'cowork'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => settings.updateSettings({ projectSessionDefaultCollaborationMode: value })}
+                  className={cn(
+                    'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
+                    settings.projectSessionDefaultCollaborationMode === value
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+                  )}
+                >
+                  {t(`runtimePage.sessionDefaults.collaboration.${value}`)}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <SettingRow
+          label={t('runtimePage.sessionDefaults.permission.label')}
+          description={t('runtimePage.sessionDefaults.permission.desc')}
+          control={
+            <div className="flex gap-1.5">
+              {(['default', 'fullAccess'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => settings.updateSettings({ coworkDefaultPermissionMode: value })}
+                  className={cn(
+                    'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
+                    settings.coworkDefaultPermissionMode === value
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+                  )}
+                >
+                  {t(`runtimePage.sessionDefaults.permission.${value}`)}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <SettingHint>{t('runtimePage.sessionDefaults.hint')}</SettingHint>
       </SettingsSection>
 
       {/* API Request Timeout */}

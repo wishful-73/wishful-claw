@@ -97,6 +97,9 @@ public static partial class DbClient
                     title TEXT NOT NULL DEFAULT '',
                     icon TEXT,
                     mode TEXT NOT NULL DEFAULT 'chat',
+                    scope TEXT,
+                    collaboration_mode TEXT,
+                    permission_mode TEXT,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
                     message_count INTEGER NOT NULL DEFAULT 0,
@@ -324,6 +327,8 @@ public static partial class DbClient
                     prompt TEXT NOT NULL DEFAULT '',
                     agent_id TEXT,
                     model TEXT,
+                    thinking_enabled INTEGER,
+                    reasoning_effort TEXT,
                     working_folder TEXT,
                     delivery_mode TEXT NOT NULL DEFAULT 'desktop',
                     output_mode TEXT NOT NULL DEFAULT 'new_session',
@@ -448,6 +453,18 @@ public static partial class DbClient
             EnsureColumn("sessions", "ssh_connection_id", "TEXT");
             EnsureColumn("sessions", "working_folder", "TEXT");
             EnsureColumn("sessions", "icon", "TEXT");
+            EnsureColumn("sessions", "scope", "TEXT");
+            EnsureColumn("sessions", "collaboration_mode", "TEXT");
+            EnsureColumn("sessions", "permission_mode", "TEXT");
+            _db.Execute(
+                "UPDATE sessions SET scope = CASE WHEN project_id IS NULL THEN 'global' ELSE 'project' END " +
+                "WHERE scope IS NULL OR scope NOT IN ('global', 'project');");
+            _db.Execute(
+                "UPDATE sessions SET collaboration_mode = CASE WHEN scope = 'global' THEN 'chat' ELSE 'cowork' END " +
+                "WHERE collaboration_mode IS NULL OR collaboration_mode NOT IN ('chat', 'cowork');");
+            _db.Execute(
+                "UPDATE sessions SET permission_mode = 'default' " +
+                "WHERE scope = 'global' AND (permission_mode IS NULL OR permission_mode NOT IN ('default', 'fullAccess'));");
             EnsureColumn("projects", "ssh_connection_id", "TEXT");
             EnsureColumn("projects", "plugin_id", "TEXT");
             EnsureColumn("global_task_dispatches", "source_session_id", "TEXT");
@@ -472,6 +489,8 @@ public static partial class DbClient
             EnsureColumn("cron_tasks", "prompt", "TEXT NOT NULL DEFAULT ''");
             EnsureColumn("cron_tasks", "agent_id", "TEXT");
             EnsureColumn("cron_tasks", "model", "TEXT");
+            EnsureColumn("cron_tasks", "thinking_enabled", "INTEGER");
+            EnsureColumn("cron_tasks", "reasoning_effort", "TEXT");
             EnsureColumn("cron_tasks", "working_folder", "TEXT");
             EnsureColumn("cron_tasks", "delivery_mode", "TEXT NOT NULL DEFAULT 'desktop'");
             EnsureColumn("cron_tasks", "output_mode", "TEXT NOT NULL DEFAULT 'new_session'");

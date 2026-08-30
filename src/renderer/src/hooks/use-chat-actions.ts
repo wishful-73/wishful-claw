@@ -24,6 +24,8 @@ export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
   enablePlanMode?: boolean
   sessionMode?: 'normal' | 'goal' | 'global'
+  collaborationMode?: 'chat' | 'cowork'
+  permissionMode?: 'default' | 'fullAccess'
   selectedFileReferences?: unknown[]
   imageEdit?: unknown
   toolPreset?: string
@@ -111,10 +113,18 @@ export function useChatActions() {
       if (session?.pluginId && session?.externalChatId) {
         registerExternalChannelReply(targetSessionId, session.pluginId, session.externalChatId)
       }
-      const projectId = session?.projectId
+      if (!session) {
+        console.error('[ChatActions] Target session does not exist:', targetSessionId)
+        return false
+      }
+      const projectId = session.scope === 'project' ? session.projectId : undefined
       const project = projectId ? chatStore.projects.find((p) => p.id === projectId) : null
-      const workingFolder = session?.workingFolder ?? project?.workingFolder ?? undefined
-      const sshConnectionId = session?.sshConnectionId ?? project?.sshConnectionId ?? undefined
+      const workingFolder = session.scope === 'project'
+        ? session.workingFolder ?? project?.workingFolder ?? undefined
+        : undefined
+      const sshConnectionId = session.scope === 'project'
+        ? session.sshConnectionId ?? project?.sshConnectionId ?? undefined
+        : undefined
       console.log('[ChatActions] sshConnectionId:', { session: session?.sshConnectionId, project: project?.sshConnectionId, resolved: sshConnectionId, projectId })
 
       // Backend manages the session conversation (Reasonix pattern).
@@ -125,7 +135,8 @@ export function useChatActions() {
       // App startup (registerAllTools + ensureConversationReady) handles
       // initialization; if tools aren't ready yet, send without them —
       // the agent can still respond, just without tool-calling capability.
-      const toolPreset = opts?.toolPreset ?? (workingFolder ? 'coding' : 'chat')
+      const toolPreset = opts?.toolPreset ??
+        (session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat')
       const settings = settingsStore
       const codegraphEnabled = useAppPluginStore.getState().isCodeGraphToolAvailable()
 
@@ -202,9 +213,12 @@ export function useChatActions() {
         contextCompressionThreshold: settings.contextCompressionThreshold,
         sshConnectionId,
         projectId,
+        scope: session.scope,
+        collaborationMode: session.collaborationMode,
+        runtimeRole: opts?.sessionMode === 'goal' ? 'goalRunner' : 'sessionAgent',
         ...(opts?.enablePlanMode ? { enablePlanMode: true } : {}),
         sessionMode: opts?.sessionMode,
-        permissionMode: settings.autoApprove ? 'fullAccess' : 'default'
+        permissionMode: session.permissionMode
       })
       if (!started) pausePendingSessionDispatch(targetSessionId)
       return started
@@ -269,7 +283,7 @@ type SendProvider = NonNullable<ReturnType<ReturnType<typeof useProviderStore.ge
 // Session-bound model switches used to update only the UI while sends kept
 // reading the global provider store, so requests went out with the stale
 // global model. Returns null when no usable provider/model exists.
-function resolveSendModel(sessionId: string): { provider: SendProvider; modelId: string } | null {
+export function resolveSendModel(sessionId: string): { provider: SendProvider; modelId: string } | null {
   const providerStore = useProviderStore.getState()
   const chatStore = useChatStore.getState()
   const settings = useSettingsStore.getState()
@@ -369,9 +383,10 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
   if (!resolved) return
   const { provider: activeProvider, modelId } = resolved
   const session = chatStore.sessions.find((s) => s.id === sessionId)
-  const workingFolder = session?.workingFolder ?? undefined
-  const sshConnectionId = session?.sshConnectionId ?? undefined
-  const projectId = session?.projectId ?? undefined
+  if (!session) return
+  const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+  const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
+  const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 
   // Clear activities for new turn
   useActivityStore.getState().clearActivities()
@@ -384,11 +399,15 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
     provider,
     messages: [{ role: 'user', content: `The plan has been approved. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Read the plan file, then execute it step by step using the Task tool to dispatch sub-agents -- do NOT implement steps yourself. For each step: (1) call UpdatePlanStep to mark it in_progress, (2) use the Task tool with subagent_type "custom" and background=false to dispatch a foreground work sub-agent with a self-contained prompt containing all context needed for that step, (3) when the sub-agent returns, call UpdatePlanStep to mark it completed or failed based on the result. If a step fails, assess whether the remaining plan needs adjustment before continuing.` }],
     sessionId,
-    toolPreset: workingFolder ? 'coding' : 'chat',
+    toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
     webSearchEnabled: settingsStore.webSearchEnabled,
     workingFolder,
     sshConnectionId,
     projectId,
+    scope: session.scope,
+    collaborationMode: session.collaborationMode,
+    runtimeRole: 'sessionAgent',
+    permissionMode: session.permissionMode,
     maxIterations: 0,
     maxParallelTools: settingsStore.maxParallelToolCalls,
     maxToolCallsPerTurn: settingsStore.maxToolCallsPerTurn,
@@ -421,9 +440,10 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
   if (!resolved) return
   const { provider: activeProvider, modelId } = resolved
   const session = chatStore.sessions.find((s) => s.id === sessionId)
-  const workingFolder = session?.workingFolder ?? undefined
-  const sshConnectionId = session?.sshConnectionId ?? undefined
-  const projectId = session?.projectId ?? undefined
+  if (!session) return
+  const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+  const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
+  const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 
   // Clear activities for new turn
   useActivityStore.getState().clearActivities()
@@ -436,11 +456,15 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
     provider,
     messages: [{ role: 'user', content: `The plan was rejected. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Please revise the plan in the plan file based on this feedback: ${feedback}` }],
     sessionId,
-    toolPreset: workingFolder ? 'coding' : 'chat',
+    toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
     webSearchEnabled: settingsStore.webSearchEnabled,
     workingFolder,
     sshConnectionId,
     projectId,
+    scope: session.scope,
+    collaborationMode: session.collaborationMode,
+    runtimeRole: 'sessionAgent',
+    permissionMode: session.permissionMode,
     maxIterations: 0,
     maxParallelTools: settingsStore.maxParallelToolCalls,
     maxToolCallsPerTurn: settingsStore.maxToolCallsPerTurn,
@@ -498,9 +522,10 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
     const modelId = providerStore.activeModelId || activeProvider.defaultModel || activeProvider.models.find((m: any) => m.enabled)?.id
     if (!modelId) return
     const session = chatStore.sessions.find((s) => s.id === sessionId)
-    const workingFolder = session?.workingFolder ?? undefined
-    const sshConnectionId = session?.sshConnectionId ?? undefined
-    const projectId = session?.projectId ?? undefined
+    if (!session) return
+    const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+    const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
+    const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 
     useActivityStore.getState().clearActivities()
 
@@ -510,11 +535,15 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
       provider,
       messages: [{ role: 'user', content: '用户退出了计划模式，计划已取消。不再需要计划流程，请正常对话。' }],
       sessionId,
-      toolPreset: workingFolder ? 'coding' : 'chat',
+      toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
       webSearchEnabled: settingsStore.webSearchEnabled,
       workingFolder,
       sshConnectionId,
       projectId,
+      scope: session.scope,
+      collaborationMode: session.collaborationMode,
+      runtimeRole: 'sessionAgent',
+      permissionMode: session.permissionMode,
       maxIterations: 0,
       maxParallelTools: settingsStore.maxParallelToolCalls,
       maxToolCallsPerTurn: settingsStore.maxToolCallsPerTurn,

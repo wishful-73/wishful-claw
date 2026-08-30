@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -148,8 +148,11 @@ internal static partial class AgentLoop
         var toolPreset = ToolPreset.BuiltIn.TryGetValue(toolPresetId, out var tp)
             ? tp
             : ToolPreset.BuiltIn["full"];
-        var sessionMode = JsonHelpers.GetString(parameters, "sessionMode");
-        var toolDefs = ToolModuleState.Registry?.GetToolDefinitions(toolPreset, sessionMode) ?? [];
+        var runContext = AgentRunContextPolicy.Resolve(parameters);
+        var sessionMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, runContext);
+        var registry = ToolModuleState.Registry;
+        var toolDefs = registry?.GetToolDefinitions(toolPreset, sessionMode) ?? [];
+        toolDefs = AgentRunContextPolicy.FilterToolDefinitions(toolDefs, registry, runContext);
 
         // Filter out WebSearch/WebFetch when web search is not enabled.
         // Previously done in the frontend; now handled backend-side since

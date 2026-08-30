@@ -223,8 +223,10 @@ public static class AgentRuntimeGlobalTaskExecutor
                 $"{instruction}\n\n" +
                 "This work request was dispatched by the global agent. Decide yourself how to execute it " +
                 "(including whether to create your own temporary Todos). When you finish, get blocked, or " +
-                "need to ask the global agent a follow-up question, call the reply_global_dispatch tool " +
-                $"with dispatchId '{dispatchId}' so the global agent can track the outcome.";
+                "need to ask the global agent a follow-up question, report back via the `use_capability` tool: " +
+                "action=\"call\", capability_id=\"builtin:reply_global_dispatch\", and pass " +
+                $"{{\"dispatchId\": \"{dispatchId}\", \"report\": \"<your result or question>\", \"status\": \"in_progress | completed | blocked\"}} " +
+                "inside `arguments`, so the global agent can track the outcome.";
 
             var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
             {

@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 
 import { immer } from 'zustand/middleware/immer'
 
@@ -46,7 +46,7 @@ const NATIVE_TASK_TOOL_NAMES = new Set(['TaskCreate', 'TaskGet', 'TaskUpdate', '
 
 
 
-export type { Session, Project, ChatMessage, SessionMode, CreateSessionOptions, SessionPromptSnapshot, ToolCallInfo, SessionModelSelectionMode } from './types'
+export type { Session, Project, ChatMessage, SessionMode, SessionScope, CollaborationMode, PermissionMode, CreateSessionOptions, SessionPromptSnapshot, ToolCallInfo, SessionModelSelectionMode } from './types'
 
 export type { SessionSlice } from './session-slice'
 
@@ -98,6 +98,9 @@ export interface AgentActions {
     permissionMode?: 'default' | 'whitelist' | 'fullAccess'
     nonInteractive?: boolean
     projectId?: string
+    scope?: 'global' | 'project'
+    collaborationMode?: 'chat' | 'cowork'
+    runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation'
     enablePlanMode?: boolean
     sessionMode?: 'normal' | 'goal' | 'global'
     memoryRecallMaxNotes?: number

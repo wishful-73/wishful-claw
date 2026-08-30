@@ -171,11 +171,6 @@ export interface UIStore {
   planModesBySession: Record<string, boolean>
   isPlanModeEnabled: (sessionId?: string | null) => boolean
 
-  // Collab mode (normal / goal)
-  collabModesBySession: Record<string, 'normal' | 'goal'>
-  setCollabMode: (sessionId: string, mode: 'normal' | 'goal') => void
-  getCollabMode: (sessionId?: string | null) => 'normal' | 'goal'
-
   // Browser panel (session-scoped state)
   browserStatesBySession: Record<string, BrowserPanelSessionState | undefined>
   browserWebviewRefsBySession: Record<string, React.RefObject<Electron.WebviewTag | null> | null | undefined>

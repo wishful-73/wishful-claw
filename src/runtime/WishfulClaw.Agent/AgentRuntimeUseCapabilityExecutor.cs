@@ -33,7 +33,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
     {
         "desktop", "cron", "image-generate",
         "notebook", "widget", "team",
-        "channel-plugin", "plugin", "ssh", "skill-management", "project"
+        "channel-plugin", "plugin", "ssh", "skill-management", "project",
+        "global-task", "global-dispatch-reply", "task"
     };
 
     private static readonly HashSet<string> ProxiedBuiltinTools = new(StringComparer.Ordinal)
@@ -122,7 +123,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
     {
         var action = (JsonHelpers.GetString(call.Input, "action") ?? "list").Trim().ToLowerInvariant();
         var capabilityId = (JsonHelpers.GetString(call.Input, "capability_id") ?? string.Empty).Trim();
-        var sessionMode = JsonHelpers.GetString(state.Parameters, "sessionMode");
+        var runContext = AgentRunContextPolicy.Resolve(state.Parameters);
+        var sessionMode = AgentRunContextPolicy.ResolveAvailableMode(state.Parameters, runContext);
 
         return action switch
         {

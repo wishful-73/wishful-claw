@@ -79,7 +79,7 @@ public sealed class ToolPreset
             Description = "Channel messaging — plugins, messaging, memory, sessions.",
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "channel-plugin", "plugin", "memory", "ask-user", "notify"
+                "channel-plugin", "plugin", "memory", "ask-user", "notify", "capability"
             },
         },
 
@@ -89,7 +89,7 @@ public sealed class ToolPreset
             Description = "Automation — cron, tasks, desktop control.",
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "cron", "task", "desktop", "notify", "memory"
+                "cron", "task", "desktop", "notify", "memory", "capability"
             },
         },
 
@@ -99,7 +99,7 @@ public sealed class ToolPreset
             Description = "Minimal — only file read and search.",
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "file", "search"
+                "file", "search", "capability"
             },
             DeniedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {

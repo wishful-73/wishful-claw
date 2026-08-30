@@ -60,6 +60,7 @@ interface ComposerToolbarProps {
 
   // Permission
   permissionMode: 'default' | 'fullAccess'
+  showPermissionControl: boolean
   onSelectPermissionMode: (mode: 'default' | 'fullAccess') => Promise<void>
   onOpenSettings: (tab: string) => void
 
@@ -97,10 +98,10 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
     disabled, isStreaming,
     setSelectedSkill, insertSlashCommand, insertPluginPrompt, handleAttachMedia,
     activeProjectId, mode, hideModeSwitch, planMode, goalModeEnabled,
-    planModeDisabled, goalModeDisabled, onPlanModeChange,
+    planModeDisabled, goalModeDisabled, onPlanModeChange, onGoalModeChange,
     onSelectFolder, hideWorkingFolderPicker,
     isOptimizing, isOptimizingLocked, handleOptimizePrompt, hasText,
-    permissionMode, onSelectPermissionMode, onOpenSettings,
+    permissionMode, showPermissionControl, onSelectPermissionMode, onOpenSettings,
     onStop, onSend, finalSerializedText, attachedImagesCount, needsWorkingFolder, pendingImageReads,
     onCompressContext, isContextCompressing,
     showInlineClearConversation, hasMessages, activeSessionId, queuedMessagesCount, onClearSession,
@@ -132,7 +133,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
       planModeDisabled={planModeDisabled}
       goalModeDisabled={goalModeDisabled}
       onPlanModeChange={goalModeEnabled ? undefined : onPlanModeChange}
-      onGoalModeChange={undefined}
+      onGoalModeChange={onGoalModeChange}
     />
   )
 
@@ -270,7 +271,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
           />
 
           {optimizeControl}
-          {permissionControl}
+          {showPermissionControl ? permissionControl : null}
           {sendControl}
         </div>
       </div>

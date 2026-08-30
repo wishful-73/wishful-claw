@@ -1,8 +1,10 @@
-﻿import { nanoid } from 'nanoid'
+import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
+import { normalizeSessionContext } from '@renderer/lib/session-context'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 
 export interface SessionSlice {
   sessions: Session[]
@@ -23,6 +25,8 @@ export interface SessionSlice {
   renameSession: (id: string, title: string) => void
   updateSessionIcon: (id: string, icon: string) => void
   updateSessionMode: (id: string, mode: Session['mode']) => void
+  updateSessionCollaborationMode: (id: string, mode: Session['collaborationMode']) => void
+  updateSessionPermissionMode: (id: string, mode: Session['permissionMode']) => void
   setSessionModelManual: (sessionId: string, providerId: string, modelId: string) => void
   setSessionModelAuto: (sessionId: string) => void
   setSessionModelInherit: (sessionId: string) => void
@@ -80,22 +84,28 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   createSession: (mode, projectId, options) => {
     const id = nanoid()
     const now = Date.now()
-    const preserveProjectless = options?.preserveProjectless === true
-
-    let targetProjectId = preserveProjectless
-      ? (projectId ?? null)
-      : (projectId ?? get()['activeProjectId' as keyof SessionSlice] as string | null ?? null)
-
-    // Try to find a default project if none specified
-    if (!targetProjectId && !preserveProjectless) {
-      const projects = (get() as unknown as { projects: Array<{ id: string; pluginId?: string }> }).projects
-      targetProjectId = projects?.find((p) => !p.pluginId)?.id ?? projects?.[0]?.id ?? null
-    }
+    const settings = useSettingsStore.getState()
+    const requestedScope = options?.scope ??
+      (options?.preserveProjectless === true || !projectId ? 'global' : 'project')
+    const context = normalizeSessionContext(
+      {
+        scope: requestedScope,
+        collaborationMode: options?.collaborationMode,
+        permissionMode: options?.permissionMode,
+        projectId
+      },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const targetProjectId = context.projectId ?? null
 
     const newSession: Session = {
       id,
       title: 'New Conversation',
       mode,
+      ...context,
       messages: [],
       messageCount: 0,
       messagesLoaded: true,
@@ -237,6 +247,46 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       }
     })
     void dbUpdateSession(id, { mode, updatedAt: now })
+  },
+
+  updateSessionCollaborationMode: (id, mode) => {
+    const session = get().sessions.find((item) => item.id === id)
+    if (!session) return
+    const settings = useSettingsStore.getState()
+    const context = normalizeSessionContext(
+      { ...session, collaborationMode: mode },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const now = Date.now()
+    set((state) => {
+      const target = state.sessions.find((item) => item.id === id)
+      if (!target) return
+      Object.assign(target, context, { updatedAt: now })
+    })
+    void dbUpdateSession(id, { ...context, updatedAt: now })
+  },
+
+  updateSessionPermissionMode: (id, mode) => {
+    const session = get().sessions.find((item) => item.id === id)
+    if (!session) return
+    const settings = useSettingsStore.getState()
+    const context = normalizeSessionContext(
+      { ...session, permissionMode: mode },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const now = Date.now()
+    set((state) => {
+      const target = state.sessions.find((item) => item.id === id)
+      if (!target) return
+      Object.assign(target, context, { updatedAt: now })
+    })
+    void dbUpdateSession(id, { ...context, updatedAt: now })
   },
 
   clearSessionMessages: (sessionId) => {

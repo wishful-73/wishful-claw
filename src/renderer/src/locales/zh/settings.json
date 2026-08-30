@@ -957,6 +957,20 @@
       "feishuInstructions": "1. 使用飞书 App 扫描二维码\n2. 在飞书中确认授权创建应用\n3. 授权成功后自动获取 App ID 和 App Secret\n4. 绑定成功后渠道将自动启用",
       "feishuWaiting": "请使用飞书扫描二维码完成授权",
       "feishuConnected": "飞书授权成功!",
+      "boundTitle": "已绑定",
+      "boundDescription": "连接凭证已保存，可直接启动渠道或重新绑定。",
+      "connectedStatus": "连接已配置",
+      "channelLabel": "渠道",
+      "accountLabel": "账号标识",
+      "scopeLabel": "作用域",
+      "credentialLabel": "凭证",
+      "credentialSaved": "已安全保存",
+      "weixinChannel": "微信",
+      "feishuChannel": "飞书",
+      "localCredential": "本地微信凭证",
+      "credentialReady": "已配置",
+      "projectScope": "当前项目",
+      "globalScope": "全局",
       "rebind": "重新绑定",
       "retry": "重试"
     },
@@ -1254,7 +1268,24 @@
   },
   "runtimePage": {
     "title": "运行与性能",
-    "subtitle": "Agent 运行时设置：请求超时、重试、工具执行与上下文压缩"
+    "subtitle": "Agent 运行时设置：请求超时、重试、工具执行与上下文压缩",
+    "sessionDefaults": {
+      "title": "会话默认值",
+      "desc": "设置新建项目会话的协作模式与 Cowork 权限",
+      "collaboration": {
+        "label": "项目会话默认协作模式",
+        "desc": "Chat 为只读协作；Cowork 可执行项目操作",
+        "chat": "Chat",
+        "cowork": "Cowork"
+      },
+      "permission": {
+        "label": "Cowork 默认权限模式",
+        "desc": "Default 按策略审批；YOLO 自动批准工具调用",
+        "default": "Default",
+        "fullAccess": "YOLO"
+      },
+      "hint": "只影响新项目会话，不覆盖已有会话；全局会话固定为 Chat。"
+    }
   },
   "anchorNav": {
     "language": "语言",

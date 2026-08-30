@@ -171,7 +171,10 @@ export function MainLayout(): React.JSX.Element {
           nextActiveSessionId = sessions[0]?.id ?? null
           state.activeSessionId = nextActiveSessionId
 
-          nextActiveProjectId = sessions[0]?.projectId ?? data.projects[0]?.id ?? null
+          const firstSession = sessions[0]
+          nextActiveProjectId = firstSession
+            ? firstSession.scope === 'project' ? firstSession.projectId ?? null : null
+            : data.projects[0]?.id ?? null
           state.activeProjectId = nextActiveProjectId
         })
 

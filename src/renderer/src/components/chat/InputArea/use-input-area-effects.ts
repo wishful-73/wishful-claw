@@ -2,7 +2,6 @@
 
 import * as React from 'react'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { type CollabMode } from '../CollabModeSwitcher'
 import { cloneImageAttachments, type ImageAttachment } from '@renderer/lib/image-attachments'
 import { deserializeEditorState } from '@renderer/lib/select-file-editor'
 import { selectFileTextToPlainText } from '@renderer/lib/select-file-tags'
@@ -38,8 +37,6 @@ export interface InputAreaEffectsInput {
   // State setters
   setPendingPlanMode: React.Dispatch<React.SetStateAction<boolean>>
   setPendingGoalMode: React.Dispatch<React.SetStateAction<boolean>>
-  pendingCollabMode: CollabMode | null
-  setPendingCollabMode: React.Dispatch<React.SetStateAction<CollabMode | null>>
   setAutoAcceptCountdown: React.Dispatch<React.SetStateAction<number | null>>
   setAttachedImages: React.Dispatch<React.SetStateAction<ImageAttachment[]>>
   setPreviewImage: React.Dispatch<React.SetStateAction<ImageAttachment | null>>
@@ -69,7 +66,7 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
     userEditedDraftKeyRef,
     attachedImages, selectedSkill, savePersistedDraft,
-    setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown,
+    setPendingPlanMode, setPendingGoalMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
     editorRef, rootRef, draftSaveTimerRef, draftReadyKeyRef,
     isStreaming, disabled, replaceSelectionWithText,
@@ -80,14 +77,6 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
     if (draftSessionId) setPendingPlanMode(false)
     setPendingGoalMode(false)
   }, [draftSessionId, setPendingPlanMode, setPendingGoalMode])
-
-  // Apply pending collab mode when session is created
-  React.useEffect(() => {
-    if (draftSessionId && pendingCollabMode) {
-      useUIStore.getState().setCollabMode(draftSessionId, pendingCollabMode)
-      setPendingCollabMode(null)
-    }
-  }, [draftSessionId, pendingCollabMode, setPendingCollabMode])
 
   React.useEffect(() => {
     if (hasActiveGoal) setPendingGoalMode(false)

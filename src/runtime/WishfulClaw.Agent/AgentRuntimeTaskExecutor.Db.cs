@@ -154,22 +154,27 @@ public static partial class AgentRuntimeTaskExecutor
 
     private static TaskWorkingRow? LoadTask(DbService db, string taskId, string? sessionId)
     {
-        var entity = string.IsNullOrEmpty(sessionId)
-            ? db.QueryFirstOrDefault($"{TaskSelectSql} WHERE id = @id LIMIT 1", EntityMappers.MapTask,
-                DbService.Param("@id", taskId))
-            : db.QueryFirstOrDefault($"{TaskSelectSql} WHERE id = @id AND session_id = @sessionId LIMIT 1", EntityMappers.MapTask,
-                DbService.Param("@id", taskId), DbService.Param("@sessionId", sessionId));
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return null;
+        }
+
+        var entity = db.QueryFirstOrDefault($"{TaskSelectSql} WHERE id = @id AND session_id = @sessionId LIMIT 1", EntityMappers.MapTask,
+            DbService.Param("@id", taskId), DbService.Param("@sessionId", sessionId));
         return entity is null ? null : ToWorkingRow(entity);
     }
 
     private static TaskWorkingRow? LoadTask(
         DbService db, SqliteConnection conn, SqliteTransaction tx, string taskId, string? sessionId)
     {
-        var entity = string.IsNullOrEmpty(sessionId)
-            ? db.QueryFirstOrDefault(conn, tx, $"{TaskSelectSql} WHERE id = @id LIMIT 1", EntityMappers.MapTask,
-                DbService.Param("@id", taskId))
-            : db.QueryFirstOrDefault(conn, tx, $"{TaskSelectSql} WHERE id = @id AND session_id = @sessionId LIMIT 1", EntityMappers.MapTask,
-                DbService.Param("@id", taskId), DbService.Param("@sessionId", sessionId));
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return null;
+        }
+
+        var entity = db.QueryFirstOrDefault(conn, tx,
+            $"{TaskSelectSql} WHERE id = @id AND session_id = @sessionId LIMIT 1", EntityMappers.MapTask,
+            DbService.Param("@id", taskId), DbService.Param("@sessionId", sessionId));
         return entity is null ? null : ToWorkingRow(entity);
     }
 }

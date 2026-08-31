@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -128,9 +128,9 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 
         return action switch
         {
-            "list" => await ListCapabilitiesAsync(call.Input, context, registry, sessionMode, cancellationToken),
-            "inspect" => await InspectCapabilityAsync(context, registry, sessionMode, capabilityId, cancellationToken),
-            "call" => await CallCapabilityAsync(call, state, context, registry, workingFolder, projectId, sshConnectionId, sessionMode, capabilityId, cancellationToken),
+            "list" => await ListCapabilitiesAsync(call.Input, context, registry, runContext, sessionMode, cancellationToken),
+            "inspect" => await InspectCapabilityAsync(context, registry, runContext, sessionMode, capabilityId, cancellationToken),
+            "call" => await CallCapabilityAsync(call, state, context, registry, runContext, workingFolder, projectId, sshConnectionId, sessionMode, capabilityId, cancellationToken),
             _ => EncodeError($"Unknown action: {action}. Use list, inspect, or call.")
         };
     }
@@ -141,6 +141,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         JsonElement input,
         IWorkerRequestContext context,
         ToolRegistry? registry,
+        AgentRunContext runContext,
         string? sessionMode,
         CancellationToken cancellationToken)
     {
@@ -153,7 +154,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
                 CreateEmptyObject(),
                 cancellationToken);
 
-            return EncodeListResponse(mcpResult, registry, sessionMode, ParseListOptions(input));
+            return EncodeListResponse(mcpResult, registry, runContext, sessionMode, ParseListOptions(input));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -166,6 +167,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
     private static async Task<string> InspectCapabilityAsync(
         IWorkerRequestContext context,
         ToolRegistry? registry,
+        AgentRunContext runContext,
         string? sessionMode,
         string capabilityId,
         CancellationToken cancellationToken)
@@ -236,7 +238,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         if (capabilityId.StartsWith("builtin:", StringComparison.Ordinal))
         {
             var toolName = capabilityId["builtin:".Length..];
-            return EncodeBuiltinInspectResponse(registry, sessionMode, toolName);
+            return EncodeBuiltinInspectResponse(registry, runContext, sessionMode, toolName);
         }
 
         return EncodeError($"Unknown capability_id format: {capabilityId}");
@@ -249,6 +251,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
         ToolRegistry? registry,
+        AgentRunContext runContext,
         string? workingFolder,
         string? projectId,
         string? sshConnectionId,
@@ -307,7 +310,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
             // Verify the tool is explicitly exposed through the capability proxy.
             var category = registry.GetCategory(toolName);
             if (category is null || !IsProxiedBuiltinTool(toolName, category)
-                || !registry.IsAvailableInMode(toolName, sessionMode))
+                || !registry.IsAvailableInMode(toolName, sessionMode)
+                || !AgentRunContextPolicy.IsToolAllowed(runContext, toolName, category))
             {
                 return EncodeError($"Tool '{toolName}' is not available through the capability proxy in this session mode.");
             }

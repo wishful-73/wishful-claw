@@ -114,6 +114,51 @@ internal static partial class AgentLoop
         }
     }
 
+    internal static JsonElement NormalizeRuntimeParameters(
+        JsonElement parameters,
+        AgentRunContext runContext,
+        string sessionMode)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object)
+        {
+            return parameters;
+        }
+
+        var buffer = new ArrayBufferWriter<byte>();
+        var omitProjectContext = string.Equals(runContext.Scope, "global", StringComparison.OrdinalIgnoreCase);
+        var hasSessionMode = false;
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            foreach (var property in parameters.EnumerateObject())
+            {
+                if (omitProjectContext && property.Name is "projectId" or "workingFolder" or "sshConnectionId")
+                {
+                    continue;
+                }
+
+                if (property.NameEquals("sessionMode"))
+                {
+                    writer.WriteString("sessionMode", sessionMode);
+                    hasSessionMode = true;
+                }
+                else
+                {
+                    property.WriteTo(writer);
+                }
+            }
+
+            if (!hasSessionMode)
+            {
+                writer.WriteString("sessionMode", sessionMode);
+            }
+            writer.WriteEndObject();
+        }
+
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
+    }
+
     // ── Timing helpers ──
 
     internal static long ElapsedMs(long startedAt)

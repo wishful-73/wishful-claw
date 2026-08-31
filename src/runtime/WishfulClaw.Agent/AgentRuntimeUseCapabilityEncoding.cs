@@ -114,6 +114,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 
     private static string EncodeBuiltinInspectResponse(
         ToolRegistry? registry,
+        AgentRunContext runContext,
         string? sessionMode,
         string toolName)
     {
@@ -124,7 +125,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 
         var category = registry.GetCategory(toolName);
         if (category is null || !IsProxiedBuiltinTool(toolName, category)
-            || !registry.IsAvailableInMode(toolName, sessionMode))
+            || !registry.IsAvailableInMode(toolName, sessionMode)
+            || !AgentRunContextPolicy.IsToolAllowed(runContext, toolName, category))
         {
             return EncodeError($"Tool '{toolName}' is not available through the capability proxy in this session mode.");
         }

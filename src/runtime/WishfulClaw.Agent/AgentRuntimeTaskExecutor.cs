@@ -90,6 +90,11 @@ public static partial class AgentRuntimeTaskExecutor
     private static string ExecuteGet(JsonElement input, JsonElement parameters)
     {
         var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return EncodeError("No active session context for TaskGet.");
+        }
+
         var taskId = GetTaskId(input);
         if (taskId.Length == 0)
         {
@@ -108,6 +113,11 @@ public static partial class AgentRuntimeTaskExecutor
     private static string ExecuteUpdate(JsonElement input, JsonElement parameters)
     {
         var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            return EncodeError("No active session context for TaskUpdate.");
+        }
+
         var taskId = GetTaskId(input);
         if (taskId.Length == 0)
         {

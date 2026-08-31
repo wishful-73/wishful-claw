@@ -1,4 +1,4 @@
-
+﻿
 import { normalizeSidecarRecord, normalizeMaxParallelTools, normalizePlanRevision, normalizePlanExecution, normalizeSlashCommand, normalizeSystemCommand, normalizePluginChannelContext, normalizeRequestContextTexts, isNativeSidecarProviderConfig, SidecarProviderInput, sanitizeSidecarToolInput } from './sidecar-protocol'
 import { toPermissionPolicySnapshot } from '../../../../shared/permission-policy'
 import { useProviderStore } from '@renderer/stores/provider-store'
@@ -232,7 +232,7 @@ export function buildSidecarAgentRunRequest(args: {
   maxToolCallsPerTurn?: number
   compression?: CompressionConfig | null
   imagePluginProvider?: ProviderConfig | null
-  sessionMode?: 'agent' | 'chat'
+  sessionMode?: 'normal' | 'agent' | 'chat'
   planMode?: boolean
   planModeAllowedTools?: readonly string[]
   planRevision?: SidecarPlanRevisionContext | null

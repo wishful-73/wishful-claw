@@ -75,7 +75,11 @@ internal static class AgentRunContextPolicy
 
     public static AgentRunContext Resolve(JsonElement parameters)
     {
-        var sessionMode = Normalize(JsonHelpers.GetString(parameters, "sessionMode"));
+        var sessionMode = Normalize(JsonHelpers.GetString(parameters, "sessionMode")) switch
+        {
+            "agent" or "chat" => "normal",
+            var mode => mode
+        };
         var projectId = Normalize(JsonHelpers.GetString(parameters, "projectId"));
         var workingFolder = Normalize(JsonHelpers.GetString(parameters, "workingFolder"));
         var scope = Normalize(JsonHelpers.GetString(parameters, "scope"));
@@ -84,10 +88,11 @@ internal static class AgentRunContextPolicy
             scope = sessionMode == "global" || (projectId.Length == 0 && workingFolder.Length == 0)
                 ? "global"
                 : "project";
+            WorkerLog.Warn($"AgentRunContextPolicy: inferred scope={scope}; callers should provide an explicit scope");
         }
         else if (scope == "project" && projectId.Length == 0)
         {
-            scope = "global";
+            throw new InvalidOperationException("scope=project requires projectId");
         }
 
         var collaborationMode = Normalize(JsonHelpers.GetString(parameters, "collaborationMode"));
@@ -118,6 +123,8 @@ internal static class AgentRunContextPolicy
     public static string ResolveAvailableMode(JsonElement parameters, AgentRunContext context)
     {
         var sessionMode = Normalize(JsonHelpers.GetString(parameters, "sessionMode"));
+        if (sessionMode is "agent" or "chat")
+            return "normal";
         if (sessionMode.Length > 0)
             return sessionMode;
 

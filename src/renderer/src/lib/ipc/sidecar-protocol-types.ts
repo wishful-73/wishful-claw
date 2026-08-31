@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   MessageMeta,
   ProviderConfig,
   TokenUsage,
@@ -232,7 +232,7 @@ export interface SidecarAgentRunRequest {
   maxToolCallsPerTurn?: number
   maxConcurrentSubAgents: number
   compression?: CompressionConfig
-  sessionMode?: 'agent' | 'chat'
+  sessionMode?: 'normal' | 'agent' | 'chat'
   planMode?: boolean
   planModeAllowedTools?: string[]
   permissionPolicy?: PermissionPolicySnapshot

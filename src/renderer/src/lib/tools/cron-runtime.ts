@@ -489,7 +489,7 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
       maxIterations: runEvent.maxIterations && runEvent.maxIterations > 0 ? runEvent.maxIterations : 15,
       forceApproval: false,
       permissionMode: 'fullAccess',
-      sessionMode: 'agent',
+      sessionMode: 'normal',
       callerAgent: runEvent.agentId ?? undefined,
       pluginId: runEvent.pluginId ?? undefined,
       pluginChatId: runEvent.pluginChatId ?? undefined

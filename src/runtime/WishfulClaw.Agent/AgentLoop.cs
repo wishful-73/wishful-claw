@@ -136,6 +136,9 @@ internal static partial class AgentLoop
         conversation = sessionConv.GetConversation();
         wireConversation = sessionConv.GetWireConversation();
         var runtimeParameters = CreateRuntimeParametersWithoutMessages(parameters);
+        var rawRunContext = AgentRunContextPolicy.Resolve(runtimeParameters);
+        var rawSessionMode = AgentRunContextPolicy.ResolveAvailableMode(runtimeParameters, rawRunContext);
+        runtimeParameters = NormalizeRuntimeParameters(runtimeParameters, rawRunContext, rawSessionMode);
         state.ReplaceParameters(runtimeParameters);
         parameters = runtimeParameters;
         provider = GetObject(parameters, "provider");

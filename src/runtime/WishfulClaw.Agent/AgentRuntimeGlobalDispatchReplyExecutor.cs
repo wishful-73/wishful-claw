@@ -54,6 +54,13 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                 return EncodeError(getError ?? "Dispatch not found");
 
             var currentStatus = dispatch.GetProperty("status").GetString() ?? string.Empty;
+            var callerSessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+            var targetSessionId = dispatch.GetProperty("session_id").GetString()?.Trim();
+            if (string.IsNullOrEmpty(callerSessionId) ||
+                !string.Equals(callerSessionId, targetSessionId, StringComparison.Ordinal))
+            {
+                return EncodeError("Dispatch reply is only allowed from its target session.");
+            }
 
             // 2. Resolve the new status: explicit value wins; otherwise an
             // untouched (pending/sent) dispatch becomes acknowledged.

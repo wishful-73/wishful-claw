@@ -38,10 +38,12 @@ internal static partial class Program
 
         try
         {
+            RunImageContentSuite();
             SeedLegacyDatabase(dbPath);
             RunRegressionSuite(dbPath);
             RunLifecycleRegressionSuite(dbPath);
             RunSubAgentConcurrencySuiteAsync().GetAwaiter().GetResult();
+            RunImageContentSuite();
             Console.WriteLine($"Goal regression tests passed: {_passed}");
             return 0;
         }

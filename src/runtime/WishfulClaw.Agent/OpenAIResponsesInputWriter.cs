@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -26,6 +26,12 @@ internal static partial class OpenAIResponsesProvider
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+
+    internal static string BuildRequestBodyForTests(
+        JsonElement provider,
+        IReadOnlyList<AgentRuntimeChatMessage> conversation,
+        IReadOnlyList<ToolDefinition> toolDefs) =>
+        BuildRequestBody(provider, conversation, toolDefs);
 
     private static string BuildRequestBody(
         JsonElement provider,
@@ -106,7 +112,11 @@ internal static partial class OpenAIResponsesProvider
                 WriteResponsesToolResult(writer, toolResult);
             }
 
-            if (!string.IsNullOrWhiteSpace(message.Text))
+            if (message.Role != "assistant" && HasImageContent(message.ContentBlocks))
+            {
+                WriteResponsesMultimodalMessage(writer, message.ContentBlocks!);
+            }
+            else if (!string.IsNullOrWhiteSpace(message.Text))
             {
                 var role = message.Role == "assistant" ? "assistant" : "user";
                 WriteResponsesTextMessage(writer, role, message.Text);
@@ -118,6 +128,94 @@ internal static partial class OpenAIResponsesProvider
             }
         }
         writer.WriteEndArray();
+    }
+
+    private static bool HasImageContent(IReadOnlyList<JsonElement>? contentBlocks)
+    {
+        if (contentBlocks is null) return false;
+        foreach (var block in contentBlocks)
+        {
+            if (JsonHelpers.GetString(block, "type") == "image" &&
+                block.TryGetProperty("source", out var source) &&
+                source.ValueKind == JsonValueKind.Object &&
+                ((JsonHelpers.GetString(source, "type") == "url" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
+                 (JsonHelpers.GetString(source, "type") == "base64" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void WriteResponsesMultimodalMessage(
+        Utf8JsonWriter writer,
+        IReadOnlyList<JsonElement> contentBlocks)
+    {
+        var writableBlocks = new List<JsonElement>();
+        foreach (var block in contentBlocks)
+        {
+            var type = JsonHelpers.GetString(block, "type");
+            if (type == "text")
+            {
+                writableBlocks.Add(block);
+                continue;
+            }
+            if (type == "image" &&
+                block.TryGetProperty("source", out var source) &&
+                source.ValueKind == JsonValueKind.Object &&
+                ((JsonHelpers.GetString(source, "type") == "url" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
+                 (JsonHelpers.GetString(source, "type") == "base64" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            {
+                writableBlocks.Add(block);
+            }
+        }
+        if (writableBlocks.Count == 0) return;
+
+        writer.WriteStartObject();
+        writer.WriteString("type", "message");
+        writer.WriteString("role", "user");
+        writer.WritePropertyName("content");
+        writer.WriteStartArray();
+        foreach (var block in writableBlocks)
+        {
+            var type = JsonHelpers.GetString(block, "type");
+            if (type == "text")
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", "input_text");
+                writer.WriteString("text", JsonHelpers.GetString(block, "text") ?? string.Empty);
+                writer.WriteEndObject();
+                continue;
+            }
+
+            var source = block.GetProperty("source");
+            var sourceType = JsonHelpers.GetString(source, "type");
+            var imageUrl = sourceType == "url"
+                ? JsonHelpers.GetString(source, "url")
+                : BuildBase64ImageUrl(source);
+            if (string.IsNullOrWhiteSpace(imageUrl)) continue;
+
+            writer.WriteStartObject();
+            writer.WriteString("type", "input_image");
+            writer.WriteString("image_url", imageUrl);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+    }
+
+    private static string? BuildBase64ImageUrl(JsonElement source)
+    {
+        var data = JsonHelpers.GetString(source, "data");
+        if (string.IsNullOrWhiteSpace(data)) return null;
+        var mediaType = JsonHelpers.GetString(source, "mediaType") ??
+            ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ??
+            "image/png";
+        return $"data:{mediaType};base64,{ProviderContentHelpers.StripDataUrlPrefix(data)}";
     }
 
     private static void WriteResponsesTextMessage(

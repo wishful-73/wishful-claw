@@ -103,6 +103,7 @@ export interface Session {
   // Updated on each message_end event, read directly by the status bar.
   sessionCacheHit?: number
   sessionCacheMiss?: number
+  isRuntimeResident?: boolean
 }
 
 // ─── Project ───
@@ -179,6 +180,7 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     providerId: session.providerId,
     modelId: session.modelId,
     sessionCacheHit: session.sessionCacheHit,
-    sessionCacheMiss: session.sessionCacheMiss
+    sessionCacheMiss: session.sessionCacheMiss,
+    isRuntimeResident: session.isRuntimeResident
   }
 }

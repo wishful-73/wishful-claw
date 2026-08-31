@@ -11,6 +11,14 @@ namespace WishfulClaw.Agent;
 /// </summary>
 internal static partial class OpenAIChatProvider
 {
+    internal static string BuildRequestBodyForTests(
+        JsonElement parameters,
+        JsonElement provider,
+        IReadOnlyList<AgentRuntimeChatMessage> conversation,
+        IReadOnlyList<ToolDefinition> toolDefs,
+        AgentRuntimeRunState state) =>
+        BuildRequestBody(parameters, provider, conversation, toolDefs, state);
+
     private static string BuildRequestBody(
         JsonElement parameters,
         JsonElement provider,
@@ -135,7 +143,15 @@ internal static partial class OpenAIChatProvider
 
                 writer.WriteStartObject();
                 writer.WriteString("role", "user");
-                writer.WriteString("content", message.Text);
+                if (HasImageContent(message.ContentBlocks))
+                {
+                    writer.WritePropertyName("content");
+                    WriteOpenAIContentBlocks(writer, message.ContentBlocks!);
+                }
+                else
+                {
+                    writer.WriteString("content", message.Text);
+                }
                 writer.WriteEndObject();
                 continue;
             }
@@ -185,6 +201,76 @@ internal static partial class OpenAIChatProvider
         }
 
         writer.WriteEndArray();
+    }
+
+    private static bool HasImageContent(IReadOnlyList<JsonElement>? contentBlocks)
+    {
+        if (contentBlocks is null) return false;
+        foreach (var block in contentBlocks)
+        {
+            if (JsonHelpers.GetString(block, "type") == "image" &&
+                block.TryGetProperty("source", out var source) &&
+                source.ValueKind == JsonValueKind.Object &&
+                ((JsonHelpers.GetString(source, "type") == "url" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
+                 (JsonHelpers.GetString(source, "type") == "base64" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void WriteOpenAIContentBlocks(Utf8JsonWriter writer, IReadOnlyList<JsonElement> contentBlocks)
+    {
+        writer.WriteStartArray();
+        foreach (var block in contentBlocks)
+        {
+            var type = JsonHelpers.GetString(block, "type");
+            if (type == "text")
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", "text");
+                writer.WriteString("text", JsonHelpers.GetString(block, "text") ?? string.Empty);
+                writer.WriteEndObject();
+                continue;
+            }
+
+            if (type != "image" || !block.TryGetProperty("source", out var source) ||
+                source.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var sourceType = JsonHelpers.GetString(source, "type");
+            var imageUrl = sourceType == "url"
+                ? JsonHelpers.GetString(source, "url")
+                : BuildBase64ImageUrl(source);
+            if (string.IsNullOrWhiteSpace(imageUrl))
+            {
+                continue;
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString("type", "image_url");
+            writer.WritePropertyName("image_url");
+            writer.WriteStartObject();
+            writer.WriteString("url", imageUrl);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+    }
+
+    private static string? BuildBase64ImageUrl(JsonElement source)
+    {
+        var data = JsonHelpers.GetString(source, "data");
+        if (string.IsNullOrWhiteSpace(data)) return null;
+        var mediaType = JsonHelpers.GetString(source, "mediaType") ??
+            ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ??
+            "image/png";
+        return $"data:{mediaType};base64,{ProviderContentHelpers.StripDataUrlPrefix(data)}";
     }
 
     private static void WriteTools(Utf8JsonWriter writer, IReadOnlyList<ToolDefinition> toolDefs)

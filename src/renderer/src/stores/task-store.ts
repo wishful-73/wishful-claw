@@ -1,10 +1,12 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { emitAgentRuntimeSync, isAgentRuntimeSyncSuppressed } from '../lib/agent-runtime-sync'
 import { invokeMessagePackBinary } from '../lib/ipc/messagepack-ipc-client'
 import { dbCreateTask, dbUpdateTask, dbDeleteTask, dbDeleteTasksBySession, rowToTask, buildDbPatch, TaskRow, TaskStore } from './task-store-helpers'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { DB_TASKS_LIST_BY_SESSION_MSGPACK_CHANNEL } from '@shared/messagepack/binary-ipc'
 import type { TaskItem } from './task-store-helpers'
+
+const EMPTY_TASKS: TaskItem[] = []
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
@@ -196,7 +198,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   getTasksBySession: (sessionId) => {
     const state = get()
     if (state.currentSessionId === sessionId) return state.tasks
-    return state.tasksBySession[sessionId] ?? []
+    return state.tasksBySession[sessionId] ?? EMPTY_TASKS
   },
 
   getActiveTask: () => get().tasks.find((t) => t.status === 'in_progress'),

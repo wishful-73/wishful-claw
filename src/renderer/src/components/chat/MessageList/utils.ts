@@ -1,4 +1,4 @@
-// Pure utility functions and types extracted from MessageList.tsx
+﻿// Pure utility functions and types extracted from MessageList.tsx
 
 import type { ContentBlock, ToolResultContent, UnifiedMessage } from '@renderer/lib/api/types'
 import type { ChatRenderableMessageMeta, TailToolExecutionState } from '../transcript-utils'
@@ -416,10 +416,16 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
 
     // Build content blocks from ChatMessage fields
     const blocks: ContentBlock[] = []
+    const persistedContent = Array.isArray(msg.content)
+      ? (msg.content as ContentBlock[])
+      : null
 
-    // Use segments for temporal ordering if available (preserves iteration boundaries)
-    const segments = msg.segments as Array<Record<string, unknown>> | undefined
-    if (segments && segments.length > 0) {
+    if (persistedContent && persistedContent.length > 0) {
+      blocks.push(...persistedContent)
+    } else {
+      // Use segments for temporal ordering if available (preserves iteration boundaries)
+      const segments = msg.segments as Array<Record<string, unknown>> | undefined
+      if (segments && segments.length > 0) {
       for (const seg of segments) {
         const segType = seg.type as string
         if (segType === 'thinking' && seg.thinking) {
@@ -476,6 +482,7 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
           }
         }
       }
+    }
     }
 
     const result: UnifiedMessage = {

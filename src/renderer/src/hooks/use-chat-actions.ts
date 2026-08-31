@@ -17,7 +17,8 @@ import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-r
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
 import { compressMessages } from '@renderer/lib/agent/context-compression'
-import type { CompressionStatusMeta, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
+import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
+import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/lib/image-attachments'
 import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
 
 export interface SendMessageOptions {
@@ -161,7 +162,16 @@ export function useChatActions() {
       // ToolPreset control what the LLM sees.
       void filteredWorkerTools // tools now managed by backend via toolPreset
 
-      const userContent = text
+      const messageText = typeof text === 'string' ? text : text.text
+      const imageAttachments = Array.isArray(_images)
+        ? _images as ImageAttachment[]
+        : typeof text !== 'string' && Array.isArray(text.images)
+          ? text.images as ImageAttachment[]
+          : []
+      const imageBlocks: ContentBlock[] = imageAttachments.map(imageAttachmentToContentBlock)
+      const userContent: string | ContentBlock[] = imageBlocks.length > 0
+        ? [{ type: 'text', text: messageText }, ...imageBlocks]
+        : messageText
 
       // Resolve thinking config from the model definition
       const modelConfig = activeProvider.models.find((m: any) => m.id === modelId)

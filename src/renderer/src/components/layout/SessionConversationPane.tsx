@@ -71,7 +71,12 @@ export function SessionConversationPane({
   const handleSend = useCallback(
     (text: string, _images?: unknown, _options?: unknown) => {
       if (!resolvedSessionId) return
-      void sendMessage({ text, sessionId: resolvedSessionId, opts: _options as SendMessageOptions | undefined })
+      void sendMessage({
+        text,
+        images: Array.isArray(_images) ? _images : undefined,
+        sessionId: resolvedSessionId,
+        opts: _options as SendMessageOptions | undefined
+      })
     },
     [resolvedSessionId, sendMessage]
   )

@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 
 import { immer } from 'zustand/middleware/immer'
 
@@ -26,7 +26,7 @@ import {
   isCompactSummaryLikeMessage,
   mergeCompressedMessagesKeepHistory
 } from '@renderer/lib/agent/context-compression'
-import type { CompressionStatusMeta, UnifiedMessage } from '@renderer/lib/api/types'
+import type { CompressionStatusMeta, ContentBlock, UnifiedMessage } from '@renderer/lib/api/types'
 
 import { dbUpsertMessage, dbUpdateSession, dbDeleteMessage, awaitSessionCreated } from './db-helpers'
 import { trackCompressionStatus } from './compression-status-registry'
@@ -67,7 +67,7 @@ export interface AgentActions {
 
     provider: Record<string, unknown>
 
-    messages: Array<{ role: string; content: string | Array<Record<string, unknown>> | Record<string, unknown> }>
+    messages: Array<{ role: string; content: string | ContentBlock[] | Record<string, unknown> }>
 
     sessionId?: string
 
@@ -180,7 +180,15 @@ export const useChatStore = create<ChatStore>()(
 
       const lastMsgContent = params.messages[params.messages.length - 1]?.content
 
-      const userText = typeof lastMsgContent === 'string' ? lastMsgContent : '' 
+      const userContent = lastMsgContent
+      const userText = typeof userContent === 'string'
+        ? userContent
+        : Array.isArray(userContent)
+          ? userContent
+              .filter((block): block is { type: 'text'; text: string } => block.type === 'text' && typeof block.text === 'string')
+              .map((block) => block.text)
+              .join('\n')
+          : ''
 
       const now = Date.now()
 
@@ -203,6 +211,8 @@ export const useChatStore = create<ChatStore>()(
         role: 'user',
 
         text: userText,
+
+        ...(Array.isArray(userContent) ? { content: userContent as unknown as ContentBlock[] } : {}),
 
         createdAt: now
 
@@ -1772,6 +1782,8 @@ export function applyCompactArtifactsToSession(
     if (!target) return
     target.messages = mergedMessages
     target.messageCount = mergedMessages.length
+    target.messagesLoaded = true
+    target.isRuntimeResident = true
     target.updatedAt = now
   })
   const updated = useChatStore.getState().sessions.find((s) => s.id === sessionId)

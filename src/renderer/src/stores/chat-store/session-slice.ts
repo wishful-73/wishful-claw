@@ -113,6 +113,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       loadedRangeEnd: 0,
       totalTurns: 0,
       lastKnownMessageCount: 0,
+      isRuntimeResident: false,
       createdAt: now,
       updatedAt: now,
       projectId: targetProjectId ?? undefined,
@@ -295,6 +296,12 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       if (session) {
         session.messages = []
         session.messageCount = 0
+        session.messagesLoaded = true
+        session.loadedRangeStart = 0
+        session.loadedRangeEnd = 0
+        session.totalTurns = 0
+        session.lastKnownMessageCount = 0
+        session.isRuntimeResident = false
         session.updatedAt = Date.now()
       }
     })
@@ -386,6 +393,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       if (session) {
         session.messages.push(msg)
         session.messageCount = session.messages.length
+        session.messagesLoaded = true
+        session.isRuntimeResident = true
         session.updatedAt = Date.now()
       }
     })
@@ -405,6 +414,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         session.messages.push(assistantMsg)
       }
       session.messageCount = session.messages.length
+      session.messagesLoaded = true
+      session.isRuntimeResident = true
       session.updatedAt = now
       if (sessionProjectId) {
         const proj = (state as unknown as { projects: Array<{ id: string; updatedAt: number }> }).projects.find((p) => p.id === sessionProjectId)
@@ -568,6 +579,10 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     const session = state.sessions.find((s) => s.id === sessionId)
     if (!session) return
 
+    if (session.isRuntimeResident) {
+      return
+    }
+
     // Already loaded and no change
     if (!_force && session.messagesLoaded && session.messages.length > 0) {
       return
@@ -582,7 +597,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       if (actualCount === 0) {
         set((state) => {
           const target = state.sessions.find((s) => s.id === sessionId)
-          if (!target) return
+          if (!target || target.isRuntimeResident) return
           target.messages = []
           target.messagesLoaded = true
           target.messageCount = 0
@@ -601,7 +616,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
 
       set((state) => {
         const target = state.sessions.find((s) => s.id === sessionId)
-        if (!target) return
+        if (!target || target.isRuntimeResident) return
         target.messages = messages
         target.messageCount = actualCount
         target.messagesLoaded = true
@@ -687,6 +702,15 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       set((state) => {
         const target = state.sessions.find((s) => s.id === sessionId)
         if (!target) return
+        if (target.isRuntimeResident) {
+          const existingIds = new Set(target.messages.map((message) => message.id))
+          target.messages = [...target.messages, ...messages.filter((message) => !existingIds.has(message.id))]
+            .sort((left, right) => left.createdAt - right.createdAt)
+          target.messageCount = Math.max(target.messageCount, target.messages.length)
+          target.messagesLoaded = true
+          target.totalTurns = Math.max(target.totalTurns ?? 0, totalTurns)
+          return
+        }
         target.messages = messages
         target.messagesLoaded = true
         target.loadedRangeStart = hasMore ? rangeStart : 0

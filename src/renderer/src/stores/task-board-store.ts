@@ -274,16 +274,21 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
 
   /** Updates a single dispatch row's status (best effort) then reloads the list. */
   refreshDispatchStatus: async (dispatchId, status, error) => {
+    let ok = false
     try {
-      await window.api.workerRequest<GlobalMutationResult>('db/global-task-dispatches-update', {
+      const result = await window.api.workerRequest<GlobalMutationResult>('db/global-task-dispatches-update', {
         id: dispatchId,
         patch: { status, ...(error ? { error } : {}) }
       })
+      ok = isMutationOk(result)
+      if (!ok) {
+        console.error('[TaskBoard] failed to mark dispatch status:', mutationError(result, 'unknown error'))
+      }
     } catch (err) {
       console.error('[TaskBoard] failed to mark dispatch status:', err)
     }
     const taskId = get().dispatchTaskId
     if (taskId) await get().loadDispatches(taskId)
-    return true
+    return ok
   }
 }))

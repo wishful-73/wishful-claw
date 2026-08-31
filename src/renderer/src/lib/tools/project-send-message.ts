@@ -99,9 +99,8 @@ export async function handleProjectSendSessionMessage(
   // 3. Fire-and-forget sendMessage — global session doesn't need to wait for result
   //    The Agent can check back later via get_project_details.
   try {
-    // Fire-and-forget: don't await, let the target session execute in background
     writeLog('info', '[sendMsg] sending to session: ' + sessionId + ' content: ' + content)
-    useChatStore.getState().sendMessage({
+    const started = await useChatStore.getState().sendMessage({
       sessionMode: sessionMode ?? 'normal',
       provider,
       messages: [{ role: 'user', content }],
@@ -124,9 +123,10 @@ export async function handleProjectSendSessionMessage(
       userRules: settings.systemPrompt || undefined,
       contextCompressionEnabled: settings.contextCompressionEnabled,
       contextCompressionThreshold: settings.contextCompressionThreshold
-    }).catch(err => {
-      writeLog('error', '[sendMsg] sendMessage async error: ' + (err instanceof Error ? err.message : String(err)))
     })
+    if (!started) {
+      return { success: false, error: `Failed to start message processing for session "${sessionId}".` }
+    }
 
     return {
       success: true,

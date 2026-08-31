@@ -89,49 +89,57 @@ public static class DbGlobalTaskDispatchTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            // Constraint: the parent global task must exist.
-            var taskExists = db.QueryScalar<long>("SELECT COUNT(*) FROM global_tasks WHERE id = @id",
-                new SqliteParameter("@id", globalTaskId)) > 0;
-            if (!taskExists)
-                return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(false, 0, "Global task not found"), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
+            var mutation = db.ExecuteInTransaction((conn, tx) =>
+            {
+                // Validate the parent task and target session on the same
+                // transaction that inserts the dispatch row.
+                var taskExists = db.QueryScalar<long>(conn, tx,
+                    "SELECT COUNT(*) FROM global_tasks WHERE id = @id",
+                    new SqliteParameter("@id", globalTaskId)) > 0;
+                if (!taskExists)
+                    return new GlobalTaskDispatchMutationResult(false, 0, "Global task not found");
 
-            // Constraint: the target session must exist; project is derived
-            // from the session↔project relationship and must agree with any
-            // explicitly supplied projectId.
-            var sessionExists = db.QueryScalar<long>("SELECT COUNT(*) FROM sessions WHERE id = @id",
-                new SqliteParameter("@id", sessionId)) > 0;
-            if (!sessionExists)
-                return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(false, 0, "Target session not found"), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
-            var sessionProjectRaw = db.QueryFirstOrDefault(
-                "SELECT project_id FROM sessions WHERE id = @id",
-                r => r.GetNullableString("project_id") ?? string.Empty,
-                new SqliteParameter("@id", sessionId));
-            var sessionProjectId = string.IsNullOrEmpty(sessionProjectRaw) ? null : sessionProjectRaw;
-            var requestedProjectId = GetString(parameters, "projectId");
-            if (!string.IsNullOrEmpty(requestedProjectId) && requestedProjectId != sessionProjectId)
-                return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(false, 0, "projectId does not match the target session's project"), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
+                var sessionExists = db.QueryScalar<long>(conn, tx,
+                    "SELECT COUNT(*) FROM sessions WHERE id = @id AND scope = 'project'",
+                    new SqliteParameter("@id", sessionId)) > 0;
+                if (!sessionExists)
+                    return new GlobalTaskDispatchMutationResult(false, 0, "Target session must be a project session");
 
-            var kind = GetString(parameters, "kind") ?? GlobalTaskDispatchKindValues.Message;
-            if (kind != GlobalTaskDispatchKindValues.Message && kind != GlobalTaskDispatchKindValues.WorkRequest)
-                return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(false, 0, "kind must be 'message' or 'work_request'"), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
+                var sessionProjectId = db.QueryFirstOrDefault(
+                    conn, tx,
+                    "SELECT project_id FROM sessions WHERE id = @id",
+                    r => r.GetNullableString("project_id") ?? string.Empty,
+                    new SqliteParameter("@id", sessionId));
+                if (string.IsNullOrEmpty(sessionProjectId))
+                    return new GlobalTaskDispatchMutationResult(false, 0, "Target project session has no projectId");
 
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var changed = db.Execute(
-                "INSERT INTO global_task_dispatches (id, global_task_id, project_id, session_id, source_session_id, kind, instruction, status, " +
-                "latest_report, error, created_at, updated_at, completed_at) VALUES " +
-                "(@id, @gtid, @pid, @sid, @srcid, @kind, @instruction, @status, NULL, NULL, @createdAt, @updatedAt, NULL)",
-                new SqliteParameter("@id", id),
-                new SqliteParameter("@gtid", globalTaskId),
-                new SqliteParameter("@pid", (object?)sessionProjectId ?? DBNull.Value),
-                new SqliteParameter("@sid", sessionId),
-                new SqliteParameter("@srcid", (object?)GetString(parameters, "sourceSessionId") ?? DBNull.Value),
-                new SqliteParameter("@kind", kind),
-                new SqliteParameter("@instruction", GetString(parameters, "instruction") ?? ""),
-                new SqliteParameter("@status", GetString(parameters, "status") ?? GlobalTaskDispatchStatusValues.Pending),
-                new SqliteParameter("@createdAt", GetLong(parameters, "createdAt", now)),
-                new SqliteParameter("@updatedAt", GetLong(parameters, "updatedAt", now)));
+                var requestedProjectId = GetString(parameters, "projectId");
+                if (!string.IsNullOrEmpty(requestedProjectId) && requestedProjectId != sessionProjectId)
+                    return new GlobalTaskDispatchMutationResult(false, 0, "projectId does not match the target session's project");
 
-            return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(true, changed, null), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
+                var kind = GetString(parameters, "kind") ?? GlobalTaskDispatchKindValues.Message;
+                if (kind != GlobalTaskDispatchKindValues.Message && kind != GlobalTaskDispatchKindValues.WorkRequest)
+                    return new GlobalTaskDispatchMutationResult(false, 0, "kind must be 'message' or 'work_request'");
+
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var changed = db.Execute(conn, tx,
+                    "INSERT INTO global_task_dispatches (id, global_task_id, project_id, session_id, source_session_id, kind, instruction, status, " +
+                    "latest_report, error, created_at, updated_at, completed_at) VALUES " +
+                    "(@id, @gtid, @pid, @sid, @srcid, @kind, @instruction, @status, NULL, NULL, @createdAt, @updatedAt, NULL)",
+                    new SqliteParameter("@id", id),
+                    new SqliteParameter("@gtid", globalTaskId),
+                    new SqliteParameter("@pid", sessionProjectId),
+                    new SqliteParameter("@sid", sessionId),
+                    new SqliteParameter("@srcid", (object?)GetString(parameters, "sourceSessionId") ?? DBNull.Value),
+                    new SqliteParameter("@kind", kind),
+                    new SqliteParameter("@instruction", GetString(parameters, "instruction") ?? ""),
+                    new SqliteParameter("@status", GetString(parameters, "status") ?? GlobalTaskDispatchStatusValues.Pending),
+                    new SqliteParameter("@createdAt", GetLong(parameters, "createdAt", now)),
+                    new SqliteParameter("@updatedAt", GetLong(parameters, "updatedAt", now)));
+                return new GlobalTaskDispatchMutationResult(changed > 0, changed, changed > 0 ? null : "Dispatch was not created");
+            });
+
+            return WorkerResponse.Json(mutation, InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
         }
         catch (Exception ex) { WorkerLog.Error($"DbGlobalTaskDispatchTools.Create failed: {ex.Message}"); return WorkerResponse.Error(ex.Message); }
     }
@@ -147,27 +155,28 @@ public static class DbGlobalTaskDispatchTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            var entity = db.QueryFirstOrDefault($"{DispatchSelect} WHERE id = @id", EntityMappers.MapGlobalTaskDispatch,
-                new SqliteParameter("@id", id));
-            if (entity == null)
-                return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(false, 0, "Dispatch not found"), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
+            if (!parameters.TryGetProperty("patch", out var patch) || patch.ValueKind != JsonValueKind.Object)
+                return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(false, 0, "patch is required"), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
 
-            if (parameters.TryGetProperty("patch", out var patch) && patch.ValueKind == JsonValueKind.Object)
-            {
-                ApplyPatch(entity, patch);
-            }
+            var assignments = new List<string>();
+            var sqlParams = new List<SqliteParameter>();
+            AddStringPatch(patch, "kind", "kind", assignments, sqlParams);
+            AddStringPatch(patch, "instruction", "instruction", assignments, sqlParams);
+            AddStringPatch(patch, "status", "status", assignments, sqlParams);
+            AddNullableStringPatch(patch, "latestReport", "latest_report", assignments, sqlParams);
+            AddNullableStringPatch(patch, "error", "error", assignments, sqlParams);
+            AddNullableLongPatch(patch, "completedAt", "completed_at", assignments, sqlParams);
+            if (assignments.Count == 0)
+                return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(false, 0, "patch has no supported fields"), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
 
+            assignments.Add("updated_at = @updatedAt");
+            sqlParams.Add(new SqliteParameter("@updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            sqlParams.Add(new SqliteParameter("@id", id));
             var changed = db.Execute(
-                "UPDATE global_task_dispatches SET kind = @kind, instruction = @instruction, status = @status, " +
-                "latest_report = @report, error = @error, updated_at = @ua, completed_at = @ca WHERE id = @id",
-                new SqliteParameter("@kind", entity.Kind),
-                new SqliteParameter("@instruction", entity.Instruction),
-                new SqliteParameter("@status", entity.Status),
-                new SqliteParameter("@report", (object?)entity.LatestReport ?? DBNull.Value),
-                new SqliteParameter("@error", (object?)entity.Error ?? DBNull.Value),
-                new SqliteParameter("@ua", entity.UpdatedAt),
-                new SqliteParameter("@ca", (object?)entity.CompletedAt ?? DBNull.Value),
-                new SqliteParameter("@id", id));
+                $"UPDATE global_task_dispatches SET {string.Join(", ", assignments)} WHERE id = @id",
+                sqlParams.ToArray());
+            if (changed == 0)
+                return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(false, 0, "Dispatch not found"), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
 
             return WorkerResponse.Json(new GlobalTaskDispatchMutationResult(true, changed, null), InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
         }
@@ -205,22 +214,53 @@ public static class DbGlobalTaskDispatchTools
 
     // ─── Private helpers ───
 
-    private static void ApplyPatch(GlobalTaskDispatchEntity entity, JsonElement patch)
+    private static void AddStringPatch(
+        JsonElement patch,
+        string inputName,
+        string columnName,
+        List<string> assignments,
+        List<SqliteParameter> parameters)
     {
-        if (patch.TryGetProperty("instruction", out var instruction) && instruction.ValueKind == JsonValueKind.String)
-            entity.Instruction = instruction.GetString()!;
-        if (patch.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String)
-            entity.Status = status.GetString()!;
-        if (patch.TryGetProperty("latestReport", out var latestReport))
-            entity.LatestReport = latestReport.ValueKind == JsonValueKind.String ? latestReport.GetString() : null;
-        if (patch.TryGetProperty("error", out var error))
-            entity.Error = error.ValueKind == JsonValueKind.String ? error.GetString() : null;
-        if (patch.TryGetProperty("completedAt", out var completedAt))
-            entity.CompletedAt = completedAt.ValueKind == JsonValueKind.Number ? completedAt.GetInt64() : null;
-        if (patch.TryGetProperty("updatedAt", out var updatedAt) && updatedAt.ValueKind == JsonValueKind.Number)
-            entity.UpdatedAt = updatedAt.GetInt64();
-        else
-            entity.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (!patch.TryGetProperty(inputName, out var value) || value.ValueKind != JsonValueKind.String)
+            return;
+
+        var parameterName = $"@patch_{columnName}";
+        assignments.Add($"{columnName} = {parameterName}");
+        parameters.Add(new SqliteParameter(parameterName, value.GetString() ?? string.Empty));
+    }
+
+    private static void AddNullableStringPatch(
+        JsonElement patch,
+        string inputName,
+        string columnName,
+        List<string> assignments,
+        List<SqliteParameter> parameters)
+    {
+        if (!patch.TryGetProperty(inputName, out var value)
+            || (value.ValueKind != JsonValueKind.String && value.ValueKind != JsonValueKind.Null))
+            return;
+
+        var parameterName = $"@patch_{columnName}";
+        assignments.Add($"{columnName} = {parameterName}");
+        parameters.Add(new SqliteParameter(parameterName,
+            value.ValueKind == JsonValueKind.Null ? DBNull.Value : value.GetString() ?? string.Empty));
+    }
+
+    private static void AddNullableLongPatch(
+        JsonElement patch,
+        string inputName,
+        string columnName,
+        List<string> assignments,
+        List<SqliteParameter> parameters)
+    {
+        if (!patch.TryGetProperty(inputName, out var value)
+            || (value.ValueKind != JsonValueKind.Number && value.ValueKind != JsonValueKind.Null))
+            return;
+
+        var parameterName = $"@patch_{columnName}";
+        assignments.Add($"{columnName} = {parameterName}");
+        parameters.Add(new SqliteParameter(parameterName,
+            value.ValueKind == JsonValueKind.Null ? DBNull.Value : value.GetInt64()));
     }
 
     private static string? GetString(JsonElement parameters, string name)

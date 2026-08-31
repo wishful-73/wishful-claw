@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Http;
 
 namespace WishfulClaw.Agent;
@@ -29,6 +30,7 @@ internal static partial class OpenAIResponsesProvider
         JsonElement parameters,
         JsonElement provider,
         List<AgentRuntimeChatMessage> conversation,
+        IReadOnlyList<ToolDefinition> toolDefs,
         AgentRuntimeRunState state,
         IWorkerRequestContext context)
     {
@@ -37,7 +39,7 @@ internal static partial class OpenAIResponsesProvider
             .Trim()
             .TrimEnd('/');
         var url = $"{baseUrl}/responses";
-        var body = BuildRequestBody(parameters, provider, conversation);
+        var body = BuildRequestBody(provider, conversation, toolDefs);
 
         await EmitRequestDebugAsync(
             parameters, provider, state, context, url, body, model);

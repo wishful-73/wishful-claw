@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent;
 
@@ -27,9 +28,9 @@ internal static partial class OpenAIResponsesProvider
     };
 
     private static string BuildRequestBody(
-        JsonElement parameters,
         JsonElement provider,
-        IReadOnlyList<AgentRuntimeChatMessage> conversation)
+        IReadOnlyList<AgentRuntimeChatMessage> conversation,
+        IReadOnlyList<ToolDefinition> toolDefs)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
@@ -51,7 +52,7 @@ internal static partial class OpenAIResponsesProvider
             }
             if (!omitted.Contains("tools"))
             {
-                WriteResponsesTools(writer, parameters);
+                WriteResponsesTools(writer, toolDefs);
             }
 
             if (!omitted.Contains("temperature") &&
@@ -234,58 +235,33 @@ internal static partial class OpenAIResponsesProvider
         writer.WriteEndObject();
     }
 
-    private static void WriteResponsesTools(Utf8JsonWriter writer, JsonElement parameters)
+    private static void WriteResponsesTools(
+        Utf8JsonWriter writer,
+        IReadOnlyList<ToolDefinition> toolDefs)
     {
-        if (!TryGetTools(parameters, out var tools))
+        if (toolDefs.Count == 0)
         {
             return;
         }
+
         writer.WritePropertyName("tools");
         writer.WriteStartArray();
-        foreach (var tool in tools.EnumerateArray())
+        foreach (var tool in toolDefs)
         {
-            var name = JsonHelpers.GetString(tool, "name");
-            if (string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(tool.Name))
             {
                 continue;
             }
 
             writer.WriteStartObject();
             writer.WriteString("type", "function");
-            writer.WriteString("name", name);
-            writer.WriteString("description", JsonHelpers.GetString(tool, "description") ?? string.Empty);
+            writer.WriteString("name", tool.Name);
+            writer.WriteString("description", tool.Description);
             writer.WritePropertyName("parameters");
-            WriteToolSchema(writer, tool);
+            tool.InputSchema.WriteTo(writer);
             writer.WriteBoolean("strict", false);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
-    }
-
-    private static bool TryGetTools(JsonElement parameters, out JsonElement tools)
-    {
-        if (parameters.ValueKind == JsonValueKind.Object &&
-            parameters.TryGetProperty("tools", out tools) &&
-            tools.ValueKind == JsonValueKind.Array &&
-            tools.GetArrayLength() > 0)
-        {
-            return true;
-        }
-        tools = default;
-        return false;
-    }
-
-    private static void WriteToolSchema(Utf8JsonWriter writer, JsonElement tool)
-    {
-        if (tool.TryGetProperty("inputSchema", out var schema))
-        {
-            schema.WriteTo(writer);
-            return;
-        }
-        writer.WriteStartObject();
-        writer.WriteString("type", "object");
-        writer.WriteStartObject("properties");
-        writer.WriteEndObject();
-        writer.WriteEndObject();
     }
 }

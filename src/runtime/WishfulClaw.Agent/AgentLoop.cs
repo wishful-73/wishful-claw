@@ -578,7 +578,7 @@ internal static partial class AgentLoop
         if (providerType == "openai-responses")
         {
             return await OpenAIResponsesProvider.ExecuteTurnAsync(
-                parameters, provider, conversation, state, context);
+                parameters, provider, conversation, toolDefs, state, context);
         }
 
         // Default: openai-chat

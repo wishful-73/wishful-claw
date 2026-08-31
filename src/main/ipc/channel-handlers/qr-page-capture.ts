@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+﻿import { BrowserWindow } from 'electron'
 
 interface QrElementBounds {
   x: number
@@ -6,6 +6,8 @@ interface QrElementBounds {
   width: number
   height: number
 }
+
+const QR_LOAD_TIMEOUT_MS = 30_000
 
 const QR_ELEMENT_SCRIPT = String.raw`
 (() => {
@@ -120,7 +122,12 @@ export async function captureQrElementAsDataUrl(url: string): Promise<string | u
   })
 
   try {
-    await win.loadURL(url)
+    await Promise.race([
+      win.loadURL(url),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('QR page load timed out')), QR_LOAD_TIMEOUT_MS)
+      })
+    ])
     const bounds = await waitForQrElement(win)
     if (!bounds) return undefined
 

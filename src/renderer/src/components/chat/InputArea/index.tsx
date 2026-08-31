@@ -7,14 +7,15 @@ import { updateWebSearchToolRegistration } from '@renderer/lib/tools'
 import { useDebouncedTokens } from '@renderer/hooks/use-estimated-tokens'
 import { usePromptRecommendation } from '@renderer/hooks/use-prompt-recommendation'
 import { useChatStore } from '@renderer/stores/chat-store'
-import { type CollabMode } from '../CollabModeSwitcher'
+import { useComposerModeState } from './use-composer-mode-state'
+import { useComposerInteractions } from './use-composer-interactions'
+import { useComposerEvents } from './use-composer-events'
 import { useTranslation } from 'react-i18next'
 import { type ImageAttachment } from '@renderer/lib/image-attachments'
 import { type FileAwareEditorHandle } from '../file-aware-editor-utils'
 import { GoalSessionBar } from '@renderer/components/goal/GoalSessionControls'
 import { useGoalStore } from '@renderer/stores/goal-store'
-import { TodoStatusList } from '../TodoCard'
-import { useTaskStore } from '@renderer/stores/task-store'
+import { SessionTodoStatusList } from './session-todo-status-list'
 import { cn } from '@renderer/lib/utils'
 import type { AppPluginId } from '@renderer/lib/app-plugin/types'
 import {
@@ -31,14 +32,15 @@ import {
 import {
   summarizeQueuedMessage, selectedFileItemToReference
 } from './utils'
-import { ComposerRuntimeStatus, ComposerStatusIndicator } from './runtime-status'
+import { ComposerStatusIndicator } from './runtime-status'
+import { ComposerRuntimeStatusFooter } from './composer-runtime-status-footer'
 import { useComposerHeight } from './use-composer-height'
 import { useImageAttachments } from './use-image-attachments'
 import { useQueuedMessages } from './use-queued-messages'
 import { usePromptOptimizer } from './use-prompt-optimizer'
 import { QueuedMessagesPanel } from './queued-messages-panel'
 import { ImagePreviewStrip } from './image-preview-strip'
-import { ComposerBanners } from './composer-banners'
+import { InputAreaBanners } from './input-area-banners'
 import { ComposerToolbar } from './composer-toolbar'
 import { useComposerKeydown } from './use-composer-keydown'
 import { useDragDrop } from './use-drag-drop'
@@ -46,12 +48,9 @@ import { useComposerEditor } from './use-composer-editor'
 import { useSlashCommands } from './use-slash-commands'
 import { useFileSearch } from './use-file-search'
 import { useContextCompression } from './use-context-compression'
-import { usePermissionMode } from './use-permission-mode'
-import { useModeControls } from './use-mode-controls'
 import { ComposerEditorArea } from './composer-editor-area'
 import { useInputAreaSelectors } from './use-input-area-selectors'
 import { useInputAreaEffects } from './use-input-area-effects'
-import { composerEvents } from '@renderer/lib/composer-events'
 
 export function InputArea({
   sessionId, onSend, onStop, onSelectFolder, isStreaming = false, workingFolder,
@@ -75,18 +74,6 @@ export function InputArea({
     draftSessionId, targetSession, projectScoped,
     planMode, hasActiveGoal, pendingReviewPlanId, hasApiKey
   } = sel
-  const defaultProjectCollabMode = useSettingsStore((s) => s.projectSessionDefaultCollaborationMode)
-  const defaultCoworkPermissionMode = useSettingsStore((s) => s.coworkDefaultPermissionMode)
-  const [pendingCollabMode, setPendingCollabMode] = React.useState<CollabMode | null>(null)
-  const [pendingPermissionMode, setPendingPermissionMode] = React.useState<'default' | 'fullAccess' | null>(null)
-  // Session-scoped agent Todo shown above the composer (display-only).
-  const composerTasks = useTaskStore((s) => draftSessionId ? s.getTasksBySession(draftSessionId) : [])
-  const effectiveCollabMode: CollabMode = targetSession?.collaborationMode ??
-    (projectScoped ? pendingCollabMode ?? defaultProjectCollabMode : 'chat')
-  const effectivePermissionMode = effectiveCollabMode === 'cowork'
-    ? targetSession?.permissionMode ?? pendingPermissionMode ?? defaultCoworkPermissionMode
-    : 'default'
-
   const needsWorkingFolder = projectScoped && !workingFolder && Boolean(onSelectFolder)
 
   const [selectedSkill, setSelectedSkill] = React.useState<string | null>(null)
@@ -204,8 +191,6 @@ export function InputArea({
     if (userEditedDraftKeyRef.current !== activeDraftKey) {
       userEditedDraftKeyRef.current = null
     }
-    setPendingCollabMode(null)
-    setPendingPermissionMode(null)
   }, [activeDraftKey])
 
   const {
@@ -255,19 +240,21 @@ export function InputArea({
     activeSessionId, suppressPendingQueue, t, isStreaming, getPastedImageFiles, setPreviewImage
   })
 
-  const handlePreviewFile = React.useCallback((fileId: string) => {
-    const file = selectedFilesRef.current.find((item) => item.id === fileId)
-    if (file) openFilePreview(file.previewPath)
-  }, [openFilePreview])
+  const { handlePreviewFile, handleLocateFileReference, handlePaste, handleEditorSelectionChange } = useComposerInteractions({
+    selectedFilesRef, editorRef, editorSelection, setEditorSelection, setHighlightedFileId,
+    openFilePreview, replaceSelectionWithText, getPastedImageFiles, addImages,
+    handleRecommendationSelectionChange
+  })
 
-  const handleLocateFileReference = React.useCallback((fileId: string) => {
-    setHighlightedFileId(fileId); editorRef.current?.scrollToReference(fileId); editorRef.current?.focus()
-  }, [])
-
-  const handleEditorSelectionChange = React.useCallback((sel: { start: number; end: number }) => {
-    setEditorSelection((cur) => cur.start === sel.start && cur.end === sel.end ? cur : sel)
-    handleRecommendationSelectionChange()
-  }, [handleRecommendationSelectionChange])
+  const {
+    effectiveCollabMode, effectivePermissionMode,
+    handleCollabModeChange, handlePlanModeChange, handleGoalModeChange,
+    permissionMode, handleSelectPermissionMode
+  } = useComposerModeState({
+    projectScoped, draftSessionId, resetKey: activeDraftKey, targetSession,
+    disabled, isStreaming, isOptimizingLocked, pendingImageReads,
+    hasActiveGoal, focusInputAtEnd, setPendingPlanMode, setPendingGoalMode, t
+  })
 
   const handleSend = React.useCallback((): void => {
     const liveEditorState = getLiveEditorState()
@@ -288,19 +275,6 @@ export function InputArea({
       goalModeEnabled, projectScoped, effectiveCollabMode, effectivePermissionMode,
       cancelPromptRecommendation, selectedSkill, onSend, planMode, resetComposer, t])
 
-  const { handlePlanModeChange, handleGoalModeChange } = useModeControls({
-    projectScoped, draftSessionId, disabled, isStreaming, isOptimizingLocked, pendingImageReads, hasActiveGoal, focusInputAtEnd, setPendingPlanMode, setPendingGoalMode, t
-  })
-
-  const handleCollabModeChange = React.useCallback((nextMode: CollabMode): void => {
-    if (disabled || isStreaming || isOptimizingLocked || pendingImageReads > 0 || !projectScoped) return
-    if (!draftSessionId) {
-      setPendingCollabMode(nextMode)
-      if (nextMode === 'chat') setPendingPermissionMode('default')
-    }
-    requestAnimationFrame(() => focusInputAtEnd())
-  }, [disabled, isStreaming, isOptimizingLocked, pendingImageReads, projectScoped, draftSessionId, focusInputAtEnd])
-
   const handleKeyDown = useComposerKeydown({
     isOptimizingLocked, fileMenuOpen, slashMenuOpen, fileSearchResults, selectedFileSearchIndex,
     setSelectedFileSearchIndex, filteredSlashSuggestions, selectedSlashIndex, setSelectedSlashIndex,
@@ -309,33 +283,10 @@ export function InputArea({
     handleRecommendationSelectionChange, handleSend
   })
 
-  const handlePaste = React.useCallback((e: React.ClipboardEvent<HTMLDivElement>): void => {
-    const imageFiles = getPastedImageFiles(e.clipboardData)
-    if (imageFiles.length > 0) { e.preventDefault(); void addImages(imageFiles); return }
-    const plainText = e.clipboardData.getData('text/plain')
-    if (!plainText) return
-    e.preventDefault()
-    const selection = editorRef.current?.getSelectionOffsets() ?? editorSelection
-    replaceSelectionWithText(plainText, selection)
-  }, [addImages, editorSelection, getPastedImageFiles, replaceSelectionWithText])
-
   const { dragging, handleDragOver, handleDragLeave, handleDropWrapped } = useDragDrop({ addFilesToEditor })
   const { contextCompressionStatus, isContextCompressing, handleCompressContext, contextCompressionStatusLabel } = useContextCompression({ onCompressContext, t })
-  const { permissionMode, handleSelectPermissionMode } = usePermissionMode({
-    sessionId: draftSessionId,
-    permissionMode: effectivePermissionMode,
-    onPendingModeChange: setPendingPermissionMode,
-    t
-  })
 
-  // Subscribe to external composer inject requests (e.g. from PreviewPanel)
-  React.useEffect(() => {
-    const unsub = composerEvents.on((event) => {
-      setText(event.text)
-      focusInputAtEnd()
-    })
-    return unsub
-  }, [setText, focusInputAtEnd])
+  useComposerEvents(setText, focusInputAtEnd)
 
   const editorPlaceholder = pendingReviewPlanId
     ? t('input.placeholderPlanReview', { defaultValue: 'Enter suggestions for this plan...' })
@@ -346,7 +297,7 @@ export function InputArea({
 
   return (
     <div ref={rootRef} data-tour="composer" className={cn('px-4 py-3', attachedFooter ? 'pb-0' : 'pb-4')}>
-      <ComposerBanners
+      <InputAreaBanners
         hasApiKey={hasApiKey}
         needsWorkingFolder={needsWorkingFolder}
         onSelectFolder={onSelectFolder}
@@ -358,7 +309,7 @@ export function InputArea({
         hideWorkingFolderIndicator={hideWorkingFolderIndicator}
         hasPendingGoalMode={hasPendingGoalMode}
         composerWidthClass={composerWidthClass}
-        onOpenSettings={(tab) => openSettings(tab as never)}
+        openSettings={(tab) => openSettings(tab as never)}
       />
 
       <QueuedMessagesPanel
@@ -378,12 +329,11 @@ export function InputArea({
         <GoalSessionBar sessionId={draftSessionId} className={cn('mb-2', fullWidth && 'max-w-none')} />
       )}
 
-      {/* Session-scoped agent Todo — display-only, users cannot manage it.
-          Mirrors OpenCowork: only project sessions render the inline Todo list;
-          ordinary (non-project) sessions filter it out. */}
-      {projectScoped && draftSessionId && composerTasks.length > 0 && (
-        <TodoStatusList tasks={composerTasks} className={cn('mb-2', composerWidthClass)} />
-      )}
+      <SessionTodoStatusList
+        projectScoped={projectScoped}
+        draftSessionId={draftSessionId}
+        className={composerWidthClass}
+      />
 
       <div className={composerWidthClass}>
         <div
@@ -537,7 +487,7 @@ export function InputArea({
           />
         </div>
         {draftSessionId && (
-          <ComposerRuntimeStatus
+          <ComposerRuntimeStatusFooter
             sessionId={draftSessionId}
             isStreaming={isStreaming}
             draftInputTokens={debouncedTokens}
@@ -546,8 +496,6 @@ export function InputArea({
             contextCompressionStatus={contextCompressionStatus}
             contextCompressionStatusLabel={contextCompressionStatusLabel}
             model={composerModelCfg}
-            className="mt-1.5 px-3"
-            showStatus={false}
           />
         )}
       </div>

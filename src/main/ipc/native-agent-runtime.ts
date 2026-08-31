@@ -1,4 +1,4 @@
-import { Notification, ipcMain, type BrowserWindow } from 'electron'
+﻿import { Notification, ipcMain, type BrowserWindow } from 'electron'
 import { getNativeWorker } from '../lib/native-worker'
 import { safeSendMessagePackToWindow, safeSendMessagePackToAllWindows } from '../window-ipc'
 import {
@@ -19,6 +19,7 @@ import {
 } from './desktop-control'
 import { isMainProcessMethod, dispatchReverseRequest } from './reverse-handlers'
 import { getMainWindow } from '../main-window-registry'
+import { logWarn } from '../lib/logger'
 
 const SIDECAR_RENDERER_REQUEST_TIMEOUT_MS = 30_000
 
@@ -296,7 +297,8 @@ async function sendReverseResponse(
       30_000
     )
     .catch((sendError) => {
-      console.warn(
+      logWarn(
+        'main',
         `[NativeAgentRuntime] reverse response failed: ${
           sendError instanceof Error ? sendError.message : String(sendError)
         }`

@@ -1,4 +1,4 @@
-﻿// Main content renderer: handles string, empty, and block-by-block rendering
+// Main content renderer: handles string, empty, and block-by-block rendering
 
 import * as React from 'react'
 import { Eraser, Pencil } from 'lucide-react'

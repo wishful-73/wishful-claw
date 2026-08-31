@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Agent stream protocol — wire format for main→renderer event streaming.
  * Simplified from WishfulClaw: no SubAgent/Image/WebSearch/Translation events.
  */

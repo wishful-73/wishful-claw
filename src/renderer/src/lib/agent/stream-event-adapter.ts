@@ -1,4 +1,4 @@
-﻿import type { AgentStreamEvent } from '../../../../shared/agent-stream-protocol'
+import type { AgentStreamEvent } from '../../../../shared/agent-stream-protocol'
 import type { AgentEvent } from './types'
 import type { SubAgentEvent } from './sub-agents/types'
 import { isUseCapabilityTool, resolveProxyDisplay } from './use-capability-proxy'

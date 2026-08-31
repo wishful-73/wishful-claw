@@ -1,4 +1,4 @@
-// InputArea: main composer component with editor, toolbar, and controls
+﻿// InputArea: main composer component with editor, toolbar, and controls
 
 import * as React from 'react'
 import type { SendMessageOptions } from '@renderer/hooks/use-chat-actions'
@@ -80,7 +80,7 @@ export function InputArea({
   const [pendingCollabMode, setPendingCollabMode] = React.useState<CollabMode | null>(null)
   const [pendingPermissionMode, setPendingPermissionMode] = React.useState<'default' | 'fullAccess' | null>(null)
   // Session-scoped agent Todo shown above the composer (display-only).
-  const composerTasks = useTaskStore((s) => s.tasks)
+  const composerTasks = useTaskStore((s) => draftSessionId ? s.getTasksBySession(draftSessionId) : [])
   const effectiveCollabMode: CollabMode = targetSession?.collaborationMode ??
     (projectScoped ? pendingCollabMode ?? defaultProjectCollabMode : 'chat')
   const effectivePermissionMode = effectiveCollabMode === 'cowork'

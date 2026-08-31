@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Task Board detail pane — selected global task info plus its permanent
  * dispatch records. Global task status (left select) and dispatch status
  * (per-row badges) are separate concepts and rendered distinctly. The pane
@@ -221,7 +221,9 @@ export function TaskDetailPane({ task, onEdit, onDispatch, onChanged }: TaskDeta
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            {dispatches.map((dispatch) => (
+            {dispatches.map((dispatch) => {
+              const targetSessionExists = sessions.some((session) => session.id === dispatch.session_id)
+              return (
               <div key={dispatch.id} className="rounded-lg border border-border/60 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <DispatchKindBadge kind={dispatch.kind} />
@@ -231,16 +233,22 @@ export function TaskDetailPane({ task, onEdit, onDispatch, onChanged }: TaskDeta
                     <Button
                       variant="ghost"
                       size="icon"
-                      title={t('detail.openSession')}
-                      onClick={() => navigateToSession(dispatch.session_id)}
+                      title={targetSessionExists ? t('detail.openSession') : t('detail.sessionMissing')}
+                      disabled={!targetSessionExists}
+                      onClick={() => {
+                        if (targetSessionExists) navigateToSession(dispatch.session_id)
+                      }}
                     >
                       <ExternalLink className="size-3.5" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      title={t('detail.followUp')}
-                      onClick={() => onDispatch(dispatch.session_id, dispatch.kind)}
+                      title={targetSessionExists ? t('detail.followUp') : t('detail.sessionMissing')}
+                      disabled={!targetSessionExists}
+                      onClick={() => {
+                        if (targetSessionExists) onDispatch(dispatch.session_id, dispatch.kind)
+                      }}
                     >
                       <Send className="size-3.5" />
                     </Button>
@@ -279,7 +287,8 @@ export function TaskDetailPane({ task, onEdit, onDispatch, onChanged }: TaskDeta
                   {dispatch.completed_at ? ` · ${t('detail.completedAt')}: ${new Date(dispatch.completed_at).toLocaleString()}` : ''}
                 </p>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

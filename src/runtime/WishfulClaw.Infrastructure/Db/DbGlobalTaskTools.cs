@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -157,6 +157,8 @@ public static class DbGlobalTaskTools
                 new SqliteParameter("@archived", 1),
                 new SqliteParameter("@ua", now),
                 new SqliteParameter("@id", id));
+            if (changed == 0)
+                return WorkerResponse.Json(new GlobalTaskMutationResult(false, 0, "Global task not found"), InfrastructureJsonContext.Default.GlobalTaskMutationResult);
 
             return WorkerResponse.Json(new GlobalTaskMutationResult(true, changed, null), InfrastructureJsonContext.Default.GlobalTaskMutationResult);
         }
@@ -177,10 +179,16 @@ public static class DbGlobalTaskTools
             entity.Priority = priority.GetString()!;
         if (patch.TryGetProperty("tags", out var tags) && tags.ValueKind == JsonValueKind.Array)
             entity.Tags = tags.GetRawText();
-        if (patch.TryGetProperty("dueAt", out var dueAt))
+        if (patch.TryGetProperty("dueAt", out var dueAt)
+            && dueAt.ValueKind is JsonValueKind.Number or JsonValueKind.Null)
+        {
             entity.DueAt = dueAt.ValueKind == JsonValueKind.Number ? dueAt.GetInt64() : null;
-        if (patch.TryGetProperty("archived", out var archived))
-            entity.Archived = archived.ValueKind is JsonValueKind.True or JsonValueKind.Number ? 1 : 0;
+        }
+        if (patch.TryGetProperty("archived", out var archived)
+            && archived.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            entity.Archived = archived.ValueKind == JsonValueKind.True ? 1 : 0;
+        }
         if (patch.TryGetProperty("updatedAt", out var updatedAt) && updatedAt.ValueKind == JsonValueKind.Number)
             entity.UpdatedAt = updatedAt.GetInt64();
         else

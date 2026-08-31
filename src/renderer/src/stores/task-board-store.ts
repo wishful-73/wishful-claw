@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Task Board store — global agent work items (global_tasks) and their dispatch
  * records (global_task_dispatches). This is the ONLY data source for the Task
  * Board; the session-scoped tasks table (agent Todos) is never read here.
@@ -161,17 +161,18 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
 
   updateTask: async (taskId, patch) => {
     try {
+      const updatePatch: Record<string, unknown> = {}
+      if (patch.title !== undefined) updatePatch.title = patch.title
+      if (patch.description !== undefined) updatePatch.description = patch.description
+      if (patch.status !== undefined) updatePatch.status = patch.status
+      if (patch.priority !== undefined) updatePatch.priority = patch.priority
+      if (patch.tags !== undefined) updatePatch.tags = patch.tags
+      if (patch.dueAt !== undefined) updatePatch.dueAt = patch.dueAt
+      if (patch.archived !== undefined) updatePatch.archived = patch.archived
+
       const result = await window.api.workerRequest<GlobalMutationResult>('db/global-tasks-update', {
         id: taskId,
-        patch: {
-          title: patch.title,
-          description: patch.description,
-          status: patch.status,
-          priority: patch.priority,
-          tags: patch.tags,
-          dueAt: patch.dueAt === null ? null : patch.dueAt,
-          archived: patch.archived
-        }
+        patch: updatePatch
       })
       return isMutationOk(result)
     } catch (err) {

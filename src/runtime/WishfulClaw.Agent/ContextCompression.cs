@@ -98,7 +98,8 @@ public static partial class ContextCompression
         List<JsonElement> wireConversation,
         JsonElement provider,
         IWorkerRequestContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string, ValueTask>? onSummaryDelta = null)
     {
         var originalCount = conversation.Count;
 
@@ -129,7 +130,7 @@ public static partial class ContextCompression
         var summarizerFailed = false;
         try
         {
-            summary = await SummarizeAsync(fold, provider, cancellationToken);
+            summary = await SummarizeAsync(fold, provider, context, cancellationToken, onSummaryDelta);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -382,7 +383,9 @@ public static partial class ContextCompression
     private static async Task<string> SummarizeAsync(
         List<AgentRuntimeChatMessage> fold,
         JsonElement provider,
-        CancellationToken cancellationToken)
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken,
+        Func<string, ValueTask>? onSummaryDelta)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(SummaryTimeout);
@@ -402,9 +405,9 @@ public static partial class ContextCompression
             {
                 summary = providerType switch
                 {
-                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token),
-                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token),
-                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token),
+                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token, onSummaryDelta),
+                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token, onSummaryDelta),
+                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token, onSummaryDelta),
                     _ => throw new InvalidOperationException($"Unsupported provider for summarization: {providerType}")
                 };
             }
@@ -441,7 +444,10 @@ public static partial class ContextCompression
     /// Calls Anthropic Messages API for summarization (no tools, no streaming).
     /// </summary>
     private static async Task<string> CallAnthropicSummary(
-        string transcript, JsonElement provider, CancellationToken ct)
+        string transcript,
+        JsonElement provider,
+        CancellationToken ct,
+        Func<string, ValueTask>? onSummaryDelta = null)
     {
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
@@ -453,6 +459,8 @@ public static partial class ContextCompression
             w.WriteStartObject();
             w.WriteString("model", model);
             w.WriteNumber("max_tokens", 1536);
+            if (onSummaryDelta is not null)
+                w.WriteBoolean("stream", true);
             w.WriteString("system", SummarySystemPrompt);
             w.WritePropertyName("messages");
             w.WriteStartArray();
@@ -469,14 +477,74 @@ public static partial class ContextCompression
         request.Headers.Add("x-api-key", apiKey);
         request.Headers.Add("anthropic-version", "2023-06-01");
 
-        using var response = await Http.SendAsync(request, ct);
+        using var response = await Http.SendAsync(
+            request,
+            onSummaryDelta is null ? HttpCompletionOption.ResponseContentRead : HttpCompletionOption.ResponseHeadersRead,
+            ct);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
             throw new InvalidOperationException($"Anthropic summarization HTTP {response.StatusCode}: {errorBody}");
         }
 
-        var responseJson = await response.Content.ReadAsStringAsync(ct);
+        if (onSummaryDelta is null)
+        {
+            var responseJson = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(responseJson);
+            return string.Join("", doc.RootElement
+                .GetProperty("content")
+                .EnumerateArray()
+                .Where(b => b.GetProperty("type").GetString() == "text")
+                .Select(b => b.GetProperty("text").GetString() ?? ""));
+        }
+
+        var summary = new StringBuilder();
+        await using var responseStream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(responseStream, Encoding.UTF8);
+        var dataBuilder = new StringBuilder();
+        var rawResponseBuilder = new StringBuilder();
+        var sawSsePayload = false;
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct)) is not null)
+        {
+            if (line.Length == 0)
+            {
+                if (dataBuilder.Length > 0)
+                {
+                    await AppendAnthropicSummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+                    dataBuilder.Clear();
+                }
+                continue;
+            }
+
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                sawSsePayload = true;
+                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
+                dataBuilder.Append(line[5..].TrimStart());
+            }
+            else if (!line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                if (rawResponseBuilder.Length > 0) rawResponseBuilder.Append('\n');
+                rawResponseBuilder.Append(line);
+            }
+        }
+        if (dataBuilder.Length > 0)
+            await AppendAnthropicSummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+        if (!sawSsePayload && rawResponseBuilder.Length > 0)
+        {
+            var fallback = ParseAnthropicSummaryResponse(rawResponseBuilder.ToString());
+            if (!string.IsNullOrEmpty(fallback))
+            {
+                summary.Append(fallback);
+                await onSummaryDelta(fallback);
+            }
+        }
+        return summary.ToString();
+    }
+
+    private static string ParseAnthropicSummaryResponse(string responseJson)
+    {
         using var doc = JsonDocument.Parse(responseJson);
         return string.Join("", doc.RootElement
             .GetProperty("content")
@@ -485,11 +553,32 @@ public static partial class ContextCompression
             .Select(b => b.GetProperty("text").GetString() ?? ""));
     }
 
+    private static async Task AppendAnthropicSummaryDeltaAsync(
+        string data,
+        StringBuilder summary,
+        Func<string, ValueTask> onSummaryDelta)
+    {
+        if (data == "[DONE]") return;
+        using var doc = JsonDocument.Parse(data);
+        var root = doc.RootElement;
+        if (JsonHelpers.GetString(root, "type") != "content_block_delta" ||
+            !root.TryGetProperty("delta", out var delta) ||
+            JsonHelpers.GetString(delta, "type") != "text_delta")
+            return;
+        var text = JsonHelpers.GetString(delta, "text");
+        if (string.IsNullOrEmpty(text)) return;
+        summary.Append(text);
+        await onSummaryDelta(text);
+    }
+
     /// <summary>
     /// Calls OpenAI Chat Completions API for summarization (no tools).
     /// </summary>
     private static async Task<string> CallOpenAISummary(
-        string transcript, JsonElement provider, CancellationToken ct)
+        string transcript,
+        JsonElement provider,
+        CancellationToken ct,
+        Func<string, ValueTask>? onSummaryDelta = null)
     {
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
@@ -506,6 +595,8 @@ public static partial class ContextCompression
             w.WriteStartObject();
             w.WriteString("model", model);
             w.WriteNumber("max_tokens", 1536);
+            if (onSummaryDelta is not null)
+                w.WriteBoolean("stream", true);
             w.WritePropertyName("messages");
             w.WriteStartArray();
             w.WriteStartObject();
@@ -524,20 +615,99 @@ public static partial class ContextCompression
         request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
         request.Headers.Add("Authorization", $"Bearer {apiKey}");
 
-        using var response = await Http.SendAsync(request, ct);
+        using var response = await Http.SendAsync(
+            request,
+            onSummaryDelta is null ? HttpCompletionOption.ResponseContentRead : HttpCompletionOption.ResponseHeadersRead,
+            ct);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
             throw new InvalidOperationException($"OpenAI summarization HTTP {response.StatusCode}: {errorBody}");
         }
 
-        var responseJson = await response.Content.ReadAsStringAsync(ct);
+        if (onSummaryDelta is null)
+        {
+            var responseJson = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(responseJson);
+            return doc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString() ?? "";
+        }
+
+        var summary = new StringBuilder();
+        await using var responseStream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(responseStream, Encoding.UTF8);
+        var dataBuilder = new StringBuilder();
+        var rawResponseBuilder = new StringBuilder();
+        var sawSsePayload = false;
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct)) is not null)
+        {
+            if (line.Length == 0)
+            {
+                if (dataBuilder.Length > 0)
+                {
+                    await AppendOpenAISummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+                    dataBuilder.Clear();
+                }
+                continue;
+            }
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                sawSsePayload = true;
+                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
+                dataBuilder.Append(line[5..].TrimStart());
+            }
+            else if (!line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                if (rawResponseBuilder.Length > 0) rawResponseBuilder.Append('\n');
+                rawResponseBuilder.Append(line);
+            }
+        }
+        if (dataBuilder.Length > 0)
+            await AppendOpenAISummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+        if (!sawSsePayload && rawResponseBuilder.Length > 0)
+        {
+            var fallback = ParseOpenAISummaryResponse(rawResponseBuilder.ToString());
+            if (!string.IsNullOrEmpty(fallback))
+            {
+                summary.Append(fallback);
+                await onSummaryDelta(fallback);
+            }
+        }
+        return summary.ToString();
+    }
+
+    private static string ParseOpenAISummaryResponse(string responseJson)
+    {
         using var doc = JsonDocument.Parse(responseJson);
         return doc.RootElement
             .GetProperty("choices")[0]
             .GetProperty("message")
             .GetProperty("content")
             .GetString() ?? "";
+    }
+
+    private static async Task AppendOpenAISummaryDeltaAsync(
+        string data,
+        StringBuilder summary,
+        Func<string, ValueTask> onSummaryDelta)
+    {
+        if (data == "[DONE]") return;
+        using var doc = JsonDocument.Parse(data);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("choices", out var choices) ||
+            choices.ValueKind != JsonValueKind.Array ||
+            choices.GetArrayLength() == 0)
+            return;
+        var choice = choices[0];
+        if (!choice.TryGetProperty("delta", out var delta)) return;
+        var text = JsonHelpers.GetString(delta, "content");
+        if (string.IsNullOrEmpty(text)) return;
+        summary.Append(text);
+        await onSummaryDelta(text);
     }
 
     // ── Mechanical fold (fallback) ──

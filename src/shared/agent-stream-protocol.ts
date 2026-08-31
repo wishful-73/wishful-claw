@@ -165,6 +165,7 @@ export type AgentStreamEvent =
       attempt?: number
       maxAttempts?: number
     }
+  | { type: 'context_compression_delta'; text: string }
   | {
       type: 'context_compressed'
       operationId?: string
@@ -216,6 +217,7 @@ export const ACTIVITY_PANEL_EVENTS: ReadonlySet<string> = new Set([
   'tool_call_result',
   'context_compression_started',
   'context_compression_start',
+  'context_compression_delta',
   'context_compressed',
   'request_debug',
 ])

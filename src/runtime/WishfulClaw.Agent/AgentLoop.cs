@@ -269,7 +269,15 @@ internal static partial class AgentLoop
                 {
                     var originalCount = wireConversation.Count;
                     var outcome = await ContextCompression.CompactAsync(
-                        conversation, wireConversation, provider, context, state.CancellationToken);
+                        conversation,
+                        wireConversation,
+                        provider,
+                        context,
+                        state.CancellationToken,
+                        text => new ValueTask(AgentRuntimeTools.EmitAsync(
+                            state,
+                            context,
+                            new AgentRuntimeStreamEvent("context_compression_delta", Text: text))));
                     var newConversation = outcome.Conversation;
                     var newWireConversation = outcome.WireConversation;
                     var summarizerFailed = outcome.SummarizerFailed;

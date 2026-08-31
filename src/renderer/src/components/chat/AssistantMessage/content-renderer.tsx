@@ -36,6 +36,7 @@ import { ToolBlockRenderer } from './tool-block-renderer'
 import type { ToolBlockRendererProps } from './tool-block-renderer'
 import { ExecutionProcessBlock } from './execution-process-block'
 import { buildProcessSummary, splitProcessAndFinal } from './process-summary'
+import { ContextCompressionMessage } from '../ContextCompressionMessage'
 
 export interface ContentRendererProps {
   content: string | ContentBlock[]
@@ -304,7 +305,7 @@ export function ContentRenderer({
 
   const renderItem = (item: AssistantRenderItemWithInlineSummary): React.JSX.Element | null => {
     if (item.kind === 'compact-summary') {
-      return null
+      return <ContextCompressionMessage key={item.message.id} message={item.message} />
     }
 
     if (item.kind === 'block') {

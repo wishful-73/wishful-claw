@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 
 import { immer } from 'zustand/middleware/immer'
 
@@ -6,6 +6,7 @@ import type { AgentStreamEnvelope } from '@shared/agent-stream-protocol'
 import { installGoalSyncListener, useGoalStore, type GoalRunState } from '@renderer/stores/goal-store'
 
 import { getAgentStreamReceiver } from '@renderer/lib/ipc/agent-stream-receiver'
+import { applyLiveCompressionStreamEvent } from '@renderer/stores/live-compression-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 
 import { isChatStreamEvent } from '@renderer/lib/agent/stream-event-adapter'
@@ -561,11 +562,17 @@ export const useChatStore = create<ChatStore>()(
         if (
           eventType === 'context_compression_started' ||
           eventType === 'context_compression_start' ||
+          eventType === 'context_compression_delta' ||
           eventType === 'context_compressed'
         ) {
           const compressionEvent = event as {
-            type: 'context_compression_started' | 'context_compression_start' | 'context_compressed'
+            type:
+              | 'context_compression_started'
+              | 'context_compression_start'
+              | 'context_compression_delta'
+              | 'context_compressed'
             operationId?: string
+            text?: string
             originalCount?: number
             newCount?: number
             keptMessageCount?: number
@@ -578,6 +585,10 @@ export const useChatStore = create<ChatStore>()(
             compactArtifacts?: UnifiedMessage[]
           }
           const now = Date.now()
+          if (compressionEvent.type === 'context_compression_delta') {
+            applyLiveCompressionStreamEvent(targetSessionId, compressionEvent)
+            continue
+          }
           const isStarted =
             compressionEvent.type === 'context_compression_started' ||
             compressionEvent.type === 'context_compression_start'
@@ -590,6 +601,7 @@ export const useChatStore = create<ChatStore>()(
           const summaryText = summaryArtifact
             ? getCompactSummaryDisplayText(summaryArtifact).trim()
             : undefined
+          applyLiveCompressionStreamEvent(targetSessionId, compressionEvent)
           recordCompressionStatusMessage(
             targetSessionId,
             {

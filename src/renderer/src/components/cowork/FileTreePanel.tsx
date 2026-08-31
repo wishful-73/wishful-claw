@@ -161,10 +161,7 @@ export function FileTreePanel({
                 workingFolder={workingFolder}
                 rootNewItemInput={rootNewItemInput}
                 t={t}
-                handlePreview={actions.handlePreview}
                 handleToggle={handleToggle}
-                handleAddToChat={handleAddToChat}
-                handleCopyPath={handleCopyPath}
                 editState={editState}
                 treeActions={treeActions}
               />

@@ -92,6 +92,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   const lastScrollOffsetRef = React.useRef(0)
   const programmaticScrollUntilRef = React.useRef(0)
   const wasSessionOutputtingRef = React.useRef(isSessionOutputting)
+  const previousStreamingMessageIdRef = React.useRef(streamingMessageId)
   const isLoadingOlderMessagesRef = React.useRef(false)
 
   // ── State ───────────────────────────────────────────────────────
@@ -433,6 +434,35 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   }, [activeSessionId, isSessionOutputting, messages.length, scrollToBottomImmediate, streamingMessageId])
 
   // ── Streaming state transition ──────────────────────────────────
+  React.useLayoutEffect(() => {
+    const previousStreamingMessageId = previousStreamingMessageIdRef.current
+    previousStreamingMessageIdRef.current = streamingMessageId
+    if (
+      !activeSessionId ||
+      !streamingMessageId ||
+      previousStreamingMessageId === streamingMessageId ||
+      pendingAskUserQuestion ||
+      isLoadingOlderMessagesRef.current
+    ) {
+      return
+    }
+
+    autoScrollModeRef.current = 'stream'
+    setIsAtBottom(true)
+    scrollToBottomImmediate()
+    const frameId = window.requestAnimationFrame(() => {
+      if (previousStreamingMessageIdRef.current === streamingMessageId) {
+        scrollToBottomImmediate()
+      }
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [
+    activeSessionId,
+    pendingAskUserQuestion,
+    scrollToBottomImmediate,
+    streamingMessageId
+  ])
+
   React.useEffect(() => {
     const wasOutputting = wasSessionOutputtingRef.current
     if (!wasOutputting && isSessionOutputting && isAtBottom && !pendingAskUserQuestion) {

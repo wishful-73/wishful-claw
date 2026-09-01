@@ -261,6 +261,18 @@ internal static partial class AgentLoop
 
                 if (state.IsCancellationRequested)
                 {
+                    // The started event is already out — emit the matching
+                    // completion so the renderer's live compression card is
+                    // cleared instead of staying pinned above the input area.
+                    await AgentRuntimeTools.EmitAsync(
+                        state, context,
+                        new AgentRuntimeStreamEvent(
+                            "context_compressed",
+                            OperationId: compressionOperationId,
+                            CompressionStatus: "cancelled",
+                            Trigger: "auto",
+                            PreTokens: lastInputTokens,
+                            CompressionError: "compression cancelled"));
                     await EmitLoopEndAsync(state, context, "aborted");
                     return;
                 }

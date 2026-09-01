@@ -1,4 +1,4 @@
-﻿{
+{
   "title": "设置",
   "shortcuts": {
     "title": "快捷键",
@@ -52,7 +52,7 @@
     },
     "about": {
       "label": "关于",
-      "desc": "版本信息"
+      "desc": "产品介绍与应用更新"
     },
     "groups": {
       "general": "基础",
@@ -729,11 +729,25 @@
   },
   "about": {
     "title": "关于 Wishful Claw",
-    "version": "版本: v0.2.0-dev",
-    "description": "Wishful Claw 是一个 AI Agent 编程助手，融合三个开源项目的优点：",
-    "wishfulClaw": "WishfulClaw — Agent Loop / 工具链 / Provider / 架构",
-    "kodaClaw": "KodaClaw — 记忆系统 / 人格系统设计",
-    "openClaw": "OpenClaw — 记忆主动回忆机制"
+    "description": "Wishful Claw 是一款桌面 AI Agent 工作台。它把大模型的推理能力接到你的电脑上，用一句自然语言就能驱动它编写代码、整理信息、执行任务。",
+    "featuresTitle": "核心能力",
+    "features": {
+      "agentCoding": "Agent 编程：自动读写文件、搜索代码、运行命令，多轮迭代完成开发任务",
+      "multiModel": "多模型接入：支持 Anthropic、OpenAI、Gemini、OpenRouter 等，自由切换和对比",
+      "memory": "长期记忆：分层存储、主动回忆、每日自动整理，跨会话记住你的偏好与上下文",
+      "persona": "人格定制：内置多套人格预设，可自定义身份、语气与行为准则",
+      "extensions": "能力扩展：插件、自定义扩展、Skills 与 MCP，按需接入外部工具",
+      "channels": "渠道集成：接入飞书、微信等消息平台，随时随地与 Agent 协作",
+      "productivity": "效率工具：全局启动器、剪贴板增强、SSH 终端"
+    },
+    "updater": {
+      "label": "应用更新",
+      "desc": "检查并安装 Wishful Claw 的新版本",
+      "autoCheck": "启动时自动检查更新",
+      "autoCheckDesc": "只在启动时检查，下载和安装始终需要你确认。",
+      "check": "检查更新",
+      "latest": "当前已是最新版本。"
+    }
   },
   "plugin": {
     "title": "插件",
@@ -1285,6 +1299,23 @@
         "fullAccess": "YOLO"
       },
       "hint": "只影响新项目会话，不覆盖已有会话；全局会话固定为 Chat。"
+    }
+  },
+  "updater": {
+    "dialog": {
+      "title": "应用更新",
+      "description": "检查 Wishful Claw 的最新版本。",
+      "available": "发现新版本 {{version}}",
+      "downloaded": "更新已下载，确认后重启安装。",
+      "currentVersion": "当前版本",
+      "noNotes": "本次发布未提供更新说明。",
+      "downloading": "正在下载更新…",
+      "download": "下载更新",
+      "manualDownload": "手动下载",
+      "install": "立即重启安装",
+      "installing": "正在准备安装…",
+      "checkAgain": "重新检查",
+      "openRelease": "打开发布页"
     }
   },
   "anchorNav": {

@@ -1,4 +1,4 @@
-﻿import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Layers, Keyboard, Gauge, Brain } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
@@ -20,8 +20,14 @@ import { McpPanel } from '@renderer/components/settings/mcp-panel'
 import { ModelManagementPanel } from '@renderer/components/settings/model-management/ModelManagementPanel'
 import { ShortcutsPanel } from '@renderer/components/settings/ShortcutsPanel'
 import { SectionAnchorNav, type SectionAnchor } from '@renderer/components/settings/section-anchor-nav'
+import { SettingsSection } from '@renderer/components/settings/settings-primitives'
+import { Switch } from '@renderer/components/ui/switch'
+import { toast } from 'sonner'
+import { Loader2, RefreshCw } from 'lucide-react'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import type { UpdateCheckResult } from '@shared/updater/types'
 import { Server as ServerIcon } from 'lucide-react'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 
 const GENERAL_ANCHORS: SectionAnchor[] = [
   { id: 'sec-general-language', label: 'anchorNav.language' },
@@ -244,21 +250,86 @@ function SettingsPage(): React.JSX.Element {
   )
 }
 
+const ABOUT_FEATURE_KEYS = [
+  'about.features.agentCoding',
+  'about.features.multiModel',
+  'about.features.memory',
+  'about.features.persona',
+  'about.features.extensions',
+  'about.features.channels',
+  'about.features.productivity'
+] as const
+
 function AboutPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
+  const settings = useSettingsStore()
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+
+  const handleCheckForUpdates = async (): Promise<void> => {
+    if (checkingUpdate) return
+    setCheckingUpdate(true)
+    try {
+      const result = await window.api.invoke<UpdateCheckResult>('update:check', {})
+      if (!result.success) {
+        toast.error(result.error)
+      } else if (!result.available) {
+        toast.success(t('about.updater.latest', { defaultValue: '当前已是最新版本。' }))
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }
 
   return (
-    <div className="mx-auto max-w-2xl px-8 pb-16 pt-10">
-      <h1 className="mb-1 text-xl font-semibold">{t('about.title')}</h1>
-      <p className="text-sm text-muted-foreground">{APP_VERSION_LABEL}</p>
-      <div className="mt-6 space-y-3 text-sm text-muted-foreground">
-        <p>{t('about.description')}</p>
-        <ul className="ml-4 list-disc space-y-1">
-          <li>{t('about.wishfulClaw')}</li>
-          <li>{t('about.kodaClaw')}</li>
-          <li>{t('about.openClaw')}</li>
-        </ul>
+    <div className="mx-auto max-w-2xl space-y-6 px-8 pb-16 pt-10">
+      <div>
+        <h1 className="text-xl font-semibold">{t('about.title')}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{APP_VERSION_LABEL}</p>
       </div>
+
+      <div className="space-y-3">
+        <p className="text-sm leading-6 text-foreground/85">{t('about.description')}</p>
+        <div>
+          <h2 className="mb-2 text-xs font-semibold text-muted-foreground">
+            {t('about.featuresTitle', { defaultValue: '核心能力' })}
+          </h2>
+          <ul className="ml-4 list-disc space-y-1.5 text-sm text-foreground/80">
+            {ABOUT_FEATURE_KEYS.map((key) => (
+              <li key={key}>{t(key)}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <SettingsSection
+        id="sec-about-updates"
+        title={t('about.updater.label', { defaultValue: '应用更新' })}
+        description={t('about.updater.desc', { defaultValue: '检查并安装 Wishful Claw 的新版本' })}
+        actions={
+          <Switch
+            checked={settings.autoUpdateEnabled}
+            onCheckedChange={(checked) => settings.updateSettings({ autoUpdateEnabled: checked })}
+            aria-label={t('about.updater.autoCheck', { defaultValue: '启动时自动检查更新' })}
+          />
+        }
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">
+              {t('about.updater.autoCheck', { defaultValue: '启动时自动检查更新' })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('about.updater.autoCheckDesc', { defaultValue: '只在启动时检查，下载和安装始终需要你确认。' })}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void handleCheckForUpdates()} disabled={checkingUpdate}>
+            {checkingUpdate ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            {t('about.updater.check', { defaultValue: '检查更新' })}
+          </Button>
+        </div>
+      </SettingsSection>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 
@@ -47,6 +47,14 @@ import {
   shutdownMemoryOrganizationScheduler
 } from './ipc/memory-organization-scheduler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
+import {
+  getUpdateStatus,
+  initializeUpdater,
+  requestUpdateCheck,
+  requestUpdateDownload,
+  requestUpdateInstall
+} from './updater'
+import type { UpdateActionResult, UpdateCheckResult } from '../shared/updater/types'
 
 let mainWindow: BrowserWindow | null = null
 let channelManager: ChannelManager | null = null
@@ -502,8 +510,31 @@ registerCodeGraphHandlers()
 
   // -- Shell, file watch, image persistence handlers are registered via registerMiscHandlers --
 
+  registerMessagePackHandler<unknown, UpdateCheckResult>(
+    'update:check',
+    async () => requestUpdateCheck()
+  )
+  registerMessagePackHandler<unknown, UpdateActionResult>(
+    'update:download',
+    async () => requestUpdateDownload()
+  )
+  registerMessagePackHandler<unknown, ReturnType<typeof getUpdateStatus>>(
+    'update:status',
+    () => getUpdateStatus()
+  )
+  registerMessagePackHandler<unknown, UpdateActionResult>(
+    'update:install',
+    () => requestUpdateInstall()
+  )
+
   createWindow()
   createTray()
+  void initializeUpdater({
+    getMainWindow: () => mainWindow,
+    markAppWillQuit: () => { isQuiting = true }
+  }).catch((error) => {
+    logWarn('main', `Updater initialization failed: ${String(error)}`)
+  })
 
   // Clipboard Enhancer and Quick Launcher desktop utilities
   registerClipboardEnhancer()

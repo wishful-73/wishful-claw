@@ -45,7 +45,6 @@ resources/worker/
 logs/
 *.log
 out/
-package-lock.json
 .reasonix/
 build_out
 release/

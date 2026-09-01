@@ -1,4 +1,4 @@
-﻿{
+{
   "title": "Settings",
   "shortcuts": {
     "title": "Shortcuts",
@@ -52,7 +52,7 @@
     },
     "about": {
       "label": "About",
-      "desc": "Version info"
+      "desc": "Product intro and app updates"
     },
     "groups": {
       "general": "General",
@@ -728,11 +728,25 @@
   },
   "about": {
     "title": "About Wishful Claw",
-    "version": "Version: v0.2.0-dev",
-    "description": "Wishful Claw is an AI Agent programming assistant combining the strengths of three open-source projects:",
-    "wishfulClaw": "WishfulClaw — Agent Loop / Toolchain / Provider / Architecture",
-    "kodaClaw": "KodaClaw — Memory System / Personality System Design",
-    "openClaw": "OpenClaw — Active Memory Recall Mechanism"
+    "description": "Wishful Claw is a desktop AI Agent workbench. It connects large-model reasoning to your computer — one sentence of natural language is enough to drive it to write code, organize information and get things done.",
+    "featuresTitle": "Core capabilities",
+    "features": {
+      "agentCoding": "Agent coding: reads and writes files, searches code and runs commands, iterating over multiple turns to finish development tasks",
+      "multiModel": "Multi-model: works with Anthropic, OpenAI, Gemini, OpenRouter and more — switch and compare freely",
+      "memory": "Long-term memory: tiered storage, proactive recall and daily auto-organization keep your preferences and context across sessions",
+      "persona": "Personas: built-in persona presets with customizable identity, tone and behavior rules",
+      "extensions": "Extensibility: plugins, custom extensions, Skills and MCP bring in external tools on demand",
+      "channels": "Channels: bridge messaging platforms such as Feishu and WeChat to collaborate with your agent anywhere",
+      "productivity": "Productivity tools: global launcher, clipboard enhancements, SSH terminal"
+    },
+    "updater": {
+      "label": "App Updates",
+      "desc": "Check for and install new Wishful Claw versions",
+      "autoCheck": "Check for updates at startup",
+      "autoCheckDesc": "Only checks at startup; downloading and installing always require your confirmation.",
+      "check": "Check for updates",
+      "latest": "You are using the latest version."
+    }
   },
   "plugin": {
     "title": "Plugins",
@@ -1150,6 +1164,23 @@
         "fullAccess": "YOLO"
       },
       "hint": "Applies only to new project sessions and never overwrites existing sessions. Global sessions always use Chat."
+    }
+  },
+  "updater": {
+    "dialog": {
+      "title": "App Update",
+      "description": "Check for the latest Wishful Claw version.",
+      "available": "New version {{version}} available",
+      "downloaded": "Update downloaded. Confirm to restart and install.",
+      "currentVersion": "Current version",
+      "noNotes": "No release notes provided for this release.",
+      "downloading": "Downloading update…",
+      "download": "Download update",
+      "manualDownload": "Manual download",
+      "install": "Restart and install",
+      "installing": "Preparing installation…",
+      "checkAgain": "Check again",
+      "openRelease": "Open release page"
     }
   },
   "anchorNav": {

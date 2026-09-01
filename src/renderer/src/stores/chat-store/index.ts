@@ -6,7 +6,7 @@ import type { AgentStreamEnvelope } from '@shared/agent-stream-protocol'
 import { installGoalSyncListener, useGoalStore, type GoalRunState } from '@renderer/stores/goal-store'
 
 import { getAgentStreamReceiver } from '@renderer/lib/ipc/agent-stream-receiver'
-import { applyLiveCompressionStreamEvent } from '@renderer/stores/live-compression-store'
+import { applyLiveCompressionStreamEvent, useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 
 import { isChatStreamEvent } from '@renderer/lib/agent/stream-event-adapter'
@@ -1365,6 +1365,13 @@ export const useChatStore = create<ChatStore>()(
             useAgentStore.getState().setSessionRequestRetryState(targetSessionId, null)
             useAgentStore.getState().setSessionStatus(targetSessionId, null)
 
+            // Terminal fallback for the live compression card: compression is
+            // awaited inside the loop, so by loop_end it either finished
+            // (context_compressed already cleared it) or was aborted without a
+            // completion event — dropping it here prevents a permanently stuck
+            // card above the input area.
+            useLiveCompressionStore.getState().clear(targetSessionId)
+
             // Flush any pending stream deltas before clearing streaming state
 
             flushPendingStreamDeltas()
@@ -1573,6 +1580,10 @@ export const useChatStore = create<ChatStore>()(
 
             useAgentStore.getState().setSessionRequestRetryState(targetSessionId, null)
             useAgentStore.getState().setSessionStatus(targetSessionId, null)
+
+            // Same terminal fallback as loop_end — a failed run must not leave
+            // the live compression card pinned above the input area.
+            useLiveCompressionStore.getState().clear(targetSessionId)
 
             // Flush any pending stream deltas before clearing streaming state
 

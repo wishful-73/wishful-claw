@@ -19,6 +19,8 @@ export interface FileAwareEditorHandle {
   setSelectionOffsets: (start: number, end?: number) => void
   getSelectionOffsets: () => EditorSelectionOffsets
   getDocumentSnapshot: () => EditorDocumentNode[]
+  /** Commit the current DOM before an action that resets or submits the editor. */
+  flushPendingInput: () => void
   getScrollMetrics: () => { scrollHeight: number; clientHeight: number }
   scrollToReference: (fileId: string) => boolean
 }

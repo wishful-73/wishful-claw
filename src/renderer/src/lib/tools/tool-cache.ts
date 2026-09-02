@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Lightweight tool definition cache — no store/component imports.
  *
  * getCachedTools() returns synchronously (cached value or null).
@@ -14,6 +14,8 @@ export interface CachedToolDef {
   name: string
   description: string
   inputSchema: Record<string, unknown>
+  category?: string
+  priority?: number
 }
 
 let cachedTools: CachedToolDef[] | null = null

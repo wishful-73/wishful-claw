@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -134,6 +134,27 @@ internal static partial class AgentLoop
         }
 
         return result;
+    }
+
+    internal static int FindRecentContextUsage(IReadOnlyList<JsonElement> messages)
+    {
+        for (var index = messages.Count - 1; index >= 0; index--)
+        {
+            var message = messages[index];
+            if (message.ValueKind != JsonValueKind.Object ||
+                !message.TryGetProperty("usage", out var usage) ||
+                usage.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var tokens = JsonHelpers.GetInt(usage, "contextTokens", 0);
+            if (tokens > 0)
+            {
+                return tokens;
+            }
+        }
+        return 0;
     }
 
     // ── Wire message creation ──

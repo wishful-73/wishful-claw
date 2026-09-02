@@ -118,7 +118,7 @@ export function ContextRing({
         messageId: latestUsage?.messageId ?? null,
         contextTokens: latestUsage?.contextTokens ?? 0
       }
-      setHasFreshContextUsage(Boolean(activeSession.isRuntimeResident && latestUsage))
+      setHasFreshContextUsage(Boolean(latestUsage))
       return
     }
 

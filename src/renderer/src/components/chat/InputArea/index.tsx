@@ -257,6 +257,9 @@ export function InputArea({
   })
 
   const handleSend = React.useCallback((): void => {
+    // Commit the browser DOM before reading/resetting the controlled editor.
+    // This closes the rAF gap that can otherwise lose or duplicate the final key.
+    editorRef.current?.flushPendingInput()
     const liveEditorState = getLiveEditorState()
     const promptText = liveEditorState.promptText.trim()
     if (!promptText && attachedImages.length === 0) return
@@ -273,7 +276,7 @@ export function InputArea({
     resetComposer()
   }, [getLiveEditorState, attachedImages, disabled, needsWorkingFolder, pendingImageReads,
       goalModeEnabled, projectScoped, effectiveCollabMode, effectivePermissionMode,
-      cancelPromptRecommendation, selectedSkill, onSend, planMode, resetComposer, t])
+      cancelPromptRecommendation, selectedSkill, onSend, planMode, resetComposer, t, editorRef])
 
   const handleKeyDown = useComposerKeydown({
     isOptimizingLocked, fileMenuOpen, slashMenuOpen, fileSearchResults, selectedFileSearchIndex,

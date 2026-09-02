@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
@@ -17,6 +17,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="WishfulClaw.GoalRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.CompactionSnapshotRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.ToolConcurrencyRegressionTests" />
   </ItemGroup>
 
 </Project>

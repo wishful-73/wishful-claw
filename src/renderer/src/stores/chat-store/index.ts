@@ -23,6 +23,7 @@ import { writeLog } from '@renderer/lib/error-logger'
 
 import {
   getCompactSummaryDisplayText,
+  isCompactBoundaryMessage,
   isCompactSummaryLikeMessage,
   mergeCompressedMessagesKeepHistory
 } from '@renderer/lib/agent/context-compression'
@@ -82,8 +83,6 @@ export interface AgentActions {
     maxIterations?: number
 
     maxParallelTools?: number
-
-    maxToolCallsPerTurn?: number
 
     maxConcurrentSubAgents?: number
 
@@ -588,6 +587,7 @@ export const useChatStore = create<ChatStore>()(
             keptMessageCount?: number
             trigger?: 'auto' | 'manual'
             preTokens?: number
+            estimatedNewTokens?: number
             compressionStatus?: 'compressed' | 'skipped' | 'failed' | 'blocked' | 'cancelled'
             summarizerFailed?: boolean
             messagesSummarized?: number
@@ -611,6 +611,19 @@ export const useChatStore = create<ChatStore>()(
           const summaryText = summaryArtifact
             ? getCompactSummaryDisplayText(summaryArtifact).trim()
             : undefined
+          const sessionForCompression = state.sessions.find((session) => session.id === targetSessionId)
+          const activeAssistantForCompression = sessionForCompression?.messages.find(
+            (message) => message.id === envelope.runId && message.role === 'assistant'
+          )
+          const isInlineCompression = Boolean(
+            activeAssistantForCompression &&
+              (compressionEvent.trigger === 'auto' ||
+                state.streamingMessages[targetSessionId] === envelope.runId)
+          )
+          const compressionDisplayAnchor =
+            isStarted && isInlineCompression && activeAssistantForCompression
+              ? buildCompressionDisplayAnchor(activeAssistantForCompression)
+              : undefined
           applyLiveCompressionStreamEvent(targetSessionId, compressionEvent)
           recordCompressionStatusMessage(
             targetSessionId,
@@ -640,7 +653,8 @@ export const useChatStore = create<ChatStore>()(
               ...(compressionEvent.summarizerFailed ? { summarizerFailed: true } : {}),
               ...(compressionEvent.error ? { error: compressionEvent.error } : {}),
               ...(summaryText ? { summaryText } : {}),
-              ...(summaryArtifact ? { summaryMessageId: summaryArtifact.id } : {})
+              ...(summaryArtifact ? { summaryMessageId: summaryArtifact.id } : {}),
+              ...(compressionDisplayAnchor ? { displayAnchor: compressionDisplayAnchor } : {})
             },
             operationId
           )
@@ -649,6 +663,13 @@ export const useChatStore = create<ChatStore>()(
           // history and the independent boundary divider.
           if (!isStarted && compressionEvent.compactArtifacts?.length) {
             applyCompactArtifactsToSession(targetSessionId, compressionEvent.compactArtifacts)
+          }
+          if (
+            !isStarted &&
+            compressionEvent.compressionStatus === 'compressed' &&
+            typeof compressionEvent.estimatedNewTokens === 'number'
+          ) {
+            updateSessionContextTokens(targetSessionId, compressionEvent.estimatedNewTokens)
           }
           continue
         }
@@ -1667,69 +1688,115 @@ function artifactToChatMessage(artifact: UnifiedMessage): ChatMessage {
   }
 }
 
+function chatMessageToUnifiedMessage(message: ChatMessage): UnifiedMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content ?? message.text,
+    createdAt: message.createdAt,
+    ...(message.meta ? { meta: message.meta } : {})
+  }
+}
+
+function buildCompressionDisplayAnchor(
+  assistantMessage: ChatMessage
+): NonNullable<CompressionStatusMeta['displayAnchor']> {
+  const content = assistantMessage.content
+  const afterContentBlockCount = typeof content === 'string'
+    ? (content.length > 0 ? 1 : 0)
+    : Array.isArray(content)
+      ? content.length
+      : 0
+  const afterToolUseId = Array.isArray(content)
+    ? [...content].reverse().find((block) => block.type === 'tool_use')?.id
+    : undefined
+
+  return {
+    assistantMessageId: assistantMessage.id,
+    afterContentBlockCount,
+    ...(afterToolUseId ? { afterToolUseId } : {})
+  }
+}
+
 /**
- * Record a compression lifecycle status message (compressing/compressed) in the
- * session transcript and persist it, so the status card survives reloads.
- * Shared by the streaming event path and the manual compression path so both
- * produce the identical message shape (contract §四.3).
+ * Persist one stable transcript message per compression operation. The started
+ * and terminal states update the same row, so the card stays where compression
+ * began while later user/assistant messages naturally append below it.
  */
 export function recordCompressionStatusMessage(
   sessionId: string,
   meta: CompressionStatusMeta,
   operationId: string
 ): void {
+  const liveStore = useLiveCompressionStore.getState()
+  if (meta.state === 'compressing') {
+    liveStore.start(sessionId)
+  } else {
+    liveStore.clear(sessionId)
+  }
+
+  const normalizedMeta: CompressionStatusMeta = {
+    ...meta,
+    operationId
+  }
+  trackCompressionStatus(normalizedMeta)
+
+  const messageId = `compression-status:${operationId}`
+  let persistedMessage: ChatMessage | null = null
+  let sortOrder = -1
   const now = Date.now()
-  const stableOperationId = meta.operationId ?? operationId
-  const stableMessageId = `compression-${stableOperationId}`
-  let updatedMessage: ChatMessage | undefined
-  let updatedIndex = -1
 
   useChatStore.setState((state) => {
-    const session = state.sessions.find((s) => s.id === sessionId)
-    if (!session) return
+    const target = state.sessions.find((session) => session.id === sessionId)
+    if (!target) return
 
-    const existingIndex = session.messages.findIndex(
+    const existingIndex = target.messages.findIndex(
       (message) =>
-        message.meta?.compressionStatus?.operationId === stableOperationId ||
-        message.id === stableMessageId
+        message.id === messageId ||
+        message.meta?.compressionStatus?.operationId === operationId
     )
-    const existing =
-      existingIndex >= 0 ? (session.messages[existingIndex] as unknown as ChatMessage) : undefined
-    const existingStatus = existing?.meta?.compressionStatus
-    const createdAt = existing?.createdAt ?? meta.startedAt
-    const mergedMeta: CompressionStatusMeta = {
-      ...(existingStatus ?? {}),
-      ...meta,
-      operationId: stableOperationId,
-      startedAt: existingStatus?.startedAt ?? meta.startedAt
-    }
-    trackCompressionStatus(mergedMeta)
-    const nextMessage: ChatMessage = {
-      ...(existing ?? {
-        id: stableMessageId,
+    if (existingIndex >= 0) {
+      const existing = target.messages[existingIndex]
+      const existingStatus = existing.meta?.compressionStatus
+      const nextMessage: ChatMessage = {
+        ...existing,
+        text: '',
+        content: '',
+        meta: {
+          ...(existing.meta ?? {}),
+          compressionStatus: {
+            ...(existingStatus ?? {}),
+            ...normalizedMeta,
+            startedAt: existingStatus?.startedAt ?? normalizedMeta.startedAt
+          }
+        },
+        _revision: (existing._revision ?? 0) + 1
+      }
+      target.messages[existingIndex] = nextMessage
+      persistedMessage = nextMessage
+      sortOrder = existingIndex
+    } else {
+      const nextMessage: ChatMessage = {
+        id: messageId,
         role: 'system',
         text: '',
         content: '',
-        createdAt
-      }),
-      meta: { ...(existing?.meta ?? {}), compressionStatus: mergedMeta },
-      createdAt
+        createdAt: normalizedMeta.startedAt || now,
+        meta: { compressionStatus: normalizedMeta },
+        _revision: 1
+      }
+      target.messages.push(nextMessage)
+      target.messageCount = target.messages.length
+      target.messagesLoaded = true
+      target.isRuntimeResident = true
+      persistedMessage = nextMessage
+      sortOrder = target.messages.length - 1
     }
-
-    if (existingIndex >= 0) {
-      session.messages[existingIndex] = nextMessage
-      updatedIndex = existingIndex
-    } else {
-      session.messages.push(nextMessage)
-      updatedIndex = session.messages.length - 1
-    }
-    session.messageCount = session.messages.length
-    session.updatedAt = now
-    updatedMessage = nextMessage
+    target.updatedAt = now
   })
 
-  if (updatedMessage && updatedIndex >= 0) {
-    void dbUpsertMessage(sessionId, updatedMessage, updatedIndex)
+  if (persistedMessage && sortOrder >= 0) {
+    void dbUpsertMessage(sessionId, persistedMessage, sortOrder)
   }
 }
 
@@ -1739,6 +1806,58 @@ export function recordCompressionStatusMessage(
  * on reload — relocate them just before the preserved-tail head so the boundary
  * stays at the compression point.
  */
+function withCompactSummaryDisplayAnchor(
+  summary: ChatMessage,
+  currentMessages: ChatMessage[],
+  boundaryMessage: ChatMessage
+): ChatMessage {
+  const existing = summary.meta?.compactSummary
+  if (existing?.displayAnchor?.assistantMessageId) return summary
+
+  const preservedHeadId = boundaryMessage.meta?.compactBoundary?.preservedSegment?.headId
+  const compactMessages = currentMessages.filter(
+    (message) => !isCompactSummaryLikeMessage(chatMessageToUnifiedMessage(message))
+  )
+  const preservedHeadIndex = preservedHeadId
+    ? compactMessages.findIndex((message) => message.id === preservedHeadId)
+    : -1
+  const assistantMessage = compactMessages
+    .slice(0, preservedHeadIndex >= 0 ? preservedHeadIndex : compactMessages.length)
+    .reverse()
+    .find((message) => message.role === 'assistant')
+    ?? [...compactMessages].reverse().find((message) => message.role === 'assistant')
+
+  if (!assistantMessage) return summary
+
+  const content = assistantMessage.content
+  const afterContentBlockCount = typeof content === 'string'
+    ? (content.length > 0 ? 1 : 0)
+    : Array.isArray(content)
+      ? content.length
+      : 0
+  const afterToolUseId = Array.isArray(content)
+    ? [...content].reverse().find((block) => block.type === 'tool_use')?.id
+    : undefined
+
+  return {
+    ...summary,
+    meta: {
+      ...(summary.meta ?? {}),
+      compactSummary: {
+        messagesSummarized: existing?.messagesSummarized ??
+          (boundaryMessage.meta?.compactBoundary?.messagesSummarized ?? 0),
+        recentMessagesPreserved: existing?.recentMessagesPreserved ?? false,
+        ...existing,
+        displayAnchor: {
+          assistantMessageId: assistantMessage.id,
+          afterContentBlockCount,
+          ...(afterToolUseId ? { afterToolUseId } : {})
+        }
+      }
+    }
+  }
+}
+
 function adjustCompactArtifactTimestamps(messages: ChatMessage[], boundaryIndex: number): void {
   const summaryIndex = boundaryIndex + 1
   if (summaryIndex >= messages.length) return
@@ -1771,9 +1890,20 @@ export function applyCompactArtifactsToSession(
 ): void {
   const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
   if (!session) return
-  const artifactMessages = artifacts.map(artifactToChatMessage)
-  const boundaryId = artifactMessages[0]?.id
-  if (!boundaryId) return
+  const rawArtifactMessages = artifacts.map(artifactToChatMessage)
+  const boundaryMessage = rawArtifactMessages.find((message) =>
+    isCompactBoundaryMessage(chatMessageToUnifiedMessage(message))
+  )
+  const summaryMessage = rawArtifactMessages.find((message) =>
+    isCompactSummaryLikeMessage(chatMessageToUnifiedMessage(message))
+  )
+  if (!boundaryMessage || !summaryMessage) return
+  const artifactMessages = rawArtifactMessages.map((message) =>
+    message.id === summaryMessage.id
+      ? withCompactSummaryDisplayAnchor(message, session.messages, boundaryMessage)
+      : message
+  )
+  const boundaryId = boundaryMessage.id
   const isNewBoundary = !session.messages.some((m) => m.id === boundaryId)
   const merged = mergeCompressedMessagesKeepHistory(
     session.messages as unknown as UnifiedMessage[],

@@ -1,4 +1,4 @@
-{
+﻿{
   "title": "设置",
   "shortcuts": {
     "title": "快捷键",
@@ -157,14 +157,10 @@
     },
     "toolExecution": {
       "label": "工具执行",
-      "desc": "控制 Agent 可同时运行和每轮调用的工具数量",
+      "desc": "控制 Agent 同时执行的工具数量；超出的调用会等待槽位释放后继续执行",
       "maxParallel": {
         "label": "最大并行工具数",
-        "desc": "同时执行的工具数量"
-      },
-      "maxPerTurn": {
-        "label": "每轮最大工具调用数",
-        "desc": "单次 AI 回复中工具调用的上限"
+        "desc": "同时执行的工具数量；超出的调用会等待槽位释放后继续执行"
       },
       "maxSubAgents": {
         "label": "子 Agent 并发上限",
@@ -1348,9 +1344,34 @@
       },
       "time": {
         "label": "凌晨触发时刻",
-        "desc": "应用保持运行并在该时刻附近触发整理；错过时启动后补跑一次"
+        "desc": "应用保持运行并在该时刻附近触发整理；正常启动不会补跑错过的 nightly 任务"
       },
-      "startupHint": "启动后延迟触发；距上次整理不足 20 小时则跳过，避免频繁重启重复执行"
+      "startupHint": "启动后延迟触发；距上次整理不足 20 小时则跳过，避免频繁重启重复执行",
+      "model": {
+        "label": "整理模型",
+        "desc": "独立选择记忆整理使用的服务商和模型，不跟随全局活动模型",
+        "providerPlaceholder": "选择服务商",
+        "modelPlaceholder": "选择模型"
+      },
+      "thinking": {
+        "label": "思考模式",
+        "desc": "仅影响记忆整理请求；默认模式使用模型自身配置",
+        "default": "默认",
+        "disabled": "关闭",
+        "enabled": "开启",
+        "effortLabel": "推理强度",
+        "effortDesc": "开启思考模式后，可选择模型支持的推理强度；默认使用模型配置",
+        "effortDefault": "默认",
+        "effort": {
+          "minimal": "最小",
+          "low": "低",
+          "medium": "中",
+          "high": "高",
+          "xhigh": "特高",
+          "max": "最大",
+          "ultra": "极高"
+        }
+      }
     },
     "tiers": {
       "title": "分层降级阈值",

@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   CompactBoundaryMeta,
   ProviderConfig,
   UnifiedMessage
@@ -129,8 +129,16 @@ export function extractUnifiedMessageText(message?: UnifiedMessage | null): stri
     .trim()
 }
 
-function splitCompactSummaryBlocks(text: string): string[] {
+function stripCompactionSummaryTags(text: string): string {
   return text
+    .replace(/^\s*<compaction-summary>\s*/i, '')
+    .replace(/\s*<\/compaction-summary>\s*$/i, '')
+    .replace(/^Summary of earlier conversation \(older messages were compacted to save context\):\s*/i, '')
+    .trim()
+}
+
+function splitCompactSummaryBlocks(text: string): string[] {
+  return stripCompactionSummaryTags(text)
     .replace(/\r\n?/g, '\n')
     .split(/\n\s*\n+/)
     .map((block) => block.trim())
@@ -169,7 +177,7 @@ function isCompactSummaryIntroBlock(block: string): boolean {
 }
 
 export function getCompactSummaryDisplayText(message: UnifiedMessage): string {
-  const text = extractUnifiedMessageText(message)
+  const text = stripCompactionSummaryTags(extractUnifiedMessageText(message))
   if (!text || !isCompactSummaryLikeMessage(message)) {
     return text
   }

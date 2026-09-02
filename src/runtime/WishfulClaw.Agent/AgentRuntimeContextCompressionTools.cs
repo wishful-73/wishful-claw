@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -141,10 +141,6 @@ public static class AgentRuntimeContextCompressionTools
                             Error: "an agent run started during compression"));
                 }
 
-                // Sync the Worker session so the next turn runs on the compressed
-                // context — same as the automatic path's Replace in AgentLoop.
-                sessionConv?.Replace(newConversation, newWireConversation);
-                sessionConv?.MarkCompactionWatermark(newWireConversation.Count);
                 // Persist the durable snapshot only when the Worker holds the
                 // authoritative conversation; caller-supplied messages (stateless
                 // path) may not match the persisted history the cursor covers.
@@ -153,8 +149,29 @@ public static class AgentRuntimeContextCompressionTools
                 // never become the durable snapshot.
                 if (sessionConv is not null && compactArtifacts is not null)
                 {
-                    ContextCompression.PersistSnapshot(outcome, sessionId, trigger, preTokens);
+                    var snapshotResult = ContextCompression.PersistSnapshot(
+                        outcome, compactArtifacts, sessionId, trigger, preTokens);
+                    if (!snapshotResult.Success)
+                    {
+                        WorkerLog.Warn(
+                            $"manual context compression failed session={AgentLoop.FormatSessionId(sessionId)} " +
+                            $"reason=snapshot-persist error={snapshotResult.Error}");
+                        return BuildResponse(
+                            wireMessages,
+                            new ContextCompressionResult(
+                                false,
+                                originalCount,
+                                originalCount,
+                                Status: "failed",
+                                Trigger: trigger,
+                                Error: $"snapshot persistence failed: {snapshotResult.Error}"));
+                    }
                 }
+
+                // Sync the Worker session so the next turn runs on the compressed
+                // context — same as the automatic path's Replace in AgentLoop.
+                sessionConv?.Replace(newConversation, newWireConversation);
+                sessionConv?.MarkCompactionWatermark(newWireConversation.Count);
 
                 WorkerLog.Info(
                     $"manual context compression completed session={AgentLoop.FormatSessionId(sessionId)} " +

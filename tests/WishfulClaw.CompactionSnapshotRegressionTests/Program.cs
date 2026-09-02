@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
@@ -215,8 +215,17 @@ internal static class Program
         // ── Invalidation rules ──
         RunInvalidationSuite(dbPath, prefix, sessionA);
 
+        // ── Automatic compression usage recovery and overflow classification ──
+        RunAutomaticCompressionUsageSuite(dbPath, prefix);
+
+        // ── Summarizer input budget and tool-content truncation ──
+        RunSummaryInputBudgetSuite();
+
         // ── Restore filtering (summary/artifact rows never enter model context) ──
         RunRestoreFilterSuite(dbPath, prefix);
+
+        // ── Compression snapshot persistence failure semantics ──
+        RunPersistenceFailureSuite(dbPath, prefix);
 
         // ── fork/duplicate does not inherit snapshots ──
         RunForkSuite(dbPath, prefix);
@@ -532,6 +541,160 @@ internal static class Program
         AssertNoSnapshot(dbPath, sessionE, "project cascade delete removes the snapshot");
     }
 
+    // ─── Suite: automatic compression usage recovery ───
+
+    private static void RunAutomaticCompressionUsageSuite(string dbPath, string prefix)
+    {
+        var wireMessages = new List<JsonElement>
+        {
+            Json(@"{""role"":""assistant"",""content"":""first"",""usage"":{""contextTokens"":111}}"),
+            Json(@"{""role"":""user"",""content"":""next""}"),
+            Json(@"{""role"":""assistant"",""content"":""second"",""usage"":{""contextTokens"":222}}"),
+            Json(@"{""role"":""assistant"",""content"":""invalid"",""usage"":""malformed""}")
+        };
+        AssertEqual(222, AgentLoop.FindRecentContextUsage(wireMessages),
+            "recent context usage scans backward to the latest valid provider usage");
+        AssertEqual(0, AgentLoop.FindRecentContextUsage(
+            [Json(@"{""role"":""user"",""content"":""none""}"), Json(@"{""usage"":null}")]),
+            "recent context usage returns zero when no valid usage exists");
+        AssertEqual(0, AgentLoop.FindRecentContextUsage(
+            [Json(@"{""usage"":{""contextTokens"":""not-a-number""}}")]),
+            "recent context usage ignores malformed context token values");
+
+        var sessionId = $"{prefix}-restore-usage";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", sessionId);
+            writer.WriteString("title", "Restore Usage Session");
+        })), "restore usage session is created");
+        AssertMutationSuccess(DbMessageTools.AddBatch(Params(dbPath, writer =>
+        {
+            writer.WriteStartArray("messages");
+            writer.WriteStartObject();
+            writer.WriteString("id", $"{prefix}-usage-valid");
+            writer.WriteString("sessionId", sessionId);
+            writer.WriteString("role", "assistant");
+            writer.WriteString("content", "valid usage");
+            writer.WriteString("usage", "{\"contextTokens\":654,\"inputTokens\":600}");
+            writer.WriteNumber("createdAt", 3300);
+            writer.WriteNumber("sortOrder", 0);
+            writer.WriteEndObject();
+            writer.WriteStartObject();
+            writer.WriteString("id", $"{prefix}-usage-non-object");
+            writer.WriteString("sessionId", sessionId);
+            writer.WriteString("role", "user");
+            writer.WriteString("content", "non-object usage");
+            writer.WriteString("usage", "[]");
+            writer.WriteNumber("createdAt", 3301);
+            writer.WriteNumber("sortOrder", 1);
+            writer.WriteEndObject();
+            writer.WriteStartObject();
+            writer.WriteString("id", $"{prefix}-usage-corrupt");
+            writer.WriteString("sessionId", sessionId);
+            writer.WriteString("role", "assistant");
+            writer.WriteString("content", "corrupt usage");
+            writer.WriteString("usage", "{corrupt");
+            writer.WriteNumber("createdAt", 3302);
+            writer.WriteNumber("sortOrder", 2);
+            writer.WriteEndObject();
+            writer.WriteEndArray();
+        })), "messages with persisted usage are inserted");
+
+        var restored = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(), sessionId);
+        AssertEqual(3, restored.WireMessages.Count, "usage restore keeps every regular message");
+        Assert(restored.WireMessages[0].TryGetProperty("usage", out var restoredUsage) &&
+               restoredUsage.ValueKind == JsonValueKind.Object &&
+               restoredUsage.GetProperty("contextTokens").GetInt32() == 654 &&
+               restoredUsage.GetProperty("inputTokens").GetInt32() == 600,
+            "database restore writes the persisted usage object back to the wire message");
+        Assert(!restored.WireMessages[1].TryGetProperty("usage", out _),
+            "database restore ignores non-object usage JSON");
+        Assert(!restored.WireMessages[2].TryGetProperty("usage", out _),
+            "database restore ignores malformed usage JSON");
+        AssertEqual(654, AgentLoop.FindRecentContextUsage(restored.WireMessages),
+            "restored wire conversation exposes the latest persisted context usage");
+
+        Assert(ContextCompression.IsContextWindowExceededError(
+                new InvalidOperationException("maximum context length exceeded")),
+            "context overflow classifier recognizes a direct provider error");
+        Assert(ContextCompression.IsContextWindowExceededError(
+                new InvalidOperationException("outer", new Exception("INPUT TOKEN COUNT EXCEEDS the model limit"))),
+            "context overflow classifier recognizes an inner provider error case-insensitively");
+        Assert(!ContextCompression.IsContextWindowExceededError(
+                new InvalidOperationException("HTTP 400 invalid request payload")),
+            "context overflow classifier does not misclassify an ordinary provider error");
+
+        var providerCalls = 0;
+        using var retryState = new AgentRuntimeRunState("overflow-retry-test", sessionId);
+        var overflowError = new ProviderHttpException(
+            "test-provider",
+            System.Net.HttpStatusCode.BadRequest,
+            "{\"error\":\"context_length_exceeded\"}",
+            null);
+        try
+        {
+            ProviderRetryPolicy.ExecuteAsync(
+                    () =>
+                    {
+                        providerCalls++;
+                        return Task.FromException<AgentRuntimeProviderTurnResult>(overflowError);
+                    },
+                    retryState,
+                    SilentRequestContext.Instance)
+                .GetAwaiter()
+                .GetResult();
+            throw new InvalidOperationException("provider retry policy unexpectedly swallowed context overflow");
+        }
+        catch (ProviderHttpException ex)
+        {
+            Assert(ReferenceEquals(overflowError, ex),
+                "provider retry policy propagates the original context overflow error");
+        }
+        AssertEqual(1, providerCalls,
+            "provider retry policy skips ordinary HTTP retry for context overflow");
+    }
+
+    private static void RunSummaryInputBudgetSuite()
+    {
+        var older = AgentRuntimeChatMessage.User("older:" + new string('o', 900));
+        var middle = AgentRuntimeChatMessage.User("middle:" + new string('m', 900));
+        var recent = AgentRuntimeChatMessage.User("recent-working-state:" + new string('r', 300));
+        var budgeted = ContextCompression.BuildSummaryRequestBody([older, middle, recent], 1_024);
+        Assert(budgeted.Length <= 1_024,
+            "summary input never exceeds the requested character budget");
+        Assert(!budgeted.Contains("older:", StringComparison.Ordinal) &&
+               budgeted.Contains("recent-working-state:", StringComparison.Ordinal),
+            "summary input drops complete oldest messages and preserves the recent working state");
+        Assert(budgeted.Contains("older message(s) omitted", StringComparison.Ordinal),
+            "summary input reports when older messages were omitted");
+
+        var single = ContextCompression.BuildSummaryRequestBody(
+            [AgentRuntimeChatMessage.User("single:" + new string('s', 2_000))], 1_024);
+        Assert(single.Length <= 1_024 && single.Contains("[truncated]", StringComparison.Ordinal),
+            "a single oversized message is truncated within the final budget");
+
+        using var toolInputDoc = JsonDocument.Parse("{\"payload\":\"" + new string('i', 1_000) + "\"}");
+        using var toolResultDoc = JsonDocument.Parse("\"" + new string('r', 1_200) + "\"");
+        var toolMessage = new AgentRuntimeChatMessage(
+            "assistant",
+            string.Empty,
+            [new AgentRuntimeChatToolUse("tool-1", "demo_tool", toolInputDoc.RootElement.Clone())],
+            []);
+        var resultMessage = AgentRuntimeChatMessage.UserToolResults(
+            [new AgentRuntimeToolResult("tool-1", toolResultDoc.RootElement.Clone())]);
+        var toolTranscript = ContextCompression.BuildSummaryRequestBody(
+            [toolMessage, resultMessage], 10_000);
+        var callLine = toolTranscript.Split('\n').First(line => line.StartsWith("[assistant calls", StringComparison.Ordinal));
+        var resultLines = toolTranscript.Split('\n');
+        var resultHeaderIndex = Array.FindIndex(resultLines,
+            line => line.StartsWith("[tool tool-1 result", StringComparison.Ordinal));
+        Assert(callLine.Length <= "[assistant calls demo_tool] ".Length + 500,
+            "summary tool-call input is capped at 500 characters");
+        Assert(resultHeaderIndex >= 0 && resultHeaderIndex + 1 < resultLines.Length &&
+               resultLines[resultHeaderIndex + 1].Length <= 800,
+            "summary tool result is capped at 800 characters");
+    }
+
     // ─── Suite: restore filtering (artifacts never enter model context) ───
 
     private static void RunRestoreFilterSuite(string dbPath, string prefix)
@@ -599,6 +762,62 @@ internal static class Program
             "repeat restore skips an already-initialized session");
         AssertEqual(2, repeatRestore.GetProperty("messageCount").GetInt32(),
             "repeat restore keeps the original message count");
+    }
+
+    private static void RunPersistenceFailureSuite(string dbPath, string prefix)
+    {
+        var outcome = new ContextCompression.CompactionOutcome(
+            [AgentRuntimeChatMessage.User("compressed")],
+            [Json(@"{""id"":""summary"",""role"":""user"",""content"":""compressed""}")],
+            true,
+            false,
+            1,
+            2,
+            "summary");
+        var invalidArtifacts = new[] { default(JsonElement) };
+
+        var retainedSession = $"{prefix}-persist-retained";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", retainedSession);
+            writer.WriteString("title", "Retained Snapshot Session");
+        })), "retained snapshot session is created");
+        AddMessage(dbPath, retainedSession, $"{prefix}-persist-retained-message", 3400, 0);
+        UpsertSnapshot(dbPath, retainedSession);
+        var oldSnapshot = ReadSnapshot(dbPath, retainedSession);
+
+        var retainedFailure = ContextCompression.PersistSnapshot(
+            outcome, invalidArtifacts, retainedSession, "manual", 123);
+        Assert(!retainedFailure.Success && !retainedFailure.Skipped && retainedFailure.Error is not null,
+            "snapshot persistence returns a structured failure");
+
+        var afterFailure = ReadSnapshot(dbPath, retainedSession);
+        AssertEqual(oldSnapshot.GetProperty("updatedAt").GetInt64(), afterFailure.GetProperty("updatedAt").GetInt64(),
+            "failed snapshot persistence keeps the previous snapshot row");
+        AssertEqual(oldSnapshot.GetProperty("wireConversation").GetString(), afterFailure.GetProperty("wireConversation").GetString(),
+            "failed snapshot persistence keeps the previous snapshot payload");
+
+        var fallbackSession = $"{prefix}-persist-fallback";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", fallbackSession);
+            writer.WriteString("title", "Fallback Snapshot Session");
+        })), "fallback snapshot session is created");
+        AddMessage(dbPath, fallbackSession, $"{prefix}-persist-fallback-message-1", 3410, 0);
+        AddMessage(dbPath, fallbackSession, $"{prefix}-persist-fallback-message-2", 3411, 1);
+
+        var fallbackFailure = ContextCompression.PersistSnapshot(
+            outcome, invalidArtifacts, fallbackSession, "auto", 456);
+        Assert(!fallbackFailure.Success && !fallbackFailure.Skipped,
+            "snapshot persistence failure is reported without an existing snapshot");
+        AssertNoSnapshot(dbPath, fallbackSession,
+            "failed first snapshot persistence does not create a snapshot");
+
+        var restored = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(), fallbackSession);
+        AssertEqual(2, restored.WireMessages.Count,
+            "session restore falls back to complete regular message history without a snapshot");
+        Assert(!restored.FromSnapshot,
+            "no snapshot after persistence failure reports full-history source");
     }
 
     private static void RunForkSuite(string dbPath, string prefix)
@@ -726,6 +945,26 @@ internal static class Program
             if (summaryMessage is not null) writer.WriteString("summaryMessage", summaryMessage);
             if (summaryText is not null) writer.WriteString("summaryText", summaryText);
         });
+
+    private static JsonElement Json(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private sealed class SilentRequestContext : IWorkerRequestContext
+    {
+        public static SilentRequestContext Instance { get; } = new();
+        public CancellationToken CancellationToken => CancellationToken.None;
+        public CancellationToken ConnectionCancellationToken => CancellationToken.None;
+        public IWorkerRequestContext ForBackgroundOperation() => this;
+        public ValueTask EmitEventAsync<T>(string eventName, T parameters, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo)
+            => ValueTask.CompletedTask;
+        public ValueTask EmitEventIgnoringCancellationAsync<T>(string eventName, T parameters, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo)
+            => ValueTask.CompletedTask;
+        public ValueTask EmitMessagePackEventAsync(string eventName, ReadOnlyMemory<byte> payload)
+            => ValueTask.CompletedTask;
+    }
 
     private static JsonElement Params(string dbPath, Action<Utf8JsonWriter>? writeProperties = null)
         => WorkerJsonHelper.BuildJsonElement(writer =>

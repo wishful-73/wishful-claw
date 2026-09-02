@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -167,7 +167,8 @@ export function AssistantMessage({
     if (!msgId || inlineCompactSummaries.length === 0 || !Array.isArray(content)) return indices
 
     for (const message of inlineCompactSummaries) {
-      const anchor = message.meta?.compactSummary?.displayAnchor
+      const anchor =
+        message.meta?.compactSummary?.displayAnchor ?? message.meta?.compressionStatus?.displayAnchor
       if (!anchor || anchor.assistantMessageId !== msgId) continue
       const afterContentBlockCount = Number.isFinite(anchor.afterContentBlockCount)
         ? Math.max(0, Math.floor(anchor.afterContentBlockCount))
@@ -280,7 +281,8 @@ export function AssistantMessage({
 
     const entries: InlineCompactSummaryEntry[] = []
     for (const message of inlineCompactSummaries) {
-      const anchor = message.meta?.compactSummary?.displayAnchor
+      const anchor =
+        message.meta?.compactSummary?.displayAnchor ?? message.meta?.compressionStatus?.displayAnchor
       if (!anchor || anchor.assistantMessageId !== msgId) continue
 
       const afterContentBlockCount = Number.isFinite(anchor.afterContentBlockCount)

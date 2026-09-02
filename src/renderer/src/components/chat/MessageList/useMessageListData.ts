@@ -1,8 +1,9 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { TFunction } from 'i18next'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useTeamStore } from '@renderer/stores/team-store'
 import { selectSessionScopedAgentState } from '@renderer/lib/agent/session-scoped-agent-state'
@@ -156,10 +157,16 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     hasOrchestrationData: hasTeamOrchestrationData
   } = useTeamStore((s) => selectSessionScopedTeamState(s, activeSessionId))
 
+  const liveCompression = useLiveCompressionStore((state) =>
+    targetSessionId ? state.bySessionId[targetSessionId] : undefined
+  )
+  const isCompressing = Boolean(liveCompression)
   const isPrimarySessionRunning =
     primarySessionStatus === 'running' || primarySessionStatus === 'retrying'
-  const isAgentExecutionActive = isPrimarySessionRunning || isTeamRunning || hasStreamingMessage
-  const isSessionRunning = isAgentSessionRunning || isTeamRunning || hasStreamingMessage
+  const isAgentExecutionActive =
+    !isCompressing && (isPrimarySessionRunning || isTeamRunning || hasStreamingMessage)
+  const isSessionRunning =
+    !isCompressing && (isAgentSessionRunning || isTeamRunning || hasStreamingMessage)
   const hasSessionOrchestrationData = React.useMemo(
     () => hasAgentOrchestrationData || hasTeamOrchestrationData,
     [hasAgentOrchestrationData, hasTeamOrchestrationData]
@@ -260,21 +267,46 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
   const inlineCompactSummaryState = React.useMemo(() => {
     const byAssistantId = new Map<string, UnifiedMessage[]>()
     const summaryIds = new Set<string>()
+    const compressionStatusSummaryIds = new Set(
+      messages
+        .map((message) => message.meta?.compressionStatus?.summaryMessageId)
+        .filter((id): id is string => Boolean(id))
+    )
+
+    for (const message of messages) {
+      const statusAnchor = message.meta?.compressionStatus?.displayAnchor
+      if (!statusAnchor?.assistantMessageId) continue
+      const assistantExists = messages.some(
+        (candidate) => candidate.id === statusAnchor.assistantMessageId && candidate.role === 'assistant'
+      )
+      if (!assistantExists) continue
+      const entries = byAssistantId.get(statusAnchor.assistantMessageId) ?? []
+      entries.push(message)
+      byAssistantId.set(statusAnchor.assistantMessageId, entries)
+      summaryIds.add(message.id)
+    }
+
     const activeCompact = resolveActiveCompactArtifacts(messages)
     const activeSummaryId = activeCompact?.summaryId ?? null
-    if (!activeSummaryId) return { byAssistantId, summaryIds }
+    if (activeSummaryId && !compressionStatusSummaryIds.has(activeSummaryId)) {
+      const summary = messages.find((message) => message.id === activeSummaryId)
+      const anchor = summary?.meta?.compactSummary?.displayAnchor
+      if (summary && anchor?.assistantMessageId) {
+        const assistantExists = messages.some(
+          (message) => message.id === anchor.assistantMessageId && message.role === 'assistant'
+        )
+        if (assistantExists) {
+          const entries = byAssistantId.get(anchor.assistantMessageId) ?? []
+          entries.push(summary)
+          byAssistantId.set(anchor.assistantMessageId, entries)
+          summaryIds.add(summary.id)
+        }
+      }
+    }
 
-    const summary = messages.find((message) => message.id === activeSummaryId)
-    const anchor = summary?.meta?.compactSummary?.displayAnchor
-    if (!summary || !anchor?.assistantMessageId) return { byAssistantId, summaryIds }
-
-    const assistantExists = messages.some(
-      (message) => message.id === anchor.assistantMessageId && message.role === 'assistant'
-    )
-    if (!assistantExists) return { byAssistantId, summaryIds }
-
-    byAssistantId.set(anchor.assistantMessageId, [summary])
-    summaryIds.add(summary.id)
+    for (const summaryId of compressionStatusSummaryIds) {
+      summaryIds.add(summaryId)
+    }
     return { byAssistantId, summaryIds }
   }, [messages])
 

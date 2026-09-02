@@ -39,6 +39,7 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
     const isComposingRef = React.useRef(false)
     const pendingUserInputRef = React.useRef(false)
     const pendingRenderAfterCompositionRef = React.useRef(false)
+    const flushDocumentSyncRef = React.useRef<(() => void) | null>(null)
     const [compositionRenderVersion, bumpCompositionRenderVersion] = React.useReducer(
       (version: number) => version + 1,
       0
@@ -110,6 +111,17 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       }
     }, [scheduleSelectionSync])
 
+    const flushDocumentSync = React.useCallback(() => {
+      const root = editorRef.current
+      if (!root) return
+      const nextDocument = parseDomToDocument(root)
+      if (!isSameDocument(nextDocument, document)) {
+        onDocumentChange(nextDocument)
+      }
+    }, [document, onDocumentChange])
+
+    flushDocumentSyncRef.current = flushDocumentSync
+
     React.useImperativeHandle(
       ref,
       () => ({
@@ -154,6 +166,20 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
           const root = editorRef.current
           if (!root) return document
           return parseDomToDocument(root)
+        },
+        flushPendingInput: () => {
+          if (documentSyncFrameRef.current !== null) {
+            window.cancelAnimationFrame(documentSyncFrameRef.current)
+            documentSyncFrameRef.current = null
+          }
+          if (compositionEndRafRef.current !== null) {
+            window.cancelAnimationFrame(compositionEndRafRef.current)
+            compositionEndRafRef.current = null
+          }
+          isComposingRef.current = false
+          pendingRenderAfterCompositionRef.current = false
+          pendingUserInputRef.current = false
+          flushDocumentSyncRef.current?.()
         },
         getScrollMetrics: () => {
           const root = editorRef.current
@@ -208,15 +234,6 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       const selection = selectionRef.current
       setSelectionOffsets(root, selection.start, selection.end)
     }, [compositionRenderVersion, document, files, highlightedFileId, syncLiveContent])
-
-    const flushDocumentSync = React.useCallback(() => {
-      const root = editorRef.current
-      if (!root) return
-      const nextDocument = parseDomToDocument(root)
-      if (!isSameDocument(nextDocument, document)) {
-        onDocumentChange(nextDocument)
-      }
-    }, [document, onDocumentChange])
 
     const scheduleDocumentSync = React.useCallback(() => {
       if (documentSyncFrameRef.current !== null) return

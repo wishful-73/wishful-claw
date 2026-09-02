@@ -276,7 +276,6 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
       permissionMode: session.permissionMode,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,
-      maxToolCallsPerTurn: settings.maxToolCallsPerTurn,
       maxConcurrentSubAgents: settings.maxConcurrentSubAgents,
       personaId: settings.defaultPersonaId ?? undefined,
       language: settings.language,

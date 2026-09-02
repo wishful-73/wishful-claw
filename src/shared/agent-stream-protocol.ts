@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Agent stream protocol — wire format for main→renderer event streaming.
  * Simplified from WishfulClaw: no SubAgent/Image/WebSearch/Translation events.
  */
@@ -175,6 +175,7 @@ export type AgentStreamEvent =
       keptMessageCount?: number
       trigger?: 'auto' | 'manual'
       preTokens?: number
+      estimatedNewTokens?: number
       messagesSummarized?: number
       summarizerFailed?: boolean
       error?: string

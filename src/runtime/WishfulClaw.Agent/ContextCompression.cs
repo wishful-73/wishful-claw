@@ -50,6 +50,9 @@ public static partial class ContextCompression
     private const int DefaultContextCompressionLimit = 200_000; // fallback when provider has no contextLength
     private const int MaxPinnedFirstUserTokens = 1500;
     private const double PinnedFirstUserWindowFrac = 0.15;
+    private const int SummaryInputBaseCharBudget = 400_000;
+    private const int SummaryMaxAttempts = 3;
+    private const int SummaryRetryDelayMs = 1_500;
 
     private static readonly TimeSpan SummaryTimeout = TimeSpan.FromSeconds(90);
 
@@ -144,7 +147,7 @@ public static partial class ContextCompression
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            WorkerLog.Warn($"context compression LLM summarization failed: {ex.GetType().Name}: {ex.Message}");
+            WorkerLog.Warn($"context compression LLM summarization failed after all input budgets: {ex.GetType().Name}: {ex.Message}");
             summary = MechanicalFoldDigest(fold.Count);
             summarizerFailed = true;
         }
@@ -180,7 +183,11 @@ public static partial class ContextCompression
         var summaryMessageId = $"compact-summary-{Guid.NewGuid():N}";
         newConversation.Add(summaryMessage);
         newWireConversation.Add(CreateSummaryWireMessage(
-            summaryMessageId, summaryContent, fold.Count, recentMessagesPreserved: start < conversation.Count));
+            summaryMessageId,
+            summaryContent,
+            fold.Count,
+            recentMessagesPreserved: start < conversation.Count,
+            summarizerFailed));
 
         // Recent tail
         for (var i = start; i < conversation.Count; i++)
@@ -387,57 +394,79 @@ public static partial class ContextCompression
         CancellationToken cancellationToken,
         Func<string, ValueTask>? onSummaryDelta)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(SummaryTimeout);
-
         var providerType = JsonHelpers.GetString(provider, "type") ?? string.Empty;
-        var transcript = RenderTranscript(fold);
+        Exception? lastError = null;
 
-        // Build summary request body using JsonSerializer for proper escaping
-        var requestBody = BuildSummaryRequestBody(transcript, providerType);
-
-        string? summary = null;
-        Exception? lastErr = null;
-
-        for (var attempt = 0; attempt < 2 && summary == null; attempt++)
+        for (var attempt = 0; attempt < SummaryMaxAttempts; attempt++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            var charBudget = SummaryInputBaseCharBudget >> attempt;
+            var requestBody = BuildSummaryRequestBody(fold, charBudget);
+            var attemptDeltas = onSummaryDelta is null ? null : new List<string>();
+            Func<string, ValueTask>? attemptDelta = onSummaryDelta is null
+                ? null
+                : text =>
+                {
+                    attemptDeltas!.Add(text);
+                    return ValueTask.CompletedTask;
+                };
             try
             {
-                summary = providerType switch
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(SummaryTimeout);
+                var summary = providerType switch
                 {
-                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token, onSummaryDelta),
-                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token, onSummaryDelta),
-                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token, onSummaryDelta),
+                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token, attemptDelta),
+                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token, attemptDelta),
+                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token, attemptDelta),
                     _ => throw new InvalidOperationException($"Unsupported provider for summarization: {providerType}")
                 };
+
+                if (string.IsNullOrWhiteSpace(summary))
+                    throw new InvalidOperationException("Summarizer returned empty output");
+
+                if (onSummaryDelta is not null && attemptDeltas is not null)
+                {
+                    foreach (var delta in attemptDeltas)
+                    {
+                        await onSummaryDelta(delta);
+                    }
+                }
+
+                return summary.Trim();
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // Linked-CTS timeout — the caller is still running, so stop
-                // retrying and let CompactAsync degrade to mechanical fold.
-                break;
+                lastError = new TimeoutException($"Context compression summarizer timed out at input budget {charBudget} characters.");
+                WorkerLog.Warn($"context compression attempt timed out attempt={attempt + 1} inputChars={requestBody.Length}");
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                lastErr = ex;
+                lastError = ex;
+                WorkerLog.Warn(
+                    $"context compression attempt failed attempt={attempt + 1} budget={charBudget} " +
+                    $"overflow={IsContextWindowExceededError(ex)} error={ex.GetType().Name}: {ex.Message}");
+            }
+
+            if (attempt + 1 < SummaryMaxAttempts &&
+                (lastError is null || !IsContextWindowExceededError(lastError)))
+            {
+                await Task.Delay(SummaryRetryDelayMs * (1 << attempt), cancellationToken);
             }
         }
 
-        if (summary == null)
-            throw lastErr ?? new InvalidOperationException("Summarizer returned empty output");
-
-        if (string.IsNullOrWhiteSpace(summary))
-            throw new InvalidOperationException("Summarizer returned empty output");
-
-        return summary.Trim();
+        throw lastError ?? new InvalidOperationException("Summarizer returned empty output");
     }
 
     /// <summary>
-    /// Placeholder — transcript is passed directly to CallXxx methods.
+    /// Builds the summarizer input with an independent character budget. Whole older
+    /// messages are removed first; a single message may then be truncated as a last resort.
     /// </summary>
-    private static string BuildSummaryRequestBody(string transcript, string providerType)
+    internal static string BuildSummaryRequestBody(
+        IReadOnlyList<AgentRuntimeChatMessage> messages,
+        int charBudget)
     {
-        return transcript;
+        return RenderTranscript(messages, Math.Max(1_024, charBudget));
     }
 
     /// <summary>

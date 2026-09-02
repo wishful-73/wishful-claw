@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   ContentBlock,
   ToolResultContent,
   ToolUseBlock,
@@ -64,15 +64,17 @@ export function hasVisibleAssistantStringContent(content: string): boolean {
 
 export function shouldRenderInMessageList(
   message: UnifiedMessage,
-  activeCompactSummaryId: string | null
+  activeCompactSummaryId: string | null,
+  compressionStatusSummaryIds: ReadonlySet<string>
 ): boolean {
   if (message.role === 'system') {
-    // Compression lifecycle cards (status + boundary divider) are the only
-    // system messages with chat-window representation; everything else stays
-    // hidden metadata.
-    return Boolean(message.meta?.compressionStatus ?? message.meta?.compactBoundary)
+    return Boolean(message.meta?.compressionStatus && !message.meta.compressionStatus.displayAnchor)
   }
-  if (isCompactSummaryLikeMessage(message)) return message.id === activeCompactSummaryId
+  if (isCompactSummaryLikeMessage(message)) {
+    return (
+      !compressionStatusSummaryIds.has(message.id) && message.id === activeCompactSummaryId
+    )
+  }
   if (isToolResultOnlyUserMessage(message)) return false
   if (message.role !== 'assistant') return true
   if (typeof message.content === 'string') {

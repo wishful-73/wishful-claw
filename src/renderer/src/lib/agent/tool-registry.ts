@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -22,6 +22,17 @@ function stableStringify(value: unknown): string {
 }
 
 function compareToolDefinitions(a: ToolDefinition, b: ToolDefinition): number {
+  const categoryPriority: Record<string, number> = {
+    file: 10,
+    search: 20,
+    shell: 30,
+    task: 40,
+    memory: 50,
+    plan: 60,
+    capability: 70
+  }
+  const byPriority = (categoryPriority[a.category ?? ''] ?? 100) - (categoryPriority[b.category ?? ''] ?? 100)
+  if (byPriority !== 0) return byPriority
   const byName = a.name.localeCompare(b.name)
   if (byName !== 0) return byName
   const byDescription = a.description.localeCompare(b.description)

@@ -119,6 +119,7 @@ public static class ProviderRetryPolicy
             }
             catch (ProviderHttpException ex) when (
                 IsRetryableStatus(ex.StatusCode) &&
+                !ContextCompression.IsContextWindowExceededError(ex) &&
                 (isUnlimited || retryAttempt < maxAttempts) &&
                 !state.IsCancellationRequested)
             {

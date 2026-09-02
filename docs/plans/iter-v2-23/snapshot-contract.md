@@ -1,4 +1,4 @@
-# v2-iter-23 压缩快照存储与恢复契约
+﻿# v2-iter-23 压缩快照存储与恢复契约
 
 > 状态：步骤 3 定案稿
 >
@@ -129,15 +129,15 @@ ORDER BY created_at ASC, sort_order ASC;
 
 快照写入失败时：
 
-- 不回滚已经完成的内存 `SessionConversation.Replace()`；
+- 本次候选压缩结果不提交到内存 `SessionConversation`，不更新 compaction watermark；
+- 自动压缩发送 `failed` 终态，手动压缩返回 `failed`，均不发送或应用本次 compact artifacts；
 - 不覆盖或删除旧的有效快照；
-- 记录包含 sessionId、trigger、version、异常类型的错误日志，不记录摘要全文或敏感参数；
-- 聊天窗显示“压缩已完成，但持久化失败/重启后可能恢复较长历史”的明确反馈；
-- 当前会话可以继续运行；
-- 下次恢复使用旧快照 + 旧快照后的 DB 增量，或无旧快照时全量恢复；
+- 记录包含 sessionId、trigger、异常类型的错误日志，不记录摘要全文或敏感参数；
+- 当前会话继续使用压缩前的完整内存 conversation；
+- 下次恢复使用仍然有效的旧快照 + 旧快照后的 DB 增量；不存在旧快照时全量恢复；
 - 下次成功压缩再原子替换快照。
 
-理由：回滚内存压缩会让已经继续运行的 provider 上下文发生倒退；保留旧快照可以保证恢复安全，只是上下文可能更大。
+理由：只有快照持久化成功后，内存 conversation、聊天 artifacts、stream event 和 SQLite 恢复状态才共同提交为一次成功压缩。写入失败时保留压缩前内存状态和旧快照，可避免对外宣称一个无法由本次快照恢复的成功结果。
 
 ## 六、快照读取与回退
 

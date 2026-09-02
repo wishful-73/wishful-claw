@@ -270,6 +270,8 @@ export interface CompactBoundaryMeta {
 export interface CompactSummaryMeta {
   messagesSummarized: number
   recentMessagesPreserved: boolean
+  /** True when the LLM summarizer failed and a mechanical fallback digest was used. */
+  summarizerFailed?: boolean
   displayAnchor?: {
     assistantMessageId: string
     afterContentBlockCount: number
@@ -307,6 +309,12 @@ export interface CompressionStatusMeta {
   summaryText?: string
   /** Stable compact summary artifact id, when one was produced. */
   summaryMessageId?: string
+  /** Inline position used when compression starts during an active assistant run. */
+  displayAnchor?: {
+    assistantMessageId: string
+    afterContentBlockCount: number
+    afterToolUseId?: string
+  }
 }
 
 export interface SelectedFileReference {
@@ -417,6 +425,8 @@ export interface StreamEvent {
 export interface ToolDefinition {
   name: string
   description: string
+  category?: string
+  priority?: number
   inputSchema:
     | {
         type: 'object'

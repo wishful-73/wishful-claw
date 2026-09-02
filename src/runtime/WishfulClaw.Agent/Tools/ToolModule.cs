@@ -101,6 +101,9 @@ public sealed class ToolModule : IWorkerModule
                     writer.WriteStartObject();
                     writer.WriteString("name", def.Name);
                     writer.WriteString("description", def.Description);
+                    if (!string.IsNullOrWhiteSpace(def.Category))
+                        writer.WriteString("category", def.Category);
+                    writer.WriteNumber("priority", def.Priority);
                     writer.WritePropertyName("inputSchema");
                     def.InputSchema.WriteTo(writer);
                     writer.WriteEndObject();
@@ -133,11 +136,11 @@ public sealed class ToolModule : IWorkerModule
         // Sub-agent Task tool — load agent definitions from disk into registry first,
         // then construct TaskTool so its description/schema reflect available agent types.
         Agent.SubAgentRegistry.LoadFromDisk();
-        registry.Register(new TaskTool());
+        registry.Register(new TaskTool(), "task");
 
         // Sub-agent status and detail query tools
-        registry.Register(new SubAgentStatusTool());
-        registry.Register(new SubAgentDetailTool());
+        registry.Register(new SubAgentStatusTool(), "task");
+        registry.Register(new SubAgentDetailTool(), "task");
 
         // Memory tools (category: "memory" — included in chat/coding presets)
         var memorySearch = new MemoryFtsService();

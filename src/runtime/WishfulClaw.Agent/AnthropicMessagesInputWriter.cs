@@ -374,11 +374,16 @@ internal static partial class AnthropicMessagesProvider
     {
         if (toolDefs.Count == 0) return;
 
-        // Sort tools by name for stable byte ordering (prefix cache stability).
-        // ToolDefinition is a record — the registry may already canonicalize,
-        // but we sort here as a belt-and-suspenders measure.
+        // Preserve workflow priority while keeping deterministic ordering for
+        // callers that bypass the registry.
         var sorted = new List<ToolDefinition>(toolDefs);
-        sorted.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+        sorted.Sort((a, b) =>
+        {
+            var byPriority = a.Priority.CompareTo(b.Priority);
+            return byPriority != 0
+                ? byPriority
+                : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+        });
 
         writer.WritePropertyName("tools");
         writer.WriteStartArray();

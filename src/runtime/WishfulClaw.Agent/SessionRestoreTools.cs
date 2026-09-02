@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -444,6 +444,16 @@ internal static class SessionRestoreTools
                 catch { /* ignore parse errors */ }
             }
 
+            JsonElement? usage = null;
+            if (!string.IsNullOrEmpty(entity.Usage))
+            {
+                try
+                {
+                    usage = JsonDocument.Parse(entity.Usage).RootElement.Clone();
+                }
+                catch { /* ignore parse errors */ }
+            }
+
             // Check if this message has tool calls in meta
             var hasToolCalls = false;
             if (meta is { } m && m.TryGetProperty("toolCalls", out var toolCallsEl) && toolCallsEl.ValueKind == JsonValueKind.Array)
@@ -533,6 +543,11 @@ internal static class SessionRestoreTools
             }
 
             writer.WriteNumber("createdAt", entity.CreatedAt);
+            if (usage is { ValueKind: JsonValueKind.Object } usageValue)
+            {
+                writer.WritePropertyName("usage");
+                usageValue.WriteTo(writer);
+            }
             writer.WriteEndObject();
         }
 

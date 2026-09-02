@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -232,7 +232,7 @@ function MessageItemInner({
         )
       case 'system':
         if (message.meta?.compressionStatus) {
-          return <CompressionStatusMessage message={message} />
+          return <CompressionStatusMessage message={message} sessionId={sessionId} />
         }
         if (message.meta?.compactBoundary) {
           return <CompactBoundaryMessage message={message} />

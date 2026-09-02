@@ -342,9 +342,18 @@ internal static partial class OpenAIResponsesProvider
             return;
         }
 
+        var sorted = new List<ToolDefinition>(toolDefs);
+        sorted.Sort((a, b) =>
+        {
+            var byPriority = a.Priority.CompareTo(b.Priority);
+            return byPriority != 0
+                ? byPriority
+                : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+        });
+
         writer.WritePropertyName("tools");
         writer.WriteStartArray();
-        foreach (var tool in toolDefs)
+        foreach (var tool in sorted)
         {
             if (string.IsNullOrWhiteSpace(tool.Name))
             {

@@ -25,7 +25,6 @@ interface ConfirmOptions {
   sessionId?: string
   imageEdit?: unknown
   status?: string
-  maxToolCallsPerTurn?: number
   /** Ordering key for concurrent dialogs (e.g. tool startedAt ms). Lower shows first. */
   sequence?: number
   [key: string]: unknown

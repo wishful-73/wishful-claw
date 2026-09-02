@@ -328,33 +328,6 @@ function RuntimePanel(): React.JSX.Element {
           />
         </SettingRow>
 
-        {/* Max Tool Calls Per Turn */}
-        <SettingRow
-          label={t('general.toolExecution.maxPerTurn.label')}
-          description={t('general.toolExecution.maxPerTurn.desc')}
-          control={
-            <Input
-              type="number"
-              min={1}
-              max={100}
-              value={settings.maxToolCallsPerTurn}
-              onChange={(e) => {
-                const next = Math.min(100, Math.max(1, parseInt(e.target.value, 10) || 20))
-                settings.updateSettings({ maxToolCallsPerTurn: next })
-              }}
-              className="w-20 text-xs"
-            />
-          }
-        >
-          <Slider
-            min={1}
-            max={100}
-            step={1}
-            value={[settings.maxToolCallsPerTurn]}
-            onValueChange={([v]) => settings.updateSettings({ maxToolCallsPerTurn: v })}
-          />
-        </SettingRow>
-
         {/* Max Concurrent Sub-Agents */}
         <SettingRow
           label={t('general.toolExecution.maxSubAgents.label')}

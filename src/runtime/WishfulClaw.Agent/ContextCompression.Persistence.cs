@@ -14,29 +14,35 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static partial class ContextCompression
 {
+    public sealed record CompactionSnapshotPersistResult(
+        bool Success,
+        bool Skipped,
+        string? Error = null);
+
     /// <summary>
     /// Writes the session snapshot after a successful compression. Skips outcomes with
     /// no summary (nothing compacted) and degraded mechanical truncation (no artifacts).
-    /// Failures are logged and never propagate — the old snapshot (or none) is kept and
-    /// the restore path falls back to full message recovery.
+    /// Returns a structured result so callers can decide whether the compressed state is
+    /// safe to expose as durable session state. The old snapshot (or none) is kept on
+    /// failure because the database writer replaces snapshots atomically.
     /// </summary>
-    public static void PersistSnapshot(
+    public static CompactionSnapshotPersistResult PersistSnapshot(
         CompactionOutcome outcome,
+        IReadOnlyList<JsonElement> compactArtifacts,
         string sessionId,
         string trigger,
         int preTokens)
     {
         if (!outcome.Compacted || string.IsNullOrEmpty(sessionId))
         {
-            return;
+            return new CompactionSnapshotPersistResult(true, true);
         }
 
-        var compactArtifacts = BuildCompactArtifacts(outcome, trigger, preTokens);
-        if (compactArtifacts is null)
+        if (compactArtifacts.Count == 0)
         {
             // Degraded truncation fallback carries no summary — a snapshot without
             // artifacts would be unusable on restore; keep the previous state.
-            return;
+            return new CompactionSnapshotPersistResult(true, true);
         }
 
         try
@@ -65,12 +71,14 @@ public static partial class ContextCompression
                 $"compaction snapshot persisted session={AgentLoop.FormatSessionId(sessionId)} " +
                 $"trigger={trigger} original={outcome.OriginalCount} new={outcome.WireConversation.Count} " +
                 $"summarizerFailed={outcome.SummarizerFailed}");
+            return new CompactionSnapshotPersistResult(true, false);
         }
         catch (Exception ex)
         {
             // Keep the old snapshot; restore falls back to full message recovery.
-            DbCompactionSnapshotStore.LogSnapshotIssue(
-                "persist", sessionId, $"{ex.GetType().Name}: {ex.Message}");
+            var error = $"{ex.GetType().Name}: {ex.Message}";
+            DbCompactionSnapshotStore.LogSnapshotIssue("persist", sessionId, error);
+            return new CompactionSnapshotPersistResult(false, false, error);
         }
     }
 

@@ -1,9 +1,8 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { ArrowDown, CircleUserRound } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AssistantReplyRail } from './AssistantReplyRail'
 import { MessageRow } from './MessageRow'
-import { LiveCompressionCard } from '../CompressionStatusMessage'
 import {
   getMessageColumnClass,
   mergeHiddenToolUseIds,
@@ -220,12 +219,6 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
             )
           })}
         </div>
-        {targetSessionId ? (
-          <LiveCompressionCard
-            sessionId={targetSessionId}
-            className={`${getMessageColumnClass(fullWidth)} pb-3`}
-          />
-        ) : null}
       </div>
 
       <AnimatePresence>

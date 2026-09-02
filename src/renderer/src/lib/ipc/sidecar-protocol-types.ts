@@ -229,7 +229,6 @@ export interface SidecarAgentRunRequest {
   forceApproval: boolean
   permissionMode: 'default' | 'whitelist' | 'fullAccess'
   maxParallelTools?: number
-  maxToolCallsPerTurn?: number
   maxConcurrentSubAgents: number
   compression?: CompressionConfig
   sessionMode?: 'normal' | 'agent' | 'chat'

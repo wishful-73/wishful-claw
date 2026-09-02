@@ -1,9 +1,9 @@
-// Main content renderer: handles string, empty, and block-by-block rendering
+﻿// Main content renderer: handles string, empty, and block-by-block rendering
 
 import * as React from 'react'
 import { Eraser, Pencil } from 'lucide-react'
 import { ScaleIn } from '@renderer/components/animate-ui'
-import type { ContentBlock } from '@renderer/lib/api/types'
+import type { ContentBlock, UnifiedMessage } from '@renderer/lib/api/types'
 import type { ToolCallState } from '@renderer/lib/agent/types'
 import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
@@ -36,6 +36,7 @@ import { ToolBlockRenderer } from './tool-block-renderer'
 import type { ToolBlockRendererProps } from './tool-block-renderer'
 import { ExecutionProcessBlock } from './execution-process-block'
 import { buildProcessSummary, splitProcessAndFinal } from './process-summary'
+import { CompressionStatusMessage } from '../CompressionStatusMessage'
 import { ContextCompressionMessage } from '../ContextCompressionMessage'
 
 export interface ContentRendererProps {
@@ -117,6 +118,17 @@ export function ContentRenderer({
     generatingImagePreview?.source.type === 'base64' && generatingImagePreview.source.data
       ? `data:${generatingImagePreview.source.mediaType || 'image/png'};base64,${generatingImagePreview.source.data}`
       : (generatingImagePreview?.source.url ?? '')
+  const inlineSummaryMessages = renderItemsWithInlineSummaries
+    .filter((item) => item.kind === 'compact-summary')
+    .map((item) => item.message)
+  const renderInlineSummary = (message: UnifiedMessage): React.JSX.Element =>
+    message.meta?.compressionStatus ? (
+      <CompressionStatusMessage key={message.id} message={message} sessionId={sessionId} />
+    ) : (
+      <ContextCompressionMessage key={message.id} message={message} />
+    )
+  const renderInlineSummaries = (): React.JSX.Element[] =>
+    inlineSummaryMessages.map(renderInlineSummary)
 
   if (shouldShowImageGeneratingLoader && hasEmptyContent) {
     return (
@@ -176,6 +188,7 @@ export function ContentRenderer({
               <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />
             )}
           </div>
+          {renderInlineSummaries()}
         </div>
       )
     }
@@ -217,6 +230,7 @@ export function ContentRenderer({
         {showOuterCursor && (
           <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />
         )}
+        {renderInlineSummaries()}
       </div>
     )
   }
@@ -305,7 +319,15 @@ export function ContentRenderer({
 
   const renderItem = (item: AssistantRenderItemWithInlineSummary): React.JSX.Element | null => {
     if (item.kind === 'compact-summary') {
-      return <ContextCompressionMessage key={item.message.id} message={item.message} />
+      return item.message.meta?.compressionStatus ? (
+        <CompressionStatusMessage
+          key={item.message.id}
+          message={item.message}
+          sessionId={sessionId}
+        />
+      ) : (
+        <ContextCompressionMessage key={item.message.id} message={item.message} />
+      )
     }
 
     if (item.kind === 'block') {

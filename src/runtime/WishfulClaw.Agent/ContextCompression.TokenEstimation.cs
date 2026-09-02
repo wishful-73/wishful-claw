@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -75,7 +75,8 @@ public static partial class ContextCompression
         string id,
         string content,
         int messagesSummarized,
-        bool recentMessagesPreserved)
+        bool recentMessagesPreserved,
+        bool summarizerFailed)
     {
         var json = WorkerJsonHelper.BuildJsonString(w =>
         {
@@ -90,6 +91,10 @@ public static partial class ContextCompression
             w.WriteStartObject();
             w.WriteNumber("messagesSummarized", messagesSummarized);
             w.WriteBoolean("recentMessagesPreserved", recentMessagesPreserved);
+            if (summarizerFailed)
+            {
+                w.WriteBoolean("summarizerFailed", true);
+            }
             w.WriteEndObject();
             w.WriteEndObject();
             w.WriteEndObject();

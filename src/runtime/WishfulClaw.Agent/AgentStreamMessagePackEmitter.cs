@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -83,6 +83,7 @@ public static class AgentStreamMessagePackEmitter
         WriteOptionalString(writer, "trigger", streamEvent.Trigger);
         WriteOptionalString(writer, "compressionStatus", streamEvent.CompressionStatus);
         WriteOptionalInt(writer, "preTokens", streamEvent.PreTokens);
+        WriteOptionalInt(writer, "estimatedNewTokens", streamEvent.EstimatedNewTokens);
         WriteOptionalBool(writer, "summarizerFailed", streamEvent.SummarizerFailed);
         WriteOptionalInt(writer, "messagesSummarized", streamEvent.MessagesSummarized);
         WriteOptionalString(writer, "error", streamEvent.CompressionError);
@@ -136,6 +137,7 @@ public static class AgentStreamMessagePackEmitter
         if (streamEvent.Trigger is not null) count++;
         if (streamEvent.CompressionStatus is not null) count++;
         if (streamEvent.PreTokens.HasValue) count++;
+        if (streamEvent.EstimatedNewTokens.HasValue) count++;
         if (streamEvent.SummarizerFailed.HasValue) count++;
         if (streamEvent.MessagesSummarized.HasValue) count++;
         if (streamEvent.CompressionError is not null) count++;

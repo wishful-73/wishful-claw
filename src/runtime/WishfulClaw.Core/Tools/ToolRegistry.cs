@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
 
@@ -19,6 +19,26 @@ public sealed class ToolRegistry
 
     // Cached canonical definitions — computed once after all tools are registered.
     private List<ToolDefinition>? _cachedDefinitions;
+
+    // Lower numbers are presented first to emphasize the normal coding workflow.
+    // Unknown/provider-specific categories remain available after the core tools.
+    private static readonly Dictionary<string, int> CategoryPriorities = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["file"] = 10,
+        ["search"] = 20,
+        ["shell"] = 30,
+        ["task"] = 40,
+        ["memory"] = 50,
+        ["plan"] = 60,
+        ["capability"] = 70,
+    };
+
+    private static int GetCategoryPriority(string? category)
+    {
+        return category != null && CategoryPriorities.TryGetValue(category, out var priority)
+            ? priority
+            : 100;
+    }
 
     /// <summary>
     /// Set the current category context. All subsequent Register() calls will
@@ -131,21 +151,45 @@ public sealed class ToolRegistry
             try
             {
                 var canonSchema = CanonicalizeSchema(rawSchema);
-                def = new ToolDefinition(executor.Name, executor.Description, canonSchema, executor.AvailableModes);
+                var category = _toolCategories.TryGetValue(executor.Name, out var registeredCategory)
+                    ? registeredCategory
+                    : null;
+                def = new ToolDefinition(
+                    executor.Name,
+                    executor.Description,
+                    canonSchema,
+                    executor.AvailableModes,
+                    category,
+                    GetCategoryPriority(category));
             }
             catch (Exception ex)
             {
                 System.Console.Error.WriteLine(
                     $"[ToolRegistry] CanonicalizeSchema failed for tool '{executor.Name}': {ex.Message}");
                 // Fallback: use the raw schema without canonicalization
-                def = new ToolDefinition(executor.Name, executor.Description, rawSchema, executor.AvailableModes);
+                var category = _toolCategories.TryGetValue(executor.Name, out var registeredCategory)
+                    ? registeredCategory
+                    : null;
+                def = new ToolDefinition(
+                    executor.Name,
+                    executor.Description,
+                    rawSchema,
+                    executor.AvailableModes,
+                    category,
+                    GetCategoryPriority(category));
             }
 
             list.Add(def);
         }
 
-        // Sort by name for stable ordering
-        list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+        // Sort by workflow category first, then name for deterministic prefix bytes.
+        list.Sort((a, b) =>
+        {
+            var byPriority = a.Priority.CompareTo(b.Priority);
+            return byPriority != 0
+                ? byPriority
+                : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+        });
 
         _cachedDefinitions = list;
         return list;

@@ -277,9 +277,16 @@ internal static partial class OpenAIChatProvider
     {
         if (toolDefs.Count == 0) return;
 
-        // Sort tools by name for stable byte ordering (prefix cache stability)
+        // Keep the registry's workflow ordering while retaining deterministic
+        // ordering for callers that provide their own definitions.
         var sorted = new List<ToolDefinition>(toolDefs);
-        sorted.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+        sorted.Sort((a, b) =>
+        {
+            var byPriority = a.Priority.CompareTo(b.Priority);
+            return byPriority != 0
+                ? byPriority
+                : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+        });
 
         writer.WritePropertyName("tools");
         writer.WriteStartArray();

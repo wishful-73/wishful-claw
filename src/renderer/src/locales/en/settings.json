@@ -1,4 +1,4 @@
-{
+﻿{
   "title": "Settings",
   "shortcuts": {
     "title": "Shortcuts",
@@ -156,14 +156,10 @@
     },
     "toolExecution": {
       "label": "Tool Execution",
-      "desc": "Control how many tools the agent can run at once and per turn",
+      "desc": "Control how many tools the agent can execute at once; extra calls wait for a slot",
       "maxParallel": {
         "label": "Max Parallel Tools",
-        "desc": "Number of tools executed simultaneously"
-      },
-      "maxPerTurn": {
-        "label": "Max Tool Calls Per Turn",
-        "desc": "Cap total tool calls in a single AI response"
+        "desc": "Number of tools executed simultaneously; extra calls wait for a slot"
       },
       "maxSubAgents": {
         "label": "Max Concurrent Sub-Agents",
@@ -1213,9 +1209,34 @@
       },
       "time": {
         "label": "Nightly trigger time",
-        "desc": "Triggers while the app is running near this time; a missed run is caught up once after startup"
+        "desc": "Triggers while the app is running near this time; normal startup does not catch up a missed nightly run"
       },
-      "startupHint": "Triggered with a delay after startup; skipped if the last run was less than 20 hours ago to avoid repeats on frequent restarts"
+      "startupHint": "Triggered with a delay after startup; skipped if the last run was less than 20 hours ago to avoid repeats on frequent restarts",
+      "model": {
+        "label": "Organization model",
+        "desc": "Choose a dedicated provider and model for memory organization; it does not follow the global active model",
+        "providerPlaceholder": "Select provider",
+        "modelPlaceholder": "Select model"
+      },
+      "thinking": {
+        "label": "Thinking mode",
+        "desc": "Applies only to memory organization requests; Default uses the model's own configuration",
+        "default": "Default",
+        "disabled": "Disabled",
+        "enabled": "Enabled",
+        "effortLabel": "Reasoning effort",
+        "effortDesc": "When thinking is enabled, choose a supported reasoning effort; Default uses the model configuration",
+        "effortDefault": "Default",
+        "effort": {
+          "minimal": "Minimal",
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "xhigh": "Extra high",
+          "max": "Maximum",
+          "ultra": "Ultra"
+        }
+      }
     },
     "tiers": {
       "title": "Tier Demotion Thresholds",

@@ -1,4 +1,4 @@
-import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
+﻿import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
 import type { CollaborationMode, PermissionMode } from './chat-store/types'
 import { type AppThemePreset, type SshTerminalThemePreset } from '../lib/theme-presets'
 import { type AppLanguage } from '@renderer/lib/i18n-language'
@@ -45,6 +45,7 @@ export type ProjectSessionDefaultCollaborationMode = CollaborationMode
 export type CoworkDefaultPermissionMode = PermissionMode
 export type MemoryScopeMode = 'hybrid'
 export type MemoryOrganizationSchedule = 'nightly' | 'startup'
+export type MemoryOrganizationThinkingMode = 'default' | 'enabled' | 'disabled'
 export type ClarifyPlanModeAutoSwitchTarget = 'off' | 'code' | 'acp'
 export type ProjectDefaultDirectoryMode = 'last-used' | 'custom'
 export type FileDiffViewMode = 'split' | 'inline' | 'code' | 'preview'

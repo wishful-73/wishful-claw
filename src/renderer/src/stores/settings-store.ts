@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ProviderType, ReasoningEffortLevel } from '../lib/api/types'
 import { ipcStorage } from '../lib/ipc/ipc-storage'
@@ -25,7 +25,7 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
 
 // Re-export types for consumers
 export type {
@@ -39,6 +39,7 @@ export type {
   ProjectSessionDefaultCollaborationMode,
   CoworkDefaultPermissionMode,
   MemoryOrganizationSchedule,
+  MemoryOrganizationThinkingMode,
   MemoryScopeMode,
   ModelBinding,
   OnboardingLanguage,
@@ -157,6 +158,9 @@ interface SettingsStore {
   memoryOrganizationEnabled: boolean
   memoryOrganizationSchedule: MemoryOrganizationSchedule
   memoryOrganizationNightlyTime: string
+  memoryOrganizationModel: ModelBinding | null
+  memoryOrganizationThinkingMode: MemoryOrganizationThinkingMode
+  memoryOrganizationReasoningEffort: ReasoningEffortLevel | ''
   memoryWarmThresholdEphemeral: number
   memoryWarmThresholdStandard: number
   memoryWarmThresholdLasting: number
@@ -303,6 +307,9 @@ export const useSettingsStore = create<SettingsStore>()(
       memoryOrganizationEnabled: true,
       memoryOrganizationSchedule: 'nightly',
       memoryOrganizationNightlyTime: '00:00',
+      memoryOrganizationModel: null,
+      memoryOrganizationThinkingMode: 'default',
+      memoryOrganizationReasoningEffort: '',
       memoryWarmThresholdEphemeral: 7,
       memoryWarmThresholdStandard: 30,
       memoryWarmThresholdLasting: 90,
@@ -404,7 +411,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 34,
+      version: 35,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -463,6 +470,9 @@ export const useSettingsStore = create<SettingsStore>()(
         memoryOrganizationEnabled: state.memoryOrganizationEnabled,
         memoryOrganizationSchedule: state.memoryOrganizationSchedule,
         memoryOrganizationNightlyTime: state.memoryOrganizationNightlyTime,
+        memoryOrganizationModel: state.memoryOrganizationModel,
+        memoryOrganizationThinkingMode: state.memoryOrganizationThinkingMode,
+        memoryOrganizationReasoningEffort: state.memoryOrganizationReasoningEffort,
         memoryWarmThresholdEphemeral: state.memoryWarmThresholdEphemeral,
         memoryWarmThresholdStandard: state.memoryWarmThresholdStandard,
         memoryWarmThresholdLasting: state.memoryWarmThresholdLasting,

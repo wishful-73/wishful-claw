@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
@@ -236,6 +236,9 @@ Do not overstep your bounds or create unnecessary files.
     {
         return """
 <tool_calling>
+- Core tools are presented in workflow order: file tools first, then search/inspection, shell/command tools, and session task tools. Prefer the narrowest tool that directly matches the operation.
+- Some capabilities are not exposed as direct tools. Discover them through the `use_capability` proxy: call `action="list"` with the relevant type, then call the returned capability with `action="call"`, `capability_id`, and arguments in `arguments`.
+- Use the proxy when the needed capability is not in the direct tool list; do not claim a capability is unavailable before checking it.
 - Before calling tools, briefly state what you are about to do. After results, briefly summarize what you found. Never call tools silently.
 - Batch independent tool calls in the same assistant turn; keep sequential only when dependent.
 - For complex multi-step tasks, delegate to a sub-agent via the Task tool instead of doing everything yourself.

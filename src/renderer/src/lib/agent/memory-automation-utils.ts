@@ -1,7 +1,10 @@
 ﻿// Pure utility functions, constants, and types extracted from memory-automation.ts
 
 import { runSidecarTextRequest } from '@renderer/lib/ipc/agent-bridge'
-import { useProviderStore } from '@renderer/stores/provider-store'
+import {
+  isProviderAvailableForModelSelection,
+  useProviderStore
+} from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import type { ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
 import type { AIModelConfig } from '../../../../shared/types/provider'
@@ -226,47 +229,61 @@ export function summarizeMemorySnapshot(snapshot: LayeredMemorySnapshot): string
 export function hasUsableProvider(provider: ProviderConfig | null): provider is ProviderConfig {
   return Boolean(
     provider &&
+      (!provider.category || provider.category === 'chat') &&
       provider.type !== 'openai-images' &&
+      provider.type !== 'seedance-video' &&
+      provider.type !== 'xai-video' &&
       (provider.apiKey || provider.requiresApiKey === false)
   )
 }
 
 export function resolveAutomationProvider(): ProviderConfig | null {
-  const providerStore = useProviderStore.getState()
-  const fastSelection = providerStore.getFastProviderConfig()
-  const provider = fastSelection
-    ? providerStore.getProviderById(fastSelection.providerId)
-    : providerStore.getActiveProvider()
-  if (!provider) return null
-
-  const modelId = fastSelection?.model ||
-    (provider.id === providerStore.activeProviderId ? providerStore.activeModelId : '') ||
-    provider.defaultModel ||
-    provider.models.find((model: AIModelConfig) => model.enabled && (!model.category || model.category === 'chat'))?.id ||
-    provider.models.find((model: AIModelConfig) => model.enabled)?.id
-  if (!modelId) return null
-
-  const model = provider.models.find((candidate: AIModelConfig) => candidate.id === modelId)
   const settings = useSettingsStore.getState()
-  const thinkingEnabled = settings.thinkingEnabled && Boolean(model?.thinkingConfig)
+  const binding = settings.memoryOrganizationModel
+  if (!binding?.providerId || !binding.modelId) return null
+
+  const provider = useProviderStore.getState().getProviderById(binding.providerId)
+  if (!provider || !isProviderAvailableForModelSelection(provider)) return null
+
+  const model = provider.models.find((candidate: AIModelConfig) => {
+    const requestType = candidate.type ?? provider.type
+    return candidate.id === binding.modelId && candidate.enabled &&
+      (!candidate.category || candidate.category === 'chat') &&
+      requestType !== 'openai-images' && requestType !== 'seedance-video' && requestType !== 'xai-video'
+  })
+  if (!model) return null
+
+  const thinkingEnabled = settings.memoryOrganizationThinkingMode === 'enabled'
+  const thinkingDisabled = settings.memoryOrganizationThinkingMode === 'disabled'
+  const effectiveThinkingEnabled = thinkingEnabled && Boolean(model.thinkingConfig)
   const temperature =
-    provider.type === 'anthropic' && thinkingEnabled
-      ? model?.thinkingConfig?.forceTemperature ?? 1
+    provider.type === 'anthropic' && effectiveThinkingEnabled
+      ? model.thinkingConfig?.forceTemperature ?? 1
       : settings.temperature
   return {
-    type: model?.type ?? provider.type,
+    type: model.type ?? provider.type,
     apiKey: provider.apiKey,
     baseUrl: provider.baseUrl,
-    model: modelId,
-    contextLength: model?.contextLength,
-    category: model?.category,
+    model: model.id,
+    contextLength: model.contextLength,
+    category: model.category,
     providerId: provider.id,
     providerBuiltinId: provider.builtinId,
-    maxTokens: model?.maxOutputTokens,
+    maxTokens: model.maxOutputTokens,
+    requiresApiKey: provider.requiresApiKey,
     ...(temperature !== undefined ? { temperature } : {}),
-    thinkingEnabled,
-    thinkingConfig: model?.thinkingConfig,
-    requestOverrides: model?.requestOverrides ?? provider.requestOverrides,
+    ...(model.thinkingConfig ? { thinkingConfig: model.thinkingConfig } : {}),
+    ...(thinkingEnabled || thinkingDisabled
+      ? { thinkingEnabled: effectiveThinkingEnabled }
+      : {}),
+    ...(effectiveThinkingEnabled && settings.memoryOrganizationReasoningEffort
+      ? { reasoningEffort: settings.memoryOrganizationReasoningEffort }
+      : {}),
+    requestOverrides: model.requestOverrides ?? provider.requestOverrides,
+    instructionsPrompt: provider.instructionsPrompt,
+    cacheTtl: model.cacheTtl ?? provider.cacheTtl,
+    websocketUrl: model.websocketUrl ?? provider.websocketUrl,
+    websocketMode: model.websocketMode ?? provider.websocketMode,
     useSystemProxy: provider.useSystemProxy,
     allowInsecureTls: provider.allowInsecureTls,
     userAgent: provider.userAgent,

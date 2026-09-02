@@ -229,7 +229,7 @@ public static class DbCompactionSnapshotTools
                 db.Execute(
                     conn,
                     tx,
-                    "UPDATE sessions SET current_snapshot_id = NULL WHERE id = @sid",
+                    "UPDATE sessions SET current_snapshot_id = NULL, context_revision = context_revision + 1 WHERE id = @sid",
                     new SqliteParameter("@sid", sessionId));
                 return changed > 0;
             });

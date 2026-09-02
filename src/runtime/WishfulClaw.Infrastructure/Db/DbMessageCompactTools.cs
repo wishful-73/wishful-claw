@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization.Metadata;
+﻿using System.Text.Json.Serialization.Metadata;
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
@@ -31,7 +31,6 @@ public static class DbMessageCompactTools
 
             var cutoff = messages.Count - 6;
             var compacted = 0;
-            DbCompactionSnapshotStore.MessagePosition? coveredPosition = null;
             for (var index = 0; index < cutoff; index++)
             {
                 var row = messages[index];
@@ -44,15 +43,6 @@ public static class DbMessageCompactTools
                     new SqliteParameter("@id", row.Id));
                 compacted++;
 
-                // Historical content edits invalidate a snapshot covering the modified
-                // position; rows are iterated oldest-first (created_at + sort_order), so
-                // the first hit is deterministically the earliest.
-                coveredPosition ??= new DbCompactionSnapshotStore.MessagePosition(row.CreatedAt, row.SortOrder);
-            }
-
-            if (compacted > 0)
-            {
-                DbCompactionSnapshotStore.InvalidateForCoveredPosition(db, sessionId, coveredPosition);
             }
 
             return WorkerResponse.Json(new MessageCompactResult(true, messages.Count, compacted, null), InfrastructureJsonContext.Default.MessageCompactResult);

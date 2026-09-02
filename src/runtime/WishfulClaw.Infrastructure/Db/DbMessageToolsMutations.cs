@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -88,17 +88,6 @@ public static partial class DbMessageTools
 
             if (existing is not null)
             {
-                var positionUnchanged = string.Equals(existing.SessionId, message.SessionId, StringComparison.Ordinal) &&
-                                        existing.CreatedAt == message.CreatedAt &&
-                                        existing.SortOrder == message.SortOrder;
-                var artifactMetaOnlyChange = positionUnchanged &&
-                                             string.Equals(existing.Role, message.Role, StringComparison.Ordinal) &&
-                                             string.Equals(existing.Content, message.Content, StringComparison.Ordinal) &&
-                                             DbCompactionSnapshotStore.IsChatOnlyArtifactMeta(existing.Meta);
-                var modelInputChanged = HasModelInputChanged(existing, message) && !artifactMetaOnlyChange;
-                var existingPosition = new DbCompactionSnapshotStore.MessagePosition(existing.CreatedAt, existing.SortOrder);
-                var incomingPosition = new DbCompactionSnapshotStore.MessagePosition(message.CreatedAt, message.SortOrder);
-
                 db.Execute(
                     "UPDATE messages SET session_id = @sid, role = @role, content = @content, " +
                     "meta = @meta, created_at = @ca, usage = @usage, sort_order = @so WHERE id = @id",
@@ -110,17 +99,6 @@ public static partial class DbMessageTools
                     new SqliteParameter("@usage", (object?)message.Usage ?? DBNull.Value),
                     new SqliteParameter("@so", message.SortOrder),
                     new SqliteParameter("@id", message.Id));
-
-                if (modelInputChanged)
-                {
-                    DbCompactionSnapshotStore.InvalidateIfUpsertCovered(db, existing.SessionId, existingPosition);
-                    if (!string.Equals(existing.SessionId, message.SessionId, StringComparison.Ordinal) ||
-                        existing.CreatedAt != message.CreatedAt ||
-                        existing.SortOrder != message.SortOrder)
-                    {
-                        DbCompactionSnapshotStore.InvalidateIfUpsertCovered(db, message.SessionId, incomingPosition);
-                    }
-                }
             }
             else
             {
@@ -134,16 +112,6 @@ public static partial class DbMessageTools
         {
             return MutationError(ex.Message);
         }
-    }
-
-    private static bool HasModelInputChanged(MessageEntity existing, MessageEntity incoming)
-    {
-        return !string.Equals(existing.SessionId, incoming.SessionId, StringComparison.Ordinal) ||
-               !string.Equals(existing.Role, incoming.Role, StringComparison.Ordinal) ||
-               !string.Equals(existing.Content, incoming.Content, StringComparison.Ordinal) ||
-               !string.Equals(existing.Meta, incoming.Meta, StringComparison.Ordinal) ||
-               existing.CreatedAt != incoming.CreatedAt ||
-               existing.SortOrder != incoming.SortOrder;
     }
 
     public static WorkerResponse Update(JsonElement parameters)
@@ -165,20 +133,15 @@ public static partial class DbMessageTools
                 new SqliteParameter("@id", id));
             if (current is null) return Mutation(0);
 
-            var modelInputChanged = false;
             if (patch.TryGetProperty("content", out var contentEl) && contentEl.ValueKind == JsonValueKind.String)
             {
-                var content = contentEl.GetString() ?? string.Empty;
-                modelInputChanged |= !string.Equals(current.Content, content, StringComparison.Ordinal);
-                current.Content = content;
+                current.Content = contentEl.GetString() ?? string.Empty;
             }
             if (patch.TryGetProperty("meta", out var metaEl))
             {
-                var meta = metaEl.ValueKind == JsonValueKind.String
+                current.Meta = metaEl.ValueKind == JsonValueKind.String
                     ? DbProjectTools.NormalizeOptional(metaEl.GetString())
                     : null;
-                modelInputChanged |= !string.Equals(current.Meta, meta, StringComparison.Ordinal);
-                current.Meta = meta;
             }
             if (patch.TryGetProperty("usage", out var usageEl))
             {
@@ -193,15 +156,6 @@ public static partial class DbMessageTools
                 new SqliteParameter("@meta", (object?)current.Meta ?? DBNull.Value),
                 new SqliteParameter("@usage", (object?)current.Usage ?? DBNull.Value),
                 new SqliteParameter("@id", id));
-            if (changed > 0 && modelInputChanged)
-            {
-                // Content/meta edits at a covered position invalidate the session snapshot,
-                // same rule as compact/truncate mutations. Usage-only updates are display data.
-                DbCompactionSnapshotStore.InvalidateForCoveredPosition(
-                    db,
-                    current.SessionId,
-                    new DbCompactionSnapshotStore.MessagePosition(current.CreatedAt, current.SortOrder));
-            }
             return Mutation(changed);
         }
         catch (Exception ex)
@@ -221,7 +175,7 @@ public static partial class DbMessageTools
             db.ExecuteInTransaction((conn, tx) =>
             {
                 db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
-                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
+                DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
             });
             SetMessageCount(db, sessionId, 0);
             return Mutation(1);
@@ -243,13 +197,6 @@ public static partial class DbMessageTools
 
             var deleted = db.ExecuteInTransaction((conn, tx) =>
             {
-                var position = db.QueryFirstOrDefault(
-                    conn, tx,
-                    "SELECT created_at, sort_order FROM messages WHERE session_id = @sid AND id = @mid",
-                    r => new DbCompactionSnapshotStore.MessagePosition(r.GetInt64("created_at"), r.GetInt32("sort_order")),
-                    new SqliteParameter("@sid", sessionId),
-                    new SqliteParameter("@mid", messageId));
-
                 var removed = db.Execute(conn, tx,
                     "DELETE FROM messages WHERE session_id = @sid AND id = @mid",
                     new SqliteParameter("@sid", sessionId),
@@ -257,7 +204,7 @@ public static partial class DbMessageTools
 
                 if (removed > 0)
                 {
-                    DbCompactionSnapshotStore.InvalidateIfCovered(db, conn, tx, sessionId, position);
+                    DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
                 }
 
                 return removed;
@@ -321,8 +268,7 @@ public static partial class DbMessageTools
             db.ExecuteInTransaction((conn, tx) =>
             {
                 db.Execute(conn, tx, "DELETE FROM messages WHERE id = @id", new SqliteParameter("@id", last.Id));
-                DbCompactionSnapshotStore.InvalidateIfCovered(
-                    db, conn, tx, sessionId, new DbCompactionSnapshotStore.MessagePosition(last.CreatedAt, last.SortOrder));
+                DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
             });
             IncrementMessageCount(db, sessionId, -1);
 
@@ -359,7 +305,7 @@ public static partial class DbMessageTools
                         new SqliteParameter("@tso", cursor.ThroughSortOrder)) > 0;
                     if (overlaps)
                     {
-                        DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
+                        DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
                     }
                 }
 

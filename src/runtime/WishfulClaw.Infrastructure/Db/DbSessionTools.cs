@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -195,7 +195,7 @@ public static class DbSessionTools
             {
                 db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @id", new SqliteParameter("@id", id));
                 db.Execute(conn, tx, "DELETE FROM tasks WHERE session_id = @id", new SqliteParameter("@id", id));
-                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, id);
+                DbCompactionSnapshotStore.DetachForSession(db, conn, tx, id);
             });
             var changed = db.Execute("DELETE FROM sessions WHERE id = @id", new SqliteParameter("@id", id));
             return Mutation(changed);
@@ -226,7 +226,7 @@ public static class DbSessionTools
                     db.Execute(conn, tx, $"DELETE FROM messages WHERE session_id IN ({placeholders})", msgParams);
                     db.Execute(conn, tx, $"DELETE FROM tasks WHERE session_id IN ({placeholders})",
                         sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray());
-                    DbCompactionSnapshotStore.DeleteForSessions(db, conn, tx, sessionIds);
+                    DbCompactionSnapshotStore.DetachForSessions(db, conn, tx, sessionIds);
                 });
             }
 
@@ -264,7 +264,7 @@ public static class DbSessionTools
                 db.Execute(conn, tx,
                     "DELETE FROM tasks WHERE session_id = @id",
                     new SqliteParameter("@id", sessionId));
-                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
+                DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
                 return removed;
             });
 

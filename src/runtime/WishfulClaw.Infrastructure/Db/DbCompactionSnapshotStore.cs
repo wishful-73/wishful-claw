@@ -6,8 +6,8 @@ namespace WishfulClaw.Infrastructure.Db;
 
 /// <summary>
 /// Internal compaction snapshot helpers shared by destructive message/session mutations.
-/// Contract: snapshot deletion must happen in the same DB transaction as the destructive
-/// message mutation (docs/plans/iter-v2-23/snapshot-contract.md §7 / §10).
+/// Contract: snapshot pointer detachment must happen in the same DB transaction as the
+/// destructive message mutation (docs/plans/iter-v2-23/snapshot-contract.md §7 / §10).
 /// </summary>
 public static class DbCompactionSnapshotStore
 {
@@ -40,29 +40,43 @@ public static class DbCompactionSnapshotStore
             new SqliteParameter("@sid", sessionId));
     }
 
-    /// <summary>Delete the session snapshot (inside an open transaction).</summary>
+    /// <summary>Detach the current snapshot pointer while retaining immutable snapshot history.</summary>
+    public static void DetachForSession(DbService db, SqliteConnection conn, SqliteTransaction tx, string sessionId)
+    {
+        db.Execute(conn, tx,
+            "UPDATE sessions SET current_snapshot_id = NULL, context_revision = context_revision + 1 WHERE id = @sid",
+            new SqliteParameter("@sid", sessionId));
+    }
+
+    /// <summary>Detach current snapshot pointers for a set of sessions (inside an open transaction).</summary>
+    public static void DetachForSessions(DbService db, SqliteConnection conn, SqliteTransaction tx, IReadOnlyList<string> sessionIds)
+    {
+        if (sessionIds.Count == 0) return;
+        var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@cs{i}"));
+        db.Execute(
+            conn,
+            tx,
+            $"UPDATE sessions SET current_snapshot_id = NULL, context_revision = context_revision + 1 WHERE id IN ({placeholders})",
+            sessionIds.Select((sid, i) => new SqliteParameter($"@cs{i}", sid)).ToArray());
+    }
+
+    /// <summary>Delete all snapshots for a session and detach its current pointer.</summary>
     public static void DeleteForSession(DbService db, SqliteConnection conn, SqliteTransaction tx, string sessionId)
     {
         db.Execute(conn, tx,
             "DELETE FROM session_compaction_snapshots WHERE session_id = @sid",
             new SqliteParameter("@sid", sessionId));
-        db.Execute(conn, tx,
-            "UPDATE sessions SET current_snapshot_id = NULL WHERE id = @sid",
-            new SqliteParameter("@sid", sessionId));
+        DetachForSession(db, conn, tx, sessionId);
     }
 
-    /// <summary>Delete snapshots for a set of sessions (inside an open transaction).</summary>
+    /// <summary>Delete all snapshots for a set of sessions and detach their current pointers.</summary>
     public static void DeleteForSessions(DbService db, SqliteConnection conn, SqliteTransaction tx, IReadOnlyList<string> sessionIds)
     {
         if (sessionIds.Count == 0) return;
         var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@cs{i}"));
         var sqlParams = sessionIds.Select((sid, i) => new SqliteParameter($"@cs{i}", sid)).ToArray();
         db.Execute(conn, tx, $"DELETE FROM session_compaction_snapshots WHERE session_id IN ({placeholders})", sqlParams);
-        db.Execute(
-            conn,
-            tx,
-            $"UPDATE sessions SET current_snapshot_id = NULL WHERE id IN ({placeholders})",
-            sessionIds.Select((sid, i) => new SqliteParameter($"@cs{i}", sid)).ToArray());
+        DetachForSessions(db, conn, tx, sessionIds);
     }
 
     /// <summary>
@@ -76,7 +90,7 @@ public static class DbCompactionSnapshotStore
         if (cursor is null) return;
         if (PositionIsCovered(cursor, position.CreatedAt, position.SortOrder))
         {
-            DeleteForSession(db, conn, tx, sessionId);
+            DetachForSession(db, conn, tx, sessionId);
         }
     }
 

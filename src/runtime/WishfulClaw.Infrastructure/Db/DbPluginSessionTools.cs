@@ -102,7 +102,7 @@ public static class DbPluginSessionTools
                         sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray());
                     db.Execute(conn, tx, $"DELETE FROM tasks WHERE session_id IN ({ph})",
                         sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray());
-                    DbCompactionSnapshotStore.DeleteForSessions(db, conn, tx, sessionIds);
+                    DbCompactionSnapshotStore.DetachForSessions(db, conn, tx, sessionIds);
                     return removed;
                 });
             }
@@ -235,7 +235,7 @@ public static class DbPluginSessionTools
             {
                 var removed = db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
                 db.Execute(conn, tx, "DELETE FROM tasks WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
-                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
+                DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
                 return removed;
             });
             db.Execute("UPDATE sessions SET message_count = 0 WHERE id = @id", new SqliteParameter("@id", sessionId));
@@ -255,7 +255,7 @@ public static class DbPluginSessionTools
             {
                 var removedMessages = db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
                 db.Execute(conn, tx, "DELETE FROM tasks WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
-                DbCompactionSnapshotStore.DeleteForSession(db, conn, tx, sessionId);
+                DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
                 var removedSessions = db.Execute(conn, tx, "DELETE FROM sessions WHERE id = @id", new SqliteParameter("@id", sessionId));
                 return (removedSessions, removedMessages);
             });

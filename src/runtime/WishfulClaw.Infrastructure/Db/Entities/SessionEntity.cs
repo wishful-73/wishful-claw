@@ -1,4 +1,4 @@
-
+﻿
 namespace WishfulClaw.Infrastructure.Db;
 
 // ─── Session Entity ───
@@ -52,6 +52,10 @@ public class SessionEntity
     public string ModelSelectionMode { get; set; } = "inherit";
 
     public string? PersonaId { get; set; }
+
+    public string? CurrentSnapshotId { get; set; }
+
+    public long ContextRevision { get; set; }
 }
 
 // ─── Session DTO ───
@@ -82,6 +86,8 @@ public sealed class SessionRow
     public string? ModelId { get; set; }
     public string? ModelSelectionMode { get; set; }
     public string? PersonaId { get; set; }
+    public string? CurrentSnapshotId { get; set; }
+    public long ContextRevision { get; set; }
 
     public static SessionRow FromEntity(SessionEntity e) => new()
     {
@@ -108,7 +114,9 @@ public sealed class SessionRow
     ProviderId = e.ProviderId,
     ModelId = e.ModelId,
     ModelSelectionMode = e.ModelSelectionMode,
-    PersonaId = e.PersonaId
+    PersonaId = e.PersonaId,
+    CurrentSnapshotId = e.CurrentSnapshotId,
+    ContextRevision = e.ContextRevision
     };
 }
 

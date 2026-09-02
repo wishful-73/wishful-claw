@@ -10,15 +10,15 @@
 
 ## 一、存储决策
 
-采用独立表 `session_compaction_snapshots`，每个 session 只保留最新一条有效快照。
+采用独立表 `session_compaction_snapshots`，以 `snapshot_id` 为主键保存不可变快照版本；`sessions.current_snapshot_id` 指向当前恢复基线。
 
 不直接把大型 `compact_context` JSON 放进 `sessions` 表，原因：
 
 - `sessions` 是高频列表/更新表，常规查询不应携带大型上下文 JSON；
 - 独立表可以单独做 AOT DTO、迁移、损坏数据回退和删除；
 - `sessions` 的标题、模型、人格等普通 patch 不会误覆盖快照；
-- 当前不需要多版本审计，单行 upsert 足够；
-- 若未来需要历史快照，可在不改变 sessions 基础模型的情况下扩展历史表。
+- snapshot payload 需要独立保存，且旧版本保留用于诊断和并发失败保护；
+- 当前恢复权威由 `sessions.current_snapshot_id` 明确指定，不按更新时间猜测。
 
 ## 二、表结构
 

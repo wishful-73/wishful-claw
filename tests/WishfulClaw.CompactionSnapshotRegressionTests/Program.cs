@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
@@ -20,6 +20,8 @@ internal static class Program
         {
             if (args.Length == 2)
                 return RunChildMode(args[0], args[1]);
+            if (args.Length == 1 && string.Equals(args[0], "--schema-only", StringComparison.Ordinal))
+                return RunSchemaOnlyMode();
 
             var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-compaction-regression-{Guid.NewGuid():N}");
             Directory.CreateDirectory(testRoot);
@@ -46,6 +48,26 @@ internal static class Program
         }
     }
 
+    private static int RunSchemaOnlyMode()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-compaction-schema-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testRoot);
+        try
+        {
+            var legacyDbPath = Path.Combine(testRoot, "legacy.db");
+            var newDbPath = Path.Combine(testRoot, "new.db");
+            SeedLegacyDatabase(legacyDbPath);
+            RunChild("--schema-legacy", legacyDbPath);
+            RunChild("--schema-new", newDbPath);
+            Console.WriteLine($"Compaction snapshot schema checks passed: {_passed}");
+            return 0;
+        }
+        finally
+        {
+            TryDeleteDirectory(testRoot);
+        }
+    }
+
     private static int RunChildMode(string mode, string dbPath)
     {
         try
@@ -59,6 +81,12 @@ internal static class Program
                 case "--suite-new":
                     RunNewDatabaseSuite(dbPath);
                     break;
+                case "--schema-legacy":
+                    RunLegacySchemaSuite(dbPath);
+                    break;
+                case "--schema-new":
+                    RunNewSchemaSuite(dbPath);
+                    break;
                 default:
                     throw new InvalidOperationException($"Unknown child mode: {mode}");
             }
@@ -71,6 +99,46 @@ internal static class Program
             Console.Error.WriteLine($"Compaction snapshot regression child failed ({mode}): {ex}");
             return 1;
         }
+    }
+
+    private static void RunLegacySchemaSuite(string dbPath)
+    {
+        var initialization = DbClient.Initialize(dbPath);
+        Assert(initialization.Success, $"legacy schema initializes: {initialization.Error}");
+        var db = DbClient.GetClient();
+        AssertEqual("legacy-legacy-session-v1", db.QueryScalar<string>(
+                "SELECT current_snapshot_id FROM sessions WHERE id = 'legacy-session'"),
+            "legacy schema backfills current snapshot pointer");
+        AssertEqual("legacy-wire", db.QueryScalar<string>(
+                "SELECT wire_conversation FROM session_compaction_snapshots " +
+                "WHERE snapshot_id = 'legacy-legacy-session-v1'"),
+            "legacy schema preserves payload");
+        AssertEqual(1L, db.QueryScalar<long>(
+                "SELECT COUNT(*) FROM session_compaction_snapshots"),
+            "legacy schema preserves one migrated row");
+
+        var secondInitialization = DbClient.Initialize(dbPath);
+        Assert(secondInitialization.Success, $"legacy schema second initialization: {secondInitialization.Error}");
+        AssertEqual(1L, db.QueryScalar<long>(
+                "SELECT COUNT(*) FROM session_compaction_snapshots"),
+            "legacy schema second initialization is idempotent");
+    }
+
+    private static void RunNewSchemaSuite(string dbPath)
+    {
+        var initialization = DbClient.Initialize(dbPath);
+        Assert(initialization.Success, $"new schema initializes: {initialization.Error}");
+        var db = DbClient.GetClient();
+        var columns = db.Query("PRAGMA table_info(session_compaction_snapshots);", reader => reader.GetString("name"));
+        AssertEqual(ExpectedSnapshotColumns().Length, columns.Count, "new schema has the complete snapshot column set");
+        foreach (var column in ExpectedSnapshotColumns())
+            Assert(columns.Contains(column, StringComparer.OrdinalIgnoreCase), $"new schema has column {column}");
+        var sessionColumns = db.Query("PRAGMA table_info(sessions);", reader => reader.GetString("name"));
+        Assert(sessionColumns.Contains("current_snapshot_id", StringComparer.OrdinalIgnoreCase), "new schema has current_snapshot_id");
+        Assert(sessionColumns.Contains("context_revision", StringComparer.OrdinalIgnoreCase), "new schema has context_revision");
+
+        var secondInitialization = DbClient.Initialize(dbPath);
+        Assert(secondInitialization.Success, $"new schema second initialization: {secondInitialization.Error}");
     }
 
     // ─── Suite: legacy (0.2.22) database migration ───
@@ -93,6 +161,29 @@ internal static class Program
         AssertEqual("Legacy Session", db.QueryScalar<string>(
                 "SELECT title FROM sessions WHERE id = 'legacy-session'"),
             "legacy session survives migration");
+        AssertEqual("legacy-legacy-session-v1", db.QueryScalar<string>(
+                "SELECT current_snapshot_id FROM sessions WHERE id = 'legacy-session'"),
+            "legacy migration backfills the current snapshot pointer");
+        AssertEqual("legacy-wire", db.QueryScalar<string>(
+                "SELECT wire_conversation FROM session_compaction_snapshots " +
+                "WHERE snapshot_id = 'legacy-legacy-session-v1'"),
+            "legacy migration preserves snapshot payload");
+        AssertEqual(1L, db.QueryScalar<long>(
+                "SELECT COUNT(*) FROM session_compaction_snapshots"),
+            "legacy migration preserves the snapshot row count");
+
+        var secondInitialization = DbClient.Initialize(dbPath);
+        Assert(secondInitialization.Success, $"legacy database second initialization: {secondInitialization.Error}");
+        AssertEqual(1L, db.QueryScalar<long>(
+                "SELECT COUNT(*) FROM session_compaction_snapshots"),
+            "second initialization does not duplicate migrated snapshots");
+        AssertEqual("legacy-legacy-session-v1", db.QueryScalar<string>(
+                "SELECT current_snapshot_id FROM sessions WHERE id = 'legacy-session'"),
+            "second initialization preserves the current snapshot pointer");
+        AssertEqual("legacy-wire", db.QueryScalar<string>(
+                "SELECT wire_conversation FROM session_compaction_snapshots " +
+                "WHERE snapshot_id = 'legacy-legacy-session-v1'"),
+            "second initialization preserves the migrated payload");
 
         RunSnapshotSuite(dbPath, "legacy");
     }
@@ -1017,9 +1108,9 @@ internal static class Program
 
     private static string[] ExpectedSnapshotColumns() =>
     [
-        "session_id", "version", "trigger", "wire_conversation", "compact_artifacts", "summary_message",
-        "summary_text", "through_created_at", "through_sort_order", "original_count", "new_count",
-        "messages_summarized", "summarizer_failed", "created_at", "updated_at"
+        "snapshot_id", "session_id", "version", "trigger", "wire_conversation", "compact_artifacts",
+        "summary_message", "summary_text", "through_created_at", "through_sort_order", "original_count",
+        "new_count", "messages_summarized", "summarizer_failed", "created_at", "updated_at"
     ];
 
     private static void SeedLegacyDatabase(string dbPath)
@@ -1035,12 +1126,23 @@ internal static class Program
             "project_id TEXT, pinned INTEGER NOT NULL DEFAULT 0);" +
             "CREATE TABLE messages (id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL, role TEXT NOT NULL, " +
             "content TEXT NOT NULL DEFAULT '', meta TEXT, created_at INTEGER NOT NULL);" +
+            "CREATE TABLE session_compaction_snapshots (" +
+            "session_id TEXT PRIMARY KEY NOT NULL, version INTEGER NOT NULL, \"trigger\" TEXT NOT NULL, " +
+            "wire_conversation TEXT NOT NULL, compact_artifacts TEXT NOT NULL, summary_message TEXT, " +
+            "summary_text TEXT, through_created_at INTEGER NOT NULL, through_sort_order INTEGER NOT NULL, " +
+            "original_count INTEGER NOT NULL, new_count INTEGER NOT NULL, messages_summarized INTEGER NOT NULL, " +
+            "summarizer_failed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);" +
             "INSERT INTO sessions (id, title, mode, created_at, updated_at, message_count) " +
             "VALUES ('legacy-session', 'Legacy Session', 'chat', 1000, 1000, 3);" +
             "INSERT INTO messages (id, session_id, role, content, created_at) VALUES " +
             "('legacy-orig-1', 'legacy-session', 'user', 'hello', 1001)," +
             "('legacy-orig-2', 'legacy-session', 'assistant', 'hi', 1002)," +
-            "('legacy-orig-3', 'legacy-session', 'user', 'next', 1003);";
+            "('legacy-orig-3', 'legacy-session', 'user', 'next', 1003);" +
+            "INSERT INTO session_compaction_snapshots (session_id, version, \"trigger\", wire_conversation, " +
+            "compact_artifacts, summary_message, summary_text, through_created_at, through_sort_order, " +
+            "original_count, new_count, messages_summarized, summarizer_failed, created_at, updated_at) " +
+            "VALUES ('legacy-session', 1, 'legacy', 'legacy-wire', 'legacy-artifacts', NULL, NULL, " +
+            "1003, 2, 3, 3, 0, 0, 1004, 1004);";
         command.ExecuteNonQuery();
     }
 

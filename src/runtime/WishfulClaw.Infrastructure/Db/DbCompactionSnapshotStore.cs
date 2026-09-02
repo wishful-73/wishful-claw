@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 
@@ -32,7 +32,10 @@ public static class DbCompactionSnapshotStore
     {
         return db.QueryFirstOrDefault(
             conn, tx,
-            "SELECT through_created_at, through_sort_order FROM session_compaction_snapshots WHERE session_id = @sid",
+            "SELECT snapshot.through_created_at, snapshot.through_sort_order " +
+            "FROM sessions session " +
+            "JOIN session_compaction_snapshots snapshot ON snapshot.snapshot_id = session.current_snapshot_id " +
+            "WHERE session.id = @sid",
             r => new SnapshotCursor(r.GetInt64("through_created_at"), r.GetInt32("through_sort_order")),
             new SqliteParameter("@sid", sessionId));
     }
@@ -43,6 +46,9 @@ public static class DbCompactionSnapshotStore
         db.Execute(conn, tx,
             "DELETE FROM session_compaction_snapshots WHERE session_id = @sid",
             new SqliteParameter("@sid", sessionId));
+        db.Execute(conn, tx,
+            "UPDATE sessions SET current_snapshot_id = NULL WHERE id = @sid",
+            new SqliteParameter("@sid", sessionId));
     }
 
     /// <summary>Delete snapshots for a set of sessions (inside an open transaction).</summary>
@@ -52,6 +58,11 @@ public static class DbCompactionSnapshotStore
         var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@cs{i}"));
         var sqlParams = sessionIds.Select((sid, i) => new SqliteParameter($"@cs{i}", sid)).ToArray();
         db.Execute(conn, tx, $"DELETE FROM session_compaction_snapshots WHERE session_id IN ({placeholders})", sqlParams);
+        db.Execute(
+            conn,
+            tx,
+            $"UPDATE sessions SET current_snapshot_id = NULL WHERE id IN ({placeholders})",
+            sessionIds.Select((sid, i) => new SqliteParameter($"@cs{i}", sid)).ToArray());
     }
 
     /// <summary>
@@ -97,12 +108,9 @@ public static class DbCompactionSnapshotStore
     }
 
     /// <summary>
-    /// Atomically replace the session snapshot. The coverage cursor is derived from the
-    /// newest persisted message inside the same transaction as the upsert; a session
-    /// without messages cannot hold a snapshot. The previous row is replaced, never
-    /// deleted first, so a failed write keeps the old snapshot intact.
-    /// Shared by the Worker endpoint (DbCompactionSnapshotTools.Upsert) and the agent
-    /// compression paths (ContextCompression.PersistSnapshot).
+    /// Insert a new immutable snapshot revision and move the session pointer to it.
+    /// Strict revision conflict handling is added by the context-manifest execution step;
+    /// this compatibility writer keeps the new schema runnable while preserving old rows.
     /// </summary>
     public static void UpsertSnapshot(
         DbService db,
@@ -119,24 +127,19 @@ public static class DbCompactionSnapshotStore
         bool summarizerFailed)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var snapshotId = Guid.NewGuid().ToString("N");
         db.ExecuteInTransaction((conn, tx) =>
         {
             var boundary = GetMaxMessagePosition(db, conn, tx, sessionId)
                 ?? throw new InvalidOperationException("Cannot snapshot a session without persisted messages");
 
             db.Execute(conn, tx,
-                "INSERT INTO session_compaction_snapshots (session_id, version, \"trigger\", wire_conversation, " +
+                "INSERT INTO session_compaction_snapshots (snapshot_id, session_id, version, \"trigger\", wire_conversation, " +
                 "compact_artifacts, summary_message, summary_text, through_created_at, through_sort_order, " +
                 "original_count, new_count, messages_summarized, summarizer_failed, created_at, updated_at) " +
-                "VALUES (@sid, @version, @trigger, @wire, @artifacts, @summaryMessage, @summaryText, " +
-                "@tca, @tso, @originalCount, @newCount, @messagesSummarized, @summarizerFailed, @ca, @ua) " +
-                "ON CONFLICT(session_id) DO UPDATE SET " +
-                "version = @version, \"trigger\" = @trigger, wire_conversation = @wire, " +
-                "compact_artifacts = @artifacts, summary_message = @summaryMessage, summary_text = @summaryText, " +
-                "through_created_at = @tca, through_sort_order = @tso, " +
-                "original_count = @originalCount, new_count = @newCount, " +
-                "messages_summarized = @messagesSummarized, summarizer_failed = @summarizerFailed, " +
-                "updated_at = @ua",
+                "VALUES (@snapshotId, @sid, @version, @trigger, @wire, @artifacts, @summaryMessage, @summaryText, " +
+                "@tca, @tso, @originalCount, @newCount, @messagesSummarized, @summarizerFailed, @ca, @ua)",
+                new SqliteParameter("@snapshotId", snapshotId),
                 new SqliteParameter("@sid", sessionId),
                 new SqliteParameter("@version", version),
                 new SqliteParameter("@trigger", trigger),
@@ -152,6 +155,17 @@ public static class DbCompactionSnapshotStore
                 new SqliteParameter("@summarizerFailed", summarizerFailed ? 1 : 0),
                 new SqliteParameter("@ca", now),
                 new SqliteParameter("@ua", now));
+
+            var pointerChanged = db.Execute(
+                conn,
+                tx,
+                "UPDATE sessions SET current_snapshot_id = @snapshotId WHERE id = @sid",
+                new SqliteParameter("@snapshotId", snapshotId),
+                new SqliteParameter("@sid", sessionId));
+            if (pointerChanged != 1)
+            {
+                throw new InvalidOperationException($"Session not found while committing snapshot: {sessionId}");
+            }
         });
     }
 

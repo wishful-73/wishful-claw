@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -62,7 +62,9 @@ public static class DbCompactionSnapshotTools
     {
         reason = null;
         var entity = db.QueryFirstOrDefault(
-            "SELECT * FROM session_compaction_snapshots WHERE session_id = @sid",
+            "SELECT snapshot.* FROM sessions session " +
+            "JOIN session_compaction_snapshots snapshot ON snapshot.snapshot_id = session.current_snapshot_id " +
+            "WHERE session.id = @sid",
             EntityMappers.MapCompactionSnapshot,
             new SqliteParameter("@sid", sessionId));
         if (entity is null)
@@ -210,9 +212,20 @@ public static class DbCompactionSnapshotTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            var deleted = db.Execute(
-                "DELETE FROM session_compaction_snapshots WHERE session_id = @sid",
-                new SqliteParameter("@sid", sessionId)) > 0;
+            var deleted = db.ExecuteInTransaction((conn, tx) =>
+            {
+                var changed = db.Execute(
+                    conn,
+                    tx,
+                    "DELETE FROM session_compaction_snapshots WHERE session_id = @sid",
+                    new SqliteParameter("@sid", sessionId));
+                db.Execute(
+                    conn,
+                    tx,
+                    "UPDATE sessions SET current_snapshot_id = NULL WHERE id = @sid",
+                    new SqliteParameter("@sid", sessionId));
+                return changed > 0;
+            });
             return WorkerResponse.Json(
                 new CompactionSnapshotDeleteResult(true, deleted, null),
                 InfrastructureJsonContext.Default.CompactionSnapshotDeleteResult);

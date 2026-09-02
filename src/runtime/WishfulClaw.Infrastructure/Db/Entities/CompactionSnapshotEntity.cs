@@ -1,12 +1,14 @@
-
+﻿
 namespace WishfulClaw.Infrastructure.Db;
 
 // ─── Compaction Snapshot Entity ───
-// One row per session: the latest valid context-compression snapshot.
+// Immutable context-compression snapshot revision.
 // Contract: docs/plans/iter-v2-23/snapshot-contract.md
 
 public class CompactionSnapshotEntity
 {
+    public string SnapshotId { get; set; } = string.Empty;
+
     public string SessionId { get; set; } = string.Empty;
 
     public int Version { get; set; }
@@ -48,6 +50,7 @@ public class CompactionSnapshotEntity
 
 public sealed class CompactionSnapshotRow
 {
+    public string SnapshotId { get; set; } = string.Empty;
     public string SessionId { get; set; } = string.Empty;
     public int Version { get; set; }
     public string Trigger { get; set; } = string.Empty;
@@ -66,6 +69,7 @@ public sealed class CompactionSnapshotRow
 
     public static CompactionSnapshotRow FromEntity(CompactionSnapshotEntity e) => new()
     {
+        SnapshotId = e.SnapshotId,
         SessionId = e.SessionId,
         Version = e.Version,
         Trigger = e.Trigger,

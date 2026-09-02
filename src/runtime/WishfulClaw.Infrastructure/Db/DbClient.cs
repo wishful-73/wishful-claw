@@ -116,7 +116,9 @@ public static partial class DbClient
                     provider_id TEXT,
                     model_id TEXT,
                     model_selection_mode TEXT NOT NULL DEFAULT 'inherit',
-                    persona_id TEXT
+                    persona_id TEXT,
+                    current_snapshot_id TEXT,
+                    context_revision INTEGER NOT NULL DEFAULT 0
                 );",
                 @"CREATE TABLE IF NOT EXISTS messages (
                     id TEXT PRIMARY KEY NOT NULL,
@@ -299,7 +301,8 @@ public static partial class DbClient
                     archived_at INTEGER NOT NULL
                 );",
                 @"CREATE TABLE IF NOT EXISTS session_compaction_snapshots (
-                    session_id TEXT PRIMARY KEY NOT NULL,
+                    snapshot_id TEXT PRIMARY KEY NOT NULL,
+                    session_id TEXT NOT NULL,
                     version INTEGER NOT NULL,
                     ""trigger"" TEXT NOT NULL,
                     wire_conversation TEXT NOT NULL,
@@ -315,8 +318,7 @@ public static partial class DbClient
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );",
-                @"CREATE INDEX IF NOT EXISTS idx_session_compaction_updated
-                ON session_compaction_snapshots(updated_at DESC);",
+
                 @"CREATE TABLE IF NOT EXISTS cron_tasks (
                     id TEXT PRIMARY KEY NOT NULL,
                     name TEXT NOT NULL DEFAULT '',
@@ -456,6 +458,7 @@ public static partial class DbClient
             EnsureColumn("sessions", "scope", "TEXT");
             EnsureColumn("sessions", "collaboration_mode", "TEXT");
             EnsureColumn("sessions", "permission_mode", "TEXT");
+            EnsureCompactionSnapshotSchema();
             _db.Execute(
                 "UPDATE sessions SET scope = CASE WHEN project_id IS NULL THEN 'global' ELSE 'project' END " +
                 "WHERE scope IS NULL OR scope NOT IN ('global', 'project');");

@@ -45,7 +45,9 @@ public static class EntityMappers
         ProviderId = r.GetNullableString("provider_id"),
         ModelId = r.GetNullableString("model_id"),
         ModelSelectionMode = r.GetString("model_selection_mode"),
-        PersonaId = r.GetNullableString("persona_id")
+        PersonaId = r.GetNullableString("persona_id"),
+        CurrentSnapshotId = r.GetNullableString("current_snapshot_id"),
+        ContextRevision = r.GetInt64("context_revision")
     };
 
     public static MessageEntity MapMessage(SqliteDataReader r) => new()
@@ -111,6 +113,7 @@ public static class EntityMappers
 
     public static CompactionSnapshotEntity MapCompactionSnapshot(SqliteDataReader r) => new()
     {
+        SnapshotId = r.GetString("snapshot_id"),
         SessionId = r.GetString("session_id"),
         Version = r.GetInt32("version"),
         Trigger = r.GetString("trigger"),

@@ -139,6 +139,94 @@ internal static class Program
 
         var secondInitialization = DbClient.Initialize(dbPath);
         Assert(secondInitialization.Success, $"new schema second initialization: {secondInitialization.Error}");
+        RunAtomicCommitSuite(dbPath, "schema");
+    }
+
+    private static void RunAtomicCommitSuite(string dbPath, string prefix)
+    {
+        var sessionId = $"{prefix}-atomic-session";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", sessionId);
+            writer.WriteString("title", "Atomic Snapshot Session");
+        })), "atomic snapshot session is created");
+        AddMessage(dbPath, sessionId, $"{prefix}-atomic-message", 5000, 0);
+
+        var db = DbClient.GetClient();
+        var first = DbCompactionSnapshotStore.CommitSnapshot(
+            db,
+            sessionId,
+            DbCompactionSnapshotStore.SupportedVersion,
+            "auto",
+            "[{\"role\":\"user\",\"content\":\"first\"}]",
+            "[{\"id\":\"artifact-1\"}]",
+            null,
+            null,
+            1,
+            1,
+            0,
+            false,
+            expectedRevision: 0);
+        Assert(first.Success, "first snapshot commit succeeds");
+        Assert(first.SnapshotId is { Length: > 0 }, "first snapshot commit returns a snapshot id");
+        AssertEqual(1L, first.ContextRevision, "first snapshot commit advances context revision");
+
+        var stale = DbCompactionSnapshotStore.CommitSnapshot(
+            db,
+            sessionId,
+            DbCompactionSnapshotStore.SupportedVersion,
+            "manual",
+            "[{\"role\":\"user\",\"content\":\"stale\"}]",
+            "[{\"id\":\"artifact-stale\"}]",
+            null,
+            null,
+            1,
+            1,
+            0,
+            false,
+            expectedRevision: 0);
+        Assert(!stale.Success, "stale snapshot commit is rejected");
+        AssertEqual(DbCompactionSnapshotStore.CommitConflictError, stale.Error,
+            "stale snapshot commit returns snapshot_commit_conflict");
+
+        AssertEqual(1L, db.QueryScalar<long>(
+                "SELECT COUNT(*) FROM session_compaction_snapshots WHERE session_id = @sid",
+                new SqliteParameter("@sid", sessionId)),
+            "stale snapshot commit rolls back the new snapshot row");
+        AssertEqual(first.SnapshotId, db.QueryScalar<string>(
+                "SELECT current_snapshot_id FROM sessions WHERE id = @sid",
+                new SqliteParameter("@sid", sessionId)),
+            "stale snapshot commit preserves the old pointer");
+        AssertEqual(1L, db.QueryScalar<long>(
+                "SELECT context_revision FROM sessions WHERE id = @sid",
+                new SqliteParameter("@sid", sessionId)),
+            "stale snapshot commit preserves context revision");
+        AssertEqual("[{\"role\":\"user\",\"content\":\"first\"}]", db.QueryScalar<string>(
+                "SELECT wire_conversation FROM session_compaction_snapshots WHERE snapshot_id = @snapshotId",
+                new SqliteParameter("@snapshotId", first.SnapshotId)),
+            "stale snapshot commit preserves the old payload");
+
+        var invalid = DbCompactionSnapshotStore.CommitSnapshot(
+            db,
+            sessionId,
+            DbCompactionSnapshotStore.SupportedVersion,
+            "manual",
+            "{invalid",
+            "[]",
+            null,
+            null,
+            1,
+            1,
+            0,
+            false,
+            expectedRevision: 1);
+        Assert(!invalid.Success, "invalid snapshot payload is rejected");
+        AssertEqual(DbCompactionSnapshotStore.InvalidPayloadError, invalid.Error,
+            "invalid snapshot payload returns a named error");
+        AssertEqual(1L, db.QueryScalar<long>(
+                "SELECT COUNT(*) FROM session_compaction_snapshots WHERE session_id = @sid",
+                new SqliteParameter("@sid", sessionId)),
+            "invalid snapshot payload leaves no extra row");
     }
 
     // ─── Suite: legacy (0.2.22) database migration ───

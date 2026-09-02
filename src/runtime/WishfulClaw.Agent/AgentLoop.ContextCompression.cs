@@ -1,6 +1,7 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.Agent;
 
@@ -59,6 +60,9 @@ internal static partial class AgentLoop
         try
         {
             var originalCount = wireConversation.Count;
+            var expectedRevision = sessionId.Length > 0 && conversationKey == sessionId
+                ? DbCompactionSnapshotStore.GetContextRevision(DbClient.GetClient(), sessionId)
+                : null;
             var outcome = await ContextCompression.CompactAsync(
                 conversation,
                 wireConversation,
@@ -105,7 +109,7 @@ internal static partial class AgentLoop
             if (sessionId.Length > 0 && conversationKey == sessionId && compactArtifacts is not null)
             {
                 var snapshotResult = ContextCompression.PersistSnapshot(
-                    outcome, compactArtifacts, sessionId, "auto", preTokens);
+                    outcome, compactArtifacts, sessionId, "auto", preTokens, expectedRevision);
                 if (!snapshotResult.Success)
                 {
                     await AgentRuntimeTools.EmitAsync(

@@ -205,6 +205,17 @@ public sealed class DbService
         return reader.HasRows;
     }
 
+    public bool Exists(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql,
+        params SqliteParameter[] parameters)
+    {
+        using var cmd = BuildCommand(connection, sql, parameters, transaction);
+        using var reader = cmd.ExecuteReader();
+        return reader.HasRows;
+    }
+
     // ─── DataTable (for backward compatibility) ───
 
     /// <summary>

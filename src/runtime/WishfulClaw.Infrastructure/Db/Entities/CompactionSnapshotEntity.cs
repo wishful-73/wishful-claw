@@ -91,5 +91,10 @@ public sealed class CompactionSnapshotRow
 // ─── Compaction Snapshot Result Records ───
 
 public sealed record CompactionSnapshotGetResult(bool Success, CompactionSnapshotRow? Snapshot, string? Reason, string? Error);
-public sealed record CompactionSnapshotMutationResult(bool Success, int Changed, string? Error);
+public sealed record CompactionSnapshotMutationResult(
+    bool Success,
+    int Changed,
+    string? Error,
+    string? SnapshotId = null,
+    long? ContextRevision = null);
 public sealed record CompactionSnapshotDeleteResult(bool Success, bool Deleted, string? Error);

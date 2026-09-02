@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
@@ -31,7 +31,8 @@ public static partial class ContextCompression
         IReadOnlyList<JsonElement> compactArtifacts,
         string sessionId,
         string trigger,
-        int preTokens)
+        int preTokens,
+        long? expectedRevision = null)
     {
         if (!outcome.Compacted || string.IsNullOrEmpty(sessionId))
         {
@@ -53,7 +54,7 @@ public static partial class ContextCompression
 
             DbClient.EnsureInitialized();
             var db = DbClient.GetClient();
-            DbCompactionSnapshotStore.UpsertSnapshot(
+            var commit = DbCompactionSnapshotStore.CommitSnapshot(
                 db,
                 sessionId,
                 DbCompactionSnapshotStore.SupportedVersion,
@@ -65,7 +66,12 @@ public static partial class ContextCompression
                 outcome.OriginalCount,
                 outcome.WireConversation.Count,
                 outcome.MessagesSummarized,
-                outcome.SummarizerFailed);
+                outcome.SummarizerFailed,
+                expectedRevision);
+            if (!commit.Success)
+            {
+                throw new InvalidOperationException(commit.Error ?? "snapshot_commit_failed");
+            }
 
             WorkerLog.Info(
                 $"compaction snapshot persisted session={AgentLoop.FormatSessionId(sessionId)} " +

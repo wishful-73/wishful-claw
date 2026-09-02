@@ -1,7 +1,8 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.Agent;
 
@@ -93,6 +94,9 @@ public static class AgentRuntimeContextCompressionTools
             try
             {
                 var preTokens = ContextCompression.EstimateMessagesTokens(conversation);
+                var expectedRevision = sessionId.Length > 0
+                    ? DbCompactionSnapshotStore.GetContextRevision(DbClient.GetClient(), sessionId)
+                    : null;
                 var outcome = await ContextCompression.CompactAsync(
                     conversation,
                     wireMessages,
@@ -150,7 +154,7 @@ public static class AgentRuntimeContextCompressionTools
                 if (sessionConv is not null && compactArtifacts is not null)
                 {
                     var snapshotResult = ContextCompression.PersistSnapshot(
-                        outcome, compactArtifacts, sessionId, trigger, preTokens);
+                        outcome, compactArtifacts, sessionId, trigger, preTokens, expectedRevision);
                     if (!snapshotResult.Success)
                     {
                         WorkerLog.Warn(

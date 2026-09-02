@@ -107,12 +107,35 @@ public static class DbCompactionSnapshotStore
         });
     }
 
+    public const string CommitConflictError = "snapshot_commit_conflict";
+    public const string SessionNotFoundError = "session_not_found";
+    public const string InvalidPayloadError = "invalid_snapshot_payload";
+    public const string NoMessagesError = "no_persisted_messages";
+
+    public sealed record SnapshotCommitResult(
+        bool Success,
+        string? SnapshotId,
+        long? ContextRevision,
+        string? Error);
+
+    private sealed record SessionRevisionRow(long ContextRevision);
+
+    /// <summary>Read the current context revision before a long-running compression pass.</summary>
+    public static long? GetContextRevision(DbService db, string sessionId)
+    {
+        var row = db.QueryFirstOrDefault(
+            "SELECT context_revision FROM sessions WHERE id = @sid",
+            r => new SessionRevisionRow(r.GetInt64("context_revision")),
+            new SqliteParameter("@sid", sessionId));
+        return row?.ContextRevision;
+    }
+
     /// <summary>
-    /// Insert a new immutable snapshot revision and move the session pointer to it.
-    /// Strict revision conflict handling is added by the context-manifest execution step;
-    /// this compatibility writer keeps the new schema runnable while preserving old rows.
+    /// Insert an immutable snapshot and conditionally advance the session pointer.
+    /// When <paramref name="expectedRevision"/> is supplied, a stale compression result
+    /// fails with <see cref="CommitConflictError"/> and the transaction rolls back.
     /// </summary>
-    public static void UpsertSnapshot(
+    public static SnapshotCommitResult CommitSnapshot(
         DbService db,
         string sessionId,
         int version,
@@ -124,49 +147,168 @@ public static class DbCompactionSnapshotStore
         int originalCount,
         int newCount,
         int messagesSummarized,
-        bool summarizerFailed)
+        bool summarizerFailed,
+        long? expectedRevision = null)
     {
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var snapshotId = Guid.NewGuid().ToString("N");
-        db.ExecuteInTransaction((conn, tx) =>
+        try
         {
-            var boundary = GetMaxMessagePosition(db, conn, tx, sessionId)
-                ?? throw new InvalidOperationException("Cannot snapshot a session without persisted messages");
-
-            db.Execute(conn, tx,
-                "INSERT INTO session_compaction_snapshots (snapshot_id, session_id, version, \"trigger\", wire_conversation, " +
-                "compact_artifacts, summary_message, summary_text, through_created_at, through_sort_order, " +
-                "original_count, new_count, messages_summarized, summarizer_failed, created_at, updated_at) " +
-                "VALUES (@snapshotId, @sid, @version, @trigger, @wire, @artifacts, @summaryMessage, @summaryText, " +
-                "@tca, @tso, @originalCount, @newCount, @messagesSummarized, @summarizerFailed, @ca, @ua)",
-                new SqliteParameter("@snapshotId", snapshotId),
-                new SqliteParameter("@sid", sessionId),
-                new SqliteParameter("@version", version),
-                new SqliteParameter("@trigger", trigger),
-                new SqliteParameter("@wire", wireConversationJson),
-                new SqliteParameter("@artifacts", compactArtifactsJson),
-                new SqliteParameter("@summaryMessage", (object?)summaryMessageJson ?? DBNull.Value),
-                new SqliteParameter("@summaryText", (object?)summaryText ?? DBNull.Value),
-                new SqliteParameter("@tca", boundary.CreatedAt),
-                new SqliteParameter("@tso", boundary.SortOrder),
-                new SqliteParameter("@originalCount", originalCount),
-                new SqliteParameter("@newCount", newCount),
-                new SqliteParameter("@messagesSummarized", messagesSummarized),
-                new SqliteParameter("@summarizerFailed", summarizerFailed ? 1 : 0),
-                new SqliteParameter("@ca", now),
-                new SqliteParameter("@ua", now));
-
-            var pointerChanged = db.Execute(
-                conn,
-                tx,
-                "UPDATE sessions SET current_snapshot_id = @snapshotId WHERE id = @sid",
-                new SqliteParameter("@snapshotId", snapshotId),
-                new SqliteParameter("@sid", sessionId));
-            if (pointerChanged != 1)
+            return db.ExecuteInTransaction((conn, tx) =>
             {
-                throw new InvalidOperationException($"Session not found while committing snapshot: {sessionId}");
-            }
-        });
+                var session = db.QueryFirstOrDefault(
+                    conn,
+                    tx,
+                    "SELECT context_revision FROM sessions WHERE id = @sid",
+                    r => new SessionRevisionRow(r.GetInt64("context_revision")),
+                    new SqliteParameter("@sid", sessionId));
+                if (session is null)
+                {
+                    return new SnapshotCommitResult(false, null, null, SessionNotFoundError);
+                }
+
+                if (expectedRevision.HasValue && session.ContextRevision != expectedRevision.Value)
+                {
+                    return new SnapshotCommitResult(false, null, session.ContextRevision, CommitConflictError);
+                }
+
+                if (version != SupportedVersion ||
+                    !IsJsonArray(wireConversationJson) ||
+                    !IsJsonArray(compactArtifactsJson) ||
+                    (summaryMessageJson is not null && !IsJsonObject(summaryMessageJson)))
+                {
+                    return new SnapshotCommitResult(false, null, session.ContextRevision, InvalidPayloadError);
+                }
+
+                var boundary = GetMaxMessagePosition(db, conn, tx, sessionId);
+                if (boundary is null)
+                {
+                    return new SnapshotCommitResult(false, null, session.ContextRevision, NoMessagesError);
+                }
+
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                var snapshotId = Guid.NewGuid().ToString("N");
+                db.Execute(conn, tx,
+                    "INSERT INTO session_compaction_snapshots (snapshot_id, session_id, version, \"trigger\", wire_conversation, " +
+                    "compact_artifacts, summary_message, summary_text, through_created_at, through_sort_order, " +
+                    "original_count, new_count, messages_summarized, summarizer_failed, created_at, updated_at) " +
+                    "VALUES (@snapshotId, @sid, @version, @trigger, @wire, @artifacts, @summaryMessage, @summaryText, " +
+                    "@tca, @tso, @originalCount, @newCount, @messagesSummarized, @summarizerFailed, @ca, @ua)",
+                    new SqliteParameter("@snapshotId", snapshotId),
+                    new SqliteParameter("@sid", sessionId),
+                    new SqliteParameter("@version", version),
+                    new SqliteParameter("@trigger", trigger),
+                    new SqliteParameter("@wire", wireConversationJson),
+                    new SqliteParameter("@artifacts", compactArtifactsJson),
+                    new SqliteParameter("@summaryMessage", (object?)summaryMessageJson ?? DBNull.Value),
+                    new SqliteParameter("@summaryText", (object?)summaryText ?? DBNull.Value),
+                    new SqliteParameter("@tca", boundary.CreatedAt),
+                    new SqliteParameter("@tso", boundary.SortOrder),
+                    new SqliteParameter("@originalCount", originalCount),
+                    new SqliteParameter("@newCount", newCount),
+                    new SqliteParameter("@messagesSummarized", messagesSummarized),
+                    new SqliteParameter("@summarizerFailed", summarizerFailed ? 1 : 0),
+                    new SqliteParameter("@ca", now),
+                    new SqliteParameter("@ua", now));
+
+                var inserted = db.QueryFirstOrDefault(
+                    conn,
+                    tx,
+                    "SELECT * FROM session_compaction_snapshots WHERE snapshot_id = @snapshotId",
+                    EntityMappers.MapCompactionSnapshot,
+                    new SqliteParameter("@snapshotId", snapshotId));
+                if (inserted is null ||
+                    !string.Equals(inserted.SessionId, sessionId, StringComparison.Ordinal) ||
+                    inserted.Version != version ||
+                    inserted.ThroughCreatedAt != boundary.CreatedAt ||
+                    inserted.ThroughSortOrder != boundary.SortOrder ||
+                    !IsJsonArray(inserted.WireConversation) ||
+                    !IsJsonArray(inserted.CompactArtifacts) ||
+                    (inserted.SummaryMessage is not null && !IsJsonObject(inserted.SummaryMessage)))
+                {
+                    throw new SnapshotCommitException(
+                        new SnapshotCommitResult(false, null, session.ContextRevision, InvalidPayloadError));
+                }
+
+                var anchorExists = db.Exists(
+                    conn,
+                    tx,
+                    "SELECT 1 FROM messages WHERE session_id = @sid AND created_at = @createdAt " +
+                    "AND sort_order = @sortOrder LIMIT 1",
+                    new SqliteParameter("@sid", sessionId),
+                    new SqliteParameter("@createdAt", inserted.ThroughCreatedAt),
+                    new SqliteParameter("@sortOrder", inserted.ThroughSortOrder));
+                if (!anchorExists)
+                {
+                    throw new SnapshotCommitException(
+                        new SnapshotCommitResult(false, null, session.ContextRevision, InvalidPayloadError));
+                }
+
+                var pointerChanged = db.Execute(
+                    conn,
+                    tx,
+                    "UPDATE sessions SET current_snapshot_id = @snapshotId, " +
+                    "context_revision = context_revision + 1 " +
+                    "WHERE id = @sid AND context_revision = @expectedRevision",
+                    new SqliteParameter("@snapshotId", snapshotId),
+                    new SqliteParameter("@sid", sessionId),
+                    new SqliteParameter("@expectedRevision", session.ContextRevision));
+                if (pointerChanged != 1)
+                {
+                    throw new SnapshotCommitException(
+                        new SnapshotCommitResult(false, null, session.ContextRevision, CommitConflictError));
+                }
+
+                return new SnapshotCommitResult(
+                    true,
+                    snapshotId,
+                    session.ContextRevision + 1,
+                    null);
+            });
+        }
+        catch (SnapshotCommitException ex)
+        {
+            return ex.Result;
+        }
+        catch (Exception ex)
+        {
+            LogSnapshotIssue("commit", sessionId, $"{ex.GetType().Name}: {ex.Message}");
+            return new SnapshotCommitResult(false, null, null, "snapshot_commit_failed");
+        }
+    }
+
+    private sealed class SnapshotCommitException : Exception
+    {
+        public SnapshotCommitResult Result { get; }
+
+        public SnapshotCommitException(SnapshotCommitResult result)
+        {
+            Result = result;
+        }
+    }
+
+    private static bool IsJsonArray(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Array;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsJsonObject(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Query the newest message position of a session; null when the session has no messages.</summary>

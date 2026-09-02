@@ -8,8 +8,8 @@ namespace WishfulClaw.Infrastructure.Db;
 /// <summary>
 /// Worker endpoints for session compaction snapshots
 /// (docs/plans/iter-v2-23/snapshot-contract.md).
-/// Each session keeps a single latest snapshot; the coverage cursor is derived from the
-/// persisted messages inside the write transaction, never from in-memory Worker state.
+/// Each session points to one current immutable snapshot revision; the coverage cursor is
+/// derived from persisted messages inside the write transaction, never from in-memory Worker state.
 /// </summary>
 public static class DbCompactionSnapshotTools
 {
@@ -23,10 +23,10 @@ public static class DbCompactionSnapshotTools
     public const string ReasonInvalidCursor = "invalid_cursor";
 
     /// <summary>
-    /// Read the session snapshot with safety validation. Any problem (unsupported version,
-    /// corrupt JSON, dangling cursor) downgrades to <c>Snapshot = null</c> plus a reason so
-    /// the restore path falls back to full message recovery; corrupt rows are kept for
-    /// diagnostics and never auto-deleted. Read failures never block opening a session.
+    /// Read the session's pointed snapshot with safety validation. Any problem (unsupported
+    /// version, corrupt JSON, dangling cursor) returns <c>Snapshot = null</c> plus a reason;
+    /// the restore layer decides whether the pointed session must be blocked. Corrupt rows
+    /// are kept for diagnostics and never auto-deleted.
     /// </summary>
     public static WorkerResponse Get(JsonElement parameters)
     {
@@ -167,9 +167,8 @@ public static class DbCompactionSnapshotTools
     }
 
     /// <summary>
-    /// Atomically replace the session snapshot. Delegates to the shared writer
-    /// (<see cref="DbCompactionSnapshotStore.UpsertSnapshot"/>), which derives the
-    /// coverage cursor from the newest persisted message inside the same transaction.
+    /// Commit a new immutable session snapshot through the shared writer, which derives
+    /// the coverage cursor from the newest persisted message inside the same transaction.
     /// </summary>
     public static WorkerResponse Upsert(JsonElement parameters)
     {
@@ -177,6 +176,11 @@ public static class DbCompactionSnapshotTools
         {
             var sessionId = RequireString(parameters, "sessionId");
             var version = JsonHelpers.GetInt(parameters, "version", DbCompactionSnapshotStore.SupportedVersion);
+            var expectedRevision = parameters.TryGetProperty("expectedRevision", out var revisionElement) &&
+                revisionElement.ValueKind == JsonValueKind.Number &&
+                revisionElement.TryGetInt64(out var parsedRevision)
+                ? parsedRevision
+                : (long?)null;
             var trigger = RequireString(parameters, "trigger");
             var wireConversation = RequireString(parameters, "wireConversation");
             var compactArtifacts = RequireString(parameters, "compactArtifacts");
@@ -190,13 +194,16 @@ public static class DbCompactionSnapshotTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            DbCompactionSnapshotStore.UpsertSnapshot(
+            var commit = DbCompactionSnapshotStore.CommitSnapshot(
                 db, sessionId, version, trigger,
                 wireConversation, compactArtifacts,
                 summaryMessage, summaryText,
-                originalCount, newCount, messagesSummarized, summarizerFailed);
+                originalCount, newCount, messagesSummarized, summarizerFailed,
+                expectedRevision);
 
-            return Mutation(1);
+            return commit.Success
+                ? Mutation(1, commit.SnapshotId, commit.ContextRevision)
+                : MutationError(commit.Error ?? "snapshot_commit_failed", commit.ContextRevision);
         }
         catch (Exception ex)
         {
@@ -245,13 +252,17 @@ public static class DbCompactionSnapshotTools
             : throw new InvalidOperationException($"Missing required field: {name}");
     }
 
-    private static WorkerResponse Mutation(int changed)
+    private static WorkerResponse Mutation(int changed, string? snapshotId = null, long? contextRevision = null)
     {
-        return WorkerResponse.Json(new CompactionSnapshotMutationResult(true, changed, null), InfrastructureJsonContext.Default.CompactionSnapshotMutationResult);
+        return WorkerResponse.Json(
+            new CompactionSnapshotMutationResult(true, changed, null, snapshotId, contextRevision),
+            InfrastructureJsonContext.Default.CompactionSnapshotMutationResult);
     }
 
-    private static WorkerResponse MutationError(string error)
+    private static WorkerResponse MutationError(string error, long? contextRevision = null)
     {
-        return WorkerResponse.Json(new CompactionSnapshotMutationResult(false, 0, error), InfrastructureJsonContext.Default.CompactionSnapshotMutationResult);
+        return WorkerResponse.Json(
+            new CompactionSnapshotMutationResult(false, 0, error, null, contextRevision),
+            InfrastructureJsonContext.Default.CompactionSnapshotMutationResult);
     }
 }

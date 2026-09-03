@@ -20,6 +20,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test:cron-integration": "tsc --noEmit false -p tests/cron-integration/tsconfig.json && node tests/cron-integration/out/tests/cron-integration/program.js",
+    "test:renderable-chat-items": "esbuild tests/renderable-chat-items/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/renderable-chat-items/out/program.cjs && node tests/renderable-chat-items/out/program.cjs",
     "pretest:e2e": "node tests/e2e/scripts/ensure-prereqs.mjs",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },

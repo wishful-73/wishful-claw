@@ -1,6 +1,6 @@
-// Extracted types, interfaces, and constants for AssistantMessage
+﻿// Extracted types, interfaces, and constants for AssistantMessage
 
-import type { ContentBlock, RequestDebugInfo, UnifiedMessage } from '@renderer/lib/api/types'
+import type { ContentBlock, RequestDebugInfo } from '@renderer/lib/api/types'
 import type { ToolCallState, ToolCallStatus, RequestRetryState } from '@renderer/lib/agent/types'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
 import type { ToolResultContent, TokenUsage, MessageMeta } from '@renderer/lib/api/types'
@@ -15,7 +15,6 @@ export interface AssistantMessageProps {
   usage?: TokenUsage
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
   liveToolCallMap?: Map<string, ToolCallState> | null
-  inlineCompactSummaries?: readonly UnifiedMessage[]
   msgId?: string
   sessionId?: string | null
   sessionAssistantMessageIds?: readonly string[]
@@ -38,17 +37,6 @@ export interface AssistantMessageProps {
 
 export type AssistantRenderItem = { kind: 'block'; index: number } | { kind: 'tool-run'; runId: string }
 
-export type AssistantRenderItemWithInlineSummary =
-  | AssistantRenderItem
-  | { kind: 'compact-summary'; message: UnifiedMessage }
-
-export interface InlineCompactSummaryEntry {
-  message: UnifiedMessage
-  afterContentBlockCount: number
-  afterNormalizedBlockIndex: number
-  afterToolUseId?: string
-}
-
 export interface ModelThinkingIndicatorProps {
   modelName: string
   label: string
@@ -57,7 +45,6 @@ export interface ModelThinkingIndicatorProps {
 export const MARKDOWN_WRAPPER_CLASS = 'text-sm leading-relaxed text-foreground break-words'
 export const THINK_OPEN_TAG_RE = /<\s*think\s*>/i
 export const EMPTY_LIVE_TOOL_CALLS: ToolCallState[] = []
-export const EMPTY_INLINE_COMPACT_SUMMARIES: readonly UnifiedMessage[] = []
 export const EMPTY_ID_LIST: readonly string[] = []
 
 export interface ToolCallRenderState {

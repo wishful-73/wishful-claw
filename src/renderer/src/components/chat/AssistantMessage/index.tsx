@@ -5,9 +5,7 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import { useShallow } from 'zustand/react/shallow'
-import type {
-  ContentBlock, UnifiedMessage
-} from '@renderer/lib/api/types'
+import type { ContentBlock } from '@renderer/lib/api/types'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { useProviderStore } from '@renderer/stores/provider-store'
@@ -27,11 +25,10 @@ import { AssistantActionBar } from './action-bar'
 import { ContentRenderer } from './content-renderer'
 import type {
   AssistantMessageProps,
-  AssistantRenderItem,
-  AssistantRenderItemWithInlineSummary, InlineCompactSummaryEntry
+  AssistantRenderItem
 } from './types'
 import {
-  EMPTY_LIVE_TOOL_CALLS, EMPTY_INLINE_COMPACT_SUMMARIES, EMPTY_ID_LIST
+  EMPTY_LIVE_TOOL_CALLS, EMPTY_ID_LIST
 } from './types'
 import { stripThinkTags, normalizeStructuredBlocks, parseThinkTags } from './think-parser'
 import {
@@ -45,7 +42,6 @@ export function AssistantMessage({
   usage,
   toolResults,
   liveToolCallMap,
-  inlineCompactSummaries = EMPTY_INLINE_COMPACT_SUMMARIES,
   msgId,
   sessionId,
   sessionAssistantMessageIds = EMPTY_ID_LIST,
@@ -162,30 +158,9 @@ export function AssistantMessage({
     () => (typeof content === 'string' ? parseThinkTags(content) : null),
     [content]
   )
-  const compactSummaryRawBoundaryIndices = useMemo(() => {
-    const indices = new Set<number>()
-    if (!msgId || inlineCompactSummaries.length === 0 || !Array.isArray(content)) return indices
-
-    for (const message of inlineCompactSummaries) {
-      const anchor =
-        message.meta?.compactSummary?.displayAnchor ?? message.meta?.compressionStatus?.displayAnchor
-      if (!anchor || anchor.assistantMessageId !== msgId) continue
-      const afterContentBlockCount = Number.isFinite(anchor.afterContentBlockCount)
-        ? Math.max(0, Math.floor(anchor.afterContentBlockCount))
-        : 0
-      if (afterContentBlockCount > 0) indices.add(afterContentBlockCount - 1)
-    }
-
-    return indices
-  }, [content, inlineCompactSummaries, msgId])
   const normalizedContent = useMemo(
-    () =>
-      Array.isArray(content)
-        ? normalizeStructuredBlocks(content, {
-            preserveBoundaryAfterRawIndices: compactSummaryRawBoundaryIndices
-          })
-        : null,
-    [compactSummaryRawBoundaryIndices, content]
+    () => (Array.isArray(content) ? normalizeStructuredBlocks(content) : null),
+    [content]
   )
   const messageToolUseIds = useMemo(() => {
     if (!normalizedContent) return []
@@ -275,49 +250,6 @@ export function AssistantMessage({
     }
     return map
   }, [runChangeSet])
-  const inlineCompactSummaryEntries = useMemo(() => {
-    if (!msgId || inlineCompactSummaries.length === 0) return []
-    const rawBlocks = Array.isArray(content) ? content : null
-
-    const entries: InlineCompactSummaryEntry[] = []
-    for (const message of inlineCompactSummaries) {
-      const anchor =
-        message.meta?.compactSummary?.displayAnchor ?? message.meta?.compressionStatus?.displayAnchor
-      if (!anchor || anchor.assistantMessageId !== msgId) continue
-
-      const afterContentBlockCount = Number.isFinite(anchor.afterContentBlockCount)
-        ? Math.max(0, Math.floor(anchor.afterContentBlockCount))
-        : 0
-      const normalizedPrefixCount = rawBlocks
-        ? normalizeStructuredBlocks(rawBlocks.slice(0, afterContentBlockCount), {
-            preserveBoundaryAfterRawIndices: compactSummaryRawBoundaryIndices
-          }).length
-        : afterContentBlockCount
-
-      entries.push({
-        message,
-        afterContentBlockCount,
-        afterNormalizedBlockIndex: Math.max(-1, normalizedPrefixCount - 1),
-        ...(anchor.afterToolUseId ? { afterToolUseId: anchor.afterToolUseId } : {})
-      })
-    }
-
-    return entries.sort((a, b) => a.afterNormalizedBlockIndex - b.afterNormalizedBlockIndex)
-  }, [compactSummaryRawBoundaryIndices, content, inlineCompactSummaries, msgId])
-  const toolRunBoundaryAfterToolUseIds = useMemo(() => {
-    const ids = new Set<string>()
-    for (const entry of inlineCompactSummaryEntries) {
-      if (entry.afterToolUseId) ids.add(entry.afterToolUseId)
-    }
-    return ids
-  }, [inlineCompactSummaryEntries])
-  const toolRunBoundaryAfterBlockIndices = useMemo(() => {
-    const indices = new Set<number>()
-    for (const entry of inlineCompactSummaryEntries) {
-      if (entry.afterNormalizedBlockIndex >= 0) indices.add(entry.afterNormalizedBlockIndex)
-    }
-    return indices
-  }, [inlineCompactSummaryEntries])
   const toolExecutionOutline = useMemo(
     () =>
       buildToolExecutionOutline({
@@ -325,8 +257,6 @@ export function AssistantMessage({
         isStreaming,
         toolResults,
         liveToolCallMap: effectiveLiveToolCallMap,
-        boundaryAfterBlockIndices: toolRunBoundaryAfterBlockIndices,
-        boundaryAfterToolUseIds: toolRunBoundaryAfterToolUseIds,
         hiddenToolUseIds: outlineHiddenToolUseIds,
         t
       }),
@@ -336,9 +266,7 @@ export function AssistantMessage({
       isStreaming,
       outlineHiddenToolUseIds,
       t,
-      toolResults,
-      toolRunBoundaryAfterBlockIndices,
-      toolRunBoundaryAfterToolUseIds
+      toolResults
     ]
   )
   const toolRunSummaryById = useMemo(() => {
@@ -461,68 +389,6 @@ export function AssistantMessage({
     }
     return items
   }, [normalizedContent, toolExecutionOutline])
-  const renderItemsWithInlineSummaries = useMemo<AssistantRenderItemWithInlineSummary[]>(() => {
-    if (!normalizedContent || inlineCompactSummaryEntries.length === 0) return renderItems
-
-    const summariesByInsertIndex = new Map<number, UnifiedMessage[]>()
-
-    const getItemMaxBlockIndex = (item: AssistantRenderItem): number => {
-      if (item.kind === 'block') return item.index
-      return toolExecutionOutline.runById.get(item.runId)?.endBlockIndex ?? -1
-    }
-
-    const itemContainsToolUseId = (item: AssistantRenderItem, toolUseId: string): boolean => {
-      if (item.kind === 'tool-run') {
-        return toolExecutionOutline.runById.get(item.runId)?.itemIds.includes(toolUseId) ?? false
-      }
-      return [item.index].some((index) => {
-        const block = normalizedContent[index]
-        return block?.type === 'tool_use' && block.id === toolUseId
-      })
-    }
-
-    const findLastItemAtOrBeforeBlockIndex = (afterBlockIndex: number): number => {
-      let insertAfterIndex = -1
-      for (let index = 0; index < renderItems.length; index += 1) {
-        if (getItemMaxBlockIndex(renderItems[index]) <= afterBlockIndex) {
-          insertAfterIndex = index
-        }
-      }
-      return insertAfterIndex
-    }
-
-    for (const entry of inlineCompactSummaryEntries) {
-      let insertAfterIndex = findLastItemAtOrBeforeBlockIndex(entry.afterNormalizedBlockIndex)
-      const afterToolUseId = entry.afterToolUseId
-      if (insertAfterIndex < 0 && afterToolUseId) {
-        insertAfterIndex = renderItems.findIndex((item) =>
-          itemContainsToolUseId(item, afterToolUseId)
-        )
-      }
-
-      const existing = summariesByInsertIndex.get(insertAfterIndex)
-      if (existing) {
-        existing.push(entry.message)
-      } else {
-        summariesByInsertIndex.set(insertAfterIndex, [entry.message])
-      }
-    }
-
-    const items: AssistantRenderItemWithInlineSummary[] = []
-    const pushSummaries = (insertAfterIndex: number): void => {
-      for (const message of summariesByInsertIndex.get(insertAfterIndex) ?? []) {
-        items.push({ kind: 'compact-summary', message })
-      }
-    }
-
-    pushSummaries(-1)
-    for (let index = 0; index < renderItems.length; index += 1) {
-      items.push(renderItems[index])
-      pushSummaries(index)
-    }
-
-    return items
-  }, [inlineCompactSummaryEntries, normalizedContent, renderItems, toolExecutionOutline.runById])
 
   const renderContent = (): React.JSX.Element => {
     return (
@@ -531,7 +397,7 @@ export function AssistantMessage({
         isStreaming={isStreaming}
         normalizedContent={normalizedContent}
         stringSegments={stringSegments}
-        renderItemsWithInlineSummaries={renderItemsWithInlineSummaries}
+        renderItems={renderItems}
         renderMode={renderMode}
         thinkingModelName={thinkingModel.modelName}
         liveComponentClassName={liveComponentClassName}

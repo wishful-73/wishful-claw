@@ -64,6 +64,41 @@ interface MessageRow {
   sortOrder: number
 }
 
+export interface SessionRestoreFailure {
+  sessionId: string
+  snapshotId: string | null
+  reason: string
+  recoverable: boolean
+  requiresUserAction: boolean
+}
+
+export interface SessionContextManifest {
+  sessionId: string
+  currentSnapshotId: string | null
+  contextRevision: number
+  hasSnapshot: boolean
+  snapshotVersion: number | null
+  snapshotCreatedAt: number | null
+  snapshotUpdatedAt: number | null
+  throughCreatedAt: number | null
+  throughSortOrder: number | null
+  originalCount: number | null
+  newCount: number | null
+  messagesSummarized: number | null
+  summarizerFailed: boolean | null
+  prefixMessageCount: number
+  incrementalMessageCount: number
+  restoreSource: 'snapshot' | 'full' | 'blocked'
+  restoreReason: string | null
+  failure: SessionRestoreFailure | null
+}
+
+interface SessionContextManifestResult {
+  success: boolean
+  manifest: SessionContextManifest | null
+  error: string | null
+}
+
 // ─── Serialization helpers ───
 
 /**
@@ -437,6 +472,21 @@ function reconcileLoadedMessages(sessionId: string, rows: MessageRow[]): ChatMes
   }
 
   return messages
+}
+
+/**
+ * Load the authoritative session context manifest without snapshot payloads.
+ */
+export async function dbLoadContextManifest(sessionId: string): Promise<SessionContextManifest> {
+  await ensureDbInitialized()
+  const result = await window.api.workerRequest<SessionContextManifestResult>(
+    'db/session-context-manifest',
+    { sessionId }
+  )
+  if (!result.success || !result.manifest) {
+    throw new Error(result.error || 'Failed to load session context manifest')
+  }
+  return result.manifest
 }
 
 /**

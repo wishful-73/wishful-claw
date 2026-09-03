@@ -11,9 +11,9 @@ import { Users, CircleUserRound, ChevronDown } from 'lucide-react'
 import { SlideIn } from '@renderer/components/animate-ui'
 import { UserMessage } from './UserMessage'
 import { AssistantMessage } from './AssistantMessage'
-import { CompressionStatusMessage } from './CompressionStatusMessage'
-import { CompactBoundaryMessage } from './CompactBoundaryMessage'
+import { ContextCompressionMessage } from './ContextCompressionMessage'
 import type { UnifiedMessage, ToolResultContent } from '@renderer/lib/api/types'
+import type { RenderableChatItem } from './renderable-chat-items'
 import type { RequestRetryState, ToolCallState } from '@renderer/lib/agent/types'
 import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
@@ -26,7 +26,8 @@ import {
 type MessageRenderMode = 'default' | 'transcript' | 'static'
 
 interface MessageItemProps {
-  message: UnifiedMessage
+  item?: RenderableChatItem
+  message?: UnifiedMessage
   messageId: string
   sessionId?: string | null
   sessionAssistantMessageIds?: readonly string[]
@@ -42,7 +43,6 @@ interface MessageItemProps {
   onDeleteMessage?: (messageId: string) => void
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
   liveToolCallMap?: Map<string, ToolCallState> | null
-  inlineCompactSummaries?: readonly UnifiedMessage[]
   renderMode?: MessageRenderMode
   orchestrationRun?: OrchestrationRun | null
   hiddenToolUseIds?: Set<string>
@@ -61,26 +61,6 @@ function getContentFallbackSignal(content: UnifiedMessage['content']): string {
   return `a:${content.length}`
 }
 
-function getCompressionStatusSignal(message: UnifiedMessage): string {
-  const status = message.meta?.compressionStatus
-  if (!status) return ''
-  return [
-    status.operationId ?? '',
-    status.state,
-    status.startedAt,
-    status.completedAt ?? '',
-    status.originalCount ?? '',
-    status.newCount ?? '',
-    status.keptMessageCount ?? '',
-    status.messagesSummarized ?? '',
-    status.preTokens ?? '',
-    status.trigger ?? '',
-    status.summarizerFailed ? '1' : '0',
-    status.error ?? '',
-    status.summaryMessageId ?? '',
-    status.summaryText ?? ''
-  ].join('|')
-}
 
 function AgentWakeNotification({ content }: { content: string }): React.JSX.Element {
   const [expanded, setExpanded] = React.useState(false)
@@ -162,39 +142,44 @@ function MessageItemInner({
   onDeleteMessage,
   toolResults,
   liveToolCallMap,
-  inlineCompactSummaries,
+  item,
   renderMode = 'default',
   orchestrationRun,
   hiddenToolUseIds,
   requestRetryState
 }: MessageItemProps): React.JSX.Element | null {
-  if (message.id !== messageId) return null
+  const effectiveMessage = item?.kind === 'message' ? item.message : message
+  if (item?.kind === 'context-compression') {
+    return <ContextCompressionMessage message={item.summary} boundary={item.boundary} trigger={item.trigger} />
+  }
+  if (item?.kind === 'live-compression') {
+    return <ContextCompressionMessage draft={item.draft} trigger={item.trigger} isLive />
+  }
+  if (!effectiveMessage || effectiveMessage.id !== messageId) return null
 
   const inner = (() => {
-    switch (message.role) {
+    switch (effectiveMessage.role) {
       case 'user': {
-        if (isCompactSummaryLikeMessage(message)) {
-          return null
-        }
-        if (message.source === 'team') {
+        if (isCompactSummaryLikeMessage(effectiveMessage)) return null
+        if (effectiveMessage.source === 'team') {
           return (
             <AgentWakeNotification
               content={
-                typeof message.content === 'string'
-                  ? message.content
-                  : JSON.stringify(message.content)
+                typeof effectiveMessage.content === 'string'
+                  ? effectiveMessage.content
+                  : JSON.stringify(effectiveMessage.content)
               }
             />
           )
         }
         return (
           <UserMessage
-            messageId={message.id}
-            content={message.content}
-            meta={message.meta}
-            source={message.source}
+            messageId={effectiveMessage.id}
+            content={effectiveMessage.content}
+            meta={effectiveMessage.meta}
+            source={effectiveMessage.source}
             isLast={isLastUserMessage}
-            createdAt={message.createdAt}
+            createdAt={effectiveMessage.createdAt}
             onEdit={onEditUserMessage}
             onDelete={onDeleteMessage}
           />
@@ -203,12 +188,11 @@ function MessageItemInner({
       case 'assistant':
         return (
           <AssistantMessage
-            content={message.content}
+            content={effectiveMessage.content}
             isStreaming={isStreaming}
-            usage={message.usage}
+            usage={effectiveMessage.usage}
             toolResults={toolResults}
-            inlineCompactSummaries={inlineCompactSummaries}
-            msgId={message.id}
+            msgId={effectiveMessage.id}
             sessionId={sessionId}
             sessionAssistantMessageIds={sessionAssistantMessageIds}
             sessionToolUseIds={sessionToolUseIds}
@@ -219,25 +203,17 @@ function MessageItemInner({
             onContinue={onContinueAssistantMessage}
             onDelete={onDeleteMessage}
             liveToolCallMap={liveToolCallMap}
-            createdAt={message.createdAt}
+            createdAt={effectiveMessage.createdAt}
             renderMode={renderMode}
             orchestrationRun={orchestrationRun}
             hiddenToolUseIds={hiddenToolUseIds}
             requestRetryState={isLastAssistantMessage ? requestRetryState : null}
-            requestDebugInfo={message.debugInfo}
-            meta={message.meta}
-            preToolPhase={message.preToolPhase}
-            memoryRecall={message.memoryRecall}
+            requestDebugInfo={effectiveMessage.debugInfo}
+            meta={effectiveMessage.meta}
+            preToolPhase={effectiveMessage.preToolPhase}
+            memoryRecall={effectiveMessage.memoryRecall}
           />
         )
-      case 'system':
-        if (message.meta?.compressionStatus) {
-          return <CompressionStatusMessage message={message} sessionId={sessionId} />
-        }
-        if (message.meta?.compactBoundary) {
-          return <CompactBoundaryMessage message={message} />
-        }
-        return null
       default:
         return null
     }
@@ -321,57 +297,21 @@ function areRequestRetryStatesEqual(
 }
 
 function areEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
-  const prevCompressionStatusSignal = getCompressionStatusSignal(prev.message)
-  const nextCompressionStatusSignal = getCompressionStatusSignal(next.message)
-
-  // Fast path: same object reference => nothing to compare.
-  if (prev.message === next.message) {
-    return (
-      prevCompressionStatusSignal === nextCompressionStatusSignal &&
-      prev.messageId === next.messageId &&
-      prev.sessionId === next.sessionId &&
-      areStringArraysEqual(prev.sessionAssistantMessageIds, next.sessionAssistantMessageIds) &&
-      areStringArraysEqual(prev.sessionToolUseIds, next.sessionToolUseIds) &&
-      prev.isStreaming === next.isStreaming &&
-      prev.isLastUserMessage === next.isLastUserMessage &&
-      prev.isLastAssistantMessage === next.isLastAssistantMessage &&
-      prev.showContinue === next.showContinue &&
-      prev.disableAnimation === next.disableAnimation &&
-      prev.onRetryAssistantMessage === next.onRetryAssistantMessage &&
-      prev.onContinueAssistantMessage === next.onContinueAssistantMessage &&
-      prev.onEditUserMessage === next.onEditUserMessage &&
-      prev.onDeleteMessage === next.onDeleteMessage &&
-      areToolResultsEqual(prev.toolResults, next.toolResults) &&
-      prev.liveToolCallMap === next.liveToolCallMap &&
-      prev.inlineCompactSummaries === next.inlineCompactSummaries &&
-      prev.renderMode === next.renderMode &&
-      prev.orchestrationRun === next.orchestrationRun &&
-      areStringSetsEqual(prev.hiddenToolUseIds, next.hiddenToolUseIds) &&
-      areRequestRetryStatesEqual(prev.requestRetryState, next.requestRetryState)
-    )
+  if (prev.item !== next.item) return false
+  if (prev.message !== next.message) {
+    const prevRevision = prev.message?._revision
+    const nextRevision = next.message?._revision
+    if (prevRevision !== undefined || nextRevision !== undefined) {
+      if (prevRevision !== nextRevision) return false
+    } else if (
+      prev.message && next.message &&
+      getContentFallbackSignal(prev.message.content) !== getContentFallbackSignal(next.message.content)
+    ) {
+      return false
+    }
   }
 
-  // Revision-based equality: any mutation to the message in chat-store bumps _revision,
-  // so comparing (_revision, usage-revision, id) is sufficient without scanning content.
-  const prevRev = prev.message._revision
-  const nextRev = next.message._revision
-  const bothHaveRevision = prevRev !== undefined && nextRev !== undefined
-
-  const contentEqual = bothHaveRevision
-    ? prevRev === nextRev
-    : getContentFallbackSignal(prev.message.content) ===
-      getContentFallbackSignal(next.message.content)
-
-  // Usage signature still needs a structural compare (small object, cheap).
-  const prevUsageSignal = prev.message.usage
-    ? `${prev.message.usage.inputTokens}:${prev.message.usage.billableInputTokens ?? ''}:${prev.message.usage.outputTokens}:${prev.message.usage.cacheCreationTokens ?? 0}:${prev.message.usage.cacheCreation5mTokens ?? 0}:${prev.message.usage.cacheCreation1hTokens ?? 0}:${prev.message.usage.cacheReadTokens ?? 0}:${prev.message.usage.reasoningTokens ?? 0}:${prev.message.usage.totalDurationMs ?? 0}`
-    : ''
-  const nextUsageSignal = next.message.usage
-    ? `${next.message.usage.inputTokens}:${next.message.usage.billableInputTokens ?? ''}:${next.message.usage.outputTokens}:${next.message.usage.cacheCreationTokens ?? 0}:${next.message.usage.cacheCreation5mTokens ?? 0}:${next.message.usage.cacheCreation1hTokens ?? 0}:${next.message.usage.cacheReadTokens ?? 0}:${next.message.usage.reasoningTokens ?? 0}:${next.message.usage.totalDurationMs ?? 0}`
-    : ''
-
   return (
-    prevCompressionStatusSignal === nextCompressionStatusSignal &&
     prev.messageId === next.messageId &&
     prev.sessionId === next.sessionId &&
     areStringArraysEqual(prev.sessionAssistantMessageIds, next.sessionAssistantMessageIds) &&
@@ -385,15 +325,8 @@ function areEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
     prev.onContinueAssistantMessage === next.onContinueAssistantMessage &&
     prev.onEditUserMessage === next.onEditUserMessage &&
     prev.onDeleteMessage === next.onDeleteMessage &&
-    prev.message.role === next.message.role &&
-    prev.message.createdAt === next.message.createdAt &&
-    prev.message.source === next.message.source &&
-    prev.message.debugInfo === next.message.debugInfo &&
-    contentEqual &&
-    prevUsageSignal === nextUsageSignal &&
     areToolResultsEqual(prev.toolResults, next.toolResults) &&
     prev.liveToolCallMap === next.liveToolCallMap &&
-    prev.inlineCompactSummaries === next.inlineCompactSummaries &&
     prev.renderMode === next.renderMode &&
     prev.orchestrationRun === next.orchestrationRun &&
     areStringSetsEqual(prev.hiddenToolUseIds, next.hiddenToolUseIds) &&

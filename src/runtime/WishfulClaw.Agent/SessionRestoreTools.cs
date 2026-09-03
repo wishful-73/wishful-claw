@@ -17,7 +17,11 @@ namespace WishfulClaw.Agent;
 internal sealed record SessionRestoreCoreResult(
     List<JsonElement> WireMessages,
     List<AgentRuntimeChatMessage> Conversation,
-    bool FromSnapshot);
+    bool FromSnapshot,
+    SessionRestoreFailure? Failure = null)
+{
+    public bool IsBlocked => Failure is not null;
+}
 
 /// <summary>
 /// Session restore: load messages from DB and rebuild SessionConversation.
@@ -62,6 +66,16 @@ internal static class SessionRestoreTools
             var db = DbClient.GetClient(parameters);
 
             var restored = RestoreFromDb(db, sessionId);
+            if (restored.Failure is { } failure)
+            {
+                WorkerLog.Warn(
+                    $"agent restore-session blocked session={FormatLogValue(sessionId)} " +
+                    $"snapshot={FormatLogValue(failure.SnapshotId)} reason={failure.Reason}");
+                return WorkerResponse.Json(
+                    new SessionRestoreResponse(false, sessionId, 0, Failure: failure),
+                    AgentRuntimeJsonContext.Default.SessionRestoreResponse);
+            }
+
             var wireMessages = restored.WireMessages;
             if (wireMessages.Count == 0)
             {
@@ -121,19 +135,41 @@ internal static class SessionRestoreTools
     /// </summary>
     internal static SessionRestoreCoreResult RestoreFromDb(DbService db, string sessionId)
     {
-        // Snapshot path: validated read (version/payload/cursor) shared with the
-        // db endpoint; any problem downgrades to full recovery (reason is logged
-        // inside TryGetValidSnapshot).
-        CompactionSnapshotEntity? snapshot = null;
+        CompactionSnapshotEntity? snapshot;
+        string? reason;
+        string? currentSnapshotId;
         try
         {
-            snapshot = DbCompactionSnapshotTools.TryGetValidSnapshot(db, sessionId, out _);
+            snapshot = DbCompactionSnapshotTools.TryGetValidSnapshot(
+                db,
+                sessionId,
+                out reason,
+                out currentSnapshotId,
+                out _);
         }
         catch (Exception ex)
         {
             WorkerLog.Warn(
-                $"agent restore: snapshot read failed, falling back to full recovery " +
-                $"session={FormatLogValue(sessionId)} error={ex.GetType().Name}: {ex.Message}");
+                $"agent restore: snapshot read failed session={FormatLogValue(sessionId)} " +
+                $"error={ex.GetType().Name}: {ex.Message}");
+            var readFailure = new SessionRestoreFailure(
+                sessionId,
+                null,
+                DbCompactionSnapshotTools.ReasonCorrupt,
+                Recoverable: true,
+                RequiresUserAction: true);
+            return new SessionRestoreCoreResult([], [], false, readFailure);
+        }
+
+        if (currentSnapshotId is not null && snapshot is null)
+        {
+            var failure = new SessionRestoreFailure(
+                sessionId,
+                currentSnapshotId,
+                reason ?? DbCompactionSnapshotTools.ReasonSnapshotNotFound,
+                Recoverable: true,
+                RequiresUserAction: true);
+            return new SessionRestoreCoreResult([], [], false, failure);
         }
 
         var wireMessages = new List<JsonElement>();

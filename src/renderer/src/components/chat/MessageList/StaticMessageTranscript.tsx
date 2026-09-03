@@ -1,15 +1,12 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useTeamStore } from '@renderer/stores/team-store'
 import { buildOrchestrationRuns } from '@renderer/lib/orchestration/build-runs'
-import { resolveActiveCompactArtifacts } from '@renderer/lib/agent/context-compression'
+import { buildRenderableChatItems } from '../renderable-chat-items'
 import { selectSessionScopedAgentState } from '@renderer/lib/agent/session-scoped-agent-state'
 import { MessageRow } from './MessageRow'
-import {
-  buildChatRenderableMessageMetaFromAnalysis,
-  buildTranscriptStaticAnalysis,
-} from '../transcript-utils'
+import { buildTranscriptStaticAnalysis } from '../transcript-utils'
 import {
   collectDuplicatePlanReviewToolUseIds,
   getMessageToolUseIds,
@@ -33,35 +30,15 @@ export function StaticMessageTranscript({
     () => buildTranscriptStaticAnalysis(messages),
     [messages]
   )
-  const { messageLookup, toolResultsLookup } = transcriptAnalysis
+  const { toolResultsLookup } = transcriptAnalysis
   const duplicatePlanReviewToolUseIds = React.useMemo(
     () => collectDuplicatePlanReviewToolUseIds(messages, toolResultsLookup),
     [messages, toolResultsLookup]
   )
   const renderableMessages = React.useMemo(
-    () => buildChatRenderableMessageMetaFromAnalysis(transcriptAnalysis, null, null),
-    [transcriptAnalysis]
+    () => buildRenderableChatItems(messages, transcriptAnalysis.renderableMessageIds),
+    [messages, transcriptAnalysis.renderableMessageIds]
   )
-  const inlineCompactSummaryState = React.useMemo(() => {
-    const byAssistantId = new Map<string, UnifiedMessage[]>()
-    const summaryIds = new Set<string>()
-    const activeCompact = resolveActiveCompactArtifacts(messages)
-    const activeSummaryId = activeCompact?.summaryId ?? null
-    if (!activeSummaryId) return { byAssistantId, summaryIds }
-
-    const summary = messages.find((message) => message.id === activeSummaryId)
-    const anchor = summary?.meta?.compactSummary?.displayAnchor
-    if (!summary || !anchor?.assistantMessageId) return { byAssistantId, summaryIds }
-
-    const assistantExists = messages.some(
-      (message) => message.id === anchor.assistantMessageId && message.role === 'assistant'
-    )
-    if (!assistantExists) return { byAssistantId, summaryIds }
-
-    byAssistantId.set(anchor.assistantMessageId, [summary])
-    summaryIds.add(summary.id)
-    return { byAssistantId, summaryIds }
-  }, [messages])
   const assistantChangeTargets = React.useMemo(
     () =>
       messages
@@ -119,41 +96,38 @@ export function StaticMessageTranscript({
 
   return (
     <div className={className} data-message-content data-session-image-transcript>
-      {renderableMessages
-        .filter((row) => !inlineCompactSummaryState.summaryIds.has(row.messageId))
-        .map((row) => {
-          const message = messageLookup.get(row.messageId)
-          if (!message) return null
+      {renderableMessages.map((row) => {
+        const originMessageId = row.kind === 'message' ? row.originMessageId : null
+        const orchestration = originMessageId
+          ? orchestrationState.byMessageId.get(originMessageId)
+          : undefined
 
-          return (
-            <MessageRow
-              key={row.messageId}
-              message={message}
-              sessionId={sessionId}
-              sessionAssistantMessageIds={sessionAssistantMessageIds}
-              sessionToolUseIds={sessionToolUseIds}
-              isStreaming={false}
-              isLastUserMessage={row.isLastUserMessage}
-              isLastAssistantMessage={row.isLastAssistantMessage}
-              showContinue={false}
-              disableAnimation
-              toolResults={toolResultsLookup.get(row.messageId)}
-              inlineCompactSummaries={inlineCompactSummaryState.byAssistantId.get(row.messageId)}
-              orchestrationRun={
-                orchestrationState.byMessageId.get(row.messageId)?.primaryRun ?? null
-              }
-              hiddenToolUseIds={mergeHiddenToolUseIds(
-                orchestrationState.byMessageId.get(row.messageId)?.hiddenToolUseIds,
-                duplicatePlanReviewToolUseIds
-              )}
-              anchorMessageId={null}
-              highlightMessageId={null}
-              renderMode="transcript"
-              requestRetryState={null}
-              showChangeSummary={false}
-            />
-          )
-        })}
+        return (
+          <MessageRow
+            key={row.messageId}
+            item={row}
+            sessionId={sessionId}
+            sessionAssistantMessageIds={sessionAssistantMessageIds}
+            sessionToolUseIds={sessionToolUseIds}
+            isStreaming={false}
+            isLastUserMessage={row.isLastUserMessage}
+            isLastAssistantMessage={row.isLastAssistantMessage}
+            showContinue={false}
+            disableAnimation
+            toolResults={originMessageId ? toolResultsLookup.get(originMessageId) : undefined}
+            orchestrationRun={orchestration?.primaryRun ?? null}
+            hiddenToolUseIds={mergeHiddenToolUseIds(
+              orchestration?.hiddenToolUseIds,
+              duplicatePlanReviewToolUseIds
+            )}
+            anchorMessageId={null}
+            highlightMessageId={null}
+            renderMode="transcript"
+            requestRetryState={null}
+            showChangeSummary={false}
+          />
+        )
+      })}
     </div>
   )
 }

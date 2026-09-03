@@ -14,6 +14,39 @@ public sealed record SimpleOkResult(bool Ok, string? Error = null);
 // ── Generic success/error results ──
 public sealed record SimpleSuccessResult(bool Success, string? Error = null);
 
+// ── Session context restore/manifest results ──
+public sealed record SessionRestoreFailure(
+    string SessionId,
+    string? SnapshotId,
+    string Reason,
+    bool Recoverable,
+    bool RequiresUserAction);
+
+public sealed record SessionContextManifestRow(
+    string SessionId,
+    string? CurrentSnapshotId,
+    long ContextRevision,
+    bool HasSnapshot,
+    int? SnapshotVersion,
+    long? SnapshotCreatedAt,
+    long? SnapshotUpdatedAt,
+    long? ThroughCreatedAt,
+    int? ThroughSortOrder,
+    int? OriginalCount,
+    int? NewCount,
+    int? MessagesSummarized,
+    bool? SummarizerFailed,
+    int PrefixMessageCount,
+    int IncrementalMessageCount,
+    string RestoreSource,
+    string? RestoreReason,
+    SessionRestoreFailure? Failure);
+
+public sealed record SessionContextManifestResult(
+    bool Success,
+    SessionContextManifestRow? Manifest,
+    string? Error);
+
 // ── Provider test results ──
 public sealed record ProviderTestResult(
     bool Ok,

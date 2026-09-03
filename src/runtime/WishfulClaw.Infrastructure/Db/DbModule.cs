@@ -61,6 +61,7 @@ public sealed class DbModule : IWorkerModule
 
         // ── Compaction Snapshots ──
         context.Register("db/compaction-snapshots-get", DbCompactionSnapshotTools.Get);
+        context.Register("db/session-context-manifest", DbCompactionSnapshotTools.GetContextManifest);
         context.Register("db/compaction-snapshots-upsert", DbCompactionSnapshotTools.Upsert);
         context.Register("db/compaction-snapshots-delete", DbCompactionSnapshotTools.Delete);
 

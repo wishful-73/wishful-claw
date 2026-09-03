@@ -1,4 +1,5 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
+import type { CompressionStatusMeta } from '@renderer/lib/api/types'
 
 export interface LiveCompressionState {
   sessionId: string
@@ -6,13 +7,22 @@ export interface LiveCompressionState {
   attempt: number
   maxAttempts: number
   startedAt: number
+  operationId?: string
+  trigger: 'auto' | 'manual'
+  displayAnchor?: NonNullable<CompressionStatusMeta['displayAnchor']>
 }
 
 interface LiveCompressionStore {
   bySessionId: Record<string, LiveCompressionState>
   start: (
     sessionId: string,
-    options?: { attempt?: number; maxAttempts?: number }
+    options?: {
+      attempt?: number
+      maxAttempts?: number
+      operationId?: string
+      trigger?: 'auto' | 'manual'
+      displayAnchor?: NonNullable<CompressionStatusMeta['displayAnchor']>
+    }
   ) => void
   appendDraft: (sessionId: string, text: string) => void
   clear: (sessionId: string) => void
@@ -36,7 +46,14 @@ export const useLiveCompressionStore = create<LiveCompressionStore>((set) => ({
               options?.maxAttempts && options.maxAttempts > 0
                 ? options.maxAttempts
                 : (existing?.maxAttempts ?? 1),
-            startedAt: existing?.startedAt ?? Date.now()
+            startedAt: existing?.startedAt ?? Date.now(),
+            ...(options?.operationId || existing?.operationId
+              ? { operationId: options?.operationId ?? existing?.operationId }
+              : {}),
+            trigger: options?.trigger ?? existing?.trigger ?? 'auto',
+            ...(options?.displayAnchor || existing?.displayAnchor
+              ? { displayAnchor: options?.displayAnchor ?? existing?.displayAnchor }
+              : {})
           }
         }
       }
@@ -55,7 +72,8 @@ export const useLiveCompressionStore = create<LiveCompressionStore>((set) => ({
                 draft: text,
                 attempt: 1,
                 maxAttempts: 1,
-                startedAt: Date.now()
+                startedAt: Date.now(),
+                trigger: 'auto'
               }
         }
       }
@@ -71,13 +89,27 @@ export const useLiveCompressionStore = create<LiveCompressionStore>((set) => ({
 
 export function applyLiveCompressionStreamEvent(
   sessionId: string,
-  event: { type: string; text?: string; attempt?: number; maxAttempts?: number }
+  event: {
+    type: string
+    text?: string
+    attempt?: number
+    maxAttempts?: number
+    operationId?: string
+    trigger?: 'auto' | 'manual'
+    displayAnchor?: NonNullable<CompressionStatusMeta['displayAnchor']>
+  }
 ): void {
   const store = useLiveCompressionStore.getState()
   switch (event.type) {
     case 'context_compression_started':
     case 'context_compression_start':
-      store.start(sessionId, { attempt: event.attempt, maxAttempts: event.maxAttempts })
+      store.start(sessionId, {
+        attempt: event.attempt,
+        maxAttempts: event.maxAttempts,
+        operationId: event.operationId,
+        trigger: event.trigger,
+        displayAnchor: event.displayAnchor
+      })
       break
     case 'context_compression_delta':
       if (event.text) store.appendDraft(sessionId, event.text)

@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { MessageItem } from '../MessageItem'
 import { SessionChangeSummaryCard } from '../SessionChangeSummaryCard'
 import {
@@ -9,7 +9,7 @@ import {
 } from './utils'
 
 export const MessageRow = React.memo(function MessageRow({
-  message,
+  item,
   sessionId,
   sessionAssistantMessageIds,
   sessionToolUseIds,
@@ -19,7 +19,6 @@ export const MessageRow = React.memo(function MessageRow({
   showContinue,
   disableAnimation,
   toolResults,
-  inlineCompactSummaries,
   orchestrationRun,
   hiddenToolUseIds,
   anchorMessageId,
@@ -33,21 +32,29 @@ export const MessageRow = React.memo(function MessageRow({
   onEditUserMessage,
   onDeleteMessage
 }: MessageRowProps): React.JSX.Element {
-  const isAnchor = anchorMessageId === message.id
-  const isHighlighted = highlightMessageId === message.id
-  const messageToolUseIds = React.useMemo(() => getMessageToolUseIds(message), [message])
+  const message = item.kind === 'message' ? item.message : null
+  const messageId = item.kind === 'message' ? item.originMessageId : item.messageId
+  const displayId = item.kind === 'message' ? item.displayId : item.id
+  const isAnchor = anchorMessageId === messageId
+  const isHighlighted = highlightMessageId === messageId
+  const messageToolUseIds = React.useMemo(
+    () => (message ? getMessageToolUseIds(message) : []),
+    [message]
+  )
 
   return (
     <div
-      data-message-id={message.id}
+      data-message-id={displayId}
+      data-origin-message-id={messageId}
       data-anchor={isAnchor ? 'true' : undefined}
       className={`${getMessageColumnClass(fullWidth)} pb-7 transition-colors duration-500 ${
         isHighlighted ? 'rounded-md bg-primary/5 ring-1 ring-primary/20' : ''
       }`}
     >
       <MessageItem
-        message={message}
-        messageId={message.id}
+        item={item}
+        message={message ?? undefined}
+        messageId={displayId}
         sessionId={sessionId}
         sessionAssistantMessageIds={sessionAssistantMessageIds}
         sessionToolUseIds={sessionToolUseIds}
@@ -62,16 +69,15 @@ export const MessageRow = React.memo(function MessageRow({
         onEditUserMessage={onEditUserMessage}
         onDeleteMessage={onDeleteMessage}
         toolResults={toolResults}
-        inlineCompactSummaries={inlineCompactSummaries}
         orchestrationRun={orchestrationRun}
         hiddenToolUseIds={hiddenToolUseIds}
         requestRetryState={requestRetryState}
       />
-      {showChangeSummary && message.role === 'assistant' && !isStreaming && sessionId ? (
+      {showChangeSummary && message?.role === 'assistant' && !isStreaming && sessionId ? (
         <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
           <SessionChangeSummaryCard
             sessionId={sessionId}
-            messageId={message.id}
+            messageId={messageId}
             toolUseIds={messageToolUseIds}
           />
         </div>

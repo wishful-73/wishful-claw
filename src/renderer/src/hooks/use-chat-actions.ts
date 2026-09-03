@@ -1,11 +1,12 @@
 ﻿import { useCallback, useEffect } from 'react'
 import {
   useChatStore,
-  recordCompressionStatusMessage,
+  updateCompressionStatus,
   applyCompactArtifactsToSession,
   updateSessionContextTokens
 } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
@@ -607,8 +608,12 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
   const operationId = `manual:${sessionId}:${Date.now()}`
   const startedAt = Date.now()
   const updateStatus = (meta: CompressionStatusMeta): void => {
-    recordCompressionStatusMessage(sessionId, meta, operationId)
+    updateCompressionStatus(sessionId, meta, operationId)
+    if (meta.state !== 'compressing') {
+      useLiveCompressionStore.getState().clear(sessionId)
+    }
   }
+  useLiveCompressionStore.getState().start(sessionId)
   updateStatus({ operationId, state: 'compressing', startedAt, trigger: 'manual' })
 
   // Never compress while the session has an active run — the Worker would
@@ -688,7 +693,7 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       )
       const now = Date.now()
       if (compactArtifacts?.length) {
-        applyCompactArtifactsToSession(sessionId, compactArtifacts)
+        applyCompactArtifactsToSession(sessionId, compactArtifacts, operationId)
       }
       updateStatus({
         operationId,

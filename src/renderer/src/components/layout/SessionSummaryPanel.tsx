@@ -24,7 +24,12 @@ import { IPC } from '@renderer/lib/ipc/channels'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import { cn } from '@renderer/lib/utils'
 import { useChatStore } from '@renderer/stores/chat-store'
-import { dbLoadMessages } from '@renderer/stores/chat-store/db-helpers'
+import {
+  dbLoadContextManifest,
+  dbLoadMessages,
+  type SessionContextManifest
+} from '@renderer/stores/chat-store/db-helpers'
+import { SessionContextManifestSection } from './SessionContextManifestSection'
 import type { GitStatusDetailed } from '@renderer/stores/git-store'
 import { useSshStore } from '@renderer/stores/ssh-store'
 import { useTerminalStore, type TerminalTab } from '@renderer/stores/terminal-store'
@@ -248,11 +253,22 @@ export function SessionSummaryPanel({
   sessionId: string | null
 }): React.JSX.Element {
   const { t } = useTranslation('layout')
-  // Re-scan the compression summary after the session message count changes.
-  // The panel does not subscribe to or render the session message array.
+  // Re-scan persisted context data after the message count changes or a
+  // compression operation reaches a terminal state.
   const messageCount = useChatStore((state) => {
     if (!sessionId) return 0
     return state.sessions.find((session) => session.id === sessionId)?.messageCount ?? 0
+  })
+  const compressionVersion = useChatStore((state) => {
+    if (!sessionId) return ''
+    const messages = state.sessions.find((session) => session.id === sessionId)?.messages ?? []
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      const status = message.meta?.compressionStatus
+      if (!status || status.state === 'compressing') continue
+      return `${status.operationId}:${status.state}:${status.completedAt ?? message._revision ?? ''}`
+    }
+    return ''
   })
   const context = useChatStore(
     useShallow((state) => {
@@ -302,6 +318,43 @@ export function SessionSummaryPanel({
     if (context.sshConnectionId && !sshConnectionsLoaded) void loadSshConnections()
   }, [context.sshConnectionId, loadSshConnections, sshConnectionsLoaded])
 
+  const [manifest, setManifest] = useState<SessionContextManifest | null>(null)
+  const [manifestLoading, setManifestLoading] = useState(false)
+  const [manifestError, setManifestError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadManifest = async (): Promise<void> => {
+      if (!sessionId) {
+        setManifest(null)
+        setManifestError(null)
+        setManifestLoading(false)
+        return
+      }
+
+      setManifestLoading(true)
+      setManifestError(null)
+      try {
+        const nextManifest = await dbLoadContextManifest(sessionId)
+        if (!cancelled) setManifest(nextManifest)
+      } catch (err) {
+        console.error('[SessionSummaryPanel] Failed to load context manifest:', err)
+        if (!cancelled) {
+          setManifest(null)
+          setManifestError(err instanceof Error ? err.message : 'Context manifest unavailable')
+        }
+      } finally {
+        if (!cancelled) setManifestLoading(false)
+      }
+    }
+
+    void loadManifest()
+    return () => {
+      cancelled = true
+    }
+  }, [compressionVersion, messageCount, sessionId])
+
   // undefined = resolving, null = no summary, otherwise the summary message.
   const [summary, setSummary] = useState<UnifiedMessage | null | undefined>(undefined)
 
@@ -338,7 +391,7 @@ export function SessionSummaryPanel({
     return () => {
       cancelled = true
     }
-  }, [sessionId, messageCount])
+  }, [compressionVersion, messageCount, sessionId])
 
   const content = summary ? getCompactSummaryDisplayText(summary).trim() : ''
   const meta = summary?.meta?.compactSummary
@@ -488,6 +541,12 @@ export function SessionSummaryPanel({
               </div>
             </section>
           ) : null}
+
+          <SessionContextManifestSection
+            manifest={manifest}
+            loading={manifestLoading}
+            error={manifestError}
+          />
 
           <section className="space-y-2 border-t border-border/70 pt-4">
             <div className="flex flex-wrap items-center gap-2">

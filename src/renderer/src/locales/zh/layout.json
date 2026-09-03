@@ -557,7 +557,21 @@
     "subAgents": "子 Agent",
     "subAgentsRunning": "{{count}} 个运行中",
     "subAgentsCompleted": "{{count}} 个已完成",
-    "runningTerminals": "运行中的终端"
+    "runningTerminals": "运行中的终端",
+    "manifestTitle": "上下文基线",
+    "manifestLoading": "读取上下文基线...",
+    "manifestUnavailable": "上下文基线不可用",
+    "manifestSource": "恢复来源",
+    "manifestSourceSnapshot": "当前 snapshot",
+    "manifestSourceFull": "全量历史（兼容）",
+    "manifestSourceBlocked": "已阻断",
+    "snapshotId": "Snapshot ID",
+    "contextRevision": "上下文版本",
+    "cursor": "覆盖游标",
+    "contextMessages": "模型消息",
+    "contextMessageCounts": "前缀 {{prefix}} · 增量 {{incremental}}",
+    "messagesSummarized": "已总结消息",
+    "restoreBlocked": "恢复阻断原因"
   },
   "rightPanelAction": {
     "closePanel": "关闭面板"

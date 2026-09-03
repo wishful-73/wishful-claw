@@ -39,7 +39,6 @@ interface VirtualListContentProps {
   lastMessageRowIndex: number
   messageLookup: Map<string, UnifiedMessage>
   toolResultsLookup: Map<string, unknown>
-  inlineCompactSummaryState: { byAssistantId: Map<string, UnifiedMessage[]> }
   orchestrationState: OrchestrationRunStore
   duplicatePlanReviewToolUseIds: Set<string>
   sessionAssistantMessageIds: string[]
@@ -80,9 +79,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     onJumpToPinnedMessage,
     rows,
     lastMessageRowIndex,
-    messageLookup,
     toolResultsLookup,
-    inlineCompactSummaryState,
     orchestrationState,
     duplicatePlanReviewToolUseIds,
     sessionAssistantMessageIds,
@@ -165,22 +162,29 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                           Math.max(0, lastMessageRowIndex - (TAIL_STATIC_MESSAGE_COUNT - 1))
                         : false
 
-                    const { messageId, isLastUserMessage, isLastAssistantMessage, showContinue } =
-                      row.data
-                    const message = messageLookup.get(messageId)
-                    if (!message) return null
-
+                    const item = row.data
+                    const message = item.kind === 'message' ? item.message : undefined
+                    const originMessageId = item.kind === 'message' ? item.originMessageId : null
+                    const isLastUserMessage = item.isLastUserMessage
+                    const isLastAssistantMessage = item.isLastAssistantMessage
+                    const showContinue = item.showContinue
                     const isEmptyAssistantLoading =
+                      message !== undefined &&
                       isLastAssistantMessage &&
                       isAgentExecutionActive &&
                       hasEmptyAssistantContent(message)
-                    const isStreaming = streamingMessageId === messageId || isEmptyAssistantLoading
+                    const isStreaming =
+                      Boolean(message) &&
+                      (streamingMessageId === originMessageId || isEmptyAssistantLoading)
                     const rowRenderMode =
                       !isStreaming && rowIndex < liveCutoffIndex ? 'static' : undefined
+                    const orchestration = originMessageId
+                      ? orchestrationState.byMessageId.get(originMessageId)
+                      : undefined
 
                     return (
                       <MessageRow
-                        message={message}
+                        item={item}
                         sessionId={targetSessionId}
                         sessionAssistantMessageIds={sessionAssistantMessageIds}
                         sessionToolUseIds={sessionToolUseIds}
@@ -189,15 +193,10 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                         isLastAssistantMessage={isLastAssistantMessage}
                         showContinue={showContinue}
                         disableAnimation={disableAnimation}
-                        toolResults={toolResultsLookup.get(messageId) as any}
-                        inlineCompactSummaries={inlineCompactSummaryState.byAssistantId.get(
-                          messageId
-                        )}
-                        orchestrationRun={
-                          orchestrationState.byMessageId.get(messageId)?.primaryRun ?? null
-                        }
+                        toolResults={originMessageId ? (toolResultsLookup.get(originMessageId) as any) : undefined}
+                        orchestrationRun={orchestration?.primaryRun ?? null}
                         hiddenToolUseIds={mergeHiddenToolUseIds(
-                          orchestrationState.byMessageId.get(messageId)?.hiddenToolUseIds as any,
+                          orchestration?.hiddenToolUseIds as any,
                           duplicatePlanReviewToolUseIds
                         )}
                         anchorMessageId={null}

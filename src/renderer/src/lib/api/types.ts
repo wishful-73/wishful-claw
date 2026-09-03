@@ -270,6 +270,8 @@ export interface CompactBoundaryMeta {
 export interface CompactSummaryMeta {
   messagesSummarized: number
   recentMessagesPreserved: boolean
+  /** Stable compression operation identity persisted with the summary artifact. */
+  operationId?: string
   /** True when the LLM summarizer failed and a mechanical fallback digest was used. */
   summarizerFailed?: boolean
   displayAnchor?: {

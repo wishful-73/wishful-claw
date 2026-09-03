@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -78,6 +78,15 @@ internal static partial class AgentLoop
             {
                 DbClient.EnsureInitialized(parameters);
                 var restored = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(parameters), sessionId);
+                if (restored.Failure is { } failure)
+                {
+                    WorkerLog.Warn(
+                        $"agent loop lazy-restore blocked session={FormatSessionId(sessionId)} " +
+                        $"snapshot={failure.SnapshotId ?? "null"} reason={failure.Reason}");
+                    throw new InvalidOperationException(
+                        $"Session restore blocked: reason={failure.Reason}, snapshotId={failure.SnapshotId ?? "null"}.");
+                }
+
                 if (restored.WireMessages.Count > 0 &&
                     sessionConv.InitializeIfEmpty(restored.WireMessages, restored.Conversation))
                 {

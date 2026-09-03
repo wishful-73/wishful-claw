@@ -557,7 +557,21 @@
     "subAgents": "SubAgents",
     "subAgentsRunning": "{{count}} running",
     "subAgentsCompleted": "{{count}} completed",
-    "runningTerminals": "Running terminals"
+    "runningTerminals": "Running terminals",
+    "manifestTitle": "Context baseline",
+    "manifestLoading": "Loading context baseline...",
+    "manifestUnavailable": "Context baseline unavailable",
+    "manifestSource": "Restore source",
+    "manifestSourceSnapshot": "Current snapshot",
+    "manifestSourceFull": "Full history (compatibility)",
+    "manifestSourceBlocked": "Blocked",
+    "snapshotId": "Snapshot ID",
+    "contextRevision": "Context revision",
+    "cursor": "Coverage cursor",
+    "contextMessages": "Model messages",
+    "contextMessageCounts": "Prefix {{prefix}} · incremental {{incremental}}",
+    "messagesSummarized": "Messages summarized",
+    "restoreBlocked": "Restore blocked"
   },
   "rightPanelAction": {
     "closePanel": "Close panel"

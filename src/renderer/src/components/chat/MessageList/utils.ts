@@ -1,7 +1,8 @@
 ﻿// Pure utility functions and types extracted from MessageList.tsx
 
 import type { ContentBlock, ToolResultContent, UnifiedMessage } from '@renderer/lib/api/types'
-import type { ChatRenderableMessageMeta, TailToolExecutionState } from '../transcript-utils'
+import type { TailToolExecutionState } from '../transcript-utils'
+import type { RenderableChatItem } from '../renderable-chat-items'
 import type { ActiveTeam } from '@renderer/stores/team-store'
 import type { useChatStore } from '@renderer/stores/chat-store'
 import type { useTeamStore } from '@renderer/stores/team-store'
@@ -20,11 +21,11 @@ export interface MessageListProps {
   fullWidth?: boolean
 }
 
-export type RenderableMessage = ChatRenderableMessageMeta
+export type RenderableMessage = RenderableChatItem
 
 export type ToolResultsLookup = Map<string, { content: ToolResultContent; isError?: boolean }>
 
-export type MessageListRow = { type: 'message'; key: string; data: RenderableMessage }
+export type MessageListRow = { type: 'message'; key: string; data: RenderableChatItem }
 
 export type AutoScrollMode = 'off' | 'user' | 'stream'
 
@@ -175,7 +176,7 @@ export type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
 export type TeamStoreSnapshot = ReturnType<typeof useTeamStore.getState>
 
 export interface MessageRowProps {
-  message: UnifiedMessage
+  item: RenderableChatItem
   sessionId?: string | null
   sessionAssistantMessageIds?: readonly string[]
   sessionToolUseIds?: readonly string[]
@@ -185,7 +186,6 @@ export interface MessageRowProps {
   showContinue: boolean
   disableAnimation: boolean
   toolResults?: ToolResultsLookup
-  inlineCompactSummaries?: readonly UnifiedMessage[]
   orchestrationRun?: import('@renderer/lib/orchestration/types').OrchestrationRun | null
   hiddenToolUseIds?: Set<string>
   anchorMessageId?: string | null
@@ -609,7 +609,7 @@ void getOrchestrationRunSignature
 
 export function areMessageRowPropsEqual(prev: MessageRowProps, next: MessageRowProps): boolean {
   return (
-    prev.message === next.message &&
+    prev.item === next.item &&
     prev.sessionId === next.sessionId &&
     areStringArraysEqual(prev.sessionAssistantMessageIds, next.sessionAssistantMessageIds) &&
     areStringArraysEqual(prev.sessionToolUseIds, next.sessionToolUseIds) &&
@@ -621,7 +621,6 @@ export function areMessageRowPropsEqual(prev: MessageRowProps, next: MessageRowP
     prev.fullWidth === next.fullWidth &&
     (prev.toolResults === next.toolResults ||
       areToolResultsEqual(prev.toolResults, next.toolResults)) &&
-    prev.inlineCompactSummaries === next.inlineCompactSummaries &&
     prev.orchestrationRun === next.orchestrationRun &&
     prev.hiddenToolUseIds === next.hiddenToolUseIds &&
     prev.anchorMessageId === next.anchorMessageId &&

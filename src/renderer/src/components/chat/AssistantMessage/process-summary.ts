@@ -1,4 +1,4 @@
-// process-summary.ts — generate a human-readable summary of the execution process
+﻿// process-summary.ts — generate a human-readable summary of the execution process
 // for display in the collapsed ExecutionProcessBlock header.
 //
 // Example output: "运行了3个命令，查看了2个文件，编辑了1个文件"
@@ -6,7 +6,7 @@
 
 import type { ToolExecutionOutline, ToolExecutionItem } from '../execution-outline'
 import type { ContentBlock } from '@renderer/lib/api/types'
-import type { AssistantRenderItemWithInlineSummary } from './types'
+import type { AssistantRenderItem } from './types'
 import type { TFunction } from 'i18next'
 
 const WEB_CONTEXT_TOOL_NAMES = new Set(['WebFetch', 'WebSearch', 'BrowserSearch'])
@@ -142,11 +142,11 @@ export function buildProcessSummary(
  * thinking-only without tools is too simple to collapse.
  */
 export function splitProcessAndFinal(
-  items: AssistantRenderItemWithInlineSummary[],
+  items: AssistantRenderItem[],
   normalizedContent: ContentBlock[] | null
 ): {
-  processItems: AssistantRenderItemWithInlineSummary[]
-  finalItems: AssistantRenderItemWithInlineSummary[]
+  processItems: AssistantRenderItem[]
+  finalItems: AssistantRenderItem[]
   hasProcessContent: boolean
 } {
   const finalOutputStartIndex = (() => {

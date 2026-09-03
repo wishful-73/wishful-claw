@@ -195,20 +195,10 @@ public static partial class DbMessageTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            var deleted = db.ExecuteInTransaction((conn, tx) =>
-            {
-                var removed = db.Execute(conn, tx,
-                    "DELETE FROM messages WHERE session_id = @sid AND id = @mid",
-                    new SqliteParameter("@sid", sessionId),
-                    new SqliteParameter("@mid", messageId));
-
-                if (removed > 0)
-                {
-                    DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
-                }
-
-                return removed;
-            });
+            var deleted = db.Execute(
+                "DELETE FROM messages WHERE session_id = @sid AND id = @mid",
+                new SqliteParameter("@sid", sessionId),
+                new SqliteParameter("@mid", messageId));
 
             if (deleted > 0)
             {
@@ -265,11 +255,7 @@ public static partial class DbMessageTools
                 return WorkerResponse.Json(new MessageDeleteLastResult(true, null, null), InfrastructureJsonContext.Default.MessageDeleteLastResult);
             }
 
-            db.ExecuteInTransaction((conn, tx) =>
-            {
-                db.Execute(conn, tx, "DELETE FROM messages WHERE id = @id", new SqliteParameter("@id", last.Id));
-                DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
-            });
+            db.Execute("DELETE FROM messages WHERE id = @id", new SqliteParameter("@id", last.Id));
             IncrementMessageCount(db, sessionId, -1);
 
             return WorkerResponse.Json(new MessageDeleteLastResult(true, MessageRow.FromEntity(last), null), InfrastructureJsonContext.Default.MessageDeleteLastResult);
@@ -289,31 +275,10 @@ public static partial class DbMessageTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            var deleted = db.ExecuteInTransaction((conn, tx) =>
-            {
-                var cursor = DbCompactionSnapshotStore.GetCursor(db, conn, tx, sessionId);
-                if (cursor is not null)
-                {
-                    // Truncation overlaps the snapshot coverage when any removed message
-                    // (sort_order >= cutoff) lies at or before the snapshot cursor.
-                    var overlaps = db.QueryScalar<int>(conn, tx,
-                        "SELECT COUNT(*) FROM messages WHERE session_id = @sid AND sort_order >= @so " +
-                        "AND (created_at < @tca OR (created_at = @tca AND sort_order <= @tso))",
-                        new SqliteParameter("@sid", sessionId),
-                        new SqliteParameter("@so", fromSortOrder),
-                        new SqliteParameter("@tca", cursor.ThroughCreatedAt),
-                        new SqliteParameter("@tso", cursor.ThroughSortOrder)) > 0;
-                    if (overlaps)
-                    {
-                        DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
-                    }
-                }
-
-                return db.Execute(conn, tx,
-                    "DELETE FROM messages WHERE session_id = @sid AND sort_order >= @so",
-                    new SqliteParameter("@sid", sessionId),
-                    new SqliteParameter("@so", fromSortOrder));
-            });
+            var deleted = db.Execute(
+                "DELETE FROM messages WHERE session_id = @sid AND sort_order >= @so",
+                new SqliteParameter("@sid", sessionId),
+                new SqliteParameter("@so", fromSortOrder));
 
             var newCount = db.QueryScalar<int>(
                 "SELECT COUNT(*) FROM messages WHERE session_id = @sid",

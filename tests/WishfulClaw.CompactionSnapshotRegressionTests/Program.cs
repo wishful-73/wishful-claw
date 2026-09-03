@@ -330,6 +330,7 @@ internal static class Program
             "upsert persists the first snapshot");
 
         var snapshot = ReadSnapshot(dbPath, sessionA);
+        var firstSnapshotId = snapshot.GetProperty("snapshotId").GetString();
         AssertEqual(1, snapshot.GetProperty("version").GetInt32(), "snapshot stores format version 1");
         AssertEqual("auto", snapshot.GetProperty("trigger").GetString(), "snapshot stores trigger");
         AssertEqual(1004L, snapshot.GetProperty("throughCreatedAt").GetInt64(), "cursor uses newest message created_at");
@@ -341,11 +342,11 @@ internal static class Program
         AssertNullProperty(snapshot, "summaryMessage", "summaryMessage stays null when omitted");
         AssertNullProperty(snapshot, "summaryText", "summaryText stays null when omitted");
 
-        // Upsert replaces the previous row atomically.
+        // A second compression inserts a new immutable revision and advances the pointer.
         AssertMutationSuccess(DbCompactionSnapshotTools.Upsert(UpsertParams(dbPath, sessionA, trigger: "manual",
             originalCount: 5, newCount: 1, messagesSummarized: 4, summarizerFailed: true,
             summaryMessage: "{\"id\":\"summary\"}", summaryText: "compressed body")),
-            "upsert replaces an existing snapshot");
+            "upsert inserts a new snapshot revision");
         var replaced = ReadSnapshot(dbPath, sessionA);
         AssertEqual("manual", replaced.GetProperty("trigger").GetString(), "replace updates trigger");
         Assert(replaced.GetProperty("summarizerFailed").GetBoolean(), "replace updates degraded flag");
@@ -354,10 +355,25 @@ internal static class Program
                 && summaryMessage.ValueKind == JsonValueKind.String
                 && IsJsonObjectText(summaryMessage.GetString()),
             "replace stores summary message JSON");
-        AssertEqual(1L, db.QueryScalar<long>(
+
+        var manifestResult = ResultObject(DbCompactionSnapshotTools.GetContextManifest(
+            Params(dbPath, writer => writer.WriteString("sessionId", sessionA))));
+        Assert(manifestResult.GetProperty("success").GetBoolean(), "context manifest read succeeds");
+        var manifest = manifestResult.GetProperty("manifest");
+        AssertEqual(replaced.GetProperty("snapshotId").GetString(), manifest.GetProperty("currentSnapshotId").GetString(),
+            "context manifest points to current snapshot");
+        Assert(manifest.GetProperty("hasSnapshot").GetBoolean(), "context manifest reports snapshot presence");
+        Assert(manifest.GetProperty("prefixMessageCount").GetInt32() > 0, "context manifest reports prefix count");
+        Assert(!manifest.TryGetProperty("wireConversation", out _), "context manifest omits wire conversation payload");
+        Assert(!manifest.TryGetProperty("compactArtifacts", out _), "context manifest omits compact artifacts payload");
+        Assert(!manifest.TryGetProperty("summaryText", out _), "context manifest omits summary payload");
+
+        AssertEqual(2L, db.QueryScalar<long>(
                 "SELECT COUNT(*) FROM session_compaction_snapshots WHERE session_id = @sid",
                 new SqliteParameter("@sid", sessionA)),
-            "upsert keeps a single snapshot row per session");
+            "upsert retains immutable snapshot history per session");
+        Assert(!string.Equals(firstSnapshotId, replaced.GetProperty("snapshotId").GetString(), StringComparison.Ordinal),
+            "upsert advances to a new snapshot id");
 
         // ── Incremental query after cursor ──
         AddMessage(dbPath, sessionA, $"{prefix}-m5", 1005, 5);
@@ -409,7 +425,7 @@ internal static class Program
         // ── fork/duplicate does not inherit snapshots ──
         RunForkSuite(dbPath, prefix);
 
-        // ── ClearAll removes snapshots with the sessions ──
+        // ── ClearAll removes sessions but retains immutable snapshot history ──
         var sessionD = $"{prefix}-session-d";
         AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
         {
@@ -418,10 +434,13 @@ internal static class Program
         })), "session D is created");
         AddMessage(dbPath, sessionD, $"{prefix}-d1", 2000, 0);
         UpsertSnapshot(dbPath, sessionD);
+        var snapshotsBeforeClearAll = db.QueryScalar<long>("SELECT COUNT(*) FROM session_compaction_snapshots");
         var clearAll = ResultObject(DbSessionTools.ClearAll(Params(dbPath)));
         Assert(clearAll.GetProperty("success").GetBoolean(), "clear-all succeeds");
-        AssertEqual(0L, db.QueryScalar<long>("SELECT COUNT(*) FROM session_compaction_snapshots"),
-            "clear-all removes every snapshot together with the sessions");
+        AssertEqual(snapshotsBeforeClearAll, db.QueryScalar<long>("SELECT COUNT(*) FROM session_compaction_snapshots"),
+            "clear-all retains immutable snapshot history for diagnostics");
+        AssertEqual(0L, db.QueryScalar<long>("SELECT COUNT(*) FROM sessions WHERE plugin_id IS NULL"),
+            "clear-all removes regular sessions");
     }
 
     private static void RunValidationFallbackSuite(string dbPath, string sessionId)
@@ -449,7 +468,7 @@ internal static class Program
         var corrupt = ResultObject(DbCompactionSnapshotTools.Get(Params(dbPath, writer => writer.WriteString("sessionId", sessionId))));
         Assert(corrupt.GetProperty("success").GetBoolean(), "corrupt payload read still succeeds");
         AssertNullProperty(corrupt, "snapshot", "corrupt payload downgrades to no snapshot");
-        AssertEqual("corrupt", corrupt.GetProperty("reason").GetString(), "corrupt payload reports reason");
+        AssertEqual("corrupt_payload", corrupt.GetProperty("reason").GetString(), "corrupt payload reports reason");
 
         db.Execute(
             "UPDATE session_compaction_snapshots SET wire_conversation = '[{\"role\":\"user\"}]', " +
@@ -504,7 +523,7 @@ internal static class Program
             writer.WriteNumber("sortOrder", 0);
             writer.WriteString("usage", "{\"contextTokens\":456}");
         })), "content-changing upsert succeeds");
-        AssertNoSnapshot(dbPath, usageSession, "content-changing upsert invalidates the snapshot");
+        AssertHasSnapshot(dbPath, usageSession, "content-changing upsert keeps the snapshot");
 
         var updateSession = $"{prefix}-session-update";
         AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
@@ -530,7 +549,7 @@ internal static class Program
             writer.WriteString("meta", "{\"toolResult\":true}");
             writer.WriteEndObject();
         })), "meta-changing message update succeeds");
-        AssertNoSnapshot(dbPath, updateSession, "meta-changing message update invalidates the snapshot");
+        AssertHasSnapshot(dbPath, updateSession, "meta-changing message update keeps the snapshot");
 
         // Chat-only display artifacts (compression status card / compact boundary)
         // never reach the model context — meta-only lifecycle updates must keep the
@@ -602,7 +621,7 @@ internal static class Program
             writer.WriteNumber("createdAt", 2700);
             writer.WriteNumber("sortOrder", 1);
         })), "artifact content rewrite upsert succeeds");
-        AssertNoSnapshot(dbPath, artifactSession, "artifact content rewrite still invalidates the snapshot");
+        AssertHasSnapshot(dbPath, artifactSession, "artifact content rewrite keeps the snapshot");
 
         UpsertSnapshot(dbPath, artifactSession);
         AssertMutationSuccess(DbMessageTools.Upsert(Params(dbPath, writer =>
@@ -615,16 +634,17 @@ internal static class Program
             writer.WriteNumber("createdAt", 2700);
             writer.WriteNumber("sortOrder", 0);
         })), "regular message meta-only upsert succeeds");
-        AssertNoSnapshot(dbPath, artifactSession, "regular message meta-only upsert still invalidates the snapshot");
+        AssertHasSnapshot(dbPath, artifactSession, "regular message meta-only upsert keeps the snapshot");
 
-        // Deleting a covered message removes the snapshot.
+        // Deleting a covered message keeps the immutable snapshot and leaves an
+        // invalid cursor for explicit repair; it never silently falls back.
         UpsertSnapshot(dbPath, sessionA);
         AssertMutationSuccess(DbMessageTools.Delete(Params(dbPath, writer =>
         {
             writer.WriteString("sessionId", sessionA);
             writer.WriteString("messageId", $"{prefix}-m2");
         })), "covered message can be deleted");
-        AssertNoSnapshot(dbPath, sessionA, "deleting a covered message invalidates the snapshot");
+        AssertHasSnapshot(dbPath, sessionA, "deleting a covered non-anchor message keeps snapshot restore");
 
         // Deleting a message after the cursor keeps the snapshot.
         UpsertSnapshot(dbPath, sessionA);
@@ -641,7 +661,7 @@ internal static class Program
         {
             writer.WriteString("sessionId", sessionA);
         })), "delete-last removes the anchor message");
-        AssertNoSnapshot(dbPath, sessionA, "delete-last of the covered anchor invalidates the snapshot");
+        AssertBlockedSnapshot(dbPath, sessionA, "delete-last of the covered anchor blocks snapshot restore");
         UpsertSnapshot(dbPath, sessionA);
         AddMessage(dbPath, sessionA, $"{prefix}-m8", 1007, 8);
         AssertMutationSuccess(DbMessageTools.DeleteLast(Params(dbPath, writer =>
@@ -657,7 +677,7 @@ internal static class Program
             writer.WriteString("sessionId", sessionA);
             writer.WriteNumber("fromSortOrder", 4);
         })), "truncate removes covered tail including the anchor");
-        AssertNoSnapshot(dbPath, sessionA, "truncate overlapping the coverage invalidates the snapshot");
+        AssertBlockedSnapshot(dbPath, sessionA, "truncate overlapping the coverage blocks snapshot restore");
 
         UpsertSnapshot(dbPath, sessionA);
         AddMessage(dbPath, sessionA, $"{prefix}-m9", 1008, 9);
@@ -1099,6 +1119,14 @@ internal static class Program
         var result = ResultObject(DbCompactionSnapshotTools.Get(Params(dbPath, writer => writer.WriteString("sessionId", sessionId))));
         Assert(result.GetProperty("success").GetBoolean(), name);
         Assert(!result.TryGetProperty("snapshot", out var snapshot) || snapshot.ValueKind == JsonValueKind.Null, name);
+    }
+
+    private static void AssertBlockedSnapshot(string dbPath, string sessionId, string name)
+    {
+        var result = ResultObject(DbCompactionSnapshotTools.Get(Params(dbPath, writer => writer.WriteString("sessionId", sessionId))));
+        Assert(result.GetProperty("success").GetBoolean(), name);
+        Assert(!result.TryGetProperty("snapshot", out var snapshot) || snapshot.ValueKind == JsonValueKind.Null, name);
+        AssertEqual("invalid_cursor", result.GetProperty("reason").GetString(), name);
     }
 
     private static JsonElement UpsertParams(

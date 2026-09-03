@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { Eraser, Pencil } from 'lucide-react'
 import { ScaleIn } from '@renderer/components/animate-ui'
-import type { ContentBlock, UnifiedMessage } from '@renderer/lib/api/types'
+import type { ContentBlock } from '@renderer/lib/api/types'
 import type { ToolCallState } from '@renderer/lib/agent/types'
 import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
@@ -24,10 +24,7 @@ import { useImageEditStore } from '@renderer/stores/image-edit-store'
 import {
   getLiveOutputCursorClass
 } from '@renderer/lib/live-output-animation'
-import type {
-  AssistantRenderItemWithInlineSummary,
-  ThinkSegment
-} from './types'
+import type { AssistantRenderItem, ThinkSegment } from './types'
 import { MARKDOWN_WRAPPER_CLASS as MD_CLASS } from './types'
 import { parseThinkTags, stripThinkTags } from './think-parser'
 import { StreamingMarkdownContent } from './markdown-renderer'
@@ -36,15 +33,13 @@ import { ToolBlockRenderer } from './tool-block-renderer'
 import type { ToolBlockRendererProps } from './tool-block-renderer'
 import { ExecutionProcessBlock } from './execution-process-block'
 import { buildProcessSummary, splitProcessAndFinal } from './process-summary'
-import { CompressionStatusMessage } from '../CompressionStatusMessage'
-import { ContextCompressionMessage } from '../ContextCompressionMessage'
 
 export interface ContentRendererProps {
   content: string | ContentBlock[]
   isStreaming: boolean | undefined
   normalizedContent: ContentBlock[] | null
   stringSegments: ThinkSegment[] | null
-  renderItemsWithInlineSummaries: AssistantRenderItemWithInlineSummary[]
+  renderItems: AssistantRenderItem[]
   renderMode?: 'default' | 'transcript' | 'static'
   thinkingModelName: string
   liveComponentClassName: string
@@ -81,7 +76,7 @@ export function ContentRenderer({
   isStreaming,
   normalizedContent,
   stringSegments,
-  renderItemsWithInlineSummaries,
+  renderItems,
   renderMode,
   thinkingModelName,
   liveComponentClassName,
@@ -118,18 +113,6 @@ export function ContentRenderer({
     generatingImagePreview?.source.type === 'base64' && generatingImagePreview.source.data
       ? `data:${generatingImagePreview.source.mediaType || 'image/png'};base64,${generatingImagePreview.source.data}`
       : (generatingImagePreview?.source.url ?? '')
-  const inlineSummaryMessages = renderItemsWithInlineSummaries
-    .filter((item) => item.kind === 'compact-summary')
-    .map((item) => item.message)
-  const renderInlineSummary = (message: UnifiedMessage): React.JSX.Element =>
-    message.meta?.compressionStatus ? (
-      <CompressionStatusMessage key={message.id} message={message} sessionId={sessionId} />
-    ) : (
-      <ContextCompressionMessage key={message.id} message={message} />
-    )
-  const renderInlineSummaries = (): React.JSX.Element[] =>
-    inlineSummaryMessages.map(renderInlineSummary)
-
   if (shouldShowImageGeneratingLoader && hasEmptyContent) {
     return (
       <div className={liveComponentClassName || undefined}>
@@ -188,7 +171,6 @@ export function ContentRenderer({
               <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />
             )}
           </div>
-          {renderInlineSummaries()}
         </div>
       )
     }
@@ -230,7 +212,6 @@ export function ContentRenderer({
         {showOuterCursor && (
           <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />
         )}
-        {renderInlineSummaries()}
       </div>
     )
   }
@@ -311,25 +292,13 @@ export function ContentRenderer({
   // Split items into process (thinking/tool_use) and final output (text/image).
   // hasProcessContent is true only when there are tool calls — thinking-only won't collapse.
   const { processItems, finalItems, hasProcessContent } =
-    splitProcessAndFinal(renderItemsWithInlineSummaries, normalizedContent)
+    splitProcessAndFinal(renderItems, normalizedContent)
 
   // Count thinking blocks for summary
   const thinkingBlockCount = normalizedContent?.filter((b) => b.type === 'thinking').length ?? 0
   const processSummary = buildProcessSummary(toolExecutionOutline, thinkingBlockCount, t)
 
-  const renderItem = (item: AssistantRenderItemWithInlineSummary): React.JSX.Element | null => {
-    if (item.kind === 'compact-summary') {
-      return item.message.meta?.compressionStatus ? (
-        <CompressionStatusMessage
-          key={item.message.id}
-          message={item.message}
-          sessionId={sessionId}
-        />
-      ) : (
-        <ContextCompressionMessage key={item.message.id} message={item.message} />
-      )
-    }
-
+  const renderItem = (item: AssistantRenderItem): React.JSX.Element | null => {
     if (item.kind === 'block') {
       const block = normalizedContent![item.index]
       switch (block.type) {

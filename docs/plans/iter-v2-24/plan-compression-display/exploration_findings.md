@@ -1,4 +1,4 @@
-﻿# 压缩显示修复探索结论
+# 压缩显示修复探索结论
 
 ## 探索范围
 
@@ -68,7 +68,7 @@
 - 两侧 `h-px flex-1` 渐变线，使用 `from-transparent/to-amber-500/40` 和反向渐变。
 - 中央琥珀色圆角胶囊按钮：`border-amber-500/40 bg-amber-500/10 ... hover:bg-amber-500/20 dark:text-amber-300`。
 - 分隔线文本支持摘要消息数量；按钮含 `aria-expanded`、`title` 和旋转的 `ChevronDown`。
-- 摘要折叠态展示首个有意义行的预览，点击预览也可展开。
+- 摘要折叠态展示首个有意义行的预览（注：当前实现已移除该预览，因内容质量不佳）；
 - 展开态在原分隔线位置渲染 Markdown，保留项目现有 Markdown remark/rehype 插件和 prose 样式。
 - 摘要器失败时显示 `AlertTriangle` 和 fallback warning。
 - 参考实现还提供 `MessageSquarePlus` “在新会话继续”入口；是否在本专项保留需以现有会话 store 能力和最小范围为准，不得引入额外持久化卡片。
@@ -87,7 +87,7 @@
 - live compression 只保留一个本地化临时提示，并在完成/失败/跳过/取消后清理。
 - 不再把 `compressing` 或成功 `compressed` 状态作为聊天 transcript 常驻消息。
 - 显示层过滤旧 `compressionStatus` 消息，避免历史重复卡片。
-- `ContextCompressionMessage` 完整对齐 OpenCowork 的分隔线结构、图标、渐变线、胶囊按钮、预览、Markdown 展开和失败提示样式。
+- `ContextCompressionMessage` 完整对齐 OpenCowork 的分隔线结构、图标、渐变线、胶囊按钮、Markdown 展开和失败提示样式。（注：折叠预览已移除）
 - 自动/手动压缩产物生成并保留稳定 `displayAnchor`，reload 后位置一致。
 - 移除/绕过独立 `CompactBoundaryMessage` + 摘要卡组合，统一从摘要锚点渲染完成态。
 - 中英文 `agent` locale 键补齐并保持 fallback。

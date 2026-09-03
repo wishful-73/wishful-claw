@@ -1,4 +1,4 @@
-﻿# Plan: 压缩显示闭环与 OpenCowork 分隔线对齐
+# Plan: 压缩显示闭环与 OpenCowork 分隔线对齐
 
 > 迭代：v2-iter-24
 >
@@ -15,7 +15,7 @@
 - 后端 `AgentLoop.cs` 已通过 `await ContextCompression.CompactAsync(...)` 等待压缩完成，本计划不修改后端等待控制。
 - 不修改压缩算法、快照 schema、SQLite 表结构和摘要协议。
 - 自动压缩与手动压缩必须共用锚点生成和产物接纳逻辑。
-- OpenCowork 组件不仅参考行为，还完整迁移适配其图标、渐变线、琥珀色胶囊按钮、预览、Markdown 展开和失败提示样式。
+- OpenCowork 组件不仅参考行为，还完整迁移适配其图标、渐变线、琥珀色胶囊按钮、Markdown 展开和失败提示样式。（注：折叠预览因内容质量不佳已移除，不在本专项范围内）
 - 失败、跳过、阻塞、取消只做临时反馈或现有 toast/返回状态，不常驻聊天记录。
 - 旧数据库里的 `compressionStatus` 消息只在显示层过滤，不删除历史数据。
 
@@ -47,7 +47,7 @@
   - 核对是否复用现有 `continueSessionFromCompactSummary` 能力；若当前 API 已完整闭环，则保留 OpenCowork 的 `MessageSquarePlus` + Tooltip；若能力不完整，则不引入半成品入口，并在验证报告中说明差异。
   - 停止同时渲染独立 `CompactBoundaryMessage` 和独立摘要卡；完成态只通过锚定后的 `ContextCompressionMessage` 呈现。
   - 补齐 `agent` 中英文 locale 键，文案统一为“上下文已压缩 / 已总结较早消息 / 展开摘要 / 收起摘要”等语义。
-  - 验证检查点：默认只看到一条居中分隔线；点击胶囊或预览在原位置展开 Markdown；再次点击收起；明暗主题下图标、渐变线、边框和文字样式与 OpenCowork 参考一致。
+  - 验证检查点：默认只看到一条居中分隔线；点击胶囊在原位置展开 Markdown；再次点击收起；明暗主题下图标、渐变线、边框和文字样式与 OpenCowork 参考一致。
 
 - [ ] 步骤 5：覆盖虚拟列表、静态 transcript 与历史兼容
   - 检查 `MessageItem`、`AssistantMessage`、`VirtualListContent`、`StaticMessageTranscript` 的分支，确保虚拟列表和静态历史使用同一完成态组件语义。
@@ -95,7 +95,7 @@
 ## 参考源码
 
 - OpenCowork：`D:\claw\OpenCowork\src\renderer\src\components\chat\ContextCompressionMessage.tsx`
-  - 参考剪刀分隔线、琥珀渐变线、胶囊按钮、预览、Markdown 展开、fallback warning、Tooltip/新会话入口样式与交互。
+  - 参考剪刀分隔线、琥珀渐变线、胶囊按钮、Markdown 展开、fallback warning、Tooltip/新会话入口样式与交互。（注：折叠预览已移除）
 - OpenCowork：`D:\claw\OpenCowork\src\renderer\src\hooks\use-chat-actions.ts`
   - 参考 `withLiveCompactSummaryDisplayAnchor(...)`、自动压缩完成后的 `adoptCompactionSummary(...)` 和稳定锚点生成。
 - Wishful Claw 当前实现：`src/renderer/src/lib/agent/context-compression.ts`
@@ -114,7 +114,7 @@
 
 1. 压缩期间 Agent Loop 的 UI 表现为等待压缩，只显示一个本地化临时提示，不显示普通 thinking/loading。
 2. 压缩完成后临时提示立即消失，不显示 `CompressionStatusMessage`，不常驻输入框上方。
-3. 完成态仅有一条 OpenCowork 风格可点击分隔线，图标、渐变线、胶囊按钮、预览和 Markdown 展开样式完整对齐。
+3. 完成态仅有一条 OpenCowork 风格可点击分隔线，图标、渐变线、胶囊按钮和 Markdown 展开样式完整对齐（不含折叠预览）。
 4. 自动和手动压缩都有稳定 `displayAnchor`；会话切换和 reload 后位置一致。
 5. 旧数据库中的 `compressionStatus` 消息在显示层被过滤，不需要清库。
 6. 不显示独立 `CompactBoundaryMessage` + 摘要卡组合，不产生重复摘要 row。

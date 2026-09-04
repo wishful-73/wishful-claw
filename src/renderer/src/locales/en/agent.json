@@ -23,6 +23,7 @@
     "summarizingHint": "Writing a summary of earlier context…",
     "divider": "Context compressed",
     "dividerWithCount": "Context compressed · {{count}} earlier messages summarized",
-    "summaryFallbackWarning": "Summary generation failed; fallback summary used and context remains compressed"
+    "summaryFallbackWarning": "Summary generation failed; fallback summary used and context remains compressed",
+    "mechanicalFoldDigest": "{{messageCount}} earlier messages were folded here to free context, but the automatic summary was unavailable."
   }
 }

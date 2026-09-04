@@ -23,6 +23,7 @@
     "summarizingHint": "正在生成较早上下文的摘要…",
     "divider": "上下文已压缩",
     "dividerWithCount": "上下文已压缩 · 已总结较早的 {{count}} 条消息",
-    "summaryFallbackWarning": "摘要生成失败，已使用回退摘要；上下文仍已压缩"
+    "summaryFallbackWarning": "摘要生成失败，已使用回退摘要；上下文仍已压缩",
+    "mechanicalFoldDigest": "较早的 {{messageCount}} 条消息已在此处折叠以释放上下文，但自动摘要不可用。"
   }
 }

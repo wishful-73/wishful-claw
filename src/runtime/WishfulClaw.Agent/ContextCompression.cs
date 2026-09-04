@@ -36,7 +36,7 @@ public static partial class ContextCompression
         MaxConnectionsPerServer = 4
     })
     {
-        Timeout = TimeSpan.FromSeconds(120)
+        Timeout = TimeSpan.FromSeconds(400)
     };
 
     // ── Constants (aligned with Reasonix compact.go) ──
@@ -53,24 +53,34 @@ public static partial class ContextCompression
     private const int SummaryInputBaseCharBudget = 400_000;
     private const int SummaryMaxAttempts = 3;
     private const int SummaryRetryDelayMs = 1_500;
+    private const int SummaryMaxOutputTokens = 8_192;
 
-    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromSeconds(90);
+    // Long summaries routinely exceed two minutes, so the wait window matches the
+    // OpenCowork bound; the HttpClient timeout stays slightly above it so the CTS —
+    // not the transport — is what reports a stuck summarizer.
+    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromSeconds(360);
 
-    // ── Summary system prompt (7-section structured briefing, from Reasonix) ──
+    // ── Summary system prompt ──
+    //
+    // Deliberately a coverage checklist, not a fixed section template: a rigid skeleton
+    // forces the model to pad empty sections or drop real content to fit it, and an
+    // English skeleton additionally anchors the whole summary to English even in a
+    // Chinese conversation. The model chooses whatever structure the conversation
+    // actually warrants and writes it in the user's own language.
 
     private const string SummarySystemPrompt =
         "You are compacting the earlier part of a coding agent's conversation to save context.\n" +
         "The agent keeps your summary alongside the user's own turns (kept verbatim) and the recent tail; your job is to fold the assistant/tool work into a briefing it can resume from.\n" +
-        "Write under these exact headings, omitting a heading only if it has no content:\n\n" +
-        "## Standing facts & constraints\n" +
-        "Everything the user stated that still governs the work — names, paths, IDs, versions, tokens, preferences, and hard \"never do X\" rules — in their own words. Be exhaustive; this is the durable contract, so prefer over- to under-including.\n\n" +
-        "## Goal\nThe user's request and intent.\n\n" +
-        "## Decisions & rationale\nKey choices made so far and why — so they are not re-litigated or reversed.\n\n" +
-        "## Files & code\nFiles read or modified, with the specific facts that matter: signatures, line locations, data shapes, and exact edits applied. Be concrete; this is what lets the agent act without re-reading everything.\n\n" +
-        "## Commands & outcomes\nCommands run (builds, tests, git) and their relevant results — what passed, what failed, and the error text that matters.\n\n" +
-        "## Errors & fixes\nProblems hit and how they were resolved (or not), so the same dead ends are not repeated.\n\n" +
-        "## Pending & next step\nWhat is still in progress or unstarted, and the single most concrete next action to take.\n\n" +
-        "Rules: be terse — bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing.";
+        "Return only a concise Markdown summary, with no preface. Organise it however best fits what actually happened — do not force a fixed template, and leave out anything the conversation does not contain.\n\n" +
+        "Whatever structure you choose, make sure none of the following is lost if it occurred:\n" +
+        "- Standing facts and constraints: everything the user stated that still governs the work — names, paths, IDs, versions, preferences, and hard \"never do X\" rules — in their own words. Be exhaustive here; this is the durable contract, so prefer over- to under-including.\n" +
+        "- Goal: the user's request and intent, including any shift in it along the way.\n" +
+        "- Decisions and rationale: key choices made and why, so they are not re-litigated or reversed.\n" +
+        "- Files and code: files read or modified, with the facts that matter — signatures, line locations, data shapes, exact edits applied. Be concrete; this is what lets the agent act without re-reading everything.\n" +
+        "- Commands and outcomes: commands run (builds, tests, git) and what they produced — what passed, what failed, the error text that matters.\n" +
+        "- Errors and fixes: problems hit and how they were resolved (or not), so the same dead ends are not repeated.\n" +
+        "- Pending work and next step: what is still in progress or unstarted, and the single most concrete next action to take.\n\n" +
+        "Rules: write in the same language the user writes in — if the user writes Chinese, the summary and its headings are Chinese; keep code, file paths, identifiers, commands, error text and numbers in their original form, never translated. Be terse: bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing.";
 
     private const string SummaryTagOpen = "<compaction-summary>";
     private const string SummaryTagClose = "</compaction-summary>";
@@ -179,7 +189,12 @@ public static partial class ContextCompression
 
         // Summary message — same id + meta flow into the chat artifacts and the
         // persistence snapshot so restore never re-inserts a duplicate.
-        var summaryContent = $"{SummaryTagOpen}\nSummary of earlier conversation (older messages were compacted to save context):\n{summary}\n{SummaryTagClose}";
+        //
+        // The wrapper carries no prose of its own: the tag is the semantic marker for
+        // the model, and the human-facing "this is a compaction summary" line is
+        // rendered from the renderer's i18n so it follows the UI language instead of
+        // being frozen as English text inside the durable conversation.
+        var summaryContent = $"{SummaryTagOpen}\n{summary}\n{SummaryTagClose}";
         var summaryMessage = AgentRuntimeChatMessage.User(summaryContent);
         var summaryMessageId = $"compact-summary-{Guid.NewGuid():N}";
         newConversation.Add(summaryMessage);
@@ -480,6 +495,19 @@ public static partial class ContextCompression
     }
 
     /// <summary>
+    /// Output ceiling for one summary call. A detailed briefing routinely needs far
+    /// more than a provider's chat-tuned default, but must never exceed what the
+    /// provider itself allows, so the two are clamped together.
+    /// </summary>
+    private static int SummaryOutputTokens(JsonElement provider)
+    {
+        var configuredMaxTokens = JsonHelpers.GetIntNullable(provider, "maxTokens") ?? SummaryMaxOutputTokens;
+        return Math.Min(
+            SummaryMaxOutputTokens,
+            configuredMaxTokens > 0 ? configuredMaxTokens : SummaryMaxOutputTokens);
+    }
+
+    /// <summary>
     /// Calls Anthropic Messages API for summarization (no tools, no streaming).
     /// </summary>
     private static async Task<string> CallAnthropicSummary(
@@ -497,7 +525,7 @@ public static partial class ContextCompression
         {
             w.WriteStartObject();
             w.WriteString("model", model);
-            w.WriteNumber("max_tokens", 1536);
+            w.WriteNumber("max_tokens", SummaryOutputTokens(provider));
             if (onSummaryDelta is not null)
                 w.WriteBoolean("stream", true);
             w.WriteString("system", SummarySystemPrompt);
@@ -633,7 +661,7 @@ public static partial class ContextCompression
         {
             w.WriteStartObject();
             w.WriteString("model", model);
-            w.WriteNumber("max_tokens", 1536);
+            w.WriteNumber("max_tokens", SummaryOutputTokens(provider));
             if (onSummaryDelta is not null)
                 w.WriteBoolean("stream", true);
             w.WritePropertyName("messages");

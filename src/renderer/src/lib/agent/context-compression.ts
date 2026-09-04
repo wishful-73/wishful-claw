@@ -1,4 +1,5 @@
-﻿import type {
+﻿import i18n from 'i18next'
+import type {
   CompactBoundaryMeta,
   ProviderConfig,
   UnifiedMessage
@@ -133,6 +134,8 @@ function stripCompactionSummaryTags(text: string): string {
   return text
     .replace(/^\s*<compaction-summary>\s*/i, '')
     .replace(/\s*<\/compaction-summary>\s*$/i, '')
+    // Legacy sessions still carry this English intro inside the durable conversation.
+    // Current Worker output omits it, so the wrapper text can come from i18n instead.
     .replace(/^Summary of earlier conversation \(older messages were compacted to save context\):\s*/i, '')
     .trim()
 }
@@ -177,6 +180,19 @@ function isCompactSummaryIntroBlock(block: string): boolean {
 }
 
 export function getCompactSummaryDisplayText(message: UnifiedMessage): string {
+  const meta = message.meta?.compactSummary
+  if (meta?.summarizerFailed) {
+    // A mechanical-fold digest is model-facing English prose baked into the durable
+    // conversation. The UI shows the localized equivalent instead; the stored text
+    // stays untouched, so the interface language never degrades what the model reads.
+    return i18n.t('contextCompression.mechanicalFoldDigest', {
+      ns: 'agent',
+      messageCount: meta.messagesSummarized ?? 0,
+      defaultValue:
+        '{{messageCount}} earlier messages were folded here to free context, but the automatic summary was unavailable.'
+    })
+  }
+
   const text = stripCompactionSummaryTags(extractUnifiedMessageText(message))
   if (!text || !isCompactSummaryLikeMessage(message)) {
     return text

@@ -38,7 +38,8 @@
 
 ### 步骤 2：Todo 面板改为悬浮限高可收起（B2 + M5）
 
-- [ ] 步骤 2a：新建 `src/renderer/src/components/chat/SessionTodoPanel.tsx`，移植 OpenCowork `cowork/StepsPanel.tsx` 的 `InlineStepsPanelCard`（`:328`）
+- [x] 步骤 2a：新建 `src/renderer/src/components/chat/SessionTodoPanel.tsx`，移植 OpenCowork `cowork/StepsPanel.tsx` 的 `InlineStepsPanelCard`（`:328`）（`[自动]` 三套 tsc 通过；`[人工]` 待老大实测）
+  - 实现偏差：**零新增 i18n key** —— 折叠态摘要复用既有 `chat.todo.tasksDone`（`{{completed}} / {{total}}`，zh/en 两份都已存在），不需要计划里写的 `chat.todo.*` 新键；外层卡片删掉 `layout` 属性（两个分支都等于关闭 layout 动画，且卡片绝对定位无兄弟重排）
   - 移植：单行 header 默认收起（`:373-402` 点击展开/收起 + chevron 旋转）、展开体 `max-h-64 overflow-y-auto`（`:444`）、AnimatePresence 高度动画（`:433-443`）、卡片样式（`:371`）
   - 悬浮：外层套本仓范式 `absolute inset-x-0 bottom-full z-30`（`InputArea/composer-flyovers.tsx:56`），不再占聊天窗 flex 高度
   - **悬浮锚点必须自带一层 `relative` 包裹**：挂载点 `InputArea/index.tsx:335-339` 在 `:345` 的 `composer-shell relative …` 容器**之外**，`bottom-full` 会以更远祖先为锚导致错位。自带 `relative` 或由 2b 把挂载点移进 composer 容器内，二者择一并注明
@@ -46,15 +47,19 @@
   - 五态 tone 沿用参考映射（`StepsPanel.tsx:176 blocked` / `:178 in_review` 等）
   - **不移植变更审查按钮**：其两个消费者 `ChangeReviewSheet.tsx` / `RunChangeReviewCard.tsx` 全仓零 importer，`kind === 'review'` 无任何创建方——接一个没有出口的按钮属死链复活，已记入遗留清理批
   - **不聚合 team 任务**：现存活路径 `TodoStatusList`（`TodoCard.tsx:345`）从不读 team store，新面板与之保持同口径
-  - i18n：新增 key 落 `chat` ns（`chat.todo.*`），zh + en 双份齐全
+  - i18n：原计划新增 `chat.todo.*` 键，实测既有 `chat.todo.tasksDone`（zh/en 双份）已够用 → **零新增**（见上方偏差）
   - 验证：`[自动]` 三套 tsc 零错误
   - 验证：`[人工]` Todo ≥15 条时面板内部滚动、聊天区高度不被挤压、composer 不上移；悬浮层底部紧贴 composer 顶部无错位；收起态单行 header 可见进度摘要且可展开；切会话只显示新会话 Todo；面板内无点击后无出口的入口
-- [ ] 步骤 2b：收口 `InputArea/index.tsx` 与孤儿文件
+- [x] 步骤 2b：收口 `InputArea/index.tsx` 与孤儿文件（`[自动]` 三套 tsc 通过、grep 无残留、487 行 < 500；`[人工]` 待老大实测）
   - `InputArea/index.tsx`（当前 510 行，越 AGENTS.md 500 行红线）：挂载点 `:335-339` 换为新面板，新增逻辑外移使文件回到 500 行内（顺带关闭遗留项 I24-17）
   - 删除 `components/chat/TodoCard.tsx`（466 行，唯一 importer 是 `session-todo-status-list.tsx:2`）；`session-todo-status-list.tsx` 若无剩余职责一并删除
   - **删除范围不含消息流工具结果卡**：`ToolCallCard/index.tsx:155-166` 的 `TaskList` 摘要走独立逻辑，不 import TodoCard，作为回归点验证而非顺手改
   - 验证：`[自动]` 三套 tsc 零错误；`grep -rn "TodoCard\|session-todo-status-list" src/renderer/src` 无残留引用；`InputArea/index.tsx` < 500 行
   - 验证：`[人工]` 输入框上方悬浮层出现/收起/滚动/点击正常，聊天窗高度不随 Todo 条数变化；消息流 `TaskList` 卡的「N/M 已完成」摘要不受影响
+  - 实现偏差（为压回 500 行做的两处顺带清理，均不改变可观测行为）：
+    - `ComposerStatusIndicator` 与 `ComposerRuntimeStatusFooter` 共享的 6 个运行态 props 抽成一份 `composerRunStatus` payload（原先两处逐字重复，改一处漏一处）
+    - 删除只写不读的 `pendingPlanMode` state 及其在 `use-mode-controls.ts` / `use-composer-mode-state.ts` / `use-input-area-effects.ts` 三处的透传（`index.tsx` 原本就以 `const [, setPendingPlanMode]` 丢弃了值）
+  - **顺带发现的遗留缺陷（本批不改）**：`planMode` 只从 `planModesBySession[draftSessionId]` 读，会话创建前（home composer 已选工作目录）点 Plan Mode 开关落到 `use-mode-controls.ts` 的无会话分支，**开关是死控件**；同场景的 Goal Mode 有 `pendingGoalMode` 兜底所以能用。删除死 state 前后行为一致（都无反应），已记入遗留清理批
 
 ### 步骤 3：右侧面板 Tab 会话隔离（B3）
 
@@ -186,8 +191,9 @@
 
 **修改（前端）**
 - `src/renderer/src/components/chat/FileAwareEditor.tsx` —— IME 时序 + onBlur（步骤 1）
-- `src/renderer/src/components/chat/InputArea/index.tsx`、`src/renderer/src/components/chat/InputArea/session-todo-status-list.tsx` —— Todo 面板挂载、510→<500 行收口（步骤 2）
-- `src/renderer/src/components/chat/TodoCard.tsx` —— 删除（步骤 2b）
+- `src/renderer/src/components/chat/InputArea/index.tsx` —— Todo 面板挂载、510→487 行收口（步骤 2）
+- `src/renderer/src/components/chat/InputArea/{use-mode-controls,use-composer-mode-state,use-input-area-effects}.ts` —— 清理只写不读的 `pendingPlanMode`（步骤 2b 顺带）
+- `src/renderer/src/components/chat/TodoCard.tsx`、`src/renderer/src/components/chat/InputArea/session-todo-status-list.tsx` —— 删除（步骤 2b）
 - `src/renderer/src/stores/ui-store.ts`、`ui-store-tab-slice.ts`、`ui-store-interface.ts`、`preview-panel-slice.ts`、`chat-store/session-slice.ts`、`src/renderer/src/components/layout/SubAgentsPanel.tsx` —— tab 会话作用域（步骤 3）
 - `src/renderer/src/components/layout/RightPanel.tsx` —— 步骤 3（常驻层判据 `hasBrowserTab:95-96` / `hasFilesTab:108` 保持读未过滤数组）+ 步骤 4（`onAddGoals` 装配收窄、`+` 菜单去 Goals）
 - `src/renderer/src/components/layout/RightPanelHeader.tsx` —— Goals 移除、更多下拉、Tab 右键（步骤 4）

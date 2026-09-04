@@ -12,7 +12,6 @@ interface UseModeControlsOptions {
   pendingImageReads: number
   hasActiveGoal: boolean
   focusInputAtEnd: () => void
-  setPendingPlanMode: React.Dispatch<React.SetStateAction<boolean>>
   setPendingGoalMode: React.Dispatch<React.SetStateAction<boolean>>
   t: TFunction
 }
@@ -29,18 +28,17 @@ export function useModeControls(opts: UseModeControlsOptions) {
         return
       }
 
-      if (opts.draftSessionId) {
-        if (enabled) {
-          useUIStore.getState().enterPlanMode(opts.draftSessionId)
-        } else {
-          useUIStore.getState().exitPlanMode(opts.draftSessionId)
-        }
-        return
-      }
+      // 会话尚未创建时无处落 planMode（planModesBySession 按 sessionId 存），
+      // 与改造前一致：此路径不做任何事。
+      if (!opts.draftSessionId) return
 
-      opts.setPendingPlanMode(enabled)
+      if (enabled) {
+        useUIStore.getState().enterPlanMode(opts.draftSessionId)
+      } else {
+        useUIStore.getState().exitPlanMode(opts.draftSessionId)
+      }
     },
-    [opts.draftSessionId, opts.projectScoped, opts.t, opts.setPendingPlanMode]
+    [opts.draftSessionId, opts.projectScoped, opts.t]
   )
 
   const handleGoalModeChange = React.useCallback(

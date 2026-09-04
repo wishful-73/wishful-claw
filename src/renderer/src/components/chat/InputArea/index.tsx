@@ -15,7 +15,7 @@ import { type ImageAttachment } from '@renderer/lib/image-attachments'
 import { type FileAwareEditorHandle } from '../file-aware-editor-utils'
 import { GoalSessionBar } from '@renderer/components/goal/GoalSessionControls'
 import { useGoalStore } from '@renderer/stores/goal-store'
-import { SessionTodoStatusList } from './session-todo-status-list'
+import { SessionTodoPanel } from '../SessionTodoPanel'
 import { cn } from '@renderer/lib/utils'
 import type { AppPluginId } from '@renderer/lib/app-plugin/types'
 import {
@@ -78,7 +78,6 @@ export function InputArea({
 
   const [selectedSkill, setSelectedSkill] = React.useState<string | null>(null)
   const [autoAcceptCountdown, setAutoAcceptCountdown] = React.useState<number | null>(null)
-  const [, setPendingPlanMode] = React.useState(false)
   const [pendingGoalMode, setPendingGoalMode] = React.useState(false)
   const removePersistedDraftRef = React.useRef<(() => void) | null>(null)
   const flyoutPointerRef = React.useRef<{ x: number; y: number } | null>(null)
@@ -221,7 +220,7 @@ export function InputArea({
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
     userEditedDraftKeyRef,
     attachedImages, selectedSkill, savePersistedDraft,
-    setPendingPlanMode, setPendingGoalMode, setAutoAcceptCountdown,
+    setPendingGoalMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
     editorRef, rootRef, draftSaveTimerRef, draftReadyKeyRef, isStreaming, disabled, replaceSelectionWithText,
   })
@@ -253,7 +252,7 @@ export function InputArea({
   } = useComposerModeState({
     projectScoped, draftSessionId, resetKey: activeDraftKey, targetSession,
     disabled, isStreaming, isOptimizingLocked, pendingImageReads,
-    hasActiveGoal, focusInputAtEnd, setPendingPlanMode, setPendingGoalMode, t
+    hasActiveGoal, focusInputAtEnd, setPendingGoalMode, t
   })
 
   const handleSend = React.useCallback((): void => {
@@ -297,6 +296,7 @@ export function InputArea({
 
   const composerIconControlClass = 'composer-control rounded-xl'
   const debouncedTokens = useDebouncedTokens(finalSerializedText)
+  const composerRunStatus = { isStreaming, draftInputTokens: debouncedTokens, isOptimizing, pendingImageReads, contextCompressionStatus, contextCompressionStatusLabel }
 
   return (
     <div ref={rootRef} data-tour="composer" className={cn('px-4 py-3', attachedFooter ? 'pb-0' : 'pb-4')}>
@@ -332,11 +332,7 @@ export function InputArea({
         <GoalSessionBar sessionId={draftSessionId} className={cn('mb-2', fullWidth && 'max-w-none')} />
       )}
 
-      <SessionTodoStatusList
-        projectScoped={projectScoped}
-        draftSessionId={draftSessionId}
-        className={composerWidthClass}
-      />
+      <SessionTodoPanel projectScoped={projectScoped} draftSessionId={draftSessionId} className={composerWidthClass} />
 
       <div className={composerWidthClass}>
         <div
@@ -355,17 +351,7 @@ export function InputArea({
               <div className="composer-drag-grip h-1 w-11 rounded-full" />
             </div>
           ) : null}
-          {draftSessionId && (
-            <ComposerStatusIndicator
-              sessionId={draftSessionId}
-              isStreaming={isStreaming}
-              draftInputTokens={debouncedTokens}
-              isOptimizing={isOptimizing}
-              pendingImageReads={pendingImageReads}
-              contextCompressionStatus={contextCompressionStatus}
-              contextCompressionStatusLabel={contextCompressionStatusLabel}
-            />
-          )}
+          {draftSessionId && <ComposerStatusIndicator sessionId={draftSessionId} {...composerRunStatus} />}
           <ImagePreviewStrip
             attachedImages={attachedImages}
             animationsEnabled={animationsEnabled}
@@ -490,16 +476,7 @@ export function InputArea({
           />
         </div>
         {draftSessionId && (
-          <ComposerRuntimeStatusFooter
-            sessionId={draftSessionId}
-            isStreaming={isStreaming}
-            draftInputTokens={debouncedTokens}
-            isOptimizing={isOptimizing}
-            pendingImageReads={pendingImageReads}
-            contextCompressionStatus={contextCompressionStatus}
-            contextCompressionStatusLabel={contextCompressionStatusLabel}
-            model={composerModelCfg}
-          />
+          <ComposerRuntimeStatusFooter sessionId={draftSessionId} model={composerModelCfg} {...composerRunStatus} />
         )}
       </div>
     </div>

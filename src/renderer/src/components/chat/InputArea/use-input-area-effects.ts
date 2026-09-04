@@ -35,7 +35,6 @@ export interface InputAreaEffectsInput {
   savePersistedDraft: (draft: unknown) => Promise<void>
 
   // State setters
-  setPendingPlanMode: React.Dispatch<React.SetStateAction<boolean>>
   setPendingGoalMode: React.Dispatch<React.SetStateAction<boolean>>
   setAutoAcceptCountdown: React.Dispatch<React.SetStateAction<number | null>>
   setAttachedImages: React.Dispatch<React.SetStateAction<ImageAttachment[]>>
@@ -66,7 +65,7 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
     userEditedDraftKeyRef,
     attachedImages, selectedSkill, savePersistedDraft,
-    setPendingPlanMode, setPendingGoalMode, setAutoAcceptCountdown,
+    setPendingGoalMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
     editorRef, rootRef, draftSaveTimerRef, draftReadyKeyRef,
     isStreaming, disabled, replaceSelectionWithText,
@@ -74,9 +73,8 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
 
   // ── Mode reset ──────────────────────────────────────────────────
   React.useEffect(() => {
-    if (draftSessionId) setPendingPlanMode(false)
     setPendingGoalMode(false)
-  }, [draftSessionId, setPendingPlanMode, setPendingGoalMode])
+  }, [draftSessionId, setPendingGoalMode])
 
   React.useEffect(() => {
     if (hasActiveGoal) setPendingGoalMode(false)

@@ -21,7 +21,6 @@ interface UseComposerModeStateOptions {
   pendingImageReads: number
   hasActiveGoal: boolean
   focusInputAtEnd: () => void
-  setPendingPlanMode: React.Dispatch<React.SetStateAction<boolean>>
   setPendingGoalMode: React.Dispatch<React.SetStateAction<boolean>>
   t: TFunction
 }
@@ -57,7 +56,6 @@ export function useComposerModeState(opts: UseComposerModeStateOptions) {
     pendingImageReads: opts.pendingImageReads,
     hasActiveGoal: opts.hasActiveGoal,
     focusInputAtEnd: opts.focusInputAtEnd,
-    setPendingPlanMode: opts.setPendingPlanMode,
     setPendingGoalMode: opts.setPendingGoalMode,
     t: opts.t
   })

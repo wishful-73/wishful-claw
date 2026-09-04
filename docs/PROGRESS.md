@@ -2,14 +2,15 @@
 
 ## v2-iter-24：全局产品经理 Agent + 会话临时 Todo
 
-- 状态：进行中 — 共同前置已落地并完成最终验证；Plan A 全局任务工作台已开发完（待详细测试）；issues 批次已实现（待用户验证）；迭代审查 + 工具精简分析 + 人格精简已完成（2026-08-30 夜间批次，待用户查看）
+- 状态：进行中 — 共同前置已落地并完成最终验证；Plan A 全局任务工作台已开发完（待详细测试）；issues 批次 1 已实现（待用户验证）；迭代审查 + 工具精简分析 + 人格精简已完成（2026-08-30 夜间批次，待用户查看）；**issues 批次 2 处于阶段三（规划验证），尚未进入执行态**
 - 分支：`dev/v2-iter-24`
-- Plan：`docs/plans/iter-v2-24/plan.md`（迭代总览）、`plan-session-tasks/`（Plan B：OpenCowork 风格会话临时 Todo）、`plan-task-panel/`（Plan A：全局 Agent、全局任务与 Task Board）、`plan-issue-fixes/`（issues 批次：侧边栏加载更多缺陷 + 项目树运行图标 + README 收口）
+- Plan：`docs/plans/iter-v2-24/plan.md`（迭代总览）、`plan-session-tasks/`（Plan B：OpenCowork 风格会话临时 Todo）、`plan-task-panel/`（Plan A：全局 Agent、全局任务与 Task Board）、`plan-issue-fixes/`（issues 批次 1：侧边栏加载更多缺陷 + 项目树运行图标 + README 收口）、`plan-issues-batch-2/`（issues 批次 2：知识库 2026-09-01~09-03 待办收口）
 - 范围要点（2026-08-29 老大拍板）：全局任务不删除只归档；全局 Agent 复用既有 `sessionMode='global'` 机制；执行顺序 Plan B → Plan A。会话 Agent 使用 `tasks` 维护内部临时 Todo；全局 Agent 使用独立 `global_tasks` 维护跨项目任务，并通过 `global_task_dispatches` 向项目会话发送消息/工作请求；全局 Agent 不读取、不管理、不统计会话 Todo；Task Board 展示全局任务和分派记录；本迭代默认不自动唤醒空闲会话执行
-- 进展（截至 2026-08-30）：
+- 进展（截至 2026-09-05）：
   - **共同前置**（显式 SessionScope / CollaborationMode / PermissionMode / RuntimeRole + 新会话默认值）已落地：三套 TS、前端生产构建、Worker build（0 warning/0 error）与 Native AOT（无 IL/AOT warning）通过；Goal 113 / SessionTaskCascade 124 / MemoryRecall 18 / CompactionSnapshot 回归通过；真实 Electron E2E 因环境约束未运行（详见 `plans/iter-v2-24/plan.md` 当前实现状态）
   - **Plan A** 步骤 1-7 已提交：全局会话角色与工具集、跨会话分派协议、Task Board 全局工作台、看板变更事件、全局模式分派回复路由（待详细测试）
-  - **issues 批次**（`plan-issue-fixes/`）：会话列表「加载更多」流式中不再重置收起（两处 reset effect 移除，参考 OpenCowork SessionListPanel）；项目文件夹图标位置接管运行态转圈；README 删减 Development Progress 整节 + OpenCowork「衍生」措辞改为「参考与借鉴」。编译验证 3/3 通过，运行态验证待用户（见 `plan-issue-fixes/verification_report.md`）
+  - **issues 批次 1**（`plan-issue-fixes/`）：会话列表「加载更多」流式中不再重置收起（两处 reset effect 移除，参考 OpenCowork SessionListPanel）；项目文件夹图标位置接管运行态转圈；README 删减 Development Progress 整节 + OpenCowork「衍生」措辞改为「参考与借鉴」。编译验证 3/3 通过，运行态验证待用户（见 `plan-issue-fixes/verification_report.md`）
+  - **issues 批次 2**（`plan-issues-batch-2/`，2026-09-05）：**阶段三 规划验证中，未进入执行态，业务代码零改动**。范围 = 知识库 09-01~09-03 的 3 条缺陷（中文 IME 末字符、Todo 面板抢高度、会话切换右侧面板不重置）+ 5 条改进（首条消息顶部间距、工具分类说明清单、文件选中发送读取注入、Todo 面板抄 OpenCowork 成熟件、右侧面板 Tab 菜单）。阻断台账：第 1 轮 ❌8 → 第 2 轮 ❌3 → 第 3 轮 ❌2 → 第 4 轮 ❌3（关 ❌12，❌13 半修，新出 ❌14/❌15）→ 修订中自查出 ❌16（修 ❌14 时实测 `rightPanelActiveTabId` 标量写入面是 20 个落点、不是初稿说的四处，改为新建 `stores/right-panel-scope.ts` helper 收口并配可复现 grep 门禁）。第 4 版正文已把这 4 项与 ⚠️31–⚠️38 全部修入，**账面 0 项「未修」/ 4 项「已修待复核」**。下一步二选一：(a) 第五轮定点复核后清零再交确认（推荐）、(b) 老大明确豁免并记进台账。本批同时收口了文档记账失效本身：`compliance_report.md` 改为「顶部收敛台账 + 仅最新一轮」（557 → 142 行，旧全文见 `git show fe5dcc3`），`docs/dev-workflow.md` 阶段三新增「多轮验证与收敛台账（硬规则）」五条
   - **夜间批次**（2026-08-30，仅产出文档与人格精简，未改业务代码）：① 迭代全量审查 `docs/reviews/review-10-iter24.md`——5 路并行（C# 数据层/Agent 层/前端功能层/连线层/工具盘点），结论 2 阻断（use_capability 代理越权可读写会话 Todo；Task Board 部分更新数据损坏）+ 10 重要 + 若干建议，含修复顺序建议；② 工具精简分析 `docs/tool-slimming-analysis.md`——各 作用域×协作模式×角色 组合的注入现状、最简保留清单与收益估算（仅分析未实施）；③ 内置人格精简 `docs/persona-slimming-record.md`——5 个人格四件套行数 -43%/字符 -11%，语义与元数据结构保留，提交 48bf595
 - VERDICT: —
 - Tag: —

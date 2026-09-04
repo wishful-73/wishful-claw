@@ -442,7 +442,8 @@ export async function compressMessages(
   pinnedContext?: string,
   trigger: CompactBoundaryMeta['trigger'] = 'manual',
   preTokens = 0,
-  sessionId?: string
+  sessionId?: string,
+  contextCompressionThreshold?: number
 ): Promise<{
   messages: UnifiedMessage[]
   result: CompressionResult
@@ -463,7 +464,11 @@ export async function compressMessages(
     ...(trigger ? { trigger } : {}),
     ...(typeof preTokens === 'number' && Number.isFinite(preTokens) ? { preTokens } : {}),
     ...(pinnedContext?.trim() ? { pinnedContext: pinnedContext.trim() } : {}),
-    ...(sessionId ? { sessionId } : {})
+    ...(sessionId ? { sessionId } : {}),
+    ...(typeof contextCompressionThreshold === 'number' &&
+    Number.isFinite(contextCompressionThreshold)
+      ? { contextCompressionThreshold }
+      : {})
   })
 
   if (signal?.aborted) {

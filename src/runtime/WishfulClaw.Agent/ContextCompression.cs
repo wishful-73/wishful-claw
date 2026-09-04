@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -102,16 +102,17 @@ public static partial class ContextCompression
         JsonElement provider,
         IWorkerRequestContext context,
         CancellationToken cancellationToken,
-        Func<string, ValueTask>? onSummaryDelta = null)
+        Func<string, ValueTask>? onSummaryDelta = null,
+        bool preserveTail = true)
     {
         var originalCount = conversation.Count;
 
-        var (head, start, ok) = PlanCompaction(conversation, provider, MinCompactMessages);
+        var (head, start, ok) = PlanCompaction(conversation, provider, MinCompactMessages, preserveTail);
 
         if (!ok)
         {
             // Try with min=1 for a single huge message
-            (head, start, ok) = PlanCompaction(conversation, provider, 1);
+            (head, start, ok) = PlanCompaction(conversation, provider, 1, preserveTail);
             if (!ok)
                 return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
         }
@@ -258,13 +259,22 @@ public static partial class ContextCompression
     private static (int head, int start, bool ok) PlanCompaction(
         List<AgentRuntimeChatMessage> conversation,
         JsonElement provider,
-        int min)
+        int min,
+        bool preserveTail)
     {
         var head = PinnedPrefixLen(conversation, provider);
         var contextLength = JsonHelpers.GetIntNullable(provider, "contextLength") ?? DefaultContextCompressionLimit;
 
         int start;
-        if (contextLength > 0)
+        if (!preserveTail)
+        {
+            // Manual compression folds through the end of the conversation — the
+            // OpenCowork reference records keepMessageIds: [] for manual cuts. No
+            // verbatim tail means the summary lands at the transcript tail, exactly
+            // where the live compression card sits, so completion swaps in place.
+            start = conversation.Count;
+        }
+        else if (contextLength > 0)
         {
             var budget = DefaultTailTokens;
             var maxByWin = (int)(contextLength * 0.5); // defaultCompactTarget

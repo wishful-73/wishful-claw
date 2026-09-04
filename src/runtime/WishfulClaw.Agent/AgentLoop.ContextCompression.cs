@@ -20,6 +20,29 @@ internal static partial class AgentLoop
         List<AgentRuntimeChatMessage>? Conversation = null,
         List<JsonElement>? WireConversation = null);
 
+    // Manual compression value floor: a manual press judges "is there enough
+    // context to be worth an LLM summary", not the auto threshold. Derived from
+    // the same effective-window × trigger tokens ShouldCompress uses — a quarter
+    // of that trigger point — so the two token-count references cannot drift.
+    internal const double ManualCompressionValueFloorFraction = 0.25;
+
+    /// <summary>
+    /// Minimum estimated pre-tokens for a manual compression to run. Below this
+    /// floor (a quarter of the auto-compression trigger point on the same
+    /// effective window) there is nothing an LLM summary can usefully fold —
+    /// e.g. a cold-Worker restore that is already the previous compaction's
+    /// product — and the request is answered "skipped".
+    /// </summary>
+    internal static int ManualCompressionValueFloorTokens(JsonElement provider, JsonElement parameters)
+    {
+        var contextLength = JsonHelpers.GetIntNullable(provider, "contextLength") ?? DefaultContextCompressionLimit;
+        if (contextLength <= 0) return 0;
+        var effectiveWindow = contextLength - DefaultContextCompressionReservedOutputTokens;
+        if (effectiveWindow <= 0) return 0;
+        var thresholdRatio = JsonHelpers.GetDoubleNullable(parameters, "contextCompressionThreshold") ?? DefaultContextCompressionThreshold;
+        return (int)(effectiveWindow * thresholdRatio * ManualCompressionValueFloorFraction);
+    }
+
     private static async Task<LoopCompressionAttempt> TryCompressLoopConversationAsync(
         JsonElement provider,
         SessionConversation sessionConv,
@@ -30,7 +53,8 @@ internal static partial class AgentLoop
         int iteration,
         int preTokens,
         AgentRuntimeRunState state,
-        IWorkerRequestContext context)
+        IWorkerRequestContext context,
+        bool errorDriven)
     {
         var compressionOperationId =
             $"{state.RunId}:compression:{iteration}:{wireConversation.Count}";
@@ -78,7 +102,10 @@ internal static partial class AgentLoop
             var summarizerFailed = outcome.SummarizerFailed;
             var messagesSummarized = outcome.MessagesSummarized;
             var compactArtifacts = ContextCompression.BuildCompactArtifacts(outcome, "auto", preTokens);
-            if (newWireConversation.Count >= originalCount)
+            // errorDriven (context-window overflow) must shrink at any cost —
+            // truncation is the last resort before the run fails. Threshold-driven
+            // compression with nothing foldable is a normal no-op, not a failure.
+            if (newWireConversation.Count >= originalCount && (errorDriven || outcome.SummarizerFailed))
             {
                 (newConversation, newWireConversation) = ContextCompression.TruncateMessages(
                     conversation, wireConversation, provider);
@@ -89,9 +116,13 @@ internal static partial class AgentLoop
 
             if (newWireConversation.Count >= originalCount)
             {
-                WorkerLog.Warn(
-                    $"agent context compression made no progress runId={state.RunId} " +
-                    $"count={originalCount} (LLM summary and truncation both skipped)");
+                WorkerLog.Info(
+                    $"agent context compression skipped runId={state.RunId} " +
+                    $"count={originalCount} (nothing foldable)");
+                // Mark the watermark through the current length so the loop does
+                // not re-attempt compression every turn while tokens stay above
+                // the threshold; new messages grow the count and reopen the gate.
+                sessionConv.MarkCompactionWatermark(wireConversation.Count);
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
                     new AgentRuntimeStreamEvent(

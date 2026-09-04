@@ -246,6 +246,15 @@ export function buildRenderableChatItems(
   const insertedAt = new Map<number, CompactArtifactPair[]>()
   const anchoredPairsByAssistantId = new Map<string, CompactArtifactPair[]>()
 
+  // While compressing, the live draft card takes the same anchor position the
+  // completed divider will occupy, so completion swaps it in place instead of
+  // the card sitting at the transcript tail and the divider appearing mid-list.
+  const liveAnchor = liveState?.displayAnchor
+  const liveAnchorResolvable = Boolean(
+    liveAnchor?.assistantMessageId &&
+      displayMessages.some((message) => message.id === liveAnchor.assistantMessageId)
+  )
+
   for (const pair of pairs) {
     const anchor = getAnchor(pair.summary, pair.boundary)
     if (anchor?.assistantMessageId && displayMessages.some((message) => message.id === anchor.assistantMessageId)) {
@@ -293,40 +302,88 @@ export function buildRenderableChatItems(
     items.push(item)
   }
 
+  const makeLiveItem = (): RenderableLiveCompressionItem => ({
+    kind: 'live-compression',
+    id: `${liveState!.sessionId}:live-compression:${liveState!.operationId ?? liveState!.startedAt}`,
+    messageId: `${liveState!.sessionId}:live-compression:${liveState!.operationId ?? liveState!.startedAt}`,
+    sessionId: liveState!.sessionId,
+    operationId: liveState!.operationId,
+    trigger: liveState!.trigger,
+    draft: liveState!.draft,
+    startedAt: liveState!.startedAt,
+    attempt: liveState!.attempt,
+    maxAttempts: liveState!.maxAttempts,
+    isLastUserMessage: false,
+    isLastAssistantMessage: false,
+    showContinue: false
+  })
+
   for (let index = 0; index <= displayMessages.length; index += 1) {
     for (const pair of insertedAt.get(index) ?? []) appendCompression(pair)
     const message = displayMessages[index]
     if (!message) continue
 
     const anchoredPairs = anchoredPairsByAssistantId.get(message.id)
-    if (anchoredPairs?.length && message.role === 'assistant') {
-      const orderedPairs = anchoredPairs
-        .map((pair) => ({
-          pair,
-          splitAt: resolveSplitAt(message, getAnchor(pair.summary, pair.boundary))
-        }))
-        .sort((a, b) => a.splitAt - b.splitAt || a.pair.summaryIndex - b.pair.summaryIndex)
+    if ((anchoredPairs?.length || message.id === liveAnchor?.assistantMessageId) && message.role === 'assistant') {
+      // Unified split plan: completed artifact pairs and the live anchor become
+      // sorted cut points over the assistant's content blocks, so the live card
+      // occupies exactly where the completed divider will appear.
+      const liveSplitsHere = message.id === liveAnchor?.assistantMessageId
+      const splits: { pair: CompactArtifactPair | null; splitAt: number }[] = (
+        anchoredPairs ?? []
+      ).map((pair) => ({
+        pair,
+        splitAt: resolveSplitAt(message, getAnchor(pair.summary, pair.boundary))
+      }))
+      if (liveSplitsHere && liveAnchor) {
+        splits.push({ pair: null, splitAt: resolveSplitAt(message, liveAnchor) })
+      }
+      splits.sort((a, b) =>
+        a.splitAt - b.splitAt ||
+        (a.pair && b.pair ? a.pair.summaryIndex - b.pair.summaryIndex : a.pair ? 1 : b.pair ? -1 : 0)
+      )
+
       const assistantItemIndexes: number[] = []
       let cursor = 0
       let previousOperationId: string | null = null
 
-      for (const { pair, splitAt } of orderedPairs) {
-        const operationId = getOperationId(pair.boundary, pair.summary)
-        const fragment = createAssistantFragment(
-          message,
-          cursor,
-          splitAt,
-          `${message.id}:compression-before:${operationId}`,
-          'before',
-          operationId
-        )
-        if (fragment) {
-          assistantItemIndexes.push(items.length)
-          items.push(fragment)
+      for (const { pair, splitAt } of splits) {
+        if (pair) {
+          const operationId = getOperationId(pair.boundary, pair.summary)
+          const fragment = createAssistantFragment(
+            message,
+            cursor,
+            splitAt,
+            `${message.id}:compression-before:${operationId}`,
+            'before',
+            operationId
+          )
+          if (fragment) {
+            assistantItemIndexes.push(items.length)
+            items.push(fragment)
+          }
+          appendCompression(pair)
+          cursor = splitAt
+          previousOperationId = operationId
+        } else {
+          // Live anchor cut: keep the blocks before the cut visible, then the
+          // live card, then fall through so the remaining tail renders below.
+          const fragment = createAssistantFragment(
+            message,
+            cursor,
+            splitAt,
+            `${message.id}:compression-before:live`,
+            'before',
+            'live'
+          )
+          if (fragment) {
+            assistantItemIndexes.push(items.length)
+            items.push(fragment)
+          }
+          items.push(makeLiveItem())
+          cursor = splitAt
+          if (previousOperationId === null) previousOperationId = 'live'
         }
-        appendCompression(pair)
-        cursor = splitAt
-        previousOperationId = operationId
       }
 
       if (previousOperationId) {
@@ -357,22 +414,10 @@ export function buildRenderableChatItems(
     appendMessage(message)
   }
 
-  if (liveState) {
-    items.push({
-      kind: 'live-compression',
-      id: `${liveState.sessionId}:live-compression:${liveState.operationId ?? liveState.startedAt}`,
-      messageId: `${liveState.sessionId}:live-compression:${liveState.operationId ?? liveState.startedAt}`,
-      sessionId: liveState.sessionId,
-      operationId: liveState.operationId,
-      trigger: liveState.trigger,
-      draft: liveState.draft,
-      startedAt: liveState.startedAt,
-      attempt: liveState.attempt,
-      maxAttempts: liveState.maxAttempts,
-      isLastUserMessage: false,
-      isLastAssistantMessage: false,
-      showContinue: false
-    })
+  // Fallback: live card at the transcript tail when no stable anchor resolves
+  // (manual compression can't predict the split point up front).
+  if (liveState && !(liveAnchorResolvable && items.some((item) => item.kind === 'live-compression'))) {
+    items.push(makeLiveItem())
   }
 
   return items

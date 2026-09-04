@@ -395,6 +395,40 @@ function testAnchorFallsBackWhenToolUseGone(): void {
   assert.deepEqual(before.message.content, blocks.slice(0, 2))
 }
 
+function testLiveAnchorInlinesLikeCompletedDivider(): void {
+  const assistant = message('a1', 'assistant', [text('before'), text('after')], 2)
+  const liveState = {
+    sessionId: 's1',
+    draft: 'summarizing…',
+    attempt: 1,
+    maxAttempts: 1,
+    startedAt: 3,
+    trigger: 'auto' as const,
+    displayAnchor: { assistantMessageId: 'a1', afterContentBlockCount: 1 }
+  }
+  const items = buildRenderableChatItems(
+    [message('u1', 'user', 'hello', 1), assistant],
+    undefined,
+    liveState
+  )
+
+  // The live card sits between the split fragments of the anchored assistant
+  // message — the exact position the completed divider takes over — so
+  // completion swaps it in place instead of relocating it.
+  assert.deepEqual(itemKinds(items), ['message', 'message', 'live-compression', 'message'])
+  assert.deepEqual(itemIds(items), [
+    'u1',
+    'a1:compression-before:live',
+    's1:live-compression:3',
+    'a1:compression-after:live'
+  ])
+  const before = items[1]
+  const live = items[2]
+  assert.ok(before.kind === 'message' && before.fragment?.position === 'before')
+  assert.ok(live.kind === 'live-compression')
+  assert.equal(live.draft, 'summarizing…')
+}
+
 async function testLiveDraftAppendsCoalesce(): Promise<void> {
   const { useLiveCompressionStore } = await import(
     '../../src/renderer/src/stores/live-compression-store'
@@ -444,6 +478,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
   ['live state coexists with completed artifact pair', testLiveStateAppendedAfterArtifact],
   ['anchor split keeps tool_use with its inline result', testAnchorSplitKeepsToolResultPair],
   ['anchor falls back to block count when tool use is gone', testAnchorFallsBackWhenToolUseGone],
+  ['live anchor inlines like completed divider', testLiveAnchorInlinesLikeCompletedDivider],
   ['live draft chunks coalesce into one notification', testLiveDraftAppendsCoalesce]
 ]
 

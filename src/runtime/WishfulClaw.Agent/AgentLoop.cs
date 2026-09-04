@@ -263,7 +263,8 @@ internal static partial class AgentLoop
                     iteration,
                     lastInputTokens,
                     state,
-                    context);
+                    context,
+                    errorDriven: false);
                 if (compression.Status == LoopCompressionStatus.Cancelled)
                 {
                     await EmitLoopEndAsync(state, context, "aborted");
@@ -346,7 +347,8 @@ internal static partial class AgentLoop
                         iteration,
                         lastInputTokens,
                         state,
-                        context);
+                        context,
+                        errorDriven: true);
                     if (compression.Status == LoopCompressionStatus.Cancelled)
                     {
                         await EmitLoopEndAsync(state, context, "aborted");

@@ -1,4 +1,4 @@
-import { agentBridge, canSidecarHandle } from './agent-bridge'
+﻿import { agentBridge, canSidecarHandle } from './agent-bridge'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { CompressionResult } from '../agent/context-compression-config'
 import { toAgentEvent } from '../agent/stream-event-adapter'
@@ -396,6 +396,7 @@ export async function runSidecarContextCompression(args: {
   trigger?: 'auto' | 'manual'
   preTokens?: number
   sessionId?: string
+  contextCompressionThreshold?: number
 }): Promise<{
   messages: UnifiedMessage[]
   result: CompressionResult
@@ -430,7 +431,11 @@ export async function runSidecarContextCompression(args: {
       ...(typeof args.preTokens === 'number' && Number.isFinite(args.preTokens)
         ? { preTokens: args.preTokens }
         : {}),
-      ...(args.sessionId ? { sessionId: args.sessionId } : {})
+      ...(args.sessionId ? { sessionId: args.sessionId } : {}),
+      ...(typeof args.contextCompressionThreshold === 'number' &&
+      Number.isFinite(args.contextCompressionThreshold)
+        ? { contextCompressionThreshold: args.contextCompressionThreshold }
+        : {})
     }
   })
 

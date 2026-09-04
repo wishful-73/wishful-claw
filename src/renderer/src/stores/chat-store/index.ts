@@ -1770,6 +1770,13 @@ function withCompactSummaryDisplayAnchor(
       }
     }
   }
+  // Manual cuts fold through the end of the conversation, so the summary belongs
+  // at the transcript tail — exactly where the live compression card sat. The
+  // recomputed inline anchor below would yank the divider back into the middle of
+  // the history and make it jump on completion.
+  if (boundaryMessage.meta?.compactBoundary?.trigger === 'manual') {
+    return summary
+  }
   if (displayAnchor?.assistantMessageId) {
     return {
       ...summary,

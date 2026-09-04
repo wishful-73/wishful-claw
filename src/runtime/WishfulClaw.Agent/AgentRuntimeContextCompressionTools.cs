@@ -108,23 +108,64 @@ public static class AgentRuntimeContextCompressionTools
             try
             {
                 var preTokens = ContextCompression.EstimateMessagesTokens(conversation);
+
+                // Manual value floor: below a quarter of the auto-compression
+                // trigger point there is no summarization value (the cold-Worker
+                // restore of a prior compaction's product is exactly such a small
+                // context), so answer skipped without an LLM call instead of
+                // spending one or degrading to truncation.
+                if (trigger == "manual")
+                {
+                    var valueFloor = AgentLoop.ManualCompressionValueFloorTokens(provider, parameters);
+                    if (preTokens < valueFloor)
+                    {
+                        WorkerLog.Info(
+                            $"manual context compression skipped session={AgentLoop.FormatSessionId(sessionId)} " +
+                            $"count={originalCount} preTokens={preTokens} valueFloor={valueFloor} (below value floor)");
+                        return BuildResponse(
+                            wireMessages,
+                            new ContextCompressionResult(false, originalCount, originalCount,
+                                Status: "skipped", Trigger: trigger));
+                    }
+                }
+
                 var expectedRevision = sessionId.Length > 0
                     ? DbCompactionSnapshotStore.GetContextRevision(DbClient.GetClient(), sessionId)
                     : null;
+                // Manual cuts fold through the end of the conversation (no verbatim
+                // tail), so the summary lands at the transcript tail where the live
+                // compression card already renders — completion swaps in place.
                 var outcome = await ContextCompression.CompactAsync(
                     conversation,
                     wireMessages,
                     provider,
                     context,
-                    context.CancellationToken);
+                    context.CancellationToken,
+                    preserveTail: trigger != "manual");
                 var newConversation = outcome.Conversation;
                 var newWireConversation = outcome.WireConversation;
                 var summarizerFailed = outcome.SummarizerFailed;
                 var compactArtifacts = ContextCompression.BuildCompactArtifacts(outcome, trigger, preTokens);
 
+                // A snapshot-restored conversation (cold Worker + manual click, no
+                // agent loop ever ran) is already the previous compression's
+                // product: nothing foldable is the EXPECTED outcome here, not a
+                // failure. Report skipped so the UI says "no compression needed"
+                // instead of silently truncating.
+                if (!outcome.Compacted && newWireConversation.Count >= originalCount)
+                {
+                    WorkerLog.Info(
+                        $"manual context compression skipped session={AgentLoop.FormatSessionId(sessionId)} " +
+                        $"count={originalCount} (nothing foldable)");
+                    return BuildResponse(
+                        wireMessages,
+                        new ContextCompressionResult(false, originalCount, originalCount,
+                            Status: "skipped", Trigger: trigger));
+                }
+
                 if (newWireConversation.Count >= originalCount)
                 {
-                    // AL-6 equivalent: LLM summarization produced no reduction —
+                    // AL-6 equivalent: summarization ran but produced no reduction —
                     // fall back to mechanical truncation before giving up.
                     (newConversation, newWireConversation) = ContextCompression.TruncateMessages(
                         conversation, wireMessages, provider);

@@ -614,7 +614,7 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       useLiveCompressionStore.getState().clear(sessionId)
     }
   }
-  useLiveCompressionStore.getState().start(sessionId)
+  useLiveCompressionStore.getState().start(sessionId, { trigger: 'manual' })
   updateStatus({ operationId, state: 'compressing', startedAt, trigger: 'manual' })
 
   // Never compress while the session has an active run — the Worker would
@@ -675,7 +675,8 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       undefined,
       'manual',
       0,
-      sessionId
+      sessionId,
+      settingsStore.contextCompressionThreshold
     )
     const status = result.status ?? (result.compressed ? 'compressed' : 'skipped')
     if (status === 'compressed') {

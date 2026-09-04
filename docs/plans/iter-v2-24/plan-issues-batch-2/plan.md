@@ -25,7 +25,9 @@
 
 ### 步骤 1：中文 IME 末字符异常（B1）
 
-- [ ] `src/renderer/src/components/chat/FileAwareEditor.tsx` IME 时序加固
+- [x] `src/renderer/src/components/chat/FileAwareEditor.tsx` IME 时序加固（`[自动]` 三套 tsc 通过；`[人工]` 待老大实测）
+  - **实现偏差**：IME 尾字符判据抽到新文件 `file-aware-editor-ime.ts`。原因是写进组件会让 `FileAwareEditor.tsx` 达到 502 行、越 AGENTS.md 500 行红线，而 `file-aware-editor-utils.ts` 本身已 526 行（既存越线）不宜再增。抽离后组件 482 行、守卫从 24 行压到 9 行
+  - **新增 `imeSettleWindowRef` 结算窗口**（计划未列）：末字符保护若不设窗口，会误伤「发送后清空输入框」——此时 state 变短、DOM 仍持有刚发送的 1~2 个字符且编辑器保持焦点，判据会成立，导致输入框清不掉。窗口仅在 compositionend 之后开启，在 compositionstart / flushPendingInput / 布局 effect 任一路径关闭
   - `:323-334` `scheduleCompositionCommit` 的 rAF 回调：先 `syncLiveContent()` 把 IME 尾字符采纳进状态，**推迟到下一帧**（双 rAF）再解除 `isComposingRef` / `pendingUserInputRef` 并处理 `pendingRenderAfterCompositionRef`
   - `:413-416` `onBlur` 补 `isComposingRef.current = false`（对齐 OpenCowork `FileAwareEditor.tsx:794`）+ `pendingUserInputRef.current = false`（本仓自创加固，参考侧无此挡板，勿写成对齐）
   - `:205-236` 布局 effect：编辑器为 `document.activeElement` 且 selection 落在 root 内时，**判据 = DOM 文本以 state 文本为前缀且多出 ≤2 字符** → 视为 IME 尾字符，以 DOM 为准不 `replaceChildren`；多出 >2 字符仍按原逻辑以 state 为准重建
@@ -175,6 +177,7 @@
 > 前端路径一律从 `src/renderer/src/` 写全，避免按目录前缀拼接出错。
 
 **新建**
+- `src/renderer/src/components/chat/file-aware-editor-ime.ts` —— IME 末字符判据（步骤 1，为守住组件 500 行红线而抽离）
 - `src/renderer/src/components/chat/SessionTodoPanel.tsx` —— 移植 InlineStepsPanelCard（步骤 2a）
 - `src/renderer/src/lib/agent/selected-file-context.ts` —— 迁出 selected_files 读取（步骤 6a）
 - `src/renderer/src/stores/right-panel-scope.ts` —— `activateRightPanelTab` / `closeRightPanelScope` 两个纯 helper + `Record<tabScopeId, string>` 激活项读写（步骤 3）

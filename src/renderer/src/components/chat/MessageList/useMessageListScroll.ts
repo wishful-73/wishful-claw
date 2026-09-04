@@ -123,8 +123,13 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     (behavior: ScrollBehavior = 'auto') => {
       const ref = listRef.current
       if (!ref || rows.length === 0) return
-      markProgrammaticScroll()
       const bottom = Math.max(0, ref.scrollHeight - ref.clientHeight)
+      // Already pinned: re-writing scrollTop would dispatch another scroll
+      // event, whose handler sets state and re-runs the auto-scroll layout
+      // effects — that cycle is what React reports as "Maximum update depth
+      // exceeded".
+      if (Math.abs(ref.scrollTop - bottom) <= 1) return
+      markProgrammaticScroll()
       if (behavior === 'auto') { ref.scrollTop = bottom; return }
       ref.scrollTo({ top: bottom, behavior })
     },

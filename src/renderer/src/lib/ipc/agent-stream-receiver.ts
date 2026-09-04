@@ -33,20 +33,31 @@ export class AgentStreamReceiver {
       AGENT_STREAM_MSGPACK_CHANNEL,
       (_ipcEvent: unknown, bytes: ArrayBuffer | ArrayBufferView) => {
         const startedAt = performance.now()
+        let envelopes: AgentStreamEnvelope[]
         try {
-          const envelopes = decodeAgentStreamEnvelopes(bytes)
-          const metrics = {
-            byteLength: getByteLength(bytes),
-            decodeMs: Math.round((performance.now() - startedAt) * 100) / 100
-          }
-          for (const envelope of envelopes) {
-            this.acceptEnvelope(envelope, metrics)
-          }
+          envelopes = decodeAgentStreamEnvelopes(bytes)
         } catch (error) {
           console.warn(
             '[AgentStream] Failed to decode MessagePack envelope',
-            error instanceof Error ? error.message : String(error)
+            describeError(error)
           )
+          return
+        }
+        const metrics = {
+          byteLength: getByteLength(bytes),
+          decodeMs: Math.round((performance.now() - startedAt) * 100) / 100
+        }
+        for (const envelope of envelopes) {
+          try {
+            this.acceptEnvelope(envelope, metrics)
+          } catch (error) {
+            // A handler failure must not swallow the rest of the batch —
+            // dropping envelopes desynchronizes seq tracking and loses events.
+            console.warn(
+              `[AgentStream] Handler failed for run ${envelope.runId} seq ${envelope.seq}`,
+              describeError(error)
+            )
+          }
         }
       }
     )
@@ -156,6 +167,11 @@ export const agentStream = new AgentStreamReceiver()
 
 function getByteLength(bytes: ArrayBuffer | ArrayBufferView): number {
   return bytes instanceof ArrayBuffer ? bytes.byteLength : bytes.byteLength
+}
+
+function describeError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error)
+  return error.stack ?? error.message
 }
 
 function shouldLogMessagePackTrace(): boolean {

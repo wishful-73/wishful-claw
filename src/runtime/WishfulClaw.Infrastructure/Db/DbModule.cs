@@ -45,7 +45,6 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-list-page", DbMessageTools.ListPage);
         context.Register("db/messages-list-locator", DbMessageTools.ListLocator);
         context.Register("db/messages-list-by-turns", DbMessageTools.ListByTurns);
-        context.Register("db/messages-list-after-cursor", DbMessageTools.ListAfterCursor);
         context.Register("db/messages-add", DbMessageTools.Add);
         context.Register("db/messages-add-batch", DbMessageTools.AddBatch);
         context.Register("db/messages-upsert", DbMessageTools.Upsert);
@@ -53,8 +52,6 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-clear", DbMessageTools.Clear);
         context.Register("db/messages-delete", DbMessageTools.Delete);
         context.Register("db/messages-count", DbMessageTools.Count);
-        context.Register("db/messages-delete-last", DbMessageTools.DeleteLast);
-        context.Register("db/messages-truncate-from", DbMessageTools.TruncateFrom);
         context.Register("db/messages-compact-session", DbMessageCompactTools.CompactSession);
         context.Register("db/messages-usage-stats", DbMessageCompactTools.UsageStats);
         context.Register("db/messages-search-content", DbMessageTools.SearchContent);
@@ -63,6 +60,7 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/compaction-snapshots-get", DbCompactionSnapshotTools.Get);
         context.Register("db/session-context-manifest", DbCompactionSnapshotTools.GetContextManifest);
         context.Register("db/compaction-snapshots-upsert", DbCompactionSnapshotTools.Upsert);
+        // Explicit physical cleanup endpoint: deletes snapshot rows and clears the pointer.
         context.Register("db/compaction-snapshots-delete", DbCompactionSnapshotTools.Delete);
 
         // ── Sub-Agent Runs ──

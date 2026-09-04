@@ -63,15 +63,14 @@ export function ContextCompressionMessage({
 }): React.JSX.Element | null {
   const { t } = useTranslation('agent')
   const [expanded, setExpanded] = React.useState(false)
-  const effectiveMessage = summary ?? message
-
-  if (!effectiveMessage || !isCompactSummaryLikeMessage(effectiveMessage)) {
-    return null
-  }
 
   if (isLive) {
-    if (!draft?.trim()) return null
-    return <LiveCompressionDraft draft={draft} trigger={trigger} />
+    return <LiveCompressionDraft draft={draft ?? ''} trigger={trigger} />
+  }
+
+  const effectiveMessage = summary ?? message
+  if (!effectiveMessage || !isCompactSummaryLikeMessage(effectiveMessage)) {
+    return null
   }
 
   const content = getCompactSummaryDisplayText(effectiveMessage).trim()

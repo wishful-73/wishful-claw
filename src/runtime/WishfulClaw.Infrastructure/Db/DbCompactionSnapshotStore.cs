@@ -5,9 +5,13 @@ using WishfulClaw.Core.Protocol;
 namespace WishfulClaw.Infrastructure.Db;
 
 /// <summary>
-/// Internal compaction snapshot helpers shared by destructive message/session mutations.
-/// Contract: snapshot pointer detachment must happen in the same DB transaction as the
-/// destructive message mutation (docs/plans/iter-v2-23/snapshot-contract.md §7 / §10).
+/// Internal compaction snapshot helpers shared by session-level context operations.
+/// Contract: a committed snapshot is an immutable baseline. Ordinary message mutations
+/// never invalidate it — the restore boundary is the snapshot row's own commit timestamp,
+/// which no later code path rewrites. Only explicit context-root operations (reset, clear,
+/// rebuild) detach the pointer, and pointer detachment must share the transaction with the
+/// mutation that triggered it. Physical deletion of snapshot rows stays behind the explicit
+/// cleanup endpoint (docs/plans/iter-v2-24/plan-context-manifest/plan.md §5).
 /// </summary>
 public static class DbCompactionSnapshotStore
 {
@@ -16,29 +20,6 @@ public static class DbCompactionSnapshotStore
 
     /// <summary>Message position in the canonical (created_at, sort_order) order.</summary>
     public sealed record MessagePosition(long CreatedAt, int SortOrder);
-
-    /// <summary>Snapshot coverage cursor — the last persisted message included in the snapshot.</summary>
-    public sealed record SnapshotCursor(long ThroughCreatedAt, int ThroughSortOrder);
-
-    /// <summary>True when the position falls inside the snapshot coverage (position &lt;= cursor).</summary>
-    public static bool PositionIsCovered(SnapshotCursor cursor, long createdAt, int sortOrder)
-    {
-        return createdAt < cursor.ThroughCreatedAt ||
-               (createdAt == cursor.ThroughCreatedAt && sortOrder <= cursor.ThroughSortOrder);
-    }
-
-    /// <summary>Read the snapshot coverage cursor for a session; null when no snapshot exists.</summary>
-    public static SnapshotCursor? GetCursor(DbService db, SqliteConnection conn, SqliteTransaction tx, string sessionId)
-    {
-        return db.QueryFirstOrDefault(
-            conn, tx,
-            "SELECT snapshot.through_created_at, snapshot.through_sort_order " +
-            "FROM sessions session " +
-            "JOIN session_compaction_snapshots snapshot ON snapshot.snapshot_id = session.current_snapshot_id " +
-            "WHERE session.id = @sid",
-            r => new SnapshotCursor(r.GetInt64("through_created_at"), r.GetInt32("through_sort_order")),
-            new SqliteParameter("@sid", sessionId));
-    }
 
     /// <summary>Detach the current snapshot pointer while retaining immutable snapshot history.</summary>
     public static void DetachForSession(DbService db, SqliteConnection conn, SqliteTransaction tx, string sessionId)
@@ -77,48 +58,6 @@ public static class DbCompactionSnapshotStore
         var sqlParams = sessionIds.Select((sid, i) => new SqliteParameter($"@cs{i}", sid)).ToArray();
         db.Execute(conn, tx, $"DELETE FROM session_compaction_snapshots WHERE session_id IN ({placeholders})", sqlParams);
         DetachForSessions(db, conn, tx, sessionIds);
-    }
-
-    /// <summary>
-    /// Conditional invalidation: drop the snapshot when the removed/modified position lies
-    /// inside its coverage. Positions after the cursor keep the snapshot valid.
-    /// </summary>
-    public static void InvalidateIfCovered(DbService db, SqliteConnection conn, SqliteTransaction tx, string sessionId, MessagePosition? position)
-    {
-        if (position is null) return;
-        var cursor = GetCursor(db, conn, tx, sessionId);
-        if (cursor is null) return;
-        if (PositionIsCovered(cursor, position.CreatedAt, position.SortOrder))
-        {
-            DetachForSession(db, conn, tx, sessionId);
-        }
-    }
-
-    /// <summary>
-    /// Conditional invalidation for mutations that cannot localize the change (e.g. content
-    /// compaction of historical messages): drop the snapshot when any message at or before
-    /// the given position is covered.
-    /// </summary>
-    public static void InvalidateForCoveredPosition(DbService db, string sessionId, MessagePosition? position)
-    {
-        if (position is null) return;
-        db.ExecuteInTransaction((conn, tx) =>
-        {
-            InvalidateIfCovered(db, conn, tx, sessionId, position);
-        });
-    }
-
-    /// <summary>
-    /// Drop the snapshot when a message upsert rewrote a covered position (content/order change).
-    /// Fresh inserts (no pre-existing row) append after the cursor and never invalidate.
-    /// </summary>
-    public static void InvalidateIfUpsertCovered(DbService db, string sessionId, MessagePosition? existingPosition)
-    {
-        if (existingPosition is null) return;
-        db.ExecuteInTransaction((conn, tx) =>
-        {
-            InvalidateIfCovered(db, conn, tx, sessionId, existingPosition);
-        });
     }
 
     public const string CommitConflictError = "snapshot_commit_conflict";
@@ -198,7 +137,13 @@ public static class DbCompactionSnapshotStore
                     return new SnapshotCommitResult(false, null, session.ContextRevision, NoMessagesError);
                 }
 
-                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                // The snapshot row's created_at IS the restore boundary: messages created after
+                // it are recovered as the increment. Clamp it strictly above the newest covered
+                // message, otherwise a turn committed in the same millisecond would be excluded
+                // by the "created_at >" predicate and silently dropped from the model context.
+                var commitTime = Math.Max(
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    boundary.CreatedAt + 1);
                 var snapshotId = Guid.NewGuid().ToString("N");
                 db.Execute(conn, tx,
                     "INSERT INTO session_compaction_snapshots (snapshot_id, session_id, version, \"trigger\", wire_conversation, " +
@@ -220,8 +165,8 @@ public static class DbCompactionSnapshotStore
                     new SqliteParameter("@newCount", newCount),
                     new SqliteParameter("@messagesSummarized", messagesSummarized),
                     new SqliteParameter("@summarizerFailed", summarizerFailed ? 1 : 0),
-                    new SqliteParameter("@ca", now),
-                    new SqliteParameter("@ua", now));
+                    new SqliteParameter("@ca", commitTime),
+                    new SqliteParameter("@ua", commitTime));
 
                 var inserted = db.QueryFirstOrDefault(
                     conn,
@@ -237,20 +182,6 @@ public static class DbCompactionSnapshotStore
                     !IsJsonArray(inserted.WireConversation) ||
                     !IsJsonArray(inserted.CompactArtifacts) ||
                     (inserted.SummaryMessage is not null && !IsJsonObject(inserted.SummaryMessage)))
-                {
-                    throw new SnapshotCommitException(
-                        new SnapshotCommitResult(false, null, session.ContextRevision, InvalidPayloadError));
-                }
-
-                var anchorExists = db.Exists(
-                    conn,
-                    tx,
-                    "SELECT 1 FROM messages WHERE session_id = @sid AND created_at = @createdAt " +
-                    "AND sort_order = @sortOrder LIMIT 1",
-                    new SqliteParameter("@sid", sessionId),
-                    new SqliteParameter("@createdAt", inserted.ThroughCreatedAt),
-                    new SqliteParameter("@sortOrder", inserted.ThroughSortOrder));
-                if (!anchorExists)
                 {
                     throw new SnapshotCommitException(
                         new SnapshotCommitResult(false, null, session.ContextRevision, InvalidPayloadError));
@@ -334,29 +265,6 @@ public static class DbCompactionSnapshotStore
             "ORDER BY created_at DESC, sort_order DESC LIMIT 1",
             r => new MessagePosition(r.GetInt64("created_at"), r.GetInt32("sort_order")),
             new SqliteParameter("@sid", sessionId));
-    }
-
-    /// <summary>
-    /// True when the message meta marks a chat-window display artifact (compression
-    /// status card / compact boundary divider). These rows never enter the model
-    /// context, so meta-only lifecycle updates (e.g. compressing → compressed) must
-    /// not invalidate the snapshot (snapshot-contract.md §7.4).
-    /// </summary>
-    public static bool IsChatOnlyArtifactMeta(string? metaJson)
-    {
-        if (string.IsNullOrEmpty(metaJson)) return false;
-        try
-        {
-            using var doc = JsonDocument.Parse(metaJson);
-            var meta = doc.RootElement;
-            return meta.ValueKind == JsonValueKind.Object &&
-                   (meta.TryGetProperty("compressionStatus", out _) ||
-                    meta.TryGetProperty("compactBoundary", out _));
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     /// <summary>

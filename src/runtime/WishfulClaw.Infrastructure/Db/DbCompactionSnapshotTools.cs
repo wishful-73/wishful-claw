@@ -8,8 +8,9 @@ namespace WishfulClaw.Infrastructure.Db;
 /// <summary>
 /// Worker endpoints for session compaction snapshots
 /// (docs/plans/iter-v2-23/snapshot-contract.md).
-/// Each session points to one current immutable snapshot revision; the coverage cursor is
-/// derived from persisted messages inside the write transaction, never from in-memory Worker state.
+/// Each session points to one current immutable snapshot revision. The restore increment is
+/// every message created after the snapshot row's commit timestamp; through_created_at and
+/// through_sort_order are still persisted but act only as diagnostics for the covered boundary.
 /// </summary>
 public static class DbCompactionSnapshotTools
 {
@@ -25,12 +26,9 @@ public static class DbCompactionSnapshotTools
     /// <summary>Read reason: snapshot belongs to a different session.</summary>
     public const string ReasonSessionMismatch = "session_mismatch";
 
-    /// <summary>Read reason: coverage cursor no longer matches persisted messages.</summary>
-    public const string ReasonInvalidCursor = "invalid_cursor";
-
     /// <summary>
     /// Read the session's pointed snapshot with safety validation. Any problem (unsupported
-    /// version, corrupt JSON, dangling cursor) returns <c>Snapshot = null</c> plus a reason;
+    /// version, corrupt JSON) returns <c>Snapshot = null</c> plus a reason;
     /// the restore layer decides whether the pointed session must be blocked. Corrupt rows
     /// are kept for diagnostics and never auto-deleted.
     /// </summary>
@@ -60,9 +58,11 @@ public static class DbCompactionSnapshotTools
 
     /// <summary>
     /// Shared validated read used by the endpoint and the agent restore path
-    /// (snapshot-contract.md §六): version check, payload well-formedness and cursor
-    /// consistency. Returns null plus a downgrade reason on any problem; problems are
-    /// logged and never thrown — callers fall back to full message recovery.
+    /// (snapshot-contract.md §六): version check and payload well-formedness.
+    /// The coverage boundary is the snapshot row's own commit timestamp, which no
+    /// later code path rewrites, so ordinary message writes can never invalidate it.
+    /// Returns null plus a downgrade reason on real corruption; problems are
+    /// logged and never thrown — callers decide whether to block.
     /// </summary>
     public static CompactionSnapshotEntity? TryGetValidSnapshot(DbService db, string sessionId, out string? reason)
     {
@@ -130,13 +130,6 @@ public static class DbCompactionSnapshotTools
             return null;
         }
 
-        if (!IsCursorConsistent(db, sessionId, entity))
-        {
-            DbCompactionSnapshotStore.LogSnapshotIssue("get", sessionId, $"{ReasonInvalidCursor} snapshotId={entity.SnapshotId}");
-            reason = ReasonInvalidCursor;
-            return null;
-        }
-
         return entity;
     }
 
@@ -152,31 +145,6 @@ public static class DbCompactionSnapshotTools
         if (!IsJsonArray(entity.CompactArtifacts)) return false;
         if (entity.SummaryMessage is not null && !IsJsonObject(entity.SummaryMessage)) return false;
         return true;
-    }
-
-    /// <summary>
-    /// Cursor consistency: the anchor message at the cursor position must still exist, and the
-    /// session's newest persisted message must not predate the cursor (deleted/truncated
-    /// history makes the snapshot unsafe to reuse).
-    /// </summary>
-    private static bool IsCursorConsistent(DbService db, string sessionId, CompactionSnapshotEntity entity)
-    {
-        var anchorExists = db.Exists(
-            "SELECT 1 FROM messages WHERE session_id = @sid AND created_at = @ca AND sort_order = @so LIMIT 1",
-            new SqliteParameter("@sid", sessionId),
-            new SqliteParameter("@ca", entity.ThroughCreatedAt),
-            new SqliteParameter("@so", entity.ThroughSortOrder));
-        if (!anchorExists) return false;
-
-        var newest = db.QueryFirstOrDefault(
-            "SELECT created_at, sort_order FROM messages WHERE session_id = @sid " +
-            "ORDER BY created_at DESC, sort_order DESC LIMIT 1",
-            r => new DbCompactionSnapshotStore.MessagePosition(r.GetInt64("created_at"), r.GetInt32("sort_order")),
-            new SqliteParameter("@sid", sessionId));
-        if (newest is null) return false;
-
-        return newest.CreatedAt > entity.ThroughCreatedAt ||
-               (newest.CreatedAt == entity.ThroughCreatedAt && newest.SortOrder >= entity.ThroughSortOrder);
     }
 
     private static bool IsJsonArray(string json)
@@ -322,11 +290,9 @@ public static class DbCompactionSnapshotTools
             var incrementalCount = validated is null
                 ? 0
                 : db.QueryScalar<int>(
-                    "SELECT COUNT(*) FROM messages WHERE session_id = @sid AND " +
-                    "(created_at > @tca OR (created_at = @tca AND sort_order > @tso))",
+                    "SELECT COUNT(*) FROM messages WHERE session_id = @sid AND created_at > @snapshotCreatedAt",
                     new SqliteParameter("@sid", sessionId),
-                    new SqliteParameter("@tca", validated.ThroughCreatedAt),
-                    new SqliteParameter("@tso", validated.ThroughSortOrder));
+                    new SqliteParameter("@snapshotCreatedAt", validated.CreatedAt));
 
             var manifest = new SessionContextManifestRow(
                 sessionId,

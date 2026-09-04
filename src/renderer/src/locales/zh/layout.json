@@ -463,6 +463,7 @@
     "contextCompressed": "上下文已压缩",
     "contextCompressionSkipped": "无需压缩",
     "contextCompressionBlocked": "暂时无法压缩",
+    "contextCompressionRestoreFailed": "上下文无法恢复，建议新开会话继续",
     "contextCompressionFailed": "压缩失败"
   },
   "memory": {

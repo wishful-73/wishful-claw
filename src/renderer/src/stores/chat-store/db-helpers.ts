@@ -562,13 +562,6 @@ export async function dbDeleteMessage(sessionId: string, messageId: string): Pro
 }
 
 /**
- * Delete last message of a given role from DB.
- */
-export async function dbDeleteLastMessage(sessionId: string, role: string): Promise<void> {
-  await window.api.workerRequest('db/messages-delete-last', { sessionId, role })
-}
-
-/**
  * Clear all messages for a session.
  */
 export async function dbClearMessages(sessionId: string): Promise<void> {

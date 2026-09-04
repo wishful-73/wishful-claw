@@ -188,7 +188,13 @@ function resolveSplitAt(message: UnifiedMessage, anchor: ReturnType<typeof getAn
     const toolIndex = message.content.findIndex(
       (block) => block.type === 'tool_use' && block.id === anchor.afterToolUseId
     )
-    if (toolIndex >= 0) return toolIndex + 1
+    if (toolIndex >= 0) {
+      // Keep an inline tool_result with the tool_use it belongs to.
+      const following = message.content[toolIndex + 1]
+      const includesResult =
+        following?.type === 'tool_result' && following.toolUseId === anchor.afterToolUseId
+      return toolIndex + 1 + (includesResult ? 1 : 0)
+    }
   }
 
   const count = anchor?.afterContentBlockCount

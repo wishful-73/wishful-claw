@@ -9,6 +9,7 @@ import type { useTeamStore } from '@renderer/stores/team-store'
 import type { RequestRetryState } from '@renderer/lib/agent/types'
 import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { buildChatMessageContent } from '@renderer/lib/agent/chat-message-blocks'
 
 
 export interface MessageListProps {
@@ -413,82 +414,12 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
     const text = (msg.text as string) ?? ''
     const thinking = msg.thinking as string | undefined
     const toolCalls = msg.toolCalls as Array<Record<string, unknown>> | undefined
-
-    // Build content blocks from ChatMessage fields
-    const blocks: ContentBlock[] = []
-    const persistedContent = Array.isArray(msg.content)
-      ? (msg.content as ContentBlock[])
-      : null
-
-    if (persistedContent && persistedContent.length > 0) {
-      blocks.push(...persistedContent)
-    } else {
-      // Use segments for temporal ordering if available (preserves iteration boundaries)
-      const segments = msg.segments as Array<Record<string, unknown>> | undefined
-      if (segments && segments.length > 0) {
-      for (const seg of segments) {
-        const segType = seg.type as string
-        if (segType === 'thinking' && seg.thinking) {
-          blocks.push({ type: 'thinking', thinking: seg.thinking as string, startedAt: seg.startedAt as number | undefined, completedAt: seg.completedAt as number | undefined })
-        } else if (segType === 'text' && seg.text) {
-          blocks.push({ type: 'text', text: seg.text as string })
-        } else if (segType === 'tool_use' && seg.toolCallId) {
-          blocks.push({
-            type: 'tool_use',
-            id: seg.toolCallId as string,
-            name: (seg.toolName as string) ?? 'unknown',
-            input: (seg.input as Record<string, unknown>) ?? {}
-          })
-          // Also add inline tool_result block for completed/errored tools
-          // so that resolveToolCallStatus finds a result instead of falling back to 'canceled'
-          const segStatus = seg.status as string | undefined
-          if (segStatus === 'completed' || segStatus === 'error') {
-            blocks.push({
-              type: 'tool_result',
-              toolUseId: seg.toolCallId as string,
-              content: (seg.output as string) ?? '',
-              isError: segStatus === 'error'
-            })
-          }
-        }
-      }
-    } else {
-      // Fallback: old format without temporal ordering
-      if (thinking) {
-        blocks.push({ type: 'thinking', thinking })
-      }
-
-      if (text) {
-        blocks.push({ type: 'text', text })
-      }
-
-      if (toolCalls && toolCalls.length > 0) {
-        for (const tc of toolCalls) {
-          blocks.push({
-            type: 'tool_use',
-            id: tc.id as string,
-            name: tc.name as string,
-            input: (tc.input as Record<string, unknown>) ?? {}
-          })
-          // Also add inline tool_result block for completed/errored tools
-          const tcStatus = tc.status as string | undefined
-          if (tcStatus === 'completed' || tcStatus === 'error') {
-            blocks.push({
-              type: 'tool_result',
-              toolUseId: tc.id as string,
-              content: (tc.output as string) ?? '',
-              isError: tcStatus === 'error'
-            })
-          }
-        }
-      }
-    }
-    }
+    const blocks = buildChatMessageContent(msg)
 
     const result: UnifiedMessage = {
       id: msg.id as string,
       role,
-      content: blocks.length > 0 ? blocks : text,
+      content: blocks,
       createdAt: (msg.createdAt as number) ?? Date.now()
     }
 

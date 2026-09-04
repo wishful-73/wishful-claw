@@ -61,6 +61,14 @@ function text(value: string): ContentBlock {
   return { type: 'text', text: value }
 }
 
+function toolUse(id: string): ContentBlock {
+  return { type: 'tool_use', id, name: 'Read', input: {} }
+}
+
+function toolResult(id: string): ContentBlock {
+  return { type: 'tool_result', toolUseId: id, content: 'output', isError: false }
+}
+
 function assertCompressionOperation(items: RenderableChatItem[], operationId: string): void {
   const item = items.find((candidate) => candidate.kind === 'context-compression')
   assert.ok(item && item.kind === 'context-compression')
@@ -332,7 +340,97 @@ function testLiveStateInlinesAfterAssistant(): void {
   assert.equal(live.draft, 'summarizing…')
 }
 
-const tests: Array<[string, () => void]> = [
+function testAnchorSplitKeepsToolResultPair(): void {
+  const blocks = [
+    text('thinking-ish'),
+    toolUse('t1'),
+    toolResult('t1'),
+    toolUse('t2'),
+    toolResult('t2'),
+    text('post-compression tail')
+  ]
+  const assistant = message('a1', 'assistant', blocks, 2)
+  const items = buildRenderableChatItems([
+    message('u1', 'user', 'hello', 1),
+    assistant,
+    boundary('b1', 3),
+    summary('s1', 4, {
+      operationId: 'op-tool',
+      displayAnchor: {
+        assistantMessageId: 'a1',
+        afterContentBlockCount: blocks.length,
+        afterToolUseId: 't2'
+      }
+    })
+  ])
+
+  assert.deepEqual(itemKinds(items), ['message', 'message', 'context-compression', 'message'])
+  const before = items[1]
+  const after = items[3]
+  assert.ok(before.kind === 'message' && after.kind === 'message')
+  // The split follows the anchored tool call and its inline result, not the
+  // stale block count, so the result never renders detached from its call.
+  assert.deepEqual(before.message.content, blocks.slice(0, 5))
+  assert.deepEqual(after.message.content, blocks.slice(5))
+}
+
+function testAnchorFallsBackWhenToolUseGone(): void {
+  const blocks = [text('one'), text('two'), text('three')]
+  const assistant = message('a1', 'assistant', blocks, 2)
+  const items = buildRenderableChatItems([
+    assistant,
+    boundary('b1', 3),
+    summary('s1', 4, {
+      operationId: 'op-stale',
+      displayAnchor: {
+        assistantMessageId: 'a1',
+        afterContentBlockCount: 2,
+        afterToolUseId: 't-removed'
+      }
+    })
+  ])
+
+  const before = items[0]
+  assert.ok(before.kind === 'message')
+  assert.deepEqual(before.message.content, blocks.slice(0, 2))
+}
+
+async function testLiveDraftAppendsCoalesce(): Promise<void> {
+  const { useLiveCompressionStore } = await import(
+    '../../src/renderer/src/stores/live-compression-store'
+  )
+  const session = 'stream-coalescing'
+  const chunks = Array.from({ length: 500 }, (_, index) => `w${index} `)
+
+  let notifications = 0
+  const unsubscribe = useLiveCompressionStore.subscribe(() => {
+    notifications += 1
+  })
+  useLiveCompressionStore.getState().start(session, { trigger: 'auto' })
+  const afterStart = notifications
+
+  for (const chunk of chunks) useLiveCompressionStore.getState().appendDraft(session, chunk)
+  assert.ok(
+    notifications - afterStart <= 1,
+    `500 draft chunks must coalesce into one notification, got ${notifications - afterStart}`
+  )
+
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.equal(
+    useLiveCompressionStore.getState().bySessionId[session]?.draft,
+    chunks.join(''),
+    'the coalesced flush keeps every chunk in arrival order'
+  )
+  assert.ok(
+    notifications - afterStart <= 3,
+    `flushing must not fan out into per-chunk renders, got ${notifications - afterStart}`
+  )
+
+  unsubscribe()
+  useLiveCompressionStore.getState().clear(session)
+}
+
+const tests: Array<[string, () => void | Promise<void>]> = [
   ['no artifacts', testNoArtifacts],
   ['array middle split', testArrayMiddleSplit],
   ['array edge splits', testArrayEdgeSplits],
@@ -342,7 +440,11 @@ const tests: Array<[string, () => void]> = [
   ['multiple artifacts and reload stability', testMultipleArtifactsAndReloadStability],
   ['no live state renders no live item', testNoLiveState],
   ['live state with draft produces live item', testLiveStateWithDraft],
-  ['live state appends after artifact pair', testLiveStateInlinesAfterAssistant]
+  ['live state appends after artifact pair', testLiveStateInlinesAfterAssistant],
+  ['live state coexists with completed artifact pair', testLiveStateAppendedAfterArtifact],
+  ['anchor split keeps tool_use with its inline result', testAnchorSplitKeepsToolResultPair],
+  ['anchor falls back to block count when tool use is gone', testAnchorFallsBackWhenToolUseGone],
+  ['live draft chunks coalesce into one notification', testLiveDraftAppendsCoalesce]
 ]
 
 async function main(): Promise<void> {
@@ -361,7 +463,7 @@ async function main(): Promise<void> {
   ))
 
   for (const [name, run] of tests) {
-    run()
+    await run()
     console.log(`PASS: ${name}`)
   }
 

@@ -296,6 +296,7 @@ internal static class Program
             Assert(columns.Contains(column, StringComparer.OrdinalIgnoreCase), $"snapshot table has column {column}");
 
         RunSnapshotSuite(dbPath, "new");
+        RunColdWorkerCompressionSuite(dbPath, "new");
     }
 
     // ─── Shared snapshot suite ───
@@ -375,26 +376,25 @@ internal static class Program
         Assert(!string.Equals(firstSnapshotId, replaced.GetProperty("snapshotId").GetString(), StringComparison.Ordinal),
             "upsert advances to a new snapshot id");
 
-        // ── Incremental query after cursor ──
-        AddMessage(dbPath, sessionA, $"{prefix}-m5", 1005, 5);
-        AddMessage(dbPath, sessionA, $"{prefix}-m6", 1005, 6);
-        var incremental = ResultArray(DbMessageTools.ListAfterCursor(Params(dbPath, writer =>
-        {
-            writer.WriteString("sessionId", sessionA);
-            writer.WriteNumber("afterCreatedAt", 1004);
-            writer.WriteNumber("afterSortOrder", 4);
-        })));
-        AssertEqual(2, incremental.Count, "after-cursor query returns only messages past the cursor");
-        AssertEqual($"{prefix}-m5", incremental[0].GetProperty("id").GetString(), "after-cursor query preserves order (first)");
-        AssertEqual($"{prefix}-m6", incremental[1].GetProperty("id").GetString(), "after-cursor query preserves order (second)");
-        var tieBreak = ResultArray(DbMessageTools.ListAfterCursor(Params(dbPath, writer =>
-        {
-            writer.WriteString("sessionId", sessionA);
-            writer.WriteNumber("afterCreatedAt", 1005);
-            writer.WriteNumber("afterSortOrder", 5);
-        })));
-        AssertEqual(1, tieBreak.Count, "after-cursor query breaks equal-timestamp ties via sort_order");
-        AssertEqual($"{prefix}-m6", tieBreak[0].GetProperty("id").GetString(), "tie-break returns the later sort_order");
+        // ── Increment after the snapshot commit boundary ──
+        // The boundary is the snapshot row's own created_at (commit wall clock), so only
+        // messages persisted after it are recovered as the increment.
+        var afterCommit = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 1000;
+        AddMessage(dbPath, sessionA, $"{prefix}-m5", afterCommit, 5);
+        AddMessage(dbPath, sessionA, $"{prefix}-m6", afterCommit, 6);
+        var incrementManifest = ResultObject(DbCompactionSnapshotTools.GetContextManifest(
+            Params(dbPath, writer => writer.WriteString("sessionId", sessionA))));
+        AssertEqual(2,
+            incrementManifest.GetProperty("manifest").GetProperty("incrementalMessageCount").GetInt32(),
+            "only messages created after the snapshot commit time count as the increment");
+
+        var incrementRestore = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(), sessionA);
+        var restoredTail = incrementRestore.WireMessages
+            .Skip(incrementRestore.WireMessages.Count - 2)
+            .Select(message => message.GetProperty("id").GetString())
+            .ToArray();
+        AssertEqual($"{prefix}-m5", restoredTail[0], "restored increment keeps transcript order at equal created_at (first)");
+        AssertEqual($"{prefix}-m6", restoredTail[1], "restored increment breaks equal-timestamp ties via sort_order");
 
         // ── Delete endpoint ──
         var deleted = ResultObject(DbCompactionSnapshotTools.Delete(Params(dbPath, writer => writer.WriteString("sessionId", sessionA))));
@@ -418,6 +418,9 @@ internal static class Program
 
         // ── Restore filtering (summary/artifact rows never enter model context) ──
         RunRestoreFilterSuite(dbPath, prefix);
+
+        // ── Coverage boundary vs transcript-index drift ──
+        RunCoverageBoundarySuite(dbPath, prefix);
 
         // ── Compression snapshot persistence failure semantics ──
         RunPersistenceFailureSuite(dbPath, prefix);
@@ -474,10 +477,11 @@ internal static class Program
             "UPDATE session_compaction_snapshots SET wire_conversation = '[{\"role\":\"user\"}]', " +
             "through_created_at = 999999, through_sort_order = 999 WHERE session_id = @sid",
             new SqliteParameter("@sid", sessionId));
-        var dangling = ResultObject(DbCompactionSnapshotTools.Get(Params(dbPath, writer => writer.WriteString("sessionId", sessionId))));
-        Assert(dangling.GetProperty("success").GetBoolean(), "dangling cursor read still succeeds");
-        AssertNullProperty(dangling, "snapshot", "dangling cursor downgrades to no snapshot");
-        AssertEqual("invalid_cursor", dangling.GetProperty("reason").GetString(), "dangling cursor reports reason");
+        var driftedCursor = ResultObject(DbCompactionSnapshotTools.Get(Params(dbPath, writer => writer.WriteString("sessionId", sessionId))));
+        Assert(driftedCursor.GetProperty("success").GetBoolean(), "drifted diagnostic cursor read still succeeds");
+        Assert(driftedCursor.TryGetProperty("snapshot", out var driftedSnapshot) &&
+               driftedSnapshot.ValueKind == JsonValueKind.Object,
+            "a stale through_* tuple no longer blocks restore: the boundary is the snapshot commit time");
 
         AssertEqual(1L, db.QueryScalar<long>(
                 "SELECT COUNT(*) FROM session_compaction_snapshots WHERE session_id = @sid",
@@ -655,39 +659,6 @@ internal static class Program
             writer.WriteString("messageId", $"{prefix}-m7");
         })), "tail message can be deleted");
         AssertHasSnapshot(dbPath, sessionA, "deleting a post-cursor message keeps the snapshot");
-
-        // DeleteLast: the anchor message is covered, a fresh tail message is not.
-        AssertMutationSuccess(DbMessageTools.DeleteLast(Params(dbPath, writer =>
-        {
-            writer.WriteString("sessionId", sessionA);
-        })), "delete-last removes the anchor message");
-        AssertBlockedSnapshot(dbPath, sessionA, "delete-last of the covered anchor blocks snapshot restore");
-        UpsertSnapshot(dbPath, sessionA);
-        AddMessage(dbPath, sessionA, $"{prefix}-m8", 1007, 8);
-        AssertMutationSuccess(DbMessageTools.DeleteLast(Params(dbPath, writer =>
-        {
-            writer.WriteString("sessionId", sessionA);
-        })), "delete-last removes the tail message");
-        AssertHasSnapshot(dbPath, sessionA, "delete-last of a post-cursor message keeps the snapshot");
-
-        // TruncateFrom: overlap removes, pure tail truncation keeps.
-        UpsertSnapshot(dbPath, sessionA);
-        AssertMutationSuccess(DbMessageTools.TruncateFrom(Params(dbPath, writer =>
-        {
-            writer.WriteString("sessionId", sessionA);
-            writer.WriteNumber("fromSortOrder", 4);
-        })), "truncate removes covered tail including the anchor");
-        AssertBlockedSnapshot(dbPath, sessionA, "truncate overlapping the coverage blocks snapshot restore");
-
-        UpsertSnapshot(dbPath, sessionA);
-        AddMessage(dbPath, sessionA, $"{prefix}-m9", 1008, 9);
-        AddMessage(dbPath, sessionA, $"{prefix}-m10", 1009, 10);
-        AssertMutationSuccess(DbMessageTools.TruncateFrom(Params(dbPath, writer =>
-        {
-            writer.WriteString("sessionId", sessionA);
-            writer.WriteNumber("fromSortOrder", 9);
-        })), "truncate removes only post-cursor messages");
-        AssertHasSnapshot(dbPath, sessionA, "truncate limited to post-cursor messages keeps the snapshot");
 
         // Clearing messages removes the snapshot.
         AssertMutationSuccess(DbMessageTools.Clear(Params(dbPath, writer => writer.WriteString("sessionId", sessionA))),
@@ -936,12 +907,15 @@ internal static class Program
         })), "restore (snapshot) session is created");
         AddMessage(dbPath, snapSession, $"{prefix}-rs-m0", 3200, 0);
         UpsertSnapshot(dbPath, snapSession);
-        AddMetaMessage(dbPath, snapSession, $"{prefix}-rs-summary", 3201, 1, "user",
+        // Post-snapshot rows need timestamps after the snapshot commit wall clock,
+        // otherwise the boundary rule treats them as already covered.
+        var afterSnapshot = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 1000;
+        AddMetaMessage(dbPath, snapSession, $"{prefix}-rs-summary", afterSnapshot, 1, "user",
             "<compaction-summary>post-cursor summary</compaction-summary>",
             @"{""compactSummary"":{""text"":""post-cursor summary""}}");
-        AddMetaMessage(dbPath, snapSession, $"{prefix}-rs-boundary", 3201, 2, "system", "",
+        AddMetaMessage(dbPath, snapSession, $"{prefix}-rs-boundary", afterSnapshot, 2, "system", "",
             @"{""compactBoundary"":{""trigger"":""auto""}}");
-        AddMessage(dbPath, snapSession, $"{prefix}-rs-m1", 3202, 3);
+        AddMessage(dbPath, snapSession, $"{prefix}-rs-m1", afterSnapshot + 1, 3);
 
         var snapRestore = ResultObject(SessionRestoreTools.RestoreSession(Params(dbPath, writer =>
             writer.WriteString("sessionId", snapSession))));
@@ -962,6 +936,211 @@ internal static class Program
         AssertEqual(2, repeatRestore.GetProperty("messageCount").GetInt32(),
             "repeat restore keeps the original message count");
     }
+
+    // ─── Suite: coverage boundary vs transcript-index drift ───
+
+    /// <summary>
+    /// Reproduces the 2026-09-04 incident: the renderer persists sort_order as its
+    /// in-memory transcript index, so finishing a compression (which inserts the
+    /// boundary + summary pair mid-transcript) rewrites the index of rows the snapshot
+    /// already covers, and cancelling an empty assistant message deletes one of them.
+    /// Neither may lock the session anymore, because the boundary is the snapshot row's
+    /// own commit timestamp.
+    /// </summary>
+    private static void RunCoverageBoundarySuite(string dbPath, string prefix)
+    {
+        var sessionId = $"{prefix}-boundary";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", sessionId);
+            writer.WriteString("title", "Coverage Boundary Session");
+        })), "coverage boundary session is created");
+
+        // Three rows written in the same millisecond: the old tuple cursor resolved the
+        // anchor as (sharedCreatedAt, 48), which the next transcript re-index would lose.
+        var sharedCreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 60_000;
+        AddMessage(dbPath, sessionId, $"{prefix}-bd-a", sharedCreatedAt, 46);
+        AddMessage(dbPath, sessionId, $"{prefix}-bd-b", sharedCreatedAt, 47);
+        AddMessage(dbPath, sessionId, $"{prefix}-bd-c", sharedCreatedAt, 48);
+
+        UpsertSnapshot(dbPath, sessionId);
+
+        AssertMutationSuccess(DbMessageTools.Upsert(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-bd-c");
+            writer.WriteString("sessionId", sessionId);
+            writer.WriteString("role", "user");
+            writer.WriteString("content", $"message {prefix}-bd-c");
+            writer.WriteString("usage", "{\"contextTokens\":120}");
+            writer.WriteNumber("createdAt", sharedCreatedAt);
+            writer.WriteNumber("sortOrder", 46);
+        })), "covered message can be re-saved with a shifted transcript index");
+
+        AssertHasSnapshot(dbPath, sessionId, "a shifted transcript index keeps the snapshot readable");
+
+        var drifted = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(), sessionId);
+        Assert(drifted.Failure is null, "drift never blocks the restore path");
+        Assert(drifted.FromSnapshot, "drifted session still restores from the snapshot");
+        AssertEqual(1, drifted.WireMessages.Count, "covered rows stay in the snapshot prefix");
+        Assert(!drifted.WireMessages.Any(message =>
+                message.TryGetProperty("id", out var id) &&
+                id.GetString() is { } value &&
+                value.StartsWith($"{prefix}-bd-", StringComparison.Ordinal)),
+            "covered history does not flow back into the model context");
+
+        AssertMutationSuccess(DbMessageTools.Delete(Params(dbPath, writer =>
+        {
+            writer.WriteString("sessionId", sessionId);
+            writer.WriteString("messageId", $"{prefix}-bd-a");
+        })), "covered message can be deleted (cancelled empty assistant row)");
+        AssertHasSnapshot(dbPath, sessionId, "deleting a covered row keeps the snapshot readable");
+
+        // Post-commit rows are the increment: each must appear exactly once, in order.
+        var tailCreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 1000;
+        AddMessage(dbPath, sessionId, $"{prefix}-bd-tail-1", tailCreatedAt, 49);
+        AddMessage(dbPath, sessionId, $"{prefix}-bd-tail-2", tailCreatedAt, 50);
+        var withTail = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(), sessionId);
+        Assert(withTail.Failure is null, "restart after compression restores without blocking");
+        Assert(withTail.FromSnapshot, "restart after compression keeps the snapshot as the prefix");
+        AssertEqual(3, withTail.WireMessages.Count, "snapshot prefix plus the post-commit increment is restored");
+        AssertEqual($"{prefix}-bd-tail-1",
+            withTail.WireMessages[1].GetProperty("id").GetString(),
+            "same-millisecond increment keeps transcript order via sort_order");
+        AssertEqual($"{prefix}-bd-tail-2",
+            withTail.WireMessages[2].GetProperty("id").GetString(),
+            "same-millisecond increment restores the later row second");
+
+        // The commit time is clamped strictly above the newest covered message, so a turn
+        // written in the same millisecond can never fall silently into the covered range.
+        var skewedSession = $"{prefix}-boundary-skew";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", skewedSession);
+            writer.WriteString("title", "Coverage Boundary Skew Session");
+        })), "coverage boundary skew session is created");
+        var skewedCreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 5000;
+        AddMessage(dbPath, skewedSession, $"{prefix}-bd-skew", skewedCreatedAt, 0);
+        UpsertSnapshot(dbPath, skewedSession);
+        var skewSnapshot = ReadSnapshot(dbPath, skewedSession);
+        Assert(skewSnapshot.GetProperty("createdAt").GetInt64() > skewedCreatedAt,
+            "snapshot commit time stays strictly above the newest covered message");
+        var skewRestore = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(), skewedSession);
+        AssertEqual(1, skewRestore.WireMessages.Count,
+            "the covered same-clock row is summarized once instead of being lost or duplicated");
+    }
+
+    /// <summary>
+    /// Regression for the restart incident: the renderer keeps only a paged slice of the
+    /// transcript and a freshly started Worker holds no conversation, so a manual
+    /// compression used to fold those few caller rows and answer "nothing to compress"
+    /// (or silently succeed without persisting anything) on a session whose real context
+    /// was far larger. Manual compression must first rebuild the same conversation the
+    /// next agent run would send.
+    /// </summary>
+    private static void RunColdWorkerCompressionSuite(string dbPath, string prefix)
+    {
+        var db = DbClient.GetClient();
+        var callerTranscript = """[{"id":"caller-1","role":"user","content":"paged transcript row"}]""";
+
+        // ── A cold Worker rebuilds the session from the DB and compresses that ──
+        var coldSession = $"{prefix}-cold-db";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", coldSession);
+            writer.WriteString("title", "Cold Worker Compression Session");
+        })), "cold worker compression session is created");
+        AddBatchMessages(dbPath, coldSession, coldSession,
+            startIndex: 0, count: 5,
+            baseCreatedAt: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 500_000,
+            baseSortOrder: 0);
+
+        var cold = ResultObject(Compress(CompressParams(dbPath, coldSession, callerTranscript)));
+        AssertEqual(5, SessionConversationManager.GetOrCreate(coldSession).MessageCount,
+            "a cold manual compression restores the session into the Worker first");
+        AssertEqual(5, cold.GetProperty("result").GetProperty("originalCount").GetInt32(),
+            "the restored DB conversation is the compression input, not the caller transcript");
+        AssertEqual("skipped", cold.GetProperty("result").GetProperty("status").GetString(),
+            "five short rows are honestly reported as not foldable");
+
+        // ── A session with no persisted history says so instead of folding the caller ──
+        var emptySession = $"{prefix}-cold-empty";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", emptySession);
+            writer.WriteString("title", "Cold Worker Empty Session");
+        })), "cold worker empty session is created");
+        var empty = ResultObject(Compress(CompressParams(dbPath, emptySession, callerTranscript)));
+        AssertEqual("nothing to compress", empty.GetProperty("result").GetProperty("error").GetString(),
+            "an empty session is not compressed from the caller's rows");
+        AssertEqual(0, empty.GetProperty("result").GetProperty("originalCount").GetInt32(),
+            "the caller transcript contributes no count for a real session");
+
+        // ── Real corruption blocks, and says why in a machine-readable way ──
+        var brokenSession = $"{prefix}-cold-broken";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", brokenSession);
+            writer.WriteString("title", "Cold Worker Broken Session");
+        })), "cold worker broken session is created");
+        AddBatchMessages(dbPath, brokenSession, brokenSession,
+            startIndex: 0, count: 5,
+            baseCreatedAt: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 400_000,
+            baseSortOrder: 0);
+        UpsertSnapshot(dbPath, brokenSession);
+        db.Execute(
+            "UPDATE session_compaction_snapshots SET version = 99 WHERE session_id = @sid",
+            new SqliteParameter("@sid", brokenSession));
+
+        var brokenRevisionBefore = db.QueryScalar<long>(
+            "SELECT context_revision FROM sessions WHERE id = @sid",
+            new SqliteParameter("@sid", brokenSession));
+        var broken = ResultObject(Compress(CompressParams(dbPath, brokenSession, callerTranscript)));
+        AssertEqual("blocked", broken.GetProperty("result").GetProperty("status").GetString(),
+            "a corrupt snapshot blocks manual compression instead of reporting a skip");
+        AssertEqual("restore_failed", broken.GetProperty("result").GetProperty("reason").GetString(),
+            "the blocker is machine-readable so the renderer can suggest a new session");
+        Assert(!broken.GetProperty("result").GetProperty("compressed").GetBoolean(),
+            "a blocked compression reports no success");
+        AssertEqual(0, SessionConversationManager.GetOrCreate(brokenSession).MessageCount,
+            "a blocked compression leaves the Worker conversation untouched");
+        AssertEqual(1L, db.QueryScalar<long>(
+            "SELECT COUNT(*) FROM session_compaction_snapshots WHERE session_id = @sid",
+            new SqliteParameter("@sid", brokenSession)),
+            "a blocked compression persists no new snapshot row");
+        AssertEqual(brokenRevisionBefore, db.QueryScalar<long>(
+            "SELECT context_revision FROM sessions WHERE id = @sid",
+            new SqliteParameter("@sid", brokenSession)),
+            "a blocked compression leaves the context revision alone");
+
+        // ── Sessionless callers keep using their own messages ──
+        var stateless = ResultObject(Compress(CompressParams(dbPath, sessionId: null,
+            """[{"id":"solo","role":"user","content":"single row"}]""")));
+        AssertEqual(1, stateless.GetProperty("result").GetProperty("originalCount").GetInt32(),
+            "a sessionless request still compresses the caller's messages");
+    }
+
+    private static WorkerResponse Compress(JsonElement parameters)
+        => AgentRuntimeContextCompressionTools.CompressAsync(
+            parameters,
+            SilentRequestContext.Instance).GetAwaiter().GetResult();
+
+    private static JsonElement CompressParams(string dbPath, string? sessionId, string messagesJson)
+        => Params(dbPath, writer =>
+        {
+            if (sessionId is not null) writer.WriteString("sessionId", sessionId);
+            writer.WriteString("trigger", "manual");
+            writer.WritePropertyName("provider");
+            writer.WriteStartObject();
+            writer.WriteString("providerType", "openai");
+            writer.WriteString("apiKey", "regression-test-key");
+            writer.WriteString("baseUrl", "http://127.0.0.1:9/v1");
+            writer.WriteString("model", "regression-test-model");
+            writer.WriteNumber("contextLength", 200_000);
+            writer.WriteEndObject();
+            writer.WritePropertyName("messages");
+            using var document = JsonDocument.Parse(messagesJson);
+            document.RootElement.WriteTo(writer);
+        });
 
     private static void RunPersistenceFailureSuite(string dbPath, string prefix)
     {
@@ -1119,14 +1298,6 @@ internal static class Program
         var result = ResultObject(DbCompactionSnapshotTools.Get(Params(dbPath, writer => writer.WriteString("sessionId", sessionId))));
         Assert(result.GetProperty("success").GetBoolean(), name);
         Assert(!result.TryGetProperty("snapshot", out var snapshot) || snapshot.ValueKind == JsonValueKind.Null, name);
-    }
-
-    private static void AssertBlockedSnapshot(string dbPath, string sessionId, string name)
-    {
-        var result = ResultObject(DbCompactionSnapshotTools.Get(Params(dbPath, writer => writer.WriteString("sessionId", sessionId))));
-        Assert(result.GetProperty("success").GetBoolean(), name);
-        Assert(!result.TryGetProperty("snapshot", out var snapshot) || snapshot.ValueKind == JsonValueKind.Null, name);
-        AssertEqual("invalid_cursor", result.GetProperty("reason").GetString(), name);
     }
 
     private static JsonElement UpsertParams(

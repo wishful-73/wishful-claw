@@ -8,12 +8,13 @@ namespace WishfulClaw.Agent;
 
 /// <summary>
 /// Handles explicit context compression requests from the renderer.
-/// When a sessionId is supplied and the Worker still holds the session's
-/// in-memory conversation, compression runs against that authoritative state
-/// and replaces it on success — mirroring the automatic compression path in
-/// the agent loop. Caller-supplied messages are only used as a fallback when
-/// the Worker has no live conversation for the session (step 10 adds the
-/// durable snapshot so a Worker restart can recover the compressed state).
+/// A sessionId always compresses the Worker's authoritative conversation. After a
+/// restart that conversation is not in memory yet, so it is rebuilt here from the
+/// DB first — the same lazy restore the agent loop performs on its first turn. This
+/// keeps the compressed set identical to what the next run will actually send;
+/// compressing the caller's transcript instead would fold a partial (paged) history
+/// and, because the stateless path persists nothing, silently do nothing.
+/// Caller-supplied messages are only used when no sessionId is given.
 /// </summary>
 public static class AgentRuntimeContextCompressionTools
 {
@@ -65,18 +66,31 @@ public static class AgentRuntimeContextCompressionTools
 
         try
         {
-            // Prefer the Worker's authoritative in-memory conversation; the
-            // caller's messages are only a fallback for sessions the Worker
-            // has not restored yet.
-            var sessionConv = sessionId.Length > 0 ? SessionConversationManager.TryGet(sessionId) : null;
+            // A session compresses the Worker's authoritative conversation — rebuilt
+            // from the DB when this Worker is cold. The caller's transcript is only
+            // the input for sessionless callers.
+            SessionConversation? sessionConv;
             List<JsonElement> wireMessages;
-            if (sessionConv is not null && sessionConv.MessageCount > 0)
+            if (sessionId.Length > 0)
             {
-                wireMessages = [.. sessionConv.GetWireConversation()];
+                var (authoritative, restoreFailure) = EnsureAuthoritativeConversation(sessionId, parameters, trigger);
+                if (restoreFailure is { } failure)
+                {
+                    return BuildResponse(
+                        [],
+                        new ContextCompressionResult(false, 0, 0, Status: "blocked", Trigger: trigger,
+                            Reason: "restore_failed",
+                            Error: $"session context could not be restored: {failure.Reason}"));
+                }
+
+                sessionConv = authoritative;
+                wireMessages = sessionConv.MessageCount > 0
+                    ? [.. sessionConv.GetWireConversation()]
+                    : [];
             }
             else
             {
-                sessionConv = null; // stateless path — do not replace later
+                sessionConv = null; // stateless path — nothing durable to replace or persist
                 wireMessages = AgentLoop.ReadWireConversation(parameters);
             }
 
@@ -145,9 +159,9 @@ public static class AgentRuntimeContextCompressionTools
                             Error: "an agent run started during compression"));
                 }
 
-                // Persist the durable snapshot only when the Worker holds the
-                // authoritative conversation; caller-supplied messages (stateless
-                // path) may not match the persisted history the cursor covers.
+                // Persist the durable snapshot only for the session path: a
+                // sessionless caller's messages describe no persisted history, so
+                // there is nothing for a snapshot to cover.
                 // compactArtifacts == null marks the mechanical-truncation degrade,
                 // whose outcome describes the pre-truncation conversation and must
                 // never become the durable snapshot.
@@ -217,6 +231,52 @@ public static class AgentRuntimeContextCompressionTools
         }
     }
 
+    /// <summary>
+    /// The Worker's authoritative conversation for a session, rebuilt from the DB on a
+    /// cold Worker exactly the way the agent loop rebuilds it before its first turn.
+    /// A restore failure is reported instead of thrown so the caller can answer with a
+    /// blocked status; the conversation is left untouched in that case.
+    /// </summary>
+    private static (SessionConversation Conversation, SessionRestoreFailure? Failure) EnsureAuthoritativeConversation(
+        string sessionId,
+        JsonElement parameters,
+        string trigger)
+    {
+        var sessionConv = SessionConversationManager.GetOrCreate(sessionId);
+        if (sessionConv.MessageCount > 0)
+        {
+            return (sessionConv, null);
+        }
+
+        DbClient.EnsureInitialized(parameters);
+        var restored = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(parameters), sessionId);
+        if (restored.Failure is { } failure)
+        {
+            WorkerLog.Warn(
+                $"manual context compression blocked session={AgentLoop.FormatSessionId(sessionId)} " +
+                $"trigger={trigger} reason=restore-{failure.Reason} " +
+                $"snapshot={failure.SnapshotId ?? "null"}");
+            return (sessionConv, failure);
+        }
+
+        if (restored.WireMessages.Count > 0 &&
+            sessionConv.InitializeIfEmpty(restored.WireMessages, restored.Conversation))
+        {
+            if (restored.FromSnapshot)
+            {
+                // Mirrors the restore endpoint: don't re-fold the restored summary
+                // until new messages are appended beyond it.
+                sessionConv.MarkCompactionWatermark(restored.WireMessages.Count);
+            }
+            WorkerLog.Info(
+                $"manual context compression restored session={AgentLoop.FormatSessionId(sessionId)} " +
+                $"trigger={trigger} source={(restored.FromSnapshot ? "snapshot" : "full")} " +
+                $"messages={restored.WireMessages.Count}");
+        }
+
+        return (sessionConv, null);
+    }
+
     private static WorkerResponse BuildResponse(
         List<JsonElement> messages,
         ContextCompressionResult result,
@@ -244,4 +304,7 @@ public sealed record ContextCompressionResult(
     string? Trigger = null,
     bool? SummarizerFailed = null,
     int? EstimatedPreTokens = null,
-    int? EstimatedNewTokens = null);
+    int? EstimatedNewTokens = null,
+    // Machine-readable blocker (e.g. "restore_failed") — the localized copy belongs
+    // to the renderer, not this string.
+    string? Reason = null);

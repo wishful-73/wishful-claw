@@ -39,6 +39,7 @@
     "contextCompressed": "上下文已压缩",
     "contextCompressionSkipped": "无需压缩",
     "contextCompressionBlocked": "暂时无法压缩",
+    "contextCompressionRestoreFailed": "上下文无法恢复，建议新开会话继续",
     "contextCompressionFailed": "压缩失败",
     "placeholder": "输入消息...",
     "placeholderClarify": "描述你的想法，我会先不断追问把需求问透...",

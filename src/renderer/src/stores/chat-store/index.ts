@@ -10,6 +10,7 @@ import { applyLiveCompressionStreamEvent, useLiveCompressionStore } from '@rende
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 
 import { isChatStreamEvent } from '@renderer/lib/agent/stream-event-adapter'
+import { buildChatMessageContent, getRenderedBlockPosition } from '@renderer/lib/agent/chat-message-blocks'
 import { accumulateUsageSnapshot } from '@renderer/lib/agent/usage-merge'
 
 import { createSessionSlice, type SessionSlice } from './session-slice'
@@ -1717,20 +1718,15 @@ function chatMessageToUnifiedMessage(message: ChatMessage): UnifiedMessage {
 function buildCompressionDisplayAnchor(
   assistantMessage: ChatMessage
 ): NonNullable<CompressionStatusMeta['displayAnchor']> {
-  const content = assistantMessage.content
-  const afterContentBlockCount = typeof content === 'string'
-    ? (content.length > 0 ? 1 : 0)
-    : Array.isArray(content)
-      ? content.length
-      : 0
-  const afterToolUseId = Array.isArray(content)
-    ? [...content].reverse().find((block) => block.type === 'tool_use')?.id
-    : undefined
+  // Live runs stream into segments/toolCalls; only the derived block list
+  // matches the indexes the message list splits on.
+  const position = getRenderedBlockPosition(
+    buildChatMessageContent(assistantMessage as unknown as Record<string, unknown>)
+  )
 
   return {
     assistantMessageId: assistantMessage.id,
-    afterContentBlockCount,
-    ...(afterToolUseId ? { afterToolUseId } : {})
+    ...position
   }
 }
 
@@ -1821,15 +1817,9 @@ function withCompactSummaryDisplayAnchor(
     }
   }
 
-  const content = assistantMessage.content
-  const afterContentBlockCount = typeof content === 'string'
-    ? (content.length > 0 ? 1 : 0)
-    : Array.isArray(content)
-      ? content.length
-      : 0
-  const afterToolUseId = Array.isArray(content)
-    ? [...content].reverse().find((block) => block.type === 'tool_use')?.id
-    : undefined
+  const position = getRenderedBlockPosition(
+    buildChatMessageContent(assistantMessage as unknown as Record<string, unknown>)
+  )
 
   return {
     ...summary,
@@ -1843,8 +1833,7 @@ function withCompactSummaryDisplayAnchor(
         ...(operationId ? { operationId } : {}),
         displayAnchor: {
           assistantMessageId: assistantMessage.id,
-          afterContentBlockCount,
-          ...(afterToolUseId ? { afterToolUseId } : {})
+          ...position
         }
       }
     }

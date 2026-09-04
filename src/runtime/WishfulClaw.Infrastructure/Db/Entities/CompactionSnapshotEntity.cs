@@ -27,10 +27,13 @@ public class CompactionSnapshotEntity
     /// <summary>Summary body without message wrapping; null when unavailable.</summary>
     public string? SummaryText { get; set; }
 
-    /// <summary>Coverage cursor: created_at of the last covered message.</summary>
+    /// <summary>Diagnostics only: created_at of the newest message covered at commit time.</summary>
     public long ThroughCreatedAt { get; set; }
 
-    /// <summary>Coverage cursor: sort_order of the last covered message.</summary>
+    /// <summary>
+    /// Diagnostics only: sort_order of the newest covered message. sort_order is a frontend
+    /// transcript index, so it must never be compared to decide whether a row is covered.
+    /// </summary>
     public int ThroughSortOrder { get; set; }
 
     public int OriginalCount { get; set; }

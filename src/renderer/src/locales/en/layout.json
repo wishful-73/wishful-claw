@@ -463,6 +463,7 @@
     "contextCompressed": "Context compressed",
     "contextCompressionSkipped": "No compression needed",
     "contextCompressionBlocked": "Compression temporarily unavailable",
+    "contextCompressionRestoreFailed": "Context could not be restored — start a new session",
     "contextCompressionFailed": "Compression failed"
   },
   "memory": {

@@ -591,14 +591,15 @@ export interface PendingSessionMessageItem {
   draft?: string
 }
 
-export type ManualCompressionResult = 'compressed' | 'skipped' | 'blocked' | 'failed'
+export type ManualCompressionResult = 'compressed' | 'skipped' | 'blocked' | 'restore_failed' | 'failed'
 
 /**
  * Manual context compression for a session (floating block / ContextRing entry).
- * The Worker endpoint prefers its own in-memory SessionConversation and only
- * falls back to the UI transcript when the Worker has not restored the session.
+ * The Worker compresses its own authoritative conversation, rebuilding it from the
+ * DB first when the Worker is cold — so a compression right after an app restart
+ * works on the full context instead of the renderer's paged transcript.
  * Returns an explicit status so the UI can distinguish compressed / skipped /
- * blocked / failed instead of collapsing everything into an error.
+ * blocked / restore_failed / failed instead of collapsing everything into an error.
  */
 export async function compressSessionContext(sessionId: string): Promise<ManualCompressionResult> {
   const chatStore = useChatStore.getState()
@@ -630,19 +631,9 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
     return 'blocked'
   }
 
-  const messages = session.messages ?? []
-  if (messages.length === 0) {
-    updateStatus({
-      operationId,
-      state: 'skipped',
-      startedAt,
-      completedAt: Date.now(),
-      trigger: 'manual',
-      error: 'nothing to compress'
-    })
-    return 'skipped'
-  }
-
+  // No local "transcript is empty" gate: the Worker rebuilds the session's
+  // authoritative conversation from the DB when it is cold, and the renderer
+  // transcript is only a paged slice of it.
   const resolved = resolveSendModel(sessionId)
   if (!resolved) {
     updateStatus({
@@ -664,9 +655,9 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
     contextLength: modelConfig?.contextLength ?? undefined
   } as unknown as ProviderConfig
 
-  // Fallback wire messages for the stateless path — the Worker ignores them
-  // when it already holds the session conversation.
-  const fallbackMessages: UnifiedMessage[] = messages.map((m) => ({
+  // Only consumed by the Worker when the request carries no sessionId; a session
+  // request compresses the conversation the Worker restores from the DB.
+  const fallbackMessages: UnifiedMessage[] = (session.messages ?? []).map((m) => ({
     id: m.id,
     role: m.role,
     content: m.content ?? m.text ?? '',
@@ -741,7 +732,11 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       preTokens: result.estimatedPreTokens,
       ...(result.error ? { error: result.error } : {})
     })
-    if (status === 'blocked') return 'blocked'
+    if (status === 'blocked') {
+      // The card keeps the generic blocked state; the entry control needs to know
+      // this one specifically means "the Worker cannot rebuild this context".
+      return result.reason === 'restore_failed' ? 'restore_failed' : 'blocked'
+    }
     if (status === 'skipped' || status === 'cancelled') return 'skipped'
     console.warn('[ChatActions] Manual compression failed', result.error)
     return 'failed'

@@ -71,3 +71,16 @@ export function getSessionScope(
   if (session.scope === 'global' || session.scope === 'project') return session.scope
   return session.projectId ? 'project' : 'global'
 }
+
+/**
+ * 会话的项目归属，全局域会话返回 null。必须从会话列表派生而不是拿
+ * `activeProjectId` 猜——切会话时后者还停在上一个项目，会把错误的作用域带过去。
+ */
+export function resolveSessionProjectId(
+  sessions: readonly Pick<Session, 'id' | 'scope' | 'projectId'>[],
+  sessionId: string | null | undefined
+): string | null {
+  if (!sessionId) return null
+  const session = sessions.find((item) => item.id === sessionId)
+  return getSessionScope(session) === 'project' ? session?.projectId ?? null : null
+}

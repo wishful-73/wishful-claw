@@ -3,7 +3,7 @@ import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
-import { normalizeSessionContext } from '@renderer/lib/session-context'
+import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 
 export interface SessionSlice {
@@ -179,7 +179,14 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     // import avoids a chat-store → ui-store circular dependency at load time).
     void import('@renderer/stores/ui-store')
       .then(({ useUIStore }) => {
-        useUIStore.getState().removeRightPanelTabsForSession(id)
+        // 上面的回落在 immer 事务里直写 activeSessionId、不经 setActiveSession，
+        // 作用域锚点必须在这里补一次，否则删掉当前会话后锚点停在已删 id，右侧
+        // 面板的 tab 过滤结果恒空（面板空白，直到用户手动再切一次会话）。
+        const nextActiveId = get().activeSessionId
+        const ui = useUIStore.getState()
+        ui.syncSessionScopedState(nextActiveId, resolveSessionProjectId(get().sessions, nextActiveId))
+        // 先同步作用域再清 tab：closeRightPanelTab 的收起判据读的是当前作用域。
+        ui.removeRightPanelTabsForSession(id)
       })
       .catch((err) => {
         console.warn('[chat-store] Failed to clean right-panel tabs for deleted session:', err)
@@ -188,6 +195,16 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
 
   setActiveSession: (id) => {
     set({ activeSessionId: id })
+    // 右侧面板 tab 按会话作用域过滤，锚点必须跟着可见会话走，否则切会话后面板
+    // 仍显示上一个会话的 tab。惰性 import 避开 chat-store → ui-store 循环依赖
+    // （与上方删除会话路径同一范式，顶部直接 import 会踩）。
+    void import('@renderer/stores/ui-store')
+      .then(({ useUIStore }) => {
+        useUIStore.getState().syncSessionScopedState(id, resolveSessionProjectId(get().sessions, id))
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to sync session-scoped UI state:', err)
+      })
     // Keep the session-scoped task store in sync with the visible session.
     void import('@renderer/stores/task-store')
       .then(({ useTaskStore }) => {

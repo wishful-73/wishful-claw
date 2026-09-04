@@ -63,7 +63,15 @@
 
 ### 步骤 3：右侧面板 Tab 会话隔离（B3）
 
-- [ ] 步骤 3：tab 标识会话化 + 作用域锚点接管 + 激活项按会话记录
+- [x] 步骤 3：tab 标识会话化 + 作用域锚点接管 + 激活项按会话记录（`[自动]` 三套 tsc 通过、三项 grep 通过；`[人工]` 待老大实测）
+  - **实现偏差 1：字段改名** `rightPanelActiveTabId` → `rightPanelActiveTabIds`（`Record<tabScopeId, string>`）。改名后 `grep -rn "rightPanelActiveTabId\b"` 全仓零命中，比计划预期的「只剩 map 初值 1 行」更严；helper 收口 grep `rightPanelActiveTabId:` 亦零命中，20 个落点无散写
+  - **实现偏差 2：helper 面比计划宽**。`right-panel-scope.ts` 除计划列的 `activateRightPanelTab` / `closeRightPanelScope` 两个纯函数外，还导出 `rightPanelTabScopeId` / `rightPanelTabScope` / `scopedRightPanelTabId` / `resolveRightPanelSessionId` / `readActiveRightPanelTabId` / `hasRightPanelTabsInScope`。原因是 20 个落点不只缺「算 patch」，也缺「算作用域 / 算 tabId / 读激活项」，这些若不收进同一文件就会在 slice 里各自内联一遍 `sessionId ?? 'global'`，正是本步要消灭的第二套机制
+  - **实现偏差 3：步骤 4 的「关闭后 activeTab 落位相邻」提前在本步落地**（`closeRightPanelScope` 内按被关闭项在**同作用域**列表里的下标取相邻存活项）。原因是激活项一旦会话化，落位算法必须同时知道作用域，放在步骤 4 改等于同一函数改两遍。步骤 4 只剩菜单装配
+  - **实现偏差 4：收起判据拆成两个不同作用域**。`closeRightPanelScope` 用**被关闭 tab 自己**的作用域重算激活项；面板是否收起用**当前展示**的作用域（`hasRightPanelTabsInScope(tabs, resolveRightPanelSessionId(state))`）。合并成一个会导致「删后台会话 A 的最后一个 tab」把正在看 B 的面板收掉
+  - **实现偏差 5：收起判据同时补进 `closePreviewTab`**（计划只提 `ui-store.ts:114`）。preview 双层栈是独立关闭路径，不补则「关掉某会话最后一个 preview tab」不收起面板
+  - **实现偏差 6：`CodeGraphToolCard.tsx:307` 调用方修根因**。原传字面 `null` 作 sessionId，严格作用域过滤后该 preview 会落进不可见的 `global` 桶；改为传 `undefined` 让其回落当前会话。不放宽过滤规则（放宽等于把 global 桶漏进每个会话）
+  - **实现偏差 7：`resolveSessionProjectId` 抽到 `lib/session-context.ts`**。计划写在 `session-slice.ts` 内联派生，实测 `setActiveSession` 与 `deleteSession` 两条路径都要用，内联即两份重复定义；抽到既有会话作用域文件后与 `getSessionScope` 同源
+  - **既存越线记录（不在本步修）**：`chat-store/session-slice.ts` 741 行（本步 +21/-? 微增）、`chat/file-aware-editor-utils.ts` 526 行，均超 AGENTS.md 500 行红线，属改造前既存，列入验证报告
   - **tab 标识必须一起会话化，只给 `visibleTabs` 加过滤不成立**：固定类 tab 的 id 是常量、去重按 `kind` 全局查（`ui-store-tab-slice.ts:137` / `:160`），全仓同一时刻最多只能存在一个 files / summary / activity / terminal / browser tab。只加过滤会导致：会话 A 的 files tab 被 B 过滤掉，而 `ensureFilesTab(B)` 命中既有 tab 后只激活不回写 sessionId → B 面板永远打不开文件 tab（正是 B3 要修的缺陷类型）
   - **目标模型照抄本仓已有先例** `ensureSubAgentTab:36-47`：`sessionId = (requestedSessionId?.trim() || null) ?? state.activeScopedSessionId ?? useChatStore.getState().activeSessionId ?? null`、`tabScopeId = sessionId ?? 'global'`、`tabId = ${kind}:${tabScopeId}`，去重按 `id` 而非 `kind`
     - **`|| null` 这个归一不能漏**：只 `?.trim()` 时纯空白串会得到 `''` 而非 nullish，`tabScopeId` 就成空前缀

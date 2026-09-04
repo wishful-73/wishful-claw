@@ -8,6 +8,7 @@ import { useAgentStore, type SubAgentState } from '@renderer/stores/agent-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { readActiveRightPanelTabId } from '@renderer/stores/right-panel-scope'
 import { cn } from '@renderer/lib/utils'
 import { EMPTY_SESSION_MESSAGES, mergeSessionSubAgents } from './sub-agent-run-data'
 import { SubAgentExecutionDetail } from './SubAgentExecutionDetail'
@@ -241,9 +242,11 @@ export function SubAgentsPanel({
   // Selected agent = the per-agent subagent tab that is currently active
   // (toolUseId set on the tab), not a global single-selection field.
   const rightPanelTabs = useUIStore((state) => state.rightPanelTabs)
-  const rightPanelActiveTabId = useUIStore((state) => state.rightPanelActiveTabId)
+  const activeSubAgentTabId = useUIStore((state) =>
+    readActiveRightPanelTabId(state, activeSessionId ?? null)
+  )
   const activeSubAgentTab = rightPanelTabs.find(
-    (tab) => tab.kind === 'subagent' && tab.id === rightPanelActiveTabId && tab.toolUseId
+    (tab) => tab.kind === 'subagent' && tab.id === activeSubAgentTabId && tab.toolUseId
   )
   const selectedToolUseId = activeSubAgentTab?.toolUseId ?? null
   const inlineText = activeSubAgentTab?.inlineText ?? null

@@ -6,6 +6,7 @@ import {
   clampRightPanelWidth
 } from '@renderer/components/layout/right-panel-defs'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { resolveSessionProjectId } from '@renderer/lib/session-context'
 import { updateBrowserStateForSession } from './browser-session-helpers'
 import { createPreviewPanelSlice } from './preview-panel-slice'
 import { activatePreviewTab } from './preview-panel-helpers'
@@ -13,6 +14,13 @@ import { createBrowserSlice } from './ui-store-browser-slice'
 import { createTabSlice } from './ui-store-tab-slice'
 import type { UIStore } from './ui-store-interface'
 import { CHAT_SURFACE_NAV_RESET, ensureRightPanelTabs, getDefaultRightPanelTabs } from './right-panel-tab-factories'
+import {
+  activateRightPanelTab,
+  closeRightPanelScope,
+  hasRightPanelTabsInScope,
+  resolveRightPanelSessionId,
+  scopedRightPanelTabId
+} from './right-panel-scope'
 
 // Re-export types for backward compatibility
 export type {
@@ -80,10 +88,12 @@ export const useUIStore = create<UIStore>((set, get) => ({
   rightPanelSection: 'execution',
   setRightPanelSection: (section: any) => set({ rightPanelSection: section }),
   rightPanelTabs: getDefaultRightPanelTabs(),
-  rightPanelActiveTabId: '',
+  rightPanelActiveTabIds: {},
   setRightPanelActiveTab: (tabId: any) =>
     set((state: any) => {
       const tab = state.rightPanelTabs.find((t: any) => t.id === tabId)
+      const sessionId = tab?.sessionId ?? resolveRightPanelSessionId(state)
+      const activation = activateRightPanelTab(state, sessionId, tabId)
       // Preview right-panel tabs mirror a preview-panel tab; activating one must
       // also activate the underlying preview tab so PreviewPanel renders it.
       if (
@@ -92,30 +102,35 @@ export const useUIStore = create<UIStore>((set, get) => ({
         tab.previewTabId !== state.activePreviewPanelTabId
       ) {
         return {
-          rightPanelActiveTabId: tabId,
+          ...activation,
           activePreviewPanelTabId: tab.previewTabId,
           previewPanelState: activatePreviewTab(state.previewPanelTabs, tab.previewTabId),
           previewPanelOpen: true
         }
       }
-      return { rightPanelActiveTabId: tabId }
+      return activation
     }),
   closeRightPanelTab: (tabId: any) => {
-    const tab = get().rightPanelTabs.find((t: any) => t.id === tabId)
+    const state = get()
+    const tab = state.rightPanelTabs.find((t: any) => t.id === tabId)
     if (tab?.kind === 'preview' && tab.previewTabId) {
       // Preview tabs live in two layers (previewPanelTabs + rightPanelTabs);
       // closePreviewTab removes both and reassigns activation consistently.
       get().closePreviewTab(tab.previewTabId)
       return
     }
-    const tabs = get().rightPanelTabs.filter((t: any) => t.id !== tabId)
-    if (tabs.length === 0) {
-      // Last tab closed — collapse the right panel
-      set({ rightPanelTabs: [], rightPanelActiveTabId: '', rightPanelOpen: false })
-      return
-    }
-    const nextActive = tabs[Math.max(0, tabs.length - 1)].id
-    set({ rightPanelTabs: tabs, rightPanelActiveTabId: nextActive })
+    const tabs = state.rightPanelTabs.filter((t: any) => t.id !== tabId)
+    set({
+      rightPanelTabs: tabs,
+      // 重算的是**被关闭 tab 自己那个作用域**的激活项
+      ...closeRightPanelScope(state, tab?.sessionId ?? null, tabId, state.rightPanelTabs),
+      // 收起判据看的是**当前展示的作用域**：否则「A 关完最后一个 tab 但 B 还有
+      // tab」会让 A 的面板开着显示空白，反过来删掉后台会话 A 又会把正在看 B 的
+      // 面板收掉。被收作用域的 tab 并未删除，切过去重新展开仍是它自己的激活项。
+      ...(hasRightPanelTabsInScope(tabs, resolveRightPanelSessionId(state))
+        ? {}
+        : { rightPanelOpen: false })
+    })
   },
   removeRightPanelTabsForSession: (sessionId: any) => {
     // Deleting a session must also drop every panel tab bound to it
@@ -393,8 +408,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
     const store = useChatStore.getState()
     const resolvedSessionId = sessionId ?? store.activeSessionId ?? null
     if (resolvedSessionId) {
-      const session = store.sessions.find((item) => item.id === resolvedSessionId)
-      store.setActiveProjectHome(session?.scope === 'project' ? session.projectId ?? null : null)
+      store.setActiveProjectHome(resolveSessionProjectId(store.sessions, resolvedSessionId))
       store.setActiveSession(resolvedSessionId)
     }
     set({ activeNavItem: 'chat', chatView: 'session', ...CHAT_SURFACE_NAV_RESET })
@@ -409,12 +423,18 @@ export const useUIStore = create<UIStore>((set, get) => ({
   // Browser tab management
   ensureBrowserTab: (url: any, sessionId: any, projectId: any, options: any) =>
     set((state: any) => {
-      const existing = state.rightPanelTabs.find((tab: any) => tab.kind === 'browser')
+      // tab 级会话键与内容级作用域必须同源：同一个 resolvedSessionId 既决定
+      // tab id，也传给 updateBrowserStateForSession。browserStatesBySession 的
+      // 状态逻辑本身不动。
+      const resolvedSessionId = resolveRightPanelSessionId(state, sessionId)
+      const tabId = scopedRightPanelTabId('browser', resolvedSessionId)
+      const existing = state.rightPanelTabs.find((tab: any) => tab.id === tabId)
       const tab: RightPanelTabInstance = existing ?? {
-        id: 'browser',
+        id: tabId,
         kind: 'browser',
         title: 'Browser',
         closable: true,
+        sessionId: resolvedSessionId,
         createdAt: Date.now()
       }
       const rightPanelTabs = existing
@@ -422,7 +442,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
         : ensureRightPanelTabs([...state.rightPanelTabs, tab])
       const browserStatePatch = updateBrowserStateForSession(
         state,
-        sessionId,
+        resolvedSessionId,
         {
           errorInfo: null,
           ...(url !== undefined ? { url } : {})
@@ -437,7 +457,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
       }
       return {
         rightPanelTabs,
-        rightPanelActiveTabId: tab.id,
+        ...activateRightPanelTab(state, resolvedSessionId, tabId),
         rightPanelOpen: true,
         ...browserStatePatch
       }

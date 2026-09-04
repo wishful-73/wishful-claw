@@ -19,6 +19,11 @@ import { SessionChangeReviewPanel } from '@renderer/components/layout/SessionCha
 import { SessionSummaryPanel } from '@renderer/components/layout/SessionSummaryPanel'
 import { GoalHistoryPanel } from '@renderer/components/goal/GoalHistoryPanel'
 import { RIGHT_PANEL_DEFAULT_WIDTH, clampRightPanelWidth } from './right-panel-defs'
+import {
+  readActiveRightPanelTabId,
+  rightPanelTabScope,
+  rightPanelTabScopeId
+} from '@renderer/stores/right-panel-scope'
 
 
 export function RightPanel(): React.JSX.Element {
@@ -26,7 +31,6 @@ export function RightPanel(): React.JSX.Element {
   const rightPanelOpen = useUIStore((state) => state.rightPanelOpen)
   const rightPanelWidth = useUIStore((state) => state.rightPanelWidth)
   const rightPanelTabs = useUIStore((state) => state.rightPanelTabs)
-  const activeTabId = useUIStore((state) => state.rightPanelActiveTabId)
   const setRightPanelOpen = useUIStore((state) => state.setRightPanelOpen)
   const setRightPanelWidth = useUIStore((state) => state.setRightPanelWidth)
   const setRightPanelActiveTab = useUIStore((state) => state.setRightPanelActiveTab)
@@ -44,6 +48,14 @@ export function RightPanel(): React.JSX.Element {
   })
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const panelSessionId = activeScopedSessionId ?? activeSessionId ?? null
+  const activeTabId = useUIStore((state) => readActiveRightPanelTabId(state, panelSessionId))
+  // tab 条与激活项只认当前作用域的 tab；常驻层（browser / files）的挂载判据
+  // 继续读未过滤的 rightPanelTabs，见下方 hasBrowserTab / hasFilesTab。
+  const panelScopeId = rightPanelTabScopeId(panelSessionId)
+  const scopedTabs = useMemo(
+    () => rightPanelTabs.filter((tab) => rightPanelTabScope(tab) === panelScopeId),
+    [rightPanelTabs, panelScopeId]
+  )
   const memoryProject = useChatStore((state) => {
     const targetSessionId = activeScopedSessionId ?? state.activeSessionId
     const targetSession = targetSessionId
@@ -60,9 +72,8 @@ export function RightPanel(): React.JSX.Element {
   )
 
   const tabs = useMemo(() => {
-    const visibleTabs = rightPanelTabs
-    if (!rightPanelOpen) return visibleTabs
-    return visibleTabs.map((tab: any) => {
+    if (!rightPanelOpen) return scopedTabs
+    return scopedTabs.map((tab: any) => {
       if (tab.kind === 'activity') {
         return { ...tab, title: t('sectionExecution.title', { defaultValue: 'Activity' }) }
       }
@@ -84,7 +95,7 @@ export function RightPanel(): React.JSX.Element {
       // subagent tabs keep their own title (set from task description)
       return tab
     })
-  }, [rightPanelOpen, rightPanelTabs, t])
+  }, [rightPanelOpen, scopedTabs, t])
 
   const selectedTab =
     tabs.find((tab: any) => tab.id === activeTabId) ?? tabs[0]
@@ -92,7 +103,10 @@ export function RightPanel(): React.JSX.Element {
   // The browser webview stays mounted whenever a browser tab exists and the plugin
   // is enabled — independent of whether the panel is open. This lets agent-driven
   // browser tools keep working in the background even while the panel is collapsed.
-  const hasBrowserTab = tabs.some((tab: any) => tab.kind === 'browser')
+  // 判据读未过滤数组（按 kind、与会话无关）：过滤只作用于 tab 条与激活项，不得
+  // 吞掉常驻层。保活边界是「同会话内收起面板 / 切 tab 不卸载」——browserPanelKey
+  // 已按会话作 React key，切会话本来就会 remount BrowserPanel。
+  const hasBrowserTab = rightPanelTabs.some((tab: any) => tab.kind === 'browser')
   const browserTabAlive = hasBrowserTab && browserPluginEnabled
   const browserPanelKey = panelSessionId
     ? `session:${panelSessionId}`
@@ -105,7 +119,7 @@ export function RightPanel(): React.JSX.Element {
 
   // Files panel stays mounted to preserve tree state (expanded folders, scroll)
   // across tab switches — same persistent-layer approach as the browser panel.
-  const hasFilesTab = tabs.some((tab: any) => tab.kind === 'files')
+  const hasFilesTab = rightPanelTabs.some((tab: any) => tab.kind === 'files')
   const filesVisible = rightPanelOpen && activeTab?.kind === 'files'
 
   const draggingRef = useRef(false)

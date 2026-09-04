@@ -58,7 +58,8 @@ export interface UIStore {
   rightPanelSection: RightPanelSection
   setRightPanelSection: (section: RightPanelSection) => void
   rightPanelTabs: RightPanelTabInstance[]
-  rightPanelActiveTabId: string
+  /** tabScopeId (`sessionId ?? 'global'`) → 该作用域当前激活的 tab id。写入只走 right-panel-scope.ts 的 helper。 */
+  rightPanelActiveTabIds: Record<string, string>
   setRightPanelActiveTab: (tabId: string) => void
   closeRightPanelTab: (tabId: string) => void
   removeRightPanelTabsForSession: (sessionId: string) => void

@@ -128,7 +128,11 @@
 
 ### 步骤 5：首条消息顶部间距（M1）
 
-- [ ] 聊天列表顶部留白（主聊天两处表面必须一致）
+- [x] 聊天列表顶部留白（主聊天两处表面必须一致）（`[自动]` 三套 tsc 通过；`[人工]` 待老大实测）
+  - **实现偏差：顶部间距加在「首个可视行」上，不加在滚动容器上**。计划首选容器 `pt-*`，但 `useMessageListScroll.ts:229-246` 的 virtualizer **未设 `scrollMargin`**，容器 padding-top 会让 item 0 的起点与 `scrollTop=0` 错开 N px，虚拟行的可见区间计算随之偏移；改加在行上则由 `measureElement` 自动量进行高，`getTotalSize` 与 `scrollHeight` 同步增长，滚动数学零改动（`scrollToBottomImmediate:126` 与 `syncBottomState:142` 都读 DOM `scrollHeight`/`clientHeight`，本就不受影响）
+  - **判据 `rowIndex === 0 && !hasLoadOlderRow`**：有「加载更早」行时该行自带 `pt-3 pb-3`（`VirtualListContent.tsx:134`），首条消息行不再叠加，正好满足「间距不翻倍」的验收条
+  - `exportAll` 分支（`MessageList.tsx:93`）是静态非虚拟化渲染，容器 padding 不涉及 `scrollMargin`，直接给 `[data-message-content]` 加 `pt-3` 与主列表对齐
+  - **未改用 virtualizer `paddingStart`**，因此 `scrollToBottomImmediate` 与「进行中当前轮 user message 顶部吸附卡」（`VirtualListContent.tsx:227`）的 offset 计算均无需校正；吸附卡判据读 `element.getBoundingClientRect().bottom` 对比容器 top，行内 padding 只会让它晚 N px 触发，方向更正确
   - 首选滚动容器加顶部内边距：`components/chat/MessageList/VirtualListContent.tsx:110`（`absolute inset-0 overflow-y-auto pl-7 md:pl-9`），同步 `components/chat/MessageList.tsx:92`（`exportAll` 分支容器）
   - 若改用 virtualizer `paddingStart`（`MessageList/useMessageListScroll.ts:229-246`），必须同步校验收纳 `scrollToBottomImmediate`（`:122-137`）与「进行中当前轮 user message 顶部吸附卡」（`VirtualListContent.tsx:227`）的 offset 计算
   - **范围外（不改）**：子 Agent 播放视图 `components/chat/TranscriptMessageList.tsx:126` 与 `MessageList/StaticMessageTranscript.tsx:98`

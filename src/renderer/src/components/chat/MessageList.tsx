@@ -90,7 +90,9 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
   if (exportAll) {
     return (
       <div ref={scroll.containerRef} className="relative h-full flex-1" data-message-list>
-        <div data-message-content>
+        {/* 与虚拟列表的首行 pt-3 对齐；本分支是静态非虚拟化渲染，容器 padding
+            不涉及 scrollMargin，可直接加在内容包裹层 */}
+        <div data-message-content className="pt-3">
           {data.renderableMessages.map((row) => {
             const originMessageId = row.kind === 'message' ? row.originMessageId : null
             const orchestration = originMessageId

@@ -120,13 +120,22 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
           {rowVirtualizer.getVirtualItems().map((virtualRow: any) => {
             const isLoadOlderRow = hasLoadOlderRow && virtualRow.index === 0
             const rowIndex = virtualRow.index - (hasLoadOlderRow ? 1 : 0)
+            // 顶部间距加在行上而不是滚动容器上：容器 padding-top 会让虚拟列表的
+            // item 0 起点与 scrollTop=0 错开（virtualizer 未设 scrollMargin），
+            // 行内 padding 则由 measureElement 自动量进行高，不动任何滚动数学。
+            // 有「加载更早」行时它自带 pt-3，不叠加。
+            const isFirstVisualRow = rowIndex === 0 && !hasLoadOlderRow
 
             return (
               <div
                 key={virtualRow.key}
                 ref={rowVirtualizer.measureElement}
                 data-index={virtualRow.index}
-                className="absolute left-0 top-0 w-full"
+                className={
+                  isFirstVisualRow
+                    ? 'absolute left-0 top-0 w-full pt-3'
+                    : 'absolute left-0 top-0 w-full'
+                }
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
               >
                 {isLoadOlderRow ? (

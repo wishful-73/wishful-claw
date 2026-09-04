@@ -12,6 +12,7 @@ import { ensureRightPanelTabs } from './right-panel-tab-factories'
 import {
   activateRightPanelTab,
   resolveRightPanelSessionId,
+  rightPanelTabScope,
   rightPanelTabScopeId,
   scopedRightPanelTabId
 } from './right-panel-scope'
@@ -204,5 +205,29 @@ export function createTabSlice(set: SetFn, get: GetFn) {
           rightPanelOpen: true
         }
       }),
+
+    // 批量关闭逐项复用 closeRightPanelTab：preview 类 tab 的关闭走的是双层栈
+    // （右栏 tab + previewPanelTabs 同步），在 slice 里另写一套 filter 会让
+    // 预览栈留下孤儿。先快照 id 列表再逐项关——每关一个 state 就变了。
+    closeOtherRightPanelTabs: (keepTabId: string) => {
+      const state = get()
+      const kept = state.rightPanelTabs.find((tab) => tab.id === keepTabId)
+      const scopeId = kept
+        ? rightPanelTabScope(kept)
+        : rightPanelTabScopeId(resolveRightPanelSessionId(state))
+      const targets = state.rightPanelTabs
+        .filter((tab) => tab.id !== keepTabId && rightPanelTabScope(tab) === scopeId)
+        .map((tab) => tab.id)
+      for (const tabId of targets) get().closeRightPanelTab(tabId)
+    },
+
+    closeAllRightPanelTabs: () => {
+      const state = get()
+      const scopeId = rightPanelTabScopeId(resolveRightPanelSessionId(state))
+      const targets = state.rightPanelTabs
+        .filter((tab) => rightPanelTabScope(tab) === scopeId)
+        .map((tab) => tab.id)
+      for (const tabId of targets) get().closeRightPanelTab(tabId)
+    },
   }
 }

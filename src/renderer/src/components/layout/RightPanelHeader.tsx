@@ -5,6 +5,7 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
+import { Fragment } from 'react'
 import {
   Activity,
   Bot,
@@ -14,6 +15,7 @@ import {
   FolderOpen,
   GitCompare,
   Globe,
+  MoreHorizontal,
   PanelRightClose,
   Plus,
   SquareTerminal,
@@ -26,12 +28,22 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@renderer/components/ui/context-menu'
 import { spring } from '@renderer/components/animate-ui/transitions'
 import { cn } from '@renderer/lib/utils'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import type { RightPanelTabInstance } from '@renderer/stores/ui-store'
+
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string
 
 interface RightPanelHeaderProps {
   tabs: RightPanelTabInstance[]
@@ -39,12 +51,20 @@ interface RightPanelHeaderProps {
   browserEnabled: boolean
   onSelectTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
+  onCloseOtherTabs: (tabId: string) => void
+  onCloseAllTabs: () => void
   onAddActivity: () => void
   onAddBrowser: () => void
-  onAddGoals: () => void
   onOpenFile: () => void
   onClosePanel: () => void
-  t: (key: string, options?: Record<string, unknown>) => string
+  t: TranslateFn
+}
+
+interface TabCloseHandlers {
+  onCloseTab: (tabId: string) => void
+  onCloseOtherTabs: (tabId: string) => void
+  onCloseAllTabs: () => void
+  onClosePanel: () => void
 }
 
 function TabIcon({ tab }: { tab: RightPanelTabInstance }): React.JSX.Element {
@@ -63,10 +83,66 @@ function TabIcon({ tab }: { tab: RightPanelTabInstance }): React.JSX.Element {
 const TAB_INDICATOR_CLASS =
   'absolute inset-0 rounded-md bg-muted shadow-[inset_0_0_0_1px_hsl(var(--border)/0.55)]'
 
+interface CloseAction {
+  key: 'close' | 'closeOthers' | 'closeAll' | 'closePanel'
+  label: string
+  disabled: boolean
+  separatorBefore?: boolean
+  run: () => void
+}
+
+/**
+ * Tab 右键菜单与面板级「更多」下拉共用同一组动作，只有首项文案随目标变化
+ * （有明确目标 tab 时是「关闭」，面板级指向当前激活 tab 时是「关闭当前」）。
+ * 描述符在这里算一次，两处各用自己的菜单原语渲染，避免禁用规则走偏。
+ */
+function buildCloseActions(
+  targetTabId: string | null,
+  options: { closable: boolean; tabCount: number },
+  handlers: TabCloseHandlers,
+  t: TranslateFn
+): CloseAction[] {
+  const { closable, tabCount } = options
+  return [
+    {
+      key: 'close',
+      label: targetTabId
+        ? t('rightPanelAction.closeTab', { defaultValue: 'Close' })
+        : t('rightPanelAction.closeCurrentTab', { defaultValue: 'Close current' }),
+      disabled: !targetTabId || !closable,
+      run: () => {
+        if (targetTabId) handlers.onCloseTab(targetTabId)
+      }
+    },
+    {
+      key: 'closeOthers',
+      label: t('rightPanelAction.closeOtherTabs', { defaultValue: 'Close others' }),
+      disabled: !targetTabId || tabCount <= 1,
+      run: () => {
+        if (targetTabId) handlers.onCloseOtherTabs(targetTabId)
+      }
+    },
+    {
+      key: 'closeAll',
+      label: t('rightPanelAction.closeAllTabs', { defaultValue: 'Close all' }),
+      disabled: tabCount === 0,
+      run: handlers.onCloseAllTabs
+    },
+    {
+      key: 'closePanel',
+      label: t('rightPanelAction.closePanel', { defaultValue: 'Close panel' }),
+      disabled: false,
+      separatorBefore: true,
+      run: handlers.onClosePanel
+    }
+  ]
+}
+
 function TabButton({
   tab,
   active,
   animated,
+  closeActions,
   onSelectTab,
   onCloseTab,
   t
@@ -74,9 +150,10 @@ function TabButton({
   tab: RightPanelTabInstance
   active: boolean
   animated: boolean
+  closeActions: CloseAction[]
   onSelectTab: (tabId: string) => void
   onCloseTab: (tabId: string) => void
-  t: (key: string, options?: Record<string, unknown>) => string
+  t: TranslateFn
 }): React.JSX.Element {
   const className = cn(
     'group relative inline-flex h-7 max-w-44 shrink-0 items-center rounded-md px-2 text-[11px] font-medium transition-colors',
@@ -119,20 +196,10 @@ function TabButton({
     </>
   )
 
-  if (!animated) {
-    return (
-      <button
-        type="button"
-        className={className}
-        title={tab.title}
-        onClick={() => onSelectTab(tab.id)}
-      >
-        {content}
-      </button>
-    )
-  }
-
-  return (
+  // 两个返回分支合并成同一个 element 再包 ContextMenuTrigger：只包 motion 分支
+  // 会让 animationsEnabled=false 的路径右键静默失效。asChild 走 Slot 透传 props
+  // 与 ref，既不会把 button 嵌进 button，也不影响 motion 的 layout/exit 动画。
+  const buttonElement = animated ? (
     <motion.button
       type="button"
       layout
@@ -146,6 +213,31 @@ function TabButton({
     >
       {content}
     </motion.button>
+  ) : (
+    <button
+      type="button"
+      className={className}
+      title={tab.title}
+      onClick={() => onSelectTab(tab.id)}
+    >
+      {content}
+    </button>
+  )
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{buttonElement}</ContextMenuTrigger>
+      <ContextMenuContent className="w-44">
+        {closeActions.map((action) => (
+          <Fragment key={action.key}>
+            {action.separatorBefore ? <ContextMenuSeparator /> : null}
+            <ContextMenuItem disabled={action.disabled} onSelect={action.run}>
+              {action.label}
+            </ContextMenuItem>
+          </Fragment>
+        ))}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -155,26 +247,53 @@ export function RightPanelHeader({
   browserEnabled,
   onSelectTab,
   onCloseTab,
+  onCloseOtherTabs,
+  onCloseAllTabs,
   onAddActivity,
   onAddBrowser,
-  onAddGoals,
   onOpenFile,
   onClosePanel,
   t
 }: RightPanelHeaderProps): React.JSX.Element {
   const animationsEnabled = useSettingsStore((s) => s.animationsEnabled)
 
+  const closeHandlers: TabCloseHandlers = {
+    onCloseTab,
+    onCloseOtherTabs,
+    onCloseAllTabs,
+    onClosePanel
+  }
+  // 两个动画分支共用同一份 tab 条目，避免 6 个 props 在两处逐字重复。
+  const tabEntries = tabs.map((tab) => ({
+    tab,
+    active: tab.id === activeTabId,
+    closeActions: buildCloseActions(
+      tab.id,
+      { closable: tab.closable, tabCount: tabs.length },
+      closeHandlers,
+      t
+    )
+  }))
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null
+  const panelActions = buildCloseActions(
+    activeTab?.id ?? null,
+    { closable: activeTab?.closable ?? false, tabCount: tabs.length },
+    closeHandlers,
+    t
+  )
+
   return (
     <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/55 bg-background/95 px-2">
       <div className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto pt-1">
         {animationsEnabled ? (
           <AnimatePresence initial={false}>
-            {tabs.map((tab) => (
+            {tabEntries.map((entry) => (
               <TabButton
-                key={tab.id}
-                tab={tab}
-                active={tab.id === activeTabId}
+                key={entry.tab.id}
+                tab={entry.tab}
+                active={entry.active}
                 animated
+                closeActions={entry.closeActions}
                 onSelectTab={onSelectTab}
                 onCloseTab={onCloseTab}
                 t={t}
@@ -182,12 +301,13 @@ export function RightPanelHeader({
             ))}
           </AnimatePresence>
         ) : (
-          tabs.map((tab) => (
+          tabEntries.map((entry) => (
             <TabButton
-              key={tab.id}
-              tab={tab}
-              active={tab.id === activeTabId}
+              key={entry.tab.id}
+              tab={entry.tab}
+              active={entry.active}
               animated={false}
+              closeActions={entry.closeActions}
               onSelectTab={onSelectTab}
               onCloseTab={onCloseTab}
               t={t}
@@ -211,10 +331,6 @@ export function RightPanelHeader({
             <FolderOpen className="size-4 text-sky-500 dark:text-sky-400" />
             {t('rightPanel.openFile', { defaultValue: 'Open file' })}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onAddGoals}>
-            <Target className="size-4" />
-            {t('rightPanel.goals', { defaultValue: 'Goals' })}
-          </DropdownMenuItem>
           <DropdownMenuItem disabled={!browserEnabled} onSelect={onAddBrowser}>
             <Globe className="size-4" />
             {t('rightPanel.browser', { defaultValue: 'Browser' })}
@@ -222,15 +338,29 @@ export function RightPanelHeader({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-        onClick={onClosePanel}
-        title={t('rightPanelAction.closePanel', { defaultValue: 'Close panel' })}
-      >
-        <PanelRightClose className="size-4" />
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            title={t('rightPanelAction.more', { defaultValue: 'More' })}
+          >
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          {panelActions.map((action) => (
+            <Fragment key={action.key}>
+              {action.separatorBefore ? <DropdownMenuSeparator /> : null}
+              <DropdownMenuItem disabled={action.disabled} onSelect={action.run}>
+                {action.key === 'closePanel' ? <PanelRightClose className="size-4" /> : null}
+                {action.label}
+              </DropdownMenuItem>
+            </Fragment>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

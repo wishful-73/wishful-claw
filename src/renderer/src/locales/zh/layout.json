@@ -510,7 +510,6 @@
     }
   },
   "rightPanel": {
-    "goals": "Goals",
     "files": "文件",
     "browser": "浏览器",
     "browserLoadFailed": "页面加载失败",
@@ -575,6 +574,11 @@
     "restoreBlocked": "恢复阻断原因"
   },
   "rightPanelAction": {
+    "more": "更多",
+    "closeTab": "关闭",
+    "closeCurrentTab": "关闭当前",
+    "closeOtherTabs": "关闭其他",
+    "closeAllTabs": "关闭所有",
     "closePanel": "关闭面板"
   },
   "subAgentsPanel": {

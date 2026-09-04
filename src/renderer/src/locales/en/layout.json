@@ -510,7 +510,6 @@
     }
   },
   "rightPanel": {
-    "goals": "Goals",
     "files": "Files",
     "browser": "Browser",
     "browserLoadFailed": "Failed to load page",
@@ -575,6 +574,11 @@
     "restoreBlocked": "Restore blocked"
   },
   "rightPanelAction": {
+    "more": "More",
+    "closeTab": "Close",
+    "closeCurrentTab": "Close current",
+    "closeOtherTabs": "Close others",
+    "closeAllTabs": "Close all",
     "closePanel": "Close panel"
   },
   "subAgentsPanel": {

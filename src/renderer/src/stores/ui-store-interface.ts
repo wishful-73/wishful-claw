@@ -62,6 +62,10 @@ export interface UIStore {
   rightPanelActiveTabIds: Record<string, string>
   setRightPanelActiveTab: (tabId: string) => void
   closeRightPanelTab: (tabId: string) => void
+  /** 关闭与 keepTabId 同作用域的其余 tab，逐项复用 closeRightPanelTab */
+  closeOtherRightPanelTabs: (keepTabId: string) => void
+  /** 关闭当前展示作用域的全部 tab，逐项复用 closeRightPanelTab */
+  closeAllRightPanelTabs: () => void
   removeRightPanelTabsForSession: (sessionId: string) => void
   rightPanelRailWidth: number
 

@@ -35,6 +35,8 @@ export function RightPanel(): React.JSX.Element {
   const setRightPanelWidth = useUIStore((state) => state.setRightPanelWidth)
   const setRightPanelActiveTab = useUIStore((state) => state.setRightPanelActiveTab)
   const closeRightPanelTab = useUIStore((state) => state.closeRightPanelTab)
+  const closeOtherRightPanelTabs = useUIStore((state) => state.closeOtherRightPanelTabs)
+  const closeAllRightPanelTabs = useUIStore((state) => state.closeAllRightPanelTabs)
   const ensureActivityTab = useUIStore((state) => state.ensureActivityTab)
   const ensureBrowserTab = useUIStore((state) => state.ensureBrowserTab)
   const activeScopedSessionId = useUIStore((state) => state.activeScopedSessionId)
@@ -237,9 +239,10 @@ export function RightPanel(): React.JSX.Element {
               browserEnabled={browserPluginEnabled}
               onSelectTab={setRightPanelActiveTab}
               onCloseTab={closeRightPanelTab}
+              onCloseOtherTabs={closeOtherRightPanelTabs}
+              onCloseAllTabs={closeAllRightPanelTabs}
               onAddActivity={ensureActivityTab}
               onAddBrowser={() => ensureBrowserTab(undefined, panelSessionId)}
-              onAddGoals={() => useUIStore.getState().openGoalPanel(panelSessionId, activeProjectId)}
               onOpenFile={() => {
                 import('@renderer/lib/ipc/ipc-client').then(({ ipcClient }) => {
                   ipcClient

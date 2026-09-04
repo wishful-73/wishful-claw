@@ -106,7 +106,17 @@
 
 ### 步骤 4：Tab 标题栏菜单改造（M6）
 
-- [ ] `src/renderer/src/components/layout/RightPanelHeader.tsx` 三处改造
+- [x] `src/renderer/src/components/layout/RightPanelHeader.tsx` 三处改造（`[自动]` 三套 tsc 通过、locale JSON 解析通过；`[人工]` 待老大实测）
+  - **实现偏差 1：「关闭后 activeTab 落位相邻」不在本步**，已随步骤 3 的 `closeRightPanelScope` 落地（激活项会话化后落位算法必须同时知道作用域，分两步改等于同一函数改两遍）。本步只剩菜单装配
+  - **实现偏差 2：批量关闭的作用域取法不对称**。`closeOtherRightPanelTabs(keepTabId)` 用**保留 tab 自己**的作用域，`closeAllRightPanelTabs()` 用**当前展示**的作用域。右键可见 tab 时两者等价，但前者在目标 tab 不属于当前作用域时不会误关别的会话的 tab
+  - **实现偏差 3：删除 `rightPanel.goals` i18n key**（zh/en 各 1 行）。「+」菜单的 Goals 项移除后全仓零引用，不留死键。Goal tab 标题仍是 store 里硬编码的 `'Goals'`（`ui-store-tab-slice.ts:121`，改造前既存，不在本批范围）
+  - **实现偏差 4：新增 5 个 i18n key** —— `rightPanelAction.{more,closeTab,closeCurrentTab,closeOtherTabs,closeAllTabs}`，zh/en 齐全，不靠 `defaultValue` 裸奔
+  - **实现偏差 5：关闭动作抽成 `buildCloseActions` 描述符**（label / disabled / run / separatorBefore 一次算好），Tab 右键菜单与「更多」下拉各用自己的菜单原语渲染同一份描述符。两处各写一遍会让禁用规则走偏（「仅 1 个 tab 时关闭其他应无副作用」这条判据只可能在一处成立）
+  - **实现偏差 6：`TabButton` 两个返回分支合并成 `buttonElement` 变量再包 `ContextMenuTrigger asChild`**。只包 motion 分支会让 `animationsEnabled=false` 路径右键静默失效；`asChild` 走 Slot 透传 props 与 ref，不产生 button 嵌 button，也不影响 motion 的 layout/exit（`AnimatePresence` 靠 PresenceContext 穿透自定义组件与 Radix Root）
+  - **实现偏差 7：显式 `import { Fragment } from 'react'`**。本文件是 module，不能用 UMD 全局 `React` 的**值**（只用于类型标注的 `React.JSX.Element` 不受影响）
+  - **顺带收口**：两个动画分支原本逐字重复 6 个 props，改为共享预算好的 `tabEntries`（与步骤 2 的 `composerRunStatus` 同类缺陷）
+  - **「关闭面板」埋进下拉未减少一键关闭路径**：`TitleBar.tsx:126` 的 `toggleRightPanel` 按钮仍在，另有 `CommandPalette.tsx:86` 与 `search-dialog.tsx:519` 两个入口
+  - `RightPanelHeader.tsx` 237 → 366 行，仍 < 500 行红线
   - 移除「+」菜单 Goals 项（`:214-217`）及 `RightPanel.tsx:228` 的 `openGoalPanel` 装配路径。Goal 面板仅由聊天窗目标触发（现存入口 `GoalSessionControls.tsx:254`，由 `GoalSessionBar` 渲染、挂在 `InputArea/index.tsx:332`，删菜单不影响入口存活）
   - **同步收窄 props**：`onAddGoals` 的类型声明（`:44`）与解构形参（`:160`）删除后成为未用参数，须与装配处一并移除（`noUnusedParameters` 会报错）
   - 「关闭右侧面板」按钮（`:225-233`）改为「更多」下拉：关闭当前 / 关闭其他 / 关闭所有 / 关闭右侧面板

@@ -6,6 +6,7 @@ import {
   isCompactArtifactMessage,
   isCompactBoundaryMessage,
   isCompactSummaryLikeMessage,
+  isCompactSummaryMessage,
   resolveActiveCompactArtifacts
 } from '@renderer/lib/agent/context-compression'
 import type { LiveCompressionState } from '@renderer/stores/live-compression-store'
@@ -87,15 +88,37 @@ function collectCompactArtifactPairs(messages: readonly UnifiedMessage[]): Compa
   for (let index = 0; index < messages.length; index += 1) {
     const boundary = messages[index]
     if (!isCompactBoundaryMessage(boundary)) continue
+    // Canonical pairing: the summary sits after its boundary. Reload orders rows
+    // by (created_at, sort_order), so an inverted worker stamp (summary 1ms
+    // before its boundary — existing DB rows already do) makes the summary sit
+    // immediately BEFORE the boundary instead. Accept that too so the divider
+    // survives reload; only a tagged compactSummary matches here, never a legacy
+    // plain-text summary.
     const result = findSummaryAfterBoundary(messages, index)
-    if (!result || usedSummaryIds.has(result.message.id)) continue
-    usedSummaryIds.add(result.message.id)
-    pairs.push({
-      boundary,
-      summary: result.message,
-      boundaryIndex: index,
-      summaryIndex: result.index
-    })
+    if (result && !usedSummaryIds.has(result.message.id)) {
+      usedSummaryIds.add(result.message.id)
+      pairs.push({
+        boundary,
+        summary: result.message,
+        boundaryIndex: index,
+        summaryIndex: result.index
+      })
+      continue
+    }
+    const previous = index > 0 ? messages[index - 1] : null
+    if (
+      previous &&
+      isCompactSummaryMessage(previous) &&
+      !usedSummaryIds.has(previous.id)
+    ) {
+      usedSummaryIds.add(previous.id)
+      pairs.push({
+        boundary,
+        summary: previous,
+        boundaryIndex: index,
+        summaryIndex: index - 1
+      })
+    }
   }
 
   // Legacy/imported transcripts may contain a summary without its boundary.

@@ -470,7 +470,7 @@ export function ContentRenderer({
         finalItems.map((item) => renderItem(item))
       ) : hasProcessContent && !isStreaming && renderMode !== 'transcript' ? (
         <div className={MD_CLASS}>
-          <p className="text-muted-foreground">{t('assistantMessage.cancelledExecution', { defaultValue: '用户取消，中断执行' })}</p>
+          <p className="text-muted-foreground">{t('assistantMessage.executionPaused', { defaultValue: '任务暂告一段落' })}</p>
         </div>
       ) : null}
       {isStreaming && <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />}

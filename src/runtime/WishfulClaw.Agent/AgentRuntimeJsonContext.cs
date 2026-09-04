@@ -26,6 +26,7 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(GoalRunStateChanged))]
 [JsonSerializable(typeof(GoalProgressErrorPayload))]
 [JsonSerializable(typeof(AgentRuntimeReverseRequestEnvelope))]
+[JsonSerializable(typeof(AgentRuntimeCompressionDeltaEnvelope))]
 [JsonSerializable(typeof(AgentRuntimeReverseCancelEnvelope))]
 [JsonSerializable(typeof(AgentRuntimeReverseResponseResult))]
 [JsonSerializable(typeof(AgentRuntimeRunResult))]

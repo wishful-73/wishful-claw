@@ -464,6 +464,30 @@ async function testLiveDraftAppendsCoalesce(): Promise<void> {
   useLiveCompressionStore.getState().clear(session)
 }
 
+function testInvertedTimestampPairStillRenders(): void {
+  // Reload order: DB rows ordered by (created_at, sort_order). Existing rows
+  // carry summary.createdAt = boundary.createdAt - 1, so the summary sits
+  // immediately BEFORE its boundary after reload — the pair must still render.
+  const items = buildRenderableChatItems([
+    message('u1', 'user', 'hello', 1),
+    message('a1', 'assistant', 'world', 2),
+    summary('s-late', 100, { operationId: 'op-inverted', messagesSummarized: 5 }),
+    boundary('b-late', 101, { messagesSummarized: 5 }),
+    message('u2', 'user', 'next', 200)
+  ])
+
+  assert.deepEqual(itemKinds(items), [
+    'message',
+    'message',
+    'context-compression',
+    'message'
+  ])
+  assertCompressionOperation(items, 'op-inverted')
+  const divider = items.find((item) => item.kind === 'context-compression')
+  assert.ok(divider && divider.kind === 'context-compression')
+  assert.equal(divider.summary.id, 's-late')
+}
+
 const tests: Array<[string, () => void | Promise<void>]> = [
   ['no artifacts', testNoArtifacts],
   ['array middle split', testArrayMiddleSplit],
@@ -479,7 +503,8 @@ const tests: Array<[string, () => void | Promise<void>]> = [
   ['anchor split keeps tool_use with its inline result', testAnchorSplitKeepsToolResultPair],
   ['anchor falls back to block count when tool use is gone', testAnchorFallsBackWhenToolUseGone],
   ['live anchor inlines like completed divider', testLiveAnchorInlinesLikeCompletedDivider],
-  ['live draft chunks coalesce into one notification', testLiveDraftAppendsCoalesce]
+  ['live draft chunks coalesce into one notification', testLiveDraftAppendsCoalesce],
+  ['inverted timestamp pair still renders', testInvertedTimestampPairStillRenders]
 ]
 
 async function main(): Promise<void> {

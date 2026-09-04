@@ -8,6 +8,7 @@ import { installGoalSyncListener, useGoalStore, type GoalRunState } from '@rende
 import { getAgentStreamReceiver } from '@renderer/lib/ipc/agent-stream-receiver'
 import { applyLiveCompressionStreamEvent, useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { IPC } from '@renderer/lib/ipc/channels'
 
 import { isChatStreamEvent } from '@renderer/lib/agent/stream-event-adapter'
 import { buildChatMessageContent, getRenderedBlockPosition } from '@renderer/lib/agent/chat-message-blocks'
@@ -1972,6 +1973,22 @@ export function updateSessionContextTokens(
 // Start the stream receiver
 
 installGoalSyncListener()
+
+// Manual-compression summary deltas: the worker emits request-scoped
+// "agent/compression-delta" events that the main process relays on
+// 'agent:compression-delta'. Append them to the live card's draft — the
+// session filter happens in the store (the card is keyed by sessionId).
+ipcClient.on(IPC.AGENT_COMPRESSION_DELTA, (...args: unknown[]) => {
+  const payload = args[0] as
+    | { sessionId?: string; text?: string }
+    | undefined
+  if (!payload?.sessionId || typeof payload.text !== 'string' || !payload.text) return
+  const state = useLiveCompressionStore.getState()
+  // No live card for this session means the compression already finished or the
+  // window reloaded mid-flight — dropping the chunk is correct there.
+  if (!state.bySessionId[payload.sessionId]) return
+  state.appendDraft(payload.sessionId, payload.text)
+})
 
 getAgentStreamReceiver().start((envelope) => {
 

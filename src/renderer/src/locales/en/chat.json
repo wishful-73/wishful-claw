@@ -1,4 +1,4 @@
-{
+﻿{
   "home": {
     "title": "How can I help you today?",
     "subtitle": "Start a conversation or pick a quick prompt below.",
@@ -1215,7 +1215,7 @@
     "recallEmptyMessage": "Empty message, memory recall skipped",
     "editImage": "Edit image",
     "maskEditImage": "Mask edit",
-    "cancelledExecution": "Execution cancelled by user",
+    "executionPaused": "Task paused for now",
     "maskBrush": "Brush",
     "imageEditPrompt": "Describe the change"
   },

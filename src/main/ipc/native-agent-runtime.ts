@@ -97,6 +97,12 @@ export function registerNativeAgentRuntimeHandlers(): void {
     safeSendMessagePackToAllWindows('global:dispatch-changed', params)
   })
 
+  // Relay manual-compression summary deltas so the live compression card in the
+  // renderer types out the draft while the worker's LLM call is still streaming.
+  worker.onEvent('agent/compression-delta', (params: unknown) => {
+    safeSendMessagePackToAllWindows('agent:compression-delta', params)
+  })
+
   // Register IPC handler for renderer tool responses
   ipcMain.handle(
     toMessagePackChannel(SIDECAR_RENDERER_TOOL_RESPONSE_MSGPACK_CHANNEL),

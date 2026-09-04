@@ -5,6 +5,7 @@
     "boundaryTitle": "从此处开始上下文已压缩",
     "boundarySummarized": "已总结 {{count}} 条消息",
     "compressing": "正在压缩上下文…",
+    "compressingManual": "正在手动压缩上下文…",
     "compressed": "上下文已压缩",
     "compressedDetail": "已压缩 {{count}} 条消息",
     "summaryCollapse": "折叠摘要",

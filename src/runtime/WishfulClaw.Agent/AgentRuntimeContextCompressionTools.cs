@@ -132,15 +132,24 @@ public static class AgentRuntimeContextCompressionTools
                 var expectedRevision = sessionId.Length > 0
                     ? DbCompactionSnapshotStore.GetContextRevision(DbClient.GetClient(), sessionId)
                     : null;
-                // Manual cuts fold through the end of the conversation (no verbatim
-                // tail), so the summary lands at the transcript tail where the live
-                // compression card already renders — completion swaps in place.
+                // Stream summary deltas to the renderer so the live compression card
+                // types out the draft while the LLM writes it (same UX as the
+                // auto-compression path). The request-scoped event reaches the
+                // renderer via the main-process relay, not via stream envelopes.
+                var deltaEventName = "agent/compression-delta";
                 var outcome = await ContextCompression.CompactAsync(
                     conversation,
                     wireMessages,
                     provider,
                     context,
                     context.CancellationToken,
+                    onSummaryDelta: async text =>
+                    {
+                        await context.EmitEventAsync(
+                            deltaEventName,
+                            new AgentRuntimeCompressionDeltaEnvelope(sessionId, trigger, text),
+                            AgentRuntimeJsonContext.Default.AgentRuntimeCompressionDeltaEnvelope);
+                    },
                     preserveTail: trigger != "manual");
                 var newConversation = outcome.Conversation;
                 var newWireConversation = outcome.WireConversation;
@@ -334,6 +343,16 @@ public sealed record ContextCompressionResponse(
     List<JsonElement> Messages,
     ContextCompressionResult Result,
     List<JsonElement>? CompactArtifacts = null);
+
+/// <summary>
+/// Payload of the request-scoped "agent/compression-delta" event emitted while a
+/// manual compression's summary streams in. Routed to the renderer by the main
+/// process and appended to the live compression card's draft.
+/// </summary>
+public sealed record AgentRuntimeCompressionDeltaEnvelope(
+    string SessionId,
+    string Trigger,
+    string Text);
 
 public sealed record ContextCompressionResult(
     bool Compressed,

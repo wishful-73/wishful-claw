@@ -5,6 +5,7 @@
     "boundaryTitle": "Context compressed from here",
     "boundarySummarized": "{{count}} messages summarized",
     "compressing": "Compressing context…",
+    "compressingManual": "Manually compressing context…",
     "compressed": "Context compressed",
     "compressedDetail": "{{count}} messages compressed",
     "summaryCollapse": "Collapse summary",

@@ -1,4 +1,4 @@
-import { HOOK_IPC_CHANNELS } from '../../../../shared/hooks/types'
+﻿import { HOOK_IPC_CHANNELS } from '../../../../shared/hooks/types'
 
 const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'app:homedir',
@@ -411,7 +411,8 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'update:error',
   'memory-organization:run',
   'global:task-changed',
-  'global:dispatch-changed'
+  'global:dispatch-changed',
+  'agent:compression-delta'
 ])
 
 export function shouldUseMessagePackInvoke(channel: string, argCount: number): boolean {

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 
 namespace WishfulClaw.Agent;
@@ -28,6 +28,7 @@ public static partial class ContextCompression
         }
 
         JsonElement? summaryMessage = null;
+        long summaryCreatedAt = 0;
         string? preservedHeadId = null;
 
         for (var i = 0; i < outcome.WireConversation.Count; i++)
@@ -39,6 +40,20 @@ public static partial class ContextCompression
             }
 
             summaryMessage = message;
+            // The summary wire message carries its own createdAt, stamped when
+            // summarization finished — BEFORE the boundary is built here. The
+            // renderer reload orders rows by (created_at, sort_order), so a
+            // boundary stamped "now" would sort AFTER its summary and the pair
+            // would no longer match ("summary after boundary") — divider lost on
+            // reload. Sharing the summary's timestamp keeps boundary right before
+            // it in both insertion order and reload order (sort_order breaks the
+            // tie).
+            if (message.ValueKind == JsonValueKind.Object &&
+                message.TryGetProperty("createdAt", out var createdAtProperty) &&
+                createdAtProperty.ValueKind == JsonValueKind.Number)
+            {
+                summaryCreatedAt = createdAtProperty.GetInt64();
+            }
             // The first message after the summary is the preserved tail's head —
             // the UI inserts the boundary/summary pair right before it.
             if (i + 1 < outcome.WireConversation.Count &&
@@ -55,7 +70,7 @@ public static partial class ContextCompression
         }
 
         var boundary = BuildCompactBoundaryMessage(
-            trigger, preTokens, outcome.MessagesSummarized, preservedHeadId);
+            trigger, preTokens, outcome.MessagesSummarized, preservedHeadId, summaryCreatedAt);
 
         return [boundary, summaryMessage.Value];
     }
@@ -64,7 +79,8 @@ public static partial class ContextCompression
         string trigger,
         int preTokens,
         int messagesSummarized,
-        string? preservedHeadId)
+        string? preservedHeadId,
+        long createdAt)
     {
         var json = WorkerJsonHelper.BuildJsonString(w =>
         {
@@ -72,7 +88,7 @@ public static partial class ContextCompression
             w.WriteString("id", $"compact-boundary-{Guid.NewGuid():N}");
             w.WriteString("role", "system");
             w.WriteString("content", "");
-            w.WriteNumber("createdAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            w.WriteNumber("createdAt", createdAt);
             w.WritePropertyName("meta");
             w.WriteStartObject();
             w.WritePropertyName("compactBoundary");

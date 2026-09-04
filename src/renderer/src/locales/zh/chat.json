@@ -1,4 +1,4 @@
-{
+﻿{
   "home": {
     "title": "今天我能帮你做什么？",
     "subtitle": "开始对话或选择下方快捷提示。",
@@ -1213,7 +1213,7 @@
     "recallEmptyMessage": "消息为空，未进行记忆召回",
     "editImage": "编辑图片",
     "maskEditImage": "蒙版编辑",
-    "cancelledExecution": "用户取消，中断执行",
+    "executionPaused": "任务暂告一段落",
     "maskBrush": "画笔",
     "imageEditPrompt": "描述要修改的内容"
   },

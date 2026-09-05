@@ -1,21 +1,44 @@
 # 开发进度
 
-## v2-iter-24：全局产品经理 Agent + 会话临时 Todo
+## v2-iter-24：全局产品经理 Agent + 会话临时 Todo（已完成，已合并 main）
 
-- 状态：进行中 — 共同前置已落地并完成最终验证；Plan A 全局任务工作台已开发完（待详细测试）；issues 批次 1 已实现（待用户验证）；迭代审查 + 工具精简分析 + 人格精简已完成（2026-08-30 夜间批次，待用户查看）；**issues 批次 2 计划已精简，进入阶段四执行态**
-- 分支：`dev/v2-iter-24`
+- 状态：已完成，已合并 main（2026-09-05 老大确认全部功能已验收并授权按 AGENTS.md 标准流程收尾发版）
+- 分支：`dev/v2-iter-24`（合并后清理）
 - Plan：`docs/plans/iter-v2-24/plan.md`（迭代总览）、`plan-session-tasks/`（Plan B：OpenCowork 风格会话临时 Todo）、`plan-task-panel/`（Plan A：全局 Agent、全局任务与 Task Board）、`plan-issue-fixes/`（issues 批次 1：侧边栏加载更多缺陷 + 项目树运行图标 + README 收口）、`plan-issues-batch-2/`（issues 批次 2：知识库 2026-09-01~09-03 待办收口）
-- 范围要点（2026-08-29 老大拍板）：全局任务不删除只归档；全局 Agent 复用既有 `sessionMode='global'` 机制；执行顺序 Plan B → Plan A。会话 Agent 使用 `tasks` 维护内部临时 Todo；全局 Agent 使用独立 `global_tasks` 维护跨项目任务，并通过 `global_task_dispatches` 向项目会话发送消息/工作请求；全局 Agent 不读取、不管理、不统计会话 Todo；Task Board 展示全局任务和分派记录；本迭代默认不自动唤醒空闲会话执行
-- 进展（截至 2026-09-05）：
-  - **共同前置**（显式 SessionScope / CollaborationMode / PermissionMode / RuntimeRole + 新会话默认值）已落地：三套 TS、前端生产构建、Worker build（0 warning/0 error）与 Native AOT（无 IL/AOT warning）通过；Goal 113 / SessionTaskCascade 124 / MemoryRecall 18 / CompactionSnapshot 回归通过；真实 Electron E2E 因环境约束未运行（详见 `plans/iter-v2-24/plan.md` 当前实现状态）
-  - **Plan A** 步骤 1-7 已提交：全局会话角色与工具集、跨会话分派协议、Task Board 全局工作台、看板变更事件、全局模式分派回复路由（待详细测试）
-  - **issues 批次 1**（`plan-issue-fixes/`）：会话列表「加载更多」流式中不再重置收起（两处 reset effect 移除，参考 OpenCowork SessionListPanel）；项目文件夹图标位置接管运行态转圈；README 删减 Development Progress 整节 + OpenCowork「衍生」措辞改为「参考与借鉴」。编译验证 3/3 通过，运行态验证待用户（见 `plan-issue-fixes/verification_report.md`）
-  - **issues 批次 2**（`plan-issues-batch-2/`，2026-09-05）：范围 = 知识库 09-01~09-03 的 3 条缺陷（中文 IME 末字符、Todo 面板抢高度、会话切换右侧面板不重置）+ 5 条改进（首条消息顶部间距、工具分类说明清单、文件选中发送读取注入、Todo 面板抄 OpenCowork 成熟件、右侧面板 Tab 菜单）。规划阶段跑了 4 轮验证、产出 924 行文档、业务代码零改动，并在 `c4b395c` 里越权修改 `docs/dev-workflow.md`（新增「多轮验证与收敛台账」硬规则，把「未复核不得进入执行态」制度化）。**老大 2026-09-05 裁定：还原工作流文档（`fd8ffa0`）+ 精简计划后直接执行，不再做后续验证轮次**。plan.md 精简为第 5 版（278 → 232 行），砍掉步骤 7 的回归测试工程与 `tool-order` before/after 快照、步骤 3 的 grep 门禁、头部多轮 ❌/⚠️ 记账叙事；file:line 改动点与实现约束全部保留。历轮台账细节见 `git show fe5dcc3` / `git show c4b395c`，不再回写文档
-  - **夜间批次**（2026-08-30，仅产出文档与人格精简，未改业务代码）：① 迭代全量审查 `docs/reviews/review-10-iter24.md`——5 路并行（C# 数据层/Agent 层/前端功能层/连线层/工具盘点），结论 2 阻断（use_capability 代理越权可读写会话 Todo；Task Board 部分更新数据损坏）+ 10 重要 + 若干建议，含修复顺序建议；② 工具精简分析 `docs/tool-slimming-analysis.md`——各 作用域×协作模式×角色 组合的注入现状、最简保留清单与收益估算（仅分析未实施）；③ 内置人格精简 `docs/persona-slimming-record.md`——5 个人格四件套行数 -43%/字符 -11%，语义与元数据结构保留，提交 48bf595
-- VERDICT: —
-- Tag: —
-- Commit: —
-- 日期: —
+- VERDICT：PASS（编译验证 + 回归测试 + 用户人工验收；遗留项见下，移交 iter-25）
+- 产品版本：`0.2.24`
+- Tag：`v0.2.24`
+- Commit：见 `git log v0.2.23..v0.2.24`（60+ 功能 commit）
+- 日期：2026-09-05
+- 范围要点（2026-08-29 老大拍板）：全局任务不删除只归档；全局 Agent 复用既有 `sessionMode='global'` 机制（不新建身份字段与入口）；执行顺序 Plan B → Plan A。会话 Agent 用 `tasks` 维护内部临时 Todo；全局 Agent 用独立 `global_tasks` 维护跨项目任务，并通过 `global_task_dispatches` 向项目会话发送消息/工作请求；全局 Agent 不读取、不管理、不统计会话 Todo；Task Board 只展示全局任务和分派记录；本迭代默认不自动唤醒空闲会话执行
+- 范围与功能单元：
+  - **共同前置：会话上下文模型统一** — 新增 `SessionScope`(global/project) / `CollaborationMode`(chat/cowork) / `PermissionMode`(default/fullAccess) / `RuntimeRole` 四个正交模型；会话显式持久化 scope，`projectId` 只保存项目关联不再推导身份；合法核心组合 `global:chat`、`project:chat`、`project:cowork`；Settings v34 新增「会话默认值」区域
+  - **Plan A：全局产品经理 Agent + Task Board（步骤 1-7）** — `sessionMode='global'` 身份 prompt 注入；`global_tasks`（不删除只归档）与 `global_task_dispatches`（永久保留）数据层；全局任务/分派 DB 工具 + Worker 注册；全局 Agent 任务工具集（provider + executor + dispatch 接线）；跨会话分派协议（source session routing + 投递失败追踪 + `reply_global_dispatch`）；Task Board 全局工作台（任务/分派列表、筛选、详情、归档视图、消息与工作请求分派）；看板变更事件（worker emit + main relay + 实时刷新）；全局模式下分派回复投递到全局会话（保留身份 prompt + 全局工具）
+  - **Plan B：会话临时 Todo SQLite 化（步骤 1-6）** — `tasks` 表 + TaskCreate/Get/Update/List 四工具改造 + `db:tasks:*` IPC；展示接线（工具完成刷新 / 会话切换 / 启动恢复 / 输入框上方）；会话 Todo Prompt 引导（PromptBuilder 段 + 调用方开关，global 宿主不注入）；会话任务生命周期清理与级联回归
+  - **上下文压缩体系** — 流式实时上下文摘要（live compression）；手动压缩取值下限 + 同位置卡片/分隔线；摘要跟随会话语言；压缩卡片与路径修复；取消竞态导致的 live 卡片泄漏修复（后端取消分支补发 `CompressionStatus:"cancelled"`，前端 `loop_end`/`error` 兜底 clear）
+  - **压缩快照 DB 收口** — 不可变快照 schema + session pointer；快照提交原子化；上下文变更时 detach 快照
+  - **桌面自动更新** — electron-updater 更新流程（检查/下载确认/安装重启）+ 设置页集成 + `dev-app-update.yml`
+  - **issues 批次 1** — 会话列表「加载更多」流式中不再重置收起（移除两处 reset effect，参考 OpenCowork SessionListPanel）；项目文件夹图标位置接管运行态转圈；README 删减 Development Progress 整节 + OpenCowork「衍生」措辞改为「参考与借鉴」
+  - **issues 批次 2** — 3 条缺陷：中文输入法末字符不再被 DOM 重建吃掉、会话 Todo 面板不再抢高度（改悬浮限高可收起）、会话切换右侧面板不重置（tab 按会话隔离）；5 条改进：首条消息不再贴列表顶边、工具分类说明清单、文件选中后在真实发送路径注入读取内容、Todo 面板改用 OpenCowork 成熟件、右侧面板 Tab 右键菜单与「更多」下拉（并移除 + 菜单的 Goals 死链）
+  - **聊天渲染与杂项修复** — 保留用户消息中的图片块渲染、流式开始时消息列表置顶、文件树搜索结果节点操作保留、UTF-8 BOM 回归清理
+  - **收尾样式修复** — 置顶横幅复用 `UserMessage` 紧凑态（新增 `compact`/`onClick`），与气泡样式一致；TitleBar 去掉底边框
+  - **审查与文档产出** — `docs/reviews/review-10-iter24.md`（5 路并行审查）、`review-11-iter24-updater-compression.md`、`review-12-iter24-comprehensive.md`；`docs/tool-slimming-analysis.md`（各 作用域×协作模式×角色 注入现状与最简保留清单，仅分析未实施）；`docs/persona-slimming-record.md`（5 个人格四件套行数 -43%/字符 -11%，语义与元数据结构保留）
+- 验证：TypeScript 三套配置（web/node/root）零错误；C# solution 0 错误；Native AOT 无 IL/AOT 警告；Goal 113 / SessionTaskCascade 124 / MemoryRecall 18 / CompactionSnapshot 回归通过；Plan A、Plan B、压缩、自动更新的运行态由老大人工验收 PASS
+- 审查项闭环状态（收尾复核于 `480e10b`，**review-12 §6「待完成」记账已过期，以此处为准**）：
+  - 2 个 P0 阻断项均已修复 — I24-1 代理路径越权（`AgentRuntimeUseCapabilityExecutor.cs:314` 与 `AgentRuntimeUseCapabilityDiscovery.cs:151` 均套 `AgentRunContextPolicy.IsToolAllowed`）；I24-2 部分更新经 MessagePack nil 造成数据损坏（`task-board-store.ts` `updateTask` 仅发送 `!== undefined` 的键）
+  - 16 个重要项：I24-3~7、I24-9、I24-10、I24-12~17 已修复；I24-8、I24-18 各修一半
+  - review-10/11 独立项：U24-1~6（updater）、S2/S3/S4（死人格副本、Responses 工具注入、automation sessionMode）、C24-1（live 卡片泄漏）均已修复
+- 遗留（移交 iter-25）：
+  - **I24-11** automation 权限承诺与实现不一致 — `AutomationTaskFormDialog.tsx:450` 仍展示「YOLO（自动批准）」，`cron-runtime.ts:416` 实际沿用 `targetSession.permissionMode`，非交互定时运行可能卡在审批门（用户可见 + 行为承诺不一致）
+  - **I24-8 剩余半** — `global_tasks` / `tasks` 的 Update 仍是「先查后整行覆写、跨连接无事务」（`DbGlobalTaskTools.cs:114`、`DbTaskTools.cs:112`），Task Board 与 Agent 并发编辑仍可能丢写（dispatch 侧已改按 patch 列局部 SET）
+  - **I24-18 剩余半** — `channel-handler-utils.ts:153,230` 两处图片下载 fetch 仍无超时/AbortSignal，渠道窗口可能泄漏
+  - **§4.4** 极速回复后分派状态被回改成 sent 的覆盖竞态（`AgentRuntimeGlobalTaskExecutor.cs:267-279`）
+  - 全局任务 status/priority 入库仍无枚举白名单校验（dispatch kind 与 reply status 已校验）
+  - 其余建议项：LIKE 通配未转义、缺复合索引、`db:tasks:get:msgpack` 注册了但无调用方、`task-store-helpers.ts` 异常全静默、`use-permission-mode.ts:39` useCallback 依赖含 `opts`、`TaskFormDialog.tsx:88` dueAt 无 NaN 校验
+  - `chat.json` 的 `messageList.pinnedTurnEmpty` 键随收尾样式修复失去消费方，尚未清理（中英各一处）
+  - 真实 Electron 进程级 E2E 因环境约束未运行
+- 决策记录：issues 批次 2 规划阶段曾跑出 4 轮验证、924 行文档且业务代码零改动，并在 `c4b395c` 越权修改 `docs/dev-workflow.md` 想把「未复核不得进入执行态」制度化；老大 2026-09-05 裁定还原工作流文档（`fd8ffa0`）、精简计划（第 5 版 278→232 行）后直接执行，不再追加验证轮次
+- 下一步：从最新 main 创建 `dev/v2-iter-25`，范围先与老大确认——候选为集中修复与 Release Candidate 准备（含上述 iter-24 遗留项）；`docs/tool-slimming-analysis.md` 的工具精简方案已在 I24-1 修复后解除先决条件，可评估排期
 
 ## v2-iter-23：会话可靠性与缺陷收口（已完成，已合并 main）
 

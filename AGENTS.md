@@ -32,7 +32,7 @@ src/
 ├── shared/         # 前后端共享类型定义（TS）
 └── runtime/                              # .NET 后端工程
     ├── WishfulClaw.sln
-    ├── WishfulClaw.CodeGraph/            # 0. CodeGraph 引擎（vendored自 github.com/AIDotNet/CodeGraph；代码图谱索引/检索，全局命名空间 + internal，194 个 .cs；不参与 7 层依赖链，仅被 Worker 引用）
+    ├── WishfulClaw.CodeGraph/            # 0. CodeGraph 引擎（vendored自 github.com/AIDotNet/CodeGraph；代码图谱索引/检索，全局命名空间 + internal，195 个 .cs；不参与 7 层依赖链，仅被 Worker 引用）
     ├── WishfulClaw.Contracts/            # 1. 接口契约（纯接口，无实现）
     │   └── IWorkerModule / IWorkerModuleContext / IWorkerRequestContext / WorkerResponse
     │
@@ -81,14 +81,14 @@ src/
 
 | 项目 | 文件数 | 职责 |
 |------|--------|------|
-| Contracts | 4 | 纯接口契约 |
+| Contracts | 6 | 纯接口契约 |
 | Core | 19 | Agent 通用框架（Protocol + Tools） |
-| Infrastructure | 23 | 基础设施（Db / Storage / Http + Db Tools） |
-| Workspace | 12 | 记忆系统（含 MemoryFtsService） |
+| Infrastructure | 57 | 基础设施（Db / Storage / Http + Db Tools） |
+| Workspace | 15 | 记忆系统（含 MemoryFtsService） |
 | Persona | 9 | 人格系统 |
-| Agent | 141 | Agent 运行时（Loop / Provider / Executor / Compression / SubAgent / Tools / Modules） |
-| Worker | 12 | IPC 宿主（Program + Host + Catalog + 5 核心 Module） |
-| CodeGraph | 194 | 代码图谱引擎（vendored，索引/同步/探索/检索，经 Worker 注册 `codegraph/*` 方法） |
+| Agent | 205 | Agent 运行时（Loop / Provider / Executor / Compression / SubAgent / Tools / Modules） |
+| Worker | 14 | IPC 宿主（Program + Host + Catalog + 5 核心 Module） |
+| CodeGraph | 195 | 代码图谱引擎（vendored，索引/同步/探索/检索，经 Worker 注册 `codegraph/*` 方法） |
 
 > 统计不含 obj/ 目录下的自动生成文件。
 
@@ -154,7 +154,7 @@ Agent 运行时核心业务逻辑。
 - **依赖** Agent + Persona + Workspace + Core + Contracts + Infrastructure
 - 负责模块注册、依赖注入、进程生命周期
 - 被 Electron Main 进程拉起
-- 当前仅保留 Program.cs + WorkerHost + WorkerModuleCatalog（12 文件），其余已迁入 Agent / Infrastructure
+- 当前仅保留 Program.cs + WorkerHost + WorkerModuleCatalog（14 文件），其余已迁入 Agent / Infrastructure
 
 ### 依赖方向（严格单向）
 

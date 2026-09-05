@@ -1,4 +1,4 @@
-import type { TokenUsageWire, RequestTimingWire } from '@shared/agent-stream-protocol'
+﻿import type { TokenUsageWire, RequestTimingWire } from '@shared/agent-stream-protocol'
 import type { RequestDebugInfo, MessageMeta, ContentBlock } from '@renderer/lib/api/types'
 
 // ─── Session Context ───
@@ -130,6 +130,7 @@ export interface CreateSessionOptions {
   planId?: string | null
   workingFolder?: string | null
   sshConnectionId?: string | null
+  activate?: boolean
 }
 
 // ─── Session Prompt Snapshot (placeholder, 迭代七完善) ───

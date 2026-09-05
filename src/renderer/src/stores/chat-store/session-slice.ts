@@ -1,4 +1,4 @@
-import { nanoid } from 'nanoid'
+﻿import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
@@ -19,8 +19,8 @@ export interface SessionSlice {
     projectId?: string | null,
     options?: CreateSessionOptions
   ) => string
-  deleteSession: (id: string) => void
-  setActiveSession: (id: string | null) => void
+  deleteSession: (id: string) => Promise<void>
+  setActiveSession: (id: string | null) => Promise<boolean>
   updateSessionTitle: (id: string, title: string) => void
   renameSession: (id: string, title: string) => void
   updateSessionIcon: (id: string, icon: string) => void
@@ -76,6 +76,8 @@ function findSessionIndex(sessions: Session[], id: string): number {
   return sessions.findIndex((s) => s.id === id)
 }
 
+let pendingSessionSwitch: { id: string | null; promise: Promise<boolean> } | null = null
+
 export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', never]], [], SessionSlice> = (set, get) => ({
   sessions: [],
   sessionsById: {},
@@ -126,7 +128,6 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     set((state) => {
       state.sessions.push(newSession)
       syncSessionsById(state)
-      state.activeSessionId = id
       if (targetProjectId) {
         const proj = (state as unknown as { projects: Array<{ id: string; updatedAt: number }> }).projects.find((p) => p.id === targetProjectId)
         if (proj) proj.updatedAt = now
@@ -137,18 +138,27 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     if (targetProjectId) {
       void dbUpdateProject(targetProjectId, { updatedAt: now })
     }
+    if (options?.activate !== false) {
+      void get().setActiveSession(id)
+    }
     return id
   },
 
-  deleteSession: (id) => {
+  deleteSession: async (id) => {
+    const wasActive = get().activeSessionId === id
+    const nextActiveId = wasActive
+      ? get().sessions.find((session) => session.id !== id)?.id ?? null
+      : null
+    if (wasActive) {
+      const switched = await get().setActiveSession(nextActiveId)
+      if (!switched) return
+    }
+
     set((state) => {
       const idx = findSessionIndex(state.sessions, id)
       if (idx !== -1) {
         state.sessions.splice(idx, 1)
         syncSessionsById(state)
-      }
-      if (state.activeSessionId === id) {
-        state.activeSessionId = state.sessions[0]?.id ?? null
       }
     })
     void dbDeleteSession(id)
@@ -194,29 +204,43 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   },
 
   setActiveSession: (id) => {
-    set({ activeSessionId: id })
-    // 右侧面板 tab 按会话作用域过滤，锚点必须跟着可见会话走，否则切会话后面板
-    // 仍显示上一个会话的 tab。惰性 import 避开 chat-store → ui-store 循环依赖
-    // （与上方删除会话路径同一范式，顶部直接 import 会踩）。
-    void import('@renderer/stores/ui-store')
-      .then(({ useUIStore }) => {
-        useUIStore.getState().syncSessionScopedState(id, resolveSessionProjectId(get().sessions, id))
-      })
-      .catch((err) => {
-        console.warn('[chat-store] Failed to sync session-scoped UI state:', err)
-      })
-    // Keep the session-scoped task store in sync with the visible session.
-    void import('@renderer/stores/task-store')
-      .then(({ useTaskStore }) => {
-        if (id) {
-          void useTaskStore.getState().loadTasksForSession(id)
-        } else {
-          useTaskStore.getState().clearTasks()
-        }
-      })
-      .catch((err) => {
-        console.warn('[chat-store] Failed to sync session tasks:', err)
-      })
+    const currentId = get().activeSessionId
+    if (currentId === id) return Promise.resolve(true)
+    if (pendingSessionSwitch?.id === id) return pendingSessionSwitch.promise
+
+    const promise = (async (): Promise<boolean> => {
+      const { useUIStore } = await import('@renderer/stores/ui-store')
+      const ui = useUIStore.getState()
+      const prepared = await ui.prepareSessionSwitch(id)
+      if (!prepared) return false
+
+      set({ activeSessionId: id })
+      ui.syncSessionScopedState(id, resolveSessionProjectId(get().sessions, id))
+
+      // Keep the session-scoped task store in sync with the visible session.
+      void import('@renderer/stores/task-store')
+        .then(({ useTaskStore }) => {
+          if (id) {
+            void useTaskStore.getState().loadTasksForSession(id)
+          } else {
+            useTaskStore.getState().clearTasks()
+          }
+        })
+        .catch((err) => {
+          console.warn('[chat-store] Failed to sync session tasks:', err)
+        })
+      return true
+    })()
+    pendingSessionSwitch = { id, promise }
+    void promise.then(
+      () => {
+        if (pendingSessionSwitch?.promise === promise) pendingSessionSwitch = null
+      },
+      () => {
+        if (pendingSessionSwitch?.promise === promise) pendingSessionSwitch = null
+      }
+    )
+    return promise
   },
 
   updateSessionTitle: (id, title) => {
@@ -370,9 +394,9 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     set((state) => {
       state.sessions.push(copy)
       syncSessionsById(state)
-      state.activeSessionId = newId
     })
     void dbCreateSession(copy)
+    void get().setActiveSession(newId)
     return newId
   },
 
@@ -393,8 +417,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     set((state) => {
       state.sessions = []
       state.sessionsById = {}
-      state.activeSessionId = null
     })
+    void get().setActiveSession(null)
     void import('@renderer/hooks/use-chat-actions')
       .then(({ clearPendingSessionMessages }) => {
         for (const sessionId of sessionIds) clearPendingSessionMessages(sessionId)

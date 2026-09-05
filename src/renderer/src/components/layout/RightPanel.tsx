@@ -39,6 +39,7 @@ export function RightPanel(): React.JSX.Element {
   const closeAllRightPanelTabs = useUIStore((state) => state.closeAllRightPanelTabs)
   const ensureActivityTab = useUIStore((state) => state.ensureActivityTab)
   const ensureBrowserTab = useUIStore((state) => state.ensureBrowserTab)
+  const ensureFilesTab = useUIStore((state) => state.ensureFilesTab)
   const activeScopedSessionId = useUIStore((state) => state.activeScopedSessionId)
 
   const activeProjectId = useChatStore((state) => {
@@ -105,16 +106,10 @@ export function RightPanel(): React.JSX.Element {
   // The browser webview stays mounted whenever a browser tab exists and the plugin
   // is enabled — independent of whether the panel is open. This lets agent-driven
   // browser tools keep working in the background even while the panel is collapsed.
-  // 判据读未过滤数组（按 kind、与会话无关）：过滤只作用于 tab 条与激活项，不得
-  // 吞掉常驻层。保活边界是「同会话内收起面板 / 切 tab 不卸载」——browserPanelKey
-  // 已按会话作 React key，切会话本来就会 remount BrowserPanel。
-  const hasBrowserTab = rightPanelTabs.some((tab: any) => tab.kind === 'browser')
-  const browserTabAlive = hasBrowserTab && browserPluginEnabled
-  const browserPanelKey = panelSessionId
-    ? `session:${panelSessionId}`
-    : activeProjectId
-      ? `project:${activeProjectId}`
-      : 'global'
+  // 每个 Browser tab 都拥有独立且稳定的 BrowserPanel 实例。切换会话只改变
+  // 哪个实例可见，不会因为当前会话变化而卸载原会话的 webview。
+  const browserTabs = rightPanelTabs.filter((tab: any) => tab.kind === 'browser')
+  const browserTabAlive = browserTabs.length > 0
 
   const activeTab = rightPanelOpen ? selectedTab : undefined
   const browserVisible = rightPanelOpen && activeTab?.kind === 'browser'
@@ -243,23 +238,7 @@ export function RightPanel(): React.JSX.Element {
               onCloseAllTabs={closeAllRightPanelTabs}
               onAddActivity={ensureActivityTab}
               onAddBrowser={() => ensureBrowserTab(undefined, panelSessionId)}
-              onOpenFile={() => {
-                import('@renderer/lib/ipc/ipc-client').then(({ ipcClient }) => {
-                  ipcClient
-                    .invoke('fs:select-file', { multiSelections: true })
-                    .then((result) => {
-                      const r = result as { canceled?: boolean; paths?: string[]; path?: string }
-                      if (r.canceled) return
-                      const selectedPaths = r.paths?.length ? r.paths : r.path ? [r.path] : []
-                      for (const p of selectedPaths) {
-                        useUIStore.getState().openFilePreview(p)
-                      }
-                    })
-                    .catch((err) => {
-                      console.error('[RightPanel] Failed to open file dialog:', err)
-                    })
-                })
-              }}
+              onOpenFile={() => ensureFilesTab(panelSessionId)}
               onClosePanel={() => setRightPanelOpen(false)}
               t={t}
             />
@@ -292,20 +271,22 @@ export function RightPanel(): React.JSX.Element {
             webview keeps running even when the panel is closed or another tab is
             active. When hidden it stays in the DOM (webview connected) but
             non-interactive and transparent. */}
-        {browserTabAlive ? (
-          <div
-            className={cn(
-              'absolute inset-x-0 bottom-0 top-10',
-              browserVisible ? 'z-10 opacity-100' : 'pointer-events-none -z-10 opacity-0'
-            )}
-          >
-            <BrowserPanel
-              key={browserPanelKey}
-              sessionId={panelSessionId}
-              projectId={activeProjectId}
-            />
-          </div>
-        ) : null}
+        {browserTabAlive
+          ? browserTabs.map((tab: any) => {
+              const visible = browserVisible && activeTab?.id === tab.id
+              return (
+                <div
+                  key={tab.id}
+                  className={cn(
+                    'absolute inset-x-0 bottom-0 top-10',
+                    visible ? 'z-10 opacity-100' : 'pointer-events-none -z-10 opacity-0'
+                  )}
+                >
+                  <BrowserPanel sessionId={tab.sessionId ?? null} projectId={tab.projectId ?? null} />
+                </div>
+              )
+            })
+          : null}
 
         {/* Persistent files layer: mounted whenever a files tab exists so the
             file tree state (expanded folders, scroll position) survives tab

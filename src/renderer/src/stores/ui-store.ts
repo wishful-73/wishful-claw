@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import {
   LEFT_SIDEBAR_DEFAULT_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH,
@@ -21,6 +21,7 @@ import {
   resolveRightPanelSessionId,
   scopedRightPanelTabId
 } from './right-panel-scope'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 
 // Re-export types for backward compatibility
 export type {
@@ -110,6 +111,43 @@ export const useUIStore = create<UIStore>((set, get) => ({
       }
       return activation
     }),
+  prepareSessionSwitch: async (_nextSessionId: string | null) => {
+    const state = get()
+    const dirtyPreviewTabs = state.previewPanelTabs.filter((tab) => tab.modified)
+    if (dirtyPreviewTabs.length > 0) {
+      const confirmed = await confirm({
+        title: 'Discard preview changes?',
+        description:
+          dirtyPreviewTabs.length === 1
+            ? `The preview for “${dirtyPreviewTabs[0].title}” has unsaved changes. Switching sessions will discard them.`
+            : `${dirtyPreviewTabs.length} previews have unsaved changes. Switching sessions will discard them.`,
+        confirmLabel: 'Discard and switch',
+        cancelLabel: 'Cancel',
+        variant: 'warning'
+      })
+      if (!confirmed) return false
+    }
+
+    set((current) => {
+      const browserTabs = current.rightPanelTabs.filter((tab) => tab.kind === 'browser')
+      const browserTabIds = new Set(browserTabs.map((tab) => tab.id))
+      const activeTabIds = Object.fromEntries(
+        Object.entries(current.rightPanelActiveTabIds).filter(([, tabId]) => browserTabIds.has(tabId))
+      )
+      return {
+        rightPanelOpen: false,
+        rightPanelTabs: browserTabs,
+        rightPanelActiveTabIds: activeTabIds,
+        previewPanelOpen: false,
+        previewPanelState: null,
+        previewPanelTabs: [],
+        activePreviewPanelTabId: null,
+        detailPanelOpen: false,
+        detailPanelContent: null
+      }
+    })
+    return true
+  },
   closeRightPanelTab: (tabId: any) => {
     const state = get()
     const tab = state.rightPanelTabs.find((t: any) => t.id === tabId)
@@ -363,10 +401,9 @@ export const useUIStore = create<UIStore>((set, get) => ({
 
   // Chat view navigation
   chatView: 'home',
-  navigateToHome: () => {
-    if (useChatStore.getState().activeSessionId) {
-      useChatStore.getState().setActiveSession(null)
-    }
+  navigateToHome: async () => {
+    const switched = await useChatStore.getState().setActiveSession(null)
+    if (!switched) return
     set({ activeNavItem: 'chat', chatView: 'home', ...CHAT_SURFACE_NAV_RESET })
   },
   navigateToProject: (projectId: any) => {
@@ -404,12 +441,14 @@ export const useUIStore = create<UIStore>((set, get) => ({
     }
     set({ activeNavItem: 'chat', chatView: 'persona', ...CHAT_SURFACE_NAV_RESET })
   },
-  navigateToSession: (sessionId: any) => {
+  navigateToSession: async (sessionId: any) => {
     const store = useChatStore.getState()
     const resolvedSessionId = sessionId ?? store.activeSessionId ?? null
     if (resolvedSessionId) {
-      store.setActiveProjectHome(resolveSessionProjectId(store.sessions, resolvedSessionId))
-      store.setActiveSession(resolvedSessionId)
+      const resolvedProjectId = resolveSessionProjectId(store.sessions, resolvedSessionId)
+      const switched = await store.setActiveSession(resolvedSessionId)
+      if (!switched) return
+      store.setActiveProjectHome(resolvedProjectId)
     }
     set({ activeNavItem: 'chat', chatView: 'session', ...CHAT_SURFACE_NAV_RESET })
   },

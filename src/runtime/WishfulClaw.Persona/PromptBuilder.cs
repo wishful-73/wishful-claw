@@ -2,6 +2,7 @@
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Core.Tools;
 using WishfulClaw.Workspace.Memory;
 
 namespace WishfulClaw.Persona;
@@ -82,7 +83,7 @@ public static class PromptBuilder
         {
             parts.Add(BuildMemoryContext(parameters));
         }
-        parts.Add(BuildToolCapability(parameters));
+        parts.Add(BuildToolCapability());
 
         // ── Session Todo guidance (ordinary session agents only — the caller
         // opts out for hosts like the global agent) ──
@@ -232,11 +233,16 @@ Do not overstep your bounds or create unnecessary files.
         }
     }
 
-    private static string BuildToolCapability(JsonElement parameters)
+    private static string BuildToolCapability()
     {
-        return """
+        var categoryLines = string.Join(
+            '\n',
+            ToolCategoryCatalog.All.Select(category => $"  - {category.Name}: {category.Description}"));
+
+        return $"""
 <tool_calling>
-- Core tools are presented in workflow order: file tools first, then search/inspection, shell/command tools, and session task tools. Prefer the narrowest tool that directly matches the operation.
+- Tool capability categories, in the order they are presented. Prefer the narrowest tool that directly matches the operation. Not every category is exposed in every session.
+{categoryLines}
 - Some capabilities are not exposed as direct tools. Discover them through the `use_capability` proxy: call `action="list"` with the relevant type, then call the returned capability with `action="call"`, `capability_id`, and arguments in `arguments`.
 - Use the proxy when the needed capability is not in the direct tool list; do not claim a capability is unavailable before checking it.
 - Before calling tools, briefly state what you are about to do. After results, briefly summarize what you found. Never call tools silently.
@@ -245,8 +251,6 @@ Do not overstep your bounds or create unnecessary files.
 </tool_calling>
 """;
     }
-
-
 
     private static string BuildSshContext(JsonElement parameters)
     {

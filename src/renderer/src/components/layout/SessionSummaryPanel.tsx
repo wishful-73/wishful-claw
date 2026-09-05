@@ -253,20 +253,21 @@ export function SessionSummaryPanel({
   sessionId: string | null
 }): React.JSX.Element {
   const { t } = useTranslation('layout')
-  // Re-scan persisted context data after the message count changes or a
-  // compression operation reaches a terminal state.
+  // Re-scan persisted context data after the message count changes or a new
+  // compact summary is merged into the session. Compression status is tracked
+  // in a registry, so it is not a reliable Zustand dependency here; the summary
+  // artifact itself is the observable source of truth.
   const messageCount = useChatStore((state) => {
     if (!sessionId) return 0
     return state.sessions.find((session) => session.id === sessionId)?.messageCount ?? 0
   })
-  const compressionVersion = useChatStore((state) => {
+  const summaryVersion = useChatStore((state) => {
     if (!sessionId) return ''
     const messages = state.sessions.find((session) => session.id === sessionId)?.messages ?? []
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index]
-      const status = message.meta?.compressionStatus
-      if (!status || status.state === 'compressing') continue
-      return `${status.operationId}:${status.state}:${status.completedAt ?? message._revision ?? ''}`
+      if (!message.meta?.compactSummary) continue
+      return `${message.id}:${message._revision ?? ''}:${message.createdAt}`
     }
     return ''
   })
@@ -353,7 +354,7 @@ export function SessionSummaryPanel({
     return () => {
       cancelled = true
     }
-  }, [compressionVersion, messageCount, sessionId])
+  }, [summaryVersion, messageCount, sessionId])
 
   // undefined = resolving, null = no summary, otherwise the summary message.
   const [summary, setSummary] = useState<UnifiedMessage | null | undefined>(undefined)
@@ -391,7 +392,7 @@ export function SessionSummaryPanel({
     return () => {
       cancelled = true
     }
-  }, [compressionVersion, messageCount, sessionId])
+  }, [summaryVersion, messageCount, sessionId])
 
   const content = summary ? getCompactSummaryDisplayText(summary).trim() : ''
   const meta = summary?.meta?.compactSummary

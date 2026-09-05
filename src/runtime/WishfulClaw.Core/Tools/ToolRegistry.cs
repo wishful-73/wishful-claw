@@ -20,26 +20,6 @@ public sealed class ToolRegistry
     // Cached canonical definitions — computed once after all tools are registered.
     private List<ToolDefinition>? _cachedDefinitions;
 
-    // Lower numbers are presented first to emphasize the normal coding workflow.
-    // Unknown/provider-specific categories remain available after the core tools.
-    private static readonly Dictionary<string, int> CategoryPriorities = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["file"] = 10,
-        ["search"] = 20,
-        ["shell"] = 30,
-        ["task"] = 40,
-        ["memory"] = 50,
-        ["plan"] = 60,
-        ["capability"] = 70,
-    };
-
-    private static int GetCategoryPriority(string? category)
-    {
-        return category != null && CategoryPriorities.TryGetValue(category, out var priority)
-            ? priority
-            : 100;
-    }
-
     /// <summary>
     /// Set the current category context. All subsequent Register() calls will
     /// associate the tool with this category until PopCategory is called.
@@ -160,7 +140,7 @@ public sealed class ToolRegistry
                     canonSchema,
                     executor.AvailableModes,
                     category,
-                    GetCategoryPriority(category));
+                    ToolCategoryCatalog.GetPriority(category));
             }
             catch (Exception ex)
             {
@@ -176,7 +156,7 @@ public sealed class ToolRegistry
                     rawSchema,
                     executor.AvailableModes,
                     category,
-                    GetCategoryPriority(category));
+                    ToolCategoryCatalog.GetPriority(category));
             }
 
             list.Add(def);

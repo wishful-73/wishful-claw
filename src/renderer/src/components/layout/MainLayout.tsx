@@ -169,7 +169,7 @@ export function MainLayout(): React.JSX.Element {
           }
 
           nextActiveSessionId = sessions[0]?.id ?? null
-          state.activeSessionId = nextActiveSessionId
+          state.activeSessionId = null
 
           const firstSession = sessions[0]
           nextActiveProjectId = firstSession
@@ -180,6 +180,7 @@ export function MainLayout(): React.JSX.Element {
 
         // Load messages for the active session (like WishfulClaw does)
         if (nextActiveSessionId) {
+          await useChatStore.getState().setActiveSession(nextActiveSessionId)
           await useChatStore.getState().loadRecentSessionMessages(nextActiveSessionId)
           // Restore the active session's persisted agent Todo list.
           void import('@renderer/stores/task-store')

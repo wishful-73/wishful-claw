@@ -190,14 +190,13 @@ async function prepareRunEvent(event: CronFiredEvent): Promise<CronFiredEvent> {
     ? chatStore.projects.find((candidate) => candidate.id === event.projectId)
     : undefined
   if (event.scope === 'project' && !project) throw new Error('The Automation project no longer exists')
-  const previousActiveSessionId = chatStore.activeSessionId
   const sessionId = chatStore.createSession('cowork', project?.id ?? null, {
     preserveProjectless: !project,
     workingFolder: project?.workingFolder ?? event.workingFolder ?? null,
-    sshConnectionId: project?.sshConnectionId ?? null
+    sshConnectionId: project?.sshConnectionId ?? null,
+    activate: false
   })
   chatStore.updateSessionTitle(sessionId, event.name?.trim() || 'Automation')
-  chatStore.setActiveSession(previousActiveSessionId)
   await awaitSessionCreated(sessionId)
   const resolved = resolveProvider(event)
   if (resolved) {

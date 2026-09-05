@@ -19,6 +19,13 @@ internal static class AgentRunContextPolicy
         "translation"
     };
 
+    private static readonly HashSet<string> ChannelExcludedTools = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "visualize_show_widget",
+        "AskUserQuestion",
+        "ExitPlanMode"
+    };
+
     private static readonly HashSet<string> SharedChatTools = new(StringComparer.OrdinalIgnoreCase)
     {
         "AskUserQuestion",
@@ -140,11 +147,19 @@ internal static class AgentRunContextPolicy
         };
     }
 
+    public static bool IsChannelSession(JsonElement parameters) =>
+        !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginId")) &&
+        !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId"));
+
     public static bool IsToolAllowed(
         AgentRunContext context,
         string toolName,
-        string? category)
+        string? category,
+        bool channelSession = false)
     {
+        if (channelSession && ChannelExcludedTools.Contains(toolName))
+            return false;
+
         if (IndependentRuntimeRoles.Contains(context.RuntimeRole))
             return true;
 
@@ -160,10 +175,12 @@ internal static class AgentRunContextPolicy
     public static IReadOnlyList<ToolDefinition> FilterToolDefinitions(
         IReadOnlyList<ToolDefinition> definitions,
         ToolRegistry? registry,
-        AgentRunContext context)
+        AgentRunContext context,
+        bool channelSession = false)
     {
-        if (IndependentRuntimeRoles.Contains(context.RuntimeRole) ||
-            !string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase))
+        if (!channelSession &&
+            (IndependentRuntimeRoles.Contains(context.RuntimeRole) ||
+             !string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase)))
         {
             return definitions;
         }
@@ -171,7 +188,7 @@ internal static class AgentRunContextPolicy
         var filtered = new List<ToolDefinition>(definitions.Count);
         foreach (var definition in definitions)
         {
-            if (IsToolAllowed(context, definition.Name, registry?.GetCategory(definition.Name)))
+            if (IsToolAllowed(context, definition.Name, registry?.GetCategory(definition.Name), channelSession))
                 filtered.Add(definition);
         }
         return filtered;

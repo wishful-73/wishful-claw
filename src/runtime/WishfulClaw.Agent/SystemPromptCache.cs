@@ -51,7 +51,9 @@ public static class SystemPromptCache
         string? userRules,
         string? sshConnectionId,
         string? projectId,
-        string? sessionMode = null)
+        string? sessionMode = null,
+        string? pluginId = null,
+        string? externalChatId = null)
     {
         return string.Join('|',
             personaId ?? string.Empty,
@@ -61,6 +63,8 @@ public static class SystemPromptCache
             sshConnectionId ?? string.Empty,
             projectId ?? string.Empty,
             sessionMode ?? string.Empty,
+            pluginId ?? string.Empty,
+            externalChatId ?? string.Empty,
             GetPersonaFingerprint(personaId, workingFolder));
     }
 

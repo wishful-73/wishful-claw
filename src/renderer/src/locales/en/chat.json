@@ -1109,6 +1109,7 @@
     "selectedFileReadSkipped": "Path reference",
     "selectedFileReadSkippedPdf": "PDF path reference; file was not read directly",
     "selectedFileReadSkippedNonText": "Path reference; binary or document file was not read directly",
+    "selectedFileReadSkippedNotInjected": "Path reference; file content was not injected into this turn",
     "selectedFileReadFailed": "Read failed",
     "hideCommand": "Collapse commands",
     "showCommand": "Expand commands"

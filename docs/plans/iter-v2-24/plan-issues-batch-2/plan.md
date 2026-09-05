@@ -141,7 +141,7 @@
 
 ### 步骤 6：文件选中发送读取内容注入（M4）
 
-- [ ] 步骤 6a：把死链里的读取实现迁到真实发送路径
+- [x] 步骤 6a：把死链里的读取实现迁到真实发送路径
   - 新建 `src/renderer/src/lib/agent/selected-file-context.ts`，迁移 `lib/agent/dynamic-context.ts:185-252 buildSelectedFileContext`（含 SSH 分支、skipped 收集、displayPath 归一），改为**同时返回结构化逐文件结果**（路径 / 行数 / 是否截断 / 跳过原因 / 失败）
     - **`:254 resolveFileContextBudget` 与 `:265 truncateToTokenBudget` 在 185-252 之外，必须一并迁走** —— 留在原地会通过 `:257`/`:271` 留住 `estimateTokens` 等使用者，下面「失效 import」判据就不成立
   - **迁出即删旧**：删除 `dynamic-context.ts:73-83` 的 `if (selectedFiles.length > 0)` 分支及其上方 `:38 useUIStore.getState().selectedFiles ?? []` 读取（该 slice 全仓零写入方，永空）；`:16-18` 三个预算常量随函数迁走，不残留第二份实现；`buildRuntimeReminder` 保持零调用、不复活
@@ -153,7 +153,12 @@
     - **注意 `:130-138` 的去重是按标签位置**（重叠区间合并），不是按文件路径：同一文件被引用两次会得到两个 file 段，路径级去重必须在新模块里自己做（判据：按归一化绝对路径，一轮请求内最多出现一次）
   - 验证：`[自动]` 三套 tsc 零错误（本步纯渲染端，不加 `dotnet build`）；`grep -rn "buildSelectedFileContext" src/renderer/src` 恰好命中两个文件 = 新模块定义 + `use-chat-actions.ts` 唯一调用方，`dynamic-context.ts` 零命中
   - 验证：`[人工]` 选中一个 .ts 文件发送 → Agent 无需再调 Read 即可回答文件内容，后续轮次不重复累积该注入
-- [ ] 步骤 6a-2：把「发给模型的内容」与「落库文本」分离
+  - **实现偏差（6a）**：
+    - `use-chat-actions.ts` 原 `:178` 的 `const modelConfig = activeProvider.models.find(...)` **上移**到 `messageText` 之后、`userContent` 之前 —— token 预算要读它的 `contextLength`，而计划要求注入发生在 `userContent` 组装前；`thinkingConfig` 等其余派生保持原位，`activeProvider` / `modelId` 在 `:92-93` 已就绪，纯位置移动无行为变化
+    - 注入落在新变量 `modelText` 上，**不改 `messageText`**：`userContent` 由 `modelText` 组装（发给模型），`messageText` 原样经 `userMessageText` 传给 store（落库/气泡）。这是 6a-2 分离的前置条件，两步在实现上是一次改动
+    - `truncateToTokenBudget` 迁出时重写为 `truncateLinesToTokenBudget(lines, budget)`：原实现每保留一行都把已保留内容重新 `join` 后整体 `estimateTokens`，在 1000 行硬上限下是 O(n²) 次分词；改为逐行累加、换行符计 1 token，语义等价、开销线性
+    - `[自动]` 实测：三套 tsc 全 0 错误；`grep buildSelectedFileContext` 命中 2 文件（新模块定义 + `use-chat-actions.ts` 唯一调用方），`dynamic-context.ts` 0 命中；`dynamic-context.ts` 279 → 162 行，新模块 374 行（< 500 红线）
+- [x] 步骤 6a-2：把「发给模型的内容」与「落库文本」分离
   - **要分离的是 store 与 DB 的 `text` 字段，不是气泡**：气泡与会话标题两条路径都已剥离 `<system-reminder>`（`UserMessage.tsx:57` → `extractEditableUserMessageDraft` → `extractEditableText:148 stripSystemRemindersOnly`；标题另在 `chat-store/index.ts:289` 用正则再剥一次）。真正被污染的是 `index.ts:182-193` 的 `userText`——从 `params.messages[last].content` 逐块 join 反推、**不做任何剥离**，`:214` 直接作为乐观消息 `text` 并经 `:258 dbUpsertMessage` 落库，此后一切以 `text` 为源的消费方（复制、检索）都会拿到原始 XML
   - **meta 必须在 store 内、且在构造期挂上**：乐观 `userMessage` 现字段只有 `id / role / text / [content] / createdAt`，**没有 `meta`**，而 `UserMessage.tsx:340` 读 `meta?.selectedFileReads`。`sendMessage` 返回 boolean，调用方拿不到消息 id；`updateMessage`（`session-slice.ts:434-443`）只 `Object.assign` **不写库**，事后补挂刷新即丢；`beginUserTurn`（`index.ts:244`）经 immer 会深冻结该对象且全仓无 `setAutoFreeze` ⇒ **只能在构造乐观消息那一段（`:208-220`）一次性带出**
   - `stores/chat-store/index.ts` 改动：
@@ -165,7 +170,11 @@
   - **已接受的后果**（写进验证报告，不算缺陷）：注入只存在于 Worker 内存会话，DB 转录里只有干净文本 ⇒ 重启后该轮注入不再出现在模型历史，与「单轮生效、不跨轮累积」目标一致
   - 验证：`[自动]` 三套 tsc 零错误；确认 `userMessageText` / `meta` 在 `:330-344` 的 `agent/run` payload 组装前已被剔除
   - 验证：`[人工]` 带文件发送后用户气泡只显示自己输入的文字 + 「已读 N 行」摘要，不出现原始 XML；重启应用重新打开该会话，气泡与摘要显示不变（meta 已从 DB 回读）
-- [ ] 步骤 6b：边界与退化
+  - **实现偏差（6a-2）**：
+    - 「已接受的后果」补一条实证：注入块**会**随乐观消息的 `content` 进 DB —— `db-helpers.ts:126 if (msg.content) meta.content = msg.content` 把整个 ContentBlock 数组塞进 meta JSON。但恢复路径不读它：`Agent/SessionRestoreTools.cs:588` 的 plain-text 分支写的是 `entity.Content`（= `msg.text` = `userMessageText` 干净文本），`meta.content` 只在渲染端回读 ⇒ 计划里「重启后该轮注入不再出现在模型历史 / 不跨轮累积」成立，且**无需**再改 `db-helpers.ts`
+    - `agent/run` payload 剔除两个字段用「浅拷贝 + `delete`」而不是解构丢弃（`const { userMessageText: _x, meta: _y, ...rest } = params`）：后者依赖 TS 对「带 rest 的解构」豁免 `noUnusedLocals` 的行为，不值得为省两行去赌编译器规则
+    - `[自动]` 实测：三套 tsc 全 0 错误；`userMessageText` / `meta` 在 `...workerParams` 展开前已 delete
+- [x] 步骤 6b：边界与退化
   - 保护：token 预算（沿用 `resolveFileContextBudget`）+ 行数硬上限双保险，超限截断并标 `truncated`
   - **路径解析规则**：`<select-file>` 里存的是**相对 `workingFolder`** 的相对路径（`lib/select-file-editor.ts:145-147`、`components/cowork/use-file-tree.ts:297` 产出的 `sendPath`），而 `fs:read-file` 要绝对路径。新模块必须自己完成拼接并做**越界防护**（归一化后仍须落在 `workingFolder` 内，否则视为不可解析）；否则「路径不可解析 → 仅路径引用」会把项目文件**全部**退化成不读盘。`@{path}` token 通道同理需明确绝对还是相对
   - 跳过：pdf / office / 二进制 / 非文本扩展名 → meta 标 `skipped`。**母本无扩展名白名单**，`skipped` 判定与新模块自算的 `lineCount` / `maxLines` 都得在 `selected-file-context.ts` 里实现，不是继承来的
@@ -176,6 +185,16 @@
   - **排队消息重放同一条装配路径**：`getRequestText`（`use-chat-actions.ts:765-780`）把文本原样存进 `PendingSessionMessageItem`，重放经 `:909-915` 回到同一发送入口 ⇒ 注入必须挂在「文本 → userContent」这一步，天然对排队重放生效；**不得挂在 `handleSend` 或 composer 侧**，否则排队消息漏注入
   - 验证：`[自动]` 三套 tsc 零错误；`grep -rn "<selected_files>" src/renderer/src` 仅命中新建的 `lib/agent/selected-file-context.ts` 一处生产者，发送链路无第二条注入路径
   - 验证：`[人工]` >1000 行文件显示截断标记且 Agent 明确说明只看到部分内容；选中 pdf 显示跳过文案；SSH 项目选中远端文件能读取；全局会话选中文件仅路径引用不报错；「已读 N 行 / 截断 / 跳过 / 失败」文案与实际一致；同一文件既从文件树又从 `@` 搜索加入只注入一次；流式中排队的带文件消息出队后仍有注入且不重复
+  - **实现偏差（6b）**：
+    - **计划外改了 3 个文件**：`components/chat/user-message-views.tsx` + `locales/{zh,en}/chat.json`。新增两个 `skipReason`（`unresolved` = 相对路径无 `workingFolder` 可拼、`budget` = 跨文件 token 预算已用尽），视图原有 fallback 会把这两种情况说成「未直接读取二进制或文档文件」——文案指向错误的排查方向，故加一条分支 + 一对文案 `selectedFileReadSkippedNotInjected`（两种原因对用户是同一件事：只有路径进了模型）。未新建组件，与「无需新建组件」不冲突
+    - 扩展名黑名单取 OpenCowork `use-chat-actions.ts:595-679` 的 80 项集合（`.pdf` 单列为 `skipReason: 'pdf'`，其余 `nonText`）。计划说「母本无扩展名白名单」指的是被迁走的 `dynamic-context.ts` 版本没有，OpenCowork 是声明的参考源，直接沿用已验证清单
+    - `sendPath` 形态已从 `select-file-editor.ts:145-147 createSelectedFileItem` 实证：工作区内文件 → 相对 `workingFolder`（去掉前导斜杠），工作区外 → 归一化绝对路径。`<select-file>` 标签与 `@{path}` token 两条通道都经 `createSelectFileTag/Token(file.sendPath)`，形态一致 ⇒ **一条解析规则覆盖两条通道**，计划里「`@{path}` 需明确绝对还是相对」的悬空点已闭合
+    - **未复用 `select-file-editor.ts:66 toPreviewPath`**：它是模块私有（未 export），且只做字符串拼接、无越界防护。计划明确要求防护，故新模块自写 `resolveWithinFolder`——按段解析 `..`，一旦走出 `workingFolder` 深度即判不可解析
+    - 路径级去重键 = 归一化后小写的**已解析绝对路径**（不可解析时回落 `sendPath`）。这样「文件树给相对路径 + `@` 搜索给绝对路径」指向同一文件时也能去重，满足「一轮请求内最多出现一次」判据
+    - 截断顺序：先 1000 行硬上限，再跨文件 token 预算；预算里**先扣 `## displayPath` 头部 token** 再算正文余额，避免正文把标题挤掉。空文件报 `lineCount: 0`（不是 1），与母本 `content ? split : 0` 一致
+    - `<select-file>` 标签本身仍随 `messageText` 发给模型，与注入块并存 —— 这是有意的：标签就是退化路径下「仅路径引用」的载体
+    - **顺带发现、未修（超出本步范围）**：`components/cowork/use-file-tree-actions.ts:66 pathExists` 读 `result.exists`，而本地 `fs:stat-path`（`fs-handlers.ts:91-106`）返回 `{isDirectory,isFile,size,mtime} | null`，**没有 `exists` 字段** ⇒ 本地路径恒判为不存在（SSH 版才有 `exists`）。属既有缺陷，不在本批清单内，留待后续批次
+    - `[自动]` 实测：三套 tsc 全 0 错误；`grep "<selected_files>"` 仅命中 `lib/agent/selected-file-context.ts`（一处文档注释 + 一处生产者），发送链路无第二条注入路径
 
 ### 步骤 7：工具分类说明提示词（M3 剩余部分）
 
@@ -222,8 +241,9 @@
 - `src/renderer/src/components/chat/MessageList/VirtualListContent.tsx`、`src/renderer/src/components/chat/MessageList.tsx` —— 顶部间距（步骤 5，两处表面必须一致）
 - `src/renderer/src/components/chat/MessageList/useMessageListScroll.ts` —— 仅当改用 virtualizer `paddingStart` 时才动（步骤 5 备选）
 - `src/renderer/src/hooks/use-chat-actions.ts`、`src/renderer/src/lib/agent/dynamic-context.ts` —— 文件读取注入编排与迁出（步骤 6a；`lib/select-file-tags.ts` 只调用不改）
+- `src/renderer/src/components/chat/user-message-views.tsx` —— 步骤 6b 偏差：新增 `unresolved` / `budget` 两个 skipReason 的描述分支
 - `src/renderer/src/stores/chat-store/index.ts` —— 步骤 6a-2：`sendMessage` 入参加 `userMessageText` / `meta`、乐观消息构造区间 `:208-220` 挂 `meta`、`agent/run` payload（`:330-344`，`...params` 在 `:335`）剔除两个渲染端字段
-- `src/renderer/src/locales/zh/chat.json`、`src/renderer/src/locales/en/chat.json` —— 新文案（步骤 2/4）
+- `src/renderer/src/locales/zh/chat.json`、`src/renderer/src/locales/en/chat.json` —— 新文案（步骤 2/4）+ `selectedFileReadSkippedNotInjected`（步骤 6b 偏差）
 
 **预期零改动**（若实现期发现需要改，须在验证报告说明理由）
 - `src/renderer/src/stores/right-panel-tab-factories.ts` —— 只有 `ensureRightPanelTabs:9` 的 null 兜底、`getDefaultRightPanelTabs:15` 返回 `[]`、`closeRightSidePanels:19` 与常量表，不构造任何 tab id；其 `rightPanelOpen: false` 按设计保持全局

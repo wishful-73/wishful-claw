@@ -21,6 +21,7 @@ import { compressMessages } from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
 import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/lib/image-attachments'
 import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
+import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-context'
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -170,12 +171,27 @@ export function useChatActions() {
           ? text.images as ImageAttachment[]
           : []
       const imageBlocks: ContentBlock[] = imageAttachments.map(imageAttachmentToContentBlock)
-      const userContent: string | ContentBlock[] = imageBlocks.length > 0
-        ? [{ type: 'text', text: messageText }, ...imageBlocks]
-        : messageText
 
       // Resolve thinking config from the model definition
       const modelConfig = activeProvider.models.find((m: any) => m.id === modelId)
+
+      // 注入挂在「文本 → userContent」这一步：排队消息重放把原文存进
+      // PendingSessionMessageItem 后出队仍回到本函数，挂在 composer 侧会漏注入。
+      const selectedFileContext = await buildSelectedFileContext({
+        text: messageText,
+        workingFolder,
+        sshConnectionId,
+        modelConfig
+      })
+      // 读盘结果只进发给模型的内容；落库与气泡用 messageText，
+      // 经下面的 userMessageText 传给 store，避免 `<system-reminder>` 污染 DB 文本。
+      const modelText = selectedFileContext.contextText
+        ? `${messageText}\n\n${selectedFileContext.contextText}`
+        : messageText
+      const userContent: string | ContentBlock[] = imageBlocks.length > 0
+        ? [{ type: 'text', text: modelText }, ...imageBlocks]
+        : modelText
+
       const thinkingConfig = modelConfig?.thinkingConfig
       const thinkingEnabled = settings.thinkingEnabled && !!thinkingConfig
       const reasoningEffort = thinkingConfig
@@ -208,6 +224,8 @@ export function useChatActions() {
       const started = await sendMessage({
         provider,
         messages: [{ role: 'user', content: userContent }],
+        userMessageText: messageText,
+        ...(selectedFileContext.meta ? { meta: { selectedFileReads: selectedFileContext.meta } } : {}),
         sessionId: targetSessionId,
         toolPreset,
         webSearchEnabled,

@@ -29,7 +29,7 @@ import {
   isCompactSummaryLikeMessage,
   mergeCompressedMessagesKeepHistory
 } from '@renderer/lib/agent/context-compression'
-import type { CompressionStatusMeta, ContentBlock, UnifiedMessage } from '@renderer/lib/api/types'
+import type { CompressionStatusMeta, ContentBlock, MessageMeta, UnifiedMessage } from '@renderer/lib/api/types'
 
 import { dbUpsertMessage, dbUpdateSession, dbDeleteMessage, awaitSessionCreated } from './db-helpers'
 import { getCompressionStatus, trackCompressionStatus } from './compression-status-registry'
@@ -71,6 +71,15 @@ export interface AgentActions {
     provider: Record<string, unknown>
 
     messages: Array<{ role: string; content: string | ContentBlock[] | Record<string, unknown> }>
+
+    /**
+     * 落库与气泡展示用的干净文本。`messages` 里发给模型的内容可能追加了
+     * 选中文件读取块，不传本字段时回落到从 content 反推（既有调用方不受影响）。
+     */
+    userMessageText?: string
+
+    /** 挂到乐观用户消息上；必须在构造期带出，beginUserTurn 经 immer 会深冻结该对象。 */
+    meta?: MessageMeta
 
     sessionId?: string
 
@@ -182,7 +191,7 @@ export const useChatStore = create<ChatStore>()(
       const lastMsgContent = params.messages[params.messages.length - 1]?.content
 
       const userContent = lastMsgContent
-      const userText = typeof userContent === 'string'
+      const derivedUserText = typeof userContent === 'string'
         ? userContent
         : Array.isArray(userContent)
           ? userContent
@@ -190,6 +199,9 @@ export const useChatStore = create<ChatStore>()(
               .map((block) => block.text)
               .join('\n')
           : ''
+      // 反推路径不做任何剥离：发给模型的内容可能带选中文件读取块，直接落库会让
+      // 以 text 为源的消费方（复制、检索）拿到原始 XML。
+      const userText = params.userMessageText ?? derivedUserText
 
       const now = Date.now()
 
@@ -214,6 +226,10 @@ export const useChatStore = create<ChatStore>()(
         text: userText,
 
         ...(Array.isArray(userContent) ? { content: userContent as unknown as ContentBlock[] } : {}),
+
+        // 只能在构造期挂：beginUserTurn 经 immer 会深冻结本对象，事后补挂既改不动
+        // 也不会随 dbUpsertMessage 落库（sendMessage 只返回 boolean，调用方拿不到 id）。
+        ...(params.meta ? { meta: params.meta } : {}),
 
         createdAt: now
 
@@ -327,12 +343,18 @@ export const useChatStore = create<ChatStore>()(
 
         const recallSettings = useSettingsStore.getState()
 
+        // userMessageText / meta 只服务渲染端（落库文本与气泡摘要），不进 Worker。
+        // 未知键虽被 AgentRuntimeTools 忽略，但会经 parameters.Clone() 驻留整个 run。
+        const workerParams = { ...params }
+        delete workerParams.userMessageText
+        delete workerParams.meta
+
         const result = await window.api.workerRequest<{ started: boolean; runId: string }>(
 
           'agent/run',
 
           {
-            ...params,
+            ...workerParams,
             runId,
             memoryRecallMaxNotes: params.memoryRecallMaxNotes ?? recallSettings.memoryRecallMaxNotes,
             memoryRecallMaxChars: params.memoryRecallMaxChars ?? recallSettings.memoryRecallMaxChars,

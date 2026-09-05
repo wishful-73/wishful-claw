@@ -1108,6 +1108,7 @@
     "selectedFileReadSkipped": "路径引用",
     "selectedFileReadSkippedPdf": "PDF 已作为路径引用插入，未直接读取文件内容",
     "selectedFileReadSkippedNonText": "已作为路径引用插入，未直接读取二进制或文档文件内容",
+    "selectedFileReadSkippedNotInjected": "已作为路径引用插入，本轮未注入文件内容",
     "selectedFileReadFailed": "读取失败",
     "hideCommand": "收起命令",
     "showCommand": "展开命令"

@@ -304,7 +304,7 @@ export function CodeGraphToolCard({
   const handleOpenFile = (ref: CodeGraphFileRef): void => {
     const absolute = resolveAbsolutePath(ref.path, projectPath)
     if (!absolute) return
-    openFilePreview(absolute, 'code', undefined, null, ref.line ?? undefined)
+    openFilePreview(absolute, 'code', undefined, undefined, ref.line ?? undefined)
   }
 
   const handleCopy = (): void => {

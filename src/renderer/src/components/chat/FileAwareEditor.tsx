@@ -2,6 +2,7 @@ import * as React from 'react'
 import { cn } from '@renderer/lib/utils'
 import { type FileAwareEditorHandle, type FileAwareEditorProps, renderDocument, isSameDocument, parseDomToDocument, getSelectionOffsets, setSelectionFromPoint, setSelectionOffsets, editorDocumentToPlainText } from './file-aware-editor-utils'
 import { EditorSelectionOffsets } from './file-aware-editor-utils'
+import { isImeTailAheadOfState } from './file-aware-editor-ime'
 
 export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAwareEditorProps>(
   function FileAwareEditor(
@@ -39,6 +40,10 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
     const isComposingRef = React.useRef(false)
     const pendingUserInputRef = React.useRef(false)
     const pendingRenderAfterCompositionRef = React.useRef(false)
+    // 仅在 compositionend 之后为 true，用来把 IME 末字符保护限定在结算窗口内。
+    // 不设窗口会误伤「发送后清空输入框」这类 state 变短的程序化重置。
+    const imeSettleWindowRef = React.useRef(false)
+    const flushDocumentSyncRef = React.useRef<(() => void) | null>(null)
     const [compositionRenderVersion, bumpCompositionRenderVersion] = React.useReducer(
       (version: number) => version + 1,
       0
@@ -110,6 +115,17 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       }
     }, [scheduleSelectionSync])
 
+    const flushDocumentSync = React.useCallback(() => {
+      const root = editorRef.current
+      if (!root) return
+      const nextDocument = parseDomToDocument(root)
+      if (!isSameDocument(nextDocument, document)) {
+        onDocumentChange(nextDocument)
+      }
+    }, [document, onDocumentChange])
+
+    flushDocumentSyncRef.current = flushDocumentSync
+
     React.useImperativeHandle(
       ref,
       () => ({
@@ -155,6 +171,21 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
           if (!root) return document
           return parseDomToDocument(root)
         },
+        flushPendingInput: () => {
+          if (documentSyncFrameRef.current !== null) {
+            window.cancelAnimationFrame(documentSyncFrameRef.current)
+            documentSyncFrameRef.current = null
+          }
+          if (compositionEndRafRef.current !== null) {
+            window.cancelAnimationFrame(compositionEndRafRef.current)
+            compositionEndRafRef.current = null
+          }
+          isComposingRef.current = false
+          pendingRenderAfterCompositionRef.current = false
+          pendingUserInputRef.current = false
+          imeSettleWindowRef.current = false
+          flushDocumentSyncRef.current?.()
+        },
         getScrollMetrics: () => {
           const root = editorRef.current
           return {
@@ -194,9 +225,22 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       const shouldRender = highlightChanged || !isSameDocument(currentDocument, document)
 
       if (!shouldRender) {
+        imeSettleWindowRef.current = false
         return
       }
 
+      if (
+        imeSettleWindowRef.current &&
+        isImeTailAheadOfState(root, currentDocument, document, files)
+      ) {
+        // 采纳 DOM：把末字符回写进 state。若本次还有 highlight 变化，回写引发的
+        // 重渲染会再进一趟本 effect，那时 state 已与 DOM 一致，正常走 renderDocument。
+        imeSettleWindowRef.current = false
+        flushDocumentSyncRef.current?.()
+        return
+      }
+
+      imeSettleWindowRef.current = false
       renderDocument(root, document, files, {
         ...handlersRef.current,
         highlightedFileId
@@ -208,15 +252,6 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       const selection = selectionRef.current
       setSelectionOffsets(root, selection.start, selection.end)
     }, [compositionRenderVersion, document, files, highlightedFileId, syncLiveContent])
-
-    const flushDocumentSync = React.useCallback(() => {
-      const root = editorRef.current
-      if (!root) return
-      const nextDocument = parseDomToDocument(root)
-      if (!isSameDocument(nextDocument, document)) {
-        onDocumentChange(nextDocument)
-      }
-    }, [document, onDocumentChange])
 
     const scheduleDocumentSync = React.useCallback(() => {
       if (documentSyncFrameRef.current !== null) return
@@ -272,6 +307,7 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       (event: React.CompositionEvent<HTMLDivElement>) => {
         onUserEdit?.()
         isComposingRef.current = true
+        imeSettleWindowRef.current = false
         if (documentSyncFrameRef.current !== null) {
           window.cancelAnimationFrame(documentSyncFrameRef.current)
           documentSyncFrameRef.current = null
@@ -289,25 +325,23 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       syncLiveContent()
     }, [onUserEdit, syncLiveContent])
 
-    const scheduleCompositionCommit = React.useCallback(
-      (event: React.CompositionEvent<HTMLDivElement>) => {
-        onUserEdit?.()
-        pendingUserInputRef.current = true
-        onCompositionEnd?.(event)
-        if (documentSyncFrameRef.current !== null) {
-          window.cancelAnimationFrame(documentSyncFrameRef.current)
-          documentSyncFrameRef.current = null
-        }
-        // Keep the composing guard until this frame has read the final DOM. On
-        // Windows, some IMEs update the DOM after compositionend is dispatched.
-        if (compositionEndRafRef.current !== null) {
-          window.cancelAnimationFrame(compositionEndRafRef.current)
-        }
+    const scheduleCompositionSettle = React.useCallback(() => {
+      if (documentSyncFrameRef.current !== null) {
+        window.cancelAnimationFrame(documentSyncFrameRef.current)
+        documentSyncFrameRef.current = null
+      }
+      if (compositionEndRafRef.current !== null) {
+        window.cancelAnimationFrame(compositionEndRafRef.current)
+      }
+      imeSettleWindowRef.current = true
+      compositionEndRafRef.current = window.requestAnimationFrame(() => {
+        syncLiveContent()
+        flushDocumentSync()
+        scheduleSelectionSync()
+        // 挡板再留一帧。Windows 部分输入法在 compositionend 之后才把末字符写进
+        // DOM，同帧解除挡板会让紧随其后的布局 effect 按落后的 state 重建 DOM。
         compositionEndRafRef.current = window.requestAnimationFrame(() => {
           compositionEndRafRef.current = null
-          syncLiveContent()
-          flushDocumentSync()
-          scheduleSelectionSync()
           isComposingRef.current = false
           pendingUserInputRef.current = false
           if (pendingRenderAfterCompositionRef.current) {
@@ -315,8 +349,17 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
             bumpCompositionRenderVersion()
           }
         })
+      })
+    }, [flushDocumentSync, scheduleSelectionSync, syncLiveContent])
+
+    const scheduleCompositionCommit = React.useCallback(
+      (event: React.CompositionEvent<HTMLDivElement>) => {
+        onUserEdit?.()
+        pendingUserInputRef.current = true
+        onCompositionEnd?.(event)
+        scheduleCompositionSettle()
       },
-      [flushDocumentSync, onCompositionEnd, onUserEdit, scheduleSelectionSync, syncLiveContent]
+      [onCompositionEnd, onUserEdit, scheduleCompositionSettle]
     )
 
     const handleCompositionEndInternal = React.useCallback(
@@ -331,27 +374,13 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       if (!root) return
       const handleCompositionCancel = (): void => {
         onUserEdit?.()
-        if (compositionEndRafRef.current !== null) {
-          window.cancelAnimationFrame(compositionEndRafRef.current)
-        }
-        compositionEndRafRef.current = window.requestAnimationFrame(() => {
-          compositionEndRafRef.current = null
-          syncLiveContent()
-          flushDocumentSync()
-          scheduleSelectionSync()
-          isComposingRef.current = false
-          pendingUserInputRef.current = false
-          if (pendingRenderAfterCompositionRef.current) {
-            pendingRenderAfterCompositionRef.current = false
-            bumpCompositionRenderVersion()
-          }
-        })
+        scheduleCompositionSettle()
       }
       root.addEventListener('compositioncancel', handleCompositionCancel)
       return () => {
         root.removeEventListener('compositioncancel', handleCompositionCancel)
       }
-    }, [flushDocumentSync, onUserEdit, scheduleSelectionSync, syncLiveContent])
+    }, [onUserEdit, scheduleCompositionSettle])
 
     const plainText = React.useMemo(
       () => editorDocumentToPlainText(document, files),
@@ -395,6 +424,15 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
           }}
           onBlur={() => {
             focusedRef.current = false
+            // 失焦时 compositionend 可能不触发（Windows 上点走会吞掉），挡板卡在
+            // true 会让布局 effect 永久早退、编辑器不再反映任何 prop 变化。复位前
+            // 若仍在结算窗口，先把 DOM 里已上屏的末字符收进 state，避免失焦丢字。
+            if (imeSettleWindowRef.current) {
+              imeSettleWindowRef.current = false
+              flushDocumentSyncRef.current?.()
+            }
+            isComposingRef.current = false
+            pendingUserInputRef.current = false
             onBlur?.()
           }}
           onClick={() => {

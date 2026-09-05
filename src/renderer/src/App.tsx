@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Toaster } from '@renderer/components/ui/sonner'
 import { ThemeProvider } from '@renderer/components/theme-provider'
 import { ThemeRuntimeSync } from '@renderer/components/ThemeRuntimeSync'
@@ -24,6 +24,8 @@ import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { registerAllViewers } from '@renderer/lib/preview/register-viewers'
 import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
 import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
+import { useAppUpdater } from '@renderer/hooks/use-app-updater'
+import { UpdateDialog } from '@renderer/components/updater/UpdateDialog'
 import { initializeCronRuntime } from '@renderer/lib/tools/cron-runtime'
 import {
   initializeMemoryOrganizationRuntime,
@@ -42,6 +44,18 @@ function App(): React.JSX.Element | null {
   const language = useSettingsStore((s) => s.language)
   const [i18nReady, setI18nReady] = useState(false)
   const [i18nError, setI18nError] = useState<Error | null>(null)
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  const updater = useAppUpdater()
+
+  useEffect(() => {
+    if (
+      updater.state.phase === 'available' ||
+      updater.state.phase === 'downloaded' ||
+      updater.state.phase === 'error'
+    ) {
+      setUpdateDialogOpen(true)
+    }
+  }, [updater.state.phase])
 
   // Initialize i18n on mount
   useEffect(() => {
@@ -177,6 +191,15 @@ function App(): React.JSX.Element | null {
           {view === 'main' && <MainLayout />}
           {view === 'settings' && <SettingsPage />}
           <Toaster position="bottom-left" theme="system" richColors />
+          <UpdateDialog
+            state={updater.state}
+            open={updateDialogOpen}
+            onOpenChange={setUpdateDialogOpen}
+            onDownload={updater.downloadUpdate}
+            onInstall={updater.installUpdate}
+            onCheck={updater.checkForUpdates}
+            onOpenReleasePage={updater.openReleasePage}
+          />
           <ConfirmDialogProvider />
         </TooltipProvider>
       </ErrorBoundary>

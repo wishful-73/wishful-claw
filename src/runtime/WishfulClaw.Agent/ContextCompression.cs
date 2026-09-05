@@ -36,7 +36,7 @@ public static partial class ContextCompression
         MaxConnectionsPerServer = 4
     })
     {
-        Timeout = TimeSpan.FromSeconds(120)
+        Timeout = TimeSpan.FromSeconds(400)
     };
 
     // ── Constants (aligned with Reasonix compact.go) ──
@@ -50,24 +50,37 @@ public static partial class ContextCompression
     private const int DefaultContextCompressionLimit = 200_000; // fallback when provider has no contextLength
     private const int MaxPinnedFirstUserTokens = 1500;
     private const double PinnedFirstUserWindowFrac = 0.15;
+    private const int SummaryInputBaseCharBudget = 400_000;
+    private const int SummaryMaxAttempts = 3;
+    private const int SummaryRetryDelayMs = 1_500;
+    private const int SummaryMaxOutputTokens = 8_192;
 
-    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromSeconds(90);
+    // Long summaries routinely exceed two minutes, so the wait window matches the
+    // OpenCowork bound; the HttpClient timeout stays slightly above it so the CTS —
+    // not the transport — is what reports a stuck summarizer.
+    private static readonly TimeSpan SummaryTimeout = TimeSpan.FromSeconds(360);
 
-    // ── Summary system prompt (7-section structured briefing, from Reasonix) ──
+    // ── Summary system prompt ──
+    //
+    // Deliberately a coverage checklist, not a fixed section template: a rigid skeleton
+    // forces the model to pad empty sections or drop real content to fit it, and an
+    // English skeleton additionally anchors the whole summary to English even in a
+    // Chinese conversation. The model chooses whatever structure the conversation
+    // actually warrants and writes it in the user's own language.
 
     private const string SummarySystemPrompt =
         "You are compacting the earlier part of a coding agent's conversation to save context.\n" +
         "The agent keeps your summary alongside the user's own turns (kept verbatim) and the recent tail; your job is to fold the assistant/tool work into a briefing it can resume from.\n" +
-        "Write under these exact headings, omitting a heading only if it has no content:\n\n" +
-        "## Standing facts & constraints\n" +
-        "Everything the user stated that still governs the work — names, paths, IDs, versions, tokens, preferences, and hard \"never do X\" rules — in their own words. Be exhaustive; this is the durable contract, so prefer over- to under-including.\n\n" +
-        "## Goal\nThe user's request and intent.\n\n" +
-        "## Decisions & rationale\nKey choices made so far and why — so they are not re-litigated or reversed.\n\n" +
-        "## Files & code\nFiles read or modified, with the specific facts that matter: signatures, line locations, data shapes, and exact edits applied. Be concrete; this is what lets the agent act without re-reading everything.\n\n" +
-        "## Commands & outcomes\nCommands run (builds, tests, git) and their relevant results — what passed, what failed, and the error text that matters.\n\n" +
-        "## Errors & fixes\nProblems hit and how they were resolved (or not), so the same dead ends are not repeated.\n\n" +
-        "## Pending & next step\nWhat is still in progress or unstarted, and the single most concrete next action to take.\n\n" +
-        "Rules: be terse — bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing.";
+        "Return only a concise Markdown summary, with no preface. Organise it however best fits what actually happened — do not force a fixed template, and leave out anything the conversation does not contain.\n\n" +
+        "Whatever structure you choose, make sure none of the following is lost if it occurred:\n" +
+        "- Standing facts and constraints: everything the user stated that still governs the work — names, paths, IDs, versions, preferences, and hard \"never do X\" rules — in their own words. Be exhaustive here; this is the durable contract, so prefer over- to under-including.\n" +
+        "- Goal: the user's request and intent, including any shift in it along the way.\n" +
+        "- Decisions and rationale: key choices made and why, so they are not re-litigated or reversed.\n" +
+        "- Files and code: files read or modified, with the facts that matter — signatures, line locations, data shapes, exact edits applied. Be concrete; this is what lets the agent act without re-reading everything.\n" +
+        "- Commands and outcomes: commands run (builds, tests, git) and what they produced — what passed, what failed, the error text that matters.\n" +
+        "- Errors and fixes: problems hit and how they were resolved (or not), so the same dead ends are not repeated.\n" +
+        "- Pending work and next step: what is still in progress or unstarted, and the single most concrete next action to take.\n\n" +
+        "Rules: write in the same language the user writes in — if the user writes Chinese, the summary and its headings are Chinese; keep code, file paths, identifiers, commands, error text and numbers in their original form, never translated. Be terse: bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing.";
 
     private const string SummaryTagOpen = "<compaction-summary>";
     private const string SummaryTagClose = "</compaction-summary>";
@@ -98,16 +111,18 @@ public static partial class ContextCompression
         List<JsonElement> wireConversation,
         JsonElement provider,
         IWorkerRequestContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<string, ValueTask>? onSummaryDelta = null,
+        bool preserveTail = true)
     {
         var originalCount = conversation.Count;
 
-        var (head, start, ok) = PlanCompaction(conversation, provider, MinCompactMessages);
+        var (head, start, ok) = PlanCompaction(conversation, provider, MinCompactMessages, preserveTail);
 
         if (!ok)
         {
             // Try with min=1 for a single huge message
-            (head, start, ok) = PlanCompaction(conversation, provider, 1);
+            (head, start, ok) = PlanCompaction(conversation, provider, 1, preserveTail);
             if (!ok)
                 return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
         }
@@ -129,7 +144,7 @@ public static partial class ContextCompression
         var summarizerFailed = false;
         try
         {
-            summary = await SummarizeAsync(fold, provider, cancellationToken);
+            summary = await SummarizeAsync(fold, provider, context, cancellationToken, onSummaryDelta);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -143,7 +158,7 @@ public static partial class ContextCompression
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            WorkerLog.Warn($"context compression LLM summarization failed: {ex.GetType().Name}: {ex.Message}");
+            WorkerLog.Warn($"context compression LLM summarization failed after all input budgets: {ex.GetType().Name}: {ex.Message}");
             summary = MechanicalFoldDigest(fold.Count);
             summarizerFailed = true;
         }
@@ -174,12 +189,21 @@ public static partial class ContextCompression
 
         // Summary message — same id + meta flow into the chat artifacts and the
         // persistence snapshot so restore never re-inserts a duplicate.
-        var summaryContent = $"{SummaryTagOpen}\nSummary of earlier conversation (older messages were compacted to save context):\n{summary}\n{SummaryTagClose}";
+        //
+        // The wrapper carries no prose of its own: the tag is the semantic marker for
+        // the model, and the human-facing "this is a compaction summary" line is
+        // rendered from the renderer's i18n so it follows the UI language instead of
+        // being frozen as English text inside the durable conversation.
+        var summaryContent = $"{SummaryTagOpen}\n{summary}\n{SummaryTagClose}";
         var summaryMessage = AgentRuntimeChatMessage.User(summaryContent);
         var summaryMessageId = $"compact-summary-{Guid.NewGuid():N}";
         newConversation.Add(summaryMessage);
         newWireConversation.Add(CreateSummaryWireMessage(
-            summaryMessageId, summaryContent, fold.Count, recentMessagesPreserved: start < conversation.Count));
+            summaryMessageId,
+            summaryContent,
+            fold.Count,
+            recentMessagesPreserved: start < conversation.Count,
+            summarizerFailed));
 
         // Recent tail
         for (var i = start; i < conversation.Count; i++)
@@ -250,13 +274,22 @@ public static partial class ContextCompression
     private static (int head, int start, bool ok) PlanCompaction(
         List<AgentRuntimeChatMessage> conversation,
         JsonElement provider,
-        int min)
+        int min,
+        bool preserveTail)
     {
         var head = PinnedPrefixLen(conversation, provider);
         var contextLength = JsonHelpers.GetIntNullable(provider, "contextLength") ?? DefaultContextCompressionLimit;
 
         int start;
-        if (contextLength > 0)
+        if (!preserveTail)
+        {
+            // Manual compression folds through the end of the conversation — the
+            // OpenCowork reference records keepMessageIds: [] for manual cuts. No
+            // verbatim tail means the summary lands at the transcript tail, exactly
+            // where the live compression card sits, so completion swaps in place.
+            start = conversation.Count;
+        }
+        else if (contextLength > 0)
         {
             var budget = DefaultTailTokens;
             var maxByWin = (int)(contextLength * 0.5); // defaultCompactTarget
@@ -382,66 +415,106 @@ public static partial class ContextCompression
     private static async Task<string> SummarizeAsync(
         List<AgentRuntimeChatMessage> fold,
         JsonElement provider,
-        CancellationToken cancellationToken)
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken,
+        Func<string, ValueTask>? onSummaryDelta)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(SummaryTimeout);
-
         var providerType = JsonHelpers.GetString(provider, "type") ?? string.Empty;
-        var transcript = RenderTranscript(fold);
+        Exception? lastError = null;
 
-        // Build summary request body using JsonSerializer for proper escaping
-        var requestBody = BuildSummaryRequestBody(transcript, providerType);
-
-        string? summary = null;
-        Exception? lastErr = null;
-
-        for (var attempt = 0; attempt < 2 && summary == null; attempt++)
+        for (var attempt = 0; attempt < SummaryMaxAttempts; attempt++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            var charBudget = SummaryInputBaseCharBudget >> attempt;
+            var requestBody = BuildSummaryRequestBody(fold, charBudget);
+            var attemptDeltas = onSummaryDelta is null ? null : new List<string>();
+            Func<string, ValueTask>? attemptDelta = onSummaryDelta is null
+                ? null
+                : text =>
+                {
+                    attemptDeltas!.Add(text);
+                    return ValueTask.CompletedTask;
+                };
             try
             {
-                summary = providerType switch
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(SummaryTimeout);
+                var summary = providerType switch
                 {
-                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token),
-                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token),
-                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token),
+                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token, attemptDelta),
+                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token, attemptDelta),
+                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token, attemptDelta),
                     _ => throw new InvalidOperationException($"Unsupported provider for summarization: {providerType}")
                 };
+
+                if (string.IsNullOrWhiteSpace(summary))
+                    throw new InvalidOperationException("Summarizer returned empty output");
+
+                if (onSummaryDelta is not null && attemptDeltas is not null)
+                {
+                    foreach (var delta in attemptDeltas)
+                    {
+                        await onSummaryDelta(delta);
+                    }
+                }
+
+                return summary.Trim();
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // Linked-CTS timeout — the caller is still running, so stop
-                // retrying and let CompactAsync degrade to mechanical fold.
-                break;
+                lastError = new TimeoutException($"Context compression summarizer timed out at input budget {charBudget} characters.");
+                WorkerLog.Warn($"context compression attempt timed out attempt={attempt + 1} inputChars={requestBody.Length}");
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                lastErr = ex;
+                lastError = ex;
+                WorkerLog.Warn(
+                    $"context compression attempt failed attempt={attempt + 1} budget={charBudget} " +
+                    $"overflow={IsContextWindowExceededError(ex)} error={ex.GetType().Name}: {ex.Message}");
+            }
+
+            if (attempt + 1 < SummaryMaxAttempts &&
+                (lastError is null || !IsContextWindowExceededError(lastError)))
+            {
+                await Task.Delay(SummaryRetryDelayMs * (1 << attempt), cancellationToken);
             }
         }
 
-        if (summary == null)
-            throw lastErr ?? new InvalidOperationException("Summarizer returned empty output");
-
-        if (string.IsNullOrWhiteSpace(summary))
-            throw new InvalidOperationException("Summarizer returned empty output");
-
-        return summary.Trim();
+        throw lastError ?? new InvalidOperationException("Summarizer returned empty output");
     }
 
     /// <summary>
-    /// Placeholder — transcript is passed directly to CallXxx methods.
+    /// Builds the summarizer input with an independent character budget. Whole older
+    /// messages are removed first; a single message may then be truncated as a last resort.
     /// </summary>
-    private static string BuildSummaryRequestBody(string transcript, string providerType)
+    internal static string BuildSummaryRequestBody(
+        IReadOnlyList<AgentRuntimeChatMessage> messages,
+        int charBudget)
     {
-        return transcript;
+        return RenderTranscript(messages, Math.Max(1_024, charBudget));
+    }
+
+    /// <summary>
+    /// Output ceiling for one summary call. A detailed briefing routinely needs far
+    /// more than a provider's chat-tuned default, but must never exceed what the
+    /// provider itself allows, so the two are clamped together.
+    /// </summary>
+    private static int SummaryOutputTokens(JsonElement provider)
+    {
+        var configuredMaxTokens = JsonHelpers.GetIntNullable(provider, "maxTokens") ?? SummaryMaxOutputTokens;
+        return Math.Min(
+            SummaryMaxOutputTokens,
+            configuredMaxTokens > 0 ? configuredMaxTokens : SummaryMaxOutputTokens);
     }
 
     /// <summary>
     /// Calls Anthropic Messages API for summarization (no tools, no streaming).
     /// </summary>
     private static async Task<string> CallAnthropicSummary(
-        string transcript, JsonElement provider, CancellationToken ct)
+        string transcript,
+        JsonElement provider,
+        CancellationToken ct,
+        Func<string, ValueTask>? onSummaryDelta = null)
     {
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
@@ -452,7 +525,9 @@ public static partial class ContextCompression
         {
             w.WriteStartObject();
             w.WriteString("model", model);
-            w.WriteNumber("max_tokens", 1536);
+            w.WriteNumber("max_tokens", SummaryOutputTokens(provider));
+            if (onSummaryDelta is not null)
+                w.WriteBoolean("stream", true);
             w.WriteString("system", SummarySystemPrompt);
             w.WritePropertyName("messages");
             w.WriteStartArray();
@@ -469,14 +544,74 @@ public static partial class ContextCompression
         request.Headers.Add("x-api-key", apiKey);
         request.Headers.Add("anthropic-version", "2023-06-01");
 
-        using var response = await Http.SendAsync(request, ct);
+        using var response = await Http.SendAsync(
+            request,
+            onSummaryDelta is null ? HttpCompletionOption.ResponseContentRead : HttpCompletionOption.ResponseHeadersRead,
+            ct);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
             throw new InvalidOperationException($"Anthropic summarization HTTP {response.StatusCode}: {errorBody}");
         }
 
-        var responseJson = await response.Content.ReadAsStringAsync(ct);
+        if (onSummaryDelta is null)
+        {
+            var responseJson = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(responseJson);
+            return string.Join("", doc.RootElement
+                .GetProperty("content")
+                .EnumerateArray()
+                .Where(b => b.GetProperty("type").GetString() == "text")
+                .Select(b => b.GetProperty("text").GetString() ?? ""));
+        }
+
+        var summary = new StringBuilder();
+        await using var responseStream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(responseStream, Encoding.UTF8);
+        var dataBuilder = new StringBuilder();
+        var rawResponseBuilder = new StringBuilder();
+        var sawSsePayload = false;
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct)) is not null)
+        {
+            if (line.Length == 0)
+            {
+                if (dataBuilder.Length > 0)
+                {
+                    await AppendAnthropicSummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+                    dataBuilder.Clear();
+                }
+                continue;
+            }
+
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                sawSsePayload = true;
+                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
+                dataBuilder.Append(line[5..].TrimStart());
+            }
+            else if (!line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                if (rawResponseBuilder.Length > 0) rawResponseBuilder.Append('\n');
+                rawResponseBuilder.Append(line);
+            }
+        }
+        if (dataBuilder.Length > 0)
+            await AppendAnthropicSummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+        if (!sawSsePayload && rawResponseBuilder.Length > 0)
+        {
+            var fallback = ParseAnthropicSummaryResponse(rawResponseBuilder.ToString());
+            if (!string.IsNullOrEmpty(fallback))
+            {
+                summary.Append(fallback);
+                await onSummaryDelta(fallback);
+            }
+        }
+        return summary.ToString();
+    }
+
+    private static string ParseAnthropicSummaryResponse(string responseJson)
+    {
         using var doc = JsonDocument.Parse(responseJson);
         return string.Join("", doc.RootElement
             .GetProperty("content")
@@ -485,11 +620,32 @@ public static partial class ContextCompression
             .Select(b => b.GetProperty("text").GetString() ?? ""));
     }
 
+    private static async Task AppendAnthropicSummaryDeltaAsync(
+        string data,
+        StringBuilder summary,
+        Func<string, ValueTask> onSummaryDelta)
+    {
+        if (data == "[DONE]") return;
+        using var doc = JsonDocument.Parse(data);
+        var root = doc.RootElement;
+        if (JsonHelpers.GetString(root, "type") != "content_block_delta" ||
+            !root.TryGetProperty("delta", out var delta) ||
+            JsonHelpers.GetString(delta, "type") != "text_delta")
+            return;
+        var text = JsonHelpers.GetString(delta, "text");
+        if (string.IsNullOrEmpty(text)) return;
+        summary.Append(text);
+        await onSummaryDelta(text);
+    }
+
     /// <summary>
     /// Calls OpenAI Chat Completions API for summarization (no tools).
     /// </summary>
     private static async Task<string> CallOpenAISummary(
-        string transcript, JsonElement provider, CancellationToken ct)
+        string transcript,
+        JsonElement provider,
+        CancellationToken ct,
+        Func<string, ValueTask>? onSummaryDelta = null)
     {
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
@@ -505,7 +661,9 @@ public static partial class ContextCompression
         {
             w.WriteStartObject();
             w.WriteString("model", model);
-            w.WriteNumber("max_tokens", 1536);
+            w.WriteNumber("max_tokens", SummaryOutputTokens(provider));
+            if (onSummaryDelta is not null)
+                w.WriteBoolean("stream", true);
             w.WritePropertyName("messages");
             w.WriteStartArray();
             w.WriteStartObject();
@@ -524,20 +682,99 @@ public static partial class ContextCompression
         request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
         request.Headers.Add("Authorization", $"Bearer {apiKey}");
 
-        using var response = await Http.SendAsync(request, ct);
+        using var response = await Http.SendAsync(
+            request,
+            onSummaryDelta is null ? HttpCompletionOption.ResponseContentRead : HttpCompletionOption.ResponseHeadersRead,
+            ct);
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
             throw new InvalidOperationException($"OpenAI summarization HTTP {response.StatusCode}: {errorBody}");
         }
 
-        var responseJson = await response.Content.ReadAsStringAsync(ct);
+        if (onSummaryDelta is null)
+        {
+            var responseJson = await response.Content.ReadAsStringAsync(ct);
+            using var doc = JsonDocument.Parse(responseJson);
+            return doc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString() ?? "";
+        }
+
+        var summary = new StringBuilder();
+        await using var responseStream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(responseStream, Encoding.UTF8);
+        var dataBuilder = new StringBuilder();
+        var rawResponseBuilder = new StringBuilder();
+        var sawSsePayload = false;
+        string? line;
+        while ((line = await reader.ReadLineAsync(ct)) is not null)
+        {
+            if (line.Length == 0)
+            {
+                if (dataBuilder.Length > 0)
+                {
+                    await AppendOpenAISummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+                    dataBuilder.Clear();
+                }
+                continue;
+            }
+            if (line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                sawSsePayload = true;
+                if (dataBuilder.Length > 0) dataBuilder.Append('\n');
+                dataBuilder.Append(line[5..].TrimStart());
+            }
+            else if (!line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                if (rawResponseBuilder.Length > 0) rawResponseBuilder.Append('\n');
+                rawResponseBuilder.Append(line);
+            }
+        }
+        if (dataBuilder.Length > 0)
+            await AppendOpenAISummaryDeltaAsync(dataBuilder.ToString(), summary, onSummaryDelta);
+        if (!sawSsePayload && rawResponseBuilder.Length > 0)
+        {
+            var fallback = ParseOpenAISummaryResponse(rawResponseBuilder.ToString());
+            if (!string.IsNullOrEmpty(fallback))
+            {
+                summary.Append(fallback);
+                await onSummaryDelta(fallback);
+            }
+        }
+        return summary.ToString();
+    }
+
+    private static string ParseOpenAISummaryResponse(string responseJson)
+    {
         using var doc = JsonDocument.Parse(responseJson);
         return doc.RootElement
             .GetProperty("choices")[0]
             .GetProperty("message")
             .GetProperty("content")
             .GetString() ?? "";
+    }
+
+    private static async Task AppendOpenAISummaryDeltaAsync(
+        string data,
+        StringBuilder summary,
+        Func<string, ValueTask> onSummaryDelta)
+    {
+        if (data == "[DONE]") return;
+        using var doc = JsonDocument.Parse(data);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("choices", out var choices) ||
+            choices.ValueKind != JsonValueKind.Array ||
+            choices.GetArrayLength() == 0)
+            return;
+        var choice = choices[0];
+        if (!choice.TryGetProperty("delta", out var delta)) return;
+        var text = JsonHelpers.GetString(delta, "content");
+        if (string.IsNullOrEmpty(text)) return;
+        summary.Append(text);
+        await onSummaryDelta(text);
     }
 
     // ── Mechanical fold (fallback) ──

@@ -83,6 +83,9 @@ export async function* streamSidecarProviderTurn(args: {
     tools: args.tools,
     maxIterations: 1,
     forceApproval: false,
+    scope: 'global',
+    collaborationMode: 'chat',
+    runtimeRole: 'providerTurn',
     planMode: args.planMode,
     slashCommand: args.slashCommand,
     systemCommand: args.systemCommand,
@@ -264,7 +267,10 @@ export async function runSidecarTextRequest(args: {
     provider,
     tools: [],
     maxIterations: args.maxIterations ?? 1,
-    forceApproval: false
+    forceApproval: false,
+    scope: 'global',
+    collaborationMode: 'chat',
+    runtimeRole: 'providerTurn'
   })
   if (!sidecarRequest) {
     throw new Error('Sidecar request build failed')
@@ -390,6 +396,7 @@ export async function runSidecarContextCompression(args: {
   trigger?: 'auto' | 'manual'
   preTokens?: number
   sessionId?: string
+  contextCompressionThreshold?: number
 }): Promise<{
   messages: UnifiedMessage[]
   result: CompressionResult
@@ -424,7 +431,11 @@ export async function runSidecarContextCompression(args: {
       ...(typeof args.preTokens === 'number' && Number.isFinite(args.preTokens)
         ? { preTokens: args.preTokens }
         : {}),
-      ...(args.sessionId ? { sessionId: args.sessionId } : {})
+      ...(args.sessionId ? { sessionId: args.sessionId } : {}),
+      ...(typeof args.contextCompressionThreshold === 'number' &&
+      Number.isFinite(args.contextCompressionThreshold)
+        ? { contextCompressionThreshold: args.contextCompressionThreshold }
+        : {})
     }
   })
 

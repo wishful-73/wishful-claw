@@ -1,4 +1,4 @@
-# v2-iter-23 压缩快照存储与恢复契约
+﻿# v2-iter-23 压缩快照存储与恢复契约
 
 > 状态：步骤 3 定案稿
 >
@@ -10,15 +10,15 @@
 
 ## 一、存储决策
 
-采用独立表 `session_compaction_snapshots`，每个 session 只保留最新一条有效快照。
+采用独立表 `session_compaction_snapshots`，以 `snapshot_id` 为主键保存不可变快照版本；`sessions.current_snapshot_id` 指向当前恢复基线。
 
 不直接把大型 `compact_context` JSON 放进 `sessions` 表，原因：
 
 - `sessions` 是高频列表/更新表，常规查询不应携带大型上下文 JSON；
 - 独立表可以单独做 AOT DTO、迁移、损坏数据回退和删除；
 - `sessions` 的标题、模型、人格等普通 patch 不会误覆盖快照；
-- 当前不需要多版本审计，单行 upsert 足够；
-- 若未来需要历史快照，可在不改变 sessions 基础模型的情况下扩展历史表。
+- snapshot payload 需要独立保存，且旧版本保留用于诊断和并发失败保护；
+- 当前恢复权威由 `sessions.current_snapshot_id` 明确指定，不按更新时间猜测。
 
 ## 二、表结构
 
@@ -69,14 +69,14 @@ ON session_compaction_snapshots(updated_at DESC);
 | `summarizer_failed` | 是否使用机械降级摘要或无 LLM 摘要 |
 | `created_at/updated_at` | 首次/最近写入时间 |
 
-## 三、恢复游标决策
+## 三、恢复边界决策
 
-### 3.1 当前采用的游标
+### 3.1 当前采用的边界
 
-使用二元游标：
+使用快照行自身的提交时刻：
 
 ```text
-(through_created_at, through_sort_order)
+snapshot.created_at
 ```
 
 恢复增量查询：
@@ -84,30 +84,25 @@ ON session_compaction_snapshots(updated_at DESC);
 ```sql
 SELECT * FROM messages
 WHERE session_id = @sessionId
-  AND (
-    created_at > @throughCreatedAt
-    OR (created_at = @throughCreatedAt AND sort_order > @throughSortOrder)
-  )
+  AND created_at > @snapshotCreatedAt
 ORDER BY created_at ASC, sort_order ASC;
 ```
 
 理由：
 
-- 当前 messages 的规范排序即 `created_at ASC, sort_order ASC`；
-- 旧库已有两个字段，不需引入新的消息序列列；
-- 快照保存前必须先完成本轮已产生消息的持久化，再从 DB 查询最大排序边界并写入快照；
-- 游标由 DB 已确认写入的消息决定，不能只使用 Worker 内部生成的 message id，因为 Worker 内部 assistant/tool-result id 与 Renderer 合并消息 id 不一定一致。
+- `messages.created_at` 是写入时的墙钟，写进不可变快照后任何代码路径都不会再改它，天然满足"赋值后不变、可比较"；
+- `sort_order` 是 Renderer 内存里 transcript 数组的下标（`messages.indexOf(msg)`），普通消息保存就会重写它：压缩完成时向 transcript 中间插入 boundary + summary 会让其后所有行的下标位移，紧接着只为刷新 `usage.contextTokens` 的一次 re-upsert 会把已被覆盖的锚点行下标从 48 改写成 46。用它做判据会周期性误报，见 `docs/reviews/2026-09-04-invalid-cursor-snapshot-anchor.md`；
+- 因此 `sort_order` 只允许出现在 `ORDER BY created_at, sort_order` 里作排序辅助，不参与任何"这行是否已被覆盖"的判断；
+- `through_created_at` / `through_sort_order` 继续写入，但降级为诊断字段，用于展示"提交时刻覆盖到了哪一行"，不参与读取校验。
 
-### 3.2 游标限制与保护
+### 3.2 边界限制与保护
 
-`sort_order` 在现有 upsert 中允许更新，因此必须遵守：
+- 快照写入前，先等本轮已完成消息/工具结果落库，再在同一事务内取该 session 的最大 `(created_at, sort_order)` 作为诊断边界；
+- 快照行的 `created_at` 写入 `MAX(now, 诊断边界.created_at + 1)`，保证划界线严格晚于所有已被覆盖的行——否则与提交落在同一毫秒的那一轮会被 `>` 判为未覆盖，但又在快照前缀里，恢复时静默丢失（跳过总结/降级快照这类几乎零耗时的提交最容易撞上这个窗口）；
+- 已被快照覆盖的消息继续被追加时接受降级：该 turn 的 `created_at` 早于提交时刻，恢复时被排除，其内容已在快照前缀里；
+- 时钟回拨会让回拨后新写的消息落进"已覆盖"区间而被排除，这是本方案的已知残留。
 
-- 快照写入时，先等待当前 assistant/tool result 消息落库；
-- 已被快照覆盖的消息不得再改变 `created_at/sort_order`；若发生内容/顺序变更，必须使快照失效；
-- 后续新增消息使用新的 `created_at` 和会话末尾 sort order；
-- 如果检测到 DB 最大边界早于快照记录、游标消息不存在或消息顺序异常，恢复时视为快照无效，回退全量恢复。
-
-未来如果实际测试证明二元游标无法稳定覆盖并发/重排场景，再单独迁移到不可变 `message_sequence`；本迭代不预先扩大 schema。
+若将来实测证明墙钟划界仍不足以覆盖某个并发场景，再单独迁移到不可变 `message_sequence`；本迭代不预先扩大 schema，也不使用 `rowid`（实测同一会话内 `rowid` 与展示顺序存在 3 处倒置）。
 
 ## 四、快照写入时序
 
@@ -129,15 +124,15 @@ ORDER BY created_at ASC, sort_order ASC;
 
 快照写入失败时：
 
-- 不回滚已经完成的内存 `SessionConversation.Replace()`；
+- 本次候选压缩结果不提交到内存 `SessionConversation`，不更新 compaction watermark；
+- 自动压缩发送 `failed` 终态，手动压缩返回 `failed`，均不发送或应用本次 compact artifacts；
 - 不覆盖或删除旧的有效快照；
-- 记录包含 sessionId、trigger、version、异常类型的错误日志，不记录摘要全文或敏感参数；
-- 聊天窗显示“压缩已完成，但持久化失败/重启后可能恢复较长历史”的明确反馈；
-- 当前会话可以继续运行；
-- 下次恢复使用旧快照 + 旧快照后的 DB 增量，或无旧快照时全量恢复；
+- 记录包含 sessionId、trigger、异常类型的错误日志，不记录摘要全文或敏感参数；
+- 当前会话继续使用压缩前的完整内存 conversation；
+- 下次恢复使用仍然有效的旧快照 + 旧快照后的 DB 增量；不存在旧快照时全量恢复；
 - 下次成功压缩再原子替换快照。
 
-理由：回滚内存压缩会让已经继续运行的 provider 上下文发生倒退；保留旧快照可以保证恢复安全，只是上下文可能更大。
+理由：只有快照持久化成功后，内存 conversation、聊天 artifacts、stream event 和 SQLite 恢复状态才共同提交为一次成功压缩。写入失败时保留压缩前内存状态和旧快照，可避免对外宣称一个无法由本次快照恢复的成功结果。
 
 ## 六、快照读取与回退
 
@@ -145,24 +140,27 @@ ORDER BY created_at ASC, sort_order ASC;
 
 ```text
 读取 snapshot
-  ├─ 不存在
-  │    └─ 全量 messages 恢复
-  ├─ version 不支持
-  │    └─ 记录日志 + 全量恢复
-  ├─ JSON 损坏/字段缺失
-  │    └─ 记录日志 + 全量恢复
-  ├─ 游标无效/消息顺序异常
-  │    └─ 记录日志 + 全量恢复
+  ├─ 会话无指针（current_snapshot_id 为空）
+  │    └─ 全量 messages 恢复，reason=no-current-snapshot
+  ├─ 指针指向的行不存在      → snapshot_not_found   → 阻断
+  ├─ session_id 不匹配      → session_mismatch     → 阻断
+  ├─ version 不支持         → unsupported_version  → 阻断
+  ├─ JSON 损坏/结构非法      → corrupt_payload      → 阻断
   └─ 有效
-       ├─ 反序列化 wire_conversation
-       ├─ 查询游标后的增量 messages
+       ├─ 反序列化 wire_conversation 作为前缀
+       ├─ 查询 created_at > snapshot.created_at 的增量 messages
+       ├─ 过滤快照前缀已含 id 的行与 chat-only artifact 行
        ├─ 解析并 append
        └─ Initialize SessionConversation
 ```
 
-读取失败不阻断会话打开。
+阻断只留给真损坏：四类原因返回具名 `SessionRestoreFailure`，agent run 抛 `InvalidOperationException` 并在日志留下 `reason`。历史上还有第五类 `invalid_cursor`，它把 `(through_created_at, through_sort_order)` 当作行身份判断，而 `sort_order` 是会被普通保存重写的 transcript 下标，因而会永久锁死会话，已随 §3.1 的边界改造一并删除。
 
-损坏快照默认保留以便诊断，不在启动/恢复路径自动删除；后续可通过显式修复/清除端点移除，避免启动过程产生隐藏写入。
+真损坏会话的出口是显式上下文操作：清空会话消息、reset conversation、或显式清理端点 `db/compaction-snapshots-delete` 都会解除指针，下一次恢复回到全量历史。
+
+打开会话本身不读快照、不阻断——恢复发生在 agent run 首轮 lazy restore 或 `agent/restore-session`。
+
+损坏快照默认保留以便诊断，不在启动/恢复路径自动删除，避免启动过程产生隐藏写入。
 
 ## 七、失效规则
 

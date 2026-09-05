@@ -1,8 +1,22 @@
+﻿import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@renderer/components/ui/select'
+import {
+  isProviderAvailableForModelSelection,
+  useProviderStore
+} from '@renderer/stores/provider-store'
+import type { ReasoningEffortLevel } from '@shared/types/provider'
+import type { MemoryOrganizationThinkingMode } from '@renderer/stores/settings-store-types'
 import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
 
 function clampInt(value: number, min: number, max: number, fallback: number): number {
@@ -20,9 +34,49 @@ function clampTierDays(
   return kind === 'warm' ? Math.min(clamped, counterpart) : Math.max(clamped, counterpart)
 }
 
+function isTextModel(
+  model: { id: string; enabled: boolean; category?: string; type?: string },
+  providerType?: string
+): boolean {
+  const requestType = model.type ?? providerType
+  return model.enabled && (!model.category || model.category === 'chat') &&
+    requestType !== 'openai-images' && requestType !== 'seedance-video' && requestType !== 'xai-video'
+}
+
+function getFirstEnabledModelId(provider: {
+  defaultModel?: string
+  type?: string
+  models: Array<{ id: string; enabled: boolean; category?: string; type?: string }>
+}): string {
+  if (provider.defaultModel && provider.models.some((model) => isTextModel(model, provider.type) && model.id === provider.defaultModel)) {
+    return provider.defaultModel
+  }
+  return provider.models.find((model) => isTextModel(model, provider.type))?.id ?? ''
+}
+
 function MemorySettingsPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const settings = useSettingsStore()
+  const providers = useProviderStore((state) => state.providers)
+  const selectableProviders = useMemo(
+    () => providers.filter(
+      (provider) =>
+        isProviderAvailableForModelSelection(provider) &&
+        provider.models.some((model) => isTextModel(model, provider.type))
+    ),
+    [providers]
+  )
+  const selectedOrganizationProvider = selectableProviders.find(
+    (provider) => provider.id === settings.memoryOrganizationModel?.providerId
+  )
+  const selectedOrganizationModel = selectedOrganizationProvider?.models.find(
+    (model) => model.id === settings.memoryOrganizationModel?.modelId &&
+      isTextModel(model, selectedOrganizationProvider?.type)
+  )
+  const organizationThinkingConfig = selectedOrganizationModel?.thinkingConfig
+  const reasoningEffortLevels = organizationThinkingConfig?.reasoningEffortLevels?.filter(
+    (level) => level !== 'none' && level !== 'ultra'
+  ) ?? []
 
   const tierRows = [
     {
@@ -136,6 +190,108 @@ function MemorySettingsPanel(): React.JSX.Element {
             ) : (
               <SettingHint>{t('memoryPage.organization.startupHint')}</SettingHint>
             )}
+            <SettingRow
+              label={t('memoryPage.organization.model.label')}
+              description={t('memoryPage.organization.model.desc')}
+            >
+              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                <Select
+                  value={settings.memoryOrganizationModel?.providerId ?? ''}
+                  onValueChange={(providerId) => {
+                    const provider = selectableProviders.find((candidate) => candidate.id === providerId)
+                    const modelId = provider ? getFirstEnabledModelId(provider) : ''
+                    settings.updateSettings({
+                      memoryOrganizationModel: provider && modelId ? { providerId, modelId } : null,
+                      memoryOrganizationThinkingMode: 'default',
+                      memoryOrganizationReasoningEffort: ''
+                    })
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('memoryPage.organization.model.providerPlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectableProviders.map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={settings.memoryOrganizationModel?.modelId ?? ''}
+                  onValueChange={(modelId) => {
+                    const providerId = settings.memoryOrganizationModel?.providerId
+                    if (!providerId) return
+                    settings.updateSettings({
+                      memoryOrganizationModel: { providerId, modelId },
+                      memoryOrganizationThinkingMode: 'default',
+                      memoryOrganizationReasoningEffort: ''
+                    })
+                  }}
+                  disabled={!selectedOrganizationProvider}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('memoryPage.organization.model.modelPlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectedOrganizationProvider?.models.filter(
+                      (model) => isTextModel(model, selectedOrganizationProvider.type)
+                    ).map((model) => (
+                      <SelectItem key={model.id} value={model.id}>{model.name || model.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </SettingRow>
+            {organizationThinkingConfig ? (
+              <SettingRow
+                label={t('memoryPage.organization.thinking.label')}
+                description={t('memoryPage.organization.thinking.desc')}
+                control={
+                  <Select
+                    value={settings.memoryOrganizationThinkingMode}
+                    onValueChange={(selection) => settings.updateSettings({
+                      memoryOrganizationThinkingMode: selection as MemoryOrganizationThinkingMode,
+                      memoryOrganizationReasoningEffort: ''
+                    })}
+                  >
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">{t('memoryPage.organization.thinking.default')}</SelectItem>
+                      <SelectItem value="disabled">{t('memoryPage.organization.thinking.disabled')}</SelectItem>
+                      <SelectItem value="enabled">{t('memoryPage.organization.thinking.enabled')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                }
+              />
+            ) : null}
+            {organizationThinkingConfig &&
+            settings.memoryOrganizationThinkingMode === 'enabled' &&
+            reasoningEffortLevels.length > 0 ? (
+              <SettingRow
+                label={t('memoryPage.organization.thinking.effortLabel')}
+                description={t('memoryPage.organization.thinking.effortDesc')}
+                control={
+                  <Select
+                    value={settings.memoryOrganizationReasoningEffort || 'default'}
+                    onValueChange={(selection) => settings.updateSettings({
+                      memoryOrganizationReasoningEffort: selection === 'default'
+                        ? ''
+                        : selection as ReasoningEffortLevel
+                    })}
+                  >
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">{t('memoryPage.organization.thinking.effortDefault')}</SelectItem>
+                      {reasoningEffortLevels.map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {t(`memoryPage.organization.thinking.effort.${level}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                }
+              />
+            ) : null}
           </>
         )}
       </SettingsSection>

@@ -24,8 +24,10 @@ import {
 import { OptimizationDialog } from '@renderer/components/chat/InputArea/optimization-dialog'
 import { usePromptOptimizer } from '@renderer/components/chat/InputArea/use-prompt-optimizer'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import type { ReasoningEffortLevel } from '@shared/types/provider'
 import { useChannelStore, type PluginInstance } from '@renderer/stores/channel-store'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { AutomationModelSelector } from './AutomationModelSelector'
 import type { CronJobView } from './cron-job-view'
@@ -33,6 +35,7 @@ import type { CronJobView } from './cron-job-view'
 type AutomationScope = 'global' | 'project'
 type AutomationOutputMode = 'none' | 'new_session' | 'reuse_session' | 'bot'
 type AutomationRunMode = 'background' | 'session'
+type AutomationThinkingMode = 'default' | 'enabled' | 'disabled'
 type FrequencyPreset = 'once' | 'interval' | 'daily' | 'weekdays' | 'custom'
 type IntervalUnit = 'minutes' | 'hours'
 
@@ -43,6 +46,8 @@ interface AutomationFormValues {
   prompt: string
   providerId: string
   modelId: string
+  thinkingMode: AutomationThinkingMode
+  reasoningEffort: ReasoningEffortLevel | ''
   frequency: FrequencyPreset
   at: string
   intervalValue: number
@@ -72,6 +77,8 @@ const EMPTY_FORM: AutomationFormValues = {
   prompt: '',
   providerId: '',
   modelId: '',
+  thinkingMode: 'default',
+  reasoningEffort: '',
   frequency: 'interval',
   at: '',
   intervalValue: 30,
@@ -125,14 +132,21 @@ function jobToForm(job: CronJobView, asTemplate = false): AutomationFormValues {
   const schedule = job.schedule ?? { kind: 'every' as const }
   const cronPreset = schedule.kind === 'cron' ? parseCronPreset(schedule.expr) : null
   const interval = resolveInterval(schedule.every ?? 1_800_000)
+  const usesTargetSessionModel = job.runMode === 'session' && job.outputMode === 'reuse_session'
   return {
     ...EMPTY_FORM,
     name: job.name,
     scope: job.scope,
     projectId: job.projectId ?? '',
     prompt: job.prompt,
-    providerId: job.agentId ?? '',
-    modelId: job.model ?? '',
+    providerId: usesTargetSessionModel ? '' : job.agentId ?? '',
+    modelId: usesTargetSessionModel ? '' : job.model ?? '',
+    thinkingMode: usesTargetSessionModel
+      ? 'default'
+      : job.thinkingEnabled === true
+        ? 'enabled'
+        : job.thinkingEnabled === false ? 'disabled' : 'default',
+    reasoningEffort: usesTargetSessionModel ? '' : job.reasoningEffort ?? '',
     frequency: schedule.kind === 'at'
       ? 'once'
       : schedule.kind === 'every'
@@ -194,6 +208,7 @@ export function AutomationTaskFormDialog({
 }: AutomationTaskFormDialogProps): React.JSX.Element {
   const { t } = useTranslation('layout')
   const language = useSettingsStore((state) => state.language)
+  const providers = useProviderStore((state) => state.providers)
   const projects = useChatStore((state) => state.projects)
   const sessions = useChatStore((state) => state.sessions)
   const channels = useChannelStore((state) => state.channels)
@@ -214,7 +229,12 @@ export function AutomationTaskFormDialog({
   }, [])
 
   const modelChange = useCallback((providerId: string, modelId: string): void => {
-    patch({ providerId, modelId })
+    patch({
+      providerId,
+      modelId,
+      thinkingMode: 'default',
+      reasoningEffort: ''
+    })
   }, [patch])
 
   const optimizer = usePromptOptimizer({
@@ -236,6 +256,12 @@ export function AutomationTaskFormDialog({
   }, [editingJob, loadChannels, open, templateJob])
 
   const selectedProject = projects.find((project) => project.id === values.projectId)
+  const usesTargetSessionModel = values.runMode === 'session' && values.outputMode === 'reuse_session'
+  const needsTaskModel = !usesTargetSessionModel
+  const selectedProvider = providers.find((provider) => provider.id === values.providerId)
+  const selectedModel = selectedProvider?.models.find((model) => model.id === values.modelId)
+  const thinkingConfig = selectedModel?.thinkingConfig
+  const reasoningEffortLevels = thinkingConfig?.reasoningEffortLevels ?? []
   const reusableSessions = useMemo(
     () => sessions
       .filter((session) => values.scope === 'project'
@@ -257,7 +283,7 @@ export function AutomationTaskFormDialog({
     const next = new Set<string>()
     if (!values.name.trim()) next.add('name')
     if (!values.prompt.trim()) next.add('prompt')
-    if (!values.providerId || !values.modelId) next.add('model')
+    if (needsTaskModel && (!values.providerId || !values.modelId)) next.add('model')
     if (values.scope === 'project' && !values.projectId) next.add('projectId')
     if (!buildSchedule(values)) next.add('schedule')
     if (values.runMode === 'session' && values.outputMode === 'none') next.add('outputMode')
@@ -278,8 +304,14 @@ export function AutomationTaskFormDialog({
         scope: values.scope,
         projectId: values.scope === 'project' ? values.projectId : null,
         prompt: values.prompt.trim(),
-        agentId: values.providerId,
-        model: values.modelId,
+        agentId: needsTaskModel ? values.providerId : null,
+        model: needsTaskModel ? values.modelId : null,
+        thinkingEnabled: needsTaskModel && values.thinkingMode !== 'default'
+          ? values.thinkingMode === 'enabled'
+          : null,
+        reasoningEffort: needsTaskModel && values.thinkingMode === 'enabled' && values.reasoningEffort
+          ? values.reasoningEffort
+          : null,
         schedule,
         runMode: values.outputMode === 'bot' ? 'background' : values.runMode,
         outputMode: values.outputMode === 'none' ? null : values.outputMode,
@@ -371,10 +403,48 @@ export function AutomationTaskFormDialog({
               {errorText('prompt')}
             </section>
 
-            <section className="space-y-2">
-              <AutomationModelSelector providerId={values.providerId} modelId={values.modelId} onChange={modelChange} />
-              {errorText('model')}
-            </section>
+            {needsTaskModel && (
+              <section className="space-y-2">
+                <AutomationModelSelector providerId={values.providerId} modelId={values.modelId} onChange={modelChange} />
+                {errorText('model')}
+                {thinkingConfig && (
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-sm font-medium">{t('automation.form.thinkingMode')}</span>
+                    <Select
+                      value={values.thinkingMode === 'enabled' && values.reasoningEffort
+                        ? `effort:${values.reasoningEffort}`
+                        : values.thinkingMode}
+                      onValueChange={(selection) => {
+                        if (selection.startsWith('effort:')) {
+                          patch({
+                            thinkingMode: 'enabled',
+                            reasoningEffort: selection.slice('effort:'.length) as ReasoningEffortLevel
+                          })
+                          return
+                        }
+                        patch({
+                          thinkingMode: selection as AutomationThinkingMode,
+                          reasoningEffort: ''
+                        })
+                      }}
+                    >
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">{t('automation.form.thinkingDefault')}</SelectItem>
+                        <SelectItem value="disabled">{t('automation.form.thinkingDisabled')}</SelectItem>
+                        <SelectItem value="enabled">{t('automation.form.thinkingEnabled')}</SelectItem>
+                        {reasoningEffortLevels.filter((level) => level !== 'none').map((level) => (
+                          <SelectItem key={level} value={`effort:${level}`}>
+                            {t(`automation.form.reasoningEffort.${level}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{t('automation.form.thinkingHint')}</p>
+                  </label>
+                )}
+              </section>
+            )}
 
             <section className="space-y-2">
               <span className="text-sm font-medium">{t('automation.form.permission')}</span>
@@ -437,10 +507,23 @@ export function AutomationTaskFormDialog({
                   { value: 'background', label: t('automation.form.runModeBackground') },
                   { value: 'session', label: t('automation.form.runModeSession') }
                 ]}
-                onValueChange={(runMode) => patch({
-                  runMode,
-                  outputMode: runMode === 'session' && values.outputMode === 'none' ? 'new_session' : values.outputMode
-                })}
+                onValueChange={(runMode) => {
+                  const outputMode = runMode === 'session' && values.outputMode === 'none'
+                    ? 'new_session'
+                    : values.outputMode
+                  patch({
+                    runMode,
+                    outputMode,
+                    ...(runMode === 'session' && outputMode === 'reuse_session'
+                      ? {
+                          providerId: '',
+                          modelId: '',
+                          thinkingMode: 'default' as const,
+                          reasoningEffort: '' as const
+                        }
+                      : {})
+                  })
+                }}
               />
               <p className="text-xs text-muted-foreground">
                 {values.outputMode === 'bot'
@@ -462,7 +545,17 @@ export function AutomationTaskFormDialog({
                   { value: 'reuse_session' as const, label: t('automation.form.outputReuseSession') },
                   { value: 'bot' as const, label: t('automation.form.outputBot') }
                 ]}
-                onValueChange={(outputMode) => patch({ outputMode })}
+                onValueChange={(outputMode) => patch({
+                  outputMode,
+                  ...(values.runMode === 'session' && outputMode === 'reuse_session'
+                    ? {
+                        providerId: '',
+                        modelId: '',
+                        thinkingMode: 'default' as const,
+                        reasoningEffort: '' as const
+                      }
+                    : {})
+                })}
               />
               {values.outputMode === 'reuse_session' && (
                 <div className="space-y-1.5">

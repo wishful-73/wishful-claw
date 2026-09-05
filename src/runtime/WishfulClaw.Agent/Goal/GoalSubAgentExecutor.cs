@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -89,6 +89,7 @@ internal static class GoalSubAgentExecutor
                         property.NameEquals("userRules") ||
                         property.NameEquals("providerTurnOnly") ||
                         property.NameEquals("sessionMode") ||
+                        property.NameEquals("runtimeRole") ||
                         property.NameEquals("goalContextId"))
                     {
                         continue;
@@ -98,6 +99,7 @@ internal static class GoalSubAgentExecutor
             }
 
             writer.WriteString("sessionMode", "goalSubAgent");
+            writer.WriteString("runtimeRole", "goalSubAgent");
             writer.WriteString("goalContextId", goal.GoalContextId);
             writer.WriteNumber("maxIterations", 12);
             writer.WriteBoolean("providerTurnOnly", false);

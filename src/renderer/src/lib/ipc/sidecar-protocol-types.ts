@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   MessageMeta,
   ProviderConfig,
   TokenUsage,
@@ -219,15 +219,19 @@ export interface SidecarAgentRunRequest {
   subAgentProvider?: SidecarProviderConfig
   runId?: string
   sessionId?: string
+  projectId?: string
   workingFolder?: string
+  scope?: 'global' | 'project'
+  collaborationMode?: 'chat' | 'cowork'
+  runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation' | 'pet' | 'translation' | 'providerTurn'
+  toolPreset?: string
   maxIterations: number
   forceApproval: boolean
   permissionMode: 'default' | 'whitelist' | 'fullAccess'
   maxParallelTools?: number
-  maxToolCallsPerTurn?: number
   maxConcurrentSubAgents: number
   compression?: CompressionConfig
-  sessionMode?: 'agent' | 'chat'
+  sessionMode?: 'normal' | 'agent' | 'chat'
   planMode?: boolean
   planModeAllowedTools?: string[]
   permissionPolicy?: PermissionPolicySnapshot

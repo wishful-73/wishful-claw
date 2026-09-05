@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, ChevronDown, MessageSquare, Target } from 'lucide-react'
+import { Check, ChevronDown, MessageSquare, Wrench } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import {
   DropdownMenu,
@@ -9,9 +9,9 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { cn } from '@renderer/lib/utils'
-import { useUIStore } from '@renderer/stores/ui-store'
+import { useChatStore } from '@renderer/stores/chat-store'
 
-export type CollabMode = 'normal' | 'goal'
+export type CollabMode = 'chat' | 'cowork'
 
 interface CollabModeOption {
   value: CollabMode
@@ -23,20 +23,20 @@ interface CollabModeOption {
 function getModeOptions(t: (key: string, opts?: any) => string): CollabModeOption[] {
   return [
     {
-      value: 'normal',
-      label: t('collab.mode.normal', { defaultValue: '常规' }),
-      description: t('collab.mode.normalDesc', {
-        defaultValue: '普通聊天，可开启 Plan 模式'
+      value: 'chat',
+      label: t('collab.mode.chat', { defaultValue: 'Chat' }),
+      description: t('collab.mode.chatDesc', {
+        defaultValue: '只读协作，可搜索、浏览和分析'
       }),
       icon: <MessageSquare className="size-3.5" />
     },
     {
-      value: 'goal',
-      label: t('collab.mode.goal', { defaultValue: '目标' }),
-      description: t('collab.mode.goalDesc', {
-        defaultValue: 'Goal 模式，设定目标后自主执行'
+      value: 'cowork',
+      label: t('collab.mode.cowork', { defaultValue: 'Cowork' }),
+      description: t('collab.mode.coworkDesc', {
+        defaultValue: '完整协作，可在权限策略内执行操作'
       }),
-      icon: <Target className="size-3.5" />
+      icon: <Wrench className="size-3.5" />
     }
   ]
 }
@@ -57,12 +57,11 @@ export function CollabModeSwitcher({
 }: CollabModeSwitcherProps): React.JSX.Element {
   const { t } = useTranslation('chat')
   const [open, setOpen] = React.useState(false)
-  const storeMode = useUIStore((s) =>
-    sessionId ? (s.collabModesBySession[sessionId] ?? 'normal') : 'normal'
+  const storeMode = useChatStore((s) =>
+    sessionId ? s.sessions.find((session) => session.id === sessionId)?.collaborationMode ?? 'chat' : 'chat'
   )
-  const derivedMode = modeOverride ?? storeMode
-  const mode = derivedMode
-  const setCollabMode = useUIStore((s) => s.setCollabMode)
+  const mode = modeOverride ?? storeMode
+  const updateSessionCollaborationMode = useChatStore((s) => s.updateSessionCollaborationMode)
   const options = getModeOptions(t)
   const activeOption = options.find((o) => o.value === mode) ?? options[0]
 
@@ -72,7 +71,7 @@ export function CollabModeSwitcher({
       return
     }
     if (sessionId) {
-      setCollabMode(sessionId, nextMode)
+      updateSessionCollaborationMode(sessionId, nextMode)
     }
     onModeChange?.(nextMode)
     setOpen(false)

@@ -1,7 +1,8 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Core.Tools;
 using WishfulClaw.Workspace.Memory;
 
 namespace WishfulClaw.Persona;
@@ -34,7 +35,8 @@ public static class PromptBuilder
         string? workingFolder,
         string? language,
         string? userRules,
-        int? characterBudget = null)
+        int? characterBudget = null,
+        bool includeSessionTodoPrompt = true)
     {
         var parts = new List<string>();
 
@@ -55,12 +57,17 @@ public static class PromptBuilder
             parts.Add(BuildProjectContext(workingFolder, JsonHelpers.GetString(parameters, "sshConnectionId")));
         }
 
-        // ── Session Mode (Goal) — high priority, before persona ──
+        // ── Session Mode (Goal / Global Agent) — high priority, before persona ──
         var sessionMode = JsonHelpers.GetString(parameters, "sessionMode");
         if (sessionMode == "goal")
         {
             WorkerLog.Info("sessionMode=goal, injecting goal mode prompt");
             parts.Add(BuildGoalModePrompt());
+        }
+        else if (sessionMode == "global")
+        {
+            WorkerLog.Info("sessionMode=global, injecting global agent prompt");
+            parts.Add(BuildGlobalAgentPrompt());
         }
 
         // ── Context Documents (Persona) ──
@@ -76,7 +83,14 @@ public static class PromptBuilder
         {
             parts.Add(BuildMemoryContext(parameters));
         }
-        parts.Add(BuildToolCapability(parameters));
+        parts.Add(BuildToolCapability());
+
+        // ── Session Todo guidance (ordinary session agents only — the caller
+        // opts out for hosts like the global agent) ──
+        if (profile == PromptProfile.Main && includeSessionTodoPrompt)
+        {
+            parts.Add(BuildSessionTodoPrompt());
+        }
 
         // ── User Rules ──
         if (!string.IsNullOrWhiteSpace(userRules))
@@ -219,18 +233,24 @@ Do not overstep your bounds or create unnecessary files.
         }
     }
 
-    private static string BuildToolCapability(JsonElement parameters)
+    private static string BuildToolCapability()
     {
-        return """
+        var categoryLines = string.Join(
+            '\n',
+            ToolCategoryCatalog.All.Select(category => $"  - {category.Name}: {category.Description}"));
+
+        return $"""
 <tool_calling>
+- Tool capability categories, in the order they are presented. Prefer the narrowest tool that directly matches the operation. Not every category is exposed in every session.
+{categoryLines}
+- Some capabilities are not exposed as direct tools. Discover them through the `use_capability` proxy: call `action="list"` with the relevant type, then call the returned capability with `action="call"`, `capability_id`, and arguments in `arguments`.
+- Use the proxy when the needed capability is not in the direct tool list; do not claim a capability is unavailable before checking it.
 - Before calling tools, briefly state what you are about to do. After results, briefly summarize what you found. Never call tools silently.
 - Batch independent tool calls in the same assistant turn; keep sequential only when dependent.
 - For complex multi-step tasks, delegate to a sub-agent via the Task tool instead of doing everything yourself.
 </tool_calling>
 """;
     }
-
-
 
     private static string BuildSshContext(JsonElement parameters)
     {
@@ -291,6 +311,19 @@ The following are user-defined rules that you MUST ALWAYS FOLLOW WITHOUT ANY EXC
 """;
     }
 
+    // ── Session Todo guidance (temporary, session-scoped agent Todo) ──
+    private static string BuildSessionTodoPrompt()
+    {
+        return """
+<session_todo>
+Session task tools (TaskCreate / TaskGet / TaskUpdate / TaskList) maintain a small Todo list for THIS session only. They are NOT in your direct tool list — call them via the `use_capability` proxy: `action="call"`, `capability_id="builtin:<ToolName>"`, tool arguments in `arguments`.
+- Use Todos only for complex multi-step work or work spanning multiple turns, never for simple requests.
+- Call TaskList before creating tasks to avoid duplicates.
+- Use TaskUpdate to mark `in_progress` when starting (one at a time), `blocked` when stuck, `in_review` when done and awaiting user confirmation, `completed` only when fully done and verified.
+</session_todo>
+""";
+    }
+
     // ── Persona document loading ──
 
     private static List<PromptContextDocument> LoadPersonaDocuments(string personaId, string? workingFolder)
@@ -342,6 +375,27 @@ You are the **goal guide and supervisor** for the user, NOT the executor. Goals 
 - Wait for the user's explicit confirmation before calling create_goal; never create a goal speculatively.
 - After the goal starts, keep the user informed of progress and surface results, blockers, or next steps.
 </goal_mode>";
+    }
+
+    // ── Global Agent Prompt (cross-project product manager) ──
+    private static string BuildGlobalAgentPrompt()
+    {
+        return """
+<global_agent>
+You are the user's **global product manager assistant** with a cross-project view, not bound to any single workspace.
+
+**Workflow:** define global tasks -> dispatch work (plain messages or work requests) to project sessions -> wait for their explicit replies -> update dispatches and global tasks, report to the user.
+
+**Tools:** global task tools come through the `use_capability` proxy (not in your direct tool list) — call with `action="call"`, `capability_id="builtin:<tool>"`, arguments in `arguments`. Tools: create_global_task, update_global_task, list_global_tasks, list_global_dispatches, send_work_request, update_dispatch. Discover them with `action="list"` (type="builtin").
+
+**Rules:**
+- Target sessions are autonomous; you never control them directly.
+- Never touch a target session's internal Todos — judge completion only from explicit session replies.
+- Mark a dispatch or global task completed only when the target session explicitly reported the result; otherwise keep it open and follow up.
+- Prefer reusing existing sessions; create a new one only when no suitable session exists.
+- Global tasks are never deleted, only archived.
+</global_agent>
+""";
     }
 
 }

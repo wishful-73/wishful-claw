@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.23",
+  "version": "0.2.24",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -13,13 +13,16 @@
     "build": "electron-vite build",
     "pack": "electron-vite build && electron-builder --dir",
     "pack:full": "npm run build:worker:prod && electron-vite build && electron-builder --dir",
-    "pack:zip": "npm run build:worker:prod && electron-vite build && electron-builder --dir && node scripts/zip-release.mjs",
+    "pack:zip": "npm run build:worker:prod && electron-vite build && electron-builder --dir -c.extraMetadata.wishfulClawDistribution=green && node scripts/zip-release.mjs",
     "pack:installer": "electron-vite build && electron-builder --win",
     "pack:installer:full": "npm run build:worker:prod && electron-vite build && electron-builder --win",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test:cron-integration": "tsc --noEmit false -p tests/cron-integration/tsconfig.json && node tests/cron-integration/out/tests/cron-integration/program.js"
+    "test:cron-integration": "tsc --noEmit false -p tests/cron-integration/tsconfig.json && node tests/cron-integration/out/tests/cron-integration/program.js",
+    "test:renderable-chat-items": "esbuild tests/renderable-chat-items/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/renderable-chat-items/out/program.cjs && node tests/renderable-chat-items/out/program.cjs",
+    "pretest:e2e": "node tests/e2e/scripts/ensure-prereqs.mjs",
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -48,6 +51,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dingtalk-stream": "^2.1.6-beta.1",
+    "electron-updater": "^6.6.2",
     "gpt-tokenizer": "^3.4.0",
     "i18next": "^26.3.6",
     "immer": "^11.1.15",
@@ -87,6 +91,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",

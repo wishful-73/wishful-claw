@@ -19,6 +19,11 @@ public class MessageEntity
 
     public string? Usage { get; set; }
 
+    /// <summary>
+    /// Display-order aid: the renderer's transcript index at save time, so ordinary message
+    /// writes can rewrite it. Valid only inside ORDER BY created_at, sort_order — never as an
+    /// identity or coverage-boundary comparison.
+    /// </summary>
     public int SortOrder { get; set; }
 }
 
@@ -53,7 +58,6 @@ public sealed class MessageRow
 public sealed record MessageMutationResult(bool Success, int Changed, string? Error);
 public sealed record MessageDeleteResult(bool Success, bool Deleted, string? Error);
 public sealed record MessageCountResult(bool Success, int Count, string? Error);
-public sealed record MessageDeleteLastResult(bool Success, MessageRow? Message, string? Error);
 public sealed record MessageCompactResult(bool Success, int TotalMessages, int Compacted, string? Error);
 public sealed record MessageUsageStatsResult(bool Success, bool HasUsage, double TotalInput, double TotalOutput, double TotalCacheCreation, double TotalCacheRead, double TotalReasoning, double TotalDurationMs, int RequestCount, int AssistantReplies, long? FirstCreatedAt, long? LastCreatedAt, string? Error);
 public sealed record MessageListByTurnsResult(bool Success, List<MessageRow> Messages, long RangeStart, bool HasMore, string? Error, int TotalTurns = 0);

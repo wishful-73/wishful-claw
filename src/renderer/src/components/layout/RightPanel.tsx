@@ -19,6 +19,11 @@ import { SessionChangeReviewPanel } from '@renderer/components/layout/SessionCha
 import { SessionSummaryPanel } from '@renderer/components/layout/SessionSummaryPanel'
 import { GoalHistoryPanel } from '@renderer/components/goal/GoalHistoryPanel'
 import { RIGHT_PANEL_DEFAULT_WIDTH, clampRightPanelWidth } from './right-panel-defs'
+import {
+  readActiveRightPanelTabId,
+  rightPanelTabScope,
+  rightPanelTabScopeId
+} from '@renderer/stores/right-panel-scope'
 
 
 export function RightPanel(): React.JSX.Element {
@@ -26,13 +31,15 @@ export function RightPanel(): React.JSX.Element {
   const rightPanelOpen = useUIStore((state) => state.rightPanelOpen)
   const rightPanelWidth = useUIStore((state) => state.rightPanelWidth)
   const rightPanelTabs = useUIStore((state) => state.rightPanelTabs)
-  const activeTabId = useUIStore((state) => state.rightPanelActiveTabId)
   const setRightPanelOpen = useUIStore((state) => state.setRightPanelOpen)
   const setRightPanelWidth = useUIStore((state) => state.setRightPanelWidth)
   const setRightPanelActiveTab = useUIStore((state) => state.setRightPanelActiveTab)
   const closeRightPanelTab = useUIStore((state) => state.closeRightPanelTab)
+  const closeOtherRightPanelTabs = useUIStore((state) => state.closeOtherRightPanelTabs)
+  const closeAllRightPanelTabs = useUIStore((state) => state.closeAllRightPanelTabs)
   const ensureActivityTab = useUIStore((state) => state.ensureActivityTab)
   const ensureBrowserTab = useUIStore((state) => state.ensureBrowserTab)
+  const ensureFilesTab = useUIStore((state) => state.ensureFilesTab)
   const activeScopedSessionId = useUIStore((state) => state.activeScopedSessionId)
 
   const activeProjectId = useChatStore((state) => {
@@ -44,6 +51,14 @@ export function RightPanel(): React.JSX.Element {
   })
   const activeSessionId = useChatStore((state) => state.activeSessionId)
   const panelSessionId = activeScopedSessionId ?? activeSessionId ?? null
+  const activeTabId = useUIStore((state) => readActiveRightPanelTabId(state, panelSessionId))
+  // tab 条与激活项只认当前作用域的 tab；常驻层（browser / files）的挂载判据
+  // 继续读未过滤的 rightPanelTabs，见下方 hasBrowserTab / hasFilesTab。
+  const panelScopeId = rightPanelTabScopeId(panelSessionId)
+  const scopedTabs = useMemo(
+    () => rightPanelTabs.filter((tab) => rightPanelTabScope(tab) === panelScopeId),
+    [rightPanelTabs, panelScopeId]
+  )
   const memoryProject = useChatStore((state) => {
     const targetSessionId = activeScopedSessionId ?? state.activeSessionId
     const targetSession = targetSessionId
@@ -60,9 +75,8 @@ export function RightPanel(): React.JSX.Element {
   )
 
   const tabs = useMemo(() => {
-    const visibleTabs = rightPanelTabs
-    if (!rightPanelOpen) return visibleTabs
-    return visibleTabs.map((tab: any) => {
+    if (!rightPanelOpen) return scopedTabs
+    return scopedTabs.map((tab: any) => {
       if (tab.kind === 'activity') {
         return { ...tab, title: t('sectionExecution.title', { defaultValue: 'Activity' }) }
       }
@@ -84,7 +98,7 @@ export function RightPanel(): React.JSX.Element {
       // subagent tabs keep their own title (set from task description)
       return tab
     })
-  }, [rightPanelOpen, rightPanelTabs, t])
+  }, [rightPanelOpen, scopedTabs, t])
 
   const selectedTab =
     tabs.find((tab: any) => tab.id === activeTabId) ?? tabs[0]
@@ -92,20 +106,17 @@ export function RightPanel(): React.JSX.Element {
   // The browser webview stays mounted whenever a browser tab exists and the plugin
   // is enabled — independent of whether the panel is open. This lets agent-driven
   // browser tools keep working in the background even while the panel is collapsed.
-  const hasBrowserTab = tabs.some((tab: any) => tab.kind === 'browser')
-  const browserTabAlive = hasBrowserTab && browserPluginEnabled
-  const browserPanelKey = panelSessionId
-    ? `session:${panelSessionId}`
-    : activeProjectId
-      ? `project:${activeProjectId}`
-      : 'global'
+  // 每个 Browser tab 都拥有独立且稳定的 BrowserPanel 实例。切换会话只改变
+  // 哪个实例可见，不会因为当前会话变化而卸载原会话的 webview。
+  const browserTabs = rightPanelTabs.filter((tab: any) => tab.kind === 'browser')
+  const browserTabAlive = browserTabs.length > 0
 
   const activeTab = rightPanelOpen ? selectedTab : undefined
   const browserVisible = rightPanelOpen && activeTab?.kind === 'browser'
 
   // Files panel stays mounted to preserve tree state (expanded folders, scroll)
   // across tab switches — same persistent-layer approach as the browser panel.
-  const hasFilesTab = tabs.some((tab: any) => tab.kind === 'files')
+  const hasFilesTab = rightPanelTabs.some((tab: any) => tab.kind === 'files')
   const filesVisible = rightPanelOpen && activeTab?.kind === 'files'
 
   const draggingRef = useRef(false)
@@ -223,26 +234,11 @@ export function RightPanel(): React.JSX.Element {
               browserEnabled={browserPluginEnabled}
               onSelectTab={setRightPanelActiveTab}
               onCloseTab={closeRightPanelTab}
+              onCloseOtherTabs={closeOtherRightPanelTabs}
+              onCloseAllTabs={closeAllRightPanelTabs}
               onAddActivity={ensureActivityTab}
               onAddBrowser={() => ensureBrowserTab(undefined, panelSessionId)}
-              onAddGoals={() => useUIStore.getState().openGoalPanel(panelSessionId, activeProjectId)}
-              onOpenFile={() => {
-                import('@renderer/lib/ipc/ipc-client').then(({ ipcClient }) => {
-                  ipcClient
-                    .invoke('fs:select-file', { multiSelections: true })
-                    .then((result) => {
-                      const r = result as { canceled?: boolean; paths?: string[]; path?: string }
-                      if (r.canceled) return
-                      const selectedPaths = r.paths?.length ? r.paths : r.path ? [r.path] : []
-                      for (const p of selectedPaths) {
-                        useUIStore.getState().openFilePreview(p)
-                      }
-                    })
-                    .catch((err) => {
-                      console.error('[RightPanel] Failed to open file dialog:', err)
-                    })
-                })
-              }}
+              onOpenFile={() => ensureFilesTab(panelSessionId)}
               onClosePanel={() => setRightPanelOpen(false)}
               t={t}
             />
@@ -275,20 +271,22 @@ export function RightPanel(): React.JSX.Element {
             webview keeps running even when the panel is closed or another tab is
             active. When hidden it stays in the DOM (webview connected) but
             non-interactive and transparent. */}
-        {browserTabAlive ? (
-          <div
-            className={cn(
-              'absolute inset-x-0 bottom-0 top-10',
-              browserVisible ? 'z-10 opacity-100' : 'pointer-events-none -z-10 opacity-0'
-            )}
-          >
-            <BrowserPanel
-              key={browserPanelKey}
-              sessionId={panelSessionId}
-              projectId={activeProjectId}
-            />
-          </div>
-        ) : null}
+        {browserTabAlive
+          ? browserTabs.map((tab: any) => {
+              const visible = browserVisible && activeTab?.id === tab.id
+              return (
+                <div
+                  key={tab.id}
+                  className={cn(
+                    'absolute inset-x-0 bottom-0 top-10',
+                    visible ? 'z-10 opacity-100' : 'pointer-events-none -z-10 opacity-0'
+                  )}
+                >
+                  <BrowserPanel sessionId={tab.sessionId ?? null} projectId={tab.projectId ?? null} />
+                </div>
+              )
+            })
+          : null}
 
         {/* Persistent files layer: mounted whenever a files tab exists so the
             file tree state (expanded folders, scroll position) survives tab

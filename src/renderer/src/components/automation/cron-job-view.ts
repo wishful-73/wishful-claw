@@ -1,4 +1,6 @@
-﻿export interface CronScheduleView {
+﻿import type { ReasoningEffortLevel } from '@shared/types/provider'
+
+export interface CronScheduleView {
   kind: 'at' | 'every' | 'cron'
   at?: number | string
   every?: number
@@ -19,6 +21,8 @@ export interface CronJobView {
   agentId?: string | null
   sessionId?: string | null
   model?: string
+  thinkingEnabled?: boolean | null
+  reasoningEffort?: ReasoningEffortLevel | null
   workingFolder?: string
   deliveryMode?: string
   deliveryTarget?: string | null
@@ -63,6 +67,12 @@ export function asCronJob(value: unknown): CronJobView | null {
     agentId: record.agentId as string | null | undefined ?? record.agent_id as string | null | undefined,
     sessionId: record.sessionId as string | null | undefined ?? record.session_id as string | null | undefined,
     model: record.model as string | undefined,
+    thinkingEnabled: typeof (record.thinkingEnabled ?? record.thinking_enabled) === 'boolean'
+      ? (record.thinkingEnabled ?? record.thinking_enabled) as boolean
+      : null,
+    reasoningEffort: record.reasoningEffort as ReasoningEffortLevel | null | undefined
+      ?? record.reasoning_effort as ReasoningEffortLevel | null | undefined
+      ?? null,
     workingFolder: record.workingFolder as string | undefined ?? record.working_folder as string | undefined,
     deliveryMode: record.deliveryMode as string | undefined ?? record.delivery_mode as string | undefined,
     deliveryTarget: record.deliveryTarget as string | null | undefined ?? record.delivery_target as string | null | undefined,

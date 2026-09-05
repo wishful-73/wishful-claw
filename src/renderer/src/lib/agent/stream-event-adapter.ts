@@ -1,4 +1,4 @@
-﻿import type { AgentStreamEvent } from '../../../../shared/agent-stream-protocol'
+import type { AgentStreamEvent } from '../../../../shared/agent-stream-protocol'
 import type { AgentEvent } from './types'
 import type { SubAgentEvent } from './sub-agents/types'
 import { isUseCapabilityTool, resolveProxyDisplay } from './use-capability-proxy'
@@ -30,6 +30,7 @@ export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
     case 'image_generation_started':
     case 'context_compression_started':
     case 'context_compression_start':
+    case 'context_compression_delta':
     case 'tool_use_args_delta':
     case 'request_retry':
       return e as AgentEvent
@@ -132,6 +133,7 @@ export function isActivityPanelEvent(event: unknown): boolean {
     'error',
     'context_compression_started',
     'context_compression_start',
+    'context_compression_delta',
     'context_compressed'
   ]
   return typeof e.type === 'string' && activityTypes.includes(e.type)

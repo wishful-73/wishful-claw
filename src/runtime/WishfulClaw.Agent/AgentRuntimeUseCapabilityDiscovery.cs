@@ -93,6 +93,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
     private static List<CapabilitySummary> BuildCapabilitySummaries(
         JsonElement listResult,
         ToolRegistry? registry,
+        AgentRunContext runContext,
         string? sessionMode)
     {
         var result = new List<CapabilitySummary>();
@@ -147,6 +148,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
                 if (category is null
                     || !IsProxiedBuiltinTool(name, category)
                     || !registry.IsAvailableInMode(name, sessionMode)
+                    || !AgentRunContextPolicy.IsToolAllowed(runContext, name, category)
                     || !registry.TryGetExecutor(name, out var executor)
                     || executor is null)
                 {
@@ -185,13 +187,14 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
     private static string EncodeListResponse(
         JsonElement listResult,
         ToolRegistry? registry,
+        AgentRunContext runContext,
         string? sessionMode,
         CapabilityListOptions options)
     {
         if (options.Error is not null)
             return EncodeError(options.Error);
 
-        var filtered = BuildCapabilitySummaries(listResult, registry, sessionMode)
+        var filtered = BuildCapabilitySummaries(listResult, registry, runContext, sessionMode)
             .Where(capability => MatchesListOptions(capability, options))
             .ToList();
         var total = filtered.Count;

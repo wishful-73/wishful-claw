@@ -29,6 +29,5 @@ export const CHAT_SURFACE_NAV_RESET = {
   translatePageOpen: false,
   drawPageOpen: false,
   tasksPageOpen: false,
-  codeGraphPageOpen: false,
-  ...closeRightSidePanels()
+  codeGraphPageOpen: false
 } as const

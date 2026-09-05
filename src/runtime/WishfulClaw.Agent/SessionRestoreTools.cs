@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -17,7 +17,11 @@ namespace WishfulClaw.Agent;
 internal sealed record SessionRestoreCoreResult(
     List<JsonElement> WireMessages,
     List<AgentRuntimeChatMessage> Conversation,
-    bool FromSnapshot);
+    bool FromSnapshot,
+    SessionRestoreFailure? Failure = null)
+{
+    public bool IsBlocked => Failure is not null;
+}
 
 /// <summary>
 /// Session restore: load messages from DB and rebuild SessionConversation.
@@ -28,9 +32,10 @@ internal sealed record SessionRestoreCoreResult(
 /// pattern.
 ///
 /// Strategy (snapshot-contract.md §六): a valid compaction snapshot restores
-/// the compressed wire conversation plus the incremental messages after the
-/// snapshot cursor; any snapshot problem (missing/unsupported/corrupt/cursor
-/// invalid) falls back to full message recovery. Chat-only artifacts
+/// the compressed wire conversation plus the messages created after the
+/// snapshot's own commit time; a corrupted snapshot (missing/unsupported
+/// version/bad payload/wrong session) blocks the session until the user
+/// explicitly rebuilds the context. Chat-only artifacts
 /// (compact boundary / compression status cards) never enter the model context.
 ///
 /// Reconciliation: the chat store keeps tool calls and their results in the
@@ -44,8 +49,8 @@ internal sealed record SessionRestoreCoreResult(
 internal static class SessionRestoreTools
 {
     /// <summary>
-    /// Restore a session from the DB. Prefers the compaction snapshot + post-cursor
-    /// incremental messages; falls back to loading all messages. Converts the result
+    /// Restore a session from the DB. Prefers the compaction snapshot + messages
+    /// created after its commit time; falls back to loading all messages. Converts the result
     /// to wire-format JsonElements and calls SessionConversation.Initialize().
     /// </summary>
     public static WorkerResponse RestoreSession(JsonElement parameters)
@@ -62,6 +67,16 @@ internal static class SessionRestoreTools
             var db = DbClient.GetClient(parameters);
 
             var restored = RestoreFromDb(db, sessionId);
+            if (restored.Failure is { } failure)
+            {
+                WorkerLog.Warn(
+                    $"agent restore-session blocked session={FormatLogValue(sessionId)} " +
+                    $"snapshot={FormatLogValue(failure.SnapshotId)} reason={failure.Reason}");
+                return WorkerResponse.Json(
+                    new SessionRestoreResponse(false, sessionId, 0, Failure: failure),
+                    AgentRuntimeJsonContext.Default.SessionRestoreResponse);
+            }
+
             var wireMessages = restored.WireMessages;
             if (wireMessages.Count == 0)
             {
@@ -113,7 +128,7 @@ internal static class SessionRestoreTools
 
     /// <summary>
     /// Restore core shared by the agent/restore-session endpoint and the agent
-    /// loop's lazy first-turn initialization: snapshot + post-cursor increment,
+    /// loop's lazy first-turn initialization: snapshot + post-commit increment,
     /// full-history fallback, and tool-result reconciliation (snapshot-contract.md
     /// §六). Pure DB read — never touches SessionConversation and returns no
     /// WorkerResponse; the caller decides how to apply the result. An empty
@@ -121,19 +136,41 @@ internal static class SessionRestoreTools
     /// </summary>
     internal static SessionRestoreCoreResult RestoreFromDb(DbService db, string sessionId)
     {
-        // Snapshot path: validated read (version/payload/cursor) shared with the
-        // db endpoint; any problem downgrades to full recovery (reason is logged
-        // inside TryGetValidSnapshot).
-        CompactionSnapshotEntity? snapshot = null;
+        CompactionSnapshotEntity? snapshot;
+        string? reason;
+        string? currentSnapshotId;
         try
         {
-            snapshot = DbCompactionSnapshotTools.TryGetValidSnapshot(db, sessionId, out _);
+            snapshot = DbCompactionSnapshotTools.TryGetValidSnapshot(
+                db,
+                sessionId,
+                out reason,
+                out currentSnapshotId,
+                out _);
         }
         catch (Exception ex)
         {
             WorkerLog.Warn(
-                $"agent restore: snapshot read failed, falling back to full recovery " +
-                $"session={FormatLogValue(sessionId)} error={ex.GetType().Name}: {ex.Message}");
+                $"agent restore: snapshot read failed session={FormatLogValue(sessionId)} " +
+                $"error={ex.GetType().Name}: {ex.Message}");
+            var readFailure = new SessionRestoreFailure(
+                sessionId,
+                null,
+                DbCompactionSnapshotTools.ReasonCorrupt,
+                Recoverable: true,
+                RequiresUserAction: true);
+            return new SessionRestoreCoreResult([], [], false, readFailure);
+        }
+
+        if (currentSnapshotId is not null && snapshot is null)
+        {
+            var failure = new SessionRestoreFailure(
+                sessionId,
+                currentSnapshotId,
+                reason ?? DbCompactionSnapshotTools.ReasonSnapshotNotFound,
+                Recoverable: true,
+                RequiresUserAction: true);
+            return new SessionRestoreCoreResult([], [], false, failure);
         }
 
         var wireMessages = new List<JsonElement>();
@@ -151,6 +188,11 @@ internal static class SessionRestoreTools
 
             // Ids already covered by the snapshot — dedupes the summary row whose
             // timestamp was relocated into the covered range by the chat store.
+            // Measured on production data, this dedupe is a weak net, not a boundary
+            // guard: the prefix carries an id on only 9 of 31 wire entries, and those
+            // ids are wc_* provider-side ids from a different namespace than DB message
+            // ids. So the boundary below must stay exact — loosening it cannot be
+            // compensated by id matching.
             var snapshotIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var message in wireMessages)
             {
@@ -163,16 +205,20 @@ internal static class SessionRestoreTools
                 }
             }
 
-            // Incremental messages strictly after the snapshot cursor
-            // (snapshot-contract.md §3.1).
+            // Incremental messages: everything created after the snapshot commit time.
+            // The snapshot row's own created_at is a wall clock written once and never
+            // rewritten, so ordinary message saves can never move the boundary. Do not
+            // compare against through_created_at/through_sort_order: sort_order is the
+            // renderer's transcript index (messages.indexOf) and shifts when compression
+            // inserts the boundary+summary pair mid-transcript, which used to raise a
+            // false "invalid_cursor" and block the session permanently.
+            // sort_order stays a pure tie-break inside ORDER BY.
             var incremental = db.Query(
-                "SELECT * FROM messages WHERE session_id = @sid AND " +
-                "(created_at > @tca OR (created_at = @tca AND sort_order > @tso)) " +
+                "SELECT * FROM messages WHERE session_id = @sid AND created_at > @snapshotCreatedAt " +
                 "ORDER BY created_at ASC, sort_order ASC",
                 EntityMappers.MapMessage,
                 new SqliteParameter("@sid", sessionId),
-                new SqliteParameter("@tca", snapshot.ThroughCreatedAt),
-                new SqliteParameter("@tso", snapshot.ThroughSortOrder));
+                new SqliteParameter("@snapshotCreatedAt", snapshot.CreatedAt));
 
             // Tool-call ids already covered by a stored tool_result row
             // (legacy split format) — suppresses duplicate synthesized results.
@@ -444,6 +490,16 @@ internal static class SessionRestoreTools
                 catch { /* ignore parse errors */ }
             }
 
+            JsonElement? usage = null;
+            if (!string.IsNullOrEmpty(entity.Usage))
+            {
+                try
+                {
+                    usage = JsonDocument.Parse(entity.Usage).RootElement.Clone();
+                }
+                catch { /* ignore parse errors */ }
+            }
+
             // Check if this message has tool calls in meta
             var hasToolCalls = false;
             if (meta is { } m && m.TryGetProperty("toolCalls", out var toolCallsEl) && toolCallsEl.ValueKind == JsonValueKind.Array)
@@ -533,6 +589,11 @@ internal static class SessionRestoreTools
             }
 
             writer.WriteNumber("createdAt", entity.CreatedAt);
+            if (usage is { ValueKind: JsonValueKind.Object } usageValue)
+            {
+                writer.WritePropertyName("usage");
+                usageValue.WriteTo(writer);
+            }
             writer.WriteEndObject();
         }
 

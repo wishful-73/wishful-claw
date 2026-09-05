@@ -52,7 +52,7 @@
     },
     "about": {
       "label": "About",
-      "desc": "Version info"
+      "desc": "Product intro and app updates"
     },
     "groups": {
       "general": "General",
@@ -156,14 +156,10 @@
     },
     "toolExecution": {
       "label": "Tool Execution",
-      "desc": "Control how many tools the agent can run at once and per turn",
+      "desc": "Control how many tools the agent can execute at once; extra calls wait for a slot",
       "maxParallel": {
         "label": "Max Parallel Tools",
-        "desc": "Number of tools executed simultaneously"
-      },
-      "maxPerTurn": {
-        "label": "Max Tool Calls Per Turn",
-        "desc": "Cap total tool calls in a single AI response"
+        "desc": "Number of tools executed simultaneously; extra calls wait for a slot"
       },
       "maxSubAgents": {
         "label": "Max Concurrent Sub-Agents",
@@ -728,11 +724,25 @@
   },
   "about": {
     "title": "About Wishful Claw",
-    "version": "Version: v0.2.0-dev",
-    "description": "Wishful Claw is an AI Agent programming assistant combining the strengths of three open-source projects:",
-    "wishfulClaw": "WishfulClaw — Agent Loop / Toolchain / Provider / Architecture",
-    "kodaClaw": "KodaClaw — Memory System / Personality System Design",
-    "openClaw": "OpenClaw — Active Memory Recall Mechanism"
+    "description": "Wishful Claw is a desktop AI Agent workbench. It connects large-model reasoning to your computer — one sentence of natural language is enough to drive it to write code, organize information and get things done.",
+    "featuresTitle": "Core capabilities",
+    "features": {
+      "agentCoding": "Agent coding: reads and writes files, searches code and runs commands, iterating over multiple turns to finish development tasks",
+      "multiModel": "Multi-model: works with Anthropic, OpenAI, Gemini, OpenRouter and more — switch and compare freely",
+      "memory": "Long-term memory: tiered storage, proactive recall and daily auto-organization keep your preferences and context across sessions",
+      "persona": "Personas: built-in persona presets with customizable identity, tone and behavior rules",
+      "extensions": "Extensibility: plugins, custom extensions, Skills and MCP bring in external tools on demand",
+      "channels": "Channels: bridge messaging platforms such as Feishu and WeChat to collaborate with your agent anywhere",
+      "productivity": "Productivity tools: global launcher, clipboard enhancements, SSH terminal"
+    },
+    "updater": {
+      "label": "App Updates",
+      "desc": "Check for and install new Wishful Claw versions",
+      "autoCheck": "Check for updates at startup",
+      "autoCheckDesc": "Only checks at startup; downloading and installing always require your confirmation.",
+      "check": "Check for updates",
+      "latest": "You are using the latest version."
+    }
   },
   "plugin": {
     "title": "Plugins",
@@ -1133,7 +1143,41 @@
   },
   "runtimePage": {
     "title": "Runtime & Performance",
-    "subtitle": "Agent runtime settings: request timeout, retries, tool execution and context compression"
+    "subtitle": "Agent runtime settings: request timeout, retries, tool execution and context compression",
+    "sessionDefaults": {
+      "title": "Session Defaults",
+      "desc": "Choose the collaboration and Cowork permission defaults for new project sessions",
+      "collaboration": {
+        "label": "Default project session collaboration",
+        "desc": "Chat is read-only collaboration; Cowork can perform project operations",
+        "chat": "Chat",
+        "cowork": "Cowork"
+      },
+      "permission": {
+        "label": "Default Cowork permission",
+        "desc": "Default follows approval policy; YOLO auto-approves tool calls",
+        "default": "Default",
+        "fullAccess": "YOLO"
+      },
+      "hint": "Applies only to new project sessions and never overwrites existing sessions. Global sessions always use Chat."
+    }
+  },
+  "updater": {
+    "dialog": {
+      "title": "App Update",
+      "description": "Check for the latest Wishful Claw version.",
+      "available": "New version {{version}} available",
+      "downloaded": "Update downloaded. Confirm to restart and install.",
+      "currentVersion": "Current version",
+      "noNotes": "No release notes provided for this release.",
+      "downloading": "Downloading update…",
+      "download": "Download update",
+      "manualDownload": "Manual download",
+      "install": "Restart and install",
+      "installing": "Preparing installation…",
+      "checkAgain": "Check again",
+      "openRelease": "Open release page"
+    }
   },
   "anchorNav": {
     "language": "Language",
@@ -1165,9 +1209,34 @@
       },
       "time": {
         "label": "Nightly trigger time",
-        "desc": "Triggers while the app is running near this time; a missed run is caught up once after startup"
+        "desc": "Triggers while the app is running near this time; normal startup does not catch up a missed nightly run"
       },
-      "startupHint": "Triggered with a delay after startup; skipped if the last run was less than 20 hours ago to avoid repeats on frequent restarts"
+      "startupHint": "Triggered with a delay after startup; skipped if the last run was less than 20 hours ago to avoid repeats on frequent restarts",
+      "model": {
+        "label": "Organization model",
+        "desc": "Choose a dedicated provider and model for memory organization; it does not follow the global active model",
+        "providerPlaceholder": "Select provider",
+        "modelPlaceholder": "Select model"
+      },
+      "thinking": {
+        "label": "Thinking mode",
+        "desc": "Applies only to memory organization requests; Default uses the model's own configuration",
+        "default": "Default",
+        "disabled": "Disabled",
+        "enabled": "Enabled",
+        "effortLabel": "Reasoning effort",
+        "effortDesc": "When thinking is enabled, choose a supported reasoning effort; Default uses the model configuration",
+        "effortDefault": "Default",
+        "effort": {
+          "minimal": "Minimal",
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "xhigh": "Extra high",
+          "max": "Maximum",
+          "ultra": "Ultra"
+        }
+      }
     },
     "tiers": {
       "title": "Tier Demotion Thresholds",
@@ -1260,7 +1329,21 @@
       "weixinInstructions": "1. Click the \"Get QR code\" button\n2. Scan the displayed QR code with WeChat\n3. Confirm authorization on your phone\n4. The channel will start automatically once bound",
       "feishuInstructions": "1. Scan the QR code with the Feishu app\n2. Confirm creating the application in Feishu\n3. App ID and App Secret are fetched automatically after authorization\n4. The channel will start automatically once bound",
       "feishuWaiting": "Scan the QR code with Feishu to complete authorization",
-      "feishuConnected": "Feishu authorization succeeded!"
+      "feishuConnected": "Feishu authorization succeeded!",
+      "boundTitle": "Bound",
+      "boundDescription": "Connection credentials are saved. You can start the channel or bind it again.",
+      "connectedStatus": "Connection configured",
+      "channelLabel": "Channel",
+      "accountLabel": "Account identifier",
+      "scopeLabel": "Scope",
+      "credentialLabel": "Credentials",
+      "credentialSaved": "Securely saved",
+      "weixinChannel": "WeChat",
+      "feishuChannel": "Feishu",
+      "localCredential": "Local WeChat credentials",
+      "credentialReady": "Configured",
+      "projectScope": "Current project",
+      "globalScope": "Global"
     },
     "credentials": {
       "title": "API Credentials",

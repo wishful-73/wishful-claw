@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 
@@ -47,6 +47,14 @@ import {
   shutdownMemoryOrganizationScheduler
 } from './ipc/memory-organization-scheduler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
+import {
+  getUpdateStatus,
+  initializeUpdater,
+  requestUpdateCheck,
+  requestUpdateDownload,
+  requestUpdateInstall
+} from './updater'
+import type { UpdateActionResult, UpdateCheckResult } from '../shared/updater/types'
 
 let mainWindow: BrowserWindow | null = null
 let channelManager: ChannelManager | null = null
@@ -393,6 +401,31 @@ registerCodeGraphHandlers()
     'goal:live:msgpack',
     async (args) => getNativeWorker().request('goal/live', args)
   )
+  // ── Session-scoped agent task (Todo) DB handlers (forwarded to Worker) ──
+  registerMessagePackHandler<string, unknown[]>(
+    'db:tasks:list-by-session:msgpack',
+    async (sessionId) => getNativeWorker().request('db/tasks-list-by-session', { sessionId })
+  )
+  registerMessagePackHandler<string, unknown>(
+    'db:tasks:get:msgpack',
+    async (id) => getNativeWorker().request('db/tasks-get', { id })
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:tasks:create:msgpack',
+    async (args) => getNativeWorker().request('db/tasks-create', args)
+  )
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'db:tasks:update:msgpack',
+    async (args) => getNativeWorker().request('db/tasks-update', args)
+  )
+  registerMessagePackHandler<string, unknown>(
+    'db:tasks:delete:msgpack',
+    async (id) => getNativeWorker().request('db/tasks-delete', { id })
+  )
+  registerMessagePackHandler<string, unknown>(
+    'db:tasks:delete-by-session:msgpack',
+    async (sessionId) => getNativeWorker().request('db/tasks-delete-by-session', { sessionId })
+  )
   // -- Goal plans/tasks/execution-runs handlers --
   registerMessagePackHandler<Record<string, unknown>, unknown[]>(
     'db:goal-plans:list:msgpack',
@@ -477,8 +510,31 @@ registerCodeGraphHandlers()
 
   // -- Shell, file watch, image persistence handlers are registered via registerMiscHandlers --
 
+  registerMessagePackHandler<unknown, UpdateCheckResult>(
+    'update:check',
+    async () => requestUpdateCheck()
+  )
+  registerMessagePackHandler<unknown, UpdateActionResult>(
+    'update:download',
+    async () => requestUpdateDownload()
+  )
+  registerMessagePackHandler<unknown, ReturnType<typeof getUpdateStatus>>(
+    'update:status',
+    () => getUpdateStatus()
+  )
+  registerMessagePackHandler<unknown, UpdateActionResult>(
+    'update:install',
+    () => requestUpdateInstall()
+  )
+
   createWindow()
   createTray()
+  void initializeUpdater({
+    getMainWindow: () => mainWindow,
+    markAppWillQuit: () => { isQuiting = true }
+  }).catch((error) => {
+    logWarn('main', `Updater initialization failed: ${String(error)}`)
+  })
 
   // Clipboard Enhancer and Quick Launcher desktop utilities
   registerClipboardEnhancer()

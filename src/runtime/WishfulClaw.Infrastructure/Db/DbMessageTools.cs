@@ -16,7 +16,7 @@ public static partial class DbMessageTools
 {
     // ─── Shared Helpers ───
     // Query methods (List/ListPage/ListLocator/ListByTurns/SearchContent) are in DbMessageToolsQueries.cs
-    // Mutation methods (Add/AddBatch/Upsert/Update/Clear/Delete/Count/DeleteLast/TruncateFrom) are in DbMessageToolsMutations.cs
+    // Mutation methods (Add/AddBatch/Upsert/Update/Clear/Delete/Count) are in DbMessageToolsMutations.cs
 
     internal static void InsertMessage(DbService db, MessageEntity message)
     {

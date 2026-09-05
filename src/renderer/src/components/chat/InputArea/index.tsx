@@ -1,4 +1,4 @@
-// InputArea: main composer component with editor, toolbar, and controls
+﻿// InputArea: main composer component with editor, toolbar, and controls
 
 import * as React from 'react'
 import type { SendMessageOptions } from '@renderer/hooks/use-chat-actions'
@@ -7,13 +7,15 @@ import { updateWebSearchToolRegistration } from '@renderer/lib/tools'
 import { useDebouncedTokens } from '@renderer/hooks/use-estimated-tokens'
 import { usePromptRecommendation } from '@renderer/hooks/use-prompt-recommendation'
 import { useChatStore } from '@renderer/stores/chat-store'
-import { useUIStore } from '@renderer/stores/ui-store'
-import { type CollabMode } from '../CollabModeSwitcher'
+import { useComposerModeState } from './use-composer-mode-state'
+import { useComposerInteractions } from './use-composer-interactions'
+import { useComposerEvents } from './use-composer-events'
 import { useTranslation } from 'react-i18next'
 import { type ImageAttachment } from '@renderer/lib/image-attachments'
 import { type FileAwareEditorHandle } from '../file-aware-editor-utils'
 import { GoalSessionBar } from '@renderer/components/goal/GoalSessionControls'
 import { useGoalStore } from '@renderer/stores/goal-store'
+import { SessionTodoPanel } from '../SessionTodoPanel'
 import { cn } from '@renderer/lib/utils'
 import type { AppPluginId } from '@renderer/lib/app-plugin/types'
 import {
@@ -30,14 +32,15 @@ import {
 import {
   summarizeQueuedMessage, selectedFileItemToReference
 } from './utils'
-import { ComposerRuntimeStatus, ComposerStatusIndicator } from './runtime-status'
+import { ComposerStatusIndicator } from './runtime-status'
+import { ComposerRuntimeStatusFooter } from './composer-runtime-status-footer'
 import { useComposerHeight } from './use-composer-height'
 import { useImageAttachments } from './use-image-attachments'
 import { useQueuedMessages } from './use-queued-messages'
 import { usePromptOptimizer } from './use-prompt-optimizer'
 import { QueuedMessagesPanel } from './queued-messages-panel'
 import { ImagePreviewStrip } from './image-preview-strip'
-import { ComposerBanners } from './composer-banners'
+import { InputAreaBanners } from './input-area-banners'
 import { ComposerToolbar } from './composer-toolbar'
 import { useComposerKeydown } from './use-composer-keydown'
 import { useDragDrop } from './use-drag-drop'
@@ -45,12 +48,9 @@ import { useComposerEditor } from './use-composer-editor'
 import { useSlashCommands } from './use-slash-commands'
 import { useFileSearch } from './use-file-search'
 import { useContextCompression } from './use-context-compression'
-import { usePermissionMode } from './use-permission-mode'
-import { useModeControls } from './use-mode-controls'
 import { ComposerEditorArea } from './composer-editor-area'
 import { useInputAreaSelectors } from './use-input-area-selectors'
 import { useInputAreaEffects } from './use-input-area-effects'
-import { composerEvents } from '@renderer/lib/composer-events'
 
 export function InputArea({
   sessionId, onSend, onStop, onSelectFolder, isStreaming = false, workingFolder,
@@ -65,28 +65,20 @@ export function InputArea({
   const sel = useInputAreaSelectors({ sessionId: sessionId ?? undefined, workingFolder: workingFolder as any, modelRoute })
   const {
     chatView, isHomeComposer,
-    language: currentLanguage, autoApprove,
+    language: currentLanguage,
     clarifyAutoAcceptRecommended, animationsEnabled,
     webSearchEnabled, canToggleWebSearch,
     supportsVision, composerModelCfg,
     mode, openSettings, openFilePreview,
     activeProjectId, activeSessionId, hasMessages, clearSessionMessages,
-    draftSessionId, projectScoped,
+    draftSessionId, targetSession, projectScoped,
     planMode, hasActiveGoal, pendingReviewPlanId, hasApiKey
   } = sel
-  const [pendingCollabMode, setPendingCollabMode] = React.useState<CollabMode | null>(null)
-  const collabMode = useUIStore((s) =>
-    draftSessionId ? (s.collabModesBySession[draftSessionId] ?? 'normal') : 'normal'
-  )
-  const isGoalMode = collabMode === 'goal' || pendingCollabMode === 'goal'
-  const effectiveCollabMode: CollabMode = draftSessionId ? collabMode : (pendingCollabMode ?? 'normal')
-
   const needsWorkingFolder = projectScoped && !workingFolder && Boolean(onSelectFolder)
 
   const [selectedSkill, setSelectedSkill] = React.useState<string | null>(null)
   const [autoAcceptCountdown, setAutoAcceptCountdown] = React.useState<number | null>(null)
-  const [, setPendingPlanMode] = React.useState(false)
-  const [, setPendingGoalMode] = React.useState(false)
+  const [pendingGoalMode, setPendingGoalMode] = React.useState(false)
   const removePersistedDraftRef = React.useRef<(() => void) | null>(null)
   const flyoutPointerRef = React.useRef<{ x: number; y: number } | null>(null)
   const slashListRef = React.useRef<HTMLDivElement | null>(null)
@@ -217,8 +209,8 @@ export function InputArea({
     setSelectedSkill, setSelectedFiles, setDocumentNodes, slashListRef
   })
 
-  const hasPendingGoalMode = isGoalMode && !hasActiveGoal && !useGoalStore.getState().goalProgressBySession[draftSessionId ?? '']
-  const goalModeEnabled = isGoalMode
+  const hasPendingGoalMode = pendingGoalMode && !hasActiveGoal && !useGoalStore.getState().goalProgressBySession[draftSessionId ?? '']
+  const goalModeEnabled = hasActiveGoal || pendingGoalMode
   const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-full max-w-[820px]'
 
   ;(useInputAreaEffects as any)({
@@ -228,7 +220,7 @@ export function InputArea({
     inputDraftHydrated, persistedDraft, activeDraftKey, finalSerializedText,
     userEditedDraftKeyRef,
     attachedImages, selectedSkill, savePersistedDraft,
-    setPendingPlanMode, setPendingGoalMode, pendingCollabMode, setPendingCollabMode, setAutoAcceptCountdown,
+    setPendingGoalMode, setAutoAcceptCountdown,
     setAttachedImages, setPreviewImage, setSelectedSkill, setHighlightedFileId, setEditorSelection,
     editorRef, rootRef, draftSaveTimerRef, draftReadyKeyRef, isStreaming, disabled, replaceSelectionWithText,
   })
@@ -247,21 +239,26 @@ export function InputArea({
     activeSessionId, suppressPendingQueue, t, isStreaming, getPastedImageFiles, setPreviewImage
   })
 
-  const handlePreviewFile = React.useCallback((fileId: string) => {
-    const file = selectedFilesRef.current.find((item) => item.id === fileId)
-    if (file) openFilePreview(file.previewPath)
-  }, [openFilePreview])
+  const { handlePreviewFile, handleLocateFileReference, handlePaste, handleEditorSelectionChange } = useComposerInteractions({
+    selectedFilesRef, editorRef, editorSelection, setEditorSelection, setHighlightedFileId,
+    openFilePreview, replaceSelectionWithText, getPastedImageFiles, addImages,
+    handleRecommendationSelectionChange
+  })
 
-  const handleLocateFileReference = React.useCallback((fileId: string) => {
-    setHighlightedFileId(fileId); editorRef.current?.scrollToReference(fileId); editorRef.current?.focus()
-  }, [])
-
-  const handleEditorSelectionChange = React.useCallback((sel: { start: number; end: number }) => {
-    setEditorSelection((cur) => cur.start === sel.start && cur.end === sel.end ? cur : sel)
-    handleRecommendationSelectionChange()
-  }, [handleRecommendationSelectionChange])
+  const {
+    effectiveCollabMode, effectivePermissionMode,
+    handleCollabModeChange, handlePlanModeChange, handleGoalModeChange,
+    permissionMode, handleSelectPermissionMode
+  } = useComposerModeState({
+    projectScoped, draftSessionId, resetKey: activeDraftKey, targetSession,
+    disabled, isStreaming, isOptimizingLocked, pendingImageReads,
+    hasActiveGoal, focusInputAtEnd, setPendingGoalMode, t
+  })
 
   const handleSend = React.useCallback((): void => {
+    // Commit the browser DOM before reading/resetting the controlled editor.
+    // This closes the rAF gap that can otherwise lose or duplicate the final key.
+    editorRef.current?.flushPendingInput()
     const liveEditorState = getLiveEditorState()
     const promptText = liveEditorState.promptText.trim()
     if (!promptText && attachedImages.length === 0) return
@@ -271,27 +268,14 @@ export function InputArea({
     const sendOptions: SendMessageOptions = { clearCompletedTasksOnTurnStart: true, enablePlanMode: planMode || undefined }
     const selectedFileReferences = liveEditorState.selectedFiles.map(selectedFileItemToReference)
     if (selectedFileReferences.length > 0) sendOptions.selectedFileReferences = selectedFileReferences
-    sendOptions.sessionMode = isGoalMode ? 'goal' : (!activeProjectId ? 'global' : 'normal')
+    sendOptions.sessionMode = goalModeEnabled ? 'goal' : (!projectScoped ? 'global' : 'normal')
+    sendOptions.collaborationMode = effectiveCollabMode
+    sendOptions.permissionMode = effectivePermissionMode
     onSend?.(message, attachedImages.length > 0 ? attachedImages : undefined, sendOptions)
     resetComposer()
   }, [getLiveEditorState, attachedImages, disabled, needsWorkingFolder, pendingImageReads,
-      isGoalMode, cancelPromptRecommendation, selectedSkill, onSend, planMode, resetComposer, t])
-
-  const { handlePlanModeChange, handleGoalModeChange } = useModeControls({
-    projectScoped, draftSessionId, disabled, isStreaming, isOptimizingLocked, pendingImageReads, hasActiveGoal, focusInputAtEnd, setPendingPlanMode, setPendingGoalMode, t
-  })
-
-  const handleCollabModeChange = React.useCallback((nextMode: CollabMode): void => {
-    if (disabled || isStreaming || isOptimizingLocked || pendingImageReads > 0) return
-    if (nextMode === 'normal') {
-      if (draftSessionId) useUIStore.getState().setCollabMode(draftSessionId, 'normal')
-      setPendingCollabMode(null)
-    } else {
-      if (draftSessionId) useUIStore.getState().setCollabMode(draftSessionId, 'goal')
-      else setPendingCollabMode('goal')
-      requestAnimationFrame(() => focusInputAtEnd())
-    }
-  }, [disabled, isStreaming, isOptimizingLocked, pendingImageReads, draftSessionId, hasActiveGoal, focusInputAtEnd])
+      goalModeEnabled, projectScoped, effectiveCollabMode, effectivePermissionMode,
+      cancelPromptRecommendation, selectedSkill, onSend, planMode, resetComposer, t, editorRef])
 
   const handleKeyDown = useComposerKeydown({
     isOptimizingLocked, fileMenuOpen, slashMenuOpen, fileSearchResults, selectedFileSearchIndex,
@@ -301,28 +285,10 @@ export function InputArea({
     handleRecommendationSelectionChange, handleSend
   })
 
-  const handlePaste = React.useCallback((e: React.ClipboardEvent<HTMLDivElement>): void => {
-    const imageFiles = getPastedImageFiles(e.clipboardData)
-    if (imageFiles.length > 0) { e.preventDefault(); void addImages(imageFiles); return }
-    const plainText = e.clipboardData.getData('text/plain')
-    if (!plainText) return
-    e.preventDefault()
-    const selection = editorRef.current?.getSelectionOffsets() ?? editorSelection
-    replaceSelectionWithText(plainText, selection)
-  }, [addImages, editorSelection, getPastedImageFiles, replaceSelectionWithText])
-
   const { dragging, handleDragOver, handleDragLeave, handleDropWrapped } = useDragDrop({ addFilesToEditor })
   const { contextCompressionStatus, isContextCompressing, handleCompressContext, contextCompressionStatusLabel } = useContextCompression({ onCompressContext, t })
-  const { permissionMode, handleSelectPermissionMode } = usePermissionMode({ autoApprove, t })
 
-  // Subscribe to external composer inject requests (e.g. from PreviewPanel)
-  React.useEffect(() => {
-    const unsub = composerEvents.on((event) => {
-      setText(event.text)
-      focusInputAtEnd()
-    })
-    return unsub
-  }, [setText, focusInputAtEnd])
+  useComposerEvents(setText, focusInputAtEnd)
 
   const editorPlaceholder = pendingReviewPlanId
     ? t('input.placeholderPlanReview', { defaultValue: 'Enter suggestions for this plan...' })
@@ -330,10 +296,11 @@ export function InputArea({
 
   const composerIconControlClass = 'composer-control rounded-xl'
   const debouncedTokens = useDebouncedTokens(finalSerializedText)
+  const composerRunStatus = { isStreaming, draftInputTokens: debouncedTokens, isOptimizing, pendingImageReads, contextCompressionStatus, contextCompressionStatusLabel }
 
   return (
     <div ref={rootRef} data-tour="composer" className={cn('px-4 py-3', attachedFooter ? 'pb-0' : 'pb-4')}>
-      <ComposerBanners
+      <InputAreaBanners
         hasApiKey={hasApiKey}
         needsWorkingFolder={needsWorkingFolder}
         onSelectFolder={onSelectFolder}
@@ -345,7 +312,7 @@ export function InputArea({
         hideWorkingFolderIndicator={hideWorkingFolderIndicator}
         hasPendingGoalMode={hasPendingGoalMode}
         composerWidthClass={composerWidthClass}
-        onOpenSettings={(tab) => openSettings(tab as never)}
+        openSettings={(tab) => openSettings(tab as never)}
       />
 
       <QueuedMessagesPanel
@@ -365,6 +332,8 @@ export function InputArea({
         <GoalSessionBar sessionId={draftSessionId} className={cn('mb-2', fullWidth && 'max-w-none')} />
       )}
 
+      <SessionTodoPanel projectScoped={projectScoped} draftSessionId={draftSessionId} className={composerWidthClass} />
+
       <div className={composerWidthClass}>
         <div
           ref={containerRef}
@@ -382,17 +351,7 @@ export function InputArea({
               <div className="composer-drag-grip h-1 w-11 rounded-full" />
             </div>
           ) : null}
-          {draftSessionId && (
-            <ComposerStatusIndicator
-              sessionId={draftSessionId}
-              isStreaming={isStreaming}
-              draftInputTokens={debouncedTokens}
-              isOptimizing={isOptimizing}
-              pendingImageReads={pendingImageReads}
-              contextCompressionStatus={contextCompressionStatus}
-              contextCompressionStatusLabel={contextCompressionStatusLabel}
-            />
-          )}
+          {draftSessionId && <ComposerStatusIndicator sessionId={draftSessionId} {...composerRunStatus} />}
           <ImagePreviewStrip
             attachedImages={attachedImages}
             animationsEnabled={animationsEnabled}
@@ -496,6 +455,7 @@ export function InputArea({
             handleOptimizePrompt={handleOptimizePrompt}
             hasText={Boolean(text.trim())}
             permissionMode={permissionMode}
+            showPermissionControl={projectScoped && effectiveCollabMode === 'cowork'}
             onSelectPermissionMode={handleSelectPermissionMode}
             onOpenSettings={(tab) => openSettings(tab as never)}
             onStop={onStop}
@@ -516,18 +476,7 @@ export function InputArea({
           />
         </div>
         {draftSessionId && (
-          <ComposerRuntimeStatus
-            sessionId={draftSessionId}
-            isStreaming={isStreaming}
-            draftInputTokens={debouncedTokens}
-            isOptimizing={isOptimizing}
-            pendingImageReads={pendingImageReads}
-            contextCompressionStatus={contextCompressionStatus}
-            contextCompressionStatusLabel={contextCompressionStatusLabel}
-            model={composerModelCfg}
-            className="mt-1.5 px-3"
-            showStatus={false}
-          />
+          <ComposerRuntimeStatusFooter sessionId={draftSessionId} model={composerModelCfg} {...composerRunStatus} />
         )}
       </div>
     </div>

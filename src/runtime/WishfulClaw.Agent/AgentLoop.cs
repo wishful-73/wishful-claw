@@ -20,6 +20,7 @@ internal static partial class AgentLoop
     private const int DefaultContextCompressionReservedOutputTokens = 20_000;
     private const int DefaultContextCompressionLimit = 200_000;
     private const int ContextCompressionAutoBufferTokens = 13_000;
+    private const int MaxOverflowCompressionAttemptsPerRun = 2;
 
     /// <summary>
     /// Main execution loop. Called by AgentRuntimeTools.ExecuteRunAsync.
@@ -77,6 +78,15 @@ internal static partial class AgentLoop
             {
                 DbClient.EnsureInitialized(parameters);
                 var restored = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(parameters), sessionId);
+                if (restored.Failure is { } failure)
+                {
+                    WorkerLog.Warn(
+                        $"agent loop lazy-restore blocked session={FormatSessionId(sessionId)} " +
+                        $"snapshot={failure.SnapshotId ?? "null"} reason={failure.Reason}");
+                    throw new InvalidOperationException(
+                        $"Session restore blocked: reason={failure.Reason}, snapshotId={failure.SnapshotId ?? "null"}.");
+                }
+
                 if (restored.WireMessages.Count > 0 &&
                     sessionConv.InitializeIfEmpty(restored.WireMessages, restored.Conversation))
                 {
@@ -136,6 +146,9 @@ internal static partial class AgentLoop
         conversation = sessionConv.GetConversation();
         wireConversation = sessionConv.GetWireConversation();
         var runtimeParameters = CreateRuntimeParametersWithoutMessages(parameters);
+        var rawRunContext = AgentRunContextPolicy.Resolve(runtimeParameters);
+        var rawSessionMode = AgentRunContextPolicy.ResolveAvailableMode(runtimeParameters, rawRunContext);
+        runtimeParameters = NormalizeRuntimeParameters(runtimeParameters, rawRunContext, rawSessionMode);
         state.ReplaceParameters(runtimeParameters);
         parameters = runtimeParameters;
         provider = GetObject(parameters, "provider");
@@ -148,8 +161,11 @@ internal static partial class AgentLoop
         var toolPreset = ToolPreset.BuiltIn.TryGetValue(toolPresetId, out var tp)
             ? tp
             : ToolPreset.BuiltIn["full"];
-        var sessionMode = JsonHelpers.GetString(parameters, "sessionMode");
-        var toolDefs = ToolModuleState.Registry?.GetToolDefinitions(toolPreset, sessionMode) ?? [];
+        var runContext = AgentRunContextPolicy.Resolve(parameters);
+        var sessionMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, runContext);
+        var registry = ToolModuleState.Registry;
+        var toolDefs = registry?.GetToolDefinitions(toolPreset, sessionMode) ?? [];
+        toolDefs = AgentRunContextPolicy.FilterToolDefinitions(toolDefs, registry, runContext);
 
         // Filter out WebSearch/WebFetch when web search is not enabled.
         // Previously done in the frontend; now handled backend-side since
@@ -183,9 +199,13 @@ internal static partial class AgentLoop
             var projectId = JsonHelpers.GetString(parameters, "projectId");
             WorkerLog.Warn($"agent run sshConnectionId={sshConnectionId ?? "(null)"} personaId={personaId} projectId={projectId ?? "(null)"}");
             var cacheKey = SystemPromptCache.ComputeKey(personaId, workingFolder, language, userRules, sshConnectionId, projectId, sessionMode);
+            // Session Todo guidance is for ordinary session agents; the global
+            // agent host opts out (its dispatch model is defined elsewhere).
+            var includeSessionTodoPrompt = sessionMode != "global";
             var builtPrompt = SystemPromptCache.GetOrBuild(cacheKey, () =>
                 PromptBuilder.Build(
-                    PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules));
+                    PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules,
+                    includeSessionTodoPrompt: includeSessionTodoPrompt));
             provider = InjectSystemPrompt(provider, builtPrompt);
             WorkerLog.Info($"persona system prompt (cached) id={personaId} length={builtPrompt.Length}");
         }
@@ -200,18 +220,13 @@ internal static partial class AgentLoop
         var requestedMaxIterations = JsonHelpers.GetInt(parameters, "maxIterations", 0); // 0 = unlimited
         var hasIterationLimit = requestedMaxIterations > 0;
         var providerTurnOnly = JsonHelpers.GetBool(parameters, "providerTurnOnly", false);
-        var lastInputTokens = 0;
-        if (lazilyRestored)
-        {
-            // Seed the token estimate so the iteration-1 compression gate can
-            // fire before the first provider call: an oversized restored
-            // context (snapshot + increment, or long full history) compresses
-            // first, then the request goes out with the compressed context
-            // plus the new user message. Without a restore the gate stays off
-            // until the first provider response reports real input tokens.
-            lastInputTokens = ContextCompression.EstimateMessagesTokens(conversation);
-        }
+        // Reuse the most recent provider-reported context usage from the wire
+        // conversation. Resident sessions already carry it in memory, and lazy
+        // restore reconstructs it from the persisted message usage column.
+        var lastInputTokens = FindRecentContextUsage(wireConversation);
         var completed = false;
+        var overflowCompressionAttempts = 0;
+        var overflowCompressionPendingVerification = false;
 
         WorkerLog.Debug(
             $"agent loop start provider={providerType} " +
@@ -238,127 +253,28 @@ internal static partial class AgentLoop
                 sessionConv.CompactionWatermark < wireConversation.Count &&
                 ShouldCompress(lastInputTokens, provider, parameters))
             {
-                var compressionOperationId =
-                    $"{state.RunId}:compression:{iteration}:{wireConversation.Count}";
-                await AgentRuntimeTools.EmitAsync(
-                    state, context,
-                    new AgentRuntimeStreamEvent(
-                        "context_compression_started",
-                        OperationId: compressionOperationId,
-                        Trigger: "auto",
-                        PreTokens: lastInputTokens,
-                        OriginalCount: wireConversation.Count));
-
-                if (state.IsCancellationRequested)
+                var compression = await TryCompressLoopConversationAsync(
+                    provider,
+                    sessionConv,
+                    conversation,
+                    wireConversation,
+                    sessionId,
+                    conversationKey,
+                    iteration,
+                    lastInputTokens,
+                    state,
+                    context,
+                    errorDriven: false);
+                if (compression.Status == LoopCompressionStatus.Cancelled)
                 {
                     await EmitLoopEndAsync(state, context, "aborted");
                     return;
                 }
-
-                try
+                if (compression.Status == LoopCompressionStatus.Compressed)
                 {
-                    var originalCount = wireConversation.Count;
-                    var outcome = await ContextCompression.CompactAsync(
-                        conversation, wireConversation, provider, context, state.CancellationToken);
-                    var newConversation = outcome.Conversation;
-                    var newWireConversation = outcome.WireConversation;
-                    var summarizerFailed = outcome.SummarizerFailed;
-                    var messagesSummarized = outcome.MessagesSummarized;
-                    var compactArtifacts = ContextCompression.BuildCompactArtifacts(outcome, "auto", lastInputTokens);
-                    if (newWireConversation.Count >= originalCount)
-                    {
-                        // AL-6: LLM summarization produced no reduction (nothing to
-                        // fold or skipped) — fall back to mechanical truncation so
-                        // the loop can still free context instead of retrying at
-                        // the same size every iteration.
-                        (newConversation, newWireConversation) = ContextCompression.TruncateMessages(
-                            conversation, wireConversation, provider);
-                        // Truncation carries no summary — flag the degraded result so
-                        // the UI never presents it as an LLM summary.
-                        summarizerFailed = true;
-                        messagesSummarized = 0;
-                        compactArtifacts = null;
-                    }
-                    if (newWireConversation.Count < originalCount)
-                    {
-                        sessionConv.Replace(newConversation, newWireConversation);
-                        sessionConv.MarkCompactionWatermark(newWireConversation.Count);
-                        conversation = sessionConv.GetConversation();
-                        wireConversation = sessionConv.GetWireConversation();
-                        // Persist the durable snapshot for main sessions only — sub-agent
-                        // loops share the parent's sessionId but run an isolated conversation.
-                        // compactArtifacts == null marks the mechanical-truncation degrade,
-                        // whose outcome describes the pre-truncation conversation and must
-                        // never become the durable snapshot.
-                        if (sessionId.Length > 0 && conversationKey == sessionId && compactArtifacts is not null)
-                        {
-                            ContextCompression.PersistSnapshot(outcome, sessionId, "auto", lastInputTokens);
-                        }
-                        await AgentRuntimeTools.EmitAsync(
-                            state, context,
-                            new AgentRuntimeStreamEvent(
-                                "context_compressed",
-                                OperationId: compressionOperationId,
-                                CompressionStatus: "compressed",
-                                OriginalCount: originalCount,
-                                NewCount: newWireConversation.Count,
-                                KeptMessageCount: Math.Max(0, originalCount - newWireConversation.Count),
-                                Trigger: "auto",
-                                PreTokens: lastInputTokens,
-                                SummarizerFailed: summarizerFailed,
-                                MessagesSummarized: messagesSummarized > 0 ? messagesSummarized : null,
-                                CompactArtifacts: compactArtifacts));
-                        WorkerLog.Info(
-                            $"agent context compression runId={state.RunId} " +
-                            $"original={originalCount} compressed={newWireConversation.Count} " +
-                            $"summarizerFailed={summarizerFailed}");
-                    }
-                    else
-                    {
-                        WorkerLog.Warn(
-                            $"agent context compression made no progress runId={state.RunId} " +
-                            $"count={originalCount} (LLM summary and truncation both skipped)");
-                        await AgentRuntimeTools.EmitAsync(
-                            state, context,
-                            new AgentRuntimeStreamEvent(
-                                "context_compressed",
-                                OperationId: compressionOperationId,
-                                CompressionStatus: "skipped",
-                                OriginalCount: originalCount,
-                                NewCount: originalCount,
-                                Trigger: "auto",
-                                PreTokens: lastInputTokens,
-                                CompressionError: "nothing to compress"));
-                    }
+                    conversation = compression.Conversation!;
+                    wireConversation = compression.WireConversation!;
                     lastInputTokens = 0;
-                }
-                catch (OperationCanceledException) when (state.CancellationToken.IsCancellationRequested)
-                {
-                    await AgentRuntimeTools.EmitAsync(
-                        state, context,
-                        new AgentRuntimeStreamEvent(
-                            "context_compressed",
-                            OperationId: compressionOperationId,
-                            CompressionStatus: "cancelled",
-                            Trigger: "auto",
-                            PreTokens: lastInputTokens,
-                            CompressionError: "compression cancelled"));
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    WorkerLog.Warn(
-                        $"agent context compression failed runId={state.RunId} " +
-                        $"error={ex.GetType().Name}: {ex.Message}");
-                    await AgentRuntimeTools.EmitAsync(
-                        state, context,
-                        new AgentRuntimeStreamEvent(
-                            "context_compressed",
-                            OperationId: compressionOperationId,
-                            CompressionStatus: "failed",
-                            Trigger: "auto",
-                            PreTokens: lastInputTokens,
-                            CompressionError: $"{ex.GetType().Name}: compression failed"));
                 }
             }
 
@@ -394,11 +310,63 @@ internal static partial class AgentLoop
             // session-cumulative cache counters to message_end events.
             state.SessionConversation = sessionConv;
 
-            var turn = await ProviderRetryPolicy.ExecuteAsync(
-                () => ExecuteTurnAsync(parameters, provider, conversation, toolDefs, state, context),
-                state,
-                context,
-                provider);
+            AgentRuntimeProviderTurnResult turn;
+            while (true)
+            {
+                try
+                {
+                    turn = await ProviderRetryPolicy.ExecuteAsync(
+                        () => ExecuteTurnAsync(parameters, provider, conversation, toolDefs, state, context),
+                        state,
+                        context,
+                        provider);
+                    overflowCompressionPendingVerification = false;
+                    break;
+                }
+                catch (Exception ex) when (
+                    ex is not OperationCanceledException &&
+                    JsonHelpers.GetBool(parameters, "contextCompressionEnabled", true) &&
+                    !overflowCompressionPendingVerification &&
+                    overflowCompressionAttempts < MaxOverflowCompressionAttemptsPerRun &&
+                    wireConversation.Count >= 2 &&
+                    ContextCompression.IsContextWindowExceededError(ex))
+                {
+                    overflowCompressionAttempts++;
+                    WorkerLog.Warn(
+                        $"agent provider turn exceeded the model context window; attempting error-driven " +
+                        $"compression runId={state.RunId} attempt={overflowCompressionAttempts}/" +
+                        $"{MaxOverflowCompressionAttemptsPerRun} error={ex.GetType().Name}: {ex.Message}");
+                    var originalCount = wireConversation.Count;
+                    var compression = await TryCompressLoopConversationAsync(
+                        provider,
+                        sessionConv,
+                        conversation,
+                        wireConversation,
+                        sessionId,
+                        conversationKey,
+                        iteration,
+                        lastInputTokens,
+                        state,
+                        context,
+                        errorDriven: true);
+                    if (compression.Status == LoopCompressionStatus.Cancelled)
+                    {
+                        await EmitLoopEndAsync(state, context, "aborted");
+                        return;
+                    }
+                    if (compression.Status != LoopCompressionStatus.Compressed ||
+                        compression.WireConversation is not { Count: > 0 } compressedWireConversation ||
+                        compressedWireConversation.Count >= originalCount)
+                    {
+                        throw;
+                    }
+
+                    conversation = compression.Conversation!;
+                    wireConversation = compressedWireConversation;
+                    lastInputTokens = 0;
+                    overflowCompressionPendingVerification = true;
+                }
+            }
 
             // Clear transient memory recall after first API call — subsequent
             // iterations within the same turn don't need it re-injected.
@@ -568,7 +536,7 @@ internal static partial class AgentLoop
         if (providerType == "openai-responses")
         {
             return await OpenAIResponsesProvider.ExecuteTurnAsync(
-                parameters, provider, conversation, state, context);
+                parameters, provider, conversation, toolDefs, state, context);
         }
 
         // Default: openai-chat

@@ -1,0 +1,103 @@
+{
+  "title": "Task Board",
+  "subtitle": "全局 Agent 的任务与分派",
+  "searchPlaceholder": "搜索任务…",
+  "allStatuses": "全部状态",
+  "archivedView": "归档视图",
+  "refresh": "刷新",
+  "newTask": "新建全局任务",
+  "empty": "暂无全局任务",
+  "emptyHint": "在这里创建全局任务，或在无项目会话中让全局 Agent 创建。",
+  "selectTaskHint": "选择左侧的全局任务查看详情与分派记录",
+  "status": {
+    "pending": "待处理",
+    "in_progress": "进行中",
+    "blocked": "受阻",
+    "completed": "已完成",
+    "cancelled": "已取消"
+  },
+  "priority": {
+    "low": "低",
+    "normal": "普通",
+    "high": "高",
+    "urgent": "紧急"
+  },
+  "dispatchStatus": {
+    "pending": "待投递",
+    "sent": "已发送",
+    "acknowledged": "已确认",
+    "in_progress": "处理中",
+    "completed": "已完成",
+    "blocked": "受阻",
+    "failed": "投递失败",
+    "cancelled": "已取消"
+  },
+  "kind": {
+    "message": "消息",
+    "work_request": "工作请求"
+  },
+  "field": {
+    "title": "标题",
+    "titlePlaceholder": "例如：完成 v2 发布准备",
+    "description": "描述",
+    "descriptionPlaceholder": "任务目标、背景与验收标准…",
+    "priority": "优先级",
+    "dueAt": "截止时间",
+    "tags": "标签",
+    "tagsPlaceholder": "用逗号分隔，如：发布, 产品"
+  },
+  "dialog": {
+    "createTitle": "新建全局任务",
+    "editTitle": "编辑全局任务",
+    "titleRequired": "标题不能为空",
+    "saved": "已保存",
+    "created": "已创建全局任务",
+    "saveFailed": "保存失败"
+  },
+  "detail": {
+    "dueAt": "截止",
+    "taskStatusLabel": "全局任务状态",
+    "dispatchTitle": "分派记录",
+    "sendMessage": "发消息",
+    "sendWorkRequest": "下发工作请求",
+    "noDispatches": "还没有分派记录。向项目会话发送消息或工作请求后，记录会显示在这里。",
+    "openSession": "打开目标会话",
+    "followUp": "向该会话继续发送",
+    "cancelDispatch": "取消分派",
+    "dispatchCancelled": "分派已取消",
+    "dispatchCancelFailed": "取消失败（可能已完成或已取消）",
+    "latestReport": "目标会话最近回复",
+    "updatedAt": "更新",
+    "completedAt": "完成",
+    "archive": "归档",
+    "restore": "取消归档",
+    "archived": "已归档",
+    "restored": "已恢复",
+    "updateFailed": "更新失败",
+    "sessionMissing": "（会话已删除）"
+  },
+  "dispatch": {
+    "title": "发送到项目会话",
+    "description": "消息以全局 Agent 名义投递到目标会话，由目标会话 Agent 自主决定如何处理。",
+    "targetSession": "目标会话",
+    "selectSession": "选择项目会话…",
+    "noSessions": "没有可用的项目会话",
+    "unknownProject": "未知项目",
+    "kindLabel": "类型",
+    "kindWorkRequestHint": "可追踪的工作分派：目标会话完成后会用 reply_global_dispatch 显式回报结果。",
+    "kindMessageHint": "普通沟通/提醒/追问，不要求显式回报。",
+    "instruction": "内容",
+    "instructionPlaceholder": "描述要让目标会话处理的工作或要传达的内容…",
+    "send": "发送",
+    "sent": "已发送",
+    "sendFailed": "发送失败",
+    "sessionRequired": "请选择目标会话",
+    "instructionRequired": "内容不能为空",
+    "sessionNotFound": "目标会话不存在"
+  },
+  "action": {
+    "cancel": "取消",
+    "save": "保存",
+    "edit": "编辑"
+  }
+}

@@ -161,16 +161,13 @@ export function FileTreePanel({
                 workingFolder={workingFolder}
                 rootNewItemInput={rootNewItemInput}
                 t={t}
-                handlePreview={actions.handlePreview}
                 handleToggle={handleToggle}
-                handleAddToChat={handleAddToChat}
-                handleCopyPath={handleCopyPath}
                 editState={editState}
                 treeActions={treeActions}
               />
             </div>
           </ContextMenuTrigger>
-          <ContextMenuContent className="w-52">
+          <ContextMenuContent className="w-56 rounded-xl border-border/70 bg-popover/95 p-1.5 shadow-xl backdrop-blur-md">
             <FileTreeContextMenuItems
               workingFolder={workingFolder}
               sshConnectionId={sshConnectionId ?? null}

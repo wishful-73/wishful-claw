@@ -23,18 +23,25 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { writeLog } from '@renderer/lib/error-logger'
+import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 
 interface SendSessionMessageParams {
   sessionId: string
   content: string
   workingFolder?: string
   projectId?: string
+  /**
+   * Session mode for the simulated turn. Defaults to 'normal' (project target
+   * sessions); 'global' is used when delivering replies back to the global
+   * agent's own session so it keeps its identity prompt and global-only tools.
+   */
+  sessionMode?: 'normal' | 'goal' | 'global'
 }
 
 export async function handleProjectSendSessionMessage(
   params: unknown
 ): Promise<{ success: boolean; result?: string; error?: string }> {
-  const { sessionId, content, workingFolder, projectId } = params as SendSessionMessageParams
+  const { sessionId, content, workingFolder, projectId, sessionMode } = params as SendSessionMessageParams
 
   if (!sessionId || !content) {
     return { success: false, error: 'Missing required fields: sessionId, content' }
@@ -43,26 +50,26 @@ export async function handleProjectSendSessionMessage(
   // 1. Ensure target session exists in the chat store
   //    (sendMessage's beginUserTurn silently fails if session is not in store)
   const chatStore = useChatStore.getState()
-  const existingSession = chatStore.sessions.find((s) => s.id === sessionId)
-  if (!existingSession) {
+  let targetSession = chatStore.sessions.find((s) => s.id === sessionId)
+  if (!targetSession) {
+    targetSession = await dbGetSession(sessionId) ?? undefined
+    if (!targetSession) {
+      return { success: false, error: `Target session "${sessionId}" does not exist.` }
+    }
     useChatStore.setState((state) => {
-      state.sessions.push({
-        id: sessionId,
-        title: 'Project Task',
-        mode: 'chat',
-        messages: [],
-        messageCount: 0,
-        messagesLoaded: false,
-        loadedRangeStart: 0,
-        loadedRangeEnd: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        projectId: projectId || undefined,
-        workingFolder: workingFolder || undefined,
-        modelSelectionMode: 'inherit'
-      })
+      if (!state.sessions.some((session) => session.id === sessionId)) {
+        state.sessions.push(targetSession!)
+        state.sessionsById[sessionId] = state.sessions.length - 1
+      }
     })
   }
+
+  const effectiveWorkingFolder = targetSession.scope === 'project'
+    ? targetSession.workingFolder || workingFolder || ''
+    : ''
+  const effectiveProjectId = targetSession.scope === 'project'
+    ? targetSession.projectId || projectId || ''
+    : ''
 
   // 2. Get provider config from store
   const providerStore = useProviderStore.getState()
@@ -92,29 +99,33 @@ export async function handleProjectSendSessionMessage(
   // 3. Fire-and-forget sendMessage — global session doesn't need to wait for result
   //    The Agent can check back later via get_project_details.
   try {
-    // Fire-and-forget: don't await, let the target session execute in background
     writeLog('info', '[sendMsg] sending to session: ' + sessionId + ' content: ' + content)
-    useChatStore.getState().sendMessage({
-      sessionMode: 'normal',
+    const started = await useChatStore.getState().sendMessage({
+      sessionMode: sessionMode ?? 'normal',
       provider,
       messages: [{ role: 'user', content }],
       sessionId,
-      toolPreset: workingFolder ? 'coding' : 'chat',
+      toolPreset: targetSession.collaborationMode === 'cowork' && effectiveWorkingFolder ? 'coding' : 'chat',
       webSearchEnabled: settings.webSearchEnabled,
-      workingFolder: workingFolder || undefined,
-      projectId: projectId || undefined,
+      workingFolder: effectiveWorkingFolder || undefined,
+      sshConnectionId: targetSession.scope === 'project' ? targetSession.sshConnectionId ?? undefined : undefined,
+      projectId: effectiveProjectId || undefined,
+      scope: targetSession.scope,
+      collaborationMode: targetSession.collaborationMode,
+      runtimeRole: sessionMode === 'goal' ? 'goalRunner' : 'sessionAgent',
+      permissionMode: targetSession.permissionMode,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,
-      maxToolCallsPerTurn: settings.maxToolCallsPerTurn,
       maxConcurrentSubAgents: settings.maxConcurrentSubAgents,
       personaId: settings.defaultPersonaId ?? undefined,
       language: settings.language,
       userRules: settings.systemPrompt || undefined,
       contextCompressionEnabled: settings.contextCompressionEnabled,
       contextCompressionThreshold: settings.contextCompressionThreshold
-    }).catch(err => {
-      writeLog('error', '[sendMsg] sendMessage async error: ' + (err instanceof Error ? err.message : String(err)))
     })
+    if (!started) {
+      return { success: false, error: `Failed to start message processing for session "${sessionId}".` }
+    }
 
     return {
       success: true,

@@ -5,12 +5,26 @@
     "boundaryTitle": "从此处开始上下文已压缩",
     "boundarySummarized": "已总结 {{count}} 条消息",
     "compressing": "正在压缩上下文…",
+    "compressingManual": "正在手动压缩上下文…",
     "compressed": "上下文已压缩",
     "compressedDetail": "已压缩 {{count}} 条消息",
     "summaryCollapse": "折叠摘要",
     "summaryExpand": "展开摘要",
     "summaryTitle": "压缩上下文摘要",
     "summaryMessages": "较早的 {{count}} 条消息",
-    "summaryRecentPreserved": "保留最近消息"
+    "summaryRecentPreserved": "保留最近消息",
+    "skipped": "无需压缩上下文",
+    "blocked": "上下文压缩暂时不可用",
+    "cancelled": "上下文压缩已取消",
+    "failed": "上下文压缩失败",
+    "boundaryPreTokens": "触发时 {{tokens}} 个 Token",
+    "summarizerFailed": "摘要生成不可用，已使用回退摘要",
+    "summarizing": "正在生成摘要…",
+    "summarizingRetry": "正在重写摘要（第 {{attempt}}/{{maxAttempts}} 次）…",
+    "summarizingHint": "正在生成较早上下文的摘要…",
+    "divider": "上下文已压缩",
+    "dividerWithCount": "上下文已压缩 · 已总结较早的 {{count}} 条消息",
+    "summaryFallbackWarning": "摘要生成失败，已使用回退摘要；上下文仍已压缩",
+    "mechanicalFoldDigest": "较早的 {{messageCount}} 条消息已在此处折叠以释放上下文，但自动摘要不可用。"
   }
 }

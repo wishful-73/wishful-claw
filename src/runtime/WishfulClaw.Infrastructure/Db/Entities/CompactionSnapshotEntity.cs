@@ -1,12 +1,14 @@
-
+﻿
 namespace WishfulClaw.Infrastructure.Db;
 
 // ─── Compaction Snapshot Entity ───
-// One row per session: the latest valid context-compression snapshot.
+// Immutable context-compression snapshot revision.
 // Contract: docs/plans/iter-v2-23/snapshot-contract.md
 
 public class CompactionSnapshotEntity
 {
+    public string SnapshotId { get; set; } = string.Empty;
+
     public string SessionId { get; set; } = string.Empty;
 
     public int Version { get; set; }
@@ -25,10 +27,13 @@ public class CompactionSnapshotEntity
     /// <summary>Summary body without message wrapping; null when unavailable.</summary>
     public string? SummaryText { get; set; }
 
-    /// <summary>Coverage cursor: created_at of the last covered message.</summary>
+    /// <summary>Diagnostics only: created_at of the newest message covered at commit time.</summary>
     public long ThroughCreatedAt { get; set; }
 
-    /// <summary>Coverage cursor: sort_order of the last covered message.</summary>
+    /// <summary>
+    /// Diagnostics only: sort_order of the newest covered message. sort_order is a frontend
+    /// transcript index, so it must never be compared to decide whether a row is covered.
+    /// </summary>
     public int ThroughSortOrder { get; set; }
 
     public int OriginalCount { get; set; }
@@ -48,6 +53,7 @@ public class CompactionSnapshotEntity
 
 public sealed class CompactionSnapshotRow
 {
+    public string SnapshotId { get; set; } = string.Empty;
     public string SessionId { get; set; } = string.Empty;
     public int Version { get; set; }
     public string Trigger { get; set; } = string.Empty;
@@ -66,6 +72,7 @@ public sealed class CompactionSnapshotRow
 
     public static CompactionSnapshotRow FromEntity(CompactionSnapshotEntity e) => new()
     {
+        SnapshotId = e.SnapshotId,
         SessionId = e.SessionId,
         Version = e.Version,
         Trigger = e.Trigger,
@@ -87,5 +94,10 @@ public sealed class CompactionSnapshotRow
 // ─── Compaction Snapshot Result Records ───
 
 public sealed record CompactionSnapshotGetResult(bool Success, CompactionSnapshotRow? Snapshot, string? Reason, string? Error);
-public sealed record CompactionSnapshotMutationResult(bool Success, int Changed, string? Error);
+public sealed record CompactionSnapshotMutationResult(
+    bool Success,
+    int Changed,
+    string? Error,
+    string? SnapshotId = null,
+    long? ContextRevision = null);
 public sealed record CompactionSnapshotDeleteResult(bool Success, bool Deleted, string? Error);

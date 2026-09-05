@@ -1,22 +1,22 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { TFunction } from 'i18next'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useTeamStore } from '@renderer/stores/team-store'
 import { selectSessionScopedAgentState } from '@renderer/lib/agent/session-scoped-agent-state'
 import { buildOrchestrationRuns } from '@renderer/lib/orchestration/build-runs'
+import { isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
 import {
-  resolveActiveCompactArtifacts,
-  isCompactSummaryLikeMessage
-} from '@renderer/lib/agent/context-compression'
+  buildRenderableChatItems,
+  type RenderableChatItem
+} from '../renderable-chat-items'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import { DB_MESSAGES_LIST_LOCATOR_MSGPACK_CHANNEL } from '../../../../../shared/messagepack/binary-ipc'
 import {
-  buildChatRenderableMessageMetaFromAnalysis,
   buildTranscriptStaticAnalysis,
-  type ChatRenderableMessageMeta,
   type TailToolExecutionState
 } from '../transcript-utils'
 import { type MessageListRow, type MessageLocatorIndexRow, type MessageLocatorSource, type AssistantRailLayout, type AssistantReplyRailItem, type AssistantRailLayoutRow, getMessageToolUseIds, collectDuplicatePlanReviewToolUseIds, hasCompleteTailToolExecutionResults, buildAssistantRailLayout, parseLocatorRowSource, findPendingAskUserQuestion, EMPTY_MESSAGE_LOCATOR_ROWS, EMPTY_ORCHESTRATION_STATE } from './utils'
@@ -45,12 +45,8 @@ export interface MessageListDataOutput {
   loadedTurns: number
   projectId: string | null
   transcriptAnalysis: ReturnType<typeof buildTranscriptStaticAnalysis>
-  renderableMessages: ChatRenderableMessageMeta[]
+  renderableMessages: RenderableChatItem[]
   orchestrationState: ReturnType<typeof buildOrchestrationRuns>
-  inlineCompactSummaryState: {
-    byAssistantId: Map<string, UnifiedMessage[]>
-    summaryIds: Set<string>
-  }
   assistantChangeTargets: Array<{ messageId: string; toolUseIds: string[] }>
   sessionAssistantMessageIds: string[]
   sessionToolUseIds: string[]
@@ -156,10 +152,16 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     hasOrchestrationData: hasTeamOrchestrationData
   } = useTeamStore((s) => selectSessionScopedTeamState(s, activeSessionId))
 
+  const liveCompression = useLiveCompressionStore((state) =>
+    targetSessionId ? state.bySessionId[targetSessionId] : undefined
+  )
+  const isCompressing = Boolean(liveCompression)
   const isPrimarySessionRunning =
     primarySessionStatus === 'running' || primarySessionStatus === 'retrying'
-  const isAgentExecutionActive = isPrimarySessionRunning || isTeamRunning || hasStreamingMessage
-  const isSessionRunning = isAgentSessionRunning || isTeamRunning || hasStreamingMessage
+  const isAgentExecutionActive =
+    !isCompressing && (isPrimarySessionRunning || isTeamRunning || hasStreamingMessage)
+  const isSessionRunning =
+    !isCompressing && (isAgentSessionRunning || isTeamRunning || hasStreamingMessage)
   const hasSessionOrchestrationData = React.useMemo(
     () => hasAgentOrchestrationData || hasTeamOrchestrationData,
     [hasAgentOrchestrationData, hasTeamOrchestrationData]
@@ -248,35 +250,13 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
 
   const renderableMessages = React.useMemo(
     () =>
-      buildChatRenderableMessageMetaFromAnalysis(
-        transcriptAnalysis,
-        streamingMessageId,
-        continueAssistantMessageId
+      buildRenderableChatItems(
+        messages,
+        transcriptAnalysis.renderableMessageIds,
+        liveCompression
       ),
-    [continueAssistantMessageId, streamingMessageId, transcriptAnalysis]
+    [messages, transcriptAnalysis.renderableMessageIds, liveCompression]
   )
-
-  // ── Compact summary ─────────────────────────────────────────────
-  const inlineCompactSummaryState = React.useMemo(() => {
-    const byAssistantId = new Map<string, UnifiedMessage[]>()
-    const summaryIds = new Set<string>()
-    const activeCompact = resolveActiveCompactArtifacts(messages)
-    const activeSummaryId = activeCompact?.summaryId ?? null
-    if (!activeSummaryId) return { byAssistantId, summaryIds }
-
-    const summary = messages.find((message) => message.id === activeSummaryId)
-    const anchor = summary?.meta?.compactSummary?.displayAnchor
-    if (!summary || !anchor?.assistantMessageId) return { byAssistantId, summaryIds }
-
-    const assistantExists = messages.some(
-      (message) => message.id === anchor.assistantMessageId && message.role === 'assistant'
-    )
-    if (!assistantExists) return { byAssistantId, summaryIds }
-
-    byAssistantId.set(anchor.assistantMessageId, [summary])
-    summaryIds.add(summary.id)
-    return { byAssistantId, summaryIds }
-  }, [messages])
 
   // ── Assistant change targets ────────────────────────────────────
   const assistantChangeTargets = React.useMemo(
@@ -379,16 +359,14 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
 
   // ── Assistant rail layout ───────────────────────────────────────
   const hiddenAssistantRailCompactSummaryIds = React.useMemo(() => {
-    const sourceIds = new Set(messageLocatorSources.map((source) => source.id))
-    const hiddenIds = new Set(inlineCompactSummaryState.summaryIds)
+    const hiddenIds = new Set<string>()
     for (const source of messageLocatorSources) {
-      const anchorId = source.meta?.compactSummary?.displayAnchor?.assistantMessageId
-      if (anchorId && sourceIds.has(anchorId)) {
+      if (source.meta?.compactSummary || source.meta?.compactBoundary || source.meta?.compressionStatus) {
         hiddenIds.add(source.id)
       }
     }
     return hiddenIds
-  }, [inlineCompactSummaryState.summaryIds, messageLocatorSources])
+  }, [messageLocatorSources])
 
   const assistantRailLayout = React.useMemo<AssistantRailLayout>(() => {
     void assistantRailMeasureVersion
@@ -416,14 +394,12 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
 
   // ── Rows ────────────────────────────────────────────────────────
   const rows = React.useMemo<MessageListRow[]>(() => {
-    return renderableMessages
-      .filter((message) => !inlineCompactSummaryState.summaryIds.has(message.messageId))
-      .map<MessageListRow>((message) => ({
-        type: 'message',
-        key: message.messageId,
-        data: message
-      }))
-  }, [inlineCompactSummaryState.summaryIds, renderableMessages])
+    return renderableMessages.map<MessageListRow>((item) => ({
+      type: 'message',
+      key: item.kind === 'message' ? item.displayId : item.id,
+      data: item
+    }))
+  }, [renderableMessages])
 
   const hasLoadOlderRow = loadedRangeStart > 0
 
@@ -466,7 +442,6 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     transcriptAnalysis,
     renderableMessages,
     orchestrationState,
-    inlineCompactSummaryState,
     assistantChangeTargets,
     sessionAssistantMessageIds,
     sessionToolUseIds,

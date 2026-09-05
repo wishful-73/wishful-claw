@@ -1,6 +1,6 @@
-import { Notification, ipcMain, type BrowserWindow } from 'electron'
+﻿import { Notification, ipcMain, type BrowserWindow } from 'electron'
 import { getNativeWorker } from '../lib/native-worker'
-import { safeSendMessagePackToWindow } from '../window-ipc'
+import { safeSendMessagePackToWindow, safeSendMessagePackToAllWindows } from '../window-ipc'
 import {
   SIDECAR_RENDERER_TOOL_REQUEST_MSGPACK_CHANNEL,
   SIDECAR_RENDERER_TOOL_RESPONSE_MSGPACK_CHANNEL,
@@ -19,6 +19,7 @@ import {
 } from './desktop-control'
 import { isMainProcessMethod, dispatchReverseRequest } from './reverse-handlers'
 import { getMainWindow } from '../main-window-registry'
+import { logWarn } from '../lib/logger'
 
 const SIDECAR_RENDERER_REQUEST_TIMEOUT_MS = 30_000
 
@@ -85,6 +86,21 @@ export function registerNativeAgentRuntimeHandlers(): void {
     if (pending) {
       pending.reject(new Error('Reverse request cancelled by worker'))
     }
+  })
+
+  // Relay global agent Task Board change events (global tasks / dispatches
+  // only — never session-internal Todos) so the board refreshes without polling.
+  worker.onEvent('global/task-changed', (params: unknown) => {
+    safeSendMessagePackToAllWindows('global:task-changed', params)
+  })
+  worker.onEvent('global/dispatch-changed', (params: unknown) => {
+    safeSendMessagePackToAllWindows('global:dispatch-changed', params)
+  })
+
+  // Relay manual-compression summary deltas so the live compression card in the
+  // renderer types out the draft while the worker's LLM call is still streaming.
+  worker.onEvent('agent/compression-delta', (params: unknown) => {
+    safeSendMessagePackToAllWindows('agent:compression-delta', params)
   })
 
   // Register IPC handler for renderer tool responses
@@ -287,7 +303,8 @@ async function sendReverseResponse(
       30_000
     )
     .catch((sendError) => {
-      console.warn(
+      logWarn(
+        'main',
         `[NativeAgentRuntime] reverse response failed: ${
           sendError instanceof Error ? sendError.message : String(sendError)
         }`

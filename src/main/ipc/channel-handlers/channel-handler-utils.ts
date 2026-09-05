@@ -4,7 +4,7 @@
  * Extracted from channel-handlers.ts to keep files under AGENTS.md limits.
  */
 
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import { nanoid } from 'nanoid'
@@ -24,6 +24,13 @@ import {
 import { CHANNEL_PROVIDERS } from '../../channels/channel-descriptors'
 import { getNativeWorker } from '../../lib/native-worker'
 import { handleChannelAutoReply } from '../../channels/auto-reply'
+import {
+  decodeHtmlDataUrl,
+  extractQrImageSource,
+  isHtmlContent,
+  normalizeInlineImageSource
+} from './qr-display-url'
+import { captureQrElementAsDataUrl } from './qr-page-capture'
 import type {
   ChannelInstance,
   ChannelEvent,
@@ -131,68 +138,67 @@ export function assertNativeMutation(
   return result
 }
 
-export async function captureQrPageAsDataUrl(url: string): Promise<string | undefined> {
-  const win = new BrowserWindow({
-    show: false,
-    width: 720,
-    height: 960,
-    autoHideMenuBar: true,
-    webPreferences: {
-      sandbox: false,
-      offscreen: false
-    }
-  })
+async function fetchQrImageAsDataUrl(
+  source: string,
+  baseUrl?: string,
+  depth = 0
+): Promise<string | undefined> {
+  if (depth > 2) return undefined
+
+  const normalized = normalizeInlineImageSource(source, baseUrl)
+  if (!normalized) return undefined
+  if (normalized.startsWith('data:image/')) return normalized
 
   try {
-    await win.loadURL(url)
-    await new Promise((resolve) => setTimeout(resolve, 1800))
-    const image = await win.webContents.capturePage()
-    const png = image.toPNG()
-    return `data:image/png;base64,${png.toString('base64')}`
-  } catch {
-    return undefined
-  } finally {
-    if (!win.isDestroyed()) {
-      win.destroy()
-    }
-  }
-}
-
-export async function normalizeQrDisplayUrl(url?: string): Promise<string | undefined> {
-  const value = url?.trim()
-  if (!value) return undefined
-  if (value.startsWith('data:image/')) return value
-  if (!/^https?:\/\//i.test(value)) return value
-
-  try {
-    const response = await fetch(value)
-    if (!response.ok) {
-      return (await captureQrPageAsDataUrl(value)) || value
-    }
+    const response = await fetch(normalized)
+    if (!response.ok) return undefined
 
     const contentType = response.headers.get('content-type') || ''
-
     if (contentType.startsWith('image/')) {
       const buffer = Buffer.from(await response.arrayBuffer())
       return `data:${contentType};base64,${buffer.toString('base64')}`
     }
 
     const html = await response.text()
-    const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i)
-    if (imgMatch?.[1]) {
-      const imgSrc = new URL(imgMatch[1], value).toString()
-      const imageResponse = await fetch(imgSrc)
-      if (imageResponse.ok) {
-        const imageType = imageResponse.headers.get('content-type') || 'image/png'
-        const imageBuffer = Buffer.from(await imageResponse.arrayBuffer())
-        return `data:${imageType};base64,${imageBuffer.toString('base64')}`
-      }
+    const nestedSource = extractQrImageSource(html)
+    return nestedSource
+      ? await fetchQrImageAsDataUrl(nestedSource, normalized, depth + 1)
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export async function normalizeQrDisplayUrl(
+  source?: string,
+  baseUrl?: string
+): Promise<string | undefined> {
+  const value = source?.trim()
+  if (!value) return undefined
+
+  const decodedHtmlDataUrl = decodeHtmlDataUrl(value)
+  const inlineHtml = decodedHtmlDataUrl ?? (isHtmlContent(value) ? value : undefined)
+  if (inlineHtml) {
+    const imageSource = extractQrImageSource(inlineHtml)
+    if (imageSource) {
+      const imageDataUrl = await fetchQrImageAsDataUrl(imageSource, baseUrl)
+      if (imageDataUrl) return imageDataUrl
     }
 
-    return (await captureQrPageAsDataUrl(value)) || value
-  } catch {
-    return (await captureQrPageAsDataUrl(value)) || value
+    const captureUrl = decodedHtmlDataUrl
+      ? value
+      : `data:text/html;charset=utf-8,${encodeURIComponent(inlineHtml)}`
+    return await captureQrElementAsDataUrl(captureUrl)
   }
+
+  const normalized = normalizeInlineImageSource(value, baseUrl)
+  if (!normalized) return undefined
+  if (normalized.startsWith('data:image/')) return normalized
+
+  const imageDataUrl = await fetchQrImageAsDataUrl(normalized)
+  if (imageDataUrl) return imageDataUrl
+
+  return await captureQrElementAsDataUrl(normalized)
 }
 
 export function resolveSourceFileName(source: string, fallback: string): string {

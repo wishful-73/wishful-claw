@@ -12,7 +12,7 @@ const PROJECT_SCOPED_VIEWS = new Set<ChatView>(['project', 'archive', 'channels'
 
 interface SessionScopeInput {
   chatView: ChatView
-  session?: Pick<Session, 'projectId'> | null
+  session?: Pick<Session, 'scope' | 'projectId'> | null
   activeProjectId?: string | null
   workingFolder?: string | null
 }
@@ -23,7 +23,9 @@ export function isProjectSession({
   activeProjectId
 }: SessionScopeInput): boolean {
   if (session) {
-    return Boolean(session.projectId) || (PROJECT_SCOPED_VIEWS.has(chatView) && Boolean(activeProjectId))
+    if (session.scope === 'global') return false
+    if (session.scope === 'project') return true
+    return Boolean(session.projectId)
   }
 
   return PROJECT_SCOPED_VIEWS.has(chatView) && Boolean(activeProjectId)

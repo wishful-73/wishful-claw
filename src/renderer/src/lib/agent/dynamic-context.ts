@@ -1,4 +1,3 @@
-import { useUIStore } from '../../stores/ui-store'
 import { useChatStore } from '../../stores/chat-store'
 import { useTaskStore } from '../../stores/task-store'
 import { usePlanStore } from '../../stores/plan-store'
@@ -6,28 +5,20 @@ import { useGoalStore } from '../../stores/goal-store'
 export { buildMemoryContext } from './memory-context-builder'
 import { useAppPluginStore } from '../../stores/app-plugin-store'
 import { CODEGRAPH_SYSTEM_GUIDANCE } from '../tools/codegraph-tool'
-import { ipcClient } from '../ipc/ipc-client'
 import { useMcpStore } from '../../stores/mcp-store'
 import { getRegisteredSkills } from '../tools/skill-tool'
-import { estimateTokens } from '../format-tokens'
-import type { AIModelConfig } from '../api/types'
 import { buildGoalSessionStateLine } from './goal-context'
-
-const FILE_CONTEXT_BUDGET_RATIO = 0.25
-const FILE_CONTEXT_BUDGET_MAX_TOKENS = 24_000
-const FILE_CONTEXT_FALLBACK_TOKENS = 12_000
 
 /**
  * Build a runtime reminder passed to the Native Worker as request context.
- * Includes lightweight session state and selected file contents.
+ * Carries lightweight session state plus the CodeGraph steering/front-load block.
  */
 export async function buildRuntimeReminder(options: {
   sessionId: string
-  modelConfig?: AIModelConfig | null
   /** The outgoing user prompt text — feeds the CodeGraph front-load hook. */
   userPrompt?: string
 }): Promise<string> {
-  const { sessionId, modelConfig, userPrompt } = options
+  const { sessionId, userPrompt } = options
 
   const parts: string[] = []
   const sessionStateContext = buildSessionStateContext(sessionId)
@@ -35,7 +26,6 @@ export async function buildRuntimeReminder(options: {
     parts.push(sessionStateContext)
   }
 
-  const selectedFiles = useUIStore.getState().selectedFiles ?? []
   const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
   const workingFolder = session?.workingFolder
   const sshConnectionId = session?.sshConnectionId
@@ -67,18 +57,6 @@ export async function buildRuntimeReminder(options: {
       } catch {
         // the hook must never break the user's prompt
       }
-    }
-  }
-
-  if (selectedFiles.length > 0) {
-    const selectedFileContext = await buildSelectedFileContext(
-      selectedFiles,
-      workingFolder,
-      sshConnectionId,
-      modelConfig
-    )
-    if (selectedFileContext) {
-      parts.push(selectedFileContext)
     }
   }
 
@@ -180,99 +158,5 @@ function buildSessionStateContext(sessionId: string): string | null {
   }
 
   return parts.length > 1 ? parts.join('\n') : null
-}
-
-async function buildSelectedFileContext(
-  selectedFiles: string[],
-  workingFolder?: string,
-  sshConnectionId?: string,
-  modelConfig?: AIModelConfig | null
-): Promise<string> {
-  const budget = resolveFileContextBudget(modelConfig)
-  let usedTokens = 0
-  const fileSections: string[] = []
-  const skipped: string[] = []
-
-  for (const filePath of selectedFiles) {
-    const displayPath =
-      workingFolder && filePath.startsWith(workingFolder)
-        ? filePath.slice(workingFolder.length).replace(/^[\\/]/, '')
-        : filePath
-
-    try {
-      const content = await ipcClient.invoke(
-        sshConnectionId ? 'ssh:fs:read-file' : 'fs:read-file',
-        sshConnectionId ? { connectionId: sshConnectionId, path: filePath } : { path: filePath }
-      )
-      if (typeof content !== 'string') {
-        skipped.push(`${displayPath} [unreadable]`)
-        continue
-      }
-
-      const section = [`## ${displayPath}`, content].join('\n')
-      const sectionTokens = estimateTokens(section)
-      if (usedTokens + sectionTokens <= budget) {
-        fileSections.push(section)
-        usedTokens += sectionTokens
-        continue
-      }
-
-      const remainingBudget = budget - usedTokens
-      if (remainingBudget <= 0) {
-        skipped.push(`${displayPath} [skipped: context budget exceeded]`)
-        continue
-      }
-
-      const truncated = truncateToTokenBudget(content, remainingBudget)
-      if (!truncated.trim()) {
-        skipped.push(`${displayPath} [skipped: context budget exceeded]`)
-        continue
-      }
-
-      fileSections.push(`## ${displayPath}\n${truncated}\n[Truncated due to context budget]`)
-      usedTokens = budget
-    } catch {
-      skipped.push(`${displayPath} [read failed]`)
-    }
-  }
-
-  if (fileSections.length === 0 && skipped.length === 0) {
-    return ''
-  }
-
-  const lines = ['<selected_files>', `Selected Files: ${selectedFiles.length}`]
-  if (fileSections.length > 0) {
-    lines.push(...fileSections)
-  }
-  if (skipped.length > 0) {
-    lines.push('## Skipped Files', ...skipped.map((item) => `- ${item}`))
-  }
-  lines.push('</selected_files>')
-  return lines.join('\n')
-}
-
-function resolveFileContextBudget(modelConfig?: AIModelConfig | null): number {
-  const contextLength = modelConfig?.contextLength
-  if (typeof contextLength !== 'number' || contextLength <= 0) {
-    return FILE_CONTEXT_FALLBACK_TOKENS
-  }
-  return Math.min(
-    FILE_CONTEXT_BUDGET_MAX_TOKENS,
-    Math.max(4_000, Math.floor(contextLength * FILE_CONTEXT_BUDGET_RATIO))
-  )
-}
-
-function truncateToTokenBudget(content: string, tokenBudget: number): string {
-  if (!content || tokenBudget <= 0) return ''
-  const lines = content.split(/\r?\n/)
-  const kept: string[] = []
-  for (const line of lines) {
-    const candidate = kept.length > 0 ? `${kept.join('\n')}\n${line}` : line
-    if (estimateTokens(candidate) > tokenBudget) {
-      break
-    }
-    kept.push(line)
-  }
-  return kept.join('\n')
 }
 

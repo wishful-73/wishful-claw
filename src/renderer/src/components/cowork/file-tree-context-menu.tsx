@@ -33,13 +33,13 @@ export function FileTreeContextMenuItems({
   return (
     <>
       <ContextMenuItem
-        className="gap-2 text-xs"
+        className="gap-2 rounded-lg px-2.5 py-2 text-xs"
         onSelect={() => handleNewFile(workingFolder)}
       >
         <FilePlus2 className="size-3.5" /> {t('fileTree.newFile')}
       </ContextMenuItem>
       <ContextMenuItem
-        className="gap-2 text-xs"
+        className="gap-2 rounded-lg px-2.5 py-2 text-xs"
         onSelect={() => handleNewFolder(workingFolder)}
       >
         <FolderPlus className="size-3.5" /> {t('fileTree.newFolder')}
@@ -49,19 +49,19 @@ export function FileTreeContextMenuItems({
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem
-        className="gap-2 text-xs"
+        className="gap-2 rounded-lg px-2.5 py-2 text-xs"
         onSelect={() => handleAddToChat(workingFolder)}
       >
         <MessageSquarePlus className="size-3.5" /> {t('fileTree.addToChat')}
       </ContextMenuItem>
       <ContextMenuItem
-        className="gap-2 text-xs"
+        className="gap-2 rounded-lg px-2.5 py-2 text-xs"
         onSelect={() => handleCopyPath(workingFolder)}
       >
         <Copy className="size-3.5" /> {t('action.copyPath', { ns: 'common' })}
       </ContextMenuItem>
       <ContextMenuItem
-        className="gap-2 text-xs"
+        className="gap-2 rounded-lg px-2.5 py-2 text-xs"
         onSelect={() => handleOpenTerminal(workingFolder, true)}
       >
         <SquareTerminal className="size-3.5" /> {t('fileTree.openTerminal')}
@@ -70,19 +70,19 @@ export function FileTreeContextMenuItems({
         <>
           <ContextMenuSeparator />
           <ContextMenuItem
-            className="gap-2 text-xs"
+            className="gap-2 rounded-lg px-2.5 py-2 text-xs"
             onSelect={() => handleOpenDefault(workingFolder)}
           >
             <ExternalLink className="size-3.5" /> {t('fileTree.openDefault')}
           </ContextMenuItem>
           <ContextMenuItem
-            className="gap-2 text-xs"
+            className="gap-2 rounded-lg px-2.5 py-2 text-xs"
             onSelect={() => handleOpenWithCode(workingFolder)}
           >
             <Code2 className="size-3.5" /> {t('fileTree.openWithCode')}
           </ContextMenuItem>
           <ContextMenuItem
-            className="gap-2 text-xs"
+            className="gap-2 rounded-lg px-2.5 py-2 text-xs"
             onSelect={() => handleReveal(workingFolder)}
           >
             <FolderOpen className="size-3.5" /> {t('fileTree.revealInFinder')}

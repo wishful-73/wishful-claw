@@ -39,6 +39,7 @@
     "contextCompressed": "上下文已压缩",
     "contextCompressionSkipped": "无需压缩",
     "contextCompressionBlocked": "暂时无法压缩",
+    "contextCompressionRestoreFailed": "上下文无法恢复，建议新开会话继续",
     "contextCompressionFailed": "压缩失败",
     "placeholder": "输入消息...",
     "placeholderClarify": "描述你的想法，我会先不断追问把需求问透...",
@@ -1107,6 +1108,7 @@
     "selectedFileReadSkipped": "路径引用",
     "selectedFileReadSkippedPdf": "PDF 已作为路径引用插入，未直接读取文件内容",
     "selectedFileReadSkippedNonText": "已作为路径引用插入，未直接读取二进制或文档文件内容",
+    "selectedFileReadSkippedNotInjected": "已作为路径引用插入，本轮未注入文件内容",
     "selectedFileReadFailed": "读取失败",
     "hideCommand": "收起命令",
     "showCommand": "展开命令"
@@ -1212,7 +1214,7 @@
     "recallEmptyMessage": "消息为空，未进行记忆召回",
     "editImage": "编辑图片",
     "maskEditImage": "蒙版编辑",
-    "cancelledExecution": "用户取消，中断执行",
+    "executionPaused": "任务暂告一段落",
     "maskBrush": "画笔",
     "imageEditPrompt": "描述要修改的内容"
   },
@@ -1433,6 +1435,10 @@
   },
   "collab": {
     "mode": {
+      "chat": "聊天",
+      "chatDesc": "只读协作，可搜索、浏览和分析",
+      "cowork": "协作",
+      "coworkDesc": "完整协作，可在权限策略内执行操作",
       "normal": "常规",
       "normalDesc": "普通聊天，可开启 Plan 模式",
       "goal": "目标",

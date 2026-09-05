@@ -1,28 +1,34 @@
 ﻿import { useCallback, useEffect } from 'react'
 import {
   useChatStore,
-  recordCompressionStatusMessage,
+  updateCompressionStatus,
   applyCompactArtifactsToSession,
   updateSessionContextTokens
 } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
+import { useTaskStore } from '@renderer/stores/task-store'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
 import { compressMessages } from '@renderer/lib/agent/context-compression'
-import type { CompressionStatusMeta, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
+import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
+import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/lib/image-attachments'
 import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
+import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-context'
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
   enablePlanMode?: boolean
   sessionMode?: 'normal' | 'goal' | 'global'
+  collaborationMode?: 'chat' | 'cowork'
+  permissionMode?: 'default' | 'fullAccess'
   selectedFileReferences?: unknown[]
   imageEdit?: unknown
   toolPreset?: string
@@ -90,6 +96,18 @@ export function useChatActions() {
       // Clear activities for new turn
       useActivityStore.getState().clearActivities()
 
+      // OpenCowork semantics: at the start of a fresh normal turn, wipe the
+      // session's agent Todos only when every task is already completed.
+      // Incomplete / blocked / in-review Todos must survive across turns;
+      // queued dispatches and special paths (continue/team/subagent) never clear.
+      if (opts?.clearCompletedTasksOnTurnStart && !queuedDispatch) {
+        const taskStore = useTaskStore.getState()
+        const sessionTasks = taskStore.getTasksBySession(targetSessionId)
+        if (sessionTasks.length > 0 && sessionTasks.every((t) => t.status === 'completed')) {
+          taskStore.deleteSessionTasks(targetSessionId)
+        }
+      }
+
       // Get session's working folder — fall back to project's workingFolder
       const session = chatStore.sessions.find((s) => s.id === targetSessionId)
       // Channel-bound session: every reply echoes back to the external chat
@@ -98,10 +116,18 @@ export function useChatActions() {
       if (session?.pluginId && session?.externalChatId) {
         registerExternalChannelReply(targetSessionId, session.pluginId, session.externalChatId)
       }
-      const projectId = session?.projectId
+      if (!session) {
+        console.error('[ChatActions] Target session does not exist:', targetSessionId)
+        return false
+      }
+      const projectId = session.scope === 'project' ? session.projectId : undefined
       const project = projectId ? chatStore.projects.find((p) => p.id === projectId) : null
-      const workingFolder = session?.workingFolder ?? project?.workingFolder ?? undefined
-      const sshConnectionId = session?.sshConnectionId ?? project?.sshConnectionId ?? undefined
+      const workingFolder = session.scope === 'project'
+        ? session.workingFolder ?? project?.workingFolder ?? undefined
+        : undefined
+      const sshConnectionId = session.scope === 'project'
+        ? session.sshConnectionId ?? project?.sshConnectionId ?? undefined
+        : undefined
       console.log('[ChatActions] sshConnectionId:', { session: session?.sshConnectionId, project: project?.sshConnectionId, resolved: sshConnectionId, projectId })
 
       // Backend manages the session conversation (Reasonix pattern).
@@ -112,7 +138,8 @@ export function useChatActions() {
       // App startup (registerAllTools + ensureConversationReady) handles
       // initialization; if tools aren't ready yet, send without them —
       // the agent can still respond, just without tool-calling capability.
-      const toolPreset = opts?.toolPreset ?? (workingFolder ? 'coding' : 'chat')
+      const toolPreset = opts?.toolPreset ??
+        (session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat')
       const settings = settingsStore
       const codegraphEnabled = useAppPluginStore.getState().isCodeGraphToolAvailable()
 
@@ -137,10 +164,34 @@ export function useChatActions() {
       // ToolPreset control what the LLM sees.
       void filteredWorkerTools // tools now managed by backend via toolPreset
 
-      const userContent = text
+      const messageText = typeof text === 'string' ? text : text.text
+      const imageAttachments = Array.isArray(_images)
+        ? _images as ImageAttachment[]
+        : typeof text !== 'string' && Array.isArray(text.images)
+          ? text.images as ImageAttachment[]
+          : []
+      const imageBlocks: ContentBlock[] = imageAttachments.map(imageAttachmentToContentBlock)
 
       // Resolve thinking config from the model definition
       const modelConfig = activeProvider.models.find((m: any) => m.id === modelId)
+
+      // 注入挂在「文本 → userContent」这一步：排队消息重放把原文存进
+      // PendingSessionMessageItem 后出队仍回到本函数，挂在 composer 侧会漏注入。
+      const selectedFileContext = await buildSelectedFileContext({
+        text: messageText,
+        workingFolder,
+        sshConnectionId,
+        modelConfig
+      })
+      // 读盘结果只进发给模型的内容；落库与气泡用 messageText，
+      // 经下面的 userMessageText 传给 store，避免 `<system-reminder>` 污染 DB 文本。
+      const modelText = selectedFileContext.contextText
+        ? `${messageText}\n\n${selectedFileContext.contextText}`
+        : messageText
+      const userContent: string | ContentBlock[] = imageBlocks.length > 0
+        ? [{ type: 'text', text: modelText }, ...imageBlocks]
+        : modelText
+
       const thinkingConfig = modelConfig?.thinkingConfig
       const thinkingEnabled = settings.thinkingEnabled && !!thinkingConfig
       const reasoningEffort = thinkingConfig
@@ -173,6 +224,8 @@ export function useChatActions() {
       const started = await sendMessage({
         provider,
         messages: [{ role: 'user', content: userContent }],
+        userMessageText: messageText,
+        ...(selectedFileContext.meta ? { meta: { selectedFileReads: selectedFileContext.meta } } : {}),
         sessionId: targetSessionId,
         toolPreset,
         webSearchEnabled,
@@ -180,7 +233,6 @@ export function useChatActions() {
         workingFolder,
         maxIterations: 0, // 0 = unlimited, agent runs until no more tool calls
         maxParallelTools: settings.maxParallelToolCalls,
-        maxToolCallsPerTurn: settings.maxToolCallsPerTurn,
         maxConcurrentSubAgents: settings.maxConcurrentSubAgents,
         personaId: session?.personaId ?? settings.defaultPersonaId ?? undefined,
         language: settings.language,
@@ -189,9 +241,12 @@ export function useChatActions() {
         contextCompressionThreshold: settings.contextCompressionThreshold,
         sshConnectionId,
         projectId,
+        scope: session.scope,
+        collaborationMode: session.collaborationMode,
+        runtimeRole: opts?.sessionMode === 'goal' ? 'goalRunner' : 'sessionAgent',
         ...(opts?.enablePlanMode ? { enablePlanMode: true } : {}),
         sessionMode: opts?.sessionMode,
-        permissionMode: settings.autoApprove ? 'fullAccess' : 'default'
+        permissionMode: session.permissionMode
       })
       if (!started) pausePendingSessionDispatch(targetSessionId)
       return started
@@ -256,7 +311,7 @@ type SendProvider = NonNullable<ReturnType<ReturnType<typeof useProviderStore.ge
 // Session-bound model switches used to update only the UI while sends kept
 // reading the global provider store, so requests went out with the stale
 // global model. Returns null when no usable provider/model exists.
-function resolveSendModel(sessionId: string): { provider: SendProvider; modelId: string } | null {
+export function resolveSendModel(sessionId: string): { provider: SendProvider; modelId: string } | null {
   const providerStore = useProviderStore.getState()
   const chatStore = useChatStore.getState()
   const settings = useSettingsStore.getState()
@@ -356,9 +411,10 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
   if (!resolved) return
   const { provider: activeProvider, modelId } = resolved
   const session = chatStore.sessions.find((s) => s.id === sessionId)
-  const workingFolder = session?.workingFolder ?? undefined
-  const sshConnectionId = session?.sshConnectionId ?? undefined
-  const projectId = session?.projectId ?? undefined
+  if (!session) return
+  const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+  const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
+  const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 
   // Clear activities for new turn
   useActivityStore.getState().clearActivities()
@@ -371,14 +427,17 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
     provider,
     messages: [{ role: 'user', content: `The plan has been approved. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Read the plan file, then execute it step by step using the Task tool to dispatch sub-agents -- do NOT implement steps yourself. For each step: (1) call UpdatePlanStep to mark it in_progress, (2) use the Task tool with subagent_type "custom" and background=false to dispatch a foreground work sub-agent with a self-contained prompt containing all context needed for that step, (3) when the sub-agent returns, call UpdatePlanStep to mark it completed or failed based on the result. If a step fails, assess whether the remaining plan needs adjustment before continuing.` }],
     sessionId,
-    toolPreset: workingFolder ? 'coding' : 'chat',
+    toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
     webSearchEnabled: settingsStore.webSearchEnabled,
     workingFolder,
     sshConnectionId,
     projectId,
+    scope: session.scope,
+    collaborationMode: session.collaborationMode,
+    runtimeRole: 'sessionAgent',
+    permissionMode: session.permissionMode,
     maxIterations: 0,
     maxParallelTools: settingsStore.maxParallelToolCalls,
-    maxToolCallsPerTurn: settingsStore.maxToolCallsPerTurn,
     maxConcurrentSubAgents: settingsStore.maxConcurrentSubAgents,
     personaId: session?.personaId ?? settingsStore.defaultPersonaId ?? undefined,
     language: settingsStore.language,
@@ -408,9 +467,10 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
   if (!resolved) return
   const { provider: activeProvider, modelId } = resolved
   const session = chatStore.sessions.find((s) => s.id === sessionId)
-  const workingFolder = session?.workingFolder ?? undefined
-  const sshConnectionId = session?.sshConnectionId ?? undefined
-  const projectId = session?.projectId ?? undefined
+  if (!session) return
+  const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+  const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
+  const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 
   // Clear activities for new turn
   useActivityStore.getState().clearActivities()
@@ -423,14 +483,17 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
     provider,
     messages: [{ role: 'user', content: `The plan was rejected. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Please revise the plan in the plan file based on this feedback: ${feedback}` }],
     sessionId,
-    toolPreset: workingFolder ? 'coding' : 'chat',
+    toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
     webSearchEnabled: settingsStore.webSearchEnabled,
     workingFolder,
     sshConnectionId,
     projectId,
+    scope: session.scope,
+    collaborationMode: session.collaborationMode,
+    runtimeRole: 'sessionAgent',
+    permissionMode: session.permissionMode,
     maxIterations: 0,
     maxParallelTools: settingsStore.maxParallelToolCalls,
-    maxToolCallsPerTurn: settingsStore.maxToolCallsPerTurn,
     maxConcurrentSubAgents: settingsStore.maxConcurrentSubAgents,
     personaId: session?.personaId ?? settingsStore.defaultPersonaId ?? undefined,
     language: settingsStore.language,
@@ -485,9 +548,10 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
     const modelId = providerStore.activeModelId || activeProvider.defaultModel || activeProvider.models.find((m: any) => m.enabled)?.id
     if (!modelId) return
     const session = chatStore.sessions.find((s) => s.id === sessionId)
-    const workingFolder = session?.workingFolder ?? undefined
-    const sshConnectionId = session?.sshConnectionId ?? undefined
-    const projectId = session?.projectId ?? undefined
+    if (!session) return
+    const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+    const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
+    const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 
     useActivityStore.getState().clearActivities()
 
@@ -497,14 +561,17 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
       provider,
       messages: [{ role: 'user', content: '用户退出了计划模式，计划已取消。不再需要计划流程，请正常对话。' }],
       sessionId,
-      toolPreset: workingFolder ? 'coding' : 'chat',
+      toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
       webSearchEnabled: settingsStore.webSearchEnabled,
       workingFolder,
       sshConnectionId,
       projectId,
+      scope: session.scope,
+      collaborationMode: session.collaborationMode,
+      runtimeRole: 'sessionAgent',
+      permissionMode: session.permissionMode,
       maxIterations: 0,
       maxParallelTools: settingsStore.maxParallelToolCalls,
-      maxToolCallsPerTurn: settingsStore.maxToolCallsPerTurn,
       maxConcurrentSubAgents: settingsStore.maxConcurrentSubAgents,
       personaId: session?.personaId ?? settingsStore.defaultPersonaId ?? undefined,
       language: settingsStore.language,
@@ -542,14 +609,15 @@ export interface PendingSessionMessageItem {
   draft?: string
 }
 
-export type ManualCompressionResult = 'compressed' | 'skipped' | 'blocked' | 'failed'
+export type ManualCompressionResult = 'compressed' | 'skipped' | 'blocked' | 'restore_failed' | 'failed'
 
 /**
  * Manual context compression for a session (floating block / ContextRing entry).
- * The Worker endpoint prefers its own in-memory SessionConversation and only
- * falls back to the UI transcript when the Worker has not restored the session.
+ * The Worker compresses its own authoritative conversation, rebuilding it from the
+ * DB first when the Worker is cold — so a compression right after an app restart
+ * works on the full context instead of the renderer's paged transcript.
  * Returns an explicit status so the UI can distinguish compressed / skipped /
- * blocked / failed instead of collapsing everything into an error.
+ * blocked / restore_failed / failed instead of collapsing everything into an error.
  */
 export async function compressSessionContext(sessionId: string): Promise<ManualCompressionResult> {
   const chatStore = useChatStore.getState()
@@ -559,8 +627,12 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
   const operationId = `manual:${sessionId}:${Date.now()}`
   const startedAt = Date.now()
   const updateStatus = (meta: CompressionStatusMeta): void => {
-    recordCompressionStatusMessage(sessionId, meta, operationId)
+    updateCompressionStatus(sessionId, meta, operationId)
+    if (meta.state !== 'compressing') {
+      useLiveCompressionStore.getState().clear(sessionId)
+    }
   }
+  useLiveCompressionStore.getState().start(sessionId, { trigger: 'manual' })
   updateStatus({ operationId, state: 'compressing', startedAt, trigger: 'manual' })
 
   // Never compress while the session has an active run — the Worker would
@@ -577,19 +649,9 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
     return 'blocked'
   }
 
-  const messages = session.messages ?? []
-  if (messages.length === 0) {
-    updateStatus({
-      operationId,
-      state: 'skipped',
-      startedAt,
-      completedAt: Date.now(),
-      trigger: 'manual',
-      error: 'nothing to compress'
-    })
-    return 'skipped'
-  }
-
+  // No local "transcript is empty" gate: the Worker rebuilds the session's
+  // authoritative conversation from the DB when it is cold, and the renderer
+  // transcript is only a paged slice of it.
   const resolved = resolveSendModel(sessionId)
   if (!resolved) {
     updateStatus({
@@ -611,9 +673,9 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
     contextLength: modelConfig?.contextLength ?? undefined
   } as unknown as ProviderConfig
 
-  // Fallback wire messages for the stateless path — the Worker ignores them
-  // when it already holds the session conversation.
-  const fallbackMessages: UnifiedMessage[] = messages.map((m) => ({
+  // Only consumed by the Worker when the request carries no sessionId; a session
+  // request compresses the conversation the Worker restores from the DB.
+  const fallbackMessages: UnifiedMessage[] = (session.messages ?? []).map((m) => ({
     id: m.id,
     role: m.role,
     content: m.content ?? m.text ?? '',
@@ -631,7 +693,8 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       undefined,
       'manual',
       0,
-      sessionId
+      sessionId,
+      settingsStore.contextCompressionThreshold
     )
     const status = result.status ?? (result.compressed ? 'compressed' : 'skipped')
     if (status === 'compressed') {
@@ -640,7 +703,7 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       )
       const now = Date.now()
       if (compactArtifacts?.length) {
-        applyCompactArtifactsToSession(sessionId, compactArtifacts)
+        applyCompactArtifactsToSession(sessionId, compactArtifacts, operationId)
       }
       updateStatus({
         operationId,
@@ -688,7 +751,11 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
       preTokens: result.estimatedPreTokens,
       ...(result.error ? { error: result.error } : {})
     })
-    if (status === 'blocked') return 'blocked'
+    if (status === 'blocked') {
+      // The card keeps the generic blocked state; the entry control needs to know
+      // this one specifically means "the Worker cannot rebuild this context".
+      return result.reason === 'restore_failed' ? 'restore_failed' : 'blocked'
+    }
     if (status === 'skipped' || status === 'cancelled') return 'skipped'
     console.warn('[ChatActions] Manual compression failed', result.error)
     return 'failed'

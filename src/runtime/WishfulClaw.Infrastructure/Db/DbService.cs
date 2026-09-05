@@ -56,6 +56,23 @@ public sealed class DbService
         return list;
     }
 
+    public List<T> Query<T>(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql,
+        Func<SqliteDataReader, T> map,
+        params SqliteParameter[] parameters)
+    {
+        using var cmd = BuildCommand(connection, sql, parameters, transaction);
+        using var reader = cmd.ExecuteReader();
+        var list = new List<T>();
+        while (reader.Read())
+        {
+            list.Add(map(reader));
+        }
+        return list;
+    }
+
     /// <summary>
     /// Execute a query and return the first row, or default if no rows.
     /// </summary>
@@ -184,6 +201,17 @@ public sealed class DbService
     {
         using var conn = CreateConnection();
         using var cmd = BuildCommand(conn, sql, parameters);
+        using var reader = cmd.ExecuteReader();
+        return reader.HasRows;
+    }
+
+    public bool Exists(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string sql,
+        params SqliteParameter[] parameters)
+    {
+        using var cmd = BuildCommand(connection, sql, parameters, transaction);
         using var reader = cmd.ExecuteReader();
         return reader.HasRows;
     }

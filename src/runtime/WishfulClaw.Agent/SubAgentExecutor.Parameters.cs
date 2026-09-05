@@ -56,7 +56,8 @@ public static partial class SubAgentExecutor
                 if (prop.NameEquals("messages") ||
                     prop.NameEquals("personaId") ||
                     prop.NameEquals("userRules") ||
-                    prop.NameEquals("providerTurnOnly"))
+                    prop.NameEquals("providerTurnOnly") ||
+                    prop.NameEquals("runtimeRole"))
                 {
                     continue;
                 }
@@ -74,6 +75,9 @@ public static partial class SubAgentExecutor
             // Sub-agents use "subAgent" mode - they should not inherit
             // plan tools (normal mode) or goal tools (goal mode)
             writer.WriteString("sessionMode", sessionMode);
+            writer.WriteString("runtimeRole", string.Equals(sessionMode, "goalSubAgent", StringComparison.OrdinalIgnoreCase)
+                ? "goalSubAgent"
+                : "subAgent");
             if (!string.IsNullOrWhiteSpace(goalContextId))
                 writer.WriteString("goalContextId", goalContextId);
 

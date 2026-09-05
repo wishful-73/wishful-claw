@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -9,7 +9,7 @@ namespace WishfulClaw.Agent;
 
 /// <summary>
 /// Handles tool call execution within an agent loop iteration.
-/// Supports concurrency control via SemaphoreSlim and per-turn call capping.
+/// Supports concurrency control via SemaphoreSlim.
 /// Sub-agent (Task) tool calls have a separate concurrency limit.
 /// </summary>
 public static class ToolCallProcessor
@@ -93,10 +93,8 @@ public static class ToolCallProcessor
         return TruncateToolOutput(output);
     }
     /// <summary>
-    /// Executes a batch of tool calls with concurrency control and per-turn capping.
-    /// Returns the collected tool results in completion order.
-    /// When tool calls exceed maxToolCallsPerTurn, excess calls are NOT silently
-    /// dropped — they return an error result so the LLM knows to retry next turn.
+    /// Executes a batch of tool calls with concurrency control.
+    /// Calls that exceed the configured parallelism wait for a semaphore slot.
     /// </summary>
     public static async Task<List<AgentRuntimeToolResult>> ExecuteAsync(
         List<AgentRuntimeNativeToolCall> toolCalls,
@@ -104,32 +102,24 @@ public static class ToolCallProcessor
         AgentRuntimeRunState state,
         IWorkerRequestContext context)
     {
-        var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
-        var projectId = JsonHelpers.GetString(parameters, "projectId");
-        var sshConnectionId = JsonHelpers.GetString(parameters, "sshConnectionId");
+        var runContext = AgentRunContextPolicy.Resolve(parameters);
+        var workingFolder = runContext.Scope == "project"
+            ? JsonHelpers.GetString(parameters, "workingFolder")
+            : null;
+        var projectId = runContext.Scope == "project"
+            ? JsonHelpers.GetString(parameters, "projectId")
+            : null;
+        var sshConnectionId = runContext.Scope == "project"
+            ? JsonHelpers.GetString(parameters, "sshConnectionId")
+            : null;
         var maxParallelTools = Math.Max(1, JsonHelpers.GetInt(parameters, "maxParallelTools", 1));
-        var maxToolCallsPerTurn = JsonHelpers.GetInt(parameters, "maxToolCallsPerTurn", 0); // 0 = unlimited
         var registry = ToolModuleState.Registry;
+        var availableMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, runContext);
         // "default" permission mode asks the user to confirm write/delete/execute
         // class tools before execution. "whitelist"/"fullAccess" never pause here
         // (whitelist rules are enforced on the renderer side).
         var permissionMode = JsonHelpers.GetString(parameters, "permissionMode");
         var defaultModeApproval = string.Equals(permissionMode, "default", StringComparison.OrdinalIgnoreCase);
-
-        // Split tool calls into executable vs skipped (over per-turn limit)
-        var toolCallsToExecute = toolCalls;
-        var skippedToolCalls = new List<AgentRuntimeNativeToolCall>();
-
-        if (maxToolCallsPerTurn > 0 && toolCalls.Count > maxToolCallsPerTurn)
-        {
-            WorkerLog.Warn(
-                $"agent tool calls capped runId={state.RunId} " +
-                $"requested={toolCalls.Count} max={maxToolCallsPerTurn} " +
-                $"skipped={toolCalls.Count - maxToolCallsPerTurn}");
-
-            toolCallsToExecute = toolCalls.Take(maxToolCallsPerTurn).ToList();
-            skippedToolCalls = toolCalls.Skip(maxToolCallsPerTurn).ToList();
-        }
 
         // Two semaphores: one for regular tools, one for sub-agent (Task) calls.
         // This prevents a burst of Task calls from consuming all parallel slots
@@ -149,11 +139,21 @@ public static class ToolCallProcessor
         Task? approvalBarrier = null;
         var barrierLock = new object();
 
-        foreach (var toolCall in toolCallsToExecute)
+        foreach (var toolCall in toolCalls)
         {
             if (state.IsCancellationRequested)
             {
                 break;
+            }
+
+            var category = registry?.GetCategory(toolCall.Name);
+            var allowedByContext = AgentRunContextPolicy.IsToolAllowed(runContext, toolCall.Name, category);
+            var allowedByMode = registry is null || registry.IsAvailableInMode(toolCall.Name, availableMode);
+            if (!allowedByContext || !allowedByMode)
+            {
+                toolTasks.Add(RejectUnavailableToolAsync(
+                    toolCall, state, context, runContext, allowedByContext));
+                continue;
             }
 
             // fullAccess is YOLO: never create an approval barrier or dialog.
@@ -199,57 +199,58 @@ public static class ToolCallProcessor
             results.AddRange(completedResults);
         }
 
-        // Generate error results for skipped tool calls so the LLM knows they
-        // were not executed and can retry in the next turn.
-        if (skippedToolCalls.Count > 0)
-        {
-            var skipMessage = maxToolCallsPerTurn > 0
-                ? $"Skipped: {maxToolCallsPerTurn} tool calls per turn max. Retry this call next turn."
-                : "Tool call skipped: per-turn limit exceeded. Please retry in the next turn.";
-
-            foreach (var skipped in skippedToolCalls)
-            {
-                // Emit tool_call_start + tool_call_result so the UI shows the skipped call
-                await AgentRuntimeTools.EmitAsync(
-                    state, context,
-                    new AgentRuntimeStreamEvent(
-                        "tool_call_start",
-                        ToolCall: new AgentRuntimeToolCallState(
-                            skipped.Id,
-                            skipped.Name,
-                            skipped.Input,
-                            "running",
-                            null,
-                            null,
-                            false,
-                            AgentLoop.NowMs(),
-                            null)));
-
-                await AgentRuntimeTools.EmitAsync(
-                    state, context,
-                    new AgentRuntimeStreamEvent(
-                        "tool_call_result",
-                        ToolCallId: skipped.Id,
-                        ToolName: skipped.Name,
-                        ToolCall: new AgentRuntimeToolCallState(
-                            skipped.Id,
-                            skipped.Name,
-                            skipped.Input,
-                            "error",
-                            AgentRuntimeProviderSupport.CreateStringElement(skipMessage),
-                            skipMessage,
-                            false,
-                            AgentLoop.NowMs(),
-                            AgentLoop.NowMs())));
-
-                results.Add(new AgentRuntimeToolResult(
-                    skipped.Id,
-                    AgentRuntimeProviderSupport.CreateStringElement(skipMessage),
-                    true));
-            }
-        }
-
         return results;
+    }
+
+    private static async Task<AgentRuntimeToolResult> RejectUnavailableToolAsync(
+        AgentRuntimeNativeToolCall toolCall,
+        AgentRuntimeRunState state,
+        IWorkerRequestContext context,
+        AgentRunContext runContext,
+        bool allowedByContext)
+    {
+        var startedAt = AgentLoop.NowMs();
+        var message = allowedByContext
+            ? $"Tool '{toolCall.Name}' is not available for runtime role '{runContext.RuntimeRole}'."
+            : $"Tool '{toolCall.Name}' is not available in {runContext.Scope}:{runContext.CollaborationMode} sessions.";
+
+        await AgentRuntimeTools.EmitAsync(
+            state, context,
+            new AgentRuntimeStreamEvent(
+                "tool_call_start",
+                ToolCall: new AgentRuntimeToolCallState(
+                    toolCall.Id,
+                    toolCall.Name,
+                    toolCall.Input,
+                    "running",
+                    null,
+                    null,
+                    false,
+                    startedAt,
+                    null)));
+
+        var completedAt = AgentLoop.NowMs();
+        await AgentRuntimeTools.EmitAsync(
+            state, context,
+            new AgentRuntimeStreamEvent(
+                "tool_call_result",
+                ToolCallId: toolCall.Id,
+                ToolName: toolCall.Name,
+                ToolCall: new AgentRuntimeToolCallState(
+                    toolCall.Id,
+                    toolCall.Name,
+                    toolCall.Input,
+                    "error",
+                    AgentRuntimeProviderSupport.CreateStringElement(message),
+                    message,
+                    false,
+                    startedAt,
+                    completedAt)));
+
+        return new AgentRuntimeToolResult(
+            toolCall.Id,
+            AgentRuntimeProviderSupport.CreateStringElement(message),
+            true);
     }
 
     /// <summary>

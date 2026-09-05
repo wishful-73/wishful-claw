@@ -58,21 +58,18 @@ export const createProjectSlice: StateCreator<
   },
 
   setActiveProject: (id) => {
+    const currentSessionId = get().activeSessionId
+    const nextSessionId = id
+      ? get()
+          .sessions.filter((s) => s.projectId === id)
+          .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id ?? null
+      : null
     set((state) => {
       state.activeProjectId = id
-      if (!id) {
-        state.activeSessionId = null
-        return
-      }
-      // Find the most recent session in this project
-      const sessionsInProject = state.sessions
-        .filter((s) => s.projectId === id)
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-      const nextSessionId = sessionsInProject[0]?.id ?? null
-      if (nextSessionId) {
-        state.activeSessionId = nextSessionId
-      }
     })
+    if (currentSessionId !== nextSessionId && (nextSessionId || !id)) {
+      void get().setActiveSession(nextSessionId)
+    }
   },
 
   setActiveProjectHome: (id) => {
@@ -116,24 +113,26 @@ export const createProjectSlice: StateCreator<
   },
 
   deleteProject: async (projectId) => {
+    const stateBeforeDelete = get()
+    const deletedSessionIds = new Set(
+      stateBeforeDelete.sessions.filter((s) => s.projectId === projectId).map((s) => s.id)
+    )
+    if (stateBeforeDelete.activeSessionId && deletedSessionIds.has(stateBeforeDelete.activeSessionId)) {
+      const nextSessionId = stateBeforeDelete.sessions.find((s) => !deletedSessionIds.has(s.id))?.id ?? null
+      const switched = await get().setActiveSession(nextSessionId)
+      if (!switched) return
+    }
+
     set((state) => {
       state.projects = state.projects.filter((p) => p.id !== projectId)
-      // Delete all sessions in this project
-      const deletedSessionIds = new Set(
-        state.sessions.filter((s) => s.projectId === projectId).map((s) => s.id)
-      )
       state.sessions = state.sessions.filter((s) => !deletedSessionIds.has(s.id))
       // Rebuild sessionsById
       state.sessionsById = {}
       for (let i = 0; i < state.sessions.length; i++) {
         state.sessionsById[state.sessions[i].id] = i
       }
-      // Update active IDs
       if (state.activeProjectId === projectId) {
         state.activeProjectId = state.projects[0]?.id ?? null
-      }
-      if (state.activeSessionId && !state.sessions.some((s) => s.id === state.activeSessionId)) {
-        state.activeSessionId = state.sessions[0]?.id ?? null
       }
     })
     void dbDeleteProject(projectId)

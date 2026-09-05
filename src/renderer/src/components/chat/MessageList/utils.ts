@@ -1,13 +1,15 @@
-// Pure utility functions and types extracted from MessageList.tsx
+﻿// Pure utility functions and types extracted from MessageList.tsx
 
 import type { ContentBlock, ToolResultContent, UnifiedMessage } from '@renderer/lib/api/types'
-import type { ChatRenderableMessageMeta, TailToolExecutionState } from '../transcript-utils'
+import type { TailToolExecutionState } from '../transcript-utils'
+import type { RenderableChatItem } from '../renderable-chat-items'
 import type { ActiveTeam } from '@renderer/stores/team-store'
 import type { useChatStore } from '@renderer/stores/chat-store'
 import type { useTeamStore } from '@renderer/stores/team-store'
 import type { RequestRetryState } from '@renderer/lib/agent/types'
 import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { buildChatMessageContent } from '@renderer/lib/agent/chat-message-blocks'
 
 
 export interface MessageListProps {
@@ -20,11 +22,11 @@ export interface MessageListProps {
   fullWidth?: boolean
 }
 
-export type RenderableMessage = ChatRenderableMessageMeta
+export type RenderableMessage = RenderableChatItem
 
 export type ToolResultsLookup = Map<string, { content: ToolResultContent; isError?: boolean }>
 
-export type MessageListRow = { type: 'message'; key: string; data: RenderableMessage }
+export type MessageListRow = { type: 'message'; key: string; data: RenderableChatItem }
 
 export type AutoScrollMode = 'off' | 'user' | 'stream'
 
@@ -175,7 +177,7 @@ export type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
 export type TeamStoreSnapshot = ReturnType<typeof useTeamStore.getState>
 
 export interface MessageRowProps {
-  message: UnifiedMessage
+  item: RenderableChatItem
   sessionId?: string | null
   sessionAssistantMessageIds?: readonly string[]
   sessionToolUseIds?: readonly string[]
@@ -185,7 +187,6 @@ export interface MessageRowProps {
   showContinue: boolean
   disableAnimation: boolean
   toolResults?: ToolResultsLookup
-  inlineCompactSummaries?: readonly UnifiedMessage[]
   orchestrationRun?: import('@renderer/lib/orchestration/types').OrchestrationRun | null
   hiddenToolUseIds?: Set<string>
   anchorMessageId?: string | null
@@ -413,75 +414,12 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
     const text = (msg.text as string) ?? ''
     const thinking = msg.thinking as string | undefined
     const toolCalls = msg.toolCalls as Array<Record<string, unknown>> | undefined
-
-    // Build content blocks from ChatMessage fields
-    const blocks: ContentBlock[] = []
-
-    // Use segments for temporal ordering if available (preserves iteration boundaries)
-    const segments = msg.segments as Array<Record<string, unknown>> | undefined
-    if (segments && segments.length > 0) {
-      for (const seg of segments) {
-        const segType = seg.type as string
-        if (segType === 'thinking' && seg.thinking) {
-          blocks.push({ type: 'thinking', thinking: seg.thinking as string, startedAt: seg.startedAt as number | undefined, completedAt: seg.completedAt as number | undefined })
-        } else if (segType === 'text' && seg.text) {
-          blocks.push({ type: 'text', text: seg.text as string })
-        } else if (segType === 'tool_use' && seg.toolCallId) {
-          blocks.push({
-            type: 'tool_use',
-            id: seg.toolCallId as string,
-            name: (seg.toolName as string) ?? 'unknown',
-            input: (seg.input as Record<string, unknown>) ?? {}
-          })
-          // Also add inline tool_result block for completed/errored tools
-          // so that resolveToolCallStatus finds a result instead of falling back to 'canceled'
-          const segStatus = seg.status as string | undefined
-          if (segStatus === 'completed' || segStatus === 'error') {
-            blocks.push({
-              type: 'tool_result',
-              toolUseId: seg.toolCallId as string,
-              content: (seg.output as string) ?? '',
-              isError: segStatus === 'error'
-            })
-          }
-        }
-      }
-    } else {
-      // Fallback: old format without temporal ordering
-      if (thinking) {
-        blocks.push({ type: 'thinking', thinking })
-      }
-
-      if (text) {
-        blocks.push({ type: 'text', text })
-      }
-
-      if (toolCalls && toolCalls.length > 0) {
-        for (const tc of toolCalls) {
-          blocks.push({
-            type: 'tool_use',
-            id: tc.id as string,
-            name: tc.name as string,
-            input: (tc.input as Record<string, unknown>) ?? {}
-          })
-          // Also add inline tool_result block for completed/errored tools
-          const tcStatus = tc.status as string | undefined
-          if (tcStatus === 'completed' || tcStatus === 'error') {
-            blocks.push({
-              type: 'tool_result',
-              toolUseId: tc.id as string,
-              content: (tc.output as string) ?? '',
-              isError: tcStatus === 'error'
-            })
-          }
-        }
-      }
-    }
+    const blocks = buildChatMessageContent(msg)
 
     const result: UnifiedMessage = {
       id: msg.id as string,
       role,
-      content: blocks.length > 0 ? blocks : text,
+      content: blocks,
       createdAt: (msg.createdAt as number) ?? Date.now()
     }
 
@@ -602,7 +540,7 @@ void getOrchestrationRunSignature
 
 export function areMessageRowPropsEqual(prev: MessageRowProps, next: MessageRowProps): boolean {
   return (
-    prev.message === next.message &&
+    prev.item === next.item &&
     prev.sessionId === next.sessionId &&
     areStringArraysEqual(prev.sessionAssistantMessageIds, next.sessionAssistantMessageIds) &&
     areStringArraysEqual(prev.sessionToolUseIds, next.sessionToolUseIds) &&
@@ -614,7 +552,6 @@ export function areMessageRowPropsEqual(prev: MessageRowProps, next: MessageRowP
     prev.fullWidth === next.fullWidth &&
     (prev.toolResults === next.toolResults ||
       areToolResultsEqual(prev.toolResults, next.toolResults)) &&
-    prev.inlineCompactSummaries === next.inlineCompactSummaries &&
     prev.orchestrationRun === next.orchestrationRun &&
     prev.hiddenToolUseIds === next.hiddenToolUseIds &&
     prev.anchorMessageId === next.anchorMessageId &&

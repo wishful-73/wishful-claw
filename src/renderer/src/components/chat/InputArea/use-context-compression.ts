@@ -50,6 +50,10 @@ export function useContextCompression(opts: UseContextCompressionOptions) {
         return opts.t('input.contextCompressionBlocked', {
           defaultValue: 'Compression temporarily unavailable'
         })
+      case 'restore_failed':
+        return opts.t('input.contextCompressionRestoreFailed', {
+          defaultValue: 'Context could not be restored — start a new session'
+        })
       case 'failed':
         return opts.t('input.contextCompressionFailed', { defaultValue: 'Compression failed' })
       default:

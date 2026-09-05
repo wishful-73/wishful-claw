@@ -1,7 +1,16 @@
-﻿appId: com.wishfulclaw.app
+appId: com.wishfulclaw.app
 productName: Wishful Claw
 directories:
   output: release
+
+publish:
+  provider: github
+  owner: wishful-73
+  repo: wishful-claw
+  releaseType: release
+
+extraMetadata:
+  wishfulClawDistribution: installer
 
 afterPack: scripts/after-pack-remove-files.cjs
 

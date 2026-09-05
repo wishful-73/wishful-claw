@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Net.Http;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
@@ -11,6 +11,14 @@ namespace WishfulClaw.Agent;
 /// </summary>
 internal static partial class OpenAIChatProvider
 {
+    internal static string BuildRequestBodyForTests(
+        JsonElement parameters,
+        JsonElement provider,
+        IReadOnlyList<AgentRuntimeChatMessage> conversation,
+        IReadOnlyList<ToolDefinition> toolDefs,
+        AgentRuntimeRunState state) =>
+        BuildRequestBody(parameters, provider, conversation, toolDefs, state);
+
     private static string BuildRequestBody(
         JsonElement parameters,
         JsonElement provider,
@@ -135,7 +143,15 @@ internal static partial class OpenAIChatProvider
 
                 writer.WriteStartObject();
                 writer.WriteString("role", "user");
-                writer.WriteString("content", message.Text);
+                if (HasImageContent(message.ContentBlocks))
+                {
+                    writer.WritePropertyName("content");
+                    WriteOpenAIContentBlocks(writer, message.ContentBlocks!);
+                }
+                else
+                {
+                    writer.WriteString("content", message.Text);
+                }
                 writer.WriteEndObject();
                 continue;
             }
@@ -187,13 +203,90 @@ internal static partial class OpenAIChatProvider
         writer.WriteEndArray();
     }
 
+    private static bool HasImageContent(IReadOnlyList<JsonElement>? contentBlocks)
+    {
+        if (contentBlocks is null) return false;
+        foreach (var block in contentBlocks)
+        {
+            if (JsonHelpers.GetString(block, "type") == "image" &&
+                block.TryGetProperty("source", out var source) &&
+                source.ValueKind == JsonValueKind.Object &&
+                ((JsonHelpers.GetString(source, "type") == "url" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
+                 (JsonHelpers.GetString(source, "type") == "base64" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void WriteOpenAIContentBlocks(Utf8JsonWriter writer, IReadOnlyList<JsonElement> contentBlocks)
+    {
+        writer.WriteStartArray();
+        foreach (var block in contentBlocks)
+        {
+            var type = JsonHelpers.GetString(block, "type");
+            if (type == "text")
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", "text");
+                writer.WriteString("text", JsonHelpers.GetString(block, "text") ?? string.Empty);
+                writer.WriteEndObject();
+                continue;
+            }
+
+            if (type != "image" || !block.TryGetProperty("source", out var source) ||
+                source.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var sourceType = JsonHelpers.GetString(source, "type");
+            var imageUrl = sourceType == "url"
+                ? JsonHelpers.GetString(source, "url")
+                : BuildBase64ImageUrl(source);
+            if (string.IsNullOrWhiteSpace(imageUrl))
+            {
+                continue;
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString("type", "image_url");
+            writer.WritePropertyName("image_url");
+            writer.WriteStartObject();
+            writer.WriteString("url", imageUrl);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+    }
+
+    private static string? BuildBase64ImageUrl(JsonElement source)
+    {
+        var data = JsonHelpers.GetString(source, "data");
+        if (string.IsNullOrWhiteSpace(data)) return null;
+        var mediaType = JsonHelpers.GetString(source, "mediaType") ??
+            ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ??
+            "image/png";
+        return $"data:{mediaType};base64,{ProviderContentHelpers.StripDataUrlPrefix(data)}";
+    }
+
     private static void WriteTools(Utf8JsonWriter writer, IReadOnlyList<ToolDefinition> toolDefs)
     {
         if (toolDefs.Count == 0) return;
 
-        // Sort tools by name for stable byte ordering (prefix cache stability)
+        // Keep the registry's workflow ordering while retaining deterministic
+        // ordering for callers that provide their own definitions.
         var sorted = new List<ToolDefinition>(toolDefs);
-        sorted.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+        sorted.Sort((a, b) =>
+        {
+            var byPriority = a.Priority.CompareTo(b.Priority);
+            return byPriority != 0
+                ? byPriority
+                : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+        });
 
         writer.WritePropertyName("tools");
         writer.WriteStartArray();
@@ -246,14 +339,22 @@ internal static partial class OpenAIChatProvider
             return;
         }
 
-        var thinkingEnabled = JsonHelpers.GetBool(provider, "thinkingEnabled", false);
+        if (!provider.TryGetProperty("thinkingEnabled", out var thinkingEnabledValue) ||
+            thinkingEnabledValue.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            return;
+        }
+
+        var thinkingEnabled = thinkingEnabledValue.GetBoolean();
 
         // When thinking is enabled, merge bodyParams from thinkingConfig into the request body.
         // This writes provider-specific fields like { "thinking": { "type": "enabled" } } or
         // { "enable_thinking": true } depending on the model's configuration.
         var isOpenRouter = IsOpenRouterProvider(provider);
-        var reasoningEffort = JsonHelpers.GetString(provider, "reasoningEffort") ??
-                              JsonHelpers.GetString(thinkingConfig, "defaultReasoningEffort");
+        var reasoningEffort = thinkingEnabled
+            ? JsonHelpers.GetString(provider, "reasoningEffort") ??
+              JsonHelpers.GetString(thinkingConfig, "defaultReasoningEffort")
+            : null;
         var effectiveEffort = !string.IsNullOrEmpty(reasoningEffort)
             ? JsonHelpers.ResolveEffectiveReasoningEffort(reasoningEffort, thinkingConfig)
             : null;

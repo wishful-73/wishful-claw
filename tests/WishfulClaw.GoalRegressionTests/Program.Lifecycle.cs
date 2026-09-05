@@ -336,6 +336,16 @@ internal static partial class Program
         registry.PushCategory("project");
         new ProjectToolsProvider().RegisterTools(registry);
         registry.PopCategory();
+        registry.PushCategory("capability");
+        new UseCapabilityToolProvider().RegisterTools(registry);
+        registry.PopCategory();
+
+        foreach (var presetId in new[] { "full", "chat", "coding", "channel", "automation", "minimal", "skill-installer" })
+        {
+            var presetDefinitions = registry.GetToolDefinitions(ToolPreset.BuiltIn[presetId], "global");
+            Assert(presetDefinitions.Any(definition => definition.Name == "use_capability"),
+                $"{presetId} preset exposes use_capability as the unified entry point");
+        }
 
         var firstPage = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "list",
@@ -380,39 +390,63 @@ internal static partial class Program
         var globalProjects = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "list",
             sessionMode: "global",
-            writeInput: writer => writer.WriteString("category", "project"));
-        AssertEqual(4, globalProjects.GetProperty("total").GetInt32(),
-            "global sessions discover all project tools through use_capability");
+            writeInput: writer => writer.WriteString("category", "project"),
+            projectId: null,
+            scope: "global",
+            collaborationMode: "chat",
+            runtimeRole: "sessionAgent");
+        Assert(globalProjects.GetProperty("total").GetInt32() == 4,
+            "global Chat sessions can discover global tools through use_capability");
 
         var normalProjects = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "list",
             sessionMode: "normal",
-            writeInput: writer => writer.WriteString("category", "project"));
+            writeInput: writer => writer.WriteString("category", "project"),
+            projectId: "project-a",
+            scope: "project",
+            collaborationMode: "cowork",
+            runtimeRole: "sessionAgent");
         AssertEqual(0, normalProjects.GetProperty("total").GetInt32(),
             "normal sessions cannot discover global project tools");
 
         var rejectedProjectInspect = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "inspect",
-            "builtin:list_projects", sessionMode: "normal");
+            "builtin:list_projects", sessionMode: "normal",
+            projectId: "project-a",
+            scope: "project",
+            collaborationMode: "cowork",
+            runtimeRole: "sessionAgent");
         Assert(rejectedProjectInspect.TryGetProperty("error", out _),
             "normal sessions cannot inspect global project tools");
 
         var globalProjectInspect = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "inspect",
-            "builtin:list_projects", sessionMode: "global");
-        AssertEqual("list_projects", globalProjectInspect.GetProperty("name").GetString(),
-            "global sessions inspect project tool schemas");
+            "builtin:list_projects", sessionMode: "global",
+            projectId: null,
+            scope: "global",
+            collaborationMode: "chat",
+            runtimeRole: "sessionAgent");
+        Assert(globalProjectInspect.GetProperty("name").GetString() == "list_projects",
+            "global Chat sessions can inspect global tool schemas through use_capability");
 
         registry.Register(new ProjectModeProbeTool(), "project");
         var globalProjectCall = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "call",
-            "builtin:project_mode_probe", sessionMode: "global");
+            "builtin:project_mode_probe", sessionMode: "global",
+            projectId: null,
+            scope: "global",
+            collaborationMode: "chat",
+            runtimeRole: "sessionAgent");
         Assert(globalProjectCall.GetProperty("ok").GetBoolean(),
-            "global sessions call project tools through use_capability");
+            "global Chat sessions can call global tools through use_capability");
 
         var rejectedProjectCall = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "call",
-            "builtin:project_mode_probe", sessionMode: "normal");
+            "builtin:project_mode_probe", sessionMode: "normal",
+            projectId: "project-a",
+            scope: "project",
+            collaborationMode: "cowork",
+            runtimeRole: "sessionAgent");
         Assert(rejectedProjectCall.TryGetProperty("error", out _),
             "normal sessions cannot call global project tools");
 
@@ -470,7 +504,11 @@ internal static partial class Program
         string? capabilityId = null,
         Action<Utf8JsonWriter>? writeArguments = null,
         string sessionMode = "goal",
-        Action<Utf8JsonWriter>? writeInput = null)
+        Action<Utf8JsonWriter>? writeInput = null,
+        string? projectId = "project-a",
+        string scope = "project",
+        string collaborationMode = "cowork",
+        string runtimeRole = "goalRunner")
     {
         using var state = new AgentRuntimeRunState($"test-{Guid.NewGuid():N}", sessionId);
         state.ReplaceParameters(WorkerJsonHelper.BuildJsonElement(writer =>
@@ -479,6 +517,11 @@ internal static partial class Program
             writer.WriteString("dbPath", dbPath);
             writer.WriteString("sessionId", sessionId);
             writer.WriteString("sessionMode", sessionMode);
+            if (projectId != null)
+                writer.WriteString("projectId", projectId);
+            writer.WriteString("scope", scope);
+            writer.WriteString("collaborationMode", collaborationMode);
+            writer.WriteString("runtimeRole", runtimeRole);
             writer.WriteEndObject();
         }));
         var call = new AgentRuntimeNativeToolCall(

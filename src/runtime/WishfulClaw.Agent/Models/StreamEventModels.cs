@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace WishfulClaw.Agent;
 
@@ -48,6 +48,7 @@ public sealed record AgentRuntimeStreamEvent(
     string? Trigger = null,
     string? CompressionStatus = null,
     int? PreTokens = null,
+    int? EstimatedNewTokens = null,
     bool? SummarizerFailed = null,
     int? MessagesSummarized = null,
     string? CompressionError = null,

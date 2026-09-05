@@ -1,4 +1,4 @@
-﻿import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { Monitor, MoonStar, SunMedium } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import {

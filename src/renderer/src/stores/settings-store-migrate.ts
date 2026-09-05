@@ -1,4 +1,4 @@
-﻿import type { PermissionPolicy } from '../../../shared/permission-policy'
+import type { PermissionPolicy } from '../../../shared/permission-policy'
 import { sanitizePermissionPolicy } from '../../../shared/permission-policy'
 import {
   DEFAULT_APP_THEME_PRESET,
@@ -154,6 +154,18 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   }
   if (state.mainModelSelectionMode === undefined) {
     state.mainModelSelectionMode = 'auto'
+  }
+  if (
+    state.projectSessionDefaultCollaborationMode !== 'chat' &&
+    state.projectSessionDefaultCollaborationMode !== 'cowork'
+  ) {
+    state.projectSessionDefaultCollaborationMode = 'cowork'
+  }
+  if (
+    state.coworkDefaultPermissionMode !== 'default' &&
+    state.coworkDefaultPermissionMode !== 'fullAccess'
+  ) {
+    state.coworkDefaultPermissionMode = 'fullAccess'
   }
   state.claudeCodeConfigs = sanitizeClaudeCodeConfigs(state.claudeCodeConfigs)
   state.codexConfigs = sanitizeCodexConfigs(state.codexConfigs)
@@ -350,6 +362,47 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   }
   if (typeof state.memoryOrganizationNightlyTime !== 'string' || !/^\d{2}:\d{2}$/.test(state.memoryOrganizationNightlyTime)) {
     state.memoryOrganizationNightlyTime = '00:00'
+  }
+  const organizationModel = state.memoryOrganizationModel
+  const organizationProviderId =
+    organizationModel && typeof organizationModel === 'object' && !Array.isArray(organizationModel) &&
+    typeof (organizationModel as Record<string, unknown>).providerId === 'string'
+      ? (organizationModel as Record<string, string>).providerId.trim()
+      : ''
+  const organizationModelId =
+    organizationModel && typeof organizationModel === 'object' && !Array.isArray(organizationModel) &&
+    typeof (organizationModel as Record<string, unknown>).modelId === 'string'
+      ? (organizationModel as Record<string, string>).modelId.trim()
+      : ''
+  if (!organizationProviderId || !organizationModelId) {
+    state.memoryOrganizationModel = null
+  } else {
+    state.memoryOrganizationModel = {
+      providerId: organizationProviderId,
+      modelId: organizationModelId
+    }
+  }
+  if (
+    state.memoryOrganizationThinkingMode !== 'default' &&
+    state.memoryOrganizationThinkingMode !== 'enabled' &&
+    state.memoryOrganizationThinkingMode !== 'disabled'
+  ) {
+    state.memoryOrganizationThinkingMode = 'default'
+  }
+  const validReasoningEfforts = new Set([
+    'minimal',
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+    'max'
+  ])
+  if (
+    state.memoryOrganizationReasoningEffort !== '' &&
+    (typeof state.memoryOrganizationReasoningEffort !== 'string' ||
+      !validReasoningEfforts.has(state.memoryOrganizationReasoningEffort))
+  ) {
+    state.memoryOrganizationReasoningEffort = ''
   }
   if (typeof state.memoryWarmThresholdEphemeral !== 'number') {
     state.memoryWarmThresholdEphemeral = 7

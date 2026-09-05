@@ -45,7 +45,6 @@ resources/worker/
 logs/
 *.log
 out/
-package-lock.json
 .reasonix/
 build_out
 release/
@@ -61,3 +60,4 @@ tmp/
 \"root_out.txt\"  
 \"stderr.txt\"  
 \"stdout.txt\" 
+.wishful-claw/*

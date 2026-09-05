@@ -23,6 +23,8 @@ export interface CompressionResult {
   messagesSummarized?: number
   error?: string
   status?: CompressionStatus
+  /** Machine-readable blocker, e.g. 'restore_failed' when the Worker could not rebuild the session. */
+  reason?: string
   trigger?: 'auto' | 'manual'
   summarizerFailed?: boolean
   /** Worker-side token estimate of the conversation before compression. */

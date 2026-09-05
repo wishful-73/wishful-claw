@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -185,7 +185,9 @@ public static class DbProjectTools
                     var placeholders = string.Join(",", sessionIds.Select((_, i) => $"@s{i}"));
                     var msgParams = sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray();
                     db.Execute(conn, tx, $"DELETE FROM messages WHERE session_id IN ({placeholders})", msgParams);
-                    DbCompactionSnapshotStore.DeleteForSessions(db, conn, tx, sessionIds);
+                    db.Execute(conn, tx, $"DELETE FROM tasks WHERE session_id IN ({placeholders})",
+                        sessionIds.Select((sid, i) => new SqliteParameter($"@s{i}", sid)).ToArray());
+                    DbCompactionSnapshotStore.DetachForSessions(db, conn, tx, sessionIds);
                 });
             }
 

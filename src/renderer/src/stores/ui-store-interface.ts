@@ -58,9 +58,15 @@ export interface UIStore {
   rightPanelSection: RightPanelSection
   setRightPanelSection: (section: RightPanelSection) => void
   rightPanelTabs: RightPanelTabInstance[]
-  rightPanelActiveTabId: string
+  /** tabScopeId (`sessionId ?? 'global'`) → 该作用域当前激活的 tab id。写入只走 right-panel-scope.ts 的 helper。 */
+  rightPanelActiveTabIds: Record<string, string>
   setRightPanelActiveTab: (tabId: string) => void
+  prepareSessionSwitch: (nextSessionId: string | null) => Promise<boolean>
   closeRightPanelTab: (tabId: string) => void
+  /** 关闭与 keepTabId 同作用域的其余 tab，逐项复用 closeRightPanelTab */
+  closeOtherRightPanelTabs: (keepTabId: string) => void
+  /** 关闭当前展示作用域的全部 tab，逐项复用 closeRightPanelTab */
+  closeAllRightPanelTabs: () => void
   removeRightPanelTabsForSession: (sessionId: string) => void
   rightPanelRailWidth: number
 
@@ -170,11 +176,6 @@ export interface UIStore {
   exitPlanMode: (sessionId?: string | null) => void
   planModesBySession: Record<string, boolean>
   isPlanModeEnabled: (sessionId?: string | null) => boolean
-
-  // Collab mode (normal / goal)
-  collabModesBySession: Record<string, 'normal' | 'goal'>
-  setCollabMode: (sessionId: string, mode: 'normal' | 'goal') => void
-  getCollabMode: (sessionId?: string | null) => 'normal' | 'goal'
 
   // Browser panel (session-scoped state)
   browserStatesBySession: Record<string, BrowserPanelSessionState | undefined>

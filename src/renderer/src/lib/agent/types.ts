@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -195,6 +195,7 @@ export type AgentEvent =
       attempt?: number
       maxAttempts?: number
     }
+  | { type: 'context_compression_delta'; text: string }
   | {
       type: 'context_compressed'
       operationId?: string
@@ -205,6 +206,7 @@ export type AgentEvent =
       keptMessageCount?: number
       trigger?: 'auto' | 'manual'
       preTokens?: number
+      estimatedNewTokens?: number
       messagesSummarized?: number
       summarizerFailed?: boolean
       error?: string

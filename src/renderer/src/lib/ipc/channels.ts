@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -228,6 +228,13 @@ export const IPC = {
   // Memory organization (daily memory auto-organization)
   MEMORY_ORGANIZATION_RUN: 'memory-organization:run',
   MEMORY_ORGANIZATION_SETTINGS_CHANGED: 'memory-organization:settings-changed',
+
+  // Global agent Task Board (global task / dispatch change events)
+  GLOBAL_TASK_CHANGED: 'global:task-changed',
+  GLOBAL_DISPATCH_CHANGED: 'global:dispatch-changed',
+
+  // Manual context compression summary deltas (live draft on the compression card)
+  AGENT_COMPRESSION_DELTA: 'agent:compression-delta',
 
   // Notify
   NOTIFY_DESKTOP: 'notify:desktop',

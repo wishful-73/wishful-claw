@@ -13,6 +13,12 @@ import {
 } from './preview-panel-helpers'
 import { resolvePanelScope } from './browser-session-helpers'
 import { ensureRightPanelTabs } from './right-panel-tab-factories'
+import {
+  activateRightPanelTab,
+  closeRightPanelScope,
+  hasRightPanelTabsInScope,
+  resolveRightPanelSessionId
+} from './right-panel-scope'
 
 type SetFn = (partial: Partial<UIStore> | ((state: UIStore) => Partial<UIStore>)) => void
 type GetFn = () => UIStore
@@ -79,7 +85,7 @@ export function createPreviewPanelSlice(set: SetFn, get: GetFn) {
           return {
             ...previewBase,
             rightPanelTabs,
-            rightPanelActiveTabId: previewRightPanelTabId,
+            ...activateRightPanelTab(state, scope.sessionId, previewRightPanelTabId),
             rightPanelOpen: true
           }
         }),
@@ -142,32 +148,37 @@ export function createPreviewPanelSlice(set: SetFn, get: GetFn) {
             state.activePreviewPanelTabId === tabId
               ? (nextTabs[Math.min(index, nextTabs.length - 1)]?.id ?? null)
               : state.activePreviewPanelTabId
+          // 双层栈：previewPanelTabs 与 rightPanelTabs 同步关闭，右栏激活项按
+          // 被关闭 tab 自己的作用域重算（相邻优先），不留第二套落位逻辑。
+          const closedRpTab = state.rightPanelTabs.find((tab: any) => tab.id === rpTabId)
+          const closedRpSessionId = closedRpTab?.sessionId ?? null
           return {
             previewPanelTabs: nextTabs,
             activePreviewPanelTabId: nextActiveId,
             previewPanelState: activatePreviewTab(nextTabs, nextActiveId),
             previewPanelOpen: nextTabs.length > 0 ? state.previewPanelOpen : false,
             rightPanelTabs: nextRightPanelTabs,
-            rightPanelActiveTabId:
-              state.rightPanelActiveTabId === rpTabId
-                ? (nextRightPanelTabs.length > 0
-                    ? nextRightPanelTabs[nextRightPanelTabs.length - 1].id
-                    : '')
-                : state.rightPanelActiveTabId
+            ...closeRightPanelScope(state, closedRpSessionId, rpTabId, state.rightPanelTabs),
+            ...(hasRightPanelTabsInScope(nextRightPanelTabs, resolveRightPanelSessionId(state))
+              ? {}
+              : { rightPanelOpen: false })
           }
         }),
       setActivePreviewTab: (tabId: any) =>
         set((state: any) => {
           const rpTabId = tabId ? rightPanelPreviewTabId(tabId) : null
+          const rpTab = rpTabId
+            ? state.rightPanelTabs.find((tab: any) => tab.id === rpTabId)
+            : null
           return {
             activePreviewPanelTabId: tabId,
             previewPanelState: activatePreviewTab(state.previewPanelTabs, tabId),
             previewPanelOpen: tabId ? true : state.previewPanelOpen,
             detailPanelOpen: tabId ? false : state.detailPanelOpen,
             detailPanelContent: tabId ? null : state.detailPanelContent,
-            ...(rpTabId && state.rightPanelTabs.some((tab: any) => tab.id === rpTabId)
+            ...(rpTab
               ? {
-                  rightPanelActiveTabId: rpTabId,
+                  ...activateRightPanelTab(state, rpTab.sessionId ?? null, rpTab.id),
                   rightPanelOpen: true
                 }
               : {})

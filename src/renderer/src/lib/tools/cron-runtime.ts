@@ -8,11 +8,13 @@ import { runAgentViaSidecar } from '@renderer/lib/agent/run-agent-via-sidecar'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { agentStream } from '@renderer/lib/ipc/agent-stream-receiver'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
+import { buildProviderPayload, resolveSendModel } from '@renderer/hooks/use-chat-actions'
 import { buildSidecarAgentRunRequest } from '@renderer/lib/ipc/sidecar-protocol'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { awaitSessionCreated, dbGetMessageCount, dbGetSession, dbUpdateSession, dbUpsertMessage } from '@renderer/stores/chat-store/db-helpers'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { fetchToolDefinitionsAsync } from './tool-cache'
 import { cronEvents, type CronFiredEvent } from './cron-events'
 
@@ -96,7 +98,7 @@ function resolveProvider(event: CronFiredEvent): { provider: AIProvider; modelId
   return { provider, modelId }
 }
 
-function buildProviderConfig(provider: AIProvider, modelId: string): ProviderConfig {
+function buildProviderConfig(provider: AIProvider, modelId: string, event: CronFiredEvent): ProviderConfig {
   const model = provider.models.find((candidate) => candidate.id === modelId)
   return {
     type: model?.type ?? provider.type,
@@ -111,6 +113,12 @@ function buildProviderConfig(provider: AIProvider, modelId: string): ProviderCon
     useSystemProxy: provider.useSystemProxy,
     allowInsecureTls: provider.allowInsecureTls,
     thinkingConfig: model?.thinkingConfig,
+    ...(typeof event.thinkingEnabled === 'boolean'
+      ? { thinkingEnabled: event.thinkingEnabled }
+      : {}),
+    ...(event.thinkingEnabled === true && event.reasoningEffort
+      ? { reasoningEffort: event.reasoningEffort }
+      : {}),
     requestOverrides: model?.requestOverrides ?? provider.requestOverrides,
     instructionsPrompt: provider.instructionsPrompt,
     cacheTtl: model?.cacheTtl ?? provider.cacheTtl,
@@ -166,7 +174,15 @@ async function prepareRunEvent(event: CronFiredEvent): Promise<CronFiredEvent> {
       reuseSessionId: sessionId,
       workingFolder: session.workingFolder ?? event.workingFolder,
       deliveryMode: 'session',
-      deliveryTarget: sessionId
+      deliveryTarget: sessionId,
+      ...(event.runMode === 'session'
+        ? {
+            agentId: null,
+            model: null,
+            thinkingEnabled: null,
+            reasoningEffort: null
+          }
+        : {})
     }
   }
 
@@ -174,15 +190,18 @@ async function prepareRunEvent(event: CronFiredEvent): Promise<CronFiredEvent> {
     ? chatStore.projects.find((candidate) => candidate.id === event.projectId)
     : undefined
   if (event.scope === 'project' && !project) throw new Error('The Automation project no longer exists')
-  const previousActiveSessionId = chatStore.activeSessionId
   const sessionId = chatStore.createSession('cowork', project?.id ?? null, {
     preserveProjectless: !project,
     workingFolder: project?.workingFolder ?? event.workingFolder ?? null,
-    sshConnectionId: project?.sshConnectionId ?? null
+    sshConnectionId: project?.sshConnectionId ?? null,
+    activate: false
   })
   chatStore.updateSessionTitle(sessionId, event.name?.trim() || 'Automation')
-  chatStore.setActiveSession(previousActiveSessionId)
   await awaitSessionCreated(sessionId)
+  const resolved = resolveProvider(event)
+  if (resolved) {
+    chatStore.setSessionModelManual(sessionId, resolved.provider.id, resolved.modelId)
+  }
   return {
     ...event,
     outputMode: 'new_session',
@@ -348,51 +367,19 @@ async function runInSession(runEvent: CronFiredEvent, result: CronRunResult): Pr
 
   let targetSession = chatStore.sessions.find((candidate) => candidate.id === sessionId)
 
-    // After an app restart the store is empty — channel sessions are created
-    // by the Main process and never enter the renderer store on their own.
-    // beginUserTurn silently no-ops for missing sessions (no placeholder
-    // messages → stream deltas have nothing to attach to), so inject first.
-    if (!targetSession) {
-      useChatStore.setState((state) => {
-        if (state.sessions.some((candidate) => candidate.id === sessionId)) return
-        state.sessions.push({
-          id: sessionId,
-          title: runEvent.name?.trim() || 'Automation',
-          mode: 'cowork',
-          messages: [],
-          messageCount: 0,
-          messagesLoaded: true,
-          loadedRangeStart: 0,
-          loadedRangeEnd: 0,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          projectId: runEvent.projectId ?? undefined,
-          workingFolder: runEvent.workingFolder ?? undefined,
-          pluginId: runEvent.pluginId ?? undefined,
-          externalChatId: runEvent.pluginChatId ?? undefined,
-          modelSelectionMode: 'inherit'
-        })
-      })
-      // Reload from DB so prior history is available before the new turn.
-      await useChatStore.getState().loadRecentSessionMessages(sessionId, true)
-      // The placeholder lacks persisted channel metadata — restore the real
-      // external chat target / plugin type from the DB session row.
-      if (!useChatStore.getState().sessions.find((candidate) => candidate.id === sessionId)?.externalChatId) {
-        const stored = await dbGetSession(sessionId).catch(() => null)
-        if (stored) {
-          useChatStore.setState((state) => {
-            const target = state.sessions.find((candidate) => candidate.id === sessionId)
-            if (!target) return
-            target.pluginId = target.pluginId ?? stored.pluginId
-            target.pluginType = target.pluginType ?? stored.pluginType
-            target.externalChatId = target.externalChatId ?? stored.externalChatId
-          })
-        }
-      }
-      chatStore = useChatStore.getState()
-      targetSession = chatStore.sessions.find((candidate) => candidate.id === sessionId)
-      if (!targetSession) throw new Error('The target session no longer exists')
-    }
+  if (!targetSession) {
+    targetSession = await dbGetSession(sessionId).catch(() => null) ?? undefined
+    if (!targetSession) throw new Error('The target session no longer exists')
+    useChatStore.setState((state) => {
+      if (state.sessions.some((candidate) => candidate.id === sessionId)) return
+      state.sessions.push(targetSession!)
+      state.sessionsById[sessionId] = state.sessions.length - 1
+    })
+    await useChatStore.getState().loadRecentSessionMessages(sessionId, true)
+    chatStore = useChatStore.getState()
+    targetSession = chatStore.sessions.find((candidate) => candidate.id === sessionId)
+    if (!targetSession) throw new Error('The target session no longer exists')
+  }
 
     // Channel echo uses the unified pipeline: register the session so
     // loop_end forwards the final reply to the external chat — identical
@@ -401,22 +388,33 @@ async function runInSession(runEvent: CronFiredEvent, result: CronRunResult): Pr
       registerExternalChannelReply(sessionId, targetSession.pluginId, targetSession.externalChatId)
     }
 
-    const resolved = resolveProvider(runEvent)
-    if (!resolved) throw new Error('No enabled provider/model configured for Cron task')
-    const provider = buildProviderConfig(resolved.provider, resolved.modelId)
+    let provider: Record<string, unknown>
+    if (runEvent.outputMode === 'reuse_session') {
+      const resolved = resolveSendModel(sessionId)
+      if (!resolved) throw new Error('No enabled provider/model configured for the target session')
+      provider = buildProviderPayload(resolved.provider, resolved.modelId, useSettingsStore.getState())
+    } else {
+      const resolved = resolveProvider(runEvent)
+      if (!resolved) throw new Error('No enabled provider/model configured for Cron task')
+      provider = buildProviderConfig(resolved.provider, resolved.modelId, runEvent) as unknown as Record<string, unknown>
+    }
 
     // Subscribe before sendMessage: stream events may arrive before the IPC
     // request returns. This also works when the Automation page is mounted.
     const completionPromise = waitForCronSessionCompletion(sessionId)
     await chatStore.sendMessage({
-      provider: provider as unknown as Record<string, unknown>,
+      provider,
       messages: [{ role: 'user', content: runEvent.prompt?.trim() || 'Run the scheduled task.' }],
       sessionId,
-      toolPreset: runEvent.workingFolder ? 'coding' : 'chat',
-      workingFolder: runEvent.workingFolder,
+      toolPreset: targetSession.scope === 'project' && targetSession.collaborationMode === 'cowork' ? 'coding' : 'chat',
+      workingFolder: targetSession.scope === 'project' ? targetSession.workingFolder : undefined,
+      projectId: targetSession.scope === 'project' ? targetSession.projectId : undefined,
+      scope: targetSession.scope,
+      collaborationMode: targetSession.collaborationMode,
+      runtimeRole: 'sessionAgent',
       maxIterations: runEvent.maxIterations && runEvent.maxIterations > 0 ? runEvent.maxIterations : 15,
       forceApproval: false,
-      permissionMode: 'fullAccess',
+      permissionMode: targetSession.permissionMode,
       nonInteractive: true,
       callerAgent: runEvent.agentId ?? undefined
     } as unknown as Parameters<typeof chatStore.sendMessage>[0])
@@ -466,7 +464,7 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
 
     const resolved = resolveProvider(runEvent)
     if (!resolved) throw new Error('No enabled provider/model configured for Cron task')
-    const provider = buildProviderConfig(resolved.provider, resolved.modelId)
+    const provider = buildProviderConfig(resolved.provider, resolved.modelId, runEvent)
     const preset = runEvent.workingFolder ? 'coding' : 'chat'
     const tools = await fetchToolDefinitionsAsync(preset) as unknown as ToolDefinition[]
     const message: UnifiedMessage = {
@@ -481,11 +479,16 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
       tools,
       runId,
       sessionId: runEvent.sessionId ?? undefined,
+      projectId: runEvent.projectId ?? undefined,
       workingFolder: runEvent.workingFolder ?? undefined,
+      scope: runEvent.scope === 'project' ? 'project' : 'global',
+      collaborationMode: runEvent.scope === 'project' ? 'cowork' : 'chat',
+      runtimeRole: 'automation',
+      toolPreset: preset,
       maxIterations: runEvent.maxIterations && runEvent.maxIterations > 0 ? runEvent.maxIterations : 15,
       forceApproval: false,
       permissionMode: 'fullAccess',
-      sessionMode: 'agent',
+      sessionMode: 'normal',
       callerAgent: runEvent.agentId ?? undefined,
       pluginId: runEvent.pluginId ?? undefined,
       pluginChatId: runEvent.pluginChatId ?? undefined

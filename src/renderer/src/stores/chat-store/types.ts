@@ -1,8 +1,11 @@
 ﻿import type { TokenUsageWire, RequestTimingWire } from '@shared/agent-stream-protocol'
 import type { RequestDebugInfo, MessageMeta, ContentBlock } from '@renderer/lib/api/types'
 
-// ─── Session Mode ───
+// ─── Session Context ───
 export type SessionMode = 'chat' | 'clarify' | 'cowork' | 'code' | 'acp'
+export type SessionScope = 'global' | 'project'
+export type CollaborationMode = 'chat' | 'cowork'
+export type PermissionMode = 'default' | 'fullAccess'
 
 export type SessionModelSelectionMode = 'inherit' | 'auto' | 'manual'
 
@@ -68,6 +71,9 @@ export interface Session {
   title: string
   icon?: string
   mode: SessionMode
+  scope: SessionScope
+  collaborationMode: CollaborationMode
+  permissionMode: PermissionMode
   messages: ChatMessage[]
   messageCount: number
   messagesLoaded: boolean
@@ -97,6 +103,7 @@ export interface Session {
   // Updated on each message_end event, read directly by the status bar.
   sessionCacheHit?: number
   sessionCacheMiss?: number
+  isRuntimeResident?: boolean
 }
 
 // ─── Project ───
@@ -116,10 +123,14 @@ export interface Project {
 
 // ─── Create Session Options ───
 export interface CreateSessionOptions {
+  scope?: SessionScope
+  collaborationMode?: CollaborationMode
+  permissionMode?: PermissionMode
   preserveProjectless?: boolean
   planId?: string | null
   workingFolder?: string | null
   sshConnectionId?: string | null
+  activate?: boolean
 }
 
 // ─── Session Prompt Snapshot (placeholder, 迭代七完善) ───
@@ -144,6 +155,9 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     title: session.title,
     icon: session.icon,
     mode: session.mode,
+    scope: session.scope,
+    collaborationMode: session.collaborationMode,
+    permissionMode: session.permissionMode,
     messages: session.messages,
     messageCount: session.messageCount,
     messagesLoaded: session.messagesLoaded,
@@ -167,6 +181,7 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     providerId: session.providerId,
     modelId: session.modelId,
     sessionCacheHit: session.sessionCacheHit,
-    sessionCacheMiss: session.sessionCacheMiss
+    sessionCacheMiss: session.sessionCacheMiss,
+    isRuntimeResident: session.isRuntimeResident
   }
 }

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import type { TFunction } from 'i18next'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
-import { useSettingsStore } from '@renderer/stores/settings-store'
+import { useChatStore } from '@renderer/stores/chat-store'
 
 // Permission modes were simplified to two tiers: default (ask for risky
 // tools) and fullAccess (YOLO — auto-approve everything). The legacy
@@ -11,16 +11,16 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 export type PermissionMode = 'default' | 'fullAccess'
 
 interface UsePermissionModeOptions {
-  autoApprove: boolean
+  sessionId: string | null
+  permissionMode: PermissionMode
+  onPendingModeChange?: (mode: PermissionMode) => void
   t: TFunction
 }
 
 export function usePermissionMode(opts: UsePermissionModeOptions) {
-  const permissionMode: PermissionMode = opts.autoApprove ? 'fullAccess' : 'default'
-
   const handleSelectPermissionMode = React.useCallback(
     async (mode: PermissionMode): Promise<void> => {
-      if (mode === permissionMode) return
+      if (mode === opts.permissionMode) return
       if (mode === 'fullAccess') {
         const ok = await confirm({
           title: opts.t('permission.fullAccessConfirmTitle'),
@@ -29,13 +29,15 @@ export function usePermissionMode(opts: UsePermissionModeOptions) {
           variant: 'destructive'
         })
         if (!ok) return
-        useSettingsStore.getState().updateSettings({ autoApprove: true })
-        return
       }
-      useSettingsStore.getState().updateSettings({ autoApprove: false })
+      if (opts.sessionId) {
+        useChatStore.getState().updateSessionPermissionMode(opts.sessionId, mode)
+      } else {
+        opts.onPendingModeChange?.(mode)
+      }
     },
-    [permissionMode, opts.t]
+    [opts]
   )
 
-  return { permissionMode, handleSelectPermissionMode }
+  return { permissionMode: opts.permissionMode, handleSelectPermissionMode }
 }

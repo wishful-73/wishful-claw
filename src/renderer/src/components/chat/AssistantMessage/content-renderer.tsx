@@ -24,10 +24,7 @@ import { useImageEditStore } from '@renderer/stores/image-edit-store'
 import {
   getLiveOutputCursorClass
 } from '@renderer/lib/live-output-animation'
-import type {
-  AssistantRenderItemWithInlineSummary,
-  ThinkSegment
-} from './types'
+import type { AssistantRenderItem, ThinkSegment } from './types'
 import { MARKDOWN_WRAPPER_CLASS as MD_CLASS } from './types'
 import { parseThinkTags, stripThinkTags } from './think-parser'
 import { StreamingMarkdownContent } from './markdown-renderer'
@@ -42,7 +39,7 @@ export interface ContentRendererProps {
   isStreaming: boolean | undefined
   normalizedContent: ContentBlock[] | null
   stringSegments: ThinkSegment[] | null
-  renderItemsWithInlineSummaries: AssistantRenderItemWithInlineSummary[]
+  renderItems: AssistantRenderItem[]
   renderMode?: 'default' | 'transcript' | 'static'
   thinkingModelName: string
   liveComponentClassName: string
@@ -79,7 +76,7 @@ export function ContentRenderer({
   isStreaming,
   normalizedContent,
   stringSegments,
-  renderItemsWithInlineSummaries,
+  renderItems,
   renderMode,
   thinkingModelName,
   liveComponentClassName,
@@ -116,7 +113,6 @@ export function ContentRenderer({
     generatingImagePreview?.source.type === 'base64' && generatingImagePreview.source.data
       ? `data:${generatingImagePreview.source.mediaType || 'image/png'};base64,${generatingImagePreview.source.data}`
       : (generatingImagePreview?.source.url ?? '')
-
   if (shouldShowImageGeneratingLoader && hasEmptyContent) {
     return (
       <div className={liveComponentClassName || undefined}>
@@ -296,17 +292,13 @@ export function ContentRenderer({
   // Split items into process (thinking/tool_use) and final output (text/image).
   // hasProcessContent is true only when there are tool calls — thinking-only won't collapse.
   const { processItems, finalItems, hasProcessContent } =
-    splitProcessAndFinal(renderItemsWithInlineSummaries, normalizedContent)
+    splitProcessAndFinal(renderItems, normalizedContent)
 
   // Count thinking blocks for summary
   const thinkingBlockCount = normalizedContent?.filter((b) => b.type === 'thinking').length ?? 0
   const processSummary = buildProcessSummary(toolExecutionOutline, thinkingBlockCount, t)
 
-  const renderItem = (item: AssistantRenderItemWithInlineSummary): React.JSX.Element | null => {
-    if (item.kind === 'compact-summary') {
-      return null
-    }
-
+  const renderItem = (item: AssistantRenderItem): React.JSX.Element | null => {
     if (item.kind === 'block') {
       const block = normalizedContent![item.index]
       switch (block.type) {
@@ -478,7 +470,7 @@ export function ContentRenderer({
         finalItems.map((item) => renderItem(item))
       ) : hasProcessContent && !isStreaming && renderMode !== 'transcript' ? (
         <div className={MD_CLASS}>
-          <p className="text-muted-foreground">{t('assistantMessage.cancelledExecution', { defaultValue: '用户取消，中断执行' })}</p>
+          <p className="text-muted-foreground">{t('assistantMessage.executionPaused', { defaultValue: '任务暂告一段落' })}</p>
         </div>
       ) : null}
       {isStreaming && <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />}

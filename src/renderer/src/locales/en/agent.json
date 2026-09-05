@@ -5,12 +5,26 @@
     "boundaryTitle": "Context compressed from here",
     "boundarySummarized": "{{count}} messages summarized",
     "compressing": "Compressing context…",
+    "compressingManual": "Manually compressing context…",
     "compressed": "Context compressed",
     "compressedDetail": "{{count}} messages compressed",
     "summaryCollapse": "Collapse summary",
     "summaryExpand": "Expand summary",
     "summaryTitle": "Compressed Context Summary",
     "summaryMessages": "Earlier {{count}} messages",
-    "summaryRecentPreserved": "Recent messages preserved"
+    "summaryRecentPreserved": "Recent messages preserved",
+    "skipped": "Context compression skipped",
+    "blocked": "Context compression blocked",
+    "cancelled": "Context compression cancelled",
+    "failed": "Context compression failed",
+    "boundaryPreTokens": "{{tokens}} tokens at trigger",
+    "summarizerFailed": "Fallback summary used (summarizer unavailable)",
+    "summarizing": "Writing summary…",
+    "summarizingRetry": "Rewriting summary (attempt {{attempt}}/{{maxAttempts}})…",
+    "summarizingHint": "Writing a summary of earlier context…",
+    "divider": "Context compressed",
+    "dividerWithCount": "Context compressed · {{count}} earlier messages summarized",
+    "summaryFallbackWarning": "Summary generation failed; fallback summary used and context remains compressed",
+    "mechanicalFoldDigest": "{{messageCount}} earlier messages were folded here to free context, but the automatic summary was unavailable."
   }
 }

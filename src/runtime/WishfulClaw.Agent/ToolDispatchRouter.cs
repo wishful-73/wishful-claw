@@ -208,7 +208,7 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
-        // Task: in-memory task management
+        // Task: session-scoped agent Todo (SQLite-backed, OpenCowork semantics)
         else if (AgentRuntimeTaskExecutor.IsTaskTool(toolCall.Name))
         {
             toolOutput = AgentRuntimeTaskExecutor.Execute(toolCall, state.Parameters);
@@ -451,6 +451,39 @@ public static class ToolDispatchRouter
             catch (Exception ex)
             {
                 toolOutput = $"Project tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
+        // Global agent task tools: list_global_tasks / create_global_task / update_global_task /
+        // list_global_dispatches / send_work_request / update_dispatch
+        else if (AgentRuntimeGlobalTaskExecutor.IsGlobalTaskTool(toolCall.Name))
+        {
+            try
+            {
+                toolOutput = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+                    toolCall, state.Parameters, context, state.CancellationToken);
+                isToolError = IsJsonError(toolOutput);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Global task tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
+        // Global dispatch reply: target sessions report results back to the global agent
+        else if (AgentRuntimeGlobalDispatchReplyExecutor.IsGlobalDispatchReplyTool(toolCall.Name))
+        {
+            try
+            {
+                toolOutput = await AgentRuntimeGlobalDispatchReplyExecutor.ExecuteAsync(
+                    toolCall, state.Parameters, context, state.CancellationToken);
+                isToolError = IsJsonError(toolOutput);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Dispatch reply tool execution failed: {ex.Message}";
                 isToolError = true;
             }
         }

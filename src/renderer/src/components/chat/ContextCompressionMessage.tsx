@@ -1,8 +1,8 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import Markdown from 'react-markdown'
 import { useTranslation } from 'react-i18next'
-import { Archive, ChevronDown } from 'lucide-react'
-import type { UnifiedMessage } from '@renderer/lib/api/types'
+import { AlertTriangle, ChevronDown, Scissors } from 'lucide-react'
+import type { CompactBoundaryMeta, UnifiedMessage } from '@renderer/lib/api/types'
 import {
   getCompactSummaryDisplayText,
   isCompactSummaryLikeMessage
@@ -12,86 +12,113 @@ import {
   MARKDOWN_REMARK_PLUGINS
 } from '@renderer/lib/preview/viewers/markdown-components'
 
-function buildSummaryPreview(content: string): string {
-  const firstMeaningfulLine = content
-    .split('\n')
-    .map((line) => line.trim())
-    .find(Boolean)
+function LiveCompressionDraft({
+  draft,
+  trigger
+}: {
+  draft: string
+  trigger?: 'auto' | 'manual'
+}): React.JSX.Element {
+  const { t } = useTranslation('agent')
 
-  return (firstMeaningfulLine ?? content)
-    .replace(/^#{1,6}\s+/, '')
-    .replace(/[*_`[\]]/g, '')
-    .trim()
+  return (
+    <div className="my-2 rounded-md border border-amber-500/30 bg-muted/25 px-3 py-2 text-[12px]">
+      <div className="flex items-center gap-2">
+        <div className="size-3.5 shrink-0 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+        <span className="font-medium text-foreground">
+          {trigger === 'manual'
+            ? t('contextCompression.compressingManual', { defaultValue: 'Manually compressing context…' })
+            : t('contextCompression.compressing', { defaultValue: 'Compressing context…' })}
+        </span>
+      </div>
+      {draft.trim() ? (
+        <p className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap text-[12px] leading-5 text-muted-foreground">
+          {draft}
+        </p>
+      ) : (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          {t('contextCompression.summarizingHint', {
+            defaultValue: 'Writing a summary of earlier context…'
+          })}
+        </p>
+      )}
+    </div>
+  )
 }
 
 export function ContextCompressionMessage({
-  message
+  message,
+  summary,
+  boundary,
+  trigger,
+  draft,
+  isLive = false
 }: {
-  message: UnifiedMessage
+  message?: UnifiedMessage
+  summary?: UnifiedMessage
+  boundary?: CompactBoundaryMeta
+  trigger?: 'auto' | 'manual'
+  draft?: string
+  isLive?: boolean
 }): React.JSX.Element | null {
   const { t } = useTranslation('agent')
   const [expanded, setExpanded] = React.useState(false)
 
-  if (!isCompactSummaryLikeMessage(message)) {
+  if (isLive) {
+    return <LiveCompressionDraft draft={draft ?? ''} trigger={trigger} />
+  }
+
+  const effectiveMessage = summary ?? message
+  if (!effectiveMessage || !isCompactSummaryLikeMessage(effectiveMessage)) {
     return null
   }
 
-  const content = getCompactSummaryDisplayText(message).trim()
+  const content = getCompactSummaryDisplayText(effectiveMessage).trim()
   if (!content) return null
 
-  const meta = message.meta?.compactSummary
-  const preview = buildSummaryPreview(content)
+  const meta = effectiveMessage.meta?.compactSummary
+  const effectiveBoundary = boundary ?? effectiveMessage.meta?.compactBoundary
+  const effectiveTrigger = trigger ?? effectiveBoundary?.trigger ?? 'auto'
+  const summarizedCount = effectiveBoundary?.messagesSummarized ?? meta?.messagesSummarized ?? 0
   const toggleLabel = expanded
     ? t('contextCompression.summaryCollapse', { defaultValue: 'Collapse summary' })
     : t('contextCompression.summaryExpand', { defaultValue: 'Expand summary' })
+  const dividerLabel =
+    summarizedCount > 0
+      ? t('contextCompression.dividerWithCount', {
+          defaultValue: 'Context compressed · {{count}} earlier messages summarized',
+          count: summarizedCount
+        })
+      : t('contextCompression.divider', { defaultValue: 'Context compressed' })
+  const triggerSuffix = effectiveTrigger === 'manual' ? ' · Manual' : ' · Auto'
 
   return (
-    <div className="my-2 rounded-md border border-border bg-muted/25 px-3 py-2.5">
-      <div className="flex items-start gap-2">
-        <Archive className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[12px] font-medium text-foreground">
-              {t('contextCompression.summaryTitle', {
-                defaultValue: 'Compressed Context Summary'
-              })}
-            </span>
-            {typeof meta?.messagesSummarized === 'number' && meta.messagesSummarized > 0 ? (
-              <span className="rounded border border-border/70 bg-background/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {t('contextCompression.summaryMessages', {
-                  defaultValue: 'Earlier {{count}} messages',
-                  count: meta.messagesSummarized
-                })}
-              </span>
-            ) : null}
-            {meta?.recentMessagesPreserved ? (
-              <span className="rounded border border-border/70 bg-background/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {t('contextCompression.summaryRecentPreserved', {
-                  defaultValue: 'Recent messages preserved'
-                })}
-              </span>
-            ) : null}
-          </div>
-          {!expanded && preview ? (
-            <div className="mt-1 line-clamp-2 text-[12px] leading-5 text-muted-foreground">
-              {preview}
-            </div>
-          ) : null}
-        </div>
+    <div className="my-4">
+      <div className="flex items-center gap-2">
+        <div className="h-px flex-1 bg-gradient-to-r from-transparent to-amber-500/40" />
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label={toggleLabel}
+          aria-expanded={expanded}
           title={toggleLabel}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-500/20 dark:text-amber-300"
         >
-          <ChevronDown
-            className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          />
+          <Scissors className="size-3" />
+          {dividerLabel}{triggerSuffix}
+          <ChevronDown className={`size-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
         </button>
+        <div className="h-px flex-1 bg-gradient-to-l from-transparent to-amber-500/40" />
       </div>
+      {meta?.summarizerFailed ? (
+        <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="size-3" />
+          {t('contextCompression.summaryFallbackWarning', {
+            defaultValue: 'Summary generation failed; fallback summary used and context remains compressed'
+          })}
+        </div>
+      ) : null}
       {expanded ? (
-        <div className="mt-2 border-t border-border/70 pt-2 prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground dark:prose-invert [&_h1]:mb-2 [&_h1]:mt-1 [&_h1]:text-base [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:text-sm [&_li]:my-0.5 [&_p]:my-1.5 [&_pre]:overflow-x-auto">
+        <div className="mt-2 rounded-md border border-border bg-muted/25 px-3 py-2.5 prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground dark:prose-invert [&_h1]:mb-2 [&_h1]:mt-1 [&_h1]:text-base [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:text-sm [&_li]:my-0.5 [&_p]:my-1.5 [&_pre]:overflow-x-auto">
           <Markdown remarkPlugins={MARKDOWN_REMARK_PLUGINS} rehypePlugins={MARKDOWN_REHYPE_PLUGINS}>
             {content}
           </Markdown>

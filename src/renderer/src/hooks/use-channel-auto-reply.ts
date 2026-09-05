@@ -23,6 +23,8 @@ import { useChannelStore } from '@renderer/stores/channel-store'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { AgentStreamEvent } from '../../../shared/agent-stream-protocol'
 import type { ChatMessage } from '@renderer/stores/chat-store/types'
+import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
+import { normalizeSessionContext } from '@renderer/lib/session-context'
 import type { ThinkingConfig } from '../../../shared/types/provider'
 
 // ── Types ──
@@ -144,26 +146,43 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
   const chatStore = useChatStore.getState()
   let session = chatStore.sessions.find((s) => s.id === sessionId)
   if (!session) {
-    // Inject the session into the store (it was already created in DB by auto-reply.ts)
+    const storedSession = await dbGetSession(sessionId).catch(() => null)
+    const settings = useSettingsStore.getState()
+    const context = storedSession
+      ? null
+      : normalizeSessionContext(
+          {
+            scope: task.projectId ? 'project' : 'global',
+            projectId: task.projectId
+          },
+          {
+            projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+            coworkPermissionMode: settings.coworkDefaultPermissionMode
+          }
+        )
+    session = storedSession ?? {
+      id: sessionId,
+      title: task.sessionTitle || task.chatId,
+      mode: 'cowork',
+      ...context!,
+      messages: [],
+      messageCount: 0,
+      messagesLoaded: true,
+      loadedRangeStart: 0,
+      loadedRangeEnd: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      workingFolder: context?.scope === 'project' ? task.workingFolder : undefined,
+      sshConnectionId: context?.scope === 'project' ? task.sshConnectionId ?? undefined : undefined,
+      pluginId,
+      externalChatId: chatId,
+      modelSelectionMode: 'inherit'
+    }
     useChatStore.setState((state) => {
-      state.sessions.push({
-        id: sessionId,
-        title: task.sessionTitle || task.chatId,
-        mode: 'cowork',
-        messages: [],
-        messageCount: 0,
-        messagesLoaded: true,
-        loadedRangeStart: 0,
-        loadedRangeEnd: 0,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        projectId: task.projectId,
-        workingFolder: task.workingFolder,
-        sshConnectionId: task.sshConnectionId ?? undefined,
-        pluginId,
-        externalChatId: chatId,
-        modelSelectionMode: 'inherit'
-      })
+      if (!state.sessions.some((candidate) => candidate.id === sessionId)) {
+        state.sessions.push(session!)
+        state.sessionsById[sessionId] = state.sessions.length - 1
+      }
     })
   }
 
@@ -246,12 +265,17 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
       provider,
       messages: [{ role: 'user', content }],
       sessionId,
-      toolPreset: task.workingFolder ? 'coding' : 'chat',
+      toolPreset: session.collaborationMode === 'cowork' && session.workingFolder ? 'coding' : 'chat',
       webSearchEnabled: settings.webSearchEnabled,
-      workingFolder: task.workingFolder,
+      workingFolder: session.scope === 'project' ? session.workingFolder : undefined,
+      sshConnectionId: session.scope === 'project' ? session.sshConnectionId : undefined,
+      projectId: session.scope === 'project' ? session.projectId : undefined,
+      scope: session.scope,
+      collaborationMode: session.collaborationMode,
+      runtimeRole: 'sessionAgent',
+      permissionMode: session.permissionMode,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,
-      maxToolCallsPerTurn: settings.maxToolCallsPerTurn,
       maxConcurrentSubAgents: settings.maxConcurrentSubAgents,
       personaId: settings.defaultPersonaId ?? undefined,
       language: settings.language,

@@ -3,6 +3,8 @@ import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
+import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 
 export interface SessionSlice {
   sessions: Session[]
@@ -17,12 +19,14 @@ export interface SessionSlice {
     projectId?: string | null,
     options?: CreateSessionOptions
   ) => string
-  deleteSession: (id: string) => void
-  setActiveSession: (id: string | null) => void
+  deleteSession: (id: string) => Promise<void>
+  setActiveSession: (id: string | null) => Promise<boolean>
   updateSessionTitle: (id: string, title: string) => void
   renameSession: (id: string, title: string) => void
   updateSessionIcon: (id: string, icon: string) => void
   updateSessionMode: (id: string, mode: Session['mode']) => void
+  updateSessionCollaborationMode: (id: string, mode: Session['collaborationMode']) => void
+  updateSessionPermissionMode: (id: string, mode: Session['permissionMode']) => void
   setSessionModelManual: (sessionId: string, providerId: string, modelId: string) => void
   setSessionModelAuto: (sessionId: string) => void
   setSessionModelInherit: (sessionId: string) => void
@@ -72,6 +76,8 @@ function findSessionIndex(sessions: Session[], id: string): number {
   return sessions.findIndex((s) => s.id === id)
 }
 
+let pendingSessionSwitch: { id: string | null; promise: Promise<boolean> } | null = null
+
 export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', never]], [], SessionSlice> = (set, get) => ({
   sessions: [],
   sessionsById: {},
@@ -80,22 +86,28 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   createSession: (mode, projectId, options) => {
     const id = nanoid()
     const now = Date.now()
-    const preserveProjectless = options?.preserveProjectless === true
-
-    let targetProjectId = preserveProjectless
-      ? (projectId ?? null)
-      : (projectId ?? get()['activeProjectId' as keyof SessionSlice] as string | null ?? null)
-
-    // Try to find a default project if none specified
-    if (!targetProjectId && !preserveProjectless) {
-      const projects = (get() as unknown as { projects: Array<{ id: string; pluginId?: string }> }).projects
-      targetProjectId = projects?.find((p) => !p.pluginId)?.id ?? projects?.[0]?.id ?? null
-    }
+    const settings = useSettingsStore.getState()
+    const requestedScope = options?.scope ??
+      (options?.preserveProjectless === true || !projectId ? 'global' : 'project')
+    const context = normalizeSessionContext(
+      {
+        scope: requestedScope,
+        collaborationMode: options?.collaborationMode,
+        permissionMode: options?.permissionMode,
+        projectId
+      },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const targetProjectId = context.projectId ?? null
 
     const newSession: Session = {
       id,
       title: 'New Conversation',
       mode,
+      ...context,
       messages: [],
       messageCount: 0,
       messagesLoaded: true,
@@ -103,6 +115,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       loadedRangeEnd: 0,
       totalTurns: 0,
       lastKnownMessageCount: 0,
+      isRuntimeResident: false,
       createdAt: now,
       updatedAt: now,
       projectId: targetProjectId ?? undefined,
@@ -115,7 +128,6 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     set((state) => {
       state.sessions.push(newSession)
       syncSessionsById(state)
-      state.activeSessionId = id
       if (targetProjectId) {
         const proj = (state as unknown as { projects: Array<{ id: string; updatedAt: number }> }).projects.find((p) => p.id === targetProjectId)
         if (proj) proj.updatedAt = now
@@ -126,22 +138,46 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     if (targetProjectId) {
       void dbUpdateProject(targetProjectId, { updatedAt: now })
     }
+    if (options?.activate !== false) {
+      void get().setActiveSession(id)
+    }
     return id
   },
 
-  deleteSession: (id) => {
+  deleteSession: async (id) => {
+    const wasActive = get().activeSessionId === id
+    const nextActiveId = wasActive
+      ? get().sessions.find((session) => session.id !== id)?.id ?? null
+      : null
+    if (wasActive) {
+      const switched = await get().setActiveSession(nextActiveId)
+      if (!switched) return
+    }
+
     set((state) => {
       const idx = findSessionIndex(state.sessions, id)
       if (idx !== -1) {
         state.sessions.splice(idx, 1)
         syncSessionsById(state)
       }
-      if (state.activeSessionId === id) {
-        state.activeSessionId = state.sessions[0]?.id ?? null
-      }
     })
     void dbDeleteSession(id)
     void window.api.workerRequest('agent/clear-session', { sessionId: id })
+    // Cascade: drop the deleted session's agent Todo rows (DB + memory cache).
+    // Dynamic import avoids a chat-store → task-store → chat-store cycle.
+    void import('@renderer/stores/task-store')
+      .then(({ useTaskStore }) => {
+        useTaskStore.getState().deleteSessionTasks(id)
+        // The fallback switch to sessions[0] above bypasses setActiveSession,
+        // so load the new active session's tasks here.
+        const nextActive = get().activeSessionId
+        if (nextActive) {
+          void useTaskStore.getState().loadTasksForSession(nextActive)
+        }
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clean tasks for deleted session:', err)
+      })
     // Drop the persisted composer draft so deleted sessions leave no orphans.
     void removeSessionInputDraft(id)
     void import('@renderer/hooks/use-chat-actions')
@@ -153,7 +189,14 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     // import avoids a chat-store → ui-store circular dependency at load time).
     void import('@renderer/stores/ui-store')
       .then(({ useUIStore }) => {
-        useUIStore.getState().removeRightPanelTabsForSession(id)
+        // 上面的回落在 immer 事务里直写 activeSessionId、不经 setActiveSession，
+        // 作用域锚点必须在这里补一次，否则删掉当前会话后锚点停在已删 id，右侧
+        // 面板的 tab 过滤结果恒空（面板空白，直到用户手动再切一次会话）。
+        const nextActiveId = get().activeSessionId
+        const ui = useUIStore.getState()
+        ui.syncSessionScopedState(nextActiveId, resolveSessionProjectId(get().sessions, nextActiveId))
+        // 先同步作用域再清 tab：closeRightPanelTab 的收起判据读的是当前作用域。
+        ui.removeRightPanelTabsForSession(id)
       })
       .catch((err) => {
         console.warn('[chat-store] Failed to clean right-panel tabs for deleted session:', err)
@@ -161,7 +204,43 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   },
 
   setActiveSession: (id) => {
-    set({ activeSessionId: id })
+    const currentId = get().activeSessionId
+    if (currentId === id) return Promise.resolve(true)
+    if (pendingSessionSwitch?.id === id) return pendingSessionSwitch.promise
+
+    const promise = (async (): Promise<boolean> => {
+      const { useUIStore } = await import('@renderer/stores/ui-store')
+      const ui = useUIStore.getState()
+      const prepared = await ui.prepareSessionSwitch(id)
+      if (!prepared) return false
+
+      set({ activeSessionId: id })
+      ui.syncSessionScopedState(id, resolveSessionProjectId(get().sessions, id))
+
+      // Keep the session-scoped task store in sync with the visible session.
+      void import('@renderer/stores/task-store')
+        .then(({ useTaskStore }) => {
+          if (id) {
+            void useTaskStore.getState().loadTasksForSession(id)
+          } else {
+            useTaskStore.getState().clearTasks()
+          }
+        })
+        .catch((err) => {
+          console.warn('[chat-store] Failed to sync session tasks:', err)
+        })
+      return true
+    })()
+    pendingSessionSwitch = { id, promise }
+    void promise.then(
+      () => {
+        if (pendingSessionSwitch?.promise === promise) pendingSessionSwitch = null
+      },
+      () => {
+        if (pendingSessionSwitch?.promise === promise) pendingSessionSwitch = null
+      }
+    )
+    return promise
   },
 
   updateSessionTitle: (id, title) => {
@@ -212,16 +291,71 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     void dbUpdateSession(id, { mode, updatedAt: now })
   },
 
+  updateSessionCollaborationMode: (id, mode) => {
+    const session = get().sessions.find((item) => item.id === id)
+    if (!session) return
+    const settings = useSettingsStore.getState()
+    const context = normalizeSessionContext(
+      { ...session, collaborationMode: mode },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const now = Date.now()
+    set((state) => {
+      const target = state.sessions.find((item) => item.id === id)
+      if (!target) return
+      Object.assign(target, context, { updatedAt: now })
+    })
+    void dbUpdateSession(id, { ...context, updatedAt: now })
+  },
+
+  updateSessionPermissionMode: (id, mode) => {
+    const session = get().sessions.find((item) => item.id === id)
+    if (!session) return
+    const settings = useSettingsStore.getState()
+    const context = normalizeSessionContext(
+      { ...session, permissionMode: mode },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const now = Date.now()
+    set((state) => {
+      const target = state.sessions.find((item) => item.id === id)
+      if (!target) return
+      Object.assign(target, context, { updatedAt: now })
+    })
+    void dbUpdateSession(id, { ...context, updatedAt: now })
+  },
+
   clearSessionMessages: (sessionId) => {
     set((state) => {
       const session = state.sessions.find((s) => s.id === sessionId)
       if (session) {
         session.messages = []
         session.messageCount = 0
+        session.messagesLoaded = true
+        session.loadedRangeStart = 0
+        session.loadedRangeEnd = 0
+        session.totalTurns = 0
+        session.lastKnownMessageCount = 0
+        session.isRuntimeResident = false
         session.updatedAt = Date.now()
       }
     })
     void window.api.workerRequest("agent/clear-session", { sessionId })
+    // Clearing the conversation also drops its session-scoped agent Todos
+    // (DB rows are removed via db:tasks:delete-by-session inside the store).
+    void import('@renderer/stores/task-store')
+      .then(({ useTaskStore }) => {
+        useTaskStore.getState().deleteSessionTasks(sessionId)
+      })
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear tasks for cleared session:', err)
+      })
     void import('@renderer/hooks/use-chat-actions')
       .then(({ clearPendingSessionMessages }) => clearPendingSessionMessages(sessionId))
       .catch((err) => {
@@ -260,9 +394,9 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     set((state) => {
       state.sessions.push(copy)
       syncSessionsById(state)
-      state.activeSessionId = newId
     })
     void dbCreateSession(copy)
+    void get().setActiveSession(newId)
     return newId
   },
 
@@ -283,8 +417,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     set((state) => {
       state.sessions = []
       state.sessionsById = {}
-      state.activeSessionId = null
     })
+    void get().setActiveSession(null)
     void import('@renderer/hooks/use-chat-actions')
       .then(({ clearPendingSessionMessages }) => {
         for (const sessionId of sessionIds) clearPendingSessionMessages(sessionId)
@@ -300,6 +434,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       if (session) {
         session.messages.push(msg)
         session.messageCount = session.messages.length
+        session.messagesLoaded = true
+        session.isRuntimeResident = true
         session.updatedAt = Date.now()
       }
     })
@@ -319,6 +455,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         session.messages.push(assistantMsg)
       }
       session.messageCount = session.messages.length
+      session.messagesLoaded = true
+      session.isRuntimeResident = true
       session.updatedAt = now
       if (sessionProjectId) {
         const proj = (state as unknown as { projects: Array<{ id: string; updatedAt: number }> }).projects.find((p) => p.id === sessionProjectId)
@@ -482,6 +620,10 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     const session = state.sessions.find((s) => s.id === sessionId)
     if (!session) return
 
+    if (session.isRuntimeResident) {
+      return
+    }
+
     // Already loaded and no change
     if (!_force && session.messagesLoaded && session.messages.length > 0) {
       return
@@ -496,7 +638,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       if (actualCount === 0) {
         set((state) => {
           const target = state.sessions.find((s) => s.id === sessionId)
-          if (!target) return
+          if (!target || target.isRuntimeResident) return
           target.messages = []
           target.messagesLoaded = true
           target.messageCount = 0
@@ -515,7 +657,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
 
       set((state) => {
         const target = state.sessions.find((s) => s.id === sessionId)
-        if (!target) return
+        if (!target || target.isRuntimeResident) return
         target.messages = messages
         target.messageCount = actualCount
         target.messagesLoaded = true
@@ -601,6 +743,15 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       set((state) => {
         const target = state.sessions.find((s) => s.id === sessionId)
         if (!target) return
+        if (target.isRuntimeResident) {
+          const existingIds = new Set(target.messages.map((message) => message.id))
+          target.messages = [...target.messages, ...messages.filter((message) => !existingIds.has(message.id))]
+            .sort((left, right) => left.createdAt - right.createdAt)
+          target.messageCount = Math.max(target.messageCount, target.messages.length)
+          target.messagesLoaded = true
+          target.totalTurns = Math.max(target.totalTurns ?? 0, totalTurns)
+          return
+        }
         target.messages = messages
         target.messagesLoaded = true
         target.loadedRangeStart = hasMore ? rangeStart : 0

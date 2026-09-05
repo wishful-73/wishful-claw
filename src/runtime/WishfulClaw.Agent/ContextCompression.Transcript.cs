@@ -13,75 +13,123 @@ public static partial class ContextCompression
 {
     // ── Transcript rendering ──
 
+    private const int SerializedToolUseInputLimit = 500;
+    private const int SerializedToolResultLimit = 800;
+
     /// <summary>
-    /// Flattens messages into a readable transcript for summarization.
+    /// Flattens messages into a readable transcript and enforces the independent
+    /// summarizer character budget by dropping complete oldest entries first.
     /// </summary>
-    private static string RenderTranscript(List<AgentRuntimeChatMessage> messages)
+    internal static string RenderTranscript(
+        IReadOnlyList<AgentRuntimeChatMessage> messages,
+        int charBudget = int.MaxValue)
     {
-        var sb = new StringBuilder();
+        var entries = messages
+            .Select(RenderMessage)
+            .Where(entry => entry.Length > 0)
+            .ToList();
+        if (entries.Count == 0)
+            return string.Empty;
 
-        foreach (var message in messages)
+        var omitted = 0;
+        while (entries.Count > 1 && JoinedLength(entries) > charBudget)
         {
-            switch (message.Role)
-            {
-                case "user" when message.ToolResults.Count > 0:
-                    foreach (var tr in message.ToolResults)
-                    {
-                        sb.AppendLine($"[tool {tr.ToolUseId} result]");
-                        sb.AppendLine(tr.Content.ValueKind == JsonValueKind.String
-                            ? tr.Content.GetString() ?? ""
-                            : tr.Content.GetRawText());
-                        sb.AppendLine();
-                    }
-                    break;
-
-                case "user":
-                    sb.AppendLine("[user]");
-                    sb.AppendLine(message.Text);
-                    sb.AppendLine();
-                    break;
-
-                case "assistant":
-                    if (!string.IsNullOrEmpty(message.Text))
-                    {
-                        sb.AppendLine("[assistant]");
-                        sb.AppendLine(message.Text);
-                    }
-                    foreach (var tu in message.ToolUses)
-                    {
-                        sb.AppendLine($"[assistant calls {tu.Name}] {SummarizeToolArgs(tu.Input.GetRawText())}");
-                    }
-                    sb.AppendLine();
-                    break;
-
-                case "system":
-                    sb.AppendLine("[system]");
-                    sb.AppendLine(message.Text);
-                    sb.AppendLine();
-                    break;
-            }
+            entries.RemoveAt(0);
+            omitted++;
         }
 
-        return sb.ToString();
+        var note = omitted == 0
+            ? string.Empty
+            : $"[note: {omitted} older message(s) omitted to fit the summarizer budget]";
+        while (entries.Count > 1 && JoinedLength(entries, note) > charBudget)
+        {
+            entries.RemoveAt(0);
+            omitted++;
+            note = $"[note: {omitted} older message(s) omitted to fit the summarizer budget]";
+        }
+
+        if (JoinedLength(entries, note) > charBudget && entries.Count == 1)
+        {
+            var available = Math.Max(1, charBudget - note.Length - 2);
+            entries[0] = Truncate(entries[0], available);
+        }
+
+        return note.Length == 0
+            ? string.Join("\n\n", entries)
+            : string.Join("\n\n", new[] { note }.Concat(entries));
     }
 
-    /// <summary>
-    /// Returns a short summary of tool-call arguments instead of the full JSON.
-    /// </summary>
-    private static string SummarizeToolArgs(string args)
+    private static string RenderMessage(AgentRuntimeChatMessage message)
     {
-        if (string.IsNullOrEmpty(args))
-            return "(no arguments)";
-        try
+        var sb = new StringBuilder();
+        switch (message.Role)
         {
-            using var doc = JsonDocument.Parse(args);
-            var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(k => k).ToList();
-            return $"{{{string.Join(", ", keys)}}} ({keys.Count} keys)";
+            case "user" when message.ToolResults.Count > 0:
+                foreach (var tr in message.ToolResults)
+                {
+                    sb.AppendLine($"[tool {tr.ToolUseId} result{(tr.IsError == true ? " error" : string.Empty)}]");
+                    sb.AppendLine(Truncate(GetJsonText(tr.Content), SerializedToolResultLimit));
+                    sb.AppendLine();
+                }
+                break;
+
+            case "user":
+                sb.AppendLine("[user]");
+                sb.AppendLine(message.Text);
+                sb.AppendLine();
+                break;
+
+            case "assistant":
+                if (!string.IsNullOrEmpty(message.Text))
+                {
+                    sb.AppendLine("[assistant]");
+                    sb.AppendLine(message.Text);
+                }
+                foreach (var tu in message.ToolUses)
+                {
+                    sb.AppendLine($"[assistant calls {tu.Name}] {Truncate(tu.Input.GetRawText(), SerializedToolUseInputLimit)}");
+                }
+                sb.AppendLine();
+                break;
+
+            case "system":
+                sb.AppendLine("[system]");
+                sb.AppendLine(message.Text);
+                sb.AppendLine();
+                break;
         }
-        catch
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static int JoinedLength(IReadOnlyList<string> entries, string note = "")
+    {
+        var total = note.Length;
+        if (note.Length > 0 && entries.Count > 0)
+            total += 2;
+        for (var i = 0; i < entries.Count; i++)
         {
-            return $"({args.Length} bytes)";
+            if (i > 0) total += 2;
+            total += entries[i].Length;
         }
+        return total;
+    }
+
+    private static string GetJsonText(JsonElement value)
+    {
+        return value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : value.GetRawText();
+    }
+
+    private static string Truncate(string value, int maxChars)
+    {
+        if (value.Length <= maxChars)
+            return value;
+        const string marker = " …[truncated]";
+        if (maxChars <= marker.Length)
+            return marker[..maxChars];
+        return value[..(maxChars - marker.Length)] + marker;
     }
 
 

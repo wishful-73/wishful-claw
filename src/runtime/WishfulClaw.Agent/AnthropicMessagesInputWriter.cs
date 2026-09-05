@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -21,6 +21,14 @@ namespace WishfulClaw.Agent;
 /// </summary>
 internal static partial class AnthropicMessagesProvider
 {
+    internal static string BuildRequestBodyForTests(
+        JsonElement parameters,
+        JsonElement provider,
+        IReadOnlyList<AgentRuntimeChatMessage> conversation,
+        IReadOnlyList<ToolDefinition> toolDefs,
+        AgentRuntimeRunState state) =>
+        BuildRequestBody(parameters, provider, conversation, toolDefs, state);
+
     private static string BuildRequestBody(
         JsonElement parameters,
         JsonElement provider,
@@ -153,6 +161,17 @@ internal static partial class AnthropicMessagesProvider
         writer.WriteStartObject();
         writer.WriteString("role", role);
 
+        if (message.Role == "user" &&
+            message.ToolResults.Count == 0 &&
+            message.ToolUses.Count == 0 &&
+            HasImageContent(message.ContentBlocks))
+        {
+            writer.WritePropertyName("content");
+            WriteAnthropicContentBlocks(writer, message.ContentBlocks!, addCacheControl);
+            writer.WriteEndObject();
+            return;
+        }
+
         if (message.ToolResults.Count > 0)
         {
             writer.WritePropertyName("content");
@@ -242,6 +261,104 @@ internal static partial class AnthropicMessagesProvider
         writer.WriteEndObject();
     }
 
+    private static bool HasImageContent(IReadOnlyList<JsonElement>? contentBlocks)
+    {
+        if (contentBlocks is null) return false;
+        foreach (var block in contentBlocks)
+        {
+            if (JsonHelpers.GetString(block, "type") == "image" &&
+                block.TryGetProperty("source", out var source) &&
+                source.ValueKind == JsonValueKind.Object &&
+                ((JsonHelpers.GetString(source, "type") == "url" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
+                 (JsonHelpers.GetString(source, "type") != "url" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void WriteAnthropicContentBlocks(
+        Utf8JsonWriter writer,
+        IReadOnlyList<JsonElement> contentBlocks,
+        bool addCacheControl)
+    {
+        var writableBlocks = new List<JsonElement>();
+        foreach (var block in contentBlocks)
+        {
+            var type = JsonHelpers.GetString(block, "type");
+            if (type == "text")
+            {
+                writableBlocks.Add(block);
+                continue;
+            }
+
+            if (type == "image" &&
+                block.TryGetProperty("source", out var source) &&
+                source.ValueKind == JsonValueKind.Object &&
+                ((JsonHelpers.GetString(source, "type") == "url" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
+                 (JsonHelpers.GetString(source, "type") != "url" &&
+                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            {
+                writableBlocks.Add(block);
+            }
+        }
+
+        writer.WriteStartArray();
+        for (var index = 0; index < writableBlocks.Count; index++)
+        {
+            var block = writableBlocks[index];
+            var type = JsonHelpers.GetString(block, "type");
+            var isLastBlock = addCacheControl && index == writableBlocks.Count - 1;
+            writer.WriteStartObject();
+
+            if (type == "text")
+            {
+                writer.WriteString("type", "text");
+                writer.WriteString("text", JsonHelpers.GetString(block, "text") ?? string.Empty);
+                if (isLastBlock) WriteCacheControl(writer);
+                writer.WriteEndObject();
+                continue;
+            }
+
+            var source = block.GetProperty("source");
+            var sourceType = JsonHelpers.GetString(source, "type");
+            if (sourceType == "url")
+            {
+                var url = JsonHelpers.GetString(source, "url");
+                if (string.IsNullOrWhiteSpace(url)) continue;
+                writer.WriteString("type", "image");
+                writer.WritePropertyName("source");
+                writer.WriteStartObject();
+                writer.WriteString("type", "url");
+                writer.WriteString("url", url);
+                writer.WriteEndObject();
+            }
+            else
+            {
+                var data = JsonHelpers.GetString(source, "data");
+                if (string.IsNullOrWhiteSpace(data)) continue;
+                writer.WriteString("type", "image");
+                writer.WritePropertyName("source");
+                writer.WriteStartObject();
+                writer.WriteString("type", "base64");
+                writer.WriteString(
+                    "media_type",
+                    JsonHelpers.GetString(source, "mediaType") ??
+                    ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ??
+                    "image/png");
+                writer.WriteString("data", ProviderContentHelpers.StripDataUrlPrefix(data));
+                writer.WriteEndObject();
+            }
+            if (isLastBlock) WriteCacheControl(writer);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+    }
+
     /// <summary>
     /// Writes the cache_control: ephemeral breakpoint marker.
     /// </summary>
@@ -257,11 +374,16 @@ internal static partial class AnthropicMessagesProvider
     {
         if (toolDefs.Count == 0) return;
 
-        // Sort tools by name for stable byte ordering (prefix cache stability).
-        // ToolDefinition is a record — the registry may already canonicalize,
-        // but we sort here as a belt-and-suspenders measure.
+        // Preserve workflow priority while keeping deterministic ordering for
+        // callers that bypass the registry.
         var sorted = new List<ToolDefinition>(toolDefs);
-        sorted.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+        sorted.Sort((a, b) =>
+        {
+            var byPriority = a.Priority.CompareTo(b.Priority);
+            return byPriority != 0
+                ? byPriority
+                : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+        });
 
         writer.WritePropertyName("tools");
         writer.WriteStartArray();

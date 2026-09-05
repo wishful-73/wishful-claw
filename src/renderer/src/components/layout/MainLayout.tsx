@@ -23,6 +23,7 @@ import { CommandPalette } from './CommandPalette'
 import { SessionConversationPane } from './SessionConversationPane'
 import { PlaceholderPage } from './PlaceholderPage'
 import { AutomationPage } from '@renderer/components/automation/AutomationPage'
+import { TaskBoardPage } from '@renderer/components/taskboard/TaskBoardPage'
 
 import { ChatHomePage } from '@renderer/components/chat/ChatHomePage'
 import { ProjectHomePage } from '@renderer/components/chat/ProjectHomePage'
@@ -86,7 +87,7 @@ function ContentArea(): React.JSX.Element {
   if (translatePageOpen) return <PlaceholderPage title="Translate" iterLabel="后续" icon={Languages} />
   if (drawPageOpen) return <PlaceholderPage title="Draw" iterLabel="后续" icon={PenTool} />
   if (tasksPageOpen) return <AutomationPage />
-  if (taskBoardPageOpen) return <PlaceholderPage title="Task Board" iterLabel="后续" icon={SquareKanban} />
+  if (taskBoardPageOpen) return <TaskBoardPage />
   if (codeGraphPageOpen) return <PlaceholderPage title="Code Graph" iterLabel="后续" icon={GitBranch} />
 
   // Chat views
@@ -168,15 +169,27 @@ export function MainLayout(): React.JSX.Element {
           }
 
           nextActiveSessionId = sessions[0]?.id ?? null
-          state.activeSessionId = nextActiveSessionId
+          state.activeSessionId = null
 
-          nextActiveProjectId = sessions[0]?.projectId ?? data.projects[0]?.id ?? null
+          const firstSession = sessions[0]
+          nextActiveProjectId = firstSession
+            ? firstSession.scope === 'project' ? firstSession.projectId ?? null : null
+            : data.projects[0]?.id ?? null
           state.activeProjectId = nextActiveProjectId
         })
 
         // Load messages for the active session (like WishfulClaw does)
         if (nextActiveSessionId) {
+          await useChatStore.getState().setActiveSession(nextActiveSessionId)
           await useChatStore.getState().loadRecentSessionMessages(nextActiveSessionId)
+          // Restore the active session's persisted agent Todo list.
+          void import('@renderer/stores/task-store')
+            .then(({ useTaskStore }) => {
+              void useTaskStore.getState().loadTasksForSession(nextActiveSessionId!)
+            })
+            .catch((err) => {
+              console.warn('[MainLayout] Failed to restore session tasks:', err)
+            })
           // Navigate to session view so user sees the conversation directly
           useUIStore.getState().navigateToSession(nextActiveSessionId)
         }

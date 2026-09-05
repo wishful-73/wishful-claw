@@ -45,7 +45,6 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-list-page", DbMessageTools.ListPage);
         context.Register("db/messages-list-locator", DbMessageTools.ListLocator);
         context.Register("db/messages-list-by-turns", DbMessageTools.ListByTurns);
-        context.Register("db/messages-list-after-cursor", DbMessageTools.ListAfterCursor);
         context.Register("db/messages-add", DbMessageTools.Add);
         context.Register("db/messages-add-batch", DbMessageTools.AddBatch);
         context.Register("db/messages-upsert", DbMessageTools.Upsert);
@@ -53,15 +52,15 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-clear", DbMessageTools.Clear);
         context.Register("db/messages-delete", DbMessageTools.Delete);
         context.Register("db/messages-count", DbMessageTools.Count);
-        context.Register("db/messages-delete-last", DbMessageTools.DeleteLast);
-        context.Register("db/messages-truncate-from", DbMessageTools.TruncateFrom);
         context.Register("db/messages-compact-session", DbMessageCompactTools.CompactSession);
         context.Register("db/messages-usage-stats", DbMessageCompactTools.UsageStats);
         context.Register("db/messages-search-content", DbMessageTools.SearchContent);
 
         // ── Compaction Snapshots ──
         context.Register("db/compaction-snapshots-get", DbCompactionSnapshotTools.Get);
+        context.Register("db/session-context-manifest", DbCompactionSnapshotTools.GetContextManifest);
         context.Register("db/compaction-snapshots-upsert", DbCompactionSnapshotTools.Upsert);
+        // Explicit physical cleanup endpoint: deletes snapshot rows and clears the pointer.
         context.Register("db/compaction-snapshots-delete", DbCompactionSnapshotTools.Delete);
 
         // ── Sub-Agent Runs ──
@@ -85,6 +84,28 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/plans-create", DbPlanTools.Create);
         context.Register("db/plans-update", DbPlanTools.Update);
         context.Register("db/plans-delete", DbPlanTools.Delete);
+
+        // ── Tasks (session-scoped agent Todo, OpenCowork semantics) ──
+        context.Register("db/tasks-list-by-session", DbTaskTools.ListBySession);
+        context.Register("db/tasks-get", DbTaskTools.Get);
+        context.Register("db/tasks-create", DbTaskTools.Create);
+        context.Register("db/tasks-update", DbTaskTools.Update);
+        context.Register("db/tasks-delete", DbTaskTools.Delete);
+        context.Register("db/tasks-delete-by-session", DbTaskTools.DeleteBySession);
+
+        // ── Global Tasks (global agent work items, archive-not-delete) ──
+        context.Register("db/global-tasks-list", DbGlobalTaskTools.List);
+        context.Register("db/global-tasks-get", DbGlobalTaskTools.Get);
+        context.Register("db/global-tasks-create", DbGlobalTaskTools.Create);
+        context.Register("db/global-tasks-update", DbGlobalTaskTools.Update);
+        context.Register("db/global-tasks-archive", DbGlobalTaskTools.Archive);
+
+        // ── Global Task Dispatches (permanent dispatch records) ──
+        context.Register("db/global-task-dispatches-list", DbGlobalTaskDispatchTools.List);
+        context.Register("db/global-task-dispatches-get", DbGlobalTaskDispatchTools.Get);
+        context.Register("db/global-task-dispatches-create", DbGlobalTaskDispatchTools.Create);
+        context.Register("db/global-task-dispatches-update", DbGlobalTaskDispatchTools.Update);
+        context.Register("db/global-task-dispatches-cancel", DbGlobalTaskDispatchTools.Cancel);
 
         // ── Goals ──
         context.Register("db/goals-list", DbGoalTools.List);

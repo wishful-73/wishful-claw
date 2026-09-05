@@ -1,12 +1,11 @@
 // Memory organization trigger system (S8).
 //
-// Two user-selectable modes backed by one shared watermark (last organization
-// time, persisted by the renderer under ~/.wishful-claw/settings/general.json):
+// Two user-selectable modes read from the persisted renderer settings:
 //   - startup: fire once shortly after app start when the last run is older
 //     than the throttle window (guards against frequent restarts).
 //   - nightly: schedule a one-shot timer for the configured local time-of-day,
-//     with a five-minute polling fallback; on startup, catch up once when the
-//     watermark is not from today (missed days merge into a single run).
+//     with a five-minute polling fallback. A normal app startup never fires
+//     nightly organization early, even when the watermark is not from today.
 // Main never runs the organization itself — it pushes 'memory-organization:run'
 // to the renderer, which owns the engine, provider resolution and run lock.
 
@@ -99,13 +98,12 @@ function runStartupCheck(): void {
     }
     return
   }
-  // nightly: catch up once when the last run was not today (missed days merge).
-  if (localDayKey(watermark) !== localDayKey(Date.now())) {
-    firedDayKey = localDayKey(Date.now())
-    fireOrganization('catchup')
-  } else {
-    logInfo('main', '[MemoryOrganization] startup catch-up skipped: already organized today')
-  }
+  // nightly is strictly time-based: normal startup only arms the nightly
+  // timer and must not run an early catch-up when the watermark is stale.
+  logInfo(
+    'main',
+    `[MemoryOrganization] nightly startup check skipped: waiting for ${settings.nightlyTime} local time`
+  )
 }
 
 function runTick(): void {

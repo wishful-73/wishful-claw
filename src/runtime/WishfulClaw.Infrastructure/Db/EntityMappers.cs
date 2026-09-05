@@ -26,6 +26,9 @@ public static class EntityMappers
         Title = r.GetString("title"),
         Icon = r.GetNullableString("icon"),
         Mode = r.GetString("mode"),
+        Scope = r.GetNullableString("scope"),
+        CollaborationMode = r.GetNullableString("collaboration_mode"),
+        PermissionMode = r.GetNullableString("permission_mode"),
         CreatedAt = r.GetInt64("created_at"),
         UpdatedAt = r.GetInt64("updated_at"),
         MessageCount = r.GetInt32("message_count"),
@@ -42,7 +45,9 @@ public static class EntityMappers
         ProviderId = r.GetNullableString("provider_id"),
         ModelId = r.GetNullableString("model_id"),
         ModelSelectionMode = r.GetString("model_selection_mode"),
-        PersonaId = r.GetNullableString("persona_id")
+        PersonaId = r.GetNullableString("persona_id"),
+        CurrentSnapshotId = r.GetNullableString("current_snapshot_id"),
+        ContextRevision = r.GetInt64("context_revision")
     };
 
     public static MessageEntity MapMessage(SqliteDataReader r) => new()
@@ -57,8 +62,58 @@ public static class EntityMappers
         SortOrder = r.GetInt32("sort_order")
     };
 
+    public static TaskEntity MapTask(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        SessionId = r.GetString("session_id"),
+        PlanId = r.GetNullableString("plan_id"),
+        Subject = r.GetString("subject"),
+        Description = r.GetString("description"),
+        ActiveForm = r.GetNullableString("active_form"),
+        Status = r.GetString("status"),
+        Owner = r.GetNullableString("owner"),
+        Blocks = r.GetNullableString("blocks") ?? "[]",
+        BlockedBy = r.GetNullableString("blocked_by") ?? "[]",
+        Metadata = r.GetNullableString("metadata"),
+        SortOrder = r.GetInt32("sort_order"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at")
+    };
+
+    public static GlobalTaskEntity MapGlobalTask(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        Title = r.GetString("title"),
+        Description = r.GetString("description"),
+        Status = r.GetString("status"),
+        Priority = r.GetString("priority"),
+        Tags = r.GetNullableString("tags") ?? "[]",
+        DueAt = r.GetNullableInt64("due_at"),
+        Archived = r.GetInt32("archived"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at")
+    };
+
+    public static GlobalTaskDispatchEntity MapGlobalTaskDispatch(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        GlobalTaskId = r.GetString("global_task_id"),
+        ProjectId = r.GetNullableString("project_id"),
+        SessionId = r.GetString("session_id"),
+        SourceSessionId = r.GetNullableString("source_session_id"),
+        Kind = r.GetString("kind"),
+        Instruction = r.GetString("instruction"),
+        Status = r.GetString("status"),
+        LatestReport = r.GetNullableString("latest_report"),
+        Error = r.GetNullableString("error"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at"),
+        CompletedAt = r.GetNullableInt64("completed_at")
+    };
+
     public static CompactionSnapshotEntity MapCompactionSnapshot(SqliteDataReader r) => new()
     {
+        SnapshotId = r.GetString("snapshot_id"),
         SessionId = r.GetString("session_id"),
         Version = r.GetInt32("version"),
         Trigger = r.GetString("trigger"),
@@ -273,6 +328,10 @@ public static class EntityMappers
         Prompt = r.GetString("prompt"),
         AgentId = r.GetNullableString("agent_id"),
         Model = r.GetNullableString("model"),
+        ThinkingEnabled = r.GetNullableInt32("thinking_enabled") is int thinkingEnabled
+            ? thinkingEnabled != 0
+            : null,
+        ReasoningEffort = r.GetNullableString("reasoning_effort"),
         WorkingFolder = r.GetNullableString("working_folder"),
         DeliveryMode = r.GetString("delivery_mode"),
         OutputMode = r.GetString("output_mode"),

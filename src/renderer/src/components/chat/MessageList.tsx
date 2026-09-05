@@ -1,4 +1,4 @@
-import * as React from 'react'
+﻿import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -90,29 +90,30 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
   if (exportAll) {
     return (
       <div ref={scroll.containerRef} className="relative h-full flex-1" data-message-list>
-        <div data-message-content>
+        {/* 与虚拟列表的首行 pt-3 对齐；本分支是静态非虚拟化渲染，容器 padding
+            不涉及 scrollMargin，可直接加在内容包裹层 */}
+        <div data-message-content className="pt-3">
           {data.renderableMessages.map((row) => {
-            const message = data.messageLookup.get(row.messageId)
-            if (!message) return null
+            const originMessageId = row.kind === 'message' ? row.originMessageId : null
+            const orchestration = originMessageId
+              ? data.orchestrationState.byMessageId.get(originMessageId)
+              : undefined
             return (
               <MessageRow
                 key={row.messageId}
-                message={message}
+                item={row}
                 sessionId={targetSessionId}
                 sessionAssistantMessageIds={data.sessionAssistantMessageIds}
                 sessionToolUseIds={data.sessionToolUseIds}
-                isStreaming={streamingMessageId === row.messageId}
+                isStreaming={row.kind === 'message' && streamingMessageId === row.originMessageId}
                 isLastUserMessage={row.isLastUserMessage}
                 isLastAssistantMessage={row.isLastAssistantMessage}
                 showContinue={row.showContinue}
                 disableAnimation
-                toolResults={data.toolResultsLookup.get(row.messageId) as any}
-                inlineCompactSummaries={data.inlineCompactSummaryState.byAssistantId.get(row.messageId)}
-                orchestrationRun={
-                  data.orchestrationState.byMessageId.get(row.messageId)?.primaryRun ?? null
-                }
+                toolResults={originMessageId ? (data.toolResultsLookup.get(originMessageId) as any) : undefined}
+                orchestrationRun={orchestration?.primaryRun ?? null}
                 hiddenToolUseIds={mergeHiddenToolUseIds(
-                  data.orchestrationState.byMessageId.get(row.messageId)?.hiddenToolUseIds as any,
+                  orchestration?.hiddenToolUseIds as any,
                   data.duplicatePlanReviewToolUseIds
                 )}
                 anchorMessageId={null}
@@ -153,7 +154,6 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       lastMessageRowIndex={data.rows.length - 1}
       messageLookup={data.messageLookup}
       toolResultsLookup={data.toolResultsLookup}
-      inlineCompactSummaryState={data.inlineCompactSummaryState}
       orchestrationState={data.orchestrationState}
       duplicatePlanReviewToolUseIds={data.duplicatePlanReviewToolUseIds}
       sessionAssistantMessageIds={data.sessionAssistantMessageIds}

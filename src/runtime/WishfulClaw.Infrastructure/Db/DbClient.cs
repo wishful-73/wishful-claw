@@ -97,6 +97,9 @@ public static partial class DbClient
                     title TEXT NOT NULL DEFAULT '',
                     icon TEXT,
                     mode TEXT NOT NULL DEFAULT 'chat',
+                    scope TEXT,
+                    collaboration_mode TEXT,
+                    permission_mode TEXT,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
                     message_count INTEGER NOT NULL DEFAULT 0,
@@ -113,7 +116,9 @@ public static partial class DbClient
                     provider_id TEXT,
                     model_id TEXT,
                     model_selection_mode TEXT NOT NULL DEFAULT 'inherit',
-                    persona_id TEXT
+                    persona_id TEXT,
+                    current_snapshot_id TEXT,
+                    context_revision INTEGER NOT NULL DEFAULT 0
                 );",
                 @"CREATE TABLE IF NOT EXISTS messages (
                     id TEXT PRIMARY KEY NOT NULL,
@@ -296,7 +301,8 @@ public static partial class DbClient
                     archived_at INTEGER NOT NULL
                 );",
                 @"CREATE TABLE IF NOT EXISTS session_compaction_snapshots (
-                    session_id TEXT PRIMARY KEY NOT NULL,
+                    snapshot_id TEXT PRIMARY KEY NOT NULL,
+                    session_id TEXT NOT NULL,
                     version INTEGER NOT NULL,
                     ""trigger"" TEXT NOT NULL,
                     wire_conversation TEXT NOT NULL,
@@ -312,8 +318,7 @@ public static partial class DbClient
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );",
-                @"CREATE INDEX IF NOT EXISTS idx_session_compaction_updated
-                ON session_compaction_snapshots(updated_at DESC);",
+
                 @"CREATE TABLE IF NOT EXISTS cron_tasks (
                     id TEXT PRIMARY KEY NOT NULL,
                     name TEXT NOT NULL DEFAULT '',
@@ -324,6 +329,8 @@ public static partial class DbClient
                     prompt TEXT NOT NULL DEFAULT '',
                     agent_id TEXT,
                     model TEXT,
+                    thinking_enabled INTEGER,
+                    reasoning_effort TEXT,
                     working_folder TEXT,
                     delivery_mode TEXT NOT NULL DEFAULT 'desktop',
                     output_mode TEXT NOT NULL DEFAULT 'new_session',
@@ -345,7 +352,56 @@ public static partial class DbClient
                     fire_count INTEGER NOT NULL DEFAULT 0,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
-                );"
+                );",
+                @"CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    session_id TEXT NOT NULL,
+                    plan_id TEXT,
+                    subject TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    active_form TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    owner TEXT,
+                    blocks TEXT DEFAULT '[]',
+                    blocked_by TEXT DEFAULT '[]',
+                    metadata TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_tasks_session ON tasks(session_id);",
+                @"CREATE INDEX IF NOT EXISTS ix_tasks_plan ON tasks(plan_id);",
+                @"CREATE TABLE IF NOT EXISTS global_tasks (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    priority TEXT NOT NULL DEFAULT 'normal',
+                    tags TEXT NOT NULL DEFAULT '[]',
+                    due_at INTEGER,
+                    archived INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_global_tasks_status ON global_tasks(status);",
+                @"CREATE INDEX IF NOT EXISTS ix_global_tasks_archived ON global_tasks(archived);",
+                @"CREATE TABLE IF NOT EXISTS global_task_dispatches (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    global_task_id TEXT NOT NULL,
+                    project_id TEXT,
+                    session_id TEXT NOT NULL,
+                    source_session_id TEXT,
+                    kind TEXT NOT NULL DEFAULT 'message',
+                    instruction TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    latest_report TEXT,
+                    error TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    completed_at INTEGER
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_task ON global_task_dispatches(global_task_id);",
+                @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_session ON global_task_dispatches(session_id);"
             };
 
             foreach (var sql in tableSqls)
@@ -399,8 +455,22 @@ public static partial class DbClient
             EnsureColumn("sessions", "ssh_connection_id", "TEXT");
             EnsureColumn("sessions", "working_folder", "TEXT");
             EnsureColumn("sessions", "icon", "TEXT");
+            EnsureColumn("sessions", "scope", "TEXT");
+            EnsureColumn("sessions", "collaboration_mode", "TEXT");
+            EnsureColumn("sessions", "permission_mode", "TEXT");
+            EnsureCompactionSnapshotSchema();
+            _db.Execute(
+                "UPDATE sessions SET scope = CASE WHEN project_id IS NULL THEN 'global' ELSE 'project' END " +
+                "WHERE scope IS NULL OR scope NOT IN ('global', 'project');");
+            _db.Execute(
+                "UPDATE sessions SET collaboration_mode = CASE WHEN scope = 'global' THEN 'chat' ELSE 'cowork' END " +
+                "WHERE collaboration_mode IS NULL OR collaboration_mode NOT IN ('chat', 'cowork');");
+            _db.Execute(
+                "UPDATE sessions SET permission_mode = 'default' " +
+                "WHERE scope = 'global' AND (permission_mode IS NULL OR permission_mode NOT IN ('default', 'fullAccess'));");
             EnsureColumn("projects", "ssh_connection_id", "TEXT");
             EnsureColumn("projects", "plugin_id", "TEXT");
+            EnsureColumn("global_task_dispatches", "source_session_id", "TEXT");
             EnsureColumn("messages", "usage", "TEXT");
             EnsureColumn("messages", "sort_order", "INTEGER");
             NormalizeChannelSessionMetadata();
@@ -422,6 +492,8 @@ public static partial class DbClient
             EnsureColumn("cron_tasks", "prompt", "TEXT NOT NULL DEFAULT ''");
             EnsureColumn("cron_tasks", "agent_id", "TEXT");
             EnsureColumn("cron_tasks", "model", "TEXT");
+            EnsureColumn("cron_tasks", "thinking_enabled", "INTEGER");
+            EnsureColumn("cron_tasks", "reasoning_effort", "TEXT");
             EnsureColumn("cron_tasks", "working_folder", "TEXT");
             EnsureColumn("cron_tasks", "delivery_mode", "TEXT NOT NULL DEFAULT 'desktop'");
             EnsureColumn("cron_tasks", "output_mode", "TEXT NOT NULL DEFAULT 'new_session'");

@@ -219,15 +219,19 @@ export function buildSidecarAgentRunRequest(args: {
   tools: ToolDefinition[]
   runId?: string
   sessionId?: string
+  projectId?: string
   workingFolder?: string
+  scope?: 'global' | 'project'
+  collaborationMode?: 'chat' | 'cowork'
+  runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation' | 'pet' | 'translation' | 'providerTurn'
+  toolPreset?: string
   maxIterations: number
   forceApproval: boolean
   permissionMode?: 'default' | 'whitelist' | 'fullAccess'
   maxParallelTools?: number
-  maxToolCallsPerTurn?: number
   compression?: CompressionConfig | null
   imagePluginProvider?: ProviderConfig | null
-  sessionMode?: 'agent' | 'chat'
+  sessionMode?: 'normal' | 'agent' | 'chat'
   planMode?: boolean
   planModeAllowedTools?: readonly string[]
   planRevision?: SidecarPlanRevisionContext | null
@@ -316,13 +320,17 @@ export function buildSidecarAgentRunRequest(args: {
     ...(subAgentProvider ? { subAgentProvider } : {}),
     ...(args.runId ? { runId: args.runId } : {}),
     ...(args.sessionId ? { sessionId: args.sessionId } : {}),
+    ...(args.projectId ? { projectId: args.projectId } : {}),
     ...(args.workingFolder ? { workingFolder: args.workingFolder } : {}),
+    ...(args.scope ? { scope: args.scope } : {}),
+    ...(args.collaborationMode ? { collaborationMode: args.collaborationMode } : {}),
+    ...(args.runtimeRole ? { runtimeRole: args.runtimeRole } : {}),
+    ...(args.toolPreset ? { toolPreset: args.toolPreset } : {}),
     ...(args.compression ? { compression: args.compression } : {}),
     maxIterations: args.maxIterations,
     forceApproval: args.forceApproval,
     permissionMode: args.permissionMode ?? (settings.autoApprove ? 'fullAccess' : 'default'),
     ...(maxParallelTools !== undefined ? { maxParallelTools } : {}),
-    ...(args.maxToolCallsPerTurn !== undefined ? { maxToolCallsPerTurn: args.maxToolCallsPerTurn } : {}),
     maxConcurrentSubAgents,
     ...(args.sessionMode ? { sessionMode: args.sessionMode } : {}),
     ...(args.planMode ? { planMode: true } : {}),

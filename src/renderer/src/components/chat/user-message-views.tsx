@@ -50,7 +50,11 @@ export function UserSelectedFileReadsView({
               ? t('userMessage.selectedFileReadSkippedPdf', {
                   defaultValue: 'PDF path reference; file was not read directly'
                 })
-              : skipped
+              : skipped && (file.skipReason === 'unresolved' || file.skipReason === 'budget')
+                ? t('userMessage.selectedFileReadSkippedNotInjected', {
+                    defaultValue: 'Path reference; file content was not injected into this turn'
+                  })
+                : skipped
                 ? t('userMessage.selectedFileReadSkippedNonText', {
                     defaultValue: 'Path reference; binary or document file was not read directly'
                   })

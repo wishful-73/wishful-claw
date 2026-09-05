@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   ContentBlock,
   ToolResultContent,
   ToolUseBlock,
@@ -171,6 +171,11 @@ export function buildTranscriptStaticAnalysis(
   >()
   const activeCompact = resolveActiveCompactArtifacts(messages)
   const activeCompactSummaryId = activeCompact?.summaryId ?? null
+  const compressionStatusSummaryIds = new Set(
+    messages
+      .map((message) => message.meta?.compressionStatus?.summaryMessageId)
+      .filter((id): id is string => Boolean(id))
+  )
   let currentAssistantMessageId: string | null = null
   let lastRealUserMessageId: string | null = null
   let lastAssistantMessageId: string | null = null
@@ -218,7 +223,7 @@ export function buildTranscriptStaticAnalysis(
       currentAssistantMessageId = null
     }
 
-    if (!shouldRenderInMessageList(message, activeCompactSummaryId)) continue
+    if (!shouldRenderInMessageList(message, activeCompactSummaryId, compressionStatusSummaryIds)) continue
 
     renderableMessageIds.push(message.id)
     if (isRealUserMessage(message)) {

@@ -92,6 +92,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   const lastScrollOffsetRef = React.useRef(0)
   const programmaticScrollUntilRef = React.useRef(0)
   const wasSessionOutputtingRef = React.useRef(isSessionOutputting)
+  const previousStreamingMessageIdRef = React.useRef(streamingMessageId)
   const isLoadingOlderMessagesRef = React.useRef(false)
 
   // ── State ───────────────────────────────────────────────────────
@@ -122,8 +123,13 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     (behavior: ScrollBehavior = 'auto') => {
       const ref = listRef.current
       if (!ref || rows.length === 0) return
-      markProgrammaticScroll()
       const bottom = Math.max(0, ref.scrollHeight - ref.clientHeight)
+      // Already pinned: re-writing scrollTop would dispatch another scroll
+      // event, whose handler sets state and re-runs the auto-scroll layout
+      // effects — that cycle is what React reports as "Maximum update depth
+      // exceeded".
+      if (Math.abs(ref.scrollTop - bottom) <= 1) return
+      markProgrammaticScroll()
       if (behavior === 'auto') { ref.scrollTop = bottom; return }
       ref.scrollTo({ top: bottom, behavior })
     },
@@ -433,6 +439,35 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   }, [activeSessionId, isSessionOutputting, messages.length, scrollToBottomImmediate, streamingMessageId])
 
   // ── Streaming state transition ──────────────────────────────────
+  React.useLayoutEffect(() => {
+    const previousStreamingMessageId = previousStreamingMessageIdRef.current
+    previousStreamingMessageIdRef.current = streamingMessageId
+    if (
+      !activeSessionId ||
+      !streamingMessageId ||
+      previousStreamingMessageId === streamingMessageId ||
+      pendingAskUserQuestion ||
+      isLoadingOlderMessagesRef.current
+    ) {
+      return
+    }
+
+    autoScrollModeRef.current = 'stream'
+    setIsAtBottom(true)
+    scrollToBottomImmediate()
+    const frameId = window.requestAnimationFrame(() => {
+      if (previousStreamingMessageIdRef.current === streamingMessageId) {
+        scrollToBottomImmediate()
+      }
+    })
+    return () => window.cancelAnimationFrame(frameId)
+  }, [
+    activeSessionId,
+    pendingAskUserQuestion,
+    scrollToBottomImmediate,
+    streamingMessageId
+  ])
+
   React.useEffect(() => {
     const wasOutputting = wasSessionOutputtingRef.current
     if (!wasOutputting && isSessionOutputting && isAtBottom && !pendingAskUserQuestion) {

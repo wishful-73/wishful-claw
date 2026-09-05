@@ -32,7 +32,7 @@ src/
 ├── shared/         # 前后端共享类型定义（TS）
 └── runtime/                              # .NET 后端工程
     ├── WishfulClaw.sln
-    ├── WishfulClaw.CodeGraph/            # 0. CodeGraph 引擎（vendored自 github.com/AIDotNet/CodeGraph；代码图谱索引/检索，全局命名空间 + internal，194 个 .cs；不参与 7 层依赖链，仅被 Worker 引用）
+    ├── WishfulClaw.CodeGraph/            # 0. CodeGraph 引擎（vendored自 github.com/AIDotNet/CodeGraph；代码图谱索引/检索，全局命名空间 + internal，195 个 .cs；不参与 7 层依赖链，仅被 Worker 引用）
     ├── WishfulClaw.Contracts/            # 1. 接口契约（纯接口，无实现）
     │   └── IWorkerModule / IWorkerModuleContext / IWorkerRequestContext / WorkerResponse
     │
@@ -81,14 +81,14 @@ src/
 
 | 项目 | 文件数 | 职责 |
 |------|--------|------|
-| Contracts | 4 | 纯接口契约 |
+| Contracts | 6 | 纯接口契约 |
 | Core | 19 | Agent 通用框架（Protocol + Tools） |
-| Infrastructure | 23 | 基础设施（Db / Storage / Http + Db Tools） |
-| Workspace | 12 | 记忆系统（含 MemoryFtsService） |
+| Infrastructure | 57 | 基础设施（Db / Storage / Http + Db Tools） |
+| Workspace | 15 | 记忆系统（含 MemoryFtsService） |
 | Persona | 9 | 人格系统 |
-| Agent | 141 | Agent 运行时（Loop / Provider / Executor / Compression / SubAgent / Tools / Modules） |
-| Worker | 12 | IPC 宿主（Program + Host + Catalog + 5 核心 Module） |
-| CodeGraph | 194 | 代码图谱引擎（vendored，索引/同步/探索/检索，经 Worker 注册 `codegraph/*` 方法） |
+| Agent | 205 | Agent 运行时（Loop / Provider / Executor / Compression / SubAgent / Tools / Modules） |
+| Worker | 14 | IPC 宿主（Program + Host + Catalog + 5 核心 Module） |
+| CodeGraph | 195 | 代码图谱引擎（vendored，索引/同步/探索/检索，经 Worker 注册 `codegraph/*` 方法） |
 
 > 统计不含 obj/ 目录下的自动生成文件。
 
@@ -154,7 +154,7 @@ Agent 运行时核心业务逻辑。
 - **依赖** Agent + Persona + Workspace + Core + Contracts + Infrastructure
 - 负责模块注册、依赖注入、进程生命周期
 - 被 Electron Main 进程拉起
-- 当前仅保留 Program.cs + WorkerHost + WorkerModuleCatalog（12 文件），其余已迁入 Agent / Infrastructure
+- 当前仅保留 Program.cs + WorkerHost + WorkerModuleCatalog（14 文件），其余已迁入 Agent / Infrastructure
 
 ### 依赖方向（严格单向）
 
@@ -349,21 +349,40 @@ git push origin --delete dev/v2-iter-{N}
 
    - notes 按本迭代的功能单元汇总，用 `git log v0.2.{N-1}..v0.2.{N} --oneline` 提取
    - gh 不在 PATH 中，必须用绝对路径调用；gh.exe 不可用时用浏览器登录 GitHub 手动创建（Releases → Draft a new release → 选择 tag → 填写 notes → Publish）
-3. **打包安装包并上传**（Windows NSIS 安装器，需上传到 Release Assets）：
+3. **打包安装包并上传**（Windows NSIS 安装器，需上传完整 updater 资产到同一个 Release）：
 
    ```bash
    npm run pack:installer:full   # AOT Worker + 前端 + electron-builder NSIS
-   # 产物： release/wishful-claw-{N}-setup.exe
+   # 典型产物：
+   #   release/wishful-claw-0.2.{N}-setup.exe
+   #   release/latest.yml
+   #   release/wishful-claw-0.2.{N}-setup.exe.blockmap（如果 electron-builder 生成）
+
+   # latest.yml 是 electron-updater 检查更新的必需元数据，不能只上传 setup.exe
    /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
-     --repo wishful-73/wishful-claw "release/wishful-claw-0.2.17-setup.exe"
+     --repo wishful-73/wishful-claw \
+     "release/wishful-claw-0.2.{N}-setup.exe" \
+     "release/latest.yml" \
+     --clobber
+
+   # 如果 release/ 下生成了 .blockmap，也必须上传到同一个 Release
+   /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
+     --repo wishful-73/wishful-claw \
+     "release/wishful-claw-0.2.{N}-setup.exe.blockmap" \
+     --clobber
+
    # 若直连失败，加代理前缀：
    # HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
+   #   --repo wishful-73/wishful-claw \
+   #   "release/wishful-claw-0.2.{N}-setup.exe" "release/latest.yml" --clobber
    ```
 
    - 打包前确认无残留 WishfulClaw/electron 测试进程（`tasklist` 检查），否则旧 `release/win-unpacked/` 被锁报 EBUSY
    - 若 `win-unpacked/app.asar` 被锁（杀软/索引句柄）且杀进程无效，改用新输出目录绕开：`npx electron-builder --win -c.directories.output=release/v0.2.{N}`
-   - 上传后核验 Release 页面出现 setup.exe
-4. **发布后核验**：确认 GitHub 上 main 分支、tag、Release（含安装包）三者均到位
+   - `latest.yml` 必须与当前 Release/tag 对应，至少检查 `version`、`path`、`files[].url`、`sha512`、`size` 与实际 setup.exe 资产一致
+   - `.blockmap` 不是每次都会生成；若 `latest.yml` 或打包输出引用了它，必须一并上传，不能只上传 setup.exe
+   - 上传后不能只核验 setup.exe；必须确认 Release 同时出现 `latest.yml`，并检查其下载地址不返回 404
+4. **发布后核验**：确认 GitHub 上 main 分支、tag、Release（含 setup.exe、`latest.yml` 及必要的 `.blockmap`）三者均到位；再用低于当前 Release 的本地版本实际调用 `electron-updater.checkForUpdates()` 验证能进入 `update-available`，随后再测试下载确认和安装确认流程
 
 ## 异常日志
 

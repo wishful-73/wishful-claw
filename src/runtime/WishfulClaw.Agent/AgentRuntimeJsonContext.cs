@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using WishfulClaw.Contracts;
 using WishfulClaw.Agent.Modules.Git;
@@ -26,6 +26,7 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(GoalRunStateChanged))]
 [JsonSerializable(typeof(GoalProgressErrorPayload))]
 [JsonSerializable(typeof(AgentRuntimeReverseRequestEnvelope))]
+[JsonSerializable(typeof(AgentRuntimeCompressionDeltaEnvelope))]
 [JsonSerializable(typeof(AgentRuntimeReverseCancelEnvelope))]
 [JsonSerializable(typeof(AgentRuntimeReverseResponseResult))]
 [JsonSerializable(typeof(AgentRuntimeRunResult))]
@@ -42,6 +43,7 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(ProviderCompletionToolCall))]
 [JsonSerializable(typeof(List<ProviderCompletionToolCall>))]
 [JsonSerializable(typeof(SessionRestoreResponse))]
+[JsonSerializable(typeof(SessionRestoreFailure))]
 [JsonSerializable(typeof(GitExecResult))]
 [JsonSerializable(typeof(GitStatusDetailedResult))]
 [JsonSerializable(typeof(GitQueryResult))]
@@ -50,6 +52,8 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(NativeExtensionToolExecutionResult))]
 [JsonSerializable(typeof(ContextCompressionResponse))]
 [JsonSerializable(typeof(ContextCompressionResult))]
+[JsonSerializable(typeof(GlobalBoardTaskChangedEvent))]
+[JsonSerializable(typeof(GlobalBoardDispatchChangedEvent))]
 [JsonSerializable(typeof(List<JsonElement>))]
 public sealed partial class AgentRuntimeJsonContext : JsonSerializerContext
 {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json;
 
@@ -131,21 +131,45 @@ public sealed class ToolRegistry
             try
             {
                 var canonSchema = CanonicalizeSchema(rawSchema);
-                def = new ToolDefinition(executor.Name, executor.Description, canonSchema, executor.AvailableModes);
+                var category = _toolCategories.TryGetValue(executor.Name, out var registeredCategory)
+                    ? registeredCategory
+                    : null;
+                def = new ToolDefinition(
+                    executor.Name,
+                    executor.Description,
+                    canonSchema,
+                    executor.AvailableModes,
+                    category,
+                    ToolCategoryCatalog.GetPriority(category));
             }
             catch (Exception ex)
             {
                 System.Console.Error.WriteLine(
                     $"[ToolRegistry] CanonicalizeSchema failed for tool '{executor.Name}': {ex.Message}");
                 // Fallback: use the raw schema without canonicalization
-                def = new ToolDefinition(executor.Name, executor.Description, rawSchema, executor.AvailableModes);
+                var category = _toolCategories.TryGetValue(executor.Name, out var registeredCategory)
+                    ? registeredCategory
+                    : null;
+                def = new ToolDefinition(
+                    executor.Name,
+                    executor.Description,
+                    rawSchema,
+                    executor.AvailableModes,
+                    category,
+                    ToolCategoryCatalog.GetPriority(category));
             }
 
             list.Add(def);
         }
 
-        // Sort by name for stable ordering
-        list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.Ordinal));
+        // Sort by workflow category first, then name for deterministic prefix bytes.
+        list.Sort((a, b) =>
+        {
+            var byPriority = a.Priority.CompareTo(b.Priority);
+            return byPriority != 0
+                ? byPriority
+                : string.Compare(a.Name, b.Name, StringComparison.Ordinal);
+        });
 
         _cachedDefinitions = list;
         return list;

@@ -36,7 +36,7 @@ function PluginPanel(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* ── Channel manager: tabs + detail ── */}
-      <div className="flex min-h-0 h-1/2 border-b">
+      <div className="flex min-h-0 flex-1 border-b">
         {/* Left: vertical channel tab list */}
         <div className="flex w-[200px] shrink-0 flex-col border-r">
           <div className="shrink-0 px-3 py-2.5">
@@ -96,7 +96,7 @@ function PluginPanel(): React.JSX.Element {
       </div>
 
       {/* ── Global channel settings ── */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="shrink-0">
         <GlobalChannelSettings />
       </div>
     </div>

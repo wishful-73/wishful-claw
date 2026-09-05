@@ -13,6 +13,12 @@ public class SessionEntity
 
     public string Mode { get; set; } = "chat";
 
+    public string? Scope { get; set; }
+
+    public string? CollaborationMode { get; set; }
+
+    public string? PermissionMode { get; set; }
+
     public long CreatedAt { get; set; }
 
     public long UpdatedAt { get; set; }
@@ -46,6 +52,10 @@ public class SessionEntity
     public string ModelSelectionMode { get; set; } = "inherit";
 
     public string? PersonaId { get; set; }
+
+    public string? CurrentSnapshotId { get; set; }
+
+    public long ContextRevision { get; set; }
 }
 
 // ─── Session DTO ───
@@ -56,6 +66,9 @@ public sealed class SessionRow
     public string Title { get; set; } = string.Empty;
     public string? Icon { get; set; }
     public string Mode { get; set; } = "chat";
+    public string? Scope { get; set; }
+    public string? CollaborationMode { get; set; }
+    public string? PermissionMode { get; set; }
     public long CreatedAt { get; set; }
     public long UpdatedAt { get; set; }
     public int MessageCount { get; set; }
@@ -73,6 +86,8 @@ public sealed class SessionRow
     public string? ModelId { get; set; }
     public string? ModelSelectionMode { get; set; }
     public string? PersonaId { get; set; }
+    public string? CurrentSnapshotId { get; set; }
+    public long ContextRevision { get; set; }
 
     public static SessionRow FromEntity(SessionEntity e) => new()
     {
@@ -80,6 +95,9 @@ public sealed class SessionRow
     Title = e.Title,
     Icon = e.Icon,
     Mode = e.Mode,
+    Scope = e.Scope,
+    CollaborationMode = e.CollaborationMode,
+    PermissionMode = e.PermissionMode,
     CreatedAt = e.CreatedAt,
     UpdatedAt = e.UpdatedAt,
     MessageCount = e.MessageCount,
@@ -96,7 +114,9 @@ public sealed class SessionRow
     ProviderId = e.ProviderId,
     ModelId = e.ModelId,
     ModelSelectionMode = e.ModelSelectionMode,
-    PersonaId = e.PersonaId
+    PersonaId = e.PersonaId,
+    CurrentSnapshotId = e.CurrentSnapshotId,
+    ContextRevision = e.ContextRevision
     };
 }
 

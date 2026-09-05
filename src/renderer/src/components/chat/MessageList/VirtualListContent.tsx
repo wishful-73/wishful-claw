@@ -1,5 +1,5 @@
-import * as React from 'react'
-import { ArrowDown, CircleUserRound } from 'lucide-react'
+﻿import * as React from 'react'
+import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AssistantReplyRail } from './AssistantReplyRail'
 import { MessageRow } from './MessageRow'
@@ -12,7 +12,7 @@ import {
   type MessageListRow,
   type MessageListProps
 } from './utils'
-import { extractUnifiedMessageText } from '@renderer/lib/agent/context-compression'
+import { UserMessage } from '../UserMessage'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import type { RequestRetryState } from '@renderer/lib/agent/types'
 import type { OrchestrationRunStore } from '@renderer/lib/orchestration/build-runs'
@@ -39,7 +39,6 @@ interface VirtualListContentProps {
   lastMessageRowIndex: number
   messageLookup: Map<string, UnifiedMessage>
   toolResultsLookup: Map<string, unknown>
-  inlineCompactSummaryState: { byAssistantId: Map<string, UnifiedMessage[]> }
   orchestrationState: OrchestrationRunStore
   duplicatePlanReviewToolUseIds: Set<string>
   sessionAssistantMessageIds: string[]
@@ -80,9 +79,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     onJumpToPinnedMessage,
     rows,
     lastMessageRowIndex,
-    messageLookup,
     toolResultsLookup,
-    inlineCompactSummaryState,
     orchestrationState,
     duplicatePlanReviewToolUseIds,
     sessionAssistantMessageIds,
@@ -123,13 +120,22 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
           {rowVirtualizer.getVirtualItems().map((virtualRow: any) => {
             const isLoadOlderRow = hasLoadOlderRow && virtualRow.index === 0
             const rowIndex = virtualRow.index - (hasLoadOlderRow ? 1 : 0)
+            // 顶部间距加在行上而不是滚动容器上：容器 padding-top 会让虚拟列表的
+            // item 0 起点与 scrollTop=0 错开（virtualizer 未设 scrollMargin），
+            // 行内 padding 则由 measureElement 自动量进行高，不动任何滚动数学。
+            // 有「加载更早」行时它自带 pt-3，不叠加。
+            const isFirstVisualRow = rowIndex === 0 && !hasLoadOlderRow
 
             return (
               <div
                 key={virtualRow.key}
                 ref={rowVirtualizer.measureElement}
                 data-index={virtualRow.index}
-                className="absolute left-0 top-0 w-full"
+                className={
+                  isFirstVisualRow
+                    ? 'absolute left-0 top-0 w-full pt-3'
+                    : 'absolute left-0 top-0 w-full'
+                }
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
               >
                 {isLoadOlderRow ? (
@@ -165,22 +171,29 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                           Math.max(0, lastMessageRowIndex - (TAIL_STATIC_MESSAGE_COUNT - 1))
                         : false
 
-                    const { messageId, isLastUserMessage, isLastAssistantMessage, showContinue } =
-                      row.data
-                    const message = messageLookup.get(messageId)
-                    if (!message) return null
-
+                    const item = row.data
+                    const message = item.kind === 'message' ? item.message : undefined
+                    const originMessageId = item.kind === 'message' ? item.originMessageId : null
+                    const isLastUserMessage = item.isLastUserMessage
+                    const isLastAssistantMessage = item.isLastAssistantMessage
+                    const showContinue = item.showContinue
                     const isEmptyAssistantLoading =
+                      message !== undefined &&
                       isLastAssistantMessage &&
                       isAgentExecutionActive &&
                       hasEmptyAssistantContent(message)
-                    const isStreaming = streamingMessageId === messageId || isEmptyAssistantLoading
+                    const isStreaming =
+                      Boolean(message) &&
+                      (streamingMessageId === originMessageId || isEmptyAssistantLoading)
                     const rowRenderMode =
                       !isStreaming && rowIndex < liveCutoffIndex ? 'static' : undefined
+                    const orchestration = originMessageId
+                      ? orchestrationState.byMessageId.get(originMessageId)
+                      : undefined
 
                     return (
                       <MessageRow
-                        message={message}
+                        item={item}
                         sessionId={targetSessionId}
                         sessionAssistantMessageIds={sessionAssistantMessageIds}
                         sessionToolUseIds={sessionToolUseIds}
@@ -189,15 +202,10 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                         isLastAssistantMessage={isLastAssistantMessage}
                         showContinue={showContinue}
                         disableAnimation={disableAnimation}
-                        toolResults={toolResultsLookup.get(messageId) as any}
-                        inlineCompactSummaries={inlineCompactSummaryState.byAssistantId.get(
-                          messageId
-                        )}
-                        orchestrationRun={
-                          orchestrationState.byMessageId.get(messageId)?.primaryRun ?? null
-                        }
+                        toolResults={originMessageId ? (toolResultsLookup.get(originMessageId) as any) : undefined}
+                        orchestrationRun={orchestration?.primaryRun ?? null}
                         hiddenToolUseIds={mergeHiddenToolUseIds(
-                          orchestrationState.byMessageId.get(messageId)?.hiddenToolUseIds as any,
+                          orchestration?.hiddenToolUseIds as any,
                           duplicatePlanReviewToolUseIds
                         )}
                         anchorMessageId={null}
@@ -232,18 +240,15 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
             transition={animationsEnabled ? { duration: 0.15, ease: 'easeOut' } : { duration: 0 }}
           >
             <div className={getMessageColumnClass(fullWidth)}>
-              <button
-                type="button"
+              <UserMessage
+                messageId={pinnedTurnMessage.id}
+                content={pinnedTurnMessage.content}
+                meta={pinnedTurnMessage.meta}
+                source={pinnedTurnMessage.source}
+                createdAt={pinnedTurnMessage.createdAt}
+                compact
                 onClick={onJumpToPinnedMessage}
-                title={extractUnifiedMessageText(pinnedTurnMessage)}
-                className="flex w-full items-start gap-2 rounded-b-lg border border-t-0 border-border/70 bg-background/92 px-3 py-2 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background"
-              >
-                <CircleUserRound className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                <span className="line-clamp-2 flex-1 text-xs leading-5 text-muted-foreground">
-                  {extractUnifiedMessageText(pinnedTurnMessage) ||
-                    t('messageList.pinnedTurnEmpty')}
-                </span>
-              </button>
+              />
             </div>
           </motion.div>
         )}

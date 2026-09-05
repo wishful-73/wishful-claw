@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace WishfulClaw.Core.Tools;
 
@@ -9,7 +9,9 @@ public sealed record ToolDefinition(
     string Name,
     string Description,
     JsonElement InputSchema,
-    string[]? AvailableModes = null);
+    string[]? AvailableModes = null,
+    string? Category = null,
+    int Priority = 100);
 
 /// <summary>
 /// Result of executing a tool.

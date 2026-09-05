@@ -1,4 +1,4 @@
-// Image attachment callbacks for InputArea
+﻿// Image attachment callbacks for InputArea
 // State remains in the main component; this hook provides callbacks only
 
 import * as React from 'react'
@@ -70,13 +70,13 @@ export function useImageAttachments(opts: UseImageAttachmentsOptions) {
 
   const getPastedImageFiles = React.useCallback(
     (clipboardData: DataTransfer | null | undefined): File[] => {
-      if (!supportsVision || !clipboardData) return []
+      if (!clipboardData) return []
       return Array.from(clipboardData.items)
         .filter((item) => item.kind === 'file' && ACCEPTED_IMAGE_TYPES.includes(item.type))
         .map((item) => item.getAsFile())
         .filter(Boolean) as File[]
     },
-    [supportsVision]
+    []
   )
 
   const handleAttachMedia = React.useCallback(async (): Promise<void> => {

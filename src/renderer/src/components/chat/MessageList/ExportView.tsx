@@ -1,5 +1,4 @@
-import * as React from 'react'
-import type { UnifiedMessage } from '@renderer/lib/api/types'
+﻿import * as React from 'react'
 import type { RequestRetryState } from '@renderer/lib/agent/types'
 import { MessageRow } from './MessageRow'
 import type {
@@ -13,9 +12,7 @@ import { mergeHiddenToolUseIds } from './utils'
 interface ExportViewProps {
   containerRef: React.RefObject<HTMLDivElement | null>
   renderableMessages: RenderableMessage[]
-  messageLookup: Map<string, UnifiedMessage>
   toolResultsLookup: ToolResultsLookup
-  inlineCompactSummaryState: { byAssistantId: Map<string, UnifiedMessage[]> }
   orchestrationState: OrchestrationRunStore
   duplicatePlanReviewToolUseIds: Set<string>
   sessionAssistantMessageIds: string[]
@@ -34,9 +31,7 @@ export function ExportView(props: ExportViewProps): React.JSX.Element {
   const {
     containerRef,
     renderableMessages,
-    messageLookup,
     toolResultsLookup,
-    inlineCompactSummaryState,
     orchestrationState,
     duplicatePlanReviewToolUseIds,
     sessionAssistantMessageIds,
@@ -55,28 +50,27 @@ export function ExportView(props: ExportViewProps): React.JSX.Element {
     <div ref={containerRef} className="relative h-full flex-1" data-message-list>
       <div data-message-content>
         {renderableMessages.map((row) => {
-          const message = messageLookup.get(row.messageId)
-          if (!message) return null
+          const originMessageId = row.kind === 'message' ? row.originMessageId : null
+          const orchestration = originMessageId
+            ? orchestrationState.byMessageId.get(originMessageId)
+            : undefined
 
           return (
             <MessageRow
               key={row.messageId}
-              message={message}
+              item={row}
               sessionId={targetSessionId}
               sessionAssistantMessageIds={sessionAssistantMessageIds}
               sessionToolUseIds={sessionToolUseIds}
-              isStreaming={streamingMessageId === row.messageId}
+              isStreaming={row.kind === 'message' && streamingMessageId === row.originMessageId}
               isLastUserMessage={row.isLastUserMessage}
               isLastAssistantMessage={row.isLastAssistantMessage}
               showContinue={row.showContinue}
               disableAnimation
-              toolResults={toolResultsLookup.get(row.messageId) as any}
-              inlineCompactSummaries={inlineCompactSummaryState.byAssistantId.get(row.messageId)}
-              orchestrationRun={
-                orchestrationState.byMessageId.get(row.messageId)?.primaryRun ?? null
-              }
+              toolResults={originMessageId ? (toolResultsLookup.get(originMessageId) as any) : undefined}
+              orchestrationRun={orchestration?.primaryRun ?? null}
               hiddenToolUseIds={mergeHiddenToolUseIds(
-                orchestrationState.byMessageId.get(row.messageId)?.hiddenToolUseIds as any,
+                orchestration?.hiddenToolUseIds as any,
                 duplicatePlanReviewToolUseIds
               )}
               anchorMessageId={null}

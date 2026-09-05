@@ -39,6 +39,7 @@
     "contextCompressed": "Context compressed",
     "contextCompressionSkipped": "No compression needed",
     "contextCompressionBlocked": "Compression temporarily unavailable",
+    "contextCompressionRestoreFailed": "Context could not be restored — start a new session",
     "contextCompressionFailed": "Compression failed",
     "placeholder": "Type a message...",
     "placeholderClarify": "Describe your idea and I will keep probing until the requirements are clear...",
@@ -1108,6 +1109,7 @@
     "selectedFileReadSkipped": "Path reference",
     "selectedFileReadSkippedPdf": "PDF path reference; file was not read directly",
     "selectedFileReadSkippedNonText": "Path reference; binary or document file was not read directly",
+    "selectedFileReadSkippedNotInjected": "Path reference; file content was not injected into this turn",
     "selectedFileReadFailed": "Read failed",
     "hideCommand": "Collapse commands",
     "showCommand": "Expand commands"
@@ -1214,7 +1216,7 @@
     "recallEmptyMessage": "Empty message, memory recall skipped",
     "editImage": "Edit image",
     "maskEditImage": "Mask edit",
-    "cancelledExecution": "Execution cancelled by user",
+    "executionPaused": "Task paused for now",
     "maskBrush": "Brush",
     "imageEditPrompt": "Describe the change"
   },
@@ -1435,6 +1437,10 @@
   },
   "collab": {
     "mode": {
+      "chat": "Chat",
+      "chatDesc": "Read-only collaboration for searching, browsing, and analysis",
+      "cowork": "Cowork",
+      "coworkDesc": "Full collaboration with actions allowed by the permission policy",
       "normal": "Normal",
       "normalDesc": "Regular chat with optional Plan mode",
       "goal": "Goal",

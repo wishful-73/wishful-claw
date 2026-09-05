@@ -118,7 +118,7 @@ export function ContextRing({
         messageId: latestUsage?.messageId ?? null,
         contextTokens: latestUsage?.contextTokens ?? 0
       }
-      setHasFreshContextUsage(false)
+      setHasFreshContextUsage(Boolean(latestUsage))
       return
     }
 

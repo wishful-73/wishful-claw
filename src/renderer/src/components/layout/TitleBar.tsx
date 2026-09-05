@@ -63,7 +63,7 @@ export function TitleBar({
   })
 
   return (
-    <header className="titlebar-drag flex h-10 shrink-0 items-center justify-between border-b bg-background/90 backdrop-blur">
+    <header className="titlebar-drag flex h-10 shrink-0 items-center justify-between bg-background/90 backdrop-blur">
       {/* Left: sidebar toggle (always visible) + session title (session page only) */}
       <div className="flex min-w-0 items-center gap-1 px-2">
         {showSidebarToggle && (

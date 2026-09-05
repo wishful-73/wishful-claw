@@ -37,6 +37,8 @@ interface UserMessageProps {
   source?: UnifiedMessage['source']
   isLast?: boolean
   createdAt?: number
+  compact?: boolean
+  onClick?: () => void
   onEdit?: (messageId: string, draft: EditableUserMessageDraft) => void
   onDelete?: (messageId: string) => void
 }
@@ -50,6 +52,8 @@ export function UserMessage({
   meta,
   source,
   createdAt,
+  compact = false,
+  onClick,
   onEdit,
   onDelete
 }: UserMessageProps): React.JSX.Element {
@@ -223,7 +227,22 @@ export function UserMessage({
   }
 
   return (
-    <div className="group/user flex flex-col items-end">
+    <div
+      className="group/user flex flex-col items-end"
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onClick()
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <div className={USER_MESSAGE_WIDTH_CLASS}>
         {!editing && source === 'quoted' && (
           <div className="mb-1 flex justify-end pr-1">
@@ -401,17 +420,17 @@ export function UserMessage({
             </Dialog>
           </div>
         )}
-        {!editing && createdAt && (
+        {!compact && !editing && createdAt && (
           <p className="mt-1 pr-1 text-right text-[10px] text-muted-foreground/50 tabular-nums">
             {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         )}
-        {!editing && displayText.length > 50 && (
+        {!compact && !editing && displayText.length > 50 && (
           <p className="mt-1 pr-1 text-right text-[10px] text-muted-foreground/0 transition-colors tabular-nums group-hover/user:text-muted-foreground/40">
             {formatTokens(memoizedTokens)} {t('unit.tokens', { ns: 'common' })}
           </p>
         )}
-        {!editing && (
+        {!compact && !editing && (
           <div className="mt-2 flex w-full items-center justify-end gap-1 opacity-0 transition-opacity group-hover/user:opacity-100">
             <ActionIconButton
               label={copied ? t('userMessage.copied') : t('action.copy', { ns: 'common' })}

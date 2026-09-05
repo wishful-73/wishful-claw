@@ -1,5 +1,5 @@
 ﻿import * as React from 'react'
-import { ArrowDown, CircleUserRound } from 'lucide-react'
+import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AssistantReplyRail } from './AssistantReplyRail'
 import { MessageRow } from './MessageRow'
@@ -12,7 +12,7 @@ import {
   type MessageListRow,
   type MessageListProps
 } from './utils'
-import { extractUnifiedMessageText } from '@renderer/lib/agent/context-compression'
+import { UserMessage } from '../UserMessage'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import type { RequestRetryState } from '@renderer/lib/agent/types'
 import type { OrchestrationRunStore } from '@renderer/lib/orchestration/build-runs'
@@ -240,18 +240,15 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
             transition={animationsEnabled ? { duration: 0.15, ease: 'easeOut' } : { duration: 0 }}
           >
             <div className={getMessageColumnClass(fullWidth)}>
-              <button
-                type="button"
+              <UserMessage
+                messageId={pinnedTurnMessage.id}
+                content={pinnedTurnMessage.content}
+                meta={pinnedTurnMessage.meta}
+                source={pinnedTurnMessage.source}
+                createdAt={pinnedTurnMessage.createdAt}
+                compact
                 onClick={onJumpToPinnedMessage}
-                title={extractUnifiedMessageText(pinnedTurnMessage)}
-                className="flex w-full items-start gap-2 rounded-b-lg border border-t-0 border-border/70 bg-background/92 px-3 py-2 text-left shadow-sm backdrop-blur-sm transition-colors hover:bg-background"
-              >
-                <CircleUserRound className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                <span className="line-clamp-2 flex-1 text-xs leading-5 text-muted-foreground">
-                  {extractUnifiedMessageText(pinnedTurnMessage) ||
-                    t('messageList.pinnedTurnEmpty')}
-                </span>
-              </button>
+              />
             </div>
           </motion.div>
         )}

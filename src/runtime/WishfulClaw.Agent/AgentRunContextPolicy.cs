@@ -26,6 +26,32 @@ internal static class AgentRunContextPolicy
         "ExitPlanMode"
     };
 
+    private static readonly HashSet<string> ChannelOnlyTools = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ChannelSendImage",
+        "ChannelSendFile",
+        "FeishuSendImage",
+        "FeishuSendFile",
+        "FeishuListChatMembers",
+        "FeishuAtMember",
+        "FeishuSendUrgent",
+        "FeishuBitableListApps",
+        "FeishuBitableListTables",
+        "FeishuBitableListFields",
+        "FeishuBitableGetRecords",
+        "FeishuBitableCreateRecords",
+        "FeishuBitableUpdateRecords",
+        "FeishuBitableDeleteRecords",
+        "WeixinSendImage",
+        "WeixinSendFile",
+        "PluginSendMessage",
+        "PluginReplyMessage",
+        "PluginGetGroupMessages",
+        "PluginListGroups",
+        "PluginSummarizeGroup",
+        "PluginGetCurrentChatMessages"
+    };
+
     private static readonly HashSet<string> SharedChatTools = new(StringComparer.OrdinalIgnoreCase)
     {
         "ChannelSendImage",
@@ -159,8 +185,12 @@ internal static class AgentRunContextPolicy
         string? category,
         bool channelSession = false)
     {
+        if (!channelSession && ChannelOnlyTools.Contains(toolName))
+            return false;
         if (channelSession && ChannelExcludedTools.Contains(toolName))
             return false;
+        if (channelSession && ChannelOnlyTools.Contains(toolName))
+            return true;
 
         if (IndependentRuntimeRoles.Contains(context.RuntimeRole))
             return true;
@@ -183,6 +213,7 @@ internal static class AgentRunContextPolicy
         if (!channelSession &&
             (IndependentRuntimeRoles.Contains(context.RuntimeRole) ||
              !string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase)))
+
         {
             return definitions;
         }

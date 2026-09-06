@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -26,7 +26,7 @@ public static class AgentRuntimeChannelPluginExecutor
         "FeishuSendUrgent", "FeishuBitableListApps", "FeishuBitableListTables",
         "FeishuBitableListFields", "FeishuBitableGetRecords", "FeishuBitableCreateRecords",
         "FeishuBitableUpdateRecords", "FeishuBitableDeleteRecords",
-        "WeixinSendImage", "WeixinSendFile"
+        "WeixinSendImage", "WeixinSendFile", "ChannelSendImage", "ChannelSendFile"
     };
 
     private static readonly JsonWriterOptions WriterOptions = new()
@@ -48,7 +48,7 @@ public static class AgentRuntimeChannelPluginExecutor
         if (string.IsNullOrWhiteSpace(pluginId))
             return EncodeError("plugin_id is required");
 
-        var (channel, writeExtra) = ResolveRoute(call);
+        var (channel, writeExtra) = ResolveRoute(call, parameters);
         if (channel is null)
             return EncodeError($"Unsupported channel plugin tool: {call.Name}");
 
@@ -64,7 +64,7 @@ public static class AgentRuntimeChannelPluginExecutor
         return error.Length > 0 ? EncodeError(error) : response.GetRawText();
     }
 
-    private static (string? channel, Action<Utf8JsonWriter> writeExtra) ResolveRoute(AgentRuntimeNativeToolCall call)
+    private static (string? channel, Action<Utf8JsonWriter> writeExtra) ResolveRoute(AgentRuntimeNativeToolCall call, JsonElement parameters)
     {
         return call.Name switch
         {
@@ -72,6 +72,8 @@ public static class AgentRuntimeChannelPluginExecutor
             "FeishuSendFile" => ("plugin:feishu:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "file_type", "file_type"); }),
             "WeixinSendImage" => ("plugin:weixin:send-image", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); }),
             "WeixinSendFile" => ("plugin:weixin:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); }),
+            "ChannelSendImage" => ResolveGenericRoute(call, parameters, "image"),
+            "ChannelSendFile" => ResolveGenericRoute(call, parameters, "file"),
             "FeishuListChatMembers" => ("plugin:feishu:list-members", w => { w.WriteString("chatId", R(call, "chat_id")); WOptI(w, call, "page_size", "page_size"); WOpt(w, call, "page_token", "page_token"); }),
             "FeishuAtMember" => ("plugin:feishu:send-mention", w =>
             {
@@ -103,6 +105,25 @@ public static class AgentRuntimeChannelPluginExecutor
         };
     }
 
+    private static (string? channel, Action<Utf8JsonWriter> writeExtra) ResolveGenericRoute(
+        AgentRuntimeNativeToolCall call, JsonElement parameters, string kind)
+    {
+        var pluginType = (JsonHelpers.GetString(parameters, "pluginType") ??
+                          JsonHelpers.GetString(parameters, "channelType") ?? string.Empty).ToLowerInvariant();
+        var pluginId = JsonHelpers.GetString(parameters, "pluginId") ?? string.Empty;
+        var route = pluginType.Contains("weixin") || pluginId.Contains("weixin", StringComparison.OrdinalIgnoreCase)
+            ? $"plugin:weixin:send-{kind}"
+            : pluginType.Contains("feishu") || pluginId.Contains("feishu", StringComparison.OrdinalIgnoreCase)
+                ? $"plugin:feishu:send-{kind}"
+                : null;
+        return (route, w =>
+        {
+            w.WriteString("chatId", JsonHelpers.GetString(parameters, "externalChatId") ?? string.Empty);
+            w.WriteString("filePath", R(call, "filePath"));
+            WOpt(w, call, "fileType", "fileType");
+        });
+    }
+
     private static void BitableMut(Utf8JsonWriter w, AgentRuntimeNativeToolCall call, string arrayName)
     {
         WReq(w, call, "app_token", "app_token");
@@ -111,8 +132,31 @@ public static class AgentRuntimeChannelPluginExecutor
         if (call.Input.TryGetProperty(arrayName, out var arr)) arr.WriteTo(w); else w.WriteStartArray(); w.WriteEndArray();
     }
 
-    private static string R(AgentRuntimeNativeToolCall call, string name) =>
-        JsonHelpers.GetString(call.Input, name)?.Trim() ?? string.Empty;
+    private static string R(AgentRuntimeNativeToolCall call, string name)
+    {
+        var value = JsonHelpers.GetString(call.Input, name)
+            ?? (name.Contains('_', StringComparison.Ordinal)
+                ? JsonHelpers.GetString(call.Input, ToCamelCase(name))
+                : null);
+        return value?.Trim() ?? string.Empty;
+    }
+
+    private static string ToCamelCase(string name)
+    {
+        var result = new StringBuilder(name.Length);
+        var upperNext = false;
+        foreach (var ch in name)
+        {
+            if (ch == '_')
+            {
+                upperNext = true;
+                continue;
+            }
+            result.Append(upperNext ? char.ToUpperInvariant(ch) : ch);
+            upperNext = false;
+        }
+        return result.ToString();
+    }
 
     private static void WReq(Utf8JsonWriter w, AgentRuntimeNativeToolCall call, string outName, string inName) =>
         w.WriteString(outName, R(call, inName));

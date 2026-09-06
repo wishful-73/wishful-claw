@@ -28,6 +28,8 @@ internal static class AgentRunContextPolicy
 
     private static readonly HashSet<string> SharedChatTools = new(StringComparer.OrdinalIgnoreCase)
     {
+        "ChannelSendImage",
+        "ChannelSendFile",
         "AskUserQuestion",
         "BrowserGetContent",
         "BrowserNavigate",

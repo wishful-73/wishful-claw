@@ -1,9 +1,40 @@
-import { toolRegistry } from '../agent/tool-registry'
+﻿import { toolRegistry } from '../agent/tool-registry'
 import type { ToolHandler } from '../tools/tool-types'
 
-// ── 5 Unified Plugin Tools ──
-// All provider-agnostic — route via plugin_id to the correct backend service
+// ── Unified Plugin Tools ──
+// ChannelSendImage/ChannelSendFile route from the current channel session.
 import { pluginSendMessage, pluginReplyMessage, pluginGetGroupMessages, pluginListGroups, pluginSummarizeGroup, pluginGetCurrentChatMessages, nativeOnlyPluginResult } from './plugin-message-tools'
+
+const channelSendImage: ToolHandler = {
+  definition: {
+    name: 'ChannelSendImage',
+    description: 'Send an image to the current channel conversation. The channel and chat are inferred from the current session.',
+    inputSchema: {
+      type: 'object',
+      properties: { file_path: { type: 'string', description: 'Absolute local file path or HTTP/HTTPS URL' } },
+      required: ['file_path']
+    }
+  },
+  execute: async () => nativeOnlyPluginResult('ChannelSendImage'),
+  requiresApproval: (_input, ctx) => !ctx.channelSession
+}
+
+const channelSendFile: ToolHandler = {
+  definition: {
+    name: 'ChannelSendFile',
+    description: 'Send a file to the current channel conversation. The channel and chat are inferred from the current session.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Absolute local file path or HTTP/HTTPS URL' },
+        file_type: { type: 'string', description: 'Optional file type override' }
+      },
+      required: ['file_path']
+    }
+  },
+  execute: async () => nativeOnlyPluginResult('ChannelSendFile'),
+  requiresApproval: (_input, ctx) => !ctx.channelSession
+}
 
 const feishuSendImage: ToolHandler = {
   definition: {
@@ -24,7 +55,7 @@ const feishuSendImage: ToolHandler = {
     }
   },
   execute: async () => nativeOnlyPluginResult('FeishuSendImage'),
-  requiresApproval: () => true
+  requiresApproval: (_input, ctx) => !ctx.channelSession
 }
 
 const feishuSendFile: ToolHandler = {
@@ -52,7 +83,7 @@ const feishuSendFile: ToolHandler = {
     }
   },
   execute: async () => nativeOnlyPluginResult('FeishuSendFile'),
-  requiresApproval: () => true
+  requiresApproval: (_input, ctx) => !ctx.channelSession
 }
 
 const weixinSendImage: ToolHandler = {
@@ -78,7 +109,7 @@ const weixinSendImage: ToolHandler = {
     }
   },
   execute: async () => nativeOnlyPluginResult('WeixinSendImage'),
-  requiresApproval: () => true
+  requiresApproval: (_input, ctx) => !ctx.channelSession
 }
 
 const weixinSendFile: ToolHandler = {
@@ -104,7 +135,7 @@ const weixinSendFile: ToolHandler = {
     }
   },
   execute: async () => nativeOnlyPluginResult('WeixinSendFile'),
-  requiresApproval: () => true
+  requiresApproval: (_input, ctx) => !ctx.channelSession
 }
 
 const feishuListChatMembers: ToolHandler = {
@@ -330,7 +361,9 @@ const FEISHU_TOOLS: ToolHandler[] = [
 ]
 
 const WEIXIN_TOOLS: ToolHandler[] = [weixinSendImage, weixinSendFile]
+const COMMON_PLUGIN_TOOL_HANDLERS: ToolHandler[] = [channelSendImage, channelSendFile]
 const COMMON_PLUGIN_TOOL_NAMES = [
+  ...COMMON_PLUGIN_TOOL_HANDLERS,
   pluginSendMessage,
   pluginReplyMessage,
   pluginGetGroupMessages,
@@ -354,6 +387,7 @@ const ALL_PLUGIN_TOOLS: ToolHandler[] = [
   pluginListGroups,
   pluginSummarizeGroup,
   pluginGetCurrentChatMessages,
+  ...COMMON_PLUGIN_TOOL_HANDLERS,
   ...WEIXIN_TOOLS,
   ...FEISHU_TOOLS
 ]

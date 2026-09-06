@@ -1,4 +1,4 @@
-using WishfulClaw.Agent.Tools;
+﻿using WishfulClaw.Agent.Tools;
 using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent.Tools.Providers;
@@ -15,6 +15,19 @@ public sealed class ChannelPluginToolProvider : IToolProvider
     public void RegisterTools(ToolRegistry registry)
     {
         var chatIdProp = ToolSchemaBuilder.String("Target chat ID.");
+
+        // ── Generic current-channel messaging ──
+        registry.Register(new ToolDefinitionPlaceholder(
+            "ChannelSendImage",
+            "Send an image to the current channel conversation. The channel is inferred from the current session.",
+            ToolSchemaBuilder.Object(new() { ["filePath"] = ToolSchemaBuilder.String("Local path to the image file.") }, ["filePath"]),
+            availableModes: ["normal", "goal", "global"]));
+
+        registry.Register(new ToolDefinitionPlaceholder(
+            "ChannelSendFile",
+            "Send a file to the current channel conversation. The channel is inferred from the current session.",
+            ToolSchemaBuilder.Object(new() { ["filePath"] = ToolSchemaBuilder.String("Local path to the file."), ["fileType"] = ToolSchemaBuilder.String("Optional file type.") }, ["filePath"]),
+            availableModes: ["normal", "goal", "global"]));
 
         // ── Feishu messaging ──
         registry.Register(new ToolDefinitionPlaceholder(

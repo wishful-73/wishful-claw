@@ -62,8 +62,8 @@ interface ChannelStore {
 
   loadChannels: () => Promise<void>
   loadProviders: () => Promise<void>
-  updateChannel: (id: string, patch: Partial<PluginInstance>) => Promise<void>
-  startChannel: (id: string) => Promise<void>
+  updateChannel: (id: string, patch: Partial<PluginInstance>) => Promise<boolean>
+  startChannel: (id: string) => Promise<boolean>
   stopChannel: (id: string) => Promise<void>
   setSelectedChannel: (id: string | null) => void
 }
@@ -111,27 +111,46 @@ export const useChannelStore = create<ChannelStore>((set) => ({
 
   updateChannel: async (id, patch) => {
     try {
-      await ipcClient.invoke(IPC.PLUGIN_UPDATE, { id, patch })
+      const result = (await ipcClient.invoke(IPC.PLUGIN_UPDATE, { id, patch })) as {
+        success?: boolean
+        error?: string
+      }
+      if (result?.success === false) {
+        throw new Error(result.error || 'Channel update failed')
+      }
       set((s) => ({
-        channels: s.channels.map((p) => (p.id === id ? { ...p, ...patch } : p))
+        channels: s.channels.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+        error: null
       }))
+      return true
     } catch (err) {
       console.error('[channel-store] Failed to update channel:', err)
       set({ error: err instanceof Error ? err.message : String(err) })
+      return false
     }
   },
 
   startChannel: async (id) => {
     try {
-      await ipcClient.invoke(IPC.PLUGIN_START, id)
+      const result = (await ipcClient.invoke(IPC.PLUGIN_START, id)) as {
+        success?: boolean
+        error?: string
+      }
+      if (result?.success === false) {
+        throw new Error(result.error || 'Channel start failed')
+      }
       set((s) => ({
-        channelStatuses: { ...s.channelStatuses, [id]: 'running' }
+        channelStatuses: { ...s.channelStatuses, [id]: 'running' },
+        error: null
       }))
+      return true
     } catch (err) {
       console.error('[channel-store] Failed to start channel:', err)
       set((s) => ({
-        channelStatuses: { ...s.channelStatuses, [id]: 'error' }
+        channelStatuses: { ...s.channelStatuses, [id]: 'error' },
+        error: err instanceof Error ? err.message : String(err)
       }))
+      return false
     }
   },
 

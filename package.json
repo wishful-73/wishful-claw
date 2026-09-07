@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -21,6 +21,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "test:cron-integration": "tsc --noEmit false -p tests/cron-integration/tsconfig.json && node tests/cron-integration/out/tests/cron-integration/program.js",
     "test:renderable-chat-items": "esbuild tests/renderable-chat-items/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/renderable-chat-items/out/program.cjs && node tests/renderable-chat-items/out/program.cjs",
+    "test:channel-cancel-commands": "esbuild tests/channel-cancel-commands/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-cancel-commands/out/program.cjs && node tests/channel-cancel-commands/out/program.cjs",
     "pretest:e2e": "node tests/e2e/scripts/ensure-prereqs.mjs",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },

@@ -76,10 +76,11 @@ public sealed class ToolPreset
         ["channel"] = new ToolPreset
         {
             Id = "channel",
-            Description = "Channel messaging — plugins, messaging, memory, sessions.",
+            Description = "Channel session — global chat capabilities plus channel-safe messaging.",
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "channel-plugin", "plugin", "memory", "ask-user", "notify", "capability"
+                "channel-plugin", "plugin", "file", "search", "web", "memory",
+                "ask-user", "notify", "capability", "browser", "project", "codegraph"
             },
         },
 

@@ -74,7 +74,8 @@ internal static partial class AgentLoop
             // instead of eagerly on session open. Only real sessions qualify:
             // the shared __default__ instance (empty sessionId) and the
             // __subagent__/__goal__ conversations have no DB history.
-            if (sessionId.Length > 0 && conversationKey == sessionId)
+            var skipSessionRestore = JsonHelpers.GetBool(parameters, "skipSessionRestore", false);
+            if (!skipSessionRestore && sessionId.Length > 0 && conversationKey == sessionId)
             {
                 DbClient.EnsureInitialized(parameters);
                 var restored = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(parameters), sessionId);
@@ -165,7 +166,8 @@ internal static partial class AgentLoop
         var sessionMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, runContext);
         var registry = ToolModuleState.Registry;
         var toolDefs = registry?.GetToolDefinitions(toolPreset, sessionMode) ?? [];
-        toolDefs = AgentRunContextPolicy.FilterToolDefinitions(toolDefs, registry, runContext);
+        var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
+        toolDefs = AgentRunContextPolicy.FilterToolDefinitions(toolDefs, registry, runContext, channelSession);
 
         // Filter out WebSearch/WebFetch when web search is not enabled.
         // Previously done in the frontend; now handled backend-side since
@@ -198,7 +200,10 @@ internal static partial class AgentLoop
             var sshConnectionId = JsonHelpers.GetString(parameters, "sshConnectionId");
             var projectId = JsonHelpers.GetString(parameters, "projectId");
             WorkerLog.Warn($"agent run sshConnectionId={sshConnectionId ?? "(null)"} personaId={personaId} projectId={projectId ?? "(null)"}");
-            var cacheKey = SystemPromptCache.ComputeKey(personaId, workingFolder, language, userRules, sshConnectionId, projectId, sessionMode);
+            var cacheKey = SystemPromptCache.ComputeKey(
+                personaId, workingFolder, language, userRules, sshConnectionId, projectId, sessionMode,
+                JsonHelpers.GetString(parameters, "pluginId"),
+                JsonHelpers.GetString(parameters, "externalChatId"));
             // Session Todo guidance is for ordinary session agents; the global
             // agent host opts out (its dispatch model is defined elsewhere).
             var includeSessionTodoPrompt = sessionMode != "global";

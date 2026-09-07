@@ -57,6 +57,12 @@ public static class PromptBuilder
             parts.Add(BuildProjectContext(workingFolder, JsonHelpers.GetString(parameters, "sshConnectionId")));
         }
 
+        // ── Channel session compatibility — high priority, before persona ──
+        if (IsChannelSession(parameters))
+        {
+            parts.Add(BuildChannelSessionPrompt(parameters));
+        }
+
         // ── Session Mode (Goal / Global Agent) — high priority, before persona ──
         var sessionMode = JsonHelpers.GetString(parameters, "sessionMode");
         if (sessionMode == "goal")
@@ -298,6 +304,29 @@ This is a remote path on the SSH server. Bash commands default to this directory
 ## Project
 - Working Folder: `{workingFolder}`
 All relative paths should be resolved against this folder. Use this as the default cwd for terminal commands run via the Bash tool.
+""";
+    }
+
+    private static bool IsChannelSession(JsonElement parameters) =>
+        JsonHelpers.GetBool(parameters, "channelSession", false) ||
+        (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginId")) &&
+         (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId")) ||
+          !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginChatId"))));
+
+    private static string BuildChannelSessionPrompt(JsonElement parameters)
+    {
+        var pluginId = JsonHelpers.GetString(parameters, "pluginId") ?? "channel";
+        return $"""
+<channel_session>
+This is a channel session delivered through `{pluginId}`, not the desktop chat window.
+- Replies must be understandable as plain text in the channel. Do not rely on widgets, desktop dialogs, embedded panels, or interactive renderer components.
+- When you need a user decision or confirmation, ask a concise plain-text question and wait for the user's next channel message.
+- For research and current information, use Browser/WebFetch/WebSearch and summarize the result as text with links when useful.
+- You may operate the host computer and use Browser navigation, clicks, typing, screenshots, image generation, and file tools; the user is observing and replying from a phone.
+- For generated files or images, prefer channel-compatible send tools or provide a downloadable path/link; never claim a desktop preview is visible in the channel.
+- If a tool requires the user to click a desktop dialog, choose an option in a renderer card, approve a plan, or interact with a widget, it is not available here. Replace it with a concise plain-text question and wait for the next channel message.
+- Keep formatting conservative: short paragraphs, lists, and code fences are safer than rich UI layouts.
+</channel_session>
 """;
     }
 

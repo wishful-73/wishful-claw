@@ -26,7 +26,7 @@ import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-cont
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
   enablePlanMode?: boolean
-  sessionMode?: 'normal' | 'goal' | 'global'
+  sessionMode?: 'normal' | 'goal' | 'global' | 'channel'
   collaborationMode?: 'chat' | 'cowork'
   permissionMode?: 'default' | 'fullAccess'
   selectedFileReferences?: unknown[]
@@ -120,6 +120,7 @@ export function useChatActions() {
         console.error('[ChatActions] Target session does not exist:', targetSessionId)
         return false
       }
+      const isChannelSession = Boolean(session.pluginId && session.externalChatId)
       const projectId = session.scope === 'project' ? session.projectId : undefined
       const project = projectId ? chatStore.projects.find((p) => p.id === projectId) : null
       const workingFolder = session.scope === 'project'
@@ -139,7 +140,9 @@ export function useChatActions() {
       // initialization; if tools aren't ready yet, send without them —
       // the agent can still respond, just without tool-calling capability.
       const toolPreset = opts?.toolPreset ??
-        (session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat')
+        (isChannelSession
+          ? 'channel'
+          : session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat')
       const settings = settingsStore
       const codegraphEnabled = useAppPluginStore.getState().isCodeGraphToolAvailable()
 
@@ -244,9 +247,15 @@ export function useChatActions() {
         scope: session.scope,
         collaborationMode: session.collaborationMode,
         runtimeRole: opts?.sessionMode === 'goal' ? 'goalRunner' : 'sessionAgent',
-        ...(opts?.enablePlanMode ? { enablePlanMode: true } : {}),
-        sessionMode: opts?.sessionMode,
-        permissionMode: session.permissionMode
+        ...(opts?.enablePlanMode && !isChannelSession ? { enablePlanMode: true } : {}),
+        sessionMode: isChannelSession ? 'channel' as const : opts?.sessionMode,
+        permissionMode: isChannelSession ? 'default' as const : session.permissionMode,
+        ...(isChannelSession ? {
+          pluginId: session.pluginId,
+          pluginType: session.pluginType,
+          pluginChatId: session.externalChatId,
+          channelSession: true
+        } : {})
       })
       if (!started) pausePendingSessionDispatch(targetSessionId)
       return started

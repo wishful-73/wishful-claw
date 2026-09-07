@@ -19,8 +19,43 @@ internal static class AgentRunContextPolicy
         "translation"
     };
 
+    private static readonly HashSet<string> ChannelExcludedTools = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "visualize_show_widget",
+        "AskUserQuestion",
+        "ExitPlanMode"
+    };
+
+    private static readonly HashSet<string> ChannelOnlyTools = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ChannelSendImage",
+        "ChannelSendFile",
+        "FeishuSendImage",
+        "FeishuSendFile",
+        "FeishuListChatMembers",
+        "FeishuAtMember",
+        "FeishuSendUrgent",
+        "FeishuBitableListApps",
+        "FeishuBitableListTables",
+        "FeishuBitableListFields",
+        "FeishuBitableGetRecords",
+        "FeishuBitableCreateRecords",
+        "FeishuBitableUpdateRecords",
+        "FeishuBitableDeleteRecords",
+        "WeixinSendImage",
+        "WeixinSendFile",
+        "PluginSendMessage",
+        "PluginReplyMessage",
+        "PluginGetGroupMessages",
+        "PluginListGroups",
+        "PluginSummarizeGroup",
+        "PluginGetCurrentChatMessages"
+    };
+
     private static readonly HashSet<string> SharedChatTools = new(StringComparer.OrdinalIgnoreCase)
     {
+        "ChannelSendImage",
+        "ChannelSendFile",
         "AskUserQuestion",
         "BrowserGetContent",
         "BrowserNavigate",
@@ -83,7 +118,13 @@ internal static class AgentRunContextPolicy
         var projectId = Normalize(JsonHelpers.GetString(parameters, "projectId"));
         var workingFolder = Normalize(JsonHelpers.GetString(parameters, "workingFolder"));
         var scope = Normalize(JsonHelpers.GetString(parameters, "scope"));
-        if (scope is not ("global" or "project"))
+        if (sessionMode == "channel")
+        {
+            // A channel is a specialized global session. Keep the global scope
+            // semantics while using a distinct available-mode/tool policy.
+            scope = "global";
+        }
+        else if (scope is not ("global" or "project"))
         {
             scope = sessionMode == "global" || (projectId.Length == 0 && workingFolder.Length == 0)
                 ? "global"
@@ -140,11 +181,25 @@ internal static class AgentRunContextPolicy
         };
     }
 
+    public static bool IsChannelSession(JsonElement parameters) =>
+        JsonHelpers.GetBool(parameters, "channelSession", false) ||
+        (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginId")) &&
+         (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId")) ||
+          !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginChatId"))));
+
     public static bool IsToolAllowed(
         AgentRunContext context,
         string toolName,
-        string? category)
+        string? category,
+        bool channelSession = false)
     {
+        if (!channelSession && ChannelOnlyTools.Contains(toolName))
+            return false;
+        if (channelSession && ChannelExcludedTools.Contains(toolName))
+            return false;
+        if (channelSession && ChannelOnlyTools.Contains(toolName))
+            return true;
+
         if (IndependentRuntimeRoles.Contains(context.RuntimeRole))
             return true;
 
@@ -160,10 +215,13 @@ internal static class AgentRunContextPolicy
     public static IReadOnlyList<ToolDefinition> FilterToolDefinitions(
         IReadOnlyList<ToolDefinition> definitions,
         ToolRegistry? registry,
-        AgentRunContext context)
+        AgentRunContext context,
+        bool channelSession = false)
     {
-        if (IndependentRuntimeRoles.Contains(context.RuntimeRole) ||
-            !string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase))
+        if (!channelSession &&
+            (IndependentRuntimeRoles.Contains(context.RuntimeRole) ||
+             !string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase)))
+
         {
             return definitions;
         }
@@ -171,7 +229,7 @@ internal static class AgentRunContextPolicy
         var filtered = new List<ToolDefinition>(definitions.Count);
         foreach (var definition in definitions)
         {
-            if (IsToolAllowed(context, definition.Name, registry?.GetCategory(definition.Name)))
+            if (IsToolAllowed(context, definition.Name, registry?.GetCategory(definition.Name), channelSession))
                 filtered.Add(definition);
         }
         return filtered;

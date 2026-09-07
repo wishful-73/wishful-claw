@@ -1,4 +1,4 @@
-using System.Buffers;
+﻿using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -147,7 +147,8 @@ public static class ToolCallProcessor
             }
 
             var category = registry?.GetCategory(toolCall.Name);
-            var allowedByContext = AgentRunContextPolicy.IsToolAllowed(runContext, toolCall.Name, category);
+            var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
+            var allowedByContext = AgentRunContextPolicy.IsToolAllowed(runContext, toolCall.Name, category, channelSession);
             var allowedByMode = registry is null || registry.IsAvailableInMode(toolCall.Name, availableMode);
             if (!allowedByContext || !allowedByMode)
             {
@@ -556,6 +557,14 @@ public static class ToolCallProcessor
             return false;
         }
 
+        // Channel sessions cannot complete a remote approval dialog. The
+        // channel file/image tools are therefore explicitly non-interactive
+        // for those runs, while desktop sessions retain their normal policy.
+        if (IsChannelSession(state.Parameters) && IsChannelFileTool(toolCall.Name))
+        {
+            return false;
+        }
+
         if (state.SuppressTransportEvents && RequiresSubAgentApproval(toolCall.Name))
         {
             return true;
@@ -576,6 +585,14 @@ public static class ToolCallProcessor
     {
         return DefaultModeApprovalTools.Contains(toolName);
     }
+
+    private static bool IsChannelSession(JsonElement parameters) =>
+        JsonHelpers.GetBool(parameters, "channelSession", false);
+
+    private static bool IsChannelFileTool(string toolName) =>
+        toolName is "ChannelSendImage" or "ChannelSendFile" or
+                   "WeixinSendImage" or "WeixinSendFile" or
+                   "FeishuSendImage" or "FeishuSendFile";
 
     private static readonly JsonWriterOptions WriteOptions = new()
     {

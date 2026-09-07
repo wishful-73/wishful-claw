@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Plugin Command System — dispatcher & public API.
  *
  * Handles slash commands sent by users through messaging plugins.
@@ -18,9 +18,11 @@ import {
   handleCompress,
   handleStats
 } from './plugin-command-handlers'
+import { stripLeadingAtMention } from './channel-cancel-commands'
 
 // Re-export shared types for external consumers
 export type { CommandContext, CommandResult, CommandHandler } from './plugin-command-handlers'
+export { isChannelCancelCommand } from './channel-cancel-commands'
 
 // ── Command Registry ──
 
@@ -40,7 +42,7 @@ commands.set('stats', handleStats)
  * In group chats, messages often arrive as "@BotName /command args".
  */
 function stripAtMention(content: string): string {
-  let stripped = content.replace(/^(?:<@[^>]+>\s*|@\S+\s*)+/, '').trim()
+  let stripped = stripLeadingAtMention(content)
 
   if (!stripped.startsWith('/') && content.includes('/')) {
     const slashIdx = content.indexOf('/')

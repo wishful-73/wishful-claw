@@ -103,6 +103,7 @@ export interface AgentActions {
 
     userRules?: string
     messageCount?: number
+    skipSessionRestore?: boolean
     contextCompressionEnabled?: boolean
     contextCompressionThreshold?: number
     sshConnectionId?: string
@@ -112,8 +113,15 @@ export interface AgentActions {
     scope?: 'global' | 'project'
     collaborationMode?: 'chat' | 'cowork'
     runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation'
+    pluginId?: string
+    pluginType?: string
+    pluginChatId?: string
+    pluginChatType?: 'p2p' | 'group'
+    pluginSenderId?: string
+    pluginSenderName?: string
+    channelSession?: boolean
     enablePlanMode?: boolean
-    sessionMode?: 'normal' | 'goal' | 'global'
+    sessionMode?: 'normal' | 'goal' | 'global' | 'channel'
     memoryRecallMaxNotes?: number
     memoryRecallMaxChars?: number
     memoryRecallMinScore?: number

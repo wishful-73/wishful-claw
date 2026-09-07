@@ -1,4 +1,4 @@
-using WishfulClaw.Contracts;
+﻿using WishfulClaw.Contracts;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -116,6 +116,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         ToolRegistry? registry,
         AgentRunContext runContext,
         string? sessionMode,
+        bool channelSession,
         string toolName)
     {
         if (registry is null || !registry.TryGetExecutor(toolName, out var executor) || executor is null)
@@ -126,7 +127,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         var category = registry.GetCategory(toolName);
         if (category is null || !IsProxiedBuiltinTool(toolName, category)
             || !registry.IsAvailableInMode(toolName, sessionMode)
-            || !AgentRunContextPolicy.IsToolAllowed(runContext, toolName, category))
+            || !AgentRunContextPolicy.IsToolAllowed(runContext, toolName, category, channelSession))
         {
             return EncodeError($"Tool '{toolName}' is not available through the capability proxy in this session mode.");
         }

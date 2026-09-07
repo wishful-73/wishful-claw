@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -46,9 +46,10 @@ export class ChannelManager {
 
     const factory = this.factories.get(instance.type)
     if (!factory) {
-      console.error(`[ChannelManager] No factory registered for type: ${instance.type}`)
+      const error = new Error(`No factory registered for type: ${instance.type}`)
+      console.error(`[ChannelManager] ${error.message}`)
       this.statuses.set(instance.id, 'error')
-      return
+      throw error
     }
 
     try {

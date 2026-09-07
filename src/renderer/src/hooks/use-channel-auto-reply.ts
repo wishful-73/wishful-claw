@@ -6,8 +6,8 @@
  *   1. Ensures the session exists in the chat store
  *   2. Builds provider config from channel settings or global default
  *   3. Calls chatStore.sendMessage() to trigger the Agent Loop
- *   4. Monitors stream events for loop_end
- *   5. Sends the agent's reply back to the channel via plugin:exec
+ *   4. Sends each completed LLM response segment on message_end
+ *   5. Sends any remaining text and releases the channel queue on loop_end
  *
  * This replaces OpenCowork's use-plugin-auto-reply.ts (1512 lines) with a
  * lean implementation that reuses wishful-claw's sendMessage + agent/run pipeline.
@@ -26,6 +26,10 @@ import type { ChatMessage } from '@renderer/stores/chat-store/types'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
 import type { ThinkingConfig } from '../../../shared/types/provider'
+import {
+  isChannelReplyEvent,
+  isChannelReplyTextDelta
+} from '@renderer/lib/channel/channel-reply-event-policy'
 
 // ── Types ──
 
@@ -47,9 +51,17 @@ interface SessionTaskPayload {
   projectId?: string
   workingFolder?: string
   sshConnectionId?: string | null
+  channelTaskId?: string
 }
 
 // ── State: track active auto-reply sessions ──
+
+interface SessionCancelPayload {
+  sessionId: string
+  pluginId: string
+  chatId: string
+  taskId?: string
+}
 
 interface ActiveAutoReply {
   pluginId: string
@@ -58,9 +70,13 @@ interface ActiveAutoReply {
   textBuffer: string
   supportsStreaming: boolean
   runId: string | null  // Set after sendMessage generates it
+  channelTaskId?: string
+  replySendChain: Promise<void>
+  sentReplyCount: number
 }
 
 const activeAutoReplies = new Map<string, ActiveAutoReply>()
+const pendingChannelCancels = new Set<string>()
 
 /**
  * Register an externally triggered run (e.g. Automation in-session execution)
@@ -78,7 +94,9 @@ export function registerExternalChannelReply(
     messageId: '',
     textBuffer: '',
     supportsStreaming: false,
-    runId: null
+    runId: null,
+    replySendChain: Promise.resolve(),
+    sentReplyCount: 0
   })
 }
 
@@ -92,46 +110,16 @@ export function hasActiveExternalChannelReply(sessionId: string): boolean {
   return activeAutoReplies.has(sessionId)
 }
 
-// Per-session task queue: ensure only one auto-reply runs per chat at a time
-const taskQueues = new Map<string, SessionTaskPayload[]>()
-const sessionRunning = new Set<string>()
-
-function queueTask(task: SessionTaskPayload): void {
-  const key = task.sessionId
-  if (!taskQueues.has(key)) {
-    taskQueues.set(key, [])
-  }
-  taskQueues.get(key)!.push(task)
-  void processQueue(key)
-}
-
-async function processQueue(sessionId: string): Promise<void> {
-  if (sessionRunning.has(sessionId)) return
-  const queue = taskQueues.get(sessionId)
-  if (!queue || queue.length === 0) return
-
-  const task = queue.shift()!
-  sessionRunning.add(sessionId)
-  try {
-    await handleSessionTask(task)
-  } catch (err) {
-    console.error('[ChannelAutoReply] Task failed:', err)
-  } finally {
-    sessionRunning.delete(sessionId)
-    // Process next queued task
-    const next = taskQueues.get(sessionId)
-    if (next && next.length > 0) {
-      void processQueue(sessionId)
-    } else {
-      taskQueues.delete(sessionId)
-    }
-  }
-}
-
 // ── Core: handle a single session task ──
 
-async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
+async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
   const { sessionId, pluginId, chatId, content } = task
+
+  // A cancel event can overtake task processing while the renderer is busy
+  // restoring the session/provider. Consume it before starting a new Agent run.
+  if (task.channelTaskId && pendingChannelCancels.delete(task.channelTaskId)) {
+    return false
+  }
 
   // 1. Check if auto-reply is enabled for this channel
   const channelStore = useChannelStore.getState()
@@ -139,7 +127,7 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
   const features = channelMeta?.features ?? { autoReply: true, streamingReply: true, autoStart: false }
   if (!features.autoReply) {
     console.log(`[ChannelAutoReply] Auto-reply disabled for ${pluginId}, skipping`)
-    return
+    return false
   }
 
   // 2. Ensure session exists in chat store
@@ -175,7 +163,11 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
       workingFolder: context?.scope === 'project' ? task.workingFolder : undefined,
       sshConnectionId: context?.scope === 'project' ? task.sshConnectionId ?? undefined : undefined,
       pluginId,
+      pluginType: task.pluginType,
       externalChatId: chatId,
+      pluginChatType: task.chatType,
+      pluginSenderId: task.senderId,
+      pluginSenderName: task.senderName,
       modelSelectionMode: 'inherit'
     }
     useChatStore.setState((state) => {
@@ -196,14 +188,14 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
   if (!targetProvider) {
     console.error('[ChannelAutoReply] No provider configured')
     await sendChannelNotice(task, 'Model provider not configured. Please configure in Settings.')
-    return
+    return false
   }
 
   const modelId = channelMeta?.model || providerStore.activeModelId || targetProvider.defaultModel
   if (!modelId) {
     console.error('[ChannelAutoReply] No model configured')
     await sendChannelNotice(task, 'No model configured. Please select a model in Settings.')
-    return
+    return false
   }
 
   // After an app restart the store session exists but its message list is
@@ -242,6 +234,11 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
     reasoningEffort
   }
 
+  // The cancel event may arrive while session/provider setup is awaiting.
+  if (task.channelTaskId && pendingChannelCancels.delete(task.channelTaskId)) {
+    return false
+  }
+
   // 4. Register this as an active auto-reply (before calling sendMessage)
   //    so the stream listener can pick it up
   activeAutoReplies.set(sessionId, {
@@ -250,7 +247,10 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
     messageId: task.messageId ?? '',
     textBuffer: '',
     supportsStreaming: task.supportsStreaming,
-    runId: null
+    runId: null,
+    channelTaskId: task.channelTaskId,
+    replySendChain: Promise.resolve(),
+    sentReplyCount: 0
   })
 
   // 5. Call sendMessage to trigger the Agent Loop
@@ -265,7 +265,7 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
       provider,
       messages: [{ role: 'user', content }],
       sessionId,
-      toolPreset: session.collaborationMode === 'cowork' && session.workingFolder ? 'coding' : 'chat',
+      toolPreset: 'channel',
       webSearchEnabled: settings.webSearchEnabled,
       workingFolder: session.scope === 'project' ? session.workingFolder : undefined,
       sshConnectionId: session.scope === 'project' ? session.sshConnectionId : undefined,
@@ -273,7 +273,18 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
       scope: session.scope,
       collaborationMode: session.collaborationMode,
       runtimeRole: 'sessionAgent',
-      permissionMode: session.permissionMode,
+      sessionMode: 'channel',
+      pluginId,
+      pluginType: task.pluginType,
+      pluginChatId: chatId,
+      pluginChatType: task.chatType,
+      pluginSenderId: task.senderId,
+      pluginSenderName: task.senderName,
+      channelSession: true,
+      // Channel input is an external/untrusted entry point. Never inherit
+      // fullAccess from the paired global session.
+      permissionMode: 'default',
+      skipSessionRestore: session.messageCount === 0,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,
       maxConcurrentSubAgents: settings.maxConcurrentSubAgents,
@@ -295,11 +306,16 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<void> {
       }
     })
 
-    await sendPromise
+    const started = await sendPromise
+    if (!started) {
+      throw new Error('Agent run was not started')
+    }
+    return true
   } catch (err) {
     activeAutoReplies.delete(sessionId)
     console.error('[ChannelAutoReply] sendMessage failed:', err)
     await sendChannelNotice(task, `Agent error: ${err instanceof Error ? err.message : String(err)}`)
+    return false
   }
 }
 
@@ -317,51 +333,63 @@ async function sendChannelNotice(task: SessionTaskPayload, message: string): Pro
   }
 }
 
-// ── Helper: send agent reply back to channel ──
+// ── Helper: send agent reply segments back to the channel ──
+
+function enqueueChannelReply(autoReply: ActiveAutoReply, content: string): void {
+  const text = content.trim()
+  if (!text) return
+
+  autoReply.sentReplyCount += 1
+  autoReply.replySendChain = autoReply.replySendChain.then(async () => {
+    try {
+      await ipcClient.invoke(IPC.PLUGIN_EXEC, {
+        pluginId: autoReply.pluginId,
+        action: 'sendMessage',
+        params: { chatId: autoReply.chatId, content: text }
+      })
+      console.log(`[ChannelAutoReply] Reply sent to ${autoReply.chatId} (${text.length} chars)`)
+    } catch (err) {
+      console.error('[ChannelAutoReply] Failed to send reply:', err)
+    }
+  })
+}
+
+function flushAutoReplyText(sessionId: string): void {
+  const autoReply = activeAutoReplies.get(sessionId)
+  if (!autoReply) return
+
+  const text = autoReply.textBuffer.trim()
+  autoReply.textBuffer = ''
+  enqueueChannelReply(autoReply, text)
+}
 
 async function sendAgentReply(sessionId: string): Promise<void> {
   const autoReply = activeAutoReplies.get(sessionId)
   if (!autoReply) return
-  activeAutoReplies.delete(sessionId)
 
-  // Get final text from chat store
-  const store = useChatStore.getState()
-  const session = store.sessions.find((s) => s.id === sessionId)
-  if (!session) {
-    console.warn('[ChannelAutoReply] Session not found in store:', sessionId)
-    return
-  }
+  // Flush any text that did not have a preceding message_end event.
+  flushAutoReplyText(sessionId)
 
-  // Find the last assistant message with text content
-  let finalText = ''
-  for (let i = session.messages.length - 1; i >= 0; i--) {
-    const msg = session.messages[i]
-    if (msg.role === 'assistant' && !msg.isStreaming) {
-      finalText = msg.text || extractTextFromContent(msg)
-      if (finalText) break
+  // If no streamed segment was observed, fall back to the completed assistant message.
+  if (autoReply.sentReplyCount === 0) {
+    const store = useChatStore.getState()
+    const session = store.sessions.find((s) => s.id === sessionId)
+    let finalText = ''
+    if (session) {
+      for (let i = session.messages.length - 1; i >= 0; i--) {
+        const msg = session.messages[i]
+        if (msg.role === 'assistant' && !msg.isStreaming) {
+          finalText = msg.text || extractTextFromContent(msg)
+          if (finalText) break
+        }
+      }
     }
+    enqueueChannelReply(autoReply, finalText)
   }
 
-  // Fallback to textBuffer if store didn't have the text
-  if (!finalText) {
-    finalText = autoReply.textBuffer
-  }
-
-  if (!finalText.trim()) {
-    console.warn('[ChannelAutoReply] No reply text to send for session:', sessionId)
-    return
-  }
-
-  try {
-    await ipcClient.invoke(IPC.PLUGIN_EXEC, {
-      pluginId: autoReply.pluginId,
-      action: 'sendMessage',
-      params: { chatId: autoReply.chatId, content: finalText }
-    })
-    console.log(`[ChannelAutoReply] Reply sent to ${autoReply.chatId} (${finalText.length} chars)`)
-  } catch (err) {
-    console.error('[ChannelAutoReply] Failed to send reply:', err)
-  }
+  await autoReply.replySendChain
+  activeAutoReplies.delete(sessionId)
+  await completeChannelTaskId(autoReply.channelTaskId)
 }
 
 function extractTextFromContent(msg: ChatMessage): string {
@@ -376,6 +404,53 @@ function extractTextFromContent(msg: ChatMessage): string {
   return ''
 }
 
+async function completeChannelTaskId(taskId?: string): Promise<void> {
+  if (!taskId) return
+  try {
+    await ipcClient.invoke(IPC.PLUGIN_SESSION_TASK_COMPLETE, { taskId })
+  } catch (err) {
+    console.error('[ChannelAutoReply] Failed to acknowledge channel task:', err)
+  }
+}
+
+async function completeChannelTask(task: SessionTaskPayload): Promise<void> {
+  await completeChannelTaskId(task.channelTaskId)
+}
+
+async function processChannelTask(task: SessionTaskPayload): Promise<void> {
+  try {
+    const started = await handleSessionTask(task)
+    if (!started) {
+      await completeChannelTask(task)
+    }
+  } catch (err) {
+    console.error('[ChannelAutoReply] Task failed:', err)
+    await completeChannelTask(task)
+  }
+}
+
+async function processChannelCancel(payload: SessionCancelPayload): Promise<void> {
+  const autoReply = activeAutoReplies.get(payload.sessionId)
+  if (!autoReply) {
+    if (payload.taskId) pendingChannelCancels.add(payload.taskId)
+    return
+  }
+  if (autoReply.pluginId !== payload.pluginId || autoReply.chatId !== payload.chatId) {
+    return
+  }
+
+  if (payload.taskId) pendingChannelCancels.delete(payload.taskId)
+
+  try {
+    await useChatStore.getState().cancelStream(payload.sessionId)
+  } catch (err) {
+    console.error('[ChannelAutoReply] Failed to cancel channel run:', err)
+  } finally {
+    activeAutoReplies.delete(payload.sessionId)
+    await completeChannelTaskId(autoReply.channelTaskId)
+  }
+}
+
 // ── Hook: mount the listener ──
 
 export function useChannelAutoReply(): void {
@@ -384,34 +459,54 @@ export function useChannelAutoReply(): void {
     const unsubStream = agentStream.subscribeAll(
       (_runId: string, sessionId: string, event: AgentStreamEvent) => {
         const autoReply = activeAutoReplies.get(sessionId)
-        if (!autoReply) return
+        if (!autoReply || !isChannelReplyEvent(event)) return
+
+        if (isChannelReplyTextDelta(event)) {
+          autoReply.textBuffer += event.text
+          return
+        }
 
         switch (event.type) {
-          case 'text_delta':
-            autoReply.textBuffer += event.text
+
+          case 'message_end':
+            // Incoming channel tasks send each LLM segment immediately. Keep
+            // externally registered/manual channel runs on their old final
+            // loop_end aggregation behavior.
+            if (autoReply.channelTaskId) {
+              flushAutoReplyText(sessionId)
+            }
             break
 
           case 'loop_end':
             // Defer to next microtask so handleEnvelope (envelope-level callback)
             // runs first and sets isStreaming=false on the assistant message.
             // subscribeAll fires before envelopeCallbacks in acceptEnvelope.
-            queueMicrotask(() => void sendAgentReply(sessionId))
+            queueMicrotask(() => {
+              void sendAgentReply(sessionId)
+            })
             break
 
           case 'error':
+            if (autoReply.channelTaskId) {
+              flushAutoReplyText(sessionId)
+            }
             activeAutoReplies.delete(sessionId)
-            void sendChannelNotice(
-              {
-                pluginId: autoReply.pluginId,
-                chatId: autoReply.chatId,
-                content: '',
-                sessionId,
-                pluginType: '',
-                supportsStreaming: false,
-                messageId: autoReply.messageId
-              } as SessionTaskPayload,
-              `Agent error: ${event.message}`
-            )
+            void autoReply.replySendChain
+              .then(() =>
+                sendChannelNotice(
+                  {
+                    pluginId: autoReply.pluginId,
+                    chatId: autoReply.chatId,
+                    content: '',
+                    sessionId,
+                    pluginType: '',
+                    supportsStreaming: false,
+                    messageId: autoReply.messageId
+                  } as SessionTaskPayload,
+                  `Agent error: ${event.message}`
+                )
+              )
+              .finally(() => completeChannelTaskId(autoReply.channelTaskId))
             break
         }
       }
@@ -425,12 +520,19 @@ export function useChannelAutoReply(): void {
         `[ChannelAutoReply] Received task: session=${task.sessionId}, ` +
         `plugin=${task.pluginId}, chat=${task.chatId}`
       )
-      queueTask(task)
+      void processChannelTask(task)
+    })
+
+    const unsubCancel = ipcClient.on(IPC.PLUGIN_SESSION_CANCEL, (...args: unknown[]) => {
+      const payload = args[0] as SessionCancelPayload
+      if (!payload?.sessionId || !payload.pluginId || !payload.chatId) return
+      void processChannelCancel(payload)
     })
 
     return () => {
       unsubStream()
       unsubTask()
+      unsubCancel()
     }
   }, [])
 }

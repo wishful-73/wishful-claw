@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Data.Sqlite;
@@ -30,7 +30,7 @@ internal partial class RegressionJsonContext : JsonSerializerContext
 /// together with messages whenever a session/conversation/project is removed,
 /// while ClearAll must keep plugin-bound sessions and their tasks intact.
 /// </summary>
-internal static class Program
+internal static partial class Program
 {
     private static int _passed;
 
@@ -63,9 +63,11 @@ internal static class Program
                 RunResetConversationSuite(dbPath, db);
                 RunProjectDeleteSuite(dbPath, db);
                 RunPluginSessionSuite(dbPath, db);
+                RunPluginSessionRoutingSuite(dbPath, db);
                 RunClearAllSuite(dbPath, db);
                 RunGlobalTaskSuite(dbPath, db);
                 RunGlobalToolProviderSuite();
+                RunChannelToolProviderSuite();
                 await RunGlobalTaskExecutorSuiteAsync(dbPath);
                 await RunDispatchProtocolSuiteAsync(dbPath);
                 RunDeleteBySessionSuite(dbPath, db);
@@ -212,7 +214,7 @@ internal static class Program
         AssertEqual(123456789L, updated[0].GetProperty("due_at").GetInt64(), "due_at roundtrips in snake_case");
 
         // Dispatch creation constraints
-        CreateSession(dbPath, "s-gt", title: "Global Dispatch Target", projectId: null);
+        CreateSession(dbPath, "s-gt", title: "Global Dispatch Target", projectId: "p-gt");
         var missingSession = DbGlobalTaskDispatchTools.Create(Params(dbPath, w =>
         {
             w.WriteString("id", "gd-missing-session");
@@ -294,11 +296,28 @@ internal static class Program
         }
     }
 
+    // ─── Suite: Channel tool provider mode availability ───
+
+    private static void RunChannelToolProviderSuite()
+    {
+        var registry = new ToolRegistry();
+        new ChannelPluginToolProvider().RegisterTools(registry);
+
+        var channelSendImage = registry.GetToolDefinitions()
+            .Single(definition => definition.Name == "ChannelSendImage");
+        Assert(registry.IsAvailableInMode(channelSendImage.Name, "channel"),
+            "ChannelSendImage is available in channel mode");
+        Assert(registry.IsAvailableInMode(channelSendImage.Name, "global"),
+            "ChannelSendImage remains available in global mode");
+        Assert(registry.IsAvailableInMode(channelSendImage.Name, "normal"),
+            "ChannelSendImage remains available in normal mode");
+    }
+
     // ─── Suite: AgentRuntimeGlobalTaskExecutor glue (CRUD paths) ───
 
     private static async Task RunGlobalTaskExecutorSuiteAsync(string dbPath)
     {
-        CreateSession(dbPath, "s-gtx", title: "Executor Target", projectId: null);
+        CreateSession(dbPath, "s-gtx", title: "Executor Target", projectId: "p-gtx");
 
         // create_global_task generates its own id and returns an AOT-safe envelope
         var createJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
@@ -364,7 +383,7 @@ internal static class Program
         }
 
         // update_dispatch stamps completedAt automatically when absent
-        CreateSession(dbPath, "s-gtx2", title: "Executor Target 2", projectId: null);
+        CreateSession(dbPath, "s-gtx2", title: "Executor Target 2", projectId: "p-gtx2");
         ExpectNoError(DbGlobalTaskDispatchTools.Create(Params(dbPath, w =>
         {
             w.WriteString("id", "gd-exec");
@@ -401,7 +420,7 @@ internal static class Program
     {
         // source_session_id roundtrip: dispatch records remember the global session
         CreateSession(dbPath, "s-global-src", title: "Global Agent Session", projectId: null);
-        CreateSession(dbPath, "s-proto", title: "Protocol Target", projectId: null);
+        CreateSession(dbPath, "s-proto", title: "Protocol Target", projectId: "p-proto");
         ExpectNoError(DbGlobalTaskTools.Create(Params(dbPath, w =>
         {
             w.WriteString("id", "gt-proto");
@@ -448,7 +467,7 @@ internal static class Program
                 w.WriteString("dispatchId", "gd-reply");
                 w.WriteString("report", "acknowledged, starting work");
             }),
-            default, null!, CancellationToken.None);
+            Params(dbPath, w => w.WriteString("sessionId", "s-proto")), null!, CancellationToken.None);
         using (var document = JsonDocument.Parse(ackJson))
         {
             var root = document.RootElement;
@@ -466,7 +485,7 @@ internal static class Program
                 w.WriteString("report", "work finished, all tests green");
                 w.WriteString("status", "completed");
             }),
-            default, null!, CancellationToken.None);
+            Params(dbPath, w => w.WriteString("sessionId", "s-proto")), null!, CancellationToken.None);
         using (var document = JsonDocument.Parse(doneJson))
         {
             AssertEqual("completed", document.RootElement.GetProperty("status").GetString(),
@@ -487,7 +506,7 @@ internal static class Program
                 w.WriteString("report", "bad");
                 w.WriteString("status", "sent");
             }),
-            default, null!, CancellationToken.None);
+            Params(dbPath, w => w.WriteString("sessionId", "s-proto")), null!, CancellationToken.None);
         Assert(JsonDocument.Parse(badStatusJson).RootElement.TryGetProperty("error", out _),
             "reply rejects status values outside in_progress/completed/blocked");
         var missingJson = await AgentRuntimeGlobalDispatchReplyExecutor.ExecuteAsync(
@@ -496,7 +515,7 @@ internal static class Program
                 w.WriteString("dispatchId", "gd-nope");
                 w.WriteString("report", "missing");
             }),
-            default, null!, CancellationToken.None);
+            Params(dbPath, w => w.WriteString("sessionId", "s-proto")), null!, CancellationToken.None);
         Assert(JsonDocument.Parse(missingJson).RootElement.TryGetProperty("error", out _),
             "reply rejects unknown dispatch ids");
 

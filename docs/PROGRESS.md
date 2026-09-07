@@ -8,7 +8,7 @@
 - VERDICT：PASS（TypeScript 三套配置、C# solution、渠道路由/级联回归；真实 Electron 进程级 E2E 未运行）
 - 产品版本：`0.2.25`
 - Tag：`v0.2.25`
-- Commit：待合并后补充 merge commit
+- Commit：`b0953a4`（merge）
 - 日期：2026-09-07
 - 范围与功能单元：
   - **微信绑定生命周期** — 扫码成功后持久化 token/accountId/baseUrl/userId，自动写入启用与 autoStart，并立即启动渠道；应用重启时已绑定且启用的渠道自动恢复。

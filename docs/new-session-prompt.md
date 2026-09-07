@@ -14,7 +14,7 @@
 
 1. `AGENTS.md` — 项目结构（7 层架构）、分层约定、Git 提交规范、分支管理规则、大文件拆分规则
 2. `docs/dev-workflow.md` — 六阶段开发工作流 SOP
-3. `docs/iteration-plan.md` — 总体迭代计划（含当前 v2-iter-24 与 v2-iter-25 ~ v2-iter-26 后续路线）
+3. `docs/iteration-plan.md` — 总体迭代计划（含当前 v2-iter-25 与 v2-iter-26 后续路线）
 4. `D:\koda\Obsidian\02-AI教学\wishfulclaw` — 老大持续更新的 Wishful Claw Bug 与优化建议知识库；规划新迭代前先检查最新内容
 
 ## 【最重要】每个新迭代开始，必须先与老大讨论确认
@@ -72,6 +72,7 @@
 | v2-iter-22 | 微信/飞书渠道与 Cron 定时任务打磨 — 渠道标题/主动发送、Cron SQLite 与启动恢复、Automation 列表/表单/日历、运行状态/通知/归档、隔离测试与并发修复、ActivityPanel 迁入右侧 Tab | ✅ 已完成，产品版本 0.2.22，tag v0.2.22，已合并 main |
 | v2-iter-23 | 会话可靠性与缺陷收口 — 压缩快照体系（schema/增量查询/安全回退/回归测试 252 断言）、工具结果即时持久化 + messages upsert 队列、恢复 reconciliation、惰性会话初始化、上线前全量排查整改（高危 8/中危 36/低危 16 分批修复）、聊天体验（历史点击加载/吸附卡/悬浮操作块/摘要入口）、前端打磨（输入草稿/图标体系/服务商弹窗/文件树着色）、辅助窗口多屏定位（实机验收 PASS）；2026-08-29 老大授权解除“不发版”决策，按标准流程收尾 | ✅ 已完成，产品版本 0.2.23，tag v0.2.23，已合并 main |
 | v2-iter-24 | 全局产品经理 Agent + 会话临时 Todo — 会话上下文模型统一（SessionScope/CollaborationMode/PermissionMode/RuntimeRole 四正交模型 + Settings v34 会话默认值）、Plan A 全局任务体系（`global_tasks` 只归档不删除 + `global_task_dispatches` 跨会话分派协议 + Task Board 全局工作台 + 看板变更事件实时刷新）、Plan B 会话 Todo SQLite 化（`tasks` 表 + 四工具 + 展示接线 + Prompt 引导，与全局任务完全隔离）、上下文压缩（流式实时摘要 + 手动压缩下限 + 同位卡片/分隔线 + 取消竞态卡片泄漏修复 + 摘要跟随会话语言）、桌面自动更新（electron-updater 全流程 + 设置页集成）、压缩快照 DB 收口（不可变 schema + 原子提交 + detach）、issues 批次 1/2（侧边栏加载更多、项目树运行图标、中文 IME 末字符、Todo 面板悬浮限高、右侧面板 tab 会话隔离与 Tab 菜单、首条消息顶部间距、文件选中注入读取、工具分类清单）、审查报告 review-10/11/12 + 工具精简分析 + 人格精简（-43% 行） | ✅ 已完成，产品版本 0.2.24，tag v0.2.24，已合并 main |
+| v2-iter-25 | 微信渠道全局会话闭环 — 扫码绑定后自动启动、重启自动恢复、同一渠道路由复用单一全局会话、渠道专用提示词与工具筛选、统一媒体发送工具、取消命令与回复事件策略、渠道路由/级联回归测试 | ✅ 已完成，产品版本 0.2.25，tag v0.2.25，已合并 main |
 
 ## 当前项目架构（7 层）
 
@@ -95,16 +96,15 @@ Worker (14 文件)          — IPC 宿主 + 模块注册
 
 ## 当前状态
 
-- **v2-iter-24 已完结**（2026-09-05 老大确认全部功能已验收并授权收尾发版）：已合并 main、tag `v0.2.24`、产品版本 `0.2.24`，Release 与安装包已发布
-- 最新 tag：`v0.2.24`；新会话直接从 main 开始
-- 交付内容：全局产品经理 Agent（`global_tasks` + `global_task_dispatches` + Task Board）、会话临时 Todo SQLite 化、会话上下文模型统一（四正交模型）、上下文压缩流式实时摘要与取消竞态修复、桌面自动更新、issues 批次 1/2 缺陷与改进。详见 `docs/PROGRESS.md` 的 v2-iter-24 段落
-- **iter-25 必读遗留**：`docs/PROGRESS.md` 的「遗留（移交 iter-25）」清单（I24-11 automation 权限承诺与实现不一致、I24-8/I24-18 各剩半、分派状态覆盖竞态、枚举白名单等）；三份审查报告 `review-10/11/12` 的「待完成」记账已过期，以 PROGRESS 的闭环状态为准
-- 正式产品版（1.0）仍延后：v2-iter-25 集中修复与 Release Candidate 准备，v2-iter-26 经老大确认后正式发布；各迭代收尾仍按标准流程打 0.2.x 版本与 tag
+- **v2-iter-25 已完结**（2026-09-07 老大确认按标准流程收尾发版）：已合并 main、tag `v0.2.25`、产品版本 `0.2.25`，Release 与安装包已发布
+- 最新 tag：`v0.2.25`；新会话直接从 main 开始
+- 交付内容：微信扫码绑定后自动启动与重启恢复、同一渠道路由复用单一全局会话、渠道专用提示词与工具筛选、统一媒体发送工具、取消命令与回复事件策略、渠道路由/级联回归测试。详见 `docs/PROGRESS.md` 的 v2-iter-25 段落
+- **iter-25 已知边界**：渠道长期无人值守的权限边界、并发串行化、分派状态幂等与群聊身份隔离仍需后续迭代处理；`review-13-iter25-release-prep.md` 与 `review-channel-global-agent-business-robustness-iter25.md` 保留完整风险记录。真实 Electron 进程级 E2E 仍未运行
+- 正式产品版（1.0）仍延后：v2-iter-26 经老大确认后继续正式版发布与收尾；各迭代收尾仍按标准流程打 0.2.x 版本与 tag
 
 ## 后续路线
 
-1. **v2-iter-25：集中修复与 Release Candidate 准备** — 冻结大功能，完成全量回归、真实 Electron 覆盖、AOT/NSIS、安装观察；顺带消化 iter-24 遗留清单，可评估 `docs/tool-slimming-analysis.md` 的工具精简方案排期（其先决条件 I24-1 已修复）
-2. **v2-iter-26：正式版发布与收尾** — 达到门槛并经老大明确确认后，才执行版本迁移、tag、main/Release 和安装包发布
+1. **v2-iter-26：正式版发布与收尾** — 先与老大确认具体范围和门槛，处理渠道权限/并发、发布链路与产品门面等遗留问题；达到门槛并经明确确认后再执行版本迁移、tag、main/Release 和安装包发布
 
 **每个后续迭代开工前都要重新与老大确认具体范围；不要把路线图草案当成直接执行授权。**
 
@@ -141,10 +141,10 @@ Worker (14 文件)          — IPC 宿主 + 模块注册
 
 ## 会话开始时请先执行
 
-1. `git checkout main` + `git pull origin main`（失败时走代理）+ `git log --oneline -5` — 确认 main 已含 v0.2.23
+1. `git checkout main` + `git pull origin main`（失败时走代理）+ `git log --oneline -5` — 确认 main 已含 v0.2.25
 2. 读 `AGENTS.md` — 查看 7 层架构和分层约定、分支管理规则（新分支必须从最新 main 拆出）
-3. 读 `docs/PROGRESS.md` + `docs/iteration-plan.md` — 查看已完结迭代（最新 v0.2.23）与 24~26 路线；开工前必须与老大确认 v2-iter-24 具体范围、优先级与验收标准，不得按计划文档默认开工
+3. 读 `docs/PROGRESS.md` + `docs/iteration-plan.md` — 查看已完结迭代（最新 v0.2.25）与 v2-iter-26 路线；开工前必须与老大确认 v2-iter-26 具体范围、优先级与验收标准，不得按计划文档默认开工
 4. 检查 `D:\koda\Obsidian\02-AI教学\wishfulclaw` 中最新的 Bug 和优化建议（若路径不存在则跳过并告知老大）
-5. 确认后 `git checkout -b dev/v2-iter-24` 开工；不得在 main 上直接开发，不得提前发布正式版（1.0）
+5. 确认后 `git checkout -b dev/v2-iter-26` 开工；不得在 main 上直接开发，不得提前发布正式版（1.0）
 
 叫老大，我们是并肩协作的兄弟。

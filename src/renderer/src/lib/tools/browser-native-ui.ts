@@ -84,10 +84,6 @@ async function executeBrowserNavigate(
   if (action === 'goto') {
     let url = input.url as string
     if (!url || typeof url !== 'string') throw new Error('"url" is required for goto')
-    url = url.trim()
-    if (!/^https?:\/\//i.test(url) && !url.startsWith('http://localhost')) {
-      url = `https://${url}`
-    }
     url = normalizeBrowserUrl(url)
     assertBrowserAccess(url)
     // Reveal the browser panel so the user can see the page being loaded.

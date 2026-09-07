@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Plugin CRUD + session management + streaming IPC handlers.
  *
  * Extracted from channel-handlers.ts.
@@ -30,6 +30,7 @@ import {
   waitForWeixinLogin,
   DEFAULT_WEIXIN_BASE_URL
 } from '../../channels/providers/weixin/weixin-login'
+import { completeChannelAutoReplyTask } from '../../channels/auto-reply'
 
 let _handlersRegistered = false
 
@@ -459,6 +460,11 @@ export function registerPluginHandlers(channelManager: ChannelManager): void {
   registerChannelMessagePackHandler<string>('plugin:status', async (id) => {
     return channelManager.getStatus(id)
   })
+
+  registerChannelMessagePackHandler<{ taskId: string }>(
+    'plugin:session-task-complete',
+    async ({ taskId }) => ({ success: completeChannelAutoReplyTask(taskId) })
+  )
 
   // Unified action dispatch
   registerChannelMessagePackHandler<{

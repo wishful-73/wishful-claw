@@ -308,8 +308,10 @@ All relative paths should be resolved against this folder. Use this as the defau
     }
 
     private static bool IsChannelSession(JsonElement parameters) =>
-        !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginId")) &&
-        !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId"));
+        JsonHelpers.GetBool(parameters, "channelSession", false) ||
+        (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginId")) &&
+         (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId")) ||
+          !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginChatId"))));
 
     private static string BuildChannelSessionPrompt(JsonElement parameters)
     {

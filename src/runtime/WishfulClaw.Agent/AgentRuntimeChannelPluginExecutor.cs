@@ -118,7 +118,8 @@ public static class AgentRuntimeChannelPluginExecutor
                 : null;
         return (route, w =>
         {
-            w.WriteString("chatId", JsonHelpers.GetString(parameters, "externalChatId") ?? string.Empty);
+            w.WriteString("chatId", JsonHelpers.GetString(parameters, "externalChatId") ??
+                JsonHelpers.GetString(parameters, "pluginChatId") ?? string.Empty);
             w.WriteString("filePath", R(call, "filePath"));
             WOpt(w, call, "fileType", "fileType");
         });

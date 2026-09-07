@@ -231,7 +231,7 @@ export interface SidecarAgentRunRequest {
   maxParallelTools?: number
   maxConcurrentSubAgents: number
   compression?: CompressionConfig
-  sessionMode?: 'normal' | 'agent' | 'chat'
+  sessionMode?: 'normal' | 'agent' | 'chat' | 'channel'
   planMode?: boolean
   planModeAllowedTools?: string[]
   permissionPolicy?: PermissionPolicySnapshot
@@ -245,6 +245,7 @@ export interface SidecarAgentRunRequest {
   activeTeamName?: string
   goalRunSource?: 'user_turn' | 'continue'
   pluginId?: string
+  pluginType?: string
   pluginChatId?: string
   pluginChatType?: 'p2p' | 'group'
   pluginSenderId?: string

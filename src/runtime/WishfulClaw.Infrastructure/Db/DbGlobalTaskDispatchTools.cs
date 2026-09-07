@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -98,6 +98,12 @@ public static class DbGlobalTaskDispatchTools
                     new SqliteParameter("@id", globalTaskId)) > 0;
                 if (!taskExists)
                     return new GlobalTaskDispatchMutationResult(false, 0, "Global task not found");
+
+                var targetSessionExists = db.QueryScalar<long>(conn, tx,
+                    "SELECT COUNT(*) FROM sessions WHERE id = @id",
+                    new SqliteParameter("@id", sessionId)) > 0;
+                if (!targetSessionExists)
+                    return new GlobalTaskDispatchMutationResult(false, 0, "Target session not found");
 
                 var sessionExists = db.QueryScalar<long>(conn, tx,
                     "SELECT COUNT(*) FROM sessions WHERE id = @id AND scope = 'project'",

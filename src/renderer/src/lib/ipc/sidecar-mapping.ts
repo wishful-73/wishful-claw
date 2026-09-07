@@ -231,7 +231,7 @@ export function buildSidecarAgentRunRequest(args: {
   maxParallelTools?: number
   compression?: CompressionConfig | null
   imagePluginProvider?: ProviderConfig | null
-  sessionMode?: 'normal' | 'agent' | 'chat'
+  sessionMode?: 'normal' | 'agent' | 'chat' | 'channel'
   planMode?: boolean
   planModeAllowedTools?: readonly string[]
   planRevision?: SidecarPlanRevisionContext | null
@@ -244,10 +244,12 @@ export function buildSidecarAgentRunRequest(args: {
   activeTeamName?: string
   goalRunSource?: 'user_turn' | 'continue'
   pluginId?: string
+  pluginType?: string
   pluginChatId?: string
   pluginChatType?: 'p2p' | 'group'
   pluginSenderId?: string
   pluginSenderName?: string
+  channelSession?: boolean
   callerAgent?: string
   sshConnectionId?: string
   captureFinalMessages?: boolean
@@ -348,10 +350,12 @@ export function buildSidecarAgentRunRequest(args: {
     ...(args.activeTeamName ? { activeTeamName: args.activeTeamName } : {}),
     ...(args.goalRunSource ? { goalRunSource: args.goalRunSource } : {}),
     ...(args.pluginId ? { pluginId: args.pluginId } : {}),
+    ...(args.pluginType ? { pluginType: args.pluginType } : {}),
     ...(args.pluginChatId ? { pluginChatId: args.pluginChatId } : {}),
     ...(args.pluginChatType ? { pluginChatType: args.pluginChatType } : {}),
     ...(args.pluginSenderId ? { pluginSenderId: args.pluginSenderId } : {}),
     ...(args.pluginSenderName ? { pluginSenderName: args.pluginSenderName } : {}),
+    ...(args.channelSession ? { channelSession: true } : {}),
     ...(args.callerAgent ? { callerAgent: args.callerAgent } : {}),
     ...(args.sshConnectionId ? { sshConnectionId: args.sshConnectionId } : {}),
     ...(args.captureFinalMessages ? { captureFinalMessages: true } : {}),

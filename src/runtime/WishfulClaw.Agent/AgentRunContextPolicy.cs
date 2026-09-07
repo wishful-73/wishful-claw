@@ -118,7 +118,13 @@ internal static class AgentRunContextPolicy
         var projectId = Normalize(JsonHelpers.GetString(parameters, "projectId"));
         var workingFolder = Normalize(JsonHelpers.GetString(parameters, "workingFolder"));
         var scope = Normalize(JsonHelpers.GetString(parameters, "scope"));
-        if (scope is not ("global" or "project"))
+        if (sessionMode == "channel")
+        {
+            // A channel is a specialized global session. Keep the global scope
+            // semantics while using a distinct available-mode/tool policy.
+            scope = "global";
+        }
+        else if (scope is not ("global" or "project"))
         {
             scope = sessionMode == "global" || (projectId.Length == 0 && workingFolder.Length == 0)
                 ? "global"
@@ -176,8 +182,10 @@ internal static class AgentRunContextPolicy
     }
 
     public static bool IsChannelSession(JsonElement parameters) =>
-        !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginId")) &&
-        !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId"));
+        JsonHelpers.GetBool(parameters, "channelSession", false) ||
+        (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginId")) &&
+         (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId")) ||
+          !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginChatId"))));
 
     public static bool IsToolAllowed(
         AgentRunContext context,

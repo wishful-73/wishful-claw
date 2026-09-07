@@ -9,7 +9,17 @@ namespace WishfulClaw.Infrastructure.Db;
 
 public static class DbPluginSessionRouting
 {
+    private static readonly object RouteSync = new();
+
     public static WorkerResponse RoutePluginSession(JsonElement parameters)
+    {
+        lock (RouteSync)
+        {
+            return RoutePluginSessionLocked(parameters);
+        }
+    }
+
+    private static WorkerResponse RoutePluginSessionLocked(JsonElement parameters)
     {
         try
         {
@@ -38,9 +48,13 @@ public static class DbPluginSessionRouting
 
             var session = db.QueryFirstOrDefault(
                 "SELECT * FROM sessions WHERE channel_route_key = @key " +
-                "OR (channel_route_key IS NULL AND external_chat_id = @key) LIMIT 1",
+                "OR (plugin_id = @pluginId AND external_chat_id = @chatId) " +
+                "OR (channel_route_key IS NULL AND external_chat_id = @key) " +
+                "ORDER BY CASE WHEN channel_route_key = @key THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
                 EntityMappers.MapSession,
-                new SqliteParameter("@key", compositeKey));
+                new SqliteParameter("@key", compositeKey),
+                new SqliteParameter("@pluginId", pluginId),
+                new SqliteParameter("@chatId", chatId));
 
             var modelSelectionMode = providerId is not null && modelId is not null ? "manual" : "inherit";
             string sessionId, sessionTitle;
@@ -52,36 +66,41 @@ public static class DbPluginSessionRouting
                 sessionTitle = initialTitle ?? DbPluginSessionTools.FirstNonEmpty(chatName, senderName, chatId) ?? chatId;
                 sessionProjectId = project?.Id;
 
-                var entity = new SessionEntity
-                {
-                    Id = sessionId, Title = sessionTitle, Mode = "cowork", CreatedAt = now, UpdatedAt = now,
-                    ProjectId = project?.Id, WorkingFolder = DbPluginSessionTools.EmptyToNull(project?.WorkingFolder),
-                    SshConnectionId = project?.SshConnectionId, Pinned = 0, PluginId = pluginId,
-                    PluginType = pluginType, ChannelRouteKey = compositeKey, ExternalChatId = chatId,
-                    ExternalChatType = chatType, ProviderId = providerId, ModelId = modelId,
-                    ModelSelectionMode = modelSelectionMode
-                };
-                WorkerJsonHelper.BuildJsonElement(w =>
-                {
-                    w.WriteStartObject();
-                    w.WriteString("id", entity.Id);
-                    w.WriteString("title", entity.Title);
-                    w.WriteString("mode", entity.Mode);
-                    w.WriteNumber("createdAt", entity.CreatedAt);
-                    w.WriteNumber("updatedAt", entity.UpdatedAt);
-                    w.WriteString("projectId", entity.ProjectId);
-                    w.WriteString("workingFolder", entity.WorkingFolder);
-                    w.WriteString("sshConnectionId", entity.SshConnectionId);
-                    w.WriteBoolean("pinned", false);
-                    w.WriteString("pluginId", entity.PluginId);
-                    w.WriteString("channelRouteKey", entity.ChannelRouteKey);
-                    w.WriteString("externalChatId", entity.ExternalChatId);
-                    w.WriteString("externalChatType", entity.ExternalChatType);
-                    w.WriteString("providerId", entity.ProviderId);
-                    w.WriteString("modelId", entity.ModelId);
-                    w.WriteString("modelSelectionMode", entity.ModelSelectionMode);
-                    w.WriteEndObject();
-                });
+                var scope = project is null ? "global" : "project";
+                var collaborationMode = project is null ? "chat" : "cowork";
+                var permissionMode = "default";
+                var mode = collaborationMode;
+                var workingFolder = DbPluginSessionTools.EmptyToNull(project?.WorkingFolder);
+                var sshConnectionId = project?.SshConnectionId;
+
+                db.Execute(
+                    "INSERT INTO sessions (id, title, mode, scope, collaboration_mode, permission_mode, " +
+                    "created_at, updated_at, message_count, project_id, working_folder, ssh_connection_id, " +
+                    "pinned, plugin_id, plugin_type, channel_route_key, external_chat_id, external_chat_type, " +
+                    "provider_id, model_id, model_selection_mode) " +
+                    "VALUES (@id, @title, @mode, @scope, @collaborationMode, @permissionMode, " +
+                    "@createdAt, @updatedAt, 0, @projectId, @workingFolder, @sshConnectionId, " +
+                    "0, @pluginId, @pluginType, @channelRouteKey, @externalChatId, @externalChatType, " +
+                    "@providerId, @modelId, @modelSelectionMode)",
+                    new SqliteParameter("@id", sessionId),
+                    new SqliteParameter("@title", sessionTitle),
+                    new SqliteParameter("@mode", mode),
+                    new SqliteParameter("@scope", scope),
+                    new SqliteParameter("@collaborationMode", collaborationMode),
+                    new SqliteParameter("@permissionMode", permissionMode),
+                    new SqliteParameter("@createdAt", now),
+                    new SqliteParameter("@updatedAt", now),
+                    new SqliteParameter("@projectId", (object?)project?.Id ?? DBNull.Value),
+                    new SqliteParameter("@workingFolder", (object?)workingFolder ?? DBNull.Value),
+                    new SqliteParameter("@sshConnectionId", (object?)sshConnectionId ?? DBNull.Value),
+                    new SqliteParameter("@pluginId", pluginId),
+                    new SqliteParameter("@pluginType", (object?)pluginType ?? DBNull.Value),
+                    new SqliteParameter("@channelRouteKey", compositeKey),
+                    new SqliteParameter("@externalChatId", chatId),
+                    new SqliteParameter("@externalChatType", (object?)chatType ?? DBNull.Value),
+                    new SqliteParameter("@providerId", (object?)providerId ?? DBNull.Value),
+                    new SqliteParameter("@modelId", (object?)modelId ?? DBNull.Value),
+                    new SqliteParameter("@modelSelectionMode", modelSelectionMode));
             }
             else
             {

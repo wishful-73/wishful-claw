@@ -1,9 +1,10 @@
-﻿import { getNativeWorker } from '../lib/native-worker'
+﻿import { randomUUID } from 'crypto'
+import { getNativeWorker } from '../lib/native-worker'
 import { readChannelPlugins } from './channel-config-store'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
 import type { ChannelEvent, ChannelInstance, ChannelIncomingMessageData } from './channel-types'
 import type { ChannelManager } from './channel-manager'
-import { tryHandleCommand } from './plugin-commands'
+import { isChannelCancelCommand, tryHandleCommand } from './plugin-commands'
 
 interface NativePluginRouteSessionResult {
   success: boolean
@@ -16,6 +17,17 @@ interface NativePluginRouteSessionResult {
 }
 
 let _pluginManager: ChannelManager | null = null
+
+interface QueuedChannelEvent {
+  id: string
+  event: ChannelEvent
+}
+
+const channelEventQueues = new Map<string, QueuedChannelEvent[]>()
+const activeChannelTasks = new Map<string, string>()
+const activeChannelTaskSessions = new Map<string, string>()
+const pendingChannelCancels = new Set<string>()
+const channelTaskQueueKeys = new Map<string, string>()
 
 const CHANNEL_DISPLAY_NAMES: Record<string, string> = {
   'feishu-bot': '飞书',
@@ -41,19 +53,103 @@ export function setPluginManager(pm: ChannelManager): void {
 }
 
 /**
+ * Handle a channel-side cancellation before it enters the serialized Agent queue.
+ * The renderer owns the runId, so it receives the stable session target and reuses
+ * the exact same cancelStream path as the desktop stop button.
+ */
+async function handleChannelCancel(event: ChannelEvent): Promise<void> {
+  const data = event.data as ChannelIncomingMessageData
+  const queueKey = `${event.pluginId}:${data.chatId}`
+  const activeTaskId = activeChannelTasks.get(queueKey)
+  const queuedEvents = channelEventQueues.get(queueKey)
+  const hasWork = Boolean(activeTaskId || queuedEvents?.length)
+
+  if (queuedEvents?.length) {
+    channelEventQueues.delete(queueKey)
+  }
+
+  if (activeTaskId) {
+    pendingChannelCancels.add(queueKey)
+    const sessionId = activeChannelTaskSessions.get(activeTaskId)
+    if (sessionId) {
+      safeSendMessagePackToAllWindows('plugin:session-cancel', {
+        pluginId: event.pluginId,
+        chatId: data.chatId,
+        sessionId,
+        taskId: activeTaskId
+      })
+    }
+  }
+
+  const service = _pluginManager?.getService(event.pluginId)
+  if (!service) return
+
+  const reply = hasWork ? '已停止执行。' : '当前没有正在执行的任务。'
+  try {
+    await service.sendMessage(data.chatId, reply)
+  } catch (err) {
+    console.error('[AutoReply] Failed to send cancellation reply:', err)
+  }
+}
+
+/**
  * Auto-reply pipeline: routes incoming plugin messages to per-user/per-group sessions
  * and notifies the renderer to trigger the Agent Loop for auto-reply.
  */
 export function handleChannelAutoReply(event: ChannelEvent): void {
-  void handleChannelAutoReplyAsync(event)
-}
-
-async function handleChannelAutoReplyAsync(event: ChannelEvent): Promise<void> {
   if (event.type !== 'incoming_message') return
 
   const data = event.data as ChannelIncomingMessageData
   if (!data || !data.chatId || (!data.content && !data.images?.length && !data.audio)) return
 
+  if (isChannelCancelCommand(data.content)) {
+    void handleChannelCancel(event)
+    return
+  }
+
+  const queueKey = `${event.pluginId}:${data.chatId}`
+  const queue = channelEventQueues.get(queueKey) ?? []
+  queue.push({ id: randomUUID(), event })
+  channelEventQueues.set(queueKey, queue)
+  void dispatchNextChannelEvent(queueKey)
+}
+
+export function completeChannelAutoReplyTask(taskId: string): boolean {
+  const queueKey = channelTaskQueueKeys.get(taskId)
+  if (!queueKey || activeChannelTasks.get(queueKey) !== taskId) return false
+
+  channelTaskQueueKeys.delete(taskId)
+  activeChannelTaskSessions.delete(taskId)
+  pendingChannelCancels.delete(queueKey)
+  activeChannelTasks.delete(queueKey)
+  void dispatchNextChannelEvent(queueKey)
+  return true
+}
+
+async function dispatchNextChannelEvent(queueKey: string): Promise<void> {
+  if (activeChannelTasks.has(queueKey)) return
+
+  const queue = channelEventQueues.get(queueKey)
+  const queued = queue?.shift()
+  if (!queued) {
+    channelEventQueues.delete(queueKey)
+    return
+  }
+  if (queue?.length === 0) {
+    channelEventQueues.delete(queueKey)
+  }
+
+  activeChannelTasks.set(queueKey, queued.id)
+  channelTaskQueueKeys.set(queued.id, queueKey)
+
+  const dispatched = await handleChannelAutoReplyAsync(queued.event, queued.id)
+  if (!dispatched) {
+    completeChannelAutoReplyTask(queued.id)
+  }
+}
+
+async function handleChannelAutoReplyAsync(event: ChannelEvent, channelTaskId: string): Promise<boolean> {
+  const data = event.data as ChannelIncomingMessageData
   const pluginId = event.pluginId
 
   try {
@@ -90,6 +186,16 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent): Promise<void> {
     }
 
     const sessionId = routedSession.sessionId
+    const queueKey = `${pluginId}:${data.chatId}`
+    const hadSessionBeforeCancel = activeChannelTaskSessions.has(channelTaskId)
+    const cancelWasPending = pendingChannelCancels.has(queueKey)
+    activeChannelTaskSessions.set(channelTaskId, sessionId)
+    if (cancelWasPending && !hadSessionBeforeCancel) {
+      // A cancel command may arrive while this task is still being routed. Do
+      // not dispatch a new Agent run after the user has already cancelled it.
+      pendingChannelCancels.delete(queueKey)
+      return false
+    }
     // The Worker creates the title once; every later message reuses the stored title.
     const sessionTitle =
       routedSession.sessionTitle || buildInitialChannelSessionTitle(event.pluginType, pluginInstance?.name)
@@ -109,12 +215,18 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent): Promise<void> {
         pluginManager: _pluginManager
       })
       // true = fully handled, skip agent loop
-      if (commandResult === true) return
+      if (commandResult === true) return false
       // string = command rewrote the message, pass to agent loop with new content
       if (typeof commandResult === 'string') {
         data.content = commandResult
       }
       // false = not a command, proceed with original content
+    }
+
+    // Re-check after awaited command handling; cancellation may have arrived
+    // while routing this task and must prevent the Agent event from being sent.
+    if (pendingChannelCancels.delete(queueKey)) {
+      return false
     }
 
     // NOTE: We do NOT insert the user message here — the renderer's sendMessage
@@ -127,6 +239,7 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent): Promise<void> {
 
     // Notify renderer to trigger Agent Loop auto-reply
     const taskPayload = {
+      channelTaskId,
       sessionId,
       pluginId,
       pluginType: event.pluginType,
@@ -154,7 +267,9 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent): Promise<void> {
       `[AutoReply] Routed message from ${data.senderName || data.senderId} ` +
         `in chat ${data.chatId} to session ${sessionId}`
     )
+    return true
   } catch (err) {
     console.error('[AutoReply] Failed to route incoming message:', err)
+    return false
   }
 }

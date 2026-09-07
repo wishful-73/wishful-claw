@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -94,7 +94,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         JsonElement listResult,
         ToolRegistry? registry,
         AgentRunContext runContext,
-        string? sessionMode)
+        string? sessionMode,
+        bool channelSession)
     {
         var result = new List<CapabilitySummary>();
 
@@ -148,7 +149,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
                 if (category is null
                     || !IsProxiedBuiltinTool(name, category)
                     || !registry.IsAvailableInMode(name, sessionMode)
-                    || !AgentRunContextPolicy.IsToolAllowed(runContext, name, category)
+                    || !AgentRunContextPolicy.IsToolAllowed(runContext, name, category, channelSession)
                     || !registry.TryGetExecutor(name, out var executor)
                     || executor is null)
                 {
@@ -189,12 +190,13 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         ToolRegistry? registry,
         AgentRunContext runContext,
         string? sessionMode,
+        bool channelSession,
         CapabilityListOptions options)
     {
         if (options.Error is not null)
             return EncodeError(options.Error);
 
-        var filtered = BuildCapabilitySummaries(listResult, registry, runContext, sessionMode)
+        var filtered = BuildCapabilitySummaries(listResult, registry, runContext, sessionMode, channelSession)
             .Where(capability => MatchesListOptions(capability, options))
             .ToList();
         var total = filtered.Count;

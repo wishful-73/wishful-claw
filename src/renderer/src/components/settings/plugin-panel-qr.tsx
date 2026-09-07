@@ -53,7 +53,7 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
   const feishuInstallIdRef = useRef<string | null>(null)
   const feishuPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const { updateChannel } = useChannelStore()
+  const { updateChannel, startChannel } = useChannelStore()
 
   const isWeixin = channel.type === 'weixin-official'
   const isFeishu = channel.type === 'feishu-bot'
@@ -123,8 +123,10 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
             if (controller.signal.aborted) return
 
             if (waitResult.connected) {
-              setLoginStatus('connected')
-              setStatusMessage(t('channel.qr.connected', { defaultValue: '绑定成功!' }))
+              setLoginStatus('loading')
+              setStatusMessage(
+                t('channel.qr.starting', { defaultValue: '绑定成功，正在启动渠道...' })
+              )
 
               const patch: Partial<PluginInstance> = {
                 config: {
@@ -134,20 +136,46 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
                   baseUrl: waitResult.baseUrl || channel.config.baseUrl,
                   accountId: (waitResult as Record<string, unknown>).accountId as string || (channel.config as Record<string, unknown>).accountId as string
                 } as Record<string, string>,
-                enabled: true
+                enabled: true,
+                features: {
+                  autoReply: channel.features?.autoReply ?? true,
+                  streamingReply: channel.features?.streamingReply ?? true,
+                  autoStart: true
+                }
               }
-              await updateChannel(channel.id, patch)
-              toast.success(t('channel.qr.connected', { defaultValue: '绑定成功!' }))
+              const updated = await updateChannel(channel.id, patch)
+              if (!updated) {
+                throw new Error(
+                  useChannelStore.getState().error ||
+                    t('channel.qr.saveFailed', { defaultValue: '微信凭证保存失败' })
+                )
+              }
+
+              const started = await startChannel(channel.id)
+              if (!started) {
+                throw new Error(
+                  useChannelStore.getState().error ||
+                    t('channel.qr.startFailed', { defaultValue: '微信渠道启动失败' })
+                )
+              }
+
+              setLoginStatus('connected')
+              setStatusMessage(t('channel.qr.connected', { defaultValue: '绑定成功，渠道已启动!' }))
+              toast.success(t('channel.qr.connected', { defaultValue: '绑定成功，渠道已启动!' }))
               return
             }
 
             if (controller.signal.aborted) return
             setStatusMessage(waitResult.message || t('channel.qr.waiting', { defaultValue: '等待扫描...' }))
             void poll()
-          } catch {
+          } catch (err) {
             if (!controller.signal.aborted) {
               setLoginStatus('error')
-              setStatusMessage(t('channel.qr.expired', { defaultValue: '二维码已过期，请刷新' }))
+              setStatusMessage(
+                err instanceof Error
+                  ? err.message
+                  : t('channel.qr.expired', { defaultValue: '二维码已过期，请刷新' })
+              )
             }
           }
         }
@@ -160,7 +188,7 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
       setLoginStatus('error')
       setStatusMessage(err instanceof Error ? err.message : String(err))
     }
-  }, [channel, t, updateChannel, cleanup])
+  }, [channel, t, updateChannel, startChannel, cleanup])
 
   // ── Feishu OAuth Device Flow ──
   const startFeishuInstall = useCallback(async () => {

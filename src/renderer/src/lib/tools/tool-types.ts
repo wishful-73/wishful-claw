@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -32,6 +32,8 @@ export interface ToolContext {
   pluginChatId?: string
   /** Plugin chat type (p2p | group) when available */
   pluginChatType?: 'p2p' | 'group'
+  /** True for an Agent Loop run triggered by an external channel message. */
+  channelSession?: boolean
   /** Plugin message sender identifiers (when available) */
   pluginSenderId?: string
   pluginSenderName?: string

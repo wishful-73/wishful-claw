@@ -173,6 +173,7 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     planId: session.planId,
     pinned: session.pinned,
     pluginId: session.pluginId,
+    pluginType: session.pluginType,
     externalChatId: session.externalChatId,
     pluginChatType: session.pluginChatType,
     pluginSenderId: session.pluginSenderId,

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -125,12 +125,13 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         var capabilityId = (JsonHelpers.GetString(call.Input, "capability_id") ?? string.Empty).Trim();
         var runContext = AgentRunContextPolicy.Resolve(state.Parameters);
         var sessionMode = AgentRunContextPolicy.ResolveAvailableMode(state.Parameters, runContext);
+        var channelSession = AgentRunContextPolicy.IsChannelSession(state.Parameters);
 
         return action switch
         {
-            "list" => await ListCapabilitiesAsync(call.Input, context, registry, runContext, sessionMode, cancellationToken),
-            "inspect" => await InspectCapabilityAsync(context, registry, runContext, sessionMode, capabilityId, cancellationToken),
-            "call" => await CallCapabilityAsync(call, state, context, registry, runContext, workingFolder, projectId, sshConnectionId, sessionMode, capabilityId, cancellationToken),
+            "list" => await ListCapabilitiesAsync(call.Input, context, registry, runContext, sessionMode, channelSession, cancellationToken),
+            "inspect" => await InspectCapabilityAsync(context, registry, runContext, sessionMode, channelSession, capabilityId, cancellationToken),
+            "call" => await CallCapabilityAsync(call, state, context, registry, runContext, workingFolder, projectId, sshConnectionId, sessionMode, channelSession, capabilityId, cancellationToken),
             _ => EncodeError($"Unknown action: {action}. Use list, inspect, or call.")
         };
     }
@@ -143,6 +144,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         ToolRegistry? registry,
         AgentRunContext runContext,
         string? sessionMode,
+        bool channelSession,
         CancellationToken cancellationToken)
     {
         try
@@ -154,7 +156,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
                 CreateEmptyObject(),
                 cancellationToken);
 
-            return EncodeListResponse(mcpResult, registry, runContext, sessionMode, ParseListOptions(input));
+            return EncodeListResponse(mcpResult, registry, runContext, sessionMode, channelSession, ParseListOptions(input));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -169,6 +171,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         ToolRegistry? registry,
         AgentRunContext runContext,
         string? sessionMode,
+        bool channelSession,
         string capabilityId,
         CancellationToken cancellationToken)
     {
@@ -238,7 +241,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         if (capabilityId.StartsWith("builtin:", StringComparison.Ordinal))
         {
             var toolName = capabilityId["builtin:".Length..];
-            return EncodeBuiltinInspectResponse(registry, runContext, sessionMode, toolName);
+            return EncodeBuiltinInspectResponse(registry, runContext, sessionMode, channelSession, toolName);
         }
 
         return EncodeError($"Unknown capability_id format: {capabilityId}");
@@ -256,6 +259,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         string? projectId,
         string? sshConnectionId,
         string? sessionMode,
+        bool channelSession,
         string capabilityId,
         CancellationToken cancellationToken)
     {
@@ -311,7 +315,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
             var category = registry.GetCategory(toolName);
             if (category is null || !IsProxiedBuiltinTool(toolName, category)
                 || !registry.IsAvailableInMode(toolName, sessionMode)
-                || !AgentRunContextPolicy.IsToolAllowed(runContext, toolName, category))
+                || !AgentRunContextPolicy.IsToolAllowed(runContext, toolName, category, channelSession))
             {
                 return EncodeError($"Tool '{toolName}' is not available through the capability proxy in this session mode.");
             }

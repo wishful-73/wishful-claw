@@ -8,7 +8,7 @@
  *   2. Frontend renders verification_uri_complete as QR code
  *   3. User scans with Feishu app and authorizes
  *   4. POST same endpoint action=poll device_code=xxx → client_id (App ID) + client_secret (App Secret)
- *   5. Save credentials to channel config, enable channel
+ *   5. Return credentials to the renderer, which saves them to channel config, enables, and starts the channel
  */
 
 export type FeishuDomain = 'feishu' | 'lark'

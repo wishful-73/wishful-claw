@@ -50,11 +50,14 @@ export interface UpdateStateSnapshot extends UpdateProgressSnapshot {
   error: string | null
 }
 
-export interface UpdateDownloadProgressPayload {
-  percent: number
-}
+/**
+ * Carries the full byte-level snapshot rather than just a percent, so the renderer can show
+ * transferred/total/speed/elapsed as they are observed instead of round-tripping `update:status`
+ * on every tick. Unknown values stay `null` all the way to the formatter.
+ */
+export type UpdateDownloadProgressPayload = UpdateProgressSnapshot
 
-export interface UpdateDownloadedPayload {
+export interface UpdateDownloadedPayload extends UpdateProgressSnapshot {
   version: string
 }
 

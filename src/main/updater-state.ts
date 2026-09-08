@@ -1,6 +1,7 @@
 import {
   NO_UPDATE_OPERATION_ID,
   type UpdatePhase,
+  type UpdateProgressSnapshot,
   type UpdateStateSnapshot
 } from '../shared/updater/types'
 
@@ -36,6 +37,12 @@ export interface UpdateProgressInput {
 export interface UpdateAvailableInput {
   newVersion: string
   releaseNotes: string
+  /**
+   * The size `latest.yml` declares for the installer. It describes the offer, not the download, so
+   * it survives a restarted download — and it is the only baseline that makes a transferred total
+   * far below it readable as a differential download instead of a truncated one.
+   */
+  declaredInstallerSize?: number | null
 }
 
 export interface UpdaterStateOptions {
@@ -146,6 +153,9 @@ export function createUpdaterStateCoordinator(
     applyAvailable(input: UpdateAvailableInput): boolean {
       if (!input.newVersion) return false
       if (!transition('available')) return false
+      // A declared size of 0 is not a usable baseline, so it stays unknown rather than posing as a
+      // real observation.
+      const declared = input.declaredInstallerSize
       state = {
         ...state,
         availableVersion: input.newVersion,
@@ -157,7 +167,7 @@ export function createUpdaterStateCoordinator(
         transferred: null,
         total: null,
         bytesPerSecond: null,
-        declaredInstallerSize: null,
+        declaredInstallerSize: isUsableMetric(declared) && declared > 0 ? declared : null,
         startedAt: null,
         finishedAt: null
       }
@@ -188,7 +198,7 @@ export function createUpdaterStateCoordinator(
         transferred: null,
         total: null,
         bytesPerSecond: null,
-        declaredInstallerSize: null,
+        // declaredInstallerSize describes the offer, not the attempt, so a retry keeps its baseline.
         startedAt: now(),
         finishedAt: null
       }
@@ -355,5 +365,39 @@ export function createUpdateInstallGate(options: UpdateInstallGateOptions): Upda
       }
       return 'started'
     }
+  }
+}
+
+/**
+ * One shape for "what we observed about this download", shared by the progress event, the downloaded
+ * event and every structured log line. Deriving all three from the same snapshot is what keeps the
+ * UI, the logs and the observability report from drifting apart.
+ */
+export function pickProgressSnapshot(snapshot: UpdateStateSnapshot): UpdateProgressSnapshot {
+  return {
+    percent: snapshot.percent,
+    transferred: snapshot.transferred,
+    total: snapshot.total,
+    bytesPerSecond: snapshot.bytesPerSecond,
+    elapsedMs: snapshot.elapsedMs,
+    declaredInstallerSize: snapshot.declaredInstallerSize
+  }
+}
+
+export type UpdateDownloadObservation = UpdateProgressSnapshot & {
+  operationId: number
+  currentVersion: string
+  expectedVersion: string | null
+  /** Null until completion; at completion it is the version that must match `expectedVersion`. */
+  downloadedVersion: string | null
+}
+
+export function observeDownload(snapshot: UpdateStateSnapshot): UpdateDownloadObservation {
+  return {
+    ...pickProgressSnapshot(snapshot),
+    operationId: snapshot.operationId,
+    currentVersion: snapshot.currentVersion,
+    expectedVersion: snapshot.expectedVersion,
+    downloadedVersion: snapshot.downloadedVersion
   }
 }

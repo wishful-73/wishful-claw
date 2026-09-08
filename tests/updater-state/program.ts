@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { NO_UPDATE_OPERATION_ID } from '../../src/shared/updater/types'
-import type { UpdatePhase, UpdateProgressSnapshot, UpdateStateSnapshot } from '../../src/shared/updater/types'
+import type { UpdatePhase } from '../../src/shared/updater/types'
 import {
   canTransitionPhase,
   createUpdateDownloadGate,
   createUpdateInstallGate,
   createUpdaterStateCoordinator,
+  pickProgressSnapshot,
   type UpdaterStateCoordinator
 } from '../../src/main/updater-state'
 
@@ -122,17 +123,6 @@ function reachDownloaded(coordinator: UpdaterStateCoordinator, version: string =
   )
 }
 
-function numericSnapshot(snapshot: UpdateStateSnapshot): UpdateProgressSnapshot {
-  return {
-    percent: snapshot.percent,
-    transferred: snapshot.transferred,
-    total: snapshot.total,
-    bytesPerSecond: snapshot.bytesPerSecond,
-    elapsedMs: snapshot.elapsedMs,
-    declaredInstallerSize: snapshot.declaredInstallerSize
-  }
-}
-
 // ---------------------------------------------------------------- transition table
 
 check('same phase is always a legal transition', () => {
@@ -192,7 +182,7 @@ check('a fresh snapshot carries exactly the fixed field set', () => {
 
 check('unknown numerics are null, never a fabricated 0 or 100', () => {
   const { coordinator } = createHarness()
-  assert.deepEqual(numericSnapshot(coordinator.snapshot()), {
+  assert.deepEqual(pickProgressSnapshot(coordinator.snapshot()), {
     percent: null,
     transferred: null,
     total: null,
@@ -262,7 +252,7 @@ check('applyAvailable clears a previous download and its progress readings', () 
   assert.equal(snapshot.expectedVersion, null)
   assert.equal(snapshot.releaseNotes, 'newer')
   assert.equal(snapshot.error, null)
-  assert.deepEqual(numericSnapshot(snapshot), {
+  assert.deepEqual(pickProgressSnapshot(snapshot), {
     percent: null,
     transferred: null,
     total: null,

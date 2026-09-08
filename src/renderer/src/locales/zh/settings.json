@@ -1307,7 +1307,6 @@
       "currentVersion": "当前版本",
       "noNotes": "本次发布未提供更新说明。",
       "downloading": "正在下载更新…",
-      "percentUnknown": "未知",
       "backgroundHint": "下载会在后台继续，关闭此窗口不会中断。",
       "trayHint": "可随时从托盘“更新详情”查看进度。",
       "download": "后台下载",
@@ -1326,6 +1325,11 @@
       "error": "更新失败",
       "install": "重启安装",
       "details": "详情"
+    },
+    "progress": {
+      "unknown": "未知",
+      "stats": "{{bytes}} · 速度 {{speed}} · 已用 {{elapsed}}",
+      "completed": "{{bytes}} · 已用 {{elapsed}}"
     }
   },
   "anchorNav": {

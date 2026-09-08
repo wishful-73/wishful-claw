@@ -81,10 +81,17 @@ export function useAppUpdater(): {
     })
     const unsubscribeProgress = window.api.on<UpdateDownloadProgressPayload>('update:download-progress', (payload) => {
       if (disposed) return
+      // Applied verbatim: Main has already clamped and monotonic-checked these, so quoting them
+      // unchanged is what keeps the UI, the structured log and the report on one set of numbers.
       setState((previous) => ({
         ...previous,
         phase: 'downloading',
-        percent: Math.max(0, Math.min(100, payload.percent)),
+        percent: payload.percent,
+        transferred: payload.transferred,
+        total: payload.total,
+        bytesPerSecond: payload.bytesPerSecond,
+        elapsedMs: payload.elapsedMs,
+        declaredInstallerSize: payload.declaredInstallerSize,
         error: null
       }))
     })
@@ -94,7 +101,12 @@ export function useAppUpdater(): {
         ...previous,
         phase: 'downloaded',
         downloadedVersion: payload.version,
-        percent: 100,
+        percent: payload.percent,
+        transferred: payload.transferred,
+        total: payload.total,
+        bytesPerSecond: payload.bytesPerSecond,
+        elapsedMs: payload.elapsedMs,
+        declaredInstallerSize: payload.declaredInstallerSize,
         error: null
       }))
     })

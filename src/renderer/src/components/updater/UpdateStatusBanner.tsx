@@ -1,8 +1,10 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, CircleAlert, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
 import type { RendererUpdateState } from '@shared/updater/types'
+import { createUpdateProgressFormatter } from './update-progress'
 
 interface UpdateStatusBannerProps {
   state: RendererUpdateState
@@ -26,6 +28,25 @@ export function UpdateStatusBanner({
 }: UpdateStatusBannerProps): React.JSX.Element | null {
   const { t } = useTranslation('settings')
   const { phase } = state
+
+  // Both hooks run before the early return: a phase change must not change the hook order.
+  const formatter = useMemo(
+    () => createUpdateProgressFormatter(t('updater.progress.unknown', { defaultValue: '未知' })),
+    [t]
+  )
+  const stats =
+    phase === 'downloaded'
+      ? t('updater.progress.completed', {
+          bytes: formatter.transferredOfTotal(state),
+          elapsed: formatter.elapsed(state.elapsedMs),
+          defaultValue: '{{bytes}} · 已用 {{elapsed}}'
+        })
+      : t('updater.progress.stats', {
+          bytes: formatter.transferredOfTotal(state),
+          speed: formatter.speed(state.bytesPerSecond),
+          elapsed: formatter.elapsed(state.elapsedMs),
+          defaultValue: '{{bytes}} · 速度 {{speed}} · 已用 {{elapsed}}'
+        })
 
   if (phase !== 'downloading' && phase !== 'downloaded' && phase !== 'error') return null
 
@@ -63,7 +84,9 @@ export function UpdateStatusBanner({
         </p>
         {isError && state.error ? (
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{state.error}</p>
-        ) : null}
+        ) : isError ? null : (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{stats}</p>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-2">

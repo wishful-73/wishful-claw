@@ -7,7 +7,10 @@ import {
   createUpdateDownloadGate,
   createUpdateInstallGate,
   createUpdaterStateCoordinator,
+  observeDownload,
+  pickProgressSnapshot,
   type UpdateDownloadGate,
+  type UpdateDownloadObservation,
   type UpdateInstallGate,
   type UpdaterStateCoordinator
 } from './updater-state'
@@ -21,6 +24,7 @@ import type {
   UpdateDownloadedPayload,
   UpdateDownloadStartResult,
   UpdateErrorPayload,
+  UpdateStateSnapshot,
   UpdateStatus
 } from '../shared/updater/types'
 
@@ -35,6 +39,13 @@ export interface UpdaterOptions {
 
 const RENDERER_SETTINGS_STORAGE_KEY = 'wishfulclaw-settings'
 
+/**
+ * electron-updater fires `download-progress` on every chunk. Logging each one would bury the native
+ * `[updater]` lines that carry the `Full` / `To download` evidence, so our own progress lines are
+ * spaced out — while the UI and the coordinator still see every event.
+ */
+const PROGRESS_LOG_INTERVAL_MS = 5_000
+
 let updater: AutoUpdater | null = null
 let initializePromise: Promise<void> | null = null
 let checkPromise: Promise<UpdateCheckResult> | null = null
@@ -43,6 +54,7 @@ let installGate: UpdateInstallGate | null = null
 let options: UpdaterOptions | null = null
 let coordinator: UpdaterStateCoordinator | null = null
 let activeOperationId = NO_UPDATE_OPERATION_ID
+let lastProgressLogAt = 0
 
 function updaterState(): UpdaterStateCoordinator {
   coordinator ??= createUpdaterStateCoordinator({ currentVersion: currentVersion() })
@@ -54,7 +66,8 @@ function getDownloadGate(instance: AutoUpdater): UpdateDownloadGate {
     coordinator: updaterState(),
     start: () => instance.downloadUpdate(),
     onFailure: (error) => {
-      setError(error)
+      // Read before the phase flips to `error`: these are the last bytes this attempt reported.
+      setError(error, true, { ...observeDownload(updaterState().snapshot()) })
     }
   })
   return downloadGate
@@ -135,6 +148,48 @@ function formatReleaseNotes(notes: unknown): string {
     })
     .filter(Boolean)
     .join('\n\n')
+}
+
+/**
+ * The part of `UpdateInfo` we read. Typed structurally on purpose: electron-updater is an optional
+ * dependency loaded lazily, and its entry point does not re-export `UpdateInfo`.
+ */
+interface UpdateOfferMetadata {
+  path?: string
+  files?: Array<{ url?: string; size?: number } | null | undefined> | null
+}
+
+/**
+ * `ProgressInfo` reports no installer size, so the release metadata is the only baseline available.
+ * Without it a transferred total far below the package cannot be told apart from a truncated
+ * download — which is the whole distinction between differential and full.
+ */
+function resolveDeclaredInstallerSize(info: UpdateOfferMetadata): number | null {
+  const files = info.files ?? []
+  const primary = files.find((file) => file?.url === info.path) ?? files[0]
+  const size = primary?.size
+  // A declared 0 is not a baseline, so it stays unknown rather than posing as an observation.
+  return typeof size === 'number' && Number.isFinite(size) && size > 0 ? size : null
+}
+
+/**
+ * One field set for start, progress, completion and failure. Keeping them identical is what lets a
+ * report join our own lines to electron-updater's native `[updater]` output by operationId, and it
+ * means the numbers in the log are the same numbers the renderer was just shown.
+ */
+function logDownload(message: string, observation: UpdateDownloadObservation): void {
+  logInfo('main', message, { extra: { ...observation } })
+}
+
+/**
+ * `lastProgressLogAt` is reset when a download starts, so the first observation of every attempt is
+ * logged even if the previous attempt ended moments earlier.
+ */
+function logDownloadProgress(snapshot: UpdateStateSnapshot): void {
+  const nowMs = Date.now()
+  if (nowMs - lastProgressLogAt < PROGRESS_LOG_INTERVAL_MS) return
+  lastProgressLogAt = nowMs
+  logDownload(`Updater download progress (operation ${snapshot.operationId})`, observeDownload(snapshot))
 }
 
 function getValidWindow(): BrowserWindow | undefined {
@@ -219,9 +274,11 @@ function getAppDistributionInfo(): UpdateDistributionInfo {
   return getUpdateDistributionInfo()
 }
 
-function setError(error: unknown, notify = true): string {
+function setError(error: unknown, notify = true, extra?: Record<string, unknown>): string {
   const message = formatError(error)
-  logError('main', `Updater error: ${message}`, { extra: { error: getErrorMessage(error) } })
+  logError('main', `Updater error: ${message}`, {
+    extra: { error: getErrorMessage(error), ...extra }
+  })
   // Silent failures (startup auto-check, init) must not leave phase 'error':
   // the renderer would later fetch status and auto-open an empty error dialog.
   if (notify) {
@@ -263,7 +320,10 @@ function attachEvents(instance: AutoUpdater): void {
     }
 
     const releaseNotes = formatReleaseNotes(info.releaseNotes)
-    if (!updaterState().applyAvailable({ newVersion: version, releaseNotes })) {
+    const declaredInstallerSize = resolveDeclaredInstallerSize(info)
+    if (
+      !updaterState().applyAvailable({ newVersion: version, releaseNotes, declaredInstallerSize })
+    ) {
       logWarn('main', `Updater dropped update-available for ${version} in current phase`)
       return
     }
@@ -274,7 +334,7 @@ function attachEvents(instance: AutoUpdater): void {
       releaseNotes,
       ...getAppDistributionInfo()
     }
-    logInfo('main', `Updater found version ${version}`)
+    logInfo('main', `Updater found version ${version}`, { extra: { declaredInstallerSize } })
     sendUpdateEvent('update:available', payload)
   })
 
@@ -284,21 +344,27 @@ function attachEvents(instance: AutoUpdater): void {
   })
 
   instance.on('download-progress', (progress) => {
-    const percent = Math.max(0, Math.min(100, progress.percent))
     const accepted = updaterState().applyProgress(activeOperationId, {
-      percent,
+      percent: progress.percent,
       transferred: progress.transferred,
       total: progress.total,
       bytesPerSecond: progress.bytesPerSecond
     })
     if (!accepted) return
 
-    const payload: UpdateDownloadProgressPayload = { percent }
+    // Read back after applying: the coordinator has just clamped and monotonic-checked these values,
+    // so the payload, the taskbar bar and the log line all quote what the state actually holds.
+    const snapshot = updaterState().snapshot()
+    const payload: UpdateDownloadProgressPayload = pickProgressSnapshot(snapshot)
+
     const win = getValidWindow()
     if (win) {
-      win.setProgressBar(percent / 100, { mode: 'normal' })
-      safeSendMessagePackToWindow(win, 'update:download-progress', payload)
+      // An unmeasured download must not sit the taskbar bar at 0%: that reads as stalled.
+      if (payload.percent === null) win.setProgressBar(-1, { mode: 'indeterminate' })
+      else win.setProgressBar(payload.percent / 100, { mode: 'normal' })
     }
+    sendUpdateEvent('update:download-progress', payload)
+    logDownloadProgress(snapshot)
   })
 
   instance.on('update-downloaded', (info) => {
@@ -310,20 +376,26 @@ function attachEvents(instance: AutoUpdater): void {
 
     const win = getValidWindow()
     if (win) win.setProgressBar(-1)
-    const payload: UpdateDownloadedPayload = { version }
-    logInfo('main', `Updater downloaded version ${version}`)
+    // The coordinator freezes elapsedMs and keeps the last observed byte counts on completion, so
+    // this snapshot is the final measurement of the attempt — the numbers the report quotes.
+    const snapshot = updaterState().snapshot()
+    const payload: UpdateDownloadedPayload = { version, ...pickProgressSnapshot(snapshot) }
+    logDownload(`Updater downloaded version ${version}`, observeDownload(snapshot))
     sendUpdateEvent('update:downloaded', payload)
   })
 
   instance.on('error', (error) => {
-    if (updaterState().snapshot().phase === 'checking' && !downloadGate?.isInFlight()) {
+    // Captured first: `setError` moves the phase to `error`, and the failure log should still say
+    // how far the download got before it broke.
+    const snapshot = updaterState().snapshot()
+    if (snapshot.phase === 'checking' && !downloadGate?.isInFlight()) {
       logWarn('main', `Background updater check failed: ${formatError(error)}`)
       updaterState().failSilently()
       return
     }
     const win = getValidWindow()
     if (win) win.setProgressBar(-1)
-    setError(error)
+    setError(error, true, { ...observeDownload(snapshot) })
   })
 }
 
@@ -423,7 +495,12 @@ export async function requestUpdateDownload(): Promise<UpdateDownloadStartResult
   }
 
   activeOperationId = ack.operationId
-  logInfo('main', `Updater download started for ${snapshot.availableVersion} (operation ${ack.operationId})`)
+  // Reset so the first progress event of this attempt logs even if a previous one just ended.
+  lastProgressLogAt = 0
+  logDownload(
+    `Updater download started for ${snapshot.availableVersion} (operation ${ack.operationId})`,
+    observeDownload(updaterState().snapshot())
+  )
   return { success: true, operationId: ack.operationId }
 }
 

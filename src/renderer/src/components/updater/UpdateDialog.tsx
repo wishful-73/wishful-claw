@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Download, ExternalLink, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
@@ -11,6 +12,7 @@ import {
 } from '@renderer/components/ui/dialog'
 import type { RendererUpdateState } from '@shared/updater/types'
 import { UpdateReleaseNotes } from './UpdateReleaseNotes'
+import { createUpdateProgressFormatter } from './update-progress'
 
 interface UpdateDialogProps {
   state: RendererUpdateState
@@ -48,6 +50,23 @@ export function UpdateDialog({
     isError && state.downloadedVersion !== null && state.downloadedVersion === state.expectedVersion
   const canRetryDownload = isError && !canRetryInstall && Boolean(state.expectedVersion)
 
+  const formatter = useMemo(
+    () => createUpdateProgressFormatter(t('updater.progress.unknown', { defaultValue: '未知' })),
+    [t]
+  )
+  const downloadingStats = t('updater.progress.stats', {
+    bytes: formatter.transferredOfTotal(state),
+    speed: formatter.speed(state.bytesPerSecond),
+    elapsed: formatter.elapsed(state.elapsedMs),
+    defaultValue: '{{bytes}} · 速度 {{speed}} · 已用 {{elapsed}}'
+  })
+  // No speed once finished: nothing is transferring, so a live-looking rate would be misleading.
+  const downloadedStats = t('updater.progress.completed', {
+    bytes: formatter.transferredOfTotal(state),
+    elapsed: formatter.elapsed(state.elapsedMs),
+    defaultValue: '{{bytes}} · 已用 {{elapsed}}'
+  })
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -79,11 +98,7 @@ export function UpdateDialog({
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{t('updater.dialog.downloading', { defaultValue: '正在下载更新…' })}</span>
                 {/* An unknown percent must not render as 0%: that reads as a stalled download. */}
-                <span>
-                  {state.percent === null
-                    ? t('updater.dialog.percentUnknown', { defaultValue: '未知' })
-                    : `${Math.round(state.percent)}%`}
-                </span>
+                <span>{formatter.percent(state.percent)}</span>
               </div>
               <div
                 role="progressbar"
@@ -97,6 +112,7 @@ export function UpdateDialog({
                   style={{ width: `${Math.max(0, Math.min(100, state.percent ?? 0))}%` }}
                 />
               </div>
+              <p className="text-xs text-muted-foreground">{downloadingStats}</p>
               <div className="space-y-1 text-xs text-muted-foreground">
                 <p>
                   {t('updater.dialog.backgroundHint', {
@@ -111,6 +127,8 @@ export function UpdateDialog({
               </div>
             </div>
           ) : null}
+
+          {isDownloaded ? <p className="text-xs text-muted-foreground">{downloadedStats}</p> : null}
 
           {isError && state.error ? (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">

@@ -1,5 +1,6 @@
 ﻿import * as React from 'react'
-import { File, FilePlus, RefreshCw, AlertCircle, Maximize2, Minimize2, X } from 'lucide-react'
+import { File, FilePlus, RefreshCw, AlertCircle, ChevronLeft, ChevronRight, Maximize2, Minimize2, X, ExternalLink } from 'lucide-react'
+import { useUIStore } from '@renderer/stores/ui-store'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
 import { useGitStore, type GitRepositoryItem, type GitStatusFile } from '@renderer/stores/git-store'
@@ -32,6 +33,7 @@ export function ChangesPanel({ workingFolder }: { workingFolder: string }): Reac
   const { repositories, repoDetailsByPath, scanRepositories, refreshRepository, loadFileDiff } = useGitStore()
   const [selected, setSelected] = React.useState<{ repo: GitRepositoryItem; file: GitStatusFile; staged: boolean } | null>(null)
   const [fullscreen, setFullscreen] = React.useState(false)
+  const openFilePreview = useUIStore((state) => state.openFilePreview)
   const repo = repositories.find((item) => workingFolder === item.fullPath || workingFolder.startsWith(`${item.fullPath}/`)) ?? repositories[0]
   const details = repo ? repoDetailsByPath[repo.fullPath] : undefined
   const changeRows = details?.status ? rows(details.status) : []
@@ -53,13 +55,20 @@ export function ChangesPanel({ workingFolder }: { workingFolder: string }): Reac
       {changeRows.length === 0 && !details?.loading ? <div className="p-4 text-center text-xs text-muted-foreground">暂无变更</div> : null}
       {changeRows.map(({ file, section }) => <button key={`${section}:${file.path}`} type="button" onClick={() => setSelected({ repo, file, staged: section === 'staged' })} className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/60', selected?.file.path === file.path && 'bg-muted')}><span className="font-mono text-muted-foreground">{section === 'untracked' ? 'U' : section === 'conflicted' ? '!' : section === 'staged' ? file.stagedStatus : file.unstagedStatus}</span>{section === 'untracked' ? <FilePlus className="size-3.5" /> : <File className="size-3.5" />}<span className="truncate font-mono">{file.path}</span></button>)}
       <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null) }}>
-        <DialogContent className={cn('grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0', fullscreen ? 'h-[92vh] w-[96vw] max-w-[96vw]' : 'h-[82vh] w-[96vw] max-w-[1600px]')}>
-          <DialogHeader className="flex h-10 flex-row items-center gap-2 border-b border-border px-3">
-            <DialogTitle className="min-w-0 flex-1 truncate font-mono text-sm">{selected?.file.path ?? 'Diff'}</DialogTitle>
-            <Button variant="ghost" size="icon" className="size-7" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}</Button>
-            <Button variant="ghost" size="icon" className="size-7" onClick={() => setSelected(null)}><X className="size-3.5" /></Button>
+        <DialogContent className={cn('grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0', fullscreen ? 'h-[92vh] w-[96vw] max-w-[96vw]' : 'h-[82vh] w-[96vw] max-w-[96vw]')}>
+          <DialogHeader className="flex h-10 flex-row items-center gap-2 border-b border-agent-files-border bg-agent-files-panel px-2">
+            <DialogTitle className="min-w-0 flex-1 truncate font-mono text-xs">{selected?.file.path ?? 'Diff'}</DialogTitle>
+            <span className="rounded bg-agent-files-hover px-1.5 py-0.5 text-[11px] text-agent-files-muted">{Math.max(1, changeRows.findIndex(({ file }) => file.path === selected?.file.path) + 1)} / {changeRows.length}</span>
+            <Button variant="ghost" size="icon-xs" onClick={() => { const i = changeRows.findIndex(({ file }) => file.path === selected?.file.path); const next = changeRows[(i - 1 + changeRows.length) % changeRows.length]; if (next) setSelected({ repo, file: next.file, staged: next.section === 'staged' }) }}><ChevronLeft className="size-3.5" /></Button>
+            <Button variant="ghost" size="icon-xs" onClick={() => { const i = changeRows.findIndex(({ file }) => file.path === selected?.file.path); const next = changeRows[(i + 1) % changeRows.length]; if (next) setSelected({ repo, file: next.file, staged: next.section === 'staged' }) }}><ChevronRight className="size-3.5" /></Button>
+            <Button variant="ghost" size="icon-xs" onClick={() => selected && openFilePreview(`${repo.fullPath}/${selected.file.path}`)}><ExternalLink className="size-3.5" /></Button>
+            <Button variant="ghost" size="icon-xs" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}</Button>
+            <Button variant="ghost" size="icon-xs" onClick={() => setSelected(null)}><X className="size-3.5" /></Button>
           </DialogHeader>
-          <div className="min-h-0 overflow-hidden p-3">{diff ? <CodeDiffViewer chunks={toChunks(diff)} fillHeight showModeToggle /> : <div className="p-3 text-xs text-muted-foreground">暂无可用 Diff（可能是二进制或未追踪文件）</div>}</div>
+          <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)] bg-agent-files-panel">
+            <div className="min-h-0 overflow-y-auto border-r border-agent-files-border py-1"><div className="px-3 py-1 text-[11px] font-semibold text-agent-files-muted">变更文件</div>{changeRows.map(({ file, section }) => <button key={`${section}:${file.path}`} type="button" onClick={() => setSelected({ repo, file, staged: section === 'staged' })} className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-agent-files-hover', selected?.file.path === file.path && 'bg-agent-files-hover')}><File className="size-3.5 shrink-0 text-agent-files-icon" /><span className="truncate font-mono">{file.path}</span><span className="ml-auto font-mono text-[11px] text-agent-files-added">{section === 'untracked' ? 'U' : section === 'staged' ? file.stagedStatus : file.unstagedStatus}</span></button>)}</div>
+            <div className="min-h-0 overflow-hidden p-3">{diff ? <CodeDiffViewer chunks={toChunks(diff)} fillHeight showModeToggle /> : <div className="p-3 text-xs text-muted-foreground">暂无可用 Diff（可能是二进制或未追踪文件）</div>}</div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

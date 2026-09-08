@@ -1,0 +1,56 @@
+﻿import * as React from 'react'
+import { File, FilePlus, RefreshCw, AlertCircle } from 'lucide-react'
+import { Button } from '@renderer/components/ui/button'
+import { cn } from '@renderer/lib/utils'
+import { useGitStore, type GitRepositoryItem, type GitStatusFile } from '@renderer/stores/git-store'
+import { CodeDiffViewer, type DiffViewerChunk, type DiffViewerLine } from '@renderer/components/chat/CodeDiffViewer'
+import { parseDiffBlocks } from '@renderer/components/chat/GitPage/utils'
+
+function rows(status: NonNullable<ReturnType<typeof useGitStore.getState>['repoDetailsByPath'][string]['status']>) {
+  return [
+    ...status.conflicted.map((file) => ({ file, section: 'conflicted' as const })),
+    ...status.staged.map((file) => ({ file, section: 'staged' as const })),
+    ...status.unstaged.map((file) => ({ file, section: 'unstaged' as const })),
+    ...status.untracked.map((file) => ({ file, section: 'untracked' as const }))
+  ]
+}
+
+function toChunks(text: string): DiffViewerChunk[] {
+  return parseDiffBlocks(text).map((block) => ({
+    type: 'lines',
+    lines: block.lines.flatMap((line): DiffViewerLine[] => {
+      if (line.type === 'add') return [{ type: 'add' as const, text: line.content.slice(1), newNum: Number(line.right) }]
+      if (line.type === 'remove') return [{ type: 'del' as const, text: line.content.slice(1), oldNum: Number(line.left) }]
+      if (line.type === 'context') return [{ type: 'keep' as const, text: line.content, oldNum: Number(line.left), newNum: Number(line.right) }]
+      return []
+    })
+  }))
+}
+
+export function ChangesPanel({ workingFolder }: { workingFolder: string }): React.JSX.Element {
+  const { repositories, repoDetailsByPath, scanRepositories, refreshRepository, loadFileDiff } = useGitStore()
+  const [selected, setSelected] = React.useState<{ repo: GitRepositoryItem; file: GitStatusFile; staged: boolean } | null>(null)
+  const repo = repositories.find((item) => workingFolder === item.fullPath || workingFolder.startsWith(`${item.fullPath}/`)) ?? repositories[0]
+  const details = repo ? repoDetailsByPath[repo.fullPath] : undefined
+  const changeRows = details?.status ? rows(details.status) : []
+
+  React.useEffect(() => { void scanRepositories() }, [scanRepositories, workingFolder])
+  React.useEffect(() => {
+    if (repo && selected && selected.repo.fullPath === repo.fullPath) void loadFileDiff(repo.fullPath, selected.file.path, selected.staged)
+  }, [loadFileDiff, repo, selected])
+
+  if (!repo) return <div className="flex h-full items-center justify-center p-4 text-xs text-muted-foreground">不是 Git 仓库</div>
+  const diff = selected ? (repoDetailsByPath[repo.fullPath]?.diffByKey[`${selected.staged ? 'staged' : 'unstaged'}:${selected.file.path}`] ?? '') : ''
+  return <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">变更 ({changeRows.length})</span>
+      <Button variant="ghost" size="icon" className="size-7" onClick={() => void refreshRepository(repo.fullPath, { force: true })}><RefreshCw className="size-3.5" /></Button>
+    </div>
+    <div className="min-h-0 flex-1 overflow-auto">
+      {details?.error ? <div className="flex items-center gap-1 p-3 text-xs text-destructive"><AlertCircle className="size-3" />{details.error}</div> : null}
+      {changeRows.length === 0 && !details?.loading ? <div className="p-4 text-center text-xs text-muted-foreground">暂无变更</div> : null}
+      {changeRows.map(({ file, section }) => <button key={`${section}:${file.path}`} type="button" onClick={() => setSelected({ repo, file, staged: section === 'staged' })} className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/60', selected?.file.path === file.path && 'bg-muted')}><span className="font-mono text-muted-foreground">{section === 'untracked' ? 'U' : section === 'conflicted' ? '!' : section === 'staged' ? file.stagedStatus : file.unstagedStatus}</span>{section === 'untracked' ? <FilePlus className="size-3.5" /> : <File className="size-3.5" />}<span className="truncate font-mono">{file.path}</span></button>)}
+      {selected ? <div className="border-t border-border p-2">{diff ? <CodeDiffViewer chunks={toChunks(diff)} fillHeight showModeToggle={false} /> : <div className="p-3 text-xs text-muted-foreground">暂无可用 Diff（可能是二进制或未追踪文件）</div>}</div> : null}
+    </div>
+  </div>
+}

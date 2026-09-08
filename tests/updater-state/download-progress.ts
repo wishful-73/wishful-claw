@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { NO_UPDATE_OPERATION_ID } from '../../src/shared/updater/types'
 import type { UpdateStateSnapshot } from '../../src/shared/updater/types'
 import {
@@ -404,6 +406,152 @@ check('the unknown label is whatever the caller binds', () => {
   const english = createUpdateProgressFormatter('Unknown')
   assert.equal(english.bytes(null), 'Unknown')
   assert.equal(english.transferredOfTotal({ transferred: MIB, total: null }), '1 MiB / Unknown')
+})
+
+// ------------------------------------------- structured log completeness (C2)
+
+/**
+ * `undefined` is asserted against separately from `null` on purpose: a structured log serialiser
+ * drops undefined keys entirely, so one missing field would silently remove a whole column from the
+ * observability report, whereas `null` is the documented spelling of "not measured".
+ */
+function assertComplete(observation: ReturnType<typeof observeDownload>, stage: string): void {
+  for (const field of OBSERVATION_FIELDS) {
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(observation, field),
+      `${stage}: observation is missing ${field}`
+    )
+    assert.notEqual(
+      observation[field as keyof typeof observation],
+      undefined,
+      `${stage}: ${field} must be null rather than undefined`
+    )
+  }
+}
+
+check('a simulated progress/complete sequence logs a complete record at every stage', () => {
+  const { coordinator, advance, operationId } = reachDownloading()
+  assertComplete(observeDownload(coordinator.snapshot()), 'start')
+
+  advance(2_000)
+  assert.equal(coordinator.applyProgress(operationId, { percent: 12, transferred: 11 * MIB }), true)
+  assertComplete(observeDownload(coordinator.snapshot()), 'first progress')
+
+  advance(30_000)
+  assert.equal(
+    coordinator.applyProgress(operationId, {
+      percent: 88,
+      transferred: 79 * MIB,
+      total: DECLARED_SIZE,
+      bytesPerSecond: 2 * MIB
+    }),
+    true
+  )
+  const midDownload = observeDownload(coordinator.snapshot())
+  assertComplete(midDownload, 'second progress')
+  // The correlating keys must hold mid-download, before any completion event confirms them.
+  assert.equal(midDownload.operationId, operationId)
+  assert.equal(midDownload.currentVersion, CURRENT_VERSION)
+  assert.equal(midDownload.expectedVersion, NEXT_VERSION)
+  assert.equal(midDownload.downloadedVersion, null)
+  assert.equal(midDownload.elapsedMs, 32_000)
+
+  advance(4_000)
+  assert.equal(coordinator.applyDownloaded(operationId, NEXT_VERSION), true)
+  const completed = observeDownload(coordinator.snapshot())
+  assertComplete(completed, 'completion')
+  assert.equal(completed.downloadedVersion, NEXT_VERSION)
+  // Completion keeps the last observed values rather than resetting them to the finished state.
+  assert.equal(completed.transferred, 79 * MIB)
+  assert.equal(completed.total, DECLARED_SIZE)
+  assert.equal(completed.bytesPerSecond, 2 * MIB)
+  assert.equal(completed.declaredInstallerSize, DECLARED_SIZE)
+  assert.equal(completed.elapsedMs, 36_000)
+})
+
+check('a simulated progress/error sequence keeps the correlation and the last bytes', () => {
+  const { coordinator, advance, operationId } = reachDownloading()
+  advance(9_000)
+  assert.equal(
+    coordinator.applyProgress(operationId, { percent: 55, transferred: 49 * MIB, bytesPerSecond: MIB }),
+    true
+  )
+
+  // Read before failing, exactly as the production error paths do: `fail` moves the phase on but
+  // must not cost us the measurement of how far the attempt got.
+  const beforeFailure = observeDownload(coordinator.snapshot())
+  assertComplete(beforeFailure, 'pre-failure')
+  assert.equal(beforeFailure.operationId, operationId)
+  assert.equal(beforeFailure.expectedVersion, NEXT_VERSION)
+  assert.equal(beforeFailure.downloadedVersion, null)
+
+  assert.equal(coordinator.fail('network down'), true)
+  const afterFailure = observeDownload(coordinator.snapshot())
+  assertComplete(afterFailure, 'post-failure')
+  assert.equal(afterFailure.operationId, operationId)
+  assert.equal(afterFailure.expectedVersion, NEXT_VERSION, 'a retry must target the same version')
+  assert.equal(afterFailure.transferred, 49 * MIB)
+  assert.equal(afterFailure.elapsedMs, 9_000, 'failure freezes the clock too')
+})
+
+check('a sequence with no measurements at all still logs every field', () => {
+  const { coordinator, operationId } = reachDownloading(null)
+  assert.equal(coordinator.applyProgress(operationId, {}), true)
+  assert.equal(coordinator.applyDownloaded(operationId, NEXT_VERSION), true)
+
+  const observation = observeDownload(coordinator.snapshot())
+  assertComplete(observation, 'unmeasured completion')
+  assert.equal(observation.percent, 100, 'completion is the one value that is known for certain')
+  assert.equal(observation.transferred, null)
+  assert.equal(observation.total, null)
+  assert.equal(observation.bytesPerSecond, null)
+  assert.equal(observation.declaredInstallerSize, null)
+})
+
+// ------------------------------------------------ native log preservation (C2)
+
+const UPDATER_SOURCE = 'src/main/updater.ts'
+
+/**
+ * Comments are stripped first: the file legitimately discusses `autoDownload` and differential
+ * downloads in prose, and prose must not be allowed to satisfy an assertion that a setting is
+ * actually in force.
+ */
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1')
+}
+
+function updaterCode(): string {
+  // npm runs scripts from the package root, so this is stable wherever esbuild put the bundle.
+  return stripComments(readFileSync(resolve(UPDATER_SOURCE), 'utf8'))
+}
+
+check('autoDownload stays off, so a found update is never fetched unasked', () => {
+  assert.match(updaterCode(), /instance\.autoDownload = false/)
+})
+
+check('autoInstallOnAppQuit stays off, so quitting can never install', () => {
+  assert.match(updaterCode(), /instance\.autoInstallOnAppQuit = false/)
+})
+
+check('differential download is never switched off', () => {
+  // The whole point of this iteration is to observe differential downloads; disabling the
+  // capability would make every future measurement a full download and silently invalidate the
+  // report's decision rules.
+  assert.doesNotMatch(updaterCode(), /disableDifferentialDownload/)
+})
+
+check('every native log level is forwarded, so no evidence is dropped', () => {
+  const logger = updaterCode().match(/instance\.logger = \{[\s\S]*?\n {2}\}/)?.[0]
+  assert.ok(logger, `${UPDATER_SOURCE} must assign instance.logger`)
+  // `Full: …, To download: …` arrives on info and the differential fallback on error, so a
+  // partial forwarding would lose exactly one half of the evidence the report needs.
+  for (const level of ['info', 'warn', 'error', 'debug']) {
+    assert.match(logger, new RegExp(`\\b${level}:`), `logger.${level} must be forwarded`)
+  }
+  assert.match(logger, /\[updater\]/, 'native lines must stay greppable under one prefix')
 })
 
 console.log(`updater-progress: ${checks} checks passed`)

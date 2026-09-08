@@ -80,6 +80,13 @@ export type UpdateCheckResult = UpdateCheckSuccess | UpdateFailure
 export type UpdateActionResult = { success: true } | UpdateFailure
 
 /**
+ * `update:download` acknowledges the *start* of the download, not its completion — the native
+ * promise keeps running in Main after the dialog closes. The operationId lets the renderer
+ * correlate the progress events that follow.
+ */
+export type UpdateDownloadStartResult = { success: true; operationId: number } | UpdateFailure
+
+/**
  * The whole snapshot is rebuilt from this one object on every renderer mount, so a remounted
  * window (dialog closed, main window hidden, renderer reloaded) never needs event history.
  */

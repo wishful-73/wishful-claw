@@ -3,7 +3,12 @@ import { logError, logInfo, logWarn } from './lib/logger'
 import { readPersistedSettings } from './lib/settings-store'
 import { getUpdateDistributionInfo } from './lib/distribution'
 import { safeSendMessagePackToWindow } from './window-ipc'
-import { createUpdaterStateCoordinator, type UpdaterStateCoordinator } from './updater-state'
+import {
+  createUpdateDownloadGate,
+  createUpdaterStateCoordinator,
+  type UpdateDownloadGate,
+  type UpdaterStateCoordinator
+} from './updater-state'
 import { NO_UPDATE_OPERATION_ID } from '../shared/updater/types'
 import type {
   UpdateActionResult,
@@ -12,6 +17,7 @@ import type {
   UpdateDistributionInfo,
   UpdateDownloadProgressPayload,
   UpdateDownloadedPayload,
+  UpdateDownloadStartResult,
   UpdateErrorPayload,
   UpdateStatus
 } from '../shared/updater/types'
@@ -30,7 +36,7 @@ const RENDERER_SETTINGS_STORAGE_KEY = 'wishfulclaw-settings'
 let updater: AutoUpdater | null = null
 let initializePromise: Promise<void> | null = null
 let checkPromise: Promise<UpdateCheckResult> | null = null
-let downloadPromise: Promise<UpdateActionResult> | null = null
+let downloadGate: UpdateDownloadGate | null = null
 let options: UpdaterOptions | null = null
 let coordinator: UpdaterStateCoordinator | null = null
 let activeOperationId = NO_UPDATE_OPERATION_ID
@@ -38,6 +44,17 @@ let activeOperationId = NO_UPDATE_OPERATION_ID
 function updaterState(): UpdaterStateCoordinator {
   coordinator ??= createUpdaterStateCoordinator({ currentVersion: currentVersion() })
   return coordinator
+}
+
+function getDownloadGate(instance: AutoUpdater): UpdateDownloadGate {
+  downloadGate ??= createUpdateDownloadGate({
+    coordinator: updaterState(),
+    start: () => instance.downloadUpdate(),
+    onFailure: (error) => {
+      setError(error)
+    }
+  })
+  return downloadGate
 }
 
 function currentVersion(): string {
@@ -271,7 +288,7 @@ function attachEvents(instance: AutoUpdater): void {
   })
 
   instance.on('error', (error) => {
-    if (updaterState().snapshot().phase === 'checking' && !downloadPromise) {
+    if (updaterState().snapshot().phase === 'checking' && !downloadGate?.isInFlight()) {
       logWarn('main', `Background updater check failed: ${formatError(error)}`)
       updaterState().failSilently()
       return
@@ -352,14 +369,13 @@ export async function requestUpdateCheck(): Promise<UpdateCheckResult> {
   return checkPromise
 }
 
-export async function requestUpdateDownload(): Promise<UpdateActionResult> {
+export async function requestUpdateDownload(): Promise<UpdateDownloadStartResult> {
   if (!supportsAutoInstall()) {
     return { success: false, error: tr('unsupportedInstall') }
   }
-  const snapshot = updaterState().snapshot()
-  if (snapshot.downloadedVersion) return { success: true }
-  if (!snapshot.availableVersion) {
-    return { success: false, error: tr('noAvailableDownload') }
+  const downloaded = updaterState().snapshot()
+  if (downloaded.downloadedVersion) {
+    return { success: true, operationId: downloaded.operationId }
   }
   if (!updater) {
     try {
@@ -370,21 +386,17 @@ export async function requestUpdateDownload(): Promise<UpdateActionResult> {
   }
   if (!updater) return { success: false, error: tr('updaterUnavailable') }
 
-  if (!downloadPromise) {
-    const operationId = updaterState().beginDownload(snapshot.availableVersion)
-    if (operationId === NO_UPDATE_OPERATION_ID) {
-      return { success: false, error: tr('noAvailableDownload') }
-    }
-    activeOperationId = operationId
-    logInfo('main', `Updater download requested for ${snapshot.availableVersion} (operation ${operationId})`)
-    downloadPromise = updater.downloadUpdate()
-      .then(() => ({ success: true as const }))
-      .catch((error) => ({ success: false as const, error: setError(error) }))
-      .finally(() => {
-        downloadPromise = null
-      })
+  const snapshot = updaterState().snapshot()
+  const ack = snapshot.availableVersion
+    ? getDownloadGate(updater).request(snapshot.availableVersion)
+    : null
+  if (!ack?.accepted) {
+    return { success: false, error: tr('noAvailableDownload') }
   }
-  return downloadPromise
+
+  activeOperationId = ack.operationId
+  logInfo('main', `Updater download started for ${snapshot.availableVersion} (operation ${ack.operationId})`)
+  return { success: true, operationId: ack.operationId }
 }
 
 export function getUpdateStatus(): UpdateStatus {

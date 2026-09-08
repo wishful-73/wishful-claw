@@ -261,3 +261,61 @@ export function createUpdaterStateCoordinator(
     }
   }
 }
+
+export interface UpdateDownloadStartAck {
+  accepted: boolean
+  operationId: number
+}
+
+export interface UpdateDownloadGateOptions {
+  coordinator: UpdaterStateCoordinator
+  /** Kicks off the native download. Its promise outlives the caller's request. */
+  start: () => Promise<unknown>
+  /** Where a late native rejection is reported, since the caller has long since been answered. */
+  onFailure: (error: unknown) => void
+}
+
+export interface UpdateDownloadGate {
+  request(expectedVersion: string): UpdateDownloadStartAck
+  isInFlight(): boolean
+}
+
+/**
+ * Decouples the download from the request that started it. `request` answers as soon as the
+ * native download is under way, so closing the dialog or hiding the window cannot cancel it,
+ * and a failure that surfaces minutes later is broadcast instead of being lost in an already
+ * resolved IPC call.
+ */
+export function createUpdateDownloadGate(options: UpdateDownloadGateOptions): UpdateDownloadGate {
+  let inFlight: Promise<void> | null = null
+
+  return {
+    request(expectedVersion: string): UpdateDownloadStartAck {
+      const snapshot = options.coordinator.snapshot()
+      if (inFlight) {
+        // A second click reuses the live operation instead of starting a second native download.
+        return snapshot.phase === 'downloading'
+          ? { accepted: true, operationId: snapshot.operationId }
+          : { accepted: false, operationId: NO_UPDATE_OPERATION_ID }
+      }
+
+      const operationId = options.coordinator.beginDownload(expectedVersion)
+      if (operationId === NO_UPDATE_OPERATION_ID) return { accepted: false, operationId }
+
+      inFlight = (async () => {
+        try {
+          await options.start()
+        } catch (error) {
+          options.onFailure(error)
+        } finally {
+          inFlight = null
+        }
+      })()
+      return { accepted: true, operationId }
+    },
+
+    isInFlight(): boolean {
+      return inFlight !== null
+    }
+  }
+}

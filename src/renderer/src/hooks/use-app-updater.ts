@@ -6,6 +6,7 @@ import type {
   UpdateCheckResult,
   UpdateDownloadedPayload,
   UpdateDownloadProgressPayload,
+  UpdateDownloadStartResult,
   UpdateErrorPayload,
   UpdateStatus
 } from '@shared/updater/types'
@@ -135,10 +136,12 @@ export function useAppUpdater(): {
     // a fabricated 0 is indistinguishable from a stalled download.
     setState((previous) => ({ ...previous, phase: 'downloading', percent: null, error: null }))
     try {
-      const result = await window.api.invoke<{ success: true } | { success: false; error: string }>('update:download', {})
+      const result = await window.api.invoke<UpdateDownloadStartResult>('update:download', {})
       if (isFailure(result)) {
         setState((previous) => ({ ...previous, phase: 'error', error: result.error, percent: null }))
+        return
       }
+      setState((previous) => ({ ...previous, operationId: result.operationId }))
     } catch (error) {
       setState((previous) => ({ ...previous, phase: 'error', error: String(error), percent: null }))
     }

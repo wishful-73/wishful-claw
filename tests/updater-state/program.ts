@@ -3,6 +3,7 @@ import { NO_UPDATE_OPERATION_ID } from '../../src/shared/updater/types'
 import type { UpdatePhase, UpdateProgressSnapshot, UpdateStateSnapshot } from '../../src/shared/updater/types'
 import {
   canTransitionPhase,
+  createUpdateDownloadGate,
   createUpdaterStateCoordinator,
   type UpdaterStateCoordinator
 } from '../../src/main/updater-state'
@@ -17,6 +18,38 @@ function check(description: string, run: () => void): void {
     console.error(`FAIL: ${description}`)
     throw error
   }
+}
+
+interface AsyncCheck {
+  description: string
+  run: () => Promise<void>
+}
+
+const asyncChecks: AsyncCheck[] = []
+
+// The bundle is CJS, so top-level await is unavailable; async checks are queued here and run
+// sequentially at the end, where a rejection still exits non-zero.
+function checkAsync(description: string, run: () => Promise<void>): void {
+  asyncChecks.push({ description, run })
+}
+
+function deferred(): {
+  promise: Promise<void>
+  resolve: () => void
+  reject: (error: unknown) => void
+} {
+  let resolve = (): void => {}
+  let reject = (_error: unknown): void => {}
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+/** Flushes every microtask queued by the gate's background promise. */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
 const CURRENT_VERSION = '0.2.25'
@@ -660,4 +693,189 @@ check('a remounted renderer can rebuild everything from one in-flight snapshot',
   assert.deepEqual(coordinator.snapshot(), snapshot)
 })
 
-console.log(`updater-state: ${checks} checks passed`)
+// ---------------------------------------------------------------- download gate
+
+interface GateHarness {
+  coordinator: UpdaterStateCoordinator
+  gate: ReturnType<typeof createUpdateDownloadGate>
+  order: string[]
+  failures: unknown[]
+  startCalls: () => number
+  /** The deferred controlling the most recent native start. */
+  pending: () => ReturnType<typeof deferred>
+}
+
+function createGateHarness(onFailure?: (error: unknown) => void): GateHarness {
+  const { coordinator } = createHarness()
+  reachAvailable(coordinator)
+
+  const order: string[] = []
+  const failures: unknown[] = []
+  let startCalls = 0
+  let download = deferred()
+
+  const gate = createUpdateDownloadGate({
+    coordinator,
+    start: () => {
+      startCalls += 1
+      order.push('start')
+      download = deferred()
+      return download.promise.then(
+        () => {
+          order.push('native-completed')
+        },
+        (error: unknown) => {
+          order.push('native-failed')
+          throw error
+        }
+      )
+    },
+    onFailure: (error) => {
+      failures.push(error)
+      onFailure?.(error)
+    }
+  })
+
+  return { coordinator, gate, order, failures, startCalls: () => startCalls, pending: () => download }
+}
+
+checkAsync('the start acknowledgement is returned before the download completes', async () => {
+  const harness = createGateHarness()
+
+  const ack = harness.gate.request(NEXT_VERSION)
+  harness.order.push('ack')
+
+  assert.deepEqual(ack, { accepted: true, operationId: 1 })
+  assert.deepEqual(harness.order, ['start', 'ack'], 'ack must precede the native completion')
+  assert.equal(harness.startCalls(), 1)
+  assert.equal(harness.gate.isInFlight(), true)
+  assert.equal(harness.coordinator.snapshot().phase, 'downloading')
+  assert.equal(harness.coordinator.snapshot().expectedVersion, NEXT_VERSION)
+
+  harness.pending().resolve()
+  await settle()
+
+  assert.deepEqual(harness.order, ['start', 'ack', 'native-completed'])
+  assert.equal(harness.gate.isInFlight(), false)
+  assert.equal(harness.failures.length, 0)
+  // Completion is still reported by the native event, not by the ack.
+  assert.equal(harness.coordinator.applyDownloaded(ack.operationId, NEXT_VERSION), true)
+  assert.equal(harness.coordinator.snapshot().phase, 'downloaded')
+})
+
+checkAsync('a repeated request reuses the live operation and starts no second download', async () => {
+  const harness = createGateHarness()
+
+  const first = harness.gate.request(NEXT_VERSION)
+  const second = harness.gate.request(NEXT_VERSION)
+  const third = harness.gate.request(NEXT_VERSION)
+
+  assert.deepEqual(second, first)
+  assert.deepEqual(third, first)
+  assert.equal(harness.startCalls(), 1)
+  assert.equal(harness.coordinator.snapshot().operationId, first.operationId)
+
+  harness.pending().resolve()
+  await settle()
+  assert.equal(harness.coordinator.applyDownloaded(first.operationId, NEXT_VERSION), true)
+
+  // Once the package is on disk a further request is refused rather than re-downloading.
+  assert.deepEqual(harness.gate.request(NEXT_VERSION), {
+    accepted: false,
+    operationId: NO_UPDATE_OPERATION_ID
+  })
+  assert.equal(harness.startCalls(), 1)
+})
+
+checkAsync('a background failure is broadcast and a retry starts a fresh operation', async () => {
+  const harness = createGateHarness((error) => {
+    harness.coordinator.fail(String(error))
+  })
+
+  const first = harness.gate.request(NEXT_VERSION)
+  assert.equal(first.accepted, true)
+  assert.equal(harness.coordinator.snapshot().phase, 'downloading')
+
+  harness.pending().reject(new Error('network down'))
+  await settle()
+
+  assert.deepEqual(harness.order, ['start', 'native-failed'])
+  assert.equal(harness.failures.length, 1)
+  assert.equal(harness.gate.isInFlight(), false, 'the gate must free itself after a failure')
+  assert.equal(harness.coordinator.snapshot().phase, 'error')
+  assert.equal(harness.coordinator.snapshot().expectedVersion, NEXT_VERSION)
+
+  const retry = harness.gate.request(NEXT_VERSION)
+  assert.deepEqual(retry, { accepted: true, operationId: first.operationId + 1 })
+  assert.equal(harness.startCalls(), 2)
+  assert.equal(harness.coordinator.snapshot().phase, 'downloading')
+  assert.equal(harness.coordinator.snapshot().error, null)
+
+  harness.pending().resolve()
+  await settle()
+  assert.equal(harness.coordinator.applyDownloaded(retry.operationId, NEXT_VERSION), true)
+  // The first operation's late completion must not touch the retried one.
+  assert.equal(harness.coordinator.applyDownloaded(first.operationId, NEXT_VERSION), false)
+  assert.equal(harness.coordinator.snapshot().phase, 'downloaded')
+})
+
+checkAsync('the gate refuses without touching the native downloader when the coordinator refuses', async () => {
+  const { coordinator } = createHarness()
+  let startCalls = 0
+  const gate = createUpdateDownloadGate({
+    coordinator,
+    start: () => {
+      startCalls += 1
+      return Promise.resolve()
+    },
+    onFailure: () => {}
+  })
+
+  assert.deepEqual(gate.request(NEXT_VERSION), {
+    accepted: false,
+    operationId: NO_UPDATE_OPERATION_ID
+  })
+  assert.equal(startCalls, 0)
+  assert.equal(gate.isInFlight(), false)
+  assert.equal(coordinator.snapshot().phase, 'idle')
+})
+
+checkAsync('a hidden window neither cancels the download nor installs it', async () => {
+  const harness = createGateHarness()
+  const ack = harness.gate.request(NEXT_VERSION)
+
+  // Closing the dialog, hiding the main window and reloading the renderer reach no updater code
+  // path at all; the only thing that may happen is that the download keeps running.
+  assert.equal(harness.gate.isInFlight(), true)
+  assert.equal(harness.coordinator.snapshot().phase, 'downloading')
+  assert.equal(harness.coordinator.beginInstall(), false, 'nothing may install mid-download')
+
+  await settle()
+  assert.equal(harness.gate.isInFlight(), true, 'a tick of inactivity must not cancel it')
+
+  harness.pending().resolve()
+  await settle()
+  assert.equal(harness.coordinator.applyDownloaded(ack.operationId, NEXT_VERSION), true)
+  assert.equal(
+    harness.coordinator.snapshot().phase,
+    'downloaded',
+    'completion stops at downloaded and never advances to installing on its own'
+  )
+  assert.equal(harness.startCalls(), 1)
+})
+
+async function runAsyncChecks(): Promise<void> {
+  for (const asyncCheck of asyncChecks) {
+    checks += 1
+    try {
+      await asyncCheck.run()
+    } catch (error) {
+      console.error(`FAIL: ${asyncCheck.description}`)
+      throw error
+    }
+  }
+}
+
+void runAsyncChecks().then(() => {
+  console.log(`updater-state: ${checks} checks passed`)
+})

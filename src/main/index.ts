@@ -54,7 +54,7 @@ import {
   requestUpdateDownload,
   requestUpdateInstall
 } from './updater'
-import type { UpdateActionResult, UpdateCheckResult } from '../shared/updater/types'
+import type { UpdateActionResult, UpdateCheckResult, UpdateDownloadStartResult } from '../shared/updater/types'
 
 let mainWindow: BrowserWindow | null = null
 let channelManager: ChannelManager | null = null
@@ -514,7 +514,7 @@ registerCodeGraphHandlers()
     'update:check',
     async () => requestUpdateCheck()
   )
-  registerMessagePackHandler<unknown, UpdateActionResult>(
+  registerMessagePackHandler<unknown, UpdateDownloadStartResult>(
     'update:download',
     async () => requestUpdateDownload()
   )

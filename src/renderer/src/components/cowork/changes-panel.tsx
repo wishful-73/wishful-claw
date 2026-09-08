@@ -4,6 +4,7 @@ import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
 import { useGitStore, type GitRepositoryItem, type GitStatusFile } from '@renderer/stores/git-store'
 import { CodeDiffViewer, type DiffViewerChunk, type DiffViewerLine } from '@renderer/components/chat/CodeDiffViewer'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@renderer/components/ui/dialog'
 import { parseDiffBlocks } from '@renderer/components/chat/GitPage/utils'
 
 function rows(status: NonNullable<ReturnType<typeof useGitStore.getState>['repoDetailsByPath'][string]['status']>) {
@@ -50,7 +51,12 @@ export function ChangesPanel({ workingFolder }: { workingFolder: string }): Reac
       {details?.error ? <div className="flex items-center gap-1 p-3 text-xs text-destructive"><AlertCircle className="size-3" />{details.error}</div> : null}
       {changeRows.length === 0 && !details?.loading ? <div className="p-4 text-center text-xs text-muted-foreground">暂无变更</div> : null}
       {changeRows.map(({ file, section }) => <button key={`${section}:${file.path}`} type="button" onClick={() => setSelected({ repo, file, staged: section === 'staged' })} className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/60', selected?.file.path === file.path && 'bg-muted')}><span className="font-mono text-muted-foreground">{section === 'untracked' ? 'U' : section === 'conflicted' ? '!' : section === 'staged' ? file.stagedStatus : file.unstagedStatus}</span>{section === 'untracked' ? <FilePlus className="size-3.5" /> : <File className="size-3.5" />}<span className="truncate font-mono">{file.path}</span></button>)}
-      {selected ? <div className="border-t border-border p-2">{diff ? <CodeDiffViewer chunks={toChunks(diff)} fillHeight showModeToggle={false} /> : <div className="p-3 text-xs text-muted-foreground">暂无可用 Diff（可能是二进制或未追踪文件）</div>}</div> : null}
+      <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null) }}>
+        <DialogContent className="h-[82vh] w-[92vw] max-w-[1200px] overflow-hidden p-4">
+          <DialogHeader><DialogTitle className="truncate font-mono text-sm">{selected?.file.path ?? 'Diff'}</DialogTitle></DialogHeader>
+          <div className="min-h-0 flex-1 overflow-hidden">{diff ? <CodeDiffViewer chunks={toChunks(diff)} fillHeight showModeToggle /> : <div className="p-3 text-xs text-muted-foreground">暂无可用 Diff（可能是二进制或未追踪文件）</div>}</div>
+        </DialogContent>
+      </Dialog>
     </div>
   </div>
 }

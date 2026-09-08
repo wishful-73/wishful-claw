@@ -1,5 +1,5 @@
 ﻿import * as React from 'react'
-import { File, FilePlus, RefreshCw, AlertCircle } from 'lucide-react'
+import { File, FilePlus, RefreshCw, AlertCircle, Maximize2, Minimize2, X } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
 import { useGitStore, type GitRepositoryItem, type GitStatusFile } from '@renderer/stores/git-store'
@@ -31,6 +31,7 @@ function toChunks(text: string): DiffViewerChunk[] {
 export function ChangesPanel({ workingFolder }: { workingFolder: string }): React.JSX.Element {
   const { repositories, repoDetailsByPath, scanRepositories, refreshRepository, loadFileDiff } = useGitStore()
   const [selected, setSelected] = React.useState<{ repo: GitRepositoryItem; file: GitStatusFile; staged: boolean } | null>(null)
+  const [fullscreen, setFullscreen] = React.useState(false)
   const repo = repositories.find((item) => workingFolder === item.fullPath || workingFolder.startsWith(`${item.fullPath}/`)) ?? repositories[0]
   const details = repo ? repoDetailsByPath[repo.fullPath] : undefined
   const changeRows = details?.status ? rows(details.status) : []
@@ -52,9 +53,13 @@ export function ChangesPanel({ workingFolder }: { workingFolder: string }): Reac
       {changeRows.length === 0 && !details?.loading ? <div className="p-4 text-center text-xs text-muted-foreground">暂无变更</div> : null}
       {changeRows.map(({ file, section }) => <button key={`${section}:${file.path}`} type="button" onClick={() => setSelected({ repo, file, staged: section === 'staged' })} className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted/60', selected?.file.path === file.path && 'bg-muted')}><span className="font-mono text-muted-foreground">{section === 'untracked' ? 'U' : section === 'conflicted' ? '!' : section === 'staged' ? file.stagedStatus : file.unstagedStatus}</span>{section === 'untracked' ? <FilePlus className="size-3.5" /> : <File className="size-3.5" />}<span className="truncate font-mono">{file.path}</span></button>)}
       <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null) }}>
-        <DialogContent className="h-[82vh] w-[92vw] max-w-[1200px] overflow-hidden p-4">
-          <DialogHeader><DialogTitle className="truncate font-mono text-sm">{selected?.file.path ?? 'Diff'}</DialogTitle></DialogHeader>
-          <div className="min-h-0 flex-1 overflow-hidden">{diff ? <CodeDiffViewer chunks={toChunks(diff)} fillHeight showModeToggle /> : <div className="p-3 text-xs text-muted-foreground">暂无可用 Diff（可能是二进制或未追踪文件）</div>}</div>
+        <DialogContent className={cn('grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0', fullscreen ? 'h-[92vh] w-[96vw] max-w-[96vw]' : 'h-[82vh] w-[96vw] max-w-[1600px]')}>
+          <DialogHeader className="flex h-10 flex-row items-center gap-2 border-b border-border px-3">
+            <DialogTitle className="min-w-0 flex-1 truncate font-mono text-sm">{selected?.file.path ?? 'Diff'}</DialogTitle>
+            <Button variant="ghost" size="icon" className="size-7" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}</Button>
+            <Button variant="ghost" size="icon" className="size-7" onClick={() => setSelected(null)}><X className="size-3.5" /></Button>
+          </DialogHeader>
+          <div className="min-h-0 overflow-hidden p-3">{diff ? <CodeDiffViewer chunks={toChunks(diff)} fillHeight showModeToggle /> : <div className="p-3 text-xs text-muted-foreground">暂无可用 Diff（可能是二进制或未追踪文件）</div>}</div>
         </DialogContent>
       </Dialog>
     </div>

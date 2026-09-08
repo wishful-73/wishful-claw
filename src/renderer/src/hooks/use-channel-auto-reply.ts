@@ -226,6 +226,7 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     type: targetProvider.type,
     apiKey: targetProvider.apiKey,
     baseUrl: targetProvider.baseUrl,
+    providerBuiltinId: targetProvider.builtinId ?? undefined,
     model: modelId,
     temperature: settings.temperature ?? undefined,
     maxTokens: settings.maxTokens ?? undefined,

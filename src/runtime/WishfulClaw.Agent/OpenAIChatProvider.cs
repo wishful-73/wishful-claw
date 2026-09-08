@@ -40,7 +40,7 @@ internal static partial class OpenAIChatProvider
         var url = $"{baseUrl}/chat/completions";
         var body = BuildRequestBody(parameters, provider, conversation, toolDefs, state);
 
-        var debugHeaders = BuildDebugHeaders(provider);
+        var debugHeaders = BuildDebugHeaders(provider, state.SessionId);
 
         // Emit request_debug event
         await AgentRuntimeTools.EmitAsync(
@@ -56,7 +56,7 @@ internal static partial class OpenAIChatProvider
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
-        ApplyHeaders(request, provider, JsonHelpers.GetString(provider, "apiKey") ?? string.Empty);
+        ApplyHeaders(request, provider, JsonHelpers.GetString(provider, "apiKey") ?? string.Empty, state.SessionId);
 
         var startedAt = Stopwatch.GetTimestamp();
         long? firstTokenMs = null;

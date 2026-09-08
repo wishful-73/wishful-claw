@@ -3,6 +3,8 @@ import { logError, logInfo, logWarn } from './lib/logger'
 import { readPersistedSettings } from './lib/settings-store'
 import { getUpdateDistributionInfo } from './lib/distribution'
 import { safeSendMessagePackToWindow } from './window-ipc'
+import { createUpdaterStateCoordinator, type UpdaterStateCoordinator } from './updater-state'
+import { NO_UPDATE_OPERATION_ID } from '../shared/updater/types'
 import type {
   UpdateActionResult,
   UpdateAvailablePayload,
@@ -11,7 +13,6 @@ import type {
   UpdateDownloadProgressPayload,
   UpdateDownloadedPayload,
   UpdateErrorPayload,
-  UpdatePhase,
   UpdateStatus
 } from '../shared/updater/types'
 
@@ -24,28 +25,20 @@ export interface UpdaterOptions {
   markAppWillQuit: QuitMarker
 }
 
-interface UpdateState {
-  phase: UpdatePhase
-  availableVersion: string | null
-  downloadedVersion: string | null
-  releaseNotes: string
-}
-
 const RENDERER_SETTINGS_STORAGE_KEY = 'wishfulclaw-settings'
-
-const INITIAL_STATE: UpdateState = {
-  phase: 'idle',
-  availableVersion: null,
-  downloadedVersion: null,
-  releaseNotes: ''
-}
 
 let updater: AutoUpdater | null = null
 let initializePromise: Promise<void> | null = null
 let checkPromise: Promise<UpdateCheckResult> | null = null
 let downloadPromise: Promise<UpdateActionResult> | null = null
 let options: UpdaterOptions | null = null
-let updateState: UpdateState = { ...INITIAL_STATE }
+let coordinator: UpdaterStateCoordinator | null = null
+let activeOperationId = NO_UPDATE_OPERATION_ID
+
+function updaterState(): UpdaterStateCoordinator {
+  coordinator ??= createUpdaterStateCoordinator({ currentVersion: currentVersion() })
+  return coordinator
+}
 
 function currentVersion(): string {
   return normalizeVersion(app.getVersion())
@@ -181,19 +174,17 @@ function getAppDistributionInfo(): UpdateDistributionInfo {
   return getUpdateDistributionInfo()
 }
 
-function setPhase(phase: UpdatePhase): void {
-  updateState = { ...updateState, phase }
-}
-
 function setError(error: unknown, notify = true): string {
   const message = formatError(error)
+  logError('main', `Updater error: ${message}`, { extra: { error: getErrorMessage(error) } })
   // Silent failures (startup auto-check, init) must not leave phase 'error':
   // the renderer would later fetch status and auto-open an empty error dialog.
-  updateState = { ...updateState, phase: notify ? 'error' : 'idle' }
-  logError('main', `Updater error: ${message}`, { extra: { error: getErrorMessage(error) } })
   if (notify) {
+    updaterState().fail(message)
     const payload: UpdateErrorPayload = { error: message }
     sendUpdateEvent('update:error', payload)
+  } else {
+    updaterState().failSilently()
   }
   return message
 }
@@ -215,27 +206,27 @@ function configureUpdater(instance: AutoUpdater): void {
 function attachEvents(instance: AutoUpdater): void {
   instance.on('checking-for-update', () => {
     logInfo('main', 'Updater check started')
-    setPhase('checking')
+    updaterState().beginCheck()
   })
 
   instance.on('update-available', (info) => {
     const version = normalizeVersion(info.version)
     if (!isNewerVersion(version, currentVersion())) {
       logWarn('main', `Updater ignored non-newer version: ${version}`)
-      setPhase('idle')
+      updaterState().applyNotAvailable()
       return
     }
 
-    updateState = {
-      phase: 'available',
-      availableVersion: version,
-      downloadedVersion: null,
-      releaseNotes: formatReleaseNotes(info.releaseNotes)
+    const releaseNotes = formatReleaseNotes(info.releaseNotes)
+    if (!updaterState().applyAvailable({ newVersion: version, releaseNotes })) {
+      logWarn('main', `Updater dropped update-available for ${version} in current phase`)
+      return
     }
+
     const payload: UpdateAvailablePayload = {
       currentVersion: currentVersion(),
       newVersion: version,
-      releaseNotes: updateState.releaseNotes,
+      releaseNotes,
       ...getAppDistributionInfo()
     }
     logInfo('main', `Updater found version ${version}`)
@@ -243,30 +234,35 @@ function attachEvents(instance: AutoUpdater): void {
   })
 
   instance.on('update-not-available', (info) => {
-    updateState = {
-      ...updateState,
-      phase: 'idle',
-      availableVersion: updateState.downloadedVersion ? updateState.availableVersion : null,
-      releaseNotes: updateState.downloadedVersion ? updateState.releaseNotes : ''
-    }
+    updaterState().applyNotAvailable()
     logInfo('main', `Updater found no newer version (latest: ${info.version})`)
   })
 
   instance.on('download-progress', (progress) => {
-    setPhase('downloading')
-    const payload: UpdateDownloadProgressPayload = {
-      percent: Math.max(0, Math.min(100, progress.percent))
-    }
+    const percent = Math.max(0, Math.min(100, progress.percent))
+    const accepted = updaterState().applyProgress(activeOperationId, {
+      percent,
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond
+    })
+    if (!accepted) return
+
+    const payload: UpdateDownloadProgressPayload = { percent }
     const win = getValidWindow()
     if (win) {
-      win.setProgressBar(payload.percent / 100, { mode: 'normal' })
+      win.setProgressBar(percent / 100, { mode: 'normal' })
       safeSendMessagePackToWindow(win, 'update:download-progress', payload)
     }
   })
 
   instance.on('update-downloaded', (info) => {
     const version = normalizeVersion(info.version)
-    updateState = { ...updateState, phase: 'downloaded', downloadedVersion: version }
+    if (!updaterState().applyDownloaded(activeOperationId, version)) {
+      logWarn('main', `Updater dropped update-downloaded for ${version} (operation ${activeOperationId})`)
+      return
+    }
+
     const win = getValidWindow()
     if (win) win.setProgressBar(-1)
     const payload: UpdateDownloadedPayload = { version }
@@ -275,9 +271,9 @@ function attachEvents(instance: AutoUpdater): void {
   })
 
   instance.on('error', (error) => {
-    if (updateState.phase === 'checking' && !downloadPromise) {
+    if (updaterState().snapshot().phase === 'checking' && !downloadPromise) {
       logWarn('main', `Background updater check failed: ${formatError(error)}`)
-      setPhase('idle')
+      updaterState().failSilently()
       return
     }
     const win = getValidWindow()
@@ -331,12 +327,13 @@ async function checkForUpdatesInternal(): Promise<UpdateCheckResult> {
     logInfo('main', 'Updater check requested')
     const result = await updater.checkForUpdates()
     const latest = normalizeVersion(result?.updateInfo?.version) || null
-    const available = latest ? isNewerVersion(latest, current) : updateState.availableVersion !== null
+    const knownAvailable = updaterState().snapshot().availableVersion
+    const available = latest ? isNewerVersion(latest, current) : knownAvailable !== null
     return {
       success: true,
       available,
       currentVersion: current,
-      latestVersion: latest ?? updateState.availableVersion,
+      latestVersion: latest ?? knownAvailable,
       skipped: result === null,
       ...distribution
     }
@@ -359,8 +356,9 @@ export async function requestUpdateDownload(): Promise<UpdateActionResult> {
   if (!supportsAutoInstall()) {
     return { success: false, error: tr('unsupportedInstall') }
   }
-  if (updateState.downloadedVersion) return { success: true }
-  if (!updateState.availableVersion) {
+  const snapshot = updaterState().snapshot()
+  if (snapshot.downloadedVersion) return { success: true }
+  if (!snapshot.availableVersion) {
     return { success: false, error: tr('noAvailableDownload') }
   }
   if (!updater) {
@@ -373,8 +371,12 @@ export async function requestUpdateDownload(): Promise<UpdateActionResult> {
   if (!updater) return { success: false, error: tr('updaterUnavailable') }
 
   if (!downloadPromise) {
-    setPhase('downloading')
-    logInfo('main', `Updater download requested for ${updateState.availableVersion}`)
+    const operationId = updaterState().beginDownload(snapshot.availableVersion)
+    if (operationId === NO_UPDATE_OPERATION_ID) {
+      return { success: false, error: tr('noAvailableDownload') }
+    }
+    activeOperationId = operationId
+    logInfo('main', `Updater download requested for ${snapshot.availableVersion} (operation ${operationId})`)
     downloadPromise = updater.downloadUpdate()
       .then(() => ({ success: true as const }))
       .catch((error) => ({ success: false as const, error: setError(error) }))
@@ -388,11 +390,7 @@ export async function requestUpdateDownload(): Promise<UpdateActionResult> {
 export function getUpdateStatus(): UpdateStatus {
   return {
     success: true,
-    currentVersion: currentVersion(),
-    availableVersion: updateState.availableVersion,
-    downloadedVersion: updateState.downloadedVersion,
-    releaseNotes: updateState.releaseNotes,
-    phase: updateState.phase,
+    ...updaterState().snapshot(),
     ...getAppDistributionInfo()
   }
 }
@@ -401,15 +399,16 @@ export function requestUpdateInstall(): UpdateActionResult {
   if (!supportsAutoInstall()) {
     return { success: false, error: tr('unsupportedInstall') }
   }
-  if (!updater || !updateState.downloadedVersion) {
+  const snapshot = updaterState().snapshot()
+  if (snapshot.phase === 'installing') return { success: true }
+  if (!updater || !snapshot.downloadedVersion) {
     return { success: false, error: tr('noDownloadedUpdate') }
   }
-  if (updateState.phase === 'installing') {
-    return { success: true }
+  if (!updaterState().beginInstall()) {
+    return { success: false, error: tr('noDownloadedUpdate') }
   }
 
-  setPhase('installing')
-  logInfo('main', `Updater install requested for ${updateState.downloadedVersion}`)
+  logInfo('main', `Updater install requested for ${snapshot.downloadedVersion}`)
   setTimeout(() => {
     try {
       options?.markAppWillQuit()

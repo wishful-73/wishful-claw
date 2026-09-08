@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { NO_UPDATE_OPERATION_ID } from '@shared/updater/types'
 import type {
   RendererUpdateState,
   UpdateAvailablePayload,
@@ -14,9 +15,16 @@ const INITIAL_STATE: RendererUpdateState = {
   currentVersion: '',
   availableVersion: null,
   downloadedVersion: null,
-  progress: null,
   releaseNotes: '',
+  operationId: NO_UPDATE_OPERATION_ID,
+  expectedVersion: null,
   error: null,
+  percent: null,
+  transferred: null,
+  total: null,
+  bytesPerSecond: null,
+  elapsedMs: null,
+  declaredInstallerSize: null,
   distribution: 'installer',
   supportsAutoInstall: false,
   releaseUrl: ''
@@ -35,16 +43,11 @@ export function useAppUpdater(): {
 } {
   const [state, setState] = useState<RendererUpdateState>(INITIAL_STATE)
 
+  // Main owns the whole snapshot, so a status reply replaces renderer state outright instead of
+  // being merged field by field — merging is what let a stale value survive a remount.
   const applyStatus = useCallback((status: UpdateStatus): void => {
-    setState((previous) => ({
-      ...previous,
-      ...status,
-      availableVersion: status.availableVersion ?? previous.availableVersion,
-      downloadedVersion: status.downloadedVersion ?? previous.downloadedVersion,
-      releaseNotes: status.releaseNotes || previous.releaseNotes,
-      progress: status.phase === 'downloading' ? previous.progress : null,
-      error: null
-    }))
+    const snapshot: RendererUpdateState = status
+    setState(snapshot)
   }, [])
 
   useEffect(() => {
@@ -56,6 +59,8 @@ export function useAppUpdater(): {
         phase: 'available',
         currentVersion: payload.currentVersion,
         availableVersion: payload.newVersion,
+        downloadedVersion: null,
+        expectedVersion: null,
         releaseNotes: payload.releaseNotes,
         distribution: payload.distribution,
         supportsAutoInstall: payload.supportsAutoInstall,
@@ -68,7 +73,7 @@ export function useAppUpdater(): {
       setState((previous) => ({
         ...previous,
         phase: 'downloading',
-        progress: Math.max(0, Math.min(100, payload.percent)),
+        percent: Math.max(0, Math.min(100, payload.percent)),
         error: null
       }))
     })
@@ -78,13 +83,13 @@ export function useAppUpdater(): {
         ...previous,
         phase: 'downloaded',
         downloadedVersion: payload.version,
-        progress: 100,
+        percent: 100,
         error: null
       }))
     })
     const unsubscribeError = window.api.on<UpdateErrorPayload>('update:error', (payload) => {
       if (disposed) return
-      setState((previous) => ({ ...previous, phase: 'error', error: payload.error, progress: null }))
+      setState((previous) => ({ ...previous, phase: 'error', error: payload.error, percent: null }))
     })
 
     void window.api.invoke<UpdateStatus>('update:status', {}).then((status) => {
@@ -107,7 +112,7 @@ export function useAppUpdater(): {
     try {
       const result = await window.api.invoke<UpdateCheckResult>('update:check', {})
       if (isFailure(result)) {
-        setState((previous) => ({ ...previous, phase: 'error', error: result.error, progress: null }))
+        setState((previous) => ({ ...previous, phase: 'error', error: result.error, percent: null }))
         return
       }
       setState((previous) => ({
@@ -121,19 +126,21 @@ export function useAppUpdater(): {
         error: null
       }))
     } catch (error) {
-      setState((previous) => ({ ...previous, phase: 'error', error: String(error), progress: null }))
+      setState((previous) => ({ ...previous, phase: 'error', error: String(error), percent: null }))
     }
   }, [])
 
   const downloadUpdate = useCallback(async (): Promise<void> => {
-    setState((previous) => ({ ...previous, phase: 'downloading', progress: 0, error: null }))
+    // No optimistic percent: the first real reading arrives with the first progress event, and
+    // a fabricated 0 is indistinguishable from a stalled download.
+    setState((previous) => ({ ...previous, phase: 'downloading', percent: null, error: null }))
     try {
       const result = await window.api.invoke<{ success: true } | { success: false; error: string }>('update:download', {})
       if (isFailure(result)) {
-        setState((previous) => ({ ...previous, phase: 'error', error: result.error, progress: null }))
+        setState((previous) => ({ ...previous, phase: 'error', error: result.error, percent: null }))
       }
     } catch (error) {
-      setState((previous) => ({ ...previous, phase: 'error', error: String(error), progress: null }))
+      setState((previous) => ({ ...previous, phase: 'error', error: String(error), percent: null }))
     }
   }, [])
 

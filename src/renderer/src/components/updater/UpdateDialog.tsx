@@ -68,18 +68,18 @@ export function UpdateDialog({
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>{t('updater.dialog.downloading', { defaultValue: '正在下载更新…' })}</span>
-                <span>{Math.round(state.progress ?? 0)}%</span>
+                <span>{Math.round(state.percent ?? 0)}%</span>
               </div>
               <div
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-valuenow={Math.round(state.progress ?? 0)}
+                aria-valuenow={Math.round(state.percent ?? 0)}
                 className="h-2 overflow-hidden rounded-full bg-muted"
               >
                 <div
                   className="h-full rounded-full bg-primary transition-[width]"
-                  style={{ width: `${Math.max(0, Math.min(100, state.progress ?? 0))}%` }}
+                  style={{ width: `${Math.max(0, Math.min(100, state.percent ?? 0))}%` }}
                 />
               </div>
             </div>

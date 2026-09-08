@@ -96,9 +96,9 @@
 
 步骤清单：
 
-- [ ] A1：安装两个依赖，实现 schema 与 URL 过滤；加入真实 v0.2.25 notes、Markdown、普通文本、空字符串和恶意输入 fixture。Mini 验证：`npm run test:updater-release-notes` 断言允许节点保留，危险节点/属性/协议及绕过变体从静态渲染结果中消失，安全链接具有固定 `target/rel`。
-- [ ] A2：接入 `UpdateReleaseNotes`，统一处理 Atom HTML、Markdown 和普通文本。Mini 验证：`npm run test:updater-release-notes`；真实 v0.2.25 fixture 显示标题/列表且不出现 `<h2>`、`<li>` 源码文本，空内容显示既有空说明。
-- [ ] A3：完成统一 Mini 门槛并在开发态做 DOM/截图核验，确认链接只经现有 Main `setWindowOpenHandler` → `shell.openExternal` 外开。证据写入 `docs/plans/iter-v2-26/download-observability-report.md`，安全渲染截图固定为 `docs/plans/iter-v2-26/evidence/release-notes-safe.png`。
+- [✓] A1：安装两个依赖，实现 schema 与 URL 过滤；加入真实 v0.2.25 notes、Markdown、普通文本、空字符串和恶意输入 fixture。Mini 验证：`npm run test:updater-release-notes` 断言允许节点保留，危险节点/属性/协议及绕过变体从静态渲染结果中消失，安全链接具有固定 `target/rel`。（已完成：`rehype-raw@^7` + `rehype-sanitize@^6`；71 项断言通过）
+- [✓] A2：接入 `UpdateReleaseNotes`，统一处理 Atom HTML、Markdown 和普通文本。Mini 验证：`npm run test:updater-release-notes`；真实 v0.2.25 fixture 显示标题/列表且不出现 `<h2>`、`<li>` 源码文本，空内容显示既有空说明。（已完成：三套 `tsc --noEmit -p` 0 错误、`dotnet build` 0 警告 0 错误、`npm run build` 成功、`git diff --check` 干净）
+- [ ] A3：完成统一 Mini 门槛并在开发态做 DOM/截图核验，确认链接只经现有 Main `setWindowOpenHandler` → `shell.openExternal` 外开。证据写入 `docs/plans/iter-v2-26/download-observability-report.md`，安全渲染截图固定为 `docs/plans/iter-v2-26/evidence/release-notes-safe.png`。**与 C4 合并执行**：本步需要一次能真正触发 `update-available` 并带出 Release Notes 的开发态会话，而 C4 已为此临时下调 `package.json` 版本，两者共用同一次取证会话，避免重复启动与重复降版。
 
 验收断言：真实 v0.2.25 内容、中英文和空说明正常；恶意 HTML/Markdown 不执行、不保留危险 DOM；Renderer 不直接依赖 Electron。
 

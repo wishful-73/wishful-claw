@@ -120,8 +120,8 @@ internal static class AgentRunContextPolicy
         var scope = Normalize(JsonHelpers.GetString(parameters, "scope"));
         if (sessionMode == "channel")
         {
-            // A channel is a specialized global session. Keep the global scope
-            // semantics while using a distinct available-mode/tool policy.
+            // A channel is a global session whose replies leave through a chat plugin: same scope
+            // and same available-mode as global, plus channel-only tools and no interactive ones.
             scope = "global";
         }
         else if (scope is not ("global" or "project"))
@@ -166,6 +166,11 @@ internal static class AgentRunContextPolicy
         var sessionMode = Normalize(JsonHelpers.GetString(parameters, "sessionMode"));
         if (sessionMode is "agent" or "chat")
             return "normal";
+        // A channel is a global session with extra tools, not a fourth mode. Resolve already forces
+        // its scope to "global"; returning the literal here was the one layer that disagreed, and
+        // it silently dropped every tool whose availableModes says "global".
+        if (sessionMode == "channel")
+            return "global";
         if (sessionMode.Length > 0)
             return sessionMode;
 

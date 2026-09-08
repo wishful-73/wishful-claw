@@ -43,7 +43,7 @@ export type {
   SettingsTab,
   DetailPanelContent
 } from './ui-types'
-import { RightPanelTabInstance } from './ui-types'
+import { RightPanelTabInstance, normalizeSettingsTab } from './ui-types'
 export type { PreviewPanelState, PreviewPanelTab, OpenDiffParams } from './preview-panel-helpers'
 
 // ─── Store Implementation ───
@@ -55,7 +55,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
   view: 'splash',
   setView: (view: any) => set({ view }),
   enterMain: () => set({ view: 'main' }),
-  openSettings: (tab: any) => set({ view: 'settings', settingsTab: tab ?? 'provider' }),
+  openSettings: (tab: any) => set({ view: 'settings', settingsTab: normalizeSettingsTab(tab) }),
   closeSettings: () => set({ view: 'main' }),
 
   // Selected provider
@@ -206,8 +206,8 @@ export const useUIStore = create<UIStore>((set, get) => ({
   // Settings page
   settingsPageOpen: false,
   settingsTab: 'provider',
-  setSettingsTab: (tab: any) => set({ settingsTab: tab }),
-  openSettingsPage: (tab: any) => set({ settingsPageOpen: true, settingsTab: tab ?? 'provider' }),
+  setSettingsTab: (tab: any) => set({ settingsTab: normalizeSettingsTab(tab) }),
+  openSettingsPage: (tab: any) => set({ settingsPageOpen: true, settingsTab: normalizeSettingsTab(tab) }),
   closeSettingsPage: () => set({ settingsPageOpen: false }),
 
   // Feature page toggles

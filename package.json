@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "wishful-claw",
   "version": "0.2.25",
   "description": "Wishful Claw - Agent 编程软件",
@@ -26,6 +26,7 @@
     "test:updater-state": "esbuild tests/updater-state/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/program.cjs && node tests/updater-state/out/program.cjs",
     "test:updater-progress": "esbuild tests/updater-state/download-progress.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/download-progress.cjs && node tests/updater-state/out/download-progress.cjs",
     "test:provider-presets": "esbuild tests/provider-presets/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-presets/out/program.cjs && node tests/provider-presets/out/program.cjs",
+    "test:settings-tabs": "esbuild tests/settings-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/settings-tabs/out/program.cjs && node tests/settings-tabs/out/program.cjs",
     "pretest:e2e": "node tests/e2e/scripts/ensure-prereqs.mjs",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },

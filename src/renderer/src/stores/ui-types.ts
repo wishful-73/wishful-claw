@@ -87,7 +87,6 @@ export interface RightPanelTabInstance {
 
 export type SettingsTab =
   | 'provider'
-  | 'modelManagement'
   | 'runtime'
   | 'memory'
   | 'shortcuts'
@@ -102,6 +101,30 @@ export type SettingsTab =
 
   | 'ssh'
   | 'skills'
+
+const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
+  'provider',
+  'runtime',
+  'memory',
+  'shortcuts',
+  'general',
+  'persona',
+  'about',
+  'permission',
+  'channel',
+  'plugin',
+  'extension',
+  'mcp',
+  'ssh',
+  'skills'
+])
+
+export function normalizeSettingsTab(raw: unknown): SettingsTab {
+  if (raw === 'modelManagement') return 'provider'
+  return typeof raw === 'string' && SETTINGS_TABS.has(raw)
+    ? (raw as SettingsTab)
+    : 'provider'
+}
 
 export type PreviewSource = 'file' | 'dev-server' | 'markdown' | 'diff'
 export type DiffSource = 'git' | 'agent'

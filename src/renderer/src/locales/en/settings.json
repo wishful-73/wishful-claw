@@ -459,6 +459,11 @@
     "modelList": "Model List",
     "modelCount": "{{total}} models, {{enabled}} enabled",
     "modelManagement": "Model Management",
+    "tabs": {
+      "label": "Provider settings navigation",
+      "configuration": "Provider configuration",
+      "models": "Model management"
+    },
     "modelManagementDesc": "Manage global model defaults that provider copies inherit from",
     "modelManagementList": "Global Model Library",
     "modelManagementCount": "{{total}} models, {{enabled}} enabled by default",

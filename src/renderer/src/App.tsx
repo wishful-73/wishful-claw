@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Toaster } from '@renderer/components/ui/sonner'
 import { ThemeProvider } from '@renderer/components/theme-provider'
 import { ThemeRuntimeSync } from '@renderer/components/ThemeRuntimeSync'
@@ -26,6 +26,8 @@ import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
 import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
 import { useAppUpdater } from '@renderer/hooks/use-app-updater'
 import { UpdateDialog } from '@renderer/components/updater/UpdateDialog'
+import { UpdateStatusBanner } from '@renderer/components/updater/UpdateStatusBanner'
+import type { UpdateShowDetailsPayload } from '@shared/updater/types'
 import { initializeCronRuntime } from '@renderer/lib/tools/cron-runtime'
 import {
   initializeMemoryOrganizationRuntime,
@@ -56,6 +58,25 @@ function App(): React.JSX.Element | null {
       setUpdateDialogOpen(true)
     }
   }, [updater.state.phase])
+
+  // Refresh before opening: a tray click can arrive long after the renderer last heard from Main,
+  // and showing a stale phase would be worse than showing nothing.
+  const showUpdateDetails = useCallback(async (): Promise<void> => {
+    await updater.refreshStatus()
+    setUpdateDialogOpen(true)
+  }, [updater.refreshStatus])
+
+  useEffect(() => {
+    return window.api.on<UpdateShowDetailsPayload>('update:show-details', () => {
+      void showUpdateDetails()
+    })
+  }, [showUpdateDetails])
+
+  const handleDownload = useCallback(async (): Promise<void> => {
+    // Collapse only once Main confirms the start — the native download keeps running in Main
+    // regardless, so an open dialog would just imply the user has to sit and watch it.
+    if (await updater.downloadUpdate()) setUpdateDialogOpen(false)
+  }, [updater.downloadUpdate])
 
   // Initialize i18n on mount
   useEffect(() => {
@@ -191,11 +212,16 @@ function App(): React.JSX.Element | null {
           {view === 'main' && <MainLayout />}
           {view === 'settings' && <SettingsPage />}
           <Toaster position="bottom-left" theme="system" richColors />
+          <UpdateStatusBanner
+            state={updater.state}
+            onShowDetails={() => void showUpdateDetails()}
+            onInstall={updater.installUpdate}
+          />
           <UpdateDialog
             state={updater.state}
             open={updateDialogOpen}
             onOpenChange={setUpdateDialogOpen}
-            onDownload={updater.downloadUpdate}
+            onDownload={handleDownload}
             onInstall={updater.installUpdate}
             onCheck={updater.checkForUpdates}
             onOpenReleasePage={updater.openReleasePage}

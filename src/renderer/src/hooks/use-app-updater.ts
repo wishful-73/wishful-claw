@@ -37,8 +37,9 @@ function isFailure(value: unknown): value is { success: false; error: string } {
 
 export function useAppUpdater(): {
   state: RendererUpdateState
+  refreshStatus: () => Promise<void>
   checkForUpdates: () => Promise<void>
-  downloadUpdate: () => Promise<void>
+  downloadUpdate: () => Promise<boolean>
   installUpdate: () => Promise<void>
   openReleasePage: () => void
 } {
@@ -50,6 +51,15 @@ export function useAppUpdater(): {
     const snapshot: RendererUpdateState = status
     setState(snapshot)
   }, [])
+
+  const refreshStatus = useCallback(async (): Promise<void> => {
+    try {
+      const status = await window.api.invoke<UpdateStatus>('update:status', {})
+      if (!isFailure(status)) applyStatus(status)
+    } catch {
+      // The updater is optional in development and must not block the renderer.
+    }
+  }, [applyStatus])
 
   useEffect(() => {
     let disposed = false
@@ -93,11 +103,7 @@ export function useAppUpdater(): {
       setState((previous) => ({ ...previous, phase: 'error', error: payload.error, percent: null }))
     })
 
-    void window.api.invoke<UpdateStatus>('update:status', {}).then((status) => {
-      if (!disposed && !isFailure(status)) applyStatus(status)
-    }).catch(() => {
-      // The updater is optional in development and must not block the renderer.
-    })
+    void refreshStatus()
 
     return () => {
       disposed = true
@@ -106,7 +112,7 @@ export function useAppUpdater(): {
       unsubscribeDownloaded()
       unsubscribeError()
     }
-  }, [applyStatus])
+  }, [refreshStatus])
 
   const checkForUpdates = useCallback(async (): Promise<void> => {
     setState((previous) => ({ ...previous, phase: 'checking', error: null }))
@@ -131,7 +137,7 @@ export function useAppUpdater(): {
     }
   }, [])
 
-  const downloadUpdate = useCallback(async (): Promise<void> => {
+  const downloadUpdate = useCallback(async (): Promise<boolean> => {
     // No optimistic percent: the first real reading arrives with the first progress event, and
     // a fabricated 0 is indistinguishable from a stalled download.
     setState((previous) => ({ ...previous, phase: 'downloading', percent: null, error: null }))
@@ -139,11 +145,13 @@ export function useAppUpdater(): {
       const result = await window.api.invoke<UpdateDownloadStartResult>('update:download', {})
       if (isFailure(result)) {
         setState((previous) => ({ ...previous, phase: 'error', error: result.error, percent: null }))
-        return
+        return false
       }
       setState((previous) => ({ ...previous, operationId: result.operationId }))
+      return true
     } catch (error) {
       setState((previous) => ({ ...previous, phase: 'error', error: String(error), percent: null }))
+      return false
     }
   }, [])
 
@@ -165,5 +173,5 @@ export function useAppUpdater(): {
     }
   }, [state.releaseUrl])
 
-  return { state, checkForUpdates, downloadUpdate, installUpdate, openReleasePage }
+  return { state, refreshStatus, checkForUpdates, downloadUpdate, installUpdate, openReleasePage }
 }

@@ -1177,6 +1177,13 @@
       "installing": "Preparing installation…",
       "checkAgain": "Check again",
       "openRelease": "Open release page"
+    },
+    "banner": {
+      "downloading": "Downloading update in the background…",
+      "downloaded": "Update {{version}} downloaded, waiting to install",
+      "error": "Update failed",
+      "install": "Restart and install",
+      "details": "Details"
     }
   },
   "anchorNav": {

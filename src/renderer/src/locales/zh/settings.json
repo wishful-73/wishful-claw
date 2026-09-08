@@ -1312,6 +1312,13 @@
       "installing": "正在准备安装…",
       "checkAgain": "重新检查",
       "openRelease": "打开发布页"
+    },
+    "banner": {
+      "downloading": "正在后台下载更新…",
+      "downloaded": "更新 {{version}} 已下载，等待重启安装",
+      "error": "更新失败",
+      "install": "重启安装",
+      "details": "详情"
     }
   },
   "anchorNav": {

@@ -133,6 +133,24 @@ function createWindow(): void {
   setMainWindow(mainWindow)
 }
 
+/** Single restore path so the tray, the dock/second instance and update details behave identically. */
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+/**
+ * The tray carries no update state: it only brings the window forward and asks the renderer to look,
+ * and the renderer answers by re-reading the `update:status` snapshot from Main.
+ */
+function showUpdateDetails(): void {
+  showMainWindow()
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  safeSendMessagePackToWindow(mainWindow, 'update:show-details', null)
+}
+
 // ── Tray ──
 
 function getTrayIcon(): Electron.NativeImage {
@@ -145,12 +163,15 @@ function createTray(): void {
   tray = new Tray(getTrayIcon())
   tray.setToolTip('Wishful Claw')
   const contextMenu = Menu.buildFromTemplate([
-    { label: '显示主窗口', click: () => { mainWindow?.show() } },
+    { label: '显示主窗口', click: () => showMainWindow() },
+    // Permanent entry, not conditional on an update being in flight: with nothing pending it opens
+    // the details dialog in its idle state, where the user can re-check.
+    { label: '更新详情', click: () => showUpdateDetails() },
     { type: 'separator' },
     { label: '退出', click: () => { isQuiting = true; app.quit() } }
   ])
   tray.setContextMenu(contextMenu)
-  tray.on('click', () => mainWindow?.show())
+  tray.on('click', () => showMainWindow())
 }
 
 app.setName('WishfulClaw')
@@ -166,11 +187,7 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
-    }
+    showMainWindow()
   })
 
   app.whenReady().then(() => {

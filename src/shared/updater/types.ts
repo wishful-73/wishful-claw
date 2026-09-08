@@ -62,6 +62,13 @@ export interface UpdateErrorPayload {
   error: string
 }
 
+/**
+ * Carries no data on purpose: the tray only asks the renderer to look, and the renderer answers by
+ * re-reading the authoritative `update:status` snapshot. Shipping state through this event would
+ * hand the tray a second copy that could go stale.
+ */
+export type UpdateShowDetailsPayload = null
+
 export interface UpdateCheckSuccess extends UpdateDistributionInfo {
   success: true
   available: boolean

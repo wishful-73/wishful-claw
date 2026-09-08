@@ -47,37 +47,68 @@
 
 ## 追加项 1：渠道会话看不到项目列表（🔴 缺陷）
 
-渠道会话的工具可见性有**三层过滤**，缺陷出在第一层：
+> **2026-09-08 老大裁定后本节结论已修订**：老大指出“渠道会话就是特殊的 global”。核实后确认缺陷不在各 Provider 把 `availableModes` 写死成 `["global"]`，而在 `AgentRunContextPolicy.ResolveAvailableMode` 没有像同文件 `Resolve` 那样把 `channel` 归一为 `global`。原“只改 `availableModes`”的结论（修法 A）**已废弃**，改为“改 `ResolveAvailableMode` 一处”（修法 B）。下文证据保留，结论以本段与 plan.md 的 Plan D 章节为准。
 
-1. `src/renderer/src/hooks/use-channel-auto-reply.ts:268,276,283` — 渠道会话发送 `toolPreset:'channel'`、`sessionMode:'channel'`、`channelSession:true`。
-2. `src/runtime/WishfulClaw.Agent/AgentLoop.cs:161-170` — 先 `registry.GetToolDefinitions(toolPreset, sessionMode)`，再 `AgentRunContextPolicy.FilterToolDefinitions(...)`。
+渠道会话的工具可见性有**三层过滤**，缺陷出在第 2 层的 mode 解析：
+
+1. `src/renderer/src/hooks/use-channel-auto-reply.ts:268,276,283` — 渠道会话发送 `toolPreset:'channel'`、`sessionMode:'channel'`、`channelSession:true`。另一个入口 `src/renderer/src/hooks/use-chat-actions.ts:251` 同样发 `'channel'`（`isChannelSession ? 'channel' as const : opts?.sessionMode`）。
+2. `src/runtime/WishfulClaw.Agent/AgentLoop.cs:161-170` — 先 `registry.GetToolDefinitions(toolPreset, sessionMode)`（第 1 层 preset + 第 2 层 mode），再 `AgentRunContextPolicy.FilterToolDefinitions(...)`（第 3 层白名单）。
 3. `src/runtime/WishfulClaw.Core/Tools/ToolRegistry.cs:215-236` — `:230` 按 `Array.IndexOf(modes, sessionMode) >= 0` 精确匹配；`modes` 为空才视为全模式可用。
-4. `src/runtime/WishfulClaw.Agent/ToolCallProcessor.cs:150-152` — 运行时再用 `IsAvailableInMode(name, availableMode)` 拦截，即使定义泄露也执行不了。
+4. `src/runtime/WishfulClaw.Agent/ToolCallProcessor.cs:117,150-157` — 运行时再用 `IsAvailableInMode(name, availableMode)` 与 `IsToolAllowed(...)` 复检，即使定义泄露也执行不了。
 
-**根因**：`src/runtime/WishfulClaw.Agent/Tools/Providers/ProjectToolsProvider.cs:26,39,54,73` 的 `list_projects` / `get_project_details` / `create_session` / `send_session_message` 全部注册 `availableModes: new[] { "global" }`，而渠道会话 `sessionMode="channel"`，在 `ToolRegistry.cs:230` 第一层就被剔除，**根本到不了已经放行它们的白名单层**。
+**根因**：`src/runtime/WishfulClaw.Agent/AgentRunContextPolicy.cs:121-126` 已按“渠道是特殊 global”把 `scope` 归一为 `"global"`，注释写着 “A channel is a specialized global session. Keep the global scope semantics while using a **distinct** available-mode/tool policy”，但同文件 `ResolveAvailableMode:164-182` 只做 `agent|chat → normal` 归一，随后 `:169-170` 在 `sessionMode.Length > 0` 时直接返回字面量 `"channel"`，**永远走不到** `:172-173` 的 `context.Scope == "global" → return "global"`。于是第 2 层拿 `"channel"` 去匹配 `["global"]`，工具被剔除，**根本到不了已经放行它们的第 3 层白名单**。
 
-**白名单与 preset 均已就绪，无需改动**：
+**同一处不一致造成三个症状**（第三个是 2026-09-08 复核新发现，Obsidian 待办未记录）：
+
+| 症状 | 工具 | 第 2 层 `availableModes` | 第 1 层 `channel` preset | 第 3 层白名单 |
+|---|---|---|---|---|
+| 项目工具不可见（待办记录） | `list_projects`、`get_project_details`、`create_session`、`send_session_message`（`ProjectToolsProvider.cs:17,30,43,58`） | `["global"]` ✗ | 含 `"project"` ✅ | `SharedChatTools:77,80` + `GlobalChatTools:99,105` ✅ |
+| 全局任务工具不可见（老大裁定一起修） | `create_global_task`、`list_global_tasks`、`update_global_task`、`list_global_dispatches`、`update_dispatch`、`send_work_request`（`GlobalTaskToolsProvider.cs:33,51,77,93,114,138`） | `["global"]` ✗ | **不含** `"global-task"`（有意，见下）| `GlobalChatTools:98-108` ✅ |
+| **`Plugin*` 渠道消息工具不可见** | `PluginSendMessage`、`PluginReplyMessage`、`PluginGetGroupMessages`、`PluginListGroups`、`PluginSummarizeGroup`、`PluginGetCurrentChatMessages`（`PluginToolProvider.cs:26,40,54,61,75,84`） | `["normal","goal","global"]` ✗ | 含 `"plugin"` ✅ | `ChannelOnlyTools:29-53` 逐字列出，`:200-201` 对 `channelSession` 直接 `return true` ✅ |
+
+第三行是最强的反证：第 3 层专门为渠道会话开了 `ChannelOnlyTools` 白名单，第 2 层又把它们挡在门外，**代码自相矛盾**，说明第 2 层是缺陷而非设计。
+
+**第 1 层与第 3 层均已就绪，无需改动**：
 
 - `AgentRunContextPolicy.cs:77,80` — `SharedChatTools` 已含 `get_project_details`、`list_projects`。
 - `AgentRunContextPolicy.cs:99,105` — `GlobalChatTools` 追加 `create_session`、`send_session_message`。
 - `AgentRunContextPolicy.cs:121-126` — 渠道会话强制 `scope="global"`；`:140-143` 强制 `collaborationMode="chat"` → 走 `GlobalChatTools`。
-- `src/runtime/WishfulClaw.Core/Tools/ToolPreset.cs:76-85` — `"channel"` preset 的 AllowedCategories 已含 `"project"`。
-
-**同类潜在缺陷（老大 2026-09-08 确认一起修）**：`GlobalTaskToolsProvider.cs:33,51,77,93,114,138` 的 6 个全局任务工具同样只注册 `["global"]`，而 `AgentRunContextPolicy.cs:98-108` 白名单也已放行 `create_global_task` / `list_global_tasks` / `update_global_task` / `list_global_dispatches` / `update_dispatch` / `send_work_request`，因此渠道会话同样看不到。
+- `src/runtime/WishfulClaw.Core/Tools/ToolPreset.cs:76-85` — `"channel"` preset 的 AllowedCategories（`:82-83`）已含 `"project"` 与 `"plugin"`，不含 `"cron"`/`"desktop"`/`"team"`/`"skill-management"`/`"global-task"`。
+- preset 取自独立参数 `toolPreset`（`AgentLoop.cs:161-164`），**不由 sessionMode 推导**，所以修法 B 不影响第 1 层。
 
 **关键澄清：`global-task` 分类不进任何 preset 是有意设计，不得“顺手补上”**（2026-09-08 复核）：
 
 - `GlobalTaskToolsProvider.Category => "global-task"`（`:13`），而 `"global-task"` **不在任何 `ToolPreset` 的 AllowedCategories 中**（`ToolPreset.cs` 全文核查）。
 - 这不是遗漏：`AgentRuntimeUseCapabilityExecutor.cs:28-38` 明确注释 “Tool categories that are NOT directly registered in chat/coding presets. Tools in these categories are accessible only via use_capability.”，并把 `"global-task"`、`"global-dispatch-reply"`、`"project"`、`"task"`、`"desktop"`、`"cron"` 等一并列入 `ProxiedCategories`；`ToolCategoryCatalog.cs:68` 也只登记分类元数据，不参与 preset 放行。
-- 因此正确改法是**只改 `availableModes`**，不动 `ToolPreset.cs`。加 preset 会破坏代理设计、双重暴露并膨胀工具列表。
+- 因此正确改法是**不动 `ToolPreset.cs`**。加 preset 会破坏代理设计、双重暴露并膨胀工具列表。
 
-**代理路径被同一道门挡住，所以一处修复同时恢复两条路径**：`use_capability` 的 `call` 在 `AgentRuntimeUseCapabilityExecutor.cs:316-321` 也调用 `registry.IsAvailableInMode(toolName, sessionMode)`，`list` 在 `AgentRuntimeUseCapabilityDiscovery.cs:150-152` 同样调用（另见 `:90` 的 `IsProxiedBuiltinTool`）。渠道会话下这道检查同样因 `["global"]` 而失败，报 “is not available through the capability proxy in this session mode”。把 `availableModes` 补上 `"channel"` 后，直接调用（项目工具）与代理调用（全局任务工具）同时恢复。
+**代理路径被同一道门挡住，且共有三道 gate（第三轮复审补全），所以一处修复同时恢复三条路径**：`use_capability` 的 `call` 在 `AgentRuntimeUseCapabilityExecutor.cs:316-321`、`list` 在 `AgentRuntimeUseCapabilityDiscovery.cs:150-152`（另见 `:90` 的 `IsProxiedBuiltinTool`）、`inspect` 在 `AgentRuntimeUseCapabilityEncoding.cs:128-130`，三处都调用 `registry.IsAvailableInMode(toolName, sessionMode)`（实现 `ToolRegistry.cs:87-98`）并叠加 `IsProxiedBuiltinTool` + `IsToolAllowed`。渠道会话下这道检查同样因 `"channel"` 匹配不上 `["global"]` 而失败，报 “is not available through the capability proxy in this session mode”。把 mode 解析归一后，直接调用（项目工具、`Plugin*` 工具）与三条代理路径（全局任务工具的 list/inspect/call）同时恢复。取证时三条 gate 都要实测，不能只验 `call`。
 
-**改法有现成参照**：`ChannelPluginToolProvider.cs:24,30,43,55,63` 用的就是 `availableModes: ["normal", "goal", "global", "channel"]`。
+**已排除的伪风险（第三轮复审判 ❌，老大 2026-09-08 裁定前提不成立）**：复审认为 `NormalizeRuntimeParameters` 的归一化不幂等（`AgentLoop.Helpers.cs:135-138` 删掉 `projectId`/`workingFolder`/`sshConnectionId`，但 `"scope"` 不在删除名单里），修法 B 会让“绑定项目的渠道会话”第二次 `Resolve` 落到 `:134-136` 抛异常。**该前提不成立：渠道会话不可能绑定项目。** 代码证据：
 
-**两个 Provider 修好后的可见性不对称，这是预期结果**：`project` 已在 `channel` preset 的 AllowedCategories 中 → 4 个项目工具在渠道会话**直接出现在工具列表**（正是待办要求的“开放给 channel”）；`global-task` 不在任何 preset → 6 个全局任务工具在渠道会话**只经 `use_capability` 代理可达**，与桌面全局会话的现状一致。验收时不得因为“列表里看不到全局任务工具”而误判为修复失败。
+- `src/main/channels/auto-reply.ts:177` 建渠道会话时 `projectId: null` 是**硬编码**，不是可选路径；
+- 因此 `DbPluginSessionRouting.cs:42-47` 的 `requestedProjectId is not null` 恒为假，`project` 恒为 `null`，`:69-74` 的 `scope` 恒为 `"global"`、`workingFolder`/`sshConnectionId` 恒为 `null`，`:151-153` 返回的 `ProjectId` 也恒为 `null`；
+- 唯一能把 `project_id` 写进渠道会话的 `SyncPluginSessionProject`（`DbPluginSessionTools.cs:60-84`，注册为 `db/plugin-sync-session-project`）在 `src/renderer`/`src/main`/`src/preload`/`src/shared` 全量 grep 只有 `messagepack-channel-routing.ts:256` 的路由白名单一条命中，**没有任何调用方**；
+- 故 `use-channel-auto-reply.ts:143` 的 `scope: task.projectId ? 'project' : 'global'` 恒走 `'global'` 分支，`:270-276` 发出的 `scope` 恒为 `"global"`。
 
-**测试可达性**：`AgentRunContextPolicy` 是 `internal static class`（`:12`），跨程序集断言第三层需要 `InternalsVisibleTo`。`WishfulClaw.Agent.csproj:18-20` 已有三条（GoalRegressionTests / CompactionSnapshotRegressionTests / ToolConcurrencyRegressionTests），新增测试项目按同一方式追加第四条即可。测试工程模板见 `tests/WishfulClaw.ToolConcurrencyRegressionTests/`（`net11.0` + `OutputType=Exe` + `Main` 返回 0/1，`Program.cs:13-27`），且 4 个既有 C# 测试项目均无 npm 脚本，沿用 `dotnet run --project` 约定。
+`NormalizeRuntimeParameters` 的不幂等性客观存在，但触发它需要“`scope:"project"` + 无 `projectId`”这一渠道链路产生不了的入参形态，**Plan D 不为它改任何代码**，记入迭代收尾待办备查。**结论：Plan D 维持单文件改法，不动 `AgentLoop.Helpers.cs`。**
+
+**修法 B 的附带影响已全量清点**（`AgentLoop.cs:150-153` 经 `NormalizeRuntimeParameters`（`AgentLoop.Helpers.cs:117-160`，`:140-143`/`:151-153`）+ `state.ReplaceParameters` 把归一结果写回 parameters，所有下游读到 `"global"`）：
+
+- **有意的行为变更 1**：`PromptBuilder.cs:67-78` 按 `sessionMode == "global"` 注入 `BuildGlobalAgentPrompt()`（`:410-428`），渠道会话此前拿不到。该 prompt 内容是“跨项目全局产品经理助手 + 全局任务工具走 `use_capability` 代理 + 6 个工具名 + 派发/回复工作流”，与已归一的 `scope="global"`、已放行的 `GlobalChatTools` 一致；渠道会话缺它正是 Agent 不知道代理工作流存在、表现为“完全无从下手”的直接原因。
+- **有意的行为变更 2**：上表第三行 6 个 `Plugin*` 工具恢复可见。
+- **有意的行为变更 3（第三轮复审补录）**：`AgentLoop.cs:203-213` 两处受影响。`:204-206` `SystemPromptCache.ComputeKey(...)` 把 `sessionMode` 计入键 → 渠道会话缓存键一次性变化，首请求 miss 一次，无害（`:205-206` 已计入 `pluginId`/`externalChatId`，不会与桌面全局会话撞键）；`:209` `includeSessionTodoPrompt = sessionMode != "global"` → 归一后为 `false`，**渠道会话不再注入 `<session_todo>` 段**。与 `:208` 既有注释 “the global agent host opts out” 语义一致：渠道会话的编排由新增的 `<global_agent>` 段描述，`<session_todo>` 属普通会话 Agent 的指引。**禁止**为此在 `:209` 加 channel 分叉（那等于在 `AgentLoop.cs` 里再造一处“渠道 ≠ global”的判定，与老大裁定相反）；若实机观察到实际功能损失，回规划态重新裁定。
+- **不受影响**：`AgentLoop.cs:56-63` conversationKey 在 `:56` 读的是**归一化之前**的原始 parameters（`:57-58` 用 `StringComparison.Ordinal` 比对 `subAgent`/`goalSubAgent`），归一化发生在 `:150-153` 之后，故不受影响；`PromptBuilder.cs:61,310-314` 与 `ToolCallProcessor.cs:563,589-593` 各有本地 `IsChannelSession`，基于 `channelSession`/`pluginId`/`externalChatId`/`pluginChatId`，**不读 sessionMode**，故 `<channel_session>` prompt 与渠道文件工具特判都保留；`AgentLoop.MemoryRecall.cs:41` 只调 `Resolve`；写入方 `AgentRuntimeGlobalDispatchReplyExecutor.cs:132`、`Goal/GoalSubAgentExecutor.cs:101`、`SubAgentExecutor.Parameters.cs:77` 均非渠道路径。
+- **不会过度暴露**：`cron`(6)/`desktop`(5)/`team`(4)/`skill-management`(1) 的 `availableModes` 含 `"global"`，第 2 层归一后通过，`list_installed_skills` 还在 `SharedChatTools:79` 里第 3 层也放行，但这四个分类**不在** `channel` preset 的 AllowedCategories 中，第 1 层先丢弃。
+- **遗留死条目**：`ChannelPluginToolProvider.cs` 16 处 `["normal","goal","global","channel"]` 的 `"channel"` 归一后不再可能匹配；因 `"global"` 仍在列表中，行为不变。本迭代不清理，记入收尾待办。
+
+**修法 A 的现成参照已失效**：`ChannelPluginToolProvider.cs:24,30,43,55,63` 的 `availableModes: ["normal","goal","global","channel"]` 曾被当作“逐处追加 channel”的样板，修法 B 下不再需要照它改。
+
+**两个 Provider 修好后的可见性不对称，这是预期结果**：`project`、`plugin` 已在 `channel` preset 的 AllowedCategories 中 → 4 个项目工具与 6 个 `Plugin*` 工具在渠道会话**直接出现在工具列表**（正是待办要求的“开放给 channel”）；`global-task` 不在任何 preset → 6 个全局任务工具在渠道会话**只经 `use_capability` 代理可达**，与桌面全局会话的现状一致。验收时不得因为“列表里看不到全局任务工具”而误判为修复失败。
+
+**测试可达性**：`AgentRunContextPolicy` 是 `internal static class`（`:12`），`AgentRunContext` 是 `internal readonly record struct`（`:7-10`），跨程序集断言需要 `InternalsVisibleTo`。`WishfulClaw.Agent.csproj:18-20` 已有三条（GoalRegressionTests / CompactionSnapshotRegressionTests / ToolConcurrencyRegressionTests），新增测试项目按同一方式追加第四条即可。测试工程模板见 `tests/WishfulClaw.ToolConcurrencyRegressionTests/`（`net11.0` + `OutputType=Exe` + `Main` 返回 0/1，`Program.cs:13-27`），且 4 个既有 C# 测试项目均无 npm 脚本，沿用 `dotnet run --project` 约定。
+
+**顺带核到的既有隐患（本 Plan 不修，记入迭代收尾待办）**：`ToolRegistry.GetToolDefinitions` 用大小写敏感的 `Array.IndexOf(modes, sessionMode)`（`:222-232`），而 `IsAvailableInMode` 用 `OrdinalIgnoreCase`（`:87-98`），两者不一致。已核到一个受害者：`GoalToolProvider.cs:117` 的 `update_goal_progress` 声明 `availableModes: ["subAgent"]`，但 `ResolveAvailableMode:169-170` 经 `Normalize:238` 的 `ToLowerInvariant` 返回小写 `"subagent"` → 大小写敏感匹配不上 → 该工具在子 Agent 的工具定义列表中静默缺失（`GoalPromptTemplates.cs:163` 的提示语写成 “If the update_goal_progress tool is available” 恰好兜住，故未暴露）。与 Plan D 无因果关系：Plan D 只新增 `channel → global` 归一，两侧字面量都是全小写，不受该不一致影响。
 
 **桌面端项目列表与工具无关**：`src/renderer/src/stores/chat-store/db-helpers.ts:588` → `workerRequest('db/projects-list')` → `src/runtime/WishfulClaw.Infrastructure/Db/DbModule.cs:26`，是独立 RPC，**无需新增 IPC**。
 
@@ -149,5 +180,5 @@
 ## 追加项范围裁定（老大 2026-09-08）
 
 1. 服务商同步**只搬 17 个可用的**，`vertex-ai` 与 `routin-ai` 本迭代排除并记入 Obsidian 待办。
-2. 追加项 1 **一起修**全局任务工具：`ProjectToolsProvider` 4 个 + `GlobalTaskToolsProvider` 6 个，共 10 处 `availableModes`。
-3. 追加项 4 **补 `providerBuiltinId` 到 `buildProviderPayload`**，按 builtinId 精确 gate，不用 baseUrl 前缀判断。
+2. 追加项 1 **一起修**全局任务工具。**修法已于同日二次裁定变更**：老大指出“渠道会话就是特殊的 global”，故不再逐处追加 `availableModes`（原“`ProjectToolsProvider` 4 个 + `GlobalTaskToolsProvider` 6 个，共 10 处”的修法 A **已废弃**），改为修法 B：在 `AgentRunContextPolicy.ResolveAvailableMode` 把 `channel` 归一为 `global`。四个 Provider 的 `availableModes` 一行不动。修法 B 同时修好第三个症状（`PluginToolProvider` 6 个 `Plugin*` 工具）。**第三轮复审判 BLOCKED（❌ 3、⚠️ 3）的处置**：❌-1（归一化不幂等会让“绑定项目的渠道会话”必崩）**经老大裁定前提不成立已排除**——老大明确“全局会话和渠道会话本质上都是全局会话，不会绑定项目”，代码侧亦证实 `auto-reply.ts:177` 硬编码 `projectId: null`、`db/plugin-sync-session-project` 无渲染端调用方（详见“追加项 1”章节的“已排除的伪风险”）；❌-2/❌-3/⚠️ 三项属实的已补全修正。故修法 B 的最终范围仍是**一处**——只改 `ResolveAvailableMode`，**不动 `AgentLoop.Helpers.cs`**。老大同日裁定**跳过第四轮独立复审，直接进入执行态**。详见“追加项 1”章节与 plan.md 的 Plan D。
+3. 追加项 4 **补 `providerBuiltinId`**，按 builtinId 精确 gate，不用 baseUrl 前缀判断。**发送点数量已复核修正**：不是只有 `buildProviderPayload` 一处，`agent/run` 的 provider 载荷有 **4 处独立构造点**（`use-chat-actions.ts:210-225` 主聊天内联、`use-chat-actions.ts:385-399` `buildProviderPayload`、`use-channel-auto-reply.ts:223-235`、`project-send-message.ts:87-97`），四处都缺该字段，必须全覆盖。只改 `buildProviderPayload` 会漏掉主聊天路径——这是首轮规划复审判 ❌ 的原因。

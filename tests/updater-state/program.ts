@@ -4,6 +4,7 @@ import type { UpdatePhase, UpdateProgressSnapshot, UpdateStateSnapshot } from '.
 import {
   canTransitionPhase,
   createUpdateDownloadGate,
+  createUpdateInstallGate,
   createUpdaterStateCoordinator,
   type UpdaterStateCoordinator
 } from '../../src/main/updater-state'
@@ -109,6 +110,16 @@ function startDownload(
   const operationId = coordinator.beginDownload(version)
   assert.notEqual(operationId, NO_UPDATE_OPERATION_ID, 'beginDownload should be accepted')
   return operationId
+}
+
+/** Drives a coordinator to the only state an install may legally start from. */
+function reachDownloaded(coordinator: UpdaterStateCoordinator, version: string = NEXT_VERSION): void {
+  reachAvailable(coordinator, version)
+  assert.equal(
+    coordinator.applyDownloaded(startDownload(coordinator, version), version),
+    true,
+    'the download should complete'
+  )
 }
 
 function numericSnapshot(snapshot: UpdateStateSnapshot): UpdateProgressSnapshot {
@@ -862,6 +873,156 @@ checkAsync('a hidden window neither cancels the download nor installs it', async
     'completion stops at downloaded and never advances to installing on its own'
   )
   assert.equal(harness.startCalls(), 1)
+})
+
+// ---------------------------------------------------------------- install gate
+
+interface InstallHarness {
+  coordinator: UpdaterStateCoordinator
+  gate: ReturnType<typeof createUpdateInstallGate>
+  failures: unknown[]
+  installCalls: () => number
+}
+
+/**
+ * Mirrors the production wiring in `src/main/updater.ts`: `install` is the closure holding the only
+ * `quitAndInstall` call, and `onFailure` routes through `setError`, which is why it ends in
+ * `coordinator.fail` rather than just recording.
+ */
+function createInstallHarness(install?: () => void): InstallHarness {
+  const { coordinator } = createHarness()
+  const failures: unknown[] = []
+  let installCalls = 0
+
+  const gate = createUpdateInstallGate({
+    coordinator,
+    install: () => {
+      installCalls += 1
+      install?.()
+    },
+    onFailure: (error) => {
+      failures.push(error)
+      coordinator.fail(String(error))
+    }
+  })
+
+  return { coordinator, gate, failures, installCalls: () => installCalls }
+}
+
+check('reaching downloaded installs nothing on its own', () => {
+  const harness = createInstallHarness()
+  reachDownloaded(harness.coordinator)
+
+  assert.equal(harness.coordinator.snapshot().phase, 'downloaded')
+  assert.equal(harness.installCalls(), 0, 'completion must never advance to installing')
+})
+
+check('reading the snapshot for a remount or a tray refresh installs nothing', () => {
+  const harness = createInstallHarness()
+  reachDownloaded(harness.coordinator)
+
+  // A renderer reload, a tray "更新详情" click and reopening the dialog all end here: they only read.
+  const first = harness.coordinator.snapshot()
+  const second = harness.coordinator.snapshot()
+
+  assert.deepEqual(first, second)
+  assert.equal(first.phase, 'downloaded')
+  assert.equal(harness.installCalls(), 0)
+})
+
+check('a single explicit request installs exactly once', () => {
+  const harness = createInstallHarness()
+  reachDownloaded(harness.coordinator)
+
+  assert.equal(harness.gate.request(), 'started')
+  assert.equal(harness.installCalls(), 1)
+  assert.equal(harness.coordinator.snapshot().phase, 'installing')
+})
+
+check('repeated clicks still install exactly once', () => {
+  const harness = createInstallHarness()
+  reachDownloaded(harness.coordinator)
+
+  assert.equal(harness.gate.request(), 'started')
+  assert.equal(harness.gate.request(), 'already-installing')
+  assert.equal(harness.gate.request(), 'already-installing')
+  assert.equal(harness.installCalls(), 1, 'a second restart must never be scheduled')
+})
+
+check('the gate refuses everywhere except a completed matching download', () => {
+  const idle = createInstallHarness()
+  assert.equal(idle.gate.request(), 'refused')
+  assert.equal(idle.installCalls(), 0)
+  assert.equal(idle.coordinator.snapshot().phase, 'idle')
+
+  const available = createInstallHarness()
+  reachAvailable(available.coordinator)
+  assert.equal(available.gate.request(), 'refused')
+  assert.equal(available.installCalls(), 0)
+  assert.equal(available.coordinator.snapshot().phase, 'available')
+
+  const downloading = createInstallHarness()
+  reachAvailable(downloading.coordinator)
+  startDownload(downloading.coordinator)
+  assert.equal(downloading.gate.request(), 'refused')
+  assert.equal(downloading.installCalls(), 0)
+  assert.equal(downloading.coordinator.snapshot().phase, 'downloading')
+
+  const failedCheck = createInstallHarness()
+  reachAvailable(failedCheck.coordinator)
+  assert.equal(failedCheck.coordinator.fail('network down'), true)
+  assert.equal(failedCheck.gate.request(), 'refused', 'a failed check has no package to install')
+  assert.equal(failedCheck.installCalls(), 0)
+})
+
+check('a failed download keeps the offer retryable but installs nothing', () => {
+  const harness = createInstallHarness()
+  reachAvailable(harness.coordinator)
+  startDownload(harness.coordinator)
+  assert.equal(harness.coordinator.fail('download interrupted'), true)
+
+  assert.equal(harness.gate.request(), 'refused')
+  assert.equal(harness.installCalls(), 0)
+  assert.equal(harness.coordinator.snapshot().expectedVersion, NEXT_VERSION, 'still retryable')
+})
+
+check('a completion event for a superseded version installs nothing', () => {
+  const harness = createInstallHarness()
+  reachAvailable(harness.coordinator)
+  const operationId = startDownload(harness.coordinator)
+
+  assert.equal(harness.coordinator.applyDownloaded(operationId, '9.9.9'), false)
+  assert.equal(harness.gate.request(), 'refused')
+  assert.equal(harness.installCalls(), 0)
+})
+
+check('an install that throws synchronously recovers to error', () => {
+  const boom = new Error('installer refused to launch')
+  const harness = createInstallHarness(() => {
+    throw boom
+  })
+  reachDownloaded(harness.coordinator)
+
+  assert.equal(harness.gate.request(), 'started')
+  assert.equal(harness.installCalls(), 1)
+  assert.deepEqual(harness.failures, [boom])
+  assert.equal(harness.coordinator.snapshot().phase, 'error')
+  assert.equal(harness.coordinator.snapshot().error, String(boom))
+})
+
+check('a failed install can be retried through the gate', () => {
+  let attempts = 0
+  const harness = createInstallHarness(() => {
+    attempts += 1
+    if (attempts === 1) throw new Error('first launch failed')
+  })
+  reachDownloaded(harness.coordinator)
+
+  assert.equal(harness.gate.request(), 'started')
+  assert.equal(harness.coordinator.snapshot().phase, 'error')
+  assert.equal(harness.gate.request(), 'started', 'the package is still on disk')
+  assert.equal(harness.installCalls(), 2)
+  assert.equal(harness.coordinator.snapshot().phase, 'installing')
 })
 
 async function runAsyncChecks(): Promise<void> {

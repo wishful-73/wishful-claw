@@ -5,8 +5,10 @@ import { getUpdateDistributionInfo } from './lib/distribution'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import {
   createUpdateDownloadGate,
+  createUpdateInstallGate,
   createUpdaterStateCoordinator,
   type UpdateDownloadGate,
+  type UpdateInstallGate,
   type UpdaterStateCoordinator
 } from './updater-state'
 import { NO_UPDATE_OPERATION_ID } from '../shared/updater/types'
@@ -37,6 +39,7 @@ let updater: AutoUpdater | null = null
 let initializePromise: Promise<void> | null = null
 let checkPromise: Promise<UpdateCheckResult> | null = null
 let downloadGate: UpdateDownloadGate | null = null
+let installGate: UpdateInstallGate | null = null
 let options: UpdaterOptions | null = null
 let coordinator: UpdaterStateCoordinator | null = null
 let activeOperationId = NO_UPDATE_OPERATION_ID
@@ -55,6 +58,31 @@ function getDownloadGate(instance: AutoUpdater): UpdateDownloadGate {
     }
   })
   return downloadGate
+}
+
+/**
+ * Holds the one and only `quitAndInstall` call site. The gate decides whether it may run at all, so
+ * nothing but an explicit user request can reach it — and the delay keeps the IPC reply ahead of the
+ * teardown it triggers.
+ */
+function getInstallGate(instance: AutoUpdater): UpdateInstallGate {
+  installGate ??= createUpdateInstallGate({
+    coordinator: updaterState(),
+    install: () => {
+      setTimeout(() => {
+        try {
+          options?.markAppWillQuit()
+          instance.quitAndInstall(false, true)
+        } catch (error) {
+          setError(error)
+        }
+      }, 100)
+    },
+    onFailure: (error) => {
+      setError(error)
+    }
+  })
+  return installGate
 }
 
 function currentVersion(): string {
@@ -412,23 +440,18 @@ export function requestUpdateInstall(): UpdateActionResult {
     return { success: false, error: tr('unsupportedInstall') }
   }
   const snapshot = updaterState().snapshot()
-  if (snapshot.phase === 'installing') return { success: true }
   if (!updater || !snapshot.downloadedVersion) {
     return { success: false, error: tr('noDownloadedUpdate') }
   }
-  if (!updaterState().beginInstall()) {
+
+  const outcome = getInstallGate(updater).request()
+  if (outcome === 'refused') {
     return { success: false, error: tr('noDownloadedUpdate') }
   }
-
-  logInfo('main', `Updater install requested for ${snapshot.downloadedVersion}`)
-  setTimeout(() => {
-    try {
-      options?.markAppWillQuit()
-      updater?.quitAndInstall(false, true)
-    } catch (error) {
-      setError(error)
-    }
-  }, 100)
+  // 'already-installing' stays silent: a repeated click is a no-op, not a second restart.
+  if (outcome === 'started') {
+    logInfo('main', `Updater install requested for ${snapshot.downloadedVersion}`)
+  }
   return { success: true }
 }
 

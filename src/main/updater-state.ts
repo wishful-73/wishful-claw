@@ -319,3 +319,41 @@ export function createUpdateDownloadGate(options: UpdateDownloadGateOptions): Up
     }
   }
 }
+
+export type UpdateInstallOutcome = 'started' | 'already-installing' | 'refused'
+
+export interface UpdateInstallGateOptions {
+  coordinator: UpdaterStateCoordinator
+  /** The only path permitted to reach electron-updater's `quitAndInstall`. */
+  install: () => void
+  /** Where a synchronous throw from `install` is reported, so the phase recovers to `error`. */
+  onFailure: (error: unknown) => void
+}
+
+export interface UpdateInstallGate {
+  request(): UpdateInstallOutcome
+}
+
+/**
+ * Makes the install contract countable instead of merely documented. `install()` runs at most once
+ * per explicit user request and never unless the coordinator agrees a version-matching package is on
+ * disk — so completion, closing the dialog, hiding to tray, a renderer reload and a normal quit all
+ * provably produce zero calls. `already-installing` is kept distinct from `started` so a repeated
+ * click still answers success without scheduling a second restart.
+ */
+export function createUpdateInstallGate(options: UpdateInstallGateOptions): UpdateInstallGate {
+  return {
+    request(): UpdateInstallOutcome {
+      if (options.coordinator.snapshot().phase === 'installing') return 'already-installing'
+      if (!options.coordinator.beginInstall()) return 'refused'
+      try {
+        options.install()
+      } catch (error) {
+        // Reported rather than rethrown: the caller has already been answered, and a phase stuck in
+        // `installing` would leave the user no way to retry.
+        options.onFailure(error)
+      }
+      return 'started'
+    }
+  }
+}

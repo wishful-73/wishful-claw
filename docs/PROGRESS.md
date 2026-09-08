@@ -1,5 +1,21 @@
 # 开发进度
 
+## v2-iter-26：桌面自动更新体验收口 + 4 项 Obsidian 待办（规划复审 PASS，待老大确认）
+
+- 状态：规划完成，分支 `dev/v2-iter-26`，基线 `v0.2.25` / `5625d363`；第二轮独立规划复审判 **PASS（❌ 0，⚠️ 2 已修）**，等老大确认方向后进入执行态
+- Plan：`docs/plans/iter-v2-26/plan.md`；探索证据：`docs/plans/iter-v2-26/exploration_findings.md`；复审：`docs/plans/iter-v2-26/compliance_report.md`
+- 范围（Plan A~C，2026-09-07 确认 + 2026-09-08 调整）：更新说明安全富文本渲染；下载与弹窗生命周期解耦、托盘可恢复、仅用户明确点击才重启安装；下载量/速度/耗时可观测并留存 electron-updater 原生日志。**Plan C 只做下载可观测性，不做真实安装版旧→新升级验证**（老大 2026-09-08 确认暂缓）
+- 范围（Plan D~G，2026-09-08 追加，来自 `D:\koda\Obsidian\02-AI教学\wishfulclaw\issues\`）：
+  - D 渠道会话开放项目工具与全局任务工具（🔴 bug）
+  - E 飞书扫码绑定后自动启用并启动（🔴 bug）
+  - F 同步 OpenCowork 内置服务商预设 17 个（🟡 改进，老大裁定排除 `vertex-ai`、`routin-ai`）
+  - G OpenCode Go 请求注入 `x-opencode-session`（🟡 改进，老大裁定用 `providerBuiltinId` 精确 gate）
+- 已核验（Plan A~C）：v0.2.25 `latest.yml` 指向 127,316,506 bytes 完整 NSIS 安装包，Release 同时包含 blockmap；electron-updater 默认优先差分、失败才回退完整下载。本机日志无本次 24→25 下载的 `To download`/transferred 证据，故历史下载模式固定记为“未确定”，由 C4 开发态真实下载取证保证后续任何一次下载都留下可判定证据
+- 已核验（Plan D~G）：D 的根因是 `ProjectToolsProvider.cs` 4 处 + `GlobalTaskToolsProvider.cs` 6 处 `availableModes` 写死 `["global"]`，而 `global-task` 分类不进任何 preset 是 `ProxiedCategories` 的有意设计（`AgentRuntimeUseCapabilityExecutor.cs:28-38`），只改 `availableModes` 即可同时恢复直接调用与代理调用两条路径；E 的根因是飞书成功路径缺 `startChannel`、缺 `features.autoStart`，且 `plugin-panel-qr.tsx:273-275` 的裸 `catch {}` 会把保存失败静默转成无限重新轮询；F 的差集是 20 vs 39，17 个可直接搬，`vertex-ai` 缺 C# 运行时、`routin-ai` 缺计价字段；G 的阻塞是 `agent/run` 的 provider 载荷有 **4 处独立构造点**（不是 1 处），Renderer 均缺 `providerBuiltinId`，而 C# `OpenAIChatProvider.cs:54` 早已在读它
+- 验收：三个 updater 测试 + 渠道工具可见性/请求头两个 C# 回归测试 + 服务商预设一致性测试 + TS web/node/root 三套 + `dotnet build` 0 错误（Plan D/G 改动 AOT 0 警告）+ `npm run build` + `git diff --check` + C4 开发态真实下载取证，全部通过后等老大裁定 PASS/FAIL/PARTIAL
+- 不在本计划内：Windows 发布者签名、发布自动化、正式发版、真实安装版升级验证、`vertex-ai`/`routin-ai`、Task 子 Agent fast-model 路径的会话头、`OpenAIChatProvider.cs:53` 的 `providerId`/`id` 命名不一致（迭代收尾时记入 Obsidian 待办）
+- 需老大配合的取证步骤：E3 真实飞书扫码、F5 真实对话子项（需服务商凭据）、G4 OpenCode Go 凭据；无法完成时标“待用户验证”，整体结论最高 PARTIAL
+
 ## v2-iter-25：微信渠道全局会话闭环（已完成，已合并 main）
 
 - 状态：已完成，已合并 main（2026-09-07 老大确认按 AGENTS.md 标准流程收尾发版）

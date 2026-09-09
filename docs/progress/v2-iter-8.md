@@ -1,0 +1,21 @@
+# v2-iter-8：计划模式（人机协同执行引擎）
+
+- 状态：已完成
+- 分支：dev/v2-iter-8（已合并 main）
+- VERDICT: PASS
+- Tag: v2.8.0
+- Commit: 7e19496
+- 日期: 2026-08-05
+- 备注：
+  - 计划模式状态机 — explore → plan → confirm → execute → verify，Agent 接收需求后走完整人机协同流程
+  - 计划文件格式 — .wishful-claw/plans/{planId}.md 计划文件 + {planId}.state.json 状态文件（计划标题、步骤清单、每步状态、执行结果摘要）
+  - 状态落盘 — 执行过程中实时更新 state.json，外部可读取“当前在做什么、做到哪了”
+  - 用户确认环节 — SubmitPlanReview 通过 reverse request 暂停 agent loop 等待用户确认，确认后才执行；ExitPlanMode 取消计划
+  - 前端 PlanReviewCard — 步骤清单 + 实时状态 + 验证结果 + Adjust plan 反馈输入
+  - Plan mode banner — session 级隔离（planModesBySession），Exit Plan Mode 按钮处理两种场景：agent 流式中 cancelStream + sendMessage，等待 review 时 cancelPlanReview resolve cancelled
+  - 工具拆分 — ExitPlanMode 拆为 SubmitPlanReview（提交审查）+ ExitPlanMode（取消），新增 UpdatePlanStep（步骤状态跟踪）
+  - Plan store 从 invokeMessagePackBinary 迁移到 window.api.workerRequest
+  - PlanEntity + DbPlanTools — plans 表 CodeFirst 自动建表，6 个 DB 端点注册到 DbModule
+  - PromptBuilder guidance 通过工具返回值注入而非 system prompt
+  - AgentRuntimePlanExecutor.cs 拆分为 4 个 partial class（778→525+80+87+119）
+  - 双编译零错误：tsc --noEmit (3 configs) + dotnet build

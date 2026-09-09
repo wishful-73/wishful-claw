@@ -1,0 +1,23 @@
+# v2-iter-11：Native AOT 打包 — SqlSugar → Microsoft.Data.Sqlite 迁移
+
+- 状态：已完成 PASS
+- Tag: v2.11.0
+- 分支：dev/v2-iter-11
+- Commit: 23c3fc9
+- 日期: 2026-08-09
+- 备注：将 SqlSugar ORM 完全替换为 Microsoft.Data.Sqlite（零反射，AOT 友好）。
+  - 新建 DbService 包装类（Query/QueryFirstOrDefault/QueryScalar/Execute/ExecuteReturnIdentity/Exists/QueryDataTable），替代 SqlSugarScope
+  - 新建 EntityMappers（9 个 entity 的显式 mapper 委托，编译时确定，零反射）
+  - 新建 DbReaderExtensions（SqliteDataReader null 安全扩展）
+  - 重写 DbClient：手写 CREATE TABLE DDL（10 表 + FTS5 虚拟表 + 4 个触发器），替代 CodeFirst
+  - 迁移全部 9 个 Db*Tools 文件 + MemoryFtsService + Agent 层 5 个文件 + Worker MemoryModule
+  - 移除全部 SugarTable/SugarColumn 属性，Entity 类变为纯 POCO
+  - 清除 AOT 逃避配置：删除 rd.xml、移除 StaticConfig.EnableAot、移除 JsonSerializerIsReflectionEnabledByDefault
+  - **AOT 反射序列化消除**：新增 AotResultTypes/AotAgentResultTypes/AotProjectResultTypes/AotSubAgentResultTypes/AotMemoryResultTypes 具名类型替代匿名类型
+  - **Json 显式传参**：全部 143 处 WorkerResponse.Json 调用显式传 JsonTypeInfo；新增 InfrastructureJsonContext，扩展 AgentRuntimeJsonContext/WishfulClawJsonContext
+  - **ToolProvider 直接注册**：移除反射加载（删除 ToolProviderDiscovery），ToolModule 直接 new 实例注册
+  - **JsonArray.Add 消除警告**：改用非泛型 JsonNode 重载，AOT 编译 0 警告
+  - **系统托盘**：关闭窗口最小化到托盘，托盘菜单退出（参考 OpenCowork）
+  - **图标修复**：extraResources 打包图标，主进程按 app.isPackaged 定位
+  - C# 编译：0 错误；TypeScript 编译：3/3 配置 PASS；AOT 打包：Worker.exe = 14.6 MB，0 警告
+  - C++ 工具链：VS 2026 Build Tools (MSVC 14.44)，需 vcvars64.bat 初始化环境（已固化到 scripts/publish-aot-worker.mjs）

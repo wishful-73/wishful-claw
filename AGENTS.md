@@ -1,4 +1,4 @@
-﻿# Wishful Claw - Agents 指南
+# Wishful Claw - Agents 指南
 
 本文档供 AI 编程助手阅读，帮助理解项目结构和开发约定。
 
@@ -187,15 +187,15 @@ Worker
 
 ## 参考源码
 
-> 以下是 WishfulClaw 的设计思路来源。OpenCowork 的代码经迁移和重构后纳入 WishfulClaw 架构（迁移文件头部均保留原始版权声明），其余项目主要借鉴设计思路，代码由 WishfulClaw 自行实现。本地副本路径见 `docs/new-session-prompt.md`。
+> 以下是 WishfulClaw 的设计思路来源。OpenCowork 的代码经迁移和重构后纳入 WishfulClaw 架构（迁移文件头部均保留原始版权声明），其余项目主要借鉴设计思路，代码由 WishfulClaw 自行实现。
 
-| 项目 | 仓库地址 | 参考内容 |
-|------|---------|---------|
-| OpenCowork | https://github.com/AIDotNet/OpenCowork | Agent Loop、工具链、Provider、流式协议（迁移+重构） |
-| KodaClaw | https://github.com/nekonaka/koda-claw | 记忆系统、人格系统、PromptBuilder（借鉴思路） |
-| OpenClaw.net | https://github.com/nekonaka/openclaw.net | 记忆主动回忆、记忆工具、上下文预算（借鉴思路） |
-| DeepSeek-Reasonix | https://github.com/deepseek-ai/DeepSeek-Reasonix | 缓存命中率统计、工具注册发现、工具注入体系（借鉴思路） |
-| OpenAI Codex | https://github.com/openai/codex | Goal 模式状态机、自检评估机制（借鉴思路） |
+| 项目 | 仓库地址 | 参考内容 | 本地副本 |
+|------|---------|---------|---------|
+| OpenCowork | https://github.com/AIDotNet/OpenCowork | Agent Loop、工具链、Provider、流式协议（迁移+重构） | `D:\claw\OpenCowork` |
+| KodaClaw | https://github.com/nekonaka/koda-claw | 记忆系统、人格系统、PromptBuilder（借鉴思路） | `D:\claw\koda-claw` |
+| OpenClaw.net | https://github.com/nekonaka/openclaw.net | 记忆主动回忆、记忆工具、上下文预算（借鉴思路） | `D:\claw\openclaw.net` |
+| DeepSeek-Reasonix | https://github.com/deepseek-ai/DeepSeek-Reasonix | 缓存命中率统计、工具注册发现、工具注入体系（借鉴思路） | `D:\claw\DeepSeek-Reasonix` |
+| OpenAI Codex | https://github.com/openai/codex | Goal 模式状态机、自检评估机制（借鉴思路） | — |
 
 ## 开发约定
 
@@ -322,11 +322,9 @@ git push origin --delete dev/v2-iter-{N}
 # git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin --delete dev/v2-iter-{N}
 ```
 
-6. 更新 `docs/new-session-prompt.md` — 新会话提示词中的迭代表格状态、最新 tag、当前状态、候选迭代、会话开始指令等。
+6. 更新 `docs/PROGRESS.md` 总览行，并在 `docs/progress/` 创建 `v2-iter-{N}.md` 明细（状态 + VERDICT + Commit ID + Tag + 日期）。
 
-7. 更新 `docs/PROGRESS.md`（状态 + VERDICT + Commit ID + Tag + 日期）。
-
-8. 发布到 GitHub Release（见下节）。
+7. 发布到 GitHub Release（见下节）。
 
 **关键要求**：收尾完成后，当前会话结束。下个会话直接从 main 拉取最新代码开始新迭代，不需要关心旧分支。
 

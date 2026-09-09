@@ -1,0 +1,23 @@
+# v2-iter-26：桌面自动更新体验收口 + 4 项 Obsidian 待办 + 项目变更面板（已完成，已合并 main）
+
+- 状态：已完成，已合并 main（2026-09-09 老大确认完结：除更新板块外全部功能经人工验收，按 AGENTS.md 标准流程收尾发版）
+- 分支：`dev/v2-iter-26`（合并后清理）
+- Plan：`docs/plans/iter-v2-26/plan.md`；探索证据：`docs/plans/iter-v2-26/exploration_findings.md`；复审：`docs/plans/iter-v2-26/compliance_report.md`
+- VERDICT：PASS（编译验证 + 回归测试 + 用户人工验收；更新板块真机升级验证移交 iter-27 发布时执行）
+- 产品版本：`0.2.26`
+- Tag：`v0.2.26`
+- Commit：dd3ba24a（merge）
+- 日期：2026-09-09
+- 范围与功能单元：
+  - **Plan A：更新说明安全富文本渲染** — Release Notes 安全富文本渲染（A1/A2），堵住更新公告注入面
+  - **Plan B：下载与弹窗生命周期解耦** — 下载状态协调器与固定状态快照（B1）、启动即确认（B2）、常驻状态横幅 + 托盘更新详情 + 弹窗恢复（B3）、安装硬契约收口到可计数闸门（B4）、四态文案与视觉 + 安装失败重试死路修复（B5）
+  - **Plan C：下载可观测性** — 字节级下载观测、结构化日志与未知值格式化（C1）；回归测试锁定原生日志转发与差分能力不被关闭（C2）；按老大 2026-09-08 裁定只做下载可观测性，不做真实安装版旧→新升级验证
+  - **Plan D：渠道会话统一工具可见性（🔴 bug）** — `AgentRunContextPolicy.ResolveAvailableMode` 把 channel 归一为 global（mode 解析层单文件修法，四个 Provider 一行不动）；渠道会话注入全局助手 prompt、6 个 `Plugin*` 渠道工具恢复可见、渠道会话不再注入 `<session_todo>`
+  - **Plan E：飞书扫码绑定后自动启用并启动（🔴 bug）** — 成功路径补 `startChannel` 与 `features.autoStart`，修复 QR 面板裸 `catch {}` 把保存失败静默转成无限轮询
+  - **Plan F：同步 OpenCowork 内置服务商预设 17 个（🟡 改进）** — 排除 `vertex-ai`（缺 C# 运行时）、`routin-ai`（缺计价字段）
+  - **Plan G：OpenCode Go 请求注入 `x-opencode-session`（🟡 改进）** — 4 处 provider 载荷构造点补 `providerBuiltinId`，C# 端按 `providerBuiltinId` 精确 gate；连接测试同样注入固定测试会话头并补回归套件
+  - **项目变更面板** — 右侧面板新增项目变更 Tab：Git 变更扫描 + 文件 Diff 预览弹窗（加宽/全屏、变更文件列表选中样式、无 Diff 兜底文案）、git 提交区（分支/upstream/ahead-behind 信息、提交信息输入、提交/修正/提交并推送/提交并同步下拉）、agent-files 状态配色 token（added/deleted/conflict/modified）、i18n 中英文补全
+  - **服务商面板** — 服务商配置/模型管理双页签（分段式页签样式 + 标题/副标题头部）
+- 验证：TypeScript web/node/root 三套配置零错误；C# solution 0 错误；updater 回归（C2 原生日志/差分锁定）、Provider header 回归（含连接测试会话头新套件）通过；除更新板块外全部功能单元经老大人工验收
+- 移交 iter-27：**更新板块真机升级验证** — 用低于当前 Release 的安装版实际走 electron-updater 检查更新 → 下载确认 → 安装重启全流程
+- 不在本计划内（备查）：Windows 发布者签名、发布自动化、`vertex-ai`/`routin-ai` 预设、Task 子 Agent fast-model 路径会话头、`OpenAIChatProvider.cs` providerId/id 命名不一致、`ChannelPluginToolProvider.cs` 16 处归一后失效的 `"channel"` 死条目、`AgentLoop.Helpers.NormalizeRuntimeParameters` 不幂等（删项目字段不删 `scope`，老大裁定渠道会话不绑定项目故触发不了）、`ToolRegistry.GetToolDefinitions` 大小写敏感与 `IsAvailableInMode` OrdinalIgnoreCase 不一致（受害者：`GoalToolProvider.cs:117` update_goal_progress 声明 `subAgent` 而解析返回小写 `subagent`，子 Agent 工具列表静默缺失）

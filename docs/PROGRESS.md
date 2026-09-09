@@ -8,7 +8,7 @@
 - VERDICT：PASS（编译验证 + 回归测试 + 用户人工验收；更新板块真机升级验证移交 iter-27 发布时执行）
 - 产品版本：`0.2.26`
 - Tag：`v0.2.26`
-- Commit：待合并后补充 merge commit
+- Commit：dd3ba24a（merge）
 - 日期：2026-09-09
 - 范围与功能单元：
   - **Plan A：更新说明安全富文本渲染** — Release Notes 安全富文本渲染（A1/A2），堵住更新公告注入面

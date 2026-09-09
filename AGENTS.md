@@ -282,6 +282,11 @@ Worker
 - **Plan 完成后才 push**：一个 Plan 的所有功能单元都完成并通过验证后，一次性 push
 - **Push 优先直连**：先尝试 `git push origin <branch>`，若连接超时或被拒再走代理：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
 
+### 迭代开工
+
+- **规划新迭代前，先检查知识库最新内容**：`D:\koda\Obsidian\02-AI教学\wishfulclaw`（老大持续更新的 Wishful Claw Bug 与优化建议；路径不存在则跳过并告知老大）
+- **迭代范围必须先与老大确认**：`docs/iteration-plan.md` 是规划草案不是最终需求，不得按默认规划直接开工，以老大确认的范围为准
+
 ### 分支管理
 
 - **新分支必须从最新的 main 拆出**：开始新迭代前，先确保上一个迭代分支已合并到 main 并打 tag，然后从更新后的 main 创建新分支

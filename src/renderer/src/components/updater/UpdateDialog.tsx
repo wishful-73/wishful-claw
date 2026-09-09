@@ -1,7 +1,16 @@
-import { useMemo } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Download, ExternalLink, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
+import {
+  Download,
+  ExternalLink,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  RefreshCw,
+  RotateCcw
+} from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
+import { cn } from '@renderer/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -34,6 +43,11 @@ export function UpdateDialog({
   onOpenReleasePage
 }: UpdateDialogProps): React.JSX.Element {
   const { t } = useTranslation('settings')
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  useEffect(() => {
+    if (!open) setIsFullscreen(false)
+  }, [open])
+
   const isChecking = state.phase === 'checking'
   const isDownloading = state.phase === 'downloading'
   const isDownloaded = state.phase === 'downloaded'
@@ -66,24 +80,70 @@ export function UpdateDialog({
     elapsed: formatter.elapsed(state.elapsedMs),
     defaultValue: '{{bytes}} · 已用 {{elapsed}}'
   })
+  const handleOpenChange = (nextOpen: boolean): void => {
+    if (!nextOpen) setIsFullscreen(false)
+    onOpenChange(nextOpen)
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t('updater.dialog.title', { defaultValue: '应用更新' })}</DialogTitle>
-          <DialogDescription>
-            {isError
-              ? t('updater.dialog.errorTitle', { defaultValue: '更新失败' })
-              : isDownloaded
-                ? t('updater.dialog.downloaded', { defaultValue: '更新已下载，确认后重启安装。' })
-                : hasAvailableUpdate
-                  ? t('updater.dialog.available', { version: state.availableVersion, defaultValue: '发现新版本 {{version}}' })
-                  : t('updater.dialog.description', { defaultValue: '检查 Wishful Claw 的最新版本。' })}
-          </DialogDescription>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className={cn(
+          'sm:max-w-3xl sm:min-h-[32rem]',
+          isFullscreen && 'grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden'
+        )}
+        style={
+          isFullscreen
+            ? {
+                width: 'calc(100vw - 2rem)',
+                maxWidth: 'none',
+                height: 'calc(100vh - 2rem)',
+                maxHeight: 'none',
+                top: '1rem',
+                left: '1rem',
+                transform: 'none'
+              }
+            : undefined
+        }
+      >
+        <DialogHeader className="flex-row items-start justify-between gap-4 pr-10">
+          <div className="min-w-0">
+            <DialogTitle>{t('updater.dialog.title', { defaultValue: '应用更新' })}</DialogTitle>
+            <DialogDescription>
+              {isError
+                ? t('updater.dialog.errorTitle', { defaultValue: '更新失败' })
+                : isDownloaded
+                  ? t('updater.dialog.downloaded', { defaultValue: '更新已下载，确认后重启安装。' })
+                  : hasAvailableUpdate
+                    ? t('updater.dialog.available', {
+                        version: state.availableVersion,
+                        defaultValue: '发现新版本 {{version}}'
+                      })
+                    : t('updater.dialog.description', { defaultValue: '检查 Wishful Claw 的最新版本。' })}
+            </DialogDescription>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-pressed={isFullscreen}
+            aria-label={
+              isFullscreen
+                ? t('updater.dialog.exitFullscreen', { defaultValue: '退出全屏阅读' })
+                : t('updater.dialog.fullscreen', { defaultValue: '全屏阅读' })
+            }
+            title={
+              isFullscreen
+                ? t('updater.dialog.exitFullscreen', { defaultValue: '退出全屏阅读' })
+                : t('updater.dialog.fullscreen', { defaultValue: '全屏阅读' })
+            }
+            onClick={() => setIsFullscreen((current) => !current)}
+          >
+            {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </Button>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className={cn('space-y-4', isFullscreen && 'min-h-0 overflow-y-auto')}>
           <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-xs">
             <span className="text-muted-foreground">
               {t('updater.dialog.currentVersion', { defaultValue: '当前版本' })}
@@ -91,7 +151,9 @@ export function UpdateDialog({
             <span className="font-medium">{state.currentVersion || '—'}</span>
           </div>
 
-          {state.releaseNotes ? <UpdateReleaseNotes notes={state.releaseNotes} /> : null}
+          {state.releaseNotes ? (
+            <UpdateReleaseNotes notes={state.releaseNotes} expanded={isFullscreen} />
+          ) : null}
 
           {isDownloading ? (
             <div className="space-y-2">
@@ -142,7 +204,7 @@ export function UpdateDialog({
               be mistaken for a way to postpone or replace the explicit restart. */}
           {isFinished ? (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)}>
                 {t('updater.dialog.later', { defaultValue: '稍后' })}
               </Button>
               <Button onClick={() => void onInstall()} disabled={isInstalling}>
@@ -160,7 +222,7 @@ export function UpdateDialog({
               </Button>
 
               {isDownloading ? (
-                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                <Button variant="outline" onClick={() => handleOpenChange(false)}>
                   {t('updater.dialog.later', { defaultValue: '稍后' })}
                 </Button>
               ) : canRetryInstall ? (

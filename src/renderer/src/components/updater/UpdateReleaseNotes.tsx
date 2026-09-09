@@ -8,9 +8,10 @@ import {
 
 interface UpdateReleaseNotesProps {
   notes: string
+  expanded?: boolean
 }
 
-export function UpdateReleaseNotes({ notes }: UpdateReleaseNotesProps): React.JSX.Element {
+export function UpdateReleaseNotes({ notes, expanded = false }: UpdateReleaseNotesProps): React.JSX.Element {
   const { t } = useTranslation('settings')
 
   if (!notes.trim()) {
@@ -22,7 +23,10 @@ export function UpdateReleaseNotes({ notes }: UpdateReleaseNotesProps): React.JS
   }
 
   return (
-    <div className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs text-foreground/85">
+    <div
+      className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs text-foreground/85"
+      style={expanded ? { maxHeight: 'none' } : undefined}
+    >
       <Markdown
         remarkPlugins={RELEASE_NOTES_REMARK_PLUGINS}
         rehypePlugins={RELEASE_NOTES_REHYPE_PLUGINS}

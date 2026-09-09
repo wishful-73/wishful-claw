@@ -1187,7 +1187,9 @@
       "retry": "Retry",
       "retryInstall": "Retry install",
       "checkAgain": "Check again",
-      "openRelease": "Open release page"
+      "openRelease": "Open release page",
+      "fullscreen": "Read fullscreen",
+      "exitFullscreen": "Exit fullscreen"
     },
     "banner": {
       "downloading": "Downloading update in the background…",

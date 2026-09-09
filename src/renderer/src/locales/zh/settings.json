@@ -1324,7 +1324,9 @@
       "retry": "重试",
       "retryInstall": "重试安装",
       "checkAgain": "重新检查",
-      "openRelease": "打开发布页"
+      "openRelease": "打开发布页",
+      "fullscreen": "全屏阅读",
+      "exitFullscreen": "退出全屏阅读"
     },
     "banner": {
       "downloading": "正在后台下载更新…",

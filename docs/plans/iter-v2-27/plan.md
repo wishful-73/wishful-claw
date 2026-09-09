@@ -89,8 +89,8 @@
 
 ### Plan A：更新弹窗扩大与真机升级验证
 
-- [ ] A1：读取现有 updater 组件、共享快照和样式约束，设计默认尺寸与 fullscreen 状态；确认不会破坏后台下载、托盘恢复、显式安装闸门。验证：形成实现范围记录，确认 `UpdateDialog` 仍只通过既有回调触发下载/安装。
-- [ ] A2：修改 `UpdateDialog.tsx`、必要的 updater 样式和中英文 settings 文案，实现响应式大尺寸与弹窗内全屏切换；保持 `UpdateReleaseNotes` 的安全渲染与滚动。Mini：三套 `tsc --noEmit -p`、C# solution、更新相关测试、`git diff --check`。
+- [x] A1：读取现有 updater 组件、共享快照和样式约束，设计默认尺寸与 fullscreen 状态；确认不会破坏后台下载、托盘恢复、显式安装闸门。验证：形成实现范围记录，确认 `UpdateDialog` 仍只通过既有回调触发下载/安装。
+- [x] A2：修改 `UpdateDialog.tsx`、必要的 updater 样式和中英文 settings 文案，实现响应式大尺寸与弹窗内全屏切换；保持 `UpdateReleaseNotes` 的安全渲染与滚动。Mini：三套 `tsc --noEmit -p`、C# solution、更新相关测试、`git diff --check`。
 - [ ] A3：开发态交互核验普通/全屏模式、键盘可达性、长日志滚动、状态切换和弹窗关闭恢复。证据：截图保存到 `docs/plans/iter-v2-27/evidence/update-dialog-fullscreen.png`，不含真实路径、凭据或用户数据。
 - [ ] A4：使用低于 `0.2.27` 的旧版安装包，实际执行检查更新 → 查看说明 → 后台下载 → 关闭/恢复弹窗 → 托盘查看 → 下载完成 → 明确确认安装 → 重启。核验安装后版本、用户数据和会话状态；检查 Release 的 setup.exe、`latest.yml`、必要的 `.blockmap` 与 `latest.yml` 中版本/path/url/sha512/size 一致。证据写入 `docs/plans/iter-v2-27/verification-update-upgrade.md`。
 

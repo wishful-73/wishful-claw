@@ -107,8 +107,8 @@
 
 ### Plan B：扩展子项互斥切换
 
-- [ ] B1：将 `draw`、`tasks`、`taskboard` 的活动页统一为单一状态，兼容现有 open/close 调用方；更新 `ui-store-interface.ts`、`ui-store.ts`。验证：状态层测试或静态断言保证任意时刻最多一个扩展页活动。
-- [ ] B2：更新 `WorkspaceSidebar.tsx` 和 `MainLayout.tsx`，使扩展菜单选项切换到目标页面并清理旧页面状态；返回聊天时清除活动扩展页。Mini：三套 TypeScript、C# solution、`git diff --check`。
+- [x] B1：在保留 `drawPageOpen`、`tasksPageOpen`、`taskBoardPageOpen` 兼容字段及现有 open/close 调用方的前提下，使三个 `openXxxPage` 操作互斥清理另外两个状态；更新 `ui-store.ts`。验证：静态断言保证任意 open 操作最多激活一个扩展页。
+- [x] B2：核对 `WorkspaceSidebar.tsx`、命令面板和 `MainLayout.tsx` 的既有入口与页面清理行为；依靠互斥 open 操作使扩展菜单选项切换到目标页面并避免旧页面遮挡，返回聊天仍沿用现有清理逻辑。Mini：三套 TypeScript、既有 C# solution 构建结果、`git diff --check`。
 - [ ] B3：人工回归聊天 → 自动化 → 任务面板 → 自动化 → 绘图 → 聊天，以及反向切换路径；截图或录屏证据保存到 `docs/plans/iter-v2-27/evidence/extension-switching.png`。
 
 涉及文件：

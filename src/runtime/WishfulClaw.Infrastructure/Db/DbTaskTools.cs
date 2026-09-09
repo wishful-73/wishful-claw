@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -148,7 +148,22 @@ public static class DbTaskTools
 
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
-            var changed = db.Execute("DELETE FROM tasks WHERE id = @id", new SqliteParameter("@id", id));
+            var changed = db.ExecuteInTransaction((connection, transaction) =>
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                db.Execute(
+                    connection,
+                    transaction,
+                    "UPDATE session_follow_ups SET status = 'cancelled', cancelled_at = @now, claim_token = NULL, " +
+                    "claimed_at = NULL, updated_at = @now WHERE todo_id = @id AND status IN ('waiting', 'triggered')",
+                    new SqliteParameter("@now", now),
+                    new SqliteParameter("@id", id));
+                return db.Execute(
+                    connection,
+                    transaction,
+                    "DELETE FROM tasks WHERE id = @id",
+                    new SqliteParameter("@id", id));
+            });
             return WorkerResponse.Json(new TaskMutationResult(true, changed, null), InfrastructureJsonContext.Default.TaskMutationResult);
         }
         catch (Exception ex) { WorkerLog.Error($"DbTaskTools.Delete failed: {ex.Message}"); return WorkerResponse.Error(ex.Message); }
@@ -164,7 +179,22 @@ public static class DbTaskTools
 
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
-            var changed = db.Execute("DELETE FROM tasks WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
+            var changed = db.ExecuteInTransaction((connection, transaction) =>
+            {
+                var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                db.Execute(
+                    connection,
+                    transaction,
+                    "UPDATE session_follow_ups SET status = 'cancelled', cancelled_at = @now, claim_token = NULL, " +
+                    "claimed_at = NULL, updated_at = @now WHERE source_session_id = @sid AND status IN ('waiting', 'triggered')",
+                    new SqliteParameter("@now", now),
+                    new SqliteParameter("@sid", sessionId));
+                return db.Execute(
+                    connection,
+                    transaction,
+                    "DELETE FROM tasks WHERE session_id = @sid",
+                    new SqliteParameter("@sid", sessionId));
+            });
             return WorkerResponse.Json(new TaskMutationResult(true, changed, null), InfrastructureJsonContext.Default.TaskMutationResult);
         }
         catch (Exception ex) { WorkerLog.Error($"DbTaskTools.DeleteBySession failed: {ex.Message}"); return WorkerResponse.Error(ex.Message); }

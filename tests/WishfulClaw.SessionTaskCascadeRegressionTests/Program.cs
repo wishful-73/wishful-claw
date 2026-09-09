@@ -59,6 +59,7 @@ internal static partial class Program
                         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='global_task_dispatches'"),
                     "global_task_dispatches table exists");
 
+                RunSessionFollowUpSuite(dbPath, db);
                 RunSessionDeleteSuite(dbPath, db);
                 RunResetConversationSuite(dbPath, db);
                 RunProjectDeleteSuite(dbPath, db);

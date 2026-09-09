@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -93,6 +93,14 @@ export const DB_TASKS_CREATE_MSGPACK_CHANNEL = 'db:tasks:create:msgpack'
 export const DB_TASKS_UPDATE_MSGPACK_CHANNEL = 'db:tasks:update:msgpack'
 export const DB_TASKS_DELETE_MSGPACK_CHANNEL = 'db:tasks:delete:msgpack'
 export const DB_TASKS_DELETE_BY_SESSION_MSGPACK_CHANNEL = 'db:tasks:delete-by-session:msgpack'
+
+export const SESSION_FOLLOW_UP_CREATE_MSGPACK_CHANNEL = 'session-follow-up:create:msgpack'
+export const SESSION_FOLLOW_UP_RESCHEDULE_MSGPACK_CHANNEL = 'session-follow-up:reschedule:msgpack'
+export const SESSION_FOLLOW_UP_COMPLETE_MSGPACK_CHANNEL = 'session-follow-up:complete:msgpack'
+export const SESSION_FOLLOW_UP_FAIL_MSGPACK_CHANNEL = 'session-follow-up:fail:msgpack'
+export const SESSION_FOLLOW_UP_CANCEL_MSGPACK_CHANNEL = 'session-follow-up:cancel:msgpack'
+export const SESSION_FOLLOW_UP_MARK_NOTIFIED_MSGPACK_CHANNEL = 'session-follow-up:mark-notified:msgpack'
+export const SESSION_FOLLOW_UP_RENDERER_READY_MSGPACK_CHANNEL = 'session-follow-up:renderer-ready:msgpack'
 
 export const USAGE_EVENTS_ADD_MSGPACK_CHANNEL = 'usage-events:add:msgpack'
 export const USAGE_EVENTS_OVERVIEW_MSGPACK_CHANNEL = 'usage-events:overview:msgpack'

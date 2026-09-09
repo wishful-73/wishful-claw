@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+﻿import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 
@@ -46,6 +46,10 @@ import {
   installMemoryOrganizationScheduler,
   shutdownMemoryOrganizationScheduler
 } from './ipc/memory-organization-scheduler'
+import {
+  registerSessionFollowUpHandlers,
+  shutdownSessionFollowUpScheduler
+} from './ipc/session-follow-up-scheduler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
 import {
   getUpdateStatus,
@@ -279,6 +283,7 @@ if (!gotTheLock) {
   registerAgentChangeHandlers()
   registerMcpHandlers()
   registerCronHandlers()
+  registerSessionFollowUpHandlers({ getMainWindow: () => mainWindow })
   registerVideoHandlers()
   registerExtensionHandlers()
 registerWebSearchHandlers()
@@ -557,7 +562,8 @@ registerCodeGraphHandlers()
   registerClipboardEnhancer()
   registerQuickLauncher()
 
-  // Restore persisted Cron jobs before auto-starting channels.
+  // Restore persisted Cron jobs before auto-starting channels. Session follow-ups
+  // restore after the renderer explicitly announces that its listener is ready.
   void initializeCronScheduler()
 
   // Daily memory organization triggers (startup throttle + nightly crossing).
@@ -584,6 +590,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   cleanupSshHandlers()
   shutdownCronScheduler()
+  shutdownSessionFollowUpScheduler()
   shutdownMemoryOrganizationScheduler()
   if (channelManager) {
     void channelManager.stopAll()

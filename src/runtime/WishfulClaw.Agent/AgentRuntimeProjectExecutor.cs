@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;
@@ -15,7 +15,7 @@ public static class AgentRuntimeProjectExecutor
 {
     private static readonly HashSet<string> ProjectToolNames = new(StringComparer.Ordinal)
     {
-        "list_projects", "get_project_details", "create_session", "send_session_message"
+        "list_projects", "get_project_details", "create_session", "send_session_message", "update_session_follow_up"
     };
 
     public static bool IsProjectTool(string toolName)
@@ -35,6 +35,7 @@ public static class AgentRuntimeProjectExecutor
             "get_project_details" => await GetProjectDetailsAsync(call.Input, parameters, cancellationToken),
             "create_session" => await CreateSessionAsync(call.Input, parameters, cancellationToken),
             "send_session_message" => await SendSessionMessageAsync(call.Input, parameters, context, cancellationToken),
+            "update_session_follow_up" => await UpdateSessionFollowUpAsync(call.Input, parameters, context, cancellationToken),
             _ => EncodeError($"Project tool not registered: {call.Name}")
         };
     }
@@ -254,6 +255,11 @@ public static class AgentRuntimeProjectExecutor
             var content = RequireString(input, "content");
             var workingFolder = JsonHelpers.GetString(input, "workingFolder")?.Trim();
             var projectId = JsonHelpers.GetString(input, "projectId")?.Trim();
+            var sourceSessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+            var hasFollowUp = input.TryGetProperty("followUp", out var followUp) &&
+                followUp.ValueKind == JsonValueKind.Object;
+            if (hasFollowUp && string.IsNullOrWhiteSpace(sourceSessionId))
+                throw new InvalidOperationException("A source session is required for follow-up tracking");
 
             // Build reverse request params
             var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
@@ -263,6 +269,25 @@ public static class AgentRuntimeProjectExecutor
                 w.WriteString("content", content);
                 w.WriteString("workingFolder", workingFolder ?? string.Empty);
                 w.WriteString("projectId", projectId ?? string.Empty);
+                if (hasFollowUp)
+                {
+                    w.WritePropertyName("followUp");
+                    w.WriteStartObject();
+                    w.WriteString("id", $"sf_{Guid.NewGuid():N}");
+                    w.WriteString("todoId", RequireString(followUp, "todoId"));
+                    w.WriteString("sourceSessionId", sourceSessionId);
+                    w.WriteString("targetSessionId", sessionId);
+                    if (!followUp.TryGetProperty("delayMs", out var delayMs) ||
+                        delayMs.ValueKind != JsonValueKind.Number || !delayMs.TryGetInt64(out var delay) || delay < 1000)
+                        throw new InvalidOperationException("Missing or invalid required field: followUp.delayMs (minimum 1000)");
+                    var followUpAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + delay;
+                    w.WriteNumber("followUpAt", followUpAt);
+                    w.WriteString("queryInstruction", RequireString(followUp, "queryInstruction"));
+                    if (followUp.TryGetProperty("notificationKey", out var notificationKey) &&
+                        notificationKey.ValueKind == JsonValueKind.String)
+                        w.WriteString("notificationKey", notificationKey.GetString());
+                    w.WriteEndObject();
+                }
                 w.WriteEndObject();
             });
 
@@ -280,6 +305,64 @@ public static class AgentRuntimeProjectExecutor
         catch (Exception ex)
         {
             return EncodeError($"Failed to send session message: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> UpdateSessionFollowUpAsync(
+        JsonElement input, JsonElement parameters, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var followUpId = RequireString(input, "followUpId");
+            var claimToken = RequireString(input, "claimToken");
+            var action = RequireString(input, "action");
+            var result = RequireString(input, "lastQueryResult");
+            var sourceSessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+            if (string.IsNullOrWhiteSpace(sourceSessionId))
+                throw new InvalidOperationException("A source session is required to update a follow-up");
+            var status = action switch
+            {
+                "complete" => "completed",
+                "reschedule" => "waiting",
+                "fail" => "failed",
+                _ => throw new InvalidOperationException("action must be complete, reschedule, or fail")
+            };
+
+            long? followUpAt = null;
+            if (status == "waiting")
+            {
+                if (!input.TryGetProperty("delayMs", out var delayMsElement) ||
+                    delayMsElement.ValueKind != JsonValueKind.Number ||
+                    !delayMsElement.TryGetInt64(out var delay) || delay < 1000)
+                    throw new InvalidOperationException("delayMs is required for reschedule and must be at least 1000");
+                followUpAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + delay;
+            }
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("followUpId", followUpId);
+                writer.WriteString("claimToken", claimToken);
+                writer.WriteString("sourceSessionId", sourceSessionId);
+                writer.WriteString("action", action);
+                writer.WriteString("lastQueryResult", result);
+                if (followUpAt.HasValue) writer.WriteNumber("followUpAt", followUpAt.Value);
+                var error = JsonHelpers.GetString(input, "error")?.Trim();
+                if (!string.IsNullOrWhiteSpace(error)) writer.WriteString("error", error);
+                writer.WriteEndObject();
+            });
+
+            var response = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "session-follow-up/update", reverseParams, cancellationToken);
+            return response.ValueKind == JsonValueKind.String
+                ? response.GetString() ?? string.Empty
+                : response.ToString();
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to update session follow-up: {ex.Message}");
         }
     }
 

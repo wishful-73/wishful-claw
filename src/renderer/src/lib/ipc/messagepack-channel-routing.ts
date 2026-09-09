@@ -393,6 +393,7 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'ssh:connect:log',
   'ssh:config:changed',
   'cron:fire',
+  'session-follow-up:fire',
   'plugin:incoming-message',
   'plugin:session-task',
   'plugin:session-cancel',

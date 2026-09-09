@@ -123,15 +123,15 @@
 
 #### C1：数据契约与持久化
 
-- [ ] C1.1：在 `DbClient.cs` 增加独立临时跟进表及索引，配套实体、行模型、JSON context 和 DB 工具；设计字段覆盖来源 Todo、目标 session、触发时间、状态、查询指令、最近结果、重试/下一次跟进时间和通知幂等键。兼容已有数据库，使用现有初始化/迁移模式，不删除或重建用户表。Mini：对全新库和已有库执行 schema 检查，确认表/索引存在且原有 `tasks`、`global_tasks` 数据不变；运行 DB 单测并执行 `npx tsc --noEmit -p tsconfig.web.json`。
-- [ ] C1.2：增加 Worker endpoint 与 shared/renderer 类型，支持创建、查询到期记录、领取/锁定、更新结果、取消和恢复。所有写入幂等；到期领取只能成功一次。Mini：C# build 0 错误；执行 `npm run build:worker:prod`（即 `node scripts/publish-aot-worker.mjs`，设置 `DOTNET_ROOT=D:\claw\dotnet-sdk`），AOT 0 错误且无 IL2026/IL3050/IL3051 警告；端点回归测试覆盖重启恢复、重复领取和取消。
+- [x] C1.1：在 `DbClient.cs` 增加独立临时跟进表及索引，配套实体、行模型、JSON context 和 DB 工具；设计字段覆盖来源 Todo、目标 session、触发时间、状态、查询指令、最近结果、重试/下一次跟进时间和通知幂等键。兼容已有数据库，使用现有初始化/迁移模式，不删除或重建用户表。Mini：对全新库和已有库执行 schema 检查，确认表/索引存在且原有 `tasks`、`global_tasks` 数据不变；运行 DB 单测并执行 `npx tsc --noEmit -p tsconfig.web.json`。
+- [x] C1.2：增加 Worker endpoint 与 shared/renderer 类型，支持创建、查询到期记录、领取/锁定、更新结果、取消和恢复。所有写入幂等；到期领取只能成功一次。Mini：C# build 0 错误；执行 `npm run build:worker:prod`（即 `node scripts/publish-aot-worker.mjs`，设置 `DOTNET_ROOT=D:\claw\dotnet-sdk`），AOT 0 错误且无 IL2026/IL3050/IL3051 警告；端点回归测试覆盖重启恢复、重复领取和取消。
 
 #### C2：简单临时跨会话路径
 
-- [ ] C2.1：扩展 Agent/Renderer 的临时任务调用契约：无 `followUp` 参数的普通 `send_session_message` 只发送并立即返回；显式 `SessionFollowUpRequest` 才按 `todoId`/`sourceSessionId`/`targetSessionId`/`followUpAt`/`queryInstruction` 创建幂等跟进记录，再发送普通消息并返回 `followUpId`。创建失败不得发送原始任务，普通消息失败须标记跟进失败；全过程禁止创建 global task/dispatch。Mini：契约测试断言普通消息不写 `tasks`/follow-up/global 表，临时模式只写 Todo/跟进表且立即返回 `followUpId`，重复 `followUpId` 不重复发送。
-- [ ] C2.2：实现 Main 侧临时跟进调度器，复用现有 Cron scheduler 的 timer、恢复、锁和事件投递原则，但不复用 Cron 的用户任务 UI。到期事件发送到 Renderer/Agent runtime；来源 session 忙时不打断，按策略延期重排。Mini：使用可控时钟测试到期恢复、重启恢复、重复事件单飞、忙会话延期和取消后不触发；证据写入 `docs/plans/iter-v2-27/evidence/follow-up-scheduler.md`。
-- [ ] C2.3：实现自动唤醒来源会话 Agent 的查询消息；查询目标 session 的运行状态、最近结果或失败原因。结果完成时更新 Todo；未完成时只更新 follow-up 并安排下一次倒计时，不重复发送原始任务。Mini：状态机测试覆盖 running/completed/failed/not-found，断言唤醒只发生一次、未完成只更新 `nextFollowUpAt`、原始消息发送次数保持 1。
-- [ ] C2.4：接通应用内和渠道反馈，复用现有 session message 与 plugin sendMessage 路径；反馈成功后写入幂等状态，失败保留可重试状态和日志。Mini：覆盖简单跨会话成功、未完成重排、目标不存在、来源会话忙、应用重启、重复到期事件和渠道发送失败。
+- [x] C2.1：扩展 Agent/Renderer 的临时任务调用契约：无 `followUp` 参数的普通 `send_session_message` 只发送并立即返回；显式 `SessionFollowUpRequest` 才按 `todoId`/`sourceSessionId`/`targetSessionId`/`followUpAt`/`queryInstruction` 创建幂等跟进记录，再发送普通消息并返回 `followUpId`。创建失败不得发送原始任务，普通消息失败须标记跟进失败；全过程禁止创建 global task/dispatch。Mini：契约测试断言普通消息不写 `tasks`/follow-up/global 表，临时模式只写 Todo/跟进表且立即返回 `followUpId`，重复 `followUpId` 不重复发送。
+- [x] C2.2：实现 Main 侧临时跟进调度器，复用现有 Cron scheduler 的 timer、恢复、锁和事件投递原则，但不复用 Cron 的用户任务 UI。到期事件发送到 Renderer/Agent runtime；来源 session 忙时不打断，按策略延期重排。Mini：使用可控时钟测试到期恢复、重启恢复、重复事件单飞、忙会话延期和取消后不触发；证据写入 `docs/plans/iter-v2-27/evidence/follow-up-scheduler.md`。
+- [x] C2.3：实现自动唤醒来源会话 Agent 的查询消息；查询目标 session 的运行状态、最近结果或失败原因。结果完成时更新 Todo；未完成时只更新 follow-up 并安排下一次倒计时，不重复发送原始任务。Mini：状态机测试覆盖 running/completed/failed/not-found，断言唤醒只发生一次、未完成只更新 `nextFollowUpAt`、原始消息发送次数保持 1。
+- [x] C2.4：接通应用内和渠道反馈，复用现有 session message 与 plugin sendMessage 路径；反馈成功后写入幂等状态，失败保留可重试状态和日志。Mini：覆盖简单跨会话成功、未完成重排、目标不存在、来源会话忙、应用重启、重复到期事件和渠道发送失败。
 
 #### C3：复杂全局任务路径保持并验证
 

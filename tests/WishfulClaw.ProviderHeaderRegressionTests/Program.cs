@@ -12,6 +12,7 @@ internal static class Program
         {
             RunGateSuite();
             RunOverrideSuite();
+            RunConnectionTestSuite();
             Console.WriteLine("Provider header regression checks passed.");
             return 0;
         }
@@ -37,6 +38,44 @@ internal static class Program
     private static void RunOverrideSuite()
     {
         AssertHeaders("opencode-go", "session-123", "custom", "explicit request override wins and is not duplicated", "custom");
+    }
+
+    private static void RunConnectionTestSuite()
+    {
+        AssertConnectionTestHeader("opencode-go", true, "OpenCode Go connection test includes the fixed session header");
+        AssertConnectionTestHeader("opencode", false, "OpenCode Zen connection test does not include the session header");
+        AssertConnectionTestHeader("openai", false, "OpenAI connection test does not include the session header");
+        AssertConnectionTestHeader(null, false, "connection test without builtin id does not include the session header");
+    }
+
+    private static void AssertConnectionTestHeader(string? builtinId, bool expected, string message)
+    {
+        var provider = new Dictionary<string, object?>
+        {
+            ["type"] = "openai-chat",
+            ["baseUrl"] = "https://example.test/v1",
+            ["apiKey"] = "secret-key",
+            ["modelId"] = "glm-5.3"
+        };
+        if (builtinId is not null)
+        {
+            provider["builtinId"] = builtinId;
+        }
+
+        using var request = ProviderTestService.BuildTestRequestForTests(JsonSerializer.SerializeToElement(provider));
+        var actualValues = request.Headers.TryGetValues("x-opencode-session", out var values)
+            ? values.ToArray()
+            : [];
+
+        if (expected)
+        {
+            Assert(actualValues.Length == 1, message + ": actual request has one session header");
+            Assert(actualValues[0] == ProviderTestService.ConnectionTestSessionId, message + ": session header uses the fixed test value");
+        }
+        else
+        {
+            Assert(actualValues.Length == 0, message + ": actual request has no session header");
+        }
     }
 
     private static void AssertHeaders(

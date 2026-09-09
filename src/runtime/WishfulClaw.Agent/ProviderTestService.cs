@@ -13,6 +13,8 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static class ProviderTestService
 {
+    internal const string ConnectionTestSessionId = "wishful-claw-connection-test";
+
     private static readonly HttpClient HttpClient = WishfulClaw.Infrastructure.Http.WorkerHttpClientFactory.Create(
         timeout: TimeSpan.FromSeconds(30));
 
@@ -128,6 +130,13 @@ public static class ProviderTestService
         return new ProviderConfig(type!, baseUrl!, apiKey, builtinId, modelId);
     }
 
+    internal static HttpRequestMessage BuildTestRequestForTests(JsonElement parameters)
+    {
+        var provider = ExtractProviderConfig(parameters)
+            ?? throw new InvalidOperationException("Invalid provider parameters");
+        return BuildTestRequest(provider).request;
+    }
+
     private static (string url, HttpRequestMessage request) BuildTestRequest(ProviderConfig provider)
     {
         var baseUrl = provider.BaseUrl.TrimEnd('/');
@@ -194,6 +203,10 @@ public static class ProviderTestService
         if (!string.IsNullOrEmpty(provider.ApiKey))
         {
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", provider.ApiKey);
+        }
+        if (string.Equals(provider.BuiltinId, "opencode-go", StringComparison.Ordinal))
+        {
+            req.Headers.TryAddWithoutValidation("x-opencode-session", ConnectionTestSessionId);
         }
         req.Content = new StringContent(
             WorkerJsonHelper.BuildJsonString(w =>

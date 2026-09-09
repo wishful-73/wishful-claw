@@ -62,7 +62,7 @@ function ProviderPanelTabs({
     <div
       role="tablist"
       aria-label={t('provider.tabs.label')}
-      className="flex h-11 shrink-0 items-end gap-1 border-b bg-background px-5"
+      className="flex shrink-0 items-center gap-1 rounded-lg border bg-muted/50 p-1"
     >
       {PROVIDER_PANEL_TABS.map((tab, index) => (
         <button
@@ -77,10 +77,10 @@ function ProviderPanelTabs({
           onClick={() => onChange(tab)}
           onKeyDown={(event) => handleKeyDown(event, index)}
           className={cn(
-            'inline-flex h-10 items-center gap-2 border-b-2 px-3 text-xs font-medium transition-colors',
+            'inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors',
             activeTab === tab
-              ? 'border-primary text-foreground'
-              : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
           )}
         >
           {tab === 'configuration' ? <Server className="size-3.5" /> : <Layers className="size-3.5" />}
@@ -208,7 +208,15 @@ function ProviderPanel(): React.JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <ProviderPanelTabs activeTab={activeTab} onChange={setActiveTab} />
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-background/60 px-4 py-2.5">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold">{t('provider.title')}</h2>
+          <p className="truncate text-xs text-muted-foreground">
+            {activeTab === 'configuration' ? t('provider.subtitle') : t('provider.modelManagementDesc')}
+          </p>
+        </div>
+        <ProviderPanelTabs activeTab={activeTab} onChange={setActiveTab} />
+      </div>
       {activeTab === 'configuration' ? (
       <div
         id="provider-panel-tabpanel-configuration"

@@ -1,23 +1,28 @@
 # 开发进度
 
-## v2-iter-26：桌面自动更新体验收口 + 4 项 Obsidian 待办（Plan D 第三轮复审处置完毕，已进入执行态）
+## v2-iter-26：桌面自动更新体验收口 + 4 项 Obsidian 待办 + 项目变更面板（已完成，已合并 main）
 
-- 状态：规划完成，分支 `dev/v2-iter-26`，基线 `v0.2.25` / `5625d363`；第二轮独立规划复审判 **PASS（❌ 0，⚠️ 2 已修）**。2026-09-08 老大裁定变更 Plan D 修法后，**第三轮独立复审（仅针对 Plan D）判 BLOCKED（❌ 3、⚠️ 3）**：❌-1（归一化不幂等会让“绑定项目的渠道会话”必崩）**经老大裁定前提不成立已排除**——老大明确“全局会话和渠道会话本质上都是全局会话，不会绑定项目”，代码侧证实 `src/main/channels/auto-reply.ts:177` 硬编码 `projectId: null`、`db/plugin-sync-session-project` 无渲染端调用方；❌-2/❌-3/⚠️ 三项属实的已补全修正。**Plan D 维持单文件改法，不动 `AgentLoop.Helpers.cs`**。老大同日裁定**跳过第四轮独立复审，直接进入执行态**
+- 状态：已完成，已合并 main（2026-09-09 老大确认完结：除更新板块外全部功能经人工验收，按 AGENTS.md 标准流程收尾发版）
+- 分支：`dev/v2-iter-26`（合并后清理）
 - Plan：`docs/plans/iter-v2-26/plan.md`；探索证据：`docs/plans/iter-v2-26/exploration_findings.md`；复审：`docs/plans/iter-v2-26/compliance_report.md`
-- 范围（Plan A~C，2026-09-07 确认 + 2026-09-08 调整）：更新说明安全富文本渲染；下载与弹窗生命周期解耦、托盘可恢复、仅用户明确点击才重启安装；下载量/速度/耗时可观测并留存 electron-updater 原生日志。**Plan C 只做下载可观测性，不做真实安装版旧→新升级验证**（老大 2026-09-08 确认暂缓）
-- 范围（Plan D~G，2026-09-08 追加，来自 `D:\koda\Obsidian\02-AI教学\wishfulclaw\issues\`）：
-  - D 渠道会话按“特殊的 global 会话”统一工具可见性（🔴 bug；老大 2026-09-08 二次裁定改修法）
-  - E 飞书扫码绑定后自动启用并启动（🔴 bug）
-  - F 同步 OpenCowork 内置服务商预设 17 个（🟡 改进，老大裁定排除 `vertex-ai`、`routin-ai`）
-  - G OpenCode Go 请求注入 `x-opencode-session`（🟡 改进，老大裁定用 `providerBuiltinId` 精确 gate）
-- 已核验（Plan A~C）：v0.2.25 `latest.yml` 指向 127,316,506 bytes 完整 NSIS 安装包，Release 同时包含 blockmap；electron-updater 默认优先差分、失败才回退完整下载。本机日志无本次 24→25 下载的 `To download`/transferred 证据，故历史下载模式固定记为“未确定”，由 C4 开发态真实下载取证保证后续任何一次下载都留下可判定证据
-- 已核验（Plan D，2026-09-08 老大裁定后重做）：根因**不是**各 Provider 把 `availableModes` 写死 `["global"]`，而是 `AgentRunContextPolicy.Resolve:121-126` 已按“A channel is a specialized global session”把 `scope` 归一为 `global`、`ResolveAvailableMode:164-182` 却没做同样归一（`:169-170` 直接返回字面量 `"channel"`，走不到 `:172-173` 的 global 分支）。这一处不一致同时造成**三个症状**：项目工具 4 个、全局任务工具 6 个、以及本轮新发现的 `PluginToolProvider` 6 个 `Plugin*` 渠道消息工具——后者的 6 个名字与 `ChannelOnlyTools:29-53` 白名单逐字一致且 `:200-201` 对渠道会话直接 `return true`，第 3 层专门放行、第 2 层却拦住，代码自相矛盾。修法由“改 10 处 `availableModes`”（修法 A，**已废弃**）改为修法 B（mode 解析层把 channel 归一为 global），四个 Provider 一行不动。`global-task` 不进任何 preset 仍是 `ProxiedCategories` 的有意设计（`AgentRuntimeUseCapabilityExecutor.cs:28-38`），归一后直接调用与**三条**代理 gate（`call` 在 `Executor.cs:316-321`、`list` 在 `Discovery.cs:150-152`、`inspect` 在 `Encoding.cs:128-130`，第三轮复审补全第三道）同时恢复
-- 已排除（第三轮复审 ❌-1，老大 2026-09-08 裁定前提不成立）：复审称 `NormalizeRuntimeParameters` 归一化不幂等（`AgentLoop.Helpers.cs:135-138` 删 `projectId`/`workingFolder`/`sshConnectionId` 但 `"scope"` 不在删除名单），修法 B 会让“绑定项目的渠道会话”第二次 `Resolve` 落到 `AgentRunContextPolicy.cs:134-136` 抛异常。**渠道会话不可能绑定项目**：`src/main/channels/auto-reply.ts:177` 硬编码 `projectId: null` → `DbPluginSessionRouting.cs:42-47` 的 `project` 恒为 `null` → `:69` 的 `scope` 恒为 `"global"`；唯一能写 `project_id` 的 `SyncPluginSessionProject`（`DbPluginSessionTools.cs:60-84`）在 renderer/main/preload/shared 全量 grep 只有 `messagepack-channel-routing.ts:256` 路由白名单一条命中，**无调用方**；故 `use-channel-auto-reply.ts:143` 恒走 `'global'` 分支。不幂等性客观存在但触发不了，**Plan D 不为它改任何代码**，记入收尾待办备查
-- 已核验（Plan D 附带影响）：`AgentLoop.cs:150-153` 经 `NormalizeRuntimeParameters`（`AgentLoop.Helpers.cs:117-160`）把归一结果写回 parameters，故下游读到一致的值；conversationKey（`AgentLoop.cs:56` 读的是归一化**之前**的原始 parameters）、`toolPreset`（独立参数）、渠道专属 prompt 与渠道文件工具特判（各由不读 sessionMode 的本地 `IsChannelSession` 承担）均不受影响；`cron`/`desktop`/`team`/`skill-management` 因不在 `channel` preset 的 AllowedCategories 中，第 1 层先丢弃，不会过度暴露。**三个**有意的行为变更：① 渠道会话新增 `BuildGlobalAgentPrompt()`（`PromptBuilder.cs:410-428`，内容正是“跨项目全局助手 + 全局任务工具走 `use_capability` 代理”）注入且 `<channel_session>` 段保留；② 6 个 `Plugin*` 工具恢复可见；③ **渠道会话不再注入 `<session_todo>`**（`AgentLoop.cs:209` 的 `includeSessionTodoPrompt = sessionMode != "global"`，第三轮复审 ❌-2 补录，与 `:208` 既有注释“global agent host opts out”一致；`:204-206` 的 SystemPromptCache 缓存键一次性变化属无害，`pluginId`/`externalChatId` 已计入键不会与桌面全局撞键）
-- 已核验（Plan E~G）：E 的根因是飞书成功路径缺 `startChannel`、缺 `features.autoStart`，且 `plugin-panel-qr.tsx:273-275` 的裸 `catch {}` 会把保存失败静默转成无限重新轮询；F 的差集是 20 vs 39，17 个可直接搬，`vertex-ai` 缺 C# 运行时、`routin-ai` 缺计价字段；G 的阻塞是 `agent/run` 的 provider 载荷有 **4 处独立构造点**（不是 1 处），Renderer 均缺 `providerBuiltinId`，而 C# `OpenAIChatProvider.cs:54` 早已在读它
-- 验收：三个 updater 测试 + 渠道工具可见性/请求头两个 C# 回归测试 + 服务商预设一致性测试 + TS web/node/root 三套 + `dotnet build` 0 错误（Plan D/G 改动 AOT 0 警告）+ `npm run build` + `git diff --check` + C4 开发态真实下载取证 + Plan D 生产代码 diff 恰好一个文件（`AgentRunContextPolicy.cs`）+ D3 渠道会话实机通过，全部通过后等老大裁定 PASS/FAIL/PARTIAL
-- 不在本计划内：Windows 发布者签名、发布自动化、正式发版、真实安装版升级验证、`vertex-ai`/`routin-ai`、Task 子 Agent fast-model 路径的会话头、`OpenAIChatProvider.cs:53` 的 `providerId`/`id` 命名不一致、`ChannelPluginToolProvider.cs` 16 处归一后失效的 `"channel"` 死条目、`AgentLoop.Helpers.NormalizeRuntimeParameters` 的不幂等性（删项目字段但不删 `scope`；老大裁定渠道会话不绑定项目故触发不了，仅备查）、`ToolRegistry.GetToolDefinitions` 大小写敏感匹配与 `IsAvailableInMode` 的 `OrdinalIgnoreCase` 不一致（已核到一个受害者：`GoalToolProvider.cs:117` 的 `update_goal_progress` 声明 `["subAgent"]`，而 `ResolveAvailableMode` 返回小写 `"subagent"`，导致该工具在子 Agent 工具定义列表中静默缺失；与 Plan D 无因果）（均于迭代收尾时记入 Obsidian 待办）
-- 需老大配合的取证步骤：D3 渠道会话实机取证（微信或飞书任一条真实会话）、E3 真实飞书扫码、F5 真实对话子项（需服务商凭据）、G4 OpenCode Go 凭据；无法完成时标“待用户验证”，整体结论最高 PARTIAL
+- VERDICT：PASS（编译验证 + 回归测试 + 用户人工验收；更新板块真机升级验证移交 iter-27 发布时执行）
+- 产品版本：`0.2.26`
+- Tag：`v0.2.26`
+- Commit：待合并后补充 merge commit
+- 日期：2026-09-09
+- 范围与功能单元：
+  - **Plan A：更新说明安全富文本渲染** — Release Notes 安全富文本渲染（A1/A2），堵住更新公告注入面
+  - **Plan B：下载与弹窗生命周期解耦** — 下载状态协调器与固定状态快照（B1）、启动即确认（B2）、常驻状态横幅 + 托盘更新详情 + 弹窗恢复（B3）、安装硬契约收口到可计数闸门（B4）、四态文案与视觉 + 安装失败重试死路修复（B5）
+  - **Plan C：下载可观测性** — 字节级下载观测、结构化日志与未知值格式化（C1）；回归测试锁定原生日志转发与差分能力不被关闭（C2）；按老大 2026-09-08 裁定只做下载可观测性，不做真实安装版旧→新升级验证
+  - **Plan D：渠道会话统一工具可见性（🔴 bug）** — `AgentRunContextPolicy.ResolveAvailableMode` 把 channel 归一为 global（mode 解析层单文件修法，四个 Provider 一行不动）；渠道会话注入全局助手 prompt、6 个 `Plugin*` 渠道工具恢复可见、渠道会话不再注入 `<session_todo>`
+  - **Plan E：飞书扫码绑定后自动启用并启动（🔴 bug）** — 成功路径补 `startChannel` 与 `features.autoStart`，修复 QR 面板裸 `catch {}` 把保存失败静默转成无限轮询
+  - **Plan F：同步 OpenCowork 内置服务商预设 17 个（🟡 改进）** — 排除 `vertex-ai`（缺 C# 运行时）、`routin-ai`（缺计价字段）
+  - **Plan G：OpenCode Go 请求注入 `x-opencode-session`（🟡 改进）** — 4 处 provider 载荷构造点补 `providerBuiltinId`，C# 端按 `providerBuiltinId` 精确 gate；连接测试同样注入固定测试会话头并补回归套件
+  - **项目变更面板** — 右侧面板新增项目变更 Tab：Git 变更扫描 + 文件 Diff 预览弹窗（加宽/全屏、变更文件列表选中样式、无 Diff 兜底文案）、git 提交区（分支/upstream/ahead-behind 信息、提交信息输入、提交/修正/提交并推送/提交并同步下拉）、agent-files 状态配色 token（added/deleted/conflict/modified）、i18n 中英文补全
+  - **服务商面板** — 服务商配置/模型管理双页签（分段式页签样式 + 标题/副标题头部）
+- 验证：TypeScript web/node/root 三套配置零错误；C# solution 0 错误；updater 回归（C2 原生日志/差分锁定）、Provider header 回归（含连接测试会话头新套件）通过；除更新板块外全部功能单元经老大人工验收
+- 移交 iter-27：**更新板块真机升级验证** — 用低于当前 Release 的安装版实际走 electron-updater 检查更新 → 下载确认 → 安装重启全流程
+- 不在本计划内（备查）：Windows 发布者签名、发布自动化、`vertex-ai`/`routin-ai` 预设、Task 子 Agent fast-model 路径会话头、`OpenAIChatProvider.cs` providerId/id 命名不一致、`ChannelPluginToolProvider.cs` 16 处归一后失效的 `"channel"` 死条目、`AgentLoop.Helpers.NormalizeRuntimeParameters` 不幂等（删项目字段不删 `scope`，老大裁定渠道会话不绑定项目故触发不了）、`ToolRegistry.GetToolDefinitions` 大小写敏感与 `IsAvailableInMode` OrdinalIgnoreCase 不一致（受害者：`GoalToolProvider.cs:117` update_goal_progress 声明 `subAgent` 而解析返回小写 `subagent`，子 Agent 工具列表静默缺失）
 
 ## v2-iter-25：微信渠道全局会话闭环（已完成，已合并 main）
 

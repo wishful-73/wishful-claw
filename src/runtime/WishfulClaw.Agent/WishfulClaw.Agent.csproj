@@ -18,6 +18,8 @@
     <InternalsVisibleTo Include="WishfulClaw.GoalRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.CompactionSnapshotRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.ToolConcurrencyRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.ChannelToolVisibilityRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.ProviderHeaderRegressionTests" />
   </ItemGroup>
 
 </Project>

@@ -459,6 +459,11 @@
     "modelList": "Model List",
     "modelCount": "{{total}} models, {{enabled}} enabled",
     "modelManagement": "Model Management",
+    "tabs": {
+      "label": "Provider settings navigation",
+      "configuration": "Provider configuration",
+      "models": "Model management"
+    },
     "modelManagementDesc": "Manage global model defaults that provider copies inherit from",
     "modelManagementList": "Global Model Library",
     "modelManagementCount": "{{total}} models, {{enabled}} enabled by default",
@@ -1168,15 +1173,33 @@
       "description": "Check for the latest Wishful Claw version.",
       "available": "New version {{version}} available",
       "downloaded": "Update downloaded. Confirm to restart and install.",
+      "errorTitle": "Update failed",
       "currentVersion": "Current version",
       "noNotes": "No release notes provided for this release.",
       "downloading": "Downloading update…",
-      "download": "Download update",
+      "backgroundHint": "The download continues in the background. Closing this window will not interrupt it.",
+      "trayHint": "You can reopen the progress at any time from “Update details” in the tray.",
+      "download": "Download in background",
       "manualDownload": "Manual download",
       "install": "Restart and install",
       "installing": "Preparing installation…",
+      "later": "Later",
+      "retry": "Retry",
+      "retryInstall": "Retry install",
       "checkAgain": "Check again",
       "openRelease": "Open release page"
+    },
+    "banner": {
+      "downloading": "Downloading update in the background…",
+      "downloaded": "Update {{version}} downloaded, waiting to install",
+      "error": "Update failed",
+      "install": "Restart and install",
+      "details": "Details"
+    },
+    "progress": {
+      "unknown": "Unknown",
+      "stats": "{{bytes}} · {{speed}} · {{elapsed}}",
+      "completed": "{{bytes}} · took {{elapsed}}"
     }
   },
   "anchorNav": {
@@ -1329,7 +1352,9 @@
       "weixinInstructions": "1. Click the \"Get QR code\" button\n2. Scan the displayed QR code with WeChat\n3. Confirm authorization on your phone\n4. The channel will start automatically once bound",
       "feishuInstructions": "1. Scan the QR code with the Feishu app\n2. Confirm creating the application in Feishu\n3. App ID and App Secret are fetched automatically after authorization\n4. The channel will start automatically once bound",
       "feishuWaiting": "Scan the QR code with Feishu to complete authorization",
-      "feishuConnected": "Feishu authorization succeeded!",
+      "feishuConnected": "Binding succeeded, channel started!",
+      "saveFailed": "Failed to save Feishu credentials",
+      "startFailed": "Failed to start Feishu channel",
       "boundTitle": "Bound",
       "boundDescription": "Connection credentials are saved. You can start the channel or bind it again.",
       "connectedStatus": "Connection configured",

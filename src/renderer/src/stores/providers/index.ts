@@ -18,6 +18,23 @@ import { xiaomiPreset, xiaomiCodingPreset } from '@renderer/stores/providers/xia
 import { bigmodelPreset, bigmodelCodingPreset } from '@renderer/stores/providers/bigmodel'
 import { volcenginePreset } from '@renderer/stores/providers/volcengine'
 import { xaiPreset } from '@renderer/stores/providers/x-ai'
+import { cerebrasPreset } from '@renderer/stores/providers/cerebras'
+import { fireworksPreset } from '@renderer/stores/providers/fireworks'
+import { groqPreset } from '@renderer/stores/providers/groq'
+import { huggingfacePreset } from '@renderer/stores/providers/huggingface'
+import { hunyuanPreset } from '@renderer/stores/providers/hunyuan'
+import { infiniPreset } from '@renderer/stores/providers/infini'
+import { lmstudioPreset } from '@renderer/stores/providers/lmstudio'
+import { metaPreset } from '@renderer/stores/providers/meta'
+import { mistralPreset } from '@renderer/stores/providers/mistral'
+import { modelscopePreset } from '@renderer/stores/providers/modelscope'
+import { novitaPreset } from '@renderer/stores/providers/novita'
+import { nvidiaPreset } from '@renderer/stores/providers/nvidia'
+import { opencodePreset } from '@renderer/stores/providers/opencode'
+import { opencodeGoPreset } from '@renderer/stores/providers/opencode-go'
+import { ppioPreset } from '@renderer/stores/providers/ppio'
+import { stepfunPreset } from '@renderer/stores/providers/stepfun'
+import { togetherPreset } from '@renderer/stores/providers/together'
 import { codexOAuthPreset } from '@renderer/stores/providers/codex-oauth'
 import { copilotOAuthPreset } from '@renderer/stores/providers/copilot-oauth'
 import type { BuiltinProviderPreset } from '@renderer/stores/providers/types'
@@ -47,6 +64,23 @@ export const builtinProviderPresets: BuiltinProviderPreset[] = [
   bigmodelPreset,
   volcenginePreset,
   xaiPreset,
+  cerebrasPreset,
+  fireworksPreset,
+  groqPreset,
+  huggingfacePreset,
+  hunyuanPreset,
+  infiniPreset,
+  lmstudioPreset,
+  metaPreset,
+  mistralPreset,
+  modelscopePreset,
+  novitaPreset,
+  nvidiaPreset,
+  opencodePreset,
+  opencodeGoPreset,
+  ppioPreset,
+  stepfunPreset,
+  togetherPreset,
   codexOAuthPreset,
   copilotOAuthPreset
 ]

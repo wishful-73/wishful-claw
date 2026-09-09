@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+﻿import { useRef, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Search, Trash2 } from 'lucide-react'
+import { Layers, Plus, Search, Server, Trash2 } from 'lucide-react'
 import { ProviderIcon } from '@renderer/components/settings/provider-icons'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
@@ -16,6 +16,8 @@ import type { AIProvider } from '../../../../shared/types/provider'
 import { cn } from '@renderer/lib/utils'
 import { AddProviderDialog } from './provider/AddProviderDialog'
 import { ProviderConfigPanel } from './provider/ProviderConfigPanel'
+import { ModelManagementPanel } from './model-management/ModelManagementPanel'
+import { getProviderSourceKey, ALL_PROVIDER_FILTER } from './model-management/provider-source-index'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,6 +29,68 @@ import {
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
 
+type ProviderPanelTab = 'configuration' | 'models'
+
+const PROVIDER_PANEL_TABS: ProviderPanelTab[] = ['configuration', 'models']
+
+function ProviderPanelTabs({
+  activeTab,
+  onChange
+}: {
+  activeTab: ProviderPanelTab
+  onChange: (tab: ProviderPanelTab) => void
+}): React.JSX.Element {
+  const { t } = useTranslation('settings')
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const labels: Record<ProviderPanelTab, string> = {
+    configuration: t('provider.tabs.configuration'),
+    models: t('provider.tabs.models')
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const nextIndex = event.key === 'ArrowRight'
+      ? (index + 1) % PROVIDER_PANEL_TABS.length
+      : (index - 1 + PROVIDER_PANEL_TABS.length) % PROVIDER_PANEL_TABS.length
+    const nextTab = PROVIDER_PANEL_TABS[nextIndex]
+    onChange(nextTab)
+    tabRefs.current[nextIndex]?.focus()
+  }
+
+  return (
+    <div
+      role="tablist"
+      aria-label={t('provider.tabs.label')}
+      className="flex shrink-0 items-center gap-1 rounded-lg border bg-muted/50 p-1"
+    >
+      {PROVIDER_PANEL_TABS.map((tab, index) => (
+        <button
+          key={tab}
+          ref={(element) => { tabRefs.current[index] = element }}
+          type="button"
+          role="tab"
+          id={`provider-panel-tab-${tab}`}
+          aria-controls={`provider-panel-tabpanel-${tab}`}
+          aria-selected={activeTab === tab}
+          tabIndex={activeTab === tab ? 0 : -1}
+          onClick={() => onChange(tab)}
+          onKeyDown={(event) => handleKeyDown(event, index)}
+          className={cn(
+            'inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors',
+            activeTab === tab
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
+          )}
+        >
+          {tab === 'configuration' ? <Server className="size-3.5" /> : <Layers className="size-3.5" />}
+          {labels[tab]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function ProviderPanel(): React.JSX.Element {
   const { t } = useTranslation(['settings', 'common'])
   const { t: tc } = useTranslation('common')
@@ -36,6 +100,8 @@ function ProviderPanel(): React.JSX.Element {
   const activeProviderId = useProviderStore((s) => s.activeProviderId)
   // userSelectedId tracks manual user clicks; default selection derives from store state
   const [userSelectedId, setUserSelectedId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<ProviderPanelTab>('configuration')
+  const [modelProviderFilter, setModelProviderFilter] = useState<string | null>(null)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -50,6 +116,17 @@ function ProviderPanel(): React.JSX.Element {
   const selectedProvider = resolvedSelectedId
     ? (providers.find((p: any) => p.id === resolvedSelectedId) ?? null)
     : null
+
+  const selectProvider = (providerId: string): void => {
+    setUserSelectedId(providerId)
+    if (modelProviderFilter !== ALL_PROVIDER_FILTER) {
+      const provider = providers.find((item) => item.id === providerId)
+      setModelProviderFilter(provider ? getProviderSourceKey(provider) : null)
+    }
+  }
+
+  const resolvedModelProviderFilter =
+    modelProviderFilter ?? (selectedProvider ? getProviderSourceKey(selectedProvider) : ALL_PROVIDER_FILTER)
 
   const enabledProviders = useMemo(
     () =>
@@ -76,7 +153,7 @@ function ProviderPanel(): React.JSX.Element {
         <ContextMenuTrigger asChild>
           <button
             type="button"
-            onClick={() => setUserSelectedId(provider.id)}
+            onClick={() => selectProvider(provider.id)}
             className={cn(
               'group/provider relative mt-1 flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors',
               resolvedSelectedId === provider.id
@@ -130,8 +207,23 @@ function ProviderPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-background">
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b bg-background/60 px-4 py-2.5">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold">{t('provider.title')}</h2>
+          <p className="truncate text-xs text-muted-foreground">
+            {activeTab === 'configuration' ? t('provider.subtitle') : t('provider.modelManagementDesc')}
+          </p>
+        </div>
+        <ProviderPanelTabs activeTab={activeTab} onChange={setActiveTab} />
+      </div>
+      {activeTab === 'configuration' ? (
+      <div
+        id="provider-panel-tabpanel-configuration"
+        role="tabpanel"
+        aria-labelledby="provider-panel-tab-configuration"
+        className="flex min-h-0 flex-1 overflow-hidden"
+      >
         {/* Left: Provider list */}
         <div className="flex w-60 shrink-0 flex-col border-r bg-muted/10">
           <div className="flex items-center gap-1.5 border-b p-2.5">
@@ -193,6 +285,19 @@ function ProviderPanel(): React.JSX.Element {
           )}
         </div>
       </div>
+      ) : (
+        <div
+          id="provider-panel-tabpanel-models"
+          role="tabpanel"
+          aria-labelledby="provider-panel-tab-models"
+          className="min-h-0 flex-1 overflow-hidden p-3 sm:p-4"
+        >
+          <ModelManagementPanel
+            providerFilter={resolvedModelProviderFilter}
+            onProviderFilterChange={setModelProviderFilter}
+          />
+        </div>
+      )}
 
       <AddProviderDialog open={dialogOpen} onOpenChange={setDialogOpen} />
 
@@ -210,8 +315,16 @@ function ProviderPanel(): React.JSX.Element {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (deleteTarget) {
+                  const wasSelected = resolvedSelectedId === deleteTarget.id
+                  const remainingProviders = providers.filter((provider) => provider.id !== deleteTarget.id)
                   deleteProvider(deleteTarget.id)
-                  if (selectedId === deleteTarget.id) setUserSelectedId(null)
+                  if (wasSelected) {
+                    const nextProvider = remainingProviders.find((provider) => provider.enabled) ?? remainingProviders[0]
+                    setUserSelectedId(nextProvider?.id ?? null)
+                    if (modelProviderFilter !== ALL_PROVIDER_FILTER) {
+                      setModelProviderFilter(nextProvider ? getProviderSourceKey(nextProvider) : null)
+                    }
+                  }
                   toast.success(t('provider.list.providerDeleted'))
                 }
                 setDeleteTarget(null)

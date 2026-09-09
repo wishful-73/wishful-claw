@@ -1,4 +1,10 @@
+import Markdown from 'react-markdown'
 import { useTranslation } from 'react-i18next'
+import {
+  RELEASE_NOTES_COMPONENTS,
+  RELEASE_NOTES_REHYPE_PLUGINS,
+  RELEASE_NOTES_REMARK_PLUGINS
+} from './release-notes-sanitizer'
 
 interface UpdateReleaseNotesProps {
   notes: string
@@ -16,10 +22,14 @@ export function UpdateReleaseNotes({ notes }: UpdateReleaseNotesProps): React.JS
   }
 
   return (
-    <div className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3">
-      <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-foreground/85">
+    <div className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs text-foreground/85">
+      <Markdown
+        remarkPlugins={RELEASE_NOTES_REMARK_PLUGINS}
+        rehypePlugins={RELEASE_NOTES_REHYPE_PLUGINS}
+        components={RELEASE_NOTES_COMPONENTS}
+      >
         {notes}
-      </pre>
+      </Markdown>
     </div>
   )
 }

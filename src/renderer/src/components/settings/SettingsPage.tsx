@@ -1,5 +1,5 @@
-import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Layers, Keyboard, Gauge, Brain } from 'lucide-react'
+﻿import { useTranslation } from 'react-i18next'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
@@ -17,7 +17,6 @@ import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
 import { SshPanel } from '@renderer/components/settings/SshPanel'
 import { SkillPanel } from '@renderer/components/settings/skill-panel'
 import { McpPanel } from '@renderer/components/settings/mcp-panel'
-import { ModelManagementPanel } from '@renderer/components/settings/model-management/ModelManagementPanel'
 import { ShortcutsPanel } from '@renderer/components/settings/ShortcutsPanel'
 import { SectionAnchorNav, type SectionAnchor } from '@renderer/components/settings/section-anchor-nav'
 import { SettingsSection } from '@renderer/components/settings/settings-primitives'
@@ -75,7 +74,6 @@ function SettingsPage(): React.JSX.Element {
       label: t('tabs.groups.aiService'),
       items: [
         { id: 'provider', icon: <Server className="size-4" />, label: t('tabs.provider.label') },
-        { id: 'modelManagement', icon: <Layers className="size-4" />, label: t('provider.modelManagement', { defaultValue: 'Model Management' }) },
         { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') },
         { id: 'memory', icon: <Brain className="size-4" />, label: t('tabs.memory.label', { defaultValue: '记忆' }) }
       ]
@@ -174,10 +172,6 @@ function SettingsPage(): React.JSX.Element {
             {settingsTab === 'provider' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ProviderPanel />
-              </div>
-            ) : settingsTab === 'modelManagement' ? (
-              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
-                <ModelManagementPanel />
               </div>
             ) : settingsTab === 'runtime' ? (
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">

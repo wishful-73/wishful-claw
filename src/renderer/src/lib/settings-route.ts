@@ -1,11 +1,14 @@
-export const DEFAULT_SETTINGS_TAB = 'provider'
+﻿import { normalizeSettingsTab, type SettingsTab } from '@renderer/stores/ui-types'
 
-export type SettingsTab = 'provider' | 'modelManagement' | 'general' | 'about' | 'permission' | 'channel' | 'plugin' | 'extension' | 'mcp' | 'ssh' | 'skills'
+export const DEFAULT_SETTINGS_TAB: SettingsTab = 'provider'
 
-export function parseSettingsRoute(): { tab: SettingsTab } {
-  return { tab: DEFAULT_SETTINGS_TAB }
+export function parseSettingsRoute(rawTab: unknown = DEFAULT_SETTINGS_TAB): { tab: SettingsTab } {
+  return { tab: normalizeSettingsTab(rawTab) }
 }
 
-export function replaceSettingsRoute(_tab: SettingsTab): void {
-  // Placeholder: no URL routing for now.
+export function replaceSettingsRoute(rawTab: unknown): void {
+  normalizeSettingsTab(rawTab)
+  // Placeholder: there is no URL routing for settings yet.
 }
+
+export type { SettingsTab }

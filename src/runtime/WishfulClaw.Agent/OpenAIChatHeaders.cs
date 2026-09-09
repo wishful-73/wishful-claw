@@ -9,7 +9,7 @@ namespace WishfulClaw.Agent;
 /// </summary>
 internal static partial class OpenAIChatProvider
 {
-    private static void ApplyHeaders(HttpRequestMessage request, JsonElement provider, string apiKey)
+    internal static void ApplyHeaders(HttpRequestMessage request, JsonElement provider, string apiKey, string? sessionId)
     {
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
         ApiUserAgent.Apply(request, provider);
@@ -24,10 +24,16 @@ internal static partial class OpenAIChatProvider
         }
 
         ProviderRequestOverrides.ApplyHttpHeaderOverrides(request, provider);
+        if (string.Equals(JsonHelpers.GetString(provider, "providerBuiltinId"), "opencode-go", StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(sessionId) &&
+            !request.Headers.Contains("x-opencode-session"))
+        {
+            request.Headers.TryAddWithoutValidation("x-opencode-session", sessionId);
+        }
         ApiUserAgent.Ensure(request, provider);
     }
 
-    private static IReadOnlyDictionary<string, string> BuildDebugHeaders(JsonElement provider)
+    internal static IReadOnlyDictionary<string, string> BuildDebugHeaders(JsonElement provider, string? sessionId)
     {
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -36,6 +42,12 @@ internal static partial class OpenAIChatProvider
         };
         ApiUserAgent.ApplyDebug(headers, provider);
         ProviderRequestOverrides.ApplyDebugHeaderOverrides(headers, provider);
+        if (string.Equals(JsonHelpers.GetString(provider, "providerBuiltinId"), "opencode-go", StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(sessionId) &&
+            !headers.ContainsKey("x-opencode-session"))
+        {
+            headers["x-opencode-session"] = sessionId;
+        }
         ApiUserAgent.EnsureDebug(headers, provider);
         return headers;
     }

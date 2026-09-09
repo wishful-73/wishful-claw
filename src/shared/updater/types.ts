@@ -9,6 +9,9 @@ export type UpdatePhase =
 
 export type UpdateDistribution = 'installer' | 'green' | 'compat'
 
+/** Operation ids count up from 1; 0 means no download operation has ever been started. */
+export const NO_UPDATE_OPERATION_ID = 0
+
 export interface UpdateDistributionInfo {
   distribution: UpdateDistribution
   supportsAutoInstall: boolean
@@ -21,17 +24,53 @@ export interface UpdateAvailablePayload extends UpdateDistributionInfo {
   releaseNotes: string
 }
 
-export interface UpdateDownloadProgressPayload {
-  percent: number
+/**
+ * Byte-level download observations. `null` means electron-updater never reported the value,
+ * which must stay distinguishable from a real `0` — a differential download legitimately
+ * transfers far fewer bytes than `declaredInstallerSize`, and an unknown total must render as
+ * "unknown" rather than as an empty progress bar.
+ */
+export interface UpdateProgressSnapshot {
+  percent: number | null
+  transferred: number | null
+  total: number | null
+  bytesPerSecond: number | null
+  elapsedMs: number | null
+  declaredInstallerSize: number | null
 }
 
-export interface UpdateDownloadedPayload {
+export interface UpdateStateSnapshot extends UpdateProgressSnapshot {
+  phase: UpdatePhase
+  currentVersion: string
+  availableVersion: string | null
+  downloadedVersion: string | null
+  releaseNotes: string
+  operationId: number
+  expectedVersion: string | null
+  error: string | null
+}
+
+/**
+ * Carries the full byte-level snapshot rather than just a percent, so the renderer can show
+ * transferred/total/speed/elapsed as they are observed instead of round-tripping `update:status`
+ * on every tick. Unknown values stay `null` all the way to the formatter.
+ */
+export type UpdateDownloadProgressPayload = UpdateProgressSnapshot
+
+export interface UpdateDownloadedPayload extends UpdateProgressSnapshot {
   version: string
 }
 
 export interface UpdateErrorPayload {
   error: string
 }
+
+/**
+ * Carries no data on purpose: the tray only asks the renderer to look, and the renderer answers by
+ * re-reading the authoritative `update:status` snapshot. Shipping state through this event would
+ * hand the tray a second copy that could go stale.
+ */
+export type UpdateShowDetailsPayload = null
 
 export interface UpdateCheckSuccess extends UpdateDistributionInfo {
   success: true
@@ -50,21 +89,17 @@ export type UpdateCheckResult = UpdateCheckSuccess | UpdateFailure
 
 export type UpdateActionResult = { success: true } | UpdateFailure
 
-export interface UpdateStatus extends UpdateDistributionInfo {
-  success: true
-  currentVersion: string
-  availableVersion: string | null
-  downloadedVersion: string | null
-  releaseNotes: string
-  phase: UpdatePhase
-}
+/**
+ * `update:download` acknowledges the *start* of the download, not its completion — the native
+ * promise keeps running in Main after the dialog closes. The operationId lets the renderer
+ * correlate the progress events that follow.
+ */
+export type UpdateDownloadStartResult = { success: true; operationId: number } | UpdateFailure
 
-export interface RendererUpdateState extends UpdateDistributionInfo {
-  phase: UpdatePhase
-  currentVersion: string
-  availableVersion: string | null
-  downloadedVersion: string | null
-  progress: number | null
-  releaseNotes: string
-  error: string | null
-}
+/**
+ * The whole snapshot is rebuilt from this one object on every renderer mount, so a remounted
+ * window (dialog closed, main window hidden, renderer reloaded) never needs event history.
+ */
+export type RendererUpdateState = UpdateStateSnapshot & UpdateDistributionInfo
+
+export type UpdateStatus = RendererUpdateState & { success: true }

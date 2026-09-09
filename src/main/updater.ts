@@ -3,6 +3,18 @@ import { logError, logInfo, logWarn } from './lib/logger'
 import { readPersistedSettings } from './lib/settings-store'
 import { getUpdateDistributionInfo } from './lib/distribution'
 import { safeSendMessagePackToWindow } from './window-ipc'
+import {
+  createUpdateDownloadGate,
+  createUpdateInstallGate,
+  createUpdaterStateCoordinator,
+  observeDownload,
+  pickProgressSnapshot,
+  type UpdateDownloadGate,
+  type UpdateDownloadObservation,
+  type UpdateInstallGate,
+  type UpdaterStateCoordinator
+} from './updater-state'
+import { NO_UPDATE_OPERATION_ID } from '../shared/updater/types'
 import type {
   UpdateActionResult,
   UpdateAvailablePayload,
@@ -10,8 +22,9 @@ import type {
   UpdateDistributionInfo,
   UpdateDownloadProgressPayload,
   UpdateDownloadedPayload,
+  UpdateDownloadStartResult,
   UpdateErrorPayload,
-  UpdatePhase,
+  UpdateStateSnapshot,
   UpdateStatus
 } from '../shared/updater/types'
 
@@ -24,28 +37,66 @@ export interface UpdaterOptions {
   markAppWillQuit: QuitMarker
 }
 
-interface UpdateState {
-  phase: UpdatePhase
-  availableVersion: string | null
-  downloadedVersion: string | null
-  releaseNotes: string
-}
-
 const RENDERER_SETTINGS_STORAGE_KEY = 'wishfulclaw-settings'
 
-const INITIAL_STATE: UpdateState = {
-  phase: 'idle',
-  availableVersion: null,
-  downloadedVersion: null,
-  releaseNotes: ''
-}
+/**
+ * electron-updater fires `download-progress` on every chunk. Logging each one would bury the native
+ * `[updater]` lines that carry the `Full` / `To download` evidence, so our own progress lines are
+ * spaced out — while the UI and the coordinator still see every event.
+ */
+const PROGRESS_LOG_INTERVAL_MS = 5_000
 
 let updater: AutoUpdater | null = null
 let initializePromise: Promise<void> | null = null
 let checkPromise: Promise<UpdateCheckResult> | null = null
-let downloadPromise: Promise<UpdateActionResult> | null = null
+let downloadGate: UpdateDownloadGate | null = null
+let installGate: UpdateInstallGate | null = null
 let options: UpdaterOptions | null = null
-let updateState: UpdateState = { ...INITIAL_STATE }
+let coordinator: UpdaterStateCoordinator | null = null
+let activeOperationId = NO_UPDATE_OPERATION_ID
+let lastProgressLogAt = 0
+
+function updaterState(): UpdaterStateCoordinator {
+  coordinator ??= createUpdaterStateCoordinator({ currentVersion: currentVersion() })
+  return coordinator
+}
+
+function getDownloadGate(instance: AutoUpdater): UpdateDownloadGate {
+  downloadGate ??= createUpdateDownloadGate({
+    coordinator: updaterState(),
+    start: () => instance.downloadUpdate(),
+    onFailure: (error) => {
+      // Read before the phase flips to `error`: these are the last bytes this attempt reported.
+      setError(error, true, { ...observeDownload(updaterState().snapshot()) })
+    }
+  })
+  return downloadGate
+}
+
+/**
+ * Holds the one and only `quitAndInstall` call site. The gate decides whether it may run at all, so
+ * nothing but an explicit user request can reach it — and the delay keeps the IPC reply ahead of the
+ * teardown it triggers.
+ */
+function getInstallGate(instance: AutoUpdater): UpdateInstallGate {
+  installGate ??= createUpdateInstallGate({
+    coordinator: updaterState(),
+    install: () => {
+      setTimeout(() => {
+        try {
+          options?.markAppWillQuit()
+          instance.quitAndInstall(false, true)
+        } catch (error) {
+          setError(error)
+        }
+      }, 100)
+    },
+    onFailure: (error) => {
+      setError(error)
+    }
+  })
+  return installGate
+}
 
 function currentVersion(): string {
   return normalizeVersion(app.getVersion())
@@ -97,6 +148,48 @@ function formatReleaseNotes(notes: unknown): string {
     })
     .filter(Boolean)
     .join('\n\n')
+}
+
+/**
+ * The part of `UpdateInfo` we read. Typed structurally on purpose: electron-updater is an optional
+ * dependency loaded lazily, and its entry point does not re-export `UpdateInfo`.
+ */
+interface UpdateOfferMetadata {
+  path?: string
+  files?: Array<{ url?: string; size?: number } | null | undefined> | null
+}
+
+/**
+ * `ProgressInfo` reports no installer size, so the release metadata is the only baseline available.
+ * Without it a transferred total far below the package cannot be told apart from a truncated
+ * download — which is the whole distinction between differential and full.
+ */
+function resolveDeclaredInstallerSize(info: UpdateOfferMetadata): number | null {
+  const files = info.files ?? []
+  const primary = files.find((file) => file?.url === info.path) ?? files[0]
+  const size = primary?.size
+  // A declared 0 is not a baseline, so it stays unknown rather than posing as an observation.
+  return typeof size === 'number' && Number.isFinite(size) && size > 0 ? size : null
+}
+
+/**
+ * One field set for start, progress, completion and failure. Keeping them identical is what lets a
+ * report join our own lines to electron-updater's native `[updater]` output by operationId, and it
+ * means the numbers in the log are the same numbers the renderer was just shown.
+ */
+function logDownload(message: string, observation: UpdateDownloadObservation): void {
+  logInfo('main', message, { extra: { ...observation } })
+}
+
+/**
+ * `lastProgressLogAt` is reset when a download starts, so the first observation of every attempt is
+ * logged even if the previous attempt ended moments earlier.
+ */
+function logDownloadProgress(snapshot: UpdateStateSnapshot): void {
+  const nowMs = Date.now()
+  if (nowMs - lastProgressLogAt < PROGRESS_LOG_INTERVAL_MS) return
+  lastProgressLogAt = nowMs
+  logDownload(`Updater download progress (operation ${snapshot.operationId})`, observeDownload(snapshot))
 }
 
 function getValidWindow(): BrowserWindow | undefined {
@@ -181,19 +274,19 @@ function getAppDistributionInfo(): UpdateDistributionInfo {
   return getUpdateDistributionInfo()
 }
 
-function setPhase(phase: UpdatePhase): void {
-  updateState = { ...updateState, phase }
-}
-
-function setError(error: unknown, notify = true): string {
+function setError(error: unknown, notify = true, extra?: Record<string, unknown>): string {
   const message = formatError(error)
+  logError('main', `Updater error: ${message}`, {
+    extra: { error: getErrorMessage(error), ...extra }
+  })
   // Silent failures (startup auto-check, init) must not leave phase 'error':
   // the renderer would later fetch status and auto-open an empty error dialog.
-  updateState = { ...updateState, phase: notify ? 'error' : 'idle' }
-  logError('main', `Updater error: ${message}`, { extra: { error: getErrorMessage(error) } })
   if (notify) {
+    updaterState().fail(message)
     const payload: UpdateErrorPayload = { error: message }
     sendUpdateEvent('update:error', payload)
+  } else {
+    updaterState().failSilently()
   }
   return message
 }
@@ -215,74 +308,94 @@ function configureUpdater(instance: AutoUpdater): void {
 function attachEvents(instance: AutoUpdater): void {
   instance.on('checking-for-update', () => {
     logInfo('main', 'Updater check started')
-    setPhase('checking')
+    updaterState().beginCheck()
   })
 
   instance.on('update-available', (info) => {
     const version = normalizeVersion(info.version)
     if (!isNewerVersion(version, currentVersion())) {
       logWarn('main', `Updater ignored non-newer version: ${version}`)
-      setPhase('idle')
+      updaterState().applyNotAvailable()
       return
     }
 
-    updateState = {
-      phase: 'available',
-      availableVersion: version,
-      downloadedVersion: null,
-      releaseNotes: formatReleaseNotes(info.releaseNotes)
+    const releaseNotes = formatReleaseNotes(info.releaseNotes)
+    const declaredInstallerSize = resolveDeclaredInstallerSize(info)
+    if (
+      !updaterState().applyAvailable({ newVersion: version, releaseNotes, declaredInstallerSize })
+    ) {
+      logWarn('main', `Updater dropped update-available for ${version} in current phase`)
+      return
     }
+
     const payload: UpdateAvailablePayload = {
       currentVersion: currentVersion(),
       newVersion: version,
-      releaseNotes: updateState.releaseNotes,
+      releaseNotes,
       ...getAppDistributionInfo()
     }
-    logInfo('main', `Updater found version ${version}`)
+    logInfo('main', `Updater found version ${version}`, { extra: { declaredInstallerSize } })
     sendUpdateEvent('update:available', payload)
   })
 
   instance.on('update-not-available', (info) => {
-    updateState = {
-      ...updateState,
-      phase: 'idle',
-      availableVersion: updateState.downloadedVersion ? updateState.availableVersion : null,
-      releaseNotes: updateState.downloadedVersion ? updateState.releaseNotes : ''
-    }
+    updaterState().applyNotAvailable()
     logInfo('main', `Updater found no newer version (latest: ${info.version})`)
   })
 
   instance.on('download-progress', (progress) => {
-    setPhase('downloading')
-    const payload: UpdateDownloadProgressPayload = {
-      percent: Math.max(0, Math.min(100, progress.percent))
-    }
+    const accepted = updaterState().applyProgress(activeOperationId, {
+      percent: progress.percent,
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond
+    })
+    if (!accepted) return
+
+    // Read back after applying: the coordinator has just clamped and monotonic-checked these values,
+    // so the payload, the taskbar bar and the log line all quote what the state actually holds.
+    const snapshot = updaterState().snapshot()
+    const payload: UpdateDownloadProgressPayload = pickProgressSnapshot(snapshot)
+
     const win = getValidWindow()
     if (win) {
-      win.setProgressBar(payload.percent / 100, { mode: 'normal' })
-      safeSendMessagePackToWindow(win, 'update:download-progress', payload)
+      // An unmeasured download must not sit the taskbar bar at 0%: that reads as stalled.
+      if (payload.percent === null) win.setProgressBar(-1, { mode: 'indeterminate' })
+      else win.setProgressBar(payload.percent / 100, { mode: 'normal' })
     }
+    sendUpdateEvent('update:download-progress', payload)
+    logDownloadProgress(snapshot)
   })
 
   instance.on('update-downloaded', (info) => {
     const version = normalizeVersion(info.version)
-    updateState = { ...updateState, phase: 'downloaded', downloadedVersion: version }
+    if (!updaterState().applyDownloaded(activeOperationId, version)) {
+      logWarn('main', `Updater dropped update-downloaded for ${version} (operation ${activeOperationId})`)
+      return
+    }
+
     const win = getValidWindow()
     if (win) win.setProgressBar(-1)
-    const payload: UpdateDownloadedPayload = { version }
-    logInfo('main', `Updater downloaded version ${version}`)
+    // The coordinator freezes elapsedMs and keeps the last observed byte counts on completion, so
+    // this snapshot is the final measurement of the attempt — the numbers the report quotes.
+    const snapshot = updaterState().snapshot()
+    const payload: UpdateDownloadedPayload = { version, ...pickProgressSnapshot(snapshot) }
+    logDownload(`Updater downloaded version ${version}`, observeDownload(snapshot))
     sendUpdateEvent('update:downloaded', payload)
   })
 
   instance.on('error', (error) => {
-    if (updateState.phase === 'checking' && !downloadPromise) {
+    // Captured first: `setError` moves the phase to `error`, and the failure log should still say
+    // how far the download got before it broke.
+    const snapshot = updaterState().snapshot()
+    if (snapshot.phase === 'checking' && !downloadGate?.isInFlight()) {
       logWarn('main', `Background updater check failed: ${formatError(error)}`)
-      setPhase('idle')
+      updaterState().failSilently()
       return
     }
     const win = getValidWindow()
     if (win) win.setProgressBar(-1)
-    setError(error)
+    setError(error, true, { ...observeDownload(snapshot) })
   })
 }
 
@@ -331,12 +444,13 @@ async function checkForUpdatesInternal(): Promise<UpdateCheckResult> {
     logInfo('main', 'Updater check requested')
     const result = await updater.checkForUpdates()
     const latest = normalizeVersion(result?.updateInfo?.version) || null
-    const available = latest ? isNewerVersion(latest, current) : updateState.availableVersion !== null
+    const knownAvailable = updaterState().snapshot().availableVersion
+    const available = latest ? isNewerVersion(latest, current) : knownAvailable !== null
     return {
       success: true,
       available,
       currentVersion: current,
-      latestVersion: latest ?? updateState.availableVersion,
+      latestVersion: latest ?? knownAvailable,
       skipped: result === null,
       ...distribution
     }
@@ -355,13 +469,13 @@ export async function requestUpdateCheck(): Promise<UpdateCheckResult> {
   return checkPromise
 }
 
-export async function requestUpdateDownload(): Promise<UpdateActionResult> {
+export async function requestUpdateDownload(): Promise<UpdateDownloadStartResult> {
   if (!supportsAutoInstall()) {
     return { success: false, error: tr('unsupportedInstall') }
   }
-  if (updateState.downloadedVersion) return { success: true }
-  if (!updateState.availableVersion) {
-    return { success: false, error: tr('noAvailableDownload') }
+  const downloaded = updaterState().snapshot()
+  if (downloaded.downloadedVersion) {
+    return { success: true, operationId: downloaded.operationId }
   }
   if (!updater) {
     try {
@@ -372,27 +486,28 @@ export async function requestUpdateDownload(): Promise<UpdateActionResult> {
   }
   if (!updater) return { success: false, error: tr('updaterUnavailable') }
 
-  if (!downloadPromise) {
-    setPhase('downloading')
-    logInfo('main', `Updater download requested for ${updateState.availableVersion}`)
-    downloadPromise = updater.downloadUpdate()
-      .then(() => ({ success: true as const }))
-      .catch((error) => ({ success: false as const, error: setError(error) }))
-      .finally(() => {
-        downloadPromise = null
-      })
+  const snapshot = updaterState().snapshot()
+  const ack = snapshot.availableVersion
+    ? getDownloadGate(updater).request(snapshot.availableVersion)
+    : null
+  if (!ack?.accepted) {
+    return { success: false, error: tr('noAvailableDownload') }
   }
-  return downloadPromise
+
+  activeOperationId = ack.operationId
+  // Reset so the first progress event of this attempt logs even if a previous one just ended.
+  lastProgressLogAt = 0
+  logDownload(
+    `Updater download started for ${snapshot.availableVersion} (operation ${ack.operationId})`,
+    observeDownload(updaterState().snapshot())
+  )
+  return { success: true, operationId: ack.operationId }
 }
 
 export function getUpdateStatus(): UpdateStatus {
   return {
     success: true,
-    currentVersion: currentVersion(),
-    availableVersion: updateState.availableVersion,
-    downloadedVersion: updateState.downloadedVersion,
-    releaseNotes: updateState.releaseNotes,
-    phase: updateState.phase,
+    ...updaterState().snapshot(),
     ...getAppDistributionInfo()
   }
 }
@@ -401,23 +516,19 @@ export function requestUpdateInstall(): UpdateActionResult {
   if (!supportsAutoInstall()) {
     return { success: false, error: tr('unsupportedInstall') }
   }
-  if (!updater || !updateState.downloadedVersion) {
+  const snapshot = updaterState().snapshot()
+  if (!updater || !snapshot.downloadedVersion) {
     return { success: false, error: tr('noDownloadedUpdate') }
   }
-  if (updateState.phase === 'installing') {
-    return { success: true }
-  }
 
-  setPhase('installing')
-  logInfo('main', `Updater install requested for ${updateState.downloadedVersion}`)
-  setTimeout(() => {
-    try {
-      options?.markAppWillQuit()
-      updater?.quitAndInstall(false, true)
-    } catch (error) {
-      setError(error)
-    }
-  }, 100)
+  const outcome = getInstallGate(updater).request()
+  if (outcome === 'refused') {
+    return { success: false, error: tr('noDownloadedUpdate') }
+  }
+  // 'already-installing' stays silent: a repeated click is a no-op, not a second restart.
+  if (outcome === 'started') {
+    logInfo('main', `Updater install requested for ${snapshot.downloadedVersion}`)
+  }
   return { success: true }
 }
 

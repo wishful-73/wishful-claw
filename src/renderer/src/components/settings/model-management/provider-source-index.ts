@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Provider source index for managed models.
  *
  * Maps each managed model (by normalizedKey) to the list of providers
@@ -23,7 +23,7 @@ export interface ManagedModelProviderSource {
   enabled?: boolean
 }
 
-function getProviderSourceKey(provider: Pick<AIProvider, 'id' | 'builtinId'>): string {
+export function getProviderSourceKey(provider: Pick<AIProvider, 'id' | 'builtinId'>): string {
   return provider.builtinId
     ? `${BUILTIN_PROVIDER_KEY_PREFIX}${provider.builtinId}`
     : `${CUSTOM_PROVIDER_KEY_PREFIX}${provider.id}`

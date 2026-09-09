@@ -1,4 +1,4 @@
-// Extracted from ui-store.ts — Right panel tab factory functions and constants
+﻿// Extracted from ui-store.ts — Right panel tab factory functions and constants
 
 import type { RightPanelTabInstance } from './ui-types'
 
@@ -29,5 +29,6 @@ export const CHAT_SURFACE_NAV_RESET = {
   translatePageOpen: false,
   drawPageOpen: false,
   tasksPageOpen: false,
+  taskBoardPageOpen: false,
   codeGraphPageOpen: false
 } as const

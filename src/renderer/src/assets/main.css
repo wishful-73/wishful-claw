@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+﻿@import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
 
@@ -37,6 +37,16 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-agent-files-panel: var(--agent-files-panel);
+  --color-agent-files-fg: var(--agent-files-fg);
+  --color-agent-files-muted: var(--agent-files-muted);
+  --color-agent-files-border: var(--agent-files-border);
+  --color-agent-files-hover: var(--agent-files-hover);
+  --color-agent-files-icon: var(--agent-files-icon);
+  --color-agent-files-added: var(--agent-files-added);
+  --color-agent-files-deleted: var(--agent-files-deleted);
+  --color-agent-files-conflict: var(--agent-files-conflict);
+  --color-agent-files-modified: var(--agent-files-modified);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -151,6 +161,10 @@
   --agent-files-border: color-mix(in srgb, var(--border) 60%, transparent);
   --agent-files-hover: #edf2f7;
   --agent-files-icon: var(--muted-foreground);
+  --agent-files-added: #16a34a;
+  --agent-files-deleted: #dc2626;
+  --agent-files-conflict: #d97706;
+  --agent-files-modified: #2563eb;
 }
 
 .dark {
@@ -242,6 +256,10 @@
   --agent-files-border: color-mix(in srgb, var(--border) 50%, transparent);
   --agent-files-hover: #1c2030;
   --agent-files-icon: var(--muted-foreground);
+  --agent-files-added: #22c55e;
+  --agent-files-deleted: #ef4444;
+  --agent-files-conflict: #f59e0b;
+  --agent-files-modified: #3b82f6;
 }
 
 @layer base {
@@ -761,6 +779,11 @@ textarea.composer-aux-textarea {
   }
   .agent-files-explorer-title {
     color: var(--agent-files-muted);
+  }
+
+  .agent-files-change-row--selected {
+    background: var(--agent-files-hover);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
 
 }

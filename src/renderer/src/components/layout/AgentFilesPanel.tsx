@@ -1,5 +1,7 @@
-import { useTranslation } from 'react-i18next'
+﻿import { useTranslation } from 'react-i18next'
 import { FileTreePanel } from '@renderer/components/cowork/FileTreePanel'
+import { ChangesPanel } from '@renderer/components/cowork/changes-panel'
+import { useState } from 'react'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { FileCode } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
@@ -10,6 +12,7 @@ export interface AgentFilesPanelProps {
 
 export function AgentFilesPanel(props: AgentFilesPanelProps) {
   const { t } = useTranslation('layout')
+  const [activeTab, setActiveTab] = useState<'files' | 'changes'>('files')
 
   const sessionView = useChatStore(
     useShallow((state) => {
@@ -45,11 +48,17 @@ export function AgentFilesPanel(props: AgentFilesPanelProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <FileTreePanel
-        sessionId={sessionView.sessionId}
-        surface="agent"
-        watchEnabled
-      />
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
+        <button type="button" onClick={() => setActiveTab('files')} className={`rounded px-2 py-1 text-xs ${activeTab === 'files' ? 'bg-muted font-medium' : 'text-muted-foreground'}`}>
+          {t('agentFiles.files', { defaultValue: 'Files' })}
+        </button>
+        <button type="button" onClick={() => setActiveTab('changes')} className={`rounded px-2 py-1 text-xs ${activeTab === 'changes' ? 'bg-muted font-medium' : 'text-muted-foreground'}`}>
+          {t('agentFiles.changes', { defaultValue: 'Changes' })}
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {activeTab === 'files' ? <FileTreePanel sessionId={sessionView.sessionId} surface="agent" watchEnabled /> : <ChangesPanel workingFolder={sessionView.workingFolder} />}
+      </div>
     </div>
   )
 }

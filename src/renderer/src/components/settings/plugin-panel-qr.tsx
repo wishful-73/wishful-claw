@@ -243,20 +243,49 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
           )) as FeishuPollResult
 
           if (pollResult.done && pollResult.appId && pollResult.appSecret) {
-            // Success — save credentials
+            try {
+              const updated = await updateChannel(channel.id, {
+                config: {
+                  ...channel.config,
+                  appId: pollResult.appId,
+                  appSecret: pollResult.appSecret
+                },
+                enabled: true,
+                features: {
+                  autoReply: channel.features?.autoReply ?? true,
+                  streamingReply: channel.features?.streamingReply ?? true,
+                  autoStart: true
+                }
+              })
+              if (!updated) {
+                throw new Error(
+                  useChannelStore.getState().error ||
+                    t('channel.qr.saveFailed', { defaultValue: '飞书凭据保存失败' })
+                )
+              }
+
+              const started = await startChannel(channel.id)
+              if (!started) {
+                throw new Error(
+                  useChannelStore.getState().error ||
+                    t('channel.qr.startFailed', { defaultValue: '飞书渠道启动失败' })
+                )
+              }
+            } catch (err) {
+              cleanup()
+              setLoginStatus('error')
+              setStatusMessage(
+                err instanceof Error
+                  ? err.message
+                  : t('channel.qr.failed', { defaultValue: '飞书绑定失败' })
+              )
+              return
+            }
+
             cleanup()
             setLoginStatus('connected')
-            setStatusMessage(t('channel.qr.feishuConnected', { defaultValue: '飞书授权成功!' }))
-
-            await updateChannel(channel.id, {
-              config: {
-                ...channel.config,
-                appId: pollResult.appId,
-                appSecret: pollResult.appSecret
-              },
-              enabled: true
-            })
-            toast.success(t('channel.qr.feishuConnected', { defaultValue: '飞书授权成功!' }))
+            setStatusMessage(t('channel.qr.feishuConnected', { defaultValue: '绑定成功，渠道已启动!' }))
+            toast.success(t('channel.qr.feishuConnected', { defaultValue: '绑定成功，渠道已启动!' }))
             return
           }
 
@@ -270,7 +299,8 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
           // Still pending
           setStatusMessage(pollResult.message || t('channel.qr.feishuWaiting', { defaultValue: '等待扫码授权...' }))
           feishuPollTimerRef.current = setTimeout(() => void poll(), pollInterval)
-        } catch {
+        } catch (pollError) {
+          void pollError
           feishuPollTimerRef.current = setTimeout(() => void poll(), pollInterval)
         }
       }
@@ -280,7 +310,7 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
       setLoginStatus('error')
       setStatusMessage(err instanceof Error ? err.message : String(err))
     }
-  }, [channel, t, updateChannel, cleanup])
+  }, [channel, t, updateChannel, startChannel, cleanup])
 
   useEffect(() => {
     cleanup()

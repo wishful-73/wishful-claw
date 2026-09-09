@@ -1,4 +1,4 @@
-# 开发进度
+﻿# 开发进度
 
 > 进度总览：每个迭代一行（迭代号 + Tag + 日期 + 简述），明细见 `docs/progress/` 下对应文件。
 > 迭代收尾时：本表新增一行，并在 `docs/progress/` 创建 `v2-iter-{N}.md` 明细（格式见 `docs/dev-workflow.md`）。
@@ -46,3 +46,4 @@
 | [v2-iter-24](progress/v2-iter-24.md) | v0.2.24 | 2026-09-05 | 全局产品经理 Agent + 会话临时 Todo |
 | [v2-iter-25](progress/v2-iter-25.md) | v0.2.25 | 2026-09-07 | 微信渠道全局会话闭环 |
 | [v2-iter-26](progress/v2-iter-26.md) | v0.2.26 | 2026-09-09 | 桌面自动更新体验收口 + 4 项 Obsidian 待办 + 项目变更面板 |
+| v2-iter-27 | 规划验证通过 | 2026-09-09 | 更新弹窗全屏阅读 + 扩展切换 + 双路径任务跟进 + Provider fallback |

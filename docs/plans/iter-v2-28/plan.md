@@ -63,9 +63,9 @@
 
 现状见 `editor-undo-selection-issue.md`：文本结果正确、仅观感；合成事件层复现不出来，唯二能画出非折叠选区的出口是 `FileAwareEditor.tsx:144` 与 `:253`。
 
-- [ ] #3.1：定位 `selectionRef` 在"字母/中文出现、数字不出现"这条分界下何时被记成非折叠区间。验证：能稳定复现或给出复现失败的明确结论。
-- [ ] #3.2：在粘贴/撤销边界的选区处理处修，不动共享解析器。Mini：`tsc` 三配置。
-- [ ] #3.3：老大真机复验样例（粘贴 `1234` → 改 `12你好34` → 撤销应无选中）。
+- [x] #3.1：定位 `selectionRef` 在"字母/中文出现、数字不出现"这条分界下何时被记成非折叠区间。**结论**：真实键盘事件在裸 contenteditable 上复现出撤销入口——`historyUndo` 的 `input` 事件触发时实时选区即为非折叠 `{2,4}`（逐字敲字母复现、逐字敲数字为折叠 `{2,2}`），系 Blink 按词分组撤销还原「受影响区间」；第二入口是组合期间的下划线区间经 `scheduleSelectionSync` 存进 `selectionRef`。两条入口都不经共享解析器，详见 `editor-undo-selection-issue.md`「结论（iter-28 实施）」。
+- [x] #3.2：在粘贴/撤销边界的选区处理处修，不动共享解析器。落地：新建 `file-aware-editor-undo-selection.ts`（`isHistoryInputType` + `collapseRestoredHistorySelection`，**仅撤销前为折叠光标时**收成区间起点，保留「选中→删除→撤销」的整段还原选中）；`syncSelection` 在 `isComposingRef` 为真时只记区间末端。Mini：`tsc` 三配置（web / node / root）全部零错误。
+- [ ] #3.3：老大真机复验样例（粘贴 `1234` → 改 `12你好34` → 撤销应无选中），并确认「选中一段 → 删除 → 撤销」仍保留整段还原选中。
 
 ⚠️ 本项验证依赖真实键入与输入法时序，agent 无法自主复验；若 #3.1 查不到根因，向老大报告而不是加兜底清除逻辑。
 

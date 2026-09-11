@@ -3,6 +3,7 @@ import { cn } from '@renderer/lib/utils'
 import { type FileAwareEditorHandle, type FileAwareEditorProps, renderDocument, isSameDocument, parseDomToDocument, getSelectionOffsets, setSelectionFromPoint, setSelectionOffsets, editorDocumentToPlainText } from './file-aware-editor-utils'
 import { EditorSelectionOffsets } from './file-aware-editor-utils'
 import { isImeTailAheadOfState } from './file-aware-editor-ime'
+import { collapseRestoredHistorySelection, isHistoryInputType } from './file-aware-editor-undo-selection'
 
 export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAwareEditorProps>(
   function FileAwareEditor(
@@ -74,9 +75,14 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       const root = editorRef.current
       if (!root) return selectionRef.current
       const selection = getSelectionOffsets(root, files, selectionRef.current)
-      selectionRef.current = selection
-      onSelectionChange?.(selection)
-      return selection
+      // 组合期间的实时选区是未上屏文本的下划线区间，不是用户选区。原样存下后，
+      // 结算引发的重渲染会把它回画到长度已经变化的文本上（观感＝撤销后莫名选中）。
+      // 只保留区间末端，即上屏后光标该在的位置。
+      selectionRef.current = isComposingRef.current
+        ? { start: selection.end, end: selection.end }
+        : selection
+      onSelectionChange?.(selectionRef.current)
+      return selectionRef.current
     }, [files, onSelectionChange])
 
     const scheduleSelectionSync = React.useCallback(() => {
@@ -280,6 +286,9 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
           nativeEvent.inputType === 'deleteCompositionText'
         pendingUserInputRef.current = true
         if (isCompositionInput) isComposingRef.current = true
+        if (isHistoryInputType(nativeEvent.inputType) && selectionRef.current.start === selectionRef.current.end) {
+          collapseRestoredHistorySelection(event.currentTarget)
+        }
         syncLiveContent()
         if (isComposingRef.current) return
         scheduleDocumentSync()

@@ -19,22 +19,31 @@
 
 ### 提交节奏
 
-**核心原则：小步提交，每一步都是可回滚的检查点。**
+**核心原则：一个需求一个提交，迭代收尾再统一一次修复调整提交。**
+
+即 **迭代提交数 = 需求数 + 1**。例：迭代 28 共 7 项需求（模型请求日志与统计面板、更新弹窗与悬浮窗、编辑器撤销选中态、R-1 补位模型、R-2 渠道设置全局化、R-3 工具可见性声明、R-4 使用指引与入口）→ 7 个需求提交 + 1 个收尾修复调整提交 = **8 个提交**。
+
+- 每个需求提交的是它的**第一版完整实现**：该需求所有步骤的代码 + 该需求的文档改动（plan 勾选、验证记录）一起进这一个提交。
+- **规划态、审查态、验证态本身不产生提交**。探索不提交；规划文档、审查报告、验证报告都并入所属需求的提交。
+- 审查和验证阶段发现的问题**不逐条提交**，全部攒到收尾那一次修复调整提交。
+- **测通即提交，由 agent 自判**：编译零错误 + 能启动 + 该需求核心流程跑得通 + 所有步骤 Mini 验证已过 → 直接 commit，**不逐需求停下等用户说 OK**。用户只在迭代收尾时裁定。
 
 ```
 探索态（只读，不提交）
     ↓
-规划态 → commit: "plan(迭代N): 规划文档 + 步骤清单"
+规划态（写文档，不提交）
     ↓
-执行态 → 每完成一个步骤 [✓] 立即 commit
-    ↓        ↘ 步骤失败 [✗] → git reset 回上一个 [✓] 的 commit
+需求 1 → 逐步实现 + 每步 Mini 验证 → 整体测通 → commit
+需求 2 → 同上 → commit
+  ...      ↘ 某步搞砸 → 工作区回退该步改动重来（需求内没有 commit 检查点）
+需求 N → commit
     ↓
-审查态 → commit: "review(迭代N): 审查修正"（如有改动）
+审查态 + 验证态 → 问题攒齐 → commit: "fix(迭代N): 审查与验证修复调整"
     ↓
-验证态 → PASS 打 tag: v0.{N}.0
-         合并 dev/iter-{N} → main
-         push main + tags
+用户确认 PASS → 打 tag → 合并 dev/iter-{N} → main → push main + tags
 ```
+
+> 一个需求的提交要能独立编译通过、能看出这个需求做了什么。提交简述按需求写（`feat(usage): 模型请求日志与统计面板`），不按步骤写。
 
 ### 提交规范
 
@@ -55,12 +64,12 @@
 
 ### 防误操作规则
 
-1. **执行态开始前**：确保工作区干净（`git status` 无未提交改动），否则先 stash 或 commit
-2. **每步执行前**：如果上一步的 commit 存在，当前就是安全点——搞砸了随时 `git reset --hard` 回来
-3. **大改动前**：先 commit 当前状态，打一个临时标记 `git tag wip-{描述}`，方便回滚
-4. **验证态失败**：`git reset --hard` 回到审查态提交，不要在失败的代码上继续打补丁
-5. **Plan 执行期间只 commit 不 push**：每个步骤 commit 后不 push，本地 commit 就是防误操作的检查点
-6. **Plan 完成后才 push**：一个 Plan 的所有步骤都完成并通过验证后，一次性 push 该 Plan 的所有 commit
+1. **需求开工前**：确保工作区干净（`git status` 无未提交改动）。上一需求已测通就先提交它，没测完就 `git stash` 存现场。
+2. **需求内没有 commit 检查点**——这是粗粒度提交换来的代价。安全点是"上一个需求的提交"，所以需求内每完成一步都要立刻做 Mini 验证，不要把未验证的改动一路攒下去。
+3. **风险大的需求允许内部临时多提交几刀**（大重构、跨层改动），但收尾进下一个需求前必须 `git reset --soft HEAD~K` 折叠回该需求的单个提交，别把中间提交留进历史。
+4. **验证态失败**：`git reset --hard` 回到上一个需求提交，不要在失败的代码上继续打补丁。
+5. **需求提交后不 push**：本地提交只防误操作。
+6. **Plan 完成后才 push**：该 Plan 覆盖的需求提交（正常就一两个）一次性 push。
 7. **push 失败不阻塞**：网络问题 push 失败时，记录待推送状态，继续后续工作，不为此停下来问用户
 8. **每天开工**：先 `git pull`，确保本地和远程同步
 
@@ -69,12 +78,12 @@
 **原则：Plan 内只 commit，Plan 完成才 push。**
 
 ```
-步骤完成 → commit（不 push）→ 下一步 → ... → Plan 所有步骤完成并通过验证 → git push
+需求测通 → commit（不 push）→ 下一个需求 → ... → Plan 覆盖的需求全部完成并通过验证 → git push
 ```
 
-- Plan 执行期间：每步 commit，不 push
+- Plan 执行期间：只在需求测通时 commit，不 push
 - Plan 完成并通过验证后：一次性 push 该 Plan 的所有 commit
-- 规划态/审查态提交文档：随当前 Plan 一起 push，不单独 push
+- 规划/审查/验证文档：并入所属需求的提交，随当前 Plan 一起 push，不单独提交不单独 push
 - 验证态合并 main 后：push main + tags
 - push 失败（网络超时、连接重置等）：记录"待推送"，继续干活，不阻塞、不提问
 - 会话结束前：检查是否有未推送的 commit，尝试一次性 push
@@ -88,12 +97,14 @@
 | 节点 | 必须停 | 原因 |
 |------|--------|------|
 | 规划验证通过后、执行前 | ✅ | 用户确认计划方向，避免白干 |
-| 验证态出结果后（PASS/FAIL/PARTIAL） | ✅ | 用户确认 Plan 是否达标，Agent 不得自行判定完成 |
+| 迭代收尾（合并 main） | ✅ | **用户唯一的裁定点**，且由他手动发起（"进行 xxx 迭代收尾"）。Agent 不得自行判定迭代完成，也不得提前催 |
 | 步骤反复失败（同一步骤 3 次未过） | ✅ | 超出自动修复能力，需要用户决策 |
-| 需要用户手动操作（如调整目录结构、填 API Key） | ✅ | AI 无法替代 |
+| 需要用户手动操作（如调整目录结构、填 API Key、真机装机、真实扫码） | ✅ | AI 无法替代 |
 
 **不需要停的情况：**
 - Plan 内步骤完成后是否继续下一步 → 自动继续
+- **需求测通后是否 commit** → 自动 commit，不逐需求等"OK"（测通标准见「提交节奏」）
+- **Plan 验证结论出来后是否继续下一个需求** → 照实报告 PASS/FAIL/PARTIAL 与证据，**不停等裁定**，继续迭代内剩余需求；最终裁定留到收尾
 - Plan 完成后是否 push → 自动 push
 - push 失败后是否继续 → 自动继续
 - 规划文档写完是否进入验证 → 自动进入验证
@@ -105,21 +116,21 @@
 **会话开始时（AI 助手的第一件事）：**
 
 1. `git status` — 检查工作区状态
-2. `git log --oneline -10` — 看最近提交，定位进度
-3. `git push` — 推送上次会话遗留的未推送 commit（如果有）
-4. 读 `docs/PROGRESS.md` — 确认当前迭代和步骤
-5. 读对应 plan.md — 确认从哪个步骤继续
-6. 报告进度摘要，然后继续执行
+2. `git stash list` — 上次会话可能把未完成的改动存在 stash 里（命名形如 `iter{N}-{需求名}-WIP`）。**不要裸 `git stash pop`**，多条 stash 时会弹错；按 list 里的消息找到对应序号，再 `git stash pop stash@{N}`
+3. `git log --oneline -10` — 看最近提交，定位进度
+4. `git push` — 推送上次会话遗留的未推送 commit（如果有）
+5. 读 `docs/PROGRESS.md` — 确认当前迭代和步骤
+6. 读对应 plan.md — 确认从哪个步骤继续
+7. 报告进度摘要，然后继续执行
 
 **会话即将结束时（上下文快满或用户要离开）：**
 
-1. 当前步骤如果做完 → commit
+1. 当前**需求**整体测通 → commit；只是某个步骤做完 → 不 commit
 2. 当前 Plan 如果完成 → push
-3. 当前步骤如果没做完 → `git stash` 保存现场（或 commit 为 WIP）
-4. 更新 `docs/PROGRESS.md` — 标记当前进度和下次继续的步骤
-5. `git add docs/PROGRESS.md && git commit -m "docs: 更新进度 - 下次从步骤N继续"`
-6. `git push` — 确保远程是最新
-7. 输出简要总结：完成了什么、下次从哪继续
+3. 更新 `docs/PROGRESS.md` — 标记当前进度和下次继续的步骤
+4. 需求没做完 → 把未提交改动连同 PROGRESS.md 一起存现场：`git stash push -u -m "iter{N}-{需求名}-WIP"`。**不要用 WIP 提交占位**，那等于回到碎片化提交
+5. 有已提交内容 → `git push` 确保远程是最新
+6. 输出简要总结：完成了什么、下次从哪继续、现场存在哪个 stash 里
 
 **不要在会话结束时问用户"要不要继续"**——直接按上面流程收工，把状态留在 Git 和 PROGRESS.md 里，下次会话自动恢复。
 
@@ -135,10 +146,10 @@ git reset --hard <commit-hash>
 # 只回退某个文件到指定版本
 git checkout <commit-hash> -- <file-path>
 
-# 不确定要不要丢？先 stash 保存现场
-git stash
-# 后悔了可以恢复
-git stash pop
+# 不确定要不要丢？先带名字存现场
+git stash push -u -m "{迭代}-{需求}-{描述}"
+# 后悔了按 list 里的序号恢复，不要裸 pop
+git stash pop stash@{N}
 ```
 
 ---
@@ -184,11 +195,9 @@ git stash pop
 # 新迭代：从 main 切开发分支
 git checkout main
 git checkout -b dev/iter-{N}
-
-# 提交规划文档
-git add docs/plans/plan_XXX/
-git commit -m "docs(plan): 迭代{N}规划文档 + 步骤清单"
 ```
+
+规划文档**不单独提交**，留在工作区，随本迭代第一个需求的提交一起入库（`git add` 时把 `docs/plans/...` 一并加上）。
 
 **plan.md 格式**：
 
@@ -227,13 +236,9 @@ git commit -m "docs(plan): 迭代{N}规划文档 + 步骤清单"
 
 **输出**：`docs/plans/plan_XXX/compliance_report.md`
 
-**Git 操作**：
-```bash
-git add docs/plans/plan_XXX/compliance_report.md
-git commit -m "docs(plan): 迭代{N}规划验证报告"
-```
+**Git 操作**：无。合规报告与规划文档一样留在工作区，随所属需求的提交一起入库，本阶段不 commit、不 push。
 
-**完成后**：更新 `docs/PROGRESS.md`，commit + push
+**完成后**：更新 `docs/PROGRESS.md`，改动同样并入需求提交，不单独提交。
 
 **阻断规则**：❌ 项 > 0 时禁止进入用户确认环节
 
@@ -244,7 +249,7 @@ git commit -m "docs(plan): 迭代{N}规划验证报告"
 ### 阶段四：执行态（循环执行）
 
 ```
-fs_read(plan.md) → 找到 [ ] 步骤 → 执行 → Mini 验证 → 标记 [✓] → commit → 重复
+fs_read(plan.md) → 找到 [ ] 步骤 → 执行 → Mini 验证 → 标记 [✓] → 下一个步骤 → ... → 整个需求测通 → commit
 ```
 
 **执行规则**：
@@ -252,8 +257,9 @@ fs_read(plan.md) → 找到 [ ] 步骤 → 执行 → Mini 验证 → 标记 [�
 - 执行完立即做 Mini 验证：
   - **TS 编译零错误**：`npx tsc --noEmit -p tsconfig.web.json` + `npx tsc --noEmit -p tsconfig.node.json`（两个配置都必须零错误，不允许留坑）
   - 能跑？符合预期？
-- 验证通过标记 [✓]，**立即 commit**
-- 验证失败标记 [✗]，记录原因，`git reset --hard` 回上一个 [✓] 的 commit，修复后重试
+- 验证通过标记 [✓]，**不 commit**，直接进下一个步骤
+- 验证失败标记 [✗]，记录原因，**只回退该步骤的工作区改动**（`git checkout -- <文件>` 或 `git stash`），修复后重试
+- **commit 时机只有一个**：本需求所有步骤均为 [✓]、整体测通（编译零错误 + 核心流程跑得通）之后
 - 从 OpenCowork / KodaClaw / OpenClaw.net 搬代码时，必须适配项目命名空间和分层约定
 - 新建文件必须符合 AGENTS.md 中的目录结构
 
@@ -264,22 +270,22 @@ fs_read(plan.md) → 找到 [ ] 步骤 → 执行 → Mini 验证 → 标记 [�
 
 示例：OpenCowork 某个文件里同时放了 Provider 配置模型 + Provider 服务逻辑 + Provider API 客户端 → 搬入时拆为 `ProviderConfig.cs`（模型）+ `ProviderService.cs`（逻辑）+ `ProviderApiClient.cs`（客户端），分别放入 Contracts 和 Core。
 
-**Git 操作（每步一个 commit）**：
+**Git 操作（一个需求一个 commit）**：
 ```bash
-# 执行前确认工作区干净
+# 需求开工前确认工作区干净
 git status
 
-# 执行步骤，Mini 验证通过后
-git add <涉及的文件>
-git commit -m "feat(scope): 步骤N - 简述"
+# 本需求全部步骤 [✓] 且整体测通后，一次提交
+git add <本需求涉及的全部文件 + 该需求的 plan/验证文档>
+git commit -m "feat(scope): {需求名} - {一句话说明}"
 
-# 如果搞砸了，回滚到上一步
-git reset --hard HEAD~1
+# 需求内某步搞砸：只丢该步的工作区改动，不要 reset --hard 回上一个需求
+git checkout -- <该步涉及的文件>
 ```
 
-**大步骤拆 commit**：如果一个步骤涉及多个文件且逻辑独立，拆成多个 commit，每个 commit 能独立编译通过。
+**大需求允许临时中间提交**：一个需求跨多个会话、或改动量大到怕丢时，可以在需求内部先 commit 几刀做保险，但在进下一个需求前用 `git reset --soft HEAD~K` + 重新 commit 折叠成该需求的单个提交。历史里留下的必须是一需求一刀。
 
-**每步 commit 后**：不 push，留在本地（Plan 完成后才统一 push）
+**需求 commit 后**：不 push，留在本地（Plan 完成后才统一 push）
 
 **终止检查**：所有步骤均为 [✓] / [✗]，0 个 [ ] 残留 → 自动进入审查态，不停下来问。
 
@@ -298,16 +304,7 @@ git reset --hard HEAD~1
 
 **输出**：`docs/plans/plan_XXX/review_report.md`
 
-**Git 操作**：
-```bash
-# 审查如有修正
-git add <修正的文件>
-git commit -m "review(迭代N): 审查修正 - 简述"
-
-# 提交审查报告
-git add docs/plans/plan_XXX/review_report.md
-git commit -m "docs(review): 迭代{N}审查报告"
-```
+**Git 操作**：无独立提交。审查产生的修正、以及 `review_report.md` 本身，全部攒进迭代收尾那一次 `"fix(迭代N): 审查与验证修复调整"` 提交。
 
 **阻断规则**：❌ 项 > 0 时禁止进入验证态
 
@@ -326,15 +323,15 @@ git commit -m "docs(review): 迭代{N}审查报告"
 
 **输出**：`docs/plans/plan_XXX/verification_report.md`
 
-**验证结果出来后**：停下来等用户确认。**Agent 不得自行判定 Plan 完成。**
+**验证结果出来后**：报告 PASS / FAIL / PARTIAL 与证据，**不停等用户裁定**，继续迭代内剩余需求。用户的裁定集中在迭代收尾（合并 main）那一次。
 
-**用户确认 PASS**：Plan 完成，push 该 Plan 的所有 commit
+**FAIL 的处理**：先自行修复并重新验证，修正攒进收尾的 `"fix(迭代N): 审查与验证修复调整"` 提交；只有失败到无法在其上继续时，才 `git reset --hard` 回上一个需求提交。
 
-**用户确认 FAIL**：`git reset --hard` 回到审查态提交，修复后重新验证
+**验证产物归属**：`verification_report.md` 与验证期间发现的修正，一并进收尾的 `"fix(迭代N): 审查与验证修复调整"` 提交；该提交是本迭代最后一刀。
 
-**用户确认 PARTIAL**：由用户决定保留哪些成果、是否继续补充
+**收尾时**：把本迭代各需求 / 各 Plan 的 VERDICT 汇总给用户，由他裁定是否收尾。**Agent 不得自行判定迭代完成，也不得提前催收尾。**
 
-**最终裁定**：`PASS` / `FAIL` / `PARTIAL`（由用户裁定，不是 agent 自行确认）
+**最终裁定**：`PASS` / `FAIL` / `PARTIAL`（在收尾时由用户裁定，不是 agent 自行确认；但结论的**给出**不需要等用户）
 
 ---
 
@@ -373,7 +370,7 @@ git commit -m "docs(review): 迭代{N}审查报告"
 - 前端代码注意去掉 OpenCowork 特有的频道、CodeGraph 等不需要的功能
 - 每个 plan 编号递增（plan_001, plan_002, ...）
 - 验证报告必须有实际证据，不能只写"应该没问题"
-- **commit 粒度宁小勿大**——每步一个 commit 是底线，不是上限
-- **不要攒一堆改动再提交**——攒得越多，回滚越难，一天白搞的风险越大
+- **commit 粒度按需求，不按步骤**——一个迭代的历史提交数应当是"需求数 + 1（收尾修复调整）"
+- **不要按步骤刷提交**——步骤只跑 Mini 验证，提交时机是整需求测通；需求内的中间提交必须在进下一个需求前 `git reset --soft` 折叠掉
 - **push 是最后的保险**——本地 commit 只防误操作，push 到远程才防丢数据
 - **C# 文件多为 CRLF 行尾**——批量替换用 Python 脚本处理，file 工具的 edit 容易因行尾不匹配失败

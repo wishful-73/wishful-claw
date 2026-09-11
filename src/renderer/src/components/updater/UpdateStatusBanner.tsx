@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { CheckCircle2, CircleAlert, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
-import type { RendererUpdateState } from '@shared/updater/types'
+import { useUIStore } from '@renderer/stores/ui-store'
+import type { RendererUpdateState, UpdatePhase } from '@shared/updater/types'
 import { createUpdateProgressFormatter } from './update-progress'
 
 interface UpdateStatusBannerProps {
@@ -11,6 +12,17 @@ interface UpdateStatusBannerProps {
   onShowDetails: () => void
   onInstall: () => Promise<void>
 }
+
+const VISIBLE_PHASES: readonly UpdatePhase[] = ['downloading', 'downloaded', 'error']
+
+export function isUpdateBannerVisible(phase: UpdatePhase): boolean {
+  return VISIBLE_PHASES.includes(phase)
+}
+
+// The banner shares the bottom-left corner with the toast stack, so the stack is lifted by this
+// amount while the banner is up (24 from the bottom edge + ~58 banner + 8 gap). Both of the
+// banner's text lines truncate, which is what keeps its height stable enough to hardcode.
+export const UPDATE_BANNER_TOAST_BOTTOM = 90
 
 /**
  * The details dialog is transient — it gets closed, the window gets hidden to the tray, the renderer
@@ -28,8 +40,10 @@ export function UpdateStatusBanner({
 }: UpdateStatusBannerProps): React.JSX.Element | null {
   const { t } = useTranslation('settings')
   const { phase } = state
+  const leftSidebarOpen = useUIStore((s) => s.leftSidebarOpen)
+  const leftSidebarWidth = useUIStore((s) => s.leftSidebarWidth)
 
-  // Both hooks run before the early return: a phase change must not change the hook order.
+  // All hooks run before the early return: a phase change must not change the hook order.
   const formatter = useMemo(
     () => createUpdateProgressFormatter(t('updater.progress.unknown', { defaultValue: '未知' })),
     [t]
@@ -48,16 +62,20 @@ export function UpdateStatusBanner({
           defaultValue: '{{bytes}} · 速度 {{speed}} · 已用 {{elapsed}}'
         })
 
-  if (phase !== 'downloading' && phase !== 'downloaded' && phase !== 'error') return null
+  if (!isUpdateBannerVisible(phase)) return null
 
   const isError = phase === 'error'
   const isDownloaded = phase === 'downloaded'
+  // leftSidebarWidth keeps its last value after the sidebar collapses, so the open flag has to be
+  // checked too — otherwise a collapsed sidebar leaves an empty band between it and the banner.
+  const bannerLeft = leftSidebarOpen ? leftSidebarWidth + 16 : 16
 
   return (
     <div
       role="status"
+      style={{ left: bannerLeft }}
       className={cn(
-        'fixed right-4 bottom-4 z-40 flex max-w-sm items-center gap-3 rounded-lg border px-4 py-3 shadow-lg',
+        'fixed bottom-6 z-40 flex max-w-sm items-center gap-3 rounded-lg border px-4 py-3 shadow-lg',
         isError
           ? 'border-destructive/40 bg-destructive/10'
           : 'border-border bg-background'

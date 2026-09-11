@@ -272,15 +272,22 @@ Worker
 
 ## Git 提交规范
 
-**核心原则：功能单元测试通过后才 commit，不要改一点就提交。**
+**核心原则：一个需求一个 commit，迭代收尾再统一一次修复调整 commit。**
 
-- **功能单元**：一组相关改动完成、用户测试通过后，产生一个 commit。中间反复修改、调试不产生 commit
+即 **一个迭代的历史提交数 = 需求数 + 1**。例：迭代 28 共 7 项需求 → 7 个需求提交 + 1 个 `fix(迭代28): 审查与验证修复调整` = 8 个提交。历史里不出现步骤级提交（本项目已累积 1300+ 提交，主因就是按步骤刷提交）。
+
+- **需求是提交单位**：一个需求所有步骤的代码，连同它的 plan 勾选与规划/审查/验证文档，一起进这一个 commit。中间反复修改、调试不产生 commit
+- **步骤不提交**：步骤只跑 Mini 验证并勾 [✓]，提交时机是本需求整体测通之后
+- **规划/审查/验证阶段不单独提交**：这些文档并入所属需求的 commit；审查与验证发现的问题全部攒进收尾那次修复调整 commit
 - **不要碎片化提交**：改一点就 commit 会导致 git history 噪音大、回滚时分不清哪版是好的
-- **多组改动可以攒在一起**：如果多组改动属于同一个功能单元，测试通过后一次提交
-- **提交前必须测试**：编译通过 + 能启动 + 核心流程能跑，用户确认 OK 后才 commit
-- **Plan 执行期间只 commit 不 push**：每个功能单元 commit 后不 push，本地 commit 就是防误操作的检查点
-- **Plan 完成后才 push**：一个 Plan 的所有功能单元都完成并通过验证后，一次性 push
+- **大需求可临时多提交几刀做保险，但进下一个需求前必须折叠**：`git reset --soft HEAD~K` 后重新提交成该需求的单个 commit。历史里留下的必须是一需求一刀
+- **提交前必须测通（由 agent 自判，不逐需求停下等老大 OK）**：编译零错误 + 能启动 + 该需求核心流程跑得通 + 各步骤 Mini 验证已过，即可 commit
+- **老大唯一的裁定点是迭代收尾**：即他手动说"进行 xxx 迭代收尾"、把分支合并 main 的那一刻。Plan 内的需求提交与验证结论不构成停等门，照实报告即可
+- **需求 commit 后不 push**：本地 commit 就是防误操作的检查点
+- **Plan 完成后才 push**：一个 Plan 覆盖的需求提交都完成并通过验证后，一次性 push
 - **Push 优先直连**：先尝试 `git push origin <branch>`，若连接超时或被拒再走代理：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
+
+> 各阶段的具体提交动作见 `docs/dev-workflow.md`「提交节奏 / 防误操作规则」，两份口径必须一致。
 
 ### 迭代开工
 
@@ -295,7 +302,7 @@ Worker
 
 ### 迭代完结收尾
 
-**迭代是否完结由用户确认，Agent 不得自行判定。**
+**迭代是否完结由用户确认，且由用户手动发起（原话口径："进行 xxx 迭代收尾"）。Agent 不得自行判定迭代完成，也不得提前催收尾。**
 
 **版本规则**：`v2-iter-{N}` 仅表示 MVP v2 阶段的迭代编号，不是产品主版本号。正式版发布前，产品版本统一为 `0.2.{N}`，Git tag 为 `v0.2.{N}`。每次迭代收尾必须先将 `package.json` 版本更新为 `0.2.{N}`；应用 UI 从 `package.json` 读取版本号，README 版本徽章同步更新。
 
@@ -343,14 +350,14 @@ git push origin --delete dev/v2-iter-{N}
 2. **创建 GitHub Release**：使用本地便携版 gh CLI（固定路径 `D:\claw\tools\gh\bin\gh.exe`，须保留勿删，登录凭据存于系统 keyring）：
 
    ```bash
-   # 用 git log 提取本迭代变更，按功能单元汇总成 notes 后：
+   # 用 git log 提取本迭代变更，按需求逐条汇总成 notes 后：
    /d/claw/tools/gh/bin/gh.exe release create v0.2.{N} \
      --repo wishful-73/wishful-claw --title "v0.2.{N}" --notes-file <notes文件>
    # 若直连失败，加代理前缀：
    # HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe release create v0.2.{N} \
    ```
 
-   - notes 按本迭代的功能单元汇总，用 `git log v0.2.{N-1}..v0.2.{N} --oneline` 提取
+   - notes 按本迭代的需求逐条汇总，用 `git log v0.2.{N-1}..v0.2.{N} --oneline` 提取（提交粒度已是一个需求一刀，该区间约等于"需求数 + 收尾修复调整"行，提交标题即可直接作 notes 条目）
    - gh 不在 PATH 中，必须用绝对路径调用；gh.exe 不可用时用浏览器登录 GitHub 手动创建（Releases → Draft a new release → 选择 tag → 填写 notes → Publish）
 3. **打包安装包并上传**（Windows NSIS 安装器，需上传完整 updater 资产到同一个 Release）：
 

@@ -80,6 +80,9 @@ export function UpdateDialog({
     elapsed: formatter.elapsed(state.elapsedMs),
     defaultValue: '{{bytes}} · 已用 {{elapsed}}'
   })
+  const fullscreenLabel = isFullscreen
+    ? t('updater.dialog.exitFullscreen', { defaultValue: '退出全屏阅读' })
+    : t('updater.dialog.fullscreen', { defaultValue: '全屏阅读' })
   const handleOpenChange = (nextOpen: boolean): void => {
     if (!nextOpen) setIsFullscreen(false)
     onOpenChange(nextOpen)
@@ -89,22 +92,12 @@ export function UpdateDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className={cn(
-          'sm:max-w-3xl sm:min-h-[32rem]',
-          isFullscreen && 'grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden'
+          'sm:max-w-5xl sm:min-h-[70vh]',
+          // Tailwind v4 compiles translate-x/y-* into the standalone `translate` property, so the
+          // base dialog's centering must be cancelled with classes rather than inline transform.
+          isFullscreen &&
+            'top-4 left-4 h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-none translate-x-0 translate-y-0 sm:max-w-none grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden'
         )}
-        style={
-          isFullscreen
-            ? {
-                width: 'calc(100vw - 2rem)',
-                maxWidth: 'none',
-                height: 'calc(100vh - 2rem)',
-                maxHeight: 'none',
-                top: '1rem',
-                left: '1rem',
-                transform: 'none'
-              }
-            : undefined
-        }
       >
         <DialogHeader className="flex-row items-start justify-between gap-4 pr-10">
           <div className="min-w-0">
@@ -124,22 +117,15 @@ export function UpdateDialog({
           </div>
           <Button
             type="button"
-            variant="ghost"
-            size="icon-sm"
+            variant="outline"
+            size="sm"
             aria-pressed={isFullscreen}
-            aria-label={
-              isFullscreen
-                ? t('updater.dialog.exitFullscreen', { defaultValue: '退出全屏阅读' })
-                : t('updater.dialog.fullscreen', { defaultValue: '全屏阅读' })
-            }
-            title={
-              isFullscreen
-                ? t('updater.dialog.exitFullscreen', { defaultValue: '退出全屏阅读' })
-                : t('updater.dialog.fullscreen', { defaultValue: '全屏阅读' })
-            }
+            aria-label={fullscreenLabel}
+            title={fullscreenLabel}
             onClick={() => setIsFullscreen((current) => !current)}
           >
             {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            {fullscreenLabel}
           </Button>
         </DialogHeader>
 

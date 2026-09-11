@@ -88,6 +88,9 @@
     },
     "extensions": {
       "label": "自定义扩展"
+    },
+    "logs": {
+      "label": "日志"
     }
   },
   "general": {
@@ -1447,5 +1450,47 @@
     "installed": "扩展已安装",
     "title": "自定义扩展",
     "subtitle": "安装和管理为 Agent 提供工具与组件的本地扩展。"
+  },
+  "logsPage": {
+    "level": {
+      "title": "日志等级",
+      "desc": "控制写入日志文件的最低等级；错误日志始终记录。保存后立即生效。",
+      "saved": "日志等级已保存",
+      "error": "仅错误",
+      "warn": "警告及以上",
+      "info": "信息及以上",
+      "debug": "全部（调试）",
+      "errorDesc": "默认值：只记录异常，日志文件保持最小。",
+      "warnDesc": "记录警告和错误，可用于排查模型重试等问题。",
+      "infoDesc": "记录常规运行信息，日志量中等。",
+      "debugDesc": "记录全部日志，仅排查问题时临时开启。"
+    },
+    "viewer": {
+      "title": "日志查看",
+      "refresh": "刷新列表",
+      "refreshFile": "刷新当前文件",
+      "empty": "点击左侧日志文件查看内容",
+      "noSelection": "未选择文件",
+      "listEmpty": "暂无日志文件",
+      "listError": "读取日志文件列表失败",
+      "readError": "日志文件不存在或读取失败",
+      "truncated": "文件过大，仅显示末尾 1 MB 内容",
+      "fileEmpty": "（文件为空）"
+    },
+    "cleanup": {
+      "days": "天数",
+      "unit": "天前",
+      "button": "清理 {{days}} 天前的日志",
+      "desc": "删除指定天数之前的每日日志文件：例如填 7 并点击清理，将删除 7 天前的日志，保留最近 7 天（含今天）。",
+      "confirmTitle": "清理 {{days}} 天前的日志？",
+      "confirmDesc": "将删除指定天数之前的每日日志文件，且无法恢复。",
+      "confirm": "删除",
+      "cancel": "取消",
+      "invalidDays": "请输入 {{min}}–{{max}} 之间的天数",
+      "success": "已清理 {{count}} 个日志文件",
+      "none": "没有需要清理的日志文件",
+      "previewCleared": "当前预览的日志文件已被删除",
+      "failed": "清理失败：{{error}}"
+    }
   }
 }

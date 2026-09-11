@@ -1,12 +1,11 @@
-import * as fs from 'fs'
+﻿import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
+import { resolveDataDir } from './data-dir'
 
-const DATA_DIRECTORY_NAME = '.wishful-claw'
 const AGENT_HISTORY_DIRECTORY_NAME = 'agent-history'
 
 function getDataDirectory(): string {
-  return path.join(os.homedir(), DATA_DIRECTORY_NAME)
+  return resolveDataDir()
 }
 
 function getAgentHistoryDirectory(): string {

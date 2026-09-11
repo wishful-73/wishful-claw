@@ -11,23 +11,21 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static class GoalFileTools
 {
-    private const string GoalDirectoryName = ".wishful-claw/goals";
-
     // ─── Path Helpers ───
 
     public static string GetGoalFilePath(string workingFolder, string goalId)
     {
-        return Path.Combine(workingFolder, GoalDirectoryName, $"{goalId}.md");
+        return Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "goals", $"{goalId}.md");
     }
 
     public static string GetGoalStateFilePath(string workingFolder, string goalId)
     {
-        return Path.Combine(workingFolder, GoalDirectoryName, $"{goalId}.state.json");
+        return Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "goals", $"{goalId}.state.json");
     }
 
     private static string EnsureGoalDirectory(string workingFolder)
     {
-        var dir = Path.Combine(workingFolder, GoalDirectoryName);
+        var dir = Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "goals");
         Directory.CreateDirectory(dir);
         return dir;
     }

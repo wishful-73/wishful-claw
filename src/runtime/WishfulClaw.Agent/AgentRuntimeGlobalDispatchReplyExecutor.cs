@@ -21,12 +21,33 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
         GlobalTaskDispatchStatusValues.Blocked
     };
 
+    // Serialize the read/check/write/delivery sequence so concurrent retries in
+    // this worker cannot both notify the source session.
+    private static readonly SemaphoreSlim ReplyGate = new(1, 1);
+
     public static bool IsGlobalDispatchReplyTool(string toolName)
     {
         return toolName == "reply_global_dispatch";
     }
 
     public static async Task<string> ExecuteAsync(
+        AgentRuntimeNativeToolCall call,
+        JsonElement parameters,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        await ReplyGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await ExecuteCoreAsync(call, parameters, context, cancellationToken);
+        }
+        finally
+        {
+            ReplyGate.Release();
+        }
+    }
+
+    private static async Task<string> ExecuteCoreAsync(
         AgentRuntimeNativeToolCall call,
         JsonElement parameters,
         IWorkerRequestContext context,
@@ -54,6 +75,10 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                 return EncodeError(getError ?? "Dispatch not found");
 
             var currentStatus = dispatch.GetProperty("status").GetString() ?? string.Empty;
+            var currentReport = dispatch.TryGetProperty("latest_report", out var latestReport)
+                && latestReport.ValueKind == JsonValueKind.String
+                ? latestReport.GetString()
+                : null;
             var callerSessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
             var targetSessionId = dispatch.GetProperty("session_id").GetString()?.Trim();
             if (string.IsNullOrEmpty(callerSessionId) ||
@@ -77,6 +102,14 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                     or GlobalTaskDispatchStatusValues.Sent
                     ? GlobalTaskDispatchStatusValues.Acknowledged
                     : currentStatus;
+            }
+
+            if (currentStatus == GlobalTaskDispatchStatusValues.Completed ||
+                (string.Equals(currentStatus, newStatus, StringComparison.Ordinal) &&
+                 string.Equals(currentReport, report, StringComparison.Ordinal)))
+            {
+                return EncodeSuccess(dispatchId, currentStatus, delivered: false,
+                    note: "Dispatch reply already recorded; source session was not woken again.");
             }
 
             var patch = WorkerJsonHelper.BuildJsonElement(w =>
@@ -158,10 +191,7 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                 deliveryNote = "Reply recorded; no global session to deliver to (dispatch has no source session).";
             }
 
-            var result = JsonSerializer.Serialize(
-                new GlobalDispatchReplyToolResult(true, dispatchId, newStatus, delivered, deliveryNote),
-                WorkerJsonHelper.GetTypeInfo<GlobalDispatchReplyToolResult>());
-            return result;
+            return EncodeSuccess(dispatchId, newStatus, delivered, deliveryNote);
         }
         catch (OperationCanceledException) { throw; }
         catch (InvalidOperationException ex)
@@ -250,6 +280,13 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
             throw new InvalidOperationException($"Required field '{name}' is empty");
 
         return value;
+    }
+
+    private static string EncodeSuccess(string dispatchId, string status, bool delivered, string? note)
+    {
+        return JsonSerializer.Serialize(
+            new GlobalDispatchReplyToolResult(true, dispatchId, status, delivered, note),
+            WorkerJsonHelper.GetTypeInfo<GlobalDispatchReplyToolResult>());
     }
 
     private static string EncodeError(string message)

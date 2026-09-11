@@ -1,4 +1,4 @@
-using System.Text.Encodings.Web;
+﻿using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using WishfulClaw.Contracts;
@@ -12,7 +12,6 @@ namespace WishfulClaw.Infrastructure.Storage;
 /// </summary>
 public static class ProviderStore
 {
-    private const string DataDirectoryName = ".wishful-claw";
     private const string ProviderDirectoryName = "ai-provider";
     private const string IndexFileName = "index.json";
     private const string ProviderFilePrefix = "provider-";
@@ -161,16 +160,7 @@ public static class ProviderStore
 
     public static string GetDataDirectory()
     {
-        var dataDirectory = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
-        if (!string.IsNullOrWhiteSpace(dataDirectory))
-        {
-            return Path.Combine(Path.GetFullPath(dataDirectory), ProviderDirectoryName);
-        }
-
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            DataDirectoryName,
-            ProviderDirectoryName);
+        return WishfulClawDataDir.Resolve(ProviderDirectoryName);
     }
 
     // ── Private helpers ──

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Channel / Plugin configuration panel.
  *
  * Layout (Reasonix-inspired):
@@ -110,7 +110,24 @@ function GlobalChannelSettings(): React.JSX.Element {
   const { personas, listPersonas } = usePersonaStore()
   const providerStore = useProviderStore()
   const settings = useSettingsStore()
+  const enabledProviders = providerStore.providers.filter((provider) => provider.enabled === true)
+  const selectedProvider = enabledProviders.find((provider) => provider.id === providerStore.activeProviderId) ?? enabledProviders[0] ?? null
+  const enabledChatModels = selectedProvider?.models.filter(
+    (model) => model.enabled && (!model.category || model.category === 'chat')
+  ) ?? []
+  const selectedModel = enabledChatModels.find((model) => model.id === providerStore.activeModelId) ?? null
   
+  useEffect(() => {
+    if (selectedProvider && providerStore.activeProviderId !== selectedProvider.id) {
+      providerStore.setActiveProvider(selectedProvider.id)
+    }
+    if (selectedModel && providerStore.activeModelId !== selectedModel.id) {
+      providerStore.setActiveModel(selectedModel.id)
+    } else if (!selectedModel && providerStore.activeModelId) {
+      providerStore.setActiveModel('')
+    }
+  }, [providerStore, selectedModel, selectedProvider])
+
   useEffect(() => {
     void listPersonas()
   }, [listPersonas])
@@ -179,37 +196,51 @@ function GlobalChannelSettings(): React.JSX.Element {
             </div>
             <div className="flex items-center gap-2">
               <Select
-                value={providerStore.activeProviderId || '__none__'}
+                value={selectedProvider?.id ?? '__none__'}
                 onValueChange={(val) => {
-                  if (val !== '__none__') void providerStore.setActiveProvider(val)
+                  if (val === '__none__') return
+                  providerStore.setActiveProvider(val)
+                  const provider = enabledProviders.find((item) => item.id === val)
+                  const firstModel = provider?.models.find(
+                    (model) => model.enabled && (!model.category || model.category === 'chat')
+                  )
+                  providerStore.setActiveModel(firstModel?.id ?? '')
                 }}
               >
                 <SelectTrigger className="w-[140px] h-8 text-sm">
                   <SelectValue placeholder={t('channel.global.provider', { defaultValue: 'Provider' })} />
                 </SelectTrigger>
                 <SelectContent>
-                  {providerStore.providers.map((p) => (
+                  {enabledProviders.length > 0 ? enabledProviders.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
                     </SelectItem>
-                  ))}
+                  )) : (
+                    <SelectItem value="__none__">
+                      {t('channel.global.noProvider', { defaultValue: '无可用服务商' })}
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
               <Select
-                value={providerStore.activeModelId || '__none__'}
+                value={selectedModel?.id ?? '__none__'}
                 onValueChange={(val) => {
-                  if (val !== '__none__') void providerStore.setActiveModel(val)
+                  if (val !== '__none__') providerStore.setActiveModel(val)
                 }}
               >
                 <SelectTrigger className="w-[180px] h-8 text-sm">
                   <SelectValue placeholder={t('channel.global.modelPlaceholder', { defaultValue: '选择模型' })} />
                 </SelectTrigger>
                 <SelectContent>
-                  {providerStore.getActiveProvider()?.models.map((m) => (
+                  {enabledChatModels.length > 0 ? enabledChatModels.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
                       {m.name || m.id}
                     </SelectItem>
-                  )) ?? []}
+                  )) : (
+                    <SelectItem value="__none__">
+                      {t('channel.global.noModel', { defaultValue: '无可用模型' })}
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>

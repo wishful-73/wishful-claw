@@ -125,7 +125,7 @@ public static class AgentRuntimeProjectExecutor
 
             if (!string.IsNullOrEmpty(project.WorkingFolder))
             {
-                var statusFilePath = Path.Combine(project.WorkingFolder, ".wishful-claw", "project-status.md");
+                var statusFilePath = Path.Combine(project.WorkingFolder, WishfulClawPaths.DataDirName, "project-status.md");
                 if (File.Exists(statusFilePath))
                 {
                     taskStatus = File.ReadAllText(statusFilePath);

@@ -95,6 +95,10 @@ internal static class AgentRunContextPolicy
 
     private static readonly HashSet<string> GlobalChatTools = new(SharedChatTools, StringComparer.OrdinalIgnoreCase)
     {
+        "TaskCreate",
+        "TaskGet",
+        "TaskList",
+        "TaskUpdate",
         "create_global_task",
         "create_session",
         "list_global_dispatches",

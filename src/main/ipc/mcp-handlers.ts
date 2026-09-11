@@ -1,14 +1,13 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
-import { homedir } from 'os'
+﻿import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
+import { resolveDataDir } from '../lib/data-dir'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { McpManager } from '../mcp/mcp-manager'
 import type { McpServerConfig } from '../mcp/mcp-types'
 
 // ── Config persistence (JSON file) ──
 
-const isolatedDataDirectory = process.env.WISHFULCLAW_DATA_DIR?.trim()
-const CONFIG_DIR = isolatedDataDirectory || join(homedir(), '.wishful-claw')
+const CONFIG_DIR = resolveDataDir()
 const CONFIG_FILE = join(CONFIG_DIR, 'mcp-servers.json')
 
 function readServers(): McpServerConfig[] {

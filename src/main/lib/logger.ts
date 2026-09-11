@@ -1,12 +1,22 @@
-// Logs go to ~/.wishful-claw/logs/; packaged builds persist errors only.
-import { app } from 'electron'
-import { join } from 'path'
-import * as os from 'os'
+﻿// Logs go to ~/.wishful-claw/logs/. The minimum level is driven by the
+// unified settings store (settings/general.json → state.logLevel); error
+// entries are the filtering floor and are always written.
+import { join, resolve as resolvePath, sep } from 'path'
+import { resolveDataPath } from './data-dir'
 import * as fs from 'fs'
+import {
+  DEFAULT_LOG_LEVEL,
+  isValidLogLevel,
+  normalizeLogLevel,
+  type LogCleanupResult,
+  type LogFileContent,
+  type LogFileInfo,
+  type LogLevel
+} from '../../shared/logging'
+
+export type { LogLevel, LogFileInfo, LogFileContent, LogCleanupResult }
 
 // ─── Types ───
-
-export type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
   error: 3,
@@ -16,18 +26,32 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 }
 
 /**
- * Minimum level that gets written to disk.
- * - Packaged (released) builds: error only, to keep log files small.
- * - Dev builds: everything (debug and up).
- * - Override via env WISHFUL_CLAW_LOG_LEVEL=error|warn|info|debug.
+ * Minimum level that gets written to disk. Initialized from the env override
+ * (dev escape hatch); the persisted settings value is applied at startup and
+ * on every settings write. Default: error (exceptions only).
  */
-function resolveMinLevel(): LogLevel {
-  const override = process.env['WISHFUL_CLAW_LOG_LEVEL'] as LogLevel | undefined
-  if (override && override in LEVEL_PRIORITY) return override
-  return app.isPackaged ? 'error' : 'debug'
+function resolveInitialMinLevel(): LogLevel {
+  const override = process.env['WISHFUL_CLAW_LOG_LEVEL']
+  if (isValidLogLevel(override)) return override
+  return DEFAULT_LOG_LEVEL
 }
 
-const MIN_LEVEL = resolveMinLevel()
+let minLevel: LogLevel = resolveInitialMinLevel()
+
+export function getLogMinLevel(): LogLevel {
+  return minLevel
+}
+
+/** True when WISHFUL_CLAW_LOG_LEVEL pins the level for this session. */
+export function hasEnvLogLevelOverride(): boolean {
+  return isValidLogLevel(process.env['WISHFUL_CLAW_LOG_LEVEL'])
+}
+
+/** Apply a new minimum level (invalid values fall back to the default). */
+export function setLogMinLevel(level: unknown): LogLevel {
+  minLevel = normalizeLogLevel(level)
+  return minLevel
+}
 
 export interface LogEntry {
   timestamp: string
@@ -44,10 +68,7 @@ let logDir: string = ''
 
 function getLogDir(): string {
   if (!logDir) {
-    const isolatedDataDirectory = process.env.WISHFULCLAW_DATA_DIR?.trim()
-    logDir = isolatedDataDirectory
-      ? join(isolatedDataDirectory, 'logs')
-      : join(os.homedir(), '.wishful-claw', 'logs')
+    logDir = resolveDataPath('logs')
   }
   return logDir
 }
@@ -89,7 +110,7 @@ function formatEntry(entry: LogEntry): string {
 }
 
 function writeLog(entry: LogEntry): void {
-  if (LEVEL_PRIORITY[entry.level] < LEVEL_PRIORITY[MIN_LEVEL]) return
+  if (LEVEL_PRIORITY[entry.level] < LEVEL_PRIORITY[minLevel]) return
   try {
     ensureLogDir()
     const text = formatEntry(entry)
@@ -223,4 +244,133 @@ export function readRecentLogs(maxLines = 500): string {
 
 export function getLogDirectory(): string {
   return getLogDir()
+}
+
+// ─── Log file management (settings → Logs page) ───
+
+/** Strict daily log file name: YYYY-MM-DD.log (calendar-valid dates only). */
+const LOG_FILE_NAME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})\.log$/
+
+/** Preview cap: larger files return only their tail, flagged as truncated. */
+const LOG_PREVIEW_MAX_BYTES = 1_048_576
+
+/** Cleanup bound: keep at most this many days of daily files. */
+const LOG_CLEANUP_MAX_DAYS = 3650
+
+function parseLogFileName(name: string): Date | null {
+  const match = LOG_FILE_NAME_PATTERN.exec(name)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(year, month - 1, day)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null
+  }
+  return date
+}
+
+/**
+ * Resolve a renderer-supplied file name to a path inside the log directory.
+ * Returns null for anything that is not a strict daily log file name.
+ */
+function resolveLogFilePath(name: string): string | null {
+  if (!LOG_FILE_NAME_PATTERN.test(name)) return null
+  const dir = resolvePath(getLogDir())
+  const full = resolvePath(dir, name)
+  if (!full.startsWith(dir + sep)) return null
+  return full
+}
+
+/** List daily log files, newest first. */
+export function listLogFiles(): LogFileInfo[] {
+  try {
+    const dir = getLogDir()
+    if (!fs.existsSync(dir)) return []
+    const files: LogFileInfo[] = []
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      if (!LOG_FILE_NAME_PATTERN.test(entry.name)) continue
+      try {
+        const stat = fs.statSync(join(dir, entry.name))
+        files.push({ name: entry.name, sizeBytes: stat.size, modifiedAt: stat.mtimeMs })
+      } catch {
+        // File vanished between readdir and stat — skip it
+      }
+    }
+    // Names are ISO dates, so lexicographic order is chronological.
+    files.sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0))
+    return files
+  } catch {
+    return []
+  }
+}
+
+/** Read one log file for preview. Returns null when missing or unreadable. */
+export function readLogFile(name: string): LogFileContent | null {
+  const filePath = resolveLogFilePath(name)
+  if (!filePath) return null
+  try {
+    const stat = fs.statSync(filePath)
+    if (!stat.isFile()) return null
+    if (stat.size <= LOG_PREVIEW_MAX_BYTES) {
+      return {
+        name,
+        sizeBytes: stat.size,
+        truncated: false,
+        content: fs.readFileSync(filePath, 'utf-8')
+      }
+    }
+    const handle = fs.openSync(filePath, 'r')
+    try {
+      const buffer = Buffer.alloc(LOG_PREVIEW_MAX_BYTES)
+      fs.readSync(handle, buffer, 0, LOG_PREVIEW_MAX_BYTES, stat.size - LOG_PREVIEW_MAX_BYTES)
+      let text = buffer.toString('utf-8')
+      // The tail likely starts mid-line; drop the partial first line.
+      const firstNewline = text.indexOf('\n')
+      if (firstNewline >= 0) text = text.slice(firstNewline + 1)
+      return { name, sizeBytes: stat.size, truncated: true, content: text }
+    } finally {
+      fs.closeSync(handle)
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Delete daily log files older than the kept window. `days` counts today as
+ * day 1 (days=7 keeps today plus the previous 6 days). Files that do not
+ * parse as strict daily log names are never touched.
+ */
+export function cleanupOldLogFiles(days: number): LogCleanupResult {
+  const keptDays = Math.max(1, Math.min(LOG_CLEANUP_MAX_DAYS, Math.floor(days)))
+  const cutoff = new Date()
+  cutoff.setHours(0, 0, 0, 0)
+  cutoff.setDate(cutoff.getDate() - (keptDays - 1))
+  const deletedNames: string[] = []
+  try {
+    const dir = getLogDir()
+    if (!fs.existsSync(dir)) return { deletedCount: 0, deletedNames: [] }
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const fileDate = parseLogFileName(entry.name)
+      if (!fileDate) continue
+      if (fileDate < cutoff) {
+        try {
+          fs.rmSync(join(dir, entry.name), { force: true })
+          deletedNames.push(entry.name)
+        } catch {
+          // Locked or in-use file — leave it, report the rest
+        }
+      }
+    }
+  } catch {
+    // Best effort — report whatever was deleted so far
+  }
+  return { deletedCount: deletedNames.length, deletedNames }
 }

@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -30,16 +31,7 @@ public static partial class DbClient
             return Path.GetFullPath(dbPathEl.GetString()!);
         }
 
-        var dataDirectory = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
-        if (!string.IsNullOrWhiteSpace(dataDirectory))
-        {
-            return Path.Combine(Path.GetFullPath(dataDirectory), "index.db");
-        }
-
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".wishful-claw",
-            "index.db");
+        return WishfulClawDataDir.Resolve("index.db");
     }
 
     /// <summary>

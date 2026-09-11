@@ -1,4 +1,4 @@
-namespace WishfulClaw.Persona;
+﻿namespace WishfulClaw.Persona;
 
 /// <summary>
 /// Layout constants for persona files.
@@ -8,9 +8,6 @@ public static class PersonaFileLayout
 {
     /// <summary>Root directory name inside ~/.wishful-claw/</summary>
     public const string PersonasDirectoryName = "personas";
-
-    /// <summary>Root directory name inside a project working folder.</summary>
-    public const string ProjectConfigDirectoryName = ".wishful-claw";
 
     /// <summary>Persona file names.</summary>
     public const string IdentityFile = "IDENTITY.md";

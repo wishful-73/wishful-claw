@@ -16,7 +16,6 @@ namespace WishfulClaw.Agent.Modules.Channels;
 
 public static class ChannelConfigStore
 {
-    private const string DataDirectoryName = ".wishful-claw";
     private const string ConfigFileName = "plugins.json";
     private static readonly object Sync = new();
     private static readonly JsonFileNodeCache<JsonArray> Cache = new();
@@ -181,16 +180,7 @@ public static class ChannelConfigStore
 
     private static string GetConfigPath()
     {
-        var dataDirectory = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
-        if (!string.IsNullOrWhiteSpace(dataDirectory))
-        {
-            return Path.Combine(Path.GetFullPath(dataDirectory), ConfigFileName);
-        }
-
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            DataDirectoryName,
-            ConfigFileName);
+        return WishfulClawDataDir.Resolve(ConfigFileName);
     }
 
     private static JsonNode? CloneElement(JsonElement element)

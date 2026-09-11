@@ -1,4 +1,6 @@
+﻿using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Persona;
 
@@ -9,7 +11,6 @@ namespace WishfulClaw.Persona;
 /// </summary>
 public sealed class PersonaStore
 {
-    private const string DataDirectoryName = ".wishful-claw";
 
     private static readonly Lazy<PersonaStore> _default = new(() => new PersonaStore());
     public static PersonaStore Default => _default.Value;
@@ -29,10 +30,8 @@ public sealed class PersonaStore
     public static string GetPersonasDirectory(string? workingFolder)
     {
         var root = string.IsNullOrWhiteSpace(workingFolder)
-            ? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                DataDirectoryName)
-            : workingFolder;
+            ? WishfulClawDataDir.Root
+            : Path.Combine(workingFolder, WishfulClawPaths.DataDirName);
 
         return Path.Combine(root, PersonaFileLayout.PersonasDirectoryName);
     }

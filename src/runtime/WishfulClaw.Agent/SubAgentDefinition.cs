@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -29,7 +30,6 @@ public sealed record SubAgentDefinition(
 /// </summary>
 internal static partial class SubAgentDefinitionLoader
 {
-    private const string AgentsDirectoryName = ".wishful-claw/agents";
     private const int DefaultMaxTurns = 12;
 
     /// <summary>
@@ -38,9 +38,7 @@ internal static partial class SubAgentDefinitionLoader
     public static List<SubAgentDefinition> LoadAll()
     {
         var result = new List<SubAgentDefinition>();
-        var root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            AgentsDirectoryName);
+        var root = WishfulClawDataDir.Resolve("agents");
 
         if (!Directory.Exists(root))
         {

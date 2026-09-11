@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using WishfulClaw.Contracts;
 
 // =============================================================================
 // CodeGraphDataDir — the per-project graph-DB location resolver (reference/04
@@ -52,7 +53,7 @@ internal static class CodeGraphDataDir
             home = Environment.GetEnvironmentVariable("HOME") ?? ".";
         }
 
-        return Path.Combine(home, ".wishful-claw", "codegraph");
+        return Path.Combine(home, WishfulClawPaths.DataDirName, "codegraph");
     }
 
     // The per-project data directory (…/codegraph/<hash>, or the registered

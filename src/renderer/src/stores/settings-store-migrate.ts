@@ -1,6 +1,10 @@
 import type { PermissionPolicy } from '../../../shared/permission-policy'
 import { sanitizePermissionPolicy } from '../../../shared/permission-policy'
 import {
+  DEFAULT_LOG_LEVEL,
+  normalizeLogLevel
+} from '../../../shared/logging'
+import {
   DEFAULT_APP_THEME_PRESET,
   DEFAULT_SSH_TERMINAL_THEME_PRESET,
   isAppThemePreset
@@ -106,6 +110,12 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
     state.requestMaxRetries = clampRequestMaxRetries(
       state.requestMaxRetries as number
     )
+  }
+  // v36: log level moved into the unified settings store (default: error only)
+  if (state.logLevel === undefined) {
+    state.logLevel = DEFAULT_LOG_LEVEL
+  } else {
+    state.logLevel = normalizeLogLevel(state.logLevel)
   }
   if (state.codegraphEnabled === undefined) {
     state.codegraphEnabled = false

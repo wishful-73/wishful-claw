@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Input draft persistence (input-draft:* channels).
  *
  * Drafts live in a single JSON map at ~/.wishful-claw/input-drafts.json
@@ -7,8 +7,8 @@
  * draft plus an updatedAt timestamp consumed by list/cleanup.
  */
 import * as fs from 'fs'
-import * as os from 'os'
-import { dirname, join } from 'path'
+import { dirname } from 'path'
+import { resolveDataPath } from '../lib/data-dir'
 import { registerMessagePackHandler } from './messagepack-handler'
 import type { InputDraftSetArgs, InputDraftValue } from '../../shared/input-draft-types'
 
@@ -23,9 +23,7 @@ const DRAFT_FILE_NAME = 'input-drafts.json'
 const CLEANUP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 function getDraftFilePath(): string {
-  const isolatedDataDirectory = process.env.WISHFULCLAW_DATA_DIR?.trim()
-  const dataDirectory = isolatedDataDirectory || join(os.homedir(), '.wishful-claw')
-  return join(dataDirectory, DRAFT_FILE_NAME)
+  return resolveDataPath(DRAFT_FILE_NAME)
 }
 
 function readDraftFile(): InputDraftFile {

@@ -421,7 +421,47 @@ public static partial class DbClient
                     completed_at INTEGER
                 );",
                 @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_task ON global_task_dispatches(global_task_id);",
-                @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_session ON global_task_dispatches(session_id);"
+                @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_session ON global_task_dispatches(session_id);",
+                // ── Request-level usage log (#1, iteration 28) ──
+                // One row per HTTP request attempt (success or failure). Written only
+                // by the AgentLoop main path via ProviderRetryPolicy.
+                @"CREATE TABLE IF NOT EXISTS request_usage_logs (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    session_id TEXT,
+                    runtime_role TEXT,
+                    scope TEXT,
+                    collaboration_mode TEXT,
+                    provider_id TEXT,
+                    provider_type TEXT,
+                    model_id TEXT,
+                    status TEXT NOT NULL DEFAULT 'success',
+                    error_kind TEXT,
+                    error_message TEXT,
+                    http_status_code INTEGER,
+                    attempt_index INTEGER NOT NULL DEFAULT 1,
+                    total_attempts INTEGER,
+                    input_tokens INTEGER NOT NULL DEFAULT 0,
+                    billable_input_tokens INTEGER NOT NULL DEFAULT 0,
+                    output_tokens INTEGER NOT NULL DEFAULT 0,
+                    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                    cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                    reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+                    input_cost REAL,
+                    output_cost REAL,
+                    cache_creation_cost REAL,
+                    cache_hit_cost REAL,
+                    total_cost_usd REAL,
+                    started_at INTEGER NOT NULL,
+                    completed_at INTEGER,
+                    duration_ms INTEGER NOT NULL DEFAULT 0,
+                    ttft_ms INTEGER,
+                    tps REAL,
+                    switched_from_provider_id TEXT
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_request_usage_started ON request_usage_logs(started_at DESC);",
+                @"CREATE INDEX IF NOT EXISTS ix_request_usage_model ON request_usage_logs(model_id);",
+                @"CREATE INDEX IF NOT EXISTS ix_request_usage_status ON request_usage_logs(status);",
+                @"CREATE INDEX IF NOT EXISTS ix_request_usage_session ON request_usage_logs(session_id);"
             };
 
             foreach (var sql in tableSqls)

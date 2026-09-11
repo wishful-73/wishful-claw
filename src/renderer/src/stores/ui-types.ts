@@ -94,6 +94,7 @@ export type SettingsTab =
   | 'persona'
   | 'about'
   | 'logs'
+  | 'usage'
   | 'permission'
   | 'channel'
   | 'plugin'
@@ -112,6 +113,7 @@ const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
   'persona',
   'about',
   'logs',
+  'usage',
   'permission',
   'channel',
   'plugin',

@@ -118,6 +118,21 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(SessionContextManifestRow))]
 [JsonSerializable(typeof(SessionContextManifestResult))]
 [JsonSerializable(typeof(SessionRestoreFailure))]
+// Request-level usage log queries (#1, iteration 28). A missing registration here
+// compiles cleanly and only fails at runtime when the endpoint serializes.
+[JsonSerializable(typeof(UsageOverviewResult))]
+[JsonSerializable(typeof(UsageBucketsResult))]
+[JsonSerializable(typeof(UsageBucketRow))]
+[JsonSerializable(typeof(List<UsageBucketRow>))]
+[JsonSerializable(typeof(UsageByModelResult))]
+[JsonSerializable(typeof(UsageModelRow))]
+[JsonSerializable(typeof(List<UsageModelRow>))]
+[JsonSerializable(typeof(UsageBySourceResult))]
+[JsonSerializable(typeof(UsageSourceRow))]
+[JsonSerializable(typeof(List<UsageSourceRow>))]
+[JsonSerializable(typeof(UsageLogsResult))]
+[JsonSerializable(typeof(UsageLogDetailRow))]
+[JsonSerializable(typeof(List<UsageLogDetailRow>))]
 public sealed partial class InfrastructureJsonContext : JsonSerializerContext
 {
 }

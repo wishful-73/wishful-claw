@@ -1,5 +1,5 @@
 ﻿import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText } from 'lucide-react'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
@@ -18,6 +18,7 @@ import { SshPanel } from '@renderer/components/settings/SshPanel'
 import { SkillPanel } from '@renderer/components/settings/skill-panel'
 import { McpPanel } from '@renderer/components/settings/mcp-panel'
 import { LogsPanel } from '@renderer/components/settings/LogsPanel'
+import { UsagePanel } from '@renderer/components/settings/UsagePanel'
 import { ShortcutsPanel } from '@renderer/components/settings/ShortcutsPanel'
 import { SectionAnchorNav, type SectionAnchor } from '@renderer/components/settings/section-anchor-nav'
 import { SettingsSection } from '@renderer/components/settings/settings-primitives'
@@ -76,7 +77,8 @@ function SettingsPage(): React.JSX.Element {
       items: [
         { id: 'provider', icon: <Server className="size-4" />, label: t('tabs.provider.label') },
         { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') },
-        { id: 'memory', icon: <Brain className="size-4" />, label: t('tabs.memory.label', { defaultValue: '记忆' }) }
+        { id: 'memory', icon: <Brain className="size-4" />, label: t('tabs.memory.label', { defaultValue: '记忆' }) },
+        { id: 'usage', icon: <BarChart3 className="size-4" />, label: t('tabs.usage.label', { defaultValue: '用量统计' }) }
       ]
     },
     {
@@ -236,6 +238,8 @@ function SettingsPage(): React.JSX.Element {
               </div>
             ) : settingsTab === 'logs' ? (
               <LogsPanel />
+            ) : settingsTab === 'usage' ? (
+              <UsagePanel />
             ) : (
               <div className="flex-1 overflow-y-auto">
                 <AboutPanel />

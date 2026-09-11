@@ -14,6 +14,8 @@ const validTabs = [
   'general',
   'persona',
   'about',
+  'logs',
+  'usage',
   'permission',
   'channel',
   'plugin',

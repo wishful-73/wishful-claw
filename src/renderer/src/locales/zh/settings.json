@@ -91,6 +91,10 @@
     },
     "logs": {
       "label": "日志"
+    },
+    "usage": {
+      "label": "用量统计",
+      "desc": "按模型请求记录统计请求次数、token 与成本"
     }
   },
   "general": {

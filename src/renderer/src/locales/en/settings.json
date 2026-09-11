@@ -90,6 +90,10 @@
     },
     "logs": {
       "label": "Logs"
+    },
+    "usage": {
+      "label": "Usage",
+      "desc": "Requests, tokens and cost from per-request logs"
     }
   },
   "general": {

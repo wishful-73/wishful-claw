@@ -56,6 +56,16 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-usage-stats", DbMessageCompactTools.UsageStats);
         context.Register("db/messages-search-content", DbMessageTools.SearchContent);
 
+        // ── Request Usage Log (#1, iteration 28) ──
+        // A NEW statistic built on the per-request log (one row per HTTP attempt),
+        // entirely separate from db/messages-usage-stats above. The turn-level
+        // session statistic is untouched and keeps its own endpoints.
+        context.Register("db/usage-overview", DbUsageLogQueryTools.Overview);
+        context.Register("db/usage-buckets", DbUsageLogQueryTools.Buckets);
+        context.Register("db/usage-by-model", DbUsageLogQueryTools.ByModel);
+        context.Register("db/usage-by-source", DbUsageLogQueryTools.BySource);
+        context.Register("db/usage-logs", DbUsageLogQueryTools.Logs);
+
         // ── Compaction Snapshots ──
         context.Register("db/compaction-snapshots-get", DbCompactionSnapshotTools.Get);
         context.Register("db/session-context-manifest", DbCompactionSnapshotTools.GetContextManifest);

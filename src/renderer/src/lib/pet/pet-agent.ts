@@ -9,10 +9,9 @@ import { nanoid } from 'nanoid'
 import { runAgentViaSidecar } from '@renderer/lib/agent/run-agent-via-sidecar'
 import { buildSidecarAgentRunRequest } from '@renderer/lib/ipc/sidecar-protocol'
 import { buildSystemPrompt } from '@renderer/lib/agent/system-prompt'
-import { recordUsageEvent } from '@renderer/lib/usage-analytics'
+import { ensureProviderAuthReady } from '@renderer/lib/auth/provider-auth'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
-import { ensureProviderAuthReady } from '@renderer/lib/auth/provider-auth'
 import type {
   ContentBlock,
   TextBlock,
@@ -219,14 +218,9 @@ export async function runPetChat(args: PetChatArgs): Promise<string> {
         args.onToolUse?.(event.toolUseBlock.name)
         break
       case 'message_end':
-        void recordUsageEvent({
-          sourceKind: 'pet-chat',
-          providerId: args.providerId,
-          modelId: args.modelId,
-          usage: event.usage,
-          timing: event.timing,
-          providerResponseId: event.providerResponseId
-        })
+        // Usage is no longer recorded from the renderer. The per-request usage
+        // log is written worker-side (ProviderRetryPolicy), which covers the
+        // agent loop only; pet chat is outside that scope.
         break
       case 'error':
         throw new Error(event.error.message)

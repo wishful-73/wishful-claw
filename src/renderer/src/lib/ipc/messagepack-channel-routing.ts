@@ -3,6 +3,7 @@
 const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'app:homedir',
   'app:global-memory-home',
+  'app:is-development',
   'app:system-info',
   'window:minimize',
   'window:maximize',
@@ -393,6 +394,7 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'ssh:connect:log',
   'ssh:config:changed',
   'cron:fire',
+  'session-follow-up:fire',
   'plugin:incoming-message',
   'plugin:session-task',
   'plugin:session-cancel',

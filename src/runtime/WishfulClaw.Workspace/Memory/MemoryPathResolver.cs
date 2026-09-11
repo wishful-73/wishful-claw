@@ -1,4 +1,7 @@
-﻿namespace WishfulClaw.Workspace.Memory;
+﻿using WishfulClaw.Contracts;
+using WishfulClaw.Infrastructure.Storage;
+
+namespace WishfulClaw.Workspace.Memory;
 
 /// <summary>
 /// Resolves file paths for memory storage based on scope.
@@ -11,10 +14,7 @@ public static class MemoryPathResolver
     /// <summary>
     /// Global memory root: ~/.wishful-claw/
     /// </summary>
-    public static string GlobalRoot =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".wishful-claw");
+    public static string GlobalRoot => WishfulClawDataDir.Root;
 
     /// <summary>
     /// Resolve the memory root path for a given scope.
@@ -62,7 +62,7 @@ public static class MemoryPathResolver
             {
                 throw new ArgumentException($"Invalid local project scope: {scope}", nameof(scope));
             }
-            return Path.Combine(Path.GetFullPath(workingFolder), ".wishful-claw");
+            return Path.Combine(Path.GetFullPath(workingFolder), WishfulClawPaths.DataDirName);
         }
 
         return GlobalRoot;

@@ -1,0 +1,21 @@
+# v2-iter-16：左侧面板整理 + use_capability 工具发现增强
+
+- 状态：已完成，待合并 main
+- 分支：dev/v2-iter-16
+- VERDICT: PASS（编译验证 + 用户人工验证）
+- 产品版本: 0.2.16
+- Tag: v0.2.16
+- Commit: 255e310
+- 日期: 2026-08-19
+- 备注：
+  - **左侧面板搜索** — 搜索输入框 + DB LIKE 消息内容搜索（200ms 防抖）+ 会话标题/项目名称内存过滤 + 搜索结果展示组件
+  - **搜索弹窗模式** — cmdk CommandDialog 弹窗模式，默认展示快捷操作 + 最近会话，固定高度 520px + flex 布局
+  - **扩展功能重组** — 清空旧扩展项，新增绘图/自动化/任务面板占位，放入扩展下拉菜单
+  - **主窗口注册修复** — 新建 main-window-registry.ts，reverse-request 不再用 BrowserWindow.getAllWindows()[0]（辅助窗口会抢占 index 0），改为显式注册的 mainWindow
+  - **use_capability 工具发现增强** — list action 支持分页（cursor/page_size）、类型过滤（type/category）、模糊搜索（query）；提取 AgentRuntimeUseCapabilityDiscovery.cs partial class；ToolRegistry 新增 IsAvailableInMode 方法
+  - **工具输出截限改为 UTF-8 字节级** — 从 MaxToolOutputChars=16K chars 改为 MaxToolOutputBytes=32K bytes，Rune 边界安全切片；use_capability list/inspect 免截断
+  - **DB 搜索端点** — db/messages-search-content IPC 端点 + MessageSearchResultRow entity + InfrastructureJsonContext 注册
+  - **剪贴板置顶功能** — 置顶项 + 过期按修改时间判断 + Pin 图标 + 操作按钮统一 hover 显示
+  - **BOM 回归修复** — 28 个文件被重新加了 UTF-8 BOM（v2-iter-15 修过的 recurring error），批量去除
+  - **回归测试适配** — use_capability 工具发现 + 搜索端点
+  - 验证：TypeScript 3/3 PASS；C# build 0 错误

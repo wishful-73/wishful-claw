@@ -1,4 +1,4 @@
-import { IPC } from '@renderer/lib/ipc/channels'
+﻿import { IPC } from '@renderer/lib/ipc/channels'
 import type { IPCClient } from '@renderer/lib/tools/tool-types'
 import { GlobalMemorySnapshot, LayeredMemorySnapshot, SessionMemoryScope, joinFsPath, layeredMemoryListeners, loadDailyMemoryEntries, loadOptionalMemoryFile, loadProjectDailyMemoryEntries, normalizeWatchPath, resolveProjectMemoryTextFile, snapshotsEqual, toOptionalEntry, _memState } from './memory-files'
 
@@ -47,18 +47,6 @@ async function invokeStringIpc(ipc: IPCClient, channel: string): Promise<string 
   }
 }
 
-function getRendererEnvHomeDir(): string | undefined {
-  if (typeof window === 'undefined') return undefined
-
-  const env = window.electron?.process?.env
-  const homeDir = env?.HOME || env?.USERPROFILE
-  if (homeDir?.trim()) return homeDir.trim()
-
-  const homeDrive = env?.HOMEDRIVE?.trim()
-  const homePath = env?.HOMEPATH?.trim()
-  return homeDrive && homePath ? `${homeDrive}${homePath}` : undefined
-}
-
 export async function resolveGlobalMemoryHomePath(ipc: IPCClient): Promise<string | undefined> {
   if (_memState.cachedGlobalHomePath) {
     return _memState.cachedGlobalHomePath
@@ -67,13 +55,6 @@ export async function resolveGlobalMemoryHomePath(ipc: IPCClient): Promise<strin
   const globalMemoryHomePath = await invokeStringIpc(ipc, IPC.APP_GLOBAL_MEMORY_HOME)
   if (globalMemoryHomePath) {
     _memState.cachedGlobalHomePath = globalMemoryHomePath
-    return _memState.cachedGlobalHomePath
-  }
-
-  const homeDirResult = await invokeStringIpc(ipc, IPC.APP_HOMEDIR)
-  const homeDir = homeDirResult ?? getRendererEnvHomeDir()
-  if (homeDir) {
-    _memState.cachedGlobalHomePath = joinFsPath(homeDir, '.wishful-claw')
     return _memState.cachedGlobalHomePath
   }
 

@@ -13,6 +13,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Agent;
 using WishfulClaw.Infrastructure.Http;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent.Modules.Video;
 
@@ -139,9 +140,7 @@ public static class XaiVideoTools
         var mediaType = response.Content.Headers.ContentType?.MediaType ?? "video/mp4";
         var extension = mediaType.Contains("webm", StringComparison.OrdinalIgnoreCase) ? ".webm" : ".mp4";
 
-        var videoDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".wishful-claw", "video");
+        var videoDir = WishfulClawDataDir.Resolve("video");
         Directory.CreateDirectory(videoDir);
         var filePath = Path.Combine(videoDir, $"{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Guid.NewGuid():N}{extension}");
 

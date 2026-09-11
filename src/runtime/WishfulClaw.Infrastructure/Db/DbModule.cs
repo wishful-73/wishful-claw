@@ -93,6 +93,17 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/tasks-delete", DbTaskTools.Delete);
         context.Register("db/tasks-delete-by-session", DbTaskTools.DeleteBySession);
 
+        // ── Session Follow-ups (temporary Todo countdowns, separate from global tasks) ──
+        context.Register("db/session-follow-ups-list-schedulable", DbSessionFollowUpTools.ListSchedulable);
+        context.Register("db/session-follow-ups-get", DbSessionFollowUpTools.Get);
+        context.Register("db/session-follow-ups-create", DbSessionFollowUpTools.Create);
+        context.Register("db/session-follow-ups-claim", DbSessionFollowUpTools.Claim);
+        context.Register("db/session-follow-ups-reschedule", DbSessionFollowUpTools.Reschedule);
+        context.Register("db/session-follow-ups-complete", DbSessionFollowUpTools.Complete);
+        context.Register("db/session-follow-ups-fail", DbSessionFollowUpTools.Fail);
+        context.Register("db/session-follow-ups-cancel", DbSessionFollowUpTools.Cancel);
+        context.Register("db/session-follow-ups-mark-notified", DbSessionFollowUpTools.MarkNotified);
+
         // ── Global Tasks (global agent work items, archive-not-delete) ──
         context.Register("db/global-tasks-list", DbGlobalTaskTools.List);
         context.Register("db/global-tasks-get", DbGlobalTaskTools.Get);

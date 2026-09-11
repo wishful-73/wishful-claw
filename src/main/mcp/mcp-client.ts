@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -6,8 +6,8 @@
  */
 
 import { mkdirSync } from 'fs'
-import { homedir } from 'os'
-import { basename, join } from 'path'
+import { basename } from 'path'
+import { resolveDataPath } from '../lib/data-dir'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
@@ -28,7 +28,7 @@ function isNpmCommand(command: string): boolean {
 }
 
 function defaultNpmCacheDir(): string {
-  return join(homedir(), '.wishful-claw', 'npm-cache')
+  return resolveDataPath('npm-cache')
 }
 
 function buildStdioEnv(

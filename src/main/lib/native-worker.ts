@@ -9,6 +9,7 @@ import { app } from 'electron'
 import { logError, logWarn } from './logger'
 import { readPersistedSettings, SETTINGS_STORAGE_KEY } from './settings-store'
 import { resolveCodeGraphGrammarsDir } from './codegraph-assets'
+import { resolveDataDir } from './data-dir'
 
 const DEFAULT_TIMEOUT_MS = 60_000
 const CONNECT_TIMEOUT_MS = 10_000
@@ -171,7 +172,13 @@ class NativeWorkerManager {
     console.log('[Worker] spawning', { workerPath, endpoint })
 
     // Read defaultShell from persisted settings and inject as env var
-    let workerEnv = { ...process.env }
+    const resolvedDataDir = resolveDataDir()
+    const workerEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      WISHFULCLAW_DATA_DIR: resolvedDataDir,
+      CODEGRAPH_HOME: path.join(resolvedDataDir, 'codegraph')
+    }
+    console.log('[Worker] data directory', resolvedDataDir)
     // Propagate the main process's log level so the Worker matches dev/prod
     // verbosity (main: debug in dev, error when packaged; Worker default: warn).
     if (!workerEnv.WISHFUL_CLAW_LOG_LEVEL) {

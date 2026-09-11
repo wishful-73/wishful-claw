@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
 
@@ -22,7 +23,7 @@ public static partial class AgentRuntimePlanExecutor
 {
     private static string GetPlanFilePath(string workingFolder, string planId)
     {
-        return Path.Combine(workingFolder, PlanDirectoryName, $"{planId}.md");
+        return Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "plans", $"{planId}.md");
     }
 
     private static string GetStateFilePath(string planFilePath)

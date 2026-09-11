@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -30,16 +31,7 @@ public static partial class DbClient
             return Path.GetFullPath(dbPathEl.GetString()!);
         }
 
-        var dataDirectory = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
-        if (!string.IsNullOrWhiteSpace(dataDirectory))
-        {
-            return Path.Combine(Path.GetFullPath(dataDirectory), "index.db");
-        }
-
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".wishful-claw",
-            "index.db");
+        return WishfulClawDataDir.Resolve("index.db");
     }
 
     /// <summary>
@@ -371,6 +363,34 @@ public static partial class DbClient
                 );",
                 @"CREATE INDEX IF NOT EXISTS ix_tasks_session ON tasks(session_id);",
                 @"CREATE INDEX IF NOT EXISTS ix_tasks_plan ON tasks(plan_id);",
+                @"CREATE TABLE IF NOT EXISTS session_follow_ups (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    todo_id TEXT NOT NULL,
+                    source_session_id TEXT NOT NULL,
+                    target_session_id TEXT NOT NULL,
+                    follow_up_at INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'waiting',
+                    query_instruction TEXT NOT NULL DEFAULT '',
+                    last_query_result TEXT,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    claim_token TEXT,
+                    claimed_at INTEGER,
+                    plugin_id TEXT,
+                    plugin_type TEXT,
+                    plugin_chat_id TEXT,
+                    notification_key TEXT NOT NULL,
+                    desktop_notified_at INTEGER,
+                    channel_notified_at INTEGER,
+                    completed_at INTEGER,
+                    cancelled_at INTEGER,
+                    last_error TEXT,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                );",
+                @"CREATE UNIQUE INDEX IF NOT EXISTS ux_session_follow_ups_notification ON session_follow_ups(notification_key);",
+                @"CREATE INDEX IF NOT EXISTS ix_session_follow_ups_source ON session_follow_ups(source_session_id, created_at DESC);",
+                @"CREATE INDEX IF NOT EXISTS ix_session_follow_ups_schedule ON session_follow_ups(status, follow_up_at);",
+                @"CREATE INDEX IF NOT EXISTS ix_session_follow_ups_todo ON session_follow_ups(todo_id);",
                 @"CREATE TABLE IF NOT EXISTS global_tasks (
                     id TEXT PRIMARY KEY NOT NULL,
                     title TEXT NOT NULL,

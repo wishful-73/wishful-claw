@@ -1,4 +1,5 @@
 using System.Text;
+using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Agent;
@@ -20,13 +21,11 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static class GoalPlanTracker
 {
-    private const string GoalDirectoryName = ".wishful-claw/goals";
-
     // ─── Path Helpers ───
 
     public static string GetPlanDir(string workingFolder, string goalId)
     {
-        return Path.Combine(workingFolder, GoalDirectoryName, goalId, "plans");
+        return Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "goals", goalId, "plans");
     }
 
     public static string GetPlanFilePath(string workingFolder, string goalId, string planId)

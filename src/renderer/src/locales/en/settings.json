@@ -87,6 +87,9 @@
     },
     "channel": {
       "label": "Channels"
+    },
+    "logs": {
+      "label": "Logs"
     }
   },
   "general": {
@@ -1187,7 +1190,9 @@
       "retry": "Retry",
       "retryInstall": "Retry install",
       "checkAgain": "Check again",
-      "openRelease": "Open release page"
+      "openRelease": "Open release page",
+      "fullscreen": "Read fullscreen",
+      "exitFullscreen": "Exit fullscreen"
     },
     "banner": {
       "downloading": "Downloading update in the background…",
@@ -1396,6 +1401,48 @@
       "allowWriteOutsideDesc": "Allow writing files outside the working directory",
       "allowSubAgents": "Sub-Agents",
       "allowSubAgentsDesc": "Allow using sub-agent tools"
+    }
+  },
+  "logsPage": {
+    "level": {
+      "title": "Log level",
+      "desc": "Minimum level written to log files; errors are always recorded. Applies immediately after saving.",
+      "saved": "Log level saved",
+      "error": "Errors only",
+      "warn": "Warnings and up",
+      "info": "Info and up",
+      "debug": "Everything (debug)",
+      "errorDesc": "Default: record exceptions only, keeping log files small.",
+      "warnDesc": "Record warnings and errors; useful for diagnosing model retries.",
+      "infoDesc": "Record routine runtime info; moderate log volume.",
+      "debugDesc": "Record everything; enable temporarily for diagnosis."
+    },
+    "viewer": {
+      "title": "Log viewer",
+      "refresh": "Refresh list",
+      "refreshFile": "Refresh current file",
+      "empty": "Click a log file on the left to preview it",
+      "noSelection": "No file selected",
+      "listEmpty": "No log files yet",
+      "listError": "Failed to list log files",
+      "readError": "Log file missing or failed to read",
+      "truncated": "File is large; showing only the last 1 MB",
+      "fileEmpty": "(file is empty)"
+    },
+    "cleanup": {
+      "days": "Days",
+      "unit": "days ago",
+      "button": "Delete logs older than {{days}} days",
+      "desc": "Deletes daily log files older than the given number of days. Enter 7 to delete logs from 7 days ago, keeping the last 7 days (including today).",
+      "confirmTitle": "Delete logs older than {{days}} days?",
+      "confirmDesc": "Daily log files older than the given days will be deleted permanently.",
+      "confirm": "Delete",
+      "cancel": "Cancel",
+      "invalidDays": "Enter a number of days between {{min}} and {{max}}",
+      "success": "Deleted {{count}} log file(s)",
+      "none": "No log files to delete",
+      "previewCleared": "The previewed log file has been deleted",
+      "failed": "Cleanup failed: {{error}}"
     }
   }
 }

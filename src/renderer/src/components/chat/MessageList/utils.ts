@@ -1,4 +1,4 @@
-﻿// Pure utility functions and types extracted from MessageList.tsx
+// Pure utility functions and types extracted from MessageList.tsx
 
 import type { ContentBlock, ToolResultContent, UnifiedMessage } from '@renderer/lib/api/types'
 import type { TailToolExecutionState } from '../transcript-utils'
@@ -399,14 +399,24 @@ export function isActiveTeamRunning(team: ActiveTeam): boolean {
   )
 }
 
-// Cache: ChatMessage[] reference → UnifiedMessage[] conversion result
-// This prevents infinite re-render loops by returning the same array reference
-// when the source messages array hasn't changed.
-export const chatMessageConversionCache = new WeakMap<readonly unknown[], UnifiedMessage[]>()
+// Cache: ChatMessage[] reference → content signature and conversion result.
+// Store updates may mutate message objects in place, so the signature must be
+// checked before reusing the stable converted array reference.
+type ChatMessageConversionCacheEntry = {
+  signature: string
+  converted: UnifiedMessage[]
+}
+
+export const chatMessageConversionCache = new WeakMap<readonly unknown[], ChatMessageConversionCacheEntry>()
+
+function getChatMessageConversionSignature(messages: readonly unknown[]): string {
+  return JSON.stringify(messages) ?? ''
+}
 
 export function convertChatMessagesToUnified(messages: readonly unknown[]): UnifiedMessage[] {
+  const signature = getChatMessageConversionSignature(messages)
   const cached = chatMessageConversionCache.get(messages)
-  if (cached) return cached
+  if (cached?.signature === signature) return cached.converted
 
   const converted = messages.map((raw) => {
     const msg = raw as Record<string, unknown>
@@ -436,16 +446,34 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
     const recallFingerprint = msg.memoryRecall
       ? 1 + ((msg.memoryRecall as { hits?: string[] }).hits?.length ?? 0)
       : 0
-    result._revision = (text.length) + (thinking?.length ?? 0) + (toolCalls?.length ?? 0) + recallFingerprint
-    if (msg.error) {
-      // Represent errors as an agent_error block
-      result.content = [{ type: 'agent_error', code: 'runtime_error', message: msg.error as string }]
+    const errorText = typeof msg.error === 'string' ? msg.error : ''
+    result._revision = (text.length) + (thinking?.length ?? 0) + (toolCalls?.length ?? 0) + recallFingerprint + errorText.length
+    if (errorText) {
+      const errorBlock: ContentBlock = {
+        type: 'agent_error',
+        code: 'runtime_error',
+        message: errorText
+      }
+      if (Array.isArray(result.content)) {
+        const existingErrorIndex = result.content.findIndex((block) => block.type === 'agent_error')
+        if (existingErrorIndex >= 0) {
+          result.content = result.content.map((block, index) =>
+            index === existingErrorIndex ? errorBlock : block
+          )
+        } else {
+          result.content = [...result.content, errorBlock]
+        }
+      } else if (result.content) {
+        result.content = [{ type: 'text', text: result.content }, errorBlock]
+      } else {
+        result.content = [errorBlock]
+      }
     }
 
     return result
   })
 
-  chatMessageConversionCache.set(messages, converted)
+  chatMessageConversionCache.set(messages, { signature, converted })
   return converted
 }
 

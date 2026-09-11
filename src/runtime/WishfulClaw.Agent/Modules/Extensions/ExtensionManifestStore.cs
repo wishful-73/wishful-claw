@@ -20,7 +20,6 @@ namespace WishfulClaw.Agent.Modules.Extensions;
 /// </summary>
 public static partial class ExtensionManifestStore
 {
-    private const string DataDirectoryName = ".wishful-claw";
     private const string ExtensionsDirectoryName = "extensions";
     private const string ExtensionsStateFileName = "extensions.json";
     private const string ExtensionsStorageFileName = "extensions-storage.json";

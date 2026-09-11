@@ -14,6 +14,7 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { CODEGRAPH_PLUGIN_ID } from '@renderer/lib/app-plugin/types'
+import { WISHFUL_CLAW_DATA_DIR_NAME } from '@shared/data-dir'
 
 // CodeGraphProjectIndexSection — the project-archive "code graph" block. Per-project
 // index surface: enabled-gating (greyed + go-enable CTA when the CodeGraph plugin is
@@ -53,7 +54,6 @@ function formatDbSize(bytes: number): string {
 
 export function CodeGraphProjectIndexSection(): React.JSX.Element {
   const { t } = useTranslation('chat')
-  const activeProjectId = useChatStore((s) => s.activeProjectId)
   const activeProject = useChatStore(
     (s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null
   )
@@ -80,13 +80,10 @@ export function CodeGraphProjectIndexSection(): React.JSX.Element {
       )?.enabled
     )
   const workingFolder = activeProject?.workingFolder ?? undefined
-  // SSH projects cannot write .wishful-claw/ on the remote root; mirror the memory
-  // strategy (ProjectArchivePage memoryRoot) and keep the graph DB under the
-  // app-home project dir instead. SSH is keyed off sshConnectionId — a remote
-  // workingFolder may still be set, so it must not gate this check.
-  const isSshProject = Boolean(activeProject?.sshConnectionId)
   const dataRootOverride =
-    isSshProject && activeProjectId ? `~/.wishful-claw/projects/${activeProjectId}/codegraph` : undefined
+    activeProject?.sshConnectionId && activeProject.id
+      ? `${WISHFUL_CLAW_DATA_DIR_NAME}/projects/${activeProject.id}/codegraph`
+      : undefined
 
   useEffect(() => {
     return ipcClient.on(IPC.CODEGRAPH_INDEX_PROGRESS, (payload: unknown) => {

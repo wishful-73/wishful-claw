@@ -1,5 +1,7 @@
 ﻿using System.Collections.Concurrent;
+using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -82,11 +84,9 @@ public static class SystemPromptCache
 
         try
         {
-            var globalDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".wishful-claw", "personas", personaId);
+            var globalDir = WishfulClawDataDir.Resolve("personas", personaId);
             var dir = !string.IsNullOrWhiteSpace(workingFolder)
-                ? Path.Combine(workingFolder, ".wishful-claw", "personas", personaId)
+                ? Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "personas", personaId)
                 : globalDir;
 
             long latest = 0;

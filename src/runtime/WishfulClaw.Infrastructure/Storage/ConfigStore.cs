@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -19,7 +19,6 @@ namespace WishfulClaw.Infrastructure.Storage;
 /// </summary>
 public static class ConfigStore
 {
-    private const string DataDirectoryName = ".wishful-claw";
     private const string ConfigFileName = "config.json";
     private static readonly object Sync = new();
     private static readonly JsonFileNodeCache<JsonObject> Cache = new();
@@ -178,16 +177,7 @@ public static class ConfigStore
 
     private static string GetConfigPath()
     {
-        var dataDirectory = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
-        if (!string.IsNullOrWhiteSpace(dataDirectory))
-        {
-            return Path.Combine(Path.GetFullPath(dataDirectory), ConfigFileName);
-        }
-
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            DataDirectoryName,
-            ConfigFileName);
+        return WishfulClawDataDir.Resolve(ConfigFileName);
     }
 
     private static JsonNode? CloneElement(JsonElement element)

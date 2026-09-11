@@ -1,6 +1,6 @@
-import * as fs from 'fs/promises'
-import * as os from 'os'
+﻿import * as fs from 'fs/promises'
 import * as path from 'path'
+import { resolveDataDir } from '../lib/data-dir'
 import { getNativeWorker } from '../lib/native-worker'
 import type { McpManager } from '../mcp/mcp-manager'
 import type { McpServerConfig } from '../mcp/mcp-types'
@@ -15,7 +15,7 @@ import { nativeExtensionRequest } from './extension-native-bridge'
  * - Data dir: ~/.wishful-claw
  */
 
-const WISHFUL_CLAW_DIR = path.join(os.homedir(), '.wishful-claw')
+const WISHFUL_CLAW_DIR = resolveDataDir()
 const SYNC_STATE_PATH = path.join(WISHFUL_CLAW_DIR, 'extensions-sync.json')
 const MCP_CONFIG_TIMEOUT_MS = 60_000
 

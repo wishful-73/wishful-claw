@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+﻿import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { useTranslation } from 'react-i18next'
 import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
@@ -9,6 +10,7 @@ import { cn } from '@renderer/lib/utils'
 import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
 import { toast } from 'sonner'
 import { WorkingFolderSelectorDialog } from '@renderer/components/chat/WorkingFolderSelectorDialog'
+import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '@shared/data-dir'
 
 // ─── Helpers ───
 import { SessionItem, ProjectItem, sortProjects, sortSessions, readProjectSortMode, writeProjectSortMode, PROJECT_SORT_MODES, type ProjectSortMode } from './workspace-sidebar-items'
@@ -24,6 +26,15 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
   const navigateToHome = useUIStore((s) => s.navigateToHome)
   const navigateToSession = useUIStore((s) => s.navigateToSession)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
+  const [isDevelopment, setIsDevelopment] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    void ipcClient.invoke('app:is-development').then((value) => {
+      if (mounted) setIsDevelopment(value === true)
+    })
+    return () => { mounted = false }
+  }, [])
 
   const sessions = useChatStore((s) => s.sessions)
 
@@ -204,7 +215,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
       {/* Title bar area */}
       <div className="flex h-10 shrink-0 items-center gap-2 px-2">
         <div className="min-w-0 flex-1 truncate text-sm font-semibold text-sidebar-foreground/90">
-          Wishful Claw
+          {isDevelopment ? WISHFUL_CLAW_DEV_DISPLAY_NAME : WISHFUL_CLAW_DISPLAY_NAME}
         </div>
       </div>
 

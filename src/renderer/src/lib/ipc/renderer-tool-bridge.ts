@@ -1,4 +1,4 @@
-import { handleNativeBrowserToolRequest } from '@renderer/lib/tools/browser-native-ui'
+﻿import { handleNativeBrowserToolRequest } from '@renderer/lib/tools/browser-native-ui'
 import { handleMcpCapabilityList, handleMcpCapabilityInspect } from '@renderer/lib/tools/mcp-capability-bridge'
 import { handleNativeAskUserRequest } from '@renderer/lib/tools/ask-user-tool'
 import { handleSubAgentApprovalRequest } from '@renderer/lib/tools/sub-agent-approval'
@@ -6,6 +6,7 @@ import { handleNativePlanUiUpdate, handleNativePlanReviewRequest } from '@render
 import { handleNativeGoalConfirmRequest } from '@renderer/lib/tools/goal-native-ui'
 import { handleSkillManagementExecute } from '@renderer/lib/tools/skill-management-bridge'
 import { handleProjectSendSessionMessage } from '@renderer/lib/tools/project-send-message'
+import { handleSessionFollowUpUpdate } from '@renderer/lib/tools/session-follow-up-runtime'
 import { decodeIpcMessagePack, invokeMessagePack } from '@renderer/lib/ipc/messagepack-ipc-client'
 import {
   SIDECAR_RENDERER_TOOL_REQUEST_MSGPACK_CHANNEL,
@@ -146,6 +147,15 @@ async function handleRendererToolRequest(payload: RendererToolRequestPayload): P
 
     if (payload.method === 'project/send-session-message') {
       const result = await handleProjectSendSessionMessage(payload.params)
+      await sendRendererToolResponse({
+        requestId: payload.requestId,
+        result
+      })
+      return
+    }
+
+    if (payload.method === 'session-follow-up/update') {
+      const result = await handleSessionFollowUpUpdate(payload.params)
       await sendRendererToolResponse({
         requestId: payload.requestId,
         result

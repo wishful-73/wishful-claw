@@ -1,9 +1,8 @@
-import { randomUUID } from 'crypto'
+﻿import { randomUUID } from 'crypto'
 import * as fs from 'fs'
-import * as os from 'os'
 import * as path from 'path'
+import { resolveDataDir } from './data-dir'
 
-const DATA_DIRECTORY_NAME = '.wishful-claw'
 const PROVIDER_DIRECTORY_NAME = 'ai-provider'
 const INDEX_FILE_NAME = 'index.json'
 const PROVIDER_FILE_PREFIX = 'provider-'
@@ -219,8 +218,7 @@ function writeSplitProviderStore(dataDirectory: string, value: unknown): Persist
 }
 
 function getDefaultDataDirectory(): string {
-  const override = process.env.WISHFULCLAW_DATA_DIR?.trim()
-  return override ? path.resolve(override) : path.join(os.homedir(), DATA_DIRECTORY_NAME)
+  return resolveDataDir()
 }
 
 export function readPersistedProviderStore(

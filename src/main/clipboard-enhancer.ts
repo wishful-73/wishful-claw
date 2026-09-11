@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Clipboard Enhancer — ditto-style clipboard history.
  *
  * - Polls clipboard (250ms) for near-instant capture
@@ -20,6 +20,7 @@ import {
 } from './priority-shortcuts'
 import { getAuxiliaryWindowBounds } from './aux-window-screen'
 import { safeSendMessagePackToWindow } from './window-ipc'
+import { resolveDataDir } from './lib/data-dir'
 
 let clipboardWindow: BrowserWindow | null = null
 let pollTimer: NodeJS.Timeout | null = null
@@ -34,7 +35,7 @@ let previousFocusWindow: string | null = null
 // injects Escape to clear that state.
 let openedWithAlt = false
 
-const DATA_DIR = join(app.getPath('home'), '.wishful-claw')
+const DATA_DIR = resolveDataDir()
 const HISTORY_FILE = join(DATA_DIR, 'clipboard-history.json')
 const CONFIG_FILE = join(DATA_DIR, 'clipboard-config.json')
 

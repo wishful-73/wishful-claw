@@ -63,6 +63,11 @@ interface SessionCancelPayload {
   taskId?: string
 }
 
+export interface ExternalChannelReplyResult {
+  success: boolean
+  error?: string
+}
+
 interface ActiveAutoReply {
   pluginId: string
   chatId: string
@@ -73,6 +78,9 @@ interface ActiveAutoReply {
   channelTaskId?: string
   replySendChain: Promise<void>
   sentReplyCount: number
+  successfulReplyCount: number
+  failedReplyCount: number
+  onComplete?: (result: ExternalChannelReplyResult) => void
 }
 
 const activeAutoReplies = new Map<string, ActiveAutoReply>()
@@ -86,7 +94,8 @@ const pendingChannelCancels = new Set<string>()
 export function registerExternalChannelReply(
   sessionId: string,
   pluginId: string,
-  chatId: string
+  chatId: string,
+  onComplete?: (result: ExternalChannelReplyResult) => void
 ): void {
   activeAutoReplies.set(sessionId, {
     pluginId,
@@ -96,7 +105,10 @@ export function registerExternalChannelReply(
     supportsStreaming: false,
     runId: null,
     replySendChain: Promise.resolve(),
-    sentReplyCount: 0
+    sentReplyCount: 0,
+    successfulReplyCount: 0,
+    failedReplyCount: 0,
+    onComplete
   })
 }
 
@@ -251,7 +263,9 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     runId: null,
     channelTaskId: task.channelTaskId,
     replySendChain: Promise.resolve(),
-    sentReplyCount: 0
+    sentReplyCount: 0,
+    successfulReplyCount: 0,
+    failedReplyCount: 0
   })
 
   // 5. Call sendMessage to trigger the Agent Loop
@@ -348,8 +362,10 @@ function enqueueChannelReply(autoReply: ActiveAutoReply, content: string): void 
         action: 'sendMessage',
         params: { chatId: autoReply.chatId, content: text }
       })
+      autoReply.successfulReplyCount += 1
       console.log(`[ChannelAutoReply] Reply sent to ${autoReply.chatId} (${text.length} chars)`)
     } catch (err) {
+      autoReply.failedReplyCount += 1
       console.error('[ChannelAutoReply] Failed to send reply:', err)
     }
   })
@@ -390,6 +406,17 @@ async function sendAgentReply(sessionId: string): Promise<void> {
 
   await autoReply.replySendChain
   activeAutoReplies.delete(sessionId)
+  if (autoReply.onComplete) {
+    const success = autoReply.successfulReplyCount > 0 && autoReply.failedReplyCount === 0
+    autoReply.onComplete({
+      success,
+      error: success
+        ? undefined
+        : autoReply.failedReplyCount > 0
+          ? 'One or more channel replies failed to send'
+          : 'No channel reply content was produced'
+    })
+  }
   await completeChannelTaskId(autoReply.channelTaskId)
 }
 
@@ -507,7 +534,10 @@ export function useChannelAutoReply(): void {
                   `Agent error: ${event.message}`
                 )
               )
-              .finally(() => completeChannelTaskId(autoReply.channelTaskId))
+              .finally(() => {
+                autoReply.onComplete?.({ success: false, error: event.message })
+                return completeChannelTaskId(autoReply.channelTaskId)
+              })
             break
         }
       }

@@ -12,6 +12,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent.Modules.OpenAIAudio;
 
@@ -212,9 +213,8 @@ public static class OpenAIAudioTools
             _ => "audio/mpeg"
         };
 
-        var mediaDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".wishful-claw", "media", "audio",
+        var mediaDir = WishfulClawDataDir.Resolve(
+            "media", "audio",
             DateTime.UtcNow.ToString("yyyy-MM-dd"));
         Directory.CreateDirectory(mediaDir);
 

@@ -1,5 +1,5 @@
 ﻿import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain } from 'lucide-react'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
@@ -17,6 +17,7 @@ import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
 import { SshPanel } from '@renderer/components/settings/SshPanel'
 import { SkillPanel } from '@renderer/components/settings/skill-panel'
 import { McpPanel } from '@renderer/components/settings/mcp-panel'
+import { LogsPanel } from '@renderer/components/settings/LogsPanel'
 import { ShortcutsPanel } from '@renderer/components/settings/ShortcutsPanel'
 import { SectionAnchorNav, type SectionAnchor } from '@renderer/components/settings/section-anchor-nav'
 import { SettingsSection } from '@renderer/components/settings/settings-primitives'
@@ -96,7 +97,8 @@ function SettingsPage(): React.JSX.Element {
     {
       label: t('tabs.groups.about'),
       items: [
-        { id: 'about', icon: <Info className="size-4" />, label: t('tabs.about.label') }
+        { id: 'about', icon: <Info className="size-4" />, label: t('tabs.about.label') },
+        { id: 'logs', icon: <ScrollText className="size-4" />, label: t('tabs.logs.label', { defaultValue: '日志' }) }
       ]
     }
   ]
@@ -232,6 +234,8 @@ function SettingsPage(): React.JSX.Element {
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <McpPanel />
               </div>
+            ) : settingsTab === 'logs' ? (
+              <LogsPanel />
             ) : (
               <div className="flex-1 overflow-y-auto">
                 <AboutPanel />

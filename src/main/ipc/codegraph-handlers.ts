@@ -4,6 +4,7 @@ import { join } from 'path'
 import { getCodeGraphAssetStatus } from '../lib/codegraph-assets'
 import { getNativeWorker } from '../lib/native-worker'
 import { readPersistedSettings } from '../lib/settings-store'
+import { resolveDataPath } from '../lib/data-dir'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
 
 // Channel names mirror IPC.CODEGRAPH_* in src/renderer/src/lib/ipc/channels.ts.
@@ -152,7 +153,18 @@ export function resolveCodeGraphDataRoot(
     typeof explicitOverride === 'string' && explicitOverride.trim()
       ? explicitOverride.trim()
       : undefined
-  if (overridden) return overridden
+  if (overridden) {
+    const normalized = overridden.replaceAll('\\', '/')
+    const homeRelativePrefix = '~/.wishful-claw/'
+    const dataRelativePrefix = '.wishful-claw/'
+    if (normalized.startsWith(homeRelativePrefix)) {
+      return resolveDataPath(...normalized.slice(homeRelativePrefix.length).split('/'))
+    }
+    if (normalized.startsWith(dataRelativePrefix)) {
+      return resolveDataPath(...normalized.slice(dataRelativePrefix.length).split('/'))
+    }
+    return overridden
+  }
   if (!workingFolder) return undefined
   try {
     const dataRoot = join(workingFolder, '.wishful-claw', 'codegraph')

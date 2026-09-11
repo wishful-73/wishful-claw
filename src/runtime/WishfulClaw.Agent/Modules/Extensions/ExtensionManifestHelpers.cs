@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent.Modules.Extensions;
 
@@ -132,9 +133,7 @@ public static partial class ExtensionManifestStore
 
     private static string DataDirectory()
     {
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            DataDirectoryName);
+        return WishfulClawDataDir.Root;
     }
 
     private static string ExtensionsDirectory()

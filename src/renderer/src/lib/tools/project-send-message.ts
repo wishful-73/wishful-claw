@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Project Send-Session-Message Handler
  *
  * Handles `project/send-session-message` reverse-request from the native worker.
@@ -21,9 +21,19 @@
 
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { useTaskStore } from '@renderer/stores/task-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { writeLog } from '@renderer/lib/error-logger'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
+import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
+import {
+  SESSION_FOLLOW_UP_CREATE_MSGPACK_CHANNEL,
+  SESSION_FOLLOW_UP_FAIL_MSGPACK_CHANNEL
+} from '@shared/messagepack/binary-ipc'
+import type {
+  SessionFollowUpMutationResult,
+  SessionFollowUpRequest
+} from '@shared/types/session-follow-up'
 
 interface SendSessionMessageParams {
   sessionId: string
@@ -36,12 +46,20 @@ interface SendSessionMessageParams {
    * agent's own session so it keeps its identity prompt and global-only tools.
    */
   sessionMode?: 'normal' | 'goal' | 'global'
+  followUp?: SessionFollowUpRequest
+}
+
+interface SendSessionMessageResult {
+  success: boolean
+  result?: string
+  error?: string
+  followUpId?: string
 }
 
 export async function handleProjectSendSessionMessage(
   params: unknown
-): Promise<{ success: boolean; result?: string; error?: string }> {
-  const { sessionId, content, workingFolder, projectId, sessionMode } = params as SendSessionMessageParams
+): Promise<SendSessionMessageResult> {
+  const { sessionId, content, workingFolder, projectId, sessionMode, followUp } = params as SendSessionMessageParams
 
   if (!sessionId || !content) {
     return { success: false, error: 'Missing required fields: sessionId, content' }
@@ -71,16 +89,87 @@ export async function handleProjectSendSessionMessage(
     ? targetSession.projectId || projectId || ''
     : ''
 
+  let scheduledFollowUpId: string | null = null
+  if (followUp) {
+    if (
+      !followUp.id ||
+      !followUp.todoId ||
+      !followUp.sourceSessionId ||
+      followUp.targetSessionId !== sessionId ||
+      !Number.isFinite(followUp.followUpAt) ||
+      !followUp.queryInstruction
+    ) {
+      return { success: false, error: 'Invalid followUp contract.' }
+    }
+    const sourceSession = await dbGetSession(followUp.sourceSessionId)
+    if (!sourceSession) {
+      return { success: false, error: `Source session "${followUp.sourceSessionId}" does not exist.` }
+    }
+    const followUpRequest: SessionFollowUpRequest = {
+      ...followUp,
+      notificationKey: followUp.notificationKey ?? followUp.id,
+      pluginId: sourceSession.pluginId ?? undefined,
+      pluginType: sourceSession.pluginType ?? undefined,
+      pluginChatId: sourceSession.externalChatId ?? undefined
+    }
+    const scheduled = await invokeMessagePackBinary<SessionFollowUpMutationResult>(
+      SESSION_FOLLOW_UP_CREATE_MSGPACK_CHANNEL,
+      followUpRequest
+    )
+    if (!scheduled.success || !scheduled.followUp) {
+      return { success: false, error: scheduled.error || 'Failed to create session follow-up.' }
+    }
+    scheduledFollowUpId = scheduled.followUp.id
+    if (scheduled.changed === 1) {
+      useTaskStore.getState().applySyncedTaskUpdate(followUp.todoId, {
+        status: 'in_progress',
+        updatedAt: Date.now()
+      })
+      useChatStore.getState().clearSessionPromptSnapshot(followUp.sourceSessionId)
+    }
+    if (scheduled.changed === 0) {
+      return {
+        success: true,
+        result: `Temporary follow-up "${scheduledFollowUpId}" was already scheduled; the original message was not sent again.`,
+        followUpId: scheduledFollowUpId
+      }
+    }
+  }
+
+  const failScheduledFollowUp = async (error: string): Promise<void> => {
+    if (!scheduledFollowUpId || !followUp) return
+    try {
+      const failed = await invokeMessagePackBinary<SessionFollowUpMutationResult>(
+        SESSION_FOLLOW_UP_FAIL_MSGPACK_CHANNEL,
+        { id: scheduledFollowUpId, sourceSessionId: followUp.sourceSessionId, lastError: error }
+      )
+      if (failed.success) {
+        useTaskStore.getState().applySyncedTaskUpdate(followUp.todoId, {
+          status: 'blocked',
+          activeForm: undefined,
+          updatedAt: Date.now()
+        })
+        useChatStore.getState().clearSessionPromptSnapshot(followUp.sourceSessionId)
+      }
+    } catch (followUpError) {
+      writeLog('error', `[sendMsg] failed to mark follow-up ${scheduledFollowUpId} failed: ${String(followUpError)}`)
+    }
+  }
+
   // 2. Get provider config from store
   const providerStore = useProviderStore.getState()
   const targetProvider = providerStore.getActiveProvider()
   if (!targetProvider) {
-    return { success: false, error: 'No active provider configured. Please configure a provider in Settings.' }
+    const error = 'No active provider configured. Please configure a provider in Settings.'
+    await failScheduledFollowUp(error)
+    return { success: false, error }
   }
 
   const modelId = providerStore.activeModelId || targetProvider.defaultModel
   if (!modelId) {
-    return { success: false, error: 'No model configured. Please select a model in Settings.' }
+    const error = 'No model configured. Please select a model in Settings.'
+    await failScheduledFollowUp(error)
+    return { success: false, error }
   }
 
   const settings = useSettingsStore.getState()
@@ -125,15 +214,21 @@ export async function handleProjectSendSessionMessage(
       contextCompressionThreshold: settings.contextCompressionThreshold
     })
     if (!started) {
-      return { success: false, error: `Failed to start message processing for session "${sessionId}".` }
+      const error = `Failed to start message processing for session "${sessionId}".`
+      await failScheduledFollowUp(error)
+      return { success: false, error }
     }
 
     return {
       success: true,
-      result: `Message sent to session "${sessionId}". The target session is now processing. Check back later with get_project_details.`
+      result: scheduledFollowUpId
+        ? `Message sent to session "${sessionId}". Temporary follow-up "${scheduledFollowUpId}" is scheduled.`
+        : `Message sent to session "${sessionId}". The target session is now processing. Check back later with get_project_details.`,
+      followUpId: scheduledFollowUpId ?? undefined
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    await failScheduledFollowUp(msg)
     return { success: false, error: `Failed to send message: ${msg}` }
   }
 }

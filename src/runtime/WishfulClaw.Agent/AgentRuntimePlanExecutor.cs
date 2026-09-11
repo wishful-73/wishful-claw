@@ -21,7 +21,6 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static partial class AgentRuntimePlanExecutor
 {
-    private const string PlanDirectoryName = ".wishful-claw/plans";
     private const string IdAlphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private static readonly JsonWriterOptions WriterOptions = new()
     {
@@ -134,7 +133,7 @@ public static partial class AgentRuntimePlanExecutor
         // Ensure plan directory + file exist
         try
         {
-            var planDir = Path.Combine(workingFolder, PlanDirectoryName);
+            var planDir = Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "plans");
             Directory.CreateDirectory(planDir);
             if (!File.Exists(planFilePath))
             {

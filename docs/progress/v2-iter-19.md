@@ -1,0 +1,24 @@
+# v2-iter-19：Goal 编排记录可视化 + 三层生命周期收口
+
+- 状态：已完成，已合并 main
+- 分支：dev/v2-iter-19（合并后清理）
+- Plan: docs/plans/iter-v2-19/ + .plan/vUakoMqaW0Wz.md
+- VERDICT: PASS（编译验证 + 用户人工验证）
+- 产品版本: 0.2.19
+- Tag: v0.2.19
+- Commit: e31b66a（merge）
+- 日期: 2026-08-23
+- 备注：
+  - **goal_plan_tasks 表** — 每行 = 一个计划的一轮执行（round = retry+1）：description/steps/summary/评估 reasoning/是否 satisfied/adjusted/起止时间；偏离排期为单表设计（两表方案其中一表语义空洞），已获老大确认
+  - **编排写入** — GoalPlanRecorder（best-effort，失败仅 Warn 不阻断编排）挂接 GoalOrchestratorLoop 四节点；与 GoalPlanTracker 的 md 落盘并行镜像
+  - **端点链路** — db/goal-plan-tasks-list（DbModule → main IPC → shared 常量 → loadGoalPlanTasks store）
+  - **面板 UI** — GoalHistoryPanel 计划卡片点击展开每轮详情（轮次徽标/状态/耗时/评估理由/已调整标记/steps），active goal 10s 轮询刷新；轮次按链根 planId 匹配（兼容 adjust 换 planId）
+  - **后台子 agent 内容错位修复** — 根因：子 agent childState 复用父 SessionId，AgentLoop 以 sessionId 为键取 SessionConversation，后台子 agent 与主会话并发读写同一消息列表（主 agent 后续消息被子 agent 消费执行、子 agent transcript 反向污染主上下文；前台模式同样污染只是串行不明显）。修复：sessionMode=subAgent 时会话键改为 `__subagent__{runId}` 隔离，子 agent 结束后 Remove 清理
+  - **步骤7：拆分即落库** — decomposer 拆完立即 SyncGoalToDb（plans 全量入库），面板无需等执行完才见计划列表
+  - **步骤8：goal_activity 实时事件链** — GoalEventContext(GoalId/PlanId/Round) 挂 RunState；SubAgentExecutor.CreateCollector 将子 agent tool_call/tool_result/iteration 以 goal_activity 事件转发（复用 Input(JsonElement) 字段，不改协议）；前端 chat-store 分流 → goal-store.applyGoalActivity（每 goal 保留 200 条）→ GoalHistoryPanel 计划卡片展开显示实时活动流（最近 30 条，按链根 planId 过滤，active 时带转圈）
+  - **步骤9：流式降噪** — Goal 运行时子 agent text_delta 不逐条转发，消除 seq 爆炸刷屏（最终报告仍随 sub_agent_end 到达）
+  - **三层生命周期收口** — Goal→Plan→Task 三层统一四态（pending/active/complete/aborted）；新增 goal_plans/goal_tasks/goal_execution_runs 三表 + Entity/Row/Mapper/DB 工具 + IPC 端点 + main 桥接；编排循环 MaterializePlans + execution attempts；FinalizeOwnedRunAsync 失败保持 active 不移除 ActiveGoals；AbortSubtree 取消向下传播；SweepInterruptedGoals 重启清扫三层；前端 SessionGoalPlan/SessionGoalTask/GoalExecutionRun 类型 + store 查询层
+  - **SSE 流空闲超时** — AgentRuntimeRequestTimeout.ReadLineAsync 复用 requestTimeoutSeconds 作为逐行空闲超时（OpenAI Chat/Responses + Anthropic）；停滞流抛 TimeoutException 走重试而非永久挂死
+  - **Goal 暂停立即中断当前 turn** — pause watcher 250ms 轮询 RunState，Paused 时取消 in-flight 子 agent turn（含 provider 重试循环），GoalContext.CurrentTurnState 跟踪
+  - **其他** — 无限重试长时自主运行 + 里程碑、Goal 确认卡片模型选择 UI、ProviderStore encodeURIComponent 路径兼容、架构 review 文档 review-02..08 入库、清理误提交的 node_out/root_out/stderr/stdout.txt
+  - 验证：C# build 0 错误；TS 3/3 零错误；BOM 0 残留；用户实测通过

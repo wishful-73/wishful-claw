@@ -26,6 +26,7 @@ import {
   type PermissionPolicy
 } from '../../../shared/permission-policy'
 import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
 
 // Re-export types for consumers
 export type {
@@ -216,6 +217,10 @@ interface SettingsStore {
   // Network Settings
   systemProxyUrl: string
 
+  // Logging Settings (persisted by main into settings/general.json; error
+  // entries are always written regardless of this level)
+  logLevel: LogLevel
+
   // Prompt Recommendation Settings
   promptRecommendationModels: PromptRecommendationModelBindings
   newSessionDefaultModel: SessionDefaultModelBinding | null
@@ -353,6 +358,9 @@ export const useSettingsStore = create<SettingsStore>()(
       // Network Settings
       systemProxyUrl: '',
 
+      // Logging Settings (default: error only)
+      logLevel: DEFAULT_LOG_LEVEL,
+
       // Prompt Recommendation Settings
       promptRecommendationModels: {
         chat: null,
@@ -411,7 +419,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 35,
+      version: 36,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -509,6 +517,8 @@ export const useSettingsStore = create<SettingsStore>()(
         codegraphFullToolSurface: state.codegraphFullToolSurface,
         // Network Settings
         systemProxyUrl: state.systemProxyUrl,
+        // Logging Settings
+        logLevel: normalizeLogLevel(state.logLevel),
         // Prompt Recommendation Settings
         promptRecommendationModels: state.promptRecommendationModels,
         newSessionDefaultModel: state.newSessionDefaultModel,

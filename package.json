@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.26",
+  "version": "0.2.27",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -22,6 +22,7 @@
     "test:cron-integration": "tsc --noEmit false -p tests/cron-integration/tsconfig.json && node tests/cron-integration/out/tests/cron-integration/program.js",
     "test:renderable-chat-items": "esbuild tests/renderable-chat-items/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/renderable-chat-items/out/program.cjs && node tests/renderable-chat-items/out/program.cjs",
     "test:channel-cancel-commands": "esbuild tests/channel-cancel-commands/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-cancel-commands/out/program.cjs && node tests/channel-cancel-commands/out/program.cjs",
+    "test:session-follow-up": "node tests/session-follow-up-integration/program.mjs",
     "test:updater-release-notes": "esbuild tests/updater-release-notes/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-release-notes/out/program.cjs && node tests/updater-release-notes/out/program.cjs",
     "test:updater-state": "esbuild tests/updater-state/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/program.cjs && node tests/updater-state/out/program.cjs",
     "test:updater-progress": "esbuild tests/updater-state/download-progress.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/download-progress.cjs && node tests/updater-state/out/download-progress.cjs",

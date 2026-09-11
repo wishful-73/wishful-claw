@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Quick Launcher — configurable global shortcut launcher (utools-style).
  *
  * Scans Windows Start Menu .lnk files, provides fuzzy search,
@@ -19,6 +19,7 @@ import { getAuxiliaryWindowBounds } from './aux-window-screen'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import { WINDOWS_SETTINGS } from './launcher-system-settings'
 import { extractPeIcon } from './pe-icon-extractor'
+import { resolveDataDir } from './lib/data-dir'
 
 let launcherWindow: BrowserWindow | null = null
 let launcherBlurHideTimer: NodeJS.Timeout | null = null
@@ -78,7 +79,7 @@ const UWP_CACHE_TTL_MS = 24 * 60 * 60 * 1000
 // v3: alpha-preserving icon extraction (v2 wrote black-background PNGs).
 const UWP_CACHE_VERSION = 3
 
-const DATA_DIR = join(app.getPath('home'), '.wishful-claw')
+const DATA_DIR = resolveDataDir()
 const CONFIG_FILE = join(DATA_DIR, 'launcher-config.json')
 const UWP_CACHE_FILE = join(DATA_DIR, 'uwp-apps.json')
 const UWP_ICON_DIR = join(DATA_DIR, 'uwp-icons')

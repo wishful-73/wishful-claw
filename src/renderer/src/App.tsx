@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { Toaster } from '@renderer/components/ui/sonner'
 import { ThemeProvider } from '@renderer/components/theme-provider'
 import { ThemeRuntimeSync } from '@renderer/components/ThemeRuntimeSync'
@@ -29,6 +29,7 @@ import { UpdateDialog } from '@renderer/components/updater/UpdateDialog'
 import { UpdateStatusBanner } from '@renderer/components/updater/UpdateStatusBanner'
 import type { UpdateShowDetailsPayload } from '@shared/updater/types'
 import { initializeCronRuntime } from '@renderer/lib/tools/cron-runtime'
+import { initializeSessionFollowUpRuntime } from '@renderer/lib/tools/session-follow-up-runtime'
 import {
   initializeMemoryOrganizationRuntime,
   notifyMemoryOrganizationSettingsChanged
@@ -123,6 +124,7 @@ function App(): React.JSX.Element | null {
       useActivityStore.getState().handleEnvelope(envelope)
     })
     const disposeCronRuntime = initializeCronRuntime()
+    const disposeSessionFollowUpRuntime = initializeSessionFollowUpRuntime()
     const disposeMemoryOrganizationRuntime = initializeMemoryOrganizationRuntime()
 
     const syncRuntimeSettings = (maxConcurrentSubAgents: number): void => {
@@ -171,6 +173,7 @@ function App(): React.JSX.Element | null {
       unsubscribeOrganizationSettings()
       unsubscribeRuntimeLifecycle()
       disposeCronRuntime()
+      disposeSessionFollowUpRuntime()
       disposeMemoryOrganizationRuntime()
     }
   }, [])

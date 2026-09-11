@@ -1,16 +1,14 @@
-import * as fs from 'fs'
-import * as os from 'os'
+﻿import * as fs from 'fs'
 import * as path from 'path'
+import { resolveDataDir } from './data-dir'
 
-const DATA_DIRECTORY_NAME = '.wishful-claw'
 const SETTINGS_DIRECTORY_NAME = 'settings'
 const SETTINGS_FILE_NAME = 'general.json'
 
 export const SETTINGS_STORAGE_KEY = 'wishful-claw-settings'
 
 function getDefaultDataDirectory(): string {
-  const override = process.env.WISHFULCLAW_DATA_DIR?.trim()
-  return override ? path.resolve(override) : path.join(os.homedir(), DATA_DIRECTORY_NAME)
+  return resolveDataDir()
 }
 
 function getSettingsFilePath(dataDirectory = getDefaultDataDirectory()): string {

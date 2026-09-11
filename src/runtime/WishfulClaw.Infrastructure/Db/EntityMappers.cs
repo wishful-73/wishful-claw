@@ -80,6 +80,32 @@ public static class EntityMappers
         UpdatedAt = r.GetInt64("updated_at")
     };
 
+    public static SessionFollowUpEntity MapSessionFollowUp(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        TodoId = r.GetString("todo_id"),
+        SourceSessionId = r.GetString("source_session_id"),
+        TargetSessionId = r.GetString("target_session_id"),
+        FollowUpAt = r.GetInt64("follow_up_at"),
+        Status = r.GetString("status"),
+        QueryInstruction = r.GetString("query_instruction"),
+        LastQueryResult = r.GetNullableString("last_query_result"),
+        AttemptCount = r.GetInt32("attempt_count"),
+        ClaimToken = r.GetNullableString("claim_token"),
+        ClaimedAt = r.GetNullableInt64("claimed_at"),
+        PluginId = r.GetNullableString("plugin_id"),
+        PluginType = r.GetNullableString("plugin_type"),
+        PluginChatId = r.GetNullableString("plugin_chat_id"),
+        NotificationKey = r.GetString("notification_key"),
+        DesktopNotifiedAt = r.GetNullableInt64("desktop_notified_at"),
+        ChannelNotifiedAt = r.GetNullableInt64("channel_notified_at"),
+        CompletedAt = r.GetNullableInt64("completed_at"),
+        CancelledAt = r.GetNullableInt64("cancelled_at"),
+        LastError = r.GetNullableString("last_error"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at")
+    };
+
     public static GlobalTaskEntity MapGlobalTask(SqliteDataReader r) => new()
     {
         Id = r.GetString("id"),

@@ -338,29 +338,32 @@ git commit -m "docs(review): 迭代{N}审查报告"
 
 ---
 
-## PROGRESS.md 格式
+## 进度文档结构（PROGRESS.md + docs/progress/）
+
+- `docs/PROGRESS.md` — 总览：每个迭代一行（迭代号 + Tag + 日期 + 简述），链接到明细文件
+- `docs/progress/v2-iter-{N}.md` — 迭代明细：状态、分支、Plan、VERDICT、Tag、Commit、日期、范围、验证、遗留
+
+迭代收尾时两步：
+
+1. `docs/PROGRESS.md` 对应表格新增一行
+2. 创建 `docs/progress/v2-iter-{N}.md` 明细
+
+明细文件格式：
 
 ```markdown
-# 开发进度
-
-## 迭代一：项目骨架
-- 状态：已完成
-- 分支：dev/iter-1
-- Plan: docs/plans/plan_001/
-- VERDICT: PASS
-- Tag: v0.1.0
-- Commit: a1b2c3d
-- 日期: 2026-07-20
-
-## 迭代二：AI 服务商管理
-- 状态：进行中
-- 分支：dev/iter-2
-- Plan: docs/plans/plan_002/
-- VERDICT: —
-- Tag: —
-- Commit: —
-- 日期: —
-...
+# v2-iter-{N}：{迭代标题}
+- 状态：已完成，已合并 main
+- 分支：dev/v2-iter-{N}（合并后清理）
+- Plan: docs/plans/iter-v2-{N}/plan.md
+- VERDICT: PASS（编译验证 + 用户人工验证）
+- 产品版本: 0.2.{N}
+- Tag: v0.2.{N}
+- Commit: {merge commit}
+- 日期: {YYYY-MM-DD}
+- 范围与功能单元：
+  - ...
+- 验证：...
+- 遗留：...
 ```
 
 ## 注意事项
@@ -373,3 +376,4 @@ git commit -m "docs(review): 迭代{N}审查报告"
 - **commit 粒度宁小勿大**——每步一个 commit 是底线，不是上限
 - **不要攒一堆改动再提交**——攒得越多，回滚越难，一天白搞的风险越大
 - **push 是最后的保险**——本地 commit 只防误操作，push 到远程才防丢数据
+- **C# 文件多为 CRLF 行尾**——批量替换用 Python 脚本处理，file 工具的 edit 容易因行尾不匹配失败

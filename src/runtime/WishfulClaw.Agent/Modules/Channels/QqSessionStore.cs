@@ -10,12 +10,12 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent.Modules.Channels;
 
 public static class QqSessionStore
 {
-    private const string DataDirectoryName = ".wishful-claw";
     private const string QqBotDirectoryName = "qq-bot";
     private const string SessionsDirectoryName = "sessions";
     private const long SessionExpireMs = 5 * 60 * 1000;
@@ -141,11 +141,7 @@ public static class QqSessionStore
 
     private static string GetSessionsDirectory()
     {
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            DataDirectoryName,
-            QqBotDirectoryName,
-            SessionsDirectoryName);
+        return WishfulClawDataDir.Resolve(QqBotDirectoryName, SessionsDirectoryName);
     }
 
     private static string SanitizeAccountId(string accountId)

@@ -1,6 +1,6 @@
-import { mkdirSync, writeFileSync } from 'fs'
-import { homedir } from 'os'
+﻿import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { resolveDataPath } from '../lib/data-dir'
 import { randomUUID } from 'crypto'
 import { getNativeWorker } from '../lib/native-worker'
 import { registerMessagePackHandler } from './messagepack-handler'
@@ -67,7 +67,7 @@ function broadcast(job: VideoJob): void {
 }
 
 function getVideosDir(): string {
-  const dir = join(homedir(), '.wishful-claw', 'video')
+  const dir = resolveDataPath('video')
   mkdirSync(dir, { recursive: true })
   return dir
 }

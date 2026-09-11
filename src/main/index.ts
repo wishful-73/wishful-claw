@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+﻿import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import * as fs from 'fs'
 
@@ -7,10 +7,13 @@ import * as fs from 'fs'
 import appIcon from '../../resources/icon-256.png?asset'
 
 import { getNativeWorker, latchNativeWorkerShutdown } from './lib/native-worker'
-import { logError, logWarn, logInfo, logDebug, installGlobalExceptionHandlers, readRecentLogs } from './lib/logger'
+import { logError, logWarn, logInfo, logDebug, installGlobalExceptionHandlers, readRecentLogs, listLogFiles, readLogFile, cleanupOldLogFiles } from './lib/logger'
+import { resolveDataPath } from './lib/data-dir'
+import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '../shared/data-dir'
+import type { LogCleanupResult, LogFileContent, LogFileInfo } from '../shared/logging'
 import { registerMessagePackHandler } from './ipc/messagepack-handler'
 import { registerAiProviderHandlers } from './ipc/ai-provider-handlers'
-import { registerSettingsHandlers } from './ipc/settings-handlers'
+import { registerSettingsHandlers, initializeLogLevelFromSettings } from './ipc/settings-handlers'
 import { registerAgentStreamForwarder } from './ipc/agent-stream-handler'
 import { registerNativeAgentRuntimeHandlers } from './ipc/native-agent-runtime'
 import { registerGitHandlers } from './ipc/git-handlers'
@@ -46,6 +49,10 @@ import {
   installMemoryOrganizationScheduler,
   shutdownMemoryOrganizationScheduler
 } from './ipc/memory-organization-scheduler'
+import {
+  registerSessionFollowUpHandlers,
+  shutdownSessionFollowUpScheduler
+} from './ipc/session-follow-up-scheduler'
 import { readPersistedSettings, writePersistedSettings, clearPersistedSettings } from './lib/settings-store'
 import {
   getUpdateStatus,
@@ -63,6 +70,7 @@ let isQuiting = false
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
+    title: appDisplayName,
     width: 1280,
     height: 800,
     minWidth: 900,
@@ -94,6 +102,10 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow!.show()
+  })
+  mainWindow.webContents.on('page-title-updated', (event) => {
+    event.preventDefault()
+    mainWindow?.setTitle(appDisplayName)
   })
 
   // Minimize to tray on close (Exit via tray menu only)
@@ -161,7 +173,7 @@ function getTrayIcon(): Electron.NativeImage {
 function createTray(): void {
   if (tray) return
   tray = new Tray(getTrayIcon())
-  tray.setToolTip('Wishful Claw')
+  tray.setToolTip(appDisplayName)
   const contextMenu = Menu.buildFromTemplate([
     { label: '显示主窗口', click: () => showMainWindow() },
     // Permanent entry, not conditional on an update being in flight: with nothing pending it opens
@@ -174,12 +186,10 @@ function createTray(): void {
   tray.on('click', () => showMainWindow())
 }
 
-app.setName('WishfulClaw')
+const appDisplayName = app.isPackaged ? WISHFUL_CLAW_DISPLAY_NAME : WISHFUL_CLAW_DEV_DISPLAY_NAME
+app.setName(appDisplayName)
 
-const isolatedDataDirectory = process.env.WISHFULCLAW_DATA_DIR?.trim()
-if (isolatedDataDirectory) {
-  app.setPath('userData', join(isolatedDataDirectory, 'electron-user-data'))
-}
+app.setPath('userData', resolveDataPath('electron-user-data'))
 
 // 单实例锁：双击 exe 时聚焦已有窗口，不启动新进程
 const gotTheLock = app.requestSingleInstanceLock()
@@ -192,6 +202,8 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
   installGlobalExceptionHandlers()
+  // Seed the log level from the unified settings before anything else logs.
+  initializeLogLevelFromSettings()
   logInfo('main', 'Application started')
   app.setAppUserModelId('com.wishfulclaw.app')
 
@@ -279,6 +291,7 @@ if (!gotTheLock) {
   registerAgentChangeHandlers()
   registerMcpHandlers()
   registerCronHandlers()
+  registerSessionFollowUpHandlers({ getMainWindow: () => mainWindow })
   registerVideoHandlers()
   registerExtensionHandlers()
 registerWebSearchHandlers()
@@ -506,6 +519,9 @@ registerCodeGraphHandlers()
     async (args) => getNativeWorker().request('goal/confirm', args)
   )
   
+  registerMessagePackHandler<unknown, string>('app:global-memory-home', async () => resolveDataPath())
+  registerMessagePackHandler<unknown, boolean>('app:is-development', async () => !app.isPackaged)
+
   // -- Log handlers --
   registerMessagePackHandler<{ level: string; message: string; stack?: string; extra?: Record<string, unknown> }, void>(
     'log:write',
@@ -522,6 +538,28 @@ registerCodeGraphHandlers()
     'log:read',
     async (args) => {
       return readRecentLogs(args.maxLines ?? 500)
+    }
+  )
+
+  // -- Log file management (Settings → Logs page) --
+  registerMessagePackHandler<Record<string, unknown>, LogFileInfo[]>(
+    'log:list-files',
+    async () => {
+      return listLogFiles()
+    }
+  )
+
+  registerMessagePackHandler<{ name: string }, LogFileContent | null>(
+    'log:read-file',
+    async (args) => {
+      return readLogFile(args?.name ?? '')
+    }
+  )
+
+  registerMessagePackHandler<{ days: number }, LogCleanupResult>(
+    'log:cleanup',
+    async (args) => {
+      return cleanupOldLogFiles(Number(args?.days) || 0)
     }
   )
 
@@ -557,7 +595,8 @@ registerCodeGraphHandlers()
   registerClipboardEnhancer()
   registerQuickLauncher()
 
-  // Restore persisted Cron jobs before auto-starting channels.
+  // Restore persisted Cron jobs before auto-starting channels. Session follow-ups
+  // restore after the renderer explicitly announces that its listener is ready.
   void initializeCronScheduler()
 
   // Daily memory organization triggers (startup throttle + nightly crossing).
@@ -584,6 +623,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   cleanupSshHandlers()
   shutdownCronScheduler()
+  shutdownSessionFollowUpScheduler()
   shutdownMemoryOrganizationScheduler()
   if (channelManager) {
     void channelManager.stopAll()

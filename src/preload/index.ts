@@ -49,8 +49,8 @@ const api = {
     method: string,
     params?: unknown,
     cancelId?: string
-  ): Promise<{ result: T; requestId: number }> =>
-    invokeMessagePackBinary<{ result: T; requestId: number }>('worker:request:with-id', {
+  ): Promise<T> =>
+    invokeMessagePackBinary<T>('worker:request:with-id', {
       method,
       params: params ?? {},
       cancelId

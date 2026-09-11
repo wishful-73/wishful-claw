@@ -25,14 +25,12 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type SessionDefaultModelBinding, type ClaudeCodeConfig, type CodexConfig, type PromptRecommendationModelBindings, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultClaudeCodeConfig, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
 
 // Re-export types for consumers
 export type {
   ClarifyPlanModeAutoSwitchTarget,
-  ClaudeCodeConfig,
-  ClaudeCodePermissionOption,
   CodexConfig,
   FileDiffViewMode,
   LiveOutputAnimationStyle,
@@ -45,10 +43,7 @@ export type {
   ModelBinding,
   OnboardingLanguage,
   ProjectDefaultDirectoryMode,
-  PromptRecommendationModelBinding,
-  PromptRecommendationModelBindings,
   RecentWorkingTarget,
-  SessionDefaultModelBinding,
   ShellExecutionEndpoint,
   ThemeMode,
 } from './settings-store-types'
@@ -87,7 +82,6 @@ export {
   clampMaxConcurrentSubAgents,
   clampMaxParallelToolCalls,
   clampMaxToolCallsPerTurn,
-  createDefaultClaudeCodeConfig,
   createDefaultCodexConfig,
   getReasoningEffortKey,
   getRecentWorkingTargetKey,
@@ -127,8 +121,6 @@ interface SettingsStore {
   contextCompressionEnabled: boolean
   /** Global trigger ratio shared by every chat model. */
   contextCompressionThreshold: number
-  /** Dedicated summarizer model. Null keeps using the current session model. */
-  contextCompressionModel: ModelBinding | null
   editorWorkspaceEnabled: boolean
   editorRemoteLanguageServiceEnabled: boolean
   maxParallelToolCalls: number
@@ -221,13 +213,11 @@ interface SettingsStore {
   // entries are always written regardless of this level)
   logLevel: LogLevel
 
-  // Prompt Recommendation Settings
-  promptRecommendationModels: PromptRecommendationModelBindings
-  newSessionDefaultModel: SessionDefaultModelBinding | null
+  // Session model selection
+  newSessionDefaultModel: ModelBinding | null
   mainModelSelectionMode: MainModelSelectionMode
   projectSessionDefaultCollaborationMode: ProjectSessionDefaultCollaborationMode
   coworkDefaultPermissionMode: CoworkDefaultPermissionMode
-  claudeCodeConfigs: ClaudeCodeConfig[]
   codexConfigs: CodexConfig[]
   projectDefaultDirectoryMode: ProjectDefaultDirectoryMode
   projectDefaultDirectory: string
@@ -281,7 +271,6 @@ export const useSettingsStore = create<SettingsStore>()(
       browserUserDataSource: DEFAULT_BROWSER_USER_DATA_SOURCE,
       contextCompressionEnabled: true,
       contextCompressionThreshold: 0.8,
-      contextCompressionModel: null,
       editorWorkspaceEnabled: false,
       editorRemoteLanguageServiceEnabled: false,
       maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
@@ -361,19 +350,11 @@ export const useSettingsStore = create<SettingsStore>()(
       // Logging Settings (default: error only)
       logLevel: DEFAULT_LOG_LEVEL,
 
-      // Prompt Recommendation Settings
-      promptRecommendationModels: {
-        chat: null,
-        clarify: null,
-        cowork: null,
-        code: null,
-        acp: null
-      },
+      // Session model selection
       newSessionDefaultModel: null,
       mainModelSelectionMode: 'auto',
       projectSessionDefaultCollaborationMode: 'cowork',
       coworkDefaultPermissionMode: 'fullAccess',
-      claudeCodeConfigs: [createDefaultClaudeCodeConfig()],
       codexConfigs: [createDefaultCodexConfig()],
       projectDefaultDirectoryMode: 'last-used',
       defaultShell: '',
@@ -449,7 +430,6 @@ export const useSettingsStore = create<SettingsStore>()(
         teamToolsEnabled: state.teamToolsEnabled,
         contextCompressionEnabled: state.contextCompressionEnabled,
         contextCompressionThreshold: state.contextCompressionThreshold,
-        contextCompressionModel: state.contextCompressionModel,
         editorWorkspaceEnabled: state.editorWorkspaceEnabled,
         editorRemoteLanguageServiceEnabled: state.editorRemoteLanguageServiceEnabled,
         maxParallelToolCalls: clampMaxParallelToolCalls(state.maxParallelToolCalls),
@@ -519,13 +499,11 @@ export const useSettingsStore = create<SettingsStore>()(
         systemProxyUrl: state.systemProxyUrl,
         // Logging Settings
         logLevel: normalizeLogLevel(state.logLevel),
-        // Prompt Recommendation Settings
-        promptRecommendationModels: state.promptRecommendationModels,
+        // Session model selection
         newSessionDefaultModel: state.newSessionDefaultModel,
         mainModelSelectionMode: state.mainModelSelectionMode,
         projectSessionDefaultCollaborationMode: state.projectSessionDefaultCollaborationMode,
         coworkDefaultPermissionMode: state.coworkDefaultPermissionMode,
-        claudeCodeConfigs: state.claudeCodeConfigs,
         codexConfigs: state.codexConfigs,
         projectDefaultDirectoryMode: state.projectDefaultDirectoryMode,
         projectDefaultDirectory: state.projectDefaultDirectory,

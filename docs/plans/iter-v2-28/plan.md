@@ -207,15 +207,38 @@
 
 **步骤清单**（**五条裁定全部闭合**，见上）：
 
-- [ ] R-1.0：出 Plan（本节，完成）＋ **五条全部裁定**：① 范围边界（四条清单）；② **不用"最近使用"，改显式配置 + 补位兜底**（不可抗力定性）；③ **四个哑字段全删**；④ **给第 1/2 条加显式模型配置**；⑤ **第 ③ 级"全局激活模型"保留 + 强制存在性校验**。
+- [x] R-1.0：出 Plan（本节，完成）＋ **五条全部裁定**：① 范围边界（四条清单）；② **不用"最近使用"，改显式配置 + 补位兜底**（不可抗力定性）；③ **四个哑字段全删**；④ **给第 1/2 条加显式模型配置**；⑤ **第 ③ 级"全局激活模型"保留 + 强制存在性校验**。
 - [x] R-1.1：定配置的存储与下发通道。配置落在 Worker `config.json` 的 `providerCompletion` 节点，经 `provider/completion-config-read|write` 下发；`ProviderCompletionSettings` / `ProviderCompletionSettingsResult` 已注册 `AgentRuntimeJsonContext` AOT。
-- [ ] R-1.2：`optimizer.ts:60-69` 补传 `providerId`（`model` 已在顶层 `params.model`）。验证：抓一次真实 `provider/complete` 请求日志，确认 `providerId` 到达服务端。
-- [ ] R-1.3：`ProviderCompletionService` 内增加三级解析：**① 该请求的显式配置 → ② 补位模型配置 → ③ 全局激活模型（✅ 裁定 ⑤：保留，须带存在性校验）**。验证：三条分支各写一条可控单测或日志断言；**必须验证"显式配置不被补位模型覆盖"**；**必须验证"第 ③ 级的 `activeModelId` 已悬空时显式失败而非静默使用"**（裁定 ② 的教训 + 裁定 ⑤ 的校验要求，写进测试）。
-- [ ] R-1.4：**把 `PersonaGenerator` 接回 Provider 体系**——现状是绕开 `ProviderCompletionService` 的独立 HTTP 实现（`PersonaGenerator.cs:41-104`），且硬编码兜底模型、只认 OpenAI/Anthropic 两协议。至少须让它**进入需求 #1 的写入钩子**与 **R-1.3 的三级解析**。验证：① 新建角色一次，usage 表出现该行且 `runtime_role` 可识别；② Gemini/Vertex provider 下不再走错协议（或明确记账为已知限制）。
-- [ ] R-1.5：**删除四个哑字段**（裁定 ③）——`contextCompressionModel` / `useGlobalActiveModel` / `ClaudeCodeConfig`（含 `smallFastModelId`）/ `promptRecommendationModels`。**与 R-1.6 的落点在同一步骤内一并处理**，避免"删了又加"。验证：全仓四处键名零命中；删除后无编译/类型错误。
-- [ ] R-1.6：**给第 1/2 条加显式模型配置项**（裁定 ④）——提示词优化、新建角色辅助各一项，形态对齐定时任务的 `agentId`+`model`；**新建字段，不复用 R-1.5 删掉的哑字段**。验证：`tsc` 三配置；两项配置切换后不回退；未配置时走 R-1.3 的第 ② 级。
-- [ ] R-1.7：**补位模型配置项**（设置页，复用 provider/model 选择控件）＋ **读取时的存在性校验**（裁定 ② 的健壮性原则）：失效时回退并**记日志**，不静默。验证：① `tsc` 三配置；② 手动把配置指向一个已删模型，确认回退发生且有日志。
-- [ ] R-1.8：给第 1/2/3/4 条补来源标识，使需求 #1 的 usage 写入能正确按 `runtime_role` 分维。验证：与 #1 的写入钩子对账，**四条各有独立可识别来源**。
+- [x] R-1.2：`optimizer.ts:60-69` 补传 `providerId`（`model` 已在顶层 `params.model`）。
+  - 实落：`provider.providerId` ＋ `requestKind:'promptOptimizer'` ＋ `providerRole:'global'` ＋ `globalActiveModel{providerId, modelId}`。`providerRole:'global'` 是**故意的**——它让共享解析器跳过"调用方自带 provider"这条显式路，把提示词优化的第 ① 级定成 Worker 侧专属路由（R-1.6），而不是"当前会话恰好在用哪个模型"。
+  - 验证（真机，dev 实例 + CDP，非静态核对）：见 R-1.3 的真机条目。**该轮真机验证暴露出一个根因缺陷**——`workerRequestWithId` 的返回类型写成 `Promise<{result, requestId}>`，但主进程 handler（`misc-handlers.ts:96`）自 `f8fe878d`（2026-08-26，provider/complete 全链路取消改造）起一直直接返回 worker 载荷本身，`git log -S requestId` 证明该包装从未存在过。`optimizer.ts` 因此长期取 `response.result === undefined`，**提示词优化自那天起每次都是"Empty response from worker"**。已按根因修：preload 契约改为 `Promise<T>`（含 `index.d.ts`），调用侧直接取结果并保留 `?? { ok:false }` 兜空响应；不加重试、不加"请刷新"按钮。修复后日志 `extracted 3/3 options from tool args`。
+- [x] R-1.3：`ProviderCompletionService` 内增加三级解析：**① 该请求的显式配置 → ② 补位模型配置 → ③ 全局激活模型（✅ 裁定 ⑤：保留，须带存在性校验）**。
+  - 实落为共享解析器 `ProviderCompletionResolver.Resolve(parameters, requestKind)`（`Infrastructure/Storage/ProviderCompletionSettings.cs`），`ProviderCompletionService` 与 `PersonaGenerator` **同用一个**，故 R-1.4「接回 Provider 体系」落在"模型解析"这一半。
+  - 验证：`ProviderCompletionResolutionChecks.Run()`（已挂进 `ProviderHeaderRegressionTests`），6 条断言覆盖 ①显式优先于配置、②配置优先于全局、③补位兜底、④配置里的**模型**被删→降级、⑤配置里的**provider**被删→降级、⑥全局激活模型悬空→**显式失败并带 "no longer exists"**。运行时可见 3 条 `WARN`，即 R-1.7 要求的"记日志不静默"。
+  - 真机三级解析（dev 实例，运行时页配置 → 点"优化提示词" → 读 `request_usage_logs`）：
+    - 第 ① 级生效：把提示词优化路由配成 `agnes-2.5-pro-beta`，全局激活模型仍是 `agnes-3.0-flash`（顶栏徽章可见）→ 落库行 `promptOptimizer / agnes-2.5-pro-beta / 761 in / 820 out / 183 reasoning`。**配置赢全局**，且证明渲染端传来的 `providerId` 确实到了 Worker。
+    - 路由清空后落到末级：同一操作 → `promptOptimizer / agnes-3.0-flash / 646 in / 877 out`，即第 ③ 级全局激活模型。
+    - 悬空配置不静默：把人格路由指向已删除的 `deleted-model-x` → `WARN auxiliary provider configured route unavailable kind=persona error=Model 'deleted-model-x' no longer exists in provider 'x8HOp-...'`，随后走补位并成功落库。
+- [x] R-1.4：**把 `PersonaGenerator` 接回 Provider 体系**——现状是绕开 `ProviderCompletionService` 的独立 HTTP 实现（`PersonaGenerator.cs:41-104`），且硬编码兜底模型、只认 OpenAI/Anthropic 两协议。至少须让它**进入需求 #1 的写入钩子**与 **R-1.3 的三级解析**。
+  - 已完成（"至少须"的两项）：硬编码兜底 `"gpt-4o-mini"` / `"claude-3-5-haiku-20241022"` **已删**；模型选择改走同一个 `ProviderCompletionResolver`；成功与异常两条出口都写 `AuxiliaryUsageLog`，`runtime_role = "personaGenerator"`；`PersonaModule` 允许省略 `provider`（交解析器兜底）；`WishfulClaw.Persona` 显式引用 Infrastructure（Persona→Infrastructure 属正向依赖）。
+  - ⚠️ **已知限制（明确记账）**：请求构造与响应解析仍是 PersonaGenerator 自己的两条 HTTP 实现，且**只认 anthropic 与 OpenAI 兼容协议**；Gemini / Vertex 会按 OpenAI 兼容协议发出，命中时打 `WorkerLog.Warn("persona generation uses OpenAI-compatible protocol for provider type ...")`。彻底改接 `ProviderCompletionService` 是"换实现"而非"换解析口径"，未纳入本条。
+  - 验证：`UsageLogChecks.RunAuxiliaryUsageSuite` 以 `runtime_role='personaGenerator'` 断言写库；真机已实跑一次 `persona/generate`（dev 实例 Worker），落库行 `personaGenerator / agnes-2.5-pro-beta / 553 in / 3654 out / reasoning 2.6K`，即补位路由在人格链上同样生效。
+  - ⚠️ **该真机请求只能直调 Worker 方法，走不了 UI**：见本节末「待老大裁」第 1 条。
+- [x] R-1.5：**删除四个哑字段**（裁定 ③）。复搜口径放宽到八项键名：`contextCompressionModel` / `useGlobalActiveModel` / `claudeCodeConfigs` / `ClaudeCodeConfig` / `smallFastModelId` / `promptRecommendationModels` / `SessionDefaultModelBinding` / `sanitizeClaudeCode` —— `src` + `tests` 内**全部 0 命中**。`dotnet build` 0 错误 0 警告，`tsc` 三配置零错误。
+- [x] R-1.6：**给第 1/2 条加显式模型配置项**（裁定 ④）——`ProviderCompletionSettings` 新建 `promptOptimizer{Provider,Model}Id` 与 `persona{Provider,Model}Id` 两对，**未复用 R-1.5 删掉的哑字段**。UI 见 `ProviderCompletionSettingsPanel.tsx`（provider + model 双下拉，形态对齐定时任务的 `agentId`+`model`），挂在运行时页 `sec-runtime-auxiliary-models`。
+  - 验证：`tsc` 三配置 + `test:settings-tabs`（20 断言）通过；"未配置时走第 ② 级"由解析器断言 ③ 覆盖。真机已在 dev 实例的实际点击与保存：面板写→`config.json` 的 `providerCompletion` 节点（camelCase）→重载读回一致，配好的路由随后被 R-1.3 的落库行证明生效；验证完毕已把三项路由复位为 null。
+- [x] R-1.7：**补位模型配置项**（同一面板第三行 `fallback{Provider,Model}Id`）＋ **读取时的存在性校验**。校验落在 `TryResolveStored`：provider 文件不存在 / 模型不在 `models[]` / type+baseUrl 缺失三种情况一律**降级到下一级并 `WorkerLog.Warn`**，最后一级仍无效则返回可见错误（不静默猜模型）。
+  - 验证：R-1.3 的 ④⑤⑥ 三条断言即"指向已删模型确认回退且有日志"，测试输出中三条 `WARN` 逐条对得上。zh/en 文案已补齐（`runtimePage.auxiliaryModels.*` 与 `anchorNav.auxiliaryModels`），无硬编码中文。
+- [x] R-1.8：给第 1/2/3/4 条补来源标识。**四条来源互不相同且均可被 #1 的查询按 `runtime_role` 分组**：`promptOptimizer`（由 `requestKind` 映射）、`personaGenerator`（PersonaGenerator 直传）、`automationBackground` / `automationSession`（`cron-runtime.ts` 传 `usageSource`，`ProviderRetryPolicy.UsageLog.cs:117` 用它覆盖 `runtime_role`）。
+  - 顺带修掉两处**写死的假值**：`AuxiliaryUsageLog` 原先恒写 `CollaborationMode="chat"`（cowork 会话里点"优化提示词"会被标错）与 `TotalAttempts=1`（`ProviderCompletionService` 内部最多重试 10 次，却报"一次就成"）。前者改 `"unknown"`（无会话的单次请求本就没有 scope/mode，实体与建表注释同步），后者改由调用方传真实次数；`attempt_index` 仍恒为 1——辅助链**一次逻辑请求一行**，与主线"一次尝试一行"的粒度差异已在注释写明。
+  - `usageSource` 已补进 `chatStore.sendMessage` 的参数类型（此前 `cron-runtime.ts:421` 必须靠 `as unknown as` 整对象断言才能把它传出去）。
+  - 回归：`UsageLogChecks.RunUsageSourceOverrideSuite` 钉住两条方向——传 `usageSource` 时它覆盖 `runtime_role`，不传时保留运行态的规范角色 `sessionagent`（`AgentRunContextPolicy.Resolve` 归一化是小写）。
+  - 真机「按来源」分组（dev 实例）：同一张表里并列出现 `promptOptimizer`、`providerCompletion`、`personaGenerator`、`sessionagent · global:chat` 四类，互不混淆。为让这条成立，`UsagePanelParts.tsx` 的来源串改为丢弃 `unknown` 占位段——辅助请求无会话，硬拼 `unknown:unknown` 会把用户真正要看的"哪个模型答的"埋掉。
+
+⚠️ **R-1 真机验证带出的两项越界发现（只记账，不在本条自行动手）**：
+
+1. **AI 生成人格自诞生起就没有 UI 入口。** `PersonaGeneratorDialog.tsx` 全仓仅被它自己引用（`grep -rn PersonaGeneratorDialog src/` 除定义文件外 0 命中），`persona-store.ts:172 generatePersona` 的唯一消费方就是这个从未挂载的对话框。`git show 6ae15912`（2026-07-23，迭代6 `feat(persona): 6-7 AI-assisted persona creation`）只新增了组件 + store + Worker 侧，**没碰任何页面/设置面板**——不是后来被删掉的挂载点，是一开始就没接。R-1 把这条链的模型解析与记账都修到了位，但用户仍然**点不到它**。需老大裁定：本次补入口，还是记账为后继需求。（这也是 R-1.4 真机验证只能直调 `persona/generate` 的原因。）
+2. **需求 #1 用量面板的 i18n 只接了一半。** `UsagePanel.tsx` 有 23 处 `t('usage.*', { defaultValue: 中文 })` 加 3 处 `usage.ranges.*`，**zh / en 两份 settings.json 里都不存在这些键**（只有 `tabs.usage` 这个页签标签）；`UsagePanelParts.tsx` 连 `useTranslation` 都没有，表头与图表 tooltip 是硬编码中文。结果：zh 环境看起来正常，**en 环境整块面板显示中文**。属 #1 的收尾活，与 R-1 无关，故单独记账。
 
 ⚠️ **与需求 #1 的交界（已升级为硬约束）**：见上文「第 2 条的重大发现」——#1 的钩子必须覆盖 `ProviderCompletionService` **与** `PersonaGenerator` 两条链，否则第 2 条永久缺失。
 

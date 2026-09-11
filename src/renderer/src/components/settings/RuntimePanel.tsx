@@ -13,6 +13,7 @@ import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
 import { Slider } from '@renderer/components/ui/slider'
 import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
+import { ProviderCompletionSettingsPanel } from './ProviderCompletionSettingsPanel'
 
 function RuntimePanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
@@ -152,6 +153,8 @@ function RuntimePanel(): React.JSX.Element {
         />
         <SettingHint>{t('runtimePage.sessionDefaults.hint')}</SettingHint>
       </SettingsSection>
+
+      <ProviderCompletionSettingsPanel />
 
       {/* API Request Timeout */}
       <SettingsSection

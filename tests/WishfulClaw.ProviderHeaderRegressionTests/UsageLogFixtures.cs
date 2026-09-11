@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
@@ -62,11 +63,21 @@ internal static partial class UsageLogChecks
             "end_turn",
             new AgentRuntimeTokenUsage(input, output, CacheReadTokens: cacheRead, CacheCreationTokens: cacheCreation));
 
-    private static AgentRuntimeRunState NewState()
+    private static AgentRuntimeRunState NewState(string? usageSource = null)
     {
         var state = new AgentRuntimeRunState("run-1", "session-1");
-        using var doc = JsonDocument.Parse(
-            """{"scope":"project","projectId":"p1","collaborationMode":"chat","sessionMode":"agent"}""");
+        var parameters = new JsonObject
+        {
+            ["scope"] = "project",
+            ["projectId"] = "p1",
+            ["collaborationMode"] = "chat",
+            ["sessionMode"] = "agent"
+        };
+        if (usageSource is not null)
+        {
+            parameters["usageSource"] = usageSource;
+        }
+        using var doc = JsonDocument.Parse(parameters.ToJsonString());
         state.ReplaceParameters(doc.RootElement.Clone());
         return state;
     }

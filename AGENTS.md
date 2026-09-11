@@ -135,7 +135,7 @@ Agent 通用框架，不含任何业务逻辑。
 
 人格系统。
 
-- **依赖** Contracts + Core + Workspace
+- **依赖** Contracts + Core + Infrastructure + Workspace
 - **不依赖** Agent / Worker
 - 包含：PromptBuilder / PersonaGenerator / PersonaStore / PersonaPresetService
 

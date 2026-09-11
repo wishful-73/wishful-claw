@@ -113,6 +113,11 @@ export interface AgentActions {
     scope?: 'global' | 'project'
     collaborationMode?: 'chat' | 'cowork'
     runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation'
+    /**
+     * 用量统计（request_usage_logs.runtime_role）的来源覆盖。后台/自动执行的轮次
+     * 与前台会话共用 runtimeRole，靠本字段区分是"谁发起的"。
+     */
+    usageSource?: string
     pluginId?: string
     pluginType?: string
     pluginChatId?: string

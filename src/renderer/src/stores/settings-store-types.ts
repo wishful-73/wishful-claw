@@ -8,37 +8,12 @@ export interface ModelBinding {
   modelId: string
 }
 
-export type ClaudeCodePermissionOption = 'dangerouslySkipPermissions'
-
-export interface SessionDefaultModelBinding extends ModelBinding {
-  useGlobalActiveModel: boolean
-}
-
-export interface ClaudeCodeConfig {
-  id: string
-  name: string
-  providerId: string
-  defaultModelId: string
-  smallFastModelId: string
-  sonnetModelId: string
-  opusModelId: string
-  haikuModelId: string
-  permissionOptions: ClaudeCodePermissionOption[]
-}
-
 export interface CodexConfig {
   id: string
   name: string
   providerId: string
   modelId: string
 }
-
-export type PromptRecommendationModelBinding = ModelBinding | 'disabled' | null
-
-export type PromptRecommendationModelBindings = Record<
-  'chat' | 'clarify' | 'cowork' | 'code' | 'acp',
-  PromptRecommendationModelBinding
->
 
 export type MainModelSelectionMode = 'auto' | 'manual'
 export type ProjectSessionDefaultCollaborationMode = CollaborationMode
@@ -107,25 +82,6 @@ export function readStringField(item: Record<string, unknown>, key: string): str
   return typeof value === 'string' ? value : ''
 }
 
-export function sanitizeClaudeCodePermissionOptions(value: unknown): ClaudeCodePermissionOption[] {
-  if (!Array.isArray(value)) return []
-  return value.includes('dangerouslySkipPermissions') ? ['dangerouslySkipPermissions'] : []
-}
-
-export function createDefaultClaudeCodeConfig(): ClaudeCodeConfig {
-  return {
-    id: DEFAULT_AI_CODING_CONFIG_ID,
-    name: '默认 1',
-    providerId: '',
-    defaultModelId: '',
-    smallFastModelId: '',
-    sonnetModelId: '',
-    opusModelId: '',
-    haikuModelId: '',
-    permissionOptions: []
-  }
-}
-
 export function createDefaultCodexConfig(): CodexConfig {
   return {
     id: DEFAULT_AI_CODING_CONFIG_ID,
@@ -133,34 +89,6 @@ export function createDefaultCodexConfig(): CodexConfig {
     providerId: '',
     modelId: ''
   }
-}
-
-export function sanitizeClaudeCodeConfigs(configs: unknown): ClaudeCodeConfig[] {
-  if (!Array.isArray(configs)) return [createDefaultClaudeCodeConfig()]
-
-  const usedIds = new Set<string>()
-  const sanitized = configs
-    .map((item, index): ClaudeCodeConfig | null => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) return null
-      const record = item as Record<string, unknown>
-      const rawId = readStringField(record, 'id').trim() || `claude-${index + 1}`
-      const id = usedIds.has(rawId) ? `${rawId}-${index + 1}` : rawId
-      usedIds.add(id)
-      return {
-        id,
-        name: readStringField(record, 'name').trim() || `默认 ${index + 1}`,
-        providerId: readStringField(record, 'providerId'),
-        defaultModelId: readStringField(record, 'defaultModelId'),
-        smallFastModelId: readStringField(record, 'smallFastModelId'),
-        sonnetModelId: readStringField(record, 'sonnetModelId'),
-        opusModelId: readStringField(record, 'opusModelId'),
-        haikuModelId: readStringField(record, 'haikuModelId'),
-        permissionOptions: sanitizeClaudeCodePermissionOptions(record.permissionOptions)
-      }
-    })
-    .filter((item): item is ClaudeCodeConfig => Boolean(item))
-
-  return sanitized.length > 0 ? sanitized : [createDefaultClaudeCodeConfig()]
 }
 
 export function sanitizeCodexConfigs(configs: unknown): CodexConfig[] {

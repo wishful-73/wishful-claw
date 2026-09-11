@@ -224,6 +224,7 @@ export interface SidecarAgentRunRequest {
   scope?: 'global' | 'project'
   collaborationMode?: 'chat' | 'cowork'
   runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation' | 'pet' | 'translation' | 'providerTurn'
+  usageSource?: string
   toolPreset?: string
   maxIterations: number
   forceApproval: boolean

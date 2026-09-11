@@ -4,6 +4,8 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.Persona;
 
@@ -33,32 +35,73 @@ public static class PersonaGenerator
         string prompt,
         string? referencePersonaId,
         string? workingFolder,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        JsonElement? routingParameters = null)
     {
-        var providerType = JsonHelpers.GetString(provider, "type") ?? "openai-chat";
+        var startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var request = new JsonObject
+        {
+            ["provider"] = JsonNode.Parse(provider.GetRawText()),
+            ["model"] = JsonHelpers.GetString(provider, "model"),
+            ["requestKind"] = "persona"
+        };
+        if (routingParameters is { } routing)
+        {
+            if (routing.TryGetProperty("globalActiveModel", out var globalActive))
+            {
+                request["globalActiveModel"] = JsonNode.Parse(globalActive.GetRawText());
+            }
+            if (JsonHelpers.GetString(routing, "providerRole") is { } providerRole)
+            {
+                request["providerRole"] = providerRole;
+            }
+        }
+        using var requestDocument = JsonDocument.Parse(request.ToJsonString());
+        var (resolved, resolutionError) = ProviderCompletionResolver.Resolve(requestDocument.RootElement, "persona");
+        if (resolved is null)
+        {
+            throw new InvalidOperationException(resolutionError ?? "No provider model is configured for persona generation");
+        }
+
+        // Persona still owns its response-specific JSON parsing, but model
+        // selection now follows the same Worker resolver as provider/complete.
+        var providerType = resolved.Type;
+        if (providerType is not "anthropic" and not "openai" and not "openai-chat")
+        {
+            WorkerLog.Warn($"persona generation uses OpenAI-compatible protocol for provider type '{providerType}'; native protocol support remains pending");
+        }
         var systemPrompt = PersonaGenerationPrompt.Build(referencePersonaId, workingFolder);
 
-        var responseBody = providerType switch
+        string responseBody;
+        try
         {
-            "anthropic" => await CallAnthropicAsync(provider, systemPrompt, prompt, cancellationToken),
-            _ => await CallOpenAIAsync(provider, systemPrompt, prompt, cancellationToken)
-        };
+            responseBody = providerType == "anthropic"
+                ? await CallAnthropicAsync(resolved, systemPrompt, prompt, cancellationToken)
+                : await CallOpenAIAsync(resolved, systemPrompt, prompt, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            AuxiliaryUsageLog.Record(resolved, "personaGenerator", false, startedAt, ex.GetBaseException().Message);
+            throw;
+        }
 
-        return ParseDraftResponse(responseBody);
+        var draft = ParseDraftResponse(responseBody);
+        AuxiliaryUsageLog.Record(
+            resolved, "personaGenerator", true, startedAt,
+            usage: AuxiliaryUsageLog.ReadUsage(responseBody, providerType));
+        return draft;
     }
 
     // ── LLM API calls (non-streaming) ──
 
     private static async Task<string> CallOpenAIAsync(
-        JsonElement provider, string systemPrompt, string userPrompt, CancellationToken cancellationToken)
+        ResolvedProviderConfig provider, string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
-        var model = JsonHelpers.GetString(provider, "model") ?? "gpt-4o-mini";
-        var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.openai.com/v1")
-            .Trim().TrimEnd('/');
-        var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
+        var baseUrl = provider.BaseUrl.Trim().TrimEnd('/');
+        var apiKey = provider.ApiKey;
         var url = $"{baseUrl}/chat/completions";
 
-        var body = BuildOpenAIBody(model, systemPrompt, userPrompt);
+        var body = BuildOpenAIBody(provider.Model, systemPrompt, userPrompt);
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
         if (!string.IsNullOrEmpty(apiKey))
@@ -79,17 +122,14 @@ public static class PersonaGenerator
     }
 
     private static async Task<string> CallAnthropicAsync(
-        JsonElement provider, string systemPrompt, string userPrompt, CancellationToken cancellationToken)
+        ResolvedProviderConfig provider, string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
-        var model = JsonHelpers.GetString(provider, "model") ?? "claude-3-5-haiku-20241022";
-        var baseUrl = (JsonHelpers.GetString(provider, "baseUrl") ?? "https://api.anthropic.com")
-            .Trim().TrimEnd('/');
-        var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
+        var baseUrl = provider.BaseUrl.Trim().TrimEnd('/');
         var url = $"{baseUrl}/v1/messages";
 
-        var body = BuildAnthropicBody(model, systemPrompt, userPrompt);
+        var body = BuildAnthropicBody(provider.Model, systemPrompt, userPrompt);
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Headers.Add("x-api-key", apiKey);
+        request.Headers.Add("x-api-key", provider.ApiKey);
         request.Headers.Add("anthropic-version", "2023-06-01");
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 

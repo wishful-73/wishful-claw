@@ -111,6 +111,18 @@ public static class ConfigStore
         return ToResponse(Mutation(true, null));
     }
 
+    /// <summary>Reads a value by key (internal use by other Worker modules).</summary>
+    public static JsonNode? GetValueNode(string key)
+    {
+        lock (Sync)
+        {
+            var root = ReadRoot();
+            return root.TryGetPropertyValue(key, out var value) && value is not null
+                ? value.DeepClone()
+                : null;
+        }
+    }
+
     /// <summary>Sets a value by key (internal use by other modules).</summary>
     public static void SetValue(string key, JsonNode? value)
     {

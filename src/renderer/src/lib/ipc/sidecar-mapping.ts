@@ -224,6 +224,7 @@ export function buildSidecarAgentRunRequest(args: {
   scope?: 'global' | 'project'
   collaborationMode?: 'chat' | 'cowork'
   runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation' | 'pet' | 'translation' | 'providerTurn'
+  usageSource?: string
   toolPreset?: string
   maxIterations: number
   forceApproval: boolean
@@ -327,6 +328,7 @@ export function buildSidecarAgentRunRequest(args: {
     ...(args.scope ? { scope: args.scope } : {}),
     ...(args.collaborationMode ? { collaborationMode: args.collaborationMode } : {}),
     ...(args.runtimeRole ? { runtimeRole: args.runtimeRole } : {}),
+    ...(args.usageSource ? { usageSource: args.usageSource } : {}),
     ...(args.toolPreset ? { toolPreset: args.toolPreset } : {}),
     ...(args.compression ? { compression: args.compression } : {}),
     maxIterations: args.maxIterations,

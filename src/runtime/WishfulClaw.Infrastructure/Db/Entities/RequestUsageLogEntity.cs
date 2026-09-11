@@ -27,10 +27,10 @@ public class RequestUsageLogEntity
     /// <summary>Runtime role as produced by the existing run state (e.g. sessionAgent, automation).</summary>
     public string? RuntimeRole { get; set; }
 
-    /// <summary>Session scope: project / global / unknown.</summary>
+    /// <summary>Session scope: project / global / unknown (auxiliary single-shot requests have no session).</summary>
     public string? Scope { get; set; }
 
-    /// <summary>Collaboration mode: chat / cowork.</summary>
+    /// <summary>Collaboration mode: chat / cowork / unknown (auxiliary single-shot requests have no session).</summary>
     public string? CollaborationMode { get; set; }
 
     public string? ProviderId { get; set; }

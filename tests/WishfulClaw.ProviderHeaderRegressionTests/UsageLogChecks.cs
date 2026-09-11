@@ -5,6 +5,7 @@ using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.ProviderHeaderRegressionTests;
 
@@ -41,6 +42,8 @@ internal static partial class UsageLogChecks
             RunNonRetryableSuite();
             RunCostSuite();
             RunBillableInputSuite();
+            RunAuxiliaryUsageSuite();
+            RunUsageSourceOverrideSuite();
             RunTableShapeSuite();
             RunOverviewQuerySuite();
             RunBucketGapFillSuite();
@@ -196,6 +199,100 @@ internal static partial class UsageLogChecks
 
         var clamped = DbUsageLogTools.ComputeBillableInput(100, 500, 500);
         Assert(clamped == 0, "usagelog: billable input clamps at zero");
+    }
+
+    /// <summary>
+    /// Auxiliary chains (prompt optimizer, persona generation, provider/complete) bypass
+    /// ProviderRetryPolicy, so R-1 logs them through AuxiliaryUsageLog instead.
+    /// </summary>
+    private static void RunAuxiliaryUsageSuite()
+    {
+        Reset();
+
+        var anthropic = AuxiliaryUsageLog.ReadUsage(
+            """{"id":"msg_1","usage":{"input_tokens":800,"output_tokens":120,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}}""",
+            "anthropic");
+        Assert(anthropic?.InputTokens == 800 && anthropic?.OutputTokens == 120 &&
+               anthropic?.CacheReadTokens == 500 && anthropic?.CacheCreationTokens == 100 &&
+               anthropic?.ReasoningTokens == 0,
+            $"auxusage: the anthropic usage block is parsed (got {anthropic})");
+
+        var openAi = AuxiliaryUsageLog.ReadUsage(
+            """{"usage":{"prompt_tokens":900,"completion_tokens":200,"prompt_tokens_details":{"cached_tokens":600},"completion_tokens_details":{"reasoning_tokens":64}}}""",
+            "openai-chat");
+        Assert(openAi?.InputTokens == 900 && openAi?.OutputTokens == 200 &&
+               openAi?.CacheReadTokens == 600 && openAi?.CacheCreationTokens == 0 &&
+               openAi?.ReasoningTokens == 64,
+            $"auxusage: the openai usage block is parsed including nested details (got {openAi})");
+
+        Assert(AuxiliaryUsageLog.ReadUsage("""{"choices":[]}""", "openai-chat") is null,
+            "auxusage: a body without a usage block yields null instead of invented tokens");
+        Assert(AuxiliaryUsageLog.ReadUsage("not json", "openai-chat") is null,
+            "auxusage: a malformed body yields null instead of throwing");
+
+        var provider = new ResolvedProviderConfig(
+            "prov-1", "anthropic", "https://example.test", "test-key", "model-1", "configured");
+        var startedAt = DateTimeOffset.UtcNow.AddSeconds(-3).ToUnixTimeMilliseconds();
+        AuxiliaryUsageLog.Record(provider, "promptOptimizer", true, startedAt, usage: openAi);
+
+        Assert(RowCount() == 1, $"auxusage: one auxiliary request writes exactly one row (got {RowCount()})");
+        Assert(Col("runtime_role") == "promptOptimizer",
+            "auxusage: the request source is stored in runtime_role so the usage UI can group by it");
+        Assert(Col("status") == "success", "auxusage: a successful auxiliary request is marked success");
+        Assert(ColInt("input_tokens") == 900, "auxusage: auxiliary input tokens are persisted");
+        Assert(ColInt("reasoning_tokens") == 64, "auxusage: auxiliary reasoning tokens are persisted");
+        // 900 prompt_tokens - 600 cached_tokens = 300
+        Assert(ColInt("billable_input_tokens") == 300,
+            $"auxusage: auxiliary billable input subtracts cache-read tokens (got {ColInt("billable_input_tokens")})");
+        Assert(ColInt("total_attempts") == 1,
+            "auxusage: an auxiliary chain that retried nothing records a single attempt");
+        Assert(ColWhere("scope", "status='success'") == "unknown",
+            "auxusage: an auxiliary row has no session, so scope is unknown rather than inherited");
+        Assert(ColWhere("collaboration_mode", "status='success'") == "unknown",
+            "auxusage: an auxiliary row is not a chat turn, so it must not claim collaboration mode chat");
+
+        AuxiliaryUsageLog.Record(provider, "personaGenerator", false, startedAt, error: "HTTP 500: upstream");
+        Assert(RowCount() == 2, $"auxusage: a failed auxiliary request still writes a row (got {RowCount()})");
+        Assert(ErrorCount() == 1, "auxusage: the failed auxiliary request is the only error row");
+        Assert(ColWhere("runtime_role", "status='error'") == "personaGenerator",
+            "auxusage: the failure row keeps its own source");
+        Assert(ColWhere("error_kind", "status='error'") == "auxiliary",
+            "auxusage: auxiliary failures are attributed to error_kind=auxiliary");
+        Assert(ColIntWhere("input_tokens", "status='error'") == 0,
+            "auxusage: a failure row without a usage block keeps zero tokens");
+        Assert(!ColIsNullWhere("total_attempts", "status='error'"),
+            "auxusage: a failure row is terminal, so total_attempts is filled in");
+
+        // The auxiliary chains retry inside their own loop and still write one row, so
+        // the real attempt count has to ride on that row instead of being hardcoded to 1.
+        AuxiliaryUsageLog.Record(
+            provider, "providerCompletion", false, startedAt, error: "HTTP 429: slow down", totalAttempts: 7);
+        Assert(ColIntWhere("total_attempts", "runtime_role='providerCompletion'") == 7,
+            "auxusage: the caller's retry count is recorded, not a fixed 1");
+        Assert(ColIntWhere("attempt_index", "runtime_role='providerCompletion'") == 1,
+            "auxusage: a retried auxiliary request stays one row with attempt_index 1");
+    }
+
+    /// <summary>
+    /// R-1.8: automation runs share runtimeRole with interactive sessions, so the renderer
+    /// supplies a usageSource to name the real origin. It must win over the run-context role,
+    /// and must not swallow it when absent.
+    /// </summary>
+    private static void RunUsageSourceOverrideSuite()
+    {
+        Reset();
+        ProviderRetryPolicy.ExecuteAsync(
+            () => Task.FromResult(NewTurn(input: 10, output: 5)),
+            NewState("automationBackground"), NewContext(), ProviderJson()).GetAwaiter().GetResult();
+        Assert(Col("runtime_role") == "automationBackground",
+            $"usagesource: the renderer-supplied usageSource becomes runtime_role (got {Col("runtime_role")})");
+
+        Reset();
+        ProviderRetryPolicy.ExecuteAsync(
+            () => Task.FromResult(NewTurn(input: 10, output: 5)),
+            NewState(), NewContext(), ProviderJson()).GetAwaiter().GetResult();
+        Assert(Col("runtime_role") == "sessionagent",
+            $"usagesource: without usageSource the canonical run-context role is kept (got {Col("runtime_role")})");
     }
 
     private static void RunTableShapeSuite()

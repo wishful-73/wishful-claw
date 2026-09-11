@@ -254,12 +254,13 @@ Agent 侧已存在两个截图工具，可直接被调用：
 | S-7 | **`browser` 出三处 preset 白名单**（`ToolPreset.cs:53,68,83`）——老大定性浏览器与 MCP 同类，须经 `use_capability` 获取 | R-3.8c③ 的后一半 | 快照实测：摘掉后 chat/coding 档各少 6 个直接工具，属能力面变更 | 前置本次已铺好：`browser` 已进 `ProxiedCategories`，`ToolVisibilityPolicy` 已有 `browser` × 后台角色的排除谓词。曾按此改 `ToolPreset.cs`，被 91 格快照拦下后**已整体回滚**，该文件现与 HEAD 一致 |
 | S-8 | ~~`task` 出 `ProxiedCategories`、`goal` 整体进 proxied~~ **已随 R-3.8c①② 落地**；剩余的是 `ProxiedBuiltinTools` 里 `list_goals`/`get_goal_history`/`reopen_goal` 三件名字是否可以删（`goal` 已整类 proxied，名字清单疑似冗余） | R-3.8c①② | 删名字表属行为变更：需先确认三件在 `goal` 类的 `availableModes` 下确实仍被枚举出来 | `GoalRegressionTests` 已改为按注册表动态推导 goal 条目，删了不会静默失去覆盖 |
 
-另有两项**记账类**（非需求，但须防误认"已生效"）：
+另有三项**记账类**（非需求，但须防误认"已生效"）：
 
 | # | 事项 | 来源 | 说明 |
 |---|---|---|---|
 | S-5 | **4 个 `allow*` 权限字段仍不生效**——`allowReadHome` / `readablePathPrefixes` / `allowWriteOutside` / `allowSubAgents` | R-2 裁定 ② → R-2.7 | 四个全部**无强制执行点**（三个仅在 `/status` 打印、`readablePathPrefixes` 连读取点都没有）。本次**只搬家 + 记账**。**`allowShell` 不在其列**——它本次接真并改写为"是否需用户授权"（见 R-2 裁定 ②） |
 | S-6 | **`ChannelInstance.tools` 零调用方**——渠道级工具开关整条主进程链已接好，但 **C# 侧零处发起** | R-2 现状勘查 | 与 R-3.9「渠道工具开关接真」直接相关，两项应同批处理。当前渠道工具筛选实际走 `toolPreset + sessionMode`（`AgentLoop.cs:166-168`、`AgentRunContextPolicy.cs:117-133,176`） |
+| S-9 | **`newSessionDefaultModel` 零消费方**——已声明、有默认值、进 persist 白名单、migrate 补默认，但**全仓无任何读取点** | R-1.5 执行时新发现 | 与裁定 ③ 那四个哑字段同族，但**不在老大点名的四项清单内，故本次未删**。其类型已随 `SessionDefaultModelBinding`（含同样无人读取的 `useGlobalActiveModel`）一并收窄为普通 `ModelBinding`。将来要么接真"新会话默认模型"，要么按裁定 ③ 口径删除，**不得当作已生效功能引用** |
 
 > ⚠️ **S-1～S-4、S-7、S-8 的共同前提**：本次 R-3 交付的是**机制**（`ctxStr` 单点渲染 + 唯一判定入口 + `VisibleScopes` 声明 + 三载体同源），**任一档位的可见工具集合已用 91 格快照证明逐字节等价于改动前**（`plan.md` R-3.H ①）。提示词内容本次**完全未动**（`BuildToolCapability()` 仍是静态全 27 类）。收窄全部顺延，故下一代迭代接到这六项时，**改动面已被本次收敛到"只改声明/名单值/提示词组装"**，无需再动机制。
 >

@@ -39,6 +39,7 @@ const GENERAL_ANCHORS: SectionAnchor[] = [
 
 const RUNTIME_ANCHORS: SectionAnchor[] = [
   { id: 'sec-runtime-autostart', label: 'anchorNav.startup' },
+  { id: 'sec-runtime-auxiliary-models', label: 'anchorNav.auxiliaryModels' },
   { id: 'sec-runtime-devmode', label: 'anchorNav.developer' },
   { id: 'sec-runtime-timeout', label: 'anchorNav.timeout' },
   { id: 'sec-runtime-retries', label: 'anchorNav.retries' },

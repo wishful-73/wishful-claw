@@ -423,8 +423,9 @@ public static partial class DbClient
                 @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_task ON global_task_dispatches(global_task_id);",
                 @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_session ON global_task_dispatches(session_id);",
                 // ── Request-level usage log (#1, iteration 28) ──
-                // One row per HTTP request attempt (success or failure). Written only
-                // by the AgentLoop main path via ProviderRetryPolicy.
+                // One row per HTTP request attempt (success or failure), written by the
+                // AgentLoop main path via ProviderRetryPolicy. Auxiliary chains that skip
+                // that retry policy write one terminal row via AuxiliaryUsageLog instead.
                 @"CREATE TABLE IF NOT EXISTS request_usage_logs (
                     id TEXT PRIMARY KEY NOT NULL,
                     session_id TEXT,

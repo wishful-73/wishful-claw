@@ -1156,6 +1156,29 @@
   "runtimePage": {
     "title": "Runtime & Performance",
     "subtitle": "Agent runtime settings: request timeout, retries, tool execution and context compression",
+    "auxiliaryModels": {
+      "title": "Auxiliary Request Models",
+      "desc": "Pick models for prompt optimization and persona creation. Requests without a route use the fallback model; if the fallback is invalid, the validated global active model is used.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved. Requests without an explicit route resolve through the fallback model, then the global active model.",
+      "saveFailed": "Save failed",
+      "unconfigured": "Not configured",
+      "selectModel": "Select model",
+      "promptOptimizer": {
+        "label": "Prompt optimizer",
+        "desc": "Affects prompt optimization requests only."
+      },
+      "persona": {
+        "label": "Persona generation",
+        "desc": "Affects AI persona generation requests only."
+      },
+      "fallback": {
+        "label": "Fallback model",
+        "desc": "Used when a request has no dedicated route. The Worker re-validates provider and model on read."
+      },
+      "hint": "Deleted models and retired providers never resolve to a dangling id silently; the Worker logs a warning and tries the next level."
+    },
     "sessionDefaults": {
       "title": "Session Defaults",
       "desc": "Choose the collaboration and Cowork permission defaults for new project sessions",
@@ -1222,6 +1245,7 @@
     "toolExecution": "Tool Execution",
     "developer": "Developer",
     "startup": "Startup",
+    "auxiliaryModels": "Auxiliary Models",
     "memoryOrganization": "Auto Organization",
     "memoryTiers": "Tier Thresholds",
     "memoryRecall": "Proactive Recall"

@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.Agent;
 
@@ -24,12 +26,21 @@ public static class ProviderCompletionService
     public static async Task<WorkerResponse> CompleteAsync(JsonElement parameters, IWorkerRequestContext context)
     {
         var cancellationToken = context.CancellationToken;
-        var provider = ExtractProviderConfig(parameters);
-        if (provider is null)
+        var startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var requestKind = JsonHelpers.GetString(parameters, "requestKind") ?? "auxiliary";
+        var (resolved, resolutionError) = ProviderCompletionResolver.Resolve(parameters, requestKind);
+        if (resolved is null)
         {
-            return Fail("Invalid provider parameters");
+            return Fail(resolutionError ?? "No provider model is configured");
         }
 
+        var provider = new ProviderConfig(
+            resolved.ProviderId,
+            resolved.Type,
+            resolved.BaseUrl,
+            resolved.ApiKey,
+            resolved.Model);
+        var usageSource = requestKind == "promptOptimizer" ? "promptOptimizer" : "providerCompletion";
         var systemPrompt = JsonHelpers.GetString(parameters, "systemPrompt");
         var userMessage = JsonHelpers.GetString(parameters, "message");
         if (string.IsNullOrWhiteSpace(userMessage))
@@ -53,7 +64,12 @@ public static class ProviderCompletionService
 
                 if (response.IsSuccessStatusCode)
                 {
-                    return ParseResponse(body, provider.Type);
+                    var result = ParseResponse(body, provider.Type);
+                    AuxiliaryUsageLog.Record(
+                        resolved, usageSource, true, startedAt,
+                        usage: AuxiliaryUsageLog.ReadUsage(body, provider.Type),
+                        totalAttempts: attempt);
+                    return result;
                 }
 
                 var statusCode = (int)response.StatusCode;
@@ -64,6 +80,7 @@ public static class ProviderCompletionService
                 var retryable = statusCode is 429 or 408 or >= 500;
                 if (!retryable)
                 {
+                    AuxiliaryUsageLog.Record(resolved, usageSource, false, startedAt, lastError, totalAttempts: attempt);
                     return Fail(lastError);
                 }
 
@@ -81,6 +98,8 @@ public static class ProviderCompletionService
             }
             catch (TaskCanceledException)
             {
+                AuxiliaryUsageLog.Record(
+                    resolved, usageSource, false, startedAt, "Request timed out (180s)", totalAttempts: attempt);
                 return Fail("Request timed out (180s)");
             }
             catch (HttpRequestException ex)
@@ -99,6 +118,7 @@ public static class ProviderCompletionService
             }
         }
 
+        AuxiliaryUsageLog.Record(resolved, usageSource, false, startedAt, lastError, totalAttempts: MaxAttempts);
         return Fail($"Failed after {MaxAttempts} attempts. Last error: {lastError}");
     }
 
@@ -122,29 +142,12 @@ public static class ProviderCompletionService
         WorkerResponse.Json(new ProviderCompletionResult(false, Error: error),
             AgentRuntimeJsonContext.Default.ProviderCompletionResult);
 
-    private sealed record ProviderConfig(string Type, string BaseUrl, string ApiKey);
-
-    private static ProviderConfig? ExtractProviderConfig(JsonElement parameters)
-    {
-        JsonElement providerNode;
-        if (parameters.TryGetProperty("provider", out providerNode) &&
-            providerNode.ValueKind == JsonValueKind.Object)
-        {
-            // nested provider object
-        }
-        else
-        {
-            providerNode = parameters;
-        }
-
-        var type = JsonHelpers.GetString(providerNode, "type");
-        var baseUrl = JsonHelpers.GetString(providerNode, "baseUrl");
-        if (string.IsNullOrEmpty(type) || string.IsNullOrEmpty(baseUrl))
-        {
-            return null;
-        }
-        return new ProviderConfig(type!, baseUrl!, JsonHelpers.GetString(providerNode, "apiKey") ?? "");
-    }
+    private sealed record ProviderConfig(
+        string ProviderId,
+        string Type,
+        string BaseUrl,
+        string ApiKey,
+        string Model);
 
     private static (string Url, HttpRequestMessage Request) BuildRequest(
         ProviderConfig provider, string? systemPrompt, string userMessage, JsonElement parameters)
@@ -181,7 +184,7 @@ public static class ProviderCompletionService
         Utf8JsonWriter w, ProviderConfig provider, string? systemPrompt, string userMessage, JsonElement parameters)
     {
         w.WriteStartObject();
-        w.WriteString("model", JsonHelpers.GetString(parameters, "model") ?? string.Empty);
+        w.WriteString("model", provider.Model);
         w.WriteBoolean("stream", false);
         if (!string.IsNullOrWhiteSpace(systemPrompt))
         {
@@ -253,7 +256,7 @@ public static class ProviderCompletionService
         Utf8JsonWriter w, ProviderConfig provider, string? systemPrompt, string userMessage, JsonElement parameters)
     {
         w.WriteStartObject();
-        w.WriteString("model", JsonHelpers.GetString(parameters, "model") ?? string.Empty);
+        w.WriteString("model", provider.Model);
         w.WriteNumber("max_tokens", 4096);
         if (!string.IsNullOrWhiteSpace(systemPrompt))
         {

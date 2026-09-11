@@ -1293,6 +1293,29 @@
   "runtimePage": {
     "title": "运行与性能",
     "subtitle": "Agent 运行时设置：请求超时、重试、工具执行与上下文压缩",
+    "auxiliaryModels": {
+      "title": "辅助请求模型",
+      "desc": "为提示词优化和新建角色指定模型；未指定时使用补位模型，补位失效则回退到已校验的全局激活模型。",
+      "save": "保存",
+      "saving": "保存中…",
+      "saved": "已保存。无显式配置的请求会先按补位模型、再按全局激活模型解析。",
+      "saveFailed": "保存失败",
+      "unconfigured": "未配置",
+      "selectModel": "选择模型",
+      "promptOptimizer": {
+        "label": "提示词优化",
+        "desc": "这项配置只影响提示词优化请求。"
+      },
+      "persona": {
+        "label": "新建角色辅助",
+        "desc": "这项配置只影响 AI 生成人格请求。"
+      },
+      "fallback": {
+        "label": "补位模型",
+        "desc": "没有请求专属配置时使用；Worker 读取时会校验服务商与模型是否仍存在。"
+      },
+      "hint": "模型删除或服务商下线后不会静默使用悬空 id，Worker 会记录警告并继续尝试下一级。"
+    },
     "sessionDefaults": {
       "title": "会话默认值",
       "desc": "设置新建项目会话的协作模式与 Cowork 权限",
@@ -1359,6 +1382,7 @@
     "toolExecution": "工具执行",
     "developer": "开发者模式",
     "startup": "开机启动",
+    "auxiliaryModels": "辅助请求模型",
     "memoryOrganization": "自动整理",
     "memoryTiers": "分层阈值",
     "memoryRecall": "主动回忆"

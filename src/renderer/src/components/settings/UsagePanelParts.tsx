@@ -35,7 +35,9 @@ export function sourceLabel(row: {
   collaborationMode?: string | null
 }): string {
   const role = row.runtimeRole ?? 'unknown'
-  const parts = [row.scope, row.collaborationMode].filter(Boolean)
+  // Auxiliary requests own no session: an "unknown" placeholder would bury the
+  // one label the user actually needs when asking "which model answered this?".
+  const parts = [row.scope, row.collaborationMode].filter((part) => Boolean(part) && part !== 'unknown')
   return parts.length > 0 ? `${role} · ${parts.join(':')}` : role
 }
 

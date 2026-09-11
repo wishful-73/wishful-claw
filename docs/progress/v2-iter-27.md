@@ -1,12 +1,13 @@
 # v2-iter-27：日志管理 + 数据目录 dev/生产隔离 + 输入框粘贴撤销 + 任务跟进闭环（已完成，已合并 main）
 
 - 状态：已完成，已合并 main（2026-09-11 老大确认完结；本次特殊在**先发生产包做人工安装验证、后走收尾**，因本迭代改动了数据目录归属，验证通过后经老大授权再合 main 发版）
-- 分支：`dev/v2-iter-27`（合并后清理）
+- 分支：`dev/v2-iter-27`（2026-09-11 收尾时已合并 main 并清理本地与远程；远程分支停在 `5cf9dd96`，删除前已确认是 main 祖先）
 - Plan：`docs/plans/iter-v2-27/plan.md`；探索证据：`docs/plans/iter-v2-27/exploration_findings.md`；独立审查：`docs/plans/iter-v2-27/review_report.md`；验证：`docs/plans/iter-v2-27/verification_report.md`（含「收尾时点复核」节）；需求：`data-directory-config-requirement.md`、`logging-management-requirement.md`
 - VERDICT：**PASS（带移交项）**——三套 TypeScript 零错误、C# 隔离构建与 Native AOT 零警告、核心回归通过、生产安装包经老大人工安装验证、Plan H 经 dev 与生产包两轮实测；Plan D 整块未实施、A4 真机升级与桌面验证证据移交后续
 - 产品版本：`0.2.27`
-- Tag：`v0.2.27`
-- Commit：`cba3e3c4`（Plan H）+ `fd1df689`（Plan F/G/J/K）+ `a2172661` / 本次文档同步 + `26cfc74d`（版本号）；发布锚点以 tag `v0.2.27` 为准
+- Tag：`v0.2.27`（annotated，对象 `638315ea` → commit `c3dde76f`）
+- Commit：`c3dde76f`（merge 进 main，已推送）；含 `cba3e3c4`（Plan H）、`fd1df689`（Plan F/G/J/K）、`a2172661` + `96f22f85`（文档）、`26cfc74d`（版本号 0.2.27）
+- Release：<https://github.com/wishful-73/wishful-claw/releases/tag/v0.2.27>，已上传 `wishful-claw-0.2.27-setup.exe`（127439662 B）+ `latest.yml` + `.blockmap`；远程 `latest.yml` 下载 200 且与本地逐字节一致，Release 非 draft 非 prerelease
 - 日期：2026-09-11
 - 范围与功能单元：
   - **Plan A：更新弹窗扩大与全屏阅读** — 弹窗默认扩大，提供宽屏/全屏切换；不改独立窗口
@@ -23,7 +24,7 @@
 - 移交 iter-28：
   - **Plan D 多服务商 fallback（D1–D5）** — 本迭代唯一未实施的单元，设计与跨功能硬契约已在 plan 成文
   - **K0 常量收敛残留** — 约定全项目仅两处定义 `.wishful-claw`：C# 已收敛到 `WishfulClawPaths.cs:5`，TS 侧仍有 `project-archive-helpers.ts:41`、`memory-files.ts:9`、`codegraph-handlers.ts:170` 三处字面量，前两处是 K0 点名要删的独立定义
-  - **A4 真机升级验证** — 发布后按 AGENTS.md「发布后核验」用低于当前 Release 的本地安装版实调 `checkForUpdates()`，验证 `update-available` → 下载确认 → 安装确认
+  - **A4 真机升级验证** — 用低于当前 Release 的本地安装版实调 `checkForUpdates()`，验证 `update-available` → 下载确认 → 安装确认。v0.2.27 Release 与 `latest.yml` 已上线，本条现已可执行；但老大机器上装的已是 0.2.27，需先装回 v0.2.26 安装包才能触发升级提示
   - **撤销后遗留选中态** — 仅观感，`docs/plans/iter-v2-28/editor-undo-selection-issue.md`
   - **桌面验证证据未产出** — A3/B3/F3/G3/J3/K3 经老大口头确认通过，但 plan 要求的 `evidence/*.png` 截图/录屏未保存
   - **`CodeGraphDataDir.cs:56` 兜底不读环境变量** — 集中式兜底走 `Path.Combine(home, WishfulClawPaths.DataDirName, "codegraph")`，不读 `WISHFULCLAW_DATA_DIR`，仅 SSH/远程项目根且无显式 dataRoot 时触发，影响面低

@@ -22,7 +22,7 @@
 | H | 输入框粘贴与 Ctrl+Z 撤销 | 代码交付，经老大 dev 与生产包两轮实测；残留撤销后选中态移交 iter-28 |
 | J | 日志配置接管与日志管理 | 代码交付；J3 经老大确认 |
 | K | 数据目录配置化与 dev/生产隔离 | 代码交付并经生产包安装验证；K0 常量收敛 TS 侧残留 3 处 |
-| I | 统一审查、验证与发布 | I1–I4 完成；I5 即本次收尾 |
+| I | 统一审查、验证与发布 | I1–I5 全部完成；收尾发布已执行（merge `c3dde76f`、tag `v0.2.27`、Release 三资产齐备） |
 
 **勾选依据**：实现类条目按代码证据勾（`logger.ts:51 setLogMinLevel`、`index.ts:546/553/560` 三个 log IPC、`settings-store.ts:222 logLevel`、`ui-types.ts:96 'logs'`、`WishfulClawDataDir.cs`、`ChannelConfigStore.cs` 等）。桌面验证类条目（A3/B3/F3/G3/J3/K3）按老大 2026-09-11「已经都测试过了，文档只是没同步而已」的确认勾，**未逐项留截图或录屏证据**，plan 原文要求的 `evidence/*.png` 未产出。
 
@@ -380,7 +380,7 @@
 - [x] I2：启动独立代码审查，输出 `docs/plans/iter-v2-27/review_report.md`；检查分层、AOT、错误处理、任务幂等、取消传播、渠道安全和是否误把简单任务送入全局任务。
 - [x] I3：修复审查问题并提交 `review(v2-iter-27): 审查修正`；审查报告无阻断项后进入验证态。（修正代码已随 2026-09-11 收尾提交入库，未单独使用 `review` 前缀，而是并入对应功能单元提交。）
 - [x] I4：输出 `docs/plans/iter-v2-27/verification_report.md`，记录所有命令、退出码、测试结果、日志/截图证据、未能验证的项目和原因；不得用走查代替真机升级或渠道人工验证。
-- [ ] I5：用户确认 PASS 后才执行 v0.2.27 收尾：更新 `package.json` 和 README 版本徽章，打包 NSIS，核验并上传 setup.exe、`latest.yml`、必要的 blockmap；合并 main、打 tag `v0.2.27`、更新 `docs/PROGRESS.md` 和 `docs/progress/v2-iter-27.md`，发布 GitHub Release。
+- [x] I5：用户确认 PASS 后才执行 v0.2.27 收尾：更新 `package.json` 和 README 版本徽章，打包 NSIS，核验并上传 setup.exe、`latest.yml`、必要的 blockmap；合并 main、打 tag `v0.2.27`、更新 `docs/PROGRESS.md` 和 `docs/progress/v2-iter-27.md`，发布 GitHub Release。（2026-09-11 执行：merge commit `c3dde76f` 已推送 main，annotated tag `v0.2.27`（对象 `638315ea`）指向同一提交，Release <https://github.com/wishful-73/wishful-claw/releases/tag/v0.2.27> 已上传 `wishful-claw-0.2.27-setup.exe`、`latest.yml`、`.blockmap` 三资产且大小与本地一致，远程 `latest.yml` 下载 200 且与本地逐字节相同；A4 真机升级验证仍待用低于 0.2.27 的本地安装版实跑。）
 
 ## 验收场景
 

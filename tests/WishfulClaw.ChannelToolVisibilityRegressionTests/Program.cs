@@ -189,13 +189,13 @@ internal static class Program
         foreach (var name in allowed)
         {
             Assert(
-                AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: true),
+                AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: true, registry),
                 $"layer 3 allows {name} in a channel session");
         }
         foreach (var name in ChannelExcludedTools)
         {
             Assert(
-                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: true),
+                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: true, registry),
                 $"layer 3 still excludes {name} from a channel session");
         }
 
@@ -204,7 +204,7 @@ internal static class Program
         foreach (var name in PluginTools)
         {
             Assert(
-                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: false),
+                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: false, registry),
                 $"{name} stays channel-only and does not leak into a desktop session");
         }
     }

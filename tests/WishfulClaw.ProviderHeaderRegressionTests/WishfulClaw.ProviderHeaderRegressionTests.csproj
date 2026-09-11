@@ -11,4 +11,8 @@
     <ProjectReference Include="..\..\src\runtime\WishfulClaw.Agent\WishfulClaw.Agent.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="visibility-snapshot.expected.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

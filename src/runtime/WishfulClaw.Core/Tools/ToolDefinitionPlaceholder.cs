@@ -15,13 +15,23 @@ public sealed class ToolDefinitionPlaceholder : IToolExecutor
     public string Description { get; }
     public JsonElement InputSchema { get; }
     public string[]? AvailableModes { get; }
+    public string[]? VisibleScopes { get; }
+    public bool IsCore { get; }
 
-    public ToolDefinitionPlaceholder(string name, string description, JsonElement inputSchema, string[]? availableModes = null)
+    public ToolDefinitionPlaceholder(
+        string name,
+        string description,
+        JsonElement inputSchema,
+        string[]? availableModes = null,
+        string[]? visibleScopes = null,
+        bool isCore = false)
     {
         Name = name;
         Description = description;
         InputSchema = inputSchema;
         AvailableModes = availableModes;
+        VisibleScopes = visibleScopes;
+        IsCore = isCore;
     }
 
     public Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)

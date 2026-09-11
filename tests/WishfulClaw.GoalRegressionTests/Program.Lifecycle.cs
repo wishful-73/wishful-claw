@@ -241,16 +241,17 @@ internal static partial class Program
             .Where(name => name != null)
             .Cast<string>()
             .ToList();
-        AssertEqual(3, goalTools.Count,
-            "use_capability lists exactly the explicitly proxied goal tools");
-        AssertEqual(3, goalTools.Distinct(StringComparer.Ordinal).Count(),
+        var expectedGoalTools = registry.GetToolDefinitions()
+            .Where(definition => string.Equals(definition.Category, "goal", StringComparison.OrdinalIgnoreCase)
+                && registry.IsAvailableInMode(definition.Name, "goal"))
+            .Select(definition => definition.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        AssertEqual(expectedGoalTools.Count, goalTools.Count,
+            "use_capability lists every goal-mode tool now that the goal category is proxied as a unit");
+        AssertEqual(expectedGoalTools.Count, goalTools.Distinct(StringComparer.Ordinal).Count(),
             "use_capability goal tools contain no duplicates");
-        Assert(goalTools.Contains("list_goals", StringComparer.Ordinal)
-               && goalTools.Contains("get_goal_history", StringComparer.Ordinal)
-               && goalTools.Contains("reopen_goal", StringComparer.Ordinal),
-            "use_capability discovers goal history and reopen tools");
-        Assert(!goalTools.Contains("create_goal", StringComparer.Ordinal),
-            "use_capability does not expose goal control tools implicitly");
+        Assert(expectedGoalTools.SetEquals(goalTools),
+            "use_capability goal directory stays sourced from the registered goal category");
 
         var inspected = ExecuteUseCapability(
             dbPath,
@@ -265,15 +266,18 @@ internal static partial class Program
                 .TryGetProperty("goalId", out _),
             "use_capability inspection preserves the goal tool input schema");
 
-        var rejected = ExecuteUseCapability(
+        var createInspected = ExecuteUseCapability(
             dbPath,
             "session-lifecycle",
             registry,
             capabilityContext,
             "inspect",
             "builtin:create_goal");
-        Assert(rejected.TryGetProperty("error", out _),
-            "use_capability rejects non-whitelisted goal tools");
+        AssertEqual("create_goal", createInspected.GetProperty("name").GetString(),
+            "use_capability inspects goal control tools through the category-wide proxy");
+        Assert(createInspected.GetProperty("input_schema").GetProperty("properties")
+                .TryGetProperty("objective", out _),
+            "use_capability preserves create_goal's input schema");
 
         var listCall = ExecuteUseCapability(
             dbPath,
@@ -406,8 +410,26 @@ internal static partial class Program
             scope: "project",
             collaborationMode: "cowork",
             runtimeRole: "sessionAgent");
-        AssertEqual(0, normalProjects.GetProperty("total").GetInt32(),
-            "normal sessions cannot discover global project tools");
+        var normalProjectContext = new AgentRunContext("project", "cowork", "sessionagent");
+        var expectedNormalProjectTools = registry.GetToolDefinitions()
+            .Where(definition => string.Equals(definition.Category, "project", StringComparison.OrdinalIgnoreCase)
+                && registry.IsAvailableInMode(definition.Name, "normal")
+                && AgentRunContextPolicy.IsToolAllowed(
+                    normalProjectContext,
+                    definition.Name,
+                    definition.Category,
+                    channelSession: false,
+                    registry))
+            .Select(definition => definition.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        var normalProjectTools = normalProjects.GetProperty("capabilities")
+            .EnumerateArray()
+            .Select(capability => capability.GetProperty("name").GetString())
+            .Where(name => name is not null)
+            .Cast<string>()
+            .ToHashSet(StringComparer.Ordinal);
+        Assert(expectedNormalProjectTools.SetEquals(normalProjectTools),
+            "normal sessions discover exactly the project-category tools available in their mode and run context");
 
         var rejectedProjectInspect = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "inspect",
@@ -430,25 +452,25 @@ internal static partial class Program
             "global Chat sessions can inspect global tool schemas through use_capability");
 
         registry.Register(new ProjectModeProbeTool(), "project");
-        var globalProjectCall = ExecuteUseCapability(
-            dbPath, "session-lifecycle", registry, context, "call",
-            "builtin:project_mode_probe", sessionMode: "global",
-            projectId: null,
-            scope: "global",
-            collaborationMode: "chat",
-            runtimeRole: "sessionAgent");
-        Assert(globalProjectCall.GetProperty("ok").GetBoolean(),
-            "global Chat sessions can call global tools through use_capability");
-
-        var rejectedProjectCall = ExecuteUseCapability(
+        var normalProjectCall = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "call",
             "builtin:project_mode_probe", sessionMode: "normal",
             projectId: "project-a",
             scope: "project",
             collaborationMode: "cowork",
             runtimeRole: "sessionAgent");
+        Assert(normalProjectCall.GetProperty("ok").GetBoolean(),
+            "normal cowork sessions can call a matching project capability through use_capability");
+
+        var rejectedProjectCall = ExecuteUseCapability(
+            dbPath, "session-lifecycle", registry, context, "call",
+            "builtin:project_mode_probe", sessionMode: "global",
+            projectId: null,
+            scope: "global",
+            collaborationMode: "chat",
+            runtimeRole: "sessionAgent");
         Assert(rejectedProjectCall.TryGetProperty("error", out _),
-            "normal sessions cannot call global project tools");
+            "global Chat sessions cannot call a normal-mode project capability");
 
         var longJson = "{\"payload\":\"" + new string('x', 40_000) + "\"}";
         var listCall = new AgentRuntimeNativeToolCall(

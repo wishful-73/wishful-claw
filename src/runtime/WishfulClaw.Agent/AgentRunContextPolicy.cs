@@ -19,43 +19,8 @@ internal static class AgentRunContextPolicy
         "translation"
     };
 
-    private static readonly HashSet<string> ChannelExcludedTools = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "visualize_show_widget",
-        "AskUserQuestion",
-        "ExitPlanMode"
-    };
-
-    private static readonly HashSet<string> ChannelOnlyTools = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ChannelSendImage",
-        "ChannelSendFile",
-        "FeishuSendImage",
-        "FeishuSendFile",
-        "FeishuListChatMembers",
-        "FeishuAtMember",
-        "FeishuSendUrgent",
-        "FeishuBitableListApps",
-        "FeishuBitableListTables",
-        "FeishuBitableListFields",
-        "FeishuBitableGetRecords",
-        "FeishuBitableCreateRecords",
-        "FeishuBitableUpdateRecords",
-        "FeishuBitableDeleteRecords",
-        "WeixinSendImage",
-        "WeixinSendFile",
-        "PluginSendMessage",
-        "PluginReplyMessage",
-        "PluginGetGroupMessages",
-        "PluginListGroups",
-        "PluginSummarizeGroup",
-        "PluginGetCurrentChatMessages"
-    };
-
     private static readonly HashSet<string> SharedChatTools = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ChannelSendImage",
-        "ChannelSendFile",
         "AskUserQuestion",
         "BrowserGetContent",
         "BrowserNavigate",
@@ -196,30 +161,83 @@ internal static class AgentRunContextPolicy
          (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId")) ||
           !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginChatId"))));
 
+    /// <summary>
+    /// Admission check for a single tool in a single run context.
+    ///
+    /// This is the enforcement layer, not the declaration layer. The declaration
+    /// (<see cref="IToolExecutor.VisibleScopes"/>) is authoritative when present: a tool that names
+    /// this context owns its own admission, which is what replaced the old per-feature name tables.
+    /// Undeclared tools fall through to the chat-scope allowlists, the one rule that still cannot be
+    /// expressed at registration time because it has to cover tools registered dynamically
+    /// (MCP servers and skills) — see R-3.11's accounting.
+    ///
+    /// The registry is taken rather than the declaration itself on purpose: a call site that forwarded
+    /// the wrong (or no) <c>VisibleScopes</c> would not crash, it would just deny a channel-only tool
+    /// and look like a policy change. One lookup cannot be forgotten.
+    /// </summary>
     public static bool IsToolAllowed(
         AgentRunContext context,
         string toolName,
         string? category,
-        bool channelSession = false)
+        bool channelSession = false,
+        ToolRegistry? registry = null)
     {
-        if (!channelSession && ChannelOnlyTools.Contains(toolName))
+        var outcome = ToolVisibilityPolicy.Evaluate(
+            context,
+            channelSession,
+            toolName,
+            category,
+            DeclaredScopesOf(registry, toolName));
+
+        if (outcome == VisibilityOutcome.Blocked)
             return false;
-        if (channelSession && ChannelExcludedTools.Contains(toolName))
-            return false;
-        if (channelSession && ChannelOnlyTools.Contains(toolName))
+        if (outcome == VisibilityOutcome.Declared)
             return true;
 
+        return IsAllowedByChatAllowlist(context, toolName);
+    }
+
+    private static string[]? DeclaredScopesOf(ToolRegistry? registry, string toolName) =>
+        registry is not null && registry.TryGetExecutor(toolName, out var executor) && executor is not null
+            ? executor.VisibleScopes
+            : null;
+
+    /// <summary>
+    /// The one place the chat-scope allowlists are consulted.
+    ///
+    /// Earlier this rule existed twice — once inline in <see cref="IsToolAllowed"/> and once as a
+    /// short-circuit in <see cref="FilterToolDefinitions"/> — with subtly different guard conditions.
+    /// Both now route through here, so a change to the rule cannot land in one path only.
+    /// </summary>
+    private static bool IsAllowedByChatAllowlist(AgentRunContext context, string toolName)
+    {
+        // A channel session reaches here for its undeclared tools only: Resolve() forces its
+        // collaboration mode to "chat", which is what routes it to the allowlist rather than to the
+        // early return below.
         if (IndependentRuntimeRoles.Contains(context.RuntimeRole))
             return true;
 
         if (!string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        var allowed = string.Equals(context.Scope, "global", StringComparison.OrdinalIgnoreCase)
+        return ChatTools(context).Contains(toolName);
+    }
+
+    /// <summary>
+    /// Whether the run context bypasses the chat-scope allowlists entirely.
+    ///
+    /// <see cref="FilterToolDefinitions"/> uses this to skip per-tool evaluation, which is why it
+    /// must read the same conditions as <see cref="IsAllowedByChatAllowlist"/> rather than restate
+    /// them.
+    /// </summary>
+    private static bool BypassesChatAllowlist(AgentRunContext context) =>
+        IndependentRuntimeRoles.Contains(context.RuntimeRole) ||
+        !string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase);
+
+    private static HashSet<string> ChatTools(AgentRunContext context) =>
+        string.Equals(context.Scope, "global", StringComparison.OrdinalIgnoreCase)
             ? GlobalChatTools
             : ProjectChatTools;
-        return allowed.Contains(toolName);
-    }
 
     public static IReadOnlyList<ToolDefinition> FilterToolDefinitions(
         IReadOnlyList<ToolDefinition> definitions,
@@ -227,10 +245,10 @@ internal static class AgentRunContextPolicy
         AgentRunContext context,
         bool channelSession = false)
     {
-        if (!channelSession &&
-            (IndependentRuntimeRoles.Contains(context.RuntimeRole) ||
-             !string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase)))
-
+        // Same short-circuit as before, but expressed through the shared predicate so it can no
+        // longer disagree with IsToolAllowed. A channel session is never bypassed: it has its own
+        // allowlist, which is why the flag is part of the condition.
+        if (!channelSession && BypassesChatAllowlist(context))
         {
             return definitions;
         }
@@ -238,8 +256,15 @@ internal static class AgentRunContextPolicy
         var filtered = new List<ToolDefinition>(definitions.Count);
         foreach (var definition in definitions)
         {
-            if (IsToolAllowed(context, definition.Name, registry?.GetCategory(definition.Name), channelSession))
+            if (IsToolAllowed(
+                    context,
+                    definition.Name,
+                    registry?.GetCategory(definition.Name),
+                    channelSession,
+                    registry))
+            {
                 filtered.Add(definition);
+            }
         }
         return filtered;
     }

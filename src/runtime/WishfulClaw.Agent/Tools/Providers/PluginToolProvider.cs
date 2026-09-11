@@ -23,7 +23,8 @@ public sealed class PluginToolProvider : IToolProvider
                 new() { ["chatId"] = chatId, ["content"] = content },
                 ["chatId", "content"]
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly
         ));
 
         registry.Register(new ToolDefinitionPlaceholder(
@@ -37,7 +38,8 @@ public sealed class PluginToolProvider : IToolProvider
                 },
                 ["messageId", "content"]
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly
         ));
 
         registry.Register(new ToolDefinitionPlaceholder(
@@ -51,14 +53,16 @@ public sealed class PluginToolProvider : IToolProvider
                 },
                 ["chatId"]
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly
         ));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "PluginListGroups",
             "List all groups/chats the channel bot is in.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly
         ));
 
         registry.Register(new ToolDefinitionPlaceholder(
@@ -72,7 +76,8 @@ public sealed class PluginToolProvider : IToolProvider
                 },
                 ["chatId"]
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly
         ));
 
         registry.Register(new ToolDefinitionPlaceholder(
@@ -81,7 +86,8 @@ public sealed class PluginToolProvider : IToolProvider
             ToolSchemaBuilder.Object(
                 new() { ["count"] = ToolSchemaBuilder.Number("Number of messages. Defaults to 20.") }
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly
         ));
     }
 }

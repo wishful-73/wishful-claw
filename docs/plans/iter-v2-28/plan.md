@@ -628,28 +628,72 @@ IsVisible(tool, ctx):
 
 #### R-3.G 步骤清单
 
-- [ ] R-3.0：出 Plan（本节，完成）＋ **全部裁定已闭合**。**已定 7 条**：① 语义模型（R-3.A）；② 串语法 `scope:mode@role`（R-3.B）；③ 定时任务拆两类（R-3.C 6a/6b）；④ 定时任务与子 Agent 同类；⑤ 默认可见（R-3.D）；⑥ 全局保留只读工具、工具集合不动（R-3.F）；⑦ **核心工具集原则**——系统提示词只列少而必要的核心工具，其余经 `use_capability` 按需（R-3.C-bis）。**本次范围 = B（两步走，老大 2026-09-11 拍定）**。
+- [x] R-3.0：出 Plan（本节，完成）＋ **全部裁定已闭合**。**已定 7 条**：① 语义模型（R-3.A）；② 串语法 `scope:mode@role`（R-3.B）；③ 定时任务拆两类（R-3.C 6a/6b）；④ 定时任务与子 Agent 同类；⑤ 默认可见（R-3.D）；⑥ 全局保留只读工具、工具集合不动（R-3.F）；⑦ **核心工具集原则**——系统提示词只列少而必要的核心工具，其余经 `use_capability` 按需（R-3.C-bis）。**本次范围 = B（两步走，老大 2026-09-11 拍定）**。　✅ 本次执行范围按此裁定；R-3.7／R-3.8c／R-3.9 的实际归属见 R-3.H 执行记录。
   - **B 的含义（决定提交边界）**：本次**只做机制**——新串完整表达现状（当前"全放行"的档位先声明成 `*:*`，**零行为变化**），把"可见集收窄"留到下一步需求独立提交。
   - **据此，本次执行 R-3.1～R-3.6、R-3.9、R-3.11～R-3.13**（机制 + 零变化收窄 + 测试 + 记账）；**R-3.7（定时任务两类落地）与 R-3.10（显式化 early-return）留到下一步需求**——两者都会改变可见集；**R-3.8（交互工具共用集合）本次照做**（它同时服务零变化的渠道收窄与将来）。
   - ⚠️ **核心工具集（R-3.C-bis）与 B 的关系**：机制层（`IsCore` 字段 + `PromptBuilder` 按档输出）**本次做**；**具体核心集名单的收窄留到下一步**，本次先用"等价现状"的名单让提示词行为不变。
-- [ ] R-3.1：在 `ToolDefinition`（`ToolTypes.cs:8-14`，Core 层）新增 `VisibleScopes` + `IsCore`，打通四处注册路径。验证：`dotnet build src/runtime/WishfulClaw.sln` 零错误；`VisibleScopes` 缺省值为 null（= 默认可见），`IsCore` 缺省值须显式定（建议 false + 例外名单，见 R-3.C-bis），不引入"未声明即拒绝"。
-- [ ] R-3.2：实现唯一判定入口（R-3.D 算法）＋ `ctxStr` 单点渲染（`<scope>:<mode>[@<role>]`）。验证：对 R-3.C 的 **13 个**场景（含 6a/6b 拆分）各渲染一个串，与表一致；`unknown`/`unknown@automation` 两个串都能渲染。
-- [ ] R-3.3：把准入决策从 A 类硬编码表迁到新声明，`AgentRunContextPolicy.cs` 保留为唯一强制层。验证：`IsToolAllowed:199-222` 与 `FilterToolDefinitions:224-248` 的重复判断收敛为一处；对每个 preset 出前后可见集差异表（B 口径下**差异必须为空**）。
-- [ ] R-3.4：**黑名单显式排除渠道三工具**（R-3.D 收窄 1，B 口径下属零变化）。验证：渠道会话下 `visualize_show_widget`/`AskUserQuestion`/`ExitPlanMode` 不可见，且与 `PromptBuilder.cs:326-327` 承诺一致。
-- [ ] R-3.5：**`use_capability` 三动作全部受管**（R-3.D 收窄 2 + 老大 2026-09-11 追加裁定）——`call` / `inspect` / **`list`** 三条路径**必须走同一套可见性判定**。现状实读：`call`（`AgentRuntimeUseCapabilityExecutor.cs:322-327`）与 `inspect`（`AgentRuntimeUseCapabilityEncoding.cs:115-133`）**已调 `IsToolAllowed`**，**唯 `list` 缺**（`AgentRuntimeUseCapabilityDiscovery.cs:148-153` 只调 `IsAvailableInMode`，而后者对未声明 `availableModes` 的工具直接返回 true）。MCP/Extension 显式处理——不进核心集，范围由注册来源兜。验证：① `list` 与 `call`/`inspect` 对**同一个工具**给出**一致**的可见性判定（构造 `project:cowork@subagent` + 浏览器工具这一组反例，三者须一致拒绝）；② `list` 的 `categories` 分组统计也基于收窄后集合；③ 两条投递路径行为一致，无静默放行。
-- [ ] R-3.6：**子 Agent 排除浏览器类**（R-3.D 收窄 4，B 口径下属零变化）。验证：① `project:cowork@subagent` 下 9 个浏览器工具全部不可见；② 同档下 `use_capability action="list"` **也查不到** `browser` 类（与 R-3.8d 合并验证，这是修复后的必然结果）；③ `global:chat@subagent` 的全局集合收束**本次只声明、不启用**（收窄 6 属行为变更，留下一步），故本步只验证浏览器排除；④ 宿主 `project:cowork` 自身浏览器工具不受影响、`list` 仍能查到。
-- [ ] R-3.7：**核心工具集机制**（R-3.C-bis）——① `IsCore` 落地并接线到 `PromptBuilder`；② `BuildToolCapability()` 改为**接收会话上下文**、只输出本档可见的**核心**工具；③ proxied 类不再出现在提示词的直接列表。验证：① 提示词中 category 数从 **27** 降至核心集规模（目标 ≤ 8）；② 同一会话的提示词中**不含**任何 proxied 类；③ 全局会话的核心集与项目协作不同（如全局列 PM 工具）；④ `use_capability` 的 `action="list"` 仍能查到被移出提示词的工具——**且必须是与 description 一致的本档集合**（老大追加裁定：三载体同源同裁；验证时对 description 的分类清单、`list` 的返回、提示词的核心集做**三方比对**，不得出现任一漂移）。**B 口径下本次"名单等价现状"**：只改结构不改内容，行为零变化；名单收窄留下一步。
-- [ ] R-3.8：**定义「需人类在场的交互工具」共用集合**（R-3.D 合并说明）——渠道档与后台定时档共用一份，含 `AskUserQuestion`/`ExitPlanMode`/`visualize_show_widget`。验证：两处引用同一来源，全仓该三件名单只出现一次定义。
+- [x] R-3.1：在 `ToolDefinition`（`ToolTypes.cs:8-14`，Core 层）新增 `VisibleScopes` + `IsCore`，打通四处注册路径。验证：`dotnet build src/runtime/WishfulClaw.sln` 零错误；`VisibleScopes` 缺省值为 null（= 默认可见），`IsCore` 缺省值须显式定（建议 false + 例外名单，见 R-3.C-bis），不引入"未声明即拒绝"。　✅ `VisibleScopes`＋`IsCore` 已进 `ToolDefinition` 并打通四处注册路径（`IToolExecutor` 默认成员 → `ToolRegistry` ×2 → `ToolDefinitionPlaceholder` → `ToolTypes` record 末位带默认值，旧位置构造不破坏）。缺省 `VisibleScopes=null`＝默认可见、`IsCore=false`。`ToolDeclarationChecks` 覆盖缺省语义／占位透传／注册表透传／无分类工具四组。
+- [x] R-3.2：实现唯一判定入口（R-3.D 算法）＋ `ctxStr` 单点渲染（`<scope>:<mode>[@<role>]`）。验证：对 R-3.C 的 **13 个**场景（含 6a/6b 拆分）各渲染一个串，与表一致；`unknown`/`unknown@automation` 两个串都能渲染。　✅ `ToolVisibilityPolicy` 为唯一判定入口，`RenderContext` 为 `ctxStr` 唯一渲染点；`ToolVisibilityChecks.RunContextStringSuite` 是 R-3.C 十三场景的可执行副本，逐串断言。
+- [x] R-3.3：把准入决策从 A 类硬编码表迁到新声明，`AgentRunContextPolicy.cs` 保留为唯一强制层。验证：`IsToolAllowed:199-222` 与 `FilterToolDefinitions:224-248` 的重复判断收敛为一处；对每个 preset 出前后可见集差异表（B 口径下**差异必须为空**）。　✅ `ChannelOnlyTools`（22 个名字）已从强制层删除，改为注册期 `ToolVisibilityScopes.ChannelOnly` 声明；`IsToolAllowed` 收敛为「`Evaluate` → Blocked/Declared/DefaultVisible」三段，声明命中即准入、未声明才走会话档规则。**零变化已用机器证明**，见 R-3.H ①。
+- [x] R-3.4：**黑名单显式排除渠道三工具**（R-3.D 收窄 1，B 口径下属零变化）。验证：渠道会话下 `visualize_show_widget`/`AskUserQuestion`/`ExitPlanMode` 不可见，且与 `PromptBuilder.cs:326-327` 承诺一致。　✅ 三件在 `ToolVisibilityPolicy.ChannelExcludedTools` 单点定义，且黑名单优先级高于声明（`ToolVisibilityChecks` 用 `["*:*"]` 声明反证）。
+- [x] R-3.5：**`use_capability` 三动作全部受管**（R-3.D 收窄 2 + 老大 2026-09-11 追加裁定）——`call` / `inspect` / **`list`** 三条路径**必须走同一套可见性判定**。现状实读：`call`（`AgentRuntimeUseCapabilityExecutor.cs:322-327`）与 `inspect`（`AgentRuntimeUseCapabilityEncoding.cs:115-133`）**已调 `IsToolAllowed`**，**唯 `list` 缺**（`AgentRuntimeUseCapabilityDiscovery.cs:148-153` 只调 `IsAvailableInMode`，而后者对未声明 `availableModes` 的工具直接返回 true）。MCP/Extension 显式处理——不进核心集，范围由注册来源兜。验证：① `list` 与 `call`/`inspect` 对**同一个工具**给出**一致**的可见性判定（构造 `project:cowork@subagent` + 浏览器工具这一组反例，三者须一致拒绝）；② `list` 的 `categories` 分组统计也基于收窄后集合；③ 两条投递路径行为一致，无静默放行。　✅ `list`/`inspect`/`call` 三动作现共用 `AgentRuntimeUseCapabilityDiscovery.IsProxyBuiltinVisible` 一个谓词（其内部即 `IsToolAllowed`），三载体同源同裁由构造保证而非约定。
+- [x] R-3.6：**子 Agent 排除浏览器类**（R-3.D 收窄 4，B 口径下属零变化）。验证：① `project:cowork@subagent` 下 9 个浏览器工具全部不可见；② 同档下 `use_capability action="list"` **也查不到** `browser` 类（与 R-3.8d 合并验证，这是修复后的必然结果）；③ `global:chat@subagent` 的全局集合收束**本次只声明、不启用**（收窄 6 属行为变更，留下一步），故本步只验证浏览器排除；④ 宿主 `project:cowork` 自身浏览器工具不受影响、`list` 仍能查到。　✅ 收窄 4 以显式黑名单落地：`category=="browser"` × `subagent`/`goalsubagent` 在 `IsGloballyExcluded` 拒绝，宿主档不受影响；同一谓词使 `list` 同步查不到。`global:chat@subagent` 的收束本次不动（现状已由 `GlobalChatTools` 白名单兜住）。
+- [ ] R-3.7：**核心工具集机制**（R-3.C-bis）——① `IsCore` 落地并接线到 `PromptBuilder`；② `BuildToolCapability()` 改为**接收会话上下文**、只输出本档可见的**核心**工具；③ proxied 类不再出现在提示词的直接列表。验证：① 提示词中 category 数从 **27** 降至核心集规模（目标 ≤ 8）；② 同一会话的提示词中**不含**任何 proxied 类；③ 全局会话的核心集与项目协作不同（如全局列 PM 工具）；④ `use_capability` 的 `action="list"` 仍能查到被移出提示词的工具——**且必须是与 description 一致的本档集合**（老大追加裁定：三载体同源同裁；验证时对 description 的分类清单、`list` 的返回、提示词的核心集做**三方比对**，不得出现任一漂移）。**B 口径下本次"名单等价现状"**：只改结构不改内容，行为零变化；名单收窄留下一步。　⛔ **本步整体转后继需求**（机制与名单在提示词侧不可切分，理由见 R-3.H ②）。`IsCore` 字段本次已按 R-3.1 落地，但 `PromptBuilder.BuildToolCapability()` 未接，故该字段当前**只声明、无消费方**。
+- [x] R-3.8：**定义「需人类在场的交互工具」共用集合**（R-3.D 合并说明）——渠道档与后台定时档共用一份，含 `AskUserQuestion`/`ExitPlanMode`/`visualize_show_widget`。验证：两处引用同一来源，全仓该三件名单只出现一次定义。　✅ 共用集合＝`ChannelExcludedTools`，全仓该三件名单只此一处（已复搜 `visualize_show_widget`/`ExitPlanMode` 的 .cs 命中确认）；后台定时档的复用留下一步（R-3.H ③）。
 - [x] R-3.8b：**`use_capability` 的 description 带上「支持哪些分类」**（R-3.C-bis 关键推论，老大强调）——① 从 `ToolCategoryCatalog` × `ProxiedCategories` 的**交集**动态生成类名清单（零硬编码）；② **按档位过滤**（与 `list` 共用同一条可见性判定）；③ 替换 `UseCapabilityToolProvider.cs:36-39` 现有的 "such as mcp, skill, project, desktop, or goal" 手写举例。验证：① 描述中出现全部 proxied 类名（如 `browser`，老大举的例子）；② 渠道/子 Agent 档下被排除的类**不出现**；③ 与提示词 `<tool_calling>` 段共用同一来源，无手工维护的第二份清单；④ **与 `action="list"` 的实际返回逐项一致**（本步与 R-3.5 是同一收窄的两个出口，须同批验证，防止 description 按档、list 全量的漂移）。
-- [ ] R-3.8c：**修掉三处分类学矛盾**（R-3.C-bis 对照发现）——① `task` 归核心集，**从 `ProxiedCategories` 移除**；② `goal` 类**整体进 proxied**，`ProxiedBuiltinTools` 收敛；③ **`browser` 加进 `ProxiedCategories`，并从 `ToolPreset.cs:53,68,83` 三处 preset 白名单移除**（老大定性：浏览器属插件提供，与 MCP 同类，须经 `use_capability` 获取）。验证：① `ToolCategoryCatalog` 的 priority ≤ 70 集合与 `ProxiedCategories` 交集仅剩 `capability` 入口自身；② `goal` 类 10 个工具全部只经 proxy 可达；③ 三处 preset 白名单不再含 `browser`，且浏览器工具仍可经 `use_capability` 取到（**可见面不变**）。
-- [ ] R-3.8d：**在 proxy 的 `list` 上实现收窄**（R-3.D 收窄 4 的生效点，**本轮从"验证"升级为"实现"**）——`browser` 进 proxied 后，若只在直连工具列表过滤，子 Agent 仍能经 `use_capability` 取到浏览器。**实读已确认当前就是缺的**：`BuildCapabilitySummaries`（`AgentRuntimeUseCapabilityDiscovery.cs:148-153`）的过滤链只到 `IsAvailableInMode`，未调 `IsToolAllowed`，而 `IsAvailableInMode` 对未声明 `availableModes` 的工具直接放行。**修法**：在该过滤链补 `!AgentRunContextPolicy.IsToolAllowed(runContext, name, category, channelSession)`（`runContext`/`sessionMode`/`channelSession` 已在签名内，无需改调用链）；`EncodeBuiltinInspectResponse` 已正确，**两者共用同一判定**。验证：① `project:cowork@subagent` 下 `use_capability action="list"` **查不到** `browser` 类，而宿主档能查到；② `list` / `inspect` / `call` 对同一工具判定一致；③ `categories` 分组统计同步收窄。
-- [ ] R-3.9：渠道工具开关接真作为收窄层，作用在统一判定之后（只减不增）。验证：C# 侧有真实读取点；关闭某工具后 `use_capability` 与系统提示核心集两条通路都被收窄。
-- [ ] R-3.10：改造必改回归测试 3 组（R-3.E ⑤ 的三个文件）。验证：三组全过；测试内不再复刻工具名清单。**新增第 4 组**：提示词核心集快照测试（断言 category 数与不含 proxied 类）。
-- [ ] R-3.11：清理 `AgentRunContextPolicy.cs:62` 等硬编码清单（含 `DesktopScreenshot`/`BrowserScreenshot`，与 R-4 交界）。验证：A 类硬编码表命中数下降至只剩声明入口。
-- [ ] R-3.12：**记账"两条任务通道的分离事实"**（R-3.F 澄清表）——① 全局任务（重，`send_work_request` + `reply_global_dispatch`）与 ② 临时任务 Todo（轻，`send_session_message` + 倒计时自读）是两套独立机制，**本次不动**，写入需求/进度文档备查。（原「回执链路待核查」已由该澄清关闭。）
-- [ ] R-3.13：**记账"下一步需求"的待办**——明写 R-3.7（定时任务两类落地）、R-3.10（显式化 early-return）、R-3.6②（`global:chat@subagent` 收束）、R-3.7③（核心集名单收窄）四项均属**行为变更**，B 口径下本次不做，须在 `raw-requirements.md` 与进度文档中立为后继需求，**不得丢失**。
+- [x] R-3.8c：**修掉三处分类学矛盾**（R-3.C-bis 对照发现）——① `task` 归核心集，**从 `ProxiedCategories` 移除**；② `goal` 类**整体进 proxied**，`ProxiedBuiltinTools` 收敛；③ **`browser` 加进 `ProxiedCategories`，并从 `ToolPreset.cs:53,68,83` 三处 preset 白名单移除**（老大定性：浏览器属插件提供，与 MCP 同类，须经 `use_capability` 获取）。验证：① `ToolCategoryCatalog` 的 priority ≤ 70 集合与 `ProxiedCategories` 交集仅剩 `capability` 入口自身；② `goal` 类 10 个工具全部只经 proxy 可达；③ 三处 preset 白名单不再含 `browser`，且浏览器工具仍可经 `use_capability` 取到（**可见面不变**）。　✅ **三处已全部落地**：`ProxiedCategories` 现含 `goal`、`browser`，已移除 `task`。但**必须与 R-3.H ③ 连读**——③ 只落了"进 proxied"这一半，"出 `ToolPreset.cs:53,68,83` 三处白名单"那一半被快照拦下并已回滚，作为 S-7 单独立项。
+- [x] R-3.8d：**在 proxy 的 `list` 上实现收窄**（R-3.D 收窄 4 的生效点，**本轮从"验证"升级为"实现"**）——`browser` 进 proxied 后，若只在直连工具列表过滤，子 Agent 仍能经 `use_capability` 取到浏览器。**实读已确认当前就是缺的**：`BuildCapabilitySummaries`（`AgentRuntimeUseCapabilityDiscovery.cs:148-153`）的过滤链只到 `IsAvailableInMode`，未调 `IsToolAllowed`，而 `IsAvailableInMode` 对未声明 `availableModes` 的工具直接放行。**修法**：在该过滤链补 `!AgentRunContextPolicy.IsToolAllowed(runContext, name, category, channelSession)`（`runContext`/`sessionMode`/`channelSession` 已在签名内，无需改调用链）；`EncodeBuiltinInspectResponse` 已正确，**两者共用同一判定**。验证：① `project:cowork@subagent` 下 `use_capability action="list"` **查不到** `browser` 类，而宿主档能查到；② `list` / `inspect` / `call` 对同一工具判定一致；③ `categories` 分组统计同步收窄。　✅ 与 R-3.5 同一改动的另一出口：`BuildCapabilitySummaries` 过滤链已调 `IsProxyBuiltinVisible`，`categories` 分组统计同源收窄。
+- [ ] R-3.9：渠道工具开关接真作为收窄层，作用在统一判定之后（只减不增）。验证：C# 侧有真实读取点；关闭某工具后 `use_capability` 与系统提示核心集两条通路都被收窄。　⛔ 转后继需求，并与 R-2 的渠道文件改动同批做（两节共用四个文件，不得并行）。见 R-3.H ③。
+- [ ] R-3.10：改造必改回归测试 3 组（R-3.E ⑤ 的三个文件）。验证：三组全过；测试内不再复刻工具名清单。**新增第 4 组**：提示词核心集快照测试（断言 category 数与不含 proxied 类）。　⛔ 随 R-3.7 一并转后继需求（提示词核心集快照测试无对象可断言）。R-3.E ⑤ 三组本身的改造随收窄工作同批。
+- [x] R-3.11：清理 `AgentRunContextPolicy.cs:62` 等硬编码清单（含 `DesktopScreenshot`/`BrowserScreenshot`，与 R-4 交界）。验证：A 类硬编码表命中数下降至只剩声明入口。　✅ A 类硬编码表命中数已降至只剩会话档白名单：`AgentRunContextPolicy` 现存 `SharedChatTools`/`ProjectChatTools`/`GlobalChatTools` 三张（其存在理由见该文件 `IsAllowedByChatAllowlist` 的 XML 说明——MCP/skill 动态注册工具没有注册点可声明，只能按名兜），`ChannelOnlyTools` 与渠道交互黑名单均已迁出。
+- [x] R-3.12：**记账"两条任务通道的分离事实"**（R-3.F 澄清表）——① 全局任务（重，`send_work_request` + `reply_global_dispatch`）与 ② 临时任务 Todo（轻，`send_session_message` + 倒计时自读）是两套独立机制，**本次不动**，写入需求/进度文档备查。（原「回执链路待核查」已由该澄清关闭。）　✅ 记入 R-3.H ④。
+- [x] R-3.13：**记账"下一步需求"的待办**——明写 R-3.7（定时任务两类落地）、R-3.10（显式化 early-return）、R-3.6②（`global:chat@subagent` 收束）、R-3.7③（核心集名单收窄）四项均属**行为变更**，B 口径下本次不做，须在 `raw-requirements.md` 与进度文档中立为后继需求，**不得丢失**。　✅ 记入 R-3.H ②③，并已同步 `raw-requirements.md`。
 
 > **B 口径下的"零变化"自检**：把上面所有本次要做的步骤跑完后，**任一档位的可见工具集合与提示词内容都应逐字节等价于改动前**。若出现任何差异，说明该处本质是行为变更，应移入后继需求。
+
+#### R-3.H 执行记录（2026-09-12 凌晨，无人值守）
+
+**① 零变化是怎么被证明的——不是目视，是快照门禁**
+
+`ToolPreset.BuiltIn` × 7 个 preset × 13 个 R-3.C 场景 = 91 个「档位 → 可见工具名有序列表」，序列化成一份 31 270 字符的摘要，落库为 `tests/WishfulClaw.ProviderHeaderRegressionTests/visibility-snapshot.expected.txt`，由 `Program.Main` 每次跑测试时经 `VisibilitySnapshot.AssertMatchesGolden` 复核。取基线的方式是**开一个 worktree 检出 R-3 动手前的提交**（`0ee4bf62`，只额外放入摘要工具本身），两边各出一份摘要再 diff——不是"改完看一眼觉得没变"。
+
+- 基线摘要与当前摘要 **逐字节相同（31270 = 31270，diff 空）**。
+- 过程中出现过一次真实破口：`ToolPreset.cs` 里把 `browser` 从 `chat`/`coding` 白名单摘掉（R-3.8c③ 的内容）会让 91 格里若干格少 6 个工具。隔离实验确认该 hunk 是唯一差异来源后**已把它整体回滚**，`ToolPreset.cs` 现与 HEAD 一致。无人值守时不赌"这个收窄大概没人依赖"——能力静默消失属于必须单独立项的行为变更。
+- 摘要不覆盖 `use_capability` 的 `list` 输出（它不在 registry 定义集合里）。该出口的收敛由 `ToolDeclarationChecks.RunCapabilityCatalogSuite` 单独断言（description／`list` 分类目录／子 Agent 档三组）。
+
+**② R-3.7 为什么整体推走，而不是"只做机制"**
+
+计划原话是"`IsCore` 字段 + `PromptBuilder` 按档输出本次做，名单收窄留下一步，用等价现状的名单让提示词行为不变"。落到代码上这两半分不开：`BuildToolCapability()` 现在输出的是 `ToolCategoryCatalog.All` 全 27 类，"按档输出核心集"必然改变 `<tool_calling>` 段的字节内容；要让字节不变，只能给它加一个**永远传全量**的参数，并让 `IsCore` 停在无人读取的状态。那是假接线，还会在勾上 R-3.7 后留下一个看不出缺口的绿勾。**裁定：R-3.7 连同提示词核心集快照测试（R-3.10）整体转后继需求**，与核心集名单同批做——它们本来就必须同时落地才有意义。`IsCore` 字段仍按 R-3.1 落进声明链，状态明确记为"已声明、暂无消费方"。
+
+**③ 转后继需求的行为变更清单（R-3.13 的账，不得丢失）**
+
+| # | 待办 | 为什么会变行为 | 前置 |
+|---|---|---|---|
+| 1 | `browser` 出 `ToolPreset.cs:53,68,83` 三处 preset 白名单（R-3.8c③ 的**另一半**） | 91 格快照中 chat/coding 档各少 6 个直接工具，属能力面变更 | 前置已满足：`browser` 本次已进 `ProxiedCategories`，摘掉白名单后仍可经 `use_capability` 取到 |
+| 2 | ~~`task` 出 `ProxiedCategories`、`goal` 整体进 proxied~~ **——本次已随 R-3.8c①② 落地**；后继只剩"是否连 `ProxiedBuiltinTools` 三件名字一起收敛" | 已发生的差异：`list` 与 description 的 `goal` 类条目变多（见 R-3.H ⑤） | — |
+| 3 | 定时任务 6b 后台档落地 `unknown@automation` ＋ 三类收窄（R-3.D 收窄 3、R-3.C 6b） | 现状走 `runtimeRole:"automation"` 全放行；收窄后浏览器／渠道专用／交互三件从该档消失 | 前端 `cron-runtime.ts:476-495` 需真的发 `scope:"unknown"`（当前由 `runEvent.scope` 推断），交互工具共用集合已为此备好单一来源 |
+| 4 | `global:chat@subagent` 继承全局限制（R-3.6② / 收窄 6） | 全局 PM 的子 Agent 将拿不到写/执行类工具 | 现状已被 `GlobalChatTools` 兜住，改动点在"声明替代白名单" |
+| 5 | `FilterToolDefinitions` 的 `BypassesChatAllowlist` 短路显式化（R-3.10） | 该短路正是"cowork／goal／automation 看得到渠道专用工具"的现存泄漏点（`preset=full` + `project:cowork` 实测含 `ChannelSendImage` 等 22 件）——**这是改动前就有的 Bug，本次刻意不碰** | 显式化即修复，属行为变更 |
+| 6 | 渠道工具开关接真（R-3.9） | 死配置一旦生效，历史上下转过开关的用户会立刻少工具 | 与 R-2 同批改 `channel-types.ts`／`channel-config-store.ts` 等共用文件 |
+| 7 | 提示词核心集机制与名单（R-3.7 / R-3.10） | `<tool_calling>` 段内容变化＝提示词变化 | 见本节 ② |
+
+**⑤ 快照没盖住的那一面：`use_capability` 的 description 与 `list` 确实变了**
+
+91 格快照量的是**直连工具集**（`registry.GetToolDefinitions(preset, mode)` → `FilterToolDefinitions`），`use_capability` 只有一个工具名进那张表，它内部列了什么快照看不见。本项改动会动到的正是这个看不见的出口，故单列如下，不让"逐字节等价"这句话越界：
+
+- **description 改为按档动态生成**（R-3.8b，老大点名本次做）：原先是 `UseCapabilityToolProvider.cs` 里写死的 "such as mcp, skill, project, desktop, or goal" 举例，现由 `ToolCategoryCatalog` × `ProxiedCategories` × 本档可见性算出，`AgentLoop` 在过滤完成后经 `ApplyCapabilityDescription` 重写。**提示词的这一段因此与改动前不同**，这是 R-3.8b 验收标准①「描述中出现全部 proxied 类名（如 `browser`）」的必然结果，不是漏网。
+- **`browser` 进 proxied**：`list` 与 description 多出 `browser` 类。直连侧浏览器工具**一个没少**（白名单改动已回滚），所以这是**多一条发现路径**，不是新增能力，也不是收窄。
+- **`goal` 整体进 proxied**：`list` 从 3 件（`list_goals`/`get_goal_history`/`reopen_goal`）增到该档 `goal` 类全部（`GoalToolProvider` 注册 10 件，按 `availableModes` 过滤）。`call` 侧一直有 `IsToolAllowed` 兜底，**放出去的都是本档本就允许的工具**，不存在越权。
+- **`task` 出 proxied**：`TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate` 四件本就同时是直连工具且在两档 chat 白名单内，proxy 里的重复入口删掉不会让任何一档失去任务编排能力（`GoalRegressionTests` 与 `ToolDeclarationChecks` 实测四件仍在直连集）。
+
+覆盖它们的测试：`ToolDeclarationChecks.RunCapabilityCatalogSuite`（分类目录＝catalog×proxied 交集、按档过滤、子 Agent 档不含 browser）、`GoalRegressionTests`（goal 类 proxy 条目改为按注册表动态推导，不再复刻名字清单）。
+
+**④ R-3.12 记账：两条任务通道是两套机制，本次不动**
+
+- **全局任务（重）**：`create_global_task` → `send_work_request` 派发 → 项目侧 `reply_global_dispatch` 收回报，`list_global_dispatches`/`update_dispatch` 跟进。落库全局任务表。
+- **临时任务 Todo（轻）**：源会话 `TaskCreate` 建 Todo → `send_session_message(带 followUp.delayMs)` 派发 → 倒计时到期自己 `Read` 文档确认 → `update_session_follow_up` 收尾。不落全局任务表，随会话生命周期。
+- 两者**不共用存储、不共用状态机、本次也不合并**。R-3 的可见性改造对两套都只要求"相关工具在 `global:chat` 档可见"，已满足（见 R-3.F 结论表：全局工具集合本次不动）。
+
 
 ⚠️ 本节与 R-2 共用 `channel-types.ts:56-76`、`channel-config-store.ts:42-58`、`src/main/ipc/channel-handlers/channel-plugin-handlers.ts:292-299,344-357`、`src/main/ipc/channel-handlers/channel-handler-utils.ts:251-263` 四个文件，**两项不得并行改**。
 

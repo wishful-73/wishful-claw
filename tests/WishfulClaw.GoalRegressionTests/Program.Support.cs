@@ -260,7 +260,7 @@ internal static partial class Program
             writer.WriteString("type", "object");
             writer.WriteEndObject();
         });
-        public string[]? AvailableModes => ["global"];
+        public string[]? AvailableModes => ["normal"];
         public Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)
             => Task.FromResult(new ToolResult("{\"ok\":true}"));
     }

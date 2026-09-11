@@ -140,7 +140,9 @@ public sealed class ToolRegistry
                     canonSchema,
                     executor.AvailableModes,
                     category,
-                    ToolCategoryCatalog.GetPriority(category));
+                    ToolCategoryCatalog.GetPriority(category),
+                    executor.VisibleScopes,
+                    executor.IsCore);
             }
             catch (Exception ex)
             {
@@ -156,7 +158,9 @@ public sealed class ToolRegistry
                     rawSchema,
                     executor.AvailableModes,
                     category,
-                    ToolCategoryCatalog.GetPriority(category));
+                    ToolCategoryCatalog.GetPriority(category),
+                    executor.VisibleScopes,
+                    executor.IsCore);
             }
 
             list.Add(def);

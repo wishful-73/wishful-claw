@@ -34,7 +34,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         "desktop", "cron", "image-generate",
         "notebook", "widget", "team",
         "channel-plugin", "plugin", "ssh", "skill-management", "project",
-        "global-task", "global-dispatch-reply", "task"
+        "global-task", "global-dispatch-reply", "goal", "browser"
     };
 
     private static readonly HashSet<string> ProxiedBuiltinTools = new(StringComparer.Ordinal)
@@ -313,9 +313,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 
             // Verify the tool is explicitly exposed through the capability proxy.
             var category = registry.GetCategory(toolName);
-            if (category is null || !IsProxiedBuiltinTool(toolName, category)
-                || !registry.IsAvailableInMode(toolName, sessionMode)
-                || !AgentRunContextPolicy.IsToolAllowed(runContext, toolName, category, channelSession))
+            if (category is null
+                || !IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, toolName, category))
             {
                 return EncodeError($"Tool '{toolName}' is not available through the capability proxy in this session mode.");
             }

@@ -190,6 +190,13 @@ internal static partial class AgentLoop
                 .Where(t => !t.Name.StartsWith("codegraph_", StringComparison.Ordinal))
                 .ToList();
         }
+
+        // The capability directory is part of the tool description, so update it after the
+        // session's visibility/mode filters have been applied. This keeps the description and
+        // action=list on the same run-specific category source without coupling Persona to Agent.
+        toolDefs = AgentRuntimeUseCapabilityExecutor.ApplyCapabilityDescription(
+            toolDefs, registry, runContext, sessionMode, channelSession).ToList();
+
         // ── Persona-aware system prompt ──
         var personaId = JsonHelpers.GetString(parameters, "personaId");
         if (!string.IsNullOrWhiteSpace(personaId))

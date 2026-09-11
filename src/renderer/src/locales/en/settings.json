@@ -52,7 +52,7 @@
     },
     "about": {
       "label": "About",
-      "desc": "Product intro and app updates"
+      "desc": "Product intro, user guide and app updates"
     },
     "groups": {
       "general": "General",
@@ -747,6 +747,12 @@
       "channels": "Channels: bridge messaging platforms such as Feishu and WeChat to collaborate with your agent anywhere",
       "productivity": "Productivity tools: global launcher, clipboard enhancements, SSH terminal"
     },
+    "guide": {
+      "label": "User Guide",
+      "desc": "Full feature walkthrough and getting-started tutorial, opened in your browser",
+      "hint": "The entry always points at the newest guide; old links keep working.",
+      "open": "View guide"
+    },
     "updater": {
       "label": "App Updates",
       "desc": "Check for and install new Wishful Claw versions",
@@ -1350,13 +1356,21 @@
     },
     "global": {
       "title": "Global Channel Settings",
+      "tabs": {
+        "reply": "Reply Settings",
+        "features": "Features",
+        "permissions": "Permissions"
+      },
+      "loadingSettings": "Loading global channel settings…",
       "persona": "Reply Persona",
       "personaDesc": "Persona used for auto-replies on all channels",
       "noPersona": "Default (no persona)",
       "model": "Reply Model",
       "modelDesc": "AI model used for auto-replies on all channels",
       "provider": "Provider",
-      "modelPlaceholder": "Select a model"
+      "noProvider": "No enabled provider",
+      "modelPlaceholder": "Select a model",
+      "noModel": "No available model"
     },
     "list": {
       "title": "Channel List"
@@ -1368,8 +1382,7 @@
     },
     "tabs": {
       "qr": "QR Binding",
-      "credentials": "API Credentials",
-      "features": "Features"
+      "credentials": "API Credentials"
     },
     "qr": {
       "title": "QR Binding",
@@ -1410,19 +1423,17 @@
       "saveFailed": "Failed to save"
     },
     "features": {
-      "title": "Features & Permissions",
-      "section": "Feature Switches",
       "autoReply": "Auto Reply",
       "autoReplyDesc": "Automatically reply with AI when a message is received",
       "streamingReply": "Streaming Reply",
       "streamingReplyDesc": "Stream reply content in real time (requires channel support)",
       "autoStart": "Auto Start",
-      "autoStartDesc": "Automatically connect this channel when the app starts"
+      "autoStartDesc": "Automatically connect enabled channels when the app starts"
     },
     "permissions": {
-      "section": "Security Permissions",
-      "allowShell": "Shell Execution",
-      "allowShellDesc": "Allow AI to execute shell commands",
+      "shellRequiresApproval": "Shell Commands Require Approval",
+      "shellRequiresApprovalDesc": "When on, every shell command in a channel chat asks for your confirmation; when off, it runs directly",
+      "notEnforcedHint": "The switches below are saved only and not enforced yet",
       "allowReadHome": "Read Home Directory",
       "allowReadHomeDesc": "Allow reading files outside the working directory",
       "allowWriteOutside": "External Write",

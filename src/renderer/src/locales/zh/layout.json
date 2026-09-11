@@ -98,6 +98,7 @@
     "toggleSidebar": "切换侧边栏",
     "toggleRightPanel": "切换右侧面板",
     "togglePanel": "切换面板",
+    "userGuide": "使用指引",
     "clarifyAutoAcceptShort": "推荐答",
     "clarifyAutoAcceptOn": "澄清模式已开启自动接受推荐项 — 遇到 AskUserQuestion 会自动选择并提交推荐答案",
     "clarifyAutoAcceptOff": "澄清模式自动接受推荐项已关闭",

@@ -52,7 +52,7 @@
     },
     "about": {
       "label": "关于",
-      "desc": "产品介绍与应用更新"
+      "desc": "产品介绍、使用指引与应用更新"
     },
     "groups": {
       "general": "基础",
@@ -748,6 +748,12 @@
       "channels": "渠道集成：接入飞书、微信等消息平台，随时随地与 Agent 协作",
       "productivity": "效率工具：全局启动器、剪贴板增强、SSH 终端"
     },
+    "guide": {
+      "label": "使用指引",
+      "desc": "功能全量说明与上手教程，在浏览器中查看",
+      "hint": "指引始终指向最新版本，旧链接不会失效。",
+      "open": "查看指引"
+    },
     "updater": {
       "label": "应用更新",
       "desc": "检查并安装 Wishful Claw 的新版本",
@@ -958,8 +964,7 @@
     },
     "tabs": {
       "qr": "扫码绑定",
-      "credentials": "API 凭据",
-      "features": "功能设置"
+      "credentials": "API 凭据"
     },
     "qr": {
       "title": "扫码绑定",
@@ -1005,19 +1010,17 @@
       "saveFailed": "保存失败"
     },
     "features": {
-      "title": "功能与权限",
-      "section": "功能开关",
       "autoReply": "自动回复",
       "autoReplyDesc": "收到消息时自动使用 AI 回复",
       "streamingReply": "流式回复",
       "streamingReplyDesc": "实时流式输出回复内容（需要渠道支持）",
       "autoStart": "自动启动",
-      "autoStartDesc": "应用启动时自动连接此渠道"
+      "autoStartDesc": "应用启动时自动连接已启用的渠道"
     },
     "permissions": {
-      "section": "安全权限",
-      "allowShell": "Shell 执行",
-      "allowShellDesc": "允许 AI 执行 shell 命令",
+      "shellRequiresApproval": "Shell 命令需授权",
+      "shellRequiresApprovalDesc": "开启后渠道对话每次执行 shell 命令前需你确认；关闭则直接执行",
+      "notEnforcedHint": "以下开关当前仅记录设置，尚未接入强制执行",
       "allowReadHome": "读取主目录",
       "allowReadHomeDesc": "允许读取工作目录之外的文件",
       "allowWriteOutside": "外部写入",
@@ -1068,13 +1071,21 @@
     "wsUrl": "WebSocket 中继地址（可选）",
     "global": {
       "title": "全局渠道设置",
+      "tabs": {
+        "reply": "回复设置",
+        "features": "功能开关",
+        "permissions": "安全权限"
+      },
+      "loadingSettings": "正在读取全局渠道设置…",
       "persona": "回复人格",
       "personaDesc": "所有渠道自动回复使用的人格",
       "noPersona": "默认（无人格）",
       "model": "回复模型",
       "modelDesc": "所有渠道自动回复使用的 AI 模型",
       "provider": "Provider",
-      "modelPlaceholder": "选择模型"
+      "noProvider": "无可用服务商",
+      "modelPlaceholder": "选择模型",
+      "noModel": "无可用模型"
     }
   },
   "websearch": {

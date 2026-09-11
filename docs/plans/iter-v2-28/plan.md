@@ -724,13 +724,24 @@ IsVisible(tool, ctx):
 
 原始需求见 `raw-requirements.md` R-4 节：README 拆成用户指引 + 开发 README、功能全量罗列、截图（整桌面截软件本身）、关于页按钮与顶栏问号图标双入口指向 GitHub 指引。勘查见 `exploration_findings.md` 第 6 节。
 
-- [ ] R-4.0：出 Plan（本节）＋ 定《使用指引》在仓库中的存放路径与文件名。验证：README 拆分后的两份文件均有明确路径，且仓库根 README 指向用户指引。
-- [ ] R-4.1：README 一分为二——根 `README.md` 面向用户（功能全量罗列），开发向 README 另起一份。验证：两份文件中不再混放对方内容；链接互指正确。
-- [ ] R-4.2：URL 单点定义——GitHub 使用指引地址收敛为一处常量，关于页与顶栏两处引用。仓库地址 `https://github.com/wishful-73/wishful-claw`。验证：全仓该 URL 字面量只出现一次定义处。
-- [ ] R-4.3：顶栏问号图标——插入 `TitleBar.tsx:94-138` 现有图标组**左侧**（`hasProject` 块之前），沿用现有按钮类名与 `<Tooltip side="bottom">`。验证：`tsc` 三配置；`hasProject` 真/假两态下图标位置与拖拽区不冲突。
-- [ ] R-4.4：关于页新增按钮——落点 `SettingsPage.tsx` 的 `AboutPanel()`，样板沿用现有 `SettingsSection id="sec-about-updates"`。验证：`tsc` 三配置；点击后走 `setWindowOpenHandler` → `shell.openExternal`，不在应用内打开。
+- [x] R-4.0：出 Plan（本节）＋ 定《使用指引》在仓库中的存放路径与文件名。验证：README 拆分后的两份文件均有明确路径，且仓库根 README 指向用户指引。
+  > **✅ 已完成（2026-09-12）**。定稿三份文件：根 `README.md`（用户向总入口 + 功能全量罗列）、`docs/user-guide.md`（《使用指引》手册，应用内两入口指向它）、`docs/development.md`（开发向 README，原根 README 的架构/构建/技术栈/参考来源整块搬迁并就地续写）。根 README 的下载、指引、开发三处链接互指正确；全仓无其它文件引用被移走的旧 README 锚点（`grep 'README\.md#'` 仅命中本次新写的指引内链）。
+- [x] R-4.1：README 一分为二——根 `README.md` 面向用户（功能全量罗列），开发向 README 另起一份。验证：两份文件中不再混放对方内容；链接互指正确。
+  > **✅ 已完成（2026-09-12）**。根 README 换成用户视角：快速上手三步 → 七组能力罗列（记忆/人格/工具/自主推进/自动化/效率/扩展/用量）→ 数据与隐私 → 系统要求 → FAQ → 二次开发入口 → License；7 层架构图、`npm` 命令表、AOT 编译口径、参考项目表全部移入 `docs/development.md`，用户向文本不再出现内部实现细节。按「产品文案写能力不写血统」的口径，根 README 只保留 License 所需的法定归属一句，血统说明留在开发说明。
+  > 顺带修正搬移内容里的两处失真：`.NET 10` → `net11.0` 实为 **.NET 11**（含徽章）；安装包体积按实测写「约 130 MB / 装后约 360 MB」（`docs/build-guide.md` 与 `release/*.exe` 对账）。
+- [x] R-4.2：URL 单点定义——GitHub 使用指引地址收敛为一处常量，关于页与顶栏两处引用。仓库地址 `https://github.com/wishful-73/wishful-claw`。验证：全仓该 URL 字面量只出现一次定义处。
+  > **✅ 已完成（2026-09-12）**。新建 `src/renderer/src/lib/user-guide.ts`：`REPO_URL` + `USER_GUIDE_URL`（= `blob/main/docs/user-guide.md`，钉 `main` 不随分支漂，发布版读到的永远是随发布那份）+ `openUserGuide()`。全仓 `grep user-guide` 确认 URL 字面量仅此一处定义，顶栏与关于页两处均为 `import { openUserGuide }`。
+- [x] R-4.3：顶栏问号图标——插入 `TitleBar.tsx:94-138` 现有图标组**左侧**（`hasProject` 块之前），沿用现有按钮类名与 `<Tooltip side="bottom">`。验证：`tsc` 三配置；`hasProject` 真/假两态下图标位置与拖拽区不冲突。
+  > **✅ 已完成（2026-09-12，代码级）**。`HelpCircle` 按钮放在右侧组第一个（`hasProject` 块之前），类名与相邻按钮逐字一致（含 `titlebar-no-drag`，故不吞拖拽区），tooltip 键 `layout:topbar.userGuide`（zh/en 已补）。`hasProject` 为假时该组只剩它一个按钮，位置仍在最左，无重叠。
+  > ⚠️ **验证口径说明**：三套 `tsc` 全绿 + `TitleBar` 仅由 `MainLayout` 渲染已核；**未做真机点击**——同仓库另一会话此刻正在 `dev/v2-iter-28` 上改 R-2，再起一个 `dev:full` 会撞 Electron 单实例锁与 `~/.wishful-claw-dev/`，反而打断对方的验证。留待老大或对方会话空闲时一并目视。
+- [x] R-4.4：关于页新增按钮——落点 `SettingsPage.tsx` 的 `AboutPanel()`，样板沿用现有 `SettingsSection id="sec-about-updates"`。验证：`tsc` 三配置；点击后走 `setWindowOpenHandler` → `shell.openExternal`，不在应用内打开。
+  > **✅ 已完成（2026-09-12）**。新增 `SettingsSection id="sec-about-guide"`（排在「应用更新」之上）+ `outline` 按钮（`ExternalLink` 图标），`onClick={openUserGuide}` → `window.api.invoke('shell:openExternal', USER_GUIDE_URL)` → `misc-handlers.ts:116` 的协议白名单（`http/https/mailto`）→ `shell.openExternal`，**不经应用内 webview**。关于页菜单文案 `tabs.about.desc` 同步改为「产品介绍、使用指引与应用更新」（zh/en）。i18n 四键 `about.guide.{label,desc,hint,open}` 双语补齐。
 - [ ] R-4.5：配图产出——用现成 `DesktopScreenshot`（`AgentRuntimeDesktopExecutor.cs:26,81-104`）截软件自身界面。**硬前置：清场 + 脱敏**，不得含凭据、完整用户路径或真实用户数据。图片落盘走 `image:persist-generated`（`misc-handlers.ts:268-277`，落点固定 `~/wishful-claw/image/`），再手动移入仓库文档目录。验证：逐张目视确认无敏感信息；文件名与文档引用一一对应。
-- [ ] R-4.6：功能罗列粒度定稿（依赖 R-4.0）。验证：对照 `ABOUT_FEATURE_KEYS` 7 项与设置页各面板，无遗漏主能力。
+  > **⏸ 未做，需老大裁定（无人值守下主动停在门前）**。三条理由：① 整桌面截图会把**当前桌面**别的窗口一并拍进去，而本仓库是**公开** GitHub 仓库，配图一旦 push 即对外发布，属不可逆的外部可见动作；② 清场（关掉含凭据/真实项目的窗口）只有本人能做；③ 截图落点固定在 `~/wishful-claw/image/` 且不能指定目录，仍需人工移入仓库。**已把落点与清单写进 `docs/user-guide.md` 文末「配图待补清单」**（10 处，含建议文件名规范 `docs/images/usage-panel.png`），文档目前**不放占位图片链接**，因此不会出现裂图；截完按表逐条插入即可。
+- [x] R-4.6：功能罗列粒度定稿（依赖 R-4.0）。验证：对照 `ABOUT_FEATURE_KEYS` 7 项与设置页各面板，无遗漏主能力。
+  > **✅ 已完成（2026-09-12）**。粒度定为**「用户能点到的面板」一层**（不逐工具、不逐开关）。基线核对：`ABOUT_FEATURE_KEYS` 7 项（Agent 编程 / 多模型 / 长期记忆 / 人格定制 / 能力扩展 / 渠道集成 / 效率工具）在 README 与指引中逐项有落点；设置页 15 个页签（通用/快捷键/人格管理/SSH/AI 服务商/运行与性能/记忆/用量统计/渠道/插件/自定义扩展/Skills/MCP/关于/日志）全部有归属段落。
+  > **写作时按实读剔除了四类"代码里有但用户进不去"的能力，避免指引承诺不存在的东西**：① 桌面宠物（`stores/pet-*`、`lib/pet/*` 无组件与窗口引用）；② Git 面板（`GitPage.tsx`/`ScmSidebar.tsx` 未被渲染，侧边栏 Git 项落占位页）；③ 绘图与翻译（`MainLayout.tsx:87-88` 明确 `PlaceholderPage iterLabel="后续"`，但侧边栏「扩展」与消息操作条里有入口——文案里不提，防误读）；④ `SettingsTab` 联合类型里的 `permission` 与 `tabs.websearch` 文案（`menuGroups` 无该项、无渲染分支，权限实际入口是输入区盾牌）。
+  > 顺带把 R-1 的对外口径写进 §2（辅助模型 + 补位模型 + 三级解析），把本次 #1 的用量统计写进 §14，把迭代 27 的长对话能力（排队消息 / 上下文压缩）写进 §4。
 
 ⚠️ 本项截图能力与 iter-27 的 `evidence/*.png` 未产出缺口是同一块肌肉，`docs/progress/v2-iter-27.md:29` 记账不得因本项而划完成。
 

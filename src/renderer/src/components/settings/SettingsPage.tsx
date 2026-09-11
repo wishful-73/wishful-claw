@@ -14,6 +14,7 @@ import { MemorySettingsPanel } from '@renderer/components/settings/MemorySetting
 import { PersonaPanel } from '@renderer/components/settings/PersonaPanel'
 import { cn } from '@renderer/lib/utils'
 import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
+import { openUserGuide } from '@renderer/lib/user-guide'
 import { SshPanel } from '@renderer/components/settings/SshPanel'
 import { SkillPanel } from '@renderer/components/settings/skill-panel'
 import { McpPanel } from '@renderer/components/settings/mcp-panel'
@@ -24,7 +25,7 @@ import { SectionAnchorNav, type SectionAnchor } from '@renderer/components/setti
 import { SettingsSection } from '@renderer/components/settings/settings-primitives'
 import { Switch } from '@renderer/components/ui/switch'
 import { toast } from 'sonner'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import type { UpdateCheckResult } from '@shared/updater/types'
 import { Server as ServerIcon } from 'lucide-react'
@@ -305,6 +306,22 @@ function AboutPanel(): React.JSX.Element {
           </ul>
         </div>
       </div>
+
+      <SettingsSection
+        id="sec-about-guide"
+        title={t('about.guide.label', { defaultValue: '使用指引' })}
+        description={t('about.guide.desc', { defaultValue: '功能全量说明与上手教程，在浏览器中查看' })}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">
+            {t('about.guide.hint', { defaultValue: '指引随最新版本更新，旧版本入口不变。' })}
+          </p>
+          <Button variant="outline" size="sm" onClick={openUserGuide}>
+            <ExternalLink className="size-4" />
+            {t('about.guide.open', { defaultValue: '查看指引' })}
+          </Button>
+        </div>
+      </SettingsSection>
 
       <SettingsSection
         id="sec-about-updates"

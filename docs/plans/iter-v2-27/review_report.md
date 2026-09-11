@@ -11,7 +11,7 @@
 - Agent 错误回复：错误块追加到既有内容之后，保留 text、thinking、toolCalls；同一消息已有错误块时替换而不是重复追加。
 - 消息转换缓存：原地修改消息对象时，WeakMap 现在比较可序列化内容签名，避免流式文本、thinking、toolCalls 或错误块因数组引用不变而停留在旧结果。
 - 渠道 Provider/模型隔离：仅展示 `enabled === true` 的 Provider，以及 `enabled && category === 'chat'` 的模型；切换到无可用聊天模型时清理旧的 `activeModelId`。
-- 输入框粘贴：使用 `FileAwareEditorHandle.focus()` 恢复受控选区；`document.execCommand('insertText')` 返回失败或抛异常时进入原有受控替换路径。
+- 输入框粘贴：使用 `FileAwareEditorHandle.focus()` 恢复受控选区；`document.execCommand('insertText')` 返回失败或抛异常时进入原有受控替换路径。（2026-09-11 收尾时点已改为 `insertHTML`，原因见 `verification_report.md` 的「收尾时点复核」节）
 - 全局 dispatch 回传：使用 Worker 进程内 `SemaphoreSlim` 串行化读取、幂等判断、写入、事件和反向通知，防止同进程并发重复唤醒；相同状态/报告重试仍返回已记录结果，不重复写入或通知。
 
 ## 非阻断风险与边界

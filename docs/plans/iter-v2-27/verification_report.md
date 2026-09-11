@@ -51,3 +51,21 @@
 ## 工作区证据
 
 本轮完成后，除原计划文档和源代码未提交修改外，新增本报告与独立审查报告；未创建发布提交，未推送远程，未改变用户正在运行的进程。
+
+## 收尾时点复核（2026-09-11）
+
+> 上方正文是审查当时的快照，保留不改。本节记录启动收尾时各项的真实状态，避免按过期基线写 VERDICT。
+
+**粘贴实现已变更**：正文与 `review_report.md` 第 14 行所记的 `document.execCommand('insertText')` 方案已被替换为 `insertHTML`。原因经用真实模块跑探针定案：`insertText` 会让 Blink 把换行拆成 `<div>` 块，而 `parseDomToDocument` 只在块后补换行，多行粘贴丢换行；且选区未变更的连续 `insertText` 会被并入同一撤销组，一次 Ctrl+Z 撤掉多段。
+
+**已取得证据的项**：
+
+- H（普通/长/多行/选区粘贴、连续 Ctrl+Z）：老大人工验证通过 —— 连粘三次后逐段撤销、多行换行保留、选区替换语义正常。残留一段撤销后的选中态，仅观感，已登记 `docs/plans/iter-v2-28/editor-undo-selection-issue.md`。
+- 生产包安装验证：`release/wishful-claw-0.2.27-setup.exe`（11:08，含上述修复）经老大安装并确认通过。产物已核验 sha512 与 `latest.yml` 逐字符一致、size 一致、安装器 ProductVersion 0.2.27、asar 内含新粘贴实现。
+- 编译与回归：沿用正文记录的命令结果；收尾时点补跑 TypeScript web/node/root 三套配置均 0 错误。
+
+**收尾时点仍无证据、移交后续**：
+
+- A3（更新弹窗全屏阅读）、B3（扩展页面互斥切换）、F（错误回复展示）、G（Provider/模型持久化与发送路由）：未见逐项桌面验证记录。老大本轮确认的是安装与粘贴两项，未逐项覆盖这些，本项**不得当作已验证**。
+- A4（v0.2.26 → v0.2.27 真机升级）：发布前 GitHub Release 仅有 0.2.26，升级链路无法在发布前实跑。发布后须按 AGENTS.md「发布后核验」用低于当前 Release 的本地版本实调 `electron-updater.checkForUpdates()` 验证进入 `update-available`，再测下载与安装确认。
+- Dispatch 集成（`reply_global_dispatch` 反向回传的并发/取消/失败重试）：仍无专用入口，只有静态控制流结论与隔离编译结果。

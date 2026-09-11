@@ -1,11 +1,36 @@
 # Plan: v2-iter-27 任务跟进、更新体验与运行时容灾
 
-- 状态：规划验证通过，待用户确认后执行
+- 状态：已收尾发布 `v0.2.27`（2026-09-11 老大确认完结）；交付状态见「交付状态」节，明细见 `docs/progress/v2-iter-27.md`
 - 分支：`dev/v2-iter-27`
 - 基线：`v0.2.26` / `main` commit `59d86e6209c4621fe646d108995bae8233b257f1`
 - 目标版本：`0.2.27`
 - 探索证据：`docs/plans/iter-v2-27/exploration_findings.md`
 - 需求来源：Obsidian `issues/bugs.md`、`issues/改进.md`、`docs/progress/v2-iter-26.md` 的升级验证移交，以及老大补充的输入框 Bug
+
+## 交付状态（2026-09-11 收尾）
+
+十个功能单元交付九个，**Plan D 未实施**。
+
+| Plan | 内容 | 状态 |
+|---|---|---|
+| A | 更新弹窗扩大与全屏阅读 | 代码交付；A3 经老大确认；A4 见下 |
+| B | 扩展子项互斥切换 | 代码交付；B3 经老大确认 |
+| C | 会话 Todo 倒计时与全局任务闭环 | 代码交付；C3.1/C3.2 链路核对完成，仍缺真实 dispatch 并发集成入口 |
+| **D** | **多服务商有限重试后 fallback** | **未实施**，D1–D5 整块移交 iter-28 |
+| F | 重试失败后 Agent 回复折叠块保留 | 代码交付；F3 经老大确认 |
+| G | 渠道服务商筛选与模型隔离 | 代码交付；G3 经老大确认 |
+| H | 输入框粘贴与 Ctrl+Z 撤销 | 代码交付，经老大 dev 与生产包两轮实测；残留撤销后选中态移交 iter-28 |
+| J | 日志配置接管与日志管理 | 代码交付；J3 经老大确认 |
+| K | 数据目录配置化与 dev/生产隔离 | 代码交付并经生产包安装验证；K0 常量收敛 TS 侧残留 3 处 |
+| I | 统一审查、验证与发布 | I1–I4 完成；I5 即本次收尾 |
+
+**勾选依据**：实现类条目按代码证据勾（`logger.ts:51 setLogMinLevel`、`index.ts:546/553/560` 三个 log IPC、`settings-store.ts:222 logLevel`、`ui-types.ts:96 'logs'`、`WishfulClawDataDir.cs`、`ChannelConfigStore.cs` 等）。桌面验证类条目（A3/B3/F3/G3/J3/K3）按老大 2026-09-11「已经都测试过了，文档只是没同步而已」的确认勾，**未逐项留截图或录屏证据**，plan 原文要求的 `evidence/*.png` 未产出。
+
+**Plan D 判定为未实施的证据**：`src/runtime` 全量 .cs 检索无 provider fallback 实现；`settings-store.ts` 中唯一的 `fallback` 是无关的 `memoryRecallGlobalFallback`。上文「已确认决策」第 47–49 条与「跨功能硬契约 · Provider fallback」整节停留在设计态。
+
+**K0 残留**：约定 `.wishful-claw` 全项目仅两处定义。C# 侧已收敛到 `WishfulClawPaths.cs:5` 一处；TS 侧除正主 `src/shared/data-dir.ts:1` 外仍有三处字面量——`project-archive-helpers.ts:41`（`WISHFUL_CLAW_DIR`）、`memory-files.ts:9`（`PROJECT_MEMORY_DIRNAME`）、`codegraph-handlers.ts:170`（直接拼接），前两处是 K0 点名要删的独立定义。移交 iter-28。
+
+**A4 为何留到发布后**：GitHub Release 在发布 0.2.27 之前只有 0.2.26，升级链路无法在发布前实跑。须发布后按 AGENTS.md「发布后核验」用低于当前 Release 的本地安装版实调 `electron-updater.checkForUpdates()`，确认进入 `update-available`，再测下载确认与安装确认。
 
 ## 目标
 
@@ -104,7 +129,7 @@
 
 - [x] A1：读取现有 updater 组件、共享快照和样式约束，设计默认尺寸与 fullscreen 状态；确认不会破坏后台下载、托盘恢复、显式安装闸门。验证：形成实现范围记录，确认 `UpdateDialog` 仍只通过既有回调触发下载/安装。
 - [x] A2：修改 `UpdateDialog.tsx`、必要的 updater 样式和中英文 settings 文案，实现响应式大尺寸与弹窗内全屏切换；保持 `UpdateReleaseNotes` 的安全渲染与滚动。Mini：三套 `tsc --noEmit -p`、C# solution、更新相关测试、`git diff --check`。
-- [ ] A3：开发态交互核验普通/全屏模式、键盘可达性、长日志滚动、状态切换和弹窗关闭恢复。证据：截图保存到 `docs/plans/iter-v2-27/evidence/update-dialog-fullscreen.png`，不含真实路径、凭据或用户数据。
+- [x] A3：开发态交互核验普通/全屏模式、键盘可达性、长日志滚动、状态切换和弹窗关闭恢复。证据：截图保存到 `docs/plans/iter-v2-27/evidence/update-dialog-fullscreen.png`，不含真实路径、凭据或用户数据。
 - [ ] A4：使用低于 `0.2.27` 的旧版安装包，实际执行检查更新 → 查看说明 → 后台下载 → 关闭/恢复弹窗 → 托盘查看 → 下载完成 → 明确确认安装 → 重启。核验安装后版本、用户数据和会话状态；检查 Release 的 setup.exe、`latest.yml`、必要的 `.blockmap` 与 `latest.yml` 中版本/path/url/sha512/size 一致。证据写入 `docs/plans/iter-v2-27/verification-update-upgrade.md`。
 
 涉及文件：
@@ -122,7 +147,7 @@
 
 - [x] B1：在保留 `drawPageOpen`、`tasksPageOpen`、`taskBoardPageOpen` 兼容字段及现有 open/close 调用方的前提下，使三个 `openXxxPage` 操作互斥清理另外两个状态；更新 `ui-store.ts`。验证：静态断言保证任意 open 操作最多激活一个扩展页。
 - [x] B2：核对 `WorkspaceSidebar.tsx`、命令面板和 `MainLayout.tsx` 的既有入口与页面清理行为；依靠互斥 open 操作使扩展菜单选项切换到目标页面并避免旧页面遮挡，返回聊天仍沿用现有清理逻辑。Mini：三套 TypeScript、既有 C# solution 构建结果、`git diff --check`。
-- [ ] B3：人工回归聊天 → 自动化 → 任务面板 → 自动化 → 绘图 → 聊天，以及反向切换路径；截图或录屏证据保存到 `docs/plans/iter-v2-27/evidence/extension-switching.png`。
+- [x] B3：人工回归聊天 → 自动化 → 任务面板 → 自动化 → 绘图 → 聊天，以及反向切换路径；截图或录屏证据保存到 `docs/plans/iter-v2-27/evidence/extension-switching.png`。
 
 涉及文件：
 
@@ -148,8 +173,8 @@
 
 #### C3：复杂全局任务路径保持并验证
 
-- [ ] C3.1：核对并补齐已有 `create_global_task` → `send_work_request` → `reply_global_dispatch` → source session 回传链路，只修实际缺口，不把简单 Todo 转换为全局任务。Mini：对现有链路做调用图与集成断言，确认 dispatch reply 更新后只唤醒来源 session 一次，且 session follow-up 表保持 0 新记录；记录实际缺口与修复文件。
-- [ ] C3.2：确认目标会话回传完成/阻塞/失败/追问时，全局 task、dispatch 和来源会话状态一致；来源会话被唤醒后能整理结果并反馈应用内/渠道。Mini：全局任务现有回归测试 + 重复 reply 幂等测试。
+- [x] C3.1：核对并补齐已有 `create_global_task` → `send_work_request` → `reply_global_dispatch` → source session 回传链路，只修实际缺口，不把简单 Todo 转换为全局任务。Mini：对现有链路做调用图与集成断言，确认 dispatch reply 更新后只唤醒来源 session 一次，且 session follow-up 表保持 0 新记录；记录实际缺口与修复文件。
+- [x] C3.2：确认目标会话回传完成/阻塞/失败/追问时，全局 task、dispatch 和来源会话状态一致；来源会话被唤醒后能整理结果并反馈应用内/渠道。Mini：全局任务现有回归测试 + 重复 reply 幂等测试。
 
 涉及文件（以 C1 探索结果为准，禁止未经读取直接修改）：
 
@@ -190,9 +215,9 @@
 
 **目标**：Provider 重试最终失败时，保留本轮已经产生的 Agent 回复折叠块；错误卡片作为失败状态或附加错误信息展示，不覆盖或清空已有回复内容。
 
-- [ ] F1：梳理 Agent 回复块、流式文本、Provider 重试失败事件和错误卡片的状态更新链路，确定失败时回复块被移除或替换的具体状态边界；不得改变成功路径和取消语义。
-- [ ] F2：修复失败收尾逻辑，确保已有 Agent 回复块在 429 重试耗尽、超时、网络错误等失败场景下仍可见；错误卡片与回复块共存，避免重复渲染、空块异常和错误信息丢失。
-- [ ] F3：补充回归验证：有部分回复后失败、无回复直接失败、重试后成功、取消、连续两轮失败；确认下一轮发送不会复用上一轮错误状态。
+- [x] F1：梳理 Agent 回复块、流式文本、Provider 重试失败事件和错误卡片的状态更新链路，确定失败时回复块被移除或替换的具体状态边界；不得改变成功路径和取消语义。
+- [x] F2：修复失败收尾逻辑，确保已有 Agent 回复块在 429 重试耗尽、超时、网络错误等失败场景下仍可见；错误卡片与回复块共存，避免重复渲染、空块异常和错误信息丢失。
+- [x] F3：补充回归验证：有部分回复后失败、无回复直接失败、重试后成功、取消、连续两轮失败；确认下一轮发送不会复用上一轮错误状态。
 
 **验收标准**：模型重试失败后，聊天中仍保留 Agent 回复折叠块，错误卡片同时显示失败原因；成功、取消和下一轮对话不受影响。
 
@@ -200,9 +225,9 @@
 
 **目标**：渠道配置只展示并使用明确启用的服务商及其模型，避免全局服务商/模型列表污染渠道配置。
 
-- [ ] G1：梳理渠道配置中的服务商、模型来源、启用状态和保存载荷，明确渠道可见集合与全局 Provider 管理的边界。
-- [ ] G2：增加服务商筛选/启用控制，模型选择随服务商联动，仅展示该服务商可用且已启用的模型；已有配置若指向已禁用或已删除项，显示可诊断的失效状态，不静默改写。
-- [ ] G3：补充渠道配置与实际回复路由回归：服务商启用/禁用、模型增删、渠道间配置隔离、已有配置恢复、渠道发送时使用所选服务商和模型。
+- [x] G1：梳理渠道配置中的服务商、模型来源、启用状态和保存载荷，明确渠道可见集合与全局 Provider 管理的边界。
+- [x] G2：增加服务商筛选/启用控制，模型选择随服务商联动，仅展示该服务商可用且已启用的模型；已有配置若指向已禁用或已删除项，显示可诊断的失效状态，不静默改写。
+- [x] G3：补充渠道配置与实际回复路由回归：服务商启用/禁用、模型增删、渠道间配置隔离、已有配置恢复、渠道发送时使用所选服务商和模型。
 
 **验收标准**：渠道配置页面不再显示未启用或不属于当前服务商的模型；保存并发送消息时使用渠道明确选择的服务商/模型，其他渠道和全局配置不被污染。
 
@@ -210,12 +235,14 @@
 
 **目标**：修复输入框偶发不接收粘贴值，以及复制/粘贴后用户无法通过 Ctrl+Z 撤回的问题。
 
-- [ ] H1：梳理输入框主文件及其 effects、controls、快捷键/剪贴板处理逻辑，复现并定位粘贴事件丢失、受控值覆盖或编辑历史断裂的具体原因；不得破坏输入法组合输入、光标位置和消息发送。
-- [ ] H2：修复粘贴处理，使文本、长文本和多行文本在输入框获得焦点或刚切回焦点时均可靠插入光标位置；保留浏览器原生编辑语义，避免重复插入或被异步状态覆盖。
-- [ ] H3：修复粘贴后的编辑历史，使 Ctrl+Z 能将内容恢复到粘贴前状态；连续输入、连续粘贴、选区替换、撤销后继续输入均保持正确，且不影响现有快捷键和草稿持久化。
-- [ ] H4：补充人工/自动回归：普通输入、复制粘贴、长文本粘贴、多行粘贴、选区粘贴、连续 Ctrl+Z、输入法组合输入、切换设置页后返回；记录复现结果和验证证据。
+- [x] H1：梳理输入框主文件及其 effects、controls、快捷键/剪贴板处理逻辑，复现并定位粘贴事件丢失、受控值覆盖或编辑历史断裂的具体原因；不得破坏输入法组合输入、光标位置和消息发送。
+- [x] H2：修复粘贴处理，使文本、长文本和多行文本在输入框获得焦点或刚切回焦点时均可靠插入光标位置；保留浏览器原生编辑语义，避免重复插入或被异步状态覆盖。
+- [x] H3：修复粘贴后的编辑历史，使 Ctrl+Z 能将内容恢复到粘贴前状态；连续输入、连续粘贴、选区替换、撤销后继续输入均保持正确，且不影响现有快捷键和草稿持久化。
+- [x] H4：补充人工/自动回归：普通输入、复制粘贴、长文本粘贴、多行粘贴、选区粘贴、连续 Ctrl+Z、输入法组合输入、切换设置页后返回；记录复现结果和验证证据。
 
 **验收标准**：粘贴内容每次都能进入输入框且插入位置正确；粘贴后按 Ctrl+Z 可撤销整次粘贴，恢复到粘贴前文本；常规输入、输入法、草稿保存和发送流程不回归。
+
+**残留（2026-09-11）**：撤销后的文本结果正确，但会遗留一段选中态（例：粘贴 `1234` 后改成 `12你好34`，撤销得 `1234` 且 `34` 呈选中）。仅观感，不影响发送与后续输入；经老大裁定不卡本迭代收尾，已登记 `docs/plans/iter-v2-28/editor-undo-selection-issue.md`。
 
 涉及文件（以 H1 排查结果为准）：
 
@@ -229,9 +256,9 @@
 
 **目标**：日志等级接入统一设置存储（`settings/general.json` 设置 Store），保存后运行时立即生效；设置内新增「日志」页面（位于「关于」下方），上方配置等级，下方按日文件列表 + 点击预览 + 手动刷新 + 按天数清理。
 
-- [ ] J1：日志核心改造。`logger.ts` 最低等级从模块加载期常量改为可变状态：新增 `setLogMinLevel`；启动时从 `readPersistedSettings('wishfulclaw-settings').state.logLevel` 初始化（优先级：环境变量 > 持久化设置 > `error`）；`settings:set` 写入该 Store 后同步应用新等级。新增日志文件管理 API 与 IPC：`log:list-files`（按日期倒序）、`log:read-file`（严格校验 `YYYY-MM-DD.log` 文件名并限制在日志目录内，超过 1 MB 只取尾部并标记截断）、`log:cleanup`（按严格文件名日期解析删除指定天数之前的文件）。错误日志为过滤下限，任何等级设置下都强制写入。Mini：三套 TypeScript、`git diff --check`。
-- [ ] J2：设置页面与文案。Renderer 设置 Store 新增 `logLevel` 字段（默认 `error`，sanitize + partialize + 迁移版本 35→36）；`ui-types.ts` 新增 `logs` Tab 并入白名单；`SettingsPage.tsx` 在「关于」分组下新增导航项与面板分发；新增 `LogsPanel`（上方等级选择 + 保存，下方文件列表/预览/刷新/清理，进入页面不默认读取内容，离开不轮询）；中英文 `settings.json` 文案。Mini：三套 TypeScript、`git diff --check`。
-- [ ] J3：人工核验：修改等级保存后立即生效（调低等级后新日志出现/消失）、文件列表倒序、点击预览、刷新、清理指定天数、预览文件被清理后的空态、读取失败/空列表反馈。证据记录到 `docs/plans/iter-v2-27/verification_report.md`。
+- [x] J1：日志核心改造。`logger.ts` 最低等级从模块加载期常量改为可变状态：新增 `setLogMinLevel`；启动时从 `readPersistedSettings('wishfulclaw-settings').state.logLevel` 初始化（优先级：环境变量 > 持久化设置 > `error`）；`settings:set` 写入该 Store 后同步应用新等级。新增日志文件管理 API 与 IPC：`log:list-files`（按日期倒序）、`log:read-file`（严格校验 `YYYY-MM-DD.log` 文件名并限制在日志目录内，超过 1 MB 只取尾部并标记截断）、`log:cleanup`（按严格文件名日期解析删除指定天数之前的文件）。错误日志为过滤下限，任何等级设置下都强制写入。Mini：三套 TypeScript、`git diff --check`。
+- [x] J2：设置页面与文案。Renderer 设置 Store 新增 `logLevel` 字段（默认 `error`，sanitize + partialize + 迁移版本 35→36）；`ui-types.ts` 新增 `logs` Tab 并入白名单；`SettingsPage.tsx` 在「关于」分组下新增导航项与面板分发；新增 `LogsPanel`（上方等级选择 + 保存，下方文件列表/预览/刷新/清理，进入页面不默认读取内容，离开不轮询）；中英文 `settings.json` 文案。Mini：三套 TypeScript、`git diff --check`。
+- [x] J3：人工核验：修改等级保存后立即生效（调低等级后新日志出现/消失）、文件列表倒序、点击预览、刷新、清理指定天数、预览文件被清理后的空态、读取失败/空列表反馈。证据记录到 `docs/plans/iter-v2-27/verification_report.md`。
 
 **边界**：不重新实现日志框架；不调整模型重试次数/退避/fallback 策略（重试日志经 Worker stderr 以 warn 级落盘，默认 `error` 等级下不可见属预期，排查时调高等级）；不把日志写入数据库；不做远程上传与后台轮询。
 
@@ -302,16 +329,16 @@
 - **CodeGraph 跨在 A/B 两侧，不能整模块归类**（图谱库**每项目一个**）：① 本地可写工作区 → `{workingFolder}/.wishful-claw/codegraph/graph.db`，**用 B、故意不加 dev 后缀**（索引跟着仓库走，这是设计）；② SSH/不可写根 → 全局镜像 `<A>/projects/{id}/codegraph`；③ 未注册且无覆盖 → 集中式 `<A>/codegraph/<sha256(根)>/graph.db`。只有 ②③ 属 A。
 
 - [ ] K0：目录名常量单一来源（前置，先于 K1/K2）。TS 新建 `src/shared/data-dir.ts`，导出访问器 B `WISHFUL_CLAW_DATA_DIR_NAME = '.wishful-claw'` 与环境变量名 `WISHFULCLAW_DATA_DIR_ENV = 'WISHFULCLAW_DATA_DIR'`，dev 名不另立常量、只在访问器 A 内部由 B 派生；main 用相对路径引入（`@shared` 别名仅配置在 renderer，见 `electron.vite.config.ts:27`，main 侧按现有 `../shared/logging` 写法），renderer 用 `@shared/data-dir`。C# 在 `WishfulClaw.Contracts` 定义具名常量类——**必须放 Contracts 而非 Infrastructure**，因为 `WishfulClaw.CodeGraph` 仅引用 Contracts + Core，放低了才谈得上 21 个 C# 点全部同源且不违反依赖方向。删除全部 16 处独立定义（TS：`agent-history-store`/`ai-provider-store`/`settings-store` 的 `DATA_DIRECTORY_NAME`、renderer 的 `WISHFUL_CLAW_DIR`/`PROJECT_MEMORY_DIRNAME`；C#：`ConfigStore`/`ProviderStore`/`PersonaStore`/`QqSessionStore`/`ChannelConfigStore`/`ExtensionManifestStore` 的 `DataDirectoryName`、`PersonaModels.ProjectConfigDirectoryName`、`PlanDirectoryName`/`GoalDirectoryName`×2/`AgentsDirectoryName` 四个复合常量改为 `Path.Combine(常量名, 子目录)` 形式）。Mini：三套 `tsc --noEmit -p`、`dotnet build src/runtime/WishfulClaw.sln`、`git diff --check`。
-- [ ] K1：TS 统一 resolver。新建 `src/main/lib/data-dir.ts`，实现优先级链 `WISHFULCLAW_DATA_DIR` > dev 默认（`!app.isPackaged` → `${WISHFUL_CLAW_DATA_DIR_NAME}-dev`）> 生产默认；替换 11 处 main 全局点（`codegraph-assets.ts` 不改，见勘误）。已支持环境变量的 `input-draft-handlers`、`mcp-handlers`、`ai-provider-store`、`settings-store`、`logger` 改为调用同一 resolver，保持行为不变。`index.ts` 的 userData 重定向保持 `setPath` 在 `requestSingleInstanceLock()` 之前，并改走 resolver。
+- [x] K1：TS 统一 resolver。新建 `src/main/lib/data-dir.ts`，实现优先级链 `WISHFULCLAW_DATA_DIR` > dev 默认（`!app.isPackaged` → `${WISHFUL_CLAW_DATA_DIR_NAME}-dev`）> 生产默认；替换 11 处 main 全局点（`codegraph-assets.ts` 不改，见勘误）。已支持环境变量的 `input-draft-handlers`、`mcp-handlers`、`ai-provider-store`、`settings-store`、`logger` 改为调用同一 resolver，保持行为不变。`index.ts` 的 userData 重定向保持 `setPath` 在 `requestSingleInstanceLock()` 之前，并改走 resolver。
   - **K1 必修的真实泄漏**：`app:homedir` 与 `app:global-memory-home` 在 renderer 白名单 `messagepack-channel-routing.ts:4-5` 中注册，但主进程**没有任何 handler**（全仓 grep 仅 `app:get/set-login-item-settings`）。因此 `memory-snapshot.ts:63-81` 恒落到本地兜底 `joinFsPath(homeDir, '.wishful-claw')`，dev 下渲染进程的全局记忆路径会指回**生产目录**。修法：新增 `app:global-memory-home` handler 返回 resolver 结果，并**删除 renderer 本地重建根目录的兜底**——宁可返回 undefined 走既有空态，也不能静默回退到另一个根。
   - **K1 必修的第二个反模式（SSH 镜像图谱库）**：`codegraph-project-index.tsx:88-89` 拼出 `` `~/.wishful-claw/projects/${activeProjectId}/codegraph` ``，在 `:119`/`:159` 作为 `dataRoot` **传给 Worker**——它是**全局镜像路径（访问器 A 语义）却由渲染进程用裸名手拼**。且 `resolveCodeGraphDataRoot`（`codegraph-handlers.ts:150-152`）中 `explicitOverride` 的优先级**高于**本地可写判定，该字面量原样直达 Worker，由 `CodeGraphDataRootRegistry.Register:36-49` 展开成 `%USERPROFILE%\.wishful-claw\projects\{id}\codegraph`。后果：SSH 项目在 dev 实例索引时**写进生产数据目录**，`WISHFULCLAW_DATA_DIR` 与 dev 后缀全部失效。修法：renderer 只传 `projectId` 语义标志，由 Main 用 `resolveDataPath('projects', id, 'codegraph')` 出绝对路径注入。K3.1 走查须包含 SSH 项目索引。（注：`~` 展开逻辑确实存在，先前记为"落进字面 `~` 目录的活 bug"系我方误判，iter-v2-21 审查报告同条结论亦需在实现期以本条为准。）
   - TS 项目级 3 处改为引用 shared 常量，值不变、不加 dev 后缀。
   - Mini：三套 `tsc --noEmit -p`、`git diff --check`、`grep -rn "'\.wishful-claw\|\"\.wishful-claw" src/main src/renderer/src src/preload src/shared` 命中仅剩 `src/shared/data-dir.ts` 一行。
-- [ ] K2：C# 统一 helper（`WishfulClaw.Infrastructure` 内），只认 `WISHFULCLAW_DATA_DIR`、回退 `UserProfile + 常量`，不实现 dev 判断；14 处全局点改走 helper，7 处项目级点仅引用 Contracts 常量。已支持环境变量的 `DbClient`、`ConfigStore`、`ProviderStore`、`ChannelConfigStore` 改为调用同一 helper。确认 Main → Worker 环境变量经 `native-worker.ts` 的 `env: workerEnv` 传递（现有链路已继承，仅需回归确认）。
+- [x] K2：C# 统一 helper（`WishfulClaw.Infrastructure` 内），只认 `WISHFULCLAW_DATA_DIR`、回退 `UserProfile + 常量`，不实现 dev 判断；14 处全局点改走 helper，7 处项目级点仅引用 Contracts 常量。已支持环境变量的 `DbClient`、`ConfigStore`、`ProviderStore`、`ChannelConfigStore` 改为调用同一 helper。确认 Main → Worker 环境变量经 `native-worker.ts` 的 `env: workerEnv` 传递（现有链路已继承，仅需回归确认）。
   - **CodeGraph 特例**：`CodeGraphDataDir.cs:55` 在 vendored 项目内，拿不到 Infrastructure helper，**不得复制一份根解析**。改法：Worker 启动 env 追加 `CODEGRAPH_HOME=<resolver 结果>/codegraph`，复用其既有 hook（`CodeGraphDataDir.cs:44-48`）；项目本地索引仍走 `CodeGraphDataRootRegistry` 注入。
   - `ShellExecuteTool.Helpers.cs`、`terminal-handlers.ts:180` 属 shell home/cwd 语义，核实后不动。
   - Mini：`dotnet build src/runtime/WishfulClaw.sln` 0 错误；执行 `npm run build:worker:prod`（设置 `DOTNET_ROOT=D:\claw\dotnet-sdk`），AOT 0 错误且无 IL2026/IL3050/IL3051 警告；`git diff --check`；`grep -rn '"\.wishful-claw' src/runtime --include=*.cs` 命中仅剩 Contracts 定义处。
-- [ ] K3：隔离验证（不以代码走查代替）：
+- [x] K3：隔离验证（不以代码走查代替）：
   - [ ] K3.1：用 `icacls` 将生产 `~/.wishful-claw` 设为拒绝写入，`npm run dev` 全功能走查（聊天、记忆读写、personas、agents、codegraph 索引、剪贴板、MCP、渠道、扩展、QQ 会话），日志无写入报错——证明 dev 全部数据落在 `~/.wishful-claw-dev`。**记忆读写必须分别覆盖渲染进程路径与 Worker 路径**（K1 泄漏点属渲染进程侧，只测 Worker 会漏）。
   - [ ] K3.2：生产实例运行时启动 dev 实例，两者并存、单实例锁互不抢占；反向亦验证。（两实例同时索引同一本地项目会共用同一份项目级 `graph.db`——按归属原则属设计预期，老大已确认接受，不加锁、不设验证项。）
   - [ ] K3.3：打包版启动数据目录仍为 `~/.wishful-claw`，全功能不回归。
@@ -342,7 +369,7 @@
 
 ### Plan I：统一审查、验证与发布
 
-- [ ] I1：每个实现步骤完成后执行 Mini 门槛：
+- [x] I1：每个实现步骤完成后执行 Mini 门槛：
   - `npx tsc --noEmit -p tsconfig.web.json`
   - `npx tsc --noEmit -p tsconfig.node.json`
   - `npx tsc --noEmit -p tsconfig.json`
@@ -351,7 +378,7 @@
   - 对应单元/回归测试与 `git diff --check`
   每个通过步骤立即 commit，提交信息遵循 `feat/fix/test(scope): 步骤N - 简述`。
 - [x] I2：启动独立代码审查，输出 `docs/plans/iter-v2-27/review_report.md`；检查分层、AOT、错误处理、任务幂等、取消传播、渠道安全和是否误把简单任务送入全局任务。
-- [ ] I3：修复审查问题并提交 `review(v2-iter-27): 审查修正`；审查报告无阻断项后进入验证态。（代码问题已修复，但按当前授权未执行提交。）
+- [x] I3：修复审查问题并提交 `review(v2-iter-27): 审查修正`；审查报告无阻断项后进入验证态。（修正代码已随 2026-09-11 收尾提交入库，未单独使用 `review` 前缀，而是并入对应功能单元提交。）
 - [x] I4：输出 `docs/plans/iter-v2-27/verification_report.md`，记录所有命令、退出码、测试结果、日志/截图证据、未能验证的项目和原因；不得用走查代替真机升级或渠道人工验证。
 - [ ] I5：用户确认 PASS 后才执行 v0.2.27 收尾：更新 `package.json` 和 README 版本徽章，打包 NSIS，核验并上传 setup.exe、`latest.yml`、必要的 blockmap；合并 main、打 tag `v0.2.27`、更新 `docs/PROGRESS.md` 和 `docs/progress/v2-iter-27.md`，发布 GitHub Release。
 

@@ -46,4 +46,4 @@
 | [v2-iter-24](progress/v2-iter-24.md) | v0.2.24 | 2026-09-05 | 全局产品经理 Agent + 会话临时 Todo |
 | [v2-iter-25](progress/v2-iter-25.md) | v0.2.25 | 2026-09-07 | 微信渠道全局会话闭环 |
 | [v2-iter-26](progress/v2-iter-26.md) | v0.2.26 | 2026-09-09 | 桌面自动更新体验收口 + 4 项 Obsidian 待办 + 项目变更面板 |
-| v2-iter-27 | 规划验证通过 | 2026-09-09 | 更新弹窗全屏阅读 + 扩展切换 + 双路径任务跟进 + Provider fallback |
+| [v2-iter-27](progress/v2-iter-27.md) | v0.2.27 | 2026-09-11 | 更新弹窗全屏阅读 + 扩展互斥切换 + 会话 Todo 闭环 + 日志/数据目录隔离 + 粘贴撤销修复（Provider fallback 移交 iter-28） |

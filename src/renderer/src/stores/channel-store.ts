@@ -4,20 +4,6 @@ import { IPC } from '@renderer/lib/ipc/channels'
 
 // ── Types (mirrors backend ChannelInstance / ChannelProviderDescriptor) ──
 
-export interface ChannelPermissions {
-  allowReadHome: boolean
-  readablePathPrefixes: string[]
-  allowWriteOutside: boolean
-  allowShell: boolean
-  allowSubAgents: boolean
-}
-
-export interface ChannelFeatures {
-  autoReply: boolean
-  streamingReply: boolean
-  autoStart: boolean
-}
-
 export interface ConfigFieldSchema {
   key: string
   label: string
@@ -48,13 +34,24 @@ export interface PluginInstance {
   tools?: Record<string, boolean>
   providerId?: string | null
   model?: string | null
-  features?: ChannelFeatures
-  permissions?: ChannelPermissions
+}
+
+/** Mirrors the Worker record — defaults live in `GlobalChannelSettings.cs`, so this store never invents a fallback value. */
+export interface GlobalChannelSettings {
+  autoReply: boolean
+  streamingReply: boolean
+  autoStart: boolean
+  shellRequiresApproval: boolean
+  allowReadHome: boolean
+  readablePathPrefixes: string[]
+  allowWriteOutside: boolean
+  allowSubAgents: boolean
 }
 
 interface ChannelStore {
   channels: PluginInstance[]
   providers: ChannelProviderDescriptor[]
+  globalSettings: GlobalChannelSettings | null
   loading: boolean
   error: string | null
   selectedChannelId: string | null
@@ -62,15 +59,19 @@ interface ChannelStore {
 
   loadChannels: () => Promise<void>
   loadProviders: () => Promise<void>
+  loadGlobalSettings: () => Promise<void>
+  ensureGlobalSettings: () => Promise<GlobalChannelSettings | null>
+  updateGlobalSettings: (patch: Partial<GlobalChannelSettings>) => Promise<boolean>
   updateChannel: (id: string, patch: Partial<PluginInstance>) => Promise<boolean>
   startChannel: (id: string) => Promise<boolean>
   stopChannel: (id: string) => Promise<void>
   setSelectedChannel: (id: string | null) => void
 }
 
-export const useChannelStore = create<ChannelStore>((set) => ({
+export const useChannelStore = create<ChannelStore>((set, get) => ({
   channels: [],
   providers: [],
+  globalSettings: null,
   loading: false,
   error: null,
   selectedChannelId: null,
@@ -106,6 +107,44 @@ export const useChannelStore = create<ChannelStore>((set) => ({
       set({ providers })
     } catch (err) {
       console.error('[channel-store] Failed to load providers:', err)
+    }
+  },
+
+  loadGlobalSettings: async () => {
+    try {
+      const settings = (await ipcClient.invoke(IPC.PLUGIN_SETTINGS_GET)) as GlobalChannelSettings
+      set({ globalSettings: settings, error: null })
+    } catch (err) {
+      console.error('[channel-store] Failed to load global channel settings:', err)
+      set({ error: err instanceof Error ? err.message : String(err) })
+    }
+  },
+
+  ensureGlobalSettings: async () => {
+    const current = get().globalSettings
+    if (current) return current
+    await get().loadGlobalSettings()
+    return get().globalSettings
+  },
+
+  updateGlobalSettings: async (patch) => {
+    // The Worker stores the whole object, so a patch must be merged onto the
+    // authoritative read rather than sent as a partial.
+    const current = await get().ensureGlobalSettings()
+    if (!current) return false
+    try {
+      const result = (await ipcClient.invoke(IPC.PLUGIN_SETTINGS_SET, {
+        ...current,
+        ...patch
+      })) as { settings?: GlobalChannelSettings; error?: string }
+      if (result?.error) throw new Error(result.error)
+      if (!result?.settings) throw new Error('Global channel settings write returned nothing')
+      set({ globalSettings: result.settings, error: null })
+      return true
+    } catch (err) {
+      console.error('[channel-store] Failed to update global channel settings:', err)
+      set({ error: err instanceof Error ? err.message : String(err) })
+      return false
     }
   },
 

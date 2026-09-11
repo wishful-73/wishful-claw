@@ -28,28 +28,32 @@ export interface ChannelProviderDescriptor {
   tools?: string[]
 }
 
-/** Security permissions for a channel instance */
-export interface ChannelPermissions {
-  /** Allow reading files outside the plugin working directory under home (~) */
-  allowReadHome: boolean
-  /** Whitelist of absolute path prefixes the plugin can read (when allowReadHome=false) */
-  readablePathPrefixes: string[]
-  /** Allow writing files outside the plugin working directory */
-  allowWriteOutside: boolean
-  /** Allow executing shell commands */
-  allowShell: boolean
-  /** Allow using sub-agent tools (Task tool) */
-  allowSubAgents: boolean
-}
-
-/** Feature toggles for a channel instance */
-export interface ChannelFeatures {
+/**
+ * Worker-owned global channel settings. The Worker applies the defaults, so
+ * consumers read these fields without local fallbacks — a second default here
+ * is how the previous five-way disagreement happened.
+ */
+export interface GlobalChannelSettings {
   /** Auto-reply to incoming messages using the Agent */
   autoReply: boolean
-  /** Stream responses back to the chat in real-time via CardKit */
+  /** Display-only this iteration: streaming is decided by the service's `supportsStreaming` */
   streamingReply: boolean
-  /** Auto-start the plugin service when the app launches */
+  /** Connect enabled channels when the app launches */
   autoStart: boolean
+  /**
+   * Ask the user before a channel run executes shell. Gates confirmation only —
+   * the shell tools stay visible either way. Replaces the retired `allowShell`,
+   * whose name implied a visibility switch.
+   */
+  shellRequiresApproval: boolean
+  /** Display-only this iteration: no enforcement point */
+  allowReadHome: boolean
+  /** Display-only this iteration: no enforcement point */
+  readablePathPrefixes: string[]
+  /** Display-only this iteration: no enforcement point */
+  allowWriteOutside: boolean
+  /** Display-only this iteration: no enforcement point */
+  allowSubAgents: boolean
 }
 
 /** Persisted channel instance configuration */
@@ -69,10 +73,6 @@ export interface ChannelInstance {
   providerId?: string | null
   /** Model override for this plugin's auto-reply agent (null = use global default) */
   model?: string | null
-  /** Feature toggles */
-  features?: ChannelFeatures
-  /** Security permissions (defaults applied if missing) */
-  permissions?: ChannelPermissions
 }
 
 /** Normalized message format returned by all providers */

@@ -6,7 +6,7 @@
  */
 
 import { getNativeWorker } from '../lib/native-worker'
-import type { ChannelInstance } from './channel-types'
+import type { ChannelInstance, GlobalChannelSettings } from './channel-types'
 
 const CHANNEL_CONFIG_TIMEOUT_MS = 60_000
 
@@ -55,4 +55,31 @@ export async function isChannelPluginToolEnabled(
   const plugin = await getChannelPlugin(pluginId)
   if (!plugin?.tools) return true
   return plugin.tools[toolName] !== false
+}
+
+/**
+ * The Worker applies the defaults, so a failed read must not be masked by a
+ * local fallback — that is how the retired per-channel flags ended up with
+ * five disagreeing default values.
+ */
+export async function readGlobalChannelSettings(): Promise<GlobalChannelSettings> {
+  return await getNativeWorker().request<GlobalChannelSettings>(
+    'channel/settings-read',
+    {},
+    CHANNEL_CONFIG_TIMEOUT_MS
+  )
+}
+
+export async function writeGlobalChannelSettings(
+  settings: GlobalChannelSettings
+): Promise<GlobalChannelSettings> {
+  const result = await getNativeWorker().request<MutationResult>(
+    'channel/settings-write',
+    settings,
+    CHANNEL_CONFIG_TIMEOUT_MS
+  )
+  if (!result.success) {
+    throw new Error(result.error ?? 'Global channel settings write failed')
+  }
+  return await readGlobalChannelSettings()
 }

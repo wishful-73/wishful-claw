@@ -8,9 +8,13 @@ import * as fs from 'fs'
 import * as os from 'os'
 import { app } from 'electron'
 import { getNativeWorker } from '../lib/native-worker'
-import { readChannelPlugins } from './channel-config-store'
+import { readChannelPlugins, readGlobalChannelSettings } from './channel-config-store'
 import type { ChannelManager } from './channel-manager'
-import type { ChannelIncomingMessageData, ChannelInstance } from './channel-types'
+import type {
+  ChannelIncomingMessageData,
+  ChannelInstance,
+  GlobalChannelSettings
+} from './channel-types'
 
 // ── Shared Types (re-exported from plugin-commands) ──
 
@@ -318,27 +322,32 @@ export async function handleStatus(ctx: CommandContext, args: string): Promise<C
     lines.push(`🤖 Model: Using global default`)
   }
 
-  const features = pluginInstance?.features ?? {
-    autoReply: true,
-    streamingReply: true,
-    autoStart: true
+  let settings: GlobalChannelSettings | null = null
+  try {
+    settings = await readGlobalChannelSettings()
+  } catch (err) {
+    console.error('[Channel Status] Global settings read failed:', err)
   }
-  lines.push('')
-  lines.push(`📋 Feature Toggles:`)
-  lines.push(`  Auto Reply: ${features.autoReply ? '✅ ON' : '❌ OFF'}`)
-  lines.push(
-    `  Streaming Reply: ${features.streamingReply && service?.supportsStreaming ? '✅ ON' : '❌ OFF'}`
-  )
-  lines.push(`  Auto Start: ${features.autoStart ? '✅ ON' : '❌ OFF'}`)
 
-  const perms = pluginInstance?.permissions
-  if (perms) {
+  lines.push('')
+  lines.push('📋 Global Settings:')
+  if (!settings) {
+    lines.push('  ⚠️ Unavailable: global channel settings could not be read')
+  } else {
+    const flag = (value: boolean): string => (value ? '✅ ON' : '❌ OFF')
+    lines.push(`  Auto Reply: ${flag(settings.autoReply)}`)
+    lines.push(
+      `  Streaming Reply: ${flag(settings.streamingReply && service?.supportsStreaming === true)} (channel support: ${service?.supportsStreaming ? 'yes' : 'no'})`
+    )
+    lines.push(`  Auto Start: ${flag(settings.autoStart)}`)
     lines.push('')
-    lines.push(`🔒 Permissions:`)
-    lines.push(`  Shell Execute: ${perms.allowShell ? '✅ Allowed' : '❌ Denied'}`)
-    lines.push(`  Read Home: ${perms.allowReadHome ? '✅ Allowed' : '❌ Denied'}`)
-    lines.push(`  External Write: ${perms.allowWriteOutside ? '✅ Allowed' : '❌ Denied'}`)
-    lines.push(`  Sub-agents: ${perms.allowSubAgents ? '✅ Allowed' : '❌ Denied'}`)
+    lines.push('🔒 Global Permissions:')
+    lines.push(
+      `  Shell Approval: ${settings.shellRequiresApproval ? '🔐 Requires confirmation' : '⚡ Auto-approved'}`
+    )
+    lines.push(`  Read Home: ${flag(settings.allowReadHome)} (not enforced yet)`)
+    lines.push(`  External Write: ${flag(settings.allowWriteOutside)} (not enforced yet)`)
+    lines.push(`  Sub-agents: ${flag(settings.allowSubAgents)} (not enforced yet)`)
   }
 
   lines.push('')

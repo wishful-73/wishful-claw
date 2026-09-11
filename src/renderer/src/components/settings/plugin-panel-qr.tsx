@@ -136,12 +136,7 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
                   baseUrl: waitResult.baseUrl || channel.config.baseUrl,
                   accountId: (waitResult as Record<string, unknown>).accountId as string || (channel.config as Record<string, unknown>).accountId as string
                 } as Record<string, string>,
-                enabled: true,
-                features: {
-                  autoReply: channel.features?.autoReply ?? true,
-                  streamingReply: channel.features?.streamingReply ?? true,
-                  autoStart: true
-                }
+                enabled: true
               }
               const updated = await updateChannel(channel.id, patch)
               if (!updated) {
@@ -250,12 +245,7 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
                   appId: pollResult.appId,
                   appSecret: pollResult.appSecret
                 },
-                enabled: true,
-                features: {
-                  autoReply: channel.features?.autoReply ?? true,
-                  streamingReply: channel.features?.streamingReply ?? true,
-                  autoStart: true
-                }
+                enabled: true
               })
               if (!updated) {
                 throw new Error(

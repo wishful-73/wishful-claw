@@ -1,24 +1,18 @@
-﻿/**
+/**
  * Channel / Plugin configuration panel.
  *
  * Layout (Reasonix-inspired):
  *   Top: horizontal channel tabs + detail panel (side by side)
- *   Bottom: global channel settings (persona, provider/model, auto-reply)
+ *   Bottom: global channel settings (reply, features, permissions)
  */
 
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, User, Bot, MessageSquare } from 'lucide-react'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
-import { Separator } from '@renderer/components/ui/separator'
 import { useChannelStore } from '@renderer/stores/channel-store'
-import { usePersonaStore } from '@renderer/stores/persona-store'
-import { useProviderStore } from '@renderer/stores/provider-store'
-import { useSettingsStore } from '@renderer/stores/settings-store'
-
 import { cn } from '@renderer/lib/utils'
 import { ChannelDetailPanel } from './plugin-panel-detail'
+import { ChannelGlobalSettingsPanel } from './plugin-panel-global'
 
 function PluginPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
@@ -96,159 +90,9 @@ function PluginPanel(): React.JSX.Element {
       </div>
 
       {/* ── Global channel settings ── */}
-      <div className="shrink-0">
-        <GlobalChannelSettings />
+      <div className="max-h-[45%] shrink-0">
+        <ChannelGlobalSettingsPanel />
       </div>
-    </div>
-  )
-}
-
-// ── Global Channel Settings (bottom section) ──
-
-function GlobalChannelSettings(): React.JSX.Element {
-  const { t } = useTranslation('settings')
-  const { personas, listPersonas } = usePersonaStore()
-  const providerStore = useProviderStore()
-  const settings = useSettingsStore()
-  const enabledProviders = providerStore.providers.filter((provider) => provider.enabled === true)
-  const selectedProvider = enabledProviders.find((provider) => provider.id === providerStore.activeProviderId) ?? enabledProviders[0] ?? null
-  const enabledChatModels = selectedProvider?.models.filter(
-    (model) => model.enabled && (!model.category || model.category === 'chat')
-  ) ?? []
-  const selectedModel = enabledChatModels.find((model) => model.id === providerStore.activeModelId) ?? null
-  
-  useEffect(() => {
-    if (selectedProvider && providerStore.activeProviderId !== selectedProvider.id) {
-      providerStore.setActiveProvider(selectedProvider.id)
-    }
-    if (selectedModel && providerStore.activeModelId !== selectedModel.id) {
-      providerStore.setActiveModel(selectedModel.id)
-    } else if (!selectedModel && providerStore.activeModelId) {
-      providerStore.setActiveModel('')
-    }
-  }, [providerStore, selectedModel, selectedProvider])
-
-  useEffect(() => {
-    void listPersonas()
-  }, [listPersonas])
-
-  return (
-    <div className="shrink-0 border-t">
-      <details open>
-        <summary className="flex cursor-pointer items-center justify-between px-6 py-2.5 select-none">
-          <span className="flex items-center gap-2">
-            <MessageSquare className="size-3.5 text-muted-foreground" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {t('channel.global.title', { defaultValue: '全局渠道设置' })}
-            </span>
-          </span>
-          <ChevronDown className="size-4 text-muted-foreground" />
-        </summary>
-
-        <div className="space-y-4 px-6 py-4">
-          {/* Persona selection */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <User className="size-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {t('channel.global.persona', { defaultValue: '回复人格' })}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t('channel.global.personaDesc', { defaultValue: '所有渠道自动回复使用的人格' })}
-                </p>
-              </div>
-            </div>
-            <Select
-              value={settings.defaultPersonaId || '__none__'}
-              onValueChange={(val) => void settings.updateSettings({ defaultPersonaId: val === '__none__' ? '' : val })}
-            >
-              <SelectTrigger className="w-[200px] h-8 text-sm">
-                <SelectValue placeholder={t('channel.global.noPersona', { defaultValue: '默认（无人格）' })} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">
-                  {t('channel.global.noPersona', { defaultValue: '默认（无人格）' })}
-                </SelectItem>
-                {personas.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Separator />
-
-          {/* Provider & Model */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bot className="size-4 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium text-foreground">
-                  {t('channel.global.model', { defaultValue: '回复模型' })}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t('channel.global.modelDesc', { defaultValue: '所有渠道自动回复使用的 AI 模型' })}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Select
-                value={selectedProvider?.id ?? '__none__'}
-                onValueChange={(val) => {
-                  if (val === '__none__') return
-                  providerStore.setActiveProvider(val)
-                  const provider = enabledProviders.find((item) => item.id === val)
-                  const firstModel = provider?.models.find(
-                    (model) => model.enabled && (!model.category || model.category === 'chat')
-                  )
-                  providerStore.setActiveModel(firstModel?.id ?? '')
-                }}
-              >
-                <SelectTrigger className="w-[140px] h-8 text-sm">
-                  <SelectValue placeholder={t('channel.global.provider', { defaultValue: 'Provider' })} />
-                </SelectTrigger>
-                <SelectContent>
-                  {enabledProviders.length > 0 ? enabledProviders.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  )) : (
-                    <SelectItem value="__none__">
-                      {t('channel.global.noProvider', { defaultValue: '无可用服务商' })}
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-              <Select
-                value={selectedModel?.id ?? '__none__'}
-                onValueChange={(val) => {
-                  if (val !== '__none__') providerStore.setActiveModel(val)
-                }}
-              >
-                <SelectTrigger className="w-[180px] h-8 text-sm">
-                  <SelectValue placeholder={t('channel.global.modelPlaceholder', { defaultValue: '选择模型' })} />
-                </SelectTrigger>
-                <SelectContent>
-                  {enabledChatModels.length > 0 ? enabledChatModels.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name || m.id}
-                    </SelectItem>
-                  )) : (
-                    <SelectItem value="__none__">
-                      {t('channel.global.noModel', { defaultValue: '无可用模型' })}
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-
-        </div>
-      </details>
     </div>
   )
 }

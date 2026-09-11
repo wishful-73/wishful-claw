@@ -252,15 +252,36 @@
 
 **落点约束**：渠道配置唯一落盘处是 C# 侧 `~/.wishful-claw/plugins.json`（`ChannelConfigStore.cs:19,181-184`），读写全经主进程转发（`plugin:update` / `plugin:list`）。全局设置若存进渲染端 `settings-store`（那是主进程 `general.json`），与 AGENTS.md「功能只有 C# Worker 版本才算完成」冲突。**页面无 shadcn `Tabs` 可依赖**（`components/ui/` 下无 `tabs.tsx`），设置页各 tab 全是自绘按钮组；`mcp-panel.tsx:101,215`、`skill-panel.tsx:180,201` 用「两块 div 常驻 + `hidden`」保挂载，照抄时若改成条件渲染会丢状态。
 
-- [ ] R-2.1：`GlobalChannelSettings`（`PluginPanel.tsx:99-101,136-137` 的 `<details open>`）改为自绘选项卡，样板取 `plugin-panel-detail.tsx:221-260,352-358`（含「当前 tab 不可见时自动切首个」的 effect）。Mini：`tsc` 三配置。
-- [ ] R-2.2：把 `features` / `permissions` 从渠道详情的 features tab（`plugin-panel-detail.tsx:103-217`）搬进上述全局选项卡，渠道详情只留 `qr` / `credentials` 与渠道自身的 `providerId`/`model` 覆盖。Mini：`tsc` 三配置 + 手工核验渠道列表→详情→切换渠道不残留上一个渠道的表单值。
-- [ ] R-2.3：两处消费端改读全局（`use-channel-auto-reply.ts:139-143`、`src/main/ipc/channel-handlers/channel-plugin-handlers.ts:167-176`）。Mini：C# `dotnet build` + 三套 `tsc`。
-- [ ] R-2.4：旧逐渠道 key 从 `plugin:list` 顶层白名单摘除，让首读即剪枝（`src/main/ipc/channel-handlers/channel-plugin-handlers.ts:344-352` 已有该机制，白名单现含 `features`/`permissions`/`tools`/`providerId`/`model`），避免 `plugin:update` 浅合并（`:392`）留下僵尸字段。Mini：拿一份真实 `plugins.json` 副本跑首读，确认旧 key 被删且渠道功能不受影响。
-- [ ] R-2.5：`autoStart` 等默认值收敛到单点——现存 5 处不一致（seed `false` @ `src/main/ipc/channel-handlers/channel-plugin-handlers.ts:292`、UI 兜底 `true` @ `plugin-panel-detail.tsx:107`、启动判定 `?? true` @ `:170`、`/status` 兜底 `true` @ `plugin-command-handlers.ts:321-325`、`use-channel-auto-reply.ts:139`）。
-- [ ] R-2.6：**`allowShell` 接真（语义改写为「是否需用户授权」）**（裁定 ② 的例外项，老大 2026-09-11 拍定）——① **修正命名与文案**：字段名与 `plugin-panel-detail.tsx:191-192` 的「Shell 执行」/「允许 AI 执行 shell 命令」描述的是**旧语义**，须改为"是否需授权"口径（建议重命名 `shellRequiresApproval` 取反语义，或至少改名不可行时在类型注释 + UI 文案明写）；② **默认值 = 需授权**（`false` 保持，但要与旧字段语义对齐）；③ **注入 `channelPermissions`**——当前全仓**零赋值点**（`tool-types.ts:44` 声明 + `bash-tool.ts:50` 读取，`ctx.channelPermissions` 恒为 `undefined`），须从渠道配置真正注入到工具执行上下文；④ **C# Worker 侧同步强制**——`bash-tool.ts:49-52` 的 `requiresApproval` 在渲染边界，而 `execute` 直接返回 `nativeOnlyBashResult()`，**真实执行在 C# 侧**，故授权判定必须在 C# Worker 侧也成立，否则重蹈"零注入"覆辙。验证：① `tsc` 三配置 + C# `dotnet build`；② 渠道会话下 `Bash` **恒可见**（`shell` 属核心集 priority 30）；③ `allowShell=false`（默认）时调用 **触发用户授权确认**；④ `allowShell=true` 时**免授权直接执行**；⑤ 两种设置下 **`Bash` 均出现在可见集与提示词核心集中**（证明它管的是授权不是可见性）。
-- [ ] R-2.7：**记账 4 个仍不生效的权限字段**（裁定 ② 主体）——`allowReadHome` / `readablePathPrefixes` / `allowWriteOutside` / `allowSubAgents` 本次**只搬家 + 记账**，不接真。须在本文档与 `raw-requirements.md` 明写"当前仅展示与 `/status` 回显，无强制执行点"，**防后续误以为已生效**。验证：四处读取点核实仍仅在 `plugin-command-handlers.ts:338-341` 与 UI；记账条目进入后继需求清单。
+- [x] R-2.1：`GlobalChannelSettings`（`PluginPanel.tsx:99-101,136-137` 的 `<details open>`）改为自绘选项卡，样板取 `plugin-panel-detail.tsx:221-260,352-358`（含「当前 tab 不可见时自动切首个」的 effect）。Mini：`tsc` 三配置。
+- [x] R-2.2：把 `features` / `permissions` 从渠道详情的 features tab（`plugin-panel-detail.tsx:103-217`）搬进上述全局选项卡，渠道详情只留 `qr` / `credentials` 与渠道自身的 `providerId`/`model` 覆盖。Mini：`tsc` 三配置 + 手工核验渠道列表→详情→切换渠道不残留上一个渠道的表单值。
+- [x] R-2.3：两处消费端改读全局（`use-channel-auto-reply.ts:139-143`、`src/main/ipc/channel-handlers/channel-plugin-handlers.ts:167-176`）。Mini：C# `dotnet build` + 三套 `tsc`。
+- [x] R-2.4：旧逐渠道 key 从 `plugin:list` 顶层白名单摘除，让首读即剪枝（`src/main/ipc/channel-handlers/channel-plugin-handlers.ts:344-352` 已有该机制，白名单现含 `features`/`permissions`/`tools`/`providerId`/`model`），避免 `plugin:update` 浅合并（`:392`）留下僵尸字段。Mini：拿一份真实 `plugins.json` 副本跑首读，确认旧 key 被删且渠道功能不受影响。
+- [x] R-2.5：`autoStart` 等默认值收敛到单点——现存 5 处不一致（seed `false` @ `src/main/ipc/channel-handlers/channel-plugin-handlers.ts:292`、UI 兜底 `true` @ `plugin-panel-detail.tsx:107`、启动判定 `?? true` @ `:170`、`/status` 兜底 `true` @ `plugin-command-handlers.ts:321-325`、`use-channel-auto-reply.ts:139`）。
+- [x] R-2.6：**`allowShell` 接真（语义改写为「是否需用户授权」）**（裁定 ② 的例外项，老大 2026-09-11 拍定）——① **修正命名与文案**：字段名与 `plugin-panel-detail.tsx:191-192` 的「Shell 执行」/「允许 AI 执行 shell 命令」描述的是**旧语义**，须改为"是否需授权"口径（建议重命名 `shellRequiresApproval` 取反语义，或至少改名不可行时在类型注释 + UI 文案明写）；② **默认值 = 需授权**（`false` 保持，但要与旧字段语义对齐）；③ **注入 `channelPermissions`**——当前全仓**零赋值点**（`tool-types.ts:44` 声明 + `bash-tool.ts:50` 读取，`ctx.channelPermissions` 恒为 `undefined`），须从渠道配置真正注入到工具执行上下文；④ **C# Worker 侧同步强制**——`bash-tool.ts:49-52` 的 `requiresApproval` 在渲染边界，而 `execute` 直接返回 `nativeOnlyBashResult()`，**真实执行在 C# 侧**，故授权判定必须在 C# Worker 侧也成立，否则重蹈"零注入"覆辙。验证：① `tsc` 三配置 + C# `dotnet build`；② 渠道会话下 `Bash` **恒可见**（`shell` 属核心集 priority 30）；③ `allowShell=false`（默认）时调用 **触发用户授权确认**；④ `allowShell=true` 时**免授权直接执行**；⑤ 两种设置下 **`Bash` 均出现在可见集与提示词核心集中**（证明它管的是授权不是可见性）。
+- [x] R-2.7：**记账 4 个仍不生效的权限字段**（裁定 ② 主体）——`allowReadHome` / `readablePathPrefixes` / `allowWriteOutside` / `allowSubAgents` 本次**只搬家 + 记账**，不接真。须在本文档与 `raw-requirements.md` 明写"当前仅展示与 `/status` 回显，无强制执行点"，**防后续误以为已生效**。验证：四处读取点核实仍仅在 `plugin-command-handlers.ts:338-341` 与 UI；记账条目进入后继需求清单。
 
-**（本条三条裁定已闭合；`allowShell` 为裁定 ② 的唯一例外，见 R-2.6）**
+**R-2 实现与验证记录（2026-09-12）**
+
+落点文件：新增 `src/runtime/WishfulClaw.Infrastructure/Storage/GlobalChannelSettings.cs`（值与默认值的唯一真源）、`src/runtime/WishfulClaw.Agent/Modules/Channels/GlobalChannelSettingsService.cs`（Worker 端点）、`src/runtime/WishfulClaw.Agent/ToolCallProcessor.Approval.cs`（授权半边从 `ToolCallProcessor.cs` 拆出）、`src/renderer/src/components/settings/plugin-panel-global.tsx`（三选项卡面板）；改造 `channel-types.ts`、`channel-config-store.ts`、`channel-handler-utils.ts`、`channel-plugin-handlers.ts`、`plugin-command-handlers.ts`、`PluginPanel.tsx`、`plugin-panel-detail.tsx`、`plugin-panel-qr.tsx`、`use-channel-auto-reply.ts`、`channel-store.ts`、`bash-tool.ts`、`tool-types.ts`、`api/types.ts`、zh/en `settings.json`。
+
+| 步骤 | 落地 | 证据 |
+|---|---|---|
+| R-2.1 | 原 `<details open>` 全局块删掉，换成自绘三 tab（`reply`/`features`/`permissions`），三块 div 常驻 + `hidden` 保挂载 | 三套 `tsc` 0 错误；`PluginPanel.tsx` 166→100 行 |
+| R-2.2 | `plugin-panel-detail.tsx` 的 `FeaturesPanel`（117 行）与 `features` tab 删除，`ConfigTab` 收成 `'qr' \| 'credentials'`；渠道自身 `providerId`/`model` 覆盖保留 | 全仓 grep `channel.tabs.features` 0 消费点，zh/en 死键同步删除 |
+| R-2.3 | `use-channel-auto-reply.ts` 改读全局 `autoReply`；`autoStartChannels` 改读全局 `autoStart` | 读不到设置时**不本地兜默认**：autoReply 保持放行（等同旧默认 `true`），autoStart 记 ERROR 后跳过本轮自动启动 |
+| R-2.4 | 顶层白名单摘除 `features`/`permissions`（余 11 键），命中差异即回写 | 实读本机 `~/.wishful-claw/plugins.json`（root 仍是 `JsonArray`，8 渠道）：key 集合已完全等于新白名单，**本条为向前干净的 no-op**；旧值一旦存在即会被首读删除 |
+| R-2.5 | 默认值收敛到 `GlobalChannelSettings.Defaults` 一处，TS 侧不再声明任何默认（`channel-types.ts` 注释明写"Worker applies the defaults"） | 原 5 处不一致逐条消除：seed 不再写 features/permissions、UI 改 spinner 占位、启动判定与 `/status` 改读全局（读失败打印 Unavailable 而非兜一套）、auto-reply 改读全局 |
+| R-2.6 | ① 改名 `shellRequiresApproval`（取反）+ zh/en 文案改写；② 默认 `true`=需授权，旧 `allowShell:false` 取反映射到安全侧；③ **放弃注入 `channelPermissions`**（见下）；④ C# `IsChannelShellApprovalWaived` 仅在「渠道会话 + shell 四类 + 全局关闭」时免确认 | 新增 `tests/WishfulClaw.ChannelShellApprovalRegressionTests`：**57 断言全过**（默认为 ask / legacy 两向映射 / 显式键优先 / 非布尔脏值不采信 / 豁免不含 `Write`·`Edit`·`NotebookEdit`·`Desktop*`·读类 / 非渠道会话不豁免 / 小写名不匹配即回落 ask / shell 四类在开关两种取值下均留在 default approval set = 授权≠可见性 / 整对象存盘回读一致且存盘会抹掉 retired `allowShell`）；`ChannelToolVisibilityRegressionTests` 102 断言、ToolConcurrency、SessionTaskCascade 均不回退 |
+| R-2.7 | 4 个 `allow*` + `streamingReply` 明写未接真：UI 段首提示"以下开关当前仅记录设置，尚未接入强制执行"，`/status` 三行打 `(not enforced yet)` | `raw-requirements.md` S-5 记账条目；`readablePathPrefixes` 本次连 UI 输入项都没有（仅存盘与回读） |
+
+**两处与步骤预估不一致的纠偏（须让老大知道）**：
+
+1. **存储落点**：裁定 ③ 的"沿用 `plugins.json` 增字段"经实读**不可行**——`plugins.json` 的根节点是 `JsonArray`（`ChannelConfigStore.cs:33` 要求 `is JsonArray`），要放一个与渠道数组并列的全局对象就得改根形状，主进程与 C# 两侧读写全要跟着改，风险远大于收益。改存 **Worker `ConfigStore` 键 `channelSettings`**（即 `~/.wishful-claw/config.json`），与 `providerCompletion` 等既有全局设置同处、同一读写通道——这仍然是老大原话的"与既有设置同样的方式，增加字段"。代价：比原预估多了 2 个 Worker 端点（`channel/settings-read` / `channel/settings-write`）与 2 个 AOT 类型（`GlobalChannelSettings`、`GlobalChannelSettingsResult`，已注册进 `AgentRuntimeJsonContext`），"无需新增端点、无需新增 AOT 类型"的原句作废。
+2. **R-2.6③ 的注入方案取消**：实读确认 `toolRegistry.checkRequiresApproval` **全仓零调用方**，`bash-tool.ts` 的 `execute` 恒返回 `nativeOnlyBashResult()`——即"注入 `channelPermissions` 给渲染端判定"是一条**接了也不会被执行的死路径**（正是本条要防的"重蹈零注入覆辙"）。改为删除 `bash-tool.ts` 的 `requiresApproval` 与 `tool-types.ts` 的 `channelPermissions` 声明，授权判定唯一真源落在 C#。
+
+**本条真机验证缺口**：渠道会话端到端（微信/飞书里真发一条消息，看 `Bash` 在两种设置下分别"弹授权"与"直接跑"）需要老大的真实渠道绑定，未跑；面板的实际渲染与切渠道不残留值的手工核验同样未跑。静态面（类型、编译、57 条行为断言）已全部通过。
+
+
 
 **✅ 本条三条待裁项已全部裁定（老大 2026-09-11）**：
 

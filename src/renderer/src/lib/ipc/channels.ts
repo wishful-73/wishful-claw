@@ -145,6 +145,8 @@ export const IPC = {
   PLUGIN_START: 'plugin:start',
   PLUGIN_STOP: 'plugin:stop',
   PLUGIN_STATUS: 'plugin:status',
+  PLUGIN_SETTINGS_GET: 'plugin:settings-get',
+  PLUGIN_SETTINGS_SET: 'plugin:settings-set',
   PLUGIN_EXEC: 'plugin:exec',
   PLUGIN_SESSIONS_LIST: 'plugin:sessions:list',
   PLUGIN_SESSIONS_LIST_ALL: 'plugin:sessions:list-all',

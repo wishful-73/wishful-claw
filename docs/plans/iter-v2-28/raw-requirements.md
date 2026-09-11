@@ -65,6 +65,15 @@
 >
 > 边界提醒：本条与 R-3 共用 4 个文件（`channel-types.ts`、`channel-config-store.ts`、`channel-plugin-handlers.ts`、`channel-handler-utils.ts`），**两项不得并行改**。
 
+> ### 📦 本条已交付（2026-09-12），实现与验证记录见 `plan.md` R-2 节末
+> 搬家已完成：渠道详情内不再有"功能设置"，全局设置页改为三张自绘选项卡（回复 / 功能 / 权限），唯一真源在 C# Worker。
+>
+> 落地过程中**偏离了上面两条裁定字面**，均为实读后的纠偏，结论优先于原口径：
+> - **裁定 ③ 修正**：`plugins.json` 根节点是 `JsonArray`（渠道清单本身），装不下一个兄弟全局对象，故全局设置改存 Worker `ConfigStore` 的 `channelSettings` key（即 `~/.wishful-claw/config.json`）。**仍是"不另开文件"**，只是换了既有文件；代价是新增 2 个 IPC 端点与 2 个 AOT 序列化类型，原规划里"无需新增端点、无需新增 AOT 类型"两句作废。
+> - **裁定 ② 的 ③④ 两点修正**：放弃"注入 `channelPermissions`"路线——该字段所在的渲染端工具边界从不真实执行 shell（`bash-tool.ts` 的 `execute` 只返回 `nativeOnlyBashResult()`），且 `toolRegistry.checkRequiresApproval` 全仓零调用方，注进去仍是死配置。改为**删除这条死链**，授权判定单点落在 C# `ToolCallProcessor.Approval.cs`，与设置面板读写同一个 store，并有 `tests/WishfulClaw.ChannelShellApprovalRegressionTests` 57 断言钉住。
+>
+> **仍未接强制执行**（见 S-5）：`streamingReply` + `allowReadHome` / `readablePathPrefixes` / `allowWriteOutside` / `allowSubAgents`，五个字段本次只搬家与存盘回读，UI 段首已明写"尚未接入强制执行"。`shellRequiresApproval` 是唯一已生效项。
+
 ---
 
 ## R-3 工具可见性：注册期声明"范围:类型"属性，取代写死的白名单
@@ -258,7 +267,7 @@ Agent 侧已存在两个截图工具，可直接被调用：
 
 | # | 事项 | 来源 | 说明 |
 |---|---|---|---|
-| S-5 | **4 个 `allow*` 权限字段仍不生效**——`allowReadHome` / `readablePathPrefixes` / `allowWriteOutside` / `allowSubAgents` | R-2 裁定 ② → R-2.7 | 四个全部**无强制执行点**（三个仅在 `/status` 打印、`readablePathPrefixes` 连读取点都没有）。本次**只搬家 + 记账**。**`allowShell` 不在其列**——它本次接真并改写为"是否需用户授权"（见 R-2 裁定 ②） |
+| S-5 | **5 个字段仍不生效**——`streamingReply` + `allowReadHome` / `readablePathPrefixes` / `allowWriteOutside` / `allowSubAgents` | R-2 裁定 ② → R-2.7 | **R-2 交付后复核（2026-09-12）**：五个全部**无强制执行点**，只被存进 Worker `ConfigStore` 的 `channelSettings`、在设置面板回显，`streamingReply` 与三个 `allow*` 额外在 `/status` 打印并标注 `(not enforced yet)`，`readablePathPrefixes` **连 UI 输入项都没有**。本条只搬家 + 记账，接真须新立需求。**同批搬家的 `shellRequiresApproval` 不在此列**——它是唯一已生效项（见 R-2 裁定 ② 及其修正） |
 | S-6 | **`ChannelInstance.tools` 零调用方**——渠道级工具开关整条主进程链已接好，但 **C# 侧零处发起** | R-2 现状勘查 | 与 R-3.9「渠道工具开关接真」直接相关，两项应同批处理。当前渠道工具筛选实际走 `toolPreset + sessionMode`（`AgentLoop.cs:166-168`、`AgentRunContextPolicy.cs:117-133,176`） |
 | S-9 | **`newSessionDefaultModel` 零消费方**——已声明、有默认值、进 persist 白名单、migrate 补默认，但**全仓无任何读取点** | R-1.5 执行时新发现 | 与裁定 ③ 那四个哑字段同族，但**不在老大点名的四项清单内，故本次未删**。其类型已随 `SessionDefaultModelBinding`（含同样无人读取的 `useGlobalActiveModel`）一并收窄为普通 `ModelBinding`。将来要么接真"新会话默认模型"，要么按裁定 ③ 口径删除，**不得当作已生效功能引用** |
 

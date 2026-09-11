@@ -4,6 +4,14 @@ import type { SelectedFileItem } from '@renderer/lib/select-file-editor'
 
 type EditorSelection = { start: number; end: number }
 
+const clipboardTextToHtml = (text: string): string =>
+  text
+    .replace(/\r\n?/g, '\n')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+
 interface UseComposerInteractionsOptions {
   selectedFilesRef: React.MutableRefObject<SelectedFileItem[]>
   editorRef: React.MutableRefObject<FileAwareEditorHandle | null>
@@ -50,7 +58,17 @@ export function useComposerInteractions({
 
     const plainText = event.clipboardData.getData('text/plain')
     if (!plainText) return
+
     event.preventDefault()
+    editorRef.current?.focus()
+    try {
+      // 不用 insertText：它把换行交给 Blink 拆成 <div> 块，解析器只补块后换行会吞掉换行，
+      // 且选区未变更的连续 insertText 会被并入同一撤销组。
+      const inserted = document.execCommand('insertHTML', false, clipboardTextToHtml(plainText))
+      if (inserted) return
+    } catch {
+      // Fall through to the controlled editor replacement path.
+    }
     const selection = editorRef.current?.getSelectionOffsets() ?? editorSelection
     replaceSelectionWithText(plainText, selection)
   }, [addImages, editorRef, editorSelection, getPastedImageFiles, replaceSelectionWithText])

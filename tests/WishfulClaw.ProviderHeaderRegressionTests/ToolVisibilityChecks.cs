@@ -167,26 +167,30 @@ internal static class ToolVisibilityChecks
 
         Assert(ToolVisibilityPolicy.IsVisible(
                 new AgentRunContext("project", "cowork", "sessionagent"), false,
-                foregroundToolInAnyRun, ToolVisibilityScopes.SubAgentRoles),
+                foregroundToolInAnyRun, ToolVisibilityScopes.UnattendedRoles),
             "the session keeps a tool it shares with its sub-agents");
         Assert(!ToolVisibilityPolicy.IsVisible(
                 new AgentRunContext("project", "cowork", "subagent"), false,
-                foregroundToolInAnyRun, ToolVisibilityScopes.SubAgentRoles),
+                foregroundToolInAnyRun, ToolVisibilityScopes.UnattendedRoles),
             "*@subagent veto beats a bare * grant");
         Assert(!ToolVisibilityPolicy.IsVisible(
                 new AgentRunContext("global", "chat", "goalsubagent"), false,
-                foregroundToolInAnyRun, ToolVisibilityScopes.SubAgentRoles),
+                foregroundToolInAnyRun, ToolVisibilityScopes.UnattendedRoles),
             "the veto is scope-and-mode agnostic: it reaches a global goal sub-agent too");
+        Assert(!ToolVisibilityPolicy.IsVisible(
+                new AgentRunContext("project", "cowork", "automation"), false,
+                foregroundToolInAnyRun, ToolVisibilityScopes.UnattendedRoles),
+            "a background schedule is vetoed as well — nobody is watching the page it would change");
 
         // A veto alone is a complete answer for a tool that declares nothing else, so it stays
         // default-visible everywhere except the contexts it names.
         Assert(ToolVisibilityPolicy.IsVisible(
-                new AgentRunContext("project", "cowork", "automation"), false,
-                visibleScopes: null, excludedScopes: ToolVisibilityScopes.SubAgentRoles),
+                new AgentRunContext("project", "cowork", "goalrunner"), false,
+                visibleScopes: null, excludedScopes: ToolVisibilityScopes.UnattendedRoles),
             "veto-only declaration leaves the default-visible rule in place");
         Assert(!ToolVisibilityPolicy.IsVisible(
                 new AgentRunContext("project", "cowork", "subagent"), false,
-                visibleScopes: null, excludedScopes: ToolVisibilityScopes.SubAgentRoles),
+                visibleScopes: null, excludedScopes: ToolVisibilityScopes.UnattendedRoles),
             "veto-only declaration still fires");
     }
 

@@ -46,11 +46,12 @@ public static class ToolVisibilityScopes
     public static readonly string[] HumanAttended = ["*:chat@*", "*:cowork@*"];
 
     /// <summary>
-    /// <see cref="ToolDefinition.ExcludedScopes"/> half of the pair: a sub-agent runs unattended, so a
-    /// tool that takes over a foreground surface (the browser) stays with the session the user asked.
-    /// Expressed as a veto rather than as a grant list because these tools are otherwise useful
-    /// everywhere — including an automation run, which is unattended but is the session it was asked
-    /// to be.
+    /// <see cref="ToolDefinition.ExcludedScopes"/> half of the pair: runs with nobody watching a window.
+    /// A sub-agent is delegated and a background schedule fires on its own, so neither may take over the
+    /// one shared browser surface — the page would change in front of no one, and no click can be
+    /// explained or stopped. The session a user is looking at keeps it, and so does a scheduled task
+    /// told to run <i>inside</i> a session: that one arrives as its host session's own role, not as
+    /// <c>automation</c>, which only the headless sidecar path sends.
     /// </summary>
-    public static readonly string[] SubAgentRoles = ["*:*@subagent", "*:*@goalsubagent"];
+    public static readonly string[] UnattendedRoles = ["*:*@subagent", "*:*@goalsubagent", "*:*@automation"];
 }

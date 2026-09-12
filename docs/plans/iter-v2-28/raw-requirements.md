@@ -149,6 +149,12 @@
 > - **另需记录的四条规划期新增裁定**（原登记未含）：④ **定时任务拆两类**（`runMode:'session'` 随目标会话 / `runMode:'background'` 为 `unknown@automation` 且排除浏览器、渠道专用、交互组件）；⑤ **核心工具集原则**——系统提示词只列"少而必要"的核心工具，其余经 `use_capability` 按需（这是本需求的**真正意图**）；⑥ **`use_capability` 三载体同源同裁**——提示词核心集 / description 分类清单 / `action="list"` 返回必须是同一套可见面（实读确认 `list` 当前缺收窄，属必修缺陷）；⑦ **本次范围 = B（两步走）**——只做机制、零行为变化，收窄立为后继需求（见文末）。
 > - 项目记忆里"工具可见性审查须覆盖白名单 + 代理两级机制"一条**已由勘查证实**并展开为 `plan.md` R-3.E 的五条。
 
+### 实施期追加裁定（2026-09-12，两条，均已在 `plan.md` 落地）
+
+**裁定一 · 中心名字表清零**——原话：「`IsAllowedByChatAllowlist` 比如这种方法 里面还是内置的 HashSet<string> 这个不是应该在工具本身的白名单上么，而不是还存在这么几个内置的 HashSet<string>」＋「HashSet<string> 我希望所有的这个都去掉，不然这次工具处理没有任何意义」＋「部分工具 比如临时todo这种 以及文件查看查询这些 直接是允许 `*`」。同时作废"零行为变化"这条自设约束：「零行为变化是 agent 规划的时候的步骤，并不是必须」→ **`plan.md` R-3.I**。
+
+**裁定二 · 浏览器只经 proxy**——原话：「浏览器工具不属于核心工具，只需要在代理里面能查到使用就行」＋「浏览器工具属于插件里面来的，这些工具都是在代理里面就行。麻烦的一点就是我不希望不可见进程去调用比如子agent去调用」。追问否决要收到哪些档，老大给出**判据**：「部分定时任务也就是自动化是最终去会话里面去执行的，这个就可以调用，但是**后台执行的不行，子会话不行**」→ 区分标准是**有没有一个人在看着的会话宿主**，不是"是否自动触发" → **`plan.md` R-3.J**，并关闭 S-7。
+
 ---
 
 ## R-4 首个正式版本的使用指引（说明手册）+ README 拆分
@@ -229,10 +235,10 @@ Agent 侧已存在两个截图工具，可直接被调用：
 | 3 | 编辑器撤销后选中态残留 | `editor-undo-selection-issue.md` | 缺陷已登记，根因方向已给 |
 | 4 | 补位模型（**不可见请求兜底 + 显式配置 + 三级解析**） | 本文件 R-1 | ✅ **已出 Plan**（`plan.md` R-1 节），五条裁定全闭合 |
 | 5 | 渠道设置页功能设置全局化 + 选项卡 | 本文件 R-2 | ✅ **已出 Plan**（`plan.md` R-2 节），三条裁定全闭合 |
-| 6 | 工具可见性注册期声明"范围:类型" + 核心位 | 本文件 R-3 | ✅ **已出 Plan**（`plan.md` R-3 节，R-3.A～R-3.G），全部裁定闭合，本次范围 = B |
+| 6 | 工具可见性注册期声明"范围:类型" + 核心位 | 本文件 R-3 | ✅ **已出 Plan**（`plan.md` R-3 节，R-3.A～R-3.J，其中 R-3.I／R-3.J 是老大 2026-09-12 两条**追加裁定**批），全部裁定闭合，本次范围 = B |
 | 7 | 使用指引 + README 拆分 + 关于页／顶栏问号双入口 | 本文件 R-4 | 原始需求，截图能力已实读确认，未出 Plan |
 
-> **后继需求见本文件文末「后继需求登记」小节**（S-1～S-4 行为变更、S-5～S-6 记账类）——R-3 与 R-2 本次刻意不做，**不得丢失**。
+> **后继需求见本文件文末「后继需求登记」小节**：行为变更类 S-1～S-3、S-10、S-11（S-4、S-7、S-8 已在本迭代内关闭），记账类 S-5、S-6、S-9——R-3 与 R-2 本次刻意不做，**不得丢失**。
 
 ### 从 iter-27 带过来、是否纳入 28 尚未确认
 
@@ -251,17 +257,25 @@ Agent 侧已存在两个截图工具，可直接被调用：
 
 ## 后继需求登记（R-3 / R-2 本次刻意不做，**不得丢失**）
 
-登记日期：2026-09-11；2026-09-12 追加裁定后逐条复核。来源：R-3 的 **B 口径（两步走）**、R-2 裁定 ② 的记账要求，以及 R-3.I（中心名单收敛）那一批实测新登记的 S-10／S-11。
+登记日期：2026-09-11；2026-09-12 追加裁定后逐条复核，同日 **R-3.J（浏览器只经 proxy）落地后再复核一遍**——该批关闭 S-7、并把 S-3 收窄到只剩交互三件与 `unknown@automation` 两点。
 
-**本节开头原写"这六项均为行为变更，本次迭代只做机制、力求零行为变化"，该口径已被老大 2026-09-12 追加裁定作废**（原话："零行为变化是 agent 规划的时候的步骤，并不是必须"）。收敛那一批因此**实际改变了行为**：105 格快照 = **69 格逐字节等价 / 36 格收窄 / 0 格放宽**，36 格逐组有裁定出处（差异表在 `plan.md` R-3.I）。本节记的是**那之后仍未做的面**，不是"为守零变化而故意推迟"。每项仍附触发条件与验证口径，接到下一代迭代时**逐条复核当时代码**再立项。
+**本节开头原写"这六项均为行为变更，本次迭代只做机制、力求零行为变化"，该口径已被老大 2026-09-12 追加裁定作废**（原话："零行为变化是 agent 规划的时候的步骤，并不是必须"）。裁定之后 R-3 实际动了**两批**行为，各自与自己的前态比：
+
+| 批 | 比什么 | 105 格结果 | 出处 |
+|---|---|---|---|
+| **R-3.I 中心名字表收敛** | 删表前 vs 删表后 | 69 格等价 / **36 格收窄** / 0 放宽 | `plan.md` R-3.I 差异表，36 格逐组有裁定 |
+| **R-3.J 浏览器只经 proxy** | R-3.I 之后 vs 现在 | 61 格等价 / **44 格收窄** / 0 放宽 | `plan.md` R-3.J，44 格减项恰为 9 件 `Browser*` |
+| **累计（动手前基线 → 现在）** | 未动 R-3 时的金样 vs 现网金样 | **47 格等价 / 58 格收窄 / 0 格放宽**，58 格里共减 64 件不同工具 | 两批格集有 22 格重叠（`36 + 44 − 22 = 58`），故不得把两批数字相加当累计 |
+
+本节记的是**这两批之后仍未做的面**，不是"为守零变化而故意推迟"。每项仍附触发条件与验证口径，接到下一代迭代时**逐条复核当时代码**再立项。
 
 | # | 需求 | 来源 | 为何本次不做 | 本次已留下的接续点 |
 |---|---|---|---|---|
 | S-1 | **提示词核心集机制 + 名单收窄**——`BuildToolCapability()` 改为收会话上下文、只输出本档可见的**核心**工具，`<tool_calling>` 的 27 类降到核心集规模 | R-3.7 / R-3.10 / R-3.C-bis | 计划原设想"机制本次做、名单用等价现状"，实读后判定**两者在提示词侧不可切分**：要让字节不变只能给函数传一个永远全量的参数，`IsCore` 也停在无人读取的假接线状态 | `IsCore` 字段已按 R-3.1 走通四处注册路径（**已声明、暂无消费方**）；`use_capability` 的 description/`list`/`call` 三载体已同源，核心集落地时只需换 `BuildToolCapability` 一个出口 |
 | S-2 | **`global:chat@subagent` 集合收束**——全局 PM 的子 Agent 要不要再收一刀（R-3.F 的"PM 助手不做工作"边界），老大未裁定的一项 | R-3.6② / R-3.D 收窄 6 | 属**产品裁定**，不是遗留机制活：该档现状完全由逐工具声明决定，要再收只需改声明，无需动机制 | **2026-09-12 三次复核（收敛后，修正本行原口径，勿再照抄）**：原写"该档与全局 PM 本体同一套工具、`Edit`/`Write`/`Bash` **仍在**（preset=full 时 30 件）"**两处都不成立**——30 件是 `project:cowork@subagent`／`@goalsubagent` 的数；本档**全 7 个 preset 都是 21 件**，且**收敛前后逐字节未变**（该格不在 36 格差异内，写/执行类工具本就带 `*:cowork@*` 形状，把它挡在外面）。实测 21 件构成：读检索 7（`Read`/`Glob`/`Grep`/`LS`/`WebFetch`/`WebSearch`/`codegraph_explore`）＋临时 todo 4（`TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`）＋记忆 5（含 `memory_hot_write`/`memory_append`/`memory_update` 三件写）＋子 Agent 状态 2＋`AskUserQuestion`/`visualize_show_widget`/`use_capability`。**本项剩余的问题因此只有两个**：① 这个已无写无执行的全局子 Agent 是否还该持有 todo 与记忆写；② **子 Agent 可否直接问人**——`AskUserQuestion` 在 4 档子 Agent（`project:chat@subagent`/`project:cowork@subagent`/`global:chat@subagent`/`@goalsubagent`）全可见，老大仅裁定过浏览器，未裁过交互件 |
-| S-3 | **后台定时三类排除启用**——`unknown@automation` 下排除 `browser` 类 + 渠道专用工具 + 交互三件 | R-3.D 收窄 5 | **2026-09-12 追加裁定后只剩两类的一半**：中心表删除后 automation 不再全放行，实测该档已少 22 件渠道专用工具；**浏览器与交互件仍可见**（金样 `full` 档实测：9 个 `Browser*` 全在；`AskUserQuestion`/`visualize_show_widget` 在每一格 automation 均可见。`ExitPlanMode` 只在 `project:cowork@automation` 可见、`global:cowork@automation` 不可见——差在 `availableModes` 轴而非 `VisibleScopes` 轴：它声明 `availableModes:["normal"]`，而 global 档的 `sessionMode` 是 `global`。**故本项若要接真，须同时想清楚拦在哪一轴**） | 剩余缺口有两处，都不必再动机制：① **真实运行里还没有 `unknown@automation` 这一格**——`cron-runtime.ts:485` 发的 scope 仍是 `project`/`global`，要按 R-3.C 6b 的口径收窄须前端发 `scope:"unknown"`；② 交互三件现声明 `HumanAttended`＝`*:chat@*` + `*:cowork@*`，automation 归一读作 cowork 因而**照样命中**，要排除须把形状收到 role 粒度（如 `*:cowork@sessionagent`）。`unknown` scope 与 `unknown@automation` 串的渲染与匹配均已打通并有测试 |
+| S-3 | **后台定时三类排除启用**——`unknown@automation` 下排除 `browser` 类 + 渠道专用工具 + 交互三件 | R-3.D 收窄 5 | **2026-09-12 两条追加裁定后只剩一类**：① **渠道专用工具**——中心表删除后 automation 不再全放行，实测该档少 22 件（`plan.md` R-3.I 差异表组③）；② **`browser` 类**——已随 R-3.J 整体落地（9 件 `Browser*` 在直连侧 105 格零注入、代理侧 `*:*@automation` 被否决）；③ **交互三件仍可见**（`AskUserQuestion`/`visualize_show_widget` 在每一格 automation 均可见，老大两条裁定均未裁到交互件，见 S-2 ②）。另记一格反直觉现象：`ExitPlanMode` 只在 `project:cowork@automation` 可见、`global:cowork@automation` 不可见——差在 `availableModes` 轴而非 `VisibleScopes` 轴：它声明 `availableModes:["normal"]`，而 global 档的 `sessionMode` 是 `global`。**故本项若要接真，须同时想清楚拦在哪一轴**） | 剩余缺口两处，都不必再动机制：① **真实运行里还没有 `unknown@automation` 这一格**——`cron-runtime.ts:485` 发的 scope 仍是 `project`/`global`，要按 R-3.C 6b 的口径收窄须前端发 `scope:"unknown"`。R-3.J **刻意没顺手改**：改了就使该格所有 `*:cowork@*` 声明不再命中、整格形状重排，且与老大「定时任务走的也是 cowork」裁定冲突；后台档现阶段靠 `*:*@automation` 这个 role 后缀区分；② 交互三件现声明 `HumanAttended`＝`*:chat@*` + `*:cowork@*`，automation 归一读作 cowork 因而**照样命中**，要排除须把形状收到 role 粒度（如 `*:cowork@sessionagent`）。`unknown` scope 与 `unknown@automation` 串的渲染与匹配均已打通并有测试 |
 | S-4 | ~~**显式化 early-return**——`FilterToolDefinitions` 的 `!channelSession && BypassesChatAllowlist(context) ⇒ 原样返回` 短路改为显式声明~~ **【已关闭 2026-09-12】** | R-3.10 / 合规第 4 条 | — | **随中心名单整体删除而落地**（`plan.md` R-3.I）：`BypassesChatAllowlist`、`IndependentRuntimeRoles`、`FilterToolDefinitions` 的原样返回短路三者均已不存在，判定对 105 格每一格都执行。当初记的两处泄漏实测都已收口：① `preset=full` + `project:cowork` 的 22 个渠道专用工具已从该档消失（差异表组①）；② `project:cowork@subagent`／`@goalsubagent` 的 9 个 `Browser*` 同样消失（组②），四载体同源同裁从此对直连侧也成立。**关闭该泄漏带来的 36 格差异全部有裁定出处**，见 R-3.I |
-| S-7 | **`browser` 出三处 preset 白名单**（`ToolPreset.cs:53,68,83` = `chat`/`coding`/`channel` 三档的 `AllowedCategories`）——老大定性浏览器与 MCP 同类，须经 `use_capability` 获取 | R-3.8c③ 的后一半 | 收敛后重测（2026-09-12 金样）：摘掉后这**三档各少 6～9 个直接工具**，且**每档 15 格里 11 格受影响**（4 格子 Agent 已是 0，被 `SubAgentRoles` 否决先命中）。属能力面变更，未见老大"现在就摘"的指令 | `browser` 已在 `ProxiedCategories`，故摘后仍可经 `use_capability` 取到。**⚠️ 摘这三处 ≠ 浏览器只经 proxy**：`full` 档 `AllowedCategories = null`（全类别放行），摘后该档仍留 6～9 个 `Browser*` 直连（11/15 格），要彻底只经 proxy 须连 `full` 的口径一起定。**本行原记的接续点"`ToolVisibilityPolicy` 已有 `browser` × 后台角色的排除谓词"已失效**——中心谓词随 R-3.I 删除，现状是 9 件 `Browser*` 各自声明 `Everywhere` + `ExcludedScopes = SubAgentRoles`。曾按此改 `ToolPreset.cs`，被快照拦下后**已整体回滚**，该文件现与 HEAD 一致 |
+| S-7 | ~~**`browser` 出三处 preset 白名单**（`ToolPreset.cs:53,68,83`）——老大定性浏览器与 MCP 同类，须经 `use_capability` 获取~~ **【已关闭 2026-09-12】** | R-3.8c③ 的后一半 → 老大第二条追加裁定「浏览器工具不属于核心工具，只需要在代理里面能查到使用就行」 | — | **已按裁定落地，实现与证据见 `plan.md` R-3.J**。本行原记的两个障碍都在落地时解决：① "摘这三处 ≠ 只经 proxy"——`full` 档无白名单，故给它补 `DeniedCategories = {"browser"}` 点名拒绝；② 代理侧完全不读 preset，单摘白名单管不到 `use_capability`，故同时把 9 件 `Browser*` 的 `ExcludedScopes` 从 `SubAgentRoles` 加宽为 **`UnattendedRoles`**（含 `*:*@automation`），老大裁"后台执行的不行、子会话不行、在会话里跑的定时任务可以"由这一半表达。**金样实测**：44 格收窄、0 格放宽、减项恰为 9 件 `Browser*`，直连侧 105 格零注入，代理侧三个无人值守后缀归零而有人格仍含 `BrowserNavigate`/`BrowserGetContent` |
 | S-8 | ~~`task` 出 `ProxiedCategories`、`goal` 整体进 proxied~~ **已随 R-3.8c①② 落地**；~~剩余的是 `ProxiedBuiltinTools` 里 `list_goals`/`get_goal_history`/`reopen_goal` 三件名字是否可删~~ **【已关闭 2026-09-12】** | R-3.8c①② / R-3.I | — | **名字表已删**：`goal` 整类在 `ProxiedCategories` 内，代理侧"该工具归不归代理管"的判定改为按类别单点 `IsProxiedBuiltinCategory(category)`，`ProxiedBuiltinTools` 零引用点。证据链三步：① 全仓该表仅剩一处读取；② 三件均属 `goal` 类且该类已整类 proxied；③ 调用点在类别未知时本就走 `category is null` 分支，不依赖名字表。`GoalRegressionTests` 按注册表动态推导 goal 条目，删表未失去覆盖 |
 | S-10 | **chat 档整条"轻通道"断开**——`send_session_message`（声明 `GlobalSideAndWorkRuns`＝`global:*@*` + `*:cowork@*`）、`update_session_follow_up`（声明 `WorkRunsOnly`＝`*:cowork@*`）对任意 `*:chat` 档均不可见 | R-3.12 派生（`plan.md` R-3.I 遗留登记） | 收敛前该格由 `ProjectChatTools` 名单决定，删表后**声明即裁决**，这一格从"名单没写就等于没有"变成显式硬拦截。**金样实测删表前后逐字节一致**，故非本次引入的回归，是本次把既有事实显式化，因此不当作本次的行为变更记账 | 若老大要"chat 档源会话也能发临时任务 Todo"，改法只有两种：给这两件加 `*:chat@*` 形状（即 `HumanAttended`），或新建一档形状。**当前链路内部自洽**：发信端与收尾端在 chat 档同时不可见，不存在"发得出去但收不了尾"的半截状态。是否要接由老大判定；改动只需碰声明，不碰机制 |
 | S-11 | **审批与分派的名字表未随准入一起收敛**——审批 3 张 `HashSet<string>`（`ToolCallProcessor.Approval.cs:19,35,45` = `SubAgentApprovalTools`/`ShellApprovalTools`/`DefaultModeApprovalTools`）＋路由分派 12 张 `*ToolNames` 家族表（含 `SkillManagementTools`）＋5 个 `Allowed*` 入参校验集合 | 老大 2026-09-12 裁定的字面范围 | 裁定说的是**准入判定**这一轴（"工具本身有黑白名单，应用起来"）。审批与分派是另外两轴：**审批问"这次调用要不要人点同意"，分派问"这个工具名交给哪个 executor 跑"**，都与"哪些档能看见"无关，硬塞进 `VisibleScopes` 会串轴 | **不得对外说成"全仓 `HashSet` 已清零"**。准入轴确已清零：`ToolVisibilityPolicy.cs`／`AgentRunContextPolicy.cs` 两文件 `HashSet<string>` **零命中**，proxy 侧仅剩 `ProxiedCategories`（类别表，非名字表）与一处方法内局部去重集合。审批要落到工具自身声明，须新增"审批作用档"字段并连带改审批文案，属新需求；12 张分派表是 `switch` 的等价物、5 个 `Allowed*` 是入参枚举校验，均不建议动 |
@@ -274,10 +288,15 @@ Agent 侧已存在两个截图工具，可直接被调用：
 | S-6 | **`ChannelInstance.tools` 零调用方**——渠道级工具开关整条主进程链已接好，但 **C# 侧零处发起** | R-2 现状勘查 | 与 R-3.9「渠道工具开关接真」直接相关，两项应同批处理。当前渠道工具筛选实际走 `toolPreset + sessionMode`（`AgentLoop.cs:161-168`；收敛后的准入入口是 `AgentRunContextPolicy.cs:131 IsToolAllowed` / `:151 FilterToolDefinitions`，**原引的 `:117-133,176` 已随中心名单删除而失效**） |
 | S-9 | **`newSessionDefaultModel` 零消费方**——已声明、有默认值、进 persist 白名单、migrate 补默认，但**全仓无任何读取点** | R-1.5 执行时新发现 | 与裁定 ③ 那四个哑字段同族，但**不在老大点名的四项清单内，故本次未删**。其类型已随 `SessionDefaultModelBinding`（含同样无人读取的 `useGlobalActiveModel`）一并收窄为普通 `ModelBinding`。将来要么接真"新会话默认模型"，要么按裁定 ③ 口径删除，**不得当作已生效功能引用** |
 
-> ⚠️ **剩余各项（S-1、S-2、S-3、S-7、S-10、S-11）的共同前提**：本次 R-3 交付的是**机制 + 准入面的整体收敛**（`ctxStr` 单点渲染 + 唯一判定入口 + 逐工具 `VisibleScopes`/`ExcludedScopes` 声明 + 四载体同源 + 中心名字表与短路全部删除），但**工具提示词主体本次完全未动**（`BuildToolCapability()` 仍是静态全 27 类，即 S-1）。故下一代迭代接到这六项时，**改动面已被收敛到"只改声明值／提示词组装"**，无需再动机制。
+> ⚠️ **剩余各项（S-1、S-2、S-3、S-10、S-11）的共同前提**：本次 R-3 交付的是**机制 + 准入面的整体收敛**（`ctxStr` 单点渲染 + 唯一判定入口 + 逐工具 `VisibleScopes`/`ExcludedScopes` 声明 + 四载体同源 + 中心名字表与短路全部删除），但**工具提示词主体本次完全未动**（`BuildToolCapability()` 仍是静态全 27 类，即 S-1）。故下一代迭代接到这五项时，**改动面已被收敛到"只改声明值／提示词组装"**，无需再动机制——R-3.J 是这条结论的现场验证：本批只碰了三处 preset 类别、一个共享声明常量和九个注册点，判定代码一行未改。
 >
-> **"任一档位逐字节等价"这句话不得再说，且旧数字不得再引用**。2026-09-12 收敛后重跑（口径见 `plan.md` R-3.I）：**105 格 = 7 preset × 15 档，其中 69 格逐字节等价、36 格收窄、0 格放宽**。本节与 `plan.md` R-3.H ① 曾记的"97 格等价／8 格差异（4 preset × 两档 chat 子 Agent 各少 6 个 `Browser*`）"**是收敛前的中间测量，已被上述数字取代**——那 8 格只是当年被短路绕过的一半，收敛后子 Agent 浏览器差异变成组② 的 8 格 × `project:cowork@subagent`／`@goalsubagent`（各少 9 个）。**36 格逐组都有老大裁定出处，不再存在"保留还是回退"的悬置项**；仍悬置的是**验证面**：无人值守三档（宠物／翻译／providerTurn）的 UI 效果本环境无法目视取证，"这些档是否真需要被收掉的工具"须老大实测判定。
+> **"任一档位逐字节等价"这句话不得再说，且旧数字不得再引用**。金样 105 格＝**7 preset × 15 档**，本迭代之后有三个不同基线的数：
+> - **R-3.I 批（删表前后）**：69 格等价 / 36 格收窄 / 0 放宽（`plan.md` R-3.I 差异表）。
+> - **R-3.J 批（浏览器前后）**：61 格等价 / 44 格收窄 / 0 放宽，44 格减项恰为 9 件 `Browser*`（`plan.md` R-3.J）。
+> - **累计（未动 R-3 的基线 → 现网金样）**：**47 格等价 / 58 格收窄 / 0 格放宽**，58 格里共减 64 件不同工具。
 >
-> 对账时注意一格改名：老大裁定「定时任务走的也是 cowork」后 `RenderContext` 把 `runtimeRole=="automation"` 归一读作 cowork，故该格标签由 `global:chat@automation` 变为 `global:cowork@automation`。比对须按此改名配对，否则 105 格键集不相等、会凭空多出 7 格差异。另有一处本次确实变了、但不在这 105 格内：`use_capability` 的 description 按 R-3.8b 改为按档动态生成（R-3.H ⑤）。
+> 三组数**都对，但不得互相替换**，也不得把两批相加当累计（两批格集有 22 格重叠：`36 + 44 − 22 = 58`）。算累计**必须先把 `global:chat@automation` 按改名配到 `global:cowork@automation`**，否则键集不平，会凭空多出 7 格"假放宽"（本迭代实测踩过：不配对得到的是 112 格 / 7 格放宽，全是假象）。`plan.md` R-3.H ① 与 S-7 旧行曾记的"97 格等价／8 格差异（4 preset × 两档 chat 子 Agent 各少 6 个 `Browser*`）"**是删表前的中间测量，已被上述三组数取代**。**58 格逐组都有老大裁定出处，不再存在"保留还是回退"的悬置项**；仍悬置的是**验证面**：无人值守三档（宠物／翻译／providerTurn）的 UI 效果本环境无法目视取证，"这些档是否真需要被收掉的工具"须老大实测判定。
+>
+> 另有一处本次确实变了、但**不在这 105 格内**（金样只快照直连注入的工具名集合）：`use_capability` 的 description 按 R-3.8b 改为按档动态生成（`plan.md` R-3.H ⑤）。
 >
 > 上述行号来自 2026-09-11 的实读，立项时仍须按当时代码复核。

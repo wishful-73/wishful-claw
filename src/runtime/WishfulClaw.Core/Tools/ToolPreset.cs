@@ -41,6 +41,12 @@ public sealed class ToolPreset
         {
             Id = "full",
             Description = "All tools available.",
+            // The only preset with no whitelist, so browser has to be named out rather than left out.
+            // This layer gates direct injection only — browser stays reachable through use_capability.
+            DeniedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "browser"
+            },
         },
 
         ["chat"] = new ToolPreset
@@ -50,7 +56,7 @@ public sealed class ToolPreset
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "file", "search", "shell", "code-compatible", "web", "memory", "ask-user",
-                "plan", "goal", "notify", "capability", "browser", "project", "codegraph"
+                "plan", "goal", "notify", "capability", "project", "codegraph"
             },
             AllowedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -65,7 +71,7 @@ public sealed class ToolPreset
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "file", "search", "shell", "web", "memory", "ask-user",
-                "plan", "goal", "notify", "capability", "browser", "project", "codegraph"
+                "plan", "goal", "notify", "capability", "project", "codegraph"
             },
             AllowedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -80,7 +86,7 @@ public sealed class ToolPreset
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "channel-plugin", "plugin", "file", "search", "web", "memory",
-                "ask-user", "notify", "capability", "browser", "project", "codegraph"
+                "ask-user", "notify", "capability", "project", "codegraph"
             },
         },
 

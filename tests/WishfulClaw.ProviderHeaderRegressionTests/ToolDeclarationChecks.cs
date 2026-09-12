@@ -165,7 +165,7 @@ internal static class ToolDeclarationChecks
         // The fixture carries the same veto production declares on its browser tools: the shared
         // sub-agent exclusion is a declaration now, not a rule the visibility layer knows by name.
         registry.Register(new ToolDefinitionPlaceholder(
-            "BrowserNavigate", "browser", Schema(), excludedScopes: ToolVisibilityScopes.SubAgentRoles), "browser");
+            "BrowserNavigate", "browser", Schema(), excludedScopes: ToolVisibilityScopes.UnattendedRoles), "browser");
         registry.Register(new ToolDefinitionPlaceholder("list_goals", "goals", Schema()), "goal");
         registry.Register(new ToolDefinitionPlaceholder(
             "list_projects", "plugin", Schema(), null, ["global:chat"]), "plugin");

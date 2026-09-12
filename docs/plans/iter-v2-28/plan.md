@@ -803,6 +803,42 @@ IsVisible(tool, ctx):
 - 登记新发现 **S-10**：`send_session_message`／`update_session_follow_up` 对 `project:chat` 档不可见（`0111011` / `0001011`），**删表前后一致、非本次引入**，但判定现在对每一格都跑，这一格从此变成硬拦截——R-3.12 记的"轻通道"若源会话是 chat 档，收尾步会拿不到工具。
 - **裁定的字面范围只到"准入判定"这一轴**：路由分派的 12 张 `*ToolNames` 与审批的 3 张 `HashSet<string>`（`ToolCallProcessor.Approval.cs:19,35,45`）**本次未动**，理由见上"边界"表。**不得对外说成"全仓 HashSet 已清零"**——审批若要落到工具自身声明，须新增"审批作用档"字段并连带改审批文案，已立 **S-11**。
 
+#### R-3.J 追加裁定：浏览器退出核心直连集，只经 proxy 可达（2026-09-12，老大）
+
+**裁定原话**：「浏览器工具不属于核心工具，只需要在代理里面能查到使用就行」＋「浏览器工具属于插件里面来的，这些工具都是在代理里面就行。麻烦的一点就是我不希望不可见进程去调用比如子agent去调用」。对"否决要收到哪些档"的追问，老大答：「部分定时任务也就是自动化是最终去会话里面去执行的，这个就可以调用，但是后台执行的不行，子会话不行」。
+
+这条裁定同时关闭了 **S-7**（`browser` 出三处 preset 白名单），并给 S-3 的"浏览器那一半"换了实现路径。**判据由此明确**：能不能用浏览器，不看是不是自动触发，看**有没有一个人在看着的会话宿主**——嵌入式定时任务在它宿主会话里跑，可以；后台 sidecar 与子 Agent 没有宿主窗口，不行。
+
+**动了三层中的两层**（`availableModes` 那一层未动）：
+
+| 层 | 改动 | 生效面 |
+|---|---|---|
+| **preset 层**（`ToolPreset.cs`） | `chat`／`coding`／`channel` 三档的 `AllowedCategories` 摘掉 `"browser"`；`full` 档新增 `DeniedCategories = {"browser"}` | **只作用于直连注入**。`full` 是七档里唯一没有白名单的（`AllowedCategories == null` ⇒ 全类别放行），所以它必须**点名拒绝**而不是"不写"——这一处是 S-7 原记的"摘三处 ≠ 只经 proxy"的剩余一半 |
+| **声明层**（`ToolVisibilityScopes.cs`） | `SubAgentRoles` 更名加宽为 **`UnattendedRoles`** = `["*:*@subagent", "*:*@goalsubagent", "*:*@automation"]`，9 件 `Browser*` 的 `ExcludedScopes` 全部改指它 | **只作用于准入判定**，即四个载体（直连集／description／`list`／`call`）共用谓词 |
+| `automation` 档语义 | 旧注释写的"包括 automation，它是被交代过的那个会话"当场作废，改为按"有没有人看着窗口"重新表述 | — |
+
+**为什么必须两层一起动**：`IsProxyBuiltinVisible` 从一开始就不读 preset（`AgentRuntimeUseCapabilityDiscovery.cs:106-121` 只有注册表＋`availableModes`＋准入谓词三项），所以**只摘 preset 的话，浏览器在每一格都还能经 `use_capability` 叫出来**，直连侧少 9 件、代理侧一点没变——老大要的"不可见进程不能调用"完全落在代理侧，而代理侧唯一的机制就是工具自身声明。反过来，**只加否决也做不到"只经 proxy"**：否决是黑白名单那一半，它管不到直连注入的类别白名单。两层各管一半，合起来才是这条裁定说的形态。
+
+**为什么加 `*:*@automation` 不会误伤嵌入式定时任务**（改前先核过）：`runtimeRole=="automation"` 只有 cron 的**后台 sidecar 路径**会发（`cron-runtime.ts:487`）；`runMode === 'session'` 的定时任务在宿主会话内跑，发的是 `runtimeRole: 'sessionAgent'`／`usageSource: 'automationSession'`（`cron-runtime.ts:451,402-415`），因此**照旧能用浏览器**——正是老大那句话的两个半边。后台那条路径要往渠道投递是走 `PLUGIN_EXEC` IPC，不经浏览器工具，功能不断。
+
+**105 格快照 diff（`visibility-snapshot.expected.txt` 重生，112 行 / 25,250 字节，原 30,294）**：**61 格逐字节等价 / 44 格收窄 / 0 格放宽**。44 格 = `full`／`chat`／`coding`／`channel` 四档 × 每档 11 格（`automation`／`minimal`／`skill-installer` 三档本就未列 `browser`，15 格全等价）。每格 **−6 或 −9**，减掉的工具名集合**恰为** 9 件 `Browser*`，四档内无第四件被牵连：
+- **−9** 的 5 格＝`project:cowork`／`project:cowork-by-default`／`project:cowork@goalrunner`／`project:cowork@automation`／`global:cowork@automation`；
+- **−6** 的 6 格＝`global:chat`／`global:chat@pet`／`project:chat`／`project:chat@providerturn`／`project:chat@translation`／`global:channel`——`BrowserClick`／`BrowserType`／`BrowserEvaluate` 三件本就带 `WorkRunsOnly`（`*:cowork@*`），在**非 cowork 形态**的格（chat 形态与 channel 形态）原先也不可见，故这 6 格各少减那 3 件。
+
+一格一格看，**本批没有任何一格减了非浏览器工具，也没有任何一格增了工具**。
+
+**机器证明（新增 `BrowserSurfaceAccessChecks.cs`，接进 `Program.cs`，排在金样比对之前）**，三段：
+1. 9 件 `Browser*` 确实注册在 `browser` 类下（防止"摘干净"只是因为名字没对上）；
+2. **直连侧全域零注入**：7 个 preset × 15 档＝105 格逐格 `FilterToolDefinitions(GetToolDefinitions(preset, mode))`，断言**一个浏览器工具都不出现**（断言前核实格数确为 105）；
+3. **代理侧按档归零**：三个无人值守后缀（`@subagent`／`@goalsubagent`／`@automation`）的格经 `IsProxyBuiltinVisible` 计数为 0；有人格为 `cowork` 形态 9 件、其余 6 件，且**任何有人格都必含 `BrowserNavigate` 与 `BrowserGetContent`**（"能查到并使用"这半句的正证）。
+
+**回归同步**：`ToolVisibilityChecks.RunVetoBeatsGrantSuite` 改指 `UnattendedRoles` 并新增一条断言（"后台定时同样被否决——它改的是没人看着的页面"），原"只有否决时默认可见仍成立"的用例从 `automation` 移到 `goalrunner`（该角色现在也不再默认可见，留着会假失败）；`ToolDeclarationChecks.cs:168` 引用改名。9 套 C# 回归 + 11 套 TS + 三配置 tsc + Release/Debug 双构建 0 警告 + AOT 零告警 + `dev:full` 实启动全跑在本批改动之后（数字见 `verification_report.md` §1）。
+
+**未做与遗留**：
+- **后台定时没有独立档位**：`automation` 现在仍读作 `project:cowork@automation`／`global:cowork@automation`，与"人手动开的 cowork 会话"同格，本批靠 role 后缀把它区分开。**S-3 的剩余缺口不变**：`cron-runtime.ts:485` 发的 scope 仍是 `project`/`global`，`unknown@automation` 那一格在真实运行里还不存在。本次**刻意不改前端发 `scope:"unknown"`**——那会让该格所有 `*:cowork@*` 声明不再命中、整格形状重排，且与老大「定时任务走的也是 cowork」的裁定冲突，仍属 S-3。
+- **交互三件在 `automation` 档仍可见**（`AskUserQuestion`／`visualize_show_widget`／`ExitPlanMode`）：老大这条只裁了浏览器，未裁交互件（同 S-2 ② 的悬置）。
+- **真实浏览器表面的目视未做**：本环境无屏幕捕获通路，"proxy 里叫得出 `BrowserNavigate` 并且真能跳页"这条只有单测级证据（同一谓词、同一注册表），未跑真机点一次。
+
 ### 需求 R-4：正式版使用指引与 README 拆分
 
 原始需求见 `raw-requirements.md` R-4 节：README 拆成用户指引 + 开发 README、功能全量罗列、截图（整桌面截软件本身）、关于页按钮与顶栏问号图标双入口指向 GitHub 指引。勘查见 `exploration_findings.md` 第 6 节。

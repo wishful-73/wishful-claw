@@ -29,7 +29,7 @@ public sealed class BrowserToolProvider : IToolProvider
                     ["action"] = BrowserToolSchema.CreateStringProperty("goto | back | forward | refresh. Default: goto.")
                 }),
             visibleScopes: ToolVisibilityScopes.Everywhere,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserGetContent",
@@ -41,21 +41,21 @@ public sealed class BrowserToolProvider : IToolProvider
                     ["type"] = BrowserToolSchema.CreateStringProperty("markdown (default) or html.")
                 }),
             visibleScopes: ToolVisibilityScopes.Everywhere,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserScreenshot",
             "Capture a screenshot of the current browser viewport.",
             BrowserToolSchema.CreateObjectSchema(new Dictionary<string, JsonElement>()),
             visibleScopes: ToolVisibilityScopes.Everywhere,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserSnapshot",
             "List all interactive elements with CSS selectors. Call before BrowserClick/BrowserType.",
             BrowserToolSchema.CreateObjectSchema(new Dictionary<string, JsonElement>()),
             visibleScopes: ToolVisibilityScopes.Everywhere,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserClick",
@@ -67,7 +67,7 @@ public sealed class BrowserToolProvider : IToolProvider
                 },
                 new[] { "selector" }),
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserType",
@@ -82,7 +82,7 @@ public sealed class BrowserToolProvider : IToolProvider
                 },
                 new[] { "selector", "text" }),
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserScroll",
@@ -94,7 +94,7 @@ public sealed class BrowserToolProvider : IToolProvider
                     ["amount"] = BrowserToolSchema.CreateNumberProperty("Pixels to scroll. Omit for one viewport height.")
                 }),
             visibleScopes: ToolVisibilityScopes.Everywhere,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserEvaluate",
@@ -106,7 +106,7 @@ public sealed class BrowserToolProvider : IToolProvider
                 },
                 new[] { "code" }),
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserSearch",
@@ -120,6 +120,6 @@ public sealed class BrowserToolProvider : IToolProvider
                 },
                 new[] { "query" }),
             visibleScopes: ToolVisibilityScopes.Everywhere,
-            excludedScopes: ToolVisibilityScopes.SubAgentRoles));
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
     }
 }

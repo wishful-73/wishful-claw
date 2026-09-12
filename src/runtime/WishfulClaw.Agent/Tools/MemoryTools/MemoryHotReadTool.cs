@@ -40,6 +40,8 @@ public sealed class MemoryHotReadTool : IToolExecutor
 
 
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """{"type":"object","properties":{},"required":[]}""");

@@ -16,6 +16,7 @@ public sealed class SshToolProvider : IToolProvider
         registry.Register(new ToolDefinitionPlaceholder(
             "SshListConnections",
             "List saved SSH connections (id, name, host, port, username, auth type). Provides the sshConnectionId values used by the Bash tool for remote execution.",
-            ToolSchemaBuilder.Object()));
+            ToolSchemaBuilder.Object(),
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
     }
 }

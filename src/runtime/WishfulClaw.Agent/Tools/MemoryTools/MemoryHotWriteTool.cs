@@ -45,6 +45,8 @@ public sealed class MemoryHotWriteTool : IToolExecutor
 
 
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.GlobalSideAndWorkRuns;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """{"type":"object","properties":{"section":{"type":"string","description":"Section title (the ## heading in MEMORY.md)"},"content":{"type":"string","description":"Markdown content for the section. Empty string to delete the section."}},"required":["section"]}""");

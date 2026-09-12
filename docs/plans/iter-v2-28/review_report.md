@@ -16,7 +16,7 @@
 | ⚠️ 记账（不修，交裁定/后继） | 12 | 已写入本报告与 `plan.md` 对应步骤 |
 | ⛔ 主动转后继需求 | 6（R-3.7 / R-3.9 / R-3.10 ＋ S-1…S-9 清单） | 已在 `raw-requirements.md` 文末登记，不得丢失 |
 
-**一句话结论**：7 项需求里 6 项按口径达成；R-3 的"零行为变化"口径**实测不成立**，偏离面已量化为 8 格并交老大在收尾裁定（保留 or 回滚）。
+**一句话结论**：7 项需求全部达成——R-3 的 8 格收窄经老大裁定符合本意（收窄即目的，"零行为变化"非需求约束），余下 12 项 ⚠️ 记账与 6 项 ⛔ 转后继，均不阻塞。
 
 ## 逐需求发现
 
@@ -51,16 +51,17 @@
 - ❌（审查发现，已修）**三个新通道没进 msgpack 路由白名单**：`agent:drain-sub-agent-notifications`、`plugin:settings-get`、`plugin:settings-set` 已在 `messagepack-channel-routing.ts` 补登记，并由新增 `tests/ipc-msgpack-routing`（96 断言 / 272 通道）钉住，防同类漏口。
 - ❌（审查发现，已修）渠道自启动失败与后台子 Agent 报告排水失败都是**静默吞掉**，已补 `logError('main', …)` 与 `console.error`。
 - ⚠️ `streamingReply` + `allowReadHome`/`readablePathPrefixes`/`allowWriteOutside`/`allowSubAgents` **五个字段仍无强制执行点**（S-5）。本次把"流式回复"的界面文案补上"仅记录设置，尚未接入强制执行"，与同面板已有的 `notEnforcedHint` 对齐；`readablePathPrefixes` 连输入项都没有。
-- ⚠️ `ChannelInstance.tools` 整条主进程链零调用方（S-6），渠道级工具筛选实际仍走 `toolPreset + sessionMode`。
+- ⚠️ `ChannelInstance.tools` 是**只写不读**的死配置（S-6）：主进程侧整条链已接好（反向请求入口 `reverse-handlers/index.ts:153-158` → `channel-plugin-handlers.ts:169-171` → `channel-handler-utils.ts:271` → `channel-config-store.ts:51`），断点在 **C# Worker 侧零处发起 `plugin:tool-enabled`**，渠道级工具筛选实际仍走 `toolPreset + sessionMode`。修复成本是 Worker 侧补一次调用，不是重建链路。
 
 ### R-3 工具可见性注册期声明（`6a6ceff2`）
 
 - ✅ 机制层达成：`ctxStr` 单点渲染、`ToolVisibilityPolicy` 唯一判定入口、`VisibleScopes` 声明、`use_capability` 的 description/`list`/`call` 三载体同源。
 - ❌（审查发现，已修）**金样摘要的档位标签名不副实**：13 个场景里有 3 个的场景 JSON 没带 `collaborationMode`，而 `AgentRunContextPolicy.Resolve` 对项目档缺省归一为 `cowork`——标签写 chat、跑的是 cowork，`ProjectChatTools` 整条分支从未进快照。补齐每档 `collaborationMode`、另留 `project:cowork-by-default` 钉住缺省归一，并补 `project:chat@subagent`、`global:chat@subagent` 两档，快照从 13 档/91 格扩到 **15 档 / 105 格**。
-- ❌（审查发现，已修）**"零行为变化"这句未经复测就写进文档**：以 R-3 动手前的 `f9940a56` 开 worktree 取基线摘要逐格比对，实测 97 格逐字节相同、**8 格被收窄**（子 Agent 档的 `Browser*`）。相关口径已在 `plan.md` R-3.H 与 `raw-requirements.md` S-2/S-4 改写，"任一档位逐字节等价"这句话已撤回。
+- ✅（已修 + 已裁定）**"零行为变化"这句未经复测就写进文档**：以 R-3 动手前的 `f9940a56` 开 worktree 取基线摘要逐格比对，实测 97 格逐字节相同、**8 格被收窄**（子 Agent 档的 `Browser*`）。相关口径已在 `plan.md` R-3.H 与 `raw-requirements.md` S-2/S-4 改写，"任一档位逐字节等价"这句话已撤回。**老大 2026-09-12 裁定**：R-3 的本意就是收窄权限、把混乱的权限重新梳理清楚，"零行为变化"是 agent 规划时自设的步骤而非需求约束——故 8 格收窄**不构成偏离，保留不回滚**，R-3 判为达成。
+  > **【2026-09-12 追加裁定后再复测，数字以此为准】**上句的 **97 格等价／8 格差异是收敛前的中间测量**，已被 R-3.I 的整体收敛重跑取代：**105 格 = 69 格逐字节等价 / 36 格收窄 / 0 格放宽**（差异分组与裁定出处见 `plan.md` R-3.I；比按时须把 `global:chat@automation` 与 `global:cowork@automation` 视为同一格改名，否则键集不平、凭空多 7 格差）。这次重跑同时暴露了 `raw-requirements.md` S-2 的两处失真（把 `project:cowork@subagent` 的 30 件误记成 `global:chat@subagent`，并称该档 `Edit`/`Write`/`Bash` 仍在——实测该档全 preset 均为 21 件且不含这三类），已在该文件就地修正。
 - ❌（审查发现，已修）**声明会腐烂却无人值守**：新增第 5 组 `RunDeclarationCensusSuite`——遍历生产注册表，逐条 `VisibleScopes` 模式与快照的 15 档做匹配，并断言每个声明了作用域的工具 `Evaluate(...) == Declared`，下界 `declaredTools >= 15`。有效性经**反证探针**确认：把 `*:channel@*` 误写成 `*:chanell@*` 后该套件立即失败，随后还原（`ToolVisibilityScopes.cs` 与 HEAD 字节一致）。
 - ❌（审查发现，已修）`ToolVisibilityPolicy` 里 `IsVisible(ToolDefinition)` 重载零调用方，已删；测试桩里的匿名类型 `Schema()` 改为 `JsonDocument` 克隆，避免 AOT 口径下的坏示范。
-- ⚠️ **第四个载体的漏口未修**（S-4）：`FilterToolDefinitions` 在 `!channelSession && BypassesChatAllowlist(context)` 时**原样返回**，cowork/goal/automation 三档因此绕过 `IsGloballyExcluded`。实测两处后果：`preset=full` + `project:cowork` 可见 22 个渠道专用工具；`project:cowork@subagent`/`@goalsubagent` 的直连集合里 9 个 `Browser*` 仍在，而同档 `use_capability` 已拒。修它属首次真正启用收窄，必须与差异表同批做。
+- ✅（追加裁定后已修）**第四个载体的漏口**（原 ⚠️ / S-4，现已关闭）：`FilterToolDefinitions` 曾在 `!channelSession && BypassesChatAllowlist(context)` 时**原样返回**，cowork/goal/automation 三档因此绕过 `IsGloballyExcluded`。当时实测两处后果：`preset=full` + `project:cowork` 可见 22 个渠道专用工具；`project:cowork@subagent`/`@goalsubagent` 的直连集合里 9 个 `Browser*` 仍在，而同档 `use_capability` 已拒。**老大 2026-09-12 追加裁定后按 R-3.I 整体收敛修掉**：`BypassesChatAllowlist`、`IndependentRuntimeRoles`、原样返回短路三者均已不存在，6 张中心名字表（含 `SharedChatTools`/`ProjectChatTools`/`GlobalChatTools`/`ChannelOnlyTools`/交互黑名单/proxy 名字表）全部删除，准入改由逐工具 `VisibleScopes`/`ExcludedScopes` 声明裁决，判定对 105 格每一格都执行。上述两处漏口逐格复测**均已收口**（差异表组① 的 −22、组② 的 −9），四载体同源同裁对直连侧同样成立。改动面、普查硬约束与 36 格差异见 `plan.md` R-3.I。
 - ⚠️ `IsCore` 字段已按 R-3.1 走通四处注册路径，但 `PromptBuilder.BuildToolCapability()` 未接线（R-3.7 ⛔），**当前只声明、无消费方**；`<tool_calling>` 段仍输出静态全 27 类。
 
 ### R-4 使用指引与 README 拆分（`231f1cd5`）

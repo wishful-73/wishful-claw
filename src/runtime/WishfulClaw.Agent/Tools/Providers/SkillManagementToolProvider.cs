@@ -19,7 +19,8 @@ public sealed class SkillManagementToolProvider : IToolProvider
             "list_installed_skills",
             "List all skills currently installed in the local skills directory. Returns each skill's name, description, and enabled status.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.Everywhere
         ), Category);
     }
 }

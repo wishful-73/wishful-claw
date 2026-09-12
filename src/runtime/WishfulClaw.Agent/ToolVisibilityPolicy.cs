@@ -3,26 +3,30 @@
 namespace WishfulClaw.Agent;
 
 /// <summary>
-/// R-3.2 — the single visibility entry point.
+/// R-3 — the single visibility entry point.
 ///
 /// Before this existed, "can this tool be used here?" was answered in several places at once
-/// (<c>AgentRunContextPolicy.IsToolAllowed</c>, <c>ToolRegistry.IsAvailableInMode</c>, the proxied
-/// category lists inside <c>use_capability</c>), and each of them drifted. This type is the one
-/// place a run context is turned into a <c>ctxStr</c> and matched against a tool's declared
-/// <see cref="ToolDefinition.VisibleScopes"/>, so the prompt, the direct tool list, and
-/// <c>use_capability</c> can no longer disagree about what is visible.
+/// (<c>AgentRunContextPolicy</c>'s name tables, <c>ToolRegistry.IsAvailableInMode</c>, the proxied
+/// category lists inside <c>use_capability</c>), and each of them drifted. This type is the one place
+/// a run context is turned into a <c>ctxStr</c> and matched against a tool's declarations, so the
+/// prompt, the direct tool list, and <c>use_capability</c> can no longer disagree about what is
+/// visible.
 ///
-/// Rules (R-3.D), in priority order:
+/// Rules, in priority order:
 /// <list type="number">
-/// <item><b>Blacklist wins.</b> A tool on an exclusion list is not visible, whatever it declares.</item>
-/// <item><b>Declaration narrows.</b> A tool with <c>VisibleScopes</c> is visible only where a
-/// pattern matches. A pattern with no <c>@role</c> matches only <c>sessionagent</c>, so
-/// <c>"project:cowork"</c> is about the session itself and not about the sub-agents it spawns.</item>
+/// <item><b>The tool's own veto wins.</b> A context matching <see cref="IToolExecutor.ExcludedScopes"/>
+/// is not visible, whatever else it declares — that is where a tool says "never where nobody can
+/// answer".</item>
+/// <item><b>Declaration narrows.</b> A tool with <see cref="IToolExecutor.VisibleScopes"/> is visible
+/// only where a pattern matches. A pattern with no <c>@role</c> matches only <c>sessionagent</c>, so
+/// <c>"project:cowork"</c> is about the session itself and not about the sub-agents it spawns; a bare
+/// <c>"*"</c> is the exception and means every context.</item>
 /// <item><b>A matching declaration also admits.</b> Declaring scopes is therefore a complete answer
 /// for a tool that lives in exactly one kind of run — <c>"*:channel"</c> both narrows it to the
-/// channel and grants it there, which is what lets the old name tables go away.</item>
+/// channel and grants it there.</item>
 /// <item><b>Default visible.</b> No declaration (null or empty) means visible everywhere. This is
-/// deliberate: a newly added tool must not silently disappear because someone forgot to declare it.</item>
+/// deliberate: a newly added tool must not silently disappear because someone forgot to declare it,
+/// and tools registered at runtime (MCP servers, skills) have no declaration to write.</item>
 /// </list>
 /// </summary>
 internal static class ToolVisibilityPolicy
@@ -75,59 +79,49 @@ internal static class ToolVisibilityPolicy
     }
 
     /// <summary>
-    /// Decides visibility and reports <i>how</i> it was decided.
+    /// Decides whether a tool is visible in a run context from its two declarations alone.
     ///
-    /// The distinction matters for the enforcement layer: a tool granted by its own declaration
-    /// needs no further allowlist check, while an undeclared (default-visible) tool is still subject
-    /// to the run-context rules that predate declarations. Without this, removing a name from the
-    /// old channel table would have taken the tool's only grant with it.
-    /// </summary>
-    public static VisibilityOutcome Evaluate(
-        AgentRunContext context,
-        bool channelSession,
-        string toolName,
-        string? category,
-        string[]? visibleScopes)
-    {
-        if (IsGloballyExcluded(context, channelSession, toolName, category))
-        {
-            return VisibilityOutcome.Blocked;
-        }
-
-        // No declaration → default visible. Checked after the blacklist so that "undeclared" can
-        // never be read as "unrestricted", even for a tool the blacklist rejects.
-        if (visibleScopes is null || visibleScopes.Length == 0)
-        {
-            return VisibilityOutcome.DefaultVisible;
-        }
-
-        var ctxStr = RenderContext(context, channelSession);
-        foreach (var pattern in visibleScopes)
-        {
-            if (MatchesPattern(pattern, ctxStr))
-            {
-                return VisibilityOutcome.Declared;
-            }
-        }
-
-        return VisibilityOutcome.Blocked;
-    }
-
-    /// <summary>
-    /// Decides whether <paramref name="toolName"/> is visible in the given run context.
-    ///
-    /// <paramref name="visibleScopes"/> is the tool's declaration; null or empty means visible
-    /// everywhere.
+    /// <paramref name="visibleScopes"/> null or empty means the tool declared nothing, so the
+    /// default-visible rule applies; it is checked after the veto so "undeclared" can never be read as
+    /// "unrestricted" for a tool that vetoed this context.
     /// </summary>
     public static bool IsVisible(
         AgentRunContext context,
         bool channelSession,
-        string toolName,
-        string? category,
-        string[]? visibleScopes)
+        string[]? visibleScopes,
+        string[]? excludedScopes = null)
     {
-        return Evaluate(context, channelSession, toolName, category, visibleScopes)
-            != VisibilityOutcome.Blocked;
+        var ctxStr = RenderContext(context, channelSession);
+
+        if (MatchesAny(excludedScopes, ctxStr))
+        {
+            return false;
+        }
+
+        if (visibleScopes is null || visibleScopes.Length == 0)
+        {
+            return true;
+        }
+
+        return MatchesAny(visibleScopes, ctxStr);
+    }
+
+    private static bool MatchesAny(string[]? patterns, string ctxStr)
+    {
+        if (patterns is null)
+        {
+            return false;
+        }
+
+        foreach (var pattern in patterns)
+        {
+            if (MatchesPattern(pattern, ctxStr))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -194,74 +188,20 @@ internal static class ToolVisibilityPolicy
             // both mean something sensible to a human writing a declaration.
             scope = Normalize(body, Wildcard);
             mode = Wildcard;
+
+            // A bare "*" is the documented "every context" token, so it wildcards the role too.
+            // Without this it would silently read as "everywhere, but never a sub-agent", which is
+            // the opposite of what a tool declaring "safe in all runs" means.
+            if (string.Equals(scope, Wildcard, StringComparison.Ordinal))
+            {
+                role = Wildcard;
+            }
         }
     }
-
-    /// <summary>
-    /// Blacklist layer. Kept separate from declarations because these are cross-cutting facts about
-    /// the run rather than properties of a tool: a channel session cannot render interactive UI, and
-    /// a sub-agent cannot drive the foreground browser.
-    /// </summary>
-    private static bool IsGloballyExcluded(
-        AgentRunContext context,
-        bool channelSession,
-        string toolName,
-        string? category)
-    {
-        if (channelSession && ChannelExcludedTools.Contains(toolName))
-        {
-            return true;
-        }
-
-        if (string.Equals(category, "browser", StringComparison.OrdinalIgnoreCase)
-            && BackgroundBrowserExcludedRoles.Contains(context.RuntimeRole))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Tools that need a human present, so they are unavailable in any run where nobody can answer.
-    /// Shared by the channel case and (later) the background-automation case — declared once here.
-    /// </summary>
-    private static readonly HashSet<string> ChannelExcludedTools = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "visualize_show_widget",
-        "AskUserQuestion",
-        "ExitPlanMode"
-    };
-
-    /// <summary>
-    /// Browser tools drive the foreground browser process and therefore cannot be delegated to a
-    /// background sub-agent. Goal sub-agents have the same execution boundary.
-    /// </summary>
-    private static readonly HashSet<string> BackgroundBrowserExcludedRoles = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "subagent",
-        "goalsubagent"
-    };
 
     private static string Normalize(string? value, string fallback)
     {
         var trimmed = value?.Trim().ToLowerInvariant();
         return string.IsNullOrEmpty(trimmed) ? fallback : trimmed;
     }
-}
-
-/// <summary>
-/// How <see cref="ToolVisibilityPolicy"/> decided a tool's visibility, so the enforcement layer can
-/// tell a declaration-based grant from the "undeclared, therefore visible" default.
-/// </summary>
-internal enum VisibilityOutcome
-{
-    /// <summary>Blacklisted, or declared only for contexts this run is not in.</summary>
-    Blocked,
-
-    /// <summary>A <c>VisibleScopes</c> pattern matched this run context — the tool's own word that it belongs here.</summary>
-    Declared,
-
-    /// <summary>No declaration at all, so the default-visible rule applies.</summary>
-    DefaultVisible
 }

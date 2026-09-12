@@ -45,6 +45,8 @@ public sealed class MemoryAppendTool : IToolExecutor
 
 
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.GlobalSideAndWorkRuns;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """{"type":"object","properties":{"content":{"type":"string","description":"The memory entry to append. Markdown text describing a fact, decision, or insight worth remembering."},"title":{"type":"string","description":"Short title for the memory entry. Auto-generated from content if omitted."},"priority":{"type":"string","enum":["permanent","lasting","standard","ephemeral"],"default":"standard","description":"Memory priority level"}},"required":["content"]}""");

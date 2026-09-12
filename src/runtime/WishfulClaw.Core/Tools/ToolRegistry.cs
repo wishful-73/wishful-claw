@@ -142,6 +142,7 @@ public sealed class ToolRegistry
                     category,
                     ToolCategoryCatalog.GetPriority(category),
                     executor.VisibleScopes,
+                    executor.ExcludedScopes,
                     executor.IsCore);
             }
             catch (Exception ex)
@@ -160,6 +161,7 @@ public sealed class ToolRegistry
                     category,
                     ToolCategoryCatalog.GetPriority(category),
                     executor.VisibleScopes,
+                    executor.ExcludedScopes,
                     executor.IsCore);
             }
 

@@ -13,6 +13,8 @@ namespace WishfulClaw.Core.Tools;
 /// <param name="Priority">Sort key for the request payload; lower sorts first.</param>
 /// <param name="VisibleScopes">
 /// Run-context patterns this tool is visible under, e.g. <c>"project:cowork"</c> or <c>"*:chat@subagent"</c>.
+/// A bare <c>"*"</c> is shorthand for every context, including background roles — the declaration a
+/// tool needs when it is safe everywhere (task tracking, read-only file inspection).
 /// <para>
 /// <b>null means "visible everywhere"</b> — an undeclared tool stays visible, so adding a tool never
 /// silently loses it. An empty array is treated the same as null (see <see cref="ToolRegistry"/>).
@@ -21,6 +23,12 @@ namespace WishfulClaw.Core.Tools;
 /// This is a declaration only. Whether it is enforced, and how patterns are matched against a run
 /// context, is decided by the single visibility entry point in the Agent layer.
 /// </para>
+/// </param>
+/// <param name="ExcludedScopes">
+/// Run-context patterns this tool is explicitly unavailable under, same syntax as
+/// <see cref="VisibleScopes"/>. This is the tool's own veto: it wins over a matching
+/// <see cref="VisibleScopes"/> pattern and over the default-visible rule, so "never in a run where no
+/// human can answer" is stated once, next to the tool that needs the human.
 /// </param>
 /// <param name="IsCore">
 /// Whether the tool is worth permanent space in the system prompt (see the core-tool-set principle),
@@ -38,6 +46,7 @@ public sealed record ToolDefinition(
     string? Category = null,
     int Priority = 100,
     string[]? VisibleScopes = null,
+    string[]? ExcludedScopes = null,
     bool IsCore = false);
 
 /// <summary>

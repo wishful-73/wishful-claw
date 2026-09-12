@@ -37,13 +37,6 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         "global-task", "global-dispatch-reply", "goal", "browser"
     };
 
-    private static readonly HashSet<string> ProxiedBuiltinTools = new(StringComparer.Ordinal)
-    {
-        "list_goals",
-        "get_goal_history",
-        "reopen_goal"
-    };
-
     public static bool IsUseCapabilityTool(string toolName)
     {
         return string.Equals(toolName, ToolName, StringComparison.Ordinal);

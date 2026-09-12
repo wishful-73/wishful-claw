@@ -23,7 +23,8 @@ public sealed class ProjectToolsProvider : IToolProvider
                         "Optional case-insensitive name filter.")
                 },
                 []),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.Everywhere));
 
         // get_project_details: Get project details including sessions and task status
         registry.Register(new ToolDefinitionPlaceholder(
@@ -36,7 +37,8 @@ public sealed class ProjectToolsProvider : IToolProvider
                         "The project ID (from list_projects).")
                 },
                 ["projectId"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.Everywhere));
 
         // create_session: Create a new session for a project
         registry.Register(new ToolDefinitionPlaceholder(
@@ -51,7 +53,8 @@ public sealed class ProjectToolsProvider : IToolProvider
                         "Optional session name. Defaults to an auto-generated name.")
                 },
                 ["projectId"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // send_session_message: Send a message to a session, optionally with a session Todo follow-up.
         registry.Register(new ToolDefinitionPlaceholder(
@@ -83,7 +86,8 @@ public sealed class ProjectToolsProvider : IToolProvider
                         ["todoId", "delayMs", "queryInstruction"])
                 },
                 ["sessionId", "content"]),
-                availableModes: new[] { "normal", "goal", "global", "channel" }));
+                availableModes: new[] { "normal", "goal", "global", "channel" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "update_session_follow_up",
@@ -99,6 +103,7 @@ public sealed class ProjectToolsProvider : IToolProvider
                     ["error"] = ToolSchemaBuilder.String("Optional terminal or retry error detail.")
                 },
                 ["followUpId", "claimToken", "action", "lastQueryResult"]),
-                availableModes: new[] { "normal", "goal", "global", "channel" }));
+                availableModes: new[] { "normal", "goal", "global", "channel" },
+                visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
     }
 }

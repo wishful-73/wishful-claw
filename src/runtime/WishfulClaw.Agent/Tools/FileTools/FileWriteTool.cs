@@ -21,6 +21,8 @@ public sealed class FileWriteTool : IToolExecutor
 
     public string Description => "Write content to a file. Creates parent directories if needed. Overwrites existing content.";
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.WorkRunsOnly;
+
     public JsonElement InputSchema => FileReadTool.WriteSchema;
 
     public async Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)

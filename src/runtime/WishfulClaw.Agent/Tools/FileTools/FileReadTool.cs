@@ -46,6 +46,8 @@ public sealed class FileReadTool : IToolExecutor
 
 
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """{"type":"object","properties":{"file_path":{"type":"string","description":"The path to the file to read"},"offset":{"type":"integer","description":"Line number to start reading from (1-based)","default":1},"limit":{"type":"integer","description":"Maximum number of lines to read","default":2000}},"required":["file_path"]}""");

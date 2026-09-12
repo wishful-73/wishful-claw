@@ -24,7 +24,8 @@ public sealed class TeamToolProvider : IToolProvider
                 },
                 ["name"]
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly
         ));
 
         registry.Register(new ToolDefinitionPlaceholder(
@@ -34,7 +35,8 @@ public sealed class TeamToolProvider : IToolProvider
                 new() { ["name"] = ToolSchemaBuilder.String("Team name.") },
                 ["name"]
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly
         ));
 
         registry.Register(new ToolDefinitionPlaceholder(
@@ -44,7 +46,8 @@ public sealed class TeamToolProvider : IToolProvider
                 new() { ["name"] = ToolSchemaBuilder.String("Team name.") },
                 ["name"]
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly
         ));
 
         registry.Register(new ToolDefinitionPlaceholder(
@@ -59,7 +62,8 @@ public sealed class TeamToolProvider : IToolProvider
                 },
                 ["team", "member", "message"]
             ),
-            availableModes: ["normal", "goal", "global"]
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly
         ));
     }
 }

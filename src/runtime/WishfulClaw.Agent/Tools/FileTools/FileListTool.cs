@@ -46,6 +46,8 @@ public sealed class FileListTool : IToolExecutor
 
 
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """{"type":"object","properties":{"path":{"type":"string","description":"Directory path to list. Defaults to working folder."},"hidden":{"type":"boolean","description":"Include hidden files. Default: true","default":true}},"required":[]}""");

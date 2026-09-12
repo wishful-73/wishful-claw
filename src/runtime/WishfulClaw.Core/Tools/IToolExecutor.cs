@@ -40,6 +40,15 @@ public interface IToolExecutor
     string[]? VisibleScopes => null;
 
     /// <summary>
+    /// Run-context patterns this tool is explicitly unavailable under, same syntax as
+    /// <see cref="VisibleScopes"/> — e.g. a tool that needs a human present declares "*:channel@*".
+    /// Wins over both a matching VisibleScopes pattern and the default-visible rule.
+    /// Default implementation returns null (excludes nothing), so every existing executor keeps its
+    /// current visibility.
+    /// </summary>
+    string[]? ExcludedScopes => null;
+
+    /// <summary>
     /// Whether this tool should be listed directly in the system prompt (core tool set) rather than
     /// being reachable on demand through use_capability.
     /// Defaults to false: visibility and core-ness are orthogonal, so tools opt in explicitly.

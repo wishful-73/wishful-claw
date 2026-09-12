@@ -8,6 +8,9 @@ namespace WishfulClaw.Agent.Tools.Providers;
 /// Registers task management tool definitions (TaskCreate/Get/Update/List).
 /// Execution: ToolDispatchRouter → AgentRuntimeTaskExecutor (SQLite-backed, OpenCowork semantics).
 /// Note: The SubAgent "Task" tool is a separate IToolExecutor (TaskTool.cs) registered directly.
+///
+/// These are the run's own todo list — session-local bookkeeping, which is why all four are declared
+/// for every context, sub-agents included.
 /// </summary>
 public sealed class TaskToolProvider : IToolProvider
 {
@@ -33,7 +36,8 @@ public sealed class TaskToolProvider : IToolProvider
                     ["activeForm"] = activeForm,
                     ["metadata"] = metadata
                 },
-                ["title"])));
+                ["title"]),
+            visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "TaskGet",
@@ -43,7 +47,8 @@ public sealed class TaskToolProvider : IToolProvider
                 {
                     ["taskId"] = ToolSchemaBuilder.String("The ID of the task to retrieve")
                 },
-                ["taskId"])));
+                ["taskId"]),
+            visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "TaskUpdate",
@@ -66,11 +71,13 @@ public sealed class TaskToolProvider : IToolProvider
                     ["metadata"] = ToolSchemaBuilder.String(
                         "Metadata keys to merge into the task as a JSON object. Set a key to null to delete it.")
                 },
-                ["taskId"])));
+                ["taskId"]),
+            visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "TaskList",
             "List all tasks in the current session with their detailed titles, status, owner, and dependencies.",
-            ToolSchemaBuilder.Object()));
+            ToolSchemaBuilder.Object(),
+            visibleScopes: ToolVisibilityScopes.Everywhere));
     }
 }

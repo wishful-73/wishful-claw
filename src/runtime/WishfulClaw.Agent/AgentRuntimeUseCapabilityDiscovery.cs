@@ -101,6 +101,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
     /// <summary>
     /// Shared visibility predicate for list, inspect and call. The registry/mode checks are kept
     /// beside the policy check so a new action cannot expose a tool through only one path.
+    /// Whether a built-in belongs to the proxy at all is decided by its category — no per-name list.
     /// </summary>
     internal static bool IsProxyBuiltinVisible(
         ToolRegistry? registry,
@@ -111,14 +112,13 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         string category)
         => registry is not null
             && registry.IsRegistered(toolName)
-            && IsProxiedBuiltinTool(toolName, category)
+            && IsProxiedBuiltinCategory(category)
             && registry.IsAvailableInMode(toolName, sessionMode)
             && AgentRunContextPolicy.IsToolAllowed(
                 runContext,
                 toolName,
-                category,
-                channelSession,
-                registry);
+                registry,
+                channelSession);
 
     /// <summary>
     /// Return only proxy categories that have at least one registered, mode-available and visible
@@ -203,8 +203,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         return rewritten;
     }
 
-    internal static bool IsProxiedBuiltinTool(string toolName, string category)
-        => ProxiedCategories.Contains(category) || ProxiedBuiltinTools.Contains(toolName);
+    internal static bool IsProxiedBuiltinCategory(string category)
+        => ProxiedCategories.Contains(category);
 
     private static List<CapabilitySummary> BuildCapabilitySummaries(
         JsonElement listResult,

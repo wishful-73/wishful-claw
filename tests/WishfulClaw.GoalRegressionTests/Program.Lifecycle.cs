@@ -417,9 +417,8 @@ internal static partial class Program
                 && AgentRunContextPolicy.IsToolAllowed(
                     normalProjectContext,
                     definition.Name,
-                    definition.Category,
-                    channelSession: false,
-                    registry))
+                    registry,
+                    channelSession: false))
             .Select(definition => definition.Name)
             .ToHashSet(StringComparer.Ordinal);
         var normalProjectTools = normalProjects.GetProperty("capabilities")

@@ -146,12 +146,11 @@ public static partial class ToolCallProcessor
                 break;
             }
 
-            var category = registry?.GetCategory(toolCall.Name);
             var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
             // Admission reads the tool's own declaration, the same one the list / inspect / call
             // paths read, so a declared tool cannot be hidden from the model yet still execute by name.
             var allowedByContext = AgentRunContextPolicy.IsToolAllowed(
-                runContext, toolCall.Name, category, channelSession, registry);
+                runContext, toolCall.Name, registry, channelSession);
             var allowedByMode = registry is null || registry.IsAvailableInMode(toolCall.Name, availableMode);
             if (!allowedByContext || !allowedByMode)
             {

@@ -47,6 +47,7 @@ public sealed class UseCapabilityToolProvider : IToolProvider
                             ["(any)"] = ToolSchemaBuilder.String("Tool arguments as JSON object. Only for action=call.")
                         })
                 },
-                new[] { "action" })));
+                new[] { "action" }),
+            visibleScopes: ToolVisibilityScopes.Everywhere));
     }
 }

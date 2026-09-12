@@ -30,7 +30,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         "Include archived tasks. Defaults to false.")
                 },
                 []),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // create_global_task: Create a new global task
         registry.Register(new ToolDefinitionPlaceholder(
@@ -48,7 +49,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                     ["dueAt"] = ToolSchemaBuilder.Number("Optional due date (unix milliseconds).")
                 },
                 ["title"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // update_global_task: Update status/priority/tags/etc. or archive
         registry.Register(new ToolDefinitionPlaceholder(
@@ -74,7 +76,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         })
                 },
                 ["taskId", "patch"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // list_global_dispatches: List dispatch records
         registry.Register(new ToolDefinitionPlaceholder(
@@ -90,7 +93,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                     ["status"] = ToolSchemaBuilder.String("Optional dispatch status filter.")
                 },
                 []),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // send_work_request: Trackable work dispatch to a target session
         registry.Register(new ToolDefinitionPlaceholder(
@@ -111,7 +115,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         "Optional project id. If omitted, inferred from the target session.")
                 },
                 ["globalTaskId", "sessionId", "instruction"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // update_dispatch: Update dispatch status / record the latest reply
         registry.Register(new ToolDefinitionPlaceholder(
@@ -135,6 +140,7 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         })
                 },
                 ["dispatchId", "patch"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
     }
 }

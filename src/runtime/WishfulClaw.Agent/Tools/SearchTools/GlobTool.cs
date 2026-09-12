@@ -48,6 +48,8 @@ public sealed class GlobTool : IToolExecutor
 
 
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. **/*.cs, src/**/*.tsx)"},"path":{"type":"string","description":"Root directory to search from. Defaults to working folder."},"limit":{"type":"integer","description":"Maximum number of results. Default: 100","default":100},"exclude_dirs":{"type":"array","items":{"type":"string"},"description":"Directory names to exclude from the search (e.g. [\"release\", \"docs\"]). Common dependency/build dirs are always excluded."}},"required":["pattern"]}""");

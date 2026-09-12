@@ -41,6 +41,8 @@ public sealed partial class ShellExecuteTool : IToolExecutor
 
 
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.WorkRunsOnly;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """

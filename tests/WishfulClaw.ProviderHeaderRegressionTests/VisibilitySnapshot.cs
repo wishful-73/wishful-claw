@@ -37,7 +37,7 @@ internal static class VisibilitySnapshot
         ("project:cowork@subagent", """{"sessionMode":"subAgent","scope":"project","projectId":"p1","collaborationMode":"cowork"}"""),
         ("project:cowork@goalrunner", """{"sessionMode":"goal","scope":"project","projectId":"p1","collaborationMode":"cowork"}"""),
         ("project:cowork@goalsubagent", """{"sessionMode":"goalSubAgent","scope":"project","projectId":"p1","collaborationMode":"cowork"}"""),
-        ("global:chat@automation", """{"sessionMode":"global","scope":"global","runtimeRole":"automation"}"""),
+        ("global:cowork@automation", """{"sessionMode":"global","scope":"global","runtimeRole":"automation"}"""),
         ("project:cowork@automation", """{"sessionMode":"agent","scope":"project","projectId":"p1","collaborationMode":"cowork","runtimeRole":"automation"}"""),
         ("global:chat@pet", """{"sessionMode":"global","scope":"global","runtimeRole":"pet"}"""),
         ("project:chat@providerturn", """{"sessionMode":"chat","scope":"project","projectId":"p1","collaborationMode":"chat","runtimeRole":"providerturn"}"""),

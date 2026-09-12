@@ -17,6 +17,11 @@ internal static class Program
                 return VisibilitySnapshotDump.Run(args.Length >= 2 ? args[1] : "visibility-snapshot.txt");
             }
 
+            if (args.Length >= 1 && args[0] == VisibilitySnapshotDump.DeriveSwitch)
+            {
+                return VisibilitySnapshotDump.RunDerive(args.Length >= 2 ? args[1] : "admission-vectors.txt");
+            }
+
             RunGateSuite();
             RunOverrideSuite();
             RunConnectionTestSuite();

@@ -23,13 +23,15 @@ public sealed class CodeCompatibleToolProvider : IToolProvider
                     ["command"] = ToolSchemaBuilder.String("The PowerShell command to execute."),
                     ["cwd"] = ToolSchemaBuilder.String("Working directory. Defaults to the session's working folder.")
                 },
-                ["command"])));
+                ["command"]),
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "Monitor",
             "Monitor the output of a previously started long-running process.",
             ToolSchemaBuilder.Object(
                 new() { ["session_id"] = ToolSchemaBuilder.String("The session ID to monitor.") },
-                ["session_id"])));
+                ["session_id"]),
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
     }
 }

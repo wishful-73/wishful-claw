@@ -48,6 +48,8 @@ public sealed class MemorySearchTool : IToolExecutor
 
 
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """{"type":"object","properties":{"query":{"type":"string","description":"Search query"},"include_deprecated":{"type":"boolean","default":false,"description":"Include deprecated entries in results"},"limit":{"type":"integer","default":10,"minimum":1,"maximum":50}},"required":["query"]}""");

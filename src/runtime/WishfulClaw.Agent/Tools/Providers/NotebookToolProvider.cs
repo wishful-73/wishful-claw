@@ -25,6 +25,7 @@ public sealed class NotebookToolProvider : IToolProvider
                     ["cell_type"] = ToolSchemaBuilder.String("Cell type: code, markdown, or raw.", ["code", "markdown", "raw"]),
                     ["edit_mode"] = ToolSchemaBuilder.String("Edit mode: replace, insert, or delete.", ["replace", "insert", "delete"])
                 },
-                ["notebook_path", "cell_id", "new_source"])));
+                ["notebook_path", "cell_id", "new_source"]),
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
     }
 }

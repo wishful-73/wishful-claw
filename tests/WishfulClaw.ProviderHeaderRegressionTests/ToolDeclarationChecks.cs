@@ -26,30 +26,33 @@ internal static class ToolDeclarationChecks
     }
 
     /// <summary>
-    /// Census over the <i>production</i> registry: every declaration that exists must actually fire.
+    /// Census over the <i>production</i> registry, now that the declaration is the only mechanism.
     ///
-    /// The synthetic suites above prove the matching algorithm; they cannot notice a pattern that no
-    /// run context will ever match ("golbal:chat", a renamed context segment, a stale copy-paste). Such
-    /// a line sits in the source looking authoritative while the tool silently never gets its grant.
+    /// Two failures matter. A tool that declares nothing used to fall back onto central name tables;
+    /// with those gone it is visible in every run, including the unattended ones, so silence is a leak
+    /// and has to fail the build. And a pattern no swept context can match ("golbal:chat", a renamed
+    /// segment, a stale copy-paste) sits in the source looking authoritative while the tool quietly
+    /// never gets its grant — the synthetic suites above prove the matching algorithm, only this
+    /// census notices dead text.
     /// </summary>
     private static void RunDeclarationCensusSuite()
     {
         var registry = VisibilitySnapshotDump.BuildProductionRegistry();
         var scenarios = VisibilitySnapshot.ResolveScenarios();
-        var declaredTools = 0;
+        var undeclared = new List<string>();
 
         foreach (var definition in registry.GetToolDefinitions())
         {
             var visibleScopes = definition.VisibleScopes;
-            if (visibleScopes is null || visibleScopes.Length == 0)
+            var excludedScopes = definition.ExcludedScopes;
+
+            if (visibleScopes is null or { Length: 0 } && excludedScopes is null or { Length: 0 })
             {
+                undeclared.Add(definition.Name);
                 continue;
             }
 
-            declaredTools++;
-            var category = registry.GetCategory(definition.Name);
-
-            foreach (var pattern in visibleScopes)
+            foreach (var pattern in (visibleScopes ?? []).Concat(excludedScopes ?? []))
             {
                 Assert(
                     scenarios.Any(scenario => ToolVisibilityPolicy.MatchesPattern(pattern, scenario.ContextString)),
@@ -59,16 +62,17 @@ internal static class ToolDeclarationChecks
             }
 
             Assert(
-                scenarios.Any(scenario => ToolVisibilityPolicy.Evaluate(
-                        scenario.Context, scenario.ChannelSession, definition.Name, category, visibleScopes)
-                    == VisibilityOutcome.Declared),
-                $"{definition.Name} declares [{string.Join(", ", visibleScopes)}] yet is never granted by " +
-                "its own declaration in any swept context — the blacklist swallows it, so the tool is unreachable");
+                scenarios.Any(scenario => ToolVisibilityPolicy.IsVisible(
+                    scenario.Context, scenario.ChannelSession, visibleScopes, excludedScopes)),
+                $"{definition.Name} declares [{string.Join(", ", visibleScopes ?? [])}] with " +
+                $"[{string.Join(", ", excludedScopes ?? [])}] vetoed yet is visible in no swept context — " +
+                "its own declarations make it unreachable");
         }
 
-        Assert(declaredTools >= 15,
-            $"only {declaredTools} production tools carry a VisibleScopes declaration; the census would " +
-            "pass vacuously if registration stopped travelling this far (today the channel/proxied set does)");
+        Assert(undeclared.Count == 0,
+            $"{undeclared.Count} production tool(s) declare no visibility at all and are therefore visible " +
+            $"in every run: {string.Join(", ", undeclared)}. Each tool must state where it belongs " +
+            "(ToolVisibilityScopes for the shared shapes, an inline pattern for a one-off).");
     }
 
     /// <summary>
@@ -158,7 +162,10 @@ internal static class ToolDeclarationChecks
     private static void RunCapabilityCatalogSuite()
     {
         var registry = new ToolRegistry();
-        registry.Register(new ToolDefinitionPlaceholder("BrowserNavigate", "browser", Schema()), "browser");
+        // The fixture carries the same veto production declares on its browser tools: the shared
+        // sub-agent exclusion is a declaration now, not a rule the visibility layer knows by name.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "BrowserNavigate", "browser", Schema(), excludedScopes: ToolVisibilityScopes.SubAgentRoles), "browser");
         registry.Register(new ToolDefinitionPlaceholder("list_goals", "goals", Schema()), "goal");
         registry.Register(new ToolDefinitionPlaceholder(
             "list_projects", "plugin", Schema(), null, ["global:chat"]), "plugin");

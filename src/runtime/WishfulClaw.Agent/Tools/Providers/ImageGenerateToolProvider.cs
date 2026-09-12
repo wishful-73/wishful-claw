@@ -25,6 +25,7 @@ public sealed class ImageGenerateToolProvider : IToolProvider
                     ["size"] = ToolSchemaBuilder.String("Image size.", ["auto", "1024x1024", "1024x1536", "1536x1024"]),
                     ["quality"] = ToolSchemaBuilder.String("Image quality.", ["auto", "low", "medium", "high"])
                 },
-                ["prompt"])));
+                ["prompt"]),
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
     }
 }

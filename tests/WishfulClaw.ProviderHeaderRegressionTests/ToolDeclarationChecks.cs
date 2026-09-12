@@ -22,6 +22,53 @@ internal static class ToolDeclarationChecks
         RunRegistryPassthroughSuite();
         RunUncategorizedPassesThroughSuite();
         RunCapabilityCatalogSuite();
+        RunDeclarationCensusSuite();
+    }
+
+    /// <summary>
+    /// Census over the <i>production</i> registry: every declaration that exists must actually fire.
+    ///
+    /// The synthetic suites above prove the matching algorithm; they cannot notice a pattern that no
+    /// run context will ever match ("golbal:chat", a renamed context segment, a stale copy-paste). Such
+    /// a line sits in the source looking authoritative while the tool silently never gets its grant.
+    /// </summary>
+    private static void RunDeclarationCensusSuite()
+    {
+        var registry = VisibilitySnapshotDump.BuildProductionRegistry();
+        var scenarios = VisibilitySnapshot.ResolveScenarios();
+        var declaredTools = 0;
+
+        foreach (var definition in registry.GetToolDefinitions())
+        {
+            var visibleScopes = definition.VisibleScopes;
+            if (visibleScopes is null || visibleScopes.Length == 0)
+            {
+                continue;
+            }
+
+            declaredTools++;
+            var category = registry.GetCategory(definition.Name);
+
+            foreach (var pattern in visibleScopes)
+            {
+                Assert(
+                    scenarios.Any(scenario => ToolVisibilityPolicy.MatchesPattern(pattern, scenario.ContextString)),
+                    $"declaration \"{pattern}\" on {definition.Name} matches none of the " +
+                    $"{scenarios.Count} swept run contexts — it is stale, mistyped, or a new context " +
+                    "needs adding to VisibilitySnapshot.Scenarios");
+            }
+
+            Assert(
+                scenarios.Any(scenario => ToolVisibilityPolicy.Evaluate(
+                        scenario.Context, scenario.ChannelSession, definition.Name, category, visibleScopes)
+                    == VisibilityOutcome.Declared),
+                $"{definition.Name} declares [{string.Join(", ", visibleScopes)}] yet is never granted by " +
+                "its own declaration in any swept context — the blacklist swallows it, so the tool is unreachable");
+        }
+
+        Assert(declaredTools >= 15,
+            $"only {declaredTools} production tools carry a VisibleScopes declaration; the census would " +
+            "pass vacuously if registration stopped travelling this far (today the channel/proxied set does)");
     }
 
     /// <summary>
@@ -150,8 +197,11 @@ internal static class ToolDeclarationChecks
             "proxy category names are the ToolCategoryCatalog intersection, not a second display list");
     }
 
-    private static JsonElement Schema() =>
-        JsonSerializer.SerializeToElement(new { type = "object" });
+    private static JsonElement Schema()
+    {
+        using var document = JsonDocument.Parse("""{"type":"object"}""");
+        return document.RootElement.Clone();
+    }
 
     private static void Assert(bool condition, string message)
     {

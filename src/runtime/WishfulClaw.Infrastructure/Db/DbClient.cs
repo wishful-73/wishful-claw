@@ -469,7 +469,7 @@ public static partial class DbClient
             {
                 _db.Execute(sql);
             }
-            WorkerLog.Info($"DbClient: {tableSqls.Length} tables created/verified");
+            WorkerLog.Info($"DbClient: {tableSqls.Length} DDL statements applied (tables + indexes)");
 
             // ── FTS5 virtual table (external content + trigram tokenizer) ──
             WorkerLog.Info("DbClient: creating memory_fts virtual table (external content)");

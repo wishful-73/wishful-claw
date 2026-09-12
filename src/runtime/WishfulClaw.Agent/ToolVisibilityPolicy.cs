@@ -131,22 +131,6 @@ internal static class ToolVisibilityPolicy
     }
 
     /// <summary>
-    /// Convenience overload for a definition that already carries its declaration.
-    /// </summary>
-    public static bool IsVisible(
-        AgentRunContext context,
-        bool channelSession,
-        ToolDefinition definition)
-    {
-        return IsVisible(
-            context,
-            channelSession,
-            definition.Name,
-            definition.Category,
-            definition.VisibleScopes);
-    }
-
-    /// <summary>
     /// Matches a declaration pattern against a rendered context string.
     ///
     /// Both sides are <c>scope:mode[@role]</c>. <c>*</c> matches any one segment. A pattern without

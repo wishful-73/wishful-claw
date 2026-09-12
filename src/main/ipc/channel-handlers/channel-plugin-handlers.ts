@@ -173,7 +173,15 @@ export async function isPluginToolEnabled(pluginId: string, toolName: string): P
 export async function autoStartChannels(channelManager: ChannelManager): Promise<void> {
   const channels = await readPlugins()
   const settings = await readGlobalSettings().catch((err) => {
-    console.error('[Channel Manager] Auto-start skipped (settings unreadable):', err)
+    // Fail closed on purpose: autoStart is decided by the global switch, and a guessed
+    // default would reconnect channels the user switched off. Log it, or the whole
+    // channel list staying stopped leaves no trace anywhere.
+    const msg = extractMessage(err)
+    console.error('[Channel Manager] Auto-start skipped (settings unreadable):', msg)
+    logError('main', '[Channel Manager] Auto-start skipped (global settings unreadable)', {
+      stack: extractStack(err),
+      extra: { error: msg }
+    })
     return null
   })
   if (!settings?.autoStart) return

@@ -36,6 +36,48 @@ public static class GlobalChannelSettingsStore
 {
     private const string ConfigKey = "channelSettings";
 
+    private const string KeyAutoReply = "autoReply";
+    private const string KeyStreamingReply = "streamingReply";
+    private const string KeyAutoStart = "autoStart";
+    private const string KeyShellRequiresApproval = "shellRequiresApproval";
+    private const string KeyAllowReadHome = "allowReadHome";
+    private const string KeyReadablePathPrefixes = "readablePathPrefixes";
+    private const string KeyAllowWriteOutside = "allowWriteOutside";
+    private const string KeyAllowSubAgents = "allowSubAgents";
+
+    /// <summary>The exact shape <see cref="Write"/> produces; also the whole-object write contract.</summary>
+    private static readonly string[] RecordKeys =
+    [
+        KeyAutoReply, KeyStreamingReply, KeyAutoStart, KeyShellRequiresApproval,
+        KeyAllowReadHome, KeyReadablePathPrefixes, KeyAllowWriteOutside, KeyAllowSubAgents
+    ];
+
+    /// <summary>
+    /// A whole-object write must carry every key and nothing else. Missing members would
+    /// deserialize into <c>default(false)</c>, and for <c>shellRequiresApproval</c> that means
+    /// "run shell without asking", so a partial payload is refused instead of merged.
+    /// </summary>
+    public static bool IsFullRecord(JsonObject obj)
+    {
+        foreach (var key in RecordKeys)
+        {
+            if (!obj.ContainsKey(key))
+            {
+                return false;
+            }
+        }
+
+        foreach (var pair in obj)
+        {
+            if (Array.IndexOf(RecordKeys, pair.Key) < 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static GlobalChannelSettings Read()
     {
         if (ConfigStore.GetValueNode(ConfigKey) is not JsonObject obj)
@@ -44,14 +86,14 @@ public static class GlobalChannelSettingsStore
         }
 
         return new GlobalChannelSettings(
-            ReadBool(obj, "autoReply", GlobalChannelSettings.Defaults.AutoReply),
-            ReadBool(obj, "streamingReply", GlobalChannelSettings.Defaults.StreamingReply),
-            ReadBool(obj, "autoStart", GlobalChannelSettings.Defaults.AutoStart),
+            ReadBool(obj, KeyAutoReply, GlobalChannelSettings.Defaults.AutoReply),
+            ReadBool(obj, KeyStreamingReply, GlobalChannelSettings.Defaults.StreamingReply),
+            ReadBool(obj, KeyAutoStart, GlobalChannelSettings.Defaults.AutoStart),
             ReadShellRequiresApproval(obj),
-            ReadBool(obj, "allowReadHome", false),
+            ReadBool(obj, KeyAllowReadHome, GlobalChannelSettings.Defaults.AllowReadHome),
             ReadPrefixes(obj),
-            ReadBool(obj, "allowWriteOutside", false),
-            ReadBool(obj, "allowSubAgents", false));
+            ReadBool(obj, KeyAllowWriteOutside, GlobalChannelSettings.Defaults.AllowWriteOutside),
+            ReadBool(obj, KeyAllowSubAgents, GlobalChannelSettings.Defaults.AllowSubAgents));
     }
 
     public static void Write(GlobalChannelSettings settings)
@@ -64,14 +106,14 @@ public static class GlobalChannelSettingsStore
 
         ConfigStore.SetValue(ConfigKey, new JsonObject
         {
-            ["autoReply"] = settings.AutoReply,
-            ["streamingReply"] = settings.StreamingReply,
-            ["autoStart"] = settings.AutoStart,
-            ["shellRequiresApproval"] = settings.ShellRequiresApproval,
-            ["allowReadHome"] = settings.AllowReadHome,
-            ["readablePathPrefixes"] = prefixes,
-            ["allowWriteOutside"] = settings.AllowWriteOutside,
-            ["allowSubAgents"] = settings.AllowSubAgents
+            [KeyAutoReply] = settings.AutoReply,
+            [KeyStreamingReply] = settings.StreamingReply,
+            [KeyAutoStart] = settings.AutoStart,
+            [KeyShellRequiresApproval] = settings.ShellRequiresApproval,
+            [KeyAllowReadHome] = settings.AllowReadHome,
+            [KeyReadablePathPrefixes] = prefixes,
+            [KeyAllowWriteOutside] = settings.AllowWriteOutside,
+            [KeyAllowSubAgents] = settings.AllowSubAgents
         });
     }
 
@@ -82,16 +124,18 @@ public static class GlobalChannelSettingsStore
     /// </summary>
     private static bool ReadShellRequiresApproval(JsonObject obj)
     {
-        if (TryReadBool(obj, "shellRequiresApproval", out var requiresApproval))
+        if (TryReadBool(obj, KeyShellRequiresApproval, out var requiresApproval))
         {
             return requiresApproval;
         }
-        return TryReadBool(obj, "allowShell", out var allowShell) ? !allowShell : true;
+        return TryReadBool(obj, "allowShell", out var allowShell)
+            ? !allowShell
+            : GlobalChannelSettings.Defaults.ShellRequiresApproval;
     }
 
     private static string[] ReadPrefixes(JsonObject obj)
     {
-        if (obj["readablePathPrefixes"]?.AsArray() is not { } array)
+        if (obj[KeyReadablePathPrefixes] is not JsonArray array)
         {
             return [];
         }

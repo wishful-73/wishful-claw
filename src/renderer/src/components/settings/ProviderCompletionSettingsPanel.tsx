@@ -29,6 +29,7 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
   const providers = useProviderStore((state) => state.providers)
   const [settings, setSettings] = useState<ProviderCompletionSettings>(EMPTY)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -39,8 +40,12 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
         setSettings({ ...EMPTY, ...value })
         setLoading(false)
       }
-    }).catch(() => {
-      if (!cancelled) setLoading(false)
+    }).catch((error: unknown) => {
+      if (cancelled) return
+      // Every route reads as "未配置" while the store is unreadable, and saving in that
+      // state would write those nulls back over the real configuration.
+      setLoadError(error instanceof Error ? error.message : String(error))
+      setLoading(false)
     })
     return () => { cancelled = true }
   }, [])
@@ -64,7 +69,14 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
     setSaving(true)
     setMessage(null)
     try {
-      await window.api.workerRequest('provider/completion-config-write', settings)
+      const result = await window.api.workerRequest<{ success?: boolean; error?: string }>(
+        'provider/completion-config-write',
+        settings
+      )
+      if (result?.success === false) {
+        throw new Error(result.error || t('runtimePage.auxiliaryModels.saveFailed'))
+      }
+      setLoadError(null)
       setMessage(t('runtimePage.auxiliaryModels.saved'))
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t('runtimePage.auxiliaryModels.saveFailed'))
@@ -113,13 +125,18 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
       id="sec-runtime-auxiliary-models"
       title={t('runtimePage.auxiliaryModels.title')}
       description={t('runtimePage.auxiliaryModels.desc')}
-      actions={<Button size="sm" onClick={() => void save()} disabled={saving || loading}>{saving ? t('runtimePage.auxiliaryModels.saving') : t('runtimePage.auxiliaryModels.save')}</Button>}
+      actions={<Button size="sm" onClick={() => void save()} disabled={saving || loading || Boolean(loadError)}>{saving ? t('runtimePage.auxiliaryModels.saving') : t('runtimePage.auxiliaryModels.save')}</Button>}
     >
       <div className="space-y-3">
         {route('promptOptimizer')}
         {route('persona')}
         {route('fallback')}
-        <SettingHint>{message ?? t('runtimePage.auxiliaryModels.hint')}</SettingHint>
+        <SettingHint>
+          {message ??
+            (loadError
+              ? `${t('runtimePage.auxiliaryModels.loadFailed')}: ${loadError}`
+              : t('runtimePage.auxiliaryModels.hint'))}
+        </SettingHint>
       </div>
     </SettingsSection>
   )

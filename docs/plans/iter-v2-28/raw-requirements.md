@@ -252,15 +252,15 @@ Agent 侧已存在两个截图工具，可直接被调用：
 ## 后继需求登记（R-3 / R-2 本次刻意不做，**不得丢失**）
 
 登记日期：2026-09-11。来源：R-3 的 **B 口径（两步走）** 与 R-2 裁定 ② 的记账要求。
-**这六项均为"行为变更"，本次迭代只做机制、保持零行为变化，故顺延为后继需求。** 每项都附了触发条件与验证口径，接到下一代迭代时**逐条复核当时代码**再立项。
+**这六项均为"行为变更"，本次迭代只做机制、力求零行为变化（实测偏离见本节末 ⚠️ 与 `plan.md` R-3.H ①／⑥），故顺延为后继需求。** 每项都附了触发条件与验证口径，接到下一代迭代时**逐条复核当时代码**再立项。
 
 | # | 需求 | 来源 | 为何本次不做 | 本次已留下的接续点 |
 |---|---|---|---|---|
 | S-1 | **提示词核心集机制 + 名单收窄**——`BuildToolCapability()` 改为收会话上下文、只输出本档可见的**核心**工具，`<tool_calling>` 的 27 类降到核心集规模 | R-3.7 / R-3.10 / R-3.C-bis | 计划原设想"机制本次做、名单用等价现状"，实读后判定**两者在提示词侧不可切分**：要让字节不变只能给函数传一个永远全量的参数，`IsCore` 也停在无人读取的假接线状态 | `IsCore` 字段已按 R-3.1 走通四处注册路径（**已声明、暂无消费方**）；`use_capability` 的 description/`list`/`call` 三载体已同源，核心集落地时只需换 `BuildToolCapability` 一个出口 |
-| S-2 | **`global:chat@subagent` 集合收束**——全局 PM 的子 Agent 显式继承全局限制，不再由名字白名单兜 | R-3.6② / R-3.D 收窄 6 | 属新增的行为收窄 | 现状**已被 `GlobalChatTools` 拦着**（`subagent` 不在 `IndependentRuntimeRoles`，chat 档走白名单），故本项是"把既有拦截换成声明"，风险低于原估计 |
+| S-2 | **`global:chat@subagent` 集合收束**——全局 PM 的子 Agent 显式继承全局限制，不再由名字白名单兜 | R-3.6② / R-3.D 收窄 6 | 属新增的行为收窄 | **2026-09-12 复核修正**：原写"现状已被 `GlobalChatTools` 拦着"只对了一半——快照补入该档后实测，6 个 `Browser*`（`SharedChatTools` 收录的那批）**当时照样可见**，收窄 4 落地后本迭代已把它们剔除（该档 16→10 件）。**剩余**待收束的是写/执行类工具继承全局限制那部分，仍是"把既有拦截换成声明"，风险低于原估计 |
 | S-3 | **后台定时三类排除启用**——`unknown@automation` 下排除 `browser` 类 + 渠道专用工具 + 交互三件 | R-3.D 收窄 5 | 现状该档走 `runtimeRole:"automation"` 全放行，启用即首次收窄 | 三件交互工具已在 `ToolVisibilityPolicy.ChannelExcludedTools` 单点定义、可直接复用；`browser` × 后台角色的排除谓词已就位；`unknown` scope 与 `unknown@automation` 串的渲染与匹配均已打通并有测试 |
-| S-4 | **显式化 early-return**——`FilterToolDefinitions` 的 `!channelSession && BypassesChatAllowlist(context) ⇒ 原样返回` 短路改为显式声明 | R-3.10 / 合规第 4 条 | 会让 cowork/goal/automation 首次开始被拦 | **该短路是现存泄漏点的唯一成因**：`preset=full` + `project:cowork` 实测可见 22 个渠道专用工具（无渠道上下文时发了也没有落点）。修它必须先出 91 格差异表，`visibility-snapshot.expected.txt` 就是那张表的机器版 |
-| S-7 | **`browser` 出三处 preset 白名单**（`ToolPreset.cs:53,68,83`）——老大定性浏览器与 MCP 同类，须经 `use_capability` 获取 | R-3.8c③ 的后一半 | 快照实测：摘掉后 chat/coding 档各少 6 个直接工具，属能力面变更 | 前置本次已铺好：`browser` 已进 `ProxiedCategories`，`ToolVisibilityPolicy` 已有 `browser` × 后台角色的排除谓词。曾按此改 `ToolPreset.cs`，被 91 格快照拦下后**已整体回滚**，该文件现与 HEAD 一致 |
+| S-4 | **显式化 early-return**——`FilterToolDefinitions` 的 `!channelSession && BypassesChatAllowlist(context) ⇒ 原样返回` 短路改为显式声明 | R-3.10 / 合规第 4 条 | 会让 cowork/goal/automation 首次开始被拦 | **该短路是现存泄漏点的唯一成因**，2026-09-12 快照补格后实测两处：① `preset=full` + `project:cowork` 可见 22 个渠道专用工具（无渠道上下文时发了也没有落点）；② **`project:cowork@subagent` 与 `@goalsubagent` 的直连集合里 9 个 `Browser*` 全部还在**，而同一档的 `use_capability action="list"`/`call` 已按收窄 4 拒掉它们——三载体同源同裁只在 proxy 侧成立，直连侧被这个短路绕开。修它必须先出差异表，`visibility-snapshot.expected.txt`（现 **105 格** = 7 preset × 15 档）就是那张表的机器版 |
+| S-7 | **`browser` 出三处 preset 白名单**（`ToolPreset.cs:53,68,83`）——老大定性浏览器与 MCP 同类，须经 `use_capability` 获取 | R-3.8c③ 的后一半 | 快照实测：摘掉后 chat/coding 档各少 6 个直接工具（**2026-09-12 补格前口径**，补格后须重测），属能力面变更 | 前置本次已铺好：`browser` 已进 `ProxiedCategories`，`ToolVisibilityPolicy` 已有 `browser` × 后台角色的排除谓词。曾按此改 `ToolPreset.cs`，被快照拦下后**已整体回滚**，该文件现与 HEAD 一致 |
 | S-8 | ~~`task` 出 `ProxiedCategories`、`goal` 整体进 proxied~~ **已随 R-3.8c①② 落地**；剩余的是 `ProxiedBuiltinTools` 里 `list_goals`/`get_goal_history`/`reopen_goal` 三件名字是否可以删（`goal` 已整类 proxied，名字清单疑似冗余） | R-3.8c①② | 删名字表属行为变更：需先确认三件在 `goal` 类的 `availableModes` 下确实仍被枚举出来 | `GoalRegressionTests` 已改为按注册表动态推导 goal 条目，删了不会静默失去覆盖 |
 
 另有三项**记账类**（非需求，但须防误认"已生效"）：
@@ -271,6 +271,8 @@ Agent 侧已存在两个截图工具，可直接被调用：
 | S-6 | **`ChannelInstance.tools` 零调用方**——渠道级工具开关整条主进程链已接好，但 **C# 侧零处发起** | R-2 现状勘查 | 与 R-3.9「渠道工具开关接真」直接相关，两项应同批处理。当前渠道工具筛选实际走 `toolPreset + sessionMode`（`AgentLoop.cs:166-168`、`AgentRunContextPolicy.cs:117-133,176`） |
 | S-9 | **`newSessionDefaultModel` 零消费方**——已声明、有默认值、进 persist 白名单、migrate 补默认，但**全仓无任何读取点** | R-1.5 执行时新发现 | 与裁定 ③ 那四个哑字段同族，但**不在老大点名的四项清单内，故本次未删**。其类型已随 `SessionDefaultModelBinding`（含同样无人读取的 `useGlobalActiveModel`）一并收窄为普通 `ModelBinding`。将来要么接真"新会话默认模型"，要么按裁定 ③ 口径删除，**不得当作已生效功能引用** |
 
-> ⚠️ **S-1～S-4、S-7、S-8 的共同前提**：本次 R-3 交付的是**机制**（`ctxStr` 单点渲染 + 唯一判定入口 + `VisibleScopes` 声明 + 三载体同源），**任一档位的可见工具集合已用 91 格快照证明逐字节等价于改动前**（`plan.md` R-3.H ①）。提示词内容本次**完全未动**（`BuildToolCapability()` 仍是静态全 27 类）。收窄全部顺延，故下一代迭代接到这六项时，**改动面已被本次收敛到"只改声明/名单值/提示词组装"**，无需再动机制。
+> ⚠️ **S-1～S-4、S-7、S-8 的共同前提**：本次 R-3 交付的是**机制**（`ctxStr` 单点渲染 + 唯一判定入口 + `VisibleScopes` 声明 + 三载体同源），工具提示词主体本次**完全未动**（`BuildToolCapability()` 仍是静态全 27 类）。收窄全部顺延，故下一代迭代接到这六项时，**改动面已被本次收敛到"只改声明/名单值/提示词组装"**，无需再动机制。
+>
+> **但"任一档位逐字节等价"这句话不得再说**。2026-09-12 补齐快照档位后重测（口径见 `plan.md` R-3.H ①／⑥）：**105 格 = 7 preset × 15 档，其中 97 格逐字节等价**，确有差异的是 **8 格**——preset `full`/`chat`/`coding`/`channel` × `project:chat@subagent` 与 `global:chat@subagent`，每格少 6 个 `Browser*`。这是老大"子 Agent 一律不得用浏览器"裁定（收窄 4）的目标效果，此前该两档从未进入快照（场景标签没带 `collaborationMode`，被归一成 cowork），故从未被证明为零变化。**属 B 口径外的一次实际行为变更，保留还是回退由老大在迭代收尾裁定**。另有一处本次确实变了、但不在这 105 格内：`use_capability` 的 description 按 R-3.8b 改为按档动态生成（R-3.H ⑤）。
 >
 > 上述行号来自 2026-09-11 的实读，立项时仍须按当时代码复核。

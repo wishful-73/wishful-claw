@@ -48,10 +48,36 @@ export interface GlobalChannelSettings {
   allowSubAgents: boolean
 }
 
+const GLOBAL_SETTING_KEYS: readonly (keyof GlobalChannelSettings)[] = [
+  'autoReply', 'streamingReply', 'autoStart', 'shellRequiresApproval',
+  'allowReadHome', 'readablePathPrefixes', 'allowWriteOutside', 'allowSubAgents'
+]
+
+/**
+ * IPC handlers report failures as an `{ error }` payload instead of rejecting, so a failed
+ * read arrives as a truthy object. Accepted as-is, its missing booleans would render OFF and
+ * the next whole-object write would store `shellRequiresApproval: false` — approval waived.
+ */
+function parseGlobalSettings(raw: unknown): GlobalChannelSettings {
+  const value = raw as (GlobalChannelSettings & { error?: string }) | null
+  if (!value || typeof value !== 'object') {
+    throw new Error('Global channel settings read returned nothing')
+  }
+  if (value.error) {
+    throw new Error(value.error)
+  }
+  const missing = GLOBAL_SETTING_KEYS.filter((key) => value[key] === undefined)
+  if (missing.length > 0) {
+    throw new Error(`Global channel settings read is incomplete: ${missing.join(', ')}`)
+  }
+  return value
+}
+
 interface ChannelStore {
   channels: PluginInstance[]
   providers: ChannelProviderDescriptor[]
   globalSettings: GlobalChannelSettings | null
+  globalSettingsError: string | null
   loading: boolean
   error: string | null
   selectedChannelId: string | null
@@ -72,6 +98,7 @@ export const useChannelStore = create<ChannelStore>((set, get) => ({
   channels: [],
   providers: [],
   globalSettings: null,
+  globalSettingsError: null,
   loading: false,
   error: null,
   selectedChannelId: null,
@@ -112,11 +139,11 @@ export const useChannelStore = create<ChannelStore>((set, get) => ({
 
   loadGlobalSettings: async () => {
     try {
-      const settings = (await ipcClient.invoke(IPC.PLUGIN_SETTINGS_GET)) as GlobalChannelSettings
-      set({ globalSettings: settings, error: null })
+      const settings = parseGlobalSettings(await ipcClient.invoke(IPC.PLUGIN_SETTINGS_GET))
+      set({ globalSettings: settings, globalSettingsError: null })
     } catch (err) {
       console.error('[channel-store] Failed to load global channel settings:', err)
-      set({ error: err instanceof Error ? err.message : String(err) })
+      set({ globalSettingsError: err instanceof Error ? err.message : String(err) })
     }
   },
 
@@ -136,14 +163,13 @@ export const useChannelStore = create<ChannelStore>((set, get) => ({
       const result = (await ipcClient.invoke(IPC.PLUGIN_SETTINGS_SET, {
         ...current,
         ...patch
-      })) as { settings?: GlobalChannelSettings; error?: string }
+      })) as { settings?: unknown; error?: string }
       if (result?.error) throw new Error(result.error)
-      if (!result?.settings) throw new Error('Global channel settings write returned nothing')
-      set({ globalSettings: result.settings, error: null })
+      set({ globalSettings: parseGlobalSettings(result?.settings), globalSettingsError: null })
       return true
     } catch (err) {
       console.error('[channel-store] Failed to update global channel settings:', err)
-      set({ error: err instanceof Error ? err.message : String(err) })
+      set({ globalSettingsError: err instanceof Error ? err.message : String(err) })
       return false
     }
   },

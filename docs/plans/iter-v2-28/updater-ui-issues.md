@@ -69,7 +69,7 @@
 
 ### 实施中新发现：左下角已被 toast 栈占用
 
-`App.tsx:217` 的 `<Toaster position="bottom-left">` 与本需求要落的角落是同一处。sonner 2.0.7 的容器为 `bottom:var(--offset-bottom)`（桌面默认 16px）、`z-index:9999`、单条宽 356px，全部高于 banner 的 `z-40`：侧边栏展开时与 banner 左侧重叠约 64px，**侧边栏收起时 banner 完全被 toast 盖住**——而 banner 存在的意义正是"状态不能变成用户看不见又回不来"。
+`App.tsx` 的 `<Toaster position="bottom-left">` 与本需求要落的角落是同一处。sonner 2.0.7 的容器底距取 `--offset-bottom`，桌面默认值 `VIEWPORT_OFFSET='24px'`（`16px` 是移动端那档），`z-index:999999999`，单条宽 `TOAST_WIDTH=356`，全部高于 banner 的 `z-40`：侧边栏展开时与 banner 左侧重叠约 64px，**侧边栏收起时 banner 完全被 toast 盖住**——而 banner 存在的意义正是"状态不能变成用户看不见又回不来"。
 
 **采法**：banner 可见时把 toast 栈抬高（`offset={{ bottom: 90 }}`），不改 toast 的默认位置与默认底距。判据与抬高量单点定义在 `UpdateStatusBanner.tsx`（`isUpdateBannerVisible` + `UPDATE_BANNER_TOAST_BOTTOM`），App.tsx 复用同一份，避免两处各写一遍 phase 列表；banner 内的 early return 也改用同一判据。无 banner 时 `offset` 传 `undefined`，由 sonner 自己回落默认值，不把默认值抄第二份。90 = 24 底距 + ~58 稳定高度（两行文案都是 `truncate`，高度不会飘）+ 8 间隙。
 

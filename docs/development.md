@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/.NET-11-blue" alt=".NET">
-  <img src="https://img.shields.io/badge/Electron-35-blue" alt="Electron">
+  <img src="https://img.shields.io/badge/Electron-43-blue" alt="Electron">
   <img src="https://img.shields.io/badge/React-19-blue" alt="React">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
 </p>
@@ -55,6 +55,14 @@
 | 浏览器 | 内置 webview 浏览器（Navigate / Snapshot / Click / Type） |
 | Goal | create_goal / update_goal / get_goal / list_goals / get_goal_history |
 | 计划 | EnterPlanMode / SubmitPlanReview / ExitPlanMode / UpdatePlanStep |
+
+### 📦 数据持久化
+
+- **SQLite**（`index.db`，全局唯一）— 项目注册、会话与消息、子 Agent 运行记录、计划/Goal/任务、定时任务、SSH 连接、记忆条目 + FTS5 索引、上下文压缩快照、请求级用量日志（`request_usage_logs`）。逐表写入，重启不丢
+- **Markdown 文件** — 人格（`IDENTITY.md` / `SOUL.md` / `USER.md`）与 Hot 记忆（`MEMORY.md`）纯文件存储，人可读、可编辑、Git 友好
+- **JSON 配置** — 应用配置、服务商配置与全局渠道设置经 Infrastructure/Storage 的 `ConfigStore` / `ProviderStore` 读写
+
+目录归属与表结构详见 [data-storage.md](data-storage.md)。
 
 ### 📊 缓存命中率与请求级用量
 
@@ -134,6 +142,18 @@ npm run dev
   - `npx tsc --noEmit -p tsconfig.node.json`（主进程）
   - `npx tsc --noEmit -p tsconfig.json`（根配置）
 - **AOT 约束**：禁反射与匿名类型序列化，新增序列化类型必须注册进对应 `JsonSerializerContext`，详见 [AGENTS.md](../AGENTS.md)
+
+## 💻 Tech Stack
+
+| 层 | 技术 |
+|----|------|
+| 前端 | React 19 + TypeScript + Zustand + Tailwind CSS 4 |
+| 桌面壳 | Electron 43 + electron-vite |
+| 后端 | .NET 11 (C#) + Native AOT |
+| 通信 | MessagePack IPC（`@msgpack/msgpack` ↔ C# 侧 Protocol） |
+| 数据库 | SQLite（`Microsoft.Data.Sqlite` + FTS5） |
+| 记忆 | Markdown 文件 + FTS5 全文搜索 |
+| 编辑器 | Monaco Editor |
 
 ## 📚 Reference Projects
 

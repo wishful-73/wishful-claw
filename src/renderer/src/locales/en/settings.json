@@ -1169,6 +1169,7 @@
       "saving": "Saving…",
       "saved": "Saved. Requests without an explicit route resolve through the fallback model, then the global active model.",
       "saveFailed": "Save failed",
+      "loadFailed": "Load failed",
       "unconfigured": "Not configured",
       "selectModel": "Select model",
       "promptOptimizer": {
@@ -1336,6 +1337,67 @@
       }
     }
   },
+  "usage": {
+    "title": "Usage Analytics",
+    "refresh": "Refresh",
+    "empty": "No request records in this time range yet",
+    "footnote": "Statistics come from the model request log (one row per HTTP request, retries and failures included). Cost is computed only from prices explicitly configured on a model and stays blank without one.",
+    "ranges": {
+      "h24": "24 hours",
+      "d7": "7 days",
+      "d30": "30 days"
+    },
+    "stats": {
+      "requests": "Requests",
+      "input": "Raw input",
+      "billableInput": "Billable input",
+      "output": "Output",
+      "cacheRead": "Cache read",
+      "cacheCreation": "Cache creation",
+      "reasoning": "Reasoning",
+      "cost": "Cost",
+      "costHint": "Counted only when a price is set",
+      "avgDuration": "Avg duration",
+      "outcomeSummary": "{{success}} succeeded / {{error}} failed",
+      "retries": " · {{retryCount}} retried"
+    },
+    "chart": {
+      "title": "Request trend",
+      "desc": "Bucketed by hour or day; red marks failed requests",
+      "bucketTitle": "{{time}} · {{total}} requests",
+      "bucketErrors": " ({{errors}} failed)"
+    },
+    "byModel": {
+      "title": "By model",
+      "empty": "No data"
+    },
+    "bySource": {
+      "title": "By source",
+      "empty": "No data"
+    },
+    "detail": {
+      "title": "Request detail",
+      "truncated": "Showing the latest {{shown}} of {{total}}",
+      "count": "{{total}} requests in total",
+      "columns": {
+        "time": "Time",
+        "model": "Model",
+        "source": "Source",
+        "input": "Raw input",
+        "billableInput": "Billable input",
+        "output": "Output",
+        "cacheCreation": "Cache creation",
+        "reasoning": "Reasoning",
+        "duration": "Duration",
+        "cost": "Cost"
+      }
+    },
+    "rollup": {
+      "requests": "Requests",
+      "input": "Input",
+      "cost": "Cost"
+    }
+  },
   "analytics": {
     "outputTokens": "Output Tokens",
     "cacheTokenShare": "Cached Token Share"
@@ -1362,6 +1424,9 @@
         "permissions": "Permissions"
       },
       "loadingSettings": "Loading global channel settings…",
+      "loadFailed": "Failed to load global channel settings",
+      "saveFailed": "Save failed",
+      "retry": "Retry",
       "persona": "Reply Persona",
       "personaDesc": "Persona used for auto-replies on all channels",
       "noPersona": "Default (no persona)",
@@ -1426,7 +1491,7 @@
       "autoReply": "Auto Reply",
       "autoReplyDesc": "Automatically reply with AI when a message is received",
       "streamingReply": "Streaming Reply",
-      "streamingReplyDesc": "Stream reply content in real time (requires channel support)",
+      "streamingReplyDesc": "Stream reply content in real time (requires channel support); currently saved only and not enforced yet",
       "autoStart": "Auto Start",
       "autoStartDesc": "Automatically connect enabled channels when the app starts"
     },

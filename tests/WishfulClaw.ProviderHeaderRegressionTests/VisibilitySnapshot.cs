@@ -18,25 +18,70 @@ internal static class VisibilitySnapshot
     /// Run contexts covering the R-3.C scenarios. Kept as raw JSON so the snapshot exercises
     /// <c>AgentRunContextPolicy.Resolve</c> the same way production does, rather than constructing
     /// an <c>AgentRunContext</c> directly and bypassing the normalization under test.
+    ///
+    /// Each label must be the 档 that actually resolves. A project context without
+    /// <c>collaborationMode</c> normalizes to <c>cowork</c>, so omitting the field here would make a
+    /// "project:chat" row a silent duplicate of the cowork row — which is how the project chat
+    /// allowlist branch escaped coverage the first time. Only <c>project:cowork-by-default</c> may
+    /// omit it, and only because pinning that normalization is its job.
     /// </summary>
     private static readonly (string Name, string Json)[] Scenarios =
     [
-        ("project:chat", """{"sessionMode":"chat","scope":"project","projectId":"p1"}"""),
+        ("project:chat", """{"sessionMode":"chat","scope":"project","projectId":"p1","collaborationMode":"chat"}"""),
         ("project:cowork", """{"sessionMode":"agent","scope":"project","projectId":"p1","collaborationMode":"cowork"}"""),
+        ("project:cowork-by-default", """{"sessionMode":"chat","scope":"project","projectId":"p1"}"""),
         ("global:chat", """{"sessionMode":"global","scope":"global"}"""),
         ("global:channel", """{"sessionMode":"channel","channelSession":true,"scope":"global","pluginId":"feishu","externalChatId":"oc_1"}"""),
-        ("project:chat@subagent", """{"sessionMode":"subAgent","scope":"project","projectId":"p1"}"""),
+        ("global:chat@subagent", """{"sessionMode":"subAgent","scope":"global"}"""),
+        ("project:chat@subagent", """{"sessionMode":"subAgent","scope":"project","projectId":"p1","collaborationMode":"chat"}"""),
         ("project:cowork@subagent", """{"sessionMode":"subAgent","scope":"project","projectId":"p1","collaborationMode":"cowork"}"""),
         ("project:cowork@goalrunner", """{"sessionMode":"goal","scope":"project","projectId":"p1","collaborationMode":"cowork"}"""),
         ("project:cowork@goalsubagent", """{"sessionMode":"goalSubAgent","scope":"project","projectId":"p1","collaborationMode":"cowork"}"""),
         ("global:chat@automation", """{"sessionMode":"global","scope":"global","runtimeRole":"automation"}"""),
         ("project:cowork@automation", """{"sessionMode":"agent","scope":"project","projectId":"p1","collaborationMode":"cowork","runtimeRole":"automation"}"""),
         ("global:chat@pet", """{"sessionMode":"global","scope":"global","runtimeRole":"pet"}"""),
-        ("project:chat@providerturn", """{"sessionMode":"chat","scope":"project","projectId":"p1","runtimeRole":"providerturn"}"""),
-        ("project:chat@translation", """{"sessionMode":"chat","scope":"project","projectId":"p1","runtimeRole":"translation"}"""),
+        ("project:chat@providerturn", """{"sessionMode":"chat","scope":"project","projectId":"p1","collaborationMode":"chat","runtimeRole":"providerturn"}"""),
+        ("project:chat@translation", """{"sessionMode":"chat","scope":"project","projectId":"p1","collaborationMode":"chat","runtimeRole":"translation"}"""),
     ];
 
     private static readonly string[] Presets = ["full", "chat", "coding", "channel", "automation", "minimal", "skill-installer"];
+
+    /// <summary>
+    /// One swept run context, resolved exactly the way production resolves it.
+    ///
+    /// <see cref="ContextString"/> is carried alongside so other suites (the declaration census) can
+    /// ask "does this pattern match any context we actually sweep" without re-deriving the vocabulary.
+    /// </summary>
+    internal readonly record struct Scenario(
+        string Name,
+        AgentRunContext Context,
+        bool ChannelSession,
+        string AvailableMode,
+        string ContextString);
+
+    /// <summary>
+    /// Resolves <see cref="Scenarios"/> through <c>AgentRunContextPolicy</c> — the same call sequence
+    /// <see cref="Build"/> uses, so the sweep and any consumer of it share one vocabulary of contexts.
+    /// </summary>
+    internal static IReadOnlyList<Scenario> ResolveScenarios()
+    {
+        var resolved = new List<Scenario>(Scenarios.Length);
+
+        foreach (var (name, json) in Scenarios)
+        {
+            var parameters = Parse(json);
+            var context = AgentRunContextPolicy.Resolve(parameters);
+            var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
+            resolved.Add(new Scenario(
+                name,
+                context,
+                channelSession,
+                AgentRunContextPolicy.ResolveAvailableMode(parameters, context),
+                ToolVisibilityPolicy.RenderContext(context, channelSession)));
+        }
+
+        return resolved;
+    }
 
     /// <summary>
     /// Builds the full digest: for each preset × scenario, the sorted list of tool names that survive
@@ -45,29 +90,25 @@ internal static class VisibilitySnapshot
     public static string Build(ToolRegistry registry)
     {
         var builder = new StringBuilder();
+        var scenarios = ResolveScenarios();
 
         foreach (var presetId in Presets)
         {
             var preset = ToolPreset.BuiltIn[presetId];
             builder.Append("preset=").Append(presetId).Append('\n');
 
-            foreach (var (name, json) in Scenarios)
+            foreach (var scenario in scenarios)
             {
-                var parameters = Parse(json);
-                var context = AgentRunContextPolicy.Resolve(parameters);
-                var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
-                var availableMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, context);
-
-                var presetVisible = registry.GetToolDefinitions(preset, availableMode);
+                var presetVisible = registry.GetToolDefinitions(preset, scenario.AvailableMode);
                 var admitted = AgentRunContextPolicy.FilterToolDefinitions(
-                    presetVisible, registry, context, channelSession);
+                    presetVisible, registry, scenario.Context, scenario.ChannelSession);
 
                 var names = admitted
                     .Select(definition => definition.Name)
                     .OrderBy(value => value, StringComparer.Ordinal)
                     .ToList();
 
-                builder.Append("  ").Append(name).Append(" = ").Append(names.Count).Append(" [")
+                builder.Append("  ").Append(scenario.Name).Append(" = ").Append(names.Count).Append(" [")
                     .Append(string.Join(",", names)).Append("]\n");
             }
         }

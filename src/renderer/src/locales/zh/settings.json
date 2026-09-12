@@ -1013,7 +1013,7 @@
       "autoReply": "自动回复",
       "autoReplyDesc": "收到消息时自动使用 AI 回复",
       "streamingReply": "流式回复",
-      "streamingReplyDesc": "实时流式输出回复内容（需要渠道支持）",
+      "streamingReplyDesc": "实时流式输出回复内容（需要渠道支持）；当前仅记录设置，尚未接入强制执行",
       "autoStart": "自动启动",
       "autoStartDesc": "应用启动时自动连接已启用的渠道"
     },
@@ -1077,6 +1077,9 @@
         "permissions": "安全权限"
       },
       "loadingSettings": "正在读取全局渠道设置…",
+      "loadFailed": "全局渠道设置读取失败",
+      "saveFailed": "保存失败",
+      "retry": "重试",
       "persona": "回复人格",
       "personaDesc": "所有渠道自动回复使用的人格",
       "noPersona": "默认（无人格）",
@@ -1311,6 +1314,7 @@
       "saving": "保存中…",
       "saved": "已保存。无显式配置的请求会先按补位模型、再按全局激活模型解析。",
       "saveFailed": "保存失败",
+      "loadFailed": "读取失败",
       "unconfigured": "未配置",
       "selectModel": "选择模型",
       "promptOptimizer": {
@@ -1476,6 +1480,67 @@
         "label": "召回可见性",
         "desc": "在会话中展示本次召回了哪些记忆（或未召回的原因）"
       }
+    }
+  },
+  "usage": {
+    "title": "用量统计",
+    "refresh": "刷新",
+    "empty": "该时间范围内还没有请求记录",
+    "footnote": "统计基于模型请求日志（每次 HTTP 请求一行，含重试与失败）。成本仅按模型显式配置的价格计算，未配置价格时留空。",
+    "ranges": {
+      "h24": "24 小时",
+      "d7": "7 天",
+      "d30": "30 天"
+    },
+    "stats": {
+      "requests": "请求次数",
+      "input": "原始输入",
+      "billableInput": "计费输入",
+      "output": "输出",
+      "cacheRead": "缓存读取",
+      "cacheCreation": "缓存创建",
+      "reasoning": "推理",
+      "cost": "成本",
+      "costHint": "未配置价格则不计",
+      "avgDuration": "平均耗时",
+      "outcomeSummary": "{{success}} 成功 / {{error}} 失败",
+      "retries": " · {{retryCount}} 次重试"
+    },
+    "chart": {
+      "title": "请求趋势",
+      "desc": "按小时/按天分桶，红色为失败请求",
+      "bucketTitle": "{{time}} · {{total}} 次请求",
+      "bucketErrors": "（{{errors}} 次失败）"
+    },
+    "byModel": {
+      "title": "按模型",
+      "empty": "暂无数据"
+    },
+    "bySource": {
+      "title": "按来源",
+      "empty": "暂无数据"
+    },
+    "detail": {
+      "title": "请求明细",
+      "truncated": "显示最近 {{shown}} 条，共 {{total}} 条",
+      "count": "共 {{total}} 条",
+      "columns": {
+        "time": "时间",
+        "model": "模型",
+        "source": "来源",
+        "input": "原始输入",
+        "billableInput": "计费输入",
+        "output": "输出",
+        "cacheCreation": "缓存创建",
+        "reasoning": "推理",
+        "duration": "耗时",
+        "cost": "成本"
+      }
+    },
+    "rollup": {
+      "requests": "请求",
+      "input": "输入",
+      "cost": "成本"
     }
   },
   "analytics": {

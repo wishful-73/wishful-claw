@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/Version-0.2.27-orange" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows-blue" alt="Windows">
   <img src="https://img.shields.io/badge/.NET-11-blue" alt=".NET">
-  <img src="https://img.shields.io/badge/Electron-35-blue" alt="Electron">
+  <img src="https://img.shields.io/badge/Electron-43-blue" alt="Electron">
   <img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License">
 </p>
 

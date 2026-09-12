@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
@@ -28,10 +29,16 @@ public static class GlobalChannelSettingsService
             return Fail("Global channel settings must be an object");
         }
 
+        if (JsonNode.Parse(parameters.GetRawText()) is not JsonObject payload ||
+            !GlobalChannelSettingsStore.IsFullRecord(payload))
+        {
+            return Fail("Global channel settings write requires the complete settings object");
+        }
+
         try
         {
             var settings = JsonSerializer.Deserialize(
-                parameters.GetRawText(),
+                payload.ToJsonString(),
                 AgentRuntimeJsonContext.Default.GlobalChannelSettings);
             if (settings is null)
             {

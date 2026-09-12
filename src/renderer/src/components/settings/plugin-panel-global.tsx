@@ -218,7 +218,7 @@ function FeatureSettingsTab({
       <ToggleRow
         label={t('channel.features.streamingReply', { defaultValue: '流式回复' })}
         description={t('channel.features.streamingReplyDesc', {
-          defaultValue: '实时流式输出回复内容（需要渠道支持）'
+          defaultValue: '实时流式输出回复内容（需要渠道支持）；当前仅记录设置，尚未接入强制执行'
         })}
         checked={settings.streamingReply}
         onChange={(value) => patch('streamingReply', value)}
@@ -292,7 +292,8 @@ function PermissionSettingsTab({
 export function ChannelGlobalSettingsPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const [activeTab, setActiveTab] = useState<GlobalTab>('reply')
-  const { globalSettings, ensureGlobalSettings, updateGlobalSettings } = useChannelStore()
+  const { globalSettings, globalSettingsError, ensureGlobalSettings, loadGlobalSettings, updateGlobalSettings } =
+    useChannelStore()
 
   useEffect(() => {
     void ensureGlobalSettings()
@@ -357,14 +358,31 @@ export function ChannelGlobalSettingsPanel(): React.JSX.Element {
             <div className={cn(activeTab !== 'permissions' && 'hidden')}>
               <PermissionSettingsTab settings={globalSettings} patch={patch} />
             </div>
+            {globalSettingsError && (
+              <p className="mt-2 text-xs text-destructive">
+                {t('channel.global.saveFailed', { defaultValue: '保存失败' })}：{globalSettingsError}
+              </p>
+            )}
           </>
         ) : (
-          activeTab !== 'reply' && (
+          activeTab !== 'reply' &&
+          (globalSettingsError ? (
+            <div className="flex items-center gap-2 py-3 text-xs text-destructive">
+              {t('channel.global.loadFailed', { defaultValue: '全局渠道设置读取失败' })}
+              ：{globalSettingsError}
+              <button
+                onClick={() => void loadGlobalSettings()}
+                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {t('channel.global.retry', { defaultValue: '重试' })}
+              </button>
+            </div>
+          ) : (
             <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
               <Spinner className="size-3.5" />
               {t('channel.global.loadingSettings', { defaultValue: '读取全局渠道设置…' })}
             </div>
-          )
+          ))
         )}
       </div>
     </div>

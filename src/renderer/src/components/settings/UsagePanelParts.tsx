@@ -1,4 +1,5 @@
-﻿import { cn } from '@renderer/lib/utils'
+﻿import { useTranslation } from 'react-i18next'
+import { cn } from '@renderer/lib/utils'
 import type { UsageBucket } from './UsagePanel'
 
 export function formatTokens(value: number): string {
@@ -48,6 +49,7 @@ export function UsageSparkline({
   buckets: UsageBucket[]
   interval: 'hour' | 'day'
 }): React.JSX.Element {
+  const { t } = useTranslation('settings')
   const max = buckets.reduce((peak, b) => Math.max(peak, b.requestCount), 0)
 
   if (buckets.length === 0) {
@@ -66,9 +68,16 @@ export function UsageSparkline({
           <div
             key={bucket.bucketStart}
             className="group relative flex h-full min-w-0 flex-1 flex-col justify-end"
-            title={`${formatBucketLabel(bucket.bucketStart, interval)} · ${total} 次请求${
-              errors > 0 ? `（${errors} 次失败）` : ''
-            }`}
+            title={
+              t('usage.chart.bucketTitle', {
+                time: formatBucketLabel(bucket.bucketStart, interval),
+                total,
+                defaultValue: '{{time}} · {{total}} 次请求'
+              }) +
+              (errors > 0
+                ? t('usage.chart.bucketErrors', { errors, defaultValue: '（{{errors}} 次失败）' })
+                : '')
+            }
           >
             {total > 0 ? (
               <div
@@ -121,6 +130,7 @@ export function RollupTable<
   subOf: (row: T) => string
   emptyText: string
 }): React.JSX.Element {
+  const { t } = useTranslation('settings')
   if (rows.length === 0) {
     return <div className="py-6 text-center text-xs text-muted-foreground">{emptyText}</div>
   }
@@ -130,9 +140,9 @@ export function RollupTable<
       <thead>
         <tr className="border-b text-[11px] text-muted-foreground">
           <th className="py-1.5 pr-3 font-medium">—</th>
-          <th className="py-1.5 pr-3 text-right font-medium">请求</th>
-          <th className="py-1.5 pr-3 text-right font-medium">输入</th>
-          <th className="py-1.5 text-right font-medium">成本</th>
+          <th className="py-1.5 pr-3 text-right font-medium">{t('usage.rollup.requests', { defaultValue: '请求' })}</th>
+          <th className="py-1.5 pr-3 text-right font-medium">{t('usage.rollup.input', { defaultValue: '输入' })}</th>
+          <th className="py-1.5 text-right font-medium">{t('usage.rollup.cost', { defaultValue: '成本' })}</th>
         </tr>
       </thead>
       <tbody>

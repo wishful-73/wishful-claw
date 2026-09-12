@@ -3,7 +3,11 @@ import { cn } from '@renderer/lib/utils'
 import { type FileAwareEditorHandle, type FileAwareEditorProps, renderDocument, isSameDocument, parseDomToDocument, getSelectionOffsets, setSelectionFromPoint, setSelectionOffsets, editorDocumentToPlainText } from './file-aware-editor-utils'
 import { EditorSelectionOffsets } from './file-aware-editor-utils'
 import { isImeTailAheadOfState } from './file-aware-editor-ime'
-import { collapseRestoredHistorySelection, isHistoryInputType } from './file-aware-editor-undo-selection'
+import {
+  collapseRestoredHistorySelection,
+  isHistoryInputType,
+  selectionWasExpandedBeforeMutation
+} from './file-aware-editor-undo-selection'
 
 export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAwareEditorProps>(
   function FileAwareEditor(
@@ -34,6 +38,9 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
     const editorRef = React.useRef<HTMLDivElement>(null)
     const suggestionOverlayRef = React.useRef<HTMLDivElement>(null)
     const selectionRef = React.useRef<EditorSelectionOffsets>({ start: 0, end: 0 })
+    // 最近一次用户输入是否发生在「用户自己选中了一段」之上。撤销边界只能看到此刻的
+    // selectionRef（删除后已被收成折叠），要靠这个标记区分该保留的还原选区与幻影选区。
+    const lastMutationReplacedSelectionRef = React.useRef(false)
     const focusedRef = React.useRef(false)
     const selectionSyncFrameRef = React.useRef<number | null>(null)
     const documentSyncFrameRef = React.useRef<number | null>(null)
@@ -286,8 +293,15 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
           nativeEvent.inputType === 'deleteCompositionText'
         pendingUserInputRef.current = true
         if (isCompositionInput) isComposingRef.current = true
-        if (isHistoryInputType(nativeEvent.inputType) && selectionRef.current.start === selectionRef.current.end) {
-          collapseRestoredHistorySelection(event.currentTarget)
+        if (isHistoryInputType(nativeEvent.inputType)) {
+          const undoRestoredUserSelection = lastMutationReplacedSelectionRef.current
+          lastMutationReplacedSelectionRef.current = false
+          if (
+            !undoRestoredUserSelection &&
+            selectionRef.current.start === selectionRef.current.end
+          ) {
+            collapseRestoredHistorySelection(event.currentTarget)
+          }
         }
         syncLiveContent()
         if (isComposingRef.current) return
@@ -308,6 +322,11 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
         nativeEvent.inputType === 'deleteCompositionText'
       pendingUserInputRef.current = true
       if (isCompositionInput) isComposingRef.current = true
+      if (!isHistoryInputType(nativeEvent.inputType)) {
+        lastMutationReplacedSelectionRef.current = selectionWasExpandedBeforeMutation(
+          event.currentTarget
+        )
+      }
       syncLiveContent()
       if (!isComposingRef.current) scheduleDocumentSync()
     }, [onUserEdit, scheduleDocumentSync, syncLiveContent])

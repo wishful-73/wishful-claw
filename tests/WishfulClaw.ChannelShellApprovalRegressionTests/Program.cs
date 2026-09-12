@@ -1,4 +1,6 @@
+using System.Text.Json;
 using WishfulClaw.Agent;
+using WishfulClaw.Agent.Modules.Channels;
 using WishfulClaw.Contracts;
 using WishfulClaw.Infrastructure.Storage;
 
@@ -8,16 +10,18 @@ namespace WishfulClaw.ChannelShellApprovalRegressionTests;
 /// Pins the channel shell approval gate added by iteration 28 R-2. The retired per-channel
 /// <c>permissions.allowShell</c> read like a visibility switch but was never injected anywhere;
 /// the replacement is a global <c>shellRequiresApproval</c> whose only effect is whether a channel
-/// run pauses for confirmation before executing shell. These checks hold the three properties that
-/// make that safe: the default is "ask", a stored legacy value carries over to the safe side, and
-/// the waiver is limited to the shell tools of a channel session.
+/// run pauses for confirmation before executing shell. These checks hold the four properties that
+/// make that safe: the default is "ask", a stored legacy value carries over to the safe side, the
+/// waiver is limited to the shell tools of a channel session, and the write endpoint refuses a
+/// partial payload instead of storing default(<c>false</c>) — which would mean "no approval".
 /// </summary>
 internal static class Program
 {
     private const string ConfigFileName = "config.json";
 
     private static readonly string[] ShellToolNames = ["Bash", "Shell", "ShellExec", "PowerShell"];
-    private static readonly string[] NonShellApprovalTools = ["Write", "Edit", "NotebookEdit", "DesktopClick"];
+    private static readonly string[] NonShellApprovalTools =
+        ["Write", "Edit", "NotebookEdit", "DesktopClick", "DesktopType", "DesktopScroll"];
 
     private static string _dataDir = string.Empty;
     private static int _checks;
@@ -36,6 +40,7 @@ internal static class Program
             AssertWaiverCoversOnlyChannelShell();
             AssertApprovalSetStaysIntact();
             AssertWholeObjectSaveRoundTrip();
+            AssertPartialWriteIsRejected();
 
             Console.WriteLine($"Channel shell approval regression checks passed ({_checks} assertions).");
             return 0;
@@ -198,6 +203,72 @@ internal static class Program
         Assert(
             "re-arming approval from the panel takes effect immediately",
             !ToolCallProcessor.IsChannelShellApprovalWaived("Bash", isChannelSession: true));
+    }
+
+    // ── Group 7: the whole-object write contract behind channel/settings-write ──
+
+    private static void AssertPartialWriteIsRejected()
+    {
+        var full = """
+            {"autoReply":true,"streamingReply":false,"autoStart":true,
+             "shellRequiresApproval":true,"allowReadHome":false,
+             "readablePathPrefixes":[],"allowWriteOutside":false,"allowSubAgents":false}
+            """;
+        WriteRawChannelSettings(full);
+
+        Assert("a complete payload is accepted", WriteSettings(full).GetProperty("success").GetBoolean());
+        Assert(
+            "the accepted payload is what the store now holds",
+            !GlobalChannelSettingsStore.Read().StreamingReply);
+
+        // This is the shape a failed read arrives as, and the shape a stale renderer would
+        // send after merging a patch onto it. Accepted, `shellRequiresApproval` would
+        // deserialize to default(false) — approval waived with no user action.
+        var before = File.ReadAllText(ConfigPath());
+        foreach (var rejected in new[]
+        {
+            """{"error":"boom"}""",
+            """{"shellRequiresApproval":false}""",
+            // Adds a key the store never writes, so the payload did not come from a read.
+            """
+            {"autoReply":true,"streamingReply":false,"autoStart":true,"shellRequiresApproval":false,
+             "allowReadHome":false,"readablePathPrefixes":[],"allowWriteOutside":false,
+             "allowSubAgents":false,"allowShell":true}
+            """,
+            "[]",
+            "null"
+        })
+        {
+            using var payload = JsonDocument.Parse(rejected);
+            var response = WriteSettings(payload.RootElement);
+            Assert($"partial or unknown-key payload is refused: {trimmedLabel(rejected)}",
+                !response.GetProperty("success").GetBoolean());
+            Assert($"a refused write leaves the store untouched: {trimmedLabel(rejected)}",
+                string.Equals(before, File.ReadAllText(ConfigPath()), StringComparison.Ordinal));
+        }
+
+        Assert(
+            "the gate still asks after all the rejected attempts",
+            !ToolCallProcessor.IsChannelShellApprovalWaived("Bash", isChannelSession: true));
+    }
+
+    private static JsonElement WriteSettings(string payloadJson)
+    {
+        using var parameters = JsonDocument.Parse(payloadJson);
+        return WriteSettings(parameters.RootElement);
+    }
+
+    private static JsonElement WriteSettings(JsonElement parameters)
+    {
+        var response = GlobalChannelSettingsService.Write(parameters);
+        using var envelope = JsonDocument.Parse(response.ToJsonBytes(null));
+        return envelope.RootElement.GetProperty("result").Clone();
+    }
+
+    private static string trimmedLabel(string json)
+    {
+        var flat = json.ReplaceLineEndings().Replace("\n", "").Replace(" ", "");
+        return flat.Length <= 40 ? flat : flat[..40] + "…";
     }
 
     // ── Helpers ──

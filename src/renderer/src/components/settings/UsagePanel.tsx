@@ -272,9 +272,17 @@ export function UsagePanel(): React.JSX.Element {
             value={String(overview?.requestCount ?? 0)}
             hint={
               overview
-                ? `${overview.successCount} 成功 / ${overview.errorCount} 失败${
-                    overview.retryCount > 0 ? ` · ${overview.retryCount} 次重试` : ''
-                  }`
+                ? t('usage.stats.outcomeSummary', {
+                    success: overview.successCount,
+                    error: overview.errorCount,
+                    defaultValue: '{{success}} 成功 / {{error}} 失败'
+                  }) +
+                  (overview.retryCount > 0
+                    ? t('usage.stats.retries', {
+                        retryCount: overview.retryCount,
+                        defaultValue: ' · {{retryCount}} 次重试'
+                      })
+                    : '')
                 : undefined
             }
           />
@@ -398,16 +406,16 @@ export function UsagePanel(): React.JSX.Element {
               <table className="w-full min-w-[780px] text-left text-[12px]">
                 <thead>
                   <tr className="border-b text-[11px] text-muted-foreground">
-                    <th className="py-1.5 pr-3 font-medium">时间</th>
-                    <th className="py-1.5 pr-3 font-medium">模型</th>
-                    <th className="py-1.5 pr-3 font-medium">来源</th>
-                    <th className="py-1.5 pr-3 text-right font-medium">原始输入</th>
-                    <th className="py-1.5 pr-3 text-right font-medium">计费输入</th>
-                    <th className="py-1.5 pr-3 text-right font-medium">输出</th>
-                    <th className="py-1.5 pr-3 text-right font-medium">缓存创建</th>
-                    <th className="py-1.5 pr-3 text-right font-medium">推理</th>
-                    <th className="py-1.5 pr-3 text-right font-medium">耗时</th>
-                    <th className="py-1.5 text-right font-medium">成本</th>
+                    <th className="py-1.5 pr-3 font-medium">{t('usage.detail.columns.time', { defaultValue: '时间' })}</th>
+                    <th className="py-1.5 pr-3 font-medium">{t('usage.detail.columns.model', { defaultValue: '模型' })}</th>
+                    <th className="py-1.5 pr-3 font-medium">{t('usage.detail.columns.source', { defaultValue: '来源' })}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('usage.detail.columns.input', { defaultValue: '原始输入' })}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('usage.detail.columns.billableInput', { defaultValue: '计费输入' })}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('usage.detail.columns.output', { defaultValue: '输出' })}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('usage.detail.columns.cacheCreation', { defaultValue: '缓存创建' })}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('usage.detail.columns.reasoning', { defaultValue: '推理' })}</th>
+                    <th className="py-1.5 pr-3 text-right font-medium">{t('usage.detail.columns.duration', { defaultValue: '耗时' })}</th>
+                    <th className="py-1.5 text-right font-medium">{t('usage.detail.columns.cost', { defaultValue: '成本' })}</th>
                   </tr>
                 </thead>
                 <tbody>

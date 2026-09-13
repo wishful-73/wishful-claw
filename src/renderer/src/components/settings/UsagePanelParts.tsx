@@ -1,6 +1,20 @@
-﻿import { useTranslation } from 'react-i18next'
+﻿import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import type { UsageBucket } from './UsagePanel'
+
+export interface UsageModelBucket {
+  bucketStart: number
+  requestCount: number
+}
+
+export interface UsageModelSeries {
+  providerId?: string | null
+  providerName?: string | null
+  modelId: string
+  providerType?: string | null
+  buckets: UsageModelBucket[]
+}
 
 export function formatTokens(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0'
@@ -42,61 +56,401 @@ export function sourceLabel(row: {
   return parts.length > 0 ? `${role} · ${parts.join(':')}` : role
 }
 
-export function UsageSparkline({
+const chartColors = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)'
+]
+
+function modelColor(index: number): string {
+  return chartColors[index % chartColors.length]
+}
+
+function modelSeriesLabel(item: UsageModelSeries): string {
+  const provider = item.providerName ?? item.providerType ?? item.providerId ?? '未知服务商'
+  return `${provider} · ${item.modelId}`
+}
+
+function axisUpperBound(value: number): number {
+  const safeValue = Math.max(1, value)
+  const magnitude = 10 ** Math.floor(Math.log10(safeValue))
+  const normalized = safeValue / magnitude
+  const niceNormalized = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
+  return niceNormalized * magnitude
+}
+
+function ChartYAxis({
+  width,
+  height,
+  padding,
+  max
+}: {
+  width: number
+  height: number
+  padding: { top: number; right: number; bottom: number; left: number }
+  max: number
+}): React.JSX.Element {
+  const chartHeight = height - padding.top - padding.bottom
+  const tickCount = max <= 4 ? max : 4
+  const ticks = Array.from({ length: tickCount + 1 }, (_, index) => index)
+
+  return (
+    <g>
+      {ticks.map((index) => {
+        const ratio = index / tickCount
+        const value = Math.round(max * ratio)
+        const y = padding.top + chartHeight - chartHeight * ratio
+        return (
+          <g key={`tick-${index}`}>
+            <line
+              x1={padding.left}
+              x2={width - padding.right}
+              y1={y}
+              y2={y}
+              className="stroke-border/60"
+              strokeDasharray="3 5"
+            />
+            <text
+              x={padding.left - 8}
+              y={y}
+              textAnchor="end"
+              dominantBaseline="middle"
+              className="fill-muted-foreground"
+              fontSize="11"
+            >
+              {value}
+            </text>
+          </g>
+        )
+      })}
+      <line
+        x1={padding.left}
+        x2={padding.left}
+        y1={padding.top}
+        y2={height - padding.bottom}
+        className="stroke-border"
+      />
+      <line
+        x1={padding.left}
+        x2={width - padding.right}
+        y1={height - padding.bottom}
+        y2={height - padding.bottom}
+        className="stroke-border"
+      />
+      <title>{`纵轴范围 0-${max}`}</title>
+    </g>
+  )
+}
+
+function getHoveredBucketIndex(
+  event: React.MouseEvent<SVGRectElement>,
+  bucketCount: number
+): number {
+  const bounds = event.currentTarget.getBoundingClientRect()
+  const ratio = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width))
+  return Math.min(bucketCount - 1, Math.max(0, Math.round(ratio * Math.max(bucketCount - 1, 1))))
+}
+
+function ChartTooltip({
+  bucket,
+  bucketIndex,
+  series,
+  interval,
+  left
+}: {
+  bucket: UsageBucket
+  bucketIndex: number
+  series: UsageModelSeries[]
+  interval: 'hour' | 'day'
+  left: number
+}): React.JSX.Element {
+  return (
+    <div
+      className="pointer-events-none absolute top-2 z-10 min-w-[170px] -translate-x-1/2 rounded-md border border-border/80 bg-popover/95 px-3 py-2 text-xs text-popover-foreground shadow-lg backdrop-blur-sm"
+      style={{ left: `${left}%` }}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="mb-1.5 border-b border-border/70 pb-1 font-medium">
+        {formatAxisLabel(bucket.bucketStart, interval)}
+      </div>
+      <div className="space-y-1">
+        {series.map((item, index) => (
+          <div
+            key={`${item.providerId ?? 'unknown'}-${item.modelId}`}
+            className="flex items-center justify-between gap-4"
+          >
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                className="size-2 shrink-0 rounded-full"
+                style={{ backgroundColor: modelColor(index) }}
+              />
+              <span className="max-w-[190px] truncate" title={modelSeriesLabel(item)}>
+                {modelSeriesLabel(item)}
+              </span>
+            </span>
+            <strong className="shrink-0 tabular-nums">{item.buckets[bucketIndex]?.requestCount ?? 0}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function smoothPath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return ''
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`
+
+  let path = `M ${points[0].x} ${points[0].y}`
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const previous = points[index - 1] ?? points[index]
+    const current = points[index]
+    const next = points[index + 1]
+    const following = points[index + 2] ?? next
+    const control1 = {
+      x: current.x + (next.x - previous.x) / 6,
+      y: current.y + (next.y - previous.y) / 6
+    }
+    const control2 = {
+      x: next.x - (following.x - current.x) / 6,
+      y: next.y - (following.y - current.y) / 6
+    }
+    const minY = Math.min(current.y, next.y)
+    const maxY = Math.max(current.y, next.y)
+    control1.y = Math.min(maxY, Math.max(minY, control1.y))
+    control2.y = Math.min(maxY, Math.max(minY, control2.y))
+    path += ` C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${next.x} ${next.y}`
+  }
+  return path
+}
+
+function ChartLegend({ series }: { series: UsageModelSeries[] }): React.JSX.Element {
+  return (
+    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+      {series.map((item, index) => (
+        <span
+          key={`${item.providerId ?? 'unknown'}-${item.modelId}`}
+          className="inline-flex max-w-full items-center gap-1.5"
+        >
+          <span
+            className="size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: modelColor(index) }}
+          />
+          <span className="max-w-[260px] truncate" title={modelSeriesLabel(item)}>
+            {modelSeriesLabel(item)}
+          </span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function TimeAxisLabels({
   buckets,
   interval
 }: {
   buckets: UsageBucket[]
   interval: 'hour' | 'day'
 }): React.JSX.Element {
-  const { t } = useTranslation('settings')
-  const max = buckets.reduce((peak, b) => Math.max(peak, b.requestCount), 0)
+  return (
+    <div
+      className="grid text-center text-[9px] text-muted-foreground/60"
+      style={{ gridTemplateColumns: `repeat(${Math.max(buckets.length, 1)}, minmax(0, 1fr))` }}
+    >
+      {buckets.map((bucket) => (
+        <span
+          key={bucket.bucketStart}
+          className="truncate px-0.5"
+          title={formatAxisLabel(bucket.bucketStart, interval)}
+        >
+          {formatBucketLabel(bucket.bucketStart, interval)}
+        </span>
+      ))}
+    </div>
+  )
+}
 
-  if (buckets.length === 0) {
-    return <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">—</div>
-  }
+export function UsageLineChart({
+  buckets,
+  series,
+  interval
+}: {
+  buckets: UsageBucket[]
+  series: UsageModelSeries[]
+  interval: 'hour' | 'day'
+}): React.JSX.Element {
+  const dataMax = Math.max(
+    0,
+    ...series.flatMap((item) => item.buckets.map((bucket) => bucket.requestCount))
+  )
+  const max = axisUpperBound(dataMax)
+  const width = 800
+  const height = 240
+  const padding = { top: 12, right: 8, bottom: 20, left: 48 }
+  const chartWidth = width - padding.left - padding.right
+  const chartHeight = height - padding.top - padding.bottom
+  const xOf = (index: number): number =>
+    padding.left + (index / Math.max(buckets.length - 1, 1)) * chartWidth
+  const yOf = (value: number): number => padding.top + chartHeight - (value / max) * chartHeight
+  const [hoveredBucket, setHoveredBucket] = useState<number | null>(null)
+  const hoveredBucketData = hoveredBucket == null ? null : buckets[hoveredBucket]
+  const tooltipLeft =
+    hoveredBucket == null ? 50 : (hoveredBucket / Math.max(buckets.length - 1, 1)) * 100
 
   return (
-    <div className="flex h-32 items-end gap-[2px]">
-      {buckets.map((bucket) => {
-        const total = bucket.requestCount
-        const errors = bucket.errorCount
-        const totalPct = max === 0 ? 0 : (total / max) * 100
-        const errorPct = total === 0 ? 0 : (errors / total) * 100
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-56 w-full overflow-visible"
+        role="img"
+        aria-label="按模型请求趋势"
+        preserveAspectRatio="none"
+      >
+        <ChartYAxis width={width} height={height} padding={padding} max={max} />
+        {series.map((item, seriesIndex) => {
+          const points = buckets.map((_, bucketIndex) => {
+            const value = item.buckets[bucketIndex]?.requestCount ?? 0
+            return { x: xOf(bucketIndex), y: yOf(value) }
+          })
+          return (
+            <g key={`${item.providerId ?? 'unknown'}-${item.modelId}`}>
+              <title>{modelSeriesLabel(item)}</title>
+              <path
+                d={smoothPath(points)}
+                fill="none"
+                stroke={modelColor(seriesIndex)}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+              {item.buckets.map((bucket, bucketIndex) => (
+                <circle
+                  key={`${item.providerId ?? 'unknown'}-${item.modelId}-${bucket.bucketStart}`}
+                  cx={xOf(bucketIndex)}
+                  cy={yOf(bucket.requestCount)}
+                  r={hoveredBucket === bucketIndex ? '4' : '2.5'}
+                  fill={modelColor(seriesIndex)}
+                  opacity={hoveredBucket === bucketIndex ? 1 : 0.72}
+                  stroke={hoveredBucket === bucketIndex ? 'var(--background)' : undefined}
+                  strokeWidth={hoveredBucket === bucketIndex ? 1.5 : undefined}
+                  vectorEffect="non-scaling-stroke"
+                >
+                  <title>
+                    {`${modelSeriesLabel(item)} · ${formatBucketLabel(bucket.bucketStart, interval)} · ${bucket.requestCount} 次请求`}
+                  </title>
+                </circle>
+              ))}
+            </g>
+          )
+        })}
+        <rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="transparent"
+          onMouseMove={(event) => setHoveredBucket(getHoveredBucketIndex(event, buckets.length))}
+          onMouseLeave={() => setHoveredBucket(null)}
+        />
+      </svg>
+      {hoveredBucketData && (
+        <ChartTooltip
+          bucket={hoveredBucketData}
+          bucketIndex={hoveredBucket ?? 0}
+          series={series}
+          interval={interval}
+          left={tooltipLeft}
+        />
+      )}
+      <TimeAxisLabels buckets={buckets} interval={interval} />
+      <ChartLegend series={series} />
+    </div>
+  )
+}
 
-        return (
-          <div
-            key={bucket.bucketStart}
-            className="group relative flex h-full min-w-0 flex-1 flex-col justify-end"
-            title={
-              t('usage.chart.bucketTitle', {
-                time: formatBucketLabel(bucket.bucketStart, interval),
-                total,
-                defaultValue: '{{time}} · {{total}} 次请求'
-              }) +
-              (errors > 0
-                ? t('usage.chart.bucketErrors', { errors, defaultValue: '（{{errors}} 次失败）' })
-                : '')
-            }
-          >
-            {total > 0 ? (
-              <div
-                className="relative w-full rounded-sm bg-primary/70 transition-colors group-hover:bg-primary"
-                style={{ height: `${Math.max(totalPct, 2)}%` }}
+export function UsageBarChart({
+  buckets,
+  series,
+  interval
+}: {
+  buckets: UsageBucket[]
+  series: UsageModelSeries[]
+  interval: 'hour' | 'day'
+}): React.JSX.Element {
+  const dataMax = Math.max(
+    0,
+    ...series.flatMap((item) => item.buckets.map((bucket) => bucket.requestCount))
+  )
+  const max = axisUpperBound(dataMax)
+  const width = 800
+  const height = 240
+  const padding = { top: 12, right: 8, bottom: 20, left: 48 }
+  const chartWidth = width - padding.left - padding.right
+  const chartHeight = height - padding.top - padding.bottom
+  const groupWidth = chartWidth / Math.max(buckets.length, 1)
+  const barWidth = Math.max(1, (groupWidth / Math.max(series.length, 1)) * 0.72)
+  const yOf = (value: number): number => padding.top + chartHeight - (value / max) * chartHeight
+  const [hoveredBucket, setHoveredBucket] = useState<number | null>(null)
+  const hoveredBucketData = hoveredBucket == null ? null : buckets[hoveredBucket]
+  const tooltipLeft =
+    hoveredBucket == null ? 50 : ((hoveredBucket + 0.5) / Math.max(buckets.length, 1)) * 100
+
+  return (
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-56 w-full overflow-visible"
+        role="img"
+        aria-label="按模型请求量柱状图"
+        preserveAspectRatio="none"
+      >
+        <ChartYAxis width={width} height={height} padding={padding} max={max} />
+        {buckets.map((bucket, bucketIndex) =>
+          series.map((item, seriesIndex) => {
+            const value = item.buckets[bucketIndex]?.requestCount ?? 0
+            const heightValue = (value / max) * chartHeight
+            return (
+              <rect
+                key={`${item.providerId ?? 'unknown'}-${item.modelId}-${bucket.bucketStart}`}
+                x={padding.left + bucketIndex * groupWidth + seriesIndex * (groupWidth / Math.max(series.length, 1)) + (groupWidth / Math.max(series.length, 1) - barWidth) / 2}
+                y={yOf(value)}
+                width={barWidth}
+                height={heightValue}
+                rx="1.5"
+                fill={modelColor(seriesIndex)}
+                opacity={hoveredBucket === bucketIndex ? 1 : 0.82}
               >
-                {errors > 0 && (
-                  <div
-                    className="absolute inset-x-0 top-0 rounded-sm bg-destructive/80"
-                    style={{ height: `${errorPct}%` }}
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="w-full rounded-sm bg-muted-foreground/20" style={{ height: 2 }} />
-            )}
-          </div>
-        )
-      })}
+                <title>
+                  {`${modelSeriesLabel(item)} · ${formatBucketLabel(bucket.bucketStart, interval)} · ${value} 次请求`}
+                </title>
+              </rect>
+            )
+          })
+        )}
+        <rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="transparent"
+          onMouseMove={(event) => setHoveredBucket(getHoveredBucketIndex(event, buckets.length))}
+          onMouseLeave={() => setHoveredBucket(null)}
+        />
+      </svg>
+      {hoveredBucketData && (
+        <ChartTooltip
+          bucket={hoveredBucketData}
+          bucketIndex={hoveredBucket ?? 0}
+          series={series}
+          interval={interval}
+          left={tooltipLeft}
+        />
+      )}
+      <TimeAxisLabels buckets={buckets} interval={interval} />
+      <ChartLegend series={series} />
     </div>
   )
 }

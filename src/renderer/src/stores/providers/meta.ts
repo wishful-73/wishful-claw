@@ -11,7 +11,7 @@ const museThinkingConfig: ThinkingConfig = {
 
 export const metaPreset: BuiltinProviderPreset = {
   builtinId: 'meta',
-  version: 1,
+  version: 2,
   name: 'Meta',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.meta.ai/v1',

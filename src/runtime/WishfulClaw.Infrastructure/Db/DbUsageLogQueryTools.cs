@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
@@ -136,6 +136,76 @@ public static partial class DbUsageLogQueryTools
         }
     }
 
+    /// <summary>
+    /// Time series split by model. Every model receives the same gap-filled bucket
+    /// sequence as the aggregate chart, so the renderer can draw one line/bar series
+    /// per model without inferring missing time points from request detail rows.
+    /// </summary>
+    public static WorkerResponse ModelBuckets(JsonElement parameters)
+    {
+        var window = ResolveWindow(parameters);
+        var interval = ResolveInterval(parameters, window);
+        var step = interval == "hour" ? HourMs : DayMs;
+        var offsetMs = ResolveTimezoneOffsetMinutes(parameters) * 60_000L;
+        try
+        {
+            var db = DbClient.GetClient(parameters);
+            if (db is null) return Error<UsageModelBucketsResult>("Database not initialized");
+
+            var origin = FloorTo(window.From + offsetMs, step) - offsetMs;
+            var rows = db.Query(
+                @"SELECT
+                    COALESCE(provider_id, '(unknown)')                                  AS provider_id,
+                    COALESCE(model_id, '(unknown)')                                     AS model_id,
+                    MIN(provider_type)                                                  AS provider_type,
+                    (((started_at + $offset) / $step) * $step) - $offset              AS bucket_start,
+                    COUNT(*)                                                            AS request_count
+                  FROM request_usage_logs
+                  WHERE started_at >= $from AND started_at < $to
+                  GROUP BY provider_id, model_id, bucket_start
+                  ORDER BY provider_id, model_id, bucket_start;",
+                reader => new ModelBucketQueryRow(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.GetInt64(3),
+                    reader.GetInt32(4)),
+                new SqliteParameter("$step", step),
+                new SqliteParameter("$offset", offsetMs),
+                new SqliteParameter("$from", window.From),
+                new SqliteParameter("$to", window.To));
+
+            var grouped = new Dictionary<(string ProviderId, string ModelId), (string? ProviderType, List<ModelBucketQueryRow> Rows)>();
+            foreach (var row in rows)
+            {
+                var key = (row.ProviderId, row.ModelId);
+                if (!grouped.TryGetValue(key, out var group))
+                {
+                    group = (row.ProviderType, []);
+                    grouped[key] = group;
+                }
+                group.Rows.Add(row);
+            }
+
+            var series = new List<UsageModelSeries>(grouped.Count);
+            foreach (var pair in grouped)
+            {
+                series.Add(new UsageModelSeries(
+                    pair.Key.ProviderId == "(unknown)" ? null : pair.Key.ProviderId,
+                    pair.Key.ModelId,
+                    pair.Value.ProviderType,
+                    GapFillModel(pair.Value.Rows, origin, window.To, step)));
+            }
+
+            var dto = new UsageModelBucketsResult(true, interval, window.From, window.To, series, null);
+            return WorkerResponse.Json(dto, InfrastructureJsonContext.Default.UsageModelBucketsResult);
+        }
+        catch (Exception ex)
+        {
+            return Error<UsageModelBucketsResult>(ex.Message);
+        }
+    }
+
     /// <summary>Per-model rollup, ordered by request volume.</summary>
     public static WorkerResponse ByModel(JsonElement parameters)
     {
@@ -147,6 +217,7 @@ public static partial class DbUsageLogQueryTools
 
             var rows = db.Query(
                 @"SELECT
+                    COALESCE(provider_id, '(unknown)')                                  AS provider_id,
                     COALESCE(model_id, '(unknown)')                                     AS model_id,
                     MIN(provider_type)                                                  AS provider_type,
                     COUNT(*)                                                            AS request_count,
@@ -156,16 +227,17 @@ public static partial class DbUsageLogQueryTools
                     SUM(total_cost_usd)                                                 AS total_cost_usd
                   FROM request_usage_logs
                   WHERE started_at >= $from AND started_at < $to
-                  GROUP BY model_id
+                  GROUP BY provider_id, model_id
                   ORDER BY request_count DESC;",
                 reader => new UsageModelRow(
-                    reader.GetString(0),
-                    reader.IsDBNull(1) ? null : reader.GetString(1),
-                    reader.GetInt32(2),
+                    reader.GetString(0) == "(unknown)" ? null : reader.GetString(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
                     reader.GetInt32(3),
-                    reader.GetInt64(4),
+                    reader.GetInt32(4),
                     reader.GetInt64(5),
-                    reader.IsDBNull(6) ? null : reader.GetDouble(6)),
+                    reader.GetInt64(6),
+                    reader.IsDBNull(7) ? null : reader.GetDouble(7)),
                 new SqliteParameter("$from", window.From),
                 new SqliteParameter("$to", window.To));
 
@@ -312,6 +384,13 @@ public static partial class DbUsageLogQueryTools
         };
     }
 
+    private sealed record ModelBucketQueryRow(
+        string ProviderId,
+        string ModelId,
+        string? ProviderType,
+        long BucketStart,
+        int RequestCount);
+
     private static UsageLogDetailRow MapDetailRow(SqliteDataReader r) => new(
         r.GetString(0),
         Str(r, 1), Str(r, 2), Str(r, 3), Str(r, 4),
@@ -417,6 +496,26 @@ public static partial class DbUsageLogQueryTools
         return result;
     }
 
+    private static List<UsageModelBucketRow> GapFillModel(
+        List<ModelBucketQueryRow> rows, long origin, long to, long step)
+    {
+        var byStart = new Dictionary<long, int>(rows.Count);
+        foreach (var row in rows)
+        {
+            byStart[row.BucketStart] = row.RequestCount;
+        }
+
+        var result = new List<UsageModelBucketRow>();
+        for (var start = origin; start < to; start += step)
+        {
+            result.Add(new UsageModelBucketRow(
+                start,
+                byStart.TryGetValue(start, out var count) ? count : 0));
+        }
+
+        return result;
+    }
+
     private static WorkerResponse Error<T>(string message)
     {
         // Reuse the per-type error constructor via a switch: WorkerResponse.Json
@@ -430,6 +529,8 @@ public static partial class DbUsageLogQueryTools
                 new UsageOverviewResult(false, 0, now, 0, 0, 0, 0, 0, 0, 0, 0, 0, null, null, 0, message),
             nameof(UsageBucketsResult) =>
                 new UsageBucketsResult(false, "hour", 0, now, [], message),
+            nameof(UsageModelBucketsResult) =>
+                new UsageModelBucketsResult(false, "hour", 0, now, [], message),
             nameof(UsageByModelResult) =>
                 new UsageByModelResult(false, 0, now, [], message),
             nameof(UsageBySourceResult) =>
@@ -443,6 +544,7 @@ public static partial class DbUsageLogQueryTools
         {
             UsageOverviewResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageOverviewResult),
             UsageBucketsResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageBucketsResult),
+            UsageModelBucketsResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageModelBucketsResult),
             UsageByModelResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageByModelResult),
             UsageBySourceResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageBySourceResult),
             UsageLogsResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageLogsResult),

@@ -42,6 +42,10 @@
       "label": "AI Providers",
       "desc": "Configure API keys, base URLs, test connectivity"
     },
+    "modelManagement": {
+      "label": "Model Management",
+      "desc": "Manage providers and models for auxiliary requests"
+    },
     "runtime": {
       "label": "Runtime & Performance",
       "desc": "API request timeout, retry policy and context compression"
@@ -237,6 +241,7 @@
       "apiKeyPlaceholder": "Enter API Key",
       "apiKeyNotRequired": "API Key not required",
       "baseUrl": "Base URL",
+      "officialWebsite": "Official website",
       "testSuccess": "Connection test succeeded",
       "testFailed": "Connection test failed",
       "protocolType": "Protocol Type",
@@ -1233,7 +1238,8 @@
       "downloaded": "Update {{version}} downloaded, waiting to install",
       "error": "Update failed",
       "install": "Restart and install",
-      "details": "Details"
+      "details": "Details",
+      "dragHint": "Drag to move"
     },
     "progress": {
       "unknown": "Unknown",
@@ -1252,7 +1258,6 @@
     "toolExecution": "Tool Execution",
     "developer": "Developer",
     "startup": "Startup",
-    "auxiliaryModels": "Auxiliary Models",
     "memoryOrganization": "Auto Organization",
     "memoryTiers": "Tier Thresholds",
     "memoryRecall": "Proactive Recall"

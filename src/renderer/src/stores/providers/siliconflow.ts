@@ -7,9 +7,16 @@
 
 import type { BuiltinProviderPreset } from './types'
 
+// v2: 2026-09 按硅基流动官方「模型价格总览」（siliconflow.cn/pricing）复核。
+//     官方为人民币牌价（每百万 token），按 1 USD = 6.7106 CNY 折算为文件所用的 USD 口径。
+//     Hunyuan-A13B-Instruct 等模型官方实行峰谷计价（9:00-18:00 为高价档），
+//     此处一律取标准档（9:00-18:00）；DeepSeek-V4-Flash 同理取 0-2/8-24 点档。
+//     本次仅复核官方价格页公示的模型，并新增该页新公示的 GLM-5.3 / Hy4 preview；
+//     平台完整目录需鉴权（GET /v1/models 返回 401），故未做删除。
+
 export const siliconflowPreset: BuiltinProviderPreset = {
   builtinId: 'siliconflow',
-  version: 1,
+  version: 2,
   name: '硅基流动',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.siliconflow.cn/v1',
@@ -26,8 +33,9 @@ export const siliconflowPreset: BuiltinProviderPreset = {
       maxOutputTokens: 8_192,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 1.6,
-      outputPrice: 3.135,
+      inputPrice: 1.788,
+      outputPrice: 3.577,
+      cacheHitPrice: 0.149,
       supportsThinking: true,
       thinkingConfig: { bodyParams: { enable_thinking: true } }
     },
@@ -40,8 +48,9 @@ export const siliconflowPreset: BuiltinProviderPreset = {
       maxOutputTokens: 8_192,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.13,
-      outputPrice: 0.28,
+      inputPrice: 0.447,
+      outputPrice: 1.341,
+      cacheHitPrice: 0.045,
       supportsThinking: true,
       thinkingConfig: { bodyParams: { enable_thinking: true } }
     },
@@ -54,8 +63,9 @@ export const siliconflowPreset: BuiltinProviderPreset = {
       maxOutputTokens: 8_192,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.27,
-      outputPrice: 0.42,
+      inputPrice: 0.596,
+      outputPrice: 0.894,
+      cacheHitPrice: 0.06,
       supportsThinking: true,
       thinkingConfig: { bodyParams: { enable_thinking: true } }
     },
@@ -82,8 +92,9 @@ export const siliconflowPreset: BuiltinProviderPreset = {
       maxOutputTokens: 8_192,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.27,
-      outputPrice: 1.0,
+      inputPrice: 0.596,
+      outputPrice: 1.788,
+      cacheHitPrice: 0.06,
       supportsThinking: true,
       thinkingConfig: { bodyParams: { enable_thinking: true } }
     },
@@ -97,10 +108,23 @@ export const siliconflowPreset: BuiltinProviderPreset = {
       maxOutputTokens: 32_768,
       supportsVision: true,
       supportsFunctionCall: true,
-      inputPrice: 0.2,
-      outputPrice: 1.6,
+      inputPrice: 0.268,
+      outputPrice: 1.61,
       supportsThinking: true,
       thinkingConfig: { bodyParams: { enable_thinking: true } }
+    },
+    {
+      id: 'tencent/Hy4-preview',
+      name: 'Hy4 Preview',
+      icon: 'hunyuan',
+      enabled: true,
+      contextLength: 1_048_576,
+      maxOutputTokens: 64_000,
+      supportsVision: false,
+      supportsFunctionCall: true,
+      inputPrice: 0.894,
+      outputPrice: 2.682,
+      cacheHitPrice: 0.045
     },
     {
       id: 'Qwen/Qwen3-235B-A22B',
@@ -154,8 +178,22 @@ export const siliconflowPreset: BuiltinProviderPreset = {
       maxOutputTokens: 8_192,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 1.302,
-      outputPrice: 4.092
+      inputPrice: 1.192,
+      outputPrice: 4.172,
+      cacheHitPrice: 0.298,
+    },
+    {
+      id: 'zai-org/GLM-5.3',
+      name: 'GLM-5.3',
+      icon: 'chatglm',
+      enabled: true,
+      contextLength: 1_048_576,
+      maxOutputTokens: 8_192,
+      supportsVision: false,
+      supportsFunctionCall: true,
+      inputPrice: 1.192,
+      outputPrice: 4.172,
+      cacheHitPrice: 0.298
     },
     {
       id: 'THUDM/GLM-4.5-Air',
@@ -166,8 +204,8 @@ export const siliconflowPreset: BuiltinProviderPreset = {
       maxOutputTokens: 8_192,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.14,
-      outputPrice: 0.86
+      inputPrice: 0.149,
+      outputPrice: 0.894
     },
     {
       id: 'THUDM/GLM-4-32B-0414',
@@ -178,8 +216,8 @@ export const siliconflowPreset: BuiltinProviderPreset = {
       maxOutputTokens: 8_192,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.27,
-      outputPrice: 0.27
+      inputPrice: 0.282,
+      outputPrice: 0.282
     },
     // ── Moonshot / Kimi ──
     {
@@ -197,8 +235,9 @@ export const siliconflowPreset: BuiltinProviderPreset = {
         disabledBodyParams: { thinking: { type: 'disabled' } },
         forceTemperature: 1
       },
-      inputPrice: 0.94,
-      outputPrice: 4.0
+      inputPrice: 0.969,
+      outputPrice: 4.024,
+      cacheHitPrice: 0.194,
     },
     {
       id: 'moonshotai/Kimi-K2.6',

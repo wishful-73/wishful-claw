@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -41,7 +41,9 @@ public sealed partial class ShellExecuteTool : IToolExecutor
 
 
 
-    public string[]? VisibleScopes => ToolVisibilityScopes.WorkRunsOnly;
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 

@@ -50,6 +50,7 @@ import {
   clampApiRequestTimeoutSeconds
 } from './settings-store'
 import { LEFT_SIDEBAR_DEFAULT_WIDTH } from '@renderer/components/layout/right-panel-defs'
+import { normalizeUpdateBannerPosition } from '../../../shared/updater/types'
 
 /**
  * Migrate persisted settings state to the current schema.
@@ -214,6 +215,9 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.conversationPanelFullWidth === undefined) {
     state.conversationPanelFullWidth = false
   }
+  // Shape-checked only. A position restored on a smaller window is repaired by the banner itself,
+  // which is the only place that knows the viewport and the banner's rendered size.
+  state.updateBannerPosition = normalizeUpdateBannerPosition(state.updateBannerPosition)
   if (state.autoUpdateEnabled === undefined) {
     state.autoUpdateEnabled = true
   }

@@ -54,4 +54,22 @@ public static class ToolVisibilityScopes
     /// <c>automation</c>, which only the headless sidecar path sends.
     /// </summary>
     public static readonly string[] UnattendedRoles = ["*:*@subagent", "*:*@goalsubagent", "*:*@automation"];
+
+    /// <summary>
+    /// <see cref="ToolDefinition.ExcludedScopes"/> half of the pair for tools that cannot do anything
+    /// without a person able to answer: a question dialog, a rendered widget, a plan awaiting review.
+    /// A sub-agent is delegated work with nobody at the keyboard, a background automation has no window
+    /// to show them in, and a channel's only reply surface is plain text — the run would sit waiting
+    /// for a click that is never coming.
+    ///
+    /// A veto is the only way to say this, not a narrower grant. These tools are granted in the mode
+    /// their run belongs to (<see cref="HumanAttended"/>, <see cref="WorkRunsOnly"/>), and a scheduled
+    /// task is normalized into the cowork mode, so a <c>*:cowork@*</c> grant covers the headless case
+    /// as well. Subtracting the unattended contexts here is what keeps "a schedule fired from inside a
+    /// session may ask" and "a schedule running on its own may not" from collapsing into each other.
+    ///
+    /// The role axis is <see cref="UnattendedRoles"/> itself rather than a second copy of it — both
+    /// sets answer the same question, "is anyone there?", so a role added to one belongs in the other.
+    /// </summary>
+    public static readonly string[] NoHumanToAnswer = [.. UnattendedRoles, "*:channel@*"];
 }

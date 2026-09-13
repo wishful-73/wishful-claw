@@ -42,6 +42,10 @@
       "label": "AI 服务商",
       "desc": "配置 API Key、Base URL，测试连通性"
     },
+    "modelManagement": {
+      "label": "模型管理",
+      "desc": "管理辅助请求使用的服务商和模型"
+    },
     "runtime": {
       "label": "运行与性能",
       "desc": "API 请求超时、重试策略与上下文压缩"
@@ -238,6 +242,7 @@
       "apiKeyPlaceholder": "输入 API Key",
       "apiKeyNotRequired": "不需要 API Key",
       "baseUrl": "Base URL",
+      "officialWebsite": "官方网站",
       "testSuccess": "连接测试成功",
       "testFailed": "连接测试失败",
       "protocolType": "协议类型",
@@ -1378,7 +1383,8 @@
       "downloaded": "更新 {{version}} 已下载，等待重启安装",
       "error": "更新失败",
       "install": "重启安装",
-      "details": "详情"
+      "details": "详情",
+      "dragHint": "按住可拖动"
     },
     "progress": {
       "unknown": "未知",
@@ -1397,7 +1403,6 @@
     "toolExecution": "工具执行",
     "developer": "开发者模式",
     "startup": "开机启动",
-    "auxiliaryModels": "辅助请求模型",
     "memoryOrganization": "自动整理",
     "memoryTiers": "分层阈值",
     "memoryRecall": "主动回忆"

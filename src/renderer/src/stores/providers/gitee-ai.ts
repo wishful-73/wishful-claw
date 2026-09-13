@@ -9,7 +9,28 @@ import type { BuiltinProviderPreset } from './types'
 
 export const giteeAiPreset: BuiltinProviderPreset = {
   builtinId: 'gitee-ai',
-  version: 1,
+  version: 2,
+  deprecatedModelIds: [
+    'Qwen3-Next-80B-A3B-Thinking',
+    'Qwen3-235B-A22B-Instruct-2507',
+    'Qwen3-235B-A22B',
+    'Qwen3-30B-A3B',
+    'QwQ-32B-Preview',
+    'Qwen2.5-Coder-32B-Instruct',
+    'Qwen2.5-Coder-14B-Instruct',
+    'Qwen2.5-32B-Instruct',
+    'Qwen2.5-14B-Instruct',
+    'Qwen2-72B-Instruct',
+    'DeepSeek-V3_1',
+    'GLM-4.7-Flash',
+    'GLM-4.6',
+    'ERNIE-X1-Turbo',
+    'gpt-oss-120b',
+    'gemma-3-27b-it',
+    'Yi-34B-Chat',
+    'code-raccoon-v1',
+    'moark-m1'
+  ],
   name: 'Gitee AI',
   type: 'openai-chat',
   defaultBaseUrl: 'https://ai.gitee.com/v1',
@@ -19,6 +40,11 @@ export const giteeAiPreset: BuiltinProviderPreset = {
   defaultModels: [
     // Official completion-capable models collected from Gitee AI /v1/models
     // Pricing: per-million-token USD rates from public provider metadata (OpenRouter) where available
+    //
+    // v2: 2026-09 按 Gitee AI 官方 /v1/models（256 个模型）复核：已下线的 19 个模型移出并登记到
+    //     deprecatedModelIds；新增 GLM-5.1/5.3、kimi-k3、MiniMax-M2.7、Step-3.7-Flash 及
+    //     Qwen3.5~3.8 全系与 Qwen3-Coder-Plus/Flash、DeepSeek-V4-Pro-0813 等当代型号。
+    //     价格沿用「公开 provider 元数据（OpenRouter）」口径，未逐条换算 Gitee 自身价目。
     // ── Qwen ──
     {
       id: 'Qwen3.6-35B-A3B',
@@ -27,6 +53,110 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       enabled: true,
       inputPrice: 0.2,
       outputPrice: 1.6
+    },
+    {
+      id: 'qwen3.8-max-0902',
+      name: 'Qwen3.8 Max',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 2,
+      outputPrice: 6
+    },
+    {
+      id: 'qwen3.8-flash',
+      name: 'Qwen3.8 Flash',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.15,
+      outputPrice: 0.47
+    },
+    {
+      id: 'qwen3.8-27b',
+      name: 'Qwen3.8 27B',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.214,
+      outputPrice: 2.55
+    },
+    {
+      id: 'Qwen3.7-Max',
+      name: 'Qwen3.7 Max',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 1.475,
+      outputPrice: 4.425
+    },
+    {
+      id: 'Qwen3.7-Plus',
+      name: 'Qwen3.7 Plus',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.32,
+      outputPrice: 1.28
+    },
+    {
+      id: 'Qwen3.6-Max',
+      name: 'Qwen3.6 Max',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 1.027,
+      outputPrice: 6.162
+    },
+    {
+      id: 'Qwen3.6-Plus',
+      name: 'Qwen3.6 Plus',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.325,
+      outputPrice: 1.95
+    },
+    {
+      id: 'Qwen3.6-Flash',
+      name: 'Qwen3.6 Flash',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.1875,
+      outputPrice: 1.125
+    },
+    {
+      id: 'Qwen3.6-27B',
+      name: 'Qwen3.6 27B',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.3,
+      outputPrice: 2
+    },
+    {
+      id: 'Qwen3.5-Plus',
+      name: 'Qwen3.5 Plus',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.26,
+      outputPrice: 1.56
+    },
+    {
+      id: 'Qwen3.5-Flash',
+      name: 'Qwen3.5 Flash',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.065,
+      outputPrice: 0.26
+    },
+    {
+      id: 'qwen3-coder-plus',
+      name: 'Qwen3 Coder Plus',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.65,
+      outputPrice: 3.25
+    },
+    {
+      id: 'Qwen3-Coder-Flash',
+      name: 'Qwen3 Coder Flash',
+      icon: 'qwen',
+      enabled: true,
+      inputPrice: 0.195,
+      outputPrice: 0.975
     },
     {
       id: 'Qwen3.5-35B-A3B',
@@ -53,14 +183,6 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       outputPrice: 0.27
     },
     {
-      id: 'Qwen3-Next-80B-A3B-Thinking',
-      name: 'Qwen3 Next 80B A3B Thinking',
-      icon: 'qwen',
-      enabled: true,
-      inputPrice: 0.15,
-      outputPrice: 1.2
-    },
-    {
       id: 'Qwen3-Next-80B-A3B-Instruct',
       name: 'Qwen3 Next 80B A3B Instruct',
       icon: 'qwen',
@@ -77,34 +199,10 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       outputPrice: 0.3
     },
     {
-      id: 'Qwen3-235B-A22B-Instruct-2507',
-      name: 'Qwen3 235B A22B Instruct 2507',
-      icon: 'qwen',
-      enabled: true,
-      inputPrice: 0.455,
-      outputPrice: 1.82
-    },
-    {
       id: 'qwen3-coder-480b-a35b-instruct',
       name: 'Qwen3 Coder 480B A35B Instruct',
       icon: 'qwen',
       enabled: true
-    },
-    {
-      id: 'Qwen3-235B-A22B',
-      name: 'Qwen3 235B A22B',
-      icon: 'qwen',
-      enabled: true,
-      inputPrice: 0.455,
-      outputPrice: 1.82
-    },
-    {
-      id: 'Qwen3-30B-A3B',
-      name: 'Qwen3 30B A3B',
-      icon: 'qwen',
-      enabled: true,
-      inputPrice: 0.08,
-      outputPrice: 0.28
     },
     {
       id: 'Qwen3-32B',
@@ -141,28 +239,6 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       outputPrice: 0.4
     },
     {
-      id: 'QwQ-32B-Preview',
-      name: 'QwQ 32B Preview',
-      icon: 'qwen',
-      enabled: true,
-      inputPrice: 0.15,
-      outputPrice: 0.4
-    },
-    {
-      id: 'Qwen2.5-Coder-32B-Instruct',
-      name: 'Qwen2.5 Coder 32B Instruct',
-      icon: 'qwen',
-      enabled: true,
-      inputPrice: 0.2,
-      outputPrice: 0.2
-    },
-    {
-      id: 'Qwen2.5-Coder-14B-Instruct',
-      name: 'Qwen2.5 Coder 14B Instruct',
-      icon: 'qwen',
-      enabled: true
-    },
-    {
       id: 'Qwen2.5-72B-Instruct',
       name: 'Qwen2.5 72B Instruct',
       icon: 'qwen',
@@ -170,8 +246,6 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       inputPrice: 0.12,
       outputPrice: 0.39
     },
-    { id: 'Qwen2.5-32B-Instruct', name: 'Qwen2.5 32B Instruct', icon: 'qwen', enabled: true },
-    { id: 'Qwen2.5-14B-Instruct', name: 'Qwen2.5 14B Instruct', icon: 'qwen', enabled: true },
     {
       id: 'Qwen2.5-7B-Instruct',
       name: 'Qwen2.5 7B Instruct',
@@ -180,7 +254,6 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       inputPrice: 0.04,
       outputPrice: 0.1
     },
-    { id: 'Qwen2-72B-Instruct', name: 'Qwen2 72B Instruct', icon: 'qwen', enabled: true },
     { id: 'Qwen2-7B-Instruct', name: 'Qwen2 7B Instruct', icon: 'qwen', enabled: true },
 
     // ── DeepSeek ──
@@ -193,12 +266,28 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       outputPrice: 3.135
     },
     {
+      id: 'DeepSeek-V4-Pro-0813',
+      name: 'DeepSeek V4 Pro 0813',
+      icon: 'deepseek',
+      enabled: true,
+      inputPrice: 0.5795,
+      outputPrice: 1.7384
+    },
+    {
       id: 'DeepSeek-V4-Flash',
       name: 'DeepSeek V4 Flash',
       icon: 'deepseek',
       enabled: true,
       inputPrice: 0.13,
       outputPrice: 0.28
+    },
+    {
+      id: 'deepseek-v4-flash-0731',
+      name: 'DeepSeek V4 Flash 0731',
+      icon: 'deepseek',
+      enabled: true,
+      inputPrice: 0.04,
+      outputPrice: 0.08
     },
     {
       id: 'DeepSeek-V3.2',
@@ -215,14 +304,6 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       enabled: true,
       inputPrice: 0.27,
       outputPrice: 0.41
-    },
-    {
-      id: 'DeepSeek-V3_1',
-      name: 'DeepSeek V3.1',
-      icon: 'deepseek',
-      enabled: true,
-      inputPrice: 0.15,
-      outputPrice: 0.75
     },
     {
       id: 'DeepSeek-V3_1-Terminus',
@@ -284,6 +365,30 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       outputPrice: 4.092
     },
     {
+      id: 'GLM-5.3',
+      name: 'GLM 5.3',
+      icon: 'chatglm',
+      enabled: true,
+      inputPrice: 1.4,
+      outputPrice: 4.4
+    },
+    {
+      id: 'GLM-5.3-Flash',
+      name: 'GLM 5.3 Flash',
+      icon: 'chatglm',
+      enabled: true,
+      inputPrice: 0.15,
+      outputPrice: 0.5
+    },
+    {
+      id: 'GLM-5.1',
+      name: 'GLM 5.1',
+      icon: 'chatglm',
+      enabled: true,
+      inputPrice: 0.966,
+      outputPrice: 3.036
+    },
+    {
       id: 'GLM-5',
       name: 'GLM 5',
       icon: 'chatglm',
@@ -298,22 +403,6 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       enabled: true,
       inputPrice: 0.3,
       outputPrice: 1.4
-    },
-    {
-      id: 'GLM-4.7-Flash',
-      name: 'GLM 4.7 Flash',
-      icon: 'chatglm',
-      enabled: true,
-      inputPrice: 0.06,
-      outputPrice: 0.4
-    },
-    {
-      id: 'GLM-4.6',
-      name: 'GLM 4.6',
-      icon: 'chatglm',
-      enabled: true,
-      inputPrice: 0.35,
-      outputPrice: 1.71
     },
     {
       id: 'GLM-4_5',
@@ -355,6 +444,14 @@ export const giteeAiPreset: BuiltinProviderPreset = {
         disabledBodyParams: { thinking: { type: 'disabled' } },
         forceTemperature: 1
       }
+    },
+    {
+      id: 'kimi-k3',
+      name: 'Kimi K3',
+      icon: 'kimi',
+      enabled: true,
+      inputPrice: 2.6481,
+      outputPrice: 13.2827
     },
     {
       id: 'Kimi-K2.6',
@@ -415,6 +512,14 @@ export const giteeAiPreset: BuiltinProviderPreset = {
       outputPrice: 1.2
     },
     {
+      id: 'MiniMax-M2.7',
+      name: 'MiniMax M2.7',
+      icon: 'minimax',
+      enabled: true,
+      inputPrice: 0.3,
+      outputPrice: 1.2
+    },
+    {
       id: 'MiniMax-M2.5',
       name: 'MiniMax M2.5',
       icon: 'minimax',
@@ -442,18 +547,15 @@ export const giteeAiPreset: BuiltinProviderPreset = {
     // ── ERNIE / Hunyuan / StepFun ──
     { id: 'ERNIE-5.0-Thinking', name: 'ERNIE 5.0 Thinking', icon: 'ernie', enabled: true },
     { id: 'ERNIE-4.5-Turbo', name: 'ERNIE 4.5 Turbo', icon: 'ernie', enabled: true },
-    { id: 'ERNIE-X1-Turbo', name: 'ERNIE X1 Turbo', icon: 'ernie', enabled: true },
     { id: 'Hunyuan-MT-Chimera-7B', name: 'Hunyuan MT Chimera 7B', icon: 'hunyuan', enabled: true },
     { id: 'step3', name: 'Step 3', enabled: true, inputPrice: 0.56, outputPrice: 2.24 },
-
-    // ── Other completion-capable models ──
     {
-      id: 'gpt-oss-120b',
-      name: 'GPT OSS 120B',
-      icon: 'openai',
+      id: 'Step-3.7-Flash',
+      name: 'Step 3.7 Flash',
+      icon: 'stepfun',
       enabled: true,
-      inputPrice: 0.039,
-      outputPrice: 0.19
+      inputPrice: 0.2,
+      outputPrice: 1.15
     },
     {
       id: 'gpt-oss-20b',
@@ -465,23 +567,12 @@ export const giteeAiPreset: BuiltinProviderPreset = {
     },
     { id: 'Baichuan-M2-32B', name: 'Baichuan M2 32B', enabled: true },
     { id: 'internlm3-8b-instruct', name: 'InternLM3 8B Instruct', enabled: true },
-    {
-      id: 'gemma-3-27b-it',
-      name: 'Gemma 3 27B IT',
-      enabled: true,
-      inputPrice: 0.04,
-      outputPrice: 0.15
-    },
-    { id: 'Yi-34B-Chat', name: 'Yi 34B Chat', enabled: true },
     { id: 'codegeex4-all-9b', name: 'CodeGeeX4 All 9B', enabled: true },
-    { id: 'code-raccoon-v1', name: 'Code Raccoon V1', enabled: true },
     { id: 'Fin-R1', name: 'Fin R1', enabled: true },
     { id: 'DianJin-R1-32B', name: 'DianJin R1 32B', enabled: true },
     { id: 'Lingshu-32B', name: 'Lingshu 32B', enabled: true },
     { id: 'HuatuoGPT-o1-7B', name: 'HuatuoGPT o1 7B', enabled: true },
     { id: 'LegalOne-8B', name: 'LegalOne 8B', enabled: true },
     { id: 'Sinong1.0-32B', name: 'Sinong 1.0 32B', enabled: true },
-    { id: 'HealthGPT-L14', name: 'HealthGPT L14', enabled: true },
-    { id: 'moark-m1', name: 'Moark M1', enabled: true }
-  ]
+    { id: 'HealthGPT-L14', name: 'HealthGPT L14', enabled: true }]
 }

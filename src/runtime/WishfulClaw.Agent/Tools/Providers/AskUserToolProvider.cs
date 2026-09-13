@@ -36,6 +36,7 @@ public sealed class AskUserToolProvider : IToolProvider
                         }))
                 },
                 ["header", "questions"]),
-            visibleScopes: ToolVisibilityScopes.HumanAttended));
+            visibleScopes: ToolVisibilityScopes.HumanAttended,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
     }
 }

@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const togetherPreset: BuiltinProviderPreset = {
   builtinId: 'together',
-  version: 1,
+  version: 2,
   name: 'Together AI',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.together.xyz/v1',

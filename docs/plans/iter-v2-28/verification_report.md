@@ -1,4 +1,4 @@
-# 迭代 28 验证报告（Z2）
+﻿# 迭代 28 验证报告（Z2）
 
 - 日期：2026-09-12
 - 分支：`dev/v2-iter-28`（第一轮验证时未 push；收尾修复提交 `215b0a52` 完成后 push，远端 8 刀。R-3.I 收敛批为**第 9 刀**、R-3.J 浏览器批为**第 10 刀**，归属与折叠方案见 §6）
@@ -23,7 +23,9 @@
 
 ### 可见性金样（R-3 的核心门禁）
 
-`visibility-snapshot.expected.txt` 实测：**112 行 / 25,250 字节**（第二轮 30,294 字节、第一轮 32,346 字节；两次缩小的量都是收窄掉的工具名），结构 = 7 行 `preset=` 头 + **105 格**（**15 档 × 7 preset**）。15 档去重后逐一可列（`global:channel`、`global:chat`、`global:chat@{pet,subagent}`、`global:cowork@automation`、`project:chat`、`project:chat@{providerturn,subagent,translation}`、`project:cowork`、`project:cowork-by-default`、`project:cowork@{automation,goalrunner,goalsubagent,subagent}`）。
+`visibility-snapshot.expected.txt` **动手前基线**：**112 行 / 25,250 字节**（第二轮 30,294 字节、第一轮 32,346 字节；两次缩小的量都是收窄掉的工具名），**现网值见下方批次注**（R-3.K 后 25,039 → R-3.M 后 **24,557**）。结构 = 7 行 `preset=` 头 + **105 格**（**15 档 × 7 preset**）。15 档去重后逐一可列（`global:channel`、`global:chat`、`global:chat@{pet,subagent}`、`global:cowork@automation`、`project:chat`、`project:chat@{providerturn,subagent,translation}`、`project:cowork`、`project:cowork-by-default`、`project:cowork@{automation,goalrunner,goalsubagent,subagent}`）。
+> **【2026-09-12 第四批：R-3.K 交互三件走黑名单】** 老大当日裁定"`@automation` 与 channel 都把需要交互的组件纳入黑名单"，落地后金样为 **112 行 / 25,039 字节**，**105 格 = 97 等价 / 8 收窄 / 0 放宽**（8 格全为 `@automation`，4 preset × 2 档，减项恰为 `AskUserQuestion`／`ExitPlanMode`／`visualize_show_widget`；`global:channel` 7 格全等价，channel 那一半本就被白名单形状挡住）。**⚠️ 该批金样是按规则用脚本重算的，不是机器重新生成的**——改动环境 `dotnet build` 不可用（见 `review_report.md` 末节），进验证态前须在能编译的环境跑一次 `ProviderHeaderRegressionTests` 确认自洽。批次归属见 §6。
+> **【2026-09-12 第五批：R-3.M 无人可答档位一律否决交互面】** 老大再裁两条——计划族**收全族**（`EnterPlanMode`／`SubmitPlanReview`／`UpdatePlanStep` 补 veto，消除第四批新造的族内不对称）、**子 Agent 需要排除**（「子 agent 其实类似后台执行」，`NoHumanToAnswer` 角色轴改为直接取 `UnattendedRoles`）。落地后金样为 **112 行 / 24,557 字节**，本轮**再收窄 19 格 / 0 放宽**：16 格 `@subagent`／`@goalsubagent` 减 `AskUserQuestion`（`full` 档因含 `widget` 类再减 `visualize_show_widget`）+ 3 格 `project:cowork@automation` 减计划族三件。**累计 R-3.K + R-3.M = 27 格收窄 / 0 放宽**；三类无人档位（`@subagent`／`@goalsubagent`／`@automation`）与六件交互面工具的交集**残留实测 0**。**✅ 同样为脚本重算，但已编译并跑测试通过（2026-09-12 晚补测）：解决方案 0 警告 0 错误，两个回归项目全绿（`ProviderHeaderRegressionTests` `checks passed` / `ChannelToolVisibilityRegressionTests` `passed (108 assertions)`）。**
 **注意 `global:chat@automation` 已改名为 `global:cowork@automation`**（老大裁定「定时任务走的也是 cowork」，`RenderContext` 把 `runtimeRole=="automation"` 归一读作 cowork）——与旧基线对账须按此配对，否则 105 格键集不平。**本轮踩过一次**：不配对直接比，得到的是"112 格 / 7 格放宽"，全是假象。
 
 **五组机器证明（本轮实跑；每行的"基线"列就是它比的谁，不得跨行引用）**：
@@ -34,6 +36,8 @@
 | 105 格快照 diff（R-3.I） | 删表前 | 收敛前 dump vs 收敛后 dump，逐格比工具名集合 | **69 格等价 / 36 格收窄 / 0 格放宽**（分组与裁定出处见 `plan.md` R-3.I） |
 | 105 格快照 diff（R-3.J） | R-3.I 之后 | 浏览器批前 dump vs 批后 dump | **61 格等价 / 44 格收窄 / 0 格放宽**，44 格减掉的工具名集合**恰为 9 件 `Browser*`**，无第四件被牵连；每格 −6 或 −9（−9 只在 cowork 形态格，`BrowserClick`/`BrowserType`/`BrowserEvaluate` 本带 `WorkRunsOnly`，非 cowork 形态原先也不可见）。`automation`/`minimal`/`skill-installer` 三档 15 格全等价（本就未列 `browser`） |
 | 累计（动手前 → 现网） | 未动 R-3 时的金样 | 与本轮重生后的金样逐格比 | **47 格等价 / 58 格收窄 / 0 格放宽**，58 格共减 64 件不同工具。两批格集重叠 22 格，故 **`36 + 44 − 22 = 58`**，不得把两批数字相加当累计 |
+| 105 格快照 diff（R-3.K） | R-3.J 之后 | 交互三件加 `ExcludedScopes = NoHumanToAnswer` 前后 | **97 格等价 / 8 格收窄 / 0 格放宽**，8 格全为 `@automation`（`full`/`chat`/`coding`/`channel` 四档 × `global:cowork@automation`／`project:cowork@automation`），减项恰为三件。**与 R-3.I 批的 36 格有重叠**（组③ 那 6 格也是 `*:cowork@automation`），故**累计数不得用加法得出**，须逐格比。**⚠️ 本行数字为脚本重算，非机器跑出**（见 §1 注） |
+| 105 格快照 diff（R-3.M） | R-3.K 之后 | 计划族收全族 + `NoHumanToAnswer` 纳入子 Agent 角色前后 | **86 格等价 / 19 格收窄 / 0 格放宽**：16 格 `@subagent`／`@goalsubagent`（4 preset × 4 档）减 `AskUserQuestion`（`full` 档再减 `visualize_show_widget`）＋3 格 `project:cowork@automation` 减 `EnterPlanMode`／`SubmitPlanReview`／`UpdatePlanStep`。**计划族四件在子 Agent 档本就不进 preset 可见集**（`availableModes:["normal"]` vs `AvailableMode="subagent"`，`AgentRunContextPolicy.cs:97-98`），故 16 格里一件计划工具都没减掉——这条 veto 是**不依赖 `availableModes` 间接闸门**的显式声明。**⚠️ 本行数字为脚本重算，非机器跑出**（见 §1 注） |
 | 浏览器只经 proxy | 现网代码 | 新增 `BrowserSurfaceAccessChecks`（跑在 `Program.cs` 内、金样比对之前） | ① 9 件确在 `browser` 类下；② **直连侧 105 格零注入**（断言前核实格数确为 105）；③ 代理侧 `@subagent`／`@goalsubagent`／`@automation` 三后缀格计数 **0**，有人格 cowork 形态 9 件、其余 6 件，且任何有人格必含 `BrowserNavigate` 与 `BrowserGetContent` |
 
 门禁有效性仍由**反证探针**兜着：把 `*:channel@*` 故意写坏成 `*:chanell@*`，声明普查套件立即失败（本轮普查已升级为硬约束——**未声明的生产工具直接判红**）。
@@ -114,6 +118,7 @@
 **R-3.I 无人值守三档的目视配方**（这三档本次各收掉 2～58 件工具，是 36 格差异里唯一"改了但没人看过效果"的一组）：
 - **宠物**：触发一次宠物气泡回复，确认回答形态没退化（该档现与同 preset 的 `global:chat` 逐格相同）。
 - **翻译**：对一条消息用翻译入口，确认只需要读+回文本、被收掉的写/执行类工具本就不该出现。
+  > ⚠️ **【2026-09-12 独立复审更正：本行原判断有误】**"只需要读+回文本"不成立。翻译链路的系统提示词四处明写要求模型调 `Write()`/`Edit()` 写翻译缓冲区（`translate-agent-service.ts:124/149/178/193`），而 `Write`/`Edit` 现声明 `WorkRunsOnly`，在 `global:chat@translation` 下**不可见**（改前靠 `IndependentRuntimeRoles` 全放行才通）。当前不炸仅因 `setAgentMode` 全仓零调用、agent 模式翻译进不去。故本档的"收窄"**不是无害的**，已立 **S-14**（`raw-requirements.md`）；目视时若 agent 模式翻译已接真，**这一格必红**。
 - **providerTurn**（单轮请求，如标题生成/会话摘要）：改一次会话标题或跑一次摘要，确认单轮链路不依赖被收掉的工具。
 判定口径：这三档现在**逐格等于同 preset 的 chat 档集合**，所以只要 chat 档对应功能正常，即为通过；若发现某档确需某件被收掉的工具，把工具名与档位报回来改声明即可（机制已单点，无需动判定）。
 
@@ -125,9 +130,14 @@
 
 ## 6. 记账
 
-- **本报告的数字以第三轮复跑为准**。R-3 的两条追加裁定各触发一次全门禁重跑（§1/§2/§3），前两轮凡与本轮冲突处均已就地改写，不另存旧值。金样快照与逐格 diff 的**三份历史基线全部只留在会话临时目录**（§1 ⚠️），故 69/36/0、61/44/0、47/58/0 三组数**事后均不可自动复算**；随仓库能复算的是 `visibility-snapshot.expected.txt`（112 行 / 25,250 字节）的自洽性，与 `BrowserSurfaceAccessChecks` 的浏览器准入断言。
+- **本报告的数字以第三轮复跑为准**。R-3 的两条追加裁定各触发一次全门禁重跑（§1/§2/§3），前两轮凡与本轮冲突处均已就地改写，不另存旧值。金样快照与逐格 diff 的**三份历史基线全部只留在会话临时目录**（§1 ⚠️），故 69/36/0、61/44/0、47/58/0 三组数**事后均不可自动复算**；随仓库能复算的是 `visibility-snapshot.expected.txt`（**现为 112 行 / 24,557 字节**；R-3.K+M 之前的基线是 25,250）的自洽性，与 `BrowserSurfaceAccessChecks` 的浏览器准入断言。
 - **两批追加裁定的提交归属**：R-3.I（中心名字表收敛）与 R-3.J（浏览器退出直连集）都源于老大对 R-3 的**追加裁定**，时间点在收尾提交 `215b0a52` 已 push 之后。按 AGENTS.md「审查与验证发现的问题攒进收尾那一次修复调整 commit」本应并入它，但那样须改写已推送的一刀并 `--force` 推送，属未经确认的不可逆动作，凌晨无人值守下不做。故两批**各单独成一刀**，紧跟收尾刀 `215b0a52` 之后，标题分别为 `fix(visibility): 迭代28 需求R-3 追加裁定 — 中心名字表收敛为逐工具声明` 与本批同格式的一刀（本报告随各自所属刀提交，故此处不写它们自己的哈希）。分支历史因此是 **7 需求 + 1 收尾 + 2 追加裁定 = 10 刀**而非 8 刀。**老大在收尾时可自行折叠**成 8 刀口径：`git reset --soft HEAD~3` 把收尾刀与这两刀重提为一次修复调整提交，再 `push --force-with-lease`。折叠与否都不影响代码内容；不折叠也不违反「一需求一刀」——这两刀是**追加裁定的独立批次**，标题已标明所属需求与裁定性质。
 - 不得对外说成**"全仓 HashSet 已清零"**：本次删的是**准入判定轴**上的 6 张中心名表与短路；审批侧 3 张 `HashSet<string>`、分派侧 12 张 `*ToolNames`、以及 5 处 `Allowed*` 校验名单都在另一条轴上，未在本次裁定范围内，已立 **S-11**（`raw-requirements.md`）。**R-3.J 还刻意新增了一张** `HashSet<string>`——`ToolPreset.BuiltIn["full"].DeniedCategories`。它属**preset 轴**（老大裁定中「工具本身不是已经有白名单黑名单了么」的那一层就是这里），且**粒度是类别名而非工具名**，与准入判定轴的中心名字表不是同一条轴上被收的东西。
+- **第四批 R-3.K 与第五批 R-3.M（无人可答档位一律否决交互面，2026-09-12）尚未提交，但已编译并跑测试通过**：两批改动合计为 `ToolVisibilityScopes.NoHumanToAnswer` 常量（R-3.M 起角色轴改取 `UnattendedRoles`，故含 `@subagent`／`@goalsubagent`）＋ **6 个注册点各加一个 `excludedScopes`**（交互两件 `AskUserQuestion`／`visualize_show_widget` + 计划族四件），**判定代码一行未动**；金样 **8 + 19 = 27 行**按规则用脚本重算。
+  **门禁已补跑（2026-09-12 晚）**：`dotnet build src/runtime/WishfulClaw.sln` → 15 项目 **0 警告 0 错误**；`ProviderHeaderRegressionTests` → `checks passed`（含金样 `AssertMatchesGolden`，即**脚本重算的金样与机器判定一致**）；`ChannelToolVisibilityRegressionTests` → `passed (108 assertions)`（含 R-3.M 新增的声明级守卫断言）。**先前"未编译未跑测试、通过字样不成立"的记账已作废** —— 根因是 bash 会话缺 `APPDATA` 等 Windows 核心 env，补变量后构建正常（见 `review_report.md` §5 更正）。
+  剩余动作只有提交：按 R-3 追加裁定的既有惯例**单独成一刀**（两批同日、同一裁定脉络，可并作一刀，标题沿用 `fix(visibility): 迭代28 需求R-3 追加裁定 — …` 格式）。
+- **第六批 Shell 最终裁定（2026-09-12）**：`Bash` 在自身 executor 上以普通声明设为 `IsCore=true`、`VisibleScopes=Everywhere`，没有修改 preset、准入策略或执行路由。生产快照相对第五批仅在原本包含 shell category 的 `full/chat/coding` 三个 preset 中各有 8 格新增 `Bash`（合计 **24 格放宽**）；`channel/automation/minimal/skill-installer` 全部不变。新增声明级回归逐一验证 15 个运行场景都命中 `Everywhere`。
+  **最终门禁**：便携 SDK `dotnet build src/runtime/WishfulClaw.sln` → **0 警告 0 错误**；`ProviderHeaderRegressionTests` → passed；`ChannelToolVisibilityRegressionTests` → **108 assertions**；`ChannelShellApprovalRegressionTests` → **74 assertions**；三套 `tsc --noEmit -p` → 全通过；`npm run build:worker:prod` → Native AOT 成功、**0 IL/AOT 警告**，生成 23,135,744 字节 Worker。
 - **第一轮**验证态新发现的修正（`DbClient.cs` 启动日志文案、`plan.md`/`review_report.md` 表数口径、本报告与 `review_report.md` 两份文档）按工作流未单独提交，与审查 9 项 ❌ 一并进了收尾那次 `fix(迭代28): 审查与验证修复调整`（`215b0a52`）。此后两批追加裁定的文档改动随各自所属刀提交，不再攒。
 - **历史折叠（本分支唯一一次改写）**：R-1 多出的那一刀补口用 `git commit-tree` 重parent 折进 R-1，未动工作区、未用 `rebase -i`；改写前的整条链留在本地轻量标签 `pre-fold-iter28`（**不 push**，老大确认后可 `git tag -d pre-fold-iter28` 删掉）。折叠点实测 `git diff 80ccb575 3897f34d` 为 **0 字节** → 折掉一刀而内容零变化；`pre-fold-iter28` 到最终 HEAD 之间只剩本报告与 `review_report.md` 两文件的哈希引用改写，无代码/资产变更。因改写点之后的 `#3`/`R-4`/`R-2` 哈希随之变，两份报告里的哈希引用已同步改指新值。
 - 迭代是否完结由老大裁定。**本迭代分支已 push（`dev/v2-iter-28`，按 AGENTS.md「Plan 完成后才 push」）**；**合并 main、打 tag `v0.2.28`、`package.json` 版本改 0.2.28、GitHub Release、打包安装、`docs/progress` 记账均未做**，等他手动发起。

@@ -9,8 +9,8 @@ import type { BuiltinProviderPreset } from '@renderer/stores/providers/types'
 
 export const anthropicPreset: BuiltinProviderPreset = {
   builtinId: 'anthropic',
-  // v2: server-tool capability flags (supportsBuiltinSearch)
-  version: 2,
+  // v3: 2026-09 按官方模型页与价格页核对（新增 Claude Fable 5.1 / Claude Opus 5）。
+  version: 3,
   name: 'Anthropic',
   type: 'anthropic',
   defaultBaseUrl: 'https://api.anthropic.com',
@@ -22,6 +22,50 @@ export const anthropicPreset: BuiltinProviderPreset = {
     'claude-3-5-haiku-20241022'
   ],
   defaultModels: [
+    // Claude Fable 5.1（2026-09 官方：$10/$50，1M 上下文；缓存读按 0.025x = $0.25 计费）
+    {
+      id: 'claude-fable-5-1',
+      name: 'Claude Fable 5.1',
+      icon: 'claude',
+      enabled: true,
+      contextLength: 1_000_000,
+      maxOutputTokens: 128_000,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      inputPrice: 10,
+      outputPrice: 50,
+      cacheCreationPrice: 12.5,
+      cacheHitPrice: 0.25,
+      supportsThinking: true,
+      thinkingConfig: {
+        bodyParams: { thinking: { type: 'adaptive' } },
+        forceTemperature: 1,
+        reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultReasoningEffort: 'high'
+      }
+    },
+    // Claude Opus 5（2026-09 官方新旗舰：$5/$25，1M 上下文，adaptive thinking）
+    {
+      id: 'claude-opus-5',
+      name: 'Claude Opus 5',
+      icon: 'claude',
+      enabled: true,
+      contextLength: 1_000_000,
+      maxOutputTokens: 128_000,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      inputPrice: 5,
+      outputPrice: 25,
+      cacheCreationPrice: 6.25,
+      cacheHitPrice: 0.5,
+      supportsThinking: true,
+      thinkingConfig: {
+        bodyParams: { thinking: { type: 'adaptive' } },
+        forceTemperature: 1,
+        reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultReasoningEffort: 'high'
+      }
+    },
     // Claude Fable 5 (flagship-tier, above Opus 4.8 — always-on adaptive thinking, 1M context)
     {
       id: 'claude-fable-5',

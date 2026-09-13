@@ -2,7 +2,8 @@ import type { BuiltinProviderPreset } from './types'
 
 export const googlePreset: BuiltinProviderPreset = {
   builtinId: 'google',
-  version: 1,
+  // v2: 2026-09 按官方定价页核对（新增 3.8/3.7/3.6 Flash 与 3.5 Flash-Lite；修正 3.5 Flash 价格）。
+  version: 2,
   name: 'Google Gemini',
   type: 'openai-chat',
   defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
@@ -10,6 +11,63 @@ export const googlePreset: BuiltinProviderPreset = {
   apiKeyUrl: 'https://aistudio.google.com/apikey',
   deprecatedModelIds: ['gemini-2.0-flash'],
   defaultModels: [
+    // Gemini 3.8 / 3.7 / 3.6 Flash（2026-09 官方定价页；2026-12-31 前为促销价，之后翻倍）
+    {
+      id: 'gemini-3.8-flash',
+      name: 'Gemini 3.8 Flash',
+      icon: 'gemini',
+      enabled: true,
+      contextLength: 1_048_576,
+      maxOutputTokens: 65_536,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      inputPrice: 0.75,
+      outputPrice: 3.75,
+      supportsThinking: true,
+      thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } }
+    },
+    {
+      id: 'gemini-3.7-flash',
+      name: 'Gemini 3.7 Flash',
+      icon: 'gemini',
+      enabled: true,
+      contextLength: 1_048_576,
+      maxOutputTokens: 65_536,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      inputPrice: 0.75,
+      outputPrice: 3.75,
+      supportsThinking: true,
+      thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } }
+    },
+    {
+      id: 'gemini-3.6-flash',
+      name: 'Gemini 3.6 Flash',
+      icon: 'gemini',
+      enabled: true,
+      contextLength: 1_048_576,
+      maxOutputTokens: 65_536,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      inputPrice: 0.75,
+      outputPrice: 3.75,
+      supportsThinking: true,
+      thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } }
+    },
+    {
+      id: 'gemini-3.5-flash-lite',
+      name: 'Gemini 3.5 Flash-Lite',
+      icon: 'gemini',
+      enabled: true,
+      contextLength: 1_048_576,
+      maxOutputTokens: 65_536,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      inputPrice: 0.3,
+      outputPrice: 2.5,
+      supportsThinking: true,
+      thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } }
+    },
     // Gemini 3.5 (stable)
     {
       id: 'gemini-3.5-flash',
@@ -20,8 +78,8 @@ export const googlePreset: BuiltinProviderPreset = {
       maxOutputTokens: 65_536,
       supportsVision: true,
       supportsFunctionCall: true,
-      inputPrice: 1,
-      outputPrice: 4,
+      inputPrice: 1.5,
+      outputPrice: 9,
       supportsThinking: true,
       thinkingConfig: { bodyParams: { reasoning_effort: 'medium' } }
     },

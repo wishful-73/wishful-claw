@@ -15,7 +15,8 @@ const glmThinkingConfig = (): ThinkingConfig => ({
 
 export const bigmodelCodingPreset: BuiltinProviderPreset = {
   builtinId: 'bigmodel-coding',
-  version: 1,
+  // v2: 2026-09 版本号推进（本次未改 Coding 套餐模型清单）。
+  version: 2,
   name: '智谱AI（套餐）',
   type: 'anthropic',
   defaultBaseUrl: 'https://open.bigmodel.cn/api/anthropic',
@@ -84,7 +85,8 @@ export const bigmodelCodingPreset: BuiltinProviderPreset = {
 
 export const bigmodelPreset: BuiltinProviderPreset = {
   builtinId: 'bigmodel',
-  version: 1,
+  // v2: 2026-09 按官方定价页核对（新增 GLM-5.3 / GLM-5.3 Flash 旗舰）。
+  version: 2,
   name: '智谱AI（官方）',
   type: 'openai-chat',
   defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
@@ -93,6 +95,42 @@ export const bigmodelPreset: BuiltinProviderPreset = {
   defaultModel: 'glm-5.2',
   deprecatedModelIds: ['glm-z1-airx', 'glm-z1-air', 'glm-z1-flash'],
   defaultModels: [
+    // GLM-5.3 系列（2026-09 官方新旗舰）。价格按官方北京价（¥8/¥28、¥0.8/¥2.8 每百万 Token）
+    // 以 1 USD = 6.7106 CNY 换算为 USD。
+    {
+      id: 'glm-5.3',
+      name: 'GLM-5.3',
+      icon: 'bigmodel',
+      enabled: true,
+      contextLength: 1_000_000,
+      supportsVision: false,
+      supportsFunctionCall: true,
+      inputPrice: 1.19,
+      outputPrice: 4.17,
+      cacheHitPrice: 0.3,
+      supportsThinking: true,
+      thinkingConfig: {
+        bodyParams: { thinking: { type: 'enabled' } },
+        disabledBodyParams: { thinking: { type: 'disabled' } }
+      }
+    },
+    {
+      id: 'glm-5.3-flash',
+      name: 'GLM-5.3 Flash',
+      icon: 'bigmodel',
+      enabled: true,
+      contextLength: 1_000_000,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      inputPrice: 0.12,
+      outputPrice: 0.42,
+      cacheHitPrice: 0.034,
+      supportsThinking: true,
+      thinkingConfig: {
+        bodyParams: { thinking: { type: 'enabled' } },
+        disabledBodyParams: { thinking: { type: 'disabled' } }
+      }
+    },
     // GLM-5 series
     {
       id: 'glm-5.2',

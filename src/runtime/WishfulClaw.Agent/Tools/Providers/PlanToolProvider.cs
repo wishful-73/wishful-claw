@@ -27,7 +27,8 @@ public sealed class PlanToolProvider : IToolProvider
             "Write operations remain available when the planning work needs them.",
             ToolSchemaBuilder.Object(enterProps, ["reason"]),
             availableModes: ["normal"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
 
         // SubmitPlanReview — Agent finalizes plan, submits to user for review
         registry.Register(new ToolDefinitionPlaceholder(
@@ -36,7 +37,8 @@ public sealed class PlanToolProvider : IToolProvider
             "and you MUST STOP and wait for the user to approve or request adjustments. Do NOT continue with any further actions.",
             ToolSchemaBuilder.Object(),
             availableModes: ["normal"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
 
         // ExitPlanMode — Cancel plan mode entirely (no review, no execution)
         registry.Register(new ToolDefinitionPlaceholder(
@@ -45,7 +47,8 @@ public sealed class PlanToolProvider : IToolProvider
             "This does NOT submit the plan for review. Use SubmitPlanReview for that.",
             ToolSchemaBuilder.Object(),
             availableModes: ["normal"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
 
         // UpdatePlanStep — Agent updates step status during execution
         var stepProps = new Dictionary<string, JsonElement>
@@ -62,6 +65,7 @@ public sealed class PlanToolProvider : IToolProvider
             "The plan state file (.wishful-claw/plans/{planId}.state.json) is updated in real-time and can be read by external tools.",
             ToolSchemaBuilder.Object(stepProps, stepRequired),
             availableModes: ["normal"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
     }
 }

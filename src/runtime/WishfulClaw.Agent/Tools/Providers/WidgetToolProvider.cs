@@ -24,6 +24,7 @@ public sealed class WidgetToolProvider : IToolProvider
                     ["data"] = ToolSchemaBuilder.String("Widget data (JSON string or HTML depending on type).")
                 },
                 ["type", "data"]),
-            visibleScopes: ToolVisibilityScopes.HumanAttended));
+            visibleScopes: ToolVisibilityScopes.HumanAttended,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
     }
 }

@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const fireworksPreset: BuiltinProviderPreset = {
   builtinId: 'fireworks',
-  version: 1,
+  version: 2,
   name: 'Fireworks',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.fireworks.ai/inference/v1',

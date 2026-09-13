@@ -1,4 +1,4 @@
-namespace WishfulClaw.Infrastructure.Db;
+﻿namespace WishfulClaw.Infrastructure.Db;
 
 /// <summary>
 /// Query results for the request-level usage log (#1, iteration 28).
@@ -58,8 +58,27 @@ public sealed record UsageBucketsResult(
     List<UsageBucketRow> Buckets,
     string? Error);
 
+public sealed record UsageModelBucketRow(
+    long BucketStart,
+    int RequestCount);
+
+public sealed record UsageModelSeries(
+    string? ProviderId,
+    string ModelId,
+    string? ProviderType,
+    List<UsageModelBucketRow> Buckets);
+
+public sealed record UsageModelBucketsResult(
+    bool Success,
+    string Interval,
+    long From,
+    long To,
+    List<UsageModelSeries> Series,
+    string? Error);
+
 /// <summary>Per-model rollup. <paramref name="ModelId"/> is never null (unattributed requests use "(unknown)").</summary>
 public sealed record UsageModelRow(
+    string? ProviderId,
     string ModelId,
     string? ProviderType,
     int RequestCount,

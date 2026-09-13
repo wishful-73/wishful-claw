@@ -8,6 +8,7 @@ function assert(condition: boolean, message: string): void {
 
 const validTabs = [
   'provider',
+  'modelManagement',
   'runtime',
   'memory',
   'shortcuts',
@@ -29,7 +30,7 @@ for (const tab of validTabs) {
   assert(normalizeSettingsTab(tab) === tab, `valid settings tab should be preserved: ${tab}`)
 }
 
-assert(normalizeSettingsTab('modelManagement') === 'provider', 'legacy model management should open provider')
+assert(normalizeSettingsTab('modelManagement') === 'modelManagement', 'model management settings tab should be preserved')
 assert(normalizeSettingsTab('unknown') === 'provider', 'unknown settings tab should open provider')
 assert(normalizeSettingsTab(null) === 'provider', 'null settings tab should open provider')
 assert(normalizeSettingsTab(42) === 'provider', 'non-string settings tab should open provider')

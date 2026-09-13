@@ -20,6 +20,7 @@ internal static class ToolDeclarationChecks
         RunDefaultSemanticsSuite();
         RunPlaceholderPassthroughSuite();
         RunRegistryPassthroughSuite();
+        RunShellDeclarationSuite();
         RunUncategorizedPassesThroughSuite();
         RunCapabilityCatalogSuite();
         RunDeclarationCensusSuite();
@@ -132,6 +133,27 @@ internal static class ToolDeclarationChecks
         var plain = byName["Plain"];
         Assert(plain.VisibleScopes is null, "registry leaves an undeclared tool's VisibleScopes null");
         Assert(!plain.IsCore, "registry leaves an undeclared tool's IsCore false");
+    }
+
+    /// <summary>
+    /// Bash uses the same declaration path as every other tool: core-ness is metadata and the shared
+    /// all-context scope is enforced by the ordinary visibility policy.
+    /// </summary>
+    private static void RunShellDeclarationSuite()
+    {
+        var registry = VisibilitySnapshotDump.BuildProductionRegistry();
+        var shell = registry.GetToolDefinitions().Single(definition => definition.Name == "Bash");
+
+        Assert(shell.IsCore, "Bash is part of the core tool set");
+        Assert(shell.VisibleScopes is { Length: 1 } && shell.VisibleScopes[0] == "*",
+            "Bash declares visibility in every run context through the shared scope");
+
+        foreach (var scenario in VisibilitySnapshot.ResolveScenarios())
+        {
+            Assert(ToolVisibilityPolicy.IsVisible(
+                    scenario.Context, scenario.ChannelSession, shell.VisibleScopes, shell.ExcludedScopes),
+                $"Bash is visible in {scenario.ContextString}");
+        }
     }
 
     /// <summary>

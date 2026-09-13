@@ -27,6 +27,10 @@ const EMPTY: ProviderCompletionSettings = {
 function ProviderCompletionSettingsPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const providers = useProviderStore((state) => state.providers)
+  const enabledProviders = useMemo(
+    () => providers.filter((provider) => provider.enabled === true),
+    [providers]
+  )
   const [settings, setSettings] = useState<ProviderCompletionSettings>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -51,8 +55,10 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
   }, [])
 
   const updateRoute = (route: RouteName, providerId: string): void => {
-    const provider = providers.find((item) => item.id === providerId)
-    const modelId = provider?.models.find((model) => model.enabled)?.id ?? provider?.models[0]?.id ?? null
+    const provider = enabledProviders.find((item) => item.id === providerId)
+    const modelId = provider?.models.find(
+      (model) => model.enabled && (!model.category || model.category === 'chat')
+    )?.id ?? null
     setSettings((current) => ({
       ...current,
       [`${route}ProviderId`]: providerId || null,
@@ -62,8 +68,10 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
   }
 
   const modelOptions = useMemo(() => (providerId: string | null) => {
-    return providers.find((provider) => provider.id === providerId)?.models ?? []
-  }, [providers])
+    return enabledProviders.find((provider) => provider.id === providerId)?.models.filter(
+      (model) => model.enabled && (!model.category || model.category === 'chat')
+    ) ?? []
+  }, [enabledProviders])
 
   const save = async (): Promise<void> => {
     setSaving(true)
@@ -88,8 +96,14 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
   const route = (name: RouteName): React.JSX.Element => {
     const providerKey = `${name}ProviderId` as const
     const modelKey = `${name}ModelId` as const
-    const providerId = settings[providerKey]
+    const configuredProviderId = settings[providerKey]
+    const providerId = enabledProviders.some((provider) => provider.id === configuredProviderId)
+      ? configuredProviderId
+      : null
     const options = modelOptions(providerId)
+    const modelId = options.some((model) => model.id === settings[modelKey])
+      ? settings[modelKey]
+      : ''
     return (
       <div className="space-y-2 rounded-md border p-3" key={name}>
         <div>
@@ -104,11 +118,11 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
             disabled={loading}
           >
             <option value="">{t('runtimePage.auxiliaryModels.unconfigured')}</option>
-            {providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name}</option>)}
+            {enabledProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.name}</option>)}
           </select>
           <select
             className="h-9 rounded-md border bg-background px-2 text-xs"
-            value={settings[modelKey] ?? ''}
+            value={modelId ?? ''}
             onChange={(event) => setSettings((current) => ({ ...current, [modelKey]: event.target.value || null }))}
             disabled={!providerId || loading}
           >
@@ -122,9 +136,9 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
 
   return (
     <SettingsSection
-      id="sec-runtime-auxiliary-models"
-      title={t('runtimePage.auxiliaryModels.title')}
-      description={t('runtimePage.auxiliaryModels.desc')}
+      id="sec-model-management"
+      title={t('tabs.modelManagement.label')}
+      description={t('tabs.modelManagement.desc')}
       actions={<Button size="sm" onClick={() => void save()} disabled={saving || loading || Boolean(loadError)}>{saving ? t('runtimePage.auxiliaryModels.saving') : t('runtimePage.auxiliaryModels.save')}</Button>}
     >
       <div className="space-y-3">

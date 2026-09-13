@@ -241,6 +241,46 @@ internal static class ToolVisibilityChecks
         Assert(!ToolVisibilityPolicy.IsVisible(new AgentRunContext("project", "cowork", "sessionagent"), false,
                 ToolVisibilityScopes.ChannelOnly),
             "channel-only tools are invisible where there is no channel to post into");
+
+        // The interactive surface: granted where a person is present, subtracted where nobody can
+        // answer. This is the guard a golden snapshot cannot be — a golden is a change detector, so
+        // regenerating it would silently drop the veto and still pass. R-3.K + R-3.M.
+        foreach (var (context, channelSession, label) in new[]
+        {
+            (new AgentRunContext("project", "cowork", "subagent"), false, "a sub-agent"),
+            (new AgentRunContext("project", "cowork", "goalsubagent"), false, "a goal sub-agent"),
+            (new AgentRunContext("project", "cowork", "automation"), false, "an automation run"),
+            (new AgentRunContext("global", "cowork", "automation"), false, "a global automation run"),
+        })
+        {
+            Assert(!ToolVisibilityPolicy.IsVisible(context, channelSession,
+                    ToolVisibilityScopes.HumanAttended, ToolVisibilityScopes.NoHumanToAnswer),
+                $"an interactive tool is vetoed in {label}, which has nobody to answer");
+            Assert(!ToolVisibilityPolicy.IsVisible(context, channelSession,
+                    ToolVisibilityScopes.WorkRunsOnly, ToolVisibilityScopes.NoHumanToAnswer),
+                $"a plan-family tool is vetoed in {label}, which has nobody to review a plan");
+        }
+
+        Assert(!ToolVisibilityPolicy.IsVisible(new AgentRunContext("global", "chat", "sessionagent"), true,
+                ToolVisibilityScopes.HumanAttended, ToolVisibilityScopes.NoHumanToAnswer),
+            "an interactive tool is vetoed in a channel, whose only reply surface is plain text");
+
+        // The grant half has to survive, or the veto would have been a redefinition instead of a
+        // subtraction: the same shapes stay visible in an attended project work run.
+        Assert(ToolVisibilityPolicy.IsVisible(new AgentRunContext("project", "cowork", "sessionagent"), false,
+                ToolVisibilityScopes.HumanAttended, ToolVisibilityScopes.NoHumanToAnswer),
+            "an interactive tool stays visible in an attended project cowork run");
+        Assert(ToolVisibilityPolicy.IsVisible(new AgentRunContext("project", "cowork", "sessionagent"), false,
+                ToolVisibilityScopes.WorkRunsOnly, ToolVisibilityScopes.NoHumanToAnswer),
+            "a plan-family tool stays visible in an attended project cowork run");
+
+        // The role axis of the veto is UnattendedRoles itself, so the two cannot drift apart: a role
+        // added there is carried here without a second edit.
+        foreach (var pattern in ToolVisibilityScopes.UnattendedRoles)
+        {
+            Assert(ToolVisibilityScopes.NoHumanToAnswer.Contains(pattern, StringComparer.Ordinal),
+                $"the no-human-to-answer veto carries the unattended role {pattern}");
+        }
     }
 
     private static void RunUnknownScopeRendersSuite()

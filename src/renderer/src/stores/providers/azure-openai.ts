@@ -7,15 +7,23 @@
 
 import type { BuiltinProviderPreset } from './types'
 
+// v2: 2026-09 与 OpenAI 官方 preset（openai.ts v3）对齐，把 gpt-5-chat / gpt-5.1-chat /
+//     gpt-5.2-chat 三个 chat 变体移出默认清单并登记到 deprecatedModelIds。
+//     说明：Azure OpenAI 的在售模型取决于区域与部署，且计费沿用 OpenAI 官方牌价，
+//     本 preset 的价格与上下文按 OpenAI 官方口径维护，未按 Azure 区域差异另行调整。
+
 export const azureOpenaiPreset: BuiltinProviderPreset = {
   builtinId: 'azure-openai',
-  version: 1,
+  version: 2,
   name: 'Azure OpenAI',
   type: 'openai-chat',
   defaultBaseUrl: '',
   homepage: 'https://azure.microsoft.com/products/ai-services/openai-service/',
   apiKeyUrl: 'https://portal.azure.com',
   deprecatedModelIds: [
+    'gpt-5-chat',
+    'gpt-5.1-chat',
+    'gpt-5.2-chat',
     'gpt-5-codex',
     'gpt-5.1-codex',
     'gpt-5.1-codex-max',
@@ -126,70 +134,6 @@ export const azureOpenaiPreset: BuiltinProviderPreset = {
         reasoningEffortLevels: ['minimal', 'low', 'medium', 'high'],
         defaultReasoningEffort: 'medium'
       }
-    },
-    // GPT-5 chat variants
-    {
-      id: 'gpt-5-chat',
-      name: 'GPT-5 Chat',
-      icon: 'openai',
-      enabled: true,
-      contextLength: 128_000,
-      maxOutputTokens: 16_384,
-      supportsVision: true,
-      supportsFunctionCall: false,
-      inputPrice: 1.25,
-      outputPrice: 10,
-      cacheCreationPrice: 1.25,
-      cacheHitPrice: 0.125,
-      supportsThinking: true,
-      thinkingConfig: {
-        bodyParams: {},
-        reasoningEffortLevels: ['minimal', 'low', 'medium', 'high'],
-        defaultReasoningEffort: 'medium'
-      },
-      type: 'openai-responses'
-    },
-    {
-      id: 'gpt-5.1-chat',
-      name: 'GPT-5.1 Chat',
-      icon: 'openai',
-      enabled: true,
-      contextLength: 128_000,
-      maxOutputTokens: 16_384,
-      supportsVision: true,
-      supportsFunctionCall: false,
-      inputPrice: 1.75,
-      outputPrice: 14,
-      cacheCreationPrice: 1.75,
-      cacheHitPrice: 0.175,
-      supportsThinking: true,
-      thinkingConfig: {
-        bodyParams: {},
-        reasoningEffortLevels: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
-        defaultReasoningEffort: 'medium'
-      },
-      type: 'openai-responses'
-    },
-    {
-      id: 'gpt-5.2-chat',
-      name: 'GPT-5.2 Chat',
-      icon: 'openai',
-      enabled: true,
-      contextLength: 128_000,
-      maxOutputTokens: 16_384,
-      supportsVision: true,
-      supportsFunctionCall: false,
-      inputPrice: 1.75,
-      outputPrice: 14,
-      cacheCreationPrice: 1.75,
-      cacheHitPrice: 0.175,
-      supportsThinking: true,
-      thinkingConfig: {
-        bodyParams: {},
-        reasoningEffortLevels: ['none', 'low', 'medium', 'high', 'xhigh'],
-        defaultReasoningEffort: 'medium'
-      },
-      type: 'openai-responses'
     },
     // GPT-5 codex family
     {

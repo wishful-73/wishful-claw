@@ -1,10 +1,10 @@
 ﻿# Plan: v2-iter-28
 
 - 分支：`dev/v2-iter-28`（从 `main` @ `0388875e` / `v0.2.27` 切出）
-- 范围：老大 2026-09-11 封口，共 7 项需求，见 `raw-requirements.md` 文末「状态」小节
-- 提交口径（本迭代起生效的新规）：**一个需求一个提交 + 迭代收尾一次修复调整提交**，即 7 + 1 = 8 个 commit。规划/审查/验证文档随所属需求提交，不单独成 commit
+- 范围：原已封口 7 项需求；本次追加 R-8「AI 服务商官网地址与详情页入口」，已登记待规划，见 `raw-requirements.md` 文末「状态」小节
+- 提交口径（本迭代起生效的新规）：**一个需求一个提交 + 迭代收尾一次修复调整提交**；R-8 是否纳入本次提交节奏待出 Plan 后确定。规划/审查/验证文档随所属需求提交，不单独成 commit
 - 裁定点：老大只在**分支合并 main 前**（他手动说"进行 28 迭代收尾"）裁定一次；需求测通后由 agent 自判提交，不逐需求停下等确认- 本迭代规划期已通过讨论定掉的口径（2026-09-11）：① 全局会话 = 全局 PM 助手，不做工作、不能改文档，**但必须保留只读工具**（因项目下会话无法回复全局对话，全局只能自己读落盘结果确认进度，R-3.F）；② 工具可见性「未声明 = 默认可见」（R-3.D）；③ 串语法 `scope:mode@role`，`unknown` 为无宿主保留值（R-3.A/B）；④ **定时任务拆两类**——`runMode:'session'` 随目标会话、`runMode:'background'` 为 `unknown@automation` 且排除浏览器/渠道专用/交互组件（R-3.C）；⑤ 范围只有 `project`/`global`，协作只属项目下，渠道是 global 的特例；⑥ **子 Agent 两分法**——全局会话的子 Agent 继承全局限制，项目下协作/后台执行的子 Agent 除浏览器外基本都能用；**且子 Agent 一律排除浏览器类**（R-3.C）；⑦ **核心工具集原则**——系统提示词只列"少而必要"的核心工具，其余可用工具经 `use_capability` 按需调用和查询（R-3.C-bis，这是 R-3 的真正意图）；核心集名单已定（priority ≤ 70 的 7 类，且**按档位变化**）；**⑪ `use_capability` 三载体同源同裁**——提示词核心集 / `use_capability` 的 description 分类清单 / `action="list"` 的返回，**三者在本档位下必须是同一套可见面**；实读确认 `list` 当前缺收窄（只调 `availableModes` 未调 `IsToolAllowed`，而前者对未声明该字段的工具直接放行），**属必修缺陷**（老大 2026-09-11 追加裁定）；⑧ **R-3 本次范围 = B（两步走）**——只做机制、零行为变化，可见集收窄与核心集名单收窄立为后继需求；⑨ **R-1「不可见」的定义**——指**用户不知道是哪个模型在请求**，清单为提示词优化 / 新建角色辅助 / 后台定时执行 / 定时任务会话执行；**⑩ R-1 模型解析口径**——**不用"最近使用"**（服务商下线模型 + 用户删除会造成悬空 id，属不可抗力），改为**逐请求显式配置 + 补位兜底**，且四个哑字段全删；**⑫ R-1 三级解析定稿**——① 该请求的显式配置 → ② 补位模型配置 → **③ 全局激活模型（保留 + 强制存在性校验）**（R-1 裁定 ⑤）；**⑬ R-2 三条裁定**——① 旧逐渠道 `features`/`permissions` 值**摘白名单丢弃**；② 5 个「只展示不生效」字段**只搬家 + 记账**，**唯 `allowShell` 例外：本次接真且语义改写为「是否需用户授权」**（本身恒可见，`false`=默认需授权、`true`=免授权直调；`channelPermissions` 全仓零注入点的"半死"状态须一并修，且强制执行须落在 C# Worker 侧）；③ 全局设置**不另开文件**，沿用 `plugins.json` 既有存储路径，**以增加字段的方式**承载（R-2）。
-- 阶段产物：`exploration_findings.md`（探索态）、本 `plan.md`（规划态）、`compliance_report.md`（规划验证态）。各需求的权威口径文档为 `usage-analytics-requirement.md`（#1）、`updater-ui-issues.md`（#2）、`editor-undo-selection-issue.md`（#3）、`raw-requirements.md`（R-1～R-4）。
+- 阶段产物：`exploration_findings.md`（探索态）、本 `plan.md`（规划态）、`compliance_report.md`（规划验证态）。各需求的权威口径文档为 `usage-analytics-requirement.md`（#1）、`updater-ui-issues.md`（#2）、`editor-undo-selection-issue.md`（#3）、`raw-requirements.md`（R-1～R-8）。
 
 
 ## 目标
@@ -22,6 +22,7 @@
 | 5 | R-2 渠道设置页 | 纯 renderer/store 重构，与上面无冲突 |
 | 6 | #3 编辑器撤销选中态 | 复现依赖真实键入与输入法时序，随时可插入 |
 | 7 | R-4 使用指引 | 需要前述功能的最终形态，放最后 |
+| 8 | R-8 AI 服务商官网地址与详情页入口 | 本次执行期追加，先登记需求；待勘查内置服务商清单与外链现状后再定实施顺序 |
 
 ## 步骤清单
 
@@ -226,10 +227,10 @@
   - 验证：`UsageLogChecks.RunAuxiliaryUsageSuite` 以 `runtime_role='personaGenerator'` 断言写库；真机已实跑一次 `persona/generate`（dev 实例 Worker），落库行 `personaGenerator / agnes-2.5-pro-beta / 553 in / 3654 out / reasoning 2.6K`，即补位路由在人格链上同样生效。
   - ⚠️ **该真机请求只能直调 Worker 方法，走不了 UI**：见本节末「待老大裁」第 1 条。
 - [x] R-1.5：**删除四个哑字段**（裁定 ③）。复搜口径放宽到八项键名：`contextCompressionModel` / `useGlobalActiveModel` / `claudeCodeConfigs` / `ClaudeCodeConfig` / `smallFastModelId` / `promptRecommendationModels` / `SessionDefaultModelBinding` / `sanitizeClaudeCode` —— `src` + `tests` 内**全部 0 命中**。`dotnet build` 0 错误 0 警告，`tsc` 三配置零错误。
-- [x] R-1.6：**给第 1/2 条加显式模型配置项**（裁定 ④）——`ProviderCompletionSettings` 新建 `promptOptimizer{Provider,Model}Id` 与 `persona{Provider,Model}Id` 两对，**未复用 R-1.5 删掉的哑字段**。UI 见 `ProviderCompletionSettingsPanel.tsx`（provider + model 双下拉，形态对齐定时任务的 `agentId`+`model`），挂在运行时页 `sec-runtime-auxiliary-models`。
+- [x] R-1.6：**给第 1/2 条加显式模型配置项**（裁定 ④）——`ProviderCompletionSettings` 新建 `promptOptimizer{Provider,Model}Id` 与 `persona{Provider,Model}Id` 两对，**未复用 R-1.5 删掉的哑字段**。UI 见 `ProviderCompletionSettingsPanel.tsx`（provider + model 双下拉，形态对齐定时任务的 `agentId`+`model`），已从运行与性能页提取为 AI 服务分组下、紧随 AI 服务商之后的「模型管理」页签。
   - 验证：`tsc` 三配置 + `test:settings-tabs`（20 断言）通过；"未配置时走第 ② 级"由解析器断言 ③ 覆盖。真机已在 dev 实例的实际点击与保存：面板写→`config.json` 的 `providerCompletion` 节点（camelCase）→重载读回一致，配好的路由随后被 R-1.3 的落库行证明生效；验证完毕已把三项路由复位为 null。
 - [x] R-1.7：**补位模型配置项**（同一面板第三行 `fallback{Provider,Model}Id`）＋ **读取时的存在性校验**。校验落在 `TryResolveStored`：provider 文件不存在 / 模型不在 `models[]` / type+baseUrl 缺失三种情况一律**降级到下一级并 `WorkerLog.Warn`**，最后一级仍无效则返回可见错误（不静默猜模型）。
-  - 验证：R-1.3 的 ④⑤⑥ 三条断言即"指向已删模型确认回退且有日志"，测试输出中三条 `WARN` 逐条对得上。zh/en 文案已补齐（`runtimePage.auxiliaryModels.*` 与 `anchorNav.auxiliaryModels`），无硬编码中文。
+  - 验证：R-1.3 的 ④⑤⑥ 三条断言即"指向已删模型确认回退且有日志"，测试输出中三条 `WARN` 逐条对得上。zh/en 文案已补齐（`runtimePage.auxiliaryModels.*` 与模型管理页签文案），无硬编码中文。
 - [x] R-1.8：给第 1/2/3/4 条补来源标识。**四条来源互不相同且均可被 #1 的查询按 `runtime_role` 分组**：`promptOptimizer`（由 `requestKind` 映射）、`personaGenerator`（PersonaGenerator 直传）、`automationBackground` / `automationSession`（`cron-runtime.ts` 传 `usageSource`，`ProviderRetryPolicy.UsageLog.cs:117` 用它覆盖 `runtime_role`）。
   - 顺带修掉两处**写死的假值**：`AuxiliaryUsageLog` 原先恒写 `CollaborationMode="chat"`（cowork 会话里点"优化提示词"会被标错）与 `TotalAttempts=1`（`ProviderCompletionService` 内部最多重试 10 次，却报"一次就成"）。前者改 `"unknown"`（无会话的单次请求本就没有 scope/mode，实体与建表注释同步），后者改由调用方传真实次数；`attempt_index` 仍恒为 1——辅助链**一次逻辑请求一行**，与主线"一次尝试一行"的粒度差异已在注释写明。
   - `usageSource` 已补进 `chatStore.sendMessage` 的参数类型（此前 `cron-runtime.ts:421` 必须靠 `as unknown as` 整对象断言才能把它传出去）。
@@ -559,9 +560,11 @@ global-dispatch-reply · task
 
 **「是否按档位变化」的答复**：按档位变化——核心集是**各档自己的"少而必要"**，不是全局同一份。至少两套：
 - **项目档**（chat/cowork）：上表 7 类。
-- **全局档**（`global:chat`，PM 助手）：**换成 PM 那套**——`project`（`list_projects`/`get_project_details`）、`global-task`、`task`、`memory`、`capability`、`ask-user`/`widget`（与用户沟通）。**不含** `file`/`shell`（全局不做工作）。这与 R-3.F「全局保留只读工具」不矛盾：**读文件类仍在全局可见集内，只是不占提示词核心位**，需要时经 `use_capability` 取。
+- **全局档**（`global:chat`，PM 助手）：**换成 PM 那套**——`project`（`list_projects`/`get_project_details`）、`global-task`、`task`、`memory`、`capability`、`ask-user`/`widget`（与用户沟通），并保留横切所有档位的 `shell` 核心工具。读文件类仍在全局可见集内，只是不占提示词核心位，需要时经 `use_capability` 取。
 
 ⚠️ **B 口径下的落地方式**：本次**只建机制**（`IsCore` 字段 + `PromptBuilder` 按档输出结构），**名单先取"等价现状"**使提示词内容零变化；**上表的收窄留下一步**（R-3.13 记账）。
+
+> **最终追加裁定（Shell）**：`Bash` 通过工具自身的普通声明设置为 `IsCore=true`、`VisibleScopes=ToolVisibilityScopes.Everywhere`；不在 preset、准入策略或执行路由里增加名字特判。`IsCore` 的统一消费仍归 R-3.7 / S-1，当前只完成核心性声明；可见性已由统一准入轴覆盖全部运行上下文。
 
 #### R-3.D 判定规则（唯一入口）
 **已裁定：默认可见**（老大 2026-09-11：「新工具对协作模式来说需要全开，默认没处理的需要默认可见」）。
@@ -725,7 +728,7 @@ IsVisible(tool, ctx):
 |---|---|---|---|
 | 1 | `browser` 出 `ToolPreset.cs:53,68,83` 三处 preset 白名单（R-3.8c③ 的**另一半**） | 91 格快照中 chat/coding 档各少 6 个直接工具，属能力面变更 | 前置已满足：`browser` 本次已进 `ProxiedCategories`，摘掉白名单后仍可经 `use_capability` 取到 |
 | 2 | ~~`task` 出 `ProxiedCategories`、`goal` 整体进 proxied~~ **——本次已随 R-3.8c①② 落地**；后继只剩"是否连 `ProxiedBuiltinTools` 三件名字一起收敛" | 已发生的差异：`list` 与 description 的 `goal` 类条目变多（见 R-3.H ⑤） | — |
-| 3 | 定时任务 6b 后台档落地 `unknown@automation` ＋ 三类收窄（R-3.D 收窄 3、R-3.C 6b） | **2026-09-12 追加裁定后只剩一半**：`IndependentRuntimeRoles` 已删，automation 不再全放行而是归一读作 cowork，该档实测少了 22 件渠道专用工具；但**浏览器与交互三件仍可见**（`*:cowork@*` 命中，`Browser*` 的否决只挂在 `@subagent`/`@goalsubagent`） | 前端 `cron-runtime.ts:476-495` 需真的发 `scope:"unknown"`（当前由 `runEvent.scope` 推断）；交互三件要按 role 收紧形状 | 
+| 3 | 定时任务 6b 后台档落地 `unknown@automation` ＋ 三类收窄（R-3.D 收窄 3、R-3.C 6b） | **2026-09-12 追加裁定后只剩"档位"这一半**：`IndependentRuntimeRoles` 已删，automation 不再全放行而是归一读作 cowork，该档实测少了 22 件渠道专用工具；~~浏览器与交互三件仍可见~~ → **浏览器已随 R-3.J 整体否决、交互六件已随 R-3.K + R-3.M 整体否决，三类收窄全部落地** | 只剩前端 `cron-runtime.ts:476-495` 需真的发 `scope:"unknown"`（当前由 `runEvent.scope` 推断）——这条 R-3.J **刻意没顺手改**，理由见 S-3 |
 | 4 | `global:chat@subagent` 继承全局限制（R-3.6② / 收窄 6） | 全局 PM 的子 Agent 将拿不到写/执行类工具 | **前提已变**：`GlobalChatTools` 随中心表删除，该档现状完全由逐工具声明决定，删表前后该档**逐字节未变**——本项从此是"要不要再收一刀"的**产品裁定**，不是机制遗留 |
 | 5 | ~~`FilterToolDefinitions` 的 `BypassesChatAllowlist` 短路显式化（R-3.10）~~ **已随 R-3.I 落地、本项关闭** | 该短路正是"cowork／goal／automation 看得到渠道专用工具"的现存泄漏点（`preset=full` + `project:cowork` 实测含 `ChannelSendImage` 等 22 件）——**这是改动前就有的 Bug，本次刻意不碰** | ✅ 短路已删，判定对每一格都执行；22 件渠道工具从 cowork／automation 各档消失（差异表组①③），泄漏点关闭 |
 | 6 | 渠道工具开关接真（R-3.9） | 死配置一旦生效，历史上下转过开关的用户会立刻少工具 | 与 R-2 同批改 `channel-types.ts`／`channel-config-store.ts` 等共用文件 |
@@ -765,7 +768,7 @@ IsVisible(tool, ctx):
 | `SharedChatTools` / `ProjectChatTools` / `GlobalChatTools` | 三张 chat 档工具名白名单 | 逐工具 `VisibleScopes` 声明 |
 | `ChatTools()` / `IsAllowedByChatAllowlist` | chat 档准入决策 | `ToolVisibilityPolicy.IsVisible` 一处 |
 | `BypassesChatAllowlist` + `FilterToolDefinitions` 原样返回短路 | 非 chat 档整体绕过判定 | 无——判定对每一格都执行 |
-| `ChannelExcludedTools`（交互三件黑名单） | 渠道档硬排除三件 | 三件工具自声明 `ToolVisibilityScopes.HumanAttended`（`*:chat@*` / `*:cowork@*`，不含 channel） |
+| `ChannelExcludedTools`（交互三件黑名单） | 渠道档硬排除三件 | 六件交互面工具自声明**白+黑一对**：`VisibleScopes = HumanAttended`／`WorkRunsOnly`（都不含 channel）＋ `ExcludedScopes = NoHumanToAnswer`（含 `*:channel@*`）。**2026-09-12 由 R-3.K + R-3.M 定稿**；测试侧那张同名名单保留为守卫，由 3 件扩到 6 件 |
 | `IsGloballyExcluded` / `BackgroundBrowserExcludedRoles` / `Evaluate` + `VisibilityOutcome` | 按 category×role 的浏览器排除与三段式判定 | 9 个浏览器工具自声明 `ExcludedScopes = SubAgentRoles`；判定收敛为「先 veto 后 grant」两条 |
 | `ProxiedBuiltinTools`（3 个 goal 名字） | 点名哪几个内置工具可以经 `use_capability` 取 | **本次一并删除**：`goal` 已整类进 `ProxiedCategories`，`list_goals`／`get_goal_history`／`reopen_goal` 三件的 category 就是 `goal`，名字分支**永不可能再决定结果**（已复搜：该表仅 `IsProxiedBuiltinTool` 一处引用，其入参 category 来自 `registry.GetCategory`，调用点还前置了 `category is null` 短路）。谓词改名 `IsProxiedBuiltinCategory(category)`，S-8 的遗留同时关闭 |
 
@@ -801,6 +804,10 @@ IsVisible(tool, ctx):
 - **S-3 只落了一半**——`automation` 现在读作 cowork，但**后台 cron 请求的 scope 仍是 `project`/`global`**（`cron-runtime.ts:485`），`unknown@automation` 那一格在真实运行里还不存在。要把 R-3.D 收窄 5 真正接上，需要前端发 `scope:"unknown"`，仍是后继需求。
 - **无人值守三档的 UI 面未目视验证**（宠物气泡、翻译结果、providerTurn 单轮），本环境无法给 Electron 界面截图取证。差异是按 preset×档位算出来的，"宠物是否真的需要某个被收掉的工具"须老大实测判定。
 - 登记新发现 **S-10**：`send_session_message`／`update_session_follow_up` 对 `project:chat` 档不可见（`0111011` / `0001011`），**删表前后一致、非本次引入**，但判定现在对每一格都跑，这一格从此变成硬拦截——R-3.12 记的"轻通道"若源会话是 chat 档，收尾步会拿不到工具。
+- **【2026-09-12 独立复审更正，上表组④ 的理由有一处与代码事实不符】**组④ 原写"收掉的全是写/执行/编排/渠道类"，并据此在 `verification_report.md` §5 的目视配方里写"翻译只需要读+回文本"。**翻译链路不是这样**：`translate-agent-service.ts` 的系统提示词四处明写要求模型调 `Write()`/`Edit()` 写翻译缓冲区（`:124`/`:149`/`:178`/`:193`），而 `Write`/`Edit` 现声明 `WorkRunsOnly`，在 `global:chat@translation` 下不可见——改前靠 `IndependentRuntimeRoles` 全放行才通。**这 18 格里翻译那几格的"收窄"因此不是无害的**，只是当前不炸：`setAgentMode` 全仓零调用，agent 模式翻译进不去（宠物同理，无线程入口）。已立 **S-14**，接真时须给 `Write`/`Edit` 补形状或把 translation 归到 cowork。
+- **【同日新增 S-12】**另查明两条"判定之外"的取工具出口：IPC `tool/list`（`ToolModule.cs:80` 只按 preset）与 `provider/complete`（`ProviderCompletionService.cs:221` 直写 provider body）。**当前均无害**——前者的产物被渲染端塞进 `agent/run` 的 `tools` 字段，而 Worker 根本不读该字段（`AgentRuntimeTools.cs` 零引用，`AgentLoop.cs:168` 从注册表重建）。但这是"第二套工具真源 + 一段死载荷"，已立 S-12。
+- **【同日新增 S-13】**`automation` 档仍看得见交互三件（金样实测含 `AskUserQuestion`/`ExitPlanMode`/`visualize_show_widget`），成因是 `Resolve()` 把 `automation` 归一成 `cowork` 而 `HumanAttended` 含 `*:cowork@*`。**原写"改声明值解决不了，须收到 role 粒度"——该结论只对"只用白名单"成立，对黑名单不成立**（老大当日纠正并裁定走 `ExcludedScopes`）。**已由 R-3.K + R-3.M 关闭**，`raw-requirements.md` S-13 已标记关闭。
+- **口径收紧**：本批统一的是**准入判定轴**。最终工具清单仍由四层决定——`ToolPreset` → `availableModes` → 声明 → 两个按名字的功能开关（`AgentLoop.cs:179` `WebSearch`/`WebFetch`、`:190` `codegraph_` 前缀）。对外不得表述为"工具可见性已收敛为单一机制"。
 - **裁定的字面范围只到"准入判定"这一轴**：路由分派的 12 张 `*ToolNames` 与审批的 3 张 `HashSet<string>`（`ToolCallProcessor.Approval.cs:19,35,45`）**本次未动**，理由见上"边界"表。**不得对外说成"全仓 HashSet 已清零"**——审批若要落到工具自身声明，须新增"审批作用档"字段并连带改审批文案，已立 **S-11**。
 
 #### R-3.J 追加裁定：浏览器退出核心直连集，只经 proxy 可达（2026-09-12，老大）
@@ -836,8 +843,112 @@ IsVisible(tool, ctx):
 
 **未做与遗留**：
 - **后台定时没有独立档位**：`automation` 现在仍读作 `project:cowork@automation`／`global:cowork@automation`，与"人手动开的 cowork 会话"同格，本批靠 role 后缀把它区分开。**S-3 的剩余缺口不变**：`cron-runtime.ts:485` 发的 scope 仍是 `project`/`global`，`unknown@automation` 那一格在真实运行里还不存在。本次**刻意不改前端发 `scope:"unknown"`**——那会让该格所有 `*:cowork@*` 声明不再命中、整格形状重排，且与老大「定时任务走的也是 cowork」的裁定冲突，仍属 S-3。
-- **交互三件在 `automation` 档仍可见**（`AskUserQuestion`／`visualize_show_widget`／`ExitPlanMode`）：老大这条只裁了浏览器，未裁交互件（同 S-2 ② 的悬置）。
+- ~~**交互三件在 `automation` 档仍可见**（`AskUserQuestion`／`visualize_show_widget`／`ExitPlanMode`）：老大这条只裁了浏览器，未裁交互件（同 S-2 ② 的悬置）。~~ → **已关闭（R-3.K + R-3.M）**：六件交互面工具（交互两件 + 计划族四件）在**全部** `@automation` 格不可见，金样残留实测 0。
 - **真实浏览器表面的目视未做**：本环境无屏幕捕获通路，"proxy 里叫得出 `BrowserNavigate` 并且真能跳页"这条只有单测级证据（同一谓词、同一注册表），未跑真机点一次。
+
+#### R-3.K 追加裁定：交互三件改走黑名单（2026-09-12，老大）
+
+**裁定原话**：「这一条可以通过黑名单，去处理么，黑名单的优先级高于白名单，`@automation` 以及 channel 都把用户需要交互的组件纳入黑名单」。
+
+**这条推翻了 R-3.I 遗留里的一个结论，先把话收回来**：独立复审当时写"要表达『后台不行、会话内定时任务行』，**必须**落到 role 粒度（如 `*:cowork@sessionagent`），改声明值解决不了"。**该结论对"只用白名单"成立，对"黑名单"不成立**——`ExcludedScopes` 是声明的一部分，veto 在 `ToolVisibilityPolicy.IsVisible` 里排在 grant 与默认可见之前（`:96-106`），所以**不动任何白名单形状**、只给工具加一个排除字段即可。9 件 `Browser*` 用 `UnattendedRoles` 处理同一个"同 mode 不同 role"问题，正是这个套路的既有先例。
+
+**改动（4 个文件，判定代码一行未动）**：
+
+| 层 | 改动 |
+|---|---|
+| 声明常量 | `ToolVisibilityScopes` 新增 `NoHumanToAnswer = ["*:*@automation", "*:channel@*"]`，附 doc 说明"为什么必须是 veto 而不是更窄的 grant" |
+| 注册点 ×3 | `AskUserToolProvider`（`AskUserQuestion`）、`WidgetToolProvider`（`visualize_show_widget`）、`PlanToolProvider`（`ExitPlanMode`）各加 `excludedScopes: ToolVisibilityScopes.NoHumanToAnswer` |
+
+**`*:*@automation` 这一条同时覆盖两种串**：`project:cowork@automation`／`global:cowork@automation`（automation 归一读作 cowork 后的实际串）与保留值 `unknown@automation`（`RenderContext` 对 unknown 丢 mode 段，解析后仍是 scope `*`/mode `*`/role `automation` 命中）。**所以 S-3 剩下的"前端要发 `scope:"unknown"`"那条缺口不影响本批生效**。
+
+**金样实测：105 格 = 97 格逐字节等价 / 8 格收窄 / 0 格放宽。** 8 格全部是 `@automation`（4 个 preset × 2 档）：
+
+| preset | `global:cowork@automation` | `project:cowork@automation` |
+|---|---|---|
+| `full` | 57 → 55（−`AskUserQuestion`、`visualize_show_widget`） | 53 → 50（−`AskUserQuestion`、`ExitPlanMode`、`visualize_show_widget`） |
+| `chat` | 27 → 26（−`AskUserQuestion`） | 28 → 26（−`AskUserQuestion`、`ExitPlanMode`） |
+| `coding` | 27 → 26（−`AskUserQuestion`） | 28 → 26（−`AskUserQuestion`、`ExitPlanMode`） |
+| `channel` | 21 → 20（−`AskUserQuestion`） | 18 → 17（−`AskUserQuestion`） |
+
+`automation`／`minimal`／`skill-installer` 三档的 automation 格本就未含这三件，等价。**`global:channel` 全部 7 格逐字节等价**——即老大点名的 channel 那一半**其实早就被 `HumanAttended` 的形状挡住了**（`*:chat@*`／`*:cowork@*` 一条都不含 channel），加进黑名单属**冗余但显式**的兜底：它把"channel 里看不见"从"靠白名单恰好没写 channel"变成工具自己声明"绝不在 channel 出现"。保留它，因为显式声明比隐式推导更抗未来改动。
+
+**为什么 `ExitPlanMode` 之前也在 automation 档可见**：它声明的**不是** `HumanAttended` 而是 `WorkRunsOnly`（`PlanToolProvider.cs:48`），`*:cowork@*` 直接命中 automation 归一后的 cowork。**R-3.8 的 R-3.I 修正里"三件各自在注册点带 `HumanAttended` 这个形状"与代码不符**（只有两件是），已就地更正；本批给它补 veto 后，三件在 automation 档行为一致。
+
+**未做与遗留（前两条当日已裁定，均已在 R-3.M 落地）**：
+- ~~⚠️ 本批引入了一处计划族内部的不对称，须裁定~~ → **已裁定：收全族**（老大 2026-09-12）。原状是 `project:cowork@automation` 档 `EnterPlanMode`／`SubmitPlanReview`／`UpdatePlanStep` 可见、唯独 `ExitPlanMode` 被否决，为本批新造。两种收法里老大选了**收全族**——无宿主的自动化进 plan 模式本就无意义（写完 plan 要等人 review，没人可 review）。落地见 R-3.M。
+- ~~子 Agent 是否也该排除，仍未裁（S-2 ②）~~ → **已裁定：子 Agent 需要排除**（老大 2026-09-12：「子 agent 需要排除，因为子 agent 其实类似后台执行」）。落地见 R-3.M：`NoHumanToAnswer` 的角色轴改为直接取 `UnattendedRoles`，`@subagent`／`@goalsubagent` 一并纳入，**S-2 ② 关闭**。
+- ~~**未加新测试**：这 8 格由金样逐字节钉住…（本批未做，见下方"验证状态"）~~ → **策略守卫已由 R-3.M 补上**：`ToolVisibilityChecks.RunSharedShapesSuite` 新增断言（六件交互面工具在 `@subagent`／`@goalsubagent`／`@automation` 与 channel 全不可见、在 `project:cowork` 可见，且 `UnattendedRoles ⊆ NoHumanToAnswer`），`ChannelToolVisibilityRegressionTests` 的 `ChannelExcludedTools` 由 3 件扩到 6 件。**补这条的理由**：金样是变更探测器、不是策略守卫——将来有人重生成金样会静默丢掉 veto，而声明级断言不会。**✅ 该断言已实际编译并运行通过（2026-09-12 晚，见下条）。**
+- **✅ 本批已编译、已跑测试（2026-09-12 晚补测通过）**：原记「`dotnet build` 不可用」**结论作废** —— 根因是 bash 会话不继承 Windows 核心 env（`APPDATA` 为空 → NuGet 加载用户级 `NuGet.Config` 时 `Path.Combine(path1, null)`），**手动 export 一组变量后构建与测试均正常**。实测：`dotnet build src/runtime/WishfulClaw.sln`（15 项目）**0 警告 0 错误**；`ProviderHeaderRegressionTests` → `checks passed`（含 `VisibilitySnapshot.AssertMatchesGolden`）；`ChannelToolVisibilityRegressionTests` → `passed (108 assertions)`。**故脚本重算的金样已被机器断言确认自洽**，新增的策略守卫断言也已实际编译并运行通过。
+
+#### R-3.L 口径确认：白名单两条途径 → 黑名单 → 最终可用集（2026-09-12，老大）
+
+**老大原话**：「首先通过白名单获取到可用工具，两个途径，一个是系统提示词的获取核心工具 一个是代理获取工具，获取到工具后都需要经过黑名单过滤，返回实际的可用工具列表」。
+
+**这条把目标形态定死为一条两段式流水线**：
+
+```
+白名单（VisibleScopes）──┬─ 途径① 系统提示词的核心工具
+                        └─ 途径② 代理（use_capability）
+                                   ↓  两条途径的产物都要过同一道黑名单
+                        黑名单（ExcludedScopes）
+                                   ↓
+                          实际可用工具列表
+```
+
+**与现有实现的对照**（逐条实读，含缺口）：
+
+| 段 | 落点 | 状态 |
+|---|---|---|
+| 白名单 · 途径① 直连工具集 | `AgentLoop.cs:168` `GetToolDefinitions(preset, mode)` → `:170` `FilterToolDefinitions` | ✅ 白+黑都过 |
+| （既非白也非黑）提示词 `<tool_calling>` 段 | `PromptBuilder.cs:242 BuildToolCapability()` | ⚠️ **未接任何判定**：函数无参、遍历 `ToolCategoryCatalog.All` 出**全 27 个 category 名**。它**不产出可调用项**，是能力目录而非取工具途径；按 R-3.C-bis 应由 `use_capability` description 动态承载（= S-1）。详见下方口径 2 |
+| 白名单 · 途径② 代理 | `IsProxyBuiltinVisible` → `IsToolAllowed`（description／`list`／`inspect`／`call` 四处共用） | ✅ 白+黑都过 |
+| 黑名单 | `ToolVisibilityPolicy.IsVisible` 的 `MatchesAny(excludedScopes, ctxStr)` 先行否决（`:96-99`） | ✅ 单点 |
+
+**三点须记账的口径**：
+
+1. **判定顺序与老大描述的先后相反，但结果等价**。代码是"先黑后白"（veto 在 grant 之前），老大描述的是"先白后黑"。因为这是纯 AND，最终集合完全相同，**不需要改动**；写文档时不必把顺序当成偏差。
+2. **"途径①"已确认为 (a) 直连工具集 → 本条口径零缺口**（老大 2026-09-12 裁定：「我刚说的是的是 A 直连工具集」）。原先"系统提示词"有 (a)/(b) 两种读法，现按裁定收敛：
+
+   | 读法 | 指什么 | 实读 | 结论 |
+   |---|---|---|---|
+   | **(a) 直连工具集** ← 老大所指 | 发进 provider 请求 `tools` 参数的那份（模型能立刻直接调的） | `AgentLoop.cs:168` `GetToolDefinitions(preset, mode)` → `:170` `FilterToolDefinitions` | ✅ **白名单（preset + `availableModes` + `VisibleScopes`）与黑名单（`ExcludedScopes`）都过** → "两条途径都过黑名单"**成立，零缺口** |
+   | (b) 提示词 `<tool_calling>` 段 | `PromptBuilder.cs:242` `BuildToolCapability()` 渲染进 system prompt 的那段文字 | 无参函数，遍历 `ToolCategoryCatalog.All` 输出**全 27 个类别名** | ⚠️ 不过任何判定，**但它不产出可调用项**——所以它**不是"取工具的途径"**，是 R-3.C-bis 定义的**能力目录** |
+
+   **故 (b) 不计入本口径的缺口**，它归属 R-3.C-bis 的"目录搬家"（= **S-1**）：这份目录应由 `use_capability` 的 description **按档位动态**承载（只列本档实际可经 proxy 取到的分类），而不是由 `BuildToolCapability()` 静态列全 27 类。佐证：`IsCore` 字段（R-3.1）**已声明但零消费方**（全仓 7 处命中全是声明与赋值——`IToolExecutor.cs:56` 默认值、`ToolDefinitionPlaceholder.cs:20,37`、`ToolTypes.cs:33,50`、`ToolRegistry.cs:146,165` 传给 definition；**没有任何一处读它来做过滤或裁剪**）。S-1 保持原优先级排队，不在本迭代收尾前插队。
+3. **白名单段对 MCP／skill 是直通**。它们运行期注册、无注册点可声明，`VisibleScopes` 为空即"默认可见"（老大既有裁定），此时**黑名单是唯一过滤**。对 103 件内置工具不适用——普查已把"未声明"变成硬错误，所以内置工具一律先过白名单。
+
+**R-3.K 与 R-3.M 都是这条流水线的实例**：白名单给 `HumanAttended`／`WorkRunsOnly` → 黑名单减 `NoHumanToAnswer`（展开后 `*:*@subagent`／`*:*@goalsubagent`／`*:*@automation`／`*:channel@*`）→ 得到"桌面会话里可用、无人可答的档位里不可用"的最终集。**两条途径都走 `IsToolAllowed`，所以黑名单对途径①直连与途径②代理同时生效**，无需各写一遍。
+
+#### R-3.M 追加裁定：无人可答的档位一律否决交互面（2026-09-12，老大）
+
+**裁定原话**：「计划模型应该全部都进而不是单独 ExitPlanMode 进 这个全是应该收全族，子 agent 需要排除，因为子 agent 其实类似后台执行」。
+
+**两条改动，判定代码仍是一行未动**：
+
+| 层 | 改动 |
+|---|---|
+| 声明常量 | `NoHumanToAnswer` 的角色轴**改为直接取 `UnattendedRoles`**：`[.. UnattendedRoles, "*:channel@*"]`（原为字面量 `["*:*@automation", "*:channel@*"]`）。展开后 = `*:*@subagent`／`*:*@goalsubagent`／`*:*@automation`／`*:channel@*`。**这样写的理由**：两个集合回答的是同一个问题——"有人在场吗"——把角色轴单点化之后，将来新增无人角色不会只进其中一个而**静默漏掉另一个** |
+| 注册点 ×3 | `PlanToolProvider` 的 `EnterPlanMode`／`SubmitPlanReview`／`UpdatePlanStep` 各补 `excludedScopes: ToolVisibilityScopes.NoHumanToAnswer`（`ExitPlanMode` 已在 R-3.K 带上）→ **计划族四件行为一致** |
+
+**金样实测：本轮再收窄 19 格、0 放宽**（累计 R-3.K 8 格 + 本轮 19 格 = **27 格**；其中 `project:cowork@automation` 三格两轮各减 3 件，合并记 6 件）：
+
+| preset | `global:chat@subagent` | `project:chat@subagent` | `project:cowork@subagent` | `project:cowork@goalsubagent` | `project:cowork@automation` |
+|---|---|---|---|---|---|
+| `full` | 21→19 | 18→16 | 30→28 | 30→28 | 53→47（两轮合计 −6） |
+| `chat` | 16→15 | 13→12 | 22→21 | 22→21 | 28→23（两轮合计 −5） |
+| `coding` | 16→15 | 13→12 | 22→21 | 22→21 | 28→23（两轮合计 −5） |
+| `channel` | 14→13 | 11→10 | 16→15 | 16→15 | 18→17（R-3.K 已收，本轮无变化） |
+
+减项：`@subagent`／`@goalsubagent` 四格各减 `AskUserQuestion`（`full` 档因含 `widget` 类再减 `visualize_show_widget`）；`project:cowork@automation` 减 `EnterPlanMode`／`SubmitPlanReview`／`UpdatePlanStep`。
+
+**全库残留检查（脚本实测）**：三类无人档位（`@subagent`／`@goalsubagent`／`@automation`）与六件交互面工具（计划四件 + 交互两件）取交集，**命中 0**——7 preset × 15 档全部干净。金样文件 112 行 / **24,557 B**（R-3.K 后为 25,039 B，R-3.K 前基线 25,250 B）。
+
+**一处重要实读发现：计划族对子 Agent 的排除在当前档位组合下是"防御性"的。** 四件都声明 `availableModes: ["normal"]`，而子 Agent 档的 `AvailableMode` 是 `subagent`（`ResolveAvailableMode` 把 `sessionMode` 原样小写返回，`AgentRunContextPolicy.cs:97-98`），`normal` ∉ 该集 → **它们在子 Agent 档本就不进 preset 可见集**。所以本轮 16 格 subagent 变更里**一件计划工具都没被减掉**（脚本实测：减项全是 `AskUserQuestion`／`visualize_show_widget`）。这条 veto 的价值在于**不依赖 `availableModes` 这个间接闸门**：若将来子 Agent 被允许跑 normal 模式，交互面仍不会跟着漏出去。
+
+**未做与遗留**：
+- **S-2 ② 关闭**：子 Agent 可否直接问人 —— 已裁定"不可"（等同后台执行）。
+- **未加新测试**（同 R-3.K 的口径）：19 格由金样逐字节钉住，但金样是变更探测器、不是策略守卫。若要守卫，仍建议在 `ToolVisibilityChecks` 加一条声明级断言："六件交互面工具在 `*@subagent`／`*@goalsubagent`／`*@automation`／channel 均不可见，在 `project:cowork` 可见"。
+- **✅ 本批已编译、已跑测试（2026-09-12 晚补测通过）**：见 R-3.K 末条的更正。金样虽为**脚本重算**，但已被 `ProviderHeaderRegressionTests` 的 `AssertMatchesGolden` 确认自洽；R-3.M 新增的策略守卫断言（六件交互面工具在无人档位与 channel 全不可见、`UnattendedRoles ⊆ NoHumanToAnswer`）已实际编译并随 `ChannelToolVisibilityRegressionTests`（108 断言）运行通过。
 
 ### 需求 R-4：正式版使用指引与 README 拆分
 
@@ -871,6 +982,218 @@ IsVisible(tool, ctx):
 2. **徽章过期**：根 README 与 `docs/development.md` 的 `Electron-35` 徽章与实际不符——`8c6d8f93` 起依赖就是 `electron ^43.2.0`（已安装版本同为 43.2.0），两处改 43。`AGENTS.md` 与 `docs/project-plan.md` 里也写着 Electron 35，**未动**（前者是你的常驻指令文件，留老大定）。
 3. **指引第 10 节与代码不符**：原文写「绑定一个项目会话——渠道收到的消息会由该会话的 Agent 处理」，**代码里没有这个概念**——`ChannelInstance.projectId` 是死字段（创建时写 `null`，且有迁移主动清空历史值），路由实际按 `plugin:{pluginId}:chat:{chatId}` 自动开会话（`src/main/channels/auto-reply.ts:151-189` + `DbPluginSessionRouting.cs`）。整节按现状重写：入口布局（左列表／右详情／底部全局面板）、扫码绑定仅微信与飞书、以及三项全局设置各自的生效面。
 4. **只记录设置的开关看着像生效**：「流式回复」全仓**无运行时读取点**（只有渠道 `/status` 打印一次），却和生效的开关并排显示、无任何提示。中文/英文文案与其 `defaultValue` 已补「当前仅记录设置，尚未接入强制执行」，与同面板「安全权限」页已有的 `notEnforcedHint` 口径对齐。**代码层的接线仍缺**，见 S-5 记账。
+
+### 需求 R-5：更新悬浮块支持拖动 + 位置跨重启记住
+
+登记日期：2026-09-12（执行期内追加）。**原始登记见 `raw-requirements.md` R-5 节**。
+
+老大原话：
+
+> 更新页之前是在更新弹窗正在更新的时候可以点击后台下载，隐藏更新弹窗后会有一个小的悬浮块，之前是调整了位置，我觉得位置还是不太合适，但是不打算调整了，想让悬浮块支持拖动可以么
+
+两条当场裁定（2026-09-12）：
+
+| 问题 | 裁定 |
+|---|---|
+| 归属与时点 | **立进 28 作为 R-5，当场做**（不排后继需求） |
+| 拖过之后的位置要不要跨重启记住 | **记住** |
+
+#### R-5.A 与 #2 的关系（先说清楚，避免重复记账）
+
+#2 的「悬浮窗遮挡位置」是**替用户挑一个更好的默认角落**（`updater-ui-issues.md` 缺陷 2，已实施并提交 `c7287b6e`）。R-5 是**把选择权交给用户**：默认角落仍然保留，不满意时可以自己挪。两者不冲突——#2 的落点就是 R-5 的「未拖动前」状态，R-5 不改动那个落点。
+
+#### R-5.B 三条口径
+
+1. **未拖动 = 现行为逐字不变**。落点仍是 `left = 侧边栏开启 ? 宽度 + 16 : 16` ＋ `bottom-6`，侧边栏开合继续跟随。
+2. **拖过之后，位置说了算**。一旦落位，自动跟随停掉——用户手摆的位置不该再被侧边栏开合推走。位置持久化进 `settings-store`（与 `leftSidebarWidth` 同一条 `persist` + `partialize` 白名单）。
+3. **`null` ≠ 某个坐标**。持久化字段是 `UpdateBannerPosition | null`，`null` 表示"从未手动摆过"。这条区分本身就是口径 1／口径 2 的开关，不是缺省值偷懒。
+
+#### R-5.C 四个必须处理的耦合点（动手前实读确认）
+
+| # | 耦合点 | 处理 |
+|---|---|---|
+| 1 | `bannerLeft = leftSidebarOpen ? leftSidebarWidth + 16 : 16` 自动跟随 | 只在未落位时生效 |
+| 2 | `UPDATE_BANNER_TOAST_BOTTOM = 90` 抬高 toast（来历：两者默认同在左下角） | 改为「仅未落位时抬高」= `shouldLiftToastsForBanner()`。抬高的存在理由就是那个共享角落，手摆的位置不再共享它 |
+| 3 | 「详情」「重启安装」两个按钮 | pointerdown 命中 `button, a, input, select, textarea, [data-banner-no-drag]` 即不启动拖动，按钮点击行为逐字不变 |
+| 4 | 视口钳制 | 拖动中实时钳制 ＋ 窗口 resize 重新钳制 ＋ 恢复旧位置时修复（上次在更大窗口上拖的，这次可能已在屏外） |
+
+#### R-5.D 步骤清单
+
+- [x] R-5.0：出 Plan（本节）＋ 实读定位持久化落点。验证：持久化载体明确，且与 `leftSidebarWidth` 同一条通路。
+  > **✅ 已完成（2026-09-12）**。落点 = `settings-store.ts` 的 `persist`（`name: 'wishfulclaw-settings'`、`partialize` 白名单、`migrate: migrateSettings`）。**不是** `ui-store.ts`——该 store 是纯 `create()`，无 persist 中间件；`leftSidebarWidth` 在 ui-store 里只存不持久，持久真身在 settings-store。写入通路：`partialize` → `ipcStorage` → IPC `settings:set` → `writePersistedSettings`（Main 侧整块落盘，无键级白名单，新字段可直通）。
+- [x] R-5.1：拖动交互。验证：`tsc` 三配置；拖动不吞按钮点击；文本不被选中；指针移出窗口不丢捕获。
+  > **✅ 已完成（2026-09-12，代码级）**。实现 = `pointerdown/move/up/cancel` ＋ `setPointerCapture`（与仓内既有拖拽实现 `ReasoningEffortSlider.tsx:268-287` 同款）。三个细节：① 3px 阈值，未过阈值的按压不算拖动（避免误触即移位）；② `pointerdown` 上 `preventDefault()` 抑制按住即起文本选中，按钮因早退不受影响；③ 落点存进 `dragRef.latest` 由 `pointerup` 提交，**不**从 `pointerup` 事件坐标重算——`pointercancel` 的坐标不可信。
+- [x] R-5.2：位置持久化 + 跨重启恢复 + 视口钳制。验证：重开应用位置不变；缩窗后不越界。
+  > **✅ 已完成（2026-09-12，代码级）**。**拖动过程不落盘**：每帧写会变成每帧一次 IPC ＋ Main 一次 settings 文件写，故拖动只走本地 state，仅松手时 `updateSettings` 一次。钳制三处：拖动中（用 pointerdown 时量的真实尺寸）、窗口 resize 时、以及恢复旧位置时。版本号 `36 → 37`，`migrateSettings` 里加形状校验（`Number.isFinite` 双字段，坏值 → `null` 退回默认角落）；**边界不在此处校验**——只有渲染端知道视口与元素尺寸，钳制归渲染端。
+  > **两处实现期修正（记此防复犯）**：① 恢复旧位置的钳制**只改渲染值、不改存档**——若把钳制结果写回，在笔记本上开一次就会把大屏上摆的位置永久压到小屏边界内，窗口变回大时也回不去了；只修渲染值则窗口恢复大小时自动回到原位。② 该效果的依赖必须含"悬浮块变可见"这一项：`phase` 从 `idle` 变 `downloading` 时组件才首次真正渲染出元素，缺这一项则整个会话都不会修复那个屏外位置。
+  > **同时收了一个宽度溢出**：`max-w-sm`（384px）只管宽度上限、不管落点，靠右摆放时更长的状态文案（下载中 → "更新 X 已下载，等待重启安装"）会把块推出右边界。落位后加内联 `maxWidth = min(384, 视口宽 - left - 8)`，内层两行本就是 `truncate`，因此收紧的是文字而不是越界。
+- [ ] R-5.3：真机目视（老大）。验证：拖到四角均不越界；拖过后开合侧边栏悬浮块不动；重开应用位置一致；拖动期间 toast 不再被抬高。
+
+**门禁**：本需求**零 C# 改动**，门禁即 `tsc` 三配置（`tsconfig.web.json` / `tsconfig.node.json` / `tsconfig.json`），本次已跑，**三份均 0 错误**。无新增 C# 回归、无金样变动（不触碰 R-3 的 105 格）。
+
+**已知取舍（记账，不修）**：口径 2 取的是"落位即不抬 toast"。若用户只把悬浮块往上挪几十像素、仍压在左下角，toast 会落在它后面。取舍理由是几何判据要引入一组魔法数字且不随 resize 重算，而用户自己摆的位置本就看得见、可以再挪。老大若要更细的规则，是三行的后续改动。
+
+### 需求 R-6：提示词按「英文 + 四关」约定清理
+
+登记日期：2026-09-12（执行期内追加）。**原始登记见 `raw-requirements.md` R-6 节**。
+
+老大原话：
+
+> 人格文档暂时没什么好方案，这个先不用管，我看中的是刚刚的提示词优化本身，除了工具本身用英文描述，下面还有其它的要求
+
+即：把 `docs/提示词优化.md` 的规则（**提示词一律英文** ＋ **分节的行为规则而非自我介绍** ＋ **加一行前的四关**）**落到本仓库已有的提示词上**，不是只当约定记着。
+
+**范围裁定（2026-09-12）**：6 套预置人格文档**本轮不动**（老大原话见上）。工具描述**已经是英文**，勘查已确认，不在改动范围。
+
+#### R-6.A 勘查结论：本仓库的提示词都在哪
+
+| 位置 | 现状 |
+|---|---|
+| `Persona/PromptBuilder.cs`（系统提示词分段组装） | 英文、分节，**但有 6 处过不了四关** |
+| `Persona/PersonaGenerationPrompt.cs`（生成人格的元提示词） | 英文骨架，**JSON 示例是中文** |
+| `Persona/Resources/Personas/*/*.md`（6 套预置人格） | **中文**，本轮不动 |
+| `Agent/Tools/**` 的 `Description`、`Core/Tools/ToolCategoryCatalog.cs` | 英文 ✅ |
+| `Agent/Goal/GoalPromptTemplates.cs`、`AgentRuntimePlanExecutor.cs` | 英文、分节 |
+| `Agent/ContextCompression.cs`、`Workspace/Memory/MemoryRecallService.cs` | 英文 |
+| `CodeGraph/**` | vendored，与上游逐字对齐，**不动** |
+
+#### R-6.B 四关逐条对照：本轮实际改了什么
+
+| # | 位置 | 过的关 | 改法 |
+|---|---|---|---|
+| 1 | `BuildBaseInstruction` | 三 | 删 `Tools are available for coding, research, file operations, and shell commands.` —— 同一份提示词的 `<tool_calling>` 段已经渲染了 27 个类别，这是第二遍 |
+| 2 | `BuildBaseInstruction` | 二 | `Do not overstep your bounds or create unnecessary files.` 拆成 `## Working rules` 两条，其中文件创建改为阈值式：「只在**改不动现有文件**时才新建」 |
+| 3 | `BuildSessionContext` | 三／事实必须为真 | **`Shell: cmd.exe` 是假事实**。`ShellExecuteTool.ShellResolution` 在 Windows 上依次试 `powershell.exe` → `pwsh.exe` → `cmd.exe`，默认落在 PowerShell；两者语法互不兼容（`&&`、`$env:`），报错名字会让模型写出跑不通的命令。改为**读真实配置**：`WISHFUL_SHELL`（Main 从设置注入，与工具解析的首选项同源），取不到才回落平台默认 |
+| 4 | `BuildContextDocuments` | 一 | 删两行仪式句（`Read and internalize them.` 说不出没有它会做错什么；`They define WHO you are and HOW you act.` 与上一句同义） |
+| 5 | `BuildMemoryContext` ＋ `MemoryRecallService` | 一 | 防注入守卫原文三句说同一件事，收敛为「untrusted reference data, possibly wrong or malicious」＋ 一句禁令；两处措辞统一（此前系统提示词与召回结果各写一套） |
+| 6 | `BuildSshContext` / `BuildProjectContext` | 一／三 | `## Project` 的 SSH 分支与 `<ssh_capability>` 逐句重复同一段（远程路径、本地文件工具、`local:true`），**同一次运行的提示词里出现两遍** → 只留 `<ssh_capability>`。另删三处：`This is by design, not a limitation.`（元解释）、`Use them freely for local tasks`（无阈值）、远程文件操作的命令枚举与 `SshListConnections` 路由（属工具描述领域，且该工具本就在直连清单里） |
+| 7 | `BuildChannelSessionPrompt` | 三 | **删「交互类工具在此不可用」整条**：R-3.K／R-3.M 已用 `ExcludedScopes` 把 ask-user／widget／计划族从渠道档的工具表里摘掉，模型调不到，再嘱咐一遍是重复。保留其替代行为（用纯文本提问并等下一条消息）。另合并两条同义项 |
+| 8 | `BuildToolCapability` | 一／二 | 两条 proxy 说明说的是同一件事 → 合一；`briefly` → `in one sentence`；`complex multi-step tasks` → `three or more distinct steps` |
+| 9 | `BuildGoalModePrompt` | 一／结构 | 删与 `## Your role` 里「Confirm」重复的那条硬规则；`@"..."` → `"""`（同一文件其它段都是 raw literal，verbatim 形式迫使 `"pending"` 写成 `""pending""`） |
+| 10 | `PersonaGenerationPrompt` | 一 | JSON 示例的中文占位符 → 英文；补一句「示例示形不示语言」以**保住**既有行为（人格内容仍按用户语言生成） |
+| 11 | `AgentRuntimePlanExecutor` | 三的延伸 | 两条入口消息各自内联了一份 1,400 字符的工作流文本，只差开头一句 → 收敛为 `PlanModeWorkflow` 常量一份 |
+
+#### R-6.C 步骤清单
+
+- [x] R-6.0：出 Plan（本节）＋ 全量勘查提示词源头（含 CJK 扫描与 raw-string 扫描，确认工具描述已是英文）。
+- [x] R-6.1：系统提示词（`PromptBuilder.cs`）逐段过四关。验证：改动均为英文文本与常量，行尾 CRLF 保持一致。
+- [x] R-6.2：其余提示词源头（`PersonaGenerationPrompt` / `MemoryRecallService` / `AgentRuntimePlanExecutor`）。
+- [x] R-6.3：落成仓库约定 → 新建 `docs/prompt-authoring.md`，并在 `AGENTS.md`「开发约定」下加「提示词写作」小节（AI 只读 AGENTS.md 也能拿到硬规则）。
+- [ ] R-6.4：后续项三项，见 R-6.D，**本轮不做**。
+
+#### R-6.D 登记未做的三项（都有明确理由，不是漏）
+
+1. **`<tool_calling>` 渲染全量 27 个类别**（跨层，需设计）：`ToolCategoryCatalog.All` 是静态目录，而 R-3 的可见性策略会按档位隐藏一部分 → 提示词会列出模型**当前调不到**的类别。修法必须把「本档位可见的类别」算出来交给 Persona，但 `ToolVisibilityPolicy` 在 **Agent** 层、`AgentRunContext` 是 Agent internal，Persona 不能反向依赖；可行路径是 Agent 侧把列表塞进 run 参数，或把判定下沉到 Core。**属跨层设计，需老大裁定后再动。**
+2. **计划模式的第三份工作流文本**（`AgentRuntimePlanExecutor.cs` 的「计划批准后」消息自带一份 EXECUTION 描述，与入口消息重叠）：合并会改动模型看到的行为，本轮只做同文去重，不动语义。
+3. **6 套预置人格文档**：老大已裁定暂缓（语言与产品调性两件事都还没有好方案）。
+
+**门禁（2026-09-12 晚实测）**：本批是**纯字符串与常量改动，零逻辑变更**（唯一新增逻辑是 `ResolveShellName` 读一个环境变量）。`dotnet build src/runtime/WishfulClaw.sln` → 15 项目 **0 警告 0 错误**；`tsc --noEmit` × `tsconfig.web/node/root` → **三配置 0 错误**。
+
+**⚠️ 本批真正的缺口不是编译，是覆盖**：`tests/` 全目录 grep `PromptBuilder` **零命中** —— 系统提示词的 11 处改动没有任何自动化守门，只有「能编译 + 真机目视」两道。建议单独立需求做「系统提示词快照测试」（样板可复用 `ProviderHeaderRegressionTests/VisibilitySnapshot.AssertMatchesGolden`，对照文件形态即 `visibility-snapshot.expected.txt`）。
+
+### 需求 R-7：临时文档统一归置 `.wishful-claw/notes/` + 项目数据目录隐藏
+
+**来源**：老大 2026-09-12 执行期追加。原话：「全局 PM 给项目下会话发临时任务的时候，会写一个文档然后读取，我希望这些文档放到 `.wishful-claw` 下的一个专门的文件夹里面去。其次，首次创建 `.wishful-claw` 的时候设置为隐藏文件夹。」
+
+**裁定（AskUserQuestion，2026-09-12）**：
+1. 引导要落在 **`send_work_request` 工具本身的描述**里（老大原话：「我希望 send_work_request 这个工具本身的描述里面就引导了，如果要创建文档应该放哪里」）；
+2. 目录名 **`.wishful-claw/notes/`**；
+3. 覆盖范围 **所有临时文档**（在系统提示词层面统一规定去处）。
+
+#### R-7.A 勘查结论
+
+- **PM 没有任何文件工具**：全局档可用工具只有 `ProjectToolsProvider`（3 件）与 `GlobalTaskToolsProvider`（7 件），都声明 `availableModes: ["global"]`。所以 PM **不能自己写文档**，只能通过 instruction 指挥目标会话。
+- `send_work_request`（`AgentRuntimeGlobalTaskExecutor.SendWorkRequestAsync`）只投递一段 `instruction` 纯文本 + 一段固定尾注，**不落任何文件**。
+- 同一条文案在 **两处** 各有一份：C# 侧 `AgentRuntimeGlobalTaskExecutor.cs:221-229` 与渲染端 `task-board-store.ts:97-106`（`buildWorkRequestContent`，注释写明 `mirrors`）。**改文案必须两处同改**，否则看板与 PM 派发的措辞会漂移。
+- 「写文档」因此是**目标会话收到任务后自发**的行为；约束要同时给到 PM（工具描述）与会话（投递消息 + 系统提示词）才算闭环。
+- C# 侧项目级数据目录**没有统一入口**：`WishfulClawDataDir`（Infrastructure）只管**全局** `~/.wishful-claw`；项目级是各处自己 `Path.Combine(workingFolder, WishfulClawPaths.DataDirName, …)` 拼的，创建点至少 6 处（plans / memory / personas / goals ×2 / project-status）。
+- Windows 隐藏属性**没有跨平台 API**：C# 用 `FileAttributes.Hidden`（`DirectoryInfo.Attributes`）；Node 侧无内置能力（只能调 `attrib.exe` 子进程），故**隐藏只做 C# 侧**。
+- `.wishful-claw` 以点开头，macOS / Linux **天然隐藏**，只需处理 Windows。
+
+#### R-7.B 步骤清单
+
+- [ ] R-7.1 文档归置约定（纯提示词，4 处）
+  - `GlobalTaskToolsProvider.cs` 的 `send_work_request` 描述：引导 PM 在 instruction 里指明文档去处
+  - `AgentRuntimeGlobalTaskExecutor.cs` 投递消息尾注：给目标会话的明确指示
+  - `task-board-store.ts` 的 `buildWorkRequestContent`：与上一条同步
+  - `PromptBuilder.BuildProjectContext` 的 `## Project` 段：统一规定「临时文档写到 `.wishful-claw/notes/`，不要散落在项目里」
+- [x] R-7.2 `WishfulClawDataDir` 新增 `EnsureProjectRoot(workingFolder)`（创建 + Windows 设隐藏，幂等）与 `HideOnWindows(directory)`
+- [x] R-7.3 落点收敛为**单点**：`AgentLoop.ExecuteLoopAsync` 在 `parameters` 规范化之后调一次 `EnsureProjectRoot`。
+      **为什么单点就够**：`EnsureProjectRoot` 是**主动创建**——会话启动时目录还不存在，由它创建即带隐藏属性；而 `Directory.CreateDirectory` 对已存在目录不改属性，所以之后 plans / memory / personas / goals 各自创建子目录时，父目录的隐藏不会被冲掉。逐点改创建点是重复劳动。
+- [x] R-7.4 门禁（2026-09-12 实测）：`dotnet build src/runtime/WishfulClaw.sln` **0 警告 0 错误**；tsc `tsconfig.web.json` **0 错误**；**9 套 C# 回归全绿**（74 / 108 / 269+2 / 8+42 / 148 / 18 / passed / 180 / passed）；**10 套 TS 回归全绿**（56 / 35 / 71 / 20 / 330 / 16 / passed / passed / 96 / 20）。
+      **未加自动化断言**：`EnsureProjectRoot` 的行为依赖真实文件系统与平台，测试要写临时目录 + 清理，对一个 3 行的属性设置 API 不成比例。改为**真机目视**：开一次项目会话后看 `.wishful-claw` 是否隐藏。
+
+#### R-7.C 边界（如实登记）
+
+1. **隐藏只在 C# 侧生效**：Node 没有设置 Windows 隐藏属性的内置能力（只能调 `attrib.exe` 子进程），故不引入 TS 侧实现。实际的项目根目录创建点都在 C# 侧，影响很小。
+2. **「首次创建」是幂等 ensure，不是钩子**：老项目里 `.wishful-claw` 已存在且可见，会在下一次会话启动时被**补设**为隐藏；不是「只对新项目生效」。
+3. **CodeGraph 目录随父目录一起隐藏**：`CodeGraphConnectionFactory`（`WishfulClaw.CodeGraph`，vendored）自己 `CreateDirectory` 建 `codegraph/` 子目录，按仓库约定**不改 vendored**；但它只建子目录，父目录 `.wishful-claw` 已由 run 入口创建并隐藏，故不受影响。
+4. **未跑过会话的项目**：若 `.wishful-claw` 在一个**从未执行过任何 run** 的项目里被创建（例如用户直接点 CodeGraph 索引），首次会是可见的，直到该项目第一次跑会话时补设。这是单点落点的固有边界，成本极低（一次补设），未再为此增加创建点。
+
+### 需求 R-8：AI 服务商官网地址与详情页入口（含内置模型数据刷新）
+
+需求来源：本次执行期追加，权威口径见 `raw-requirements.md` R-8。
+
+目标：让用户从内置 AI 服务商详情直接找到官方办理入口，同时允许自定义服务商没有官网地址。
+
+范围与约束：
+
+- 在 AI 服务商数据模型中新增**可选**字段。需求原文建议命名 `websiteUrl`，**实现采用 `homepage`**（与 `BuiltinProviderPreset.homepage` 必填字段同名，避免两份命名并行）；空值不能阻止保存、启用或调用。
+- 盘点 `src/renderer/src/stores/providers/index.ts` 的全部 `builtinProviderPresets`，逐项从官方站点核实官网或官方开发者/API 入口并补齐，不使用第三方聚合地址。
+- AI 服务商详情页仅在有地址时显示外部链接入口，点击走现有协议白名单与 `shell.openExternal`，不在应用内加载任意网页。
+- 兼容已有配置与 preset 更新：字段缺失按未配置处理，不得覆盖 API Key、Base URL、模型或启用状态。
+
+- [x] R-8.0：复核内置服务商清单、官网地址来源和地址展示口径。
+- [x] R-8.1：扩展共享类型、preset、持久化/迁移和自定义服务商表单，保持官网地址可选。
+      `src/shared/types/provider.ts` 新增 `homepage?: string`；`createProviderFromPreset` 写入。
+- [x] R-8.2：在服务商详情页增加条件外链入口，复用现有安全外开通道。
+      `ProviderConfigPanel.tsx:230` `{provider.homepage && (...)}` + `shell:openExternal`。
+- [x] R-8.3：补齐每个内置服务商的官方地址，并核对没有漏填、错链或第三方链接。
+- [x] R-8.4：验证旧配置迁移、自定义空地址保存、详情页外链和异常协议拦截。
+
+#### R-8.5：内置模型清单数据刷新 + 全量 bump preset 版本
+
+老大在执行期追加：内置模型清单已明显滞后，要求按官方在售清单刷新（模型增删 / 名称 / 上下文 / 价格 / 能力），并顺带更新版本号。
+
+**为什么要 bump 版本（这是 R-8 官网不显示的根因）**：`ensureBuiltinPresets` 的升级分支有版本门控
+`if ((current.presetVersion ?? 0) >= preset.version) continue`。`createProviderFromPreset` 只管**新建**，
+已存在的老记录永远走不到 `homepage` 回填。R-8 只加字段没 bump 版本，于是新用户看得到官网、老用户看不到。
+
+**口径（老大拍板）**：范围 = 主力 + 国内常用 18 家完整核实，其余小服务商只 bump 版本；深度 = 模型 + 名称 + 上下文 + 价格；
+计费 = 峰谷/阶梯取标准档；条目 = 以官方在售清单为准，下线模型移出并登记 `deprecatedModelIds`。
+**币种**：字段单位是 **USD/百万 token**，官方为人民币牌价的按 **1 USD = 6.7106 CNY** 折算；官方直接公布美元价的
+（Moonshot 国际版 / 小米海外 / xAI / OpenRouter）直接用美元，不做二次换算。
+
+- [x] R-8.5.1：18 家完整核实并落地 —— `deepseek` / `moonshot` / `google` / `anthropic` / `openai` / `qwen` / `baidu` /
+      `bigmodel` / `minimax` / `volcengine` / `hunyuan` / `stepfun` / `xiaomi` / `siliconflow` / `gitee-ai` /
+      `openrouter` / `x-ai` / `azure-openai`。
+      `volcengine` / `stepfun` / `hunyuan` 三家原本**完全没有或只有部分价格**，本次按官方价目表补齐。
+      `openrouter` 按官方 `GET /api/v1/models`（445 个模型）重建：49 项价格/上下文刷新、7 项下线移出、
+      新增 Claude Opus 5 / Fable 5.1、GPT-6 Astra、GPT-5.6 系列、Gemini 3.6~3.8 Flash、Kimi K3、GLM-5.3、Grok 4.6 等 31 项。
+      `gitee-ai` 按官方 `/v1/models`（256 个）下线 19 个、新增 21 个。
+- [x] R-8.5.2：**46 个 preset 的 `version` 全部 +1**，让老用户记录走升级分支刷新模型清单与 `homepage`。
+- [x] R-8.5.3：补 `deprecatedModelIds` 的消费点。**该字段此前全仓无任何消费方（纯死数据）**——移出默认清单的模型
+      在新版里不再出现在 `presetModelIds`，会被 `userCustomModels` 当成"用户自建"永久保留，永远清不掉。
+      已在升级分支加一行过滤（`ensureBuiltinPresets`）。
+- [x] R-8.5.4：补回归测试。把升级逻辑抽成纯函数 `src/renderer/src/stores/provider-preset-upgrade.ts`
+      （否则 node 测试里起不了渲染端 store），`tests/provider-presets/program.ts` 断言"老记录能被回填 `homepage`"——
+      这正是 R-8 当初漏测、导致门禁全绿而功能失效的场景。顺带由新断言查出并修掉 `baidu` preset 的 `ernie-x1.1`
+      同时出现在 `deprecatedModelIds` 与 `defaultModels` 的数据矛盾。
+- [x] R-8.5.5：顺手补注册 `stepfunPlanPreset`。它是 7 个"套餐/编码" preset 里唯一没进 `builtinProviderPresets` 的
+      （明显漏注册），否则对它的版本 bump 是空转。
+
+#### R-8.C 边界（如实登记）
+
+1. **bump 版本的代价**：升级分支会全量重建 `models`（preset 全量 + 用户自建），只保留用户模型的 `enabled` 标志。
+   老用户被删的模型会复活、用户改过的模型配置（name / contextLength / pricing / thinkingConfig）会被 preset 值覆盖。这是老大已知并接受的代价。
+2. **`defaultModel` 不在升级范围内**：升级分支只刷 `type` / `homepage` / `models`，preset 的 `defaultModel` 变化只对**新装**生效。
+3. **聚合型服务商无法做到"完整"**：`siliconflow` 的完整目录需鉴权（`GET /v1/models` 返回 401），本次只按官方价格页公示项复核，未做删除；
+   `gitee-ai` 的价格沿用文件原本声明的"公开 provider 元数据（OpenRouter）"口径，未逐条换算 Gitee 自身价目。
+4. **阶梯/峰谷取首档**：火山方舟 seed-2.0 系列与 SiliconFlow 部分模型按输入长度或时段分段计价，统一取标准档（最低档），并在文件注释里登记完整价目。
+5. **`azure-openai` 只做对齐不做重算**：Azure 在售模型取决于区域与部署、计费沿用 OpenAI 牌价，本次仅与 `openai.ts v3` 对齐
+   （把三个 gpt-5.x-chat 变体移出并登记 deprecated），未按区域差异重算价格。
+6. **BOM 漂移**：本迭代若干文件被工具写入时带上 UTF-8 BOM（HEAD 版本没有），已在本工作涉及的文件上清理；
+   `docs/` 三个文件、两个 `.cs`、`tests/WishfulClaw.ProviderHeaderRegressionTests/visibility-snapshot.expected.txt` 上仍存在，未动 —— 后者是金样字节比对文件，不属本次范围。
 
 ### 收尾：统一审查、验证与修复
 
@@ -937,6 +1260,31 @@ IsVisible(tool, ctx):
 - `src/renderer/src/components/settings/SettingsPage.tsx:260-338` — 关于页按钮
 - `src/renderer/src/components/layout/WorkspaceSidebar.tsx:408-417` — 版本号落点（参照）
 - Main 侧 `setWindowOpenHandler` 所在文件 — 外链约定（执行时复核）
+
+**需求 R-5（悬浮块拖动）**
+- `src/renderer/src/components/updater/UpdateStatusBanner.tsx` — 拖动交互 + 落位接线（`shouldLiftToastsForBanner` 出口）
+- `src/renderer/src/components/updater/banner-position.ts` — **新建**：钳制与落位样式（与 React 树解耦，便于单独推演）
+- `src/shared/updater/types.ts` — `UpdateBannerPosition` 类型 ＋ `normalizeUpdateBannerPosition` 形状校验
+- `src/renderer/src/stores/settings-store.ts` — 字段 + 默认值 + `partialize` + `version: 36 → 37`
+- `src/renderer/src/stores/settings-store-migrate.ts` — 恢复时形状校验
+- `src/renderer/src/App.tsx:51,226` — toast 抬高判据改 `shouldLiftToastsForBanner`
+- `src/renderer/src/locales/{zh,en}/settings.json` — `updater.banner.dragHint`
+
+**需求 R-6（提示词清理）**
+- `docs/prompt-authoring.md` — **新建**：仓库级提示词约定（两条硬约定 + 四关 + 提示词清单 + 已知偏离 + 自查清单）
+- `AGENTS.md`「开发约定」— 新增「提示词写作」小节（硬规则摘要 + 指向上述文档）
+- `src/runtime/WishfulClaw.Persona/PromptBuilder.cs` — 11 处改动：基础段、环境段（**修 `cmd.exe` 假事实**）、persona 包装、记忆包装、`<tool_calling>`、`<ssh_capability>`、`## Project`、`<channel_session>`、`<goal_mode>`；新增 `ResolveShellName`
+- `src/runtime/WishfulClaw.Persona/PersonaGenerationPrompt.cs` — JSON 示例改英文 + 语言说明
+- `src/runtime/WishfulClaw.Workspace/Memory/MemoryRecallService.cs` — 防注入守卫措辞与系统提示词统一
+- `src/runtime/WishfulClaw.Agent/AgentRuntimePlanExecutor.cs` — 工作流文本收敛为 `PlanModeWorkflow` 常量
+
+**需求 R-7（临时文档归置 + 数据目录隐藏）**
+- `src/runtime/WishfulClaw.Infrastructure/Storage/WishfulClawDataDir.cs` — 新增 `EnsureProjectRoot(workingFolder)`（项目级 `.wishful-claw`，创建 + Windows 设隐藏，幂等）与 `HideOnWindows(directory)`
+- `src/runtime/WishfulClaw.Agent/AgentLoop.cs` — run 入口调一次 `EnsureProjectRoot`（+ `using WishfulClaw.Infrastructure.Storage`）
+- `src/runtime/WishfulClaw.Agent/Tools/Providers/GlobalTaskToolsProvider.cs` — `send_work_request` 描述加文档归置引导
+- `src/runtime/WishfulClaw.Agent/AgentRuntimeGlobalTaskExecutor.cs` — work request 投递消息尾注加同一引导
+- `src/renderer/src/stores/task-board-store.ts` — `buildWorkRequestContent` 与上一条同步（注释里写明 `mirrors`，两处必须同改）
+- `src/runtime/WishfulClaw.Persona/PromptBuilder.cs` — `## Project` 段（本地 + SSH 两个分支）加 `.wishful-claw/notes/` 约定
 
 ## 参考源码
 

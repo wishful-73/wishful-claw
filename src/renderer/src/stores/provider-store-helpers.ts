@@ -3,6 +3,7 @@ import type { AIProvider, AIModelConfig, BuiltinProviderPreset, ProviderType, Re
 import type { ManagedModelConfig } from './managed-models'
 import { builtinProviderPresets } from '@renderer/stores/providers'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { upgradeProviderFromPreset } from './provider-preset-upgrade'
 
 export const STORAGE_KEY = 'wishful-claw-providers'
 
@@ -74,6 +75,7 @@ export function createProviderFromPreset(preset: BuiltinProviderPreset): AIProvi
     type: preset.type,
     apiKey: '',
     baseUrl: preset.defaultBaseUrl,
+    homepage: preset.homepage,
     enabled: preset.defaultEnabled ?? false,
     models: preset.defaultModels.map(m => ({ ...m })),
     builtinId: preset.builtinId,
@@ -181,8 +183,9 @@ export function createCustomProvider(name: string, type: ProviderType, baseUrl: 
  * Existing presets with outdated version are upgraded:
  *   - New models from the preset are added (preserving user-added models)
  *   - Preset model metadata (price, context, thinking config, etc.) is refreshed
- *   - Provider type/baseUrl are updated if the preset changed them
- *   - User customizations (apiKey, enabled, per-model enabled flags) are preserved
+ *   - Models listed in `preset.deprecatedModelIds` are dropped from the user's list
+ *   - Provider type and homepage are refreshed from the preset
+ *   - User customizations (apiKey, baseUrl, enabled, per-model enabled flags) are preserved
  * Called on store initialization (after hydration).
  */
 export function ensureBuiltinPresets(): void {
@@ -203,26 +206,9 @@ export function ensureBuiltinPresets(): void {
     const current = currentProviders[existing]
     if ((current.presetVersion ?? 0) >= preset.version) continue
 
-    // Version upgrade — refresh model list while preserving user state
-    const presetModelIds = new Set(preset.defaultModels.map(m => m.id))
-    const userCustomModels = current.models.filter(m => !presetModelIds.has(m.id))
-
-    // For preset models, preserve user's enabled flag; refresh all other metadata
-    const refreshedModels = preset.defaultModels.map(presetModel => {
-      const userModel = current.models.find(m => m.id === presetModel.id)
-      if (userModel) {
-        return { ...presetModel, enabled: userModel.enabled }
-      }
-      return { ...presetModel }
-    })
-
-    nextProviders[existing] = {
-      ...current,
-      type: preset.type,
-      baseUrl: preset.defaultBaseUrl,
-      models: [...refreshedModels, ...userCustomModels],
-      presetVersion: preset.version
-    }
+    // Version upgrade — refresh model list while preserving user state.
+    // Merge rules live in provider-preset-upgrade.ts so they can be regression-tested.
+    nextProviders[existing] = upgradeProviderFromPreset(current, preset)
     changed = true
   }
 

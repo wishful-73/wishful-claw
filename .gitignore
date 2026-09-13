@@ -61,3 +61,4 @@ tmp/
 \"stderr.txt\"  
 \"stdout.txt\" 
 .wishful-claw/*
+.workbuddy-ai/*

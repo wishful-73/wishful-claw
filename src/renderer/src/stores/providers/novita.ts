@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const novitaPreset: BuiltinProviderPreset = {
   builtinId: 'novita',
-  version: 1,
+  version: 2,
   name: 'Novita',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.novita.ai/v3/openai',

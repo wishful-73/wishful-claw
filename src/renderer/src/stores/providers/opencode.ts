@@ -408,7 +408,7 @@ const chatModels: OpenCodeZenModel[] = [
 
 export const opencodePreset: BuiltinProviderPreset = {
   builtinId: 'opencode',
-  version: 2,
+  version: 3,
   name: 'OpenCode Zen',
   type: 'openai-chat',
   defaultBaseUrl: OPENCODE_ZEN_BASE_URL,

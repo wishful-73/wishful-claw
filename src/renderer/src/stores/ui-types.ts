@@ -87,6 +87,7 @@ export interface RightPanelTabInstance {
 
 export type SettingsTab =
   | 'provider'
+  | 'modelManagement'
   | 'runtime'
   | 'memory'
   | 'shortcuts'
@@ -106,6 +107,7 @@ export type SettingsTab =
 
 const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
   'provider',
+  'modelManagement',
   'runtime',
   'memory',
   'shortcuts',
@@ -124,7 +126,6 @@ const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
 ])
 
 export function normalizeSettingsTab(raw: unknown): SettingsTab {
-  if (raw === 'modelManagement') return 'provider'
   return typeof raw === 'string' && SETTINGS_TABS.has(raw)
     ? (raw as SettingsTab)
     : 'provider'

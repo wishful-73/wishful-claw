@@ -27,7 +27,7 @@ import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-suba
 import { useAppUpdater } from '@renderer/hooks/use-app-updater'
 import { UpdateDialog } from '@renderer/components/updater/UpdateDialog'
 import {
-  isUpdateBannerVisible,
+  shouldLiftToastsForBanner,
   UPDATE_BANNER_TOAST_BOTTOM,
   UpdateStatusBanner
 } from '@renderer/components/updater/UpdateStatusBanner'
@@ -49,6 +49,7 @@ initProviderStore()
 function App(): React.JSX.Element | null {
   const view = useUIStore((s) => s.view)
   const language = useSettingsStore((s) => s.language)
+  const updateBannerPosition = useSettingsStore((s) => s.updateBannerPosition)
   const [i18nReady, setI18nReady] = useState(false)
   const [i18nError, setI18nError] = useState<Error | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
@@ -222,7 +223,7 @@ function App(): React.JSX.Element | null {
             position="bottom-left"
             theme="system"
             richColors
-            offset={isUpdateBannerVisible(updater.state.phase) ? { bottom: UPDATE_BANNER_TOAST_BOTTOM } : undefined}
+            offset={shouldLiftToastsForBanner(updater.state.phase, updateBannerPosition) ? { bottom: UPDATE_BANNER_TOAST_BOTTOM } : undefined}
           />
           <UpdateStatusBanner
             state={updater.state}

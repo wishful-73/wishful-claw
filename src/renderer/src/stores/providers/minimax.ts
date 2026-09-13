@@ -9,11 +9,12 @@ import type { BuiltinProviderPreset } from './types'
 
 export const minimaxCodingPreset: BuiltinProviderPreset = {
   builtinId: 'minimax-coding',
-  version: 1,
+  // v2: 2026-09 版本号推进（本次未改 Coding 套餐模型清单）。
+  version: 2,
   name: 'MiniMax（套餐）',
   type: 'anthropic',
   defaultBaseUrl: 'https://api.minimaxi.com/anthropic',
-  homepage: 'https://platform.minimaxi.com/subscribe/coding-plan',
+  homepage: 'https://platform.minimax.cn/subscribe/token-plan',
   apiKeyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
   defaultEnabled: false,
   defaultModel: 'MiniMax-M3',
@@ -129,11 +130,12 @@ export const minimaxCodingPreset: BuiltinProviderPreset = {
 
 export const minimaxPreset: BuiltinProviderPreset = {
   builtinId: 'minimax',
-  version: 1,
+  // v2: 2026-09 按官方 paygo 定价核对（MiniMax-M3 价格微调）。
+  version: 2,
   name: 'MiniMax（官方）',
   type: 'anthropic',
   defaultBaseUrl: 'https://api.minimaxi.com/anthropic',
-  homepage: 'https://www.minimaxi.com',
+  homepage: 'https://www.minimax.cn',
   apiKeyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
   defaultModel: 'MiniMax-M3',
   defaultModels: [
@@ -153,8 +155,8 @@ export const minimaxPreset: BuiltinProviderPreset = {
         disabledBodyParams: { thinking: { type: 'disabled' } },
         forceTemperature: 1
       },
-      inputPrice: 0.29,
-      outputPrice: 1.17,
+      inputPrice: 0.3,
+      outputPrice: 1.2,
       cacheHitPrice: 0.06
     },
     {

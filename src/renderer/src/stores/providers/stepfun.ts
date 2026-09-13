@@ -1,6 +1,12 @@
 import type { AIModelConfig, ThinkingConfig } from '../../lib/api/types'
 import type { BuiltinProviderPreset } from './types'
 
+// 价格来源：platform.stepfun.com/docs/zh/guides/pricing/details（2026-09 核对）
+// 官方人民币牌价（每百万 token，输入/缓存命中/输出）：
+//   step-3.7-flash       ¥1.35 / ¥0.27 / ¥8.1
+//   step-3.5-flash       ¥0.7  / ¥0.14 / ¥2.1（含 -2603 版本）
+// 按 1 USD = 6.7106 CNY 折算为文件所用的 USD 口径。
+
 /** Step 3.7 has no non-thinking mode; official effort is low / medium / high. */
 const step37ThinkingConfig: ThinkingConfig = {
   bodyParams: {},
@@ -23,6 +29,9 @@ const stepfunModels: AIModelConfig[] = [
     maxOutputTokens: 262_144,
     supportsVision: true,
     supportsFunctionCall: true,
+    inputPrice: 0.201,
+    outputPrice: 1.207,
+    cacheHitPrice: 0.04,
     supportsThinking: true,
     thinkingConfig: step37ThinkingConfig
   },
@@ -35,6 +44,9 @@ const stepfunModels: AIModelConfig[] = [
     maxOutputTokens: 65_536,
     supportsVision: false,
     supportsFunctionCall: true,
+    inputPrice: 0.104,
+    outputPrice: 0.313,
+    cacheHitPrice: 0.021,
     supportsThinking: true,
     thinkingConfig: step35ThinkingConfig
   }
@@ -42,7 +54,7 @@ const stepfunModels: AIModelConfig[] = [
 
 export const stepfunPreset: BuiltinProviderPreset = {
   builtinId: 'stepfun',
-  version: 1,
+  version: 2,
   name: '阶跃星辰',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.stepfun.com/v1',
@@ -54,7 +66,7 @@ export const stepfunPreset: BuiltinProviderPreset = {
 
 export const stepfunPlanPreset: BuiltinProviderPreset = {
   builtinId: 'stepfun-plan',
-  version: 1,
+  version: 2,
   name: '阶跃星辰（套餐）',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.stepfun.com/step_plan/v1',
@@ -73,6 +85,9 @@ export const stepfunPlanPreset: BuiltinProviderPreset = {
       maxOutputTokens: 65_536,
       supportsVision: false,
       supportsFunctionCall: true,
+      inputPrice: 0.104,
+      outputPrice: 0.313,
+      cacheHitPrice: 0.021,
       supportsThinking: true,
       thinkingConfig: step35ThinkingConfig
     }

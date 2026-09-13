@@ -3,6 +3,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 using WishfulClaw.Persona;
 
 namespace WishfulClaw.Agent;
@@ -153,6 +154,16 @@ internal static partial class AgentLoop
         state.ReplaceParameters(runtimeParameters);
         parameters = runtimeParameters;
         provider = GetObject(parameters, "provider");
+
+        // Create the project data directory before anything writes into it, so on Windows it is
+        // hidden from the moment it first exists. One call site instead of one per write path:
+        // Directory.CreateDirectory leaves an existing directory's attributes alone, so whichever
+        // writer gets there first, the directory was already created here.
+        var dataDirWorkingFolder = JsonHelpers.GetString(parameters, "workingFolder");
+        if (!string.IsNullOrWhiteSpace(dataDirWorkingFolder))
+        {
+            WishfulClawDataDir.EnsureProjectRoot(dataDirWorkingFolder);
+        }
 
         // ── Resolve tool definitions from backend registry ──
         // Tools live in the backend (ToolModuleState.Registry); the frontend

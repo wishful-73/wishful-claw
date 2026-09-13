@@ -1,4 +1,4 @@
-# 迭代 28 审查报告（Z1）
+﻿# 迭代 28 审查报告（Z1）
 
 - 日期：2026-09-12
 - 分支：`dev/v2-iter-28`（审查与验证期间**未 push**；Plan 全绿后按 AGENTS.md 一次性 push 本分支，合并 main / 打 tag / Release 仍留老大裁定）
@@ -65,6 +65,7 @@
 - ❌（审查发现，已修）`ToolVisibilityPolicy` 里 `IsVisible(ToolDefinition)` 重载零调用方，已删；测试桩里的匿名类型 `Schema()` 改为 `JsonDocument` 克隆，避免 AOT 口径下的坏示范。
 - ✅（追加裁定后已修）**第四个载体的漏口**（原 ⚠️ / S-4，现已关闭）：`FilterToolDefinitions` 曾在 `!channelSession && BypassesChatAllowlist(context)` 时**原样返回**，cowork/goal/automation 三档因此绕过 `IsGloballyExcluded`。当时实测两处后果：`preset=full` + `project:cowork` 可见 22 个渠道专用工具；`project:cowork@subagent`/`@goalsubagent` 的直连集合里 9 个 `Browser*` 仍在，而同档 `use_capability` 已拒。**老大 2026-09-12 追加裁定后按 R-3.I 整体收敛修掉**：`BypassesChatAllowlist`、`IndependentRuntimeRoles`、原样返回短路三者均已不存在，6 张中心名字表（含 `SharedChatTools`/`ProjectChatTools`/`GlobalChatTools`/`ChannelOnlyTools`/交互黑名单/proxy 名字表）全部删除，准入改由逐工具 `VisibleScopes`/`ExcludedScopes` 声明裁决，判定对 105 格每一格都执行。上述两处漏口逐格复测**均已收口**（差异表组① 的 −22、组② 的 −9），四载体同源同裁对直连侧同样成立。改动面、普查硬约束与 36 格差异见 `plan.md` R-3.I。
 - ⚠️ `IsCore` 字段已按 R-3.1 走通四处注册路径，但 `PromptBuilder.BuildToolCapability()` 未接线（R-3.7 ⛔），**当前只声明、无消费方**；`<tool_calling>` 段仍输出静态全 27 类。
+- ✅（最终追加裁定）`Bash` 已通过自身普通声明设为 `IsCore=true` + `VisibleScopes=Everywhere`，没有在 preset、准入策略或执行路由中增加名字特判。15 个运行场景逐一断言全可见；现有 `full/chat/coding` 三个 preset 的 24 格新增 `Bash`，其余不含 shell category 的 preset 保持原样。
 
 ### R-4 使用指引与 README 拆分（`231f1cd5`）
 
@@ -93,3 +94,89 @@
 
 代码：`FileAwareEditor.tsx` + `file-aware-editor-undo-selection.ts`（#3 根因）、`channel-store.ts` + `GlobalChannelSettings.cs` + `GlobalChannelSettingsService.cs` + `channel-plugin-handlers.ts` + `use-background-subagent-wakeup.ts` + `messagepack-channel-routing.ts`（R-2 失败面）、`UsagePanel.tsx` + `UsagePanelParts.tsx` + zh/en `settings.json` + `plugin-panel-global.tsx`（i18n 与未生效提示）、`ToolVisibilityPolicy.cs`（删死重载）、`ToolDeclarationChecks.cs` + `VisibilitySnapshot.cs` + `visibility-snapshot.expected.txt` + `UsageLogChecks*.cs`（金样/普查/拆分）、`ChannelShellApprovalRegressionTests/Program.cs`、`package.json`（两个新测试脚本）、`tests/ipc-msgpack-routing/`（新增）。
 文档：`README.md`、`docs/development.md`、`docs/user-guide.md`、`docs/plans/iter-v2-28/{plan,raw-requirements,updater-ui-issues}.md` + 本报告与 `verification_report.md`。
+
+---
+
+## 独立复审（2026-09-12，R-3 专项）
+
+- 触发：老大要求"审查 28 迭代，特别是 R-3"，并复述 R-3 的目的——**"拿工具时都要把当前自身的情况组合成类似 `project:cowork@subagent` 的串，再做统一过滤"**。
+- 口径：以这句话为验收标准反查代码，不看文档结论。方式为纯静态复读（本环境 `dotnet build` 当时因 NuGet 路径解析失败跑不起来，见文末"本次未做的取证"——**该障碍已于当晚解除并更正**，但本节结论不依赖构建）。
+- 结论：**准入判定这一半达成了，且做得干净；"都"这个字还没做到——六条取工具出口里三条旁路。**
+
+### 一、逐出口核对（对照上图）
+
+| 出口 | 落点 | 过统一判定 |
+|---|---|---|
+| 直连工具集 | `AgentLoop.cs:168-170` | ✅ |
+| `use_capability` description | `AgentRuntimeUseCapabilityDiscovery.cs:188-204` | ✅ |
+| `use_capability` `action=list` | 同文件 `:260-277` | ✅ |
+| `use_capability` `action=inspect` | `AgentRuntimeUseCapabilityEncoding.cs:129` | ✅ |
+| `use_capability` `action=call` | `AgentRuntimeUseCapabilityExecutor.cs:310` | ✅ |
+| 工具执行时二次准入 | `ToolCallProcessor.cs:152` | ✅ |
+| **系统提示词 `<tool_calling>`** | `PromptBuilder.cs:242-259` | ❌ 静态全 27 类（= S-1，已知） |
+| **IPC `tool/list`** | `ToolModule.cs:80-114` | ❌ 只按 preset |
+| **`provider/complete` 的 `tools`** | `ProviderCompletionService.cs:221-253 / 275-300` | ❌ 直写 provider body |
+
+四条 proxy 出口共用 `IsProxyBuiltinVisible` 一个谓词、`RenderContext` 除自身外零调用点（实测 grep），这两条**属实且干净**。
+
+### 二、本次新发现（文档里没有的）
+
+**F1 ⚠️ `tool/list` 是第二套工具真源，且不在判定内 —— 建议本轮收口**
+`ToolModule.cs:80` 返回 `registry.GetToolDefinitions(preset)`，**无 `FilterToolDefinitions`**；渲染端 `lib/tools/tool-cache.ts` 把它缓存后经 `sidecar-mapping.ts:319` 塞进 `agent/run` 请求的 `tools`。**而 Worker 根本不读这个字段**——`AgentRuntimeTools.cs` 无任何 `tools` 引用、`AgentLoop.cs:168` 从注册表重建，全仓 `grep '"tools"'` 在 agent 路径零命中（命中的都是 Provider 输出侧与 MCP manifest）。故**现状无害，但它是"一条没人过滤的工具清单 + 一段没人读的载荷"**。一旦将来有人让 Worker 尊重 `parameters.tools`（例如为了省一次注册表遍历），旁路立刻变成真漏口。二选一：删掉请求里的 `tools`，或让 `tool/list` 也走同一个谓词。
+
+**F2 ⚠️ `provider/complete` 不设防**
+`ProviderCompletionService.cs` 把调用方给的 `tools` 数组原样写进 OpenAI/Anthropic 请求体，不经注册表、不经判定。当前唯一调用方（`lib/prompt-optimizer/optimizer.ts:101`）不传工具，所以没炸。但它是"拿工具"的第五条路，与"统一"口径不符。
+
+**F3 ❗ 后台无人值守档仍看得见交互三件 —— 已裁定并修复（R-3.K）**
+修复前实测金样：`grep "^  project:cowork@automation" visibility-snapshot.expected.txt` → 含 `AskUserQuestion`、`ExitPlanMode`、`visualize_show_widget`（修复后这三件在该档全部消失，见 R-3.K 的 8 格差异表）。
+成因：`AgentRunContextPolicy.cs:68-71` 把 `runtimeRole=="automation"` 归一成 `collaborationMode="cowork"`，于是串是 `project:cowork@automation`；交互三件声明 `HumanAttended = ["*:chat@*","*:cowork@*"]`（`ToolVisibilityScopes.cs:46`），`*:cowork@*` 照样命中。这正是 R-3.D 收窄 5 ③ 要挡的（"后台无人可答，会挂住"）。
+> **【更正：本报告初稿的结论有一处说错了】** 初稿写"要表达『后台不行、会话内定时任务行』必须落到 role 粒度，**改声明值解决不了**"。**这句话对"只用白名单"成立，对"黑名单"不成立**——`ExcludedScopes` 本身就是声明，veto 在 `ToolVisibilityPolicy.IsVisible` 里排在 grant 与默认可见之前（`:96-106`），所以只加一个排除字段即可，不必把 role 枚举进白名单，判定代码一行不用动。老大当日据此裁定走黑名单，已按 **R-3.K** 落地（`ToolVisibilityScopes.NoHumanToAnswer = ["*:*@automation", "*:channel@*"]`，三件各挂 `ExcludedScopes`），金样 **8 格收窄、0 放宽**。
+> 顺带纠正另一处：`ExitPlanMode` 声明的**不是** `HumanAttended` 而是 `WorkRunsOnly`（`PlanToolProvider.cs:48`）——`plan.md` R-3.8 的 R-3.I 修正里"三件各自在注册点带这个形状"与代码不符（只有两件是），已就地更正。channel 那一半则**本就已被白名单形状挡住**（`global:channel` 7 格全等价），加进黑名单属冗余但显式的兜底。
+> **【R-3.M 当日扩围收口】** 老大同日再裁两条：① 计划族**收全族**（`EnterPlanMode`／`SubmitPlanReview`／`UpdatePlanStep` 一并挂 veto，不再只挂 `ExitPlanMode`，消除了 R-3.K 新造的计划族内部不对称）；② **子 Agent 需要排除**（老大：「子 agent 需要排除，因为子 agent 其实类似后台执行」），`NoHumanToAnswer` 的角色轴改为直接取 `UnattendedRoles`，`@subagent`／`@goalsubagent` 一并纳入。累计收窄 **27 格**、0 放宽；三类无人档位（`@subagent`／`@goalsubagent`／`@automation`）与六件交互面工具（计划四件 + 交互两件）的交集**残留实测 0**。金样 112 行 / **24,557 B**。**S-2 ② 与 S-13 的剩余问题全部关闭。**
+> 一处实读发现留档：计划族对子 Agent 的排除在当前档位组合下是**防御性**的——四件都声明 `availableModes: ["normal"]`，而子 Agent 档的 `AvailableMode` 是 `subagent`（`AgentRunContextPolicy.cs:97-98`），故它们在子 Agent 档本就不进 preset 可见集（脚本实测：16 格 subagent 变更的减项全是 `AskUserQuestion`／`visualize_show_widget`，一件计划工具都没减掉）。这条 veto 的价值在于**不依赖 `availableModes` 这个间接闸门**。
+
+**F4 ⚠️ 两条渲染端影子清单，其中一条与声明语义直接冲突**
+`translate-agent-service.ts:21 TRANSLATION_TOOLS`、`pet-agent.ts:65 PET_AGENT_TOOLS` 是渲染端手写工具定义，同样被 Worker 忽略。更要紧的是**语义冲突**：翻译的系统提示词明确要求模型调 `Write()`/`Edit()` 写缓冲区（`translate-agent-service.ts:124,149,178,193`），而 `Write`/`Edit` 现声明 `WorkRunsOnly`（`FileWriteTool.cs:24`、`FileEditTool.cs:23`），在 `global:chat@translation` 下**不可见**；改前 `translation` 在 `IndependentRuntimeRoles` 里全放行所以是通的。目前不炸只因 `agentMode` 恒为 false（`setAgentMode` 全仓零调用）、宠物也无线程入口——**死代码里的定时炸弹**。`plan.md` R-3.I 把这几格的理由写成"翻译只需要读+回文本"，**与代码事实不符**，建议就地改口径并立后继（接真 agent 翻译时须给 `Write`/`Edit` 补 `*:chat@translation` 形状，或把 translation 归到 cowork）。
+
+**F5 口径：目前只统一了"准入轴"，工具清单实际由四层决定**
+`ToolPreset`（类别白/黑名单）→ `availableModes` → `VisibleScopes/ExcludedScopes` → **两个按名字的功能开关**（`AgentLoop.cs:179` 的 `WebSearch`/`WebFetch`、`:190` 的 `codegraph_` 前缀），后两者在统一判定**之后**执行。文档已分别记为 preset 轴 / S-11，但对外表述不能越界：准确说法是"**准入判定**轴已单点"，不是"工具可见性已收敛为单一机制"。
+
+**F6 判定细节两处（小）**
+① `IsVisible` 每次调用都重渲 `ctxStr`（`ToolVisibilityPolicy.cs:94`），`FilterToolDefinitions` 对约 100 件工具即约 100 次重渲；功能无误，纯开销，可在 `FilterToolDefinitions` 里渲一次传下去。
+② `IsToolAllowed` 在 `registry is null` 时 **fail-open（全可见）**（`:146-148`）。AgentLoop 那条路 registry 为 null 时 `toolDefs` 本就为空所以不炸，但这是"传错参数即静默全开"的形状，值得加断言。
+
+### 三、做得好的地方（留档）
+
+- `ctxStr` 只有 `RenderContext` 一处生成，除自身外零调用点。
+- 两个策略文件 `HashSet<string>` 零命中（实测只剩 `Discovery:137` 的局部累加器与 `Executor:32` 的类别级 `ProxiedCategories`，都不是工具名表）。
+- 声明普查是**硬约束**：未声明即红、死串即红、自身声明致不可达也红（`ToolDeclarationChecks.cs:38-76`），且有反证探针记录。
+- 105 格金样 + worktree 取基线的方法是可复用的取证手段。
+
+### 四、建议处置
+
+| # | 项 | 建议 |
+|---|---|---|
+| F1 | `tool/list` 旁路 | 本轮收口（删载荷或接判定），二选一即可，改动小 → **已立 S-12** |
+| F2 | `provider/complete` 旁路 | 本轮加一句判定，或明确记为"非可见性路径" → **已立 S-12** |
+| F3 | automation 档交互三件 | 原建议"承认它（改文档口径）或调形状到 role 粒度"→ 已立 S-13；**老大当日裁定改走黑名单 → 已落地 R-3.K，并由 R-3.M 扩围（计划族收全族 + 子 Agent 排除），S-13 与 S-2 ② 全部关闭** |
+| F4 | 翻译/宠物影子清单 | 改 `plan.md` R-3.I 那格的理由，并立后继需求 → **已立 S-14，文档已更正** |
+| F5 | 表述口径 | 文档里"统一"限缩为"准入判定轴" → **已写进 `plan.md` R-3.I 与 `raw-requirements.md`** |
+| F6 | 渲染开销 / fail-open | 顺手改，非阻塞 |
+
+**复审结论回填的文档改动**（无代码改动）：`plan.md` R-3.I「未做与遗留」新增四条（组④ 更正 / S-12 / S-13 / 口径收紧）；`raw-requirements.md` 后继需求登记新增 S-12／S-13／S-14 三行；`verification_report.md` §5 目视配方的"翻译"一条就地更正。
+
+**后续两批已含代码改动**（不在上句范围内）：R-3.K（`ToolVisibilityScopes.NoHumanToAnswer` + 三注册点 + 金样 8 格）与 R-3.M（常量角色轴改取 `UnattendedRoles` + `PlanToolProvider` 三件补 veto + 金样再 19 格）。**两批已于 2026-09-12 晚补编译并跑测试通过**（解决方案 0 警告 0 错误；`ProviderHeaderRegressionTests` `checks passed`，含金样 `AssertMatchesGolden`；`ChannelToolVisibilityRegressionTests` `passed (108 assertions)`）——金样虽为脚本重算，但已被机器断言确认自洽。详见 `plan.md` R-3.K／R-3.M 末条与 `verification_report.md`。
+
+### 五、本次未做的取证（如实，**结论已更正**）
+
+> **⚠️ 本节记录的障碍已于 2026-09-12 晚解除，见下方更正。**
+
+原记录：`dotnet build src/runtime/WishfulClaw.sln -c Release` 在本会话**跑不起来**：NuGet 报 `Value cannot be null. (Parameter 'path1')`（`NuGet.targets(796,5)`，15 个项目全中），`--no-restore` 则转为 `NETSDK1060 读取资产文件时出错`。加 `HOME`/`USERPROFILE`/`NUGET_PACKAGES` 显式 Windows 路径、以及关沙箱重试均同样失败，判断为本会话环境问题而非代码问题。因此**本报告结论为静态复读所得**。
+
+**更正（2026-09-12 晚）**：根因是 bash 会话**不继承 Windows 核心环境变量** —— `APPDATA` 为空，使 NuGet 在 `Settings.LoadUserSpecificSettings` 里走到 `Path.Combine(path1, null)`。当时补的是 `HOME`/`NUGET_PACKAGES`，**补错了变量组**，故误判为不可解。手动 export `APPDATA` / `LOCALAPPDATA` / `SystemRoot` / `windir` / `ComSpec` / `ProgramData` / `DOTNET_ROOT` 并把 `D:\claw\dotnet-sdk` 加进 `PATH` 后，构建与测试**均正常**：
+
+- `dotnet build src/runtime/WishfulClaw.sln` → 15 项目 **0 警告 0 错误**
+- `dotnet run --project tests/WishfulClaw.ProviderHeaderRegressionTests` → `checks passed`
+- `dotnet run --project tests/WishfulClaw.ChannelToolVisibilityRegressionTests` → `passed (108 assertions)`
+
+**但这不改变第一至四节的结论**：它们是对"六条取工具出口是否统一走判定"的代码推理，与能否编译无关。恢复构建后补跑的，只是 R-3.K／R-3.M 两批代码改动的门禁。

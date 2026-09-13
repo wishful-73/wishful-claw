@@ -47,9 +47,16 @@ internal static class Program
         "list_installed_skills"
     ];
 
+    /// <summary>
+    /// The interactive surface: tools whose only outcome is a person reacting. A channel's reply
+    /// surface is plain text, so a question dialog, a rendered widget, or a plan waiting for approval
+    /// would hang the run. Since R-3.M the whole plan family is here rather than <c>ExitPlanMode</c>
+    /// alone — a channel run has no plan review to wait for, so the family moves together.
+    /// </summary>
     private static readonly string[] ChannelExcludedTools =
     [
-        "visualize_show_widget", "AskUserQuestion", "ExitPlanMode"
+        "visualize_show_widget", "AskUserQuestion",
+        "EnterPlanMode", "SubmitPlanReview", "ExitPlanMode", "UpdatePlanStep"
     ];
 
     private static int _checks;

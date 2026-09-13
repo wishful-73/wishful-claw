@@ -99,8 +99,9 @@ function buildWorkRequestContent(dispatchId: string, taskId: string, instruction
     `[GLOBAL AGENT WORK REQUEST] dispatch_id=${dispatchId} global_task_id=${taskId}\n\n` +
     `${instruction}\n\n` +
     'This work request was dispatched by the global agent (Task Board). Decide yourself how to ' +
-    'execute it (including whether to create your own temporary Todos). When you finish, get ' +
-    'blocked, or need to ask the global agent a follow-up question, call the reply_global_dispatch ' +
+    'execute it (including whether to create your own temporary Todos). Any notes or briefs you ' +
+    'write for it belong in `.wishful-claw/notes/`, not loose in the project tree. When you finish, ' +
+    'get blocked, or need to ask the global agent a follow-up question, call the reply_global_dispatch ' +
     `tool with dispatchId '${dispatchId}' so the global agent can track the outcome.`
   )
 }

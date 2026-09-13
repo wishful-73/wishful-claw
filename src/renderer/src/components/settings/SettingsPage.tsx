@@ -1,10 +1,11 @@
 ﻿import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3 } from 'lucide-react'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3, Bot } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
 import { useUIStore, type SettingsTab } from '@renderer/stores/ui-store'
 import { ProviderPanel } from '@renderer/components/settings/ProviderPanel'
+import { ProviderCompletionSettingsPanel } from '@renderer/components/settings/ProviderCompletionSettingsPanel'
 import { PluginPanel } from '@renderer/components/settings/PluginPanel'
 import { ExtensionPanel } from '@renderer/components/settings/ExtensionPanel'
 import { AppPluginPanel } from '@renderer/components/settings/AppPluginPanel'
@@ -40,7 +41,6 @@ const GENERAL_ANCHORS: SectionAnchor[] = [
 
 const RUNTIME_ANCHORS: SectionAnchor[] = [
   { id: 'sec-runtime-autostart', label: 'anchorNav.startup' },
-  { id: 'sec-runtime-auxiliary-models', label: 'anchorNav.auxiliaryModels' },
   { id: 'sec-runtime-devmode', label: 'anchorNav.developer' },
   { id: 'sec-runtime-timeout', label: 'anchorNav.timeout' },
   { id: 'sec-runtime-retries', label: 'anchorNav.retries' },
@@ -78,6 +78,7 @@ function SettingsPage(): React.JSX.Element {
       label: t('tabs.groups.aiService'),
       items: [
         { id: 'provider', icon: <Server className="size-4" />, label: t('tabs.provider.label') },
+        { id: 'modelManagement', icon: <Bot className="size-4" />, label: t('tabs.modelManagement.label') },
         { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') },
         { id: 'memory', icon: <Brain className="size-4" />, label: t('tabs.memory.label', { defaultValue: '记忆' }) },
         { id: 'usage', icon: <BarChart3 className="size-4" />, label: t('tabs.usage.label', { defaultValue: '用量统计' }) }
@@ -178,6 +179,12 @@ function SettingsPage(): React.JSX.Element {
             {settingsTab === 'provider' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ProviderPanel />
+              </div>
+            ) : settingsTab === 'modelManagement' ? (
+              <div className="flex-1 overflow-y-auto">
+                <div className="mx-auto max-w-4xl px-8 pb-16 pt-10">
+                  <ProviderCompletionSettingsPanel />
+                </div>
               </div>
             ) : settingsTab === 'runtime' ? (
               <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">

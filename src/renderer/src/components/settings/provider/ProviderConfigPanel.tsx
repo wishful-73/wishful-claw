@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Plus,
@@ -17,7 +17,8 @@ import {
   Shapes,
   MonitorSmartphone,
   Sparkles,
-  Zap
+  Zap,
+  ExternalLink
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
@@ -226,6 +227,23 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           the last element and stretches to fill all remaining vertical space,
           so only the model list itself scrolls. */}
       <div className="flex flex-1 min-h-0 flex-col overflow-x-hidden px-5 pt-4 pb-4">
+        {provider.homepage && (
+          <section className="mb-4 flex min-w-0 shrink-0 items-center gap-2">
+            <label className="shrink-0 text-sm font-medium">{ts('provider.config.officialWebsite')}</label>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="min-w-0 justify-start gap-1 p-0 text-left text-xs font-normal"
+              title={provider.homepage}
+              onClick={() => void window.api.invoke<void>('shell:openExternal', provider.homepage)}
+            >
+              <ExternalLink className="size-3 shrink-0" />
+              <span className="break-all whitespace-normal">{provider.homepage}</span>
+            </Button>
+          </section>
+        )}
+
         {/* API Key */}
         <section className="shrink-0 space-y-2">
           <div className="flex items-center justify-between">

@@ -298,6 +298,8 @@ export interface AIProvider {
   type: ProviderType
   apiKey: string
   baseUrl: string
+  /** Optional official website for this provider */
+  homepage?: string
   enabled: boolean
   models: AIModelConfig[]
   builtinId?: string

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 using System.Globalization;
 
@@ -47,6 +47,8 @@ public sealed class FileReadTool : IToolExecutor
 
 
     public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 

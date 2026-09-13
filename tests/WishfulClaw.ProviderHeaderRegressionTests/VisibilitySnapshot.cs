@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using WishfulClaw.Agent;
 using WishfulClaw.Core.Tools;
 
@@ -84,8 +84,9 @@ internal static class VisibilitySnapshot
     }
 
     /// <summary>
-    /// Builds the full digest: for each preset × scenario, the sorted list of tool names that survive
-    /// both the preset filter and the admission filter.
+    /// Builds the full digest: for each preset × scenario, the sorted list of tool names that
+    /// survive preset ∧ visibility ∧ IsCore — i.e. the direct tool list the LLM actually carries
+    /// (iter-28 narrowing). Non-core tools are proxy-reachable and intentionally absent here.
     /// </summary>
     public static string Build(ToolRegistry registry)
     {
@@ -99,9 +100,8 @@ internal static class VisibilitySnapshot
 
             foreach (var scenario in scenarios)
             {
-                var presetVisible = registry.GetToolDefinitions(preset, scenario.AvailableMode);
-                var admitted = AgentRunContextPolicy.FilterToolDefinitions(
-                    presetVisible, registry, scenario.Context, scenario.ChannelSession);
+                var admitted = AgentRunContextPolicy.ResolveDirectInjection(
+                    registry, preset, scenario.AvailableMode, scenario.Context, scenario.ChannelSession);
 
                 var names = admitted
                     .Select(definition => definition.Name)

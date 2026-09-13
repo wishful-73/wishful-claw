@@ -10,9 +10,11 @@ import type { AIProvider, BuiltinProviderPreset } from '../../../shared/types/pr
  *   - Models listed in `preset.deprecatedModelIds` are dropped. Without this filter they would
  *     be classified as user-added models and survive every future upgrade forever.
  *   - Other (user-added) models are preserved untouched.
- *   - `type` and `homepage` are refreshed from the preset. `homepage` in particular only ever
- *     reaches an existing record through this path, which is why the preset version must be
- *     bumped whenever a preset gains a new field.
+ *   - `homepage` is refreshed from the preset — it only ever reaches an existing record
+ *     through this path, which is why the preset version must be bumped whenever a preset
+ *     gains a new field.
+ *   - `type` is refreshed from the preset unless the user manually switched the protocol
+ *     in the UI (`typeOverridden`); in that case the user's choice survives the upgrade.
  */
 export function upgradeProviderFromPreset(
   current: AIProvider,
@@ -35,7 +37,7 @@ export function upgradeProviderFromPreset(
 
   return {
     ...current,
-    type: preset.type,
+    type: current.typeOverridden ? current.type : preset.type,
     homepage: preset.homepage,
     models: [...refreshedModels, ...userCustomModels],
     presetVersion: preset.version

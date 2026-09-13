@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 
 import { immer } from 'zustand/middleware/immer'
 
@@ -46,7 +46,7 @@ import { useAgentStore } from '@renderer/stores/agent-store'
 
 // Session-scoped agent Todo tools (OpenCowork semantics). When any of these
 // completes, the tasks table is the source of truth — refresh the task store.
-const NATIVE_TASK_TOOL_NAMES = new Set(['TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList'])
+const NATIVE_TASK_TOOL_NAMES = new Set(['TodoTaskCreate', 'TodoTaskGet', 'TodoTaskUpdate', 'TodoTaskList'])
 
 
 

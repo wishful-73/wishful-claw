@@ -5,7 +5,7 @@ using WishfulClaw.Core.Tools;
 namespace WishfulClaw.Agent.Tools.Providers;
 
 /// <summary>
-/// Registers task management tool definitions (TaskCreate/Get/Update/List).
+/// Registers todo task tool definitions (TodoTaskCreate/Get/Update/List).
 /// Execution: ToolDispatchRouter → AgentRuntimeTaskExecutor (SQLite-backed, OpenCowork semantics).
 /// Note: The SubAgent "Task" tool is a separate IToolExecutor (TaskTool.cs) registered directly.
 ///
@@ -24,7 +24,7 @@ public sealed class TaskToolProvider : IToolProvider
             "Optional JSON object of metadata to attach to the task (convention keys: priority / tags / dueAt). Use a JSON object value.");
 
         registry.Register(new ToolDefinitionPlaceholder(
-            "TaskCreate",
+            "TodoTaskCreate",
             "Create a task for the current session. Use this to track progress on complex multi-step work. " +
             "Tasks are displayed in the Steps panel.",
             ToolSchemaBuilder.Object(
@@ -40,7 +40,7 @@ public sealed class TaskToolProvider : IToolProvider
             visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
-            "TaskGet",
+            "TodoTaskGet",
             "Retrieve a task by its ID to inspect its title, status, ownership, and dependencies.",
             ToolSchemaBuilder.Object(
                 new()
@@ -51,7 +51,7 @@ public sealed class TaskToolProvider : IToolProvider
             visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
-            "TaskUpdate",
+            "TodoTaskUpdate",
             "Update a task: change status, title, owner, or manage dependencies. " +
             "Set status to \"deleted\" to permanently remove a task.",
             ToolSchemaBuilder.Object(
@@ -75,7 +75,7 @@ public sealed class TaskToolProvider : IToolProvider
             visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
-            "TaskList",
+            "TodoTaskList",
             "List all tasks in the current session with their detailed titles, status, owner, and dependencies.",
             ToolSchemaBuilder.Object(),
             visibleScopes: ToolVisibilityScopes.Everywhere));

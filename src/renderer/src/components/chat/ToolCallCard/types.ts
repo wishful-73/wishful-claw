@@ -126,6 +126,11 @@ export const COMPACT_BUILTIN_TOOL_NAMES = new Set([
   'SavePlan',
   'Shell',
   'Skill',
+  'TodoTaskCreate',
+  'TodoTaskGet',
+  'TodoTaskList',
+  'TodoTaskUpdate',
+  // Legacy names for old persisted transcripts.
   'TaskCreate',
   'TaskGet',
   'TaskList',

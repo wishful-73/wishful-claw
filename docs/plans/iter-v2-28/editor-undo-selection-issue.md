@@ -67,3 +67,14 @@
 - 探针**无法稳定复现**老大描述的完整序列（真实输入法 + 人工键入时序），裸 DOM 上同一序列在不同次运行里 `{2,4}` 与 `{2,2}` 都出现过；已证的是「撤销能在 `input` 事件里给出非折叠还原选区」这一条入口。
 - `collapseRestoredHistorySelection` 的 DOM 语义（反向选区也归一到左端、外部选区不被动）已在真实浏览器中实测。
 - **仍须老大真机复验 #3.3**：粘贴 `1234` → 改 `12你好34` → 撤销应无选中；并顺带确认「选中一段 → 删除 → 撤销」仍保留整段还原选中（本修复刻意不动这条）。
+
+## 追修（2026-09-13，真机复验发现门控被 IME 污染）
+
+老大真机复验「粘贴 `1234` → IME 输入你好 → 撤销」仍残留「34」选中。根因在 `handleBeforeInput` 的门控记录本身：
+
+- 组合输入的每一次 `beforeinput`（`insertCompositionText`）都执行 `lastMutationReplacedSelectionRef = selectionWasExpandedBeforeMutation(...)`，而组合期间实时选区是**未上屏文本的下划线区间，恒非折叠** → 标记被置 true；
+- 该标记一直留到撤销：`historyUndo` 分支读到 true，误判为「用户选中内容的还原」→ 跳过 `collapseRestoredHistorySelection` → 「34」残留选中。
+
+修法（`FileAwareEditor.tsx` `handleBeforeInput`）：组合会话开始后的后续 beforeinput **不覆盖标记**（`!isCompositionInput || !wasComposing`）。组合的第一拍例外——那时选区还是变更前的用户状态，「选中一段 → 输入替换 → 撤销还原整段选中」依赖这次记录。纯键盘输入（不经 IME）路径不受影响：变更前选区是折叠光标，标记为 false，撤销时照常收起。
+
+复测样例不变：粘贴 `1234` → IME 输入你好 → 撤销应无选中；「选中一段 → 删除 → 撤销」与「选中一段 → 输入替换 → 撤销」仍保留整段还原选中。

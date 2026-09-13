@@ -1,4 +1,4 @@
-﻿namespace WishfulClaw.Core.Tools;
+namespace WishfulClaw.Core.Tools;
 
 /// <summary>
 /// Shared <see cref="ToolDefinition.VisibleScopes"/> declaration sets (R-3).
@@ -37,6 +37,15 @@ public static class ToolVisibilityScopes
     /// a project to work in — while the work runs that serve those requests are included.
     /// </summary>
     public static readonly string[] GlobalSideAndWorkRuns = ["global:*@*", "*:cowork@*"];
+
+    /// <summary>
+    /// Global-session-only tools: cross-session messaging (send_session_message /
+    /// update_session_follow_up). The global side's identity IS the user, so it may
+    /// address any session; a project run has one project to work in and must not
+    /// turn into a messaging hub. Deliberately not <c>*:cowork@*</c> — that grant
+    /// leaks these into project cowork sessions, which is what the narrow grant fixes.
+    /// </summary>
+    public static readonly string[] GlobalSideOnly = ["global:*@*"];
 
     /// <summary>
     /// Tools whose whole point is a human reacting: an answer dialog, a rendered widget. Visible in

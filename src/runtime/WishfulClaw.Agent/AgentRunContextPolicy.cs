@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 
@@ -7,7 +7,9 @@ namespace WishfulClaw.Agent;
 internal readonly record struct AgentRunContext(
     string Scope,
     string CollaborationMode,
-    string RuntimeRole);
+    string RuntimeRole,
+    bool WebSearchEnabled = true,
+    bool CodegraphEnabled = false);
 
 /// <summary>
 /// Turns a worker request into the run context the admission check reads, and answers "is this tool
@@ -81,7 +83,12 @@ internal static class AgentRunContextPolicy
             };
         }
 
-        return new AgentRunContext(scope, collaborationMode, runtimeRole);
+        return new AgentRunContext(
+            scope,
+            collaborationMode,
+            runtimeRole,
+            JsonHelpers.GetBool(parameters, "webSearchEnabled", true),
+            JsonHelpers.GetBool(parameters, "codegraphEnabled", false));
     }
 
     public static string ResolveAvailableMode(JsonElement parameters, AgentRunContext context)
@@ -163,6 +170,33 @@ internal static class AgentRunContextPolicy
             }
         }
         return filtered;
+    }
+
+    /// <summary>
+    /// The direct-injection pipeline, in one place so the AgentLoop and the regression sweep
+    /// cannot drift: preset shapes what a run may inject, visibility vetoes per run context,
+    /// and <c>IsCore</c> decides what the LLM actually sees as a direct tool definition
+    /// (iter-28 tool narrowing). Non-core tools are NOT lost here — they stay registered and
+    /// are reached through the <c>use_capability</c> proxy, which never consults IsCore.
+    /// </summary>
+    public static IReadOnlyList<ToolDefinition> ResolveDirectInjection(
+        ToolRegistry registry,
+        ToolPreset preset,
+        string? sessionMode,
+        AgentRunContext context,
+        bool channelSession = false)
+    {
+        var definitions = FilterToolDefinitions(
+            registry.GetToolDefinitions(preset, sessionMode), registry, context, channelSession);
+        var core = new List<ToolDefinition>(definitions.Count);
+        foreach (var definition in definitions)
+        {
+            if (definition.IsCore)
+            {
+                core.Add(definition);
+            }
+        }
+        return core;
     }
 
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;

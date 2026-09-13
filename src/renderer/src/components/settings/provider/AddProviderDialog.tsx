@@ -37,31 +37,36 @@ export function AddProviderDialog({
   const [name, setName] = useState('')
   const [type, setType] = useState<ProviderType>('openai-chat')
   const [baseUrl, setBaseUrl] = useState('')
+  const [homepage, setHomepage] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
 
   const setActiveProvider = useProviderStore((s) => s.setActiveProvider)
 
   const handleAdd = (): void => {
-    if (!name.trim() || !apiKey.trim()) return
-    const provider = addCustomProvider(name.trim(), type, baseUrl.trim(), apiKey.trim())
+    if (!name.trim() || !baseUrl.trim()) return
+    const provider = addCustomProvider(name.trim(), type, baseUrl.trim(), apiKey.trim(), homepage.trim())
     setActiveProvider(provider.id)
     toast.success(ts('provider.add.added', { name: name.trim() }))
     // Fire-and-forget model fetch right after adding: failures only toast and
-    // never block the add flow.
-    void fetchModels(provider)
-      .then((models) => {
-        if (models.length === 0) return
-        setModels(provider.id, models)
-        toast.success(ts('provider.config.models.fetchSuccess', { count: models.length }))
-      })
-      .catch((err) => {
-        toast.error(ts('provider.config.models.fetchFailed'), {
-          description: err instanceof Error ? err.message : String(err)
+    // never block the add flow. Skipped when no API key was entered yet — the
+    // request would only fail; the user can fetch from the detail panel later.
+    if (apiKey.trim()) {
+      void fetchModels(provider)
+        .then((models) => {
+          if (models.length === 0) return
+          setModels(provider.id, models)
+          toast.success(ts('provider.config.models.fetchSuccess', { count: models.length }))
         })
-      })
+        .catch((err) => {
+          toast.error(ts('provider.config.models.fetchFailed'), {
+            description: err instanceof Error ? err.message : String(err)
+          })
+        })
+    }
     setName('')
     setBaseUrl('')
+    setHomepage('')
     setApiKey('')
     setType('openai-chat')
     onOpenChange(false)
@@ -76,7 +81,10 @@ export function AddProviderDialog({
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium">{ts('provider.add.name')}</label>
+            <label className="text-sm font-medium">
+              {ts('provider.add.name')}
+              <span className="ml-0.5 text-destructive">*</span>
+            </label>
             <Input
               placeholder={ts('provider.add.namePlaceholder')}
               value={name}
@@ -85,7 +93,10 @@ export function AddProviderDialog({
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">{ts('provider.add.type')}</label>
+            <label className="text-sm font-medium">
+              {ts('provider.add.type')}
+              <span className="ml-0.5 text-destructive">*</span>
+            </label>
             <Select value={type} onValueChange={(v) => setType(v as ProviderType)}>
               <SelectTrigger>
                 <SelectValue />
@@ -100,7 +111,21 @@ export function AddProviderDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">{ts('provider.add.baseUrl')}</label>
+            <label className="text-sm font-medium">
+              {ts('provider.add.homepage')}
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">{ts('provider.add.optional')}</span>
+            </label>
+            <Input
+              placeholder={ts('provider.add.homepagePlaceholder')}
+              value={homepage}
+              onChange={(e) => setHomepage(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              {ts('provider.add.baseUrl')}
+              <span className="ml-0.5 text-destructive">*</span>
+            </label>
             <Input
               placeholder={ts('provider.add.baseUrlPlaceholder')}
               value={baseUrl}
@@ -109,7 +134,10 @@ export function AddProviderDialog({
             <p className="text-xs text-muted-foreground">{ts('provider.add.baseUrlHint')}</p>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">{ts('provider.add.apiKey')}</label>
+            <label className="text-sm font-medium">
+              {ts('provider.add.apiKey')}
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">{ts('provider.add.optional')}</span>
+            </label>
             <div className="relative">
               <Input
                 type={showKey ? 'text' : 'password'}
@@ -127,10 +155,11 @@ export function AddProviderDialog({
                 {showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
               </button>
             </div>
+            <p className="text-xs text-muted-foreground">{ts('provider.add.apiKeyHint')}</p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>{tc('actions.cancel')}</Button>
-            <Button disabled={!name.trim() || !apiKey.trim()} onClick={handleAdd}>{tc('actions.add')}</Button>
+            <Button disabled={!name.trim() || !baseUrl.trim()} onClick={handleAdd}>{tc('actions.add')}</Button>
           </div>
         </div>
       </DialogContent>

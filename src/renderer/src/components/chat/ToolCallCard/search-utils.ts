@@ -297,7 +297,16 @@ export function normalizeWidgetPayload(input: Record<string, unknown>): WidgetTo
   }
 }
 
-export function buildWidgetDocument(payload: WidgetToolPayload): string {
+export interface WidgetAppearance {
+  /** Opaque background for the widget document (host background colour). */
+  bg: string
+  colorScheme: 'light' | 'dark'
+}
+
+export function buildWidgetDocument(
+  payload: WidgetToolPayload,
+  appearance: WidgetAppearance = { bg: '#ffffff', colorScheme: 'light' }
+): string {
   return `<!DOCTYPE html>
 <html>
   <head>
@@ -307,14 +316,16 @@ export function buildWidgetDocument(payload: WidgetToolPayload): string {
       html, body {
         margin: 0;
         padding: 0;
-        background: transparent !important;
+        /* Opaque host background: widgets are authored assuming a real canvas —
+           transparent + dark host made them render murky ("black text on dark grey"). */
+        background: ${JSON.stringify(appearance.bg)};
       }
       html {
-        color-scheme: dark;
+        color-scheme: ${JSON.stringify(appearance.colorScheme)};
       }
       body {
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        color: #e5e7eb;
+        color: ${appearance.colorScheme === 'dark' ? '#e5e7eb' : '#1f2328'};
         overflow: hidden;
       }
       #wishful-claw-widget-root {

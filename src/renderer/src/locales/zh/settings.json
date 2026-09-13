@@ -1,4 +1,4 @@
-﻿{
+{
   "title": "设置",
   "shortcuts": {
     "title": "快捷键",
@@ -233,8 +233,12 @@
       "baseUrl": "Base URL",
       "baseUrlPlaceholder": "https://api.example.com/v1",
       "baseUrlHint": "兼容 OpenAI 格式的 API 地址",
+      "homepage": "官网地址",
+      "homepagePlaceholder": "https://www.example.com",
+      "optional": "可选",
       "apiKey": "API Key",
       "apiKeyPlaceholder": "输入 API Key",
+      "apiKeyHint": "可稍后在服务商详情页中填写",
       "added": "服务商 {{name}} 已添加"
     },
     "config": {
@@ -243,9 +247,11 @@
       "apiKeyNotRequired": "不需要 API Key",
       "baseUrl": "Base URL",
       "officialWebsite": "官方网站",
+      "openHomepage": "前往官网",
       "testSuccess": "连接测试成功",
       "testFailed": "连接测试失败",
       "protocolType": "协议类型",
+      "protocolTypeHint": "切换协议后请确认 Base URL 与新协议匹配",
       "cacheTtl": "缓存 TTL",
       "cacheTtlHint": "Anthropic 缓存生存时间，模型级配置可覆盖",
       "models": {

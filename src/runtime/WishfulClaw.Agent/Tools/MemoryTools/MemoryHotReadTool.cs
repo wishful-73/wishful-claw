@@ -18,7 +18,7 @@ using static WishfulClaw.Agent.Tools.ToolHelpers;
 
 /// <summary>
 
-/// Read hot memory (MEMORY.md) — full content as plain text.
+/// Read hot memory (MEMORY.md) 鈥?full content as plain text.
 
 /// The file path is resolved internally; the agent does not need to know it.
 
@@ -34,13 +34,15 @@ public sealed class MemoryHotReadTool : IToolExecutor
 
     public string Description =>
 
-        "Read the full hot memory (MEMORY.md) — the always-loaded key context. " +
+        "Read the full hot memory (MEMORY.md) 鈥?the always-loaded key context. " +
 
         "Call this to refresh your understanding of key facts.";
 
 
 
     public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 

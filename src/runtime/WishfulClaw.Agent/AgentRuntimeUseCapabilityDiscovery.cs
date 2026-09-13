@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -89,19 +89,30 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 
     /// <summary>
     /// The category vocabulary shown to an agent is derived from the catalog, not maintained as a
-    /// second list of display strings. The proxy set remains the authority for which built-in
-    /// providers are reached through use_capability; ToolCategoryCatalog supplies stable ordering.
+    /// second list of display strings. The core set is the authority for which categories are
+    /// injected directly; everything the catalog knows beyond it is proxy-reachable, and
+    /// ToolCategoryCatalog supplies stable ordering.
     /// </summary>
     internal static IReadOnlyList<string> GetProxiedCategoryNames()
         => ToolCategoryCatalog.All
-            .Where(category => ProxiedCategories.Contains(category.Name))
+            .Where(category => !ToolCategoryCatalog.Core.Contains(category.Name, StringComparer.OrdinalIgnoreCase))
             .Select(category => category.Name)
             .ToArray();
 
     /// <summary>
+    /// Global feature opt-ins, enforced on the proxy side the same way AgentLoop used to enforce
+    /// them on direct injection: web search off removes the web tools, codegraph off removes the
+    /// codegraph tools. A disabled feature must be unreachable through every path, not just one.
+    /// </summary>
+    private static bool IsRunEnabledTool(AgentRunContext runContext, string toolName, string category)
+        => (!string.Equals(category, "web", StringComparison.OrdinalIgnoreCase) || runContext.WebSearchEnabled)
+            && (!toolName.StartsWith("codegraph_", StringComparison.Ordinal) || runContext.CodegraphEnabled);
+
+    /// <summary>
     /// Shared visibility predicate for list, inspect and call. The registry/mode checks are kept
     /// beside the policy check so a new action cannot expose a tool through only one path.
-    /// Whether a built-in belongs to the proxy at all is decided by its category — no per-name list.
+    /// Category membership no longer gates the proxy: a built-in belongs to the proxy when its
+    /// executor is not core (iter-28), with feature opt-ins vetoeing per run.
     /// </summary>
     internal static bool IsProxyBuiltinVisible(
         ToolRegistry? registry,
@@ -112,8 +123,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         string category)
         => registry is not null
             && registry.IsRegistered(toolName)
-            && IsProxiedBuiltinCategory(category)
             && registry.IsAvailableInMode(toolName, sessionMode)
+            && IsRunEnabledTool(runContext, toolName, category)
             && AgentRunContextPolicy.IsToolAllowed(
                 runContext,
                 toolName,
@@ -139,7 +150,10 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         {
             var category = registry.GetCategory(name);
             if (category is not null
-                && IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name, category))
+                && IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name, category)
+                && registry.TryGetExecutor(name, out var executor)
+                && executor is not null
+                && !executor.IsCore)
             {
                 visibleCategories.Add(category);
             }
@@ -203,9 +217,6 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         return rewritten;
     }
 
-    internal static bool IsProxiedBuiltinCategory(string category)
-        => ProxiedCategories.Contains(category);
-
     private static List<CapabilitySummary> BuildCapabilitySummaries(
         JsonElement listResult,
         ToolRegistry? registry,
@@ -265,7 +276,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
                 if (category is null
                     || !IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name, category)
                     || !registry.TryGetExecutor(name, out var executor)
-                    || executor is null)
+                    || executor is null
+                    || executor.IsCore)
                 {
                     continue;
                 }

@@ -29,6 +29,7 @@ internal static class Program
             ToolDeclarationChecks.Run();
             ToolVisibilityChecks.Run();
             BrowserSurfaceAccessChecks.Run();
+            ToolProxyEntryChecks.Run();
             VisibilitySnapshot.AssertMatchesGolden(VisibilitySnapshotDump.BuildProductionRegistry());
             ProviderCompletionResolutionChecks.Run();
             Console.WriteLine("Provider header regression checks passed.");

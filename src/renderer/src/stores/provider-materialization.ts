@@ -60,6 +60,7 @@ export function isUnownedBuiltin(provider: AIProvider): boolean {
   if (!preset) return false
   if (provider.enabled) return false
   if (provider.apiKey) return false
+  if (provider.typeOverridden) return false
   if (preset.requiresApiKey === false) return false
   if (provider.baseUrl && provider.baseUrl !== preset.defaultBaseUrl) return false
   return true
@@ -70,11 +71,23 @@ export function shouldPersist(provider: AIProvider): boolean {
   return !provider.virtual
 }
 
+/**
+ * R-9.6: project a builtin back to its factory defaults.
+ *
+ * The id is deliberately preserved — sessions, plugins, cron tasks and OAuth bindings
+ * all reference provider ids, and a "reset to factory" is not an invitation to break
+ * every one of them. Returns null when the provider is not a known builtin.
+ */
+export function resetProviderToPreset(provider: AIProvider): AIProvider | null {
+  if (!provider.builtinId) return null
+  const preset = builtinProviderPresets.find((p) => p.builtinId === provider.builtinId)
+  if (!preset) return null
+  return { ...createProviderFromPreset(preset), id: provider.id }
+}
+
 export interface ProviderReconciliation {
   /** Full in-memory list: virtual projections + real records + custom providers. */
   providers: AIProvider[]
-  /** oldId -> newId for builtin records whose random pre-R-9 id was re-keyed. */
-  idRemap: Map<string, string>
 }
 
 /**
@@ -83,8 +96,8 @@ export interface ProviderReconciliation {
  * Pure on purpose — this *is* the upgrade path, so it can be regression-tested from
  * plain node without booting the store (see `tests/provider-presets`).
  *
- * - Builtin presets with a persisted record keep that record's contents untouched
- *   (R-9.2: 已物化的用户自己管理), only re-keyed to their stable `builtinId`.
+ * - Builtin presets with a persisted record keep that record **completely untouched**,
+ *   id included (R-9.2: 已物化的用户自己管理).
  * - Builtin presets without one become virtual projections, so preset data is current.
  * - Records written before R-9 have no `virtual` flag, therefore count as real and
  *   survive as-is — no migration, no user data rewritten.
@@ -92,24 +105,36 @@ export interface ProviderReconciliation {
 export function reconcileProviders(persisted: AIProvider[]): ProviderReconciliation {
   const persistedByBuiltinId = new Map<string, AIProvider>()
   const customProviders: AIProvider[] = []
+  // R-9.C.7: a user may legitimately own several records for one preset (official +
+  // relay). Only the first maps to the preset slot; the rest are kept verbatim so
+  // nothing the user created is silently collapsed away.
+  const extraBuiltinRecords: AIProvider[] = []
   for (const p of persisted) {
-    if (p.builtinId) persistedByBuiltinId.set(p.builtinId, p)
-    else customProviders.push(p)
+    if (!p.builtinId) {
+      customProviders.push(p)
+      continue
+    }
+    if (persistedByBuiltinId.has(p.builtinId)) {
+      extraBuiltinRecords.push(p)
+      continue
+    }
+    persistedByBuiltinId.set(p.builtinId, p)
   }
 
-  const idRemap = new Map<string, string>()
   const providers: AIProvider[] = []
 
   for (const preset of builtinProviderPresets) {
     const existing = persistedByBuiltinId.get(preset.builtinId)
-    if (existing) {
-      if (existing.id !== preset.builtinId) idRemap.set(existing.id, preset.builtinId)
-      providers.push({ ...existing, id: preset.builtinId })
-    } else {
-      providers.push(createProviderFromPreset(preset))
-    }
+    // R-9.C.8: NEVER re-key an existing record to `preset.builtinId`. Provider ids are
+    // persisted outside this store — chat sessions in SQLite, app-plugin-store,
+    // pet-agent-store, channel-store, settings-store org/translation models, cron
+    // agentId, OAuth bindings — and none of those can be remapped from here.
+    // Re-keying would dangle all of them. Stable builtinId applies to records created
+    // from R-9 on; legacy records keep the id they already have.
+    providers.push(existing ?? createProviderFromPreset(preset))
   }
+  for (const p of extraBuiltinRecords) providers.push(p)
   for (const p of customProviders) providers.push(p)
 
-  return { providers, idRemap }
+  return { providers }
 }

@@ -45,6 +45,8 @@ public sealed class MemoryUpdateTool : IToolExecutor
 
     public string[]? VisibleScopes => ToolVisibilityScopes.GlobalSideAndWorkRuns;
 
+    public bool IsCore => true;
+
     public JsonElement InputSchema { get; } = ParseSchema(
 
         """{"type":"object","properties":{"id":{"type":"integer","description":"The memory entry id (from memory_search results)"},"content":{"type":"string","description":"New content for the memory entry. Omit to keep existing content."},"priority":{"type":"string","enum":["permanent","lasting","standard","ephemeral"],"description":"New priority level. Omit to keep existing."},"status":{"type":"string","enum":["active","deprecated"],"description":"New status. Use 'deprecated' to mark as outdated/wrong. Omit to keep existing."}},"required":["id"]}""");

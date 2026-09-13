@@ -41,11 +41,13 @@ public sealed class MemoryAppendTool : IToolExecutor
 
         "Priority: permanent (core identity), lasting (important decisions), standard (default), ephemeral (transient). " +
 
-        "When the user shares something worth remembering, call this tool — verbal acknowledgment alone saves nothing.";
+        "When the user shares something worth remembering, call this tool 鈥?verbal acknowledgment alone saves nothing.";
 
 
 
     public string[]? VisibleScopes => ToolVisibilityScopes.GlobalSideAndWorkRuns;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 

@@ -2,13 +2,22 @@ import { nanoid } from 'nanoid'
 import type { AIProvider, AIModelConfig, BuiltinProviderPreset, ProviderType, ReasoningEffortLevel } from '../../../shared/types/provider'
 import type { ManagedModelConfig } from './managed-models'
 import { builtinProviderPresets } from '@renderer/stores/providers'
-import { createProviderFromPreset, isUnownedBuiltin, reconcileProviders } from './provider-materialization'
+import {
+  isUnownedBuiltin,
+  reconcileProviders,
+  resetProviderToPreset
+} from './provider-materialization'
 import { useProviderStore } from '@renderer/stores/provider-store'
 
 export const STORAGE_KEY = 'wishful-claw-providers'
 
 export { builtinProviderPresets }
-export { createProviderFromPreset, materializeRecord, isUnownedBuiltin } from './provider-materialization'
+export {
+  createProviderFromPreset,
+  materializeRecord,
+  isUnownedBuiltin,
+  resetProviderToPreset
+} from './provider-materialization'
 export type { ManagedModelConfig } from './managed-models'
 export type { BuiltinProviderPreset }
 
@@ -25,7 +34,7 @@ export interface ProviderState {
   getProviderById: (id: string) => AIProvider | null
 
   // ── Mutations ──
-  addCustomProvider: (name: string, type: ProviderType, baseUrl: string, apiKey?: string) => AIProvider
+  addCustomProvider: (name: string, type: ProviderType, baseUrl: string, apiKey?: string, homepage?: string) => AIProvider
   updateProvider: (id: string, updates: Partial<AIProvider>) => void
   deleteProvider: (id: string) => void
   setActiveProvider: (id: string) => void
@@ -82,10 +91,10 @@ export function pruneUnownedBuiltinProviders(): number {
   const nextProviders = state.providers.map((p) => {
     if (!isUnownedBuiltin(p)) return p
     pruned++
-    // Replace with a fresh projection: the entry stays visible in the list,
-    // it just stops being written to storage.
-    const preset = builtinProviderPresets.find((x) => x.builtinId === p.builtinId)
-    return preset ? createProviderFromPreset(preset) : p
+    // Reset to a fresh projection while keeping the id: the entry stays visible in
+    // the list and every external reference still resolves, it just stops being
+    // written to storage.
+    return resetProviderToPreset(p) ?? p
   })
   if (pruned > 0) {
     useProviderStore.setState({ providers: nextProviders })
@@ -170,13 +179,20 @@ export function enrichDiscoveredModel(raw: AIModelConfig): AIModelConfig {
   return merged
 }
 
-export function createCustomProvider(name: string, type: ProviderType, baseUrl: string, apiKey = ''): AIProvider {
+export function createCustomProvider(
+  name: string,
+  type: ProviderType,
+  baseUrl: string,
+  apiKey = '',
+  homepage = ''
+): AIProvider {
   return {
     id: nanoid(),
     name,
     type,
     apiKey,
     baseUrl,
+    ...(homepage ? { homepage } : {}),
     enabled: true,
     models: [],
     createdAt: Date.now(),
@@ -205,18 +221,11 @@ export function ensureBuiltinPresets(): void {
 
   // The whole reconciliation rule lives in provider-materialization.ts (pure), so the
   // upgrade path is regression-tested from plain node.
-  const { providers: nextProviders, idRemap } = reconcileProviders(currentProviders)
+  const { providers: nextProviders } = reconcileProviders(currentProviders)
 
+  // R-9.C.8: no id remapping. Persisted records keep their own id, so every pointer
+  // held here and in the stores that reference provider ids stays valid.
   const updates: Partial<ProviderState> = { providers: nextProviders }
-
-  if (idRemap.size > 0) {
-    const remap = (id: string | null) => (id ? idRemap.get(id) ?? id : id)
-    updates.activeProviderId = remap(state.activeProviderId)
-    updates.activeFastProviderId = remap(state.activeFastProviderId)
-    updates.activeSpeechProviderId = remap(state.activeSpeechProviderId)
-    updates.activeImageProviderId = remap(state.activeImageProviderId)
-    updates.activeTranslationProviderId = remap(state.activeTranslationProviderId)
-  }
 
   // If no active provider is set, pick the first available one
   const activeId = updates.activeProviderId ?? state.activeProviderId

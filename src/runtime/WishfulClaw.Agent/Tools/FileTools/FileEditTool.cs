@@ -22,6 +22,8 @@ public sealed class FileEditTool : IToolExecutor
 
     public string[]? VisibleScopes => ToolVisibilityScopes.WorkRunsOnly;
 
+    public bool IsCore => true;
+
     public JsonElement InputSchema => FileReadTool.EditSchema;
 
     public async Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)

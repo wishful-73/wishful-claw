@@ -23,6 +23,8 @@ public sealed class FileWriteTool : IToolExecutor
 
     public string[]? VisibleScopes => ToolVisibilityScopes.WorkRunsOnly;
 
+    public bool IsCore => true;
+
     public JsonElement InputSchema => FileReadTool.WriteSchema;
 
     public async Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)

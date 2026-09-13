@@ -48,6 +48,6 @@ public sealed class UseCapabilityToolProvider : IToolProvider
                         })
                 },
                 new[] { "action" }),
-            visibleScopes: ToolVisibilityScopes.Everywhere));
+            visibleScopes: ToolVisibilityScopes.Everywhere, isCore: true));
     }
 }

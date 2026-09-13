@@ -12,7 +12,7 @@ using WishfulClaw.Infrastructure.Db;
 namespace WishfulClaw.Agent;
 
 /// <summary>
-/// Task tool executor — TaskCreate/Get/Update/List (SQLite-backed, OpenCowork semantics).
+/// Todo task tool executor — TodoTaskCreate/Get/Update/List (SQLite-backed, OpenCowork semantics).
 /// Session-scoped agent Todo: five statuses, dependency links, metadata merge, "deleted" = physical delete.
 /// Split files: AgentRuntimeTaskExecutor.Db.cs (SQL), AgentRuntimeTaskExecutor.Codec.cs (JSON encoding/parsing).
 /// </summary>
@@ -20,6 +20,8 @@ public static partial class AgentRuntimeTaskExecutor
 {
     private static readonly HashSet<string> TaskToolNames = new(StringComparer.Ordinal)
     {
+        "TodoTaskCreate", "TodoTaskGet", "TodoTaskUpdate", "TodoTaskList",
+        // Legacy names kept for routing old persisted transcripts.
         "TaskCreate", "TaskGet", "TaskUpdate", "TaskList"
     };
 
@@ -34,10 +36,10 @@ public static partial class AgentRuntimeTaskExecutor
         {
             return call.Name switch
             {
-                "TaskCreate" => ExecuteCreate(call.Input, parameters),
-                "TaskGet" => ExecuteGet(call.Input, parameters),
-                "TaskUpdate" => ExecuteUpdate(call.Input, parameters),
-                "TaskList" => ExecuteList(parameters),
+                "TodoTaskCreate" or "TaskCreate" => ExecuteCreate(call.Input, parameters),
+                "TodoTaskGet" or "TaskGet" => ExecuteGet(call.Input, parameters),
+                "TodoTaskUpdate" or "TaskUpdate" => ExecuteUpdate(call.Input, parameters),
+                "TodoTaskList" or "TaskList" => ExecuteList(parameters),
                 _ => EncodeError($"Native task tool not registered: {call.Name}")
             };
         }
@@ -52,13 +54,13 @@ public static partial class AgentRuntimeTaskExecutor
         var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
         if (string.IsNullOrEmpty(sessionId))
         {
-            return EncodeError("No active session context for TaskCreate.");
+            return EncodeError("No active session context for TodoTaskCreate.");
         }
 
         var subject = ResolveTaskTitle(input);
         if (subject.Length == 0)
         {
-            return EncodeError("TaskCreate requires a non-empty title.");
+            return EncodeError("TodoTaskCreate requires a non-empty title.");
         }
 
         DbClient.EnsureInitialized(parameters);
@@ -92,13 +94,13 @@ public static partial class AgentRuntimeTaskExecutor
         var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
         if (string.IsNullOrEmpty(sessionId))
         {
-            return EncodeError("No active session context for TaskGet.");
+            return EncodeError("No active session context for TodoTaskGet.");
         }
 
         var taskId = GetTaskId(input);
         if (taskId.Length == 0)
         {
-            return EncodeError("TaskGet requires taskId.");
+            return EncodeError("TodoTaskGet requires taskId.");
         }
 
         DbClient.EnsureInitialized(parameters);
@@ -115,13 +117,13 @@ public static partial class AgentRuntimeTaskExecutor
         var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
         if (string.IsNullOrEmpty(sessionId))
         {
-            return EncodeError("No active session context for TaskUpdate.");
+            return EncodeError("No active session context for TodoTaskUpdate.");
         }
 
         var taskId = GetTaskId(input);
         if (taskId.Length == 0)
         {
-            return EncodeError("TaskUpdate requires taskId.");
+            return EncodeError("TodoTaskUpdate requires taskId.");
         }
 
         DbClient.EnsureInitialized(parameters);

@@ -26,11 +26,23 @@ const toolConfig: Record<string, { icon: React.ReactNode; color: string; labelKe
     color: 'border-cyan-500/30 bg-cyan-500/5',
     labelKey: 'teamEvent.teamCreated'
   },
+  TodoTaskCreate: {
+    icon: <ClipboardList className="size-3.5" />,
+    color: 'border-cyan-500/20 bg-cyan-500/[0.02]',
+    labelKey: 'teamEvent.taskCreated'
+  },
+  // Legacy name for old persisted transcripts.
   TaskCreate: {
     icon: <ClipboardList className="size-3.5" />,
     color: 'border-cyan-500/20 bg-cyan-500/[0.02]',
     labelKey: 'teamEvent.taskCreated'
   },
+  TodoTaskUpdate: {
+    icon: <RefreshCw className="size-3.5" />,
+    color: 'border-cyan-500/20 bg-cyan-500/[0.02]',
+    labelKey: 'teamEvent.taskUpdated'
+  },
+  // Legacy name for old persisted transcripts.
   TaskUpdate: {
     icon: <RefreshCw className="size-3.5" />,
     color: 'border-cyan-500/20 bg-cyan-500/[0.02]',
@@ -91,10 +103,12 @@ export function TeamEventCard({
       summary = `${input.team_name ?? ''}`
       if (input.description) summary += ` — ${input.description}`
       break
+    case 'TodoTaskCreate':
     case 'TaskCreate':
       summary = `${input.title ?? input.subject ?? ''}`
       if (parsed?.task_id) summary = `#${parsed.task_id}: ${summary}`
       break
+    case 'TodoTaskUpdate':
     case 'TaskUpdate':
       summary = `#${input.task_id ?? ''}`
       if (input.status) summary += ` → ${input.status}`

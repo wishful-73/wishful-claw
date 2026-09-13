@@ -1,4 +1,4 @@
-﻿{
+{
   "title": "Settings",
   "shortcuts": {
     "title": "Shortcuts",
@@ -232,8 +232,12 @@
       "baseUrl": "Base URL",
       "baseUrlPlaceholder": "https://api.example.com/v1",
       "baseUrlHint": "OpenAI-compatible API endpoint",
+      "homepage": "Official website",
+      "homepagePlaceholder": "https://www.example.com",
+      "optional": "Optional",
       "apiKey": "API Key",
       "apiKeyPlaceholder": "Enter API Key",
+      "apiKeyHint": "You can fill it in later in the provider details",
       "added": "Provider {{name}} added"
     },
     "config": {
@@ -242,9 +246,11 @@
       "apiKeyNotRequired": "API Key not required",
       "baseUrl": "Base URL",
       "officialWebsite": "Official website",
+      "openHomepage": "Visit website",
       "testSuccess": "Connection test succeeded",
       "testFailed": "Connection test failed",
       "protocolType": "Protocol Type",
+      "protocolTypeHint": "After switching protocols, verify the Base URL matches the new protocol",
       "cacheTtl": "Cache TTL",
       "cacheTtlHint": "Anthropic cache time-to-live, model-level config can override",
       "models": {

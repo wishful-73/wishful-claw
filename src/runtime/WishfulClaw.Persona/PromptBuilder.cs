@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
@@ -266,18 +266,23 @@ Runtime: **WishfulClaw** — a desktop AI agent application.
 
     private static string BuildToolCapability()
     {
+        // Only the core categories are presented — they are the ones injected as direct tool
+        // definitions. Everything else is discovered through the proxy, so enumerating it here
+        // would describe a tool list the model does not actually carry (iter-28 narrowing).
+        var coreCategories = ToolCategoryCatalog.All
+            .Where(category => ToolCategoryCatalog.Core.Contains(category.Name, StringComparer.OrdinalIgnoreCase));
         var categoryLines = string.Join(
             '\n',
-            ToolCategoryCatalog.All.Select(category => $"  - {category.Name}: {category.Description}"));
+            coreCategories.Select(category => $"  - {category.Name}: {category.Description}"));
 
         return $"""
 <tool_calling>
-- Capability categories, in the order they are presented. Prefer the narrowest tool that directly matches the operation.
+- Core tool categories, in the order they are presented. Prefer the narrowest tool that directly matches the operation.
 {categoryLines}
-- Not every category is exposed in every session. When the capability you need is not in your direct tool list, reach it through the `use_capability` proxy: `action="list"` to find it, then `action="call"` with `capability_id` and the arguments in `arguments`. Check before telling the user a capability is unavailable.
+- Everything outside this core set (browser, task, web, project, ask-user, widget, cron, desktop, …) is NOT in your direct tool list. Reach it through the `use_capability` proxy: `action="list"` to find it, then `action="call"` with `capability_id` (e.g. `builtin:ToolName`) and the arguments in `arguments`. Check the proxy before telling the user a capability is unavailable.
 - State what you are about to do in one sentence before calling tools, and what you found in one sentence after. Never call tools silently.
 - Batch independent tool calls in the same assistant turn; keep them sequential only when they depend on each other.
-- For a task with three or more distinct steps, prefer delegating to a sub-agent with the Task tool over doing everything yourself.
+- For a task with three or more distinct steps, prefer delegating to a sub-agent via the `use_capability` proxy (`capability_id="builtin:Task"`) over doing everything yourself.
 </tool_calling>
 """;
     }
@@ -371,10 +376,10 @@ The following are user-defined rules that you MUST ALWAYS FOLLOW WITHOUT ANY EXC
     {
         return """
 <session_todo>
-Session task tools (TaskCreate / TaskGet / TaskUpdate / TaskList) maintain a small Todo list for THIS session only. They are NOT in your direct tool list — call them via the `use_capability` proxy: `action="call"`, `capability_id="builtin:<ToolName>"`, tool arguments in `arguments`.
+Session todo task tools (TodoTaskCreate / TodoTaskGet / TodoTaskUpdate / TodoTaskList) maintain a small Todo list for THIS session only. They are NOT in your direct tool list — call them via the `use_capability` proxy: `action="call"`, `capability_id="builtin:<ToolName>"`, tool arguments in `arguments`.
 - Use Todos only for complex multi-step work or work spanning multiple turns, never for simple requests.
-- Call TaskList before creating tasks to avoid duplicates.
-- Use TaskUpdate to mark `in_progress` when starting (one at a time), `blocked` when stuck, `in_review` when done and awaiting user confirmation, `completed` only when fully done and verified.
+- Call TodoTaskList before creating tasks to avoid duplicates.
+- Use TodoTaskUpdate to mark `in_progress` when starting (one at a time), `blocked` when stuck, `in_review` when done and awaiting user confirmation, `completed` only when fully done and verified.
 </session_todo>
 """;
     }

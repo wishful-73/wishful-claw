@@ -28,7 +28,7 @@ public sealed class PlanToolProvider : IToolProvider
             ToolSchemaBuilder.Object(enterProps, ["reason"]),
             availableModes: ["normal"],
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
-            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer, isCore: true));
 
         // SubmitPlanReview — Agent finalizes plan, submits to user for review
         registry.Register(new ToolDefinitionPlaceholder(
@@ -38,7 +38,7 @@ public sealed class PlanToolProvider : IToolProvider
             ToolSchemaBuilder.Object(),
             availableModes: ["normal"],
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
-            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer, isCore: true));
 
         // ExitPlanMode — Cancel plan mode entirely (no review, no execution)
         registry.Register(new ToolDefinitionPlaceholder(
@@ -48,7 +48,7 @@ public sealed class PlanToolProvider : IToolProvider
             ToolSchemaBuilder.Object(),
             availableModes: ["normal"],
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
-            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer, isCore: true));
 
         // UpdatePlanStep — Agent updates step status during execution
         var stepProps = new Dictionary<string, JsonElement>
@@ -66,6 +66,6 @@ public sealed class PlanToolProvider : IToolProvider
             ToolSchemaBuilder.Object(stepProps, stepRequired),
             availableModes: ["normal"],
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
-            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer));
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer, isCore: true));
     }
 }

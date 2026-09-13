@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -112,6 +112,7 @@ public static partial class ContextCompression
         JsonElement provider,
         IWorkerRequestContext context,
         CancellationToken cancellationToken,
+        string? sessionId = null,
         Func<string, ValueTask>? onSummaryDelta = null,
         bool preserveTail = true)
     {
@@ -144,7 +145,7 @@ public static partial class ContextCompression
         var summarizerFailed = false;
         try
         {
-            summary = await SummarizeAsync(fold, provider, context, cancellationToken, onSummaryDelta);
+            summary = await SummarizeAsync(fold, provider, context, cancellationToken, sessionId, onSummaryDelta);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -417,6 +418,7 @@ public static partial class ContextCompression
         JsonElement provider,
         IWorkerRequestContext context,
         CancellationToken cancellationToken,
+        string? sessionId,
         Func<string, ValueTask>? onSummaryDelta)
     {
         var providerType = JsonHelpers.GetString(provider, "type") ?? string.Empty;
@@ -441,9 +443,9 @@ public static partial class ContextCompression
                 cts.CancelAfter(SummaryTimeout);
                 var summary = providerType switch
                 {
-                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token, attemptDelta),
-                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token, attemptDelta),
-                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token, attemptDelta),
+                    "anthropic" => await CallAnthropicSummary(requestBody, provider, cts.Token, sessionId, attemptDelta),
+                    "openai-chat" => await CallOpenAISummary(requestBody, provider, cts.Token, sessionId, attemptDelta),
+                    "openai-responses" => await CallOpenAISummary(requestBody, provider, cts.Token, sessionId, attemptDelta),
                     _ => throw new InvalidOperationException($"Unsupported provider for summarization: {providerType}")
                 };
 
@@ -514,6 +516,7 @@ public static partial class ContextCompression
         string transcript,
         JsonElement provider,
         CancellationToken ct,
+        string? sessionId,
         Func<string, ValueTask>? onSummaryDelta = null)
     {
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
@@ -541,6 +544,10 @@ public static partial class ContextCompression
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+        // Mirror the live-turn header chain: without a User-Agent, Cloudflare-fronted
+        // gateways (error 1010) 403 the summarizer while the agent turn passes.
+        ApiUserAgent.Apply(request, provider);
+        ProviderRequestOverrides.ApplyHttpHeaderOverrides(request, provider);
         request.Headers.Add("x-api-key", apiKey);
         request.Headers.Add("anthropic-version", "2023-06-01");
 
@@ -645,6 +652,7 @@ public static partial class ContextCompression
         string transcript,
         JsonElement provider,
         CancellationToken ct,
+        string? sessionId,
         Func<string, ValueTask>? onSummaryDelta = null)
     {
         var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
@@ -680,7 +688,18 @@ public static partial class ContextCompression
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+        // Mirror the live-turn header chain (see the anthropic branch above): UA for
+        // Cloudflare-fronted gateways, provider header overrides, and the
+        // x-opencode-session routing header for the OpenCode Go builtin.
+        ApiUserAgent.Apply(request, provider);
+        ProviderRequestOverrides.ApplyHttpHeaderOverrides(request, provider);
         request.Headers.Add("Authorization", $"Bearer {apiKey}");
+        if (!string.IsNullOrWhiteSpace(sessionId) &&
+            string.Equals(JsonHelpers.GetString(provider, "providerBuiltinId"), "opencode-go", StringComparison.Ordinal) &&
+            !request.Headers.Contains("x-opencode-session"))
+        {
+            request.Headers.TryAddWithoutValidation("x-opencode-session", sessionId);
+        }
 
         using var response = await Http.SendAsync(
             request,

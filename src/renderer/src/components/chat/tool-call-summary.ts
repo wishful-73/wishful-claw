@@ -257,12 +257,12 @@ export function inputSummary(
   }
   if (name === 'Glob' && input.pattern) return `pattern: ${input.pattern}`
   if (name === 'Grep' && input.pattern) return `grep: ${input.pattern}`
-  if (name === 'TaskCreate' && (input.title ?? input.subject))
+  if ((name === 'TodoTaskCreate' || name === 'TaskCreate') && (input.title ?? input.subject))
     return String(input.title ?? input.subject).slice(0, 60)
-  if (name === 'TaskUpdate' && input.taskId)
+  if ((name === 'TodoTaskUpdate' || name === 'TaskUpdate') && input.taskId)
     return `#${input.taskId}${input.status ? ` -> ${input.status}` : ''}`
-  if (name === 'TaskGet' && input.taskId) return `#${input.taskId}`
-  if (name === 'TaskList') return 'list tasks'
+  if ((name === 'TodoTaskGet' || name === 'TaskGet') && input.taskId) return `#${input.taskId}`
+  if (name === 'TodoTaskList' || name === 'TaskList') return 'list tasks'
   if (name === 'CronAdd') {
     const n = input.name ? String(input.name) : ''
     const sched = input.schedule as { kind?: string; expr?: string } | undefined

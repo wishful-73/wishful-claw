@@ -1,4 +1,4 @@
-﻿{
+{
   "home": {
     "title": "今天我能帮你做什么？",
     "subtitle": "开始对话或选择下方快捷提示。",
@@ -576,6 +576,10 @@
       "LS": "列出目录",
       "Glob": "查找文件",
       "Grep": "搜索文件内容",
+      "TodoTaskCreate": "创建任务",
+      "TodoTaskGet": "获取任务",
+      "TodoTaskUpdate": "更新任务",
+      "TodoTaskList": "任务列表",
       "TaskCreate": "创建任务",
       "TaskGet": "获取任务",
       "TaskUpdate": "更新任务",

@@ -1,4 +1,4 @@
-﻿using WishfulClaw.Core.Tools;
+using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent.Tools.Providers;
 
@@ -87,7 +87,7 @@ public sealed class ProjectToolsProvider : IToolProvider
                 },
                 ["sessionId", "content"]),
                 availableModes: new[] { "normal", "goal", "global", "channel" },
-                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "update_session_follow_up",
@@ -104,6 +104,6 @@ public sealed class ProjectToolsProvider : IToolProvider
                 },
                 ["followUpId", "claimToken", "action", "lastQueryResult"]),
                 availableModes: new[] { "normal", "goal", "global", "channel" },
-                visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
     }
 }

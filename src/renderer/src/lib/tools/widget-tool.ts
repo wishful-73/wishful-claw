@@ -39,7 +39,9 @@ const visualizeShowWidgetHandler: ToolHandler = {
             'SVG or HTML code to render. For SVG: raw SVG code starting with <svg> tag. For HTML: raw HTML content without DOCTYPE, <html>, <head>, or <body> tags.'
         }
       },
-      required: ['loading_messages', 'title', 'widget_code']
+      // loading_messages is NOT required — the .NET executor fails soft and
+      // strict provider-side validators reject otherwise-missing fields.
+      required: ['title', 'widget_code']
     }
   },
   execute: async () =>

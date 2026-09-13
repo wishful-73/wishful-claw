@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Agent;
 using WishfulClaw.Agent.Tools.Providers;
 using WishfulClaw.Contracts;
@@ -399,8 +399,19 @@ internal static partial class Program
             scope: "global",
             collaborationMode: "chat",
             runtimeRole: "sessionAgent");
-        Assert(globalProjects.GetProperty("total").GetInt32() == 4,
-            "global Chat sessions can discover global tools through use_capability");
+        var globalProjectCount = globalProjects.GetProperty("total").GetInt32();
+        var globalProjectNames = globalProjects.GetProperty("capabilities")
+            .EnumerateArray()
+            .Select(capability => capability.GetProperty("name").GetString())
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+        Assert(globalProjectCount == 5
+               && globalProjectNames.SequenceEqual([
+                   "create_session", "get_project_details", "list_projects",
+                   "send_session_message", "update_session_follow_up"
+               ]),
+            $"global Chat sessions can discover global tools through use_capability " +
+            $"(got {globalProjectCount}: {string.Join(",", globalProjectNames)})");
 
         var normalProjects = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "list",

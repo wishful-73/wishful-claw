@@ -24,7 +24,7 @@ public sealed class CodeCompatibleToolProvider : IToolProvider
                     ["cwd"] = ToolSchemaBuilder.String("Working directory. Defaults to the session's working folder.")
                 },
                 ["command"]),
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly, isCore: true));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "Monitor",
@@ -32,6 +32,6 @@ public sealed class CodeCompatibleToolProvider : IToolProvider
             ToolSchemaBuilder.Object(
                 new() { ["session_id"] = ToolSchemaBuilder.String("The session ID to monitor.") },
                 ["session_id"]),
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly, isCore: true));
     }
 }

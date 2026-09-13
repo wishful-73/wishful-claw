@@ -44,11 +44,13 @@ public sealed class MemorySearchTool : IToolExecutor
 
         "Uses fast FTS index first; falls back to LIKE scan if no results. " +
 
-        "Results include entry id — use memory_update to modify entries.";
+        "Results include entry id 鈥?use memory_update to modify entries.";
 
 
 
     public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 

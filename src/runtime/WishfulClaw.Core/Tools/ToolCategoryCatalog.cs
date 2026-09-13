@@ -72,6 +72,19 @@ public static class ToolCategoryCatalog
         new("channel-plugin", 270, "send images and files to external chat channels"),
     ];
 
+    /// <summary>
+    /// Categories whose tools are injected directly into the LLM tool list (iter-28 tool
+    /// narrowing). The presentation order matches <see cref="All"/>. Everything outside this
+    /// set stays registered for the <c>use_capability</c> proxy but never reaches the prompt
+    /// as a direct tool definition. The prompt's &lt;tool_calling&gt; block renders this list;
+    /// the per-tool decision still lives on each executor's <c>IsCore</c> flag — a tool in a
+    /// core category may opt out, and a core-category tool added later is core until declared.
+    /// </summary>
+    public static IReadOnlyList<string> Core { get; } =
+    [
+        "file", "search", "shell", "memory", "plan", "capability",
+    ];
+
     // OrdinalIgnoreCase is kept on purpose: every category in the repo is lowercase kebab today,
     // so this is tolerance for a future provider, not a fix for a present mismatch.
     private static readonly Dictionary<string, int> Priorities = BuildPriorities();

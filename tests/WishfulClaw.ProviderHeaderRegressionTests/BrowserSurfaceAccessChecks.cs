@@ -51,9 +51,10 @@ internal static class BrowserSurfaceAccessChecks
 
             foreach (var scenario in VisibilitySnapshot.ResolveScenarios())
             {
-                var injected = AgentRunContextPolicy.FilterToolDefinitions(
-                    registry.GetToolDefinitions(preset, scenario.AvailableMode),
+                var injected = AgentRunContextPolicy.ResolveDirectInjection(
                     registry,
+                    preset,
+                    scenario.AvailableMode,
                     scenario.Context,
                     scenario.ChannelSession);
 

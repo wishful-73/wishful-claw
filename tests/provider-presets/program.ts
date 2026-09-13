@@ -6,7 +6,8 @@ import {
   materializeRecord,
   isUnownedBuiltin,
   shouldPersist,
-  reconcileProviders
+  reconcileProviders,
+  resetProviderToPreset
 } from '../../src/renderer/src/stores/provider-materialization'
 import type { AIProvider, BuiltinProviderPreset } from '../../src/shared/types/provider'
 
@@ -143,6 +144,27 @@ for (const preset of builtinProviderPresets) {
   check(upgraded.models.some((m) => m.id === 'my-custom-model'), 'version upgrade preserves user-added models')
 }
 
+// ── A builtin whose protocol type was manually switched keeps the user's type ──
+//    across preset version upgrades, and such a record is never pruned back to virtual.
+{
+  const preset = builtinProviderPresets.find((p) => p.builtinId === 'deepseek')!
+  const switched: AIProvider = {
+    ...createProviderFromPreset(preset),
+    apiKey: 'sk-test',
+    enabled: true,
+    type: 'openai-chat'
+  }
+  delete switched.virtual
+  switched.typeOverridden = true
+
+  const upgraded = upgradeProviderFromPreset({ ...switched }, preset)
+  check(upgraded.type === 'openai-chat', 'preset upgrade keeps a user-switched protocol type')
+  check(upgraded.homepage === preset.homepage, 'preset upgrade still refreshes homepage for a type-switched record')
+
+  check(!isUnownedBuiltin({ ...switched, enabled: false, apiKey: '' }), 'a builtin with a manually switched type is never pruned')
+  check(isUnownedBuiltin({ ...switched, enabled: false, apiKey: '', typeOverridden: undefined }), 'a builtin without a type switch can still be pruned')
+}
+
 // ─── R-9: builtin providers are runtime projections of their preset ───
 
 {
@@ -226,7 +248,6 @@ for (const preset of builtinProviderPresets) {
   check(fresh.providers.length === builtinProviderPresets.length, 'R-9 new install yields one entry per preset')
   check(fresh.providers.every((p) => p.virtual === true), 'R-9 new install entries are all virtual')
   check(fresh.providers.every((p) => p.id === p.builtinId), 'R-9 new install ids equal builtinIds')
-  check(fresh.idRemap.size === 0, 'R-9 new install needs no id remapping')
   check(fresh.providers.every((p) => !shouldPersist(p)), 'R-9 a brand new install persists nothing')
 }
 
@@ -268,26 +289,92 @@ for (const preset of builtinProviderPresets) {
   }
   legacy.push(custom)
 
-  const { providers, idRemap } = reconcileProviders(legacy)
+  const { providers } = reconcileProviders(legacy)
 
-  check(idRemap.get(legacyDeepseekId) === 'deepseek', 'R-9 a legacy random id is remapped to its builtinId')
-  check(idRemap.get(legacyOpenaiId) === 'openai', 'R-9 every re-keyed builtin is remapped')
-
-  const migrated = providers.find((p) => p.id === 'deepseek')!
+  const migrated = providers.find((p) => p.builtinId === 'deepseek')!
   check(!!migrated, 'R-9 the configured legacy provider survives the upgrade')
+  // R-9.C.8: legacy ids are kept. Provider ids are persisted outside this store (chat
+  // sessions in SQLite, plugin / pet / channel stores, cron agentId, OAuth bindings),
+  // none of which can be remapped from here — re-keying would dangle all of them.
+  check(migrated.id === legacyDeepseekId, 'R-9 a legacy record keeps its own id — external references stay valid')
   check(migrated.apiKey === 'sk-legacy-deepseek', 'R-9 legacy apiKey is preserved')
   check(migrated.enabled === true, 'R-9 legacy enabled flag is preserved')
   check(migrated.baseUrl === 'https://relay.example/deepseek', 'R-9 legacy custom baseUrl is preserved')
   check(migrated.models.some((m) => m.id === 'my-private-model'), 'R-9 user-added models are preserved')
   check(shouldPersist(migrated), 'R-9 a configured legacy record keeps being persisted')
 
-  const migratedOpenai = providers.find((p) => p.id === 'openai')!
+  const migratedOpenai = providers.find((p) => p.builtinId === 'openai')!
+  check(migratedOpenai.id === legacyOpenaiId, 'R-9 every legacy record keeps its own id')
   check(migratedOpenai.enabled === true, 'R-9 an enabled legacy provider stays enabled')
 
   check(providers.some((p) => p.id === 'nanoid-custom-relay'), 'R-9 custom providers survive the upgrade')
-  check(providers.every((p) => !p.builtinId || p.id === p.builtinId), 'R-9 every builtin ends up keyed by builtinId')
   check(providers.length === builtinProviderPresets.length + 1, 'R-9 no provider is lost during migration')
   check(!isUnownedBuiltin(migrated), 'R-9 a configured legacy record is never pruned')
+}
+
+{
+  // R-9.C.7: a user may own several records for one preset (official + relay).
+  // Collapsing them on a Map key would silently destroy one.
+  const preset = builtinProviderPresets[0]
+  const first: AIProvider = {
+    ...createProviderFromPreset(preset),
+    id: 'nanoid-first',
+    apiKey: 'sk-first',
+    enabled: true
+  }
+  const second: AIProvider = {
+    ...createProviderFromPreset(preset),
+    id: 'nanoid-second',
+    name: `${preset.name} (relay)`,
+    baseUrl: 'https://relay.example/v1',
+    enabled: true
+  }
+  delete first.virtual
+  delete second.virtual
+
+  const { providers } = reconcileProviders([first, second])
+  check(providers.some((p) => p.id === 'nanoid-first'), 'R-9 the first record of a preset keeps the preset slot')
+  check(
+    providers.some((p) => p.id === 'nanoid-second'),
+    'R-9 an extra record of the same preset is kept, not collapsed away'
+  )
+  check(
+    providers.length === builtinProviderPresets.length + 1,
+    'R-9 duplicate builtinId records survive the upgrade'
+  )
+}
+
+{
+  // R-9.6 / R-9.C.8: "restore factory defaults" restores preset values but keeps the id,
+  // so sessions / plugins / cron tasks pointing at the record keep resolving.
+  const preset = builtinProviderPresets.find((p) => p.builtinId === 'deepseek')!
+  const owned: AIProvider = {
+    ...createProviderFromPreset(preset),
+    id: 'nanoid-owned',
+    apiKey: 'sk-owned',
+    enabled: true,
+    baseUrl: 'https://relay.example/v1'
+  }
+  delete owned.virtual
+
+  const reset = resetProviderToPreset(owned)!
+  check(!!reset, 'R-9 a known builtin can be reset to its preset')
+  check(reset.id === 'nanoid-owned', 'R-9 reset keeps the id so external references keep resolving')
+  check(reset.apiKey === '', 'R-9 reset clears the apiKey')
+  check(reset.baseUrl === preset.defaultBaseUrl, 'R-9 reset restores the default baseUrl')
+  check(reset.virtual === true, 'R-9 reset returns the record to virtual, so it stops being persisted')
+  check(
+    resetProviderToPreset({
+      id: 'nanoid-custom',
+      name: 'My relay',
+      type: 'openai',
+      apiKey: '',
+      baseUrl: 'https://relay.example/v1',
+      enabled: true,
+      models: []
+    }) === null,
+    'R-9 a custom provider has no preset to reset to'
+  )
 }
 
 console.log(`Provider preset consistency checks passed (${checks} assertions, ${builtinProviderPresets.length} presets).`)

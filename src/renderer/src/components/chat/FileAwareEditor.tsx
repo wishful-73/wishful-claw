@@ -321,8 +321,18 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
         nativeEvent.inputType === 'insertCompositionText' ||
         nativeEvent.inputType === 'deleteCompositionText'
       pendingUserInputRef.current = true
+      const wasComposing = isComposingRef.current
       if (isCompositionInput) isComposingRef.current = true
-      if (!isHistoryInputType(nativeEvent.inputType)) {
+      // 撤销门控只认「用户真实留下的展开选区」。组合会话开始后的后续 beforeinput
+      // 读到的是输入法下划线区间（恒非折叠），不是用户选区——若让它覆盖标记，
+      // 撤销会被误判成「用户选中内容的还原」而跳过收起
+      // （粘贴 1234 → IME 输入你好 → 撤销，「34」残留选中即此因）。
+      // 组合的第一拍（wasComposing 尚为 false）例外：那时选区还是变更前的用户状态，
+      // 「选中一段 → 输入替换 → 撤销还原整段选中」依赖这次记录。
+      if (
+        !isHistoryInputType(nativeEvent.inputType) &&
+        (!isCompositionInput || !wasComposing)
+      ) {
         lastMutationReplacedSelectionRef.current = selectionWasExpandedBeforeMutation(
           event.currentTarget
         )

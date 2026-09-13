@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -175,32 +175,15 @@ internal static partial class AgentLoop
             : ToolPreset.BuiltIn["full"];
         var runContext = AgentRunContextPolicy.Resolve(parameters);
         var sessionMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, runContext);
-        var registry = ToolModuleState.Registry;
-        var toolDefs = registry?.GetToolDefinitions(toolPreset, sessionMode) ?? [];
         var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
-        toolDefs = AgentRunContextPolicy.FilterToolDefinitions(toolDefs, registry, runContext, channelSession);
-
-        // Filter out WebSearch/WebFetch when web search is not enabled.
-        // Previously done in the frontend; now handled backend-side since
-        // tools are resolved from the backend registry.
-        var webSearchEnabled = JsonHelpers.GetBool(parameters, "webSearchEnabled", true);
-        if (!webSearchEnabled)
-        {
-            toolDefs = toolDefs
-                .Where(t => t.Name != "WebSearch" && t.Name != "WebFetch")
-                .ToList();
-        }
-
-        // CodeGraph is globally opt-in. Keep its static definition registered for
-        // tool discovery, but expose it to the Agent only when the global plugin
-        // state is enabled for this request.
-        var codegraphEnabled = JsonHelpers.GetBool(parameters, "codegraphEnabled", false);
-        if (!codegraphEnabled)
-        {
-            toolDefs = toolDefs
-                .Where(t => !t.Name.StartsWith("codegraph_", StringComparison.Ordinal))
-                .ToList();
-        }
+        var registry = ToolModuleState.Registry;
+        // Direct injection = preset ∧ scope ∧ IsCore (single source in AgentRunContextPolicy).
+        // Non-core tools stay registered for the use_capability proxy; the web/codegraph
+        // opt-in flags ride on runContext and gate the proxy the same way.
+        var toolDefs = registry is null
+            ? []
+            : AgentRunContextPolicy.ResolveDirectInjection(
+                registry, toolPreset, sessionMode, runContext, channelSession);
 
         // The capability directory is part of the tool description, so update it after the
         // session's visibility/mode filters have been applied. This keeps the description and

@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AIProvider, AIModelConfig, ProviderType } from '../../../shared/types/provider'
 import { aiProviderStorage } from '@renderer/lib/ipc/ai-provider-storage'
@@ -7,8 +7,7 @@ import {
   createCustomProvider,
   ensureBuiltinPresets,
   materializeRecord,
-  builtinProviderPresets,
-  createProviderFromPreset,
+  resetProviderToPreset,
   STORAGE_KEY,
   type ProviderState
 } from './provider-store-helpers'
@@ -43,8 +42,8 @@ export const useProviderStore = create<ProviderState>()(
 
       getProviderById: (id) => get().providers.find((p) => p.id === id) ?? null,
 
-      addCustomProvider: (name, type, baseUrl, apiKey) => {
-        const provider = createCustomProvider(name, type, baseUrl, apiKey)
+      addCustomProvider: (name, type, baseUrl, apiKey, homepage) => {
+        const provider = createCustomProvider(name, type, baseUrl, apiKey, homepage)
         set((state) => ({
           providers: [...state.providers, provider],
           activeProviderId: state.activeProviderId ?? provider.id
@@ -66,10 +65,11 @@ export const useProviderStore = create<ProviderState>()(
           // restores its factory defaults — i.e. replaces it with a fresh projection
           // of its preset, so the entry stays visible with default settings.
           const target = state.providers.find((p) => p.id === id)
-          if (target?.builtinId) {
-            const preset = builtinProviderPresets.find((p) => p.builtinId === target.builtinId)
-            if (preset) {
-              const reset = createProviderFromPreset(preset)
+          if (target) {
+            // R-9.C.8: the reset keeps the record's id, so sessions / plugins / cron
+            // tasks pointing at it keep resolving.
+            const reset = resetProviderToPreset(target)
+            if (reset) {
               return { providers: state.providers.map((p) => (p.id === id ? reset : p)) }
             }
           }

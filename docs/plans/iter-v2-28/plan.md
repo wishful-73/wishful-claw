@@ -1195,6 +1195,99 @@ IsVisible(tool, ctx):
 6. **BOM 漂移**：本迭代若干文件被工具写入时带上 UTF-8 BOM（HEAD 版本没有），已在本工作涉及的文件上清理；
    `docs/` 三个文件、两个 `.cs`、`tests/WishfulClaw.ProviderHeaderRegressionTests/visibility-snapshot.expected.txt` 上仍存在，未动 —— 后者是金样字节比对文件，不属本次范围。
 
+### 需求 R-9：内置服务商懒物化（preset 只读基线化）＋ 内置 id 固定化 ＋ 存量清理
+
+> **定位（老大 2026-09-13 裁定）**：**属 28 迭代追加需求，本次不启用 29 迭代**。
+> 原误登记为 `raw-requirements.md` 后继需求 S-15，现提升为 R-9 走正式流程（状态小节第 12 项）。
+> **来源**：R-8 落地后老大追问「内置服务商最终也是转换为数据了么」而引出的根本问题。八条口径已当场拍定，本节是其正式载体。
+
+#### R-9.0 根因与目标
+
+- [✓] **根因一**：`ensureBuiltinPresets()` 把 46 个 preset **全量复制**成 `AIProvider` 记录落 `wishful-claw-providers`，
+  且**全部 `enabled: false`**（9 个显式、37 个靠 `?? false`），约 500 个模型对象整份拷贝、**零用户意图**。
+- [✓] **根因二**：`provider-store-helpers.ts:207` 的 `presetVersion >= preset.version ⇒ continue` 使 preset 后续任何改动
+  （含 R-8 新增 `homepage` 这类纯加字段）对老用户**永不生效** → 只能手工 bump（R-8.5 那次 46 个全量 bump 即由此而来）。
+- [✓] **根因三（真正的矛盾）**：**快照语义下「让新数据生效」与「保住用户改动」互斥**——
+  不 bump 新数据不生效，bump 就把用户改过的模型元数据整块覆盖回去（代价已记在 R-8.C.1）。
+- [✓] **目标**：内置服务商从「启动时物化的快照」改为「**只读基线**」——读实时从 preset 合成、永不落盘；**写才物化**。
+  物化之后归用户自己管，我们不再自动更新，覆盖问题从根上消失。
+
+#### R-9.1 内置 id 固定为 `builtinId`
+
+- [ ] `createProviderFromPreset`：`id: nanoid()` → **`id: preset.builtinId`**（把「随机 id 当主键、稳定 builtinId 只当标签」的现行关系倒过来）。
+- [ ] 46 个 `builtinId` 实测已全局唯一（`openai`／`baidu-coding`／`xiaomi-coding`／`stepfun-plan`…），**不加前缀**。
+- [ ] **自定义服务商仍用 `nanoid()`**，与 kebab-case 的 builtinId 命名空间天然隔离。
+- [ ] `builtinId` 字段**保留**，作为「内置／自定义」判定依据，不要靠 id 字符串猜。
+- [ ] **一 preset 一记录**。用户想再开一个同类服务商（官方 ＋ 中转）走**自定义**路径、自己填 baseUrl 与名称
+      （老大原话："用户可以自己添加更多同样服务商，只是名称不一样"）。
+
+#### R-9.2 读写分离：读走合成，写才物化
+
+- [ ] **读**（列表、详情、模型清单）→ 实时从 preset 合成，**永不落盘**，因此永远最新。
+- [ ] **写**（启用／填 apiKey／改 baseUrl／拨模型开关／设为活跃）→ 此刻物化一条记录。
+- [ ] **已物化的归用户自己管**（老大裁定："已经物化的用户自己管理，快照是旧的还是新的都是用户自己的事情了"）
+      → **不做 model diff、不做覆盖合并**，也就不存在"覆盖用户改动"的问题。
+- [ ] 用户自助更新手段现成：`fetchModels`（从 API 拉模型清单）不动。
+
+#### R-9.3 实现路径：**选 A（内存全量、落盘瘦身）**
+
+| 路径 | 做法 | 代价 |
+|---|---|---|
+| **A（选）** | `providers` **内存数组保持全量**（46 条合成 ＋ 自定义），只改 `partialize` 让**无用户意图的内置不落盘** | 20+ 处 `providers.find(p => p.id === …)` **零改动**；需一个 `materialized` 标记区分"合成/已物化" |
+| B | 真懒：`providers` 只装有意图的，新增 `getVisibleProviders()`，改所有 UI 读取点 | 语义更纯，但要动 automation／chat／goal 等十几个组件，回归面大 |
+
+- [ ] 选 **A**。理由：内存里多 46 个合成对象成本可忽略（数据本就在 preset 里），**真正要解决的是"落盘快照腐化"**，
+      A 精确地只解决这一点，且让 `AssistantMessage`／`GoalConfirmCard`／`context-ring`／`AutomationModelSelector` 等
+      十几处 `providers.find` 全部零改动。
+- [ ] 给 `AIProvider` 加内部标记（建议 `materialized?: boolean`），用户首次写入时置 `true`；
+      `partialize` 只输出 `!p.builtinId || p.materialized` 的条目。
+
+#### R-9.4 停掉 `ensureBuiltinPresets` 为内置创建记录 ＋ 废弃 `presetVersion` 闸门
+
+- [ ] 卸掉该函数"为内置 preset 创建记录"的职责（改为只**合成**到内存），自定义服务商逻辑保留。
+- [ ] 注意这是给启动路径**减负**（少建 46 条、少一次全量写盘），与老大「启动本身就有很多东西要处理」的诉求同向。
+- [ ] **连带废弃整个 `presetVersion` 版本闸门** → 以后改 preset 数据**不必再 bump version**，
+      R-8.5 那种 46 个全量 bump 成为历史。这是本需求最大的长期收益。
+- [ ] ⚠️ **前提**：R-9.2 的合成链路必须先落地，否则内置服务商会整体消失。
+
+#### R-9.5 存量清理（**进入 AI 服务商管理页时专项做**）
+
+- [ ] 时机：**管理页**，**不在 hydration**（老大裁定："启动本身就有很多东西需要处理，专项专做"）。
+- [ ] 清理判定（建议**先只上前四条**，后四条作保守兜底——保守的代价只是少清几条，激进的代价是丢用户配置）：
+      `builtinId` 存在 && `!enabled` && `!apiKey` && `preset.requiresApiKey !== false`
+      && `baseUrl === preset.defaultBaseUrl` && 无 preset 之外的自定义模型 && 未被 6 个选中态指针引用 && 无 OAuth 账号绑定。
+- [ ] ⚠️ **`requiresApiKey: false` 的 5 个必排除**：`codex-oauth`／`copilot-oauth`／`lmstudio`／`ollama`／`moonshot.ts:27`
+      天生没有 apiKey，不排除会被无条件误删；其中 `ollama` 常被改 baseUrl，删了即丢配置。
+- [ ] ✅ **有利性质**：因内置 id 固定为 `builtinId`，删记录**不会让引用悬空**（合成链路仍可解析），
+      这与现行 nanoid 情形（删了就真找不到）本质不同。
+
+#### R-9.6 内置的「删除」改称「恢复出厂设置」
+
+- [ ] `ProviderConfigPanel.tsx:209`（另 `:286` 有同款判断）现在用 `{!provider.builtinId && …}` 把内置删除入口**隐藏**。
+      当前合理（删了下启动被重建、等于没删），但 R-9.4 之后语义已变，此入口**必须开放**。
+- [ ] **名称不叫「删除」，叫「恢复出厂设置」**（老大原话："实际上就是删了，只是名称不一样，免得用户觉得我怎么没删掉"）。
+      根因：懒物化后内置由 preset 渲染、**永远在列表里**，点「删除」而条目仍在会造成"没删掉"的困惑。
+- [ ] **「删除」只属于自定义服务商**。文案需体现"清空我的配置、回到内置默认"。
+
+#### R-9.7 附带清理
+
+- [ ] 删掉 `addProviderFromPreset`（"从模板再添加一条"）——全仓**零 UI 调用**，僵尸 API；R-9.1 之后它与"一 preset 一记录"直接冲突。
+- [ ] 可复用先例：全局模型库 `managedModels` 已由 `collectBuiltinManagedModels()` 从 preset 实时收集、不落盘；
+      R-9 等于把同一做法从「模型库」推广到「服务商本身」。
+
+#### R-9.C 边界（不做的、代价与风险）
+
+1. **删除/停创建必须与合成链路同批落地**，不得先删后补——列表与十几处 `providers.find` 都依赖数组内容。
+2. **存量迁移**：老用户配置里躺着的 46 条 nanoid 记录，需把**有用户意图**的 id 换成 `builtinId` 并同步改引用
+   （6 个选中态指针 `activeProviderId`／`activeFastProviderId`／`activeImageProviderId`／`activeTranslationProviderId`／
+   `activeSpeechProviderId` ＋ 压缩配置，以及 `lib/auth/provider-auth*.ts` 的 OAuth 账号绑定）；无意图的直接丢弃。
+3. **不做 model diff**：已物化记录的快照新旧由用户自己负责（老大裁定），本次不引入稀疏覆盖结构。
+4. **不改动 `fetchModels` 与 `builtinModelRegistry`**：后者本就是每次启动从 preset 实时建的（不受版本门控），
+   正是 R-9 要推广的范式。
+5. **BOM／行尾**：本需求涉及的文件若被工具写入，沿用既有纪律（不新增 BOM、保留原行尾）。
+6. **验证口径**：tsc 三配置 0 错误；`test:provider-presets` 扩展断言（内置 id 等于 builtinId、无意图条目不进 partialize）；
+   C# 9 套回归不受影响（纯渲染端改动）；手工覆盖两条路径——**新装**（应零物化记录）与**老用户升级**（有意图的保留、无意图的清理）。
+
 ### 收尾：统一审查、验证与修复
 
 - [✓] Z1：全量审查本迭代 7 项改动 → `review_report.md`；发现的修正**不单独提交**，攒进收尾那次 `fix(迭代28): 审查与验证修复调整`。

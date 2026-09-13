@@ -1112,7 +1112,8 @@ IsVisible(tool, ctx):
 
 #### R-7.B 步骤清单
 
-- [ ] R-7.1 文档归置约定（纯提示词，4 处）
+- [✓] R-7.1 文档归置约定（纯提示词，4 处）
+      > **收尾记账补勾（2026-09-13 按现树复验）**：四处载体实测均已落地，此前漏勾——`GlobalTaskToolsProvider.cs:108`（工具描述）、`AgentRuntimeGlobalTaskExecutor.cs:226`（投递尾注）、`task-board-store.ts:103`（看板镜像文案）、`PromptBuilder.cs:334`（`## Project` 段统一规定去处）。
   - `GlobalTaskToolsProvider.cs` 的 `send_work_request` 描述：引导 PM 在 instruction 里指明文档去处
   - `AgentRuntimeGlobalTaskExecutor.cs` 投递消息尾注：给目标会话的明确指示
   - `task-board-store.ts` 的 `buildWorkRequestContent`：与上一条同步

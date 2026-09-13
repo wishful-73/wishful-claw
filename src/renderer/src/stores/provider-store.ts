@@ -2,7 +2,16 @@
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AIProvider, AIModelConfig, ProviderType } from '../../../shared/types/provider'
 import { aiProviderStorage } from '@renderer/lib/ipc/ai-provider-storage'
-import { enrichDiscoveredModel, createCustomProvider, ensureBuiltinPresets, markMaterialized, STORAGE_KEY, type ProviderState } from './provider-store-helpers'
+import {
+  enrichDiscoveredModel,
+  createCustomProvider,
+  ensureBuiltinPresets,
+  materializeRecord,
+  builtinProviderPresets,
+  createProviderFromPreset,
+  STORAGE_KEY,
+  type ProviderState
+} from './provider-store-helpers'
 import {
   toManagedModelConfig,
   cloneManagedModelConfig,
@@ -46,13 +55,24 @@ export const useProviderStore = create<ProviderState>()(
       updateProvider: (id, updates) => {
         set((state) => ({
           providers: state.providers.map((p) =>
-            p.id === id ? markMaterialized({ ...p, ...updates }) : p
+            p.id === id ? materializeRecord({ ...p, ...updates }) : p
           )
         }))
       },
 
       deleteProvider: (id) => {
         set((state) => {
+          // R-9.6: a builtin is never removed from the list. "Delete" on a builtin
+          // restores its factory defaults — i.e. replaces it with a fresh projection
+          // of its preset, so the entry stays visible with default settings.
+          const target = state.providers.find((p) => p.id === id)
+          if (target?.builtinId) {
+            const preset = builtinProviderPresets.find((p) => p.builtinId === target.builtinId)
+            if (preset) {
+              const reset = createProviderFromPreset(preset)
+              return { providers: state.providers.map((p) => (p.id === id ? reset : p)) }
+            }
+          }
           const providers = state.providers.filter((p) => p.id !== id)
           let activeProviderId =
             state.activeProviderId === id
@@ -135,7 +155,7 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? markMaterialized({ ...p, models: [...p.models, model] })
+              ? materializeRecord({ ...p, models: [...p.models, model] })
               : p
           )
         }))
@@ -145,7 +165,7 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? markMaterialized({
+              ? materializeRecord({
                   ...p,
                   models: p.models.map((m) =>
                     m.id === modelId ? { ...m, ...updates } : m
@@ -160,7 +180,7 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? markMaterialized({ ...p, models: p.models.filter((m) => m.id !== modelId) })
+              ? materializeRecord({ ...p, models: p.models.filter((m) => m.id !== modelId) })
               : p
           )
         }))
@@ -188,7 +208,7 @@ export const useProviderStore = create<ProviderState>()(
               // New model — enrich with builtin metadata
               return enrichDiscoveredModel(m)
             })
-            return markMaterialized({ ...p, models: merged })
+            return materializeRecord({ ...p, models: merged })
           })
         }))
       },
@@ -290,8 +310,8 @@ export const useProviderStore = create<ProviderState>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(() => aiProviderStorage),
       partialize: (state) => ({
-        // R-9: unowned builtins are live preset projections — never persist them.
-        providers: state.providers.filter((p) => !p.builtinId || p.materialized),
+        // R-9: virtual records are runtime projections of a preset — never persist them.
+        providers: state.providers.filter((p) => !p.virtual),
         managedModels: state.managedModels,
         managedModelTombstones: state.managedModelTombstones,
         activeProviderId: state.activeProviderId,

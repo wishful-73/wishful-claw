@@ -8,7 +8,7 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 export const STORAGE_KEY = 'wishful-claw-providers'
 
 export { builtinProviderPresets }
-export { createProviderFromPreset, markMaterialized, isUnownedBuiltin } from './provider-materialization'
+export { createProviderFromPreset, materializeRecord, isUnownedBuiltin } from './provider-materialization'
 export type { ManagedModelConfig } from './managed-models'
 export type { BuiltinProviderPreset }
 
@@ -76,12 +76,21 @@ export interface ProviderState {
  */
 export function pruneUnownedBuiltinProviders(): number {
   const state = useProviderStore.getState()
-  const kept = state.providers.filter((p) => !isUnownedBuiltin(p))
-  const removed = state.providers.length - kept.length
-  if (removed > 0) {
-    useProviderStore.setState({ providers: kept })
+  let pruned = 0
+  // R-9.6: keep every builtin in the list. Pruning only drops the "user owns this"
+  // flag so the record stops being written — it stays visible as a preset projection.
+  const nextProviders = state.providers.map((p) => {
+    if (!isUnownedBuiltin(p)) return p
+    pruned++
+    // Replace with a fresh projection: the entry stays visible in the list,
+    // it just stops being written to storage.
+    const preset = builtinProviderPresets.find((x) => x.builtinId === p.builtinId)
+    return preset ? createProviderFromPreset(preset) : p
+  })
+  if (pruned > 0) {
+    useProviderStore.setState({ providers: nextProviders })
   }
-  return removed
+  return pruned
 }
 
 /**
@@ -210,6 +219,8 @@ export function ensureBuiltinPresets(): void {
       // Materialized records belong to the user — never touch their contents,
       // only re-key the id. (R-9.2: 已物化的用户自己管理)
       if (persisted.id !== preset.builtinId) idRemap.set(persisted.id, preset.builtinId)
+      // Real record: never touch its contents, only re-key the id.
+      // (R-9.2: 已物化的用户自己管理)
       nextProviders.push({ ...persisted, id: preset.builtinId })
     } else {
       // Live projection: rebuilt from the preset every startup, never persisted.

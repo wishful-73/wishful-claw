@@ -1233,14 +1233,18 @@ IsVisible(tool, ctx):
 
 | 路径 | 做法 | 代价 |
 |---|---|---|
-| **A（选）** | `providers` **内存数组保持全量**（46 条合成 ＋ 自定义），只改 `partialize` 让**无用户意图的内置不落盘** | 20+ 处 `providers.find(p => p.id === …)` **零改动**；需一个 `materialized` 标记区分"合成/已物化" |
+| **A（选）** | `providers` **内存数组保持全量**（46 条合成 ＋ 自定义），只改 `partialize` 让**无用户意图的内置不落盘** | 20+ 处 `providers.find(p => p.id === …)` **零改动**；需一个 `virtual` 标记（**运行时字段，仅合成对象带，永不落盘**） |
 | B | 真懒：`providers` 只装有意图的，新增 `getVisibleProviders()`，改所有 UI 读取点 | 语义更纯，但要动 automation／chat／goal 等十几个组件，回归面大 |
 
 - [✓] 选 **A**。理由：内存里多 46 个合成对象成本可忽略（数据本就在 preset 里），**真正要解决的是"落盘快照腐化"**，
       A 精确地只解决这一点，且让 `AssistantMessage`／`GoalConfirmCard`／`context-ring`／`AutomationModelSelector` 等
       十几处 `providers.find` 全部零改动。
-- [✓] 给 `AIProvider` 加内部标记（建议 `materialized?: boolean`），用户首次写入时置 `true`；
-      `partialize` 只输出 `!p.builtinId || p.materialized` 的条目。
+- [✓] 给 `AIProvider` 加 `virtual?: boolean`（**运行时字段，永不落盘**）：preset 合成的对象自带 `virtual: true`，
+      用户首次写入时由 `materializeRecord()` 摘掉 → 变成真实记录。**默认即"真实"**，所以 R-9 之前写的老记录
+      天然不带该标记、天然落盘 —— **零迁移、不碰用户数据**。`partialize` 只输出 `!p.virtual` 的条目。
+      > 老大 2026-09-13 点名否决了前一版"加 `materialized` 落盘字段 + 迁移老记录"的做法：
+      > 「你为什么要加物化字段，不能是内置的加个虚拟字段么？你要去动用户数据？」——虚拟记录本就是代码合成的，
+      > 由合成方打标记即可，不该反过来给所有老数据补字段。
 
 #### R-9.4 停掉 `ensureBuiltinPresets` 为内置创建记录 ＋ 废弃 `presetVersion` 闸门
 

@@ -3,8 +3,9 @@ import { builtinProviderPresets } from '../../src/renderer/src/stores/providers'
 import { upgradeProviderFromPreset } from '../../src/renderer/src/stores/provider-preset-upgrade'
 import {
   createProviderFromPreset,
-  markMaterialized,
-  isUnownedBuiltin
+  materializeRecord,
+  isUnownedBuiltin,
+  shouldPersist
 } from '../../src/renderer/src/stores/provider-materialization'
 import type { AIProvider, BuiltinProviderPreset } from '../../src/shared/types/provider'
 
@@ -141,7 +142,7 @@ for (const preset of builtinProviderPresets) {
   check(upgraded.models.some((m) => m.id === 'my-custom-model'), 'version upgrade preserves user-added models')
 }
 
-// ─── R-9: builtin providers are live projections of their preset ───
+// ─── R-9: builtin providers are runtime projections of their preset ───
 
 {
   const builtinIds = builtinProviderPresets.map((p) => p.builtinId)
@@ -153,30 +154,51 @@ for (const preset of builtinProviderPresets) {
   const preset = builtinProviderPresets[0]
   const projected = createProviderFromPreset(preset)
   check(projected.id === preset.builtinId, 'R-9 builtin provider id equals its builtinId (stable across devices)')
-  check(!projected.materialized, 'R-9 a fresh projection is not materialized')
-  check(!isUnownedBuiltin(projected), 'R-9 an unmaterialized projection is never pruned')
+  check(projected.virtual === true, 'R-9 a preset projection is marked virtual')
+  check(!shouldPersist(projected), 'R-9 a virtual projection is never persisted')
+  check(!isUnownedBuiltin(projected), 'R-9 a virtual projection is never pruned')
 }
 
 {
   const preset = builtinProviderPresets.find((p) => p.requiresApiKey !== false)!
-  check(markMaterialized(createProviderFromPreset(preset)).materialized === true, 'R-9 writing to a builtin marks it materialized')
-  check(isUnownedBuiltin(markMaterialized(createProviderFromPreset(preset))), 'R-9 a materialized builtin with no user intent can be pruned')
-  check(!isUnownedBuiltin(markMaterialized({ ...createProviderFromPreset(preset), apiKey: 'sk-test' })), 'R-9 a builtin with an api key is never pruned')
-  check(!isUnownedBuiltin(markMaterialized({ ...createProviderFromPreset(preset), enabled: true })), 'R-9 an enabled builtin is never pruned')
+  const owned = materializeRecord(createProviderFromPreset(preset))
+  check(!owned.virtual, 'R-9 writing to a builtin drops the virtual flag')
+  check(shouldPersist(owned), 'R-9 a real record is persisted')
+  check(isUnownedBuiltin(owned), 'R-9 a real builtin with no user intent can return to virtual')
   check(
-    !isUnownedBuiltin(markMaterialized({ ...createProviderFromPreset(preset), baseUrl: 'https://relay.example/v1' })),
+    !isUnownedBuiltin(materializeRecord({ ...createProviderFromPreset(preset), apiKey: 'sk-test' })),
+    'R-9 a builtin with an api key is never pruned'
+  )
+  check(
+    !isUnownedBuiltin(materializeRecord({ ...createProviderFromPreset(preset), enabled: true })),
+    'R-9 an enabled builtin is never pruned'
+  )
+  check(
+    !isUnownedBuiltin(materializeRecord({ ...createProviderFromPreset(preset), baseUrl: 'https://relay.example/v1' })),
     'R-9 a builtin with a customized baseUrl is never pruned'
   )
+}
+
+{
+  // Records written before R-9 carry no `virtual` flag at all, so they are real
+  // records by default and keep being persisted — no migration, no data rewritten.
+  const preset = builtinProviderPresets.find((p) => p.requiresApiKey !== false)!
+  const legacy: AIProvider = { ...createProviderFromPreset(preset), apiKey: 'sk-legacy', enabled: true }
+  delete legacy.virtual
+  check(shouldPersist(legacy), 'R-9 a pre-R-9 record (no virtual flag) is persisted as-is')
+  check(!isUnownedBuiltin(legacy), 'R-9 a configured pre-R-9 record is never pruned')
+
+  const legacyIdle: AIProvider = { ...createProviderFromPreset(preset) }
+  delete legacyIdle.virtual
+  check(isUnownedBuiltin(legacyIdle), 'R-9 an untouched pre-R-9 record can be pruned back to virtual')
 }
 
 {
   // oauth and local presets never carry an apiKey, so "no key" says nothing about intent
   const keyless = builtinProviderPresets.find((p) => p.requiresApiKey === false)!
   check(!!keyless, 'R-9 at least one preset declares requiresApiKey:false')
-  check(
-    !isUnownedBuiltin(markMaterialized(createProviderFromPreset(keyless))),
-    'R-9 keyless presets are never pruned on the apiKey rule alone'
-  )
+  const owned = materializeRecord(createProviderFromPreset(keyless))
+  check(!isUnownedBuiltin(owned), 'R-9 keyless presets are never pruned on the apiKey rule alone')
 }
 
 {
@@ -190,7 +212,8 @@ for (const preset of builtinProviderPresets) {
     models: [],
     createdAt: Date.now()
   } as unknown as AIProvider
-  check(markMaterialized(custom) === custom, 'R-9 custom providers are returned untouched by markMaterialized')
+  check(materializeRecord(custom) === custom, 'R-9 custom providers are returned untouched')
+  check(shouldPersist(custom), 'R-9 custom providers are always persisted')
   check(!isUnownedBuiltin(custom), 'R-9 custom providers are never pruned')
 }
 

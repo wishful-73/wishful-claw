@@ -18,7 +18,8 @@ import {
   MonitorSmartphone,
   Sparkles,
   Zap,
-  ExternalLink
+  ExternalLink,
+  RotateCcw
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
@@ -206,16 +207,17 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {!provider.builtinId && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-              onClick={() => setShowDeleteProvider(true)}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          )}
+          {/* R-9.6: builtins are never really "deleted" — they are re-projected from their
+              preset, so the action is presented as restoring factory defaults. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            title={provider.builtinId ? ts('provider.config.resetBuiltin.tooltip') : undefined}
+            onClick={() => setShowDeleteProvider(true)}
+          >
+            {provider.builtinId ? <RotateCcw className="size-3.5" /> : <Trash2 className="size-3.5" />}
+          </Button>
           <Switch
             checked={provider.enabled}
             onCheckedChange={(checked) => updateProvider(provider.id, { enabled: checked })}
@@ -608,9 +610,15 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
       <AlertDialog open={showDeleteProvider} onOpenChange={setShowDeleteProvider}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{tc('confirmDelete.deleteProvider.title')}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {provider.builtinId
+                ? ts('provider.config.resetBuiltin.title')
+                : tc('confirmDelete.deleteProvider.title')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {tc('confirmDelete.deleteProvider.description')}
+              {provider.builtinId
+                ? ts('provider.config.resetBuiltin.description')
+                : tc('confirmDelete.deleteProvider.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -619,11 +627,17 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 deleteProvider(provider.id)
-                toast.success(ts('provider.list.providerDeleted'))
+                toast.success(
+                  provider.builtinId
+                    ? ts('provider.config.resetBuiltin.done')
+                    : ts('provider.list.providerDeleted')
+                )
                 setShowDeleteProvider(false)
               }}
             >
-              {tc('confirmDelete.deleteProvider.action')}
+              {provider.builtinId
+                ? ts('provider.config.resetBuiltin.action')
+                : tc('confirmDelete.deleteProvider.action')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

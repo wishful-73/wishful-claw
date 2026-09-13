@@ -1,4 +1,4 @@
-﻿import { useRef, useState, useMemo } from 'react'
+﻿import { useEffect, useRef, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Layers, Plus, Search, Server, Trash2 } from 'lucide-react'
 import { ProviderIcon } from '@renderer/components/settings/provider-icons'
@@ -12,6 +12,7 @@ import {
   ContextMenuTrigger
 } from '@renderer/components/ui/context-menu'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { pruneUnownedBuiltinProviders } from '@renderer/stores/provider-store-helpers'
 import type { AIProvider } from '../../../../shared/types/provider'
 import { cn } from '@renderer/lib/utils'
 import { AddProviderDialog } from './provider/AddProviderDialog'
@@ -92,6 +93,12 @@ function ProviderPanelTabs({
 }
 
 function ProviderPanel(): React.JSX.Element {
+  // R-9.5: drop builtin records that carry no user intent. Deliberately done here
+  // and not during hydration — startup already has enough to do.
+  useEffect(() => {
+    pruneUnownedBuiltinProviders()
+  }, [])
+
   const { t } = useTranslation(['settings', 'common'])
   const { t: tc } = useTranslation('common')
   const providers = useProviderStore((s) => s.providers)

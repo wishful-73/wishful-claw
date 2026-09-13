@@ -265,6 +265,13 @@
         "thinkingConfig": "思考配置",
         "editThinking": "编辑思考配置",
         "configureThinking": "配置思考模式"
+      },
+      "resetBuiltin": {
+        "title": "恢复出厂设置",
+        "description": "将清除你对该内置服务商的所有配置（API Key、地址、模型开关等），恢复为内置默认设置。该服务商仍会保留在列表中。",
+        "action": "恢复出厂设置",
+        "tooltip": "恢复出厂设置",
+        "done": "已恢复出厂设置"
       }
     },
     "modelForm": {

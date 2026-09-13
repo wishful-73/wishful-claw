@@ -303,6 +303,13 @@ export interface AIProvider {
   enabled: boolean
   models: AIModelConfig[]
   builtinId?: string
+  /**
+   * R-9: whether the user has taken ownership of this builtin provider.
+   * Undefined/false means the record is a live projection of its preset and is never persisted;
+   * it becomes true the first time the user changes something (enable / apiKey / baseUrl / models).
+   * Custom providers are always materialized.
+   */
+  materialized?: boolean
   /** Built-in preset version most recently applied to this persisted provider. */
   presetVersion?: number
   createdAt: number

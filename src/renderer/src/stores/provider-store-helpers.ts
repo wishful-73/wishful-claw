@@ -2,12 +2,13 @@ import { nanoid } from 'nanoid'
 import type { AIProvider, AIModelConfig, BuiltinProviderPreset, ProviderType, ReasoningEffortLevel } from '../../../shared/types/provider'
 import type { ManagedModelConfig } from './managed-models'
 import { builtinProviderPresets } from '@renderer/stores/providers'
+import { createProviderFromPreset, isUnownedBuiltin } from './provider-materialization'
 import { useProviderStore } from '@renderer/stores/provider-store'
-import { upgradeProviderFromPreset } from './provider-preset-upgrade'
 
 export const STORAGE_KEY = 'wishful-claw-providers'
 
 export { builtinProviderPresets }
+export { createProviderFromPreset, markMaterialized, isUnownedBuiltin } from './provider-materialization'
 export type { ManagedModelConfig } from './managed-models'
 export type { BuiltinProviderPreset }
 
@@ -24,7 +25,6 @@ export interface ProviderState {
   getProviderById: (id: string) => AIProvider | null
 
   // ── Mutations ──
-  addProviderFromPreset: (preset: BuiltinProviderPreset) => AIProvider
   addCustomProvider: (name: string, type: ProviderType, baseUrl: string, apiKey?: string) => AIProvider
   updateProvider: (id: string, updates: Partial<AIProvider>) => void
   deleteProvider: (id: string) => void
@@ -68,22 +68,20 @@ export interface ProviderState {
   fetchModels: (provider: AIProvider) => Promise<AIModelConfig[]>
 }
 
-export function createProviderFromPreset(preset: BuiltinProviderPreset): AIProvider {
-  return {
-    id: nanoid(),
-    name: preset.name,
-    type: preset.type,
-    apiKey: '',
-    baseUrl: preset.defaultBaseUrl,
-    homepage: preset.homepage,
-    enabled: preset.defaultEnabled ?? false,
-    models: preset.defaultModels.map(m => ({ ...m })),
-    builtinId: preset.builtinId,
-    presetVersion: preset.version,
-    createdAt: Date.now(),
-    requiresApiKey: preset.requiresApiKey ?? true,
-    defaultModel: preset.defaultModel
+/**
+ * R-9.5: drop materialized builtin records that carry no user intent.
+ * Called when the AI provider management page opens — explicitly NOT during
+ * hydration, per the boss: "启动本身就有很多东西需要处理，专项专做".
+ * Returns how many records were pruned.
+ */
+export function pruneUnownedBuiltinProviders(): number {
+  const state = useProviderStore.getState()
+  const kept = state.providers.filter((p) => !isUnownedBuiltin(p))
+  const removed = state.providers.length - kept.length
+  if (removed > 0) {
+    useProviderStore.setState({ providers: kept })
   }
+  return removed
 }
 
 /**
@@ -178,75 +176,84 @@ export function createCustomProvider(name: string, type: ProviderType, baseUrl: 
 }
 
 /**
- * Ensure all builtin presets exist in the provider list.
- * Missing presets are added with defaultEnabled state.
- * Existing presets with outdated version are upgraded:
- *   - New models from the preset are added (preserving user-added models)
- *   - Preset model metadata (price, context, thinking config, etc.) is refreshed
- *   - Models listed in `preset.deprecatedModelIds` are dropped from the user's list
- *   - Provider type and homepage are refreshed from the preset
- *   - User customizations (apiKey, baseUrl, enabled, per-model enabled flags) are preserved
+ * R-9: Ensure every builtin preset is represented in the in-memory provider list.
+ *
+ * Builtin providers are **live projections of their preset** — rebuilt from
+ * `builtinProviderPresets` on every startup, so preset data is always current.
+ * They are never persisted unless the user has taken ownership
+ * (see `materialized`); custom providers are passed through untouched.
+ *
+ * Migration: builds before R-9 gave builtin providers a random `nanoid()` id.
+ * Those are re-keyed to their stable `builtinId` here and every reference remapped.
+ * The old `presetVersion` upgrade gate is gone — preset changes now apply
+ * automatically because unowned builtins are re-projected on every start.
+ *
  * Called on store initialization (after hydration).
  */
 export function ensureBuiltinPresets(): void {
-  const currentProviders = useProviderStore.getState().providers
-  let changed = false
-  const nextProviders = [...currentProviders]
+  const state = useProviderStore.getState()
+  const currentProviders = state.providers
+
+  const persistedByBuiltinId = new Map<string, AIProvider>()
+  const customProviders: AIProvider[] = []
+  for (const p of currentProviders) {
+    if (p.builtinId) persistedByBuiltinId.set(p.builtinId, p)
+    else customProviders.push(p)
+  }
+
+  const idRemap = new Map<string, string>()
+  const nextProviders: AIProvider[] = []
 
   for (const preset of builtinProviderPresets) {
-    const existing = currentProviders.findIndex(p => p.builtinId === preset.builtinId)
-    if (existing === -1) {
-      // Missing preset — add it
-      const provider = createProviderFromPreset(preset)
-      nextProviders.push(provider)
-      changed = true
-      continue
+    const persisted = persistedByBuiltinId.get(preset.builtinId)
+    if (persisted) {
+      // Materialized records belong to the user — never touch their contents,
+      // only re-key the id. (R-9.2: 已物化的用户自己管理)
+      if (persisted.id !== preset.builtinId) idRemap.set(persisted.id, preset.builtinId)
+      nextProviders.push({ ...persisted, id: preset.builtinId })
+    } else {
+      // Live projection: rebuilt from the preset every startup, never persisted.
+      nextProviders.push(createProviderFromPreset(preset))
     }
+  }
+  for (const p of customProviders) nextProviders.push(p)
 
-    const current = currentProviders[existing]
-    if ((current.presetVersion ?? 0) >= preset.version) continue
+  const updates: Partial<ProviderState> = { providers: nextProviders }
 
-    // Version upgrade — refresh model list while preserving user state.
-    // Merge rules live in provider-preset-upgrade.ts so they can be regression-tested.
-    nextProviders[existing] = upgradeProviderFromPreset(current, preset)
-    changed = true
+  if (idRemap.size > 0) {
+    const remap = (id: string | null) => (id ? idRemap.get(id) ?? id : id)
+    updates.activeProviderId = remap(state.activeProviderId)
+    updates.activeFastProviderId = remap(state.activeFastProviderId)
+    updates.activeSpeechProviderId = remap(state.activeSpeechProviderId)
+    updates.activeImageProviderId = remap(state.activeImageProviderId)
+    updates.activeTranslationProviderId = remap(state.activeTranslationProviderId)
   }
 
-  const state = useProviderStore.getState()
-  const updates: Partial<ProviderState> = {}
-  if (changed) {
-    updates.providers = nextProviders
-  }
   // If no active provider is set, pick the first available one
-  if (!state.activeProviderId && nextProviders.length > 0) {
+  const activeId = updates.activeProviderId ?? state.activeProviderId
+  if (!activeId && nextProviders.length > 0) {
     const firstProvider = nextProviders[0]
     updates.activeProviderId = firstProvider.id
-    // Pick default model
-    const defaultModel =
-      firstProvider.models.find((m: AIModelConfig) => m.id === firstProvider.defaultModel) ??
-      firstProvider.models.find((m: AIModelConfig) => m.enabled && (!m.category || m.category === 'chat')) ??
-      firstProvider.models.find((m: AIModelConfig) => m.enabled) ??
-      firstProvider.models[0]
-    if (defaultModel) {
-      updates.activeModelId = defaultModel.id
-    }
+    const defaultModel = pickDefaultModel(firstProvider)
+    if (defaultModel) updates.activeModelId = defaultModel.id
   }
   // If activeProviderId is set but activeModelId is empty, resolve a default model
-  if (state.activeProviderId && !state.activeModelId) {
-    const provider = nextProviders.find((p) => p.id === state.activeProviderId)
-    if (provider) {
-      const defaultModel =
-        provider.models.find((m: AIModelConfig) => m.id === provider.defaultModel) ??
-        provider.models.find((m: AIModelConfig) => m.enabled && (!m.category || m.category === 'chat')) ??
-        provider.models.find((m: AIModelConfig) => m.enabled) ??
-        provider.models[0]
-      if (defaultModel) {
-        updates.activeModelId = defaultModel.id
-      }
-    }
+  if (activeId && !(updates.activeModelId ?? state.activeModelId)) {
+    const provider = nextProviders.find((p) => p.id === activeId)
+    const defaultModel = provider ? pickDefaultModel(provider) : undefined
+    if (defaultModel) updates.activeModelId = defaultModel.id
   }
-  if (Object.keys(updates).length > 0) {
-    useProviderStore.setState(updates)
-  }
+
+  useProviderStore.setState(updates)
+}
+
+/** Pick a sensible default model for a provider. */
+function pickDefaultModel(provider: AIProvider): AIModelConfig | undefined {
+  return (
+    provider.models.find((m) => m.id === provider.defaultModel) ??
+    provider.models.find((m) => m.enabled && (!m.category || m.category === 'chat')) ??
+    provider.models.find((m) => m.enabled) ??
+    provider.models[0]
+  )
 }
 

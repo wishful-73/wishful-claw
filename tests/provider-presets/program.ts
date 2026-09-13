@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { builtinProviderPresets } from '../../src/renderer/src/stores/providers'
 import { upgradeProviderFromPreset } from '../../src/renderer/src/stores/provider-preset-upgrade'
+import {
+  createProviderFromPreset,
+  markMaterialized,
+  isUnownedBuiltin
+} from '../../src/renderer/src/stores/provider-materialization'
 import type { AIProvider, BuiltinProviderPreset } from '../../src/shared/types/provider'
 
 const expectedNewPresetIds = [
@@ -134,6 +139,59 @@ for (const preset of builtinProviderPresets) {
     'version upgrade drops models listed in deprecatedModelIds'
   )
   check(upgraded.models.some((m) => m.id === 'my-custom-model'), 'version upgrade preserves user-added models')
+}
+
+// ─── R-9: builtin providers are live projections of their preset ───
+
+{
+  const builtinIds = builtinProviderPresets.map((p) => p.builtinId)
+  check(builtinIds.every((id) => !!id), 'R-9 every preset declares a builtinId')
+  check(new Set(builtinIds).size === builtinIds.length, 'R-9 builtinIds are unique')
+}
+
+{
+  const preset = builtinProviderPresets[0]
+  const projected = createProviderFromPreset(preset)
+  check(projected.id === preset.builtinId, 'R-9 builtin provider id equals its builtinId (stable across devices)')
+  check(!projected.materialized, 'R-9 a fresh projection is not materialized')
+  check(!isUnownedBuiltin(projected), 'R-9 an unmaterialized projection is never pruned')
+}
+
+{
+  const preset = builtinProviderPresets.find((p) => p.requiresApiKey !== false)!
+  check(markMaterialized(createProviderFromPreset(preset)).materialized === true, 'R-9 writing to a builtin marks it materialized')
+  check(isUnownedBuiltin(markMaterialized(createProviderFromPreset(preset))), 'R-9 a materialized builtin with no user intent can be pruned')
+  check(!isUnownedBuiltin(markMaterialized({ ...createProviderFromPreset(preset), apiKey: 'sk-test' })), 'R-9 a builtin with an api key is never pruned')
+  check(!isUnownedBuiltin(markMaterialized({ ...createProviderFromPreset(preset), enabled: true })), 'R-9 an enabled builtin is never pruned')
+  check(
+    !isUnownedBuiltin(markMaterialized({ ...createProviderFromPreset(preset), baseUrl: 'https://relay.example/v1' })),
+    'R-9 a builtin with a customized baseUrl is never pruned'
+  )
+}
+
+{
+  // oauth and local presets never carry an apiKey, so "no key" says nothing about intent
+  const keyless = builtinProviderPresets.find((p) => p.requiresApiKey === false)!
+  check(!!keyless, 'R-9 at least one preset declares requiresApiKey:false')
+  check(
+    !isUnownedBuiltin(markMaterialized(createProviderFromPreset(keyless))),
+    'R-9 keyless presets are never pruned on the apiKey rule alone'
+  )
+}
+
+{
+  const custom = {
+    id: 'nanoid-xyz',
+    name: 'My relay',
+    type: 'openai',
+    apiKey: '',
+    baseUrl: 'https://relay.example/v1',
+    enabled: false,
+    models: [],
+    createdAt: Date.now()
+  } as unknown as AIProvider
+  check(markMaterialized(custom) === custom, 'R-9 custom providers are returned untouched by markMaterialized')
+  check(!isUnownedBuiltin(custom), 'R-9 custom providers are never pruned')
 }
 
 console.log(`Provider preset consistency checks passed (${checks} assertions, ${builtinProviderPresets.length} presets).`)

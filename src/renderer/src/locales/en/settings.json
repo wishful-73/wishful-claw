@@ -264,6 +264,13 @@
         "thinkingConfig": "Thinking config",
         "editThinking": "Edit thinking config",
         "configureThinking": "Configure thinking mode"
+      },
+      "resetBuiltin": {
+        "title": "Restore factory defaults",
+        "description": "Clears all your settings for this built-in provider (API key, base URL, model toggles) and restores the built-in defaults. The provider itself stays in the list.",
+        "action": "Restore",
+        "tooltip": "Restore factory defaults",
+        "done": "Restored to factory defaults"
       }
     },
     "modelForm": {

@@ -2,7 +2,7 @@
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AIProvider, AIModelConfig, ProviderType } from '../../../shared/types/provider'
 import { aiProviderStorage } from '@renderer/lib/ipc/ai-provider-storage'
-import { createProviderFromPreset, enrichDiscoveredModel, createCustomProvider, ensureBuiltinPresets, STORAGE_KEY, type ProviderState } from './provider-store-helpers'
+import { enrichDiscoveredModel, createCustomProvider, ensureBuiltinPresets, markMaterialized, STORAGE_KEY, type ProviderState } from './provider-store-helpers'
 import {
   toManagedModelConfig,
   cloneManagedModelConfig,
@@ -34,15 +34,6 @@ export const useProviderStore = create<ProviderState>()(
 
       getProviderById: (id) => get().providers.find((p) => p.id === id) ?? null,
 
-      addProviderFromPreset: (preset) => {
-        const provider = createProviderFromPreset(preset)
-        set((state) => ({
-          providers: [...state.providers, provider],
-          activeProviderId: state.activeProviderId ?? provider.id
-        }))
-        return provider
-      },
-
       addCustomProvider: (name, type, baseUrl, apiKey) => {
         const provider = createCustomProvider(name, type, baseUrl, apiKey)
         set((state) => ({
@@ -55,7 +46,7 @@ export const useProviderStore = create<ProviderState>()(
       updateProvider: (id, updates) => {
         set((state) => ({
           providers: state.providers.map((p) =>
-            p.id === id ? { ...p, ...updates } : p
+            p.id === id ? markMaterialized({ ...p, ...updates }) : p
           )
         }))
       },
@@ -144,7 +135,7 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? { ...p, models: [...p.models, model] }
+              ? markMaterialized({ ...p, models: [...p.models, model] })
               : p
           )
         }))
@@ -154,12 +145,12 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? {
+              ? markMaterialized({
                   ...p,
                   models: p.models.map((m) =>
                     m.id === modelId ? { ...m, ...updates } : m
                   )
-                }
+                })
               : p
           )
         }))
@@ -169,7 +160,7 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? { ...p, models: p.models.filter((m) => m.id !== modelId) }
+              ? markMaterialized({ ...p, models: p.models.filter((m) => m.id !== modelId) })
               : p
           )
         }))
@@ -197,7 +188,7 @@ export const useProviderStore = create<ProviderState>()(
               // New model — enrich with builtin metadata
               return enrichDiscoveredModel(m)
             })
-            return { ...p, models: merged }
+            return markMaterialized({ ...p, models: merged })
           })
         }))
       },
@@ -299,7 +290,8 @@ export const useProviderStore = create<ProviderState>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(() => aiProviderStorage),
       partialize: (state) => ({
-        providers: state.providers,
+        // R-9: unowned builtins are live preset projections — never persist them.
+        providers: state.providers.filter((p) => !p.builtinId || p.materialized),
         managedModels: state.managedModels,
         managedModelTombstones: state.managedModelTombstones,
         activeProviderId: state.activeProviderId,

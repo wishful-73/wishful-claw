@@ -1214,20 +1214,20 @@ IsVisible(tool, ctx):
 
 #### R-9.1 内置 id 固定为 `builtinId`
 
-- [ ] `createProviderFromPreset`：`id: nanoid()` → **`id: preset.builtinId`**（把「随机 id 当主键、稳定 builtinId 只当标签」的现行关系倒过来）。
-- [ ] 46 个 `builtinId` 实测已全局唯一（`openai`／`baidu-coding`／`xiaomi-coding`／`stepfun-plan`…），**不加前缀**。
-- [ ] **自定义服务商仍用 `nanoid()`**，与 kebab-case 的 builtinId 命名空间天然隔离。
-- [ ] `builtinId` 字段**保留**，作为「内置／自定义」判定依据，不要靠 id 字符串猜。
-- [ ] **一 preset 一记录**。用户想再开一个同类服务商（官方 ＋ 中转）走**自定义**路径、自己填 baseUrl 与名称
+- [✓] `createProviderFromPreset`：`id: nanoid()` → **`id: preset.builtinId`**（把「随机 id 当主键、稳定 builtinId 只当标签」的现行关系倒过来）。
+- [✓] 46 个 `builtinId` 实测已全局唯一（`openai`／`baidu-coding`／`xiaomi-coding`／`stepfun-plan`…），**不加前缀**。
+- [✓] **自定义服务商仍用 `nanoid()`**，与 kebab-case 的 builtinId 命名空间天然隔离。
+- [✓] `builtinId` 字段**保留**，作为「内置／自定义」判定依据，不要靠 id 字符串猜。
+- [✓] **一 preset 一记录**。用户想再开一个同类服务商（官方 ＋ 中转）走**自定义**路径、自己填 baseUrl 与名称
       （老大原话："用户可以自己添加更多同样服务商，只是名称不一样"）。
 
 #### R-9.2 读写分离：读走合成，写才物化
 
-- [ ] **读**（列表、详情、模型清单）→ 实时从 preset 合成，**永不落盘**，因此永远最新。
-- [ ] **写**（启用／填 apiKey／改 baseUrl／拨模型开关／设为活跃）→ 此刻物化一条记录。
-- [ ] **已物化的归用户自己管**（老大裁定："已经物化的用户自己管理，快照是旧的还是新的都是用户自己的事情了"）
+- [✓] **读**（列表、详情、模型清单）→ 实时从 preset 合成，**永不落盘**，因此永远最新。
+- [✓] **写**（启用／填 apiKey／改 baseUrl／拨模型开关／设为活跃）→ 此刻物化一条记录。
+- [✓] **已物化的归用户自己管**（老大裁定："已经物化的用户自己管理，快照是旧的还是新的都是用户自己的事情了"）
       → **不做 model diff、不做覆盖合并**，也就不存在"覆盖用户改动"的问题。
-- [ ] 用户自助更新手段现成：`fetchModels`（从 API 拉模型清单）不动。
+- [✓] 用户自助更新手段现成：`fetchModels`（从 API 拉模型清单）不动。
 
 #### R-9.3 实现路径：**选 A（内存全量、落盘瘦身）**
 
@@ -1236,43 +1236,43 @@ IsVisible(tool, ctx):
 | **A（选）** | `providers` **内存数组保持全量**（46 条合成 ＋ 自定义），只改 `partialize` 让**无用户意图的内置不落盘** | 20+ 处 `providers.find(p => p.id === …)` **零改动**；需一个 `materialized` 标记区分"合成/已物化" |
 | B | 真懒：`providers` 只装有意图的，新增 `getVisibleProviders()`，改所有 UI 读取点 | 语义更纯，但要动 automation／chat／goal 等十几个组件，回归面大 |
 
-- [ ] 选 **A**。理由：内存里多 46 个合成对象成本可忽略（数据本就在 preset 里），**真正要解决的是"落盘快照腐化"**，
+- [✓] 选 **A**。理由：内存里多 46 个合成对象成本可忽略（数据本就在 preset 里），**真正要解决的是"落盘快照腐化"**，
       A 精确地只解决这一点，且让 `AssistantMessage`／`GoalConfirmCard`／`context-ring`／`AutomationModelSelector` 等
       十几处 `providers.find` 全部零改动。
-- [ ] 给 `AIProvider` 加内部标记（建议 `materialized?: boolean`），用户首次写入时置 `true`；
+- [✓] 给 `AIProvider` 加内部标记（建议 `materialized?: boolean`），用户首次写入时置 `true`；
       `partialize` 只输出 `!p.builtinId || p.materialized` 的条目。
 
 #### R-9.4 停掉 `ensureBuiltinPresets` 为内置创建记录 ＋ 废弃 `presetVersion` 闸门
 
-- [ ] 卸掉该函数"为内置 preset 创建记录"的职责（改为只**合成**到内存），自定义服务商逻辑保留。
-- [ ] 注意这是给启动路径**减负**（少建 46 条、少一次全量写盘），与老大「启动本身就有很多东西要处理」的诉求同向。
-- [ ] **连带废弃整个 `presetVersion` 版本闸门** → 以后改 preset 数据**不必再 bump version**，
+- [✓] 卸掉该函数"为内置 preset 创建记录"的职责（改为只**合成**到内存），自定义服务商逻辑保留。
+- [✓] 注意这是给启动路径**减负**（少建 46 条、少一次全量写盘），与老大「启动本身就有很多东西要处理」的诉求同向。
+- [✓] **连带废弃整个 `presetVersion` 版本闸门** → 以后改 preset 数据**不必再 bump version**，
       R-8.5 那种 46 个全量 bump 成为历史。这是本需求最大的长期收益。
-- [ ] ⚠️ **前提**：R-9.2 的合成链路必须先落地，否则内置服务商会整体消失。
+- [✓] ⚠️ **前提**：R-9.2 的合成链路必须先落地，否则内置服务商会整体消失。
 
 #### R-9.5 存量清理（**进入 AI 服务商管理页时专项做**）
 
-- [ ] 时机：**管理页**，**不在 hydration**（老大裁定："启动本身就有很多东西需要处理，专项专做"）。
-- [ ] 清理判定（建议**先只上前四条**，后四条作保守兜底——保守的代价只是少清几条，激进的代价是丢用户配置）：
+- [✓] 时机：**管理页**，**不在 hydration**（老大裁定："启动本身就有很多东西需要处理，专项专做"）。
+- [✓] 清理判定（建议**先只上前四条**，后四条作保守兜底——保守的代价只是少清几条，激进的代价是丢用户配置）：
       `builtinId` 存在 && `!enabled` && `!apiKey` && `preset.requiresApiKey !== false`
       && `baseUrl === preset.defaultBaseUrl` && 无 preset 之外的自定义模型 && 未被 6 个选中态指针引用 && 无 OAuth 账号绑定。
-- [ ] ⚠️ **`requiresApiKey: false` 的 5 个必排除**：`codex-oauth`／`copilot-oauth`／`lmstudio`／`ollama`／`moonshot.ts:27`
+- [✓] ⚠️ **`requiresApiKey: false` 的 5 个必排除**：`codex-oauth`／`copilot-oauth`／`lmstudio`／`ollama`／`moonshot.ts:27`
       天生没有 apiKey，不排除会被无条件误删；其中 `ollama` 常被改 baseUrl，删了即丢配置。
-- [ ] ✅ **有利性质**：因内置 id 固定为 `builtinId`，删记录**不会让引用悬空**（合成链路仍可解析），
+- [✓] ✅ **有利性质**：因内置 id 固定为 `builtinId`，删记录**不会让引用悬空**（合成链路仍可解析），
       这与现行 nanoid 情形（删了就真找不到）本质不同。
 
 #### R-9.6 内置的「删除」改称「恢复出厂设置」
 
-- [ ] `ProviderConfigPanel.tsx:209`（另 `:286` 有同款判断）现在用 `{!provider.builtinId && …}` 把内置删除入口**隐藏**。
+- [✓] `ProviderConfigPanel.tsx:209`（另 `:286` 有同款判断）现在用 `{!provider.builtinId && …}` 把内置删除入口**隐藏**。
       当前合理（删了下启动被重建、等于没删），但 R-9.4 之后语义已变，此入口**必须开放**。
-- [ ] **名称不叫「删除」，叫「恢复出厂设置」**（老大原话："实际上就是删了，只是名称不一样，免得用户觉得我怎么没删掉"）。
+- [✓] **名称不叫「删除」，叫「恢复出厂设置」**（老大原话："实际上就是删了，只是名称不一样，免得用户觉得我怎么没删掉"）。
       根因：懒物化后内置由 preset 渲染、**永远在列表里**，点「删除」而条目仍在会造成"没删掉"的困惑。
-- [ ] **「删除」只属于自定义服务商**。文案需体现"清空我的配置、回到内置默认"。
+- [✓] **「删除」只属于自定义服务商**。文案需体现"清空我的配置、回到内置默认"。
 
 #### R-9.7 附带清理
 
-- [ ] 删掉 `addProviderFromPreset`（"从模板再添加一条"）——全仓**零 UI 调用**，僵尸 API；R-9.1 之后它与"一 preset 一记录"直接冲突。
-- [ ] 可复用先例：全局模型库 `managedModels` 已由 `collectBuiltinManagedModels()` 从 preset 实时收集、不落盘；
+- [✓] 删掉 `addProviderFromPreset`（"从模板再添加一条"）——全仓**零 UI 调用**，僵尸 API；R-9.1 之后它与"一 preset 一记录"直接冲突。
+- [✓] 可复用先例：全局模型库 `managedModels` 已由 `collectBuiltinManagedModels()` 从 preset 实时收集、不落盘；
       R-9 等于把同一做法从「模型库」推广到「服务商本身」。
 
 #### R-9.C 边界（不做的、代价与风险）

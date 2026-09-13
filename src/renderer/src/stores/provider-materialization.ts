@@ -69,3 +69,47 @@ export function isUnownedBuiltin(provider: AIProvider): boolean {
 export function shouldPersist(provider: AIProvider): boolean {
   return !provider.virtual
 }
+
+export interface ProviderReconciliation {
+  /** Full in-memory list: virtual projections + real records + custom providers. */
+  providers: AIProvider[]
+  /** oldId -> newId for builtin records whose random pre-R-9 id was re-keyed. */
+  idRemap: Map<string, string>
+}
+
+/**
+ * R-9: build the in-memory provider list from whatever was persisted.
+ *
+ * Pure on purpose — this *is* the upgrade path, so it can be regression-tested from
+ * plain node without booting the store (see `tests/provider-presets`).
+ *
+ * - Builtin presets with a persisted record keep that record's contents untouched
+ *   (R-9.2: 已物化的用户自己管理), only re-keyed to their stable `builtinId`.
+ * - Builtin presets without one become virtual projections, so preset data is current.
+ * - Records written before R-9 have no `virtual` flag, therefore count as real and
+ *   survive as-is — no migration, no user data rewritten.
+ */
+export function reconcileProviders(persisted: AIProvider[]): ProviderReconciliation {
+  const persistedByBuiltinId = new Map<string, AIProvider>()
+  const customProviders: AIProvider[] = []
+  for (const p of persisted) {
+    if (p.builtinId) persistedByBuiltinId.set(p.builtinId, p)
+    else customProviders.push(p)
+  }
+
+  const idRemap = new Map<string, string>()
+  const providers: AIProvider[] = []
+
+  for (const preset of builtinProviderPresets) {
+    const existing = persistedByBuiltinId.get(preset.builtinId)
+    if (existing) {
+      if (existing.id !== preset.builtinId) idRemap.set(existing.id, preset.builtinId)
+      providers.push({ ...existing, id: preset.builtinId })
+    } else {
+      providers.push(createProviderFromPreset(preset))
+    }
+  }
+  for (const p of customProviders) providers.push(p)
+
+  return { providers, idRemap }
+}

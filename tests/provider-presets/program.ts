@@ -5,7 +5,8 @@ import {
   createProviderFromPreset,
   materializeRecord,
   isUnownedBuiltin,
-  shouldPersist
+  shouldPersist,
+  reconcileProviders
 } from '../../src/renderer/src/stores/provider-materialization'
 import type { AIProvider, BuiltinProviderPreset } from '../../src/shared/types/provider'
 
@@ -215,6 +216,78 @@ for (const preset of builtinProviderPresets) {
   check(materializeRecord(custom) === custom, 'R-9 custom providers are returned untouched')
   check(shouldPersist(custom), 'R-9 custom providers are always persisted')
   check(!isUnownedBuiltin(custom), 'R-9 custom providers are never pruned')
+}
+
+// ─── R-9: the whole upgrade path, new install and pre-R-9 legacy config ───
+
+{
+  // New install: nothing persisted, so everything is a virtual projection.
+  const fresh = reconcileProviders([])
+  check(fresh.providers.length === builtinProviderPresets.length, 'R-9 new install yields one entry per preset')
+  check(fresh.providers.every((p) => p.virtual === true), 'R-9 new install entries are all virtual')
+  check(fresh.providers.every((p) => p.id === p.builtinId), 'R-9 new install ids equal builtinIds')
+  check(fresh.idRemap.size === 0, 'R-9 new install needs no id remapping')
+  check(fresh.providers.every((p) => !shouldPersist(p)), 'R-9 a brand new install persists nothing')
+}
+
+{
+  // Pre-R-9 legacy config: every builtin was persisted with a random nanoid id.
+  // Two of them carry real user configuration; the rest were never touched.
+  const legacy: AIProvider[] = builtinProviderPresets.map((preset, i) => ({
+    ...createProviderFromPreset(preset),
+    id: `nanoid-legacy-${i}`
+  }))
+  for (const p of legacy) delete p.virtual
+
+  const legacyDeepseekId = 'nanoid-deepseek-0001'
+  const legacyOpenaiId = 'nanoid-openai-0002'
+
+  const deepseek = legacy.find((p) => p.builtinId === 'deepseek')!
+  deepseek.id = legacyDeepseekId
+  deepseek.apiKey = 'sk-legacy-deepseek'
+  deepseek.enabled = true
+  deepseek.baseUrl = 'https://relay.example/deepseek'
+  deepseek.models = [
+    ...deepseek.models,
+    { ...deepseek.models[0], id: 'my-private-model', name: 'My private model', enabled: true }
+  ]
+
+  const openai = legacy.find((p) => p.builtinId === 'openai')!
+  openai.id = legacyOpenaiId
+  openai.enabled = true
+
+  const custom: AIProvider = {
+    id: 'nanoid-custom-relay',
+    name: 'My relay',
+    type: 'openai',
+    apiKey: 'sk-relay',
+    baseUrl: 'https://relay.example/v1',
+    enabled: true,
+    models: [],
+    createdAt: Date.now()
+  }
+  legacy.push(custom)
+
+  const { providers, idRemap } = reconcileProviders(legacy)
+
+  check(idRemap.get(legacyDeepseekId) === 'deepseek', 'R-9 a legacy random id is remapped to its builtinId')
+  check(idRemap.get(legacyOpenaiId) === 'openai', 'R-9 every re-keyed builtin is remapped')
+
+  const migrated = providers.find((p) => p.id === 'deepseek')!
+  check(!!migrated, 'R-9 the configured legacy provider survives the upgrade')
+  check(migrated.apiKey === 'sk-legacy-deepseek', 'R-9 legacy apiKey is preserved')
+  check(migrated.enabled === true, 'R-9 legacy enabled flag is preserved')
+  check(migrated.baseUrl === 'https://relay.example/deepseek', 'R-9 legacy custom baseUrl is preserved')
+  check(migrated.models.some((m) => m.id === 'my-private-model'), 'R-9 user-added models are preserved')
+  check(shouldPersist(migrated), 'R-9 a configured legacy record keeps being persisted')
+
+  const migratedOpenai = providers.find((p) => p.id === 'openai')!
+  check(migratedOpenai.enabled === true, 'R-9 an enabled legacy provider stays enabled')
+
+  check(providers.some((p) => p.id === 'nanoid-custom-relay'), 'R-9 custom providers survive the upgrade')
+  check(providers.every((p) => !p.builtinId || p.id === p.builtinId), 'R-9 every builtin ends up keyed by builtinId')
+  check(providers.length === builtinProviderPresets.length + 1, 'R-9 no provider is lost during migration')
+  check(!isUnownedBuiltin(migrated), 'R-9 a configured legacy record is never pruned')
 }
 
 console.log(`Provider preset consistency checks passed (${checks} assertions, ${builtinProviderPresets.length} presets).`)

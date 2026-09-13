@@ -1289,8 +1289,18 @@ IsVisible(tool, ctx):
 4. **不改动 `fetchModels` 与 `builtinModelRegistry`**：后者本就是每次启动从 preset 实时建的（不受版本门控），
    正是 R-9 要推广的范式。
 5. **BOM／行尾**：本需求涉及的文件若被工具写入，沿用既有纪律（不新增 BOM、保留原行尾）。
-6. **验证口径**：tsc 三配置 0 错误；`test:provider-presets` 扩展断言（内置 id 等于 builtinId、无意图条目不进 partialize）；
-   C# 9 套回归不受影响（纯渲染端改动）；手工覆盖两条路径——**新装**（应零物化记录）与**老用户升级**（有意图的保留、无意图的清理）。
+6. **验证口径（两条路径均已自动化，不必只靠手工）**：
+   - `ensureBuiltinPresets` 的核心抽为纯函数 `reconcileProviders()`（`provider-materialization.ts`，不依赖 store），
+     因此**整条升级路径可在 node 里回归** —— 这是把"老大要求的新装/老用户都要正常"做成可执行断言的关键一步。
+   - `test:provider-presets` **535 assertions**：
+     · **新装**：46 条全虚拟、id 等于 builtinId、无 id 重映射、`shouldPersist` 全 false（零落盘）；
+     · **老配置升级**：造一份 46 条 nanoid 的老配置（其中 deepseek 带 apiKey／启用／改过 baseUrl／有自建模型，openai 已启用，
+       外加一条自定义服务商），断言 apiKey／enabled／baseUrl／自建模型**全部保留**、id 重映射正确、自定义服务商不丢、
+       迁移后 `providers.length` 不减；
+     · 老记录不带 `virtual` ⇒ 视为真实记录 ⇒ 照常落盘（**零迁移**）。
+   - tsc 三配置 0 错误；TS 11 套 Mini + C# 9 套回归全绿。
+   - ⚠️ **仍缺真机验证**：应用未能启动（打包时 `out/renderer/assets` 清空被环境 safe-delete 守卫拦截，229 > 50 阈值），
+     UI 层的实际观感（恢复出厂后条目是否还在列表、管理页清理后是否可见）**尚未目视确认**。
 
 ### 收尾：统一审查、验证与修复
 

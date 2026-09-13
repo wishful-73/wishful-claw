@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid'
 import type { AIProvider, AIModelConfig, BuiltinProviderPreset, ProviderType, ReasoningEffortLevel } from '../../../shared/types/provider'
 import type { ManagedModelConfig } from './managed-models'
 import { builtinProviderPresets } from '@renderer/stores/providers'
-import { createProviderFromPreset, isUnownedBuiltin } from './provider-materialization'
+import { createProviderFromPreset, isUnownedBuiltin, reconcileProviders } from './provider-materialization'
 import { useProviderStore } from '@renderer/stores/provider-store'
 
 export const STORAGE_KEY = 'wishful-claw-providers'
@@ -203,31 +203,9 @@ export function ensureBuiltinPresets(): void {
   const state = useProviderStore.getState()
   const currentProviders = state.providers
 
-  const persistedByBuiltinId = new Map<string, AIProvider>()
-  const customProviders: AIProvider[] = []
-  for (const p of currentProviders) {
-    if (p.builtinId) persistedByBuiltinId.set(p.builtinId, p)
-    else customProviders.push(p)
-  }
-
-  const idRemap = new Map<string, string>()
-  const nextProviders: AIProvider[] = []
-
-  for (const preset of builtinProviderPresets) {
-    const persisted = persistedByBuiltinId.get(preset.builtinId)
-    if (persisted) {
-      // Materialized records belong to the user — never touch their contents,
-      // only re-key the id. (R-9.2: 已物化的用户自己管理)
-      if (persisted.id !== preset.builtinId) idRemap.set(persisted.id, preset.builtinId)
-      // Real record: never touch its contents, only re-key the id.
-      // (R-9.2: 已物化的用户自己管理)
-      nextProviders.push({ ...persisted, id: preset.builtinId })
-    } else {
-      // Live projection: rebuilt from the preset every startup, never persisted.
-      nextProviders.push(createProviderFromPreset(preset))
-    }
-  }
-  for (const p of customProviders) nextProviders.push(p)
+  // The whole reconciliation rule lives in provider-materialization.ts (pure), so the
+  // upgrade path is regression-tested from plain node.
+  const { providers: nextProviders, idRemap } = reconcileProviders(currentProviders)
 
   const updates: Partial<ProviderState> = { providers: nextProviders }
 

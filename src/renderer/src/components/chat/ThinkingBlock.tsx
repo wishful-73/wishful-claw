@@ -143,7 +143,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
             <div ref={contentRef} className="max-h-80 overflow-y-auto">
               {isThinking ? (
                 <div
-                  className={`${getLiveOutputSurfaceClass(liveOutputAnimationStyle)} whitespace-pre-wrap break-words leading-relaxed`}
+                  className={`${getLiveOutputSurfaceClass(liveOutputAnimationStyle)} whitespace-pre-wrap break-words pb-6 leading-relaxed`}
                   data-render-pool-size={renderPool.poolSize}
                   data-rendered-length={renderPool.renderedLength}
                   data-target-length={renderPool.targetLength}

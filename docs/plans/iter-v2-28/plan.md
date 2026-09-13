@@ -1343,7 +1343,9 @@ IsVisible(tool, ctx):
 - [x] R-10.2：执行中高度水位线。`useMessageListScroll.ts` 在执行中维护 `watermark = max(watermark, totalSize)`，`VirtualListContent.tsx` 内容容器以 `min-height: watermark` 补齐（底部留白）；执行结束立即收回、会话切换与初始加载重置。
   - 二轮修正（老大 dev 实测发现）：工具结果收起时实际内容收缩，但贴底目标取的是含水位线留白的 `scrollHeight`，视口钉在留白区，输出从 1200 涨回 4000 前一直看空白。修法：水位线激活时贴底目标与悬空判定都以「实际内容底部」（`min(scrollHeight, totalSize)`）为基准——贴底跟随内容底；若 scrollTop 落入留白区则立即回缩到内容底（不按调用点挂 rAF，收在 totalSize 变化触发的 layout effect 里统一处理，paint 前完成）。水位线只增不减的逻辑不变。
   - 三轮修正（老大实测发现死滚动，口径定为「留白可接受、整屏留白不可接受」）：d0eb6bdd 的地面真值 `min(scrollHeight, totalSize)` 错在 totalSize 是虚拟器账面值（未测行按 180px 估算，流式尾行系统性偏小）——贴底钉不到真实底、悬空判定误触发、`autoScrollMode` 被误杀 off 后死锁（只有手动滚回底部 80px 内才复活）。修法：水位线逻辑保持 4bb91274 原样；地面真值改用 DOM 实测（`getRealContentBottom`：各行 `getBoundingClientRect().bottom` 最大值，行是 translateY 定位故不能用 offsetTop）。贴底目标 = 真实内容底（增长与收缩都跟随，收缩后视口贴内容底而非留白区）；悬空回缩仅在视口**整屏无内容**（scrollTop ≥ realBottom）时触发，部分留白不干预；realBottom=0（虚拟器未渲染行的越界瞬间态）不动 scrollTop。
+  - 四轮修正（老大复验：悬空回缩仍直接贴底 + 思考内容流式期间视口逐帧弹跳；口径不变「留白可接受、整屏留白不可接受」）：贴底/跟随目标统一改为 **GAP 姿态**——视口底边停在内容底下方 `STREAMING_BOTTOM_FOLLOW_GAP(80px)` 留白带处，新增内容先长进留白带、长满才推视口（吸收流式抖动）；收缩由留白吸收，视口一律不动（**取消收缩跟随**）；贴底只推不拽且钉底门控（非钉底绝不拽）；整屏悬空（scrollTop ≥ 内容底）无条件救回 GAP 姿态；水位线定义改为「历史最大（内容底+GAP）」保证 GAP 姿态可达（否则持续增长时被 scrollHeight 上限 clamp 回贴底）；syncBottomState 的 dist 水位线激活时对内容底算（可负），悬空强制 not atBottom（滚到底按钮出现、不复活跟随）。
   - Mini：`tsc` web + node 配置零错误（ESLint 项目未配置，跳过）。
+  - 五轮修正（老大提出：思考流式组件本身也留缓冲）：ThinkingBlock 流式态 div 加 `pb-6`，钉底逻辑不动——文字底边悬在可视底上方 24px，从缓冲带长出；仅流式生效，结束折叠无此效果。
 - [x] R-10.3：定格过程展开限高。`execution-process-block.tsx` / `content-renderer.tsx` 工具运行组两处在 `expanded && !isStreaming` 态封顶 `max-h-[70vh] overflow-y-auto`；**`ThinkingBlock` 无需改动**——历史态已有 `max-h-80` 内滚动封顶（比 70vh 更严），执行中态本就按需求不碰。执行中态一律不碰。Mini：`tsc` web + node 配置零错误；dev 目视实测待 R-10.4。
 - [ ] R-10.4：老大 dev 目视复验（agent 无目视通路）：① 吸附卡钉住时下方文字不透出；② 执行中 widget 高度增减聊天窗不跳、底部留白、结束一次收回、切会话无残留；③ 执行结束后展开超长过程块出内部滚动条、短内容不变、执行中过程块行为与现状一致。**未过不得勾成完成。**
 

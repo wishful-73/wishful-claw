@@ -41,7 +41,8 @@ Each persona consists of 4 markdown files:
 
 ## Output Format
 
-Return a single JSON object with these fields:
+Return a single JSON object with these fields. The example shows the shape of each field, not its
+language: write the values in the language the user wrote their prompt in.
 {jsonExample}
 
 Return ONLY the JSON object, no additional explanation.
@@ -57,13 +58,13 @@ Return ONLY the JSON object, no additional explanation.
         return """
 ```json
 {
-  "name": "人格名称",
-  "tagline": "一句话标签（如：技术搭档兄弟）",
-  "description": "简短描述（2-3句话）",
-  "identity": "# IDENTITY.md 的完整 Markdown 内容",
-  "soul": "# SOUL.md 的完整 Markdown 内容",
-  "ontology": "# ONTOLOGY.md 的完整 Markdown 内容",
-  "agents": "# AGENTS.md 的完整 Markdown 内容"
+  "name": "persona name",
+  "tagline": "one-line tagline (e.g. a technical partner who never sugar-coats)",
+  "description": "short description (2-3 sentences)",
+  "identity": "full Markdown contents of IDENTITY.md",
+  "soul": "full Markdown contents of SOUL.md",
+  "ontology": "full Markdown contents of ONTOLOGY.md",
+  "agents": "full Markdown contents of AGENTS.md"
 }
 ```
 """;

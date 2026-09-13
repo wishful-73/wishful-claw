@@ -2,11 +2,22 @@ import { nanoid } from 'nanoid'
 import type { AIProvider, AIModelConfig, BuiltinProviderPreset, ProviderType, ReasoningEffortLevel } from '../../../shared/types/provider'
 import type { ManagedModelConfig } from './managed-models'
 import { builtinProviderPresets } from '@renderer/stores/providers'
+import {
+  isUnownedBuiltin,
+  reconcileProviders,
+  resetProviderToPreset
+} from './provider-materialization'
 import { useProviderStore } from '@renderer/stores/provider-store'
 
 export const STORAGE_KEY = 'wishful-claw-providers'
 
 export { builtinProviderPresets }
+export {
+  createProviderFromPreset,
+  materializeRecord,
+  isUnownedBuiltin,
+  resetProviderToPreset
+} from './provider-materialization'
 export type { ManagedModelConfig } from './managed-models'
 export type { BuiltinProviderPreset }
 
@@ -23,8 +34,7 @@ export interface ProviderState {
   getProviderById: (id: string) => AIProvider | null
 
   // ── Mutations ──
-  addProviderFromPreset: (preset: BuiltinProviderPreset) => AIProvider
-  addCustomProvider: (name: string, type: ProviderType, baseUrl: string, apiKey?: string) => AIProvider
+  addCustomProvider: (name: string, type: ProviderType, baseUrl: string, apiKey?: string, homepage?: string) => AIProvider
   updateProvider: (id: string, updates: Partial<AIProvider>) => void
   deleteProvider: (id: string) => void
   setActiveProvider: (id: string) => void
@@ -67,21 +77,29 @@ export interface ProviderState {
   fetchModels: (provider: AIProvider) => Promise<AIModelConfig[]>
 }
 
-export function createProviderFromPreset(preset: BuiltinProviderPreset): AIProvider {
-  return {
-    id: nanoid(),
-    name: preset.name,
-    type: preset.type,
-    apiKey: '',
-    baseUrl: preset.defaultBaseUrl,
-    enabled: preset.defaultEnabled ?? false,
-    models: preset.defaultModels.map(m => ({ ...m })),
-    builtinId: preset.builtinId,
-    presetVersion: preset.version,
-    createdAt: Date.now(),
-    requiresApiKey: preset.requiresApiKey ?? true,
-    defaultModel: preset.defaultModel
+/**
+ * R-9.5: drop materialized builtin records that carry no user intent.
+ * Called when the AI provider management page opens — explicitly NOT during
+ * hydration, per the boss: "启动本身就有很多东西需要处理，专项专做".
+ * Returns how many records were pruned.
+ */
+export function pruneUnownedBuiltinProviders(): number {
+  const state = useProviderStore.getState()
+  let pruned = 0
+  // R-9.6: keep every builtin in the list. Pruning only drops the "user owns this"
+  // flag so the record stops being written — it stays visible as a preset projection.
+  const nextProviders = state.providers.map((p) => {
+    if (!isUnownedBuiltin(p)) return p
+    pruned++
+    // Reset to a fresh projection while keeping the id: the entry stays visible in
+    // the list and every external reference still resolves, it just stops being
+    // written to storage.
+    return resetProviderToPreset(p) ?? p
+  })
+  if (pruned > 0) {
+    useProviderStore.setState({ providers: nextProviders })
   }
+  return pruned
 }
 
 /**
@@ -161,13 +179,20 @@ export function enrichDiscoveredModel(raw: AIModelConfig): AIModelConfig {
   return merged
 }
 
-export function createCustomProvider(name: string, type: ProviderType, baseUrl: string, apiKey = ''): AIProvider {
+export function createCustomProvider(
+  name: string,
+  type: ProviderType,
+  baseUrl: string,
+  apiKey = '',
+  homepage = ''
+): AIProvider {
   return {
     id: nanoid(),
     name,
     type,
     apiKey,
     baseUrl,
+    ...(homepage ? { homepage } : {}),
     enabled: true,
     models: [],
     createdAt: Date.now(),
@@ -176,91 +201,57 @@ export function createCustomProvider(name: string, type: ProviderType, baseUrl: 
 }
 
 /**
- * Ensure all builtin presets exist in the provider list.
- * Missing presets are added with defaultEnabled state.
- * Existing presets with outdated version are upgraded:
- *   - New models from the preset are added (preserving user-added models)
- *   - Preset model metadata (price, context, thinking config, etc.) is refreshed
- *   - Provider type/baseUrl are updated if the preset changed them
- *   - User customizations (apiKey, enabled, per-model enabled flags) are preserved
+ * R-9: Ensure every builtin preset is represented in the in-memory provider list.
+ *
+ * Builtin providers are **live projections of their preset** — rebuilt from
+ * `builtinProviderPresets` on every startup, so preset data is always current.
+ * They are never persisted unless the user has taken ownership
+ * (see `materialized`); custom providers are passed through untouched.
+ *
+ * Migration: builds before R-9 gave builtin providers a random `nanoid()` id.
+ * Those are re-keyed to their stable `builtinId` here and every reference remapped.
+ * The old `presetVersion` upgrade gate is gone — preset changes now apply
+ * automatically because unowned builtins are re-projected on every start.
+ *
  * Called on store initialization (after hydration).
  */
 export function ensureBuiltinPresets(): void {
-  const currentProviders = useProviderStore.getState().providers
-  let changed = false
-  const nextProviders = [...currentProviders]
-
-  for (const preset of builtinProviderPresets) {
-    const existing = currentProviders.findIndex(p => p.builtinId === preset.builtinId)
-    if (existing === -1) {
-      // Missing preset — add it
-      const provider = createProviderFromPreset(preset)
-      nextProviders.push(provider)
-      changed = true
-      continue
-    }
-
-    const current = currentProviders[existing]
-    if ((current.presetVersion ?? 0) >= preset.version) continue
-
-    // Version upgrade — refresh model list while preserving user state
-    const presetModelIds = new Set(preset.defaultModels.map(m => m.id))
-    const userCustomModels = current.models.filter(m => !presetModelIds.has(m.id))
-
-    // For preset models, preserve user's enabled flag; refresh all other metadata
-    const refreshedModels = preset.defaultModels.map(presetModel => {
-      const userModel = current.models.find(m => m.id === presetModel.id)
-      if (userModel) {
-        return { ...presetModel, enabled: userModel.enabled }
-      }
-      return { ...presetModel }
-    })
-
-    nextProviders[existing] = {
-      ...current,
-      type: preset.type,
-      baseUrl: preset.defaultBaseUrl,
-      models: [...refreshedModels, ...userCustomModels],
-      presetVersion: preset.version
-    }
-    changed = true
-  }
-
   const state = useProviderStore.getState()
-  const updates: Partial<ProviderState> = {}
-  if (changed) {
-    updates.providers = nextProviders
-  }
+  const currentProviders = state.providers
+
+  // The whole reconciliation rule lives in provider-materialization.ts (pure), so the
+  // upgrade path is regression-tested from plain node.
+  const { providers: nextProviders } = reconcileProviders(currentProviders)
+
+  // R-9.C.8: no id remapping. Persisted records keep their own id, so every pointer
+  // held here and in the stores that reference provider ids stays valid.
+  const updates: Partial<ProviderState> = { providers: nextProviders }
+
   // If no active provider is set, pick the first available one
-  if (!state.activeProviderId && nextProviders.length > 0) {
+  const activeId = updates.activeProviderId ?? state.activeProviderId
+  if (!activeId && nextProviders.length > 0) {
     const firstProvider = nextProviders[0]
     updates.activeProviderId = firstProvider.id
-    // Pick default model
-    const defaultModel =
-      firstProvider.models.find((m: AIModelConfig) => m.id === firstProvider.defaultModel) ??
-      firstProvider.models.find((m: AIModelConfig) => m.enabled && (!m.category || m.category === 'chat')) ??
-      firstProvider.models.find((m: AIModelConfig) => m.enabled) ??
-      firstProvider.models[0]
-    if (defaultModel) {
-      updates.activeModelId = defaultModel.id
-    }
+    const defaultModel = pickDefaultModel(firstProvider)
+    if (defaultModel) updates.activeModelId = defaultModel.id
   }
   // If activeProviderId is set but activeModelId is empty, resolve a default model
-  if (state.activeProviderId && !state.activeModelId) {
-    const provider = nextProviders.find((p) => p.id === state.activeProviderId)
-    if (provider) {
-      const defaultModel =
-        provider.models.find((m: AIModelConfig) => m.id === provider.defaultModel) ??
-        provider.models.find((m: AIModelConfig) => m.enabled && (!m.category || m.category === 'chat')) ??
-        provider.models.find((m: AIModelConfig) => m.enabled) ??
-        provider.models[0]
-      if (defaultModel) {
-        updates.activeModelId = defaultModel.id
-      }
-    }
+  if (activeId && !(updates.activeModelId ?? state.activeModelId)) {
+    const provider = nextProviders.find((p) => p.id === activeId)
+    const defaultModel = provider ? pickDefaultModel(provider) : undefined
+    if (defaultModel) updates.activeModelId = defaultModel.id
   }
-  if (Object.keys(updates).length > 0) {
-    useProviderStore.setState(updates)
-  }
+
+  useProviderStore.setState(updates)
+}
+
+/** Pick a sensible default model for a provider. */
+function pickDefaultModel(provider: AIProvider): AIModelConfig | undefined {
+  return (
+    provider.models.find((m) => m.id === provider.defaultModel) ??
+    provider.models.find((m) => m.enabled && (!m.category || m.category === 'chat')) ??
+    provider.models.find((m) => m.enabled) ??
+    provider.models[0]
+  )
 }
 

@@ -60,9 +60,16 @@ async function completeOnce(args: {
 
   const params = {
     provider: {
+      providerId: args.provider.providerId,
       type: args.provider.type,
       baseUrl: args.provider.baseUrl,
       apiKey: args.provider.apiKey
+    },
+    requestKind: 'promptOptimizer',
+    providerRole: 'global',
+    globalActiveModel: {
+      providerId: args.provider.providerId,
+      modelId: args.provider.model
     },
     model: args.provider.model,
     systemPrompt: args.systemPrompt,
@@ -90,12 +97,12 @@ async function completeOnce(args: {
   args.signal?.addEventListener('abort', onAbort, { once: true })
 
   try {
-    const response = await window.api.workerRequestWithId<CompletionResult>(
+    const result = await window.api.workerRequestWithId<CompletionResult | null>(
       'provider/complete',
       params,
       cancelId
     )
-    return response.result ?? { ok: false, error: 'Empty response from worker' }
+    return result ?? { ok: false, error: 'Empty response from worker' }
   } finally {
     settled = true
     args.signal?.removeEventListener('abort', onAbort)

@@ -46,7 +46,10 @@ async function drainBufferedReports(sessionId: string): Promise<string[]> {
       }
     }
     return reports
-  } catch {
+  } catch (err) {
+    // Best effort: a failed drain looks identical to "nothing buffered", so without
+    // this the report is dropped and no trace survives.
+    console.error('[subagent-wakeup] Failed to drain buffered reports:', sessionId, err)
     return []
   }
 }

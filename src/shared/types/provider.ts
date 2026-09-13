@@ -298,9 +298,22 @@ export interface AIProvider {
   type: ProviderType
   apiKey: string
   baseUrl: string
+  /** Optional official website for this provider */
+  homepage?: string
   enabled: boolean
   models: AIModelConfig[]
   builtinId?: string
+  /**
+   * Set when the user manually changed the protocol type in the UI. Preset
+   * upgrades then keep the user's type instead of re-applying `preset.type`.
+   */
+  typeOverridden?: boolean
+  /**
+   * R-9: true when this record is a runtime projection of a builtin preset rather than
+   * something the user owns. Virtual records are never persisted; the flag is dropped
+   * the moment the user changes anything. Runtime only — never written to storage.
+   */
+  virtual?: boolean
   /** Built-in preset version most recently applied to this persisted provider. */
   presetVersion?: number
   createdAt: number

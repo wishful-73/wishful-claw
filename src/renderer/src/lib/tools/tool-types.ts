@@ -6,7 +6,6 @@
  */
 
 import type { ToolDefinition, ToolResultContent } from '../api/types'
-import type { PluginPermissions as ChannelPermissions } from '../api/types'
 
 // --- Tool Context ---
 
@@ -40,8 +39,6 @@ export interface ToolContext {
   /** Mutable shared state bag — survives { ...toolCtx } spread copies in runtime tool dispatch.
    *  Used for per-run flags like deliveryUsed that must persist across tool calls. */
   sharedState?: { deliveryUsed?: boolean; bashCwd?: string }
-  /** Channel security permissions for tool approval checks. */
-  channelPermissions?: ChannelPermissions
   /** Channel working home dir for path-based access control */
   channelHomedir?: string
   /** Per-run local tool handlers that should not be exposed globally */

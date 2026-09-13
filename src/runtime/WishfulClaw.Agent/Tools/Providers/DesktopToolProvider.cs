@@ -19,7 +19,8 @@ public sealed class DesktopToolProvider : IToolProvider
             "Capture a full desktop screenshot and return it to the agent. Use before mouse or keyboard actions when screen state matters.",
             ToolSchemaBuilder.Object(
                 new() { ["delayMs"] = ToolSchemaBuilder.Number("Optional delay in milliseconds before capturing.") }),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "DesktopClick",
@@ -33,7 +34,8 @@ public sealed class DesktopToolProvider : IToolProvider
                     ["action"] = ToolSchemaBuilder.String("Mouse action: click, double_click, down, or up.")
                 },
                 ["x", "y"]),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "DesktopType",
@@ -45,7 +47,8 @@ public sealed class DesktopToolProvider : IToolProvider
                     ["key"] = ToolSchemaBuilder.String("Press one special key (Enter, Tab, Escape, etc.)."),
                     ["hotkey"] = ToolSchemaBuilder.ArraySchema("Key chord like [\"Control\", \"L\"].", ToolSchemaBuilder.String("Key name."))
                 }),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "DesktopScroll",
@@ -58,13 +61,15 @@ public sealed class DesktopToolProvider : IToolProvider
                     ["scrollX"] = ToolSchemaBuilder.Number("Horizontal scroll delta. Defaults to 0."),
                     ["scrollY"] = ToolSchemaBuilder.Number("Vertical scroll delta.")
                 }),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "DesktopWait",
             "Pause desktop automation for a short period before continuing.",
             ToolSchemaBuilder.Object(
                 new() { ["delayMs"] = ToolSchemaBuilder.Number("Delay in milliseconds. Defaults to 2000.") }),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
     }
 }

@@ -1,4 +1,4 @@
-﻿import type { BuiltinProviderPreset } from './types'
+import type { BuiltinProviderPreset } from './types'
 
 const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
 
@@ -364,7 +364,7 @@ const chatModels: OpenCodeGoModel[] = [
 
 export const opencodeGoPreset: BuiltinProviderPreset = {
   builtinId: 'opencode-go',
-  version: 5,
+  version: 6,
   name: 'OpenCode Go',
   type: 'openai-chat',
   defaultBaseUrl: OPENCODE_GO_BASE_URL,

@@ -93,7 +93,13 @@ export function ExecutionProcessBlock({
         />
       </button>
       <CollapsibleHeightPanel open={expanded} className="overflow-hidden">
-        <div className="space-y-2 border-l border-border/40 ml-2 pl-3">
+        {/* R-10.3: 定格过程展开封顶 70vh 出内部滚动条；执行中分支（上方 isStreaming 提前返回）不受限 */}
+        <div
+          className={cn(
+            'space-y-2 border-l border-border/40 ml-2 pl-3',
+            expanded && 'max-h-[70vh] overflow-y-auto'
+          )}
+        >
           {children}
         </div>
       </CollapsibleHeightPanel>

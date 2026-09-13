@@ -214,6 +214,9 @@ export const BOTTOM_SCROLL_CORRECTION_EPSILON = 2
 export const AUTO_SCROLL_MIN_DELTA = 24
 export const PROGRAMMATIC_SCROLL_GUARD_MS = 160
 export const STREAMING_AUTO_SCROLL_POLL_MS = 500
+/** R-10.2: 执行中钉底跟随姿态——视口底边低于内容底的留白带高度。
+ * 新增内容先长在这条留白带里，长满才推视口，吸收流式渲染抖动。 */
+export const STREAMING_BOTTOM_FOLLOW_GAP = 80
 export const USER_LOCATOR_HIGHLIGHT_MS = 1400
 export const ASSISTANT_RAIL_PREVIEW_LIMIT = 120
 export const ASSISTANT_RAIL_SCROLL_OFFSET = 28

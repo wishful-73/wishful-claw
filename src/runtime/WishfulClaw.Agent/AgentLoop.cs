@@ -1,8 +1,9 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 using WishfulClaw.Persona;
 
 namespace WishfulClaw.Agent;
@@ -154,6 +155,16 @@ internal static partial class AgentLoop
         parameters = runtimeParameters;
         provider = GetObject(parameters, "provider");
 
+        // Create the project data directory before anything writes into it, so on Windows it is
+        // hidden from the moment it first exists. One call site instead of one per write path:
+        // Directory.CreateDirectory leaves an existing directory's attributes alone, so whichever
+        // writer gets there first, the directory was already created here.
+        var dataDirWorkingFolder = JsonHelpers.GetString(parameters, "workingFolder");
+        if (!string.IsNullOrWhiteSpace(dataDirWorkingFolder))
+        {
+            WishfulClawDataDir.EnsureProjectRoot(dataDirWorkingFolder);
+        }
+
         // ── Resolve tool definitions from backend registry ──
         // Tools live in the backend (ToolModuleState.Registry); the frontend
         // sends only a toolPreset string. This avoids a JSON round-trip that
@@ -164,32 +175,22 @@ internal static partial class AgentLoop
             : ToolPreset.BuiltIn["full"];
         var runContext = AgentRunContextPolicy.Resolve(parameters);
         var sessionMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, runContext);
-        var registry = ToolModuleState.Registry;
-        var toolDefs = registry?.GetToolDefinitions(toolPreset, sessionMode) ?? [];
         var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
-        toolDefs = AgentRunContextPolicy.FilterToolDefinitions(toolDefs, registry, runContext, channelSession);
+        var registry = ToolModuleState.Registry;
+        // Direct injection = preset ∧ scope ∧ IsCore (single source in AgentRunContextPolicy).
+        // Non-core tools stay registered for the use_capability proxy; the web/codegraph
+        // opt-in flags ride on runContext and gate the proxy the same way.
+        var toolDefs = registry is null
+            ? []
+            : AgentRunContextPolicy.ResolveDirectInjection(
+                registry, toolPreset, sessionMode, runContext, channelSession);
 
-        // Filter out WebSearch/WebFetch when web search is not enabled.
-        // Previously done in the frontend; now handled backend-side since
-        // tools are resolved from the backend registry.
-        var webSearchEnabled = JsonHelpers.GetBool(parameters, "webSearchEnabled", true);
-        if (!webSearchEnabled)
-        {
-            toolDefs = toolDefs
-                .Where(t => t.Name != "WebSearch" && t.Name != "WebFetch")
-                .ToList();
-        }
+        // The capability directory is part of the tool description, so update it after the
+        // session's visibility/mode filters have been applied. This keeps the description and
+        // action=list on the same run-specific category source without coupling Persona to Agent.
+        toolDefs = AgentRuntimeUseCapabilityExecutor.ApplyCapabilityDescription(
+            toolDefs, registry, runContext, sessionMode, channelSession).ToList();
 
-        // CodeGraph is globally opt-in. Keep its static definition registered for
-        // tool discovery, but expose it to the Agent only when the global plugin
-        // state is enabled for this request.
-        var codegraphEnabled = JsonHelpers.GetBool(parameters, "codegraphEnabled", false);
-        if (!codegraphEnabled)
-        {
-            toolDefs = toolDefs
-                .Where(t => !t.Name.StartsWith("codegraph_", StringComparison.Ordinal))
-                .ToList();
-        }
         // ── Persona-aware system prompt ──
         var personaId = JsonHelpers.GetString(parameters, "personaId");
         if (!string.IsNullOrWhiteSpace(personaId))

@@ -30,7 +30,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         "Include archived tasks. Defaults to false.")
                 },
                 []),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // create_global_task: Create a new global task
         registry.Register(new ToolDefinitionPlaceholder(
@@ -48,7 +49,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                     ["dueAt"] = ToolSchemaBuilder.Number("Optional due date (unix milliseconds).")
                 },
                 ["title"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // update_global_task: Update status/priority/tags/etc. or archive
         registry.Register(new ToolDefinitionPlaceholder(
@@ -74,7 +76,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         })
                 },
                 ["taskId", "patch"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // list_global_dispatches: List dispatch records
         registry.Register(new ToolDefinitionPlaceholder(
@@ -90,7 +93,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                     ["status"] = ToolSchemaBuilder.String("Optional dispatch status filter.")
                 },
                 []),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // send_work_request: Trackable work dispatch to a target session
         registry.Register(new ToolDefinitionPlaceholder(
@@ -99,7 +103,9 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
             "dispatch record and delivers the instruction to the target session. The target session " +
             "works autonomously and replies explicitly; use list_global_dispatches to read its latest " +
             "reply, then update_dispatch when the outcome is clear. For plain questions or follow-ups " +
-            "without tracking, use send_session_message instead.",
+            "without tracking, use send_session_message instead. If the work needs a written brief or " +
+            "notes, say so in the instruction and have the target session keep them under " +
+            "`.wishful-claw/notes/` in its project, not loose in the project tree.",
             ToolSchemaBuilder.Object(
                 new Dictionary<string, System.Text.Json.JsonElement>
                 {
@@ -111,7 +117,8 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         "Optional project id. If omitted, inferred from the target session.")
                 },
                 ["globalTaskId", "sessionId", "instruction"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         // update_dispatch: Update dispatch status / record the latest reply
         registry.Register(new ToolDefinitionPlaceholder(
@@ -135,6 +142,7 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         })
                 },
                 ["dispatchId", "patch"]),
-                availableModes: new[] { "global" }));
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
     }
 }

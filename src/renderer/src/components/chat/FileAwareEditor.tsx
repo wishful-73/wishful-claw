@@ -3,6 +3,11 @@ import { cn } from '@renderer/lib/utils'
 import { type FileAwareEditorHandle, type FileAwareEditorProps, renderDocument, isSameDocument, parseDomToDocument, getSelectionOffsets, setSelectionFromPoint, setSelectionOffsets, editorDocumentToPlainText } from './file-aware-editor-utils'
 import { EditorSelectionOffsets } from './file-aware-editor-utils'
 import { isImeTailAheadOfState } from './file-aware-editor-ime'
+import {
+  collapseRestoredHistorySelection,
+  isHistoryInputType,
+  selectionWasExpandedBeforeMutation
+} from './file-aware-editor-undo-selection'
 
 export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAwareEditorProps>(
   function FileAwareEditor(
@@ -33,6 +38,9 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
     const editorRef = React.useRef<HTMLDivElement>(null)
     const suggestionOverlayRef = React.useRef<HTMLDivElement>(null)
     const selectionRef = React.useRef<EditorSelectionOffsets>({ start: 0, end: 0 })
+    // 最近一次用户输入是否发生在「用户自己选中了一段」之上。撤销边界只能看到此刻的
+    // selectionRef（删除后已被收成折叠），要靠这个标记区分该保留的还原选区与幻影选区。
+    const lastMutationReplacedSelectionRef = React.useRef(false)
     const focusedRef = React.useRef(false)
     const selectionSyncFrameRef = React.useRef<number | null>(null)
     const documentSyncFrameRef = React.useRef<number | null>(null)
@@ -74,9 +82,14 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       const root = editorRef.current
       if (!root) return selectionRef.current
       const selection = getSelectionOffsets(root, files, selectionRef.current)
-      selectionRef.current = selection
-      onSelectionChange?.(selection)
-      return selection
+      // 组合期间的实时选区是未上屏文本的下划线区间，不是用户选区。原样存下后，
+      // 结算引发的重渲染会把它回画到长度已经变化的文本上（观感＝撤销后莫名选中）。
+      // 只保留区间末端，即上屏后光标该在的位置。
+      selectionRef.current = isComposingRef.current
+        ? { start: selection.end, end: selection.end }
+        : selection
+      onSelectionChange?.(selectionRef.current)
+      return selectionRef.current
     }, [files, onSelectionChange])
 
     const scheduleSelectionSync = React.useCallback(() => {
@@ -280,6 +293,16 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
           nativeEvent.inputType === 'deleteCompositionText'
         pendingUserInputRef.current = true
         if (isCompositionInput) isComposingRef.current = true
+        if (isHistoryInputType(nativeEvent.inputType)) {
+          const undoRestoredUserSelection = lastMutationReplacedSelectionRef.current
+          lastMutationReplacedSelectionRef.current = false
+          if (
+            !undoRestoredUserSelection &&
+            selectionRef.current.start === selectionRef.current.end
+          ) {
+            collapseRestoredHistorySelection(event.currentTarget)
+          }
+        }
         syncLiveContent()
         if (isComposingRef.current) return
         scheduleDocumentSync()
@@ -298,7 +321,22 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
         nativeEvent.inputType === 'insertCompositionText' ||
         nativeEvent.inputType === 'deleteCompositionText'
       pendingUserInputRef.current = true
+      const wasComposing = isComposingRef.current
       if (isCompositionInput) isComposingRef.current = true
+      // 撤销门控只认「用户真实留下的展开选区」。组合会话开始后的后续 beforeinput
+      // 读到的是输入法下划线区间（恒非折叠），不是用户选区——若让它覆盖标记，
+      // 撤销会被误判成「用户选中内容的还原」而跳过收起
+      // （粘贴 1234 → IME 输入你好 → 撤销，「34」残留选中即此因）。
+      // 组合的第一拍（wasComposing 尚为 false）例外：那时选区还是变更前的用户状态，
+      // 「选中一段 → 输入替换 → 撤销还原整段选中」依赖这次记录。
+      if (
+        !isHistoryInputType(nativeEvent.inputType) &&
+        (!isCompositionInput || !wasComposing)
+      ) {
+        lastMutationReplacedSelectionRef.current = selectionWasExpandedBeforeMutation(
+          event.currentTarget
+        )
+      }
       syncLiveContent()
       if (!isComposingRef.current) scheduleDocumentSync()
     }, [onUserEdit, scheduleDocumentSync, syncLiveContent])

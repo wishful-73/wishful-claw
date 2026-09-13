@@ -20,6 +20,10 @@ public sealed class FileEditTool : IToolExecutor
 
     public string Description => "Edit a file by performing exact string replacement. Supports replacing all occurrences with replace_all=true.";
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.WorkRunsOnly;
+
+    public bool IsCore => true;
+
     public JsonElement InputSchema => FileReadTool.EditSchema;
 
     public async Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)

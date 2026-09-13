@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -87,8 +87,135 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
             : fallback;
     }
 
-    private static bool IsProxiedBuiltinTool(string toolName, string category)
-        => ProxiedCategories.Contains(category) || ProxiedBuiltinTools.Contains(toolName);
+    /// <summary>
+    /// The category vocabulary shown to an agent is derived from the catalog, not maintained as a
+    /// second list of display strings. The core set is the authority for which categories are
+    /// injected directly; everything the catalog knows beyond it is proxy-reachable, and
+    /// ToolCategoryCatalog supplies stable ordering.
+    /// </summary>
+    internal static IReadOnlyList<string> GetProxiedCategoryNames()
+        => ToolCategoryCatalog.All
+            .Where(category => !ToolCategoryCatalog.Core.Contains(category.Name, StringComparer.OrdinalIgnoreCase))
+            .Select(category => category.Name)
+            .ToArray();
+
+    /// <summary>
+    /// Global feature opt-ins, enforced on the proxy side the same way AgentLoop used to enforce
+    /// them on direct injection: web search off removes the web tools, codegraph off removes the
+    /// codegraph tools. A disabled feature must be unreachable through every path, not just one.
+    /// </summary>
+    private static bool IsRunEnabledTool(AgentRunContext runContext, string toolName, string category)
+        => (!string.Equals(category, "web", StringComparison.OrdinalIgnoreCase) || runContext.WebSearchEnabled)
+            && (!toolName.StartsWith("codegraph_", StringComparison.Ordinal) || runContext.CodegraphEnabled);
+
+    /// <summary>
+    /// Shared visibility predicate for list, inspect and call. The registry/mode checks are kept
+    /// beside the policy check so a new action cannot expose a tool through only one path.
+    /// Category membership no longer gates the proxy: a built-in belongs to the proxy when its
+    /// executor is not core (iter-28), with feature opt-ins vetoeing per run.
+    /// </summary>
+    internal static bool IsProxyBuiltinVisible(
+        ToolRegistry? registry,
+        AgentRunContext runContext,
+        string? sessionMode,
+        bool channelSession,
+        string toolName,
+        string category)
+        => registry is not null
+            && registry.IsRegistered(toolName)
+            && registry.IsAvailableInMode(toolName, sessionMode)
+            && IsRunEnabledTool(runContext, toolName, category)
+            && AgentRunContextPolicy.IsToolAllowed(
+                runContext,
+                toolName,
+                registry,
+                channelSession);
+
+    /// <summary>
+    /// Return only proxy categories that have at least one registered, mode-available and visible
+    /// built-in tool in this run. This is the common source for the use_capability description and
+    /// action=list; callers must not build a separate role/mode filter.
+    /// </summary>
+    internal static IReadOnlyList<string> GetVisibleProxiedCategoryNames(
+        ToolRegistry? registry,
+        AgentRunContext runContext,
+        string? sessionMode,
+        bool channelSession)
+    {
+        if (registry is null)
+            return [];
+
+        var visibleCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in registry.GetToolNames())
+        {
+            var category = registry.GetCategory(name);
+            if (category is not null
+                && IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name, category)
+                && registry.TryGetExecutor(name, out var executor)
+                && executor is not null
+                && !executor.IsCore)
+            {
+                visibleCategories.Add(category);
+            }
+        }
+
+        return ToolCategoryCatalog.All
+            .Where(category => visibleCategories.Contains(category.Name))
+            .Select(category => category.Name)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Render the category directory embedded in the use_capability description. MCP and Skill
+    /// entries are discovered from their own registries; this list covers categorized built-in
+    /// proxy tools. Both registration and per-run rewriting use this source inside Agent, so Persona
+    /// does not need a reverse dependency on Agent.
+    /// </summary>
+    internal static string BuildCapabilityDescription()
+        => BuildCapabilityDescription(
+            registry: null,
+            new AgentRunContext("project", "chat", ToolVisibilityPolicy.SessionAgentRole),
+            sessionMode: null,
+            channelSession: false);
+
+    internal static string BuildCapabilityDescription(
+        ToolRegistry? registry,
+        AgentRunContext runContext,
+        string? sessionMode,
+        bool channelSession)
+    {
+        var categories = registry is null
+            ? GetProxiedCategoryNames()
+            : GetVisibleProxiedCategoryNames(registry, runContext, sessionMode, channelSession);
+        var categoryList = categories.Count == 0
+            ? "(none registered for this session)"
+            : string.Join(", ", categories);
+
+        return "Stable capability proxy for MCP tools, Skills, and proxied built-in tools. "
+            + $"Available built-in categories in this session: {categoryList}. "
+            + "MCP servers/tools and Skills are listed when configured. "
+            + "action=\"list\" returns paged summaries (filters: type, category, query, cursor, page_size); "
+            + "action=\"inspect\" returns one capability's full input schema; action=\"call\" executes it. "
+            + "capability_id format: \"mcp-tool:server/tool\", \"skill:name\", or \"builtin:toolName\".";
+    }
+
+    internal static IReadOnlyList<ToolDefinition> ApplyCapabilityDescription(
+        IReadOnlyList<ToolDefinition> definitions,
+        ToolRegistry? registry,
+        AgentRunContext runContext,
+        string? sessionMode,
+        bool channelSession)
+    {
+        var description = BuildCapabilityDescription(registry, runContext, sessionMode, channelSession);
+        var rewritten = new List<ToolDefinition>(definitions.Count);
+        foreach (var definition in definitions)
+        {
+            rewritten.Add(string.Equals(definition.Name, ToolName, StringComparison.Ordinal)
+                ? definition with { Description = description }
+                : definition);
+        }
+        return rewritten;
+    }
 
     private static List<CapabilitySummary> BuildCapabilitySummaries(
         JsonElement listResult,
@@ -147,11 +274,10 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
             {
                 var category = registry.GetCategory(name);
                 if (category is null
-                    || !IsProxiedBuiltinTool(name, category)
-                    || !registry.IsAvailableInMode(name, sessionMode)
-                    || !AgentRunContextPolicy.IsToolAllowed(runContext, name, category, channelSession)
+                    || !IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name, category)
                     || !registry.TryGetExecutor(name, out var executor)
-                    || executor is null)
+                    || executor is null
+                    || executor.IsCore)
                 {
                     continue;
                 }

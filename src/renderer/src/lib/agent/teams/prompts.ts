@@ -92,7 +92,7 @@ export function buildTeammateAddendum(options: {
 
   parts.push(
     '\n## Team Protocol',
-    '- Use TaskUpdate to claim or complete your assigned task accurately.',
+    '- Use TodoTaskUpdate to claim or complete your assigned task accurately.',
     '- Use SendMessage for collaboration; assume the lead cannot see arbitrary assistant text unless you explicitly send it.',
     '- If you receive a shutdown request, finish the current safe boundary and stop promptly.',
     '- Your last assistant message should summarize what changed, what completed, and any follow-up the lead needs.'

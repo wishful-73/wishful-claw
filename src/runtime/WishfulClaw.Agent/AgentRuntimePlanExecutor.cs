@@ -32,6 +32,28 @@ public static partial class AgentRuntimePlanExecutor
         "EnterPlanMode", "SubmitPlanReview", "UpdatePlanStep", "ExitPlanMode"
     };
 
+    /// <summary>
+    /// The plan-mode workflow, stated once. Both entry messages — a fresh plan and a resumed draft —
+    /// used to carry their own inline copy of this text and differed only in their first sentence,
+    /// so any wording change had to be made twice or the two entries drifted apart.
+    /// </summary>
+    private const string PlanModeWorkflow = """
+Follow the plan mode workflow:
+
+PLANNING PHASE (you are here):
+1. COMMUNICATE: Understand what the user wants. Ask clarifying questions about scope, constraints, and expected outcome. Use AskUserQuestion if needed. Do NOT start exploring until you have a clear picture of the requirements.
+2. EXPLORE: Read the codebase (Read/Glob/Grep) to understand project structure, existing code, and dependencies. Run read-only commands (git status, git log) to check state.
+3. PLAN: Write the plan file with: task target, step checklist (each step MUST have a verification checkpoint), involved files/modules, and reference source paths.
+4. SUBMIT: Call SubmitPlanReview to submit the plan for user review. Wait for the user to approve or request adjustments.
+
+EXECUTION PHASE (after user approves):
+5. EXECUTE: Use Task tool (background=false) to dispatch foreground sub-agents for each step. Each sub-agent implements, runs mini-verification, and commits. One commit per step. Do NOT push.
+6. REVIEW: Dispatch a review sub-agent to check code quality, layer conventions, and error handling.
+7. VERIFY: Run final verification. Report results and STOP for user to confirm PASS/FAIL/PARTIAL.
+
+Do NOT write implementation code during planning. You can read files, write/edit documents, and run read-only commands only.
+""";
+
     private static readonly ConcurrentDictionary<string, PlanRunState> RunStates = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, string> SessionPlans = new(StringComparer.Ordinal);
 
@@ -165,9 +187,7 @@ public static partial class AgentRuntimePlanExecutor
             writer.WriteString("plan_file_path", planFilePath);
             writer.WriteString(
                 "message",
-                status == "resumed"
-                    ? "Resumed plan draft. Follow the plan mode workflow:\n\nPLANNING PHASE (you are here):\n1. COMMUNICATE: Understand what the user wants. Ask clarifying questions about scope, constraints, and expected outcome. Use AskUserQuestion if needed. Do NOT start exploring until you have a clear picture of the requirements.\n2. EXPLORE: Read the codebase (Read/Glob/Grep) to understand project structure, existing code, and dependencies. Run read-only commands (git status, git log) to check state.\n3. PLAN: Write the plan file with: task target, step checklist (each step MUST have a verification checkpoint), involved files/modules, and reference source paths.\n4. SUBMIT: Call SubmitPlanReview to submit the plan for user review. Wait for the user to approve or request adjustments.\n\nEXECUTION PHASE (after user approves):\n5. EXECUTE: Use Task tool (background=false) to dispatch foreground sub-agents for each step. Each sub-agent implements, runs mini-verification, and commits. One commit per step. Do NOT push.\n6. REVIEW: Dispatch a review sub-agent to check code quality, layer conventions, and error handling.\n7. VERIFY: Run final verification. Report results and STOP for user to confirm PASS/FAIL/PARTIAL.\n\nDo NOT write implementation code during planning. You can read files, write/edit documents, and run read-only commands only."
-                    : "Plan mode activated. Follow the plan mode workflow:\n\nPLANNING PHASE (you are here):\n1. COMMUNICATE: Understand what the user wants. Ask clarifying questions about scope, constraints, and expected outcome. Use AskUserQuestion if needed. Do NOT start exploring until you have a clear picture of the requirements.\n2. EXPLORE: Read the codebase (Read/Glob/Grep) to understand project structure, existing code, and dependencies. Run read-only commands (git status, git log) to check state.\n3. PLAN: Write the plan file with: task target, step checklist (each step MUST have a verification checkpoint), involved files/modules, and reference source paths.\n4. SUBMIT: Call SubmitPlanReview to submit the plan for user review. Wait for the user to approve or request adjustments.\n\nEXECUTION PHASE (after user approves):\n5. EXECUTE: Use Task tool (background=false) to dispatch foreground sub-agents for each step. Each sub-agent implements, runs mini-verification, and commits. One commit per step. Do NOT push.\n6. REVIEW: Dispatch a review sub-agent to check code quality, layer conventions, and error handling.\n7. VERIFY: Run final verification. Report results and STOP for user to confirm PASS/FAIL/PARTIAL.\n\nDo NOT write implementation code during planning. You can read files, write/edit documents, and run read-only commands only.");
+                (status == "resumed" ? "Resumed plan draft. " : "Plan mode activated. ") + PlanModeWorkflow);
         });
     }
 

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -40,6 +40,10 @@ public sealed partial class ShellExecuteTool : IToolExecutor
         "Note: PowerShell does not support '&&' — use ';' to chain commands, or set shell to 'bash' for bash syntax.";
 
 
+
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 

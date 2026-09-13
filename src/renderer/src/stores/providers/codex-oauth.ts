@@ -10,7 +10,7 @@ import type { BuiltinProviderPreset } from './types'
 export const codexOAuthPreset: BuiltinProviderPreset = {
   builtinId: 'codex-oauth',
   // v2: server-tool capability flags (supportsBuiltinSearch)
-  version: 2,
+  version: 3,
   name: 'Codex (OAuth)',
   type: 'openai-responses',
   defaultBaseUrl: 'https://chatgpt.com/backend-api/codex',

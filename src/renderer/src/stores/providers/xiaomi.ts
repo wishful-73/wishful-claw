@@ -17,6 +17,10 @@ const xiaomiThinkingConfig = {
 // 2026-06-30 正式下线：6/1 起 v2-pro→v2.5-pro、v2-omni→v2.5 自动路由，6/18 起 v2-flash→v2.5、
 // v2-tts→v2.5-tts 自动路由，6/30 起旧模型名调用直接报错。故从默认模型中移除，id 移入
 // deprecatedModelIds 以便自动清理老用户配置。
+//
+// v2: 2026-09 按小米 MiMo 官方定价页（mimo.mi.com/docs/zh-CN/pricing，2026-08-06 更新）复核，
+//     v2.5-pro / v2.5 的海外美元价与文件现值逐项一致（0.435/0.87/0.0036、0.14/0.28/0.0028），
+//     UltraSpeed 亦确认为 v2.5-pro 的 3 倍限时体验价，故本次只 bump 版本、不改数据。
 const xiaomiTextModels: AIModelConfig[] = [
   {
     id: 'mimo-v2.5-pro',
@@ -82,7 +86,7 @@ const xiaomiTextModels: AIModelConfig[] = [
 
 export const xiaomiCodingPreset: BuiltinProviderPreset = {
   builtinId: 'xiaomi-coding',
-  version: 1,
+  version: 2,
   name: '小米（套餐）',
   type: 'anthropic',
   defaultBaseUrl: 'https://token-plan-cn.xiaomimimo.com/anthropic',
@@ -96,7 +100,7 @@ export const xiaomiCodingPreset: BuiltinProviderPreset = {
 
 export const xiaomiPreset: BuiltinProviderPreset = {
   builtinId: 'xiaomi',
-  version: 1,
+  version: 2,
   name: '小米',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.xiaomimimo.com/v1',

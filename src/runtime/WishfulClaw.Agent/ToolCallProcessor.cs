@@ -12,7 +12,7 @@ namespace WishfulClaw.Agent;
 /// Supports concurrency control via SemaphoreSlim.
 /// Sub-agent (Task) tool calls have a separate concurrency limit.
 /// </summary>
-public static class ToolCallProcessor
+public static partial class ToolCallProcessor
 {
     /// <summary>
     /// Maximum tool output size in bytes before head+tail truncation kicks in.
@@ -146,9 +146,11 @@ public static class ToolCallProcessor
                 break;
             }
 
-            var category = registry?.GetCategory(toolCall.Name);
             var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
-            var allowedByContext = AgentRunContextPolicy.IsToolAllowed(runContext, toolCall.Name, category, channelSession);
+            // Admission reads the tool's own declaration, the same one the list / inspect / call
+            // paths read, so a declared tool cannot be hidden from the model yet still execute by name.
+            var allowedByContext = AgentRunContextPolicy.IsToolAllowed(
+                runContext, toolCall.Name, registry, channelSession);
             var allowedByMode = registry is null || registry.IsAvailableInMode(toolCall.Name, availableMode);
             if (!allowedByContext || !allowedByMode)
             {
@@ -512,87 +514,6 @@ public static class ToolCallProcessor
             semaphore?.Release();
         }
     }
-
-    /// <summary>
-    /// Tools that require user approval when executed inside a sub-agent.
-    /// Sub-agents run autonomously — routine file operations and commands
-    /// should NOT require approval. Only interactive tools (like AskUserQuestion)
-    /// pause for user input, and those are handled by their own executor, not here.
-    /// </summary>
-    private static readonly HashSet<string> SubAgentApprovalTools = new(StringComparer.Ordinal)
-    {
-        // Empty — sub-agents execute tools freely without per-call approval.
-        // If specific tools need approval in the future, add them here.
-    };
-
-    private static bool RequiresSubAgentApproval(string toolName)
-    {
-        return SubAgentApprovalTools.Contains(toolName);
-    }
-
-    /// <summary>
-    /// Tools that require user confirmation in "default" permission mode:
-    /// write/delete/execute class operations. Read/search class tools
-    /// (Read/Glob/Grep/LS/webfetch/web search/memory search) run freely.
-    /// </summary>
-    private static readonly HashSet<string> DefaultModeApprovalTools = new(StringComparer.Ordinal)
-    {
-        // File writes (incl. notebook rewrites)
-        "Write", "Edit", "NotebookEdit",
-        // Shell execution
-        "Bash", "Shell", "ShellExec", "PowerShell",
-        // Desktop input (executes real UI actions on the user's machine)
-        "DesktopClick", "DesktopType", "DesktopScroll"
-    };
-
-    private static bool RequiresApprovalBeforeExecution(
-        AgentRuntimeNativeToolCall toolCall,
-        AgentRuntimeRunState state,
-        bool defaultModeApproval)
-    {
-        // fullAccess/YOLO must never pause for approval, including future
-        // sub-agent approval rules inherited by the main run.
-        if (!defaultModeApproval)
-        {
-            return false;
-        }
-
-        // Channel sessions cannot complete a remote approval dialog. The
-        // channel file/image tools are therefore explicitly non-interactive
-        // for those runs, while desktop sessions retain their normal policy.
-        if (IsChannelSession(state.Parameters) && IsChannelFileTool(toolCall.Name))
-        {
-            return false;
-        }
-
-        if (state.SuppressTransportEvents && RequiresSubAgentApproval(toolCall.Name))
-        {
-            return true;
-        }
-
-        // Default-mode approval applies to the main agent loop (sub-agents keep
-        // their own autonomous policy).
-        return defaultModeApproval
-            && !state.SuppressTransportEvents
-            && IsDefaultModeApprovalTool(toolCall.Name);
-    }
-
-    /// <summary>
-    /// Exposed for the use_capability proxy: a proxied built-in tool must be
-    /// checked against the same default-mode approval set as direct calls.
-    /// </summary>
-    public static bool IsDefaultModeApprovalTool(string toolName)
-    {
-        return DefaultModeApprovalTools.Contains(toolName);
-    }
-
-    private static bool IsChannelSession(JsonElement parameters) =>
-        JsonHelpers.GetBool(parameters, "channelSession", false);
-
-    private static bool IsChannelFileTool(string toolName) =>
-        toolName is "ChannelSendImage" or "ChannelSendFile" or
-                   "WeixinSendImage" or "WeixinSendFile" or
-                   "FeishuSendImage" or "FeishuSendFile";
 
     private static readonly JsonWriterOptions WriteOptions = new()
     {

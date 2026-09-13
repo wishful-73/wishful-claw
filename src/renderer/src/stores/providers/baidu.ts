@@ -9,7 +9,8 @@ import type { BuiltinProviderPreset } from './types'
 
 export const baiduCodingPreset: BuiltinProviderPreset = {
   builtinId: 'baidu-coding',
-  version: 1,
+  // v2: 2026-09 按千帆官方计费页核对（Kimi K2.5 已下线；DeepSeek-V3.2 官方标注即将下线）。
+  version: 2,
   name: '百度智能云（套餐）',
   type: 'anthropic',
   defaultBaseUrl: 'https://qianfan.baidubce.com/anthropic/coding',
@@ -77,25 +78,6 @@ export const baiduCodingPreset: BuiltinProviderPreset = {
       }
     },
     {
-      id: 'kimi-k2.5',
-      name: 'Kimi K2.5',
-      icon: 'kimi',
-      enabled: true,
-      contextLength: 262_144,
-      maxOutputTokens: 32_768,
-      supportsVision: true,
-      supportsFunctionCall: true,
-      inputPrice: 0.23,
-      outputPrice: 3,
-      cacheHitPrice: 0.023,
-      supportsThinking: true,
-      thinkingConfig: {
-        bodyParams: { thinking: { type: 'enabled' } },
-        disabledBodyParams: { thinking: { type: 'disabled' } },
-        forceTemperature: 1
-      }
-    },
-    {
       id: 'MiniMax-M2.1',
       name: 'MiniMax M2.1',
       icon: 'minimax',
@@ -145,13 +127,15 @@ export const baiduCodingPreset: BuiltinProviderPreset = {
 
 export const baiduPreset: BuiltinProviderPreset = {
   builtinId: 'baidu',
-  version: 1,
+  // v2: 2026-09 按千帆官方计费页核对（补 ERNIE/DeepSeek/Kimi 价格；Kimi K2.5 已下线）。
+  version: 2,
   name: '百度智能云（官方）',
   type: 'openai-chat',
   defaultBaseUrl: 'https://qianfan.baidubce.com/v2',
   homepage: 'https://cloud.baidu.com/product-s/qianfan_home',
   apiKeyUrl: 'https://cloud.baidu.com/doc/qianfan/s/wmh8l6tnf',
   defaultModel: 'ernie-5.1',
+  deprecatedModelIds: ['kimi-k2.5', 'ernie-x1.1'],
   defaultModels: [
     // ERNIE (native models)
     {
@@ -159,33 +143,28 @@ export const baiduPreset: BuiltinProviderPreset = {
       name: 'ERNIE 5.1',
       icon: 'ernie',
       enabled: true,
-      supportsFunctionCall: true
+      supportsFunctionCall: true,
+      inputPrice: 0.6,
+      outputPrice: 2.68
     },
     {
       id: 'ernie-4.5-turbo-128k',
       name: 'ERNIE 4.5 Turbo 128K',
       icon: 'ernie',
       enabled: true,
-      supportsFunctionCall: true
-    },
-    {
-      id: 'ernie-x1.1',
-      name: 'ERNIE X1.1',
-      icon: 'ernie',
-      enabled: true,
       supportsFunctionCall: true,
-      supportsThinking: true,
-      thinkingConfig: {
-        bodyParams: { enable_thinking: true },
-        disabledBodyParams: { enable_thinking: false }
-      }
+      inputPrice: 0.12,
+      outputPrice: 0.48
     },
+    // ernie-x1.1 已于千帆下线，模型从默认清单移除，id 登记在 deprecatedModelIds 中。
     {
       id: 'deepseek-v3.2',
       name: 'DeepSeek V3.2',
       icon: 'deepseek',
       enabled: true,
-      supportsFunctionCall: true
+      supportsFunctionCall: true,
+      inputPrice: 0.3,
+      outputPrice: 0.45
     },
     { id: 'glm-4.7', name: 'GLM 4.7', icon: 'chatglm', enabled: true, supportsFunctionCall: true },
     {
@@ -194,19 +173,8 @@ export const baiduPreset: BuiltinProviderPreset = {
       icon: 'kimi',
       enabled: true,
       supportsFunctionCall: true,
-      supportsThinking: true,
-      thinkingConfig: {
-        bodyParams: { thinking: { type: 'enabled' } },
-        disabledBodyParams: { thinking: { type: 'disabled' } },
-        forceTemperature: 1
-      }
-    },
-    {
-      id: 'kimi-k2.5',
-      name: 'Kimi K2.5',
-      icon: 'kimi',
-      enabled: true,
-      supportsFunctionCall: true,
+      inputPrice: 0.97,
+      outputPrice: 4.02,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: { thinking: { type: 'enabled' } },

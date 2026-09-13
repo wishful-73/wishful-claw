@@ -165,6 +165,15 @@ public sealed class PersonaModule : IWorkerModule
 
     // ── Generate (AI-assisted) ──
 
+    /// <summary>Stand-in for an omitted provider, so the resolver skips the explicit route.</summary>
+    private static readonly JsonElement EmptyProviderJson = CreateEmptyProviderJson();
+
+    private static JsonElement CreateEmptyProviderJson()
+    {
+        using var document = JsonDocument.Parse("{}");
+        return document.RootElement.Clone();
+    }
+
     private static async Task<WorkerResponse> GenerateAsync(JsonElement parameters, IWorkerRequestContext context)
     {
         var prompt = JsonHelpers.GetString(parameters, "prompt");
@@ -173,12 +182,12 @@ public sealed class PersonaModule : IWorkerModule
             return ToResponse(Mutation(false, "Missing prompt"));
         }
 
-        // Extract provider config from parameters
-        if (!parameters.TryGetProperty("provider", out var providerEl) ||
-            providerEl.ValueKind != JsonValueKind.Object)
-        {
-            return ToResponse(Mutation(false, "Missing provider configuration"));
-        }
+        // Provider is optional: the shared resolver can use the persona route,
+        // fallback route, or validated global active model.
+        var providerEl = parameters.TryGetProperty("provider", out var suppliedProvider) &&
+                         suppliedProvider.ValueKind == JsonValueKind.Object
+            ? suppliedProvider
+            : EmptyProviderJson;
 
         var referencePersonaId = JsonHelpers.GetString(parameters, "referencePersonaId");
         var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
@@ -186,7 +195,8 @@ public sealed class PersonaModule : IWorkerModule
         try
         {
             var draft = await PersonaGenerator.GenerateAsync(
-                providerEl, prompt, referencePersonaId, workingFolder, context.CancellationToken);
+                providerEl, prompt, referencePersonaId, workingFolder,
+                context.CancellationToken, routingParameters: parameters);
 
             return ToResponse(draft);
         }

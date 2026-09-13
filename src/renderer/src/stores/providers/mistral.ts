@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const mistralPreset: BuiltinProviderPreset = {
   builtinId: 'mistral',
-  version: 1,
+  version: 2,
   name: 'Mistral',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.mistral.ai/v1',

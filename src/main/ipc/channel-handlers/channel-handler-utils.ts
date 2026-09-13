@@ -12,7 +12,9 @@ import { ChannelManager } from '../../channels/channel-manager'
 import {
   isChannelPluginToolEnabled,
   readChannelPlugins,
-  writeChannelPlugins
+  readGlobalChannelSettings,
+  writeChannelPlugins,
+  writeGlobalChannelSettings
 } from '../../channels/channel-config-store'
 import { safeSendMessagePackToAllWindows } from '../../window-ipc'
 import { logError, extractMessage, extractStack } from '../../lib/logger'
@@ -34,7 +36,8 @@ import { captureQrElementAsDataUrl } from './qr-page-capture'
 import type {
   ChannelInstance,
   ChannelEvent,
-  ChannelProviderDescriptor
+  ChannelProviderDescriptor,
+  GlobalChannelSettings
 } from '../../channels/channel-types'
 
 // ── Shared state ──
@@ -271,6 +274,16 @@ export async function isPluginToolEnabledHandler(pluginId: string, toolName: str
 
 export async function writePlugins(plugins: ChannelInstance[]): Promise<void> {
   await writeChannelPlugins(plugins)
+}
+
+export async function readGlobalSettings(): Promise<GlobalChannelSettings> {
+  return await readGlobalChannelSettings()
+}
+
+export async function writeGlobalSettings(
+  settings: GlobalChannelSettings
+): Promise<GlobalChannelSettings> {
+  return await writeGlobalChannelSettings(settings)
 }
 
 export function notifyRenderer(event: ChannelEvent): void {

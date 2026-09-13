@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 using System.Collections.Generic;
 
@@ -47,6 +47,10 @@ public sealed class GlobTool : IToolExecutor
     public string Description => "Find files matching a glob pattern (e.g. **/*.cs, src/**/*.tsx). Searches recursively from the working folder or specified path.";
 
 
+
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 
@@ -258,11 +262,47 @@ public sealed class GlobTool : IToolExecutor
 
 
 
-                if (!string.IsNullOrEmpty(suffix) && !path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrEmpty(suffix))
 
                 {
 
-                    return false;
+                    if (suffix.Contains('/'))
+
+                    {
+
+                        // Suffix spans directories (e.g. "plans/*.json") - wildcard-match
+
+                        // the full path tail.
+
+                        if (!SimpleWildcardMatch(path, '*' + suffix))
+
+                        {
+
+                            return false;
+
+                        }
+
+                    }
+
+                    else
+
+                    {
+
+                        // Suffix is a filename glob (e.g. "*.json") - match the last
+
+                        // path segment with wildcard support. The old EndsWith literal
+
+                        // comparison made "**/*.json" match nothing, ever.
+
+                        if (!SimpleWildcardMatch(Path.GetFileName(path), suffix))
+
+                        {
+
+                            return false;
+
+                        }
+
+                    }
 
                 }
 

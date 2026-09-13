@@ -33,10 +33,12 @@ import { nvidiaPreset } from '@renderer/stores/providers/nvidia'
 import { opencodePreset } from '@renderer/stores/providers/opencode'
 import { opencodeGoPreset } from '@renderer/stores/providers/opencode-go'
 import { ppioPreset } from '@renderer/stores/providers/ppio'
-import { stepfunPreset } from '@renderer/stores/providers/stepfun'
+import { stepfunPreset, stepfunPlanPreset } from '@renderer/stores/providers/stepfun'
 import { togetherPreset } from '@renderer/stores/providers/together'
 import { codexOAuthPreset } from '@renderer/stores/providers/codex-oauth'
 import { copilotOAuthPreset } from '@renderer/stores/providers/copilot-oauth'
+import { sensenovaPreset } from '@renderer/stores/providers/sensenova'
+import { agnesPreset } from '@renderer/stores/providers/agnes'
 import type { BuiltinProviderPreset } from '@renderer/stores/providers/types'
 
 export const builtinProviderPresets: BuiltinProviderPreset[] = [
@@ -80,7 +82,10 @@ export const builtinProviderPresets: BuiltinProviderPreset[] = [
   opencodeGoPreset,
   ppioPreset,
   stepfunPreset,
+  stepfunPlanPreset,
   togetherPreset,
+  sensenovaPreset,
+  agnesPreset,
   codexOAuthPreset,
   copilotOAuthPreset
 ]

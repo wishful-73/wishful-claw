@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const ppioPreset: BuiltinProviderPreset = {
   builtinId: 'ppio',
-  version: 1,
+  version: 2,
   name: '派欧云 PPIO',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.ppio.com/openai/v1',

@@ -1,8 +1,16 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { AIProvider, AIModelConfig, ProviderType } from '../../../shared/types/provider'
 import { aiProviderStorage } from '@renderer/lib/ipc/ai-provider-storage'
-import { createProviderFromPreset, enrichDiscoveredModel, createCustomProvider, ensureBuiltinPresets, STORAGE_KEY, type ProviderState } from './provider-store-helpers'
+import {
+  enrichDiscoveredModel,
+  createCustomProvider,
+  ensureBuiltinPresets,
+  materializeRecord,
+  resetProviderToPreset,
+  STORAGE_KEY,
+  type ProviderState
+} from './provider-store-helpers'
 import {
   toManagedModelConfig,
   cloneManagedModelConfig,
@@ -34,17 +42,8 @@ export const useProviderStore = create<ProviderState>()(
 
       getProviderById: (id) => get().providers.find((p) => p.id === id) ?? null,
 
-      addProviderFromPreset: (preset) => {
-        const provider = createProviderFromPreset(preset)
-        set((state) => ({
-          providers: [...state.providers, provider],
-          activeProviderId: state.activeProviderId ?? provider.id
-        }))
-        return provider
-      },
-
-      addCustomProvider: (name, type, baseUrl, apiKey) => {
-        const provider = createCustomProvider(name, type, baseUrl, apiKey)
+      addCustomProvider: (name, type, baseUrl, apiKey, homepage) => {
+        const provider = createCustomProvider(name, type, baseUrl, apiKey, homepage)
         set((state) => ({
           providers: [...state.providers, provider],
           activeProviderId: state.activeProviderId ?? provider.id
@@ -55,13 +54,25 @@ export const useProviderStore = create<ProviderState>()(
       updateProvider: (id, updates) => {
         set((state) => ({
           providers: state.providers.map((p) =>
-            p.id === id ? { ...p, ...updates } : p
+            p.id === id ? materializeRecord({ ...p, ...updates }) : p
           )
         }))
       },
 
       deleteProvider: (id) => {
         set((state) => {
+          // R-9.6: a builtin is never removed from the list. "Delete" on a builtin
+          // restores its factory defaults — i.e. replaces it with a fresh projection
+          // of its preset, so the entry stays visible with default settings.
+          const target = state.providers.find((p) => p.id === id)
+          if (target) {
+            // R-9.C.8: the reset keeps the record's id, so sessions / plugins / cron
+            // tasks pointing at it keep resolving.
+            const reset = resetProviderToPreset(target)
+            if (reset) {
+              return { providers: state.providers.map((p) => (p.id === id ? reset : p)) }
+            }
+          }
           const providers = state.providers.filter((p) => p.id !== id)
           let activeProviderId =
             state.activeProviderId === id
@@ -144,7 +155,7 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? { ...p, models: [...p.models, model] }
+              ? materializeRecord({ ...p, models: [...p.models, model] })
               : p
           )
         }))
@@ -154,12 +165,12 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? {
+              ? materializeRecord({
                   ...p,
                   models: p.models.map((m) =>
                     m.id === modelId ? { ...m, ...updates } : m
                   )
-                }
+                })
               : p
           )
         }))
@@ -169,7 +180,7 @@ export const useProviderStore = create<ProviderState>()(
         set((state) => ({
           providers: state.providers.map((p) =>
             p.id === providerId
-              ? { ...p, models: p.models.filter((m) => m.id !== modelId) }
+              ? materializeRecord({ ...p, models: p.models.filter((m) => m.id !== modelId) })
               : p
           )
         }))
@@ -197,7 +208,7 @@ export const useProviderStore = create<ProviderState>()(
               // New model — enrich with builtin metadata
               return enrichDiscoveredModel(m)
             })
-            return { ...p, models: merged }
+            return materializeRecord({ ...p, models: merged })
           })
         }))
       },
@@ -299,7 +310,8 @@ export const useProviderStore = create<ProviderState>()(
       name: STORAGE_KEY,
       storage: createJSONStorage(() => aiProviderStorage),
       partialize: (state) => ({
-        providers: state.providers,
+        // R-9: virtual records are runtime projections of a preset — never persist them.
+        providers: state.providers.filter((p) => !p.virtual),
         managedModels: state.managedModels,
         managedModelTombstones: state.managedModelTombstones,
         activeProviderId: state.activeProviderId,

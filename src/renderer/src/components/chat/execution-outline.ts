@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -99,6 +99,8 @@ interface BuildToolExecutionOutlineOptions {
 
 const COMMAND_TOOL_NAMES = new Set(['Bash', 'Shell', 'PowerShell'])
 const HIDDEN_TOOL_NAMES = new Set([
+  'TodoTaskCreate', 'TodoTaskGet', 'TodoTaskUpdate', 'TodoTaskList',
+  // Legacy names for old persisted transcripts.
   'TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList',
   // Plan step tracking is internal -- not user-facing
   'UpdatePlanStep',

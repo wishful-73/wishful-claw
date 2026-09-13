@@ -222,9 +222,10 @@ public static class AgentRuntimeGlobalTaskExecutor
                 $"[GLOBAL AGENT WORK REQUEST] dispatch_id={dispatchId} global_task_id={globalTaskId}\n\n" +
                 $"{instruction}\n\n" +
                 "This work request was dispatched by the global agent. Decide yourself how to execute it " +
-                "(including whether to create your own temporary Todos). When you finish, get blocked, or " +
-                "need to ask the global agent a follow-up question, report back via the `use_capability` tool: " +
-                "action=\"call\", capability_id=\"builtin:reply_global_dispatch\", and pass " +
+                "(including whether to create your own temporary Todos). Any notes or briefs you write " +
+                "for it belong in `.wishful-claw/notes/`, not loose in the project tree. When you finish, " +
+                "get blocked, or need to ask the global agent a follow-up question, report back via the " +
+                "`use_capability` tool: action=\"call\", capability_id=\"builtin:reply_global_dispatch\", and pass " +
                 $"{{\"dispatchId\": \"{dispatchId}\", \"report\": \"<your result or question>\", \"status\": \"in_progress | completed | blocked\"}} " +
                 "inside `arguments`, so the global agent can track the outcome.";
 

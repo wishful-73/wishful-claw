@@ -9,7 +9,7 @@ import type { BuiltinProviderPreset } from '@renderer/stores/providers/types'
 
 export const ollamaPreset: BuiltinProviderPreset = {
   builtinId: 'ollama',
-  version: 1,
+  version: 2,
   name: 'Ollama',
   type: 'openai-chat',
   defaultBaseUrl: 'http://localhost:11434/v1',

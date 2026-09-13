@@ -98,6 +98,7 @@
     "toggleSidebar": "Toggle sidebar",
     "toggleRightPanel": "Toggle right panel",
     "togglePanel": "Toggle Panel",
+    "userGuide": "User guide",
     "clarifyAutoAcceptShort": "Auto Q",
     "clarifyAutoAcceptOn": "Clarify auto-accept is enabled — AskUserQuestion recommended answers are selected and submitted automatically",
     "clarifyAutoAcceptOff": "Clarify auto-accept is disabled",

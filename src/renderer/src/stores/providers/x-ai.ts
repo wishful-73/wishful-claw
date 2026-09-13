@@ -26,19 +26,40 @@ import type { BuiltinProviderPreset } from './types'
 // grok-4.5（2026-07-08 发布，docs.x.ai/developers/grok-4-5）：500K 上下文，$2/$6 每百万 token，
 // 支持 low/medium/high 三档 reasoning_effort（默认 high）；未找到官方缓存价格，沿用本文件其余
 // 型号统一的 $0.2 缓存单价。
+// grok-4.6（2026-08-12 发布，docs.x.ai/developers/release-notes）：500K 上下文，$2/$6 每百万
+// token，官方公布缓存读取 $0.5（非估算值），支持 low/medium/high 三档 reasoning_effort。
+// 官方明确 4.6 是 4.5 的继任旗舰，故 defaultModel 由 grok-4.3 上调为 grok-4.6。
 // 协议：xAI 已提供 OpenAI Responses API 兼容端点（POST {baseUrl}/responses，SDK 用
 // client.responses.create()），故整个 preset 的 type 由 'openai-chat' 改为
 // 'openai-responses'；defaultBaseUrl 无需变动。
 export const xaiPreset: BuiltinProviderPreset = {
   builtinId: 'xai',
-  version: 1,
+  version: 2,
   name: 'xAI',
   type: 'openai-responses',
   defaultBaseUrl: 'https://api.x.ai/v1',
   homepage: 'https://x.ai',
   apiKeyUrl: 'https://console.x.ai',
-  defaultModel: 'grok-4.3',
+  defaultModel: 'grok-4.6',
   defaultModels: [
+    {
+      id: 'grok-4.6',
+      name: 'Grok 4.6',
+      icon: 'grok',
+      enabled: true,
+      contextLength: 500_000,
+      supportsVision: true,
+      supportsFunctionCall: true,
+      inputPrice: 2,
+      outputPrice: 6,
+      cacheHitPrice: 0.5,
+      supportsThinking: true,
+      thinkingConfig: {
+        bodyParams: {},
+        reasoningEffortLevels: ['low', 'medium', 'high'],
+        defaultReasoningEffort: 'high'
+      }
+    },
     {
       id: 'grok-4.5',
       name: 'Grok 4.5',

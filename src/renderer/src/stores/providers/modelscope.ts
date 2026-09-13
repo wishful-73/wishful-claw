@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const modelscopePreset: BuiltinProviderPreset = {
   builtinId: 'modelscope',
-  version: 1,
+  version: 2,
   name: '魔搭 ModelScope',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api-inference.modelscope.cn/v1',

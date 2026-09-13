@@ -1,4 +1,4 @@
-﻿using WishfulClaw.Agent.Tools;
+using WishfulClaw.Agent.Tools;
 using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent.Tools.Providers;
@@ -32,13 +32,15 @@ public sealed class CronToolProvider : IToolProvider
             "CronAdd",
             "Schedule a background Agent task (legacy alias for CronCreate).",
             ToolSchemaBuilder.Object(createProperties, ["name", "schedule", "prompt"]),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronCreate",
             "Create a scheduled task that runs automatically at the specified time.",
             ToolSchemaBuilder.Object(createProperties, ["name", "schedule", "prompt"]),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronUpdate",
@@ -50,25 +52,29 @@ public sealed class CronToolProvider : IToolProvider
                     ["patch"] = ToolSchemaBuilder.Object(UpdateProperties(cronSchedule, cronPrompt, cronName))
                 },
                 ["jobId", "patch"]),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronRemove",
             "Remove and soft-delete a scheduled task (legacy alias for CronDelete).",
             DeleteSchema(),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronDelete",
             "Delete and archive a scheduled task.",
             DeleteSchema(),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronList",
             "List all cron jobs with their schedule, status, and latest execution result.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["normal", "goal", "global"]));
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
     }
 
     private static Dictionary<string, System.Text.Json.JsonElement> CreateProperties(

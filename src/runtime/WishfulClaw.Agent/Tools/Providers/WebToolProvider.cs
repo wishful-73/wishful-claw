@@ -22,7 +22,8 @@ public sealed class WebToolProvider : IToolProvider
                     ["query"] = ToolSchemaBuilder.String("The search query."),
                     ["count"] = ToolSchemaBuilder.Number("Number of results to return. Defaults to 10.")
                 },
-                ["query"])));
+                ["query"]),
+            visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "WebFetch",
@@ -33,6 +34,7 @@ public sealed class WebToolProvider : IToolProvider
                     ["url"] = ToolSchemaBuilder.String("The URL to fetch."),
                     ["maxTokens"] = ToolSchemaBuilder.Number("Maximum tokens to return. Defaults to 10000.")
                 },
-                ["url"])));
+                ["url"]),
+            visibleScopes: ToolVisibilityScopes.Everywhere));
     }
 }

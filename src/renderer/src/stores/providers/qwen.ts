@@ -9,7 +9,8 @@ import type { BuiltinProviderPreset } from './types'
 
 export const qwenCodingPreset: BuiltinProviderPreset = {
   builtinId: 'qwen-coding',
-  version: 1,
+  // v2: 2026-09 版本号推进（本次未改 Coding Plan 模型清单）。
+  version: 2,
   name: '通义千问（套餐）',
   type: 'anthropic',
   defaultBaseUrl: 'https://coding.dashscope.aliyuncs.com/apps/anthropic',
@@ -185,13 +186,30 @@ export const qwenCodingPreset: BuiltinProviderPreset = {
 
 export const qwenPreset: BuiltinProviderPreset = {
   builtinId: 'qwen',
-  version: 1,
+  // v2: 2026-09 按官方模型大全核对（新增 Qwen3.8 Max）。
+  version: 2,
   name: '通义千问（官方）',
   type: 'openai-chat',
   defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   homepage: 'https://dashscope.aliyun.com',
   apiKeyUrl: 'https://dashscope.console.aliyun.com/apiKey',
   defaultModels: [
+    // Qwen3.8 系列（2026-09 官方新旗舰）。价格按官方北京地域标准价（¥12/¥36 每百万 Token）
+    // 以 1 USD = 6.7106 CNY 换算为 USD，与文件内其它 Qwen 模型的美元口径一致。
+    {
+      id: 'qwen3.8-max',
+      name: 'Qwen3.8 Max',
+      icon: 'qwen',
+      enabled: true,
+      contextLength: 1_000_000,
+      maxOutputTokens: 32_768,
+      supportsVision: false,
+      supportsFunctionCall: true,
+      inputPrice: 1.79,
+      outputPrice: 5.37,
+      supportsThinking: true,
+      thinkingConfig: { bodyParams: { enable_thinking: true } }
+    },
     // Qwen3.7 series (2026-05 flagship refresh)
     {
       id: 'qwen3.7-max',

@@ -1,4 +1,4 @@
-﻿{
+{
   "title": "Settings",
   "shortcuts": {
     "title": "Shortcuts",
@@ -42,6 +42,10 @@
       "label": "AI Providers",
       "desc": "Configure API keys, base URLs, test connectivity"
     },
+    "modelManagement": {
+      "label": "Model Management",
+      "desc": "Manage providers and models for auxiliary requests"
+    },
     "runtime": {
       "label": "Runtime & Performance",
       "desc": "API request timeout, retry policy and context compression"
@@ -52,7 +56,7 @@
     },
     "about": {
       "label": "About",
-      "desc": "Product intro and app updates"
+      "desc": "Product intro, user guide and app updates"
     },
     "groups": {
       "general": "General",
@@ -90,6 +94,10 @@
     },
     "logs": {
       "label": "Logs"
+    },
+    "usage": {
+      "label": "Usage",
+      "desc": "Requests, tokens and cost from per-request logs"
     }
   },
   "general": {
@@ -224,8 +232,12 @@
       "baseUrl": "Base URL",
       "baseUrlPlaceholder": "https://api.example.com/v1",
       "baseUrlHint": "OpenAI-compatible API endpoint",
+      "homepage": "Official website",
+      "homepagePlaceholder": "https://www.example.com",
+      "optional": "Optional",
       "apiKey": "API Key",
       "apiKeyPlaceholder": "Enter API Key",
+      "apiKeyHint": "You can fill it in later in the provider details",
       "added": "Provider {{name}} added"
     },
     "config": {
@@ -233,9 +245,12 @@
       "apiKeyPlaceholder": "Enter API Key",
       "apiKeyNotRequired": "API Key not required",
       "baseUrl": "Base URL",
+      "officialWebsite": "Official website",
+      "openHomepage": "Visit website",
       "testSuccess": "Connection test succeeded",
       "testFailed": "Connection test failed",
       "protocolType": "Protocol Type",
+      "protocolTypeHint": "After switching protocols, verify the Base URL matches the new protocol",
       "cacheTtl": "Cache TTL",
       "cacheTtlHint": "Anthropic cache time-to-live, model-level config can override",
       "models": {
@@ -255,6 +270,13 @@
         "thinkingConfig": "Thinking config",
         "editThinking": "Edit thinking config",
         "configureThinking": "Configure thinking mode"
+      },
+      "resetBuiltin": {
+        "title": "Restore factory defaults",
+        "description": "Clears all your settings for this built-in provider (API key, base URL, model toggles) and restores the built-in defaults. The provider itself stays in the list.",
+        "action": "Restore",
+        "tooltip": "Restore factory defaults",
+        "done": "Restored to factory defaults"
       }
     },
     "modelForm": {
@@ -743,6 +765,12 @@
       "channels": "Channels: bridge messaging platforms such as Feishu and WeChat to collaborate with your agent anywhere",
       "productivity": "Productivity tools: global launcher, clipboard enhancements, SSH terminal"
     },
+    "guide": {
+      "label": "User Guide",
+      "desc": "Full feature walkthrough and getting-started tutorial, opened in your browser",
+      "hint": "The entry always points at the newest guide; old links keep working.",
+      "open": "View guide"
+    },
     "updater": {
       "label": "App Updates",
       "desc": "Check for and install new Wishful Claw versions",
@@ -1152,6 +1180,30 @@
   "runtimePage": {
     "title": "Runtime & Performance",
     "subtitle": "Agent runtime settings: request timeout, retries, tool execution and context compression",
+    "auxiliaryModels": {
+      "title": "Auxiliary Request Models",
+      "desc": "Pick models for prompt optimization and persona creation. Requests without a route use the fallback model; if the fallback is invalid, the validated global active model is used.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved. Requests without an explicit route resolve through the fallback model, then the global active model.",
+      "saveFailed": "Save failed",
+      "loadFailed": "Load failed",
+      "unconfigured": "Not configured",
+      "selectModel": "Select model",
+      "promptOptimizer": {
+        "label": "Prompt optimizer",
+        "desc": "Affects prompt optimization requests only."
+      },
+      "persona": {
+        "label": "Persona generation",
+        "desc": "Affects AI persona generation requests only."
+      },
+      "fallback": {
+        "label": "Fallback model",
+        "desc": "Used when a request has no dedicated route. The Worker re-validates provider and model on read."
+      },
+      "hint": "Deleted models and retired providers never resolve to a dangling id silently; the Worker logs a warning and tries the next level."
+    },
     "sessionDefaults": {
       "title": "Session Defaults",
       "desc": "Choose the collaboration and Cowork permission defaults for new project sessions",
@@ -1199,7 +1251,8 @@
       "downloaded": "Update {{version}} downloaded, waiting to install",
       "error": "Update failed",
       "install": "Restart and install",
-      "details": "Details"
+      "details": "Details",
+      "dragHint": "Drag to move"
     },
     "progress": {
       "unknown": "Unknown",
@@ -1302,6 +1355,67 @@
       }
     }
   },
+  "usage": {
+    "title": "Usage Analytics",
+    "refresh": "Refresh",
+    "empty": "No request records in this time range yet",
+    "footnote": "Statistics come from the model request log (one row per HTTP request, retries and failures included). Cost is computed only from prices explicitly configured on a model and stays blank without one.",
+    "ranges": {
+      "h24": "24 hours",
+      "d7": "7 days",
+      "d30": "30 days"
+    },
+    "stats": {
+      "requests": "Requests",
+      "input": "Raw input",
+      "billableInput": "Billable input",
+      "output": "Output",
+      "cacheRead": "Cache read",
+      "cacheCreation": "Cache creation",
+      "reasoning": "Reasoning",
+      "cost": "Cost",
+      "costHint": "Counted only when a price is set",
+      "avgDuration": "Avg duration",
+      "outcomeSummary": "{{success}} succeeded / {{error}} failed",
+      "retries": " · {{retryCount}} retried"
+    },
+    "chart": {
+      "title": "Request trend",
+      "desc": "Bucketed by hour or day; red marks failed requests",
+      "bucketTitle": "{{time}} · {{total}} requests",
+      "bucketErrors": " ({{errors}} failed)"
+    },
+    "byModel": {
+      "title": "By model",
+      "empty": "No data"
+    },
+    "bySource": {
+      "title": "By source",
+      "empty": "No data"
+    },
+    "detail": {
+      "title": "Request detail",
+      "truncated": "Showing the latest {{shown}} of {{total}}",
+      "count": "{{total}} requests in total",
+      "columns": {
+        "time": "Time",
+        "model": "Model",
+        "source": "Source",
+        "input": "Raw input",
+        "billableInput": "Billable input",
+        "output": "Output",
+        "cacheCreation": "Cache creation",
+        "reasoning": "Reasoning",
+        "duration": "Duration",
+        "cost": "Cost"
+      }
+    },
+    "rollup": {
+      "requests": "Requests",
+      "input": "Input",
+      "cost": "Cost"
+    }
+  },
   "analytics": {
     "outputTokens": "Output Tokens",
     "cacheTokenShare": "Cached Token Share"
@@ -1322,13 +1436,24 @@
     },
     "global": {
       "title": "Global Channel Settings",
+      "tabs": {
+        "reply": "Reply Settings",
+        "features": "Features",
+        "permissions": "Permissions"
+      },
+      "loadingSettings": "Loading global channel settings…",
+      "loadFailed": "Failed to load global channel settings",
+      "saveFailed": "Save failed",
+      "retry": "Retry",
       "persona": "Reply Persona",
       "personaDesc": "Persona used for auto-replies on all channels",
       "noPersona": "Default (no persona)",
       "model": "Reply Model",
       "modelDesc": "AI model used for auto-replies on all channels",
       "provider": "Provider",
-      "modelPlaceholder": "Select a model"
+      "noProvider": "No enabled provider",
+      "modelPlaceholder": "Select a model",
+      "noModel": "No available model"
     },
     "list": {
       "title": "Channel List"
@@ -1340,8 +1465,7 @@
     },
     "tabs": {
       "qr": "QR Binding",
-      "credentials": "API Credentials",
-      "features": "Features"
+      "credentials": "API Credentials"
     },
     "qr": {
       "title": "QR Binding",
@@ -1382,19 +1506,17 @@
       "saveFailed": "Failed to save"
     },
     "features": {
-      "title": "Features & Permissions",
-      "section": "Feature Switches",
       "autoReply": "Auto Reply",
       "autoReplyDesc": "Automatically reply with AI when a message is received",
       "streamingReply": "Streaming Reply",
-      "streamingReplyDesc": "Stream reply content in real time (requires channel support)",
+      "streamingReplyDesc": "Stream reply content in real time (requires channel support); currently saved only and not enforced yet",
       "autoStart": "Auto Start",
-      "autoStartDesc": "Automatically connect this channel when the app starts"
+      "autoStartDesc": "Automatically connect enabled channels when the app starts"
     },
     "permissions": {
-      "section": "Security Permissions",
-      "allowShell": "Shell Execution",
-      "allowShellDesc": "Allow AI to execute shell commands",
+      "shellRequiresApproval": "Shell Commands Require Approval",
+      "shellRequiresApprovalDesc": "When on, every shell command in a channel chat asks for your confirmation; when off, it runs directly",
+      "notEnforcedHint": "The switches below are saved only and not enforced yet",
       "allowReadHome": "Read Home Directory",
       "allowReadHomeDesc": "Allow reading files outside the working directory",
       "allowWriteOutside": "External Write",

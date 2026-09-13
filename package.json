@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.27",
+  "version": "0.2.28",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -19,7 +19,6 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test:cron-integration": "tsc --noEmit false -p tests/cron-integration/tsconfig.json && node tests/cron-integration/out/tests/cron-integration/program.js",
     "test:renderable-chat-items": "esbuild tests/renderable-chat-items/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/renderable-chat-items/out/program.cjs && node tests/renderable-chat-items/out/program.cjs",
     "test:channel-cancel-commands": "esbuild tests/channel-cancel-commands/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-cancel-commands/out/program.cjs && node tests/channel-cancel-commands/out/program.cjs",
     "test:session-follow-up": "node tests/session-follow-up-integration/program.mjs",
@@ -28,6 +27,8 @@
     "test:updater-progress": "esbuild tests/updater-state/download-progress.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/download-progress.cjs && node tests/updater-state/out/download-progress.cjs",
     "test:provider-presets": "esbuild tests/provider-presets/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-presets/out/program.cjs && node tests/provider-presets/out/program.cjs",
     "test:settings-tabs": "esbuild tests/settings-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/settings-tabs/out/program.cjs && node tests/settings-tabs/out/program.cjs",
+    "test:channel-reply-event-policy": "esbuild tests/channel-reply-event-policy/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-reply-event-policy/out/program.cjs && node tests/channel-reply-event-policy/out/program.cjs",
+    "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs",
     "pretest:e2e": "node tests/e2e/scripts/ensure-prereqs.mjs",
     "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
   },

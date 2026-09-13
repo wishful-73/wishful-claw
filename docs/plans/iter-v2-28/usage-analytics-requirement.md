@@ -1,9 +1,20 @@
 # v2-iter-28 候选需求：模型调用统计与请求明细
 
-- 状态：待老大确认范围（2026-09-11 记录现状结论与取舍点，尚未规划）
-- 归属：`v2-iter-28`（候选，也可拆为独立小迭代）
-- 需求类型：可观测性补齐 —— 模型用量统计面板 + 请求级明细
+- 状态：**范围已确认**（2026-09-11 老大拍定核心口径，见第 0 节；尚未排期规划）
+- 归属：`v2-iter-28`
+- 需求类型：可观测性补齐 —— 新增模型请求日志 + 统计基于该日志聚合
 - 记录方式：只读调研，本文所有结论均有 `文件:行号` 证据，实现前需按当期代码复核行号
+
+## 0. 范围决议（2026-09-11 老大拍定）
+
+1. **新增一层「模型请求日志」，统计一律从这份日志聚合。** 不复用 `messages.usage`，原 6.1 的 B 方案（先拿回合级数据出面板）**作废** —— 先打地基，口径只留一条链。
+2. **日志形态 = SQLite 结构化表**，一次 HTTP 请求一行。面板下方的"今日请求明细"就是这张表的可读视图；不做 JSONL 文件日志，也不做表 + 文件双写留档。
+3. **失败与被重试的请求全量入表**，每次尝试独立成行，成功失败都落。
+4. **现有会话级统计 `db/messages-usage-stats` 保留原样**（唯一消费方是 IM 群命令统计），新面板不接它。代价：仓库长期存在两套 token 口径（回合累计 vs 单次请求），面板需明示本面板为请求口径。
+5. **成本要展示，但只按模型上显式配置的价格相乘；没配价格就没有该项成本，不做倍率与缺价推算。** 现有会话统计本身不算成本，可复用的是它 `:186` 的 billableInput 与 `:193` 的 requestTimings 两套口径，详见 6.4。
+6. **统计按来源分维**，直接用 C# 现成的 `RuntimeRole`，无需新增字段，详见第 10 节结论 3。
+7. **请求日志先行**，Plan D（多服务商 fallback）排其后。
+8. **桌宠线挂起**，本需求不承接宠物经验值修复。
 
 ## 1. 原始需求
 
@@ -65,7 +76,10 @@
 - `usage_events` 表在全部 C# 与 TS 中 **0 命中**；
 - 渲染端白名单 `src/renderer/src/lib/ipc/messagepack-channel-routing.ts` 无 usage 条目，准入判定在 `:423` `argCount <= 1 && MESSAGEPACK_INVOKE_CHANNELS.has(channel)` → 通道直接被拒。
 
-**由此带出一个现存缺陷（可与本需求一并修，也可单列）：** `recordUsageEvent` 已有两处真实调用 —— `src/renderer/src/lib/pet/pet-agent.ts:222`、`src/renderer/src/stores/translate-store.ts:279,313` —— 目前**全部静默失败**，桌面宠物按 token 换算的经验值实际上从未累计过。
+**由此带出一个现存缺陷：桌面宠物按 token 换算的经验值恒为 0。** 断点有**两处**，不是一处（2026-09-11 实测修正）：
+
+1. `recordUsageEvent` 有三个真实调用点 —— `src/renderer/src/lib/pet/pet-agent.ts:222`、`src/renderer/src/stores/translate-store.ts:279,313` —— 全部在 `await invokeMessagePackBinary(USAGE_EVENTS_ADD_MSGPACK_CHANNEL, ...)`（`usage-analytics.ts:242`）处失败，后端半边不存在。
+2. 更要紧的是 `accruePetExpFromUsage`（`usage-analytics.ts:235`）位于那次失败**之前**，且是 `void` + 自带 try/catch，所以它每次都真的执行了 —— 经验值仍为 0 是因为它走的 `pet:exp-add` 通道**同样没有主进程 handler**（见第 10 节）。
 
 ## 4. 缺的后半边在参考项目里有现成实现
 
@@ -98,33 +112,57 @@ OpenCowork 在渲染端回合结束调 `recordUsageEvent`，那是**回合级**�
 
 代价：写入路径从渲染端移到 C#，`recordUsageEvent` 里的 provider/模型归属解析与成本计算（`resolveProviderAndModel` / `computeCosts`）需要在 C# 侧重建或改为写入时只存原始值、查询时再算成本。
 
-## 6. 待老大确认的取舍
+## 6. 取舍决议与剩余待确认
 
-### 6.1 明细粒度
+### 6.1 明细粒度 —— ✅ 已定：A
 
-- **A 真·每次 HTTP 请求**：要动 C# 三个 provider 出口 + 新增表 + 成本解析下沉。工作量大，但明细日志成立，重试/降级/缓存命中率历史也顺带成立。
-- **B 先做回合级**：现有 `messages.usage` 就能聚合出 24h/7d/30d 与按会话/项目的统计，UI 可先落地；"明细"退化成"本轮请求数 + 各次耗时"，无 token 拆分。
-- 建议：B 先出面板满足"看统计"，A 作为同一迭代的第二个 Plan，避免一次性改动面过大。
+- **A 真·每次 HTTP 请求**：要动 C# 三个 provider 出口 + 新增表 + 成本解析下沉。**老大 2026-09-11 选定此项**，理由见第 0 节第 1 条。
+- ~~B 先做回合级~~：作废。原建议"B 先出面板、A 作第二个 Plan"已被否决 —— 不要先出一个口径不对的面板再返工。
 
-### 6.2 通道形态
+### 6.2 通道形态 —— 🔵 默认采纳（提出后未反对，非明确拍定）
 
-沿用已有的 12 个 `usage-*:msgpack` 通道（要补 handler + 补渲染端白名单），还是改走 `workerRequest('db/usage-*')`（与现有 DB 端点同构，无需动白名单）。后者与本项目分层更一致。
+走 `workerRequest('db/usage-*')`，与现有 `db/*` 端点同构：renderer → `src/preload/index.ts:43-45` → `src/main/ipc/misc-handlers.ts:52-72` 通用转发 → `WorkerDispatcher` → `DbModule` 注册。省掉补 12 个 messagepack 通道 + 渲染端白名单。
 
-### 6.3 表结构是否预留故障归因字段
+沿用已有的 12 个 `usage-*:msgpack` 通道这一选项作废 —— 写入方已移到 C#（5.2 与第 10 节），`usage-events:add` 本就不需要，剩下的查询通道也没有非走 messagepack 不可的理由。
 
-建议至少预留 `status` / `error_kind` / `attempt_index` / `switched_from_provider_id`，把失败、重试与多服务商降级归因一并进表。否则后续要看重试率与降级效果需要再迁一次数据。需确认与既有重试/降级功能的排期先后。
+### 6.3 故障归因字段 —— ✅ 已定：预留
 
-### 6.4 成本是否展示
+随第 0 节第 3 条（失败全量入表）一并成立：表需含 `status` / `error_kind` / `attempt_index`，并预留 `switched_from_provider_id` 给 Plan D 的多服务商降级归因。否则日后要看重试率与降级效果需再迁一次数据。
 
-`src/shared/types/provider.ts:231-237` 有 `inputPrice` / `outputPrice` / `cacheCreationPrice` / `cacheHitPrice` 四个字段，但**实际填值率未知**（多数 provider 可能为空）。若展示美元，需要同时决定空价格时的呈现（隐藏该列 / 显示"未配置价格"）。
+✅ 遗留已解（2026-09-11）：**请求日志先行**，Plan D（多服务商 fallback，27 整块移交未实施）靠后。故 `switched_from_provider_id` 等降级归因列**只预留不填**，等 Plan D 落地再补写入 —— 两者共用同一批 C# provider 出口，不并行改同一段代码。
 
-### 6.5 排期
+### 6.4 成本展示 —— ✅ 已定：展示，口径参考现有会话统计做法
 
-27 当前压着一大批真机复测（尤其 dev/生产目录隔离与真机升级链路），本文档倾向把本需求独立成 `v2-iter-28`，不与收尾混做。
+实测前提（决定"参考"能参考到什么程度）：
+
+- **现有会话统计完全不算成本。** `DbMessageCompactTools.cs:56` `UsageStats` 只累计 token 与耗时，`MessageUsageStatsResult` 末位恒传 `null`（`:94`）；`AgentRuntimeTokenUsage`（`ProviderDebugModels.cs:25-40`）**无任何价格字段**。成本是全新口径，不能指望继承。
+- **但它已有的两套口径正好可复用**，风格也照它来（`JsonDocument` 直读字段、不做类型化 DTO）：
+  - `:186-187` 已在 C# 复刻 `getBillableInputTokens`（`billableInput ?? max(0, input - cacheRead - cacheCreation)`），与 `format-tokens.ts:41-52` 一致。
+  - `:193` + `:202-207` 用 `requestTimings` 数组长度算 `RequestCount` —— **这就是现成的"请求数"口径**，新日志表按行计数后应与之吻合，可作交叉验证。
+- **价格在 C# 侧可达**：`src/runtime` 全量 .cs 中 `inputPrice` 零命中（无强类型字段），但 `ProviderStore.cs` 全程用 `JsonNode`（`:38` / `:50` / `:264`），可按 modelId 索引取价；磁盘实测 `~/.wishful-claw/ai-provider/*.json` 有 10+ 个文件含 `inputPrice`，即启用后的 provider 配置**带着价格落盘**。
+- **填值率**（`src/renderer/src/stores/providers/*.ts`，531 个 `name:` 条目）：`inputPrice` / `outputPrice` 各 349（约 66%）、`cacheHitPrice` 205（约 39%）。缺口集中在本地/免费端点 —— `ollama`、`lmstudio`、`huggingface`、`cerebras`、`groq`、`fireworks`、`nvidia`、`ppio`、`stepfun`、`volcengine`、`modelscope` 全为 0；主流付费端点基本全覆盖（`openrouter` 56/57、`openai` 29/32、`siliconflow` 25/26、`moonshot` 15/17、`anthropic` 9/10）。
+
+**✅ 成本口径定稿（老大 2026-09-11）：只按模型上显式配置的价格相乘，没配就没有，不做任何推算。**
+
+- 四项成本各自独立：`input_cost = billable_input × inputPrice / 1e6`、`output_cost`、`cache_creation_cost`、`cache_hit_cost` 同理。**对应价格列为 null 时该项成本留 null，不回填、不显示 0。**
+- **不移植 `resolveCacheCreationCost`**（`format-tokens.ts:172-205`）—— 它的 `inputPrice × 1.25`（缺 cacheCreationPrice 时）、`inputPrice × 2`（1 小时 TTL 桶）、缺价回退、以及 `getCacheCreationSplit` 的 5m/1h 分桶**全部不要**。连带地，表也**不需要 `cache_creation_5m/1h` 两列**，只存合计的 cache creation tokens。
+- `total_cost_usd` = 上述四项中**非 null 项之和**；四项全 null 则 total 为 null。
+- 落点随口径一并定：**C# 写入时算并落列**。去掉倍率推算后只剩"读四个价字段 + 乘除"，移植代价几乎为零，换来面板能直接 `SUM`、能按成本排序、价格有历史快照。原"查询时算"选项作废（那要捞回整窗明细才能聚合）。
+
+⚠️ **呈现上必须交代清**：约 61% 的模型缺 `cacheHitPrice`、34% 完全无价。这类行的 total 只覆盖"配了价的那部分"，会**系统性低于实际账单**，面板需标"按已配置价格计"，不能让人当作应付金额。
+
+⚠️ **`billableInput` 三处口径不一致，写钩子时别顺手抄错**：
+- `format-tokens.ts:46-51` 与 `DbMessageCompactTools.cs:186-187`（现有会话统计）都是 `input − cacheRead − cacheCreation`；
+- 但 `AnthropicMessagesProvider.cs:152-153`（还有 `OpenAIChatProvider.cs:147`、`OpenAIResponsesProvider.cs:94` 同一形状）的回退是 `input − cacheHit`，**少减了 cacheCreation**。
+- 该回退值目前只喂给 `AccumulateCacheTokens`（`:156`），**没有回填进 `emitUsage`**，所以不影响已落库的 usage；但新写入钩子就在紧邻这几行的位置，务必显式采用 `:186` 口径，与现有会话统计一致，避免面板与 IM 群统计再分叉一套数。
+
+### 6.5 排期 —— ✅ 已定
+
+v2-iter-27 已于 2026-09-11 收尾发版（`v0.2.27`）。老大确认本需求纳入 `v2-iter-28` 且**请求日志优先做**，Plan D 排在其后。
 
 ## 7. 顺带记下的关联项
 
-- `recordUsageEvent` 静默失败（第 3 节）—— 若本需求不做，也应单独修或明确关掉调用，否则宠物经验值一直是 0。
+- `recordUsageEvent` 静默失败（第 3 节）—— 处置方式见第 10 节：本需求确定做请求级日志后，三处调用点直接删除，改由 C# 写入钩子覆盖。
 - `quota-store.ts:3-5` 注释已自证"no backend quota system yet"，是纯内存态，只有 `ModelSwitcher/QuotaIndicators.tsx` 消费。本需求的统计表若上线，配额展示可以复用同一张表，避免再造一条链路。
 - 日志页面（27 追加）与统计面板是两回事：日志是无结构文本，统计表是结构化数据，不要试图从 `.log` 里解析明细。
 
@@ -132,8 +170,8 @@ OpenCowork 在渲染端回合结束调 `recordUsageEvent`，那是**回合级**�
 
 | 路径 | 粗估 |
 |---|---|
-| 只做 B（回合级统计 + 面板，复用 `messages.usage`） | 一个 Plan：新增 C# 聚合端点 + 面板 UI，无需新表 |
-| A + B（真请求级明细） | 三个 Plan：① 建表与 C# 写入钩子 ② 查询端点（可大量参考 OpenCowork 962 行）③ 面板 UI（参考 1268 行） |
+| ~~只做 B（回合级统计 + 面板，复用 `messages.usage`）~~ | **作废** —— 见第 0 节第 1 条 |
+| A 请求级明细（唯一路线） | 三个 Plan：① 建表与 C# 写入钩子（三家 Provider 各一处，取同层已有的 `RuntimeRole`）② 查询端点（可大量参考 OpenCowork 962 行）③ 面板 UI（参考 1268 行）。成本落点已定为写入时算（6.4），且因砍掉倍率与 TTL 分桶，表可比参考项目的 42 列明显更窄，能复用的查询 SQL 打折扣 |
 
 ## 9. 验收标准草案（待细化）
 
@@ -142,3 +180,105 @@ OpenCowork 在渲染端回合结束调 `recordUsageEvent`，那是**回合级**�
 3. 重启应用后历史统计不丢。
 4. 缓存命中率可按时间窗回溯，不再只在输入框实时闪现。
 5. 中途更换模型的会话，明细中每条记录的模型归属正确。
+6. 一次真机可复现的失败（如故意配错 key）能在明细里看到失败行，且 token 概览的请求数把它算进去。
+
+## 10. 追加实测（2026-09-11 范围确认后）：三处上报点全部经 C#
+
+第 3 节记的"渲染端 `recordUsageEvent` 静默失败"缺陷，在写入点下沉到 C#（5.2）之后处置方式已明确 —— 三处调用点的模型请求**本来就不直连 HTTP**：
+
+| 调用点 | 来源标识 | 模型请求实际走哪 | 下沉后处置 |
+|---|---|---|---|
+| `src/renderer/src/lib/pet/pet-agent.ts:222` | `sourceKind: 'pet-chat'` | `runAgentViaSidecar(...)` → C# Agent Loop | 删 |
+| `src/renderer/src/stores/translate-store.ts:279` | `sourceKind: 'translate'` + `meta.mode='agent'` | `runAgentViaSidecar(...)` → C# Agent Loop | 删 |
+| `src/renderer/src/stores/translate-store.ts:313` | 同上 + `meta.mode='simple'` | `translate-service.ts:86` `streamSidecarProviderTurn(...)` → C# 单次 provider turn | 删 |
+
+由此得三条结论：
+
+1. **桌宠线整体挂起（老大 2026-09-11 决定），本需求不承接宠物经验值修复。** 实测事实留档备查：`accruePetExpFromUsage` 在失败点之前就已执行，经验值仍为 0 的真因是 `pet:exp-add` 连同整套 pet IPC（`pet-window:open` / `pet:sync` / `pet:tts-stream` / `pet:tts-cancel` / `pet:open-studio`）**只出现在渲染端白名单 `messagepack-channel-routing.ts:17-27`，`src/main` 的 117 个 .ts 里 "pet" 子串零命中，C# 侧同样零实现** —— 桌宠的持久化半边整体缺失，补 `usage_events` 后端不会顺带修好它。
+2. **`usage-analytics.ts` 渲染端半边失去存在理由**：`recordUsageEvent` 及其 `resolveProviderAndModel`(`:82`) / `computeCosts`(`:140`) 应废弃或迁 C#，12 个 messagepack 通道里的 `usage-events:add` 不再需要。
+3. **来源分维不需要新增字段 —— C# 侧的 `RuntimeRole` 已全覆盖。** 上一版称"`streamSidecarProviderTurn` 不带来源、要给翻译入口补字段"，实测**不成立，此处撤回**：
+
+| 来源 | `runtimeRole` 取值 | 证据 |
+|---|---|---|
+| 普通会话 Agent Loop | `sessionagent`（未传时按 sessionMode 推导的默认分支） | `AgentRunContextPolicy.cs:161` |
+| Goal 主跑 / 子 Agent / Goal 子 Agent | `goalrunner` / `subagent` / `goalsubagent` | `:158-160`、`GoalSubAgentExecutor.cs:102` |
+| 桌宠 | `pet` | `pet-agent.ts:192` |
+| 翻译（agent 模式） | `translation` | `translate-agent-service.ts:246` |
+| 单次 provider turn（翻译 simple、技能审查） | `providerTurn` | `agent-bridge-streaming.ts:88`、`:273` |
+| 自动化 | `automation` | `AgentRunContextPolicy.cs:17` |
+
+该值在 C# 已参与真实业务判定（`:184` 的 switch、`:212` 的工具准入、`ToolCallProcessor.cs:215` 的报错文案），且三家 Provider 产出 usage 的位置（`AnthropicMessagesProvider.cs:161`、`OpenAIChatProvider.cs:156`、`OpenAIResponsesProvider.cs:103`）与之同层 —— **写入钩子就地可取，零额外改造**。
+
+⚠️ **别把 `UsageSource` 当来源字段用**：`AgentRuntimeRunState.cs:63` 赋了默认值 `"executor"` 之后**全项目无任何一处改写它**，`ProviderDebugModels.cs:39` 注释宣称的 "executor"/"subagent"/"compaction" 是未接线的意图。它可当第二维度（同一请求内的工作类型），但要另开接线，不能白捡。
+
+✅ 老大已确认**统计按来源分维**：写入钩子落 `runtime_role` 列即可，`sourceKind` 不必承载。`meta` 里的源/目标语言若要保留，另议。
+
+## 11. 实现记录（2026-09-11，P1–P4 全部落地）
+
+### 11.1 写入钩子的最终落点：`ProviderRetryPolicy.ExecuteAsync` 的重试循环
+
+规划期设想的"Provider 层现有 usage 产出点"**不可行**，已修正。原因：三家 Provider（`AnthropicMessagesProvider.cs:161`、`OpenAIChatProvider.cs:156`、`OpenAIResponsesProvider.cs:103`）的 `message_end` 事件**只在成功时触发**；失败请求以 `ProviderHttpException` 直接抛出，根本不经过产出点。挂在那一层会**丢掉全部失败请求**，而失败恰恰是最需要归因的部分。
+
+因此唯一正确落点是重试循环（`ProviderRetryPolicy.ExecuteAsync`），每个循环迭代写一行：
+
+| 出口 | 落行时机 | `total_attempts` |
+|---|---|---|
+| 成功 `return result` | 写入 + 记 token/成本 | `retryAttempt + 1` |
+| `TimeoutException` 可重试分支 | 写入（记为 error/timeout） | **留 NULL**（非终态） |
+| `ProviderHttpException` 可重试分支 | 写入 + HTTP 状态码 | **留 NULL**（非终态） |
+| 终态 `catch (Exception)` 兜底 | 写入 + 归因 | `retryAttempt + 1` |
+
+**`total_attempts` 仅终态行填写**：中间失败行留 NULL 表示"还会重试"，UI 据此区分"这次尝试失败了"和"这次请求最终失败了"。
+
+**写入顺序**：`LogRequestAttempt` 置于 `AgentRuntimeTools.EmitAsync` **之前**。前者内部全 try/catch 不抛；后者在传输断开时会抛。丢一行用量日志比丢一个重试事件严重。
+
+### 11.2 接线范围（老大指令：只管 AgentLoop 主线）
+
+| 请求链 | 是否接线 | 说明 |
+|---|---|---|
+| AgentLoop 主线（三家 Provider） | ✅ | 本次全部覆盖 |
+| `ProviderCompletionService`（提示词优化/技能审查） | ❌ | 留待 R-1.4 |
+| `PersonaGenerator`（新建角色辅助） | ❌ | 独立 HTTP 实现，留待 R-1.4 |
+
+### 11.3 与旧统计的隔离（老大澄清，务必不误解）
+
+> 原文：「新做的是基于模型请求日志，然后统计新的这个请求日志，不会更改以前的那个统计」
+
+- 新表 `request_usage_logs` 与 `messages.usage` / `db/messages-usage-stats` **无任何读写关系**，不是"接到旧统计上"，也**不是**"借旧统计口径出面板"（第 0 节已作废的 B 方案）。
+- 旧统计**唯一消费方** `src/main/channels/plugin-command-stats.ts:25` 继续正常work。
+- 已核验：`DbMessageCompactTools.cs`、`MessageEntity.cs` **零改动**；端点 `db/messages-usage-stats` 保留在原注册位置。
+- 仓库长期存在两套 token 口径（回合累计 vs 单次请求），面板已在页脚显式声明本面板为**请求口径**。
+
+### 11.4 成本口径（第 6.4 节落地）
+
+只按模型**显式配置**的价格相乘，无价则列留 NULL（**不填 0、不倍率推算**），在**写入时**计算并落列以保留价格历史快照——价格会变、模型会被删，查询时 join 当前配置会同时丢失两者。
+
+`billableInput` 取权威口径 `input - cacheRead - cacheCreation`（`DbMessageCompactTools.cs:186-187`），**不是** Provider 侧那个少减 `cacheCreation` 的回退值。
+
+### 11.5 查询端点（5 个，全部 AOT 注册）
+
+`db/usage-overview` / `db/usage-buckets` / `db/usage-by-model` / `db/usage-by-source` / `db/usage-logs`
+
+- DTO 全部具名（5 个结果 + 4 个行类型），注册进 `InfrastructureJsonContext`（含 `List<T>`）；`WorkerResponse.Json` 全部显式传 `JsonTypeInfo`。
+- **空窗口返回零值 + 空数组，永不报错**：面板渲染空状态而非失败（全新安装必须正常）。
+- **桶补齐**：24h 按小时、7d/30d 按天，**空桶补零行**保证时间轴连续，否则图表压缩静默期造成失真。
+- 明细端点有 `limit`（默认 50、上限 500）与 `total` 未分页计数，UI 可显示"显示 X 条，共 Y 条"。
+
+### 11.6 渲染端拆除（第 10 节三项结论的落地）
+
+- `lib/usage-analytics.ts` **整体删除**（373 行）。其 11 个 getter 经核验**全仓零调用方**；`recordUsageEvent` / `resolveProviderAndModel` / `computeCosts` 随之废弃。
+- 3 处调用点移除（`pet-agent.ts`、`translate-store.ts` × 2）。**未做替代接线**——这三处均不属 AgentLoop 主线。
+- 桌宠线按第 10 节结论整体挂起，本需求不承接宠物经验值修复。
+- ⚠️ 遗留：12 个 `usage-events:*` messagepack 通道中 `usage-events:add` 已无发送方，**通道常量与主进程/C# 侧 handler 未清理**，属后续清理项。
+
+### 11.7 验证证据
+
+| 项 | 结果 |
+|---|---|
+| C# 全解决方案构建 | 0 错误 0 警告 |
+| 用量日志回归（`UsageLogChecks`，13 套件） | 全绿，连跑 8 次稳定 |
+| `tsc -p tsconfig.web.json` / `tsconfig.node.json` | 双 0 错误 |
+| `npm run build`（main + preload + renderer） | 三目标全绿 |
+| `test:settings-tabs` | 20 断言通过 |
+| `test:renderable-chat-items` / `test:provider-presets` | 16 / 330 通过 |
+| 旧统计隔离 | 相关文件 `git status` 零改动；`recordUsageEvent` 全仓零命中 |

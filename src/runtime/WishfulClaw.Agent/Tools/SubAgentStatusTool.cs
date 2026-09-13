@@ -16,6 +16,8 @@ public sealed class SubAgentStatusTool : IToolExecutor
         "Check a sub-agent's status by toolUseId; includes its final report (truncated) when finished. " +
         "Omit toolUseId to list all sub-agents. Use SubAgentDetail for the full report and tool call log.";
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
     public JsonElement InputSchema { get; } = JsonDocument.Parse(
         """
         {
@@ -73,6 +75,8 @@ public sealed class SubAgentDetailTool : IToolExecutor
     public string Description =>
         "Get a sub-agent's full execution detail by toolUseId: complete output report and step-by-step tool call log. " +
         "For a quick status check, use SubAgentStatus instead.";
+
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
 
     public JsonElement InputSchema { get; } = JsonDocument.Parse(
         """

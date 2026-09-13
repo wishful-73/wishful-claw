@@ -16,8 +16,8 @@ const KIMI_CLIENT_ID = '17e5f671-d194-4dfb-9706-5516cb48c098'
 // Price fields below are USD per 1M tokens; Kimi publishes CNY prices, so values are converted.
 export const moonshotCodingPreset: BuiltinProviderPreset = {
   builtinId: 'moonshot-coding',
-  // v2: add Kimi K3（套餐模型 ID 为 k3，Moderato 及以上可用）.
-  version: 2,
+  // v3: 2026-09 按官方定价页核对；kimi-for-coding 已指向 K2.8 Preview（Model ID 不变）。
+  version: 3,
   name: 'Moonshot（套餐）',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.kimi.com/coding/v1',
@@ -82,7 +82,7 @@ export const moonshotCodingPreset: BuiltinProviderPreset = {
     },
     {
       id: 'kimi-for-coding',
-      name: 'Kimi For Coding (K2.7 Code)',
+      name: 'Kimi For Coding (K2.8 Preview)',
       icon: 'kimi',
       enabled: true,
       contextLength: 262_144,
@@ -101,7 +101,7 @@ export const moonshotCodingPreset: BuiltinProviderPreset = {
     // Allegretto 及以上档位可用；输出加速，输入/缓存价与 kimi-for-coding 相同。
     {
       id: 'kimi-for-coding-highspeed',
-      name: 'Kimi For Coding HighSpeed (K2.7 Code)',
+      name: 'Kimi For Coding HighSpeed (K2.8 Preview)',
       icon: 'kimi',
       enabled: true,
       contextLength: 262_144,
@@ -122,8 +122,8 @@ export const moonshotCodingPreset: BuiltinProviderPreset = {
 
 export const moonshotPreset: BuiltinProviderPreset = {
   builtinId: 'moonshot',
-  // v2: add Kimi K3 (2026-07-16 发布).
-  version: 2,
+  // v3: 2026-09 按官方定价页核对（修正 K2.7 Code HighSpeed 价格；K2.5 已下线）。
+  version: 3,
   name: 'Moonshot（官方）',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.moonshot.cn/v1',
@@ -131,6 +131,7 @@ export const moonshotPreset: BuiltinProviderPreset = {
   apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
   defaultModel: 'kimi-k2.7-code',
   deprecatedModelIds: [
+    'kimi-k2.5',
     'kimi-k2-0905-preview',
     'kimi-k2-0711-preview',
     'kimi-k2-turbo-preview',
@@ -192,9 +193,9 @@ export const moonshotPreset: BuiltinProviderPreset = {
       maxOutputTokens: 32_768,
       supportsVision: true,
       supportsFunctionCall: true,
-      inputPrice: 0.95,
+      inputPrice: 1.9,
       outputPrice: 8,
-      cacheHitPrice: 0.19,
+      cacheHitPrice: 0.38,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: { thinking: { type: 'enabled' } },
@@ -214,26 +215,6 @@ export const moonshotPreset: BuiltinProviderPreset = {
       inputPrice: 0.95,
       outputPrice: 4,
       cacheHitPrice: 0.16,
-      supportsThinking: true,
-      thinkingConfig: {
-        bodyParams: { thinking: { type: 'enabled' } },
-        disabledBodyParams: { thinking: { type: 'disabled' } },
-        forceTemperature: 1
-      }
-    },
-    // Kimi K2.5
-    {
-      id: 'kimi-k2.5',
-      name: 'Kimi K2.5',
-      icon: 'kimi',
-      enabled: true,
-      contextLength: 262_144,
-      maxOutputTokens: 32_768,
-      supportsVision: true,
-      supportsFunctionCall: true,
-      inputPrice: 0.6,
-      outputPrice: 3,
-      cacheHitPrice: 0.1,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: { thinking: { type: 'enabled' } },

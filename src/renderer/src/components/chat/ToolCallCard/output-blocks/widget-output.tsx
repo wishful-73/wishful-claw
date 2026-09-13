@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Copy, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
+import { useTheme } from 'next-themes'
 import { writeSvgStringToClipboard } from '@renderer/lib/utils/image-clipboard'
 import { useChatActions } from '@renderer/hooks/use-chat-actions'
 import type { ToolCallStatus } from '@renderer/lib/agent/types'
@@ -71,8 +72,21 @@ export function WidgetOutputBlock({
   status: ToolCallStatus | 'completed'
 }): React.JSX.Element | null {
   const { t } = useTranslation('chat')
+  const { resolvedTheme } = useTheme()
   const isExecuting = status === 'streaming' || status === 'running'
   const payload = normalizeWidgetPayload(input)
+  // Opaque canvas that follows the app theme — widgets are authored for a real
+  // background, a transparent frame over the dark chat surface washed them out.
+  const widgetAppearance = React.useMemo(() => {
+    const isDark = resolvedTheme !== 'light'
+    const hostBg = getComputedStyle(document.documentElement).backgroundColor
+    const bg = hostBg && hostBg !== 'rgba(0, 0, 0, 0)' && hostBg !== 'transparent'
+      ? hostBg
+      : isDark
+        ? '#1c1c1c'
+        : '#ffffff'
+    return { bg, colorScheme: (isDark ? 'dark' : 'light') as 'light' | 'dark' }
+  }, [resolvedTheme])
   const hasPayload = Boolean(payload)
   const defaultLoadingMessage = t('toolCall.widget.rendering')
   const loadingMessages =
@@ -85,7 +99,7 @@ export function WidgetOutputBlock({
   const [loaded, setLoaded] = React.useState(false)
   const [frameHeight, setFrameHeight] = React.useState(240)
   const [loadingIndex, setLoadingIndex] = React.useState(0)
-  const frameKey = payload ? `${payload.title}:${payload.kind}` : 'widget-empty'
+  const frameKey = payload ? `${payload.title}:${payload.kind}:${widgetAppearance.colorScheme}` : 'widget-empty'
   const pendingWidgetCodeRef = React.useRef('')
   const lastPostedWidgetCodeRef = React.useRef('')
   const { sendMessage } = useChatActions()
@@ -203,7 +217,7 @@ export function WidgetOutputBlock({
             ref={iframeRef}
             title={payload.title}
             sandbox="allow-scripts allow-forms"
-            srcDoc={buildWidgetDocument(payload)}
+            srcDoc={buildWidgetDocument(payload, widgetAppearance)}
             className="block border-0 bg-transparent transition-[height] duration-200"
             style={{
               width: 'calc(100% + 1px)',
@@ -211,7 +225,7 @@ export function WidgetOutputBlock({
               marginRight: '-1px',
               verticalAlign: 'top',
               backgroundColor: 'transparent',
-              colorScheme: 'dark'
+              colorScheme: widgetAppearance.colorScheme
             }}
           />
           {payload.kind === 'svg' ? <SvgWidgetCopyButton svg={payload.widgetCode} /> : null}

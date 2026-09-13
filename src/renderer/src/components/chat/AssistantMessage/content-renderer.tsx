@@ -1,4 +1,4 @@
-﻿// Main content renderer: handles string, empty, and block-by-block rendering
+// Main content renderer: handles string, empty, and block-by-block rendering
 
 import * as React from 'react'
 import { Eraser, Pencil } from 'lucide-react'
@@ -280,7 +280,16 @@ export function ContentRenderer({
         ) : null}
         {run.showToggle ? (
           <CollapsibleHeightPanel open={!collapsed} className="overflow-hidden">
-            <div className="space-y-2">{renderedTools}</div>
+            {/* R-10.3: 展开且非流式（定格态手动展开）时封顶 70vh 出内部滚动条 */}
+            <div
+              className={
+                !collapsed && !isStreaming
+                  ? 'max-h-[70vh] space-y-2 overflow-y-auto'
+                  : 'space-y-2'
+              }
+            >
+              {renderedTools}
+            </div>
           </CollapsibleHeightPanel>
         ) : (
           renderedTools

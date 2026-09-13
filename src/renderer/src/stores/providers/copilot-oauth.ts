@@ -9,7 +9,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const copilotOAuthPreset: BuiltinProviderPreset = {
   builtinId: 'copilot-oauth',
-  version: 1,
+  version: 2,
   name: 'GitHub Copilot (OAuth)',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.githubcopilot.com',

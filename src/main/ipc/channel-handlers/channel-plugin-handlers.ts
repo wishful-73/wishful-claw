@@ -4,7 +4,11 @@
  * Extracted from channel-handlers.ts.
  */
 
-import type { ChannelInstance, MessagingChannelService } from '../../channels/channel-types'
+import type {
+  ChannelInstance,
+  GlobalChannelSettings,
+  MessagingChannelService
+} from '../../channels/channel-types'
 import { ChannelManager } from '../../channels/channel-manager'
 import { extractMessage, extractStack, logError, logInfo } from '../../lib/logger'
 import {
@@ -16,6 +20,8 @@ import {
   normalizeQrDisplayUrl,
   buildToolsMap,
   readPlugins,
+  readGlobalSettings,
+  writeGlobalSettings,
   writePlugins,
   notifyRenderer,
   isPluginToolEnabledHandler,
@@ -166,10 +172,20 @@ export async function isPluginToolEnabled(pluginId: string, toolName: string): P
 
 export async function autoStartChannels(channelManager: ChannelManager): Promise<void> {
   const channels = await readPlugins()
-  const toStart = channels.filter(
-    (p) => p.enabled && (p.features?.autoStart ?? true)
-  )
-  for (const instance of toStart) {
+  const settings = await readGlobalSettings().catch((err) => {
+    // Fail closed on purpose: autoStart is decided by the global switch, and a guessed
+    // default would reconnect channels the user switched off. Log it, or the whole
+    // channel list staying stopped leaves no trace anywhere.
+    const msg = extractMessage(err)
+    console.error('[Channel Manager] Auto-start skipped (settings unreadable):', msg)
+    logError('main', '[Channel Manager] Auto-start skipped (global settings unreadable)', {
+      stack: extractStack(err),
+      extra: { error: msg }
+    })
+    return null
+  })
+  if (!settings?.autoStart) return
+  for (const instance of channels.filter((p) => p.enabled)) {
     try {
       await channelManager.startPlugin(instance, notifyRenderer)
       console.log(`[Channel Manager] Auto-started: ${instance.name} (${instance.type})`)
@@ -288,15 +304,7 @@ export function registerPluginHandlers(channelManager: ChannelManager): void {
           config,
           createdAt: Date.now(),
           projectId: null,
-          tools: buildToolsMap(descriptor),
-          features: { autoReply: true, streamingReply: true, autoStart: false },
-          permissions: {
-            allowReadHome: false,
-            readablePathPrefixes: [],
-            allowWriteOutside: false,
-            allowShell: false,
-            allowSubAgents: false
-          }
+          tools: buildToolsMap(descriptor)
         })
         changed = true
       } else {
@@ -344,7 +352,7 @@ export function registerPluginHandlers(channelManager: ChannelManager): void {
         if (
           ![
             'id', 'type', 'name', 'enabled', 'builtin', 'config', 'createdAt',
-            'projectId', 'tools', 'providerId', 'model', 'features', 'permissions'
+            'projectId', 'tools', 'providerId', 'model'
           ].includes(key)
         ) {
           delete (p as unknown as Record<string, unknown>)[key]
@@ -460,6 +468,23 @@ export function registerPluginHandlers(channelManager: ChannelManager): void {
   registerChannelMessagePackHandler<string>('plugin:status', async (id) => {
     return channelManager.getStatus(id)
   })
+
+  // ── Global channel settings (Worker-owned; one set for every channel) ──
+
+  registerChannelMessagePackHandler<undefined>('plugin:settings-get', async () => {
+    return await readGlobalSettings()
+  })
+
+  registerChannelMessagePackHandler<GlobalChannelSettings>(
+    'plugin:settings-set',
+    async (settings) => {
+      try {
+        return { settings: await writeGlobalSettings(settings) }
+      } catch (err) {
+        return { error: extractMessage(err) }
+      }
+    }
+  )
 
   registerChannelMessagePackHandler<{ taskId: string }>(
     'plugin:session-task-complete',

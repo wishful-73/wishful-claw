@@ -48,11 +48,6 @@ export type {
   AccountRateLimit
 } from '@shared/types/provider'
 
-// --- Plugin Permissions ---
-export interface PluginPermissions {
-  [key: string]: unknown
-}
-
 // --- Token Usage ---
 
 export interface RequestTiming {

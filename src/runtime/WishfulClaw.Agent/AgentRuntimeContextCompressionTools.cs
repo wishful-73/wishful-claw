@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -143,6 +143,7 @@ public static class AgentRuntimeContextCompressionTools
                     provider,
                     context,
                     context.CancellationToken,
+                    sessionId,
                     onSummaryDelta: async text =>
                     {
                         await context.EmitEventAsync(

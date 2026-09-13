@@ -10,6 +10,7 @@
     <ProjectReference Include="..\WishfulClaw.Contracts\WishfulClaw.Contracts.csproj" />
     <ProjectReference Include="..\WishfulClaw.Core\WishfulClaw.Core.csproj" />
     <ProjectReference Include="..\WishfulClaw.Workspace\WishfulClaw.Workspace.csproj" />
+    <ProjectReference Include="..\WishfulClaw.Infrastructure\WishfulClaw.Infrastructure.csproj" />
   </ItemGroup>
 
 

@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const groqPreset: BuiltinProviderPreset = {
   builtinId: 'groq',
-  version: 1,
+  version: 2,
   name: 'Groq',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.groq.com/openai/v1',

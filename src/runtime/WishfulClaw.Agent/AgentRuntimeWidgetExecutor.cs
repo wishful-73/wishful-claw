@@ -39,11 +39,11 @@ public static class AgentRuntimeWidgetExecutor
             return EncodeError("title is required");
         }
 
-        var loadingMessages = ReadLoadingMessages(call.Input);
-        if (loadingMessages.Count is < 1 or > 4)
-        {
-            return EncodeError("loading_messages must contain 1-4 strings");
-        }
+        // Fail-soft: models do not always honor the schema's minItems/maxItems, and a
+        // malformed loading_messages (missing, wrong type, empty array, blank strings)
+        // must not abort the widget render. A single string is accepted as one message;
+        // anything unresolvable falls back to a default; more than 4 entries are trimmed.
+        var loadingMessages = ReadLoadingMessages(call.Input, title);
 
         var widgetCode = JsonHelpers.GetString(call.Input, "widget_code") ?? string.Empty;
         if (string.IsNullOrWhiteSpace(widgetCode))
@@ -59,28 +59,41 @@ public static class AgentRuntimeWidgetExecutor
         });
     }
 
-    private static List<string> ReadLoadingMessages(JsonElement input)
+    private static List<string> ReadLoadingMessages(JsonElement input, string title)
     {
         var result = new List<string>();
-        if (input.ValueKind != JsonValueKind.Object ||
-            !input.TryGetProperty("loading_messages", out var messages) ||
-            messages.ValueKind != JsonValueKind.Array)
+
+        if (input.ValueKind == JsonValueKind.Object &&
+            input.TryGetProperty("loading_messages", out var messages))
         {
-            return result;
+            if (messages.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in messages.EnumerateArray())
+                {
+                    var text = item.ValueKind == JsonValueKind.String ? item.GetString()?.Trim() : null;
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        result.Add(text);
+                        if (result.Count >= 4)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+            else if (messages.ValueKind == JsonValueKind.String)
+            {
+                var text = messages.GetString()?.Trim();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    result.Add(text);
+                }
+            }
         }
 
-        foreach (var item in messages.EnumerateArray())
+        if (result.Count == 0)
         {
-            if (item.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-
-            var text = item.GetString()?.Trim();
-            if (!string.IsNullOrEmpty(text))
-            {
-                result.Add(text);
-            }
+            result.Add($"Rendering {title}…");
         }
 
         return result;

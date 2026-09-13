@@ -54,7 +54,7 @@ public sealed class ProviderHttpException : InvalidOperationException
 /// Design aligned with Reasonix's backoffDelay: exponential + jitter to avoid
 /// thundering-herd cascading 429s that destroy prefix cache locality.
 /// </summary>
-public static class ProviderRetryPolicy
+public static partial class ProviderRetryPolicy
 {
     private const int DefaultMaxRetryAttempts = 10;
     /// <summary>
@@ -88,9 +88,15 @@ public static class ProviderRetryPolicy
 
         for (var retryAttempt = 0; ; retryAttempt++)
         {
+            // Usage log row for THIS attempt (#1, iteration 28). One row per HTTP
+            // request — success or failure — so retry counts stay observable.
+            var logRow = CreateRequestLogRow(state, provider, retryAttempt + 1);
             try
             {
-                return await execute();
+                var result = await execute();
+                logRow.TotalAttempts = retryAttempt + 1;
+                LogRequestAttempt(state, provider, logRow, success: true, error: null, turn: result, unexpected: null);
+                return result;
             }
             catch (TimeoutException ex) when (
                 (isUnlimited || retryAttempt < maxAttempts) &&
@@ -106,6 +112,11 @@ public static class ProviderRetryPolicy
                 WorkerLog.Warn(
                     $"provider request timed out ({ex.Message}); retrying in {delayMs}ms " +
                     $"attempt={attempt}{(isUnlimited ? "/unlimited" : $"/{maxAttempts}")}");
+                // This attempt failed but WILL be retried — record it without a
+                // terminal attempt count yet. Written BEFORE the stream emit:
+                // LogRequestAttempt cannot throw, whereas emitting can (dropped
+                // transport), and a lost usage row is worse than a lost event.
+                LogRequestAttempt(state, provider, logRow, success: false, error: null, turn: null, unexpected: ex);
                 await AgentRuntimeTools.EmitAsync(
                     state,
                     context,
@@ -128,6 +139,7 @@ public static class ProviderRetryPolicy
                 WorkerLog.Warn(
                     $"provider request failed ({ex.Message}); retrying in {delayMs}ms " +
                     $"attempt={attempt}{(isUnlimited ? "/unlimited" : $"/{maxAttempts}")}");
+                LogRequestAttempt(state, provider, logRow, success: false, error: ex, turn: null, unexpected: null);
                 await AgentRuntimeTools.EmitAsync(
                     state,
                     context,
@@ -140,6 +152,21 @@ public static class ProviderRetryPolicy
                         DelayMs: delayMs,
                         StatusCode: ex.StatusCode));
                 await Task.Delay(delayMs, state.CancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Terminal attempt: retries exhausted, status not retryable, or
+                // context-window overflow (which AgentLoop handles separately).
+                // This is the most important row to keep — it is the one that
+                // explains why the request ultimately failed.
+                logRow.TotalAttempts = retryAttempt + 1;
+                LogRequestAttempt(
+                    state, provider, logRow,
+                    success: false,
+                    error: ex as ProviderHttpException,
+                    turn: null,
+                    unexpected: ex);
+                throw;
             }
         }
     }

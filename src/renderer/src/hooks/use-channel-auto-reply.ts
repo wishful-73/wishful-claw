@@ -133,12 +133,12 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     return false
   }
 
-  // 1. Check if auto-reply is enabled for this channel
+  // 1. Check the global auto-reply switch (retired per-channel `features` flag)
   const channelStore = useChannelStore.getState()
   const channelMeta = channelStore.channels.find((c) => c.id === pluginId)
-  const features = channelMeta?.features ?? { autoReply: true, streamingReply: true, autoStart: false }
-  if (!features.autoReply) {
-    console.log(`[ChannelAutoReply] Auto-reply disabled for ${pluginId}, skipping`)
+  const globalSettings = await channelStore.ensureGlobalSettings()
+  if (globalSettings && !globalSettings.autoReply) {
+    console.log(`[ChannelAutoReply] Auto-reply disabled globally, skipping ${pluginId}`)
     return false
   }
 

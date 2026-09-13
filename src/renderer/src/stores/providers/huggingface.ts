@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const huggingfacePreset: BuiltinProviderPreset = {
   builtinId: 'huggingface',
-  version: 1,
+  version: 2,
   name: 'Hugging Face',
   type: 'openai-chat',
   defaultBaseUrl: 'https://router.huggingface.co/v1',

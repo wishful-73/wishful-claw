@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const infiniPreset: BuiltinProviderPreset = {
   builtinId: 'infini',
-  version: 1,
+  version: 2,
   name: '无问芯穹',
   type: 'openai-chat',
   defaultBaseUrl: 'https://cloud.infini-ai.com/maas/v1',

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent.Tools.Providers;
@@ -24,6 +24,7 @@ public sealed class CodeGraphToolProvider : IToolProvider
                     ["projectPath"] = ToolSchemaBuilder.String(
                         "Optional absolute path to the project root. Defaults to the active working folder.")
                 },
-                ["query"])));
+                ["query"]),
+            visibleScopes: ToolVisibilityScopes.Everywhere));
     }
 }

@@ -13,5 +13,7 @@ public sealed class ProviderTestModule : IWorkerModule
         context.Register("provider/fetch-models", ProviderTestService.FetchModelsAsync);
         context.Register("provider/complete",
             (parameters, requestContext) => ProviderCompletionService.CompleteAsync(parameters, requestContext));
+        context.Register("provider/completion-config-read", ProviderCompletionSettingsService.Read);
+        context.Register("provider/completion-config-write", ProviderCompletionSettingsService.Write);
     }
 }

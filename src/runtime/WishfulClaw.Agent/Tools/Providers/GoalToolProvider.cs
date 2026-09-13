@@ -19,7 +19,8 @@ public sealed class GoalToolProvider : IToolProvider
             "get_goal",
             "Get the current goal for the agent session.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "list_goals",
@@ -32,7 +33,8 @@ public sealed class GoalToolProvider : IToolProvider
                     ["cursorUpdatedAt"] = ToolSchemaBuilder.Number("Cursor updatedAt from the previous page."),
                     ["cursorGoalId"] = ToolSchemaBuilder.String("Cursor goalId from the previous page.")
                 }),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "get_goal_history",
@@ -46,7 +48,8 @@ public sealed class GoalToolProvider : IToolProvider
                     ["cursorEventId"] = ToolSchemaBuilder.Number("Event cursor id from the previous page.")
                 },
                 ["goalId"]),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.Everywhere));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "create_goal",
@@ -54,7 +57,8 @@ public sealed class GoalToolProvider : IToolProvider
             ToolSchemaBuilder.Object(
                 new() { ["objective"] = ToolSchemaBuilder.String("The goal description.") },
                 ["objective"]),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "reopen_goal",
@@ -66,7 +70,8 @@ public sealed class GoalToolProvider : IToolProvider
                     ["objective"] = ToolSchemaBuilder.String("Optional revised objective for the new goal.")
                 },
                 ["goalId"]),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "update_goal",
@@ -79,25 +84,29 @@ public sealed class GoalToolProvider : IToolProvider
                         "New status.",
                         [GoalStatusValues.Active, GoalStatusValues.Complete, GoalStatusValues.Aborted])
                 }),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "pause_goal",
             "Pause the current goal execution. The orchestrator will stop and can be resumed later.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "resume_goal",
             "Resume a paused goal execution.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "abort_goal",
             "Abort/cancel the current goal execution permanently.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["goal"]));
+            availableModes: ["goal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         // Goal-orchestrator-only: progress recording inside a running Goal.
         // Dispatched via ToolDispatchRouter → GoalProgressTool; requires
@@ -114,6 +123,7 @@ public sealed class GoalToolProvider : IToolProvider
                     ["summary"] = ToolSchemaBuilder.String("Brief result summary for this step.")
                 },
                 ["stepTitle", "status"]),
-            availableModes: ["subAgent"]));
+            availableModes: ["subAgent"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
     }
 }

@@ -17,7 +17,9 @@ import {
   Shapes,
   MonitorSmartphone,
   Sparkles,
-  Zap
+  Zap,
+  ExternalLink,
+  RotateCcw
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
@@ -205,16 +207,17 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {!provider.builtinId && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-              onClick={() => setShowDeleteProvider(true)}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          )}
+          {/* R-9.6: builtins are never really "deleted" — they are re-projected from their
+              preset, so the action is presented as restoring factory defaults. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            title={provider.builtinId ? ts('provider.config.resetBuiltin.tooltip') : undefined}
+            onClick={() => setShowDeleteProvider(true)}
+          >
+            {provider.builtinId ? <RotateCcw className="size-3.5" /> : <Trash2 className="size-3.5" />}
+          </Button>
           <Switch
             checked={provider.enabled}
             onCheckedChange={(checked) => updateProvider(provider.id, { enabled: checked })}
@@ -226,6 +229,51 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           the last element and stretches to fill all remaining vertical space,
           so only the model list itself scrolls. */}
       <div className="flex flex-1 min-h-0 flex-col overflow-x-hidden px-5 pt-4 pb-4">
+        {/* Official website: builtins keep the preset link; custom providers get an editable field */}
+        {provider.builtinId && provider.homepage ? (
+          <section className="mb-4 flex min-w-0 shrink-0 items-center gap-2">
+            <label className="shrink-0 text-sm font-medium">{ts('provider.config.officialWebsite')}</label>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="min-w-0 justify-start gap-1 p-0 text-left text-xs font-normal"
+              title={provider.homepage}
+              onClick={() => void window.api.invoke<void>('shell:openExternal', provider.homepage!)}
+            >
+              <ExternalLink className="size-3 shrink-0" />
+              <span className="break-all whitespace-normal">{provider.homepage}</span>
+            </Button>
+          </section>
+        ) : !provider.builtinId ? (
+          <section className="mb-4 shrink-0 space-y-2">
+            <label className="text-sm font-medium">{ts('provider.config.officialWebsite')}</label>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder={ts('provider.add.homepagePlaceholder')}
+                value={provider.homepage ?? ''}
+                onChange={(e) => updateProvider(provider.id, { homepage: e.target.value })}
+                className="min-w-0 flex-1 text-xs"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
+                disabled={!provider.homepage?.trim()}
+                title={provider.homepage?.trim() || undefined}
+                onClick={() => {
+                  const url = provider.homepage?.trim()
+                  if (url) void window.api.invoke<void>('shell:openExternal', url)
+                }}
+              >
+                <ExternalLink className="size-3 shrink-0" />
+                {ts('provider.config.openHomepage')}
+              </Button>
+            </div>
+          </section>
+        ) : null}
+
         {/* API Key */}
         <section className="shrink-0 space-y-2">
           <div className="flex items-center justify-between">
@@ -264,27 +312,26 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           />
         </section>
 
-        {/* Protocol type (for custom providers) */}
-        {!provider.builtinId && (
-          <section className="mt-5 shrink-0 space-y-2">
-            <label className="text-sm font-medium">{ts('provider.config.protocolType')}</label>
-            <Select
-              value={provider.type}
-              onValueChange={(v) => updateProvider(provider.id, { type: v as ProviderType })}
-            >
-              <SelectTrigger className="text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PROVIDER_TYPE_OPTIONS_EDIT.map((t) => (
-                  <SelectItem key={t} value={t} className="text-xs">
-                    {ts(`provider.providerTypes.${t}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </section>
-        )}
+        {/* Protocol type */}
+        <section className="mt-5 shrink-0 space-y-2">
+          <label className="text-sm font-medium">{ts('provider.config.protocolType')}</label>
+          <Select
+            value={provider.type}
+            onValueChange={(v) => updateProvider(provider.id, { type: v as ProviderType, typeOverridden: true })}
+          >
+            <SelectTrigger className="text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PROVIDER_TYPE_OPTIONS_EDIT.map((t) => (
+                <SelectItem key={t} value={t} className="text-xs">
+                  {ts(`provider.providerTypes.${t}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-muted-foreground">{ts('provider.config.protocolTypeHint')}</p>
+        </section>
 
         {/* Anthropic cache TTL (provider-level) */}
         {provider.type === 'anthropic' && (
@@ -590,9 +637,15 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
       <AlertDialog open={showDeleteProvider} onOpenChange={setShowDeleteProvider}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{tc('confirmDelete.deleteProvider.title')}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {provider.builtinId
+                ? ts('provider.config.resetBuiltin.title')
+                : tc('confirmDelete.deleteProvider.title')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {tc('confirmDelete.deleteProvider.description')}
+              {provider.builtinId
+                ? ts('provider.config.resetBuiltin.description')
+                : tc('confirmDelete.deleteProvider.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -601,11 +654,17 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 deleteProvider(provider.id)
-                toast.success(ts('provider.list.providerDeleted'))
+                toast.success(
+                  provider.builtinId
+                    ? ts('provider.config.resetBuiltin.done')
+                    : ts('provider.list.providerDeleted')
+                )
                 setShowDeleteProvider(false)
               }}
             >
-              {tc('confirmDelete.deleteProvider.action')}
+              {provider.builtinId
+                ? ts('provider.config.resetBuiltin.action')
+                : tc('confirmDelete.deleteProvider.action')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

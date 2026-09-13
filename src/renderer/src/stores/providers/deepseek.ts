@@ -9,27 +9,28 @@ import type { BuiltinProviderPreset } from '@renderer/stores/providers/types'
 
 export const deepseekPreset: BuiltinProviderPreset = {
   builtinId: 'deepseek',
-  version: 2,
+  // v3: 2026-09 按官方文档核对（模型名改为 deepseek-flash、V4.1-Flash、峰谷计费取非高峰价）
+  version: 3,
   name: 'DeepSeek',
   type: 'anthropic',
   defaultBaseUrl: 'https://api.deepseek.com/anthropic',
   homepage: 'https://platform.deepseek.com',
   apiKeyUrl: 'https://platform.deepseek.com/api_keys',
-  defaultModel: 'deepseek-v4-flash',
+  defaultModel: 'deepseek-flash',
   defaultModels: [
     {
-      id: 'deepseek-v4-flash',
-      name: 'DeepSeek V4 Flash',
+      id: 'deepseek-flash',
+      name: 'DeepSeek V4.1 Flash',
       icon: 'deepseek',
       enabled: true,
       contextLength: 1_000_000,
       maxOutputTokens: 384_000,
-      supportsVision: false,
+      supportsVision: true,
       supportsFunctionCall: true,
-      inputPrice: 0.14,
-      outputPrice: 0.28,
-      cacheCreationPrice: 0.14,
-      cacheHitPrice: 0.0028,
+      inputPrice: 0.15,
+      outputPrice: 0.6,
+      cacheCreationPrice: 0.15,
+      cacheHitPrice: 0.003,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: { thinking: { type: 'enabled' } },
@@ -45,10 +46,10 @@ export const deepseekPreset: BuiltinProviderPreset = {
       maxOutputTokens: 384_000,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.435,
-      outputPrice: 0.87,
-      cacheCreationPrice: 0.435,
-      cacheHitPrice: 0.003625,
+      inputPrice: 0.66,
+      outputPrice: 1.98,
+      cacheCreationPrice: 0.66,
+      cacheHitPrice: 0.022,
       supportsThinking: true,
       thinkingConfig: {
         bodyParams: { thinking: { type: 'enabled' } },
@@ -56,5 +57,10 @@ export const deepseekPreset: BuiltinProviderPreset = {
       }
     }
   ],
-  deprecatedModelIds: ['deepseek-chat', 'deepseek-reasoner']
+  deprecatedModelIds: [
+    'deepseek-chat',
+    'deepseek-reasoner',
+    'deepseek-v4-flash',
+    'deepseek-v4-flash-vision-exp'
+  ]
 }

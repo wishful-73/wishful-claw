@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 using System.Collections.Generic;
 
@@ -53,6 +53,10 @@ public sealed class GrepTool : IToolExecutor
     public string Description => "Search file contents using a regular expression pattern. Supports context lines, file pattern filtering, and case-insensitive search.";
 
 
+
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 

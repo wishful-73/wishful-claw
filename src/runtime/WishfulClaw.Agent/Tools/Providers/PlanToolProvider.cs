@@ -26,7 +26,9 @@ public sealed class PlanToolProvider : IToolProvider
             "In plan mode, prioritize read/search tools for investigation and write the plan into the current plan file returned by this tool. " +
             "Write operations remain available when the planning work needs them.",
             ToolSchemaBuilder.Object(enterProps, ["reason"]),
-            availableModes: ["normal"]));
+            availableModes: ["normal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer, isCore: true));
 
         // SubmitPlanReview — Agent finalizes plan, submits to user for review
         registry.Register(new ToolDefinitionPlaceholder(
@@ -34,7 +36,9 @@ public sealed class PlanToolProvider : IToolProvider
             "Submit the finalized plan for user review. After calling this tool, the plan is shown to the user " +
             "and you MUST STOP and wait for the user to approve or request adjustments. Do NOT continue with any further actions.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["normal"]));
+            availableModes: ["normal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer, isCore: true));
 
         // ExitPlanMode — Cancel plan mode entirely (no review, no execution)
         registry.Register(new ToolDefinitionPlaceholder(
@@ -42,7 +46,9 @@ public sealed class PlanToolProvider : IToolProvider
             "Cancel and exit plan mode entirely. Use this when the user wants to abort planning or when the plan is no longer needed. " +
             "This does NOT submit the plan for review. Use SubmitPlanReview for that.",
             ToolSchemaBuilder.Object(),
-            availableModes: ["normal"]));
+            availableModes: ["normal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer, isCore: true));
 
         // UpdatePlanStep — Agent updates step status during execution
         var stepProps = new Dictionary<string, JsonElement>
@@ -58,6 +64,8 @@ public sealed class PlanToolProvider : IToolProvider
             "Update the status of a step in the current plan. Call this during plan execution to track progress. " +
             "The plan state file (.wishful-claw/plans/{planId}.state.json) is updated in real-time and can be read by external tools.",
             ToolSchemaBuilder.Object(stepProps, stepRequired),
-            availableModes: ["normal"]));
+            availableModes: ["normal"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.NoHumanToAnswer, isCore: true));
     }
 }

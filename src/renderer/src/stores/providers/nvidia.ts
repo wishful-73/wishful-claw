@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const nvidiaPreset: BuiltinProviderPreset = {
   builtinId: 'nvidia',
-  version: 1,
+  version: 2,
   name: 'NVIDIA NIM',
   type: 'openai-chat',
   defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',

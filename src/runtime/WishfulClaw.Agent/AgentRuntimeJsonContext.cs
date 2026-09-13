@@ -3,6 +3,8 @@ using System.Text.Json.Serialization;
 using WishfulClaw.Contracts;
 using WishfulClaw.Agent.Modules.Git;
 using WishfulClaw.Agent.Modules.Extensions;
+using WishfulClaw.Agent.Modules.Channels;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -40,8 +42,12 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(ProviderModelInfo))]
 [JsonSerializable(typeof(List<ProviderModelInfo>))]
 [JsonSerializable(typeof(ProviderCompletionResult))]
+[JsonSerializable(typeof(ProviderCompletionSettings))]
+[JsonSerializable(typeof(ProviderCompletionSettingsResult))]
 [JsonSerializable(typeof(ProviderCompletionToolCall))]
 [JsonSerializable(typeof(List<ProviderCompletionToolCall>))]
+[JsonSerializable(typeof(GlobalChannelSettings))]
+[JsonSerializable(typeof(GlobalChannelSettingsResult))]
 [JsonSerializable(typeof(SessionRestoreResponse))]
 [JsonSerializable(typeof(SessionRestoreFailure))]
 [JsonSerializable(typeof(GitExecResult))]

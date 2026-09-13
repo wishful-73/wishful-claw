@@ -7,7 +7,7 @@ declare global {
       ping: () => Promise<{ ok: boolean; pid: number }>
       invoke: <T = unknown>(channel: string, payload: unknown) => Promise<T>
       workerRequest: <T = unknown>(method: string, params?: unknown) => Promise<T>
-      workerRequestWithId: <T = unknown>(method: string, params?: unknown, cancelId?: string) => Promise<{ result: T; requestId: number }>
+      workerRequestWithId: <T = unknown>(method: string, params?: unknown, cancelId?: string) => Promise<T>
       cancelWorkerRequest: (cancelId: string) => Promise<{ cancelled: boolean }>
       on: <T = unknown>(channel: string, callback: (payload: T) => void) => () => void
       onAgentStream: (callback: (payload: unknown) => void) => () => void

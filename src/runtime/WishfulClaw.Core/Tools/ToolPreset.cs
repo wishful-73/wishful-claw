@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace WishfulClaw.Core.Tools;
@@ -41,6 +41,10 @@ public sealed class ToolPreset
         {
             Id = "full",
             Description = "All tools available.",
+            // No denies: direct injection is gated by the IsCore flag (AgentRunContextPolicy.
+            // ResolveDirectInjection), so proxy-only categories like browser/task need no
+            // preset-level patch. This layer shapes which tools a preset may inject at all —
+            // everything registered and scope-visible stays reachable through use_capability.
         },
 
         ["chat"] = new ToolPreset
@@ -50,11 +54,7 @@ public sealed class ToolPreset
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "file", "search", "shell", "code-compatible", "web", "memory", "ask-user",
-                "plan", "goal", "notify", "capability", "browser", "project", "codegraph"
-            },
-            AllowedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "Task", "SubAgentStatus", "SubAgentDetail"
+                "plan", "goal", "notify", "capability", "project", "codegraph"
             },
         },
 
@@ -65,11 +65,11 @@ public sealed class ToolPreset
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "file", "search", "shell", "web", "memory", "ask-user",
-                "plan", "goal", "notify", "capability", "browser", "project", "codegraph"
+                "plan", "goal", "notify", "capability", "project", "codegraph"
             },
             AllowedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "Bash", "PowerShell", "Monitor", "Task", "SubAgentStatus", "SubAgentDetail"
+                "Bash", "PowerShell", "Monitor"
             },
         },
 
@@ -80,7 +80,7 @@ public sealed class ToolPreset
             AllowedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "channel-plugin", "plugin", "file", "search", "web", "memory",
-                "ask-user", "notify", "capability", "browser", "project", "codegraph"
+                "ask-user", "notify", "capability", "project", "codegraph"
             },
         },
 
@@ -129,13 +129,10 @@ public sealed class ToolPreset
         if (DeniedCategories != null && category != null && DeniedCategories.Contains(category))
             return false;
 
-        // If no allowed categories specified, all are allowed (subject to denies)
+        // If no allowed categories specified, all are allowed (subject to denies).
+        // With AllowedTools but no AllowedCategories, the tool list IS the whitelist.
         if (AllowedCategories == null || AllowedCategories.Count == 0)
         {
-            // Still check explicit allows
-            if (AllowedTools != null && AllowedTools.Contains(toolName))
-                return true;
-            // If allowed categories is empty but allowed tools has items, only those tools
             if (AllowedTools != null && AllowedTools.Count > 0)
                 return AllowedTools.Contains(toolName);
             return true;

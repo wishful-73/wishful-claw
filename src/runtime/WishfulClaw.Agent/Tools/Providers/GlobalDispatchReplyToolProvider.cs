@@ -34,6 +34,7 @@ public sealed class GlobalDispatchReplyToolProvider : IToolProvider
                         "blocked (cannot proceed). Omit to only acknowledge the request.")
                 },
                 ["dispatchId", "report"]),
-                availableModes: new[] { "normal", "goal" }));
+                availableModes: new[] { "normal", "goal" },
+                visibleScopes: ["project:chat@*", "*:cowork@*"]));
     }
 }

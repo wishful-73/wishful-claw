@@ -6,13 +6,32 @@ namespace WishfulClaw.ProviderHeaderRegressionTests;
 
 internal static class Program
 {
-    public static int Main()
+    public static int Main(string[] args)
     {
         try
         {
+            // Snapshot mode backs the R-3.3 before/after comparison; it is not a test run, so it
+            // must not print the "checks passed" line or be mistaken for one.
+            if (args.Length >= 1 && args[0] == VisibilitySnapshotDump.Switch)
+            {
+                return VisibilitySnapshotDump.Run(args.Length >= 2 ? args[1] : "visibility-snapshot.txt");
+            }
+
+            if (args.Length >= 1 && args[0] == VisibilitySnapshotDump.DeriveSwitch)
+            {
+                return VisibilitySnapshotDump.RunDerive(args.Length >= 2 ? args[1] : "admission-vectors.txt");
+            }
+
             RunGateSuite();
             RunOverrideSuite();
             RunConnectionTestSuite();
+            UsageLogChecks.Run();
+            ToolDeclarationChecks.Run();
+            ToolVisibilityChecks.Run();
+            BrowserSurfaceAccessChecks.Run();
+            ToolProxyEntryChecks.Run();
+            VisibilitySnapshot.AssertMatchesGolden(VisibilitySnapshotDump.BuildProductionRegistry());
+            ProviderCompletionResolutionChecks.Run();
             Console.WriteLine("Provider header regression checks passed.");
             return 0;
         }

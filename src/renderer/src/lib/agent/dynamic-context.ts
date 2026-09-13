@@ -136,7 +136,7 @@ function buildSessionStateContext(sessionId: string): string | null {
     )
     if (inProgress > 0 || pending > 0) {
       parts.push(
-        '  Reminder: Continue with existing tasks and use TaskUpdate to keep status current.'
+        '  Reminder: Continue with existing tasks and use TodoTaskUpdate to keep status current.'
       )
     }
   }

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -25,24 +25,9 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 {
     private const string ToolName = "use_capability";
 
-    /// <summary>
-    /// Tool categories that are NOT directly registered in chat/coding presets.
-    /// Tools in these categories are accessible only via use_capability.
-    /// </summary>
-    private static readonly HashSet<string> ProxiedCategories = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "desktop", "cron", "image-generate",
-        "notebook", "widget", "team",
-        "channel-plugin", "plugin", "ssh", "skill-management", "project",
-        "global-task", "global-dispatch-reply", "task"
-    };
-
-    private static readonly HashSet<string> ProxiedBuiltinTools = new(StringComparer.Ordinal)
-    {
-        "list_goals",
-        "get_goal_history",
-        "reopen_goal"
-    };
+    // Proxy-only category membership used to live in a hand-kept set here; iter-28 replaced it
+    // with the tool's own IsCore declaration (AgentRuntimeUseCapabilityDiscovery): every
+    // registered non-core tool is proxy-reachable, core tools are injected directly.
 
     public static bool IsUseCapabilityTool(string toolName)
     {
@@ -313,9 +298,8 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 
             // Verify the tool is explicitly exposed through the capability proxy.
             var category = registry.GetCategory(toolName);
-            if (category is null || !IsProxiedBuiltinTool(toolName, category)
-                || !registry.IsAvailableInMode(toolName, sessionMode)
-                || !AgentRunContextPolicy.IsToolAllowed(runContext, toolName, category, channelSession))
+            if (category is null
+                || !IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, toolName, category))
             {
                 return EncodeError($"Tool '{toolName}' is not available through the capability proxy in this session mode.");
             }

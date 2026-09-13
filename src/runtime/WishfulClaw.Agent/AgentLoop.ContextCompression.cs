@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
@@ -93,6 +93,7 @@ internal static partial class AgentLoop
                 provider,
                 context,
                 state.CancellationToken,
+                sessionId,
                 text => new ValueTask(AgentRuntimeTools.EmitAsync(
                     state,
                     context,

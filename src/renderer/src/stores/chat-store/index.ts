@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 
 import { immer } from 'zustand/middleware/immer'
 
@@ -46,7 +46,7 @@ import { useAgentStore } from '@renderer/stores/agent-store'
 
 // Session-scoped agent Todo tools (OpenCowork semantics). When any of these
 // completes, the tasks table is the source of truth — refresh the task store.
-const NATIVE_TASK_TOOL_NAMES = new Set(['TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList'])
+const NATIVE_TASK_TOOL_NAMES = new Set(['TodoTaskCreate', 'TodoTaskGet', 'TodoTaskUpdate', 'TodoTaskList'])
 
 
 
@@ -113,6 +113,11 @@ export interface AgentActions {
     scope?: 'global' | 'project'
     collaborationMode?: 'chat' | 'cowork'
     runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation'
+    /**
+     * 用量统计（request_usage_logs.runtime_role）的来源覆盖。后台/自动执行的轮次
+     * 与前台会话共用 runtimeRole，靠本字段区分是"谁发起的"。
+     */
+    usageSource?: string
     pluginId?: string
     pluginType?: string
     pluginChatId?: string

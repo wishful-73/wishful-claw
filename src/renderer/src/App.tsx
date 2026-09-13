@@ -26,7 +26,11 @@ import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
 import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
 import { useAppUpdater } from '@renderer/hooks/use-app-updater'
 import { UpdateDialog } from '@renderer/components/updater/UpdateDialog'
-import { UpdateStatusBanner } from '@renderer/components/updater/UpdateStatusBanner'
+import {
+  shouldLiftToastsForBanner,
+  UPDATE_BANNER_TOAST_BOTTOM,
+  UpdateStatusBanner
+} from '@renderer/components/updater/UpdateStatusBanner'
 import type { UpdateShowDetailsPayload } from '@shared/updater/types'
 import { initializeCronRuntime } from '@renderer/lib/tools/cron-runtime'
 import { initializeSessionFollowUpRuntime } from '@renderer/lib/tools/session-follow-up-runtime'
@@ -45,6 +49,7 @@ initProviderStore()
 function App(): React.JSX.Element | null {
   const view = useUIStore((s) => s.view)
   const language = useSettingsStore((s) => s.language)
+  const updateBannerPosition = useSettingsStore((s) => s.updateBannerPosition)
   const [i18nReady, setI18nReady] = useState(false)
   const [i18nError, setI18nError] = useState<Error | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
@@ -214,7 +219,12 @@ function App(): React.JSX.Element | null {
           {view === 'splash' && <SplashPage />}
           {view === 'main' && <MainLayout />}
           {view === 'settings' && <SettingsPage />}
-          <Toaster position="bottom-left" theme="system" richColors />
+          <Toaster
+            position="bottom-left"
+            theme="system"
+            richColors
+            offset={shouldLiftToastsForBanner(updater.state.phase, updateBannerPosition) ? { bottom: UPDATE_BANNER_TOAST_BOTTOM } : undefined}
+          />
           <UpdateStatusBanner
             state={updater.state}
             onShowDetails={() => void showUpdateDetails()}

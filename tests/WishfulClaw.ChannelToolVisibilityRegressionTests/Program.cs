@@ -47,9 +47,16 @@ internal static class Program
         "list_installed_skills"
     ];
 
+    /// <summary>
+    /// The interactive surface: tools whose only outcome is a person reacting. A channel's reply
+    /// surface is plain text, so a question dialog, a rendered widget, or a plan waiting for approval
+    /// would hang the run. Since R-3.M the whole plan family is here rather than <c>ExitPlanMode</c>
+    /// alone — a channel run has no plan review to wait for, so the family moves together.
+    /// </summary>
     private static readonly string[] ChannelExcludedTools =
     [
-        "visualize_show_widget", "AskUserQuestion", "ExitPlanMode"
+        "visualize_show_widget", "AskUserQuestion",
+        "EnterPlanMode", "SubmitPlanReview", "ExitPlanMode", "UpdatePlanStep"
     ];
 
     private static int _checks;
@@ -189,13 +196,13 @@ internal static class Program
         foreach (var name in allowed)
         {
             Assert(
-                AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: true),
+                AgentRunContextPolicy.IsToolAllowed(runContext, name, registry, channelSession: true),
                 $"layer 3 allows {name} in a channel session");
         }
         foreach (var name in ChannelExcludedTools)
         {
             Assert(
-                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: true),
+                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry, channelSession: true),
                 $"layer 3 still excludes {name} from a channel session");
         }
 
@@ -204,7 +211,7 @@ internal static class Program
         foreach (var name in PluginTools)
         {
             Assert(
-                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry.GetCategory(name), channelSession: false),
+                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry, channelSession: false),
                 $"{name} stays channel-only and does not leak into a desktop session");
         }
     }

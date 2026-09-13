@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 
@@ -7,111 +7,22 @@ namespace WishfulClaw.Agent;
 internal readonly record struct AgentRunContext(
     string Scope,
     string CollaborationMode,
-    string RuntimeRole);
+    string RuntimeRole,
+    bool WebSearchEnabled = true,
+    bool CodegraphEnabled = false);
 
+/// <summary>
+/// Turns a worker request into the run context the admission check reads, and answers "is this tool
+/// allowed in this run?".
+///
+/// The answer comes from the tool's own declarations and nothing else (R-3): <c>VisibleScopes</c>
+/// grants, <c>ExcludedScopes</c> vetoes, no declaration means visible. This type used to keep four
+/// more name tables beside that — a per-role bypass plus a chat allowlist per scope — and every one of
+/// them was a second opinion about tools that had already stated where they belong. They are gone, so
+/// adding a tool means declaring its own scopes and there is no central list to remember.
+/// </summary>
 internal static class AgentRunContextPolicy
 {
-    private static readonly HashSet<string> IndependentRuntimeRoles = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "automation",
-        "pet",
-        "providerturn",
-        "translation"
-    };
-
-    private static readonly HashSet<string> ChannelExcludedTools = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "visualize_show_widget",
-        "AskUserQuestion",
-        "ExitPlanMode"
-    };
-
-    private static readonly HashSet<string> ChannelOnlyTools = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ChannelSendImage",
-        "ChannelSendFile",
-        "FeishuSendImage",
-        "FeishuSendFile",
-        "FeishuListChatMembers",
-        "FeishuAtMember",
-        "FeishuSendUrgent",
-        "FeishuBitableListApps",
-        "FeishuBitableListTables",
-        "FeishuBitableListFields",
-        "FeishuBitableGetRecords",
-        "FeishuBitableCreateRecords",
-        "FeishuBitableUpdateRecords",
-        "FeishuBitableDeleteRecords",
-        "WeixinSendImage",
-        "WeixinSendFile",
-        "PluginSendMessage",
-        "PluginReplyMessage",
-        "PluginGetGroupMessages",
-        "PluginListGroups",
-        "PluginSummarizeGroup",
-        "PluginGetCurrentChatMessages"
-    };
-
-    private static readonly HashSet<string> SharedChatTools = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ChannelSendImage",
-        "ChannelSendFile",
-        "AskUserQuestion",
-        "BrowserGetContent",
-        "BrowserNavigate",
-        "BrowserScreenshot",
-        "BrowserScroll",
-        "BrowserSearch",
-        "BrowserSnapshot",
-        "Glob",
-        "Grep",
-        "LS",
-        "Read",
-        "SubAgentDetail",
-        "SubAgentStatus",
-        "WebFetch",
-        "WebSearch",
-        "codegraph_explore",
-        "get_goal",
-        "get_goal_history",
-        "get_project_details",
-        "list_goals",
-        "list_installed_skills",
-        "list_projects",
-        "memory_hot_read",
-        "memory_search",
-        "visualize_show_widget",
-        "use_capability"
-    };
-
-    private static readonly HashSet<string> ProjectChatTools = new(SharedChatTools, StringComparer.OrdinalIgnoreCase)
-    {
-        "TaskCreate",
-        "TaskGet",
-        "TaskList",
-        "TaskUpdate",
-        "reply_global_dispatch"
-    };
-
-    private static readonly HashSet<string> GlobalChatTools = new(SharedChatTools, StringComparer.OrdinalIgnoreCase)
-    {
-        "TaskCreate",
-        "TaskGet",
-        "TaskList",
-        "TaskUpdate",
-        "create_global_task",
-        "create_session",
-        "list_global_dispatches",
-        "list_global_tasks",
-        "memory_append",
-        "memory_hot_write",
-        "memory_update",
-        "send_session_message",
-        "send_work_request",
-        "update_dispatch",
-        "update_global_task"
-    };
-
     public static AgentRunContext Resolve(JsonElement parameters)
     {
         var sessionMode = Normalize(JsonHelpers.GetString(parameters, "sessionMode")) switch
@@ -151,6 +62,16 @@ internal static class AgentRunContextPolicy
         }
 
         var runtimeRole = Normalize(JsonHelpers.GetString(parameters, "runtimeRole"));
+
+        // A background automation run is a work run: it was asked to do a job on its own, so it gets
+        // the same breadth a cowork session has, including in the global scope where it has no project
+        // of its own. The other unattended roles (pet, translation, providerTurn) ask for "chat"
+        // already and need no mapping.
+        if (runtimeRole == "automation")
+        {
+            collaborationMode = "cowork";
+        }
+
         if (runtimeRole.Length == 0)
         {
             runtimeRole = sessionMode switch
@@ -162,7 +83,12 @@ internal static class AgentRunContextPolicy
             };
         }
 
-        return new AgentRunContext(scope, collaborationMode, runtimeRole);
+        return new AgentRunContext(
+            scope,
+            collaborationMode,
+            runtimeRole,
+            JsonHelpers.GetBool(parameters, "webSearchEnabled", true),
+            JsonHelpers.GetBool(parameters, "codegraphEnabled", false));
     }
 
     public static string ResolveAvailableMode(JsonElement parameters, AgentRunContext context)
@@ -190,35 +116,43 @@ internal static class AgentRunContextPolicy
         };
     }
 
+    /// <summary>
+    /// Whether this run answers a message that arrived from a messaging channel.
+    ///
+    /// Only the inbound paths count, and both say so on the request. Inferring it from <c>pluginId</c>
+    /// also caught a scheduled task that merely *delivers* its result into a chat — that run is a work
+    /// run, and rendering it as a channel hid every write tool from it.
+    /// </summary>
     public static bool IsChannelSession(JsonElement parameters) =>
         JsonHelpers.GetBool(parameters, "channelSession", false) ||
-        (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginId")) &&
-         (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "externalChatId")) ||
-          !string.IsNullOrWhiteSpace(JsonHelpers.GetString(parameters, "pluginChatId"))));
+        Normalize(JsonHelpers.GetString(parameters, "sessionMode")) == "channel";
 
+    /// <summary>
+    /// Admission check for a single tool in a single run context.
+    ///
+    /// This is the enforcement layer, not the declaration layer, and it holds no opinion of its own:
+    /// it reads both declarations off the registered executor and hands them to
+    /// <see cref="ToolVisibilityPolicy"/>. The registry is therefore required — a call site that
+    /// dropped it would not crash, it would read every tool as undeclared and admit all of them.
+    /// </summary>
     public static bool IsToolAllowed(
         AgentRunContext context,
         string toolName,
-        string? category,
+        ToolRegistry? registry,
         bool channelSession = false)
     {
-        if (!channelSession && ChannelOnlyTools.Contains(toolName))
-            return false;
-        if (channelSession && ChannelExcludedTools.Contains(toolName))
-            return false;
-        if (channelSession && ChannelOnlyTools.Contains(toolName))
-            return true;
+        if (registry is not null && registry.TryGetExecutor(toolName, out var executor) && executor is not null)
+        {
+            return ToolVisibilityPolicy.IsVisible(
+                context,
+                channelSession,
+                executor.VisibleScopes,
+                executor.ExcludedScopes);
+        }
 
-        if (IndependentRuntimeRoles.Contains(context.RuntimeRole))
-            return true;
-
-        if (!string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        var allowed = string.Equals(context.Scope, "global", StringComparison.OrdinalIgnoreCase)
-            ? GlobalChatTools
-            : ProjectChatTools;
-        return allowed.Contains(toolName);
+        // Unknown name: an MCP or skill tool registered after the snapshot, or a call the model
+        // invented. Nothing declared it away, so the default-visible rule decides.
+        return ToolVisibilityPolicy.IsVisible(context, channelSession, visibleScopes: null, excludedScopes: null);
     }
 
     public static IReadOnlyList<ToolDefinition> FilterToolDefinitions(
@@ -227,21 +161,42 @@ internal static class AgentRunContextPolicy
         AgentRunContext context,
         bool channelSession = false)
     {
-        if (!channelSession &&
-            (IndependentRuntimeRoles.Contains(context.RuntimeRole) ||
-             !string.Equals(context.CollaborationMode, "chat", StringComparison.OrdinalIgnoreCase)))
-
-        {
-            return definitions;
-        }
-
         var filtered = new List<ToolDefinition>(definitions.Count);
         foreach (var definition in definitions)
         {
-            if (IsToolAllowed(context, definition.Name, registry?.GetCategory(definition.Name), channelSession))
+            if (IsToolAllowed(context, definition.Name, registry, channelSession))
+            {
                 filtered.Add(definition);
+            }
         }
         return filtered;
+    }
+
+    /// <summary>
+    /// The direct-injection pipeline, in one place so the AgentLoop and the regression sweep
+    /// cannot drift: preset shapes what a run may inject, visibility vetoes per run context,
+    /// and <c>IsCore</c> decides what the LLM actually sees as a direct tool definition
+    /// (iter-28 tool narrowing). Non-core tools are NOT lost here — they stay registered and
+    /// are reached through the <c>use_capability</c> proxy, which never consults IsCore.
+    /// </summary>
+    public static IReadOnlyList<ToolDefinition> ResolveDirectInjection(
+        ToolRegistry registry,
+        ToolPreset preset,
+        string? sessionMode,
+        AgentRunContext context,
+        bool channelSession = false)
+    {
+        var definitions = FilterToolDefinitions(
+            registry.GetToolDefinitions(preset, sessionMode), registry, context, channelSession);
+        var core = new List<ToolDefinition>(definitions.Count);
+        foreach (var definition in definitions)
+        {
+            if (definition.IsCore)
+            {
+                core.Add(definition);
+            }
+        }
+        return core;
     }
 
     private static string Normalize(string? value) => value?.Trim().ToLowerInvariant() ?? string.Empty;

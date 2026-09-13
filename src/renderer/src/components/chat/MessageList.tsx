@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -149,6 +149,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       loadedTurns={data.loadedTurns}
       pinnedTurnMessage={data.pinnedTurnMessage}
       isPinnedTurnOverlayVisible={scroll.isPinnedTurnOverlayVisible}
+      minContentHeight={scroll.minContentHeight}
       onJumpToPinnedMessage={scroll.handleJumpToPinnedMessage}
       rows={data.rows}
       lastMessageRowIndex={data.rows.length - 1}

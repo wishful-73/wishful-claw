@@ -24,6 +24,8 @@ public sealed class TaskTool : IToolExecutor
 
     public string Description { get; }
 
+    public string[]? VisibleScopes => ToolVisibilityScopes.WorkRunsOnly;
+
     public JsonElement InputSchema { get; }
 
     public TaskTool()

@@ -2,7 +2,7 @@ import type { BuiltinProviderPreset } from './types'
 
 export const cerebrasPreset: BuiltinProviderPreset = {
   builtinId: 'cerebras',
-  version: 1,
+  version: 2,
   name: 'Cerebras',
   type: 'openai-chat',
   defaultBaseUrl: 'https://api.cerebras.ai/v1',

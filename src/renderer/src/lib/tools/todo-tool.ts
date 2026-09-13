@@ -15,11 +15,11 @@ function encodeNativeOnlyTaskResult(toolName: string): string {
   })
 }
 
-// ── TaskCreate ──
+// ── TodoTaskCreate ──
 
 const taskCreateHandler: ToolHandler = {
   definition: {
-    name: 'TaskCreate',
+    name: 'TodoTaskCreate',
     description:
       'Create a task for the current session. Use this to track progress on complex multi-step work. Tasks are displayed in the Steps panel.',
     inputSchema: {
@@ -43,15 +43,15 @@ const taskCreateHandler: ToolHandler = {
       required: ['title']
     }
   },
-  execute: async () => encodeNativeOnlyTaskResult('TaskCreate'),
+  execute: async () => encodeNativeOnlyTaskResult('TodoTaskCreate'),
   requiresApproval: () => false
 }
 
-// ── TaskGet ──
+// ── TodoTaskGet ──
 
 const taskGetHandler: ToolHandler = {
   definition: {
-    name: 'TaskGet',
+    name: 'TodoTaskGet',
     description:
       'Retrieve a task by its ID to inspect its title, status, ownership, and dependencies.',
     inputSchema: {
@@ -65,15 +65,15 @@ const taskGetHandler: ToolHandler = {
       required: ['taskId']
     }
   },
-  execute: async () => encodeNativeOnlyTaskResult('TaskGet'),
+  execute: async () => encodeNativeOnlyTaskResult('TodoTaskGet'),
   requiresApproval: () => false
 }
 
-// ── TaskUpdate ──
+// ── TodoTaskUpdate ──
 
 const taskUpdateHandler: ToolHandler = {
   definition: {
-    name: 'TaskUpdate',
+    name: 'TodoTaskUpdate',
     description:
       'Update a task: change status, title, owner, or manage dependencies. Set status to "deleted" to permanently remove a task.',
     inputSchema: {
@@ -114,15 +114,15 @@ const taskUpdateHandler: ToolHandler = {
       required: ['taskId']
     }
   },
-  execute: async () => encodeNativeOnlyTaskResult('TaskUpdate'),
+  execute: async () => encodeNativeOnlyTaskResult('TodoTaskUpdate'),
   requiresApproval: () => false
 }
 
-// ── TaskList ──
+// ── TodoTaskList ──
 
 const taskListHandler: ToolHandler = {
   definition: {
-    name: 'TaskList',
+    name: 'TodoTaskList',
     description:
       'List all tasks in the current session with their detailed titles, status, owner, and dependencies.',
     inputSchema: {
@@ -130,7 +130,7 @@ const taskListHandler: ToolHandler = {
       properties: {}
     }
   },
-  execute: async () => encodeNativeOnlyTaskResult('TaskList'),
+  execute: async () => encodeNativeOnlyTaskResult('TodoTaskList'),
   requiresApproval: () => false
 }
 

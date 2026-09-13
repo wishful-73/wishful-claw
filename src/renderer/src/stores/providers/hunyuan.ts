@@ -23,7 +23,11 @@ export const hunyuanPreset: BuiltinProviderPreset = {
   builtinId: 'hunyuan',
   // v2: add Hy4 Preview (1M context, thinking defaults to high).
   // v3: hy3-preview retired by TokenHub on 2026-08-31 (traffic routes to hy3).
-  version: 3,
+  // v4: 2026-09 按腾讯云 TokenHub 官方价格表（cloud.tencent.com/document/product/1823/130055）
+  //     补齐 hy4-preview / hy3 价格。官方人民币牌价：hy4-preview 输入 ¥6 / 输出 ¥18 /
+  //     缓存命中 ¥0.3；hy3 输入 ¥1 / 输出 ¥4 / 缓存命中 ¥0.25（每百万 token）。
+  //     按 1 USD = 6.7106 CNY 折算为文件所用的 USD 口径。
+  version: 4,
   name: '腾讯混元',
   type: 'openai-chat',
   defaultBaseUrl: 'https://tokenhub.tencentmaas.com/v1',
@@ -41,9 +45,9 @@ export const hunyuanPreset: BuiltinProviderPreset = {
       maxOutputTokens: 64_000,
       supportsVision: false,
       supportsFunctionCall: true,
-      inputPrice: 0.834,
-      outputPrice: 2.501,
-      cacheHitPrice: 0.042,
+      inputPrice: 0.894,
+      outputPrice: 2.682,
+      cacheHitPrice: 0.045,
       supportsThinking: true,
       thinkingConfig: hy4ThinkingConfig
     },
@@ -56,6 +60,9 @@ export const hunyuanPreset: BuiltinProviderPreset = {
       maxOutputTokens: 128_000,
       supportsVision: false,
       supportsFunctionCall: true,
+      inputPrice: 0.149,
+      outputPrice: 0.596,
+      cacheHitPrice: 0.037,
       supportsThinking: true,
       thinkingConfig: hy3ThinkingConfig
     }

@@ -1,4 +1,4 @@
-﻿{
+{
   "home": {
     "title": "How can I help you today?",
     "subtitle": "Start a conversation or pick a quick prompt below.",
@@ -577,6 +577,10 @@
       "LS": "List Directory",
       "Glob": "Find Files",
       "Grep": "Search in Files",
+      "TodoTaskCreate": "Create Task",
+      "TodoTaskGet": "Get Task",
+      "TodoTaskUpdate": "Update Task",
+      "TodoTaskList": "List Tasks",
       "TaskCreate": "Create Task",
       "TaskGet": "Get Task",
       "TaskUpdate": "Update Task",

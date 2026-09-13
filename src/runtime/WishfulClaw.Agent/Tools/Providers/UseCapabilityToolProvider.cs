@@ -1,3 +1,4 @@
+using WishfulClaw.Agent;
 using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent.Tools.Providers;
@@ -20,10 +21,7 @@ public sealed class UseCapabilityToolProvider : IToolProvider
     {
         registry.Register(new ToolDefinitionPlaceholder(
             "use_capability",
-            "Stable capability proxy for MCP tools, Skills, and proxied built-in tools. "
-            + "action=\"list\" returns paged summaries (filters: type, category, query, cursor, page_size); "
-            + "action=\"inspect\" returns one capability's full input schema; action=\"call\" executes it. "
-            + "capability_id format: \"mcp-tool:server/tool\", \"skill:name\", or \"builtin:toolName\".",
+            AgentRuntimeUseCapabilityExecutor.BuildCapabilityDescription(),
             ToolSchemaBuilder.Object(
                 new()
                 {
@@ -36,7 +34,7 @@ public sealed class UseCapabilityToolProvider : IToolProvider
                     ["type"] = ToolSchemaBuilder.String(
                         "Optional action=list filter: mcp-server, mcp-tool, skill, or builtin."),
                     ["category"] = ToolSchemaBuilder.String(
-                        "Optional action=list category filter, such as mcp, skill, project, desktop, or goal."),
+                        "Optional action=list category filter. Use mcp, skill, or a built-in category named in this tool description."),
                     ["query"] = ToolSchemaBuilder.String(
                         "Optional action=list case-insensitive search over capability id, name, and description."),
                     ["cursor"] = ToolSchemaBuilder.String(
@@ -49,6 +47,7 @@ public sealed class UseCapabilityToolProvider : IToolProvider
                             ["(any)"] = ToolSchemaBuilder.String("Tool arguments as JSON object. Only for action=call.")
                         })
                 },
-                new[] { "action" })));
+                new[] { "action" }),
+            visibleScopes: ToolVisibilityScopes.Everywhere, isCore: true));
     }
 }

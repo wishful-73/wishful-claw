@@ -20,10 +20,7 @@ import {
   detectSystemLanguage,
   normalizeLanguageCode
 } from '@renderer/lib/i18n-language'
-import type {
-  PromptRecommendationModelBinding,
-  ShellExecutionEndpoint
-} from './settings-store-types'
+import type { ShellExecutionEndpoint } from './settings-store-types'
 import {
   DEFAULT_MAX_CONCURRENT_SUB_AGENTS,
   DEFAULT_REQUEST_MAX_RETRIES,
@@ -36,7 +33,6 @@ import {
   clampMaxToolCallsPerTurn,
   isThemeSetting,
   normalizeShellExecutionEndpoint,
-  sanitizeClaudeCodeConfigs,
   sanitizeCodexConfigs,
   sanitizeRecentWorkingTargets,
   LEGACY_DEFAULT_THEME_MODE,
@@ -54,6 +50,7 @@ import {
   clampApiRequestTimeoutSeconds
 } from './settings-store'
 import { LEFT_SIDEBAR_DEFAULT_WIDTH } from '@renderer/components/layout/right-panel-defs'
+import { normalizeUpdateBannerPosition } from '../../../shared/updater/types'
 
 /**
  * Migrate persisted settings state to the current schema.
@@ -123,21 +120,6 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.codegraphFullToolSurface === undefined) {
     state.codegraphFullToolSurface = false
   }
-  if (state.promptRecommendationModels === undefined) {
-    state.promptRecommendationModels = {
-      chat: null,
-      clarify: null,
-      cowork: null,
-      code: null,
-      acp: null
-    }
-  } else if (
-    (state.promptRecommendationModels as Record<string, unknown>).acp === undefined
-  ) {
-    ;(
-      state.promptRecommendationModels as Record<string, PromptRecommendationModelBinding>
-    ).acp = null
-  }
   if (state.newSessionDefaultModel === undefined) {
     state.newSessionDefaultModel = null
   }
@@ -151,16 +133,6 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
       0.9,
       Math.max(0.3, state.contextCompressionThreshold as number)
     )
-  }
-  if (
-    !state.contextCompressionModel ||
-    typeof state.contextCompressionModel !== 'object' ||
-    Array.isArray(state.contextCompressionModel) ||
-    typeof (state.contextCompressionModel as Record<string, unknown>).providerId !==
-      'string' ||
-    typeof (state.contextCompressionModel as Record<string, unknown>).modelId !== 'string'
-  ) {
-    state.contextCompressionModel = null
   }
   if (state.mainModelSelectionMode === undefined) {
     state.mainModelSelectionMode = 'auto'
@@ -177,7 +149,6 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   ) {
     state.coworkDefaultPermissionMode = 'fullAccess'
   }
-  state.claudeCodeConfigs = sanitizeClaudeCodeConfigs(state.claudeCodeConfigs)
   state.codexConfigs = sanitizeCodexConfigs(state.codexConfigs)
   state.permissionPolicy = sanitizePermissionPolicy(state.permissionPolicy as PermissionPolicy)
   if (state.projectDefaultDirectoryMode === undefined) {
@@ -244,6 +215,9 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.conversationPanelFullWidth === undefined) {
     state.conversationPanelFullWidth = false
   }
+  // Shape-checked only. A position restored on a smaller window is repaired by the banner itself,
+  // which is the only place that knows the viewport and the banner's rendered size.
+  state.updateBannerPosition = normalizeUpdateBannerPosition(state.updateBannerPosition)
   if (state.autoUpdateEnabled === undefined) {
     state.autoUpdateEnabled = true
   }

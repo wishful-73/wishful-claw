@@ -7,6 +7,11 @@ namespace WishfulClaw.Agent.Tools.Providers;
 /// <summary>
 /// Registers browser tool definitions.
 /// Execution: ToolDispatchRouter → AgentRuntimeBrowserExecutor (reverse-request to renderer).
+///
+/// Every tool here drives the one shared browser surface, so the split is by what the call changes,
+/// not by which category it belongs to: reading is safe in any run, clicking and typing only in a
+/// work run. Both halves veto a sub-agent — a delegated run has no user watching the window it is
+/// taking over.
 /// </summary>
 public sealed class BrowserToolProvider : IToolProvider
 {
@@ -22,7 +27,9 @@ public sealed class BrowserToolProvider : IToolProvider
                 {
                     ["url"] = BrowserToolSchema.CreateStringProperty("URL to navigate to. Required for goto action."),
                     ["action"] = BrowserToolSchema.CreateStringProperty("goto | back | forward | refresh. Default: goto.")
-                })));
+                }),
+            visibleScopes: ToolVisibilityScopes.Everywhere,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserGetContent",
@@ -32,17 +39,23 @@ public sealed class BrowserToolProvider : IToolProvider
                 {
                     ["selector"] = BrowserToolSchema.CreateStringProperty("CSS selector to scope extraction. Omit for full page."),
                     ["type"] = BrowserToolSchema.CreateStringProperty("markdown (default) or html.")
-                })));
+                }),
+            visibleScopes: ToolVisibilityScopes.Everywhere,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserScreenshot",
             "Capture a screenshot of the current browser viewport.",
-            BrowserToolSchema.CreateObjectSchema(new Dictionary<string, JsonElement>())));
+            BrowserToolSchema.CreateObjectSchema(new Dictionary<string, JsonElement>()),
+            visibleScopes: ToolVisibilityScopes.Everywhere,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserSnapshot",
             "List all interactive elements with CSS selectors. Call before BrowserClick/BrowserType.",
-            BrowserToolSchema.CreateObjectSchema(new Dictionary<string, JsonElement>())));
+            BrowserToolSchema.CreateObjectSchema(new Dictionary<string, JsonElement>()),
+            visibleScopes: ToolVisibilityScopes.Everywhere,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserClick",
@@ -52,7 +65,9 @@ public sealed class BrowserToolProvider : IToolProvider
                 {
                     ["selector"] = BrowserToolSchema.CreateStringProperty("CSS selector or text=<visible text>.")
                 },
-                new[] { "selector" })));
+                new[] { "selector" }),
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserType",
@@ -65,7 +80,9 @@ public sealed class BrowserToolProvider : IToolProvider
                     ["clear"] = BrowserToolSchema.CreateBooleanProperty("Clear before typing. Default: true.", true),
                     ["submit"] = BrowserToolSchema.CreateBooleanProperty("Press Enter after typing. Default: false.", false)
                 },
-                new[] { "selector", "text" })));
+                new[] { "selector", "text" }),
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserScroll",
@@ -75,7 +92,9 @@ public sealed class BrowserToolProvider : IToolProvider
                 {
                     ["direction"] = BrowserToolSchema.CreateStringProperty("down (default) or up."),
                     ["amount"] = BrowserToolSchema.CreateNumberProperty("Pixels to scroll. Omit for one viewport height.")
-                })));
+                }),
+            visibleScopes: ToolVisibilityScopes.Everywhere,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserEvaluate",
@@ -85,7 +104,9 @@ public sealed class BrowserToolProvider : IToolProvider
                 {
                     ["code"] = BrowserToolSchema.CreateStringProperty("JavaScript to execute.")
                 },
-                new[] { "code" })));
+                new[] { "code" }),
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "BrowserSearch",
@@ -97,6 +118,8 @@ public sealed class BrowserToolProvider : IToolProvider
                     ["intent"] = BrowserToolSchema.CreateStringProperty("Override auto-detected intent: general, tech, academic, finance, social, knowledge."),
                     ["maxResults"] = BrowserToolSchema.CreateNumberProperty("Maximum results after deduplication. Default 10.")
                 },
-                new[] { "query" })));
+                new[] { "query" }),
+            visibleScopes: ToolVisibilityScopes.Everywhere,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
     }
 }

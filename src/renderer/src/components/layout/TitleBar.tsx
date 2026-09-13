@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SquareTerminal } from 'lucide-react'
+import { FolderOpen, HelpCircle, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { openUserGuide } from '@renderer/lib/user-guide'
 import { WindowControls } from './WindowControls'
 
 interface TitleBarProps {
@@ -90,8 +91,20 @@ export function TitleBar({
         )}
       </div>
 
-      {/* Right: files, terminal, right panel toggle, window controls */}
+      {/* Right: user guide, files, terminal, right panel toggle, window controls */}
       <div className="flex items-center gap-1 px-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={openUserGuide}
+              className="titlebar-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <HelpCircle className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('topbar.userGuide', { defaultValue: '使用指引' })}</TooltipContent>
+        </Tooltip>
+
         {hasProject && (
           <>
             <Tooltip>

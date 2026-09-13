@@ -1,4 +1,4 @@
-﻿{
+{
   "title": "设置",
   "shortcuts": {
     "title": "快捷键",
@@ -42,6 +42,10 @@
       "label": "AI 服务商",
       "desc": "配置 API Key、Base URL，测试连通性"
     },
+    "modelManagement": {
+      "label": "模型管理",
+      "desc": "管理辅助请求使用的服务商和模型"
+    },
     "runtime": {
       "label": "运行与性能",
       "desc": "API 请求超时、重试策略与上下文压缩"
@@ -52,7 +56,7 @@
     },
     "about": {
       "label": "关于",
-      "desc": "产品介绍与应用更新"
+      "desc": "产品介绍、使用指引与应用更新"
     },
     "groups": {
       "general": "基础",
@@ -91,6 +95,10 @@
     },
     "logs": {
       "label": "日志"
+    },
+    "usage": {
+      "label": "用量统计",
+      "desc": "按模型请求记录统计请求次数、token 与成本"
     }
   },
   "general": {
@@ -225,8 +233,12 @@
       "baseUrl": "Base URL",
       "baseUrlPlaceholder": "https://api.example.com/v1",
       "baseUrlHint": "兼容 OpenAI 格式的 API 地址",
+      "homepage": "官网地址",
+      "homepagePlaceholder": "https://www.example.com",
+      "optional": "可选",
       "apiKey": "API Key",
       "apiKeyPlaceholder": "输入 API Key",
+      "apiKeyHint": "可稍后在服务商详情页中填写",
       "added": "服务商 {{name}} 已添加"
     },
     "config": {
@@ -234,9 +246,12 @@
       "apiKeyPlaceholder": "输入 API Key",
       "apiKeyNotRequired": "不需要 API Key",
       "baseUrl": "Base URL",
+      "officialWebsite": "官方网站",
+      "openHomepage": "前往官网",
       "testSuccess": "连接测试成功",
       "testFailed": "连接测试失败",
       "protocolType": "协议类型",
+      "protocolTypeHint": "切换协议后请确认 Base URL 与新协议匹配",
       "cacheTtl": "缓存 TTL",
       "cacheTtlHint": "Anthropic 缓存生存时间，模型级配置可覆盖",
       "models": {
@@ -256,6 +271,13 @@
         "thinkingConfig": "思考配置",
         "editThinking": "编辑思考配置",
         "configureThinking": "配置思考模式"
+      },
+      "resetBuiltin": {
+        "title": "恢复出厂设置",
+        "description": "将清除你对该内置服务商的所有配置（API Key、地址、模型开关等），恢复为内置默认设置。该服务商仍会保留在列表中。",
+        "action": "恢复出厂设置",
+        "tooltip": "恢复出厂设置",
+        "done": "已恢复出厂设置"
       }
     },
     "modelForm": {
@@ -744,6 +766,12 @@
       "channels": "渠道集成：接入飞书、微信等消息平台，随时随地与 Agent 协作",
       "productivity": "效率工具：全局启动器、剪贴板增强、SSH 终端"
     },
+    "guide": {
+      "label": "使用指引",
+      "desc": "功能全量说明与上手教程，在浏览器中查看",
+      "hint": "指引始终指向最新版本，旧链接不会失效。",
+      "open": "查看指引"
+    },
     "updater": {
       "label": "应用更新",
       "desc": "检查并安装 Wishful Claw 的新版本",
@@ -954,8 +982,7 @@
     },
     "tabs": {
       "qr": "扫码绑定",
-      "credentials": "API 凭据",
-      "features": "功能设置"
+      "credentials": "API 凭据"
     },
     "qr": {
       "title": "扫码绑定",
@@ -1001,19 +1028,17 @@
       "saveFailed": "保存失败"
     },
     "features": {
-      "title": "功能与权限",
-      "section": "功能开关",
       "autoReply": "自动回复",
       "autoReplyDesc": "收到消息时自动使用 AI 回复",
       "streamingReply": "流式回复",
-      "streamingReplyDesc": "实时流式输出回复内容（需要渠道支持）",
+      "streamingReplyDesc": "实时流式输出回复内容（需要渠道支持）；当前仅记录设置，尚未接入强制执行",
       "autoStart": "自动启动",
-      "autoStartDesc": "应用启动时自动连接此渠道"
+      "autoStartDesc": "应用启动时自动连接已启用的渠道"
     },
     "permissions": {
-      "section": "安全权限",
-      "allowShell": "Shell 执行",
-      "allowShellDesc": "允许 AI 执行 shell 命令",
+      "shellRequiresApproval": "Shell 命令需授权",
+      "shellRequiresApprovalDesc": "开启后渠道对话每次执行 shell 命令前需你确认；关闭则直接执行",
+      "notEnforcedHint": "以下开关当前仅记录设置，尚未接入强制执行",
       "allowReadHome": "读取主目录",
       "allowReadHomeDesc": "允许读取工作目录之外的文件",
       "allowWriteOutside": "外部写入",
@@ -1064,13 +1089,24 @@
     "wsUrl": "WebSocket 中继地址（可选）",
     "global": {
       "title": "全局渠道设置",
+      "tabs": {
+        "reply": "回复设置",
+        "features": "功能开关",
+        "permissions": "安全权限"
+      },
+      "loadingSettings": "正在读取全局渠道设置…",
+      "loadFailed": "全局渠道设置读取失败",
+      "saveFailed": "保存失败",
+      "retry": "重试",
       "persona": "回复人格",
       "personaDesc": "所有渠道自动回复使用的人格",
       "noPersona": "默认（无人格）",
       "model": "回复模型",
       "modelDesc": "所有渠道自动回复使用的 AI 模型",
       "provider": "Provider",
-      "modelPlaceholder": "选择模型"
+      "noProvider": "无可用服务商",
+      "modelPlaceholder": "选择模型",
+      "noModel": "无可用模型"
     }
   },
   "websearch": {
@@ -1289,6 +1325,30 @@
   "runtimePage": {
     "title": "运行与性能",
     "subtitle": "Agent 运行时设置：请求超时、重试、工具执行与上下文压缩",
+    "auxiliaryModels": {
+      "title": "辅助请求模型",
+      "desc": "为提示词优化和新建角色指定模型；未指定时使用补位模型，补位失效则回退到已校验的全局激活模型。",
+      "save": "保存",
+      "saving": "保存中…",
+      "saved": "已保存。无显式配置的请求会先按补位模型、再按全局激活模型解析。",
+      "saveFailed": "保存失败",
+      "loadFailed": "读取失败",
+      "unconfigured": "未配置",
+      "selectModel": "选择模型",
+      "promptOptimizer": {
+        "label": "提示词优化",
+        "desc": "这项配置只影响提示词优化请求。"
+      },
+      "persona": {
+        "label": "新建角色辅助",
+        "desc": "这项配置只影响 AI 生成人格请求。"
+      },
+      "fallback": {
+        "label": "补位模型",
+        "desc": "没有请求专属配置时使用；Worker 读取时会校验服务商与模型是否仍存在。"
+      },
+      "hint": "模型删除或服务商下线后不会静默使用悬空 id，Worker 会记录警告并继续尝试下一级。"
+    },
     "sessionDefaults": {
       "title": "会话默认值",
       "desc": "设置新建项目会话的协作模式与 Cowork 权限",
@@ -1336,7 +1396,8 @@
       "downloaded": "更新 {{version}} 已下载，等待重启安装",
       "error": "更新失败",
       "install": "重启安装",
-      "details": "详情"
+      "details": "详情",
+      "dragHint": "按住可拖动"
     },
     "progress": {
       "unknown": "未知",
@@ -1437,6 +1498,67 @@
         "label": "召回可见性",
         "desc": "在会话中展示本次召回了哪些记忆（或未召回的原因）"
       }
+    }
+  },
+  "usage": {
+    "title": "用量统计",
+    "refresh": "刷新",
+    "empty": "该时间范围内还没有请求记录",
+    "footnote": "统计基于模型请求日志（每次 HTTP 请求一行，含重试与失败）。成本仅按模型显式配置的价格计算，未配置价格时留空。",
+    "ranges": {
+      "h24": "24 小时",
+      "d7": "7 天",
+      "d30": "30 天"
+    },
+    "stats": {
+      "requests": "请求次数",
+      "input": "原始输入",
+      "billableInput": "计费输入",
+      "output": "输出",
+      "cacheRead": "缓存读取",
+      "cacheCreation": "缓存创建",
+      "reasoning": "推理",
+      "cost": "成本",
+      "costHint": "未配置价格则不计",
+      "avgDuration": "平均耗时",
+      "outcomeSummary": "{{success}} 成功 / {{error}} 失败",
+      "retries": " · {{retryCount}} 次重试"
+    },
+    "chart": {
+      "title": "请求趋势",
+      "desc": "按小时/按天分桶，红色为失败请求",
+      "bucketTitle": "{{time}} · {{total}} 次请求",
+      "bucketErrors": "（{{errors}} 次失败）"
+    },
+    "byModel": {
+      "title": "按模型",
+      "empty": "暂无数据"
+    },
+    "bySource": {
+      "title": "按来源",
+      "empty": "暂无数据"
+    },
+    "detail": {
+      "title": "请求明细",
+      "truncated": "显示最近 {{shown}} 条，共 {{total}} 条",
+      "count": "共 {{total}} 条",
+      "columns": {
+        "time": "时间",
+        "model": "模型",
+        "source": "来源",
+        "input": "原始输入",
+        "billableInput": "计费输入",
+        "output": "输出",
+        "cacheCreation": "缓存创建",
+        "reasoning": "推理",
+        "duration": "耗时",
+        "cost": "成本"
+      }
+    },
+    "rollup": {
+      "requests": "请求",
+      "input": "输入",
+      "cost": "成本"
     }
   },
   "analytics": {

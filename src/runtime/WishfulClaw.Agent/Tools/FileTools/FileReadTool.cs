@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 using System.Globalization;
 
@@ -45,6 +45,10 @@ public sealed class FileReadTool : IToolExecutor
     public string Description => "Read the contents of a file. Supports line range via offset and limit parameters. Returns content with line numbers.";
 
 
+
+    public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
+
+    public bool IsCore => true;
 
     public JsonElement InputSchema { get; } = ParseSchema(
 

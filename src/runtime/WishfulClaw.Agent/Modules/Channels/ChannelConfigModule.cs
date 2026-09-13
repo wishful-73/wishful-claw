@@ -21,6 +21,8 @@ public sealed class ChannelConfigModule : IWorkerModule
         context.Register("channel/config-add", ChannelConfigStore.Add);
         context.Register("channel/config-update", ChannelConfigStore.Update);
         context.Register("channel/config-remove", ChannelConfigStore.Remove);
+        context.Register("channel/settings-read", GlobalChannelSettingsService.Read);
+        context.Register("channel/settings-write", GlobalChannelSettingsService.Write);
         context.Register("channel/qq-session-load", QqSessionStore.Load);
         context.Register("channel/qq-session-save", QqSessionStore.Save);
         context.Register("channel/qq-session-clear", QqSessionStore.Clear);

@@ -175,6 +175,12 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
       const result = (await window.api.workerRequest('persona/generate', {
         prompt,
         provider,
+        requestKind: 'persona',
+        providerRole: 'global',
+        globalActiveModel: {
+          providerId: provider.id,
+          modelId: provider.model
+        },
         referencePersonaId: referencePersonaId ?? null,
         workingFolder: workingFolder ?? null
       })) as { success?: boolean; name?: string; tagline?: string; description?: string; identityMarkdown?: string; soulMarkdown?: string; ontologyMarkdown?: string; agentsMarkdown?: string; error?: string }

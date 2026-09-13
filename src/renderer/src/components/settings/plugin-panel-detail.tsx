@@ -4,16 +4,17 @@
  * Tabbed configuration for messaging channel providers:
  *   Tab 1: QR Code binding (scan to connect)
  *   Tab 2: API credentials (descriptor-driven form)
- *   Tab 3: Features & permissions toggles
+ *
+ * Features and permissions used to live here per channel; they are global now
+ * (see plugin-panel-global.tsx).
  */
 
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { QrCode, KeyRound, Settings2, Play, Square, Loader2 } from 'lucide-react'
+import { QrCode, KeyRound, Play, Square, Loader2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
-import { Switch } from '@renderer/components/ui/switch'
 import { Separator } from '@renderer/components/ui/separator'
 import { Badge } from '@renderer/components/ui/badge'
 import {
@@ -98,127 +99,9 @@ export function CredentialsPanel({
   )
 }
 
-// ── Features & Permissions Panel ──
-
-export function FeaturesPanel({ channel }: { channel: PluginInstance }): React.JSX.Element {
-  const { t } = useTranslation('settings')
-  const { updateChannel } = useChannelStore()
-
-  const features = channel.features ?? { autoReply: true, streamingReply: true, autoStart: true }
-  const perms = channel.permissions ?? {
-    allowReadHome: false,
-    readablePathPrefixes: [],
-    allowWriteOutside: false,
-    allowShell: false,
-    allowSubAgents: false
-  }
-
-  const toggleFeature = (key: keyof typeof features, value: boolean): void => {
-    void updateChannel(channel.id, {
-      features: { ...features, [key]: value }
-    })
-  }
-
-  const togglePerm = (key: keyof typeof perms, value: boolean): void => {
-    void updateChannel(channel.id, {
-      permissions: { ...perms, [key]: value }
-    })
-  }
-
-  const ToggleRow = ({
-    label,
-    description,
-    checked,
-    onChange
-  }: {
-    label: string
-    description: string
-    checked: boolean
-    onChange: (v: boolean) => void
-  }): React.JSX.Element => (
-    <div className="flex items-center justify-between py-2">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">{label}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </div>
-  )
-
-  return (
-    <div className="space-y-4 px-8 py-6">
-      <div>
-        <h3 className="text-sm font-medium text-foreground">
-          {t('channel.features.title', { defaultValue: '功能与权限' })}
-        </h3>
-      </div>
-
-      <Separator />
-
-      {/* Feature toggles */}
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-muted-foreground">
-          {t('channel.features.section', { defaultValue: '功能开关' })}
-        </p>
-        <ToggleRow
-          label={t('channel.features.autoReply', { defaultValue: '自动回复' })}
-          description={t('channel.features.autoReplyDesc', { defaultValue: '收到消息时自动使用 AI 回复' })}
-          checked={features.autoReply}
-          onChange={(v) => toggleFeature('autoReply', v)}
-        />
-        <ToggleRow
-          label={t('channel.features.streamingReply', { defaultValue: '流式回复' })}
-          description={t('channel.features.streamingReplyDesc', { defaultValue: '实时流式输出回复内容（需要渠道支持）' })}
-          checked={features.streamingReply}
-          onChange={(v) => toggleFeature('streamingReply', v)}
-        />
-        <ToggleRow
-          label={t('channel.features.autoStart', { defaultValue: '自动启动' })}
-          description={t('channel.features.autoStartDesc', { defaultValue: '应用启动时自动连接此渠道' })}
-          checked={features.autoStart}
-          onChange={(v) => toggleFeature('autoStart', v)}
-        />
-      </div>
-
-      <Separator />
-
-      {/* Permission toggles */}
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-muted-foreground">
-          {t('channel.permissions.section', { defaultValue: '安全权限' })}
-        </p>
-        <ToggleRow
-          label={t('channel.permissions.allowShell', { defaultValue: 'Shell 执行' })}
-          description={t('channel.permissions.allowShellDesc', { defaultValue: '允许 AI 执行 shell 命令' })}
-          checked={perms.allowShell}
-          onChange={(v) => togglePerm('allowShell', v)}
-        />
-        <ToggleRow
-          label={t('channel.permissions.allowReadHome', { defaultValue: '读取主目录' })}
-          description={t('channel.permissions.allowReadHomeDesc', { defaultValue: '允许读取工作目录之外的文件' })}
-          checked={perms.allowReadHome}
-          onChange={(v) => togglePerm('allowReadHome', v)}
-        />
-        <ToggleRow
-          label={t('channel.permissions.allowWriteOutside', { defaultValue: '外部写入' })}
-          description={t('channel.permissions.allowWriteOutsideDesc', { defaultValue: '允许写入工作目录之外的文件' })}
-          checked={perms.allowWriteOutside}
-          onChange={(v) => togglePerm('allowWriteOutside', v)}
-        />
-        <ToggleRow
-          label={t('channel.permissions.allowSubAgents', { defaultValue: '子代理' })}
-          description={t('channel.permissions.allowSubAgentsDesc', { defaultValue: '允许使用子代理工具' })}
-          checked={perms.allowSubAgents}
-          onChange={(v) => togglePerm('allowSubAgents', v)}
-        />
-      </div>
-    </div>
-  )
-}
-
 // ── Channel Detail Panel (with tabs) ──
 
-type ConfigTab = 'qr' | 'credentials' | 'features'
+type ConfigTab = 'qr' | 'credentials'
 
 export function ChannelDetailPanel({ channel }: { channel: PluginInstance }): React.JSX.Element {
   const { t } = useTranslation('settings')
@@ -240,12 +123,6 @@ export function ChannelDetailPanel({ channel }: { channel: PluginInstance }): Re
       id: 'credentials',
       label: t('channel.tabs.credentials', { defaultValue: 'API 凭据' }),
       icon: <KeyRound className="size-3.5" />,
-      show: true
-    },
-    {
-      id: 'features',
-      label: t('channel.tabs.features', { defaultValue: '功能设置' }),
-      icon: <Settings2 className="size-3.5" />,
       show: true
     }
   ]
@@ -354,7 +231,6 @@ export function ChannelDetailPanel({ channel }: { channel: PluginInstance }): Re
         {activeTab === 'credentials' && (
           <CredentialsPanel channel={channel} descriptor={descriptor} />
         )}
-        {activeTab === 'features' && <FeaturesPanel channel={channel} />}
       </div>
     </div>
   )

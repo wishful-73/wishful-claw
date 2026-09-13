@@ -19,6 +19,8 @@ function nativeOnlyBashResult(): string {
 }
 
 const bashHandler: ToolHandler = {
+  // 真实执行与授权判定都在 .NET Worker（ToolCallProcessor 的审批门）；
+  // 这里只是把工具名与入参 schema 交给渲染端注册表。
   definition: {
     name: 'Bash',
     description: 'Execute a shell command',
@@ -45,11 +47,7 @@ const bashHandler: ToolHandler = {
       required: ['command']
     }
   },
-  execute: async () => nativeOnlyBashResult(),
-  requiresApproval: (_input, ctx) => {
-    if (ctx.channelPermissions) return !ctx.channelPermissions.allowShell
-    return true
-  }
+  execute: async () => nativeOnlyBashResult()
 }
 
 export function registerBashTools(): void {

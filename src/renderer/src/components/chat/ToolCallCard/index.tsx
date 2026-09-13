@@ -153,7 +153,7 @@ function ToolCallCardInner({
     [name, t]
   )
   const headerSummary = React.useMemo(() => {
-    if (name !== 'TaskList') return summary
+    if (name !== 'TodoTaskList' && name !== 'TaskList') return summary
     if (!outputText) return null
 
     const data = decodeStructuredToolResult(outputText)
@@ -532,6 +532,11 @@ function ToolCallCardInner({
                 'Grep',
                 'Glob',
                 'LS',
+                'TodoTaskCreate',
+                'TodoTaskUpdate',
+                'TodoTaskGet',
+                'TodoTaskList',
+                // Legacy names for old persisted transcripts.
                 'TaskCreate',
                 'TaskUpdate',
                 'TaskGet',

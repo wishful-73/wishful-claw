@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AssistantReplyRail } from './AssistantReplyRail'
@@ -12,7 +12,8 @@ import {
   type MessageListRow,
   type MessageListProps
 } from './utils'
-import { UserMessage } from '../UserMessage'
+import { extractEditableUserMessageDraft } from '@renderer/lib/image-attachments'
+import { USER_MESSAGE_BUBBLE_CLASS } from '../user-message-helpers'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import type { RequestRetryState } from '@renderer/lib/agent/types'
 import type { OrchestrationRunStore } from '@renderer/lib/orchestration/build-runs'
@@ -34,6 +35,8 @@ interface VirtualListContentProps {
   loadedTurns: number
   pinnedTurnMessage: UnifiedMessage | null
   isPinnedTurnOverlayVisible: boolean
+  /** R-10.2: 执行中高度水位线，收缩部分由底部留白补齐。 */
+  minContentHeight: number
   onJumpToPinnedMessage: () => void
   rows: MessageListRow[]
   lastMessageRowIndex: number
@@ -76,6 +79,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     loadedTurns,
     pinnedTurnMessage,
     isPinnedTurnOverlayVisible,
+    minContentHeight,
     onJumpToPinnedMessage,
     rows,
     lastMessageRowIndex,
@@ -103,6 +107,16 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     onDeleteMessage
   } = props
 
+  // R-10.5: 吸附卡改为紧凑指示条——不再全量渲染 UserMessage（长粘贴会把
+  // 窗口占满）。只取纯文本，两行截断，悬浮 title 看全文，点击跳回消息本体。
+  const pinnedPreviewText = React.useMemo(() => {
+    if (!pinnedTurnMessage) return ''
+    return extractEditableUserMessageDraft(pinnedTurnMessage.content).text.replace(
+      /\r\n?/g,
+      '\n'
+    )
+  }, [pinnedTurnMessage])
+
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <div
@@ -115,7 +129,11 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
         <div
           ref={virtualContentRef}
           className="relative w-full"
-          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            // R-10.2: 执行中高度只增不减——水位线以 min-height 补齐，底部留白顶住收缩
+            minHeight: minContentHeight > 0 ? `${minContentHeight}px` : undefined
+          }}
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow: any) => {
             const isLoadOlderRow = hasLoadOlderRow && virtualRow.index === 0
@@ -233,23 +251,35 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
         {pinnedTurnMessage && isPinnedTurnOverlayVisible && (
           <motion.div
             key="pinned-turn"
-            className="absolute left-0 right-0 top-0 z-20 pl-7 pr-14 md:pl-9"
+            className="absolute left-0 right-0 top-0 z-20 bg-background pb-2 pl-7 pr-14 md:pl-9"
             initial={animationsEnabled ? { opacity: 0, y: -6 } : false}
             animate={{ opacity: 1, y: 0 }}
             exit={animationsEnabled ? { opacity: 0, y: -6 } : undefined}
             transition={animationsEnabled ? { duration: 0.15, ease: 'easeOut' } : { duration: 0 }}
           >
             <div className={getMessageColumnClass(fullWidth)}>
-              <UserMessage
-                messageId={pinnedTurnMessage.id}
-                content={pinnedTurnMessage.content}
-                meta={pinnedTurnMessage.meta}
-                source={pinnedTurnMessage.source}
-                createdAt={pinnedTurnMessage.createdAt}
-                compact
+              <button
+                type="button"
                 onClick={onJumpToPinnedMessage}
-              />
+                title={pinnedPreviewText || undefined}
+                className={`${USER_MESSAGE_BUBBLE_CLASS} ml-auto block w-fit max-w-full cursor-pointer text-left text-sm leading-snug`}
+              >
+                {pinnedPreviewText ? (
+                  <span className="line-clamp-2 whitespace-pre-wrap break-words">
+                    {pinnedPreviewText}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    {t('messageList.pinnedTurnEmpty')}
+                  </span>
+                )}
+              </button>
             </div>
+            {/* R-10.1: 底部渐隐遮罩——吸附卡是不透明底色，向下渐隐融入消息流 */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-full h-4 bg-gradient-to-b from-background to-transparent"
+            />
           </motion.div>
         )}
       </AnimatePresence>

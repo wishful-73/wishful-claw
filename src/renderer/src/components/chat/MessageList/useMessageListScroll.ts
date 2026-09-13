@@ -44,6 +44,8 @@ export interface MessageListScrollOutput {
   isAtBottom: boolean
   isLoadingOlderMessages: boolean
   isPinnedTurnOverlayVisible: boolean
+  /** R-10.2: 执行中的内容高度水位线——min-height 补齐，widget 收缩时高度只增不减。 */
+  minContentHeight: number
   activeAssistantRailMessageIds: Set<string>
   highlightedMessageId: string | null
   handleListScroll: () => void
@@ -104,6 +106,13 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = React.useState(false)
   const [isPinnedTurnOverlayVisible, setIsPinnedTurnOverlayVisible] = React.useState(false)
 
+  // ── R-10.2 执行中高度水位线 ──────────────────────────────────────
+  // 执行中虚拟内容总高度可能随动态组件渲染收缩，贴底重算会让整个窗口跳。
+  // 水位线取执行期间观测到的最大 totalSize，以 min-height 补在内容容器上：
+  // 高度只增不减，收缩部分由底部留白顶住；执行结束立即收回（一次跳动可接受）。
+  const contentHeightWatermarkRef = React.useRef(0)
+  const [minContentHeight, setMinContentHeight] = React.useState(0)
+
   // ── Helpers ─────────────────────────────────────────────────────
   const canAutoScroll = React.useCallback(() => {
     const mode = autoScrollModeRef.current
@@ -119,11 +128,36 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     programmaticScrollUntilRef.current = window.performance.now() + PROGRAMMATIC_SCROLL_GUARD_MS
   }, [])
 
+  // ── R-10.2 三轮：DOM 地面真值 ────────────────────────────────────
+  // 虚拟器 totalSize 是账面值（未测行按估算高计），流式期间尾行系统性偏小，
+  // 不能当地面真值——d0eb6bdd 的教训。行是绝对定位 + translateY，offsetTop
+  // 不含 transform，必须用 getBoundingClientRect 取各行真实底边的最大值，
+  // 该值与 scrollTop 同坐标系，可直接参与贴底/悬空计算。
+  const getRealContentBottom = React.useCallback((): number => {
+    const content = virtualContentRef.current
+    if (!content || content.children.length === 0) return 0
+    const contentTop = content.getBoundingClientRect().top
+    let bottom = 0
+    for (const child of content.children) {
+      const childBottom = (child as HTMLElement).getBoundingClientRect().bottom - contentTop
+      if (childBottom > bottom) bottom = childBottom
+    }
+    return bottom
+  }, [])
+
   const scrollToBottomImmediate = React.useCallback(
     (behavior: ScrollBehavior = 'auto') => {
       const ref = listRef.current
       if (!ref || rows.length === 0) return
-      const bottom = Math.max(0, ref.scrollHeight - ref.clientHeight)
+      // R-10.2 修正：水位线激活时贴底目标取「真实内容底」（DOM 真值），跟随
+      // 增长也跟随收缩——收缩后视口贴真实内容底而非留白区，后续输出涨回时
+      // 视口贴着内容走。无水位线时 scrollHeight 即内容底，行为与原先一致。
+      let effectiveHeight = ref.scrollHeight
+      if (contentHeightWatermarkRef.current > 0) {
+        const realBottom = getRealContentBottom()
+        if (realBottom > 0) effectiveHeight = realBottom
+      }
+      const bottom = Math.max(0, effectiveHeight - ref.clientHeight)
       // Already pinned: re-writing scrollTop would dispatch another scroll
       // event, whose handler sets state and re-runs the auto-scroll layout
       // effects — that cycle is what React reports as "Maximum update depth
@@ -133,7 +167,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       if (behavior === 'auto') { ref.scrollTop = bottom; return }
       ref.scrollTo({ top: bottom, behavior })
     },
-    [markProgrammaticScroll, rows.length]
+    [getRealContentBottom, markProgrammaticScroll, rows.length]
   )
 
   const syncBottomState = React.useCallback(() => {
@@ -412,6 +446,9 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     setAssistantRailMeasureVersion((version) => version + 1)
     setActiveAssistantRailIds(new Set())
     setIsPinnedTurnOverlayVisible(false)
+    // R-10.2: 水位线不跨会话残留
+    contentHeightWatermarkRef.current = 0
+    setMinContentHeight(0)
   }, [activeSessionId, setActiveAssistantRailIds])
 
   // ── Initial scroll to bottom ────────────────────────────────────
@@ -491,9 +528,32 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   React.useLayoutEffect(() => {
     if (pendingAskUserQuestion) return
     if (isLoadingOlderMessagesRef.current) return
+    // R-10.2: 执行中抬高水位线（只增不减）；结束后立即收回
+    if (isSessionOutputting) {
+      if (virtualListTotalSize > contentHeightWatermarkRef.current) {
+        contentHeightWatermarkRef.current = virtualListTotalSize
+        setMinContentHeight(contentHeightWatermarkRef.current)
+      }
+    } else if (contentHeightWatermarkRef.current !== 0) {
+      contentHeightWatermarkRef.current = 0
+      setMinContentHeight(0)
+    }
+    // R-10.2 三轮（悬空回缩，口径：留白可接受，整屏留白不可接受）：内容收缩
+    // 后若视口内已无任何真实内容（scrollTop ≥ 真实内容底），拉回真实内容底
+    // 部；部分留白不干预——老大确认只要视口里还有内容就行。
+    // realBottom === 0 说明虚拟器尚未渲染任何行（scrollOffset 越界的瞬间态），
+    // 此时不动 scrollTop，交给贴底逻辑的账面值兜底处理。
+    const ref = listRef.current
+    if (ref && contentHeightWatermarkRef.current > 0) {
+      const realBottom = getRealContentBottom()
+      if (realBottom > 0 && ref.scrollTop >= realBottom - 1) {
+        markProgrammaticScroll()
+        ref.scrollTop = Math.max(0, realBottom - ref.clientHeight)
+      }
+    }
     if (!canAutoScroll() && !isAtBottom) return
     scrollToBottomImmediate()
-  }, [canAutoScroll, isAtBottom, pendingAskUserQuestion, scrollToBottomImmediate, virtualListTotalSize])
+  }, [canAutoScroll, getRealContentBottom, isAtBottom, isSessionOutputting, markProgrammaticScroll, pendingAskUserQuestion, scrollToBottomImmediate, virtualListTotalSize])
 
   // ── Pinned overlay sync on anchor/layout changes ────────────────
   React.useEffect(() => {
@@ -545,6 +605,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     isAtBottom,
     isLoadingOlderMessages,
     isPinnedTurnOverlayVisible,
+    minContentHeight,
     activeAssistantRailMessageIds,
     highlightedMessageId,
     handleListScroll,

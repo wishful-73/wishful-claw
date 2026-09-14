@@ -644,6 +644,15 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 - 压缩双光标问题：两个光标都在回复渲染链上，随移除自然消失
 - **实施时注意排查光标的间接依赖**：是否有其它逻辑（滚动跟随锚点、测试断言、高度计算等）针对这个光标定位或依赖其存在，移除时一并核对，别只删 DOM 留悬空依赖
 
+## 实施（已完成，2026-09-14）
+
+- 移除 `content-renderer.tsx` 三处回复链光标：①流式纯文本分支 ②多段渲染外层（`showOuterCursor` 判定与仅供它使用的 `lastSegment` 局部变量一并清理）③消息尾部
+- **连带清理 `liveOutputAnimationStyle` prop**：移除光标后它在 `content-renderer` 里已无消费者，而 `tsconfig` 开 `noUnusedLocals`，故从 props 类型、解构、父组件 `AssistantMessage/index.tsx` 传参三处一并移除（该变量在父组件仍供 `getLiveOutputComponentClass` 使用，未受影响）
+- 保留 `components/chat/ThinkingBlock.tsx:152` 的思考流式光标；`lib/live-output-animation.ts` 的 `getLiveOutputCursorClass` 与 `assets/main.css:607-627` 的 `.ai-live-cursor` 规则保留
+- **间接依赖排查**：全仓清点 `getLiveOutputCursorClass` / `.ai-live-cursor` / `showOuterCursor` 消费点，除 ThinkingBlock 与 CSS 外无其它依赖；测试套件里无光标相关断言（`tests/` 中的 "cursor" 均指分页游标）
+- 压缩双光标现象随之消失（两处光标都在回复链上，已一并移除）
+- 验证：tsc 三配置零错误；真机流式输出目视（回复末尾无光标 / 思考块内保留）由老大复验
+
 ---
 
 # 需求 15（临时追加）：T-5 用量统计面板体验收口

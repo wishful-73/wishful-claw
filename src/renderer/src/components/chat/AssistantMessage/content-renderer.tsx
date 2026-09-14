@@ -21,9 +21,6 @@ import { AgentErrorCard } from '../AgentErrorCard'
 import { OrchestrationBlock } from '../OrchestrationBlock'
 import { imageBlockToAttachment } from '@renderer/lib/image-attachments'
 import { useImageEditStore } from '@renderer/stores/image-edit-store'
-import {
-  getLiveOutputCursorClass
-} from '@renderer/lib/live-output-animation'
 import type { AssistantRenderItem, ThinkSegment } from './types'
 import { MARKDOWN_WRAPPER_CLASS as MD_CLASS } from './types'
 import { parseThinkTags, stripThinkTags } from './think-parser'
@@ -45,7 +42,6 @@ export interface ContentRendererProps {
   liveComponentClassName: string
   liveScaleInClassName: string
   liveFadeInClassName: string
-  liveOutputAnimationStyle: string
   hasStructuredThinkingBlocks: boolean
   lastStructuredTextIdx: number
   isGeneratingImage: boolean
@@ -82,7 +78,6 @@ export function ContentRenderer({
   liveComponentClassName,
   liveScaleInClassName,
   liveFadeInClassName,
-  liveOutputAnimationStyle,
   hasStructuredThinkingBlocks,
   lastStructuredTextIdx,
   isGeneratingImage,
@@ -167,9 +162,6 @@ export function ContentRenderer({
           ) : null}
           <div className={MD_CLASS}>
             <StreamingMarkdownContent text={content} isStreaming={!!isStreaming} />
-            {isStreaming && (
-              <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />
-            )}
           </div>
         </div>
       )
@@ -179,9 +171,6 @@ export function ContentRenderer({
       (acc: number, s, idx) => (s.type === 'text' ? idx : acc),
       -1
     )
-    const lastSegment = segments[segments.length - 1]
-    const showOuterCursor = isStreaming && !(lastSegment?.type === 'think' && !lastSegment.closed)
-
     return (
       <div className="space-y-2">
         {isStreaming ? (
@@ -209,9 +198,6 @@ export function ContentRenderer({
             </div>
           )
         })}
-        {showOuterCursor && (
-          <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />
-        )}
       </div>
     )
   }
@@ -482,7 +468,6 @@ export function ContentRenderer({
           <p className="text-muted-foreground">{t('assistantMessage.executionPaused', { defaultValue: '任务暂告一段落' })}</p>
         </div>
       ) : null}
-      {isStreaming && <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />}
       {shouldShowImageGeneratingLoader && (
         <div className={`pt-3${liveComponentClassName ? ` ${liveComponentClassName}` : ''}`}>
           <ImageGeneratingLoader

@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -403,7 +403,6 @@ export function AssistantMessage({
         liveComponentClassName={liveComponentClassName}
         liveScaleInClassName={liveScaleInClassName}
         liveFadeInClassName={liveFadeInClassName}
-        liveOutputAnimationStyle={liveOutputAnimationStyle}
         hasStructuredThinkingBlocks={hasStructuredThinkingBlocks}
         lastStructuredTextIdx={lastStructuredTextIdx}
         isGeneratingImage={isGeneratingImage}

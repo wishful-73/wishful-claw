@@ -1,7 +1,7 @@
-﻿import { nanoid } from 'nanoid'
+import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
-import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
+import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -674,6 +674,14 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         turns: _limit ?? 5
       })
 
+      // Whole-session usage baseline (status bar). Taken only while this session
+      // has not accumulated live totals yet — re-basing after a run would count
+      // the already-persisted messages twice (baseline + live accumulator).
+      const usageBaseline =
+        get().sessions.find((s) => s.id === sessionId)?.sessionUsageTotals == null
+          ? await dbGetSessionUsageStats(sessionId)
+          : null
+
       set((state) => {
         const target = state.sessions.find((s) => s.id === sessionId)
         if (!target || target.isRuntimeResident) return
@@ -686,6 +694,16 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         target.loadedRangeEnd = rangeStart + messages.length
         target.totalTurns = totalTurns
         target.lastKnownMessageCount = actualCount
+        if (usageBaseline) {
+          target.usageBaseline = {
+            inputTokens: usageBaseline.totalInput,
+            outputTokens: usageBaseline.totalOutput,
+            cacheReadTokens: usageBaseline.totalCacheRead,
+            cacheCreationTokens: usageBaseline.totalCacheCreation,
+            reasoningTokens: usageBaseline.totalReasoning,
+            totalDurationMs: usageBaseline.totalDurationMs
+          }
+        }
       })
       // No backend rebuild here: the Worker conversation is restored lazily
       // inside agent/run on the first send of the session.

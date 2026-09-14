@@ -586,13 +586,32 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 - 底部统计条针对**整个会话**，不应该依赖"已加载的消息"
 - 长会话的 turn-based 懒加载是性能优化，必须保留；统计口径不能跟加载窗口走
 
-## 方向（待实施时细化，老大明确"先记录，不用探索"）
+## 实施方案（2026-09-14 探索后定）
 
-1. **统一数据源为会话级统计**：tokens / 成本 / 请求数与会话级缓存计数同批维护（后端累加或 DB 按会话聚合），运行中事件增量更新，重开加载会话时一次取回全量基线
-2. 候选载体：`db/messages-usage-stats` 端点（`DbMessageCompactTools.UsageStats`，SQL 按会话聚合 `messages.usage`，输入/输出/缓存/成本/请求数字段齐全——实施时需复核其成本口径与前端聚合是否一致）
-3. 次要项（记录在案，实施时酌情）：
-   - 成本定位 fallback 链：`debugInfo` 不落库，重开后定位失败的消息会用**当前会话模型的价格**给历史消息算成本（模型不同则错）
-   - `requestTimings` 不在 `TokenUsageWire` 协议内，DB round-trip 后 TPS/TTFT 丢失（单请求指标，丢了合理，不算 bug，但会话级统计若纳入需明确口径）
+**口径：统计条数据源改为「会话级基线 + 运行中增量」，不再遍历已加载消息。**
+
+1. **基线（补齐重开后的历史）** —— 会话加载成功后调 `window.api.workerRequest('db/messages-usage-stats', { sessionId })` 取全会话 tokens 汇总（含 requestCount / assistantReplies），落到 session 内存字段 `usageBaseline`。端点已存在，renderer 可直连（`db-helpers.ts` 头部：renderer → `workerRequest('db/*')`，无需新 IPC 通道）
+2. **增量（运行中）** —— `chat-store/index.ts` 的 `message_end` 分支里，把 `event.usage`（本次 LLM 调用增量，与消息侧 `accumulateUsageSnapshot` 同源同时机）额外累加到 session 级 `sessionUsageTotals`，与既有 `sessionCacheHit/Miss` 同批维护
+3. **显示** —— `runtime-status.tsx` 的 selector 改为 `usageBaseline + sessionUsageTotals`；`messagesOverride`（浮窗副本 `RuntimeTokenStatistics` / `composer-status-indicator`）分支保持原逐条聚合不变
+4. **成本口径** —— 基线只有 tokens（DB 聚合不含成本），基线部分按**当前会话模型价**估算，增量部分按当次模型精确算。已知近似，收尾单列
+5. **次要项（沿用记录）** —— `debugInfo` 不落库导致的成本定位 fallback；`requestTimings` 不落库导致的 TPS/TTFT 丢失（单请求指标，丢失合理）
+
+**边界与风险**：
+- `isRuntimeResident` 会话跳过加载 → 基线在首次进入运行态时取；端点失败或无历史时按 0 基线
+- 基线是全量快照，会话内删除 / 编辑历史消息会漂移（可接受）
+- 翻页加载更早历史**不影响**统计口径 —— 这是本方案相对「遍历消息」的关键优势
+
+**Mini 验证**：tsc 三配置零错误；重开 app 打开长会话，统计条数字与未重开时一致（老大真机验）；发送新消息后数字继续递增。
+
+## 实施（已完成，2026-09-14）
+
+- `db-helpers.ts`：新增 `dbGetSessionUsageStats` + `SessionUsageStatsRow`，经 `workerRequest('db/messages-usage-stats')` 直连既有端点（`worker:request` 是通用转发，无白名单，无需新 IPC 通道）；失败/无用量返回 null
+- `chat-store/types.ts`：Session 增 `usageBaseline?: TokenUsage` / `sessionUsageTotals?: TokenUsage`，并纳入 `createRestorableSessionSnapshot`
+- `session-slice.ts`：`loadRecentSessionMessages` 成功落库后取一次基线；**`sessionUsageTotals` 已有累计时跳过**（运行中重新加载若重取基线会把已落库的新消息算两遍）
+- `chat-store/index.ts`：`message_end` 分支用 `accumulateUsageSnapshot` 把 `event.usage` 累加进 `sessionUsageTotals`，与 `sessionCacheHit/Miss` 同批（同一事件、同一增量源）
+- `runtime-status.tsx`：selector 分三路 —— ①浮窗 `messagesOverride` 保持逐条遍历 ②会话视图用 `usageBaseline + sessionUsageTotals` ③两者皆空时回落逐条遍历（覆盖 runtime-resident 等无基线场景）。模型配置解析抽为模块级 `resolveMessageModelCfg` 供两路共用
+- 验证：tsc 三配置零错误；7 个 TS 回归套件全绿（renderable-chat-items 16 / provider-presets 546 / ipc-msgpack-routing 96 / settings-tabs 22 / provider-fallback 18 / channel-reply-event-policy / channel-cancel-commands）；**真机验证（重开 app 后统计一致）待老大**
+- 已知近似：基线部分成本按当前会话模型价估算（DB 聚合不含成本）
 
 ---
 

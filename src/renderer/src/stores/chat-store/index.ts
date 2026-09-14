@@ -899,6 +899,14 @@ export const useChatStore = create<ChatStore>()(
                   if (event.usage?.sessionCacheMissTokens != null) {
                     nextSession.sessionCacheMiss = event.usage.sessionCacheMissTokens
                   }
+                  // Accumulate whole-session usage totals — the status bar reads
+                  // baseline + these, so it no longer depends on how many messages
+                  // are currently loaded. `event.usage` is this call's delta, the
+                  // same value merged into the message above.
+                  nextSession.sessionUsageTotals = accumulateUsageSnapshot(
+                    nextSession.sessionUsageTotals,
+                    event.usage
+                  )
 
                   // isStreaming stays true — loop_end will set it false
                   if (sessionIndex >= 0) {

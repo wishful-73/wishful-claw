@@ -1,5 +1,5 @@
 import type { TokenUsageWire, RequestTimingWire } from '@shared/agent-stream-protocol'
-import type { RequestDebugInfo, MessageMeta, ContentBlock } from '@renderer/lib/api/types'
+import type { RequestDebugInfo, MessageMeta, ContentBlock, TokenUsage } from '@renderer/lib/api/types'
 
 // ─── Session Context ───
 export type SessionMode = 'chat' | 'clarify' | 'cowork' | 'code' | 'acp'
@@ -105,6 +105,14 @@ export interface Session {
   // Updated on each message_end event, read directly by the status bar.
   sessionCacheHit?: number
   sessionCacheMiss?: number
+  // Whole-session usage rollup loaded from the DB (`db/messages-usage-stats`).
+  // Lets the status bar report session totals even though messages are lazily
+  // loaded (last N turns only) — combined with `sessionUsageTotals` below.
+  usageBaseline?: TokenUsage
+  // Running per-session usage accumulated from message_end events, maintained
+  // alongside the cache counters. Together with `usageBaseline` this replaces
+  // the old "sum over loaded messages" aggregation.
+  sessionUsageTotals?: TokenUsage
   isRuntimeResident?: boolean
 }
 
@@ -185,6 +193,8 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     modelId: session.modelId,
     sessionCacheHit: session.sessionCacheHit,
     sessionCacheMiss: session.sessionCacheMiss,
+    usageBaseline: session.usageBaseline,
+    sessionUsageTotals: session.sessionUsageTotals,
     isRuntimeResident: session.isRuntimeResident
   }
 }

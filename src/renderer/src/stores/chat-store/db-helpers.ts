@@ -557,6 +557,44 @@ export async function dbGetMessageCount(sessionId: string): Promise<number> {
 }
 
 /**
+ * Whole-session usage rollup from the DB (assistant messages only).
+ *
+ * This is the baseline for the composer status bar: sessions load messages
+ * lazily (last N turns), so summing only the loaded messages under-reports the
+ * session after a restart. Returns null when the endpoint fails or reports no
+ * usage, in which case callers fall back to a zero baseline.
+ */
+export interface SessionUsageStatsRow {
+  success: boolean
+  hasUsage: boolean
+  totalInput: number
+  totalOutput: number
+  totalCacheCreation: number
+  totalCacheRead: number
+  totalReasoning: number
+  totalDurationMs: number
+  requestCount: number
+  assistantReplies: number
+  firstCreatedAt: number | null
+  lastCreatedAt: number | null
+  error: string | null
+}
+
+export async function dbGetSessionUsageStats(
+  sessionId: string
+): Promise<SessionUsageStatsRow | null> {
+  try {
+    const result = await window.api.workerRequest<SessionUsageStatsRow>(
+      'db/messages-usage-stats',
+      { sessionId }
+    )
+    return result?.success && result.hasUsage ? result : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Delete a single message by id. Safe no-op when the row was never persisted.
  */
 export async function dbDeleteMessage(sessionId: string, messageId: string): Promise<void> {

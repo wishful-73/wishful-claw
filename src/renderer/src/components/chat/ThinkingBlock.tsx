@@ -137,7 +137,11 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         )}
       </button>
 
-      <CollapsibleHeightPanel open={expanded} className="overflow-hidden">
+      {/* T-8: 流式态不经过高度面板 —— isThinking 时思考块恒展开，面板的 px→auto
+          高度管理会在每次 delta 时反复 applyHeight，使内层 max-h-80 的
+          clientHeight 抖动、贴底被反复 clamp（表现为上下跳）。完成后恢复面板，
+          保留收起 / 展开动画。 */}
+      <CollapsibleHeightPanel open={expanded} enabled={!isThinking} className="overflow-hidden">
         <div className="max-w-full px-0.5 pb-1 text-sm leading-7 text-muted-foreground/75">
           {hasThinkingContent ? (
             <div ref={contentRef} className="max-h-80 overflow-y-auto">

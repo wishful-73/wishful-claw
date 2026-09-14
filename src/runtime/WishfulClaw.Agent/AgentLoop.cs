@@ -443,23 +443,30 @@ internal static partial class AgentLoop
             var toolResults = await ToolCallProcessor.ExecuteAsync(
                 turn.ToolCalls, parameters, state, context);
 
+            // T-7.1: Write results back BEFORE the cancellation check, and make sure
+            // every tool_call is paired with a result. Cancelling mid-execution used
+            // to `return` here and drop the results entirely, leaving the resident
+            // conversation with an assistant(tool_calls) message that had no matching
+            // tool result — the next request then got HTTP 400 from the provider
+            // ("...must be followed by tool messages..."). Calls that never started
+            // get an interruption placeholder so the pairing stays valid.
+            var pairedResults = ToolCallProcessor.EnsureEveryCallHasResult(turn.ToolCalls, toolResults);
+            var toolResultsMessage = AgentRuntimeChatMessage.UserToolResults(pairedResults);
+            conversation.Add(toolResultsMessage);
+            wireConversation.Add(CreateToolResultsWireMessage(pairedResults));
+
             if (state.IsCancellationRequested)
             {
                 await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
-            // Add tool results as a user message to the conversation
-            var toolResultsMessage = AgentRuntimeChatMessage.UserToolResults(toolResults);
-            conversation.Add(toolResultsMessage);
-            wireConversation.Add(CreateToolResultsWireMessage(toolResults));
-
             await AgentRuntimeTools.EmitAsync(
                 state, context,
                 new AgentRuntimeStreamEvent(
                     "iteration_end",
                     StopReason: "tool_use",
-                    ToolResults: toolResults.ToArray()));
+                    ToolResults: pairedResults.ToArray()));
         }
 
         await EmitLoopEndAsync(

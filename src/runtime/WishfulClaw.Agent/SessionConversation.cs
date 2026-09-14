@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace WishfulClaw.Agent;
@@ -145,6 +145,11 @@ public sealed class SessionConversation
             _injectedMemoryFingerprints.Clear();
             _compactionWatermark = 0;
             _version++;
+            // T-7.2: validate once on first load (including DB restore) — historical
+            // data may contain unpaired tool_use (e.g. an interruption from before the
+            // fix shipped). Messages that arrive afterwards are kept paired at write
+            // time by T-7.1, so this never runs on the hot path again.
+            RepairToolPairing();
         }
         // NOTE: Cache counters are NOT reset here. They accumulate across the
         // entire session lifetime and only reset on Clear() (session switch).
@@ -169,6 +174,7 @@ public sealed class SessionConversation
             _injectedMemoryFingerprints.Clear();
             _compactionWatermark = 0;
             _version++;
+            RepairToolPairing();   // T-7.2: first-load validation, see Initialize
             return true;
         }
     }
@@ -232,6 +238,65 @@ public sealed class SessionConversation
             _version++;
         }
         ResetCacheTotals();
+    }
+
+    /// <summary>
+    /// T-7.2: One-shot pairing repair for data entering the session. Every assistant
+    /// tool_use must be followed by tool results carrying the matching tool_call_id,
+    /// otherwise the provider rejects the request with HTTP 400.
+    ///
+    /// T-7.1 keeps that promise at write time inside the loop. This method is the
+    /// equivalent guard for the OTHER entry point — first load / DB restore, where
+    /// historical data may predate the fix. It is deliberately NOT called per
+    /// request (the loop's own writes are already paired), so it runs at most once
+    /// per session load. Only missing results are ADDED; existing ones are untouched.
+    /// </summary>
+    private void RepairToolPairing()
+    {
+        lock (_lock)
+        {
+            for (var i = 0; i < _conversation.Count; i++)
+            {
+                var message = _conversation[i];
+                if (message.ToolUses.Count == 0) continue;
+
+                var pending = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var toolUse in message.ToolUses)
+                {
+                    if (!string.IsNullOrEmpty(toolUse.Id)) pending.Add(toolUse.Id);
+                }
+                if (pending.Count == 0) continue;
+
+                // Results for an assistant message sit in the immediately following
+                // message(s) — that is how the loop and the restore path lay them out.
+                var insertAt = i + 1;
+                while (insertAt < _conversation.Count && _conversation[insertAt].ToolResults.Count > 0)
+                {
+                    foreach (var result in _conversation[insertAt].ToolResults)
+                    {
+                        pending.Remove(result.ToolUseId);
+                    }
+                    insertAt++;
+                }
+
+                if (pending.Count == 0) continue;
+
+                // Keep the placeholder batch in call order.
+                var ordered = new List<AgentRuntimeToolResult>(pending.Count);
+                foreach (var toolUse in message.ToolUses)
+                {
+                    if (pending.Contains(toolUse.Id))
+                    {
+                        ordered.Add(ToolCallProcessor.InterruptedToolResult(toolUse.Id));
+                    }
+                }
+                if (ordered.Count == 0) continue;
+
+                _conversation.Insert(insertAt, AgentRuntimeChatMessage.UserToolResults(ordered));
+                _wireConversation.Insert(insertAt, AgentLoop.CreateToolResultsWireMessage(ordered));
+                _version++;
+            }
+        }
     }
 
     /// <summary>

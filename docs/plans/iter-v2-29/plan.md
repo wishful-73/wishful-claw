@@ -16,6 +16,11 @@
 | R6 | 2026-09-14 | 追加临时需求 T-2（输入框底部统计条改读会话总统计，不走消息遍历聚合）、T-3（长驻进程下前端聊天窗渲染膨胀）、T-4（移除 agent 回复流式光标），登记待排期，见「需求 12 / 13 / 14（临时追加）」 |
 | R7 | 2026-09-14 | 老大追认两项已完成的临时工作属本迭代，补登记并补提交：T-5（用量统计面板体验收口：三选项卡 + 左右分栏 + 明细表可调页长/粘性表头 + 模型行补缓存列，退役 `db/usage-by-source`）、T-6（测试工程独立成 `tests/WishfulClaw.Tests.sln`，移除 playwright e2e 链路）。同时回填需求 10（S-25）已完成的步骤勾选 |
 | R8 | 2026-09-14 | T-3 老大裁定方案（发新消息时把内存消息窗口收缩到最近 N 轮；N 在「运行与性能」页可配，默认 15 / 范围 5–50）并实施完成，补登记实施记录与口径 |
+| R9 | 2026-09-14 | 追加临时需求 T-7（中断执行后再发消息「工具不识别」→ 请求 400），登记待排期，见「需求 17（临时追加）」 |
+| R10 | 2026-09-14 | 追加临时需求 T-8（思考流式渲染上下跳动）、T-9（吸附卡遮挡内容区顶部，R-10.2 高度逻辑遗留），登记待排期，见「需求 18 / 19（临时追加）」 |
+| R11 | 2026-09-14 | 依老大指令，把 T-7 / T-8 / T-9 三项登记稿补成**规范规划节**（方案 / 步骤清单含验证检查点 / Mini 验证 / 涉及文件），提交口径改为「临时追加 9 项（T-1～T-9）」，进入 dev-workflow 六阶段 |
+| R12 | 2026-09-14 | 登记 T-10（T-7 核实中顺带发现：`ContextCompression.PinnedPrefixLen` 的 first user turn 判定漏了 `ToolResults.Count == 0`，可能 pin 住孤立 tool_result），提交口径改为「临时追加 10 项（T-1～T-10）」 |
+| R13 | 2026-09-14 | 登记 T-11（`use_capability` 代理调 `builtin:Task` 时 `arguments` 未送达、报 prompt 为空，导致无法起独立 subagent），提交口径改为「临时追加 11 项（T-1～T-11）」 |
 
 ## 目标
 
@@ -56,6 +61,9 @@
 
 - TypeScript 三配置全零错误：`tsconfig.web.json` / `tsconfig.node.json` / `tsconfig.json`（**必须带 `-p`**）
 - C#：`dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误
+  - ⚠️ **自举开发口径（2026-09-14 实测）**：**任何运行中的实例**（生产实例，或 `npm run dev` 起的开发实例）都会锁住其加载的 dll。此次是**开发实例**（测 400 时未关）锁住 `WishfulClaw.Worker/bin`，直接 build sln 会在拷贝 `WishfulClaw.Agent.dll` 到 Worker 输出时失败（MSB3021 / MSB3027）。**改用独立输出目录**：
+    `dotnet build src/runtime/WishfulClaw.Worker/WishfulClaw.Worker.csproj -p:BaseOutputPath=<临时目录>\bin\`
+    只覆盖 `BaseOutputPath`；**不要**覆盖 `BaseIntermediateOutputPath`（会触发 `MSB4006 循环依赖`）。或先关掉占用 bin 的**开发实例**；**生产实例是 agent 本体，不可为编译去停**。
 - 涉及 C# 新 DTO 的需求（**S-19 / S-21 / S-25**）：必须跑 `npm run build:worker:prod`，AOT 无 IL2026/IL3050/IL3051；**新增具名 DTO 须注册进 `InfrastructureJsonContext` / `WishfulClawJsonContext`（含 `List<T>`）**
 - 行尾：C# 多为 CRLF，单点改动直接用 Edit 工具（保留原行尾）；批量才用 Python（`newline=''`）
 - i18n：**所有新增文案 zh/en 双语补齐**，沿用 `t(key, { defaultValue })` 内联兜底
@@ -63,7 +71,7 @@
 
 ## 提交口径
 
-**正式需求 10 项 + 临时追加需求 6 项（T-1 ～ T-6）+ 1 个收尾修复调整。** 规划/审查/验证文档不单独提交，并入所属需求；审查与验证发现的问题全攒进收尾那一刀。
+**正式需求 10 项 + 临时追加需求 11 项（T-1 ～ T-11）+ 1 个收尾修复调整。** 规划/审查/验证文档不单独提交，并入所属需求；审查与验证发现的问题全攒进收尾那一刀。
 
 > 历史现状：S-21 在历史里拆成 3 刀（`c98339c2` / `63fcfa42` / `164acc99`），收尾阶段用 `rebase` 折叠回单刀，历史里一个需求只留一刀。
 
@@ -790,6 +798,256 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ---
 
+# 需求 17（临时追加）：T-7 中断执行后再发消息，工具不识别导致请求 400
+
+> 2026-09-14 老大在真机使用中亲历。老大口径：**先登记，排进 29 迭代解决**。
+> ⚠️ 本节为登记稿，**断点/根因为初读推断，须实测复核**；行号均为 2026-09-14 实读。
+
+## 现象
+
+- 模型：**DeepSeek v4.1 flash**（openai-chat 协议）
+- 复现：某轮执行中点「中断」→ **再发送一条用户消息** → 「工具不识别」，最终请求返回 **400**
+- 影响：**中断过的会话，之后发消息就会失败**（不是一次性偶发）
+
+## 现状勘测（2026-09-14 已实测坐实）
+
+**根因（已验证）：中断时后端把已产生的 `assistant(tool_calls)` 留在常驻会话里，未写回工具结果，下一次请求的 wire conversation 违反 openai-chat 配对要求 → 400。**
+
+**上游 400 报文（老大 2026-09-14 开发实例复现）**：
+
+> `An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'. (insufficient tool messages following tool_calls message)`
+
+**链路（实读 `AgentLoop.cs`）**：
+
+- `:64` `SessionConversationManager.GetOrCreate(conversationKey)` —— **常驻内存会话**（worker 进程内一直活着，不随中断清空）
+- `:397-399` 每轮先把 `assistant`（可能带 toolCalls）写进 `conversation` / `wireConversation`
+- `:443` `ToolCallProcessor.ExecuteAsync(turn.ToolCalls, ...)`
+- `:446-450` **★中断点** —— 若此时 `IsCancellationRequested`，`EmitLoopEndAsync("aborted")` **直接 return**，`:452-455`「把工具结果写成 user 消息写回会话」**根本没执行** → 会话里留下 `assistant(tool_calls=[...])` 且**无后随 tool 结果**
+- 下次发消息走 `:134` else 分支（常驻会话 `Append` 新 user）→ 带着悬空历史直接发上游 → 400
+
+**第二条路径（DB 懒恢复）**：前端 `cancelStream`（`stores/chat-store/index.ts:486-534`）把带 `toolCalls` 的 assistant 消息 `dbUpsertMessage` 落库（`:498`/`:520`）；重开 app 后 worker 经 `SessionRestoreTools.RestoreFromDb` 从 DB 重建（`AgentLoop.cs:82`，`ConvertToWireMessage` 把 `meta.toolCalls` 转 `tool_use`）——同样构造出悬空序列。**所以源头有两处。**
+
+**待核实**：provider 抛异常的路径（`:349` catch）是否也会留下悬空 assistant（疑似同因）。
+
+**压缩路径核实（2026-09-14，老大提出「工具执行中触发自动压缩会不会同样中招」）** —— 结论：**压缩已有配对保护，大概率不是新来源，但保护只覆盖「tail 起点」**：
+
+- `TailStart`（`ContextCompression.cs:373-376`）：tail 起点若落在 `user` + `ToolResults.Count > 0`（tool_result）上，**往前退** —— 注释原文 `// Align off tool results (don't start tail with an orphan tool result)`
+- `PlanCompaction` 无窗口分支（`:303-306`）同样 align
+- `PartitionFold`（`:395-406`）：**kept 只收 `ToolResults.Count == 0` 的 user 消息** → tool_result 一律进 fold，与它的 `assistant(tool_use)` 一起被摘要 → 不产生孤立 tool_result
+- **但**：压缩**不能修复**中断造成的悬空（它只按 token 预算切区间）—— 悬空 `assistant(tool_use)` 落在 **tail** 仍会 400；只有落在 **fold** 才会"顺手"被摘要掉（巧合，非设计）
+- 小瑕疵：`PinnedPrefixLen`（`:327-333`）判定 first user turn 时**没检查 `ToolResults.Count`**（边界情况，正常会话首条不会是 tool_result）
+
+## 方案（老大 2026-09-14 拍板：三件套）
+
+1. **主修（源头）** —— 中断时补配对，别再产坏数据
+2. **次修（DB 路径）** —— 前端落库前处理，保住「重开 app 懒恢复」这条路
+3. **统一兜底（重点）** —— wire conversation 发送前做一次配对校验补桩，一处覆盖所有来源（中断 / 异常 / 压缩边界 / 历史坏数据 / 未来新增路径）
+
+## 步骤
+
+- [✓] **T-7.1（主修·源头）**：`AgentLoop.cs` 把工具结果**写回移到取消检查之前**；新增 `ToolCallProcessor.EnsureEveryCallHasResult(toolCalls, results)` —— 用与恢复路径一致的 `[INTERRUPTED]` placeholder 补齐「已发起但无结果」的调用，按 tool call 顺序配对；然后才判 `IsCancellationRequested` → `EmitLoopEndAsync("aborted")`
+  - 验证：`WishfulClaw.Agent` 编译 0 警告 0 错误 ✅（2026-09-14）
+- [✓] **T-7.2（入口兜底，非热路径）**：新增 `SessionConversation.RepairToolPairing()`（private）—— 扫 `ToolUses` 非空的 assistant 消息，向后收集配对 result，缺的按调用顺序补 `[INTERRUPTED]` placeholder（`_conversation` / `_wireConversation` 平行列表同步 `Insert`）。**只在 `Initialize` / `InitializeIfEmpty`（首次加载，含 DB 恢复）调用一次**；`Append` 不调（新消息由 T-7.1 在写入时保证配对）。
+  - 老大 2026-09-14 明确：**不在每次 provider 请求前扫全量**（历史会话消息多，不接受热路径空跑）
+  - 验证：`WishfulClaw.Worker` 全依赖链编译 0 警告 0 错误 ✅（2026-09-14）
+- [⊘] **T-7.3（次修·DB 路径）—— 复核后判定非必需**：`SessionRestoreTools.SynthesizeToolResultsWireMessage`（`:309-390`）在恢复时已为「status 非 completed/error」的 tool_call 合成 `[INTERRUPTED]` placeholder，DB 即使存了未完成的 toolCalls，重建出的 wire conversation 也是配对的。故**不改前端落库口径**（保持数据原样，由恢复层 + T-7.2 统一兜底）
+- [✓] **T-7.4（回归）**：正常路径行为不变（`EnsureEveryCallHasResult` 结果齐全时走快路径原样返回；`RepairToolPairing` 无缺失时为只读扫描）；编译 0/0 ✅
+  - 真机复验（中断一次 → 再发消息不 400）待老大
+
+## Mini 验证
+
+- C#：`dotnet build src/runtime/WishfulClaw.Worker/WishfulClaw.Worker.csproj -p:BaseOutputPath=<临时目录>\bin\` 0 警告 0 错误（**自举口径**，见「全局门禁」）✅
+- TS：三配置（web / node / 根）零错误（本需求未改前端）
+- 真机：新建会话 → 中断一次带工具调用的执行 → 再发消息 → **不再 400**（老大复验）
+
+## 涉及文件
+
+- `src/runtime/WishfulClaw.Agent/AgentLoop.cs` — ★T-7.1 中断点 + T-7.2 兜底挂载点
+- `src/runtime/WishfulClaw.Agent/ToolCallProcessor.cs` — T-7.1 `EnsureEveryCallHasResult` / `InterruptedToolResult`
+- `src/runtime/WishfulClaw.Agent/SessionConversation.cs` — T-7.2 `RepairToolPairing`（仅在首次加载 / DB 恢复调用，非热路径）
+- ~~`src/renderer/src/stores/chat-store/index.ts`~~ — T-7.3 复核后非必需，未改
+
+---
+
+# 需求 18（临时追加）：T-8 思考流式渲染时聊天窗上下跳动
+
+> 2026-09-14 老大在真机使用中发现，登记待排期，未实施。老大原话：「**思考流式渲染老是跳上跳下的**」。
+
+## 现象
+
+- Agent 流式思考（thinking）过程中，聊天窗内容 / 视口**反复上下跳动**，不是平滑跟随
+
+## 初步定位（待复核）
+
+- 思考块本体：`components/chat/ThinkingBlock.tsx` —— 流式态文本（`:144-153`）包在 `max-h-80 overflow-y-auto` 容器（`:143`）里，外层再套 `CollapsibleHeightPanel`（`:140`，展开 / 收起有高度动画）
+- 聊天窗滚动跟随：`components/chat/MessageList/useMessageListScroll.ts`（R-10.2 引入 `contentHeightWatermarkRef` / `minContentHeight` / `getRealContentBottom`，`:112-118`、`:570-591`）
+- **假设**：思考文本持续增长 → 内容高度变化 + 内层 `max-h-80` 触底滚动 + 外层贴底跟随三者叠加，使视口在「触底跟随」与「脱底」之间来回抖；也可能与 `CollapsibleHeightPanel` 在流式态反复重算高度有关
+- **代码机制（2026-09-14 实读）**：流式文本走 `useStreamingRenderPool`（`hooks/use-typewriter.ts`），`renderPool.text` 是 `fullText.slice(0, safeRenderedLength)` 的**单调前缀**（只增不减）；`ThinkingBlock.tsx:76-79` 的 effect 在每次 `renderPool.text` 变化时执行 `contentRef.scrollTop = contentRef.scrollHeight`（瞬时贴底）
+- **根因候选**：
+  - ~~①渲染池脉冲式 flush~~ —— **已排除**：脉冲（`getCatchupStep` 一次追几百字符）只会**单向**跳，而老大实测是**双向**跳（上+下），说明存在**回退**
+  - **②`CollapsibleHeightPanel` 流式期间反复重算高度（首选）** —— `open` 态 `style.height: 'auto'`（`:138`）与 `transition: height 0.2s`（`:140`）并存；流式 `children` 每次都变，`:107-119` 的 `useLayoutEffect` 在 `el.style.height !== 'auto'` 时反复 `applyHeight(measured)`，高度目标反复变化使 transition 不断重启 → 内层 `max-h-80` 容器的 `clientHeight` 抖动 → `scrollTop = scrollHeight` 被浏览器反复 clamp → **上下抖**
+  - ③贴底 effect 时机 —— `ThinkingBlock.tsx:76-79` 用 `useEffect`（paint 后），可能有单帧延迟（单向）
+- **已排除**：文本变短回退（renderPool 单调递增）
+
+## 方案（待 T-8.0 取证确认）
+
+- **首选**：流式态绕过 `CollapsibleHeightPanel` 的高度动画（`enabled={false}`，`:128-130` 会直接渲染 children 不包装），消除 `clientHeight` 抖动
+- 备选：仅非流式态 `applyHeight`；或内层容器加 `overflow-anchor: none`
+
+## 步骤
+
+- [ ] **T-8.0（前置·需老大执行）**：真机跑探针（DevTools Console 取 `contentRef` 的 `scrollTop` / `scrollHeight` / **`clientHeight`** 序列，观察十几秒）
+  - `clientHeight` 在抖 → 坐实候选 ②（高度面板反复重算）
+  - `clientHeight` 不动 → 转查候选 ③（贴底 `useEffect` 时序）
+- [ ] **T-8.1**：按取证结论落修法（首选 `enabled={false}`）
+  - 验证检查点：流式思考全程视口平滑、不再上下跳；思考结束后的收起动画仍正常
+- [ ] **T-8.2（回归）**：思考块收起 / 展开、历史思考块渲染、`max-h-80` 内部滚动均正常
+
+## Mini 验证
+
+- TS 三配置零错误
+- 真机：长时间思考全程无跳动（老大复验）
+
+## 涉及文件
+
+- `src/renderer/src/components/chat/ThinkingBlock.tsx` — 主要修改点
+- `src/renderer/src/components/chat/CollapsibleHeightPanel.tsx` — 可能改（`enabled` 分支 / 高度策略）
+
+---
+
+# 需求 19（临时追加）：T-9 吸附卡遮挡内容区顶部（R-10.2 高度逻辑遗留）
+
+> 2026-09-14 老大在真机使用中回看 R-10.2 效果，登记待排期，未实施。
+
+## 背景
+
+- iter-28 R-10.2 做过「**执行中内容高度只增不减**」（`useMessageListScroll.ts` 的 `contentHeightWatermarkRef` / `minContentHeight`，地面真值走 DOM 实测 `getRealContentBottom`，`:112-118`、`:140-162`），目的是防止执行中高度回缩导致悬空 / 跳窗
+- 收尾口径：留白可接受、整屏留白不可接受；仅 `scrollTop >= realBottom` 触发回缩
+
+## 现象（老大原话）
+
+> 「高度只增不减……最后发现被顶高度太好了，全是留白，最后处理了需要留在内容区，但是**高度好像不够，被吸附顶部的用户消息卡给遮挡了**」
+
+- 高度收尾后：内容区可视高度**不够**，顶部第一条消息**被吸附卡（pinned 用户消息卡）遮住**
+
+## 初步定位（待复核）
+
+- 吸附卡：`components/chat/MessageList/VirtualListContent.tsx:251-285` —— `absolute left-0 right-0 top-0 z-20` 的 overlay，不透明底 + 下方 `h-4` 渐隐遮罩，**浮在内容区顶部之上**
+- 内容区高度：`VirtualListContent.tsx:133-136` 用 `minHeight: minContentHeight`；`useMessageListScroll.ts` 的水位线
+- **假设**：吸附卡出现时内容区没为它预留顶部空间（高度水位线也未把吸附层算进去），导致顶部内容被盖
+
+## 方案（候选，复现后定）
+
+- 吸附态给滚动内容加**顶部 padding**，或把**吸附卡高度计入**可视高度 / 水位线；具体走哪条，复现后再定
+
+## 步骤
+
+- [ ] **T-9.0（前置）**：复现 —— 长会话执行中吸附卡出现、视口贴顶时，确认顶部第一条消息被吸附卡盖住（目视 / 截图）
+- [ ] **T-9.1**：按复现结论落修法（顶部 padding 或计入高度）
+  - 验证检查点：吸附卡可见时，内容区顶部不被遮挡
+- [ ] **T-9.2（回归）**：吸附卡出现 / 消失、滚到底部、上滚「加载更早」均正常
+
+## Mini 验证
+
+- TS 三配置零错误
+- 真机目视：吸附态顶部内容可见（老大复验）
+
+## 涉及文件
+
+- `src/renderer/src/components/chat/MessageList/VirtualListContent.tsx` — 吸附 overlay 定位 + 内容区 padding
+- `src/renderer/src/components/chat/MessageList/useMessageListScroll.ts` — 高度水位线
+
+---
+
+# 需求 20（临时追加）：T-10 压缩 head 前缀可能 pin 住孤立 tool_result
+
+> 2026-09-14 在 T-7 的压缩路径核实中顺带发现，老大要求登记。**潜在缺陷**：正常会话不触发，但会加剧「已损坏会话」的问题。**须复核后再定修法**。
+
+## 现象 / 机制
+
+`ContextCompression.cs:318-340` 的 `PinnedPrefixLen` 决定折叠时**逐字保留的前缀**（head），其 first user turn 判定为：
+
+```csharp
+if (i < conversation.Count &&
+    conversation[i].Role == "user" &&
+    !IsCompactionSummary(conversation[i]) &&
+    IsPinnableUserTurn(conversation[i], provider))
+{ i++; }   // ← 缺少 ToolResults.Count == 0 约束
+```
+
+**问题**：只查 `role == "user"`，**没排除本身就是 tool_result 的 user 消息**（`ToolResults.Count > 0`）。若 system 之后的第一条 user 恰好是 tool_result，它会被 pin 进 head —— 而它对应的 `assistant(tool_use)` 在 head 之外（将被折叠），于是 head 里留下**孤立 tool_result**，上游同样报错（缺配对的 `tool_use`）。
+
+对照：`PartitionFold:395-406` 的 kept 判定**是**带了 `ToolResults.Count == 0` 的 —— 两处口径不一致。
+
+## 触发条件
+
+- 正常会话：第一条 user 必是真实用户输入 → **不触发**
+- **已损坏会话**（如 T-7 中断造成的悬空、或恢复出的序列以 tool_result 开头）→ 会被 pin 住，**加剧问题**
+
+## 方案（待复核后定）
+
+- 最小改：first user turn 判定补 `conversation[i].ToolResults.Count == 0`，与 `PartitionFold` 口径对齐
+- 若 T-7.2 的统一兜底已落地（发送前配对校验），本项可降级为「顺手修一行」
+
+## 步骤
+
+- [ ] **T-10.0（复核）**：构造「system 后紧跟 tool_result」的会话，确认 `PinnedPrefixLen` 会把它 pin 进 head，且压缩后 head 出现孤立 tool_result
+- [ ] **T-10.1**：first user turn 判定补 `ToolResults.Count == 0`
+  - 验证检查点：上述构造会话压缩后 head 不再以孤立 tool_result 结尾
+- [ ] **T-10.2（回归）**：正常会话压缩行为不变（首条 user 仍被正确 pin）
+
+## Mini 验证
+
+- C#：`dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误
+- 压缩回归：正常多轮会话压缩前后配对完整
+
+## 涉及文件
+
+- `src/runtime/WishfulClaw.Agent/ContextCompression.cs` — `PinnedPrefixLen:318-340`
+
+---
+
+# 需求 21（临时追加）：T-11 use_capability 代理调用 builtin:Task 时 arguments 未送达
+
+> 2026-09-14 我在 iter-29 规划验证（阶段三）起独立 subagent 时发现；老大确认这属**自家源码**缺陷，要求登记。
+> ⚠️ **待核实**：可能是代理参数解析缺陷，也可能是调用格式约束——不得先入为主。
+
+## 现象
+
+agent 调 `use_capability(action="call", capability_id="builtin:Task", arguments={prompt, description, subagent_type, background})` 起子 agent，**不论 arguments 怎么写**（已试 4 次：完整字段 / 极简字段 / 紧凑单行 JSON / 不带 background），均返回：
+
+> `Task requires a non-empty prompt.`
+
+→ 被代理的 `Task` 工具**收不到 prompt**（arguments 疑似被解析成空对象）。
+
+## 影响
+
+- agent 无法经代理启动子 agent → dev-workflow「阶段三 / 五 独立 subagent 审查」走不通，只能主 agent 代行（**独立性下降**；iter-29 第四轮规划验证已受影响，已在 `compliance_report.md` 如实标注）
+
+## 待核实
+
+1. `arguments` 的期望形态（JSON 对象 vs 字符串），当前是否被当字符串原样透传
+2. `use_capability` 代理的**参数传递 / 解析**环节是否存在缺陷
+3. 是否只影响 `builtin:*`，`mcp-tool:` / `skill:` 是否同样
+4. `action="inspect"` 正常（能返回 schema）→ 代理本身可用，缺陷疑似限于 `call` 的 arguments
+
+## 步骤
+
+- [ ] **T-11.0（复核）**：定性 —— 对比 `inspect` 正常 / `call` 失败；必要时打日志看代理收到的原始 arguments
+- [ ] **T-11.1**：按结论修（转发缺陷 → 修参数解析；格式约束 → 明确 schema / 文档 / 校验提示）
+- [ ] **T-11.2（回归）**：`use_capability` 代理 `builtin:*` / `mcp-tool:*` / `skill:*` 三类调用均正常
+
+## Mini 验证
+
+- 代理调用 `builtin:Task` 能正常起子 agent 并返回结果（不再报 prompt 为空）
+
+## 涉及文件（初判，实施时定位）
+
+- `use_capability` 工具定义与代理执行（C# `AgentRuntimeUseCapabilityExecutor.cs` / `ToolDispatchRouter.cs` + 工具 schema）
+- 被代理工具的入参解析（`Task` 的 prompt 必填校验点）
+
+---
+
 # 执行前需要老大处理的事项
 
 这几件 agent 做不了或做不准，需在确认环节一并处理：
@@ -799,6 +1057,7 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 3. **S-21**：提供两个可控的测试 provider / Mock endpoint（或授权自带 mock server 起一个）
 4. **S-22**：**真机复现**（agent 无微信渠道环境）—— 修完后走一遍「全局派发 → 项目回报 → 助理回复」确认微信端收到。本需求 agent 侧无法自测通
 5. **收尾**：真机人工复测（本次多条需求是 UI 与渠道，最终目视仍由你确认）
+6. **T-7**：提供一次 **400 的上游报错原文 / 完整报文**（agent 侧只读得到状态码，需要真实响应体才能定量根因）；能顺手说明「工具不识别」是上游报错文案还是前端显示，更好
 
 > 已在规划阶段自行钉死、不再问你的：S-25 的 UI 落点（右侧面板新 Tab `timeline`）、S-16 的文件拆分（504 行已超阈值，先拆再改）、S-21 的测试承载（新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`）。
 

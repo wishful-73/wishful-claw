@@ -707,3 +707,64 @@ S-25 的 UI 落点（右侧面板新 Tab `timeline`）、S-16 的文件拆分、
 ---
 
 > 本轮结论：**PASS**。三轮累计 ❌：7 → 1 → **0**。plan 可进入用户确认环节；确认环节需拿到 §五 B 的 5 条答案，执行时按 §五 A 的 8 条复核。§四 的 6 条 ⚠️ 不阻断，其中第 2 条（chip 反解析）实施时必做。
+
+---
+
+# 第四轮 追加需求审查（T-7 / T-8 / T-9）
+
+> 审查时间：2026-09-14
+> 审查对象：`plan.md`「需求 17 / 18 / 19（临时追加）」三节（本轮新增）
+> 审查方式：**主 agent 实测复核** —— 原计划起独立 subagent（`builtin:Task`），但该能力在本会话调用失败（`arguments` 传不进去，报 `Task requires a non-empty prompt`），改由主 agent 逐锚点实测代行。⚠️ **独立性弱于前三轮（非独立审查）**，如实标注；若需真正独立复验，须在 subagent 可用时补一轮。
+> 结论：**PASS**（❌ 0 / ⚠️ 3）
+
+## 一、总体结论
+
+三节均已成节、步骤链完整、每步带验证检查点、涉及文件均落在真实路径、无跨层逆向依赖。**❌ = 0，可进入用户确认环节**。三个 ⚠️ 均为「待取证/待定」性质，不阻断，但**决定 T-8 / T-9 能否开工**。
+
+## 二、逐项检查（dev-workflow 阶段三 5 检查项）
+
+| 检查项 | 判定 | 依据 |
+|---|---|---|
+| 1. 步骤完整覆盖目标 | ✅ | T-7 四步（主修/兜底/次修/回归）、T-8 三步（取证/修/回归）、T-9 三步（复现/修/回归），与各自「目标」一一对应 |
+| 2. 每步有可判定验证检查点 | ✅ | 每步均写了可观测检查点（如 T-7.1「会话尾部成对结构」、T-8.0「clientHeight 是否抖」、T-9.0「顶部被遮挡」） |
+| 3. 文件路径符合项目结构 | ✅ | 见 §三实测表，全部命中真实路径 |
+| 4. 分层依赖正确 | ✅ | 改动集中在 Agent 层（C#）+ renderer（TS），未见逆向依赖；T-7.2 兜底落在 Agent 层内部 |
+| 5. 参考源码正确 | ✅ | T-7 依据上游 400 报文 + 实读 `AgentLoop.cs`；T-8/T-9 依据用户真机现象 + 实读前端组件 |
+
+## 三、锚点实测表
+
+| plan 引用 | 实测 | 判定 |
+|---|---|---|
+| `AgentLoop.cs:64` GetOrCreate | `SessionConversationManager.GetOrCreate(conversationKey)` ✅ | ✅ |
+| `AgentLoop.cs:134` else 分支 Append | `var newConversation = ReadConversation(newWireMessages); sessionConv.Append(...)` ✅ | ✅ |
+| `AgentLoop.cs:341` provider turn 入口 | `turn = await ProviderRetryPolicy.ExecuteAsync(() => ExecuteTurnAsync(...))` ✅ | ✅ |
+| `AgentLoop.cs:397-399` assistant 入会话 | `conversation.Add(turn.AssistantMessage)` / `wireConversation.Add(assistantWireMessage)` ✅ | ✅ |
+| `AgentLoop.cs:443` 工具执行 | `var toolResults = await ToolCallProcessor.ExecuteAsync(...)` ✅ | ✅ |
+| `AgentLoop.cs:446-450` ★中断点 | `if (state.IsCancellationRequested) { await EmitLoopEndAsync(...); return; }` ✅ | ✅ |
+| `AgentLoop.cs:452-455` 工具结果写回 | `UserToolResults` + `CreateToolResultsWireMessage` ✅ | ✅ |
+| `SessionConversation.cs:139/180/197/269` | `Initialize` / `Append` / `AppendInLoop` / `SessionConversationManager` ✅ | ✅ |
+| `chat-store/index.ts:486-534` cancelStream | `hasContent` 含 `msg.toolCalls.length>0`（:498）→ `dbUpsertMessage`（:520）✅ | ✅ |
+| `ContextCompression.cs:358-379` TailStart | 尾部「Align off tool results」注释与循环 ✅ | ✅ |
+| `ContextCompression.cs:303-306` PlanCompaction align | 无窗口分支同样 align ✅ | ✅ |
+| `ContextCompression.cs:388-409` PartitionFold | kept 限定 `Role=="user" && ToolResults.Count==0` ✅ | ✅ |
+| `ContextCompression.cs:318-340` PinnedPrefixLen | 未检查 ToolResults.Count（小瑕疵，已在 plan 标注）✅ | ✅ |
+| `SessionRestoreTools.cs:470` ConvertToWireMessage | assistant→tool_use / user→tool_result 转换 ✅ | ✅ |
+| `ThinkingBlock.tsx:76-79` 贴底 effect | `contentRef.current.scrollTop = scrollHeight` ✅ | ✅ |
+| `ThinkingBlock.tsx:140/143` | `CollapsibleHeightPanel` + 内层 `max-h-80 overflow-y-auto`（contentRef）✅ | ✅ |
+| `CollapsibleHeightPanel.tsx:107-119` | `children` 依赖的 useLayoutEffect，`height!=='auto'` 时 `applyHeight(measured)` ✅ | ✅ |
+| `CollapsibleHeightPanel.tsx:128-130` | `if (!enabled) return <div className={className}>{children}</div>` ✅ | ✅ |
+| `use-typewriter.ts:47-58` getCatchupStep | 池大时 catchup 步长放大（脉冲 flush）✅ | ✅ |
+| `VirtualListContent.tsx:133-136` | `minHeight: minContentHeight` ✅ | ✅ |
+| `VirtualListContent.tsx:251-285` 吸附 overlay | `absolute left-0 right-0 top-0 z-20` + h-4 渐隐遮罩 ✅ | ✅ |
+| `useMessageListScroll.ts` watermark | `contentHeightWatermarkRef` / `minContentHeight` / `getRealContentBottom` ✅ | ✅ |
+
+## 四、❌ 项清单
+
+**无。**
+
+## 五、⚠️ 项（非阻断）
+
+1. **T-7.2 兜底落点未钉死** —— plan 写「建议落在 `SessionConversation.cs`（两个列表同步修）」，但具体方法/签名未定。实施时按「provider turn 入口前、两个列表同步」原则定，属实现细节，不阻断。
+2. **T-8 / T-9 是「待取证」型需求** —— T-8.0（探针）/ T-9.0（复现）都需要老大真机执行（符合工作流「需要用户手动操作」介入点）。**取证未完成前不得动修法**，否则是盲改。
+3. **T-9 修法二选一未定** —— 顶部 padding vs 计入可视高度，复现后定。
+4. **本轮审查由主 agent 代行，非独立** —— subagent 工具在本会话不可用；如需严格独立性，补一轮独立复核。

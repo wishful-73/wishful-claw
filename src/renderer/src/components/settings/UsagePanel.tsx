@@ -30,7 +30,7 @@ import {
  */
 
 type UsageRange = '24h' | '7d' | '30d'
-type UsageChartTab = 'line' | 'bar' | 'stats'
+type UsageChartTab = 'line' | 'bar' | 'stats' | 'detail'
 
 interface UsageResponse {
   success: boolean
@@ -313,9 +313,10 @@ export function UsagePanel(): React.JSX.Element {
         <div className="space-y-3">
           <div className="flex items-center gap-1 rounded-lg border bg-background/60 p-1" role="tablist">
             {([
-              ['line', '曲线图'],
-              ['bar', '柱状图'],
-              ['stats', '统计概览']
+              ['line', t('usage.tabs.line', { defaultValue: '曲线图' })],
+              ['bar', t('usage.tabs.bar', { defaultValue: '柱状图' })],
+              ['stats', t('usage.tabs.stats', { defaultValue: '统计概览' })],
+              ['detail', t('usage.tabs.detail', { defaultValue: '请求明细' })]
             ] as const).map(([id, label]) => (
               <button
                 key={id}
@@ -389,6 +390,25 @@ export function UsagePanel(): React.JSX.Element {
                 value={formatDuration(overview?.avgDurationMs)}
               />
             </div>
+          ) : chartTab === 'detail' ? (
+            <SettingsSection
+              id="sec-usage-detail"
+              title={t('usage.detail.title', { defaultValue: '请求明细' })}
+              description={t('usage.detail.count', {
+                defaultValue: '共 {{total}} 条',
+                total: logsTotal
+              })}
+            >
+              <UsageDetailTable
+                rows={logs}
+                total={logsTotal}
+                page={logsPage}
+                pageSize={DETAIL_PAGE_SIZE}
+                loading={logsLoading}
+                providerBaseUrlFor={(providerId) => providerFor(providerId)?.baseUrl}
+                onPageChange={(page) => void loadLogsPage(range, page)}
+              />
+            </SettingsSection>
           ) : (
             <SettingsSection
               id={`sec-usage-${chartTab}`}
@@ -447,28 +467,6 @@ export function UsagePanel(): React.JSX.Element {
               />
             </SettingsSection>
           </div>
-        )}
-
-        {/* Detail lines */}
-        {!isEmpty && (
-          <SettingsSection
-            id="sec-usage-detail"
-            title={t('usage.detail.title', { defaultValue: '请求明细' })}
-            description={t('usage.detail.count', {
-              defaultValue: '共 {{total}} 条',
-              total: logsTotal
-            })}
-          >
-            <UsageDetailTable
-              rows={logs}
-              total={logsTotal}
-              page={logsPage}
-              pageSize={DETAIL_PAGE_SIZE}
-              loading={logsLoading}
-              providerBaseUrlFor={(providerId) => providerFor(providerId)?.baseUrl}
-              onPageChange={(page) => void loadLogsPage(range, page)}
-            />
-          </SettingsSection>
         )}
 
         <p className="text-[11px] leading-relaxed text-muted-foreground/60">

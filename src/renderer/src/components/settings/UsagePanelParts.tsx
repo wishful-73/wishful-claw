@@ -287,7 +287,7 @@ export function UsageLineChart({
   )
   const max = axisUpperBound(dataMax)
   const width = 800
-  const height = 240
+  const height = 320
   const padding = { top: 12, right: 8, bottom: 20, left: 48 }
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
@@ -303,7 +303,7 @@ export function UsageLineChart({
     <div className="relative">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="h-56 w-full overflow-visible"
+        className="h-80 w-full overflow-visible"
         role="img"
         aria-label="按模型请求趋势"
         preserveAspectRatio="none"
@@ -386,7 +386,7 @@ export function UsageBarChart({
   )
   const max = axisUpperBound(dataMax)
   const width = 800
-  const height = 240
+  const height = 320
   const padding = { top: 12, right: 8, bottom: 20, left: 48 }
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
@@ -402,7 +402,7 @@ export function UsageBarChart({
     <div className="relative">
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="h-56 w-full overflow-visible"
+        className="h-80 w-full overflow-visible"
         role="img"
         aria-label="按模型请求量柱状图"
         preserveAspectRatio="none"

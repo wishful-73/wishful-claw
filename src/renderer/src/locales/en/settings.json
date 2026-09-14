@@ -1360,6 +1360,12 @@
     "refresh": "Refresh",
     "empty": "No request records in this time range yet",
     "footnote": "Statistics come from the model request log (one row per HTTP request, retries and failures included). Cost is computed only from prices explicitly configured on a model and stays blank without one.",
+    "tabs": {
+      "line": "Line",
+      "bar": "Bar",
+      "stats": "Overview",
+      "detail": "Requests"
+    },
     "ranges": {
       "h24": "24 hours",
       "d7": "7 days",

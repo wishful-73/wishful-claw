@@ -910,7 +910,11 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
   - **验证 ✅**（老大 2026-09-14 20:45 真机）：修复后 `before` 一路贴到底（`13→39→73→…→2527`），原话「**这次抖动就很少了**」
 - [⊘] **第一版修法已废弃**：`CollapsibleHeightPanel enabled={!isThinking}` —— 日志显示 **`clientHeight` 全程恒 320、没抖**，候选 ② 被数据否掉，该改动已回退
 - [✓] **T-8.2（回归）**：思考块收起 / 展开、历史思考块、`max-h-80` 内部滚动逻辑未动；tsc 三配置零错误 ✅
-- **已知残留（小）**：内容刚跨过 `max-h-80` 的头几帧仍可能 `after=0`（疑似首帧布局时序）；如需彻底消除可评估 `useEffect` → `useLayoutEffect`
+- [✓] **T-8.3（残留修复，2026-09-14 22:14 老大真机确认）**：
+  - 贴底 effect `useEffect` → **`useLayoutEffect`**（paint 前完成，消除「内容已长出来、滚动条没跟上」的一帧）
+  - 贴底改 **两行缓冲**：新增 `THINKING_SCROLL_BUFFER_PX = 48`，内容先占满底部留白（`pb-6` → `pb-12`），攒够两行才滚一次 —— 把触碰滚动的频率降下来
+  - 老大口径：「**确实不上下跳了**」→ 主症（上下跳）已解决
+- **残留（新登记，未修）**：**「抖动还是有，准确来说就是渲染不丝滑」** —— 与贴底无关，根因在渲染池，见「需求 25（临时追加）：T-15」
 
 ## Mini 验证
 
@@ -1287,6 +1291,46 @@ if (usageBaseline) {
 
 ### 涉及文件（实际）
 - `src/renderer/src/stores/chat-store/session-slice.ts` — 基线取值时机 + 增量清零 + `billableInputTokens`
+
+---
+
+# 需求 25（临时追加）：T-15 思考流式「渲染不丝滑」（T-8 的残留）
+
+> 2026-09-14 22:14 老大真机复验 T-8 后报告：「**确实不上下跳了，抖动还是有，准确来说就是渲染不丝滑**」。**已登记，待老大拍板是否本轮修**。
+
+## 现象
+
+- T-8 修好后**上下跳已消除**，但思考流式期间**渲染一顿一顿**（阶梯感），不是平滑逐字推进。
+- 与贴底 / 滚动条无关：T-8.3 的两行缓冲只降低「触碰滚动」频率，改变不了「内容成块冒出来」的观感。
+
+## 根因分析（代码层，真机日志待补）
+
+`src/renderer/src/hooks/use-typewriter.ts` 的 `getCatchupStep` 用**三档阶跃比例**追赶积压池：
+
+| `poolSize` 区间 | 每帧步长 |
+|---|---|
+| ≤ `smallPoolChars` 120 | `fixedStep`（220 字/秒 ≈ **7 字/帧**） |
+| 121–720 | `max(fixedStep, pool × 0.14)` ≈ **17 字/帧**（pool=121） |
+| 721–2400 | `… pool × 0.2` ≈ **144 字/帧**（pool=721） |
+| > 2400 | `… pool × 0.28` ≈ **672 字/帧** |
+
+**阶跃点在稳定态附近来回穿越**：推理模型的思考输出普遍快于 220 字/秒 → 池子涨过 120 → 切 0.14 档（每帧 17 字）→ 池子被追回 120 以下 → 又切回每帧 7 字 → **节奏在 7↔17 之间反复跳**。720 / 2400 两个边界同理（101↔144、480↔672）。视觉上就是「一顿一顿」——步长不连续，不是速率问题。
+
+> 附带：`maxStepChars` 截断会让大池子从「按比例」突变为「恒定上限」，也是一次阶跃。
+
+## 候选方案（待拍板，倾向 A）
+
+- **A（首选）连续化追赶**：把三档比例换成**关于 `poolSize` 连续的单调函数**（例如以 `smallPoolChars` 为起点线性 ramp 到上限比例），保证 `getCatchupStep` 在区间边界处连续（`pool = small` 时**退化为 `fixedStep`**，与相邻档无缝）。改动只动 `getCatchupStep` + `RENDER_POOL_CONFIG`，风险低。
+- **B 纯匀速 + 有限加速**：`step = rate × elapsed × (1 + pool / mediumPoolChars × α)`（α 小，如 0.15），彻底去掉分档。
+- **C 不动**：接受现状（内容成块是上游 burst 的固有属性，渲染只能有限平滑）。
+
+## 验收
+- 真机：长时间思考（上游高速输出）全程渲染**匀速、无节奏突变**；上游停止时池子能收干（不遗留半截文本）。
+- 回归：`agile` / `elegant` 两档观感差异保留；非流式路径（`isStreaming=false` 直接返回全文）不变。
+
+## 涉及文件（初判）
+- `src/renderer/src/hooks/use-typewriter.ts` — `getCatchupStep` / `RENDER_POOL_CONFIG`
+- 观测：`src/renderer/src/lib/streaming-perf.ts` 的 `recordStreamingRenderPoolFlush`（已有 poolSize/step 采样，可直接看 step 抖动）
 
 ---
 

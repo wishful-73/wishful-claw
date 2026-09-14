@@ -130,9 +130,45 @@ export function createTabSlice(set: SetFn, get: GetFn) {
         return { rightPanelTabs, ...activation, rightPanelOpen: true }
       }),
 
-    ensureTerminalTab: () =>
+    // Timeline（S-25）：per-session 作用域，projectId 只是数据字段；事件查询
+    // 由面板组件自己按 sessionId 发起，tab 本身无额外状态。
+    openTimelinePanel: (sessionId?: string | null, projectId?: string | null) =>
       set((state: any) => {
-        const sessionId = resolveRightPanelSessionId(state)
+        const resolvedSessionId = resolveRightPanelSessionId(state, sessionId)
+        const session = resolvedSessionId
+          ? useChatStore.getState().sessions.find((item: any) => item.id === resolvedSessionId)
+          : null
+        const resolvedProjectId = projectId ?? session?.projectId ?? useChatStore.getState().activeProjectId ?? null
+        const tabId = scopedRightPanelTabId('timeline', resolvedSessionId)
+        const activation = activateRightPanelTab(state, resolvedSessionId, tabId)
+        const existing = state.rightPanelTabs.find((tab: any) => tab.id === tabId)
+        if (existing) {
+          const rightPanelTabs = state.rightPanelTabs.map((tab: RightPanelTabInstance) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  sessionId: resolvedSessionId ?? tab.sessionId ?? null,
+                  projectId: resolvedProjectId ?? tab.projectId ?? null
+                }
+              : tab
+          )
+          return { rightPanelTabs, ...activation, rightPanelOpen: true }
+        }
+        const tab: RightPanelTabInstance = {
+          id: tabId,
+          kind: 'timeline',
+          title: 'Timeline',
+          closable: true,
+          sessionId: resolvedSessionId,
+          projectId: resolvedProjectId,
+          createdAt: Date.now()
+        }
+        const rightPanelTabs = ensureRightPanelTabs([...state.rightPanelTabs, tab])
+        return { rightPanelTabs, ...activation, rightPanelOpen: true }
+      }),
+
+    ensureTerminalTab: () =>
+      set((state: any) => {        const sessionId = resolveRightPanelSessionId(state)
         const tabId = scopedRightPanelTabId('terminal', sessionId)
         const activation = activateRightPanelTab(state, sessionId, tabId)
         const existing = state.rightPanelTabs.find((tab: any) => tab.id === tabId)

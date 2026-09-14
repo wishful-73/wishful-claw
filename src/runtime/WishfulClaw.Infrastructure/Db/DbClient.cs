@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
@@ -462,7 +462,23 @@ public static partial class DbClient
                 @"CREATE INDEX IF NOT EXISTS ix_request_usage_started ON request_usage_logs(started_at DESC);",
                 @"CREATE INDEX IF NOT EXISTS ix_request_usage_model ON request_usage_logs(model_id);",
                 @"CREATE INDEX IF NOT EXISTS ix_request_usage_status ON request_usage_logs(status);",
-                @"CREATE INDEX IF NOT EXISTS ix_request_usage_session ON request_usage_logs(session_id);"
+                @"CREATE INDEX IF NOT EXISTS ix_request_usage_session ON request_usage_logs(session_id);",
+                // ── Agent timeline events (S-25, iteration 29) ──
+                // One row per decision-level agent action (task dispatch/report, todo
+                // transitions, cron firings, sub-agent runs). session_id is nullable:
+                // rows with NULL are app-level events visible across sessions.
+                @"CREATE TABLE IF NOT EXISTS agent_timeline_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT,
+                    project_id TEXT,
+                    event_type TEXT NOT NULL,
+                    message TEXT,
+                    metadata_json TEXT,
+                    created_at INTEGER NOT NULL
+                );",
+                @"CREATE INDEX IF NOT EXISTS ix_timeline_session_created ON agent_timeline_events(session_id, created_at DESC);",
+                @"CREATE INDEX IF NOT EXISTS ix_timeline_project_created ON agent_timeline_events(project_id, created_at DESC);",
+                @"CREATE INDEX IF NOT EXISTS ix_timeline_created ON agent_timeline_events(created_at);"
             };
 
             foreach (var sql in tableSqls)
@@ -588,6 +604,8 @@ public static partial class DbClient
             NormalizeGoalPlansJson();
             EnsureGoalHistorySchema();
             SweepInterruptedGoals();
+            // Agent timeline retention (S-25.5): piggyback on startup, no timer.
+            DbAgentTimelineTools.Prune(_db);
             WorkerLog.Info("DbClient: migrations completed");
 
             _initialized = true;

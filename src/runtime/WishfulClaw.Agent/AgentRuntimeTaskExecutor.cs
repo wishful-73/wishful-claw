@@ -86,6 +86,8 @@ public static partial class AgentRuntimeTaskExecutor
         });
 
         var tasks = LoadTasksBySession(db, sessionId);
+        DbAgentTimelineTools.Log(db, sessionId, null, "todo_created",
+            subject, $"{{\"task_id\":\"{task.Id}\"}}");
         return EncodeTaskCreateResult(task, tasks);
     }
 
@@ -129,6 +131,12 @@ public static partial class AgentRuntimeTaskExecutor
         DbClient.EnsureInitialized(parameters);
         var db = DbClient.GetClient(parameters);
 
+        // Timeline instrumentation (S-25.4): captured inside the transaction,
+        // written after it commits so the event never survives a rollback.
+        string? timelineType = null;
+        string? timelineMessage = null;
+        string? timelineMeta = null;
+
         var result = db.ExecuteInTransaction((conn, tx) =>
         {
             var task = LoadTask(db, conn, tx, taskId, sessionId);
@@ -140,6 +148,9 @@ public static partial class AgentRuntimeTaskExecutor
             var newStatus = JsonHelpers.GetString(input, "status");
             if (newStatus == "deleted")
             {
+                timelineType = "todo_deleted";
+                timelineMessage = task.Subject;
+                timelineMeta = $"{{\"task_id\":\"{taskId}\"}}";
                 DeleteTaskAndReferences(db, conn, tx, taskId, task.SessionId);
                 return EncodeJsonObject(writer =>
                 {
@@ -152,6 +163,12 @@ public static partial class AgentRuntimeTaskExecutor
             var changedFields = new List<string>();
             if (newStatus is "pending" or "in_progress" or "blocked" or "in_review" or "completed")
             {
+                if (task.Status != newStatus)
+                {
+                    timelineType = "todo_status_changed";
+                    timelineMessage = task.Subject;
+                    timelineMeta = $"{{\"task_id\":\"{taskId}\",\"from\":\"{task.Status}\",\"to\":\"{newStatus}\"}}";
+                }
                 task.Status = newStatus;
                 changedFields.Add("status");
             }
@@ -220,6 +237,11 @@ public static partial class AgentRuntimeTaskExecutor
             UpdateTaskRow(db, conn, tx, task);
             return EncodeTaskUpdateResult(task, LoadTasksBySession(db, conn, tx, task.SessionId), changedFields);
         });
+
+        if (timelineType is not null)
+        {
+            DbAgentTimelineTools.Log(db, sessionId, null, timelineType, timelineMessage, timelineMeta);
+        }
 
         return result;
     }

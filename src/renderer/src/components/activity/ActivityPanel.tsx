@@ -1,6 +1,7 @@
-﻿import { useActivityStore } from '@renderer/stores/activity-store'
+import { useActivityStore } from '@renderer/stores/activity-store'
+import { useUIStore } from '@renderer/stores/ui-store'
 import { useTranslation } from 'react-i18next'
-import { Activity } from 'lucide-react'
+import { Activity, History } from 'lucide-react'
 
 export function ActivityPanel() {
   const { t } = useTranslation('chat')
@@ -21,13 +22,22 @@ export function ActivityPanel() {
             </span>
           )}
         </div>
-        <button
-          onClick={clearActivities}
-          className="rounded p-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          title="Clear"
-        >
-          Clear
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => useUIStore.getState().openTimelinePanel()}
+            className="rounded p-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            title={t('rightPanel.timeline', { defaultValue: 'Agent timeline' })}
+          >
+            <History className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={clearActivities}
+            className="rounded p-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            title="Clear"
+          >
+            Clear
+          </button>
+        </div>
       </div>
 
       {/* Activity list */}

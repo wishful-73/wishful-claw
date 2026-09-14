@@ -513,6 +513,7 @@
   "rightPanel": {
     "files": "文件",
     "browser": "浏览器",
+    "timeline": "时间线",
     "browserLoadFailed": "页面加载失败",
     "browserRetry": "重试",
     "browserEmptyState": "输入网址开始浏览",
@@ -581,6 +582,25 @@
     "closeOtherTabs": "关闭其他",
     "closeAllTabs": "关闭所有",
     "closePanel": "关闭面板"
+  },
+  "timeline": {
+    "title": "时间线",
+    "scopeSession": "当前会话",
+    "scopeGlobal": "全部会话",
+    "empty": "暂无事件",
+    "loadMore": "加载更多",
+    "appLevel": "全局",
+    "events": {
+      "todo_created": "创建任务",
+      "todo_status_changed": "任务状态变更",
+      "todo_deleted": "删除任务",
+      "task_dispatched": "派发任务",
+      "task_reported": "任务回报",
+      "cron_fired": "定时任务触发",
+      "cron_run_finished": "定时任务执行完成",
+      "subagent_started": "子代理启动",
+      "subagent_finished": "子代理结束"
+    }
   },
   "subAgentsPanel": {
     "title": "子Agent",

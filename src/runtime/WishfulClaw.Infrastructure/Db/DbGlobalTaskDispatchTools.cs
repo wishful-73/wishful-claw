@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -144,6 +144,13 @@ public static class DbGlobalTaskDispatchTools
                     new SqliteParameter("@updatedAt", GetLong(parameters, "updatedAt", now)));
                 return new GlobalTaskDispatchMutationResult(changed > 0, changed, changed > 0 ? null : "Dispatch was not created");
             });
+
+            if (mutation.Success)
+            {
+                DbAgentTimelineTools.Log(db, sessionId, null, "task_dispatched",
+                    GetString(parameters, "instruction"),
+                    $"{{\"dispatch_id\":\"{id}\",\"global_task_id\":\"{globalTaskId}\",\"kind\":\"{GetString(parameters, "kind") ?? GlobalTaskDispatchKindValues.Message}\"}}");
+            }
 
             return WorkerResponse.Json(mutation, InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);
         }

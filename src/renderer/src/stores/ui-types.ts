@@ -1,4 +1,4 @@
-﻿// ─── Types ───
+// ─── Types ───
 
 export type AppMode = 'chat' | 'clarify' | 'cowork' | 'code' | 'acp'
 
@@ -63,6 +63,7 @@ export type RightPanelTabKind =
   | 'terminal'
   | 'goal'
   | 'summary'
+  | 'timeline'
 
 export interface RightPanelTabInstance {
   id: string

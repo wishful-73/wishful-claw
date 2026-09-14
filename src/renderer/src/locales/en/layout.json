@@ -513,6 +513,7 @@
   "rightPanel": {
     "files": "Files",
     "browser": "Browser",
+    "timeline": "Timeline",
     "browserLoadFailed": "Failed to load page",
     "browserRetry": "Retry",
     "browserEmptyState": "Enter a URL to start browsing",
@@ -581,6 +582,25 @@
     "closeOtherTabs": "Close others",
     "closeAllTabs": "Close all",
     "closePanel": "Close panel"
+  },
+  "timeline": {
+    "title": "Timeline",
+    "scopeSession": "This session",
+    "scopeGlobal": "All sessions",
+    "empty": "No events yet",
+    "loadMore": "Load more",
+    "appLevel": "App",
+    "events": {
+      "todo_created": "Task created",
+      "todo_status_changed": "Task status changed",
+      "todo_deleted": "Task deleted",
+      "task_dispatched": "Task dispatched",
+      "task_reported": "Task reported",
+      "cron_fired": "Cron fired",
+      "cron_run_finished": "Cron run finished",
+      "subagent_started": "Sub-agent started",
+      "subagent_finished": "Sub-agent finished"
+    }
   },
   "subAgentsPanel": {
     "title": "SubAgents",

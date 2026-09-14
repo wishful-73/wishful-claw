@@ -147,6 +147,23 @@ internal static partial class AgentLoop
         // Get live references from SessionConversation for the loop to use.
         conversation = sessionConv.GetConversation();
         wireConversation = sessionConv.GetWireConversation();
+
+        // Timeline instrumentation (S-25.4): sub-agent run start. The task brief
+        // is the first user message of the sub-agent conversation, truncated.
+        if (isSubAgentLoop || isGoalSubAgentLoop)
+        {
+            var brief = conversation.FirstOrDefault(m => m.Role == "user")?.Text?.Trim();
+            if (string.IsNullOrEmpty(brief)) brief = null;
+            else if (brief.Length > 120) brief = brief[..120] + "\u2026";
+            var subAgentMode = isGoalSubAgentLoop ? "goalSubAgent" : "subAgent";
+            DbAgentTimelineTools.Log(
+                DbClient.GetClient(),
+                sessionId.Length > 0 ? sessionId : null,
+                null,
+                "subagent_started",
+                brief,
+                $"{{\"run_id\":\"{state.RunId}\",\"mode\":\"{subAgentMode}\"}}");
+        }
         var runtimeParameters = CreateRuntimeParametersWithoutMessages(parameters);
         var rawRunContext = AgentRunContextPolicy.Resolve(runtimeParameters);
         var rawSessionMode = AgentRunContextPolicy.ResolveAvailableMode(runtimeParameters, rawRunContext);
@@ -244,7 +261,7 @@ internal static partial class AgentLoop
             // ── Cancellation check ──
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted");
+                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -273,7 +290,7 @@ internal static partial class AgentLoop
                     errorDriven: false);
                 if (compression.Status == LoopCompressionStatus.Cancelled)
                 {
-                    await EmitLoopEndAsync(state, context, "aborted");
+                    await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                     return;
                 }
                 if (compression.Status == LoopCompressionStatus.Compressed)
@@ -301,7 +318,7 @@ internal static partial class AgentLoop
 
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted");
+                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -357,7 +374,7 @@ internal static partial class AgentLoop
                         errorDriven: true);
                     if (compression.Status == LoopCompressionStatus.Cancelled)
                     {
-                        await EmitLoopEndAsync(state, context, "aborted");
+                        await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                         return;
                     }
                     if (compression.Status != LoopCompressionStatus.Compressed ||
@@ -428,7 +445,7 @@ internal static partial class AgentLoop
 
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted");
+                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -448,7 +465,9 @@ internal static partial class AgentLoop
         await EmitLoopEndAsync(
             state, context,
             state.StopReason ?? (completed ? "completed" : "max_iterations"),
-            conversation);
+            conversation,
+            isSubAgentLoop: isSubAgentLoop,
+            isGoalSubAgentLoop: isGoalSubAgentLoop);
     }
 
     /// <summary>
@@ -460,11 +479,26 @@ internal static partial class AgentLoop
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
         string reason,
-        List<AgentRuntimeChatMessage>? conversation = null)
+        List<AgentRuntimeChatMessage>? conversation = null,
+        bool isSubAgentLoop = false,
+        bool isGoalSubAgentLoop = false)
     {
         await AgentRuntimeTools.EmitAsync(
             state, context,
             new AgentRuntimeStreamEvent("loop_end", Reason: reason));
+
+        // Timeline instrumentation (S-25.4): sub-agent run termination.
+        if (isSubAgentLoop || isGoalSubAgentLoop)
+        {
+            var mode = isGoalSubAgentLoop ? "goalSubAgent" : "subAgent";
+            DbAgentTimelineTools.Log(
+                DbClient.GetClient(),
+                state.SessionId,
+                null,
+                "subagent_finished",
+                null,
+                $"{{\"run_id\":\"{state.RunId}\",\"mode\":\"{mode}\",\"reason\":\"{reason}\"}}");
+        }
 
         // Notification is handled by the renderer on loop_end event.
         // The renderer checks window focus before deciding to notify.

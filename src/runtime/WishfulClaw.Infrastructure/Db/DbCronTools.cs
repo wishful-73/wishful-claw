@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -10,6 +10,8 @@ namespace WishfulClaw.Infrastructure.Db;
 /// </summary>
 public static class DbCronTools
 {
+    private sealed record CronTimelineMeta(string? Name, string? SessionId);
+
     public static WorkerResponse List(JsonElement parameters)
     {
         try
@@ -216,6 +218,19 @@ public static class DbCronTools
                 new SqliteParameter("@disable", disable ? 1 : 0),
                 new SqliteParameter("@updatedAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
                 new SqliteParameter("@id", id));
+            if (changed > 0)
+            {
+                // Timeline instrumentation (S-25.4): cron firing is a decision point.
+                var cronMeta = db.QueryFirstOrDefault(
+                    "SELECT name, session_id FROM cron_tasks WHERE id = @id",
+                    r => new CronTimelineMeta(r.IsDBNull(0) ? null : r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1)),
+                    new SqliteParameter("@id", id));
+                if (cronMeta is { } meta)
+                {
+                    DbAgentTimelineTools.Log(db, meta.SessionId, null, "cron_fired",
+                        meta.Name ?? id, $"{{\"cron_id\":\"{id}\"}}");
+                }
+            }
             return ReadMutation(db, id, changed, "Cron task not found or deleted");
         }
         catch (Exception ex)

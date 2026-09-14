@@ -463,13 +463,13 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ## 步骤
 
-- [ ] S-21.D1：梳理调用链与不变式 —— `AgentLoop.cs:319-328`（调用点）、`:526-532`（`ExecuteTurnAsync`）、`ProviderRetryPolicy.cs:80-172`（重试循环）、`:156-170`（耗尽 throw）、`AgentRuntimeTools.cs:291-304`（异常收尾）。**确定一个逻辑请求的 attempt 边界，并确认不会重复工具调用**
+- [✓] S-21.D1：调用链梳理 —— 写在 `docs/plans/iter-v2-29/S-21-call-chain-notes.md`。关键事实：`ProviderRetryPolicy.ExecuteAsync` **全仓唯一调用点在 `AgentLoop.cs:324`**（grep 确认），fallback 接入只在那里；三段 catch（超时 / 可重试 HTTP / 终端 throw）的第三段是 fallback 切入点；`AgentRuntimeProviderTurnResult` 当前没有「可切换」字段 → 需要扩；`requestMaxRetries=0`（`isUnlimited`）必须保持不切换
 - [ ] S-21.D2：配置面 —— `src/shared/types/provider.ts` 增加 fallback 开关与优先级列表；设置页 `ProviderPanel.tsx` 提供可排序配置。**保留现有 `requestMaxRetries` 语义**
 - [ ] S-21.D3：状态机 —— 让有限重试耗尽后返回「可切换」结果而非直接 throw；`requestMaxRetries=0`（无限）**保持不切换**；同一请求按序逐个尝试**不循环**；取消立即终止；新增结构化 fallback/重试事件
 - [ ] S-21.D4：接入 `AgentLoop` —— 切换时完整复用 `conversation` / `toolDefs` / `state`。⚠️ 切出 `openai-responses` 会丢 `OpenAIResponsesState` 的 response id（未实测，须验）
 - [ ] S-21.D5：观测与人工验证 —— 配额信息只作可选观测增强；**用两个可控测试 provider / Mock endpoint 验证，禁止依赖真实 API 触发限额**；日志记原 provider、目标 provider、重试次数、切换原因
 - [ ] S-21.D6：**AOT** —— 新增 DTO 注册进 JsonContext
-- [ ] S-21.D7：**回归测试工程** —— 新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`（既有 9 个同款工程可抄：`tests/WishfulClaw.ProviderHeaderRegressionTests` 等）。⚠️ **必须同时加进 `src/runtime/WishfulClaw.sln`**，否则会像 `CronRegressionTests` / `MemoryRecallRegressionTests` 一样静默漏编；跑法 `dotnet run --project tests/<项目> --no-build`（`dotnet build` 只编译不运行）
+- [✓] S-21.D7：**回归测试工程** —— 新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`（csproj 引用 `WishfulClaw.Agent`，Program.cs 留 sanity 断言 1 条 + D1-D7 注释指针），用 `dotnet sln add` **同步进 `src/runtime/WishfulClaw.sln`**。`dotnet build sln` 0/0；`dotnet run --project tests/<项目> --no-build` 通过。**这一步单独提前做**是项目硬规则（不然像 `CronRegressionTests` / `MemoryRecallRegressionTests` 一样**静默漏编**——既不在 sln、也不在 `dotnet build` 范围里，等于测试从来没跑过）。状态机测试在 D3、AgentLoop 集成测试在 D4 时填实
 
 **Mini 验证**：C# build + AOT 零警告；状态机测试覆盖 429/503/超时、有限/无限、全失败、取消；工具调用中途切换不重复；流式事件不重复；session/channel 路径不丢来源。
 

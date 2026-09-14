@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -151,6 +151,31 @@ public static partial class ProviderRetryPolicy
                         MaxAttempts: isUnlimited ? 0 : maxAttempts,
                         DelayMs: delayMs,
                         StatusCode: ex.StatusCode));
+                await Task.Delay(delayMs, state.CancellationToken);
+            }
+            catch (ProviderEmptyResponseException ex) when (
+                (isUnlimited || retryAttempt < maxAttempts) &&
+                !state.IsCancellationRequested)
+            {
+                // T-12: the provider answered 200 but with nothing usable (empty
+                // stream / overloaded free tier). Same shape as a timeout: transient,
+                // and an immediate resend usually works. Retry on the shared backoff
+                // schedule instead of failing the run.
+                var attempt = retryAttempt + 1;
+                var delayMs = ComputeDelayMs(attempt, null);
+                WorkerLog.Warn(
+                    $"provider returned an empty response ({ex.Message}); retrying in {delayMs}ms " +
+                    $"attempt={attempt}{(isUnlimited ? "/unlimited" : $"/{maxAttempts}")}");
+                LogRequestAttempt(state, provider, logRow, success: false, error: null, turn: null, unexpected: ex);
+                await AgentRuntimeTools.EmitAsync(
+                    state,
+                    context,
+                    new AgentRuntimeStreamEvent(
+                        "request_retry",
+                        Reason: "empty response",
+                        Attempt: attempt,
+                        MaxAttempts: isUnlimited ? 0 : maxAttempts,
+                        DelayMs: delayMs));
                 await Task.Delay(delayMs, state.CancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

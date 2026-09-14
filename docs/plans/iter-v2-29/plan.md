@@ -1061,6 +1061,52 @@ agent 调 `use_capability(action="call", capability_id="builtin:Task", arguments
 
 ---
 
+# 需求 22（临时追加）：T-12 空响应（provider 零输出）不应直接判死 run，应重试
+
+> 2026-09-14 老大真机复现（开发实例），**已实施**。起初我误判为「中断后继续」的历史问题，经老大实测修正（见下）。
+
+## 现象
+
+中断一次执行 → 再发消息继续 → worker 报：
+
+```
+openai-chat empty turn ... stopReason=stop nativeStopReason=<none> reasoningLength=0 hasUsage=False
+provider response empty ... textLength=0 toolCalls=0 elapsedMs=8205
+agent run failed ... InvalidOperationException: openai-chat returned no usable assistant output (stopReason=stop, textLength=0, toolCalls=0).
+```
+
+即：provider **正常结束（`stop`）但零输出**（text / toolCalls / reasoning 全空、无 usage），worker 判定失败并抛出。
+
+## 初步判断
+
+- **与 T-8 无关**（前端渲染改动，碰不到后端请求）
+- **与 T-7 同入口**（中断 → 继续）→ 嫌疑在**中断后的会话历史内容**
+- 已排除：T-11 的 schema 改动（`ToolSchemaBuilder.Object()` 产出标准 JSON Schema）；请求体非法（否则上游会 400，不会返回空）
+- 待查方向：①中断后历史里的 `[INTERRUPTED]` placeholder / 空 assistant 让模型"无话可说"；②`deepseek-flash`（限免档）偶发空流
+
+## 定位修正（两次误判都记下，防重蹈）
+
+1. 起初怀疑与 T-7 同入口（中断 → 继续）→ 老大实测「**再发一次就好了**」→ **偶发**，否定"历史脏数据"假设
+2. 再怀疑上下文过大（`inputTokens=113868`）→ 老大指出「**384K 窗口，1M 是我专门压下来的**」→ 11 万远未触顶，**否定**
+3. **真因**：`nativeStopReason=<none>` + 无 `usage` → **上游根本没给任何内容**（空流：网关过载 / 限免档波动 / 连接抖动）。与本地代码无关
+
+## 实施（2026-09-14）
+
+**把「空响应」纳入现有重试策略**（复用 `ProviderRetryPolicy` 的 backoff / `requestMaxRetries` 配置 / `request_retry` 事件），不再直接判死 run。
+
+- `ProviderEmptyResponseException.cs` — **新建**：专用异常类型（区别于 `ProviderHttpException`，语义是「HTTP 200 但零输出」，属瞬时）
+- `AgentLoop.Helpers.cs` — `EnsureProviderTurnHasOutput` 改抛该异常
+- `ProviderRetryPolicy.cs` — 新增 catch 分支：空响应按同一 backoff 重试、发 `request_retry`（Reason: `empty response`）；**重试耗尽才抛**
+
+**验证**：C# 全依赖链编译 0 警告 0 错误 ✅；真机复验（偶发空响应能自动重试成功）待老大。
+
+## 涉及文件
+- `src/runtime/WishfulClaw.Agent/ProviderEmptyResponseException.cs` — 新建
+- `src/runtime/WishfulClaw.Agent/AgentLoop.Helpers.cs` — 抛专用异常
+- `src/runtime/WishfulClaw.Agent/ProviderRetryPolicy.cs` — 重试分支
+
+---
+
 # 执行前需要老大处理的事项
 
 这几件 agent 做不了或做不准，需在确认环节一并处理：

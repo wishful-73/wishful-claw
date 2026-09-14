@@ -53,6 +53,8 @@ namespace WishfulClaw.Agent;
 [JsonSerializable(typeof(GitExecResult))]
 [JsonSerializable(typeof(GitStatusDetailedResult))]
 [JsonSerializable(typeof(GitQueryResult))]
+[JsonSerializable(typeof(GitCommitGraphItem))]
+[JsonSerializable(typeof(List<GitCommitGraphItem>))]
 [JsonSerializable(typeof(GitRepositorySummary))]
 [JsonSerializable(typeof(List<GitRepositorySummary>))]
 [JsonSerializable(typeof(NativeExtensionToolExecutionResult))]

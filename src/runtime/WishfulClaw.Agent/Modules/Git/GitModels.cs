@@ -84,6 +84,7 @@ public sealed class GitQueryResult
     public string? Patch { get; init; }
     public bool? Empty { get; init; }
     public List<GitCommitHistoryItem>? History { get; init; }
+    public List<GitCommitGraphItem>? Graph { get; init; }
     public List<GitBranchItem>? Branches { get; init; }
     public string? Current { get; init; }
     public int? Added { get; init; }
@@ -132,6 +133,21 @@ public sealed record GitBranchItem(
     string FullName,
     string Type,
     bool IsCurrent);
+
+/// <summary>
+/// One node of the commit graph. <see cref="Parents"/> carries the full parent hashes
+/// (first parent = the branch the commit was made on), which is what the renderer needs
+/// to lay out lanes; <see cref="Refs"/> holds the short ref names pointing at this commit
+/// (branch tips, <c>HEAD -></c> marker, <c>tag:</c> prefixes), already split.
+/// </summary>
+public sealed record GitCommitGraphItem(
+    string Hash,
+    string ShortHash,
+    List<string> Parents,
+    string Author,
+    string Date,
+    string Subject,
+    List<string> Refs);
 
 public sealed record GitRepositorySummary(
     string Name,

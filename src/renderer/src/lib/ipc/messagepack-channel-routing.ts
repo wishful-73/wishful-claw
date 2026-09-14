@@ -96,6 +96,7 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'git:get-file-content-at-ref',
   'git:get-staged-diff-bundle',
   'git:get-commit-history',
+  'git:commit-graph',
   'git:list-branches',
   'git:fetch',
   'git:pull-rebase',

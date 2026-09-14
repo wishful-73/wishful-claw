@@ -9,9 +9,10 @@ export type {
   GitStatusDetailed,
   GitCommitHistoryItem,
   GitBranchItem,
+  GitCommitGraphItem,
 } from './git-store-types'
 
-import { GitBranchItem, GitCommitHistoryItem, GitRepositoryItem, GitStatusDetailed, GitResultBase, GitStore, getErrorMessage, REPOSITORY_REFRESH_CACHE_TTL_MS, REPOSITORY_REFRESH_ERROR_TTL_MS, REPOSITORY_SCAN_CACHE_TTL_MS, bumpRepositoryRefreshRevision, clearGitRequestCaches, ensureRepoDetails, fileDiffCacheKey, fileDiffRequestKey, getActiveProject, getGitTarget, gitTargetCacheKey, invokeGit, pendingFileDiffRequests, pendingFileHistoryRequests, pendingHistoryFileDiffRequests, pendingRepositoryRefreshRequests, pendingScanRequests, projectScanKey, repositoryRefreshExpiresAtByKey, repositoryRefreshRevision, _gitState } from './git-store-types'
+import { GitBranchItem, GitCommitGraphItem, GitCommitHistoryItem, GitRepositoryItem, GitStatusDetailed, GitResultBase, GitStore, getErrorMessage, COMMIT_GRAPH_LIMIT, REPOSITORY_REFRESH_CACHE_TTL_MS, REPOSITORY_REFRESH_ERROR_TTL_MS, REPOSITORY_SCAN_CACHE_TTL_MS, bumpRepositoryRefreshRevision, clearGitRequestCaches, ensureRepoDetails, fileDiffCacheKey, fileDiffRequestKey, getActiveProject, getGitTarget, gitTargetCacheKey, invokeGit, pendingCommitGraphRequests, pendingFileDiffRequests, pendingFileHistoryRequests, pendingHistoryFileDiffRequests, pendingRepositoryRefreshRequests, pendingScanRequests, projectScanKey, repositoryRefreshExpiresAtByKey, repositoryRefreshRevision, _gitState } from './git-store-types'
 
 export const useGitStore = create<GitStore>((set, get) => ({
   repositories: [],
@@ -206,6 +207,50 @@ export const useGitStore = create<GitStore>((set, get) => ({
         }
       }
     }))
+  },
+
+  /**
+   * Commit graph for the branch view. Fetched on demand (the branch tab is the only
+   * consumer) and memoised on `details.graph`; pass `force` to refetch after a mutation.
+   */
+  loadCommitGraph: async (repoPath, options = {}) => {
+    const details = ensureRepoDetails(get().repoDetailsByPath, repoPath)
+    if (!options.force && (details.graph !== null || details.graphError !== null)) return
+
+    const requestKey = `${repoPath}:commit-graph`
+    const pending = pendingCommitGraphRequests.get(requestKey)
+    if (pending) return pending
+
+    const request = (async () => {
+      const result = await invokeGit<GitResultBase & { graph?: GitCommitGraphItem[] }>(
+        IPC.GIT_COMMIT_GRAPH,
+        {
+          ...getGitTarget(repoPath),
+          limit: COMMIT_GRAPH_LIMIT
+        }
+      )
+      set((state) => ({
+        repoDetailsByPath: {
+          ...state.repoDetailsByPath,
+          [repoPath]: {
+            ...ensureRepoDetails(state.repoDetailsByPath, repoPath),
+            graph: result.success ? (result.graph ?? []) : null,
+            graphError: result.success
+              ? null
+              : getErrorMessage(result, 'Failed to load commit graph')
+          }
+        }
+      }))
+    })()
+
+    pendingCommitGraphRequests.set(requestKey, request)
+    try {
+      await request
+    } finally {
+      if (pendingCommitGraphRequests.get(requestKey) === request) {
+        pendingCommitGraphRequests.delete(requestKey)
+      }
+    }
   },
 
   loadFileHistory: async (repoPath, filePath, append = false) => {

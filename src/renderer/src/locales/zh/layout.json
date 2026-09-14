@@ -628,6 +628,13 @@
   "agentFiles": {
     "files": "文件",
     "changes": "变更",
+    "branches": "分支",
+    "commitGraph": "提交图谱",
+    "localBranches": "本地分支",
+    "remoteBranches": "远程分支",
+    "graphEmpty": "没有可展示的提交",
+    "noBranches": "无",
+    "currentBranch": "当前",
     "changesCount": "变更 ({{count}})",
     "branchChanges": "分支变更",
     "agentChanges": "Agent 变更",

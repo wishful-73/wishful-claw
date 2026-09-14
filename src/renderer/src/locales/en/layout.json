@@ -628,6 +628,13 @@
   "agentFiles": {
     "files": "Files",
     "changes": "Changes",
+    "branches": "Branches",
+    "commitGraph": "Commit Graph",
+    "localBranches": "Local Branches",
+    "remoteBranches": "Remote Branches",
+    "graphEmpty": "No commits to show",
+    "noBranches": "None",
+    "currentBranch": "current",
     "changesCount": "Changes ({{count}})",
     "branchChanges": "Branch Changes",
     "agentChanges": "Agent Changes",

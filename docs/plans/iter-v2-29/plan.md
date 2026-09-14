@@ -374,23 +374,40 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ## 步骤
 
-- [ ] S-18.1：C# `Modules/Git/GitQueryTools.cs:24-39` 的 operation 分发表**新增提交图谱 operation**（`git log` 带 `%P` 取 parent），返回结构化拓扑
-- [ ] S-18.2：`src/main/ipc/git-handlers.ts` 新增 `git:commit-graph` IPC，挂 `git-cache.ts:125-127` 缓存（参考 `list-branches` 的 5s STABLE TTL，`:155-160`）
-- [ ] S-18.3：shared 类型 + `stores/git-store.ts` 扩展（仓库选择复用 `git-store.ts:88` 的 `selectRepository`）
-- [ ] S-18.4：`layout/AgentFilesPanel.tsx:15` union 扩为三值；`:52-57` 两个裸 button 改成可维护的 Tab 结构；`:60` 三元改分支渲染
-- [ ] S-18.5：分支列表复用 `git:list-branches`（本地/远程已可区分，见 `GitQueryTools.cs:248-271`），分组展示
-- [ ] S-18.6：图谱渲染 —— **SVG 手绘**（不引依赖），按 refs + parents 组装拓扑
-- [ ] S-18.7：i18n
+- [✓] S-18.1：C# `Modules/Git/GitQueryTools.cs` 的 operation 分发表新增 `get-commit-graph`；新增 `GitCommitGraphItem`（`Hash` / `ShortHash` / `Parents` / `Author` / `Date` / `Subject` / `Refs`）与 `GitQueryResult.Graph`。用 `git log --all --date=iso --pretty=format:%H%x01%h%x01%P%x01%an%x01%ad%x01%s%x01%D --max-count=N`，`%P` 取 parent 链、`%D` 取 ref 名。**用 `--all` 而非默认 HEAD**：只看 HEAD 历史的话永远只有一条直线，图谱就没有意义了。新增具名 DTO 已注册进 `AgentRuntimeJsonContext`（`GitCommitGraphItem` + `List<GitCommitGraphItem>`）
+- [✓] S-18.2：`src/main/ipc/git-handlers.ts` 新增 `git:commit-graph`（走既有 `queryGit` 通道，自动享受去重 + TTL）；`git-cache.ts` 的 `gitQueryTtl` 把 `get-commit-graph` 归入 `GIT_QUERY_STABLE_TTL_MS`（5s，与 `list-branches` / `get-commit-history` 同档）；`GitQueryResult` 补 `graph?: GitCommitGraphItem[]`
+- [✓] S-18.3：类型落在 `stores/git-store-types.ts`（**未动 `src/shared/types/*`**：Git 这条链路本来就把类型放在 renderer store 侧，shared 里没有对应文件，强行新建反而是分裂）。新增 `GitCommitGraphItem`、`GitRepositoryDetails.graph` / `graphError`、`loadCommitGraph(repoPath, { force })` + `pendingCommitGraphRequests` 去重 + `COMMIT_GRAPH_LIMIT = 50`。**图谱按需加载**（只有分支 Tab 消费），不塞进 15s 轮询的 `refreshRepository`
+- [✓] S-18.4：`layout/AgentFilesPanel.tsx` 的 union 扩为三值（`files` / `changes` / `branches`），两个裸 button 改成 `TABS` 常量驱动的结构（顺带把 label 的 `t()` 调用收敛成一处）
+- [✓] S-18.5：分支列表直接消费 `details.branches`（`git:list-branches` 已在 `refreshRepository` 里加载，本地/远程由 `type` 区分），分「本地分支 / 远程分支」两组展示，当前分支加标记
+- [✓] S-18.6：图谱 **SVG 手绘，零依赖**。布局算法抽成纯函数 `components/cowork/commit-graph-layout.ts`（单遍 lane 分配：commit 与第一父提交共用 lane，其余父提交各占新 lane，合并释放的 lane 交给下一个需要的分支 → 宽度受「同时活跃的分支数」约束而非分支总数）；渲染在 `commit-graph.tsx`（贝塞尔连线 + 节点圆点，调色板按 lane 取色）
+- [✓] S-18.7：i18n —— `locales/{zh,en}/layout.json` 的 `agentFiles` 块新增 `branches` / `commitGraph` / `localBranches` / `remoteBranches` / `graphEmpty` / `noBranches` / `currentBranch`
 
-**Mini 验证**：tsc 三配置零错误；C# build 零警告零错误；单仓库与多仓库各验一次；图谱在有 merge 的仓库上渲染正确；远程分支展示正确。
+**范围裁定**：本次**只读展示**，不做 checkout / merge / delete 等分支操作 —— 那些在 Git 页已有完整入口（`GitPage/ScmSidebar.tsx`），右侧面板是「我在哪」的一眼视图，重复一套写操作只会多一份需要维护的风险面。
+
+**Mini 验证（已执行，2026-09-14）**：
+- `tsc` 三配置（web / node / root）零错误
+- `dotnet build src/runtime/WishfulClaw.sln` → **0 警告 0 错误**
+- AOT 发布（`npm run build:worker:prod`）→ 成功，**零 IL2026/IL3050/IL3051**
+- C# 回归 7 工程全过：ProviderHeader / ChannelToolVisibility(108) / ChannelShellApproval(74) / ToolConcurrency / Goal(148) / SessionTaskCascade(180) / CompactionSnapshot(2)
+- TS 回归全过：ipc-msgpack-routing(96 断言 / **270** 通道，比 S-23 后多 1 条即本次新增) / settings-tabs(22) / provider-presets(546) / renderable-chat-items(16) / channel-cancel-commands / channel-reply-event-policy / updater-release-notes(71) / updater-state(56) / updater-progress(35)
+- 图谱布局断言脚本（跑完即删）**283 条全过**：真实仓库 50 commit（laneCount=2，含 3 个 merge）、合成菱形拓扑（merge→a/b→base 的 lane 分配）、lane 复用、窗口截断（父提交在批外时只丢连线不崩）、空输入、几何换算
+- **C# 端到端断言脚本（跑完即删）376 条全过**：直接调 `GitQueryTools.QueryAsync` 跑真实仓库 —— 50 commit / 3 merge / 5 个带 ref，逐条核对 hash 与 parent 均为 40 位 sha、subject 不含分隔符、refs 已 trim；再用 `AgentRuntimeJsonContext.Default.GitQueryResult` 真序列化一次，断言外层键是 `graph`、嵌套键是 `hash`/`shortHash`/`parents`/`refs`（**这是 renderer 真正拿到的字节**，光看编译通过证明不了命名策略生效）；同时回归 `get-commit-history` / `list-branches` 未被破坏、未知 operation 仍干净报错
+- `git log --all` 输出格式与 C# 解析逐字段核对（`%P` 空格分隔 / `%D` 逗号+空格分隔；git refname 禁空格，故两种分隔都安全）
+- JSON 命名策略确认为 `JsonKnownNamingPolicy.CamelCase` + `WhenWritingNull` → 新字段 `graph` / `shortHash` / `parents` / `refs` 能正确送达 renderer（这也是现有 `GitBranchItem.name` 一直能读到的原因）
 
 ## 涉及文件
-- `src/runtime/WishfulClaw.Agent/Modules/Git/GitQueryTools.cs` — 改（新 operation）
+- `src/runtime/WishfulClaw.Agent/Modules/Git/GitQueryTools.cs` — 改（新 operation + 解析）
+- `src/runtime/WishfulClaw.Agent/Modules/Git/GitModels.cs` — 改（`GitCommitGraphItem` + `GitQueryResult.Graph`）
+- `src/runtime/WishfulClaw.Agent/AgentRuntimeJsonContext.cs` — 改（DTO 注册）
 - `src/main/ipc/git-handlers.ts` — 改（新 IPC）
-- `src/main/ipc/git-cache.ts` — 改（缓存）
+- `src/main/ipc/git-cache.ts` — 改（TTL + 类型）
+- `src/renderer/src/lib/ipc/channels.ts`、`messagepack-channel-routing.ts` — 改（通道常量 + 路由表）
+- `src/renderer/src/stores/git-store.ts`、`git-store-types.ts` — 改（类型 + `loadCommitGraph`）
 - `src/renderer/src/components/layout/AgentFilesPanel.tsx` — 改（第三 Tab）
-- `src/renderer/src/stores/git-store.ts`、`src/shared/types/*` — 改
-- `src/renderer/src/locales/{zh,en}/*.json` — 改
+- `src/renderer/src/components/cowork/branch-panel.tsx` — 新建（面板）
+- `src/renderer/src/components/cowork/commit-graph.tsx` — 新建（SVG 渲染）
+- `src/renderer/src/components/cowork/commit-graph-layout.ts` — 新建（布局纯函数）
+- `src/renderer/src/locales/{zh,en}/layout.json` — 改
 
 ---
 

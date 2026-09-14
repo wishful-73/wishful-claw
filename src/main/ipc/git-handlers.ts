@@ -155,6 +155,16 @@ export function registerGitHandlers(): void {
     }
   )
 
+  registerGitMessagePackHandler<GitTarget & { limit?: number }>(
+    'git:commit-graph',
+    async (args) => {
+      return await queryGit(args, {
+        operation: 'get-commit-graph',
+        limit: args.limit
+      })
+    }
+  )
+
   // ── Branches ──
 
   registerGitMessagePackHandler<GitTarget>('git:list-branches', async (args) => {

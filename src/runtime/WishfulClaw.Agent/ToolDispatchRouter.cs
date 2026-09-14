@@ -64,7 +64,7 @@ public static class ToolDispatchRouter
             try
             {
                 var result = await AgentRuntimeDesktopExecutor.ExecuteAsync(
-                toolCall, context, state.CancellationToken);
+                toolCall, context, workingFolder, state.CancellationToken);
                 toolOutput = result.Content.ValueKind == JsonValueKind.String
                 ? result.Content.GetString() ?? string.Empty
                 : result.Content.ToString();

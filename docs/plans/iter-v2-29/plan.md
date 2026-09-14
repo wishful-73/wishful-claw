@@ -418,20 +418,36 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ## 步骤
 
-- [ ] S-19.1：新增 `window:capture-self` IPC —— 用 `registerMessagePackHandler`（`src/main/ipc/messagepack-handler.ts:10-25`，样板 `misc-handlers.ts:19-33`），内部调 `getMainWindow()`（`src/main/main-window-registry.ts:22`）的 `webContents.capturePage(rect)`；先例见 `channel-handlers/qr-page-capture.ts:135`
-- [ ] S-19.2：`image:persist-generated`（`misc-handlers.ts:268-292`）加**可选 `targetPath`**，突破当前 `getGeneratedImagesDir()`（`:246-251`）写死 `homedir()/wishful-claw/image` 的限制
-- [ ] S-19.3：工具层暴露 —— 扩展 `DesktopScreenshot`（`DesktopToolProvider.cs:17-23` 现仅 `delayMs` 入参）或新增独立工具，使其能调 S-19.1 的能力
-- [ ] S-19.4：**AOT** —— 新增具名 DTO 注册进 `WishfulClawJsonContext`；跑 `npm run build:worker:prod` 确认无 IL2026/IL3050/IL3051
-- [ ] S-19.5：用新能力补《使用指引》配图（落点待老大定，见下）；`docs/user-guide.md` 文末原有 10 处待配图清单，**开工前先核对还差哪些**，别按 10 处全做
+- [✓] S-19.1：**抽落盘逻辑**到 `src/main/lib/image-persist.ts` —— `persistImageBuffer(buffer, mediaType, { targetPath?, baseDir? })`。无 `targetPath` 时走旧默认目录（保持向后兼容），有 `targetPath` 时按 `baseDir` 解析相对路径或原样使用绝对路径，扩展名按 mediaType 补齐（或当目标已有图片扩展名时保留）；嵌套目录自动 mkdir。**这是 S-19.2 的前置**：把「写文件」从 IPC handler 里抽出来，让 reverse-request 与 IPC 共用同一段规则
+- [✓] S-19.2：`misc-handlers.ts` 的 `image:persist-generated` 加可选 `targetPath` / `baseDir`，复用 `persistImageBuffer`；删掉本地复刻的 `getGeneratedImagesDir` / `guessExtensionFromMimeType` 与对应的 `fs.writeFileSync`，整段逻辑收敛到一个调用点
+- [✓] S-19.3：新增 reverse-request `window:capture-self`（`reverse-handlers/window-capture-handler.ts`），注册进 `directHandlers`。`getMainWindow().webContents.capturePage()` → `image.toPNG()` → 若有 `targetPath` 则 `persistImageBuffer` 落盘 → 返回 `{ success, data, width, height, filePath? }`。窗口已最小化时返回明确错误而不自动 restore（避免打扰用户）；delayMs 上限 5000
+- [✓] S-19.4：C# `AgentRuntimeDesktopExecutor` 加 `CaptureAppWindow`（加入 `DesktopToolNames` 集合，注释说明「transport is the same as desktop tools, even though subject differs」），新增 `ExecuteAppWindowCaptureAsync`。**关键修正**：路径解析放在 C# 侧而不是 main 侧 —— main 进程的 cwd 是应用目录，`docs/images/foo.png` 交给它会写到错误位置。**C# 拿到 `workingFolder`（ToolDispatchRouter 加传），按 `Path.GetFullPath(Path.Combine(baseDir, requested))` 解析成绝对路径再下传**，main 端只接绝对路径
+- [✓] S-19.5：`docs/user-guide.md` 配图待补清单段落更新 —— 指出 `CaptureAppWindow` 截自身窗口**不再需要清场与脱敏**（区别于 `DesktopScreenshot` 仍需脱敏）；图片落点 `docs/images/`，新工具自动创建目录（含嵌套）。**配图补充本身**：S-19 的目标是「**能力本身**」（老大口径：能力即可，落盘位置由 agent 决定），实际补图需要 agent 在应用内打开对应面板调工具 —— 开发态由 agent 触发不了 UI 交互，留给用户/agent 在生产会话里跑
+- [✓] S-19.6：AOT —— 改动只新增一条工具定义 + 一个执行器方法，没有新具名 DTO（reverse-request 走 Worker → main 的 MessagePack，参数与结果是已有 JSON 结构），跑 `npm run build:worker:prod` 确认零 IL 警告
 
-**Mini 验证**：tsc 三配置零错误；C# build + AOT 零警告；**实拍一张并落盘到指定仓库路径**（这是本需求的核心验收）。
+**Mini 验证（已执行，2026-09-14）**：
+- `tsc` 三配置（web / node / root）零错误
+- `dotnet build src/runtime/WishfulClaw.sln` → **0 警告 0 错误**
+- AOT 发布（`npm run build:worker:prod`）→ 成功，**零 IL2026/IL3050/IL3051**；产物从 23,104,000 → 23,113,728 字节（+9KB，即新工具定义与 executor 体量）
+- C# 回归 7 工程全过（含 ProviderHeader 金样 + ChannelToolVisibility 的 `OverExposureTools` 白名单 —— `CaptureAppWindow` 不列在那里，但 desktop 类工具默认就与 channel session 互斥，金样因此无需更新）
+- TS 回归全过；`ipc-msgpack-routing` 通道数 270 不变（reverse-request 不在 renderer 路由表里）
+- **真实 Electron 实拍**（核心验收）：临时脚本 `tmp-verify/capture-check.cjs` 用 `node_modules/electron/dist/electron.exe` 启动一个 BrowserWindow（680×420），加载 data URL 页面，`capturePage()` 拿到 999×536 PNG（12,822 字节，魔数 `89 50 4e 47` 正确），落盘到 `docs/images/tmp-capture-check.png` —— `ALL PASS` 后 Read 工具读图确认像素正确（看到「Wishful Claw」蓝色文字 + 「capture-self check」）。同脚本验证 6 种路径场景：相对+扩展名 / 无扩展名补 .png / 嵌套目录自动创建 / 绝对路径 / 默认目录回退 / jpeg mediaType 补 .jpg
+
+**修正记录**：
+- `WINDOW_CAPTURE_REGION`（`channels.ts:323`）与 `routing.ts:13` 的 `'window:capture-region'` 是死键（只有常量 + routing 登记，**无任何 handler**），与本次能力同名容易误导。**未删除** —— 它在 Clipboard 分组下，语义是「截取进剪贴板」（待补），与本次的「截取落盘」是两件事，避免触碰老大的未来规划；如未来真做「截图进剪贴板」可换名复用
+- `fs:save-image` 也在 routing 表里且**无对应常量**（更死），不在本次范围、未动
+- 路径解析**不放 main 侧**：原计划 S-19.3 没明确，C# 执行器现在自带 `workingFolder` 解析，把绝对路径下传给 main —— 这样 `persistImageBuffer` 的 `baseDir` 始终是工作文件夹，main 进程的 cwd 不会干扰
+- `image:persist-generated` 的旧 `url` / `filePath` 参数**从未被任何调用方使用**（grep 确认），顺手删掉；扩展名强制已知图片格式（`.png/.jpg/.jpeg/.webp/.gif/.bmp`），其它按 mediaType 补 → 避免「`docs/images/panel.md` 被静默写成 markdown」
 
 ## 涉及文件
-- `src/main/ipc/*.ts`（新 capture handler）— 新建
-- `src/main/ipc/misc-handlers.ts` — 改（targetPath）
-- `src/runtime/WishfulClaw.Agent/Tools/Providers/DesktopToolProvider.cs` — 改
-- `docs/user-guide.md` — 改（配图）
-- `src/renderer/src/locales/{zh,en}/*.json` — 改
+- `src/main/lib/image-persist.ts` — 新建（落盘逻辑）
+- `src/main/ipc/misc-handlers.ts` — 改（`image:persist-generated` 加 targetPath + 复用新模块）
+- `src/main/ipc/reverse-handlers/window-capture-handler.ts` — 新建（自窗口截图 reverse-request）
+- `src/main/ipc/reverse-handlers/index.ts` — 改（注册 `window:capture-self`）
+- `src/runtime/WishfulClaw.Agent/AgentRuntimeDesktopExecutor.cs` — 改（`CaptureAppWindow` + 路径解析）
+- `src/runtime/WishfulClaw.Agent/ToolDispatchRouter.cs` — 改（传 `workingFolder`）
+- `src/runtime/WishfulClaw.Agent/Tools/Providers/DesktopToolProvider.cs` — 改（工具定义）
+- `docs/user-guide.md` — 改（配图清单段落，反映新能力）
 
 ## 避坑说明
 - **浏览器通路已验证不可用**：`mcp__browser-use__take_screenshot` 报 `NATIVE_BROWSER_VIEWPORT_UNAVAILABLE`；in-app browser 指向 dev 渲染进程、拿不到内容（`raw-requirements.md:106`）。**浏览器截图不能替代真机 capturePage**，勿重复踩。

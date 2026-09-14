@@ -15,6 +15,7 @@
 | R5 | 2026-09-14 | 追加临时需求 T-1（消息时间显示口径：用户消息=创建时间、agent 回复=最后更新时间，`messages` 表补 `updated_at` 列），测试会话中实施完成，见「需求 11（临时追加）」 |
 | R6 | 2026-09-14 | 追加临时需求 T-2（输入框底部统计条改读会话总统计，不走消息遍历聚合）、T-3（长驻进程下前端聊天窗渲染膨胀）、T-4（移除 agent 回复流式光标），登记待排期，见「需求 12 / 13 / 14（临时追加）」 |
 | R7 | 2026-09-14 | 老大追认两项已完成的临时工作属本迭代，补登记并补提交：T-5（用量统计面板体验收口：三选项卡 + 左右分栏 + 明细表可调页长/粘性表头 + 模型行补缓存列，退役 `db/usage-by-source`）、T-6（测试工程独立成 `tests/WishfulClaw.Tests.sln`，移除 playwright e2e 链路）。同时回填需求 10（S-25）已完成的步骤勾选 |
+| R8 | 2026-09-14 | T-3 老大裁定方案（发新消息时把内存消息窗口收缩到最近 N 轮；N 在「运行与性能」页可配，默认 15 / 范围 5–50）并实施完成，补登记实施记录与口径 |
 
 ## 目标
 
@@ -617,7 +618,8 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 # 需求 13（临时追加）：T-3 长驻进程下前端聊天窗渲染膨胀
 
-> 2026-09-14 老大在真机使用中发现，登记待排期，未实施。老大明确：先进需求，**不用探索**。
+> 2026-09-14 老大在真机使用中发现。原登记「待排期、未实施」；当日老大裁定方案后**已实施完成**（见本节末尾「实施」）。
+> 原记录：老大明确：先进需求，**不用探索**。
 
 ## 背景 / 现象
 
@@ -628,12 +630,69 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ## 口径（老大拍板）
 
-- 前端聊天窗需要与后端压缩对齐的"减负"措施，方向和具体方案实施时再定
+2026-09-14 老大最终裁定，**前端只做一件事**：发送新消息时，把内存里的会话消息卸载到只剩**最近 N 轮**（N 在「运行与性能」页可配，默认 15、范围 5–50）。不做压缩边界裁剪、不动虚拟化配置、不加视口/「加载更早」的复杂 guard；**不做**「内存消息总条数」第二道闸（老大明确：按轮即可，一轮 = 一来一回）。
+
+具体口径：
+
+- **触发点唯一**：发送新消息（`beginUserTurn`），每发一条就收缩一次窗口
+- **窗口 = 最近 `maxResidentTurns` 轮**（设置项，默认 15，范围 5–50）；**轮** = 一条 user 消息及其之后的 assistant / tool 消息（用户说 + agent 执行回复，一来一回）
+- **只裁前端内存，DB 不动**：被裁掉的旧消息仍可经「加载更早」拉回（`fetchOlderMessages`）
+- 游标 `loadedRangeStart` 跟到裁剪后最早一条，保证「加载更早」不越过被裁段
 
 ## 涉及（初步定位，实施时复核）
 
 - 消息列表渲染：`components/chat/MessageList/`（虚拟化已有，但"列表内容本身"长期驻留）
 - 压缩边界处理：压缩快照边界目前只影响"发给模型的内容"，UI 侧历史消息不裁剪（这正是 T-2 中"运行中统计正确"的原因，与 T-3 是同一事实的两面——方案落地时两条需求要一起对口径，避免一个改动打破另一个的前提）
+
+> ✅ 前提已解除（2026-09-14）：T-2 落地后统计条改读「会话级基线 + 增量」，**不再依赖内存消息窗口**。因此 T-3 若做窗口裁剪，不会打破 T-2 的口径。原「两条需求要一起对口径」的约束不再存在。
+
+## 探索结论（2026-09-14，含实测）
+
+**先证伪了一个假设：消息列表的派生计算不是瓶颈。**
+
+临时探针（`.wishful-claw/notes/perf-t3.ts`，esbuild + node，跑完即删产物）构造 100 / 400 / 1200 / 3000 条消息（每条 assistant 带 3 组 tool_use + tool_result），每项 12 次平均：
+
+| 计算 | 100 条 | 400 条 | 1200 条 | 3000 条 |
+|---|---|---|---|---|
+| `buildTranscriptStaticAnalysis` | 0.01 ms | 0.02 ms | 0.06 ms | 0.15 ms |
+| 同上（模拟流式 delta，数组引用变化） | 0.01 ms | 0.03 ms | 0.04 ms | 0.13 ms |
+| `buildRenderableChatItems` | 0.15 ms | 0.09 ms | 0.19 ms | 0.22 ms |
+| `getMessageLookup` / `getToolResultsLookup` | 均 < 0.05 ms | | | |
+
+3000 条仍全程 < 0.25 ms，远低于一帧 16 ms 预算。现有 `transcriptStaticAnalysisCache`（WeakMap）+ 结构签名 fast path 已经把大计算挡住了。
+
+**因此「越来越慢」不来自派生计算，剩两个候选，需真机取证**：
+
+1. **内存（首要嫌疑）**——`session.messages` 对长驻会话只增不减，且每条 assistant 消息携带完整 content blocks（工具结果 / 思考全文）。后端压缩已释放，前端不释放，正是老大说的"内存越滚越大"
+2. **DOM（待证）**——虚拟列表理论上只挂视口行；若真机 DevTools 数出节点持续增长，则说明虚拟化配置漏了，是另一条修法
+
+**候选方案（需老大定方向）**：
+
+- **A. 内存窗口裁剪（推荐）**——压缩边界发生时，把窗口外的旧消息从 `session.messages` 卸载（DB 保留，上滚仍可经「加载更早」拉回）。收益直接，且顺带缩短一切 O(n)；代价是需要两个 guard：①仅视口贴底时裁（否则用户眼前的内容会被抽走）②用户主动「加载更早」后不立即裁（避免加载↔裁剪死循环）
+- **B. 只修 DOM 侧**——若真机确认节点累积，修虚拟化配置；代价低，但不解决内存
+- **C. 不动**——若真机实测内存增长在可接受范围
+
+**待定 → 已裁定**（2026-09-14）：老大不看真机取证，直接拍板方案 A 的简化版——只保留「发新消息即把窗口收缩到最近 N 轮」这一条，不含视口/「加载更早」的 guard；随后把 N 做成配置项（默认 15 / 范围 5–50）。agent 侧无需内存取样。
+
+## 实施（已完成，2026-09-14）
+
+**① 按轮裁剪（内存窗口）**
+- `stores/chat-store/session-slice.ts`：纯函数 `trimMessagesToRecentTurns(messages, maxTurns)` —— 从尾部反向数第 N 条 user 消息，切出尾部窗口；不足 N 轮、或第 N 条恰在 index 0 时原样返回（`removed = 0`）
+- `beginUserTurn` 在 push 完本轮 user / assistant 消息后调用裁剪：只改 `session.messages` / `session.messageCount` / `session.loadedRangeStart`，**不触碰 DB**（`messageCount` 同步成裁剪后长度，否则残留裁剪前的偏大值）
+
+**② 窗口做成配置项（「运行与性能」页）**
+- `stores/settings-store-types.ts`：`DEFAULT_MAX_RESIDENT_TURNS = 15` / `MIN_ = 5` / `MAX_ = 50` + `clampMaxResidentTurns`
+- `stores/settings-store.ts`：`maxResidentTurns` 字段（接口 / 初始值 / `updateSettings` 钳制 / 持久化白名单 / re-export）
+- `stores/settings-store-migrate.ts`：老配置补默认值（照 `maxToolCallsPerTurn` 写法）
+- `components/settings/RuntimePanel.tsx`：新增「聊天窗内存窗口」节（数字输入 + 滑块），落在「上下文压缩」之后
+- `components/settings/SettingsPage.tsx`：锚点导航补 `sec-runtime-resident-turns`
+- `stores/chat-store/session-slice.ts`：删掉硬编码常量，`beginUserTurn` 每次读 `useSettingsStore.getState().maxResidentTurns`，**发消息即生效**
+- i18n：`runtimePage.residentTurns.*` + `anchorNav.residentTurns`，zh / en 双语
+
+- **未动**：`MessageList` 虚拟化配置、压缩边界逻辑、`fetchOlderMessages` / `prependMessages`（上滚加载仍生效）
+- **联动自动正确**：`hasLoadOlderRow = loadedRangeStart > 0`（`useMessageListData.ts:404`）与 `scroll-utils.ts:95` 的 `+1` 行偏移，因游标 `loadedRangeStart` 已更新到裁剪后首条而无需额外改动
+
+**Mini 验证**：tsc 三配置零错误；`test:settings-tabs` 22、`test:renderable-chat-items` 16、`test:provider-presets` 546 全通过；长会话连发消息，内存 `messages` 长度稳定在 ≤ N 轮、顶部「加载更早」可把旧消息拉回。真机目视/内存曲线由老大复验。
 
 ---
 

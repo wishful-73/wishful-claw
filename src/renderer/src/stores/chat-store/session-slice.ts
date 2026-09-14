@@ -6,6 +6,35 @@ import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 
+// T-3: 运行时驻留会话的内存窗口收缩。
+//
+// 会话一旦在本进程内产生过消息（isRuntimeResident）就会跳过 DB 重载
+// （见 loadRecentSessionMessages 的守卫），消息只增不减。用户主动上滚可以
+// 临时加载更多历史（fetchOlderMessages / prependMessages），但每发一条新消息
+// 就把窗口收缩回最近 N 轮 —— 更早的消息留在 DB，仍可经「加载更早」拉回。
+//
+// 轮 = 一条 user 消息，以及它之后的 assistant / tool 消息；
+// N = 设置项 maxResidentTurns（「运行与性能」页，默认 15，范围 5–50）。
+
+/**
+ * 保留最近 `maxTurns` 轮，返回应保留的尾部切片与被裁掉的头部长度。
+ * 不足 `maxTurns` 轮（或刚好从第 0 条开始）时原样返回，`removed` 为 0。
+ */
+function trimMessagesToRecentTurns<T extends { role: string }>(
+  messages: T[],
+  maxTurns: number
+): { messages: T[]; removed: number } {
+  let userSeen = 0
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role !== 'user') continue
+    userSeen += 1
+    if (userSeen < maxTurns) continue
+    if (index === 0) return { messages, removed: 0 }
+    return { messages: messages.slice(index), removed: index }
+  }
+  return { messages, removed: 0 }
+}
+
 export interface SessionSlice {
   sessions: Session[]
   sessionsById: Record<string, number>
@@ -449,6 +478,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
 
   beginUserTurn: (sessionId, userMsg, assistantMsg, streamingMessageId) => {
     const now = Date.now()
+    // T-3: 每次发消息读一次最新配置（「运行与性能」页可调），立即生效。
+    const maxResidentTurns = useSettingsStore.getState().maxResidentTurns
     let sessionProjectId: string | undefined
     set((state) => {
       const session = state.sessions.find((s) => s.id === sessionId)
@@ -464,6 +495,15 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       session.messagesLoaded = true
       session.isRuntimeResident = true
       session.updatedAt = now
+      // T-3: 发新消息时把驻留窗口收缩回最近 maxResidentTurns 轮。
+      // 只裁内存，DB 不动；游标（loadedRangeStart）跟到新的最早一条，
+      // 否则「加载更早」会越过被裁掉的这一段。
+      const trimmed = trimMessagesToRecentTurns(session.messages, maxResidentTurns)
+      if (trimmed.removed > 0) {
+        session.messages = trimmed.messages
+        session.messageCount = trimmed.messages.length
+        session.loadedRangeStart = trimmed.messages[0]?.createdAt ?? 0
+      }
       if (sessionProjectId) {
         const proj = (state as unknown as { projects: Array<{ id: string; updatedAt: number }> }).projects.find((p) => p.id === sessionProjectId)
         if (proj) proj.updatedAt = now

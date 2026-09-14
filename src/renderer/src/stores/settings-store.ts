@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ProviderType, ReasoningEffortLevel } from '../lib/api/types'
 import { ipcStorage } from '../lib/ipc/ipc-storage'
@@ -25,7 +25,7 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
+import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
 import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
@@ -75,17 +75,21 @@ export {
   clampRequestMaxRetries,
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   DEFAULT_MAX_TOOL_CALLS_PER_TURN,
+  DEFAULT_MAX_RESIDENT_TURNS,
   DEFAULT_SHELL_EXECUTION_ENDPOINT,
   DEFAULT_THEME_MODE,
   MAX_MAX_CONCURRENT_SUB_AGENTS,
   MAX_MAX_PARALLEL_TOOL_CALLS,
   MAX_MAX_TOOL_CALLS_PER_TURN,
+  MAX_MAX_RESIDENT_TURNS,
   MIN_MAX_CONCURRENT_SUB_AGENTS,
   MIN_MAX_PARALLEL_TOOL_CALLS,
   MIN_MAX_TOOL_CALLS_PER_TURN,
+  MIN_MAX_RESIDENT_TURNS,
   clampMaxConcurrentSubAgents,
   clampMaxParallelToolCalls,
   clampMaxToolCallsPerTurn,
+  clampMaxResidentTurns,
   createDefaultCodexConfig,
   getReasoningEffortKey,
   getRecentWorkingTargetKey,
@@ -130,6 +134,8 @@ interface SettingsStore {
   maxParallelToolCalls: number
   maxToolCallsPerTurn: number
   maxConcurrentSubAgents: number
+  /** T-3: 运行时驻留会话在内存里保留的最近轮数（轮 = 一条 user 消息及其后的回复）。 */
+  maxResidentTurns: number
   toolResultFormat: 'toon' | 'json'
   fileDiffViewMode: FileDiffViewMode
   shellExecutionEndpoint: ShellExecutionEndpoint
@@ -279,6 +285,7 @@ export const useSettingsStore = create<SettingsStore>()(
       maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
       maxToolCallsPerTurn: DEFAULT_MAX_TOOL_CALLS_PER_TURN,
       maxConcurrentSubAgents: DEFAULT_MAX_CONCURRENT_SUB_AGENTS,
+      maxResidentTurns: DEFAULT_MAX_RESIDENT_TURNS,
       toolResultFormat: 'toon',
       fileDiffViewMode: 'split',
       shellExecutionEndpoint: DEFAULT_SHELL_EXECUTION_ENDPOINT,
@@ -380,7 +387,10 @@ export const useSettingsStore = create<SettingsStore>()(
               ? {}
               : {
                   maxConcurrentSubAgents: clampMaxConcurrentSubAgents(patch.maxConcurrentSubAgents)
-                })
+                }),
+            ...(patch.maxResidentTurns === undefined
+              ? {}
+              : { maxResidentTurns: clampMaxResidentTurns(patch.maxResidentTurns) })
           }
 
           const hasChanges = (Object.keys(nextPatch) as Array<keyof SettingsStoreData>).some(
@@ -438,6 +448,7 @@ export const useSettingsStore = create<SettingsStore>()(
         maxParallelToolCalls: clampMaxParallelToolCalls(state.maxParallelToolCalls),
         maxToolCallsPerTurn: clampMaxToolCallsPerTurn(state.maxToolCallsPerTurn),
         maxConcurrentSubAgents: clampMaxConcurrentSubAgents(state.maxConcurrentSubAgents),
+        maxResidentTurns: clampMaxResidentTurns(state.maxResidentTurns),
         toolResultFormat: state.toolResultFormat,
         fileDiffViewMode: state.fileDiffViewMode,
         shellExecutionEndpoint: normalizeShellExecutionEndpoint(state.shellExecutionEndpoint),

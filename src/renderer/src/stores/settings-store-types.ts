@@ -1,4 +1,4 @@
-﻿import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
+import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
 import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import type { CollaborationMode, PermissionMode } from './chat-store/types'
 import { type AppThemePreset, type SshTerminalThemePreset } from '../lib/theme-presets'
@@ -104,6 +104,10 @@ export const MAX_MAX_CONCURRENT_SUB_AGENTS = 8
 export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 15
 export const MIN_MAX_TOOL_CALLS_PER_TURN = 1
 export const MAX_MAX_TOOL_CALLS_PER_TURN = 50
+// T-3: 运行时驻留会话在内存里保留的最近轮数（轮 = 一条 user 消息及其后的回复）。
+export const DEFAULT_MAX_RESIDENT_TURNS = 15
+export const MIN_MAX_RESIDENT_TURNS = 5
+export const MAX_MAX_RESIDENT_TURNS = 50
 
 export interface RecentWorkingTarget {
   workingFolder: string
@@ -226,6 +230,13 @@ export function clampMaxToolCallsPerTurn(value: number): number {
   return Math.min(
     MAX_MAX_TOOL_CALLS_PER_TURN,
     Math.max(MIN_MAX_TOOL_CALLS_PER_TURN, Math.floor(value))
+  )
+}
+export function clampMaxResidentTurns(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MAX_RESIDENT_TURNS
+  return Math.min(
+    MAX_MAX_RESIDENT_TURNS,
+    Math.max(MIN_MAX_RESIDENT_TURNS, Math.floor(value))
   )
 }
 export function normalizeShellExecutionEndpoint(value: unknown): ShellExecutionEndpoint {

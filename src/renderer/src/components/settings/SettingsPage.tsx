@@ -1,4 +1,4 @@
-﻿import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3, Bot, Globe } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
@@ -46,6 +46,7 @@ const RUNTIME_ANCHORS: SectionAnchor[] = [
   { id: 'sec-runtime-timeout', label: 'anchorNav.timeout' },
   { id: 'sec-runtime-retries', label: 'anchorNav.retries' },
   { id: 'sec-runtime-compression', label: 'anchorNav.compression' },
+  { id: 'sec-runtime-resident-turns', label: 'anchorNav.residentTurns' },
   { id: 'sec-runtime-tools', label: 'anchorNav.toolExecution' }
 ]
 

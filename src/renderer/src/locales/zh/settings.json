@@ -1444,6 +1444,12 @@
         "fullAccess": "YOLO"
       },
       "hint": "只影响新项目会话，不覆盖已有会话；全局会话固定为 Chat。"
+    },
+    "residentTurns": {
+      "title": "聊天窗内存窗口",
+      "desc": "会话常驻内存时只保留最近若干轮，控制长时间运行下的前端内存占用",
+      "label": "内存保留轮数",
+      "hint": "轮 = 一条用户消息及其回复；更早的消息仍留在数据库，可经「加载更早」拉回。发送新消息时生效。"
     }
   },
   "updater": {
@@ -1492,6 +1498,7 @@
     "timeout": "请求超时",
     "retries": "重试策略",
     "compression": "上下文压缩",
+    "residentTurns": "内存窗口",
     "toolExecution": "工具执行",
     "developer": "开发者模式",
     "startup": "开机启动",

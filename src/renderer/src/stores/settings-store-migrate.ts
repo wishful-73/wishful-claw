@@ -27,11 +27,13 @@ import {
   DEFAULT_REQUEST_MAX_RETRIES,
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   DEFAULT_MAX_TOOL_CALLS_PER_TURN,
+  DEFAULT_MAX_RESIDENT_TURNS,
   DEFAULT_THEME_MODE,
   clampMaxConcurrentSubAgents,
   clampRequestMaxRetries,
   clampMaxParallelToolCalls,
   clampMaxToolCallsPerTurn,
+  clampMaxResidentTurns,
   isThemeSetting,
   normalizeShellExecutionEndpoint,
   normalizeProviderFallback,
@@ -282,6 +284,14 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
     state.maxConcurrentSubAgents = DEFAULT_MAX_CONCURRENT_SUB_AGENTS
   } else {
     state.maxConcurrentSubAgents = clampMaxConcurrentSubAgents(state.maxConcurrentSubAgents as number)
+  }
+  if (
+    state.maxResidentTurns === undefined ||
+    typeof state.maxResidentTurns !== 'number'
+  ) {
+    state.maxResidentTurns = DEFAULT_MAX_RESIDENT_TURNS
+  } else {
+    state.maxResidentTurns = clampMaxResidentTurns(state.maxResidentTurns as number)
   }
   if (state.reasoningEffortByModel === undefined) {
     state.reasoningEffortByModel = {}

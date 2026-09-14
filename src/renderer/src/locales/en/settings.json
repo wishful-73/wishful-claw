@@ -1299,6 +1299,12 @@
         "fullAccess": "YOLO"
       },
       "hint": "Applies only to new project sessions and never overwrites existing sessions. Global sessions always use Chat."
+    },
+    "residentTurns": {
+      "title": "Chat Window Memory Window",
+      "desc": "Keep only the most recent turns in memory for resident sessions, bounding front-end memory during long runs",
+      "label": "Turns kept in memory",
+      "hint": "A turn = one user message plus its reply. Older messages stay in the database and can be pulled back via “Load older”. Takes effect on the next message send."
     }
   },
   "updater": {
@@ -1347,6 +1353,7 @@
     "timeout": "Timeout",
     "retries": "Retries",
     "compression": "Compression",
+    "residentTurns": "Memory Window",
     "toolExecution": "Tool Execution",
     "developer": "Developer",
     "startup": "Startup",

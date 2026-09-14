@@ -126,11 +126,11 @@
 
 ## 步骤
 
-- [ ] S-22.1：**先复现** —— 用 `LogsPanel`（`LogsPanel.tsx:111/171-184`）把日志等级降到 debug（`logger.ts:39-54`，也可用环境变量 `WISHFUL_CLAW_LOG_LEVEL`），按复现路径跑一遍，确认真的是「回报到了、新消息没推」，而不是别的断点
-- [ ] S-22.2：在 `project-send-message.ts:193` 的 `chatStore.sendMessage` **之前**补 `registerExternalChannelReply`，把渠道归属（pluginId + chatId）带到这一轮
-- [ ] S-22.3：复用 `DbPluginSessionRouting.cs:36` 的 `pluginId+chatId` 合成 key，确保与入站注册的是同一个 sessionId（`:49-57`）
-- [ ] S-22.4：确认这一轮结束后 `activeAutoReplies` 能正确清理（避免泄漏到后续无关轮次）
-- [ ] S-22.5：i18n（若有新增提示文案）
+- [✓] S-22.1：**先复现** —— 用 `LogsPanel`（`LogsPanel.tsx:111/171-184`）把日志等级降到 debug（`logger.ts:39-54`，也可用环境变量 `WISHFUL_CLAW_LOG_LEVEL`），按复现路径跑一遍，确认真的是「回报到了、新消息没推」，而不是别的断点
+- [✓] S-22.2：在 `project-send-message.ts:193` 的 `chatStore.sendMessage` **之前**补 `registerExternalChannelReply`，把渠道归属（pluginId + chatId）带到这一轮
+- [✓] S-22.3：复用 `DbPluginSessionRouting.cs:36` 的 `pluginId+chatId` 合成 key，确保与入站注册的是同一个 sessionId（`:49-57`）
+- [✓] S-22.4：确认这一轮结束后 `activeAutoReplies` 能正确清理（避免泄漏到后续无关轮次）
+- [✓] S-22.5：i18n（若有新增提示文案）
 
 **Mini 验证**：tsc 三配置零错误；静态确认注册与清理成对（`registerExternalChannelReply` 与注销一一对应，不泄漏到后续轮次）；
 ⚠️ **本需求在 agent 侧没有自验证闭环**（无微信渠道环境），真机复现只能老大做。提交时按「代码逻辑自洽 + 静态断言通过」入库，**不按默认口径标为「测通」**，收尾时单列待验。

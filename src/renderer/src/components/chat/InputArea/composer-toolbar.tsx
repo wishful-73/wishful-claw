@@ -26,10 +26,6 @@ interface ComposerToolbarProps {
   onCollabModeChange?: (mode: CollabMode) => void
   collabModeOverride?: CollabMode
 
-  // Web search
-  canToggleWebSearch: boolean
-  webSearchEnabled: boolean
-  toggleWebSearch: () => void
   disabled: boolean
   isStreaming: boolean
 

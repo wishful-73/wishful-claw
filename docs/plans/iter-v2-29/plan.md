@@ -192,51 +192,126 @@ Agent 经 `use_capability` 代理调用工具时，输入框左上角状态条�
 sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「改 BrowserSearch」
 = 改这一个 TS 文件，**不动 C# 的** `AgentRuntimeBrowserExecutor.cs`（138 行，是另一套东西）。
 
+> 📌 上表与本节的行号均指向**动手前**的 `browser-search-tool.ts`；该文件已在 S-23.7 拆成
+> `lib/tools/browser-search/` 目录（`types` / `engines` / `extract` / `dedupe` / `search` / `tool` / `index`），
+> 引用时按模块名找，别按行号找。
+
 ## 步骤
 
-- [ ] S-23.1：**退役 WebSearch 全链路**
-  - renderer：`lib/tools/web-search-tool.ts` 整删 + `tools/index.ts` 去注册 + `InputArea/index.tsx:115` 的 `updateWebSearchToolRegistration` 调用点
-  - C#：`WebSearchProviders.cs`(164) / `AgentRuntimeWebSearchExecutor.cs`(371) / `Tools/Providers/WebToolProvider.cs` 删；`ToolDispatchRouter.cs` / `AgentRunContextPolicy.cs` / `AgentRuntimeUseCapabilityDiscovery.cs` / `OpenAIResponsesEventParser.cs` / `SubAgentExecutor.Results.cs` 里的 web_search 分派与工具声明清理
-  - main：`web-search-handlers.ts` 整删 + `channels.ts:347-350` + `messagepack-channel-routing.ts:171,339,340`
-  - **砍前再复核一遍**：确认 `web:search` 全仓（含脚本/模板）确实无调用点
-- [ ] S-23.2：**settings 字段处理** —— `settings-store.ts:187-198` 的 `webSearchEnabled` /
-  `webSearchProvider` / `webSearchApiKey`。⚠️ `webSearchEnabled` 另有语义（输入框联网开关），
-  **保留并改挂 BrowserSearch**；另两个**做迁移**不硬删（硬删会让老用户配置静默丢失）
-- [ ] S-23.3：**修三根因 + 设 UA**（都在 `browser-search-tool.ts`）
-  - bing_cn：`:50-52` 补请求头/UA，仍不行则从中文意图默认引擎里摘掉
-  - 词典域兜底：`:425` 通用兜底提取器加词典/翻译/百科卡片类域名黑名单
-  - 去重不判相关性：`:466-485` 除 URL 外补标题/域名相关性判定
-  - **设 User-Agent**（反爬关键，当前全文零设置）
-- [ ] S-23.4：**设置页改造** —— 内置 11 引擎逐个开关 + 意图路由（`:141-161`）可编辑 +
-  「自动选择引擎」开关，复用原 WebSearch 设置区
-- [ ] S-23.5：**用户自定义引擎三档** —— ①内置 ②自定义站点（URL 模板 + 选择器）③自定义 API（endpoint + key）
-- [ ] S-23.6：**工具改名** WebSearch → BrowserSearch。⚠️ 先确认历史会话/日志是否持久化了工具名
-- [ ] S-23.7：**先拆文件** —— `browser-search-tool.ts` 已 693 行，本需求还要加三档自定义引擎，
-  按 `engines.ts` / `extract.ts` / `dedupe.ts` / `custom.ts` 拆目录再改
-- [ ] S-23.8：i18n（引擎名、意图名、三档自定义引擎表单）
+- [✓] S-23.7：**先拆文件**（先做，后面所有改动都落在新目录里）
+  - `lib/tools/browser-search-tool.ts`（693 行）→ `lib/tools/browser-search/`：`types.ts` /
+    `engines.ts` / `extract.ts` / `dedupe.ts` / `search.ts` / `tool.ts` / `index.ts`。
+    **同名目录 + index.ts 满足同一 import 路径**，所有消费方 import 不改。
+- [✓] S-23.1：**退役 WebSearch 全链路**
+  - renderer：`lib/tools/web-search-tool.ts` 整删；`tools/index.ts` 去 `updateWebSearchToolRegistration`；
+    `InputArea/index.tsx` 去调用点、`toggleWebSearch` 回调、三个从未被消费的 toolbar props
+    （`canToggleWebSearch` / `webSearchEnabled` / `toggleWebSearch`）；`use-input-area-selectors.ts`
+    去 5 个字段与订阅；`sidecar-mapping.ts` / `sidecar-protocol-types.ts` / `sidecar-protocol.ts`
+    去 `SidecarWebSearchConfig` 与 `mapSidecarWebSearchConfig`
+  - 死选项清理：`SendMessageOptions.webSearchEnabled`、`use-chat-actions.ts` 的 4 处传参
+    （其中 `:158-168` 那段 filter 的结果本来就被 `void` 掉，是彻底的空转）、
+    `use-channel-auto-reply.ts:284`、`project-send-message.ts:220`
+  - C#：`AgentRuntimeWebSearchExecutor.cs`(371) / `WebSearchProviders.cs`(164) 删；
+    `ToolDispatchRouter.cs` 去 WebSearch 分派块；`WebToolProvider.cs` 只留 `WebFetch`
+    （**WebFetch 必须保留**）；`AgentRunContextPolicy` 去 `WebSearchEnabled` 字段与读取；
+    `AgentRuntimeUseCapabilityDiscovery` 去 web 类目门控（连带去掉已无用的 `category` 形参，
+    3 个文件 5 处调用点 + `BrowserSurfaceAccessChecks.cs` 同步改）；
+    `SubAgentExecutor.Results.cs` 的 `"WebSearch" => "query"` **保留**（改名后它正是新工具的映射）
+  - main：`web-search-handlers.ts` → **改名** `web-fetch-handlers.ts`（`registerWebFetchHandlers`），
+    只删 `web:search` / `web:search-config` / `web:search-providers`，**保留 `web:fetch` /
+    `web:fetch-rendered` / `fetchRenderedPage` / `isRenderableHttpUrl`**（BrowserSearch 的抓取通路）；
+    `channels.ts` 去 3 个常量；`messagepack-channel-routing.ts` 去 3 条路由
+- [✓] S-23.2：**settings 字段处理** —— 6 个 `webSearch*` 字段迁进 `legacyWebSearch`
+  （**不硬删**），`browserSearch` 从 `DEFAULT_BROWSER_SEARCH_SETTINGS` 播种，`version: 37 → 38`
+- [✓] S-23.3：**修三根因 + 设 UA**
+  - bing_cn：**直接摘掉**（裸 HTTP 下只吐词典/翻译卡），`bing_intl` 覆盖必应
+  - 词典域兜底：`extract.ts` 的 `isLowQualityCard` 按域 + 路径片段拦词典/翻译/百科卡，
+    **但引擎自身域名豁免**（否则 `wikipedia_zh` 会把自己的结果全滤掉）
+  - 去重不判相关性：`dedupe.ts` 的 `interleaveByEngine` 轮转（快引擎不再吃满名额）+
+    `deduplicate(results, max, query)` 把相关性当**优先级**而非硬过滤（不相关的结果降级去填剩余名额）
+  - UA：**已天然满足** —— `AgentRuntimeWebFetchExecutor.cs:61-65` 早就发桌面 Chrome UA +
+    `Accept-Language: zh-CN,zh;q=0.9,en;q=0.8`，所以「全文零 UA」这条只在旧渲染端成立
+- [✓] S-23.4：**设置页改造** —— ⚠️ 见「修正记录 1」：设置页**没有**可复用的「搜索服务商」区，
+  改为在「插件」二级分类下**新增** `webSearch` 页签（`SettingsPage.tsx` + `ui-types.ts` +
+  `tests/settings-tabs`）。面板 = `WebSearchPanel.tsx`：检索策略（自动选择引擎 / 结果条数上限）+
+  10 个内置引擎逐个开关 + 特性徽标（裸 HTTP / 需浏览器渲染 / 类目）+ 6 类意图路由可编辑（含
+  恢复默认、引擎被全局关掉时的提示、全关兜底提示）
+- [✓] S-23.5：**用户自定义引擎** —— ⚠️ 见「修正记录 2」：只有**两档**。
+  ①`basic`：URL 模板（`{query}` 占位，保存前校验）+ 通用 h2/h3 解析，结果标 `confidence: 'low'`；
+  ②`selector`：+ 抓取方式（http/rendered）+ 可选 CSS 选择器（item/title/url/snippet）。
+  **不做**「把 HTML 喂给模型解析」——慢、贵、不稳定，不作为主路径。
+  实现 = `web-search-custom-engines.tsx` + `engines.ts` 的 `toEngineConfig`
+- [✓] S-23.6：**工具改名** `BrowserSearch` → `WebSearch` —— ⚠️ 见「修正记录 3」：方向与旧口径相反。
+  改 `BrowserToolProvider.cs`（声明 + 描述去引擎枚举，改为「引擎集与意图路由在设置里配」）、
+  `AgentRuntimeBrowserExecutor.cs` 的 `BrowserToolNames`、renderer 侧 `WEB_SEARCH_TOOL_NAME`。
+  旧名别名：`lib/tools/tool-name-aliases.ts` 的 `normalizeToolName`，接在 `step-descriptions.ts`
+  （唯一有查表、旧名会掉到默认分支的地方）；其余展示点（`compact-header.tsx` / `process-summary.ts` /
+  `execution-outline.ts` / `ToolCallCard/types.ts`）本来就同时列了 `WebSearch` 与 `BrowserSearch`，无需改
+- [✓] S-23.8：i18n —— `settings.json` 新增 `tabs.webSearch.label` / `anchorNav.webSearch*` /
+  `webSearch.*`；`common.json` 新增 `browserSearch.engines.*` 与 `browserSearch.intents.*`
+  （放 `common` 是因为 `engineDisplayName` / `intentDisplayName` 在**非 React** 路径被调用，
+  `common` 是 default/fallback ns、必定已加载；未加载时 `translateOr` 回落到字面名）
 
-**Mini 验证**：tsc 三配置零错误；C# build + AOT 零警告（删链路后须跑 `build:worker:prod`）；
-中文 query 不再返回词典/翻译卡；英文 query 不回退；三档自定义引擎各配一个跑通；
-老配置（webSearchProvider/webSearchApiKey 有值）启动后不丢、迁移正确。
+**Mini 验证**（已执行，2026-09-14）：
+- tsc 三配置零错误；`dotnet build src/runtime/WishfulClaw.sln` **0 警告 0 错误**
+- C# 回归：`ProviderHeaderRegressionTests`（含金样 `visibility-snapshot.expected.txt` 与
+  `BrowserSurfaceAccessChecks` 的浏览器准入断言）、`ChannelToolVisibility`(108)、
+  `ChannelShellApproval`(74)、`ToolConcurrency`、`Goal`(148)、`SessionTaskCascade`(180)、
+  `CompactionSnapshot`(269+2) 全过
+- TS 回归：`settings-tabs`(22) / `ipc-msgpack-routing`(96) / `provider-presets`(546) /
+  `renderable-chat-items`(16) / `channel-cancel-commands` / `channel-reply-event-policy` /
+  `updater-*`(71+56+35) 全过
+- 临时断言脚本（跑完即删）：S-23 主体 61 条 + 设置面板逻辑 25 条，全过。覆盖：
+  bing_cn 已不在注册表、迁移（老配置不丢 / 新装为 null / 已有 legacy 不覆盖）、
+  意图路由（含全关兜底、autoRoute 关闭、显式 override 优先）、两档自定义引擎的
+  `lowConfidence` 与选择器、词典卡过滤 + 引擎自身域豁免、轮转交错、URL/标题去重、
+  相关性优先级、引擎开关的规范化顺序与可往返、意图不可清空、意图编辑器与 `resolveSearchPlan` 一致
 
 ## 涉及文件
-- `src/renderer/src/lib/tools/browser-search-tool.ts` — **先拆目录再改**（693 行）
-- `src/renderer/src/lib/tools/web-search-tool.ts` — 删
-- `src/renderer/src/lib/tools/index.ts`、`src/renderer/src/components/chat/InputArea/index.tsx` — 改
-- `src/renderer/src/stores/settings-store.ts` — 改（字段迁移）
-- `src/main/ipc/web-search-handlers.ts` — 删；`src/shared/...` channels 与 messagepack 路由 — 改
-- `src/runtime/WishfulClaw.Agent/` 下 8 个含 WebSearch 的 .cs — 删/改
-- `src/renderer/src/locales/{zh,en}/*.json` — 改
+- `src/renderer/src/lib/tools/browser-search/`（新目录，7 文件）— 原 `browser-search-tool.ts` 拆分 + 三根因修复
+- `src/renderer/src/lib/tools/tool-name-aliases.ts`（新）— 旧工具名归一
+- `src/renderer/src/lib/tools/web-search-tool.ts` — 删；`browser-search-tool.ts` — 删（已拆目录）
+- `src/renderer/src/lib/tools/index.ts`、`browser-native-ui.ts`、`lib/agent/sub-agents/step-descriptions.ts` — 改
+- `src/renderer/src/components/settings/WebSearchPanel.tsx`（新）、`web-search-custom-engines.tsx`（新）、
+  `SettingsPage.tsx`、`src/renderer/src/stores/ui-types.ts` — 改
+- `src/renderer/src/components/chat/InputArea/{index.tsx,composer-toolbar.tsx,use-input-area-selectors.ts}`、
+  `hooks/{use-chat-actions.ts,use-channel-auto-reply.ts}`、`lib/tools/project-send-message.ts`、
+  `stores/chat-store/index.ts` — 去死选项
+- `src/renderer/src/stores/settings-store{,-types,-migrate}.ts` — 字段迁移
+- `src/renderer/src/lib/ipc/{sidecar-mapping,sidecar-protocol-types,sidecar-protocol,channels,messagepack-channel-routing}.ts` — 改
+- `src/main/ipc/web-search-handlers.ts` → `web-fetch-handlers.ts`（改名 + 只留 fetch）；`src/main/index.ts` — 改
+- `src/runtime/WishfulClaw.Agent/`：`AgentRuntimeWebSearchExecutor.cs` / `WebSearchProviders.cs` — 删；
+  `ToolDispatchRouter.cs` / `AgentRunContextPolicy.cs` / `AgentRuntimeUseCapabilityDiscovery.cs` /
+  `AgentRuntimeUseCapabilityEncoding.cs` / `AgentRuntimeUseCapabilityExecutor.cs` /
+  `AgentRuntimeBrowserExecutor.cs` / `Tools/Providers/{WebToolProvider,BrowserToolProvider}.cs` — 改
+- `tests/WishfulClaw.ProviderHeaderRegressionTests/BrowserSurfaceAccessChecks.cs`、`tests/settings-tabs/program.ts` — 改
+- `src/renderer/src/locales/{zh,en}/{settings,common}.json` — 改
 
-## 待老大定的三件事（本需求已升为大，确认后再动）
+## 修正记录（实施期推翻的规划结论）
 
-1. **是否仍在 29 迭代全做完**：升级为大后，与剩余 S-16 / S-18 / S-19 / S-21 / S-25 叠加，迭代显著变大
-2. ~~工具改名的影响面~~ **已查清（2026-09-14）**：工具名**确实持久化**——
-   `messages.meta` = JSON `{ thinking, toolCalls, isStreaming, error }`，`toolCalls` 带 `name`
-   （`chat-store/db-helpers.ts:107` 注释、`:122` 写入、`:156` 读回）。
-   结论：改名后老会话会留下 `WebSearch` 记录 → **必须加旧名别名映射**（展示时把遗留
-   `WebSearch` 归一到 `BrowserSearch`），否则老会话渲染成未知工具卡。已并入 S-23.6
-3. **`webSearchProvider` / `webSearchApiKey` 迁移还是硬删**（建议迁移）
+1. **「复用原 WebSearch 设置区」不成立** —— 全仓核对：6 个 `webSearch*` 字段**从来没有过任何 UI 入口**，
+   设置页里唯一叫「搜索服务商」的字符串是 AI 服务商列表的搜索框占位符
+   （`provider.list.searchPlaceholder`）。语言文件里倒是留着 `tabs.websearch.label = "联网搜索"`
+   与一整块 `websearch.*` 文案，但**零消费者**——是更早被删掉的面板留下的死键。故：
+   ①落点由老大定为「设置 → 插件（二级分类）→ 网络搜索」，实现为**新增 `webSearch` 页签**；
+   ②死键 `tabs.websearch` 与 `websearch.*` 一并删除（它们描述的正是本次退役的 API 链路）
+2. **自定义引擎「三档」收敛为两档** —— 规划里的第三档「自定义 API（endpoint + key）」是 agent 自己
+   加的，老大的原话是「基础 / 进阶 / 不建议默认做『把 HTML 喂给模型解析』」。已按老大口径改为
+   `tier: 'basic' | 'selector'`，`extractFromJson` 与 `api` 字段删除
+3. **改名方向与规划相反** —— 规划写的是 `WebSearch → BrowserSearch`，但老大 2026-09-14 的原话是
+   「BrowserSearch 名字确实有歧义（它不是浏览器操作），只改注册的时候的工具名」→ 正确方向是
+   `BrowserSearch → WebSearch`。名字此时正好空出来（C# 那套同名工具本次退役），两件事必须同批做，
+   否则 LLM 会看到两个 `WebSearch`
+4. **`web-search-handlers.ts` 不能整删** —— 它同时承载 `web:fetch` / `web:fetch-rendered`，
+   而这两个正是 BrowserSearch 的抓取通路（`browser-search/search.ts:25,38`）。改为**只删 search 三通道 +
+   文件改名** `web-fetch-handlers.ts`
+5. **`AgentRunContext.WebSearchEnabled` 是死门控** —— renderer 不再发送该参数后它恒为默认 `true`，
+   门控永不生效。已连同其唯一用途（web 类目过滤）一起删除；`IsProxyBuiltinVisible` 的 `category`
+   形参随之失去唯一用途，一并去掉（5 处调用点 + 1 处测试）
+6. **`SubAgentExecutor.Results.cs` 的 `"WebSearch" => "query"` 不能删** —— 规划把它列进「清理」，
+   但改名后 `WebSearch` 正是新工具名，这条映射仍是对的
+7. **「设 UA」这条已在 C# 侧天然满足** —— `AgentRuntimeWebFetchExecutor.cs:61-65` 早就发桌面 Chrome UA +
+   `Accept-Language: zh-CN,zh;q=0.9,en;q=0.8`。真正要修的是噪声源（bing_cn）、兜底卡黑名单与去重排序
 
 ---
 

@@ -8,7 +8,6 @@ internal readonly record struct AgentRunContext(
     string Scope,
     string CollaborationMode,
     string RuntimeRole,
-    bool WebSearchEnabled = true,
     bool CodegraphEnabled = false);
 
 /// <summary>
@@ -87,7 +86,6 @@ internal static class AgentRunContextPolicy
             scope,
             collaborationMode,
             runtimeRole,
-            JsonHelpers.GetBool(parameters, "webSearchEnabled", true),
             JsonHelpers.GetBool(parameters, "codegraphEnabled", false));
     }
 

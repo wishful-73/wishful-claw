@@ -87,8 +87,7 @@ internal static class BrowserSurfaceAccessChecks
                     scenario.Context,
                     scenario.AvailableMode,
                     scenario.ChannelSession,
-                    name,
-                    BrowserCategory))
+                    name))
                 .ToArray();
 
             if (UnattendedScenarioSuffixes.Any(suffix => scenario.Name.EndsWith(suffix, StringComparison.Ordinal)))

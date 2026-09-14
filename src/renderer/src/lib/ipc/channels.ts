@@ -343,11 +343,8 @@ export const IPC = {
   DESKTOP_INPUT_TYPE: 'desktop:input:type',
   DESKTOP_INPUT_SCROLL: 'desktop:input:scroll',
 
-  // Web Search
-  WEB_SEARCH: 'web:search',
+  // Web Fetch (the provider-API `web:search*` channels are retired in iter-29 / S-23)
   WEB_FETCH: 'web:fetch',
-  WEB_SEARCH_CONFIG: 'web:search-config',
-  WEB_SEARCH_PROVIDERS: 'web:search-providers',
 
   // Built-in Browser
   BROWSER_CLEAR_COOKIES: 'browser:clear-cookies',

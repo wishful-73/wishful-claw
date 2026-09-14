@@ -9,11 +9,6 @@ import { registerTaskTools } from './todo-tool'
 import { registerFsTools } from './fs-tool'
 import { registerSearchTools } from './search-tool'
 import {
-  registerWebSearchTool,
-  unregisterWebSearchTool,
-  isWebSearchToolRegistered
-} from './web-search-tool'
-import {
   registerCodeGraphExploreTool,
   unregisterCodeGraphExploreTool,
   isCodeGraphExploreToolRegistered,
@@ -34,7 +29,7 @@ import { registerMemoryTools } from './memory-tool'
 import { refreshDynamicToolCatalog } from './dynamic-tool-catalog'
 import { registerCodeCompatibleTools } from './code-compatible-tool'
 import { registerSkillManagementTools } from './skill-management-tool'
-import { registerBrowserSearchTool } from './browser-search-tool'
+import { registerBrowserSearchTool } from './browser-search'
 
 let _allToolsRegistered = false
 
@@ -45,8 +40,6 @@ export async function registerAllTools(): Promise<void> {
   registerTaskTools()
   registerFsTools()
   registerSearchTools()
-  // Note: WebSearchTool is NOT registered here — it's registered/unregistered dynamically
-  // based on the webSearchEnabled setting (see web-search-tool.ts)
   // Note: codegraph_explore is NOT registered here — it's registered/unregistered
   // dynamically based on the codegraphEnabled setting (see codegraph-tool.ts)
   registerBashTools()
@@ -69,7 +62,8 @@ export async function registerAllTools(): Promise<void> {
   // Skill management tools for the installation assistant agent
   registerSkillManagementTools()
 
-  // Built-in browser search tool (no API key required)
+  // Multi-engine web search (no API key required). Always on — the engine set
+  // and intent routing are configured in Settings, not by registering/unregistering.
   registerBrowserSearchTool()
 
   // Agent Team tools
@@ -77,15 +71,6 @@ export async function registerAllTools(): Promise<void> {
 
   // Plugin tools are registered/unregistered dynamically via channel-store toggle
   // They are NOT registered here — see plugin-tools.ts registerPluginTools/unregisterPluginTools
-}
-
-export function updateWebSearchToolRegistration(enabled: boolean): void {
-  const isRegistered = isWebSearchToolRegistered()
-  if (enabled && !isRegistered) {
-    registerWebSearchTool()
-  } else if (!enabled && isRegistered) {
-    unregisterWebSearchTool()
-  }
 }
 
 export function updateCodeGraphToolRegistration(enabled: boolean): void {

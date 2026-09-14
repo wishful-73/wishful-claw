@@ -4,8 +4,14 @@ using WishfulClaw.Core.Tools;
 namespace WishfulClaw.Agent.Tools.Providers;
 
 /// <summary>
-/// Registers web search and fetch tool definitions.
-/// Execution: ToolDispatchRouter → AgentRuntimeWebSearchExecutor / AgentRuntimeWebFetchExecutor (direct HTTP in Worker).
+/// Registers the web fetch tool definition.
+/// Execution: ToolDispatchRouter → AgentRuntimeWebFetchExecutor (direct HTTP in Worker).
+///
+/// Web search used to live here too (a provider-API-backed `WebSearch`), but that chain is
+/// retired in iter-29 (S-23): the tool the agent actually uses is the renderer-side multi-engine
+/// scraper, now declared as `WebSearch` by BrowserToolProvider and executed through
+/// renderer-tool-bridge. Keeping a second, key-gated `WebSearch` here meant the LLM saw two
+/// search tools and the configurable one was the dead one.
 /// </summary>
 public sealed class WebToolProvider : IToolProvider
 {
@@ -13,18 +19,6 @@ public sealed class WebToolProvider : IToolProvider
 
     public void RegisterTools(ToolRegistry registry)
     {
-        registry.Register(new ToolDefinitionPlaceholder(
-            "WebSearch",
-            "Search the web for information. Returns titles, URLs, and snippets for relevant results.",
-            ToolSchemaBuilder.Object(
-                new()
-                {
-                    ["query"] = ToolSchemaBuilder.String("The search query."),
-                    ["count"] = ToolSchemaBuilder.Number("Number of results to return. Defaults to 10.")
-                },
-                ["query"]),
-            visibleScopes: ToolVisibilityScopes.Everywhere));
-
         registry.Register(new ToolDefinitionPlaceholder(
             "WebFetch",
             "Fetch and parse a web page. Returns the page content as markdown.",

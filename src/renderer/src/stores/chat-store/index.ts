@@ -86,7 +86,6 @@ export interface AgentActions {
     systemPrompt?: string
 
     toolPreset?: string
-    webSearchEnabled?: boolean
     codegraphEnabled?: boolean
 
     workingFolder?: string

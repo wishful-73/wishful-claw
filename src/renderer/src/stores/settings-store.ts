@@ -25,7 +25,8 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
 import type { UpdateBannerPosition } from '../../../shared/updater/types'
 
@@ -183,22 +184,12 @@ interface SettingsStore {
   /** Chat column fills the whole conversation panel instead of the 820px cap. */
   conversationPanelFullWidth: boolean
 
-  // Web Search Settings
-  webSearchEnabled: boolean
-  webSearchProvider:
-    | 'tavily'
-    | 'searxng'
-    | 'exa'
-    | 'exa-mcp'
-    | 'bocha'
-    | 'zhipu'
-    | 'google'
-    | 'bing'
-    | 'baidu'
-  webSearchApiKey: string
-  webSearchEngine: string
-  webSearchMaxResults: number
-  webSearchTimeout: number
+  // Search (iter-29 S-23). The API-backed WebSearch chain was retired; the
+  // multi-engine scraper is configured here instead.
+  browserSearch: BrowserSearchSettings
+  /** Pre-S-23 WebSearch config, kept so an existing provider/API key survives.
+   *  Never read by the search code. */
+  legacyWebSearch: LegacyWebSearchSettings | null
 
   // API Request Timeout (seconds, 0 = no limit)
   apiRequestTimeoutSeconds: number
@@ -333,13 +324,9 @@ export const useSettingsStore = create<SettingsStore>()(
       updateBannerPosition: null,
       conversationPanelFullWidth: false,
 
-      // Web Search Settings
-      webSearchEnabled: false,
-      webSearchProvider: 'tavily',
-      webSearchApiKey: '',
-      webSearchEngine: 'google',
-      webSearchMaxResults: 5,
-      webSearchTimeout: 30000,
+      // Search (iter-29 S-23)
+      browserSearch: { ...DEFAULT_BROWSER_SEARCH_SETTINGS },
+      legacyWebSearch: null,
 
       // API Request Timeout (seconds, 0 = no limit, default 100s)
       apiRequestTimeoutSeconds: 100,
@@ -407,7 +394,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 37,
+      version: 38,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -488,13 +475,9 @@ export const useSettingsStore = create<SettingsStore>()(
         toolbarCollapsedByDefault: state.toolbarCollapsedByDefault,
         leftSidebarWidth: clampLeftSidebarWidth(state.leftSidebarWidth),
         conversationPanelFullWidth: state.conversationPanelFullWidth,
-        // Web Search Settings
-        webSearchEnabled: state.webSearchEnabled,
-        webSearchProvider: state.webSearchProvider,
-        webSearchApiKey: state.webSearchApiKey,
-        webSearchEngine: state.webSearchEngine,
-        webSearchMaxResults: state.webSearchMaxResults,
-        webSearchTimeout: state.webSearchTimeout,
+        // Search (iter-29 S-23)
+        browserSearch: state.browserSearch,
+        legacyWebSearch: state.legacyWebSearch,
         apiRequestTimeoutSeconds: clampApiRequestTimeoutSeconds(
           state.apiRequestTimeoutSeconds
         ),

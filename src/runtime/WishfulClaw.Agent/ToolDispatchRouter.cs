@@ -96,25 +96,6 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
-        // WebSearch: executed directly in Worker (HTTP request)
-        else if (AgentRuntimeWebSearchExecutor.IsWebSearchTool(toolCall.Name))
-        {
-            try
-            {
-                toolOutput = await AgentRuntimeWebSearchExecutor.ExecuteAsync(
-                toolCall, state.Parameters, state.CancellationToken);
-                isToolError = IsJsonError(toolOutput);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                toolOutput = $"Web search execution failed: {ex.Message}";
-                isToolError = true;
-            }
-        }
         // WebFetch: executed directly in Worker (HTTP request)
         else if (AgentRuntimeWebFetchExecutor.IsWebFetchTool(toolCall.Name))
         {

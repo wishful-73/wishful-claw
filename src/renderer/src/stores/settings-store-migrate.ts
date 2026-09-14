@@ -21,6 +21,7 @@ import {
   normalizeLanguageCode
 } from '@renderer/lib/i18n-language'
 import type { ShellExecutionEndpoint } from './settings-store-types'
+import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import {
   DEFAULT_MAX_CONCURRENT_SUB_AGENTS,
   DEFAULT_REQUEST_MAX_RETRIES,
@@ -79,15 +80,36 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   } else {
     state.language = detectSystemLanguage()
   }
-  // Add web search settings if missing
-  if (state.webSearchEnabled === undefined) {
-    state.webSearchEnabled = false
-    state.webSearchProvider = 'tavily'
-    state.webSearchApiKey = ''
-    state.webSearchEngine = 'google'
-    state.webSearchMaxResults = 5
-    state.webSearchTimeout = 30000
+  // iter-29 (S-23): the API-backed WebSearch chain was retired. Its six settings
+  // fields are not deleted — an existing provider choice and API key are moved
+  // into `legacyWebSearch` so nothing the user configured disappears. The search
+  // configuration itself lives in `browserSearch` from here on.
+  if (state.browserSearch === undefined || typeof state.browserSearch !== 'object') {
+    state.browserSearch = { ...DEFAULT_BROWSER_SEARCH_SETTINGS }
   }
+  if (state.legacyWebSearch === undefined) {
+    const hasLegacyConfig =
+      state.webSearchProvider !== undefined ||
+      state.webSearchApiKey !== undefined ||
+      state.webSearchEnabled !== undefined
+    state.legacyWebSearch = hasLegacyConfig
+      ? {
+          enabled: state.webSearchEnabled === true,
+          provider: typeof state.webSearchProvider === 'string' ? state.webSearchProvider : 'tavily',
+          apiKey: typeof state.webSearchApiKey === 'string' ? state.webSearchApiKey : '',
+          engine: typeof state.webSearchEngine === 'string' ? state.webSearchEngine : 'google',
+          maxResults:
+            typeof state.webSearchMaxResults === 'number' ? state.webSearchMaxResults : 5,
+          timeout: typeof state.webSearchTimeout === 'number' ? state.webSearchTimeout : 30000
+        }
+      : null
+  }
+  delete state.webSearchEnabled
+  delete state.webSearchProvider
+  delete state.webSearchApiKey
+  delete state.webSearchEngine
+  delete state.webSearchMaxResults
+  delete state.webSearchTimeout
   if (state.systemProxyUrl === undefined) {
     state.systemProxyUrl = ''
   }

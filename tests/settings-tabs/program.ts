@@ -20,6 +20,7 @@ const validTabs = [
   'permission',
   'channel',
   'plugin',
+  'webSearch',
   'extension',
   'mcp',
   'ssh',

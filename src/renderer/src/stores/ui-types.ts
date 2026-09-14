@@ -99,6 +99,7 @@ export type SettingsTab =
   | 'permission'
   | 'channel'
   | 'plugin'
+  | 'webSearch'
   | 'extension'
   | 'mcp'
 
@@ -119,6 +120,7 @@ const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
   'permission',
   'channel',
   'plugin',
+  'webSearch',
   'extension',
   'mcp',
   'ssh',

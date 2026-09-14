@@ -28,11 +28,6 @@ export interface InputAreaSelectorsOutput {
   permissionWhitelistEnabled: boolean
   clarifyAutoAcceptRecommended: boolean
   animationsEnabled: boolean
-  webSearchEnabled: boolean
-  webSearchProvider: string
-  webSearchApiKey: string
-  webSearchRequiresApiKey: boolean
-  canToggleWebSearch: boolean
 
   // Session
   targetSession: ReturnType<typeof getTargetSession> | undefined
@@ -108,11 +103,6 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   const permissionWhitelistEnabled = useSettingsStore((s) => s.permissionPolicy.enabled)
   const clarifyAutoAcceptRecommended = useSettingsStore((s) => s.clarifyAutoAcceptRecommended)
   const animationsEnabled = useSettingsStore((s) => s.animationsEnabled)
-  const webSearchEnabled = useSettingsStore((s) => s.webSearchEnabled)
-  const webSearchProvider = useSettingsStore((s) => s.webSearchProvider)
-  const webSearchApiKey = useSettingsStore((s) => s.webSearchApiKey)
-  const webSearchRequiresApiKey = ['tavily','searxng','exa','exa-mcp','bocha','zhipu'].includes(webSearchProvider)
-  const canToggleWebSearch = !webSearchRequiresApiKey || Boolean(webSearchApiKey)
 
   // ── Session ─────────────────────────────────────────────────────
   const targetSession = useChatStore(useShallow((s) => getTargetSession(s, sessionId)))
@@ -219,7 +209,6 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   return {
     language, mainModelSelectionMode, autoApprove, permissionWhitelistEnabled,
     clarifyAutoAcceptRecommended, animationsEnabled,
-    webSearchEnabled, webSearchProvider, webSearchApiKey, webSearchRequiresApiKey, canToggleWebSearch,
     targetSession, channels, autoSelection: autoSelection as any, activeProvider: activeProvider as any, supportsVision, composerModelCfg,
     chatView, isHomeComposer, mode, openSettings: openSettings as any, openFilePreview,
     activeProjectId, activeSshConnectionId, activeSessionId, hasMessages, clearSessionMessages,

@@ -69,7 +69,7 @@
       "label": "Persona",
       "desc": "Manage persona library, edit identity, soul, ontology and behavior rules"
     },
-    "websearch": {
+    "webSearch": {
       "label": "Web Search"
     },
     "skills": {
@@ -975,35 +975,80 @@
       "noModel": "Please select a model first"
     }
   },
-  "websearch": {
+  "webSearch": {
     "title": "Web Search",
-    "subtitle": "Configure web search providers and settings",
-    "enable": "Enable Web Search",
-    "enableDesc": "Allow the AI to search the web for current information",
-    "provider": "Search Provider",
-    "providerDesc": "Select a search provider to use",
-    "selectProvider": "Select a provider",
-    "apiKey": "API Key",
-    "apiKeyDesc": "API key for the selected provider",
-    "apiKeyPlaceholder": "Enter your API key...",
-    "maxResults": "Max Results",
-    "maxResultsDesc": "Maximum number of search results to return",
-    "timeout": "Timeout (ms)",
-    "timeoutDesc": "Request timeout in milliseconds",
-    "test": "Test Search",
-    "testing": "Testing...",
-    "testDesc": "Test your web search configuration",
-    "configSummary": "Configuration Summary",
-    "notSet": "Not set",
-    "disabledError": "Web search is disabled. Please enable it in settings.",
-    "apiKeyRequired": "API key is required for this provider.",
-    "testSuccess": "Web search test successful! Found {{count}} results.",
-    "testFailed": "Web search test failed: {{error}}",
-    "browserSearchTitle": "Built-in Browser Search",
-    "browserSearchDesc": "Searches directly via the built-in Chromium browser. No API key required, always available. Supports Bing, Baidu, and Google.",
-    "browserSearchHint": "The Agent can use the BrowserSearch tool directly. Search results are visible in the browser panel on the right.",
-    "apiSearchTitle": "API Search (Optional)",
-    "apiSearchDesc": "AI-enhanced search via API providers. Higher quality results but requires an API key."
+    "subtitle": "Configure which engines the agent may query.",
+    "routing": {
+      "title": "Retrieval strategy",
+      "desc": "Decides which engines each query hits."
+    },
+    "autoRoute": {
+      "label": "Pick engines automatically",
+      "desc": "Route by query intent. Turn off to query every enabled engine every time."
+    },
+    "maxResults": {
+      "label": "Result cap",
+      "desc": "Maximum results returned to the model after deduplication (1–30)."
+    },
+    "engines": {
+      "title": "Built-in engines",
+      "desc": "{{enabled}} enabled. A disabled engine is never queried.",
+      "noneEnabled": "No engine is enabled — search falls back to every built-in engine rather than returning nothing."
+    },
+    "types": {
+      "general": "General",
+      "tech": "Tech",
+      "academic": "Academic",
+      "finance": "Finance",
+      "social": "Social",
+      "knowledge": "Knowledge"
+    },
+    "badges": {
+      "http": "Plain HTTP",
+      "rendered": "Needs rendering"
+    },
+    "intents": {
+      "title": "Intent routing",
+      "desc": "Each intent has a default engine set; click an engine name to change it.",
+      "customized": "Customised",
+      "byDefault": "Default",
+      "reset": "Reset",
+      "engineDisabledGlobally": "This engine is disabled above, so selecting it has no effect.",
+      "fallbackHint": "If every engine an intent routes to is disabled, the search widens to all of your enabled engines instead of returning nothing."
+    },
+    "custom": {
+      "title": "Custom engines",
+      "desc": "Add a site-specific or niche engine of your own.",
+      "add": "Add engine",
+      "empty": "No custom engines yet.",
+      "edit": "Edit",
+      "remove": "Remove",
+      "name": "Name",
+      "namePlaceholder": "e.g. Internal wiki",
+      "intent": "Intent",
+      "urlTemplate": "Search URL template",
+      "urlTemplateHint": "Must contain the {query} placeholder; it is replaced with the URL-encoded query.",
+      "tier": "Parsing",
+      "tierBasic": "Basic (URL template + generic parsing)",
+      "tierSelector": "Advanced (custom CSS selectors)",
+      "tierBasicShort": "Basic",
+      "tierSelectorShort": "Advanced",
+      "tierBasicHint": "Parsed with the generic h2/h3 heuristic, so its results are flagged low-confidence.",
+      "renderMode": "Fetch mode",
+      "selectors": {
+        "item": "Result item",
+        "itemPlaceholder": "e.g. .result",
+        "title": "Title",
+        "titlePlaceholder": "e.g. h3 a",
+        "url": "Link",
+        "urlPlaceholder": "e.g. h3 a",
+        "snippet": "Snippet",
+        "snippetPlaceholder": "e.g. .abstract"
+      },
+      "enabled": "Enabled",
+      "save": "Save",
+      "cancel": "Cancel"
+    }
   },
   "skills": {
     "tabs": {
@@ -1284,7 +1329,11 @@
     "startup": "Startup",
     "memoryOrganization": "Auto Organization",
     "memoryTiers": "Tier Thresholds",
-    "memoryRecall": "Proactive Recall"
+    "memoryRecall": "Proactive Recall",
+    "webSearchRouting": "Retrieval strategy",
+    "webSearchEngines": "Built-in engines",
+    "webSearchIntents": "Intent routing",
+    "webSearchCustom": "Custom engines"
   },
   "memoryPage": {
     "title": "Memory",

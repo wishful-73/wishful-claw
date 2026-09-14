@@ -23,7 +23,7 @@ import { registerAgentChangeHandlers } from './ipc/agent-change-handlers'
 import { registerMcpHandlers, shutdownMcp } from './ipc/mcp-handlers'
 import { registerVideoHandlers } from './ipc/video-handlers'
 import { registerExtensionHandlers } from './ipc/extension-handlers'
-import { registerWebSearchHandlers } from './ipc/web-search-handlers'
+import { registerWebFetchHandlers } from './ipc/web-fetch-handlers'
 import { registerSshHandlers, cleanupSshHandlers } from './ipc/ssh-handlers'
 import { registerSkillHandlers } from './ipc/skill-handlers'
 import { registerSshFsHandlers } from './ipc/ssh-fs-handlers'
@@ -294,7 +294,7 @@ if (!gotTheLock) {
   registerSessionFollowUpHandlers({ getMainWindow: () => mainWindow })
   registerVideoHandlers()
   registerExtensionHandlers()
-registerWebSearchHandlers()
+registerWebFetchHandlers()
 registerCodeGraphHandlers()
 
   // ── Agent history handlers (forwarded to C# Worker SQLite) ──

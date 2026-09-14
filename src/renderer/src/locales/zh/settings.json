@@ -73,8 +73,8 @@
       "label": "渠道配置",
       "desc": "配置消息渠道（飞书、微信等）"
     },
-    "websearch": {
-      "label": "联网搜索"
+    "webSearch": {
+      "label": "网络搜索"
     },
     "skills": {
       "label": "Skills",
@@ -1120,35 +1120,80 @@
       "noModel": "无可用模型"
     }
   },
-  "websearch": {
-    "title": "联网搜索",
-    "subtitle": "配置联网搜索提供商和设置",
-    "enable": "启用联网搜索",
-    "enableDesc": "允许 AI 搜索网络以获取最新信息",
-    "provider": "搜索提供商",
-    "providerDesc": "选择要使用的搜索提供商",
-    "selectProvider": "选择提供商",
-    "apiKey": "API 密钥",
-    "apiKeyDesc": "所选提供商的 API 密钥",
-    "apiKeyPlaceholder": "输入您的 API 密钥...",
-    "maxResults": "最大结果数",
-    "maxResultsDesc": "要返回的最大搜索结果数量",
-    "timeout": "超时时间（毫秒）",
-    "timeoutDesc": "请求超时时间（毫秒）",
-    "test": "测试搜索",
-    "testing": "测试中...",
-    "testDesc": "测试您的联网搜索配置",
-    "configSummary": "配置摘要",
-    "notSet": "未设置",
-    "disabledError": "联网搜索已禁用。请在设置中启用。",
-    "apiKeyRequired": "此提供商需要 API 密钥。",
-    "testSuccess": "联网搜索测试成功！找到 {{count}} 条结果。",
-    "testFailed": "联网搜索测试失败：{{error}}",
-    "browserSearchTitle": "内置浏览器搜索",
-    "browserSearchDesc": "基于内置 Chromium 浏览器直接搜索，无需 API 密钥，始终可用。支持 Bing、Baidu、Google 三个引擎。",
-    "browserSearchHint": "Agent 可直接使用 BrowserSearch 工具进行搜索，搜索结果会显示在右侧浏览器面板中。",
-    "apiSearchTitle": "API 搜索（可选）",
-    "apiSearchDesc": "通过 API 提供商进行 AI 增强搜索，结果质量更高但需要配置 API 密钥。"
+  "webSearch": {
+    "title": "网络搜索",
+    "subtitle": "配置 Agent 搜索网页时使用的引擎。",
+    "routing": {
+      "title": "检索策略",
+      "desc": "决定每次查询要打哪些引擎。"
+    },
+    "autoRoute": {
+      "label": "自动选择引擎",
+      "desc": "按查询意图挑选引擎；关闭后每次查询都会用上全部已启用引擎。"
+    },
+    "maxResults": {
+      "label": "结果条数上限",
+      "desc": "去重后返回给模型的最大条数（1–30）。"
+    },
+    "engines": {
+      "title": "内置引擎",
+      "desc": "已启用 {{enabled}} 个。关掉的引擎不会被查询。",
+      "noneEnabled": "一个引擎都没启用——搜索会自动回退到全部内置引擎，不会真的搜不出东西。"
+    },
+    "types": {
+      "general": "通用",
+      "tech": "技术",
+      "academic": "学术",
+      "finance": "财经",
+      "social": "社交",
+      "knowledge": "知识"
+    },
+    "badges": {
+      "http": "裸 HTTP",
+      "rendered": "需浏览器渲染"
+    },
+    "intents": {
+      "title": "意图路由",
+      "desc": "每种意图默认用一组引擎；点引擎名可以改。",
+      "customized": "已自定义",
+      "byDefault": "默认",
+      "reset": "恢复默认",
+      "engineDisabledGlobally": "该引擎已在上面被关掉，勾选它也不会生效。",
+      "fallbackHint": "某类意图的引擎被全部关掉时，会退回到你启用的全部引擎，而不是返回空结果。"
+    },
+    "custom": {
+      "title": "自定义引擎",
+      "desc": "自建站内搜索或小众引擎。",
+      "add": "添加引擎",
+      "empty": "还没有自定义引擎。",
+      "edit": "编辑",
+      "remove": "删除",
+      "name": "名称",
+      "namePlaceholder": "例如：内部 Wiki",
+      "intent": "归属意图",
+      "urlTemplate": "搜索地址模板",
+      "urlTemplateHint": "必须包含 {query} 占位符，会被替换成 URL 编码后的查询词。",
+      "tier": "解析方式",
+      "tierBasic": "基础（URL 模板 + 通用解析）",
+      "tierSelector": "进阶（自定义 CSS 选择器）",
+      "tierBasicShort": "基础",
+      "tierSelectorShort": "进阶",
+      "tierBasicHint": "用通用的 h2/h3 启发式解析页面，结果会标注为低可信度。",
+      "renderMode": "抓取方式",
+      "selectors": {
+        "item": "结果条目",
+        "itemPlaceholder": "例如：.result",
+        "title": "标题",
+        "titlePlaceholder": "例如：h3 a",
+        "url": "链接",
+        "urlPlaceholder": "例如：h3 a",
+        "snippet": "摘要",
+        "snippetPlaceholder": "例如：.abstract"
+      },
+      "enabled": "启用",
+      "save": "保存",
+      "cancel": "取消"
+    }
   },
   "skills": {
     "tabs": {
@@ -1429,7 +1474,11 @@
     "startup": "开机启动",
     "memoryOrganization": "自动整理",
     "memoryTiers": "分层阈值",
-    "memoryRecall": "主动回忆"
+    "memoryRecall": "主动回忆",
+    "webSearchRouting": "检索策略",
+    "webSearchEngines": "内置引擎",
+    "webSearchIntents": "意图路由",
+    "webSearchCustom": "自定义引擎"
   },
   "memoryPage": {
     "title": "记忆",

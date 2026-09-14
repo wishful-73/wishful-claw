@@ -16,7 +16,6 @@ export type {
   SidecarUnifiedMessage,
   SidecarProviderConfig,
   SidecarToolDefinition,
-  SidecarWebSearchConfig,
   SidecarTranslationContext,
   SidecarContextSource,
   SidecarPlanRevisionContext,
@@ -146,4 +145,4 @@ export function isNativeSidecarProviderConfig(provider: SidecarProviderInput): b
 
 
 // Re-export mapping functions from separate module
-export { mapSidecarContentBlock, mapSidecarMessage, mapSidecarProvider, mapSidecarWebSearchConfig, buildSidecarAgentRunRequest, sanitizeSidecarMessageMeta, normalizeSidecarApprovalRequest } from './sidecar-mapping'
+export { mapSidecarContentBlock, mapSidecarMessage, mapSidecarProvider, buildSidecarAgentRunRequest, sanitizeSidecarMessageMeta, normalizeSidecarApprovalRequest } from './sidecar-mapping'

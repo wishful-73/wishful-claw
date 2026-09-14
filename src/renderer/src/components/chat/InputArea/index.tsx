@@ -2,8 +2,6 @@
 
 import * as React from 'react'
 import type { SendMessageOptions } from '@renderer/hooks/use-chat-actions'
-import { useSettingsStore } from '@renderer/stores/settings-store'
-import { updateWebSearchToolRegistration } from '@renderer/lib/tools'
 import { useDebouncedTokens } from '@renderer/hooks/use-estimated-tokens'
 import { usePromptRecommendation } from '@renderer/hooks/use-prompt-recommendation'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -67,7 +65,6 @@ export function InputArea({
     chatView, isHomeComposer,
     language: currentLanguage,
     clarifyAutoAcceptRecommended, animationsEnabled,
-    webSearchEnabled, canToggleWebSearch,
     supportsVision, composerModelCfg,
     mode, openSettings, openFilePreview,
     activeProjectId, activeSessionId, hasMessages, clearSessionMessages,
@@ -109,12 +106,6 @@ export function InputArea({
     removePersistedDraft: () => removePersistedDraftRef.current?.(),
     setSelectedSkill, setAttachedImages, setPreviewImage
   })
-
-  const toggleWebSearch = React.useCallback(() => {
-    const newEnabled = !useSettingsStore.getState().webSearchEnabled
-    useSettingsStore.getState().updateSettings({ webSearchEnabled: newEnabled })
-    updateWebSearchToolRegistration(newEnabled)
-  }, [])
 
   const getSessionMessages = React.useCallback(
     () => useChatStore.getState().getSessionMessages(activeSessionId ?? ''),
@@ -428,9 +419,6 @@ export function InputArea({
             readOnlyModel={readOnlyModel}
             modelRoute={modelRoute}
             draftSessionId={draftSessionId}
-            canToggleWebSearch={canToggleWebSearch}
-            webSearchEnabled={webSearchEnabled}
-            toggleWebSearch={toggleWebSearch}
             disabled={disabled}
             isStreaming={isStreaming}
             setSelectedSkill={setSelectedSkill}

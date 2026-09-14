@@ -269,3 +269,60 @@ export function resolveReasoningEffortForModel({
   return thinkingConfig?.defaultReasoningEffort ?? reasoningEffort
 }
 
+// ── BrowserSearch (S-23) ──
+
+/**
+ * A user-defined search engine.
+ *
+ * `basic` is a URL template parsed with the generic h2/h3 heuristic, and its hits
+ * are marked low confidence. `selector` adds a render mode and CSS selectors for
+ * precise parsing. Feeding the fetched HTML to a model to parse is deliberately
+ * *not* a tier: it is slow, costly and unstable, so it is not a main path.
+ */
+export interface CustomSearchEngine {
+  id: string
+  name: string
+  enabled: boolean
+  /** Intent this engine joins (general / tech / academic / finance / social / knowledge). */
+  intent: string
+  tier: 'basic' | 'selector'
+  /** Must contain the `{query}` placeholder. */
+  urlTemplate: string
+  renderMode: 'http' | 'rendered'
+  selectors: {
+    item: string
+    title: string
+    url: string
+    snippet: string
+  }
+}
+
+export interface BrowserSearchSettings {
+  /** Built-in engine ids the user enabled. */
+  enabledEngineIds: string[]
+  /** Per-intent engine overrides. An intent with no entry uses the built-in routing. */
+  intentEngines: Record<string, string[]>
+  /** When false, every enabled engine is queried and intent detection is skipped. */
+  autoRoute: boolean
+  /** Maximum results after deduplication. */
+  maxResults: number
+  customEngines: CustomSearchEngine[]
+}
+
+/**
+ * Pre-S-23 WebSearch configuration, preserved verbatim.
+ *
+ * The API-search chain it configured is gone, but the values are kept so an
+ * existing provider choice and API key are not silently dropped — the old fields
+ * would otherwise disappear the first time the user opened settings.
+ */
+export interface LegacyWebSearchSettings {
+  enabled: boolean
+  provider: string
+  apiKey: string
+  engine: string
+  maxResults: number
+  timeout: number
+}
+
+

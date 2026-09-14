@@ -281,7 +281,6 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
       messages: [{ role: 'user', content }],
       sessionId,
       toolPreset: 'channel',
-      webSearchEnabled: settings.webSearchEnabled,
       workingFolder: session.scope === 'project' ? session.workingFolder : undefined,
       sshConnectionId: session.scope === 'project' ? session.sshConnectionId : undefined,
       projectId: session.scope === 'project' ? session.projectId : undefined,

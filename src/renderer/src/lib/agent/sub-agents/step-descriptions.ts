@@ -3,6 +3,8 @@
  * Used by SubAgentCard to show what the sub-agent is doing at each step.
  */
 
+import { normalizeToolName } from '../../tools/tool-name-aliases'
+
 interface ToolCallLike {
   name: string
   input: Record<string, unknown>
@@ -110,7 +112,11 @@ function extractParamValue(
  * Example: Read({ file_path: "agents.md" }) → "查看 agents.md 文件"
  */
 export function generateStepDescription(toolCall: ToolCallLike): string {
-  const { name, input } = toolCall
+  const { input } = toolCall
+  // iter-29 (S-23): the multi-engine search tool was registered as `BrowserSearch`
+  // and is now `WebSearch`. Transcripts persisted before the rename still carry the
+  // old name, so normalise it before looking anything up.
+  const name = normalizeToolName(toolCall.name)
   const mapping = TOOL_DESCRIPTION_MAP[name]
 
   if (!mapping) {

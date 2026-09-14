@@ -7,7 +7,7 @@ import { clampMaxConcurrentSubAgents } from '../../stores/settings-store'
 import { CompressionConfig } from '../agent/context-compression-config'
 import { resolveProviderUserAgent } from '../api/api-user-agent'
 import { ContentBlock, MessageMeta, ProviderConfig, ToolDefinition, UnifiedMessage } from '../api/types'
-import { SidecarAgentRunRequest, SidecarApprovalRequest, SidecarContentBlock, SidecarContextSource, SidecarPlanExecutionContext, SidecarPlanRevisionContext, SidecarPluginChannelContext, SidecarProviderConfig, SidecarSlashCommandContext, SidecarSystemCommandContext, SidecarToolDefinition, SidecarTranslationContext, SidecarUnifiedMessage, SidecarWebSearchConfig } from './sidecar-protocol-types'
+import { SidecarAgentRunRequest, SidecarApprovalRequest, SidecarContentBlock, SidecarContextSource, SidecarPlanExecutionContext, SidecarPlanRevisionContext, SidecarPluginChannelContext, SidecarProviderConfig, SidecarSlashCommandContext, SidecarSystemCommandContext, SidecarToolDefinition, SidecarTranslationContext, SidecarUnifiedMessage } from './sidecar-protocol-types'
 
 export function mapSidecarContentBlock(block: ContentBlock): SidecarContentBlock | null {
   switch (block.type) {
@@ -196,23 +196,6 @@ function mapSidecarTool(tool: ToolDefinition): SidecarToolDefinition {
   }
 }
 
-export function mapSidecarWebSearchConfig(tools: ToolDefinition[]): SidecarWebSearchConfig | undefined {
-  if (!tools.some((tool) => tool.name === 'WebSearch' || tool.name === 'WebFetch')) {
-    return undefined
-  }
-
-  const settings = useSettingsStore.getState()
-  if (!settings.webSearchEnabled) return undefined
-  return {
-    enabled: true,
-    provider: settings.webSearchProvider,
-    ...(settings.webSearchApiKey ? { apiKey: settings.webSearchApiKey } : {}),
-    ...(settings.webSearchEngine ? { searchEngine: settings.webSearchEngine } : {}),
-    maxResults: settings.webSearchMaxResults,
-    timeout: settings.webSearchTimeout
-  }
-}
-
 export function buildSidecarAgentRunRequest(args: {
   messages: UnifiedMessage[]
   provider: ProviderConfig
@@ -270,7 +253,6 @@ export function buildSidecarAgentRunRequest(args: {
   }
 
   const maxParallelTools = normalizeMaxParallelTools(args.maxParallelTools)
-  const webSearch = mapSidecarWebSearchConfig(args.tools)
   // Use only the tools provided by the caller (already filtered by Worker preset).
   // Renderer-registered tool handlers remain available for execution by name,
   // but their definitions are NOT merged into the LLM tool list — the Worker's
@@ -318,7 +300,6 @@ export function buildSidecarAgentRunRequest(args: {
     ...(compressionProvider ? { compressionProvider } : {}),
     tools: mergedTools.map(mapSidecarTool),
     ...(subAgentToolCatalog.length > 0 ? { subAgentToolCatalog } : {}),
-    ...(webSearch ? { webSearch } : {}),
     ...(imagePluginProvider ? { imagePluginProvider } : {}),
     ...(subAgentProvider ? { subAgentProvider } : {}),
     ...(args.runId ? { runId: args.runId } : {}),

@@ -851,8 +851,8 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
   - 老大 2026-09-14 明确：**不在每次 provider 请求前扫全量**（历史会话消息多，不接受热路径空跑）
   - 验证：`WishfulClaw.Worker` 全依赖链编译 0 警告 0 错误 ✅（2026-09-14）
 - [⊘] **T-7.3（次修·DB 路径）—— 复核后判定非必需**：`SessionRestoreTools.SynthesizeToolResultsWireMessage`（`:309-390`）在恢复时已为「status 非 completed/error」的 tool_call 合成 `[INTERRUPTED]` placeholder，DB 即使存了未完成的 toolCalls，重建出的 wire conversation 也是配对的。故**不改前端落库口径**（保持数据原样，由恢复层 + T-7.2 统一兜底）
-- [✓] **T-7.4（回归）**：正常路径行为不变（`EnsureEveryCallHasResult` 结果齐全时走快路径原样返回；`RepairToolPairing` 无缺失时为只读扫描）；编译 0/0 ✅
-  - 真机复验（中断一次 → 再发消息不 400）待老大
+- [✓] **T-7.4（回归 + 真机验证）**：正常路径行为不变；编译 0/0 ✅
+  - **真机复验 ✅**（老大 2026-09-14 20:18，开发实例）：「400 我让继续执行 已经不报错了，可以继续执行了」
 
 ## Mini 验证
 
@@ -894,14 +894,11 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 - **首选**：流式态绕过 `CollapsibleHeightPanel` 的高度动画（`enabled={false}`，`:128-130` 会直接渲染 children 不包装），消除 `clientHeight` 抖动
 - 备选：仅非流式态 `applyHeight`；或内层容器加 `overflow-anchor: none`
 
-## 步骤
+## 实施（2026-09-14）
 
-- [ ] **T-8.0（前置·需老大执行）**：真机跑探针（DevTools Console 取 `contentRef` 的 `scrollTop` / `scrollHeight` / **`clientHeight`** 序列，观察十几秒）
-  - `clientHeight` 在抖 → 坐实候选 ②（高度面板反复重算）
-  - `clientHeight` 不动 → 转查候选 ③（贴底 `useEffect` 时序）
-- [ ] **T-8.1**：按取证结论落修法（首选 `enabled={false}`）
-  - 验证检查点：流式思考全程视口平滑、不再上下跳；思考结束后的收起动画仍正常
-- [ ] **T-8.2（回归）**：思考块收起 / 展开、历史思考块渲染、`max-h-80` 内部滚动均正常
+- [⊘] **T-8.0（探针）—— 未执行**：需老大真机取证（agent 侧无渲染环境）。老大指令「所有的都做完」，故按**首选候选 ②** 直接落修法；**仍建议补跑探针**确认根因（若非 ②，本修法不解决问题）
+- [✓] **T-8.1**：`ThinkingBlock.tsx` 的 `CollapsibleHeightPanel` 加 `enabled={!isThinking}` —— 流式态绕过高度面板（isThinking 时思考块恒展开；面板的 px→auto 高度管理在每次 delta 反复 `applyHeight`，使内层 `max-h-80` 的 `clientHeight` 抖动、贴底被反复 clamp → 上下跳）；完成后恢复面板，保留收起 / 展开动画
+- [✓] **T-8.2（回归）**：思考块收起 / 展开、历史思考块、`max-h-80` 内部滚动逻辑未动；tsc 三配置零错误 ✅
 
 ## Mini 验证
 
@@ -940,12 +937,11 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 - 吸附态给滚动内容加**顶部 padding**，或把**吸附卡高度计入**可视高度 / 水位线；具体走哪条，复现后再定
 
-## 步骤
+## 实施（2026-09-14）
 
-- [ ] **T-9.0（前置）**：复现 —— 长会话执行中吸附卡出现、视口贴顶时，确认顶部第一条消息被吸附卡盖住（目视 / 截图）
-- [ ] **T-9.1**：按复现结论落修法（顶部 padding 或计入高度）
-  - 验证检查点：吸附卡可见时，内容区顶部不被遮挡
-- [ ] **T-9.2（回归）**：吸附卡出现 / 消失、滚到底部、上滚「加载更早」均正常
+- [⊘] **T-9.0（复现）—— 未执行**：需老大真机复现（agent 侧无渲染环境）。按「首行让位」方案直接落实现
+- [✓] **T-9.1**：`VirtualListContent.tsx` —— 用 `pinnedCardRef` + `ResizeObserver` 测吸附卡高度，吸附卡可见时把该高度作为**首行的 inline `paddingTop`**（覆盖既有 `pt-3`）。遵循文件内既有约定「顶部间距加在行上、不加在滚动容器上」（`VirtualListContent.tsx:141-145` 注释），不破坏 virtualizer 数学
+- [✓] **T-9.2（回归）**：吸附卡出现 / 消失、滚到底部、上滚「加载更早」逻辑未动；tsc 三配置零错误 ✅
 
 ## Mini 验证
 
@@ -989,12 +985,11 @@ if (i < conversation.Count &&
 - 最小改：first user turn 判定补 `conversation[i].ToolResults.Count == 0`，与 `PartitionFold` 口径对齐
 - 若 T-7.2 的统一兜底已落地（发送前配对校验），本项可降级为「顺手修一行」
 
-## 步骤
+## 实施（已完成，2026-09-14）
 
-- [ ] **T-10.0（复核）**：构造「system 后紧跟 tool_result」的会话，确认 `PinnedPrefixLen` 会把它 pin 进 head，且压缩后 head 出现孤立 tool_result
-- [ ] **T-10.1**：first user turn 判定补 `ToolResults.Count == 0`
-  - 验证检查点：上述构造会话压缩后 head 不再以孤立 tool_result 结尾
-- [ ] **T-10.2（回归）**：正常会话压缩行为不变（首条 user 仍被正确 pin）
+- [✓] **T-10.0（复核）**：代码层确认 —— `PartitionFold:395-406` 对 kept **已**用 `Role=="user" && ToolResults.Count == 0` 双重约束，而 `PinnedPrefixLen` 只查 role，**两处口径不一致**，缺陷成立（未另写单测）
+- [✓] **T-10.1**：first user turn 判定补 `conversation[i].ToolResults.Count == 0`，与 `PartitionFold` 对齐
+- [✓] **T-10.2（回归）**：正常会话首条 user 本就满足 `ToolResults.Count == 0` → 行为不变；C# 全依赖链编译 0 警告 0 错误 ✅
 
 ## Mini 验证
 

@@ -23,7 +23,7 @@ import {
   type EditableUserMessageDraft,
   type ImageAttachment
 } from '@renderer/lib/image-attachments'
-import { selectFileTextToPlainText } from '@renderer/lib/select-file-tags'
+import { expandPastedBlocks, selectFileTextToPlainText } from '@renderer/lib/select-file-tags'
 import { useTranslateStore } from '@renderer/stores/translate-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useSkillsStore } from '@renderer/stores/skills-store'
@@ -64,15 +64,18 @@ export function UserMessage({
   const command = currentDraft.command
   const skillDirective = useMemo(() => parseUserSkillDirective(plainText), [plainText])
   const displayText = skillDirective?.body ?? plainText
-  const copyBodyText = selectFileTextToPlainText(displayText)
+  // T-13: `displayText` keeps the `<pasted-block>` chips for the transcript;
+  // every consumer that needs what the user actually wrote (copy, edit, read
+  // aloud, token estimate) works on the expanded text instead.
+  const expandedText = useMemo(() => expandPastedBlocks(displayText), [displayText])
+  const copyBodyText = selectFileTextToPlainText(expandedText)
   const copyText = command
     ? `/${command.name}${copyBodyText ? ` ${copyBodyText}` : ''}`
     : skillDirective
       ? [`[Skill: ${skillDirective.name}]`, copyBodyText].filter(Boolean).join('\n')
       : copyBodyText
 
-  const displayFullText = skillDirective ? displayText : plainText
-  const memoizedTokens = useMemoizedTokens(displayFullText)
+  const memoizedTokens = useMemoizedTokens(expandedText)
 
   const activeProvider = useProviderStore((s) => {
     const { providers, activeProviderId } = s
@@ -93,7 +96,7 @@ export function UserMessage({
 
   const [editing, setEditing] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [editText, setEditText] = useState(displayText)
+  const [editText, setEditText] = useState(expandedText)
   const [editSkillName, setEditSkillName] = useState(skillDirective?.name ?? '')
   const [editImages, setEditImages] = useState<ImageAttachment[]>(() =>
     cloneImageAttachments(allImages)
@@ -128,7 +131,7 @@ export function UserMessage({
   const canSave = hasEditableDraftContent(nextDraft)
 
   const handleStartEdit = (): void => {
-    setEditText(displayText)
+    setEditText(expandedText)
     setEditSkillName(skillDirective?.name ?? '')
     setEditImages(cloneImageAttachments(allImages))
     setEditing(true)
@@ -141,7 +144,7 @@ export function UserMessage({
   }
 
   const handleCancel = (): void => {
-    setEditText(displayText)
+    setEditText(expandedText)
     setEditSkillName(skillDirective?.name ?? '')
     setEditImages(cloneImageAttachments(allImages))
     setEditing(false)
@@ -154,15 +157,15 @@ export function UserMessage({
   }, [copyText])
 
   const handleTranslate = useCallback((): void => {
-    const text = displayText.trim()
+    const text = expandedText.trim()
     if (!text) return
     setTranslateSourceText(text)
     openTranslatePage()
     toast.success(t('messageActions.sentToTranslator'))
-  }, [displayText, openTranslatePage, setTranslateSourceText, t])
+  }, [expandedText, openTranslatePage, setTranslateSourceText, t])
 
   const handleSpeak = useCallback((): void => {
-    const text = displayText.trim()
+    const text = expandedText.trim()
     if (!text) return
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       toast.error(t('messageActions.speechNotSupported'))
@@ -172,10 +175,10 @@ export function UserMessage({
     utterance.lang = /[\u4e00-\u9fff]/.test(text) ? 'zh-CN' : 'en-US'
     window.speechSynthesis.cancel()
     window.speechSynthesis.speak(utterance)
-  }, [displayText, t])
+  }, [expandedText, t])
 
   const handleShare = useCallback(async (): Promise<void> => {
-    const text = displayText.trim()
+    const text = expandedText.trim()
     if (!text) return
     try {
       if (navigator.share) {
@@ -188,7 +191,7 @@ export function UserMessage({
       if (error instanceof DOMException && error.name === 'AbortError') return
       toast.error(t('messageActions.shareFailed'))
     }
-  }, [displayText, t])
+  }, [expandedText, t])
 
   const handleCopyPreviewImage = useCallback(async (): Promise<void> => {
     if (!previewImageSrc) return
@@ -337,8 +340,8 @@ export function UserMessage({
             className={`${USER_MESSAGE_BUBBLE_CLASS} ml-auto w-fit max-w-full text-xs text-muted-foreground`}
           >
             <div className="max-h-10 overflow-hidden whitespace-pre-wrap break-words">
-              {displayText.trim()
-                ? displayText.trim()
+              {expandedText.trim()
+                ? expandedText.trim()
                 : skillDirective
                   ? `${t('userMessage.skillLabel')}: ${skillDirective.name}`
                   : t('messageActions.imagesCollapsed', {
@@ -425,7 +428,7 @@ export function UserMessage({
             {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         )}
-        {!compact && !editing && displayText.length > 50 && (
+        {!compact && !editing && expandedText.length > 50 && (
           <p className="mt-1 pr-1 text-right text-[10px] text-muted-foreground/0 transition-colors tabular-nums group-hover/user:text-muted-foreground/40">
             {formatTokens(memoizedTokens)} {t('unit.tokens', { ns: 'common' })}
           </p>
@@ -466,17 +469,17 @@ export function UserMessage({
                     {t('userMessage.edit')}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onSelect={handleTranslate} disabled={!displayText.trim()}>
+                <DropdownMenuItem onSelect={handleTranslate} disabled={!expandedText.trim()}>
                   <Languages className="size-4" />
                   {t('messageActions.translate')}
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={handleSpeak} disabled={!displayText.trim()}>
+                <DropdownMenuItem onSelect={handleSpeak} disabled={!expandedText.trim()}>
                   <Volume2 className="size-4" />
                   {t('messageActions.readAloud')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => void handleShare()}
-                  disabled={!displayText.trim()}
+                  disabled={!expandedText.trim()}
                 >
                   <Share2 className="size-4" />
                   {t('messageActions.share')}

@@ -210,6 +210,7 @@
       "labelWithLines": "Pasted · {{lines}} lines",
       "expand": "Expand",
       "expandTitle": "Expand to full text",
+      "collapse": "Collapse",
       "remove": "Remove"
     }
   },

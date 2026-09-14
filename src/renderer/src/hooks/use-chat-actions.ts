@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import {
   useChatStore,
   updateCompressionStatus,
@@ -22,6 +22,7 @@ import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessag
 import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/lib/image-attachments'
 import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
 import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-context'
+import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -178,9 +179,12 @@ export function useChatActions() {
       })
       // 读盘结果只进发给模型的内容；落库与气泡用 messageText，
       // 经下面的 userMessageText 传给 store，避免 `<system-reminder>` 污染 DB 文本。
+      // T-13: messageText 保留 `<pasted-block>` 标签（聊天窗要按 chip 渲染），
+      // 所以发给模型前必须展开回原文 —— 模型收到的仍是全文，不因折叠丢内容。
+      const modelSourceText = expandPastedBlocks(messageText)
       const modelText = selectedFileContext.contextText
-        ? `${messageText}\n\n${selectedFileContext.contextText}`
-        : messageText
+        ? `${modelSourceText}\n\n${selectedFileContext.contextText}`
+        : modelSourceText
       const userContent: string | ContentBlock[] = imageBlocks.length > 0
         ? [{ type: 'text', text: modelText }, ...imageBlocks]
         : modelText

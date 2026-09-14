@@ -14,6 +14,7 @@ import { isChatStreamEvent } from '@renderer/lib/agent/stream-event-adapter'
 import { scheduleAutoFallback } from '@renderer/lib/agent/provider-auto-fallback'
 import { buildChatMessageContent, getRenderedBlockPosition } from '@renderer/lib/agent/chat-message-blocks'
 import { accumulateUsageSnapshot } from '@renderer/lib/agent/usage-merge'
+import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 
 import { createSessionSlice, type SessionSlice } from './session-slice'
 
@@ -315,7 +316,11 @@ export const useChatStore = create<ChatStore>()(
 
       if (titleSession && titleSession.title === 'New Conversation' && userText) {
 
-        const cleanUserText = userText.replace(/<system-remind(?:er)?>[\s\S]*?<\/system-remind(?:er)?>\s*/gi, '').trim()
+        // T-13: userText may carry `<pasted-block>` chips; the title has to read
+        // the pasted body, not the tag JSON.
+        const cleanUserText = expandPastedBlocks(userText)
+          .replace(/<system-remind(?:er)?>[\s\S]*?<\/system-remind(?:er)?>\s*/gi, '')
+          .trim()
 
         const newTitle = cleanUserText.slice(0, 40) + (cleanUserText.length > 40 ? '...' : '')
 

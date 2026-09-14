@@ -1,4 +1,4 @@
-﻿// InputArea: main composer component with editor, toolbar, and controls
+// InputArea: main composer component with editor, toolbar, and controls
 
 import * as React from 'react'
 import type { SendMessageOptions } from '@renderer/hooks/use-chat-actions'
@@ -252,11 +252,14 @@ export function InputArea({
     // This closes the rAF gap that can otherwise lose or duplicate the final key.
     editorRef.current?.flushPendingInput()
     const liveEditorState = getLiveEditorState()
-    const promptText = liveEditorState.promptText.trim()
-    if (!promptText && attachedImages.length === 0) return
+    // T-13: send the serialized text so long pastes stay collapsed as
+    // `<pasted-block>` chips in the transcript; the model payload expands them
+    // back to the verbatim text in useChatActions.
+    const serializedText = liveEditorState.serializedText.trim()
+    if (!serializedText && attachedImages.length === 0) return
     if (disabled || needsWorkingFolder || pendingImageReads > 0) return
     const hasLeadingSlashCommand = liveEditorState.plainText.trimStart().startsWith('/')
-    const message = selectedSkill && !hasLeadingSlashCommand ? `[Skill: ${selectedSkill}]\n${promptText}` : promptText
+    const message = selectedSkill && !hasLeadingSlashCommand ? `[Skill: ${selectedSkill}]\n${serializedText}` : serializedText
     const sendOptions: SendMessageOptions = { clearCompletedTasksOnTurnStart: true, enablePlanMode: planMode || undefined }
     const selectedFileReferences = liveEditorState.selectedFiles.map(selectedFileItemToReference)
     if (selectedFileReferences.length > 0) sendOptions.selectedFileReferences = selectedFileReferences

@@ -3,6 +3,7 @@
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import type { TFunction } from 'i18next'
 import { getCompactSummaryDisplayText } from '@renderer/lib/agent/context-compression'
+import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 
 
 import type {
@@ -26,13 +27,15 @@ export function isSystemPromptText(text: string): boolean {
 }
 
 export function getUserMessageText(content: UnifiedMessage['content']): string {
-  if (typeof content === 'string') return isSystemPromptText(content) ? '' : content
+  // T-13: a user row keeps its `<pasted-block>` chips in the DB; the rail
+  // preview must read the pasted body, not the tag JSON.
+  if (typeof content === 'string') return isSystemPromptText(content) ? '' : expandPastedBlocks(content)
   return content
     .filter(
       (block) =>
         block.type === 'text' && typeof block.text === 'string' && !isSystemPromptText(block.text)
     )
-    .map((block) => (block.type === 'text' ? block.text : ''))
+    .map((block) => (block.type === 'text' ? expandPastedBlocks(block.text) : ''))
     .join('\n')
 }
 

@@ -1109,7 +1109,7 @@ agent run failed ... InvalidOperationException: openai-chat returned no usable a
 
 # 需求 23（临时追加）：T-13 聊天窗渲染也需折叠长粘贴（transcript chip 化）
 
-> 2026-09-14 老大提出（承接 iter-28 R-11 / iter-29 S-16 的**遗留部分**）。**待实施**。
+> 2026-09-14 老大提出（承接 iter-28 R-11 / iter-29 S-16 的**遗留部分**）。**2026-09-14 实施完成**——真实改动面比登记稿大（标签落库后一切「把消息文本当正文读」的地方都要展开），见下方「实施记录」。
 
 ## 背景 / 现状
 
@@ -1124,23 +1124,65 @@ agent run failed ... InvalidOperationException: openai-chat returned no usable a
 
 老大原话：「**靠标签，用户自己输入的那么多，肯定还是得渲染的**」→ 只有**粘贴段**折叠，**手输长文照常渲染**。
 
-## 步骤
+## 步骤（全部完成，除真机项）
 
-- [ ] **T-13.1**：`lib/select-file-tags.ts` 补一个「展开」工具（`<pasted-block>` 标签 → 原文），供"发给模型"那条路径使用（现有 `parseSelectFileText` / `PASTED_BLOCK_TAG_RE` 可复用）
-- [ ] **T-13.2**：`sendMessage` 让 `userMessage.text` **保留标签**（走 `serializedText` 口径），使渲染侧能识别粘贴段
-- [ ] **T-13.3（关键·别漏）**：**发给模型前展开** —— 在 payload 构造处把 `<pasted-block>` 还原成原文（与 S-16 的 `promptText` 口径一致），确保模型仍收到**全文**，不能因为折叠反而丢内容
-- [ ] **T-13.4**：聊天窗渲染 —— 解析消息 `text` 里的 `<pasted-block>`，渲染成 chip（复用 `file-aware-editor-utils/chips.ts` 的样式与 `chat.json` 的 `input.pastedBlock.*` 文案），支持展开 / 收起
-- [ ] **T-13.5（回归）**：手输长文照常渲染；粘贴段折叠且可展开；草稿与历史消息 round-trip 不丢标签
+- [✓] **T-13.1**：`lib/select-file-tags.ts` 补「展开」工具 `expandPastedBlocks`（`<pasted-block>` → 原文，**只重写粘贴段**）；同时修 `selectFileTextToPlainText` 的 pasted 段语义 —— 返回原文而不是 chip caption
+- [✓] **T-13.2**：`handleSend` 改用 `serializedText` → 消息落库/气泡保留标签，渲染侧才能识别粘贴段
+- [✓] **T-13.3（关键·别漏）**：**发给模型前展开** —— 前端 payload 构造处（`use-chat-actions.ts`）**加** Worker 冷启动从 DB 重建会话处（`SessionRestoreTools.ConvertToWireMessage`），两处都展开，模型始终拿到全文
+- [✓] **T-13.4**：聊天窗渲染 chip —— `SelectFileInlineText` 新增 pasted 分支，支持展开 / 收起，复用 `input.pastedBlock.*` 文案
+- [✓] **T-13.5（回归）**：手输长文照常渲染；粘贴段折叠且可展开；`expandPastedBlocks` 幂等；TS 回归脚本 + C# 断言全过
+- [ ] **T-13.6（真机，老大做）**：粘贴 → 发送 → 聊天窗 chip → 点开全文；重启应用后重开该会话，chip 仍在且点开是全文
 
 ## Mini 验证
-- TS 三配置零错误
-- 真机：粘贴一大段 → 发送 → **聊天窗显示 chip（不是原文）** → 点开是全文；手打长文则原样显示
+- TS 三配置零错误 ✅
+- C# 产品 sln / `tests/WishfulClaw.Tests.sln` 0 警告 0 错误 ✅、`build:worker:prod` AOT 成功无 IL 警告 ✅
+- 新增 `test:select-file-tags` 18 项 ✅、`CompactionSnapshotRegressionTests` 的 `PastedBlockRestoreChecks` 11 项 ✅
+- 真机：粘贴一大段 → 发送 → **聊天窗显示 chip（不是原文）** → 点开是全文；手打长文则原样显示　⏳ 待老大
 
-## 涉及（初判）
-- `src/renderer/src/lib/select-file-tags.ts` — 复用 / 补展开工具
-- `src/renderer/src/components/chat/MessageItem.tsx` / `content-renderer.tsx` / `UserMessage` — 渲染 chip
-- `src/renderer/src/components/chat/InputArea/use-composer-editor.ts` — `serializedText` vs `promptText` 口径
-- `src/renderer/src/stores/chat-store/index.ts` — `sendMessage` 落库文本口径
+## 实施记录（2026-09-14）
+
+**核心问题**：S-16 只处理了输入框（草稿往返保留标签、发给模型展开）。聊天窗渲染的是**落库那份文本** —— 落库若是展开原文，聊天窗永远拿不到标签、无从折叠。所以 T-13 的真实改动面是「**标签落库 + 所有非渲染消费端展开**」，比登记稿的 4 个文件大。
+
+**数据层**（`lib/select-file-tags.ts`）
+- 新增 `expandPastedBlocks(text)`：走 `PASTED_BLOCK_TAG_RE` + `parsePastedBlockPayload`，**只替换粘贴段**，其余字节（含 `<select-file>` 标签）原样；坏 payload 返回整个原标签 —— 解析失败绝不吞周边文本。
+- `selectFileTextToPlainText`：pasted 段由 chip caption 改为**原文**，否则复制 / 排队摘要拿到的是「粘贴 · N 行」。
+
+**发送链路**
+- `InputArea/index.tsx` `handleSend`：发出文本改用 `serializedText`（保留标签）。
+- `hooks/use-chat-actions.ts`：模型 payload 构造处 `modelSourceText = expandPastedBlocks(messageText)`；`userMessageText` 仍传带标签文本 → **落库/气泡 = 标签，模型 = 全文**。
+- `stores/chat-store/index.ts`：生成会话标题前先展开（第一条消息是长粘贴时，标题否则会变成 chip JSON）。
+
+**渲染**
+- `components/chat/SelectFileInlineText.tsx`：新增 `pasted` 分支（amber chip + ClipboardPaste 图标，点击展开 / 收起，展开体为 `whitespace-pre-wrap` 原文块）。
+- `components/chat/UserMessage.tsx`：渲染用带标签文本（`displayText`），**复制 / 编辑 / 朗读 / 翻译 / 分享 / token 估算**一律改用 `expandedText`。
+
+**标签外溢点（登记稿没预料到，逐个收口）**：落库文本带标签后，凡「把消息文本当用户正文读」的地方都会看到 chip JSON ——
+1. **Worker 冷启动从 DB 重建会话** —— `SessionRestoreTools.ConvertToWireMessage` 纯文本分支新增 `ExpandPastedBlocks`（C# 复刻前端语义：只替换粘贴段、坏 payload 整段保留、`text` 为空按坏 payload 处理）。**这条最关键**：不修则重启后模型收到的是 chip JSON。
+2. 排队条摘要 —— `InputArea/utils.ts` `summarizeQueuedMessage`（随数据层修正自动生效）。
+3. 排队消息编辑框 —— `InputArea/use-queued-messages.ts` `startEditQueuedMessage` 展开后再进 textarea。
+4. 消息导航栏预览 —— `MessageList/locator-utils.ts` `getUserMessageText`。
+5. 记忆自动化摘录 —— `lib/agent/memory-automation-utils.ts` `messageToPromptLine`。
+6. 会话跟进（follow-up）提示词 —— `lib/tools/session-follow-up-runtime.ts` `messageText`。
+
+**测试**
+- 新增 `tests/select-file-tags`（esbuild + node，18 项）：round-trip、混合内容、坏 payload、多段、幂等。
+- `WishfulClaw.CompactionSnapshotRegressionTests` 新增 `PastedBlockRestoreChecks`（11 项）：C# 展开语义与前端对齐 —— **首轮就抓到「坏 payload 把标签剥掉」的 bug，已修**。
+
+## 涉及文件（实际）
+- `src/renderer/src/lib/select-file-tags.ts` — `expandPastedBlocks` 新增；`selectFileTextToPlainText` 修正
+- `src/renderer/src/components/chat/InputArea/index.tsx` — `handleSend` 口径
+- `src/renderer/src/components/chat/InputArea/use-queued-messages.ts` — 排队编辑框展开
+- `src/renderer/src/components/chat/SelectFileInlineText.tsx` — pasted chip 渲染
+- `src/renderer/src/components/chat/UserMessage.tsx` — 展示 / 展开双口径
+- `src/renderer/src/components/chat/MessageList/locator-utils.ts` — 导航预览
+- `src/renderer/src/hooks/use-chat-actions.ts` — 模型 payload 展开
+- `src/renderer/src/lib/agent/memory-automation-utils.ts` — 记忆摘录
+- `src/renderer/src/lib/tools/session-follow-up-runtime.ts` — follow-up 提示词
+- `src/renderer/src/stores/chat-store/index.ts` — 标题展开
+- `src/renderer/src/locales/{zh,en}/chat.json` — `input.pastedBlock.collapse`
+- `src/runtime/WishfulClaw.Agent/SessionRestoreTools.cs` — `ExpandPastedBlocks` + wire 构造接入
+- `tests/select-file-tags/program.ts`（新）、`package.json`（新脚本）
+- `tests/WishfulClaw.CompactionSnapshotRegressionTests/PastedBlockRestoreChecks.cs`（新）、`Program.cs`
 
 ---
 

@@ -1,4 +1,4 @@
-﻿import { useAgentStore } from '@renderer/stores/agent-store'
+import { useAgentStore } from '@renderer/stores/agent-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { dbGetSession, dbListMessagesByTurns } from '@renderer/stores/chat-store/db-helpers'
@@ -8,6 +8,7 @@ import { agentStream } from '@renderer/lib/ipc/agent-stream-receiver'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import type { AgentStreamEvent } from '@shared/agent-stream-protocol'
 import { writeLog } from '@renderer/lib/error-logger'
+import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 import {
   SESSION_FOLLOW_UP_CANCEL_MSGPACK_CHANNEL,
   SESSION_FOLLOW_UP_COMPLETE_MSGPACK_CHANNEL,
@@ -49,8 +50,10 @@ function sourceSessionIsBusy(sessionId: string): boolean {
 }
 
 function messageText(message: { text?: string; content?: unknown; error?: string }): string {
-  if (message.text) return message.text
-  if (typeof message.content === 'string') return message.content
+  // T-13: message rows keep `<pasted-block>` chips for the transcript; the
+  // follow-up prompt must carry the pasted body, not the tag JSON.
+  if (message.text) return expandPastedBlocks(message.text)
+  if (typeof message.content === 'string') return expandPastedBlocks(message.content)
   if (message.content != null) {
     try {
       return JSON.stringify(message.content)

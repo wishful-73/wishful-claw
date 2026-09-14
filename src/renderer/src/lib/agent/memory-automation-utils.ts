@@ -1,4 +1,4 @@
-﻿// Pure utility functions, constants, and types extracted from memory-automation.ts
+// Pure utility functions, constants, and types extracted from memory-automation.ts
 
 import { runSidecarTextRequest } from '@renderer/lib/ipc/agent-bridge'
 import {
@@ -9,6 +9,7 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 import type { ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
 import type { AIModelConfig } from '../../../../shared/types/provider'
 import { getProjectMemoryCandidatePaths, type LayeredMemorySnapshot } from './memory-files'
+import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 import type {
   MemoryAutomationFilterReason,
   MemoryAutomationTarget,
@@ -189,7 +190,9 @@ export function messageToPromptLine(message: PromptMessage): string {
         : typeof message.text === 'string'
           ? message.text
           : ''
-  return `${message.role}: ${trimForPrompt(raw, MAX_MESSAGE_CHARS)}`
+  // T-13: rows keep `<pasted-block>` chips for the transcript; memory excerpts
+  // and prompts must read the pasted body instead of the tag JSON.
+  return `${message.role}: ${trimForPrompt(expandPastedBlocks(raw), MAX_MESSAGE_CHARS)}`
 }
 
 export function buildConversationExcerpt(

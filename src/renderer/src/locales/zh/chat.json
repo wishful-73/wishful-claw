@@ -210,6 +210,7 @@
       "labelWithLines": "粘贴 · {{lines}} 行",
       "expand": "展开",
       "expandTitle": "展开为原文",
+      "collapse": "收起",
       "remove": "移除"
     }
   },

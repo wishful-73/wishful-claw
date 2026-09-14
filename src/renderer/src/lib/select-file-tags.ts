@@ -228,6 +228,25 @@ export function createPastedBlockTag(payload: PastedBlockPayload): string {
   return `<pasted-block>${encodeTagText(JSON.stringify(normalized))}</pasted-block>`
 }
 
+/**
+ * Flatten collapsed `<pasted-block>` chips back to their verbatim text.
+ *
+ * Counterpart of the composer's `expandPastedBlocks` serialization option: the
+ * transcript keeps the tag so it can render a chip, and this restores the full
+ * text on the paths that must see what the user actually pasted (model payload,
+ * copy, edit, token estimates). Every other segment keeps its raw form.
+ */
+export function expandPastedBlocks(text: string): string {
+  if (!text) return ''
+  // Rewrite the paste tags only: every other segment (including `<select-file>`
+  // tags) stays byte-for-byte identical, so a malformed payload can never make
+  // us drop the text around it.
+  return text.replace(PASTED_BLOCK_TAG_RE, (match: string, payload: string) => {
+    const parsed = parsePastedBlockPayload(payload)
+    return parsed ? parsed.text : match
+  })
+}
+
 export function parseSelectFileText(text: string): SelectFileTextSegment[] {
   if (!text) return []
 
@@ -296,7 +315,11 @@ export function hasSelectFileTag(text: string): boolean {
 export function selectFileTextToPlainText(text: string): string {
   const segments = parseSelectFileText(text)
   if (segments.length === 0) return text
-  return segments.map((segment) => segment.text).join('')
+  // A collapsed paste is plain user text, not an instruction: the plain-text
+  // view has to surface the verbatim body (its `text` is only the chip caption).
+  return segments
+    .map((segment) => (segment.type === 'pasted' ? segment.pastedText : segment.text))
+    .join('')
 }
 
 export function normalizeSelectFileText(text: string): string {

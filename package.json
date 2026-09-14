@@ -28,6 +28,7 @@
     "test:provider-presets": "esbuild tests/provider-presets/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-presets/out/program.cjs && node tests/provider-presets/out/program.cjs",
     "test:provider-fallback": "esbuild tests/provider-fallback/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-fallback/out/program.cjs && node tests/provider-fallback/out/program.cjs",
     "test:settings-tabs": "esbuild tests/settings-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/settings-tabs/out/program.cjs && node tests/settings-tabs/out/program.cjs",
+    "test:select-file-tags": "esbuild tests/select-file-tags/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/select-file-tags/out/program.cjs && node tests/select-file-tags/out/program.cjs",
     "test:channel-reply-event-policy": "esbuild tests/channel-reply-event-policy/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-reply-event-policy/out/program.cjs && node tests/channel-reply-event-policy/out/program.cjs",
     "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs"
   },

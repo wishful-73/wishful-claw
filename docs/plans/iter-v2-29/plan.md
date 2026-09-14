@@ -463,25 +463,26 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ## 步骤
 
-- [✓] S-21.D1：调用链梳理 —— 写在 `docs/plans/iter-v2-29/S-21-call-chain-notes.md`。关键事实：`ProviderRetryPolicy.ExecuteAsync` **全仓唯一调用点在 `AgentLoop.cs:324`**（grep 确认），fallback 接入只在那里；三段 catch（超时 / 可重试 HTTP / 终端 throw）的第三段是 fallback 切入点；`AgentRuntimeProviderTurnResult` 当前没有「可切换」字段 → 需要扩；`requestMaxRetries=0`（`isUnlimited`）必须保持不切换
-- [✓] S-21.D2：配置面 —— `src/shared/types/provider.ts` 新增 `ProviderFallbackConfig`（注释即运行时契约：顺序语义 / 每个候选一次不循环 / 自身重试耗尽才交棒 / `requestMaxRetries=0` 永不交棒）；设置页 `ProviderPanel.tsx` 新增第三个 Tab「自动切换」承载可排序配置。**`requestMaxRetries` 的语义与取值完全未动**
-  - **与立项稿的差异（探索后修正）**：`requestMaxRetries` 实测**不在** `provider.ts` —— 它是 `settings-store` 的全局项，经 `ProviderConfig`（`lib/api/types.ts:460`）随每次请求下发。fallback 同属跨服务商的全局行为，故配置落在 `settings-store.providerFallback`（`enabled` + 有序 `priority: string[]`），与重试上限并列，**不塞进单个 provider 记录**
-  - **只存 id，不镜像服务商配置**：C# 侧 `ProviderStore.GetProviderJson(id)`（`Infrastructure/Storage/ProviderStore.cs:50`）可按 id 取回完整配置，D4 切换时现取即可，避免 apiKey / baseUrl 在配置里存第二份
-  - 持久化四处齐改：字段 + 默认值 + `partialize` + `version` 38→39；`settings-store-migrate.ts` 末段做归一化（**保留用户已建顺序，不整体重置**）
-  - `normalizeProviderFallback` 去重、剔非字符串与空白 id、`enabled` 只认布尔；**默认常量改为工厂 `createDefaultProviderFallback()`** —— 浅拷贝会让 `DEFAULT_PROVIDER_FALLBACK.priority` 被全会话共享，这是新增回归测试实跑抓出来的真问题
-  - 新增 `tests/provider-fallback`（npm `test:provider-fallback`，18 断言）
-  - 「就绪」= 已启用且（无需 Key 或已填 Key）；未就绪也允许加入候选，由运行时跳过，UI 上标「未就绪」
-- [ ] S-21.D3：状态机 —— 让有限重试耗尽后返回「可切换」结果而非直接 throw；`requestMaxRetries=0`（无限）**保持不切换**；同一请求按序逐个尝试**不循环**；取消立即终止；新增结构化 fallback/重试事件
-- [ ] S-21.D4：接入 `AgentLoop` —— 切换时完整复用 `conversation` / `toolDefs` / `state`。⚠️ 切出 `openai-responses` 会丢 `OpenAIResponsesState` 的 response id（未实测，须验）
-- [ ] S-21.D5：观测与人工验证 —— 配额信息只作可选观测增强；**用两个可控测试 provider / Mock endpoint 验证，禁止依赖真实 API 触发限额**；日志记原 provider、目标 provider、重试次数、切换原因
-- [ ] S-21.D6：**AOT** —— 新增 DTO 注册进 JsonContext
+- [✓] S-21.D1：调用链梳理 —— 见 `S-21-call-chain-notes.md`。**结论已作废**：当时按「在 AgentLoop 内部换端点」设计，老大 2026-09-14 纠正为「一次 run 撞上限额就结束了，切换是前端的事，agent loop 一句话都不用改」。笔记保留作背景，实施不走那条路
+- [✓] S-21.D2：配置面 —— `ProviderFallbackConfig` + 设置页第三个 Tab「自动切换」（详见本节下方 D2 备注）
+- [✓] S-21.D3：**限额判定（前端）** —— `lib/agent/provider-auto-fallback.ts` 的 `isQuotaFailure()`：429 / 503 / rate limit / quota / usage limit / overloaded 命中，**上下文超限一律排除**（换个服务商也好不了，否则会一路切到列表尽头）
+- [✓] S-21.D4：**自动切换** —— 只有 `modelSelectionMode === 'auto'` 的会话触发（auto 这个选项的定义就是这个能力）；起点仍由现有 auto 路由决定，这里只接管失败后的切换；按列表顺序取下一个可用候选，跳过已用过的与当前正在用的；`setSessionAutoFallbackTarget` 落盘且**保持 auto 模式**（下次失败继续往下切）
+- [✓] S-21.D5：**自动推进** —— 切完延迟 400ms（避开在 error 事件处理里重入 sendMessage）发一句「继续推进」，参数与用户手动发消息一致；toast 提示「XX 触发限额，已自动切换到 YY」
+- [✓] S-21.D6：**不循环** —— 每会话一条推进链，内存记录已用过的候选，10 分钟无新失败自动重置；候选试完就停，正常报错给用户
+- [ ] S-21.D7：**真机验证（老大做）** —— 两个可控 provider / Mock endpoint 触发 429，确认自动切 + 自动推进。agent 侧无自验证闭环，提交时按「代码逻辑自洽 + 门禁通过」入库，**不标测通**
+- ⛔ 原 D3（C# 状态机）/ 原 D4（接入 AgentLoop）/ 原 D6（AOT）—— 按新口径**整体作废**，已写代码全部回滚（AgentLoop.cs / AgentLoop.Helpers.cs / ProviderRetryPolicy.cs / sidecar-mapping.ts / sidecar-protocol-types.cs / C# 回归断言）
+
+**模型怎么定**：候选也有当前这个 model id → 继续用它（行为完全一致）；否则用它自己的 `defaultModel`；再否则第一个已启用的 chat 模型。
+
+**为什么是前端**：一次 agent run 撞上限额就结束了，不存在「跑一半接着跑」；前端发消息本来就只带增量，历史是模型调用时才拼的。所以自动切换只需要替用户做两件事 —— 操作模型切换器（换服务商+模型）、发一句「继续推进」。
 - [✓] S-21.D7：**回归测试工程** —— 新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`（csproj 引用 `WishfulClaw.Agent`，Program.cs 留 sanity 断言 1 条 + D1-D7 注释指针），用 `dotnet sln add` **同步进 `src/runtime/WishfulClaw.sln`**。`dotnet build sln` 0/0；`dotnet run --project tests/<项目> --no-build` 通过。**这一步单独提前做**是项目硬规则（不然像 `CronRegressionTests` / `MemoryRecallRegressionTests` 一样**静默漏编**——既不在 sln、也不在 `dotnet build` 范围里，等于测试从来没跑过）。状态机测试在 D3、AgentLoop 集成测试在 D4 时填实
 
-**Mini 验证**：C# build + AOT 零警告；状态机测试覆盖 429/503/超时、有限/无限、全失败、取消；工具调用中途切换不重复；流式事件不重复；session/channel 路径不丢来源。
+**Mini 验证**：tsc 三配置零错误；9 个 TS 回归套件全过；.NET 0/0（C# 已无改动）；真机触发 429 能自动切 + 自动推进（老大验）。
 
 ## 涉及文件
-- `src/runtime/WishfulClaw.Agent/AgentLoop.cs` — 改
-- `src/runtime/WishfulClaw.Agent/ProviderRetryPolicy.cs` — 改
+- `src/renderer/src/lib/agent/provider-auto-fallback.ts` — 新建（判定 / 取候选 / 切换 / 推进）
+- `src/renderer/src/stores/chat-store/index.ts` — 改（`error` 分支接入）
+- `src/renderer/src/stores/chat-store/session-slice.ts` — 改（`setSessionAutoFallbackTarget`）
 - `src/shared/types/provider.ts` — 改（`ProviderFallbackConfig`）
 - `src/renderer/src/stores/settings-store.ts` / `settings-store-types.ts` / `settings-store-migrate.ts` — 改（持久化四处 + 归一化）
 - `src/renderer/src/components/settings/provider/ProviderFallbackPanel.tsx` — 新建

@@ -520,7 +520,9 @@
       "moveUp": "上移",
       "moveDown": "下移",
       "remove": "移出候选",
-      "add": "加入候选"
+      "add": "加入候选",
+      "continuePrompt": "继续推进",
+      "autoSwitched": "{{from}} 触发限额，已自动切换到 {{to}}，正在继续推进"
     },
     "modelManagementDesc": "集中管理全局模型默认配置，供各服务商副本继承",
     "modelManagementList": "全局模型库",

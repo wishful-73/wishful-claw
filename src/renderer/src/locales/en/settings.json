@@ -519,7 +519,9 @@
       "moveUp": "Move up",
       "moveDown": "Move down",
       "remove": "Remove from candidates",
-      "add": "Add as candidate"
+      "add": "Add as candidate",
+      "continuePrompt": "Continue",
+      "autoSwitched": "{{from}} hit its limit — switched to {{to}} and continuing"
     },
     "modelManagementDesc": "Manage global model defaults that provider copies inherit from",
     "modelManagementList": "Global Model Library",

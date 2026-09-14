@@ -11,6 +11,7 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 
 import { isChatStreamEvent } from '@renderer/lib/agent/stream-event-adapter'
+import { scheduleAutoFallback } from '@renderer/lib/agent/provider-auto-fallback'
 import { buildChatMessageContent, getRenderedBlockPosition } from '@renderer/lib/agent/chat-message-blocks'
 import { accumulateUsageSnapshot } from '@renderer/lib/agent/usage-merge'
 
@@ -1705,6 +1706,9 @@ export const useChatStore = create<ChatStore>()(
               }
 
             })
+
+            // iter-29 / S-21: auto 模式的会话撞上限额 —— 替用户换服务商+模型，再发一句继续推进。
+            scheduleAutoFallback(targetSessionId, event.message)
 
             void import('@renderer/hooks/use-chat-actions')
               .then(({ pausePendingSessionDispatch }) => pausePendingSessionDispatch(targetSessionId))

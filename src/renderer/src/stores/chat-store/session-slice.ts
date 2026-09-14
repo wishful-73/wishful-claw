@@ -29,6 +29,12 @@ export interface SessionSlice {
   updateSessionPermissionMode: (id: string, mode: Session['permissionMode']) => void
   setSessionModelManual: (sessionId: string, providerId: string, modelId: string) => void
   setSessionModelAuto: (sessionId: string) => void
+  /** iter-29 / S-21: auto 模式下换服务商+模型，mode 保持 auto（不清绑定）。 */
+  setSessionAutoFallbackTarget: (
+    sessionId: string,
+    providerId: string,
+    modelId: string
+  ) => void
   setSessionModelInherit: (sessionId: string) => void
   clearSessionMessages: (sessionId: string) => void
   clearSessionPromptSnapshot: (sessionId: string) => void
@@ -581,6 +587,19 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     })
     const session = get().sessions.find((s) => s.id === sessionId)
     if (session) void dbUpdateSession(sessionId, { providerId, modelId, modelSelectionMode: 'manual' })
+  },
+
+  setSessionAutoFallbackTarget: (sessionId, providerId, modelId) => {
+    set((state) => {
+      const session = state.sessions.find((s) => s.id === sessionId)
+      if (!session) return
+      // auto 模式保持不变：下一次失败还要继续往下切。
+      session.providerId = providerId
+      session.modelId = modelId
+      session.modelSelectionMode = 'auto'
+      session.updatedAt = Date.now()
+    })
+    void dbUpdateSession(sessionId, { providerId, modelId, modelSelectionMode: 'auto' })
   },
 
   setSessionModelAuto: (sessionId) => {

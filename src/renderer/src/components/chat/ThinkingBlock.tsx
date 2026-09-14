@@ -137,14 +137,18 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         )}
       </button>
 
-      {/* T-8: 流式态不经过高度面板 —— isThinking 时思考块恒展开，面板的 px→auto
-          高度管理会在每次 delta 时反复 applyHeight，使内层 max-h-80 的
-          clientHeight 抖动、贴底被反复 clamp（表现为上下跳）。完成后恢复面板，
-          保留收起 / 展开动画。 */}
-      <CollapsibleHeightPanel open={expanded} enabled={!isThinking} className="overflow-hidden">
+      <CollapsibleHeightPanel open={expanded} className="overflow-hidden">
         <div className="max-w-full px-0.5 pb-1 text-sm leading-7 text-muted-foreground/75">
+          {/* T-8: 内层滚动容器必须禁掉滚动锚定。内容增长时浏览器的 overflow-anchor
+              会自动调 scrollTop 去稳锚点，与这里的手动贴底对打 —— 表现为「滚到顶
+              又被拉回」，且上游越快（一次涨得越多）越明显。外层列表容器已有同样的
+              overflowAnchor:'none'（MessageList/VirtualListContent.tsx:126），内层此前漏了。 */}
           {hasThinkingContent ? (
-            <div ref={contentRef} className="max-h-80 overflow-y-auto">
+            <div
+              ref={contentRef}
+              className="max-h-80 overflow-y-auto"
+              style={{ overflowAnchor: 'none' }}
+            >
               {isThinking ? (
                 <div
                   className={`${getLiveOutputSurfaceClass(liveOutputAnimationStyle)} whitespace-pre-wrap break-words pb-6 leading-relaxed`}

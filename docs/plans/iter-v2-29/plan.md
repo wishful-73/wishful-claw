@@ -876,6 +876,12 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 ## 现象
 
 - Agent 流式思考（thinking）过程中，聊天窗内容 / 视口**反复上下跳动**，不是平滑跟随
+- **🔴 老大补充（2026-09-14 20:24）**：「就是会出现**滚动条跑到最上面去，然后又被拉下来**」→ 症状精确化为 **思考块内层 `scrollTop` 归零后又被拉回底部**，不是小幅"抖动"
+- **🔴 老大补充（2026-09-14 20:29）**：「**思考内容渲染越快越容易跳动，思考慢的反而基本不跳**」→ **速率相关**！强的方向性线索：
+  - 指向 `useStreamingRenderPool`（`hooks/use-typewriter.ts:47-58`）：**池子越大（上游来得越快、渲染落后越多）→ `getCatchupStep` 步长越大**（`catchupRatio` 0.14 / 0.2 / 0.28，上限 `maxStepChars` 3600），文本**阶梯式暴增**
+  - 渲染慢时走 `fixedStep`（小步长）→ 几乎不跳，与"慢的基本不跳"吻合
+  - 与"滚动条归零再拉回"的组合：疑似贴底 (`scrollTop = scrollHeight`) 在**大跨度内容更新**时出现"先落到旧/小值、再被拉到新底"的错位
+- ⚠️ **该现象与下方候选 ② 不吻合**（高度面板反复 `applyHeight` 会表现为"内容上下窜 / clientHeight 抖"，不会让 `scrollTop` 归零，也不该随**上游速率**变化）。**故当前修法（T-8.1）很可能没治到病，须按速率线索重新定性**
 
 ## 初步定位（待复核）
 
@@ -894,11 +900,17 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 - **首选**：流式态绕过 `CollapsibleHeightPanel` 的高度动画（`enabled={false}`，`:128-130` 会直接渲染 children 不包装），消除 `clientHeight` 抖动
 - 备选：仅非流式态 `applyHeight`；或内层容器加 `overflow-anchor: none`
 
-## 实施（2026-09-14）
+## 实施（2026-09-14，真因已实测坐实）
 
-- [⊘] **T-8.0（探针）—— 未执行**：需老大真机取证（agent 侧无渲染环境）。老大指令「所有的都做完」，故按**首选候选 ②** 直接落修法；**仍建议补跑探针**确认根因（若非 ②，本修法不解决问题）
-- [✓] **T-8.1**：`ThinkingBlock.tsx` 的 `CollapsibleHeightPanel` 加 `enabled={!isThinking}` —— 流式态绕过高度面板（isThinking 时思考块恒展开；面板的 px→auto 高度管理在每次 delta 反复 `applyHeight`，使内层 `max-h-80` 的 `clientHeight` 抖动、贴底被反复 clamp → 上下跳）；完成后恢复面板，保留收起 / 展开动画
+**真因（老大真机日志实证）：内层思考滚动容器缺 `overflow-anchor: none`。**
+
+浏览器的**滚动锚定**（`overflow-anchor` 默认 `auto`）在内容每次增长时自动调 `scrollTop` 去"稳住锚点"，与代码里的手动贴底（`scrollTop = scrollHeight`）**对打**。日志证据：`scrollTop` 赋值后立刻被拽回（`after` 远小于 `h - c`，长期停在"半路"），且**上游越快（一次 flush 涨得越多）被拽得越狠** —— 完全解释"越快越跳"。外层列表容器**早已**设了 `overflowAnchor: 'none'`（`MessageList/VirtualListContent.tsx:126`），**内层漏了**。
+
+- [✓] **T-8.1**：内层容器加 `style={{ overflowAnchor: 'none' }}`
+  - **验证 ✅**（老大 2026-09-14 20:45 真机）：修复后 `before` 一路贴到底（`13→39→73→…→2527`），原话「**这次抖动就很少了**」
+- [⊘] **第一版修法已废弃**：`CollapsibleHeightPanel enabled={!isThinking}` —— 日志显示 **`clientHeight` 全程恒 320、没抖**，候选 ② 被数据否掉，该改动已回退
 - [✓] **T-8.2（回归）**：思考块收起 / 展开、历史思考块、`max-h-80` 内部滚动逻辑未动；tsc 三配置零错误 ✅
+- **已知残留（小）**：内容刚跨过 `max-h-80` 的头几帧仍可能 `after=0`（疑似首帧布局时序）；如需彻底消除可评估 `useEffect` → `useLayoutEffect`
 
 ## Mini 验证
 

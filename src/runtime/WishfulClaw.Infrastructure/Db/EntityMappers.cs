@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -58,6 +58,7 @@ public static class EntityMappers
         Content = r.GetString("content"),
         Meta = r.GetNullableString("meta"),
         CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetNullableInt64("updated_at"),
         Usage = r.GetNullableString("usage"),
         SortOrder = r.GetInt32("sort_order")
     };

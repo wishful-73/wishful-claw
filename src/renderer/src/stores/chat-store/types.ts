@@ -1,4 +1,4 @@
-﻿import type { TokenUsageWire, RequestTimingWire } from '@shared/agent-stream-protocol'
+import type { TokenUsageWire, RequestTimingWire } from '@shared/agent-stream-protocol'
 import type { RequestDebugInfo, MessageMeta, ContentBlock } from '@renderer/lib/api/types'
 
 // ─── Session Context ───
@@ -63,6 +63,8 @@ export interface ChatMessage {
   preToolPhase?: boolean
   _revision?: number
   createdAt: number
+  /** Last DB mutation time (assistant replies update on every persistence boundary). */
+  updatedAt?: number
 }
 
 // ─── Session ───

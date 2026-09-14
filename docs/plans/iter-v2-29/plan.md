@@ -12,6 +12,9 @@
 | R2 | 2026-09-14 | 依据 `compliance_report.md` 修 7 个阻断项：①S-20 占位改为沿用既有 `{{sessionId}}`（C# 零改动）②locales 路径补 `src/renderer/src/` 前缀（7 处）③Provider 面板补 `provider/` 层级（2 处）④Baidu 解析归到 `AgentRuntimeWebSearchExecutor.cs` ⑤`select-file-editor.ts` 是单文件且已 504 行→先拆再改。另收口 9 个 ⚠️：S-25 UI 落点钉死为右侧面板 `timeline` Tab、S-21 新建回归测试工程并并入 .sln、S-20.2 明确做、S-22 标注无自验证闭环 |
 | R3 | 2026-09-14 | 依据复审修 R2 引入的新问题：①S-16 的 chip 渲染落点从 `select-file-editor.ts`（grep `render` 零命中）改到 `components/chat/file-aware-editor-utils.ts:212` 的 `renderDocument`（526 行，同超阈值），并从拆分清单里去掉 `render.ts` ②`use-capability-proxy.ts` 的 `if (!capabilityId) return null` 行号 `:30` → `:32` |
 | R4 | 2026-09-14 | 老大问回之前的 agent 后重定 S-23 范围：由「只修中文 bug」升级为「退役 WebSearch 全链路 + 统一到 BrowserSearch + 修三根因/设 UA + 三档自定义引擎 + 工具改名」，规模 小→中 改为**大**。已逐条复核老大给的现状核实（4 条中 3 条成立、1 条需修正：BrowserSearch 在 renderer TS 而非 C#） |
+| R5 | 2026-09-14 | 追加临时需求 T-1（消息时间显示口径：用户消息=创建时间、agent 回复=最后更新时间，`messages` 表补 `updated_at` 列），测试会话中实施完成，见「需求 11（临时追加）」 |
+| R6 | 2026-09-14 | 追加临时需求 T-2（输入框底部统计条改读会话总统计，不走消息遍历聚合）、T-3（长驻进程下前端聊天窗渲染膨胀）、T-4（移除 agent 回复流式光标），登记待排期，见「需求 12 / 13 / 14（临时追加）」 |
+| R7 | 2026-09-14 | 老大追认两项已完成的临时工作属本迭代，补登记并补提交：T-5（用量统计面板体验收口：三选项卡 + 左右分栏 + 明细表可调页长/粘性表头 + 模型行补缓存列，退役 `db/usage-by-source`）、T-6（测试工程独立成 `tests/WishfulClaw.Tests.sln`，移除 playwright e2e 链路）。同时回填需求 10（S-25）已完成的步骤勾选 |
 
 ## 目标
 
@@ -59,7 +62,9 @@
 
 ## 提交口径
 
-**10 个需求 + 1 个收尾修复调整 = 11 个提交。** 规划/审查/验证文档不单独提交，并入所属需求；审查与验证发现的问题全攒进收尾那一刀。
+**正式需求 10 项 + 临时追加需求 6 项（T-1 ～ T-6）+ 1 个收尾修复调整。** 规划/审查/验证文档不单独提交，并入所属需求；审查与验证发现的问题全攒进收尾那一刀。
+
+> 历史现状：S-21 在历史里拆成 3 刀（`c98339c2` / `63fcfa42` / `164acc99`），收尾阶段用 `rebase` 折叠回单刀，历史里一个需求只留一刀。
 
 ---
 
@@ -502,16 +507,16 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ## 步骤
 
-- [ ] S-25.1：定 schema —— 事件类型枚举（任务派发 / 回报 / 完成 / 决策 / 子 Agent / 定时触发…）、作用域（session + 可选 project）、时间戳、metadata
-- [ ] S-25.2：建表 —— `Infrastructure/Db/DbClient.cs` 新增 `agent_timeline_events`（参考 `goal_events` `:266` 的字段组织：session_id / event_type / message / metadata_json / created_at）
-- [ ] S-25.3：数据层 —— 新建 `DbAgentTimelineTools`，在 `DbModule.cs` 用 `context.Register("db/agent-timeline", ...)` 注册（参考 `:144-146` goal-events）
-- [ ] S-25.4：埋点 —— 在全局任务派发/回报、会话 todo 状态变更、cron 执行、子 Agent 运行等**决策点**写入
-- [ ] S-25.5：**保留策略** —— 落库同时定清理策略（按天数或条数），避免重蹈 `request_usage_logs` 无 prune 的覆辙。清理入口挂到已有的启动/维护时机，不要新增定时器
-- [ ] S-25.6：UI —— **右侧面板新增 Tab**，落点钉死：
+- [✓] S-25.1：定 schema —— 事件类型枚举（任务派发 / 回报 / 完成 / 决策 / 子 Agent / 定时触发…）、作用域（session + 可选 project）、时间戳、metadata
+- [✓] S-25.2：建表 —— `Infrastructure/Db/DbClient.cs` 新增 `agent_timeline_events`（参考 `goal_events` `:266` 的字段组织：session_id / event_type / message / metadata_json / created_at）
+- [✓] S-25.3：数据层 —— 新建 `DbAgentTimelineTools`，在 `DbModule.cs` 用 `context.Register("db/agent-timeline", ...)` 注册（参考 `:144-146` goal-events）
+- [✓] S-25.4：埋点 —— 在全局任务派发/回报、会话 todo 状态变更、cron 执行、子 Agent 运行等**决策点**写入
+- [✓] S-25.5：**保留策略** —— 落库同时定清理策略（按天数或条数），避免重蹈 `request_usage_logs` 无 prune 的覆辙。清理入口挂到已有的启动/维护时机，不要新增定时器
+- [✓] S-25.6：UI —— **右侧面板新增 Tab**，落点钉死：
   - `src/renderer/src/stores/ui-types.ts:54` 的 `RightPanelTabKind` 加 `'timeline'`（现有 11 个：activity/memory/context/review/files/preview/browser/subagent/terminal/goal/summary）
   - `components/layout/RightPanel.tsx:77-101` 标题映射加 `timeline` 一条（其余 kind 逐个 if 赋值 `t(...)`，照抄风格）
   - 面板内容复用 `GoalEventTimeline`（`components/goal/goal-session-views.tsx:80-109`）的事件流形态
-- [ ] S-25.7：**AOT** —— DTO 注册进 `InfrastructureJsonContext`；i18n
+- [✓] S-25.7：**AOT** —— DTO 注册进 `InfrastructureJsonContext`；i18n
 
 **Mini 验证**：tsc 三配置零错误；C# build + AOT 零警告；事件能写入、能按会话查询；右侧面板能打开「时间线」Tab 并看到事件流；
 **保留策略按可判定方式验**：手动把若干行 `created_at` 改到阈值之前 → 触发清理 → 断言这些行已消失、阈值内的行仍在。
@@ -531,6 +536,173 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ---
 
+# 需求 11（临时追加）：T-1 消息时间显示口径
+
+> 2026-09-14 迭代测试期间老大临时提出，会话内实施完成。补记于此供溯源。
+
+## 背景
+
+聊天窗消息显示时间（`HH:MM`）取的是 `messages.created_at`。agent 回复在 tool 完成 / message_end / loop_end 边界会被前端**反复 upsert**（`db-helpers.ts` 的链式队列），但表里没有更新时间字段——「回复最终何时完成」无据可查。
+
+## 口径（老大拍板）
+
+- **用户消息：显示创建时间**（即使被编辑，显示不变）
+- **agent 回复：显示更新时间，无更新时间时回落创建时间**（老数据 NULL、live 中未落库的消息都走 fallback）
+
+## 实施（已完成）
+
+- **schema**：`EnsureColumn("messages", "updated_at", "INTEGER")`，**可空**，存量行 NULL（`DbClient.cs`）
+- **写入**：`InsertMessage` INSERT 时 `updated_at = created_at`；`Upsert` UPDATE 分支与 `Update`（patch）由 worker 时钟刷 `updated_at = now`（`DbMessageTools.cs` / `DbMessageToolsMutations.cs`）
+- **读出**：`MessageEntity` / `MessageRow` / `EntityMappers.MapMessage` 加 `UpdatedAt(long?)`（`GetNullableInt64`）；`ListLocator` 显式列清单补 `updated_at`（该查询不用 `SELECT *`，漏了会炸 mapper）
+- **前端**：`ChatMessage` / `UnifiedMessage` 加 `updatedAt?`；`deserializeMessage` 带出；`MessageItem.tsx` assistant 分支传 `updatedAt ?? createdAt`
+- **语义注意**：updated_at 会在 tool 完成等边界提前刷新，最终值 = loop_end（执行完成）。压缩快照边界用 `created_at`，其语义未被触碰（前端 upsert 传的 createdAt 是稳定创建时间，历史行为即如此）
+
+## 门禁与验证
+
+- Infrastructure `dotnet build` 0/0；tsc web 零错误；`npm run build:worker:prod` AOT 成功
+- `WishfulClaw.CompactionSnapshotRegressionTests` 通过（legacy 夹具手工 INSERT 不带 updated_at，可空列无影响）
+- 老大重启 app 后真机验证显示口径
+
+## 涉及文件
+- `src/runtime/WishfulClaw.Infrastructure/Db/DbClient.cs` / `DbMessageTools.cs` / `DbMessageToolsMutations.cs` / `DbMessageToolsQueries.cs` / `EntityMappers.cs` / `Entities/MessageEntity.cs`
+- `src/renderer/src/stores/chat-store/types.ts` / `db-helpers.ts`
+- `src/renderer/src/lib/api/types.ts`
+- `src/renderer/src/components/chat/MessageItem.tsx`
+
+---
+
+# 需求 12（临时追加）：T-2 输入框底部统计条改读会话总统计
+
+> 2026-09-14 老大在真机使用中发现，登记待排期，未实施。
+
+## 背景 / 现象
+
+底部统计条（`ComposerRuntimeStatus` → `runtime-status.tsx`）对 tokens / 成本 / 请求数走的是**前端实时聚合**：遍历 `session.messages` 逐条 `addUsageToTotals` 累加。会话运行中内存消息全量存在，数字正确；但**重开 app 后会话加载是 turn-based 懒加载（`loadRecentSessionMessages` 只装最近 5 轮，session-slice.ts:672-675），统计条数据源从"全量"退化为"当前加载窗口"**，重开后统计明显偏小——老大原话：「重开了一次，这次加载的数据不对」。
+
+老大专门调整过：**会话已有总统计机制**——`Session.sessionCacheHit / sessionCacheMiss`（后端 AgentLoop 在 `message_end` 事件累加的会话级缓存计数，"Reasonix-style"，types.ts:104-107，状态条直读）。但**前端只把缓存两项用起来了**，tokens / 成本 / 请求数 / TPS 仍在走消息遍历聚合，没用上会话级统计。
+
+## 口径（老大拍板）
+
+- 底部统计条针对**整个会话**，不应该依赖"已加载的消息"
+- 长会话的 turn-based 懒加载是性能优化，必须保留；统计口径不能跟加载窗口走
+
+## 方向（待实施时细化，老大明确"先记录，不用探索"）
+
+1. **统一数据源为会话级统计**：tokens / 成本 / 请求数与会话级缓存计数同批维护（后端累加或 DB 按会话聚合），运行中事件增量更新，重开加载会话时一次取回全量基线
+2. 候选载体：`db/messages-usage-stats` 端点（`DbMessageCompactTools.UsageStats`，SQL 按会话聚合 `messages.usage`，输入/输出/缓存/成本/请求数字段齐全——实施时需复核其成本口径与前端聚合是否一致）
+3. 次要项（记录在案，实施时酌情）：
+   - 成本定位 fallback 链：`debugInfo` 不落库，重开后定位失败的消息会用**当前会话模型的价格**给历史消息算成本（模型不同则错）
+   - `requestTimings` 不在 `TokenUsageWire` 协议内，DB round-trip 后 TPS/TTFT 丢失（单请求指标，丢了合理，不算 bug，但会话级统计若纳入需明确口径）
+
+---
+
+# 需求 13（临时追加）：T-3 长驻进程下前端聊天窗渲染膨胀
+
+> 2026-09-14 老大在真机使用中发现，登记待排期，未实施。老大明确：先进需求，**不用探索**。
+
+## 背景 / 现象
+
+软件设计为长期常驻运行。会话内上下文压缩发生后：
+
+- **后端已释放**：压缩后发给模型的内容折叠，后端内存正常回收
+- **前端没有对应措施**：聊天窗的消息列表只增不减，后续渲染的组件（工具结果、思考块、渲染块等）持续累积，DOM / 前端内存越滚越大，**越来越慢**
+
+## 口径（老大拍板）
+
+- 前端聊天窗需要与后端压缩对齐的"减负"措施，方向和具体方案实施时再定
+
+## 涉及（初步定位，实施时复核）
+
+- 消息列表渲染：`components/chat/MessageList/`（虚拟化已有，但"列表内容本身"长期驻留）
+- 压缩边界处理：压缩快照边界目前只影响"发给模型的内容"，UI 侧历史消息不裁剪（这正是 T-2 中"运行中统计正确"的原因，与 T-3 是同一事实的两面——方案落地时两条需求要一起对口径，避免一个改动打破另一个的前提）
+
+---
+
+# 需求 14（临时追加）：T-4 移除 agent 回复的流式光标
+
+> 2026-09-14 老大在真机使用中发现，登记待排期，未实施。
+
+## 背景 / 现象
+
+- agent 执行中，回复内容渲染链的最后一行始终有一个**闪烁光标**，一直跟着流式输出走。老大口径：聊天窗本身已有状态呈现（输入框左上角状态条、吸附卡等），**这个光标可以不要**
+- 附加现象：**同一次执行内触发上下文压缩时，光标会变成两个**——压缩边界把一次执行拆成前后两条 assistant 消息，两条都带 streaming 态、各自渲染一个光标（压缩前一个、压缩后一个）
+
+## 口径（老大拍板）
+
+- **聊天窗回复渲染链上的流式光标移除**（AssistantMessage / content-renderer 的 3 处）
+- **思考块的流式光标保留**（`ThinkingBlock.tsx:152` 不动）——思考区适用，老大明确保留
+
+## 涉及（已定位）
+
+- 光标本体：`.ai-live-cursor` + `@keyframes ai-cursor-blink`（`src/renderer/src/assets/main.css:607-628`），类名由 `lib/live-output-animation.ts` 的 `getLiveOutputCursorClass` 提供
+- 渲染点 4 处（**删 3 留 1**）：
+  - ~~`components/chat/AssistantMessage/content-renderer.tsx:173`（流式纯文本分支）~~ 移除
+  - ~~`content-renderer.tsx:213`（多段渲染外层 `showOuterCursor`）~~ 移除（含 `showOuterCursor` 判定逻辑若唯一用途是光标则一并清理）
+  - ~~`content-renderer.tsx:485`（消息尾部 `isStreaming`）~~ 移除
+  - `components/chat/ThinkingBlock.tsx:152`（思考流式文本尾部）——**保留**
+- `getLiveOutputCursorClass` 保留（ThinkingBlock 仍在用），不删 `live-output-animation.ts` 里的 cursor 类生成
+- 压缩双光标问题：两个光标都在回复渲染链上，随移除自然消失
+- **实施时注意排查光标的间接依赖**：是否有其它逻辑（滚动跟随锚点、测试断言、高度计算等）针对这个光标定位或依赖其存在，移除时一并核对，别只删 DOM 留悬空依赖
+
+---
+
+# 需求 15（临时追加）：T-5 用量统计面板体验收口
+
+> 2026-09-14 随迭代测试会话实施完成，老大追认属本迭代，补登记。
+
+## 目标
+
+把「用量统计」面板从「纵向堆砌 + 细节粗糙」收拾成「左右分栏 + 明细可控」，并清掉一个前端零消费的死端点。
+
+## 实施（已完成）
+
+1. **选项卡收敛为三档**：曲线 / 柱状 / 明细。原「统计概览」不再占一档——rollup 表改为左栏常驻
+2. **左右分栏**：左 = 汇总卡（`RollupTable`），右 = 图表 + 明细。行高由右栏决定，左栏 `min-h-0` 只在自己的高度里滚动，不反向撑高整行
+3. **图表高度改按宽度比例**（`height = width * 0.4`）：窗口越宽图越高，替掉原先写死的高度与 `h-56` 类
+4. **明细表**：
+   - 页长可调（10 ～ 200，回车 / 失焦生效，越界钳制，非法输入回落原值）
+   - 表头 `sticky top-0`、分页行 `shrink-0`，滚动容器只装数据行
+   - 时间列同一天只显示 `HH:MM`，跨天带 `YYYY-MM-DD`
+5. **模型汇总行补缓存列**：`UsageModelRow` 增加 `CacheReadTokens` / `CacheCreationTokens`，SQL 同步聚合
+6. **退役 `db/usage-by-source`**：`UsageBySourceResult` / `UsageSourceRow` / `InfrastructureJsonContext` 注册 / 回归断言一并删除（前端零消费点，是 iter-28 留下的死端点）
+7. `SettingsSection` 增加 `contentClassName` 透传（分栏布局需要）
+
+## 涉及文件
+- `src/renderer/src/components/settings/UsagePanel.tsx` / `UsagePanelParts.tsx` / `usage-detail-table.tsx` / `settings-primitives.tsx` — 改
+- `src/runtime/WishfulClaw.Infrastructure/Db/DbUsageLogQueryTools.cs` / `DbModule.cs` / `Entities/RequestUsageLogResults.cs` / `InfrastructureJsonContext.cs` — 改
+- `tests/WishfulClaw.ProviderHeaderRegressionTests/UsageLogChecks*.cs` — 改（删 by-source 断言）
+
+**Mini 验证**：tsc 零错误；`dotnet build` 0/0；`UsageLogChecks` 回归通过；面板四态（三档切换 + 两档空数据）目视无残留。
+
+---
+
+# 需求 16（临时追加）：T-6 测试工程独立 sln + 移除 playwright e2e
+
+> 2026-09-14 随迭代测试会话实施完成，老大追认属本迭代，补登记。
+
+## 目标
+
+拆开「产品编译」与「测试编译」，让 `dotnet build src/runtime/WishfulClaw.sln` 只产出产品；同时砍掉从未跑通的 e2e 链路。
+
+## 实施（已完成）
+
+1. **新建 `tests/WishfulClaw.Tests.sln`**：收纳 13 个回归测试工程，并直接引用被它们依赖的产品工程（Contracts / Core / Infrastructure / Persona / Agent 等），使 `tests/` 可独立编译
+2. **`src/runtime/WishfulClaw.sln` 移除全部测试工程**：只留产品与 `CodeGraph` / `Worker`
+3. **移除 playwright e2e**：删 `package.json` 的 `test:e2e` / `pretest:e2e` 与 `@playwright/test` 依赖；`tests/e2e/`（从未纳入版本控制）已物理移除
+
+## 门禁口径变化（重要）
+
+- 产品编译：`dotnet build src/runtime/WishfulClaw.sln`（不再包含测试）
+- 测试编译 / 运行：`dotnet build tests/WishfulClaw.Tests.sln`，回归逐工程 `dotnet run --project tests/<项目> --no-build`
+- 本迭代此前各需求记录里的「测试工程并入 .sln」指的就是并入 `src/runtime/WishfulClaw.sln`；自本需求起改指 `tests/WishfulClaw.Tests.sln`，回归范围不变
+
+## 涉及文件
+- `tests/WishfulClaw.Tests.sln` — 新建
+- `src/runtime/WishfulClaw.sln` — 改（移除 9 个测试工程）
+- `package.json` / `package-lock.json` — 改（移除 e2e 脚本与依赖）
+
+---
+
 # 执行前需要老大处理的事项
 
 这几件 agent 做不了或做不准，需在确认环节一并处理：
@@ -546,7 +718,8 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 # 验证门禁（迭代级）
 
 - TypeScript 三配置 `tsc --noEmit -p ...` 全零错误
-- `dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误
+- `dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误（**产品侧**；测试工程自 T-6 起不在本 sln 内）
+- `dotnet build tests/WishfulClaw.Tests.sln` 0 警告 0 错误（**测试侧**，T-6 起独立）
 - `npm run build:worker:prod` AOT 成功且无 IL2026/IL3050/IL3051
 - 既有回归不回退：`test:renderable-chat-items`、`test:provider-presets`、`test:ipc-msgpack-routing`、`test:settings-tabs`、`test:updater-*`，C# 侧 Goal / SessionTaskCascade / ChannelToolVisibility / ChannelShellApproval / ToolConcurrency 等
 - 逐个需求的 Mini 验证（见各需求节）

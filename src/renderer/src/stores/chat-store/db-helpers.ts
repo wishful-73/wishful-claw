@@ -1,4 +1,4 @@
-﻿import type { Session, Project, ChatMessage } from './types'
+import type { Session, Project, ChatMessage } from './types'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { isCompressionOperationKnown } from './compression-status-registry'
@@ -60,6 +60,7 @@ interface MessageRow {
   content: string
   meta: string | null
   createdAt: number
+  updatedAt: number | null
   usage: string | null
   sortOrder: number
 }
@@ -146,7 +147,8 @@ function deserializeMessage(row: MessageRow): ChatMessage {
     id: row.id,
     role: row.role as 'user' | 'assistant' | 'system',
     text: row.content,
-    createdAt: row.createdAt
+    createdAt: row.createdAt,
+    ...(row.updatedAt != null ? { updatedAt: row.updatedAt } : {})
   }
 
   if (row.meta) {

@@ -17,6 +17,12 @@ public class MessageEntity
 
     public long CreatedAt { get; set; }
 
+    /// <summary>
+    /// Last mutation time (null for legacy rows). Assistant replies surface this
+    /// as their display time; NULL falls back to CreatedAt in the renderer.
+    /// </summary>
+    public long? UpdatedAt { get; set; }
+
     public string? Usage { get; set; }
 
     /// <summary>
@@ -37,6 +43,7 @@ public sealed class MessageRow
     public string Content { get; set; } = string.Empty;
     public string? Meta { get; set; }
     public long CreatedAt { get; set; }
+    public long? UpdatedAt { get; set; }
     public string? Usage { get; set; }
     public int SortOrder { get; set; }
 
@@ -48,6 +55,7 @@ public sealed class MessageRow
     Content = e.Content,
     Meta = e.Meta,
     CreatedAt = e.CreatedAt,
+    UpdatedAt = e.UpdatedAt,
     Usage = e.Usage,
     SortOrder = e.SortOrder
     };

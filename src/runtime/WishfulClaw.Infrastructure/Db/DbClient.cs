@@ -550,6 +550,8 @@ public static partial class DbClient
             EnsureColumn("global_task_dispatches", "source_session_id", "TEXT");
             EnsureColumn("messages", "usage", "TEXT");
             EnsureColumn("messages", "sort_order", "INTEGER");
+            // Nullable on purpose: legacy rows keep NULL and the UI falls back to created_at.
+            EnsureColumn("messages", "updated_at", "INTEGER");
             NormalizeChannelSessionMetadata();
             _db.Execute("CREATE INDEX IF NOT EXISTS ix_sessions_channel_route ON sessions(channel_route_key);");
             EnsureColumn("goals", "plans_json", "TEXT");

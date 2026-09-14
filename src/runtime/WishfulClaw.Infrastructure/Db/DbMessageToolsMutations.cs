@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -88,14 +88,17 @@ public static partial class DbMessageTools
 
             if (existing is not null)
             {
+                // updated_at is stamped by the worker clock on every rewrite — this is
+                // what the renderer shows as an assistant reply's display time.
                 db.Execute(
                     "UPDATE messages SET session_id = @sid, role = @role, content = @content, " +
-                    "meta = @meta, created_at = @ca, usage = @usage, sort_order = @so WHERE id = @id",
+                    "meta = @meta, created_at = @ca, updated_at = @ua, usage = @usage, sort_order = @so WHERE id = @id",
                     new SqliteParameter("@sid", message.SessionId),
                     new SqliteParameter("@role", message.Role),
                     new SqliteParameter("@content", message.Content),
                     new SqliteParameter("@meta", (object?)message.Meta ?? DBNull.Value),
                     new SqliteParameter("@ca", message.CreatedAt),
+                    new SqliteParameter("@ua", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
                     new SqliteParameter("@usage", (object?)message.Usage ?? DBNull.Value),
                     new SqliteParameter("@so", message.SortOrder),
                     new SqliteParameter("@id", message.Id));
@@ -151,10 +154,11 @@ public static partial class DbMessageTools
             }
 
             var changed = db.Execute(
-                "UPDATE messages SET content = @content, meta = @meta, usage = @usage WHERE id = @id",
+                "UPDATE messages SET content = @content, meta = @meta, usage = @usage, updated_at = @ua WHERE id = @id",
                 new SqliteParameter("@content", current.Content),
                 new SqliteParameter("@meta", (object?)current.Meta ?? DBNull.Value),
                 new SqliteParameter("@usage", (object?)current.Usage ?? DBNull.Value),
+                new SqliteParameter("@ua", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
                 new SqliteParameter("@id", id));
             return Mutation(changed);
         }

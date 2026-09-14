@@ -34,6 +34,7 @@ import {
   clampMaxToolCallsPerTurn,
   isThemeSetting,
   normalizeShellExecutionEndpoint,
+  normalizeProviderFallback,
   sanitizeCodexConfigs,
   sanitizeRecentWorkingTargets,
   LEGACY_DEFAULT_THEME_MODE,
@@ -443,5 +444,8 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.memoryRecallVisibility === undefined) {
     state.memoryRecallVisibility = true
   }
+  // iter-29 (S-21): provider fallback. Normalized rather than replaced wholesale
+  // so a priority list the user already built survives a reload.
+  state.providerFallback = normalizeProviderFallback(state.providerFallback)
   return state
 }

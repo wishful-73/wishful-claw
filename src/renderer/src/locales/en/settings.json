@@ -498,7 +498,28 @@
     "tabs": {
       "label": "Provider settings navigation",
       "configuration": "Provider configuration",
-      "models": "Model management"
+      "models": "Model management",
+      "fallback": "Auto switch"
+    },
+    "fallback": {
+      "title": "Quota auto switch",
+      "subtitle": "When a provider hits its quota, continue on the next one in order",
+      "enableTitle": "Enable auto switch",
+      "enableDesc": "Only triggers on quota-class failures (429 / 503 / 5-hour and weekly limits)",
+      "hint": "The provider in use spends its own retries first, so its retry limit still applies — a provider set to \"unlimited\" never hands the request over. Each candidate is tried once per request; the walk never cycles back.",
+      "needsTwo": "Auto switch needs at least two candidate providers to have any effect.",
+      "orderTitle": "Switch order",
+      "orderDesc": "The runtime tries the entries after the provider currently in use; from the top when that provider is not listed.",
+      "empty": "No candidate providers yet — add one below",
+      "availableTitle": "Available providers",
+      "availableDesc": "Use the plus button to add a candidate",
+      "noAvailable": "Every provider is already a candidate",
+      "current": "Current",
+      "notReady": "Not ready",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "remove": "Remove from candidates",
+      "add": "Add as candidate"
     },
     "modelManagementDesc": "Manage global model defaults that provider copies inherit from",
     "modelManagementList": "Global Model Library",

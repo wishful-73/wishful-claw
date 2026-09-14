@@ -67,9 +67,13 @@ iter-27 的设计骨架（`docs/plans/iter-v2-27/plan.md:195-205`）是权威参
   `dotnet run --project tests/... --no-build` 通过（sanity 断言 1 条）。
   状态机测试与 AgentLoop 集成测试在 D3 / D4 落地时填实。
 
+- ✅ D2：配置面 —— `ProviderFallbackConfig` 落在 `settings-store.providerFallback`
+  （与 `requestMaxRetries` 同级，不进单个 provider 记录）；只存 provider id，
+  完整配置由 C# `ProviderStore.GetProviderJson(id)` 现取。UI = ProviderPanel
+  第三个 Tab「自动切换」。回归 `tests/provider-fallback`（18 断言）。
+
 ## 剩余
 
-- ⏳ D2：shared/types/provider.ts + ProviderPanel 配置面
 - ⏳ D3：`AgentRuntimeProviderTurnResult` 加可切换字段；`ProviderRetryPolicy`
   终端 catch 改为「返回可切换结果」（`isUnlimited` 仍 throw）
 - ⏳ D4：AgentLoop.cs:319-328 接住可切换结果 + Provider 优先级列表 + 切换时复用

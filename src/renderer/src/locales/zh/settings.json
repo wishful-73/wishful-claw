@@ -499,7 +499,28 @@
     "tabs": {
       "label": "服务商设置导航",
       "configuration": "服务商配置",
-      "models": "模型管理"
+      "models": "模型管理",
+      "fallback": "自动切换"
+    },
+    "fallback": {
+      "title": "限额自动切换",
+      "subtitle": "服务商触发限额时，按顺序自动换到下一个服务商继续执行",
+      "enableTitle": "启用自动切换",
+      "enableDesc": "仅在服务商返回限额类错误（429 / 503 / 5h 与周限额）时触发",
+      "hint": "切换前会先耗尽当前服务商自己的重试次数；重试上限设为「不限」的服务商永远不会交出请求。每个候选一次请求内只试一次，不会来回循环。",
+      "needsTwo": "至少需要两个候选服务商，自动切换才会生效。",
+      "orderTitle": "切换顺序",
+      "orderDesc": "从当前服务商在列表中的下一位开始依次尝试；当前服务商不在列表中时从头开始。",
+      "empty": "还没有候选服务商，从下方添加",
+      "availableTitle": "可选服务商",
+      "availableDesc": "点右侧加号加入候选列表",
+      "noAvailable": "所有服务商都已在候选列表中",
+      "current": "当前",
+      "notReady": "未就绪",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "remove": "移出候选",
+      "add": "加入候选"
     },
     "modelManagementDesc": "集中管理全局模型默认配置，供各服务商副本继承",
     "modelManagementList": "全局模型库",

@@ -1,4 +1,5 @@
 ﻿import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
+import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import type { CollaborationMode, PermissionMode } from './chat-store/types'
 import { type AppThemePreset, type SshTerminalThemePreset } from '../lib/theme-presets'
 import { type AppLanguage } from '@renderer/lib/i18n-language'
@@ -59,6 +60,42 @@ export const MAX_REQUEST_MAX_RETRIES = 100
 export function clampRequestMaxRetries(value: number): number {
   if (!Number.isFinite(value)) return DEFAULT_REQUEST_MAX_RETRIES
   return Math.min(MAX_REQUEST_MAX_RETRIES, Math.max(0, Math.floor(value)))
+}
+
+// Provider fallback (iter-29 / S-21): ordered failover candidates, used when the
+// provider in use hits a quota / rate limit. Off by default — opt-in per install.
+export const DEFAULT_PROVIDER_FALLBACK: ProviderFallbackConfig = {
+  enabled: false,
+  priority: []
+}
+
+/**
+ * Fresh copy of the default. Callers mutate the config they are handed, so the
+ * arrays must never be shared with the module-level constant.
+ */
+export function createDefaultProviderFallback(): ProviderFallbackConfig {
+  return { enabled: DEFAULT_PROVIDER_FALLBACK.enabled, priority: [] }
+}
+
+/**
+ * Keeps the persisted fallback config well-formed: a boolean flag and a
+ * duplicate-free list of non-empty ids. Unknown ids are *not* pruned here — a
+ * provider may be temporarily absent (e.g. store not hydrated yet); the runtime
+ * skips whatever does not resolve.
+ */
+export function normalizeProviderFallback(value: unknown): ProviderFallbackConfig {
+  if (!value || typeof value !== 'object') return createDefaultProviderFallback()
+  const raw = value as { enabled?: unknown; priority?: unknown }
+  const priority = Array.isArray(raw.priority)
+    ? Array.from(
+        new Set(
+          raw.priority.filter(
+            (id): id is string => typeof id === 'string' && id.trim().length > 0
+          )
+        )
+      )
+    : []
+  return { enabled: raw.enabled === true, priority }
 }
 
 export const DEFAULT_MAX_CONCURRENT_SUB_AGENTS = 2

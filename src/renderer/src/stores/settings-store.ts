@@ -25,7 +25,8 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
+import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
 import type { UpdateBannerPosition } from '../../../shared/updater/types'
@@ -49,6 +50,7 @@ export type {
   ShellExecutionEndpoint,
   ThemeMode,
 } from './settings-store-types'
+export type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { normalizeWorkingFolderPath } from './settings-store-types'
 import { migrateSettings } from './settings-store-migrate'
 
@@ -197,6 +199,10 @@ interface SettingsStore {
   // Provider max retry attempts on 429/5xx (0 = unlimited, default 10)
   requestMaxRetries: number
 
+  // Provider fallback (iter-29 / S-21): ordered failover candidates used when the
+  // provider in use hits a quota / rate limit. Off unless the user opts in.
+  providerFallback: ProviderFallbackConfig
+
   // CodeGraph Settings (opt-in standalone sidecar; default off)
   codegraphEnabled: boolean
   // Register the full 8-tool CodeGraph surface for agents (default: explore only,
@@ -334,6 +340,9 @@ export const useSettingsStore = create<SettingsStore>()(
       // Provider max retry attempts on 429/5xx (0 = unlimited, default 10)
       requestMaxRetries: 10,
 
+      // Provider fallback (iter-29 / S-21)
+      providerFallback: createDefaultProviderFallback(),
+
       // CodeGraph Settings (opt-in standalone sidecar; default off)
       codegraphEnabled: false,
       codegraphFullToolSurface: false,
@@ -394,7 +403,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 38,
+      version: 39,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -482,6 +491,7 @@ export const useSettingsStore = create<SettingsStore>()(
           state.apiRequestTimeoutSeconds
         ),
         requestMaxRetries: clampRequestMaxRetries(state.requestMaxRetries),
+        providerFallback: normalizeProviderFallback(state.providerFallback),
         // CodeGraph Settings
         codegraphEnabled: state.codegraphEnabled,
         codegraphFullToolSurface: state.codegraphFullToolSurface,

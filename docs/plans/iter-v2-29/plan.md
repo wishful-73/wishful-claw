@@ -464,7 +464,13 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 ## 步骤
 
 - [✓] S-21.D1：调用链梳理 —— 写在 `docs/plans/iter-v2-29/S-21-call-chain-notes.md`。关键事实：`ProviderRetryPolicy.ExecuteAsync` **全仓唯一调用点在 `AgentLoop.cs:324`**（grep 确认），fallback 接入只在那里；三段 catch（超时 / 可重试 HTTP / 终端 throw）的第三段是 fallback 切入点；`AgentRuntimeProviderTurnResult` 当前没有「可切换」字段 → 需要扩；`requestMaxRetries=0`（`isUnlimited`）必须保持不切换
-- [ ] S-21.D2：配置面 —— `src/shared/types/provider.ts` 增加 fallback 开关与优先级列表；设置页 `ProviderPanel.tsx` 提供可排序配置。**保留现有 `requestMaxRetries` 语义**
+- [✓] S-21.D2：配置面 —— `src/shared/types/provider.ts` 新增 `ProviderFallbackConfig`（注释即运行时契约：顺序语义 / 每个候选一次不循环 / 自身重试耗尽才交棒 / `requestMaxRetries=0` 永不交棒）；设置页 `ProviderPanel.tsx` 新增第三个 Tab「自动切换」承载可排序配置。**`requestMaxRetries` 的语义与取值完全未动**
+  - **与立项稿的差异（探索后修正）**：`requestMaxRetries` 实测**不在** `provider.ts` —— 它是 `settings-store` 的全局项，经 `ProviderConfig`（`lib/api/types.ts:460`）随每次请求下发。fallback 同属跨服务商的全局行为，故配置落在 `settings-store.providerFallback`（`enabled` + 有序 `priority: string[]`），与重试上限并列，**不塞进单个 provider 记录**
+  - **只存 id，不镜像服务商配置**：C# 侧 `ProviderStore.GetProviderJson(id)`（`Infrastructure/Storage/ProviderStore.cs:50`）可按 id 取回完整配置，D4 切换时现取即可，避免 apiKey / baseUrl 在配置里存第二份
+  - 持久化四处齐改：字段 + 默认值 + `partialize` + `version` 38→39；`settings-store-migrate.ts` 末段做归一化（**保留用户已建顺序，不整体重置**）
+  - `normalizeProviderFallback` 去重、剔非字符串与空白 id、`enabled` 只认布尔；**默认常量改为工厂 `createDefaultProviderFallback()`** —— 浅拷贝会让 `DEFAULT_PROVIDER_FALLBACK.priority` 被全会话共享，这是新增回归测试实跑抓出来的真问题
+  - 新增 `tests/provider-fallback`（npm `test:provider-fallback`，18 断言）
+  - 「就绪」= 已启用且（无需 Key 或已填 Key）；未就绪也允许加入候选，由运行时跳过，UI 上标「未就绪」
 - [ ] S-21.D3：状态机 —— 让有限重试耗尽后返回「可切换」结果而非直接 throw；`requestMaxRetries=0`（无限）**保持不切换**；同一请求按序逐个尝试**不循环**；取消立即终止；新增结构化 fallback/重试事件
 - [ ] S-21.D4：接入 `AgentLoop` —— 切换时完整复用 `conversation` / `toolDefs` / `state`。⚠️ 切出 `openai-responses` 会丢 `OpenAIResponsesState` 的 response id（未实测，须验）
 - [ ] S-21.D5：观测与人工验证 —— 配额信息只作可选观测增强；**用两个可控测试 provider / Mock endpoint 验证，禁止依赖真实 API 触发限额**；日志记原 provider、目标 provider、重试次数、切换原因
@@ -476,8 +482,11 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 ## 涉及文件
 - `src/runtime/WishfulClaw.Agent/AgentLoop.cs` — 改
 - `src/runtime/WishfulClaw.Agent/ProviderRetryPolicy.cs` — 改
-- `src/shared/types/provider.ts` — 改
-- `src/renderer/src/components/settings/ProviderPanel.tsx` — 改
+- `src/shared/types/provider.ts` — 改（`ProviderFallbackConfig`）
+- `src/renderer/src/stores/settings-store.ts` / `settings-store-types.ts` / `settings-store-migrate.ts` — 改（持久化四处 + 归一化）
+- `src/renderer/src/components/settings/provider/ProviderFallbackPanel.tsx` — 新建
+- `src/renderer/src/components/settings/ProviderPanel.tsx` — 改（第三个 Tab）
+- `tests/provider-fallback/` — 新建（TS，npm `test:provider-fallback`）
 - `tests/WishfulClaw.ProviderFallbackRegressionTests/` — 新建（**并入 .sln**）
 - `src/renderer/src/locales/{zh,en}/*.json` — 改
 

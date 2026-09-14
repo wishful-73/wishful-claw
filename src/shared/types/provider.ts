@@ -359,6 +359,28 @@ export interface AIProvider {
   cacheTtl?: '5m' | '1h'
 }
 
+// ─── Provider Fallback (iter-29 / S-21) ───
+
+/**
+ * Automatic failover when the provider currently in use hits a quota or rate limit.
+ *
+ * Runtime contract (`ProviderRetryPolicy` + `AgentLoop`):
+ * - `priority` is an ordered list of provider ids; index 0 is the most preferred.
+ * - The runtime walks the entries that come **after** the provider currently in
+ *   use. If that provider is not part of the list, the list is walked from the top.
+ * - Every candidate is tried at most once per request — the walk never cycles
+ *   back to a provider it already tried.
+ * - A provider only hands over after **its own** retries are exhausted, so the
+ *   existing `requestMaxRetries` semantics are untouched: a provider configured
+ *   with unlimited retries (0) never hands over at all.
+ * - Ids that no longer resolve to a provider are ignored at runtime.
+ */
+export interface ProviderFallbackConfig {
+  enabled: boolean
+  /** Ordered provider ids, most preferred first. */
+  priority: string[]
+}
+
 // ─── Builtin Provider Preset ───
 
 export interface BuiltinProviderPreset {

@@ -1296,7 +1296,7 @@ if (usageBaseline) {
 
 # 需求 25（临时追加）：T-15 思考流式「渲染不丝滑」（T-8 的残留）
 
-> 2026-09-14 22:14 老大真机复验 T-8 后报告：「**确实不上下跳了，抖动还是有，准确来说就是渲染不丝滑**」。**已登记，待老大拍板是否本轮修**。
+> 2026-09-14 22:14 老大真机复验 T-8 后报告：「**确实不上下跳了，抖动还是有，准确来说就是渲染不丝滑**」。**2026-09-14 22:30 实施完成**（方案经两轮讨论收敛，见「老大约束」）。
 
 ## 现象
 
@@ -1318,15 +1318,45 @@ if (usageBaseline) {
 
 > 附带：`maxStepChars` 截断会让大池子从「按比例」突变为「恒定上限」，也是一次阶跃。
 
-## 候选方案（待拍板，倾向 A）
+## Reasonix 参考（2026-09-14 实读，`D:\claw\DeepSeek-Reasonix\desktop\frontend\src`）
 
-- **A（首选）连续化追赶**：把三档比例换成**关于 `poolSize` 连续的单调函数**（例如以 `smallPoolChars` 为起点线性 ramp 到上限比例），保证 `getCatchupStep` 在区间边界处连续（`pool = small` 时**退化为 `fixedStep`**，与相邻档无缝）。改动只动 `getCatchupStep` + `RENDER_POOL_CONFIG`，风险低。
-- **B 纯匀速 + 有限加速**：`step = rate × elapsed × (1 + pool / mediumPoolChars × α)`（α 小，如 0.15），彻底去掉分档。
-- **C 不动**：接受现状（内容成块是上游 burst 的固有属性，渲染只能有限平滑）。
+- **`components/StreamingReasoningText.tsx`** —— 流式思考就是 `<pre>{text}</pre>`，**没有渲染池、没有打字机、没有追赶步长**。文件注释写明口径：「renders as plain, append-only text: **no truncation window and no markdown re-parse**, so the visible text keeps a stable prefix and the region grows monotonically」。结束时才一次性切到 Markdown 视图。
+- **`lib/rafBatch.ts`** —— `createRafBatch(flush)`：把流式 delta 合批成**每帧一次 flush**（另有 200ms stall 兜底 timer），注释强调「Non-text events must drain() first so causal ordering is preserved」。**是「合批」不是「限速」** —— 不人为拖延文本，延迟 ≤ 1 帧。
+- **`components/Transcript.tsx`** —— 正在流式的 turn 渲染在虚拟列表的 in-flow footer **之外**，注释：「so streaming never churns Virtuoso's measurements or scroll anchoring」；滚动跟随另有 `useTranscriptScrollArbiter` / `transcriptTailSettle`。
+- **结论**：Reasonix 的丝滑来自「**合批直渲**」；我们的一顿一顿来自「**限速追赶**」—— 两条相反的路。
+
+## 老大约束（2026-09-14 22:20 定调）
+
+1. **不能滞后（硬约束）**：「思考内容特别多时，本身已经后续都执行了好几个东西了，结果前端**还在渲染之前的流式**，这种行为不可取」→ **「固定速率」被否**：速率上限就是滞后的根源，滞后时间随内容量线性增长（内容多 → 落后几十秒）。
+2. **观感要舒服**：一顿一顿来自步长跳变，不是"快慢"问题。
+3. **不照搬 Reasonix 的直渲**：「它这个感觉不舒服，最早 Reasonix 还是很好看的，现在是越做越丑了」→ **只借它的「按帧合批」机制，不借它的展示方式**。
+
+## 方案与实施（2026-09-14 已实施）
+
+```
+step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
+```
+
+- **删掉 `fixedCharsPerSecond`**：它只为「打字机手感」存在，代价是**无界滞后** —— 老大明确否掉。
+- **删掉 `maxStepChars`**：它在池子极大时把「按比例」切成「恒定上限」，又是一次阶跃。
+- `poolSize / K` 在 `poolSize` 上**连续、单调**（`ceil` 相邻增量只能是 0 或 1）→ 边界无跳变。
+- **滞后由指数收敛兑现**：每帧消耗剩余量的 `1/K`，积压按 `(1-1/K)^n` 衰减 → 10k 字符积压 **~15 帧（≈0.5s）** 收干，与内容总量是**对数**关系，不再线性增长。（即「不滞后」的实际机制是几何收敛，不是"K 帧归零"。）
+- 档位只留一个维度：`agile: K=2`（更跟手）/ `elegant: K=3`（更绵）。**K 越大越绵、尾巴越长**；`liveOutputAnimationStyle` 的外观 class 一个不动。
+- Reasonix 的「按帧合批」本来就已具备（rAF 驱动，同帧多个 delta 只 flush 一次），**未移植其直渲展示方式**（老大否掉）。
+
+## 实施（2026-09-14）
+
+- `hooks/use-typewriter.ts`：`RENDER_POOL_CONFIG` 由 6 个字段缩到 2 个（`catchupFrames` / `frameIntervalMs`）；`getCatchupStep` 由「固定速率 + 三档比例 + `maxStepChars` 截断」改为单条连续公式；两者导出供回归使用（调用方签名不变）。
+- 新增 `tests/streaming-render-pool`（esbuild + node，20045 项断言）：空池不吐 / 不超额 / **单调且相邻增量 ≤ 1（无阶跃）** / **无速率下限与步长上限** / 10k 积压 1 秒内收干 / 两档差异仍在。
+  - **实施期修正两处**（写码时才发现，均记下）：①初版加了「尾巴一次清零」（`pool ≤ K` 直接全吐），**破坏单调性**（`pool=4→4`、`pool=5→2`）—— 被新测试当场抓住，改回纯公式（`ceil(pool/K)` 对 `pool≥1` 恒 ≥1，本就能收敛到 0）；②`elegant` 由 K=4 调成 K=3，否则 10k 积压要 1.15s 才收干。
+- 门禁：TS 三配置 0 错；12 个前端回归脚本全绿。
 
 ## 验收
-- 真机：长时间思考（上游高速输出）全程渲染**匀速、无节奏突变**；上游停止时池子能收干（不遗留半截文本）。
-- 回归：`agile` / `elegant` 两档观感差异保留；非流式路径（`isStreaming=false` 直接返回全文）不变。
+- 真机（老大）：
+  - **长时间大段思考**：执行早已推进、前端**不落后**（关键指标）；
+  - 全程渲染**平滑、无节奏突变**；
+  - 上游停止后可见文本**立即追平**，无半截滞后。
+- 回归：非流式路径（`isStreaming=false` 直接返回全文）不变；`agile` / `elegant` 两档仍有观感差异。
 
 ## 涉及文件（初判）
 - `src/renderer/src/hooks/use-typewriter.ts` — `getCatchupStep` / `RENDER_POOL_CONFIG`

@@ -1107,6 +1107,43 @@ agent run failed ... InvalidOperationException: openai-chat returned no usable a
 
 ---
 
+# 需求 23（临时追加）：T-13 聊天窗渲染也需折叠长粘贴（transcript chip 化）
+
+> 2026-09-14 老大提出（承接 iter-28 R-11 / iter-29 S-16 的**遗留部分**）。**待实施**。
+
+## 背景 / 现状
+
+- **S-16 已做**（输入框侧）：长粘贴折叠成 chip —— `lib/select-file-tags.ts` 的 `<pasted-block>` 标签 + `components/chat/file-aware-editor-utils/chips.ts` 的 chip DOM；`InputArea/use-composer-editor.ts` 里 **`serializedText` 保留标签**（草稿往返 chip 不丢）、**`promptText` 展开成原文**（发给模型）
+- **缺口（老大原话）**：「输入框是处理了，但是**聊天窗渲染的时候也一样需要处理，现在是原文渲染到聊天窗**。这个处理机制不够」
+
+## 问题
+
+消息发出后，**聊天窗（transcript）按原文渲染** → 长粘贴把消息气泡撑爆，与 S-16 之前输入框遇到的问题一模一样。
+
+## 方案（老大 2026-09-14 定稿：**A 靠标签**）
+
+老大原话：「**靠标签，用户自己输入的那么多，肯定还是得渲染的**」→ 只有**粘贴段**折叠，**手输长文照常渲染**。
+
+## 步骤
+
+- [ ] **T-13.1**：`lib/select-file-tags.ts` 补一个「展开」工具（`<pasted-block>` 标签 → 原文），供"发给模型"那条路径使用（现有 `parseSelectFileText` / `PASTED_BLOCK_TAG_RE` 可复用）
+- [ ] **T-13.2**：`sendMessage` 让 `userMessage.text` **保留标签**（走 `serializedText` 口径），使渲染侧能识别粘贴段
+- [ ] **T-13.3（关键·别漏）**：**发给模型前展开** —— 在 payload 构造处把 `<pasted-block>` 还原成原文（与 S-16 的 `promptText` 口径一致），确保模型仍收到**全文**，不能因为折叠反而丢内容
+- [ ] **T-13.4**：聊天窗渲染 —— 解析消息 `text` 里的 `<pasted-block>`，渲染成 chip（复用 `file-aware-editor-utils/chips.ts` 的样式与 `chat.json` 的 `input.pastedBlock.*` 文案），支持展开 / 收起
+- [ ] **T-13.5（回归）**：手输长文照常渲染；粘贴段折叠且可展开；草稿与历史消息 round-trip 不丢标签
+
+## Mini 验证
+- TS 三配置零错误
+- 真机：粘贴一大段 → 发送 → **聊天窗显示 chip（不是原文）** → 点开是全文；手打长文则原样显示
+
+## 涉及（初判）
+- `src/renderer/src/lib/select-file-tags.ts` — 复用 / 补展开工具
+- `src/renderer/src/components/chat/MessageItem.tsx` / `content-renderer.tsx` / `UserMessage` — 渲染 chip
+- `src/renderer/src/components/chat/InputArea/use-composer-editor.ts` — `serializedText` vs `promptText` 口径
+- `src/renderer/src/stores/chat-store/index.ts` — `sendMessage` 落库文本口径
+
+---
+
 # 执行前需要老大处理的事项
 
 这几件 agent 做不了或做不准，需在确认环节一并处理：

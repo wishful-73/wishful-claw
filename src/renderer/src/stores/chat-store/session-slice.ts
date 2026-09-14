@@ -714,13 +714,16 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         turns: _limit ?? 5
       })
 
-      // Whole-session usage baseline (status bar). Taken only while this session
-      // has not accumulated live totals yet — re-basing after a run would count
-      // the already-persisted messages twice (baseline + live accumulator).
-      const usageBaseline =
-        get().sessions.find((s) => s.id === sessionId)?.sessionUsageTotals == null
-          ? await dbGetSessionUsageStats(sessionId)
-          : null
+      // Whole-session usage baseline (status bar), rebased on every load.
+      //
+      // T-14: the DB rollup already covers every persisted message, so the live
+      // accumulator (fed by `message_end`) is cleared in the same pass — leaving it
+      // in place double-counts the messages the baseline just counted. The previous
+      // "only take a baseline when no live total exists yet" rule silently dropped
+      // the whole history for any session that had already run a turn before its
+      // messages were first loaded, which is why output/total did not add up while
+      // the backend-owned cache counters still looked right.
+      const usageBaseline = await dbGetSessionUsageStats(sessionId)
 
       set((state) => {
         const target = state.sessions.find((s) => s.id === sessionId)
@@ -741,8 +744,14 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
             cacheReadTokens: usageBaseline.totalCacheRead,
             cacheCreationTokens: usageBaseline.totalCacheCreation,
             reasoningTokens: usageBaseline.totalReasoning,
-            totalDurationMs: usageBaseline.totalDurationMs
+            totalDurationMs: usageBaseline.totalDurationMs,
+            // The rollup's totalInput is already billable (cache excluded), so state
+            // it explicitly — otherwise addUsageToTotals would subtract the cache
+            // tokens a second time.
+            billableInputTokens: usageBaseline.totalInput
           }
+          // The baseline supersedes everything accumulated so far (see above).
+          target.sessionUsageTotals = undefined
         }
       })
       // No backend rebuild here: the Worker conversation is restored lazily

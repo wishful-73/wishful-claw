@@ -1188,7 +1188,7 @@ agent run failed ... InvalidOperationException: openai-chat returned no usable a
 
 # 需求 24（临时追加）：T-14 底部统计条口径不统一，与消息窗口裁剪叠加后对不上账
 
-> 2026-09-14 老大提出。**待实施**。
+> 2026-09-14 老大提出。**2026-09-14 实施完成**（根因与登记稿的猜测不同，见下方「实施记录」）。
 
 ## 现象
 
@@ -1233,16 +1233,60 @@ else if (session?.usageBaseline || session?.sessionUsageTotals) {
 
 **全部从会话（DB）加载** —— 每个指标都应能由 DB 聚合独立得出，不依赖"内存里当前加载了多少消息"。
 
-## 步骤（待细化）
+## 步骤（已细化并完成）
 
-- [ ] **T-14.1**：盘清底部统计**每个指标**的数据来源（基线 / 增量 / 遍历 / 事件），标出哪些依赖"已加载消息"
-- [ ] **T-14.2**：把依赖"已加载消息"的指标改为 DB 口径（必要时补 DB 聚合字段，如**按 model 分组的成本**）
-- [ ] **T-14.3（验证）**：加载历史会话（只 5 轮）时的统计 == 完整加载时的统计；T-3 裁剪后统计不变
+- [✓] **T-14.1**：盘清每个指标的数据源 —— 见「实施记录」的对照表。结论：**主状态条三路 selector 本身没问题**，问题在**基线取值时机**
+- [✓] **T-14.2**：修根因 —— `loadRecentSessionMessages` **每次加载会话都重取 DB 全量基线**，并在同一趟把 `sessionUsageTotals`（live 增量）清零，避免与基线重叠计数
+- [✓] **T-14.2b**：基线补 `billableInputTokens`（DB 的 `totalInput` 本就是 billable），否则 `addUsageToTotals` 会把缓存 token 再减一次，「总」的 hover 价格偏小
+- [ ] **T-14.3（验证，老大做）**：加载只 5 轮的历史会话时统计 == 完整加载时；跑一轮后切走再切回，数字不回退、不重复
 
-## 涉及（初判）
-- `src/renderer/src/components/chat/InputArea/runtime-status.tsx` — 统计条 selector
-- `src/renderer/src/stores/chat-store/db-helpers.ts` — `dbGetSessionUsageStats`（DB 聚合，可能需扩字段）
-- `src/runtime/WishfulClaw.Infrastructure/Db/DbUsageLogQueryTools.cs` — 服务端聚合（如需按 model 分组）
+## 实施记录（2026-09-14）
+
+### 每个指标的数据源（T-14.1 盘点）
+
+| 指标（位置条） | 取值 | 依赖「已加载消息」？ |
+|---|---|---|
+| 缓存 / 总 / Output / Cost | `session.usageBaseline`（DB 聚合）+ `session.sessionUsageTotals`（`message_end` 增量） | ❌ |
+| 缓存命中率 | 同上（`getCacheReadRatio(input, cacheRead)`），另存 `sessionCacheHit/Miss`（后端会话级直给） | ❌ |
+| TPS / TTFT | `latestRequestTiming`（**不落库** → 仅本次运行有效） | ❌（但重启即丢，见遗留） |
+| 浮窗副本（`messagesOverride`） | **逐条遍历传入窗口** | ✅（浮窗语义如此，保留） |
+| 兜底分支（`messages`） | 逐条遍历已加载消息 | ✅（仅无基线时触发，改造后基本不触发） |
+
+### 真因（与登记稿猜测不同）
+
+登记稿猜的是「output/total 走了遍历路径」。实际是 **`session-slice.ts` 的基线取值守卫**：
+
+```ts
+const usageBaseline =
+  get().sessions.find((s) => s.id === sessionId)?.sessionUsageTotals == null
+    ? await dbGetSessionUsageStats(sessionId)
+    : null
+```
+
+「只要本次运行已经累过增量，就不再取基线」——**只要用户先进会话跑过一轮，之后再进/切回任何历史会话都拿不到基线**，状态条只剩本次运行的增量 → Output / 总严重偏小。而缓存命中率另有一路后端直给的 `sessionCacheHit/Miss`，所以「缓存看着是对的」。
+
+### 修法
+
+```ts
+// 每次加载会话都取 DB 全量基线
+const usageBaseline = await dbGetSessionUsageStats(sessionId)
+...
+if (usageBaseline) {
+  target.usageBaseline = { …, billableInputTokens: usageBaseline.totalInput }
+  target.sessionUsageTotals = undefined   // 基线已覆盖已落库消息，增量清零避免重复计数
+}
+```
+
+- 口径：**总 = DB 全量基线 + 基线之后本次运行新产生的增量**，与「已加载多少消息」解耦（T-3 裁剪消息窗口不再影响）。
+- 与老大的口径一致：「全部从会话（DB）加载」。
+
+### 已知边界（记录，不在本次修）
+
+- 若在**一轮 run 进行中**触发会话重新加载（`loadRecentSessionMessages`），已累加的增量会被清零，而基线不含该轮尚未落库的部分 → 该轮可能少算。窗口很小（落库为 fire-and-forget 但很快），且旧实现同类竞态更严重。
+- **成本**仍按「当前会话模型」估算（DB 基线只有合计，不带 per-model 明细）；要精确到每模型分价需扩 DB 聚合字段 —— 本次不做。
+
+### 涉及文件（实际）
+- `src/renderer/src/stores/chat-store/session-slice.ts` — 基线取值时机 + 增量清零 + `billableInputTokens`
 
 ---
 

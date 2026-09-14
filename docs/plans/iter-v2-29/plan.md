@@ -149,11 +149,11 @@ Agent 经 `use_capability` 代理调用工具时，输入框左上角状态条�
 
 ## 步骤
 
-- [ ] S-17.1：**先定位真因** —— 验证推断：`lib/agent/stream-event-adapter.ts:45-57` 的 `tool_use_streaming_start` 分支构造 `rewriteProxyEvent({... input:{}})` 时 input 为空 → `rewriteProxyEvent`（调用于 `stream-event-adapter.ts:15-17`）→ `resolveProxyDisplay`（**本体在 `lib/agent/use-capability-proxy.ts:22`，`if (!capabilityId) return null` 在 `:32`**）不重写。若成立，优先修源头；若 `pendingToolCalls` 实际由 `tool_call_start`（`:94-98`）建条目，则只需改展示层
-- [ ] S-17.2：`runtime-status.tsx:191` `activeToolName` 计算处套一层代理解析；`:192` `pendingApprovalToolName` 同口径
-- [ ] S-17.3：浮窗副本 `composer-status-indicator.tsx:77、151-156` 与 `:78、117-121` 同步
-- [ ] S-17.4：**skill 类显示名** —— `use-capability-proxy.ts:51-56` 目前把 `skill:name` 解析成固定 `'Skill'`，需补出 `skill:xxx` 形态
-- [ ] S-17.5：i18n（`src/renderer/src/locales/zh/chat.json:134` runningTool、`:135` awaitingApproval，en 同步）
+- [✓] S-17.1：**先定位真因** —— 验证推断：`lib/agent/stream-event-adapter.ts:45-57` 的 `tool_use_streaming_start` 分支构造 `rewriteProxyEvent({... input:{}})` 时 input 为空 → `rewriteProxyEvent`（调用于 `stream-event-adapter.ts:15-17`）→ `resolveProxyDisplay`（**本体在 `lib/agent/use-capability-proxy.ts:22`，`if (!capabilityId) return null` 在 `:32`**）不重写。若成立，优先修源头；若 `pendingToolCalls` 实际由 `tool_call_start`（`:94-98`）建条目，则只需改展示层
+- [✓] S-17.2：`runtime-status.tsx:191` `activeToolName` 计算处套一层代理解析；`:192` `pendingApprovalToolName` 同口径
+- [✓] S-17.3：浮窗副本 `composer-status-indicator.tsx:77、151-156` 与 `:78、117-121` 同步
+- [✓] S-17.4：**skill 类显示名** —— `use-capability-proxy.ts:51-56` 目前把 `skill:name` 解析成固定 `'Skill'`，需补出 `skill:xxx` 形态
+- [✓] S-17.5：i18n（`src/renderer/src/locales/zh/chat.json:134` runningTool、`:135` awaitingApproval，en 同步）
 
 **Mini 验证**：tsc 三配置零错误；真实触发一次 `use_capability` 代理调用，状态条显示真实工具名而非 `use_capability`；审批提示同口径；skill 与 mcp-tool 两种形态都验。
 

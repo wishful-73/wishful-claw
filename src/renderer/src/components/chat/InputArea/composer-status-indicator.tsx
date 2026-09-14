@@ -13,6 +13,7 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import type { RuntimeStatusView, ComposerRuntimeStatusProps } from './types'
 import { collectRuntimeOutputSnapshot } from './utils'
+import { resolveProxyStatusName } from '@renderer/lib/agent/use-capability-proxy'
 
 export function ComposerStatusIndicator({
   sessionId,
@@ -74,8 +75,11 @@ export function ComposerStatusIndicator({
         sessionStatus: sessionId ? (s.runningSessions[sessionId] ?? null) : null,
         retryAttempt: sessionId ? (s.sessionRequestRetryState[sessionId]?.attempt ?? null) : null,
         retryMaxAttempts: sessionId ? (s.sessionRequestRetryState[sessionId]?.maxAttempts ?? null) : null,
-        activeToolName: activeTool?.name ?? null,
-        pendingApprovalToolName: pendingApprovalTool?.name ?? null,
+        activeToolName: resolveProxyStatusName(activeTool?.name, activeTool?.input),
+        pendingApprovalToolName: resolveProxyStatusName(
+          pendingApprovalTool?.name,
+          pendingApprovalTool?.input
+        ),
         activeSubAgentCount
       }
     })

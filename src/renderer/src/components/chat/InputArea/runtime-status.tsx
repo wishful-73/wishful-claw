@@ -12,6 +12,7 @@ import { cn } from '@renderer/lib/utils'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { resolveProxyStatusName } from '@renderer/lib/agent/use-capability-proxy'
 import {
   calculateCost, calculateCostBreakdown, estimateTokens,
   formatCacheHitRate, formatCost,
@@ -188,8 +189,15 @@ export function ComposerRuntimeStatus({
         retryMaxAttempts: targetSessionId
           ? (s.sessionRequestRetryState[targetSessionId]?.maxAttempts ?? null)
           : null,
-        activeToolName: activeTool?.name ?? null,
-        pendingApprovalToolName: pendingApprovalTool?.name ?? null,
+        // A use_capability proxy is shown as the tool it stands in for. Resolved
+        // here rather than trusting the stored name: tool_use_streaming_start
+        // creates the entry before args arrive, so its name is still the raw
+        // proxy name at that point.
+        activeToolName: resolveProxyStatusName(activeTool?.name, activeTool?.input),
+        pendingApprovalToolName: resolveProxyStatusName(
+          pendingApprovalTool?.name,
+          pendingApprovalTool?.input
+        ),
         activeSubAgentCount
       }
     })

@@ -1144,6 +1144,66 @@ agent run failed ... InvalidOperationException: openai-chat returned no usable a
 
 ---
 
+# 需求 24（临时追加）：T-14 底部统计条口径不统一，与消息窗口裁剪叠加后对不上账
+
+> 2026-09-14 老大提出。**待实施**。
+
+## 现象
+
+**老大原话（2026-09-14 21:16）**：
+
+> 「聊天窗底部统计**应该全部都从会话中加载**，但是感觉**还是有部分走的是实时统计**，但是**消息本身是会消失一部分的**，或者**加载历史会话直接只有最近 5 轮**，导致**数据对不上账**」
+
+**老大补充（21:19，精确到字段）**：
+
+> 「会话主统计应该全部是从 session 里面取，现在是**缓存是从 session 里面，但是输出和总的好像不是**」
+
+→ **`cacheRead` / `cacheCreation` 口径对**，**`output` 与总计不对**。定位范围缩到"output/total 这两个字段的取值链"。
+
+## 落点（已定位）
+
+`components/chat/InputArea/runtime-status.tsx:93-114` 的 selector 三路：
+
+```ts
+if (messagesOverride) { ...逐条遍历... }                       // ① 浮窗：自己遍历
+else if (session?.usageBaseline || session?.sessionUsageTotals) {
+  if (session.usageBaseline)      addUsageToTotals(totals, session.usageBaseline, model ?? null)   // ②
+  if (session.sessionUsageTotals) addUsageToTotals(totals, session.sessionUsageTotals, model ?? null)
+} else if (messages) { ...逐条遍历... }                        // ③ 兜底
+```
+
+**待查（按老大线索的顺序）**：
+
+1. **`usageBaseline` 有没有 output** —— `session-slice.ts:737-745` 组装时**写了 `outputTokens: usageBaseline.totalOutput`**，所以嫌疑转向**上游 DB 聚合**：`dbGetSessionUsageStats` / worker 端 `db/messages-usage-stats` 的 `SessionUsageStatsRow` 是否真的聚合了 output
+2. **`addUsageToTotals(totals, usage, modelCfg)`** 对 `baseline` 与 `live totals` 的处理是否一致（会不会某路漏加 output）
+3. **基线的取值时机** —— `session-slice.ts:720-723`：`sessionUsageTotals != null` 时**不重取基线**（防重复计算）。若某条路径在"已有增量"时才第一次进会话，就会**只有增量、没有历史基线** → output/total 偏小
+
+## 现状（T-2 的遗留）
+
+- T-2 已把**主口径**改为「会话级基线（DB 聚合，进会话取一次）+ 增量（`message_end` 累加）」→ 主链路不依赖内存消息窗口
+- **但仍存在实时 / 遍历路径**：
+  1. **浮窗副本**（`RuntimeTokenStatistics` / `composer-status-indicator`）走 `messagesOverride` **逐条遍历**
+  2. **成本**需逐条消息的 model 才能按模型价估算（`debugInfo` 不落库 → 只能 fallback）
+  3. `requestTimings`（TPS/TTFT）不落库 → 单请求指标丢失
+- **与 T-3 的叠加**：T-3 会把内存消息窗口裁到最近 N 轮 → **凡"遍历已加载消息"的统计都会少算**
+
+## 老大口径
+
+**全部从会话（DB）加载** —— 每个指标都应能由 DB 聚合独立得出，不依赖"内存里当前加载了多少消息"。
+
+## 步骤（待细化）
+
+- [ ] **T-14.1**：盘清底部统计**每个指标**的数据来源（基线 / 增量 / 遍历 / 事件），标出哪些依赖"已加载消息"
+- [ ] **T-14.2**：把依赖"已加载消息"的指标改为 DB 口径（必要时补 DB 聚合字段，如**按 model 分组的成本**）
+- [ ] **T-14.3（验证）**：加载历史会话（只 5 轮）时的统计 == 完整加载时的统计；T-3 裁剪后统计不变
+
+## 涉及（初判）
+- `src/renderer/src/components/chat/InputArea/runtime-status.tsx` — 统计条 selector
+- `src/renderer/src/stores/chat-store/db-helpers.ts` — `dbGetSessionUsageStats`（DB 聚合，可能需扩字段）
+- `src/runtime/WishfulClaw.Infrastructure/Db/DbUsageLogQueryTools.cs` — 服务端聚合（如需按 model 分组）
+
+---
+
 # 执行前需要老大处理的事项
 
 这几件 agent 做不了或做不准，需在确认环节一并处理：

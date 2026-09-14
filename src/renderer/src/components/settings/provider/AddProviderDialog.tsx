@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@renderer/components/ui/select'
+import { RequestHeadersEditor } from './RequestHeadersEditor'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import type { ProviderType } from '../../../../../shared/types/provider'
 import { PROVIDER_TYPE_OPTIONS } from './constants'
@@ -32,6 +33,7 @@ export function AddProviderDialog({
   const { t: ts } = useTranslation('settings')
   const { t: tc } = useTranslation('common')
   const addCustomProvider = useProviderStore((s) => s.addCustomProvider)
+  const updateProvider = useProviderStore((s) => s.updateProvider)
   const fetchModels = useProviderStore((s) => s.fetchModels)
   const setModels = useProviderStore((s) => s.setModels)
   const [name, setName] = useState('')
@@ -40,12 +42,17 @@ export function AddProviderDialog({
   const [homepage, setHomepage] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [showKey, setShowKey] = useState(false)
+  const [headers, setHeaders] = useState<Record<string, string>>({})
 
   const setActiveProvider = useProviderStore((s) => s.setActiveProvider)
 
   const handleAdd = (): void => {
     if (!name.trim() || !baseUrl.trim()) return
     const provider = addCustomProvider(name.trim(), type, baseUrl.trim(), apiKey.trim(), homepage.trim())
+    // addCustomProvider has no headers parameter, so apply them right after creation.
+    if (Object.keys(headers).length > 0) {
+      updateProvider(provider.id, { requestOverrides: { headers } })
+    }
     setActiveProvider(provider.id)
     toast.success(ts('provider.add.added', { name: name.trim() }))
     // Fire-and-forget model fetch right after adding: failures only toast and
@@ -156,6 +163,13 @@ export function AddProviderDialog({
               </button>
             </div>
             <p className="text-xs text-muted-foreground">{ts('provider.add.apiKeyHint')}</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              {ts('provider.config.requestHeaders.title', { defaultValue: '请求头' })}
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">{ts('provider.add.optional')}</span>
+            </label>
+            <RequestHeadersEditor headers={headers} onChange={setHeaders} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>{tc('actions.cancel')}</Button>

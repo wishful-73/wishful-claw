@@ -252,6 +252,17 @@
       "testFailed": "连接测试失败",
       "protocolType": "协议类型",
       "protocolTypeHint": "切换协议后请确认 Base URL 与新协议匹配",
+      "requestHeaders": {
+        "title": "请求头",
+        "add": "添加请求头",
+        "namePlaceholder": "请求头名称",
+        "valuePlaceholder": "值",
+        "empty": "尚未添加额外请求头",
+        "hint": "值支持 {{sessionId}} 与 {{model}} 占位符，发送时自动替换为真实值",
+        "invalidName": "请求头名称只能包含字母、数字与 ! # $ % & ' * + . ^ _ ` | ~ -",
+        "reserved": "{{name}} 由客户端托管，不能覆盖",
+        "duplicate": "请求头名称重复"
+      },
       "cacheTtl": "缓存 TTL",
       "cacheTtlHint": "Anthropic 缓存生存时间，模型级配置可覆盖",
       "models": {

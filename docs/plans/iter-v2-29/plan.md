@@ -100,12 +100,12 @@
 
 ## 步骤
 
-- [ ] S-20.1：在 `components/settings/provider/ProviderConfigPanel.tsx` 增加「请求头」编辑区（key-value 列表，增删改），落到 `provider.requestOverrides.headers`；输入框旁给占位提示 `{{sessionId}}` / `{{model}}`
-- [ ] S-20.2：`components/settings/provider/AddProviderDialog.tsx:39-48` 新建流程同步支持（**做，不做则新建服务商时配不了头，闭环不完整**）
-- [ ] S-20.3：**动态占位 —— 不用改代码，只做验证**。确认 `{{sessionId}}` 经 `ResolveHeaderTemplate` 生效（sessionId 已在传递链上 `sidecar-mapping.ts:155`）。仅当实测发现链断了才回头补
-- [ ] S-20.4：校验与防护 —— 头名合法性校验；**禁止覆盖保留头**（`Authorization` / `Content-Type` / `Content-Length` 等），覆盖时给出明确报错而不是静默。⚠️ 既有 `IsSensitiveHeader`（`:135-141`）当前用于 **debug 脱敏**而非覆盖拦截，语义不同，**不要直接复用**，另写保留头清单
-- [ ] S-20.5：OpenCode Go 内置特判（`OpenAIChatHeaders.cs:27-32、45-50`）**本次不动**，保持内置 preset 行为不变；只验证新机制能覆盖同一场景
-- [ ] S-20.6：i18n
+- [✓] S-20.1：在 `components/settings/provider/ProviderConfigPanel.tsx` 增加「请求头」编辑区（key-value 列表，增删改），落到 `provider.requestOverrides.headers`；输入框旁给占位提示 `{{sessionId}}` / `{{model}}`
+- [✓] S-20.2：`components/settings/provider/AddProviderDialog.tsx:39-48` 新建流程同步支持（**做，不做则新建服务商时配不了头，闭环不完整**）
+- [✓] S-20.3：**动态占位 —— 不用改代码，只做验证**。确认 `{{sessionId}}` 经 `ResolveHeaderTemplate` 生效（sessionId 已在传递链上 `sidecar-mapping.ts:155`）。仅当实测发现链断了才回头补
+- [✓] S-20.4：校验与防护 —— 头名合法性校验；**禁止覆盖保留头**（`Authorization` / `Content-Type` / `Content-Length` 等），覆盖时给出明确报错而不是静默。⚠️ 既有 `IsSensitiveHeader`（`:135-141`）当前用于 **debug 脱敏**而非覆盖拦截，语义不同，**不要直接复用**，另写保留头清单
+- [✓] S-20.5：OpenCode Go 内置特判（`OpenAIChatHeaders.cs:27-32、45-50`）**本次不动**，保持内置 preset 行为不变；只验证新机制能覆盖同一场景
+- [✓] S-20.6：i18n
 
 **Mini 验证**：tsc 三配置零错误；配一个自定义头后发请求，确认头带上；配 `x-opencode-session: {{sessionId}}`（**点名用 OpenCode Go 的真实头名跑一遍**）确认被替换成真实会话 id；尝试填 `Authorization` 被拒且有提示；`tests/WishfulClaw.ProviderHeaderRegressionTests` 既有断言不回退。
 

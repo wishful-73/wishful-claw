@@ -251,6 +251,17 @@
       "testFailed": "Connection test failed",
       "protocolType": "Protocol Type",
       "protocolTypeHint": "After switching protocols, verify the Base URL matches the new protocol",
+      "requestHeaders": {
+        "title": "Request headers",
+        "add": "Add header",
+        "namePlaceholder": "Header name",
+        "valuePlaceholder": "Value",
+        "empty": "No extra headers yet",
+        "hint": "Values support {{sessionId}} and {{model}} placeholders, resolved per request",
+        "invalidName": "Header names allow only letters, digits and ! # $ % & ' * + . ^ _ ` | ~ -",
+        "reserved": "{{name}} is managed by the client and cannot be overridden",
+        "duplicate": "Duplicate header name"
+      },
       "cacheTtl": "Cache TTL",
       "cacheTtlHint": "Anthropic cache time-to-live, model-level config can override",
       "models": {

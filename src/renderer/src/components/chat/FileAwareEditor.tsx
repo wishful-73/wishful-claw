@@ -31,6 +31,7 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       onReferencePreview,
       onReferenceLocate,
       onReferenceDelete,
+      onPastedBlockExpand,
       className
     },
     ref
@@ -58,7 +59,10 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
     )
     const [hasLiveContent, setHasLiveContent] = React.useState(false)
     const handlersRef = React.useRef<
-      Pick<FileAwareEditorProps, 'onReferencePreview' | 'onReferenceLocate' | 'onReferenceDelete'>
+      Pick<
+        FileAwareEditorProps,
+        'onReferencePreview' | 'onReferenceLocate' | 'onReferenceDelete' | 'onPastedBlockExpand'
+      >
     >({})
     const lastRenderedHighlightRef = React.useRef<string | null | undefined>(undefined)
 
@@ -66,9 +70,10 @@ export const FileAwareEditor = React.forwardRef<FileAwareEditorHandle, FileAware
       handlersRef.current = {
         onReferencePreview,
         onReferenceLocate,
-        onReferenceDelete
+        onReferenceDelete,
+        onPastedBlockExpand
       }
-    }, [onReferenceDelete, onReferenceLocate, onReferencePreview])
+    }, [onPastedBlockExpand, onReferenceDelete, onReferenceLocate, onReferencePreview])
 
     const syncLiveContent = React.useCallback(() => {
       const root = editorRef.current

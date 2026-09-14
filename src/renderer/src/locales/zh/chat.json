@@ -204,7 +204,14 @@
     "loadingSuggestions": "正在加载建议...",
     "noSuggestions": "没有匹配的建议",
     "doubleClickCompressContext": "双击压缩上下文",
-    "queueRemoveImages": "移除图片"
+    "queueRemoveImages": "移除图片",
+    "pastedBlock": {
+      "label": "粘贴",
+      "labelWithLines": "粘贴 · {{lines}} 行",
+      "expand": "展开",
+      "expandTitle": "展开为原文",
+      "remove": "移除"
+    }
   },
   "message": {
     "thinking": "思考中",

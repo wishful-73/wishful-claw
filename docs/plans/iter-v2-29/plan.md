@@ -11,6 +11,7 @@
 | R1 | 2026-09-14 | 立项稿 |
 | R2 | 2026-09-14 | 依据 `compliance_report.md` 修 7 个阻断项：①S-20 占位改为沿用既有 `{{sessionId}}`（C# 零改动）②locales 路径补 `src/renderer/src/` 前缀（7 处）③Provider 面板补 `provider/` 层级（2 处）④Baidu 解析归到 `AgentRuntimeWebSearchExecutor.cs` ⑤`select-file-editor.ts` 是单文件且已 504 行→先拆再改。另收口 9 个 ⚠️：S-25 UI 落点钉死为右侧面板 `timeline` Tab、S-21 新建回归测试工程并并入 .sln、S-20.2 明确做、S-22 标注无自验证闭环 |
 | R3 | 2026-09-14 | 依据复审修 R2 引入的新问题：①S-16 的 chip 渲染落点从 `select-file-editor.ts`（grep `render` 零命中）改到 `components/chat/file-aware-editor-utils.ts:212` 的 `renderDocument`（526 行，同超阈值），并从拆分清单里去掉 `render.ts` ②`use-capability-proxy.ts` 的 `if (!capabilityId) return null` 行号 `:30` → `:32` |
+| R4 | 2026-09-14 | 老大问回之前的 agent 后重定 S-23 范围：由「只修中文 bug」升级为「退役 WebSearch 全链路 + 统一到 BrowserSearch + 修三根因/设 UA + 三档自定义引擎 + 工具改名」，规模 小→中 改为**大**。已逐条复核老大给的现状核实（4 条中 3 条成立、1 条需修正：BrowserSearch 在 renderer TS 而非 C#） |
 
 ## 目标
 
@@ -40,7 +41,7 @@
 
 | # | 需求 | 裁定 |
 |---|---|---|
-| 1 | S-23 | **先只修中文 bug**（去掉语言硬编码 + 修入参不匹配）。语言/地区入参与设置页入口**本次不做**，如需要另立需求 |
+| 1 | S-23 | ~~先只修中文 bug~~ **已作废**（2026-09-14 老大重定范围）。新口径：**退役 WebSearch 全链路，统一到 BrowserSearch，并修三根因 + 设 UA**。见需求 5 节 |
 | 2 | S-20 | 支持**静态值 + 动态占位**两种。**占位语法沿用既有 C# 实现 `ResolveHeaderTemplate`（`ProviderRequestOverrides.cs:126-133`），写作 `{{sessionId}}` / `{{model}}`（双花括号）**——不是新做，是接上已有轮子。纯静态解决不了 OpenCode Go（它的头值是动态的） |
 | 3 | S-25 | **决策级粒度 + 新建 `agent_timeline_events` 表**（跨会话回溯，跨表聚合查询太复杂）。落库同时定保留策略。**UI 落点：右侧面板新增 `RightPanelTabKind = 'timeline'`**（与既有 `goal` 并列，复用 `GoalEventTimeline` 事件流形态） |
 | 4 | S-19 | **先做截自身窗口**（干净、无脱敏负担）；整桌面/区域能力本次不做 |
@@ -166,26 +167,76 @@ Agent 经 `use_capability` 代理调用工具时，输入框左上角状态条�
 
 ---
 
-# 需求 5：S-23 内置搜索中文失效
+# 需求 5：S-23 搜索能力收敛到 BrowserSearch（2026-09-14 老大重定范围）
+
+> ⚠️ **口径已变更**：立项时口径 1「先只修中文 bug」作废。老大 2026-09-14 给回核实结论后
+> 重定范围为「退役 WebSearch 全链路，统一到 BrowserSearch」。规模由「小→中」升为**大**。
 
 ## 目标
-修掉中文查询返回词典/翻译类结果的问题。**先只修 bug**（口径 1），语言入参与设置页入口本次不做。
+
+砍掉长期不维护的 WebSearch（外部 API）链路，把搜索统一到自维护的 BrowserSearch
+（抓公开搜索页），并修掉中文查询返回词典/翻译结果的三个根因。
+
+## 老大给回的现状核实（已由 agent 逐条复核，除一条外全部成立）
+
+| # | 老大结论 | 复核 |
+|---|---|---|
+| 1 | 两套搜索并存：BrowserSearch 无条件注册（`tools/index.ts:73`），WebSearch 跟设置开关注册（`InputArea/index.tsx:115`） | ✅ 成立 |
+| 2 | main 的 `web:search` IPC 注册了但 renderer 无调用 | ✅ 成立——只存在于 `channels.ts:347` 常量、`messagepack-channel-routing.ts:171` 路由表、`web-search-handlers.ts:138` handler；renderer 侧**零调用点** |
+| 3 | 中文乱码是解码问题，不是语言设置问题 | ✅ 成立（`WebSearchProviders.cs:18` 的 `hl=en`、`:22` 的 `Accept-Language: en-US` 是硬编码，不是用户设置） |
+| 4 | 三根因：bing_cn 裸 HTTP 垃圾源 / 词典域兜底混入 / 去重不判相关性 | ✅ 全在 `browser-search-tool.ts`：`:425` 通用兜底提取器、`:466-485` 只比 URL 的去重、全文**零** UA 设置 |
+
+**⚠️ 一条与老大描述不符（影响实施落点）**：BrowserSearch **不在 C#**，是 renderer 侧 TS
+（`src/renderer/src/lib/tools/browser-search-tool.ts`，**693 行**）。内置引擎注册表与意图路由
+（`:141-161`）都在这一个文件里（baidu / bing_cn / bing_intl / sogou / so_360 / toutiao /
+sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「改 BrowserSearch」
+= 改这一个 TS 文件，**不动 C# 的** `AgentRuntimeBrowserExecutor.cs`（138 行，是另一套东西）。
 
 ## 步骤
 
-- [ ] S-23.0：**先确认实际 provider 配置** —— 探索发现默认值是 `provider=tavily, apiKey=''`（`settings-store.ts:337-340`），按理会直接报错而不是返回词典结果，与老大描述的现象矛盾。**须先问到实际配置再动手**（见「执行前需要老大处理」）
-- [ ] S-23.1：`WebSearchProviders.cs:18` Google 去掉硬编码 `hl=en`、`:22` 的 `Accept-Language: en-US` 改为可配或按查询语言推断
-- [ ] S-23.2：`:37/:41` Bing 同样处理
-- [ ] S-23.3：Baidu 解析的 class 白名单补中文结果形态（短中文词易落进词典/翻译卡片）—— 落点是 **`AgentRuntimeWebSearchExecutor.cs:195` 的 `ExtractBaiduResults`**（该文件 371 行；`WebSearchProviders.cs` 只有 164 行，是 partial 的另一半，别找错文件）。行号改动后会漂移，实施时重新定位
-- [ ] S-23.4：**修入参不匹配** —— 工具 schema 声明 `count`（`WebToolProvider.cs:23`），执行器读 `maxResults`（`AgentRuntimeWebSearchExecutor.cs:57`）与 `searchMode`（`:60`），导致 `count` 恒被忽略。统一到 `maxResults`
-- [ ] S-23.5：中英文查询各实测一遍（英文是否正常老大当时未验证）
+- [ ] S-23.1：**退役 WebSearch 全链路**
+  - renderer：`lib/tools/web-search-tool.ts` 整删 + `tools/index.ts` 去注册 + `InputArea/index.tsx:115` 的 `updateWebSearchToolRegistration` 调用点
+  - C#：`WebSearchProviders.cs`(164) / `AgentRuntimeWebSearchExecutor.cs`(371) / `Tools/Providers/WebToolProvider.cs` 删；`ToolDispatchRouter.cs` / `AgentRunContextPolicy.cs` / `AgentRuntimeUseCapabilityDiscovery.cs` / `OpenAIResponsesEventParser.cs` / `SubAgentExecutor.Results.cs` 里的 web_search 分派与工具声明清理
+  - main：`web-search-handlers.ts` 整删 + `channels.ts:347-350` + `messagepack-channel-routing.ts:171,339,340`
+  - **砍前再复核一遍**：确认 `web:search` 全仓（含脚本/模板）确实无调用点
+- [ ] S-23.2：**settings 字段处理** —— `settings-store.ts:187-198` 的 `webSearchEnabled` /
+  `webSearchProvider` / `webSearchApiKey`。⚠️ `webSearchEnabled` 另有语义（输入框联网开关），
+  **保留并改挂 BrowserSearch**；另两个**做迁移**不硬删（硬删会让老用户配置静默丢失）
+- [ ] S-23.3：**修三根因 + 设 UA**（都在 `browser-search-tool.ts`）
+  - bing_cn：`:50-52` 补请求头/UA，仍不行则从中文意图默认引擎里摘掉
+  - 词典域兜底：`:425` 通用兜底提取器加词典/翻译/百科卡片类域名黑名单
+  - 去重不判相关性：`:466-485` 除 URL 外补标题/域名相关性判定
+  - **设 User-Agent**（反爬关键，当前全文零设置）
+- [ ] S-23.4：**设置页改造** —— 内置 11 引擎逐个开关 + 意图路由（`:141-161`）可编辑 +
+  「自动选择引擎」开关，复用原 WebSearch 设置区
+- [ ] S-23.5：**用户自定义引擎三档** —— ①内置 ②自定义站点（URL 模板 + 选择器）③自定义 API（endpoint + key）
+- [ ] S-23.6：**工具改名** WebSearch → BrowserSearch。⚠️ 先确认历史会话/日志是否持久化了工具名
+- [ ] S-23.7：**先拆文件** —— `browser-search-tool.ts` 已 693 行，本需求还要加三档自定义引擎，
+  按 `engines.ts` / `extract.ts` / `dedupe.ts` / `custom.ts` 拆目录再改
+- [ ] S-23.8：i18n（引擎名、意图名、三档自定义引擎表单）
 
-**Mini 验证**：C# build 零警告零错误；用同一个中文 query 分别走修复前后的 provider，对比结果不再是词典条目；英文 query 不回退。
+**Mini 验证**：tsc 三配置零错误；C# build + AOT 零警告（删链路后须跑 `build:worker:prod`）；
+中文 query 不再返回词典/翻译卡；英文 query 不回退；三档自定义引擎各配一个跑通；
+老配置（webSearchProvider/webSearchApiKey 有值）启动后不丢、迁移正确。
 
 ## 涉及文件
-- `src/runtime/WishfulClaw.Agent/WebSearchProviders.cs` — 改（Google / Bing 语言硬编码，164 行）
-- `src/runtime/WishfulClaw.Agent/AgentRuntimeWebSearchExecutor.cs` — 改（入参统一 + Baidu 白名单，371 行；两者是同一个 partial 类）
-- `src/runtime/WishfulClaw.Agent/Tools/Providers/WebToolProvider.cs` — 改（schema）
+- `src/renderer/src/lib/tools/browser-search-tool.ts` — **先拆目录再改**（693 行）
+- `src/renderer/src/lib/tools/web-search-tool.ts` — 删
+- `src/renderer/src/lib/tools/index.ts`、`src/renderer/src/components/chat/InputArea/index.tsx` — 改
+- `src/renderer/src/stores/settings-store.ts` — 改（字段迁移）
+- `src/main/ipc/web-search-handlers.ts` — 删；`src/shared/...` channels 与 messagepack 路由 — 改
+- `src/runtime/WishfulClaw.Agent/` 下 8 个含 WebSearch 的 .cs — 删/改
+- `src/renderer/src/locales/{zh,en}/*.json` — 改
+
+## 待老大定的三件事（本需求已升为大，确认后再动）
+
+1. **是否仍在 29 迭代全做完**：升级为大后，与剩余 S-16 / S-18 / S-19 / S-21 / S-25 叠加，迭代显著变大
+2. ~~工具改名的影响面~~ **已查清（2026-09-14）**：工具名**确实持久化**——
+   `messages.meta` = JSON `{ thinking, toolCalls, isStreaming, error }`，`toolCalls` 带 `name`
+   （`chat-store/db-helpers.ts:107` 注释、`:122` 写入、`:156` 读回）。
+   结论：改名后老会话会留下 `WebSearch` 记录 → **必须加旧名别名映射**（展示时把遗留
+   `WebSearch` 归一到 `BrowserSearch`），否则老会话渲染成未知工具卡。已并入 S-23.6
+3. **`webSearchProvider` / `webSearchApiKey` 迁移还是硬删**（建议迁移）
 
 ---
 
@@ -198,25 +249,43 @@ Agent 经 `use_capability` 代理调用工具时，输入框左上角状态条�
 
 ## 步骤
 
-- [ ] S-16.1：在 `src/renderer/src/lib/select-file-editor.ts:41` 的 `EditorDocumentNode`（现 `= EditorTextNode | EditorFileNode | EditorPluginNode`）增加 `pasted-block` 节点类型（`label` + `text` 原文），确保能进 `serializeEditorDocument`（草稿）与被 `renderDocument` 渲染。
+- [✓] S-16.1：在 `src/renderer/src/lib/select-file-editor.ts:41` 的 `EditorDocumentNode`（现 `= EditorTextNode | EditorFileNode | EditorPluginNode`）增加 `pasted-block` 节点类型（`label` + `text` 原文），确保能进 `serializeEditorDocument`（草稿）与被 `renderDocument` 渲染。
   ⚠️ **该文件现已是 504 行**，加了节点类型 + 序列化后必然超阈值。实施时**先拆**：新建 `lib/select-file-editor/` 目录，按 `types.ts`（节点定义）/ `serialize.ts`（`serializeEditorDocument`）拆开，`index.ts` 桶导出，保持对外 API 不变
+  ✅ 实施：拆成 `types.ts`（节点与 `SerializeOptions`）/ `nodes.ts`（节点工厂 + `mergeTextNodes`）/ `files.ts`（路径工具 + 已选文件集合）/ `serialize.ts`（纯文本 + 正/反序列化）/ `document.ts`（区间操作 + `removeReferenceNode` + `documentHasFileReferences`）+ `index.ts` 桶。**桶只导出原 26 个公开名**（新增的 `normalizePath` 等内部工具仅模块内导出，不进桶）。依赖方向 `types ← nodes ← files ← serialize ← document`，无环。
   ⚠️ **渲染不在本文件** —— `select-file-editor.ts` 全文 grep `render` 零命中。渲染真身在 `src/renderer/src/components/chat/file-aware-editor-utils.ts:212` 的 `renderDocument`（526 行，同样超阈值），S-16.3 的 chip 渲染要落那里
-- [ ] S-16.2：`use-composer-interactions.ts:51-74` 粘贴分支 —— 超过阈值（参考 Reasonix：2000 字符或 20 行，满足其一即折）时**不走 `:67` 的 `execCommand('insertHTML')`**（它会绕过受控 state），改走 `:73` 的 `replaceSelectionWithText` 插入 chip 节点
-- [ ] S-16.3：chip 渲染 —— 落点是 `src/renderer/src/components/chat/file-aware-editor-utils.ts:212` 的 `renderDocument`（**不是 `select-file-editor.ts`**）。标签形如「粘贴 #N · L 行」，带**预览 / 展开回填原文 / 移除**三个操作
-- [ ] S-16.3b：**反解析必须同步** —— 同文件 `:313` 的 `parseDomToDocument`（与 `renderDocument` 配对的正/反解析，相隔约 100 行）也要支持 chip。**漏了这条，DOM → document 回读时 chip 会丢**，「草稿重进 chip 仍在」「原文无损」两条验证必挂（`FileAwareEditor.tsx:250` 有 DOM/state 一致性比对 `isSameDocument`）
-- [ ] S-16.4：撤销行为 —— 展开与移除各算一条原生撤销记录（不自造栈），与 `file-aware-editor-undo-selection.ts:5-7,32-40` 的补丁协同
-- [ ] S-16.5：**提交时替换回全文** —— 落点 `index.tsx:262-263` 之间（`getLiveEditorState()` 之后、`promptText` 取值处）
-- [ ] S-16.6：i18n
+- [✓] S-16.2：`use-composer-interactions.ts:51-74` 粘贴分支 —— 超过阈值（参考 Reasonix：2000 字符或 20 行，满足其一即折）时**不走 `:67` 的 `execCommand('insertHTML')`**（它会绕过受控 state），改走 `:73` 的 `replaceSelectionWithText` 插入 chip 节点
+- [✓] S-16.3：chip 渲染 —— 落点是 `src/renderer/src/components/chat/file-aware-editor-utils.ts:212` 的 `renderDocument`（**不是 `select-file-editor.ts`**）。标签形如「粘贴 #N · L 行」，带**预览 / 展开回填原文 / 移除**三个操作
+  ✅ 实施：拆为 `file-aware-editor-utils/` 目录（`types.ts` / `chips.ts` / `dom.ts` / `selection.ts` / `index.ts`）。**目录沿用原文件名**（`file-aware-editor-utils`）→ 8 处导入点零改动。原文经 `wrapper.title` 预览（悬停显示全文），不做独立预览弹窗。
+- [✓] S-16.3b：**反解析必须同步** —— 同文件 `:313` 的 `parseDomToDocument`（与 `renderDocument` 配对的正/反解析，相隔约 100 行）也要支持 chip。**漏了这条，DOM → document 回读时 chip 会丢**，「草稿重进 chip 仍在」「原文无损」两条验证必挂（`FileAwareEditor.tsx:250` 有 DOM/state 一致性比对 `isSameDocument`）
+  ✅ 同时补了 `isSameDocument` 的 `pasted` 分支（原实现只比对 text/file/plugin，漏了 pasted 会让每次回读都被判为「文档变了」）。
+- [✓] S-16.4：撤销行为 —— 展开与移除各算一条原生撤销记录（不自造栈），与 `file-aware-editor-undo-selection.ts:5-7,32-40` 的补丁协同
+  ✅ 展开走 `replaceSelectionWithText` → `replaceEditorRange` 一次结构性替换，落在浏览器原生 undo 记录里；移除走 `removeReferenceNode` 同样一次替换。均未自造栈。
+- [✓] S-16.5：**提交时替换回全文** —— 落点 `index.tsx:262-263` 之间（`getLiveEditorState()` 之后、`promptText` 取值处）
+  ✅ 落在 `use-composer-editor.ts` 的 `getLiveEditorState()`：`promptText` 传 `expandPastedBlocks: true`；`serializedText`（草稿）**不带**该选项，保留 `<pasted-block>` 标签以便草稿往返。
+- [✓] S-16.6：i18n
+  ✅ `input.pastedBlock.{label,labelWithLines,expand,expandTitle,remove}`（`zh`/`en` 的 `chat.json`）。⚠️ **新增 `src/renderer/src/lib/i18n-text.ts` 的 `translateOr()` 兜底助手**：实测未初始化时 `i18n.t` 返回 `undefined` 且**忽略 `defaultValue`**（命名空间未加载时返回裸 key），非 React 调用点裸用会让 `label` 变 `undefined` 并在 `.trim()` 上崩。
+
+**⚠️ 关键约定（实施期钉死）**：折叠块在**纯文本坐标系**里贡献的是**全文**（`getNodePlainText(pasted) = node.text`），不是 chip 标签。理由：`text` 同时喂给 `editorDocumentToPlainText`（光标/选区换算）与提示词优化器，若只贡献标签，优化器会把用户粘贴的正文替换成「粘贴 · 40 行」。为保持 DOM 侧一致，`collectTextContent` 与 `setSelectionOffsets` 的 chip 长度都从 `pastedBlockTextById`（模块级 Map，按 node id 存原文）取，而不是从 `data-fallback-text` 属性取（属性里只有标签）。该 Map **只增不清**：多个编辑器实例共享此模块，渲染时清空会静默丢掉另一个实例的 chip。
 
 **Mini 验证**：tsc 三配置零错误；粘贴 2000+ 字折叠成 chip；草稿保存后重进会话 chip 仍在且原文无损；点展开回填、点移除均正常；提交后模型收到的是完整原文；Ctrl+Z 行为符合预期。
 
+**已执行的验证（2026-09-14）**：
+- `npm run typecheck`（`tsconfig.node.json` + `tsconfig.web.json` + `tsconfig.json`）零错误
+- 临时脚本（已删）跑通 20 条断言：标签往返、草稿含标签、提交展开为原文、纯文本含原文、展开后零丢失、双 chip 不串、单行超长也折叠
+- `esbuild` 打包整个 `InputArea/index.tsx`（覆盖新的两个目录 + `i18next` 引入）成功，仅剩既有的 `import.meta` cjs 警告
+- 现有 TS 回归全绿：`renderable-chat-items` / `provider-presets` / `settings-tabs` / `channel-reply-event-policy` / `ipc-msgpack-routing` / `channel-cancel-commands` / `updater-release-notes`
+- ⏳ 仍需人工在真机确认：粘贴折叠、草稿重进、点展开/移除、Ctrl+Z 手感（`npm run dev` 后手测）
+
 ## 涉及文件
-- `src/renderer/src/components/chat/FileAwareEditor.tsx` — 可能改
-- `src/renderer/src/components/chat/InputArea/use-composer-interactions.ts` — 改
-- `src/renderer/src/lib/select-file-editor.ts` — **拆为 `src/renderer/src/lib/select-file-editor/` 目录**（`types.ts` 节点定义 + `serialize.ts` 序列化；其余纯文本与选区工具函数随 `serialize.ts` 或留在 `index.ts` 桶文件；对外 API 不变）
-- `src/renderer/src/components/chat/file-aware-editor-utils.ts` — 改（`renderDocument:212` 渲染 chip + `parseDomToDocument:313` 反解析；**该文件 526 行，同超阈值，按大文件拆分一并处理**）
-- `src/renderer/src/components/chat/InputArea/index.tsx` — 改（提交取值）
-- `src/renderer/src/locales/{zh,en}/*.json` — 改
+- `src/renderer/src/components/chat/FileAwareEditor.tsx` — 改（`onPastedBlockExpand` 透传）
+- `src/renderer/src/components/chat/InputArea/use-composer-interactions.ts` — 改（折叠阈值 + 粘贴分支）
+- `src/renderer/src/components/chat/InputArea/use-composer-editor.ts` — 改（`expandPastedBlock` + 提交展开）
+- `src/renderer/src/components/chat/InputArea/composer-editor-area.tsx` / `index.tsx` — 改（props 透传）
+- `src/renderer/src/lib/select-file-editor.ts` — **已拆为 `src/renderer/src/lib/select-file-editor/` 目录**（`types.ts` / `nodes.ts` / `files.ts` / `serialize.ts` / `document.ts` + `index.ts` 桶；对外 API 不变）
+- `src/renderer/src/components/chat/file-aware-editor-utils.ts` — **已拆为同名目录**（`types.ts` / `chips.ts` / `dom.ts` / `selection.ts` + `index.ts` 桶）
+- `src/renderer/src/lib/select-file-tags.ts` — 改（`pasted-block` 标签正/反解析）
+- `src/renderer/src/lib/i18n-text.ts` — **新增**（`translateOr` 兜底）
+- `src/renderer/src/locales/{zh,en}/chat.json` — 改
 
 ## 参考源码
 - `D:\claw\DeepSeek-Reasonix\desktop\frontend\src\components\Composer.tsx` — 折叠阈值 / `PastedBlock{label,text}` / chip 三操作 / `expandPastedBlocks()`

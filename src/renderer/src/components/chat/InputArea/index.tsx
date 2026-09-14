@@ -101,7 +101,8 @@ export function InputArea({
     applyEditorStateFromSerializedText, setText, focusInputAtEnd,
     replaceSelectionWithText, addFilesToEditor,
     getLiveEditorState, resetComposer,
-    handleEditorDocumentChange, handleRemoveFileReference
+    handleEditorDocumentChange, handleRemoveFileReference,
+    expandPastedBlock
   } = useComposerEditor({
     workingFolder, editorRef, attachedImages,
     draftSaveTimerRef,
@@ -394,6 +395,7 @@ export function InputArea({
             onReferencePreview={handlePreviewFile}
             onReferenceLocate={handleLocateFileReference}
             onReferenceDelete={handleRemoveFileReference}
+            onPastedBlockExpand={expandPastedBlock}
             showOptimizationDialog={showOptimizationDialog}
             setShowOptimizationDialog={setShowOptimizationDialog}
             optimizationOptions={optimizationOptions}

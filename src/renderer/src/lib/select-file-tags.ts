@@ -1,3 +1,5 @@
+import { translateOr } from './i18n-text'
+
 export type SelectFileTextSegment =
   | {
       type: 'text' | 'file'
@@ -12,6 +14,13 @@ export type SelectFileTextSegment =
       label: string
       prompt: string
     }
+  | {
+      type: 'pasted'
+      text: string
+      raw: string
+      label: string
+      pastedText: string
+    }
 
 export interface SelectFileMentionQuery {
   start: number
@@ -24,23 +33,32 @@ export interface SelectFileTagRange {
   end: number
   text: string
   raw: string
-  syntax: 'tag' | 'token' | 'plugin'
+  syntax: 'tag' | 'token' | 'plugin' | 'pasted'
   pluginId?: string
   label?: string
   prompt?: string
+  pastedText?: string
 }
 
 const SELECT_FILE_TAG_RE = /<select-file>([\s\S]*?)<\/select-file>/gi
 const SELECT_PLUGIN_TAG_RE = /<select-plugin>([\s\S]*?)<\/select-plugin>/gi
+const PASTED_BLOCK_TAG_RE = /<pasted-block>([\s\S]*?)<\/pasted-block>/gi
 const SELECT_FILE_TOKEN_RE = /@\{([^}\r\n]+)\}/g
 const SELECT_FILE_TAG_TEST_RE = /<select-file>[\s\S]*?<\/select-file>/i
 const SELECT_FILE_TOKEN_TEST_RE = /@\{[^}\r\n]+\}/
 const SELECT_PLUGIN_TAG_TEST_RE = /<select-plugin>[\s\S]*?<\/select-plugin>/i
+const PASTED_BLOCK_TAG_TEST_RE = /<pasted-block>[\s\S]*?<\/pasted-block>/i
 
 export interface SelectPluginPayload {
   pluginId: string
   label: string
   prompt: string
+}
+
+/** Payload of a collapsed long-paste chip: the label shown and the verbatim text. */
+export interface PastedBlockPayload {
+  label: string
+  text: string
 }
 
 function decodeTagText(value: string): string {
@@ -109,6 +127,23 @@ function collectSelectFileRanges(text: string): SelectFileTagRange[] {
     })
   }
 
+  for (const match of text.matchAll(PASTED_BLOCK_TAG_RE)) {
+    const start = match.index ?? -1
+    const raw = match[0] ?? ''
+    if (start < 0 || !raw) continue
+    const payload = parsePastedBlockPayload(match[1] ?? '')
+    if (!payload) continue
+    ranges.push({
+      start,
+      end: start + raw.length,
+      raw,
+      text: payload.label,
+      syntax: 'pasted',
+      label: payload.label,
+      pastedText: payload.text
+    })
+  }
+
   for (const match of text.matchAll(SELECT_FILE_TOKEN_RE)) {
     const start = match.index ?? -1
     const raw = match[0] ?? ''
@@ -156,6 +191,43 @@ export function createSelectPluginTag(payload: SelectPluginPayload): string {
   return `<select-plugin>${encodeTagText(JSON.stringify(normalized))}</select-plugin>`
 }
 
+function normalizePastedBlockPayload(
+  value: Partial<PastedBlockPayload>
+): PastedBlockPayload | null {
+  const text = String(value.text ?? '')
+  if (!text) return null
+  const label = String(value.label ?? '').trim() || buildPastedBlockLabel(text)
+  return { label, text }
+}
+
+/** Human label for a collapsed paste, e.g. "粘贴 · 42 行". */
+export function buildPastedBlockLabel(text: string): string {
+  const lines = text.split(/\r?\n/).length
+  if (lines > 1) {
+    return translateOr(
+      'input.pastedBlock.labelWithLines',
+      { ns: 'chat', lines },
+      `粘贴 · ${lines} 行`
+    )
+  }
+  return translateOr('input.pastedBlock.label', { ns: 'chat' }, '粘贴')
+}
+
+function parsePastedBlockPayload(value: string): PastedBlockPayload | null {
+  try {
+    const parsed = JSON.parse(decodeTagText(value)) as Partial<PastedBlockPayload>
+    return normalizePastedBlockPayload(parsed)
+  } catch {
+    return null
+  }
+}
+
+export function createPastedBlockTag(payload: PastedBlockPayload): string {
+  const normalized = normalizePastedBlockPayload(payload)
+  if (!normalized) return ''
+  return `<pasted-block>${encodeTagText(JSON.stringify(normalized))}</pasted-block>`
+}
+
 export function parseSelectFileText(text: string): SelectFileTextSegment[] {
   if (!text) return []
 
@@ -178,6 +250,14 @@ export function parseSelectFileText(text: string): SelectFileTextSegment[] {
         pluginId: range.pluginId,
         label: range.label,
         prompt: range.prompt
+      })
+    } else if (range.syntax === 'pasted' && range.label && range.pastedText) {
+      segments.push({
+        type: 'pasted',
+        text: range.label,
+        raw: range.raw,
+        label: range.label,
+        pastedText: range.pastedText
       })
     } else {
       segments.push({
@@ -208,7 +288,8 @@ export function hasSelectFileTag(text: string): boolean {
   return (
     SELECT_FILE_TAG_TEST_RE.test(text) ||
     SELECT_FILE_TOKEN_TEST_RE.test(text) ||
-    SELECT_PLUGIN_TAG_TEST_RE.test(text)
+    SELECT_PLUGIN_TAG_TEST_RE.test(text) ||
+    PASTED_BLOCK_TAG_TEST_RE.test(text)
   )
 }
 

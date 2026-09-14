@@ -204,7 +204,14 @@
     "loadingSuggestions": "Loading suggestions...",
     "noSuggestions": "No matching suggestions",
     "doubleClickCompressContext": "Double-click to compress context",
-    "queueRemoveImages": "Remove images"
+    "queueRemoveImages": "Remove images",
+    "pastedBlock": {
+      "label": "Pasted",
+      "labelWithLines": "Pasted · {{lines}} lines",
+      "expand": "Expand",
+      "expandTitle": "Expand to full text",
+      "remove": "Remove"
+    }
   },
   "message": {
     "thinking": "Thinking",

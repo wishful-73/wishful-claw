@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
@@ -142,22 +142,6 @@ internal static partial class UsageLogChecks
             "usagequery: by-model sums billable input per model");
     }
 
-    private static void RunBySourceQuerySuite()
-    {
-        Reset();
-        SeedRequest("model-a", "success", 100, 0, attemptIndex: 1,
-            runtimeRole: "sessionAgent", scope: "project", collaborationMode: "chat");
-
-        var json = Invoke(DbUsageLogQueryTools.BySource, new { });
-        var rows = json.GetProperty("rows");
-        Assert(rows.GetArrayLength() == 1, "usagequery: by-source groups by origin");
-        var row = rows.EnumerateArray().First();
-        Assert(row.GetProperty("runtimeRole").GetString() == "sessionAgent",
-            "usagequery: by-source surfaces the runtime role");
-        Assert(row.GetProperty("collaborationMode").GetString() == "chat",
-            "usagequery: by-source surfaces the collaboration mode");
-    }
-
     private static void RunDetailQuerySuite()
     {
         Reset();
@@ -207,9 +191,6 @@ internal static partial class UsageLogChecks
 
         var byModel = Invoke(DbUsageLogQueryTools.ByModel, new { });
         Assert(byModel.GetProperty("rows").GetArrayLength() == 0, "usagequery: an empty window has no model rows");
-
-        var bySource = Invoke(DbUsageLogQueryTools.BySource, new { });
-        Assert(bySource.GetProperty("rows").GetArrayLength() == 0, "usagequery: an empty window has no source rows");
 
         var logs = Invoke(DbUsageLogQueryTools.Logs, new { });
         Assert(logs.GetProperty("total").GetInt32() == 0, "usagequery: an empty window has no detail rows");

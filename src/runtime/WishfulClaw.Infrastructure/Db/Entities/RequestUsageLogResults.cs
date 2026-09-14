@@ -1,4 +1,4 @@
-﻿namespace WishfulClaw.Infrastructure.Db;
+namespace WishfulClaw.Infrastructure.Db;
 
 /// <summary>
 /// Query results for the request-level usage log (#1, iteration 28).
@@ -85,6 +85,8 @@ public sealed record UsageModelRow(
     int ErrorCount,
     long BillableInputTokens,
     long OutputTokens,
+    long CacheReadTokens,
+    long CacheCreationTokens,
     double? TotalCostUsd);
 
 public sealed record UsageByModelResult(
@@ -92,24 +94,6 @@ public sealed record UsageByModelResult(
     long From,
     long To,
     List<UsageModelRow> Rows,
-    string? Error);
-
-/// <summary>Rollup by caller origin, so agent-loop traffic can be told apart from automation/sub-agent traffic.</summary>
-public sealed record UsageSourceRow(
-    string? RuntimeRole,
-    string? Scope,
-    string? CollaborationMode,
-    int RequestCount,
-    int ErrorCount,
-    long BillableInputTokens,
-    long OutputTokens,
-    double? TotalCostUsd);
-
-public sealed record UsageBySourceResult(
-    bool Success,
-    long From,
-    long To,
-    List<UsageSourceRow> Rows,
     string? Error);
 
 /// <summary>

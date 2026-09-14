@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { cn } from '@renderer/lib/utils'
 
 interface SettingsSectionProps {
@@ -9,6 +9,8 @@ interface SettingsSectionProps {
   actions?: ReactNode
   children: ReactNode
   className?: string
+  /** Extra classes for the inner content wrapper (e.g. flex sizing). */
+  contentClassName?: string
 }
 
 /**
@@ -22,7 +24,8 @@ export function SettingsSection({
   description,
   actions,
   children,
-  className
+  className,
+  contentClassName
 }: SettingsSectionProps): React.JSX.Element {
   const hasHeader = Boolean(title || description || actions)
 
@@ -45,7 +48,7 @@ export function SettingsSection({
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
       ) : null}
-      <div className="space-y-4">{children}</div>
+      <div className={cn('space-y-4', contentClassName)}>{children}</div>
     </section>
   )
 }

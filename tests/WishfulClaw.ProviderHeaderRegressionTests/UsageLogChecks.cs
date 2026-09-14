@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
@@ -49,7 +49,6 @@ internal static partial class UsageLogChecks
             RunBucketGapFillSuite();
             RunBucketTimezoneSuite();
             RunByModelQuerySuite();
-            RunBySourceQuerySuite();
             RunDetailQuerySuite();
             RunEmptyWindowSuite();
         }

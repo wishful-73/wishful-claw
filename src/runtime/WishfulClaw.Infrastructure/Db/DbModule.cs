@@ -64,7 +64,6 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/usage-buckets", DbUsageLogQueryTools.Buckets);
         context.Register("db/usage-model-buckets", DbUsageLogQueryTools.ModelBuckets);
         context.Register("db/usage-by-model", DbUsageLogQueryTools.ByModel);
-        context.Register("db/usage-by-source", DbUsageLogQueryTools.BySource);
         context.Register("db/usage-logs", DbUsageLogQueryTools.Logs);
 
         // ── Compaction Snapshots ──

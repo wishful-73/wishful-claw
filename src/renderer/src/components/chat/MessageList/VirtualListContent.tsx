@@ -117,6 +117,24 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     )
   }, [pinnedTurnMessage])
 
+  // T-9: 吸附卡是浮在内容区顶部之上（absolute overlay），首行需要让出它的高度，
+  // 否则顶部第一条消息被遮住。卡高走 ResizeObserver —— 两行截断时高度随内容变化。
+  const pinnedCardRef = React.useRef<HTMLDivElement>(null)
+  const [pinnedCardHeight, setPinnedCardHeight] = React.useState(0)
+
+  React.useLayoutEffect(() => {
+    const el = pinnedCardRef.current
+    if (!el) {
+      setPinnedCardHeight(0)
+      return
+    }
+    const measure = (): void => setPinnedCardHeight(el.getBoundingClientRect().height)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [pinnedPreviewText, isPinnedTurnOverlayVisible])
+
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <div
@@ -154,7 +172,13 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                     ? 'absolute left-0 top-0 w-full pt-3'
                     : 'absolute left-0 top-0 w-full'
                 }
-                style={{ transform: `translateY(${virtualRow.start}px)` }}
+                style={{
+                  transform: `translateY(${virtualRow.start}px)`,
+                  // T-9: 吸附卡可见时首行让位（inline style 覆盖 pt-3）
+                  ...(isFirstVisualRow && isPinnedTurnOverlayVisible && pinnedCardHeight > 0
+                    ? { paddingTop: `${Math.ceil(pinnedCardHeight)}px` }
+                    : {})
+                }}
               >
                 {isLoadOlderRow ? (
                   <div
@@ -251,6 +275,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
         {pinnedTurnMessage && isPinnedTurnOverlayVisible && (
           <motion.div
             key="pinned-turn"
+            ref={pinnedCardRef}
             className="absolute left-0 right-0 top-0 z-20 bg-background pb-2 pl-7 pr-14 md:pl-9"
             initial={animationsEnabled ? { opacity: 0, y: -6 } : false}
             animate={{ opacity: 1, y: 0 }}

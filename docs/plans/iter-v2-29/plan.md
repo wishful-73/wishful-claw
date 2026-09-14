@@ -1026,15 +1026,21 @@ agent 调 `use_capability(action="call", capability_id="builtin:Task", arguments
 3. 是否只影响 `builtin:*`，`mcp-tool:` / `skill:` 是否同样
 4. `action="inspect"` 正常（能返回 schema）→ 代理本身可用，缺陷疑似限于 `call` 的 arguments
 
-## 步骤
+## 实施（2026-09-14）
 
-- [ ] **T-11.0（复核）**：定性 —— 对比 `inspect` 正常 / `call` 失败；必要时打日志看代理收到的原始 arguments
-- [ ] **T-11.1**：按结论修（转发缺陷 → 修参数解析；格式约束 → 明确 schema / 文档 / 校验提示）
-- [ ] **T-11.2（回归）**：`use_capability` 代理 `builtin:*` / `mcp-tool:*` / `skill:*` 三类调用均正常
+**根因（已定位）：schema 与执行侧口径不一致。**
+
+- `UseCapabilityToolProvider.cs` 把 `arguments` 声明为 `{ "(any)": String }` → **诱导模型传「JSON 字符串」**
+- 执行侧 `AgentRuntimeUseCapabilityExecutor.cs:257`（及 `:54` / `:79`）**只接受 `ValueKind == Object`**，非对象一律回落 `CreateEmptyObject()` → 参数被丢空（内置 Task 报 `Task requires a non-empty prompt`）
+
+- [✓] **T-11.0（复核）**：读 schema + 执行侧确认口径冲突；与现象吻合（`inspect` 正常、`call` 的 `arguments` 被丢）
+- [✓] **T-11.1**：`arguments` 改为**自由对象**（`ToolSchemaBuilder.Object()`，无 properties），与执行侧一致
+- [ ] **T-11.2（回归，待验）**：需**真实模型**调用验证 —— 建议在开发实例观察 `use_capability(action="call", capability_id="builtin:Task" / "mcp-tool:*" / "skill:*")` 三类能否带上参数
+- **[P2 建议]**：执行侧加容错（`arguments` 为 String 时尝试 `JsonDocument.Parse` 成对象），兼容旧模型 / 旧会话仍传字符串的情况
 
 ## Mini 验证
 
-- 代理调用 `builtin:Task` 能正常起子 agent 并返回结果（不再报 prompt 为空）
+- C#：全依赖链编译 0 警告 0 错误 ✅
 
 ## 涉及文件（初判，实施时定位）
 

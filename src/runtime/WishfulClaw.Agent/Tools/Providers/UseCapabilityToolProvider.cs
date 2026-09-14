@@ -41,11 +41,11 @@ public sealed class UseCapabilityToolProvider : IToolProvider
                         "Optional action=list cursor returned as next_cursor by the previous page."),
                     ["page_size"] = ToolSchemaBuilder.Number(
                         "Optional action=list page size. Defaults to 20, maximum 100."),
-                    ["arguments"] = ToolSchemaBuilder.Object(
-                        new()
-                        {
-                            ["(any)"] = ToolSchemaBuilder.String("Tool arguments as JSON object. Only for action=call.")
-                        })
+                    // T-11: 曾把 arguments 描述成 { "(any)": string } —— 实测会诱导模型
+                    // 传「JSON 字符串」，而执行侧只接受 JSON 对象（`ValueKind == Object`），
+                    // 于是参数被丢成空对象（内置 Task 表现为 "Task requires a non-empty
+                    // prompt"）。改为自由对象（无 properties），与执行侧口径一致。
+                    ["arguments"] = ToolSchemaBuilder.Object()
                 },
                 new[] { "action" }),
             visibleScopes: ToolVisibilityScopes.Everywhere, isCore: true));

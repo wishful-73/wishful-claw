@@ -3,7 +3,7 @@ import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
-import { SettingRow, SettingsSection } from './settings-primitives'
+import { SettingRow, SettingsSection, SETTINGS_LIST_CLASS } from './settings-primitives'
 import { WebSearchCustomEngines } from './web-search-custom-engines'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import {
@@ -92,36 +92,35 @@ export function WebSearchPanel(): React.JSX.Element {
         title={t('webSearch.engines.title')}
         description={t('webSearch.engines.desc', { enabled: enabledCount })}
       >
-        {BUILTIN_ENGINE_IDS.map((id) => {
-          const engine = BUILTIN_ENGINES[id]
-          if (!engine) return null
-          const enabled = isEngineEnabled(id)
-          return (
-            <div
-              key={id}
-              className="flex items-start justify-between gap-4 rounded-lg border bg-muted/10 p-3"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">{engineDisplayName(engine)}</span>
-                  <Badge variant="outline">{t(`webSearch.types.${engine.type}`)}</Badge>
-                  <Badge variant={engine.renderMode === 'rendered' ? 'secondary' : 'outline'}>
-                    {engine.renderMode === 'rendered'
-                      ? t('webSearch.badges.rendered')
-                      : t('webSearch.badges.http')}
-                  </Badge>
+        <div className={SETTINGS_LIST_CLASS}>
+          {BUILTIN_ENGINE_IDS.map((id) => {
+            const engine = BUILTIN_ENGINES[id]
+            if (!engine) return null
+            const enabled = isEngineEnabled(id)
+            return (
+              <div key={id} className="flex items-start justify-between gap-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{engineDisplayName(engine)}</span>
+                    <Badge variant="outline">{t(`webSearch.types.${engine.type}`)}</Badge>
+                    <Badge variant={engine.renderMode === 'rendered' ? 'secondary' : 'outline'}>
+                      {engine.renderMode === 'rendered'
+                        ? t('webSearch.badges.rendered')
+                        : t('webSearch.badges.http')}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">{engine.searchUrl}</p>
                 </div>
-                <p className="mt-1 truncate text-xs text-muted-foreground">{engine.searchUrl}</p>
+                <Switch
+                  checked={enabled}
+                  onCheckedChange={(value) =>
+                    patch({ enabledEngineIds: toggleEnabledEngine(browserSearch.enabledEngineIds, id, value) })
+                  }
+                />
               </div>
-              <Switch
-                checked={enabled}
-                onCheckedChange={(value) =>
-                  patch({ enabledEngineIds: toggleEnabledEngine(browserSearch.enabledEngineIds, id, value) })
-                }
-              />
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
         {enabledCount === 0 ? (
           <p className="text-xs text-muted-foreground">{t('webSearch.engines.noneEnabled')}</p>
         ) : null}
@@ -132,72 +131,74 @@ export function WebSearchPanel(): React.JSX.Element {
         title={t('webSearch.intents.title')}
         description={t('webSearch.intents.desc')}
       >
-        {INTENT_IDS.map((intent) => {
-          const routed = resolveIntentEngines(browserSearch.intentEngines, intent)
-          const customized = isIntentCustomized(browserSearch.intentEngines, intent)
-          return (
-            <div key={intent} className="space-y-2 rounded-lg border bg-muted/10 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{intentDisplayName(intent)}</span>
-                  <Badge variant={customized ? 'default' : 'outline'}>
-                    {customized
-                      ? t('webSearch.intents.customized')
-                      : t('webSearch.intents.byDefault')}
-                  </Badge>
-                </div>
-                {customized ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      patch({
-                        intentEngines: resetIntentEngines(browserSearch.intentEngines, intent)
-                      })
-                    }
-                  >
-                    {t('webSearch.intents.reset')}
-                  </Button>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {BUILTIN_ENGINE_IDS.map((id) => {
-                  const engine = BUILTIN_ENGINES[id]
-                  if (!engine) return null
-                  const active = routed.includes(id)
-                  const globallyEnabled = isEngineEnabled(id)
-                  return (
-                    <button
-                      key={id}
-                      type="button"
+        <div className={SETTINGS_LIST_CLASS}>
+          {INTENT_IDS.map((intent) => {
+            const routed = resolveIntentEngines(browserSearch.intentEngines, intent)
+            const customized = isIntentCustomized(browserSearch.intentEngines, intent)
+            return (
+              <div key={intent} className="space-y-2 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{intentDisplayName(intent)}</span>
+                    <Badge variant={customized ? 'default' : 'outline'}>
+                      {customized
+                        ? t('webSearch.intents.customized')
+                        : t('webSearch.intents.byDefault')}
+                    </Badge>
+                  </div>
+                  {customized ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       onClick={() =>
                         patch({
-                          intentEngines: toggleIntentEngine(
-                            browserSearch.intentEngines,
-                            intent,
-                            id
-                          )
+                          intentEngines: resetIntentEngines(browserSearch.intentEngines, intent)
                         })
                       }
-                      className={[
-                        'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
-                        active
-                          ? 'border-primary/40 bg-primary/10 text-foreground'
-                          : 'border-border text-muted-foreground hover:border-foreground/20',
-                        globallyEnabled ? '' : 'opacity-50'
-                      ].join(' ')}
-                      title={
-                        globallyEnabled ? undefined : t('webSearch.intents.engineDisabledGlobally')
-                      }
                     >
-                      {engineDisplayName(engine)}
-                    </button>
-                  )
-                })}
+                      {t('webSearch.intents.reset')}
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {BUILTIN_ENGINE_IDS.map((id) => {
+                    const engine = BUILTIN_ENGINES[id]
+                    if (!engine) return null
+                    const active = routed.includes(id)
+                    const globallyEnabled = isEngineEnabled(id)
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          patch({
+                            intentEngines: toggleIntentEngine(
+                              browserSearch.intentEngines,
+                              intent,
+                              id
+                            )
+                          })
+                        }
+                        className={[
+                          'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
+                          active
+                            ? 'border-primary/40 bg-primary/10 text-foreground'
+                            : 'border-border text-muted-foreground hover:border-foreground/20',
+                          globallyEnabled ? '' : 'opacity-50'
+                        ].join(' ')}
+                        title={
+                          globallyEnabled ? undefined : t('webSearch.intents.engineDisabledGlobally')
+                        }
+                      >
+                        {engineDisplayName(engine)}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
         <p className="text-[11px] text-muted-foreground">{t('webSearch.intents.fallbackHint')}</p>
       </SettingsSection>
 

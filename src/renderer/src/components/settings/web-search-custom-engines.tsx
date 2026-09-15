@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '@renderer/components/ui/select'
-import { SettingsSection } from './settings-primitives'
+import { SettingsSection, SETTINGS_LIST_CLASS } from './settings-primitives'
 import { INTENT_IDS, intentDisplayName } from '@renderer/lib/tools/browser-search/engines'
 import type { CustomSearchEngine } from '@renderer/stores/settings-store-types'
 
@@ -108,39 +108,38 @@ export function WebSearchCustomEngines({ engines, onChange }: Props): React.JSX.
         <p className="text-xs text-muted-foreground">{t('webSearch.custom.empty')}</p>
       ) : null}
 
-      {engines.map((engine) => (
-        <div
-          key={engine.id}
-          className="flex items-start justify-between gap-3 rounded-lg border bg-muted/10 p-3"
-        >
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">{engine.name || engine.id}</span>
-              <Badge variant="outline">
-                {engine.tier === 'selector'
-                  ? t('webSearch.custom.tierSelectorShort')
-                  : t('webSearch.custom.tierBasicShort')}
-              </Badge>
-              <Badge variant="secondary">{intentDisplayName(engine.intent)}</Badge>
+      <div className={SETTINGS_LIST_CLASS}>
+        {engines.map((engine) => (
+          <div key={engine.id} className="flex items-start justify-between gap-3 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{engine.name || engine.id}</span>
+                <Badge variant="outline">
+                  {engine.tier === 'selector'
+                    ? t('webSearch.custom.tierSelectorShort')
+                    : t('webSearch.custom.tierBasicShort')}
+                </Badge>
+                <Badge variant="secondary">{intentDisplayName(engine.intent)}</Badge>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted-foreground">{engine.urlTemplate}</p>
             </div>
-            <p className="mt-1 truncate text-xs text-muted-foreground">{engine.urlTemplate}</p>
+            <div className="flex shrink-0 items-center gap-2">
+              <Switch checked={engine.enabled} onCheckedChange={(value) => setEnabled(engine.id, value)} />
+              <Button size="sm" variant="ghost" onClick={() => beginEdit(engine)}>
+                {t('webSearch.custom.edit')}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t('webSearch.custom.remove')}
+                onClick={() => remove(engine.id)}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Switch checked={engine.enabled} onCheckedChange={(value) => setEnabled(engine.id, value)} />
-            <Button size="sm" variant="ghost" onClick={() => beginEdit(engine)}>
-              {t('webSearch.custom.edit')}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={t('webSearch.custom.remove')}
-              onClick={() => remove(engine.id)}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
       {draft ? (
         <div className="space-y-4 rounded-lg border p-4">

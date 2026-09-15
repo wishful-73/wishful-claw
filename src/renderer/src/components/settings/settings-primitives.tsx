@@ -18,6 +18,12 @@ interface SettingsSectionProps {
  * settings-primitives): rounded border, subtle card background, header row
  * with optional right-side actions (e.g. a Switch).
  */
+/**
+ * Rows of a settings list, separated by hairlines rather than wrapped in a border each —
+ * a column of boxes reads as a wall, and the list is already inside a bordered section.
+ */
+export const SETTINGS_LIST_CLASS = 'divide-y divide-border/60'
+
 export function SettingsSection({
   id,
   title,

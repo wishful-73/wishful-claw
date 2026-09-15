@@ -306,7 +306,6 @@ export async function handleStatus(ctx: CommandContext, args: string): Promise<C
   lines.push(`📡 Type: ${ctx.pluginType}`)
   lines.push(`🆔 ID: ${ctx.pluginId}`)
 
-  const service = ctx.pluginManager.getService(ctx.pluginId)
   const status = ctx.pluginManager.getStatus(ctx.pluginId)
   lines.push(
     `⚡ Status: ${status === 'running' ? 'Running ✅' : status === 'error' ? 'Error ❌' : 'Stopped ⏹'}`
@@ -335,19 +334,10 @@ export async function handleStatus(ctx: CommandContext, args: string): Promise<C
     lines.push('  ⚠️ Unavailable: global channel settings could not be read')
   } else {
     const flag = (value: boolean): string => (value ? '✅ ON' : '❌ OFF')
-    lines.push(`  Auto Reply: ${flag(settings.autoReply)}`)
-    lines.push(
-      `  Streaming Reply: ${flag(settings.streamingReply && service?.supportsStreaming === true)} (channel support: ${service?.supportsStreaming ? 'yes' : 'no'})`
-    )
     lines.push(`  Auto Start: ${flag(settings.autoStart)}`)
-    lines.push('')
-    lines.push('🔒 Global Permissions:')
     lines.push(
       `  Shell Approval: ${settings.shellRequiresApproval ? '🔐 Requires confirmation' : '⚡ Auto-approved'}`
     )
-    lines.push(`  Read Home: ${flag(settings.allowReadHome)} (not enforced yet)`)
-    lines.push(`  External Write: ${flag(settings.allowWriteOutside)} (not enforced yet)`)
-    lines.push(`  Sub-agents: ${flag(settings.allowSubAgents)} (not enforced yet)`)
   }
 
   lines.push('')

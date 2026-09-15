@@ -1547,11 +1547,8 @@
     },
     "global": {
       "title": "Global Channel Settings",
-      "tabs": {
-        "reply": "Reply Settings",
-        "features": "Features",
-        "permissions": "Permissions"
-      },
+      "autoStart": "Connect on Launch",
+      "autoStartDesc": "Automatically connect enabled channels when the app starts",
       "loadingSettings": "Loading global channel settings…",
       "loadFailed": "Failed to load global channel settings",
       "saveFailed": "Save failed",
@@ -1623,24 +1620,9 @@
       "saved": "Settings saved",
       "saveFailed": "Failed to save"
     },
-    "features": {
-      "autoReply": "Auto Reply",
-      "autoReplyDesc": "Automatically reply with AI when a message is received",
-      "streamingReply": "Streaming Reply",
-      "streamingReplyDesc": "Stream reply content in real time (requires channel support); currently saved only and not enforced yet",
-      "autoStart": "Auto Start",
-      "autoStartDesc": "Automatically connect enabled channels when the app starts"
-    },
     "permissions": {
       "shellRequiresApproval": "Shell Commands Require Approval",
-      "shellRequiresApprovalDesc": "When on, every shell command in a channel chat asks for your confirmation; when off, it runs directly",
-      "notEnforcedHint": "The switches below are saved only and not enforced yet",
-      "allowReadHome": "Read Home Directory",
-      "allowReadHomeDesc": "Allow reading files outside the working directory",
-      "allowWriteOutside": "External Write",
-      "allowWriteOutsideDesc": "Allow writing files outside the working directory",
-      "allowSubAgents": "Sub-Agents",
-      "allowSubAgentsDesc": "Allow using sub-agent tools"
+      "shellRequiresApprovalDesc": "When on, every shell command in a channel chat asks for your confirmation; when off, it runs directly"
     },
     "feishu": {
       "appId": "App ID",

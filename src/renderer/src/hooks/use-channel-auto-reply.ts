@@ -133,14 +133,10 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     return false
   }
 
-  // 1. Check the global auto-reply switch (retired per-channel `features` flag)
-  const channelStore = useChannelStore.getState()
-  const channelMeta = channelStore.channels.find((c) => c.id === pluginId)
-  const globalSettings = await channelStore.ensureGlobalSettings()
-  if (globalSettings && !globalSettings.autoReply) {
-    console.log(`[ChannelAutoReply] Auto-reply disabled globally, skipping ${pluginId}`)
-    return false
-  }
+  // 1. Resolve the channel instance — its binding supplies the provider/model below.
+  //    No global auto-reply switch: a configured channel that is running replies. The
+  //    per-channel enable flag (the start/stop button) is the real gate.
+  const channelMeta = useChannelStore.getState().channels.find((c) => c.id === pluginId)
 
   // 2. Ensure session exists in chat store
   const chatStore = useChatStore.getState()

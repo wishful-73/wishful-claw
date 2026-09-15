@@ -1692,3 +1692,58 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 **门禁**：TS 三配置 0 错；**18 套 TS 回归全过**。
 
 **真机待验（老大）**：收起态能一眼看清账号与状态；展开配好一个渠道；展开另一个时前一个自动收起。
+
+---
+
+# 需求 28（临时追加）：渠道全局设置去掉选项卡 + 砍掉六个「存了不用」的字段
+
+> 2026-09-15 老大：「渠道设置 功能开关里面的 启动自动连接放到全局回复设置里面，功能开关选项卡就可以删了，里面的 ai 自动回复这些配置感觉都有点脱裤子放屁」→ 复述 → 老大追加：「安全设置里面的设置也是无效的，只有一个 shell 是有用的，我们本身全局会话都在工作目录外，压根没有工作区，可以不要选项卡了，就一个全局渠道设置就行了，回复设置全部+启动时把已启动渠道拉起来，加 shell 是否审批」→ 拍板「这个确认了哈」。
+
+## 老大口径
+
+面板收敛成**一个卡片、零选项卡**，四项平铺：
+
+| 顺序 | 项 | 字段 |
+|---|---|---|
+| 1 | 回复人格 | `settings.defaultPersonaId`（沿用） |
+| 2 | 回复模型 | `providerStore.activeProviderId` + `activeModelId`（沿用） |
+| 3 | 启动时自动连接已启用渠道 | `autoStart`（从「功能开关」挪过来） |
+| 4 | Shell 命令需授权 | `shellRequiresApproval`（唯一真生效的权限项） |
+
+## 砍掉的六个字段与理由
+
+| 字段 | 理由 |
+|---|---|
+| `autoReply` | 全局总闸无意义——渠道实例的启停就是总闸；「连着但不想让它回」的场景不存在 |
+| `streamingReply` | 死开关：只存盘 + `/status` 打印，零消费点（流式与否由 service 的 `supportsStreaming` 决定） |
+| `allowReadHome` | 无强制执行点；且全局会话本就在工作目录外，语义不成立 |
+| `readablePathPrefixes` | 无强制执行点，连 UI 输入项都没有 |
+| `allowWriteOutside` | 无强制执行点 |
+| `allowSubAgents` | 无强制执行点 |
+
+留 `autoStart` + `shellRequiresApproval`。**记账**：将来真要做沙箱/权限，这四个 `allow*` 得从零设计——现在删掉不丢功能（它们本来就没接）。
+
+## 存储兼容
+
+不写迁移代码。`GlobalChannelSettingsStore.Read` 只认已知键，老 `config.json` 里多出来的六个键被忽略；下一次整对象 `Write` 覆盖时自然清掉。`IsFullRecord` 的键表同步缩到 2 键——**这是有意的向下不兼容**：只有本应用的渲染进程会写这个键，不存在旧客户端并存。
+
+## 涉及文件
+
+- `src/runtime/WishfulClaw.Infrastructure/Storage/GlobalChannelSettings.cs`（record 8→2、`Defaults`、`RecordKeys`、`Read`、`Write`；保留 `allowShell` 旧键兼容读）
+- `src/main/channels/channel-types.ts`（主进程镜像接口）
+- `src/renderer/src/stores/channel-store.ts`（渲染端接口 + `GLOBAL_SETTING_KEYS`）
+- `src/renderer/src/hooks/use-channel-auto-reply.ts`（删 autoReply 守卫）
+- `src/main/channels/plugin-command-handlers.ts`（`/status` 只留 Shell Approval 一行）
+- `src/renderer/src/components/settings/plugin-panel-global.tsx`（去 tab、四项平铺）
+- `src/renderer/src/components/settings/PluginPanel.tsx`（注释里"feature switches"的表述）
+- locales zh/en `settings.json`（删 `channel.global.tabs.*`、`channel.features.*`、`channel.permissions.allow*` 与 `notEnforcedHint`）
+- `tests/WishfulClaw.ChannelShellApprovalRegressionTests/Program.cs`（按新键集重写断言，不删测试）
+
+## 回归
+
+- `ChannelShellApprovalRegressionTests` 按新键集重写：默认值组只留 `autoStart` / `shellRequiresApproval`；round-trip 组删被删字段的断言；整对象写契约组的 full payload 改 2 键，未知键拒收用例改用「多一个已删字段」构造。
+- i18n：`tests/i18n-coverage` 复核无悬空引用。
+
+## 真机待验（老大）
+
+面板四项平铺、无选项卡；「启动时自动连接」关掉后重启应用渠道不再自动起来；Shell 授权开关仍即时生效。

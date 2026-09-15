@@ -14,6 +14,10 @@ namespace WishfulClaw.ChannelShellApprovalRegressionTests;
 /// make that safe: the default is "ask", a stored legacy value carries over to the safe side, the
 /// waiver is limited to the shell tools of a channel session, and the write endpoint refuses a
 /// partial payload instead of storing default(<c>false</c>) — which would mean "no approval".
+///
+/// Iteration 29 需求 28 cut the record down to two enforced keys (<c>autoStart</c>,
+/// <c>shellRequiresApproval</c>). Group 7 pins the other half of that: the six retired keys
+/// still read through for upgraded installs, and a whole-object save drops them for good.
 /// </summary>
 internal static class Program
 {
@@ -40,6 +44,7 @@ internal static class Program
             AssertWaiverCoversOnlyChannelShell();
             AssertApprovalSetStaysIntact();
             AssertWholeObjectSaveRoundTrip();
+            AssertRetiredKeysAreIgnored();
             AssertPartialWriteIsRejected();
 
             Console.WriteLine($"Channel shell approval regression checks passed ({_checks} assertions).");
@@ -70,13 +75,7 @@ internal static class Program
         AssertConfigAbsent();
         var settings = GlobalChannelSettingsStore.Read();
         Assert("no config file → ShellRequiresApproval defaults to ask", settings.ShellRequiresApproval);
-        Assert("no config file → AutoReply defaults on", settings.AutoReply);
-        Assert("no config file → StreamingReply defaults on", settings.StreamingReply);
         Assert("no config file → AutoStart defaults on", settings.AutoStart);
-        Assert("no config file → AllowReadHome defaults off", !settings.AllowReadHome);
-        Assert("no config file → AllowWriteOutside defaults off", !settings.AllowWriteOutside);
-        Assert("no config file → AllowSubAgents defaults off", !settings.AllowSubAgents);
-        Assert("no config file → no readable prefixes", settings.ReadablePathPrefixes.Length == 0);
         Assert(
             "a channel shell on a fresh install still asks",
             !ToolCallProcessor.IsChannelShellApprovalWaived("Bash", isChannelSession: true));
@@ -174,24 +173,12 @@ internal static class Program
     {
         WriteRawChannelSettings("""{"allowShell":true}""");
         GlobalChannelSettingsStore.Write(new GlobalChannelSettings(
-            AutoReply: false,
-            StreamingReply: true,
             AutoStart: false,
-            ShellRequiresApproval: false,
-            AllowReadHome: true,
-            ReadablePathPrefixes: new[] { string.Empty, "   ", "D:/shared" },
-            AllowWriteOutside: true,
-            AllowSubAgents: true));
+            ShellRequiresApproval: false));
 
         var saved = GlobalChannelSettingsStore.Read();
-        Assert("autoReply round-trips", !saved.AutoReply);
-        Assert("streamingReply round-trips", saved.StreamingReply);
         Assert("autoStart round-trips", !saved.AutoStart);
         Assert("shellRequiresApproval round-trips", !saved.ShellRequiresApproval);
-        Assert("allowReadHome round-trips", saved.AllowReadHome);
-        Assert("allowWriteOutside round-trips", saved.AllowWriteOutside);
-        Assert("allowSubAgents round-trips", saved.AllowSubAgents);
-        AssertEqual("D:/shared", string.Join('|', saved.ReadablePathPrefixes), "blank prefixes are dropped on read");
         Assert(
             "a whole-object save erases the retired key instead of leaving a zombie",
             !File.ReadAllText(ConfigPath()).Contains("allowShell", StringComparison.Ordinal));
@@ -205,21 +192,53 @@ internal static class Program
             !ToolCallProcessor.IsChannelShellApprovalWaived("Bash", isChannelSession: true));
     }
 
-    // ── Group 7: the whole-object write contract behind channel/settings-write ──
+    // ── Group 7: the six retired keys must not keep their say (iteration 29 需求 28) ──
+
+    private static void AssertRetiredKeysAreIgnored()
+    {
+        // Exactly the shape an installation upgraded from iteration 28 has on disk.
+        WriteRawChannelSettings(
+            """
+            {"autoReply":false,"streamingReply":false,"autoStart":false,
+             "shellRequiresApproval":false,"allowReadHome":true,
+             "readablePathPrefixes":["D:/shared"],"allowWriteOutside":true,"allowSubAgents":true}
+            """);
+
+        var legacy = GlobalChannelSettingsStore.Read();
+        Assert("a legacy record still carries its autoStart", !legacy.AutoStart);
+        Assert("a legacy record still carries its shellRequiresApproval", !legacy.ShellRequiresApproval);
+
+        GlobalChannelSettingsStore.Write(legacy with { AutoStart = true });
+        var raw = File.ReadAllText(ConfigPath());
+        foreach (var retired in new[]
+                 {
+                     "autoReply", "streamingReply", "allowReadHome",
+                     "readablePathPrefixes", "allowWriteOutside", "allowSubAgents"
+                 })
+        {
+            Assert(
+                $"a whole-object save drops the retired {retired} key",
+                !raw.Contains(retired, StringComparison.Ordinal));
+        }
+
+        var rewritten = GlobalChannelSettingsStore.Read();
+        Assert("the surviving autoStart came back", rewritten.AutoStart);
+        Assert("the surviving shellRequiresApproval came back", !rewritten.ShellRequiresApproval);
+    }
+
+    // ── Group 8: the whole-object write contract behind channel/settings-write ──
 
     private static void AssertPartialWriteIsRejected()
     {
         var full = """
-            {"autoReply":true,"streamingReply":false,"autoStart":true,
-             "shellRequiresApproval":true,"allowReadHome":false,
-             "readablePathPrefixes":[],"allowWriteOutside":false,"allowSubAgents":false}
+            {"autoStart":false,"shellRequiresApproval":true}
             """;
         WriteRawChannelSettings(full);
 
         Assert("a complete payload is accepted", WriteSettings(full).GetProperty("success").GetBoolean());
         Assert(
             "the accepted payload is what the store now holds",
-            !GlobalChannelSettingsStore.Read().StreamingReply);
+            !GlobalChannelSettingsStore.Read().AutoStart);
 
         // This is the shape a failed read arrives as, and the shape a stale renderer would
         // send after merging a patch onto it. Accepted, `shellRequiresApproval` would
@@ -230,11 +249,7 @@ internal static class Program
             """{"error":"boom"}""",
             """{"shellRequiresApproval":false}""",
             // Adds a key the store never writes, so the payload did not come from a read.
-            """
-            {"autoReply":true,"streamingReply":false,"autoStart":true,"shellRequiresApproval":false,
-             "allowReadHome":false,"readablePathPrefixes":[],"allowWriteOutside":false,
-             "allowSubAgents":false,"allowShell":true}
-            """,
+            """{"autoStart":true,"shellRequiresApproval":true,"allowReadHome":false}""",
             "[]",
             "null"
         })
@@ -297,15 +312,6 @@ internal static class Program
         if (!condition)
         {
             throw new InvalidOperationException($"Assertion failed: {what}");
-        }
-    }
-
-    private static void AssertEqual(string expected, string actual, string what)
-    {
-        _checks++;
-        if (!string.Equals(expected, actual, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException($"Assertion failed: {what} (expected={expected}, actual={actual})");
         }
     }
 }

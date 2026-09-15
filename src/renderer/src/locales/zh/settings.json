@@ -1065,24 +1065,9 @@
       "saved": "配置已保存",
       "saveFailed": "保存失败"
     },
-    "features": {
-      "autoReply": "自动回复",
-      "autoReplyDesc": "收到消息时自动使用 AI 回复",
-      "streamingReply": "流式回复",
-      "streamingReplyDesc": "实时流式输出回复内容（需要渠道支持）；当前仅记录设置，尚未接入强制执行",
-      "autoStart": "自动启动",
-      "autoStartDesc": "应用启动时自动连接已启用的渠道"
-    },
     "permissions": {
       "shellRequiresApproval": "Shell 命令需授权",
-      "shellRequiresApprovalDesc": "开启后渠道对话每次执行 shell 命令前需你确认；关闭则直接执行",
-      "notEnforcedHint": "以下开关当前仅记录设置，尚未接入强制执行",
-      "allowReadHome": "读取主目录",
-      "allowReadHomeDesc": "允许读取工作目录之外的文件",
-      "allowWriteOutside": "外部写入",
-      "allowWriteOutsideDesc": "允许写入工作目录之外的文件",
-      "allowSubAgents": "子代理",
-      "allowSubAgentsDesc": "允许使用子代理工具"
+      "shellRequiresApprovalDesc": "开启后渠道对话每次执行 shell 命令前需你确认；关闭则直接执行"
     },
     "feishu": {
       "appId": "App ID",
@@ -1127,11 +1112,8 @@
     "wsUrl": "WebSocket 中继地址（可选）",
     "global": {
       "title": "全局渠道设置",
-      "tabs": {
-        "reply": "回复设置",
-        "features": "功能开关",
-        "permissions": "安全权限"
-      },
+      "autoStart": "启动时自动连接",
+      "autoStartDesc": "应用启动时自动连接已启用的渠道",
       "loadingSettings": "正在读取全局渠道设置…",
       "loadFailed": "全局渠道设置读取失败",
       "saveFailed": "保存失败",

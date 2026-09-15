@@ -38,19 +38,13 @@ export interface PluginInstance {
 
 /** Mirrors the Worker record — defaults live in `GlobalChannelSettings.cs`, so this store never invents a fallback value. */
 export interface GlobalChannelSettings {
-  autoReply: boolean
-  streamingReply: boolean
   autoStart: boolean
   shellRequiresApproval: boolean
-  allowReadHome: boolean
-  readablePathPrefixes: string[]
-  allowWriteOutside: boolean
-  allowSubAgents: boolean
 }
 
 const GLOBAL_SETTING_KEYS: readonly (keyof GlobalChannelSettings)[] = [
-  'autoReply', 'streamingReply', 'autoStart', 'shellRequiresApproval',
-  'allowReadHome', 'readablePathPrefixes', 'allowWriteOutside', 'allowSubAgents'
+  'autoStart',
+  'shellRequiresApproval'
 ]
 
 /**

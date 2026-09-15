@@ -45,10 +45,7 @@ public static class GlobalChannelSettingsService
                 return Fail("Invalid global channel settings");
             }
 
-            GlobalChannelSettingsStore.Write(settings with
-            {
-                ReadablePathPrefixes = settings.ReadablePathPrefixes ?? []
-            });
+            GlobalChannelSettingsStore.Write(settings);
             return WorkerResponse.Json(
                 new GlobalChannelSettingsResult(true),
                 AgentRuntimeJsonContext.Default.GlobalChannelSettingsResult);

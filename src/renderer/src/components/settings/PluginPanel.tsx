@@ -5,7 +5,8 @@
  *
  * The channel blocks collapse to a single summary row by default, and that is the point.
  * A channel is set up once; what brings you back to this page afterwards is the global
- * policy — reply persona, model, feature switches. The previous layout spent the top of
+ * policy — reply persona, model, launch auto-connect, shell approval. The previous layout
+ * spent the top of
  * the screen on a channel list plus a detail pane that had nothing new to say after the
  * first visit, and squeezed the global settings into the bottom 45%.
  *

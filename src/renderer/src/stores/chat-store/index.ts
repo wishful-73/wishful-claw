@@ -367,6 +367,15 @@ export const useChatStore = create<ChatStore>()(
         delete workerParams.userMessageText
         delete workerParams.meta
 
+        // The Worker resolves `{{sessionId}}` in requestOverrides headers (codex,
+        // opencode-go) from `provider.sessionId`. sendMessage is the only door to
+        // agent/run and it knows the session, so the identity is stamped here
+        // instead of being remembered at every send site — that is how it went
+        // missing on the chat path while the sidecar path had it.
+        if (workerParams.provider) {
+          workerParams.provider = { ...workerParams.provider, sessionId }
+        }
+
         const result = await window.api.workerRequest<{ started: boolean; runId: string }>(
 
           'agent/run',

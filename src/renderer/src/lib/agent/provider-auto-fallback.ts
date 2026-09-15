@@ -4,6 +4,7 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { resolveSessionModelSelection } from '../session-model-resolution'
+import { buildProviderPayload } from './provider-payload'
 import type { AIProvider } from '../../../../shared/types/provider'
 
 /**
@@ -161,25 +162,6 @@ export function applyAutoFallbackTarget(sessionId: string, target: AutoFallbackT
   return true
 }
 
-/** 发给 sendMessage 的 provider 载荷（会话绑定之外的显式入参）。 */
-export function buildAutoFallbackProviderConfig(target: AutoFallbackTarget): Record<string, unknown> {
-  const provider = useProviderStore.getState().providers.find((item) => item.id === target.providerId)
-  const settings = useSettingsStore.getState()
-  if (!provider) return { model: target.modelId }
-  return {
-    id: provider.id,
-    name: provider.name,
-    type: provider.type,
-    apiKey: provider.apiKey,
-    baseUrl: provider.baseUrl,
-    providerBuiltinId: provider.builtinId,
-    providerId: provider.id,
-    model: target.modelId,
-    requestTimeoutSeconds: settings.apiRequestTimeoutSeconds,
-    requestMaxRetries: settings.requestMaxRetries
-  }
-}
-
 export function describeAutoFallbackSwitch(from: string, target: AutoFallbackTarget): string {
   return i18next.t('settings:provider.fallback.autoSwitched', {
     defaultValue: '{{from}} 触发限额，已自动切换到 {{to}}',
@@ -209,13 +191,51 @@ async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): P
 
   toast.info(describeAutoFallbackSwitch(target.fromProviderName, target))
 
+  const provider = useProviderStore.getState().providers.find((item) => item.id === target.providerId)
+  if (!provider) return
+
+  const chatStore = useChatStore.getState()
+  const session = chatStore.sessions.find((item) => item.id === sessionId)
+  if (!session) return
+
+  // The follow-up turn must start with the same parameters a manual send uses.
+  // Leaving them out makes the Worker guess: it infers scope from
+  // projectId/workingFolder, forces collaborationMode to "chat" for a global run
+  // and defaults toolPreset to "full" — so a project session would be pushed
+  // forward without its project tools. See AgentRunContextPolicy / AgentLoop.
+  const settings = useSettingsStore.getState()
+  const projectId = session.scope === 'project' ? (session.projectId ?? undefined) : undefined
+  const project = projectId ? chatStore.projects.find((item) => item.id === projectId) : null
+  const workingFolder = session.scope === 'project'
+    ? (session.workingFolder ?? project?.workingFolder ?? undefined)
+    : undefined
+  const sshConnectionId = session.scope === 'project'
+    ? (session.sshConnectionId ?? project?.sshConnectionId ?? undefined)
+    : undefined
+
   const text = autoFallbackContinueText()
   try {
-    await useChatStore.getState().sendMessage({
-      provider: buildAutoFallbackProviderConfig(target),
+    await chatStore.sendMessage({
+      provider: buildProviderPayload(provider, target.modelId, settings),
       messages: [{ role: 'user', content: text }],
       userMessageText: text,
-      sessionId
+      sessionId,
+      toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
+      workingFolder,
+      sshConnectionId,
+      projectId,
+      scope: session.scope,
+      collaborationMode: session.collaborationMode,
+      runtimeRole: 'sessionAgent',
+      permissionMode: session.permissionMode,
+      maxIterations: 0,
+      maxParallelTools: settings.maxParallelToolCalls,
+      maxConcurrentSubAgents: settings.maxConcurrentSubAgents,
+      personaId: session.personaId ?? settings.defaultPersonaId ?? undefined,
+      language: settings.language,
+      userRules: settings.systemPrompt || undefined,
+      contextCompressionEnabled: settings.contextCompressionEnabled,
+      contextCompressionThreshold: settings.contextCompressionThreshold
     })
   } catch (error) {
     // 推进失败就到此为止 —— 不继续往下切，把报错留给用户自己决定。

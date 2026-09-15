@@ -9,7 +9,7 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
-import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
@@ -23,6 +23,7 @@ import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/l
 import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
 import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-context'
 import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -189,35 +190,9 @@ export function useChatActions() {
         ? [{ type: 'text', text: modelText }, ...imageBlocks]
         : modelText
 
-      const thinkingConfig = modelConfig?.thinkingConfig
-      const thinkingEnabled = settings.thinkingEnabled && !!thinkingConfig
-      const reasoningEffort = thinkingConfig
-        ? resolveReasoningEffortForModel({
-            reasoningEffort: settings.reasoningEffort,
-            reasoningEffortByModel: settings.reasoningEffortByModel,
-            providerId: activeProvider.id,
-            modelId,
-            thinkingConfig
-          })
-        : undefined
-
-      const provider = {
-        id: activeProvider.id,
-        name: activeProvider.name,
-        type: activeProvider.type,
-        apiKey: activeProvider.apiKey,
-        baseUrl: activeProvider.baseUrl,
-        providerBuiltinId: activeProvider.builtinId ?? undefined,
-        model: modelId,
-        contextLength: modelConfig?.contextLength ?? undefined,
-        temperature: settings.temperature ?? undefined,
-        maxTokens: settings.maxTokens ?? undefined,
-        thinkingEnabled,
-        thinkingConfig: thinkingConfig ?? undefined,
-        reasoningEffort,
-        requestTimeoutSeconds: settings.apiRequestTimeoutSeconds ?? undefined,
-        requestMaxRetries: settings.requestMaxRetries ?? undefined
-      }
+      // The provider payload — including the thinking flags — is built in one
+      // place; see lib/agent/provider-payload.ts.
+      const provider = buildProviderPayload(activeProvider, modelId, settings)
 
       const started = await sendMessage({
         provider,
@@ -355,44 +330,11 @@ export function resolveSendModel(sessionId: string): { provider: SendProvider; m
   return { provider, modelId }
 }
 
-// Build a complete provider object matching handleSendMessage's logic.
-// Both sendImplementPlan and sendPlanRevision need this -- they bypass
-// handleSendMessage but must send the same provider shape to agent/run.
-export function buildProviderPayload(
-  activeProvider: SendProvider,
-  modelId: string,
-  settings: ReturnType<typeof useSettingsStore.getState>
-): Record<string, unknown> {
-  const modelConfig = activeProvider!.models.find((m: any) => m.id === modelId)
-  const thinkingConfig = modelConfig?.thinkingConfig
-  const thinkingEnabled = settings.thinkingEnabled && !!thinkingConfig
-  const reasoningEffort = thinkingConfig
-    ? resolveReasoningEffortForModel({
-        reasoningEffort: settings.reasoningEffort,
-        reasoningEffortByModel: settings.reasoningEffortByModel,
-        providerId: activeProvider!.id,
-        modelId,
-        thinkingConfig
-      })
-    : undefined
-
-  return {
-    id: activeProvider!.id,
-    name: activeProvider!.name,
-    type: activeProvider!.type,
-    apiKey: activeProvider!.apiKey,
-    baseUrl: activeProvider!.baseUrl,
-    providerBuiltinId: activeProvider!.builtinId ?? undefined,
-    model: modelId,
-    temperature: settings.temperature ?? undefined,
-    maxTokens: settings.maxTokens ?? undefined,
-    thinkingEnabled,
-    thinkingConfig: thinkingConfig ?? undefined,
-    reasoningEffort,
-    requestTimeoutSeconds: settings.apiRequestTimeoutSeconds ?? 100,
-    requestMaxRetries: settings.requestMaxRetries ?? 10
-  }
-}
+// The provider payload sent to agent/run is built in exactly one place — see
+// lib/agent/provider-payload.ts for what it contains and why. Re-exported here
+// because existing callers (cron-runtime, goal-session-views, the background
+// sub-agent wakeup) import it from this module.
+export { buildProviderPayload }
 
 export async function sendImplementPlan(sessionId: string, planId: string): Promise<void> {
   const planStore = (await import('@renderer/stores/plan-store')).usePlanStore.getState()

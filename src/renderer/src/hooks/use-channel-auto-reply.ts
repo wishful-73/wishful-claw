@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Channel Auto-Reply Hook
  *
  * Listens for `plugin:session-task` IPC events from the main process
@@ -18,14 +18,14 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { agentStream } from '@renderer/lib/ipc/agent-stream-receiver'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
-import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { AgentStreamEvent } from '../../../shared/agent-stream-protocol'
 import type { ChatMessage } from '@renderer/stores/chat-store/types'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
-import type { ThinkingConfig } from '../../../shared/types/provider'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
 import {
   isChannelReplyEvent,
   isChannelReplyTextDelta
@@ -219,33 +219,9 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
   }
 
   const settings = useSettingsStore.getState()
-  const modelConfig = targetProvider.models.find((m: { id: string; thinkingConfig?: unknown }) => m.id === modelId)
-  const thinkingConfig = modelConfig?.thinkingConfig as ThinkingConfig | undefined
-  const thinkingEnabled = settings.thinkingEnabled && !!thinkingConfig
-  const reasoningEffort = thinkingConfig
-    ? resolveReasoningEffortForModel({
-        reasoningEffort: settings.reasoningEffort,
-        reasoningEffortByModel: settings.reasoningEffortByModel,
-        providerId: targetProvider.id,
-        modelId,
-        thinkingConfig
-      })
-    : undefined
-
-  const provider = {
-    id: targetProvider.id,
-    name: targetProvider.name,
-    type: targetProvider.type,
-    apiKey: targetProvider.apiKey,
-    baseUrl: targetProvider.baseUrl,
-    providerBuiltinId: targetProvider.builtinId ?? undefined,
-    model: modelId,
-    temperature: settings.temperature ?? undefined,
-    maxTokens: settings.maxTokens ?? undefined,
-    thinkingEnabled,
-    thinkingConfig: thinkingConfig ?? undefined,
-    reasoningEffort
-  }
+  // One builder for the agent/run provider payload; see lib/agent/provider-payload.ts.
+  // It derives the thinking flags exactly the way this path used to.
+  const provider = buildProviderPayload(targetProvider, modelId, settings)
 
   // The cancel event may arrive while session/provider setup is awaiting.
   if (task.channelTaskId && pendingChannelCancels.delete(task.channelTaskId)) {

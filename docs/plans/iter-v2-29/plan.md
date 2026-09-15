@@ -1385,3 +1385,36 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 - `npm run build:worker:prod` AOT 成功且无 IL2026/IL3050/IL3051
 - 既有回归不回退：`test:renderable-chat-items`、`test:provider-presets`、`test:ipc-msgpack-routing`、`test:settings-tabs`、`test:updater-*`，C# 侧 Goal / SessionTaskCascade / ChannelToolVisibility / ChannelShellApproval / ToolConcurrency 等
 - 逐个需求的 Mini 验证（见各需求节）
+
+---
+
+# 审查态 + 验证态（2026-09-15）
+
+- **审查**：`review_report.md` —— 结论 **FAIL**（❌ 5 / ⚠️ 9 / ✅ 20）。3 条功能性 ❌ 全在 S-21 与 S-20：
+  - **F-1（S-21）** 自动切换不粘会话：auto 模式下 `session.providerId` 不参与路由（`session-model-resolution.ts:118-131`），而 `autoModelSelectionsBySession` 全仓无写入方 → 用户下一条正常消息回到刚限额的服务商。修法：`setSessionAutoFallbackTarget` 同时写 `setAutoModelSelection`。
+  - **F-2（S-21）** 自动推进那一轮参数与手动发消息不一致：只传 4 个字段，缺 `workingFolder / projectId / sshConnectionId / toolPreset / collaborationMode`，Worker 无会话兜底（`AgentLoop.cs:189`、`AgentRunContextPolicy.cs:33-60`）→ project 会话被降级成 `global + chat + full`。修法：复用 `resolveSendModel` + `buildProviderPayload` 并按会话补参。
+  - **F-8（S-20）** 自定义请求头在主聊天链路不生效：C# 只从请求参数里的 provider 读 `requestOverrides`（`ProviderRequestOverrides.cs:18/:66`），而主链路 provider 是手搓字面量（`use-chat-actions.ts:205-220`）不含该字段；只有旁路 `sidecar-mapping.ts:168` 才映射。同因牵连 `userAgent` 与 `omitBodyKeys`。修法：三处手搓载荷合并成唯一构造器（同源问题见 **F-16**）。
+  - **F-9（流程）** S-21 三刀未按「一个需求一个提交」折叠（`c98339c2` / `63fcfa42` / `164acc99`）。
+  - **F-10（流程/文档）** `S-21.D7` 编号在本节撞车两次；`WishfulClaw.ProviderFallbackRegressionTests` 只有 1 条 sanity 断言却已进 sln；前端 `tests/provider-fallback` 未覆盖 F-1/F-2 主链。
+  - 其余 ⚠️：`isQuotaFailure` 过宽（F-3）、400ms 竞态（F-4）、`clearAutoFallbackAttempts` 无调用方（F-5）、S-25 手工拼 metadata JSON（F-11）、S-18 图谱 50 条无截断提示（F-12）、S-19 落盘路径无边界（F-13）、S-25「全部会话」实按 projectId 过滤（F-14）、存量 i18n 缺口（F-15，非本迭代）。
+- **验证**：`verification_report.md` —— 门禁 **PASS**（TS 三配置 0 错；12 套 TS 回归全过；C# 产品 0/0、测试 sln 0/0、AOT 无 IL 告警；11 个 C# 回归工程全过），功能面 **PARTIAL**（F-1/F-2/F-8 属「编译过、回归过、用户路径不生效」，门禁照不出来，须真机/`request_debug` 定性）。
+- **修复归属**：以上修正 + 两份报告进迭代收尾那一刀 `fix(迭代29): 审查与验证修复调整`。
+- **流程备注**：本迭代原计划用 4 个只读 subagent 做独立审查，**4 个全部因执行预算上限（约 12 轮 / 23 次工具调用）未产出报告**（把写报告留在了最后一步）。后续审查要么拆到单需求粒度，要么把「第一步先建报告文件骨架、随后逐块追加」写进 subagent 指令。
+
+## 修复（2026-09-15，老大拍板「按你的判断开始修复」）
+
+病根一句话：**`agent/run` 的 provider 载荷靠每个发送点手搓字面量，字段必然漏。**
+
+- **F-8（S-20 主链路不生效）** —— 新建 `lib/agent/provider-payload.ts` 作为 provider 载荷的**唯一构造器**，补齐 Worker 会读而此前被丢掉的字段：`requestOverrides`（模型级优先于服务商级）、`userAgent`、`providerId`、`cacheTtl`、`responseSummary`。五处手搓字面量全部改走它：
+  - `hooks/use-chat-actions.ts`（原 `buildProviderPayload` 原地删除，改为 re-export，保持 cron / goal / subagent-wakeup 的既有 import 不变）
+  - `hooks/use-channel-auto-reply.ts`
+  - `lib/tools/project-send-message.ts`（经 `options.thinkingEnabled: false` 保留原语义）
+  - `lib/agent/provider-auto-fallback.ts`（同时删掉 `buildAutoFallbackProviderConfig`）
+- **`sessionId` 改由 `stores/chat-store` 的 `sendMessage` 盖章** —— Worker 用 `provider.sessionId` 解析 requestOverrides 头里的 `{{sessionId}}`（codex / opencode-go），而 sendMessage 是唯一通往 `agent/run` 的门，会话身份在那里落，不再靠每个调用点记着。
+- **F-2（S-21 自动推进参数不一致）一并修掉** —— 自动推进那一轮改用同一个构造器，并补齐 `toolPreset / workingFolder / sshConnectionId / projectId / scope / collaborationMode / runtimeRole / permissionMode / maxIterations / maxParallelTools / maxConcurrentSubAgents / personaId / language / userRules / contextCompression*`，与手动发消息一致。此前缺这些字段，Worker 会把 project 会话推断成 `scope=global` + `collaborationMode=chat` + `toolPreset=full`（`AgentRunContextPolicy.cs` / `AgentLoop.cs:189`），推进轮拿不到项目工具。
+- **刻意不动**（避免扩大改动面，留作独立议题，见「遗留」）：
+  - `type` 仍取**服务商级**，不采用 `model.type ?? provider.type`。copilot-oauth 等服务商在 provider 级声明 `openai-chat`、在模型级声明 `openai-responses`，改这里会换请求端点，风险不该夹在本次修复里。
+  - `serviceTier` 不接（fast mode 无链路）；`organization` / `project` 不接（`AIProvider` 无此字段，无来源）。
+- **新增回归 `tests/provider-payload`（49 断言）**：Worker 读取字段的契约清单、模型级 override 优先、UA 占位符回落、思考开关与推理档位推导，**外加一条结构性守卫 —— 四个发送点不得再出现手搓的 provider 字面量**（`apiKey:`）且必须调用 `buildProviderPayload(`。
+
+**门禁**：TS 三配置 0 错；13 套 TS 回归全过（含新增 `provider-payload`）；C# 无改动（`Worker.csproj` 与 `tests/WishfulClaw.Tests.sln` 复跑 0/0）。

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Project Send-Session-Message Handler
  *
  * Handles `project/send-session-message` reverse-request from the native worker.
@@ -24,6 +24,7 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { writeLog } from '@renderer/lib/error-logger'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
 import {
   hasActiveExternalChannelReply,
   registerExternalChannelReply,
@@ -178,18 +179,7 @@ export async function handleProjectSendSessionMessage(
   }
 
   const settings = useSettingsStore.getState()
-  const provider = {
-    id: targetProvider.id,
-    name: targetProvider.name,
-    type: targetProvider.type,
-    apiKey: targetProvider.apiKey,
-    baseUrl: targetProvider.baseUrl,
-    providerBuiltinId: targetProvider.builtinId ?? undefined,
-    model: modelId,
-    temperature: settings.temperature ?? undefined,
-    maxTokens: settings.maxTokens ?? undefined,
-    thinkingEnabled: false
-  }
+  const provider = buildProviderPayload(targetProvider, modelId, settings, { thinkingEnabled: false })
 
   // 3. Channel echo registration — a channel-bound session must echo its reply
   //    back to the external chat no matter what triggered the turn (same rule as

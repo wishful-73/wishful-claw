@@ -45,12 +45,27 @@ export interface GitBranchItem {
   isCurrent: boolean
 }
 
+export interface GitCommitGraphItem {
+  hash: string
+  shortHash: string
+  /** Full parent hashes; the first entry is the lane the commit continues on. */
+  parents: string[]
+  author: string
+  date: string
+  subject: string
+  /** Short ref names pointing at this commit, e.g. `HEAD -> main`, `origin/main`, `tag: v1`. */
+  refs: string[]
+}
+
 export interface GitRepositoryDetails {
   status: GitStatusDetailed | null
   history: GitCommitHistoryItem[]
   fileHistoryByPath: Record<string, GitCommitHistoryItem[]>
   branches: GitBranchItem[]
   currentBranch: string | null
+  /** `null` until the branch view asks for it — the graph is only fetched on demand. */
+  graph: GitCommitGraphItem[] | null
+  graphError: string | null
   diffByKey: Record<string, string>
   /** 缓存 `commitHash:filePath` → 该提交中此文件的 patch */
   historyFileDiffByKey: Record<string, string>
@@ -78,6 +93,7 @@ export interface GitStore {
   selectRepository: (repoPath: string | null) => void
   refreshRepository: (repoPath: string, options?: RefreshRepositoryOptions) => Promise<void>
   loadMoreHistory: (repoPath: string) => Promise<void>
+  loadCommitGraph: (repoPath: string, options?: { force?: boolean }) => Promise<void>
   loadFileHistory: (repoPath: string, filePath: string, append?: boolean) => Promise<void>
   loadFileDiff: (repoPath: string, filePath: string, staged?: boolean) => Promise<void>
   loadHistoryFileDiff: (
@@ -171,6 +187,8 @@ function createEmptyRepoDetails(): GitRepositoryDetails {
     fileHistoryByPath: {},
     branches: [],
     currentBranch: null,
+    graph: null,
+    graphError: null,
     diffByKey: {},
     historyFileDiffByKey: {},
     loading: false,
@@ -189,8 +207,11 @@ export const pendingFileDiffRequests = new Map<string, Promise<void>>()
 export const pendingFileHistoryRequests = new Map<string, Promise<void>>()
 export const pendingHistoryFileDiffRequests = new Map<string, Promise<{ success: boolean }>>()
 export const pendingScanRequests = new Map<string, Promise<void>>()
+export const pendingCommitGraphRequests = new Map<string, Promise<void>>()
 export const pendingRepositoryRefreshRequests = new Map<string, Promise<void>>()
 export const repositoryRefreshExpiresAtByKey = new Map<string, number>()
+/** Depth of the branch-view commit graph. Deeper than this and the lanes get unreadable. */
+export const COMMIT_GRAPH_LIMIT = 50
 const repositoryRefreshRevisionByKey = new Map<string, number>()
 export const REPOSITORY_SCAN_CACHE_TTL_MS = 5_000
 export const REPOSITORY_REFRESH_CACHE_TTL_MS = 3_000
@@ -232,6 +253,7 @@ export function clearGitRequestCaches(): void {
   pendingFileHistoryRequests.clear()
   pendingHistoryFileDiffRequests.clear()
   pendingScanRequests.clear()
+  pendingCommitGraphRequests.clear()
   pendingRepositoryRefreshRequests.clear()
   repositoryRefreshExpiresAtByKey.clear()
   repositoryRefreshRevisionByKey.clear()

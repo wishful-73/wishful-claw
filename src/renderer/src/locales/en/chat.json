@@ -1,4 +1,12 @@
 {
+  "activity": {
+    "iterationStarted": "Iteration started",
+    "iterationEnded": "Iteration ended",
+    "requestSent": "Request sent",
+    "toolCallStarted": "Tool call started",
+    "toolExecuting": "Tool executing",
+    "toolResult": "Tool result"
+  },
   "home": {
     "title": "How can I help you today?",
     "subtitle": "Start a conversation or pick a quick prompt below.",
@@ -22,10 +30,10 @@
     "description": "Choose a local folder or SSH connection for this project.",
     "local": "Local Folder",
     "ssh": "SSH (coming soon)",
-    "sshComingSoon": "SSH support coming in 迭代四",
+    "sshComingSoon": "SSH support is coming in iteration 4",
     "browse": "Browse...",
     "hint": "The working folder determines where the agent operates. File operations will be scoped to this directory.",
-    "sshPlaceholder": "SSH connection support will be added in 迭代四.",
+    "sshPlaceholder": "SSH connection support will be added in iteration 4.",
     "cancel": "Cancel",
     "confirm": "Confirm"
   },
@@ -108,9 +116,9 @@
     "compressionBudget": "Compression Budget",
     "remaining": "remaining",
     "runtimeMetrics": {
-      "input": "未命中",
+      "input": "Uncached",
       "cache": "Cache",
-      "cacheHit": "缓存",
+      "cacheHit": "Cached",
       "cacheCreate": "Cache write",
       "cacheCreate5m": "Cache write (5m)",
       "cacheCreate1h": "Cache write (1h)",
@@ -121,7 +129,8 @@
       "tpsHint": "Output tokens generated per second",
       "ttftHint": "Time to first token",
       "totalCost": "Cost",
-      "total": "Total"
+      "total": "Total",
+      "autoModelHint": "Provider and model currently used by auto switching"
     },
     "runtimeStatus": {
       "ready": "Ready",
@@ -204,7 +213,15 @@
     "loadingSuggestions": "Loading suggestions...",
     "noSuggestions": "No matching suggestions",
     "doubleClickCompressContext": "Double-click to compress context",
-    "queueRemoveImages": "Remove images"
+    "queueRemoveImages": "Remove images",
+    "pastedBlock": {
+      "label": "Pasted",
+      "labelWithLines": "Pasted · {{lines}} lines",
+      "expand": "Expand",
+      "expandTitle": "Expand to full text",
+      "collapse": "Collapse",
+      "remove": "Remove"
+    }
   },
   "message": {
     "thinking": "Thinking",
@@ -398,7 +415,6 @@
     "notSet": "not set",
     "noSessionGoal": "No session goal.",
     "noUsage": "0s",
-    "pendingTitle": "Goal pending confirmation",
     "pendingConfirmTitle": "Confirm this goal before execution",
     "modelConfirmTitle": "Choose the Goal model",
     "providerLabel": "API provider",

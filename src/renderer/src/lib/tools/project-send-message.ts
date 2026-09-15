@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Project Send-Session-Message Handler
  *
  * Handles `project/send-session-message` reverse-request from the native worker.
@@ -24,6 +24,12 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { writeLog } from '@renderer/lib/error-logger'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
+import {
+  hasActiveExternalChannelReply,
+  registerExternalChannelReply,
+  unregisterExternalChannelReply
+} from '@renderer/hooks/use-channel-auto-reply'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import {
@@ -173,20 +179,25 @@ export async function handleProjectSendSessionMessage(
   }
 
   const settings = useSettingsStore.getState()
-  const provider = {
-    id: targetProvider.id,
-    name: targetProvider.name,
-    type: targetProvider.type,
-    apiKey: targetProvider.apiKey,
-    baseUrl: targetProvider.baseUrl,
-    providerBuiltinId: targetProvider.builtinId ?? undefined,
-    model: modelId,
-    temperature: settings.temperature ?? undefined,
-    maxTokens: settings.maxTokens ?? undefined,
-    thinkingEnabled: false
+  const provider = buildProviderPayload(targetProvider, modelId, settings, { thinkingEnabled: false })
+
+  // 3. Channel echo registration — a channel-bound session must echo its reply
+  //    back to the external chat no matter what triggered the turn (same rule as
+  //    chat-actions and cron-runtime). Without this, a run injected by the worker
+  //    (e.g. a dispatch reply delivered back into the global session) produces
+  //    assistant messages that never reach the channel.
+  //    Guarded by hasActiveExternalChannelReply: session-follow-up registers its
+  //    own entry — carrying an onComplete callback — before calling us, and
+  //    overwriting it here would silently drop that callback.
+  const pluginId = targetSession.pluginId
+  const externalChatId = targetSession.externalChatId
+  const channelRegisteredHere =
+    Boolean(pluginId && externalChatId) && !hasActiveExternalChannelReply(sessionId)
+  if (channelRegisteredHere && pluginId && externalChatId) {
+    registerExternalChannelReply(sessionId, pluginId, externalChatId)
   }
 
-  // 3. Fire-and-forget sendMessage — global session doesn't need to wait for result
+  // 4. Fire-and-forget sendMessage — global session doesn't need to wait for result
   //    The Agent can check back later via get_project_details.
   try {
     writeLog('info', '[sendMsg] sending to session: ' + sessionId + ' content: ' + content)
@@ -196,7 +207,6 @@ export async function handleProjectSendSessionMessage(
       messages: [{ role: 'user', content }],
       sessionId,
       toolPreset: targetSession.collaborationMode === 'cowork' && effectiveWorkingFolder ? 'coding' : 'chat',
-      webSearchEnabled: settings.webSearchEnabled,
       workingFolder: effectiveWorkingFolder || undefined,
       sshConnectionId: targetSession.scope === 'project' ? targetSession.sshConnectionId ?? undefined : undefined,
       projectId: effectiveProjectId || undefined,
@@ -214,6 +224,7 @@ export async function handleProjectSendSessionMessage(
       contextCompressionThreshold: settings.contextCompressionThreshold
     })
     if (!started) {
+      if (channelRegisteredHere) unregisterExternalChannelReply(sessionId)
       const error = `Failed to start message processing for session "${sessionId}".`
       await failScheduledFollowUp(error)
       return { success: false, error }
@@ -227,6 +238,7 @@ export async function handleProjectSendSessionMessage(
       followUpId: scheduledFollowUpId ?? undefined
     }
   } catch (err) {
+    if (channelRegisteredHere) unregisterExternalChannelReply(sessionId)
     const msg = err instanceof Error ? err.message : String(err)
     await failScheduledFollowUp(msg)
     return { success: false, error: `Failed to send message: ${msg}` }

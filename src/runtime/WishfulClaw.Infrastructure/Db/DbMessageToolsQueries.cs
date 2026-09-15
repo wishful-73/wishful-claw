@@ -39,7 +39,7 @@ public static partial class DbMessageTools
             var db = DbClient.GetClient(parameters);
 
             var entities = db.Query(
-                "SELECT id, session_id, role, content, created_at, sort_order FROM messages WHERE session_id = @sid ORDER BY sort_order ASC",
+                "SELECT id, session_id, role, content, created_at, updated_at, sort_order FROM messages WHERE session_id = @sid ORDER BY sort_order ASC",
                 EntityMappers.MapMessage,
                 new SqliteParameter("@sid", sessionId));
 

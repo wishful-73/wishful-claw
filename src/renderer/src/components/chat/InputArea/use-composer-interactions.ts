@@ -1,8 +1,29 @@
 ﻿import * as React from 'react'
 import type { FileAwareEditorHandle } from '../file-aware-editor-utils'
 import type { SelectedFileItem } from '@renderer/lib/select-file-editor'
+import { buildPastedBlockLabel, createPastedBlockTag } from '@renderer/lib/select-file-tags'
 
 type EditorSelection = { start: number; end: number }
+
+/**
+ * A paste longer than either bound collapses into a chip instead of expanding
+ * inline. Either bound alone is enough — 2000 short lines or 20 very long ones
+ * both wreck the composer.
+ */
+const PASTE_COLLAPSE_CHAR_THRESHOLD = 2000
+const PASTE_COLLAPSE_LINE_THRESHOLD = 20
+
+function shouldCollapsePaste(text: string): boolean {
+  if (text.length > PASTE_COLLAPSE_CHAR_THRESHOLD) return true
+  let lines = 1
+  for (let i = 0; i < text.length; i += 1) {
+    if (text.charCodeAt(i) === 10) {
+      lines += 1
+      if (lines > PASTE_COLLAPSE_LINE_THRESHOLD) return true
+    }
+  }
+  return false
+}
 
 const clipboardTextToHtml = (text: string): string =>
   text
@@ -61,6 +82,22 @@ export function useComposerInteractions({
 
     event.preventDefault()
     editorRef.current?.focus()
+
+    // Long paste: collapse into a chip. Goes through the normal controlled
+    // replacement path (the tag deserializes into a pasted node), because
+    // insertHTML would bypass the document state entirely.
+    if (shouldCollapsePaste(plainText)) {
+      const selection = editorRef.current?.getSelectionOffsets() ?? editorSelection
+      replaceSelectionWithText(
+        createPastedBlockTag({
+          label: buildPastedBlockLabel(plainText),
+          text: plainText
+        }),
+        selection
+      )
+      return
+    }
+
     try {
       // 不用 insertText：它把换行交给 Blink 拆成 <div> 块，解析器只补块后换行会吞掉换行，
       // 且选区未变更的连续 insertText 会被并入同一撤销组。

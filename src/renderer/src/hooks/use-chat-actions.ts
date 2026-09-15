@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import {
   useChatStore,
   updateCompressionStatus,
@@ -9,19 +9,20 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
-import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
-import { useUIStore } from '@renderer/stores/ui-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
-import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync, type CachedToolDef } from '@renderer/lib/tools/tool-cache'
+import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync } from '@renderer/lib/tools/tool-cache'
 import { compressMessages } from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
 import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/lib/image-attachments'
 import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
 import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-context'
+import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -148,24 +149,14 @@ export function useChatActions() {
 
       // For special presets (e.g. skill-installer), fetch async to ensure
       // the correct tool list is used. For default presets, use cache + background fetch.
-      let workerTools: CachedToolDef[] | null
+      // 发给 LLM 的工具清单由 Worker 侧 ToolPreset 决定（渲染端只负责预热/刷新缓存）；
+      // 渲染端注册的 handler 仍可按名字执行，只是定义不下发。
       if (opts?.toolPreset) {
-        workerTools = await fetchToolDefinitionsAsync(opts.toolPreset)
+        await fetchToolDefinitionsAsync(opts.toolPreset)
       } else {
-        workerTools = getCachedTools()
+        getCachedTools()
         fetchToolDefinitions(toolPreset) // fire-and-forget background fetch
       }
-      // Filter out WebSearch/WebFetch when web search is not enabled.
-      const webSearchEnabled = settings.webSearchEnabled
-      const filteredWorkerTools = (workerTools ?? []).filter(
-        (t) => webSearchEnabled || (t.name !== 'WebSearch' && t.name !== 'WebFetch')
-      )
-      // Use only the Worker's preset-filtered tool list.
-      // Renderer-registered tool handlers are still available for execution
-      // (toolRegistry.get() works by name), but their definitions are NOT
-      // sent to the LLM — this keeps the tool list lean and lets the Worker's
-      // ToolPreset control what the LLM sees.
-      void filteredWorkerTools // tools now managed by backend via toolPreset
 
       const messageText = typeof text === 'string' ? text : text.text
       const imageAttachments = Array.isArray(_images)
@@ -188,42 +179,19 @@ export function useChatActions() {
       })
       // 读盘结果只进发给模型的内容；落库与气泡用 messageText，
       // 经下面的 userMessageText 传给 store，避免 `<system-reminder>` 污染 DB 文本。
+      // T-13: messageText 保留 `<pasted-block>` 标签（聊天窗要按 chip 渲染），
+      // 所以发给模型前必须展开回原文 —— 模型收到的仍是全文，不因折叠丢内容。
+      const modelSourceText = expandPastedBlocks(messageText)
       const modelText = selectedFileContext.contextText
-        ? `${messageText}\n\n${selectedFileContext.contextText}`
-        : messageText
+        ? `${modelSourceText}\n\n${selectedFileContext.contextText}`
+        : modelSourceText
       const userContent: string | ContentBlock[] = imageBlocks.length > 0
         ? [{ type: 'text', text: modelText }, ...imageBlocks]
         : modelText
 
-      const thinkingConfig = modelConfig?.thinkingConfig
-      const thinkingEnabled = settings.thinkingEnabled && !!thinkingConfig
-      const reasoningEffort = thinkingConfig
-        ? resolveReasoningEffortForModel({
-            reasoningEffort: settings.reasoningEffort,
-            reasoningEffortByModel: settings.reasoningEffortByModel,
-            providerId: activeProvider.id,
-            modelId,
-            thinkingConfig
-          })
-        : undefined
-
-      const provider = {
-        id: activeProvider.id,
-        name: activeProvider.name,
-        type: activeProvider.type,
-        apiKey: activeProvider.apiKey,
-        baseUrl: activeProvider.baseUrl,
-        providerBuiltinId: activeProvider.builtinId ?? undefined,
-        model: modelId,
-        contextLength: modelConfig?.contextLength ?? undefined,
-        temperature: settings.temperature ?? undefined,
-        maxTokens: settings.maxTokens ?? undefined,
-        thinkingEnabled,
-        thinkingConfig: thinkingConfig ?? undefined,
-        reasoningEffort,
-        requestTimeoutSeconds: settings.apiRequestTimeoutSeconds ?? undefined,
-        requestMaxRetries: settings.requestMaxRetries ?? undefined
-      }
+      // The provider payload — including the thinking flags — is built in one
+      // place; see lib/agent/provider-payload.ts.
+      const provider = buildProviderPayload(activeProvider, modelId, settings)
 
       const started = await sendMessage({
         provider,
@@ -232,7 +200,6 @@ export function useChatActions() {
         ...(selectedFileContext.meta ? { meta: { selectedFileReads: selectedFileContext.meta } } : {}),
         sessionId: targetSessionId,
         toolPreset,
-        webSearchEnabled,
         codegraphEnabled,
         workingFolder,
         maxIterations: 0, // 0 = unlimited, agent runs until no more tool calls
@@ -338,13 +305,8 @@ export function resolveSendModel(sessionId: string): { provider: SendProvider; m
     channelProviderId: channel?.providerId,
     channelModelId: channel?.model
   })
-  const autoSelection = useUIStore.getState().autoModelSelectionsBySession[sessionId] ?? null
-  const resolvedProviderId = selection.isAutoModeActive && autoSelection?.providerId
-    ? autoSelection.providerId
-    : selection.providerId
-  let resolvedModelId: string | null = selection.isAutoModeActive && autoSelection?.modelId
-    ? autoSelection.modelId
-    : selection.modelId
+  const resolvedProviderId = selection.providerId
+  let resolvedModelId: string | null = selection.modelId
   let provider = resolvedProviderId
     ? (providerStore.providers.find((p) => p.id === resolvedProviderId) ?? null)
     : null
@@ -362,44 +324,11 @@ export function resolveSendModel(sessionId: string): { provider: SendProvider; m
   return { provider, modelId }
 }
 
-// Build a complete provider object matching handleSendMessage's logic.
-// Both sendImplementPlan and sendPlanRevision need this -- they bypass
-// handleSendMessage but must send the same provider shape to agent/run.
-export function buildProviderPayload(
-  activeProvider: SendProvider,
-  modelId: string,
-  settings: ReturnType<typeof useSettingsStore.getState>
-): Record<string, unknown> {
-  const modelConfig = activeProvider!.models.find((m: any) => m.id === modelId)
-  const thinkingConfig = modelConfig?.thinkingConfig
-  const thinkingEnabled = settings.thinkingEnabled && !!thinkingConfig
-  const reasoningEffort = thinkingConfig
-    ? resolveReasoningEffortForModel({
-        reasoningEffort: settings.reasoningEffort,
-        reasoningEffortByModel: settings.reasoningEffortByModel,
-        providerId: activeProvider!.id,
-        modelId,
-        thinkingConfig
-      })
-    : undefined
-
-  return {
-    id: activeProvider!.id,
-    name: activeProvider!.name,
-    type: activeProvider!.type,
-    apiKey: activeProvider!.apiKey,
-    baseUrl: activeProvider!.baseUrl,
-    providerBuiltinId: activeProvider!.builtinId ?? undefined,
-    model: modelId,
-    temperature: settings.temperature ?? undefined,
-    maxTokens: settings.maxTokens ?? undefined,
-    thinkingEnabled,
-    thinkingConfig: thinkingConfig ?? undefined,
-    reasoningEffort,
-    requestTimeoutSeconds: settings.apiRequestTimeoutSeconds ?? 100,
-    requestMaxRetries: settings.requestMaxRetries ?? 10
-  }
-}
+// The provider payload sent to agent/run is built in exactly one place — see
+// lib/agent/provider-payload.ts for what it contains and why. Re-exported here
+// because existing callers (cron-runtime, goal-session-views, the background
+// sub-agent wakeup) import it from this module.
+export { buildProviderPayload }
 
 export async function sendImplementPlan(sessionId: string, planId: string): Promise<void> {
   const planStore = (await import('@renderer/stores/plan-store')).usePlanStore.getState()
@@ -439,7 +368,6 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
     messages: [{ role: 'user', content: `The plan has been approved. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Read the plan file, then execute it step by step using the Task tool to dispatch sub-agents -- do NOT implement steps yourself. For each step: (1) call UpdatePlanStep to mark it in_progress, (2) use the Task tool with subagent_type "custom" and background=false to dispatch a foreground work sub-agent with a self-contained prompt containing all context needed for that step, (3) when the sub-agent returns, call UpdatePlanStep to mark it completed or failed based on the result. If a step fails, assess whether the remaining plan needs adjustment before continuing.` }],
     sessionId,
     toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
-    webSearchEnabled: settingsStore.webSearchEnabled,
     workingFolder,
     sshConnectionId,
     projectId,
@@ -495,7 +423,6 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
     messages: [{ role: 'user', content: `The plan was rejected. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Please revise the plan in the plan file based on this feedback: ${feedback}` }],
     sessionId,
     toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
-    webSearchEnabled: settingsStore.webSearchEnabled,
     workingFolder,
     sshConnectionId,
     projectId,
@@ -573,7 +500,6 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
       messages: [{ role: 'user', content: '用户退出了计划模式，计划已取消。不再需要计划流程，请正常对话。' }],
       sessionId,
       toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
-      webSearchEnabled: settingsStore.webSearchEnabled,
       workingFolder,
       sshConnectionId,
       projectId,

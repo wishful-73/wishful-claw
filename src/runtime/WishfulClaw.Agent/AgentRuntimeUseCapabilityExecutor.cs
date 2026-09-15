@@ -299,7 +299,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
             // Verify the tool is explicitly exposed through the capability proxy.
             var category = registry.GetCategory(toolName);
             if (category is null
-                || !IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, toolName, category))
+                || !IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, toolName))
             {
                 return EncodeError($"Tool '{toolName}' is not available through the capability proxy in this session mode.");
             }

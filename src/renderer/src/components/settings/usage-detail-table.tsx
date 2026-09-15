@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
@@ -100,7 +100,18 @@ function formatCost(value: number | null | undefined): string {
 
 function formatTime(ms: number): string {
   const d = new Date(ms)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const time = `${hh}:${mm}`
+  const now = new Date()
+  // Same-day rows stay compact; anything older carries the full date.
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  if (sameDay) return time
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return `${date} ${time}`
 }
 
 function formatDuration(ms: number | null | undefined): string {
@@ -109,6 +120,9 @@ function formatDuration(ms: number | null | undefined): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
+export const DETAIL_PAGE_SIZE_MIN = 10
+export const DETAIL_PAGE_SIZE_MAX = 200
+
 export function UsageDetailTable({
   rows,
   total,
@@ -116,7 +130,8 @@ export function UsageDetailTable({
   pageSize,
   loading,
   providerBaseUrlFor,
-  onPageChange
+  onPageChange,
+  onPageSizeChange
 }: {
   rows: UsageLogRow[]
   total: number
@@ -125,10 +140,27 @@ export function UsageDetailTable({
   loading: boolean
   providerBaseUrlFor: (providerId?: string | null) => string | undefined
   onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
 }): React.JSX.Element {
   const { t } = useTranslation('settings')
   const [visibleColumns, setVisibleColumns] =
     useState<Record<DetailColumn, boolean>>(DEFAULT_VISIBLE_COLUMNS)
+  const [pageSizeDraft, setPageSizeDraft] = useState(String(pageSize))
+  // Keep the draft in sync when the page size changes externally (range switch
+  // resets it, etc.).
+  useEffect(() => {
+    setPageSizeDraft(String(pageSize))
+  }, [pageSize])
+  const commitPageSize = (): void => {
+    const parsed = Number.parseInt(pageSizeDraft, 10)
+    if (Number.isNaN(parsed)) {
+      setPageSizeDraft(String(pageSize))
+      return
+    }
+    const clamped = Math.min(DETAIL_PAGE_SIZE_MAX, Math.max(DETAIL_PAGE_SIZE_MIN, parsed))
+    setPageSizeDraft(String(clamped))
+    if (clamped !== pageSize) onPageSizeChange(clamped)
+  }
   const visibleColumnCount = DETAIL_COLUMNS.filter((column) => visibleColumns[column.id]).length
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
 
@@ -136,8 +168,8 @@ export function UsageDetailTable({
     column.labelKey ? t(column.labelKey, { defaultValue: column.fallback }) : column.fallback
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-end">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-2 flex shrink-0 items-center justify-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -171,9 +203,11 @@ export function UsageDetailTable({
         </DropdownMenu>
       </div>
 
-      <div className="overflow-x-auto" aria-busy={loading}>
+      {/* Scroll container holds ONLY the data rows: header stays pinned via
+          sticky thead, pagination row stays pinned below via shrink-0. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto" aria-busy={loading}>
         <table className="w-full min-w-max text-left text-[12px]">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-card">
             <tr className="border-b text-[11px] text-muted-foreground">
               {DETAIL_COLUMNS.map((column) =>
                 visibleColumns[column.id] ? (
@@ -285,7 +319,7 @@ export function UsageDetailTable({
         </table>
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-3 border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
+      <div className="mt-2 flex shrink-0 items-center justify-between gap-3 border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5 tabular-nums">
           {loading && <Loader2 className="size-3 animate-spin" />}
           {t('usage.detail.pagination.summary', {
@@ -295,27 +329,49 @@ export function UsageDetailTable({
             total
           })}
         </span>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            disabled={loading || page === 0}
-            onClick={() => onPageChange(page - 1)}
-            title={t('usage.detail.pagination.previous', { defaultValue: '上一页' })}
-          >
-            <ChevronLeft className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            disabled={loading || page + 1 >= pageCount}
-            onClick={() => onPageChange(page + 1)}
-            title={t('usage.detail.pagination.next', { defaultValue: '下一页' })}
-          >
-            <ChevronRight className="size-3.5" />
-          </Button>
+        <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-1.5">
+            {t('usage.detail.pagination.pageSize', { defaultValue: '每页' })}
+            <input
+              type="text"
+              inputMode="numeric"
+              value={pageSizeDraft}
+              onChange={(event) => setPageSizeDraft(event.target.value.replace(/[^\d]/g, ''))}
+              onBlur={commitPageSize}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              }}
+              title={t('usage.detail.pagination.pageSizeHint', {
+                defaultValue: '每页条数（{{min}}-{{max}}），回车生效',
+                min: DETAIL_PAGE_SIZE_MIN,
+                max: DETAIL_PAGE_SIZE_MAX
+              })}
+              className="h-6 w-12 rounded-md border bg-background px-1.5 text-center text-[11px] tabular-nums outline-none focus:border-primary"
+            />
+            {t('usage.detail.pagination.rows', { defaultValue: '条' })}
+          </label>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              disabled={loading || page === 0}
+              onClick={() => onPageChange(page - 1)}
+              title={t('usage.detail.pagination.previous', { defaultValue: '上一页' })}
+            >
+              <ChevronLeft className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              disabled={loading || page + 1 >= pageCount}
+              onClick={() => onPageChange(page + 1)}
+              title={t('usage.detail.pagination.next', { defaultValue: '下一页' })}
+            >
+              <ChevronRight className="size-3.5" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>

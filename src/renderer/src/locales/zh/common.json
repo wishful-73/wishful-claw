@@ -94,5 +94,27 @@
   "showLess": "收起",
   "error": {
     "label": "错误"
+  },
+  "browserSearch": {
+    "engines": {
+      "baidu": "百度",
+      "sogou": "搜狗",
+      "so_360": "360 搜索",
+      "toutiao": "头条搜索",
+      "bing_intl": "必应国际",
+      "github": "GitHub",
+      "sogou_wechat": "搜狗微信",
+      "arxiv": "ArXiv",
+      "wikipedia_zh": "维基百科（中文）",
+      "wikipedia_en": "Wikipedia（英文）"
+    },
+    "intents": {
+      "general": "通用",
+      "tech": "技术",
+      "academic": "学术",
+      "finance": "财经",
+      "social": "社交",
+      "knowledge": "知识"
+    }
   }
 }

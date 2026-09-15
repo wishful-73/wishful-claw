@@ -3,8 +3,6 @@
 import type React from 'react'
 import type {
   AppMode,
-  AutoModelRoutingState,
-  AutoModelSelectionStatus,
   AgentFilesChangeSource,
   AgentFilesTab,
   ChatView,
@@ -17,6 +15,7 @@ import type {
 } from './ui-types'
 import type { BrowserErrorInfo, BrowserPanelSessionState } from './browser-session-helpers'
 import type { PreviewPanelState, PreviewPanelTab, OpenDiffParams } from './preview-panel-helpers'
+import type { ProviderFallbackCandidate } from '../../../shared/types/provider'
 
 // ─── Store Interface ───
 
@@ -75,11 +74,15 @@ export interface UIStore {
   toggleRuntimeStatusPanel: () => void
   setRuntimeStatusPanelOpen: (open: boolean) => void
 
-  // Auto model selection (from WishfulClaw)
-  autoModelSelectionsBySession: Record<string, AutoModelSelectionStatus | null>
-  autoModelRoutingStatesBySession: Record<string, AutoModelRoutingState>
-  setAutoModelSelection: (sessionId: string, status: AutoModelSelectionStatus | null) => void
-  setAutoModelRoutingState: (sessionId: string, status: AutoModelRoutingState) => void
+  /**
+   * Quota-failover chain for one session, overriding the global default from
+   * Settings while this run lasts. `null` clears the override (back to the default).
+   */
+  fallbackCandidatesBySession: Record<string, ProviderFallbackCandidate[] | null>
+  setSessionFallbackCandidates: (
+    sessionId: string,
+    candidates: ProviderFallbackCandidate[] | null
+  ) => void
 
   // Settings page
   settingsPageOpen: boolean
@@ -276,6 +279,7 @@ export interface UIStore {
     projectId?: string | null,
     goalId?: string | null
   ) => void
+  openTimelinePanel: (sessionId?: string | null) => void
   ensureTerminalTab: () => void
   ensureFilesTab: (sessionId?: string | null) => void
   ensureSummaryTab: (sessionId?: string | null) => void

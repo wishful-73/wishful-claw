@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
@@ -224,6 +224,8 @@ public static partial class DbUsageLogQueryTools
                     COALESCE(SUM(status = 'error'), 0)                                  AS error_count,
                     COALESCE(SUM(billable_input_tokens), 0)                             AS billable_input_tokens,
                     COALESCE(SUM(output_tokens), 0)                                     AS output_tokens,
+                    COALESCE(SUM(cache_read_tokens), 0)                                 AS cache_read_tokens,
+                    COALESCE(SUM(cache_creation_tokens), 0)                             AS cache_creation_tokens,
                     SUM(total_cost_usd)                                                 AS total_cost_usd
                   FROM request_usage_logs
                   WHERE started_at >= $from AND started_at < $to
@@ -237,7 +239,9 @@ public static partial class DbUsageLogQueryTools
                     reader.GetInt32(4),
                     reader.GetInt64(5),
                     reader.GetInt64(6),
-                    reader.IsDBNull(7) ? null : reader.GetDouble(7)),
+                    reader.GetInt64(7),
+                    reader.GetInt64(8),
+                    reader.IsDBNull(9) ? null : reader.GetDouble(9)),
                 new SqliteParameter("$from", window.From),
                 new SqliteParameter("$to", window.To));
 
@@ -247,48 +251,6 @@ public static partial class DbUsageLogQueryTools
         catch (Exception ex)
         {
             return Error<UsageByModelResult>(ex.Message);
-        }
-    }
-
-    /// <summary>Rollup by caller origin (runtime role / scope / collaboration mode).</summary>
-    public static WorkerResponse BySource(JsonElement parameters)
-    {
-        var window = ResolveWindow(parameters);
-        try
-        {
-            var db = DbClient.GetClient(parameters);
-            if (db is null) return Error<UsageBySourceResult>("Database not initialized");
-
-            var rows = db.Query(
-                @"SELECT
-                    runtime_role, scope, collaboration_mode,
-                    COUNT(*)                                                            AS request_count,
-                    COALESCE(SUM(status = 'error'), 0)                                  AS error_count,
-                    COALESCE(SUM(billable_input_tokens), 0)                             AS billable_input_tokens,
-                    COALESCE(SUM(output_tokens), 0)                                     AS output_tokens,
-                    SUM(total_cost_usd)                                                 AS total_cost_usd
-                  FROM request_usage_logs
-                  WHERE started_at >= $from AND started_at < $to
-                  GROUP BY runtime_role, scope, collaboration_mode
-                  ORDER BY request_count DESC;",
-                reader => new UsageSourceRow(
-                    reader.IsDBNull(0) ? null : reader.GetString(0),
-                    reader.IsDBNull(1) ? null : reader.GetString(1),
-                    reader.IsDBNull(2) ? null : reader.GetString(2),
-                    reader.GetInt32(3),
-                    reader.GetInt32(4),
-                    reader.GetInt64(5),
-                    reader.GetInt64(6),
-                    reader.IsDBNull(7) ? null : reader.GetDouble(7)),
-                new SqliteParameter("$from", window.From),
-                new SqliteParameter("$to", window.To));
-
-            var dto = new UsageBySourceResult(true, window.From, window.To, rows, null);
-            return WorkerResponse.Json(dto, InfrastructureJsonContext.Default.UsageBySourceResult);
-        }
-        catch (Exception ex)
-        {
-            return Error<UsageBySourceResult>(ex.Message);
         }
     }
 
@@ -533,8 +495,6 @@ public static partial class DbUsageLogQueryTools
                 new UsageModelBucketsResult(false, "hour", 0, now, [], message),
             nameof(UsageByModelResult) =>
                 new UsageByModelResult(false, 0, now, [], message),
-            nameof(UsageBySourceResult) =>
-                new UsageBySourceResult(false, 0, now, [], message),
             nameof(UsageLogsResult) =>
                 new UsageLogsResult(false, 0, now, 0, 0, DefaultDetailLimit, [], message),
             _ => throw new InvalidOperationException($"No error shape for {typeof(T).Name}")
@@ -546,7 +506,6 @@ public static partial class DbUsageLogQueryTools
             UsageBucketsResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageBucketsResult),
             UsageModelBucketsResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageModelBucketsResult),
             UsageByModelResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageByModelResult),
-            UsageBySourceResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageBySourceResult),
             UsageLogsResult v => WorkerResponse.Json(v, InfrastructureJsonContext.Default.UsageLogsResult),
             _ => throw new InvalidOperationException($"No error shape for {dto.GetType().Name}")
         };

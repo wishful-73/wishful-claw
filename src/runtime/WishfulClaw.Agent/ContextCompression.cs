@@ -323,9 +323,14 @@ public static partial class ContextCompression
         while (i < conversation.Count && conversation[i].Role == "system")
             i++;
 
-        // First user turn (if pinnable)
+        // First user turn (if pinnable). T-10: must not be a tool-result-only user
+        // message — pinning that would keep an orphan tool_result in the prefix while
+        // its matching assistant(tool_use) gets folded away, and the provider rejects
+        // that with HTTP 400. Mirrors the same guard PartitionFold applies to kept
+        // messages (Role/user + ToolResults.Count == 0).
         if (i < conversation.Count &&
             conversation[i].Role == "user" &&
+            conversation[i].ToolResults.Count == 0 &&
             !IsCompactionSummary(conversation[i]) &&
             IsPinnableUserTurn(conversation[i], provider))
         {

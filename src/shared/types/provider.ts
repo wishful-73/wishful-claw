@@ -359,6 +359,51 @@ export interface AIProvider {
   cacheTtl?: '5m' | '1h'
 }
 
+// ─── Provider Fallback (iter-29 / S-21) ───
+
+/**
+ * One entry of the quota-failover chain: a provider plus the model to use on it.
+ *
+ * The model is explicit on purpose. Providers bill their models from a shared quota,
+ * so what matters when handing over is "which provider, and which model on it" — it is
+ * not something to infer from the model we happened to be using (same-name models
+ * across providers are not the same model: protocol, context length and pricing differ).
+ */
+export interface ProviderFallbackCandidate {
+  providerId: string
+  /**
+   * The preferred model on this provider. An empty string means "not chosen yet":
+   * the runtime skips such a candidate rather than guessing, and the settings pane
+   * marks it for the user to fill in.
+   */
+  modelId: string
+}
+
+/**
+ * Automatic failover when the provider currently in use hits a quota or rate limit.
+ *
+ * Runtime contract (`provider-auto-fallback`):
+ * - `candidates` is an ordered list; earlier entries are preferred.
+ * - A provider appears at most once (its models share one quota, so a second entry
+ *   would be a no-op).
+ * - The walk skips the provider currently in use and continues past it; every
+ *   candidate is tried at most once per chain, so it never cycles back.
+ * - Only sessions whose `modelSelectionMode` is `auto` take over; a session with an
+ *   explicitly chosen model still reports the quota error to the user.
+ * - A session may override this list for itself (see the UI store); the override wins
+ *   while it exists and lives only for the current run, like the rest of the
+ *   per-session runtime state.
+ * - A provider only hands over after **its own** retries are exhausted, so
+ *   `requestMaxRetries` semantics are untouched: a provider configured with unlimited
+ *   retries (0) never hands over at all.
+ * - Candidates that no longer resolve to an enabled, usable provider are skipped.
+ */
+export interface ProviderFallbackConfig {
+  enabled: boolean
+  /** Ordered candidates, most preferred first. */
+  candidates: ProviderFallbackCandidate[]
+}
+
 // ─── Builtin Provider Preset ───
 
 export interface BuiltinProviderPreset {

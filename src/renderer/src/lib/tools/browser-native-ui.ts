@@ -5,7 +5,7 @@ import { IPC } from '../ipc/channels'
 import { ipcClient } from '../ipc/ipc-client'
 import { useUIStore } from '../../stores/ui-store'
 import { encodeStructuredToolResult, encodeToolError } from './tool-result-format'
-import { executeBrowserSearch } from './browser-search-tool'
+import { executeBrowserSearch, WEB_SEARCH_TOOL_NAME } from './browser-search'
 import type { ToolContext } from './tool-types'
 import {
   HTML_TO_MD_SCRIPT,
@@ -414,7 +414,7 @@ async function runBrowserTool(
       return await executeBrowserScroll(input, ctx)
     case 'BrowserEvaluate':
       return await executeBrowserEvaluate(input, ctx)
-    case 'BrowserSearch':
+    case WEB_SEARCH_TOOL_NAME:
       return await executeBrowserSearch(input, ctx)
     default:
       throw new Error(`Unsupported browser tool: ${toolName}`)

@@ -32,7 +32,7 @@ public static class AgentRuntimeBrowserExecutor
         "BrowserType",
         "BrowserScroll",
         "BrowserEvaluate",
-        "BrowserSearch"
+        "WebSearch"
     };
 
     private static readonly JsonWriterOptions WriterOptions = new()

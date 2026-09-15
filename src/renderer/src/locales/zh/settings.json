@@ -73,8 +73,8 @@
       "label": "渠道配置",
       "desc": "配置消息渠道（飞书、微信等）"
     },
-    "websearch": {
-      "label": "联网搜索"
+    "webSearch": {
+      "label": "网络搜索"
     },
     "skills": {
       "label": "Skills",
@@ -252,6 +252,17 @@
       "testFailed": "连接测试失败",
       "protocolType": "协议类型",
       "protocolTypeHint": "切换协议后请确认 Base URL 与新协议匹配",
+      "requestHeaders": {
+        "title": "请求头",
+        "add": "添加请求头",
+        "namePlaceholder": "请求头名称",
+        "valuePlaceholder": "值",
+        "empty": "尚未添加额外请求头",
+        "hint": "值支持 {{sessionId}} 与 {{model}} 占位符，发送时自动替换为真实值",
+        "invalidName": "请求头名称只能包含字母、数字与 ! # $ % & ' * + . ^ _ ` | ~ -",
+        "reserved": "{{name}} 由客户端托管，不能覆盖",
+        "duplicate": "请求头名称重复"
+      },
       "cacheTtl": "缓存 TTL",
       "cacheTtlHint": "Anthropic 缓存生存时间，模型级配置可覆盖",
       "models": {
@@ -488,7 +499,33 @@
     "tabs": {
       "label": "服务商设置导航",
       "configuration": "服务商配置",
-      "models": "模型管理"
+      "models": "模型管理",
+      "fallback": "自动切换"
+    },
+    "fallback": {
+      "title": "限额自动切换",
+      "subtitle": "服务商触发限额时，按顺序自动换到下一个服务商继续执行",
+      "enableTitle": "启用自动切换",
+      "enableDesc": "仅在服务商返回限额类错误（429 / 503 / 5h 与周限额）时触发",
+      "hint": "切换前会先耗尽当前服务商自己的重试次数；重试上限设为「不限」的服务商永远不会交出请求。每个候选一次请求内只试一次，不会来回循环。",
+      "needsTwo": "至少需要两个候选服务商，自动切换才会生效。",
+      "orderTitle": "切换顺序",
+      "orderDesc": "从当前服务商在列表中的下一位开始依次尝试；当前服务商不在列表中时从头开始。",
+      "empty": "还没有候选服务商，从下方添加",
+      "availableTitle": "可选服务商",
+      "availableDesc": "点右侧加号加入候选列表",
+      "noAvailable": "所有服务商都已在候选列表中",
+      "notReady": "未就绪",
+      "moveUp": "上移",
+      "moveDown": "下移",
+      "remove": "移出候选",
+      "add": "加入候选",
+      "continuePrompt": "继续推进",
+      "autoSwitched": "{{from}} 触发限额，已自动切换到 {{to}}，正在继续推进",
+      "chooseModel": "选择模型",
+      "modelMissing": "未选择模型",
+      "modelGone": "模型已不可用",
+      "modelNoTools": "该模型不支持工具"
     },
     "modelManagementDesc": "集中管理全局模型默认配置，供各服务商副本继承",
     "modelManagementList": "全局模型库",
@@ -1012,6 +1049,7 @@
       "scopeLabel": "作用域",
       "credentialLabel": "凭证",
       "credentialSaved": "已安全保存",
+      "starting": "绑定成功，正在启动渠道…",
       "weixinChannel": "微信",
       "feishuChannel": "飞书",
       "localCredential": "本地微信凭证",
@@ -1027,24 +1065,9 @@
       "saved": "配置已保存",
       "saveFailed": "保存失败"
     },
-    "features": {
-      "autoReply": "自动回复",
-      "autoReplyDesc": "收到消息时自动使用 AI 回复",
-      "streamingReply": "流式回复",
-      "streamingReplyDesc": "实时流式输出回复内容（需要渠道支持）；当前仅记录设置，尚未接入强制执行",
-      "autoStart": "自动启动",
-      "autoStartDesc": "应用启动时自动连接已启用的渠道"
-    },
     "permissions": {
       "shellRequiresApproval": "Shell 命令需授权",
-      "shellRequiresApprovalDesc": "开启后渠道对话每次执行 shell 命令前需你确认；关闭则直接执行",
-      "notEnforcedHint": "以下开关当前仅记录设置，尚未接入强制执行",
-      "allowReadHome": "读取主目录",
-      "allowReadHomeDesc": "允许读取工作目录之外的文件",
-      "allowWriteOutside": "外部写入",
-      "allowWriteOutsideDesc": "允许写入工作目录之外的文件",
-      "allowSubAgents": "子代理",
-      "allowSubAgentsDesc": "允许使用子代理工具"
+      "shellRequiresApprovalDesc": "开启后渠道对话每次执行 shell 命令前需你确认；关闭则直接执行"
     },
     "feishu": {
       "appId": "App ID",
@@ -1053,7 +1076,8 @@
     "dingtalk": {
       "appKey": "App Key",
       "appSecret": "App Secret",
-      "cardTemplateId": "卡片模板 ID（可选）"
+      "cardTemplateId": "卡片模板 ID（可选）",
+      "cardTemplateIdPlaceholder": "AI 流式卡片模板 ID（可选）"
     },
     "wecom": {
       "corpId": "企业 ID",
@@ -1066,6 +1090,7 @@
       "baseUrl": "API 地址",
       "token": "Bot Token",
       "routeTag": "路由标签（可选）",
+      "routeTagPlaceholder": "可选",
       "accountId": "账号 ID（可选）",
       "wsUrl": "WebSocket 中继地址（可选）"
     },
@@ -1087,13 +1112,20 @@
       "wsUrl": "WebSocket 中继地址（可选）"
     },
     "wsUrl": "WebSocket 中继地址（可选）",
+    "provider": {
+      "weixin": { "desc": "微信渠道（扫码绑定 + 长轮询）" },
+      "feishu": { "desc": "飞书渠道（内置 WebSocket）" },
+      "qq": { "desc": "QQ 机器人渠道（官方 Gateway WebSocket）" },
+      "dingtalk": { "desc": "钉钉渠道（Stream API 内置 WebSocket）" },
+      "wecom": { "desc": "企业微信渠道" },
+      "telegram": { "desc": "Telegram 渠道（需 WebSocket 中继）" },
+      "discord": { "desc": "Discord 渠道（内置 Gateway WebSocket）" },
+      "whatsapp": { "desc": "WhatsApp 渠道（Cloud API，需 WebSocket 中继）" }
+    },
     "global": {
       "title": "全局渠道设置",
-      "tabs": {
-        "reply": "回复设置",
-        "features": "功能开关",
-        "permissions": "安全权限"
-      },
+      "autoStart": "启动时自动连接",
+      "autoStartDesc": "应用启动时自动连接已启用的渠道",
       "loadingSettings": "正在读取全局渠道设置…",
       "loadFailed": "全局渠道设置读取失败",
       "saveFailed": "保存失败",
@@ -1109,35 +1141,80 @@
       "noModel": "无可用模型"
     }
   },
-  "websearch": {
-    "title": "联网搜索",
-    "subtitle": "配置联网搜索提供商和设置",
-    "enable": "启用联网搜索",
-    "enableDesc": "允许 AI 搜索网络以获取最新信息",
-    "provider": "搜索提供商",
-    "providerDesc": "选择要使用的搜索提供商",
-    "selectProvider": "选择提供商",
-    "apiKey": "API 密钥",
-    "apiKeyDesc": "所选提供商的 API 密钥",
-    "apiKeyPlaceholder": "输入您的 API 密钥...",
-    "maxResults": "最大结果数",
-    "maxResultsDesc": "要返回的最大搜索结果数量",
-    "timeout": "超时时间（毫秒）",
-    "timeoutDesc": "请求超时时间（毫秒）",
-    "test": "测试搜索",
-    "testing": "测试中...",
-    "testDesc": "测试您的联网搜索配置",
-    "configSummary": "配置摘要",
-    "notSet": "未设置",
-    "disabledError": "联网搜索已禁用。请在设置中启用。",
-    "apiKeyRequired": "此提供商需要 API 密钥。",
-    "testSuccess": "联网搜索测试成功！找到 {{count}} 条结果。",
-    "testFailed": "联网搜索测试失败：{{error}}",
-    "browserSearchTitle": "内置浏览器搜索",
-    "browserSearchDesc": "基于内置 Chromium 浏览器直接搜索，无需 API 密钥，始终可用。支持 Bing、Baidu、Google 三个引擎。",
-    "browserSearchHint": "Agent 可直接使用 BrowserSearch 工具进行搜索，搜索结果会显示在右侧浏览器面板中。",
-    "apiSearchTitle": "API 搜索（可选）",
-    "apiSearchDesc": "通过 API 提供商进行 AI 增强搜索，结果质量更高但需要配置 API 密钥。"
+  "webSearch": {
+    "title": "网络搜索",
+    "subtitle": "配置 Agent 搜索网页时使用的引擎。",
+    "routing": {
+      "title": "检索策略",
+      "desc": "决定每次查询要打哪些引擎。"
+    },
+    "autoRoute": {
+      "label": "自动选择引擎",
+      "desc": "按查询意图挑选引擎；关闭后每次查询都会用上全部已启用引擎。"
+    },
+    "maxResults": {
+      "label": "结果条数上限",
+      "desc": "去重后返回给模型的最大条数（1–30）。"
+    },
+    "engines": {
+      "title": "内置引擎",
+      "desc": "已启用 {{enabled}} 个。关掉的引擎不会被查询。",
+      "noneEnabled": "一个引擎都没启用——搜索会自动回退到全部内置引擎，不会真的搜不出东西。"
+    },
+    "types": {
+      "general": "通用",
+      "tech": "技术",
+      "academic": "学术",
+      "finance": "财经",
+      "social": "社交",
+      "knowledge": "知识"
+    },
+    "badges": {
+      "http": "裸 HTTP",
+      "rendered": "需浏览器渲染"
+    },
+    "intents": {
+      "title": "意图路由",
+      "desc": "每种意图默认用一组引擎；点引擎名可以改。",
+      "customized": "已自定义",
+      "byDefault": "默认",
+      "reset": "恢复默认",
+      "engineDisabledGlobally": "该引擎已在上面被关掉，勾选它也不会生效。",
+      "fallbackHint": "某类意图的引擎被全部关掉时，会退回到你启用的全部引擎，而不是返回空结果。"
+    },
+    "custom": {
+      "title": "自定义引擎",
+      "desc": "自建站内搜索或小众引擎。",
+      "add": "添加引擎",
+      "empty": "还没有自定义引擎。",
+      "edit": "编辑",
+      "remove": "删除",
+      "name": "名称",
+      "namePlaceholder": "例如：内部 Wiki",
+      "intent": "归属意图",
+      "urlTemplate": "搜索地址模板",
+      "urlTemplateHint": "必须包含 {query} 占位符，会被替换成 URL 编码后的查询词。",
+      "tier": "解析方式",
+      "tierBasic": "基础（URL 模板 + 通用解析）",
+      "tierSelector": "进阶（自定义 CSS 选择器）",
+      "tierBasicShort": "基础",
+      "tierSelectorShort": "进阶",
+      "tierBasicHint": "用通用的 h2/h3 启发式解析页面，结果会标注为低可信度。",
+      "renderMode": "抓取方式",
+      "selectors": {
+        "item": "结果条目",
+        "itemPlaceholder": "例如：.result",
+        "title": "标题",
+        "titlePlaceholder": "例如：h3 a",
+        "url": "链接",
+        "urlPlaceholder": "例如：h3 a",
+        "snippet": "摘要",
+        "snippetPlaceholder": "例如：.abstract"
+      },
+      "enabled": "启用",
+      "save": "保存",
+      "cancel": "取消"
+    }
   },
   "skills": {
     "tabs": {
@@ -1365,6 +1442,12 @@
         "fullAccess": "YOLO"
       },
       "hint": "只影响新项目会话，不覆盖已有会话；全局会话固定为 Chat。"
+    },
+    "residentTurns": {
+      "title": "聊天窗内存窗口",
+      "desc": "会话常驻内存时只保留最近若干轮，控制长时间运行下的前端内存占用",
+      "label": "内存保留轮数",
+      "hint": "轮 = 一条用户消息及其回复；更早的消息仍留在数据库，可经「加载更早」拉回。发送新消息时生效。"
     }
   },
   "updater": {
@@ -1413,12 +1496,17 @@
     "timeout": "请求超时",
     "retries": "重试策略",
     "compression": "上下文压缩",
+    "residentTurns": "内存窗口",
     "toolExecution": "工具执行",
     "developer": "开发者模式",
     "startup": "开机启动",
     "memoryOrganization": "自动整理",
     "memoryTiers": "分层阈值",
-    "memoryRecall": "主动回忆"
+    "memoryRecall": "主动回忆",
+    "webSearchRouting": "检索策略",
+    "webSearchEngines": "内置引擎",
+    "webSearchIntents": "意图路由",
+    "webSearchCustom": "自定义引擎"
   },
   "memoryPage": {
     "title": "记忆",
@@ -1505,6 +1593,12 @@
     "refresh": "刷新",
     "empty": "该时间范围内还没有请求记录",
     "footnote": "统计基于模型请求日志（每次 HTTP 请求一行，含重试与失败）。成本仅按模型显式配置的价格计算，未配置价格时留空。",
+    "tabs": {
+      "line": "曲线图",
+      "bar": "柱状图",
+      "stats": "统计概览",
+      "detail": "请求明细"
+    },
     "ranges": {
       "h24": "24 小时",
       "d7": "7 天",
@@ -1552,13 +1646,24 @@
         "cacheCreation": "缓存创建",
         "reasoning": "推理",
         "duration": "耗时",
-        "cost": "成本"
+        "cost": "成本",
+        "select": "显示列"
+      },
+      "pagination": {
+        "summary": "第 {{page}} / {{pageCount}} 页 · 共 {{total}} 条",
+        "pageSize": "每页",
+        "pageSizeHint": "每页条数（{{min}}-{{max}}），回车生效",
+        "rows": "条",
+        "previous": "上一页",
+        "next": "下一页"
       }
     },
     "rollup": {
       "requests": "请求",
       "input": "输入",
-      "cost": "成本"
+      "cost": "成本",
+      "output": "输出",
+      "cache": "缓存"
     }
   },
   "analytics": {

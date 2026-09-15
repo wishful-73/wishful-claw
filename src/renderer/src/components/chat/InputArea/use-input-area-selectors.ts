@@ -28,22 +28,19 @@ export interface InputAreaSelectorsOutput {
   permissionWhitelistEnabled: boolean
   clarifyAutoAcceptRecommended: boolean
   animationsEnabled: boolean
-  webSearchEnabled: boolean
-  webSearchProvider: string
-  webSearchApiKey: string
-  webSearchRequiresApiKey: boolean
-  canToggleWebSearch: boolean
 
   // Session
   targetSession: ReturnType<typeof getTargetSession> | undefined
   channels: ReturnType<typeof useChannelStore.getState>['channels']
-  autoSelection: { providerId: string; modelId: string } | null
   activeProvider: {
     apiKey: string; requiresApiKey: boolean; type: string;
-    models: AIModelConfig[]; modelId: string
+    models: AIModelConfig[]; modelId: string;
+    providerName: string | null; isAutoModeActive: boolean
   } | null
   supportsVision: boolean
   composerModelCfg: AIModelConfig | null
+  /** `服务商 · 模型`, only in auto mode — manual sessions already show the model in the switcher. */
+  composerAutoModelLabel: string | null
 
   // UI
   chatView: string
@@ -108,18 +105,10 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   const permissionWhitelistEnabled = useSettingsStore((s) => s.permissionPolicy.enabled)
   const clarifyAutoAcceptRecommended = useSettingsStore((s) => s.clarifyAutoAcceptRecommended)
   const animationsEnabled = useSettingsStore((s) => s.animationsEnabled)
-  const webSearchEnabled = useSettingsStore((s) => s.webSearchEnabled)
-  const webSearchProvider = useSettingsStore((s) => s.webSearchProvider)
-  const webSearchApiKey = useSettingsStore((s) => s.webSearchApiKey)
-  const webSearchRequiresApiKey = ['tavily','searxng','exa','exa-mcp','bocha','zhipu'].includes(webSearchProvider)
-  const canToggleWebSearch = !webSearchRequiresApiKey || Boolean(webSearchApiKey)
 
   // ── Session ─────────────────────────────────────────────────────
   const targetSession = useChatStore(useShallow((s) => getTargetSession(s, sessionId)))
   const channels = useChannelStore((s) => s.channels)
-  const autoSelection = useUIStore((s) =>
-    targetSession ? (s.autoModelSelectionsBySession[targetSession.id] ?? null) : null
-  )
 
   const activeProvider = useProviderStore(
     useShallow((s) => {
@@ -136,16 +125,25 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
             channelProviderId: channel?.providerId, channelModelId: channel?.model
           })
         : null
-      const providerId = fastConfig?.providerId ??
-        (selection ? (selection.isAutoModeActive && autoSelection?.providerId ? autoSelection.providerId : selection.providerId) : activeProviderId)
-      const modelId = fastConfig?.model ??
-        (selection ? (selection.isAutoModeActive && autoSelection?.modelId ? autoSelection.modelId : selection.modelId) : activeModelId)
+      const providerId = fastConfig?.providerId ?? selection?.providerId ?? activeProviderId
+      const modelId = fastConfig?.model ?? selection?.modelId ?? activeModelId
       if (!providerId || !modelId) return null
       const provider = providers.find((item: any) => item.id === providerId)
       if (!provider) return null
       const model = provider.models.find((item: any) => item.id === modelId)
       if (!model) return null
-      return { apiKey: provider.apiKey, requiresApiKey: provider.requiresApiKey, type: provider.type, models: provider.models, modelId }
+      return {
+        apiKey: provider.apiKey,
+        requiresApiKey: provider.requiresApiKey,
+        type: provider.type,
+        models: provider.models,
+        modelId,
+        // `auto` hides the concrete model behind a handover chain, so the footer needs the
+        // resolved provider's name to say which one is in play. The fast route targets an
+        // explicitly configured model, never auto.
+        providerName: (provider.name as string | undefined) ?? null,
+        isAutoModeActive: fastConfig ? false : (selection?.isAutoModeActive ?? false)
+      }
     })
   )
 
@@ -159,6 +157,16 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
     if (!activeProvider) return null
     return activeProvider.models.find((m: any) => m.id === activeProvider.modelId) ?? null
   }, [activeProvider])
+
+  // Auto mode hides the concrete model behind a handover chain — the composer's own switcher
+  // just says "Auto". So the footer spells out which provider/model the next message will use.
+  // Manual sessions skip it: the switcher already names the model, repeating it is noise.
+  const composerAutoModelLabel = React.useMemo<string | null>(() => {
+    if (!activeProvider?.isAutoModeActive || !composerModelCfg) return null
+    const modelLabel = composerModelCfg.name?.trim() || composerModelCfg.id
+    const providerName = activeProvider.providerName?.trim()
+    return providerName ? `${providerName} · ${modelLabel}` : modelLabel
+  }, [activeProvider, composerModelCfg])
 
   // ── UI ──────────────────────────────────────────────────────────
   const mode = useUIStore((s) => s.mode)
@@ -219,8 +227,8 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   return {
     language, mainModelSelectionMode, autoApprove, permissionWhitelistEnabled,
     clarifyAutoAcceptRecommended, animationsEnabled,
-    webSearchEnabled, webSearchProvider, webSearchApiKey, webSearchRequiresApiKey, canToggleWebSearch,
-    targetSession, channels, autoSelection: autoSelection as any, activeProvider: activeProvider as any, supportsVision, composerModelCfg,
+    targetSession, channels, activeProvider: activeProvider as any, supportsVision, composerModelCfg,
+    composerAutoModelLabel,
     chatView, isHomeComposer, mode, openSettings: openSettings as any, openFilePreview,
     activeProjectId, activeSshConnectionId, activeSessionId, hasMessages, clearSessionMessages,
     draftSessionId, projectScoped, workspaceReady,

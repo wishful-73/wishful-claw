@@ -1,5 +1,5 @@
-﻿import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3, Bot } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3, Bot, Globe } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
@@ -9,6 +9,7 @@ import { ProviderCompletionSettingsPanel } from '@renderer/components/settings/P
 import { PluginPanel } from '@renderer/components/settings/PluginPanel'
 import { ExtensionPanel } from '@renderer/components/settings/ExtensionPanel'
 import { AppPluginPanel } from '@renderer/components/settings/AppPluginPanel'
+import { WebSearchPanel } from '@renderer/components/settings/WebSearchPanel'
 import { GeneralPanel } from '@renderer/components/settings/GeneralPanel'
 import { RuntimePanel } from '@renderer/components/settings/RuntimePanel'
 import { MemorySettingsPanel } from '@renderer/components/settings/MemorySettingsPanel'
@@ -45,6 +46,7 @@ const RUNTIME_ANCHORS: SectionAnchor[] = [
   { id: 'sec-runtime-timeout', label: 'anchorNav.timeout' },
   { id: 'sec-runtime-retries', label: 'anchorNav.retries' },
   { id: 'sec-runtime-compression', label: 'anchorNav.compression' },
+  { id: 'sec-runtime-resident-turns', label: 'anchorNav.residentTurns' },
   { id: 'sec-runtime-tools', label: 'anchorNav.toolExecution' }
 ]
 
@@ -52,6 +54,13 @@ const MEMORY_ANCHORS: SectionAnchor[] = [
   { id: 'sec-memory-organization', label: 'anchorNav.memoryOrganization' },
   { id: 'sec-memory-tiers', label: 'anchorNav.memoryTiers' },
   { id: 'sec-memory-recall', label: 'anchorNav.memoryRecall' }
+]
+
+const WEB_SEARCH_ANCHORS: SectionAnchor[] = [
+  { id: 'sec-web-search-routing', label: 'anchorNav.webSearchRouting' },
+  { id: 'sec-web-search-engines', label: 'anchorNav.webSearchEngines' },
+  { id: 'sec-web-search-intents', label: 'anchorNav.webSearchIntents' },
+  { id: 'sec-web-search-custom', label: 'anchorNav.webSearchCustom' }
 ]
 
 function SettingsPage(): React.JSX.Element {
@@ -94,6 +103,7 @@ function SettingsPage(): React.JSX.Element {
       label: t('tabs.groups.extensions', { defaultValue: '插件' }),
       items: [
         { id: 'plugin', icon: <Puzzle className="size-4" />, label: t('tabs.appPlugins.label', { defaultValue: '插件' }) },
+        { id: 'webSearch', icon: <Globe className="size-4" />, label: t('tabs.webSearch.label', { defaultValue: '网络搜索' }) },
         { id: 'extension', icon: <Puzzle className="size-4" />, label: t('tabs.extensions.label', { defaultValue: '自定义扩展' }) },
         { id: 'skills', icon: <Puzzle className="size-4" />, label: t('tabs.skills.label', { defaultValue: 'Skills' }) },
         { id: 'mcp', icon: <Cable className="size-4" />, label: t('tabs.mcp.label', { defaultValue: 'MCP' }) }
@@ -224,6 +234,15 @@ function SettingsPage(): React.JSX.Element {
             ) : settingsTab === 'plugin' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <AppPluginPanel />
+              </div>
+            ) : settingsTab === 'webSearch' ? (
+              <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+                <div className="mx-auto flex max-w-5xl items-start gap-2 px-8">
+                  <div className="min-w-0 flex-1">
+                    <WebSearchPanel />
+                  </div>
+                  <SectionAnchorNav containerRef={scrollContainerRef} anchors={WEB_SEARCH_ANCHORS} />
+                </div>
               </div>
             ) : settingsTab === 'extension' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">

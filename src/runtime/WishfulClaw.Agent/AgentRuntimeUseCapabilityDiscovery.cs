@@ -101,12 +101,15 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 
     /// <summary>
     /// Global feature opt-ins, enforced on the proxy side the same way AgentLoop used to enforce
-    /// them on direct injection: web search off removes the web tools, codegraph off removes the
-    /// codegraph tools. A disabled feature must be unreachable through every path, not just one.
+    /// them on direct injection: codegraph off removes the codegraph tools. A disabled feature must
+    /// be unreachable through every path, not just one.
+    ///
+    /// Web search used to be gated here too. That gate is gone with the provider-API chain it
+    /// guarded (iter-29 / S-23): the search tool the agent uses is a renderer tool with no
+    /// per-run opt-in, so a run-level flag would have gated nothing.
     /// </summary>
-    private static bool IsRunEnabledTool(AgentRunContext runContext, string toolName, string category)
-        => (!string.Equals(category, "web", StringComparison.OrdinalIgnoreCase) || runContext.WebSearchEnabled)
-            && (!toolName.StartsWith("codegraph_", StringComparison.Ordinal) || runContext.CodegraphEnabled);
+    private static bool IsRunEnabledTool(AgentRunContext runContext, string toolName)
+        => !toolName.StartsWith("codegraph_", StringComparison.Ordinal) || runContext.CodegraphEnabled;
 
     /// <summary>
     /// Shared visibility predicate for list, inspect and call. The registry/mode checks are kept
@@ -119,12 +122,11 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         AgentRunContext runContext,
         string? sessionMode,
         bool channelSession,
-        string toolName,
-        string category)
+        string toolName)
         => registry is not null
             && registry.IsRegistered(toolName)
             && registry.IsAvailableInMode(toolName, sessionMode)
-            && IsRunEnabledTool(runContext, toolName, category)
+            && IsRunEnabledTool(runContext, toolName)
             && AgentRunContextPolicy.IsToolAllowed(
                 runContext,
                 toolName,
@@ -150,7 +152,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         {
             var category = registry.GetCategory(name);
             if (category is not null
-                && IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name, category)
+                && IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name)
                 && registry.TryGetExecutor(name, out var executor)
                 && executor is not null
                 && !executor.IsCore)
@@ -274,7 +276,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
             {
                 var category = registry.GetCategory(name);
                 if (category is null
-                    || !IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name, category)
+                    || !IsProxyBuiltinVisible(registry, runContext, sessionMode, channelSession, name)
                     || !registry.TryGetExecutor(name, out var executor)
                     || executor is null
                     || executor.IsCore)

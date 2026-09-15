@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -32,12 +32,13 @@ export interface ChannelProviderDescriptor {
  * Worker-owned global channel settings. The Worker applies the defaults, so
  * consumers read these fields without local fallbacks — a second default here
  * is how the previous five-way disagreement happened.
+ *
+ * Only enforced settings live here. Auto-reply is not a switch (a configured channel
+ * exists to reply; the per-channel enable flag is the gate), and the retired
+ * `streamingReply` / `allowReadHome` / `readablePathPrefixes` / `allowWriteOutside` /
+ * `allowSubAgents` were display-only fields no code path ever read.
  */
 export interface GlobalChannelSettings {
-  /** Auto-reply to incoming messages using the Agent */
-  autoReply: boolean
-  /** Display-only this iteration: streaming is decided by the service's `supportsStreaming` */
-  streamingReply: boolean
   /** Connect enabled channels when the app launches */
   autoStart: boolean
   /**
@@ -46,14 +47,6 @@ export interface GlobalChannelSettings {
    * whose name implied a visibility switch.
    */
   shellRequiresApproval: boolean
-  /** Display-only this iteration: no enforcement point */
-  allowReadHome: boolean
-  /** Display-only this iteration: no enforcement point */
-  readablePathPrefixes: string[]
-  /** Display-only this iteration: no enforcement point */
-  allowWriteOutside: boolean
-  /** Display-only this iteration: no enforcement point */
-  allowSubAgents: boolean
 }
 
 /** Persisted channel instance configuration */

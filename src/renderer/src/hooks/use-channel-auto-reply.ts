@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Channel Auto-Reply Hook
  *
  * Listens for `plugin:session-task` IPC events from the main process
@@ -18,14 +18,14 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { agentStream } from '@renderer/lib/ipc/agent-stream-receiver'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
-import { useSettingsStore, resolveReasoningEffortForModel } from '@renderer/stores/settings-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { AgentStreamEvent } from '../../../shared/agent-stream-protocol'
 import type { ChatMessage } from '@renderer/stores/chat-store/types'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
-import type { ThinkingConfig } from '../../../shared/types/provider'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
 import {
   isChannelReplyEvent,
   isChannelReplyTextDelta
@@ -133,14 +133,10 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     return false
   }
 
-  // 1. Check the global auto-reply switch (retired per-channel `features` flag)
-  const channelStore = useChannelStore.getState()
-  const channelMeta = channelStore.channels.find((c) => c.id === pluginId)
-  const globalSettings = await channelStore.ensureGlobalSettings()
-  if (globalSettings && !globalSettings.autoReply) {
-    console.log(`[ChannelAutoReply] Auto-reply disabled globally, skipping ${pluginId}`)
-    return false
-  }
+  // 1. Resolve the channel instance — its binding supplies the provider/model below.
+  //    No global auto-reply switch: a configured channel that is running replies. The
+  //    per-channel enable flag (the start/stop button) is the real gate.
+  const channelMeta = useChannelStore.getState().channels.find((c) => c.id === pluginId)
 
   // 2. Ensure session exists in chat store
   const chatStore = useChatStore.getState()
@@ -219,33 +215,9 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
   }
 
   const settings = useSettingsStore.getState()
-  const modelConfig = targetProvider.models.find((m: { id: string; thinkingConfig?: unknown }) => m.id === modelId)
-  const thinkingConfig = modelConfig?.thinkingConfig as ThinkingConfig | undefined
-  const thinkingEnabled = settings.thinkingEnabled && !!thinkingConfig
-  const reasoningEffort = thinkingConfig
-    ? resolveReasoningEffortForModel({
-        reasoningEffort: settings.reasoningEffort,
-        reasoningEffortByModel: settings.reasoningEffortByModel,
-        providerId: targetProvider.id,
-        modelId,
-        thinkingConfig
-      })
-    : undefined
-
-  const provider = {
-    id: targetProvider.id,
-    name: targetProvider.name,
-    type: targetProvider.type,
-    apiKey: targetProvider.apiKey,
-    baseUrl: targetProvider.baseUrl,
-    providerBuiltinId: targetProvider.builtinId ?? undefined,
-    model: modelId,
-    temperature: settings.temperature ?? undefined,
-    maxTokens: settings.maxTokens ?? undefined,
-    thinkingEnabled,
-    thinkingConfig: thinkingConfig ?? undefined,
-    reasoningEffort
-  }
+  // One builder for the agent/run provider payload; see lib/agent/provider-payload.ts.
+  // It derives the thinking flags exactly the way this path used to.
+  const provider = buildProviderPayload(targetProvider, modelId, settings)
 
   // The cancel event may arrive while session/provider setup is awaiting.
   if (task.channelTaskId && pendingChannelCancels.delete(task.channelTaskId)) {
@@ -281,7 +253,6 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
       messages: [{ role: 'user', content }],
       sessionId,
       toolPreset: 'channel',
-      webSearchEnabled: settings.webSearchEnabled,
       workingFolder: session.scope === 'project' ? session.workingFolder : undefined,
       sshConnectionId: session.scope === 'project' ? session.sshConnectionId : undefined,
       projectId: session.scope === 'project' ? session.projectId : undefined,

@@ -145,11 +145,37 @@ export function useComposerEditor(opts: UseComposerEditorOptions) {
 
     return {
       plainText: editorDocumentToPlainText(liveDocument, liveSelectedFiles),
+      // serializedText keeps the pasted-block tag so the draft round-trips with
+      // its chip intact; promptText is what the model receives, so collapsed
+      // pastes must be flattened back to their verbatim text there.
       serializedText: serializeEditorDocument(liveDocument, liveSelectedFiles),
-      promptText: serializeEditorDocument(liveDocument, liveSelectedFiles, { expandPluginPrompts: true }),
+      promptText: serializeEditorDocument(liveDocument, liveSelectedFiles, {
+        expandPluginPrompts: true,
+        expandPastedBlocks: true
+      }),
       selectedFiles: liveSelectedFiles
     }
   }, [opts.editorRef])
+
+  /**
+   * Expand a collapsed paste back into its verbatim text, replacing the chip in
+   * place. Offsets are in the plain-text coordinate system that
+   * `replaceEditorRange` expects, so the whole pasted node is swapped for one
+   * text node in a single edit — which also makes it one native undo step.
+   */
+  const expandPastedBlock = React.useCallback(
+    (nodeId: string): void => {
+      const liveDocument = documentRef.current
+      const liveFiles = selectedFilesRef.current
+      const index = liveDocument.findIndex((node) => node.type === 'pasted' && node.id === nodeId)
+      if (index < 0) return
+      const node = liveDocument[index]
+      if (node.type !== 'pasted') return
+      const start = editorDocumentToPlainText(liveDocument.slice(0, index), liveFiles).length
+      replaceSelectionWithText(node.text, { start, end: start + node.text.length })
+    },
+    [replaceSelectionWithText]
+  )
 
   const resetComposer = React.useCallback((): void => {
     clearTimeout(opts.draftSaveTimerRef.current)
@@ -167,7 +193,7 @@ export function useComposerEditor(opts: UseComposerEditorOptions) {
     })
   }, [opts])
 
-const handleEditorDocumentChange = React.useCallback((nextDocument: EditorDocumentNode[]) => {
+  const handleEditorDocumentChange = React.useCallback((nextDocument: EditorDocumentNode[]) => {
     const referencedFileIds = new Set(
       nextDocument
         .filter((node): node is Extract<EditorDocumentNode, { type: 'file' }> => node.type === 'file')
@@ -201,7 +227,7 @@ const handleEditorDocumentChange = React.useCallback((nextDocument: EditorDocume
     documentRef, selectedFilesRef,
     applyEditorStateFromSerializedText, setText, focusInputAtEnd,
     replaceSelectionWithText, addFilesToEditor,
-    getLiveEditorState, resetComposer,
+    getLiveEditorState, expandPastedBlock, resetComposer,
     handleEditorDocumentChange, handleRemoveFileReference
   }
 }

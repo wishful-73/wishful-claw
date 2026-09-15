@@ -211,7 +211,7 @@ internal static partial class AgentLoop
             $"provider response empty provider={providerType} stopReason={stopReason} " +
             $"textLength={textLength} reasoningLength={reasoningLength} " +
             $"toolCalls={toolCalls.Count} hasUsage={usage is not null} elapsedMs={elapsedMs}");
-        throw new InvalidOperationException(
+        throw new ProviderEmptyResponseException(
             $"{providerType} returned no usable assistant output " +
             $"(stopReason={stopReason}, textLength={textLength}, toolCalls={toolCalls.Count}).");
     }

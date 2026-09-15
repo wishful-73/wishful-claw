@@ -1,9 +1,7 @@
-﻿// InputArea: main composer component with editor, toolbar, and controls
+// InputArea: main composer component with editor, toolbar, and controls
 
 import * as React from 'react'
 import type { SendMessageOptions } from '@renderer/hooks/use-chat-actions'
-import { useSettingsStore } from '@renderer/stores/settings-store'
-import { updateWebSearchToolRegistration } from '@renderer/lib/tools'
 import { useDebouncedTokens } from '@renderer/hooks/use-estimated-tokens'
 import { usePromptRecommendation } from '@renderer/hooks/use-prompt-recommendation'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -67,8 +65,7 @@ export function InputArea({
     chatView, isHomeComposer,
     language: currentLanguage,
     clarifyAutoAcceptRecommended, animationsEnabled,
-    webSearchEnabled, canToggleWebSearch,
-    supportsVision, composerModelCfg,
+    supportsVision, composerModelCfg, composerAutoModelLabel,
     mode, openSettings, openFilePreview,
     activeProjectId, activeSessionId, hasMessages, clearSessionMessages,
     draftSessionId, targetSession, projectScoped,
@@ -101,19 +98,14 @@ export function InputArea({
     applyEditorStateFromSerializedText, setText, focusInputAtEnd,
     replaceSelectionWithText, addFilesToEditor,
     getLiveEditorState, resetComposer,
-    handleEditorDocumentChange, handleRemoveFileReference
+    handleEditorDocumentChange, handleRemoveFileReference,
+    expandPastedBlock
   } = useComposerEditor({
     workingFolder, editorRef, attachedImages,
     draftSaveTimerRef,
     removePersistedDraft: () => removePersistedDraftRef.current?.(),
     setSelectedSkill, setAttachedImages, setPreviewImage
   })
-
-  const toggleWebSearch = React.useCallback(() => {
-    const newEnabled = !useSettingsStore.getState().webSearchEnabled
-    useSettingsStore.getState().updateSettings({ webSearchEnabled: newEnabled })
-    updateWebSearchToolRegistration(newEnabled)
-  }, [])
 
   const getSessionMessages = React.useCallback(
     () => useChatStore.getState().getSessionMessages(activeSessionId ?? ''),
@@ -260,11 +252,14 @@ export function InputArea({
     // This closes the rAF gap that can otherwise lose or duplicate the final key.
     editorRef.current?.flushPendingInput()
     const liveEditorState = getLiveEditorState()
-    const promptText = liveEditorState.promptText.trim()
-    if (!promptText && attachedImages.length === 0) return
+    // T-13: send the serialized text so long pastes stay collapsed as
+    // `<pasted-block>` chips in the transcript; the model payload expands them
+    // back to the verbatim text in useChatActions.
+    const serializedText = liveEditorState.serializedText.trim()
+    if (!serializedText && attachedImages.length === 0) return
     if (disabled || needsWorkingFolder || pendingImageReads > 0) return
     const hasLeadingSlashCommand = liveEditorState.plainText.trimStart().startsWith('/')
-    const message = selectedSkill && !hasLeadingSlashCommand ? `[Skill: ${selectedSkill}]\n${promptText}` : promptText
+    const message = selectedSkill && !hasLeadingSlashCommand ? `[Skill: ${selectedSkill}]\n${serializedText}` : serializedText
     const sendOptions: SendMessageOptions = { clearCompletedTasksOnTurnStart: true, enablePlanMode: planMode || undefined }
     const selectedFileReferences = liveEditorState.selectedFiles.map(selectedFileItemToReference)
     if (selectedFileReferences.length > 0) sendOptions.selectedFileReferences = selectedFileReferences
@@ -394,6 +389,7 @@ export function InputArea({
             onReferencePreview={handlePreviewFile}
             onReferenceLocate={handleLocateFileReference}
             onReferenceDelete={handleRemoveFileReference}
+            onPastedBlockExpand={expandPastedBlock}
             showOptimizationDialog={showOptimizationDialog}
             setShowOptimizationDialog={setShowOptimizationDialog}
             optimizationOptions={optimizationOptions}
@@ -426,9 +422,6 @@ export function InputArea({
             readOnlyModel={readOnlyModel}
             modelRoute={modelRoute}
             draftSessionId={draftSessionId}
-            canToggleWebSearch={canToggleWebSearch}
-            webSearchEnabled={webSearchEnabled}
-            toggleWebSearch={toggleWebSearch}
             disabled={disabled}
             isStreaming={isStreaming}
             setSelectedSkill={setSelectedSkill}
@@ -476,7 +469,12 @@ export function InputArea({
           />
         </div>
         {draftSessionId && (
-          <ComposerRuntimeStatusFooter sessionId={draftSessionId} model={composerModelCfg} {...composerRunStatus} />
+          <ComposerRuntimeStatusFooter
+            sessionId={draftSessionId}
+            model={composerModelCfg}
+            autoModelLabel={composerAutoModelLabel}
+            {...composerRunStatus}
+          />
         )}
       </div>
     </div>

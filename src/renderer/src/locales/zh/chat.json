@@ -1,4 +1,12 @@
 {
+  "activity": {
+    "iterationStarted": "迭代开始",
+    "iterationEnded": "迭代结束",
+    "requestSent": "请求已发送",
+    "toolCallStarted": "工具调用开始",
+    "toolExecuting": "工具执行中",
+    "toolResult": "工具结果"
+  },
   "home": {
     "title": "今天我能帮你做什么？",
     "subtitle": "开始对话或选择下方快捷提示。",
@@ -121,7 +129,8 @@
       "tpsHint": "每秒生成的输出 Token 数",
       "ttftHint": "首个 Token 返回耗时",
       "totalCost": "消费",
-      "total": "总"
+      "total": "总",
+      "autoModelHint": "自动切换当前使用的服务商与模型"
     },
     "runtimeStatus": {
       "ready": "就绪",
@@ -204,7 +213,15 @@
     "loadingSuggestions": "正在加载建议...",
     "noSuggestions": "没有匹配的建议",
     "doubleClickCompressContext": "双击压缩上下文",
-    "queueRemoveImages": "移除图片"
+    "queueRemoveImages": "移除图片",
+    "pastedBlock": {
+      "label": "粘贴",
+      "labelWithLines": "粘贴 · {{lines}} 行",
+      "expand": "展开",
+      "expandTitle": "展开为原文",
+      "collapse": "收起",
+      "remove": "移除"
+    }
   },
   "message": {
     "thinking": "思考中",

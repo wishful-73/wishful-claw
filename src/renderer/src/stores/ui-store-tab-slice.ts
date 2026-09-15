@@ -130,9 +130,39 @@ export function createTabSlice(set: SetFn, get: GetFn) {
         return { rightPanelTabs, ...activation, rightPanelOpen: true }
       }),
 
-    ensureTerminalTab: () =>
+    // Timeline（S-25）：per-session 作用域。「全部会话」那档不做任何过滤，所以
+    // 这里不需要记 projectId —— 事件查询由面板组件自己按 sessionId 发起。
+    openTimelinePanel: (sessionId?: string | null) =>
       set((state: any) => {
-        const sessionId = resolveRightPanelSessionId(state)
+        const resolvedSessionId = resolveRightPanelSessionId(state, sessionId)
+        const tabId = scopedRightPanelTabId('timeline', resolvedSessionId)
+        const activation = activateRightPanelTab(state, resolvedSessionId, tabId)
+        const existing = state.rightPanelTabs.find((tab: any) => tab.id === tabId)
+        if (existing) {
+          const rightPanelTabs = state.rightPanelTabs.map((tab: RightPanelTabInstance) =>
+            tab.id === tabId
+              ? {
+                  ...tab,
+                  sessionId: resolvedSessionId ?? tab.sessionId ?? null
+                }
+              : tab
+          )
+          return { rightPanelTabs, ...activation, rightPanelOpen: true }
+        }
+        const tab: RightPanelTabInstance = {
+          id: tabId,
+          kind: 'timeline',
+          title: 'Timeline',
+          closable: true,
+          sessionId: resolvedSessionId,
+          createdAt: Date.now()
+        }
+        const rightPanelTabs = ensureRightPanelTabs([...state.rightPanelTabs, tab])
+        return { rightPanelTabs, ...activation, rightPanelOpen: true }
+      }),
+
+    ensureTerminalTab: () =>
+      set((state: any) => {        const sessionId = resolveRightPanelSessionId(state)
         const tabId = scopedRightPanelTabId('terminal', sessionId)
         const activation = activateRightPanelTab(state, sessionId, tabId)
         const existing = state.rightPanelTabs.find((tab: any) => tab.id === tabId)

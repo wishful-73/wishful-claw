@@ -21,6 +21,7 @@ import {
   ExternalLink,
   RotateCcw
 } from 'lucide-react'
+import { RequestHeadersEditor } from './RequestHeadersEditor'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -180,6 +181,14 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
     }
   }
 
+  // requestOverrides is merged shallowly by updateProvider, so preserve the
+  // sibling body / omitBodyKeys keys when replacing the header map.
+  const handleHeadersChange = (headers: Record<string, string>): void => {
+    updateProvider(provider.id, {
+      requestOverrides: { ...(provider.requestOverrides ?? {}), headers }
+    })
+  }
+
   const handleSaveModel = (model: AIModelConfig): void => {
     if (editingModel) {
       updateModel(provider.id, editingModel.id, model)
@@ -309,6 +318,18 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
             value={provider.baseUrl}
             onChange={(e) => updateProvider(provider.id, { baseUrl: e.target.value })}
             className="text-xs"
+          />
+        </section>
+
+        {/* Extra request headers */}
+        <section className="mt-5 shrink-0 space-y-2">
+          <label className="text-sm font-medium">
+            {ts('provider.config.requestHeaders.title', { defaultValue: '请求头' })}
+          </label>
+          <RequestHeadersEditor
+            key={provider.id}
+            headers={provider.requestOverrides?.headers}
+            onChange={handleHeadersChange}
           />
         </section>
 

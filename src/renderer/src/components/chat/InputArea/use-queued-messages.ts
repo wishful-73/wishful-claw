@@ -1,4 +1,4 @@
-﻿// Queued messages state and handlers for InputArea
+// Queued messages state and handlers for InputArea
 
 import * as React from 'react'
 import { toast } from 'sonner'
@@ -22,6 +22,7 @@ import {
 } from '@renderer/hooks/use-chat-actions'
 import { EMPTY_QUEUED_MESSAGES } from './types'
 import { areQueuedMessagesEqual } from './utils'
+import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 
 export interface UseQueuedMessagesOptions {
   activeSessionId: string | null
@@ -72,7 +73,9 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
 
   const startEditQueuedMessage = React.useCallback((msg: PendingSessionMessageItem) => {
     setEditingQueueItemId(msg.id)
-    setEditingQueueText(msg.text)
+    // T-13: the queued text keeps `<pasted-block>` tags; the edit box shows the
+    // pasted body instead of the tag JSON.
+    setEditingQueueText(expandPastedBlocks(msg.text))
     setEditingQueueImages(cloneImageAttachments(msg.images))
   }, [])
 

@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { ComposerRuntimeStatus } from './runtime-status'
 import type { AIModelConfig } from '@renderer/lib/api/types'
 import type { ContextCompressionStatus } from './types'
@@ -12,6 +12,8 @@ interface ComposerRuntimeStatusFooterProps {
   contextCompressionStatus: ContextCompressionStatus
   contextCompressionStatusLabel: string
   model: AIModelConfig | null | undefined
+  /** `服务商 · 模型` for auto sessions; null in manual mode (the switcher already names it). */
+  autoModelLabel?: string | null
 }
 
 export function ComposerRuntimeStatusFooter({
@@ -22,7 +24,8 @@ export function ComposerRuntimeStatusFooter({
   pendingImageReads,
   contextCompressionStatus,
   contextCompressionStatusLabel,
-  model
+  model,
+  autoModelLabel
 }: ComposerRuntimeStatusFooterProps): React.JSX.Element {
   return (
     <ComposerRuntimeStatus
@@ -34,6 +37,7 @@ export function ComposerRuntimeStatusFooter({
       contextCompressionStatus={contextCompressionStatus}
       contextCompressionStatusLabel={contextCompressionStatusLabel}
       model={model}
+      autoModelLabel={autoModelLabel}
       className="mt-1.5 px-3"
       showStatus={false}
     />

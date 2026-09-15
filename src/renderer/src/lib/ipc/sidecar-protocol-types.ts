@@ -136,24 +136,6 @@ export interface SidecarToolDefinition {
   inputSchema: ToolDefinition['inputSchema']
 }
 
-export interface SidecarWebSearchConfig {
-  enabled: boolean
-  provider:
-    | 'tavily'
-    | 'searxng'
-    | 'exa'
-    | 'exa-mcp'
-    | 'bocha'
-    | 'zhipu'
-    | 'google'
-    | 'bing'
-    | 'baidu'
-  apiKey?: string
-  searchEngine?: string
-  maxResults?: number
-  timeout?: number
-}
-
 export interface SidecarTranslationContext {
   enabled: true
   sourceLanguage: string
@@ -208,7 +190,6 @@ export interface SidecarAgentRunRequest {
   compressionProvider?: SidecarProviderConfig
   tools: SidecarToolDefinition[]
   subAgentToolCatalog?: SidecarToolDefinition[]
-  webSearch?: SidecarWebSearchConfig
   imagePluginProvider?: SidecarProviderConfig
   /**
    * Provider config sub-agents (Task tool) run on. Sourced from the configured fast model

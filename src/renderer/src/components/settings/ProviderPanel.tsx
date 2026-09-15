@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Layers, Plus, Search, Server, Trash2 } from 'lucide-react'
+import { Layers, Plus, Repeat2, Search, Server, Trash2 } from 'lucide-react'
 import { ProviderIcon } from '@renderer/components/settings/provider-icons'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
@@ -17,6 +17,7 @@ import type { AIProvider } from '../../../../shared/types/provider'
 import { cn } from '@renderer/lib/utils'
 import { AddProviderDialog } from './provider/AddProviderDialog'
 import { ProviderConfigPanel } from './provider/ProviderConfigPanel'
+import { ProviderFallbackPanel } from './provider/ProviderFallbackPanel'
 import { ModelManagementPanel } from './model-management/ModelManagementPanel'
 import { getProviderSourceKey, ALL_PROVIDER_FILTER } from './model-management/provider-source-index'
 import {
@@ -30,9 +31,21 @@ import {
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
 
-type ProviderPanelTab = 'configuration' | 'models'
+type ProviderPanelTab = 'configuration' | 'models' | 'fallback'
 
-const PROVIDER_PANEL_TABS: ProviderPanelTab[] = ['configuration', 'models']
+const PROVIDER_PANEL_TABS: ProviderPanelTab[] = ['configuration', 'models', 'fallback']
+
+const TAB_ICONS: Record<ProviderPanelTab, React.ComponentType<{ className?: string }>> = {
+  configuration: Server,
+  models: Layers,
+  fallback: Repeat2
+}
+
+const SUBTITLE_KEYS: Record<ProviderPanelTab, string> = {
+  configuration: 'provider.subtitle',
+  models: 'provider.modelManagementDesc',
+  fallback: 'provider.fallback.subtitle'
+}
 
 function ProviderPanelTabs({
   activeTab,
@@ -45,7 +58,8 @@ function ProviderPanelTabs({
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const labels: Record<ProviderPanelTab, string> = {
     configuration: t('provider.tabs.configuration'),
-    models: t('provider.tabs.models')
+    models: t('provider.tabs.models'),
+    fallback: t('provider.tabs.fallback')
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number): void => {
@@ -84,7 +98,10 @@ function ProviderPanelTabs({
               : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
           )}
         >
-          {tab === 'configuration' ? <Server className="size-3.5" /> : <Layers className="size-3.5" />}
+          {(() => {
+            const Icon = TAB_ICONS[tab]
+            return <Icon className="size-3.5" />
+          })()}
           {labels[tab]}
         </button>
       ))}
@@ -219,7 +236,7 @@ function ProviderPanel(): React.JSX.Element {
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{t('provider.title')}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {activeTab === 'configuration' ? t('provider.subtitle') : t('provider.modelManagementDesc')}
+            {t(SUBTITLE_KEYS[activeTab])}
           </p>
         </div>
         <ProviderPanelTabs activeTab={activeTab} onChange={setActiveTab} />
@@ -292,7 +309,7 @@ function ProviderPanel(): React.JSX.Element {
           )}
         </div>
       </div>
-      ) : (
+      ) : activeTab === 'models' ? (
         <div
           id="provider-panel-tabpanel-models"
           role="tabpanel"
@@ -303,6 +320,15 @@ function ProviderPanel(): React.JSX.Element {
             providerFilter={resolvedModelProviderFilter}
             onProviderFilterChange={setModelProviderFilter}
           />
+        </div>
+      ) : (
+        <div
+          id="provider-panel-tabpanel-fallback"
+          role="tabpanel"
+          aria-labelledby="provider-panel-tab-fallback"
+          className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4"
+        >
+          <ProviderFallbackPanel />
         </div>
       )}
 

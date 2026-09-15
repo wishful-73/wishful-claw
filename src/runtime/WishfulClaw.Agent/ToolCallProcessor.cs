@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -203,6 +203,57 @@ public static partial class ToolCallProcessor
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// T-7.1: Guarantees every tool call is paired with a result, in call order.
+    ///
+    /// On cancellation <see cref="ExecuteAsync"/> stops before starting the
+    /// remaining calls, so the returned results cover only the calls that had
+    /// already started. Writing those back as-is leaves the resident conversation
+    /// with an assistant(tool_calls) message that has no matching tool result —
+    /// the provider then rejects the NEXT request with HTTP 400
+    /// ("An assistant message with 'tool_calls' must be followed by tool
+    /// messages..."). Calls that never produced a result get the same
+    /// interruption placeholder the restore path uses (see SessionRestoreTools).
+    /// </summary>
+    internal static List<AgentRuntimeToolResult> EnsureEveryCallHasResult(
+        IReadOnlyList<AgentRuntimeNativeToolCall> toolCalls,
+        IReadOnlyList<AgentRuntimeToolResult> results)
+    {
+        if (toolCalls.Count == 0) return [];
+
+        if (results.Count == toolCalls.Count)
+        {
+            // Fast path: nothing was dropped (the common, non-cancelled case).
+            return results as List<AgentRuntimeToolResult> ?? [.. results];
+        }
+
+        var byUseId = new Dictionary<string, AgentRuntimeToolResult>(StringComparer.Ordinal);
+        foreach (var result in results)
+        {
+            byUseId[result.ToolUseId] = result;
+        }
+
+        var paired = new List<AgentRuntimeToolResult>(toolCalls.Count);
+        foreach (var call in toolCalls)
+        {
+            paired.Add(byUseId.TryGetValue(call.Id, out var existing)
+                ? existing
+                : InterruptedToolResult(call.Id));
+        }
+
+        return paired;
+    }
+
+    internal static AgentRuntimeToolResult InterruptedToolResult(string toolUseId)
+    {
+        return new AgentRuntimeToolResult(
+            toolUseId,
+            AgentRuntimeProviderSupport.CreateStringElement(
+                "[INTERRUPTED] This tool call was interrupted before it completed; " +
+                "no result is available. Re-invoke the tool if you still need it."),
+            true);
     }
 
     private static async Task<AgentRuntimeToolResult> RejectUnavailableToolAsync(

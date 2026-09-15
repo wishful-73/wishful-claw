@@ -11,6 +11,8 @@ public static class GitQueryTools
     private const int DefaultLargeGitOutputChars = 2 * 1024 * 1024;
     private const int DefaultHistoryLimit = 50;
     private const int MaxHistoryLimit = 500;
+    private const int DefaultGraphLimit = 50;
+    private const int MaxGraphLimit = 200;
     private const int DefaultMaxPatchChars = 96_000;
     private const int MaxPatchChars = 512_000;
     private const string HistorySeparator = "\u0001";
@@ -33,6 +35,7 @@ public static class GitQueryTools
             "get-file-content-at-ref" => await GetFileContentAtRefAsync(cwd, parameters),
             "get-staged-diff-bundle" => await GetStagedDiffBundleAsync(cwd, parameters),
             "get-commit-history" => await GetCommitHistoryAsync(cwd, parameters),
+            "get-commit-graph" => await GetCommitGraphAsync(cwd, parameters),
             "list-branches" => await ListBranchesAsync(cwd),
             "get-file-history" => await GetFileHistoryAsync(cwd, parameters),
             _ => GitQueryResult.Failure($"Unsupported git query operation: {operation}")
@@ -228,6 +231,28 @@ public static class GitQueryTools
             : GitQueryResult.Failure(result, "Failed to get commit history");
     }
 
+    /// <summary>
+    /// Topology feed for the branch view. Walks every ref (branches / remotes / tags) so
+    /// the renderer can draw diverging and merging lanes, not just the current branch's
+    /// straight line. Parents are emitted in order — the first one is the lane the commit
+    /// continues on.
+    /// </summary>
+    private static async Task<GitQueryResult> GetCommitGraphAsync(string cwd, JsonElement parameters)
+    {
+        var limit = Math.Clamp(
+            GitExecutor.GetInt(parameters, "limit", DefaultGraphLimit), 1, MaxGraphLimit);
+        var format = string.Join(HistorySeparator, "%H", "%h", "%P", "%an", "%ad", "%s", "%D");
+        var result = await GitExecutor.ExecAsync(
+            new[]
+            {
+                "log", "--all", "--date=iso", $"--pretty=format:{format}", $"--max-count={limit}"
+            },
+            cwd, maxStdoutChars: DefaultLargeGitOutputChars);
+        return result.Success
+            ? new GitQueryResult { Success = true, Graph = ParseCommitGraph(result.Stdout) }
+            : GitQueryResult.Failure(result, "Failed to get commit graph");
+    }
+
     private static async Task<GitQueryResult> GetFileHistoryAsync(string cwd, JsonElement parameters)
     {
         var filePath = GitExecutor.GetString(parameters, "filePath");
@@ -326,6 +351,40 @@ public static class GitQueryTools
                 parts.Length > 5 ? parts[5] : string.Empty));
         }
         return history;
+    }
+
+    private static List<GitCommitGraphItem> ParseCommitGraph(string output)
+    {
+        var graph = new List<GitCommitGraphItem>();
+        foreach (var line in GitExecutor.NormalizeLines(output))
+        {
+            var parts = line.Split(HistorySeparator, 7, StringSplitOptions.None);
+            graph.Add(new GitCommitGraphItem(
+                parts.Length > 0 ? parts[0] : string.Empty,
+                parts.Length > 1 ? parts[1] : string.Empty,
+                SplitGraphList(parts.Length > 2 ? parts[2] : string.Empty, ' '),
+                parts.Length > 3 ? parts[3] : string.Empty,
+                parts.Length > 4 ? parts[4] : string.Empty,
+                parts.Length > 5 ? parts[5] : string.Empty,
+                SplitGraphList(parts.Length > 6 ? parts[6] : string.Empty, ',')));
+        }
+        return graph;
+    }
+
+    /// <summary>
+    /// Splits a space-separated parent list or a comma-separated ref list. Both are safe:
+    /// git refnames may not contain spaces, and <c>%D</c> separates entries with ", ".
+    /// </summary>
+    private static List<string> SplitGraphList(string value, char separator)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return new List<string>();
+        var items = new List<string>();
+        foreach (var part in value.Split(separator))
+        {
+            var trimmed = part.Trim();
+            if (trimmed.Length > 0) items.Add(trimmed);
+        }
+        return items;
     }
 
     private static List<GitBranchItem> ParseBranches(string output, string type)

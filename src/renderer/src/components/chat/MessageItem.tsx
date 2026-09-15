@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -203,7 +203,9 @@ function MessageItemInner({
             onContinue={onContinueAssistantMessage}
             onDelete={onDeleteMessage}
             liveToolCallMap={liveToolCallMap}
-            createdAt={effectiveMessage.createdAt}
+            // Assistant replies display the last mutation time (loop_end persistence),
+            // falling back to creation time for live messages / legacy rows.
+            createdAt={effectiveMessage.updatedAt ?? effectiveMessage.createdAt}
             renderMode={renderMode}
             orchestrationRun={orchestrationRun}
             hiddenToolUseIds={hiddenToolUseIds}

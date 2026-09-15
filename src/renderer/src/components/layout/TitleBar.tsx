@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, HelpCircle, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SquareTerminal } from 'lucide-react'
+import { FolderOpen, Globe, HelpCircle, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -22,6 +22,7 @@ export function TitleBar({
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen)
   const toggleRightPanel = useUIStore((s) => s.toggleRightPanel)
   const ensureFilesTab = useUIStore((s) => s.ensureFilesTab)
+  const ensureBrowserTab = useUIStore((s) => s.ensureBrowserTab)
   const toggleBottomTerminalDock = useUIStore((s) => s.toggleBottomTerminalDock)
 
   // Get current session ID and terminal dock state
@@ -91,7 +92,7 @@ export function TitleBar({
         )}
       </div>
 
-      {/* Right: user guide, files, terminal, right panel toggle, window controls */}
+      {/* Right: user guide, files, browser, terminal, right panel toggle, window controls */}
       <div className="flex items-center gap-1 px-2">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -106,31 +107,45 @@ export function TitleBar({
         </Tooltip>
 
         {hasProject && (
-          <>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => ensureFilesTab()}
-                  className="titlebar-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <FolderOpen className="size-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('topbar.files', { defaultValue: 'Files' })}</TooltipContent>
-            </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => ensureFilesTab()}
+                className="titlebar-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <FolderOpen className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('topbar.files', { defaultValue: 'Files' })}</TooltipContent>
+          </Tooltip>
+        )}
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => currentSessionId && toggleBottomTerminalDock(currentSessionId)}
-                  className={`titlebar-no-drag flex size-7 items-center justify-center rounded-md transition-colors ${bottomTerminalDockOpen ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
-                >
-                  <SquareTerminal className="size-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('topbar.terminal', { defaultValue: 'Terminal' })}</TooltipContent>
-            </Tooltip>
-          </>
+        {/* The browser needs no working folder, so unlike files/terminal it stays available
+            in global sessions too — same reach as the right panel's own 「add → browser」. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => ensureBrowserTab(undefined, currentSessionId)}
+              className="titlebar-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Globe className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t('topbar.browser', { defaultValue: '浏览器' })}</TooltipContent>
+        </Tooltip>
+
+        {hasProject && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => currentSessionId && toggleBottomTerminalDock(currentSessionId)}
+                className={`titlebar-no-drag flex size-7 items-center justify-center rounded-md transition-colors ${bottomTerminalDockOpen ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+              >
+                <SquareTerminal className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('topbar.terminal', { defaultValue: 'Terminal' })}</TooltipContent>
+          </Tooltip>
         )}
 
         <Tooltip>

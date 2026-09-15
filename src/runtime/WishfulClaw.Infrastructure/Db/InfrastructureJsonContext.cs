@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Contracts;
 
@@ -19,6 +19,10 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(GoalPageResult))]
 [JsonSerializable(typeof(GoalEventPageResult))]
 [JsonSerializable(typeof(GoalReopenResult))]
+[JsonSerializable(typeof(AgentTimelineEventRow))]
+[JsonSerializable(typeof(List<AgentTimelineEventRow>))]
+[JsonSerializable(typeof(AgentTimelinePageResult))]
+[JsonSerializable(typeof(AgentTimelineMutationResult))]
 [JsonSerializable(typeof(GoalPlanTaskRow))]
 [JsonSerializable(typeof(List<GoalPlanTaskRow>))]
 [JsonSerializable(typeof(GoalPlanTaskFindResult))]
@@ -132,9 +136,6 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(UsageByModelResult))]
 [JsonSerializable(typeof(UsageModelRow))]
 [JsonSerializable(typeof(List<UsageModelRow>))]
-[JsonSerializable(typeof(UsageBySourceResult))]
-[JsonSerializable(typeof(UsageSourceRow))]
-[JsonSerializable(typeof(List<UsageSourceRow>))]
 [JsonSerializable(typeof(UsageLogsResult))]
 [JsonSerializable(typeof(UsageLogDetailRow))]
 [JsonSerializable(typeof(List<UsageLogDetailRow>))]

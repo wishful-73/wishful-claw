@@ -129,6 +129,19 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
             if (!TryDbMutationOk(updateResponse, out var updateError))
                 return EncodeError(updateError ?? "Failed to record the dispatch reply");
 
+            // Timeline instrumentation (S-25.4): dispatch reply is a decision point.
+            DbAgentTimelineTools.Log(
+                DbClient.GetClient(),
+                callerSessionId,
+                null,
+                "task_reported",
+                report,
+                DbAgentTimelineTools.Metadata(
+                    ("dispatch_id", dispatchId),
+                    ("global_task_id", dispatch.GetProperty("global_task_id").GetString()),
+                    ("from", currentStatus),
+                    ("to", newStatus)));
+
             await AgentRuntimeGlobalBoardEvents.EmitDispatchChangedAsync(
                 context,
                 dispatchId,

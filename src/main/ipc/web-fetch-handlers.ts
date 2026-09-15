@@ -1,26 +1,18 @@
+/*
+ * Web fetch IPC — the fetch half of what used to be the WebSearch chain.
+ *
+ * The provider-API search half (`web:search`, `web:search-config`,
+ * `web:search-providers`) is retired in iter-29 (S-23). It was registered but had
+ * zero renderer call sites — the search the agent actually uses is the
+ * renderer-side multi-engine scraper in `lib/tools/browser-search`, and it needs
+ * only the two fetch channels below. They stay: plain HTTP goes through the
+ * Worker's WebFetch executor, and engines that block non-browser requests get a
+ * hidden BrowserWindow.
+ */
+
 import { BrowserWindow } from 'electron'
 import { getNativeWorker } from '../lib/native-worker'
 import { registerMessagePackHandler } from './messagepack-handler'
-
-type WebSearchProvider =
-  | 'tavily'
-  | 'searxng'
-  | 'exa'
-  | 'exa-mcp'
-  | 'bocha'
-  | 'zhipu'
-  | 'google'
-  | 'bing'
-  | 'baidu'
-
-interface WebSearchRequest {
-  query: string
-  provider: WebSearchProvider
-  maxResults?: number
-  searchMode?: 'web' | 'news'
-  apiKey?: string
-  timeout?: number
-}
 
 interface WebFetchRequest {
   url?: string
@@ -28,18 +20,6 @@ interface WebFetchRequest {
   format?: 'markdown' | 'text' | 'html'
   timeout?: number
 }
-
-const WEB_SEARCH_PROVIDERS: WebSearchProvider[] = [
-  'tavily',
-  'searxng',
-  'exa',
-  'exa-mcp',
-  'bocha',
-  'zhipu',
-  'google',
-  'bing',
-  'baidu'
-]
 
 function normalizeNativeResult<T>(value: unknown): T | { error: string } {
   if (typeof value !== 'string') return value as T
@@ -50,12 +30,9 @@ function normalizeNativeResult<T>(value: unknown): T | { error: string } {
   }
 }
 
-async function requestNativeWeb<T>(
-  method: 'web/search' | 'web/fetch',
-  params: WebSearchRequest | WebFetchRequest
-): Promise<T | { error: string }> {
+async function requestNativeWebFetch<T>(params: WebFetchRequest): Promise<T | { error: string }> {
   try {
-    const result = await getNativeWorker().request<unknown>(method, params, 120_000)
+    const result = await getNativeWorker().request<unknown>('web/fetch', params, 120_000)
     return normalizeNativeResult<T>(result)
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) }
@@ -81,7 +58,7 @@ const MAX_RENDER_WAIT_MS = 10_000
 /**
  * Fetch a URL using a hidden BrowserWindow so JavaScript can render.
  * Used for search engines that block plain HTTP (Baidu CAPTCHA) or
- * require JS rendering (GitHub, Brave, etc.).
+ * require JS rendering (GitHub, etc.).
  *
  * Timeout: loadURL gets 15s (did-finish-loading or did-fail-load),
  * then waitMs for JS rendering, then extract HTML. Total capped at ~20s
@@ -134,13 +111,9 @@ async function fetchRenderedPage(url: string, waitMs: number): Promise<{ content
   }
 }
 
-export function registerWebSearchHandlers(): void {
-  registerMessagePackHandler<WebSearchRequest>('web:search', (args) =>
-    requestNativeWeb('web/search', args)
-  )
-
+export function registerWebFetchHandlers(): void {
   registerMessagePackHandler<WebFetchRequest>('web:fetch', (args) =>
-    requestNativeWeb('web/fetch', args)
+    requestNativeWebFetch(args)
   )
 
   // Browser-rendered fetch for engines that need JS execution
@@ -153,15 +126,5 @@ export function registerWebSearchHandlers(): void {
       const waitMs = Math.min(Math.max(Math.trunc(args.waitMs ?? 3000) || 0, 0), MAX_RENDER_WAIT_MS)
       return fetchRenderedPage(args.url, waitMs)
     }
-  )
-
-  registerMessagePackHandler<undefined, { providers: WebSearchProvider[] }>(
-    'web:search-config',
-    async () => ({ providers: WEB_SEARCH_PROVIDERS })
-  )
-
-  registerMessagePackHandler<undefined, WebSearchProvider[]>(
-    'web:search-providers',
-    async () => WEB_SEARCH_PROVIDERS
   )
 }

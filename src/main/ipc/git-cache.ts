@@ -69,6 +69,16 @@ export interface GitBranchItem {
   isCurrent: boolean
 }
 
+export interface GitCommitGraphItem {
+  hash: string
+  shortHash: string
+  parents: string[]
+  author: string
+  date: string
+  subject: string
+  refs: string[]
+}
+
 export interface GitRepoSummary {
   branch: string
   upstream?: string
@@ -101,6 +111,7 @@ export type GitQueryResult =
       patch?: string
       empty?: boolean
       history?: GitCommitHistoryItem[]
+      graph?: GitCommitGraphItem[]
       branches?: GitBranchItem[]
       current?: string | null
       added?: number
@@ -156,6 +167,7 @@ export function gitQueryTtl(params: Record<string, unknown>): number {
     case 'get-file-content-at-ref':
     case 'get-file-history':
     case 'get-commit-history':
+    case 'get-commit-graph':
     case 'list-branches':
       return GIT_QUERY_STABLE_TTL_MS
     default:

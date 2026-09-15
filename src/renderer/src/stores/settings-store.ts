@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ProviderType, ReasoningEffortLevel } from '../lib/api/types'
 import { ipcStorage } from '../lib/ipc/ipc-storage'
@@ -25,7 +25,9 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampRequestMaxRetries } from './settings-store-types'
+import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
+import type { ProviderFallbackConfig } from '../../../shared/types/provider'
+import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
 import type { UpdateBannerPosition } from '../../../shared/updater/types'
 
@@ -48,6 +50,7 @@ export type {
   ShellExecutionEndpoint,
   ThemeMode,
 } from './settings-store-types'
+export type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { normalizeWorkingFolderPath } from './settings-store-types'
 import { migrateSettings } from './settings-store-migrate'
 
@@ -72,17 +75,21 @@ export {
   clampRequestMaxRetries,
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   DEFAULT_MAX_TOOL_CALLS_PER_TURN,
+  DEFAULT_MAX_RESIDENT_TURNS,
   DEFAULT_SHELL_EXECUTION_ENDPOINT,
   DEFAULT_THEME_MODE,
   MAX_MAX_CONCURRENT_SUB_AGENTS,
   MAX_MAX_PARALLEL_TOOL_CALLS,
   MAX_MAX_TOOL_CALLS_PER_TURN,
+  MAX_MAX_RESIDENT_TURNS,
   MIN_MAX_CONCURRENT_SUB_AGENTS,
   MIN_MAX_PARALLEL_TOOL_CALLS,
   MIN_MAX_TOOL_CALLS_PER_TURN,
+  MIN_MAX_RESIDENT_TURNS,
   clampMaxConcurrentSubAgents,
   clampMaxParallelToolCalls,
   clampMaxToolCallsPerTurn,
+  clampMaxResidentTurns,
   createDefaultCodexConfig,
   getReasoningEffortKey,
   getRecentWorkingTargetKey,
@@ -127,6 +134,8 @@ interface SettingsStore {
   maxParallelToolCalls: number
   maxToolCallsPerTurn: number
   maxConcurrentSubAgents: number
+  /** T-3: 运行时驻留会话在内存里保留的最近轮数（轮 = 一条 user 消息及其后的回复）。 */
+  maxResidentTurns: number
   toolResultFormat: 'toon' | 'json'
   fileDiffViewMode: FileDiffViewMode
   shellExecutionEndpoint: ShellExecutionEndpoint
@@ -183,28 +192,22 @@ interface SettingsStore {
   /** Chat column fills the whole conversation panel instead of the 820px cap. */
   conversationPanelFullWidth: boolean
 
-  // Web Search Settings
-  webSearchEnabled: boolean
-  webSearchProvider:
-    | 'tavily'
-    | 'searxng'
-    | 'exa'
-    | 'exa-mcp'
-    | 'bocha'
-    | 'zhipu'
-    | 'google'
-    | 'bing'
-    | 'baidu'
-  webSearchApiKey: string
-  webSearchEngine: string
-  webSearchMaxResults: number
-  webSearchTimeout: number
+  // Search (iter-29 S-23). The API-backed WebSearch chain was retired; the
+  // multi-engine scraper is configured here instead.
+  browserSearch: BrowserSearchSettings
+  /** Pre-S-23 WebSearch config, kept so an existing provider/API key survives.
+   *  Never read by the search code. */
+  legacyWebSearch: LegacyWebSearchSettings | null
 
   // API Request Timeout (seconds, 0 = no limit)
   apiRequestTimeoutSeconds: number
 
   // Provider max retry attempts on 429/5xx (0 = unlimited, default 10)
   requestMaxRetries: number
+
+  // Provider fallback (iter-29 / S-21): ordered failover candidates used when the
+  // provider in use hits a quota / rate limit. Off unless the user opts in.
+  providerFallback: ProviderFallbackConfig
 
   // CodeGraph Settings (opt-in standalone sidecar; default off)
   codegraphEnabled: boolean
@@ -282,6 +285,7 @@ export const useSettingsStore = create<SettingsStore>()(
       maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
       maxToolCallsPerTurn: DEFAULT_MAX_TOOL_CALLS_PER_TURN,
       maxConcurrentSubAgents: DEFAULT_MAX_CONCURRENT_SUB_AGENTS,
+      maxResidentTurns: DEFAULT_MAX_RESIDENT_TURNS,
       toolResultFormat: 'toon',
       fileDiffViewMode: 'split',
       shellExecutionEndpoint: DEFAULT_SHELL_EXECUTION_ENDPOINT,
@@ -333,19 +337,18 @@ export const useSettingsStore = create<SettingsStore>()(
       updateBannerPosition: null,
       conversationPanelFullWidth: false,
 
-      // Web Search Settings
-      webSearchEnabled: false,
-      webSearchProvider: 'tavily',
-      webSearchApiKey: '',
-      webSearchEngine: 'google',
-      webSearchMaxResults: 5,
-      webSearchTimeout: 30000,
+      // Search (iter-29 S-23)
+      browserSearch: { ...DEFAULT_BROWSER_SEARCH_SETTINGS },
+      legacyWebSearch: null,
 
       // API Request Timeout (seconds, 0 = no limit, default 100s)
       apiRequestTimeoutSeconds: 100,
 
       // Provider max retry attempts on 429/5xx (0 = unlimited, default 10)
       requestMaxRetries: 10,
+
+      // Provider fallback (iter-29 / S-21)
+      providerFallback: createDefaultProviderFallback(),
 
       // CodeGraph Settings (opt-in standalone sidecar; default off)
       codegraphEnabled: false,
@@ -384,7 +387,10 @@ export const useSettingsStore = create<SettingsStore>()(
               ? {}
               : {
                   maxConcurrentSubAgents: clampMaxConcurrentSubAgents(patch.maxConcurrentSubAgents)
-                })
+                }),
+            ...(patch.maxResidentTurns === undefined
+              ? {}
+              : { maxResidentTurns: clampMaxResidentTurns(patch.maxResidentTurns) })
           }
 
           const hasChanges = (Object.keys(nextPatch) as Array<keyof SettingsStoreData>).some(
@@ -407,7 +413,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 37,
+      version: 40,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -442,6 +448,7 @@ export const useSettingsStore = create<SettingsStore>()(
         maxParallelToolCalls: clampMaxParallelToolCalls(state.maxParallelToolCalls),
         maxToolCallsPerTurn: clampMaxToolCallsPerTurn(state.maxToolCallsPerTurn),
         maxConcurrentSubAgents: clampMaxConcurrentSubAgents(state.maxConcurrentSubAgents),
+        maxResidentTurns: clampMaxResidentTurns(state.maxResidentTurns),
         toolResultFormat: state.toolResultFormat,
         fileDiffViewMode: state.fileDiffViewMode,
         shellExecutionEndpoint: normalizeShellExecutionEndpoint(state.shellExecutionEndpoint),
@@ -488,17 +495,14 @@ export const useSettingsStore = create<SettingsStore>()(
         toolbarCollapsedByDefault: state.toolbarCollapsedByDefault,
         leftSidebarWidth: clampLeftSidebarWidth(state.leftSidebarWidth),
         conversationPanelFullWidth: state.conversationPanelFullWidth,
-        // Web Search Settings
-        webSearchEnabled: state.webSearchEnabled,
-        webSearchProvider: state.webSearchProvider,
-        webSearchApiKey: state.webSearchApiKey,
-        webSearchEngine: state.webSearchEngine,
-        webSearchMaxResults: state.webSearchMaxResults,
-        webSearchTimeout: state.webSearchTimeout,
+        // Search (iter-29 S-23)
+        browserSearch: state.browserSearch,
+        legacyWebSearch: state.legacyWebSearch,
         apiRequestTimeoutSeconds: clampApiRequestTimeoutSeconds(
           state.apiRequestTimeoutSeconds
         ),
         requestMaxRetries: clampRequestMaxRetries(state.requestMaxRetries),
+        providerFallback: normalizeProviderFallback(state.providerFallback),
         // CodeGraph Settings
         codegraphEnabled: state.codegraphEnabled,
         codegraphFullToolSurface: state.codegraphFullToolSurface,

@@ -21,13 +21,19 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static class AgentRuntimeDesktopExecutor
 {
+    /// <summary>
+    /// Tools routed through this executor. All of them reverse-request into the main
+    /// process, which is the only reason `CaptureAppWindow` lives here — its subject is
+    /// the app's own window, not the desktop, but it shares the same transport.
+    /// </summary>
     private static readonly HashSet<string> DesktopToolNames = new(StringComparer.Ordinal)
     {
         "DesktopScreenshot",
         "DesktopClick",
         "DesktopType",
         "DesktopScroll",
-        "DesktopWait"
+        "DesktopWait",
+        "CaptureAppWindow"
     };
 
     private static readonly HashSet<string> AllowedButtons = new(StringComparer.Ordinal)
@@ -65,6 +71,7 @@ public static class AgentRuntimeDesktopExecutor
     public static async Task<RendererToolResult> ExecuteAsync(
         AgentRuntimeNativeToolCall call,
         IWorkerRequestContext context,
+        string? workingFolder,
         CancellationToken cancellationToken)
     {
         return call.Name switch
@@ -74,6 +81,7 @@ public static class AgentRuntimeDesktopExecutor
             "DesktopType" => await ExecuteTypeAsync(call.Input, context, cancellationToken),
             "DesktopScroll" => await ExecuteScrollAsync(call.Input, context, cancellationToken),
             "DesktopWait" => await ExecuteWaitAsync(call.Input, cancellationToken),
+            "CaptureAppWindow" => await ExecuteAppWindowCaptureAsync(call.Input, context, workingFolder, cancellationToken),
             _ => StringResult(EncodeError($"Unsupported desktop tool: {call.Name}"), true)
         };
     }
@@ -102,6 +110,52 @@ public static class AgentRuntimeDesktopExecutor
         }
 
         return new RendererToolResult(CreateScreenshotContent(response, data), false, null);
+    }
+
+    /// <summary>
+    /// Screenshot the app's own window and optionally write it to disk.
+    ///
+    /// The path is resolved here rather than in the main process: the main process's
+    /// cwd is the application directory, so a relative `docs/images/foo.png` handed to
+    /// it would land somewhere entirely unrelated to the user's working folder.
+    /// </summary>
+    private static async Task<RendererToolResult> ExecuteAppWindowCaptureAsync(
+        JsonElement input,
+        IWorkerRequestContext context,
+        string? workingFolder,
+        CancellationToken cancellationToken)
+    {
+        var requestedPath = JsonHelpers.GetString(input, "path")?.Trim();
+        var delayMs = Math.Clamp(JsonHelpers.GetInt(input, "delayMs", 0), 0, 5_000);
+
+        string? targetPath = null;
+        if (!string.IsNullOrEmpty(requestedPath))
+        {
+            var baseDir = string.IsNullOrWhiteSpace(workingFolder)
+                ? Environment.CurrentDirectory
+                : workingFolder;
+            targetPath = Path.IsPathRooted(requestedPath)
+                ? Path.GetFullPath(requestedPath)
+                : Path.GetFullPath(Path.Combine(baseDir, requestedPath));
+        }
+
+        var response = await InvokeMainAsync(
+            context, "window:capture-self",
+            CreateJsonObject(writer =>
+            {
+                if (delayMs > 0) writer.WriteNumber("delayMs", delayMs);
+                if (targetPath is not null) writer.WriteString("targetPath", targetPath);
+            }), cancellationToken);
+
+        var data = JsonHelpers.GetString(response, "data");
+        if (!JsonHelpers.GetBool(response, "success", false) || string.IsNullOrEmpty(data))
+        {
+            return StringResult(
+                EncodeError(JsonHelpers.GetString(response, "error") ?? "Failed to capture the app window."),
+                true);
+        }
+
+        return new RendererToolResult(CreateAppWindowCaptureContent(response, data), false, null);
     }
 
     private static async Task<RendererToolResult> ExecuteClickAsync(
@@ -344,6 +398,44 @@ public static class AgentRuntimeDesktopExecutor
             writer.WriteString("type", "text");
             writer.WriteString("text",
                 $"Captured desktop screenshot {JsonHelpers.GetInt(response, "width", 0)}x{JsonHelpers.GetInt(response, "height", 0)} across {JsonHelpers.GetInt(response, "displayCount", 1)} display(s).");
+            writer.WriteEndObject();
+            writer.WriteEndArray();
+        }
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
+    }
+
+    /// <summary>
+    /// Image block plus a plain-language line stating where the file landed. The line
+    /// matters: without it the model has to guess whether the path it was handed was
+    /// actually written, and a missing extension means the file may not be named exactly
+    /// what it asked for.
+    /// </summary>
+    private static JsonElement CreateAppWindowCaptureContent(JsonElement response, string data)
+    {
+        var filePath = JsonHelpers.GetString(response, "filePath");
+        var width = JsonHelpers.GetInt(response, "width", 0);
+        var height = JsonHelpers.GetInt(response, "height", 0);
+
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
+        {
+            writer.WriteStartArray();
+            writer.WriteStartObject();
+            writer.WriteString("type", "image");
+            writer.WritePropertyName("source");
+            writer.WriteStartObject();
+            writer.WriteString("type", "base64");
+            writer.WriteString("mediaType", "image/png");
+            writer.WriteString("data", data);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+            writer.WriteStartObject();
+            writer.WriteString("type", "text");
+            writer.WriteString("text",
+                string.IsNullOrEmpty(filePath)
+                    ? $"Captured the Wishful Claw window ({width}x{height}). No `path` was given, so nothing was written to disk."
+                    : $"Captured the Wishful Claw window ({width}x{height}) and wrote it to {filePath}.");
             writer.WriteEndObject();
             writer.WriteEndArray();
         }

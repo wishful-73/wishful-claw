@@ -23,6 +23,18 @@ public sealed class DesktopToolProvider : IToolProvider
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
+            "CaptureAppWindow",
+            "Capture a screenshot of the Wishful Claw window itself — not the whole desktop. Use it when you need an image of this app's own UI, for example to illustrate a guide or to show the user what a panel looks like. Prefer it over DesktopScreenshot whenever the subject is this app: it never includes unrelated windows, so the result needs no cleanup. Pass `path` to write the PNG to disk; without it you receive the image but nothing is saved.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["path"] = ToolSchemaBuilder.String("Where to write the PNG. Relative paths resolve against the working folder; absolute paths are used as-is. A missing image extension is appended. Example: \"docs/images/usage-panel.png\"."),
+                    ["delayMs"] = ToolSchemaBuilder.Number("Optional delay in milliseconds before capturing, to let the UI settle. Capped at 5000.")
+                }),
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+
+        registry.Register(new ToolDefinitionPlaceholder(
             "DesktopClick",
             "Click a desktop coordinate. Supports left/right/middle button with click, double_click, down, or up actions.",
             ToolSchemaBuilder.Object(

@@ -1,4 +1,4 @@
-﻿// ─── Types ───
+// ─── Types ───
 
 export type AppMode = 'chat' | 'clarify' | 'cowork' | 'code' | 'acp'
 
@@ -14,37 +14,6 @@ export type NavItem =
   | 'tasks'
   | 'codegraph'
 
-
-export type AutoModelRoute = 'main' | 'fast'
-export type AutoModelTaskType = string
-export type AutoModelConfidence = string
-export type AutoModelDecisionSource = string
-export type AutoModelRoutingComplexity = string
-export type AutoModelRoutingRisk = string
-
-export interface AutoModelSelectionStatus {
-  source: 'auto'
-  mode?: string
-  target: AutoModelRoute
-  providerId?: string
-  modelId?: string
-  providerName?: string
-  modelName?: string
-  taskType?: AutoModelTaskType
-  confidence?: AutoModelConfidence
-  decisionSource?: AutoModelDecisionSource
-  toolsAllowed?: boolean
-  complexity?: AutoModelRoutingComplexity
-  risk?: AutoModelRoutingRisk
-  reasons?: string[]
-  classifierRoute?: AutoModelRoute
-  heuristicRoute?: AutoModelRoute
-  fallbackReason?: string
-  routingDurationMs?: number
-  selectedAt: number
-}
-
-export type AutoModelRoutingState = 'idle' | 'routing'
 
 export type ChatView = 'home' | 'project' | 'archive' | 'channels' | 'git' | 'session' | 'persona'
 
@@ -63,6 +32,7 @@ export type RightPanelTabKind =
   | 'terminal'
   | 'goal'
   | 'summary'
+  | 'timeline'
 
 export interface RightPanelTabInstance {
   id: string
@@ -99,6 +69,7 @@ export type SettingsTab =
   | 'permission'
   | 'channel'
   | 'plugin'
+  | 'webSearch'
   | 'extension'
   | 'mcp'
 
@@ -119,6 +90,7 @@ const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
   'permission',
   'channel',
   'plugin',
+  'webSearch',
   'extension',
   'mcp',
   'ssh',

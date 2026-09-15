@@ -17,51 +17,53 @@ interface StreamingRenderPoolState {
 }
 
 interface RenderPoolConfig {
-  fixedCharsPerSecond: number
+  /** Frames needed to drain the whole backlog: each frame consumes 1/K of it. */
+  catchupFrames: number
   frameIntervalMs: number
-  smallPoolChars: number
-  mediumPoolChars: number
-  largePoolChars: number
-  maxStepChars: number
 }
 
-const RENDER_POOL_CONFIG: Record<LiveOutputAnimationStyle, RenderPoolConfig> = {
+export const RENDER_POOL_CONFIG: Record<LiveOutputAnimationStyle, RenderPoolConfig> = {
   agile: {
-    fixedCharsPerSecond: 220,
-    frameIntervalMs: 32,
-    smallPoolChars: 120,
-    mediumPoolChars: 720,
-    largePoolChars: 2400,
-    maxStepChars: 3600
+    catchupFrames: 2,
+    frameIntervalMs: 32
   },
   elegant: {
-    fixedCharsPerSecond: 170,
-    frameIntervalMs: 36,
-    smallPoolChars: 96,
-    mediumPoolChars: 560,
-    largePoolChars: 1800,
-    maxStepChars: 2800
+    catchupFrames: 3,
+    frameIntervalMs: 36
   }
 }
 
-function getCatchupStep(poolSize: number, elapsedMs: number, config: RenderPoolConfig): number {
-  const fixedStep = Math.max(1, Math.ceil((config.fixedCharsPerSecond * elapsedMs) / 1000))
-
-  if (poolSize <= config.smallPoolChars) {
-    return Math.min(poolSize, fixedStep)
-  }
-
-  const catchupRatio =
-    poolSize <= config.mediumPoolChars ? 0.14 : poolSize <= config.largePoolChars ? 0.2 : 0.28
-  const catchupStep = Math.ceil(poolSize * catchupRatio)
-  return Math.min(poolSize, Math.max(fixedStep, catchupStep), config.maxStepChars)
+/**
+ * Bounded catch-up: every frame drains 1/K of the backlog, so the pool is empty within
+ * K frames no matter how large it grew.
+ *
+ * The previous version mixed a fixed typewriter rate with three stepped catch-up ratios,
+ * and both halves were the problem:
+ *  - the fixed rate (220 chars/s) capped the drain speed, so the lag scaled with the
+ *    amount of text — a long reasoning block kept rendering long after the backend had
+ *    already moved on to later tool calls;
+ *  - the stepped ratios (0.14 / 0.2 / 0.28) switched hard at pool-size boundaries, so a
+ *    pool hovering around 120 kept flipping the per-frame step between ~7 and ~17 chars,
+ *    which reads as stuttering.
+ *
+ * One continuous, monotonic formula removes both: the step grows smoothly with the
+ * backlog, and the remaining pool decays geometrically (K = 2 halves the backlog every
+ * frame, so a 10k-char burst drains in ~15 frames ≈ half a second) — the lag no longer
+ * scales with the response length.
+ *
+ * A larger K reads as more gradual, at the cost of a longer tail; a smaller K is punchier.
+ */
+export function getCatchupStep(poolSize: number, config: RenderPoolConfig): number {
+  if (poolSize <= 0) return 0
+  return Math.max(1, Math.ceil(poolSize / config.catchupFrames))
 }
 
 /**
  * Keeps live text in a render pool instead of rendering every upstream delta directly.
  *
- * Small pools drain at a stable typewriter speed. Larger pools drain in bigger chunks so a bursty
- * model response can catch up without forcing React/Markstream to re-render on every token.
+ * The pool exists so React/Markstream does not re-render on every token; it deliberately
+ * does NOT rate-limit the text, so the visible output tracks the upstream stream with a
+ * bounded lag (see `getCatchupStep`).
  */
 export function useStreamingRenderPool(
   fullText: string,
@@ -112,7 +114,7 @@ export function useStreamingRenderPool(
 
         if (poolSize > 0) {
           const measureStart = performance.now()
-          const step = getCatchupStep(poolSize, elapsedMs, config)
+          const step = getCatchupStep(poolSize, config)
           const nextLength = Math.min(targetLength, currentLength + step)
 
           renderedLengthRef.current = nextLength

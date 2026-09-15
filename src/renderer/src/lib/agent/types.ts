@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -173,6 +173,8 @@ export type AgentEvent =
       type: 'error'
       error: Error
       errorType?: string
+      /** HTTP status when the Worker could attribute the failure to a reply. */
+      statusCode?: number
       details?: string
       stackTrace?: string
     }

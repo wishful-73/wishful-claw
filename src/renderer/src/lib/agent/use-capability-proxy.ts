@@ -19,6 +19,35 @@ export function isUseCapabilityTool(name: string): boolean {
   return name === USE_CAPABILITY_TOOL
 }
 
+/**
+ * Display name for status indicators (composer status bar, floating pill).
+ *
+ * Deliberately NOT resolveProxyDisplay: that one feeds tool cards, where
+ * `Skill` is a meaningful card identity. Status surfaces should instead name
+ * the concrete capability so the operator sees what is really being invoked
+ * (`skill:commit` rather than `Skill`).
+ *
+ * Also works around event ordering: `tool_use_streaming_start` arrives with an
+ * empty input, so the proxy cannot be resolved there. Resolving at the display
+ * site picks the real name as soon as args land, whatever the event sequence.
+ * Falls back to the raw name while args are still streaming.
+ */
+export function resolveProxyStatusName(
+  name: string | null | undefined,
+  input: Record<string, unknown> | undefined
+): string | null {
+  if (!name) return null
+  if (!isUseCapabilityTool(name)) return name
+  const resolved = resolveProxyDisplay(input)
+  if (!resolved) return name
+  const capabilityId =
+    input && typeof input.capability_id === 'string' ? input.capability_id.trim() : ''
+  // skill:name → show the capability itself; resolveProxyDisplay collapses every
+  // skill to the bare "Skill" card identity.
+  if (capabilityId.startsWith('skill:')) return capabilityId
+  return resolved.name
+}
+
 export function resolveProxyDisplay(
   input: Record<string, unknown> | undefined
 ): ProxyDisplay | null {

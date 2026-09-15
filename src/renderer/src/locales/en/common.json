@@ -94,5 +94,27 @@
   "showLess": "Show less",
   "error": {
     "label": "Error"
+  },
+  "browserSearch": {
+    "engines": {
+      "baidu": "Baidu",
+      "sogou": "Sogou",
+      "so_360": "360 Search",
+      "toutiao": "Toutiao",
+      "bing_intl": "Bing (international)",
+      "github": "GitHub",
+      "sogou_wechat": "WeChat via Sogou",
+      "arxiv": "ArXiv",
+      "wikipedia_zh": "Wikipedia (Chinese)",
+      "wikipedia_en": "Wikipedia (English)"
+    },
+    "intents": {
+      "general": "General",
+      "tech": "Tech",
+      "academic": "Academic",
+      "finance": "Finance",
+      "social": "Social",
+      "knowledge": "Knowledge"
+    }
   }
 }

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
@@ -18,6 +18,9 @@ internal static class Program
         WorkerJsonHelper.ConfigureAotResolver(InfrastructureJsonContext.Default);
         try
         {
+            // iter-29 T-13: pure string checks, no DB — run before the child-mode dispatch.
+            PastedBlockRestoreChecks.Run();
+
             if (args.Length == 2)
                 return RunChildMode(args[0], args[1]);
             if (args.Length == 1 && string.Equals(args[0], "--schema-only", StringComparison.Ordinal))

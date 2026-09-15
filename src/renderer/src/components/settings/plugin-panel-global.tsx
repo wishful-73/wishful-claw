@@ -1,15 +1,18 @@
 /**
- * 全局渠道设置（渠道页底部区域，一次立案于迭代28 需求 R-2）。
+ * 全局渠道设置（渠道页顶部区域；迭代28 需求 R-2 立案，迭代29 需求 28 去掉选项卡）。
  *
- * 原先「每个渠道各有一份功能设置」+「页面下方一个全局回复设置」的两处配置合并为这里的
- * 三个选项卡：回复设置 / 功能开关 / 安全权限，全局一份对所有渠道生效。
+ * 四个设置平铺，不再分页签：回复人格 / 回复模型 / 启动时自动连接 / Shell 命令需授权。
+ * 曾经的三选项卡（回复设置 / 功能开关 / 安全权限）里只有这四项有真实消费方；被删掉的
+ * `autoReply` / `streamingReply` 与四个 `allow*` 都只存了值、没有任何读取点，留着只会
+ * 让人以为它们管着什么。
+ *
  * 功能与权限的值存在 Worker ConfigStore（key `channelSettings`），默认值也只有那一份——
  * 渲染端经由 channel-store 读写，本地不再兜任何默认。回复人格/模型仍走 settings store。
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, MessageSquare, Settings2, ShieldCheck, User } from 'lucide-react'
+import { Bot, User } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { Separator } from '@renderer/components/ui/separator'
 import { Switch } from '@renderer/components/ui/switch'
@@ -18,11 +21,8 @@ import { useChannelStore, type GlobalChannelSettings } from '@renderer/stores/ch
 import { usePersonaStore } from '@renderer/stores/persona-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
-import { cn } from '@renderer/lib/utils'
 
-type GlobalTab = 'reply' | 'features' | 'permissions'
-
-/** `readablePathPrefixes` 不是开关，不能进 Toggle 的按键集合。 */
+/** `GlobalChannelSettings` 现在只剩两个布尔；改字段时这里跟着改，编译器不会放过。 */
 type ToggleSettingKey = {
   [K in keyof GlobalChannelSettings]-?: GlobalChannelSettings[K] extends boolean ? K : never
 }[keyof GlobalChannelSettings]
@@ -49,7 +49,13 @@ function ToggleRow({
   )
 }
 
-function ReplySettingsTab(): React.JSX.Element {
+/**
+ * 回复人格 + 回复模型。
+ *
+ * 这两项不走 Worker 的 `channelSettings`：人格存 settings store，模型存 provider store，
+ * 与下方两个开关的读写通道不同，所以独立成块。
+ */
+function ReplyTargetRows(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const { personas, listPersonas } = usePersonaStore()
   const providerStore = useProviderStore()
@@ -196,102 +202,8 @@ function ReplySettingsTab(): React.JSX.Element {
   )
 }
 
-function FeatureSettingsTab({
-  settings,
-  patch
-}: {
-  settings: GlobalChannelSettings
-  patch: (key: ToggleSettingKey, value: boolean) => void
-}): React.JSX.Element {
-  const { t } = useTranslation('settings')
-
-  return (
-    <div className="space-y-1">
-      <ToggleRow
-        label={t('channel.features.autoReply', { defaultValue: '自动回复' })}
-        description={t('channel.features.autoReplyDesc', {
-          defaultValue: '收到消息时自动使用 AI 回复'
-        })}
-        checked={settings.autoReply}
-        onChange={(value) => patch('autoReply', value)}
-      />
-      <ToggleRow
-        label={t('channel.features.streamingReply', { defaultValue: '流式回复' })}
-        description={t('channel.features.streamingReplyDesc', {
-          defaultValue: '实时流式输出回复内容（需要渠道支持）；当前仅记录设置，尚未接入强制执行'
-        })}
-        checked={settings.streamingReply}
-        onChange={(value) => patch('streamingReply', value)}
-      />
-      <ToggleRow
-        label={t('channel.features.autoStart', { defaultValue: '自动启动' })}
-        description={t('channel.features.autoStartDesc', {
-          defaultValue: '应用启动时自动连接已启用的渠道'
-        })}
-        checked={settings.autoStart}
-        onChange={(value) => patch('autoStart', value)}
-      />
-    </div>
-  )
-}
-
-function PermissionSettingsTab({
-  settings,
-  patch
-}: {
-  settings: GlobalChannelSettings
-  patch: (key: ToggleSettingKey, value: boolean) => void
-}): React.JSX.Element {
-  const { t } = useTranslation('settings')
-
-  return (
-    <div className="space-y-1">
-      <ToggleRow
-        label={t('channel.permissions.shellRequiresApproval', {
-          defaultValue: 'Shell 命令需授权'
-        })}
-        description={t('channel.permissions.shellRequiresApprovalDesc', {
-          defaultValue: '开启后渠道对话每次执行 shell 命令前需你确认；关闭则直接执行'
-        })}
-        checked={settings.shellRequiresApproval}
-        onChange={(value) => patch('shellRequiresApproval', value)}
-      />
-      <p className="pt-2 text-xs text-muted-foreground">
-        {t('channel.permissions.notEnforcedHint', {
-          defaultValue: '以下开关当前仅记录设置，尚未接入强制执行'
-        })}
-      </p>
-      <ToggleRow
-        label={t('channel.permissions.allowReadHome', { defaultValue: '读取主目录' })}
-        description={t('channel.permissions.allowReadHomeDesc', {
-          defaultValue: '允许读取工作目录之外的文件'
-        })}
-        checked={settings.allowReadHome}
-        onChange={(value) => patch('allowReadHome', value)}
-      />
-      <ToggleRow
-        label={t('channel.permissions.allowWriteOutside', { defaultValue: '外部写入' })}
-        description={t('channel.permissions.allowWriteOutsideDesc', {
-          defaultValue: '允许写入工作目录之外的文件'
-        })}
-        checked={settings.allowWriteOutside}
-        onChange={(value) => patch('allowWriteOutside', value)}
-      />
-      <ToggleRow
-        label={t('channel.permissions.allowSubAgents', { defaultValue: '子代理' })}
-        description={t('channel.permissions.allowSubAgentsDesc', {
-          defaultValue: '允许使用子代理工具'
-        })}
-        checked={settings.allowSubAgents}
-        onChange={(value) => patch('allowSubAgents', value)}
-      />
-    </div>
-  )
-}
-
 export function ChannelGlobalSettingsPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
-  const [activeTab, setActiveTab] = useState<GlobalTab>('reply')
   const { globalSettings, globalSettingsError, ensureGlobalSettings, loadGlobalSettings, updateGlobalSettings } =
     useChannelStore()
 
@@ -303,88 +215,61 @@ export function ChannelGlobalSettingsPanel(): React.JSX.Element {
     void updateGlobalSettings({ [key]: value } as Partial<GlobalChannelSettings>)
   }
 
-  const tabs: { id: GlobalTab; label: string; icon: React.ReactNode }[] = [
-    {
-      id: 'reply',
-      label: t('channel.global.tabs.reply', { defaultValue: '回复设置' }),
-      icon: <MessageSquare className="size-3.5" />
-    },
-    {
-      id: 'features',
-      label: t('channel.global.tabs.features', { defaultValue: '功能开关' }),
-      icon: <Settings2 className="size-3.5" />
-    },
-    {
-      id: 'permissions',
-      label: t('channel.global.tabs.permissions', { defaultValue: '安全权限' }),
-      icon: <ShieldCheck className="size-3.5" />
-    }
-  ]
-
   return (
-    <div className="flex min-h-0 flex-col border-t">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-6 py-2">
-        <h2 className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          {t('channel.global.title', { defaultValue: '全局渠道设置' })}
-        </h2>
-        <div className="flex gap-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                activeTab === tab.id
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              )}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
+    <div className="rounded-xl border border-border/60 bg-card/40 px-4 pb-4 pt-3">
+      <h2 className="text-sm font-semibold text-foreground">
+        {t('channel.global.title', { defaultValue: '全局渠道设置' })}
+      </h2>
+
+      <div className="pt-3">
+        <ReplyTargetRows />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
-        <div className={cn(activeTab !== 'reply' && 'hidden')}>
-          <ReplySettingsTab />
+      <Separator className="my-3" />
+
+      {globalSettings ? (
+        <div>
+          <ToggleRow
+            label={t('channel.global.autoStart', { defaultValue: '启动时自动连接' })}
+            description={t('channel.global.autoStartDesc', {
+              defaultValue: '应用启动时自动连接已启用的渠道'
+            })}
+            checked={globalSettings.autoStart}
+            onChange={(value) => patch('autoStart', value)}
+          />
+          <ToggleRow
+            label={t('channel.permissions.shellRequiresApproval', {
+              defaultValue: 'Shell 命令需授权'
+            })}
+            description={t('channel.permissions.shellRequiresApprovalDesc', {
+              defaultValue: '开启后渠道对话每次执行 shell 命令前需你确认；关闭则直接执行'
+            })}
+            checked={globalSettings.shellRequiresApproval}
+            onChange={(value) => patch('shellRequiresApproval', value)}
+          />
+          {globalSettingsError && (
+            <p className="mt-2 text-xs text-destructive">
+              {t('channel.global.saveFailed', { defaultValue: '保存失败' })}：{globalSettingsError}
+            </p>
+          )}
         </div>
-        {globalSettings ? (
-          <>
-            <div className={cn(activeTab !== 'features' && 'hidden')}>
-              <FeatureSettingsTab settings={globalSettings} patch={patch} />
-            </div>
-            <div className={cn(activeTab !== 'permissions' && 'hidden')}>
-              <PermissionSettingsTab settings={globalSettings} patch={patch} />
-            </div>
-            {globalSettingsError && (
-              <p className="mt-2 text-xs text-destructive">
-                {t('channel.global.saveFailed', { defaultValue: '保存失败' })}：{globalSettingsError}
-              </p>
-            )}
-          </>
-        ) : (
-          activeTab !== 'reply' &&
-          (globalSettingsError ? (
-            <div className="flex items-center gap-2 py-3 text-xs text-destructive">
-              {t('channel.global.loadFailed', { defaultValue: '全局渠道设置读取失败' })}
-              ：{globalSettingsError}
-              <button
-                onClick={() => void loadGlobalSettings()}
-                className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                {t('channel.global.retry', { defaultValue: '重试' })}
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-              <Spinner className="size-3.5" />
-              {t('channel.global.loadingSettings', { defaultValue: '读取全局渠道设置…' })}
-            </div>
-          ))
-        )}
-      </div>
+      ) : globalSettingsError ? (
+        <div className="flex items-center gap-2 py-3 text-xs text-destructive">
+          {t('channel.global.loadFailed', { defaultValue: '全局渠道设置读取失败' })}
+          ：{globalSettingsError}
+          <button
+            onClick={() => void loadGlobalSettings()}
+            className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {t('channel.global.retry', { defaultValue: '重试' })}
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+          <Spinner className="size-3.5" />
+          {t('channel.global.loadingSettings', { defaultValue: '读取全局渠道设置…' })}
+        </div>
+      )}
     </div>
   )
 }

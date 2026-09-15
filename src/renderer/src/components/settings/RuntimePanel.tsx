@@ -7,7 +7,10 @@ import {
   DEFAULT_API_REQUEST_TIMEOUT_SECONDS,
   clampRequestMaxRetries,
   MIN_API_REQUEST_TIMEOUT_SECONDS,
-  MAX_API_REQUEST_TIMEOUT_SECONDS
+  MAX_API_REQUEST_TIMEOUT_SECONDS,
+  clampMaxResidentTurns,
+  MIN_MAX_RESIDENT_TURNS,
+  MAX_MAX_RESIDENT_TURNS
 } from '@renderer/stores/settings-store'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
@@ -293,6 +296,41 @@ function RuntimePanel(): React.JSX.Element {
             </div>
           </>
         )}
+      </SettingsSection>
+
+      {/* T-3: Chat window in-memory turn window */}
+      <SettingsSection
+        id="sec-runtime-resident-turns"
+        title={t('runtimePage.residentTurns.title')}
+        description={t('runtimePage.residentTurns.desc')}
+      >
+        <SettingRow
+          label={t('runtimePage.residentTurns.label')}
+          description={t('runtimePage.residentTurns.hint')}
+          control={
+            <Input
+              type="number"
+              min={MIN_MAX_RESIDENT_TURNS}
+              max={MAX_MAX_RESIDENT_TURNS}
+              step={1}
+              value={settings.maxResidentTurns}
+              onChange={(event) =>
+                settings.updateSettings({
+                  maxResidentTurns: clampMaxResidentTurns(Number(event.target.value))
+                })
+              }
+              className="w-20 text-xs"
+            />
+          }
+        >
+          <Slider
+            min={MIN_MAX_RESIDENT_TURNS}
+            max={MAX_MAX_RESIDENT_TURNS}
+            step={1}
+            value={[settings.maxResidentTurns]}
+            onValueChange={([v]) => settings.updateSettings({ maxResidentTurns: v })}
+          />
+        </SettingRow>
       </SettingsSection>
 
       {/* Tool Execution */}

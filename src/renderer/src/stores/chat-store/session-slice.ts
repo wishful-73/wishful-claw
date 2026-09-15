@@ -1,10 +1,39 @@
-﻿import { nanoid } from 'nanoid'
+import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
-import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns } from './db-helpers'
+import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
 import { useSettingsStore } from '@renderer/stores/settings-store'
+
+// T-3: 运行时驻留会话的内存窗口收缩。
+//
+// 会话一旦在本进程内产生过消息（isRuntimeResident）就会跳过 DB 重载
+// （见 loadRecentSessionMessages 的守卫），消息只增不减。用户主动上滚可以
+// 临时加载更多历史（fetchOlderMessages / prependMessages），但每发一条新消息
+// 就把窗口收缩回最近 N 轮 —— 更早的消息留在 DB，仍可经「加载更早」拉回。
+//
+// 轮 = 一条 user 消息，以及它之后的 assistant / tool 消息；
+// N = 设置项 maxResidentTurns（「运行与性能」页，默认 15，范围 5–50）。
+
+/**
+ * 保留最近 `maxTurns` 轮，返回应保留的尾部切片与被裁掉的头部长度。
+ * 不足 `maxTurns` 轮（或刚好从第 0 条开始）时原样返回，`removed` 为 0。
+ */
+function trimMessagesToRecentTurns<T extends { role: string }>(
+  messages: T[],
+  maxTurns: number
+): { messages: T[]; removed: number } {
+  let userSeen = 0
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role !== 'user') continue
+    userSeen += 1
+    if (userSeen < maxTurns) continue
+    if (index === 0) return { messages, removed: 0 }
+    return { messages: messages.slice(index), removed: index }
+  }
+  return { messages, removed: 0 }
+}
 
 export interface SessionSlice {
   sessions: Session[]
@@ -29,6 +58,12 @@ export interface SessionSlice {
   updateSessionPermissionMode: (id: string, mode: Session['permissionMode']) => void
   setSessionModelManual: (sessionId: string, providerId: string, modelId: string) => void
   setSessionModelAuto: (sessionId: string) => void
+  /** iter-29 / S-21: auto 模式下换服务商+模型，mode 保持 auto（不清绑定）。 */
+  setSessionAutoFallbackTarget: (
+    sessionId: string,
+    providerId: string,
+    modelId: string
+  ) => void
   setSessionModelInherit: (sessionId: string) => void
   clearSessionMessages: (sessionId: string) => void
   clearSessionPromptSnapshot: (sessionId: string) => void
@@ -200,6 +235,13 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       })
       .catch((err) => {
         console.warn('[chat-store] Failed to clean right-panel tabs for deleted session:', err)
+      })
+    // S-21 收口：限额切换链路是内存态、按会话 id 存 —— 会话删了就随它一起丢，
+    // 否则该表只会靠 TTL 惰性回收，删掉的会话会一直挂着。
+    void import('@renderer/lib/agent/provider-auto-fallback')
+      .then(({ clearAutoFallbackAttempts }) => clearAutoFallbackAttempts(id))
+      .catch((err) => {
+        console.warn('[chat-store] Failed to clear failover chain for deleted session:', err)
       })
   },
 
@@ -443,6 +485,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
 
   beginUserTurn: (sessionId, userMsg, assistantMsg, streamingMessageId) => {
     const now = Date.now()
+    // T-3: 每次发消息读一次最新配置（「运行与性能」页可调），立即生效。
+    const maxResidentTurns = useSettingsStore.getState().maxResidentTurns
     let sessionProjectId: string | undefined
     set((state) => {
       const session = state.sessions.find((s) => s.id === sessionId)
@@ -458,6 +502,15 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       session.messagesLoaded = true
       session.isRuntimeResident = true
       session.updatedAt = now
+      // T-3: 发新消息时把驻留窗口收缩回最近 maxResidentTurns 轮。
+      // 只裁内存，DB 不动；游标（loadedRangeStart）跟到新的最早一条，
+      // 否则「加载更早」会越过被裁掉的这一段。
+      const trimmed = trimMessagesToRecentTurns(session.messages, maxResidentTurns)
+      if (trimmed.removed > 0) {
+        session.messages = trimmed.messages
+        session.messageCount = trimmed.messages.length
+        session.loadedRangeStart = trimmed.messages[0]?.createdAt ?? 0
+      }
       if (sessionProjectId) {
         const proj = (state as unknown as { projects: Array<{ id: string; updatedAt: number }> }).projects.find((p) => p.id === sessionProjectId)
         if (proj) proj.updatedAt = now
@@ -583,6 +636,19 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     if (session) void dbUpdateSession(sessionId, { providerId, modelId, modelSelectionMode: 'manual' })
   },
 
+  setSessionAutoFallbackTarget: (sessionId, providerId, modelId) => {
+    set((state) => {
+      const session = state.sessions.find((s) => s.id === sessionId)
+      if (!session) return
+      // auto 模式保持不变：下一次失败还要继续往下切。
+      session.providerId = providerId
+      session.modelId = modelId
+      session.modelSelectionMode = 'auto'
+      session.updatedAt = Date.now()
+    })
+    void dbUpdateSession(sessionId, { providerId, modelId, modelSelectionMode: 'auto' })
+  },
+
   setSessionModelAuto: (sessionId) => {
     set((state) => {
       const session = state.sessions.find((s) => s.id === sessionId)
@@ -655,6 +721,17 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         turns: _limit ?? 5
       })
 
+      // Whole-session usage baseline (status bar), rebased on every load.
+      //
+      // T-14: the DB rollup already covers every persisted message, so the live
+      // accumulator (fed by `message_end`) is cleared in the same pass — leaving it
+      // in place double-counts the messages the baseline just counted. The previous
+      // "only take a baseline when no live total exists yet" rule silently dropped
+      // the whole history for any session that had already run a turn before its
+      // messages were first loaded, which is why output/total did not add up while
+      // the backend-owned cache counters still looked right.
+      const usageBaseline = await dbGetSessionUsageStats(sessionId)
+
       set((state) => {
         const target = state.sessions.find((s) => s.id === sessionId)
         if (!target || target.isRuntimeResident) return
@@ -667,6 +744,22 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         target.loadedRangeEnd = rangeStart + messages.length
         target.totalTurns = totalTurns
         target.lastKnownMessageCount = actualCount
+        if (usageBaseline) {
+          target.usageBaseline = {
+            inputTokens: usageBaseline.totalInput,
+            outputTokens: usageBaseline.totalOutput,
+            cacheReadTokens: usageBaseline.totalCacheRead,
+            cacheCreationTokens: usageBaseline.totalCacheCreation,
+            reasoningTokens: usageBaseline.totalReasoning,
+            totalDurationMs: usageBaseline.totalDurationMs,
+            // The rollup's totalInput is already billable (cache excluded), so state
+            // it explicitly — otherwise addUsageToTotals would subtract the cache
+            // tokens a second time.
+            billableInputTokens: usageBaseline.totalInput
+          }
+          // The baseline supersedes everything accumulated so far (see above).
+          target.sessionUsageTotals = undefined
+        }
       })
       // No backend rebuild here: the Worker conversation is restored lazily
       // inside agent/run on the first send of the session.

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Agent stream protocol — wire format for main→renderer event streaming.
  * Simplified from WishfulClaw: no SubAgent/Image/WebSearch/Translation events.
  */
@@ -131,7 +131,17 @@ export type AgentStreamEvent =
     }
   | { type: 'request_retry'; attempt: number; maxAttempts: number; delayMs: number; statusCode?: number; reason: string }
   // Error
-  | { type: 'error'; message: string; errorType?: string; details?: string; stackTrace?: string }
+  // `statusCode` is set when the failure came from an HTTP reply the Worker could
+  // attribute (e.g. a `ProviderHttpException` that outlived its retries). It lets the
+  // renderer decide a quota handover from data instead of pattern-matching `message`.
+  | {
+      type: 'error'
+      message: string
+      errorType?: string
+      statusCode?: number
+      details?: string
+      stackTrace?: string
+    }
   // Goal progress (orchestrator events)
   | {
       type: 'goal_progress'

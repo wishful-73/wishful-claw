@@ -5,7 +5,7 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
-import { memo, useState, useEffect, useRef } from 'react'
+import { memo, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrainCircuit, ChevronRight, ChevronDown } from 'lucide-react'
 import Markdown from 'react-markdown'
@@ -27,6 +27,11 @@ import {
 } from '@renderer/lib/preview/viewers/markdown-components'
 import { useStreamingRenderPool } from '@renderer/hooks/use-typewriter'
 import { CollapsibleHeightPanel } from './CollapsibleHeightPanel'
+
+/**
+ * T-8: 思考流式贴底的「两行缓冲」高度（px）。内容先占用这截留白，攒够两行才滚一次。
+ */
+const THINKING_SCROLL_BUFFER_PX = 48
 
 interface ThinkingBlockProps {
   thinking: string
@@ -73,9 +78,20 @@ export const ThinkingBlock = memo(function ThinkingBlock({
     return () => clearInterval(interval)
   }, [isThinking, startedAt])
 
-  useEffect(() => {
+  // T-8: 贴底走「两行缓冲」——内容增长先占用视口底部的两行留白，攒够两行才滚一次，
+  // 滚完重新留两行。每帧都贴底会让滚动位置一直追着内容抖（上游越快越明显），
+  // 攒够再滚能把触碰滚动的频率显著降下来。
+  // 同时在 paint 前完成（useLayoutEffect），避免留下「内容已长出来、滚动条没跟上」的一帧。
+  useLayoutEffect(() => {
     if (!isThinking || !hasThinkingContent || !contentRef.current) return
-    contentRef.current.scrollTop = contentRef.current.scrollHeight
+    const el = contentRef.current
+    // 贴底位置 = 内容底（含底部两行留白 padding）。留白必须由 padding 提供：
+    // scrollTop 一旦超过 maxTop 会被浏览器直接 clamp 掉，靠偏移做不出留白。
+    const maxTop = el.scrollHeight - el.clientHeight
+    // 内容先用掉底部留白（不滚），攒够两行才滚一次，把触碰滚动的频率降下来。
+    if (maxTop - el.scrollTop >= THINKING_SCROLL_BUFFER_PX) {
+      el.scrollTop = maxTop
+    }
   }, [hasThinkingContent, isThinking, renderPool.text])
 
   if (!isThinking && !hasThinkingContent) {
@@ -139,11 +155,19 @@ export const ThinkingBlock = memo(function ThinkingBlock({
 
       <CollapsibleHeightPanel open={expanded} className="overflow-hidden">
         <div className="max-w-full px-0.5 pb-1 text-sm leading-7 text-muted-foreground/75">
+          {/* T-8: 内层滚动容器必须禁掉滚动锚定。内容增长时浏览器的 overflow-anchor
+              会自动调 scrollTop 去稳锚点，与这里的手动贴底对打 —— 表现为「滚到顶
+              又被拉回」，且上游越快（一次涨得越多）越明显。外层列表容器已有同样的
+              overflowAnchor:'none'（MessageList/VirtualListContent.tsx:126），内层此前漏了。 */}
           {hasThinkingContent ? (
-            <div ref={contentRef} className="max-h-80 overflow-y-auto">
+            <div
+              ref={contentRef}
+              className="max-h-80 overflow-y-auto"
+              style={{ overflowAnchor: 'none' }}
+            >
               {isThinking ? (
                 <div
-                  className={`${getLiveOutputSurfaceClass(liveOutputAnimationStyle)} whitespace-pre-wrap break-words pb-6 leading-relaxed`}
+                  className={`${getLiveOutputSurfaceClass(liveOutputAnimationStyle)} whitespace-pre-wrap break-words pb-12 leading-relaxed`}
                   data-render-pool-size={renderPool.poolSize}
                   data-rendered-length={renderPool.renderedLength}
                   data-target-length={renderPool.targetLength}

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -68,6 +68,15 @@ public static class DbCronRunTools
                 "SELECT * FROM cron_runs WHERE run_id = @runId LIMIT 1",
                 EntityMappers.MapCronRun,
                 new SqliteParameter("@runId", runId));
+            if (changed == 1 && entity is { } run)
+            {
+                // Timeline instrumentation (S-25.4): cron run completion.
+                DbAgentTimelineTools.Log(db, run.SessionId, null, "cron_run_finished",
+                    summary ?? error ?? status,
+                    DbAgentTimelineTools.Metadata(
+                        ("run_id", runId), ("cron_id", run.CronId), ("status", status),
+                        ("tool_calls", toolCallCount)));
+            }
             return WorkerResponse.Json(
                 new CronRunMutationResult(changed == 1, entity is null ? null : CronRunRow.FromEntity(entity),
                     entity is null ? "Cron run not found" : changed == 1 ? null : "Cron run is already finished"),

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -64,7 +64,6 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/usage-buckets", DbUsageLogQueryTools.Buckets);
         context.Register("db/usage-model-buckets", DbUsageLogQueryTools.ModelBuckets);
         context.Register("db/usage-by-model", DbUsageLogQueryTools.ByModel);
-        context.Register("db/usage-by-source", DbUsageLogQueryTools.BySource);
         context.Register("db/usage-logs", DbUsageLogQueryTools.Logs);
 
         // ── Compaction Snapshots ──
@@ -182,6 +181,10 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/cron-runs-finish", DbCronRunTools.Finish);
         context.Register("db/cron-runs-get", DbCronRunTools.Get);
         context.Register("db/cron-runs-list", DbCronRunTools.List);
+
+        // ── Agent Timeline (S-25) ──
+        context.Register("db/agent-timeline-add", DbAgentTimelineTools.Add);
+        context.Register("db/agent-timeline-list-page", DbAgentTimelineTools.ListPage);
 
         // ── Plugin Sessions ──
         context.Register("db/plugin-normal-projects", DbPluginSessionTools.ListNormalProjects);

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -51,7 +51,7 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
   {
     type: 'weixin-official',
     displayName: '微信',
-    description: 'WeChat Official channel (QR login + long polling)',
+    description: 'channel.provider.weixin.desc',
     icon: 'wechat',
     builtin: true,
     tools: WEIXIN_PLUGIN_TOOLS,
@@ -68,7 +68,7 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
         label: 'channel.weixin.routeTag',
         type: 'text',
         required: false,
-        placeholder: 'optional'
+        placeholder: 'channel.weixin.routeTagPlaceholder'
       },
       {
         key: 'token',
@@ -93,7 +93,7 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
   {
     type: 'feishu-bot',
     displayName: '飞书',
-    description: 'Lark/Feishu messaging bot (built-in WS)',
+    description: 'channel.provider.feishu.desc',
     icon: 'feishu',
     builtin: true,
     tools: FEISHU_PLUGIN_TOOLS,
@@ -116,7 +116,7 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
   {
     type: 'qq-bot',
     displayName: 'QQ 机器人',
-    description: 'Tencent QQ Bot (official Gateway WS)',
+    description: 'channel.provider.qq.desc',
     icon: 'qq',
     builtin: true,
     tools: COMMON_PLUGIN_TOOLS,
@@ -150,7 +150,7 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
   {
     type: 'dingtalk-bot',
     displayName: '钉钉',
-    description: 'DingTalk messaging bot (built-in WS via Stream API)',
+    description: 'channel.provider.dingtalk.desc',
     icon: 'dingtalk',
     builtin: true,
     tools: COMMON_PLUGIN_TOOLS,
@@ -172,14 +172,14 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
         label: 'channel.dingtalk.cardTemplateId',
         type: 'text',
         required: false,
-        placeholder: 'AI streaming card template ID (optional)'
+        placeholder: 'channel.dingtalk.cardTemplateIdPlaceholder'
       }
     ]
   },
   {
     type: 'wecom-bot',
     displayName: '企业微信',
-    description: 'WeCom messaging bot',
+    description: 'channel.provider.wecom.desc',
     icon: 'wecom',
     builtin: true,
     tools: COMMON_PLUGIN_TOOLS,
@@ -209,7 +209,7 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
   {
     type: 'telegram-bot',
     displayName: 'Telegram',
-    description: 'Telegram messaging bot (needs WS relay)',
+    description: 'channel.provider.telegram.desc',
     icon: 'telegram',
     builtin: true,
     tools: COMMON_PLUGIN_TOOLS,
@@ -226,7 +226,7 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
   {
     type: 'discord-bot',
     displayName: 'Discord',
-    description: 'Discord messaging bot (built-in Gateway WS)',
+    description: 'channel.provider.discord.desc',
     icon: 'discord',
     builtin: true,
     tools: COMMON_PLUGIN_TOOLS,
@@ -242,7 +242,7 @@ export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [
   {
     type: 'whatsapp-bot',
     displayName: 'WhatsApp',
-    description: 'WhatsApp Cloud API bot (needs WS relay)',
+    description: 'channel.provider.whatsapp.desc',
     icon: 'whatsapp',
     builtin: true,
     tools: COMMON_PLUGIN_TOOLS,

@@ -124,6 +124,35 @@ export function resolveSessionModelSelection({
   }
 
   if (!session?.pluginId && mode === 'auto') {
+    // `auto` means "let a quota failure hand this session over to another provider",
+    // not "follow the global selection all the time". So a usable session binding wins:
+    // it is either what the user picked before switching to auto, or what a previous
+    // handover wrote. Only a session with no binding yet — a fresh one switched straight
+    // to auto — falls back to the global selection.
+    //
+    // This is also what makes a handover stick: writing the target onto the session is
+    // enough for the next ordinary message to use it. It used to be carried in a
+    // separate per-session table that auto mode consulted first, which is why writing
+    // the session alone looked like it did nothing.
+    const boundProviderId = session?.providerId ?? null
+    const boundModelId = session?.modelId ?? null
+    if (boundProviderId && boundModelId) {
+      const bound = resolveProviderAndModel(providers, boundProviderId, boundModelId)
+      if (bound.provider && bound.model) {
+        return {
+          mode,
+          effectiveMode: 'auto',
+          source: 'session',
+          providerId: boundProviderId,
+          modelId: boundModelId,
+          provider: bound.provider,
+          model: bound.model,
+          isAutoModeActive: true,
+          isSessionBound: true
+        }
+      }
+    }
+
     const { provider, model } = resolveProviderAndModel(providers, activeProviderId, activeModelId)
     return {
       mode,

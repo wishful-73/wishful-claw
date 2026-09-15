@@ -1,4 +1,4 @@
-﻿// ===== Unified API Type System =====
+// ===== Unified API Type System =====
 // Import types locally for use in this file
 import type {
   ProviderType,
@@ -365,6 +365,8 @@ export interface UnifiedMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string | ContentBlock[]
   createdAt: number
+  /** Last DB mutation time (assistant replies update on every persistence boundary). */
+  updatedAt?: number
   usage?: TokenUsage
   debugInfo?: RequestDebugInfo
   providerResponseId?: string

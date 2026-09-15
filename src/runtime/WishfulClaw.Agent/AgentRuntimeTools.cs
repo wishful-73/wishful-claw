@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -299,6 +299,12 @@ public static class AgentRuntimeTools
                     "error",
                     Message: errorSummary,
                     ErrorType: ex.GetType().Name,
+                    // A ProviderHttpException reaching here means ProviderRetryPolicy gave
+                    // up (retries exhausted). Carrying its status code lets the renderer
+                    // decide a quota handover from data, instead of matching the message
+                    // text — the message is not a dedicated channel and tool output ends
+                    // up in it too.
+                    StatusCode: ex is ProviderHttpException http ? http.StatusCode : null,
                     Details: errorSummary,
                     StackTrace: ex.StackTrace));
             await AgentLoop.EmitLoopEndAsync(state, context, "error");

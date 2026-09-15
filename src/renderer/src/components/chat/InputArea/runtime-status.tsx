@@ -12,12 +12,13 @@ import { cn } from '@renderer/lib/utils'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { resolveProxyStatusName } from '@renderer/lib/agent/use-capability-proxy'
 import {
   calculateCost, calculateCostBreakdown, estimateTokens,
   formatCacheHitRate, formatCost,
   getCacheReadRatio
 } from '@renderer/lib/format-tokens'
-import type { TokenUsage, UnifiedMessage } from '@renderer/lib/api/types'
+import type { AIModelConfig, TokenUsage, UnifiedMessage } from '@renderer/lib/api/types'
 import type { ChatMessage } from '@renderer/stores/chat-store/types'
 import type {
   ComposerRuntimeStatusProps,
@@ -38,6 +39,29 @@ import {
   collectRuntimeOutputSnapshot,
 } from './utils'
 
+/**
+ * Resolve the pricing model config for a message from its request metadata.
+ * Module-level so the session and flyout aggregation paths share one impl.
+ */
+function resolveMessageModelCfg(
+  item: UnifiedMessage | ChatMessage,
+  fallbackModel?: AIModelConfig | null
+): AIModelConfig | null {
+  const { providers } = useProviderStore.getState()
+  const reqModel = item.meta?.requestModel
+  const providerId = reqModel?.providerId ?? item.debugInfo?.providerId ?? null
+  const modelId = reqModel?.modelId ?? item.debugInfo?.model ?? fallbackModel?.id ?? null
+  const provider = providerId ? (providers.find((p: any) => p.id === providerId) ?? null) : null
+  return (
+    (provider && modelId
+      ? (provider.models.find((m: any) => m.id === modelId) ?? null)
+      : null) ??
+    (fallbackModel && modelId === fallbackModel.id ? fallbackModel : null) ??
+    fallbackModel ??
+    null
+  )
+}
+
 export function ComposerRuntimeStatus({
   sessionId,
   isStreaming,
@@ -47,6 +71,7 @@ export function ComposerRuntimeStatus({
   contextCompressionStatus,
   contextCompressionStatusLabel,
   model,
+  autoModelLabel,
   className,
   messagesOverride,
   streamingMessageIdOverride,
@@ -68,21 +93,24 @@ export function ComposerRuntimeStatus({
       const message = streamingMessageId
         ? messages?.find((item) => item.id === streamingMessageId)
         : undefined
-      if (messages) {
-        const { providers } = useProviderStore.getState()
+      if (messagesOverride) {
+        // Flyout copy owns its own message window — keep summing what it hands us.
+        for (const item of messagesOverride) {
+          addUsageToTotals(totals, item.usage, resolveMessageModelCfg(item, model))
+        }
+      } else if (session?.usageBaseline || session?.sessionUsageTotals) {
+        // Session view: whole-session baseline (DB rollup, taken on load) plus the
+        // live accumulator fed by message_end events. Deliberately NOT summing the
+        // loaded messages — only the most recent turns are loaded after a restart,
+        // which is what used to under-report the session totals.
+        if (session.usageBaseline) addUsageToTotals(totals, session.usageBaseline, model ?? null)
+        if (session.sessionUsageTotals) {
+          addUsageToTotals(totals, session.sessionUsageTotals, model ?? null)
+        }
+      } else if (messages) {
+        // Fallback for sessions that never took a baseline (e.g. runtime-resident).
         for (const item of messages) {
-          const reqModel = item.meta?.requestModel
-          const providerId = reqModel?.providerId ?? item.debugInfo?.providerId ?? null
-          const modelId = reqModel?.modelId ?? item.debugInfo?.model ?? model?.id ?? null
-          const provider = providerId ? (providers.find((p: any) => p.id === providerId) ?? null) : null
-          const msgModelCfg =
-            (provider && modelId
-              ? (provider.models.find((m: any) => m.id === modelId) ?? null)
-              : null) ??
-            (model && modelId === model.id ? model : null) ??
-            model ??
-            null
-          addUsageToTotals(totals, item.usage, msgModelCfg)
+          addUsageToTotals(totals, item.usage, resolveMessageModelCfg(item, model))
         }
       }
       let effectiveTotals = totals
@@ -188,8 +216,15 @@ export function ComposerRuntimeStatus({
         retryMaxAttempts: targetSessionId
           ? (s.sessionRequestRetryState[targetSessionId]?.maxAttempts ?? null)
           : null,
-        activeToolName: activeTool?.name ?? null,
-        pendingApprovalToolName: pendingApprovalTool?.name ?? null,
+        // A use_capability proxy is shown as the tool it stands in for. Resolved
+        // here rather than trusting the stored name: tool_use_streaming_start
+        // creates the entry before args arrive, so its name is still the raw
+        // proxy name at that point.
+        activeToolName: resolveProxyStatusName(activeTool?.name, activeTool?.input),
+        pendingApprovalToolName: resolveProxyStatusName(
+          pendingApprovalTool?.name,
+          pendingApprovalTool?.input
+        ),
         activeSubAgentCount
       }
     })
@@ -593,6 +628,21 @@ export function ComposerRuntimeStatus({
               </div>
             </HoverCardContent>
           </HoverCard>
+        </>
+      )}
+      {/* Trailing by design: the metrics above are the "consumption" numbers, and auto mode is
+          the only case where the concrete model is otherwise invisible (the switcher says "Auto"). */}
+      {autoModelLabel && (
+        <>
+          <span className="shrink-0 text-muted-foreground/35">/</span>
+          <span
+            className="min-w-0 shrink truncate text-muted-foreground/60"
+            title={t('input.runtimeMetrics.autoModelHint', {
+              defaultValue: '自动切换当前使用的服务商与模型'
+            })}
+          >
+            {autoModelLabel}
+          </span>
         </>
       )}
     </div>

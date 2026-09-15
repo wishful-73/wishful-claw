@@ -21,14 +21,16 @@ public static partial class DbMessageTools
     internal static void InsertMessage(DbService db, MessageEntity message)
     {
         db.Execute(
-            "INSERT INTO messages (id, session_id, role, content, meta, created_at, usage, sort_order) " +
-            "VALUES (@id, @sid, @role, @content, @meta, @ca, @usage, @so)",
+            "INSERT INTO messages (id, session_id, role, content, meta, created_at, updated_at, usage, sort_order) " +
+            "VALUES (@id, @sid, @role, @content, @meta, @ca, @ua, @usage, @so)",
             new SqliteParameter("@id", message.Id),
             new SqliteParameter("@sid", message.SessionId),
             new SqliteParameter("@role", message.Role),
             new SqliteParameter("@content", message.Content),
             new SqliteParameter("@meta", (object?)message.Meta ?? DBNull.Value),
             new SqliteParameter("@ca", message.CreatedAt),
+            // Fresh insert: updated_at starts equal to created_at.
+            new SqliteParameter("@ua", message.UpdatedAt ?? message.CreatedAt),
             new SqliteParameter("@usage", (object?)message.Usage ?? DBNull.Value),
             new SqliteParameter("@so", message.SortOrder));
     }

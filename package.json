@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.28",
+  "version": "0.2.29",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -26,11 +26,18 @@
     "test:updater-state": "esbuild tests/updater-state/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/program.cjs && node tests/updater-state/out/program.cjs",
     "test:updater-progress": "esbuild tests/updater-state/download-progress.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/download-progress.cjs && node tests/updater-state/out/download-progress.cjs",
     "test:provider-presets": "esbuild tests/provider-presets/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-presets/out/program.cjs && node tests/provider-presets/out/program.cjs",
+    "test:provider-fallback": "esbuild tests/provider-fallback/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-fallback/out/program.cjs && node tests/provider-fallback/out/program.cjs",
+    "test:provider-payload": "esbuild tests/provider-payload/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-payload/out/program.cjs && node tests/provider-payload/out/program.cjs",
+    "test:session-model-resolution": "esbuild tests/session-model-resolution/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/session-model-resolution/out/program.cjs && node tests/session-model-resolution/out/program.cjs",
+    "test:fallback-chain": "esbuild tests/fallback-chain/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/fallback-chain/out/program.cjs && node tests/fallback-chain/out/program.cjs",
+    "test:i18n-coverage": "esbuild tests/i18n-coverage/program.ts --bundle --platform=node --format=cjs --outfile=tests/i18n-coverage/out/program.cjs && node tests/i18n-coverage/out/program.cjs",
+    "test:live-cursor": "esbuild tests/live-cursor/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/live-cursor/out/program.cjs && node tests/live-cursor/out/program.cjs",
+    "test:channel-account-label": "esbuild tests/channel-account-label/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/channel-account-label/out/program.cjs && node tests/channel-account-label/out/program.cjs",
     "test:settings-tabs": "esbuild tests/settings-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/settings-tabs/out/program.cjs && node tests/settings-tabs/out/program.cjs",
+    "test:select-file-tags": "esbuild tests/select-file-tags/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/select-file-tags/out/program.cjs && node tests/select-file-tags/out/program.cjs",
+    "test:streaming-render-pool": "esbuild tests/streaming-render-pool/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/streaming-render-pool/out/program.cjs && node tests/streaming-render-pool/out/program.cjs",
     "test:channel-reply-event-policy": "esbuild tests/channel-reply-event-policy/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-reply-event-policy/out/program.cjs && node tests/channel-reply-event-policy/out/program.cjs",
-    "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs",
-    "pretest:e2e": "node tests/e2e/scripts/ensure-prereqs.mjs",
-    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
+    "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -101,7 +108,6 @@
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
-    "@playwright/test": "^1.62.1",
     "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",

@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   Check,
   Search,
-  Loader2,
   Globe2,
   ChevronDown
 } from 'lucide-react'
@@ -14,7 +13,6 @@ import {
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useQuotaStore } from '@renderer/stores/quota-store'
-import { useUIStore } from '@renderer/stores/ui-store'
 
 import { useTranslation } from 'react-i18next'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
@@ -28,9 +26,17 @@ import {
 import { cn } from '@renderer/lib/utils'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { type ProviderGroup, type ModelSwitcherSessionSnapshot, selectModel, selectFastModel, selectAutoModel, selectFollowGlobalModel } from './ModelSwitcher/utils'
+import { AutoFallbackChain } from './ModelSwitcher/AutoFallbackChain'
 import { ModelCapabilityTags, ModelHoverDetails } from './ModelSwitcher/model-info'
 import { ModelSettingsPopover } from './ModelSwitcher/ModelSettingsPopover'
 import { CodexQuotaIndicator, CopilotQuotaIndicator } from './ModelSwitcher/QuotaIndicators'
+
+/**
+ * Sentinel used in `selectedProviderId` for the `auto` row. Its right-hand panel holds
+ * the failover chain, so the row opens a panel exactly like a provider does — and, being
+ * the same piece of state, the two can never be open at once.
+ */
+const AUTO_CHAIN_KEY = '__auto_fallback_chain__'
 
 export function ModelSwitcher({
   modelRoute = 'main',
@@ -105,16 +111,6 @@ export function ModelSwitcher({
     })
   )
   const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
-  const { autoSelection, autoRoutingState } = useUIStore(
-    useShallow((s) => ({
-      autoSelection: activeSessionId
-        ? (s.autoModelSelectionsBySession[activeSessionId] ?? null)
-        : null,
-      autoRoutingState: activeSessionId
-        ? (s.autoModelRoutingStatesBySession[activeSessionId] ?? 'idle')
-        : 'idle'
-    }))
-  )
 
   const enabledProviders = useMemo(
     () => (open ? providers.filter((p: any) => isProviderAvailableForModelSelection(p)) : []),
@@ -145,52 +141,26 @@ export function ModelSwitcher({
       : mainModelSelectionMode === 'auto')
   const isFollowGlobalActive =
     !isFastRoute && Boolean(activeSession) && sessionModelSelection.mode === 'inherit'
-  const autoResolvedProvider = autoSelection?.providerId
-    ? providers.find((provider: any) => provider.id === autoSelection.providerId)
-    : null
-  const autoResolvedModel = autoResolvedProvider?.models.find(
-    (model: any) => model.id === autoSelection?.modelId
-  )
-  const settingsProviderId = isAutoModeActive ? autoResolvedProvider?.id : displayProvider?.id
-  const settingsModel = isAutoModeActive ? (autoResolvedModel ?? undefined) : displayModel
+  // In `auto` mode the resolution already yields the model this session will use — its own
+  // binding when it has one (picked by the user, or written by a quota handover), the
+  // global selection otherwise. So the trigger shows `displayModel` like any other mode;
+  // there is no separate "what auto chose" state to consult.
+  const settingsProviderId = displayProvider?.id
+  const settingsModel = displayModel ?? undefined
   const settingsPopoverSide = activeSession ? 'top' : 'bottom'
   const triggerLabel = isAutoModeActive
-    ? autoRoutingState === 'routing'
-      ? t('topbar.autoModel')
-      : (autoSelection?.modelName ?? t('topbar.autoModel'))
+    ? t('topbar.autoModel')
     : (displayModel?.name ?? displayModelId ?? t('topbar.noModel'))
   const triggerAriaLabel = isAutoModeActive
-    ? autoRoutingState === 'routing'
-      ? t('topbar.autoModelRoutingShort')
-      : t('topbar.autoModel')
+    ? t('topbar.autoModel')
     : (displayModel?.name ?? displayModelId ?? t('topbar.noModel'))
-  const triggerProviderName = isAutoModeActive
-    ? (autoResolvedProvider?.name ?? t('topbar.autoModel'))
-    : (displayProvider?.name ?? null)
-  const triggerModel = isAutoModeActive ? (autoResolvedModel ?? null) : (displayModel ?? null)
-  const triggerProviderType = isAutoModeActive ? autoResolvedProvider?.type : displayProvider?.type
+  const triggerProviderName = displayProvider?.name ?? null
+  const triggerModel = displayModel ?? null
+  const triggerProviderType = displayProvider?.type
   const triggerDetail = isAutoModeActive
-    ? autoRoutingState === 'routing'
-      ? t('topbar.autoModelRouting')
-      : autoSelection?.modelName
-        ? t('topbar.autoModelTooltip', {
-            route: t(
-              autoSelection.target === 'main' ? 'topbar.autoModelMain' : 'topbar.autoModelFast'
-            ),
-            model: autoSelection.modelName,
-            taskType: autoSelection.taskType ?? t('topbar.autoModelTaskTypeUnknown'),
-            confidence: autoSelection.confidence ?? t('topbar.autoModelConfidenceUnknown'),
-            complexity: autoSelection.complexity
-              ? t(`topbar.autoModelComplexity.${autoSelection.complexity}`)
-              : '',
-            risk: autoSelection.risk ? t(`topbar.autoModelRisk.${autoSelection.risk}`) : '',
-            reason: autoSelection.fallbackReason
-              ? t(`topbar.autoModelFallback.${autoSelection.fallbackReason}`, {
-                  defaultValue: autoSelection.fallbackReason
-                })
-              : ''
-          })
-        : t('topbar.autoModelTooltipIdle')
+    ? t('topbar.autoModelHint', {
+        defaultValue: 'Auto · 撞限额时自动切换服务商并继续'
+      })
     : displayModelId && displayModel?.name && displayModel.name !== displayModelId
       ? displayModelId
       : null
@@ -302,11 +272,7 @@ export function ModelSwitcher({
                 title={triggerAriaLabel}
               >
                 {isAutoModeActive ? (
-                  autoRoutingState === 'routing' ? (
-                    <Loader2 size={15} className="shrink-0 animate-spin text-amber-500" />
-                  ) : (
-                    <AutoModelIcon size={17} className="shrink-0" />
-                  )
+                  <AutoModelIcon size={17} className="shrink-0" />
                 ) : (
                   <ModelIcon
                     icon={displayModel?.icon}
@@ -324,11 +290,7 @@ export function ModelSwitcher({
             <div className="flex items-start gap-3">
               <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/45">
                 {isAutoModeActive ? (
-                  autoRoutingState === 'routing' ? (
-                    <Loader2 size={16} className="animate-spin text-amber-500" />
-                  ) : (
-                    <AutoModelIcon size={18} />
-                  )
+                  <AutoModelIcon size={18} />
                 ) : (
                   <ModelIcon
                     icon={displayModel?.icon}
@@ -423,65 +385,62 @@ export function ModelSwitcher({
           )}
           {!isFastRoute && !activeSession?.pluginId && (
             <div className="border-b p-1">
-              <button
-                ref={autoModelRef}
-                className={cn(
-                  'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
-                  isExplicitAutoActive && 'bg-primary/5'
-                )}
-                onClick={() => selectAutoModel(activeSessionId, setOpen)}
+              {/* Same shape as a provider entry: the row selects `auto`, and the panel to
+                  the right is where the failover chain is inspected and adjusted. */}
+              <Popover
+                open={selectedProviderId === AUTO_CHAIN_KEY}
+                onOpenChange={(nextOpen) => {
+                  if (nextOpen) setSelectedProviderId(AUTO_CHAIN_KEY)
+                }}
               >
-                <span className="mt-0.5 flex size-5 items-center justify-center shrink-0">
-                  {isExplicitAutoActive ? (
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary/10">
-                      <Check className="size-3 text-primary" />
-                    </span>
-                  ) : (
-                    <AutoModelIcon size={18} />
-                  )}
-                </span>
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span
+                <PopoverTrigger asChild>
+                  <button
+                    ref={autoModelRef}
                     className={cn(
-                      'truncate text-xs',
-                      isExplicitAutoActive
-                        ? 'font-semibold text-primary'
-                        : 'text-foreground/80 group-hover:text-foreground'
+                      'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
+                      isExplicitAutoActive && 'bg-primary/5'
                     )}
+                    onFocus={() => setSelectedProviderId(AUTO_CHAIN_KEY)}
+                    onMouseEnter={() => setSelectedProviderId(AUTO_CHAIN_KEY)}
+                    onClick={() => selectAutoModel(activeSessionId, setOpen)}
                   >
-                    {t('topbar.autoModel')}
-                  </span>
-                  <span className="line-clamp-2 text-[10px] text-muted-foreground">
-                    {autoRoutingState === 'routing'
-                      ? t('topbar.autoModelRouting')
-                      : autoSelection?.modelName
-                        ? t('topbar.autoModelTooltip', {
-                            route: t(
-                              autoSelection.target === 'main'
-                                ? 'topbar.autoModelMain'
-                                : 'topbar.autoModelFast'
-                            ),
-                            model: autoSelection.modelName,
-                            taskType:
-                              autoSelection.taskType ?? t('topbar.autoModelTaskTypeUnknown'),
-                            confidence:
-                              autoSelection.confidence ?? t('topbar.autoModelConfidenceUnknown'),
-                            complexity: autoSelection.complexity
-                              ? t(`topbar.autoModelComplexity.${autoSelection.complexity}`)
-                              : '',
-                            risk: autoSelection.risk
-                              ? t(`topbar.autoModelRisk.${autoSelection.risk}`)
-                              : '',
-                            reason: autoSelection.fallbackReason
-                              ? t(`topbar.autoModelFallback.${autoSelection.fallbackReason}`, {
-                                  defaultValue: autoSelection.fallbackReason
-                                })
-                              : ''
-                          })
-                        : t('topbar.autoModelDesc')}
-                  </span>
-                </div>
-              </button>
+                    <span className="mt-0.5 flex size-5 items-center justify-center shrink-0">
+                      {isExplicitAutoActive ? (
+                        <span className="flex size-5 items-center justify-center rounded-full bg-primary/10">
+                          <Check className="size-3 text-primary" />
+                        </span>
+                      ) : (
+                        <AutoModelIcon size={18} />
+                      )}
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span
+                        className={cn(
+                          'truncate text-xs',
+                          isExplicitAutoActive
+                            ? 'font-semibold text-primary'
+                            : 'text-foreground/80 group-hover:text-foreground'
+                        )}
+                      >
+                        {t('topbar.autoModel')}
+                      </span>
+                      <span className="line-clamp-2 text-[10px] text-muted-foreground">
+                        {t('topbar.autoModelHint', {
+                          defaultValue: 'Auto · 撞限额时自动切换服务商并继续'
+                        })}
+                      </span>
+                    </div>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-80 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+                  align="start"
+                  side="right"
+                  sideOffset={6}
+                >
+                  {activeSessionId ? <AutoFallbackChain sessionId={activeSessionId} /> : null}
+                </PopoverContent>
+              </Popover>
             </div>
           )}
           <div className="p-1">
@@ -629,10 +588,8 @@ export function ModelSwitcher({
       <ModelSettingsPopover
         model={settingsModel}
         providerId={settingsProviderId}
-        providerType={isAutoModeActive ? autoResolvedProvider?.type : displayProvider?.type}
-        providerWebsocketMode={
-          isAutoModeActive ? autoResolvedProvider?.websocketMode : displayProvider?.websocketMode
-        }
+        providerType={displayProvider?.type}
+        providerWebsocketMode={displayProvider?.websocketMode}
         side={settingsPopoverSide}
         t={t}
         tChat={tChat}

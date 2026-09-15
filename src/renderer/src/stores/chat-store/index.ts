@@ -11,8 +11,10 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 
 import { isChatStreamEvent } from '@renderer/lib/agent/stream-event-adapter'
+import { tryTakeOverQuotaFailure } from '@renderer/lib/agent/provider-auto-fallback'
 import { buildChatMessageContent, getRenderedBlockPosition } from '@renderer/lib/agent/chat-message-blocks'
 import { accumulateUsageSnapshot } from '@renderer/lib/agent/usage-merge'
+import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 
 import { createSessionSlice, type SessionSlice } from './session-slice'
 
@@ -86,7 +88,6 @@ export interface AgentActions {
     systemPrompt?: string
 
     toolPreset?: string
-    webSearchEnabled?: boolean
     codegraphEnabled?: boolean
 
     workingFolder?: string
@@ -315,7 +316,11 @@ export const useChatStore = create<ChatStore>()(
 
       if (titleSession && titleSession.title === 'New Conversation' && userText) {
 
-        const cleanUserText = userText.replace(/<system-remind(?:er)?>[\s\S]*?<\/system-remind(?:er)?>\s*/gi, '').trim()
+        // T-13: userText may carry `<pasted-block>` chips; the title has to read
+        // the pasted body, not the tag JSON.
+        const cleanUserText = expandPastedBlocks(userText)
+          .replace(/<system-remind(?:er)?>[\s\S]*?<\/system-remind(?:er)?>\s*/gi, '')
+          .trim()
 
         const newTitle = cleanUserText.slice(0, 40) + (cleanUserText.length > 40 ? '...' : '')
 
@@ -361,6 +366,15 @@ export const useChatStore = create<ChatStore>()(
         const workerParams = { ...params }
         delete workerParams.userMessageText
         delete workerParams.meta
+
+        // The Worker resolves `{{sessionId}}` in requestOverrides headers (codex,
+        // opencode-go) from `provider.sessionId`. sendMessage is the only door to
+        // agent/run and it knows the session, so the identity is stamped here
+        // instead of being remembered at every send site — that is how it went
+        // missing on the chat path while the sidecar path had it.
+        if (workerParams.provider) {
+          workerParams.provider = { ...workerParams.provider, sessionId }
+        }
 
         const result = await window.api.workerRequest<{ started: boolean; runId: string }>(
 
@@ -899,6 +913,14 @@ export const useChatStore = create<ChatStore>()(
                   if (event.usage?.sessionCacheMissTokens != null) {
                     nextSession.sessionCacheMiss = event.usage.sessionCacheMissTokens
                   }
+                  // Accumulate whole-session usage totals — the status bar reads
+                  // baseline + these, so it no longer depends on how many messages
+                  // are currently loaded. `event.usage` is this call's delta, the
+                  // same value merged into the message above.
+                  nextSession.sessionUsageTotals = accumulateUsageSnapshot(
+                    nextSession.sessionUsageTotals,
+                    event.usage
+                  )
 
                   // isStreaming stays true — loop_end will set it false
                   if (sessionIndex >= 0) {
@@ -1667,6 +1689,19 @@ export const useChatStore = create<ChatStore>()(
 
             useAgentStore.getState().resetLiveSessionExecution(targetSessionId)
 
+            // iter-29 (S-21): a quota failure in an `auto` session is taken over instead
+            // of reported — the provider is switched and the turn is resumed with
+            // "继续推进". Decided BEFORE the state update so the error card is never
+            // written in the first place; if the handover is abandoned a moment later
+            // (user switched the model, session deleted) the card is put back.
+            const quotaTakenOver = tryTakeOverQuotaFailure({
+              sessionId: targetSessionId,
+              runId: envelope.runId,
+              errorMessage: event.message,
+              errorType: event.errorType,
+              statusCode: event.statusCode
+            })
+
             set((state) => {
 
               delete state.streamingMessages[targetSessionId]
@@ -1685,7 +1720,7 @@ export const useChatStore = create<ChatStore>()(
 
                     msg.isStreaming = false
 
-                    if (msg.id === envelope.runId) {
+                    if (msg.id === envelope.runId && !quotaTakenOver) {
 
                       msg.error = event.message
 
@@ -1697,7 +1732,7 @@ export const useChatStore = create<ChatStore>()(
 
                 const errored = session.messages.find((m) => m.id === envelope.runId)
 
-                if (errored && !errored.error) {
+                if (errored && !errored.error && !quotaTakenOver) {
 
                   errored.error = event.message
 

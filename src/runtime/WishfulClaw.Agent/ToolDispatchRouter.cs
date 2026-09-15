@@ -64,7 +64,7 @@ public static class ToolDispatchRouter
             try
             {
                 var result = await AgentRuntimeDesktopExecutor.ExecuteAsync(
-                toolCall, context, state.CancellationToken);
+                toolCall, context, workingFolder, state.CancellationToken);
                 toolOutput = result.Content.ValueKind == JsonValueKind.String
                 ? result.Content.GetString() ?? string.Empty
                 : result.Content.ToString();
@@ -93,25 +93,6 @@ public static class ToolDispatchRouter
             catch (Exception ex)
             {
                 toolOutput = $"use_capability execution failed: {ex.Message}";
-                isToolError = true;
-            }
-        }
-        // WebSearch: executed directly in Worker (HTTP request)
-        else if (AgentRuntimeWebSearchExecutor.IsWebSearchTool(toolCall.Name))
-        {
-            try
-            {
-                toolOutput = await AgentRuntimeWebSearchExecutor.ExecuteAsync(
-                toolCall, state.Parameters, state.CancellationToken);
-                isToolError = IsJsonError(toolOutput);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                toolOutput = $"Web search execution failed: {ex.Message}";
                 isToolError = true;
             }
         }

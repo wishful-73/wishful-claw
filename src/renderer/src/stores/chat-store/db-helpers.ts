@@ -1,4 +1,4 @@
-﻿import type { Session, Project, ChatMessage } from './types'
+import type { Session, Project, ChatMessage } from './types'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { isCompressionOperationKnown } from './compression-status-registry'
@@ -60,6 +60,7 @@ interface MessageRow {
   content: string
   meta: string | null
   createdAt: number
+  updatedAt: number | null
   usage: string | null
   sortOrder: number
 }
@@ -146,7 +147,8 @@ function deserializeMessage(row: MessageRow): ChatMessage {
     id: row.id,
     role: row.role as 'user' | 'assistant' | 'system',
     text: row.content,
-    createdAt: row.createdAt
+    createdAt: row.createdAt,
+    ...(row.updatedAt != null ? { updatedAt: row.updatedAt } : {})
   }
 
   if (row.meta) {
@@ -552,6 +554,44 @@ export async function dbListMessagesByTurns(args: {
 export async function dbGetMessageCount(sessionId: string): Promise<number> {
   const result = await window.api.workerRequest<{ success: boolean; count: number }>('db/messages-count', { sessionId })
   return result.count
+}
+
+/**
+ * Whole-session usage rollup from the DB (assistant messages only).
+ *
+ * This is the baseline for the composer status bar: sessions load messages
+ * lazily (last N turns), so summing only the loaded messages under-reports the
+ * session after a restart. Returns null when the endpoint fails or reports no
+ * usage, in which case callers fall back to a zero baseline.
+ */
+export interface SessionUsageStatsRow {
+  success: boolean
+  hasUsage: boolean
+  totalInput: number
+  totalOutput: number
+  totalCacheCreation: number
+  totalCacheRead: number
+  totalReasoning: number
+  totalDurationMs: number
+  requestCount: number
+  assistantReplies: number
+  firstCreatedAt: number | null
+  lastCreatedAt: number | null
+  error: string | null
+}
+
+export async function dbGetSessionUsageStats(
+  sessionId: string
+): Promise<SessionUsageStatsRow | null> {
+  try {
+    const result = await window.api.workerRequest<SessionUsageStatsRow>(
+      'db/messages-usage-stats',
+      { sessionId }
+    )
+    return result?.success && result.hasUsage ? result : null
+  } catch {
+    return null
+  }
 }
 
 /**

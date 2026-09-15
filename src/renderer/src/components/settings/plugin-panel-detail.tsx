@@ -12,7 +12,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { QrCode, KeyRound, Play, Square, Loader2 } from 'lucide-react'
+import { QrCode, KeyRound, Play, Square, Loader2, ChevronRight } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Separator } from '@renderer/components/ui/separator'
@@ -23,6 +23,7 @@ import {
   type ChannelProviderDescriptor
 } from '@renderer/stores/channel-store'
 import { cn } from '@renderer/lib/utils'
+import { channelAccountLabel } from './channel-account'
 import { QrLoginPanel } from './plugin-panel-qr'
 export function CredentialsPanel({
   channel,
@@ -58,12 +59,14 @@ export function CredentialsPanel({
   }
 
   return (
-    <div className="space-y-4 px-8 py-6">
+    <div className="space-y-4 px-4 py-4">
       <div>
         <h3 className="text-sm font-medium text-foreground">
           {t('channel.credentials.title', { defaultValue: 'API 凭据' })}
         </h3>
-        <p className="mt-0.5 text-xs text-muted-foreground">{descriptor.description}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {descriptor.description.startsWith('channel.') ? t(descriptor.description) : descriptor.description}
+        </p>
       </div>
 
       <Separator />
@@ -79,7 +82,9 @@ export function CredentialsPanel({
               id={`field-${field.key}`}
               type={field.type === 'secret' ? 'password' : 'text'}
               value={localConfig[field.key] ?? ''}
-              placeholder={field.placeholder}
+              placeholder={
+                field.placeholder?.startsWith('channel.') ? t(field.placeholder) : field.placeholder
+              }
               onChange={(e) => {
                 setLocalConfig((prev) => ({ ...prev, [field.key]: e.target.value }))
               }}
@@ -99,17 +104,34 @@ export function CredentialsPanel({
   )
 }
 
-// ── Channel Detail Panel (with tabs) ──
+// ── Channel block (collapsible) ──
 
 type ConfigTab = 'qr' | 'credentials'
 
-export function ChannelDetailPanel({ channel }: { channel: PluginInstance }): React.JSX.Element {
+/**
+ * One channel as a collapsible block.
+ *
+ * The summary row is the point of the redesign: name, bound account and run state are what
+ * you want at a glance. Everything that used to sit permanently on screen — description,
+ * start/stop, the binding tabs — moved into the expanded body, so a channel configured
+ * months ago costs a single line.
+ */
+export function ChannelCollapsible({
+  channel,
+  status,
+  expanded,
+  onToggle
+}: {
+  channel: PluginInstance
+  status: 'running' | 'stopped' | 'error'
+  expanded: boolean
+  onToggle: () => void
+}): React.JSX.Element {
   const { t } = useTranslation('settings')
-  const { providers, channelStatuses, startChannel, stopChannel } = useChannelStore()
+  const { providers, startChannel, stopChannel } = useChannelStore()
   const [activeTab, setActiveTab] = useState<ConfigTab>('qr')
 
   const descriptor = providers.find((p) => p.type === channel.type)
-  const status = channelStatuses[channel.id] ?? (channel.enabled ? 'stopped' : 'stopped')
   const supportsQr = channel.type === 'weixin-official' || channel.type === 'feishu-bot'
 
   const tabs: { id: ConfigTab; label: string; icon: React.ReactNode; show: boolean }[] = [
@@ -164,74 +186,99 @@ export function ChannelDetailPanel({ channel }: { channel: PluginInstance }): Re
   })()
   const isUnconfigured = !isConfigured
 
+  const statusLabel = isRunning
+    ? t('channel.status.running', { defaultValue: '运行中' })
+    : isUnconfigured
+      ? t('channel.status.unconfigured', { defaultValue: '未配置' })
+      : t('channel.status.stopped', { defaultValue: '已停止' })
+  const accountLabel = channelAccountLabel(channel)
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* Channel header */}
-      <div className="flex shrink-0 items-center justify-between border-b px-6 py-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-sm font-semibold text-primary">
-            {descriptor?.displayName?.charAt(0) ?? channel.name.charAt(0)}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-foreground">{channel.name}</span>
-              <Badge variant={isRunning ? 'default' : isUnconfigured ? 'outline' : 'secondary'} className="h-4 text-[10px]">
-                {isRunning
-                  ? t('channel.status.running', { defaultValue: '运行中' })
-                  : isUnconfigured
-                    ? t('channel.status.unconfigured', { defaultValue: '未配置' })
-                    : t('channel.status.stopped', { defaultValue: '已停止' })}
-              </Badge>
-            </div>
-            <p className="text-[11px] text-muted-foreground">{descriptor?.description ?? channel.type}</p>
-          </div>
-        </div>
-        <Button
-          variant={isRunning ? 'outline' : 'default'}
-          size="sm"
-          disabled={isUnconfigured}
-          onClick={() => void (isRunning ? stopChannel(channel.id) : startChannel(channel.id))}
-        >
-          {isRunning ? (
-            <>
-              <Square className="mr-1.5 size-3" />
-              {t('channel.actions.stop', { defaultValue: '停止' })}
-            </>
-          ) : (
-            <>
-              <Play className="mr-1.5 size-3" />
-              {t('channel.actions.start', { defaultValue: '启动' })}
-            </>
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-card/40">
+      {/* Summary row — the whole point: account and run state at a glance, no click. */}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+      >
+        <ChevronRight
+          className={cn(
+            'size-3.5 shrink-0 text-muted-foreground transition-transform',
+            expanded && 'rotate-90'
           )}
-        </Button>
-      </div>
+        />
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/60 text-[11px] font-semibold">
+          {descriptor?.displayName?.charAt(0) ?? channel.name.charAt(0)}
+        </span>
+        <span className="shrink-0 text-sm font-medium text-foreground">{channel.name}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {accountLabel ?? t('channel.status.unconfigured', { defaultValue: '未配置' })}
+        </span>
+        <Badge
+          variant={isRunning ? 'default' : isUnconfigured ? 'outline' : 'secondary'}
+          className="h-5 shrink-0 text-[10px]"
+        >
+          {statusLabel}
+        </Badge>
+      </button>
 
-      {/* Tab bar */}
-      <div className="flex shrink-0 gap-1 border-b px-6 py-2">
-        {visibleTabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-              activeTab === tab.id
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-            )}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {expanded ? (
+        <div className="border-t border-border/60">
+          <div className="flex items-center justify-between gap-3 px-4 pt-3">
+            <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
+              {descriptor
+                ? descriptor.description.startsWith('channel.')
+                  ? t(descriptor.description)
+                  : descriptor.description
+                : channel.type}
+            </p>
+            <Button
+              variant={isRunning ? 'outline' : 'default'}
+              size="sm"
+              disabled={isUnconfigured}
+              onClick={() => void (isRunning ? stopChannel(channel.id) : startChannel(channel.id))}
+            >
+              {isRunning ? (
+                <>
+                  <Square className="mr-1.5 size-3" />
+                  {t('channel.actions.stop', { defaultValue: '停止' })}
+                </>
+              ) : (
+                <>
+                  <Play className="mr-1.5 size-3" />
+                  {t('channel.actions.start', { defaultValue: '启动' })}
+                </>
+              )}
+            </Button>
+          </div>
 
-      {/* Tab content */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {activeTab === 'qr' && supportsQr && <QrLoginPanel channel={channel} />}
-        {activeTab === 'credentials' && (
-          <CredentialsPanel channel={channel} descriptor={descriptor} />
-        )}
-      </div>
+          {visibleTabs.length > 0 ? (
+            <div className="flex gap-1 px-4 pt-3">
+              {visibleTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                    activeTab === tab.id
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {activeTab === 'qr' && supportsQr && <QrLoginPanel channel={channel} />}
+          {activeTab === 'credentials' && (
+            <CredentialsPanel channel={channel} descriptor={descriptor} />
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

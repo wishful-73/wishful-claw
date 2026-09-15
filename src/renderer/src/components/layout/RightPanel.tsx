@@ -18,6 +18,7 @@ import { AgentFilesPanel } from '@renderer/components/layout/AgentFilesPanel'
 import { SessionChangeReviewPanel } from '@renderer/components/layout/SessionChangeReviewPanel'
 import { SessionSummaryPanel } from '@renderer/components/layout/SessionSummaryPanel'
 import { GoalHistoryPanel } from '@renderer/components/goal/GoalHistoryPanel'
+import { TimelinePanel } from '@renderer/components/timeline/TimelinePanel'
 import { RIGHT_PANEL_DEFAULT_WIDTH, clampRightPanelWidth } from './right-panel-defs'
 import {
   readActiveRightPanelTabId,
@@ -85,6 +86,9 @@ export function RightPanel(): React.JSX.Element {
       }
       if (tab.kind === 'files') {
         return { ...tab, title: t('rightPanel.files', { defaultValue: 'Files' }) }
+      }
+      if (tab.kind === 'timeline') {
+        return { ...tab, title: t('rightPanel.timeline', { defaultValue: 'Timeline' }) }
       }
       if (tab.kind === 'browser') {
         return { ...tab, title: t('rightPanel.browser', { defaultValue: 'Browser' }) }
@@ -193,6 +197,9 @@ export function RightPanel(): React.JSX.Element {
     if (tab.kind === 'browser') return null  // BrowserPanel is rendered as persistent layer
     if (tab.kind === 'preview') return <PreviewPanel embedded />
     if (tab.kind === 'files') return null  // AgentFilesPanel is rendered as persistent layer
+    if (tab.kind === 'timeline') {
+      return <TimelinePanel sessionId={tab.sessionId ?? panelSessionId} />
+    }
     if (tab.kind === 'review') return <SessionChangeReviewPanel sessionId={tab.sessionId ?? panelSessionId} />
     if (tab.kind === 'summary') return <SessionSummaryPanel sessionId={tab.sessionId ?? panelSessionId} />
     if (tab.kind === 'goal') {

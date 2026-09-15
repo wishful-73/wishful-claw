@@ -109,8 +109,8 @@ public sealed class BrowserToolProvider : IToolProvider
             excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
-            "BrowserSearch",
-            "Multi-engine aggregated web search (Baidu, Bing, Sogou, GitHub, ArXiv, etc.). No API key required; auto-detects intent, runs engines in parallel, and deduplicates results.",
+            "WebSearch",
+            "Multi-engine aggregated web search. No API key required; auto-detects the query intent, queries the matching engines in parallel, then deduplicates and interleaves the hits. The enabled engine set and intent routing are configured in Settings.",
             BrowserToolSchema.CreateObjectSchema(
                 new Dictionary<string, JsonElement>
                 {

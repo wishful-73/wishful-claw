@@ -58,6 +58,7 @@ export interface ComposerEditorAreaProps {
   onReferencePreview: (fileId: string) => void
   onReferenceLocate: (fileId: string) => void
   onReferenceDelete: (nodeId: string) => void
+  onPastedBlockExpand: (nodeId: string) => void
 
   // Optimization dialog
   showOptimizationDialog: boolean
@@ -192,6 +193,7 @@ export function ComposerEditorArea(props: ComposerEditorAreaProps) {
             onReferencePreview={props.onReferencePreview}
             onReferenceLocate={props.onReferenceLocate}
             onReferenceDelete={props.onReferenceDelete}
+            onPastedBlockExpand={props.onPastedBlockExpand}
             className="h-full w-full"
           />
           <ComposerFlyovers

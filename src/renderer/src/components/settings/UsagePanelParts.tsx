@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import type { UsageBucket } from './UsagePanel'
@@ -166,10 +166,23 @@ function ChartTooltip({
   interval: 'hour' | 'day'
   left: number
 }): React.JSX.Element {
+  // A centered (left-anchored, -50%) tooltip overflows the container near
+  // either edge and gets clipped / triggers a scrollbar. Anchor the near edge
+  // directly in those zones; only center in the middle range.
+  const flipRight = left > 85
+  const flipLeft = left < 15
+  const centered = !flipRight && !flipLeft
   return (
     <div
-      className="pointer-events-none absolute top-2 z-10 min-w-[170px] -translate-x-1/2 rounded-md border border-border/80 bg-popover/95 px-3 py-2 text-xs text-popover-foreground shadow-lg backdrop-blur-sm"
-      style={{ left: `${left}%` }}
+      className={cn(
+        'pointer-events-none absolute top-2 z-10 min-w-[170px] rounded-md border border-border/80 bg-popover/95 px-3 py-2 text-xs text-popover-foreground shadow-lg backdrop-blur-sm',
+        centered && '-translate-x-1/2'
+      )}
+      style={
+        flipRight
+          ? { right: `${100 - left}%` }
+          : { left: `${left}%` }
+      }
       role="status"
       aria-live="polite"
     >
@@ -272,6 +285,35 @@ function TimeAxisLabels({
   )
 }
 
+/**
+ * Measures the wrapper's real pixel size (ResizeObserver) so the SVG can build
+ * its coordinate system at 1:1 scale. Drawing in a stretched viewBox
+ * (preserveAspectRatio="none" over a fixed 800x320 grid) distorts glyphs and
+ * circles whenever the container aspect ratio differs from 2.5:1.
+ */
+function useMeasuredSize(): [
+  React.RefObject<HTMLDivElement | null>,
+  { width: number; height: number }
+] {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = (): void =>
+      setSize({ width: el.clientWidth, height: el.clientHeight })
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return [ref, size]
+}
+
+/** Fixed 800x320 until the first real measurement lands (one frame). */
+const FALLBACK_SIZE = { width: 800, height: 320 }
+const CHART_PADDING = { top: 12, right: 8, bottom: 20, left: 48 }
+
 export function UsageLineChart({
   buckets,
   series,
@@ -286,9 +328,10 @@ export function UsageLineChart({
     ...series.flatMap((item) => item.buckets.map((bucket) => bucket.requestCount))
   )
   const max = axisUpperBound(dataMax)
-  const width = 800
-  const height = 240
-  const padding = { top: 12, right: 8, bottom: 20, left: 48 }
+  const [wrapRef, measured] = useMeasuredSize()
+  const width = measured.width || FALLBACK_SIZE.width
+  const height = measured.height || FALLBACK_SIZE.height
+  const padding = CHART_PADDING
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
   const xOf = (index: number): number =>
@@ -300,13 +343,12 @@ export function UsageLineChart({
     hoveredBucket == null ? 50 : (hoveredBucket / Math.max(buckets.length - 1, 1)) * 100
 
   return (
-    <div className="relative">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-56 w-full overflow-visible"
-        role="img"
-        aria-label="按模型请求趋势"
-        preserveAspectRatio="none"
+    <div className="flex min-h-64 flex-1 flex-col">
+      <div ref={wrapRef} className="relative min-h-0 flex-1">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="absolute inset-0 h-full w-full"
+          preserveAspectRatio="none"
       >
         <ChartYAxis width={width} height={height} padding={padding} max={max} />
         {series.map((item, seriesIndex) => {
@@ -355,16 +397,17 @@ export function UsageLineChart({
           onMouseMove={(event) => setHoveredBucket(getHoveredBucketIndex(event, buckets.length))}
           onMouseLeave={() => setHoveredBucket(null)}
         />
-      </svg>
-      {hoveredBucketData && (
-        <ChartTooltip
-          bucket={hoveredBucketData}
-          bucketIndex={hoveredBucket ?? 0}
-          series={series}
-          interval={interval}
-          left={tooltipLeft}
-        />
-      )}
+        </svg>
+        {hoveredBucketData && (
+          <ChartTooltip
+            bucket={hoveredBucketData}
+            bucketIndex={hoveredBucket ?? 0}
+            series={series}
+            interval={interval}
+            left={tooltipLeft}
+          />
+        )}
+      </div>
       <TimeAxisLabels buckets={buckets} interval={interval} />
       <ChartLegend series={series} />
     </div>
@@ -385,9 +428,10 @@ export function UsageBarChart({
     ...series.flatMap((item) => item.buckets.map((bucket) => bucket.requestCount))
   )
   const max = axisUpperBound(dataMax)
-  const width = 800
-  const height = 240
-  const padding = { top: 12, right: 8, bottom: 20, left: 48 }
+  const [wrapRef, measured] = useMeasuredSize()
+  const width = measured.width || FALLBACK_SIZE.width
+  const height = measured.height || FALLBACK_SIZE.height
+  const padding = CHART_PADDING
   const chartWidth = width - padding.left - padding.right
   const chartHeight = height - padding.top - padding.bottom
   const groupWidth = chartWidth / Math.max(buckets.length, 1)
@@ -399,14 +443,15 @@ export function UsageBarChart({
     hoveredBucket == null ? 50 : ((hoveredBucket + 0.5) / Math.max(buckets.length, 1)) * 100
 
   return (
-    <div className="relative">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-56 w-full overflow-visible"
-        role="img"
-        aria-label="按模型请求量柱状图"
-        preserveAspectRatio="none"
-      >
+    <div className="flex min-h-64 flex-1 flex-col">
+      <div ref={wrapRef} className="relative min-h-0 flex-1">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="absolute inset-0 h-full w-full"
+          role="img"
+          aria-label="按模型请求量柱状图"
+          preserveAspectRatio="none"
+        >
         <ChartYAxis width={width} height={height} padding={padding} max={max} />
         {buckets.map((bucket, bucketIndex) =>
           series.map((item, seriesIndex) => {
@@ -439,16 +484,17 @@ export function UsageBarChart({
           onMouseMove={(event) => setHoveredBucket(getHoveredBucketIndex(event, buckets.length))}
           onMouseLeave={() => setHoveredBucket(null)}
         />
-      </svg>
-      {hoveredBucketData && (
-        <ChartTooltip
-          bucket={hoveredBucketData}
-          bucketIndex={hoveredBucket ?? 0}
-          series={series}
-          interval={interval}
-          left={tooltipLeft}
-        />
-      )}
+        </svg>
+        {hoveredBucketData && (
+          <ChartTooltip
+            bucket={hoveredBucketData}
+            bucketIndex={hoveredBucket ?? 0}
+            series={series}
+            interval={interval}
+            left={tooltipLeft}
+          />
+        )}
+      </div>
       <TimeAxisLabels buckets={buckets} interval={interval} />
       <ChartLegend series={series} />
     </div>
@@ -457,9 +503,9 @@ export function UsageBarChart({
 
 export function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }): React.JSX.Element {
   return (
-    <div className="min-w-0 rounded-lg border bg-background/60 px-3 py-2.5">
-      <div className="truncate text-[11px] text-muted-foreground">{label}</div>
-      <div className="mt-0.5 truncate text-lg font-semibold tabular-nums text-foreground">{value}</div>
+    <div className="flex min-w-0 flex-col items-center justify-center rounded-lg border bg-background/60 px-3 py-2.5 text-center">
+      <div className="truncate text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate text-xl font-semibold tabular-nums text-foreground">{value}</div>
       {hint && <div className="mt-0.5 truncate text-[11px] text-muted-foreground/70">{hint}</div>}
     </div>
   )
@@ -471,6 +517,8 @@ export function RollupTable<
     errorCount: number
     billableInputTokens: number
     outputTokens: number
+    cacheReadTokens?: number
+    cacheCreationTokens?: number
     totalCostUsd?: number | null
   }
 >({
@@ -496,6 +544,8 @@ export function RollupTable<
           <th className="py-1.5 pr-3 font-medium">—</th>
           <th className="py-1.5 pr-3 text-right font-medium">{t('usage.rollup.requests', { defaultValue: '请求' })}</th>
           <th className="py-1.5 pr-3 text-right font-medium">{t('usage.rollup.input', { defaultValue: '输入' })}</th>
+          <th className="py-1.5 pr-3 text-right font-medium">{t('usage.rollup.output', { defaultValue: '输出' })}</th>
+          <th className="py-1.5 pr-3 text-right font-medium">{t('usage.rollup.cache', { defaultValue: '缓存' })}</th>
           <th className="py-1.5 text-right font-medium">{t('usage.rollup.cost', { defaultValue: '成本' })}</th>
         </tr>
       </thead>
@@ -516,6 +566,12 @@ export function RollupTable<
               </td>
               <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">
                 {formatTokens(row.billableInputTokens)}
+              </td>
+              <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">
+                {formatTokens(row.outputTokens)}
+              </td>
+              <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">
+                {formatTokens((row.cacheReadTokens ?? 0) + (row.cacheCreationTokens ?? 0))}
               </td>
               <td className={cn('py-1.5 text-right tabular-nums', row.totalCostUsd == null ? 'text-muted-foreground' : 'text-foreground')}>
                 {formatCost(row.totalCostUsd)}

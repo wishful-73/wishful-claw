@@ -1,4 +1,5 @@
-﻿import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
+import type { ReasoningEffortLevel, ThinkingConfig } from '../lib/api/types'
+import type { ProviderFallbackCandidate, ProviderFallbackConfig } from '../../../shared/types/provider'
 import type { CollaborationMode, PermissionMode } from './chat-store/types'
 import { type AppThemePreset, type SshTerminalThemePreset } from '../lib/theme-presets'
 import { type AppLanguage } from '@renderer/lib/i18n-language'
@@ -61,12 +62,79 @@ export function clampRequestMaxRetries(value: number): number {
   return Math.min(MAX_REQUEST_MAX_RETRIES, Math.max(0, Math.floor(value)))
 }
 
+// Provider fallback (iter-29 / S-21): ordered failover candidates, used when the
+// provider in use hits a quota / rate limit. Off by default — opt-in per install.
+export const DEFAULT_PROVIDER_FALLBACK: ProviderFallbackConfig = {
+  enabled: false,
+  candidates: []
+}
+
+/**
+ * Fresh copy of the default. Callers mutate the config they are handed, so the
+ * arrays must never be shared with the module-level constant.
+ */
+export function createDefaultProviderFallback(): ProviderFallbackConfig {
+  return { enabled: DEFAULT_PROVIDER_FALLBACK.enabled, candidates: [] }
+}
+
+/**
+ * Keeps the persisted fallback config well-formed: a boolean flag and a list of
+ * candidates that is duplicate-free per provider and keeps the user's order.
+ *
+ * Migrates the pre-`candidates` shape too. That shape was a bare list of provider
+ * ids with no model, so the provider is carried over with an **empty** modelId: the
+ * runtime skips an empty model rather than guessing one, and the settings pane shows
+ * it as "pick a model". Silently substituting a default model would quietly change
+ * where a handover lands, which is exactly what the explicit model is here to prevent.
+ *
+ * Unknown ids are *not* pruned — a provider may be temporarily absent (e.g. the store
+ * has not hydrated yet); the runtime skips whatever does not resolve.
+ */
+export function normalizeProviderFallback(value: unknown): ProviderFallbackConfig {
+  if (!value || typeof value !== 'object') return createDefaultProviderFallback()
+  const raw = value as { enabled?: unknown; candidates?: unknown; priority?: unknown }
+  return { enabled: raw.enabled === true, candidates: readCandidates(raw) }
+}
+
+function readCandidates(raw: { candidates?: unknown; priority?: unknown }): ProviderFallbackCandidate[] {
+  const source = Array.isArray(raw.candidates)
+    ? raw.candidates
+    : Array.isArray(raw.priority)
+      // Pre-candidates shape: ids only, so the model is left for the user to choose.
+      ? raw.priority.map((providerId) => ({ providerId, modelId: '' }))
+      : []
+
+  const seen = new Set<string>()
+  const candidates: ProviderFallbackCandidate[] = []
+  for (const entry of source) {
+    const candidate = readCandidate(entry)
+    // One entry per provider: its models share a single quota, so a repeat is a no-op.
+    if (!candidate || seen.has(candidate.providerId)) continue
+    seen.add(candidate.providerId)
+    candidates.push(candidate)
+  }
+  return candidates
+}
+
+function readCandidate(entry: unknown): ProviderFallbackCandidate | null {
+  if (!entry || typeof entry !== 'object') return null
+  const raw = entry as { providerId?: unknown; modelId?: unknown }
+  const providerId = typeof raw.providerId === 'string' ? raw.providerId.trim() : ''
+  if (!providerId) return null
+  const modelId = typeof raw.modelId === 'string' ? raw.modelId.trim() : ''
+  return { providerId, modelId }
+}
+
 export const DEFAULT_MAX_CONCURRENT_SUB_AGENTS = 2
 export const MIN_MAX_CONCURRENT_SUB_AGENTS = 1
 export const MAX_MAX_CONCURRENT_SUB_AGENTS = 8
 export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 15
 export const MIN_MAX_TOOL_CALLS_PER_TURN = 1
 export const MAX_MAX_TOOL_CALLS_PER_TURN = 50
+// T-3: 运行时驻留会话在内存里保留的最近轮数（轮 = 一条 user 消息及其后的回复）。
+export const DEFAULT_MAX_RESIDENT_TURNS = 15
+export const MIN_MAX_RESIDENT_TURNS = 5
+export const MAX_MAX_RESIDENT_TURNS = 50
 
 export interface RecentWorkingTarget {
   workingFolder: string
@@ -191,6 +259,13 @@ export function clampMaxToolCallsPerTurn(value: number): number {
     Math.max(MIN_MAX_TOOL_CALLS_PER_TURN, Math.floor(value))
   )
 }
+export function clampMaxResidentTurns(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_MAX_RESIDENT_TURNS
+  return Math.min(
+    MAX_MAX_RESIDENT_TURNS,
+    Math.max(MIN_MAX_RESIDENT_TURNS, Math.floor(value))
+  )
+}
 export function normalizeShellExecutionEndpoint(value: unknown): ShellExecutionEndpoint {
   if (
     value === 'auto' ||
@@ -268,4 +343,61 @@ export function resolveReasoningEffortForModel({
 
   return thinkingConfig?.defaultReasoningEffort ?? reasoningEffort
 }
+
+// ── BrowserSearch (S-23) ──
+
+/**
+ * A user-defined search engine.
+ *
+ * `basic` is a URL template parsed with the generic h2/h3 heuristic, and its hits
+ * are marked low confidence. `selector` adds a render mode and CSS selectors for
+ * precise parsing. Feeding the fetched HTML to a model to parse is deliberately
+ * *not* a tier: it is slow, costly and unstable, so it is not a main path.
+ */
+export interface CustomSearchEngine {
+  id: string
+  name: string
+  enabled: boolean
+  /** Intent this engine joins (general / tech / academic / finance / social / knowledge). */
+  intent: string
+  tier: 'basic' | 'selector'
+  /** Must contain the `{query}` placeholder. */
+  urlTemplate: string
+  renderMode: 'http' | 'rendered'
+  selectors: {
+    item: string
+    title: string
+    url: string
+    snippet: string
+  }
+}
+
+export interface BrowserSearchSettings {
+  /** Built-in engine ids the user enabled. */
+  enabledEngineIds: string[]
+  /** Per-intent engine overrides. An intent with no entry uses the built-in routing. */
+  intentEngines: Record<string, string[]>
+  /** When false, every enabled engine is queried and intent detection is skipped. */
+  autoRoute: boolean
+  /** Maximum results after deduplication. */
+  maxResults: number
+  customEngines: CustomSearchEngine[]
+}
+
+/**
+ * Pre-S-23 WebSearch configuration, preserved verbatim.
+ *
+ * The API-search chain it configured is gone, but the values are kept so an
+ * existing provider choice and API key are not silently dropped — the old fields
+ * would otherwise disappear the first time the user opened settings.
+ */
+export interface LegacyWebSearchSettings {
+  enabled: boolean
+  provider: string
+  apiKey: string
+  engine: string
+  maxResults: number
+  timeout: number
+}
+
 

@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { cn } from '@renderer/lib/utils'
 
 interface SettingsSectionProps {
@@ -9,6 +9,8 @@ interface SettingsSectionProps {
   actions?: ReactNode
   children: ReactNode
   className?: string
+  /** Extra classes for the inner content wrapper (e.g. flex sizing). */
+  contentClassName?: string
 }
 
 /**
@@ -16,13 +18,20 @@ interface SettingsSectionProps {
  * settings-primitives): rounded border, subtle card background, header row
  * with optional right-side actions (e.g. a Switch).
  */
+/**
+ * Rows of a settings list, separated by hairlines rather than wrapped in a border each —
+ * a column of boxes reads as a wall, and the list is already inside a bordered section.
+ */
+export const SETTINGS_LIST_CLASS = 'divide-y divide-border/60'
+
 export function SettingsSection({
   id,
   title,
   description,
   actions,
   children,
-  className
+  className,
+  contentClassName
 }: SettingsSectionProps): React.JSX.Element {
   const hasHeader = Boolean(title || description || actions)
 
@@ -45,7 +54,7 @@ export function SettingsSection({
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
       ) : null}
-      <div className="space-y-4">{children}</div>
+      <div className={cn('space-y-4', contentClassName)}>{children}</div>
     </section>
   )
 }

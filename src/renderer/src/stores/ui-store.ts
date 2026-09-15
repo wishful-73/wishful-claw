@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import {
   LEFT_SIDEBAR_DEFAULT_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH,
@@ -26,14 +26,6 @@ import { confirm } from '@renderer/components/ui/confirm-dialog'
 // Re-export types for backward compatibility
 export type {
   AppMode,
-  AutoModelRoute,
-  AutoModelTaskType,
-  AutoModelConfidence,
-  AutoModelDecisionSource,
-  AutoModelRoutingComplexity,
-  AutoModelRoutingRisk,
-  AutoModelSelectionStatus,
-  AutoModelRoutingState,
   ChatView,
   RightPanelSection,
   AgentFilesTab,
@@ -191,16 +183,14 @@ export const useUIStore = create<UIStore>((set, get) => ({
   toggleRuntimeStatusPanel: () => set((state: any) => ({ runtimeStatusPanelOpen: !state.runtimeStatusPanelOpen })),
   setRuntimeStatusPanelOpen: (open: any) => set({ runtimeStatusPanelOpen: open }),
 
-  // Auto model selection
-  autoModelSelectionsBySession: {},
-  autoModelRoutingStatesBySession: {},
-  setAutoModelSelection: (sessionId: any, status: any) =>
+  // Per-session quota-failover chain. In-memory on purpose: it belongs with the rest
+  // of the per-session runtime state (the attempted-chain map, the auto selection),
+  // and it is read through one function — provider-auto-fallback.resolveFallbackCandidates —
+  // so moving it into the session row later would not touch any caller.
+  fallbackCandidatesBySession: {},
+  setSessionFallbackCandidates: (sessionId: any, candidates: any) =>
     set((state: any) => ({
-      autoModelSelectionsBySession: { ...state.autoModelSelectionsBySession, [sessionId]: status }
-    })),
-  setAutoModelRoutingState: (sessionId: any, status: any) =>
-    set((state: any) => ({
-      autoModelRoutingStatesBySession: { ...state.autoModelRoutingStatesBySession, [sessionId]: status }
+      fallbackCandidatesBySession: { ...state.fallbackCandidatesBySession, [sessionId]: candidates }
     })),
 
   // Settings page

@@ -71,7 +71,10 @@ export interface AutoFallbackTarget {
  */
 export function resolveFallbackCandidates(sessionId: string): ProviderFallbackCandidate[] {
   const override = useUIStore.getState().fallbackCandidatesBySession[sessionId]
-  if (override && override.length > 0) return override
+  // `null` means "never touched, use the default chain". An empty array is a deliberate
+  // answer too — the session switched every candidate off — so it must not fall through
+  // to the default, which would hand over against the user's wish.
+  if (override) return override
   return useSettingsStore.getState().providerFallback?.candidates ?? []
 }
 

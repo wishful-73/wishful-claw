@@ -18,26 +18,91 @@ import type {
   ProviderFallbackCandidate
 } from '../../../../shared/types/provider'
 
+/** Rows are separated by hairlines — one border per row reads as a wall of boxes. */
+export const FALLBACK_ROWS_CLASS = 'divide-y divide-border/60'
+
 /**
- * Editor for one quota-failover chain: `{ provider, model }` entries, ordered.
+ * One chain entry, laid out on two lines: provider on top, model underneath.
  *
- * Shared by the settings pane (the default chain) and the model switcher (a
- * per-session override) so the two cannot drift apart — the previous design had the
- * candidate list written out per surface, which is how it ended up disagreeing about
- * what a candidate even is.
+ * The model gets its own line because it is the long value — squeezed next to the
+ * provider name in a narrow panel it was the first thing to disappear. `actions` is
+ * whatever the surface needs on the right (a model picker in Settings, a switch in the
+ * session panel).
+ */
+export function FallbackRow({
+  index,
+  provider,
+  modelId,
+  actions
+}: {
+  /** Position in the chain, or null when the entry is not part of it. */
+  index: number | null
+  provider: AIProvider
+  modelId: string
+  actions: React.ReactNode
+}): React.JSX.Element {
+  const { t } = useTranslation('settings')
+  const model = useMemo(() => findChatModel(provider, modelId), [provider, modelId])
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5">
+      <span className="w-3.5 shrink-0 text-center text-[10px] tabular-nums text-muted-foreground/70">
+        {index === null ? '' : index + 1}
+      </span>
+      <ProviderIcon builtinId={provider.builtinId} size={14} />
+      <div className="flex min-w-0 flex-1 flex-col leading-tight">
+        <span className={cn('truncate text-xs', index === null ? 'text-muted-foreground' : 'font-medium')}>
+          {provider.name}
+        </span>
+        <span
+          className={cn(
+            'truncate text-[10px]',
+            model ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-500'
+          )}
+        >
+          {model?.name ?? (modelId ? t('provider.fallback.modelGone') : t('provider.fallback.modelMissing'))}
+        </span>
+      </div>
+      {model && model.supportsFunctionCall === false ? (
+        // A warning, not a block: the handover still works, the continued turn just
+        // cannot use tools.
+        <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
+          {t('provider.fallback.modelNoTools')}
+        </span>
+      ) : null}
+      {actions}
+    </div>
+  )
+}
+
+/** Chat models of one provider. Anything else cannot serve a failover turn. */
+export function chatModelsOf(provider: AIProvider): AIModelConfig[] {
+  return (provider.models ?? []).filter(
+    (model) =>
+      model.enabled !== false && (model.category === undefined || model.category === 'chat')
+  )
+}
+
+export function findChatModel(provider: AIProvider, modelId: string): AIModelConfig | null {
+  if (!modelId) return null
+  return chatModelsOf(provider).find((model) => model.id === modelId) ?? null
+}
+
+/**
+ * Editor for the **default** chain (Settings → 自动切换): `{ provider, model }` entries,
+ * ordered, with the model chosen right here.
  *
- * The caller owns persistence: it passes the current list and receives the next one.
+ * The per-session panel deliberately does *not* use this — it only enables and reorders
+ * the entries configured here, so its rows show the model as text. Keeping the picker in
+ * one place is what stops a handover from landing on a model nobody chose.
  */
 export function FallbackCandidateEditor({
   candidates,
   onChange,
-  activeProviderId,
   className
 }: {
   candidates: ProviderFallbackCandidate[]
   onChange: (candidates: ProviderFallbackCandidate[]) => void
-  /** Marks the row the session is currently on, when known. */
-  activeProviderId?: string | null
   className?: string
 }): React.JSX.Element {
   const { t } = useTranslation('settings')
@@ -78,98 +143,90 @@ export function FallbackCandidateEditor({
     onChange(next)
   }
 
-  const setModel = (index: number, modelId: string): void => {
-    onChange(ordered.map((item, i) => (i === index ? { ...item, modelId } : item)))
-  }
-
   const isReady = (provider: AIProvider): boolean =>
     provider.enabled && (provider.requiresApiKey === false || Boolean(provider.apiKey))
 
   return (
-    <div className={cn('space-y-1.5', className)}>
+    <div className={className}>
       {ordered.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border/70 px-3 py-4 text-center text-xs text-muted-foreground">
+        <p className="px-3 py-4 text-center text-xs text-muted-foreground">
           {t('provider.fallback.empty')}
         </p>
       ) : (
-        ordered.map((candidate, index) => {
-          const provider = providerById.get(candidate.providerId)
-          if (!provider) return null
-          return (
-            <div
-              key={candidate.providerId}
-              className="flex items-center gap-2 rounded-lg border border-border/60 bg-background px-2 py-1.5"
-            >
-              <span className="w-3.5 shrink-0 text-center text-[10px] tabular-nums text-muted-foreground/70">
-                {index + 1}
-              </span>
-              <ProviderIcon builtinId={provider.builtinId} size={14} />
-              <span className="w-24 min-w-0 shrink-0 truncate text-xs font-medium">
-                {provider.name}
-              </span>
-              <CandidateModelSelect
+        <div className={FALLBACK_ROWS_CLASS}>
+          {ordered.map((candidate, index) => {
+            const provider = providerById.get(candidate.providerId)
+            if (!provider) return null
+            return (
+              <FallbackRow
+                key={candidate.providerId}
+                index={index}
                 provider={provider}
                 modelId={candidate.modelId}
-                onChange={(modelId) => setModel(index, modelId)}
-              />
-              {!isReady(provider) ? (
-                <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
-                  {t('provider.fallback.notReady')}
-                </span>
-              ) : null}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                disabled={index === 0}
-                title={t('provider.fallback.moveUp')}
-                onClick={() => move(index, -1)}
-              >
-                <ArrowUp className="size-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                disabled={index === ordered.length - 1}
-                title={t('provider.fallback.moveDown')}
-                onClick={() => move(index, 1)}
-              >
-                <ArrowDown className="size-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-destructive"
-                title={t('provider.fallback.remove')}
-                onClick={() =>
-                  onChange(ordered.filter((item) => item.providerId !== candidate.providerId))
+                actions={
+                  <>
+                    <CandidateModelSelect
+                      provider={provider}
+                      modelId={candidate.modelId}
+                      onChange={(modelId) =>
+                        onChange(
+                          ordered.map((item, i) => (i === index ? { ...item, modelId } : item))
+                        )
+                      }
+                    />
+                    {!isReady(provider) ? (
+                      <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
+                        {t('provider.fallback.notReady')}
+                      </span>
+                    ) : null}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                      disabled={index === 0}
+                      title={t('provider.fallback.moveUp')}
+                      onClick={() => move(index, -1)}
+                    >
+                      <ArrowUp className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                      disabled={index === ordered.length - 1}
+                      title={t('provider.fallback.moveDown')}
+                      onClick={() => move(index, 1)}
+                    >
+                      <ArrowDown className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-destructive"
+                      title={t('provider.fallback.remove')}
+                      onClick={() =>
+                        onChange(ordered.filter((item) => item.providerId !== candidate.providerId))
+                      }
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </>
                 }
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
-          )
-        })
+              />
+            )
+          })}
+        </div>
       )}
 
       {available.length > 0 ? (
-        <div className="space-y-1 pt-1">
+        <div className={cn(FALLBACK_ROWS_CLASS, ordered.length > 0 && 'border-t border-border/60')}>
           {available.map((provider) => (
-            <div
-              key={provider.id}
-              className={cn(
-                'flex items-center gap-2 rounded-lg border border-border/60 px-2 py-1.5',
-                isReady(provider) ? 'bg-background' : 'bg-muted/30'
-              )}
-            >
+            <div key={provider.id} className="flex items-center gap-2 px-2 py-1.5">
+              <span className="w-3.5 shrink-0" />
               <ProviderIcon builtinId={provider.builtinId} size={14} />
-              <span className="min-w-0 flex-1 truncate text-xs">{provider.name}</span>
-              {provider.id === activeProviderId ? (
-                <span className="shrink-0 text-[10px] text-muted-foreground">
-                  {t('provider.fallback.current')}
-                </span>
-              ) : null}
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                {provider.name}
+              </span>
               {!isReady(provider) ? (
                 <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
                   {t('provider.fallback.notReady')}
@@ -194,14 +251,6 @@ export function FallbackCandidateEditor({
   )
 }
 
-/** Chat models of one provider. Anything else cannot serve a failover turn. */
-function chatModelsOf(provider: AIProvider): AIModelConfig[] {
-  return (provider.models ?? []).filter(
-    (model) =>
-      model.enabled !== false && (model.category === undefined || model.category === 'chat')
-  )
-}
-
 function CandidateModelSelect({
   provider,
   modelId,
@@ -213,33 +262,19 @@ function CandidateModelSelect({
 }): React.JSX.Element {
   const { t } = useTranslation('settings')
   const models = chatModelsOf(provider)
-  const selected = models.find((model) => model.id === modelId)
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1.5">
-      <Select value={modelId || undefined} onValueChange={onChange}>
-        <SelectTrigger className="h-7 min-w-0 flex-1 text-xs">
-          <SelectValue placeholder={t('provider.fallback.chooseModel')} />
-        </SelectTrigger>
-        <SelectContent>
-          {models.map((model) => (
-            <SelectItem key={model.id} value={model.id} className="text-xs">
-              {model.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {!modelId ? (
-        <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
-          {t('provider.fallback.modelMissing')}
-        </span>
-      ) : selected && selected.supportsFunctionCall === false ? (
-        // A warning, not a block: the handover still works, the continued turn just
-        // cannot use tools. Refusing the pick would be worse than saying so.
-        <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
-          {t('provider.fallback.modelNoTools')}
-        </span>
-      ) : null}
-    </div>
+    <Select value={modelId || undefined} onValueChange={onChange}>
+      <SelectTrigger className="h-6 w-40 shrink-0 text-[11px]">
+        <SelectValue placeholder={t('provider.fallback.chooseModel')} />
+      </SelectTrigger>
+      <SelectContent>
+        {models.map((model) => (
+          <SelectItem key={model.id} value={model.id} className="text-xs">
+            {model.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }

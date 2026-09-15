@@ -515,7 +515,6 @@
       "availableTitle": "Available providers",
       "availableDesc": "Use the plus button to add a candidate",
       "noAvailable": "Every provider is already a candidate",
-      "current": "Current",
       "notReady": "Not ready",
       "moveUp": "Move up",
       "moveDown": "Move down",
@@ -525,6 +524,7 @@
       "autoSwitched": "{{from}} hit its limit — switched to {{to}} and continuing",
       "chooseModel": "Choose a model",
       "modelMissing": "No model chosen",
+      "modelGone": "Model unavailable",
       "modelNoTools": "This model cannot use tools"
     },
     "modelManagementDesc": "Manage global model defaults that provider copies inherit from",

@@ -515,7 +515,6 @@
       "availableTitle": "可选服务商",
       "availableDesc": "点右侧加号加入候选列表",
       "noAvailable": "所有服务商都已在候选列表中",
-      "current": "当前",
       "notReady": "未就绪",
       "moveUp": "上移",
       "moveDown": "下移",
@@ -525,6 +524,7 @@
       "autoSwitched": "{{from}} 触发限额，已自动切换到 {{to}}，正在继续推进",
       "chooseModel": "选择模型",
       "modelMissing": "未选择模型",
+      "modelGone": "模型已不可用",
       "modelNoTools": "该模型不支持工具"
     },
     "modelManagementDesc": "集中管理全局模型默认配置，供各服务商副本继承",

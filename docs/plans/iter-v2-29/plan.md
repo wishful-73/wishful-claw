@@ -1524,3 +1524,16 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 - **新增回归 `tests/session-model-resolution`（23 断言）**：auto+绑定取胜、auto 无绑定回落全局、绑定失效不搁浅、inherit/manual/plugin 各自语义不变、**以及"写了绑定就粘住 + 仍是 auto 可再次接管"这条 F-1 的性质** —— 这条此前一行测试都没有。
 
 **门禁**：TS 三配置 0 错；**14 套 TS 回归全过**（新增 `session-model-resolution`）。
+
+## 需求 26 修正 · 第二轮（2026-09-15，老大看过真机后）
+
+1. **会话面板的职责收窄为「启用 + 排序」** —— 老大原话：「模型看不到，下拉框太窄了，可以考虑直接显示模型，不下拉了，就用默认数据，**这里只是启用或者切换顺序**」。
+   - 根因不只是宽度：行内塞了 序号 + 图标 + 服务商名 + Select + 三个按钮，在 320px 宽的面板里 Select 被挤没了。
+   - 改动：**行改两行布局**（服务商名在上、模型名在下，模型终于有整行宽度）；**会话面板不再放下拉**，改为「设置页全链的每一项 + 一个开关（本会话启用）+ 上下移」；未启用的项**灰显保留**（可以再打开），不做静默消失。
+   - 职责因此划清：**设置页配链 + 选模型**（唯一能改模型的地方），**会话面板启用 + 排序**。这样也不会有第二个地方去"猜/改"切换落点。
+   - 连带修掉一个语义漏洞：`resolveFallbackCandidates` 原来是 `if (override && override.length > 0)`，导致**用户在本会话把所有候选都关掉（override = 空数组）时会回落到默认链** —— 与用户意愿相反。改为「非 null 即采用」，空数组 = 本会话不接管。
+2. **列表项去掉逐项边框，改分隔线** —— 老大原话：「每一项都是一个边框框起来，一个分隔线就够了」。两处（设置页候选/可用列表、会话面板）统一用 `divide-y`，共享常量 `FALLBACK_ROWS_CLASS`，避免又一处样式各写一遍。
+3. **删掉孤儿 i18n key** `goal.pendingTitle` —— 全仓无消费方，实际用的是 `goal.pendingConfirmTitle`（zh/en 都有）。此前记成「en 缺 pendingTitle」是**反的**，一并纠正。
+4. **i18n 增删**：新增 `provider.fallback.modelGone` + `topbar.autoFallback{Empty,NotReady,MoveUp,MoveDown,Toggle}`（zh/en 齐）；删掉已无消费方的 `provider.fallback.current`。
+
+**门禁**：TS 三配置 0 错；14 套 TS 回归全过；i18n 脚本复核 zh/en 完全对齐（只剩 `chat.json` 那处已验证正常的复数形态）。

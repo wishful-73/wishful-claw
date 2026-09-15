@@ -21,7 +21,6 @@ import type { ProviderFallbackCandidate } from '../../../../../shared/types/prov
  */
 export function ProviderFallbackPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
-  const activeProviderId = useProviderStore((state) => state.activeProviderId)
   const providers = useProviderStore((state) => state.providers)
   const fallback = useSettingsStore((state) => state.providerFallback)
   const updateSettings = useSettingsStore((state) => state.updateSettings)
@@ -71,11 +70,7 @@ export function ProviderFallbackPanel(): React.JSX.Element {
         title={t('provider.fallback.orderTitle')}
         description={t('provider.fallback.orderDesc')}
       >
-        <FallbackCandidateEditor
-          candidates={ordered}
-          onChange={commit}
-          activeProviderId={activeProviderId}
-        />
+        <FallbackCandidateEditor candidates={ordered} onChange={commit} />
       </SettingsSection>
     </div>
   )

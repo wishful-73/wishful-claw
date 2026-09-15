@@ -406,7 +406,6 @@
     "notSet": "not set",
     "noSessionGoal": "No session goal.",
     "noUsage": "0s",
-    "pendingTitle": "Goal pending confirmation",
     "pendingConfirmTitle": "Confirm this goal before execution",
     "modelConfirmTitle": "Choose the Goal model",
     "providerLabel": "API provider",

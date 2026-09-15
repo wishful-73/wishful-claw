@@ -4,7 +4,8 @@
 > 被审对象：`dev/v2-iter-29`，commit 区间 `4710c6d2..ae1f866f`（31 个提交 / 173 文件 / +10948 / -3505）
 > 审查范围：25 个需求（S-16～S-25 正式 10 项 + T-1～T-15 临时 15 项）
 > 审查方式：独立审查。原计划 4 个只读 subagent 并行审查，**全部因执行预算上限（约 12 轮 / 23 次工具调用）未产出报告**（报告留到最后写 → 没写成），改为人工作业；关键结论逐条读代码取证。
-> **结论：FAIL**（❌ 5 项 > 0）
+> **结论：FAIL → 收尾日复评 PASS（带挂账真机项）**
+> 收尾复评（2026-09-15 晚，对象 `e173f96a`）：❌ 5 项**全部已处置** —— F-1 / F-2 / F-8 修复并回归，F-9 由老大裁定**不折叠**（历史已推送，改写需 force push，非必要不冒险），F-10 空壳工程已删。收尾期追加的需求 26~29 与全部修复另审一遍，见文末「五」。**未发现新的阻断项**，剩余挂账全部是「agent 无环境」类真机项。
 > 统计：✅ 20 / ⚠️ 9 / ❌ 5
 >
 > **修复进展（2026-09-15）**：F-8 / F-2（provider 载荷单点构造）、F-1 / F-3 / F-4 / F-5（S-21 自动切换收口）已修复并验证，见各节与 `plan.md` 的「修复」节。
@@ -237,3 +238,50 @@ const QUOTA_PHRASE_PATTERNS = [/rate[_\s-]?limit/i, /\bquota\b/i, /usage[_\s-]?l
 6. **T-15 观感**：不滞后 + 不跳（需真机；本次已用回归断言锁住数学性质）。
 7. **S-20 的实际生效性**（F-8）：代码路径判定为「主链路不生效」，需一次真机/`request_debug` 反证。
 8. **S-19 / S-18 / S-24 / S-17 的目视验收**：需真机。
+
+---
+
+## 五、收尾期审查（2026-09-15 晚）
+
+> 被审对象：`e173f96a`（本迭代最终提交，工作区干净）
+> 范围：前四节未覆盖的部分 —— 需求 26~29 + 收尾期全部修复
+> 方式：读码取证（核心链路逐行 + 全仓残留扫描，`src/**` 共 1416 个 `.cs/.ts/.tsx`）
+
+### 5.1 需求 26~29
+
+| # | 需求 | 结论 | 依据 |
+|---|---|---|---|
+| 26 | S-21 收口：候选链改「服务商+模型」+ 两层配置 + 吞报错卡片 | ✅ | 见下 5.4 逐条 |
+| 27 | 渠道配置页改版（全局设置占主体 + 渠道折叠块） | ✅ | 老大 2026-09-15 真机确认（A4）；死代码 `selectedChannelId` / `setSelectedChannel` 全仓零消费已删 |
+| 28 | 渠道全局设置去选项卡，字段 8→2 | ✅ | 老大真机确认（A1）；前后端键集一致（`channel-store.ts:45` 与 `GlobalChannelSettings.cs:33` 同为 `autoStart` / `shellRequiresApproval`）；C# 侧第二处 `with { ReadablePathPrefixes }` 构造点已一并摘除（该字段全仓零命中） |
+| 29 | 顶栏浏览器快捷入口 | ✅ | 老大真机确认（A2）；按钮不受 `hasProject` 约束是刻意决策，已登记待推翻 |
+
+### 5.2 收尾期修复
+
+| 修复 | 结论 | 依据 |
+|---|---|---|
+| i18n 误删恢复 + 引用一致性守卫 | ✅ | 新增 `tests/i18n-coverage`（查「代码引用的 key 是否在 locale 定义」），补 17 个存量缺失 key；守卫只在文件声明过 `useTranslation` 时才查，避免误报 |
+| 渠道 descriptor 文案走 i18n | ✅ | 8 条 `description` 改 key + 渲染端按 `channel.` 前缀 `t()`；`displayName` 未动（它是存库默认名，改 key 会把库写坏），已单独立项 |
+| F-8 / F-2 provider 载荷单点构造 | ✅ | `buildProviderPayload` 成为唯一构造器，五个发送点收敛，`sessionId` 由 chat store 盖章 |
+| 协议取值改模型级优先 | ✅ | `type: modelConfig?.type ?? provider.type`；37 个 `openai-responses` 模型改走 `/responses`，已在 plan 登记影响面 |
+| F-3 限额判定收紧 / F-4 竞态 / F-5 链路清理 | ✅ | 判定搬进纯模块 `quota-failure.ts`（可测）；`runAutoFallback` 首行重新校验会话仍存在且仍是 auto；`deleteSession` 调 `clearAutoFallbackAttempts` |
+| F-11 时间线 metadata JSON / F-12 图谱截断提示 / F-14 全部会话作用域 / F-15 i18n 存量缺口 | ✅ | 各自带回归断言 |
+| 底部统计条 auto 显示「服务商 · 模型」 | ✅ | 仅 auto 渲染；数据源是发消息同一条 `resolveSessionModelSelection`，切换后立即跟随 |
+
+### 5.3 残留扫描（全仓 1416 文件，全部零命中）
+
+| 已退役标识符 | 命中 |
+|---|---|
+| `autoReply` / `streamingReply` / `AllowReadHome` / `ReadablePathPrefixes` / `allowWriteOutside` / `allowSubAgents` | 0（需求 28 砍掉的六个「存了不用」字段，C# 与 TS 双侧干净） |
+| `pickFallbackModelId` | 0（需求 26 删掉的「按名字猜模型」，纠正方向正确） |
+| `selectedChannelId` / `setSelectedChannel` | 0（需求 27 删掉的死代码） |
+| `setAutoModelSelection` / `autoModelSelectionsBySession` | 0（F-1 的病根表已整体退役） |
+
+### 5.4 需求 26 主链路逐条复核
+
+- `tryTakeOverQuotaFailure`（`provider-auto-fallback.ts:164`）**只有算得出下一个候选才返回 true**；候选试完 / 只启用一家 / 非 auto 会话一律返回 false → 照常渲染报错卡片。**不会出现「既没切、错误也没了」的静默失败**。
+- 延迟 400ms 执行前**重新校验** `session.modelSelectionMode === 'auto'`（`:200`），用户这期间手动切模型不会被过期决定覆盖；落空则 `restoreErrorCard` 把卡片补回。
+  - ℹ️ 复核点：`restoreErrorCard` 直接走 `useChatStore.setState` 原地改 `message.error`。**确认无害** —— `chat-store` 挂了 immer middleware，该 middleware 对 `store.setState` 同样做了 `produce` 包装，因此新 state 与新 `messages` 数组引用都会生成，订阅方能收到通知。
+- 自动推进那一轮**复用 `buildProviderPayload` 并补齐会话参数**（`scope / collaborationMode / workingFolder / projectId / sshConnectionId / toolPreset / maxIterations / personaId / 语言 / 上下文压缩`），F-2 的「Worker 靠猜 scope」病根已消除。
+- `applyAutoFallbackTarget` 只写会话绑定，**保持 auto 模式**；auto 分支优先读会话绑定（旧行为是回全局），这条属**语义变更**，是 F-1 的最终修法 —— 已在 plan 的「人工复测清单」列为第一优先待验。
+- ℹ️ 已知取舍（非缺陷）：`sendMessage` 抛异常时该候选**已被记进本次链路**且会话绑定已切换。设计如此 —— 避免同一候选被反复重试打转；TTL 10 分钟到期后链路自然重置。

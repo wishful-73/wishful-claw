@@ -31,7 +31,7 @@
 | ProviderHeaderRegressionTests（含 `visibility-snapshot` golden、`UsageLogChecks`） | ✅ passed |
 | AgentTimelineRegressionTests | ✅ passed |
 | CompactionSnapshotRegressionTests | ✅ parent checks 2 + pasted-block 11 |
-| ProviderFallbackRegressionTests | ✅ passed（**仅 1 条 sanity，见 review F-10**） |
+| ~~ProviderFallbackRegressionTests~~ | ⛔ **2026-09-15 已删除**（恒真断言，见 review F-10） |
 | ToolConcurrencyRegressionTests | ✅ passed |
 | ChannelShellApprovalRegressionTests | ✅ 74 断言 |
 | GoalRegressionTests | ✅ 148 |

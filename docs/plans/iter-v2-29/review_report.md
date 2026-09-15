@@ -9,7 +9,8 @@
 >
 > **修复进展（2026-09-15）**：F-8 / F-2（provider 载荷单点构造）、F-1 / F-3 / F-4 / F-5（S-21 自动切换收口）已修复并验证，见各节与 `plan.md` 的「修复」节。
 > 审查报告之外另发现一条并存问题，同日由老大拍板一并修正：**协议取值只取服务商级** —— `AIModelConfig.type` 的语义是「模型级覆盖、缺省跟随服务商」，全仓五个消费方都这么读，只有聊天链路固定发服务商级，导致同一模型在 chat 与 cron 走两个协议（`openai` / `azure-openai` / `copilot-oauth` 共 37 个 `openai-responses` 模型受影响）。详见 `plan.md` 的「修复」节。
-> 未处理：**F-9**（S-21 三刀未折叠，改写已推送历史需 force push）、**F-10**（`S-21.D7` 撞号 + 空壳测试工程）、⚠️ F-6~F-7 / F-13 / F-15。
+> 未处理：**F-9**（S-21 三刀未折叠，改写已推送历史需 force push）、⚠️ F-6~F-7 / F-13。
+> **F-10 已处置（2026-09-15）**：`S-21.D7` 重复编号改为 `S-21.D8`；空壳工程 `WishfulClaw.ProviderFallbackRegressionTests` 经老大拍板**删除**（详见 F-10 一节）。
 
 ---
 
@@ -172,6 +173,7 @@ sidecar-mapping.ts:154  userAgent: resolveProviderUserAgent(provider.userAgent),
 
 - 同一节里 `S-21.D7` 出现两次：一次是「真机验证（老大做）」（未勾选），一次是「回归测试工程」（已勾选）。读的人会误判进度。
 - `tests/WishfulClaw.ProviderFallbackRegressionTests` 只有 1 条 sanity 断言（D1 备注承诺「状态机测试在 D3 填实」，但 D3 改前端方案后 C# 侧已无状态机可测），**却已进 `.sln` 参与编译**。前端真回归 `tests/provider-fallback/program.ts`（18 断言）只覆盖配置持久化的浅拷贝 bug 与纯函数，**没覆盖 F-1/F-2 两条主链**。
+  > ✅ **已处置（2026-09-15，老大拍板删除）** —— 那条断言是恒真的 `Assert(true, "sanity: the runner starts")`，留着只制造「这块测过了」的错觉。删除前确认无真空：`ProviderRetryPolicy` 的重试语义仍由 `ProviderHeaderRegressionTests/UsageLogChecks.cs` 覆盖。⚠️ 另一条仍未解决：前端 `tests/provider-fallback` 现在有 31 断言（含限额判定边界），但**仍然没有覆盖 F-1/F-2 两条主链** —— 那两条依赖 store 与 UI store 的真实交互，要单独设计。
 
 ### ⚠️ F-3（S-21）`isQuotaFailure` 匹配过宽，可能误触发自动切换
 

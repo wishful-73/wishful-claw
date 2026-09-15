@@ -489,7 +489,7 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 **模型怎么定**：候选也有当前这个 model id → 继续用它（行为完全一致）；否则用它自己的 `defaultModel`；再否则第一个已启用的 chat 模型。
 
 **为什么是前端**：一次 agent run 撞上限额就结束了，不存在「跑一半接着跑」；前端发消息本来就只带增量，历史是模型调用时才拼的。所以自动切换只需要替用户做两件事 —— 操作模型切换器（换服务商+模型）、发一句「继续推进」。
-- [✓] S-21.D8：**回归测试工程** —— 新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`（csproj 引用 `WishfulClaw.Agent`，Program.cs 留 sanity 断言 1 条 + D1-D7 注释指针），用 `dotnet sln add` **同步进 `src/runtime/WishfulClaw.sln`**。`dotnet build sln` 0/0；`dotnet run --project tests/<项目> --no-build` 通过。**这一步单独提前做**是项目硬规则（不然像 `CronRegressionTests` / `MemoryRecallRegressionTests` 一样**静默漏编**——既不在 sln、也不在 `dotnet build` 范围里，等于测试从来没跑过）。状态机测试在 D3、AgentLoop 集成测试在 D4 时填实
+- [✓] S-21.D8：**回归测试工程** —— 新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`（csproj 引用 `WishfulClaw.Agent`，Program.cs 留 sanity 断言 1 条 + D1-D7 注释指针），用 `dotnet sln add` **同步进 `src/runtime/WishfulClaw.sln`**。`dotnet build sln` 0/0；`dotnet run --project tests/<项目> --no-build` 通过。**这一步单独提前做**是项目硬规则（不然像 `CronRegressionTests` / `MemoryRecallRegressionTests` 一样**静默漏编**——既不在 sln、也不在 `dotnet build` 范围里，等于测试从来没跑过）。状态机测试在 D3、AgentLoop 集成测试在 D4 时填实。⚠️ **2026-09-15 该工程已删除**（状态机作废后只剩恒真断言），见下方「空壳测试工程」一节
 
 **Mini 验证**：tsc 三配置零错误；9 个 TS 回归套件全过；.NET 0/0（C# 已无改动）；真机触发 429 能自动切 + 自动推进（老大验）。
 
@@ -502,7 +502,7 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 - `src/renderer/src/components/settings/provider/ProviderFallbackPanel.tsx` — 新建
 - `src/renderer/src/components/settings/ProviderPanel.tsx` — 改（第三个 Tab）
 - `tests/provider-fallback/` — 新建（TS，npm `test:provider-fallback`）
-- `tests/WishfulClaw.ProviderFallbackRegressionTests/` — 新建（**并入 .sln**）
+- `tests/WishfulClaw.ProviderFallbackRegressionTests/` — 新建（**并入 .sln**）。**后于 2026-09-15 删除**：C# 状态机作废后该工程只剩 `Assert(true, "…")` 一条恒真断言，留着只是假安全感，详见下方「空壳测试工程」一节
 - `src/renderer/src/locales/{zh,en}/*.json` — 改
 
 ---
@@ -781,7 +781,7 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 
 ## 实施（已完成）
 
-1. **新建 `tests/WishfulClaw.Tests.sln`**：收纳 13 个回归测试工程，并直接引用被它们依赖的产品工程（Contracts / Core / Infrastructure / Persona / Agent 等），使 `tests/` 可独立编译
+1. **新建 `tests/WishfulClaw.Tests.sln`**：收纳 13 个回归测试工程（2026-09-15 删掉空壳的 `ProviderFallbackRegressionTests` 后为 **12 个**），并直接引用被它们依赖的产品工程（Contracts / Core / Infrastructure / Persona / Agent 等），使 `tests/` 可独立编译
 2. **`src/runtime/WishfulClaw.sln` 移除全部测试工程**：只留产品与 `CodeGraph` / `Worker`
 3. **移除 playwright e2e**：删 `package.json` 的 `test:e2e` / `pretest:e2e` 与 `@playwright/test` 依赖；`tests/e2e/`（从未纳入版本控制）已物理移除
 
@@ -1375,7 +1375,7 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 5. **收尾**：真机人工复测（本次多条需求是 UI 与渠道，最终目视仍由你确认）
 6. **T-7**：提供一次 **400 的上游报错原文 / 完整报文**（agent 侧只读得到状态码，需要真实响应体才能定量根因）；能顺手说明「工具不识别」是上游报错文案还是前端显示，更好
 
-> 已在规划阶段自行钉死、不再问你的：S-25 的 UI 落点（右侧面板新 Tab `timeline`）、S-16 的文件拆分（504 行已超阈值，先拆再改）、S-21 的测试承载（新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`）。
+> 已在规划阶段自行钉死、不再问你的：S-25 的 UI 落点（右侧面板新 Tab `timeline`）、S-16 的文件拆分（504 行已超阈值，先拆再改）、S-21 的测试承载（新建 `tests/WishfulClaw.ProviderFallbackRegressionTests` —— **该工程 2026-09-15 已删除，见「空壳测试工程」**）。
 
 # 验证门禁（迭代级）
 
@@ -1442,7 +1442,20 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 
 **门禁**：TS 三配置 0 错；13 套 TS 回归全过；`Worker.csproj` 与 `tests/WishfulClaw.Tests.sln` 0/0；AOT 无 IL2026/IL3050/IL3051；**11 个 C# 回归工程全过**（AgentTimeline 25 / ProviderHeader / CompactionSnapshot / ProviderFallback 1 / ToolConcurrency / ChannelShellApproval 74 / Goal 148 / SessionTaskCascade 180 / ChannelToolVisibility 108 / Cron 42 / MemoryRecall 18）。
 
-**仍未处理**：F-9（S-21 三刀折叠 —— 三个 commit 已推送，折叠须 force push，等老大点头）、F-10（`S-21.D7` 编号撞车 + `ProviderFallbackRegressionTests` 只有 1 条 sanity 断言却已进 sln）、F-13（截图落盘路径无边界，属产品口径）。
+**仍未处理**：F-9（S-21 三刀折叠 —— 三个 commit 已推送，折叠须 force push，等老大点头）、F-13（截图落盘路径无边界，属产品口径）。
+
+### 空壳测试工程（F-10 另一半，2026-09-15）
+
+老大拍板**删除** `tests/WishfulClaw.ProviderFallbackRegressionTests`。
+
+- 删除理由：D3 改前端方案后 C# 侧已无状态机可测，该工程只剩一条恒真断言 ——
+  `Assert(true, "sanity: the runner starts")`（`Program.cs:48`）。它进 `.sln` 的初衷是「留个落脚点、
+  别静默漏编」，但功能作废后它就只是**假安全感**：跑出 `ALL PASS (1 assertion)` 让人以为这块有覆盖。
+- 删除前确认**没有留下真空**：`ProviderRetryPolicy` 的重试语义仍由 `ProviderHeaderRegressionTests/UsageLogChecks.cs`
+  覆盖（多处 `ProviderRetryPolicy.ExecuteAsync`，含 `requestMaxRetries` 夹具）。
+- 一并把 `tests/WishfulClaw.Tests.sln` 的工程数从 13 更正为 12（T-6 那节），并从 S-21 的「涉及文件」里记下这次删除。
+
+**门禁**：`tests/WishfulClaw.Tests.sln` 0/0；**10 个 C# 回归工程全过**。
 
 ### i18n 存量缺口（F-15）+ 文档编号（F-10 一半，2026-09-15）
 

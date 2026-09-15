@@ -29,8 +29,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.GoalRegressionT
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.MemoryRecallRegressionTests", "WishfulClaw.MemoryRecallRegressionTests\WishfulClaw.MemoryRecallRegressionTests.csproj", "{90240F73-8493-4610-A29A-E7FD5FA64C9C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.ProviderFallbackRegressionTests", "WishfulClaw.ProviderFallbackRegressionTests\WishfulClaw.ProviderFallbackRegressionTests.csproj", "{89A10312-76BD-4134-929A-2409B8C11327}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.ProviderHeaderRegressionTests", "WishfulClaw.ProviderHeaderRegressionTests\WishfulClaw.ProviderHeaderRegressionTests.csproj", "{0C4B05F7-5512-4062-B05B-5689201EEDC4}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.SessionTaskCascadeRegressionTests", "WishfulClaw.SessionTaskCascadeRegressionTests\WishfulClaw.SessionTaskCascadeRegressionTests.csproj", "{14F5B3D5-80FD-40C0-9565-B21B1D3A8771}"
@@ -203,18 +201,6 @@ Global
 		{90240F73-8493-4610-A29A-E7FD5FA64C9C}.Release|x64.Build.0 = Release|Any CPU
 		{90240F73-8493-4610-A29A-E7FD5FA64C9C}.Release|x86.ActiveCfg = Release|Any CPU
 		{90240F73-8493-4610-A29A-E7FD5FA64C9C}.Release|x86.Build.0 = Release|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Debug|x64.Build.0 = Debug|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Debug|x86.Build.0 = Debug|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Release|Any CPU.Build.0 = Release|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Release|x64.ActiveCfg = Release|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Release|x64.Build.0 = Release|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Release|x86.ActiveCfg = Release|Any CPU
-		{89A10312-76BD-4134-929A-2409B8C11327}.Release|x86.Build.0 = Release|Any CPU
 		{0C4B05F7-5512-4062-B05B-5689201EEDC4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0C4B05F7-5512-4062-B05B-5689201EEDC4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0C4B05F7-5512-4062-B05B-5689201EEDC4}.Debug|x64.ActiveCfg = Debug|Any CPU

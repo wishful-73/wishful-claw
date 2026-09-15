@@ -149,7 +149,10 @@ public static class DbGlobalTaskDispatchTools
             {
                 DbAgentTimelineTools.Log(db, sessionId, null, "task_dispatched",
                     GetString(parameters, "instruction"),
-                    $"{{\"dispatch_id\":\"{id}\",\"global_task_id\":\"{globalTaskId}\",\"kind\":\"{GetString(parameters, "kind") ?? GlobalTaskDispatchKindValues.Message}\"}}");
+                    DbAgentTimelineTools.Metadata(
+                        ("dispatch_id", id),
+                        ("global_task_id", globalTaskId),
+                        ("kind", GetString(parameters, "kind") ?? GlobalTaskDispatchKindValues.Message)));
             }
 
             return WorkerResponse.Json(mutation, InfrastructureJsonContext.Default.GlobalTaskDispatchMutationResult);

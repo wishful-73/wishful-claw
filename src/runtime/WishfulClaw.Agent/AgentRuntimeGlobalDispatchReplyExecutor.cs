@@ -136,7 +136,11 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                 null,
                 "task_reported",
                 report,
-                $"{{\"dispatch_id\":\"{dispatchId}\",\"global_task_id\":\"{dispatch.GetProperty("global_task_id").GetString() ?? ""}\",\"from\":\"{currentStatus}\",\"to\":\"{newStatus}\"}}");
+                DbAgentTimelineTools.Metadata(
+                    ("dispatch_id", dispatchId),
+                    ("global_task_id", dispatch.GetProperty("global_task_id").GetString()),
+                    ("from", currentStatus),
+                    ("to", newStatus)));
 
             await AgentRuntimeGlobalBoardEvents.EmitDispatchChangedAsync(
                 context,

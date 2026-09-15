@@ -27,6 +27,7 @@ internal static class Program
         RetentionTrimsByCount();
         LogIsBestEffort();
         ListPagePaginatesNewestFirst();
+        MetadataEscapesValues();
 
         Console.WriteLine(
             _failed == 0
@@ -198,6 +199,33 @@ internal static class Program
                 "list: pages must tile all rows without overlap or duplicates");
         }
         finally { TryDelete(path); }
+    }
+
+    /// <summary>
+    /// Metadata is built through <c>Utf8JsonWriter</c>, so a value containing a quote or
+    /// a backslash cannot produce invalid JSON. Call sites used to interpolate values
+    /// into a JSON string by hand, and nothing parses the column today — which is exactly
+    /// why this needs a test instead of waiting for a bug report.
+    /// </summary>
+    private static void MetadataEscapesValues()
+    {
+        const string nasty = "quote \" and backslash \\ and end";
+        var json = DbAgentTimelineTools.Metadata(
+            ("task_id", "t-1"),
+            ("reason", nasty),
+            ("missing", null),
+            ("blank", string.Empty),
+            ("tool_calls", 7));
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert(root.ValueKind == JsonValueKind.Object, "metadata: must be a JSON object");
+        Assert(root.GetProperty("task_id").GetString() == "t-1", "metadata: a plain value must round-trip");
+        Assert(root.GetProperty("reason").GetString() == nasty,
+            "metadata: a value with quotes/backslashes must round-trip");
+        Assert(!root.TryGetProperty("missing", out _), "metadata: null values must be omitted");
+        Assert(!root.TryGetProperty("blank", out _), "metadata: blank values must be omitted");
+        Assert(root.GetProperty("tool_calls").GetInt32() == 7, "metadata: a number must stay a number");
     }
 
     private static JsonElement BuildParams(params (string Key, object? Value)[] items)

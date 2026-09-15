@@ -228,7 +228,7 @@ public static class DbCronTools
                 if (cronMeta is { } meta)
                 {
                     DbAgentTimelineTools.Log(db, meta.SessionId, null, "cron_fired",
-                        meta.Name ?? id, $"{{\"cron_id\":\"{id}\"}}");
+                        meta.Name ?? id, DbAgentTimelineTools.Metadata(("cron_id", id)));
                 }
             }
             return ReadMutation(db, id, changed, "Cron task not found or deleted");

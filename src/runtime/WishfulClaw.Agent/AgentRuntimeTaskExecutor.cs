@@ -87,7 +87,7 @@ public static partial class AgentRuntimeTaskExecutor
 
         var tasks = LoadTasksBySession(db, sessionId);
         DbAgentTimelineTools.Log(db, sessionId, null, "todo_created",
-            subject, $"{{\"task_id\":\"{task.Id}\"}}");
+            subject, DbAgentTimelineTools.Metadata(("task_id", task.Id)));
         return EncodeTaskCreateResult(task, tasks);
     }
 
@@ -150,7 +150,7 @@ public static partial class AgentRuntimeTaskExecutor
             {
                 timelineType = "todo_deleted";
                 timelineMessage = task.Subject;
-                timelineMeta = $"{{\"task_id\":\"{taskId}\"}}";
+                timelineMeta = DbAgentTimelineTools.Metadata(("task_id", taskId));
                 DeleteTaskAndReferences(db, conn, tx, taskId, task.SessionId);
                 return EncodeJsonObject(writer =>
                 {
@@ -167,7 +167,8 @@ public static partial class AgentRuntimeTaskExecutor
                 {
                     timelineType = "todo_status_changed";
                     timelineMessage = task.Subject;
-                    timelineMeta = $"{{\"task_id\":\"{taskId}\",\"from\":\"{task.Status}\",\"to\":\"{newStatus}\"}}";
+                    timelineMeta = DbAgentTimelineTools.Metadata(
+                        ("task_id", taskId), ("from", task.Status), ("to", newStatus));
                 }
                 task.Status = newStatus;
                 changedFields.Add("status");

@@ -9,7 +9,7 @@
 >
 > **修复进展（2026-09-15）**：F-8 / F-2（provider 载荷单点构造）、F-1 / F-3 / F-4 / F-5（S-21 自动切换收口）已修复并验证，见各节与 `plan.md` 的「修复」节。
 > 审查报告之外另发现一条并存问题，同日由老大拍板一并修正：**协议取值只取服务商级** —— `AIModelConfig.type` 的语义是「模型级覆盖、缺省跟随服务商」，全仓五个消费方都这么读，只有聊天链路固定发服务商级，导致同一模型在 chat 与 cron 走两个协议（`openai` / `azure-openai` / `copilot-oauth` 共 37 个 `openai-responses` 模型受影响）。详见 `plan.md` 的「修复」节。
-> 未处理：**F-9**（S-21 三刀未折叠，改写已推送历史需 force push）、**F-10**（`S-21.D7` 撞号 + 空壳测试工程）、⚠️ F-6~F-7 / F-11~F-15。
+> 未处理：**F-9**（S-21 三刀未折叠，改写已推送历史需 force push）、**F-10**（`S-21.D7` 撞号 + 空壳测试工程）、⚠️ F-6~F-7 / F-13 / F-15。
 
 ---
 
@@ -196,15 +196,21 @@ const QUOTA_PHRASE_PATTERNS = [/rate[_\s-]?limit/i, /\bquota\b/i, /usage[_\s-]?l
 `:58-71` 仅在会话再次被读取时删过期项；`clearAutoFallbackAttempts`（`:73-75`）全仓无调用点，建议挂到会话删除/关闭。
 
 ### ⚠️ F-11（S-25）`metadata_json` 手工字符串拼 JSON
+
+> ✅ **已修复（2026-09-15）** —— 新增 `DbAgentTimelineTools.Metadata(params (string, object?)[])`，经 `Utf8JsonWriter` 写入（含引号/反斜杠的值不可能再产出非法 JSON，null 与空串自动省略），9 处调用点全部改走它。回归 `AgentTimelineRegressionTests` 19 → **25 断言**（新增引号/反斜杠往返、null/空串省略、数字保持数字）。
 `AgentLoop.cs` / `AgentRuntimeGlobalDispatchReplyExecutor.cs:133` / `AgentRuntimeTaskExecutor.cs` / cron 四处用 `$"{{\"task_id\":\"{taskId}\"}}"` 这类插值。当前插入值都是 id/枚举，实用风险低，且面板只用 `message` 列（不 parse metadata，`TimelinePanel.tsx` 无 `JSON.parse`），但插值值含 `"` / `\` 时会写出非法 JSON。**建议**改用 `JsonSerializer` 或 `JsonWriter`。
 
 ### ⚠️ F-12（S-18）提交图谱限 50 条且无截断提示
+
+> ✅ **已修复（2026-09-15）** —— 命中 `COMMIT_GRAPH_LIMIT` 时补一行「仅显示最近 N 条提交」（zh/en `agentFiles.graphTruncated`）。
 `git-store-types.ts:COMMIT_GRAPH_LIMIT = 50`，C# 上限 200，面板无「仅显示最近 N 条」的说明 —— 老仓库里旧提交静默不可见，用户会以为图谱不全。
 
 ### ⚠️ F-13（S-19）落盘路径无边界
 `image-persist.ts:persistImageBuffer` 对 `targetPath` 不做任何限制（绝对路径直接 `normalize`、相对路径相对 `baseDir`，含 `..`），工具入参来自模型。cowork 会话本就有 shell 权限，增量风险有限，但与「截图落盘」这个用途相比边界过宽。**建议**：限定在工作目录内，或至少拒绝非工作目录的绝对路径。
 
 ### ⚠️ F-14（S-25）「全部会话」作用域实际按 projectId 过滤
+
+> ✅ **已修复（2026-09-15）** —— 「全部会话」档不再传任何过滤（后端 `WHERE 1=1`，含 `session_id` 为 NULL 的 app 级事件）；已无用的 `projectId` 从面板 props 与 `openTimelinePanel` 签名上摘掉。
 `TimelinePanel.tsx:65` 在 global 作用域下传 `params.projectId = projectId ?? undefined` —— 当前有激活项目时，「全部会话」只显示该项目的记录，与标签语义不符（无项目时才是真全局）。
 
 ### ⚠️ F-15（存量，非本迭代引入）i18n 缺口

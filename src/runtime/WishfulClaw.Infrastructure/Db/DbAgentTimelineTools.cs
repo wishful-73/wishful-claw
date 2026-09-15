@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
@@ -51,6 +53,53 @@ public static class DbAgentTimelineTools
         {
             WorkerLog.Error($"DbAgentTimelineTools.Log failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Builds a metadata object for <see cref="Log"/>.
+    ///
+    /// Call sites used to interpolate values straight into a JSON string, so any value
+    /// containing a quote or a backslash would have written invalid JSON. Going through
+    /// <see cref="Utf8JsonWriter"/> makes that impossible. Null and empty strings are
+    /// skipped, so an optional field can be passed unconditionally.
+    /// </summary>
+    public static string Metadata(params (string Key, object? Value)[] entries)
+    {
+        var buffer = new ArrayBufferWriter<byte>(64);
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            foreach (var (key, value) in entries)
+            {
+                switch (value)
+                {
+                    case null:
+                        break;
+                    case string text when text.Length > 0:
+                        writer.WriteString(key, text);
+                        break;
+                    case string:
+                        break;
+                    case bool flag:
+                        writer.WriteBoolean(key, flag);
+                        break;
+                    case int number:
+                        writer.WriteNumber(key, number);
+                        break;
+                    case long number:
+                        writer.WriteNumber(key, number);
+                        break;
+                    case double number:
+                        writer.WriteNumber(key, number);
+                        break;
+                    default:
+                        writer.WriteString(key, value.ToString());
+                        break;
+                }
+            }
+            writer.WriteEndObject();
+        }
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
     public static WorkerResponse Add(JsonElement parameters)

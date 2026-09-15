@@ -162,7 +162,7 @@ internal static partial class AgentLoop
                 null,
                 "subagent_started",
                 brief,
-                $"{{\"run_id\":\"{state.RunId}\",\"mode\":\"{subAgentMode}\"}}");
+                DbAgentTimelineTools.Metadata(("run_id", state.RunId), ("mode", subAgentMode)));
         }
         var runtimeParameters = CreateRuntimeParametersWithoutMessages(parameters);
         var rawRunContext = AgentRunContextPolicy.Resolve(runtimeParameters);
@@ -504,7 +504,7 @@ internal static partial class AgentLoop
                 null,
                 "subagent_finished",
                 null,
-                $"{{\"run_id\":\"{state.RunId}\",\"mode\":\"{mode}\",\"reason\":\"{reason}\"}}");
+                DbAgentTimelineTools.Metadata(("run_id", state.RunId), ("mode", mode), ("reason", reason)));
         }
 
         // Notification is handled by the renderer on loop_end event.

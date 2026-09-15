@@ -73,7 +73,9 @@ public static class DbCronRunTools
                 // Timeline instrumentation (S-25.4): cron run completion.
                 DbAgentTimelineTools.Log(db, run.SessionId, null, "cron_run_finished",
                     summary ?? error ?? status,
-                    $"{{\"run_id\":\"{runId}\",\"cron_id\":\"{run.CronId}\",\"status\":\"{status}\",\"tool_calls\":{toolCallCount}}}");
+                    DbAgentTimelineTools.Metadata(
+                        ("run_id", runId), ("cron_id", run.CronId), ("status", status),
+                        ("tool_calls", toolCallCount)));
             }
             return WorkerResponse.Json(
                 new CronRunMutationResult(changed == 1, entity is null ? null : CronRunRow.FromEntity(entity),

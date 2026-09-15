@@ -1433,3 +1433,13 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 - 回归：`tests/provider-fallback` 由 18 → **31 断言**（新增 13 条限额判定，含 `No overload matches this call` / `at capacity` 必须**不**命中、上下文超限即便带 429 也要排除）。
 
 **门禁**：TS 三配置 0 错；13 套 TS 回归全过；C# 无改动。
+
+### 其余审查⚠️项收口（F-11 / F-12 / F-14，2026-09-15）
+
+- **F-11（S-25）`metadata_json` 手工拼 JSON** —— 新增 `DbAgentTimelineTools.Metadata(params (string, object?)[])`，值经 `Utf8JsonWriter` 写入：含引号/反斜杠的值不可能再产出非法 JSON，null 与空串自动省略，数字保持数字（`tool_calls` 原本就是数字）。**9 处调用点全部改走它**（`AgentLoop` ×2、`AgentRuntimeTaskExecutor` ×3、`AgentRuntimeGlobalDispatchReplyExecutor`、`DbCronTools`、`DbCronRunTools`、`DbGlobalTaskDispatchTools`）。回归 `AgentTimelineRegressionTests` 19 → **25 断言**。
+- **F-12（S-18）** —— 提交图谱查询有上限（`COMMIT_GRAPH_LIMIT = 50`）且 `git log --all` 不分页，面板却没有任何说明，老仓库看起来像「历史就到这儿」。命中上限时补一行「仅显示最近 N 条提交」（zh/en）。
+- **F-14（S-25）** —— 时间线「全部会话」那档原本还把 `projectId` 传给后端，当前有激活项目时就只看得到该项目的记录，与标签语义相反。改为不传任何过滤（后端 `WHERE 1=1`，含 `session_id` 为 NULL 的 app 级事件），并把已无用的 `projectId` 从 `TimelinePanel` props 与 `openTimelinePanel` 签名上摘掉。
+
+**门禁**：TS 三配置 0 错；13 套 TS 回归全过；`Worker.csproj` 与 `tests/WishfulClaw.Tests.sln` 0/0；AOT 无 IL2026/IL3050/IL3051；**11 个 C# 回归工程全过**（AgentTimeline 25 / ProviderHeader / CompactionSnapshot / ProviderFallback 1 / ToolConcurrency / ChannelShellApproval 74 / Goal 148 / SessionTaskCascade 180 / ChannelToolVisibility 108 / Cron 42 / MemoryRecall 18）。
+
+**仍未处理**：F-9（S-21 三刀折叠 —— 三个 commit 已推送，折叠须 force push，等老大点头）、F-10（`S-21.D7` 编号撞车 + `ProviderFallbackRegressionTests` 只有 1 条 sanity 断言却已进 sln）、F-13（截图落盘路径无边界，属产品口径）、F-15（存量 i18n 缺口，非本迭代引入）。

@@ -64,7 +64,9 @@ export function CredentialsPanel({
         <h3 className="text-sm font-medium text-foreground">
           {t('channel.credentials.title', { defaultValue: 'API 凭据' })}
         </h3>
-        <p className="mt-0.5 text-xs text-muted-foreground">{descriptor.description}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {descriptor.description.startsWith('channel.') ? t(descriptor.description) : descriptor.description}
+        </p>
       </div>
 
       <Separator />
@@ -80,7 +82,9 @@ export function CredentialsPanel({
               id={`field-${field.key}`}
               type={field.type === 'secret' ? 'password' : 'text'}
               value={localConfig[field.key] ?? ''}
-              placeholder={field.placeholder}
+              placeholder={
+                field.placeholder?.startsWith('channel.') ? t(field.placeholder) : field.placeholder
+              }
               onChange={(e) => {
                 setLocalConfig((prev) => ({ ...prev, [field.key]: e.target.value }))
               }}
@@ -223,7 +227,11 @@ export function ChannelCollapsible({
         <div className="border-t border-border/60">
           <div className="flex items-center justify-between gap-3 px-4 pt-3">
             <p className="min-w-0 flex-1 text-[11px] text-muted-foreground">
-              {descriptor?.description ?? channel.type}
+              {descriptor
+                ? descriptor.description.startsWith('channel.')
+                  ? t(descriptor.description)
+                  : descriptor.description
+                : channel.type}
             </p>
             <Button
               variant={isRunning ? 'outline' : 'default'}

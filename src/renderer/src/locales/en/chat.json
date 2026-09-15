@@ -129,7 +129,8 @@
       "tpsHint": "Output tokens generated per second",
       "ttftHint": "Time to first token",
       "totalCost": "Cost",
-      "total": "Total"
+      "total": "Total",
+      "autoModelHint": "Provider and model currently used by auto switching"
     },
     "runtimeStatus": {
       "ready": "Ready",

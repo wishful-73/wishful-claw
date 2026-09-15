@@ -1612,47 +1612,48 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 
 ---
 
-# 人工复测清单（收尾用，2026-09-15 汇总）
+# 人工复测清单（收尾用，2026-09-15 晚更新）
 
-> 老大已复验：T-7.4（中断后再发不 400）、T-8（抖动）、T-8.3（不上下跳）、网络搜索列表分隔线、`topbar.followGlobalModel` i18n。
+> 已复验通过：T-7.4（中断后再发不 400）、T-8（不上下跳）、网络搜索列表分隔线、`topbar.followGlobalModel` i18n。
+>
+> 下面按**验证成本**排序：A 组打开就能看，B 组要发一条消息或做一次操作，C 组要特定环境。
 
-## A. 本批改动引入的（优先验）
+## A. 打开就能看（零条件）—— 2026-09-15 晚老大已复测
 
-1. **限额自动接管全链（需求 26）** —— 需要两个能分别触发的服务商。
-   - auto 会话撞限额：**不出现 429 卡片** + 自动切到「设置 → 服务商 → 自动切换」里配的候选 + 自动发「继续推进」
-   - **切换要粘住**：切完后随便发一条普通消息，应仍走新服务商（F-1 的验收点，也是这轮改动最核心的一条）
-   - manual 会话撞限额：**照常出卡片**（不接管）
-   - 只启用一家 / 候选的模型留空 / 候选都试完：**照常出卡片**（不吞）
-   - 会话面板（模型选择器 Auto 行右侧）：开关本会话启用、上下移、模型只读、「恢复默认」
-   - 设置页「自动切换」：手动加服务商 → 选模型 → 排序；未启用的服务商**不出现在可选列表**
-   - ⚠️ **行为变更要知道**：auto 现在优先用会话自己的绑定，所以「手动选个模型 → 再点 Auto」会**继续用你选的那个**（以前是回到全局）。
-2. **协议取值改模型级优先** —— 仅当你在用 `openai` / `azure-openai` / `copilot-oauth` 三个 preset 时相关：共 37 个模型从 `/chat/completions` 换到 `/responses`。发一条消息看 `request_debug` 的 url。**OpenAI 官方你没环境，Azure / Copilot 有就值得跑一条**。
-3. **S-20 自定义请求头生效**：配一个头（如 `x-probe: 1`）→ 发消息 → 看 `request_debug` 的 headers 里有没有。
-4. **T-15 思考渲染**：长思考时前端不滞后（后端跑完了前端还在放旧的）、观感不跳。
+| # | 项 | 结果 |
+|---|---|---|
+| A1 | 需求 28 渠道全局设置（四项平铺、无选项卡） | ✅ 通过。**Shell 命令需授权这一项的对错留到下个版本议**（渠道侧没法完成审批，见文末「下一版本待议」） |
+| A2 | 需求 29 顶栏浏览器图标（点开面板、再点是激活、全局会话也有） | ✅ 通过 |
+| A3 | 渠道描述 i18n（展开渠道看描述行是否中文） | ✅ 通过 |
+| A4 | 需求 27 渠道页布局（折叠块 / 手风琴 / 摘要行） | ✅ 通过 |
+| A5 | T-4 流式光标（思考内有、末尾无、不成对） | ⏸ **挂到正式发布后看** —— 当前测试力度不够，看不出效果 |
+| A6 | T-15 思考渲染（不滞后、不一顿一顿） | ⏸ **挂到正式发布后看** —— 同上 |
 
-## B. 早前挂账、尚未复验
+## B. 发一条消息 / 做一次操作
 
-| 项 | 怎么验 |
-|---|---|
-| T-13 / S-16 粘贴 chip | 粘贴长文 → 发送 → 聊天窗显示 chip（不是原文）→ 点开是全文；**重启应用**后重开该会话，chip 仍在且点开是全文 |
-| T-14 底部统计条口径 | 只加载 5 轮历史时，数字应 == 完整加载；切走再切回不回退、不重复计 |
-| T-11 `use_capability` | 调 `builtin:Task` / `mcp-tool:*` / `skill:*` 三类带参 |
-| T-12 空响应重试 | 遇上游偶发空响应能自动重试成功（原本直接失败） |
-| T-3 长会话窗口收缩 | 长会话连发消息，顶部「加载更早」行为正常、不卡 |
-| T-4 流式光标 | 回复末尾无光标；思考块内的保留 |
-| S-17 状态条工具名 | 代理调用时状态条显示**真实工具名**（不是 `use_capability`） |
-| S-18 分支视图 | 右侧面板分支视图 + 提交图谱；提交超 50 条时出现「仅显示最近 N 条」提示 |
-| S-19 自窗口截图 | 让 agent 截应用自身窗口并落盘，路径正确、图能打开 |
-| S-23 搜索 | 中文查询不再返回词典/翻译结果；引擎开关生效 |
-| S-24 / T-5 用量面板 | 三档切换（曲线/柱状/明细）+ 左栏汇总 + 分页；图表随窗口变宽变高 |
-| S-25 时间线 Tab | 右侧面板时间线；「全部会话」档应**真的不过滤**（有激活项目时也看到其它项目的记录） |
-| S-22 渠道回报 | **需微信环境**：全局派发 → 项目回报 → 助理回复 → 微信端收到 |
+| # | 项 | 怎么验 | 需要 |
+|---|---|---|---|
+| B1 | **需求 26 切换要粘住**（本轮最核心） | auto 会话撞限额 → **不出 429 卡片** + 自动切候选 + 自动「继续推进」；**切完后随便发一条普通消息，应仍走新服务商** | 两个能分别触发限额的服务商 |
+| B2 | **需求 26 不吞错** | manual 会话撞限额照常出卡片；只启用一家 / 候选模型留空 / 候选试完 → 也照常出卡片 | 同上 |
+| B3 | **需求 26 会话面板** | 模型选择器 Auto 行右侧：开关本会话启用、上下移、模型只读、「恢复默认」；设置页「自动切换」里未启用的服务商不出现在可选列表 | — |
+| B4 | **S-20 自定义请求头** | 配一个头（如 `x-probe: 1`）→ 发消息 → `request_debug` 的 headers 里有它 | — |
+| B5 | **T-13 粘贴 chip** | 粘贴长文 → 发送 → 聊天窗显示 chip（不是原文）→ 点开是全文；**重启应用**后重开该会话，chip 仍在且点开是全文 | — |
+| B6 | **T-14 底部统计条** | 只加载 5 轮历史的会话，数字应 == 完整加载；切走再切回不回退、不重复计 | — |
+| B7 | **需求 28 启动自动连接** | 关掉「启动时自动连接」→ 重启应用 → 渠道**不再**自动起来；打开 → 重启 → 自动起来 | — |
 
-## C. 不必单独验的
+## C. 需要特定环境
+
+| # | 项 | 需要 |
+|---|---|---|
+| C1 | **协议改模型级优先** | `openai` / `azure-openai` / `copilot-oauth` 三 preset 共 37 个模型从 `/chat/completions` 换到 `/responses`。发一条看 `request_debug` 的 url。OpenAI 官方没环境，**Azure / Copilot 有就值得跑一条** |
+| C2 | **S-22 渠道回报** | **微信环境**：全局派发 → 项目回报 → 助理回复 → 微信端收到 |
+| C3 | 其余挂账 | T-11 `use_capability` 带参三类、T-12 空响应重试、T-3 长会话收缩、S-17 状态条真实工具名、S-18 分支视图、S-19 自窗口截图、S-23 中文搜索、S-24 用量面板、S-25 时间线「全部会话」不过滤 |
+
+## D. 不必单独验的
 
 - **i18n 一致性** → `test:i18n-coverage` 已机械覆盖（0 缺失）
 - **链的规则 / 模型解析** → `test:fallback-chain`（22）+ `test:session-model-resolution`（23）已覆盖
-- **编译 / 既有回归** → 门禁已跑（TS 三配置 + 16 套 TS 回归 + C# 10 个工程 + AOT）
+- **编译 / 既有回归** → 门禁已跑（TS 三配置 + 19 套 TS 回归 + C# 10 个工程 + AOT）
 
 ---
 
@@ -1774,3 +1775,113 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 ## 真机待验（老大）
 
 顶栏文件图标右侧出现浏览器图标；点击后右侧面板打开并停在浏览器选项卡；再点是激活而非新开；全局会话（无工作目录）里同样可见可用。
+
+---
+
+# 修复：渠道配置页 descriptor 文案没走 i18n（2026-09-15，老大报）
+
+> 老大：「渠道配置中 每个渠道都有 i18n 没处理 WeChat Official channel (QR login + long polling) 这是微信的」。
+
+## 病根
+
+`src/main/channels/channel-descriptors.ts` 里 8 个渠道的 `description` 是硬编码英文字面量，主进程经 `plugin:list-providers` 原样丢给渲染端，渲染端直接 `{descriptor.description}` 打出来 —— 一次 `t()` 都没有。
+
+渲染点只有两处：`plugin-panel-detail.tsx` 的凭据面板标题下、折叠块展开区的描述行。
+
+**同一文件里的 `configSchema.label` 早就是 key 了**（`t(field.label)` 转换），所以这是漏网，不是没这套机制。
+
+## 修法
+
+照 label 的现成模式走，值直接放 key，渲染端 `startsWith('channel.')` 判别后 `t()`：
+
+- 8 个 `description` → `channel.provider.<短名>.desc`（短名与 `configSchema` 现有前缀对齐：`weixin` / `feishu` / `qq` / `dingtalk` / `wecom` / `telegram` / `discord` / `whatsapp`）
+- 顺手补两条真英文 placeholder：`channel.weixin.routeTagPlaceholder`（原 `'optional'`）、`channel.dingtalk.cardTemplateIdPlaceholder`（原 `'AI streaming card template ID (optional)'`）
+- **不动**格式示例类 placeholder（`cli_xxxxx`、`true / false`、`https://ilinkai.weixin.qq.com`、`wss://your-relay-server/ws`）——它们不是文案
+
+## 明确不做（另一类问题，待立项）
+
+`displayName` 这轮**不动**。微信/飞书/QQ 机器人/钉钉/企业微信 五家是中文字面量，英文界面下会显示中文，但主进程拿它当**渠道实例的默认名字存库**：
+
+```
+channel-plugin-handlers.ts:301   name: descriptor.displayName                 // 新建渠道
+channel-plugin-handlers.ts:320   if (existing.name !== descriptor.displayName)
+channel-plugin-handlers.ts:321       existing.name = descriptor.displayName  // 跟着官方名同步
+```
+
+改成 key 会把库里的渠道名写成 `channel.provider.weixin.name`。要修只能在渲染端按 `channel.type` 做映射，代价是所有显示渠道名的地方（含聊天里的渠道会话标题）都得过这一层 —— 单独立项。
+
+## 涉及文件
+
+- `src/main/channels/channel-descriptors.ts`
+- `src/renderer/src/components/settings/plugin-panel-detail.tsx`（三处渲染点加 `t()`）
+- `src/renderer/src/locales/zh|en/settings.json`
+
+## 回归
+
+**门禁**：TS 三配置 0 错；19 套 TS 回归全过（含 `i18n-coverage`）。JSON 合法性用 `node -e JSON.parse` 复核（PowerShell 的 `ConvertFrom-Json` 对这个体积的文件会误报）。
+
+**真机待验（老大）**：渠道折叠块展开后的描述行、凭据面板标题下 —— 中文界面全中文，英文界面全英文。
+
+---
+
+# 下一版本待议（2026-09-15 老大复测时提出）
+
+## 渠道会话的 shell 审批没有出口
+
+**老大原话**：「shell 命令需要授权这个需要留到下一个版本继续说，问题在于渠道上没法去审批，只能语言文本回复」。
+
+**现状（实读，比"体验不好"更严重）**：
+
+- `ToolCallProcessor.RequiresApprovalBeforeExecution`（`ToolCallProcessor.Approval.cs:60`）对渠道会话**只豁免了文件/图片工具**（`ChannelSendImage` / `WeixinSendImage` / `FeishuSendImage`…，注释写明 *"Channel sessions cannot complete a remote approval dialog"*）。**shell 类没有豁免**，只受全局 `shellRequiresApproval` 开关控制。
+- 渠道会话的 `permissionMode` 是 `default`（`DbPluginSessionRouting.cs`），于是 `defaultModeApproval = true` → `Bash` / `Shell` / `ShellExec` / `PowerShell` 都要求审批。
+- 审批走 `AgentRuntimeReverseRequests.RequestAsync(context, "sub-agent:approve-tool", …)`（`ToolCallProcessor.cs:450`），**反向请求渲染端并阻塞等待回复** → 前端把审批卡弹在**桌面聊天窗**里。人在微信里等着，根本看不到这张卡。
+
+**结论**：默认 `shellRequiresApproval = true` 下，渠道会话执行 shell 会**卡在一个用户看不见的审批上**，一直挂到 run 被取消。目前没人报，大概是因为还没人在渠道里让它跑过 shell。
+
+**下个版本要定的方向（未定，本迭代不动）**：
+
+1. 渠道侧用**文本回复**完成审批（回复「同意」/「拒绝」）；
+2. 渠道会话一律免审批（与文件工具同等豁免）；
+3. 渠道里干脆不暴露 shell 工具。
+
+**待老大下版本拍板。**
+
+---
+
+# 修复：底部统计条在 auto 模式下显示「服务商 · 模型」（2026-09-15，老大提）
+
+> 老大：「用了 auto 自动切换后看不到当前实际模型」→ 定稿：**格式** `DeepSeek · deepseek-v4.1-flash`；**位置**「放到消费后方去」；**条件**「最好是 auto 才出来」（手动会话的模型选择器本来就显示模型，重复是噪音）。
+
+## 病根
+
+底部统计条 `ComposerRuntimeStatus`（`InputArea/runtime-status.tsx`）只渲染 `缓存 / 总 / Output / TPS / TTFT / Cost`，**没有模型信息**。而输入区其实早就算出了会话模型 —— `use-input-area-selectors.ts` 的 `activeProvider` selector 调的就是发消息同一条 `resolveSessionModelSelection()`，只是它把 `provider` 对象**丢掉了**，只留 `apiKey / type / models / modelId`。
+
+auto 模式的模型名本就无处可见：模型选择器里那一行写的是「Auto」。所以一旦自动接管切了服务商，界面上没有任何地方能看出当前在用谁。
+
+## 修法
+
+数据源直接用 `resolveSessionModelSelection` 的结果 —— `applyAutoFallbackTarget` 接管时会把目标写进会话绑定，**所以切换后统计条立刻跟着变**，无需轮询。
+
+- `use-input-area-selectors.ts`：`activeProvider` 增 `providerName`（`provider.name`）与 `isAutoModeActive`；新增派生量 `composerAutoModelLabel` = `` `${providerName} · ${model.name || model.id}` ``，**非 auto 或解不出模型时为 `null`**
+- `isAutoModeActive` 取 `selection.isAutoModeActive`，但**fast 路由（`modelRoute === 'fast'`）强制 false** —— 快模型路由是明确指定的模型，不是 auto
+- `composer-runtime-status-footer.tsx` → `types.ts` 的 `ComposerRuntimeStatusProps` 增可选 `autoModelLabel?: string | null` → `runtime-status.tsx` 透传
+- 渲染位置：**所有指标之后**（Cost 右边），`/` 分隔 + `truncate`，`title` 挂 `input.runtimeMetrics.autoModelHint`
+
+## 明确不做
+
+「显示上一条消息真正用了谁」做不到 —— `MessageRequestModelMeta`（`meta.requestModel`）**全仓零写入方**，C# 侧也没有。要做得先把每次请求的实际 provider/model 落进消息 meta，单独立项。
+
+## 涉及文件
+
+- `src/renderer/src/components/chat/InputArea/use-input-area-selectors.ts`（selector 字段 + `composerAutoModelLabel`）
+- `src/renderer/src/components/chat/InputArea/index.tsx`（解构 + 传 prop）
+- `src/renderer/src/components/chat/InputArea/composer-runtime-status-footer.tsx`
+- `src/renderer/src/components/chat/InputArea/types.ts`
+- `src/renderer/src/components/chat/InputArea/runtime-status.tsx`（末尾渲染）
+- `src/renderer/src/locales/zh|en/chat.json`（`input.runtimeMetrics.autoModelHint`）
+
+## 回归
+
+**门禁**：TS 三配置 0 错；19 套 TS 回归全过。
+
+**真机待验（老大）**：auto 会话底部统计条末尾出现「服务商 · 模型」；限额自动接管切换后该文字**立即变成新服务商**；手动选模型的会话**不出现**这段文字。

@@ -71,6 +71,7 @@ export function ComposerRuntimeStatus({
   contextCompressionStatus,
   contextCompressionStatusLabel,
   model,
+  autoModelLabel,
   className,
   messagesOverride,
   streamingMessageIdOverride,
@@ -627,6 +628,21 @@ export function ComposerRuntimeStatus({
               </div>
             </HoverCardContent>
           </HoverCard>
+        </>
+      )}
+      {/* Trailing by design: the metrics above are the "consumption" numbers, and auto mode is
+          the only case where the concrete model is otherwise invisible (the switcher says "Auto"). */}
+      {autoModelLabel && (
+        <>
+          <span className="shrink-0 text-muted-foreground/35">/</span>
+          <span
+            className="min-w-0 shrink truncate text-muted-foreground/60"
+            title={t('input.runtimeMetrics.autoModelHint', {
+              defaultValue: '自动切换当前使用的服务商与模型'
+            })}
+          >
+            {autoModelLabel}
+          </span>
         </>
       )}
     </div>

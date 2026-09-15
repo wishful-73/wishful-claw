@@ -1076,7 +1076,8 @@
     "dingtalk": {
       "appKey": "App Key",
       "appSecret": "App Secret",
-      "cardTemplateId": "卡片模板 ID（可选）"
+      "cardTemplateId": "卡片模板 ID（可选）",
+      "cardTemplateIdPlaceholder": "AI 流式卡片模板 ID（可选）"
     },
     "wecom": {
       "corpId": "企业 ID",
@@ -1089,6 +1090,7 @@
       "baseUrl": "API 地址",
       "token": "Bot Token",
       "routeTag": "路由标签（可选）",
+      "routeTagPlaceholder": "可选",
       "accountId": "账号 ID（可选）",
       "wsUrl": "WebSocket 中继地址（可选）"
     },
@@ -1110,6 +1112,16 @@
       "wsUrl": "WebSocket 中继地址（可选）"
     },
     "wsUrl": "WebSocket 中继地址（可选）",
+    "provider": {
+      "weixin": { "desc": "微信渠道（扫码绑定 + 长轮询）" },
+      "feishu": { "desc": "飞书渠道（内置 WebSocket）" },
+      "qq": { "desc": "QQ 机器人渠道（官方 Gateway WebSocket）" },
+      "dingtalk": { "desc": "钉钉渠道（Stream API 内置 WebSocket）" },
+      "wecom": { "desc": "企业微信渠道" },
+      "telegram": { "desc": "Telegram 渠道（需 WebSocket 中继）" },
+      "discord": { "desc": "Discord 渠道（内置 Gateway WebSocket）" },
+      "whatsapp": { "desc": "WhatsApp 渠道（Cloud API，需 WebSocket 中继）" }
+    },
     "global": {
       "title": "全局渠道设置",
       "autoStart": "启动时自动连接",

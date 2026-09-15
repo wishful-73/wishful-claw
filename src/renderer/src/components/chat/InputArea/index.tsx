@@ -65,7 +65,7 @@ export function InputArea({
     chatView, isHomeComposer,
     language: currentLanguage,
     clarifyAutoAcceptRecommended, animationsEnabled,
-    supportsVision, composerModelCfg,
+    supportsVision, composerModelCfg, composerAutoModelLabel,
     mode, openSettings, openFilePreview,
     activeProjectId, activeSessionId, hasMessages, clearSessionMessages,
     draftSessionId, targetSession, projectScoped,
@@ -469,7 +469,12 @@ export function InputArea({
           />
         </div>
         {draftSessionId && (
-          <ComposerRuntimeStatusFooter sessionId={draftSessionId} model={composerModelCfg} {...composerRunStatus} />
+          <ComposerRuntimeStatusFooter
+            sessionId={draftSessionId}
+            model={composerModelCfg}
+            autoModelLabel={composerAutoModelLabel}
+            {...composerRunStatus}
+          />
         )}
       </div>
     </div>

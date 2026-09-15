@@ -129,7 +129,8 @@
       "tpsHint": "每秒生成的输出 Token 数",
       "ttftHint": "首个 Token 返回耗时",
       "totalCost": "消费",
-      "total": "总"
+      "total": "总",
+      "autoModelHint": "自动切换当前使用的服务商与模型"
     },
     "runtimeStatus": {
       "ready": "就绪",

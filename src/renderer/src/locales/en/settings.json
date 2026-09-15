@@ -1631,7 +1631,8 @@
     "dingtalk": {
       "appKey": "App Key",
       "appSecret": "App Secret",
-      "cardTemplateId": "Card template ID (optional)"
+      "cardTemplateId": "Card template ID (optional)",
+      "cardTemplateIdPlaceholder": "AI streaming card template ID (optional)"
     },
     "wecom": {
       "corpId": "Corp ID",
@@ -1644,6 +1645,7 @@
       "baseUrl": "API URL",
       "token": "Bot Token",
       "routeTag": "Route tag (optional)",
+      "routeTagPlaceholder": "optional",
       "accountId": "Account ID (optional)",
       "wsUrl": "WebSocket relay URL (optional)"
     },
@@ -1664,7 +1666,17 @@
       "botToken": "Bot Token",
       "wsUrl": "WebSocket relay URL (optional)"
     },
-    "wsUrl": "WebSocket relay URL (optional)"
+    "wsUrl": "WebSocket relay URL (optional)",
+    "provider": {
+      "weixin": { "desc": "WeChat channel (QR binding + long polling)" },
+      "feishu": { "desc": "Lark/Feishu channel (built-in WebSocket)" },
+      "qq": { "desc": "QQ bot channel (official Gateway WebSocket)" },
+      "dingtalk": { "desc": "DingTalk channel (built-in WebSocket via Stream API)" },
+      "wecom": { "desc": "WeCom channel" },
+      "telegram": { "desc": "Telegram channel (needs a WebSocket relay)" },
+      "discord": { "desc": "Discord channel (built-in Gateway WebSocket)" },
+      "whatsapp": { "desc": "WhatsApp channel (Cloud API, needs a WebSocket relay)" }
+    }
   },
   "logsPage": {
     "level": {

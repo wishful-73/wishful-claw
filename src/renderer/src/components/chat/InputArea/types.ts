@@ -99,6 +99,12 @@ export interface ComposerRuntimeStatusProps {
   contextCompressionStatus: ContextCompressionStatus
   contextCompressionStatusLabel: string
   model?: AIModelConfig | null
+  /**
+   * Pre-formatted `服务商 · 模型` label, set only while the session runs in auto mode — that
+   * mode hides the concrete model behind a handover chain, so the footer is the only place
+   * naming it. Manual sessions leave it null; their switcher already shows the model.
+   */
+  autoModelLabel?: string | null
   className?: string
   messagesOverride?: readonly UnifiedMessage[]
   streamingMessageIdOverride?: string | null

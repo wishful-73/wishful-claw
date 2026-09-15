@@ -34,10 +34,13 @@ export interface InputAreaSelectorsOutput {
   channels: ReturnType<typeof useChannelStore.getState>['channels']
   activeProvider: {
     apiKey: string; requiresApiKey: boolean; type: string;
-    models: AIModelConfig[]; modelId: string
+    models: AIModelConfig[]; modelId: string;
+    providerName: string | null; isAutoModeActive: boolean
   } | null
   supportsVision: boolean
   composerModelCfg: AIModelConfig | null
+  /** `服务商 · 模型`, only in auto mode — manual sessions already show the model in the switcher. */
+  composerAutoModelLabel: string | null
 
   // UI
   chatView: string
@@ -129,7 +132,18 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
       if (!provider) return null
       const model = provider.models.find((item: any) => item.id === modelId)
       if (!model) return null
-      return { apiKey: provider.apiKey, requiresApiKey: provider.requiresApiKey, type: provider.type, models: provider.models, modelId }
+      return {
+        apiKey: provider.apiKey,
+        requiresApiKey: provider.requiresApiKey,
+        type: provider.type,
+        models: provider.models,
+        modelId,
+        // `auto` hides the concrete model behind a handover chain, so the footer needs the
+        // resolved provider's name to say which one is in play. The fast route targets an
+        // explicitly configured model, never auto.
+        providerName: (provider.name as string | undefined) ?? null,
+        isAutoModeActive: fastConfig ? false : (selection?.isAutoModeActive ?? false)
+      }
     })
   )
 
@@ -143,6 +157,16 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
     if (!activeProvider) return null
     return activeProvider.models.find((m: any) => m.id === activeProvider.modelId) ?? null
   }, [activeProvider])
+
+  // Auto mode hides the concrete model behind a handover chain — the composer's own switcher
+  // just says "Auto". So the footer spells out which provider/model the next message will use.
+  // Manual sessions skip it: the switcher already names the model, repeating it is noise.
+  const composerAutoModelLabel = React.useMemo<string | null>(() => {
+    if (!activeProvider?.isAutoModeActive || !composerModelCfg) return null
+    const modelLabel = composerModelCfg.name?.trim() || composerModelCfg.id
+    const providerName = activeProvider.providerName?.trim()
+    return providerName ? `${providerName} · ${modelLabel}` : modelLabel
+  }, [activeProvider, composerModelCfg])
 
   // ── UI ──────────────────────────────────────────────────────────
   const mode = useUIStore((s) => s.mode)
@@ -204,6 +228,7 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
     language, mainModelSelectionMode, autoApprove, permissionWhitelistEnabled,
     clarifyAutoAcceptRecommended, animationsEnabled,
     targetSession, channels, activeProvider: activeProvider as any, supportsVision, composerModelCfg,
+    composerAutoModelLabel,
     chatView, isHomeComposer, mode, openSettings: openSettings as any, openFilePreview,
     activeProjectId, activeSshConnectionId, activeSessionId, hasMessages, clearSessionMessages,
     draftSessionId, projectScoped, workspaceReady,

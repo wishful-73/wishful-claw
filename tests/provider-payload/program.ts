@@ -18,6 +18,7 @@ import {
   type ProviderPayloadSettings
 } from '../../src/renderer/src/lib/agent/provider-payload'
 import { getDefaultApiUserAgent } from '../../src/renderer/src/lib/api/api-user-agent'
+import { openaiPreset } from '../../src/renderer/src/stores/providers/openai'
 import type { AIModelConfig, AIProvider } from '../../src/shared/types/provider'
 
 let checks = 0
@@ -236,6 +237,56 @@ const WORKER_READ_KEYS = [
 
   const noConfig = buildProviderPayload(makeProvider({ models: [makeModel()] }), 'model-1', makeSettings())
   eq(noConfig.reasoningEffort, undefined, 'no thinking config means no reasoning effort')
+}
+
+// ── Protocol: a model-level `type` overrides the provider's ───────────────────
+// `AIModelConfig.type` is documented as "Optional protocol override for this model;
+// falls back to provider.type when omitted", and every other consumer in the app
+// reads it that way. The chat path used to send the provider type unconditionally,
+// so the same model ran on one protocol in chat and another under cron.
+{
+  const followsProvider = buildProviderPayload(
+    makeProvider({ type: 'openai-chat', models: [makeModel()] }),
+    'model-1',
+    makeSettings()
+  )
+  eq(followsProvider.type, 'openai-chat', 'a model that sets no type follows its provider')
+
+  const overridden = buildProviderPayload(
+    makeProvider({ type: 'openai-chat', models: [makeModel({ type: 'openai-responses' })] }),
+    'model-1',
+    makeSettings()
+  )
+  eq(overridden.type, 'openai-responses', 'a model-level type wins over the provider type')
+
+  const anthropicOverride = buildProviderPayload(
+    makeProvider({ type: 'anthropic', models: [makeModel({ type: 'openai-chat' })] }),
+    'model-1',
+    makeSettings()
+  )
+  eq(anthropicOverride.type, 'openai-chat', 'the override works in both directions')
+}
+
+// ── The real-world case: preset data, not a synthetic model ───────────────────
+// The openai preset declares `openai-chat` at the provider but `openai-responses`
+// on its gpt-5/gpt-6 models — exactly where the two readings disagreed.
+{
+  const presetProvider = {
+    id: 'openai',
+    name: openaiPreset.name,
+    type: openaiPreset.type,
+    apiKey: 'sk-test',
+    baseUrl: openaiPreset.defaultBaseUrl,
+    enabled: true,
+    models: openaiPreset.defaultModels,
+    createdAt: 0
+  } as unknown as AIProvider
+
+  const payload = buildProviderPayload(presetProvider, 'gpt-5.2', makeSettings())
+  eq(payload.type, 'openai-responses', 'the openai preset gpt-5.2 resolves to the responses protocol')
+
+  const codex = buildProviderPayload(presetProvider, 'gpt-5.3-codex', makeSettings())
+  eq(codex.type, 'openai-responses', 'the openai preset codex model resolves to the responses protocol')
 }
 
 // ── Structural guard: send sites go through the builder ───────────────────────

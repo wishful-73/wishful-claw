@@ -1412,9 +1412,14 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
   - `lib/agent/provider-auto-fallback.ts`（同时删掉 `buildAutoFallbackProviderConfig`）
 - **`sessionId` 改由 `stores/chat-store` 的 `sendMessage` 盖章** —— Worker 用 `provider.sessionId` 解析 requestOverrides 头里的 `{{sessionId}}`（codex / opencode-go），而 sendMessage 是唯一通往 `agent/run` 的门，会话身份在那里落，不再靠每个调用点记着。
 - **F-2（S-21 自动推进参数不一致）一并修掉** —— 自动推进那一轮改用同一个构造器，并补齐 `toolPreset / workingFolder / sshConnectionId / projectId / scope / collaborationMode / runtimeRole / permissionMode / maxIterations / maxParallelTools / maxConcurrentSubAgents / personaId / language / userRules / contextCompression*`，与手动发消息一致。此前缺这些字段，Worker 会把 project 会话推断成 `scope=global` + `collaborationMode=chat` + `toolPreset=full`（`AgentRunContextPolicy.cs` / `AgentLoop.cs:189`），推进轮拿不到项目工具。
-- **刻意不动**（避免扩大改动面，留作独立议题，见「遗留」）：
-  - `type` 仍取**服务商级**，不采用 `model.type ?? provider.type`。copilot-oauth 等服务商在 provider 级声明 `openai-chat`、在模型级声明 `openai-responses`，改这里会换请求端点，风险不该夹在本次修复里。
-  - `serviceTier` 不接（fast mode 无链路）；`organization` / `project` 不接（`AIProvider` 无此字段，无来源）。
-- **新增回归 `tests/provider-payload`（49 断言）**：Worker 读取字段的契约清单、模型级 override 优先、UA 占位符回落、思考开关与推理档位推导，**外加一条结构性守卫 —— 四个发送点不得再出现手搓的 provider 字面量**（`apiKey:`）且必须调用 `buildProviderPayload(`。
+- **`type` 修正为模型级优先（2026-09-15 老大追加拍板）** —— 老大确认口径：**模型级 type 优先于服务商级，模型没设才跟随服务商**。`AIModelConfig.type` 的注释、以及 `AssistantMessage` / `ModelSettingsPopover` / `MemorySettingsPanel` / `memory-automation-utils` / `cron-runtime` 五个消费方早就是这个读法，**只有聊天链路固定发服务商级**，于是同一模型在 chat 与 cron 走了两个协议。改 `provider-payload.ts` 一行：`type: modelConfig?.type ?? provider.type`。
+  - 影响面（会换请求协议、写进 `AgentLoop.cs:575` 的 dispatch）：`openai` 15 个 `openai-responses` 模型、`azure-openai` 14 个、`copilot-oauth` 8 个，合计 **37 个模型从 `/chat/completions` 换到 `/responses`**。`google` 的 3 个模型级 `gemini` Worker 不识别、落默认分支，与改前等价；`codex-oauth` 本来就两级一致；其余 preset 模型级没设，跟随服务商不变。
+  - 附带更正一处此前的错误判断：曾写「切到 responses 会半残，因为 responses 专属字段主链路都没带」——**不成立**。Worker 从 `parameters.provider` 实际读取的只有 21 个键（`type apiKey baseUrl model contextLength systemPrompt providerId providerBuiltinId userAgent sessionId organization project cacheTtl serviceTier responseSummary reasoningEffort thinkingEnabled thinkingConfig requestOverrides temperature maxTokens`），`responsesSessionScope` / `promptCacheKey` / `websocketMode` / `computerUseEnabled` / `builtinSearchEnabled` 等在 `agent/run` 这条路上**根本没人读**。
+- **刻意不动**：
+  - `serviceTier` **不接**，且理由与原先不同：它不是"漏发"，而是**功能整体没落地** —— 类型注释写「Effective when fast mode is enabled」，而 `fastModeEnabled` 这个设置项**全仓没有任何消费方**。顺手带上会在用户并不知道的情况下把请求切到 priority 计费档，属独立议题（见「遗留」）。
+  - `organization` / `project` 不接（`AIProvider` 上没有这两个字段，无来源）；`systemPrompt` 不接（Worker 自建 system prompt）。
+- **新增回归 `tests/provider-payload`（54 断言）**：Worker 读取字段的契约清单、**`type` 模型级优先（含直接拿 `openaiPreset.defaultModels` 断言 `gpt-5.2` / `gpt-5.3-codex` 解析为 `openai-responses`）**、模型级 override 优先、UA 占位符回落、思考开关与推理档位推导，**外加一条结构性守卫 —— 四个发送点不得再出现手搓的 provider 字面量**（`apiKey:`）且必须调用 `buildProviderPayload(`。
+
+**遗留（本次未做，待定）**：`serviceTier` / fast mode —— `fastModeEnabled` 设置项与 `ModelSettingsPopover` 的开关都在、preset 在模型级标了 `serviceTier: 'priority'`，但**没有任何路径把它发出去**，也就是 fast mode 是个未落地的功能。要不要接、接到哪条链路（`agent/run` 是否也该带），需单独一条需求，因为它会改变计费档位。
 
 **门禁**：TS 三配置 0 错；13 套 TS 回归全过（含新增 `provider-payload`）；C# 无改动（`Worker.csproj` 与 `tests/WishfulClaw.Tests.sln` 复跑 0/0）。

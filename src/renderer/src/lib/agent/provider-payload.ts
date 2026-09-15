@@ -10,18 +10,16 @@
  * configuring them in Settings changed nothing for a normal chat. Building the
  * payload in one place is what stops that from recurring.
  *
- * Scope note: this keeps `type` as the *provider* type, exactly as the chat path
- * always has. The rest of the app treats a model-level `type` as the request type
- * (`model.type ?? provider.type` — AssistantMessage, ModelSettingsPopover,
- * memory-automation-utils, cron-runtime), which means chat and cron can disagree
- * for presets that override it (e.g. copilot-oauth declares `openai-chat` at the
- * provider but `openai-responses` on some models). Switching that here would
- * change which endpoint a request goes to, so it is deliberately left alone.
+ * 状态说明：模型级 `type` 优先于服务商级 —— `AIModelConfig.type` 的注释就是
+ * "Optional protocol override for this model; falls back to provider.type when
+ * omitted"，全仓其它消费方也都这么读（AssistantMessage / ModelSettingsPopover /
+ * MemorySettingsPanel / memory-automation-utils / cron-runtime）。只有聊天链路曾
+ * 固定发服务商级类型，于是同一个模型在 chat 与 cron 走了两个协议。
  *
- * `sessionId` is *not* set here: the chat store stamps it on the way out, since
- * it is the only door to `agent/run` and knows the session. `serviceTier` is also
- * absent — nothing in the renderer feeds it yet, and it is documented as effective
- * only under fast mode.
+ * `sessionId` 是例外：它由 chat store 盖章（见下），不在这里构造。`serviceTier`
+ * 也不在这里 —— 类型注释写着"Effective when fast mode is enabled"，而
+ * `fastModeEnabled` 目前没有任何消费方，也就是 fast mode 这个功能整体还没接；
+ * 顺手带上它会悄悄把请求切到 priority 计费档，所以留给独立议题。
  */
 
 import type { AIModelConfig, AIProvider } from '../../../../shared/types/provider'
@@ -61,7 +59,9 @@ export function buildProviderPayload(
   return {
     id: provider.id,
     name: provider.name,
-    type: provider.type,
+    // Model-level protocol override wins; a model that sets none follows its
+    // provider. See the header note.
+    type: modelConfig?.type ?? provider.type,
     apiKey: provider.apiKey,
     baseUrl: provider.baseUrl,
     providerId: provider.id,

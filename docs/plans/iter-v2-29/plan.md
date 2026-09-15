@@ -489,7 +489,7 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 **模型怎么定**：候选也有当前这个 model id → 继续用它（行为完全一致）；否则用它自己的 `defaultModel`；再否则第一个已启用的 chat 模型。
 
 **为什么是前端**：一次 agent run 撞上限额就结束了，不存在「跑一半接着跑」；前端发消息本来就只带增量，历史是模型调用时才拼的。所以自动切换只需要替用户做两件事 —— 操作模型切换器（换服务商+模型）、发一句「继续推进」。
-- [✓] S-21.D7：**回归测试工程** —— 新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`（csproj 引用 `WishfulClaw.Agent`，Program.cs 留 sanity 断言 1 条 + D1-D7 注释指针），用 `dotnet sln add` **同步进 `src/runtime/WishfulClaw.sln`**。`dotnet build sln` 0/0；`dotnet run --project tests/<项目> --no-build` 通过。**这一步单独提前做**是项目硬规则（不然像 `CronRegressionTests` / `MemoryRecallRegressionTests` 一样**静默漏编**——既不在 sln、也不在 `dotnet build` 范围里，等于测试从来没跑过）。状态机测试在 D3、AgentLoop 集成测试在 D4 时填实
+- [✓] S-21.D8：**回归测试工程** —— 新建 `tests/WishfulClaw.ProviderFallbackRegressionTests`（csproj 引用 `WishfulClaw.Agent`，Program.cs 留 sanity 断言 1 条 + D1-D7 注释指针），用 `dotnet sln add` **同步进 `src/runtime/WishfulClaw.sln`**。`dotnet build sln` 0/0；`dotnet run --project tests/<项目> --no-build` 通过。**这一步单独提前做**是项目硬规则（不然像 `CronRegressionTests` / `MemoryRecallRegressionTests` 一样**静默漏编**——既不在 sln、也不在 `dotnet build` 范围里，等于测试从来没跑过）。状态机测试在 D3、AgentLoop 集成测试在 D4 时填实
 
 **Mini 验证**：tsc 三配置零错误；9 个 TS 回归套件全过；.NET 0/0（C# 已无改动）；真机触发 429 能自动切 + 自动推进（老大验）。
 
@@ -1442,4 +1442,11 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 
 **门禁**：TS 三配置 0 错；13 套 TS 回归全过；`Worker.csproj` 与 `tests/WishfulClaw.Tests.sln` 0/0；AOT 无 IL2026/IL3050/IL3051；**11 个 C# 回归工程全过**（AgentTimeline 25 / ProviderHeader / CompactionSnapshot / ProviderFallback 1 / ToolConcurrency / ChannelShellApproval 74 / Goal 148 / SessionTaskCascade 180 / ChannelToolVisibility 108 / Cron 42 / MemoryRecall 18）。
 
-**仍未处理**：F-9（S-21 三刀折叠 —— 三个 commit 已推送，折叠须 force push，等老大点头）、F-10（`S-21.D7` 编号撞车 + `ProviderFallbackRegressionTests` 只有 1 条 sanity 断言却已进 sln）、F-13（截图落盘路径无边界，属产品口径）、F-15（存量 i18n 缺口，非本迭代引入）。
+**仍未处理**：F-9（S-21 三刀折叠 —— 三个 commit 已推送，折叠须 force push，等老大点头）、F-10（`S-21.D7` 编号撞车 + `ProviderFallbackRegressionTests` 只有 1 条 sanity 断言却已进 sln）、F-13（截图落盘路径无边界，属产品口径）。
+
+### i18n 存量缺口（F-15）+ 文档编号（F-10 一半，2026-09-15）
+
+- **F-15** —— `locales/index.ts:54` 的 `fallbackLng` 是 `'en'`，所以 en 用户看到的是**原始 key 而不是中文回退**，属真缺陷（此前判断为「非本迭代引入」而搁置，改判为值得顺手修）。补齐 `en/settings.json` 缺的 **32 个** key（`channel.qr.*` 5 个 + `channel.feishu / dingtalk / wecom / weixin / qq / telegram / discord / whatsapp / wsUrl` 26 个 + `channel.list.empty` + `tabs.channel.desc`），并把 `en/chat.json` 里 4 处中文值译掉。复核后保留一处差异：`assistantMessage.ranCommandsInline` 只有 zh 有 —— 实测 i18next 会从 `_other` 回落到基础 key（zh 渲染「执行命令 3 次」），**不是缺陷，不动**。
+- **F-10（文档半边）** —— `plan.md` 里 `S-21.D7` 撞车：第二处（回归测试工程）是重复编号，改为 `S-21.D8`。
+
+**门禁**：TS 三配置 0 错；13 套 TS 回归全过；i18n 脚本复核 zh/en key 集合已对齐。

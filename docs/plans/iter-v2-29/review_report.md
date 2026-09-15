@@ -214,6 +214,10 @@ const QUOTA_PHRASE_PATTERNS = [/rate[_\s-]?limit/i, /\bquota\b/i, /usage[_\s-]?l
 `TimelinePanel.tsx:65` 在 global 作用域下传 `params.projectId = projectId ?? undefined` —— 当前有激活项目时，「全部会话」只显示该项目的记录，与标签语义不符（无项目时才是真全局）。
 
 ### ⚠️ F-15（存量，非本迭代引入）i18n 缺口
+
+> ✅ **已修复（2026-09-15）** —— `fallbackLng` 是 `'en'`，所以 en 用户看到的是**原始 key**（不是中文回退），属真缺陷。补齐 `en/settings.json` 缺失的 **32 个** key（`channel.qr.*` 5 个 + `channel.feishu/dingtalk/wecom/weixin/qq/telegram/discord/whatsapp/wsUrl` 26 个 + `channel.list.empty` + `tabs.channel.desc`），并把 `en/chat.json` 里 4 处中文值译掉（`folderSelector.sshComingSoon` / `sshPlaceholder`、`input.runtimeMetrics.input` / `cacheHit`）。
+> 复核后保留 1 处「差异」：`chat.json` 的 `assistantMessage.ranCommandsInline` 只有 zh 有（en 是 `_one`/`_other`）。实测 i18next 会从 `_other` 回落到基础 key（zh 下渲染为「执行命令 3 次」），**不是缺陷**，不动。
+> 脚本复核结果：zh/en 命名空间 key 集合已对齐（settings / chat / common / layout / agent / ssh 全部 0 缺口、0 中文残留）。
 本迭代新增 key **完全对称**；但 `zh/settings.json` 有 **32 个 channel/qr/feishu/dingtalk/wecom key 在 en 缺失**（`zh=1378` vs `en=1346`），另 `en/chat.json` 有 4 处值为中文（`folderSelector.sshComingSoon`、`folderSelector.sshPlaceholder`、`input.runtimeMetrics.input`、`input.runtimeMetrics.cacheHit`）、`en/chat.json` 缺 `goal.pendingTitle`。抽查确认**均非本迭代引入**，建议另开需求。
 
 ### ⚠️ F-16（S-21/F-2 同源）provider 载荷构造器三处重复、字段集互不相同

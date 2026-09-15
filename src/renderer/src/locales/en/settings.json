@@ -90,7 +90,8 @@
       "label": "Extensions"
     },
     "channel": {
-      "label": "Channels"
+      "label": "Channels",
+      "desc": "Configure message channels (Feishu, WeChat, etc.)"
     },
     "logs": {
       "label": "Logs"
@@ -1552,7 +1553,8 @@
       "noModel": "No available model"
     },
     "list": {
-      "title": "Channel List"
+      "title": "Channel List",
+      "empty": "No channels configured yet"
     },
     "empty": "Select a channel on the left to configure",
     "actions": {
@@ -1566,14 +1568,19 @@
     "qr": {
       "title": "QR Binding",
       "placeholder": "Click the button below to get a QR code",
+      "start": "Get QR code",
       "waiting": "Scan the QR code with WeChat",
       "connected": "Binding succeeded!",
       "expired": "QR code expired, please refresh",
       "failed": "Failed to fetch QR code",
       "notSupported": "This channel does not support QR binding, please configure with API credentials",
+      "noAppId": "Fill in the App ID on the API credentials tab first",
+      "feishuHint": "Scan the QR code to open the application in Feishu",
+      "feishuPlaceholder": "Enter an App ID to generate a QR code",
       "rebind": "Rebind",
       "retry": "Retry",
       "refresh": "Refresh QR code",
+      "regenerate": "Regenerate",
       "weixinInstructions": "1. Click the \"Get QR code\" button\n2. Scan the displayed QR code with WeChat\n3. Confirm authorization on your phone\n4. The channel will start automatically once bound",
       "feishuInstructions": "1. Scan the QR code with the Feishu app\n2. Confirm creating the application in Feishu\n3. App ID and App Secret are fetched automatically after authorization\n4. The channel will start automatically once bound",
       "feishuWaiting": "Scan the QR code with Feishu to complete authorization",
@@ -1619,7 +1626,48 @@
       "allowWriteOutsideDesc": "Allow writing files outside the working directory",
       "allowSubAgents": "Sub-Agents",
       "allowSubAgentsDesc": "Allow using sub-agent tools"
-    }
+    },
+    "feishu": {
+      "appId": "App ID",
+      "appSecret": "App Secret"
+    },
+    "dingtalk": {
+      "appKey": "App Key",
+      "appSecret": "App Secret",
+      "cardTemplateId": "Card template ID (optional)"
+    },
+    "wecom": {
+      "corpId": "Corp ID",
+      "agentId": "Agent ID",
+      "secret": "App Secret",
+      "token": "Token",
+      "encodingAesKey": "EncodingAESKey"
+    },
+    "weixin": {
+      "baseUrl": "API URL",
+      "token": "Bot Token",
+      "routeTag": "Route tag (optional)",
+      "accountId": "Account ID (optional)",
+      "wsUrl": "WebSocket relay URL (optional)"
+    },
+    "qq": {
+      "appId": "App ID",
+      "appSecret": "App Secret",
+      "botAppId": "Bot App ID"
+    },
+    "telegram": {
+      "botToken": "Bot Token",
+      "wsUrl": "WebSocket relay URL (optional)"
+    },
+    "discord": {
+      "botToken": "Bot Token",
+      "wsUrl": "WebSocket relay URL (optional)"
+    },
+    "whatsapp": {
+      "botToken": "Bot Token",
+      "wsUrl": "WebSocket relay URL (optional)"
+    },
+    "wsUrl": "WebSocket relay URL (optional)"
   },
   "logsPage": {
     "level": {

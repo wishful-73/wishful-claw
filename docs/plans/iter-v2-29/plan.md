@@ -1537,3 +1537,17 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 4. **i18n 增删**：新增 `provider.fallback.modelGone` + `topbar.autoFallback{Empty,NotReady,MoveUp,MoveDown,Toggle}`（zh/en 齐）；删掉已无消费方的 `provider.fallback.current`。
 
 **门禁**：TS 三配置 0 错；14 套 TS 回归全过；i18n 脚本复核 zh/en 完全对齐（只剩 `chat.json` 那处已验证正常的复数形态）。
+
+## 需求 26 修正 · 第三轮：把链的规则抽出来并补测试（2026-09-15）
+
+抽完才发现：**需求 26 的核心规则此前零测试覆盖**，而且第二轮刚改的「空数组 = 本会话不接管」也没有任何断言。原因是它们长在 `provider-auto-fallback` 里 —— 那个模块一 import 就拉起 chat / provider / ui 三个 store，node 里根本跑不起来（`quota-failure.ts` 当初就是为了这个才独立的）。
+
+- **新增纯模块 `lib/agent/fallback-chain.ts`**，收编四条规则：
+  - `resolveFallbackChain(override, defaults)` —— 哪条链生效（**`null` → 默认；`[]` → 本会话不接管，绝不回落默认**）
+  - `isProviderUsable(provider)` —— 启用 + （不需 key 或已有 key）
+  - `resolveCandidateModelId(provider, modelId)` —— 模型必须在该服务商上存在、启用、且是 chat 类；**没有猜测分支**
+  - `pickNextFallbackCandidate(candidates, providers, skip)` —— 按序取第一个可用候选，`skip` 含"当前在用 + 本次已试"，返回 null 表示无候选可切
+- `provider-auto-fallback` 改为调用它们（`resolveNextAutoFallbackTarget` 里那段 15 行的 for 循环收敛成 7 行）。
+- **新增回归 `tests/fallback-chain`（22 断言）**：`[]` 不等于 `null`、服务商可用性的三种情形、模型的四种无效（空 / 不存在 / 禁用 / 非 chat）、**同名模型跨服务商解析到各自服务商**（"名字不是身份"）、顺序决定谁先接管、被跳过的服务商不复访、链耗尽返回 null、按能力而非存在性跳过。
+
+**门禁**：TS 三配置 0 错；**15 套 TS 回归全过**（新增 `fallback-chain`）。

@@ -7,7 +7,8 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { resolveSessionModelSelection } from '../session-model-resolution'
 import { buildProviderPayload } from './provider-payload'
 import { isQuotaFailureSignal } from './quota-failure'
-import type { AIProvider, ProviderFallbackCandidate } from '../../../../shared/types/provider'
+import { pickNextFallbackCandidate, resolveFallbackChain } from './fallback-chain'
+import type { ProviderFallbackCandidate } from '../../../../shared/types/provider'
 
 /**
  * iter-29 / S-21: 自动接管「撞上限额后手动换服务商 + 发一句继续推进」这两步。
@@ -71,11 +72,7 @@ export interface AutoFallbackTarget {
  */
 export function resolveFallbackCandidates(sessionId: string): ProviderFallbackCandidate[] {
   const override = useUIStore.getState().fallbackCandidatesBySession[sessionId]
-  // `null` means "never touched, use the default chain". An empty array is a deliberate
-  // answer too — the session switched every candidate off — so it must not fall through
-  // to the default, which would hand over against the user's wish.
-  if (override) return override
-  return useSettingsStore.getState().providerFallback?.candidates ?? []
+  return resolveFallbackChain(override, useSettingsStore.getState().providerFallback?.candidates ?? [])
 }
 
 /**
@@ -114,39 +111,15 @@ export function resolveNextAutoFallbackTarget(sessionId: string): AutoFallbackTa
     ? (providers.find((item) => item.id === current.providerId)?.name ?? current.providerId)
     : 'auto'
 
-  for (const candidate of candidates) {
-    const { providerId } = candidate
-    if (skip.has(providerId)) continue
-    const provider = providers.find((item) => item.id === providerId)
-    if (!provider || !provider.enabled) continue
-    if (provider.requiresApiKey !== false && !provider.apiKey) continue
-    const modelId = resolveCandidateModelId(provider, candidate.modelId)
-    if (!modelId) continue
-    return {
-      providerId,
-      modelId,
-      providerName: provider.name,
-      modelName: modelId,
-      fromProviderName
-    }
+  const match = pickNextFallbackCandidate(candidates, providers, skip)
+  if (!match) return null
+  return {
+    providerId: match.provider.id,
+    modelId: match.modelId,
+    providerName: match.provider.name,
+    modelName: match.modelId,
+    fromProviderName
   }
-
-  return null
-}
-
-/**
- * 候选里写的模型到底能不能用：必须在该服务商上存在、未被禁用、且是对话类。
- *
- * 不再有"猜测"分支（旧的 pickFallbackModelId 会依次退到当前 model id /
- * defaultModel / 第一个模型）。那个策略在额度共享的用法下是错的：切到另一家时用
- * 哪个模型是**用户指定的**，不该由"名字撞上了"或"那家的默认"决定。
- */
-function resolveCandidateModelId(provider: AIProvider, configuredModelId: string): string | null {
-  if (!configuredModelId) return null
-  const model = (provider.models ?? []).find((item) => item.id === configuredModelId)
-  if (!model || model.enabled === false) return null
-  if (model.category !== undefined && model.category !== 'chat') return null
-  return model.id
 }
 
 /**

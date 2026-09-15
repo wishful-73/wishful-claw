@@ -739,6 +739,33 @@ sogou_wechat / github / arxiv / wikipedia_zh / wikipedia_en …）。所以「�
 - 压缩双光标现象随之消失（两处光标都在回复链上，已一并移除）
 - 验证：tsc 三配置零错误；真机流式输出目视（回复末尾无光标 / 思考块内保留）由老大复验
 
+## 口径修正（2026-09-15，老大真机使用后）
+
+> 老大原话：「之前主要是出现了两个光标，现在没光标了一点都不习惯」。
+
+**先纠正一条我自己的误读**：当初登记 T-4 时我写的是「聊天窗已有状态呈现，这个光标可以不要」—— 但那是**我给出的理由**，老大的真实痛点是「**两个**」。所以这轮不是简单回退，是把"两个"从根上治掉。
+
+**老大定的规则**：
+
+| 情形 | 光标 |
+|---|---|
+| 思考流式中 | 思考块内**一个**（下方不放） |
+| 其它（正文等）流式中 | 渲染链末尾**一个** |
+| 不是最后一条 assistant 消息 | **一律不渲染**（治压缩前后两个） |
+
+**实施**：
+
+- 新增纯模块 `AssistantMessage/live-cursor.ts`：`isThinkingActive` + `shouldShowTrailingCursor`。
+  - `isThinkingActive`：字符串内容看**末尾 think 段是否未闭合**；结构化内容看**末尾 thinking block 有无 `completedAt`**。与 `ThinkingBlock` 的 `isThinking`（`isStreaming && !completedAt`）**互补** —— 这正是"两者不会同时亮"的依据。
+  - `shouldShowTrailingCursor = isStreaming ∧ isLastAssistantMessage ∧ ¬thinkingActive ∧ 有内容可挂靠`。最后一条是测试逼出来的：流式中还没内容时（调用方显示"Thinking…"占位）没有可挂靠的行。
+- `content-renderer` 恢复光标渲染，但**判定统一收在上述函数**；落点 5 处（string 的 `!hasThink` / segments 末尾文本段；结构化路径的 `hasStructuredThinkingBlocks` / 无 think 块 / 段内末尾文本段），全部引用同一个 `trailingCursor`。
+  - **与当年的关键差异**：当年三处各自写 `isStreaming`，**没有任何"全局只能有一个"的约束** —— 思考中思考块与末尾同时亮、压缩后两条消息各亮一个。现在两条守卫（`isLastAssistantMessage` / `!thinkingActive`）从设计上让两个不可能出现。
+- **`liveOutputAnimationStyle` 不需要恢复 prop**：`AssistantMessage` 与 `ThinkingBlock` 都直接从 settings 读（当年删的是 `ContentRenderer` 那条已无消费者的链路）。
+- 保留不动：思考块的光标、`.ai-live-cursor` CSS、`getLiveOutputCursorClass`。
+- **新增回归 `tests/live-cursor`（20 断言）**：思考中不放末尾光标、思考闭合后恢复、结构化路径同规则、非最后一条消息一律不渲染、空闲不渲染、无内容不渲染，以及**核心性质 —— 「思考活跃」与「末尾光标」永不共存**（对 5 种输入组合断言）。
+
+**门禁**：TS 三配置 0 错；**17 套 TS 回归全过**（新增 `live-cursor`）。
+
 ---
 
 # 需求 15（临时追加）：T-5 用量统计面板体验收口
@@ -1582,3 +1609,47 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 - **17 个 key 从来没写**（18 处引用），且都有 `defaultValue` —— 其中 **`usage.detail.*` / `usage.rollup.*` / `channel.qr.starting` 的默认值是中文，英文用户看到中文**；`activity.*` / `memory.refresh` 是英文，中文用户看到英文。按 `defaultValue` 的语义补齐 zh/en：`chat.activity.*`（6）、`layout.memory.refresh`（1）、`settings`（10：`usage.detail.columns.select`、`usage.detail.pagination.*` 6 个、`usage.rollup.output`/`cache`、`channel.qr.starting`）。
 
 **门禁**：TS 三配置 0 错；**16 套 TS 回归全过**（新增 `i18n-coverage`，当前 0 缺失）。
+
+---
+
+# 人工复测清单（收尾用，2026-09-15 汇总）
+
+> 老大已复验：T-7.4（中断后再发不 400）、T-8（抖动）、T-8.3（不上下跳）、网络搜索列表分隔线、`topbar.followGlobalModel` i18n。
+
+## A. 本批改动引入的（优先验）
+
+1. **限额自动接管全链（需求 26）** —— 需要两个能分别触发的服务商。
+   - auto 会话撞限额：**不出现 429 卡片** + 自动切到「设置 → 服务商 → 自动切换」里配的候选 + 自动发「继续推进」
+   - **切换要粘住**：切完后随便发一条普通消息，应仍走新服务商（F-1 的验收点，也是这轮改动最核心的一条）
+   - manual 会话撞限额：**照常出卡片**（不接管）
+   - 只启用一家 / 候选的模型留空 / 候选都试完：**照常出卡片**（不吞）
+   - 会话面板（模型选择器 Auto 行右侧）：开关本会话启用、上下移、模型只读、「恢复默认」
+   - 设置页「自动切换」：手动加服务商 → 选模型 → 排序；未启用的服务商**不出现在可选列表**
+   - ⚠️ **行为变更要知道**：auto 现在优先用会话自己的绑定，所以「手动选个模型 → 再点 Auto」会**继续用你选的那个**（以前是回到全局）。
+2. **协议取值改模型级优先** —— 仅当你在用 `openai` / `azure-openai` / `copilot-oauth` 三个 preset 时相关：共 37 个模型从 `/chat/completions` 换到 `/responses`。发一条消息看 `request_debug` 的 url。**OpenAI 官方你没环境，Azure / Copilot 有就值得跑一条**。
+3. **S-20 自定义请求头生效**：配一个头（如 `x-probe: 1`）→ 发消息 → 看 `request_debug` 的 headers 里有没有。
+4. **T-15 思考渲染**：长思考时前端不滞后（后端跑完了前端还在放旧的）、观感不跳。
+
+## B. 早前挂账、尚未复验
+
+| 项 | 怎么验 |
+|---|---|
+| T-13 / S-16 粘贴 chip | 粘贴长文 → 发送 → 聊天窗显示 chip（不是原文）→ 点开是全文；**重启应用**后重开该会话，chip 仍在且点开是全文 |
+| T-14 底部统计条口径 | 只加载 5 轮历史时，数字应 == 完整加载；切走再切回不回退、不重复计 |
+| T-11 `use_capability` | 调 `builtin:Task` / `mcp-tool:*` / `skill:*` 三类带参 |
+| T-12 空响应重试 | 遇上游偶发空响应能自动重试成功（原本直接失败） |
+| T-3 长会话窗口收缩 | 长会话连发消息，顶部「加载更早」行为正常、不卡 |
+| T-4 流式光标 | 回复末尾无光标；思考块内的保留 |
+| S-17 状态条工具名 | 代理调用时状态条显示**真实工具名**（不是 `use_capability`） |
+| S-18 分支视图 | 右侧面板分支视图 + 提交图谱；提交超 50 条时出现「仅显示最近 N 条」提示 |
+| S-19 自窗口截图 | 让 agent 截应用自身窗口并落盘，路径正确、图能打开 |
+| S-23 搜索 | 中文查询不再返回词典/翻译结果；引擎开关生效 |
+| S-24 / T-5 用量面板 | 三档切换（曲线/柱状/明细）+ 左栏汇总 + 分页；图表随窗口变宽变高 |
+| S-25 时间线 Tab | 右侧面板时间线；「全部会话」档应**真的不过滤**（有激活项目时也看到其它项目的记录） |
+| S-22 渠道回报 | **需微信环境**：全局派发 → 项目回报 → 助理回复 → 微信端收到 |
+
+## C. 不必单独验的
+
+- **i18n 一致性** → `test:i18n-coverage` 已机械覆盖（0 缺失）
+- **链的规则 / 模型解析** → `test:fallback-chain`（22）+ `test:session-model-resolution`（23）已覆盖
+- **编译 / 既有回归** → 门禁已跑（TS 三配置 + 16 套 TS 回归 + C# 10 个工程 + AOT）

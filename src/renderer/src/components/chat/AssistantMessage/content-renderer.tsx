@@ -20,10 +20,13 @@ import { ImageGenerationErrorCard } from '../ImageGenerationErrorCard'
 import { AgentErrorCard } from '../AgentErrorCard'
 import { OrchestrationBlock } from '../OrchestrationBlock'
 import { imageBlockToAttachment } from '@renderer/lib/image-attachments'
+import { getLiveOutputCursorClass } from '@renderer/lib/live-output-animation'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useImageEditStore } from '@renderer/stores/image-edit-store'
 import type { AssistantRenderItem, ThinkSegment } from './types'
 import { MARKDOWN_WRAPPER_CLASS as MD_CLASS } from './types'
 import { parseThinkTags, stripThinkTags } from './think-parser'
+import { shouldShowTrailingCursor } from './live-cursor'
 import { StreamingMarkdownContent } from './markdown-renderer'
 import { ModelThinkingIndicator, GenerationProcessLine } from './ui-buttons'
 import { ToolBlockRenderer } from './tool-block-renderer'
@@ -99,6 +102,29 @@ export function ContentRenderer({
   t
 }: ContentRendererProps): React.JSX.Element {
   const openImageEditor = useImageEditStore((s) => s.openEditor)
+  const liveOutputAnimationStyle = useSettingsStore((s) => s.liveOutputAnimationStyle)
+
+  /**
+   * The trailing cursor (T-4 口径修正，2026-09-15）。
+   *
+   * **The rule — and the reason it is not computed here — lives in `live-cursor.ts`:**
+   * never more than one cursor on screen. Thinking keeps its own inside `ThinkingBlock`;
+   * otherwise the trailing one shows, and only on the last assistant message so a
+   * compression cannot light up two.
+   *
+   * All the render sites below share this single value rather than each deciding for
+   * itself — that is exactly how the rule got broken before (three sites, three
+   * independent `isStreaming` checks, nothing coordinating them).
+   */
+  const showTrailingCursor = shouldShowTrailingCursor({
+    isStreaming,
+    stringSegments,
+    normalizedContent,
+    isLastAssistantMessage
+  })
+  const trailingCursor = showTrailingCursor ? (
+    <span className={getLiveOutputCursorClass(liveOutputAnimationStyle)} />
+  ) : null
 
   const shouldShowImageGeneratingLoader = isGeneratingImage && isStreaming
   const hasEmptyContent =
@@ -162,6 +188,7 @@ export function ContentRenderer({
           ) : null}
           <div className={MD_CLASS}>
             <StreamingMarkdownContent text={content} isStreaming={!!isStreaming} />
+            {trailingCursor}
           </div>
         </div>
       )
@@ -195,6 +222,8 @@ export function ContentRenderer({
                 text={seg.content}
                 isStreaming={!!isStreaming && idx === lastTextSegIdx}
               />
+              {/* 光标只跟最后一段文本；末尾是思考段时不跟（那段由 ThinkingBlock 自己亮）。 */}
+              {idx === lastTextSegIdx && idx === segments.length - 1 ? trailingCursor : null}
             </div>
           )
         })}
@@ -293,7 +322,8 @@ export function ContentRenderer({
   const thinkingBlockCount = normalizedContent?.filter((b) => b.type === 'thinking').length ?? 0
   const processSummary = buildProcessSummary(toolExecutionOutline, thinkingBlockCount, t)
 
-  const renderItem = (item: AssistantRenderItem): React.JSX.Element | null => {
+  /** `trailing` marks the last rendered item, which is where the cursor belongs. */
+  const renderItem = (item: AssistantRenderItem, trailing = false): React.JSX.Element | null => {
     if (item.kind === 'block') {
       const block = normalizedContent![item.index]
       switch (block.type) {
@@ -317,6 +347,7 @@ export function ContentRenderer({
                   text={visibleText}
                   isStreaming={!!isStreaming && item.index === lastStructuredTextIdx}
                 />
+                {trailing ? trailingCursor : null}
               </div>
             )
           }
@@ -330,6 +361,7 @@ export function ContentRenderer({
                   text={block.text}
                   isStreaming={!!isStreaming && item.index === lastStructuredTextIdx}
                 />
+                {trailing ? trailingCursor : null}
               </div>
             )
           }
@@ -356,6 +388,9 @@ export function ContentRenderer({
                       text={seg.content}
                       isStreaming={isBlockStreaming && j === lastTxtSeg}
                     />
+                    {trailing && j === lastTxtSeg && j === textSegments.length - 1
+                      ? trailingCursor
+                      : null}
                   </div>
                 )
               })}
@@ -462,7 +497,7 @@ export function ContentRenderer({
         processItems.map((item) => renderItem(item))
       )}
       {finalItems.length > 0 ? (
-        finalItems.map((item) => renderItem(item))
+        finalItems.map((item, index) => renderItem(item, index === finalItems.length - 1))
       ) : hasProcessContent && !isStreaming && renderMode !== 'transcript' ? (
         <div className={MD_CLASS}>
           <p className="text-muted-foreground">{t('assistantMessage.executionPaused', { defaultValue: '任务暂告一段落' })}</p>

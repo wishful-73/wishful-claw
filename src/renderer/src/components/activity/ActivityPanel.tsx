@@ -26,7 +26,7 @@ export function ActivityPanel() {
           <button
             onClick={() => useUIStore.getState().openTimelinePanel()}
             className="rounded p-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            title={t('rightPanel.timeline', { defaultValue: 'Agent timeline' })}
+            title={t('rightPanel.timeline', { ns: 'layout', defaultValue: 'Agent timeline' })}
           >
             <History className="h-3.5 w-3.5" />
           </button>

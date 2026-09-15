@@ -119,6 +119,8 @@
     "noModel": "未选择模型",
     "autoModel": "Auto",
     "autoModelHint": "Auto · 撞限额时自动切换服务商并继续",
+    "followGlobalModel": "跟随全局模型",
+    "followGlobalModelDesc": "当前会话使用全局主模型设置。",
     "autoFallbackChain": "自动切换链",
     "autoFallbackChainDefault": "默认",
     "autoFallbackChainOverridden": "本会话已调整",
@@ -438,6 +440,7 @@
   },
   "memory": {
     "title": "记忆",
+    "refresh": "刷新记忆状态",
     "tabActivity": "执行",
     "tabMemory": "记忆",
     "hot": "热记忆",

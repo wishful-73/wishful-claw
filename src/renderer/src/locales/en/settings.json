@@ -1507,13 +1507,24 @@
         "cacheCreation": "Cache creation",
         "reasoning": "Reasoning",
         "duration": "Duration",
-        "cost": "Cost"
+        "cost": "Cost",
+        "select": "Columns"
+      },
+      "pagination": {
+        "summary": "Page {{page}} / {{pageCount}} · {{total}} rows",
+        "pageSize": "Per page",
+        "pageSizeHint": "Rows per page ({{min}}-{{max}}), press Enter to apply",
+        "rows": "rows",
+        "previous": "Previous page",
+        "next": "Next page"
       }
     },
     "rollup": {
       "requests": "Requests",
       "input": "Input",
-      "cost": "Cost"
+      "cost": "Cost",
+      "output": "Output",
+      "cache": "Cache"
     }
   },
   "analytics": {
@@ -1598,6 +1609,7 @@
       "scopeLabel": "Scope",
       "credentialLabel": "Credentials",
       "credentialSaved": "Securely saved",
+      "starting": "Bound successfully, starting the channel…",
       "weixinChannel": "WeChat",
       "feishuChannel": "Feishu",
       "localCredential": "Local WeChat credentials",

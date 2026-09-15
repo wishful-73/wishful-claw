@@ -1,4 +1,12 @@
 {
+  "activity": {
+    "iterationStarted": "迭代开始",
+    "iterationEnded": "迭代结束",
+    "requestSent": "请求已发送",
+    "toolCallStarted": "工具调用开始",
+    "toolExecuting": "工具执行中",
+    "toolResult": "工具结果"
+  },
   "home": {
     "title": "今天我能帮你做什么？",
     "subtitle": "开始对话或选择下方快捷提示。",

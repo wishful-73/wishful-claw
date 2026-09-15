@@ -1551,3 +1551,34 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 - **新增回归 `tests/fallback-chain`（22 断言）**：`[]` 不等于 `null`、服务商可用性的三种情形、模型的四种无效（空 / 不存在 / 禁用 / 非 chat）、**同名模型跨服务商解析到各自服务商**（"名字不是身份"）、顺序决定谁先接管、被跳过的服务商不复访、链耗尽返回 null、按能力而非存在性跳过。
 
 **门禁**：TS 三配置 0 错；**15 套 TS 回归全过**（新增 `fallback-chain`）。
+
+## 第四轮：网络搜索列表 + 一次误删事故与 i18n 守卫（2026-09-15）
+
+### 1. 网络搜索面板的列表改分隔线
+
+老大原话：「我说的列表指的是**设置 → 插件 → 网络搜索**里面的列表」—— 我上一轮改的是自动切换链那个列表，**搞错了地方**（他第 2 条说的"列表"是这个）。
+
+三处统一：内置引擎列表、意图路由列表、自定义引擎列表。去掉逐项的 `rounded-lg border bg-muted/10`，改为 `divide-y divide-border/60`。常量 `SETTINGS_LIST_CLASS` 定义在 `settings-primitives.tsx`，三处共用（自定义引擎那个编辑器展开块仍保留边框 —— 它是编辑区，不是列表项）。
+
+### 2. ⚠️ 我误删了两个 i18n key（老大发现）
+
+清 `autoModel*` 死文案时，我用**行号范围删除**（`if ($n -ge 121 -and $n -le 162) continue`），而 `topbar.followGlobalModel` 与 `followGlobalModelDesc` **正好夹在那段里**，被一起删掉了。
+
+- 后果：模型选择器里"跟随全局模型"那一行**中文用户看到英文** —— 调用点写了 `defaultValue`，所以不显示原始 key、不报错、日志里什么都没有。
+- 我的检查为什么没抓到：事后跑的"zh/en 对齐"脚本**只比较两种语言之间的差异** —— 两边同时被删的 key，看起来恰好是"对齐的"。**方法本身有盲点。**
+- 已从 `6b47d003~1` 取回原文恢复（zh/en 各 2 个）。并做了一次全量审计：那次行号删除共删 36 个 key，**除这 2 个外全部是 `topbar.autoModel*` 死文案**，其余删除（`goal.pendingTitle`、`provider.fallback.current`）是有意的孤儿清理。
+
+### 3. 新增守卫 `tests/i18n-coverage`（防这一类复发）
+
+换一个轴检查：**代码引用的 key vs locale 文件定义的 key**。
+
+- 支持 `useTranslation('ns')`、`useTranslation(['a','b'])`、`useTranslation('ns', { keyPrefix: 'git' })`、`t('ns:key')`、`t('key', { ns: 'x' })`（选项跨行也算）。
+- **只在文件声明了 `useTranslation` 时才检查** —— 没有声明的文件，ns 由调用方（`t` 作为 prop）决定，静态判不出；早先版本对这种文件一律按 `common` 查，产生的全是误报，而误报会让人开始忽略这个守卫。
+- 命中的 key 还会报「在哪个 ns 定义过」，把"ns 写错"和"从没写过"区分开。
+
+### 4. 守卫首批抓出 20 条，全部处理
+
+- **2 条 ns 写错**：`ActivityPanel` 的 `rightPanel.timeline`（在 layout，调用点补 `ns: 'layout'`）；`cacheTokenShare` 那条其实已有 `ns: 'settings'`，是守卫的正则不跨行，已修正则。
+- **17 个 key 从来没写**（18 处引用），且都有 `defaultValue` —— 其中 **`usage.detail.*` / `usage.rollup.*` / `channel.qr.starting` 的默认值是中文，英文用户看到中文**；`activity.*` / `memory.refresh` 是英文，中文用户看到英文。按 `defaultValue` 的语义补齐 zh/en：`chat.activity.*`（6）、`layout.memory.refresh`（1）、`settings`（10：`usage.detail.columns.select`、`usage.detail.pagination.*` 6 个、`usage.rollup.output`/`cache`、`channel.qr.starting`）。
+
+**门禁**：TS 三配置 0 错；**16 套 TS 回归全过**（新增 `i18n-coverage`，当前 0 缺失）。

@@ -119,6 +119,8 @@
     "noModel": "No model",
     "autoModel": "Auto",
     "autoModelHint": "Auto · switches provider and continues when a quota is hit",
+    "followGlobalModel": "Follow global model",
+    "followGlobalModelDesc": "Use the global main model setting for this session.",
     "autoFallbackChain": "Failover chain",
     "autoFallbackChainDefault": "Default",
     "autoFallbackChainOverridden": "Adjusted here",
@@ -438,6 +440,7 @@
   },
   "memory": {
     "title": "Memory",
+    "refresh": "Refresh memory status",
     "tabActivity": "Activity",
     "tabMemory": "Memory",
     "hot": "Hot",

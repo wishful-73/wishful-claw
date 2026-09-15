@@ -1,4 +1,12 @@
 {
+  "activity": {
+    "iterationStarted": "Iteration started",
+    "iterationEnded": "Iteration ended",
+    "requestSent": "Request sent",
+    "toolCallStarted": "Tool call started",
+    "toolExecuting": "Tool executing",
+    "toolResult": "Tool result"
+  },
   "home": {
     "title": "How can I help you today?",
     "subtitle": "Start a conversation or pick a quick prompt below.",

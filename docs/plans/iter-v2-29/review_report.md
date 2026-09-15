@@ -7,9 +7,9 @@
 > **结论：FAIL**（❌ 5 项 > 0）
 > 统计：✅ 20 / ⚠️ 9 / ❌ 5
 >
-> **修复进展（2026-09-15）**：F-8 与 F-2 已修复并验证 —— 同一个病根（`agent/run` 的 provider 载荷靠手搓），见 F-2 / F-8 各节与 `plan.md` 的「修复」节。
+> **修复进展（2026-09-15）**：F-8 / F-2（provider 载荷单点构造）、F-1 / F-3 / F-4 / F-5（S-21 自动切换收口）已修复并验证，见各节与 `plan.md` 的「修复」节。
 > 审查报告之外另发现一条并存问题，同日由老大拍板一并修正：**协议取值只取服务商级** —— `AIModelConfig.type` 的语义是「模型级覆盖、缺省跟随服务商」，全仓五个消费方都这么读，只有聊天链路固定发服务商级，导致同一模型在 chat 与 cron 走两个协议（`openai` / `azure-openai` / `copilot-oauth` 共 37 个 `openai-responses` 模型受影响）。详见 `plan.md` 的「修复」节。
-> 未处理：**F-1**（S-21 切换不粘会话）、**F-9**（S-21 三刀未折叠）、**F-10**（`S-21.D7` 撞号 + 空壳测试工程），以及 ⚠️ 各项。
+> 未处理：**F-9**（S-21 三刀未折叠，改写已推送历史需 force push）、**F-10**（`S-21.D7` 撞号 + 空壳测试工程）、⚠️ F-6~F-7 / F-11~F-15。
 
 ---
 
@@ -63,6 +63,8 @@
 ## 三、发现清单
 
 ### ❌ F-1（S-21）自动切换「不粘会话」，只对自动推进那一轮有效
+
+> ✅ **已修复（2026-09-15）** —— `applyAutoFallbackTarget` 同步写 `useUIStore.setAutoModelSelection`（auto 模式解析真正优先读的那张表），会话切换就此粘住，模型切换器也会显示切过去的模型。见 `plan.md` 的「修复」节。
 
 `applyAutoFallbackTarget` 落的是 `session.providerId/modelId`，并把 `modelSelectionMode` 保持 `'auto'`：
 
@@ -173,6 +175,8 @@ sidecar-mapping.ts:154  userAgent: resolveProviderUserAgent(provider.userAgent),
 
 ### ⚠️ F-3（S-21）`isQuotaFailure` 匹配过宽，可能误触发自动切换
 
+> ✅ **已修复（2026-09-15）** —— 去掉 `\bcapacity\b`、把 `/overload/i` 收紧为 `/\boverloaded\b/i`，并补 `/too many requests/i`；判定搬进纯模块 `lib/agent/quota-failure.ts` 以便单测（`tests/provider-fallback` 新增 13 条断言，含「`No overload matches this call` 不得命中」）。
+
 ```ts
 // provider-auto-fallback.ts:29-41
 const QUOTA_PHRASE_PATTERNS = [/rate[_\s-]?limit/i, /\bquota\b/i, /usage[_\s-]?limit/i, /overload/i, /\bcapacity\b/i]
@@ -182,9 +186,13 @@ const QUOTA_PHRASE_PATTERNS = [/rate[_\s-]?limit/i, /\bquota\b/i, /usage[_\s-]?l
 **建议**：收紧为 `HTTP 429/503` + 明确限额短语，去掉通用词；或同时校验错误来源。
 
 ### ⚠️ F-4（S-21）切换后 400ms 内竞态未处理
+
+> ✅ **已修复（2026-09-15）** —— `runAutoFallback` 首行重新校验会话仍存在且仍是 `auto` 模式（这 400ms 内用户手动切模型会把模式变成 `manual`，此时不再动手）。
 `scheduleAutoFallback:197-205` 当场算好 target，400ms 后才执行，执行时**不重新校验**会话是否仍是 auto、用户是否已手动切模型/发消息。窗口内的手动操作会被这条延迟动作覆盖。
 
 ### ⚠️ F-5（S-21）`attemptedBySession` 只有惰性清理；`clearAutoFallbackAttempts` 无调用方
+
+> ✅ **已修复（2026-09-15）** —— `deleteSession` 里按既有 dynamic-import 模式调用 `clearAutoFallbackAttempts(id)`（避开 chat-store → provider-auto-fallback 的循环），并同时把该会话的 `autoModelSelectionsBySession` 条目置空。
 `:58-71` 仅在会话再次被读取时删过期项；`clearAutoFallbackAttempts`（`:73-75`）全仓无调用点，建议挂到会话删除/关闭。
 
 ### ⚠️ F-11（S-25）`metadata_json` 手工字符串拼 JSON

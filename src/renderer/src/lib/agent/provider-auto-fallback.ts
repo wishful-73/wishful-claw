@@ -3,8 +3,10 @@ import { toast } from 'sonner'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
+import { useUIStore } from '@renderer/stores/ui-store'
 import { resolveSessionModelSelection } from '../session-model-resolution'
 import { buildProviderPayload } from './provider-payload'
+import { isQuotaFailure } from './quota-failure'
 import type { AIProvider } from '../../../../shared/types/provider'
 
 /**
@@ -25,32 +27,9 @@ export function autoFallbackContinueText(): string {
   return i18next.t('settings:provider.fallback.continuePrompt', { defaultValue: '继续推进' })
 }
 
-// 429 / 503 是 ProviderHttpException 消息里的固定形态："... request failed HTTP 429: ..."
-const QUOTA_STATUS_PATTERNS = [/HTTP\s+429/, /HTTP\s+503/]
-const QUOTA_PHRASE_PATTERNS = [
-  /rate[_\s-]?limit/i,
-  /\bquota\b/i,
-  /usage[_\s-]?limit/i,
-  /overload/i,
-  /\bcapacity\b/i
-]
-/** 上下文超限换个服务商也好不了，必须排除 —— 否则会一路切到列表尽头。 */
-const NOT_QUOTA_PATTERNS = [
-  /context[_\s-]?(window|length)/i,
-  /too[_\s-]?long/i,
-  /maximum[_\s-]?context/i
-]
-
-export function isQuotaFailure(message?: string | null): boolean {
-  if (!message) return false
-  for (const pattern of NOT_QUOTA_PATTERNS) {
-    if (pattern.test(message)) return false
-  }
-  for (const pattern of QUOTA_STATUS_PATTERNS) {
-    if (pattern.test(message)) return true
-  }
-  return QUOTA_PHRASE_PATTERNS.some((pattern) => pattern.test(message))
-}
+// 限额判定搬到了 lib/agent/quota-failure.ts —— 纯函数，能单独测。
+// 这里 re-export 保持既有 import 路径可用。
+export { isQuotaFailure } from './quota-failure'
 
 /**
  * 每个会话一条推进链：记住这次链路上已经用过的服务商。内存态即可 —— 重启后
@@ -156,6 +135,23 @@ export function applyAutoFallbackTarget(sessionId: string, target: AutoFallbackT
   if (typeof store.setSessionAutoFallbackTarget !== 'function') return false
   store.setSessionAutoFallbackTarget(sessionId, target.providerId, target.modelId)
 
+  // 只写 `session.providerId` 是不够的 —— auto 模式下会话自己的 providerId 不参与
+  // 路由，解析会回落到全局当前选择，于是用户下一条普通消息又发给了刚刚限额的那个
+  // 服务商，表现为「每条消息都要先失败一次」。auto 模式真正优先读的是
+  // `autoModelSelectionsBySession`（发送链路 / 输入区 / 模型切换器都读它），所以这里
+  // 同步写进去。副作用是模型切换器从此会显示我们切过去的那个模型，这正是想要的。
+  useUIStore.getState().setAutoModelSelection(sessionId, {
+    source: 'auto',
+    target: 'main',
+    providerId: target.providerId,
+    modelId: target.modelId,
+    providerName: target.providerName,
+    modelName: target.modelName,
+    decisionSource: 'quotaFallback',
+    fallbackReason: target.fromProviderName,
+    selectedAt: Date.now()
+  })
+
   const attempted = liveAttempts(sessionId)
   attempted.push(target.providerId)
   attemptedBySession.set(sessionId, { ids: attempted, at: Date.now() })
@@ -187,6 +183,11 @@ export function scheduleAutoFallback(sessionId: string, errorMessage?: string | 
 }
 
 async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): Promise<void> {
+  // 重新校验：这 400ms 里用户可能已经手动切了模型（auto → manual）、删了会话，或者
+  // 自己又发了消息。此时再动手就是拿一个过期的决定覆盖用户的当前选择。
+  const session = useChatStore.getState().sessions.find((item) => item.id === sessionId)
+  if (!session || session.modelSelectionMode !== 'auto') return
+
   if (!applyAutoFallbackTarget(sessionId, target)) return
 
   toast.info(describeAutoFallbackSwitch(target.fromProviderName, target))
@@ -195,8 +196,6 @@ async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): P
   if (!provider) return
 
   const chatStore = useChatStore.getState()
-  const session = chatStore.sessions.find((item) => item.id === sessionId)
-  if (!session) return
 
   // The follow-up turn must start with the same parameters a manual send uses.
   // Leaving them out makes the Worker guess: it infers scope from

@@ -1423,3 +1423,13 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 **遗留（本次未做，待定）**：`serviceTier` / fast mode —— `fastModeEnabled` 设置项与 `ModelSettingsPopover` 的开关都在、preset 在模型级标了 `serviceTier: 'priority'`，但**没有任何路径把它发出去**，也就是 fast mode 是个未落地的功能。要不要接、接到哪条链路（`agent/run` 是否也该带），需单独一条需求，因为它会改变计费档位。
 
 **门禁**：TS 三配置 0 错；13 套 TS 回归全过（含新增 `provider-payload`）；C# 无改动（`Worker.csproj` 与 `tests/WishfulClaw.Tests.sln` 复跑 0/0）。
+
+### S-21 自动切换收口（F-1 / F-3 / F-4 / F-5，2026-09-15）
+
+- **F-1 不粘会话（功能性硬伤）** —— 原实现只写 `session.providerId` 并保持 `mode='auto'`，而 auto 分支**根本不读会话自己的 providerId**（回落到全局当前选择），于是用户下一条普通消息又发给刚限额的服务商，表现为「每条消息先失败一次」。修法：`applyAutoFallbackTarget` 同步写 `useUIStore.setAutoModelSelection` —— `autoModelSelectionsBySession` 正是 auto 模式解析优先读的那张表（`resolveSendModel` / 输入区 / 上下文环 / 模型切换器共 4 个消费方），此前**全仓 0 个写入方**。副作用是模型切换器从此显示切过去的那个模型，属预期。
+- **F-3 判定过宽** —— 去掉 `\bcapacity\b`、把 `/overload/i` 收紧为 `/\boverloaded\b/i`、补 `/too many requests/i`。原写法会让工具输出里的 `No overload matches this call`（TypeScript 报错）命中，触发一次**用户没要求的换服务商 + 自动发消息**。判定同时搬进纯模块 `lib/agent/quota-failure.ts`（原文件一被 import 就拉起三个 store，没法单测），`provider-auto-fallback` re-export 保持路径不变。
+- **F-4 400ms 竞态** —— `runAutoFallback` 首行重新校验会话仍存在且仍是 `auto`（这 400ms 内用户手动切模型会变 `manual`，此时不再动手）。
+- **F-5 内存表泄漏** —— `deleteSession` 里按既有 dynamic-import 模式调 `clearAutoFallbackAttempts(id)`，并把该会话的 `autoModelSelectionsBySession` 条目置空。
+- 回归：`tests/provider-fallback` 由 18 → **31 断言**（新增 13 条限额判定，含 `No overload matches this call` / `at capacity` 必须**不**命中、上下文超限即便带 429 也要排除）。
+
+**门禁**：TS 三配置 0 错；13 套 TS 回归全过；C# 无改动。

@@ -1499,3 +1499,12 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 **门禁**：TS 三配置 0 错；13 套 TS 回归全过；`Worker.csproj` / `tests/WishfulClaw.Tests.sln` 0/0；AOT 无 IL2026/IL3050/IL3051；**10 个 C# 回归工程全过**。
 
 **真机待验（老大）**：auto 会话撞限额 → 不出现 429 卡片 + 自动切到配置的「服务商+模型」+ 自动「继续推进」；置空模型 / 只启用一家 / 候选试完 → 照常报错卡片。
+
+## 需求 26 修正（2026-09-15，老大真机看过后）
+
+1. **auto 的形态改成「右侧面板」** —— 原来是在 Auto 项下方塞了一个可折叠的「自动切换链」，与「移入服务商 → 右侧出来模型列表」的既有交互不一致。改为把 Auto 那一行也包成 `Popover`，`PopoverContent side="right"` 里放链编辑器：auto 现在就是列表里的**一行**，跟服务商同构；两者共用 `selectedProviderId`（auto 用哨兵 key `__auto_fallback_chain__`），所以**天然互斥**，不会同时开两个面板。
+2. **可选服务商只列已启用的** —— `FallbackCandidateEditor` 的 `available` 此前是 `providers.filter(未被加入)`,**没有过滤 `enabled`**，于是没启用的服务商也挤在可选列表里。⚠️ **这是从旧版 `ProviderFallbackPanel` 继承下来的**（旧 `availableProviders` 同样只排除了已加入的），不是本需求新引入，但同属"列出用不了的东西"。已在**共享组件**里一次修掉，设置页与模型选择器两处同时生效。
+   - 已在链里、但**之后被停用**的服务商**仍然显示**（标「未就绪」），不跟着消失 —— 否则一停用就静默丢掉用户的配置。
+3. **补 i18n**：上一版 commit message 声称加了 `topbar.autoFallbackChain*`，**实际没加**（只有 inline 中文 `defaultValue`），英文用户会看到中文 —— 正是刚修完的 F-15 那类缺陷。现已补齐 zh/en 五个 key（`autoFallbackChain` / `ChainDefault` / `ChainOverridden` / `Disabled` / `Reset`），i18n 脚本复核 zh/en 已对齐。
+
+**门禁**：TS 三配置 0 错；13 套 TS 回归全过。

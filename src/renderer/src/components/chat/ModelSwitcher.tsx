@@ -33,6 +33,13 @@ import { ModelCapabilityTags, ModelHoverDetails } from './ModelSwitcher/model-in
 import { ModelSettingsPopover } from './ModelSwitcher/ModelSettingsPopover'
 import { CodexQuotaIndicator, CopilotQuotaIndicator } from './ModelSwitcher/QuotaIndicators'
 
+/**
+ * Sentinel used in `selectedProviderId` for the `auto` row. Its right-hand panel holds
+ * the failover chain, so the row opens a panel exactly like a provider does — and, being
+ * the same piece of state, the two can never be open at once.
+ */
+const AUTO_CHAIN_KEY = '__auto_fallback_chain__'
+
 export function ModelSwitcher({
   modelRoute = 'main',
   sessionId
@@ -424,70 +431,88 @@ export function ModelSwitcher({
           )}
           {!isFastRoute && !activeSession?.pluginId && (
             <div className="border-b p-1">
-              <button
-                ref={autoModelRef}
-                className={cn(
-                  'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
-                  isExplicitAutoActive && 'bg-primary/5'
-                )}
-                onClick={() => selectAutoModel(activeSessionId, setOpen)}
+              {/* Same shape as a provider entry: the row selects `auto`, and the panel to
+                  the right is where the failover chain is inspected and adjusted. */}
+              <Popover
+                open={selectedProviderId === AUTO_CHAIN_KEY}
+                onOpenChange={(nextOpen) => {
+                  if (nextOpen) setSelectedProviderId(AUTO_CHAIN_KEY)
+                }}
               >
-                <span className="mt-0.5 flex size-5 items-center justify-center shrink-0">
-                  {isExplicitAutoActive ? (
-                    <span className="flex size-5 items-center justify-center rounded-full bg-primary/10">
-                      <Check className="size-3 text-primary" />
-                    </span>
-                  ) : (
-                    <AutoModelIcon size={18} />
-                  )}
-                </span>
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span
+                <PopoverTrigger asChild>
+                  <button
+                    ref={autoModelRef}
                     className={cn(
-                      'truncate text-xs',
-                      isExplicitAutoActive
-                        ? 'font-semibold text-primary'
-                        : 'text-foreground/80 group-hover:text-foreground'
+                      'flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left hover:bg-muted/60 transition-colors group',
+                      isExplicitAutoActive && 'bg-primary/5'
                     )}
+                    onFocus={() => setSelectedProviderId(AUTO_CHAIN_KEY)}
+                    onMouseEnter={() => setSelectedProviderId(AUTO_CHAIN_KEY)}
+                    onClick={() => selectAutoModel(activeSessionId, setOpen)}
                   >
-                    {t('topbar.autoModel')}
-                  </span>
-                  <span className="line-clamp-2 text-[10px] text-muted-foreground">
-                    {autoRoutingState === 'routing'
-                      ? t('topbar.autoModelRouting')
-                      : autoSelection?.modelName
-                        ? t('topbar.autoModelTooltip', {
-                            route: t(
-                              autoSelection.target === 'main'
-                                ? 'topbar.autoModelMain'
-                                : 'topbar.autoModelFast'
-                            ),
-                            model: autoSelection.modelName,
-                            taskType:
-                              autoSelection.taskType ?? t('topbar.autoModelTaskTypeUnknown'),
-                            confidence:
-                              autoSelection.confidence ?? t('topbar.autoModelConfidenceUnknown'),
-                            complexity: autoSelection.complexity
-                              ? t(`topbar.autoModelComplexity.${autoSelection.complexity}`)
-                              : '',
-                            risk: autoSelection.risk
-                              ? t(`topbar.autoModelRisk.${autoSelection.risk}`)
-                              : '',
-                            reason: autoSelection.fallbackReason
-                              ? t(`topbar.autoModelFallback.${autoSelection.fallbackReason}`, {
-                                  defaultValue: autoSelection.fallbackReason
-                                })
-                              : ''
-                          })
-                        : t('topbar.autoModelDesc')}
-                  </span>
-                </div>
-              </button>
+                    <span className="mt-0.5 flex size-5 items-center justify-center shrink-0">
+                      {isExplicitAutoActive ? (
+                        <span className="flex size-5 items-center justify-center rounded-full bg-primary/10">
+                          <Check className="size-3 text-primary" />
+                        </span>
+                      ) : (
+                        <AutoModelIcon size={18} />
+                      )}
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span
+                        className={cn(
+                          'truncate text-xs',
+                          isExplicitAutoActive
+                            ? 'font-semibold text-primary'
+                            : 'text-foreground/80 group-hover:text-foreground'
+                        )}
+                      >
+                        {t('topbar.autoModel')}
+                      </span>
+                      <span className="line-clamp-2 text-[10px] text-muted-foreground">
+                        {autoRoutingState === 'routing'
+                          ? t('topbar.autoModelRouting')
+                          : autoSelection?.modelName
+                            ? t('topbar.autoModelTooltip', {
+                                route: t(
+                                  autoSelection.target === 'main'
+                                    ? 'topbar.autoModelMain'
+                                    : 'topbar.autoModelFast'
+                                ),
+                                model: autoSelection.modelName,
+                                taskType:
+                                  autoSelection.taskType ?? t('topbar.autoModelTaskTypeUnknown'),
+                                confidence:
+                                  autoSelection.confidence ?? t('topbar.autoModelConfidenceUnknown'),
+                                complexity: autoSelection.complexity
+                                  ? t(`topbar.autoModelComplexity.${autoSelection.complexity}`)
+                                  : '',
+                                risk: autoSelection.risk
+                                  ? t(`topbar.autoModelRisk.${autoSelection.risk}`)
+                                  : '',
+                                reason: autoSelection.fallbackReason
+                                  ? t(`topbar.autoModelFallback.${autoSelection.fallbackReason}`, {
+                                      defaultValue: autoSelection.fallbackReason
+                                    })
+                                  : ''
+                              })
+                            : t('topbar.autoModelDesc')}
+                      </span>
+                    </div>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-80 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+                  align="start"
+                  side="right"
+                  sideOffset={6}
+                >
+                  {activeSessionId ? <AutoFallbackChain sessionId={activeSessionId} /> : null}
+                </PopoverContent>
+              </Popover>
             </div>
           )}
-          {isExplicitAutoActive && activeSessionId ? (
-            <AutoFallbackChain sessionId={activeSessionId} />
-          ) : null}
           <div className="p-1">
             <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
               {t('topbar.providers')}

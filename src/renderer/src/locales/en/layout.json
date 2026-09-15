@@ -160,6 +160,11 @@
       "medium": "medium risk",
       "high": "high risk"
     },
+    "autoFallbackChain": "Failover chain",
+    "autoFallbackChainDefault": "Default",
+    "autoFallbackChainOverridden": "Adjusted here",
+    "autoFallbackDisabled": "Failover is off — enable it in Settings → Providers → Failover",
+    "autoFallbackReset": "Reset to default",
     "clickToSwitch": "click to switch",
     "providers": "Providers",
     "modelsCount": "{{count}} models",

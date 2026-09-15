@@ -56,8 +56,16 @@ export function FallbackCandidateEditor({
     [candidates, providerById]
   )
 
+  // Only enabled providers can be added — an entry that is switched off can never serve
+  // a handover, so offering it would just be noise. Entries already in the chain stay
+  // listed even if their provider was disabled afterwards (they are marked instead),
+  // so turning a provider off does not silently drop the user's configuration.
   const available = useMemo(
-    () => providers.filter((provider) => !ordered.some((item) => item.providerId === provider.id)),
+    () =>
+      providers.filter(
+        (provider) =>
+          provider.enabled && !ordered.some((item) => item.providerId === provider.id)
+      ),
     [providers, ordered]
   )
 

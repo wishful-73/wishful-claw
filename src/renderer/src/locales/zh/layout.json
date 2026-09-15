@@ -160,6 +160,11 @@
       "medium": "中风险",
       "high": "高风险"
     },
+    "autoFallbackChain": "自动切换链",
+    "autoFallbackChainDefault": "默认",
+    "autoFallbackChainOverridden": "本会话已调整",
+    "autoFallbackDisabled": "自动切换未启用，去「设置 → 服务商 → 自动切换」打开",
+    "autoFallbackReset": "恢复默认",
     "clickToSwitch": "点击切换",
     "providers": "提供商",
     "modelsCount": "{{count}} 个模型",

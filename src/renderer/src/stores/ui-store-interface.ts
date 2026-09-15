@@ -276,7 +276,7 @@ export interface UIStore {
     projectId?: string | null,
     goalId?: string | null
   ) => void
-  openTimelinePanel: (sessionId?: string | null, projectId?: string | null) => void
+  openTimelinePanel: (sessionId?: string | null) => void
   ensureTerminalTab: () => void
   ensureFilesTab: (sessionId?: string | null) => void
   ensureSummaryTab: (sessionId?: string | null) => void

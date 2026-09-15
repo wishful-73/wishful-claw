@@ -32,11 +32,9 @@ type TimelineScope = 'session' | 'global'
 const PAGE_SIZE = 60
 
 export function TimelinePanel({
-  sessionId,
-  projectId
+  sessionId
 }: {
   sessionId: string | null
-  projectId: string | null
 }): React.JSX.Element {
   const { t } = useTranslation('layout')
   const [scope, setScope] = React.useState<TimelineScope>('session')
@@ -46,7 +44,10 @@ export function TimelinePanel({
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
-  // Effective sessionId only matters in session scope.
+  // `session` scope filters to this session; `global` is unfiltered — the backend
+  // takes neither sessionId nor projectId and returns every row, app-level ones
+  // included. (Filtering the global feed by the active project made the "all
+  // sessions" label a lie: with a project open you only ever saw that project.)
   const activeSessionId = scope === 'session' ? sessionId : null
 
   const loadPage = React.useCallback(
@@ -62,7 +63,6 @@ export function TimelinePanel({
       try {
         const params: Record<string, unknown> = { limit: PAGE_SIZE }
         if (activeSessionId) params.sessionId = activeSessionId
-        else if (scope === 'global') params.projectId = projectId ?? undefined
         if (next && cursor) {
           params.beforeCreatedAt = cursor.createdAt
           params.beforeId = cursor.id
@@ -84,7 +84,7 @@ export function TimelinePanel({
         setLoading(false)
       }
     },
-    [activeSessionId, cursor, projectId, scope, sessionId]
+    [activeSessionId, cursor, scope, sessionId]
   )
 
   // Reset + reload whenever scope or session changes.
@@ -94,7 +94,7 @@ export function TimelinePanel({
     setHasMore(false)
     void loadPage(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, activeSessionId, projectId])
+  }, [scope, activeSessionId])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-card/50">

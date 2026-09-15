@@ -653,6 +653,7 @@
     "localBranches": "本地分支",
     "remoteBranches": "远程分支",
     "graphEmpty": "没有可展示的提交",
+    "graphTruncated": "仅显示最近 {{count}} 条提交",
     "noBranches": "无",
     "currentBranch": "当前",
     "changesCount": "变更 ({{count}})",

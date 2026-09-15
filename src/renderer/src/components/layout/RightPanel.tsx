@@ -198,12 +198,7 @@ export function RightPanel(): React.JSX.Element {
     if (tab.kind === 'preview') return <PreviewPanel embedded />
     if (tab.kind === 'files') return null  // AgentFilesPanel is rendered as persistent layer
     if (tab.kind === 'timeline') {
-      return (
-        <TimelinePanel
-          sessionId={tab.sessionId ?? panelSessionId}
-          projectId={tab.projectId ?? activeProjectId}
-        />
-      )
+      return <TimelinePanel sessionId={tab.sessionId ?? panelSessionId} />
     }
     if (tab.kind === 'review') return <SessionChangeReviewPanel sessionId={tab.sessionId ?? panelSessionId} />
     if (tab.kind === 'summary') return <SessionSummaryPanel sessionId={tab.sessionId ?? panelSessionId} />

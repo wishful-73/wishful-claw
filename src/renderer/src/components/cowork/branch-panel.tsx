@@ -3,6 +3,7 @@ import { AlertCircle, GitBranch, GitCommitHorizontal, Loader2, RefreshCw } from 
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
 import { useGitStore, type GitBranchItem } from '@renderer/stores/git-store'
+import { COMMIT_GRAPH_LIMIT } from '@renderer/stores/git-store-types'
 import { CommitGraphSvg } from './commit-graph'
 import {
   GRAPH_PADDING_Y,
@@ -71,7 +72,20 @@ export function BranchPanel({ workingFolder }: { workingFolder: string }): React
             <span className="min-w-0 flex-1 break-words">{details.graphError}</span>
           </div>
         ) : layout && layout.rows.length > 0 ? (
-          <CommitGraphList layout={layout} />
+          <>
+            <CommitGraphList layout={layout} />
+            {/* The query is capped (COMMIT_GRAPH_LIMIT), and git log --all is not
+                paged — without this line an old repository looks like it simply has
+                no history past the cut. */}
+            {graph && graph.length >= COMMIT_GRAPH_LIMIT ? (
+              <div className="px-2 py-2 text-[11px] text-muted-foreground">
+                {t('agentFiles.graphTruncated', {
+                  defaultValue: 'Showing the most recent {{count}} commits',
+                  count: COMMIT_GRAPH_LIMIT
+                })}
+              </div>
+            ) : null}
+          </>
         ) : graph === null ? (
           <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" />

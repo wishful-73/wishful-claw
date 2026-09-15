@@ -653,6 +653,7 @@
     "localBranches": "Local Branches",
     "remoteBranches": "Remote Branches",
     "graphEmpty": "No commits to show",
+    "graphTruncated": "Showing the most recent {{count}} commits",
     "noBranches": "None",
     "currentBranch": "current",
     "changesCount": "Changes ({{count}})",

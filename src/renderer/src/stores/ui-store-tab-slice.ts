@@ -130,15 +130,11 @@ export function createTabSlice(set: SetFn, get: GetFn) {
         return { rightPanelTabs, ...activation, rightPanelOpen: true }
       }),
 
-    // Timeline（S-25）：per-session 作用域，projectId 只是数据字段；事件查询
-    // 由面板组件自己按 sessionId 发起，tab 本身无额外状态。
-    openTimelinePanel: (sessionId?: string | null, projectId?: string | null) =>
+    // Timeline（S-25）：per-session 作用域。「全部会话」那档不做任何过滤，所以
+    // 这里不需要记 projectId —— 事件查询由面板组件自己按 sessionId 发起。
+    openTimelinePanel: (sessionId?: string | null) =>
       set((state: any) => {
         const resolvedSessionId = resolveRightPanelSessionId(state, sessionId)
-        const session = resolvedSessionId
-          ? useChatStore.getState().sessions.find((item: any) => item.id === resolvedSessionId)
-          : null
-        const resolvedProjectId = projectId ?? session?.projectId ?? useChatStore.getState().activeProjectId ?? null
         const tabId = scopedRightPanelTabId('timeline', resolvedSessionId)
         const activation = activateRightPanelTab(state, resolvedSessionId, tabId)
         const existing = state.rightPanelTabs.find((tab: any) => tab.id === tabId)
@@ -147,8 +143,7 @@ export function createTabSlice(set: SetFn, get: GetFn) {
             tab.id === tabId
               ? {
                   ...tab,
-                  sessionId: resolvedSessionId ?? tab.sessionId ?? null,
-                  projectId: resolvedProjectId ?? tab.projectId ?? null
+                  sessionId: resolvedSessionId ?? tab.sessionId ?? null
                 }
               : tab
           )
@@ -160,7 +155,6 @@ export function createTabSlice(set: SetFn, get: GetFn) {
           title: 'Timeline',
           closable: true,
           sessionId: resolvedSessionId,
-          projectId: resolvedProjectId,
           createdAt: Date.now()
         }
         const rightPanelTabs = ensureRightPanelTabs([...state.rightPanelTabs, tab])

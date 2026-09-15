@@ -26,14 +26,6 @@ import { confirm } from '@renderer/components/ui/confirm-dialog'
 // Re-export types for backward compatibility
 export type {
   AppMode,
-  AutoModelRoute,
-  AutoModelTaskType,
-  AutoModelConfidence,
-  AutoModelDecisionSource,
-  AutoModelRoutingComplexity,
-  AutoModelRoutingRisk,
-  AutoModelSelectionStatus,
-  AutoModelRoutingState,
   ChatView,
   RightPanelSection,
   AgentFilesTab,
@@ -190,18 +182,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
   runtimeStatusPanelOpen: false,
   toggleRuntimeStatusPanel: () => set((state: any) => ({ runtimeStatusPanelOpen: !state.runtimeStatusPanelOpen })),
   setRuntimeStatusPanelOpen: (open: any) => set({ runtimeStatusPanelOpen: open }),
-
-  // Auto model selection
-  autoModelSelectionsBySession: {},
-  autoModelRoutingStatesBySession: {},
-  setAutoModelSelection: (sessionId: any, status: any) =>
-    set((state: any) => ({
-      autoModelSelectionsBySession: { ...state.autoModelSelectionsBySession, [sessionId]: status }
-    })),
-  setAutoModelRoutingState: (sessionId: any, status: any) =>
-    set((state: any) => ({
-      autoModelRoutingStatesBySession: { ...state.autoModelRoutingStatesBySession, [sessionId]: status }
-    })),
 
   // Per-session quota-failover chain. In-memory on purpose: it belongs with the rest
   // of the per-session runtime state (the attempted-chain map, the auto selection),

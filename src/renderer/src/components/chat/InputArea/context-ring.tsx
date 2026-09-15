@@ -8,7 +8,6 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
-import { useUIStore } from '@renderer/stores/ui-store'
 import type { AIModelConfig } from '@renderer/lib/api/types'
 import { formatTokens } from '@renderer/lib/format-tokens'
 import {
@@ -35,9 +34,6 @@ export function ContextRing({
   const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
   const contextCompressionThreshold = useSettingsStore((s) => s.contextCompressionThreshold)
   const channels = useChannelStore((s) => s.channels)
-  const autoSelection = useUIStore((s) =>
-    activeSession ? (s.autoModelSelectionsBySession[activeSession.id] ?? null) : null
-  )
 
   const activeModelCfg = useProviderStore((s) => {
     const activeChannel = activeSession?.pluginId
@@ -52,14 +48,7 @@ export function ContextRing({
       channelProviderId: activeChannel?.providerId,
       channelModelId: activeChannel?.model
     })
-    const providerId =
-      selection.isAutoModeActive && autoSelection?.providerId
-        ? autoSelection.providerId
-        : selection.providerId
-    const modelId =
-      selection.isAutoModeActive && autoSelection?.modelId
-        ? autoSelection.modelId
-        : selection.modelId
+    const { providerId, modelId } = selection
     if (!providerId || !modelId) return null
     const provider = s.providers.find((p: any) => p.id === providerId)
     return provider?.models.find((m: any) => m.id === modelId) ?? null

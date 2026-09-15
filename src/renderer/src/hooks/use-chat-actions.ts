@@ -11,7 +11,6 @@ import { useActivityStore } from '@renderer/stores/activity-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
-import { useUIStore } from '@renderer/stores/ui-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
@@ -306,13 +305,8 @@ export function resolveSendModel(sessionId: string): { provider: SendProvider; m
     channelProviderId: channel?.providerId,
     channelModelId: channel?.model
   })
-  const autoSelection = useUIStore.getState().autoModelSelectionsBySession[sessionId] ?? null
-  const resolvedProviderId = selection.isAutoModeActive && autoSelection?.providerId
-    ? autoSelection.providerId
-    : selection.providerId
-  let resolvedModelId: string | null = selection.isAutoModeActive && autoSelection?.modelId
-    ? autoSelection.modelId
-    : selection.modelId
+  const resolvedProviderId = selection.providerId
+  let resolvedModelId: string | null = selection.modelId
   let provider = resolvedProviderId
     ? (providerStore.providers.find((p) => p.id === resolvedProviderId) ?? null)
     : null

@@ -232,8 +232,6 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         ui.syncSessionScopedState(nextActiveId, resolveSessionProjectId(get().sessions, nextActiveId))
         // 先同步作用域再清 tab：closeRightPanelTab 的收起判据读的是当前作用域。
         ui.removeRightPanelTabsForSession(id)
-        // S-21 收口：auto 选型表按会话 id 存，会话没了就把这条一并抹掉。
-        ui.setAutoModelSelection(id, null)
       })
       .catch((err) => {
         console.warn('[chat-store] Failed to clean right-panel tabs for deleted session:', err)

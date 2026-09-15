@@ -32,7 +32,6 @@ export interface InputAreaSelectorsOutput {
   // Session
   targetSession: ReturnType<typeof getTargetSession> | undefined
   channels: ReturnType<typeof useChannelStore.getState>['channels']
-  autoSelection: { providerId: string; modelId: string } | null
   activeProvider: {
     apiKey: string; requiresApiKey: boolean; type: string;
     models: AIModelConfig[]; modelId: string
@@ -107,9 +106,6 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   // ── Session ─────────────────────────────────────────────────────
   const targetSession = useChatStore(useShallow((s) => getTargetSession(s, sessionId)))
   const channels = useChannelStore((s) => s.channels)
-  const autoSelection = useUIStore((s) =>
-    targetSession ? (s.autoModelSelectionsBySession[targetSession.id] ?? null) : null
-  )
 
   const activeProvider = useProviderStore(
     useShallow((s) => {
@@ -126,10 +122,8 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
             channelProviderId: channel?.providerId, channelModelId: channel?.model
           })
         : null
-      const providerId = fastConfig?.providerId ??
-        (selection ? (selection.isAutoModeActive && autoSelection?.providerId ? autoSelection.providerId : selection.providerId) : activeProviderId)
-      const modelId = fastConfig?.model ??
-        (selection ? (selection.isAutoModeActive && autoSelection?.modelId ? autoSelection.modelId : selection.modelId) : activeModelId)
+      const providerId = fastConfig?.providerId ?? selection?.providerId ?? activeProviderId
+      const modelId = fastConfig?.model ?? selection?.modelId ?? activeModelId
       if (!providerId || !modelId) return null
       const provider = providers.find((item: any) => item.id === providerId)
       if (!provider) return null
@@ -209,7 +203,7 @@ export function useInputAreaSelectors(input: InputAreaSelectorsInput): InputArea
   return {
     language, mainModelSelectionMode, autoApprove, permissionWhitelistEnabled,
     clarifyAutoAcceptRecommended, animationsEnabled,
-    targetSession, channels, autoSelection: autoSelection as any, activeProvider: activeProvider as any, supportsVision, composerModelCfg,
+    targetSession, channels, activeProvider: activeProvider as any, supportsVision, composerModelCfg,
     chatView, isHomeComposer, mode, openSettings: openSettings as any, openFilePreview,
     activeProjectId, activeSshConnectionId, activeSessionId, hasMessages, clearSessionMessages,
     draftSessionId, projectScoped, workspaceReady,

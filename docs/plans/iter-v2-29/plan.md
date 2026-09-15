@@ -1508,3 +1508,19 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 3. **补 i18n**：上一版 commit message 声称加了 `topbar.autoFallbackChain*`，**实际没加**（只有 inline 中文 `defaultValue`），英文用户会看到中文 —— 正是刚修完的 F-15 那类缺陷。现已补齐 zh/en 五个 key（`autoFallbackChain` / `ChainDefault` / `ChainOverridden` / `Disabled` / `Reset`），i18n 脚本复核 zh/en 已对齐。
 
 **门禁**：TS 三配置 0 错；13 套 TS 回归全过。
+
+## 删除 OpenCowork 的 `autoModel*` 空实现（2026-09-15，老大拍板）
+
+`docs/plans/plan_003b/plan.md:73-77` 记着当年从 OpenCowork 搬 ui-store 时，`autoModel*` 与 `browser*` / `previewPanel*` / `agentFiles*` 一起被列为「**接口预留但空实现**」。同批其它几项后来都补上了，只有 `autoModel*` 一直停在那里：**它占着 `Auto` 这个名、占着一张 per-session 表、占着 ModelSwitcher 的一整套显示**（含 20 条「分类器回退原因」文案），而老大的 `auto` 定义是「允许限额自动接管」。两套语义撞名抢表，所以删掉。
+
+**删了什么**：`AutoModelRoute` / `AutoModelTaskType` / `AutoModelConfidence` / `AutoModelDecisionSource` / `AutoModelRoutingComplexity` / `AutoModelRoutingRisk` / `AutoModelSelectionStatus` / `AutoModelRoutingState` 八个类型；`ui-store` 的 `autoModelSelectionsBySession` / `autoModelRoutingStatesBySession` / `setAutoModelSelection` / `setAutoModelRoutingState`；ModelSwitcher / 输入区 / context-ring / `resolveSendModel` 里所有 `autoSelection` 分支；locale 里 `topbar.autoModelTooltip*` / `autoModelRouting*` / `autoModelMain` / `autoModelFast` / `autoModelTaskTypeUnknown` / `autoModelConfidenceUnknown` / `autoModelFallback.*`（20 条）/ `autoModelComplexity.*` / `autoModelRisk.*` / `autoModelDesc`。保留 `topbar.autoModel`（"Auto" 标签）与 `AutoModelIcon`。
+
+**这就是「模型级优先」那条修法的回归**：F-1 原先是靠「把切换目标写进 `autoModelSelectionsBySession`，而 auto 分支优先读它」修的。表没了，所以**同时给 F-1 换承载**：
+
+- `session-model-resolution.ts` 的 **auto 分支改为优先读会话自己的绑定**（`session.providerId` + `session.modelId` 都有效时），没有才回落全局 —— 新建会话直接选 Auto 就是"没有"这个情况。
+- 这比原来直：`applyAutoFallbackTarget` 只写会话，下一个普通消息自然用得上；`resolveSendModel` / 输入区 / 上下文环 / 模型切换器**四处各自的 autoSelection 分支全部消失**，都跟随 `resolveSessionModelSelection` 的同一个结果。
+- 语义上也更贴老大的口径：「不管是 auto 还是指定了模型的对话，会话本身肯定是需要服务商+模型的」。绑定有效就用它（用户选的，或接管写的）；无绑定才跟全局。
+- ModelSwitcher 的 Auto 行副标题换成 `topbar.autoModelHint`（"撞限额时自动切换服务商并继续"），不再提"分类器 / 主模型 fast 模型"。
+- **新增回归 `tests/session-model-resolution`（23 断言）**：auto+绑定取胜、auto 无绑定回落全局、绑定失效不搁浅、inherit/manual/plugin 各自语义不变、**以及"写了绑定就粘住 + 仍是 auto 可再次接管"这条 F-1 的性质** —— 这条此前一行测试都没有。
+
+**门禁**：TS 三配置 0 错；**14 套 TS 回归全过**（新增 `session-model-resolution`）。

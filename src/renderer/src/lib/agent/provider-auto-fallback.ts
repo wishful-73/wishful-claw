@@ -149,28 +149,15 @@ function resolveCandidateModelId(provider: AIProvider, configuredModelId: string
 /**
  * 落盘切换（等价于用户操作模型切换器），并把该候选记进本次链路。
  * 保持会话仍是 auto 模式 —— 下次失败还会继续往下切。
+ *
+ * 只写会话本身：`auto` 分支优先读会话绑定（`session-model-resolution`），所以下一个
+ * 普通消息就会用这个目标 —— 「切了不粘」的病根是当年把结果写去了一张 auto 会另外
+ * 优先读的表，而那张表没人写。现在没有那张表了。
  */
 export function applyAutoFallbackTarget(sessionId: string, target: AutoFallbackTarget): boolean {
   const store = useChatStore.getState()
   if (typeof store.setSessionAutoFallbackTarget !== 'function') return false
   store.setSessionAutoFallbackTarget(sessionId, target.providerId, target.modelId)
-
-  // 只写 `session.providerId` 是不够的 —— auto 模式下会话自己的 providerId 不参与
-  // 路由，解析会回落到全局当前选择，于是用户下一条普通消息又发给了刚刚限额的那个
-  // 服务商，表现为「每条消息都要先失败一次」。auto 模式真正优先读的是
-  // `autoModelSelectionsBySession`（发送链路 / 输入区 / 模型切换器都读它），所以这里
-  // 同步写进去。副作用是模型切换器从此会显示我们切过去的那个模型，这正是想要的。
-  useUIStore.getState().setAutoModelSelection(sessionId, {
-    source: 'auto',
-    target: 'main',
-    providerId: target.providerId,
-    modelId: target.modelId,
-    providerName: target.providerName,
-    modelName: target.modelName,
-    decisionSource: 'quotaFallback',
-    fallbackReason: target.fromProviderName,
-    selectedAt: Date.now()
-  })
 
   const attempted = liveAttempts(sessionId)
   attempted.push(target.providerId)

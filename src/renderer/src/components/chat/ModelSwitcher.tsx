@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   Check,
   Search,
-  Loader2,
   Globe2,
   ChevronDown
 } from 'lucide-react'
@@ -14,7 +13,6 @@ import {
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
 import { useQuotaStore } from '@renderer/stores/quota-store'
-import { useUIStore } from '@renderer/stores/ui-store'
 
 import { useTranslation } from 'react-i18next'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
@@ -113,16 +111,6 @@ export function ModelSwitcher({
     })
   )
   const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
-  const { autoSelection, autoRoutingState } = useUIStore(
-    useShallow((s) => ({
-      autoSelection: activeSessionId
-        ? (s.autoModelSelectionsBySession[activeSessionId] ?? null)
-        : null,
-      autoRoutingState: activeSessionId
-        ? (s.autoModelRoutingStatesBySession[activeSessionId] ?? 'idle')
-        : 'idle'
-    }))
-  )
 
   const enabledProviders = useMemo(
     () => (open ? providers.filter((p: any) => isProviderAvailableForModelSelection(p)) : []),
@@ -153,52 +141,26 @@ export function ModelSwitcher({
       : mainModelSelectionMode === 'auto')
   const isFollowGlobalActive =
     !isFastRoute && Boolean(activeSession) && sessionModelSelection.mode === 'inherit'
-  const autoResolvedProvider = autoSelection?.providerId
-    ? providers.find((provider: any) => provider.id === autoSelection.providerId)
-    : null
-  const autoResolvedModel = autoResolvedProvider?.models.find(
-    (model: any) => model.id === autoSelection?.modelId
-  )
-  const settingsProviderId = isAutoModeActive ? autoResolvedProvider?.id : displayProvider?.id
-  const settingsModel = isAutoModeActive ? (autoResolvedModel ?? undefined) : displayModel
+  // In `auto` mode the resolution already yields the model this session will use — its own
+  // binding when it has one (picked by the user, or written by a quota handover), the
+  // global selection otherwise. So the trigger shows `displayModel` like any other mode;
+  // there is no separate "what auto chose" state to consult.
+  const settingsProviderId = displayProvider?.id
+  const settingsModel = displayModel ?? undefined
   const settingsPopoverSide = activeSession ? 'top' : 'bottom'
   const triggerLabel = isAutoModeActive
-    ? autoRoutingState === 'routing'
-      ? t('topbar.autoModel')
-      : (autoSelection?.modelName ?? t('topbar.autoModel'))
+    ? t('topbar.autoModel')
     : (displayModel?.name ?? displayModelId ?? t('topbar.noModel'))
   const triggerAriaLabel = isAutoModeActive
-    ? autoRoutingState === 'routing'
-      ? t('topbar.autoModelRoutingShort')
-      : t('topbar.autoModel')
+    ? t('topbar.autoModel')
     : (displayModel?.name ?? displayModelId ?? t('topbar.noModel'))
-  const triggerProviderName = isAutoModeActive
-    ? (autoResolvedProvider?.name ?? t('topbar.autoModel'))
-    : (displayProvider?.name ?? null)
-  const triggerModel = isAutoModeActive ? (autoResolvedModel ?? null) : (displayModel ?? null)
-  const triggerProviderType = isAutoModeActive ? autoResolvedProvider?.type : displayProvider?.type
+  const triggerProviderName = displayProvider?.name ?? null
+  const triggerModel = displayModel ?? null
+  const triggerProviderType = displayProvider?.type
   const triggerDetail = isAutoModeActive
-    ? autoRoutingState === 'routing'
-      ? t('topbar.autoModelRouting')
-      : autoSelection?.modelName
-        ? t('topbar.autoModelTooltip', {
-            route: t(
-              autoSelection.target === 'main' ? 'topbar.autoModelMain' : 'topbar.autoModelFast'
-            ),
-            model: autoSelection.modelName,
-            taskType: autoSelection.taskType ?? t('topbar.autoModelTaskTypeUnknown'),
-            confidence: autoSelection.confidence ?? t('topbar.autoModelConfidenceUnknown'),
-            complexity: autoSelection.complexity
-              ? t(`topbar.autoModelComplexity.${autoSelection.complexity}`)
-              : '',
-            risk: autoSelection.risk ? t(`topbar.autoModelRisk.${autoSelection.risk}`) : '',
-            reason: autoSelection.fallbackReason
-              ? t(`topbar.autoModelFallback.${autoSelection.fallbackReason}`, {
-                  defaultValue: autoSelection.fallbackReason
-                })
-              : ''
-          })
-        : t('topbar.autoModelTooltipIdle')
+    ? t('topbar.autoModelHint', {
+        defaultValue: 'Auto · 撞限额时自动切换服务商并继续'
+      })
     : displayModelId && displayModel?.name && displayModel.name !== displayModelId
       ? displayModelId
       : null
@@ -310,11 +272,7 @@ export function ModelSwitcher({
                 title={triggerAriaLabel}
               >
                 {isAutoModeActive ? (
-                  autoRoutingState === 'routing' ? (
-                    <Loader2 size={15} className="shrink-0 animate-spin text-amber-500" />
-                  ) : (
-                    <AutoModelIcon size={17} className="shrink-0" />
-                  )
+                  <AutoModelIcon size={17} className="shrink-0" />
                 ) : (
                   <ModelIcon
                     icon={displayModel?.icon}
@@ -332,11 +290,7 @@ export function ModelSwitcher({
             <div className="flex items-start gap-3">
               <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/45">
                 {isAutoModeActive ? (
-                  autoRoutingState === 'routing' ? (
-                    <Loader2 size={16} className="animate-spin text-amber-500" />
-                  ) : (
-                    <AutoModelIcon size={18} />
-                  )
+                  <AutoModelIcon size={18} />
                 ) : (
                   <ModelIcon
                     icon={displayModel?.icon}
@@ -471,33 +425,9 @@ export function ModelSwitcher({
                         {t('topbar.autoModel')}
                       </span>
                       <span className="line-clamp-2 text-[10px] text-muted-foreground">
-                        {autoRoutingState === 'routing'
-                          ? t('topbar.autoModelRouting')
-                          : autoSelection?.modelName
-                            ? t('topbar.autoModelTooltip', {
-                                route: t(
-                                  autoSelection.target === 'main'
-                                    ? 'topbar.autoModelMain'
-                                    : 'topbar.autoModelFast'
-                                ),
-                                model: autoSelection.modelName,
-                                taskType:
-                                  autoSelection.taskType ?? t('topbar.autoModelTaskTypeUnknown'),
-                                confidence:
-                                  autoSelection.confidence ?? t('topbar.autoModelConfidenceUnknown'),
-                                complexity: autoSelection.complexity
-                                  ? t(`topbar.autoModelComplexity.${autoSelection.complexity}`)
-                                  : '',
-                                risk: autoSelection.risk
-                                  ? t(`topbar.autoModelRisk.${autoSelection.risk}`)
-                                  : '',
-                                reason: autoSelection.fallbackReason
-                                  ? t(`topbar.autoModelFallback.${autoSelection.fallbackReason}`, {
-                                      defaultValue: autoSelection.fallbackReason
-                                    })
-                                  : ''
-                              })
-                            : t('topbar.autoModelDesc')}
+                        {t('topbar.autoModelHint', {
+                          defaultValue: 'Auto · 撞限额时自动切换服务商并继续'
+                        })}
                       </span>
                     </div>
                   </button>
@@ -658,10 +588,8 @@ export function ModelSwitcher({
       <ModelSettingsPopover
         model={settingsModel}
         providerId={settingsProviderId}
-        providerType={isAutoModeActive ? autoResolvedProvider?.type : displayProvider?.type}
-        providerWebsocketMode={
-          isAutoModeActive ? autoResolvedProvider?.websocketMode : displayProvider?.websocketMode
-        }
+        providerType={displayProvider?.type}
+        providerWebsocketMode={displayProvider?.websocketMode}
         side={settingsPopoverSide}
         t={t}
         tChat={tChat}

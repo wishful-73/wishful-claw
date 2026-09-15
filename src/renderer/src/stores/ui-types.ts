@@ -15,37 +15,6 @@ export type NavItem =
   | 'codegraph'
 
 
-export type AutoModelRoute = 'main' | 'fast'
-export type AutoModelTaskType = string
-export type AutoModelConfidence = string
-export type AutoModelDecisionSource = string
-export type AutoModelRoutingComplexity = string
-export type AutoModelRoutingRisk = string
-
-export interface AutoModelSelectionStatus {
-  source: 'auto'
-  mode?: string
-  target: AutoModelRoute
-  providerId?: string
-  modelId?: string
-  providerName?: string
-  modelName?: string
-  taskType?: AutoModelTaskType
-  confidence?: AutoModelConfidence
-  decisionSource?: AutoModelDecisionSource
-  toolsAllowed?: boolean
-  complexity?: AutoModelRoutingComplexity
-  risk?: AutoModelRoutingRisk
-  reasons?: string[]
-  classifierRoute?: AutoModelRoute
-  heuristicRoute?: AutoModelRoute
-  fallbackReason?: string
-  routingDurationMs?: number
-  selectedAt: number
-}
-
-export type AutoModelRoutingState = 'idle' | 'routing'
-
 export type ChatView = 'home' | 'project' | 'archive' | 'channels' | 'git' | 'session' | 'persona'
 
 export type RightPanelSection = 'execution' | 'resources' | 'collaboration' | 'monitoring'

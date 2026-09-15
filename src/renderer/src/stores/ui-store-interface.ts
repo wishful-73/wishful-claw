@@ -3,8 +3,6 @@
 import type React from 'react'
 import type {
   AppMode,
-  AutoModelRoutingState,
-  AutoModelSelectionStatus,
   AgentFilesChangeSource,
   AgentFilesTab,
   ChatView,
@@ -76,11 +74,6 @@ export interface UIStore {
   toggleRuntimeStatusPanel: () => void
   setRuntimeStatusPanelOpen: (open: boolean) => void
 
-  // Auto model selection (from WishfulClaw)
-  autoModelSelectionsBySession: Record<string, AutoModelSelectionStatus | null>
-  autoModelRoutingStatesBySession: Record<string, AutoModelRoutingState>
-  setAutoModelSelection: (sessionId: string, status: AutoModelSelectionStatus | null) => void
-  setAutoModelRoutingState: (sessionId: string, status: AutoModelRoutingState) => void
   /**
    * Quota-failover chain for one session, overriding the global default from
    * Settings while this run lasts. `null` clears the override (back to the default).

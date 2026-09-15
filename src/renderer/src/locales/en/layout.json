@@ -171,7 +171,8 @@
     "openRuntimeStatus": "Show context and progress",
     "help": "Open guide",
     "files": "Files",
-    "terminal": "Terminal"
+    "terminal": "Terminal",
+    "browser": "Browser"
   },
   "sidebar": {
     "newChat": "New Chat",

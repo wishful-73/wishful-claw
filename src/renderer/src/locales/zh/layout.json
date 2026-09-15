@@ -171,7 +171,8 @@
     "openRuntimeStatus": "打开上下文与进度",
     "help": "打开引导",
     "files": "文件",
-    "terminal": "终端"
+    "terminal": "终端",
+    "browser": "浏览器"
   },
   "sidebar": {
     "newChat": "新对话",

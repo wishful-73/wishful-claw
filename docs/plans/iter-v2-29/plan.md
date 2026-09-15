@@ -1747,3 +1747,30 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 ## 真机待验（老大）
 
 面板四项平铺、无选项卡；「启动时自动连接」关掉后重启应用渠道不再自动起来；Shell 授权开关仍即时生效。
+
+---
+
+# 需求 29（临时追加）：顶栏加浏览器快捷入口
+
+> 2026-09-15 老大：「聊天窗顶部有图标快捷入口，在文件图标旁边加一个浏览器快捷入口，一样是点击后打开右侧面板然后加载浏览器选项卡」。
+
+## 实施
+
+`TitleBar.tsx` 右侧按钮组里，在**文件**与**终端**之间插入浏览器按钮（`Globe` 图标），点击调 `ensureBrowserTab(undefined, currentSessionId)` —— 与右侧面板「添加 → 浏览器」（`RightPanel.tsx:247`）是同一个 action，行为天然一致：面板未开则开、已有 browser tab 则激活。
+
+**我替老大定的一个决策（可推翻）**：原来文件/终端包在同一个 `hasProject && (...)` 块里，而浏览器**不需要工作目录**（`ensureBrowserTab` 不收 projectId，右侧面板的入口也是无条件的）。所以把那个块拆成两块，浏览器按钮落在中间且**不受 `hasProject` 约束** —— 项目会话里顺序是「文件 · 浏览器 · 终端」，全局会话里也照样有浏览器入口。
+
+`url` 传 `undefined`，靠 `ensureBrowserTab` 内部的 `...(url !== undefined ? { url } : {})` 保证不覆盖上次打开的地址。
+
+## 涉及文件
+
+- `src/renderer/src/components/layout/TitleBar.tsx`（按钮 + import + 注释）
+- `src/renderer/src/locales/zh|en/layout.json`（`topbar.browser`）
+
+## 回归
+
+**门禁**：TS 三配置 0 错；19 套 TS 回归全过（含 `i18n-coverage`，新 key 双语齐且已被引用）。
+
+## 真机待验（老大）
+
+顶栏文件图标右侧出现浏览器图标；点击后右侧面板打开并停在浏览器选项卡；再点是激活而非新开；全局会话（无工作目录）里同样可见可用。

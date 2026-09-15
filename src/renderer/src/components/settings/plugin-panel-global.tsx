@@ -322,9 +322,9 @@ export function ChannelGlobalSettingsPanel(): React.JSX.Element {
   ]
 
   return (
-    <div className="flex min-h-0 flex-col border-t">
-      <div className="flex shrink-0 items-center justify-between gap-2 px-6 py-2">
-        <h2 className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="rounded-xl border border-border/60 bg-card/40">
+      <div className="flex items-center justify-between gap-2 px-4 py-3">
+        <h2 className="shrink-0 text-sm font-semibold text-foreground">
           {t('channel.global.title', { defaultValue: '全局渠道设置' })}
         </h2>
         <div className="flex gap-1">
@@ -346,7 +346,7 @@ export function ChannelGlobalSettingsPanel(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4">
+      <div className="px-4 pb-4">
         <div className={cn(activeTab !== 'reply' && 'hidden')}>
           <ReplySettingsTab />
         </div>

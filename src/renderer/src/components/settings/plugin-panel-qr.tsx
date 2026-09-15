@@ -333,7 +333,7 @@ export function QrLoginPanel({ channel }: { channel: PluginInstance }): React.JS
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 px-8 py-6">
+    <div className="flex flex-col items-center gap-4 px-4 py-4">
       <h3 className="text-sm font-medium text-foreground">
         {t('channel.qr.title', { defaultValue: '扫码绑定' })}
       </h3>

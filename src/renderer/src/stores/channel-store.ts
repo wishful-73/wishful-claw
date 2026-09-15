@@ -80,7 +80,6 @@ interface ChannelStore {
   globalSettingsError: string | null
   loading: boolean
   error: string | null
-  selectedChannelId: string | null
   channelStatuses: Record<string, 'running' | 'stopped' | 'error'>
 
   loadChannels: () => Promise<void>
@@ -91,7 +90,6 @@ interface ChannelStore {
   updateChannel: (id: string, patch: Partial<PluginInstance>) => Promise<boolean>
   startChannel: (id: string) => Promise<boolean>
   stopChannel: (id: string) => Promise<void>
-  setSelectedChannel: (id: string | null) => void
 }
 
 export const useChannelStore = create<ChannelStore>((set, get) => ({
@@ -101,7 +99,6 @@ export const useChannelStore = create<ChannelStore>((set, get) => ({
   globalSettingsError: null,
   loading: false,
   error: null,
-  selectedChannelId: null,
   channelStatuses: {},
 
   loadChannels: async () => {
@@ -228,7 +225,5 @@ export const useChannelStore = create<ChannelStore>((set, get) => ({
     } catch (err) {
       console.error('[channel-store] Failed to stop channel:', err)
     }
-  },
-
-  setSelectedChannel: (id) => set({ selectedChannelId: id })
+  }
 }))

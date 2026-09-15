@@ -28,6 +28,7 @@ import {
 import { cn } from '@renderer/lib/utils'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
 import { type ProviderGroup, type ModelSwitcherSessionSnapshot, selectModel, selectFastModel, selectAutoModel, selectFollowGlobalModel } from './ModelSwitcher/utils'
+import { AutoFallbackChain } from './ModelSwitcher/AutoFallbackChain'
 import { ModelCapabilityTags, ModelHoverDetails } from './ModelSwitcher/model-info'
 import { ModelSettingsPopover } from './ModelSwitcher/ModelSettingsPopover'
 import { CodexQuotaIndicator, CopilotQuotaIndicator } from './ModelSwitcher/QuotaIndicators'
@@ -484,6 +485,9 @@ export function ModelSwitcher({
               </button>
             </div>
           )}
+          {isExplicitAutoActive && activeSessionId ? (
+            <AutoFallbackChain sessionId={activeSessionId} />
+          ) : null}
           <div className="p-1">
             <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
               {t('topbar.providers')}

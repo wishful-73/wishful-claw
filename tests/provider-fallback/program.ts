@@ -2,7 +2,7 @@ import {
   DEFAULT_PROVIDER_FALLBACK,
   normalizeProviderFallback
 } from '../../src/renderer/src/stores/settings-store-types'
-import { isQuotaFailure } from '../../src/renderer/src/lib/agent/quota-failure'
+import { isQuotaFailure, isQuotaFailureSignal } from '../../src/renderer/src/lib/agent/quota-failure'
 
 /**
  * iter-29 / S-21: the fallback config is persisted with the rest of the settings
@@ -21,43 +21,100 @@ function eq(actual: unknown, expected: unknown, message: string): void {
 
 // Defaults
 assert(DEFAULT_PROVIDER_FALLBACK.enabled === false, 'fallback should default to off')
-eq(DEFAULT_PROVIDER_FALLBACK.priority, [], 'fallback should default to no candidates')
+eq(DEFAULT_PROVIDER_FALLBACK.candidates, [], 'fallback should default to no candidates')
 
 // Missing / malformed values fall back to the default shape
 for (const bad of [null, undefined, 'nope', 42, true]) {
-  eq(normalizeProviderFallback(bad), { enabled: false, priority: [] }, `non-object input should reset: ${String(bad)}`)
+  eq(normalizeProviderFallback(bad), { enabled: false, candidates: [] }, `non-object input should reset: ${String(bad)}`)
 }
-eq(normalizeProviderFallback({}), { enabled: false, priority: [] }, 'empty object should reset')
+eq(normalizeProviderFallback({}), { enabled: false, candidates: [] }, 'empty object should reset')
 eq(
-  normalizeProviderFallback({ enabled: 'yes', priority: 'nope' }),
-  { enabled: false, priority: [] },
+  normalizeProviderFallback({ enabled: 'yes', candidates: 'nope' }),
+  { enabled: false, candidates: [] },
   'wrong field types should reset'
 )
 
 // Well-formed values survive, in order
 eq(
-  normalizeProviderFallback({ enabled: true, priority: ['b', 'a', 'c'] }),
-  { enabled: true, priority: ['b', 'a', 'c'] },
-  'explicit priority order should be preserved verbatim'
+  normalizeProviderFallback({
+    enabled: true,
+    candidates: [
+      { providerId: 'b', modelId: 'b1' },
+      { providerId: 'a', modelId: 'a1' },
+      { providerId: 'c', modelId: 'c1' }
+    ]
+  }),
+  {
+    enabled: true,
+    candidates: [
+      { providerId: 'b', modelId: 'b1' },
+      { providerId: 'a', modelId: 'a1' },
+      { providerId: 'c', modelId: 'c1' }
+    ]
+  },
+  'explicit candidate order and models should be preserved verbatim'
 )
 
-// Ordering is the whole feature: it must not be sorted or deduped by accident
+// A provider bills all of its models from one quota, so a second entry is a no-op
 eq(
-  normalizeProviderFallback({ enabled: true, priority: ['z', 'a'] }).priority,
-  ['z', 'a'],
-  'priority must keep user order'
+  normalizeProviderFallback({
+    enabled: true,
+    candidates: [
+      { providerId: 'a', modelId: 'a1' },
+      { providerId: 'b', modelId: 'b1' },
+      { providerId: 'a', modelId: 'a2' }
+    ]
+  }).candidates,
+  [
+    { providerId: 'a', modelId: 'a1' },
+    { providerId: 'b', modelId: 'b1' }
+  ],
+  'a repeated provider should collapse to its first occurrence'
 )
 
-// Duplicates and junk ids are dropped, blanks included
+// Junk entries are dropped, a missing model is tolerated (the user picks it later)
 eq(
-  normalizeProviderFallback({ enabled: true, priority: ['a', 'b', 'a'] }).priority,
-  ['a', 'b'],
-  'duplicate ids should collapse to the first occurrence'
+  normalizeProviderFallback({
+    enabled: true,
+    candidates: [
+      { providerId: 'a' },
+      { providerId: 42, modelId: 'x' },
+      null,
+      { modelId: 'no-provider' },
+      { providerId: '  ', modelId: 'x' },
+      { providerId: 'b', modelId: 7 }
+    ]
+  }).candidates,
+  [
+    { providerId: 'a', modelId: '' },
+    { providerId: 'b', modelId: '' }
+  ],
+  'entries without a usable provider id should be dropped; a bad model becomes empty'
 )
+
+// The pre-model shape (`priority: string[]`) upgrades with an EMPTY model: the runtime
+// skips an empty model rather than guessing one, which is the whole point of the change.
 eq(
-  normalizeProviderFallback({ enabled: true, priority: ['a', 42, null, '', '  ', 'b'] }).priority,
-  ['a', 'b'],
-  'non-string and blank ids should be dropped'
+  normalizeProviderFallback({ enabled: true, priority: ['a', 'b'] }),
+  {
+    enabled: true,
+    candidates: [
+      { providerId: 'a', modelId: '' },
+      { providerId: 'b', modelId: '' }
+    ]
+  },
+  'the legacy priority list should migrate to candidates with no model chosen'
+)
+
+// `candidates` wins when both shapes are somehow present
+eq(
+  normalizeProviderFallback({
+    enabled: true,
+    candidates: [{ providerId: 'new', modelId: 'm' }],
+    priority: ['old']
+  }).candidates,
+  [{ providerId: 'new', modelId: 'm' }],
+  'candidates should take precedence over a leftover priority list'
 )
 
 // A non-boolean `enabled` must never read as truthy by accident
@@ -67,9 +124,9 @@ assert(normalizeProviderFallback({ enabled: true }).enabled === true, 'boolean t
 
 // The default object must not be handed out by reference — callers mutate the result
 const first = normalizeProviderFallback(null)
-first.priority.push('mutated')
-eq(DEFAULT_PROVIDER_FALLBACK.priority, [], 'default priority must not be shared by reference')
-eq(normalizeProviderFallback(null).priority, [], 'a fresh copy must be returned each call')
+first.candidates.push({ providerId: 'mutated', modelId: '' })
+eq(DEFAULT_PROVIDER_FALLBACK.candidates, [], 'default candidates must not be shared by reference')
+eq(normalizeProviderFallback(null).candidates, [], 'a fresh copy must be returned each call')
 
 // ── Quota detection ──────────────────────────────────────────────────────────
 // The phrase fallback used to accept bare `overload` and `capacity`, which are
@@ -97,5 +154,37 @@ assert(
   !isQuotaFailure('This model\u2019s maximum context length is 400000 tokens'),
   'context window phrasing must be excluded'
 )
+
+// ── Structured quota signal ──────────────────────────────────────────────────
+// The Worker escapes ProviderRetryPolicy with the original ProviderHttpException once
+// its retries are exhausted, and that exception carries the status code. Reading it is
+// how "gave up on a 429" is decided from data instead of from the message text — the
+// message is not a dedicated channel (tool output lands in it too).
+assert(
+  isQuotaFailureSignal({ errorType: 'ProviderHttpException', statusCode: 429 }),
+  'a ProviderHttpException with 429 must count'
+)
+assert(
+  isQuotaFailureSignal({ errorType: 'ProviderHttpException', statusCode: 503 }),
+  'a ProviderHttpException with 503 must count'
+)
+assert(
+  !isQuotaFailureSignal({ errorType: 'ProviderHttpException', statusCode: 400 }),
+  'a ProviderHttpException with 400 must not count'
+)
+assert(
+  !isQuotaFailureSignal({ errorType: 'InvalidOperationException', statusCode: 429 }),
+  'the status code alone is not enough — the error type must agree'
+)
+assert(
+  isQuotaFailureSignal({ message: 'HTTP 429: rate limited' }),
+  'text matching stays as the fallback when no structured fields are present'
+)
+assert(
+  isQuotaFailureSignal({ errorType: 'ProviderHttpException', statusCode: 429, message: 'context_length_exceeded' }),
+  'a structured quota signal outranks the message text'
+)
+assert(!isQuotaFailureSignal(null), 'a missing signal must not count')
+assert(!isQuotaFailureSignal({}), 'an empty signal must not count')
 
 console.log(`Provider fallback config checks passed (${assertions} assertions).`)

@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand'
+import { create } from 'zustand'
 import {
   LEFT_SIDEBAR_DEFAULT_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH,
@@ -201,6 +201,16 @@ export const useUIStore = create<UIStore>((set, get) => ({
   setAutoModelRoutingState: (sessionId: any, status: any) =>
     set((state: any) => ({
       autoModelRoutingStatesBySession: { ...state.autoModelRoutingStatesBySession, [sessionId]: status }
+    })),
+
+  // Per-session quota-failover chain. In-memory on purpose: it belongs with the rest
+  // of the per-session runtime state (the attempted-chain map, the auto selection),
+  // and it is read through one function — provider-auto-fallback.resolveFallbackCandidates —
+  // so moving it into the session row later would not touch any caller.
+  fallbackCandidatesBySession: {},
+  setSessionFallbackCandidates: (sessionId: any, candidates: any) =>
+    set((state: any) => ({
+      fallbackCandidatesBySession: { ...state.fallbackCandidatesBySession, [sessionId]: candidates }
     })),
 
   // Settings page

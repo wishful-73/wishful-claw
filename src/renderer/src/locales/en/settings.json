@@ -522,7 +522,10 @@
       "remove": "Remove from candidates",
       "add": "Add as candidate",
       "continuePrompt": "Continue",
-      "autoSwitched": "{{from}} hit its limit — switched to {{to}} and continuing"
+      "autoSwitched": "{{from}} hit its limit — switched to {{to}} and continuing",
+      "chooseModel": "Choose a model",
+      "modelMissing": "No model chosen",
+      "modelNoTools": "This model cannot use tools"
     },
     "modelManagementDesc": "Manage global model defaults that provider copies inherit from",
     "modelManagementList": "Global Model Library",

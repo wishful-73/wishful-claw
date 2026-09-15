@@ -1,76 +1,49 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
-import { Badge } from '@renderer/components/ui/badge'
-import { Button } from '@renderer/components/ui/button'
 import { Switch } from '@renderer/components/ui/switch'
 import { SettingHint, SettingsSection } from '../settings-primitives'
-import { ProviderIcon } from '../provider-icons'
+import { FallbackCandidateEditor } from '@renderer/components/provider-fallback/FallbackCandidateEditor'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { normalizeProviderFallback } from '@renderer/stores/settings-store-types'
-import { cn } from '@renderer/lib/utils'
-import type { AIProvider } from '../../../../../shared/types/provider'
+import type { ProviderFallbackCandidate } from '../../../../../shared/types/provider'
 
 /**
  * Provider fallback settings (iter-29 / S-21).
  *
- * Only the *configuration* lives here: a global switch plus an ordered list of
- * provider ids. The runtime reads the list when the provider in use exhausts its
- * retries after a quota / rate-limit failure and walks the candidates that come
- * after it — see `ProviderFallbackConfig` for the full contract.
+ * This is the **default** chain: an ordered list of `{ provider, model }`. A session
+ * can override it for itself from the model switcher; this pane stays the baseline.
  *
- * A provider is "ready" when it is enabled and either needs no key or has one.
- * Non-ready rows can still be added (the user may fill a key later); the runtime
- * skips whatever cannot actually serve a request.
+ * The model is part of each entry on purpose — providers bill their models from one
+ * shared quota, so a handover needs to know which provider *and* which model on it.
+ * Inferring the model (from the current one, or from the provider default) would
+ * silently send the request somewhere the user did not choose.
  */
 export function ProviderFallbackPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
-  const providers = useProviderStore((state) => state.providers)
   const activeProviderId = useProviderStore((state) => state.activeProviderId)
+  const providers = useProviderStore((state) => state.providers)
   const fallback = useSettingsStore((state) => state.providerFallback)
   const updateSettings = useSettingsStore((state) => state.updateSettings)
 
   const config = useMemo(() => normalizeProviderFallback(fallback), [fallback])
 
-  const providerById = useMemo(() => {
-    const map = new Map<string, AIProvider>()
-    for (const provider of providers) map.set(provider.id, provider)
-    return map
-  }, [providers])
+  const providerIds = useMemo(() => new Set(providers.map((provider) => provider.id)), [providers])
 
-  // Ids that still resolve to a provider. Stale ids are intentionally dropped from
-  // the working copy: every commit rewrites the list, so a deleted provider is
-  // pruned the next time the user changes anything.
-  const orderedIds = useMemo(
-    () => config.priority.filter((id) => providerById.has(id)),
-    [config.priority, providerById]
+  // Entries whose provider is gone are dropped from the working copy: every change
+  // rewrites the list, so a deleted provider is pruned on the next edit.
+  const ordered = useMemo(
+    () => config.candidates.filter((candidate) => providerIds.has(candidate.providerId)),
+    [config.candidates, providerIds]
   )
 
-  const availableProviders = useMemo(
-    () => providers.filter((provider) => !orderedIds.includes(provider.id)),
-    [providers, orderedIds]
-  )
-
-  const commit = (priority: string[]): void => {
-    updateSettings({ providerFallback: { enabled: config.enabled, priority } })
+  const commit = (candidates: ProviderFallbackCandidate[]): void => {
+    updateSettings({ providerFallback: { enabled: config.enabled, candidates } })
   }
 
   const toggleEnabled = (checked: boolean): void => {
-    updateSettings({ providerFallback: { enabled: checked, priority: orderedIds } })
+    updateSettings({ providerFallback: { enabled: checked, candidates: ordered } })
   }
-
-  const move = (index: number, delta: number): void => {
-    const target = index + delta
-    if (target < 0 || target >= orderedIds.length) return
-    const next = [...orderedIds]
-    const [moved] = next.splice(index, 1)
-    next.splice(target, 0, moved)
-    commit(next)
-  }
-
-  const isReady = (provider: AIProvider): boolean =>
-    provider.enabled && (provider.requiresApiKey === false || Boolean(provider.apiKey))
 
   return (
     <div className="space-y-6">
@@ -86,7 +59,7 @@ export function ProviderFallbackPanel(): React.JSX.Element {
         actions={<Switch checked={config.enabled} onCheckedChange={toggleEnabled} />}
       >
         <SettingHint>{t('provider.fallback.hint')}</SettingHint>
-        {config.enabled && orderedIds.length < 2 ? (
+        {config.enabled && ordered.length < 2 ? (
           <SettingHint className="text-amber-600 dark:text-amber-500">
             {t('provider.fallback.needsTwo')}
           </SettingHint>
@@ -98,112 +71,11 @@ export function ProviderFallbackPanel(): React.JSX.Element {
         title={t('provider.fallback.orderTitle')}
         description={t('provider.fallback.orderDesc')}
       >
-        {orderedIds.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border/70 px-3 py-6 text-center text-xs text-muted-foreground">
-            {t('provider.fallback.empty')}
-          </p>
-        ) : (
-          <div className="space-y-1.5">
-            {orderedIds.map((id, index) => {
-              const provider = providerById.get(id)
-              if (!provider) return null
-              return (
-                <div
-                  key={id}
-                  className="flex items-center gap-2 rounded-lg border border-border/60 bg-background px-2.5 py-2"
-                >
-                  <span className="w-4 shrink-0 text-center text-[10px] tabular-nums text-muted-foreground/70">
-                    {index + 1}
-                  </span>
-                  <ProviderIcon builtinId={provider.builtinId} size={16} />
-                  <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                    {provider.name}
-                  </span>
-                  {id === activeProviderId ? (
-                    <Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[10px]">
-                      {t('provider.fallback.current')}
-                    </Badge>
-                  ) : null}
-                  {!isReady(provider) ? (
-                    <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
-                      {t('provider.fallback.notReady')}
-                    </span>
-                  ) : null}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                    disabled={index === 0}
-                    title={t('provider.fallback.moveUp')}
-                    onClick={() => move(index, -1)}
-                  >
-                    <ArrowUp className="size-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                    disabled={index === orderedIds.length - 1}
-                    title={t('provider.fallback.moveDown')}
-                    onClick={() => move(index, 1)}
-                  >
-                    <ArrowDown className="size-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-destructive"
-                    title={t('provider.fallback.remove')}
-                    onClick={() => commit(orderedIds.filter((item) => item !== id))}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </SettingsSection>
-
-      <SettingsSection
-        id="sec-provider-fallback-available"
-        title={t('provider.fallback.availableTitle')}
-        description={t('provider.fallback.availableDesc')}
-      >
-        {availableProviders.length === 0 ? (
-          <SettingHint>{t('provider.fallback.noAvailable')}</SettingHint>
-        ) : (
-          <div className="space-y-1.5">
-            {availableProviders.map((provider) => (
-              <div
-                key={provider.id}
-                className={cn(
-                  'flex items-center gap-2 rounded-lg border border-border/60 px-2.5 py-2',
-                  isReady(provider) ? 'bg-background' : 'bg-muted/30'
-                )}
-              >
-                <ProviderIcon builtinId={provider.builtinId} size={16} />
-                <span className="min-w-0 flex-1 truncate text-xs font-medium">
-                  {provider.name}
-                </span>
-                {!isReady(provider) ? (
-                  <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-500">
-                    {t('provider.fallback.notReady')}
-                  </span>
-                ) : null}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 shrink-0 p-0 text-muted-foreground hover:text-foreground"
-                  title={t('provider.fallback.add')}
-                  onClick={() => commit([...orderedIds, provider.id])}
-                >
-                  <Plus className="size-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
+        <FallbackCandidateEditor
+          candidates={ordered}
+          onChange={commit}
+          activeProviderId={activeProviderId}
+        />
       </SettingsSection>
     </div>
   )

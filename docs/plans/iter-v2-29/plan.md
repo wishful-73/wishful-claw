@@ -1463,3 +1463,39 @@ step = max(1, ceil(poolSize / catchupFrames))     // poolSize = 0 时返回 0
 - **F-10（文档半边）** —— `plan.md` 里 `S-21.D7` 撞车：第二处（回归测试工程）是重复编号，改为 `S-21.D8`。
 
 **门禁**：TS 三配置 0 错；13 套 TS 回归全过；i18n 脚本复核 zh/en key 集合已对齐。
+
+---
+
+# 需求 26（临时追加）：S-21 收口 —— 候选链改「服务商+模型」+ 两层配置 + 吞报错卡片
+
+> 2026-09-15 老大逐条定口径后实施。**这是 S-21 的收口修正**，不是新功能：把「撞限额自动接管」这件事做完整。
+
+## 老大定下的口径
+
+1. **auto 的定义 = 允许限额自动接管**（不是"分类器自动选主/快模型"——那套是 `plan_003b` 里从 OpenCowork 搬来的"接口预留但空实现"，本需求不碰它）。
+2. **重试到达上限后**：manual 会话照旧渲染 429 报错卡片；**auto 会话不渲染那张卡片**，改为切到下一个候选 + 发「继续推进」。
+3. **候选 = 服务商 + 首选模型，有序**，因为**同一服务商的模型共享额度**，所以同家只出现一次。
+4. **两层配置**：设置页「自动切换」= **全局默认**；模型选择器里 Auto 项 = **会话级覆盖**，以默认值为初值。
+5. **不落库** —— 会话级覆盖活在本次运行（内存态）。
+6. 手动加入（不是"启用了就自动进清单"）；顺序手动排；模型必填。
+
+## 实施
+
+- **类型**（`shared/types/provider.ts`）：`ProviderFallbackConfig.priority: string[]` → `candidates: ProviderFallbackCandidate[]`，每项 `{ providerId, modelId }`，契约写进注释。
+- **迁移**（`settings-store-types.ts` 的 `normalizeProviderFallback` + `version 39 → 40`）：认旧结构，旧 `priority` 里的每个服务商**带空 modelId 升上来** —— 运行时会**跳过**空模型而不是替他选一个（"猜模型"正是这次要删掉的东西）；面板标「未选择模型」。
+- **删掉猜模型**：`pickFallbackModelId`（依次退到"当前 model id / defaultModel / 第一个模型"）删除，改为按配置直读 `resolveCandidateModelId`（必须在该服务商上存在、启用、且是 chat 类）。
+- **A 面板**（设置页）与 **B 面板**（模型选择器）共用新组件 `components/provider-fallback/FallbackCandidateEditor.tsx` —— 上一版的候选列表是每个界面各写一遍，这正是"两处各自漂移"的老毛病（F-16）。
+  - A：`ProviderFallbackPanel` 收敛为「开关 + 编辑器」；
+  - B：新增 `ModelSwitcher/AutoFallbackChain.tsx`，仅在会话处于 auto 时出现在 Auto 项下方，带「恢复默认」（清掉覆盖）。
+- **会话级覆盖**：`useUIStore.fallbackCandidatesBySession`（内存）+ `setSessionFallbackCandidates`；解析收在一个函数 `resolveFallbackCandidates(sessionId)`（会话覆盖 ?? 全局默认），将来若要落库只改它。
+- **吞报错卡片**：`tryTakeOverQuotaFailure({ sessionId, runId, errorMessage, errorType, statusCode })` **先行判定**，返回 true 才在 error 状态更新里跳过写 `msg.error`；延迟 400ms 的执行若落空（用户已手动切模型 / 会话已删），**把卡片补回来**（`restoreErrorCard`）。判定条件 = `isQuotaFailureSignal ∧ 算得出下一个候选`，两条都成立 —— 候选试完 / 只启用一家，照常报错，避免"既没切、错误也没了"的静默失败。
+- **结构化限额标记**：`AgentRuntimeTools` 的 error 事件补 `StatusCode`（`ex is ProviderHttpException` 时）。`ProviderRetryPolicy` 重试耗尽是 `throw;` 原样抛出，所以外层拿到的就是带 `StatusCode` 的那个异常。TS 侧 `agent-stream-protocol` / `agent/types` / `stream-event-adapter` 补 `statusCode`。`isQuotaFailureSignal` 优先用结构化字段，文本匹配降级为兜底 —— **不再靠"消息里有没有 429 字样"猜**（那条路我上轮已经踩过一次 `No overload matches this call` 的坑）。
+- **i18n**：`provider.fallback.chooseModel / modelMissing / modelNoTools`（zh/en 齐）+ `topbar.autoFallbackChain*`。**没有用 inline 中文 defaultValue 顶替** —— 刚修完 F-15，不能再造一个。
+
+## 回归
+
+`tests/provider-fallback` 由 31 → **40 断言**：新结构保序、**同服务商去重**、坏项丢弃 + 坏 modelId 归空、**旧 `priority` 迁移（模型留空）**、`candidates` 优先于残留的 `priority`、默认值不共享引用；`isQuotaFailureSignal` 的结构化分支（429/503 命中、400 与错配类型不命中、结构化优先于文本、空信号不命中）。
+
+**门禁**：TS 三配置 0 错；13 套 TS 回归全过；`Worker.csproj` / `tests/WishfulClaw.Tests.sln` 0/0；AOT 无 IL2026/IL3050/IL3051；**10 个 C# 回归工程全过**。
+
+**真机待验（老大）**：auto 会话撞限额 → 不出现 429 卡片 + 自动切到配置的「服务商+模型」+ 自动「继续推进」；置空模型 / 只启用一家 / 候选试完 → 照常报错卡片。

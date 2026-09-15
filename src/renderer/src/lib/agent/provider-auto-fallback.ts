@@ -6,8 +6,8 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { resolveSessionModelSelection } from '../session-model-resolution'
 import { buildProviderPayload } from './provider-payload'
-import { isQuotaFailure } from './quota-failure'
-import type { AIProvider } from '../../../../shared/types/provider'
+import { isQuotaFailureSignal } from './quota-failure'
+import type { AIProvider, ProviderFallbackCandidate } from '../../../../shared/types/provider'
 
 /**
  * iter-29 / S-21: 自动接管「撞上限额后手动换服务商 + 发一句继续推进」这两步。
@@ -64,11 +64,30 @@ export interface AutoFallbackTarget {
 }
 
 /**
+ * 一个会话实际生效的候选链：会话级覆盖优先，没有就用设置页里的全局默认。
+ *
+ * 覆盖只活在本次运行（内存态，跟 `attemptedBySession` / auto 选型表同层），重启
+ * 回到默认 —— 所以这里刻意只读这两处，不碰 DB。
+ */
+export function resolveFallbackCandidates(sessionId: string): ProviderFallbackCandidate[] {
+  const override = useUIStore.getState().fallbackCandidatesBySession[sessionId]
+  if (override && override.length > 0) return override
+  return useSettingsStore.getState().providerFallback?.candidates ?? []
+}
+
+/**
  * 下一个可用候选。返回 null 表示不该切（未启用 / 非 auto 会话 / 都试过了）。
+ *
+ * 模型**直接来自配置**，不猜：候选写的是「服务商 + 它上面的首选模型」，同名模型在
+ * 不同服务商不是同一个东西（协议 / 上下文长度 / 计费都不同），拿"名字撞上了"来推
+ * 是错的。`modelId` 为空表示用户还没选，跳过而不是替他选一个。
  */
 export function resolveNextAutoFallbackTarget(sessionId: string): AutoFallbackTarget | null {
   const fallback = useSettingsStore.getState().providerFallback
-  if (!fallback?.enabled || fallback.priority.length === 0) return null
+  if (!fallback?.enabled) return null
+
+  const candidates = resolveFallbackCandidates(sessionId)
+  if (candidates.length === 0) return null
 
   const session = useChatStore.getState().sessions.find((item) => item.id === sessionId)
   if (!session || session.modelSelectionMode !== 'auto') return null
@@ -76,8 +95,8 @@ export function resolveNextAutoFallbackTarget(sessionId: string): AutoFallbackTa
   const providerState = useProviderStore.getState()
   const providers = providerState.providers
 
-  // 当前实际在用的服务商 —— auto 模式下它来自 auto 路由，不一定写在 session 上，
-  // 所以走解析函数拿，失败的那个不能再排进候选。
+  // 当前实际在用的服务商 —— auto 模式下它不一定写在 session 上，所以走解析函数拿，
+  // 失败的那个不能再排进候选。
   const current = resolveSessionModelSelection({
     session,
     providers,
@@ -92,15 +111,16 @@ export function resolveNextAutoFallbackTarget(sessionId: string): AutoFallbackTa
     ? (providers.find((item) => item.id === current.providerId)?.name ?? current.providerId)
     : 'auto'
 
-  for (const id of fallback.priority) {
-    if (skip.has(id)) continue
-    const provider = providers.find((item) => item.id === id)
+  for (const candidate of candidates) {
+    const { providerId } = candidate
+    if (skip.has(providerId)) continue
+    const provider = providers.find((item) => item.id === providerId)
     if (!provider || !provider.enabled) continue
     if (provider.requiresApiKey !== false && !provider.apiKey) continue
-    const modelId = pickFallbackModelId(provider, current.modelId)
+    const modelId = resolveCandidateModelId(provider, candidate.modelId)
     if (!modelId) continue
     return {
-      providerId: id,
+      providerId,
       modelId,
       providerName: provider.name,
       modelName: modelId,
@@ -112,18 +132,18 @@ export function resolveNextAutoFallbackTarget(sessionId: string): AutoFallbackTa
 }
 
 /**
- * 模型怎么定：候选也有当前这个 id 就继续用它（行为完全一致），否则用它自己的
- * 默认模型，再否则第一个可用的对话模型。
+ * 候选里写的模型到底能不能用：必须在该服务商上存在、未被禁用、且是对话类。
+ *
+ * 不再有"猜测"分支（旧的 pickFallbackModelId 会依次退到当前 model id /
+ * defaultModel / 第一个模型）。那个策略在额度共享的用法下是错的：切到另一家时用
+ * 哪个模型是**用户指定的**，不该由"名字撞上了"或"那家的默认"决定。
  */
-function pickFallbackModelId(provider: AIProvider, currentModelId?: string | null): string | null {
-  const models = (provider.models ?? []).filter(
-    (model) => model.enabled !== false && (model.category === undefined || model.category === 'chat')
-  )
-  if (currentModelId && models.some((model) => model.id === currentModelId)) return currentModelId
-  if (provider.defaultModel && models.some((model) => model.id === provider.defaultModel)) {
-    return provider.defaultModel
-  }
-  return models[0]?.id ?? null
+function resolveCandidateModelId(provider: AIProvider, configuredModelId: string): string | null {
+  if (!configuredModelId) return null
+  const model = (provider.models ?? []).find((item) => item.id === configuredModelId)
+  if (!model || model.enabled === false) return null
+  if (model.category !== undefined && model.category !== 'chat') return null
+  return model.id
 }
 
 /**
@@ -167,33 +187,61 @@ export function describeAutoFallbackSwitch(from: string, target: AutoFallbackTar
 }
 
 /**
- * 一次 run 以限额错误收尾时的入口。
+ * 一次 run 以限额错误收尾时的入口。**返回值 = 调用方是否应该吞掉那张报错卡片。**
  *
  * 判定与取候选都是同步的（纯读 store），真正动手放在下一拍：error 事件是在
  * sendMessage 的流处理里收到的，当场再调 sendMessage 会重入同一条链路。
+ *
+ * 只有「算得出下一个候选」才返回 true —— 候选试完 / 只启用了一家 / 非 auto 会话，
+ * 都必须照常渲染报错卡片。否则用户看到的是"既没切、错误也没了"的静默失败。
+ *
+ * 延迟执行落空时（这 400ms 里用户手动切了模型、删了会话等）会把卡片**补回来**，
+ * 所以这个动作是可撤销的：先吞、失败再还。
  */
-export function scheduleAutoFallback(sessionId: string, errorMessage?: string | null): void {
-  if (!isQuotaFailure(errorMessage)) return
+export function tryTakeOverQuotaFailure(args: {
+  sessionId: string
+  runId: string
+  errorMessage?: string | null
+  errorType?: string | null
+  statusCode?: number | null
+}): boolean {
+  const { sessionId, runId, errorMessage } = args
+  if (!isQuotaFailureSignal(args)) return false
+
   const target = resolveNextAutoFallbackTarget(sessionId)
-  if (!target) return
+  if (!target) return false
 
   setTimeout(() => {
-    void runAutoFallback(sessionId, target)
+    void runAutoFallback(sessionId, target).then((continued) => {
+      if (!continued) restoreErrorCard(sessionId, runId, errorMessage ?? '')
+    })
   }, 400)
+  return true
 }
 
-async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): Promise<void> {
+/** Puts the quota error back on the message when the handover did not happen after all. */
+function restoreErrorCard(sessionId: string, runId: string, message: string): void {
+  if (!message) return
+  useChatStore.setState((state) => {
+    const session = state.sessions.find((item) => item.id === sessionId)
+    const message_ = session?.messages.find((item) => item.id === runId)
+    if (message_) message_.error = message
+  })
+}
+
+/** Returns false when the handover was abandoned (caller restores the error card). */
+async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): Promise<boolean> {
   // 重新校验：这 400ms 里用户可能已经手动切了模型（auto → manual）、删了会话，或者
   // 自己又发了消息。此时再动手就是拿一个过期的决定覆盖用户的当前选择。
   const session = useChatStore.getState().sessions.find((item) => item.id === sessionId)
-  if (!session || session.modelSelectionMode !== 'auto') return
+  if (!session || session.modelSelectionMode !== 'auto') return false
 
-  if (!applyAutoFallbackTarget(sessionId, target)) return
+  if (!applyAutoFallbackTarget(sessionId, target)) return false
 
   toast.info(describeAutoFallbackSwitch(target.fromProviderName, target))
 
   const provider = useProviderStore.getState().providers.find((item) => item.id === target.providerId)
-  if (!provider) return
+  if (!provider) return false
 
   const chatStore = useChatStore.getState()
 
@@ -236,8 +284,10 @@ async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): P
       contextCompressionEnabled: settings.contextCompressionEnabled,
       contextCompressionThreshold: settings.contextCompressionThreshold
     })
+    return true
   } catch (error) {
     // 推进失败就到此为止 —— 不继续往下切，把报错留给用户自己决定。
     console.warn('[provider-auto-fallback] failed to continue after switching:', error)
+    return false
   }
 }

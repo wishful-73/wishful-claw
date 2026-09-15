@@ -61,6 +61,7 @@ export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
         type: 'error',
         error: new Error(e.message),
         errorType: e.errorType,
+        statusCode: e.statusCode,
         details: e.details,
         stackTrace: e.stackTrace
       }

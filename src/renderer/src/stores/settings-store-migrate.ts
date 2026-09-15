@@ -454,8 +454,10 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.memoryRecallVisibility === undefined) {
     state.memoryRecallVisibility = true
   }
-  // iter-29 (S-21): provider fallback. Normalized rather than replaced wholesale
-  // so a priority list the user already built survives a reload.
+  // iter-29 (S-21): provider fallback. Normalized rather than replaced wholesale, so a
+  // chain the user already built survives a reload. This is also where the pre-model
+  // shape (`priority: string[]`) is upgraded: each provider is carried over with an
+  // empty modelId, which the runtime skips until the user picks one.
   state.providerFallback = normalizeProviderFallback(state.providerFallback)
   return state
 }

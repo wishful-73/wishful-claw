@@ -11,7 +11,7 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 
 import { isChatStreamEvent } from '@renderer/lib/agent/stream-event-adapter'
-import { scheduleAutoFallback } from '@renderer/lib/agent/provider-auto-fallback'
+import { tryTakeOverQuotaFailure } from '@renderer/lib/agent/provider-auto-fallback'
 import { buildChatMessageContent, getRenderedBlockPosition } from '@renderer/lib/agent/chat-message-blocks'
 import { accumulateUsageSnapshot } from '@renderer/lib/agent/usage-merge'
 import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
@@ -1689,6 +1689,19 @@ export const useChatStore = create<ChatStore>()(
 
             useAgentStore.getState().resetLiveSessionExecution(targetSessionId)
 
+            // iter-29 (S-21): a quota failure in an `auto` session is taken over instead
+            // of reported — the provider is switched and the turn is resumed with
+            // "继续推进". Decided BEFORE the state update so the error card is never
+            // written in the first place; if the handover is abandoned a moment later
+            // (user switched the model, session deleted) the card is put back.
+            const quotaTakenOver = tryTakeOverQuotaFailure({
+              sessionId: targetSessionId,
+              runId: envelope.runId,
+              errorMessage: event.message,
+              errorType: event.errorType,
+              statusCode: event.statusCode
+            })
+
             set((state) => {
 
               delete state.streamingMessages[targetSessionId]
@@ -1707,7 +1720,7 @@ export const useChatStore = create<ChatStore>()(
 
                     msg.isStreaming = false
 
-                    if (msg.id === envelope.runId) {
+                    if (msg.id === envelope.runId && !quotaTakenOver) {
 
                       msg.error = event.message
 
@@ -1719,7 +1732,7 @@ export const useChatStore = create<ChatStore>()(
 
                 const errored = session.messages.find((m) => m.id === envelope.runId)
 
-                if (errored && !errored.error) {
+                if (errored && !errored.error && !quotaTakenOver) {
 
                   errored.error = event.message
 
@@ -1728,9 +1741,6 @@ export const useChatStore = create<ChatStore>()(
               }
 
             })
-
-            // iter-29 / S-21: auto 模式的会话撞上限额 —— 替用户换服务商+模型，再发一句继续推进。
-            scheduleAutoFallback(targetSessionId, event.message)
 
             void import('@renderer/hooks/use-chat-actions')
               .then(({ pausePendingSessionDispatch }) => pausePendingSessionDispatch(targetSessionId))

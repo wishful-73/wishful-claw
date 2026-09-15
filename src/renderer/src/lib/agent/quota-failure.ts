@@ -42,3 +42,33 @@ export function isQuotaFailure(message?: string | null): boolean {
   }
   return QUOTA_PHRASE_PATTERNS.some((pattern) => pattern.test(message))
 }
+
+/** The structured part of an `error` stream event, when the Worker could supply it. */
+export interface QuotaFailureSignal {
+  message?: string | null
+  errorType?: string | null
+  statusCode?: number | null
+}
+
+/**
+ * Decides a quota handover from the **error event**, preferring its structured fields.
+ *
+ * The Worker escapes `ProviderRetryPolicy` with the original `ProviderHttpException`
+ * once its retries are exhausted, and that exception carries the status code — so
+ * "the provider gave up on a 429/503" can be read directly instead of inferred from
+ * the message text. Text matching stays as the fallback for failures that carry no
+ * status (older Workers, sidecar-built errors).
+ *
+ * This matters because the message is not a dedicated channel: anything that ends up
+ * in it is fair game, including tool output echoed back by a model.
+ */
+export function isQuotaFailureSignal(signal: QuotaFailureSignal | null | undefined): boolean {
+  if (!signal) return false
+  if (
+    signal.errorType === 'ProviderHttpException' &&
+    (signal.statusCode === 429 || signal.statusCode === 503)
+  ) {
+    return true
+  }
+  return isQuotaFailure(signal.message)
+}

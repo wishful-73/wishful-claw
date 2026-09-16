@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { PenTool, Languages, GitBranch } from 'lucide-react'
+import { PenTool, GitBranch } from 'lucide-react'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -26,7 +26,6 @@ import { PersonaPanel } from '@renderer/components/settings/PersonaPanel'
 function ContentArea(): React.JSX.Element {
   const chatView = useUIStore((s) => s.chatView)
   const settingsPageOpen = useUIStore((s) => s.settingsPageOpen)
-  const translatePageOpen = useUIStore((s) => s.translatePageOpen)
   const drawPageOpen = useUIStore((s) => s.drawPageOpen)
   const tasksPageOpen = useUIStore((s) => s.tasksPageOpen)
   const taskBoardPageOpen = useUIStore((s) => s.taskBoardPageOpen)
@@ -42,7 +41,6 @@ function ContentArea(): React.JSX.Element {
   }
 
   // Feature page toggles (opened from within chat context)
-  if (translatePageOpen) return <PlaceholderPage title="Translate" iterLabel="后续" icon={Languages} />
   if (drawPageOpen) return <PlaceholderPage title="Draw" iterLabel="后续" icon={PenTool} />
   if (tasksPageOpen) return <AutomationPage />
   if (taskBoardPageOpen) return <TaskBoardPage />

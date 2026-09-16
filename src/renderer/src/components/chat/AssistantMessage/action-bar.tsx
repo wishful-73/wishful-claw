@@ -1,16 +1,15 @@
-// Bottom action bar for AssistantMessage: copy, fork, translate, speak, share, retry, delete, etc.
+// Bottom action bar for AssistantMessage: copy, fork, speak, share, retry, delete, etc.
 
 import * as React from 'react'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   Copy, ChevronsDownUp, ChevronsUpDown, RotateCcw, Play, Ellipsis,
-  Languages, Volume2, Share2, GitFork, Trash2
+  Volume2, Share2, GitFork, Trash2
 } from 'lucide-react'
 import type { RequestDebugInfo } from '@renderer/lib/api/types'
 import type { MemoryRecallInfo } from '@renderer/stores/chat-store/types'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { useTranslateStore } from '@renderer/stores/translate-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import type { CompletionSummaryData } from './types'
 import { CompletionSummaryBar } from './token-summary'
@@ -65,9 +64,7 @@ export function AssistantActionBar({
   createdAt,
   t
 }: ActionBarProps): React.JSX.Element {
-  const openTranslatePage = useUIStore((s) => s.openTranslatePage)
   const navigateToSession = useUIStore((s) => s.navigateToSession)
-  const setTranslateSourceText = useTranslateStore((s) => s.setSourceText)
   const forkSessionFromMessage = useChatStore((s) => s.forkSessionFromMessage)
   const [forking, setForking] = useState(false)
 
@@ -75,14 +72,6 @@ export function AssistantActionBar({
     if (!plainText) return
     navigator.clipboard.writeText(plainText)
   }, [plainText])
-
-  const handleTranslate = useCallback((): void => {
-    const text = plainText.trim()
-    if (!text) return
-    setTranslateSourceText(text)
-    openTranslatePage()
-    toast.success(t('messageActions.sentToTranslator'))
-  }, [openTranslatePage, plainText, setTranslateSourceText, t])
 
   const handleSpeak = useCallback((): void => {
     const text = plainText.trim()
@@ -242,10 +231,6 @@ export function AssistantActionBar({
                       {t('messageActions.fork')}
                     </DropdownMenuItem>
                   ) : null}
-                  <DropdownMenuItem onSelect={handleTranslate} disabled={!plainText.trim()}>
-                    <Languages className="size-4" />
-                    {t('messageActions.translate')}
-                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={handleSpeak} disabled={!plainText.trim()}>
                     <Volume2 className="size-4" />
                     {t('messageActions.readAloud')}

@@ -92,9 +92,6 @@ export interface UIStore {
   closeSettingsPage: () => void
 
   // Feature page toggles
-  translatePageOpen: boolean
-  openTranslatePage: () => void
-  closeTranslatePage: () => void
   drawPageOpen: boolean
   openDrawPage: () => void
   closeDrawPage: () => void

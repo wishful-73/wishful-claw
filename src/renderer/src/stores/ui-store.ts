@@ -201,9 +201,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
   closeSettingsPage: () => set({ settingsPageOpen: false }),
 
   // Feature page toggles
-  translatePageOpen: false,
-  openTranslatePage: () => set({ translatePageOpen: true }),
-  closeTranslatePage: () => set({ translatePageOpen: false }),
   drawPageOpen: false,
   openDrawPage: () => set({ drawPageOpen: true, freeChatPageOpen: false, tasksPageOpen: false, taskBoardPageOpen: false }),
   closeDrawPage: () => set({ drawPageOpen: false }),

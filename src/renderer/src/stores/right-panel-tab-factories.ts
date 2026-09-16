@@ -22,7 +22,6 @@ export function closeRightSidePanels(): { rightPanelOpen: false } {
 
 export const CHAT_SURFACE_NAV_RESET = {
   settingsPageOpen: false,
-  translatePageOpen: false,
   drawPageOpen: false,
   tasksPageOpen: false,
   taskBoardPageOpen: false,

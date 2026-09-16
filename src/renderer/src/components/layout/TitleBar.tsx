@@ -37,7 +37,6 @@ export function TitleBar({
     (s) =>
       !s.settingsPageOpen &&
       s.activeNavItem === 'chat' &&
-      !s.translatePageOpen &&
       !s.drawPageOpen &&
       !s.tasksPageOpen &&
       !s.taskBoardPageOpen &&

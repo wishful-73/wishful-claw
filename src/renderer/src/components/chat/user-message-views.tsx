@@ -46,7 +46,11 @@ export function UserSelectedFileReadsView({
         {files.map((file, index) => {
           const skipped = file.skipped === true
           const skippedDescription =
-            skipped && file.skipReason === 'pdf'
+            skipped && file.skipReason === 'directory'
+              ? t('userMessage.selectedFileReadSkippedDirectory', {
+                  defaultValue: 'Directory path reference; contents were not read'
+                })
+              : skipped && file.skipReason === 'pdf'
               ? t('userMessage.selectedFileReadSkippedPdf', {
                   defaultValue: 'PDF path reference; file was not read directly'
                 })

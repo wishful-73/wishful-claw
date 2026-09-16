@@ -172,9 +172,15 @@ export async function buildSelectedFileContext(
       continue
     }
 
-    const statError = await statFileForRead(file.readPath, args.sshConnectionId)
-    if (statError) {
-      metaFiles.push({ ...baseMeta, error: statError })
+    const statOutcome = await statFileForRead(file.readPath, args.sshConnectionId)
+    if (statOutcome.kind === 'directory') {
+      // 目录不是「读取失败」，而是「路径引用」——与 pdf / 二进制同类，不注入内容，
+      // 只留路径本身供模型自行列目录。此前按 error 处理会显示成红色「读取失败」。
+      metaFiles.push({ ...baseMeta, skipped: true, skipReason: 'directory' })
+      continue
+    }
+    if (statOutcome.kind === 'error') {
+      metaFiles.push({ ...baseMeta, error: statOutcome.message })
       continue
     }
 
@@ -288,7 +294,13 @@ function resolveWithinFolder(workingFolder: string, relativePath: string): strin
   return `${prefix}/${segments.slice(baseDepth).join('/')}`
 }
 
-async function statFileForRead(path: string, sshConnectionId?: string): Promise<string | null> {
+/** stat 结论：目录必须与「真错误」分开，否则目录会被当成读取失败渲染。 */
+type FsStatOutcome =
+  | { kind: 'ok' }
+  | { kind: 'directory' }
+  | { kind: 'error'; message: string }
+
+async function statFileForRead(path: string, sshConnectionId?: string): Promise<FsStatOutcome> {
   // `fs:read-file` 与 `ssh:fs:read-file` 都把 ENOENT / EISDIR / 权限错误吞成 ''，
   // 读回的空串无法区分「空文件」和「读失败」，失败态只能先 stat 判定。
   const result = (await ipcClient.invoke(
@@ -296,11 +308,12 @@ async function statFileForRead(path: string, sshConnectionId?: string): Promise<
     sshConnectionId ? { connectionId: sshConnectionId, path } : { path }
   )) as FsStatResult | null
 
-  if (!result) return 'File not found'
-  if (result.error) return result.error
-  if (result.exists === false) return 'File not found'
-  if (result.isDirectory) return 'Path is a directory'
-  return null
+  if (!result) return { kind: 'error', message: 'File not found' }
+  if (result.error) return { kind: 'error', message: result.error }
+  if (result.exists === false) return { kind: 'error', message: 'File not found' }
+  // 目录是正常结果，不是失败：由调用方按「路径引用」处理。
+  if (result.isDirectory) return { kind: 'directory' }
+  return { kind: 'ok' }
 }
 
 async function readTextFile(path: string, sshConnectionId?: string): Promise<string> {

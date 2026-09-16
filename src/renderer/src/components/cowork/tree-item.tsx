@@ -189,7 +189,7 @@ export function TreeItem({
         </div>
       )}
 
-      {!agentSurface && !isDir && !isRenaming && (
+      {!agentSurface && !isRenaming && (
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-all group-hover:opacity-100">
           <button
             className="workspace-filetree-action rounded-md p-1"

@@ -158,7 +158,8 @@ export function AssistantActionBar({
             </div>
           </>
         )}
-        {createdAt && (
+        {/* 时间戳只在这一轮跑完后才亮：流式期间它显示的是「开始时间」，看着像已经完成。 */}
+        {!isStreaming && createdAt && (
           <p className="mt-1.5 text-[10px] text-muted-foreground/50 tabular-nums">
             {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>

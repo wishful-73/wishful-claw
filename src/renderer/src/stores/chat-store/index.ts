@@ -1513,11 +1513,19 @@ export const useChatStore = create<ChatStore>()(
 
               if (session) {
 
+                // loop_end 是「这一轮真正跑完」的时刻。把完成时间回写进内存副本，
+                // 聊天窗才能显示「结束时间」而不是「开始时间」——DB 的 updated_at
+                // 由 worker 时钟在 upsert 时单独盖章，但那份值从不回流到内存，
+                // 不重启应用就永远拿不到（iter-29 遗留的 live 消息 fallback）。
+                const finishedAt = Date.now()
+
                 for (const msg of session.messages) {
 
                   if (msg.isStreaming) {
 
                     msg.isStreaming = false
+
+                    if (msg.role === 'assistant') msg.updatedAt = finishedAt
 
                   }
 
@@ -1733,11 +1741,16 @@ export const useChatStore = create<ChatStore>()(
                 // session (not just the runId match) so a stale stream state
                 // can't survive when the errored message was already dropped
                 // (e.g. after a reload).
+                // 与 loop_end 同理：出错也是这一轮的结束时刻，时间戳该显示结束时间。
+                const finishedAt = Date.now()
+
                 for (const msg of session.messages) {
 
                   if (msg.isStreaming) {
 
                     msg.isStreaming = false
+
+                    if (msg.role === 'assistant') msg.updatedAt = finishedAt
 
                     if (msg.id === envelope.runId && !quotaTakenOver) {
 

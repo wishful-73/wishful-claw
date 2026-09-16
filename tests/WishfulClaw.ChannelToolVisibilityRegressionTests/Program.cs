@@ -35,9 +35,9 @@ internal static class Program
     ];
 
     /// <summary>
-    /// Representatives of the categories the channel preset must keep out: cron, desktop, team and
+    /// Representatives of the categories a channel session must not reach: cron, desktop, team and
     /// skill-management. None of them is reachable by a chat reply, so seeing one here means the
-    /// preset was widened rather than the mode being normalized.
+    /// visibility rules were widened rather than the mode being normalized.
     /// </summary>
     private static readonly string[] OverExposureTools =
     [
@@ -72,22 +72,27 @@ internal static class Program
             AssertChannelNormalization(channelParameters, runContext);
 
             var channelMode = AgentRunContextPolicy.ResolveAvailableMode(channelParameters, runContext);
-            var presetVisible = ToolNames(registry.GetToolDefinitions(ToolPreset.BuiltIn["channel"], channelMode));
 
-            AssertProjectToolsVisible(presetVisible);
-            AssertPluginToolsVisible(presetVisible);
-            AssertGlobalTaskToolsProxyOnly(registry, presetVisible);
-            AssertNoOverExposure(presetVisible);
+            // iter-30 deleted the channel preset. What a channel session may reach is now decided by the
+            // run-context scope declaration alone, and the executor's IsCore flag decides which of those
+            // become direct tool definitions — the rest stays reachable through the use_capability proxy.
+            // The contract therefore has two surfaces, and both are asserted below: `direct` is what the
+            // model is handed, IsToolAllowed is what the proxy may call. Checking only one would miss a
+            // regression on the other, and layer-by-layer assertions against a preset that no longer
+            // exists would pass while proving nothing.
+            var direct = ToolNames(AgentRunContextPolicy.ResolveDirectInjection(
+                registry, channelMode, runContext, channelSession: true));
+
+            AssertProjectToolsReachable(runContext, registry);
+            AssertPluginToolsReachable(runContext, registry);
+            AssertGlobalTaskToolsProxyOnly(registry, direct);
+            AssertNoOverExposure(direct);
+            AssertCapabilityProxySurvives(direct);
+
             AssertDesktopModeResolutionUnchanged();
             AssertDesktopProjectSessionNotLoosened(registry);
-            AssertCapabilityProxySurvives(presetVisible);
 
-            var agentVisible = ToolNames(AgentRunContextPolicy.FilterToolDefinitions(
-                registry.GetToolDefinitions(ToolPreset.BuiltIn["channel"], channelMode),
-                registry,
-                runContext,
-                channelSession: true));
-            AssertAgentVisibleSet(registry, runContext, agentVisible);
+            AssertAgentVisibleSet(runContext, registry, direct);
 
             Console.WriteLine($"Channel tool visibility regression checks passed ({_checks} assertions).");
             return 0;
@@ -114,30 +119,38 @@ internal static class Program
             "channel detection survives normalization — it drives the channel-only/excluded tool sets");
     }
 
-    // ── Groups 2, 3, 5: layer 1 (preset + available-mode) ──
+    // ── Groups 2, 3, 5: what a channel session may reach ──
 
-    private static void AssertProjectToolsVisible(HashSet<string> presetVisible)
+    private static void AssertProjectToolsReachable(AgentRunContext runContext, ToolRegistry registry)
     {
-        AssertContainsAll(presetVisible, ProjectTools, "project tools are directly visible to a channel session");
+        foreach (var name in ProjectTools)
+        {
+            Assert(Allowed(runContext, registry, name),
+                $"a channel session cannot reach the project tool {name}");
+        }
     }
 
-    private static void AssertPluginToolsVisible(HashSet<string> presetVisible)
+    private static void AssertPluginToolsReachable(AgentRunContext runContext, ToolRegistry registry)
     {
-        AssertContainsAll(presetVisible, PluginTools, "plugin messaging tools stay visible in the global mode");
+        foreach (var name in PluginTools)
+        {
+            Assert(Allowed(runContext, registry, name),
+                $"a channel session cannot reach the plugin messaging tool {name}");
+        }
     }
 
-    private static void AssertNoOverExposure(HashSet<string> presetVisible)
+    private static void AssertNoOverExposure(HashSet<string> direct)
     {
-        AssertContainsNone(presetVisible, OverExposureTools, "cron/desktop/team/skill-management stay out of a channel session");
+        AssertContainsNone(direct, OverExposureTools, "cron/desktop/team/skill-management are never handed to a channel session");
     }
 
     // ── Group 4: global-task tools are proxy-only ──
 
-    private static void AssertGlobalTaskToolsProxyOnly(ToolRegistry registry, HashSet<string> presetVisible)
+    private static void AssertGlobalTaskToolsProxyOnly(ToolRegistry registry, HashSet<string> direct)
     {
-        // Layer 1 keeps them out because "global-task" is not a channel preset category. Layer 2 lets
-        // them through, which is what makes the use_capability proxy able to call them.
-        AssertContainsNone(presetVisible, GlobalTaskTools, "global-task tools are not directly visible to a channel session");
+        // They carry no IsCore flag, so they are never injected directly — and staying mode-available is
+        // what lets the use_capability proxy reach them.
+        AssertContainsNone(direct, GlobalTaskTools, "global-task tools are not injected into a channel session");
         foreach (var name in GlobalTaskTools)
         {
             Assert(
@@ -146,18 +159,18 @@ internal static class Program
         }
     }
 
-    private static void AssertCapabilityProxySurvives(HashSet<string> presetVisible)
+    private static void AssertCapabilityProxySurvives(HashSet<string> direct)
     {
         // Without the proxy the assertion above would be hollow: global-task tools are reachable only
         // through it, so its own visibility is part of the contract.
-        Assert(presetVisible.Contains("use_capability"), "use_capability is visible so proxied global-task tools remain callable");
+        Assert(direct.Contains("use_capability"), "use_capability is injected so proxied global-task tools remain callable");
     }
 
     // ── Groups 6, 7, 8: desktop and other modes must not regress ──
 
     private static void AssertDesktopModeResolutionUnchanged()
     {
-        // Asserted through ResolveAvailableMode rather than through GetToolDefinitions(preset, mode):
+        // Asserted through ResolveAvailableMode rather than through a definitions lookup by mode:
         // that call never passes through the resolver, so it has no power to detect a regression here.
         AssertEqual("global", ResolveMode("""{"sessionMode":"global","scope":"global"}"""), "an explicit desktop global session keeps the global mode");
         AssertEqual("global", ResolveMode("""{"scope":"global"}"""), "a desktop global session with no sessionMode keeps the global mode");
@@ -183,27 +196,25 @@ internal static class Program
 
     // ── Groups 9, 10: layers 2 and 3, and the set the agent actually receives ──
 
-    private static void AssertAgentVisibleSet(ToolRegistry registry, AgentRunContext runContext, HashSet<string> agentVisible)
+    private static void AssertAgentVisibleSet(AgentRunContext runContext, ToolRegistry registry, HashSet<string> direct)
     {
-        AssertContainsAll(agentVisible, ProjectTools, "the agent receives the project tools");
-        AssertContainsAll(agentVisible, PluginTools, "the agent receives the plugin messaging tools");
-        AssertContainsNone(agentVisible, GlobalTaskTools, "the agent does not receive the global-task tools directly");
-        AssertContainsNone(agentVisible, OverExposureTools, "the agent does not receive cron/desktop/team/skill-management tools");
-        AssertContainsNone(agentVisible, ChannelExcludedTools, "interactive tools stay excluded from a channel session");
-        Assert(agentVisible.Contains("use_capability"), "the agent keeps the capability proxy");
+        // Reachability of the project/plugin batch is asserted in AssertProjectToolsReachable; this
+        // method pins the boundaries a widening would break first.
+        AssertContainsNone(direct, GlobalTaskTools, "the agent does not receive the global-task tools directly");
+        AssertContainsNone(direct, OverExposureTools, "the agent does not receive cron/desktop/team/skill-management tools");
+        AssertContainsNone(direct, ChannelExcludedTools, "interactive tools stay excluded from a channel session");
+        Assert(direct.Contains("use_capability"), "the agent keeps the capability proxy");
 
         var allowed = ProjectTools.Concat(GlobalTaskTools).Concat(PluginTools).ToList();
         foreach (var name in allowed)
         {
-            Assert(
-                AgentRunContextPolicy.IsToolAllowed(runContext, name, registry, channelSession: true),
-                $"layer 3 allows {name} in a channel session");
+            Assert(Allowed(runContext, registry, name),
+                $"the visibility rules allow {name} in a channel session");
         }
         foreach (var name in ChannelExcludedTools)
         {
-            Assert(
-                !AgentRunContextPolicy.IsToolAllowed(runContext, name, registry, channelSession: true),
-                $"layer 3 still excludes {name} from a channel session");
+            Assert(!Allowed(runContext, registry, name),
+                $"the visibility rules still exclude {name} from a channel session");
         }
 
         // The channel-only batch must not leak into an ordinary desktop session, which is the other
@@ -219,7 +230,7 @@ internal static class Program
     // ── Registry construction ──
 
     /// <summary>
-    /// Mirrors the provider list in <c>ToolModule.Register</c> so the preset filter sees production
+    /// Mirrors the provider list in <c>ToolModule.Register</c> so the scope rules see production
     /// categories and availableModes. The direct executors (file/search/shell/memory/task) are left
     /// out on purpose: they touch the filesystem and the database, and none of them participates in
     /// the channel visibility contract. Unlike production this does not swallow registration errors —
@@ -272,6 +283,13 @@ internal static class Program
         return AgentRunContextPolicy.ResolveAvailableMode(parameters, AgentRunContextPolicy.Resolve(parameters));
     }
 
+    /// <summary>
+    /// The single visibility entry point, pinned with <c>channelSession: true</c> so a call site cannot
+    /// accidentally ask the desktop question instead.
+    /// </summary>
+    private static bool Allowed(AgentRunContext runContext, ToolRegistry registry, string name) =>
+        AgentRunContextPolicy.IsToolAllowed(runContext, name, registry, channelSession: true);
+
     private static HashSet<string> ToolNames(IReadOnlyList<ToolDefinition> definitions) =>
         definitions.Select(definition => definition.Name).ToHashSet(StringComparer.Ordinal);
 
@@ -279,12 +297,6 @@ internal static class Program
     {
         using var document = JsonDocument.Parse(json);
         return document.RootElement.Clone();
-    }
-
-    private static void AssertContainsAll(HashSet<string> actual, IEnumerable<string> expected, string message)
-    {
-        foreach (var name in expected)
-            Assert(actual.Contains(name), $"{message}; missing '{name}'");
     }
 
     private static void AssertContainsNone(HashSet<string> actual, IEnumerable<string> unexpected, string message)

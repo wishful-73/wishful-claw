@@ -46,7 +46,12 @@ export function adaptSubAgentEvent(
         result: {
           success,
           output,
-          reportSubmitted: output.length > 0,
+          // Worker 显式声明这份 output 是不是子 agent 真实产出的报告。字段缺失时（旧
+          // Worker）才回落到看 output 是否为空 —— 那条判据会因为兜底文案而恒真。
+          reportSubmitted:
+            typeof rawResult.reportSubmitted === 'boolean'
+              ? rawResult.reportSubmitted
+              : output.length > 0,
           toolCallCount,
           iterations,
           endReason: stopReason === 'completed' ? 'completed' : stopReason === 'max_iterations' ? 'max_iterations' : 'error',

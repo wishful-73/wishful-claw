@@ -41,7 +41,10 @@ export function ComposerBanners({
       {!hasApiKey && (
         <button
           type="button"
-          className="mb-2 flex w-full items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-amber-500/10"
+          className={cn(
+            composerWidthClass,
+            'mb-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-amber-500/10'
+          )}
           onClick={() => onOpenSettings('provider')}
         >
           <AlertTriangle className="size-3.5 shrink-0" />
@@ -53,7 +56,10 @@ export function ComposerBanners({
       {needsWorkingFolder && onSelectFolder && (
         <button
           type="button"
-          className="mb-2 flex w-full items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-amber-500/10"
+          className={cn(
+            composerWidthClass,
+            'mb-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-left text-xs text-amber-600 dark:text-amber-400 transition-colors hover:bg-amber-500/10'
+          )}
           onClick={onSelectFolder}
         >
           <FolderOpen className="size-3.5 shrink-0" />

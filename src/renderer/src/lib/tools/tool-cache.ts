@@ -1,10 +1,13 @@
-﻿/**
+/**
  * Lightweight tool definition cache — no store/component imports.
  *
  * getCachedTools() returns synchronously (cached value or null).
  * fetchToolDefinitions() fires a background Worker request to warm the cache.
  * fetchToolDefinitionsAsync() returns a Promise — use when you need to await
- * the result before proceeding (e.g. skill-installer preset).
+ * the result before proceeding (e.g. a background run that builds its request up front).
+ *
+ * There is one tool list, not one per scenario: what a run may actually call is decided from its
+ * run context and each tool's own scope declaration, so no caller names a scenario.
  *
  * This module is safe to import from App.tsx or any other entry point
  * without triggering circular dependency chains through stores.
@@ -19,21 +22,19 @@ export interface CachedToolDef {
 }
 
 let cachedTools: CachedToolDef[] | null = null
-let cachedPreset: string | null = null
 let fetchInFlight: Promise<void> | null = null
 
 export function getCachedTools(): CachedToolDef[] | null {
   return cachedTools
 }
 
-export function fetchToolDefinitions(preset = 'chat'): void {
-  if (cachedTools && cachedPreset === preset) return
+export function fetchToolDefinitions(): void {
+  if (cachedTools) return
   if (fetchInFlight) return
   fetchInFlight = (async () => {
     try {
-      const result = await window.api.workerRequest<{ tools: CachedToolDef[] }>('tool/list', { preset })
+      const result = await window.api.workerRequest<{ tools: CachedToolDef[] }>('tool/list')
       cachedTools = result.tools
-      cachedPreset = preset
     } catch {
       // Worker not ready yet; will retry on next call
     } finally {
@@ -43,19 +44,18 @@ export function fetchToolDefinitions(preset = 'chat'): void {
 }
 
 /**
- * Async version — awaits the fetch so the caller gets the correct preset's tools.
- * Use for special presets (e.g. skill-installer) where the default cache
- * (chat/coding) would return the wrong tool set.
+ * Async version — awaits the fetch so the caller has the tool list before proceeding.
+ * There is one list per registration, not one per scenario: what a run may actually call is
+ * resolved from its run context, so nothing here varies by caller.
  */
-export async function fetchToolDefinitionsAsync(preset: string): Promise<CachedToolDef[]> {
-  if (cachedTools && cachedPreset === preset) return cachedTools
+export async function fetchToolDefinitionsAsync(): Promise<CachedToolDef[]> {
+  if (cachedTools) return cachedTools
   // Wait for any in-flight fetch to complete first
   if (fetchInFlight) await fetchInFlight
-  if (cachedTools && cachedPreset === preset) return cachedTools
+  if (cachedTools) return cachedTools
   try {
-    const result = await window.api.workerRequest<{ tools: CachedToolDef[] }>('tool/list', { preset })
+    const result = await window.api.workerRequest<{ tools: CachedToolDef[] }>('tool/list')
     cachedTools = result.tools
-    cachedPreset = preset
     return result.tools
   } catch {
     return cachedTools ?? []

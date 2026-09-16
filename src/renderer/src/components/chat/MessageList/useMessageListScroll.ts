@@ -10,7 +10,8 @@ import {
   INITIAL_TAIL_RENDER_COUNT,
   PROGRAMMATIC_SCROLL_GUARD_MS,
   STREAMING_AUTO_SCROLL_BOTTOM_THRESHOLD,
-  STREAMING_BOTTOM_FOLLOW_GAP,
+  STREAMING_BOTTOM_FOLLOW_CHUNK,
+  STREAMING_BOTTOM_FOLLOW_REFILL_AT,
   USER_LOCATOR_HIGHLIGHT_MS,
   VIRTUAL_ROW_ESTIMATED_HEIGHT,
   VIRTUAL_ROW_OVERSCAN,
@@ -45,8 +46,8 @@ export interface MessageListScrollOutput {
   isAtBottom: boolean
   isLoadingOlderMessages: boolean
   isPinnedTurnOverlayVisible: boolean
-  /** R-10.2: 执行中的内容高度水位线——min-height 补齐，widget 收缩时高度只增不减。 */
-  minContentHeight: number
+  /** R-10.2: 执行中内容高度水位线——min-height 补齐，widget 收缩时高度只增不减。
+   *  直写 DOM，不经 state，故不在这里回传。 */
   activeAssistantRailMessageIds: Set<string>
   highlightedMessageId: string | null
   handleListScroll: () => void
@@ -112,7 +113,14 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   // 水位线取执行期间观测到的最大 totalSize，以 min-height 补在内容容器上：
   // 高度只增不减，收缩部分由底部留白顶住；执行结束立即收回（一次跳动可接受）。
   const contentHeightWatermarkRef = React.useRef(0)
-  const [minContentHeight, setMinContentHeight] = React.useState(0)
+  // 水位线**直写 DOM**，不走 React state。
+  // 内容按渲染池 catch-up 的粒度增长时（单帧几百 px），水位线每帧都在抬；走 setState 就是
+  // 每帧一次整棵消息树的 re-render —— 那本身就成了抖动的来源之一。
+  // 只要 `minHeight` 不出现在 JSX 的 style 里，React 的 diff 就不会碰这个属性，手写的值留得住。
+  const applyMinHeight = React.useCallback((height: number) => {
+    const el = virtualContentRef.current
+    if (el) el.style.minHeight = height > 0 ? `${height}px` : ''
+  }, [])
   // 内容底 DOM 真值缓存（getRealContentBottom 的最近一次结果）。scroll 事件
   // 频率高，syncBottomState 用缓存判定即可，80px 阈值下毫秒级滞后无感。
   const realContentBottomRef = React.useRef(0)
@@ -160,22 +168,39 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
         const realBottom = getRealContentBottom()
         if (realBottom > 0) {
           realContentBottomRef.current = realBottom
-          const target = Math.max(0, realBottom + STREAMING_BOTTOM_FOLLOW_GAP - ref.clientHeight)
+          // 余量目标 = 视口底边应当停在内容底下方多远。
+          // 上限取半屏：内容缩回去时视口最多漂到这么深，再深就纯是空白了。
+          const gapCeiling =
+            ref.clientHeight > 0 ? ref.clientHeight / 2 : Number.POSITIVE_INFINITY
+          const gapTarget = Math.min(STREAMING_BOTTOM_FOLLOW_CHUNK, gapCeiling)
+          // 悬空救援与跟随姿态共用一个目标：内容底之下留一整块余量。
+          const followTarget = Math.max(0, realBottom + gapTarget - ref.clientHeight)
           if (ref.scrollTop > realBottom + 1) {
             // 整屏悬空（收缩使视口内零内容）：无条件救回跟随姿态，一次到位。
             markProgrammaticScroll()
-            ref.scrollTop = target
+            ref.scrollTop = followTarget
             return
           }
-          // 跟随姿态：视口底边停在内容底下方 GAP 留白带处——新增内容先长进
-          // 留白带，长满才推视口，吸收流式渲染抖动（思考内容边长边跳的根源
-          // 就是逐帧贴死内容底）。非钉底（用户在上方阅读）绝不拽。
+          // 余量双向跟随：太小（内容在长）→ 补；太大（内容在缩）→ 收回。
+          // 两个方向都只回到 gapTarget，位移全部由 scrollTop 承担。
+          //
+          // 关键：**这一路绝不触碰 min-height**。缩 min-height 会让 scrollHeight 骤变，
+          // 浏览器在同一帧把 scrollTop clamp 回去 —— 那一下就是回跳，收几次就跳几次。
+          // 反过来只移视口，scrollHeight 纹丝不动，压根没有 clamp 可言。
+          // 非钉底（用户在上方阅读）绝不拽。
           if (!canAutoScrollRef.current()) return
-          bottom = target
-          if (ref.scrollTop > bottom) {
-            // 只推不拽：收缩由水位线留白吸收，视口不动。
-            return
-          }
+          // 提前量跟随（老大 2026-09-16 定）：视口底边先一步停在内容底下方 gapTarget 处，
+          // 这段 gapTarget 就是「提前量」。内容长进提前量里时滚动条一动不动
+          // （remaining 从 gapTarget 一路降到 REFILL_AT）；用尽那一刻再补满，垫出下一段。
+          //
+          // 与「攒着不滚」的区别就在滚动条停下时领先不领先：提前量恒为 0 才是攒着不滚，
+          // 那样下一帧又得滚一下，等于没有缓冲。
+          // 也不能无条件 followTarget（每帧都跟）—— 那样内容底位置是稳的，但滚动条每帧
+          // 都在滑，观感是持续晃动。
+          // 收缩由只增不减的水位线兜住，本函数只管「用尽 → 补满」。
+          const remaining = ref.scrollTop + ref.clientHeight - realBottom
+          if (remaining >= STREAMING_BOTTOM_FOLLOW_REFILL_AT && remaining <= gapCeiling) return
+          bottom = followTarget
         }
       }
       // Already pinned: re-writing scrollTop would dispatch another scroll
@@ -184,7 +209,10 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       // exceeded".
       if (Math.abs(ref.scrollTop - bottom) <= 1) return
       markProgrammaticScroll()
-      if (behavior === 'auto') { ref.scrollTop = bottom; return }
+      if (behavior === 'auto') {
+        ref.scrollTop = bottom
+        return
+      }
       ref.scrollTo({ top: bottom, behavior })
     },
     [getRealContentBottom, markProgrammaticScroll, rows.length]
@@ -315,6 +343,11 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   })
   rowVirtualizer.shouldAdjustScrollPositionOnItemSizeChange =
     shouldAdjustScrollPositionOnItemSizeChange
+
+  // 探针要从 rAF 里读 totalSize，而每帧 render 都会换掉 rowVirtualizer 的对象引用；
+  // 直接写进依赖会让 rAF 每帧被取消重启、采不到样本，所以过一层 ref。
+  const virtualizerRef = React.useRef(rowVirtualizer)
+  virtualizerRef.current = rowVirtualizer
 
   // ── Pinned current-turn overlay visibility ──────────────────────
   // 当前轮 user message 滚出可视区顶部时显示顶部吸附卡；仍在可视区时不重复展示。
@@ -484,7 +517,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     // R-10.2: 水位线不跨会话残留
     contentHeightWatermarkRef.current = 0
     realContentBottomRef.current = 0
-    setMinContentHeight(0)
+    applyMinHeight(0)
   }, [activeSessionId, setActiveAssistantRailIds])
 
   // ── Initial scroll to bottom ────────────────────────────────────
@@ -564,20 +597,59 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   React.useLayoutEffect(() => {
     if (pendingAskUserQuestion) return
     if (isLoadingOlderMessagesRef.current) return
-    // R-10.2: 执行中抬高水位线（只增不减，用 DOM 真值而非账面值）；结束后立即收回。
-    // 水位线 = 历史最大「内容底 + GAP」——min-height 必须兜住留白带，否则
-    // 持续增长时 GAP 姿态的贴底目标会被 scrollHeight 上限 clamp 回贴底。
+    // iter-30 S-31/S-32 水位线：min-height 只增不减。
+    //
+    // 作用只有一个 —— 撑住 scrollHeight，挡住「内容收缩 ⇒ scrollHeight 骤减 ⇒ 浏览器
+    // clamp scrollTop」这条链路。只要水位线不降，就没有 clamp，也就没有回跳。
+    //
+    // 留白被内容收缩撑得很大怎么办？—— 不在这里解决。2026-09-16 晚试过「超半屏就收
+    // min-height」并加节流，结果跳得更凶：收 min-height 本身就是制造 scrollHeight 骤减，
+    // 节流只是把攒了几百 px 的位移合并成一次更大的跳。
+    // 正解在 scrollToBottomImmediate 的双向跟随：scrollHeight 纹丝不动，只把视口拉回
+    // 内容底附近。用户看到的留白始终是基准值；水位线多撑出来的那部分在视口之外，
+    // 看不见，也就无所谓它多大。
     if (isSessionOutputting) {
       const realBottom = getRealContentBottom()
-      const needed = realBottom > 0 ? realBottom + STREAMING_BOTTOM_FOLLOW_GAP : 0
-      if (needed > contentHeightWatermarkRef.current) {
-        contentHeightWatermarkRef.current = needed
-        setMinContentHeight(needed)
+      if (realBottom > 0) {
+        // 补给量上限取半屏：视口矮的时候 CHUNK(240) 可能不止半屏，撑个比视口还深的坑没意义。
+        const viewportHeight = listRef.current?.clientHeight ?? 0
+        const gapCeiling = viewportHeight > 0 ? viewportHeight / 2 : Number.POSITIVE_INFINITY
+        const gapTarget = Math.min(STREAMING_BOTTOM_FOLLOW_CHUNK, gapCeiling)
+
+        const hasWatermark = contentHeightWatermarkRef.current > 0
+        const gap = hasWatermark ? contentHeightWatermarkRef.current - realBottom : 0
+
+        if (!hasWatermark || gap < STREAMING_BOTTOM_FOLLOW_REFILL_AT) {
+          const needed = realBottom + gapTarget
+          // 只增不减：needed 没超过当前水位线就什么都不做。
+          if (needed > contentHeightWatermarkRef.current) {
+            contentHeightWatermarkRef.current = needed
+            applyMinHeight(needed)
+          }
+        }
+        realContentBottomRef.current = realBottom
       }
-      if (realBottom > 0) realContentBottomRef.current = realBottom
     } else if (contentHeightWatermarkRef.current !== 0) {
+      // iter-30 S-32：撤留白之前，先把视口对齐到「真实内容底」。
+      // 旧实现在这里直接清 0，可 DOM 的 min-height 要等下一次提交才撤——于是
+      // 同帧的 scrollToBottomImmediate 会按「含留白」的 scrollHeight 把视口推到
+      // 底，下一帧留白消失、scrollHeight 骤减，浏览器又把 scrollTop clamp 回来。
+      // 一推一弹，正是那次最难受的回跳。
+      // 先落到真底：撤销 min-height 之后它仍是合法位置，撤销帧不再产生任何位移，
+      // 而 GAP 姿态收掉的 80px 也退化成一次单向、可预期的贴底动作。
+      const ref = listRef.current
+      const realBottom = getRealContentBottom()
+      if (ref && realBottom > 0) {
+        const target = Math.max(0, realBottom - ref.clientHeight)
+        if (Math.abs(ref.scrollTop - target) > 1) {
+          markProgrammaticScroll()
+          ref.scrollTop = target
+        }
+      }
       contentHeightWatermarkRef.current = 0
-      setMinContentHeight(0)
+      realContentBottomRef.current = realBottom
+      applyMinHeight(0)
+      return
     }
     if (contentHeightWatermarkRef.current > 0) {
       // 水位线激活：贴底跟随（GAP 姿态、只推不拽、钉底门控）与整屏悬空
@@ -640,7 +712,6 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     isAtBottom,
     isLoadingOlderMessages,
     isPinnedTurnOverlayVisible,
-    minContentHeight,
     activeAssistantRailMessageIds,
     highlightedMessageId,
     handleListScroll,

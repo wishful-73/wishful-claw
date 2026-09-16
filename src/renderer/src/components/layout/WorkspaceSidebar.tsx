@@ -1,7 +1,7 @@
-﻿import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { useTranslation } from 'react-i18next'
-import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3 } from 'lucide-react'
+import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3, Globe } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuLabel } from '@renderer/components/ui/dropdown-menu'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -14,7 +14,7 @@ import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '@share
 
 // ─── Helpers ───
 import { SessionItem, ProjectItem, sortProjects, sortSessions, readProjectSortMode, writeProjectSortMode, PROJECT_SORT_MODES, type ProjectSortMode } from './workspace-sidebar-items'
-import { ResizeHandle, renderNavItem, NavButtonItem } from './workspace-sidebar-nav'
+import { ResizeHandle, renderNavItem, renderSplitNavItem, NavButtonItem } from './workspace-sidebar-nav'
 import { SearchDialog } from './search-dialog'
 import * as React from 'react'
 
@@ -157,6 +157,10 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     navigateToHome()
   }, [setActiveProjectHome, setActiveNavItem, navigateToHome])
 
+  const handleOpenFreeChat = useCallback(() => {
+    useUIStore.getState().openFreeChatPage()
+  }, [])
+
   const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false)
 
   const handleNewProject = useCallback(() => {
@@ -207,6 +211,14 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
 
   const currentWidth = leftSidebarWidth || 260
 
+  const freeChatNavItem: NavButtonItem = {
+    key: 'free-chat',
+    label: t('sidebar.freeChat', { defaultValue: '免费对话' }),
+    icon: <Globe className="size-4 shrink-0" />,
+    active: false,
+    onClick: handleOpenFreeChat
+  }
+
   return (
     <aside
       className="relative flex h-full shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground"
@@ -221,7 +233,13 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
 
       {/* Nav items + search + extensions */}
       <div className="space-y-1 px-2 py-1.5">
-        {navItems.map(renderNavItem)}
+        {navItems.map((item) =>
+          item.key === 'new-chat' ? (
+            <React.Fragment key={item.key}>{renderSplitNavItem(item, freeChatNavItem)}</React.Fragment>
+          ) : (
+            renderNavItem(item)
+          )
+        )}
 
         {/* Extensions dropdown (collapsible, hover-to-open) */}
         <DropdownMenu modal={false} open={extensionsOpen} onOpenChange={setExtensionsOpen}>

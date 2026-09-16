@@ -181,6 +181,9 @@
     "queuePausedHint": "已暂停，点击继续发送",
     "queueRunningHint": "当前回合结束后按顺序发送",
     "queueResume": "继续发送",
+    "queueInsertNow": "立即插入",
+    "queueInsertNowHint": "让 Agent 下一轮就读到这条，不等当前轮跑完",
+    "queueInsertNowFailed": "插入失败：当前没有正在执行的轮次，或该轮已结束",
     "queueEditing": "编辑排队消息",
     "queueQuote": "引用",
     "queueQuoted": "已插入会话",
@@ -884,6 +887,8 @@
   },
   "todo": {
     "tasksDone": "{{completed}} / {{total}} 个任务完成",
+    "inProgressSuspended": "本轮已结束，任务仍未收尾",
+    "inProgressStale": "超过 3 天未更新，可能已被搁置",
     "moreTasks": "还有 {{count}} 个任务...",
     "showEarlierTasks": "展开前面的 {{count}} 个任务",
     "showLess": "收起"
@@ -1129,6 +1134,7 @@
     "selectedFileReadSkipped": "路径引用",
     "selectedFileReadSkippedPdf": "PDF 已作为路径引用插入，未直接读取文件内容",
     "selectedFileReadSkippedNonText": "已作为路径引用插入，未直接读取二进制或文档文件内容",
+    "selectedFileReadSkippedDirectory": "已作为目录路径引用插入，未读取目录内容",
     "selectedFileReadSkippedNotInjected": "已作为路径引用插入，本轮未注入文件内容",
     "selectedFileReadFailed": "读取失败",
     "hideCommand": "收起命令",

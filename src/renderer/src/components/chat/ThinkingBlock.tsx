@@ -29,9 +29,16 @@ import { useStreamingRenderPool } from '@renderer/hooks/use-typewriter'
 import { CollapsibleHeightPanel } from './CollapsibleHeightPanel'
 
 /**
- * T-8: 思考流式贴底的「两行缓冲」高度（px）。内容先占用这截留白，攒够两行才滚一次。
+ * 思考区滚动提前量（px）：滚动条先一步拉到底，在内容底之下垫出这么一段空白。
+ * 新内容长进这段空白里时滚动条一动不动；空白用尽那一刻再拉到底、再垫一段。
+ *
+ * 必须与内容层的 `pb-32` 一致（8rem = 128px）—— 滚动到底时视口底边恰好落在内容 div 的
+ * padding 起点上，那段 padding 就是这里的提前量。**改一个必须同时改另一个。**
+ *
+ * 取值 = 视口高（`max-h-80` = 320px）的 40%（老大 2026-09-16 口径，从 30% 上调）。
+ * 提前量越大，单帧增量越不容易一次把它击穿 ⇒ 补的次数越少；代价是可见内容变矮。
  */
-const THINKING_SCROLL_BUFFER_PX = 48
+const THINKING_SCROLL_AHEAD_PX = 128
 
 interface ThinkingBlockProps {
   thinking: string
@@ -78,18 +85,18 @@ export const ThinkingBlock = memo(function ThinkingBlock({
     return () => clearInterval(interval)
   }, [isThinking, startedAt])
 
-  // T-8: 贴底走「两行缓冲」——内容增长先占用视口底部的两行留白，攒够两行才滚一次，
-  // 滚完重新留两行。每帧都贴底会让滚动位置一直追着内容抖（上游越快越明显），
-  // 攒够再滚能把触碰滚动的频率显著降下来。
-  // 同时在 paint 前完成（useLayoutEffect），避免留下「内容已长出来、滚动条没跟上」的一帧。
   useLayoutEffect(() => {
     if (!isThinking || !hasThinkingContent || !contentRef.current) return
     const el = contentRef.current
-    // 贴底位置 = 内容底（含底部两行留白 padding）。留白必须由 padding 提供：
-    // scrollTop 一旦超过 maxTop 会被浏览器直接 clamp 掉，靠偏移做不出留白。
+    // 提前量还在（内容长了不到 THINKING_SCROLL_AHEAD_PX）就一动不动；
+    // 用尽那一刻重新拉到底，垫出下一段提前量。
+    //
+    // 两个方向都错过的写法，别再走回去：
+    // - 每帧 `el.scrollTop = maxTop`（无条件贴底）：位置稳，但滚动条每帧都在滑，晃。
+    // - 攒够一行高（24px）才滚：24px 是「行高」不是「提前量」，领先量太小，
+    //   下一帧又得动，退化成每帧都在滑，白白多了一堆判断。
     const maxTop = el.scrollHeight - el.clientHeight
-    // 内容先用掉底部留白（不滚），攒够两行才滚一次，把触碰滚动的频率降下来。
-    if (maxTop - el.scrollTop >= THINKING_SCROLL_BUFFER_PX) {
+    if (maxTop - el.scrollTop >= THINKING_SCROLL_AHEAD_PX) {
       el.scrollTop = maxTop
     }
   }, [hasThinkingContent, isThinking, renderPool.text])
@@ -163,11 +170,16 @@ export const ThinkingBlock = memo(function ThinkingBlock({
             <div
               ref={contentRef}
               className="max-h-80 overflow-y-auto"
-              style={{ overflowAnchor: 'none' }}
+              // scrollBehavior 必须写 inline：全局 `* { scroll-behavior: smooth }`
+              // （assets/main.css:323）没包在 @layer 里，优先级高于 Tailwind 的 scroll-auto
+              // class，只有 inline 压得住。smooth 会把 `el.scrollTop = x` 从瞬时跳变
+              // 变成几百 ms 的滚动动画 —— 本组件每帧重新赋值，于是每帧都「打断上一个动画、
+              // 从头再来」，滚动条永远在追赶一个够不着的目标，观感就是持续蠕动。
+              style={{ overflowAnchor: 'none', scrollBehavior: 'auto' }}
             >
               {isThinking ? (
                 <div
-                  className={`${getLiveOutputSurfaceClass(liveOutputAnimationStyle)} whitespace-pre-wrap break-words pb-12 leading-relaxed`}
+                  className={`${getLiveOutputSurfaceClass(liveOutputAnimationStyle)} whitespace-pre-wrap break-words pb-32 leading-relaxed`}
                   data-render-pool-size={renderPool.poolSize}
                   data-rendered-length={renderPool.renderedLength}
                   data-target-length={renderPool.targetLength}

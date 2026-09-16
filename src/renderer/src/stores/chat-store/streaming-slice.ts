@@ -43,9 +43,14 @@ export const createStreamingSlice: StateCreator<
 
   setStreamingMessageId: (sessionId, id) => {
     set((state) => {
+      const existing = state.streamingMessages[sessionId]
       if (id) {
+        // iter-30 BUG-B：已有活跃 run 时不覆盖。覆盖等于把正在跑的 run 从渲染端
+        // 抹掉 —— 它后续的事件全部路由不到位，聊天窗不再渲染（状态还在动、内容
+        // 不再出）。同值重复赋值无害，随手放行。
+        if (existing && existing !== id) return
         state.streamingMessages[sessionId] = id
-      } else {
+      } else if (existing) {
         delete state.streamingMessages[sessionId]
       }
       if (sessionId === state.activeSessionId) {

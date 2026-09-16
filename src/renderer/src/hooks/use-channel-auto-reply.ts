@@ -30,6 +30,7 @@ import {
   isChannelReplyEvent,
   isChannelReplyTextDelta
 } from '@renderer/lib/channel/channel-reply-event-policy'
+import { resolvePendingChannelShellApproval } from '@renderer/lib/channel/channel-shell-approval'
 
 // ── Types ──
 
@@ -130,6 +131,13 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
   // A cancel event can overtake task processing while the renderer is busy
   // restoring the session/provider. Consume it before starting a new Agent run.
   if (task.channelTaskId && pendingChannelCancels.delete(task.channelTaskId)) {
+    return false
+  }
+
+  // A pending channel shell approval consumes this message: the user's 同意/拒绝
+  // reply resolves it rather than starting a new run. A non-verdict message falls
+  // through to the normal path, so an unrelated message is never swallowed.
+  if (resolvePendingChannelShellApproval(sessionId, content)) {
     return false
   }
 
@@ -252,7 +260,6 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
       provider,
       messages: [{ role: 'user', content }],
       sessionId,
-      toolPreset: 'channel',
       workingFolder: session.scope === 'project' ? session.workingFolder : undefined,
       sshConnectionId: session.scope === 'project' ? session.sshConnectionId : undefined,
       projectId: session.scope === 'project' ? session.projectId : undefined,

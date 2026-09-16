@@ -3,7 +3,8 @@ import {
   useChatStore,
   updateCompressionStatus,
   applyCompactArtifactsToSession,
-  updateSessionContextTokens
+  updateSessionContextTokens,
+  type ChatStore
 } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
@@ -15,7 +16,7 @@ import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
-import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync } from '@renderer/lib/tools/tool-cache'
+import { getCachedTools, fetchToolDefinitions } from '@renderer/lib/tools/tool-cache'
 import { compressMessages } from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
 import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/lib/image-attachments'
@@ -32,7 +33,6 @@ export interface SendMessageOptions {
   permissionMode?: 'default' | 'fullAccess'
   selectedFileReferences?: unknown[]
   imageEdit?: unknown
-  toolPreset?: string
   [key: string]: unknown
 }
 
@@ -47,6 +47,15 @@ interface SendMessageRequest {
   sessionId?: string
   opts?: SendMessageOptions
   queuedDispatch?: boolean
+  /**
+   * iter-30 BUG-A：出队时原样重发的 store 级参数。
+   *
+   * 「全局会话给项目会话派任务」这类调用方走的是 store.sendMessage(params)，
+   * 它的 params 里有 sessionMode:'goal' / maxIterations:0 这种 handleSendMessage
+   * 从 SendMessageRequest 反推不出来的东西。只存 requestText 会静默降级成普通轮，
+   * 所以整份 params 一起存下来，出队时优先走它。
+   */
+  rawParams?: Parameters<ChatStore['sendMessage']>[0]
 }
 
 type SendMessageHandler = (request: SendMessageRequest) => Promise<boolean>
@@ -140,23 +149,14 @@ export function useChatActions() {
       // App startup (registerAllTools + ensureConversationReady) handles
       // initialization; if tools aren't ready yet, send without them —
       // the agent can still respond, just without tool-calling capability.
-      const toolPreset = opts?.toolPreset ??
-        (isChannelSession
-          ? 'channel'
-          : session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat')
+      //
+      // 发给 LLM 的工具清单由 Worker 侧按 run context 与各工具自己的 VisibleScopes 解析；
+      // 渲染端只负责预热缓存。渲染端注册的 handler 仍可按名字执行，只是定义不下发。
       const settings = settingsStore
       const codegraphEnabled = useAppPluginStore.getState().isCodeGraphToolAvailable()
 
-      // For special presets (e.g. skill-installer), fetch async to ensure
-      // the correct tool list is used. For default presets, use cache + background fetch.
-      // 发给 LLM 的工具清单由 Worker 侧 ToolPreset 决定（渲染端只负责预热/刷新缓存）；
-      // 渲染端注册的 handler 仍可按名字执行，只是定义不下发。
-      if (opts?.toolPreset) {
-        await fetchToolDefinitionsAsync(opts.toolPreset)
-      } else {
-        getCachedTools()
-        fetchToolDefinitions(toolPreset) // fire-and-forget background fetch
-      }
+      getCachedTools()
+      fetchToolDefinitions() // fire-and-forget background fetch
 
       const messageText = typeof text === 'string' ? text : text.text
       const imageAttachments = Array.isArray(_images)
@@ -199,7 +199,6 @@ export function useChatActions() {
         userMessageText: messageText,
         ...(selectedFileContext.meta ? { meta: { selectedFileReads: selectedFileContext.meta } } : {}),
         sessionId: targetSessionId,
-        toolPreset,
         codegraphEnabled,
         workingFolder,
         maxIterations: 0, // 0 = unlimited, agent runs until no more tool calls
@@ -367,7 +366,6 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
     provider,
     messages: [{ role: 'user', content: `The plan has been approved. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Read the plan file, then execute it step by step using the Task tool to dispatch sub-agents -- do NOT implement steps yourself. For each step: (1) call UpdatePlanStep to mark it in_progress, (2) use the Task tool with subagent_type "custom" and background=false to dispatch a foreground work sub-agent with a self-contained prompt containing all context needed for that step, (3) when the sub-agent returns, call UpdatePlanStep to mark it completed or failed based on the result. If a step fails, assess whether the remaining plan needs adjustment before continuing.` }],
     sessionId,
-    toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
     workingFolder,
     sshConnectionId,
     projectId,
@@ -422,7 +420,6 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
     provider,
     messages: [{ role: 'user', content: `The plan was rejected. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Please revise the plan in the plan file based on this feedback: ${feedback}` }],
     sessionId,
-    toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
     workingFolder,
     sshConnectionId,
     projectId,
@@ -499,7 +496,6 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
       provider,
       messages: [{ role: 'user', content: '用户退出了计划模式，计划已取消。不再需要计划流程，请正常对话。' }],
       sessionId,
-      toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
       workingFolder,
       sshConnectionId,
       projectId,
@@ -544,6 +540,8 @@ export interface PendingSessionMessageItem {
   }
   createdAt: number
   draft?: string
+  /** 见 SendMessageRequest.rawParams —— 有它时出队直接重放这份参数。 */
+  rawParams?: Parameters<ChatStore['sendMessage']>[0]
 }
 
 export type ManualCompressionResult = 'compressed' | 'skipped' | 'blocked' | 'restore_failed' | 'failed'
@@ -734,7 +732,7 @@ function getRequestText(request: SendMessageRequest): {
   }
 }
 
-function enqueuePendingSessionMessage(request: SendMessageRequest, sessionId: string): void {
+export function enqueuePendingSessionMessage(request: SendMessageRequest, sessionId: string): void {
   const normalized = getRequestText(request)
   const now = Date.now()
   const item: PendingSessionMessageItem = {
@@ -748,7 +746,8 @@ function enqueuePendingSessionMessage(request: SendMessageRequest, sessionId: st
     selectedFiles: normalized.selectedFiles,
     opts: request.opts ? { ...request.opts } : undefined,
     requestText: typeof request.text === 'string' ? request.text : { ...request.text },
-    createdAt: now
+    createdAt: now,
+    ...(request.rawParams ? { rawParams: request.rawParams } : {})
   }
   const list = _pendingMessages.get(sessionId) ?? []
   _pendingMessages.set(sessionId, [...list, item])
@@ -757,6 +756,48 @@ function enqueuePendingSessionMessage(request: SendMessageRequest, sessionId: st
 
 export function getPendingSessionMessages(sessionId: string): PendingSessionMessageItem[] {
   return _pendingMessages.get(sessionId) ?? []
+}
+
+/**
+ * S-33：把队列里某条消息直接塞进当前正在跑的那一轮。
+ *
+ * 与「排队等当前轮结束」不同，这条走 Worker 的 message queue —— 注入后 AgentLoop
+ * 会在下一次 iteration 起点把它读进对话。它**不打断**正在执行的工具调用，只是让
+ * agent 下一轮就看见这条消息。
+ *
+ * 成功后从队列移除；任何一步失败都保持原样，用户还能退回排队那条路。
+ */
+export async function insertPendingSessionMessageNow(
+  sessionId: string,
+  messageId: string
+): Promise<boolean> {
+  const list = _pendingMessages.get(sessionId) ?? []
+  const item = list.find((message) => message.id === messageId)
+  if (!item) return false
+
+  const runId = useChatStore.getState().streamingMessages[sessionId]
+  if (!runId) return false
+
+  // 原文优先：rawParams.messages 才是真正发给模型的那份（含选中文件上下文与
+  // 展开后的粘贴块）；requestText 只服务展示和「编辑后再排队」。
+  const rawMessages = item.rawParams?.messages
+  const content = rawMessages?.length
+    ? rawMessages[rawMessages.length - 1].content
+    : item.text
+
+  try {
+    const result = await window.api.workerRequest<{ appended: boolean; count: number }>(
+      'agent/append-messages',
+      { runId, messages: [{ role: 'user', content }] }
+    )
+    if (!result?.appended) return false
+  } catch (error) {
+    console.warn('[ChatActions] Failed to insert queued message into the running turn', error)
+    return false
+  }
+
+  removePendingSessionMessage(sessionId, messageId)
+  return true
 }
 
 export function isPendingSessionDispatchPaused(sessionId: string): boolean {
@@ -843,8 +884,11 @@ export function dispatchNextQueuedMessageForSession(
     notifyPendingSessionMessageListeners()
   }
   if (hasActiveSessionRunForSession(sessionId)) return false
-  if ((_pendingMessages.get(sessionId)?.length ?? 0) === 0) return false
-  if (_sendMessageHandlers.size === 0) {
+  const head = _pendingMessages.get(sessionId)?.[0]
+  if (!head) return false
+  // rawParams 项出队走 store.sendMessage，不经过 handleSendMessage，所以没挂载
+  // InputArea 时也能出队 —— 跨会话派发的队列不该被 UI 挂载状态卡住。
+  if (!head.rawParams && _sendMessageHandlers.size === 0) {
     pausePendingSessionDispatch(sessionId)
     return false
   }
@@ -860,14 +904,20 @@ export function dispatchNextQueuedMessageForSession(
       }
       const item = _pendingMessages.get(sessionId)?.[0]
       const handler = Array.from(_sendMessageHandlers).at(-1)
-      if (!item || !handler) return
-      const started = await handler({
-        text: item.requestText,
-        images: item.images,
-        sessionId,
-        opts: item.opts,
-        queuedDispatch: true
-      })
+      if (!item) return
+      // rawParams 项原样重放 store 级参数（跨会话派发带着 sessionMode / maxIterations
+      // 这类 handleSendMessage 表达不出的东西）；其余仍走 handler 重新解析。
+      const started = item.rawParams
+        ? await useChatStore.getState().sendMessage(item.rawParams)
+        : handler
+          ? await handler({
+              text: item.requestText,
+              images: item.images,
+              sessionId,
+              opts: item.opts,
+              queuedDispatch: true
+            })
+          : false
       if (!started) {
         pausePendingSessionDispatch(sessionId)
         return

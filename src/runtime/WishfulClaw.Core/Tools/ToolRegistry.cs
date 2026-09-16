@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 
@@ -198,29 +198,17 @@ public sealed class ToolRegistry
     }
 
     /// <summary>
-    /// Get tool definitions filtered by a ToolPreset.
-    /// Tools are included/excluded based on their category and name.
+    /// Get tool definitions filtered by session mode.
+    ///
+    /// This is the whole admission layer on the registry side. There is no scenario allowlist any
+    /// more: which tools a run may call is declared per tool (R-3 <c>VisibleScopes</c> /
+    /// <c>ExcludedScopes</c>) and resolved per run context in <c>AgentRunContextPolicy</c>. The
+    /// allowlists that used to live here duplicated that, and the two drifted — a tool could be
+    /// allowed by one and filtered by the other, silently unreachable in every real session.
     /// </summary>
-    public IReadOnlyList<ToolDefinition> GetToolDefinitions(ToolPreset preset)
+    public IReadOnlyList<ToolDefinition> GetToolDefinitions(string? sessionMode)
     {
         var all = GetToolDefinitions();
-        var filtered = new List<ToolDefinition>();
-        foreach (var def in all)
-        {
-            var category = _toolCategories.TryGetValue(def.Name, out var cat) ? cat : null;
-            if (preset.Includes(def.Name, category))
-                filtered.Add(def);
-        }
-        return filtered;
-    }
-
-    /// <summary>
-    /// Get tool definitions filtered by a ToolPreset AND session mode.
-    /// Tools are filtered by category (preset) and then by available modes.
-    /// </summary>
-    public IReadOnlyList<ToolDefinition> GetToolDefinitions(ToolPreset preset, string? sessionMode)
-    {
-        var all = GetToolDefinitions(preset);
         if (string.IsNullOrWhiteSpace(sessionMode))
             return all;
 

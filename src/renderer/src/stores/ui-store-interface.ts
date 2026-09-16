@@ -110,6 +110,9 @@ export interface UIStore {
   drawPageOpen: boolean
   openDrawPage: () => void
   closeDrawPage: () => void
+  freeChatPageOpen: boolean
+  openFreeChatPage: () => void
+  closeFreeChatPage: () => void
   tasksPageOpen: boolean
   openTasksPage: () => void
   closeTasksPage: () => void

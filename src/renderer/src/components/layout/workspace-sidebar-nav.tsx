@@ -73,5 +73,43 @@ export function renderNavItem(item: NavButtonItem): React.JSX.Element {
   )
 }
 
+/**
+ * Split (combo) nav item: two equal-width actions side by side. Used for
+ * "New Chat | Free Chat". Each half is a self-contained button (own rounded
+ * corners) with an icon + centred label — half-width leaves no room for the
+ * left-aligned layout used by the full-width items above/below it.
+ */
+export function renderSplitNavItem(
+  primary: NavButtonItem,
+  secondary: NavButtonItem
+): React.JSX.Element {
+  const base =
+    'flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-[13px] font-medium transition-colors text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+  const activeCls = 'bg-accent text-foreground'
+
+  return (
+    <div role="group" className="flex h-8 w-full gap-1">
+      <button
+        type="button"
+        onClick={primary.onClick}
+        className={cn(base, primary.active && activeCls)}
+      >
+        {primary.icon}
+        <span className="truncate">{primary.label}</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={secondary.onClick}
+        title={secondary.label}
+        className={cn(base, secondary.active && activeCls)}
+      >
+        {secondary.icon}
+        <span className="truncate">{secondary.label}</span>
+      </button>
+    </div>
+  )
+}
+
 // ─── Main WorkspaceSidebar (single column, WishfulClaw-style) ───
 

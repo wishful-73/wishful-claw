@@ -1,4 +1,4 @@
-﻿// Extracted from ui-store.ts — Right panel tab factory functions and constants
+// Extracted from ui-store.ts — Right panel tab factory functions and constants
 
 import type { RightPanelTabInstance } from './ui-types'
 
@@ -30,5 +30,7 @@ export const CHAT_SURFACE_NAV_RESET = {
   drawPageOpen: false,
   tasksPageOpen: false,
   taskBoardPageOpen: false,
-  codeGraphPageOpen: false
+  codeGraphPageOpen: false,
+  // 免费对话页也是「内容区的一种页面」：不在这里收掉，点侧栏的历史会话就切不过去。
+  freeChatPageOpen: false
 } as const

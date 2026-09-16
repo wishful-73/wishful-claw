@@ -52,6 +52,12 @@ export interface SubAgentState {
 
   report: string
 
+  /**
+   * Worker 落库的子 agent 完整报告（对应 DB 里的 data.finalOutput）。渲染端流式累积的
+   * report 在父 run 提前结束时只有前几轮，重载会话时靠这个字段补全（S-36）。
+   */
+  finalOutput?: string
+
   reportStatus: SubAgentReportStatus
 
   usage?: TokenUsage

@@ -217,8 +217,21 @@ export const useUIStore = create<UIStore>((set, get) => ({
   openTranslatePage: () => set({ translatePageOpen: true }),
   closeTranslatePage: () => set({ translatePageOpen: false }),
   drawPageOpen: false,
-  openDrawPage: () => set({ drawPageOpen: true, tasksPageOpen: false, taskBoardPageOpen: false }),
+  openDrawPage: () => set({ drawPageOpen: true, freeChatPageOpen: false, tasksPageOpen: false, taskBoardPageOpen: false }),
   closeDrawPage: () => set({ drawPageOpen: false }),
+  freeChatPageOpen: false,
+  openFreeChatPage: () =>
+    set({
+      freeChatPageOpen: true,
+      // 网页需要宽度：进免费对话页时把左侧栏让出去（用户仍可用标题栏按钮展开）。
+      leftSidebarOpen: false,
+      drawPageOpen: false,
+      tasksPageOpen: false,
+      taskBoardPageOpen: false,
+      codeGraphPageOpen: false
+    }),
+  // 返回主界面时把左侧栏放回来：进页面时让出去的宽度，出来要还回去。
+  closeFreeChatPage: () => set({ freeChatPageOpen: false, leftSidebarOpen: true }),
   tasksPageOpen: false,
   openTasksPage: () => set({ drawPageOpen: false, tasksPageOpen: true, taskBoardPageOpen: false }),
   closeTasksPage: () => set({ tasksPageOpen: false }),

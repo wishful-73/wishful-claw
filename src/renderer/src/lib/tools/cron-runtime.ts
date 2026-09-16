@@ -1,4 +1,4 @@
-﻿import type { AIProvider } from '@shared/types/provider'
+import type { AIProvider } from '@shared/types/provider'
 import type { AgentEvent } from '@renderer/lib/agent/types'
 import type { ProviderConfig, ToolDefinition, UnifiedMessage } from '@renderer/lib/api/types'
 import type { ChatMessage } from '@renderer/stores/chat-store/types'
@@ -406,7 +406,6 @@ async function runInSession(runEvent: CronFiredEvent, result: CronRunResult): Pr
       provider,
       messages: [{ role: 'user', content: runEvent.prompt?.trim() || 'Run the scheduled task.' }],
       sessionId,
-      toolPreset: targetSession.scope === 'project' && targetSession.collaborationMode === 'cowork' ? 'coding' : 'chat',
       workingFolder: targetSession.scope === 'project' ? targetSession.workingFolder : undefined,
       projectId: targetSession.scope === 'project' ? targetSession.projectId : undefined,
       scope: targetSession.scope,
@@ -466,8 +465,8 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
     const resolved = resolveProvider(runEvent)
     if (!resolved) throw new Error('No enabled provider/model configured for Cron task')
     const provider = buildProviderConfig(resolved.provider, resolved.modelId, runEvent)
-    const preset = runEvent.workingFolder ? 'coding' : 'chat'
-    const tools = await fetchToolDefinitionsAsync(preset) as unknown as ToolDefinition[]
+    // The Worker resolves visibility from the run context; the renderer just needs the list.
+    const tools = await fetchToolDefinitionsAsync() as unknown as ToolDefinition[]
     const message: UnifiedMessage = {
       id: `${runId}-user`,
       role: 'user',
@@ -486,7 +485,6 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
       collaborationMode: runEvent.scope === 'project' ? 'cowork' : 'chat',
       runtimeRole: 'automation',
       usageSource: 'automationBackground',
-      toolPreset: preset,
       maxIterations: runEvent.maxIterations && runEvent.maxIterations > 0 ? runEvent.maxIterations : 15,
       forceApproval: false,
       permissionMode: 'fullAccess',

@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Circle,
+  CircleDashed,
   CircleDotDashed,
   CircleSlash,
   ClipboardList,
@@ -23,18 +24,48 @@ import {
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
 import { cn } from '@renderer/lib/utils'
+import { useChatStore } from '@renderer/stores/chat-store'
+import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useTaskStore, type TaskItem } from '@renderer/stores/task-store'
 
 const EASE = [0.4, 0, 0.2, 1] as const
 const EMPTY_TASKS: TaskItem[] = []
 
-function TaskStatusIcon({ status }: { status: TaskItem['status'] }): React.JSX.Element {
+/**
+ * S-34：`in_progress` 超过这个时长、且本会话没有活跃 run，就认定它已经凉了。
+ * 3 天的依据：「今天没空、明天接着干」是正常场景，1 天会把这种人误判成过期；
+ * 真挂 3 天没人管的，基本不会再有人回来认领。
+ */
+const STALE_IN_PROGRESS_MS = 3 * 24 * 60 * 60 * 1000
+
+/**
+ * 会话 Todo 的显示态（只影响渲染，绝不回写数据 —— 任务状态归 agent 所有）。
+ * - running：本会话有活跃 run，任务确实在跑
+ * - suspended：run 已结束但任务仍挂着（多轮长任务的正常中间态）
+ * - stale：run 早没了、updatedAt 也过期，这条多半不会再被认领
+ */
+type InProgressState = 'running' | 'suspended' | 'stale'
+
+function TaskStatusIcon({
+  status,
+  inProgressState
+}: {
+  status: TaskItem['status']
+  inProgressState?: InProgressState
+}): React.JSX.Element {
   switch (status) {
     case 'completed':
       return <CheckCircle2 className="size-4 text-green-500" />
     case 'in_progress':
-      return <Loader2 className="size-4 animate-spin text-blue-500" />
+      // 只有 run 真活着才转圈。此前只看 status，agent 不更新就能一直转下去。
+      if (inProgressState === 'stale') {
+        return <CircleDashed className="size-4 text-muted-foreground/50" />
+      }
+      if (inProgressState === 'running') {
+        return <Loader2 className="size-4 animate-spin text-blue-500" />
+      }
+      return <Loader2 className="size-4 text-muted-foreground/70" />
     case 'blocked':
       return <CircleSlash className="size-4 text-amber-500" />
     case 'in_review':
@@ -69,11 +100,32 @@ export function SessionTodoPanel({
   const tasks = useTaskStore((s) =>
     draftSessionId ? s.getTasksBySession(draftSessionId) : EMPTY_TASKS
   )
+  // 「本会话有没有活跃 run」的两个来源，与 hasActiveSessionRunForSession
+  // （hooks/use-chat-actions.ts）同口径；这里必须订阅，否则不重渲染。
+  const streamingMessage = useChatStore((s) =>
+    draftSessionId ? s.streamingMessages[draftSessionId] : undefined
+  )
+  const executionStatus = useAgentStore((s) =>
+    draftSessionId ? s.runningSessions[draftSessionId] : undefined
+  )
 
   if (!projectScoped || !draftSessionId || tasks.length === 0) return null
 
+  const isRunLive =
+    Boolean(streamingMessage) ||
+    executionStatus === 'running' ||
+    executionStatus === 'retrying'
+  const now = Date.now()
+  const inProgressStates = new Map<string, InProgressState>()
+  for (const task of tasks) {
+    if (task.status !== 'in_progress') continue
+    inProgressStates.set(
+      task.id,
+      isRunLive ? 'running' : now - task.updatedAt > STALE_IN_PROGRESS_MS ? 'stale' : 'suspended'
+    )
+  }
   const completed = tasks.filter((task) => task.status === 'completed').length
-  const isExecuting = tasks.some((task) => task.status === 'in_progress')
+  const isExecuting = [...inProgressStates.values()].includes('running')
   const isComplete = completed === tasks.length
   const summaryLabel = t('todo.tasksDone', { completed, total: tasks.length })
   const transition = animationsEnabled ? { duration: 0.2, ease: EASE } : { duration: 0 }
@@ -92,7 +144,7 @@ export function SessionTodoPanel({
             <button
               type="button"
               onClick={() => setExpanded((prev) => !prev)}
-              className="flex min-w-0 cursor-pointer items-center gap-2 text-left transition-colors hover:text-foreground"
+              className="flex w-full min-w-0 cursor-pointer items-center gap-2 text-left transition-colors hover:text-foreground"
               aria-label={summaryLabel}
               aria-expanded={expanded}
             >
@@ -103,7 +155,7 @@ export function SessionTodoPanel({
               ) : (
                 <ClipboardList className="size-3.5 shrink-0 text-muted-foreground/80" />
               )}
-              <span className="min-w-0 truncate text-[12px] font-medium text-foreground/90">
+              <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground/90">
                 {summaryLabel}
               </span>
               <ChevronDown
@@ -128,41 +180,55 @@ export function SessionTodoPanel({
               >
                 <div className="max-h-64 overflow-y-auto px-3 py-2.5">
                   <ol className="space-y-1.5">
-                    {tasks.map((task, index) => (
-                      <li
-                        key={task.id}
-                        className="grid grid-cols-[18px_24px_minmax(0,1fr)] gap-2 text-[12px] leading-5"
-                      >
-                        <span className="flex justify-center pt-0.5">
-                          <TaskStatusIcon status={task.status} />
-                        </span>
-                        <span
-                          className={cn(
-                            'select-none pt-0.5 text-right tabular-nums text-muted-foreground/70',
-                            task.status === 'completed' && 'text-muted-foreground/45'
-                          )}
+                    {tasks.map((task, index) => {
+                      // 非「执行中」的 in_progress 得给一句解释，否则用户只看到圈不转了。
+                      const inProgressState = inProgressStates.get(task.id)
+                      const inProgressHint =
+                        inProgressState === 'suspended'
+                          ? t('todo.inProgressSuspended')
+                          : inProgressState === 'stale'
+                            ? t('todo.inProgressStale')
+                            : undefined
+                      return (
+                        <li
+                          key={task.id}
+                          title={inProgressHint}
+                          className="grid grid-cols-[18px_24px_minmax(0,1fr)] gap-2 text-[12px] leading-5"
                         >
-                          {index + 1}.
-                        </span>
-                        <div className="min-w-0">
-                          <div
+                          <span className="flex justify-center pt-0.5">
+                            <TaskStatusIcon
+                              status={task.status}
+                              inProgressState={inProgressState}
+                            />
+                          </span>
+                          <span
                             className={cn(
-                              'min-w-0 break-words',
-                              task.status === 'completed' &&
-                                'text-muted-foreground/60 line-through',
-                              task.status === 'pending' && 'text-muted-foreground/80'
+                              'select-none pt-0.5 text-right tabular-nums text-muted-foreground/70',
+                              task.status === 'completed' && 'text-muted-foreground/45'
                             )}
                           >
-                            {getTaskPrimaryText(task)}
-                          </div>
-                          {task.owner && (
-                            <div className="text-[10px] text-muted-foreground/50">
-                              {task.owner}
+                            {index + 1}.
+                          </span>
+                          <div className="min-w-0">
+                            <div
+                              className={cn(
+                                'min-w-0 break-words',
+                                task.status === 'completed' &&
+                                  'text-muted-foreground/60 line-through',
+                                task.status === 'pending' && 'text-muted-foreground/80'
+                              )}
+                            >
+                              {getTaskPrimaryText(task)}
                             </div>
-                          )}
-                        </div>
-                      </li>
-                    ))}
+                            {task.owner && (
+                              <div className="text-[10px] text-muted-foreground/50">
+                                {task.owner}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
                   </ol>
                 </div>
               </motion.div>

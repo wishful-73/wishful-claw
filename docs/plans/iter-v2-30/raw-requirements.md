@@ -1,0 +1,1320 @@
+# iter-v2-30 原始需求登记
+
+> 2026-09-16 建档。老大定调「**30 迭代主要是 spill + 清尾巴**」+ 一项额外需求（免费对话页）。
+> 本文件为权威需求文档。
+> **已立项 7 项**：S-26 spill（30 主打）／S-27 免费对话页／S-28 大图预览／S-29 后台任务执行记录／S-30 渠道 shell 文本审批／S-31 思考流式跳动仍存在／S-32 回复结束折叠致聊天窗跳动。
+> （S-27 / S-30 为老大口述；S-28 / S-29 来自知识库；S-31 / S-32 为老大 2026-09-16 真机反馈。）
+> 「清尾巴」的其余候选（29 收尾待议 4 项、《正式版发布规划》）**尚未点名**，见文末「待登记」，不擅自排入。
+> 勘测行号均为 2026-09-16 实读。**S-26 我们侧代码零勘测**（仅勘测了上游参考），接手时从零核实。
+
+## S-26 工具输出落盘（spill）
+
+**一句话**：工具输出过大时不整段进上下文，落盘为会话作用域私有文件，模型只看「有界首尾预览 + 定位符 + 检索提示」，要细节时用 `Read`/`Grep` 取回。
+
+### 背景
+
+知识库 `issues/改进.md` 2026-09-14 待优化项（原文摘要）——浏览器取网页正文、命令执行日志、大文件读取，动辄几万到几十万字节，后果：① 单轮请求直接爆预算 ② 后续每一轮都背着它 ③ 触发压缩、多花一次摘要钱。知识库自评「**这是 agent 产品的生死线**」。
+
+老大 2026-09-16 定调：30 主打本项，并指示拉取上游参考 —— `D:\claw\deepseek-harness`（已于 2026-09-16 clone，commit `0d1f50007f`，见记忆「deepseek-harness 参考仓库已拉取」）。
+
+### 参考蓝本（**参考侧已勘测**，2026-09-16）
+
+- `docs/subsystems/spill.zh.md` —— 中文设计文档，seam 语义全在里面
+- `packages/spill/spill/` —— 抽象 seam：唯一方法 `saveText(input) → SpillRef{ locator, bytes, retrievalHint }`
+- `packages/spill/spill-local/` —— 本地实现（`store.ts` / `cleanup.ts`）
+- `packages/spill/spill-policy/` —— 策略（`notice.ts`，超 `maxInlineBytes` 换首尾预览）
+- `packages/util/output-retention/` —— 保留库（首尾预览生成）
+
+**照抄要点**：
+
+| 点 | 参考做法 |
+|---|---|
+| 落盘路径 | `<root>/session-<sha256(sessionId)>/<random>-<safeName>` |
+| 安全 | root 私有 0700；`open(path,'wx',0o600)` 独占 —— 防预埋符号链接重定向 |
+| locator | **对消费方不透明**，一律靠 `retrievalHint` 渲染，不许 parse |
+| 策略失败姿态 | **尽力而为**：存盘失败保留原内联结果，绝不把成功调用变成 `isError` |
+| seam 边界 | 只管存储；保留策略、结果替换、检索 API 都归消费方 |
+
+### 三条硬不变式（知识库原有登记，必须遵守）
+
+1. **替换内容永不超上限** —— 先给通知预留字节；通知都放不下就退回原文
+2. **失败退回原状** —— 绝不把成功调用变成 `isError`，绝不隐藏内联结果
+3. **跳过 `read`** —— 防 `read → spill → read` 死循环
+
+### 我们侧现状（**未勘测**）
+
+- **头号待确认（知识库原登记就挂着）**：核心侧工具结果在进会话消息前，**有没有一个统一出口** —— 这是能否一次覆盖全部工具的前提。**接手第一件事就查这个**，查不到就得逐个工具改，方案规模完全不同。
+- 知识库已排除的路径：Custom Extension V1 的 manifest 只有 `tools` 数组，无既有工具结果的后置钩子；JS 沙箱不支持 filesystem（文档明列 Not available），而 spill 必须写文件 ⇒ **落地形态是核心改动，不是扩展**。
+
+### 待定口径
+
+- `maxInlineBytes` 默认值与是否暴露设置项
+- 取回提示的措辞（`Read`(offset/limit) / `Grep` 怎么给）
+- 会话删除时 spill 文件的清理策略（参考侧 seam **不定义**逐会话清理，只提「保留期清理可连同其他旧会话产物一起使旧定位符失效」）
+
+---
+
+## S-27 免费对话页（组合按钮 + 内置浏览器固定站点）
+
+**一句话**：左侧栏「新对话」改为组合按钮——**左段新对话 / 右段免费对话**；右段打开一个新页面，页面内用内置浏览器固定访问若干「网页版免费对话」站点（DeepSeek 网页版等），**登录由用户自己完成**，我们只提供浏览器。
+
+### 背景
+
+老大 2026-09-16 口述（原话）：「目前我们软件面板左侧有个新对话，我想把这个新对话改成一个组合按钮，左边按钮是新对话，右侧按钮是免费对话。然后新做一个页面，里面是接入当前网页版本的 DeepSeek 以及其它支持不收费的网页版本对话，我们有内置浏览器，在新页面里面就直接用这个浏览器。有点类似 skill 市场中对浏览器的使用。」
+老大同日澄清：「**登录是用户自己去登录，我们只是提供一个浏览器去固定访问**。」
+
+溯源：知识库 `正式版发布规划.md`「快捷搜索扩展整合」已有「在线聊天直接接入 DeepSeek 网页版，省模型调用费」；v3-规划 Phase 2「URL 型插件」同向。
+
+### 现状勘测（2026-09-16 实读）
+
+**入口**
+
+- 「新对话」= `WorkspaceSidebar.tsx:184-199` 的 `navItems[0]`，由 `renderNavItem()`（`workspace-sidebar-nav.tsx:57`）渲染成整宽单按钮
+- 组件签名 `NavButtonItem { key, label, icon, active, onClick }` —— **无分段概念，组合按钮需新写组件**
+- 点击行为 `handleNewChat()`（`WorkspaceSidebar.tsx:151-158`）：只导航到 home，**不建会话**（会话在真正发消息时才建）
+
+**页面机制**
+
+- 状态：`ui-store.ts` 一组互斥布尔（`drawPageOpen` / `tasksPageOpen` / `taskBoardPageOpen` / `skillsPageOpen` / …）；`open*Page()` 各自把其他页面置 false（**手写互斥**）
+- 分发：`MainLayout.tsx:70-113` `ContentArea()` 按优先级 if 链 return 具体页面
+- 连带：`TitleBar.tsx:36-50` 的 `isSessionPage` 判定逐个列了这些布尔 —— 新页面须同步（否则标题栏误判）
+- 新页面预计触碰：`ui-store.ts` / `ui-store-interface.ts` / `MainLayout.tsx` / `TitleBar.tsx` / `WorkspaceSidebar.tsx`
+
+**内置浏览器（可复用）**
+
+- `BrowserPanel.tsx`，props 仅 `{ sessionId, projectId }`
+- `partition: persist:wishfulclaw-browser`（`shared/browser-plugin.ts:8`）—— **持久分区，登录态跨重启保留**
+- `allowpopups: true`（第三方登录弹窗可开）；UA 可 `stripElectronFromUserAgent`；`browserUserDataReuseEnabled` 设置可复用系统浏览器数据
+- 页面状态按 `browserStatesBySession[sessionId]` **隔离**
+- 访问管控 `getBrowserAccessDecision`（`lib/app-plugin/browser-access.ts:80`）：**默认全放行**，仅当项目配了 `browserAllowedDomains` / `browserBlockedDomains` 才限制
+
+**现成模板（老大点名的「skill 市场的用法」）**
+
+`components/settings/skill-panel.tsx`：
+
+```tsx
+const SKILL_MARKET_SESSION_ID = 'skill-market'                       // :23 独立 sessionId
+const browserUrl = useUIStore((s) => s.getBrowserState(SKILL_MARKET_SESSION_ID, null).url)  // :45
+<BrowserPanel sessionId={SKILL_MARKET_SESSION_ID} projectId={null} />                       // :202
+```
+
+两个 tab 都挂载、用 CSS `hidden` 切换以保住 webview 状态（`:178-204`）—— 站点切换可照此办理。
+
+**不可复用的**：`lib/app-plugin/` 是**给 agent 用的能力插件**（BrowserNavigate/Click/Type 等工具），不是 UI 入口；v3 规划的「URL 型插件」**尚未实现**。⇒ 本页无现成体系可搭，照 `SkillPanel` 模板自建。
+
+### 待定口径（**待老大拍板**）
+
+1. **站点清单** —— DeepSeek 之外接哪些（老大说「其它支持不收费的网页版本对话」，需点名，不猜）
+2. **地址栏保不保留** —— 「固定访问」理解为隐藏地址栏只留站点条；保留则可作逃生口（跳登录页等）
+3. **登录态分区** —— 与内置浏览器**共用** `persist:wishfulclaw-browser`（别处登过即登录态）还是**独立**一份
+4. **站点切换时页面状态** —— 单实例改 URL（省内存，切走即重载）vs 每站点一实例 CSS 隐藏（切换瞬时、状态保留，站点多则内存涨）
+5. **是否同时进搜索面板** —— 现有 Draw/Automation/TaskBoard 在 `search-dialog.tsx:551/559/567` 均有入口；不加则范围最小
+
+---
+
+## S-28 聊天窗大图预览超出弹窗边界
+
+**一句话**：发送大尺寸图片后，在聊天窗点击缩略图预览，图片渲染尺寸超出预览弹窗边界，看不全。
+
+### 背景
+
+知识库 `issues/bugs.md` 2026-09-14 条目（原文）：「发送尺寸过大的图片后，在聊天窗点击预览，图片渲染尺寸超出预览弹窗边界，无法完整查看」；复现：发送一张大尺寸图片 → 聊天窗点击预览 → 图片比弹窗还大，看不全。原登记备注「疑似预览未按弹窗容器做等比缩放约束（**未查源码，待确认**）」。
+
+### 现状勘测（2026-09-16 实读，**已定位到具体代码**）
+
+**触发链**（用户消息的图片）：
+
+- 缩略图：`components/chat/user-message-views.tsx:287-295` —— `max-h-[180px] max-w-[240px] object-contain`，点击 `onPreview(image.dataUrl)`（`:283`，键盘同 `:263`）
+- 宿主：`components/chat/UserMessage.tsx:370` `onPreview={setPreviewImageSrc}`，弹窗在 `:376-423`
+- 弹窗：shadcn `Dialog` + `DialogContent`（`:382`）`max-h-[90vh] !w-fit !max-w-[min(96vw,1100px)] overflow-hidden p-2`
+- 图片（`:415-419`）：`block h-auto max-h-[calc(90vh-1rem)] w-auto max-w-[min(92vw,1068px)] rounded object-contain`
+
+**关键实证**：上述两处约束由 `d6228b27`「全量移植 OpenCowork 聊天渲染系统」引入，`git log -S 'max-h-[min(92vw,1068px)]'` / `-S 'min(96vw,1100px)'` 均只命中该提交 —— 即**从未因本 bug 调整过**，不存在"已修"。
+
+**别改错的另一套**：AI 回复里的图片走 `components/chat/ImagePreview.tsx:320-400`（`fixed inset-0` 全屏 + `h-full w-full object-contain`），与用户图片预览是**两套独立实现**，约束看起来正确。本项只动用户消息那条链。
+
+**待实测的疑点（两条候选，按可能性排序）**：
+
+1. **容器裁切**：`DialogContent` 是 `max-h-[90vh] + overflow-hidden`，图片是 `max-h-[calc(90vh-1rem)]`，两者只差 `p-2` 的 1rem —— 边界几乎贴死。图片若把容器顶满，超出的 1rem 内的部分会被 `overflow-hidden` 裁掉，表现即「看不全」。
+2. **约束没落到图片上**：`:382` 用 `!w-fit` + `!max-w-[…]` 覆盖 shadcn `DialogContent` 默认的 `w-full max-w-lg`，覆盖后若 `w-fit` 的收缩行为与图片固有尺寸计算打架，`max-w` 可能失效。
+
+**确认方法**：真机复现大图 → DevTools 量 `DialogContent` 与 `img` 的 `clientWidth/scrollWidth/clientHeight/scrollHeight`，看是裁切还是没约束。**取证后再改，别照着候选瞎修。**
+
+### 待定口径
+
+- 修法方向（尺寸约束补齐 vs 改 `overflow` 策略 vs 换全屏预览组件）—— 取证后定
+- AI 回复图片那套（`ImagePreview.tsx`）要不要顺带统一口径？**倾向不动**，除非实测同样有问题
+
+---
+
+## S-29 后台任务执行记录（记忆整理等）
+
+**一句话**：记忆整理这类后台任务已配置定时执行，但**没有任何执行记录**，用户无法判断「到底执行了没有、结果如何」。
+
+### 背景
+
+知识库 `issues/改进.md` 2026-09-14 条目（原文要点）：根因是**不可观测**，不是没效果 —— 没有记录时，「处理了」和「完全没跑」在用户视角里无法区分。最小执行记录：每次执行留痕（时间 / 触发来源 / 处理条数 / 写入目标 / 成功或失败）。
+
+**知识库明确划的边界（勿合并）**：与本迭代 S-25「Agent 工作时间线」**不是一回事** —— 时间线记的是 agent 为用户做的**业务工作**（受众=用户，用途=盘点回溯）；本条记的是 agent 维护自身的**内部任务执行**（用途=诊断确认健康）。混进业务时间线即噪音。知识库建议归为「系统/后台任务执行记录」一类（记忆整理、索引重建、自动备份等同属此类）。
+
+### 现状勘测（2026-09-16，**部分**）
+
+- 记忆整理管线：`lib/agent/memory-automation*.ts`（`-utils` / `-internal`）；调度与投递路径**未勘测**
+- 知识库提示的三个待确认点（接手时逐条核）：
+  1. **触发源到底是什么** —— 是 cron 定时任务（可指定 `agentId` + `deliveryMode=session` 投递）还是内置调度。**先查清这个，否则记录没地方挂**
+  2. 记忆整理任务是否使用了投递、投递到哪个会话
+  3. 参考 `参考-deepseek-harness工具深挖.md` 附节：后台任务执行记录宜含状态机（running / completed / failed / killed）+ 有界输出
+
+### 待定口径
+
+- 记录落在哪（新表 / 复用现有日志 / 面板呈现位置）
+- 是否只做记忆整理，还是同时覆盖索引重建、自动备份等同类后台任务（**知识库倾向后者**，但要老大拍）
+
+---
+
+## S-30 渠道会话的 shell 审批走文本消息
+
+**一句话**：渠道会话（微信/飞书）里 Agent 要执行 shell 类工具时，用户不在桌面 UI 前、看不见审批弹窗，改**用渠道文本消息向用户征询**，用户**回文本**即完成审批；渠道配置中若已设为**无条件放行**则不走此流程。
+
+### 背景
+
+溯源：iter-29 收尾挂的「下版本待议」第 ① 条 —— 默认 `shellRequiresApproval = true` 下，渠道会话执行 shell 会**卡在一个用户看不见的审批上，一直挂到 run 被取消**（当时无人报，因为还没人在渠道里让它跑过 shell）。
+
+老大 2026-09-16 口述（原话）：「**shell 审批，在渠道对话中，并且在渠道配置中没有无条件放行的，需要文本方式审批**」。
+
+### 现状勘测（2026-09-16 实读）
+
+**审批门**：`ToolCallProcessor.Approval.cs:60-97` `RequiresApprovalBeforeExecution`
+
+- `:75-78` 渠道会话**只豁免了文件/图片工具**（`IsChannelFileTool`，`:119-122` 列了 6 个 `*SendImage` / `*SendFile`），注释原文 *"Channel sessions cannot complete a remote approval dialog"*
+- `:82-85` shell 类走 `IsChannelShellApprovalWaived`（`:103-105`）= `渠道会话 ∧ ShellApprovalTools ∧ !ShellRequiresApproval`；`ShellApprovalTools`（`:35-38`）= `Bash` / `Shell` / `ShellExec` / `PowerShell`
+- ⇒ **默认 `true` 时渠道 shell 会要求审批，但没有表达出口**
+
+**审批事件流（桌面路径）**：
+
+- Worker → 渲染端：`shared/agent-stream-protocol.ts:117` `{ type: 'tool_call_approval_needed', toolCall }`；工具态含 `'pending_approval'`（`:51`）
+- 渲染端 → Worker：`lib/agent-runtime-sync.ts:47` `{ kind: 'resolve_approval', toolCallId, approved }`
+- ⇒ **卡点就在这里**：渠道会话发起了 run，但**没有渲染端在消费这个事件**，事件发出去没人答 ⇒ 挂死
+
+**既有相关能力（可复用，勿重造）**：
+
+- `shared/permission-policy.ts` —— bash deny/allow 规则 + 工具白名单，优先级：bash deny > 白名单/allow 规则 > 正常审批流（`:12`）；已支持「总是允许」类的通配规则（`:295` 的 wildcard 建议，供审批弹窗快捷添加）
+- 渠道侧已有向用户发文本的能力（`ChannelSendMessage` 一族），且 `plugin-command-handlers.ts:339` 的 `/status` 已能打印 `shellRequiresApproval` 当前态
+
+### 待定口径（**待老大拍板**）
+
+1. **回复词表** —— 用户回什么算「同意」（「同意」/「ok」/「y」/「1」？），回什么算拒绝，不匹配时怎么办
+2. **超时策略** —— 挂多久算默认拒绝（还是无限等？），超时后 agent 怎么继续
+3. **「总是允许」要不要支持** —— 支持的话落在哪（permission-policy 的 allow 规则？）
+4. **多审批并发** —— 一轮里多个 shell 调用同时待批，怎么排队 / 怎么让用户指认「批的是哪一个」
+5. **拒绝后的话术** —— 拒绝结果怎么回给模型（让它是继续换个法子，还是直接终止）
+6. **开关归属** —— 「无条件放行」就复用现有 `shellRequiresApproval`，还是另加开关（**倾向复用**，29 需求 28 刚把它收敛成全局 2 键之一）
+
+---
+
+## S-31 思考流式跳动问题仍存在（T-8 未闭环）
+
+**一句话**：iter-29 处理过的「思考模式跳动」，老大 2026-09-16 真机反馈**仍然存在**。
+
+### ★★ 最终结论（2026-09-16 定稿 —— 本节以此块为准）
+
+**真凶与下面所有推断都不同：全局 CSS 的 `scroll-behavior: smooth`。**
+
+`src/renderer/src/assets/main.css:323-325`：
+
+```css
+* { scroll-behavior: smooth; }
+```
+
+`scroll-behavior` 是**继承属性**且命中每个元素 ⇒ **任何 `el.scrollTop = x`（以及不带 behavior 的 `scrollTo`）都从「瞬时跳变」变成「几百 ms 缓动动画」**。
+
+这与「内容每帧增长 + 代码跟随写 scrollTop」**根本不兼容**：每次赋值都**打断上一个动画、从头再来**，滚动条永远在追赶一个够不着的目标 ⇒ 观感是**持续蠕动/抖动**。**判据算得再对也没用** —— 它决定「什么时候下令」，而 smooth 决定「下令之后怎么走」。
+
+**怎么分辨出来的（关键判据）**：老大观察到「**空白在缩小**（提前量在被吃掉）**同时滚动条在动**」。这两条在**同一个容器上互斥**（`空白 = 提前量 − gap`，`滚动条下移 = gap↓`），唯一解释就是**滚动是动画** —— 内容是每帧长的（一条时间线），滚动是缓动曲线在推进（另一条时间线），两条线能同时看到。
+
+**修法（老大拍板「不动全局」）**：只给需要程序化跟随的滚动容器加 **inline** `scrollBehavior: 'auto'`：
+
+| 落点 | 文件 |
+|---|---|
+| 内层思考区 | `ThinkingBlock.tsx` |
+| 外层聊天窗 | `MessageList/VirtualListContent.tsx` |
+
+**必须 inline** —— `*` 那条规则没包在 `@layer` 里，优先级高于 Tailwind 的 `scroll-auto` class。
+
+老大原话：「**不能改全局，其它地方动画该要还是得要，聊天窗能修复就可以了**」。
+
+**实测数据（2026-09-16 21:44，证明判据健康）**：
+
+```
+frames=60 scrolls=5 gapAvg=65 gapMax=159 poolMax=235 clientH=320
+```
+
+- `scrolls/frames = 5/60` ⇒ **每 12 帧才补一次** —— 提前量机制正常工作；**此前「每帧都补」的推断是错的**（差点据此去改渲染池）
+- 尖峰单帧 **159px**（≈渲染池峰值 235 字符）能一次击穿提前量 ⇒ 这就是观感「跟不上」的来源
+
+**最终参数**：
+
+- 内层提前量 = **128px** = `pb-32`，与常量 `THINKING_SCROLL_AHEAD_PX` **必须同步改**（视口 `max-h-80` 320px 的 40%；老大 2026-09-16 口径从 30% 上调）
+- 外层提前量 = `STREAMING_BOTTOM_FOLLOW_CHUNK` 240px + **只增不减**水位线
+- **跳幅 = max(单帧增量, 提前量)** ⇒ 提前量只管「**多久跳一次**」，**跳多大由渲染池单帧增量决定**。想让尖峰变平得动 `use-typewriter.ts` 的 `frameIntervalMs` / `catchupFrames`（代价：影响**所有**流式输出）——**老大未拍板，暂不动**
+
+**两层是配合关系，缺一不可**：
+
+| 机制 | 管什么 |
+|---|---|
+| 提前量 + 只增不减水位线 | 「**滚几次**」 |
+| `scrollBehavior: 'auto'` | 「**怎么滚**」（瞬时而非动画） |
+
+**❗ 以下内容是被本块推翻的历史推断，仅作调试过程记录，勿引用为结论**：
+
+- ❌ 「门槛式判定要拆掉 / 每帧无门槛贴底」—— 最终**保留门槛**（`gap ≥ 提前量` 才补），只是提前量从 48 → 128
+- ❌ 「内层的病是攒着不滚」—— 判据逻辑一直是对的，是提前量太小 + 被 smooth 掩盖
+- ❌ 「三个阶跃叠加」里的 ②「台阶式」定性
+- ❌ 「留白双向浮动（超半屏收回基准）」—— 水位线恢复**只增不减**，可见留白由跟随姿态管
+
+---
+
+### 背景
+
+老大 2026-09-16 口述（原话）：「29迭代处理的思考模式跳动问题还是存在」。
+
+**T-8 的历史（iter-29）**：
+
+| 步骤 | 内容 | 结果 |
+|---|---|---|
+| 第一版 `d2d91864` | `CollapsibleHeightPanel enabled={!isThinking}` | **废弃回退** —— 日志显示 `clientHeight` 没抖，假设被数据否掉 |
+| 真因定位 `6a500cdb` | 内层滚动容器缺 `overflow-anchor: none`，浏览器滚动锚定与手动贴底对打 | 老大真机确认「这次抖动就很少了」 |
+| 残留收口 `d50d0702` | 两行缓冲 + `useLayoutEffect` | 老大确认「确实不上下跳了」 |
+
+**当前代码仍在**（2026-09-16 实读）：
+
+- `ThinkingBlock.tsx:166` `style={{ overflowAnchor: 'none' }}` —— 在
+- `ThinkingBlock.tsx:34` `THINKING_SCROLL_BUFFER_PX = 48`（两行缓冲）—— 在
+
+> ⚠️ **结论修正（2026-09-16 老大定性）**：不是「修了没断根」，而是**两行缓冲这一段的实现本身就是理解错误**。
+>
+> 老大原话：「那这个就是**理解没对**」。
+>
+> 现场：`ThinkingBlock.tsx:92-94` 写的是 `if (maxTop - scrollTop >= THINKING_SCROLL_BUFFER_PX) scrollTop = maxTop` —— **距底不足 48px 就不滚、攒够才滚一次**。这恰恰是老大否定的「台阶化」：把「连续跟随」做成「攒够再跳」，单次阶跃反而更大。
+>
+> ⇒ **门槛式判定要拆掉（不是保留）**。
+
+**★ 老大 2026-09-16 补充澄清 —— T-8 的方向写反了（本意）**：
+
+> 原话：「我的意思本意是留 48px **提前滚动**了，这样新输入的内容在这 48px 里面就会被作为缓冲，**滚动条不用再滚**。之前的方案不是给我添乱么，**攒着不滚** 我去……」
+
+- 老大要的是 **恒定预留 48px + 滚动提前**：滚动条维持在「内容底 − 48px」，新内容落进这 48px 缓冲里。**缓冲是「欠着」的（恒有），不是「攒着」的。**
+- T-8 写成了 **下限阈值 + 攒够才滚** —— **耗掉缓冲**。一个保缓冲、一个耗缓冲，**方向完全相反**。
+- ⇒ 正确写法（每帧执行，无门槛）：
+  ```js
+  el.scrollTop = el.scrollHeight - el.clientHeight   // 即 maxTop，不要再减偏移
+  ```
+  缓冲恒 48px 不波动，滚动量 = 每帧内容增量，天然连续。**无门槛、无攒批、无台阶。**
+
+  ⚠️ 这里曾写成 `Math.max(0, maxTop - THINKING_SCROLL_BUFFER_PX)` —— **同样错**，留白会变成 96px。
+  留白已由内容容器的 `pb-12`（48px）算进 `scrollHeight`：贴到 `maxTop` 时最后一行文字的底边
+  天然距视口底 48px。再减一次偏移 = 把这段 padding 又加了一遍。
+- ⇒ 这条**不需要真机取证**：不是「难以复现的抖动」，是**逻辑写反了**，读代码即可判定。
+>
+> ⚠️ 由此推翻我 2026-09-16 的一句错误表述：我曾把「滚动条不贴底」说成「T-8 的设计预期行为」——**错**。那是设计本身写错了，必须修。
+
+**⚠️ 二次踩坑记录（2026-09-16 晚，老大发现）**：
+
+实施 S-31/S-32 时，我把这里又写回了「攒着不滚」：
+
+```js
+if (maxTop - el.scrollTop >= THINKING_SCROLL_BUFFER_PX) el.scrollTop = maxTop
+```
+
+**这正是上面刚否定过的写法**，而且还配了七行注释论证它「是关键」。
+
+**我把机制想反在哪**：注释里写「每帧滚 ⇒ 留白永远 48px ⇒ 从未被消耗过 ⇒ 缓冲被废掉」——
+**恰恰相反**：留白恒定 48px 才是缓冲生效的稳态；在 48↔0 之间振荡、攒够一次跳 48px 才是「一顿一顿」本身。
+
+**处置**：`ThinkingBlock.tsx` 已改回每帧无门槛 `el.scrollTop = el.scrollHeight - el.clientHeight`；
+常量 `THINKING_SCROLL_BUFFER_PX` 一并删除（留白由内容容器的 `pb-12` 提供，不需要常量）。
+
+**教训**：这份文档刚写下「攒够才滚 = 耗缓冲 = 方向完全相反」，我转头就在代码里实现了它。
+**本节的裁定不是存档，是约束 —— 动这块之前先重读本节。**
+
+**iter-29 自己记的已知残留**（`docs/progress/v2-iter-29.md` T-8 条）：「内容刚跨 `max-h-80` 的头几帧仍可能 `after=0`（疑似首帧时序），可选 `useLayoutEffect`」—— **需确认老大这次看到的就是这个残留，还是新的触发场景**。
+
+### 待补 / 待定口径
+
+1. **老大补复现细节**：在哪个阶段跳（刚开思考 / 跨 `max-h-80` 时 / 全程）、幅度、频率
+2. **取证先行**（重要教训）：T-8 第一版就是因为**没取证先改**，被老大两条观察拽回两个错误方向，最后**废弃回退**。本次必须先量数据（`scrollTop` / `scrollHeight` / `clientHeight` 前后值）再定修法
+3. 与 S-32 同源 —— **2026-09-16 已确认**，且**思考流式输出也是同一个问题**（老大原话：「思考流式输出也是这个问题」）
+
+### 统一根因复核（2026-09-16，覆盖 S-31 / S-32 / 思考流式）
+
+**需求来龙去脉（老大 2026-09-16 完整叙述 —— 定调，据此判断成败）**：
+
+> 原话：「本来正常情况下就是**一直往下贴底**，只是有**组件执行中展开、执行后收起**，会导致有**上下跳**。现在加**留白和只增不减**的目的是**做缓冲**，结果实现最后**差强人意**」
+
+| # | 环节 | 内容 |
+|---|---|---|
+| 1 | **原始状态** | 一直往下贴底 —— **这本身是正常、可接受的** |
+| 2 | **问题** | 组件**执行中展开 / 执行后收起** ⇒ 高度变化 ⇒ **上下跳** |
+| 3 | **设计思路**（R-10.2） | 加**留白** + **只增不减** ⇒ 做**缓冲**，吸收高度变化的抖动 |
+| 4 | **结果** | **差强人意** |
+
+⇒ **设计意图正确，R-10.2 方向没错，差在实现层**。五轮修正后积累了新的抖动源（水位线收回时序错位 / `isSessionOutputting` 闪变 / 内层台阶过小 / 大阶跃无平滑）。**修法应是「修正 + 简化」，不是「再加一层」。**
+
+**老大澄清的口径（关键，纠正了我此前的误判）**：
+
+- 「偶尔留白过多」——**可接受**，不必治
+- **不可接受的是**：「有时候**完全没有留白**，导致内容一直往下跳」
+- 初衷（原话）：「组件会运行时展开、运行结束后收起，导致页面会抖动，所以想只增不减，这样避免上下跳。**以前虽然跳但是看起来是正常的。现在是有点不正常了**」
+- 我此前的「水位线累积成死留白」假说 —— **被老大否掉**（「死留白问题反而我没发现，基本都是能收掉的」）
+
+**根因 = 三个「阶跃」叠加，缺一不可**：
+
+| # | 层 | 机制 | 证据 |
+|---|---|---|---|
+| ① | **上游渲染池** | `getCatchupStep = max(1, ceil(poolSize / catchupFrames))`，agile `K=2` ⇒ **首帧吞掉 backlog 的一半**。provider 一个 burst 来 2000 字符，第一帧就渲染 1000 字符（几百 px） | `hooks/use-typewriter.ts:25-34, 56-59` |
+| ② | **内层（思考区）** | 「攒够 48px 才滚一次」：`if (maxTop - scrollTop >= THINKING_SCROLL_BUFFER_PX) scrollTop = maxTop` ⇒ 台阶式；**滚完落后归 0 = 零留白** | `ThinkingBlock.tsx:85-95`（T-8 加的） |
+| ③ | **外层（聊天窗）** | `isSessionOutputting` 闪变 false（文本段结束、工具尚未出结果的间隙）⇒ **水位线立即收回** `contentHeightWatermarkRef = 0` + `autoScrollMode = 'off'` ⇒ GAP 姿态消失，退回 `bottom = scrollHeight - clientHeight`（**贴死底、零留白**） | `useMessageListScroll.ts:570-581, 548-549, 156`；`useMessageListData.ts:174` |
+
+**❗ 回跳的确切机制（2026-09-16 老大补充 —— 这是最难受的一点）**：
+
+> 原话：「明明都搞了缓冲了，**一直往下贴底也是能接受的**，偏偏现在效果是会有**回跳**，这个就让人特别难受」
+
+- **回跳 = scrollTop 反向（变小）移动**。老大的容忍边界很清楚：**单向往下贴底可以接受，双向来回不行**。
+- **主因 —— 水位线收回那一帧的时序错位**（`useMessageListScroll.ts:570-590`）：
+  1. `isSessionOutputting` 翻 false ⇒ `contentHeightWatermarkRef.current = 0`（**ref 立即清零**）+ `setMinContentHeight(0)`（**DOM 要等 re-render**）
+  2. 紧接着的 `scrollToBottomImmediate()` 因 ref 已清零，**判定为「非水位线」分支** ⇒ `bottom = ref.scrollHeight - ref.clientHeight`，而此刻 **DOM 的 `min-height` 尚未撤掉** ⇒ `scrollHeight` 仍是**含水位线的大值** ⇒ scrollTop 被**强推到底（向下跳）**
+  3. 下一帧 `min-height` 真正撤掉 ⇒ `scrollHeight` 变小 ⇒ 浏览器 **clamp** scrollTop ⇒ **向上弹回**
+  - ⇒ **一推一弹 = 回跳**。且恰好发生在「留白被收掉」的同一瞬间，与老大「留白全收了然后滚动条还往下跳」的观察完全吻合。
+- **次因 —— 悬空救援分支主动回缩**（`:164-168`）：`scrollTop > realBottom + 1` 时**无条件** `scrollTop = target`。而 `getRealContentBottom()` 只遍历**已渲染的虚拟行**（`content.children`），虚拟器未渲染 / 卸载行时 `realBottom` 会偏小 ⇒ 无条件回缩到更小的 scrollTop ⇒ **回跳**。
+- **修法原则（直接由老大的容忍边界推出）：`scrollTop` 保持单调不减**（除非用户手动滚动）。具体：
+  1. 水位线收回时**不主动调** `scrollToBottomImmediate`（等 DOM 撤完 `min-height` 再决定）；
+  2. 悬空救援改为**只推不拽**，或在 virtualizer 未渲染完（`realBottom` 可疑）时跳过；
+  3. 全面贯彻文件内既有的「只推不拽」写法（`:175-178`）。
+
+**为什么「上游越快越跳」**：① 的首帧步长与 backlog 成正比 ⇒ 上游 burst 越大，单帧高度增量越大。
+
+**为什么「以前正常、现在不正常」**：R-10.2 之前姿态**单一**（一致地每帧贴底），虽是连续微动但**跳法均匀**；引入水位线 + 两行缓冲后，姿态在「有留白 / 零留白」之间**反复切换**，跳法不再一致 —— 观感上就「不正常」了。
+
+**要害判断**：老大的直觉（下方留白当缓冲）**方向是对的**，但当前实现把「连续跟随」做成了「**攒够再跳**」—— 把连续位移攒成离散台阶，**台阶越大越像跳**。留白必须**恒定存在 + 连续跟随**，而不是「攒到阈值跳一次」。
+
+**2026-09-16 老大定性印证 —— 主因坐实为 ①**：
+
+> 原话：「内容越多的时候问题越严重，就是输出文本超级多的时候，本来是预留了两行用于缓冲，结果感觉**缓存没起效果一样**」
+
+- **机制**：`use-typewriter.ts:109-122` 每帧（32ms）渲染 `getCatchupStep(poolSize) = ceil(poolSize / K)` 字符。稳态下每帧渲染量 ≈ 上游速率 R，而 poolSize ≈ K·R。**R 随内容量 / 上游速度增长 ⇒ 每帧高度增量 ∝ R，且无任何上限。**
+- **为什么缓冲形同虚设**：T-8 的缓冲是**固定 48px（≈2 行）**，而阶跃幅度是**变量**、随内容量线性增长。一旦单帧增量 > 48px，缓冲被瞬间击穿 —— 这就是「感觉没起效果」的确切原因。
+- **结论**：缓冲形同虚设的根因是「**固定容量的缓冲 vs 无上限的阶跃**」。但**解法不是限制阶跃**（那会拖慢内容，老大明确不接受），而是**让滚动跟随自己去限幅** —— 见上文「修法方向」表。同理 T-8 内层「攒够 48px 才滚」也是"等攒够再跳"的台阶化写法，属同类问题。
+- **现成取证埋点**：`recordStreamingRenderPoolFlush(..., { poolSize, step, renderedLength, targetLength })`（`use-typewriter.ts:123-128`）**已记录 step 分布**，可直接佐证单帧步长量级。
+
+**建议**：S-31 与 S-32 **合并为一条**（含思考流式），统一按本节三阶梯修法处置 —— 分开登记只是保留老大原始口径，实际是同一次根因修复。
+
+**修法方向（2026-09-16 按老大纠正后重定）**：
+
+> ⚠️ **我曾提出的「给 step 加每帧上限、让内容变慢以适应缓冲」——方向错了，已撤回。**
+> 老大原话：「**不能让内容去适应缓冲，应该是让缓冲去适应内容。不能因为缓冲去导致内容变慢这些，这种我接受不了**」
+
+**正确原则：内容是自变量（不限速），滚动是因变量。**
+
+跳的本质是「**scrollTop 阶跃**」，不是「内容增长快」—— 内容一帧长 500px 本身不跳，只要滚动条**不是一帧跳 500px**。
+
+| 侧 | 动作 |
+|---|---|
+| **内容侧**（`use-typewriter.ts`） | **不动。** 渲染速度不设限，burst 该多快就多快 |
+| **滚动侧 · 外层** | `scrollToBottomImmediate` 目标仍是「内容底 + GAP」，但 scrollTop 改为**每帧限幅逼近**（非瞬时赋值）：小 delta 一次到位、大 delta 摊到多帧 |
+| **滚动侧 · 内层** | `ThinkingBlock` 取消「攒够 48px 才滚」的台阶判定（**同类错误：等攒够再跳 = 台阶化**），改同样的每帧限幅逼近 |
+| **滚动侧 · 开关** | `isSessionOutputting` 加**滞后**（翻 false 后延迟收回水位线），吃掉断续间隙的闪变；`autoScrollMode` 同理 |
+| **留白（GAP）** | 外层由 `scrollToBottomImmediate` 的**提前量跟随**管：`remaining = scrollTop + clientHeight − realBottom`（视口底距内容底多远）。`remaining ∈ [REFILL_AT(24), 半屏]` 时**一动不动**；用尽（< 24）才补满到 `CHUNK(240)`。**可见留白上限 = 半屏**（老大 2026-09-16 原话「留白可以涨到半屏都是可以接受的」）。⚠️ 曾试过「超半屏就收 `min-height`」+ 节流 —— **已推翻**：收 `min-height` 本身就是制造 `scrollHeight` 骤减 ⇒ 必然 clamp ⇒ 必然跳，节流只是把攒下的位移合并成**一次更大的跳**。**水位线最终恢复「只增不减」** —— 它撑出来的留白待在视口之外，看不见也就无所谓它多大 |
+
+**留白的作用原理（老大 2026-09-16 解释 —— 这是设计核心意图，勿当"浪费空间"）**：
+
+> 原话：「空白的时候，**内容逐渐从上面一行行写内容，这时候是不会跳动的**，所以这种我接受并且觉得效果好。所以我也专门说弄这种来作为缓冲，但是现在就感觉这个策略没有执行好」
+
+- 留白**不是浪费空间，是缓冲区**：留白期间新增内容在缓冲区内逐行生长，**视口不必发生阶跃** ⇒ 平滑。
+- 老大最初要求「下方留白作缓冲」的**方向从一开始就是对的**。
+- **当时的误判（真凶见本节开头「最终结论」，下表仅作过程记录）**：
+  1. ~~内层缓冲太小（48px）~~ —— 尺寸确实偏小，已调到 128px（视口 40%），但**不是抖动的主因**
+  2. ~~外层 GAP 会被闪变收掉~~ —— **未证实**；`isSessionOutputting` 实际只跟 `hasStreamingMessage` 走，run 期间不闪变
+  3. ~~外层水位线只补不收~~ —— **已推翻**。试过「超半屏收 `min-height`」+ 节流，结果**跳得更凶**：收 `min-height` 本身就是制造 `scrollHeight` 骤减 ⇒ 必然 clamp；节流只是把攒下的位移合并成一次更大的跳。**水位线已恢复「只增不减」**，可见留白改由跟随姿态（`remaining` 判据）管
+- **要害**：「限幅连续跟随」**天然同时产出留白与平滑** —— 内容一帧长 Δ、scrollTop 每帧最多走 V（V < Δ）时，滚动条自然落后 ⇒ 留白自然增长 ⇒ 而这期间的滚动是**连续的**而非阶跃。**不需要再单独设计"缓冲"**，缓冲是限幅的自然结果。
+- 反过来说：现行的「攒够 48px 再跳一次」**两头不讨好** —— 留白只有 48px（不够黑），滚的时候又是阶跃（会跳）。
+
+**取证线索（现成埋点）**：`ThinkingBlock.tsx:171-173` 已挂 `data-render-pool-size` / `data-rendered-length` / `data-target-length`。若抖动时 `pool-size` 经常几百上千 ⇒ 坐实 ① 是大头。
+
+---
+
+## S-32 回复结束时思考块折叠 + 正文输出，聊天窗来回跳动
+
+**一句话**：一轮回复结束时，Agent 回复块折叠、下方开始输出最终结论，此时**聊天窗（外层滚动区）来回跳动**。
+
+> ★ **已随 S-31 一并修复（2026-09-16 定稿）** —— 两者同源，**真凶是全局 `* { scroll-behavior: smooth }`**（见 S-31 节「最终结论」）。修法：外层聊天窗容器加 inline `scrollBehavior: 'auto'`（`VirtualListContent.tsx`）。
+> **本节以下内容是当时的勘测记录，其中的假说（如「折叠动画期间高度补偿时序」）未经证实，勿引用为结论。**
+
+### 背景
+
+老大 2026-09-16 口述（原话）：「在回复结束 agent 回复块折叠，并且下面输出最终结论的时候，聊天窗内也在来回跳动」。
+
+### 现状勘测（2026-09-16 实读）
+
+**折叠机关**：`ThinkingBlock.tsx:63-70`
+
+```tsx
+// Auto-collapse when thinking transitions from active to completed
+const prevIsThinkingRef = useRef(isThinking)
+useEffect(() => {
+  if (prevIsThinkingRef.current && !isThinking) {
+    setCollapsed(true)          // ← 思考完成 → 立即折叠
+  }
+  prevIsThinkingRef.current = isThinking
+}, [isThinking])
+```
+
+**高度过渡**：折叠走 `CollapsibleHeightPanel`（`ThinkingBlock.tsx:156`），该组件带 `transition: height 0.2s`（iter-29 T-8 排查时实读：`CollapsibleHeightPanel.tsx:138/140`）。
+
+**假说（待实测）**：折叠的「高度骤减」与正文流式增长的「高度增加」**在同一时间窗内叠加**，而 `transition` 的 0.2s 期间高度**连续变化** ⇒ 外层滚动补偿被反复触发 ⇒ 表现为来回跳。
+
+**外层已有防护**：`MessageList/VirtualListContent.tsx:144` 有 `overflowAnchor: 'none'`、`:126` 有吸附/layout 相关处理 —— 说明外层**不是完全没管**，问题可能出在「折叠动画期间」这个补偿没有覆盖到的时序。
+
+### 待补 / 待定口径
+
+1. **老大补复现细节**：跳动发生在折叠动画期间还是之后；正文已经开始输出没有
+2. **取证先行**：同上，先量外层容器的 `scrollTop` / `scrollHeight` / `clientHeight`
+3. **候选修法**（取证后再定，**别先改**）：
+   - 折叠改为**无动画**（瞬时）或缩短 duration
+   - 折叠与正文首帧之间做时序错开
+   - 折叠发生时把外层滚动位置显式锁定到「底部保持」
+4. **与 S-31 的关系** —— 两条很可能同源（都指向「高度变化 + 滚动补偿」这一域）。**建议合并排查，但按老大口径登记为两条**，修完再决定是否并条目
+
+---
+
+## S-33 队列 banner 新增「立即插入」按钮
+
+**一句话**：队列里的消息可以**直接塞进当前正在跑的那一轮**，不必等本轮结束。
+
+**来源**：老大 2026-09-16 原话 ——「我也倾向于进渲染端度队列，渲染端队列进入以后目前有个 banner 显示，上面可以加一个按钮用于直接插进当前这一轮。也就是用户可以手动点击立即插入」。
+
+**已落地**（提交 `34e63dde`）：
+
+- `hooks/use-chat-actions.ts:774+` —— 把队列某条消息塞进当前 run，**走 Worker 的 message queue**，不打断正在执行的工具，AgentLoop 下一次 iteration 起点读到它
+- `components/chat/InputArea/use-queued-messages.ts:166-169` —— `canInsertQueuedMessageNow`：只在当前会话**确有活跃 run** 时才给按钮（没有可插入的轮次就不显示）
+- `components/chat/InputArea/queued-messages-panel.tsx:45-47` —— 按钮渲染
+- locale `chat.json`：`input.queueInsertNow` / `queueInsertNowHint` / `queueInsertNowFailed`
+
+---
+
+## S-34 会话 todo 状态与实际执行脱节（代码层兜底）
+
+**一句话**：agent 建了 todo 之后**忘了更新状态**，banner 上挂着的条目与真实执行进度不一致。老大要求**从代码层兜底**，不接受靠提示词 / `agents.md` 之类「协议」去约束使用者。
+
+### 背景（2026-09-16 老大原话）
+
+> 「你没有更新 todo 里面的内容，我们需要想一个策略，毕竟你没更新就意味着我们代码有问题」
+
+> 「我想从代码层去解决这个 todo 问题，**而不是通过协议**，毕竟我是作者，我要为所有使用的用户负责，我不能要求他们也去加 agents.md 呀」
+
+老大已排期：**进 30 迭代**（2026-09-16）。
+
+### 现状勘测（2026-09-16 实读）
+
+**存储**：`src/runtime/WishfulClaw.Agent/AgentRuntimeTaskExecutor.cs`（OpenCowork 移植）。SQLite 支撑、**session 作用域**，5 状态 `pending / in_progress / blocked / in_review / completed`，`deleted` = **物理删除**。工具族 `TodoTaskCreate / Get / Update / List`（`:21-26`，旧名 `Task*` 保留兼容）。
+
+**唯一写入方 = agent 自己调**：`ExecuteUpdate`（`:117-248`）只认 agent 传进来的 `status` 字段，**代码里没有任何自动状态推进**。
+
+**唯一的「督促」是提示词** —— `WishfulClaw.Persona/PromptBuilder.cs:379-382`：
+
+```
+- Call TodoTaskList before creating tasks to avoid duplicates.
+- Use TodoTaskUpdate to mark `in_progress` when starting (one at a time),
+  `blocked` when stuck, `in_review` when done and awaiting user confirmation,
+  `completed` only when fully done and verified.
+```
+
+⇒ 这正是老大说的**「协议」**。agent 不照做，代码不会拦、不会提示、不会纠正。
+
+**已有埋点（可复用做卫生检查）**：`ExecuteUpdate` 内已产出 `todo_created` / `todo_status_changed` / `todo_deleted`，经 `DbAgentTimelineTools.Log` 落库（`:89-90`、`:242-245`）。
+
+**渲染端**：`components/chat/SessionTodoPanel.tsx`（banner）；`stores/chat-store/index.ts:51` `NATIVE_TASK_TOOL_NAMES` 从工具结果解析后刷新。
+
+### 候选方向（**先讨论，别写死**）
+
+| # | 方向 | 说明 |
+|---|---|---|
+| A | **run 收口时校对** | 一轮 run 终结时扫本 session 仍为 `in_progress` 的 todo，与运行态对齐后修正，并落 timeline |
+| B | **状态机强制** | run 结束时若存在「建了从未被 update」的 `pending`，由代码注入一轮提醒（**代码注入，不是提示词**） |
+| C | **渲染端对齐** | banner 的「执行中」标记与 run 活跃度挂钩：run 不活跃而 todo 仍 `in_progress` ⇒ 显示「待确认」，不再假装在跑 |
+| D | **孤儿归档** | 会话结束后残留 todo 归档 |
+
+### 待定口径
+
+1. A 的语义边界 —— 跨轮长任务会不会被误降级
+2. B 的注入时机 —— 挂在 AgentLoop 哪个 hook
+3. 与 `deleted` 物理删除的交互
+4. 最终形态（A/B/C/D 取哪几项）**待老大拍板**
+
+### 实施（2026-09-16 定稿 + 落地）
+
+**裁定**：取 **C（渲染端对齐）**，走 **甲案 —— agent 说了算，代码只对齐展示、绝不动数据**。**B（代码主动催 agent）与 D（孤儿归档）不做**：B 会往每一轮请求里塞额外内容，D 会删用户的任务，都越界了。
+
+三态，**只影响渲染**：
+
+| 显示 | 条件 | 表现 |
+|---|---|---|
+| 执行中 | 本会话有活跃 run | 蓝色 + 转圈（原样） |
+| 待续 | run 已结束、`updatedAt` 未超阈值 | 转圈**停掉**，中性色 + tooltip |
+| 已过期 | run 已结束、`updatedAt` 距今 > 3 天 | 灰色虚线圆 + tooltip |
+
+- 阈值 **3 天**（`STALE_IN_PROGRESS_MS`）：「今天没空、明天接着干」是正常场景，1 天会把人误判成过期
+- run 活跃度与 `hasActiveSessionRunForSession`（`hooks/use-chat-actions.ts:964`）同口径，组件里改用订阅以触发重渲染
+- banner 顶部汇总图标此前只看 `status === 'in_progress'` 就转圈 —— 改为**真有 run 在跑**才转
+- `TaskItem` 本就带 `createdAt` / `updatedAt`（`task-store-helpers.ts:17`），**零新链路、零 schema 变更**
+
+**落地**：`components/chat/SessionTodoPanel.tsx`（新增 `InProgressState`、`TaskStatusIcon` 改签名）；locales `chat.json` 新增 `todo.inProgressSuspended` / `todo.inProgressStale`（zh/en）。
+
+---
+
+## S-35 文件树「发送到会话」对文件夹不成立
+
+**一句话**：文件树右键把**文件夹**发送到会话，发送后消息下面挂一条「Read failed」附件（`Path is a directory`）。**「目录」这个语义在整条链上不存在**，被当成「读不出内容的文件」。
+
+### 来源（2026-09-16 老大口述原话）
+
+> 「文件夹右键发送到会话，然后会话消息发送后，我们会默认读取发送中的链接对于文件，没有判断是文件夹，这个可能是右键发送到会话就没有带一些东西」
+
+### 现状勘测（2026-09-16 实读）
+
+**入口三处不一致** —— 同一操作两种态度：
+
+| 入口 | 位置 | 对目录 |
+|---|---|---|
+| 行内 hover 按钮 | `tree-item.tsx:192`（`!agentSurface && !isDir && !isRenaming`） | **排除** ✓ |
+| 行右键菜单「发送到会话」 | `tree-item.tsx:232`（**无条件**渲染） | **包含** ✗ |
+| 根节点右键菜单 | `file-tree-context-menu.tsx:51-56`（根节点即 `workingFolder`） | **包含** ✗ |
+
+**动作侧**：`use-file-tree.ts:294-300` `handleAddToChat` —— 只做一件事，把相对路径包成 select-file tag 写进输入框，**不看 `isDir`**：
+
+```ts
+const relativePath = toRelativePath(filePath, workingFolder)
+useUIStore.getState().setPendingInsertText(createSelectFileTag(relativePath))
+```
+
+（老大猜的「没带一些东西」—— 这半成立。）
+
+**读取端**：`lib/agent/selected-file-context.ts`
+
+- `:302` `statFileForRead` **认得出目录** —— `if (result.isDirectory) return 'Path is a directory'`
+- `:176-179` 但把它按 **error** 处理：`metaFiles.push({ ...baseMeta, error: statError })`
+- 而 PDF / 二进制（`:169-173`）、超预算（`:199-211`）、不可解析（`:164-167`）**全都走 `skipped`**
+
+⇒ **真因不是「信息缺失」，是目录被归进了「读取失败」而不是「路径引用」。** 读取端明明知道，却走了错分支。
+
+**渲染端**：`components/chat/user-message-views.tsx:47-89`
+
+- `error` → 橙色 `AlertCircle` + `selectedFileReadFailed`（"Read failed"）
+- `skipped` + `'pdf'` → PDF 文案；`'unresolved' | 'budget'` → 未注入文案；**其余 skipped 一律 → `skippedNonText`**（"binary or document file was not read directly"）
+
+### 方案（推荐 **A + B + C1**；C 待老大拍板）
+
+**A（核心）读取端把「目录」从 `error` 改成 `skipped`**
+
+`statFileForRead` 的返回值改为能区分「目录」与「真错误」：目录 → `{ skipped: true, skipReason: 'directory' }`，真错误保持 `error`。
+作用面覆盖**所有**入口（右键 / `@` 搜索 / 手打路径），不只右键这一条。
+
+**B（配套）渲染端加 `'directory'` 文案分支**
+
+不加则落进最后一个 `else`，显示 "binary or document file was not read directly" —— 目录不是二进制文件，**文案是错的**。新增 `userMessage.selectedFileReadSkippedDirectory`（zh/en）。
+
+**C（产品语义）目录该不该能「发送到会话」？**
+
+- **C1 允许**（推荐）：目录作为**纯路径引用**发出，**不读内容**；AI 在消息里看到 `@src/components`，自己 `LS` 即可。「看看这个目录」是常见诉求；且根节点本身就是目录，禁止等于顺带把根节点这项也砍掉。采纳 C1 的话，hover 按钮（现排除目录）应一并放开，**三处统一**。
+- **C2 禁止**（备选）：三处入口统一排除目录。
+
+### 待定口径
+
+1. **C 取 C1 还是 C2 —— 待老大拍板**（默认按 C1 推）
+2. C1 下 hover 按钮是否一并放开（要一致就放开）
+
+---
+
+## S-36 后台子 agent 的结论回不到主会话（含 OpenCowork 对标）
+
+**一句话**：后台子 agent 明明跑到 `completed`，主 agent 却只拿到一句「已在后台启动」；报告要么残缺（只有开场白），要么根本没送到。**不是偶发，是设计缺陷。**
+
+**来源（2026-09-16 12:35 老大口述原话）**：
+
+> 「刚刚又测试到一个bug 就是我们的子agent 总是执行到结束但是没有给主会话返回任何结论，不知道是不是因为用代理去调用导致的，现在是代理去创建task task去子会话」
+
+**老大补充口径（2026-09-16 13:09）**：「要落库呀，别人已经走出路了，就不用我们自己去踩坑了」
+
+### 代理调用不是根因（已排除）
+
+两条路在 `ToolDispatchRouter.cs:471` **汇合**，走同一个 `SubAgentExecutor`，报告生成逻辑逐字相同。代理路径确实另有一个独立缺陷（见下），但它不产生「没结论」。
+
+代理路径的独立缺陷：`AgentRuntimeUseCapabilityExecutor.cs:330-333` 的 builtin 分支 `return output;` —— **`isError` 被丢弃**。直接调 `Task` 时 `isError` 一路上报（`ToolDispatchRouter.cs:478`），代理调就丢了：子 agent 失败经代理后变成「成功结果」。
+
+### 根因（2026-09-16 实测复现，**非推测**）
+
+核心缺陷一句话：**把「汇报」绑死在父 run 上**。父 run 一结束，汇报链就断。
+
+#### 证据（同机、同库、同代码，唯一变量 = 父 run 是否存活）
+
+| | 本次实测（父 run **存活**） | 09-15 现场（父 run **已结束**） |
+|---|---|---|
+| 子 agent 跑了几轮 | 3 轮 / 3 次工具 | **12 轮 / 21~23 次工具** |
+| `sub_agent_runs.report` 长度 | **2437 / 9597 字符**（完整，含结论） | **70 / 121 / 149 / 177 / 473 字符** |
+| `report` 内容 | 完整报告 | **只有开场白**（"I'll start by…"） |
+| `isBackground` | `true` | `true` |
+| `success` / `endReason` | `1` / `completed` | `1` / `completed` |
+| `reportStatus` | `"submitted"` | **也是 `"submitted"`** |
+
+09-15 那批 5 个 `code-reviewer`（session `WQvIA_f0XDo01UL8lNI-X`）**确实干完了活**（`toolCalls` 21~23、`success=1`），**报告却只剩一句开场白**。
+
+#### 根因链
+
+1. 主 agent 调 `builtin:Task` + `background: true` ⇒ 立即拿到 placeholder（实测原话：「Background sub-agent started… When it completes, you will be notified automatically.」）
+2. 主 agent 这轮结束 ⇒ 父 run finalize ⇒ transport / observer 被 dispose
+3. 子 agent 继续跑剩下的轮次，每轮经 `AgentRuntimeTools.EmitAsync(parentState, …)` 转发 `sub_agent_text_delta`
+4. 父 run 没了 ⇒ `EmitAsync` 抛错 ⇒ **`SubAgentExecutor.cs:272-277` 的 catch 静默吞掉**（注释写明 "must NEVER propagate"）
+5. 渲染端只累积到父 run 死之前那点文本 = **那 149 字符**
+6. 子 agent 完成，`sub_agent_end` 到达 ⇒ 落 `sub_agent_runs`（**事件本身能到**，见下）
+7. **`stores/chat-store/sub-agent-slice.ts:359` 只在 `sa.report` 完全为空时才采纳 `event.result.output`** —— 而 `sa.report` 非空（有开场白）⇒ **完整报告被丢弃**
+
+**第 7 条是关键**：`event.result.output` 来自 `SubAgentRunCollector.GetFinalOutput()`，走 `childState.EventObserver` **直接回调**（`AgentRuntimeTools.cs:241-248`），**压根不依赖父 run 的 transport** —— **它一直是完整的**。完整的东西送到了门口，被一个 `if` 挡在门外。
+
+#### 为什么界面上看不出「报告丢了」
+
+`stores/chat-store/adapt-sub-agent-event.ts:49` 的 `reportSubmitted: output.length > 0` —— 而 Worker 侧 `SubAgentExecutor.cs:139-143` 已把空输出兜底成 `"Sub-agent completed but produced no output."` ⇒ **恒真**。残缺报告在 UI 上一律显示 `"submitted"`。
+
+#### 次生问题：主会话没结论的第二条路
+
+后台完成通知虽经 `parentState.EnqueueMessages` 注入父 run 队列；父 run 已死 ⇒ 注入失败 ⇒ 缓冲到 `BackgroundSubAgentNotifications`（**进程内内存**，重启即丢）⇒ 等渲染端 `use-background-subagent-wakeup.ts` 唤醒。该 hook 有两处硬伤：
+
+- `:67-73` **先 `drainBufferedReports` 再校验** —— drain 是破坏性取出，之后 `if (!activeProvider || !modelId) return` 一 return，**报告直接蒸发**
+- `:65` 只看 `chatStore.streamingMessages[sessionId]`，且判定「主 run 活跃」后**直接 return 不再重试**（`pendingWakes` 已删）
+
+### 次生问题 2：报告头部粘连过渡话术
+
+`GetFinalOutput()` 把所有 `text` 事件直接串起来，子 agent 每轮的过渡话术全糊在最终报告前，**无分隔**：
+
+```
+I'll read the four files in full, one at a time, starting with the iteration progress docs.The 28 doc is exhaustive. Now reading iteration 29.Now iteration 30....## Report: wishful-claw progress docs
+```
+
+### OpenCowork 对标（`D:\claw\OpenCowork` @ `32c5a131`，2026-09-16 已 fetch 最新）
+
+相关提交：`4a144e67`（引入 `reportBackgroundChild`）→ `daea5935`（`fix: restore background subagent reports`，补测试）→ `0d36be2d`（改用**子会话全文**）。
+
+**他们的核心做法**（`src/renderer/src/stores/session.ts:611-679`）：
+
+```ts
+const full = await childFinalText(child)                    // ① 读子会话全文
+const summary = full ?? child.summary ?? '...'              // ② 兜底链
+if (before.activeRunId !== null) {
+  await interjectRun(before.activeRunId, [{ id: ulid(), parts, internal: true }])  // 父 run 活着 → 插话
+} else {
+  await before.send(report, options, parts, true)                                  // 父 run 死了 → ★新起一轮
+}
+store.getState().setSubagentReportStatus(callId, 'reported')
+```
+
+**★ 汇报是一轮独立的 `send`，父 run 死没死都不影响。**
+
+**逐项对照**：
+
+| | OpenCowork | 我们 |
+|---|---|---|
+| 汇报载体 | **新起一轮 run**（`send` / `interjectRun`） | 注入父 run 队列 |
+| 父 run 已结束 | **无影响** | **致命** ⇒ 缓冲 ⇒ 唤醒 hook |
+| 报告正文 | 读**子会话全文**（`childFinalText`） | 流式转发累积（父 run 死后残缺） |
+| 状态 | `pending / blocked / injecting / reported`，**落库**（`replaceHistory` 持久化） | 无状态，内存 Set，**重启丢** |
+| 取不到全文 | 退摘要 → 再退固定文案（**注释：残缺的汇报也好过没有汇报**） | 直接不要了 |
+| 界面提示 | 待汇报圆点 + **「处理」按钮可手动重发**（`Thread.tsx:320`） | 无 |
+| 失败时 | 置 `blocked`（注释：**「等待主代理处理」至少说的是实话，而一个什么都不做的按钮不是**） | **静默 return** |
+| 界面轨 vs 模型轨 | `inputInternal: true` + 只给界面看的 `subagent` part（两个编码器都丢弃）**分离** | 未分离 |
+| 子会话可回读 | ✓ `childSessionId` + `getSession` | ✗ `SubAgentExecutor.cs:162` finally 里 `SessionConversationManager.Remove("__subagent__{childRunId}")`，**子会话不留** |
+
+**他们踩过同一个坑**（`0d36be2d` 注释，几乎为我们而写）：
+
+> ★★ **发给主代理的是全文，不是 `child.summary`。** 那个字段是主进程切出来的前 240 字，生来是给卡片当一行预览用的。拿它当汇报正文的话，一份「改了八个文件、逐条说明」的报告到主代理手上只剩开头一句……**主代理据此接着往下做，却以为自己看到了全部。不报错，只是做错。**
+
+### 修法（按性价比排序）
+
+**报告接住（先堵血）**
+
+1. `sub-agent-slice.ts:359` —— `event.result.output` 改**优先覆盖**，不再只做空值兜底。（这一条就把 149 字符 → 完整）
+2. Worker 侧显式给出「是否产出了最终报告」，别再用 `output.length > 0` 猜（该判定恒真）。
+3. 报告正文剥掉中间过渡话术（取最后一段完整输出，或至少加分隔）。
+
+**汇报通道（根因）**
+
+4. 照抄「汇报 = 新起一轮」：父 run 活着 → 插话；父 run 死了 → **`send` 新起一轮**，取代「缓冲 + 等唤醒」。
+5. `reportStatus` 落库（`pending / blocked / reported`），弃用内存 Set。
+6. 汇报 / 唤醒失败**置 `blocked` 并可见**，不静默 return。
+7. 「主 run 是否活跃」改用 `hasActiveSessionRunForSession`（三来源：`_startingSessionSends` / `streamingMessages` / `runningAgents`），别只看 `streamingMessages`。
+
+**界面**
+
+8. 「重新汇报」按钮 + 待汇报状态（对标 `Thread.tsx:320`）。
+
+**架构前提（老大 2026-09-16 已定：子会话落库）**
+
+9. 现状：`SubAgentExecutor.cs:162` / `SubAgentExecutor.Background.cs:184` 在 finally 里 `SessionConversationManager.Remove($"__subagent__{childRunId}")`，子会话消息**不落库**。核实后确认：**不需要回读子会话完整消息** —— 只要在 Remove **之前**把 `GetFinalOutput()` 写进库即可（见下「待定口径」甲案）。
+
+### 待定口径（2026-09-16 下午核实后修订）
+
+**核实结论（推翻三条旧判断）**：
+
+1. ~~`sub_agent_runs` 只有渲染端写、Worker 读不到~~ —— **错**。`src/runtime/WishfulClaw.Infrastructure/Db/DbSubAgentTools.cs:18` 是 **Worker 自己的 DB 层**（直接 `DbClient.GetClient(parameters)`），Worker 侧**能读写** `sub_agent_runs`。
+2. ~~子会话 transcript 落库即可救回报告~~ —— **错**。实测父 run 已结束的 3 条（`call_00_ET_…` / `call_00_Yj…` / `call_00_D3…`）：`data.transcript` 里的 assistant 文本 = **70 / 473 / 177 字符**，与 `data.report` **完全一致**。transcript 本身就是渲染端从事件流累积的，父 run 一死同样残缺 —— **它救不了**。
+3. ~~`reportStatus` 需要新落点~~ —— **不成立**。`sub_agent_runs.data` JSON 里**已有** `reportStatus`（实测值 `"submitted"`），与 `report` / `transcript` / `streamingText` / `usage` 等并列。
+
+**唯一完整的源**：Worker 侧 `SubAgentRunCollector.GetFinalOutput()` —— 走 `childState.EventObserver` 直连（`AgentRuntimeTools.cs:241-248`），**不经过父 run transport**。
+
+**修订后的口径**：
+
+1. **落点（唯一的方向性问题，待老大拍板）**
+   - **甲（建议）**：Worker 在子 agent 结束时把 `GetFinalOutput()` 写进 `sub_agent_runs.data` 新增键（如 `finalOutput`）。**不动 schema**；渲染端优先读它、兜底 `report`/`transcript`。成本最小，一次解决「完整性 + 父 run 死 + 进程重启恢复」。
+   - **乙**：照 OpenCowork 落独立子会话（`__subagent__{runId}` 进 `messages` 表 + `childSessionId`）。可回读完整子会话，但成本高、与现有 `transcript` 展示重叠、还要处理会话列表过滤。
+2. **报告正文口径**：`GetFinalOutput()`（**唯一完整源**，无选择余地）。若要剥掉报告头的过渡话术，在渲染端做。
+3. **「重新汇报」按钮**：建议做（对标 OpenCowork `Thread.tsx:320`），轻量。
+4. ~~`reportStatus` 落点~~ —— **撤销**，已在 `data` JSON 内。
+
+---
+
+## S-37 更新弹窗正文未取剩余高度（默认尺寸下）
+
+**一句话**：更新弹窗中间的富文本区域没有撑满剩余高度，留出空白；**全屏阅读时正常，默认尺寸下不对**。
+
+**来源（2026-09-16 13:09 老大口述原话）**：
+
+> 「更新弹窗中间的富文本呈现没有拿剩余高度，全屏阅读时是对的，默认情况下不对」
+
+**状态**：**已核实（2026-09-16，根因确凿）**
+
+**根因**：`UpdateReleaseNotes.tsx:26-29` —— 默认态写死 `max-h-48`（192px），全屏态才 `maxHeight: 'none'`：
+
+```tsx
+<div
+  className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs text-foreground/85"
+  style={expanded ? { maxHeight: 'none' } : undefined}
+>
+```
+
+而 `UpdateDialog.tsx:95` 的 `DialogContent` 是 `sm:min-h-[70vh]`（约 500+px）。**正文被卡在 192px，剩下 300+px 全留白** ⇒ 「没拿剩余高度」。全屏态 `maxHeight:'none'` ⇒ 正文自然铺开 ⇒ 「全屏是对的」。**与老大的描述逐字吻合。**
+
+**辅证**：`ui/dialog.tsx:56` 的 `DialogContent` 默认 class 是 `grid` 但**无 `grid-rows-*`** ⇒ 所有行都是 auto 高度，没有任何行去吃 `min-h-[70vh]` 撑出来的剩余空间。全屏态（`UpdateDialog.tsx:99`）才补了 `grid-rows-[auto_minmax(0,1fr)_auto]` ⇒ 中间行吃 `1fr`。
+
+**修法**：
+
+1. `UpdateDialog.tsx` —— 把 `grid-rows-[auto_minmax(0,1fr)_auto]` 从「仅全屏」**提到基础 class**（全屏态里的重复项删掉）
+2. `UpdateDialog.tsx:132` 内容区由 `cn('space-y-4', isFullscreen && 'min-h-0 overflow-y-auto')` 改为**恒为 flex 列**（`flex min-h-0 flex-col gap-4`），让正文能 `flex-1`
+3. `UpdateReleaseNotes.tsx` —— 容器由 `max-h-48` 改为 **`flex-1` + 兜底 `min-h-32`**（可读高度下限），删掉 `style={expanded ? {maxHeight:'none'}}`（`flex-1` 已取代它）；`overflow-y-auto` 保留 ⇒ 正文内部滚动
+4. 极端情况（版本卡片 + 进度 + 错误提示挤满）由 `DialogContent` 自带的 `overflow-y-auto` 接管整体滚动
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
+## S-38 未配置 API Key 时聊天窗顶部提醒宽度异常
+
+**一句话**：没设置 API Key 时聊天窗上方会出提醒条，但**宽度不对**。
+
+**来源（2026-09-16 13:09 老大口述原话）**：
+
+> 「没有设置apikey时， 我们聊天窗上方会有提醒，但是宽度好像出问题了」
+
+**状态**：**已核实（2026-09-16，根因确凿）**
+
+**根因**：`components/chat/InputArea/index.tsx:206` 定义
+
+```tsx
+const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-full max-w-[820px]'
+```
+
+即「居中 + 与输入框同宽（820px）」。`composer-banners.tsx` 里**两条提醒没套它**：
+
+| banner | 是否套 `composerWidthClass` |
+|---|---|
+| **API key 提醒（`:42-49`）** | ✗ **裸 `w-full`** |
+| **工作目录提醒（`:54`）** | ✗ 裸 `w-full` |
+| Plan mode（`:66`） | ✓ |
+| Pending goal（`:96`） | ✓ |
+
+`ComposerBanners` 的挂载点在 `<div className={composerWidthClass}>`（`index.tsx:334` 的 composer shell）**之外** ⇒ 裸 `w-full` 撑满**外层容器**（比 820px 宽）⇒ 提醒条比输入框宽，观感错位。
+
+**修法**：给 API key 提醒与工作目录提醒补 `composerWidthClass`，写法与 Plan mode 对齐（`cn(composerWidthClass, 'mb-2 flex items-center gap-2 rounded-md border …')`）。`composerWidthClass` 本身含 `w-full`，故直接**替换**裸 `w-full`，不要叠加。
+
+**附带范围**：工作目录提醒（`:54`）有同一个毛病，按「同类一并修」处理（老大原话只点了 API key 那条，这条是同一处 class 缺失，一并修正才算真修完）。
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
+## S-39 内置浏览器暴露 Electron 身份，站点拒绝登录
+
+**一句话**：免费对话页打开 `chat.deepseek.com` 提示「当前客户端不稳定，请升级到最新版」—— 因为内置浏览器把自己的 Electron 外壳身份原样送了出去。
+
+**来源（2026-09-16 14:12 老大口述）**：
+
+> 「你这个用的标准浏览器么。发现是用的我们内置的浏览器，但是登录提示：当前客户端不稳定。请升级到最新版」
+> 「切换了一轮站点，最后切换回来的时候才提示的，我们右侧面板去访问其它网页的时候 之前没有这种提示呢」
+
+**状态**：**已实施（2026-09-16，老大拍板甲案）**
+
+**根因（两层，缺一不可）**：
+
+1. **假数据覆盖真值**。`src/main/ipc/misc-handlers.ts:234-240` 的 `browser:emulation-status` 是**纯 stub**：
+
+   ```ts
+   // -- Browser emulation status (stub -- returns defaults) --
+   return { success: true, status: { reuseEnabled: false, userAgent: '' } }
+   ```
+
+   渲染端初始 state 本来是对的（`FreeChatPage.tsx` / `BrowserPanel.tsx` 都取 `stripElectronFromUserAgent(navigator.userAgent)`），但 IPC 一返回就被**无条件覆盖**成 `''` / `false` ⇒ `webviewUserAgent = undefined` ⇒ `<webview>` 不传 `useragent` ⇒ 掉回 Electron 默认 UA。
+
+2. **洗白函数洗不干净**。`src/shared/browser-plugin.ts` 原实现只剥 ` Electron/<版本>`：
+
+   ```ts
+   userAgent.replace(/\sElectron\/[^\s]+/g, '').trim()
+   ```
+
+   应用名 token（`wishful-claw/0.2.29`）**原样留着**，站点照样认得出「不是标准浏览器」。
+
+**为什么是「切一圈站点回来才提示」**：`<webview>` 的 `key` 含站点 id ⇒ **切站点 = 整个销毁重建**。首次打开时 IPC 还没回来，挂载用的是干净初始值 ⇒ 正常；切站点时 state 已被 stub 污染 ⇒ 重建后的 webview 不带 `useragent` ⇒ 提示。右侧面板同理（它的 `key` 同样受 stub 影响），只是老大此前用它开的站不检测 UA。
+
+**修法（甲案：内置 webview + 干净身份）**：
+
+1. `stripElectronFromUserAgent` **不再删 token，改为按「平台 + 真实 Chrome 版本」重建**标准 Chromium UA —— 应用名随打包改名也不会漏：
+   `Mozilla/5.0 (<platform>) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/<ver> Safari/537.36`
+2. **UA 与「复用浏览器数据」解耦**。两者本是两件事：复用管 partition / userData，UA 管「以什么身份出现」。内置浏览器**任何时候**都必须传干净 UA，不再受 `reuse` 开关管辖。
+3. IPC 返回**空 UA 时不采纳**，避免将来再被假值打回原形。
+4. 新增 `tests/browser-user-agent/program.ts`（**24 断言**），锁住「输出必须是标准 Chromium UA + 平台/版本保真 + 幂等 + 兜底」。**已验证测试真能抓 bug**：临时退回旧实现立刻报 `AssertionError`。
+
+**未纳入本次**：`browser:emulation-status` 仍是 stub，「复用浏览器数据」设置项开了也白开 —— 见「待登记 E」。
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
+## S-40 免费对话页改多选项卡（S-27 形态重做）
+
+**一句话**：顶部一行列出全部站点，点一下开一个选项卡、可同时开多个、能自己叉掉；**切换选项卡不重载页面**。
+
+**来源（2026-09-16 14:23 老大口述）**：
+
+> 「对了，之前切换了一轮回去后，登录状态也没了，我觉得可以这样，就是顶部是支持的项，点击后就选项卡增加一个，然后用户自己去叉掉选项卡，也就是可以同时有多个，这样点击后也不需要切换，如果存在就选项卡切换过去」
+
+**状态**：**已实施（2026-09-16，老大拍板「都按照你推荐的来整」）**
+
+### 根因（登录态为什么会丢）—— 被这次重做顺带治掉
+
+`src/main/index.ts:192` 把 Electron 的 userData 重定向到 `~/.wishful-claw[-dev]/electron-user-data`。实测该目录：
+
+| 目录 | 内容 |
+|---|---|
+| `~/.wishful-claw/electron-user-data/` | 只有默认 session（cookie 在其 `Network/` 下）；**无 `Partitions`** |
+| `~/.wishful-claw-dev/electron-user-data/Partitions/` | `wishfulclaw-browser/` —— 独立分区 |
+
+⇒ **两套 cookie 罐**。而 partition 由那个假 stub 决定：挂载瞬间 `reuseEnabled=true` ⇒ **默认 session**；IPC 回来变 `false` ⇒ **`persist:wishfulclaw-browser`**。用户在 A 罐登录、代码把 webview 挪到 B 罐 ⇒ **登录态就没了**。与 S-39 的「切站点才提示」是同一个根（初始值与最终值不一致）。
+
+### 修法
+
+1. **分区写死 `BUILTIN_BROWSER_PARTITION`**，不再读设置、不再调 `BROWSER_EMULATION_STATUS`。
+   - 顺带消掉「待登记 E」的一半：免费对话页从此与那个 stub 无关
+   - 用独立分区而非默认 session 另有安全理由：**默认 session 是宿主窗口自己在用的**，浏览器页面不该跟应用共享 cookie
+2. **一行选项卡**（老大在「甲：两行」/「乙：一行」中选了**乙**）：遍历 `sites` —— 没打开的渲染成普通按钮，打开了的变成带 × 的选项卡（高亮当前）。顺序跟随配置顺序。
+3. **webview 常驻**：每个已打开站点一个 webview，切换只切可见性（Tailwind `invisible`，保留布局尺寸；**不用 `display:none`** —— 那会把 webview 尺寸压成 0），**不销毁不重载**。只有 × 掉才销毁。
+4. **刷新按钮**改调当前 webview 的 `reload()`（原先靠 `key` 里的 `reloadToken`，那等于重建）。
+5. **持久化恢复**（老大选**恢复**）：`freeChatOpenTabIds` / `freeChatActiveTabId` 进 settings store 的 `partialize`，重开页面回到上次的选项卡。
+6. 规则抽成纯模块 `src/renderer/src/components/free-chat/free-chat-tabs.ts`，新测 `tests/free-chat-tabs/program.ts`（**22 断言**）。
+
+**代价（老大已知悉，不设上限）**：每个选项卡一个 Chromium 渲染进程，同时开多个站点内存会涨。
+
+**测试当场抓到一个设计不一致**：`reconcileFreeChatTabs`（站点被删时收敛）我最初写成「当前选项卡失效就回落第一个」，与手动关闭的「就近顶替」不一致 —— 测试报错后改为复用 `closeFreeChatTab`，两者规则统一。
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
+## S-41 免费对话清单从设置页挪进免费对话页
+
+**一句话**：设置页「AI 服务」下的免费对话 tab 移除，改在免费对话页工具栏加齿轮图标 → 弹窗管理站点清单。
+
+**来源（2026-09-16 15:07 老大征询，15:08 拍板「嗯 改吧」）**：
+
+> 「我在想一个问题，想把设置页的 免费对话清单设置移除掉，放到免费对话面板 增加一个设置图标，点击后就弹出来免费对话清单的管理。你觉得可行不」
+
+**状态**：**已实施（2026-09-16）**
+
+**理由**：配置项该跟作用对象待在一起。该清单只服务于免费对话页，塞在「AI 服务」大分类下要求用户先记住一条路径；而免费对话页本身是独立小应用形态（内嵌浏览器 + 多站点），自带设置入口是常规做法。
+
+**实现**：
+
+1. **新建** `src/renderer/src/components/free-chat/FreeChatSitesDialog.tsx` —— 弹窗版清单管理（增 / 删 / 恢复默认 / 回车提交），逻辑从原 `FreeChatSettingsPanel` 平移，外壳由 `SettingsSection` 换成 `Dialog`
+2. `FreeChatPage.tsx` 工具栏（刷新图标右侧）加 `Settings` 齿轮 → 打开弹窗
+3. 设置页摘干净：导航项、内容分支、import
+4. 类型：`ui-types.ts` 的 `SettingsTab` 与 `SETTINGS_TABS` 去掉 `'freeChat'`。`normalizeSettingsTab` 的兜底（无效 → `'provider'`）**本来就在**，所以停在旧值只会回落到默认页，不会白屏
+5. **删除** `src/renderer/src/components/settings/FreeChatSettingsPanel.tsx`
+6. locale：删 `settings.tabs.freeChat`；`freeChatPage.*` **保留**（弹窗继续用）；新增 `layout.freeChat.sitesSettings`；`layout.freeChat.empty` 由「去设置页添加」改为「点右上角齿轮添加」
+7. `tests/settings-tabs/program.ts`：`validTabs` 去掉 `'freeChat'`，**新增一条断言**锁住「`'freeChat'` 是已退役 tab，必须回落 `provider`」—— 防止将来有人把它加回导航却没接上内容分支
+
+**原裁定作废记录**：S-27 曾裁「站点清单位置 = 设置页 → AI 服务 → 免费对话清单」。本次是**改位置**；「做成配置项、用户可增删」这一条不变。
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
+## S-42 Todo 工具核心化（含 preset 白名单遗漏的自修）
+
+**一句话**：4 个 Todo 工具从 `task` 类别拆出来直接注入，别再让模型隔着 `use_capability` 代理去够。
+
+**来源（2026-09-16 老大口述）**：
+
+> 「todo 算是核心工具不，这个你帮我做决定，其它的可以不用改，改成核心工具本质上就是注册的地方 IsCore=true」
+> 「我的天。。都进代理了 还专门在提示词上提示，那不是脱了裤子放屁么，还不如直接核心化」
+> 「开工 session_todo 这个标签都不应该要」
+
+**状态**：**已实施**
+
+**为什么核心化**：高频（多步活儿每个任务起止都要调）+ schema 小 + 走代理有真实出错率（`capability_id` 参数错层我一天踩两次）。原设计配了一段 `<session_todo>` 提示词专门讲「怎么走代理调」—— 那是在给绕路打补丁：它改了「知不知道」，改不了「麻不麻烦」，而症状（建了但没后续）恰恰出自后者。
+
+**改动**：
+
+| 文件 | 改什么 |
+|---|---|
+| `ToolCategoryCatalog.cs` | 新增 `todo` 类别（优先级 35，夹在 shell 30 与 task 40 之间）；`Core` 加入 `"todo"`；`task` 描述收窄成「委派子 agent 并查看结果」 |
+| `Providers/TaskToolProvider.cs` | `Category => "todo"`；4 个工具 `isCore: true`；`TodoTaskUpdate.status` 的参数描述补上状态语义（原本写在提示词里） |
+| `PromptBuilder.cs` | **整块删除 `<session_todo>`** 与 `BuildSessionTodoPrompt()`，连带清掉已成死参数的 `includeSessionTodoPrompt`（`AgentLoop.cs` 唯一调用点） |
+| `AgentRuntimeTaskExecutor.Codec.cs` | `WriteStandaloneSummary` 加 `progress`：`"1/3 completed, 1 in_progress, 1 pending"` |
+| `Providers/TaskToolProvider.cs`（二次） | `TodoTaskCreate` 描述改阈值：`complex multi-step work` → `three or more distinct steps`（形容词换可判定标准，与 `<tool_calling>` 里子 agent 那条同口径） |
+
+**返回值只给事实，不给嘱咐**：加了 `progress`（状态计数），**没加** `hint: "记得标 in_progress"` 那类文案 —— 嘱咐每轮付 token，且与实现一脱节就变假事实（`<session_todo>` 本身刚演过一遍）；`progress` 从库里真读，永远对。`TodoTaskList` 没加（返回值本就是全量明细）。
+
+**自修：两道门只改了一道（同日真机实测暴露）**
+
+直连注入要过**两层**：preset 的 `AllowedCategories` 白名单 **和** 执行器的 `IsCore`。只改后者 ⇒ 工具在两个可达面**同时隐形** —— 白名单挡住直连，而 `use_capability` 代理按规则藏起一切 core。
+
+真机（`toolPreset = coding`）症状与解释完全吻合：直连列表里没有、代理 `list` 里也没有（76 项无 `todo` 类），但 `inspect` / `call` 猜名字能通 —— **因为那两条路不过 preset**。
+
+修：`ToolPreset` 的 `chat` / `coding` / `channel` / `automation` 四份白名单各加 `"todo"`。`minimal`（桌面宠物）与 `skill-installer` 是有意收窄的场景，不加；`full` 无白名单，自动含。
+
+**加断言防复发**（`ToolDeclarationChecks.RunCoreCategoryReachableSuite`）：
+
+> `Core` 里的每个类别，必须被 `chat` 与 `coding` 两份白名单**全覆盖**。
+
+这两个是渲染端的主力会话 preset（`use-chat-actions.ts`：`collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat'`），core 在那里必须意味着「可用」。更窄的 preset 有意豁免 —— 收窄本来就是它们的职责（渠道不给 shell、定时任务不给 file）。`full` 无白名单，不算 cover。
+
+**已实测验证断言真能抓 bug**：临时把 `todo` 从 `chat` 白名单移除 → 立刻 `Assertion failed: core category "todo" is not admitted by preset "chat"`；恢复后通过。
+
+**教训**：上一轮我因 golden 失败而**重新生成**了 `visibility-snapshot.expected.txt`，核对差异时**只看了 `preset=full` 那一段**（那里确实只多 4 个 Todo），没看 `chat` / `coding` 段。**golden 只能证明「行为没变化」，发现不了「漏改」** —— 它记录的是当时的行为，我把 bug 一并写成了金标准。本次重新生成后**逐段核对全部 5 个变化的 preset**（各 +4 个 TodoTask，其余未动）。
+
+**门禁**：Worker / tests 编译 0 警告 0 错误；C# 回归 **10/10**；AOT 无 IL2026/IL3050/IL3051（产物 23,163,904 B）；触碰文件 BOM clean。
+
+---
+
+## S-43 preset 机制整体退役（场景白名单全删，只剩一套可见性规则）
+
+**一句话**：`ToolPreset` 从「场景白名单」退化到「两个助手窄名单」之后，那两个残留项也各自失去理由 —— 整类删除，连 `full` 都不留。
+
+**来源（2026-09-16 老大连续口述）**：
+
+> 「我建立正经规则的目的就是为了替换掉它，之前的太混乱了」
+> 「preset 基本都删掉，不能删的告诉我为什么」
+> 「minimal（桌面宠物）/ skill-installer（技能浮窗）这个可以用黑名单啊」
+> 「浮窗有两个专属工具，常规不影响的查询可以给，不用专门去砍，就算是 global:chat 也是能接受的」
+> 「宠物其实算 global:chat 也是可以的，只是全局助手的另一个呈现形式，而且我们现在其实没有接宠物，现在宠物是空壳」
+
+**状态**：**已实施**（未提交）
+
+**为什么删**：preset 是 2026-07-26（`8a27052a`）引入的省 token 机制，公开理由是「不同界面给不同工具」。R-3（`d9d06280`，2026-09-12）建立了声明式可见性（每个工具自己声明 `VisibleScopes` / `ExcludedScopes`）之后，preset 就成了**同一件事的第二套写法**。两套必须手工保持一致 —— `todo` 核心化那次（S-42）就栽在这里：改了 `IsCore` 忘了白名单，工具在两个可达面**同时隐形**。
+
+### 删之前的实测（golden 逐上下文比对）
+
+| preset | 与「无过滤」（`full`）的差异 |
+|---|---|
+| `chat` | **完全一致 —— 零收窄** |
+| `coding` | **完全一致 —— 零收窄** |
+| `channel` | 只砍 `Bash` / `PowerShell` / `Monitor` —— **而这个收窄是错的**（渠道本就该有 shell，S-30 靠它） |
+| `automation` | 真收窄，但**真机零调用方** |
+| `minimal` | 真收窄，但**调用方整条链是死代码**（见下） |
+| `skill-installer` | 名义上收窄，**实际只有壳**（见下） |
+
+渲染端 9 处 `toolPreset` 调用点里，**6 处传的就是 `chat` / `coding`** —— 而这俩一个工具都没筛掉。
+
+### 后两个为什么也留不住
+
+**`skill-installer`（技能浮窗）—— 是个空壳。**
+
+浮窗 = 设置页 → 技能 → 右下角 FAB 开的 `FloatingChatWindow`。它挂的会话由 `use-floating-chat-session.ts:23` 的 `createSession('chat', null, { preserveProjectless: true })` 建出，就是一个**普通全局会话** ⇒ run context 与用户点「新对话」**完全一样**（`global:chat`，role 默认 `sessionAgent`）。
+
+它白名单里唯一的「专属」类别 `skill-management` **根本没生效** —— 该类别只有一个工具 `list_installed_skills`，声明 `visibleScopes: ToolVisibilityScopes.Everywhere` 且**非 core**，而 preset 只管直连。⇒ 普通会话**一样能调它**（走代理），两边零差别。
+
+浮窗实际要砍的只有 shell / todo / memory 三类，老大裁定「global:chat 能接受」⇒ 直接删。顺带修掉 `SkillManagementToolProvider.cs` 那句写错的类注释（原文「directly visible to the skill-installer sub-agent preset」，与 golden 矛盾）。
+
+**`minimal`（桌面宠物）—— 调用方整条链是死代码。**
+
+证据：`pet-agent-store.ts:1` 写着 `// Stub: ... to be filled when pet features are migrated`，`getState: () => ({})`；`pet-proactive` / `pet-voice` / `pet-memory` / `pet-exp` / `pet-pose-prompts` / `pet-voice-audio` **只互相引用，零外部引用**；**没有任何 pet 的 `.tsx`** —— UI 层压根不存在。唯一传 `'minimal'` 的 `pet-agent.ts:192` 就躺在这一片死代码里。
+
+### 终态
+
+**`ToolPreset` 整类删除**，连 `full` 都不留 —— 「不做收窄」不再需要一个空对象来表示。全仓 `toolPreset` / `ToolPreset` 零命中。
+
+### 改动
+
+| 文件 | 改什么 |
+|---|---|
+| `Core/Tools/ToolPreset.cs` | **删除整个文件** |
+| `Core/Tools/ToolRegistry.cs` | 删 `GetToolDefinitions(ToolPreset)` 与 `(ToolPreset, string?)`；后者退役成 `GetToolDefinitions(string? sessionMode)`（只剩 mode 过滤） |
+| `Agent/AgentRunContextPolicy.cs` | `ResolveDirectInjection` 去掉 `preset` 形参；注释由「preset ∧ scope ∧ IsCore」改为「scope ∧ IsCore」 |
+| `Agent/AgentLoop.cs` | 不再解析 `toolPreset` 参数（`JsonHelpers.GetString(parameters, "toolPreset")` 整段删除） |
+| `Agent/Tools/ToolModule.cs` | `tool/list` 去掉 `preset` 请求参数与响应里的 `preset` 字段 |
+| `Agent/Tools/Providers/SkillManagementToolProvider.cs` | 修正写错的类注释 |
+| `hooks/use-chat-actions.ts` | 删 `SendMessageOptions.toolPreset`、默认 preset 三元、`if (opts?.toolPreset)` 分支、发送参数里的 `toolPreset`；import 去掉 `fetchToolDefinitionsAsync` |
+| `use-background-subagent-wakeup.ts` / `use-channel-auto-reply.ts` / `lib/tools/project-send-message.ts` / `lib/tools/cron-runtime.ts` / `lib/agent/provider-auto-fallback.ts` | 各自删掉 `toolPreset:` 传参 |
+| `components/settings/floating-chat-window.tsx` / `lib/pet/pet-agent.ts` | 删掉 `toolPreset` 传参（**不加 role**，直接用会话自身 context） |
+| `lib/tools/tool-cache.ts` | 删掉 `cachedPreset` 状态；两个 fetch 均去掉 `preset` 形参与请求体 |
+| `stores/chat-store/index.ts` / `lib/ipc/sidecar-mapping.ts` / `lib/ipc/sidecar-protocol-types.ts` | 删 `toolPreset?: string` 字段与透传 |
+| `App.tsx` | `fetchToolDefinitions('chat')` → `fetchToolDefinitions()` |
+
+### 行为变化（两处）
+
+1. **渠道会话多出 `Bash` / `PowerShell` / `Monitor`** —— 正是 S-30 需要的前提。
+2. **宠物会话与技能浮窗拿到普通会话的完整直连集**（原 `minimal` 5 件 / `skill-installer` 5~7 件 → 15 件）。宠物侧无实际影响（死代码）；浮窗侧是老大明确接受的口径。
+
+`chat` / `coding` 的删除是**真·零变化**。
+
+### 测试改动
+
+| 测试 | 改什么 |
+|---|---|
+| `VisibilitySnapshot` | 去掉 preset 维度：`Presets` 数组删除，`Build()` 每 context 一行、不再有 `preset=` 段与缩进；`AssertNonTrivial` 判据从硬编码 `>= 20` 改为「每个 swept context 都至少有一个工具」（行数从 digest 自身读出） |
+| `ToolDeclarationChecks.RunCoreCategoryReachableSuite` | 锚定**真实 run context**：`core` 里的每个类别，必须在 `project:chat` 或 `project:cowork` 下至少有一个工具进入直连集 |
+| `ChannelToolVisibilityRegressionTests` | 断言**两个面**：`ResolveDirectInjection`（下发给模型的直连集）与 `IsToolAllowed`（代理可达面）。98 断言 |
+| `BrowserSurfaceAccessChecks` / `ToolProxyEntryChecks` | 去掉 preset 维度的外层循环（网格规模断言随之取消 —— 只剩一个维度了） |
+| `GoalRegressionTests` | preset 循环 → 单次 `GetToolDefinitions("global")` 断言（断言数 171 → 169） |
+| `visibility-snapshot.expected.txt` | 重新生成：单段 15 行。**逐行核对**与上一版 `full` 段**完全一致** —— 即本次除上述两处外零行为变化 |
+
+**门禁**：Worker / tests 编译 0 警告 0 错误；C# 回归 **10/10**；TS **23/23**；`typecheck` 0；AOT 无 IL2026/IL3050/IL3051（产物 23,150,080 B）；触碰文件 BOM clean（49 个）。
+
+**遗留（未动）**：pet 那 8 个文件是死代码，本次只删了 preset 传参，**整链清理另议**。
+
+---
+
+## S-44 会话 todo 每轮注入现状（让 todo 真正被维护）
+
+**一句话**：todo 工具没坏，坏的是 agent 建完之后再也不碰它 —— 根因是唯一那条「每轮注入」通道的时机和 todo 的生命周期错开了，本项把现状每轮推送到它眼前。
+
+### 来源（2026-09-16 老大原话）
+
+> 「todo 我希望能正常用起来啊，现在还是个备忘录一样」
+
+前置背景：S-42 把 4 个 Todo 工具核心化（不再隔着 `use_capability` 代理），并在 `TodoTaskCreate/Update` 的返回值里加了 `progress` 计数。**实测证明这两条都不够。**
+
+### 现象（dev 库实测，会话 `DUBGZw4-wjviN9STB4N4a`，2026-09-16）
+
+| 时刻 | 事件 |
+|---|---|
+| 19:39:26 | `todo_created` × **7**（同一秒建完） |
+| 19:39:27 ~ 19:43:21 | **零事件**（3 分 56 秒） |
+| 19:43:22 | `todo_status_changed` × **7**（同一秒全标 completed） |
+
+对照会话 `h091X1hCBPpU2b-U0nCnT`（17:43，3 个任务）：`17:43:36 建` → `17:44:01 / :16 / :42` **三批更新**，有过程。
+
+**结论**：agent 维护 todo 是**不可靠的**，不能指望；任务越多越倾向「一次建完 + 一次收尾」。
+
+### 根因（2026-09-16 实读，非推测）
+
+系统里唯一的「注入到 user 消息」通道是 `AgentLoop.Helpers.cs:256` `InjectTransientPrefix`：
+
+```csharp
+if (msg.Text.Contains("<current_time>", StringComparison.Ordinal))
+    return;   // ← 注入过一次就再也不来
+```
+
+它的设计约束写在注释里：*"The timestamp is injected ONCE when the user message arrives, and never changes after that. Historical messages keep their original timestamps unchanged → prefix cache stable."* —— **一个 user turn 只注入一次，且内容写进历史**（memory recall 挂在同一处，同吃这个约束）。
+
+**todo 的生命周期与它正好错开**：
+
+1. turn 开始 → `InjectTransientPrefix` 执行，**此刻 todo 还不存在**，注入内容为空
+2. turn 执行中 → agent 建了 7 个 todo（19:39:26）
+3. turn 之后的每一轮 → **注入早就结束了**，清单再也进不了它的视野
+
+于是 agent 只剩一个信息源：`TodoTask*` 工具自己的返回值（S-42 加的 `progress`）。**可它不调用那些工具时就永远看不到 —— 「不调 → 看不到 → 更不会调」的闭环。**
+
+**所以老大最早那句「开场静态注入没用」方向是对的，但机制原因不是「静态」，是时机错位。** 而 S-42 删掉 `<session_todo>` 只做对了一半：那个块的形态确实是错的（静态、在 system prompt 里每轮付钱），但删掉之后没补上正确的形态，等于把唯一的路也拆了。核心化解决的是「能不能方便调」，不解决「记不记得要调」。
+
+### 落点与实现
+
+| 位置 | 改动 |
+|---|---|
+| `AgentLoop.cs:567` `ExecuteTurnAsync` | 唯一 provider 分发点。取 `InjectSessionTodo(...)` 的结果分发给三个 provider |
+| 新建 `AgentLoop.SessionTodo.cs` | `BuildSessionTodoBlock`（internal 纯函数，可测）/ `InjectSessionTodo` / `LoadSessionTodoBlock` |
+| `AgentRuntimeTaskExecutor.Db.cs` | 新增 `internal static LoadSessionTodoSnapshot(parameters, sessionId)` —— 只读、不走事务、按 `sort_order` 排序、返回公开 DTO `TaskRow`；**任何异常都吞掉返回 null**，读 todo 失败绝不能拖垮 run |
+
+**注入文本**（英文，纯事实）：
+
+```
+<todo_status>
+2/7 completed. Remaining:
+- [in_progress] 审查 S-28/S-37/S-38 三处 UI 尺寸修复
+- [pending] 审查 S-29/S-30/S-33/S-34/S-35 功能需求
+...
+</todo_status>
+```
+
+### 四条设计契约
+
+1. **走临时副本，不改历史** —— `InjectSessionTodo` 返回 `conversation` 的**新列表**（末尾追加一条临时 user 消息），原 `conversation` 一字不动。任何写进历史的消息都会成为下一轮请求的前缀，前缀一变整段缓存作废；追加在最末尾的内容不属于任何后续请求的前缀。**这是不选「改写最后一条消息」的原因。**
+2. **只给事实，不给嘱咐** —— 不带「记得更新 todo」这类句子。理由：嘱咐每轮都要付 token，而事实是 agent 会自己核对的 —— 它看到 `in_progress` 与自己正在做的事对不上，自然会去纠正。回归测试里有一条专门断言注入内容不含 `remember` / `make sure` / `don't forget` / `you must`。
+3. **只在有 todo 数据时注入**（老大口径）—— 具体取「**存在未完成项**」：无任务、空列表、全部 `completed`、全部 `deleted` 都返回 null 跳过。全部收尾后再注入只是噪音。
+4. **一律 `\n`，不用 `AppendLine`** —— Windows 上 `AppendLine` 产出 `\r\n`，同一份注入内容跨平台就不一样了。渲染上限：未完成项最多 8 条（超出折叠成 `... +N more`），单条标题截断到 80 字符。
+
+### 成本
+
+注入块 ~40 token/轮。按本次运行（15 轮、总输入 17.9 万 token）约 600 token，占比 **0.3%**。缓存侧只损失注入点之后的部分（注入内容本身），前面的历史前缀完全命中。
+
+### 测试与门禁
+
+新增 `tests/WishfulClaw.GoalRegressionTests/Program.SessionTodo.cs` —— `RunSessionTodoInjectionSuite()`，**17 断言**：四种「不注入」情形、基本渲染原文断言、completed 只计数、超量折叠、超长标题截断、无嘱咐文案。
+
+- Goal 套件 169 → **186**
+- C# 回归 **10/10** 全过；Worker / tests 编译 0 警告 0 错误
+- 触碰文件 BOM clean（5 个）
+
+**待真机验证**：重启 dev 后跑一个多任务需求，确认 (a) 注入块出现在请求里、(b) agent 中途开始调 `TodoTaskUpdate`。
+
+---
+
+## S-45 配对错无自愈：悬空 tool_calls 让会话永久 400
+
+**来源**：2026-09-16 22:0x 老大从用量统计的请求明细里捞到 400 报文（「找 400 的，里面还有报错信息」），要求补救方案：「能不能识别这个报错，就修复请求里面的参数」。
+
+### 现场（实测，`~/.wishful-claw/index.db` 的 `request_usage_logs`）
+
+生产库全部 400 = **13 条 / 3 个会话**，同一个错：
+
+| 会话 | 时间 | 次数 |
+|---|---|---|
+| `lOzL9w1ou1FUddATk2XEq` | 09-16 21:03:28 ~ 21:03:43 | **连挂 5 次**（`attempt=1..5`） |
+| `FgyMUDIoPoTCHybYInbJ6` | 09-14 19:11 | 2 次 |
+| `JTmJBPUGlMWd3bVADTJu6` | 09-14 19:09 | **连挂 6 次** |
+
+原文（Console Go 中转，OpenAI 协议）：
+
+```
+OpenAI-compatible chat request failed HTTP 400: {"error":{"code":"invalid_request_error",
+"message":"Error from provider (Console Go): Upstream request failed: [invalid_request_error]
+An assistant message with 'tool_calls' must be followed by tool messages responding to each
+'tool_call_id'. (insufficient tool messages following tool_calls message)"}}
+```
+
+**排除了两个嫌疑**：11 个压缩快照逐个扫过配对（0 处不配对）；`messages.meta` 的工具调用信息齐全、恢复路径的合成逻辑也没被误跳过。另：21:04 重启之后至今零 400 —— 但老大明确「重启也没用」，说明内存态之外还有恢复路径能带回的病。
+
+### 根因
+
+`AgentLoop` 里 assistant 进会话之后，工具结果的写回**排在工具执行的下游**：
+
+```
+L389  conversation.Add(turn.AssistantMessage)      ← assistant(tool_calls) 已进会话
+L435  await ToolCallProcessor.ExecuteAsync(...)    ← 异常/中断从这里直接穿出去
+L445  EnsureEveryCallHasResult(...)                ← ★补齐，整段被跳过
+L447  conversation.Add(工具结果)
+```
+
+`SessionConversation` 是**进程级常驻**的（`SessionConversationManager`），而 `RepairToolPairing` 只在 `Initialize` / `InitializeIfEmpty` 两个恢复入口调用。于是悬空的 `assistant(tool_calls)` 留在内存里，之后每一次请求都被上游 400 拒绝 —— 重发无效、重试无效，只能切会话或重启 Worker。
+
+### 修法（老大裁定：**P1 不做**，其余推进）
+
+| | 改动 | 治什么 |
+|---|---|---|
+| **P0** | `AgentLoop.cs:435` 工具执行改 `try/finally`，结果写回放进 `finally` | 不再产出新病（异常 / 中断路径也保证配对） |
+| **P2** | `AgentLoop.cs` catch 链加错误驱动分支：识别配对错 → `RepairToolPairing` → 重发同一请求（上限 2 次，**修不动就 `throw`，不空转**） | 任何来源的旧病当场自愈 |
+| 小修 1 | `ProviderRetryPolicy` 把配对错从 400 重试里让出去 | 别空烧 5 次往返。**注意不是把 400 摘掉** —— 400 可重试是 2026-08-28 确认过的设计（`IsRetryableStatus` 注释明写） |
+| 小修 2 | `RepairToolPairing` 改为 **conversation 层 / wire 层各扫各的**，返回修补条数 | 去掉「两层共用一个 `insertAt`」的隐性假设 |
+
+新增 `ToolPairingErrors.cs`（各 provider 文案并集识别，照 `ContextCompression.Errors.cs` 的范式）。
+`RepairToolPairing` 由 `private void` 改 `internal int`（返回条数，供 P2 判断「修了没」）。
+
+**P1（发请求前无条件规范化）老大明确砍掉**：「这个太浪费时间了」。
+
+### 门禁
+
+C# Worker 0 警告 0 错误；`tests/WishfulClaw.Tests.sln` 0/0；C# 回归 **10/10**（Goal **186 → 213** 断言）；typecheck 0 错；TS **23/23**；AOT 无 IL2026/IL3050/IL3051（23,159,296 B）；触碰文件 BOM clean。
+
+新增测试 `tests/WishfulClaw.GoalRegressionTests/Program.ToolPairing.cs`（27 断言）。
+**测试当场抓到一处真 bug**：Anthropic 文案里标识符带反引号（`` `tool_use` ids were found without `tool_result` blocks ``），最初写的特征串跨过了标识符本身，`Contains` 匹配不上 → 改为 `"ids were found without"`。
+
+**待真机验证**：会话跑一个会被中断的任务（工具执行中取消），确认之后不再 400。
+
+---
+
+## 待登记（清尾巴，**等老大点名**）
+
+老大原话「30 迭代主要是 spill + 清尾巴」，**未逐条点名**。以下为当前已存在的候选池，按来源分组，**均未排入**：
+
+**A. 知识库剩余待处理（3 条）→ ✅ 已全部立项**
+
+- ~~改进 2026-09-14 大输出落盘 spill~~ → **S-26**
+- ~~缺陷 2026-09-14 聊天窗大图预览超出弹窗边界~~ → **S-28**
+- ~~改进 2026-09-14 记忆整理等后台任务缺执行记录~~ → **S-29**
+
+知识库 `issues/bugs.md` / `issues/改进.md` 经 2026-09-16 归档后核对，**已无其他待处理条目**。
+
+**B. iter-29 收尾挂的「下版本待议」（4 项）→ ① 已立项**
+
+- ~~① 渠道会话的 shell 审批**没有出口**~~ → **S-30**（老大 2026-09-16 定形态：走文本审批）
+- ② 渠道 `displayName` 的 i18n（存库默认名，只能在渲染端按 `channel.type` 映射）
+- ③ `meta.requestModel` 全仓零写入方 ⇒ 无法显示「上一条消息真正用了谁」
+- ④ `serviceTier` / fast mode 整体未落地（preset 标了但无任何路径发出去）
+
+**C. 知识库《正式版发布规划》**（2026-08-18，从未进过任何迭代）
+
+- 左侧面板整理：扩展功能清空重建、自动化（定时任务）移入扩展、增加任务面板、绘图移入扩展
+- 快捷搜索扩展整合：Alt+Space 并入扩展数据源 + 「扩展」Tab（**与 S-27 同源，可能有重叠**）
+
+**D. `use_capability` 参数错层的代码层兜底**（2026-09-16 讨论产物，老大拍板「登记」）
+
+- **背景**：本轮已按老大口径做了 1+2 —— `UseCapabilityToolProvider.cs` 给 `capability_id` 补「顶层字段」说明，`arguments` 从**零描述**补成语义描述（`ToolSchemaBuilder.Object` 为此新增可选 `description` 形参，通用能力）。但 schema 描述只能**降低**概率，**不能消除** —— 它是被读的，不是被执行的。
+- **依据**：`docs/prompt-authoring.md` 第 3 关 ——「**能在代码里强制就不要靠嘱咐**」。工具描述和系统提示词同样是每轮重发的位置，排在提示词队尾、最后选。
+- **做法**：在 `AgentRuntimeUseCapabilityExecutor.CallCapabilityAsync` 取 `arguments` 处（`:256-259`）加一道纠偏 —— `arguments` 里若出现 `capability_id` / `action`，**自动提到顶层**再执行。
+- **前置核实**：目标工具自身是否存在同名参数（尤指 `capability_id`），避免误吞。
+- **触发条件**：**先观察** 1+2 之后模型是否仍踩这个坑（需重编 worker 后实测）；仍踩则升级为代码强制。
+
+**E. `browser:emulation-status` 仍是 stub +「复用浏览器数据」整体未实现**（2026-09-16 排查 S-39 时发现）
+
+- **现状**：`src/main/ipc/misc-handlers.ts:234-240` 恒回 `{ reuseEnabled: false, userAgent: '' }`。`userAgent` 恒空是「主进程拿不到系统浏览器 UA」的事实；但 `reuseEnabled` 恒 `false` 会让**设置页开关显示「已开启」、实际行为走另一条路**（`BUILTIN_BROWSER_PARTITION`），属假事实。
+- **本次故意没动 `reuseEnabled`**：改了会让 partition 从 `persist:wishfulclaw-browser` 换成默认 session，**用户已登录站点的登录态会丢**。当前「恒为 BUILTIN 分区」反而是稳定可用的。
+  - 补充（S-40 之后）：**免费对话页已与它解耦**（分区写死），右面板 `BrowserPanel.tsx` 仍在读它。
+- **两条出路**（二选一，都是新工作量）：① 整套做「复用系统浏览器 userData」（探测 Chrome/Edge/Brave 的 userData 目录 → 映射 partition），注意 Chrome 有进程锁、浏览器开着基本读不了；② 明确废弃该设置项（UI + IPC + 类型一起摘干净）。
+- **待老大点名**。
+
+> 登记原则：**只记不排**。哪几条进 30、哪几条留 31，等老大点名后回填编号。
+
+---
+
+## 裁定记录（2026-09-16 老大拍板）
+
+### S-27 免费对话页
+
+| # | 事项 | 裁定 |
+|---|---|---|
+| 1 | 站点清单 | **做成配置项**（用户自己增删，不写死站点）；~~位置 `设置页 → AI 服务 → 免费对话清单`~~ → **位置已改**：挪进免费对话页内的设置弹窗，见 **S-41** |
+| 2 | 地址栏 | **不留** |
+| 3 | 登录态分区 | **共用**（能共用就共用） |
+| 4 | 站点切换 | ~~**单实例**（改 URL，非多实例）~~ → **作废**（2026-09-16 14:23 老大改为多选项卡，见 **S-40**） |
+| 5 | 搜索面板 | 老大原话「**不仅搜索面板**」⇒ 按**要加搜索面板入口**处理 ⚠️ 是否还另有入口待确认 |
+
+### S-28 聊天窗大图预览
+
+- **免真机取证，按推荐修法直接做**（补齐尺寸约束 + 去掉 overflow 裁切）
+
+### S-29 后台任务执行记录
+
+- **采纳 A**：补强现有记忆整理报告（**不做**通用后台任务框架）
+- **落点：记忆设置处** —— 让用户能看到「**是否执行了**」（老大原话）
+
+### S-30 渠道会话 shell 文本审批
+
+- **全部按推荐**：词表 `同意 / y / yes / ok / 1` ↔ `拒绝 / n / no / 0`；超时 **10 分钟按拒绝**；**支持「总是允许」**（落 `permission-policy` allow 规则）；**串行**（一次批一个）；复用现有 `[USER REJECTED]` 话术；**开关复用 `shellRequiresApproval`**
+
+### 新增（2026-09-16 老大追问，未立项）
+
+- 聊天窗消息虚拟化的 overscan / 首屏条数**是否要做成设置项** —— 当前硬编码于 `MessageList/utils.ts:225-227`，无设置项。**待老大点名**。

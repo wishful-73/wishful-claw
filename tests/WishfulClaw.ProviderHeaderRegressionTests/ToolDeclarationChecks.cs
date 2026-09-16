@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Agent;
 using WishfulClaw.Core.Tools;
 
@@ -23,6 +23,7 @@ internal static class ToolDeclarationChecks
         RunShellDeclarationSuite();
         RunUncategorizedPassesThroughSuite();
         RunCapabilityCatalogSuite();
+        RunCoreCategoryReachableSuite();
         RunDeclarationCensusSuite();
     }
 
@@ -224,6 +225,55 @@ internal static class ToolDeclarationChecks
             .ToArray();
         Assert(AgentRuntimeUseCapabilityExecutor.GetProxiedCategoryNames().SequenceEqual(catalogNames),
             "proxy category names are the ToolCategoryCatalog intersection, not a second display list");
+    }
+
+    /// <summary>
+    /// A category marked core claims permanent space in the direct tool list, so at least one of its
+    /// tools has to survive the whole admission chain in a run that actually does work. Only the run
+    /// context's scope veto can drop one now. A category that clears the registry's <c>IsCore</c> but
+    /// reaches no real session is reachable on <i>neither</i> surface: direct injection is where it
+    /// belongs, and the <c>use_capability</c> proxy hides everything that is core.
+    ///
+    /// Splitting <c>todo</c> out of <c>task</c> did exactly that. The registry read as core, the proxy
+    /// list hid it for that reason, and the session preset of the day still filtered it out, so the tool
+    /// was invisible in a real session while every piece of evidence looked self-consistent. That failure
+    /// needed two admission layers to happen at all, which is why iter-30 deleted the allowlist half:
+    /// the rule below is anchored on the swept run contexts — what production actually resolves — not on
+    /// a preset name.
+    /// </summary>
+    private static void RunCoreCategoryReachableSuite()
+    {
+        var registry = VisibilitySnapshotDump.BuildProductionRegistry();
+        var scenarios = VisibilitySnapshot.ResolveScenarios();
+
+        // The run contexts an ordinary session actually resolves to. A core category only has to reach
+        // one of them — plan tools, for instance, are work-only by declaration and are absent from the
+        // plain chat context on purpose.
+        string[] sessionContexts = ["project:chat", "project:cowork"];
+
+        var admittedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var contextName in sessionContexts)
+        {
+            var scenario = scenarios.Single(item => item.Name == contextName);
+            var admitted = AgentRunContextPolicy.ResolveDirectInjection(
+                registry, scenario.AvailableMode, scenario.Context, scenario.ChannelSession);
+
+            foreach (var category in admitted.Select(definition => registry.GetCategory(definition.Name)))
+            {
+                if (category is not null)
+                {
+                    admittedCategories.Add(category);
+                }
+            }
+        }
+
+        foreach (var category in ToolCategoryCatalog.Core)
+        {
+            Assert(admittedCategories.Contains(category),
+                $"core category \"{category}\" reaches no direct tool in " +
+                $"{string.Join(" / ", sessionContexts)}: every tool in it is filtered out, so the " +
+                "category would be core in the registry and unreachable in a real session");
+        }
     }
 
     private static JsonElement Schema()

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -128,6 +128,10 @@ public static partial class SubAgentExecutor
 
         string subAgentOutput;
         bool subAgentError = false;
+        // 报告是否由子 agent 真正产出（兜底文案、取消、异常都不算）。
+        // 渲染端用这个值决定 reportStatus，不再靠 output.Length > 0 —— Worker 会把空输出
+        // 兜底成一句话，那条判据恒真，报告缺失会被误报成已提交。
+        var reportProduced = false;
 
         try
         {
@@ -135,8 +139,9 @@ public static partial class SubAgentExecutor
                 childState.CancellationToken);
             await AgentLoop.ExecuteLoopAsync(childParameters, childState, context);
             subAgentOutput = collector.GetFinalOutput();
+            reportProduced = !string.IsNullOrWhiteSpace(subAgentOutput);
 
-            if (string.IsNullOrWhiteSpace(subAgentOutput))
+            if (!reportProduced)
             {
                 subAgentOutput = "Sub-agent completed but produced no output.";
                 subAgentError = true;
@@ -161,6 +166,19 @@ public static partial class SubAgentExecutor
             // AgentLoop); remove it so isolated conversations don't leak.
             SessionConversationManager.Remove($"__subagent__{childRunId}");
             childState.Dispose();
+        }
+
+        // S-36: 报告落库。父 run 结束之后流式文本就断了，只有这里的 GetFinalOutput()
+        // 是完整的 —— 写进库才能让主会话在父 run 已结束时、以及界面重启之后都拿到结论。
+        if (reportProduced)
+        {
+            SubAgentReportStore.SaveFinalOutput(
+                toolCallId,
+                parentState.SessionId,
+                definition.Name,
+                subAgentOutput,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                success: !subAgentError);
         }
 
         // Update registry with final state
@@ -198,7 +216,7 @@ public static partial class SubAgentExecutor
 
         var resultJson = BuildResultJson(
             definition.Name, toolCallId, subAgentOutput, !subAgentError, childState.StopReason,
-            collector.ToolCallCount, collector.Iterations);
+            collector.ToolCallCount, collector.Iterations, reportProduced);
 
         await AgentRuntimeTools.EmitAsync(
             parentState, context,

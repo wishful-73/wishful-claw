@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.29",
+  "version": "0.2.30",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -35,9 +35,13 @@
     "test:channel-account-label": "esbuild tests/channel-account-label/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/channel-account-label/out/program.cjs && node tests/channel-account-label/out/program.cjs",
     "test:settings-tabs": "esbuild tests/settings-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/settings-tabs/out/program.cjs && node tests/settings-tabs/out/program.cjs",
     "test:select-file-tags": "esbuild tests/select-file-tags/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/select-file-tags/out/program.cjs && node tests/select-file-tags/out/program.cjs",
+    "test:selected-file-context": "esbuild tests/selected-file-context/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/selected-file-context/out/program.cjs && node tests/selected-file-context/out/program.cjs",
     "test:streaming-render-pool": "esbuild tests/streaming-render-pool/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/streaming-render-pool/out/program.cjs && node tests/streaming-render-pool/out/program.cjs",
     "test:channel-reply-event-policy": "esbuild tests/channel-reply-event-policy/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-reply-event-policy/out/program.cjs && node tests/channel-reply-event-policy/out/program.cjs",
-    "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs"
+    "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs",
+    "test:channel-shell-approval": "esbuild tests/channel-shell-approval/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-shell-approval/out/program.cjs && node tests/channel-shell-approval/out/program.cjs",
+    "test:browser-user-agent": "esbuild tests/browser-user-agent/program.ts --bundle --platform=node --format=cjs --outfile=tests/browser-user-agent/out/program.cjs && node tests/browser-user-agent/out/program.cjs",
+    "test:free-chat-tabs": "esbuild tests/free-chat-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/free-chat-tabs/out/program.cjs && node tests/free-chat-tabs/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

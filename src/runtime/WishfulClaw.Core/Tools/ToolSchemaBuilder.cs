@@ -12,13 +12,18 @@ public static class ToolSchemaBuilder
 {
     public static JsonElement Object(
         Dictionary<string, JsonElement>? properties = null,
-        string[]? required = null)
+        string[]? required = null,
+        string? description = null)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
         {
             writer.WriteStartObject();
             writer.WriteString("type", "object");
+            if (!string.IsNullOrEmpty(description))
+            {
+                writer.WriteString("description", description);
+            }
             writer.WritePropertyName("properties");
             if (properties is not null)
             {

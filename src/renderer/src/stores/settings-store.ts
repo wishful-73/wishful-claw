@@ -25,11 +25,21 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type CodexConfig, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
+import { type ModelBinding, type CodexConfig, type FreeChatSite, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
 import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
 import type { UpdateBannerPosition } from '../../../shared/updater/types'
+
+/** Default free web-chat sites offered on the Free Chat page (iter-30 / S-27).
+ *  Users can add/remove entries in 设置 → AI 服务 → 免费对话. */
+export const DEFAULT_FREE_CHAT_SITES: FreeChatSite[] = [
+  { id: 'deepseek', name: 'DeepSeek', url: 'https://chat.deepseek.com/' },
+  { id: 'kimi', name: 'Kimi', url: 'https://www.kimi.com/' },
+  { id: 'chatglm', name: '智谱清言', url: 'https://chatglm.cn/' },
+  { id: 'yuanbao', name: '腾讯元宝', url: 'https://yuanbao.tencent.com/' },
+  { id: 'doubao', name: '豆包', url: 'https://www.doubao.com/chat/' }
+]
 
 // Re-export types for consumers
 export type {
@@ -126,6 +136,11 @@ interface SettingsStore {
   hooksEnabled: boolean
   browserUserDataReuseEnabled: boolean
   browserUserDataSource: BrowserUserDataSource
+  /** Free Chat page site list (iter-30 / S-27); user-editable in settings. */
+  freeChatSites: FreeChatSite[]
+  /** 免费对话页已打开的选项卡（iter-30 / S-40）：站点 id 列表 + 当前选项卡，用于页面重开时恢复。 */
+  freeChatOpenTabIds: string[]
+  freeChatActiveTabId: string
   contextCompressionEnabled: boolean
   /** Global trigger ratio shared by every chat model. */
   contextCompressionThreshold: number
@@ -278,6 +293,9 @@ export const useSettingsStore = create<SettingsStore>()(
       hooksEnabled: false,
       browserUserDataReuseEnabled: true,
       browserUserDataSource: DEFAULT_BROWSER_USER_DATA_SOURCE,
+      freeChatSites: DEFAULT_FREE_CHAT_SITES,
+      freeChatOpenTabIds: [],
+      freeChatActiveTabId: '',
       contextCompressionEnabled: true,
       contextCompressionThreshold: 0.8,
       editorWorkspaceEnabled: false,
@@ -525,7 +543,10 @@ export const useSettingsStore = create<SettingsStore>()(
         builtinBrowserEnabled: state.builtinBrowserEnabled,
         hooksEnabled: state.hooksEnabled,
         browserUserDataReuseEnabled: state.browserUserDataReuseEnabled,
-        browserUserDataSource: normalizeBrowserUserDataSource(state.browserUserDataSource)
+        browserUserDataSource: normalizeBrowserUserDataSource(state.browserUserDataSource),
+        freeChatSites: state.freeChatSites,
+        freeChatOpenTabIds: state.freeChatOpenTabIds,
+        freeChatActiveTabId: state.freeChatActiveTabId
         // NOTE: apiKey is intentionally excluded from localStorage persistence.
         // In production, it should be stored securely in the main process.
       })

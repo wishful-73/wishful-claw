@@ -415,7 +415,7 @@ export function UserMessage({
                     <img
                       src={previewImageSrc}
                       alt={t('userMessage.imagePreview')}
-                      className="block h-auto max-h-[calc(90vh-1rem)] w-auto max-w-[min(92vw,1068px)] rounded object-contain"
+                      className="block h-auto max-h-[calc(90vh-3rem)] w-auto max-w-[min(92vw,1068px)] rounded object-contain"
                     />
                   </div>
                 )}

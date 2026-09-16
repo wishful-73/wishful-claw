@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -75,24 +75,16 @@ public sealed class ToolModule : IWorkerModule
         // Expose via shared state for AgentLoop to access
         ToolModuleState.Registry = registry;
 
-        // Register IPC handler: tool/list — returns tool definitions for the LLM
-        // Optional "preset" parameter filters tools by scenario (chat/coding/channel/automation/minimal/full).
+        // Register IPC handler: tool/list — returns tool definitions for the LLM.
+        // Every registered definition is returned; what a run may actually call is resolved per
+        // run context in AgentRunContextPolicy, so there is nothing to filter here.
         context.Register("tool/list", args =>
         {
-            var presetId = args.TryGetProperty("preset", out var presetEl)
-                ? presetEl.GetString() ?? "full"
-                : "full";
-
-            var preset = ToolPreset.BuiltIn.TryGetValue(presetId, out var p)
-                ? p
-                : ToolPreset.BuiltIn["full"];
-
-            var defs = registry.GetToolDefinitions(preset).ToList();
+            var defs = registry.GetToolDefinitions().ToList();
 
             return Task.FromResult(WorkerResponse.FromWriter(writer =>
             {
                 writer.WriteStartObject();
-                writer.WriteString("preset", preset.Id);
                 writer.WriteNumber("count", defs.Count);
                 writer.WritePropertyName("tools");
                 writer.WriteStartArray();

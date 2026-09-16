@@ -5,12 +5,15 @@ using WishfulClaw.Core.Tools;
 namespace WishfulClaw.ProviderHeaderRegressionTests;
 
 /// <summary>
-/// R-3.3 verification support: snapshots the visible tool set for every preset × run-context
-/// combination, so a refactor of the admission logic can be proven to change nothing.
+/// R-3.3 verification support: snapshots the visible tool set for every swept run context, so a
+/// refactor of the admission logic can be proven to change nothing.
 ///
 /// The B-scope rule for this iteration is "mechanism only, zero behaviour change". An eyeball review
-/// cannot establish that across ~7 presets × ~13 contexts, so the sweep prints a stable digest that
-/// can be diffed before and after the change.
+/// cannot establish that across ~15 run contexts, so the sweep prints a stable digest that can be
+/// diffed before and after the change.
+///
+/// iter-30 dropped the preset axis: what a run may call is decided by the scope declaration and the
+/// executor's IsCore flag alone, so each context has exactly one row.
 /// </summary>
 internal static class VisibilitySnapshot
 {
@@ -43,8 +46,6 @@ internal static class VisibilitySnapshot
         ("project:chat@providerturn", """{"sessionMode":"chat","scope":"project","projectId":"p1","collaborationMode":"chat","runtimeRole":"providerturn"}"""),
         ("project:chat@translation", """{"sessionMode":"chat","scope":"project","projectId":"p1","collaborationMode":"chat","runtimeRole":"translation"}"""),
     ];
-
-    private static readonly string[] Presets = ["full", "chat", "coding", "channel", "automation", "minimal", "skill-installer"];
 
     /// <summary>
     /// One swept run context, resolved exactly the way production resolves it.
@@ -91,26 +92,19 @@ internal static class VisibilitySnapshot
     public static string Build(ToolRegistry registry)
     {
         var builder = new StringBuilder();
-        var scenarios = ResolveScenarios();
 
-        foreach (var presetId in Presets)
+        foreach (var scenario in ResolveScenarios())
         {
-            var preset = ToolPreset.BuiltIn[presetId];
-            builder.Append("preset=").Append(presetId).Append('\n');
+            var admitted = AgentRunContextPolicy.ResolveDirectInjection(
+                registry, scenario.AvailableMode, scenario.Context, scenario.ChannelSession);
 
-            foreach (var scenario in scenarios)
-            {
-                var admitted = AgentRunContextPolicy.ResolveDirectInjection(
-                    registry, preset, scenario.AvailableMode, scenario.Context, scenario.ChannelSession);
+            var names = admitted
+                .Select(definition => definition.Name)
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToList();
 
-                var names = admitted
-                    .Select(definition => definition.Name)
-                    .OrderBy(value => value, StringComparer.Ordinal)
-                    .ToList();
-
-                builder.Append("  ").Append(scenario.Name).Append(" = ").Append(names.Count).Append(" [")
-                    .Append(string.Join(",", names)).Append("]\n");
-            }
+            builder.Append(scenario.Name).Append(" = ").Append(names.Count).Append(" [")
+                .Append(string.Join(",", names)).Append("]\n");
         }
 
         return builder.ToString();
@@ -160,11 +154,12 @@ internal static class VisibilitySnapshot
     /// </summary>
     public static void AssertNonTrivial(string digest)
     {
+        var rows = 0;
         var nonEmpty = 0;
 
         foreach (var line in digest.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
-            // Context lines look like: "  project:chat = 27 [Read, Write, ...]".
+            // Context lines look like: "project:chat = 27 [Read, Write, ...]".
             var equals = line.IndexOf(" = ", StringComparison.Ordinal);
             if (equals < 0)
             {
@@ -177,16 +172,20 @@ internal static class VisibilitySnapshot
                 continue;
             }
 
+            rows++;
             if (int.TryParse(line[(equals + 3)..end], out var count) && count > 0)
             {
                 nonEmpty++;
             }
         }
 
-        if (nonEmpty < 20)
+        // The bar is "every swept context admits something". Comparing against a context count read
+        // off the digest keeps this honest when contexts are added or removed — a pinned number
+        // would either go stale silently or fail for the wrong reason.
+        if (rows == 0 || nonEmpty < rows)
         {
             throw new InvalidOperationException(
-                $"Visibility snapshot is trivial: only {nonEmpty} non-empty context/preset pairs. " +
+                $"Visibility snapshot is trivial: {nonEmpty} of {rows} run contexts admit any tool. " +
                 "A before/after comparison over this data would prove nothing.");
         }
     }

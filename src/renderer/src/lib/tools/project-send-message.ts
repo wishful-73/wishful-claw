@@ -206,7 +206,6 @@ export async function handleProjectSendSessionMessage(
       provider,
       messages: [{ role: 'user', content }],
       sessionId,
-      toolPreset: targetSession.collaborationMode === 'cowork' && effectiveWorkingFolder ? 'coding' : 'chat',
       workingFolder: effectiveWorkingFolder || undefined,
       sshConnectionId: targetSession.scope === 'project' ? targetSession.sshConnectionId ?? undefined : undefined,
       projectId: effectiveProjectId || undefined,

@@ -112,8 +112,8 @@ function SettingsPage(): React.JSX.Element {
     {
       label: t('tabs.groups.about'),
       items: [
-        { id: 'about', icon: <Info className="size-4" />, label: t('tabs.about.label') },
-        { id: 'logs', icon: <ScrollText className="size-4" />, label: t('tabs.logs.label', { defaultValue: '日志' }) }
+        { id: 'logs', icon: <ScrollText className="size-4" />, label: t('tabs.logs.label', { defaultValue: '日志' }) },
+        { id: 'about', icon: <Info className="size-4" />, label: t('tabs.about.label') }
       ]
     }
   ]

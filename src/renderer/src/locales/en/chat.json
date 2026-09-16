@@ -181,6 +181,9 @@
     "queuePausedHint": "Paused — click to resume",
     "queueRunningHint": "Sent in order after the current turn completes",
     "queueResume": "Resume",
+    "queueInsertNow": "Insert now",
+    "queueInsertNowHint": "Let the agent pick this up on its next turn instead of waiting for the current one",
+    "queueInsertNowFailed": "Insert failed: no turn is running right now, or it already finished",
     "queueEditing": "Edit queued message",
     "queueQuote": "Quote",
     "queueQuoted": "Inserted into conversation",
@@ -884,6 +887,8 @@
   },
   "todo": {
     "tasksDone": "{{completed}} / {{total}} tasks done",
+    "inProgressSuspended": "This run ended but the task is still open",
+    "inProgressStale": "Not updated for over 3 days — likely abandoned",
     "moreTasks": "{{count}} more tasks...",
     "showEarlierTasks": "Show {{count}} earlier tasks",
     "showLess": "Show less"
@@ -1129,6 +1134,7 @@
     "selectedFileReadSkipped": "Path reference",
     "selectedFileReadSkippedPdf": "PDF path reference; file was not read directly",
     "selectedFileReadSkippedNonText": "Path reference; binary or document file was not read directly",
+    "selectedFileReadSkippedDirectory": "Directory path reference; contents were not read",
     "selectedFileReadSkippedNotInjected": "Path reference; file content was not injected into this turn",
     "selectedFileReadFailed": "Read failed",
     "hideCommand": "Collapse commands",

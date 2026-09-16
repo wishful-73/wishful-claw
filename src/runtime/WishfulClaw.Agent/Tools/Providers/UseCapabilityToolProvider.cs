@@ -30,6 +30,7 @@ public sealed class UseCapabilityToolProvider : IToolProvider
                         new[] { "list", "inspect", "call" }),
                     ["capability_id"] = ToolSchemaBuilder.String(
                         "Capability id: mcp-tool:server/tool, mcp-server:name, skill:name, or builtin:toolName. "
+                        + "Top-level field — a sibling of \"arguments\", never a key inside it. "
                         + "Not required for action=list."),
                     ["type"] = ToolSchemaBuilder.String(
                         "Optional action=list filter: mcp-server, mcp-tool, skill, or builtin."),
@@ -45,7 +46,16 @@ public sealed class UseCapabilityToolProvider : IToolProvider
                     // 传「JSON 字符串」，而执行侧只接受 JSON 对象（`ValueKind == Object`），
                     // 于是参数被丢成空对象（内置 Task 表现为 "Task requires a non-empty
                     // prompt"）。改为自由对象（无 properties），与执行侧口径一致。
-                    ["arguments"] = ToolSchemaBuilder.Object()
+                    // T-11 补（2026-09-16）: 光留空又走到另一头 —— 模型会把 action /
+                    // capability_id 一并塞进来，执行侧只看顶层取值，于是报
+                    // "capability_id is required for action=call"（错的是位置，不是缺失）。
+                    // 现按「不写字段、只讲语义」处置：这里的键属于目标工具自己，随能力变，
+                    // schema 无法枚举，只能用描述把「平级」这件事讲明白。
+                    ["arguments"] = ToolSchemaBuilder.Object(
+                        description:
+                            "Arguments for the target capability, matching that capability's own "
+                            + "input schema (fetch it with action=\"inspect\"). Keys belong to the "
+                            + "target tool; capability_id and action stay outside this object.")
                 },
                 new[] { "action" }),
             visibleScopes: ToolVisibilityScopes.Everywhere, isCore: true));

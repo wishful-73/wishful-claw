@@ -35,8 +35,7 @@ public static class PromptBuilder
         string? workingFolder,
         string? language,
         string? userRules,
-        int? characterBudget = null,
-        bool includeSessionTodoPrompt = true)
+        int? characterBudget = null)
     {
         var parts = new List<string>();
 
@@ -91,12 +90,11 @@ public static class PromptBuilder
         }
         parts.Add(BuildToolCapability());
 
-        // ── Session Todo guidance (ordinary session agents only — the caller
-        // opts out for hosts like the global agent) ──
-        if (profile == PromptProfile.Main && includeSessionTodoPrompt)
-        {
-            parts.Add(BuildSessionTodoPrompt());
-        }
+        // iter-30：这里原本注入 <session_todo> 块，内容是「怎么通过 use_capability 代理调 Todo 工具」。
+        // Todo 四个工具已改为核心工具（直接注入，category "todo"），那条绕路不复存在，块随之删除：
+        // 工具自己的 schema 与描述就是说明，不需要一段每轮都要付 token 的操作指引 —— 而且它一旦
+        // 与实现脱节（比如核心化之后）就从真话变成假事实。
+        // 状态语义（in_progress / blocked / in_review / completed）已挪进 TodoTaskUpdate 的 status 参数描述。
 
         // ── User Rules ──
         if (!string.IsNullOrWhiteSpace(userRules))
@@ -368,19 +366,6 @@ This is a channel session delivered through `{pluginId}`, not the desktop chat w
 The following are user-defined rules that you MUST ALWAYS FOLLOW WITHOUT ANY EXCEPTION. These rules take precedence over any other instructions.
 {userRules}
 </user_rules>
-""";
-    }
-
-    // ── Session Todo guidance (temporary, session-scoped agent Todo) ──
-    private static string BuildSessionTodoPrompt()
-    {
-        return """
-<session_todo>
-Session todo task tools (TodoTaskCreate / TodoTaskGet / TodoTaskUpdate / TodoTaskList) maintain a small Todo list for THIS session only. They are NOT in your direct tool list — call them via the `use_capability` proxy: `action="call"`, `capability_id="builtin:<ToolName>"`, tool arguments in `arguments`.
-- Use Todos only for complex multi-step work or work spanning multiple turns, never for simple requests.
-- Call TodoTaskList before creating tasks to avoid duplicates.
-- Use TodoTaskUpdate to mark `in_progress` when starting (one at a time), `blocked` when stuck, `in_review` when done and awaiting user confirmation, `completed` only when fully done and verified.
-</session_todo>
 """;
     }
 

@@ -356,8 +356,16 @@ export const createSubAgentSlice: Slice = (set, _get) => ({
                 } else {
                   finalizeAssistantMessage(sa)
                 }
-                if (!sa.report.trim() && event.result.output.trim()) {
+                // 权威报告以 Worker 的 result.output 为准 —— 它是子 agent 全部文本输出的
+                // 拼接，而 sa.report 只是流式累积：父 run 提前结束时后者只到前几轮就断了。
+                // 仅当权威结果更长时才覆盖，避免用兜底文案冲掉已有的流式内容。
+                const authoritativeReport = event.result.output.trim()
+                if (authoritativeReport.length > sa.report.trim().length) {
                   sa.report = event.result.output
+                }
+                if (event.result.reportSubmitted && authoritativeReport) {
+                  // 留一份给持久化，重载会话时用它把 report 补全。
+                  sa.finalOutput = event.result.output
                 }
                 sa.usage = event.result.usage
                 sa.reportStatus = event.result.reportSubmitted

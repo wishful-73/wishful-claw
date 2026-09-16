@@ -176,6 +176,7 @@
   },
   "sidebar": {
     "newChat": "New Chat",
+    "freeChat": "Free Chat",
     "newProject": "New Project",
     "search": "Search sessions...",
     "collapse": "Collapse sidebar",
@@ -592,6 +593,14 @@
     "durationHours": "{{count}}h",
     "groupToday": "Today",
     "groupYesterday": "Yesterday"
+  },
+  "freeChat": {
+    "close": "Back",
+    "reload": "Reload",
+    "tabClose": "Close",
+    "sitesSettings": "Site settings",
+    "empty": "No free chat site configured yet. Use the gear icon above to add one.",
+    "noOpenTab": "Pick a site above to get started."
   },
   "browser": {
     "back": "Back",

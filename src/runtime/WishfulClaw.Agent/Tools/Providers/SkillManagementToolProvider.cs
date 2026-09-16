@@ -6,8 +6,8 @@ namespace WishfulClaw.Agent.Tools.Providers;
 /// <summary>
 /// Registers placeholder tool definitions for skill management tools.
 /// These tools execute in the renderer process via reverse-request.
-/// Category "skill-management" is proxied via use_capability in normal chat/coding,
-/// but directly visible to the skill-installer sub-agent preset.
+/// Category "skill-management" is reachable through use_capability: the tool is not core, so it
+/// arrives as a proxied capability rather than a direct definition, in every run.
 /// </summary>
 public sealed class SkillManagementToolProvider : IToolProvider
 {

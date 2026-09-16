@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Toaster } from '@renderer/components/ui/sonner'
 import { ThemeProvider } from '@renderer/components/theme-provider'
 import { ThemeRuntimeSync } from '@renderer/components/ThemeRuntimeSync'
@@ -168,7 +168,7 @@ function App(): React.JSX.Element | null {
     })
 
     // Pre-fetch tool definitions in background so first message doesn't wait
-    fetchToolDefinitions('chat')
+    fetchToolDefinitions()
 
     return () => {
       unsubscribeAppPluginChanges()

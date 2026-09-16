@@ -87,7 +87,6 @@ export interface AgentActions {
 
     systemPrompt?: string
 
-    toolPreset?: string
     codegraphEnabled?: boolean
 
     workingFolder?: string
@@ -216,6 +215,25 @@ export const useChatStore = create<ChatStore>()(
       // 反推路径不做任何剥离：发给模型的内容可能带选中文件读取块，直接落库会让
       // 以 text 为源的消费方（复制、检索）拿到原始 XML。
       const userText = params.userMessageText ?? derivedUserText
+
+      // iter-30 BUG-A/B：该会话已有活跃 run 时，绝不能走下面这条 agent/run 路径。
+      // 实测后果有两条，都出在「全局会话给正在跑的项目会话派任务」这一场景：
+      //   ① Worker 侧 ActiveSessionRuns 直接拒（"Session already has an active agent
+      //      run"）。可用户消息这时已经被乐观写进 store，于是只换来一张报错卡片 ——
+      //      消息没进队列。
+      //   ② 更糟：下面的 beginUserTurn / setStreamingMessageId 会把
+      //      streamingMessages[sessionId] 从「正在跑的 runId」改成本次 runId，失败分支
+      //      再把它清成 null —— 正在跑的 run 就此在渲染端消失，它的事件全部路由不到
+      //      消息上，聊天窗不再渲染（左上角状态还在动、内容不再出）。
+      // 所以这里前置拦下并入队：出队由 dispatchNextQueuedMessageForSession 在当前 run
+      // 结束后触发，rawParams 保证 sessionMode / maxIterations 这类参数原样带过去。
+      // 放在 sendMessage 内部而不是只靠 handleSendMessage，是因为绕过 hook 的调用方
+      // （跨会话派发、渠道自动回复、cron）拿到的就是 store 这一层。
+      if (state.streamingMessages[sessionId]) {
+        const { enqueuePendingSessionMessage } = await import('@renderer/hooks/use-chat-actions')
+        enqueuePendingSessionMessage({ text: userText, sessionId, rawParams: params }, sessionId)
+        return false
+      }
 
       const now = Date.now()
 
@@ -1494,11 +1512,19 @@ export const useChatStore = create<ChatStore>()(
 
               if (session) {
 
+                // loop_end 是「这一轮真正跑完」的时刻。把完成时间回写进内存副本，
+                // 聊天窗才能显示「结束时间」而不是「开始时间」——DB 的 updated_at
+                // 由 worker 时钟在 upsert 时单独盖章，但那份值从不回流到内存，
+                // 不重启应用就永远拿不到（iter-29 遗留的 live 消息 fallback）。
+                const finishedAt = Date.now()
+
                 for (const msg of session.messages) {
 
                   if (msg.isStreaming) {
 
                     msg.isStreaming = false
+
+                    if (msg.role === 'assistant') msg.updatedAt = finishedAt
 
                   }
 
@@ -1714,11 +1740,16 @@ export const useChatStore = create<ChatStore>()(
                 // session (not just the runId match) so a stale stream state
                 // can't survive when the errored message was already dropped
                 // (e.g. after a reload).
+                // 与 loop_end 同理：出错也是这一轮的结束时刻，时间戳该显示结束时间。
+                const finishedAt = Date.now()
+
                 for (const msg of session.messages) {
 
                   if (msg.isStreaming) {
 
                     msg.isStreaming = false
+
+                    if (msg.role === 'assistant') msg.updatedAt = finishedAt
 
                     if (msg.id === envelope.runId && !quotaTakenOver) {
 

@@ -46,6 +46,7 @@ export function TitleBar({
       !s.tasksPageOpen &&
       !s.taskBoardPageOpen &&
       !s.codeGraphPageOpen &&
+      !s.freeChatPageOpen &&
       s.chatView === 'session'
   )
   const sessionTitle = useChatStore(

@@ -61,7 +61,7 @@
     "groups": {
       "general": "General",
       "aiService": "AI Service",
-      "about": "About",
+      "about": "System",
       "extensions": "Plugins",
       "channels": "Channels"
     },
@@ -1447,7 +1447,29 @@
         "label": "Recall visibility",
         "desc": "Show which memories were recalled in the session (or why none were)"
       }
+    },
+    "executionLog": {
+      "title": "Execution log",
+      "desc": "Recent runs of the memory organization task: whether it ran, how many scopes it handled, and why it skipped or failed",
+      "empty": "No execution records yet",
+      "progress": "{{organized}}/{{total}} scopes organized",
+      "trigger": {
+        "manual": "Manual",
+        "startup": "On startup",
+        "nightly": "Scheduled",
+        "catchup": "Catch-up"
+      }
     }
+  },
+  "freeChatPage": {
+    "title": "Free Chat",
+    "description": "The button next to 'New Chat' opens the Free Chat page; configure the sites it can switch between here. Sign in inside that page.",
+    "add": "Add",
+    "remove": "Remove",
+    "reset": "Restore defaults",
+    "empty": "The list is empty, so the Free Chat page has no site to switch to.",
+    "namePlaceholder": "Name",
+    "urlPlaceholder": "https://example.com"
   },
   "usage": {
     "title": "Usage Analytics",

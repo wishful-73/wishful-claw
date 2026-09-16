@@ -1,5 +1,6 @@
 import Markdown from 'react-markdown'
 import { useTranslation } from 'react-i18next'
+import { cn } from '@renderer/lib/utils'
 import {
   RELEASE_NOTES_COMPONENTS,
   RELEASE_NOTES_REHYPE_PLUGINS,
@@ -24,8 +25,12 @@ export function UpdateReleaseNotes({ notes, expanded = false }: UpdateReleaseNot
 
   return (
     <div
-      className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs text-foreground/85"
-      style={expanded ? { maxHeight: 'none' } : undefined}
+      className={cn(
+        // The notes take whatever height the dialog has left. The previous fixed `max-h-48` left a
+        // blank band in the default size; `min-h-32` keeps them readable when siblings grow tall.
+        'min-h-0 flex-1 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs text-foreground/85',
+        !expanded && 'min-h-32'
+      )}
     >
       <Markdown
         remarkPlugins={RELEASE_NOTES_REMARK_PLUGINS}

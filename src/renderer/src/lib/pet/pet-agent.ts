@@ -189,7 +189,6 @@ export async function runPetChat(args: PetChatArgs): Promise<string> {
     workingFolder,
     collaborationMode: 'chat',
     runtimeRole: 'pet',
-    toolPreset: 'minimal',
     sessionMode: 'chat'
   })
   if (!request) throw new Error('failed to build pet agent request')

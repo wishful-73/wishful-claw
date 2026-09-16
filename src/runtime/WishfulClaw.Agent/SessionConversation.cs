@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Agent;
 
@@ -241,62 +242,164 @@ public sealed class SessionConversation
     }
 
     /// <summary>
-    /// T-7.2: One-shot pairing repair for data entering the session. Every assistant
-    /// tool_use must be followed by tool results carrying the matching tool_call_id,
-    /// otherwise the provider rejects the request with HTTP 400.
+    /// T-7.2: 修复进入会话的数据里悬空的工具配对。每条 assistant 的工具调用后面都必须
+    /// 跟着携带对应 id 的结果消息，否则上游会以 HTTP 400 拒绝整个请求。
     ///
-    /// T-7.1 keeps that promise at write time inside the loop. This method is the
-    /// equivalent guard for the OTHER entry point — first load / DB restore, where
-    /// historical data may predate the fix. It is deliberately NOT called per
-    /// request (the loop's own writes are already paired), so it runs at most once
-    /// per session load. Only missing results are ADDED; existing ones are untouched.
+    /// T-7.1 在循环写回时保证这条不变量；本方法覆盖另外两个入口 —— 首次加载 / DB 恢复，
+    /// 以及请求已被上游以配对错拒绝后的就地修复（AgentLoop 的错误驱动分支）。
+    /// 只补充缺失的结果，已存在的绝不改动。
+    ///
+    /// 返回补进去的结果条数；0 表示扫不出可修的地方。调用方据此判断「修了没」，
+    /// 免得在修不动的情况下空转重试。
     /// </summary>
-    private void RepairToolPairing()
+    internal int RepairToolPairing()
     {
         lock (_lock)
         {
-            for (var i = 0; i < _conversation.Count; i++)
+            var repaired = RepairConversationToolPairing();
+            repaired += RepairWireToolPairing();
+            if (repaired > 0)
             {
-                var message = _conversation[i];
-                if (message.ToolUses.Count == 0) continue;
-
-                var pending = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var toolUse in message.ToolUses)
-                {
-                    if (!string.IsNullOrEmpty(toolUse.Id)) pending.Add(toolUse.Id);
-                }
-                if (pending.Count == 0) continue;
-
-                // Results for an assistant message sit in the immediately following
-                // message(s) — that is how the loop and the restore path lay them out.
-                var insertAt = i + 1;
-                while (insertAt < _conversation.Count && _conversation[insertAt].ToolResults.Count > 0)
-                {
-                    foreach (var result in _conversation[insertAt].ToolResults)
-                    {
-                        pending.Remove(result.ToolUseId);
-                    }
-                    insertAt++;
-                }
-
-                if (pending.Count == 0) continue;
-
-                // Keep the placeholder batch in call order.
-                var ordered = new List<AgentRuntimeToolResult>(pending.Count);
-                foreach (var toolUse in message.ToolUses)
-                {
-                    if (pending.Contains(toolUse.Id))
-                    {
-                        ordered.Add(ToolCallProcessor.InterruptedToolResult(toolUse.Id));
-                    }
-                }
-                if (ordered.Count == 0) continue;
-
-                _conversation.Insert(insertAt, AgentRuntimeChatMessage.UserToolResults(ordered));
-                _wireConversation.Insert(insertAt, AgentLoop.CreateToolResultsWireMessage(ordered));
                 _version++;
             }
+            return repaired;
         }
+    }
+
+    /// <summary>
+    /// conversation 层扫描：按 ToolUses 找悬空调用，在紧随其后的位置插入占位结果。
+    /// </summary>
+    private int RepairConversationToolPairing()
+    {
+        var inserted = 0;
+        for (var i = 0; i < _conversation.Count; i++)
+        {
+            var message = _conversation[i];
+            if (message.ToolUses.Count == 0) continue;
+
+            var pending = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var toolUse in message.ToolUses)
+            {
+                if (!string.IsNullOrEmpty(toolUse.Id)) pending.Add(toolUse.Id);
+            }
+            if (pending.Count == 0) continue;
+
+            // Results for an assistant message sit in the immediately following
+            // message(s) — that is how the loop and the restore path lay them out.
+            var insertAt = i + 1;
+            while (insertAt < _conversation.Count && _conversation[insertAt].ToolResults.Count > 0)
+            {
+                foreach (var result in _conversation[insertAt].ToolResults)
+                {
+                    pending.Remove(result.ToolUseId);
+                }
+                insertAt++;
+            }
+
+            if (pending.Count == 0) continue;
+
+            // Keep the placeholder batch in call order.
+            var ordered = new List<AgentRuntimeToolResult>(pending.Count);
+            foreach (var toolUse in message.ToolUses)
+            {
+                if (pending.Contains(toolUse.Id))
+                {
+                    ordered.Add(ToolCallProcessor.InterruptedToolResult(toolUse.Id));
+                }
+            }
+            if (ordered.Count == 0) continue;
+
+            _conversation.Insert(insertAt, AgentRuntimeChatMessage.UserToolResults(ordered));
+            inserted += ordered.Count;
+        }
+        return inserted;
+    }
+
+    /// <summary>
+    /// wire 层扫描。上游只认 wire 格式，而 conversation 层的 ToolUses 依赖解析成功，
+    /// 两者不一定同时看得见问题，所以各扫各的、各插各的 —— 共用一个插入位置只有在
+    /// 两层逐条同构时才成立，那是个不出声的坑。
+    /// </summary>
+    private int RepairWireToolPairing()
+    {
+        var inserted = 0;
+        for (var i = 0; i < _wireConversation.Count; i++)
+        {
+            var pending = ReadWireToolUseIds(_wireConversation[i]);
+            if (pending.Count == 0) continue;
+
+            var insertAt = i + 1;
+            while (insertAt < _wireConversation.Count)
+            {
+                var resultIds = ReadWireToolResultIds(_wireConversation[insertAt]);
+                if (resultIds.Count == 0) break;
+                foreach (var id in resultIds)
+                {
+                    pending.Remove(id);
+                }
+                insertAt++;
+            }
+
+            if (pending.Count == 0) continue;
+
+            var ordered = new List<AgentRuntimeToolResult>(pending.Count);
+            foreach (var id in pending)
+            {
+                ordered.Add(ToolCallProcessor.InterruptedToolResult(id));
+            }
+
+            _wireConversation.Insert(insertAt, AgentLoop.CreateToolResultsWireMessage(ordered));
+            inserted += ordered.Count;
+        }
+        return inserted;
+    }
+
+    /// <summary>
+    /// 读一条 wire 消息里的 tool_use id，保持出现顺序（占位结果按调用顺序补）。
+    /// </summary>
+    private static List<string> ReadWireToolUseIds(JsonElement message)
+    {
+        var ids = new List<string>();
+        if (message.ValueKind != JsonValueKind.Object) return ids;
+        if (!message.TryGetProperty("content", out var content) ||
+            content.ValueKind != JsonValueKind.Array)
+        {
+            return ids;
+        }
+
+        foreach (var block in content.EnumerateArray())
+        {
+            if (JsonHelpers.GetString(block, "type") != "tool_use") continue;
+            if (JsonHelpers.GetString(block, "id") is { Length: > 0 } id)
+            {
+                ids.Add(id);
+            }
+        }
+        return ids;
+    }
+
+    /// <summary>
+    /// 读一条 wire 消息里的 tool_result 覆盖的 tool_use id。
+    /// </summary>
+    private static List<string> ReadWireToolResultIds(JsonElement message)
+    {
+        var ids = new List<string>();
+        if (message.ValueKind != JsonValueKind.Object) return ids;
+        if (!message.TryGetProperty("content", out var content) ||
+            content.ValueKind != JsonValueKind.Array)
+        {
+            return ids;
+        }
+
+        foreach (var block in content.EnumerateArray())
+        {
+            if (JsonHelpers.GetString(block, "type") != "tool_result") continue;
+            if (JsonHelpers.GetString(block, "toolUseId") is { Length: > 0 } id)
+            {
+                ids.Add(id);
+            }
+        }
+        return ids;
     }
 
     /// <summary>

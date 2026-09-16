@@ -671,14 +671,26 @@ store.getState().setSubagentReportStatus(callId, 'reported')
 
 **架构前提（老大 2026-09-16 已定：子会话落库）**
 
-9. 要让第 4 条落地，**子 agent transcript 必须可回读** —— 现在 `SubAgentExecutor.cs:162` 在 finally 里把它移除了。需改为持久化（对标 `childSessionId` + `getSession`）。
+9. 现状：`SubAgentExecutor.cs:162` / `SubAgentExecutor.Background.cs:184` 在 finally 里 `SessionConversationManager.Remove($"__subagent__{childRunId}")`，子会话消息**不落库**。核实后确认：**不需要回读子会话完整消息** —— 只要在 Remove **之前**把 `GetFinalOutput()` 写进库即可（见下「待定口径」甲案）。
 
-### 待定口径
+### 待定口径（2026-09-16 下午核实后修订）
 
-1. 子会话落库的**粒度与留存策略** —— 全量落 `messages` 表（带 `__subagent__` 前缀或独立标记）？还是复用 `sub_agent_runs.data`（现已有 148KB~245KB 的 `transcript` 字段）？后者不动 schema，但只有渲染端写、Worker 读不到
-2. 报告正文取「子会话最后一条 assistant 消息」还是「`GetFinalOutput()` 的拼接结果」—— 前者干净（对标 OpenCowork），后者已验证可用但要剥过渡话术
-3. 「重新汇报」按钮是否要（老大倾向未定）
-4. `reportStatus` 的取值的落点：`sub_agent_runs` 表加列，还是复用现有 `data` JSON
+**核实结论（推翻三条旧判断）**：
+
+1. ~~`sub_agent_runs` 只有渲染端写、Worker 读不到~~ —— **错**。`src/runtime/WishfulClaw.Infrastructure/Db/DbSubAgentTools.cs:18` 是 **Worker 自己的 DB 层**（直接 `DbClient.GetClient(parameters)`），Worker 侧**能读写** `sub_agent_runs`。
+2. ~~子会话 transcript 落库即可救回报告~~ —— **错**。实测父 run 已结束的 3 条（`call_00_ET_…` / `call_00_Yj…` / `call_00_D3…`）：`data.transcript` 里的 assistant 文本 = **70 / 473 / 177 字符**，与 `data.report` **完全一致**。transcript 本身就是渲染端从事件流累积的，父 run 一死同样残缺 —— **它救不了**。
+3. ~~`reportStatus` 需要新落点~~ —— **不成立**。`sub_agent_runs.data` JSON 里**已有** `reportStatus`（实测值 `"submitted"`），与 `report` / `transcript` / `streamingText` / `usage` 等并列。
+
+**唯一完整的源**：Worker 侧 `SubAgentRunCollector.GetFinalOutput()` —— 走 `childState.EventObserver` 直连（`AgentRuntimeTools.cs:241-248`），**不经过父 run transport**。
+
+**修订后的口径**：
+
+1. **落点（唯一的方向性问题，待老大拍板）**
+   - **甲（建议）**：Worker 在子 agent 结束时把 `GetFinalOutput()` 写进 `sub_agent_runs.data` 新增键（如 `finalOutput`）。**不动 schema**；渲染端优先读它、兜底 `report`/`transcript`。成本最小，一次解决「完整性 + 父 run 死 + 进程重启恢复」。
+   - **乙**：照 OpenCowork 落独立子会话（`__subagent__{runId}` 进 `messages` 表 + `childSessionId`）。可回读完整子会话，但成本高、与现有 `transcript` 展示重叠、还要处理会话列表过滤。
+2. **报告正文口径**：`GetFinalOutput()`（**唯一完整源**，无选择余地）。若要剥掉报告头的过渡话术，在渲染端做。
+3. **「重新汇报」按钮**：建议做（对标 OpenCowork `Thread.tsx:320`），轻量。
+4. ~~`reportStatus` 落点~~ —— **撤销**，已在 `data` JSON 内。
 
 ---
 

@@ -44,6 +44,7 @@ internal static partial class Program
             RunLifecycleRegressionSuite(dbPath);
             RunSubAgentConcurrencySuiteAsync().GetAwaiter().GetResult();
             RunSpillRegressionSuite();
+            RunSubAgentReportStoreSuite();
             RunImageContentSuite();
             Console.WriteLine($"Goal regression tests passed: {_passed}");
             return 0;

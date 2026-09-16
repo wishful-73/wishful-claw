@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -60,8 +60,18 @@ public static partial class SubAgentExecutor
                     BuildToolCallEntries(collector.ToolCallSummaries));
 
                 var output = collector.GetFinalOutput();
-                if (string.IsNullOrWhiteSpace(output))
+                var reportProduced = !string.IsNullOrWhiteSpace(output);
+                if (!reportProduced)
                     output = "Sub-agent completed but produced no output.";
+
+                // S-36: 后台子 agent 的流式转发同样绑在父 run 的 transport 上，父 run 一死
+                // 就断；这里落库的是完整报告，主会话与界面重启后都从它取值。
+                if (reportProduced)
+                {
+                    SubAgentReportStore.SaveFinalOutput(
+                        toolCallId, parentState.SessionId, definition.Name, output,
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), success: true);
+                }
 
                 BackgroundSubAgentRegistry.Complete(
                     toolCallId, output, collector.ToolCallCount, collector.Iterations,
@@ -70,7 +80,7 @@ public static partial class SubAgentExecutor
                 // Emit sub_agent_end so the frontend updates the card
                 var resultJson = BuildResultJson(
                     definition.Name, toolCallId, output, true, childState.StopReason,
-                    collector.ToolCallCount, collector.Iterations);
+                    collector.ToolCallCount, collector.Iterations, reportProduced);
 
                 await AgentRuntimeTools.EmitAsync(
                     parentState, context,
@@ -136,7 +146,8 @@ public static partial class SubAgentExecutor
                         ToolUseId: toolCallId,
                         Result: BuildResultJson(
                             definition.Name, toolCallId, "Sub-agent was cancelled.",
-                            false, "cancelled", collector.ToolCallCount, collector.Iterations)));
+                            false, "cancelled", collector.ToolCallCount, collector.Iterations,
+                            reportSubmitted: false)));
 
                 WorkerLog.Info(
                     $"background sub-agent cancelled parentRunId={parentState.RunId} " +
@@ -158,7 +169,8 @@ public static partial class SubAgentExecutor
                             ToolUseId: toolCallId,
                             Result: BuildResultJson(
                                 definition.Name, toolCallId, $"Sub-agent failed: {ex.Message}",
-                                false, "error", collector.ToolCallCount, collector.Iterations)));
+                                false, "error", collector.ToolCallCount, collector.Iterations,
+                                reportSubmitted: false)));
                 }
                 catch (Exception emitEx)
                 {

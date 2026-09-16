@@ -79,6 +79,13 @@ function normalizePersistedSubAgentList(value: unknown): SubAgentState[] {
   if (!Array.isArray(value)) return []
   return compactSubAgentListForPersistence(value as SubAgentState[]).map((agent) => ({
     ...agent,
+    // Worker 落库的 finalOutput 才是完整报告；流式累积的那份在父 run 提前结束时只有前
+    // 几轮。它更长才覆盖，避免兜底文案冲掉已有内容（S-36）。
+    report:
+      typeof agent.finalOutput === 'string' &&
+      agent.finalOutput.trim().length > (agent.report ?? '').trim().length
+        ? agent.finalOutput
+        : agent.report,
     endReason:
       agent.endReason === 'completed' ||
       agent.endReason === 'max_iterations' ||

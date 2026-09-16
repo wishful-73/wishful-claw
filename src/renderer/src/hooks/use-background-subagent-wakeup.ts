@@ -13,7 +13,7 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
-import { buildProviderPayload } from '@renderer/hooks/use-chat-actions'
+import { buildProviderPayload, hasActiveSessionRunForSession } from '@renderer/hooks/use-chat-actions'
 import { backgroundSubAgentCompletions } from '@renderer/lib/agent/sub-agents/background-events'
 
 const WAKE_DEBOUNCE_MS = 800
@@ -62,15 +62,18 @@ async function wakeSession(sessionId: string): Promise<void> {
   if (!session) return
 
   // Main run active — reports ride the normal queue; nothing to do.
-  if (chatStore.streamingMessages[sessionId]) return
+  // 判活跃要用跟发送路径同一个判据：只看 streamingMessages 会漏掉「正在起跑」和「agent
+  // 已登记但还没推出流式消息」两种状态，那两种情况下 drain 掉缓冲就没人接力了。
+  if (hasActiveSessionRunForSession(sessionId)) return
 
-  const reports = await drainBufferedReports(sessionId)
-  if (reports.length === 0) return
-
+  // 先把前置条件全部探明再动缓冲：drain 是破坏性的，中途任何 return 都会让报告蒸发。
   const providerStore = useProviderStore.getState()
   const activeProvider = providerStore.getActiveProvider()
   const modelId = providerStore.activeModelId || activeProvider?.defaultModel
   if (!activeProvider || !modelId) return
+
+  const reports = await drainBufferedReports(sessionId)
+  if (reports.length === 0) return
 
   const settings = useSettingsStore.getState()
   const reportText = reports.join('\n\n---\n\n')

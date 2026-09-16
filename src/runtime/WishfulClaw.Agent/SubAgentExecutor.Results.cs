@@ -28,7 +28,8 @@ public static partial class SubAgentExecutor
         bool success,
         string? stopReason,
         int toolCallCount,
-        int iterations)
+        int iterations,
+        bool reportSubmitted)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, WriteOptions))
@@ -38,6 +39,9 @@ public static partial class SubAgentExecutor
             writer.WriteString("toolUseId", toolUseId);
             writer.WriteBoolean("success", success);
             writer.WriteString("output", output);
+            // 显式声明这份 output 是子 agent 真实产出的报告。缺了它渲染端只能看 output
+            // 是否为空 —— 而 Worker 对空输出会兜底成一句话，那条判据恒真。
+            writer.WriteBoolean("reportSubmitted", reportSubmitted);
             writer.WriteString("stopReason", stopReason ?? "completed");
             writer.WriteNumber("toolCallCount", toolCallCount);
             writer.WriteNumber("iterations", iterations);

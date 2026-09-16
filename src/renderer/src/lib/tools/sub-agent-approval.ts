@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Sub-agent tool approval handler.
  *
  * When a sub-agent executes a tool that requires approval (Write, Edit, Bash, etc.),
@@ -16,6 +16,10 @@
 
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { inputSummary } from '@renderer/components/chat/tool-call-summary'
+import { useChatStore } from '@renderer/stores/chat-store'
+import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { IPC } from '@renderer/lib/ipc/channels'
+import { requestChannelShellApproval } from '@renderer/lib/channel/channel-shell-approval'
 
 const pendingApprovals = new Map<
   string,
@@ -59,6 +63,37 @@ export async function handleSubAgentApprovalRequest(
   // approvals, so resolve synchronously via a confirm dialog. sequence keeps
   // concurrent dialogs in tool-card order despite IPC arrival randomness.
   if (record.source === 'default-mode') {
+    // Channel runs have no dialog to render. Relay the prompt back into the
+    // channel and let the user's reply decide it — otherwise the run hangs on a
+    // confirmation the user can never see.
+    if (record.channelSession === true) {
+      const sessionId = typeof record.sessionId === 'string' ? record.sessionId.trim() : ''
+      const session = useChatStore.getState().sessions.find((item) => item.id === sessionId)
+      const pluginId = session?.pluginId
+      const chatId = session?.externalChatId
+      if (!sessionId || !pluginId || !chatId) {
+        return { approved: false }
+      }
+      const approved = await requestChannelShellApproval({
+        sessionId,
+        toolCallId,
+        toolName,
+        summary: inputSummary(toolName, input),
+        send: async (message) => {
+          try {
+            await ipcClient.invoke(IPC.PLUGIN_EXEC, {
+              pluginId,
+              action: 'sendMessage',
+              params: { chatId, content: message }
+            })
+          } catch (error) {
+            console.error('[SubAgentApproval] Failed to relay channel approval:', error)
+          }
+        }
+      })
+      return { approved }
+    }
+
     const detail = inputSummary(toolName, input)
     const approved = await confirm({
       title: `工具调用确认 — ${toolName}`,

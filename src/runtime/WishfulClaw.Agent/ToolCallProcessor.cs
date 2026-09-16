@@ -493,6 +493,15 @@ public static partial class ToolCallProcessor
                     // IPC arrival order is nondeterministic. startedAt lets the
                     // renderer queue dialogs in card order instead.
                     aw.WriteNumber("startedAt", startedAt);
+                    // Channel runs have no renderer dialog to show. The renderer
+                    // relays the prompt back into the channel instead, so it needs
+                    // the owning session to find the channel binding and to match
+                    // the user's reply against this tool call.
+                    aw.WriteString("sessionId", state.SessionId);
+                    if (IsChannelSession(state.Parameters))
+                    {
+                        aw.WriteBoolean("channelSession", true);
+                    }
                     aw.WritePropertyName("input");
                     displayInput.WriteTo(aw);
                     aw.WriteEndObject();

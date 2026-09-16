@@ -14,12 +14,14 @@ import {
   clearPendingSessionMessages,
   dispatchNextQueuedMessageForSession,
   getPendingSessionMessages,
+  insertPendingSessionMessageNow,
   isPendingSessionDispatchPaused,
   removePendingSessionMessage,
   subscribePendingSessionMessages,
   updatePendingSessionMessageDraft,
   type PendingSessionMessageItem
 } from '@renderer/hooks/use-chat-actions'
+import { useChatStore } from '@renderer/stores/chat-store'
 import { EMPTY_QUEUED_MESSAGES } from './types'
 import { areQueuedMessagesEqual } from './utils'
 import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
@@ -161,6 +163,26 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
     dispatchNextQueuedMessageForSession(activeSessionId)
   }, [activeSessionId])
 
+  // S-33: 「立即插入」只在当前会话确实有活跃 run 时才有意义 —— 没有在跑的轮次
+  // 就没有可以插进去的地方，按钮不该出现。
+  const canInsertQueuedMessageNow = useChatStore((s) =>
+    activeSessionId ? Boolean(s.streamingMessages[activeSessionId]) : false
+  )
+
+  const insertQueuedMessageNow = React.useCallback(async () => {
+    if (!activeSessionId) return
+    const head = queuedMessages[0]
+    if (!head) return
+    const inserted = await insertPendingSessionMessageNow(activeSessionId, head.id)
+    if (!inserted) {
+      toast.error(
+        t('input.queueInsertNowFailed', {
+          defaultValue: '插入失败：当前没有正在执行的轮次，或该轮已结束'
+        })
+      )
+    }
+  }, [activeSessionId, queuedMessages, t])
+
   const handleQueueEditPaste = React.useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>): void => {
       const imageFiles = getPastedImageFiles(e.clipboardData)
@@ -204,6 +226,8 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
   return {
     queuedMessages,
     isQueueDispatchPaused,
+    canInsertQueuedMessageNow,
+    insertQueuedMessageNow,
     editingQueueItemId,
     editingQueueText,
     setEditingQueueText,

@@ -772,6 +772,48 @@ export function getPendingSessionMessages(sessionId: string): PendingSessionMess
   return _pendingMessages.get(sessionId) ?? []
 }
 
+/**
+ * S-33：把队列里某条消息直接塞进当前正在跑的那一轮。
+ *
+ * 与「排队等当前轮结束」不同，这条走 Worker 的 message queue —— 注入后 AgentLoop
+ * 会在下一次 iteration 起点把它读进对话。它**不打断**正在执行的工具调用，只是让
+ * agent 下一轮就看见这条消息。
+ *
+ * 成功后从队列移除；任何一步失败都保持原样，用户还能退回排队那条路。
+ */
+export async function insertPendingSessionMessageNow(
+  sessionId: string,
+  messageId: string
+): Promise<boolean> {
+  const list = _pendingMessages.get(sessionId) ?? []
+  const item = list.find((message) => message.id === messageId)
+  if (!item) return false
+
+  const runId = useChatStore.getState().streamingMessages[sessionId]
+  if (!runId) return false
+
+  // 原文优先：rawParams.messages 才是真正发给模型的那份（含选中文件上下文与
+  // 展开后的粘贴块）；requestText 只服务展示和「编辑后再排队」。
+  const rawMessages = item.rawParams?.messages
+  const content = rawMessages?.length
+    ? rawMessages[rawMessages.length - 1].content
+    : item.text
+
+  try {
+    const result = await window.api.workerRequest<{ appended: boolean; count: number }>(
+      'agent/append-messages',
+      { runId, messages: [{ role: 'user', content }] }
+    )
+    if (!result?.appended) return false
+  } catch (error) {
+    console.warn('[ChatActions] Failed to insert queued message into the running turn', error)
+    return false
+  }
+
+  removePendingSessionMessage(sessionId, messageId)
+  return true
+}
+
 export function isPendingSessionDispatchPaused(sessionId: string): boolean {
   return _pausedPendingSessionDispatch.has(sessionId)
 }

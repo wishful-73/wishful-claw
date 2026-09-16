@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
@@ -42,6 +42,11 @@ interface QueuedMessagesPanelProps {
   setQueueClearConfirmOpen: (open: boolean) => void
   clearQueuedMessagesForActiveSession: () => void
 
+  // S-33: 把队首那条直接塞进当前正在跑的那一轮（不打断正在执行的工具，
+  // AgentLoop 下一次 iteration 起点读到它）
+  canInsertNow: boolean
+  handleInsertNow: () => void
+
   // Helpers
   summarizeQueuedMessage: (text: string) => string
 }
@@ -68,6 +73,8 @@ export function QueuedMessagesPanel({
   queueClearConfirmOpen,
   setQueueClearConfirmOpen,
   clearQueuedMessagesForActiveSession,
+  canInsertNow,
+  handleInsertNow,
   summarizeQueuedMessage
 }: QueuedMessagesPanelProps) {
   const { t } = useTranslation('chat')
@@ -94,6 +101,20 @@ export function QueuedMessagesPanel({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {canInsertNow && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 px-2 text-[10px]"
+                onClick={handleInsertNow}
+                title={t('input.queueInsertNowHint', {
+                  defaultValue: '让 Agent 下一轮就读到这条，不等当前轮跑完'
+                })}
+              >
+                {t('input.queueInsertNow', { defaultValue: '立即插入' })}
+              </Button>
+            )}
             {isQueueDispatchPaused && (
               <Button type="button" variant="secondary" size="sm" className="h-7 px-2 text-[10px]" onClick={resumeQueuedMessages}>
                 {t('input.queueResume', { defaultValue: 'Resume' })}

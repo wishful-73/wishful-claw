@@ -226,7 +226,8 @@ export function InputArea({
     editingQueueImages, setEditingQueueImages, queueClearConfirmOpen, setQueueClearConfirmOpen,
     queueFileInputRef, startEditQueuedMessage, cancelEditQueuedMessage, removeQueuedMessage,
     addQueuedImages, removeQueuedImage, saveQueuedMessage, clearQueuedMessagesForActiveSession,
-    handleClearQueuedMessages, resumeQueuedMessages, isQueueDispatchPaused, handleQueueEditPaste
+    handleClearQueuedMessages, resumeQueuedMessages, isQueueDispatchPaused, handleQueueEditPaste,
+    canInsertQueuedMessageNow, insertQueuedMessageNow
   } = useQueuedMessages({
     activeSessionId, suppressPendingQueue, t, isStreaming, getPastedImageFiles, setPreviewImage
   })
@@ -320,6 +321,7 @@ export function InputArea({
         isQueueDispatchPaused={isQueueDispatchPaused} resumeQueuedMessages={resumeQueuedMessages}
         handleClearQueuedMessages={handleClearQueuedMessages} queueClearConfirmOpen={queueClearConfirmOpen}
         setQueueClearConfirmOpen={setQueueClearConfirmOpen} clearQueuedMessagesForActiveSession={clearQueuedMessagesForActiveSession}
+        canInsertNow={canInsertQueuedMessageNow} handleInsertNow={insertQueuedMessageNow}
         summarizeQueuedMessage={summarizeQueuedMessage}
       />
 

@@ -220,13 +220,16 @@ export const useUIStore = create<UIStore>((set, get) => ({
   openDrawPage: () => set({ drawPageOpen: true, freeChatPageOpen: false, tasksPageOpen: false, taskBoardPageOpen: false }),
   closeDrawPage: () => set({ drawPageOpen: false }),
   freeChatPageOpen: false,
-  openFreeChatPage: () => set({
-    freeChatPageOpen: true,
-    drawPageOpen: false,
-    tasksPageOpen: false,
-    taskBoardPageOpen: false,
-    codeGraphPageOpen: false
-  }),
+  openFreeChatPage: () =>
+    set({
+      freeChatPageOpen: true,
+      // 网页需要宽度：进免费对话页时把左侧栏让出去（用户仍可用标题栏按钮展开）。
+      leftSidebarOpen: false,
+      drawPageOpen: false,
+      tasksPageOpen: false,
+      taskBoardPageOpen: false,
+      codeGraphPageOpen: false
+    }),
   closeFreeChatPage: () => set({ freeChatPageOpen: false }),
   tasksPageOpen: false,
   openTasksPage: () => set({ drawPageOpen: false, tasksPageOpen: true, taskBoardPageOpen: false }),

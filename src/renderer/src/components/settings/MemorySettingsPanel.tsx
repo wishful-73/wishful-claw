@@ -1,4 +1,4 @@
-﻿import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -17,6 +17,10 @@ import {
 } from '@renderer/stores/provider-store'
 import type { ReasoningEffortLevel } from '@shared/types/provider'
 import type { MemoryOrganizationThinkingMode } from '@renderer/stores/settings-store-types'
+import {
+  readOrganizationReports,
+  type MemoryOrganizationReport
+} from '@renderer/lib/agent/memory-organization'
 import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
 
 function clampInt(value: number, min: number, max: number, fallback: number): number {
@@ -54,6 +58,11 @@ function getFirstEnabledModelId(provider: {
   return provider.models.find((model) => isTextModel(model, provider.type))?.id ?? ''
 }
 
+/** Timestamp formatter matching the one MemoryPanel keeps locally. */
+function formatMemoryTimestamp(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(timestamp)
+}
+
 function MemorySettingsPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const settings = useSettingsStore()
@@ -77,6 +86,17 @@ function MemorySettingsPanel(): React.JSX.Element {
   const reasoningEffortLevels = organizationThinkingConfig?.reasoningEffortLevels?.filter(
     (level) => level !== 'none' && level !== 'ultra'
   ) ?? []
+
+  const [organizationReports, setOrganizationReports] = useState<MemoryOrganizationReport[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void readOrganizationReports().then((reports) => {
+      if (!cancelled) setOrganizationReports(reports)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const tierRows = [
     {
@@ -398,6 +418,63 @@ function MemorySettingsPanel(): React.JSX.Element {
             />
           }
         />
+      </SettingsSection>
+
+      {/* Execution log: lets the user confirm the organization task actually ran. */}
+      <SettingsSection
+        id="sec-memory-execution-log"
+        title={t('memoryPage.executionLog.title')}
+        description={t('memoryPage.executionLog.desc')}
+      >
+        {organizationReports.length === 0 ? (
+          <SettingHint>{t('memoryPage.executionLog.empty')}</SettingHint>
+        ) : (
+          <div className="max-h-64 space-y-1.5 overflow-y-auto">
+            {organizationReports.map((report) => {
+              const organized = report.scopes.filter((scope) => scope.organized).length
+              const detail =
+                report.error ??
+                report.scopes.find((scope) => scope.error)?.error ??
+                report.scopes.find((scope) => scope.skippedReason && !scope.organized)
+                  ?.skippedReason ??
+                null
+              return (
+                <div
+                  key={report.id}
+                  className={cn(
+                    'rounded-md border border-border p-2 text-xs',
+                    detail && 'border-amber-500/40'
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">
+                      {t(`memoryPage.executionLog.trigger.${report.trigger}`, {
+                        defaultValue: report.trigger
+                      })}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {formatMemoryTimestamp(report.finishedAt)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-muted-foreground/70">
+                    {t('memoryPage.executionLog.progress', {
+                      organized,
+                      total: report.scopes.length
+                    })}
+                  </p>
+                  {detail && (
+                    <p
+                      className="mt-0.5 truncate text-[10px] text-muted-foreground/70"
+                      title={detail}
+                    >
+                      {detail}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </SettingsSection>
     </div>
   )

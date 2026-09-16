@@ -1586,6 +1586,18 @@
         "label": "召回可见性",
         "desc": "在会话中展示本次召回了哪些记忆（或未召回的原因）"
       }
+    },
+    "executionLog": {
+      "title": "执行记录",
+      "desc": "记忆整理任务的最近执行情况：是否执行、整理了几个作用域、跳过或失败的原因",
+      "empty": "还没有执行记录",
+      "progress": "已整理 {{organized}}/{{total}} 个作用域",
+      "trigger": {
+        "manual": "手动触发",
+        "startup": "启动触发",
+        "nightly": "定时触发",
+        "catchup": "补跑"
+      }
     }
   },
   "usage": {

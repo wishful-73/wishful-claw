@@ -1447,6 +1447,18 @@
         "label": "Recall visibility",
         "desc": "Show which memories were recalled in the session (or why none were)"
       }
+    },
+    "executionLog": {
+      "title": "Execution log",
+      "desc": "Recent runs of the memory organization task: whether it ran, how many scopes it handled, and why it skipped or failed",
+      "empty": "No execution records yet",
+      "progress": "{{organized}}/{{total}} scopes organized",
+      "trigger": {
+        "manual": "Manual",
+        "startup": "On startup",
+        "nightly": "Scheduled",
+        "catchup": "Catch-up"
+      }
     }
   },
   "usage": {

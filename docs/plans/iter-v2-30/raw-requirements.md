@@ -401,6 +401,135 @@ useEffect(() => {
 
 ---
 
+## S-33 队列 banner 新增「立即插入」按钮
+
+**一句话**：队列里的消息可以**直接塞进当前正在跑的那一轮**，不必等本轮结束。
+
+**来源**：老大 2026-09-16 原话 ——「我也倾向于进渲染端度队列，渲染端队列进入以后目前有个 banner 显示，上面可以加一个按钮用于直接插进当前这一轮。也就是用户可以手动点击立即插入」。
+
+**已落地**（提交 `34e63dde`）：
+
+- `hooks/use-chat-actions.ts:774+` —— 把队列某条消息塞进当前 run，**走 Worker 的 message queue**，不打断正在执行的工具，AgentLoop 下一次 iteration 起点读到它
+- `components/chat/InputArea/use-queued-messages.ts:166-169` —— `canInsertQueuedMessageNow`：只在当前会话**确有活跃 run** 时才给按钮（没有可插入的轮次就不显示）
+- `components/chat/InputArea/queued-messages-panel.tsx:45-47` —— 按钮渲染
+- locale `chat.json`：`input.queueInsertNow` / `queueInsertNowHint` / `queueInsertNowFailed`
+
+---
+
+## S-34 会话 todo 状态与实际执行脱节（代码层兜底）
+
+**一句话**：agent 建了 todo 之后**忘了更新状态**，banner 上挂着的条目与真实执行进度不一致。老大要求**从代码层兜底**，不接受靠提示词 / `agents.md` 之类「协议」去约束使用者。
+
+### 背景（2026-09-16 老大原话）
+
+> 「你没有更新 todo 里面的内容，我们需要想一个策略，毕竟你没更新就意味着我们代码有问题」
+
+> 「我想从代码层去解决这个 todo 问题，**而不是通过协议**，毕竟我是作者，我要为所有使用的用户负责，我不能要求他们也去加 agents.md 呀」
+
+老大已排期：**进 30 迭代**（2026-09-16）。
+
+### 现状勘测（2026-09-16 实读）
+
+**存储**：`src/runtime/WishfulClaw.Agent/AgentRuntimeTaskExecutor.cs`（OpenCowork 移植）。SQLite 支撑、**session 作用域**，5 状态 `pending / in_progress / blocked / in_review / completed`，`deleted` = **物理删除**。工具族 `TodoTaskCreate / Get / Update / List`（`:21-26`，旧名 `Task*` 保留兼容）。
+
+**唯一写入方 = agent 自己调**：`ExecuteUpdate`（`:117-248`）只认 agent 传进来的 `status` 字段，**代码里没有任何自动状态推进**。
+
+**唯一的「督促」是提示词** —— `WishfulClaw.Persona/PromptBuilder.cs:379-382`：
+
+```
+- Call TodoTaskList before creating tasks to avoid duplicates.
+- Use TodoTaskUpdate to mark `in_progress` when starting (one at a time),
+  `blocked` when stuck, `in_review` when done and awaiting user confirmation,
+  `completed` only when fully done and verified.
+```
+
+⇒ 这正是老大说的**「协议」**。agent 不照做，代码不会拦、不会提示、不会纠正。
+
+**已有埋点（可复用做卫生检查）**：`ExecuteUpdate` 内已产出 `todo_created` / `todo_status_changed` / `todo_deleted`，经 `DbAgentTimelineTools.Log` 落库（`:89-90`、`:242-245`）。
+
+**渲染端**：`components/chat/SessionTodoPanel.tsx`（banner）；`stores/chat-store/index.ts:51` `NATIVE_TASK_TOOL_NAMES` 从工具结果解析后刷新。
+
+### 候选方向（**先讨论，别写死**）
+
+| # | 方向 | 说明 |
+|---|---|---|
+| A | **run 收口时校对** | 一轮 run 终结时扫本 session 仍为 `in_progress` 的 todo，与运行态对齐后修正，并落 timeline |
+| B | **状态机强制** | run 结束时若存在「建了从未被 update」的 `pending`，由代码注入一轮提醒（**代码注入，不是提示词**） |
+| C | **渲染端对齐** | banner 的「执行中」标记与 run 活跃度挂钩：run 不活跃而 todo 仍 `in_progress` ⇒ 显示「待确认」，不再假装在跑 |
+| D | **孤儿归档** | 会话结束后残留 todo 归档 |
+
+### 待定口径
+
+1. A 的语义边界 —— 跨轮长任务会不会被误降级
+2. B 的注入时机 —— 挂在 AgentLoop 哪个 hook
+3. 与 `deleted` 物理删除的交互
+4. 最终形态（A/B/C/D 取哪几项）**待老大拍板**
+
+---
+
+## S-35 文件树「发送到会话」对文件夹不成立
+
+**一句话**：文件树右键把**文件夹**发送到会话，发送后消息下面挂一条「Read failed」附件（`Path is a directory`）。**「目录」这个语义在整条链上不存在**，被当成「读不出内容的文件」。
+
+### 来源（2026-09-16 老大口述原话）
+
+> 「文件夹右键发送到会话，然后会话消息发送后，我们会默认读取发送中的链接对于文件，没有判断是文件夹，这个可能是右键发送到会话就没有带一些东西」
+
+### 现状勘测（2026-09-16 实读）
+
+**入口三处不一致** —— 同一操作两种态度：
+
+| 入口 | 位置 | 对目录 |
+|---|---|---|
+| 行内 hover 按钮 | `tree-item.tsx:192`（`!agentSurface && !isDir && !isRenaming`） | **排除** ✓ |
+| 行右键菜单「发送到会话」 | `tree-item.tsx:232`（**无条件**渲染） | **包含** ✗ |
+| 根节点右键菜单 | `file-tree-context-menu.tsx:51-56`（根节点即 `workingFolder`） | **包含** ✗ |
+
+**动作侧**：`use-file-tree.ts:294-300` `handleAddToChat` —— 只做一件事，把相对路径包成 select-file tag 写进输入框，**不看 `isDir`**：
+
+```ts
+const relativePath = toRelativePath(filePath, workingFolder)
+useUIStore.getState().setPendingInsertText(createSelectFileTag(relativePath))
+```
+
+（老大猜的「没带一些东西」—— 这半成立。）
+
+**读取端**：`lib/agent/selected-file-context.ts`
+
+- `:302` `statFileForRead` **认得出目录** —— `if (result.isDirectory) return 'Path is a directory'`
+- `:176-179` 但把它按 **error** 处理：`metaFiles.push({ ...baseMeta, error: statError })`
+- 而 PDF / 二进制（`:169-173`）、超预算（`:199-211`）、不可解析（`:164-167`）**全都走 `skipped`**
+
+⇒ **真因不是「信息缺失」，是目录被归进了「读取失败」而不是「路径引用」。** 读取端明明知道，却走了错分支。
+
+**渲染端**：`components/chat/user-message-views.tsx:47-89`
+
+- `error` → 橙色 `AlertCircle` + `selectedFileReadFailed`（"Read failed"）
+- `skipped` + `'pdf'` → PDF 文案；`'unresolved' | 'budget'` → 未注入文案；**其余 skipped 一律 → `skippedNonText`**（"binary or document file was not read directly"）
+
+### 方案（推荐 **A + B + C1**；C 待老大拍板）
+
+**A（核心）读取端把「目录」从 `error` 改成 `skipped`**
+
+`statFileForRead` 的返回值改为能区分「目录」与「真错误」：目录 → `{ skipped: true, skipReason: 'directory' }`，真错误保持 `error`。
+作用面覆盖**所有**入口（右键 / `@` 搜索 / 手打路径），不只右键这一条。
+
+**B（配套）渲染端加 `'directory'` 文案分支**
+
+不加则落进最后一个 `else`，显示 "binary or document file was not read directly" —— 目录不是二进制文件，**文案是错的**。新增 `userMessage.selectedFileReadSkippedDirectory`（zh/en）。
+
+**C（产品语义）目录该不该能「发送到会话」？**
+
+- **C1 允许**（推荐）：目录作为**纯路径引用**发出，**不读内容**；AI 在消息里看到 `@src/components`，自己 `LS` 即可。「看看这个目录」是常见诉求；且根节点本身就是目录，禁止等于顺带把根节点这项也砍掉。采纳 C1 的话，hover 按钮（现排除目录）应一并放开，**三处统一**。
+- **C2 禁止**（备选）：三处入口统一排除目录。
+
+### 待定口径
+
+1. **C 取 C1 还是 C2 —— 待老大拍板**（默认按 C1 推）
+2. C1 下 hover 按钮是否一并放开（要一致就放开）
+
+---
+
 ## 待登记（清尾巴，**等老大点名**）
 
 老大原话「30 迭代主要是 spill + 清尾巴」，**未逐条点名**。以下为当前已存在的候选池，按来源分组，**均未排入**：
@@ -424,6 +553,14 @@ useEffect(() => {
 
 - 左侧面板整理：扩展功能清空重建、自动化（定时任务）移入扩展、增加任务面板、绘图移入扩展
 - 快捷搜索扩展整合：Alt+Space 并入扩展数据源 + 「扩展」Tab（**与 S-27 同源，可能有重叠**）
+
+**D. `use_capability` 参数错层的代码层兜底**（2026-09-16 讨论产物，老大拍板「登记」）
+
+- **背景**：本轮已按老大口径做了 1+2 —— `UseCapabilityToolProvider.cs` 给 `capability_id` 补「顶层字段」说明，`arguments` 从**零描述**补成语义描述（`ToolSchemaBuilder.Object` 为此新增可选 `description` 形参，通用能力）。但 schema 描述只能**降低**概率，**不能消除** —— 它是被读的，不是被执行的。
+- **依据**：`docs/prompt-authoring.md` 第 3 关 ——「**能在代码里强制就不要靠嘱咐**」。工具描述和系统提示词同样是每轮重发的位置，排在提示词队尾、最后选。
+- **做法**：在 `AgentRuntimeUseCapabilityExecutor.CallCapabilityAsync` 取 `arguments` 处（`:256-259`）加一道纠偏 —— `arguments` 里若出现 `capability_id` / `action`，**自动提到顶层**再执行。
+- **前置核实**：目标工具自身是否存在同名参数（尤指 `capability_id`），避免误吞。
+- **触发条件**：**先观察** 1+2 之后模型是否仍踩这个坑（需重编 worker 后实测）；仍踩则升级为代码强制。
 
 > 登记原则：**只记不排**。哪几条进 30、哪几条留 31，等老大点名后回填编号。
 

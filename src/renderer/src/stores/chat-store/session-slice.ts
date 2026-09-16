@@ -516,8 +516,16 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         if (proj) proj.updatedAt = now
       }
       if (streamingMessageId) {
-        ;(state as unknown as { streamingMessages: Record<string, string> }).streamingMessages[sessionId] = streamingMessageId
-        ;(state as unknown as { streamingMessageId: string | null }).streamingMessageId = streamingMessageId
+        const streaming = state as unknown as {
+          streamingMessages: Record<string, string>
+          streamingMessageId: string | null
+        }
+        // iter-30 BUG-B：同 setStreamingMessageId —— 已挂着的活跃 run 不能被顶掉，
+        // 否则正在跑的那条流会失去渲染端入口。
+        if (!streaming.streamingMessages[sessionId]) {
+          streaming.streamingMessages[sessionId] = streamingMessageId
+        }
+        streaming.streamingMessageId = streamingMessageId
       }
     })
     if (sessionProjectId) {
@@ -746,15 +754,21 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         target.lastKnownMessageCount = actualCount
         if (usageBaseline) {
           target.usageBaseline = {
-            inputTokens: usageBaseline.totalInput,
+            // The rollup's totalInput is billable (cache excluded), but addUsageToTotals
+            // accumulates usage.inputTokens as the full input (cache included). Add the cache
+            // counters back so both sides share one footing — otherwise the session total
+            // under-counts input and cache read can appear to exceed it.
+            inputTokens:
+              usageBaseline.totalInput +
+              usageBaseline.totalCacheRead +
+              usageBaseline.totalCacheCreation,
             outputTokens: usageBaseline.totalOutput,
             cacheReadTokens: usageBaseline.totalCacheRead,
             cacheCreationTokens: usageBaseline.totalCacheCreation,
             reasoningTokens: usageBaseline.totalReasoning,
             totalDurationMs: usageBaseline.totalDurationMs,
-            // The rollup's totalInput is already billable (cache excluded), so state
-            // it explicitly — otherwise addUsageToTotals would subtract the cache
-            // tokens a second time.
+            // Kept for consumers that read it directly; addUsageToTotals recomputes
+            // billable input as inputTokens minus the cache counters.
             billableInputTokens: usageBaseline.totalInput
           }
           // The baseline supersedes everything accumulated so far (see above).

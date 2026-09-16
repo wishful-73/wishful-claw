@@ -576,8 +576,26 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       }
       if (realBottom > 0) realContentBottomRef.current = realBottom
     } else if (contentHeightWatermarkRef.current !== 0) {
+      // iter-30 S-32：撤留白之前，先把视口对齐到「真实内容底」。
+      // 旧实现在这里直接清 0，可 DOM 的 min-height 要等下一次提交才撤——于是
+      // 同帧的 scrollToBottomImmediate 会按「含留白」的 scrollHeight 把视口推到
+      // 底，下一帧留白消失、scrollHeight 骤减，浏览器又把 scrollTop clamp 回来。
+      // 一推一弹，正是那次最难受的回跳。
+      // 先落到真底：撤销 min-height 之后它仍是合法位置，撤销帧不再产生任何位移，
+      // 而 GAP 姿态收掉的 80px 也退化成一次单向、可预期的贴底动作。
+      const ref = listRef.current
+      const realBottom = getRealContentBottom()
+      if (ref && realBottom > 0) {
+        const target = Math.max(0, realBottom - ref.clientHeight)
+        if (Math.abs(ref.scrollTop - target) > 1) {
+          markProgrammaticScroll()
+          ref.scrollTop = target
+        }
+      }
       contentHeightWatermarkRef.current = 0
+      realContentBottomRef.current = realBottom
       setMinContentHeight(0)
+      return
     }
     if (contentHeightWatermarkRef.current > 0) {
       // 水位线激活：贴底跟随（GAP 姿态、只推不拽、钉底门控）与整屏悬空

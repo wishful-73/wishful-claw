@@ -100,7 +100,7 @@ export function FileTreeContent(props: FileTreeContentProps): React.JSX.Element 
       {agentSurface ? (
         <>
           <div
-            className="workspace-filetree-row workspace-filetree-row--agent workspace-filetree-row--interactive group flex h-[22px] cursor-pointer items-center gap-0 px-0 py-0 text-[12px]"
+            className="workspace-filetree-row workspace-filetree-row--agent workspace-filetree-row--interactive group flex h-[22px] cursor-pointer items-center gap-1 px-0 py-0 text-[12px]"
             style={{ paddingLeft: 4 }}
             onClick={() => setAgentRootExpanded((value) => !value)}
             title={workingFolder}

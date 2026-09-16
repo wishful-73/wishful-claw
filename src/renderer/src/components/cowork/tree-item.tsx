@@ -109,7 +109,7 @@ export function TreeItem({
         'workspace-filetree-row group relative flex items-center text-[12px] transition-all',
         'cursor-pointer',
         agentSurface
-          ? 'workspace-filetree-row--agent gap-0 rounded-none px-0 py-0'
+          ? 'workspace-filetree-row--agent gap-1 rounded-none px-0 py-0'
           : 'gap-2 rounded-xl px-2 py-1.5',
         isActive
           ? 'workspace-filetree-row--active text-foreground'

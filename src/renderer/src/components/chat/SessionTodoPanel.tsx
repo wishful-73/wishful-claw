@@ -92,7 +92,7 @@ export function SessionTodoPanel({
             <button
               type="button"
               onClick={() => setExpanded((prev) => !prev)}
-              className="flex min-w-0 cursor-pointer items-center gap-2 text-left transition-colors hover:text-foreground"
+              className="flex w-full min-w-0 cursor-pointer items-center gap-2 text-left transition-colors hover:text-foreground"
               aria-label={summaryLabel}
               aria-expanded={expanded}
             >
@@ -103,7 +103,7 @@ export function SessionTodoPanel({
               ) : (
                 <ClipboardList className="size-3.5 shrink-0 text-muted-foreground/80" />
               )}
-              <span className="min-w-0 truncate text-[12px] font-medium text-foreground/90">
+              <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground/90">
                 {summaryLabel}
               </span>
               <ChevronDown

@@ -22,6 +22,7 @@ internal static partial class AgentLoop
     private const int DefaultContextCompressionLimit = 200_000;
     private const int ContextCompressionAutoBufferTokens = 13_000;
     private const int MaxOverflowCompressionAttemptsPerRun = 2;
+    private const int MaxToolPairingRepairAttemptsPerRun = 2;
 
     /// <summary>
     /// Main execution loop. Called by AgentRuntimeTools.ExecuteRunAsync.
@@ -242,6 +243,7 @@ internal static partial class AgentLoop
         var completed = false;
         var overflowCompressionAttempts = 0;
         var overflowCompressionPendingVerification = false;
+        var toolPairingRepairAttempts = 0;
 
         WorkerLog.Debug(
             $"agent loop start provider={providerType} " +
@@ -381,6 +383,29 @@ internal static partial class AgentLoop
                     lastInputTokens = 0;
                     overflowCompressionPendingVerification = true;
                 }
+                catch (Exception ex) when (
+                    ex is not OperationCanceledException &&
+                    toolPairingRepairAttempts < MaxToolPairingRepairAttemptsPerRun &&
+                    ToolPairingErrors.IsToolPairingError(ex))
+                {
+                    // 上游以「工具调用没配对」拒绝请求（HTTP 400）。坏数据可能出在常驻会话
+                    // 里的历史残留上，光重试不会变好 —— 必须先把缺失的结果补上，重试才有
+                    // 意义。所以这里先修，再回到循环重发同一请求。
+                    var repaired = sessionConv.RepairToolPairing();
+                    if (repaired == 0)
+                    {
+                        // 扫不出可修的地方：问题不在这条链上，别空转。
+                        throw;
+                    }
+
+                    toolPairingRepairAttempts++;
+                    WorkerLog.Warn(
+                        $"agent provider turn was rejected for unpaired tool calls; repaired and retrying " +
+                        $"runId={state.RunId} repaired={repaired} attempt={toolPairingRepairAttempts}/" +
+                        $"{MaxToolPairingRepairAttemptsPerRun} error={ex.Message}");
+                    conversation = sessionConv.GetConversation();
+                    wireConversation = sessionConv.GetWireConversation();
+                }
             }
 
             // Clear transient memory recall after first API call — subsequent
@@ -432,20 +457,25 @@ internal static partial class AgentLoop
             }
 
             // ── Tool execution ──
-            var toolResults = await ToolCallProcessor.ExecuteAsync(
-                turn.ToolCalls, parameters, state, context);
-
-            // T-7.1: Write results back BEFORE the cancellation check, and make sure
-            // every tool_call is paired with a result. Cancelling mid-execution used
-            // to `return` here and drop the results entirely, leaving the resident
-            // conversation with an assistant(tool_calls) message that had no matching
-            // tool result — the next request then got HTTP 400 from the provider
-            // ("...must be followed by tool messages..."). Calls that never started
-            // get an interruption placeholder so the pairing stays valid.
-            var pairedResults = ToolCallProcessor.EnsureEveryCallHasResult(turn.ToolCalls, toolResults);
-            var toolResultsMessage = AgentRuntimeChatMessage.UserToolResults(pairedResults);
-            conversation.Add(toolResultsMessage);
-            wireConversation.Add(CreateToolResultsWireMessage(pairedResults));
+            // T-7.1: 结果必须在工具执行之后无条件写回，所以写回放在 finally 里 ——
+            // 取消本身走 ExecuteAsync 内部的 break（正常返回部分结果），而中断和异常是
+            // 直接抛出去的；写在 try 之后就整段跳过，把 assistant(tool_calls) 永远悬空在
+            // 常驻会话里，之后每一次请求都被上游 400 拒绝（"...must be followed by
+            // tool messages..."）。没跑出结果的调用补中断占位符，配对始终成立。
+            // 写回要早于下面的取消检查 —— 取消后会话里也必须成对。
+            var toolResults = new List<AgentRuntimeToolResult>();
+            List<AgentRuntimeToolResult> pairedResults = [];
+            try
+            {
+                toolResults = await ToolCallProcessor.ExecuteAsync(
+                    turn.ToolCalls, parameters, state, context);
+            }
+            finally
+            {
+                pairedResults = ToolCallProcessor.EnsureEveryCallHasResult(turn.ToolCalls, toolResults);
+                conversation.Add(AgentRuntimeChatMessage.UserToolResults(pairedResults));
+                wireConversation.Add(CreateToolResultsWireMessage(pairedResults));
+            }
 
             if (state.IsCancellationRequested)
             {

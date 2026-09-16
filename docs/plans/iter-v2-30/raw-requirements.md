@@ -1183,6 +1183,69 @@ if (msg.Text.Contains("<current_time>", StringComparison.Ordinal))
 
 ---
 
+## S-45 配对错无自愈：悬空 tool_calls 让会话永久 400
+
+**来源**：2026-09-16 22:0x 老大从用量统计的请求明细里捞到 400 报文（「找 400 的，里面还有报错信息」），要求补救方案：「能不能识别这个报错，就修复请求里面的参数」。
+
+### 现场（实测，`~/.wishful-claw/index.db` 的 `request_usage_logs`）
+
+生产库全部 400 = **13 条 / 3 个会话**，同一个错：
+
+| 会话 | 时间 | 次数 |
+|---|---|---|
+| `lOzL9w1ou1FUddATk2XEq` | 09-16 21:03:28 ~ 21:03:43 | **连挂 5 次**（`attempt=1..5`） |
+| `FgyMUDIoPoTCHybYInbJ6` | 09-14 19:11 | 2 次 |
+| `JTmJBPUGlMWd3bVADTJu6` | 09-14 19:09 | **连挂 6 次** |
+
+原文（Console Go 中转，OpenAI 协议）：
+
+```
+OpenAI-compatible chat request failed HTTP 400: {"error":{"code":"invalid_request_error",
+"message":"Error from provider (Console Go): Upstream request failed: [invalid_request_error]
+An assistant message with 'tool_calls' must be followed by tool messages responding to each
+'tool_call_id'. (insufficient tool messages following tool_calls message)"}}
+```
+
+**排除了两个嫌疑**：11 个压缩快照逐个扫过配对（0 处不配对）；`messages.meta` 的工具调用信息齐全、恢复路径的合成逻辑也没被误跳过。另：21:04 重启之后至今零 400 —— 但老大明确「重启也没用」，说明内存态之外还有恢复路径能带回的病。
+
+### 根因
+
+`AgentLoop` 里 assistant 进会话之后，工具结果的写回**排在工具执行的下游**：
+
+```
+L389  conversation.Add(turn.AssistantMessage)      ← assistant(tool_calls) 已进会话
+L435  await ToolCallProcessor.ExecuteAsync(...)    ← 异常/中断从这里直接穿出去
+L445  EnsureEveryCallHasResult(...)                ← ★补齐，整段被跳过
+L447  conversation.Add(工具结果)
+```
+
+`SessionConversation` 是**进程级常驻**的（`SessionConversationManager`），而 `RepairToolPairing` 只在 `Initialize` / `InitializeIfEmpty` 两个恢复入口调用。于是悬空的 `assistant(tool_calls)` 留在内存里，之后每一次请求都被上游 400 拒绝 —— 重发无效、重试无效，只能切会话或重启 Worker。
+
+### 修法（老大裁定：**P1 不做**，其余推进）
+
+| | 改动 | 治什么 |
+|---|---|---|
+| **P0** | `AgentLoop.cs:435` 工具执行改 `try/finally`，结果写回放进 `finally` | 不再产出新病（异常 / 中断路径也保证配对） |
+| **P2** | `AgentLoop.cs` catch 链加错误驱动分支：识别配对错 → `RepairToolPairing` → 重发同一请求（上限 2 次，**修不动就 `throw`，不空转**） | 任何来源的旧病当场自愈 |
+| 小修 1 | `ProviderRetryPolicy` 把配对错从 400 重试里让出去 | 别空烧 5 次往返。**注意不是把 400 摘掉** —— 400 可重试是 2026-08-28 确认过的设计（`IsRetryableStatus` 注释明写） |
+| 小修 2 | `RepairToolPairing` 改为 **conversation 层 / wire 层各扫各的**，返回修补条数 | 去掉「两层共用一个 `insertAt`」的隐性假设 |
+
+新增 `ToolPairingErrors.cs`（各 provider 文案并集识别，照 `ContextCompression.Errors.cs` 的范式）。
+`RepairToolPairing` 由 `private void` 改 `internal int`（返回条数，供 P2 判断「修了没」）。
+
+**P1（发请求前无条件规范化）老大明确砍掉**：「这个太浪费时间了」。
+
+### 门禁
+
+C# Worker 0 警告 0 错误；`tests/WishfulClaw.Tests.sln` 0/0；C# 回归 **10/10**（Goal **186 → 213** 断言）；typecheck 0 错；TS **23/23**；AOT 无 IL2026/IL3050/IL3051（23,159,296 B）；触碰文件 BOM clean。
+
+新增测试 `tests/WishfulClaw.GoalRegressionTests/Program.ToolPairing.cs`（27 断言）。
+**测试当场抓到一处真 bug**：Anthropic 文案里标识符带反引号（`` `tool_use` ids were found without `tool_result` blocks ``），最初写的特征串跨过了标识符本身，`Contains` 匹配不上 → 改为 `"ids were found without"`。
+
+**待真机验证**：会话跑一个会被中断的任务（工具执行中取消），确认之后不再 400。
+
+---
+
 ## 待登记（清尾巴，**等老大点名**）
 
 老大原话「30 迭代主要是 spill + 清尾巴」，**未逐条点名**。以下为当前已存在的候选池，按来源分组，**均未排入**：

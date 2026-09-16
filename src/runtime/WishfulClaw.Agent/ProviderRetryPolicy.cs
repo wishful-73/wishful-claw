@@ -131,6 +131,10 @@ public static partial class ProviderRetryPolicy
             catch (ProviderHttpException ex) when (
                 IsRetryableStatus(ex.StatusCode) &&
                 !ContextCompression.IsContextWindowExceededError(ex) &&
+                // 配对错不走这里：会话数据一个字没变，重试只会拿到同一个 400，
+                // 白白烧掉几次往返。它交给 AgentLoop 的错误驱动分支 —— 先修配对，
+                // 再重发同一请求，那一次重试才是有意义的。
+                !ToolPairingErrors.IsToolPairingError(ex) &&
                 (isUnlimited || retryAttempt < maxAttempts) &&
                 !state.IsCancellationRequested)
             {

@@ -809,6 +809,46 @@ const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-
 
 ---
 
+## S-40 免费对话页改多选项卡（S-27 形态重做）
+
+**一句话**：顶部一行列出全部站点，点一下开一个选项卡、可同时开多个、能自己叉掉；**切换选项卡不重载页面**。
+
+**来源（2026-09-16 14:23 老大口述）**：
+
+> 「对了，之前切换了一轮回去后，登录状态也没了，我觉得可以这样，就是顶部是支持的项，点击后就选项卡增加一个，然后用户自己去叉掉选项卡，也就是可以同时有多个，这样点击后也不需要切换，如果存在就选项卡切换过去」
+
+**状态**：**已实施（2026-09-16，老大拍板「都按照你推荐的来整」）**
+
+### 根因（登录态为什么会丢）—— 被这次重做顺带治掉
+
+`src/main/index.ts:192` 把 Electron 的 userData 重定向到 `~/.wishful-claw[-dev]/electron-user-data`。实测该目录：
+
+| 目录 | 内容 |
+|---|---|
+| `~/.wishful-claw/electron-user-data/` | 只有默认 session（cookie 在其 `Network/` 下）；**无 `Partitions`** |
+| `~/.wishful-claw-dev/electron-user-data/Partitions/` | `wishfulclaw-browser/` —— 独立分区 |
+
+⇒ **两套 cookie 罐**。而 partition 由那个假 stub 决定：挂载瞬间 `reuseEnabled=true` ⇒ **默认 session**；IPC 回来变 `false` ⇒ **`persist:wishfulclaw-browser`**。用户在 A 罐登录、代码把 webview 挪到 B 罐 ⇒ **登录态就没了**。与 S-39 的「切站点才提示」是同一个根（初始值与最终值不一致）。
+
+### 修法
+
+1. **分区写死 `BUILTIN_BROWSER_PARTITION`**，不再读设置、不再调 `BROWSER_EMULATION_STATUS`。
+   - 顺带消掉「待登记 E」的一半：免费对话页从此与那个 stub 无关
+   - 用独立分区而非默认 session 另有安全理由：**默认 session 是宿主窗口自己在用的**，浏览器页面不该跟应用共享 cookie
+2. **一行选项卡**（老大在「甲：两行」/「乙：一行」中选了**乙**）：遍历 `sites` —— 没打开的渲染成普通按钮，打开了的变成带 × 的选项卡（高亮当前）。顺序跟随配置顺序。
+3. **webview 常驻**：每个已打开站点一个 webview，切换只切可见性（Tailwind `invisible`，保留布局尺寸；**不用 `display:none`** —— 那会把 webview 尺寸压成 0），**不销毁不重载**。只有 × 掉才销毁。
+4. **刷新按钮**改调当前 webview 的 `reload()`（原先靠 `key` 里的 `reloadToken`，那等于重建）。
+5. **持久化恢复**（老大选**恢复**）：`freeChatOpenTabIds` / `freeChatActiveTabId` 进 settings store 的 `partialize`，重开页面回到上次的选项卡。
+6. 规则抽成纯模块 `src/renderer/src/components/free-chat/free-chat-tabs.ts`，新测 `tests/free-chat-tabs/program.ts`（**22 断言**）。
+
+**代价（老大已知悉，不设上限）**：每个选项卡一个 Chromium 渲染进程，同时开多个站点内存会涨。
+
+**测试当场抓到一个设计不一致**：`reconcileFreeChatTabs`（站点被删时收敛）我最初写成「当前选项卡失效就回落第一个」，与手动关闭的「就近顶替」不一致 —— 测试报错后改为复用 `closeFreeChatTab`，两者规则统一。
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
 ## 待登记（清尾巴，**等老大点名**）
 
 老大原话「30 迭代主要是 spill + 清尾巴」，**未逐条点名**。以下为当前已存在的候选池，按来源分组，**均未排入**：
@@ -845,6 +885,7 @@ const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-
 
 - **现状**：`src/main/ipc/misc-handlers.ts:234-240` 恒回 `{ reuseEnabled: false, userAgent: '' }`。`userAgent` 恒空是「主进程拿不到系统浏览器 UA」的事实；但 `reuseEnabled` 恒 `false` 会让**设置页开关显示「已开启」、实际行为走另一条路**（`BUILTIN_BROWSER_PARTITION`），属假事实。
 - **本次故意没动 `reuseEnabled`**：改了会让 partition 从 `persist:wishfulclaw-browser` 换成默认 session，**用户已登录站点的登录态会丢**。当前「恒为 BUILTIN 分区」反而是稳定可用的。
+  - 补充（S-40 之后）：**免费对话页已与它解耦**（分区写死），右面板 `BrowserPanel.tsx` 仍在读它。
 - **两条出路**（二选一，都是新工作量）：① 整套做「复用系统浏览器 userData」（探测 Chrome/Edge/Brave 的 userData 目录 → 映射 partition），注意 Chrome 有进程锁、浏览器开着基本读不了；② 明确废弃该设置项（UI + IPC + 类型一起摘干净）。
 - **待老大点名**。
 
@@ -861,7 +902,7 @@ const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-
 | 1 | 站点清单 | **做成配置项** —— 位置 `设置页 → AI 服务 → 免费对话清单`，用户自己增删（不写死站点） |
 | 2 | 地址栏 | **不留** |
 | 3 | 登录态分区 | **共用**（能共用就共用） |
-| 4 | 站点切换 | **单实例**（改 URL，非多实例） |
+| 4 | 站点切换 | ~~**单实例**（改 URL，非多实例）~~ → **作废**（2026-09-16 14:23 老大改为多选项卡，见 **S-40**） |
 | 5 | 搜索面板 | 老大原话「**不仅搜索面板**」⇒ 按**要加搜索面板入口**处理 ⚠️ 是否还另有入口待确认 |
 
 ### S-28 聊天窗大图预览

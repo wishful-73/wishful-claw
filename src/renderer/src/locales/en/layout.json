@@ -597,7 +597,9 @@
   "freeChat": {
     "close": "Back",
     "reload": "Reload",
-    "empty": "No free chat site configured yet. Add one in Settings → AI Service → Free Chat Sites."
+    "tabClose": "Close",
+    "empty": "No free chat site configured yet. Add one in Settings → AI Service → Free Chat Sites.",
+    "noOpenTab": "Pick a site above to get started."
   },
   "browser": {
     "back": "Back",

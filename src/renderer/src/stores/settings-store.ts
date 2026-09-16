@@ -138,6 +138,9 @@ interface SettingsStore {
   browserUserDataSource: BrowserUserDataSource
   /** Free Chat page site list (iter-30 / S-27); user-editable in settings. */
   freeChatSites: FreeChatSite[]
+  /** 免费对话页已打开的选项卡（iter-30 / S-40）：站点 id 列表 + 当前选项卡，用于页面重开时恢复。 */
+  freeChatOpenTabIds: string[]
+  freeChatActiveTabId: string
   contextCompressionEnabled: boolean
   /** Global trigger ratio shared by every chat model. */
   contextCompressionThreshold: number
@@ -291,6 +294,8 @@ export const useSettingsStore = create<SettingsStore>()(
       browserUserDataReuseEnabled: true,
       browserUserDataSource: DEFAULT_BROWSER_USER_DATA_SOURCE,
       freeChatSites: DEFAULT_FREE_CHAT_SITES,
+      freeChatOpenTabIds: [],
+      freeChatActiveTabId: '',
       contextCompressionEnabled: true,
       contextCompressionThreshold: 0.8,
       editorWorkspaceEnabled: false,
@@ -539,7 +544,9 @@ export const useSettingsStore = create<SettingsStore>()(
         hooksEnabled: state.hooksEnabled,
         browserUserDataReuseEnabled: state.browserUserDataReuseEnabled,
         browserUserDataSource: normalizeBrowserUserDataSource(state.browserUserDataSource),
-        freeChatSites: state.freeChatSites
+        freeChatSites: state.freeChatSites,
+        freeChatOpenTabIds: state.freeChatOpenTabIds,
+        freeChatActiveTabId: state.freeChatActiveTabId
         // NOTE: apiKey is intentionally excluded from localStorage persistence.
         // In production, it should be stored securely in the main process.
       })

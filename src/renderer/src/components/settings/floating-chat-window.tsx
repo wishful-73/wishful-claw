@@ -62,7 +62,7 @@ export function FloatingChatWindow({
     async (text: string, images?: unknown[], options?: unknown) => {
       // Lazily create the session on first message
       const sid = sessionId ?? ensureSession()
-      void sendMessage({ text, images, sessionId: sid, opts: { ...(options as any), toolPreset: 'skill-installer' } })
+      void sendMessage({ text, images, sessionId: sid, opts: { ...(options as any) } })
       onInstalled?.()
     },
     [sendMessage, sessionId, ensureSession, onInstalled]

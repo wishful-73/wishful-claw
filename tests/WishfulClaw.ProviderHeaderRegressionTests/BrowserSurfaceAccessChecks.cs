@@ -43,33 +43,22 @@ internal static class BrowserSurfaceAccessChecks
     /// </summary>
     private static void RunNeverInjectedDirectlySuite(ToolRegistry registry, string[] browserTools)
     {
-        var cells = 0;
-
-        foreach (var presetId in ToolPreset.BuiltIn.Keys)
+        foreach (var scenario in VisibilitySnapshot.ResolveScenarios())
         {
-            var preset = ToolPreset.BuiltIn[presetId];
+            var injected = AgentRunContextPolicy.ResolveDirectInjection(
+                registry,
+                scenario.AvailableMode,
+                scenario.Context,
+                scenario.ChannelSession);
 
-            foreach (var scenario in VisibilitySnapshot.ResolveScenarios())
-            {
-                var injected = AgentRunContextPolicy.ResolveDirectInjection(
-                    registry,
-                    preset,
-                    scenario.AvailableMode,
-                    scenario.Context,
-                    scenario.ChannelSession);
+            var leaked = injected
+                .Select(definition => definition.Name)
+                .Where(name => browserTools.Contains(name, StringComparer.Ordinal))
+                .ToArray();
 
-                var leaked = injected
-                    .Select(definition => definition.Name)
-                    .Where(name => browserTools.Contains(name, StringComparer.Ordinal))
-                    .ToArray();
-
-                cells++;
-                Assert(leaked.Length == 0,
-                    $"preset {presetId} × {scenario.Name} still injects {string.Join(",", leaked)} directly");
-            }
+            Assert(leaked.Length == 0,
+                $"{scenario.Name} still injects {string.Join(",", leaked)} directly");
         }
-
-        Assert(cells == 105, $"the direct-injection sweep covered {cells} cells, expected the full 7×15 grid");
     }
 
     /// <summary>

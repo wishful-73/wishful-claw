@@ -34,7 +34,12 @@ public static class ToolCategoryCatalog
         new("file", 10, "read, write, edit and list files"),
         new("search", 20, "find files by glob pattern and search contents by regex"),
         new("shell", 30, "run shell commands and stream their output"),
-        new("task", 40, "track session todos and delegate work to sub-agents"),
+        // iter-30：todo 从 task 里拆出来单独成类，因为 task 混了两拨工具 ——
+        // 子 agent 委派（Task / SubAgentStatus / SubAgentDetail）与本次运行的
+        // Todo 清单（TodoTaskCreate/Get/Update/List）。前者低频且 schema 大，
+        // 留在代理后面；后者高频、schema 小，直接注入。
+        new("todo", 35, "track this run's todo list"),
+        new("task", 40, "delegate work to sub-agents and inspect their results"),
         new("memory", 50, "read and write persistent memory across sessions"),
         new("plan", 60, "draft, submit and revise implementation plans"),
         new("capability", 70, "list, inspect and call MCP servers, skills and plugins through one proxy"),
@@ -82,7 +87,7 @@ public static class ToolCategoryCatalog
     /// </summary>
     public static IReadOnlyList<string> Core { get; } =
     [
-        "file", "search", "shell", "memory", "plan", "capability",
+        "file", "search", "shell", "todo", "memory", "plan", "capability",
     ];
 
     // OrdinalIgnoreCase is kept on purpose: every category in the repo is lowercase kebab today,

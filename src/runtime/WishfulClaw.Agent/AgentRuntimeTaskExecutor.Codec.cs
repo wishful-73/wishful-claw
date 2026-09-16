@@ -110,6 +110,11 @@ public static partial class AgentRuntimeTaskExecutor
     {
         writer.WriteNumber("total", tasks.Count);
         writer.WriteNumber("completed", tasks.Count(static task => task.Status == "completed"));
+        // iter-30：状态计数是「事实」，不是「嘱咐」。放在返回值里 = 最新鲜的位置，模型自己就能
+        // 看出哪一步还挂在 in_progress、有没有开了新任务却没收尾的旧任务。
+        // 刻意不加 "记得标 in_progress" 这类文案：那类句子每轮都要付 token，而且不解决
+        // 「看不见当前状态」这个真正的缺口 —— 它只把"开场忘"换成"每轮都可能忘"。
+        writer.WriteString("progress", BuildProgressSummary(tasks));
         writer.WritePropertyName("tasks");
         writer.WriteStartArray();
         foreach (var task in tasks)
@@ -117,6 +122,30 @@ public static partial class AgentRuntimeTaskExecutor
             WriteTaskSnapshot(writer, task);
         }
         writer.WriteEndArray();
+    }
+
+    /// <summary>
+    /// 渲染一行状态计数，例如 "1/3 completed, 1 in_progress, 1 pending"。
+    /// 零值状态不列，保持短小；全部为 0 时只给 completed 项。
+    /// </summary>
+    private static string BuildProgressSummary(List<TaskWorkingRow> tasks)
+    {
+        if (tasks.Count == 0) return "no tasks";
+
+        var completed = tasks.Count(static task => task.Status == "completed");
+        var parts = new List<string>(5) { $"{completed}/{tasks.Count} completed" };
+
+        AppendStatusCount(parts, tasks, "in_progress");
+        AppendStatusCount(parts, tasks, "pending");
+        AppendStatusCount(parts, tasks, "blocked");
+        AppendStatusCount(parts, tasks, "in_review");
+        return string.Join(", ", parts);
+    }
+
+    private static void AppendStatusCount(List<string> parts, List<TaskWorkingRow> tasks, string status)
+    {
+        var count = tasks.Count(task => task.Status == status);
+        if (count > 0) parts.Add($"{count} {status}");
     }
 
     private static void WriteTaskSnapshot(Utf8JsonWriter writer, TaskWorkingRow task)

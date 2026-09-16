@@ -1,4 +1,4 @@
-﻿
+
 import { normalizeSidecarRecord, normalizeMaxParallelTools, normalizePlanRevision, normalizePlanExecution, normalizeSlashCommand, normalizeSystemCommand, normalizePluginChannelContext, normalizeRequestContextTexts, isNativeSidecarProviderConfig, SidecarProviderInput, sanitizeSidecarToolInput } from './sidecar-protocol'
 import { toPermissionPolicySnapshot } from '../../../../shared/permission-policy'
 import { useProviderStore } from '@renderer/stores/provider-store'
@@ -208,7 +208,6 @@ export function buildSidecarAgentRunRequest(args: {
   collaborationMode?: 'chat' | 'cowork'
   runtimeRole?: 'sessionAgent' | 'goalRunner' | 'subAgent' | 'goalSubAgent' | 'automation' | 'pet' | 'translation' | 'providerTurn'
   usageSource?: string
-  toolPreset?: string
   maxIterations: number
   forceApproval: boolean
   permissionMode?: 'default' | 'whitelist' | 'fullAccess'
@@ -253,10 +252,11 @@ export function buildSidecarAgentRunRequest(args: {
   }
 
   const maxParallelTools = normalizeMaxParallelTools(args.maxParallelTools)
-  // Use only the tools provided by the caller (already filtered by Worker preset).
+  // Use only the tools provided by the caller (already filtered by the Worker).
   // Renderer-registered tool handlers remain available for execution by name,
-  // but their definitions are NOT merged into the LLM tool list — the Worker's
-  // ToolPreset is the single source of truth for what the LLM sees.
+  // but their definitions are NOT merged into the LLM tool list — the Worker is
+  // the single source of truth for what the LLM sees (per-run-context scope grant
+  // plus the executor's IsCore flag).
   const mergedTools = args.tools
   const subAgentToolCatalog: SidecarToolDefinition[] = []
   // Global settings snapshot, applied to every run this module builds (incl. sub-agents,
@@ -310,7 +310,6 @@ export function buildSidecarAgentRunRequest(args: {
     ...(args.collaborationMode ? { collaborationMode: args.collaborationMode } : {}),
     ...(args.runtimeRole ? { runtimeRole: args.runtimeRole } : {}),
     ...(args.usageSource ? { usageSource: args.usageSource } : {}),
-    ...(args.toolPreset ? { toolPreset: args.toolPreset } : {}),
     ...(args.compression ? { compression: args.compression } : {}),
     maxIterations: args.maxIterations,
     forceApproval: args.forceApproval,

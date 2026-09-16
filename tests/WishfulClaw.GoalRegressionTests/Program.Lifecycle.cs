@@ -344,12 +344,11 @@ internal static partial class Program
         new UseCapabilityToolProvider().RegisterTools(registry);
         registry.PopCategory();
 
-        foreach (var presetId in new[] { "full", "chat", "coding", "channel", "automation", "minimal", "skill-installer" })
-        {
-            var presetDefinitions = registry.GetToolDefinitions(ToolPreset.BuiltIn[presetId], "global");
-            Assert(presetDefinitions.Any(definition => definition.Name == "use_capability"),
-                $"{presetId} preset exposes use_capability as the unified entry point");
-        }
+        // The capability proxy must stay reachable with no narrowing applied — it is the only route
+        // to every non-core tool, so losing it turns "less exposed" into "unreachable".
+        var presetDefinitions = registry.GetToolDefinitions("global");
+        Assert(presetDefinitions.Any(definition => definition.Name == "use_capability"),
+            "use_capability is exposed as the unified entry point");
 
         var firstPage = ExecuteUseCapability(
             dbPath, "session-lifecycle", registry, context, "list",

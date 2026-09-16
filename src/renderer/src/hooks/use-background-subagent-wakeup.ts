@@ -85,7 +85,6 @@ async function wakeSession(sessionId: string): Promise<void> {
     provider: buildProviderPayload(activeProvider, modelId, settings) as unknown as Record<string, unknown>,
     messages: [{ role: 'user', content }],
     sessionId,
-    toolPreset: session.collaborationMode === 'cowork' && session.workingFolder ? 'coding' : 'chat',
     workingFolder: session.scope === 'project' ? session.workingFolder : undefined,
     sshConnectionId: session.scope === 'project' ? session.sshConnectionId : undefined,
     projectId: session.scope === 'project' ? session.projectId : undefined,

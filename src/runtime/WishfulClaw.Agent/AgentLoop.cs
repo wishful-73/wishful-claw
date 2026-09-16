@@ -183,24 +183,20 @@ internal static partial class AgentLoop
         }
 
         // ── Resolve tool definitions from backend registry ──
-        // Tools live in the backend (ToolModuleState.Registry); the frontend
-        // sends only a toolPreset string. This avoids a JSON round-trip that
-        // breaks prefix cache stability (Reasonix pattern: backend owns tools).
-        var toolPresetId = JsonHelpers.GetString(parameters, "toolPreset") ?? "full";
-        var toolPreset = ToolPreset.BuiltIn.TryGetValue(toolPresetId, out var tp)
-            ? tp
-            : ToolPreset.BuiltIn["full"];
+        // Tools live in the backend (ToolModuleState.Registry); the frontend never ships them.
+        // This avoids a JSON round-trip that breaks prefix cache stability
+        // (Reasonix pattern: backend owns tools).
         var runContext = AgentRunContextPolicy.Resolve(parameters);
         var sessionMode = AgentRunContextPolicy.ResolveAvailableMode(parameters, runContext);
         var channelSession = AgentRunContextPolicy.IsChannelSession(parameters);
         var registry = ToolModuleState.Registry;
-        // Direct injection = preset ∧ scope ∧ IsCore (single source in AgentRunContextPolicy).
+        // Direct injection = scope ∧ IsCore (single source in AgentRunContextPolicy).
         // Non-core tools stay registered for the use_capability proxy; the web/codegraph
         // opt-in flags ride on runContext and gate the proxy the same way.
         var toolDefs = registry is null
             ? []
             : AgentRunContextPolicy.ResolveDirectInjection(
-                registry, toolPreset, sessionMode, runContext, channelSession);
+                registry, sessionMode, runContext, channelSession);
 
         // The capability directory is part of the tool description, so update it after the
         // session's visibility/mode filters have been applied. This keeps the description and
@@ -222,13 +218,9 @@ internal static partial class AgentLoop
                 personaId, workingFolder, language, userRules, sshConnectionId, projectId, sessionMode,
                 JsonHelpers.GetString(parameters, "pluginId"),
                 JsonHelpers.GetString(parameters, "externalChatId"));
-            // Session Todo guidance is for ordinary session agents; the global
-            // agent host opts out (its dispatch model is defined elsewhere).
-            var includeSessionTodoPrompt = sessionMode != "global";
             var builtPrompt = SystemPromptCache.GetOrBuild(cacheKey, () =>
                 PromptBuilder.Build(
-                    PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules,
-                    includeSessionTodoPrompt: includeSessionTodoPrompt));
+                    PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules));
             provider = InjectSystemPrompt(provider, builtPrompt);
             WorkerLog.Info($"persona system prompt (cached) id={personaId} length={builtPrompt.Length}");
         }
@@ -574,21 +566,25 @@ internal static partial class AgentLoop
     {
         var providerType = JsonHelpers.GetString(provider, "type") ?? string.Empty;
 
+        // 每轮把会话 todo 现状推送到模型眼前（iter-30 S-44）。没有可注入内容时原样返回。
+        // 走临时副本：conversation 本身一字不动，历史前缀因此保持稳定。
+        var wireConversation = InjectSessionTodo(parameters, conversation, state);
+
         if (providerType == "anthropic")
         {
             return await AnthropicMessagesProvider.ExecuteTurnAsync(
-                parameters, provider, conversation, toolDefs, state, context);
+                parameters, provider, wireConversation, toolDefs, state, context);
         }
 
         if (providerType == "openai-responses")
         {
             return await OpenAIResponsesProvider.ExecuteTurnAsync(
-                parameters, provider, conversation, toolDefs, state, context);
+                parameters, provider, wireConversation, toolDefs, state, context);
         }
 
         // Default: openai-chat
         return await OpenAIChatProvider.ExecuteTurnAsync(
-            parameters, provider, conversation, toolDefs, state, context);
+            parameters, provider, wireConversation, toolDefs, state, context);
     }
 
     // ── Provider validation ──

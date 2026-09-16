@@ -87,7 +87,6 @@ export interface AgentActions {
 
     systemPrompt?: string
 
-    toolPreset?: string
     codegraphEnabled?: boolean
 
     workingFolder?: string

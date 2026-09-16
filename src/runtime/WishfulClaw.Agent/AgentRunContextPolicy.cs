@@ -172,20 +172,23 @@ internal static class AgentRunContextPolicy
 
     /// <summary>
     /// The direct-injection pipeline, in one place so the AgentLoop and the regression sweep
-    /// cannot drift: preset shapes what a run may inject, visibility vetoes per run context,
-    /// and <c>IsCore</c> decides what the LLM actually sees as a direct tool definition
-    /// (iter-28 tool narrowing). Non-core tools are NOT lost here — they stay registered and
-    /// are reached through the <c>use_capability</c> proxy, which never consults IsCore.
+    /// cannot drift: visibility filters per run context, and <c>IsCore</c> decides what the LLM
+    /// actually sees as a direct tool definition (iter-28 tool narrowing). Non-core tools are NOT
+    /// lost here — they stay registered and are reached through the <c>use_capability</c> proxy,
+    /// which never consults IsCore.
+    ///
+    /// There is deliberately no scenario allowlist ahead of this. One existed (the pet and
+    /// skill-installer narrow lists), and keeping two mechanisms in agreement is what let a core
+    /// tool be admitted by one and filtered out by the other.
     /// </summary>
     public static IReadOnlyList<ToolDefinition> ResolveDirectInjection(
         ToolRegistry registry,
-        ToolPreset preset,
         string? sessionMode,
         AgentRunContext context,
         bool channelSession = false)
     {
         var definitions = FilterToolDefinitions(
-            registry.GetToolDefinitions(preset, sessionMode), registry, context, channelSession);
+            registry.GetToolDefinitions(sessionMode), registry, context, channelSession);
         var core = new List<ToolDefinition>(definitions.Count);
         foreach (var definition in definitions)
         {

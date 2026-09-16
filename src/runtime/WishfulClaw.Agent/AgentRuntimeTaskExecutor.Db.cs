@@ -5,7 +5,9 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.Agent;
@@ -150,6 +152,36 @@ public static partial class AgentRuntimeTaskExecutor
             $"{TaskSelectSql} WHERE session_id = @sessionId ORDER BY sort_order ASC",
             r => ToWorkingRow(EntityMappers.MapTask(r)),
             DbService.Param("@sessionId", sessionId));
+    }
+
+    /// <summary>
+    /// 读取会话 todo 的只读快照，供 AgentLoop 每轮把现状注入上下文（iter-30 S-44）。
+    ///
+    /// 与上面几个 Load* 的区别：只读、不走事务、按 sort_order 排序、返回公开 DTO。
+    /// 注入是「尽力而为」的旁路 —— 任何异常都吞掉返回 null，绝不能因为读 todo 失败而拖垮 agent run。
+    /// </summary>
+    internal static IReadOnlyList<TaskRow>? LoadSessionTodoSnapshot(JsonElement parameters, string? sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return null;
+        }
+
+        try
+        {
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+            var rows = db.Query(
+                $"{TaskSelectSql} WHERE session_id = @sessionId ORDER BY sort_order ASC",
+                r => TaskRow.FromEntity(EntityMappers.MapTask(r)),
+                DbService.Param("@sessionId", sessionId));
+            return rows.Count == 0 ? null : rows;
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn($"session todo snapshot failed sessionId={sessionId} error={ex.GetType().Name}: {ex.Message}");
+            return null;
+        }
     }
 
     private static TaskWorkingRow? LoadTask(DbService db, string taskId, string? sessionId)

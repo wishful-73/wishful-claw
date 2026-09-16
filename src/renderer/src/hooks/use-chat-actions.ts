@@ -16,7 +16,7 @@ import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
 import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
-import { getCachedTools, fetchToolDefinitions, fetchToolDefinitionsAsync } from '@renderer/lib/tools/tool-cache'
+import { getCachedTools, fetchToolDefinitions } from '@renderer/lib/tools/tool-cache'
 import { compressMessages } from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
 import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/lib/image-attachments'
@@ -33,7 +33,6 @@ export interface SendMessageOptions {
   permissionMode?: 'default' | 'fullAccess'
   selectedFileReferences?: unknown[]
   imageEdit?: unknown
-  toolPreset?: string
   [key: string]: unknown
 }
 
@@ -150,23 +149,14 @@ export function useChatActions() {
       // App startup (registerAllTools + ensureConversationReady) handles
       // initialization; if tools aren't ready yet, send without them —
       // the agent can still respond, just without tool-calling capability.
-      const toolPreset = opts?.toolPreset ??
-        (isChannelSession
-          ? 'channel'
-          : session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat')
+      //
+      // 发给 LLM 的工具清单由 Worker 侧按 run context 与各工具自己的 VisibleScopes 解析；
+      // 渲染端只负责预热缓存。渲染端注册的 handler 仍可按名字执行，只是定义不下发。
       const settings = settingsStore
       const codegraphEnabled = useAppPluginStore.getState().isCodeGraphToolAvailable()
 
-      // For special presets (e.g. skill-installer), fetch async to ensure
-      // the correct tool list is used. For default presets, use cache + background fetch.
-      // 发给 LLM 的工具清单由 Worker 侧 ToolPreset 决定（渲染端只负责预热/刷新缓存）；
-      // 渲染端注册的 handler 仍可按名字执行，只是定义不下发。
-      if (opts?.toolPreset) {
-        await fetchToolDefinitionsAsync(opts.toolPreset)
-      } else {
-        getCachedTools()
-        fetchToolDefinitions(toolPreset) // fire-and-forget background fetch
-      }
+      getCachedTools()
+      fetchToolDefinitions() // fire-and-forget background fetch
 
       const messageText = typeof text === 'string' ? text : text.text
       const imageAttachments = Array.isArray(_images)
@@ -209,7 +199,6 @@ export function useChatActions() {
         userMessageText: messageText,
         ...(selectedFileContext.meta ? { meta: { selectedFileReads: selectedFileContext.meta } } : {}),
         sessionId: targetSessionId,
-        toolPreset,
         codegraphEnabled,
         workingFolder,
         maxIterations: 0, // 0 = unlimited, agent runs until no more tool calls
@@ -377,7 +366,6 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
     provider,
     messages: [{ role: 'user', content: `The plan has been approved. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Read the plan file, then execute it step by step using the Task tool to dispatch sub-agents -- do NOT implement steps yourself. For each step: (1) call UpdatePlanStep to mark it in_progress, (2) use the Task tool with subagent_type "custom" and background=false to dispatch a foreground work sub-agent with a self-contained prompt containing all context needed for that step, (3) when the sub-agent returns, call UpdatePlanStep to mark it completed or failed based on the result. If a step fails, assess whether the remaining plan needs adjustment before continuing.` }],
     sessionId,
-    toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
     workingFolder,
     sshConnectionId,
     projectId,
@@ -432,7 +420,6 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
     provider,
     messages: [{ role: 'user', content: `The plan was rejected. The plan file is at: ${plan.filePath ?? '(unknown path)'}. Please revise the plan in the plan file based on this feedback: ${feedback}` }],
     sessionId,
-    toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
     workingFolder,
     sshConnectionId,
     projectId,
@@ -509,7 +496,6 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
       provider,
       messages: [{ role: 'user', content: '用户退出了计划模式，计划已取消。不再需要计划流程，请正常对话。' }],
       sessionId,
-      toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
       workingFolder,
       sshConnectionId,
       projectId,

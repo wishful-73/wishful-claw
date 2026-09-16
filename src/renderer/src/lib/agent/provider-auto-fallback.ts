@@ -210,9 +210,9 @@ async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): P
 
   // The follow-up turn must start with the same parameters a manual send uses.
   // Leaving them out makes the Worker guess: it infers scope from
-  // projectId/workingFolder, forces collaborationMode to "chat" for a global run
-  // and defaults toolPreset to "full" — so a project session would be pushed
-  // forward without its project tools. See AgentRunContextPolicy / AgentLoop.
+  // projectId/workingFolder and forces collaborationMode to "chat" for a global run —
+  // so a project session would be pushed forward without its project tools.
+  // See AgentRunContextPolicy / AgentLoop.
   const settings = useSettingsStore.getState()
   const projectId = session.scope === 'project' ? (session.projectId ?? undefined) : undefined
   const project = projectId ? chatStore.projects.find((item) => item.id === projectId) : null
@@ -230,7 +230,6 @@ async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): P
       messages: [{ role: 'user', content: text }],
       userMessageText: text,
       sessionId,
-      toolPreset: session.collaborationMode === 'cowork' && workingFolder ? 'coding' : 'chat',
       workingFolder,
       sshConnectionId,
       projectId,

@@ -91,19 +91,7 @@ export interface UIStore {
   openSettingsPage: (tab?: SettingsTab) => void
   closeSettingsPage: () => void
 
-  // Feature page toggles (all preserved as entry points)
-  skillsPageOpen: boolean
-  openSkillsPage: () => void
-  closeSkillsPage: () => void
-  soulsPageOpen: boolean
-  openSoulsPage: () => void
-  closeSoulsPage: () => void
-  syncPageOpen: boolean
-  openSyncPage: () => void
-  closeSyncPage: () => void
-  resourcesPageOpen: boolean
-  openResourcesPage: () => void
-  closeResourcesPage: () => void
+  // Feature page toggles
   translatePageOpen: boolean
   openTranslatePage: () => void
   closeTranslatePage: () => void
@@ -116,9 +104,6 @@ export interface UIStore {
   tasksPageOpen: boolean
   openTasksPage: () => void
   closeTasksPage: () => void
-  codeGraphPageOpen: boolean
-  openCodeGraphPage: () => void
-  closeCodeGraphPage: () => void
   taskBoardPageOpen: boolean
   openTaskBoardPage: () => void
   closeTaskBoardPage: () => void

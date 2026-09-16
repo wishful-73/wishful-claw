@@ -37,15 +37,10 @@ export function TitleBar({
     (s) =>
       !s.settingsPageOpen &&
       s.activeNavItem === 'chat' &&
-      !s.skillsPageOpen &&
-      !s.soulsPageOpen &&
-      !s.syncPageOpen &&
-      !s.resourcesPageOpen &&
       !s.translatePageOpen &&
       !s.drawPageOpen &&
       !s.tasksPageOpen &&
       !s.taskBoardPageOpen &&
-      !s.codeGraphPageOpen &&
       !s.freeChatPageOpen &&
       s.chatView === 'session'
   )

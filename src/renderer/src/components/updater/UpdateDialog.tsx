@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Download,
@@ -92,11 +92,13 @@ export function UpdateDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className={cn(
-          'sm:max-w-5xl sm:min-h-[70vh]',
+          // The body must own the leftover height: without an explicit row template every grid row
+          // stays auto-sized, so `sm:min-h-[70vh]` leaves a blank band under the release notes.
+          'sm:max-w-5xl sm:min-h-[70vh] grid-rows-[auto_minmax(0,1fr)_auto]',
           // Tailwind v4 compiles translate-x/y-* into the standalone `translate` property, so the
           // base dialog's centering must be cancelled with classes rather than inline transform.
           isFullscreen &&
-            'top-4 left-4 h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-none translate-x-0 translate-y-0 sm:max-w-none grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden'
+            'top-4 left-4 h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-none translate-x-0 translate-y-0 sm:max-w-none overflow-hidden'
         )}
       >
         <DialogHeader className="flex-row items-start justify-between gap-4 pr-10">
@@ -129,7 +131,7 @@ export function UpdateDialog({
           </Button>
         </DialogHeader>
 
-        <div className={cn('space-y-4', isFullscreen && 'min-h-0 overflow-y-auto')}>
+        <div className="flex min-h-0 flex-col gap-4">
           <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-xs">
             <span className="text-muted-foreground">
               {t('updater.dialog.currentVersion', { defaultValue: '当前版本' })}

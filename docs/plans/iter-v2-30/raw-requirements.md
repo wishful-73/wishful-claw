@@ -549,6 +549,208 @@ useUIStore.getState().setPendingInsertText(createSelectFileTag(relativePath))
 
 ---
 
+## S-36 后台子 agent 的结论回不到主会话（含 OpenCowork 对标）
+
+**一句话**：后台子 agent 明明跑到 `completed`，主 agent 却只拿到一句「已在后台启动」；报告要么残缺（只有开场白），要么根本没送到。**不是偶发，是设计缺陷。**
+
+**来源（2026-09-16 12:35 老大口述原话）**：
+
+> 「刚刚又测试到一个bug 就是我们的子agent 总是执行到结束但是没有给主会话返回任何结论，不知道是不是因为用代理去调用导致的，现在是代理去创建task task去子会话」
+
+**老大补充口径（2026-09-16 13:09）**：「要落库呀，别人已经走出路了，就不用我们自己去踩坑了」
+
+### 代理调用不是根因（已排除）
+
+两条路在 `ToolDispatchRouter.cs:471` **汇合**，走同一个 `SubAgentExecutor`，报告生成逻辑逐字相同。代理路径确实另有一个独立缺陷（见下），但它不产生「没结论」。
+
+代理路径的独立缺陷：`AgentRuntimeUseCapabilityExecutor.cs:330-333` 的 builtin 分支 `return output;` —— **`isError` 被丢弃**。直接调 `Task` 时 `isError` 一路上报（`ToolDispatchRouter.cs:478`），代理调就丢了：子 agent 失败经代理后变成「成功结果」。
+
+### 根因（2026-09-16 实测复现，**非推测**）
+
+核心缺陷一句话：**把「汇报」绑死在父 run 上**。父 run 一结束，汇报链就断。
+
+#### 证据（同机、同库、同代码，唯一变量 = 父 run 是否存活）
+
+| | 本次实测（父 run **存活**） | 09-15 现场（父 run **已结束**） |
+|---|---|---|
+| 子 agent 跑了几轮 | 3 轮 / 3 次工具 | **12 轮 / 21~23 次工具** |
+| `sub_agent_runs.report` 长度 | **2437 / 9597 字符**（完整，含结论） | **70 / 121 / 149 / 177 / 473 字符** |
+| `report` 内容 | 完整报告 | **只有开场白**（"I'll start by…"） |
+| `isBackground` | `true` | `true` |
+| `success` / `endReason` | `1` / `completed` | `1` / `completed` |
+| `reportStatus` | `"submitted"` | **也是 `"submitted"`** |
+
+09-15 那批 5 个 `code-reviewer`（session `WQvIA_f0XDo01UL8lNI-X`）**确实干完了活**（`toolCalls` 21~23、`success=1`），**报告却只剩一句开场白**。
+
+#### 根因链
+
+1. 主 agent 调 `builtin:Task` + `background: true` ⇒ 立即拿到 placeholder（实测原话：「Background sub-agent started… When it completes, you will be notified automatically.」）
+2. 主 agent 这轮结束 ⇒ 父 run finalize ⇒ transport / observer 被 dispose
+3. 子 agent 继续跑剩下的轮次，每轮经 `AgentRuntimeTools.EmitAsync(parentState, …)` 转发 `sub_agent_text_delta`
+4. 父 run 没了 ⇒ `EmitAsync` 抛错 ⇒ **`SubAgentExecutor.cs:272-277` 的 catch 静默吞掉**（注释写明 "must NEVER propagate"）
+5. 渲染端只累积到父 run 死之前那点文本 = **那 149 字符**
+6. 子 agent 完成，`sub_agent_end` 到达 ⇒ 落 `sub_agent_runs`（**事件本身能到**，见下）
+7. **`stores/chat-store/sub-agent-slice.ts:359` 只在 `sa.report` 完全为空时才采纳 `event.result.output`** —— 而 `sa.report` 非空（有开场白）⇒ **完整报告被丢弃**
+
+**第 7 条是关键**：`event.result.output` 来自 `SubAgentRunCollector.GetFinalOutput()`，走 `childState.EventObserver` **直接回调**（`AgentRuntimeTools.cs:241-248`），**压根不依赖父 run 的 transport** —— **它一直是完整的**。完整的东西送到了门口，被一个 `if` 挡在门外。
+
+#### 为什么界面上看不出「报告丢了」
+
+`stores/chat-store/adapt-sub-agent-event.ts:49` 的 `reportSubmitted: output.length > 0` —— 而 Worker 侧 `SubAgentExecutor.cs:139-143` 已把空输出兜底成 `"Sub-agent completed but produced no output."` ⇒ **恒真**。残缺报告在 UI 上一律显示 `"submitted"`。
+
+#### 次生问题：主会话没结论的第二条路
+
+后台完成通知虽经 `parentState.EnqueueMessages` 注入父 run 队列；父 run 已死 ⇒ 注入失败 ⇒ 缓冲到 `BackgroundSubAgentNotifications`（**进程内内存**，重启即丢）⇒ 等渲染端 `use-background-subagent-wakeup.ts` 唤醒。该 hook 有两处硬伤：
+
+- `:67-73` **先 `drainBufferedReports` 再校验** —— drain 是破坏性取出，之后 `if (!activeProvider || !modelId) return` 一 return，**报告直接蒸发**
+- `:65` 只看 `chatStore.streamingMessages[sessionId]`，且判定「主 run 活跃」后**直接 return 不再重试**（`pendingWakes` 已删）
+
+### 次生问题 2：报告头部粘连过渡话术
+
+`GetFinalOutput()` 把所有 `text` 事件直接串起来，子 agent 每轮的过渡话术全糊在最终报告前，**无分隔**：
+
+```
+I'll read the four files in full, one at a time, starting with the iteration progress docs.The 28 doc is exhaustive. Now reading iteration 29.Now iteration 30....## Report: wishful-claw progress docs
+```
+
+### OpenCowork 对标（`D:\claw\OpenCowork` @ `32c5a131`，2026-09-16 已 fetch 最新）
+
+相关提交：`4a144e67`（引入 `reportBackgroundChild`）→ `daea5935`（`fix: restore background subagent reports`，补测试）→ `0d36be2d`（改用**子会话全文**）。
+
+**他们的核心做法**（`src/renderer/src/stores/session.ts:611-679`）：
+
+```ts
+const full = await childFinalText(child)                    // ① 读子会话全文
+const summary = full ?? child.summary ?? '...'              // ② 兜底链
+if (before.activeRunId !== null) {
+  await interjectRun(before.activeRunId, [{ id: ulid(), parts, internal: true }])  // 父 run 活着 → 插话
+} else {
+  await before.send(report, options, parts, true)                                  // 父 run 死了 → ★新起一轮
+}
+store.getState().setSubagentReportStatus(callId, 'reported')
+```
+
+**★ 汇报是一轮独立的 `send`，父 run 死没死都不影响。**
+
+**逐项对照**：
+
+| | OpenCowork | 我们 |
+|---|---|---|
+| 汇报载体 | **新起一轮 run**（`send` / `interjectRun`） | 注入父 run 队列 |
+| 父 run 已结束 | **无影响** | **致命** ⇒ 缓冲 ⇒ 唤醒 hook |
+| 报告正文 | 读**子会话全文**（`childFinalText`） | 流式转发累积（父 run 死后残缺） |
+| 状态 | `pending / blocked / injecting / reported`，**落库**（`replaceHistory` 持久化） | 无状态，内存 Set，**重启丢** |
+| 取不到全文 | 退摘要 → 再退固定文案（**注释：残缺的汇报也好过没有汇报**） | 直接不要了 |
+| 界面提示 | 待汇报圆点 + **「处理」按钮可手动重发**（`Thread.tsx:320`） | 无 |
+| 失败时 | 置 `blocked`（注释：**「等待主代理处理」至少说的是实话，而一个什么都不做的按钮不是**） | **静默 return** |
+| 界面轨 vs 模型轨 | `inputInternal: true` + 只给界面看的 `subagent` part（两个编码器都丢弃）**分离** | 未分离 |
+| 子会话可回读 | ✓ `childSessionId` + `getSession` | ✗ `SubAgentExecutor.cs:162` finally 里 `SessionConversationManager.Remove("__subagent__{childRunId}")`，**子会话不留** |
+
+**他们踩过同一个坑**（`0d36be2d` 注释，几乎为我们而写）：
+
+> ★★ **发给主代理的是全文，不是 `child.summary`。** 那个字段是主进程切出来的前 240 字，生来是给卡片当一行预览用的。拿它当汇报正文的话，一份「改了八个文件、逐条说明」的报告到主代理手上只剩开头一句……**主代理据此接着往下做，却以为自己看到了全部。不报错，只是做错。**
+
+### 修法（按性价比排序）
+
+**报告接住（先堵血）**
+
+1. `sub-agent-slice.ts:359` —— `event.result.output` 改**优先覆盖**，不再只做空值兜底。（这一条就把 149 字符 → 完整）
+2. Worker 侧显式给出「是否产出了最终报告」，别再用 `output.length > 0` 猜（该判定恒真）。
+3. 报告正文剥掉中间过渡话术（取最后一段完整输出，或至少加分隔）。
+
+**汇报通道（根因）**
+
+4. 照抄「汇报 = 新起一轮」：父 run 活着 → 插话；父 run 死了 → **`send` 新起一轮**，取代「缓冲 + 等唤醒」。
+5. `reportStatus` 落库（`pending / blocked / reported`），弃用内存 Set。
+6. 汇报 / 唤醒失败**置 `blocked` 并可见**，不静默 return。
+7. 「主 run 是否活跃」改用 `hasActiveSessionRunForSession`（三来源：`_startingSessionSends` / `streamingMessages` / `runningAgents`），别只看 `streamingMessages`。
+
+**界面**
+
+8. 「重新汇报」按钮 + 待汇报状态（对标 `Thread.tsx:320`）。
+
+**架构前提（老大 2026-09-16 已定：子会话落库）**
+
+9. 要让第 4 条落地，**子 agent transcript 必须可回读** —— 现在 `SubAgentExecutor.cs:162` 在 finally 里把它移除了。需改为持久化（对标 `childSessionId` + `getSession`）。
+
+### 待定口径
+
+1. 子会话落库的**粒度与留存策略** —— 全量落 `messages` 表（带 `__subagent__` 前缀或独立标记）？还是复用 `sub_agent_runs.data`（现已有 148KB~245KB 的 `transcript` 字段）？后者不动 schema，但只有渲染端写、Worker 读不到
+2. 报告正文取「子会话最后一条 assistant 消息」还是「`GetFinalOutput()` 的拼接结果」—— 前者干净（对标 OpenCowork），后者已验证可用但要剥过渡话术
+3. 「重新汇报」按钮是否要（老大倾向未定）
+4. `reportStatus` 的取值的落点：`sub_agent_runs` 表加列，还是复用现有 `data` JSON
+
+---
+
+## S-37 更新弹窗正文未取剩余高度（默认尺寸下）
+
+**一句话**：更新弹窗中间的富文本区域没有撑满剩余高度，留出空白；**全屏阅读时正常，默认尺寸下不对**。
+
+**来源（2026-09-16 13:09 老大口述原话）**：
+
+> 「更新弹窗中间的富文本呈现没有拿剩余高度，全屏阅读时是对的，默认情况下不对」
+
+**状态**：**已核实（2026-09-16，根因确凿）**
+
+**根因**：`UpdateReleaseNotes.tsx:26-29` —— 默认态写死 `max-h-48`（192px），全屏态才 `maxHeight: 'none'`：
+
+```tsx
+<div
+  className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs text-foreground/85"
+  style={expanded ? { maxHeight: 'none' } : undefined}
+>
+```
+
+而 `UpdateDialog.tsx:95` 的 `DialogContent` 是 `sm:min-h-[70vh]`（约 500+px）。**正文被卡在 192px，剩下 300+px 全留白** ⇒ 「没拿剩余高度」。全屏态 `maxHeight:'none'` ⇒ 正文自然铺开 ⇒ 「全屏是对的」。**与老大的描述逐字吻合。**
+
+**辅证**：`ui/dialog.tsx:56` 的 `DialogContent` 默认 class 是 `grid` 但**无 `grid-rows-*`** ⇒ 所有行都是 auto 高度，没有任何行去吃 `min-h-[70vh]` 撑出来的剩余空间。全屏态（`UpdateDialog.tsx:99`）才补了 `grid-rows-[auto_minmax(0,1fr)_auto]` ⇒ 中间行吃 `1fr`。
+
+**修法**：
+
+1. `UpdateDialog.tsx` —— 把 `grid-rows-[auto_minmax(0,1fr)_auto]` 从「仅全屏」**提到基础 class**（全屏态里的重复项删掉）
+2. `UpdateDialog.tsx:132` 内容区由 `cn('space-y-4', isFullscreen && 'min-h-0 overflow-y-auto')` 改为**恒为 flex 列**（`flex min-h-0 flex-col gap-4`），让正文能 `flex-1`
+3. `UpdateReleaseNotes.tsx` —— 容器由 `max-h-48` 改为 **`flex-1` + 兜底 `min-h-32`**（可读高度下限），删掉 `style={expanded ? {maxHeight:'none'}}`（`flex-1` 已取代它）；`overflow-y-auto` 保留 ⇒ 正文内部滚动
+4. 极端情况（版本卡片 + 进度 + 错误提示挤满）由 `DialogContent` 自带的 `overflow-y-auto` 接管整体滚动
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
+## S-38 未配置 API Key 时聊天窗顶部提醒宽度异常
+
+**一句话**：没设置 API Key 时聊天窗上方会出提醒条，但**宽度不对**。
+
+**来源（2026-09-16 13:09 老大口述原话）**：
+
+> 「没有设置apikey时， 我们聊天窗上方会有提醒，但是宽度好像出问题了」
+
+**状态**：**已核实（2026-09-16，根因确凿）**
+
+**根因**：`components/chat/InputArea/index.tsx:206` 定义
+
+```tsx
+const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-full max-w-[820px]'
+```
+
+即「居中 + 与输入框同宽（820px）」。`composer-banners.tsx` 里**两条提醒没套它**：
+
+| banner | 是否套 `composerWidthClass` |
+|---|---|
+| **API key 提醒（`:42-49`）** | ✗ **裸 `w-full`** |
+| **工作目录提醒（`:54`）** | ✗ 裸 `w-full` |
+| Plan mode（`:66`） | ✓ |
+| Pending goal（`:96`） | ✓ |
+
+`ComposerBanners` 的挂载点在 `<div className={composerWidthClass}>`（`index.tsx:334` 的 composer shell）**之外** ⇒ 裸 `w-full` 撑满**外层容器**（比 820px 宽）⇒ 提醒条比输入框宽，观感错位。
+
+**修法**：给 API key 提醒与工作目录提醒补 `composerWidthClass`，写法与 Plan mode 对齐（`cn(composerWidthClass, 'mb-2 flex items-center gap-2 rounded-md border …')`）。`composerWidthClass` 本身含 `w-full`，故直接**替换**裸 `w-full`，不要叠加。
+
+**附带范围**：工作目录提醒（`:54`）有同一个毛病，按「同类一并修」处理（老大原话只点了 API key 那条，这条是同一处 class 缺失，一并修正才算真修完）。
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
 ## 待登记（清尾巴，**等老大点名**）
 
 老大原话「30 迭代主要是 spill + 清尾巴」，**未逐条点名**。以下为当前已存在的候选池，按来源分组，**均未排入**：

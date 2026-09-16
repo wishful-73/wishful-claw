@@ -92,3 +92,74 @@
 - 一个需求一个 commit；修复调整攒进收尾一刀
 - 需求 commit 后不 push；Plan 完成后一次性 push
 - 迭代是否收尾**由老大手动发起**，agent 不自行判定
+
+---
+
+## 六、增补需求 S-36 ~ S-38（2026-09-16 下午登记）
+
+老大原话：「现在就核实，核实完成后去出计划，如果没有需要我裁定的，你就直接推进执行」
+
+| 编号 | 需求 | 来源 | 核实状态 | 裁定点 |
+|---|---|---|---|---|
+| **S-36** | 后台子 agent 结论回不到主会话 | 老大口述 | **根因已实测钉死** | **4 个（阻塞）** |
+| **S-37** | 更新弹窗正文未取剩余高度 | 老大口述 | **已核实（确凿）** | 无 |
+| **S-38** | 未设 API Key 时提醒宽度异常 | 老大口述 | **已核实（确凿）** | 无 |
+
+**实施顺序**：S-37 → S-38（无裁定点，直接做）→ S-36（**等老大答 4 个口径**）。
+
+### 6.1 S-37 详细计划（已核实，无裁定点）
+
+**根因**：`UpdateReleaseNotes.tsx:27` 默认态写死 `max-h-48`（192px），全屏态 `maxHeight:'none'`；而 `DialogContent` 是 `sm:min-h-[70vh]` ⇒ 正文卡在 192px，**剩余 300+px 全留白**。全屏态正文自然铺开 ⇒ 「全屏是对的」。
+**辅证**：`ui/dialog.tsx:56` 的 `DialogContent` 是 `grid` 但**无 `grid-rows-*`** ⇒ 无行吃 `min-h-[70vh]` 的剩余空间；全屏态才补 `grid-rows-[auto_minmax(0,1fr)_auto]`。
+
+**落点**：`components/updater/UpdateDialog.tsx`、`components/updater/UpdateReleaseNotes.tsx`。
+
+**步骤**：
+
+- [ ] **步骤 1**：`UpdateDialog.tsx:93-100` —— `grid-rows-[auto_minmax(0,1fr)_auto]` 从「仅全屏」提到**基础 class**（全屏分支里的重复项删掉）
+- [ ] **步骤 2**：`UpdateDialog.tsx:132` 内容区 `cn('space-y-4', isFullscreen && 'min-h-0 overflow-y-auto')` → **恒为** `flex min-h-0 flex-col gap-4`（让正文可 `flex-1`；`space-y-4` 换 `gap-4`，flex 下 gap 更可靠）
+- [ ] **步骤 3**：`UpdateReleaseNotes.tsx:26-29` 容器 `max-h-48` → **`flex-1` + 兜底 `min-h-32`**；删 `style={expanded ? {maxHeight:'none'} : undefined}`（被 `flex-1` 取代）；`overflow-y-auto` 保留 ⇒ 正文内部滚动
+- [ ] **步骤 4**：极端情况（版本卡片 + 进度 + 错误提示挤满）由 `DialogContent` 自带的 `overflow-y-auto` 接管整体滚动
+
+**风险与对策**：内容区改 flex 后，非正文兄弟元素默认 `flex-shrink:1`。若总需求 > 容器，正文先被 `min-h-32` 挡住 ⇒ 其余元素可能被压扁。**实施时验证**：构造「长 release notes + 下载进度 + 错误提示」同时在场的情形，确认不压扁；若压扁，给兄弟元素补 `shrink-0`。
+
+**门禁**：`npm run typecheck` 0 错 + 全量 `test:*` + 目视（默认态正文撑满、长内容内部滚动；全屏态不回归）。
+
+### 6.2 S-38 详细计划（已核实，无裁定点）
+
+**根因**：`composerWidthClass`（`InputArea/index.tsx:206`）= `mx-auto w-full max-w-[820px]`（居中 + 与输入框同宽）。`composer-banners.tsx` 里 **API key 提醒（`:42-49`）与工作目录提醒（`:54`）没套它**，只有裸 `w-full`；而 `ComposerBanners` 的挂载点在 `composerWidthClass` 容器**之外** ⇒ 撑满外层容器，比输入框宽。（Plan mode `:66` / Pending goal `:96` 都套了 ⇒ 正常。）
+
+**落点**：`components/chat/InputArea/composer-banners.tsx`。
+
+**步骤**：
+
+- [ ] **步骤 1**：API key 提醒 `className` —— 裸 `w-full` → `cn(composerWidthClass, 'mb-2 flex items-center gap-2 rounded-md border …')`（与 Plan mode 写法对齐；`composerWidthClass` 已含 `w-full`，**替换**而非叠加）
+- [ ] **步骤 2**：工作目录提醒同理一并修（**同一处 class 缺失，同类一并修才算真修完**）
+- [ ] **步骤 3**：复核同文件其余 banner —— Plan mode / Pending goal 已套 ✓；工作目录指示行（`:88`）是纯文本行、非 banner，**不动**
+
+**门禁**：`npm run typecheck` 0 错 + 全量 `test:*` + 目视（两条提醒与输入框左右对齐）。
+
+### 6.3 S-36 详细计划（**含 4 个裁定点，阻塞**）
+
+完整根因链、实测对照证据、OpenCowork 对标逐项表见 `raw-requirements.md` S-36 节。此处只列**要做的事**与**待裁定项**。
+
+**修法分四组**（详细见 raw-requirements S-36「修法」节）：
+
+1. **抓报告**（渲染端）：`stores/chat-store/sub-agent-slice.ts:359` 让 `event.result.output` **优先覆盖**（现在只在 `sa.report` 为空时才用）；Worker 显式给「是否产出最终报告」（弃用 `output.length > 0`）；剥离报告头的过渡话术
+2. **汇报通道**（根因）：汇报改「新起一轮 run」（父 run 活 → 插话，死 → `send`），取代「缓冲 + 等唤醒」
+3. **状态可见**：`reportStatus` 落库（`pending / blocked / reported`），弃内存 Set；失败置 `blocked` 不静默 return；「主 run 活跃」判定改用 `hasActiveSessionRunForSession`
+4. **界面**：「重新汇报」按钮（对标 OpenCowork `Thread.tsx:320`）
+
+**★ 4 个裁定点（老大定后才能动 S-36）**：
+
+1. **子会话落库粒度** —— 复用 `sub_agent_runs.data`（已有 148KB~245KB 的 `transcript` 字段，**不动 schema**，但只有渲染端写、Worker 读不到）vs 子会话独立落 `messages` 表（Worker 可回读，对标 OpenCowork `childSessionId` + `getSession`）
+2. **报告正文口径** —— 取「子会话最后一条 assistant 消息」（干净，对标 OpenCowork）vs「`GetFinalOutput()` 的 text 事件拼接」（已验证可用，但要剥过渡话术）
+3. **「重新汇报」按钮要不要**
+4. **`reportStatus` 落点** —— `sub_agent_runs` 加列 vs 塞进现有 `data` JSON
+
+**架构前提**：`SubAgentExecutor.cs:162` finally 里 `SessionConversationManager.Remove("__subagent__{childRunId}")` —— **子会话现在不留**。老大口径「子会话要落库」已定，具体粒度见裁定点 1。
+
+### 6.4 提交粒度
+
+- **S-37 + S-38 合并一刀**：同为 UI 尺寸修复、同类同因，且都在本批次一并取证 ⇒ 一刀 `fix(iter30): S-37/S-38 弹窗与提醒的尺寸对齐`
+- **S-36**：涉及 C# + 渲染端 + 可能的 schema 变更，按需独立成刀；若与收尾期重叠则并进收尾刀

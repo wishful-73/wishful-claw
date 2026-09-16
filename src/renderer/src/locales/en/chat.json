@@ -887,6 +887,8 @@
   },
   "todo": {
     "tasksDone": "{{completed}} / {{total}} tasks done",
+    "inProgressSuspended": "This run ended but the task is still open",
+    "inProgressStale": "Not updated for over 3 days — likely abandoned",
     "moreTasks": "{{count}} more tasks...",
     "showEarlierTasks": "Show {{count}} earlier tasks",
     "showLess": "Show less"

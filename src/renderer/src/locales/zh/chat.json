@@ -887,6 +887,8 @@
   },
   "todo": {
     "tasksDone": "{{completed}} / {{total}} 个任务完成",
+    "inProgressSuspended": "本轮已结束，任务仍未收尾",
+    "inProgressStale": "超过 3 天未更新，可能已被搁置",
     "moreTasks": "还有 {{count}} 个任务...",
     "showEarlierTasks": "展开前面的 {{count}} 个任务",
     "showLess": "收起"

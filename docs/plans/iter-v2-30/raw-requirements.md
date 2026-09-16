@@ -465,6 +465,25 @@ useEffect(() => {
 3. 与 `deleted` 物理删除的交互
 4. 最终形态（A/B/C/D 取哪几项）**待老大拍板**
 
+### 实施（2026-09-16 定稿 + 落地）
+
+**裁定**：取 **C（渲染端对齐）**，走 **甲案 —— agent 说了算，代码只对齐展示、绝不动数据**。**B（代码主动催 agent）与 D（孤儿归档）不做**：B 会往每一轮请求里塞额外内容，D 会删用户的任务，都越界了。
+
+三态，**只影响渲染**：
+
+| 显示 | 条件 | 表现 |
+|---|---|---|
+| 执行中 | 本会话有活跃 run | 蓝色 + 转圈（原样） |
+| 待续 | run 已结束、`updatedAt` 未超阈值 | 转圈**停掉**，中性色 + tooltip |
+| 已过期 | run 已结束、`updatedAt` 距今 > 3 天 | 灰色虚线圆 + tooltip |
+
+- 阈值 **3 天**（`STALE_IN_PROGRESS_MS`）：「今天没空、明天接着干」是正常场景，1 天会把人误判成过期
+- run 活跃度与 `hasActiveSessionRunForSession`（`hooks/use-chat-actions.ts:964`）同口径，组件里改用订阅以触发重渲染
+- banner 顶部汇总图标此前只看 `status === 'in_progress'` 就转圈 —— 改为**真有 run 在跑**才转
+- `TaskItem` 本就带 `createdAt` / `updatedAt`（`task-store-helpers.ts:17`），**零新链路、零 schema 变更**
+
+**落地**：`components/chat/SessionTodoPanel.tsx`（新增 `InProgressState`、`TaskStatusIcon` 改签名）；locales `chat.json` 新增 `todo.inProgressSuspended` / `todo.inProgressStale`（zh/en）。
+
 ---
 
 ## S-35 文件树「发送到会话」对文件夹不成立

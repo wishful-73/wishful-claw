@@ -24,6 +24,7 @@ import { SessionConversationPane } from './SessionConversationPane'
 import { PlaceholderPage } from './PlaceholderPage'
 import { AutomationPage } from '@renderer/components/automation/AutomationPage'
 import { TaskBoardPage } from '@renderer/components/taskboard/TaskBoardPage'
+import { FreeChatPage } from '@renderer/components/free-chat/FreeChatPage'
 
 import { ChatHomePage } from '@renderer/components/chat/ChatHomePage'
 import { ProjectHomePage } from '@renderer/components/chat/ProjectHomePage'
@@ -61,6 +62,7 @@ function ContentArea(): React.JSX.Element {
   const tasksPageOpen = useUIStore((s) => s.tasksPageOpen)
   const codeGraphPageOpen = useUIStore((s) => s.codeGraphPageOpen)
   const taskBoardPageOpen = useUIStore((s) => s.taskBoardPageOpen)
+  const freeChatPageOpen = useUIStore((s) => s.freeChatPageOpen)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const activeProject = useChatStore((s) =>
     s.projects.find((p) => p.id === s.activeProjectId)
@@ -89,6 +91,7 @@ function ContentArea(): React.JSX.Element {
   if (tasksPageOpen) return <AutomationPage />
   if (taskBoardPageOpen) return <TaskBoardPage />
   if (codeGraphPageOpen) return <PlaceholderPage title="Code Graph" iterLabel="后续" icon={GitBranch} />
+  if (freeChatPageOpen) return <FreeChatPage />
 
   // Chat views
   switch (chatView) {

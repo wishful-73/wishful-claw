@@ -25,6 +25,13 @@ export type MemoryOrganizationThinkingMode = 'default' | 'enabled' | 'disabled'
 export type ClarifyPlanModeAutoSwitchTarget = 'off' | 'code' | 'acp'
 export type ProjectDefaultDirectoryMode = 'last-used' | 'custom'
 export type FileDiffViewMode = 'split' | 'inline' | 'code' | 'preview'
+
+/** A user-configurable free web-chat site shown on the Free Chat page. */
+export interface FreeChatSite {
+  id: string
+  name: string
+  url: string
+}
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type LiveOutputAnimationStyle = 'agile' | 'elegant'
 export type OnboardingLanguage = AppLanguage

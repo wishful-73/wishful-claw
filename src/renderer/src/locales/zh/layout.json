@@ -176,6 +176,7 @@
   },
   "sidebar": {
     "newChat": "新对话",
+    "freeChat": "免费对话",
     "newProject": "新建项目",
     "search": "搜索会话...",
     "collapse": "收起侧边栏",
@@ -592,6 +593,11 @@
     "durationHours": "{{count}}时",
     "groupToday": "今天",
     "groupYesterday": "昨天"
+  },
+  "freeChat": {
+    "close": "返回",
+    "reload": "重新加载",
+    "empty": "尚未配置免费对话站点，请在「设置 → AI 服务 → 免费对话清单」中添加。"
   },
   "browser": {
     "back": "后退",

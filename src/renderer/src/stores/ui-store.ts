@@ -217,8 +217,17 @@ export const useUIStore = create<UIStore>((set, get) => ({
   openTranslatePage: () => set({ translatePageOpen: true }),
   closeTranslatePage: () => set({ translatePageOpen: false }),
   drawPageOpen: false,
-  openDrawPage: () => set({ drawPageOpen: true, tasksPageOpen: false, taskBoardPageOpen: false }),
+  openDrawPage: () => set({ drawPageOpen: true, freeChatPageOpen: false, tasksPageOpen: false, taskBoardPageOpen: false }),
   closeDrawPage: () => set({ drawPageOpen: false }),
+  freeChatPageOpen: false,
+  openFreeChatPage: () => set({
+    freeChatPageOpen: true,
+    drawPageOpen: false,
+    tasksPageOpen: false,
+    taskBoardPageOpen: false,
+    codeGraphPageOpen: false
+  }),
+  closeFreeChatPage: () => set({ freeChatPageOpen: false }),
   tasksPageOpen: false,
   openTasksPage: () => set({ drawPageOpen: false, tasksPageOpen: true, taskBoardPageOpen: false }),
   closeTasksPage: () => set({ tasksPageOpen: false }),

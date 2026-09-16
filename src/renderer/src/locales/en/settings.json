@@ -54,6 +54,10 @@
       "label": "Memory",
       "desc": "Proactive memory, auto organization, tier thresholds and proactive recall"
     },
+    "freeChat": {
+      "label": "Free Chat Sites",
+      "desc": "Web chat sites offered by the Free Chat page"
+    },
     "about": {
       "label": "About",
       "desc": "Product intro, user guide and app updates"
@@ -1460,6 +1464,16 @@
         "catchup": "Catch-up"
       }
     }
+  },
+  "freeChatPage": {
+    "title": "Free Chat Sites",
+    "description": "The button next to 'New Chat' opens the Free Chat page; configure the sites it can switch between here. Sign in inside that page.",
+    "add": "Add",
+    "remove": "Remove",
+    "reset": "Restore defaults",
+    "empty": "The list is empty, so the Free Chat page has no site to switch to.",
+    "namePlaceholder": "Name",
+    "urlPlaceholder": "https://example.com"
   },
   "usage": {
     "title": "Usage Analytics",

@@ -1,4 +1,4 @@
-﻿import { normalizeSettingsTab } from '../../src/renderer/src/stores/ui-types'
+import { normalizeSettingsTab } from '../../src/renderer/src/stores/ui-types'
 
 let assertions = 0
 function assert(condition: boolean, message: string): void {
@@ -24,7 +24,8 @@ const validTabs = [
   'extension',
   'mcp',
   'ssh',
-  'skills'
+  'skills',
+  'freeChat'
 ] as const
 
 for (const tab of validTabs) {

@@ -176,6 +176,7 @@
   },
   "sidebar": {
     "newChat": "New Chat",
+    "freeChat": "Free Chat",
     "newProject": "New Project",
     "search": "Search sessions...",
     "collapse": "Collapse sidebar",
@@ -592,6 +593,11 @@
     "durationHours": "{{count}}h",
     "groupToday": "Today",
     "groupYesterday": "Yesterday"
+  },
+  "freeChat": {
+    "close": "Back",
+    "reload": "Reload",
+    "empty": "No free chat site configured yet. Add one in Settings → AI Service → Free Chat Sites."
   },
   "browser": {
     "back": "Back",

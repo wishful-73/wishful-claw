@@ -73,5 +73,48 @@ export function renderNavItem(item: NavButtonItem): React.JSX.Element {
   )
 }
 
+/**
+ * Split (combo) nav item: a primary action on the left and a secondary icon
+ * action on the right, sharing a single rounded container. Used for
+ * "New Chat | Free Chat".
+ */
+export function renderSplitNavItem(
+  primary: NavButtonItem,
+  secondary: NavButtonItem
+): React.JSX.Element {
+  const base =
+    'flex items-center transition-colors text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+  const activeCls = 'bg-accent text-foreground'
+
+  return (
+    <div role="group" className="flex h-8 w-full overflow-hidden rounded-md">
+      <button
+        type="button"
+        onClick={primary.onClick}
+        className={cn(
+          base,
+          'h-8 min-w-0 flex-1 gap-2 px-2 text-[13px] font-medium',
+          primary.active && activeCls
+        )}
+      >
+        {primary.icon}
+        <span className="truncate">{primary.label}</span>
+      </button>
+
+      <span aria-hidden="true" className="my-1.5 w-px shrink-0 bg-border" />
+
+      <button
+        type="button"
+        onClick={secondary.onClick}
+        title={secondary.label}
+        aria-label={secondary.label}
+        className={cn(base, 'h-8 w-8 shrink-0 justify-center', secondary.active && activeCls)}
+      >
+        {secondary.icon}
+      </button>
+    </div>
+  )
+}
+
 // ─── Main WorkspaceSidebar (single column, WishfulClaw-style) ───
 

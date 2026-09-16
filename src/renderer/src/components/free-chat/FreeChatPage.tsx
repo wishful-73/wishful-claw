@@ -29,13 +29,18 @@ export function FreeChatPage(): React.JSX.Element {
   const closeFreeChatPage = useUIStore((s) => s.closeFreeChatPage)
   const sites = useSettingsStore((s) => s.freeChatSites)
 
-  const [tabs, setTabs] = useState<FreeChatTabs>(() =>
-    restoreFreeChatTabs(
+  const [tabs, setTabs] = useState<FreeChatTabs>(() => {
+    const availableIds = sites.map((site) => site.id)
+    const restored = restoreFreeChatTabs(
       useSettingsStore.getState().freeChatOpenTabIds,
       useSettingsStore.getState().freeChatActiveTabId,
-      sites.map((site) => site.id)
+      availableIds
     )
-  )
+    // 进页面时一个选项卡都没有就默认开第一个。
+    // 只在挂载时判这一次 —— 用户手动全关掉之后，不该再被自动打开。
+    if (restored.openIds.length > 0) return restored
+    return availableIds[0] ? openFreeChatTab(restored, availableIds[0]) : restored
+  })
   // UA 在外壳里必须洗成普通 Chromium，否则站点会把内置浏览器认成非标准客户端并拒绝登录。
   const [userAgent] = useState<string>(() => stripElectronFromUserAgent(navigator.userAgent))
 

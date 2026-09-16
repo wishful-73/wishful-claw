@@ -54,10 +54,6 @@
       "label": "记忆",
       "desc": "主动记忆、自动整理、分层阈值与主动回忆"
     },
-    "freeChat": {
-      "label": "免费对话清单",
-      "desc": "免费对话页可切换的网页版对话站点"
-    },
     "about": {
       "label": "关于",
       "desc": "产品介绍、使用指引与应用更新"
@@ -65,7 +61,7 @@
     "groups": {
       "general": "基础",
       "aiService": "AI 服务",
-      "about": "关于",
+      "about": "系统",
       "channels": "渠道",
       "extensions": "插件"
     },
@@ -1605,7 +1601,7 @@
     }
   },
   "freeChatPage": {
-    "title": "免费对话清单",
+    "title": "免费对话",
     "description": "侧栏「新对话」右侧的按钮会打开免费对话页，这里配置该页可切换的站点。登录请在页面内自行完成。",
     "add": "添加",
     "remove": "删除",

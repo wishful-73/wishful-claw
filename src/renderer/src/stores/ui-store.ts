@@ -230,7 +230,8 @@ export const useUIStore = create<UIStore>((set, get) => ({
       taskBoardPageOpen: false,
       codeGraphPageOpen: false
     }),
-  closeFreeChatPage: () => set({ freeChatPageOpen: false }),
+  // 返回主界面时把左侧栏放回来：进页面时让出去的宽度，出来要还回去。
+  closeFreeChatPage: () => set({ freeChatPageOpen: false, leftSidebarOpen: true }),
   tasksPageOpen: false,
   openTasksPage: () => set({ drawPageOpen: false, tasksPageOpen: true, taskBoardPageOpen: false }),
   closeTasksPage: () => set({ tasksPageOpen: false }),

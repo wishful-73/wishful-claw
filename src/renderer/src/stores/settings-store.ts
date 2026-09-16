@@ -32,7 +32,7 @@ import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../sh
 import type { UpdateBannerPosition } from '../../../shared/updater/types'
 
 /** Default free web-chat sites offered on the Free Chat page (iter-30 / S-27).
- *  Users can add/remove entries in 设置 → AI 服务 → 免费对话清单. */
+ *  Users can add/remove entries in 设置 → AI 服务 → 免费对话. */
 export const DEFAULT_FREE_CHAT_SITES: FreeChatSite[] = [
   { id: 'deepseek', name: 'DeepSeek', url: 'https://chat.deepseek.com/' },
   { id: 'kimi', name: 'Kimi', url: 'https://www.kimi.com/' },

@@ -598,7 +598,8 @@
     "close": "Back",
     "reload": "Reload",
     "tabClose": "Close",
-    "empty": "No free chat site configured yet. Add one in Settings → AI Service → Free Chat Sites.",
+    "sitesSettings": "Site settings",
+    "empty": "No free chat site configured yet. Use the gear icon above to add one.",
     "noOpenTab": "Pick a site above to get started."
   },
   "browser": {

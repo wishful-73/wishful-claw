@@ -7,7 +7,6 @@ import { useUIStore, type SettingsTab } from '@renderer/stores/ui-store'
 import { ProviderPanel } from '@renderer/components/settings/ProviderPanel'
 import { ProviderCompletionSettingsPanel } from '@renderer/components/settings/ProviderCompletionSettingsPanel'
 import { PluginPanel } from '@renderer/components/settings/PluginPanel'
-import { FreeChatSettingsPanel } from '@renderer/components/settings/FreeChatSettingsPanel'
 import { ExtensionPanel } from '@renderer/components/settings/ExtensionPanel'
 import { AppPluginPanel } from '@renderer/components/settings/AppPluginPanel'
 import { WebSearchPanel } from '@renderer/components/settings/WebSearchPanel'
@@ -91,7 +90,6 @@ function SettingsPage(): React.JSX.Element {
         { id: 'modelManagement', icon: <Bot className="size-4" />, label: t('tabs.modelManagement.label') },
         { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') },
         { id: 'memory', icon: <Brain className="size-4" />, label: t('tabs.memory.label', { defaultValue: '记忆' }) },
-        { id: 'freeChat', icon: <Globe className="size-4" />, label: t('tabs.freeChat.label', { defaultValue: '免费对话清单' }) },
         { id: 'usage', icon: <BarChart3 className="size-4" />, label: t('tabs.usage.label', { defaultValue: '用量统计' }) }
       ]
     },
@@ -114,8 +112,8 @@ function SettingsPage(): React.JSX.Element {
     {
       label: t('tabs.groups.about'),
       items: [
-        { id: 'about', icon: <Info className="size-4" />, label: t('tabs.about.label') },
-        { id: 'logs', icon: <ScrollText className="size-4" />, label: t('tabs.logs.label', { defaultValue: '日志' }) }
+        { id: 'logs', icon: <ScrollText className="size-4" />, label: t('tabs.logs.label', { defaultValue: '日志' }) },
+        { id: 'about', icon: <Info className="size-4" />, label: t('tabs.about.label') }
       ]
     }
   ]
@@ -214,12 +212,6 @@ function SettingsPage(): React.JSX.Element {
                     <MemorySettingsPanel />
                   </div>
                   <SectionAnchorNav containerRef={scrollContainerRef} anchors={MEMORY_ANCHORS} />
-                </div>
-              </div>
-            ) : settingsTab === 'freeChat' ? (
-              <div className="flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-4xl px-8 pb-16 pt-10">
-                  <FreeChatSettingsPanel />
                 </div>
               </div>
             ) : settingsTab === 'shortcuts' ? (

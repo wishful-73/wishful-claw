@@ -24,8 +24,7 @@ const validTabs = [
   'extension',
   'mcp',
   'ssh',
-  'skills',
-  'freeChat'
+  'skills'
 ] as const
 
 for (const tab of validTabs) {
@@ -33,6 +32,9 @@ for (const tab of validTabs) {
 }
 
 assert(normalizeSettingsTab('modelManagement') === 'modelManagement', 'model management settings tab should be preserved')
+// 免费对话清单已挪进免费对话页（S-41），「freeChat」成为已退役的 tab：
+// 必须回落到默认页，不能渲染空白。
+assert(normalizeSettingsTab('freeChat') === 'provider', 'retired freeChat tab should fall back to provider')
 assert(normalizeSettingsTab('unknown') === 'provider', 'unknown settings tab should open provider')
 assert(normalizeSettingsTab(null) === 'provider', 'null settings tab should open provider')
 assert(normalizeSettingsTab(42) === 'provider', 'non-string settings tab should open provider')

@@ -75,7 +75,6 @@ export type SettingsTab =
 
   | 'ssh'
   | 'skills'
-  | 'freeChat'
 
 const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
   'provider',
@@ -95,8 +94,7 @@ const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
   'extension',
   'mcp',
   'ssh',
-  'skills',
-  'freeChat'
+  'skills'
 ])
 
 export function normalizeSettingsTab(raw: unknown): SettingsTab {

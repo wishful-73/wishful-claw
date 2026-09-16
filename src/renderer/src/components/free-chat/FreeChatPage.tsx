@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, X } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Settings, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { cn } from '@renderer/lib/utils'
 import { BUILTIN_BROWSER_PARTITION, stripElectronFromUserAgent } from '@shared/browser-plugin'
+import { FreeChatSitesDialog } from './FreeChatSitesDialog'
 import {
   closeFreeChatTab,
   openFreeChatTab,
@@ -43,6 +44,8 @@ export function FreeChatPage(): React.JSX.Element {
   })
   // UA 在外壳里必须洗成普通 Chromium，否则站点会把内置浏览器认成非标准客户端并拒绝登录。
   const [userAgent] = useState<string>(() => stripElectronFromUserAgent(navigator.userAgent))
+  // 站点清单的配置入口就在这一页：工具栏右侧的齿轮。
+  const [sitesDialogOpen, setSitesDialogOpen] = useState(false)
 
   const webviewsRef = useRef(new Map<string, Electron.WebviewTag>())
   // ref 回调按站点缓存：内联箭头函数每次 render 都是新引用，会让 React 反复 detach/attach。
@@ -112,7 +115,7 @@ export function FreeChatPage(): React.JSX.Element {
           aria-label={t('freeChat.close', { defaultValue: '返回' })}
           className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
-          <X className="size-4" />
+          <ArrowLeft className="size-4" />
         </button>
 
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
@@ -174,6 +177,16 @@ export function FreeChatPage(): React.JSX.Element {
         >
           <RefreshCw className="size-4" />
         </button>
+
+        <button
+          type="button"
+          onClick={() => setSitesDialogOpen(true)}
+          title={t('freeChat.sitesSettings', { defaultValue: '站点设置' })}
+          aria-label={t('freeChat.sitesSettings', { defaultValue: '站点设置' })}
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Settings className="size-4" />
+        </button>
       </div>
 
       <div className="relative min-h-0 flex-1 bg-background">
@@ -195,12 +208,14 @@ export function FreeChatPage(): React.JSX.Element {
           <div className="flex size-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
             {sites.length === 0
               ? t('freeChat.empty', {
-                  defaultValue: '尚未配置免费对话站点，请在「设置 → AI 服务 → 免费对话清单」中添加。'
+                  defaultValue: '尚未配置免费对话站点，点右上角齿轮添加。'
                 })
               : t('freeChat.noOpenTab', { defaultValue: '点击上方站点名称开始。' })}
           </div>
         )}
       </div>
+
+      <FreeChatSitesDialog open={sitesDialogOpen} onOpenChange={setSitesDialogOpen} />
     </div>
   )
 }

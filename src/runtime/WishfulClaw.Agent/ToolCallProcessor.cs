@@ -79,7 +79,8 @@ public static partial class ToolCallProcessor
         return index;
     }
 
-    internal static string ApplyToolOutputLimit(AgentRuntimeNativeToolCall toolCall, string output)
+    internal static string ApplyToolOutputLimit(
+        AgentRuntimeNativeToolCall toolCall, string output, string? sessionId = null)
     {
         if (AgentRuntimeUseCapabilityExecutor.IsUseCapabilityTool(toolCall.Name))
         {
@@ -90,7 +91,57 @@ public static partial class ToolCallProcessor
                 return output;
         }
 
-        return TruncateToolOutput(output);
+        // Read 是取回工具：把它读回的内容再落盘会形成 read → spill → read 的死循环，
+        // 所以检索类工具永远内联截断。没有 sessionId（旧调用点 / 单元测试）时同理不落盘。
+        if (string.IsNullOrEmpty(sessionId) || IsRetrievalTool(toolCall.Name))
+            return TruncateToolOutput(output);
+
+        return SpillToolOutput(toolCall.Name, output, sessionId);
+    }
+
+    private static bool IsRetrievalTool(string toolName)
+        => string.Equals(toolName, "Read", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 超限时把完整输出落盘，内联只留「首尾预览 + 落盘位置 + 取回提示」。
+    ///
+    /// 两条硬约束：
+    /// a) 替换后的内容永远不超过 <see cref="MaxToolOutputBytes"/>——预算先扣掉通知文本，
+    ///    连通知都放不下就退回内联截断；
+    /// b) 落盘失败（权限 / 磁盘 / 后端）一律退回原来的截断结果，绝不改变这次调用的成败。
+    /// </summary>
+    private static string SpillToolOutput(string toolName, string output, string sessionId)
+    {
+        if (string.IsNullOrEmpty(output))
+            return output;
+
+        var totalBytes = Encoding.UTF8.GetByteCount(output);
+        if (totalBytes <= MaxToolOutputBytes)
+            return output;
+
+        SpillRef spill;
+        try
+        {
+            spill = SpillStore.SaveText(sessionId, toolName, output);
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn(
+                "agent tool output spill failed tool=" + toolName + " sessionId=" + sessionId
+                + " error=" + ex.Message);
+            return TruncateToolOutput(output);
+        }
+
+        var notice = "\n\n[tool output too large: " + spill.Bytes + " UTF-8 bytes saved to "
+            + spill.Locator + " — " + spill.RetrievalHint + "]\n\n";
+        var previewBudget = MaxToolOutputBytes - Encoding.UTF8.GetByteCount(notice);
+        if (previewBudget <= 0)
+            return TruncateToolOutput(output);
+
+        var keepBytes = previewBudget / 2;
+        var headEnd = FindUtf8PrefixLength(output, keepBytes);
+        var tailStart = FindUtf8SuffixStart(output, keepBytes);
+        return output[..headEnd] + notice + output[tailStart..];
     }
     /// <summary>
     /// Executes a batch of tool calls with concurrency control.
@@ -542,7 +593,7 @@ public static partial class ToolCallProcessor
                         startedAt,
                         completedAt)));
 
-            var truncatedOutput = ApplyToolOutputLimit(toolCall, toolOutput);
+            var truncatedOutput = ApplyToolOutputLimit(toolCall, toolOutput, state.SessionId);
             if (!ReferenceEquals(truncatedOutput, toolOutput) && truncatedOutput != toolOutput)
             {
                 WorkerLog.Warn(

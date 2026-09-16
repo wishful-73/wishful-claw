@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
@@ -43,6 +43,7 @@ internal static partial class Program
             RunRegressionSuite(dbPath);
             RunLifecycleRegressionSuite(dbPath);
             RunSubAgentConcurrencySuiteAsync().GetAwaiter().GetResult();
+            RunSpillRegressionSuite();
             RunImageContentSuite();
             Console.WriteLine($"Goal regression tests passed: {_passed}");
             return 0;

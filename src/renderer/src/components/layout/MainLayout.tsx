@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { PenTool, Languages, GitBranch, Plug } from 'lucide-react'
+import { PenTool, Languages, GitBranch } from 'lucide-react'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -64,8 +64,6 @@ function ContentArea(): React.JSX.Element {
       return <ProjectArchivePage />
     case 'git':
       return <PlaceholderPage title="Git" iterLabel="后续" icon={GitBranch} />
-    case 'channels':
-      return <PlaceholderPage title="Channels" iterLabel="迭代四" icon={Plug} />
     default:
       return <ChatHomePage />
   }

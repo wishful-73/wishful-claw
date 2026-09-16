@@ -1005,7 +1005,6 @@
     "backHome": "返回首页",
     "heroDesc": "围绕当前项目继续推进，默认使用当前项目工作目录创建新会话。",
     "openArchive": "项目档案",
-    "openChannels": "聊天频道",
     "openGit": "Git",
     "workspaceLabel": "项目工作区",
     "folderLabel": "工作目录",

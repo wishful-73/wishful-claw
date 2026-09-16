@@ -225,6 +225,8 @@ text-muted-foreground hover:bg-accent/50 hover:text-foreground
 ### 待定（老大尚未表态）
 
 - **Draw（绘画）功能** —— 唯一「入口可达 ∧ 功能确实没有」的项。入口在侧栏扩展（`WorkspaceSidebar.tsx:207`）+ 搜索对话框（`search-dialog.tsx:123/551`），落地 `MainLayout.tsx:90` → `PlaceholderPage title="Draw"`。老大 2026-09-17：「绘画确实是个占位」。**要不要做、什么时候做，未定。**
+- **`NavItem` 的废弃取值 + `activeNavItem` 字段本身（S-46 延伸）** —— S-46 清掉所有非 `chat` 的导航入口后，`setActiveNavItem` 全仓唯一调用是 `setActiveNavItem('chat')`（`WorkspaceSidebar.tsx:156`），其余导航全走硬写的 `set({ activeNavItem: 'chat', ... })` ⇒ `activeNavItem` **恒为 `'chat'`**，`NavItem`（`ui-types.ts:5-15`）里 `channels / resources / skills / souls / sync / translate / tasks / codegraph` 八个取值也是死的。属 S-46 的直接延伸但**不在其登记范围内**，未擅动；要不要连字段一起删，待老大发话。
+  - 现状：`ui-types.ts:7` 的 `| 'channels'` 是 S-46 / S-47 清完后唯一残留的 `channels` 字面量（其余 `channels` 命中均为设置页渠道 tab 与后端模块名，无关）。
 
 ---
 

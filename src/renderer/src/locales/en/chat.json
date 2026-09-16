@@ -1005,7 +1005,6 @@
     "backHome": "Back Home",
     "heroDesc": "Continue working around the current project. New sessions default to this project's working folder.",
     "openArchive": "Project Archive",
-    "openChannels": "Channels",
     "openGit": "Git",
     "workspaceLabel": "Project workspace",
     "folderLabel": "Working folder",

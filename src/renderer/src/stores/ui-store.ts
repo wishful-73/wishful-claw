@@ -407,13 +407,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
     }
     set({ activeNavItem: 'chat', chatView: 'archive', ...CHAT_SURFACE_NAV_RESET })
   },
-  navigateToChannels: (projectId: any) => {
-    const resolvedProjectId = projectId ?? useChatStore.getState().activeProjectId ?? null
-    if (resolvedProjectId) {
-      useChatStore.getState().setActiveProjectHome(resolvedProjectId)
-    }
-    set({ activeNavItem: 'chat', chatView: 'channels', ...CHAT_SURFACE_NAV_RESET })
-  },
   navigateToGit: (projectId: any) => {
     const resolvedProjectId = projectId ?? useChatStore.getState().activeProjectId ?? null
     if (resolvedProjectId) {

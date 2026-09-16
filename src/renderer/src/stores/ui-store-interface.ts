@@ -240,7 +240,6 @@ export interface UIStore {
   navigateToHome: () => void
   navigateToProject: (projectId?: string | null) => void
   navigateToArchive: (projectId?: string | null) => void
-  navigateToChannels: (projectId?: string | null) => void
   navigateToGit: (projectId?: string | null) => void
   navigateToPersona: (projectId?: string | null) => void
   navigateToSession: (sessionId?: string | null) => void

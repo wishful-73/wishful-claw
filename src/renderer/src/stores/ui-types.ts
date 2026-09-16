@@ -15,7 +15,7 @@ export type NavItem =
   | 'codegraph'
 
 
-export type ChatView = 'home' | 'project' | 'archive' | 'channels' | 'git' | 'session' | 'persona'
+export type ChatView = 'home' | 'project' | 'archive' | 'git' | 'session' | 'persona'
 
 export type RightPanelSection = 'execution' | 'resources' | 'collaboration' | 'monitoring'
 export type AgentFilesTab = 'files' | 'changes'

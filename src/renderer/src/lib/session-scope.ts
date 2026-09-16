@@ -8,7 +8,7 @@
 import type { Session } from '@renderer/stores/chat-store'
 import type { ChatView } from '@renderer/stores/ui-store'
 
-const PROJECT_SCOPED_VIEWS = new Set<ChatView>(['project', 'archive', 'channels', 'git'])
+const PROJECT_SCOPED_VIEWS = new Set<ChatView>(['project', 'archive', 'git'])
 
 interface SessionScopeInput {
   chatView: ChatView

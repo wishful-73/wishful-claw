@@ -214,9 +214,28 @@ export const BOTTOM_SCROLL_CORRECTION_EPSILON = 2
 export const AUTO_SCROLL_MIN_DELTA = 24
 export const PROGRAMMATIC_SCROLL_GUARD_MS = 160
 export const STREAMING_AUTO_SCROLL_POLL_MS = 500
-/** R-10.2: 执行中钉底跟随姿态——视口底边低于内容底的留白带高度。
- * 新增内容先长在这条留白带里，长满才推视口，吸收流式渲染抖动。 */
-export const STREAMING_BOTTOM_FOLLOW_GAP = 80
+/**
+ * iter-30 S-31/S-32 余量基准：视口底边停在内容底下方多远（px）。
+ *
+ * 管的是**可见留白**，两端都由 `scrollToBottomImmediate` 的双向跟随实现：
+ * 余量小于 `STREAMING_BOTTOM_FOLLOW_REFILL_AT` 就补到本值，大于半屏就收回到本值。
+ * 位移全部由 `scrollTop` 承担，**不碰 `min-height`** —— `scrollHeight` 不变就没有 clamp。
+ *
+ * 语义改过三轮，前两轮都错，记在这儿免得再走回去：
+ * - 旧值 `STREAMING_BOTTOM_FOLLOW_GAP = 80`：目标写成「当前内容底 + GAP」，每帧跟着内容走
+ *   ⇒ 滚动条每帧推 1px，余量恒等于 GAP、**从未被真正消耗过**，等于没有缓冲。
+ * - 「阶梯式」：补满一整块后不再动，等余量见底再补。解决了每帧推，但**只补不收** ——
+ *   视口会漂进收缩后的留白深处（老大报的「正常消息被顶上去、聊天窗只有空白」）。
+ * - 「超半屏就收 min-height」+ 节流：**跳得更凶**。收 min-height 本身就是制造
+ *   `scrollHeight` 骤减 ⇒ 必然 clamp ⇒ 必然跳；节流只是把攒下的位移合并成一次更大的跳。
+ *
+ * 取值权衡：太小撑不住工具卡片展开那类阶跃；太大就是 T-9 那次「全是留白」。
+ * 实际生效值会被夹到半屏以内（窗口矮的时候 240px 可能不止半屏）。
+ */
+export const STREAMING_BOTTOM_FOLLOW_CHUNK = 240
+
+/** 余量低于这个值就补回基准（px）。留点提前量，别等内容底都越过视口底了才补。 */
+export const STREAMING_BOTTOM_FOLLOW_REFILL_AT = 24
 export const USER_LOCATOR_HIGHLIGHT_MS = 1400
 export const ASSISTANT_RAIL_PREVIEW_LIMIT = 120
 export const ASSISTANT_RAIL_SCROLL_OFFSET = 28

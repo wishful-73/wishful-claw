@@ -149,7 +149,6 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       loadedTurns={data.loadedTurns}
       pinnedTurnMessage={data.pinnedTurnMessage}
       isPinnedTurnOverlayVisible={scroll.isPinnedTurnOverlayVisible}
-      minContentHeight={scroll.minContentHeight}
       onJumpToPinnedMessage={scroll.handleJumpToPinnedMessage}
       rows={data.rows}
       lastMessageRowIndex={data.rows.length - 1}

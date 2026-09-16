@@ -35,8 +35,6 @@ interface VirtualListContentProps {
   loadedTurns: number
   pinnedTurnMessage: UnifiedMessage | null
   isPinnedTurnOverlayVisible: boolean
-  /** R-10.2: 执行中高度水位线，收缩部分由底部留白补齐。 */
-  minContentHeight: number
   onJumpToPinnedMessage: () => void
   rows: MessageListRow[]
   lastMessageRowIndex: number
@@ -79,7 +77,6 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     loadedTurns,
     pinnedTurnMessage,
     isPinnedTurnOverlayVisible,
-    minContentHeight,
     onJumpToPinnedMessage,
     rows,
     lastMessageRowIndex,
@@ -141,16 +138,20 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
         ref={listRef}
         className="absolute inset-0 overflow-y-auto pl-7 md:pl-9"
         data-message-content
-        style={{ overflowAnchor: 'none' }}
+        // 同 ThinkingBlock：全局 `* { scroll-behavior: smooth }`（assets/main.css:323）会把每次
+        // scrollTop 赋值变成平滑动画，与逐帧跟随对打。inline 覆盖成 auto（瞬时）。
+        style={{ overflowAnchor: 'none', scrollBehavior: 'auto' }}
         onScroll={handleListScroll}
       >
         <div
           ref={virtualContentRef}
           className="relative w-full"
           style={{
-            height: `${rowVirtualizer.getTotalSize()}px`,
-            // R-10.2: 执行中高度只增不减——水位线以 min-height 补齐，底部留白顶住收缩
-            minHeight: minContentHeight > 0 ? `${minContentHeight}px` : undefined
+            height: `${rowVirtualizer.getTotalSize()}px`
+            // 注：R-10.2 的执行中高度水位线**不写在这里** —— 由 useMessageListScroll
+            // 直写 el.style.minHeight（见 applyMinHeight）。只要 minHeight 不出现在 JSX 的
+            // style 里，React 的 diff 就不会碰这个属性，手写的值留得住；写成 state 等于
+            // 每抬一次水位线就整树 re-render 一趟。
           }}
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow: any) => {

@@ -763,6 +763,52 @@ const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-
 
 ---
 
+## S-39 内置浏览器暴露 Electron 身份，站点拒绝登录
+
+**一句话**：免费对话页打开 `chat.deepseek.com` 提示「当前客户端不稳定，请升级到最新版」—— 因为内置浏览器把自己的 Electron 外壳身份原样送了出去。
+
+**来源（2026-09-16 14:12 老大口述）**：
+
+> 「你这个用的标准浏览器么。发现是用的我们内置的浏览器，但是登录提示：当前客户端不稳定。请升级到最新版」
+> 「切换了一轮站点，最后切换回来的时候才提示的，我们右侧面板去访问其它网页的时候 之前没有这种提示呢」
+
+**状态**：**已实施（2026-09-16，老大拍板甲案）**
+
+**根因（两层，缺一不可）**：
+
+1. **假数据覆盖真值**。`src/main/ipc/misc-handlers.ts:234-240` 的 `browser:emulation-status` 是**纯 stub**：
+
+   ```ts
+   // -- Browser emulation status (stub -- returns defaults) --
+   return { success: true, status: { reuseEnabled: false, userAgent: '' } }
+   ```
+
+   渲染端初始 state 本来是对的（`FreeChatPage.tsx` / `BrowserPanel.tsx` 都取 `stripElectronFromUserAgent(navigator.userAgent)`），但 IPC 一返回就被**无条件覆盖**成 `''` / `false` ⇒ `webviewUserAgent = undefined` ⇒ `<webview>` 不传 `useragent` ⇒ 掉回 Electron 默认 UA。
+
+2. **洗白函数洗不干净**。`src/shared/browser-plugin.ts` 原实现只剥 ` Electron/<版本>`：
+
+   ```ts
+   userAgent.replace(/\sElectron\/[^\s]+/g, '').trim()
+   ```
+
+   应用名 token（`wishful-claw/0.2.29`）**原样留着**，站点照样认得出「不是标准浏览器」。
+
+**为什么是「切一圈站点回来才提示」**：`<webview>` 的 `key` 含站点 id ⇒ **切站点 = 整个销毁重建**。首次打开时 IPC 还没回来，挂载用的是干净初始值 ⇒ 正常；切站点时 state 已被 stub 污染 ⇒ 重建后的 webview 不带 `useragent` ⇒ 提示。右侧面板同理（它的 `key` 同样受 stub 影响），只是老大此前用它开的站不检测 UA。
+
+**修法（甲案：内置 webview + 干净身份）**：
+
+1. `stripElectronFromUserAgent` **不再删 token，改为按「平台 + 真实 Chrome 版本」重建**标准 Chromium UA —— 应用名随打包改名也不会漏：
+   `Mozilla/5.0 (<platform>) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/<ver> Safari/537.36`
+2. **UA 与「复用浏览器数据」解耦**。两者本是两件事：复用管 partition / userData，UA 管「以什么身份出现」。内置浏览器**任何时候**都必须传干净 UA，不再受 `reuse` 开关管辖。
+3. IPC 返回**空 UA 时不采纳**，避免将来再被假值打回原形。
+4. 新增 `tests/browser-user-agent/program.ts`（**24 断言**），锁住「输出必须是标准 Chromium UA + 平台/版本保真 + 幂等 + 兜底」。**已验证测试真能抓 bug**：临时退回旧实现立刻报 `AssertionError`。
+
+**未纳入本次**：`browser:emulation-status` 仍是 stub，「复用浏览器数据」设置项开了也白开 —— 见「待登记 E」。
+
+**取证已过，可直接实施**（无裁定点）。
+
+---
+
 ## 待登记（清尾巴，**等老大点名**）
 
 老大原话「30 迭代主要是 spill + 清尾巴」，**未逐条点名**。以下为当前已存在的候选池，按来源分组，**均未排入**：
@@ -794,6 +840,13 @@ const composerWidthClass = fullWidth ? 'mx-auto w-full max-w-none' : 'mx-auto w-
 - **做法**：在 `AgentRuntimeUseCapabilityExecutor.CallCapabilityAsync` 取 `arguments` 处（`:256-259`）加一道纠偏 —— `arguments` 里若出现 `capability_id` / `action`，**自动提到顶层**再执行。
 - **前置核实**：目标工具自身是否存在同名参数（尤指 `capability_id`），避免误吞。
 - **触发条件**：**先观察** 1+2 之后模型是否仍踩这个坑（需重编 worker 后实测）；仍踩则升级为代码强制。
+
+**E. `browser:emulation-status` 仍是 stub +「复用浏览器数据」整体未实现**（2026-09-16 排查 S-39 时发现）
+
+- **现状**：`src/main/ipc/misc-handlers.ts:234-240` 恒回 `{ reuseEnabled: false, userAgent: '' }`。`userAgent` 恒空是「主进程拿不到系统浏览器 UA」的事实；但 `reuseEnabled` 恒 `false` 会让**设置页开关显示「已开启」、实际行为走另一条路**（`BUILTIN_BROWSER_PARTITION`），属假事实。
+- **本次故意没动 `reuseEnabled`**：改了会让 partition 从 `persist:wishfulclaw-browser` 换成默认 session，**用户已登录站点的登录态会丢**。当前「恒为 BUILTIN 分区」反而是稳定可用的。
+- **两条出路**（二选一，都是新工作量）：① 整套做「复用系统浏览器 userData」（探测 Chrome/Edge/Brave 的 userData 目录 → 映射 partition），注意 Chrome 有进程锁、浏览器开着基本读不了；② 明确废弃该设置项（UI + IPC + 类型一起摘干净）。
+- **待老大点名**。
 
 > 登记原则：**只记不排**。哪几条进 30、哪几条留 31，等老大点名后回填编号。
 

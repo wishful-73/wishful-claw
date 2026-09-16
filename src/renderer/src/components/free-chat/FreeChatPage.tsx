@@ -25,8 +25,10 @@ export function FreeChatPage(): React.JSX.Element {
   const [activeSiteId, setActiveSiteId] = useState(() => sites[0]?.id ?? '')
   const [reloadToken, setReloadToken] = useState(0)
   const [runtimeReuseEnabled, setRuntimeReuseEnabled] = useState(browserUserDataReuseEnabled)
-  const [runtimeUserAgent, setRuntimeUserAgent] = useState<string | undefined>(
-    browserUserDataReuseEnabled ? stripElectronFromUserAgent(navigator.userAgent) : undefined
+  // UA 与「复用浏览器数据」是两件事：复用管的是 partition / userData，UA 管的是「以什么身份出现」。
+  // 内置浏览器任何时候都必须是一个普通 Chromium，否则站点会把它认成非标准客户端并拒绝登录。
+  const [runtimeUserAgent, setRuntimeUserAgent] = useState<string>(() =>
+    stripElectronFromUserAgent(navigator.userAgent)
   )
   const webviewRef = useRef<Electron.WebviewTag | null>(null)
 
@@ -39,7 +41,7 @@ export function FreeChatPage(): React.JSX.Element {
     }
   }, [sites, activeSiteId])
 
-  // Mirror BrowserPanel: the main process owns the effective browser profile mode.
+  // 与 BrowserPanel 一致：生效的浏览器 profile 模式由主进程说了算。
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -49,10 +51,12 @@ export function FreeChatPage(): React.JSX.Element {
           | { success: false; error?: string }
         if (!cancelled && result.success) {
           setRuntimeReuseEnabled(result.status.reuseEnabled)
-          setRuntimeUserAgent(result.status.userAgent)
+          // 主进程目前拿不到系统浏览器的 UA（该能力未实现，恒回空串）。
+          // 空值绝不能覆盖上面算出来的干净 UA —— 那会让 webview 掉回带 Electron 标识的默认 UA。
+          if (result.status.userAgent) setRuntimeUserAgent(result.status.userAgent)
         }
       } catch {
-        // Fall back to the values already read from the settings store.
+        // 失败则沿用设置里读到的值。
       }
     })()
     return () => {
@@ -64,7 +68,6 @@ export function FreeChatPage(): React.JSX.Element {
     webviewRef.current = node
   }, [])
 
-  const webviewUserAgent = runtimeReuseEnabled ? runtimeUserAgent : undefined
   const webviewSessionProps: {
     partition?: string
     allowpopups: boolean
@@ -72,7 +75,7 @@ export function FreeChatPage(): React.JSX.Element {
   } = {
     ...(runtimeReuseEnabled ? {} : { partition: BUILTIN_BROWSER_PARTITION }),
     allowpopups: true,
-    ...(webviewUserAgent ? { useragent: webviewUserAgent } : {})
+    ...(runtimeUserAgent ? { useragent: runtimeUserAgent } : {})
   }
 
   return (

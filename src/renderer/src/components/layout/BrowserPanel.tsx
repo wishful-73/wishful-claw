@@ -49,19 +49,20 @@ export function BrowserPanel({
   const [runtimeBrowserUserDataReuseEnabled, setRuntimeBrowserUserDataReuseEnabled] = useState(
     browserUserDataReuseEnabled
   )
-  const [runtimeBrowserUserAgent, setRuntimeBrowserUserAgent] = useState<string | undefined>(
-    browserUserDataReuseEnabled ? stripElectronFromUserAgent(navigator.userAgent) : undefined
+  // UA 与「复用浏览器数据」是两件事：复用管的是 partition / userData，UA 管的是「以什么身份出现」。
+  // 内置浏览器任何时候都必须是一个普通 Chromium，否则站点会把它认成非标准客户端并拒绝登录。
+  const [runtimeBrowserUserAgent, setRuntimeBrowserUserAgent] = useState<string>(() =>
+    stripElectronFromUserAgent(navigator.userAgent)
   )
   const webviewRef = useRef<Electron.WebviewTag | null>(null)
   const initialBrowserUserDataReuseEnabledRef = useRef(browserUserDataReuseEnabled)
-  const webviewUserAgent = runtimeBrowserUserDataReuseEnabled ? runtimeBrowserUserAgent : undefined
   const webviewSessionProps: Pick<
     React.ComponentProps<'webview'>,
     'partition' | 'allowpopups' | 'useragent'
   > = {
     ...(runtimeBrowserUserDataReuseEnabled ? {} : { partition: BUILTIN_BROWSER_PARTITION }),
     allowpopups: true,
-    ...(webviewUserAgent ? { useragent: webviewUserAgent } : {})
+    ...(runtimeBrowserUserAgent ? { useragent: runtimeBrowserUserAgent } : {})
   }
 
   useEffect(() => {
@@ -74,7 +75,9 @@ export function BrowserPanel({
           | { success: false; error?: string }
         if (!cancelled && result.success) {
           setRuntimeBrowserUserDataReuseEnabled(result.status.reuseEnabled)
-          setRuntimeBrowserUserAgent(result.status.userAgent)
+          // 主进程目前拿不到系统浏览器的 UA（该能力未实现，恒回空串）。
+          // 空值绝不能覆盖上面算出来的干净 UA —— 那会让 webview 掉回带 Electron 标识的默认 UA。
+          if (result.status.userAgent) setRuntimeBrowserUserAgent(result.status.userAgent)
         }
       } catch {
         if (!cancelled) {

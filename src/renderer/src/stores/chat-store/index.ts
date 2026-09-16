@@ -217,6 +217,25 @@ export const useChatStore = create<ChatStore>()(
       // 以 text 为源的消费方（复制、检索）拿到原始 XML。
       const userText = params.userMessageText ?? derivedUserText
 
+      // iter-30 BUG-A/B：该会话已有活跃 run 时，绝不能走下面这条 agent/run 路径。
+      // 实测后果有两条，都出在「全局会话给正在跑的项目会话派任务」这一场景：
+      //   ① Worker 侧 ActiveSessionRuns 直接拒（"Session already has an active agent
+      //      run"）。可用户消息这时已经被乐观写进 store，于是只换来一张报错卡片 ——
+      //      消息没进队列。
+      //   ② 更糟：下面的 beginUserTurn / setStreamingMessageId 会把
+      //      streamingMessages[sessionId] 从「正在跑的 runId」改成本次 runId，失败分支
+      //      再把它清成 null —— 正在跑的 run 就此在渲染端消失，它的事件全部路由不到
+      //      消息上，聊天窗不再渲染（左上角状态还在动、内容不再出）。
+      // 所以这里前置拦下并入队：出队由 dispatchNextQueuedMessageForSession 在当前 run
+      // 结束后触发，rawParams 保证 sessionMode / maxIterations 这类参数原样带过去。
+      // 放在 sendMessage 内部而不是只靠 handleSendMessage，是因为绕过 hook 的调用方
+      // （跨会话派发、渠道自动回复、cron）拿到的就是 store 这一层。
+      if (state.streamingMessages[sessionId]) {
+        const { enqueuePendingSessionMessage } = await import('@renderer/hooks/use-chat-actions')
+        enqueuePendingSessionMessage({ text: userText, sessionId, rawParams: params }, sessionId)
+        return false
+      }
+
       const now = Date.now()
 
       // Generate runId on the renderer side so we can set streamingMessages

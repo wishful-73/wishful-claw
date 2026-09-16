@@ -3,7 +3,8 @@ import {
   useChatStore,
   updateCompressionStatus,
   applyCompactArtifactsToSession,
-  updateSessionContextTokens
+  updateSessionContextTokens,
+  type ChatStore
 } from '@renderer/stores/chat-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
@@ -47,6 +48,15 @@ interface SendMessageRequest {
   sessionId?: string
   opts?: SendMessageOptions
   queuedDispatch?: boolean
+  /**
+   * iter-30 BUG-A：出队时原样重发的 store 级参数。
+   *
+   * 「全局会话给项目会话派任务」这类调用方走的是 store.sendMessage(params)，
+   * 它的 params 里有 sessionMode:'goal' / maxIterations:0 这种 handleSendMessage
+   * 从 SendMessageRequest 反推不出来的东西。只存 requestText 会静默降级成普通轮，
+   * 所以整份 params 一起存下来，出队时优先走它。
+   */
+  rawParams?: Parameters<ChatStore['sendMessage']>[0]
 }
 
 type SendMessageHandler = (request: SendMessageRequest) => Promise<boolean>
@@ -544,6 +554,8 @@ export interface PendingSessionMessageItem {
   }
   createdAt: number
   draft?: string
+  /** 见 SendMessageRequest.rawParams —— 有它时出队直接重放这份参数。 */
+  rawParams?: Parameters<ChatStore['sendMessage']>[0]
 }
 
 export type ManualCompressionResult = 'compressed' | 'skipped' | 'blocked' | 'restore_failed' | 'failed'
@@ -734,7 +746,7 @@ function getRequestText(request: SendMessageRequest): {
   }
 }
 
-function enqueuePendingSessionMessage(request: SendMessageRequest, sessionId: string): void {
+export function enqueuePendingSessionMessage(request: SendMessageRequest, sessionId: string): void {
   const normalized = getRequestText(request)
   const now = Date.now()
   const item: PendingSessionMessageItem = {
@@ -748,7 +760,8 @@ function enqueuePendingSessionMessage(request: SendMessageRequest, sessionId: st
     selectedFiles: normalized.selectedFiles,
     opts: request.opts ? { ...request.opts } : undefined,
     requestText: typeof request.text === 'string' ? request.text : { ...request.text },
-    createdAt: now
+    createdAt: now,
+    ...(request.rawParams ? { rawParams: request.rawParams } : {})
   }
   const list = _pendingMessages.get(sessionId) ?? []
   _pendingMessages.set(sessionId, [...list, item])
@@ -843,8 +856,11 @@ export function dispatchNextQueuedMessageForSession(
     notifyPendingSessionMessageListeners()
   }
   if (hasActiveSessionRunForSession(sessionId)) return false
-  if ((_pendingMessages.get(sessionId)?.length ?? 0) === 0) return false
-  if (_sendMessageHandlers.size === 0) {
+  const head = _pendingMessages.get(sessionId)?.[0]
+  if (!head) return false
+  // rawParams 项出队走 store.sendMessage，不经过 handleSendMessage，所以没挂载
+  // InputArea 时也能出队 —— 跨会话派发的队列不该被 UI 挂载状态卡住。
+  if (!head.rawParams && _sendMessageHandlers.size === 0) {
     pausePendingSessionDispatch(sessionId)
     return false
   }
@@ -860,14 +876,20 @@ export function dispatchNextQueuedMessageForSession(
       }
       const item = _pendingMessages.get(sessionId)?.[0]
       const handler = Array.from(_sendMessageHandlers).at(-1)
-      if (!item || !handler) return
-      const started = await handler({
-        text: item.requestText,
-        images: item.images,
-        sessionId,
-        opts: item.opts,
-        queuedDispatch: true
-      })
+      if (!item) return
+      // rawParams 项原样重放 store 级参数（跨会话派发带着 sessionMode / maxIterations
+      // 这类 handleSendMessage 表达不出的东西）；其余仍走 handler 重新解析。
+      const started = item.rawParams
+        ? await useChatStore.getState().sendMessage(item.rawParams)
+        : handler
+          ? await handler({
+              text: item.requestText,
+              images: item.images,
+              sessionId,
+              opts: item.opts,
+              queuedDispatch: true
+            })
+          : false
       if (!started) {
         pausePendingSessionDispatch(sessionId)
         return

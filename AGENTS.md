@@ -339,99 +339,15 @@ Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推�
 - **禁止从旧分支拆分支**：如果上一个分支未合并 main，新分支会缺少前序迭代的代码变更，导致编译错误或功能缺失
 - **标准流程**：`git checkout main` → `git pull origin main` → `git checkout -b dev/v2-iter-{N}` → 开发 → commit → push → 合并 main → 打 tag → 删除分支 → 下一个迭代从 main 重新拆出
 
-### 迭代完结收尾
+### 迭代收尾与发布
 
-**迭代是否完结由用户确认，且由用户手动发起（原话口径："进行 xxx 迭代收尾"）。Agent 不得自行判定迭代完成，也不得提前催收尾。**
+**完整流程见 `docs/release-workflow.md`**（触发条件 / 版本规则 / 版本号改动清单 / git 收尾步骤 / 进度文档 / GitHub Release 发布 / 发布后核验，全在那份文档；本节不再维护副本）。
 
-**版本规则**：`v2-iter-{N}` 仅表示 MVP v2 阶段的迭代编号，不是产品主版本号。正式版发布前，产品版本统一为 `0.2.{N}`，Git tag 为 `v0.2.{N}`。每次迭代收尾必须先将 `package.json` 版本更新为 `0.2.{N}`；应用 UI 从 `package.json` 读取版本号，README 版本徽章同步更新。
-
-用户确认完结后，Agent 必须执行以下收尾步骤，确保 main 是最新的，下个会话可以直接从 main 开始新迭代：
-
-```bash
-# 0. 更新产品版本（package.json = 0.2.{N}，README 徽章同步）
-
-# 1. 合并到 main
- git checkout main
-git merge dev/v2-iter-{N} --no-ff -m "merge: v2-iter-{N} - {迭代名称}"
-
-# 2. 打 tag
-git tag -a v0.2.{N} -m "v2-iter-{N}: {迭代名称} - 验证通过"
-
-# 3. 推送远程（优先直连，失败时走代理）
-git push origin main
-git push origin v0.2.{N}
-# 若直连失败，改用代理：
-# git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin main
-# git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin v0.2.{N}
-
-# 4. 删除本地迭代分支
-git branch -d dev/v2-iter-{N}
-
-# 5. 删除远程迭代分支（如果之前 push 过）
-git push origin --delete dev/v2-iter-{N}
-# 若直连失败，改用代理：
-# git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin --delete dev/v2-iter-{N}
-```
-
-6. 更新 `docs/PROGRESS.md` 总览行，并在 `docs/progress/` 创建 `v2-iter-{N}.md` 明细（状态 + VERDICT + Commit ID + Tag + 日期）。
-
-7. 发布到 GitHub Release（见下节）。
-
-**关键要求**：收尾完成后，当前会话结束。下个会话直接从 main 拉取最新代码开始新迭代，不需要关心旧分支。
-
-### 发布到 GitHub
-
-仓库地址：https://github.com/wishful-73/wishful-claw（旧地址 `731471991/wishful-claw` 已迁移，若 remote 仍指向旧地址需先 `git remote set-url origin` 更新）。
-
-收尾的最后一步是发布版本：
-
-1. **推送 main 和 tag**：`git push origin main` + `push origin v0.2.{N}`（优先直连，失败时走代理，见上文步骤 3）
-2. **创建 GitHub Release**：使用本地便携版 gh CLI（固定路径 `D:\claw\tools\gh\bin\gh.exe`，须保留勿删，登录凭据存于系统 keyring）：
-
-   ```bash
-   # 用 git log 提取本迭代变更，按需求逐条汇总成 notes 后：
-   /d/claw/tools/gh/bin/gh.exe release create v0.2.{N} \
-     --repo wishful-73/wishful-claw --title "v0.2.{N}" --notes-file <notes文件>
-   # 若直连失败，加代理前缀：
-   # HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe release create v0.2.{N} \
-   ```
-
-   - notes 按本迭代的需求逐条汇总，用 `git log v0.2.{N-1}..v0.2.{N} --oneline` 提取（提交粒度已是一个需求一刀，该区间约等于"需求数 + 收尾修复调整"行，提交标题即可直接作 notes 条目）
-   - gh 不在 PATH 中，必须用绝对路径调用；gh.exe 不可用时用浏览器登录 GitHub 手动创建（Releases → Draft a new release → 选择 tag → 填写 notes → Publish）
-3. **打包安装包并上传**（Windows NSIS 安装器，需上传完整 updater 资产到同一个 Release）：
-
-   ```bash
-   npm run pack:installer:full   # AOT Worker + 前端 + electron-builder NSIS
-   # 典型产物：
-   #   release/wishful-claw-0.2.{N}-setup.exe
-   #   release/latest.yml
-   #   release/wishful-claw-0.2.{N}-setup.exe.blockmap（如果 electron-builder 生成）
-
-   # latest.yml 是 electron-updater 检查更新的必需元数据，不能只上传 setup.exe
-   /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
-     --repo wishful-73/wishful-claw \
-     "release/wishful-claw-0.2.{N}-setup.exe" \
-     "release/latest.yml" \
-     --clobber
-
-   # 如果 release/ 下生成了 .blockmap，也必须上传到同一个 Release
-   /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
-     --repo wishful-73/wishful-claw \
-     "release/wishful-claw-0.2.{N}-setup.exe.blockmap" \
-     --clobber
-
-   # 若直连失败，加代理前缀：
-   # HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
-   #   --repo wishful-73/wishful-claw \
-   #   "release/wishful-claw-0.2.{N}-setup.exe" "release/latest.yml" --clobber
-   ```
-
-   - 打包前确认无残留 WishfulClaw/electron 测试进程（`tasklist` 检查），否则旧 `release/win-unpacked/` 被锁报 EBUSY
-   - 若 `win-unpacked/app.asar` 被锁（杀软/索引句柄）且杀进程无效，改用新输出目录绕开：`npx electron-builder --win -c.directories.output=release/v0.2.{N}`
-   - `latest.yml` 必须与当前 Release/tag 对应，至少检查 `version`、`path`、`files[].url`、`sha512`、`size` 与实际 setup.exe 资产一致
-   - `.blockmap` 不是每次都会生成；若 `latest.yml` 或打包输出引用了它，必须一并上传，不能只上传 setup.exe
-   - 上传后不能只核验 setup.exe；必须确认 Release 同时出现 `latest.yml`，并检查其下载地址不返回 404
-4. **发布后核验**：确认 GitHub 上 main 分支、tag、Release（含 setup.exe、`latest.yml` 及必要的 `.blockmap`）三者均到位；再用低于当前 Release 的本地版本实际调用 `electron-updater.checkForUpdates()` 验证能进入 `update-available`，随后再测试下载确认和安装确认流程
+- **迭代是否完结由用户确认，且由用户手动发起**（原话口径："进行 xxx 迭代收尾"）。Agent 不得自行判定迭代完成，也不得提前催收尾
+- **版本规则**：`v2-iter-{N}` 是 MVP v2 阶段迭代编号，不是产品主版本号。正式版发布前，产品版本统一 `0.2.{N}`，Git tag `v0.2.{N}`
+- **收尾主线**：升版本号 → 合并 main（`--no-ff`）→ 打 tag → 推送 → 删除迭代分支 → 更新进度文档 → 发布 GitHub Release
+- **收尾完成后当前会话结束**：下个会话直接从 main 拉最新代码开始新迭代，不需要关心旧分支
+- **网络**：优先直连，失败再走代理 `127.0.0.1:7897`（Clash Verge 平时关着，直连完全不通时可自行启动）
 
 ## 异常日志
 

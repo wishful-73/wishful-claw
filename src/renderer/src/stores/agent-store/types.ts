@@ -34,6 +34,12 @@ export interface SubAgentState {
 
   isQueued?: boolean
 
+  /**
+   * 后台子 agent：父 run 不等它，结束报告只能靠渲染端在事件到达时挂号回收。
+   * 前台子 agent 的报告是父 run 的 tool result，父 run 自己会等，不需要唤醒。
+   */
+  isBackground?: boolean
+
   success: boolean | null
 
   endReason: LoopEndReason | null

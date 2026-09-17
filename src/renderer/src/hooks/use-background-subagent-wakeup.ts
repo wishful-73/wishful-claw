@@ -19,6 +19,10 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { buildProviderPayload, hasActiveSessionRunForSession } from '@renderer/hooks/use-chat-actions'
 import { backgroundSubAgentCompletions } from '@renderer/lib/agent/sub-agents/background-events'
+import {
+  buildBackgroundWakeMessage,
+  extractWorkerReportAgentName
+} from '@renderer/lib/agent/sub-agents/background-wake-message'
 
 /**
  * 事件到达时 Worker 可能还没把报告写进通知区 —— 它先 emit 事件、后写缓冲。
@@ -88,9 +92,9 @@ async function wakeSession(sessionId: string): Promise<void> {
 
   const settings = useSettingsStore.getState()
   const reportText = reports.join('\n\n---\n\n')
-  const content =
-    `[系统] 后台子 agent 已完成，以下是它的报告。请基于报告继续处理，` +
-    `如有需要可向用户总结结果。\n\n${reportText}`
+  // 这条消息会作为一轮新输入发给模型，同时进聊天窗。走统一构造：前缀让渲染端认出
+  // 它是后台子 agent 通知卡而不是用户气泡。
+  const content = buildBackgroundWakeMessage(extractWorkerReportAgentName(reports[0]), reportText)
 
   void chatStore.sendMessage({
     provider: buildProviderPayload(activeProvider, modelId, settings) as unknown as Record<string, unknown>,

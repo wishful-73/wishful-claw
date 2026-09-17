@@ -312,6 +312,16 @@ private static bool IsRunEnabledTool(AgentRunContext runContext, string toolName
 1. 范围：只核心化 `codegraph_explore`，还是连 `codegraph_search` / `codegraph_node` 一起（多吃常驻 schema token）
 2. 未启用时是"靠描述里的前置条件兜住"还是"从直连集合摘掉" —— **裁定已给出方向：摘掉**（即前提那一步）
 
+**补充理由：它是领域工具，不是通用工具（老大 2026-09-17 晚）**
+
+> 「至于代码图谱，我突然想到这个东西并不是所有的都有代码，这个软件并不是全面用来开发的，也可以做其它事情」
+
+这条比"缺开关门控"更根本。开关门控是**实现层**缺陷（补上就能核心化），而这条讲的是**产品定位**：Wishful Claw 不只为写代码服务 —— 写作、调研、日常问答都不涉及代码。把 `codegraph_explore` 摆进所有会话的直接工具列表，对非开发场景是**纯噪音**：占 schema token、占注意力，却永远用不上。
+
+⇒ 即使将来把功能开关接进直连注入（上面那个前提），**也不该因此就核心化它**。继续走 `use_capability` 代理反而正合适 —— 开发场景的 agent 会主动去翻，非开发场景不受打扰。
+
+**结论：本需求不再重启。**
+
 ---
 
 ## S-52 探索结论：tgrep 不能替代代码图谱（近似需求的靶子其实是 Grep）
@@ -479,6 +489,47 @@ Only the text you emit is delivered back to the caller.
 1. 15 个 agent 定义里的 `maxIterations` 键**没有批量改写**（解析层已兼容），用户数据不动
 2. **「父 run 先死、事件根本没送达渲染端」这条路径本次没修** —— 那种情况下渲染端连 `sub_agent_end` 都收不到，hook 不会触发；S-36 落库的 `finalOutput` 是唯一数据源，而渲染端目前没有主动读它的通道
 3. `endReason` 的**消费方**未动 —— 现在能如实上报（`max_iterations` / `cancelled` / `error`），但 UI 还没专门呈现"被中断"
+
+### 补漏：报告回传渲染端（2026-09-17 晚，老大真机验收发现）
+
+上面遗留第 2 条**本次补掉**，而且根因与我先前的推断不同。
+
+**真实断点：事件照常到渲染端，只是没人往下传。**
+
+子代理卡片的状态能正常清除 ⇒ `sub_agent_end` 确实送达了。断的是 `stores/chat-store/index.ts` 收到 `sub_agent_*` 后**只调 `handleSubAgentEvent` 更新 UI 状态，从不通知 `backgroundSubAgentCompletions` 总线** —— 而唤醒 hook 订阅的正是这条总线。**整条链只差这一根线。**
+
+（先前推断的两条都不成立：`EmitAsync` 父 run finalize 后仍能通，它走的是请求上下文，且 `:175` 的 catch 会吞掉异常；`sub-agent-native-ui.ts` 的 `handleNativeSubAgentUiUpdate` 零调用方是移植进来就没接的**死代码**，不是当前链路。）
+
+| 文件 | 改动 |
+|---|---|
+| `stores/chat-store/index.ts` | `sub_agent_end` 且是后台子代理时向总线挂号（**放在 `handleSubAgentEvent` 之前** —— 它会删掉 `activeSubAgents` 里那条） |
+| `stores/agent-store/types.ts` + `slices/sub-agent-slice.ts` | `SubAgentState` 补 `isBackground?: boolean`（原先没有，slice 里用 `as any` 硬塞），两处 `as any` 去掉 |
+
+**只对后台子代理挂号**：前台子代理的报告是父 run 的 tool result，父 run 自己在等它，不需要唤醒。
+
+### 唤醒消息的呈现修正（同一批）
+
+回传补上后暴露的第二个问题：那条消息是**真以 user 消息发出去的**（走 `sendMessage` + 落库），于是渲染成用户气泡 —— 可用户从没发过它。
+
+**现成机制**：`MessageItem.tsx:65` 的 `AgentWakeNotification` **本来就是为这个场景写的** —— 它有一支 `subAgentMatch = content.match(/^\[Background sub-agent (.+?)\]:\n?/)`（紫色主题 + 人形图标）。但触发它的 `source === 'team'` 判定**全仓零写入点**，唤醒侧也从没按这个前缀发过 ⇒ 这条路从没通过。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/agent/sub-agents/background-wake-message.ts`（新建） | 格式的**唯一出处**：构造 / 识别 / 剥尾 / 从 Worker 信封取名字 / 解析标题。生产端（唤醒 hook）与消费端（渲染）共用，前缀漂移不可能 |
+| `hooks/use-background-subagent-wakeup.ts` | 改用 `buildBackgroundWakeMessage(名字, 报告)` 构造 |
+| `MessageItem.tsx` | user 分支识别 → 渲染通知卡；并剥掉尾部那句写给模型的指令（卡片里是噪音） |
+| `transcript-filters.ts` | `isRealUserMessage` 排除它 —— 否则它会变成**可编辑**的 |
+| `MessageList/useMessageListData.ts` | 吸附卡找"最后一条用户消息"时跳过它 |
+
+**标题口径**照抄右侧面板 `SubAgentsPanel.tsx:297-301`：**任务描述优先**，agent 名垫底。实测拿 agent 名当标题会显示成 `custom`（没有信息量的类型名），而描述（`Description: Iter docs H2 recount`）就在 Worker 信封里现成。
+
+**发给模型的内容**随之调整：前缀 `[Background sub-agent <名>]:` 置于行首（渲染端按此解析），指令句原句保留、从开头挪到末尾。
+
+**测试**：新增 `tests/background-wake-message/program.ts`（**30 断言**），锁的是生产端与渲染端之间的**格式契约**（不是"当前输出什么"）；`package.json` 加 `test:background-wake-message`。
+
+**门禁**：typecheck 0 错；TS **29/29**；未动 C#；BOM clean。
+
+**老大真机验收（2026-09-17 晚）**：后台子代理在父 run 先结束时**报告自动回到主会话**（不必手动发消息去叫），呈现为通知卡、标题是任务描述。**已通过。**
 
 ### 顺带待核（同一批 agent 定义里的其它键）
 
@@ -994,6 +1045,34 @@ return string.IsNullOrEmpty(output) ? "Message sent successfully." : output;
 **测试**：`tests/session-permission-mode/program.ts`（24 断言，重写为共享缺省口径）；`PluginSessionRoutingTests.cs` 渠道会话断言由 `default` 改 `fullAccess`。
 
 **验收标准**：新建全局会话缺省即 YOLO → 跑 shell 不弹审批；设置里把默认权限改成 Default → 新建会话回到审批；已有会话不受影响；渠道会话跑 shell 不弹审批（且无权限控件）。
+
+---
+
+## S-60 PowerShell 工具参数名与 schema 不符（任何调用都失败）
+
+**来源**：老大 2026-09-17 报 —— 「PowerShell 工具被 proxied 后传参被吞 —— 子 agent 直接调一律"PowerShell requires a non-empty script."，本轮失败 1 次、上轮失败 4 次，都得绕道 Bash 里嵌 powershell.exe -NoProfile -Command」。
+
+**根因：schema 与执行器读的参数名不一致，且与代理无关。**
+
+| | |
+|---|---|
+| schema 声明 | `Tools/Providers/CodeCompatibleToolProvider.cs:23` → `command` |
+| 执行器读取 | `AgentRuntimeCodeCompatibleExecutor.cs:57` → `call.Input.script` |
+
+取不到即判空 → 报「requires a non-empty script」。**直连和走代理一样失败**，"被代理吞参数"是表象而非归因。文件头自述 "Simplified port from WishfulClaw"，属移植遗留。
+
+**改动**（`AgentRuntimeCodeCompatibleExecutor.cs`）：
+
+1. 参数名对齐：`script` → `command`，错误文案一并改（模型看到能自己纠正）
+2. 命令行拼法改 **`-EncodedCommand`**（Base64 / UTF-16LE）—— 原为手拼 `-Command \"{script.Replace("\"","\\\"")}\"`，脚本里只要有引号就会被拆坏。**只修参数名的话，这工具一被真正使用还会撞上这个**，所以一并改
+
+**顺带查明（未修）**：`Monitor` 同类错位且更严重 —— schema 声明 `session_id`（描述是"监控**已启动**的进程"），执行器 `ExecuteMonitorAsync:120` 读的却是 `command`（执行一段命令）。**不只是参数名，语义都对不上**，等老大定它该是什么再动。
+
+**同批反馈的「Bash 工具 `$` 被吃掉」不是本仓问题**：实测在 Bash 工具里 `$items` / `$it` / `$LASTEXITCODE` 全部正常。子代理遇到的是它自己被迫绕道 `powershell.exe -Command "..."` —— 外层就是 PowerShell，双引号内 `$f` **先被外层展开成空**，实测复现 `foreach ( in @('a','b')) { Write-Output  }` 报 `Missing variable name after foreach`。正确写法是外层用单引号或 `-EncodedCommand`。**工具修好后不必再绕道，此坑自然绕开。**
+
+**门禁**：Worker 编译 0 警告 0 错误；typecheck 0 错；TS 29/29；BOM clean。
+
+**老大真机验收（2026-09-17 晚）**：**已通过。**
 
 ---
 

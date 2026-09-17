@@ -17,7 +17,12 @@ import type { RenderableChatItem } from './renderable-chat-items'
 import type { RequestRetryState, ToolCallState } from '@renderer/lib/agent/types'
 import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
-import { isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
+import { extractUnifiedMessageText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
+import {
+  isBackgroundWakeMessage,
+  resolveBackgroundWakeTitle,
+  stripBackgroundWakeTrailer
+} from '@renderer/lib/agent/sub-agents/background-wake-message'
 import {
   MARKDOWN_REHYPE_PLUGINS,
   MARKDOWN_REMARK_PLUGINS
@@ -68,8 +73,10 @@ function AgentWakeNotification({ content }: { content: string }): React.JSX.Elem
   const subAgentMatch = content.match(/^\[Background sub-agent (.+?)\]:\n?/)
   const match = teamMatch ?? subAgentMatch
   const from = match?.[1] ?? 'agent'
-  const body = match ? content.slice(match[0].length) : content
   const isStandaloneSubAgent = Boolean(subAgentMatch)
+  // 尾部那句「请继续处理」是写给模型的指令，卡片里显示出来是噪音。
+  const rawBody = match ? content.slice(match[0].length) : content
+  const body = isStandaloneSubAgent ? stripBackgroundWakeTrailer(rawBody) : rawBody
   const Icon = isStandaloneSubAgent ? CircleUserRound : Users
 
   return (
@@ -95,7 +102,7 @@ function AgentWakeNotification({ content }: { content: string }): React.JSX.Elem
               : 'text-cyan-600 dark:text-cyan-400'
           }`}
         >
-          {from}
+          {isStandaloneSubAgent ? resolveBackgroundWakeTitle(content, from) : from}
         </span>
         <span className="flex-1" />
         <ChevronDown
@@ -161,6 +168,10 @@ function MessageItemInner({
     switch (effectiveMessage.role) {
       case 'user': {
         if (isCompactSummaryLikeMessage(effectiveMessage)) return null
+        // 后台子 agent 的报告是系统交回来的，用户没发过这条 —— 渲染成通知卡而不是气泡。
+        if (isBackgroundWakeMessage(effectiveMessage)) {
+          return <AgentWakeNotification content={extractUnifiedMessageText(effectiveMessage)} />
+        }
         if (effectiveMessage.source === 'team') {
           return (
             <AgentWakeNotification

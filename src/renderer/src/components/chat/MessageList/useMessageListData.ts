@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { TFunction } from 'i18next'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
@@ -9,6 +9,7 @@ import { useTeamStore } from '@renderer/stores/team-store'
 import { selectSessionScopedAgentState } from '@renderer/lib/agent/session-scoped-agent-state'
 import { buildOrchestrationRuns } from '@renderer/lib/orchestration/build-runs'
 import { isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
+import { isBackgroundWakeMessage } from '@renderer/lib/agent/sub-agents/background-wake-message'
 import {
   buildRenderableChatItems,
   type RenderableChatItem
@@ -413,6 +414,7 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
       if (message.role !== 'user') continue
       if (message.source === 'team') continue
       if (isCompactSummaryLikeMessage(message)) continue
+      if (isBackgroundWakeMessage(message)) continue
       return message
     }
     return null

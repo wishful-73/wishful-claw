@@ -42,6 +42,8 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 
 import { adaptSubAgentEvent } from './adapt-sub-agent-event'
 
+import { backgroundSubAgentCompletions } from '@renderer/lib/agent/sub-agents/background-events'
+
 import { useAgentStore } from '@renderer/stores/agent-store'
 
 
@@ -766,6 +768,24 @@ export const useChatStore = create<ChatStore>()(
           const subEvent = adaptSubAgentEvent(event)
 
           if (subEvent) {
+
+            // 后台子 agent 的父 run 可能在它跑完之前就 finalize 了。那种情况下报告只进
+            // Worker 侧的通知区，没有任何东西会主动去取 —— 事件本身却照常送到渲染端。
+            // 所以在这里挂号：唤醒 hook 会在会话空闲时把报告取回来，让主会话继续跑。
+            // 前台子 agent 不走这条：它的报告是父 run 的 tool result，父 run 自己在等。
+            if (subEvent.type === 'sub_agent_end') {
+              const sa = useAgentStore.getState().activeSubAgents[subEvent.toolUseId]
+              const wakeSessionId = targetSessionId ?? sa?.sessionId ?? null
+              if (sa?.isBackground && wakeSessionId) {
+                backgroundSubAgentCompletions.emit({
+                  sessionId: wakeSessionId,
+                  toolUseId: subEvent.toolUseId,
+                  subAgentName: subEvent.subAgentName,
+                  displayName: sa.displayName ?? subEvent.subAgentName,
+                  result: subEvent.result
+                })
+              }
+            }
 
             useAgentStore.getState().handleSubAgentEvent(subEvent, targetSessionId)
 

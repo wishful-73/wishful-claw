@@ -74,25 +74,28 @@ export function renderNavItem(item: NavButtonItem): React.JSX.Element {
 }
 
 /**
- * Split (combo) nav item: two equal-width actions side by side. Used for
- * "New Chat | Free Chat". Each half is a self-contained button (own rounded
- * corners) with an icon + centred label — half-width leaves no room for the
- * left-aligned layout used by the full-width items above/below it.
+ * Split (combo) nav item: "New Chat | Free Chat" rendered as a single segmented
+ * control — one rounded container with a border and a divider, the active half
+ * filled. Each half on its own had no background or border, so side by side
+ * they read as two floating labels; a shared container gives the pair its own
+ * shape language. Half width leaves no room for the left-aligned layout used by
+ * the full-width items above/below, hence the centred label.
  */
 export function renderSplitNavItem(
   primary: NavButtonItem,
   secondary: NavButtonItem
 ): React.JSX.Element {
   const base =
-    'flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 text-[13px] font-medium transition-colors text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+    'flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 px-2 text-[13px] font-medium transition-colors'
+  const idle = 'text-muted-foreground hover:bg-accent/40 hover:text-foreground'
   const activeCls = 'bg-accent text-foreground'
 
   return (
-    <div role="group" className="flex h-8 w-full gap-1">
+    <div role="group" className="flex h-8 w-full overflow-hidden rounded-md border border-border/60">
       <button
         type="button"
         onClick={primary.onClick}
-        className={cn(base, primary.active && activeCls)}
+        className={cn(base, primary.active ? activeCls : idle)}
       >
         {primary.icon}
         <span className="truncate">{primary.label}</span>
@@ -102,7 +105,7 @@ export function renderSplitNavItem(
         type="button"
         onClick={secondary.onClick}
         title={secondary.label}
-        className={cn(base, secondary.active && activeCls)}
+        className={cn(base, 'border-l border-border/60', secondary.active ? activeCls : idle)}
       >
         {secondary.icon}
         <span className="truncate">{secondary.label}</span>

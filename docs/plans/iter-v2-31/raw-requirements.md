@@ -222,15 +222,28 @@ text-muted-foreground hover:bg-accent/50 hover:text-foreground
 | 2 | **两个等重** | 都是 `text-muted-foreground` + 同样尺寸，没有主次，视线被对半分 |
 | 3 | **版式语言不一致** | 上下的导航项（`renderNavItem`）是**全宽左对齐**的列表样式，中间插一排**居中半宽**的东西，视线会跳 |
 
-### 候选方案（**待裁定**）
+### 候选方案（**已定：甲**，老大 2026-09-17「根据你的推荐来」）
 
 | 方案 | 做法 | 取舍 |
 |------|------|------|
-| **甲（推荐）分段控件** | 外层套一个容器 `flex h-8 gap-0.5 rounded-md bg-muted/60 p-0.5`，内部两个等宽选项，**透明底、hover/active 才亮**（`hover:bg-background/70`） | 语义最贴合 —— 两者都是「开一个新对话」的两种方式，本就该是一个控件组里的两个**选项**；一次性解决「没底、没形、等重」 |
+| **甲（采纳）分段控件** | 外层套一个容器 `flex h-8 w-full overflow-hidden rounded-md border border-border/60`，内部两个等宽选项，中间 `border-l` 分隔，active 才填 `bg-accent` | 语义最贴合 —— 两者都是「开一个新对话」的两种方式，本就该是一个控件组里的两个**选项**；一次性解决「没底、没形、等重」 |
 | **乙** 主次按钮 | 新对话 filled（`bg-primary text-primary-foreground` 或 `bg-accent`+`border`），免费对话 outline（`border border-border/60` + 灰字） | 主次分明、不抢；但会暗示二者是「不同层级的功能」，而实际语义是平行的 |
 | **丙** 改布局 | 新对话恢复全宽（与上下导航项同款版式），免费对话降级为图标按钮或另起一行 | 版式最统一，但退回了「一个主操作」的形态，免费对话入口变弱、可达性下降 |
 
-**倾向：甲**。理由：突兀的根因是「半宽居中后仍按列表项样式渲染」，而分段控件正好给这排东西一个**属于它自己的形态语言**，同时保持两个入口的平等可达。
+**裁定：甲**。理由：突兀的根因是「半宽居中后仍按列表项样式渲染」，而分段控件正好给这排东西一个**属于它自己的形态语言**，同时保持两个入口的平等可达。
+
+### 落地（2026-09-17）
+
+只改 `renderSplitNavItem` 一个函数（`workspace-sidebar-nav.tsx:82-116`）：
+
+- 容器：`flex h-8 w-full overflow-hidden rounded-md border border-border/60` —— 补上老大点名的「没边框」
+- 两半：`flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 px-2 text-[13px] font-medium transition-colors`
+- 空闲态：`text-muted-foreground hover:bg-accent/40 hover:text-foreground`
+- 激活态：`bg-accent text-foreground`
+- 右半加 `border-l border-border/60` 作分隔线
+- `overflow-hidden` 让 hover 底色不越出圆角
+
+全用语义色（`border` / `accent` / `muted-foreground`），light / dark 两套主题自动成立；`h-8` 与 `text-[13px]` 沿用原值，未破坏侧栏垂直节奏。
 
 ### 约束
 

@@ -16,49 +16,49 @@
 范围（严格按 raw-requirements S-46「要清的东西」，`chatView: 'git'/'channels'` 不归本条）：
 `skills` / `souls` / `sync` / `resources` / `codegraph` 五个开关 —— 实测全仓零调用方。
 
-- [ ] 步骤 1：`stores/ui-store.ts` 删 5 组 `xxxPageOpen` 状态 + `openXxxPage`/`closeXxxPage` 动作；同时清掉 `openFreeChatPage` 里对 `codeGraphPageOpen` 的引用
+- [x] 步骤 1：`stores/ui-store.ts` 删 5 组 `xxxPageOpen` 状态 + `openXxxPage`/`closeXxxPage` 动作；同时清掉 `openFreeChatPage` 里对 `codeGraphPageOpen` 的引用
   - 验证：`npx tsc --noEmit -p tsconfig.web.json` 零错误（此处会先报错，随步骤 2/3 收敛）
-- [ ] 步骤 2：`stores/ui-store-interface.ts` 删对应 5 组声明
+- [x] 步骤 2：`stores/ui-store-interface.ts` 删对应 5 组声明
   - 验证：同上
-- [ ] 步骤 3：`components/layout/MainLayout.tsx` 删 `FEATURE_PAGES` 常量、`activeNavItem !== 'chat'` 分支、5 个 `if (xxxPageOpen)` 分支、5 个 selector、随之无用的 icon import
+- [x] 步骤 3：`components/layout/MainLayout.tsx` 删 `FEATURE_PAGES` 常量、`activeNavItem !== 'chat'` 分支、5 个 `if (xxxPageOpen)` 分支、5 个 selector、随之无用的 icon import
   - 验证：`npx tsc --noEmit -p tsconfig.web.json` 零错误
-- [ ] 步骤 4：`components/layout/TitleBar.tsx` 删 `isSessionPage` 里对应的 5 个条件
+- [x] 步骤 4：`components/layout/TitleBar.tsx` 删 `isSessionPage` 里对应的 5 个条件
   - 验证：同上
-- [ ] 步骤 5：`stores/right-panel-tab-factories.ts` 的 `CHAT_SURFACE_NAV_RESET` 删 5 个字段
+- [x] 步骤 5：`stores/right-panel-tab-factories.ts` 的 `CHAT_SURFACE_NAV_RESET` 删 5 个字段
   - 验证：同上
-- [ ] 步骤 6：全量 gate —— `npx tsc --noEmit` 三个配置零错误 + 渲染端能启动 + 侧栏/聊天窗/设置页可正常切换
+- [x] 步骤 6：全量 gate —— `npx tsc --noEmit` 三个配置零错误 + 渲染端能启动 + 侧栏/聊天窗/设置页可正常切换
   - 验证：三个 tsconfig 全零错误；`PlaceholderPage` 仍有引用（draw / git / channels），故**保留**
 
 ### S-47 Channels 项目主页入口删除
 
-- [ ] 步骤 1：删 `components/chat/ProjectHomePage.tsx` 的渠道入口按钮（`:129`）
-- [ ] 步骤 2：删 `ui-store.ts` / `ui-store-interface.ts` 的 `navigateToChannels`（实测仅此一处调用）
-- [ ] 步骤 3：删 `MainLayout.tsx` 的 `chatView === 'channels'` 分支与 `FEATURE_PAGES.channels`
-- [ ] 步骤 4：清对应 locales key
+- [x] 步骤 1：删 `components/chat/ProjectHomePage.tsx` 的渠道入口按钮（`:129`）
+- [x] 步骤 2：删 `ui-store.ts` / `ui-store-interface.ts` 的 `navigateToChannels`（实测仅此一处调用）
+- [x] 步骤 3：删 `MainLayout.tsx` 的 `chatView === 'channels'` 分支与 `FEATURE_PAGES.channels`
+- [x] 步骤 4：清对应 locales key
   - 验证：三个 tsconfig 零错误；项目主页正常渲染，渠道配置（设置页）不受影响
 
 ### S-48 Translate 残留按钮清理
 
-- [ ] 步骤 1：`AssistantMessage/action-bar.tsx` 删翻译按钮 + `handleTranslate` + `useTranslateStore` 引用
-- [ ] 步骤 2：`UserMessage.tsx` 删同类调用与 `openTranslatePage`
-- [ ] 步骤 3：`ui-store.ts` / `ui-store-interface.ts` 删 `translatePageOpen` / `open` / `close`
-- [ ] 步骤 4：`MainLayout.tsx` 删 translate 分支与 `FEATURE_PAGES.translate`
-- [ ] 步骤 5：清对应 locales key
+- [x] 步骤 1：`AssistantMessage/action-bar.tsx` 删翻译按钮 + `handleTranslate` + `useTranslateStore` 引用
+- [x] 步骤 2：`UserMessage.tsx` 删同类调用与 `openTranslatePage`
+- [x] 步骤 3：`ui-store.ts` / `ui-store-interface.ts` 删 `translatePageOpen` / `open` / `close`
+- [x] 步骤 4：`MainLayout.tsx` 删 translate 分支与 `FEATURE_PAGES.translate`
+- [x] 步骤 5：清对应 locales key
   - 验证：三个 tsconfig 零错误；消息操作栏与用户消息菜单正常渲染
   - 注意：**能力本体保留** —— `lib/translate-agent-service.ts`、`stores/translate-store.ts` 不动
 
 ### S-49 完善 Git 功能：右侧面板补常规 Git 操作
 
-- [ ] 步骤 1：确认方向（甲：挂 `GitPage` / 乙：给 `ChangesPanel` 补菜单）后按选定方向落地
-- [ ] 步骤 2：补 fetch / pull / 切分支 / 合并 / 刷新远程 / 分支管理入口
-- [ ] 步骤 3：删 `MainLayout.tsx` 的 `chatView === 'git'` 分支与 `FEATURE_PAGES.git`
+- [x] 步骤 1：确认方向（甲：挂 `GitPage` / 乙：给 `ChangesPanel` 补菜单）后按选定方向落地
+- [x] 步骤 2：补 fetch / pull / 切分支 / 合并 / 刷新远程 / 分支管理入口
+- [x] 步骤 3：删 `MainLayout.tsx` 的 `chatView === 'git'` 分支与 `FEATURE_PAGES.git`
   - 验证：三个 tsconfig 零错误；右侧面板 Git 操作可跑通（真机验证）
 
 ### S-50 左侧面板首排组合按钮重新设计样式
 
 方向：**甲（分段控件）** —— 外层加容器底，内部两个等宽选项，hover/active 才浮起。
 
-- [ ] 步骤 1：改 `components/layout/workspace-sidebar-nav.tsx` 的 `renderSplitNavItem`，只动这一个函数
+- [x] 步骤 1：改 `components/layout/workspace-sidebar-nav.tsx` 的 `renderSplitNavItem`，只动这一个函数
   - 验证：三个 tsconfig 零错误；真机看 light / dark 两套主题下的观感
 
 ## 涉及文件

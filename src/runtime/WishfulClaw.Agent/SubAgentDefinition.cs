@@ -30,7 +30,16 @@ public sealed record SubAgentDefinition(
 /// </summary>
 internal static partial class SubAgentDefinitionLoader
 {
-    private const int DefaultMaxTurns = 12;
+    /// <summary>
+    /// 定义文件没写轮次时的默认值。0 = 不限轮次（iter-31 S-53）。
+    ///
+    /// 这里曾经是 12。子代理跑到第 12 轮会被硬性掐断，而它往往还没输出结论 ——
+    /// 实测报告只剩一句开场白，且结束原因被记成 completed，外面完全看不出来。
+    /// 轮次上限本意是拦跑飞的模型，但主会话自己就是不限轮次（AgentLoop 把 &lt;=0
+    /// 当无限制）、靠父 run 的取消令牌兜底，子代理没有理由管得更死。
+    /// 防跑飞的职责改由轮次提醒承担，见 AgentLoop.SubAgentReminder.cs。
+    /// </summary>
+    private const int DefaultMaxTurns = 0;
 
     /// <summary>
     /// Loads all sub-agent definitions from ~/.wishful-claw/agents/*.md
@@ -67,7 +76,7 @@ internal static partial class SubAgentDefinitionLoader
 
     /// <summary>
     /// Parses a Markdown file with YAML frontmatter into a SubAgentDefinition.
-    /// Frontmatter fields: name, description, maxTurns, model, temperature
+    /// Frontmatter fields: name, description, maxTurns (alias: maxIterations), model, temperature
     /// Body (after frontmatter) becomes the system prompt.
     /// </summary>
     internal static SubAgentDefinition? ParseAgentFile(string content, string filename)
@@ -91,7 +100,12 @@ internal static partial class SubAgentDefinitionLoader
             return null;
         }
 
-        var maxTurns = GetFrontmatterInt(frontmatter, "maxTurns") ?? DefaultMaxTurns;
+        // 两个键都认：内置的 16 份 agent 定义里有 15 份写的是 maxIterations，而解析器
+        // 一直只读 maxTurns —— 那些配置被静默忽略，全部回落到默认值（也就是当年的 12）。
+        // 同时给出时以 maxTurns 为准。
+        var maxTurns = GetFrontmatterInt(frontmatter, "maxTurns")
+            ?? GetFrontmatterInt(frontmatter, "maxIterations")
+            ?? DefaultMaxTurns;
         if (maxTurns < 0) maxTurns = DefaultMaxTurns;
 
         var model = GetFrontmatterString(frontmatter, "model");

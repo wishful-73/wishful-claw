@@ -24,6 +24,8 @@ import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@rend
 import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-context'
 import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
+import type { ChatMessage } from '@renderer/stores/chat-store/types'
+import { dbUpsertMessage } from '@renderer/stores/chat-store/db-helpers'
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -797,6 +799,24 @@ export async function insertPendingSessionMessageNow(
   }
 
   removePendingSessionMessage(sessionId, messageId)
+
+  // S-57：插入成功还得回显到聊天窗。原先只往 Worker 塞、再从队列删，界面上什么都
+  // 看不到（agent 下一轮确实读得到，用户却以为点了没反应）。落库走正常发送同一条
+  // 路，重启后历史里也有它。
+  const now = Date.now()
+  const chatMessage: ChatMessage = {
+    id: `user_${now}_injected`,
+    role: 'user',
+    text: item.text,
+    ...(Array.isArray(content) ? { content: content as ContentBlock[] } : {}),
+    createdAt: now
+  }
+  try {
+    useChatStore.getState().insertUserMessageIntoRunningTurn(sessionId, chatMessage)
+    void dbUpsertMessage(sessionId, chatMessage, 0)
+  } catch (error) {
+    console.warn('[ChatActions] Failed to echo the inserted message into the transcript', error)
+  }
   return true
 }
 
@@ -822,48 +842,6 @@ export function removePendingSessionMessage(sessionId: string, messageId: string
   }
   notifyPendingSessionMessageListeners()
   return true
-}
-
-export function updatePendingSessionMessageDraft(
-  sessionId: string,
-  messageId: string,
-  draft: unknown
-): void {
-  const list = _pendingMessages.get(sessionId) ?? []
-  const index = list.findIndex((message) => message.id === messageId)
-  if (index < 0) return
-
-  const current = list[index]
-  let text = current.text
-  let images = current.images
-  let command = current.command
-  if (typeof draft === 'string') {
-    text = draft
-  } else if (draft && typeof draft === 'object') {
-    const nextDraft = draft as { text?: string; images?: unknown[]; command?: unknown }
-    text = nextDraft.text ?? ''
-    images = (nextDraft.images ?? current.images) as import('@renderer/lib/image-attachments').ImageAttachment[]
-    command = (nextDraft.command ?? current.command) as PendingSessionMessageItem['command']
-  }
-
-  const requestText = typeof current.requestText === 'string'
-    ? text
-    : { ...current.requestText, text, images }
-  const updated: PendingSessionMessageItem = {
-    ...current,
-    content: text,
-    text,
-    images: [...images],
-    command,
-    requestText,
-    draft: text
-  }
-  _pendingMessages.set(sessionId, [
-    ...list.slice(0, index),
-    updated,
-    ...list.slice(index + 1)
-  ])
-  notifyPendingSessionMessageListeners()
 }
 
 export function quotePendingSessionMessageIntoConversation(

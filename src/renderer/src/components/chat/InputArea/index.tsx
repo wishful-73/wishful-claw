@@ -222,14 +222,12 @@ export function InputArea({
   })
 
   const {
-    queuedMessages, editingQueueItemId, editingQueueText, setEditingQueueText,
-    editingQueueImages, setEditingQueueImages, queueClearConfirmOpen, setQueueClearConfirmOpen,
-    queueFileInputRef, startEditQueuedMessage, cancelEditQueuedMessage, removeQueuedMessage,
-    addQueuedImages, removeQueuedImage, saveQueuedMessage, clearQueuedMessagesForActiveSession,
-    handleClearQueuedMessages, resumeQueuedMessages, isQueueDispatchPaused, handleQueueEditPaste,
+    queuedMessages, queueClearConfirmOpen, setQueueClearConfirmOpen,
+    removeQueuedMessage, takeBackQueuedMessage, clearQueuedMessagesForActiveSession,
+    handleClearQueuedMessages, resumeQueuedMessages, isQueueDispatchPaused,
     canInsertQueuedMessageNow, insertQueuedMessageNow
   } = useQueuedMessages({
-    activeSessionId, suppressPendingQueue, t, isStreaming, getPastedImageFiles, setPreviewImage
+    activeSessionId, suppressPendingQueue, t
   })
 
   const { handlePreviewFile, handleLocateFileReference, handlePaste, handleEditorSelectionChange } = useComposerInteractions({
@@ -313,11 +311,7 @@ export function InputArea({
 
       <QueuedMessagesPanel
         queuedMessages={queuedMessages} composerWidthClass={composerWidthClass} animationsEnabled={animationsEnabled}
-        editingQueueItemId={editingQueueItemId} editingQueueText={editingQueueText} editingQueueImages={editingQueueImages}
-        setEditingQueueText={setEditingQueueText} setEditingQueueImages={setEditingQueueImages} setPreviewImage={setPreviewImage}
-        saveQueuedMessage={saveQueuedMessage} cancelEditQueuedMessage={cancelEditQueuedMessage}
-        removeQueuedImage={removeQueuedImage} handleQueueEditPaste={handleQueueEditPaste}
-        editQueuedMessage={startEditQueuedMessage} removePendingSessionMessage={removeQueuedMessage}
+        takeBackQueuedMessage={takeBackQueuedMessage} removePendingSessionMessage={removeQueuedMessage}
         isQueueDispatchPaused={isQueueDispatchPaused} resumeQueuedMessages={resumeQueuedMessages}
         handleClearQueuedMessages={handleClearQueuedMessages} queueClearConfirmOpen={queueClearConfirmOpen}
         setQueueClearConfirmOpen={setQueueClearConfirmOpen} clearQueuedMessagesForActiveSession={clearQueuedMessagesForActiveSession}
@@ -417,8 +411,6 @@ export function InputArea({
             setSelectedSlashIndex={setSelectedSlashIndex}
             slashListRef={slashListRef}
             applySlashSuggestion={applySlashSuggestion}
-            queueFileInputRef={queueFileInputRef}
-            addQueuedImages={addQueuedImages}
           />
           <ComposerToolbar
             readOnlyModel={readOnlyModel}

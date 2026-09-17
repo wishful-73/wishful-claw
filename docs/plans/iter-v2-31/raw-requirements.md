@@ -752,6 +752,92 @@ if (typeof msg.updatedAt === 'number') result.updatedAt = msg.updatedAt
 
 ---
 
+## S-57 排队消息在 UI 上看不到内容（只能看到「有一条」）
+
+**来源**：老大 2026-09-17 原话 ——「本身我们UI上可以继续发送消息后续消息排队的，但是现在排队看不到发送的消息，只知道有一条，消息长了可以折叠，但是需要显示出来，并且移入可以看到全文才行，这是一个小改动，不走完整流程，可以登记一下就推动」
+
+**现状（已核实）**：`components/chat/InputArea/queued-messages-panel.tsx:128-281` 的面板本身存在且默认渲染（`suppressPendingQueue` 全仓无调用方传 `true`），但每条只给：
+
+- 序号 `index + 1`（`:249-251`）
+- `summarizeQueuedMessage(msg.text)` 的 **72 字截断摘要**（`InputArea/utils.ts:324-328`）
+- `truncate` **单行**省略号（`:252-254`）
+- **没有任何 `title`** ⇒ 悬停无从看全文（该文件仅 3 处 `title`，均属「立即插入 / 图片预览 / 移除图片」）
+
+**诉求**：① 消息内容要能看到；② 长了可以折叠（截断可以，但要露得出来）；③ **移入（悬停）能看到全文**。
+
+**改动**
+
+| 落点 | 改动 |
+|---|---|
+| `components/chat/InputArea/utils.ts` | 新增纯函数 `queuedMessageFullText(text)`：`expandPastedBlocks` 展开折叠粘贴块 → `selectFileTextToPlainText` 去掉 `<select-file>` 等标签 → `trim`。供悬停全文使用 |
+| `components/chat/InputArea/queued-messages-panel.tsx` | 摘要行加 `title={全文}`（回落到 `fallbackText`，保证非空消息必有提示）；`truncate` → `line-clamp-2` + `break-words`，长消息折叠成两行而不是一行 |
+| `tests/queued-message-text/program.ts`（新增） | 覆盖纯函数：普通文本 / 折叠粘贴块展开 / select-file 标签去标签 / 空串 / 纯空白 |
+
+**不做**：不动聊天窗消息流（排队消息不进聊天窗是 S-33 之后的既定设计）；不放宽 `summarizeQueuedMessage` 的 72 字截断 —— 视觉截断交给 CSS，悬停已有全文。
+
+### 形态调整（老大 2026-09-17 拍板）
+
+**原话**：「首先插入发送，和删除这个是每条消息的，不是最终统一在上面一起，然后可以收起和展开」「头部不再放，点击 c 就是 C 先插入，默认展开 收起后按照你的推荐来」
+
+**四条裁定**
+
+1. **「立即插入」下放到每条**，头部不再放 —— 留两个入口就是同一个动作两处，容易混。
+2. **点哪条插哪条**：队列 `[A, B, C]` 时点 C 的插入 = C 先进当前轮，A、B 继续排队。底层 `insertPendingSessionMessageNow(sessionId, messageId)` **本来就按 id 取**，此前只是 UI 把按钮放头部、写死传 `queuedMessages[0]`。
+3. **默认展开**，收起状态不持久化、不跨会话。
+4. **收起后**：标题「排队消息 (1)」+ 右侧箭头，**整行可点**；「清空」仍留头部（那是整队动作，不该每条都有）。
+
+| 落点 | 改动 |
+|---|---|
+| `use-queued-messages.ts` | `insertQueuedMessageNow` 由 `()` 改收 `messageId`；去掉 `queuedMessages[0]` 那份写死；依赖数组去掉 `queuedMessages` |
+| `queued-messages-panel.tsx` | 新增 `collapsed` 状态（默认 `false`）；头部标题区改为可点按钮 + `ChevronDown`（收起时 `-rotate-90`），去掉头部「立即插入」；列表区 `{!collapsed && ...}`；每条行尾加「立即插入」（同样受 `canInsertNow` 门控） |
+
+**额外一处（我按建议做，老大未明确表态，可回退）**：行尾按钮组由 `opacity-0 group-hover:opacity-100` 改为**常显**。理由：按钮从 2 个变 3 个，hover 才显形会让人点不到；这是「下放到每条」能顺用的前提。
+
+### 「编辑」改「取回」（老大 2026-09-17 拍板 B）
+
+**起因**：老大问「点编辑是移除，然后输入到输入框里面去，这个是这个效果么」—— 答：**不是**。现状是**就地编辑**（那一行原地变 Textarea + 图片管理，保存后仍在队列原位）。给出三个选项（A 保持就地编辑 / B 改成取回 / C 两者都留），老大回「**B 呀**」。
+
+**取舍依据**：就地编辑只有一个简化 Textarea，选中文件、粘贴图片、`/` 命令、`@` 引用全都用不了；真要改内容，还得删掉重打。代价是取回后重发会回到**队尾**。
+
+**改动（就地编辑整块下线）**
+
+| 落点 | 改动 |
+|---|---|
+| `use-queued-messages.ts` | 删 `editingQueueItemId` / `editingQueueText` / `editingQueueImages` 三个 state 与 `startEditQueuedMessage` / `cancelEditQueuedMessage` / `saveQueuedMessage` / `addQueuedImages` / `removeQueuedImage` / `handleQueueEditPaste` 六个 handler；新增 `takeBackQueuedMessage(id)`；`UseQueuedMessagesOptions` 由 6 项收到 3 项（去掉 `isStreaming` / `getPastedImageFiles` / `setPreviewImage` —— 它们只服务编辑态） |
+| `use-input-area-effects.ts` | 新增 `pendingInsertImages` 消费端（追加进 `attachedImages`）；文本仍走原有 `pendingInsertText` |
+| `stores/ui-store{,-interface}.ts` | 新增 `pendingInsertImages` / `setPendingInsertImages` —— `attachedImages` 是 InputArea 的**局部 state**，此前没有任何外部写入通道，图片只能靠新开一条 |
+| `queued-messages-panel.tsx` | 删编辑态整块 UI；「编辑」→「取回」；props 由 23 项收到 13 项 |
+| `composer-editor-area.tsx` | 删专为编辑态上传排队图片的隐藏 `<input type="file">` 及其两个 props（`queueFileInputRef` / `addQueuedImages`） |
+| `use-chat-actions.ts` | 删 `updatePendingSessionMessageDraft` —— 唯一调用方就是删掉的 `saveQueuedMessage`，已确认 src + tests **零引用** |
+| locales `{zh,en}/chat.json` | 新增 `queueTakeBack` / `queueTakeBackHint`；删孤儿 key `queueEditing` / `queueImageCount` / `queueRemoveImages`（同样零代码引用） |
+
+**语义**：取回 = 从队列移除 + 文本与图片送回 composer。走的是**追加**语义（与文件树「添加到会话」同一条路），**不覆盖**用户已经打进去的内容 —— 取回把已有草稿毁掉是数据丢失，不能接受。队列里存的是 `<pasted-block>` 标签形态，进输入框前用 `expandPastedBlocks` 展开回原文（沿用 T-13 的既有约定）。
+
+### 「立即插入」没有回显（S-33 遗留缺口，老大 2026-09-17 发现）
+
+**原话**：「这个立即插入，我没有看到聊天窗有渲染」
+
+**根因（不是坏了，是压根没做）**：`insertPendingSessionMessageNow`（`use-chat-actions.ts:770-801`）只做两件事 —— ① 调 `agent/append-messages` 把消息塞进 run 的内存队列；② 把渲染端队列里那条删掉。**渲染端 `session.messages` 一个字都没动**。
+
+再深一层：Worker 侧也不落库 —— `AgentRuntimeRunState.EnqueueMessages`（`:112-145`）只往 `_queuedMessages` 塞，`AgentLoop.cs:299` 在下一轮 iteration 起点 `DrainQueuedMessages` 读进对话。**整条链没有一处碰数据库**。所以这条消息：agent 下一轮读得到（功能是通的），但界面上永不出现、刷新/重启后也不存在。
+
+这是 S-33 实现时就有的洞（当时验收只盯「agent 能不能读到」）；本轮把按钮从头部下放到每条之后才露出来。
+
+**修法（老大拍板 A）**：渲染端插入成功后自行回显 + 落库。
+
+| 落点 | 改动 |
+|---|---|
+| `stores/chat-store/session-slice.ts` | 新增 `insertUserMessageIntoRunningTurn(sessionId, msg)`：插在**正在流式输出的那条 assistant 之前**（找不到流式消息就退回落末尾）；维护 `messageCount` / `messagesLoaded` / `isRuntimeResident` / `updatedAt`。不碰 streaming 状态、不开新一轮 |
+| `hooks/use-chat-actions.ts` | `insertPendingSessionMessageNow` 成功分支：构造 `ChatMessage` → 调上面的 action → `dbUpsertMessage(sessionId, msg, 0)`；整体包 try/catch，回显失败只 warn，**不影响插入本身的结果** |
+
+**为什么插在流式消息之前**：这条消息是被插进**当前这一轮**的（agent 输出到一半时用户插话），追加到末尾会变成「一条 user 紧跟正在输出的 assistant」，看着像两条 user 连在一起。
+
+**B 案（Worker 落库 + 发事件）有意不做**：两边内容实质相同，为它上跨端改动不划算。已知代价 = Worker 内存那份与渲染端 DB 那份各存一份（内容一致）。
+
+**老大对 sortOrder 的口径**：「sortOrder 没什么用，目前是根据创建时间来的」—— 故 `dbUpsertMessage` 的第三参传 0，排序以 `createdAt` 为准。
+
+---
+
 ## 待登记
 
 ### 不立项 —— 正式版才排入（老大 2026-09-17）

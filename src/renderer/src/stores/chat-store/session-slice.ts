@@ -75,6 +75,11 @@ export interface SessionSlice {
 
   // Message operations
   addMessage: (sessionId: string, msg: ChatMessage) => void
+  /**
+   * S-57：把「立即插入」送进当前轮的那条用户消息回显到聊天窗。
+   * 不开新一轮、不碰 streaming 状态，只做插入 + 时间戳/计数维护。
+   */
+  insertUserMessageIntoRunningTurn: (sessionId: string, msg: ChatMessage) => void
   beginUserTurn: (
     sessionId: string,
     userMsg: ChatMessage | null,
@@ -480,6 +485,25 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         session.isRuntimeResident = true
         session.updatedAt = Date.now()
       }
+    })
+  },
+
+  insertUserMessageIntoRunningTurn: (sessionId, msg) => {
+    const now = Date.now()
+    set((state) => {
+      const session = state.sessions.find((s) => s.id === sessionId)
+      if (!session) return
+      // 插在正在流式输出的那条 assistant 之前：用户是在 agent 输出到一半时插的话，
+      // 追加到末尾会变成两条 user 连在一起。找不到流式消息（例如已 loop_end）就退回落末尾。
+      const streamingId = (state as unknown as { streamingMessages?: Record<string, string> })
+        .streamingMessages?.[sessionId]
+      const at = streamingId ? session.messages.findIndex((m) => m.id === streamingId) : -1
+      if (at >= 0) session.messages.splice(at, 0, msg)
+      else session.messages.push(msg)
+      session.messageCount = session.messages.length
+      session.messagesLoaded = true
+      session.isRuntimeResident = true
+      session.updatedAt = now
     })
   },
 

@@ -232,6 +232,8 @@ export const useUIStore = create<UIStore>((set, get) => ({
   setChangelogDialogOpen: (open: any) => set({ changelogDialogOpen: open }),
   pendingInsertText: null,
   setPendingInsertText: (text: any) => set({ pendingInsertText: text }),
+  pendingInsertImages: null,
+  setPendingInsertImages: (images: any) => set({ pendingInsertImages: images }),
 
   // Detail panel
   detailPanelOpen: false,

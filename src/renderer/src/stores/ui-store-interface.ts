@@ -114,6 +114,14 @@ export interface UIStore {
   setChangelogDialogOpen: (open: boolean) => void
   pendingInsertText: string | null
   setPendingInsertText: (text: string | null) => void
+  /**
+   * S-57：随 `pendingInsertText` 一起送进输入框的图片附件（排队消息「取回」用）。
+   * `attachedImages` 是 InputArea 的局部 state，没有别的外部写入通道。
+   */
+  pendingInsertImages: import('@renderer/lib/image-attachments').ImageAttachment[] | null
+  setPendingInsertImages: (
+    images: import('@renderer/lib/image-attachments').ImageAttachment[] | null
+  ) => void
 
   // Detail panel
   detailPanelOpen: boolean

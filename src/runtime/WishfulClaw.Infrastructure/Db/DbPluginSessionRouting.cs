@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization.Metadata;
+using System.Text.Json.Serialization.Metadata;
 ﻿using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
@@ -68,7 +68,8 @@ public static class DbPluginSessionRouting
 
                 var scope = project is null ? "global" : "project";
                 var collaborationMode = project is null ? "chat" : "cowork";
-                var permissionMode = "default";
+                // 渠道会话默认 YOLO（iter-31 S-59）：对面没人守着，弹审批只会把这一轮挂死。
+                var permissionMode = "fullAccess";
                 var mode = collaborationMode;
                 var workingFolder = DbPluginSessionTools.EmptyToNull(project?.WorkingFolder);
                 var sshConnectionId = project?.SshConnectionId;

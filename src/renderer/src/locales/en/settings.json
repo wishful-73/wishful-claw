@@ -80,7 +80,7 @@
       "label": "MCP"
     },
     "ssh": {
-      "label": "SSH",
+      "label": "Terminal & SSH",
       "desc": "Manage remote server SSH connections"
     },
     "appPlugins": {
@@ -1308,7 +1308,7 @@
     },
     "sessionDefaults": {
       "title": "Session Defaults",
-      "desc": "Choose the collaboration and Cowork permission defaults for new project sessions",
+      "desc": "Choose the collaboration mode and default permission mode for new sessions",
       "collaboration": {
         "label": "Default project session collaboration",
         "desc": "Chat is read-only collaboration; Cowork can perform project operations",
@@ -1316,12 +1316,12 @@
         "cowork": "Cowork"
       },
       "permission": {
-        "label": "Default Cowork permission",
+        "label": "Default permission mode",
         "desc": "Default follows approval policy; YOLO auto-approves tool calls",
         "default": "Default",
         "fullAccess": "YOLO"
       },
-      "hint": "Applies only to new project sessions and never overwrites existing sessions. Global sessions always use Chat."
+      "hint": "Applies only to new sessions and never overwrites existing ones. The permission default applies to chat, cowork and global sessions alike; channel sessions always run YOLO."
     },
     "residentTurns": {
       "title": "Chat Window Memory Window",

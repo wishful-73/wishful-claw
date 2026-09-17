@@ -45,7 +45,8 @@
     "test:message-timestamp": "esbuild tests/message-timestamp/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/message-timestamp/out/program.cjs && node tests/message-timestamp/out/program.cjs",
     "test:free-chat-sites": "esbuild tests/free-chat-sites/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/free-chat-sites/out/program.cjs && node tests/free-chat-sites/out/program.cjs",
     "test:shell-executable": "esbuild tests/shell-executable/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/shell-executable/out/program.cjs && node tests/shell-executable/out/program.cjs",
-    "test:queued-message-text": "esbuild tests/queued-message-text/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/queued-message-text/out/program.cjs && node tests/queued-message-text/out/program.cjs"
+    "test:queued-message-text": "esbuild tests/queued-message-text/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/queued-message-text/out/program.cjs && node tests/queued-message-text/out/program.cjs",
+    "test:session-permission-mode": "esbuild tests/session-permission-mode/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/session-permission-mode/out/program.cjs && node tests/session-permission-mode/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

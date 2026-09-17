@@ -952,6 +952,51 @@ return string.IsNullOrEmpty(output) ? "Message sent successfully." : output;
 
 ---
 
+## S-59 聊天模式（含全局会话）放开 YOLO 权限档
+
+**来源**：老大 2026-09-17 口述 —— 「全局对话的 shell 默认会弹审批，之前前端处理过，只有协作模式才出来可以选择 YOLO 的。但是现在这种处理方式，全局对话特别难受，聊天模式也把 YOLO 放出来吧」。
+
+**现象**：全局会话（`scope=global`）的协作模式恒为 `chat`，而权限档被 `collaborationMode === 'cowork'` 死死绑定 ⇒ 全局会话永远拿不到 YOLO，每次跑 shell 都得点一次审批；项目里开 chat 模式的会话同样如此。
+
+**根因（四道门，缺一不可）**：
+
+| 门 | 落点 | 现状 |
+|---|---|---|
+| ① UI 显隐 | `components/chat/InputArea/index.tsx:445` | `showPermissionControl={projectScoped && effectiveCollabMode === 'cowork'}` |
+| ② 渲染派生 | `components/chat/InputArea/use-composer-mode-state.ts:36-38` | 非 cowork 一律 `'default'`（`:44` 切到 chat 还会把 pending 清成 default） |
+| ③ 渲染端会话归一化 | `lib/session-context.ts:36-42`、`:57-62` | global 硬编码 `permissionMode: 'default'`；project 在 chat 时强制 `'default'` |
+| ④ **Worker 侧会话归一化** | `WishfulClaw.Infrastructure/Db/DbSessionTools.cs:414-417`、`:432-436` | 同上，global 强制 default、chat 强制 default —— **只改前端会被这里抹回去** |
+
+**口径（2026-09-17 19:51 老大改定，覆盖先前"缺省不动"）**：
+
+- **YOLO 也共享 cowork 中的默认值** —— 缺省不再按协作模式分流，聊天 / 协作 / 全局共用同一个默认来源（`coworkDefaultPermissionMode`）。显式选择照旧优先。
+- **渠道会话默认 YOLO** —— 先前的"渠道护栏保留 default"被推翻。外部入口没人守着，弹审批只会把这一轮挂死。
+- 渠道会话仍不显示权限控件（`!pluginId`），所以它没有"显式选择"的入口，档位由代码写死。
+
+**实施记录**：
+
+| 落点 | 改动 |
+|---|---|
+| `lib/session-context.ts` | global / project 两条分支的缺省都改成 `defaults.coworkPermissionMode`，不再看 `collaborationMode` |
+| `components/chat/InputArea/use-composer-mode-state.ts` | 派生缺省由 `collabMode === 'cowork' ? 设置值 : 'default'` 改为直接 `defaultCoworkPermissionMode` |
+| `hooks/use-chat-actions.ts` | `permissionMode: isChannelSession ? 'default' : session.permissionMode` → `permissionMode: session.permissionMode` |
+| `hooks/use-channel-auto-reply.ts` | 两处：① 本地兜底会话的 `normalizeSessionContext` 显式传 `permissionMode: 'fullAccess'`（渠道 YOLO 的来源，与 Worker 侧一致）；② 发 run 时的 `permissionMode: 'default'`（写死）改为 `session.permissionMode ?? 'fullAccess'` —— **这条是渠道消息进入的主路径，不改则连新建的渠道会话也照样弹审批挂死**（上一轮漏改，2026-09-17 20:0x 补） |
+| `WishfulClaw.Infrastructure/Db/DbPluginSessionRouting.cs` | 新建渠道会话的 `permissionMode` 由 `"default"` 改为 `"fullAccess"` —— 这是 Worker 侧唯一在写这条的地方 |
+| `WishfulClaw.Infrastructure/Db/DbClient.cs` | 迁移改写：原来是 `scope = 'global'` 一律填 `'default'`；现在改为填 `'fullAccess'`，且只命中「NULL / 非法值」与「渠道会话的 `'default'`」（渠道会话的 default 是系统塞的，用户没有入口能选） |
+| `locales/{zh,en}/settings.json` | `sessionDefaults` 文案同步新语义（"新建会话"、"默认权限模式"、hint 说明渠道固定 YOLO） |
+
+**刻意保留**：非渠道会话里用户**显式选过**的 `'default'` 不动 —— 那是他的选择，迁移不能替他改。迁移只吃「从未有过取值」与「渠道会话的 default」。
+
+**渠道会话的判据**（2026-09-17 补）：不能只看 `plugin_id`。早期格式的渠道会话只有 `external_chat_id`（形如 `plugin:<id>:chat:<chatId>`），`plugin_id` 可能是 NULL 或空串 —— 只看 `plugin_id` 会让这批老会话漏网、继续弹审批。现判据为 `plugin_id` / `external_chat_id` / `channel_route_key` 三者任一非空。
+
+**副作用（知悉）**：渠道会话在 UI 上不显示权限控件（`!pluginId`），所以它的档位没有任何人工入口 —— 迁移后即为 YOLO 且改不回去。若日后要放开，需先给渠道会话补上控件。
+
+**测试**：`tests/session-permission-mode/program.ts`（24 断言，重写为共享缺省口径）；`PluginSessionRoutingTests.cs` 渠道会话断言由 `default` 改 `fullAccess`。
+
+**验收标准**：新建全局会话缺省即 YOLO → 跑 shell 不弹审批；设置里把默认权限改成 Default → 新建会话回到审批；已有会话不受影响；渠道会话跑 shell 不弹审批（且无权限控件）。
+
+---
+
 ## 待登记
 
 ### 不立项 —— 正式版才排入（老大 2026-09-17）

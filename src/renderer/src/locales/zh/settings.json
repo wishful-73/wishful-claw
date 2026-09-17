@@ -84,7 +84,7 @@
       "label": "MCP"
     },
     "ssh": {
-      "label": "SSH 连接",
+      "label": "终端与SSH",
       "desc": "管理远程服务器 SSH 连接"
     },
     "appPlugins": {
@@ -1360,7 +1360,7 @@
     "serverRemoveFailed": "移除服务器失败"
   },
   "ssh": {
-    "title": "终端与 SSH",
+    "title": "终端与SSH",
     "description": "内置终端的默认 shell，以及用于远程命令执行的 SSH 连接",
     "terminal": {
       "title": "终端",
@@ -1447,7 +1447,7 @@
     },
     "sessionDefaults": {
       "title": "会话默认值",
-      "desc": "设置新建项目会话的协作模式与 Cowork 权限",
+      "desc": "设置新建会话的协作模式与默认权限模式",
       "collaboration": {
         "label": "项目会话默认协作模式",
         "desc": "Chat 为只读协作；Cowork 可执行项目操作",
@@ -1455,12 +1455,12 @@
         "cowork": "Cowork"
       },
       "permission": {
-        "label": "Cowork 默认权限模式",
+        "label": "默认权限模式",
         "desc": "Default 按策略审批；YOLO 自动批准工具调用",
         "default": "Default",
         "fullAccess": "YOLO"
       },
-      "hint": "只影响新项目会话，不覆盖已有会话；全局会话固定为 Chat。"
+      "hint": "只影响新会话，不覆盖已有会话。权限模式的默认值对聊天、协作与全局会话一律生效；渠道会话固定为 YOLO。"
     },
     "residentTurns": {
       "title": "聊天窗内存窗口",

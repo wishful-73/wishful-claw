@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -414,7 +414,11 @@ public static class DbSessionTools
         if (session.Scope == "global")
         {
             session.CollaborationMode = "chat";
-            session.PermissionMode = "default";
+            // Permission mode is independent of collaboration mode (iter-31 S-59): a
+            // global/chat session may store fullAccess too. Only unknown or missing
+            // values fall back to "default"; the renderer forces "default" for channel
+            // sessions at send time, so this cannot be used to un-gate a channel.
+            session.PermissionMode = NormalizePermissionMode(session.PermissionMode);
             session.ProjectId = null;
             session.WorkingFolder = null;
             session.SshConnectionId = null;
@@ -429,11 +433,16 @@ public static class DbSessionTools
         session.CollaborationMode = session.CollaborationMode is "chat" or "cowork"
             ? session.CollaborationMode
             : "cowork";
-        session.PermissionMode = session.CollaborationMode == "chat"
-            ? "default"
-            : session.PermissionMode is "default" or "fullAccess"
-                ? session.PermissionMode
-                : "default";
+        session.PermissionMode = NormalizePermissionMode(session.PermissionMode);
+    }
+
+    /// <summary>
+    /// 权限档与协作模式解绑后，存储层只做合法性校验：default / fullAccess 原样保留，
+    /// 其余（含 NULL）一律回落 default。缺省值仍由渲染端按协作模式给出。
+    /// </summary>
+    private static string NormalizePermissionMode(string? permissionMode)
+    {
+        return permissionMode is "default" or "fullAccess" ? permissionMode : "default";
     }
 
     private static void TryPatchString(JsonElement patch, string name, Action<string> setter)

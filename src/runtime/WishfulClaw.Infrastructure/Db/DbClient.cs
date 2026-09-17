@@ -542,9 +542,20 @@ public static partial class DbClient
             _db.Execute(
                 "UPDATE sessions SET collaboration_mode = CASE WHEN scope = 'global' THEN 'chat' ELSE 'cowork' END " +
                 "WHERE collaboration_mode IS NULL OR collaboration_mode NOT IN ('chat', 'cowork');");
+            // 权限档与协作模式解绑（iter-31 S-59）：以前 global 会话被无条件抹成 'default'，
+            // 于是全局对话每次跑 shell 都要弹审批。现在只剩「从未有过取值」这一种兜底，
+            // 落到渲染端共享的缺省值 fullAccess。渠道会话没有 UI 入口（聊天窗对 pluginId
+            // 会话不显示权限控件），它的 'default' 一律是系统塞的，同样升级——对面没人值守。
+            // 注意：非渠道会话里用户显式选过的 'default' 不在此列，那是他的选择，动不得。
             _db.Execute(
-                "UPDATE sessions SET permission_mode = 'default' " +
-                "WHERE scope = 'global' AND (permission_mode IS NULL OR permission_mode NOT IN ('default', 'fullAccess'));");
+                "UPDATE sessions SET permission_mode = 'fullAccess' " +
+                "WHERE permission_mode IS NULL " +
+                "OR permission_mode NOT IN ('default', 'fullAccess') " +
+                // 渠道会话的判据不能只看 plugin_id：早期格式的会话只有 external_chat_id
+                // （plugin:<id>:chat:<chatId>），plugin_id 可能是 NULL 或空串。
+                "OR (permission_mode = 'default' AND (" +
+                "COALESCE(plugin_id, '') != '' OR COALESCE(external_chat_id, '') != '' " +
+                "OR channel_route_key IS NOT NULL));");
             EnsureColumn("projects", "ssh_connection_id", "TEXT");
             EnsureColumn("projects", "plugin_id", "TEXT");
             EnsureColumn("global_task_dispatches", "source_session_id", "TEXT");

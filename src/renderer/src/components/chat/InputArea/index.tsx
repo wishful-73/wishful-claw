@@ -442,7 +442,7 @@ export function InputArea({
             handleOptimizePrompt={handleOptimizePrompt}
             hasText={Boolean(text.trim())}
             permissionMode={permissionMode}
-            showPermissionControl={projectScoped && effectiveCollabMode === 'cowork'}
+            showPermissionControl={!targetSession?.pluginId}
             onSelectPermissionMode={handleSelectPermissionMode}
             onOpenSettings={(tab) => openSettings(tab as never)}
             onStop={onStop}

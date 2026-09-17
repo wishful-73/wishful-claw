@@ -218,7 +218,9 @@ export function useChatActions() {
         runtimeRole: opts?.sessionMode === 'goal' ? 'goalRunner' : 'sessionAgent',
         ...(opts?.enablePlanMode && !isChannelSession ? { enablePlanMode: true } : {}),
         sessionMode: isChannelSession ? 'channel' as const : opts?.sessionMode,
-        permissionMode: isChannelSession ? 'default' as const : session.permissionMode,
+        // Permission mode is per-session and no longer forced per collaboration mode
+        // (iter-31 S-59). Channel sessions land on YOLO through their own default.
+        permissionMode: session.permissionMode,
         ...(isChannelSession ? {
           pluginId: session.pluginId,
           pluginType: session.pluginType,

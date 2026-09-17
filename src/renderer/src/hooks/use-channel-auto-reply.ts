@@ -157,7 +157,11 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
       : normalizeSessionContext(
           {
             scope: task.projectId ? 'project' : 'global',
-            projectId: task.projectId
+            projectId: task.projectId,
+            // Channel sessions default to YOLO (iter-31 S-59): nobody is sitting in front
+            // of the app to answer an approval prompt, so a gated run would just hang.
+            // Mirrors the Worker-side default in DbPluginSessionRouting.
+            permissionMode: 'fullAccess'
           },
           {
             projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
@@ -274,9 +278,9 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
       pluginSenderId: task.senderId,
       pluginSenderName: task.senderName,
       channelSession: true,
-      // Channel input is an external/untrusted entry point. Never inherit
-      // fullAccess from the paired global session.
-      permissionMode: 'default',
+      // 渠道会话跑 YOLO（iter-31 S-59）：对面没人守着，弹审批只会把这一轮挂死。
+      // 档位以会话自身为准（DB 里渠道会话默认 fullAccess，见 DbPluginSessionRouting）。
+      permissionMode: session.permissionMode ?? 'fullAccess',
       skipSessionRestore: session.messageCount === 0,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,

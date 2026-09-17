@@ -80,7 +80,7 @@ function SettingsPage(): React.JSX.Element {
         { id: 'general', icon: <Settings className="size-4" />, label: t('tabs.general.label') },
         { id: 'shortcuts', icon: <Keyboard className="size-4" />, label: t('tabs.shortcuts.label', { defaultValue: '快捷键' }) },
         { id: 'persona', icon: <User className="size-4" />, label: t('tabs.persona.label', { defaultValue: '人格管理' }) },
-        { id: 'ssh', icon: <ServerIcon className="size-4" />, label: t('tabs.ssh.label', { defaultValue: '终端与 SSH' }) }
+        { id: 'ssh', icon: <ServerIcon className="size-4" />, label: t('tabs.ssh.label', { defaultValue: '终端与SSH' }) }
       ]
     },
     {

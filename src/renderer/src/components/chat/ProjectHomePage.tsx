@@ -40,7 +40,10 @@ export function ProjectHomePage(): React.JSX.Element {
           : chatStore.createSession(mode, null, {
               scope: 'global',
               preserveProjectless: true,
-              workingFolder: chatWorkingFolder
+              workingFolder: chatWorkingFolder,
+              // See ChatHomePage: the composer's YOLO pick must reach the session record,
+              // otherwise it is dropped and the session opens gated (iter-31 S-59).
+              permissionMode: options?.permissionMode
             })
         uiStore.navigateToSession(sessionId)
         void sendMessage({ text, images, sessionId, opts: { ...options, clearCompletedTasksOnTurnStart: true } })

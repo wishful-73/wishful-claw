@@ -196,7 +196,10 @@ export function ChatHomePage(): React.JSX.Element {
           mode === 'chat' && !projectIdForSession
             ? chatStore.createSession(mode, null, {
                 scope: 'global',
-                preserveProjectless: true
+                preserveProjectless: true,
+                // Global sessions can pick YOLO too (iter-31 S-59) — without this the
+                // composer choice would be dropped and the session would open gated.
+                permissionMode: options?.permissionMode
               })
             : chatStore.createSession(mode, projectIdForSession ?? activeProject?.id ?? undefined, {
                 scope: 'project',

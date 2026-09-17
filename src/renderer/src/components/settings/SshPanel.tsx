@@ -158,7 +158,7 @@ export function SshPanel(): React.JSX.Element {
     <div className="mx-auto max-w-3xl px-8 pb-16 pt-10">
       <div className="mb-6">
         <h1 className="text-xl font-semibold">
-          {t('ssh.title', { defaultValue: '终端与 SSH' })}
+          {t('ssh.title', { defaultValue: '终端与SSH' })}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {t('ssh.description', {

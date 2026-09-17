@@ -838,6 +838,120 @@ if (typeof msg.updatedAt === 'number') result.updatedAt = msg.updatedAt
 
 ---
 
+## S-58 跨会话派发被误报为失败（实际是排队中）
+
+**来源**：老大 2026-09-17 原话 ——「目前全局会话可以给项目下会话发送消息，正常发送消息前端可以排队，但是工具返回的值让 agent 以为是报错了，实际是排队中」
+
+### 现象
+
+全局会话（项目管理者）给**已有一个活跃 run** 的项目会话派任务：
+
+- **前端行为是对的** —— 消息进排队区（`_pendingMessages`），当前轮结束后自动出队执行
+- **但工具返回值是失败** —— agent 据此判断「派发失败」，可能重试、可能换路子、可能直接向用户报错
+
+功能没坏，`false` 这个词传错了。
+
+### 根因链（三层，已核实）
+
+**第 1 层：`sendMessage` 的 `false` 有两种语义，调用方无从区分**
+
+`src/renderer/src/stores/chat-store/index.ts` 的 `sendMessage` 共三处 `return false`：
+
+| 行 | 含义 |
+|---|---|
+| `:200` | **真失败** —— 没有 sessionId |
+| `:235` | **正常排队** —— 该会话已有活跃 run，消息已入队（iter-30 BUG-A 修复引入） |
+| `:434` / `:455` | **真失败** —— `agent/run` 未启动 / 抛异常 |
+
+返回值类型是 `boolean`，实际语义被复用成「是否启动了新一轮」，**「已受理但排队」没有独立表达**。
+
+**第 2 层：派发侧把 `false` 一律当失败**
+
+`src/renderer/src/lib/tools/project-send-message.ts:225-230`：
+
+```ts
+if (!started) {
+  if (channelRegisteredHere) unregisterExternalChannelReply(sessionId)
+  const error = `Failed to start message processing for session "${sessionId}".`
+  await failScheduledFollowUp(error)
+  return { success: false, error }
+}
+```
+
+排队走的就是这一支。附带两个副作用：
+
+1. **渠道回执注册被撤**（`unregisterExternalChannelReply`）—— 消息还没跑，回执链先断了
+2. 带 `followUp` 时把已排的跟进任务标成 `blocked`（`failScheduledFollowUp`）
+
+**第 3 层：Worker 把渲染端返回的 JSON 原样丢给 agent**
+
+`AgentRuntimeProjectExecutor.cs:298-302`（`send_session_message` 工具）：
+
+```csharp
+var output = result.ValueKind == JsonValueKind.String
+    ? result.GetString() ?? string.Empty
+    : result.ToString();
+return string.IsNullOrEmpty(output) ? "Message sent successfully." : output;
+```
+
+`result` 是渲染端返回的**对象** ⇒ 走 `result.ToString()` ⇒ agent 的工具输出里明明白白写着：
+
+```
+{"success":false,"error":"Failed to start message processing for session \"xxx\"."}
+```
+
+**agent 看到 `success:false` + `error`，判定为报错 —— 这正是老大观察到的现象。**
+
+### 影响面：同一通道三个消费方，另两条更严重
+
+| 消费方 | 落点 | 排队时的行为 |
+|---|---|---|
+| `send_session_message`（老大报的） | `AgentRuntimeProjectExecutor.cs:298-302` | JSON 原样进工具输出 ⇒ **agent 以为失败** |
+| `send_work_request` | `AgentRuntimeGlobalTaskExecutor.cs:260-266` | `ExtractDeliveryFailure` 判失败 ⇒ `MarkDispatchFailed` + `EncodeError` ⇒ **dispatch 记录被误标 failed** |
+| `reply_global_dispatch` | `AgentRuntimeGlobalDispatchReplyExecutor.cs:186-194` | 报 `Reply recorded but not delivered to the global session` ⇒ **项目会话回报给正在跑的全局会话本来必然排队**，却被标成未送达 |
+
+可见「排队」是跨会话派发的**常态**，不是边缘情况 —— 全局会话派活时项目会话多半在跑；项目会话回报时全局会话也多半在跑。
+
+### 修法（待拍板）
+
+**核心：让「已排队」成为一个成功结果，从渲染端一路正确地传到工具输出。**
+
+| 方案 | 内容 | 评价 |
+|---|---|---|
+| **A（推荐）** | 渲染端 handler 拿到 `started === false` 后**回查队列**（`getPendingSessionMessages(sessionId)` 里存在刚入队这条）→ 是则返回 `{ success: true, result: 'Message queued for session "X"; it will run after the current turn finishes.' }` | 最小改动；不动 `sendMessage` 签名（全仓多处依赖 `boolean`）；**无竞态** —— 入队是同步写 `_pendingMessages`，`await` 返回后立刻可读 |
+| **B** | 改 `sendMessage` 返回值语义（如 `true \| 'queued' \| false`），调用方精确判断 | 语义最干净，但要改签名 + 全部调用点，收益与风险不成比例 |
+| **C** | handler 调用前先判忙，忙则**自己**入队（带 `rawParams`）再返回成功 | 不依赖回查，但「判忙 → 入队」之间有竞态窗口，且把入队逻辑搬出了 store |
+
+**无论选哪个都要配套两条**：
+
+1. `project-send-message.ts` 的失败分支**不再无条件**撤渠道回执注册 / 标 `blocked` —— 只有真失败才撤
+2. Worker 侧 `SendSessionMessageAsync` 不该把渲染端返回对象 `ToString()` 当工具输出 —— 至少把 `result` 字段提出来，`success:false` 才有资格进 error
+
+**验收标准**：全局会话给正在跑的项目会话派任务 → 工具返回明确写「已排队」→ agent 不重试、不报失败；队列消息照常出队执行；渠道会话下回执注册不被撤。
+
+### 实施（2026-09-17 老大拍板 A）
+
+| 落点 | 改动 |
+|---|---|
+| `src/renderer/src/lib/tools/project-send-message.ts` | 调 `sendMessage` **前**记下 `getPendingSessionMessages(sessionId).length`；`!started` 时回查队列 —— 命中 `text === content` 的条目或长度增长 ⇒ 判为「已入队」，返回 `{ success: true, result: 'Message queued for session "X"; it will run after the current turn finishes.…' }`；**只有真失败**才走原来的撤渠道注册 + `failScheduledFollowUp` + `success: false` |
+| `src/runtime/WishfulClaw.Agent/AgentRuntimeProjectExecutor.cs` | 新增 `FormatSendSessionMessageResult`（`internal`，供回归直测）：按 `success` 分流 —— `false` → `EncodeError(error)`；`true` → 只交出 `result` 文案；无 `result` / 空白 → `"Message sent successfully."`；非对象（字符串）原样透传。**不再 `result.ToString()` 把整份信封抖给 agent** |
+| `tests/WishfulClaw.GoalRegressionTests/Program.SendSessionMessage.cs`（新） | 11 断言，`Program.cs` 注册 `RunSendSessionMessageResultSuite()` |
+
+**另两条消费方自动跟着好（已核实：走的都是同一个 reverse-request `project/send-session-message`）**：
+
+- `send_work_request` —— `AgentRuntimeGlobalTaskExecutor.cs:245-246` 发同一个 reverse-request，`:260` 的 `ExtractDeliveryFailure` 见到 `success:true` 即不再 `MarkDispatchFailed`
+- `reply_global_dispatch` —— `AgentRuntimeGlobalDispatchReplyExecutor.cs:184-186` 同样；排队时报 `delivered=true`，不再输出「Reply recorded but not delivered to the global session」
+
+**排队判定为什么能命中**：`stores/chat-store/index.ts:232-236` 的入队是**同步**写 `_pendingMessages`（`enqueuePendingSessionMessage` 直接 set），`await sendMessage(...)` 返回时队列已经改完，回查没有竞态窗口。
+
+**没动 `sendMessage` 签名**：返回 `boolean` 的语义复用确实是根因，但全仓多处依赖它；B 案（改成 `true | 'queued' | false`）收益与风险不成比例。渲染端回查把「排队」在**唯一需要区分它的地方**（派发 handler）判出来。
+
+**门禁**：Worker 与 `tests.sln` 各 0 警告 0 错误；C# 回归 10/10（Goal 230 → **241**）；typecheck 三配置 0 错；TS 27/27；BOM clean。
+
+**待老大真机验收**：全局会话给正在跑的项目会话派任务 → 工具输出写「已排队，当前轮结束后运行」→ agent 不重试不报错；队列消息照常出队执行；渠道会话下回执注册不被撤。
+
+---
+
 ## 待登记
 
 ### 不立项 —— 正式版才排入（老大 2026-09-17）

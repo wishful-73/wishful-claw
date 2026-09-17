@@ -460,6 +460,9 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
     if (msg.meta) result.meta = msg.meta as UnifiedMessage['meta']
     if (msg.preToolPhase) result.preToolPhase = true
     if (msg.memoryRecall) result.memoryRecall = msg.memoryRecall as UnifiedMessage['memoryRecall']
+    // updatedAt 是「这一轮跑完」的时刻（live 走 loop_end 回写，历史走 Worker 盖章的
+    // updated_at）。这里不搬它，消费方就只能回落 createdAt，看到的是开始时间。
+    if (typeof msg.updatedAt === 'number') result.updatedAt = msg.updatedAt
     // Use text length as revision so structural signature changes when
     // streaming text grows (buildStructuralSignature uses _revision).
     // This ensures renderableMessageIds is rebuilt when assistant text

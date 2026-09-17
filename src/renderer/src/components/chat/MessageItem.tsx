@@ -203,9 +203,9 @@ function MessageItemInner({
             onContinue={onContinueAssistantMessage}
             onDelete={onDeleteMessage}
             liveToolCallMap={liveToolCallMap}
-            // Assistant replies display the last mutation time (loop_end persistence),
-            // falling back to creation time for live messages / legacy rows.
-            createdAt={effectiveMessage.updatedAt ?? effectiveMessage.createdAt}
+            // 两个时间戳都往下传：action-bar 用 updatedAt 显示结束时间，并靠这一对算耗时。
+            createdAt={effectiveMessage.createdAt}
+            updatedAt={effectiveMessage.updatedAt}
             renderMode={renderMode}
             orchestrationRun={orchestrationRun}
             hiddenToolUseIds={hiddenToolUseIds}

@@ -1,4 +1,4 @@
-﻿// Extracted types, interfaces, and constants for AssistantMessage
+// Extracted types, interfaces, and constants for AssistantMessage
 
 import type { ContentBlock, RequestDebugInfo } from '@renderer/lib/api/types'
 import type { ToolCallState, ToolCallStatus, RequestRetryState } from '@renderer/lib/agent/types'
@@ -12,6 +12,8 @@ export interface AssistantMessageProps {
   content: string | ContentBlock[]
   isStreaming?: boolean
   createdAt?: number
+  /** 这一轮跑完的时刻；缺省（老消息 / 流式中）时时间戳回落 createdAt，也不显示耗时。 */
+  updatedAt?: number
   usage?: TokenUsage
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
   liveToolCallMap?: Map<string, ToolCallState> | null

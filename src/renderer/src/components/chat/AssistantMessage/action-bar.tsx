@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 
 export interface ActionBarProps {
   isStreaming: boolean
@@ -27,6 +28,7 @@ export interface ActionBarProps {
   sessionId?: string | null
   msgId?: string
   createdAt?: number
+  updatedAt?: number
   showRetry?: boolean
   showContinue?: boolean
   onRetry?: (messageId: string) => void
@@ -62,8 +64,15 @@ export function AssistantActionBar({
   renderContent,
   completionSummary,
   createdAt,
+  updatedAt,
   t
 }: ActionBarProps): React.JSX.Element {
+  // 时间戳只在这一轮跑完后才亮：流式期间显示的是「开始时间」，看着像已经完成。
+  const finishedAt = updatedAt ?? createdAt
+  // 耗时只在两个戳都齐、且结束晚于开始时才算（老消息没有 updatedAt）。
+  const elapsedMs =
+    updatedAt != null && createdAt != null && updatedAt > createdAt ? updatedAt - createdAt : null
+
   const navigateToSession = useUIStore((s) => s.navigateToSession)
   const forkSessionFromMessage = useChatStore((s) => s.forkSessionFromMessage)
   const [forking, setForking] = useState(false)
@@ -147,10 +156,11 @@ export function AssistantActionBar({
             </div>
           </>
         )}
-        {/* 时间戳只在这一轮跑完后才亮：流式期间它显示的是「开始时间」，看着像已经完成。 */}
-        {!isStreaming && createdAt && (
+        {/* 结束时间和耗时都只在跑完后才亮 */}
+        {!isStreaming && finishedAt != null && (
           <p className="mt-1.5 text-[10px] text-muted-foreground/50 tabular-nums">
-            {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {new Date(finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {elapsedMs != null && ` · ${formatDurationMs(elapsedMs)}`}
           </p>
         )}
         {!isStreaming &&

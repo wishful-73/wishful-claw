@@ -196,11 +196,13 @@ function getShellLaunchCandidates(
   const preferred = preferredShell?.trim()
 
   if (process.platform === 'win32') {
+    // PowerShell 优先：ConPTY 下 cmd.exe 的历史回溯与行内编辑体验都差很多，
+    // 而 PSReadLine 带完整的历史、补全与行编辑。cmd 退到候选链末位兜底。
     const shells = [
       preferred,
-      env.ComSpec || env.COMSPEC || 'cmd.exe',
       'powershell.exe',
-      'pwsh.exe'
+      'pwsh.exe',
+      env.ComSpec || env.COMSPEC || 'cmd.exe'
     ]
     return shells
       .filter(

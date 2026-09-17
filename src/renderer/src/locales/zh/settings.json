@@ -1360,8 +1360,27 @@
     "serverRemoveFailed": "移除服务器失败"
   },
   "ssh": {
-    "title": "SSH 连接",
-    "description": "管理 SSH 服务器连接，用于远程命令执行",
+    "title": "终端与 SSH",
+    "description": "内置终端的默认 shell，以及用于远程命令执行的 SSH 连接",
+    "terminal": {
+      "title": "终端",
+      "description": "新建终端标签页时使用的 shell；已打开的标签页不受影响",
+      "customPlaceholder": "/path/to/shell",
+      "shellOptions": {
+        "auto": "自动（优先 PowerShell）",
+        "powershell": "Windows PowerShell",
+        "pwsh": "PowerShell 7+",
+        "cmd": "命令提示符 (cmd)",
+        "zsh": "zsh",
+        "bash": "bash",
+        "sh": "sh",
+        "custom": "自定义路径"
+      }
+    },
+    "connections": {
+      "title": "SSH 连接",
+      "description": "用于远程命令执行的服务器连接"
+    },
     "add": "添加连接",
     "empty": "暂无 SSH 连接，点击「添加连接」创建",
     "test": "测试连接",
@@ -1601,14 +1620,14 @@
     }
   },
   "freeChatPage": {
-    "title": "免费对话",
-    "description": "侧栏「新对话」右侧的按钮会打开免费对话页，这里配置该页可切换的站点。登录请在页面内自行完成。",
+    "title": "支持清单",
+    "description": "管理本页可切换的站点清单，登录请在页面内自行完成。",
     "add": "添加",
     "remove": "删除",
     "moveUp": "上移",
     "moveDown": "下移",
     "reset": "恢复默认",
-    "empty": "清单为空，免费对话页将没有可切换的站点。",
+    "empty": "清单为空，本页将没有可切换的站点。",
     "namePlaceholder": "名称",
     "urlPlaceholder": "https://example.com"
   },

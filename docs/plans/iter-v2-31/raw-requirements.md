@@ -726,6 +726,30 @@ if (typeof msg.updatedAt === 'number') result.updatedAt = msg.updatedAt
 
 > **验收标准**：现象 1 是硬的（↑↓ 能翻历史）；现象 2 若判定为非我方引入则**不计入验收**。
 
+### 实施（2026-09-17）
+
+**开工时的一个发现直接改写了落地方式：这套 shell 配置是「存了不用」的死配置。**
+
+`settings-store` 里 `shellExecutionEndpoint`（`:156`）+ `customShellExecutable`（`:157`）+ `shellEnvironmentVariablesText`（`:158`）**全都在** —— 默认值（`:309-311`）、`partialize`（`:472-474`）、migrate（`settings-store-migrate.ts:309-315`）、类型与默认常量（`settings-store-types.ts:38-48`）、纯函数 `normalizeShellExecutionEndpoint`（`:276`）与 `resolveShellExecutable`（`:292`）**一应俱全**，但是：
+
+- **UI 组件零引用** —— 没有任何设置项能改它
+- **`resolveShellExecutable(` 零调用方** —— `settings-store.ts:108` 那个 import 是死的
+
+⇒ 所以**不新增 `terminalShell`**，改为**把这套现成配置接上**（接入口 + 接消费方）。上方「落地清单」里新增字段那一行作废。
+
+| 落点 | 改动 |
+|---|---|
+| `src/main/ipc/terminal-handlers.ts:198-207` | Windows 候选链顺序改为 `preferred → powershell.exe → pwsh.exe → ComSpec`，附注释说明理由 |
+| `src/renderer/src/stores/terminal-store.ts` | `createTab` 读 `shellExecutionEndpoint` + `customShellExecutable` → `resolveShellExecutable({ endpoint, customShellExecutable, platform: window.electron?.process?.platform })`，非 undefined 时随 `TERMINAL_CREATE` 下发 `shell` |
+| `src/renderer/src/components/settings/SshPanel.tsx` | 页面标题改「终端与 SSH」；新增 `SettingsSection#sec-terminal-shell`「终端」段（平台相关端点下拉 + `custom` 时才出现的路径输入框）；原 SSH 列表降为第二段，标题从页面级 `h1` 改为 `h2` |
+| `src/renderer/src/components/settings/SettingsPage.tsx:83` | `tabs.ssh.label` 默认值改「终端与 SSH」 |
+| `src/renderer/src/locales/{zh,en}/settings.json` | `ssh.title` / `description` 改写；新增 `ssh.terminal.*`（title / description / customPlaceholder / 8 个 `shellOptions`）与 `ssh.connections.*` |
+| `tests/shell-executable/program.ts`（新增） | **35 断言** —— `resolveShellExecutable` 此前**零覆盖**：auto 与非法值 → undefined、三个 Windows 端点、三个 POSIX 端点、跨平台回落、custom 的 trim 与空白、platform 大小写空白、`normalizeShellExecutionEndpoint` 全值域 |
+
+**端点选项按平台给**（`getShellEndpointOptions()`）：Windows = `auto / powershell / pwsh / cmd / custom`，POSIX = `auto / zsh / bash / sh / custom`。
+
+**门禁**：typecheck 三配置 0 错；TS 全量 **26/26**（新增 1 套）；locale JSON 合法（Node UTF-8 校验）；6 个触碰文件 BOM clean。未动 C#。
+
 ---
 
 ## 待登记

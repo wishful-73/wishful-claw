@@ -83,10 +83,10 @@ export function FreeChatSitesDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t('freeChatPage.title', { defaultValue: '免费对话' })}</DialogTitle>
+          <DialogTitle>{t('freeChatPage.title', { defaultValue: '支持清单' })}</DialogTitle>
           <DialogDescription>
             {t('freeChatPage.description', {
-              defaultValue: '管理免费对话页可切换的站点，登录请在页面内自行完成。'
+              defaultValue: '管理本页可切换的站点清单，登录请在页面内自行完成。'
             })}
           </DialogDescription>
         </DialogHeader>
@@ -104,7 +104,7 @@ export function FreeChatSitesDialog({
 
         {sites.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            {t('freeChatPage.empty', { defaultValue: '清单为空，免费对话页将没有可切换的站点。' })}
+            {t('freeChatPage.empty', { defaultValue: '清单为空，本页将没有可切换的站点。' })}
           </p>
         ) : (
           <ul className="max-h-[45vh] divide-y divide-border/60 overflow-y-auto rounded-lg border border-border/60">

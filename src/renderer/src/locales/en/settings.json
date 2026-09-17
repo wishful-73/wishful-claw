@@ -1221,8 +1221,27 @@
     "serverRemoveFailed": "Failed to remove server"
   },
   "ssh": {
-    "title": "SSH Connections",
-    "description": "Manage SSH server connections for remote command execution.",
+    "title": "Terminal & SSH",
+    "description": "Default shell for the built-in terminal, plus SSH connections for remote command execution.",
+    "terminal": {
+      "title": "Terminal",
+      "description": "Shell used when opening a new terminal tab. Already-open tabs are unaffected.",
+      "customPlaceholder": "/path/to/shell",
+      "shellOptions": {
+        "auto": "Auto (PowerShell first)",
+        "powershell": "Windows PowerShell",
+        "pwsh": "PowerShell 7+",
+        "cmd": "Command Prompt (cmd)",
+        "zsh": "zsh",
+        "bash": "bash",
+        "sh": "sh",
+        "custom": "Custom path"
+      }
+    },
+    "connections": {
+      "title": "SSH Connections",
+      "description": "Server connections used for remote command execution."
+    },
     "add": "Add Connection",
     "empty": "No SSH connections yet. Click \"Add Connection\" to create one.",
     "test": "Test connection",
@@ -1462,14 +1481,14 @@
     }
   },
   "freeChatPage": {
-    "title": "Free Chat",
-    "description": "The button next to 'New Chat' opens the Free Chat page; configure the sites it can switch between here. Sign in inside that page.",
+    "title": "Supported Sites",
+    "description": "Manage the sites this page can switch between. Sign in inside the page.",
     "add": "Add",
     "remove": "Remove",
     "moveUp": "Move up",
     "moveDown": "Move down",
     "reset": "Restore defaults",
-    "empty": "The list is empty, so the Free Chat page has no site to switch to.",
+    "empty": "The list is empty, so this page has no site to switch to.",
     "namePlaceholder": "Name",
     "urlPlaceholder": "https://example.com"
   },

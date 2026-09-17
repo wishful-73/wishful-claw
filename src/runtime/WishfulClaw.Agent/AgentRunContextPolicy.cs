@@ -126,12 +126,25 @@ internal static class AgentRunContextPolicy
         Normalize(JsonHelpers.GetString(parameters, "sessionMode")) == "channel";
 
     /// <summary>
+    /// Global feature opt-ins that veto a tool for a whole run, whatever its own declarations say.
+    ///
+    /// CodeGraph is the only entry. Its switch is resolved on the renderer, where both halves live:
+    /// the plugin state and the index probe. The value that arrives here therefore already means
+    /// "plugin on AND this project has an index", so a project that was never indexed never sees
+    /// the tool on any surface. Web search used to be gated the same way; that gate went with the
+    /// provider-API chain it guarded (iter-29 / S-23).
+    /// </summary>
+    public static bool IsRunEnabledTool(AgentRunContext context, string toolName) =>
+        !toolName.StartsWith("codegraph_", StringComparison.Ordinal) || context.CodegraphEnabled;
+
+    /// <summary>
     /// Admission check for a single tool in a single run context.
     ///
-    /// This is the enforcement layer, not the declaration layer, and it holds no opinion of its own:
-    /// it reads both declarations off the registered executor and hands them to
-    /// <see cref="ToolVisibilityPolicy"/>. The registry is therefore required — a call site that
-    /// dropped it would not crash, it would read every tool as undeclared and admit all of them.
+    /// This is the enforcement layer, not the declaration layer. A run-level feature switch is
+    /// checked first because it is not a property of the tool; then the tool's own declarations are
+    /// read off the registered executor and handed to <see cref="ToolVisibilityPolicy"/>. The
+    /// registry is therefore required — a call site that dropped it would not crash, it would read
+    /// every tool as undeclared and admit all of them.
     /// </summary>
     public static bool IsToolAllowed(
         AgentRunContext context,
@@ -139,6 +152,11 @@ internal static class AgentRunContextPolicy
         ToolRegistry? registry,
         bool channelSession = false)
     {
+        if (!IsRunEnabledTool(context, toolName))
+        {
+            return false;
+        }
+
         if (registry is not null && registry.TryGetExecutor(toolName, out var executor) && executor is not null)
         {
             return ToolVisibilityPolicy.IsVisible(

@@ -25,6 +25,7 @@ public sealed class CodeGraphToolProvider : IToolProvider
                         "Optional absolute path to the project root. Defaults to the active working folder.")
                 },
                 ["query"]),
-            visibleScopes: ToolVisibilityScopes.Everywhere));
+            visibleScopes: ToolVisibilityScopes.Everywhere,
+            isCore: true));
     }
 }

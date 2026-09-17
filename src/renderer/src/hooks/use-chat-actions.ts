@@ -26,6 +26,26 @@ import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
 import type { ChatMessage } from '@renderer/stores/chat-store/types'
 import { dbUpsertMessage } from '@renderer/stores/chat-store/db-helpers'
+import {
+  CODEGRAPH_INDEX_PROBE_TIMEOUT_MS,
+  CODEGRAPH_INDEX_STATUS_METHOD,
+  resolveCodegraphEnabled
+} from '@renderer/lib/agent/codegraph-availability'
+
+// 索引探测：一次 codegraph/index-status RPC，只认 indexed === true。
+// 动态 import 是为了不让 Electron IPC 依赖链被静态拉进本模块。
+async function probeCodegraphIndexStatus(request: {
+  workingFolder: string
+  dataRoot?: string
+}): Promise<boolean> {
+  const { agentBridge } = await import('@renderer/lib/ipc/agent-bridge')
+  const status = (await agentBridge.request(
+    CODEGRAPH_INDEX_STATUS_METHOD,
+    request,
+    CODEGRAPH_INDEX_PROBE_TIMEOUT_MS
+  )) as { indexed?: boolean } | null
+  return status?.indexed === true
+}
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -155,7 +175,15 @@ export function useChatActions() {
       // 发给 LLM 的工具清单由 Worker 侧按 run context 与各工具自己的 VisibleScopes 解析；
       // 渲染端只负责预热缓存。渲染端注册的 handler 仍可按名字执行，只是定义不下发。
       const settings = settingsStore
-      const codegraphEnabled = useAppPluginStore.getState().isCodeGraphToolAvailable()
+      // 「插件开关开 ∧ 项目已有索引」：插件没开、或这次运行没有项目根时都是 false，
+      // 而且不会去问索引状态。判据为什么必须在这边算，见 codegraph-availability.ts。
+      const codegraphEnabled = await resolveCodegraphEnabled({
+        pluginEnabled: useAppPluginStore.getState().isCodeGraphToolAvailable(),
+        workingFolder,
+        projectId,
+        sshConnectionId,
+        probe: probeCodegraphIndexStatus
+      })
 
       getCachedTools()
       fetchToolDefinitions() // fire-and-forget background fetch

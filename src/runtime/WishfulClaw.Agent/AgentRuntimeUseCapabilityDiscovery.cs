@@ -100,22 +100,13 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
             .ToArray();
 
     /// <summary>
-    /// Global feature opt-ins, enforced on the proxy side the same way AgentLoop used to enforce
-    /// them on direct injection: codegraph off removes the codegraph tools. A disabled feature must
-    /// be unreachable through every path, not just one.
-    ///
-    /// Web search used to be gated here too. That gate is gone with the provider-API chain it
-    /// guarded (iter-29 / S-23): the search tool the agent uses is a renderer tool with no
-    /// per-run opt-in, so a run-level flag would have gated nothing.
-    /// </summary>
-    private static bool IsRunEnabledTool(AgentRunContext runContext, string toolName)
-        => !toolName.StartsWith("codegraph_", StringComparison.Ordinal) || runContext.CodegraphEnabled;
-
-    /// <summary>
     /// Shared visibility predicate for list, inspect and call. The registry/mode checks are kept
     /// beside the policy check so a new action cannot expose a tool through only one path.
     /// Category membership no longer gates the proxy: a built-in belongs to the proxy when its
-    /// executor is not core (iter-28), with feature opt-ins vetoeing per run.
+    /// executor is not core (iter-28). Run-level feature switches are enforced inside
+    /// <c>AgentRunContextPolicy.IsToolAllowed</c>, which every surface reads — keeping the gate in
+    /// one place is what stops a disabled feature from leaking through whichever path is checked
+    /// less often.
     /// </summary>
     internal static bool IsProxyBuiltinVisible(
         ToolRegistry? registry,
@@ -126,7 +117,6 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
         => registry is not null
             && registry.IsRegistered(toolName)
             && registry.IsAvailableInMode(toolName, sessionMode)
-            && IsRunEnabledTool(runContext, toolName)
             && AgentRunContextPolicy.IsToolAllowed(
                 runContext,
                 toolName,

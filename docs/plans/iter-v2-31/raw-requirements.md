@@ -255,7 +255,7 @@ text-muted-foreground hover:bg-accent/50 hover:text-foreground
 
 ## S-51 代码图谱核心化（变成核心工具）
 
-> **状态：搁置 —— 本迭代不做**（老大 2026-09-17 裁定，理由见文末「裁定」节）。保留全文，因为重启它有一个**必须先行**的前提。
+> **状态：已实施**（2026-09-17 晚老大拍板重启）。准入判据 = **插件开关开 ∧ 项目已有索引** —— 比原方案多出来的"有索引"这半个条件，正对着下面那条"它是领域工具不是通用工具"：没有索引的项目连工具都看不到，非开发场景不受打扰。
 
 **一句话**：`codegraph_explore` 自称 PRIMARY code-intelligence tool，却因 `isCore = false` 只能走 `use_capability` 代理 —— 用之前得先"想起有代码图谱这回事"再去代理里翻；把它提升为核心工具，直接出现在工具列表里。
 
@@ -318,9 +318,46 @@ private static bool IsRunEnabledTool(AgentRunContext runContext, string toolName
 
 这条比"缺开关门控"更根本。开关门控是**实现层**缺陷（补上就能核心化），而这条讲的是**产品定位**：Wishful Claw 不只为写代码服务 —— 写作、调研、日常问答都不涉及代码。把 `codegraph_explore` 摆进所有会话的直接工具列表，对非开发场景是**纯噪音**：占 schema token、占注意力，却永远用不上。
 
-⇒ 即使将来把功能开关接进直连注入（上面那个前提），**也不该因此就核心化它**。继续走 `use_capability` 代理反而正合适 —— 开发场景的 agent 会主动去翻，非开发场景不受打扰。
+**重启（2026-09-17 晚，老大拍板）**
 
-**结论：本需求不再重启。**
+> 「你先探索下是否好处理」→「重开，是否进核心的一句是 **插件开关为开 并且 有代码图谱索引**」
+
+上面那条结论没有被推翻，而是被**条件化**了：不再问"要不要核心化"，改问"什么条件下才核心化"。加进"有索引"这半个条件后，产品定位的顾虑自动消失 —— 没被索引过的项目（写作、调研、非开发仓库的绝大多数）连工具都看不到；有索引，说明用户本来就在拿它做开发。
+
+⇒ 上面那个"前提"（把功能开关接进直连注入）照旧必须做，而且这一步做完整了：开关门控从代理侧的一个私有谓词，搬成 `IsToolAllowed` 的**第一道**判据，直连、代理、执行前准入三处一次性统一。
+
+### 落地（2026-09-17 晚）
+
+**判据的解析位置在渲染端**，理由是实测出来的，不是偏好：
+
+1. **`Resolve` 不能碰文件系统** —— `VisibilitySnapshot.ResolveScenarios()` 是**通过 `AgentRunContextPolicy.Resolve(parameters)` 造 context 的**（其注释写明"不直接 new，避免绕过被测的归一化"），golden 又拿它逐上下文比对。判据一旦进 `Resolve`，golden 就会随"跑测试的机器上有没有索引"变化，**整套可见性回归直接失效**。
+2. **Agent worker 推不出索引路径** —— 索引有两条布局：本地项目是 `{workingFolder}/.wishful-claw/codegraph`，SSH 项目是 data-dir 下的 `projects/<id>/codegraph`（远端仓库写不进去）。后者由渲染端推导后当 `dataRoot` 传给主进程；`CodeGraphDataRootRegistry` 是 **CodeGraph worker 进程内**的内存表，Agent worker 看不到 —— 直接调 `CodeGraphDataDir.IsInitialized` 会回落集中式布局并**误判成"没有索引"**。
+
+所以判据在渲染端算好、随 run 参数下发；`codegraphEnabled` 这个参数从此承载的语义是**「插件开 ∧ 有索引」**，Worker 侧不必为"索引"改一个字。
+
+**C# 侧（4 处 + golden）**
+
+| 文件 | 改动 |
+|---|---|
+| `AgentRunContextPolicy.cs` | 新增 `IsRunEnabledTool`（原在 `AgentRuntimeUseCapabilityExecutor`），接进 `IsToolAllowed` 的**第一道**判据 —— 直连 / 代理 / 执行前准入三处共用它 |
+| `AgentRuntimeUseCapabilityDiscovery.cs` | 删掉本地那份重复定义与 `&& IsRunEnabledTool(...)`，门控从此只有一个出处 |
+| `Tools/Providers/CodeGraphToolProvider.cs` | 补 `isCore: true` |
+| `Core/Tools/ToolCategoryCatalog.cs` | `Core` 名单加 `codegraph`（类别进核心 ⇒ 代理侧 `GetProxiedCategoryNames()` 自动不再宣传它） |
+| `tests/.../VisibilitySnapshot.cs` | 加场景 `project:cowork@codegraph`（`codegraphEnabled: true`）。不加它，没有任何被扫场景能承认这个类别，`RunCoreCategoryReachableSuite` 会要求一件不可能的事 |
+| `tests/.../ToolDeclarationChecks.cs` | `sessionContexts` 纳入该场景 |
+| `tests/.../CodeGraphGateChecks.cs` | **新增**，8 条断言：开关两侧的直连集合 / 代理可见性 / 「开关只改变一个工具」/ 类别与 `IsCore` 两处声明 |
+| `tests/.../visibility-snapshot.expected.txt` | 重生成：**只多一行**，其余 15 个上下文的工具集合逐字未变 |
+
+**渲染端**
+
+| 文件 | 改动 |
+|---|---|
+| `lib/agent/codegraph-availability.ts` | **新增**。纯逻辑：`shouldProbeCodegraphIndex` / `resolveCodegraphDataRoot` / `resolveCodegraphEnabled`（注入式探测 + 30s 缓存 + **只在探测成功时写缓存**）。刻意不 import `agentBridge`，探测由调用方注入，纯逻辑才可直接单测 |
+| `hooks/use-chat-actions.ts` | `codegraphEnabled` 由"插件开关"改为 `await resolveCodegraphEnabled({...})`；探测实现就地 —— 一次 `codegraph/index-status` RPC，5s 超时，只认 `indexed === true` |
+
+**已知取舍**：探测要等一次跨进程 RPC，所以**插件没开、或没有项目根时一次都不问**；命中缓存 30s（建/删索引是分钟级动作，不会出现"刚建好索引还要等很久"）。探测失败按"没有索引"处理（这一轮不给工具）且**不写缓存**，避免一次启动抖动钉住整个 TTL。
+
+**验证**：`codegraph-availability` 23 断言 · `CodeGraphGateChecks` 8 断言（跑生产注册表）· `Provider header regression checks passed` · 全量 TS 30/30 · C# 回归 10/10 · Worker 与 tests.sln 各 0 警告 0 错误。
 
 ---
 

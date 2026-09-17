@@ -32,6 +32,11 @@ internal static class VisibilitySnapshot
     [
         ("project:chat", """{"sessionMode":"chat","scope":"project","projectId":"p1","collaborationMode":"chat"}"""),
         ("project:cowork", """{"sessionMode":"agent","scope":"project","projectId":"p1","collaborationMode":"cowork"}"""),
+        // CodeGraph is the first conditionally-core tool: eligible for direct injection, but its
+        // run-level switch has to be on before it appears. Without a scenario that turns the switch
+        // on, no swept context could admit it and the reachability check below could not tell a
+        // working gate from a broken one.
+        ("project:cowork@codegraph", """{"sessionMode":"agent","scope":"project","projectId":"p1","collaborationMode":"cowork","codegraphEnabled":true}"""),
         ("project:cowork-by-default", """{"sessionMode":"chat","scope":"project","projectId":"p1"}"""),
         ("global:chat", """{"sessionMode":"global","scope":"global"}"""),
         ("global:channel", """{"sessionMode":"channel","channelSession":true,"scope":"global","pluginId":"feishu","externalChatId":"oc_1"}"""),

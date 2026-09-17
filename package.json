@@ -41,7 +41,8 @@
     "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs",
     "test:channel-shell-approval": "esbuild tests/channel-shell-approval/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-shell-approval/out/program.cjs && node tests/channel-shell-approval/out/program.cjs",
     "test:browser-user-agent": "esbuild tests/browser-user-agent/program.ts --bundle --platform=node --format=cjs --outfile=tests/browser-user-agent/out/program.cjs && node tests/browser-user-agent/out/program.cjs",
-    "test:free-chat-tabs": "esbuild tests/free-chat-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/free-chat-tabs/out/program.cjs && node tests/free-chat-tabs/out/program.cjs"
+    "test:free-chat-tabs": "esbuild tests/free-chat-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/free-chat-tabs/out/program.cjs && node tests/free-chat-tabs/out/program.cjs",
+    "test:free-chat-sites": "esbuild tests/free-chat-sites/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/free-chat-sites/out/program.cjs && node tests/free-chat-sites/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

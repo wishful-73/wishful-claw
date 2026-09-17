@@ -1466,6 +1466,8 @@
     "description": "The button next to 'New Chat' opens the Free Chat page; configure the sites it can switch between here. Sign in inside that page.",
     "add": "Add",
     "remove": "Remove",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
     "reset": "Restore defaults",
     "empty": "The list is empty, so the Free Chat page has no site to switch to.",
     "namePlaceholder": "Name",

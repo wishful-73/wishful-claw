@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { DEFAULT_FREE_CHAT_SITES, useSettingsStore } from '@renderer/stores/settings-store'
 import type { FreeChatSite } from '@renderer/stores/settings-store-types'
+import { moveFreeChatSite, type FreeChatSiteMoveDirection } from './free-chat-sites'
 
 /** 用户可能只敲了主机名，补上 https:// 前缀。 */
 function normalizeFreeChatUrl(raw: string): string {
@@ -67,6 +68,13 @@ export function FreeChatSitesDialog({
     updateSettings({ freeChatSites: sites.filter((site) => site.id !== id) })
   }
 
+  const handleMove = (id: string, direction: FreeChatSiteMoveDirection): void => {
+    const next = moveFreeChatSite(sites, id, direction)
+    // 已在首位/末位时原样返回同一个引用 —— 没有变化就不写盘。
+    if (next === sites) return
+    updateSettings({ freeChatSites: next })
+  }
+
   const handleReset = (): void => {
     updateSettings({ freeChatSites: [...DEFAULT_FREE_CHAT_SITES] })
   }
@@ -100,12 +108,36 @@ export function FreeChatSitesDialog({
           </p>
         ) : (
           <ul className="max-h-[45vh] divide-y divide-border/60 overflow-y-auto rounded-lg border border-border/60">
-            {sites.map((site) => (
+            {sites.map((site, index) => (
               <li key={site.id} className="flex items-center gap-3 px-3 py-2">
                 <span className="w-24 shrink-0 truncate text-sm font-medium">{site.name}</span>
                 <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                   {site.url}
                 </span>
+                {/* 顺序即免费对话页选项卡的排列顺序（那一页直接 sites.map 渲染），
+                    所以这里挪一格就够了，页面自己会跟着变。 */}
+                <div className="flex shrink-0 items-center">
+                  <button
+                    type="button"
+                    onClick={() => handleMove(site.id, 'up')}
+                    disabled={index === 0}
+                    title={t('freeChatPage.moveUp', { defaultValue: '上移' })}
+                    aria-label={`${t('freeChatPage.moveUp', { defaultValue: '上移' })} ${site.name}`}
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <ChevronUp className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMove(site.id, 'down')}
+                    disabled={index === sites.length - 1}
+                    title={t('freeChatPage.moveDown', { defaultValue: '下移' })}
+                    aria-label={`${t('freeChatPage.moveDown', { defaultValue: '下移' })} ${site.name}`}
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                  >
+                    <ChevronDown className="size-3.5" />
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => handleRemove(site.id)}

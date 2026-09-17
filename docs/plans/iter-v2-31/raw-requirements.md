@@ -163,6 +163,33 @@
 - 分支管理（新建 / 删除本地 / 删除远程 / 重命名）
 - 参考载体：`ScmSidebar.tsx:238-342` 的右键菜单结构 + `git-page-handlers.ts` 的 handler
 
+### ★ 落地裁定（2026-09-17 老大）
+
+老大原话：「**可以复活 gitpage 但是呈现的位置是右侧面板，之前的 changesPanel 在 gitpage 成熟后可以下架**」
+
+⇒ 甲案落点定为**右侧面板**，且**不动 `chatView`**（`chatView: 'git'` 走 `PlaceholderPage` 那条分支**保留**，S-49 不删它）。`changesPanel` / `branches` 两个 tab **暂时共存**，等 GitPage 成熟后再下架。
+
+### ★ 实测：GitPage 不能原样挂（宽度冲突）
+
+| 事实 | 数值 |
+|------|------|
+| 右侧面板默认宽 | **384px**（min 280 / max 80vw，`right-panel-defs.ts:5-8`） |
+| `ScmSidebar` 宽度 | **固定 px** `style={{ width: scmWidth }}` + `shrink-0`（`ScmSidebar.tsx:154-156`），默认 **360** |
+| 文件历史栏 | 固定 `historyWidth` 默认 **300**（`use-git-panel-split.ts:17,39`） |
+| 三栏合计下限 | ≈ 200 + 5 + 0 + 5 + 200 ≈ **410px 起**，还没给 diff 栏留位置 |
+| 页面级外壳 | `px-6 pt-4 pb-6` + `max-w-[1480px]` + 顶部大标题区（`GitPage.tsx:262-282`） |
+| 上下文 | GitPage 读 `activeProject`（`GitPage.tsx:26-28`）；右侧面板读**会话** `workingFolder`（`AgentFilesPanel.tsx:26-40`）⇒ 全局会话下 GitPage 直接走「Select a project」空态 |
+
+### 落地方案（已定）
+
+1. **GitPage 加 `workingFolder?: string \| null` prop** —— 会话级优先，回落 `activeProject.workingFolder`；空态判断也改用它
+2. **GitPage 加容器宽度自适应的「紧凑形态」**（`ResizeObserver` 测宿主宽度，阈值 640px）：
+   - **紧凑（< 640px，即右侧面板常态）**：去掉页面级 padding / `max-w` / 顶部标题区；只渲染 `ScmSidebar` 占满宽度（分支下拉+右键菜单、fetch/pull/sync/push、commit box、文件列表全在其中）；**点文件 → 弹 Dialog 看 diff**（照 `changes-panel.tsx:155-170` 的既有先例，用户已熟悉该交互）
+   - **宽松（≥ 640px）**：保持现有三栏
+3. **diff 渲染抽成 `GitPage/GitDiffContent.tsx`** —— 宽态内联区与紧凑态 Dialog 共用
+4. **`ScmSidebar` 的 `scmWidth` 类型放宽为 `number \| string`** —— 紧凑态传 `'100%'`
+5. **`AgentFilesPanel` 加第四个 tab `git`** → `<GitPage workingFolder={sessionView.workingFolder} />`
+
 ---
 
 ## S-50 左侧面板首排组合按钮重新设计样式

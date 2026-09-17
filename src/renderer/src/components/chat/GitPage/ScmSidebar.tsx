@@ -47,7 +47,10 @@ import { Textarea } from '@renderer/components/ui/textarea'
 import { CloudDownload, CloudUpload, EllipsisVertical, Upload, Wand2 } from 'lucide-react'
 
 interface ScmSidebarProps {
-  scmWidth: number
+  /** 紧凑形态（右侧面板）传 `'100%'` 占满宿主宽度；宽态传拖拽后的像素值。 */
+  scmWidth: number | string
+  /** 紧凑形态：没有相邻栏可拖，隐藏右侧拖拽把手。 */
+  compact?: boolean
   t: TFunction
   isScanning: boolean
   scanError: string | null
@@ -102,6 +105,7 @@ interface ScmSidebarProps {
 export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
   const {
     scmWidth,
+    compact,
     t,
     isScanning,
     scanError,
@@ -607,13 +611,15 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
             </div>
           </aside>
 
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t('resizeScmPanel')}
-            onPointerDown={onScmResizePointerDown}
-            className="w-[5px] shrink-0 cursor-col-resize border-x border-transparent bg-border/50 hover:bg-primary/35"
-          />
+          {compact ? null : (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={t('resizeScmPanel')}
+              onPointerDown={onScmResizePointerDown}
+              className="w-[5px] shrink-0 cursor-col-resize border-x border-transparent bg-border/50 hover:bg-primary/35"
+            />
+          )}
         </>
   )
 }

@@ -21,11 +21,25 @@ import { useChatStore } from '@renderer/stores/chat-store'
 
 
 import { type ScmFileRow, scmFileKey, parseDiffBlocks } from './GitPage/utils'
-export function GitPage(): React.JSX.Element {
+import { GitDiffContent } from './GitPage/GitDiffContent'
+
+/** 宿主宽度低于此值时走紧凑形态（右侧面板常态 384px）。 */
+const GIT_PAGE_COMPACT_MAX_WIDTH = 640
+
+export interface GitPageProps {
+  /**
+   * 会话级工作目录，由右侧面板传入。优先于 `activeProject.workingFolder` ——
+   * 全局会话没有 activeProject，但右侧面板仍要能对该会话的目录跑 git。
+   */
+  workingFolder?: string | null
+}
+
+export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {}): React.JSX.Element {
   const { t, i18n } = useTranslation('chat', { keyPrefix: 'git' })
   const activeProjectId = useChatStore((s) => s.activeProjectId)
   const projects = useChatStore((s) => s.projects)
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null
+  const workingFolder = workingFolderProp ?? activeProject?.workingFolder ?? null
   const {
     repositories,
     selectedRepoPath,
@@ -60,6 +74,22 @@ export function GitPage(): React.JSX.Element {
     | null
   >(null)
   const [branchNameInput, setBranchNameInput] = useState('')
+
+  // 窄宿主（右侧面板）只有 SCM 单栏 + diff 弹窗；宽宿主保持三栏。
+  const hostRef = React.useRef<HTMLDivElement>(null)
+  const [compact, setCompact] = useState(false)
+  const [compactDiffOpen, setCompactDiffOpen] = useState(false)
+
+  useEffect(() => {
+    const el = hostRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0
+      setCompact(width > 0 && width < GIT_PAGE_COMPACT_MAX_WIDTH)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const {
     scmWidth,
@@ -110,7 +140,7 @@ export function GitPage(): React.JSX.Element {
   )
 
   useEffect(() => {
-    if (!activeProject?.workingFolder) {
+    if (!workingFolder) {
       reset()
       return
     }
@@ -118,7 +148,7 @@ export function GitPage(): React.JSX.Element {
     startPolling()
     return () => stopPolling()
   }, [
-    activeProject?.workingFolder,
+    workingFolder,
     activeProject?.sshConnectionId,
     reset,
     scanRepositories,
@@ -207,6 +237,18 @@ export function GitPage(): React.JSX.Element {
     : null
   const totalChangeCount = conflictRows.length + stagedRows.length + unstagedRows.length
 
+  // 全局会话没有 activeProject，标题回落到目录名。
+  const projectLabel =
+    activeProject?.name ??
+    ((workingFolder ?? '').split(/[\\/]/).filter(Boolean).pop() || workingFolder || '')
+  const titleRepoPath = selectedRepoLabel ?? workingFolder
+
+  // 紧凑形态点文件 = 打开 diff 弹窗（宽态由内联区域直接呈现，不走这里）。
+  const handleDiffSelect = (key: string | null): void => {
+    setSelectedKey(key)
+    if (key) setCompactDiffOpen(true)
+  }
+
   const {
     handlePullRebase,
     handleSync,
@@ -241,14 +283,32 @@ export function GitPage(): React.JSX.Element {
     i18n
   })
 
-  if (!activeProject) {
+  if (!workingFolder) {
     return (
-      <div className="flex flex-1 items-center justify-center bg-background px-6">
+      <div
+        className={
+          compact
+            ? 'flex h-full items-center justify-center bg-background px-4'
+            : 'flex flex-1 items-center justify-center bg-background px-6'
+        }
+      >
         <div className="max-w-md text-center">
-          <div className="text-[28px] font-semibold tracking-tight text-foreground">
+          <div
+            className={
+              compact
+                ? 'text-sm font-medium text-foreground'
+                : 'text-[28px] font-semibold tracking-tight text-foreground'
+            }
+          >
             {t('noProject')}
           </div>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          <p
+            className={
+              compact
+                ? 'mt-2 text-xs leading-5 text-muted-foreground'
+                : 'mt-3 text-sm leading-6 text-muted-foreground'
+            }
+          >
             {t('pickRepo', {
               defaultValue: 'Select a project to inspect repositories and changes.'
             })}
@@ -259,34 +319,48 @@ export function GitPage(): React.JSX.Element {
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background px-6 pb-6 pt-4">
-      <div className="mx-auto w-full max-w-[1480px] pb-4">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
-              {t('title')}
-            </p>
-            <h1 className="mt-1 truncate text-sm font-medium text-foreground/92">
-              {activeProject.name}
-            </h1>
-            <p className="mt-1 max-w-[880px] truncate text-xs text-muted-foreground/72">
-              {selectedRepoLabel ?? activeProject.workingFolder ?? t('pickRepo')}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground/72">
-            <span>{repositories.length} repos</span>
-            <span>{totalChangeCount} changes</span>
-            {conflictRows.length > 0 ? <span>{conflictRows.length} conflicts</span> : null}
+    <div
+      ref={hostRef}
+      className={
+        compact
+          ? 'flex h-full min-h-0 flex-col overflow-hidden bg-background'
+          : 'relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background px-6 pb-6 pt-4'
+      }
+    >
+      {compact ? null : (
+        <div className="mx-auto w-full max-w-[1480px] pb-4">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
+                {t('title')}
+              </p>
+              <h1 className="mt-1 truncate text-sm font-medium text-foreground/92">
+                {projectLabel}
+              </h1>
+              <p className="mt-1 max-w-[880px] truncate text-xs text-muted-foreground/72">
+                {titleRepoPath}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground/72">
+              <span>{repositories.length} repos</span>
+              <span>{totalChangeCount} changes</span>
+              {conflictRows.length > 0 ? <span>{conflictRows.length} conflicts</span> : null}
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <div
         ref={containerRef}
-        className="mx-auto flex min-h-0 min-w-0 w-full max-w-[1480px] flex-1 overflow-hidden rounded-md border border-border/60 bg-background"
+        className={
+          compact
+            ? 'flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background'
+            : 'mx-auto flex min-h-0 min-w-0 w-full max-w-[1480px] flex-1 overflow-hidden rounded-md border border-border/60 bg-background'
+        }
       >
         {/* SCM 侧栏 — 对齐 VS Code「源代码管理」结构 */}
         <ScmSidebar
-          scmWidth={scmWidth}
+          scmWidth={compact ? '100%' : scmWidth}
+          compact={compact}
           t={t}
           isScanning={isScanning}
           scanError={scanError}
@@ -303,7 +377,7 @@ export function GitPage(): React.JSX.Element {
           allRows={allRows}
           activeKey={activeKey}
           selectedKey={selectedKey}
-          setSelectedKey={setSelectedKey}
+          setSelectedKey={compact ? handleDiffSelect : setSelectedKey}
           setHistoryPick={setHistoryPick}
           selectRepository={selectRepository}
           scanRepositories={scanRepositories}
@@ -339,6 +413,7 @@ export function GitPage(): React.JSX.Element {
           handleAiCommitMessage={async () => {}}
           onScmResizePointerDown={onScmResizePointerDown}
         />
+        {compact ? null : (
         <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
           {!selectedRepo || !selectedRow ? (
             <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
@@ -387,41 +462,7 @@ export function GitPage(): React.JSX.Element {
                   ) : diffBlocks.length === 0 ? (
                     <div className="px-4 py-6 text-sm text-muted-foreground">{t('noDiff')}</div>
                   ) : (
-                    <div className="font-mono text-[12px] leading-[20px]">
-                      {diffBlocks.map((block, blockIndex) => (
-                        <div
-                          key={`${block.header}-${blockIndex}`}
-                          className="border-b border-border/50 last:border-0"
-                        >
-                          <div className="bg-muted/50 px-3 py-1 text-[11px] text-muted-foreground">
-                            {block.header}
-                          </div>
-                          {block.lines.map((line, lineIndex) => (
-                            <div
-                              key={`${blockIndex}-${lineIndex}`}
-                              className={cn(
-                                'grid grid-cols-[48px_48px_minmax(0,1fr)] border-b border-border/40 last:border-0',
-                                line.type === 'add' &&
-                                  'bg-green-500/10 text-green-800 dark:text-green-300',
-                                line.type === 'remove' &&
-                                  'bg-red-500/10 text-red-800 dark:text-red-300',
-                                line.type === 'meta' && 'bg-muted/40 text-muted-foreground'
-                              )}
-                            >
-                              <div className="select-none border-r border-border/40 px-1.5 text-right text-[10px] text-muted-foreground">
-                                {line.left}
-                              </div>
-                              <div className="select-none border-r border-border/40 px-1.5 text-right text-[10px] text-muted-foreground">
-                                {line.right}
-                              </div>
-                              <pre className="overflow-x-auto px-2 py-0 whitespace-pre-wrap break-words">
-                                {line.content || ' '}
-                              </pre>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
+                    <GitDiffContent blocks={diffBlocks} />
                   )}
                 </div>
               </div>
@@ -490,6 +531,43 @@ export function GitPage(): React.JSX.Element {
             </div>
           )}
         </section>
+        )}
+
+        {/* 紧凑形态没有并排的空间给 diff，改成弹窗看（与 ChangesPanel 同款交互）。 */}
+        {compact ? (
+          <Dialog
+            open={compactDiffOpen}
+            onOpenChange={(open) => {
+              if (!open) setCompactDiffOpen(false)
+            }}
+          >
+            <DialogContent className="grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[92vw]">
+              <DialogHeader className="flex h-10 flex-row items-center gap-2 border-b border-border px-3">
+                <DialogTitle className="min-w-0 flex-1 truncate font-mono text-xs">
+                  {selectedRow?.path ?? ''}
+                </DialogTitle>
+                <span className="shrink-0 text-[10px] uppercase text-muted-foreground">
+                  {selectedRow?.section}
+                </span>
+              </DialogHeader>
+              <div className="min-h-0 overflow-auto">
+                {!selectedRow ? null : selectedRow.section === 'untracked' ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">
+                    {t('untrackedNoDiff')}
+                  </div>
+                ) : showHistoryDiffSpinner ? (
+                  <div className="flex items-center justify-center py-16 text-muted-foreground">
+                    <Loader2 className="size-6 animate-spin" />
+                  </div>
+                ) : diffBlocks.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-muted-foreground">{t('noDiff')}</div>
+                ) : (
+                  <GitDiffContent blocks={diffBlocks} />
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        ) : null}
       </div>
 
       <Dialog

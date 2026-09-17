@@ -631,6 +631,7 @@
     "files": "Files",
     "changes": "Changes",
     "branches": "Branches",
+    "git": "Git",
     "commitGraph": "Commit Graph",
     "localBranches": "Local Branches",
     "remoteBranches": "Remote Branches",

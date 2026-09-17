@@ -631,6 +631,7 @@
     "files": "文件",
     "changes": "变更",
     "branches": "分支",
+    "git": "Git",
     "commitGraph": "提交图谱",
     "localBranches": "本地分支",
     "remoteBranches": "远程分支",

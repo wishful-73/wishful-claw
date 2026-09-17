@@ -1,7 +1,8 @@
-﻿import { useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { FileTreePanel } from '@renderer/components/cowork/FileTreePanel'
 import { ChangesPanel } from '@renderer/components/cowork/changes-panel'
 import { BranchPanel } from '@renderer/components/cowork/branch-panel'
+import { GitPage } from '@renderer/components/chat/GitPage'
 import { useState } from 'react'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { FileCode } from 'lucide-react'
@@ -14,7 +15,8 @@ export interface AgentFilesPanelProps {
 const TABS = [
   { id: 'files', labelKey: 'agentFiles.files', fallback: 'Files' },
   { id: 'changes', labelKey: 'agentFiles.changes', fallback: 'Changes' },
-  { id: 'branches', labelKey: 'agentFiles.branches', fallback: 'Branches' }
+  { id: 'branches', labelKey: 'agentFiles.branches', fallback: 'Branches' },
+  { id: 'git', labelKey: 'agentFiles.git', fallback: 'Git' }
 ] as const
 
 type AgentFilesTab = (typeof TABS)[number]['id']
@@ -69,13 +71,15 @@ export function AgentFilesPanel(props: AgentFilesPanelProps) {
           </button>
         ))}
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-hidden">
         {activeTab === 'files' ? (
           <FileTreePanel sessionId={sessionView.sessionId} surface="agent" watchEnabled />
         ) : activeTab === 'changes' ? (
           <ChangesPanel workingFolder={sessionView.workingFolder} />
-        ) : (
+        ) : activeTab === 'branches' ? (
           <BranchPanel workingFolder={sessionView.workingFolder} />
+        ) : (
+          <GitPage workingFolder={sessionView.workingFolder} />
         )}
       </div>
     </div>

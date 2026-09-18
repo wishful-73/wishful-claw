@@ -756,7 +756,7 @@
 
 ### 核实结论（先证伪，再定修法）
 
-老大记得的审查结论**是对的**：`Edit` 工具**不会**加 BOM。但查下来发现的是**另一个方向的缺陷** —— 它会**丢掉**原本存在的 BOM。
+老大记得的审查结论**是对的**：`Edit` 工具**不会**加 BOM。但查下来发现的是**另一个方向的差异** —— 它会**丢掉**原本存在的 BOM（2026-09-19 定稿确认「丢」是对的，只需给脚本类开例外）。
 
 `.NET` 行为实测（PowerShell 复刻，非推断）：
 
@@ -773,7 +773,7 @@
 
 | 位置 | 行为 | 判定 |
 |---|---|---|
-| `Tools/ToolHelpers.cs` `WriteAndFlushAsync` | 永不写 BOM | **Edit / Write / MemoryHotWrite 的统一写路径** ⇒ 编辑带 BOM 文件会丢 BOM |
+| `Tools/ToolHelpers.cs` `WriteAndFlushAsync` | 永不写 BOM | **Edit / Write / MemoryHotWrite 的统一写路径** ⇒ 编辑带 BOM 的文件会丢 BOM（新契约下这正是目标行为，只需给脚本类开例外） |
 | `Tools/MemoryTools/MemoryHotReadTool.cs:71` | `File.WriteAllTextAsync(..., Encoding.UTF8, ...)` ⇒ **写 BOM** | 只在 `!File.Exists` 时走，**是产品里唯一的 BOM 制造者** |
 | `Tools/MemoryTools/MemoryHotWriteTool.cs:86` | 同上 | 同上 |
 | `AgentRuntimeNotebookEditExecutor.cs:98` | `File.WriteAllTextAsync(path, result, ct)` ⇒ 无 BOM | 编辑带 BOM 的 `.ipynb` 同样会丢 |
@@ -784,28 +784,48 @@
 
 **主进程（Node）侧无此问题**：`fs.writeFile(..., 'utf8')` 不写 BOM；`memory-json-parsers` 的 strip 是唯一的渲染端防御点。
 
-### 修法：写入保留目标文件原本的 BOM 状态
+### 修法（2026-09-19 定稿）：默认不写 BOM，脚本类保留原状
 
-契约：**不主动加、不主动丢**；新建文件按无 BOM。
+**初版修法（2026-09-18，已推翻）**：曾写成「保留目标文件原本的 BOM 状态」——方向搞反了。老大 2026-09-19 原话：「BOM 这个是有 bom 容易报错，所以希望不加 bom，感觉你修错了」。契约应当是**默认没有 BOM**，而不是给 BOM 加保险。
 
-1. **`ToolHelpers.WriteAndFlushAsync`**（核心）—— 写入前探测目标文件是否以 `EF BB BF` 开头，是则在 `FileMode.Create` 之后先手写 preamble 再写内容。`Encoding.UTF8.GetBytes` 不产 BOM，所以只能用这种方式补。
+**定稿契约**：写入**默认一律不写 BOM**；只有靠 BOM 才能被正确识别为 UTF-8 的脚本扩展名 **`.ps1` / `.bat` / `.cmd`** 例外，它们保留目标文件原本的状态（**原本没有也不补**）。老大选定方案 B（兼顾脚本）。
+
+理由：
+
+- BOM 会让严格解析器直接读不动 —— 渲染端 `memory-json-parsers.ts:11` 的 `.replace(/^\uFEFF/, '')` 就是这个坑留下的补丁，实证存在。
+- Windows PowerShell 5.1 与 cmd 读 `.ps1` / `.bat` / `.cmd` 时不看 BOM 就按系统 ANSI 码页解，带中文的脚本会乱码甚至执行失败 —— 这几类必须放行。
+- 读写两端因此自洽：`File.ReadAllTextAsync(path, Encoding.UTF8)` / `new StreamReader(path, Encoding.UTF8)` 都会剥 BOM ⇒ 一个带 BOM 的普通文件被编辑一次后就干净了。
+
+改动：
+
+1. **`ToolHelpers.WriteAndFlushAsync`**（核心）—— 加 `BomSensitiveExtensions = [".ps1", ".bat", ".cmd"]` 与 `IsBomSensitiveScript(path)`；只有命中白名单**且**目标文件原本带 BOM 时才手写 preamble。`Encoding.UTF8.GetBytes` 不产 BOM，所以补 BOM 只能靠手写。
    - 探测失败（读不动 / 不存在）一律当「无 BOM」—— **探测不该让本来能写成功的写入失败**。
    - 打开探测流用 `FileShare.ReadWrite`，不干扰别人读。
    - 新建文件天然落到「无 BOM」分支。
-2. **`MemoryHotReadTool.cs:71` / `MemoryHotWriteTool.cs:86`** —— 去掉 `Encoding.UTF8` 参数（.NET 默认即 UTF8 无 BOM），与 `WriteAndFlushAsync` 行为一致。**存量带 BOM 的 MEMORY.md 不动**（不主动改用户既有文件）；渲染端的 strip 防御保留。
-3. **`AgentRuntimeNotebookEditExecutor.cs:98`** —— 改走 `ToolHelpers.WriteAndFlushAsync`，顺带获得 BOM 保留 + 立即 flush。
+2. **`MemoryHotReadTool.cs:71` / `MemoryHotWriteTool.cs:86`** —— 去掉 `Encoding.UTF8` 参数（.NET 默认即 UTF8 无 BOM）。这两处是产品里**唯一制造 BOM 的地方**，去掉后与主线一致。**存量带 BOM 的 MEMORY.md 不动**；渲染端的 strip 防御保留。
+3. **`AgentRuntimeNotebookEditExecutor.cs:99`** —— 改走 `ToolHelpers.WriteAndFlushAsync`，顺带获得统一策略 + 立即 flush。
 
-**明确不做**：不批量回填/清除既有文件的 BOM（那是改用户数据）；`AgentChangeTools` 的回滚路径不额外处理（回滚的 `beforeText` 读时已剥 BOM，要真修得连 `beforeText` 一起带上 BOM 状态，属另一件事）。
+**明确不做**：不批量回填/清除既有文件的 BOM（那是改用户数据）；`AgentChangeTools` 的回滚路径不额外处理 —— 改成「默认无 BOM」之后，回滚与写入两端反而同口径了。
 
 ### 测试
 
-`tests/WishfulClaw.GoalRegressionTests/Program.Bom.cs`（新增，7 断言，注册于 `Program.cs` 的 `RunSandboxSuite();` 之后）：带 BOM 文件写回保留 BOM、无 BOM 文件不许补、新建无 BOM、连续写两次状态稳定、只有 BOM 的文件也判得出、内容正确性不受影响。
+`tests/WishfulClaw.GoalRegressionTests/Program.Bom.cs`（`RunBomPolicySuite`，注册于 `Program.cs` 的 `RunSandboxSuite();` 之后，**8 断言**）：
 
-**这组断言在改之前必然是红的** —— 旧实现下「带 BOM 的文件写回后保留 BOM」一定失败。
+| # | 场景 | 期望 |
+|---|---|---|
+| 1 | `.ps1` 带 BOM 写回 | 保留 BOM，内容正确 |
+| 2 | `.ps1` 原本无 BOM | 不许补 |
+| 3 | `.ts` 带 BOM 写回 | **BOM 被清掉**，内容正确 |
+| 4 | 无 BOM 的 `.ts` 写回 | 仍无 BOM |
+| 5 | 新建文件 | 无 BOM |
+| 6 | `.ps1` 连续写两次 | 稳定保留 BOM |
+| 7 | 只有 BOM 的 `.txt` | 清干净 |
+
+**已验证这组断言真能抓 bug**：临时把 `IsBomSensitiveScript(path)` 退成恒 `true`（＝初版的「全部保留」），立刻红 —— `.ts 带 BOM 写回后清掉 BOM: expected=False, actual=True`，且异常里报出 `.ts`。
 
 ### 门禁
 
-- C#：`WishfulClaw.Worker` 0 警告 0 错误；`tests/WishfulClaw.Tests.sln` 0/0；10 个回归套件全过（Goal 268 → **275**）
+- C#：`WishfulClaw.Worker` 0 警告 0 错误；`tests/WishfulClaw.Tests.sln` 0/0；10 个回归套件全过（Goal 275 → **278**）
 - 触碰文件 BOM clean
 
 ---

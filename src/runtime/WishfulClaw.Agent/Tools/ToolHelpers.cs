@@ -122,9 +122,10 @@ internal static class ToolHelpers
     /// Uses FileStream with Flush(true) to ensure subsequent reads
     /// always see the updated content (fixes Edit->Read cache issue).
     ///
-    /// 保留目标文件原有的 UTF-8 BOM 状态（iter-32 S-80）。编辑工具不该顺手改掉文件的
-    /// 编码特征：`.ps1` / `.bat` 这类脚本丢了 BOM 会乱码、甚至执行失败；而不带 BOM 的
-    /// 文件被补上一个，也会在 diff 里留下噪音。文件不存在（新建）时按无 BOM。
+    /// 默认一律不写 UTF-8 BOM（iter-32 S-80）：BOM 会让严格解析器直接读不动
+    /// （渲染端 `memory-json-parsers.ts` 就得靠 `replace(/^\uFEFF/, '')` 兜底），
+    /// 也会在 diff 里留噪音。只有 <see cref="BomSensitiveExtensions"/> 里的脚本
+    /// 例外 —— 它们保留目标文件原本的状态（原本没有也不补）。
     ///
     /// 注意：这里只能靠 FileStream 手写 preamble —— <c>Encoding.UTF8.GetBytes</c> 不产 BOM。
     /// </summary>
@@ -136,7 +137,7 @@ internal static class ToolHelpers
             Directory.CreateDirectory(directory);
         }
 
-        var keepBom = await HasUtf8BomAsync(path, cancellationToken);
+        var keepBom = IsBomSensitiveScript(path) && await HasUtf8BomAsync(path, cancellationToken);
 
         await using var fs = new FileStream(
             path,
@@ -159,6 +160,21 @@ internal static class ToolHelpers
 
     /// <summary>UTF-8 BOM 的三字节序列。</summary>
     private static readonly byte[] Utf8BomBytes = [0xEF, 0xBB, 0xBF];
+
+    /// <summary>
+    /// 靠 BOM 才能被正确识别为 UTF-8 的脚本扩展名。Windows PowerShell 5.1 与 cmd
+    /// 读这些文件时不看 BOM 就按系统 ANSI 码页解，带中文的脚本会乱码甚至执行失败。
+    /// 只有这几类保留目标文件原本的 BOM 状态，其余扩展名一律不写。
+    /// </summary>
+    private static readonly string[] BomSensitiveExtensions = [".ps1", ".bat", ".cmd"];
+
+    private static bool IsBomSensitiveScript(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return Array.Exists(
+            BomSensitiveExtensions,
+            candidate => string.Equals(candidate, extension, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>
     /// 目标文件是否以 UTF-8 BOM 开头（不存在则 false）。读不动一律当「无」——

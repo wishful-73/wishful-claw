@@ -216,7 +216,8 @@
     "loadingSuggestions": "正在加载建议...",
     "noSuggestions": "没有匹配的建议",
     "doubleClickCompressContext": "双击压缩上下文",
-    "contextCapToggle": "请求上下文上限（{{tokens}}）",
+    "contextCapOff": "请求上下文上限（{{tokens}}）",
+    "contextCapOn": "已限制请求上下文为 {{tokens}}，点击关闭",
     "compressContextNow": "立即压缩上下文",
     "pastedBlock": {
       "label": "粘贴",

@@ -6,7 +6,6 @@ import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -20,7 +19,6 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 import type { AIModelConfig } from '@renderer/lib/api/types'
 import { formatTokens } from '@renderer/lib/format-tokens'
 import {
-  SESSION_CONTEXT_CAP_TOKENS,
   applySessionContextCap,
   getEffectiveContextWindow,
   resolveCompressionContextLength,
@@ -43,8 +41,7 @@ export function ContextRing({
     return idx !== undefined ? (s.sessions[idx] ?? null) : null
   })
   const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
-  // Session-level request-context cap (iter-32 S-73) is toggled from this ring's menu.
-  const updateSessionContextCap = useChatStore((s) => s.updateSessionContextCap)
+  // 会话级「请求上下文上限」的开关本体在工具栏（iter-32 S-83），这里只按它的值算显示用的有效窗口。
   const contextCompressionThreshold = useSettingsStore((s) => s.contextCompressionThreshold)
   const channels = useChannelStore((s) => s.channels)
 
@@ -176,7 +173,6 @@ export function ContextRing({
   const strokeColor =
     pct > 80 ? 'stroke-red-500' : pct > 50 ? 'stroke-amber-500' : 'stroke-emerald-500'
   const canCompress = Boolean(onCompressContext) && !isCompressing
-  const capEnabled = activeSession.contextCapEnabled === true
   const handleDoubleClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
     event.preventDefault()
     event.stopPropagation()
@@ -271,18 +267,6 @@ export function ContextRing({
           {formatTokens(ctxUsed)} / {formatTokens(ctxGaugeLimit)}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuCheckboxItem
-          checked={capEnabled}
-          onCheckedChange={(checked) => {
-            if (!sessionId) return
-            updateSessionContextCap(sessionId, checked === true)
-          }}
-        >
-          {t('input.contextCapToggle', {
-            tokens: formatTokens(SESSION_CONTEXT_CAP_TOKENS),
-            defaultValue: 'Limit request context to {{tokens}}'
-          })}
-        </DropdownMenuCheckboxItem>
         {canCompress && (
           <DropdownMenuItem onSelect={() => onCompressContext?.()}>
             {t('input.compressContextNow', { defaultValue: 'Compress context now' })}

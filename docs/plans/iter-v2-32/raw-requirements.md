@@ -2,7 +2,7 @@
 
 > 2026-09-18 建。分支 `dev/v2-iter-32`（base `main` @ `2498dcae`，v0.2.31）。
 > 本文件为权威需求文档。本迭代节奏放缓，需求**逐步积攒**，不定收口时间。
-> **已立项 10 项**：S-72 agent 运行中「发送」按钮不可用／S-73 会话级「请求上下文上限」开关／S-74 输入框底部工具栏间距过宽／S-75 聊天窗最低宽度保护／S-76 压缩片段重复显示同一个耗时与更新时间／S-77 会话 todo 面板条数累加与单条显示方式／S-78 审批弹窗正文过多时撑出弹窗／S-79 沙箱模式：工具参数的工作目录边界校验／S-80 文件写入的 BOM 处理不一致／S-81 输入框上方多条提示互相遮挡。
+> **已立项 12 项**：S-72 agent 运行中「发送」按钮不可用／S-73 会话级「请求上下文上限」开关／S-74 输入框底部工具栏间距过宽／S-75 聊天窗最低宽度保护／S-76 压缩片段重复显示同一个耗时与更新时间／S-77 会话 todo 面板条数累加与单条显示方式／S-78 审批弹窗正文过多时撑出弹窗／S-79 沙箱模式：工具参数的工作目录边界校验／S-80 文件写入的 BOM 处理不一致／S-81 输入框上方多条提示互相遮挡／S-82 人格选择器 trigger 与同排控件样式不一致／S-83 工具栏「提示词优化」入口换成会话级「请求上下文上限」开关。
 > 其余候选见文末「待登记」，**未点名，不擅自排入**。
 > 勘测行号均为 2026-09-18 实读。
 
@@ -878,6 +878,69 @@
 
 ---
 
+
+## S-82 人格选择器的 trigger 样式与同排控件不一致
+
+**来源**：2026-09-19 老大 —— 「人格选择器，hover 看到边框跟其它几个组件不一致」。裁定：**「不用加边框，跟协作模式一样就行，主要是高度和大小」**。
+
+### 现状（2026-09-19 实读）
+
+composer 工具栏左侧组三个控件的 trigger：
+
+| 控件 | 元素 | 圆角 | 高度 | hover |
+|---|---|---|---|---|
+| 协作模式 `CollabModeSwitcher.tsx:87` | `<Button variant="ghost" size="sm">` | `rounded-lg` | `h-8` | `bg-muted/30`，无边框 |
+| 模型选择器 `ModelSwitcher.tsx:263` | 外层 `<div>` 容器 | `rounded-lg` | `h-8` | `bg-muted/30` + `hover:border-border/50` |
+| **人格选择器 `PersonaSwitcher.tsx:68`** | **裸 `<button>`** | **`rounded`（4px）** | **无 `h-8`，靠 `py-1` 撑（≈24px）** | **`bg-muted/50`**，无边框 |
+
+人格选择器是三者里的异类：圆角小一半、矮一截、hover 底色更浓，而且是裸 `<button>` —— 既没有 `<Button>` 的 `outline-none`，也没有任何 focus ring 处理。
+
+「hover 看到边框」的**来源我没有视觉证据**，两种可能都指向同一个修法：一是点过之后残留的浏览器默认焦点圈，二是 hover 底色块因圆角/高度不同而与邻块对不齐。修法同时覆盖两者。
+
+### 裁定与修法
+
+老大定两条：**不加边框**（模型选择器那个 `hover:border-border/50` 不往另外两个推广）；**对齐协作模式**，关键在高度与尺寸。
+
+`PersonaSwitcher.tsx` 的 trigger class 改为：
+
+```
+flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted/30 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring
+```
+
+相对原值五处变化：`h-8` 显式定高、`rounded` → `rounded-lg`、`gap-1` → `gap-1.5`、`hover:bg-muted/50` → `hover:bg-muted/30`、补 `outline-none focus-visible:ring-1 focus-visible:ring-ring`（与 `context-ring.tsx:206` 同款写法）。
+
+### 门禁
+
+- `tsc --noEmit` 三配置 0 错；`npm run test:*` 31 套全过；触碰文件 BOM clean
+
+---
+
+## S-83 工具栏「提示词优化」入口换成会话级「请求上下文上限」开关
+
+**来源**：2026-09-19 老大 —— 「提示词优化图标可以去掉，替换成我说的开启成本也就是请求上下文上限开关，你先找个图标看看」。图标给了 4 个候选，老大选 **A = `Gauge`**（仪表盘 / 限速）。
+
+### 现状（2026-09-19 实读）
+
+- 被换掉的入口：`composer-toolbar.tsx` 的 `optimizeControl`（`Wand2` 图标），点击走 `handleOptimizePrompt` 打开 `OptimizationDialog`。
+- 换上来的开关：S-73 的 `contextCapEnabled`（**会话级**），有效窗口 = `min(真实 contextLength, 256K)`。它此前唯一的入口是**上下文环下拉菜单**里的一个 `DropdownMenuCheckboxItem`（`context-ring.tsx`）—— 入口太深，等于藏在二级菜单里。
+
+### 裁定与修法
+
+1. **新建 `InputArea/context-cap-toggle.tsx`** —— 自订阅 `useChatStore` 的独立组件（与 `context-ring.tsx` 同一个模式，工具栏不必再往上透传 props）。渲染 `Gauge`，点击切 `updateSessionContextCap`；开启态用 `text-primary!` 高亮；tooltip 随状态切 `input.contextCapOn` / `input.contextCapOff`；`sessionId` 为空时不渲染（草稿态没有会话，跟上下文环一致）。
+   - `text-primary!` 的 important 是必须的：`.composer-shell [data-slot='button'].composer-control` 是三级选择器，普通工具类压不过它。**已构建验证**产物里确实生成了 `.text-primary\! { color: var(--primary) !important; }`。
+2. **`composer-toolbar.tsx`** —— 删 `optimizeControl` 与它专用的 props（`isOptimizing` / `handleOptimizePrompt` / `hasText`）；`isOptimizingLocked` **保留**（发送按钮的 disabled 与编辑器还在用）。原位替换为 `<ContextCapToggle sessionId={draftSessionId} className={composerIconControlClass} />`。
+3. **`context-ring.tsx`** —— 撤掉菜单里的 `contextCapToggle` 复选框。两处入口指向同一个状态，留着容易让人以为点了没反应。顺带清掉随之无用的 `DropdownMenuCheckboxItem` / `SESSION_CONTEXT_CAP_TOKENS` import 和 `updateSessionContextCap` 订阅。
+4. **locale**：zh/en `chat.json` 的 `input` 块里，`contextCapToggle` 拆成 `contextCapOff`（关闭态，沿用原文案）+ `contextCapOn`（开启态，说明已生效并提示可点击关闭）。
+
+### 刻意保留
+
+`use-prompt-optimizer.ts`（hook）、`OptimizationDialog`、`composer-editor-area` 的优化指示器**一律未动** —— 只撤工具栏入口，能力本体保留。代价如实记一笔：这几个模块目前没有可达入口（同 iter-31 翻译功能那次的处理口径）。
+
+### 门禁
+
+- `tsc --noEmit` 三配置 0 错；`npm run test:*` 31 套全过；`npm run build` 通过并验证产物 CSS；触碰文件 BOM clean
+
+---
 
 ## 待登记
 

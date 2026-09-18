@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Send, FolderOpen, Wand2 } from 'lucide-react'
+import { Send, FolderOpen } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
@@ -8,6 +8,7 @@ import { SkillsMenu } from '../SkillsMenu'
 import { CollabModeSwitcher, type CollabMode } from '../CollabModeSwitcher'
 import { ModelSwitcher } from '../ModelSwitcher'
 import { PersonaSwitcher } from '../PersonaSwitcher'
+import { ContextCapToggle } from './context-cap-toggle'
 import { ContextRing } from './context-ring'
 import { ReadOnlyModelBadge } from './badges'
 import { PermissionControl } from './permission-control'
@@ -48,11 +49,8 @@ interface ComposerToolbarProps {
   onSelectFolder?: () => void
   hideWorkingFolderPicker: boolean
 
-  // Optimize
-  isOptimizing: boolean
+  // Optimize (only the lock is left: it still gates send + editor)
   isOptimizingLocked: boolean
-  handleOptimizePrompt: () => void
-  hasText: boolean
 
   // Permission
   permissionMode: 'default' | 'fullAccess'
@@ -96,7 +94,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
     activeProjectId, mode, hideModeSwitch, planMode, goalModeEnabled,
     planModeDisabled, goalModeDisabled, onPlanModeChange, onGoalModeChange,
     onSelectFolder, hideWorkingFolderPicker,
-    isOptimizing, isOptimizingLocked, handleOptimizePrompt, hasText,
+    isOptimizingLocked,
     permissionMode, showPermissionControl, onSelectPermissionMode, onOpenSettings,
     onStop, onSend, finalSerializedText, attachedImagesCount, needsWorkingFolder, pendingImageReads,
     onCompressContext, isContextCompressing,
@@ -147,25 +145,6 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
         </Button>
       </TooltipTrigger>
       <TooltipContent>{t('input.selectFolder')}</TooltipContent>
-    </Tooltip>
-  )
-
-  const optimizeControl = !isStreaming && (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className={composerIconControlClass}
-          onClick={handleOptimizePrompt}
-          disabled={!hasText || disabled || isOptimizingLocked}
-        >
-          {isOptimizing ? <Spinner className="size-4" /> : <Wand2 className="size-4" />}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        {isOptimizing ? t('input.optimizing') : t('input.optimizePrompt')}
-      </TooltipContent>
     </Tooltip>
   )
 
@@ -273,7 +252,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
             onClearSession={onClearSession}
           />
 
-          {optimizeControl}
+          <ContextCapToggle sessionId={draftSessionId} className={composerIconControlClass} />
           {showPermissionControl ? permissionControl : null}
           {sendControl}
         </div>

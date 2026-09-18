@@ -216,7 +216,8 @@
     "loadingSuggestions": "Loading suggestions...",
     "noSuggestions": "No matching suggestions",
     "doubleClickCompressContext": "Double-click to compress context",
-    "contextCapToggle": "Limit request context to {{tokens}}",
+    "contextCapOff": "Limit request context to {{tokens}}",
+    "contextCapOn": "Request context capped at {{tokens}} - click to turn off",
     "compressContextNow": "Compress context now",
     "pastedBlock": {
       "label": "Pasted",

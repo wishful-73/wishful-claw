@@ -125,7 +125,7 @@ export function InputArea({
   const {
     isOptimizing, optimizingText, optimizationOptions, showOptimizationDialog,
     setShowOptimizationDialog, selectedOptionIndex, setSelectedOptionIndex,
-    handleOptimizePrompt, handleSelectOption, handleCancelOptimization
+    handleSelectOption, handleCancelOptimization
   } = usePromptOptimizer({ text, currentLanguage: currentLanguage as 'en' | 'zh', setText, focusInputAtEnd })
   const isOptimizingLocked = isOptimizing || showOptimizationDialog
 
@@ -437,10 +437,7 @@ export function InputArea({
             onCollabModeChange={projectScoped ? handleCollabModeChange : undefined}
             onSelectFolder={onSelectFolder}
             hideWorkingFolderPicker={hideWorkingFolderPicker}
-            isOptimizing={isOptimizing}
             isOptimizingLocked={isOptimizingLocked}
-            handleOptimizePrompt={handleOptimizePrompt}
-            hasText={Boolean(text.trim())}
             permissionMode={permissionMode}
             showPermissionControl={!targetSession?.pluginId}
             onSelectPermissionMode={handleSelectPermissionMode}

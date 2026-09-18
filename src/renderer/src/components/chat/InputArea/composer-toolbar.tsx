@@ -222,10 +222,11 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
   return (
     <div
       ref={toolbarRef}
-      className="composer-toolbar relative z-20 mt-1 shrink-0 flex items-center justify-between gap-2 px-2 pb-2"
+      className="composer-toolbar relative z-20 mt-1 shrink-0 flex items-center justify-between gap-1 px-2 pb-2"
     >
-      <div className="flex w-full items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pr-1 [scrollbar-width:none]">
+      <div className="flex w-full items-center justify-between gap-1">
+        {/* 左侧组：控件自带 px-2，间距收到 0.5 由它们自己的内边距承担分隔 */}
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto pr-1 [scrollbar-width:none]">
           {onCollabModeChange && (
             <div className="shrink-0">
               <CollabModeSwitcher
@@ -250,7 +251,8 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
           {folderControl}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        {/* 右侧组是图标按钮，没有 px-2 兜底，留一点间隔免得 hover 底色块粘连 */}
+        <div className="flex shrink-0 items-center gap-1">
           <ContextRing
             sessionId={draftSessionId}
             onCompressContext={onCompressContext}

@@ -1113,6 +1113,232 @@ return string.IsNullOrEmpty(output) ? "Message sent successfully." : output;
 
 ---
 
+## S-61 右侧面板 git 三选项卡职责重排（变更下架 / git 只换 diff 弹窗 / 分支加同步）
+
+**来源**：老大 2026-09-17 22:00 口头下达，分两轮澄清。
+
+**背景**：右侧面板（`AgentFilesPanel`）同一条 tab 栏挂了四个入口 —— `files` / `changes` / `branches` / `git`，后三个各带一套自己的 git 能力，职责重叠：
+
+| tab | 组件 | 现在有什么 |
+|---|---|---|
+| `changes` | `components/cowork/changes-panel.tsx` | 未提交变更列表 + **提交区**（commit 框 / Commit / Amend / Push / Sync 下拉）+ **点文件 diff 弹窗** |
+| `branches` | `components/cowork/branch-panel.tsx` | 纯只读：commit graph + 本地/远端分支列表 |
+| `git` | `chat/GitPage.tsx` | SCM 侧栏（暂存 / 提交 / 同步四件套 / 分支右键菜单）+ 历史栏 + diff；紧凑宿主下点文件弹 `GitDiffContent` 简表 |
+
+**口径（老大原话，两轮）**
+
+> 「实际上变更选项卡的点文件看 diff 更全面，所以让你把现有的 git 的点击查看换一下，git 上的本身分支操作可以保留」
+> 「首先变更选项卡删掉，只是要它的 diff 弹窗接到 git 上去。git 选项卡本身就是改一下弹窗其它不动了。分支增加拉取合并这些，不要提交，简单来说分支就是纯拉取和切换同步」
+> 「合并指的是合并分支」
+
+**落地**
+
+1. **`changes` 选项卡删除** —— tab 与组件一并下架；它唯一不可替代的东西是那个 diff 弹窗，搬到 git 上。
+2. **`git` 选项卡只换弹窗** —— 紧凑态点文件由 `GitDiffContent` 简表换成 changes 那套：96vw 弹窗 / 文件内 ←→ 翻页 / `N/total` 计数 / 全屏切换 / 跳外部预览 / 左侧 240px 文件列表 / `CodeDiffViewer`（带行号、可切 diff 模式）。宽态三栏内联、SCM 侧栏、同步四件套、分支右键菜单**全部不动**。
+3. **`branches` 选项卡从只读变可操作** —— 加「与远端同步那一组」（fetch / pull / push / sync）+「点分支切换」+「合并分支」；**不放任何提交入口**（老大明说"不要提交"）。
+
+**已知代价**：`changes-panel` 的提交区随之消失，其中的 **Commit & Sync**（提交并同步的组合动作）在 git 上没有对应入口（git 只有普通 commit）。老大未要求补，先按不补处理。
+
+**已实施（2026-09-17 22:30）**
+
+| 文件 | 改动 |
+|---|---|
+| `components/layout/AgentFilesPanel.tsx` | `TABS` 去掉 `changes`（现为 files / branches / git），删 `ChangesPanel` 的 import 与渲染分支 |
+| `components/chat/GitPage/git-diff-dialog.tsx`（新） | 共享 diff 弹窗外壳：96vw 宽 / 全屏切换 / `N / total` 计数 / ←→ 环绕翻页 / 跳外部预览 / 左侧 240px 文件列表；差异正文由调用方 `children` 提供，便于两端共用 |
+| `components/chat/GitPage/diff-chunks.ts`（新） | `diffTextToChunks(text)` —— unified diff 文本 → `CodeDiffViewer` chunk（取代 changes-panel 内的私有 `toChunks`） |
+| `components/chat/GitPage.tsx` | 紧凑弹窗换成 `GitDiffDialog` + `CodeDiffViewer`（带行号、可切 split/inline）；新增 `diffChunks` / `compactRows` memo。宽态三栏内联、SCM 侧栏、同步四件套、分支右键菜单**未动** |
+| `components/cowork/branch-panel.tsx` | 顶部加 fetch / pull --rebase / push / sync 四个动作（进行中转圈、成败 toast、完成后刷图）；本地分支行可点击切换（当前分支与远端分支不响应）；非当前本地分支 hover 出「合并到当前分支」按钮（带确认框） |
+| `locales/{zh,en}/layout.json` | `agentFiles` 段新增 12 个 key：`fetch/fetchDone/pullRebase/pullRebaseDone/push/pushDone/sync/syncDone/branchCheckoutDone/branchMergeIntoCurrent/branchMergeIntoConfirm/branchMergeDone` |
+
+`changes-panel.tsx` 文件本身保留（tab 下架后全仓零引用），按老大「gitpage 成熟后再下架」的口径没删。
+
+**裁定（老大 2026-09-17 22:06）**：合并分支在 `git` 的分支右键菜单（`runMergeInto`）与分支选项卡两处**都保留** —— 原话「保留 git 允许有多个地方一起都有这些功能」。同一个动作允许多入口，不做「摘一份」的收敛。**两侧均未改动。**
+
+**后续**：上面那条「Commit & Sync 消失」的代价已在 **S-62** 补回 —— git 的提交区加了主按钮 + 下拉（提交 / 修订 / 提交并推送 / 提交并同步）。
+
+---
+
+## S-62 右侧面板 git 提交区上移 + 主按钮/下拉形态 + 接线真实提交
+
+**来源**：老大 2026-09-18 06:37 口头下达，06:40 拍板「顺手接上」。
+
+**口径（老大原话，三轮）**
+
+> 「git 的提交输入框 + 提交按钮 移动到暂存的修改上方，并且提交按钮跟之前变更一样 是一个提交主按钮+下拉」
+> 「因为我这里刚好没有冲突，所以没看到冲突分组，第一位置是分支切换和各种按钮，第二位置就应该是提交区域」
+> 「顺手接上」
+
+**落点（自上而下）**：① 分支区（分支切换 + fetch/pull/push/sync 那一排）→ ② **提交区（输入框 + 提交主按钮 + 下拉）** → ③ 文件列表（冲突 / 暂存的修改 / 更改）。提交区原先钉在文件列表最底部。
+
+**已实施（2026-09-18 06:55）**
+
+| 文件 | 改动 |
+|---|---|
+| `components/chat/GitPage/ScmSidebar.tsx` | 提交区从列表底部搬到工具栏正下方；提交按钮由光杆按钮改为「主按钮 + 下拉」（下拉：提交 / 提交（修订）/ 提交并推送 / 提交并同步）；AI 生成提交信息按钮随之上移；抽出 `commitDisabled` |
+| `components/chat/git-page-handlers.ts` | `handleCommit(action: CommitAction = 'commit')` —— 新增 `export type CommitAction = 'commit' \| 'amend' \| 'push' \| 'sync'` 与 `COMMIT_DONE_KEYS`；push / sync 作为提交的后续动作串在里面 |
+| `components/chat/GitPage.tsx` | 去掉 S-49 移植时留的空壳 `handleCommit={async () => {}}` / `handleAiCommitMessage={async () => {}}`，改用 handlers 的真实实现；`aiCommitLoading` 由恒 `false` 改为读真实 state |
+| `stores/git-store{,-types}.ts` | `commit(repoPath, message, options?: { amend?: boolean })` —— 透传 `amend` |
+| `main/ipc/git-handlers.ts` | `git:commit` handler 接受可选 `amend`，为真时执行 `git commit --amend -m <msg>`（原先只有 `commit -m`；amend 在旧「变更」面板里其实是个假菜单项，点了等同普通提交） |
+| `locales/{zh,en}/chat.json` | `git` 段新增 `commitAmend / commitAmendDone / commitPush / commitPushDone / commitSync / commitSyncDone` |
+
+**语义决定（提交范围）**：**只提交已暂存的改动**，不做 `stageAll`。SCM 面板有明确的「暂存的修改 / 更改」分组，提交语义应以暂存区为准（VS Code 同款）；暂存区为空时提交按钮保持禁用。旧「变更」面板是 `stageAll` + 提交，两者行为不同 —— 要改成自动全暂存说一声。
+
+---
+
+## S-63 聊天窗图片「复制」谎报成功（底层函数是空实现）
+
+**现象**（老大 2026-09-18）：聊天窗里图片右上角有个复制按钮，点了弹「复制成功」，但粘贴时没有图片。
+
+**根因**：`src/renderer/src/lib/utils/image-clipboard.ts` 三个导出**全是空实现**：
+
+```ts
+export async function writeImageBlobToClipboard(_blob: Blob): Promise<void> {}
+export async function writeImageDataUrlToClipboard(_dataUrl: string): Promise<void> {}
+export async function writeSvgStringToClipboard(_svg: string): Promise<void> {}
+```
+
+空函数不抛错 ⇒ 调用方的 `try` 走 success 分支 ⇒ toast 谎报成功。
+
+**两个受影响的调用链**（全仓仅这两处 import 该模块）：
+
+| 调用方 | 链路 | 谎报点 |
+|---|---|---|
+| `components/chat/user-message-views.tsx:246-255` | `copyImage` → `copyImageAttachmentToClipboard`(`:228`) → `copyImageSourceToClipboard`(`:217-226`) → 两个 stub | `setCopied(true)` + `toast.success(t('userMessage.imageCopied'))` |
+| `components/chat/ToolCallCard/output-blocks/widget-output.tsx:30-44` | `SvgWidgetCopyButton.handleCopy` → `writeSvgStringToClipboard` | `setCopied(true)` + `toast.success(t('toolCall.widget.imageCopied'))` |
+
+**另一条调用链（同样不通）**：预览窗 `lib/preview/viewers/image-viewer.tsx:219` 与 `components/chat/ImagePreview.tsx:252` 走的是**另一条**通道 —— `window.api.writeImageToClipboard({ data })`。这条路**只有类型声明**：`src/preload/index.d.ts:22` 声明了它，但 `src/preload/index.ts` 的 `api` 是白名单对象（只有 `ping / invoke / workerRequest / workerRequestWithId / cancelWorkerRequest / on / onAgentStream / openFolderDialog / log / readLogs`），**没有这个方法的实现**；`src/main` 全目录也**没有 `clipboard:write-image` 的 handler**（只有 `clipboard:copy` / `get-history` / `toggle-pin` / `clear` / `get-config` / `update-config` / `hide` / `delete`）。
+
+⇒ **结论：整条图片复制链路从移植进来就是死的**，不是"只有聊天窗那处"。通道名三件套倒是齐的（`channels.ts:322 CLIPBOARD_WRITE_IMAGE = 'clipboard:write-image'`、`messagepack-channel-routing.ts:167` 已列入白名单），只是 handler 与调用实现从来没写。
+
+**修法**（A 案，已向老大报备）：主进程新建 `clipboard:write-image` handler（`clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(data,'base64')))`）→ `image-clipboard.ts` 三个函数统一走该通道（Blob / DataURL → base64；SVG 先在 canvas 光栅化成 PNG）→ `ImagePreview.tsx` / `image-viewer.tsx` 两处也改走同一 helper → 清掉 `preload/index.d.ts` 里的假声明。
+
+---
+
+## S-64 agent 回复里的工作区文件路径渲染成可点击（点击打开右侧面板预览）
+
+**需求**（老大 2026-09-18）：agent 回复正文里经常带工作区文件路径，用户希望**点一下就能在右侧面板打开该文件的预览**；把文件路径渲染成可识别的标签最好。
+
+**落点（待细化）**：
+- 渲染侧：`components/chat/AssistantMessage/markdown-renderer.tsx`、`content-renderer.tsx`（agent 回复正文链）
+- 预览侧现成能力：`stores/preview-panel-slice.ts`、`components/layout/PreviewPanel.tsx`、`lib/preview/viewers/*`（含 `image-viewer.tsx`、`fallback-viewer.tsx`）
+
+**老大裁定（2026-09-18 08:50）**：
+1. **必须校验存在性** —— 「图片都能点开预览了，说明一定在，没有图片不允许点开预览」⇒ stat 过才渲染成可点标签。
+2. **点击目标按类型分派** —— 图片 → 复用全屏图片预览（`ImageViewer`）；代码 / md / 任意文件 → 右侧预览面板。
+
+**实施（2026-09-18）**：
+
+复用既有识别逻辑（`markdown-components.tsx` 的 `isLikelyLocalFilePath` / `resolveLocalFilePath`：反引号包裹 + 绝对路径 / 相对路径 / 根文件名白名单，相对路径按会话 `workingFolder` 拼接），只把「识别到路径之后干什么」补齐 —— 原来 `openLocalFilePath` 是 `TODO: implement file preview panel` 的空壳，返回 true 但什么都不做。
+
+| 文件 | 改动 |
+|---|---|
+| `lib/preview/local-target.ts`（新） | `isImageFilePath` / `localTargetIsAvailable`（`fs:stat-path`，存在**且非目录**才算可用，抛错一律当不可用）/ `openLocalTarget`（图片 → 全屏预览，其余 → `openFilePreview`） |
+| `stores/local-image-preview-store.ts`（新） | 全局单例：`open` / `filePath` / `sshConnectionId` |
+| `components/chat/LocalImagePreviewDialog.tsx`（新） | 90vh × 95vw Dialog，内容复用 `ImageViewer`，挂在 `MainLayout` |
+| `hooks/use-local-target-available.ts`（新） | 按 `(sshConnectionId, path)` 缓存 + 在途去重；返回 `boolean \| null`（null = 未探测完） |
+| `components/chat/AssistantMessage/LocalPathCode.tsx`（新） | 行内 code 组件：`available === true` 才渲染成按钮，否则保持普通 code；`sshConnectionId` 订阅 active session |
+| `lib/preview/viewers/markdown-components.tsx` | 行内 code 的路径分支改用 `LocalPathCode`；`openLocalFilePath` 由空壳改为真实现（显式 markdown 链接不做预校验，用户已明确要打开） |
+| `components/chat/AssistantMessage/markdown-renderer.tsx` | 同上，`MarkdownCode` 行内分支改用 `LocalPathCode` |
+
+**未探测完时不渲染成可点**（而非乐观渲染）：否则会出现「点了才发现不存在」的窗口，与老大口径冲突。
+
+**门禁**：typecheck 三配置 0 错 · TS 30/30 · 8 个触碰文件 BOM clean。
+
+---
+
+## S-65 剪贴板增强：置顶（pin）项被 maxItems 裁掉
+
+**位置**：`src/main/clipboard-enhancer.ts`（ditto-style 剪贴板历史；`ClipboardEntry` 在 `:50-57`，持久化到 `~/.wishful-claw[-dev]/clipboard-history.json`）
+
+**现象**：置顶的粘贴项过一段时间不见了（置顶失效）。
+
+`purgeExpired()` 对 pinned 有正确豁免（`:149` `if (entry.pinned) return true`，注释写明 *Pinned items are never purged*），**但 `maxItems` 的裁剪完全没看 pinned**，三处裸 slice：
+
+| 位置 | 代码 |
+|---|---|
+| `loadHistory:117` | `history = parsed.slice(0, config.maxItems)` |
+| 轮询捕获 `:189` | `history = history.slice(0, config.maxItems)` |
+| `saveHistory:132` | `history.slice(0, config.maxItems)` |
+
+存储顺序是「新项 `unshift` 到头部」（`:188`），所以老 pinned 项必然沉到数组末尾 ⇒ 一旦总条数超 100（`DEFAULT_CONFIG.maxItems`），**它就被切掉且不可恢复**（saveHistory 落盘时也没了）。
+
+**修法**：三处裁剪统一改成「先保 pinned，再用非 pinned 项按时间补满 `maxItems`」（抽一个纯函数，三处共用）。
+
+---
+
+## S-66 剪贴板增强：支持图片的复制粘贴
+
+**现象**（老大 2026-09-18）：剪贴板增强窗体不支持保存图片，希望像 ditto 一样能复制粘贴图片。
+
+**现状**：
+- `ClipboardEntry`（`:50-57`）只有 `id / text / timestamp / preview / lastUsed / pinned`，**没有图片字段** ⇒ 从数据模型上就没这个能力
+- 轮询只读文本（`:177` `clipboard.readText()`）
+- 写入侧只有 `clipboard:copy`（`clipboard.writeText`，`:241`）
+
+**参考源码**：`D:\claw\Ditto`（老大点名，本机已有）。Ditto 的做法是多格式条目（同一份剪贴板内容按 CF_DIB / CF_BITMAP / PNG / HTML / RTF / text 分别存一份）+ 缩略图 + 恢复时按优先级写回多格式。
+
+**老大裁定（2026-09-18 08:50）**：
+1. **图片存文件** —— 「图片存文件吧」（不 base64 内联）
+2. **粘贴到前台窗口** —— 「粘贴回前台窗口也增加图片处理」
+
+**实施（2026-09-18）**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/main/clipboard-enhancer.ts` | `ClipboardEntry` 加 `type: 'text' \| 'image'`（缺省视为 text，老数据零迁移）/ `imageFile` / `imageWidth` / `imageHeight`；图片落 `<DATA_DIR>/clipboard-images/<sha256>.png`（文件名即内容哈希，天然去重） |
+| 同上 | 新增 `captureClipboardImage()`：`readBuffer` 优先直接取原始 PNG 字节（省一次 nativeImage 解码 + 重编码，字节可直接哈希落盘），失败回退 `readImage().toPNG()`；宽高从 PNG IHDR 读，不用解码整图 |
+| 同上 | 轮询改「图片优先」：复制图片的程序常同时给一份文本（路径 / alt），两个都记会变两条重复历史。Ditto 同样是 PNG / DIB 优先 |
+| 同上 | 图片检测独立节流 **1s**（`IMAGE_POLL_INTERVAL_MS`）。Ditto 靠 Win32 剪贴板序列号判变化，Electron 没有这个 API，只能重读剪贴板 —— 所以不让它跟着 250ms 的文本轮询跑。代价：复制图片后最多 1s 进历史 |
+| 同上 | `clipboard:copy` 改收条目 id（兼容旧的传文本写法）；图片条目走 `nativeImage.createFromPath` + `clipboard.writeImage`，并回写 `lastClipboardImageHash` 防止刚粘的图又被轮询记一遍 |
+| 同上 | **`pasteToForegroundWindow` 无需改动** —— 它只负责把目标窗口带回前台并注入 Ctrl+V，剪贴板里是什么就粘什么（已核实 `priority-shortcuts.ts:864-868` 不读剪贴板内容） |
+| 同上 | 新增 `clipboard:read-image`（返回 data URL，纯文件名 + `basename` 校验挡路径穿越）；剪贴板窗口是独立 BrowserWindow，不为读本地图片放宽它的加载策略 |
+| 同上 | 新增 `cleanupOrphanImageFiles()`，只在 `saveHistory` 里调一次 —— delete / clear / 过期 / maxItems 裁剪四条路径就都覆盖到了，不用各自去删文件 |
+| `src/renderer/src/clipboard/main.tsx` | 列表按 `type` 分支：图片条目显示缩略图（`clipboard:read-image`，模块级缓存）＋ `[图片] W×H`；粘贴改传 `entry.id`；新增 `ImageIcon` |
+| `src/renderer/src/lib/ipc/messagepack-channel-routing.ts` | 白名单加 `clipboard:read-image`（data URL 体积大，走 messagepack 而非 JSON 通道） |
+
+**未做**：按类型过滤 UI（老大的裁定里没提，Ditto 那套分栏对当前 420px 面板没必要）。
+
+**门禁**：typecheck 三配置 0 错 · TS 30/30 · 3 个触碰文件 BOM clean。
+
+---
+
+## S-67 文档预览排版语义复位（不隔离，收窄全局 + 容器集中复位）
+
+**现象**（老大 2026-09-18）：右侧面板文件预览打开 `README.md`，顶部一排居中 badge 在 GitHub 上是并排一行，预览里变成**一个元素占一行**。反复问「是我们的全局样式影响到了么」。
+
+**排查结论 —— 三层叠加，都不是全局样式**：
+
+| # | 来源 | 说明 |
+|---|---|---|
+| 1 | `markdown-components.tsx` 的 `p` / `li` 写 `whitespace-pre-wrap break-words` | **从聊天窗照抄来的**。`pre-wrap` 保留空白**且允许折行** ⇒ HTML 源码里的缩进换行被原样保留 ⇒ 每个元素独占一行 |
+| 2 | 同文件 `img` 组件写 `className="... block ..."` | 当初按「正文插图一张占一段」设计的（带卡片边框/圆角/阴影）。落到并排 badge 上就是一排图各占一行 |
+| 3 | Tailwind preflight `img,svg,video,…{ display: block }` | 全局存在，但被 #2 的 class 覆盖，不是本次的实际开关 |
+
+**判据**：① 全仓 CSS `white-space: pre` / `pre-wrap` 零命中 ⇒ 先排除全局样式；② `.html` 文件走 `html-viewer.tsx`（iframe `srcdoc`，真浏览器内核）**不可能**出这现象 ⇒ 问题只在 md 预览（`markdown-viewer.tsx` → `createMarkdownComponents`）；③ 产物 CSS 里 preflight 确实是 `display:block`。
+
+**老大裁定（2026-09-18 11:06）**：「按 C 处理吧」—— 即**不做 iframe / Shadow DOM 隔离**，走「收窄全局 + 预览容器集中复位」。老大原话「感觉好像隔离了也不对」，与结论一致。
+
+**为什么不做真隔离**（两层要分开看）：
+- **视觉皮肤**（颜色 / 字体 / 字号缩放 / 主题 / 滚动条 / 代码高亮）→ **应该**跟随产品。全隔离会变成「一篇外来文档」，深色模式与字号设置全脱节。
+- **排版语义**（谁 inline 谁 block、空白怎么折叠）→ **不该**被产品改。产品 CSS 把 `img` 设成 block 是为应用界面定的，管到文档排版就是越界。
+
+**实施（4 处）**：
+
+| 文件 | 改动 |
+|---|---|
+| `assets/main.css` | 两条**裸写在 `@layer` 外**的通配符规则（`* { scrollbar-* }`、`* { scroll-behavior: smooth }`）收进 `@layer base`。裸写时特异性压过一切组件样式 —— iter-30 修聊天窗滚动只能靠 inline style 硬顶 `smooth` 就是这个原因；收进 base 后普通 class 即可覆盖 |
+| `assets/main.css` | 新增 `.markdown-doc` 的**排版语义复位**（`@layer components`）：`:where(img)` / `:where(video)` → `inline-block`。集中一处，以后 preflight 或产品 CSS 再动语义，补一条即可 |
+| `markdown-viewer.tsx` | 预览容器挂 `markdown-doc` |
+| `markdown-components.tsx` | ① `p` / `li` 去掉 `whitespace-pre-wrap`；② 代码块去掉 `pre-wrap` / `break-all`，恢复横向滚动（对齐 GitHub，也是它改动前的行为）；③ `img` 的 `display` 挪去容器层，组件只留视觉样式；④ `rehypeRaw` 从共享常量里拆出 —— 新增 `CHAT_REHYPE_PLUGINS = [rehypeKatex]` 给聊天窗，`MARKDOWN_REHYPE_PLUGINS`（含 raw + sanitize）只给文档预览 |
+
+**边界（老大 11:0x 原话「聊天窗的预览不改内容，主要是右侧面板中的文件预览，你别改过度了哈」）**：全部改动只落在文档预览这一条链。聊天窗**刻意不共用** rehype 插件 —— 那是对流式渲染敏感的界面，半截 HTML 标签会让整段反复闪。
+
+**将来要上隔离的时机**：预览要渲染**不受信内容**（用户从网上拽下来的 html/md），或要做独立阅读器（沉浸全屏 / 独立主题 / 自带目录侧栏）。届时 iframe 是正解，`html-viewer.tsx` 已有先例；代价是交互全要桥接（路径标签点击、图片预览、代码复制、mermaid）。
+
+**门禁**：typecheck 三配置 0 错 · TS 30/30 · BOM clean。
+
+---
+
 ## 待登记
 
 ### 不立项 —— 正式版才排入（老大 2026-09-17）

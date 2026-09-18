@@ -236,6 +236,41 @@
 
 ---
 
+### 实施（2026-09-18）
+
+**落点 1 —— `src/renderer/src/components/layout/right-panel-defs.ts`**
+
+- 新增 `export const CHAT_MIN_WIDTH = 800`（按上表粗估，**待真机校准**）。
+- 新增私有 `panelBudget()` = `window.innerWidth - CHAT_MIN_WIDTH`；视口不可知（SSR / `innerWidth` 非正）时返回 `Infinity`，退化为「不限制」，避免无窗口环境下把面板宽度钳成 0。
+- `clampLeftSidebarWidth` 上限：`420` → `min(420, panelBudget())`，补上「边界情况 1」里左侧固定 420 那条隐患。
+- `clampRightPanelWidth` 上限：`min(∞, 视口 × 0.8)` → `min(∞, panelBudget(), 视口 × 0.8)`。`0.8` 按原裁定**留作兜底**，未移除。
+- 新增纯函数 `resolveChatWidthGuard({ changed, leftOpen, leftWidth, rightOpen, rightWidth }): 'left' | 'right' | null`：
+  `used = 开着的两侧宽度之和`；`used + CHAT_MIN_WIDTH <= 视口` ⇒ `null`（不动）；否则返回**另一侧**，但**只在另一侧确实开着时**才返回，否则也 `null`（无处可收就保持现状 —— 对应「边界情况 2」的退化分支，不来回抖动）。
+
+**落点 2 —— `src/renderer/src/stores/ui-store.ts`**
+
+- 新增 `yieldIfChatSqueezed(state, changed, width)`：把本次动作填进 `resolveChatWidthGuard` 的入参 —— **被操作的那一侧按「已展开」计**（它正在开 / 正在被拖），另一侧取当前 store 状态；返回 `{ leftSidebarOpen: false }` / `{ rightPanelOpen: false }` / `{}`。
+  （初版把两侧都按「已展开」传，导致「另一侧本来就没开」时也返回它，退化分支失效；改为按 `changed` 区分后修复。）
+- 新增 `openLeftSidebarWithGuard(state)` / `openRightPanelWithGuard(state)`：`{ 该侧: true, ...yieldIfChatSqueezed(...) }`。
+- 接入 8 个动作，**展开路径与拖拽路径共用同一判定**（对应裁定 ②）：
+
+  | 动作 | 处理 |
+  |---|---|
+  | `toggleLeftSidebar` | 关闭不动；展开走 `openLeftSidebarWithGuard` |
+  | `setLeftSidebarOpen` | 同上 |
+  | `setLeftSidebarWidth` | clamp 后过 `yieldIfChatSqueezed(state, 'left', nextWidth)` |
+  | `toggleRightPanel` | 关闭不动；展开走 `openRightPanelWithGuard` |
+  | `setRightPanelOpen` | 同上 |
+  | `setRightPanelWidth` | clamp 后过 `yieldIfChatSqueezed(state, 'right', nextWidth)` |
+  | `setActiveNavItem` | 点导航栏会展开左栏，同样走 `openLeftSidebarWithGuard` |
+  | `closeFreeChatPage` | 退出免费对话页会强制展开左栏，同样走 `openLeftSidebarWithGuard` |
+
+**门禁**：`tsc --noEmit` 三配置 `WEB=0 / NODE=0 / ROOT=0`；`npm run test*` 30 个脚本全过。
+
+**遗留**：`CHAT_MIN_WIDTH = 800` 是估算值，须真机校准（把窗口拖到输入框刚出横向滚动条，量聊天窗区域实际宽度）。
+
+---
+
 ## S-76 压缩切分出的 assistant 片段，每段都显示同一个耗时与更新时间
 
 **现象（老大 2026-09-18 14:07 原话）**：

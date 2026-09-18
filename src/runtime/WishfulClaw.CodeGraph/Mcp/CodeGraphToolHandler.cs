@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 
@@ -293,18 +293,6 @@ internal static partial class CodeGraphToolHandler
         catch
         {
             // staleness probe is advisory — never fail the tool over it
-        }
-
-        // Explore-budget reminder (tools.ts:3648), gated by tier — tiny projects skip
-        // it (one rich call is the whole story) and it needs the stats to be honest.
-        if (budget.IncludeBudgetNote && statsFileCount is { } fileCount)
-        {
-            var callBudget = CodeGraphExploreBudget.GetCallBudget(fileCount);
-            text += "\n\n> **Explore budget: " + callBudget + " calls for this project (" +
-                fileCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) +
-                " files indexed).** Each call covers ~6 files; if your question spans more, spend your " +
-                "remaining calls on the uncovered area BEFORE falling back to Read — another explore is " +
-                $"cheaper and more complete than reading those files. Synthesize once you've used {callBudget}.";
         }
 
         return new CodeGraphToolResult(true, text, false);
@@ -708,7 +696,7 @@ internal static partial class CodeGraphToolHandler
 
     // codegraph/tools-list — the agent-visible surface. Threads the caller's optional
     // workingFolder (or projectPath) through so the project-aware shaping applies
-    // (tiny-repo gating + the explore call-budget suffix, analysis/04 §3.2), and
+    // (tiny-repo gating, analysis/04 §3.2), and
     // degrades gracefully: no resolvable project -> the require-projectPath surface
     // (#993); a project without an index (or a failed stats read) -> the plain
     // default/allowlist surface. Never auto-indexes — listing tools must stay cheap.

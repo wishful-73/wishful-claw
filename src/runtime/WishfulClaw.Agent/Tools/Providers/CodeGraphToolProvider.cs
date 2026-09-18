@@ -15,14 +15,17 @@ public sealed class CodeGraphToolProvider : IToolProvider
     {
         registry.Register(new ToolDefinitionPlaceholder(
             "codegraph_explore",
-            "PRIMARY code-intelligence tool. Give a natural-language question or symbol/file names and get ranked related source, definitions, callers/callees, call paths, and impact. Prefer this over Read/Grep for understanding how code fits together. Requires CodeGraph to be enabled and the project to be indexed.",
+            "Query the indexed code graph. Give a natural-language question, or a space-separated bag of "
+                + "symbol/file names, and get verbatim source grouped by file plus the call paths and impact "
+                + "among those symbols — in one call. Prefer this over Read/Grep for understanding how code "
+                + "fits together.",
             ToolSchemaBuilder.Object(
                 new Dictionary<string, JsonElement>
                 {
                     ["query"] = ToolSchemaBuilder.String(
-                        "A symbol name or natural-language question about the codebase structure."),
+                        "A natural-language question, or a space-separated bag of symbol/file names."),
                     ["projectPath"] = ToolSchemaBuilder.String(
-                        "Optional absolute path to the project root. Defaults to the active working folder.")
+                        "Absolute path to the project root whose graph to query. Defaults to the active working folder.")
                 },
                 ["query"]),
             visibleScopes: ToolVisibilityScopes.Everywhere,

@@ -51,6 +51,7 @@ internal static partial class Program
             RunSendSessionMessageResultSuite();
         RunContextCapSuite();
             RunSandboxSuite();
+            RunBomPreservationSuite();
             RunImageContentSuite();
             Console.WriteLine($"Goal regression tests passed: {_passed}");
             return 0;

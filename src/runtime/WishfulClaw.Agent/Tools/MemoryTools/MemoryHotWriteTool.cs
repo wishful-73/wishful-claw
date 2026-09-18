@@ -83,7 +83,8 @@ public sealed class MemoryHotWriteTool : IToolExecutor
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
-            await File.WriteAllTextAsync(path, "# Long-Term Memory\n", Encoding.UTF8, context.CancellationToken);
+            // 不带 Encoding 参数 = 无 BOM（iter-32 S-80），与 WriteAndFlushAsync 的写法保持一致。
+            await File.WriteAllTextAsync(path, "# Long-Term Memory\n", context.CancellationToken);
 
         }
 

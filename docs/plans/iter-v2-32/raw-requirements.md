@@ -2,7 +2,7 @@
 
 > 2026-09-18 建。分支 `dev/v2-iter-32`（base `main` @ `2498dcae`，v0.2.31）。
 > 本文件为权威需求文档。本迭代节奏放缓，需求**逐步积攒**，不定收口时间。
-> **已立项 8 项**：S-72 agent 运行中「发送」按钮不可用／S-73 会话级「请求上下文上限」开关／S-74 输入框底部工具栏间距过宽／S-75 聊天窗最低宽度保护／S-76 压缩片段重复显示同一个耗时与更新时间／S-77 会话 todo 面板条数累加与单条显示方式／S-78 审批弹窗正文过多时撑出弹窗／S-79 沙箱模式：工具参数的工作目录边界校验。
+> **已立项 9 项**：S-72 agent 运行中「发送」按钮不可用／S-73 会话级「请求上下文上限」开关／S-74 输入框底部工具栏间距过宽／S-75 聊天窗最低宽度保护／S-76 压缩片段重复显示同一个耗时与更新时间／S-77 会话 todo 面板条数累加与单条显示方式／S-78 审批弹窗正文过多时撑出弹窗／S-79 沙箱模式：工具参数的工作目录边界校验／S-80 文件写入的 BOM 处理不一致。
 > 其余候选见文末「待登记」，**未点名，不擅自排入**。
 > 勘测行号均为 2026-09-18 实读。
 
@@ -747,6 +747,66 @@
 
 - **全局会话（含渠道）**：边界 = 所有非 SSH 项目工作目录的并集。跨项目干活照常；被挡的是「伸手到任何项目目录之外」—— 临时写到 `C:\Temp`、改系统配置、动用户主目录。这是相比旧行为变化最大的一处。
 - **项目会话**：边界 = 自己的工作目录，项目内正常用法不受影响。
+
+---
+
+## S-80 文件写入的 BOM 处理不一致
+
+**来源**：2026-09-18 21:50 老大提问 —— 「工具 Edit 写入的文件易带 BOM？之前专门审查过不是说不会么，把这个工具修复也追加进需求，然后进行修复」。
+
+### 核实结论（先证伪，再定修法）
+
+老大记得的审查结论**是对的**：`Edit` 工具**不会**加 BOM。但查下来发现的是**另一个方向的缺陷** —— 它会**丢掉**原本存在的 BOM。
+
+`.NET` 行为实测（PowerShell 复刻，非推断）：
+
+| 调用 | 结果 |
+|---|---|
+| `File.WriteAllText(p, t, Encoding.UTF8)` | **写 BOM**（6 字节 = 3 BOM + 3 内容） |
+| `File.ReadAllText(p, Encoding.UTF8)` | **剥 BOM**（读回 3 字节） |
+| `Encoding.UTF8.GetBytes(t)` | 不带 BOM（97,98,99） |
+| `WriteAndFlushAsync` 等价实现（`FileMode.Create` + `GetBytes`） | **无 BOM** |
+
+所以链路是：`Edit` 读时 `File.ReadAllTextAsync(path, Encoding.UTF8)` **把 BOM 剥掉**，写时 `WriteAndFlushAsync` 又**不补** ⇒ 一个原本带 BOM 的文件被编辑一次就变成无 BOM。
+
+### 现状清单（全仓排查）
+
+| 位置 | 行为 | 判定 |
+|---|---|---|
+| `Tools/ToolHelpers.cs` `WriteAndFlushAsync` | 永不写 BOM | **Edit / Write / MemoryHotWrite 的统一写路径** ⇒ 编辑带 BOM 文件会丢 BOM |
+| `Tools/MemoryTools/MemoryHotReadTool.cs:71` | `File.WriteAllTextAsync(..., Encoding.UTF8, ...)` ⇒ **写 BOM** | 只在 `!File.Exists` 时走，**是产品里唯一的 BOM 制造者** |
+| `Tools/MemoryTools/MemoryHotWriteTool.cs:86` | 同上 | 同上 |
+| `AgentRuntimeNotebookEditExecutor.cs:98` | `File.WriteAllTextAsync(path, result, ct)` ⇒ 无 BOM | 编辑带 BOM 的 `.ipynb` 同样会丢 |
+| `AgentRuntimePlanExecutor*.cs`（3 处） | 无 Encoding ⇒ 无 BOM | 写的是产品自己的 plan 文件，无 BOM 是对的，**不动** |
+| `Tools/AgentChanges/AgentChangeTools.cs:242` | 显式 `Utf8NoBom` | 回滚路径。原文本读时已剥 BOM，回滚同样恢复不了 —— 本次未改（见下） |
+
+**佐证**：渲染端 `lib/agent/memory-json-parsers.ts:11` 有 `.replace(/^\uFEFF/, '')` —— 正是被上面那两处 memory 写入逼出来的防御。BOM 确实被写出来过，不是理论问题。
+
+**主进程（Node）侧无此问题**：`fs.writeFile(..., 'utf8')` 不写 BOM；`memory-json-parsers` 的 strip 是唯一的渲染端防御点。
+
+### 修法：写入保留目标文件原本的 BOM 状态
+
+契约：**不主动加、不主动丢**；新建文件按无 BOM。
+
+1. **`ToolHelpers.WriteAndFlushAsync`**（核心）—— 写入前探测目标文件是否以 `EF BB BF` 开头，是则在 `FileMode.Create` 之后先手写 preamble 再写内容。`Encoding.UTF8.GetBytes` 不产 BOM，所以只能用这种方式补。
+   - 探测失败（读不动 / 不存在）一律当「无 BOM」—— **探测不该让本来能写成功的写入失败**。
+   - 打开探测流用 `FileShare.ReadWrite`，不干扰别人读。
+   - 新建文件天然落到「无 BOM」分支。
+2. **`MemoryHotReadTool.cs:71` / `MemoryHotWriteTool.cs:86`** —— 去掉 `Encoding.UTF8` 参数（.NET 默认即 UTF8 无 BOM），与 `WriteAndFlushAsync` 行为一致。**存量带 BOM 的 MEMORY.md 不动**（不主动改用户既有文件）；渲染端的 strip 防御保留。
+3. **`AgentRuntimeNotebookEditExecutor.cs:98`** —— 改走 `ToolHelpers.WriteAndFlushAsync`，顺带获得 BOM 保留 + 立即 flush。
+
+**明确不做**：不批量回填/清除既有文件的 BOM（那是改用户数据）；`AgentChangeTools` 的回滚路径不额外处理（回滚的 `beforeText` 读时已剥 BOM，要真修得连 `beforeText` 一起带上 BOM 状态，属另一件事）。
+
+### 测试
+
+`tests/WishfulClaw.GoalRegressionTests/Program.Bom.cs`（新增，7 断言，注册于 `Program.cs` 的 `RunSandboxSuite();` 之后）：带 BOM 文件写回保留 BOM、无 BOM 文件不许补、新建无 BOM、连续写两次状态稳定、只有 BOM 的文件也判得出、内容正确性不受影响。
+
+**这组断言在改之前必然是红的** —— 旧实现下「带 BOM 的文件写回后保留 BOM」一定失败。
+
+### 门禁
+
+- C#：`WishfulClaw.Worker` 0 警告 0 错误；`tests/WishfulClaw.Tests.sln` 0/0；10 个回归套件全过（Goal 268 → **275**）
+- 触碰文件 BOM clean
 
 ---
 

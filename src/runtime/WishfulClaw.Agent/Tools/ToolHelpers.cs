@@ -121,6 +121,12 @@ internal static class ToolHelpers
     /// Writes text to a file and flushes to disk immediately.
     /// Uses FileStream with Flush(true) to ensure subsequent reads
     /// always see the updated content (fixes Edit->Read cache issue).
+    ///
+    /// 保留目标文件原有的 UTF-8 BOM 状态（iter-32 S-80）。编辑工具不该顺手改掉文件的
+    /// 编码特征：`.ps1` / `.bat` 这类脚本丢了 BOM 会乱码、甚至执行失败；而不带 BOM 的
+    /// 文件被补上一个，也会在 diff 里留下噪音。文件不存在（新建）时按无 BOM。
+    ///
+    /// 注意：这里只能靠 FileStream 手写 preamble —— <c>Encoding.UTF8.GetBytes</c> 不产 BOM。
     /// </summary>
     public static async Task WriteAndFlushAsync(string path, string content, CancellationToken cancellationToken)
     {
@@ -129,6 +135,9 @@ internal static class ToolHelpers
         {
             Directory.CreateDirectory(directory);
         }
+
+        var keepBom = await HasUtf8BomAsync(path, cancellationToken);
+
         await using var fs = new FileStream(
             path,
             FileMode.Create,
@@ -136,9 +145,52 @@ internal static class ToolHelpers
             FileShare.Read,
             bufferSize: 4096,
             useAsync: true);
+
+        if (keepBom)
+        {
+            await fs.WriteAsync(Utf8BomBytes.AsMemory(0, Utf8BomBytes.Length), cancellationToken);
+        }
+
         var bytes = System.Text.Encoding.UTF8.GetBytes(content);
         await fs.WriteAsync(bytes.AsMemory(0, bytes.Length), cancellationToken);
         await fs.FlushAsync(cancellationToken);
         fs.Flush(true);
+    }
+
+    /// <summary>UTF-8 BOM 的三字节序列。</summary>
+    private static readonly byte[] Utf8BomBytes = [0xEF, 0xBB, 0xBF];
+
+    /// <summary>
+    /// 目标文件是否以 UTF-8 BOM 开头（不存在则 false）。读不动一律当「无」——
+    /// 探测失败不该让本来能写成功的写入失败。
+    /// </summary>
+    private static async Task<bool> HasUtf8BomAsync(string path, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+
+            var head = new byte[3];
+            await using var fs = new FileStream(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite,
+                bufferSize: 3,
+                useAsync: true);
+            var read = await fs.ReadAsync(head.AsMemory(0, 3), cancellationToken);
+            return read == 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 }

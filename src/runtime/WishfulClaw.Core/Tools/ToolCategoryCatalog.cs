@@ -84,10 +84,15 @@ public static class ToolCategoryCatalog
     /// as a direct tool definition. The prompt's &lt;tool_calling&gt; block renders this list;
     /// the per-tool decision still lives on each executor's <c>IsCore</c> flag — a tool in a
     /// core category may opt out, and a core-category tool added later is core until declared.
+    ///
+    /// Membership here is a category's eligibility for direct injection, not a promise that it
+    /// shows up: a run-level switch can still veto an individual tool. <c>codegraph</c> is the
+    /// first such member — eligible for direct injection, listed only when the CodeGraph plugin
+    /// is on and the project actually has an index.
     /// </summary>
     public static IReadOnlyList<string> Core { get; } =
     [
-        "file", "search", "shell", "todo", "memory", "plan", "capability",
+        "file", "search", "shell", "todo", "memory", "plan", "capability", "codegraph",
     ];
 
     // OrdinalIgnoreCase is kept on purpose: every category in the repo is lowercase kebab today,

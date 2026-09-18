@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import type { TFunction } from 'i18next'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { type CollabMode } from '../CollabModeSwitcher'
@@ -33,15 +33,20 @@ export function useComposerModeState(opts: UseComposerModeStateOptions) {
 
   const effectiveCollabMode: CollabMode = opts.targetSession?.collaborationMode ??
     (opts.projectScoped ? pendingCollabMode ?? defaultProjectCollabMode : 'chat')
-  const effectivePermissionMode: PermissionMode = effectiveCollabMode === 'cowork'
-    ? opts.targetSession?.permissionMode ?? pendingPermissionMode ?? defaultCoworkPermissionMode
-    : 'default'
+  // Permission mode is independent of collaboration mode (iter-31 S-59): the session's
+  // own choice wins regardless of chat/cowork, so chat sessions can opt into YOLO too.
+  // The fallback is the same workspace default for every session kind — chat, global and
+  // cowork all share it (老大: "YOLO 也共享 cowork 中的默认值").
+  const effectivePermissionMode: PermissionMode = opts.targetSession?.permissionMode ??
+    pendingPermissionMode ??
+    defaultCoworkPermissionMode
 
   const handleCollabModeChange = React.useCallback((nextMode: CollabMode): void => {
     if (opts.disabled || opts.isStreaming || opts.isOptimizingLocked || opts.pendingImageReads > 0 || !opts.projectScoped) return
     if (!opts.draftSessionId) {
+      // Switching to chat no longer resets the permission choice (iter-31 S-59):
+      // chat sessions may run YOLO too, so the user's pick is left alone.
       setPendingCollabMode(nextMode)
-      if (nextMode === 'chat') setPendingPermissionMode('default')
     }
     requestAnimationFrame(() => opts.focusInputAtEnd())
   }, [opts.disabled, opts.draftSessionId, opts.focusInputAtEnd, opts.isOptimizingLocked,

@@ -1,16 +1,15 @@
-// Bottom action bar for AssistantMessage: copy, fork, translate, speak, share, retry, delete, etc.
+// Bottom action bar for AssistantMessage: copy, fork, speak, share, retry, delete, etc.
 
 import * as React from 'react'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   Copy, ChevronsDownUp, ChevronsUpDown, RotateCcw, Play, Ellipsis,
-  Languages, Volume2, Share2, GitFork, Trash2
+  Volume2, Share2, GitFork, Trash2
 } from 'lucide-react'
 import type { RequestDebugInfo } from '@renderer/lib/api/types'
 import type { MemoryRecallInfo } from '@renderer/stores/chat-store/types'
 import { useUIStore } from '@renderer/stores/ui-store'
-import { useTranslateStore } from '@renderer/stores/translate-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import type { CompletionSummaryData } from './types'
 import { CompletionSummaryBar } from './token-summary'
@@ -20,6 +19,7 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 
 export interface ActionBarProps {
   isStreaming: boolean
@@ -28,6 +28,7 @@ export interface ActionBarProps {
   sessionId?: string | null
   msgId?: string
   createdAt?: number
+  updatedAt?: number
   showRetry?: boolean
   showContinue?: boolean
   onRetry?: (messageId: string) => void
@@ -63,11 +64,16 @@ export function AssistantActionBar({
   renderContent,
   completionSummary,
   createdAt,
+  updatedAt,
   t
 }: ActionBarProps): React.JSX.Element {
-  const openTranslatePage = useUIStore((s) => s.openTranslatePage)
+  // 时间戳只在这一轮跑完后才亮：流式期间显示的是「开始时间」，看着像已经完成。
+  const finishedAt = updatedAt ?? createdAt
+  // 耗时只在两个戳都齐、且结束晚于开始时才算（老消息没有 updatedAt）。
+  const elapsedMs =
+    updatedAt != null && createdAt != null && updatedAt > createdAt ? updatedAt - createdAt : null
+
   const navigateToSession = useUIStore((s) => s.navigateToSession)
-  const setTranslateSourceText = useTranslateStore((s) => s.setSourceText)
   const forkSessionFromMessage = useChatStore((s) => s.forkSessionFromMessage)
   const [forking, setForking] = useState(false)
 
@@ -75,14 +81,6 @@ export function AssistantActionBar({
     if (!plainText) return
     navigator.clipboard.writeText(plainText)
   }, [plainText])
-
-  const handleTranslate = useCallback((): void => {
-    const text = plainText.trim()
-    if (!text) return
-    setTranslateSourceText(text)
-    openTranslatePage()
-    toast.success(t('messageActions.sentToTranslator'))
-  }, [openTranslatePage, plainText, setTranslateSourceText, t])
 
   const handleSpeak = useCallback((): void => {
     const text = plainText.trim()
@@ -158,10 +156,11 @@ export function AssistantActionBar({
             </div>
           </>
         )}
-        {/* 时间戳只在这一轮跑完后才亮：流式期间它显示的是「开始时间」，看着像已经完成。 */}
-        {!isStreaming && createdAt && (
+        {/* 结束时间和耗时都只在跑完后才亮 */}
+        {!isStreaming && finishedAt != null && (
           <p className="mt-1.5 text-[10px] text-muted-foreground/50 tabular-nums">
-            {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {new Date(finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {elapsedMs != null && ` · ${formatDurationMs(elapsedMs)}`}
           </p>
         )}
         {!isStreaming &&
@@ -242,10 +241,6 @@ export function AssistantActionBar({
                       {t('messageActions.fork')}
                     </DropdownMenuItem>
                   ) : null}
-                  <DropdownMenuItem onSelect={handleTranslate} disabled={!plainText.trim()}>
-                    <Languages className="size-4" />
-                    {t('messageActions.translate')}
-                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={handleSpeak} disabled={!plainText.trim()}>
                     <Volume2 className="size-4" />
                     {t('messageActions.readAloud')}

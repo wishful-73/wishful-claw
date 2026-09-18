@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.2.30-orange" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.2.31-orange" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows-blue" alt="Windows">
   <img src="https://img.shields.io/badge/.NET-11-blue" alt=".NET">
   <img src="https://img.shields.io/badge/Electron-43-blue" alt="Electron">
@@ -27,7 +27,7 @@
 ## 🚀 快速上手
 
 1. 到 [Releases](https://github.com/wishful-73/wishful-claw/releases/latest) 下载 `wishful-claw-x.y.z-setup.exe`，双击安装（无需另装运行时）。
-2. 打开后进入 **设置 → AI 服务商**，选一家模型服务商，填入你自己的 API Key，点测试连通性并设为当前使用。
+2. 打开后进入 **设置 → AI 服务商**，选一家模型服务商，填入你自己的 API Key，点测试连通性并设为当前使用。还没决定用哪家？可以先跳过 —— [不花 Token 也能用](#-不花-token-也能用) 里那几项不用 Key 就能跑。
 3. 回到主界面，新建一个项目指向你的代码目录，把任务说出来。第一次建议打开**计划模式**，先看它的方案再放它动手。
 
 完整上手步骤、每一项能力的用法和排查方法都在 **[使用指引](docs/user-guide.md)** 里（应用内点顶栏的问号图标也能打开）。
@@ -76,9 +76,17 @@ Agent 干活时你可以随时插话：消息进队列，等当前这轮结束�
 
 ### ⚡ 日常效率
 
-- **快速启动器** —— `Alt + Space` 唤起，输入几个字符启动程序或打开应用内页面，支持词首字母缩写
-- **剪贴板历史** —— `Ctrl + Shift + V` 翻查历史复制记录，选中后贴回你原本聚焦的窗口
 - **右侧面板** —— 执行过程、文件树、预览、浏览器、终端、会话摘要、变更审阅，一屏看清 Agent 做了什么
+
+### 🆓 不花 Token 也能用
+
+还没配 API Key，或者想省着点用，这三项照样跑得起来：
+
+- **免费对话** —— 应用内直连 DeepSeek、Kimi、智谱清言、豆包、腾讯元宝等**网页版**对话，登录你自己的账号就行，不走 API、不消耗额度
+- **快速启动器** —— `Alt + Space` 唤起，输入几个字符启动程序或打开应用内页面，支持词首字母缩写
+- **剪贴板历史** —— `Ctrl + Shift + V` 翻查历史复制记录，支持图片，选中后贴回你原本聚焦的窗口
+
+后两项纯本地，免费对话走你自己的免费网页版账号 —— 都不动 API 额度。要它读代码、跑命令、派子 Agent 这类**动手**的活，才需要配一家模型服务商的 Key。
 
 ### 🔌 可扩
 

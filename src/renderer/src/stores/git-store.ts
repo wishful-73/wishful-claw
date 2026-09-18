@@ -613,10 +613,11 @@ export const useGitStore = create<GitStore>((set, get) => ({
       : { success: false, error: getErrorMessage(result, 'Failed to discard changes') }
   },
 
-  commit: async (repoPath, message) => {
+  commit: async (repoPath, message, options) => {
     const result = await invokeGit<GitResultBase>(IPC.GIT_COMMIT, {
       ...getGitTarget(repoPath),
-      message
+      message,
+      ...(options?.amend ? { amend: true } : {})
     })
     if (result.success) await get().refreshRepository(repoPath, { force: true })
     return result.success

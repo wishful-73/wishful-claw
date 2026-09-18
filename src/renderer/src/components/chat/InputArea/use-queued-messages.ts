@@ -3,13 +3,7 @@
 import * as React from 'react'
 import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
-import {
-  cloneImageAttachments,
-  fileToImageAttachment,
-  hasEditableDraftContent,
-  type EditableUserMessageDraft,
-  type ImageAttachment
-} from '@renderer/lib/image-attachments'
+import { cloneImageAttachments } from '@renderer/lib/image-attachments'
 import {
   clearPendingSessionMessages,
   dispatchNextQueuedMessageForSession,
@@ -18,10 +12,10 @@ import {
   isPendingSessionDispatchPaused,
   removePendingSessionMessage,
   subscribePendingSessionMessages,
-  updatePendingSessionMessageDraft,
   type PendingSessionMessageItem
 } from '@renderer/hooks/use-chat-actions'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { useUIStore } from '@renderer/stores/ui-store'
 import { EMPTY_QUEUED_MESSAGES } from './types'
 import { areQueuedMessagesEqual } from './utils'
 import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
@@ -30,14 +24,10 @@ export interface UseQueuedMessagesOptions {
   activeSessionId: string | null
   suppressPendingQueue: boolean
   t: TFunction
-  isStreaming: boolean
-  getPastedImageFiles: (clipboardData: DataTransfer | null | undefined) => File[]
-  setPreviewImage: React.Dispatch<React.SetStateAction<ImageAttachment | null>>
 }
 
 export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
-  const { activeSessionId, suppressPendingQueue, t, isStreaming, getPastedImageFiles, setPreviewImage } = opts
-  const queueFileInputRef = React.useRef<HTMLInputElement>(null)
+  const { activeSessionId, suppressPendingQueue, t } = opts
   const queuedMessagesSnapshotRef = React.useRef<PendingSessionMessageItem[]>(EMPTY_QUEUED_MESSAGES)
 
   const getQueuedMessagesSnapshot = React.useCallback(() => {
@@ -68,77 +58,38 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
     () => false
   )
 
-  const [editingQueueItemId, setEditingQueueItemId] = React.useState<string | null>(null)
-  const [editingQueueText, setEditingQueueText] = React.useState('')
-  const [editingQueueImages, setEditingQueueImages] = React.useState<ImageAttachment[]>([])
   const [queueClearConfirmOpen, setQueueClearConfirmOpen] = React.useState(false)
-
-  const startEditQueuedMessage = React.useCallback((msg: PendingSessionMessageItem) => {
-    setEditingQueueItemId(msg.id)
-    // T-13: the queued text keeps `<pasted-block>` tags; the edit box shows the
-    // pasted body instead of the tag JSON.
-    setEditingQueueText(expandPastedBlocks(msg.text))
-    setEditingQueueImages(cloneImageAttachments(msg.images))
-  }, [])
-
-  const cancelEditQueuedMessage = React.useCallback(() => {
-    setEditingQueueItemId(null)
-    setEditingQueueText('')
-    setEditingQueueImages([])
-  }, [])
 
   const removeQueuedMessage = React.useCallback(
     (id: string) => {
       if (!activeSessionId) return
       removePendingSessionMessage(activeSessionId, id)
-      if (editingQueueItemId === id) {
-        setEditingQueueItemId(null)
-        setEditingQueueText('')
-        setEditingQueueImages([])
-      }
     },
-    [activeSessionId, editingQueueItemId]
+    [activeSessionId]
   )
 
-  const addQueuedImages = React.useCallback(async (files: File[]) => {
-    const results = await Promise.all(files.map(fileToImageAttachment))
-    const valid = results.filter(Boolean) as ImageAttachment[]
-    if (valid.length > 0) {
-      setEditingQueueImages((prev) => [...prev, ...valid])
-    }
-  }, [])
-
-  const removeQueuedImage = React.useCallback((id: string) => {
-    setEditingQueueImages((prev) => prev.filter((img) => img.id !== id))
-    setPreviewImage((current) => (current?.id === id ? null : current))
-  }, [setPreviewImage])
-
-  const saveQueuedMessage = React.useCallback(
+  /**
+   * S-57：把排队里的这条「取回」到主输入框 —— 从队列移除，文本与图片送回 composer。
+   *
+   * 走既有的 `pendingInsertText`（插到光标处，与文件树「添加到会话」同一条路），
+   * 图片走本次新增的 `pendingInsertImages`。两者都是**追加**语义：不会覆盖用户
+   * 已经打进去的内容。
+   */
+  const takeBackQueuedMessage = React.useCallback(
     (id: string) => {
       if (!activeSessionId) return
-      const targetMessage = queuedMessages.find((msg) => msg.id === id)
-      if (!targetMessage) return
-
-      const nextDraft: EditableUserMessageDraft = {
-        text: editingQueueText.trim(),
-        images: cloneImageAttachments(editingQueueImages),
-        command: (targetMessage.command as any) ?? null
-      }
-
-      if (!hasEditableDraftContent(nextDraft)) {
-        removePendingSessionMessage(activeSessionId, id)
-        setEditingQueueItemId(null)
-        setEditingQueueText('')
-        setEditingQueueImages([])
-        return
-      }
-
-      updatePendingSessionMessageDraft(activeSessionId, id, nextDraft)
-      setEditingQueueItemId(null)
-      setEditingQueueText('')
-      setEditingQueueImages([])
+      const target = queuedMessages.find((msg) => msg.id === id)
+      if (!target) return
+      removePendingSessionMessage(activeSessionId, id)
+      // T-13：队列里存的是 `<pasted-block>` 标签形态，进输入框前要展开回原文，
+      // 否则用户看到的是 chip 的序列化 JSON。
+      const text = expandPastedBlocks(target.text)
+      const images = cloneImageAttachments(target.images)
+      const ui = useUIStore.getState()
+      ui.setPendingInsertText(text.trim() ? text : null)
+      ui.setPendingInsertImages(images.length > 0 ? images : null)
     },
-    [activeSessionId, queuedMessages, editingQueueText, editingQueueImages]
+    [activeSessionId, queuedMessages]
   )
 
   const clearQueuedMessagesForActiveSession = React.useCallback(() => {
@@ -146,9 +97,8 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
     const cleared = clearPendingSessionMessages(activeSessionId)
     if (cleared === 0) return
     setQueueClearConfirmOpen(false)
-    cancelEditQueuedMessage()
     toast.success(t('input.queueCleared', { defaultValue: 'Queued messages cleared' }))
-  }, [activeSessionId, cancelEditQueuedMessage, t])
+  }, [activeSessionId, t])
 
   const handleClearQueuedMessages = React.useCallback(() => {
     if (queuedMessages.length <= 1) {
@@ -169,53 +119,21 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
     activeSessionId ? Boolean(s.streamingMessages[activeSessionId]) : false
   )
 
-  const insertQueuedMessageNow = React.useCallback(async () => {
-    if (!activeSessionId) return
-    const head = queuedMessages[0]
-    if (!head) return
-    const inserted = await insertPendingSessionMessageNow(activeSessionId, head.id)
-    if (!inserted) {
-      toast.error(
-        t('input.queueInsertNowFailed', {
-          defaultValue: '插入失败：当前没有正在执行的轮次，或该轮已结束'
-        })
-      )
-    }
-  }, [activeSessionId, queuedMessages, t])
-
-  const handleQueueEditPaste = React.useCallback(
-    (e: React.ClipboardEvent<HTMLTextAreaElement>): void => {
-      const imageFiles = getPastedImageFiles(e.clipboardData)
-      if (imageFiles.length === 0) return
-      e.preventDefault()
-      void addQueuedImages(imageFiles)
+  // S-57：插入动作下放到每条，点哪条插哪条（底层本来就按 id 取）。
+  const insertQueuedMessageNow = React.useCallback(
+    async (messageId: string) => {
+      if (!activeSessionId) return
+      const inserted = await insertPendingSessionMessageNow(activeSessionId, messageId)
+      if (!inserted) {
+        toast.error(
+          t('input.queueInsertNowFailed', {
+            defaultValue: '插入失败：当前没有正在执行的轮次，或该轮已结束'
+          })
+        )
+      }
     },
-    [addQueuedImages, getPastedImageFiles]
+    [activeSessionId, t]
   )
-
-  // Reset queue editing state on session change
-  React.useEffect(() => {
-    setEditingQueueItemId(null)
-    setEditingQueueText('')
-    setEditingQueueImages([])
-    setQueueClearConfirmOpen(false)
-  }, [activeSessionId])
-
-  // Clear queue editing if item disappears
-  React.useEffect(() => {
-    if (!editingQueueItemId) return
-    if (queuedMessages.some((msg) => msg.id === editingQueueItemId)) return
-    setEditingQueueItemId(null)
-    setEditingQueueText('')
-    setEditingQueueImages([])
-  }, [queuedMessages, editingQueueItemId])
-
-  // Cancel queue editing on stream stop
-  React.useEffect(() => {
-    if (!isStreaming) {
-      cancelEditQueuedMessage()
-    }
-  }, [isStreaming, cancelEditQueuedMessage])
 
   // Close queue clear confirm when queue is empty
   React.useEffect(() => {
@@ -228,23 +146,12 @@ export function useQueuedMessages(opts: UseQueuedMessagesOptions) {
     isQueueDispatchPaused,
     canInsertQueuedMessageNow,
     insertQueuedMessageNow,
-    editingQueueItemId,
-    editingQueueText,
-    setEditingQueueText,
-    editingQueueImages,
-    setEditingQueueImages,
     queueClearConfirmOpen,
     setQueueClearConfirmOpen,
-    queueFileInputRef,
-    startEditQueuedMessage,
-    cancelEditQueuedMessage,
     removeQueuedMessage,
-    addQueuedImages,
-    removeQueuedImage,
-    saveQueuedMessage,
+    takeBackQueuedMessage,
     clearQueuedMessagesForActiveSession,
     handleClearQueuedMessages,
-    resumeQueuedMessages,
-    handleQueueEditPaste
+    resumeQueuedMessages
   }
 }

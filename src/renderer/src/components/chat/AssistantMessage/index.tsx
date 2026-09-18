@@ -58,6 +58,7 @@ export function AssistantMessage({
   requestDebugInfo,
   meta,
   createdAt,
+  updatedAt,
   memoryRecall
 }: AssistantMessageProps): React.JSX.Element {
   const { t } = useTranslation('chat')
@@ -467,6 +468,7 @@ export function AssistantMessage({
       renderContent={renderContent}
       completionSummary={completionSummary}
       createdAt={createdAt}
+      updatedAt={updatedAt}
       t={t}
       memoryRecall={memoryRecall}
     />

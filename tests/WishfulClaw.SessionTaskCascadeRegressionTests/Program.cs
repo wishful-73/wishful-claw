@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Data.Sqlite;
@@ -65,6 +65,7 @@ internal static partial class Program
                 RunProjectDeleteSuite(dbPath, db);
                 RunPluginSessionSuite(dbPath, db);
                 RunPluginSessionRoutingSuite(dbPath, db);
+                RunSessionPermissionModeSuite(dbPath, db);
                 RunClearAllSuite(dbPath, db);
                 RunGlobalTaskSuite(dbPath, db);
                 RunGlobalToolProviderSuite();

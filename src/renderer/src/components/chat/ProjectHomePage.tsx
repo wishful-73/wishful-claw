@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { BookOpen, GitBranch, MessageSquare, User } from 'lucide-react'
+import { BookOpen, GitBranch, User } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
 import { InputArea } from '@renderer/components/chat/InputArea'
@@ -40,7 +40,10 @@ export function ProjectHomePage(): React.JSX.Element {
           : chatStore.createSession(mode, null, {
               scope: 'global',
               preserveProjectless: true,
-              workingFolder: chatWorkingFolder
+              workingFolder: chatWorkingFolder,
+              // See ChatHomePage: the composer's YOLO pick must reach the session record,
+              // otherwise it is dropped and the session opens gated (iter-31 S-59).
+              permissionMode: options?.permissionMode
             })
         uiStore.navigateToSession(sessionId)
         void sendMessage({ text, images, sessionId, opts: { ...options, clearCompletedTasksOnTurnStart: true } })
@@ -121,15 +124,6 @@ export function ProjectHomePage(): React.JSX.Element {
               >
                 <BookOpen className="size-3.5" />
                 {t('projectHome.openArchive')}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-md border border-border/60 bg-background/50 px-3 text-[11px] text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-                onClick={() => useUIStore.getState().navigateToChannels(activeProject.id)}
-              >
-                <MessageSquare className="size-3.5" />
-                {t('projectHome.openChannels')}
               </Button>
               <Button
                 variant="ghost"

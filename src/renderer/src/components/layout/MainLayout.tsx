@@ -1,16 +1,5 @@
 import { useEffect } from 'react'
-import {
-  Sparkles,
-  Ghost,
-  RefreshCw,
-  PenTool,
-  Languages,
-  GitBranch,
-  Plug,
-  FolderTree,
-  CalendarDays,
-  SquareKanban,
-} from 'lucide-react'
+import { PenTool, GitBranch } from 'lucide-react'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -20,6 +9,7 @@ import { TitleBar } from './TitleBar'
 import { RightPanel } from './RightPanel'
 import { RuntimeStatusPanel } from './RuntimeStatusPanel'
 import { CommandPalette } from './CommandPalette'
+import { LocalImagePreviewDialog } from '@renderer/components/chat/LocalImagePreviewDialog'
 import { SessionConversationPane } from './SessionConversationPane'
 import { PlaceholderPage } from './PlaceholderPage'
 import { AutomationPage } from '@renderer/components/automation/AutomationPage'
@@ -32,35 +22,13 @@ import { ProjectArchivePage } from '@renderer/components/chat/ProjectArchivePage
 import { SettingsPage } from '@renderer/components/settings/SettingsPage'
 import { PersonaPanel } from '@renderer/components/settings/PersonaPanel'
 
-// ─── Feature page registry ───
-
-const FEATURE_PAGES: Record<string, { title: string; iterLabel: string; icon: React.ComponentType<{ className?: string }> }> = {
-  skills: { title: 'Skills', iterLabel: '后续', icon: Sparkles },
-  souls: { title: 'Souls', iterLabel: '迭代七', icon: Ghost },
-  sync: { title: 'Sync', iterLabel: '后续', icon: RefreshCw },
-  resources: { title: 'Resources', iterLabel: '后续', icon: FolderTree },
-  translate: { title: 'Translate', iterLabel: '后续', icon: Languages },
-  draw: { title: 'Draw', iterLabel: '后续', icon: PenTool },
-  tasks: { title: 'Automation', iterLabel: '后续', icon: CalendarDays },
-  taskboard: { title: 'Task Board', iterLabel: '后续', icon: SquareKanban },
-  codegraph: { title: 'Code Graph', iterLabel: '后续', icon: GitBranch },
-  channels: { title: 'Channels', iterLabel: '迭代四', icon: Plug }
-}
-
 // ─── Content area ───
 
 function ContentArea(): React.JSX.Element {
-  const activeNavItem = useUIStore((s) => s.activeNavItem)
   const chatView = useUIStore((s) => s.chatView)
   const settingsPageOpen = useUIStore((s) => s.settingsPageOpen)
-  const skillsPageOpen = useUIStore((s) => s.skillsPageOpen)
-  const soulsPageOpen = useUIStore((s) => s.soulsPageOpen)
-  const syncPageOpen = useUIStore((s) => s.syncPageOpen)
-  const resourcesPageOpen = useUIStore((s) => s.resourcesPageOpen)
-  const translatePageOpen = useUIStore((s) => s.translatePageOpen)
   const drawPageOpen = useUIStore((s) => s.drawPageOpen)
   const tasksPageOpen = useUIStore((s) => s.tasksPageOpen)
-  const codeGraphPageOpen = useUIStore((s) => s.codeGraphPageOpen)
   const taskBoardPageOpen = useUIStore((s) => s.taskBoardPageOpen)
   const freeChatPageOpen = useUIStore((s) => s.freeChatPageOpen)
   const activeSessionId = useChatStore((s) => s.activeSessionId)
@@ -73,24 +41,10 @@ function ContentArea(): React.JSX.Element {
     return <SettingsPage />
   }
 
-  // Non-chat nav items → placeholder pages
-  if (activeNavItem !== 'chat') {
-    const config = FEATURE_PAGES[activeNavItem]
-    if (config) {
-      return <PlaceholderPage title={config.title} iterLabel={config.iterLabel} icon={config.icon} />
-    }
-  }
-
   // Feature page toggles (opened from within chat context)
-  if (skillsPageOpen) return <PlaceholderPage title="Skills" iterLabel="后续" icon={Sparkles} />
-  if (soulsPageOpen) return <PlaceholderPage title="Souls" iterLabel="迭代七" icon={Ghost} />
-  if (syncPageOpen) return <PlaceholderPage title="Sync" iterLabel="后续" icon={RefreshCw} />
-  if (resourcesPageOpen) return <PlaceholderPage title="Resources" iterLabel="后续" icon={FolderTree} />
-  if (translatePageOpen) return <PlaceholderPage title="Translate" iterLabel="后续" icon={Languages} />
   if (drawPageOpen) return <PlaceholderPage title="Draw" iterLabel="后续" icon={PenTool} />
   if (tasksPageOpen) return <AutomationPage />
   if (taskBoardPageOpen) return <TaskBoardPage />
-  if (codeGraphPageOpen) return <PlaceholderPage title="Code Graph" iterLabel="后续" icon={GitBranch} />
   if (freeChatPageOpen) return <FreeChatPage />
 
   // Chat views
@@ -109,8 +63,6 @@ function ContentArea(): React.JSX.Element {
       return <ProjectArchivePage />
     case 'git':
       return <PlaceholderPage title="Git" iterLabel="后续" icon={GitBranch} />
-    case 'channels':
-      return <PlaceholderPage title="Channels" iterLabel="迭代四" icon={Plug} />
     default:
       return <ChatHomePage />
   }
@@ -229,6 +181,9 @@ export function MainLayout(): React.JSX.Element {
 
         {/* Command palette overlay */}
         <CommandPalette />
+
+        {/* Fullscreen preview for image paths clicked in agent replies */}
+        <LocalImagePreviewDialog />
       </div>
     </TooltipProvider>
   )

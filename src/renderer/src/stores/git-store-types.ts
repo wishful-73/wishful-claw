@@ -137,7 +137,12 @@ export interface GitStore {
     paths: string[],
     scope: 'worktree' | 'full' | 'untracked'
   ) => Promise<{ success: boolean; error?: string }>
-  commit: (repoPath: string, message: string) => Promise<{ success: boolean; error?: string }>
+  /** `amend` 为真时走 `git commit --amend`，改写当前 HEAD（只有显式要求时才用）。 */
+  commit: (
+    repoPath: string,
+    message: string,
+    options?: { amend?: boolean }
+  ) => Promise<{ success: boolean; error?: string }>
   getStagedDiffBundle: (
     repoPath: string
   ) => Promise<

@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import { resolveShellExecutable } from '@renderer/stores/settings-store-types'
 
 // ─── Types ───
 
@@ -84,10 +86,20 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
 
   createTab: async (cwd, projectId, titleOverride, sessionId) => {
     try {
+      // 默认 shell 来自「设置 → 终端与 SSH」。选 'auto' 时解析为 undefined，
+      // 由主进程走自己的候选链（PowerShell 优先，cmd 兜底）。
+      const { shellExecutionEndpoint, customShellExecutable } = useSettingsStore.getState()
+      const shell = resolveShellExecutable({
+        endpoint: shellExecutionEndpoint,
+        customShellExecutable,
+        platform: window.electron?.process?.platform
+      })
+
       const result = (await ipcClient.invoke(IPC.TERMINAL_CREATE, {
         cwd,
         cols: 80,
-        rows: 24
+        rows: 24,
+        ...(shell ? { shell } : {})
       })) as {
         id?: string
         shell?: string

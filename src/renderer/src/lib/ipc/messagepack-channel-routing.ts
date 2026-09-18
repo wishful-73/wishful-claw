@@ -1,4 +1,4 @@
-﻿import { HOOK_IPC_CHANNELS } from '../../../../shared/hooks/types'
+import { HOOK_IPC_CHANNELS } from '../../../../shared/hooks/types'
 
 const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'app:homedir',
@@ -165,6 +165,7 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'ssh:fs:transfer:cancel',
   'ssh:exec',
   'clipboard:write-image',
+  'clipboard:read-image',
   'image:fetch-base64',
   'image:persist-generated',
   'image:download',

@@ -10,9 +10,10 @@ import {
 import { LazySyntaxHighlighter } from '../LazySyntaxHighlighter'
 import { MONO_FONT } from '@renderer/lib/constants'
 import {
-  MARKDOWN_REHYPE_PLUGINS, MARKDOWN_REMARK_PLUGINS,
-  resolveLocalFilePath, openLocalFilePath, openMarkdownHref
+  CHAT_REHYPE_PLUGINS, MARKDOWN_REMARK_PLUGINS,
+  resolveLocalFilePath, openMarkdownHref
 } from '@renderer/lib/preview/viewers/markdown-components'
+import { LocalPathCode } from './LocalPathCode'
 import { useStreamingRenderPool } from '@renderer/hooks/use-typewriter'
 import { useStreamingMarkdownBlocks } from '@renderer/hooks/use-streaming-markdown-blocks'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -263,17 +264,13 @@ const MarkdownCode: NonNullable<Components['code']> = ({ children, className, no
     const resolvedPath = resolveLocalFilePath(code)
     if (resolvedPath) {
       return (
-        <button
-          type="button"
-          className="cursor-pointer rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-primary underline-offset-2 hover:underline"
+        <LocalPathCode
+          resolvedPath={resolvedPath}
+          className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono"
           style={{ fontFamily: MONO_FONT }}
-          title={resolvedPath}
-          onClick={() => {
-            void openLocalFilePath(code)
-          }}
         >
           {children}
-        </button>
+        </LocalPathCode>
       )
     }
     return (
@@ -347,8 +344,13 @@ const MARKDOWN_COMPONENTS: Components = {
       href={href}
       onClick={(e) => {
         if (!href) return
-        const handled = openMarkdownHref(href)
-        if (handled) e.preventDefault()
+        // 页内锚点保留原生行为，其余一律拦下：markdown 链接只有「外链 / 本地文件」
+        // 两种归宿（都由 openMarkdownHref 处理）。识别失败时正确结果是「什么都不做」，
+        // 而不是放行给浏览器 —— 渲染端就是 Electron 主窗口，相对路径没解析出 baseDir
+        // 时放行会让整个应用被导航走（表现为聊天窗刷一遍）。
+        if (href.startsWith('#')) return
+        e.preventDefault()
+        openMarkdownHref(href)
       }}
       className="text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer break-all"
       title={href}
@@ -441,7 +443,7 @@ const MarkdownContent = React.memo(function MarkdownContent({
     <IsStreamingContext.Provider value={isStreaming}>
       <Markdown
         remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-        rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+        rehypePlugins={CHAT_REHYPE_PLUGINS}
         components={MARKDOWN_COMPONENTS}
       >
         {text}

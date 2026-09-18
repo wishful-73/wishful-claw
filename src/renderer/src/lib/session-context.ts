@@ -33,11 +33,21 @@ export function normalizeSessionContext(
         ? 'project'
         : 'global'
 
+  // Permission mode is independent of collaboration mode and its default is shared by
+  // every session kind (iter-31 S-59 — 老大: "YOLO 也共享 cowork 中的默认值"). An
+  // explicit choice always wins; otherwise take the workspace default, so chat and
+  // global sessions stop being pinned to 'default' while cowork keeps its behaviour.
+  const requestedPermissionMode =
+    input.permissionMode === 'default' || input.permissionMode === 'fullAccess'
+      ? input.permissionMode
+      : null
+  const permissionMode = requestedPermissionMode ?? defaults.coworkPermissionMode
+
   if (scope === 'global') {
     return {
       scope: 'global',
       collaborationMode: 'chat',
-      permissionMode: 'default',
+      permissionMode,
       projectId: undefined
     }
   }
@@ -54,12 +64,9 @@ export function normalizeSessionContext(
   return {
     scope: 'project',
     collaborationMode,
-    permissionMode:
-      collaborationMode === 'chat'
-        ? 'default'
-        : input.permissionMode === 'default' || input.permissionMode === 'fullAccess'
-          ? input.permissionMode
-          : defaults.coworkPermissionMode,
+    // Same rule as the global branch: an explicit choice always wins, otherwise the
+    // shared workspace default — collaboration mode no longer changes the fallback.
+    permissionMode,
     projectId: input.projectId
   }
 }

@@ -80,7 +80,7 @@
       "label": "MCP"
     },
     "ssh": {
-      "label": "SSH",
+      "label": "Terminal & SSH",
       "desc": "Manage remote server SSH connections"
     },
     "appPlugins": {
@@ -216,6 +216,11 @@
       "searchPlaceholder": "Search providers",
       "addTooltip": "Add custom provider",
       "enabled": "Enabled",
+      "recommended": "Recommended",
+      "badges": {
+        "paid": "$10/mo",
+        "free": "Limited-time free"
+      },
       "disabled": "Disabled",
       "noProviders": "No providers",
       "models": "models",
@@ -253,7 +258,7 @@
       "protocolType": "Protocol Type",
       "protocolTypeHint": "After switching protocols, verify the Base URL matches the new protocol",
       "requestHeaders": {
-        "title": "Request headers",
+        "title": "Custom Request Headers",
         "add": "Add header",
         "namePlaceholder": "Header name",
         "valuePlaceholder": "Value",
@@ -1221,8 +1226,27 @@
     "serverRemoveFailed": "Failed to remove server"
   },
   "ssh": {
-    "title": "SSH Connections",
-    "description": "Manage SSH server connections for remote command execution.",
+    "title": "Terminal & SSH",
+    "description": "Default shell for the built-in terminal, plus SSH connections for remote command execution.",
+    "terminal": {
+      "title": "Terminal",
+      "description": "Shell used when opening a new terminal tab. Already-open tabs are unaffected.",
+      "customPlaceholder": "/path/to/shell",
+      "shellOptions": {
+        "auto": "Auto (PowerShell first)",
+        "powershell": "Windows PowerShell",
+        "pwsh": "PowerShell 7+",
+        "cmd": "Command Prompt (cmd)",
+        "zsh": "zsh",
+        "bash": "bash",
+        "sh": "sh",
+        "custom": "Custom path"
+      }
+    },
+    "connections": {
+      "title": "SSH Connections",
+      "description": "Server connections used for remote command execution."
+    },
     "add": "Add Connection",
     "empty": "No SSH connections yet. Click \"Add Connection\" to create one.",
     "test": "Test connection",
@@ -1289,7 +1313,7 @@
     },
     "sessionDefaults": {
       "title": "Session Defaults",
-      "desc": "Choose the collaboration and Cowork permission defaults for new project sessions",
+      "desc": "Choose the collaboration mode and default permission mode for new sessions",
       "collaboration": {
         "label": "Default project session collaboration",
         "desc": "Chat is read-only collaboration; Cowork can perform project operations",
@@ -1297,12 +1321,12 @@
         "cowork": "Cowork"
       },
       "permission": {
-        "label": "Default Cowork permission",
+        "label": "Default permission mode",
         "desc": "Default follows approval policy; YOLO auto-approves tool calls",
         "default": "Default",
         "fullAccess": "YOLO"
       },
-      "hint": "Applies only to new project sessions and never overwrites existing sessions. Global sessions always use Chat."
+      "hint": "Applies only to new sessions and never overwrites existing ones. The permission default applies to chat, cowork and global sessions alike; channel sessions always run YOLO."
     },
     "residentTurns": {
       "title": "Chat Window Memory Window",
@@ -1336,6 +1360,8 @@
       "exitFullscreen": "Exit fullscreen"
     },
     "banner": {
+      "available": "Update {{version}} available",
+      "availableCurrent": "Currently on {{current}}",
       "downloading": "Downloading update in the background…",
       "downloaded": "Update {{version}} downloaded, waiting to install",
       "error": "Update failed",
@@ -1462,12 +1488,14 @@
     }
   },
   "freeChatPage": {
-    "title": "Free Chat",
-    "description": "The button next to 'New Chat' opens the Free Chat page; configure the sites it can switch between here. Sign in inside that page.",
+    "title": "Supported Sites",
+    "description": "Manage the sites this page can switch between. Sign in inside the page.",
     "add": "Add",
     "remove": "Remove",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
     "reset": "Restore defaults",
-    "empty": "The list is empty, so the Free Chat page has no site to switch to.",
+    "empty": "The list is empty, so this page has no site to switch to.",
     "namePlaceholder": "Name",
     "urlPlaceholder": "https://example.com"
   },

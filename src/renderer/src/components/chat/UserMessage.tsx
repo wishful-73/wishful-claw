@@ -5,7 +5,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@renderer/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@renderer/components/ui/dropdown-menu'
 import { useProviderStore, modelSupportsVision } from '@renderer/stores/provider-store'
-import { Pencil, Check, X, Copy, ImagePlus, Trash2, Ellipsis, Languages, Volume2, Share2, ChevronsUpDown, ChevronsDownUp, CornerDownRight } from 'lucide-react'
+import { Pencil, Check, X, Copy, ImagePlus, Trash2, Ellipsis, Volume2, Share2, ChevronsUpDown, ChevronsDownUp, CornerDownRight } from 'lucide-react'
 import { formatTokens } from '@renderer/lib/format-tokens'
 import { useMemoizedTokens } from '@renderer/hooks/use-estimated-tokens'
 import type {
@@ -24,8 +24,6 @@ import {
   type ImageAttachment
 } from '@renderer/lib/image-attachments'
 import { expandPastedBlocks, selectFileTextToPlainText } from '@renderer/lib/select-file-tags'
-import { useTranslateStore } from '@renderer/stores/translate-store'
-import { useUIStore } from '@renderer/stores/ui-store'
 import { useSkillsStore } from '@renderer/stores/skills-store'
 import { SystemCommandCard } from './SystemCommandCard'
 import { SelectFileInlineText } from './SelectFileInlineText'
@@ -88,8 +86,6 @@ export function UserMessage({
     const model = activeProvider.models.find((item: any) => item.id === activeModelId)
     return modelSupportsVision(model as AIModelConfig | undefined, activeProvider.type)
   }, [activeModelId, activeProvider])
-  const openTranslatePage = useUIStore((s) => s.openTranslatePage)
-  const setTranslateSourceText = useTranslateStore((s) => s.setSourceText)
   const availableSkills = useSkillsStore((s) => s.skills)
   const skillsLoading = useSkillsStore((s) => s.loading)
   const loadSkills = useSkillsStore((s) => s.loadSkills)
@@ -155,14 +151,6 @@ export function UserMessage({
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }, [copyText])
-
-  const handleTranslate = useCallback((): void => {
-    const text = expandedText.trim()
-    if (!text) return
-    setTranslateSourceText(text)
-    openTranslatePage()
-    toast.success(t('messageActions.sentToTranslator'))
-  }, [expandedText, openTranslatePage, setTranslateSourceText, t])
 
   const handleSpeak = useCallback((): void => {
     const text = expandedText.trim()
@@ -469,10 +457,6 @@ export function UserMessage({
                     {t('userMessage.edit')}
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onSelect={handleTranslate} disabled={!expandedText.trim()}>
-                  <Languages className="size-4" />
-                  {t('messageActions.translate')}
-                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={handleSpeak} disabled={!expandedText.trim()}>
                   <Volume2 className="size-4" />
                   {t('messageActions.readAloud')}

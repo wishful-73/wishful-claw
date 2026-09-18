@@ -22,6 +22,13 @@ export interface UpdateAvailablePayload extends UpdateDistributionInfo {
   currentVersion: string
   newVersion: string
   releaseNotes: string
+  /**
+   * Set when the background poll found this update. The renderer should light up the banner and
+   * update its snapshot but must not pop the dialog on its own — an hourly check that grabs focus
+   * is worse than the update it announces. Omitted means "announce normally": that covers the
+   * startup check and a manual check, both of which the user is waiting on.
+   */
+  silent?: boolean
 }
 
 /**

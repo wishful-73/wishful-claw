@@ -7,6 +7,8 @@ import {
 } from './commit-graph-layout'
 
 const NODE_RADIUS = 3.5
+/** 节点本体只有 7px 直径、很难命中，垫一层透明的扩大命中区；行距 26px，不会与相邻行重叠。 */
+const NODE_HIT_RADIUS = 8
 /** Fraction of the vertical gap spent easing into the curve, so merges look smooth. */
 const CURVE_RATIO = 0.6
 
@@ -15,7 +17,16 @@ const CURVE_RATIO = 0.6
  * dependency; the row heights here must match `GRAPH_ROW_HEIGHT` in the layout module,
  * because the sibling commit list positions its rows against this drawing.
  */
-export function CommitGraphSvg({ layout }: { layout: CommitGraphLayout }): React.JSX.Element {
+export function CommitGraphSvg({
+  layout,
+  activeHash = null,
+  onRowHover
+}: {
+  layout: CommitGraphLayout
+  /** 被标出的提交哈希，由父容器的行 hover 或本组件内的节点 hover 驱动，两侧共用。 */
+  activeHash?: string | null
+  onRowHover?: (hash: string | null) => void
+}): React.JSX.Element {
   return (
     <svg
       className="shrink-0"
@@ -43,15 +54,30 @@ export function CommitGraphSvg({ layout }: { layout: CommitGraphLayout }): React
           )
         })
       )}
-      {layout.rows.map((row) => (
-        <circle
-          key={row.commit.hash}
-          cx={graphNodeX(row.lane)}
-          cy={graphNodeY(row.row)}
-          r={NODE_RADIUS}
-          fill={laneColor(row.lane)}
-        />
-      ))}
+      {layout.rows.map((row) => {
+        const isActive = activeHash === row.commit.hash
+        return (
+          <g
+            key={row.commit.hash}
+            onMouseEnter={() => onRowHover?.(row.commit.hash)}
+            onMouseLeave={() => onRowHover?.(null)}
+          >
+            <circle
+              cx={graphNodeX(row.lane)}
+              cy={graphNodeY(row.row)}
+              r={NODE_HIT_RADIUS}
+              fill="transparent"
+            />
+            <circle
+              cx={graphNodeX(row.lane)}
+              cy={graphNodeY(row.row)}
+              r={isActive ? NODE_RADIUS * 2 : NODE_RADIUS}
+              fill={laneColor(row.lane)}
+              style={{ transition: 'r 120ms ease-out' }}
+            />
+          </g>
+        )
+      })}
     </svg>
   )
 }

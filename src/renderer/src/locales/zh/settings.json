@@ -84,7 +84,7 @@
       "label": "MCP"
     },
     "ssh": {
-      "label": "SSH 连接",
+      "label": "终端与SSH",
       "desc": "管理远程服务器 SSH 连接"
     },
     "appPlugins": {
@@ -216,6 +216,11 @@
       "searchPlaceholder": "搜索服务商",
       "addTooltip": "添加自定义服务商",
       "enabled": "已启用",
+      "recommended": "推荐",
+      "badges": {
+        "paid": "$10/月",
+        "free": "限时免费"
+      },
       "disabled": "已禁用",
       "noProviders": "暂无服务商",
       "models": "模型",
@@ -253,7 +258,7 @@
       "protocolType": "协议类型",
       "protocolTypeHint": "切换协议后请确认 Base URL 与新协议匹配",
       "requestHeaders": {
-        "title": "请求头",
+        "title": "自定义请求头",
         "add": "添加请求头",
         "namePlaceholder": "请求头名称",
         "valuePlaceholder": "值",
@@ -1360,8 +1365,27 @@
     "serverRemoveFailed": "移除服务器失败"
   },
   "ssh": {
-    "title": "SSH 连接",
-    "description": "管理 SSH 服务器连接，用于远程命令执行",
+    "title": "终端与SSH",
+    "description": "内置终端的默认 shell，以及用于远程命令执行的 SSH 连接",
+    "terminal": {
+      "title": "终端",
+      "description": "新建终端标签页时使用的 shell；已打开的标签页不受影响",
+      "customPlaceholder": "/path/to/shell",
+      "shellOptions": {
+        "auto": "自动（优先 PowerShell）",
+        "powershell": "Windows PowerShell",
+        "pwsh": "PowerShell 7+",
+        "cmd": "命令提示符 (cmd)",
+        "zsh": "zsh",
+        "bash": "bash",
+        "sh": "sh",
+        "custom": "自定义路径"
+      }
+    },
+    "connections": {
+      "title": "SSH 连接",
+      "description": "用于远程命令执行的服务器连接"
+    },
     "add": "添加连接",
     "empty": "暂无 SSH 连接，点击「添加连接」创建",
     "test": "测试连接",
@@ -1428,7 +1452,7 @@
     },
     "sessionDefaults": {
       "title": "会话默认值",
-      "desc": "设置新建项目会话的协作模式与 Cowork 权限",
+      "desc": "设置新建会话的协作模式与默认权限模式",
       "collaboration": {
         "label": "项目会话默认协作模式",
         "desc": "Chat 为只读协作；Cowork 可执行项目操作",
@@ -1436,12 +1460,12 @@
         "cowork": "Cowork"
       },
       "permission": {
-        "label": "Cowork 默认权限模式",
+        "label": "默认权限模式",
         "desc": "Default 按策略审批；YOLO 自动批准工具调用",
         "default": "Default",
         "fullAccess": "YOLO"
       },
-      "hint": "只影响新项目会话，不覆盖已有会话；全局会话固定为 Chat。"
+      "hint": "只影响新会话，不覆盖已有会话。权限模式的默认值对聊天、协作与全局会话一律生效；渠道会话固定为 YOLO。"
     },
     "residentTurns": {
       "title": "聊天窗内存窗口",
@@ -1475,6 +1499,8 @@
       "exitFullscreen": "退出全屏阅读"
     },
     "banner": {
+      "available": "发现新版本 {{version}}",
+      "availableCurrent": "当前版本 {{current}}",
       "downloading": "正在后台下载更新…",
       "downloaded": "更新 {{version}} 已下载，等待重启安装",
       "error": "更新失败",
@@ -1601,12 +1627,14 @@
     }
   },
   "freeChatPage": {
-    "title": "免费对话",
-    "description": "侧栏「新对话」右侧的按钮会打开免费对话页，这里配置该页可切换的站点。登录请在页面内自行完成。",
+    "title": "支持清单",
+    "description": "管理本页可切换的站点清单，登录请在页面内自行完成。",
     "add": "添加",
     "remove": "删除",
+    "moveUp": "上移",
+    "moveDown": "下移",
     "reset": "恢复默认",
-    "empty": "清单为空，免费对话页将没有可切换的站点。",
+    "empty": "清单为空，本页将没有可切换的站点。",
     "namePlaceholder": "名称",
     "urlPlaceholder": "https://example.com"
   },

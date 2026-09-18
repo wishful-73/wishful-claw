@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.30",
+  "version": "0.2.31",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -41,7 +41,14 @@
     "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs",
     "test:channel-shell-approval": "esbuild tests/channel-shell-approval/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-shell-approval/out/program.cjs && node tests/channel-shell-approval/out/program.cjs",
     "test:browser-user-agent": "esbuild tests/browser-user-agent/program.ts --bundle --platform=node --format=cjs --outfile=tests/browser-user-agent/out/program.cjs && node tests/browser-user-agent/out/program.cjs",
-    "test:free-chat-tabs": "esbuild tests/free-chat-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/free-chat-tabs/out/program.cjs && node tests/free-chat-tabs/out/program.cjs"
+    "test:free-chat-tabs": "esbuild tests/free-chat-tabs/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/free-chat-tabs/out/program.cjs && node tests/free-chat-tabs/out/program.cjs",
+    "test:message-timestamp": "esbuild tests/message-timestamp/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/message-timestamp/out/program.cjs && node tests/message-timestamp/out/program.cjs",
+    "test:free-chat-sites": "esbuild tests/free-chat-sites/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/free-chat-sites/out/program.cjs && node tests/free-chat-sites/out/program.cjs",
+    "test:shell-executable": "esbuild tests/shell-executable/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/shell-executable/out/program.cjs && node tests/shell-executable/out/program.cjs",
+    "test:queued-message-text": "esbuild tests/queued-message-text/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/queued-message-text/out/program.cjs && node tests/queued-message-text/out/program.cjs",
+    "test:codegraph-availability": "esbuild tests/codegraph-availability/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/codegraph-availability/out/program.cjs && node tests/codegraph-availability/out/program.cjs",
+    "test:background-wake-message": "esbuild tests/background-wake-message/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/background-wake-message/out/program.cjs && node tests/background-wake-message/out/program.cjs",
+    "test:session-permission-mode": "esbuild tests/session-permission-mode/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/session-permission-mode/out/program.cjs && node tests/session-permission-mode/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

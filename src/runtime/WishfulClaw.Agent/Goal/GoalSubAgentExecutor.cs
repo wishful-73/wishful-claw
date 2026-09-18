@@ -101,7 +101,10 @@ internal static class GoalSubAgentExecutor
             writer.WriteString("sessionMode", "goalSubAgent");
             writer.WriteString("runtimeRole", "goalSubAgent");
             writer.WriteString("goalContextId", goal.GoalContextId);
-            writer.WriteNumber("maxIterations", 12);
+            // 0 = 不限轮次（iter-31 S-53）。这里曾经写死 12，与 Task 子代理的默认值同源 ——
+            // 第 12 轮被掐断时它同样往往还没输出结论。防跑飞改由轮次提醒承担
+            //（见 AgentLoop.SubAgentReminder.cs），父 run 的取消令牌是最终兜底。
+            writer.WriteNumber("maxIterations", 0);
             writer.WriteBoolean("providerTurnOnly", false);
 
             var provider = AgentLoop.GetObject(parentParameters, "provider");

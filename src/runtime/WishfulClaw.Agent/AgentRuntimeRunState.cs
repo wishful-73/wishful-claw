@@ -197,6 +197,18 @@ public sealed class AgentRuntimeRunState : IDisposable
         Interlocked.Exchange(ref _stopRequested, 1);
     }
 
+    /// <summary>
+    /// 记录本次 run 的结束原因，仅在尚未设置时写入（iter-31 S-53）。
+    ///
+    /// AgentLoop 的循环退出之后才算得出真实原因（正常跑完 / 撞轮次上限），此前它只把
+    /// 这个原因喂给了 loop_end 事件、没有落到 state 上 —— 于是 SubAgentExecutor 上报的
+    /// StopReason 永远是 null，UI 里「被掐断的 run」和「干完的 run」长得一模一样。
+    /// </summary>
+    internal void RecordStopReason(string reason)
+    {
+        StopReason ??= string.IsNullOrWhiteSpace(reason) ? "completed" : reason;
+    }
+
     public void Dispose()
     {
         lock (_messageQueueSync)

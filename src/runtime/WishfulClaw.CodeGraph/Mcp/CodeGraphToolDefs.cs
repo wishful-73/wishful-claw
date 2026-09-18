@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json.Serialization;
 
 // =============================================================================
@@ -173,8 +172,7 @@ internal static class CodeGraphToolDefs
     //   * indexedFileCount:null — a project is known but its stats are unavailable
     //     (not yet indexed, or the stats read failed): serve the un-shaped surface,
     //     exactly like the upstream getTools catch branch.
-    //   * indexedFileCount set — tiny-repo gating + the dynamic explore budget
-    //     suffix scaled to project size (tools.ts:1003/:1013).
+    //   * indexedFileCount set — tiny-repo gating (tools.ts:997).
     public static CodeGraphToolsListResult ListFor(bool hasDefaultProject, int? indexedFileCount)
     {
         var visible = VisibleTools();
@@ -193,17 +191,6 @@ internal static class CodeGraphToolDefs
             visible = visible.Where(t => Array.IndexOf(TinyRepoCoreTools, t.Name) >= 0).ToArray();
         }
 
-        var callBudget = CodeGraphExploreBudget.GetCallBudget(fileCount);
-        visible = visible
-            .Select(t => t.Name == "codegraph_explore"
-                ? t with
-                {
-                    Description = t.Description
-                        + $" Budget: make at most {callBudget} calls for this project "
-                        + $"({fileCount.ToString("N0", CultureInfo.InvariantCulture)} files indexed)."
-                }
-                : t)
-            .ToArray();
         return new CodeGraphToolsListResult(Success: true, Tools: visible);
     }
 

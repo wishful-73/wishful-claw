@@ -1,12 +1,12 @@
 // Composer editor area: skill tag, optimizing indicator, optimization dialog,
-// drag overlay, FileAwareEditor, flyovers, hidden file input
+// drag overlay, FileAwareEditor, flyovers
 
 import * as React from 'react'
 import { Sparkles, X, FileUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { cn } from '@renderer/lib/utils'
-import { ACCEPTED_IMAGE_TYPES, type ImageAttachment } from '@renderer/lib/image-attachments'
+import type { ImageAttachment } from '@renderer/lib/image-attachments'
 import { FileAwareEditor } from '../FileAwareEditor'
 import type { FileAwareEditorHandle } from '../file-aware-editor-utils'
 import type { EditorDocumentNode, SelectedFileItem } from '@renderer/lib/select-file-editor'
@@ -90,10 +90,6 @@ export interface ComposerEditorAreaProps {
   setSelectedSlashIndex: React.Dispatch<React.SetStateAction<number>>
   slashListRef: React.RefObject<HTMLDivElement | null>
   applySlashSuggestion: (item: import('./types').SlashSuggestionItem) => void
-
-  // Hidden file input for queue images
-  queueFileInputRef: React.RefObject<HTMLInputElement | null>
-  addQueuedImages: (files: File[]) => void
 }
 
 export function ComposerEditorArea(props: ComposerEditorAreaProps) {
@@ -217,21 +213,6 @@ export function ComposerEditorArea(props: ComposerEditorAreaProps) {
           />
         </div>
       </div>
-
-      {/* Hidden file input for queue image upload */}
-      <input
-        ref={props.queueFileInputRef}
-        type="file"
-        accept={ACCEPTED_IMAGE_TYPES.join(',')}
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files) {
-            void props.addQueuedImages(Array.from(e.target.files))
-          }
-          e.target.value = ''
-        }}
-      />
     </>
   )
 }

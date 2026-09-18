@@ -4,18 +4,18 @@
 // §3.2). Two knobs, both scaled to the indexed file count and sharing the same
 // tier breakpoints so a project sits in the SAME tier across both:
 //
-//   * CALL budget — the recommended number of codegraph_explore calls, surfaced
-//     as a dynamic suffix on the explore tool description in tools-list
-//     ("Budget: make at most N calls …", tools.ts:1013).
+//   * CALL budget — the recommended number of codegraph_explore calls. Ported for
+//     parity with upstream, but no longer surfaced anywhere: the product dropped
+//     the call-count hint from both the tool description and the result trailer.
 //   * OUTPUT budget — the per-call rendering caps. Smaller codebases get a
 //     tighter total cap / fewer default files / smaller per-file cap so a
 //     focused query on a 100-file project doesn't dump a whole file's source
 //     into the agent's context; large repos keep the generous defaults but cap
 //     at ~24K chars, UNDER the host's inline tool-result ceiling (~25K) — above
 //     it the result is externalized to a file the agent Reads back (#185).
-//     Meta-text toggles (relationships / additional-files / completeness /
-//     budget note) are gated off for tiny projects where one rich call is the
-//     whole story. Invariant: a larger tier never gets a smaller MaxCharsPerFile
+//     Meta-text toggles (relationships / additional-files / completeness) are
+//     gated off for tiny projects where one rich call is the whole story. Invariant:
+//     a larger tier never gets a smaller MaxCharsPerFile
 //     than a smaller tier.
 //
 // The record is IN-PROCESS only (never crosses the wire), so it is not
@@ -24,6 +24,9 @@
 internal static class CodeGraphExploreBudget
 {
     // getExploreBudget (tools.ts:134): recommended explore CALLS by project size.
+    // 当前无消费方 —— 产品已下线 explore 的调用次数提示（工具描述后缀与结果末尾提醒
+    // 两处均已去掉）。它与上游工具面保持着移植一致，故保留；注意它从来只是"建议次数"，
+    // 任何代码都不据此拦截调用。
     public static int GetCallBudget(int fileCount)
     {
         if (fileCount < 500)
@@ -103,7 +106,7 @@ internal static class CodeGraphExploreBudget
         }
 
         // Large + very-large repos: SAME ~24K inline ceiling — more files indexed
-        // means more CALLS (GetCallBudget), never a bigger single response.
+        // never means a bigger single response.
         return new CodeGraphExploreOutputBudget(
             MaxOutputChars: 24_000,
             DefaultMaxFiles: 8,

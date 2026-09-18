@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   ContentBlock,
   ToolResultContent,
   ToolUseBlock,
@@ -9,6 +9,7 @@ import {
   isCompactBoundaryMessage,
   isCompactSummaryLikeMessage
 } from '@renderer/lib/agent/context-compression'
+import { isBackgroundWakeMessage } from '@renderer/lib/agent/sub-agents/background-wake-message'
 import { THINK_OPEN_TAG_RE } from './AssistantMessage/types'
 import { TailToolExecutionState } from './transcript-utils'
 import { HIDDEN_MESSAGE_LIST_TOOL_NAMES } from './transcript-utils'
@@ -22,7 +23,11 @@ export function isToolResultOnlyUserMessage(message: UnifiedMessage): boolean {
 }
 
 export function isRealUserMessage(message: UnifiedMessage): boolean {
-  return isEditableUserMessage(message) && !isCompactSummaryLikeMessage(message)
+  return (
+    isEditableUserMessage(message) &&
+    !isCompactSummaryLikeMessage(message) &&
+    !isBackgroundWakeMessage(message)
+  )
 }
 
 export function hasVisibleAssistantBlock(block: ContentBlock): boolean {

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;
@@ -295,11 +295,11 @@ public static class AgentRuntimeProjectExecutor
             var result = await AgentRuntimeReverseRequests.RequestAsync(
                 context, "project/send-session-message", reverseParams, cancellationToken);
 
-            var output = result.ValueKind == JsonValueKind.String
-                ? result.GetString() ?? string.Empty
-                : result.ToString();
-
-            return string.IsNullOrEmpty(output) ? "Message sent successfully." : output;
+            // S-58：渲染端 handler 返回 { success, result?, error?, followUpId? }。以前这里直接
+            // ToString() 把整份 JSON 交给 agent —— 「已受理但排队」那条分支的回执里带着
+            // success:false，agent 读到原文就当成派发失败。按 success 决定输出走向：
+            // 失败才进错误通道，成功只把 result 文案交出去。
+            return FormatSendSessionMessageResult(result);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -381,6 +381,34 @@ public static class AgentRuntimeProjectExecutor
             throw new InvalidOperationException($"Required field '{name}' is empty");
 
         return value;
+    }
+
+    /// <summary>
+    /// 把渲染端 send-session-message handler 的返回对象转成工具输出。
+    /// 返回对象形如 { success, result?, error?, followUpId? }：只有 success 为 false
+    /// 才走错误通道（EncodeError），成功时只交出 result 文案，避免 agent 读到整份 JSON。
+    /// </summary>
+    internal static string FormatSendSessionMessageResult(JsonElement result)
+    {
+        if (result.ValueKind != JsonValueKind.Object)
+        {
+            var text = result.ValueKind == JsonValueKind.String
+                ? result.GetString() ?? string.Empty
+                : result.ToString();
+            return string.IsNullOrEmpty(text) ? "Message sent successfully." : text;
+        }
+
+        var succeeded = !result.TryGetProperty("success", out var success) ||
+            success.ValueKind != JsonValueKind.False;
+        var message = JsonHelpers.GetString(result, "result")?.Trim();
+
+        if (!succeeded)
+        {
+            var error = JsonHelpers.GetString(result, "error")?.Trim();
+            return EncodeError(string.IsNullOrEmpty(error) ? "Failed to send session message." : error);
+        }
+
+        return string.IsNullOrEmpty(message) ? "Message sent successfully." : message;
     }
 
     private static string EncodeError(string message)

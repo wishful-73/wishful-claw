@@ -91,22 +91,7 @@ export interface UIStore {
   openSettingsPage: (tab?: SettingsTab) => void
   closeSettingsPage: () => void
 
-  // Feature page toggles (all preserved as entry points)
-  skillsPageOpen: boolean
-  openSkillsPage: () => void
-  closeSkillsPage: () => void
-  soulsPageOpen: boolean
-  openSoulsPage: () => void
-  closeSoulsPage: () => void
-  syncPageOpen: boolean
-  openSyncPage: () => void
-  closeSyncPage: () => void
-  resourcesPageOpen: boolean
-  openResourcesPage: () => void
-  closeResourcesPage: () => void
-  translatePageOpen: boolean
-  openTranslatePage: () => void
-  closeTranslatePage: () => void
+  // Feature page toggles
   drawPageOpen: boolean
   openDrawPage: () => void
   closeDrawPage: () => void
@@ -116,9 +101,6 @@ export interface UIStore {
   tasksPageOpen: boolean
   openTasksPage: () => void
   closeTasksPage: () => void
-  codeGraphPageOpen: boolean
-  openCodeGraphPage: () => void
-  closeCodeGraphPage: () => void
   taskBoardPageOpen: boolean
   openTaskBoardPage: () => void
   closeTaskBoardPage: () => void
@@ -132,6 +114,14 @@ export interface UIStore {
   setChangelogDialogOpen: (open: boolean) => void
   pendingInsertText: string | null
   setPendingInsertText: (text: string | null) => void
+  /**
+   * S-57：随 `pendingInsertText` 一起送进输入框的图片附件（排队消息「取回」用）。
+   * `attachedImages` 是 InputArea 的局部 state，没有别的外部写入通道。
+   */
+  pendingInsertImages: import('@renderer/lib/image-attachments').ImageAttachment[] | null
+  setPendingInsertImages: (
+    images: import('@renderer/lib/image-attachments').ImageAttachment[] | null
+  ) => void
 
   // Detail panel
   detailPanelOpen: boolean
@@ -255,7 +245,6 @@ export interface UIStore {
   navigateToHome: () => void
   navigateToProject: (projectId?: string | null) => void
   navigateToArchive: (projectId?: string | null) => void
-  navigateToChannels: (projectId?: string | null) => void
   navigateToGit: (projectId?: string | null) => void
   navigateToPersona: (projectId?: string | null) => void
   navigateToSession: (sessionId?: string | null) => void

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Infrastructure.Db;
 
@@ -25,10 +25,11 @@ internal static partial class Program
             "SELECT collaboration_mode FROM sessions WHERE id = @id",
             new SqliteParameter("@id", firstSessionId)),
             "plugin route persists chat collaboration mode");
-        AssertEqual("default", db.QueryScalar<string>(
+        // iter-31 S-59：渠道会话默认 YOLO —— 对面没人守着，弹审批只会把这一轮挂死。
+        AssertEqual("fullAccess", db.QueryScalar<string>(
             "SELECT permission_mode FROM sessions WHERE id = @id",
             new SqliteParameter("@id", firstSessionId)),
-            "plugin route persists default permission mode");
+            "plugin route persists YOLO permission mode");
 
         var reusedSessionId = RoutePluginSession(dbPath, pluginId, chatId);
         AssertEqual(firstSessionId, reusedSessionId, "plugin route reuses the persisted session");

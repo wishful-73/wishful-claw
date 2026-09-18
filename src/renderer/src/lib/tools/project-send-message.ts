@@ -30,6 +30,7 @@ import {
   registerExternalChannelReply,
   unregisterExternalChannelReply
 } from '@renderer/hooks/use-channel-auto-reply'
+import { getPendingSessionMessages } from '@renderer/hooks/use-chat-actions'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import {
@@ -197,6 +198,11 @@ export async function handleProjectSendSessionMessage(
     registerExternalChannelReply(sessionId, pluginId, externalChatId)
   }
 
+  // S-58：sendMessage 返回 false 有两种语义 —— 真失败（没 sessionId / agent run 起不来）
+  // 与「已受理但排队」（目标会话已有活跃 run，消息进了 _pendingMessages）。返回值只有
+  // boolean，这里靠队列变化来区分：入队是同步发生的，sendMessage 返回时队列已经改了。
+  const pendingCountBefore = getPendingSessionMessages(sessionId).length
+
   // 4. Fire-and-forget sendMessage — global session doesn't need to wait for result
   //    The Agent can check back later via get_project_details.
   try {
@@ -223,6 +229,22 @@ export async function handleProjectSendSessionMessage(
       contextCompressionThreshold: settings.contextCompressionThreshold
     })
     if (!started) {
+      // S-58：排队不是失败。消息已经受理，当前轮跑完会自动出队 —— 这条分支不能撤渠道
+      // 回执注册、也不能把 followUp 标 blocked，那轮还没跑呢。
+      const pendingAfter = getPendingSessionMessages(sessionId)
+      const queued =
+        pendingAfter.some((message) => message.text === content) ||
+        pendingAfter.length > pendingCountBefore
+      if (queued) {
+        return {
+          success: true,
+          result: scheduledFollowUpId
+            ? `Message queued for session "${sessionId}"; it will run after the current turn finishes. Temporary follow-up "${scheduledFollowUpId}" is scheduled.`
+            : `Message queued for session "${sessionId}"; it will run after the current turn finishes. Check back later with get_project_details.`,
+          followUpId: scheduledFollowUpId ?? undefined
+        }
+      }
+
       if (channelRegisteredHere) unregisterExternalChannelReply(sessionId)
       const error = `Failed to start message processing for session "${sessionId}".`
       await failScheduledFollowUp(error)

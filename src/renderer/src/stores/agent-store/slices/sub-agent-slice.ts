@@ -112,7 +112,7 @@ export const createSubAgentSlice: Slice = (set, _get) => ({
               if (existing?.isQueued) {
                 existing.isRunning = true
                 existing.isQueued = false
-                ;(existing as any).isBackground = Boolean(event.input?.background)
+                ;existing.isBackground = Boolean(event.input?.background)
                 existing.mcpServerIds = event.mcpServerIds ?? []
                 existing.permissionMode = event.permissionMode ?? 'default'
                 existing.reportStatus = 'pending'
@@ -146,7 +146,7 @@ export const createSubAgentSlice: Slice = (set, _get) => ({
                 ),
                 isRunning: true,
                 isQueued: false,
-                ...(Boolean(event.input?.background) ? { isBackground: true } as any : {}),
+                ...(Boolean(event.input?.background) ? { isBackground: true } : {}),
                 success: null,
                 endReason: null,
                 errorMessage: null,

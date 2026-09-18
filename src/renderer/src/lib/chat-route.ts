@@ -5,7 +5,7 @@
  */
 
 export interface ChatRoute {
-  chatView: 'home' | 'project' | 'archive' | 'channels' | 'git' | 'session'
+  chatView: 'home' | 'project' | 'archive' | 'git' | 'session'
   projectId: string | null
   sessionId: string | null
 }

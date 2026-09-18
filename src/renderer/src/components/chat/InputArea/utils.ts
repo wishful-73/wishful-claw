@@ -10,7 +10,6 @@ import type { SelectedFileReference } from '@renderer/lib/api/types'
 import { IMAGE_MEDIA_TYPE_BY_EXTENSION } from './types'
 import { calculateCost, calculateCostBreakdown, getBillableInputTokens, getCacheCreationTokens, getCacheCreationSplit } from '@renderer/lib/format-tokens'
 import { formatDurationMs } from '@renderer/lib/format-duration'
-import { selectFileTextToPlainText } from '@renderer/lib/select-file-tags'
 import { parseThinkTags } from '../AssistantMessage/think-parser'
 
 export function normalizeTokenCount(value: number | null | undefined): number {
@@ -321,11 +320,12 @@ export function areQueuedMessagesEqual(
   return true
 }
 
-export function summarizeQueuedMessage(text: string): string {
-  const normalized = selectFileTextToPlainText(text).replace(/\s+/g, ' ').trim()
-  if (!normalized) return ''
-  return normalized.length > 72 ? `${normalized.slice(0, 72)}…` : normalized
-}
+// 排队消息的摘要与悬停全文统一放在 lib/queued-message-text（纯模块，可单测），
+// 这里只做转出，让挂在本模块下的调用点保持不变。
+export {
+  queuedMessageFullText,
+  summarizeQueuedMessage
+} from '@renderer/lib/queued-message-text'
 
 export function isReferenceOnlyDocument(document: EditorDocumentNode[]): boolean {
   if (document.length === 0) return false

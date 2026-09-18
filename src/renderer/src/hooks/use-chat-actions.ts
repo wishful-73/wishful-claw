@@ -24,6 +24,28 @@ import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@rend
 import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-context'
 import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
 import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
+import type { ChatMessage } from '@renderer/stores/chat-store/types'
+import { dbUpsertMessage } from '@renderer/stores/chat-store/db-helpers'
+import {
+  CODEGRAPH_INDEX_PROBE_TIMEOUT_MS,
+  CODEGRAPH_INDEX_STATUS_METHOD,
+  resolveCodegraphEnabled
+} from '@renderer/lib/agent/codegraph-availability'
+
+// 索引探测：一次 codegraph/index-status RPC，只认 indexed === true。
+// 动态 import 是为了不让 Electron IPC 依赖链被静态拉进本模块。
+async function probeCodegraphIndexStatus(request: {
+  workingFolder: string
+  dataRoot?: string
+}): Promise<boolean> {
+  const { agentBridge } = await import('@renderer/lib/ipc/agent-bridge')
+  const status = (await agentBridge.request(
+    CODEGRAPH_INDEX_STATUS_METHOD,
+    request,
+    CODEGRAPH_INDEX_PROBE_TIMEOUT_MS
+  )) as { indexed?: boolean } | null
+  return status?.indexed === true
+}
 
 export interface SendMessageOptions {
   clearCompletedTasksOnTurnStart?: boolean
@@ -153,7 +175,15 @@ export function useChatActions() {
       // 发给 LLM 的工具清单由 Worker 侧按 run context 与各工具自己的 VisibleScopes 解析；
       // 渲染端只负责预热缓存。渲染端注册的 handler 仍可按名字执行，只是定义不下发。
       const settings = settingsStore
-      const codegraphEnabled = useAppPluginStore.getState().isCodeGraphToolAvailable()
+      // 「插件开关开 ∧ 项目已有索引」：插件没开、或这次运行没有项目根时都是 false，
+      // 而且不会去问索引状态。判据为什么必须在这边算，见 codegraph-availability.ts。
+      const codegraphEnabled = await resolveCodegraphEnabled({
+        pluginEnabled: useAppPluginStore.getState().isCodeGraphToolAvailable(),
+        workingFolder,
+        projectId,
+        sshConnectionId,
+        probe: probeCodegraphIndexStatus
+      })
 
       getCachedTools()
       fetchToolDefinitions() // fire-and-forget background fetch
@@ -216,7 +246,9 @@ export function useChatActions() {
         runtimeRole: opts?.sessionMode === 'goal' ? 'goalRunner' : 'sessionAgent',
         ...(opts?.enablePlanMode && !isChannelSession ? { enablePlanMode: true } : {}),
         sessionMode: isChannelSession ? 'channel' as const : opts?.sessionMode,
-        permissionMode: isChannelSession ? 'default' as const : session.permissionMode,
+        // Permission mode is per-session and no longer forced per collaboration mode
+        // (iter-31 S-59). Channel sessions land on YOLO through their own default.
+        permissionMode: session.permissionMode,
         ...(isChannelSession ? {
           pluginId: session.pluginId,
           pluginType: session.pluginType,
@@ -797,6 +829,24 @@ export async function insertPendingSessionMessageNow(
   }
 
   removePendingSessionMessage(sessionId, messageId)
+
+  // S-57：插入成功还得回显到聊天窗。原先只往 Worker 塞、再从队列删，界面上什么都
+  // 看不到（agent 下一轮确实读得到，用户却以为点了没反应）。落库走正常发送同一条
+  // 路，重启后历史里也有它。
+  const now = Date.now()
+  const chatMessage: ChatMessage = {
+    id: `user_${now}_injected`,
+    role: 'user',
+    text: item.text,
+    ...(Array.isArray(content) ? { content: content as ContentBlock[] } : {}),
+    createdAt: now
+  }
+  try {
+    useChatStore.getState().insertUserMessageIntoRunningTurn(sessionId, chatMessage)
+    void dbUpsertMessage(sessionId, chatMessage, 0)
+  } catch (error) {
+    console.warn('[ChatActions] Failed to echo the inserted message into the transcript', error)
+  }
   return true
 }
 
@@ -822,48 +872,6 @@ export function removePendingSessionMessage(sessionId: string, messageId: string
   }
   notifyPendingSessionMessageListeners()
   return true
-}
-
-export function updatePendingSessionMessageDraft(
-  sessionId: string,
-  messageId: string,
-  draft: unknown
-): void {
-  const list = _pendingMessages.get(sessionId) ?? []
-  const index = list.findIndex((message) => message.id === messageId)
-  if (index < 0) return
-
-  const current = list[index]
-  let text = current.text
-  let images = current.images
-  let command = current.command
-  if (typeof draft === 'string') {
-    text = draft
-  } else if (draft && typeof draft === 'object') {
-    const nextDraft = draft as { text?: string; images?: unknown[]; command?: unknown }
-    text = nextDraft.text ?? ''
-    images = (nextDraft.images ?? current.images) as import('@renderer/lib/image-attachments').ImageAttachment[]
-    command = (nextDraft.command ?? current.command) as PendingSessionMessageItem['command']
-  }
-
-  const requestText = typeof current.requestText === 'string'
-    ? text
-    : { ...current.requestText, text, images }
-  const updated: PendingSessionMessageItem = {
-    ...current,
-    content: text,
-    text,
-    images: [...images],
-    command,
-    requestText,
-    draft: text
-  }
-  _pendingMessages.set(sessionId, [
-    ...list.slice(0, index),
-    updated,
-    ...list.slice(index + 1)
-  ])
-  notifyPendingSessionMessageListeners()
 }
 
 export function quotePendingSessionMessageIntoConversation(

@@ -333,7 +333,7 @@ internal static partial class AgentLoop
                 try
                 {
                     turn = await ProviderRetryPolicy.ExecuteAsync(
-                        () => ExecuteTurnAsync(parameters, provider, conversation, toolDefs, state, context),
+                        () => ExecuteTurnAsync(parameters, provider, conversation, toolDefs, state, context, iteration),
                         state,
                         context,
                         provider);
@@ -491,9 +491,15 @@ internal static partial class AgentLoop
                     ToolResults: pairedResults.ToArray()));
         }
 
+        // 真实结束原因（正常跑完 / 撞轮次上限）。写回 state 之后 SubAgentExecutor
+        // 上报的 StopReason 才有值 —— 此前它恒为 null，被轮次掐断的 run 在 UI 上
+        // 与正常干完的长得一模一样（iter-31 S-53）。
+        var loopEndReason = state.StopReason ?? (completed ? "completed" : "max_iterations");
+        state.RecordStopReason(loopEndReason);
+
         await EmitLoopEndAsync(
             state, context,
-            state.StopReason ?? (completed ? "completed" : "max_iterations"),
+            loopEndReason,
             conversation,
             isSubAgentLoop: isSubAgentLoop,
             isGoalSubAgentLoop: isGoalSubAgentLoop);
@@ -592,13 +598,17 @@ internal static partial class AgentLoop
         List<AgentRuntimeChatMessage> conversation,
         IReadOnlyList<ToolDefinition> toolDefs,
         AgentRuntimeRunState state,
-        IWorkerRequestContext context)
+        IWorkerRequestContext context,
+        int iteration)
     {
         var providerType = JsonHelpers.GetString(provider, "type") ?? string.Empty;
 
         // 每轮把会话 todo 现状推送到模型眼前（iter-30 S-44）。没有可注入内容时原样返回。
         // 走临时副本：conversation 本身一字不动，历史前缀因此保持稳定。
         var wireConversation = InjectSessionTodo(parameters, conversation, state);
+
+        // 子代理的轮次提醒（iter-31 S-53）。仅子代理生效，主会话不受影响。
+        wireConversation = InjectSubAgentTurnReminder(parameters, wireConversation, iteration);
 
         if (providerType == "anthropic")
         {

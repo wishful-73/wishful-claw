@@ -68,7 +68,7 @@ export function LocalTerminal({
 
     const term = new XTerm({
       cursorBlink: true,
-      cursorStyle: 'block',
+      cursorStyle: 'bar',
       fontSize: 14,
       fontFamily:
         "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, 'Courier New', monospace",

@@ -54,10 +54,13 @@ public static class AgentRuntimeCodeCompatibleExecutor
         JsonElement parameters,
         CancellationToken cancellationToken)
     {
-        var script = JsonHelpers.GetString(call.Input, "script")?.Trim() ?? string.Empty;
-        if (script.Length == 0)
+        // 参数名必须与 CodeCompatibleToolProvider 的 schema 对齐 —— 那里声明的是
+        // "command"。历史上这里读的是 "script"，两边对不上，于是这个工具对任何调用方
+        // （直连、代理都一样）都只回一句「requires a non-empty script」。
+        var command = JsonHelpers.GetString(call.Input, "command")?.Trim() ?? string.Empty;
+        if (command.Length == 0)
         {
-            return EncodeError("PowerShell requires a non-empty script.");
+            return EncodeError("PowerShell requires a non-empty command.");
         }
 
         var cwd = JsonHelpers.GetString(parameters, "workingFolder") ??
@@ -68,7 +71,9 @@ public static class AgentRuntimeCodeCompatibleExecutor
         var psi = new ProcessStartInfo
         {
             FileName = OperatingSystem.IsWindows() ? "powershell.exe" : "pwsh",
-            Arguments = $"-NoLogo -NoProfile -Command \"{script.Replace("\"", "\\\"")}\"",
+            // -EncodedCommand 收 Base64(UTF-16LE)，脚本原样送到 PowerShell，不经过命令行
+            // 引号/转义解析。手拼 \" 的写法遇到脚本内的引号、$、反斜杠就会被拆坏。
+            Arguments = $"-NoLogo -NoProfile -EncodedCommand {Convert.ToBase64String(Encoding.Unicode.GetBytes(command))}",
             WorkingDirectory = Directory.Exists(cwd) ? cwd : Environment.CurrentDirectory,
             UseShellExecute = false,
             RedirectStandardOutput = true,

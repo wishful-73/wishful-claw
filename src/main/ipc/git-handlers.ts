@@ -311,12 +311,16 @@ export function registerGitHandlers(): void {
 
   // ── Commit ──
 
-  registerGitMessagePackHandler<GitTarget & { message: string }>('git:commit', async (args) => {
+  registerGitMessagePackHandler<GitTarget & { message: string; amend?: boolean }>('git:commit', async (args) => {
     const message = args.message.trim()
     if (!message) {
       return { success: false, error: 'Commit message is required', errorType: 'UNKNOWN' }
     }
-    const result = await execGit(['commit', '-m', message], args)
+    // 修订会改写当前 HEAD，只在显式传 amend 时追加。
+    const result = await execGit(
+      ['commit', ...(args.amend ? ['--amend'] : []), '-m', message],
+      args
+    )
     if (!result.success) return fail(result, 'Failed to commit')
     return okMutation(args, result)
   })

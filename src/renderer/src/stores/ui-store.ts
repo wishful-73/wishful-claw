@@ -201,21 +201,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
   closeSettingsPage: () => set({ settingsPageOpen: false }),
 
   // Feature page toggles
-  skillsPageOpen: false,
-  openSkillsPage: () => set({ skillsPageOpen: true }),
-  closeSkillsPage: () => set({ skillsPageOpen: false }),
-  soulsPageOpen: false,
-  openSoulsPage: () => set({ soulsPageOpen: true }),
-  closeSoulsPage: () => set({ soulsPageOpen: false }),
-  syncPageOpen: false,
-  openSyncPage: () => set({ syncPageOpen: true }),
-  closeSyncPage: () => set({ syncPageOpen: false }),
-  resourcesPageOpen: false,
-  openResourcesPage: () => set({ resourcesPageOpen: true }),
-  closeResourcesPage: () => set({ resourcesPageOpen: false }),
-  translatePageOpen: false,
-  openTranslatePage: () => set({ translatePageOpen: true }),
-  closeTranslatePage: () => set({ translatePageOpen: false }),
   drawPageOpen: false,
   openDrawPage: () => set({ drawPageOpen: true, freeChatPageOpen: false, tasksPageOpen: false, taskBoardPageOpen: false }),
   closeDrawPage: () => set({ drawPageOpen: false }),
@@ -227,17 +212,13 @@ export const useUIStore = create<UIStore>((set, get) => ({
       leftSidebarOpen: false,
       drawPageOpen: false,
       tasksPageOpen: false,
-      taskBoardPageOpen: false,
-      codeGraphPageOpen: false
+      taskBoardPageOpen: false
     }),
   // 返回主界面时把左侧栏放回来：进页面时让出去的宽度，出来要还回去。
   closeFreeChatPage: () => set({ freeChatPageOpen: false, leftSidebarOpen: true }),
   tasksPageOpen: false,
   openTasksPage: () => set({ drawPageOpen: false, tasksPageOpen: true, taskBoardPageOpen: false }),
   closeTasksPage: () => set({ tasksPageOpen: false }),
-  codeGraphPageOpen: false,
-  openCodeGraphPage: () => set({ codeGraphPageOpen: true }),
-  closeCodeGraphPage: () => set({ codeGraphPageOpen: false }),
   taskBoardPageOpen: false,
   openTaskBoardPage: () => set({ drawPageOpen: false, tasksPageOpen: false, taskBoardPageOpen: true }),
   closeTaskBoardPage: () => set({ taskBoardPageOpen: false }),
@@ -251,6 +232,8 @@ export const useUIStore = create<UIStore>((set, get) => ({
   setChangelogDialogOpen: (open: any) => set({ changelogDialogOpen: open }),
   pendingInsertText: null,
   setPendingInsertText: (text: any) => set({ pendingInsertText: text }),
+  pendingInsertImages: null,
+  setPendingInsertImages: (images: any) => set({ pendingInsertImages: images }),
 
   // Detail panel
   detailPanelOpen: false,
@@ -422,13 +405,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
       useChatStore.getState().setActiveProjectHome(resolvedProjectId)
     }
     set({ activeNavItem: 'chat', chatView: 'archive', ...CHAT_SURFACE_NAV_RESET })
-  },
-  navigateToChannels: (projectId: any) => {
-    const resolvedProjectId = projectId ?? useChatStore.getState().activeProjectId ?? null
-    if (resolvedProjectId) {
-      useChatStore.getState().setActiveProjectHome(resolvedProjectId)
-    }
-    set({ activeNavItem: 'chat', chatView: 'channels', ...CHAT_SURFACE_NAV_RESET })
   },
   navigateToGit: (projectId: any) => {
     const resolvedProjectId = projectId ?? useChatStore.getState().activeProjectId ?? null

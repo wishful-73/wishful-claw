@@ -164,4 +164,14 @@ export function useInputAreaEffects(input: InputAreaEffectsInput): void {
     replaceSelectionWithText(`${needsPrefix ? ' ' : ''}${pendingInsert}`, selection)
     useUIStore.getState().setPendingInsertText(null)
   }, [pendingInsert, replaceSelectionWithText, text, editorRef])
+
+  // ── Pending insert images ───────────────────────────────────────
+  // S-57：排队消息「取回」把附件一起送回输入框。attachedImages 是 InputArea
+  // 的局部 state，除了这里没有别的外部写入通道。
+  const pendingInsertImages = useUIStore((s) => s.pendingInsertImages)
+  React.useEffect(() => {
+    if (!pendingInsertImages || pendingInsertImages.length === 0) return
+    setAttachedImages((prev) => [...prev, ...cloneImageAttachments(pendingInsertImages)])
+    useUIStore.getState().setPendingInsertImages(null)
+  }, [pendingInsertImages, setAttachedImages])
 }

@@ -69,6 +69,16 @@ const chatModels: OpenCodeGoModel[] = [
     cacheHitPrice: 0.26
   },
   {
+    id: 'glm-5.3-flash',
+    name: 'GLM-5.3-Flash',
+    icon: 'chatglm',
+    type: 'openai-chat',
+    ...shared,
+    inputPrice: 0.15,
+    outputPrice: 0.5,
+    cacheHitPrice: 0.03
+  },
+  {
     id: 'glm-5.3',
     name: 'GLM-5.3',
     icon: 'chatglm',
@@ -206,6 +216,25 @@ const chatModels: OpenCodeGoModel[] = [
     cacheCreationPrice: 0.375
   },
   {
+    id: 'muse-spark-1.3-contributor',
+    name: 'Muse Spark 1.3 Contributor',
+    icon: 'meta',
+    type: 'openai-responses',
+    contextLength: 1_048_576,
+    maxOutputTokens: 32_768,
+    inputPrice: 0.1,
+    outputPrice: 0.2,
+    cacheHitPrice: 0.002,
+    supportsVision: true,
+    supportsFunctionCall: true,
+    supportsThinking: true,
+    thinkingConfig: {
+      bodyParams: {},
+      reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh'],
+      defaultReasoningEffort: 'medium'
+    }
+  },
+  {
     id: 'muse-spark-1.2-contributor',
     name: 'Muse Spark 1.2 Contributor',
     icon: 'meta',
@@ -236,6 +265,17 @@ const chatModels: OpenCodeGoModel[] = [
     cacheCreationPrice: 2.5
   },
   {
+    id: 'qwen3.8-flash',
+    name: 'Qwen3.8 Flash',
+    icon: 'qwen',
+    type: 'anthropic',
+    ...shared,
+    inputPrice: 0.15,
+    outputPrice: 0.47,
+    cacheHitPrice: 0.016,
+    cacheCreationPrice: 0.2
+  },
+  {
     id: 'qwen3.7-max',
     name: 'Qwen3.7 Max',
     icon: 'qwen',
@@ -252,10 +292,11 @@ const chatModels: OpenCodeGoModel[] = [
     icon: 'qwen',
     type: 'anthropic',
     ...shared,
-    inputPrice: 0.4,
-    outputPrice: 1.6,
-    cacheHitPrice: 0.04,
-    cacheCreationPrice: 0.5
+    // 官方按 256K 上下文分两档报价，单一价格字段装不下一组；取 >256K 档。
+    inputPrice: 1.2,
+    outputPrice: 4.8,
+    cacheHitPrice: 0.12,
+    cacheCreationPrice: 1.5
   },
   {
     id: 'qwen3.6-plus',
@@ -263,10 +304,11 @@ const chatModels: OpenCodeGoModel[] = [
     icon: 'qwen',
     type: 'anthropic',
     ...shared,
-    inputPrice: 0.5,
-    outputPrice: 3,
-    cacheHitPrice: 0.05,
-    cacheCreationPrice: 0.625
+    // 同 qwen3.7-plus：取 >256K 档。
+    inputPrice: 2,
+    outputPrice: 6,
+    cacheHitPrice: 0.2,
+    cacheCreationPrice: 2.5
   },
   {
     id: 'hy3',
@@ -364,11 +406,12 @@ const chatModels: OpenCodeGoModel[] = [
 
 export const opencodeGoPreset: BuiltinProviderPreset = {
   builtinId: 'opencode-go',
-  version: 6,
+  version: 8,
   name: 'OpenCode Go',
   type: 'openai-chat',
   defaultBaseUrl: OPENCODE_GO_BASE_URL,
-  homepage: 'https://opencode.ai/docs/zh-cn/go/',
+  // 推广链接（带邀请码），不是文档地址 —— 别顺手订正回 /docs/zh-cn/go/
+  homepage: 'https://opencode.ai/go?ref=PWHP4P4E29',
   apiKeyUrl: 'https://opencode.ai/auth',
   defaultModel: 'deepseek-v4-flash',
   defaultModels: chatModels.map((model) => ({ ...model, enabled: true }))

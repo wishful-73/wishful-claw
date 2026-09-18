@@ -3,11 +3,30 @@ import { useTranslation } from 'react-i18next'
 import { Loader2, Plus, Pencil, Server, Trash2, Zap, CheckCircle2, XCircle } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { useSshStore, type SshConnection } from '@renderer/stores/ssh-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import type { ShellExecutionEndpoint } from '@renderer/stores/settings-store-types'
+import { Input } from '@renderer/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@renderer/components/ui/select'
+import { SettingsSection } from './settings-primitives'
 import {
   SshConnectionDialog,
   DEFAULT_FORM,
   type SshFormData
 } from './SshConnectionDialog'
+
+/** 当前平台可选的 shell 端点 —— Windows 与 POSIX 各一套。 */
+function getShellEndpointOptions(): ShellExecutionEndpoint[] {
+  const isWindows = window.electron?.process?.platform === 'win32'
+  return isWindows
+    ? ['auto', 'powershell', 'pwsh', 'cmd', 'custom']
+    : ['auto', 'zsh', 'bash', 'sh', 'custom']
+}
 
 export function SshPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
@@ -25,6 +44,11 @@ export function SshPanel(): React.JSX.Element {
   const [saving, setSaving] = React.useState(false)
   const [testingId, setTestingId] = React.useState<string | null>(null)
   const [testResults, setTestResults] = React.useState<Record<string, { success: boolean; error?: string }>>({})
+
+  const shellExecutionEndpoint = useSettingsStore((s) => s.shellExecutionEndpoint)
+  const customShellExecutable = useSettingsStore((s) => s.customShellExecutable)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const shellEndpointOptions = getShellEndpointOptions()
 
   React.useEffect(() => {
     void loadAll()
@@ -132,15 +156,60 @@ export function SshPanel(): React.JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl px-8 pb-16 pt-10">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold">
+          {t('ssh.title', { defaultValue: '终端与SSH' })}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {t('ssh.description', {
+            defaultValue: '内置终端的默认 shell，以及用于远程命令执行的 SSH 连接。'
+          })}
+        </p>
+      </div>
+
+      {/* 终端：内置终端面板新建标签页时使用的 shell */}
+      <SettingsSection
+        id="sec-terminal-shell"
+        title={t('ssh.terminal.title', { defaultValue: '终端' })}
+        description={t('ssh.terminal.description', {
+          defaultValue: '新建终端标签页时使用的 shell；已打开的标签页不受影响。'
+        })}
+      >
+        <Select
+          value={shellExecutionEndpoint}
+          onValueChange={(value) =>
+            updateSettings({ shellExecutionEndpoint: value as ShellExecutionEndpoint })
+          }
+        >
+          <SelectTrigger className="w-64 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {shellEndpointOptions.map((option) => (
+              <SelectItem key={option} value={option} className="text-xs">
+                {t(`ssh.terminal.shellOptions.${option}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {shellExecutionEndpoint === 'custom' && (
+          <Input
+            value={customShellExecutable}
+            onChange={(event) => updateSettings({ customShellExecutable: event.target.value })}
+            placeholder={t('ssh.terminal.customPlaceholder', { defaultValue: '/path/to/shell' })}
+            className="h-8 text-xs"
+          />
+        )}
+      </SettingsSection>
+
+      {/* SSH 连接 */}
+      <div className="mb-3 mt-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">
-            {t('ssh.title', { defaultValue: 'SSH Connections' })}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t('ssh.description', {
-              defaultValue: 'Manage SSH server connections for remote command execution.'
-            })}
+          <h2 className="text-sm font-semibold">
+            {t('ssh.connections.title', { defaultValue: 'SSH 连接' })}
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t('ssh.connections.description', { defaultValue: '用于远程命令执行的服务器连接。' })}
           </p>
         </div>
         <Button size="sm" className="gap-1.5" onClick={openCreate}>

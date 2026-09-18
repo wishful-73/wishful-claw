@@ -24,6 +24,7 @@ internal static class ToolDeclarationChecks
         RunUncategorizedPassesThroughSuite();
         RunCapabilityCatalogSuite();
         RunCoreCategoryReachableSuite();
+        CodeGraphGateChecks.Run();
         RunDeclarationCensusSuite();
     }
 
@@ -248,8 +249,10 @@ internal static class ToolDeclarationChecks
 
         // The run contexts an ordinary session actually resolves to. A core category only has to reach
         // one of them — plan tools, for instance, are work-only by declaration and are absent from the
-        // plain chat context on purpose.
-        string[] sessionContexts = ["project:chat", "project:cowork"];
+        // plain chat context on purpose. The CodeGraph row is the same idea for a run-level switch
+        // instead of a declaration: the category is core, but only a run that turned the switch on can
+        // admit it, so the switch-on context has to be swept or the check would demand the impossible.
+        string[] sessionContexts = ["project:chat", "project:cowork", "project:cowork@codegraph"];
 
         var admittedCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var contextName in sessionContexts)

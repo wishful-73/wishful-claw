@@ -37,6 +37,11 @@ function isFailure(value: unknown): value is { success: false; error: string } {
 
 export function useAppUpdater(): {
   state: RendererUpdateState
+  /**
+   * 这次发现的更新来自后台巡检：只点亮横幅，别主动弹窗打扰。
+   * 刷新页面后回到 false —— 那是用户自己的操作，弹一次不算打扰。
+   */
+  silentAnnounce: boolean
   refreshStatus: () => Promise<void>
   checkForUpdates: () => Promise<void>
   downloadUpdate: () => Promise<boolean>
@@ -44,6 +49,7 @@ export function useAppUpdater(): {
   openReleasePage: () => void
 } {
   const [state, setState] = useState<RendererUpdateState>(INITIAL_STATE)
+  const [silentAnnounce, setSilentAnnounce] = useState(false)
 
   // Main owns the whole snapshot, so a status reply replaces renderer state outright instead of
   // being merged field by field — merging is what let a stale value survive a remount.
@@ -65,6 +71,7 @@ export function useAppUpdater(): {
     let disposed = false
     const unsubscribeAvailable = window.api.on<UpdateAvailablePayload>('update:available', (payload) => {
       if (disposed) return
+      setSilentAnnounce(payload.silent === true)
       setState((previous) => ({
         ...previous,
         phase: 'available',
@@ -185,5 +192,13 @@ export function useAppUpdater(): {
     }
   }, [state.releaseUrl])
 
-  return { state, refreshStatus, checkForUpdates, downloadUpdate, installUpdate, openReleasePage }
+  return {
+    state,
+    silentAnnounce,
+    refreshStatus,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+    openReleasePage
+  }
 }

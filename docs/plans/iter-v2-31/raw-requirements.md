@@ -1407,13 +1407,19 @@ export async function writeSvgStringToClipboard(_svg: string): Promise<void> {}
 | `components/settings/ProviderPanel.tsx` | import 名单与 `isUnownedBuiltin`；新增 `recommendedProviders` memo（按名单顺序 ∧ unowned ∧ 搜索过滤）；`renderProviderListItem` 加可选 `badge` 形参，名称右侧渲染角标；推荐分组插在 enabled 与 disabled 之间；空状态条件补 `recommendedProviders.length === 0` |
 | `locales/{zh,en}/settings.json` | `provider.list.recommended` / `provider.list.badges.paid` / `provider.list.badges.free` |
 
-**角标只写事实**：`$10/月`（OpenCode Go）、`免费`（Agnes / 商汤日日新）。**不写形容词** —— 推荐位一次不实，之后所有推荐都不被信。
+**角标只写事实**：`$10/月`（OpenCode Go）、`限时免费`（Agnes / 商汤日日新 —— 老大 2026-09-18 口径：写「免费」不准确，实际是限时）。**不写形容词** —— 推荐位一次不实，之后所有推荐都不被信。
 
-**已知边界**：`isUnownedBuiltin` 对 `requiresApiKey === false` 的 preset 恒 false，所以这条规则天然只作用于需要 Key 的服务商（本次三个都符合）。
+**★ 实施后修正（老大实测「没看到位置」）**：第一版判据写的是 `isUnownedBuiltin(provider)`，**推荐组因此恒为空**。根因是这个函数的名字与语义相反 —— 它的真实语义是「这条**已物化**的记录用户没碰过、可安全退回虚拟投影」（R-9 prune 用），第 58 行 `if (!provider.builtinId || provider.virtual) return false` 对 **virtual 投影一律返回 false**；而「用户没碰过的内置项」恰恰**全是 virtual 投影**（`createProviderFromPreset` 带上的标记，用户改任何东西才由 `materializeRecord` 摘掉）。两个条件互斥。
+
+- 正确判据：`provider.virtual === true || isUnownedBuiltin(provider)`（两条路都收：还没物化的 + 物化了但内容仍是默认的）。
+- 连带：推荐项都是 `enabled: false`，同时满足 `disabledProviders` 的过滤条件 ⇒ 原本会在「推荐」和「已禁用」里**各出现一次**。已加 `recommendedIds` 排除。
+- 名称：`sensenova` preset 的 `name` 从 `商汤日日新 / SenseNova` 收成 `商汤日日新`（中英混排太长，再挂角标会挤爆列表）。`魔搭 ModelScope` / `派欧云 PPIO` 同类，按老大口径不动。
+
+**边界**：`isUnownedBuiltin` 对 `requiresApiKey === false` 的 preset 恒 false —— 这只约束「物化了但没碰过」那条路，virtual 那条路不受它影响，所以本规则仍只作用于需要 Key 的服务商（本次三个都符合）。
 
 **未做（老大未拍板）**：OpenCode Go 的 `homepage` 带作者邀请码 `?ref=PWHP4P4E29` —— 是否在推荐位标注"通过此链接注册作者可能获得返利"，属披露口径，等老大定。
 
-**门禁**：typecheck 三配置 0 错 · TS 30/30 · i18n coverage 2 · settings-tabs 23 断言 · provider-presets 552 断言 · 4 文件 BOM clean。
+**门禁**：typecheck 三配置 0 错 · TS 全过 · i18n coverage 2 · settings-tabs 23 断言 · provider-presets 552 断言 · BOM clean。
 
 ---
 
@@ -1445,12 +1451,17 @@ export async function writeSvgStringToClipboard(_svg: string): Promise<void> {}
 **需求**（老大 2026-09-18 12:2x）：请求头现在是直接展开的，**改成可收起的折叠块，默认收起**，标题改「自定义请求头」。
 
 **实施**：
-- `ProviderConfigPanel.tsx`：`section` → `Collapsible` + `CollapsibleTrigger`（整行可点）+ `CollapsibleContent`；`headersOpen` 默认 `false`。
+- `ProviderConfigPanel.tsx`：**手写折叠**（trigger 是常驻 `<button>`，只有编辑器内容条件渲染）。最初用的是 `ui/collapsible` 的 `Collapsible + CollapsibleTrigger`，但该原语在 `open=false` 时把 children **整体**返回 `null`，触发器放在里面就一起被藏 ⇒ **整个板块消失、无法展开**（老大实测「请求头板块不见了」）。`headersOpen` 默认 `false`。
 - 触发行右侧显示**已配条数**（收起后看不到内容，用条数说明"里面有东西"）+ `ChevronDown`（展开时旋转 180°）。
-- `locales/{zh,en}/settings.json` 的 `provider.config.requestHeaders.title`：`请求头` → `自定义请求头` / `Request headers` → `Custom Request Headers`。该键 `AddProviderDialog` 也在用，两处同步生效。
-- **未动 `AddProviderDialog` 的折叠行为** —— 那是新建流程的模态表单，字段少，折叠反而多一步。要不要一并改，等老大说。
+- `locales/{zh,en}/settings.json` 的 `provider.config.requestHeaders.title`：`请求头` → `自定义请求头` / `Request headers` → `Custom Request Headers`。该键 `AddProviderDialog` 也在用，标题同步生效；**`AddProviderDialog` 自身的展开行为按老大裁定不动**。
 
-**门禁**：typecheck 三配置 0 错 · 3 文件 BOM clean。
+**同一根因的连带处理：`ui/collapsible.tsx` 退役**。该原语全仓只有两个使用点，**两个用法都不成立**：
+- trigger 放里面 ⇒ `open=false` 时入口连同内容一起消失；
+- trigger 放外面 ⇒ 只剩 `CollapsibleContent`，而它不读 `open`、永远渲染 children，等于没管。
+
+处理：`GitPage/utils.tsx` 的 `ScmSectionHeader` 同步改手写折叠 —— 它此前恰好因为 `CollapsibleTrigger` **忘了接 `onClick`** 才没暴露消失问题，代价是**那个三角箭头是装饰品、点了没反应**（折叠功能压根没实现）。改完既修好折叠也消除隐患。最后 `ui/collapsible.tsx` 删除（零引用）。
+
+**门禁**：typecheck 三配置 0 错 · `test:provider-presets` 552 断言 · BOM clean。
 
 ---
 

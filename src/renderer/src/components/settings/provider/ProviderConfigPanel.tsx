@@ -29,11 +29,6 @@ import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
 import { Separator } from '@renderer/components/ui/separator'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger
-} from '@renderer/components/ui/collapsible'
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -360,29 +355,6 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           />
         </section>
 
-        {/* Extra request headers */}
-        <Collapsible open={headersOpen} className="mt-5 shrink-0">
-          <CollapsibleTrigger
-            onClick={() => setHeadersOpen((v) => !v)}
-            className="flex w-full items-center justify-between text-sm font-medium"
-          >
-            <span>{ts('provider.config.requestHeaders.title')}</span>
-            <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
-              {headerCount > 0 ? headerCount : null}
-              <ChevronDown
-                className={cn('size-3.5 transition-transform', headersOpen && 'rotate-180')}
-              />
-            </span>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-2">
-            <RequestHeadersEditor
-              key={provider.id}
-              headers={provider.requestOverrides?.headers}
-              onChange={handleHeadersChange}
-            />
-          </CollapsibleContent>
-        </Collapsible>
-
         {/* Protocol type */}
         <section className="mt-5 shrink-0 space-y-2">
           <label className="text-sm font-medium">{ts('provider.config.protocolType')}</label>
@@ -403,6 +375,33 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
           </Select>
           <p className="text-[11px] text-muted-foreground">{ts('provider.config.protocolTypeHint')}</p>
         </section>
+
+        {/* Extra request headers。手写折叠：ui/collapsible 是空壳原语，
+            它的 open=false 会把 children 整体藏掉，触发器放里面就一起没了。 */}
+        <div className="mt-5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setHeadersOpen((v) => !v)}
+            className="flex w-full items-center justify-between text-sm font-medium"
+          >
+            <span>{ts('provider.config.requestHeaders.title')}</span>
+            <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+              {headerCount > 0 ? headerCount : null}
+              <ChevronDown
+                className={cn('size-3.5 transition-transform', headersOpen && 'rotate-180')}
+              />
+            </span>
+          </button>
+          {headersOpen ? (
+            <div className="mt-2">
+              <RequestHeadersEditor
+                key={provider.id}
+                headers={provider.requestOverrides?.headers}
+                onChange={handleHeadersChange}
+              />
+            </div>
+          ) : null}
+        </div>
 
         {/* Anthropic cache TTL (provider-level) */}
         {provider.type === 'anthropic' && (

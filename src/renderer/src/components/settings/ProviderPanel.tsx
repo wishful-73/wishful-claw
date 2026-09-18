@@ -156,6 +156,29 @@ function ProviderPanel(): React.JSX.Element {
   const resolvedModelProviderFilter =
     modelProviderFilter ?? (selectedProvider ? getProviderSourceKey(selectedProvider) : ALL_PROVIDER_FILTER)
 
+  // 「推荐」= 在名单里 ∧ 用户完全没碰过。碰过的必然落到上/下两个分组里（启用了、填过
+  // Key、改过地址、被禁用），再推一次就是重复项。
+  //
+  // 判据不能只看 isUnownedBuiltin：它的语义是「这条已物化的记录用户没碰过，可以安全退回
+  // 虚拟投影」（R-9 prune 用），对 virtual 投影一律返回 false —— 而用户没碰过的内置项恰恰
+  // 都是 virtual 投影（createProviderFromPreset 带上的标记）。两者互斥，只用它推荐组永远为空。
+  const recommendedProviders = useMemo(() => {
+    const query = searchQuery.toLowerCase()
+    return RECOMMENDED_PROVIDERS.flatMap((recommendation) => {
+      const provider = providers.find((p: any) => p.builtinId === recommendation.builtinId)
+      if (!provider) return []
+      if (provider.virtual !== true && !isUnownedBuiltin(provider)) return []
+      if (query && !provider.name.toLowerCase().includes(query)) return []
+      return [{ provider, badge: recommendation.badge }]
+    })
+  }, [providers, searchQuery])
+
+  // 推荐项本身都是 enabled:false，不排掉就会在「推荐」和「已禁用」里各出现一次。
+  const recommendedIds = useMemo(
+    () => new Set(recommendedProviders.map(({ provider }) => provider.id)),
+    [recommendedProviders]
+  )
+
   const enabledProviders = useMemo(
     () =>
       providers.filter(
@@ -167,22 +190,13 @@ function ProviderPanel(): React.JSX.Element {
   const disabledProviders = useMemo(
     () =>
       providers.filter(
-        (p: any) => !p.enabled && (!searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        (p: any) =>
+          !p.enabled &&
+          !recommendedIds.has(p.id) &&
+          (!searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()))
       ),
-    [providers, searchQuery]
+    [providers, searchQuery, recommendedIds]
   )
-
-  // 「推荐」= 在名单里 ∧ 用户完全没碰过（isUnownedBuiltin）。碰过的必然落到上/下两个分组里
-  // （启用了、填过 Key、改过地址、被禁用），再推一次就是重复项。
-  const recommendedProviders = useMemo(() => {
-    const query = searchQuery.toLowerCase()
-    return RECOMMENDED_PROVIDERS.flatMap((recommendation) => {
-      const provider = providers.find((p: any) => p.builtinId === recommendation.builtinId)
-      if (!provider || !isUnownedBuiltin(provider)) return []
-      if (query && !provider.name.toLowerCase().includes(query)) return []
-      return [{ provider, badge: recommendation.badge }]
-    })
-  }, [providers, searchQuery])
 
   const renderProviderListItem = (
     provider: AIProvider,

@@ -12,11 +12,6 @@ import {
   RotateCcw
 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger
-} from '@renderer/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import type { GitStatusFile } from '@renderer/stores/git-store'
@@ -143,10 +138,16 @@ export function ScmSectionHeader({
   actions?: React.ReactNode
 }): React.JSX.Element {
   const [open, setOpen] = useState(defaultOpen !== false)
+  // 手写折叠，不用 ui/collapsible —— 那个壳在 open=false 时会把 children 整体藏掉，
+  // 触发器放里面就跟着没了（该原语已删除）。
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="border-b border-border/60">
+    <div className="border-b border-border/60">
       <div className="flex min-h-8 items-center gap-1 pr-1">
-        <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-0.5 rounded-sm py-1 pl-1 text-left hover:bg-muted/50">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-0.5 rounded-sm py-1 pl-1 text-left hover:bg-muted/50"
+        >
           {open ? (
             <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
           ) : (
@@ -156,11 +157,11 @@ export function ScmSectionHeader({
             {title}
           </span>
           <span className="shrink-0 text-[11px] text-muted-foreground">({count})</span>
-        </CollapsibleTrigger>
+        </button>
         {actions ? <div className="flex shrink-0 items-center gap-0.5">{actions}</div> : null}
       </div>
-      <CollapsibleContent className="pb-1">{children}</CollapsibleContent>
-    </Collapsible>
+      {open ? <div className="pb-1">{children}</div> : null}
+    </div>
   )
 }
 

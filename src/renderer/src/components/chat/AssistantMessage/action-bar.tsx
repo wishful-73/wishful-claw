@@ -29,6 +29,8 @@ export interface ActionBarProps {
   msgId?: string
   createdAt?: number
   updatedAt?: number
+  /** 整轮总耗时（ms）。只有被压缩切分过的消息才有：分段后每段只报自己那一截。 */
+  totalElapsedMs?: number
   showRetry?: boolean
   showContinue?: boolean
   onRetry?: (messageId: string) => void
@@ -65,6 +67,7 @@ export function AssistantActionBar({
   completionSummary,
   createdAt,
   updatedAt,
+  totalElapsedMs,
   t
 }: ActionBarProps): React.JSX.Element {
   // 时间戳只在这一轮跑完后才亮：流式期间显示的是「开始时间」，看着像已经完成。
@@ -156,11 +159,13 @@ export function AssistantActionBar({
             </div>
           </>
         )}
-        {/* 结束时间和耗时都只在跑完后才亮 */}
+        {/* 结束时间和耗时都只在跑完后才亮；被压缩切分过的消息，末段再多报一个整轮总耗时 */}
         {!isStreaming && finishedAt != null && (
           <p className="mt-1.5 text-[10px] text-muted-foreground/50 tabular-nums">
             {new Date(finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             {elapsedMs != null && ` · ${formatDurationMs(elapsedMs)}`}
+            {totalElapsedMs != null &&
+              ` · ${t('messageActions.elapsedTotal', { duration: formatDurationMs(totalElapsedMs) })}`}
           </p>
         )}
         {!isStreaming &&

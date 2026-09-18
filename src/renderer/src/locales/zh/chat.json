@@ -1256,7 +1256,8 @@
     "shareFailed": "分享失败",
     "speechNotSupported": "当前环境不支持语音朗读",
     "collapsedMessage": "已收起消息",
-    "imagesCollapsed": "{{count}} 张图片"
+    "imagesCollapsed": "{{count}} 张图片",
+    "elapsedTotal": "共 {{duration}}"
   },
   "toolGroup": {
     "readFiles": "读取了 {{count}} 个文件",

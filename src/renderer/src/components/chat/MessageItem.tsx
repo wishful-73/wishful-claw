@@ -217,6 +217,8 @@ function MessageItemInner({
             // 两个时间戳都往下传：action-bar 用 updatedAt 显示结束时间，并靠这一对算耗时。
             createdAt={effectiveMessage.createdAt}
             updatedAt={effectiveMessage.updatedAt}
+            // 被压缩切分的消息，末段还要报整轮总耗时（片段信息挂在渲染项上，不在消息里）。
+            totalElapsedMs={item?.kind === 'message' ? item.fragment?.totalElapsedMs : undefined}
             renderMode={renderMode}
             orchestrationRun={orchestrationRun}
             hiddenToolUseIds={hiddenToolUseIds}

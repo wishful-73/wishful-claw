@@ -1257,7 +1257,8 @@
     "shareFailed": "Share failed",
     "speechNotSupported": "Speech synthesis is not supported in this environment",
     "collapsedMessage": "Message collapsed",
-    "imagesCollapsed": "{{count}} images"
+    "imagesCollapsed": "{{count}} images",
+    "elapsedTotal": "{{duration}} total"
   },
   "toolGroup": {
     "readFiles": "Read {{count}} files",

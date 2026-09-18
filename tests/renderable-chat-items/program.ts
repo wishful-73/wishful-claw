@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict'
+import assert from 'node:assert/strict'
 import type { RenderableChatItem } from '../../src/renderer/src/components/chat/renderable-chat-items'
 import type {
   CompactBoundaryMeta,
@@ -116,6 +116,61 @@ function testArrayMiddleSplit(): void {
   assert.deepEqual(before.message.content, [text('before')])
   assert.deepEqual(after.message.content, [text('after')])
   assertCompressionOperation(items, 'op-middle')
+}
+
+function testFragmentTimestamps(): void {
+  // 压缩切出来的每一段都没有自己的时间戳，得由切分点推出来：
+  // 首尾相接（每段起点接上一刀的终点），末段再额外带上整轮总耗时。
+  const assistant: UnifiedMessage = {
+    ...message('a1', 'assistant', [text('before'), text('after')], 1000),
+    updatedAt: 9000
+  }
+  const items = buildRenderableChatItems([
+    message('u1', 'user', 'hello', 1),
+    assistant,
+    boundary('b1', 3000),
+    summary('s1', 3000, {
+      operationId: 'op-ts',
+      displayAnchor: { assistantMessageId: 'a1', afterContentBlockCount: 1 }
+    })
+  ])
+
+  const before = items[1]
+  const after = items[3]
+  assert.ok(before.kind === 'message' && after.kind === 'message')
+
+  assert.equal(before.message.createdAt, 1000)
+  assert.equal(before.message.updatedAt, 3000)
+  assert.equal(after.message.createdAt, 3000)
+  assert.equal(after.message.updatedAt, 9000)
+
+  assert.equal(before.fragment?.totalElapsedMs, undefined)
+  assert.equal(after.fragment?.totalElapsedMs, 8000)
+
+  // 原消息不被片段覆写污染
+  assert.equal(assistant.createdAt, 1000)
+  assert.equal(assistant.updatedAt, 9000)
+
+  // 老消息没有 updatedAt：末段回落，既不显示耗时也没有总耗时
+  const legacyItems = buildRenderableChatItems([
+    message('a2', 'assistant', [text('one'), text('two')], 1000),
+    boundary('b2', 3000),
+    summary('s2', 3000, {
+      operationId: 'op-legacy',
+      displayAnchor: { assistantMessageId: 'a2', afterContentBlockCount: 1 }
+    })
+  ])
+  const legacyAfter = legacyItems.find(
+    (item) => item.kind === 'message' && item.displayId.includes('compression-after')
+  )
+  assert.ok(legacyAfter && legacyAfter.kind === 'message')
+  assert.equal(legacyAfter.message.updatedAt, undefined)
+  assert.equal(legacyAfter.fragment?.totalElapsedMs, undefined)
+
+  // 没有压缩的消息不产生片段，也就不会有总耗时
+  const plain = buildRenderableChatItems([message('a3', 'assistant', 'plain', 1)])[0]
+  assert.ok(plain.kind === 'message')
+  assert.equal(plain.fragment, undefined)
 }
 
 function testArrayEdgeSplits(): void {
@@ -491,6 +546,7 @@ function testInvertedTimestampPairStillRenders(): void {
 const tests: Array<[string, () => void | Promise<void>]> = [
   ['no artifacts', testNoArtifacts],
   ['array middle split', testArrayMiddleSplit],
+  ['fragment timestamps chain and total elapsed', testFragmentTimestamps],
   ['array edge splits', testArrayEdgeSplits],
   ['string single-block semantics', testStringSingleBlockSemantics],
   ['between messages and transcript tail', testBetweenMessagesAndTail],

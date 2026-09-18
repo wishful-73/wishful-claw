@@ -336,6 +336,31 @@
 - **只在有压缩（确有切分）时出现总耗时**。无压缩的消息维持现状 —— 它只有一段，段时长本就等于总时长，天然一致。
 - 呈现建议：末段 `09:20 · 1m30s · 共 8m34s`；中间段仍只有本段 `09:12 · 3m10s`。前缀用词（「共」/「总」）实施时可调。
 
+### 实施（2026-09-18）
+
+**落点 —— `src/renderer/src/components/chat/renderable-chat-items.ts`**
+
+- 新增 `resolveCutTime(pair, liveState)`：一刀的时刻 = `Math.max(boundary.createdAt, summary.createdAt)`，与 `context-compression.ts:92` 判定「哪个压缩是活的」同口径；`live` 段没有工件对，用 `liveState.startedAt`；两者都取不到时返回 `null`（该段回落）。
+- `createAssistantFragment` 末尾加 `createdAt` / `updatedAt` 两个参数，写进片段的 `message`：片段是渲染层切出来的、本无自己的时间戳，不覆写就会每段都显示整条消息的结束时间。
+- 切分循环引入 `cursorTime`（初始 = 消息 `createdAt`）：每段 `createdAt = cursorTime`、`updatedAt = cutTime`，然后 `cursorTime = cutTime` —— 首尾相接、不重不漏。
+- 末段（`position === 'after'`）额外挂 `fragment.totalElapsedMs`（= `message.updatedAt − message.createdAt`），`RenderableMessageItem.fragment` 加该可选字段。
+  - `message.updatedAt` 缺失（老消息）或 `updatedAt <= createdAt` 时不挂，末段回落成现状。
+
+**消费端接线**（3 处，纯透传）
+
+| 文件 | 改动 |
+|---|---|
+| `components/chat/MessageItem.tsx` | assistant 分支加 `totalElapsedMs={item?.kind === 'message' ? item.fragment?.totalElapsedMs : undefined}` |
+| `components/chat/AssistantMessage/types.ts` + `index.tsx` | `AssistantMessageProps` 加 `totalElapsedMs?: number`，透传给 action-bar |
+| `components/chat/AssistantMessage/action-bar.tsx` | 加同名字段；时间戳那行追加 ` · ${t('messageActions.elapsedTotal', { duration })}` |
+
+- `updatedAt` 不用额外传 —— 片段自带覆写后的 `message.updatedAt`，`MessageItem` 本就在往下传；段内耗时由 action-bar 现成逻辑（`updatedAt − createdAt`）自动算出。
+- i18n：`locales/{zh,en}/chat.json` 的 `messageActions` 加 `elapsedTotal`（zh `共 {{duration}}` / en `{{duration}} total`）。
+
+**测试**：`tests/renderable-chat-items/program.ts` 新增 `testFragmentTimestamps`（17 项全过 → 原 16 项 + 1），断言首尾相接的两个时间戳、末段总耗时、老消息回落、无压缩消息不产生片段。
+
+**门禁**：`tsc --noEmit` 三配置 0 错；`npm run test:renderable-chat-items` 17/17；BOM clean。
+
 ---
 
 ## S-77 会话 todo 面板：任务条数累加与单条显示方式

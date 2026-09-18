@@ -406,11 +406,12 @@ const chatModels: OpenCodeGoModel[] = [
 
 export const opencodeGoPreset: BuiltinProviderPreset = {
   builtinId: 'opencode-go',
-  version: 7,
+  version: 8,
   name: 'OpenCode Go',
   type: 'openai-chat',
   defaultBaseUrl: OPENCODE_GO_BASE_URL,
-  homepage: 'https://opencode.ai/docs/zh-cn/go/',
+  // 推广链接（带邀请码），不是文档地址 —— 别顺手订正回 /docs/zh-cn/go/
+  homepage: 'https://opencode.ai/go?ref=PWHP4P4E29',
   apiKeyUrl: 'https://opencode.ai/auth',
   defaultModel: 'deepseek-v4-flash',
   defaultModels: chatModels.map((model) => ({ ...model, enabled: true }))

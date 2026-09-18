@@ -56,6 +56,9 @@ function App(): React.JSX.Element | null {
   const updater = useAppUpdater()
 
   useEffect(() => {
+    // 后台巡检发现的更新只点亮横幅，不弹窗 —— 一小时一次的后台检查要是每次都抢焦点，比不提示
+    // 还烦。downloaded / error 仍然直接弹：前者是用户已经开始的下载有结果了，后者是手动检查失败。
+    if (updater.state.phase === 'available' && updater.silentAnnounce) return
     if (
       updater.state.phase === 'available' ||
       updater.state.phase === 'downloaded' ||
@@ -63,7 +66,7 @@ function App(): React.JSX.Element | null {
     ) {
       setUpdateDialogOpen(true)
     }
-  }, [updater.state.phase])
+  }, [updater.state.phase, updater.silentAnnounce])
 
   // Refresh before opening: a tray click can arrive long after the renderer last heard from Main,
   // and showing a stale phase would be worse than showing nothing.

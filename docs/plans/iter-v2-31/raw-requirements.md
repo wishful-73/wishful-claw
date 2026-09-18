@@ -1339,6 +1339,42 @@ export async function writeSvgStringToClipboard(_svg: string): Promise<void> {}
 
 ---
 
+## S-68 自动更新增加后台巡检（只在启动查一次 → 每小时一次）
+
+**需求**（老大 2026-09-18）：软件定位是 24 小时常驻、电脑不关机，而自动更新只在启动时检查一次 —— 一直开着的用户反而永远发现不了新版本。要加定时检查。
+
+**现状勘测**：
+- 检测入口全仓唯一：`src/main/updater.ts:535` 的 `initializeUpdater()`，由 `main/index.ts:587` 在 `createWindow()` / `createTray()` 之后调一次，之后再不检测
+- 三道门（`updater.ts:538`）：`app.isPackaged` ∧ `canCheckForUpdates()`（win32 + installer/green 分发）∧ `autoUpdateEnabled` 设置项
+- `requestUpdateCheck()` 自带并发去重（`checkPromise`），重复调不会重复打请求
+- 检测到更新 → `update:available` → 渲染端 `App.tsx:58` **无条件自动弹窗**，且 **`error` 也弹** —— 这是"每小时查一次"的真正难点：直连 GitHub 时通时不通，失败也弹会把人烦死
+
+**老大裁定（2026-09-18 11:24，三项全选 A）**：
+
+| 口径 | 选择 |
+|---|---|
+| 间隔 | **A**：固定 60 分钟，不加设置项，复用 `autoUpdateEnabled` 当总开关 |
+| 定时发现新版 | **A**：静默 —— 只点亮浮动横幅，**不弹窗**；弹窗留给启动那次与手动检查 |
+| 定时检查失败 | **A**：不弹窗、只记日志，相位也不进 `error` |
+| 附加 | 一旦查到有新版本就**停掉定时器**（横幅已亮，不必反复问 GitHub） |
+
+**实施**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/shared/updater/types.ts` | `UpdateAvailablePayload` 加 `silent?: boolean`（省略 = 照常弹） |
+| `src/main/updater.ts` | 新增 `PERIODIC_RECHECK_INTERVAL_MS = 60 * 60 * 1000` / `periodicRecheckTimer` / `checkIsPeriodic`；`requestUpdateCheck({periodic})` 记录来源（复用进行中的检查时**沿用首个调用者的来源** —— 手动检查在跑就让巡检搭车，那次该弹）；`attachEvents` 推 available 时按来源带 `silent: true`；新增 `runPeriodicRecheck()` / `startPeriodicRecheck()` / `stopPeriodicRecheck()`，在 `initializeUpdater` 末尾启动，`app.once('will-quit')` 清理 |
+| `src/renderer/src/hooks/use-app-updater.ts` | 新增 `silentAnnounce` state（从 payload 取），作为返回值暴露 |
+| `src/renderer/src/App.tsx` | 弹窗条件加 `available && silentAnnounce` 的抑制分支 |
+
+**`runPeriodicRecheck` 的三道保护**：① 那三道门**每次 tick 重判**（设置可能中途被关掉、分发方式也可能变），不过即停表；② `availableVersion` / `downloadedVersion` 已存在时停表；③ 失败只 `logWarn` —— `checkForUpdatesInternal` 内部本就是 `setError(error, false)` ⇒ `failSilently()`（不推事件、不留 error 相位），口径 3-A 天然满足，无需额外改。
+
+**已知取舍**：`silentAnnounce` 是渲染端局部 state，**刷新页面会回到 false** ⇒ 刷新后若相位仍是 available，会弹一次。刷新是用户主动动作且不频繁，接受。
+
+**门禁**：typecheck 三配置 0 错 · TS 30/30 · 4 文件 BOM clean。
+
+---
+
 ## 待登记
 
 ### 不立项 —— 正式版才排入（老大 2026-09-17）

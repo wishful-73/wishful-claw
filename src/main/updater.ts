@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { logError, logInfo, logWarn } from './lib/logger'
 import { readPersistedSettings } from './lib/settings-store'
 import { getUpdateDistributionInfo } from './lib/distribution'
@@ -45,10 +45,21 @@ const RENDERER_SETTINGS_STORAGE_KEY = 'wishfulclaw-settings'
  * spaced out — while the UI and the coordinator still see every event.
  */
 const PROGRESS_LOG_INTERVAL_MS = 5_000
+/**
+ * 后台巡检间隔。这个软件的定位是 24 小时常驻、电脑不关机 —— 只在启动时查一次，等于永远停在
+ * 开机那一刻的版本判断上，一直开着的用户反而永远看不到新版本。
+ */
+const PERIODIC_RECHECK_INTERVAL_MS = 60 * 60 * 1000
 
 let updater: AutoUpdater | null = null
 let initializePromise: Promise<void> | null = null
 let checkPromise: Promise<UpdateCheckResult> | null = null
+let periodicRecheckTimer: ReturnType<typeof setInterval> | null = null
+/**
+ * 当前这次检查是否来自后台巡检。只影响「发现的更新要不要立刻弹窗」—— 巡检时用户多半不在
+ * 跟前，横幅提示就够了，抢焦点是打扰。
+ */
+let checkIsPeriodic = false
 let downloadGate: UpdateDownloadGate | null = null
 let installGate: UpdateInstallGate | null = null
 let options: UpdaterOptions | null = null
@@ -332,7 +343,8 @@ function attachEvents(instance: AutoUpdater): void {
       currentVersion: currentVersion(),
       newVersion: version,
       releaseNotes,
-      ...getAppDistributionInfo()
+      ...getAppDistributionInfo(),
+      ...(checkIsPeriodic ? { silent: true } : {})
     }
     logInfo('main', `Updater found version ${version}`, { extra: { declaredInstallerSize } })
     sendUpdateEvent('update:available', payload)
@@ -460,12 +472,16 @@ async function checkForUpdatesInternal(): Promise<UpdateCheckResult> {
   }
 }
 
-export async function requestUpdateCheck(): Promise<UpdateCheckResult> {
+export async function requestUpdateCheck(request?: { periodic?: boolean }): Promise<UpdateCheckResult> {
   if (!checkPromise) {
+    checkIsPeriodic = request?.periodic === true
     checkPromise = checkForUpdatesInternal().finally(() => {
       checkPromise = null
+      checkIsPeriodic = false
     })
   }
+  // A shared in-flight check keeps its first caller's origin: if a manual check is already running,
+  // the poll rides along with it and the update still gets announced — the user asked for it.
   return checkPromise
 }
 
@@ -532,6 +548,43 @@ export function requestUpdateInstall(): UpdateActionResult {
   return { success: true }
 }
 
+function stopPeriodicRecheck(): void {
+  if (periodicRecheckTimer === null) return
+  clearInterval(periodicRecheckTimer)
+  periodicRecheckTimer = null
+}
+
+/**
+ * 一次后台巡检。三道门每次都重判 —— 设置可能中途被关掉，分发方式也可能变；已经知道有新版本
+ * 就直接停下，不再反复问 GitHub（横幅一直亮着，等用户处理或下次启动就够）。
+ */
+async function runPeriodicRecheck(): Promise<void> {
+  if (!app.isPackaged || !canCheckForUpdates() || !getPersistedAutoUpdateEnabled()) {
+    stopPeriodicRecheck()
+    return
+  }
+  const snapshot = updaterState().snapshot()
+  if (snapshot.availableVersion || snapshot.downloadedVersion) {
+    stopPeriodicRecheck()
+    return
+  }
+  try {
+    await requestUpdateCheck({ periodic: true })
+  } catch (error) {
+    // 失败只落日志。checkForUpdatesInternal 内部走的是 setError(error, false)，本就不会推事件、
+    // 也不会把相位留在 error —— GitHub 直连时通时不通，每小时弹一次「检查失败」没人受得了。
+    logWarn('main', `Periodic updater check failed: ${formatError(error)}`)
+  }
+}
+
+function startPeriodicRecheck(): void {
+  if (periodicRecheckTimer !== null) return
+  periodicRecheckTimer = setInterval(() => {
+    void runPeriodicRecheck()
+  }, PERIODIC_RECHECK_INTERVAL_MS)
+  app.once('will-quit', stopPeriodicRecheck)
+}
+
 export async function initializeUpdater(nextOptions: UpdaterOptions): Promise<void> {
   if (options === null) options = nextOptions
   await ensureInitialized()
@@ -539,4 +592,5 @@ export async function initializeUpdater(nextOptions: UpdaterOptions): Promise<vo
   void requestUpdateCheck().catch((error) => {
     logWarn('main', `Startup updater check failed: ${formatError(error)}`)
   })
+  startPeriodicRecheck()
 }

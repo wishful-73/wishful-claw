@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
@@ -10,6 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from '@renderer/components/ui/alert-dialog'
+import { cn } from '@renderer/lib/utils'
 
 // ── Types ──
 
@@ -21,6 +22,11 @@ interface ConfirmOptions {
   confirmLabel?: string
   cancelLabel?: string
   variant?: 'default' | 'destructive' | 'warning'
+  /**
+   * 正文的呈现方式。`code` 用于命令一类的逐字内容：保留换行、等宽字体、超长行强制折行。
+   * 只给需要的调用点开 —— 正文往上是通用容器，不该把所有弹窗都变等宽。
+   */
+  descriptionVariant?: 'text' | 'code'
   onConfirm?: () => void | Promise<void>
   sessionId?: string
   imageEdit?: unknown
@@ -49,6 +55,7 @@ let _dialogActive = false
 interface DialogState {
   title: string
   description?: string
+  descriptionVariant?: 'text' | 'code'
   confirmLabel?: string
   cancelLabel?: string
   variant: 'default' | 'destructive'
@@ -108,6 +115,7 @@ function pumpDialogQueue(): void {
   _setDialog({
     title: title ?? '',
     description,
+    descriptionVariant: next.options.descriptionVariant,
     confirmLabel: next.options.confirmLabel ?? next.options.confirmText,
     cancelLabel: next.options.cancelLabel ?? next.options.cancelText,
     // warning is rendered like the default variant — it is a caution, not
@@ -160,11 +168,19 @@ export function ConfirmDialogProvider(): React.JSX.Element {
 
   return (
     <AlertDialog open={!!dialog} onOpenChange={handleOpenChange}>
-      <AlertDialogContent size="sm">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{dialog?.title}</AlertDialogTitle>
+      <AlertDialogContent size="sm" className="grid-rows-[minmax(0,1fr)_auto]">
+        {/* 标题与按钮钉住，只让正文滚动 —— 正文可能是整段命令，长起来会撑出视口 */}
+        <AlertDialogHeader className="min-h-0">
+          <AlertDialogTitle className="shrink-0">{dialog?.title}</AlertDialogTitle>
           {dialog?.description && (
-            <AlertDialogDescription>{dialog.description}</AlertDialogDescription>
+            <AlertDialogDescription
+              className={cn(
+                'min-h-0 overflow-y-auto whitespace-pre-wrap break-words',
+                dialog.descriptionVariant === 'code' && 'font-mono text-xs'
+              )}
+            >
+              {dialog.description}
+            </AlertDialogDescription>
           )}
         </AlertDialogHeader>
         <AlertDialogFooter>

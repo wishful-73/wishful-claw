@@ -479,6 +479,41 @@
 
 ---
 
+### 实施（2026-09-18，方案 A）
+
+**`src/renderer/src/components/ui/alert-dialog.tsx`**
+
+`AlertDialogContent` 的 class 加 `max-h-[calc(100vh-2rem)]` + `overflow-hidden`（插在 `grid … w-full max-w-lg` 之间）。
+
+- 加的是**通用**约束：任何 `AlertDialog` 都不该超出视口，这一层不引入任何布局假设。
+- **没在这里写 grid 行模板**：`AlertDialogContent` 被 7 个文件直接使用，各自子元素结构不同，写死行数会错乱。行模板交给具体使用方传（见下）。
+
+**`src/renderer/src/components/ui/confirm-dialog.tsx`**
+
+| 项 | 改动 |
+|---|---|
+| `ConfirmOptions` / `DialogState` | 新增可选 `descriptionVariant?: 'text' \| 'code'`（默认 text） |
+| `pumpDialogQueue` | 透传该字段（队列 → DialogState） |
+| `AlertDialogContent` | 传 `className="grid-rows-[minmax(0,1fr)_auto]"` —— 第一行（标题＋正文）可收缩，第二行（按钮）保持自然高度 |
+| `AlertDialogHeader` | 加 `min-h-0`（grid item 默认 `min-height: auto`，不加这一行压不下去） |
+| `AlertDialogTitle` | 加 `shrink-0`，钉住 |
+| `AlertDialogDescription` | 加 `min-h-0 overflow-y-auto whitespace-pre-wrap break-words`；`code` 变体再加 `font-mono text-xs` |
+
+- **`whitespace-pre-wrap` 是必须的**：`AlertDialogDescription` 是 Radix 的 `<p>`，默认折叠换行、不折超长无空格行 —— 光加高度上限治不了横向溢出。
+- **等宽字体只给需要的调用点**：正文容器是通用的，不该把 28 个调用点的弹窗全变成等宽。由调用方传 `descriptionVariant: 'code'` 显式开启。
+- 引入 `import { cn } from '@renderer/lib/utils'`。
+
+**`src/renderer/src/lib/tools/sub-agent-approval.ts`**
+
+`confirm({...})` 加 `descriptionVariant: 'code'` —— 这里的正文是 `inputSummary(toolName, input)`，即 shell 命令全文。
+
+**影响面**：`confirm()` 全仓调用点**零改动**（新字段可选）；`AlertDialogContent` 的 `max-h` 对 7 个直接使用方是纯加固。
+
+**门禁**：`tsc --noEmit` 三配置 0 错；`npm run test:*` 31 套全过；BOM clean。
+**待真机验**：长 shell 命令（未开 YOLO）→ 弹窗不出视口、正文可滚、换行保留、标题与按钮钉住。
+
+---
+
 ## S-79 沙箱模式：工具参数的工作目录边界校验
 
 **来源**：2026-09-18 15:56 老大口述 —— 「还有用户提出了质疑，希望能引入沙箱模式，我的打算是在工具执行给参数的统一地方，对参数进行验证，如果开了沙箱就需要验证，如果没开就不用，沙箱的目的是不允许跳出工作目录去做其它事情」。

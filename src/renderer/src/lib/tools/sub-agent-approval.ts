@@ -98,6 +98,8 @@ export async function handleSubAgentApprovalRequest(
     const approved = await confirm({
       title: `工具调用确认 — ${toolName}`,
       description: detail ? `即将执行：${detail}` : '此工具需要你的确认后才会执行。',
+      // 正文是命令全文：保留换行、等宽显示，否则长命令既看不出结构也会横向溢出
+      descriptionVariant: 'code',
       confirmLabel: '允许执行',
       cancelLabel: '拒绝',
       variant: 'warning',

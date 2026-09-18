@@ -10,6 +10,7 @@ import { ZoomIn, ZoomOut, RotateCw, Maximize2, ImageOff, Copy, Check, Loader2 } 
 import { Button } from '@renderer/components/ui/button'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
+import { writeImageBlobToClipboard } from '@renderer/lib/utils/image-clipboard'
 import type { ViewerProps } from '../viewer-registry'
 
 const MIME_TYPES: Record<string, string> = {
@@ -40,28 +41,6 @@ function getMimeType(filePath: string): string {
 
 function clampScale(scale: number): number {
   return Math.min(Math.max(scale, 0.25), 5)
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      if (typeof reader.result !== 'string') {
-        reject(new Error('Failed to read image data'))
-        return
-      }
-      const base64 = reader.result.split(',')[1]
-      if (!base64) {
-        reject(new Error('Failed to encode image data'))
-        return
-      }
-      resolve(base64)
-    }
-    reader.onerror = () => {
-      reject(reader.error ?? new Error('Failed to read image data'))
-    }
-    reader.readAsDataURL(blob)
-  })
 }
 
 export function ImageViewer({
@@ -216,10 +195,7 @@ export function ImageViewer({
         }, 'image/png')
       })
 
-      const result = await window.api.writeImageToClipboard({
-        data: await blobToBase64(blob)
-      })
-      if (result.error) throw new Error(result.error)
+      await writeImageBlobToClipboard(blob)
 
       setCopied(true)
       if (copiedTimerRef.current) {

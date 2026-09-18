@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Clipboard Enhancer — ditto-style clipboard history.
  *
  * - Polls clipboard (250ms) for near-instant capture
@@ -8,8 +8,9 @@
  * - Independent config file (not in settings-store)
  */
 
-import { app, BrowserWindow, clipboard } from 'electron'
-import { join } from 'path'
+import { app, BrowserWindow, clipboard, nativeImage } from 'electron'
+import { join, basename } from 'path'
+import { createHash } from 'crypto'
 import * as fs from 'fs'
 import { registerMessagePackHandler } from './ipc/messagepack-handler'
 import {
@@ -25,6 +26,8 @@ import { resolveDataDir } from './lib/data-dir'
 let clipboardWindow: BrowserWindow | null = null
 let pollTimer: NodeJS.Timeout | null = null
 let lastClipboardText = ''
+let lastClipboardImageHash = ''
+let lastImagePollAt = 0
 let history: ClipboardEntry[] = []
 let config: ClipboardConfig
 let previousForegroundWindow: string | null = null
@@ -38,6 +41,13 @@ let openedWithAlt = false
 const DATA_DIR = resolveDataDir()
 const HISTORY_FILE = join(DATA_DIR, 'clipboard-history.json')
 const CONFIG_FILE = join(DATA_DIR, 'clipboard-config.json')
+/** 图片内容落盘目录。文件名 = 内容 sha256，天然去重。 */
+const IMAGES_DIR = join(DATA_DIR, 'clipboard-images')
+
+/** 图片检测间隔。Ditto 靠 Win32 的剪贴板序列号判变化，Electron 没有这个 API，
+ *  只能重新读一次剪贴板 —— 所以让图片检测独立于 250ms 的文本轮询，避免每轮都做
+ *  PNG 读取与哈希。代价是复制图片后最多 1s 进历史。 */
+const IMAGE_POLL_INTERVAL_MS = 1000
 
 const DEFAULT_CONFIG: ClipboardConfig = {
   enabled: true,
@@ -49,7 +59,14 @@ const DEFAULT_CONFIG: ClipboardConfig = {
 
 interface ClipboardEntry {
   id: string
+  /** 图片条目为空字符串；历史里这个字段始终是 string，老数据无需迁移。 */
   text: string
+  /** 缺省视为 'text' —— 图片支持之前写下的条目没有这个字段。 */
+  type?: 'text' | 'image'
+  /** 图片条目：IMAGES_DIR 下的文件名（不含路径），文件名本身就是内容 sha256。 */
+  imageFile?: string
+  imageWidth?: number
+  imageHeight?: number
   timestamp: number
   preview: string
   lastUsed?: number
@@ -108,15 +125,56 @@ function saveConfig(): void {
 
 // ── History persistence ──
 
+/** 按 maxItems 裁剪：置顶项永远保留，其余按「新的在前」取满。
+ *  置顶项不受 maxItems 约束是有意的 —— 否则置顶只是「晚一点消失」。 */
+function trimToMaxItems(entries: ClipboardEntry[], maxItems: number): ClipboardEntry[] {
+  if (maxItems <= 0 || entries.length <= maxItems) return entries
+  let remaining = maxItems - entries.filter((entry) => entry.pinned).length
+  return entries.filter((entry) => {
+    if (entry.pinned) return true
+    if (remaining <= 0) return false
+    remaining -= 1
+    return true
+  })
+}
+
+/** 图片文件被外部删掉 / 历史文件被手改坏时，条目留着也粘不回来，直接丢掉。 */
+function isEntryUsable(entry: ClipboardEntry): boolean {
+  if (entry.type !== 'image') return true
+  if (!entry.imageFile) return false
+  return fs.existsSync(join(IMAGES_DIR, entry.imageFile))
+}
+
 function loadHistory(): void {
   try {
     if (fs.existsSync(HISTORY_FILE)) {
       const raw = fs.readFileSync(HISTORY_FILE, 'utf8')
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        history = parsed.slice(0, config.maxItems)
-        lastClipboardText = history[0]?.text ?? ''
+        history = trimToMaxItems((parsed as ClipboardEntry[]).filter(isEntryUsable), config.maxItems)
+        lastClipboardText = history.find((entry) => entry.type !== 'image')?.text ?? ''
         purgeExpired()
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+/** 删掉没有任何历史条目引用的图片文件。
+ *  只在 saveHistory 里做一次，delete / clear / 过期 / 裁剪四条路径就都覆盖到了。 */
+function cleanupOrphanImageFiles(): void {
+  try {
+    if (!fs.existsSync(IMAGES_DIR)) return
+    const referenced = new Set(
+      history.map((entry) => entry.imageFile).filter((file): file is string => Boolean(file))
+    )
+    for (const name of fs.readdirSync(IMAGES_DIR)) {
+      if (referenced.has(name)) continue
+      try {
+        fs.unlinkSync(join(IMAGES_DIR, name))
+      } catch {
+        // 单个文件删不掉不影响历史
       }
     }
   } catch {
@@ -129,10 +187,11 @@ function saveHistory(): void {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 })
     }
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history.slice(0, config.maxItems), null, 2), {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(trimToMaxItems(history, config.maxItems), null, 2), {
       encoding: 'utf8',
       mode: 0o600
     })
+    cleanupOrphanImageFiles()
   } catch {
     // ignore
   }
@@ -170,26 +229,108 @@ function pushThemeRefresh(): void {
   }
 }
 
+function createEntryId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** 从剪贴板取图片的 PNG 字节。优先走 readBuffer —— 直接拿原始 PNG，
+ *  省掉一次 nativeImage 解码 + 重编码，且拿到的字节可以直接哈希和落盘。 */
+function readClipboardPngBuffer(): Buffer | null {
+  for (const format of clipboard.availableFormats()) {
+    if (!/png/i.test(format)) continue
+    try {
+      const buffer = clipboard.readBuffer(format)
+      if (buffer && buffer.length > 0) return buffer
+    } catch {
+      // readBuffer 不接受这个格式名时换下一个候选
+    }
+  }
+  const image = clipboard.readImage()
+  if (image.isEmpty()) return null
+  const png = image.toPNG()
+  return png && png.length > 0 ? png : null
+}
+
+/** PNG 的 IHDR 里直接躺着宽高，不必解码整张图。 */
+function readPngSize(png: Buffer): { width: number; height: number } | null {
+  if (png.length < 24 || png.readUInt32BE(0) !== 0x89504e47) return null
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
+}
+
+/** 返回 true 表示本轮产出了图片条目 —— 调用方据此跳过同一次复制附带的文本。 */
+function captureClipboardImage(): boolean {
+  const now = Date.now()
+  if (now - lastImagePollAt < IMAGE_POLL_INTERVAL_MS) return false
+  lastImagePollAt = now
+
+  const png = readClipboardPngBuffer()
+  if (!png) return false
+
+  const hash = createHash('sha256').update(png).digest('hex')
+  if (hash === lastClipboardImageHash) return false
+  lastClipboardImageHash = hash
+
+  const imageFile = `${hash}.png`
+  try {
+    if (!fs.existsSync(IMAGES_DIR)) {
+      fs.mkdirSync(IMAGES_DIR, { recursive: true, mode: 0o700 })
+    }
+    if (!fs.existsSync(join(IMAGES_DIR, imageFile))) {
+      fs.writeFileSync(join(IMAGES_DIR, imageFile), png, { mode: 0o600 })
+    }
+  } catch {
+    // 落盘失败就不记这条 —— 记了也粘不回来
+    return false
+  }
+
+  const size = readPngSize(png) ?? nativeImage.createFromBuffer(png).getSize()
+  const entry: ClipboardEntry = {
+    id: createEntryId(),
+    text: '',
+    type: 'image',
+    imageFile,
+    imageWidth: size.width,
+    imageHeight: size.height,
+    timestamp: now,
+    preview: `[图片] ${size.width}×${size.height}`
+  }
+  history = history.filter((item) => item.imageFile !== imageFile)
+  history.unshift(entry)
+  history = trimToMaxItems(history, config.maxItems)
+  saveHistory()
+  pushHistoryUpdate()
+  return true
+}
+
+function captureClipboardText(): void {
+  const text = clipboard.readText()
+  if (!text || text === lastClipboardText) return
+  lastClipboardText = text
+  const entry: ClipboardEntry = {
+    id: createEntryId(),
+    text,
+    timestamp: Date.now(),
+    preview: text.slice(0, 200).replace(/\n/g, ' ')
+  }
+  // Deduplicate
+  history = history.filter((item) => item.text !== text)
+  history.unshift(entry)
+  history = trimToMaxItems(history, config.maxItems)
+  saveHistory()
+  pushHistoryUpdate()
+}
+
 function startClipboardPolling(): void {
   if (pollTimer) return
   pollTimer = setInterval(() => {
     if (!config.enabled) return
-    const text = clipboard.readText()
-    if (text && text !== lastClipboardText) {
-      lastClipboardText = text
-      const entry: ClipboardEntry = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        text,
-        timestamp: Date.now(),
-        preview: text.slice(0, 200).replace(/\n/g, ' ')
-      }
-      // Deduplicate
-      history = history.filter((item) => item.text !== text)
-      history.unshift(entry)
-      history = history.slice(0, config.maxItems)
-      saveHistory()
-      pushHistoryUpdate()
+    // 图片优先：复制图片的程序往往同时给出一份文本（路径 / alt 文本），
+    // 两个都记就成了两条重复历史。Ditto 同样是 PNG / DIB 优先。
+    if (captureClipboardImage()) {
+      lastClipboardText = clipboard.readText()
+      return
     }
+    captureClipboardText()
   }, 250)
 }
 
@@ -232,27 +373,81 @@ function registerClipboardIpc(): void {
   registerMessagePackHandler<void, ClipboardEntry[]>('clipboard:get-history', () => history)
 
   // Copy + paste into the app that was active before the panel opened.
-  registerMessagePackHandler<string, boolean>('clipboard:copy', (text) => {
+  // 收条目 id；同时兼容旧的「直接传文本」写法，避免剪贴板窗口用到旧渲染端时整体失效。
+  registerMessagePackHandler<{ id?: string } | string, boolean>('clipboard:copy', (payload) => {
+    const id = typeof payload === 'string' ? payload : (payload?.id ?? '')
+    const existing =
+      history.find((item) => item.id === id) ?? history.find((item) => item.text === id)
+    if (!existing) return false
+
     const targetWindow = previousForegroundWindow
     const targetFocus = previousFocusWindow
     const clearMenu = openedWithAlt
     previousForegroundWindow = null
     previousFocusWindow = null
-    clipboard.writeText(text)
-    lastClipboardText = text
+
+    if (existing.type === 'image' && existing.imageFile) {
+      const image = nativeImage.createFromPath(join(IMAGES_DIR, existing.imageFile))
+      if (image.isEmpty()) return false
+      clipboard.writeImage(image)
+      // 自己写进去的内容不该被轮询再记一遍
+      lastClipboardImageHash = existing.imageFile.replace(/\.png$/i, '')
+      lastClipboardText = ''
+    } else {
+      clipboard.writeText(existing.text)
+      lastClipboardText = existing.text
+    }
+
     // Move the used entry to top and update lastUsed
     const now = Date.now()
-    const existing = history.find((item) => item.text === text)
-    if (existing) {
-      existing.lastUsed = now
-      existing.timestamp = now
-      history = history.filter((item) => item.id !== existing.id)
-      history.unshift(existing)
-      saveHistory()
-    }
+    existing.lastUsed = now
+    existing.timestamp = now
+    history = history.filter((item) => item.id !== existing.id)
+    history.unshift(existing)
+    saveHistory()
     clipboardWindow?.hide()
     return pasteToForegroundWindow(targetWindow, targetFocus, true, clearMenu)
   })
+
+  // 渲染端取图片条目的缩略图。传 data URL 而不是文件路径 —— 剪贴板窗口是独立的
+  // BrowserWindow，没必要为了读本地图片去放宽它的加载策略。
+  registerMessagePackHandler<{ file?: string }, { dataUrl?: string; error?: string }>(
+    'clipboard:read-image',
+    (payload) => {
+      const file = typeof payload?.file === 'string' ? payload.file : ''
+      // 只接受本目录下的纯文件名，挡住路径穿越
+      if (!file || file !== basename(file)) return { error: 'Invalid image file' }
+      try {
+        const bytes = fs.readFileSync(join(IMAGES_DIR, file))
+        if (bytes.length === 0) return { error: 'Empty image file' }
+        return { dataUrl: `data:image/png;base64,${bytes.toString('base64')}` }
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : 'Failed to read image' }
+      }
+    }
+  )
+
+  // 把 base64 图片写进系统剪贴板。聊天窗的复制按钮与预览面板都走这里 ——
+  // 渲染端没有直接写剪贴板的能力，真正的写入只能发生在主进程。
+  registerMessagePackHandler<{ data?: string }, { error?: string }>(
+    'clipboard:write-image',
+    (payload) => {
+      const raw = typeof payload?.data === 'string' ? payload.data : ''
+      // 容错：调用方可能把整个 data URL 丢进来
+      const base64 = raw.includes(',') ? raw.slice(raw.indexOf(',') + 1) : raw
+      if (!base64.trim()) return { error: 'Missing image data' }
+      try {
+        const image = nativeImage.createFromBuffer(Buffer.from(base64, 'base64'))
+        if (image.isEmpty()) return { error: 'Unsupported image data' }
+        clipboard.writeImage(image)
+        return {}
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : 'Failed to write image to clipboard'
+        }
+      }
+    }
+  )
 
   registerMessagePackHandler<string, ClipboardEntry[]>('clipboard:delete', (id) => {
     history = history.filter((item) => item.id !== id)
@@ -298,7 +493,7 @@ function registerClipboardIpc(): void {
       purgeExpired()
     }
     if (patch.maxItems !== undefined && history.length > config.maxItems) {
-      history = history.slice(0, config.maxItems)
+      history = trimToMaxItems(history, config.maxItems)
       saveHistory()
     }
     if (patch.enabled !== undefined || patch.accelerators !== undefined) {

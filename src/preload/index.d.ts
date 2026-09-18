@@ -1,4 +1,4 @@
-﻿import { ElectronAPI } from '@electron-toolkit/preload'
+import { ElectronAPI } from '@electron-toolkit/preload'
 
 declare global {
   interface Window {
@@ -19,7 +19,6 @@ declare global {
       readLogs: (maxLines?: number) => Promise<string>
       fetchImageBase64: (url: string | { url: string }) => Promise<{ error?: string; data?: string; mimeType?: string }>
       downloadImage: (url: string | { url: string; defaultName?: string }) => Promise<{ error?: string; canceled?: boolean }>
-      writeImageToClipboard: (imageData: string | { data: string }) => Promise<{ error?: string }>
       // Team runtime IPC stubs
       teamRuntimeCreate: <T = unknown>(args: Record<string, unknown>) => Promise<T>
       teamRuntimeDelete: (args: Record<string, unknown>) => Promise<{ success: true }>

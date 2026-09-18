@@ -1,16 +1,61 @@
 import '../assets/main.css'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Clipboard, Trash2, X, Settings, ArrowLeft, Pin } from 'lucide-react'
+import { Clipboard, Trash2, X, Settings, ArrowLeft, Pin, ImageIcon } from 'lucide-react'
 import { syncThemeFromSettings } from '../lib/theme-sync'
 
 interface ClipboardEntry {
   id: string
   text: string
+  /** 缺省视为 'text' —— 图片支持之前写下的条目没有这个字段。 */
+  type?: 'text' | 'image'
+  /** 图片条目在 clipboard-images 目录下的文件名。 */
+  imageFile?: string
+  imageWidth?: number
+  imageHeight?: number
   timestamp: number
   preview: string
   lastUsed?: number
   pinned?: boolean
+}
+
+/** 同一张图在列表里可能反复进出视野，缩略图按文件缓存，不重复请求。 */
+const thumbnailCache = new Map<string, string>()
+
+function ImageThumbnail({ file }: { file: string }): React.JSX.Element {
+  const [src, setSrc] = useState<string | null>(() => thumbnailCache.get(file) ?? null)
+
+  useEffect(() => {
+    if (src) return
+    let cancelled = false
+    void window.api
+      .invoke<{ dataUrl?: string }>('clipboard:read-image', { file })
+      .then((result) => {
+        if (cancelled || !result?.dataUrl) return
+        thumbnailCache.set(file, result.dataUrl)
+        setSrc(result.dataUrl)
+      })
+      .catch(() => {
+        // 读不到就保持占位，不影响其它条目
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [file, src])
+
+  if (!src) {
+    return <div className="flex size-10 shrink-0 items-center justify-center rounded border border-border/60 bg-muted/40">
+      <ImageIcon className="size-3.5 text-muted-foreground/60" />
+    </div>
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="max-h-20 max-w-40 shrink-0 rounded border border-border/60 object-contain"
+    />
+  )
 }
 
 interface ClipboardConfig {
@@ -99,8 +144,9 @@ function ClipboardEnhancer(): React.JSX.Element {
   }, [selectedIndex, filteredHistory])
 
   // Paste: copy, hide the panel, and paste into the previous app.
-  const handlePaste = useCallback(async (text: string): Promise<void> => {
-    await window.api.invoke<boolean>('clipboard:copy', text)
+  // 传条目 id —— 主进程按条目决定是写文本还是写图片。
+  const handlePaste = useCallback(async (entryId: string): Promise<void> => {
+    await window.api.invoke<boolean>('clipboard:copy', { id: entryId })
   }, [])
 
   // Window-level keyboard navigation: Arrow keys move selection, Enter pastes.
@@ -117,7 +163,7 @@ function ClipboardEnhancer(): React.JSX.Element {
       } else if (e.key === 'Enter') {
         e.preventDefault()
         const entry = filteredHistory[selectedIndex]
-        if (entry) void handlePaste(entry.text)
+        if (entry) void handlePaste(entry.id)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -305,7 +351,7 @@ function ClipboardEnhancer(): React.JSX.Element {
             <div
               key={entry.id}
               onClick={() => setSelectedIndex(index)}
-              onDoubleClick={() => void handlePaste(entry.text)}
+              onDoubleClick={() => void handlePaste(entry.id)}
               onMouseEnter={() => setSelectedIndex(index)}
               className={
                 'group flex cursor-pointer items-start gap-2 border-b border-border/50 px-4 py-3 transition-colors ' +
@@ -323,9 +369,14 @@ function ClipboardEnhancer(): React.JSX.Element {
                 </span>
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs leading-5 text-foreground">
-                  {entry.preview}
-                </p>
+                {entry.type === 'image' && entry.imageFile ? (
+                  <div className="flex items-center gap-2">
+                    <ImageThumbnail file={entry.imageFile} />
+                    <span className="text-[11px] text-muted-foreground">{entry.preview}</span>
+                  </div>
+                ) : (
+                  <p className="truncate text-xs leading-5 text-foreground">{entry.preview}</p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <span className="text-[10px] text-muted-foreground">{formatTime(entry.timestamp)}</span>

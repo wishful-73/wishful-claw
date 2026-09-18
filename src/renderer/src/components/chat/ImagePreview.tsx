@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { toast } from 'sonner'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { writeBase64ImageToClipboard } from '@renderer/lib/utils/image-clipboard'
 import {
   buildImageDimensionCacheKey,
   cacheImageDimensions,
@@ -247,10 +248,7 @@ export function ImagePreview({
 
   const handleCopy = async (): Promise<void> => {
     try {
-      const imageBase64 = await resolveImageBase64()
-
-      const result = await window.api.writeImageToClipboard({ data: imageBase64 })
-      if (result.error) throw new Error(result.error)
+      await writeBase64ImageToClipboard(await resolveImageBase64())
 
       setCopied(true)
       toast.success('Image copied to clipboard')

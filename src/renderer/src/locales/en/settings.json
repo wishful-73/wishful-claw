@@ -216,6 +216,11 @@
       "searchPlaceholder": "Search providers",
       "addTooltip": "Add custom provider",
       "enabled": "Enabled",
+      "recommended": "Recommended",
+      "badges": {
+        "paid": "$10/mo",
+        "free": "Free"
+      },
       "disabled": "Disabled",
       "noProviders": "No providers",
       "models": "models",
@@ -253,7 +258,7 @@
       "protocolType": "Protocol Type",
       "protocolTypeHint": "After switching protocols, verify the Base URL matches the new protocol",
       "requestHeaders": {
-        "title": "Request headers",
+        "title": "Custom Request Headers",
         "add": "Add header",
         "namePlaceholder": "Header name",
         "valuePlaceholder": "Value",
@@ -1355,6 +1360,8 @@
       "exitFullscreen": "Exit fullscreen"
     },
     "banner": {
+      "available": "Update {{version}} available",
+      "availableCurrent": "Currently on {{current}}",
       "downloading": "Downloading update in the background…",
       "downloaded": "Update {{version}} downloaded, waiting to install",
       "error": "Update failed",

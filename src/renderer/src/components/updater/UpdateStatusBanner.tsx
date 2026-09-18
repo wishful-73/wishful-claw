@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, CircleAlert, Loader2, RotateCcw } from 'lucide-react'
+import { CheckCircle2, CircleAlert, Download, Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -24,7 +24,14 @@ interface UpdateStatusBannerProps {
   onInstall: () => Promise<void>
 }
 
-const VISIBLE_PHASES: readonly UpdatePhase[] = ['downloading', 'downloaded', 'error']
+// `available` 也在列：后台巡检发现新版本时**不弹窗**，横幅就是唯一的提示载体 ——
+// 少了它，静默就等于什么都不说。
+const VISIBLE_PHASES: readonly UpdatePhase[] = [
+  'available',
+  'downloading',
+  'downloaded',
+  'error'
+]
 
 export function isUpdateBannerVisible(phase: UpdatePhase): boolean {
   return VISIBLE_PHASES.includes(phase)
@@ -158,6 +165,8 @@ export function UpdateStatusBanner({
 
   const isError = phase === 'error'
   const isDownloaded = phase === 'downloaded'
+  // 巡检发现新版本、用户还没点下载 —— 这一档没有进度数据，所以正文两行与其余相位不同。
+  const isAvailable = phase === 'available'
   // leftSidebarWidth keeps its last value after the sidebar collapses, so the open flag has to be
   // checked too — otherwise a collapsed sidebar leaves an empty band between it and the banner.
   const bannerLeft = leftSidebarOpen ? leftSidebarWidth + 16 : 16
@@ -244,6 +253,8 @@ export function UpdateStatusBanner({
     >
       {isError ? (
         <CircleAlert className="size-4 shrink-0 text-destructive" />
+      ) : isAvailable ? (
+        <Download className="size-4 shrink-0 text-primary" />
       ) : isDownloaded ? (
         <CheckCircle2 className="size-4 shrink-0 text-primary" />
       ) : (
@@ -254,15 +265,27 @@ export function UpdateStatusBanner({
         <p className="truncate text-xs font-medium">
           {isError
             ? t('updater.banner.error', { defaultValue: '更新失败' })
-            : isDownloaded
-              ? t('updater.banner.downloaded', {
-                  version: state.downloadedVersion ?? '',
-                  defaultValue: '更新 {{version}} 已下载，等待重启安装'
+            : isAvailable
+              ? t('updater.banner.available', {
+                  version: state.availableVersion ?? '',
+                  defaultValue: '发现新版本 {{version}}'
                 })
-              : t('updater.banner.downloading', { defaultValue: '正在后台下载更新…' })}
+              : isDownloaded
+                ? t('updater.banner.downloaded', {
+                    version: state.downloadedVersion ?? '',
+                    defaultValue: '更新 {{version}} 已下载，等待重启安装'
+                  })
+                : t('updater.banner.downloading', { defaultValue: '正在后台下载更新…' })}
         </p>
         {isError && state.error ? (
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{state.error}</p>
+        ) : isAvailable ? (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {t('updater.banner.availableCurrent', {
+              current: state.currentVersion,
+              defaultValue: '当前版本 {{current}}'
+            })}
+          </p>
         ) : isError ? null : (
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{stats}</p>
         )}

@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Layers, Plus, Repeat2, Search, Server, Trash2 } from 'lucide-react'
 import { ProviderIcon } from '@renderer/components/settings/provider-icons'
@@ -12,7 +12,11 @@ import {
   ContextMenuTrigger
 } from '@renderer/components/ui/context-menu'
 import { useProviderStore } from '@renderer/stores/provider-store'
-import { pruneUnownedBuiltinProviders } from '@renderer/stores/provider-store-helpers'
+import { pruneUnownedBuiltinProviders, isUnownedBuiltin } from '@renderer/stores/provider-store-helpers'
+import {
+  RECOMMENDED_PROVIDERS,
+  type ProviderRecommendationBadge
+} from '@renderer/lib/provider-recommendations'
 import type { AIProvider } from '../../../../shared/types/provider'
 import { cn } from '@renderer/lib/utils'
 import { AddProviderDialog } from './provider/AddProviderDialog'
@@ -168,7 +172,23 @@ function ProviderPanel(): React.JSX.Element {
     [providers, searchQuery]
   )
 
-  const renderProviderListItem = (provider: AIProvider, muted: boolean): React.JSX.Element => {
+  // 「推荐」= 在名单里 ∧ 用户完全没碰过（isUnownedBuiltin）。碰过的必然落到上/下两个分组里
+  // （启用了、填过 Key、改过地址、被禁用），再推一次就是重复项。
+  const recommendedProviders = useMemo(() => {
+    const query = searchQuery.toLowerCase()
+    return RECOMMENDED_PROVIDERS.flatMap((recommendation) => {
+      const provider = providers.find((p: any) => p.builtinId === recommendation.builtinId)
+      if (!provider || !isUnownedBuiltin(provider)) return []
+      if (query && !provider.name.toLowerCase().includes(query)) return []
+      return [{ provider, badge: recommendation.badge }]
+    })
+  }, [providers, searchQuery])
+
+  const renderProviderListItem = (
+    provider: AIProvider,
+    muted: boolean,
+    badge?: ProviderRecommendationBadge
+  ): React.JSX.Element => {
     const enabledModelCount = provider.models.filter((m) => m.enabled).length
     const authReady = provider.requiresApiKey === false || Boolean(provider.apiKey)
 
@@ -197,7 +217,21 @@ function ProviderPanel(): React.JSX.Element {
               <ProviderIcon builtinId={provider.builtinId} size={16} className={cn(muted && 'opacity-50')} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-medium">{provider.name}</span>
+              <span className="flex items-center gap-1.5">
+                <span className="min-w-0 truncate text-xs font-medium">{provider.name}</span>
+                {badge ? (
+                  <span
+                    className={cn(
+                      'shrink-0 rounded px-1 py-px text-[10px] font-medium',
+                      badge === 'free'
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-primary/10 text-primary'
+                    )}
+                  >
+                    {t(`provider.list.badges.${badge}`)}
+                  </span>
+                ) : null}
+              </span>
               <span className="mt-0.5 block truncate text-[10px] text-muted-foreground/70">
                 {enabledModelCount}/{provider.models.length} {t('provider.list.models')}
               </span>
@@ -281,6 +315,16 @@ function ProviderPanel(): React.JSX.Element {
                   {enabledProviders.map((p: any) => renderProviderListItem(p, false))}
                 </div>
               )}
+              {recommendedProviders.length > 0 && (
+                <div className="px-2 pb-1 pt-3">
+                  <p className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/55">
+                    {t('provider.list.recommended')}
+                  </p>
+                  {recommendedProviders.map(({ provider, badge }) =>
+                    renderProviderListItem(provider, false, badge)
+                  )}
+                </div>
+              )}
               {disabledProviders.length > 0 && (
                 <div className="px-2 pb-1 pt-3">
                   <p className="px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/55">
@@ -289,11 +333,13 @@ function ProviderPanel(): React.JSX.Element {
                   {disabledProviders.map((p: any) => renderProviderListItem(p, true))}
                 </div>
               )}
-              {enabledProviders.length === 0 && disabledProviders.length === 0 && (
-                <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-                  {t('provider.list.noProviders')}
-                </div>
-              )}
+              {enabledProviders.length === 0 &&
+                recommendedProviders.length === 0 &&
+                disabledProviders.length === 0 && (
+                  <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                    {t('provider.list.noProviders')}
+                  </div>
+                )}
             </div>
           </div>
         </div>

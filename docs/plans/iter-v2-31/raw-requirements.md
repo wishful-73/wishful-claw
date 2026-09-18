@@ -1371,7 +1371,86 @@ export async function writeSvgStringToClipboard(_svg: string): Promise<void> {}
 
 **已知取舍**：`silentAnnounce` 是渲染端局部 state，**刷新页面会回到 false** ⇒ 刷新后若相位仍是 available，会弹一次。刷新是用户主动动作且不频繁，接受。
 
+**补漏（2026-09-18 真机验收发现）**：`UpdateStatusBanner` 的 `VISIBLE_PHASES` 原本只有 `downloading` / `downloaded` / `error` —— **不含 `available`**。于是"静默提示 = 只点亮横幅"实际成了"什么都不发生"：提示根本没有载体，巡检跑得再对用户也看不见。已补：
+
+| 文件 | 改动 |
+|---|---|
+| `components/updater/UpdateStatusBanner.tsx` | `VISIBLE_PHASES` 加 `'available'`；图标用 `Download`（**不能沿用 `Loader2` 转圈** —— 那是"正在下载"的假事实）；标题「发现新版本 {{version}}」；副标题「当前版本 {{current}}」 |
+| `locales/{zh,en}/settings.json` | 新增 `updater.banner.available` / `availableCurrent` |
+
+副标题放「当前版本」而不是留空，是为了保住横幅的两行结构 —— 它的高度被硬编码进 toast 抬升量（`UPDATE_BANNER_TOAST_BOTTOM = 90`，按两行算的），只有一行会让那个值失准。
+
+**测试期插曲（值得记）**：`updaterState()` 是**内存态**，主进程一重启 `available` 相位就回到 `idle`，横幅随之消失。验收时表现为「横幅出现过、过了一会儿又没了」，一度被误判成渲染 bug。正式版有启动检查兜底（启动即发现、立刻置 available），实际影响很小。
+
 **门禁**：typecheck 三配置 0 错 · TS 30/30 · 4 文件 BOM clean。
+
+---
+
+## S-69 服务商列表新增「推荐」分组
+
+**需求**（老大 2026-09-18 11:53）：让用户在使用软件时能看到推荐的套餐与免费服务商 —— OpenCode Go（**$10/月，约 67 元**）、Agnes（**目前免费，可以尝鲜**）、商汤日日新（**目前免费**）。落点由老大指定：**服务商列表的「已启用」与「已禁用」之间**。
+
+**为什么不放别处**：勘测过三个候选。启动弹窗 / 首页 banner 属于"用户没要就给"，是反感的主要来源；「添加服务商」对话框虽是用户主动找服务商的时机，但老大定了列表内分组 —— 这一条更轻，不打断任何流程。
+
+**现状勘测（决定实现方式）**：
+- 内置 preset 一直都**在列表里** —— `ensureBuiltinPresets` 每次启动重投影；`pruneUnownedBuiltinProviders`（R-9.6）只摘"用户拥有"标记**不删条目**。agnes / sensenova / opencode-go 一个都没少。
+- 问题是它们**全埋在「已禁用」分组**里，按数组顺序排，列表项只有「图标 + 名称 + N/M 模型」—— 几十条长得一样，谁免费、谁是套餐一眼看不出来。
+- `AddProviderDialog` 是**纯自定义表单**（手填名称 / BaseURL / Key），**不含内置清单** —— 用户主动找服务商的那一刻，我们反而把清单藏起来了。
+
+**推荐判据 = `isUnownedBuiltin`（现成函数）**：内置 ∧ 用户完全没碰过（未启用、无 Key、未覆盖协议、未改 baseUrl）。用户碰过的必然落到上/下两个分组里，再推一次就是重复项。
+
+**实施**：
+
+| 文件 | 改动 |
+|---|---|
+| `lib/provider-recommendations.ts`（新建） | `RECOMMENDED_PROVIDERS` 名单 + `ProviderRecommendationBadge = 'paid' \| 'free'`。放这里而不是塞进 preset：产品决策与 preset 解耦，上下架推荐位只动一个文件，也不用防 preset 重投影把标记冲掉 |
+| `components/settings/ProviderPanel.tsx` | import 名单与 `isUnownedBuiltin`；新增 `recommendedProviders` memo（按名单顺序 ∧ unowned ∧ 搜索过滤）；`renderProviderListItem` 加可选 `badge` 形参，名称右侧渲染角标；推荐分组插在 enabled 与 disabled 之间；空状态条件补 `recommendedProviders.length === 0` |
+| `locales/{zh,en}/settings.json` | `provider.list.recommended` / `provider.list.badges.paid` / `provider.list.badges.free` |
+
+**角标只写事实**：`$10/月`（OpenCode Go）、`免费`（Agnes / 商汤日日新）。**不写形容词** —— 推荐位一次不实，之后所有推荐都不被信。
+
+**已知边界**：`isUnownedBuiltin` 对 `requiresApiKey === false` 的 preset 恒 false，所以这条规则天然只作用于需要 Key 的服务商（本次三个都符合）。
+
+**未做（老大未拍板）**：OpenCode Go 的 `homepage` 带作者邀请码 `?ref=PWHP4P4E29` —— 是否在推荐位标注"通过此链接注册作者可能获得返利"，属披露口径，等老大定。
+
+**门禁**：typecheck 三配置 0 错 · TS 30/30 · i18n coverage 2 · settings-tabs 23 断言 · provider-presets 552 断言 · 4 文件 BOM clean。
+
+---
+
+## S-70 填入 API Key 后自动启用服务商并拉取模型
+
+**需求**（老大 2026-09-18 12:2x）：服务商配置面板里填好 API Key 之后，**自动把该服务商启用，并拉取一遍模型列表**。触发方式 = 输入框**失焦**（老大选 A）。
+
+**为什么**：现状是「填 Key → 再去拨启用开关 → 再点获取模型」三步。其中前两步是纯粹的机械动作 —— 用户主动贴了 Key，意图已经明确，开关只是我们没接上。
+
+**实施**：
+- `ProviderConfigPanel.tsx` 新增 `apiKeyBeforeEditRef`，`onFocus` 记下进入输入框时的值，`onBlur` 比对：
+
+| 进入时 | 离开时 | 动作 |
+|---|---|---|
+| 空 | 有值 | **联动**（启用 + 拉模型） |
+| 有值 | 有值 | 不动（换 Key 不必重新启用，重复拉模型会把用户手动关掉的模型重新打开） |
+| 任意 | 空 | 不动 |
+
+- 启用走 `updateProvider(id, { enabled: true })`，随后 `fetchModels()` + `setModels()`。
+- 拉取用 store 最新值（`useProviderStore.getState()`），因为 `onBlur` 闭包捕获的 `provider` 可能落后于最后一次按键。
+- **失败保持安静**：服务商已经启用，用户可以照常手动点「获取模型」重试 —— 自动流程不该弹报错。
+
+**边界**：`setModels` 是合并语义（保留已有模型的 `enabled` 与思考配置）。合并只遍历「新拉到的」模型，已有但新列表里没有的会丢 —— 这是既有行为（手动点获取模型同样），本次未改。
+
+---
+
+## S-71 服务商配置面板的请求头改为可折叠
+
+**需求**（老大 2026-09-18 12:2x）：请求头现在是直接展开的，**改成可收起的折叠块，默认收起**，标题改「自定义请求头」。
+
+**实施**：
+- `ProviderConfigPanel.tsx`：`section` → `Collapsible` + `CollapsibleTrigger`（整行可点）+ `CollapsibleContent`；`headersOpen` 默认 `false`。
+- 触发行右侧显示**已配条数**（收起后看不到内容，用条数说明"里面有东西"）+ `ChevronDown`（展开时旋转 180°）。
+- `locales/{zh,en}/settings.json` 的 `provider.config.requestHeaders.title`：`请求头` → `自定义请求头` / `Request headers` → `Custom Request Headers`。该键 `AddProviderDialog` 也在用，两处同步生效。
+- **未动 `AddProviderDialog` 的折叠行为** —— 那是新建流程的模态表单，字段少，折叠反而多一步。要不要一并改，等老大说。
+
+**门禁**：typecheck 三配置 0 错 · 3 文件 BOM clean。
 
 ---
 

@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Plus,
   Search,
+  ChevronDown,
   Eye,
   EyeOff,
   Loader2,
@@ -27,6 +28,11 @@ import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
 import { Separator } from '@renderer/components/ui/separator'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from '@renderer/components/ui/collapsible'
 import {
   Select,
   SelectContent,
@@ -112,8 +118,13 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
   const fetchModels = useProviderStore((s) => s.fetchModels)
 
   const [showKey, setShowKey] = useState(false)
+  // 自定义请求头默认收起：多数服务商不需要，展开会占掉半屏
+  const [headersOpen, setHeadersOpen] = useState(false)
   const [testingModelId, setTestingModelId] = useState<string | null>(null)
   const [fetchingModels, setFetchingModels] = useState(false)
+  // 焦点进入 Key 输入框时的值。失焦时靠它判断「是不是从没填变成填了」，
+  // 避免用户只是点进去又点出来也触发一遍自动启用 + 拉模型。
+  const apiKeyBeforeEditRef = useRef<string | null>(null)
   const [modelDialogOpen, setModelDialogOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<AIModelConfig | null>(null)
   const [editingThinkingModel, setEditingThinkingModel] = useState<AIModelConfig | null>(null)
@@ -125,6 +136,8 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
   const hasEnabledModels = enabledModelCount > 0
   const hasDisabledModels = enabledModelCount < provider.models.length
   const authReady = provider.requiresApiKey === false || Boolean(provider.apiKey)
+  // 折叠后看不到编辑器内容，用条数告诉用户「这里面有东西」
+  const headerCount = Object.keys(provider.requestOverrides?.headers ?? {}).length
 
   const filteredModels = useMemo(() => {
     const q = modelSearch.toLowerCase()
@@ -178,6 +191,28 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
       })
     } finally {
       setFetchingModels(false)
+    }
+  }
+
+  // 首次填入 API Key 后自动启用该服务商并拉一次模型列表：
+  // 先填 Key、再去拨开关、再点「获取模型」本是三步，可以合成一步。
+  const handleApiKeyBlur = async (): Promise<void> => {
+    const before = apiKeyBeforeEditRef.current ?? ''
+    apiKeyBeforeEditRef.current = null
+    // 只在「原先没 Key -> 现在填了」这一步上联动。已配好的服务商换 Key 不必重新启用，
+    // 也不该重复拉模型（会把用户手动关掉的模型重新打开）。
+    if (before.trim() || !provider.apiKey.trim()) return
+    if (!provider.enabled) updateProvider(provider.id, { enabled: true })
+    // 取 store 里的最新值：onBlur 闭包捕获的 provider 可能落后于最后一次按键
+    const latest = useProviderStore.getState().providers.find((p) => p.id === provider.id) ?? provider
+    try {
+      const models = await fetchModels(latest)
+      if (models.length > 0) {
+        setModels(provider.id, models)
+        toast.success(ts('provider.config.models.fetchSuccess', { count: models.length }))
+      }
+    } catch {
+      // 自动流程失败保持安静：服务商已经启用，用户可以在模型区手动重试
     }
   }
 
@@ -295,6 +330,10 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
                 placeholder={provider.requiresApiKey === false ? ts('provider.config.apiKeyNotRequired') : ts('provider.config.apiKeyPlaceholder')}
                 value={provider.apiKey}
                 onChange={(e) => updateProvider(provider.id, { apiKey: e.target.value })}
+                onFocus={() => {
+                  apiKeyBeforeEditRef.current = provider.apiKey
+                }}
+                onBlur={() => void handleApiKeyBlur()}
                 disabled={provider.requiresApiKey === false}
                 className="pr-9 text-xs"
               />
@@ -322,16 +361,27 @@ export function ProviderConfigPanel({ provider }: { provider: AIProvider }): Rea
         </section>
 
         {/* Extra request headers */}
-        <section className="mt-5 shrink-0 space-y-2">
-          <label className="text-sm font-medium">
-            {ts('provider.config.requestHeaders.title', { defaultValue: '请求头' })}
-          </label>
-          <RequestHeadersEditor
-            key={provider.id}
-            headers={provider.requestOverrides?.headers}
-            onChange={handleHeadersChange}
-          />
-        </section>
+        <Collapsible open={headersOpen} className="mt-5 shrink-0">
+          <CollapsibleTrigger
+            onClick={() => setHeadersOpen((v) => !v)}
+            className="flex w-full items-center justify-between text-sm font-medium"
+          >
+            <span>{ts('provider.config.requestHeaders.title')}</span>
+            <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+              {headerCount > 0 ? headerCount : null}
+              <ChevronDown
+                className={cn('size-3.5 transition-transform', headersOpen && 'rotate-180')}
+              />
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2">
+            <RequestHeadersEditor
+              key={provider.id}
+              headers={provider.requestOverrides?.headers}
+              onChange={handleHeadersChange}
+            />
+          </CollapsibleContent>
+        </Collapsible>
 
         {/* Protocol type */}
         <section className="mt-5 shrink-0 space-y-2">

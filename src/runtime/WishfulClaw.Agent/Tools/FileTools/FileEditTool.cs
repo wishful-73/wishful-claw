@@ -28,7 +28,7 @@ public sealed class FileEditTool : IToolExecutor
 
     public async Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)
     {
-        var path = ResolveFilePath(input, context.WorkingFolder);
+        var path = ResolveFilePath(input, context);
         var oldString = GetString(input, "old_string") ?? string.Empty;
         var newString = GetString(input, "new_string") ?? string.Empty;
         var replaceAll = GetBool(input, "replace_all", false);

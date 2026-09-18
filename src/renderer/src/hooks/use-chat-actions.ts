@@ -239,6 +239,7 @@ export function useChatActions() {
         userRules: settings.systemPrompt || undefined,
         contextCompressionEnabled: settings.contextCompressionEnabled,
         contextCompressionThreshold: settings.contextCompressionThreshold,
+        sandboxEnabled: settings.sandboxEnabled,
         sshConnectionId,
         projectId,
         scope: session.scope,
@@ -413,7 +414,8 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
     language: settingsStore.language,
     userRules: settingsStore.systemPrompt || undefined,
     contextCompressionEnabled: settingsStore.contextCompressionEnabled,
-    contextCompressionThreshold: settingsStore.contextCompressionThreshold
+    contextCompressionThreshold: settingsStore.contextCompressionThreshold,
+    sandboxEnabled: settingsStore.sandboxEnabled
   })
 }
 
@@ -468,6 +470,7 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
     userRules: settingsStore.systemPrompt || undefined,
     contextCompressionEnabled: settingsStore.contextCompressionEnabled,
     contextCompressionThreshold: settingsStore.contextCompressionThreshold,
+    sandboxEnabled: settingsStore.sandboxEnabled,
     enablePlanMode: true
   })
 }
@@ -543,7 +546,8 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
       language: settingsStore.language,
       userRules: settingsStore.systemPrompt || undefined,
       contextCompressionEnabled: settingsStore.contextCompressionEnabled,
-      contextCompressionThreshold: settingsStore.contextCompressionThreshold
+      contextCompressionThreshold: settingsStore.contextCompressionThreshold,
+      sandboxEnabled: settingsStore.sandboxEnabled
     })
   }
 }

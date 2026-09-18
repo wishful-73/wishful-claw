@@ -15,25 +15,36 @@ public sealed partial class ShellExecuteTool
 
 
 
-    private static string ResolveCwd(string? cwd, string? fallback)
+    private static string ResolveCwd(string? cwd, ToolExecutionContext context)
 
     {
+
+        // 三个分支都要过沙箱：显式 cwd、会话工作目录、以及最后的 UserProfile 兜底
+        // —— 兜底那条尤其要拦，否则沙箱开了还能靠「不带 cwd」跑到用户主目录去。
 
         if (!string.IsNullOrWhiteSpace(cwd) && Directory.Exists(cwd))
 
         {
 
-            return Path.GetFullPath(cwd);
+            var resolved = Path.GetFullPath(cwd);
+
+            EnsureInsideSandbox(resolved, context);
+
+            return resolved;
 
         }
 
 
 
-        if (!string.IsNullOrWhiteSpace(fallback) && Directory.Exists(fallback))
+        if (!string.IsNullOrWhiteSpace(context.WorkingFolder) && Directory.Exists(context.WorkingFolder))
 
         {
 
-            return Path.GetFullPath(fallback);
+            var resolved = Path.GetFullPath(context.WorkingFolder);
+
+            EnsureInsideSandbox(resolved, context);
+
+            return resolved;
 
         }
 
@@ -41,7 +52,11 @@ public sealed partial class ShellExecuteTool
 
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
-        return Directory.Exists(home) ? home : Environment.CurrentDirectory;
+        var fallback = Directory.Exists(home) ? home : Environment.CurrentDirectory;
+
+        EnsureInsideSandbox(fallback, context);
+
+        return fallback;
 
     }
 

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -22,7 +22,8 @@ public static class ToolDispatchRouter
         ToolRegistry? registry,
         string? workingFolder,
         string? projectId,
-        string? sshConnectionId)
+        string? sshConnectionId,
+        Tools.PathBoundary.Policy sandbox)
     {
         var toolOutput = string.Empty;
         var isToolError = false;
@@ -505,7 +506,8 @@ public static class ToolDispatchRouter
             try
             {
                 var toolContext = new ToolExecutionContext(
-                workingFolder, state.SessionId, state.RunId, projectId, sshConnectionId, state.CancellationToken);
+                workingFolder, state.SessionId, state.RunId, projectId, sshConnectionId, state.CancellationToken,
+                sandbox.Enabled, sandbox.Roots);
                 var result = await executor!.ExecuteAsync(toolCall.Input, toolContext);
                 toolOutput = result.Content;
                 isToolError = result.IsError;
@@ -513,6 +515,13 @@ public static class ToolDispatchRouter
             catch (OperationCanceledException)
             {
                 throw;
+            }
+            catch (Tools.PathSandboxViolationException ex)
+            {
+                // 预期内的拒绝，不是故障：消息原样交给模型（不带 "Tool execution failed"
+                // 前缀，免得它把这句当成崩溃而反复重试同一条路径）。
+                toolOutput = ex.Message;
+                isToolError = true;
             }
             catch (Exception ex)
             {

@@ -115,7 +115,8 @@ async function wakeSession(sessionId: string): Promise<void> {
     language: settings.language,
     userRules: settings.systemPrompt || undefined,
     contextCompressionEnabled: settings.contextCompressionEnabled,
-    contextCompressionThreshold: settings.contextCompressionThreshold
+    contextCompressionThreshold: settings.contextCompressionThreshold,
+    sandboxEnabled: settings.sandboxEnabled
   })
 }
 

@@ -183,6 +183,11 @@
     "apiRequestTimeoutNoLimit": "不限时",
     "apiRequestTimeoutSeconds": "{{count}} 秒",
     "apiRequestTimeoutHint": "默认：{{default}} 秒，适用于所有服务商。",
+    "sandbox": {
+        "label": "沙箱模式",
+        "desc": "限制工具的路径参数只能落在自己的工作目录内",
+        "hint": "项目会话限该项目的工作目录；全局会话限所有已注册项目的工作目录。越界的调用会被直接拒绝并说明原因——需要时请关闭本开关，或把目标目录设为工作目录。"
+    },
     "contextCompression": {
       "label": "上下文压缩",
       "desc": "当对话接近上下文窗口上限时，自动总结早期消息以释放空间",

@@ -675,6 +675,81 @@
 
 ---
 
+## S-79 实施（2026-09-18）
+
+### 落点：路径解析层（方案 B）
+
+在 `ToolHelpers` 的路径解析函数内判定，而不是在 `ToolCallProcessor.ExecuteAsync` 的循环里维护「哪个工具哪个参数是路径」的映射表。理由：映射表是新的 `ToolPreset` 式陷阱 —— 新工具忘登记就静默漏检；而 helper 是所有文件/搜索类工具解析路径的必经之路，新工具照抄写法即自动受益。
+
+### C# 侧改动
+
+**新增 `src/runtime/WishfulClaw.Agent/Tools/PathBoundary.cs`**
+
+- `Policy(bool Enabled, IReadOnlyList<string> Roots)` —— 一批工具调用共用一份策略，避免跑到一半用户加了项目导致前后判据不一致。
+- `ResolvePolicy(JsonElement)` —— 开关关掉就**不查项目表**（默认开，见渲染端）。
+- `ResolveRoots(JsonElement)` —— 项目会话取 `workingFolder` 单根；全局会话查 `projects` 表拿并集（`working_folder` 非空 ∧ `ssh_connection_id` 为空，即 SSH 项目不参与，按第五节裁定）。
+- `IsInsideAnyRoot(path, roots)` —— 逐根比对，**目录边界**用 `root + 分隔符` 前缀判（`C:\a` 不会放行 `C:\abc`），Windows 下大小写不敏感；`..` 逃逸由 `Path.GetFullPath` 规范化后自然落空。**空 roots 一律放行**（项目列表为空的降级路径）。
+- `BuildViolationMessage` —— 文案含被拒路径 + 允许的根 + 两条出路（关开关 / 设为工作目录）。模型会把这句原样读给自己看，缺了出路它只会反复重试同一条路径。
+- `ResolveScope` **刻意不复用 `AgentRunContextPolicy.Resolve`** —— 后者在「scope=project 但缺 projectId」时会抛，而这是每个工具调用都要过的检查，不能让一次参数残缺把工具打挂。这里复刻它判 scope 的那几行（含「渠道即 global」）。测试当场抓到过这个坑。
+
+**`PathSandboxViolationException`** —— 单独类型，让分发层能把「预期内的拒绝」和「工具自己炸了」分开：前者消息原样交给模型，后者才带 `Tool execution failed` 前缀。
+
+**`src/runtime/WishfulClaw.Core/Tools/ToolTypes.cs`** —— `ToolExecutionContext` 加 `SandboxEnabled`（默认 `false` = 不校验，没接线的调用方不该被一个它们拿不到的设置拦住）与 `SandboxRoots`。
+
+**`src/runtime/WishfulClaw.Agent/Tools/ToolHelpers.cs`** —— `ResolveFilePath` / `ResolveSearchPath` 第二参由 `string? workingFolder` 改为整个 `ToolExecutionContext`，出口统一走新增的 `EnsureInsideSandbox`。6 个调用点（`FileReadTool` / `FileWriteTool` / `FileEditTool` / `FileListTool` / `GlobTool` / `GrepTool`）随之改签名。
+
+**`src/runtime/WishfulClaw.Agent/Tools/ShellTools/ShellExecuteTool.Helpers.cs`** —— `ResolveCwd` 的**三个分支**（显式 `cwd` / 会话工作目录 / `UserProfile` 兜底）逐条校验。兜底那条尤其要拦，否则沙箱开了还能靠「不带 cwd」跑到用户主目录。
+
+**`src/runtime/WishfulClaw.Agent/ToolDispatchRouter.cs`** —— `DispatchAsync` 多收一个 `PathBoundary.Policy`，构造 `ToolExecutionContext` 时带上；`catch` 链在 `catch (Exception)` **之前**插 `catch (PathSandboxViolationException)`。
+
+**`src/runtime/WishfulClaw.Agent/ToolCallProcessor.cs`** —— `ExecuteAsync` 里 **一批算一次** `PathBoundary.ResolvePolicy(parameters)`，经 `ExecuteGatedAsync` / `ExecuteSingleAsync` 透传到 `DispatchAsync`。
+
+**`src/runtime/WishfulClaw.Agent/AgentRuntimeUseCapabilityExecutor.cs`** —— 代理路径（`use_capability action=call`）也过同一道边界，否则 `Read`/`Write`/`Bash` 经代理绕一圈就能跳出去。这里没有整批共享的机会，就地算策略。
+
+### 渲染端改动
+
+- `stores/settings-store.ts` —— 新增 `sandboxEnabled: boolean`（默认 `true`），纳入 `partialize`。
+- `components/settings/RuntimePanel.tsx` —— 上下文压缩段之后新增「沙箱模式」开关段。
+- `locales/{zh,en}/settings.json` —— 新增 `general.sandbox.{label,desc,hint}`。
+- 透传 8 处（与既有 `contextCompressionEnabled` 同位置）：`hooks/use-chat-actions.ts` ×4、`hooks/use-channel-auto-reply.ts`、`hooks/use-background-subagent-wakeup.ts`、`lib/agent/provider-auto-fallback.ts`、`lib/tools/project-send-message.ts`；另有 `stores/chat-store/index.ts` 的 run params 类型。
+
+### 覆盖审计（对应第五节清单）
+
+| 入口 | 结论 |
+|---|---|
+| `File*` / `Glob` / `Grep` | 经 helper 覆盖 |
+| `ShellExecute` | 经 `ResolveCwd` 覆盖 |
+| `use_capability` 代理 | 已覆盖（上节） |
+| 子代理 / cron / skill | 同 loop、同 `ExecuteAsync`，随 `state.Parameters` 取策略，无需单独接线 |
+| MCP 工具自身路径参数 | **不覆盖** —— 它们的参数结构由各 MCP server 定义，无统一路径字段 |
+| `Monitor` | **不适用** —— 其 schema 只声明 `session_id`（无路径参数）；且它当前有参数名与执行器不一致的独立缺陷（见 S-60 同源问题），语义待定 |
+
+### ⚠️ 机制边界（必须知道，不要以为全拦住了）
+
+沙箱校验的是**工具参数里的路径**，**不是命令字符串内部引用的路径**。`Bash` 传 `rm -rf /etc/foo`、`powershell -c "Remove-Item C:\Windows\..."` 这类，参数里根本没有路径字段，helper 无从判定 —— 本机制**拦不住**。
+
+要拦这一层只能靠 OS 级隔离（job object / 容器 / 受限用户），不在本迭代范围，也无现成设计。老大的原始口径就是「在工具执行给参数的统一地方，对参数进行验证」，本条按此落地，边界如实记录。
+
+### 测试
+
+`tests/WishfulClaw.GoalRegressionTests/Program.Sandbox.cs`（新增，19 断言，注册于 `Program.cs` 的 `RunContextCapSuite();` 之后）：
+- 边界判定：根自身 / 子目录 / **前缀陷阱**（`wc-sandbox-root` vs `wc-sandbox-root-sibling`）/ 根外 / `..` 逃逸 / 空 roots 放行 / 多根命中任一
+- 开关 × 集合：显式关 / 字段缺失按默认开 / 项目会话单根 / 项目会话缺 `workingFolder` 无根 / 关闭时不计算边界
+- 执行层：关不拦、开且根内放行、开但无根不拦、越界抛 `PathSandboxViolationException` 且文案含路径与根、相对路径拼出根外同样拦
+
+### 门禁
+
+- C#：`WishfulClaw.Worker` 0 警告 0 错误；`tests/WishfulClaw.Tests.sln` 0/0；10 个回归套件全过（Goal 249 → **268**）
+- TS：`tsc --noEmit` 三配置 0 错；`npm run test:*` **31/31**
+- 26 个触碰文件 BOM 全 clean
+
+### 两条已知影响（升级后可能开始报错，属预期）
+
+- **全局会话（含渠道）**：边界 = 所有非 SSH 项目工作目录的并集。跨项目干活照常；被挡的是「伸手到任何项目目录之外」—— 临时写到 `C:\Temp`、改系统配置、动用户主目录。这是相比旧行为变化最大的一处。
+- **项目会话**：边界 = 自己的工作目录，项目内正常用法不受影响。
+
+---
+
 
 ## 待登记
 

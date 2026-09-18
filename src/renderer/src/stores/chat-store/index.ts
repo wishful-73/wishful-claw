@@ -108,6 +108,8 @@ export interface AgentActions {
     skipSessionRestore?: boolean
     contextCompressionEnabled?: boolean
     contextCompressionThreshold?: number
+    /** 沙箱模式（iter-32 S-79）：工具路径参数必须落在允许的工作目录内。 */
+    sandboxEnabled?: boolean
     /** 会话级「请求上下文上限」（iter-32 S-73）：开启后有效窗口夹到 256K。 */
     contextCapEnabled?: boolean
     sshConnectionId?: string

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace WishfulClaw.Core.Tools;
 
@@ -66,4 +66,11 @@ public sealed record ToolExecutionContext(
     string? RunId = null,
     string? ProjectId = null,
     string? SshConnectionId = null,
-    CancellationToken CancellationToken = default);
+    CancellationToken CancellationToken = default,
+    /// <summary>
+    /// 沙箱模式（iter-32 S-79）是否生效。默认 false = 不校验：没接线的调用方
+    /// （测试、一次性工具）不该被一个它们拿不到的设置拦住。
+    /// </summary>
+    bool SandboxEnabled = false,
+    /// <summary>允许的根目录集合，空/ null 表示没有边界可依，一律放行。</summary>
+    IReadOnlyList<string>? SandboxRoots = null);

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent.Tools;
 
@@ -55,7 +56,11 @@ internal static class ToolHelpers
         return defaultValue;
     }
 
-    public static string? ResolveFilePath(JsonElement input, string? workingFolder)
+    /// <summary>
+    /// 解析文件类工具（Read / Write / Edit / NotebookEdit / LS ...）的路径参数。
+    /// 相对路径挂在 context.WorkingFolder 下，最后统一过一遍沙箱边界。
+    /// </summary>
+    public static string? ResolveFilePath(JsonElement input, ToolExecutionContext context)
     {
         var path = GetString(input, "file_path") ?? GetString(input, "path");
         if (string.IsNullOrWhiteSpace(path))
@@ -63,16 +68,20 @@ internal static class ToolHelpers
             return null;
         }
 
-        if (!Path.IsPathRooted(path) && !string.IsNullOrWhiteSpace(workingFolder))
+        if (!Path.IsPathRooted(path) && !string.IsNullOrWhiteSpace(context.WorkingFolder))
         {
-            path = Path.Combine(workingFolder, path);
+            path = Path.Combine(context.WorkingFolder, path);
         }
 
-        return Path.GetFullPath(path);
+        var resolved = Path.GetFullPath(path);
+        EnsureInsideSandbox(resolved, context);
+        return resolved;
     }
 
-    public static string ResolveSearchPath(JsonElement input, string? workingFolder)
+    /// <summary>解析 Glob / Grep 的搜索根。</summary>
+    public static string ResolveSearchPath(JsonElement input, ToolExecutionContext context)
     {
+        var workingFolder = context.WorkingFolder;
         var path = GetString(input, "path")?.Trim() ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(path) || path == ".")
@@ -85,7 +94,21 @@ internal static class ToolHelpers
             path = Path.Combine(workingFolder, path);
         }
 
-        return Path.GetFullPath(path);
+        var resolved = Path.GetFullPath(path);
+        EnsureInsideSandbox(resolved, context);
+        return resolved;
+    }
+
+    /// <summary>
+    /// 沙箱边界判定。开关关掉、或没有可用根目录（项目列表为空）时直接放行；
+    /// 越界抛 <see cref="PathSandboxViolationException"/>，由分发层转成工具错误。
+    /// </summary>
+    public static void EnsureInsideSandbox(string resolvedPath, ToolExecutionContext context)
+    {
+        if (!context.SandboxEnabled) return;
+        var roots = context.SandboxRoots ?? [];
+        if (PathBoundary.IsInsideAnyRoot(resolvedPath, roots)) return;
+        throw new PathSandboxViolationException(PathBoundary.BuildViolationMessage(resolvedPath, roots));
     }
 
     public static JsonElement ParseSchema(string json)

@@ -29,7 +29,7 @@ public sealed class FileWriteTool : IToolExecutor
 
     public async Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)
     {
-        var path = ResolveFilePath(input, context.WorkingFolder);
+        var path = ResolveFilePath(input, context);
         var content = GetString(input, "content");
 
         if (string.IsNullOrWhiteSpace(path))

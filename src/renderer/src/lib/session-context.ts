@@ -14,6 +14,8 @@ interface SessionContextInput {
   scope?: SessionScope | null
   collaborationMode?: CollaborationMode | null
   permissionMode?: PermissionMode | null
+  /** 会话级「请求上下文上限」开关（iter-32 S-73），缺省关。 */
+  contextCapEnabled?: boolean | null
   projectId?: string | null
 }
 
@@ -25,7 +27,7 @@ export const DEFAULT_SESSION_CONTEXT: SessionContextDefaults = {
 export function normalizeSessionContext(
   input: SessionContextInput,
   defaults: SessionContextDefaults = DEFAULT_SESSION_CONTEXT
-): Pick<Session, 'scope' | 'collaborationMode' | 'permissionMode' | 'projectId'> {
+): Pick<Session, 'scope' | 'collaborationMode' | 'permissionMode' | 'contextCapEnabled' | 'projectId'> {
   const scope: SessionScope =
     input.scope === 'global' || input.scope === 'project'
       ? input.scope
@@ -43,11 +45,16 @@ export function normalizeSessionContext(
       : null
   const permissionMode = requestedPermissionMode ?? defaults.coworkPermissionMode
 
+  // Request-context cap (iter-32 S-73) is opt-in per session: anything other than an
+  // explicit true means off, so existing sessions keep the model's real window.
+  const contextCapEnabled = input.contextCapEnabled === true
+
   if (scope === 'global') {
     return {
       scope: 'global',
       collaborationMode: 'chat',
       permissionMode,
+      contextCapEnabled,
       projectId: undefined
     }
   }
@@ -67,6 +74,7 @@ export function normalizeSessionContext(
     // Same rule as the global branch: an explicit choice always wins, otherwise the
     // shared workspace default — collaboration mode no longer changes the fallback.
     permissionMode,
+    contextCapEnabled,
     projectId: input.projectId
   }
 }

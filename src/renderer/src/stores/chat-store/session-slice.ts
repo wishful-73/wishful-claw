@@ -56,6 +56,8 @@ export interface SessionSlice {
   updateSessionMode: (id: string, mode: Session['mode']) => void
   updateSessionCollaborationMode: (id: string, mode: Session['collaborationMode']) => void
   updateSessionPermissionMode: (id: string, mode: Session['permissionMode']) => void
+  /** iter-32 S-73：会话级「请求上下文上限」开关。 */
+  updateSessionContextCap: (id: string, enabled: boolean) => void
   setSessionModelManual: (sessionId: string, providerId: string, modelId: string) => void
   setSessionModelAuto: (sessionId: string) => void
   /** iter-29 / S-21: auto 模式下换服务商+模型，mode 保持 auto（不清绑定）。 */
@@ -134,6 +136,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         scope: requestedScope,
         collaborationMode: options?.collaborationMode,
         permissionMode: options?.permissionMode,
+        contextCapEnabled: options?.contextCapEnabled,
         projectId
       },
       {
@@ -364,6 +367,26 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     const settings = useSettingsStore.getState()
     const context = normalizeSessionContext(
       { ...session, permissionMode: mode },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const now = Date.now()
+    set((state) => {
+      const target = state.sessions.find((item) => item.id === id)
+      if (!target) return
+      Object.assign(target, context, { updatedAt: now })
+    })
+    void dbUpdateSession(id, { ...context, updatedAt: now })
+  },
+
+  updateSessionContextCap: (id, enabled) => {
+    const session = get().sessions.find((item) => item.id === id)
+    if (!session) return
+    const settings = useSettingsStore.getState()
+    const context = normalizeSessionContext(
+      { ...session, contextCapEnabled: enabled },
       {
         projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
         coworkPermissionMode: settings.coworkDefaultPermissionMode

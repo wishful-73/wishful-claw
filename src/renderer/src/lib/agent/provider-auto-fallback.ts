@@ -237,6 +237,7 @@ async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): P
       collaborationMode: session.collaborationMode,
       runtimeRole: 'sessionAgent',
       permissionMode: session.permissionMode,
+      contextCapEnabled: session.contextCapEnabled,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,
       maxConcurrentSubAgents: settings.maxConcurrentSubAgents,

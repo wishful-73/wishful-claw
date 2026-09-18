@@ -29,6 +29,7 @@ public static class EntityMappers
         Scope = r.GetNullableString("scope"),
         CollaborationMode = r.GetNullableString("collaboration_mode"),
         PermissionMode = r.GetNullableString("permission_mode"),
+        ContextCapEnabled = r.GetBoolAsInt("context_cap_enabled"),
         CreatedAt = r.GetInt64("created_at"),
         UpdatedAt = r.GetInt64("updated_at"),
         MessageCount = r.GetInt32("message_count"),

@@ -96,9 +96,10 @@ public static class DbSessionTools
 
             db.Execute(
                 "INSERT INTO sessions (id, title, icon, mode, scope, collaboration_mode, permission_mode, " +
+                "context_cap_enabled, " +
                 "created_at, updated_at, message_count, project_id, working_folder, ssh_connection_id, plan_id, " +
                 "pinned, plugin_id, external_chat_id, provider_id, model_id, model_selection_mode, persona_id) " +
-                "VALUES (@id, @title, @icon, @mode, @scope, @collab, @permission, @ca, @ua, 0, @pid, @wf, " +
+                "VALUES (@id, @title, @icon, @mode, @scope, @collab, @permission, @cap, @ca, @ua, 0, @pid, @wf, " +
                 "@ssh, @plan, @pinned, @plugin, @ext, @prov, @model, @msm, @persona)",
                 new SqliteParameter("@id", input.Id),
                 new SqliteParameter("@title", input.Title),
@@ -107,6 +108,7 @@ public static class DbSessionTools
                 new SqliteParameter("@scope", (object?)input.Scope ?? DBNull.Value),
                 new SqliteParameter("@collab", (object?)input.CollaborationMode ?? DBNull.Value),
                 new SqliteParameter("@permission", (object?)input.PermissionMode ?? DBNull.Value),
+                new SqliteParameter("@cap", input.ContextCapEnabled),
                 new SqliteParameter("@ca", input.CreatedAt),
                 new SqliteParameter("@ua", input.UpdatedAt),
                 new SqliteParameter("@pid", (object?)input.ProjectId ?? DBNull.Value),
@@ -153,7 +155,8 @@ public static class DbSessionTools
             ApplySessionPatch(patch, current);
             var changed = db.Execute(
                 "UPDATE sessions SET title = @title, icon = @icon, mode = @mode, scope = @scope, " +
-                "collaboration_mode = @collab, permission_mode = @permission, updated_at = @ua, " +
+                "collaboration_mode = @collab, permission_mode = @permission, context_cap_enabled = @cap, " +
+                "updated_at = @ua, " +
                 "project_id = @pid, working_folder = @wf, ssh_connection_id = @ssh, plan_id = @plan, " +
                 "plugin_id = @plugin, provider_id = @prov, model_id = @model, " +
                 "model_selection_mode = @msm, persona_id = @persona, pinned = @pinned WHERE id = @id",
@@ -163,6 +166,7 @@ public static class DbSessionTools
                 new SqliteParameter("@scope", (object?)current.Scope ?? DBNull.Value),
                 new SqliteParameter("@collab", (object?)current.CollaborationMode ?? DBNull.Value),
                 new SqliteParameter("@permission", (object?)current.PermissionMode ?? DBNull.Value),
+                new SqliteParameter("@cap", current.ContextCapEnabled),
                 new SqliteParameter("@ua", current.UpdatedAt),
                 new SqliteParameter("@pid", (object?)current.ProjectId ?? DBNull.Value),
                 new SqliteParameter("@wf", (object?)current.WorkingFolder ?? DBNull.Value),
@@ -326,6 +330,7 @@ public static class DbSessionTools
             Scope = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "scope")),
             CollaborationMode = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "collaborationMode")),
             PermissionMode = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "permissionMode")),
+            ContextCapEnabled = JsonHelpers.GetBool(parameters, "contextCapEnabled", false) ? 1 : 0,
             CreatedAt = JsonHelpers.GetLong(parameters, "createdAt", now),
             UpdatedAt = JsonHelpers.GetLong(parameters, "updatedAt", now),
             MessageCount = 0,
@@ -399,6 +404,17 @@ public static class DbSessionTools
                 JsonValueKind.False => 0,
                 JsonValueKind.Number when pinnedEl.TryGetInt32(out var v) => v == 0 ? 0 : 1,
                 _ => row.Pinned
+            };
+        }
+
+        if (patch.TryGetProperty("contextCapEnabled", out var capEl))
+        {
+            row.ContextCapEnabled = capEl.ValueKind switch
+            {
+                JsonValueKind.True => 1,
+                JsonValueKind.False => 0,
+                JsonValueKind.Number when capEl.TryGetInt32(out var v) => v == 0 ? 0 : 1,
+                _ => row.ContextCapEnabled
             };
         }
 

@@ -25,6 +25,12 @@ internal static partial class AgentLoop
     private const int MaxToolPairingRepairAttemptsPerRun = 2;
 
     /// <summary>
+    /// 会话级「请求上下文上限」（iter-32 S-73）开启时生效的有效窗口上限，256K。
+    /// 与渲染端 InputArea/context-ring 的计算同口径（见 lib/agent/context-limits.ts）。
+    /// </summary>
+    internal const int SessionContextCapTokens = 256 * 1024;
+
+    /// <summary>
     /// Main execution loop. Called by AgentRuntimeTools.ExecuteRunAsync.
     /// </summary>
     public static async Task ExecuteLoopAsync(
@@ -225,6 +231,12 @@ internal static partial class AgentLoop
             provider = InjectSystemPrompt(provider, builtPrompt);
             WorkerLog.Info($"persona system prompt (cached) id={personaId} length={builtPrompt.Length}");
         }
+
+        // Session-level request-context cap (iter-32 S-73). Applied once here, after the
+        // provider payload is final: every downstream reader of provider.contextLength
+        // (ShouldCompress, ManualCompressionValueFloorTokens, ContextCompression's tail and
+        // pin budgets) then sees the same effective window, so nothing can drift.
+        provider = ApplyContextCap(provider, JsonHelpers.GetBool(parameters, "contextCapEnabled", false));
 
         // Inject timestamp + memory updates directly into the user message
         // stored in SessionConversation. This makes the timestamp part of the

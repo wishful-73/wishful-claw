@@ -1,4 +1,4 @@
-﻿
+
 namespace WishfulClaw.Infrastructure.Db;
 
 // ─── Session Entity ───
@@ -18,6 +18,12 @@ public class SessionEntity
     public string? CollaborationMode { get; set; }
 
     public string? PermissionMode { get; set; }
+
+    /// <summary>
+    /// 会话级「请求上下文上限」开关（1 = 开）。开启后有效窗口 = min(真实 contextLength, 256K)，
+    /// 见 AgentLoop.ApplyContextCap。0 或缺省表示不设上限。
+    /// </summary>
+    public int ContextCapEnabled { get; set; }
 
     public long CreatedAt { get; set; }
 
@@ -69,6 +75,8 @@ public sealed class SessionRow
     public string? Scope { get; set; }
     public string? CollaborationMode { get; set; }
     public string? PermissionMode { get; set; }
+    /// <summary>会话级「请求上下文上限」开关（iter-32 S-73），0 = 关。</summary>
+    public int ContextCapEnabled { get; set; }
     public long CreatedAt { get; set; }
     public long UpdatedAt { get; set; }
     public int MessageCount { get; set; }
@@ -98,6 +106,7 @@ public sealed class SessionRow
     Scope = e.Scope,
     CollaborationMode = e.CollaborationMode,
     PermissionMode = e.PermissionMode,
+    ContextCapEnabled = e.ContextCapEnabled,
     CreatedAt = e.CreatedAt,
     UpdatedAt = e.UpdatedAt,
     MessageCount = e.MessageCount,

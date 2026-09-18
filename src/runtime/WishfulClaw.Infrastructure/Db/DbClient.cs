@@ -535,6 +535,8 @@ public static partial class DbClient
             EnsureColumn("sessions", "scope", "TEXT");
             EnsureColumn("sessions", "collaboration_mode", "TEXT");
             EnsureColumn("sessions", "permission_mode", "TEXT");
+            // 会话级「请求上下文上限」开关（iter-32 S-73），0/1，缺省 0（不设上限）。
+            EnsureColumn("sessions", "context_cap_enabled", "INTEGER");
             EnsureCompactionSnapshotSchema();
             _db.Execute(
                 "UPDATE sessions SET scope = CASE WHEN project_id IS NULL THEN 'global' ELSE 'project' END " +

@@ -219,6 +219,7 @@ export async function handleProjectSendSessionMessage(
       collaborationMode: targetSession.collaborationMode,
       runtimeRole: sessionMode === 'goal' ? 'goalRunner' : 'sessionAgent',
       permissionMode: targetSession.permissionMode,
+      contextCapEnabled: targetSession.contextCapEnabled,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,
       maxConcurrentSubAgents: settings.maxConcurrentSubAgents,

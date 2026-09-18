@@ -108,6 +108,8 @@ export interface AgentActions {
     skipSessionRestore?: boolean
     contextCompressionEnabled?: boolean
     contextCompressionThreshold?: number
+    /** 会话级「请求上下文上限」（iter-32 S-73）：开启后有效窗口夹到 256K。 */
+    contextCapEnabled?: boolean
     sshConnectionId?: string
     permissionMode?: 'default' | 'whitelist' | 'fullAccess'
     nonInteractive?: boolean

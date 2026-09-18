@@ -76,6 +76,8 @@ export interface Session {
   scope: SessionScope
   collaborationMode: CollaborationMode
   permissionMode: PermissionMode
+  /** 会话级「请求上下文上限」开关（iter-32 S-73），开启后有效窗口 = min(真实 contextLength, 256K)。 */
+  contextCapEnabled: boolean
   messages: ChatMessage[]
   messageCount: number
   messagesLoaded: boolean
@@ -136,6 +138,7 @@ export interface CreateSessionOptions {
   scope?: SessionScope
   collaborationMode?: CollaborationMode
   permissionMode?: PermissionMode
+  contextCapEnabled?: boolean
   preserveProjectless?: boolean
   planId?: string | null
   workingFolder?: string | null
@@ -168,6 +171,7 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     scope: session.scope,
     collaborationMode: session.collaborationMode,
     permissionMode: session.permissionMode,
+    contextCapEnabled: session.contextCapEnabled,
     messages: session.messages,
     messageCount: session.messageCount,
     messagesLoaded: session.messagesLoaded,

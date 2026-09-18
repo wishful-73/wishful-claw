@@ -35,6 +35,7 @@ interface SessionRow {
   scope: string | null
   collaborationMode: string | null
   permissionMode: string | null
+  contextCapEnabled: number
   createdAt: number
   updatedAt: number
   messageCount: number
@@ -191,6 +192,7 @@ function sessionContextNeedsMigration(row: SessionRow, session: Session): boolea
   return row.scope !== session.scope ||
     row.collaborationMode !== session.collaborationMode ||
     row.permissionMode !== session.permissionMode ||
+    row.contextCapEnabled !== (session.contextCapEnabled ? 1 : 0) ||
     (session.scope === 'global' && row.projectId !== null)
 }
 
@@ -200,6 +202,7 @@ function persistNormalizedSessionContext(row: SessionRow, session: Session): voi
     scope: session.scope,
     collaborationMode: session.collaborationMode,
     permissionMode: session.permissionMode,
+    contextCapEnabled: session.contextCapEnabled,
     updatedAt: row.updatedAt,
     projectId: session.projectId ?? null
   }).catch((err) => {
@@ -214,6 +217,7 @@ function rowToSession(row: SessionRow): Session {
       scope: row.scope as Session['scope'] | null,
       collaborationMode: row.collaborationMode as Session['collaborationMode'] | null,
       permissionMode: row.permissionMode as Session['permissionMode'] | null,
+      contextCapEnabled: row.contextCapEnabled === 1,
       projectId: row.projectId
     },
     {
@@ -309,6 +313,7 @@ export async function dbCreateSession(session: Session): Promise<void> {
     scope: session.scope,
     collaborationMode: session.collaborationMode,
     permissionMode: session.permissionMode,
+    contextCapEnabled: session.contextCapEnabled ?? false,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     projectId: session.projectId ?? null,
@@ -355,6 +360,7 @@ export async function dbUpdateSession(
   if (patch.scope !== undefined) dbPatch.scope = patch.scope
   if (patch.collaborationMode !== undefined) dbPatch.collaborationMode = patch.collaborationMode
   if (patch.permissionMode !== undefined) dbPatch.permissionMode = patch.permissionMode
+  if (patch.contextCapEnabled !== undefined) dbPatch.contextCapEnabled = patch.contextCapEnabled
   if (patch.updatedAt !== undefined) dbPatch.updatedAt = patch.updatedAt
   if (patch.projectId !== undefined) dbPatch.projectId = patch.projectId
   if (patch.workingFolder !== undefined) dbPatch.workingFolder = patch.workingFolder

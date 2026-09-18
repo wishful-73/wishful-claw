@@ -109,6 +109,40 @@
 6. **副作用**：cap 低于模型真实窗口时，超长单轮（如大文件贴入）会立刻触发压缩/截断，需确认可接受。
 7. **渲染端一致性**：`context-ring.tsx:35-60` 与 `lib/agent/context-compression.ts` 都在算阈值，cap 生效后两侧必须同口径，否则环上显示的百分比会与实际触发点不符。
 
+### 实施（2026-09-18）
+
+**cap 施加点选「合成虚拟 contextLength」** —— 在 provider 定稿后克隆一份、把 `contextLength` 夹到上限，四条读取点（`AgentLoop.cs:658` `ShouldCompress`、`AgentLoop.ContextCompression.cs:38` `ManualCompressionValueFloorTokens`、`ContextCompression.cs:282` 尾部预算、`:350` 钉住预算）**零改动**，天然同口径。逐处夹心要改四处，将来再有第五处读取点就漏。
+
+**Worker 侧（3 文件）**
+- `AgentLoop.cs` 新增 `internal const int SessionContextCapTokens = 256 * 1024`；`ExecuteLoopAsync` 在 persona 提示词注入后加一行 `provider = ApplyContextCap(provider, JsonHelpers.GetBool(parameters, "contextCapEnabled", false))`。
+- `AgentLoop.Helpers.cs` 新增 `ApplyContextCap(provider, enabled)`：关闭、或模型窗口 ≤ 上限、或未声明 `contextLength` 时**原样返回**（连对象都不重建）；否则照 `InjectSystemPrompt` 的写法重建 JSON，只替换 `contextLength`。
+
+**会话级落库（4 文件）**
+- `DbClient.cs`：`EnsureColumn("sessions", "context_cap_enabled", "INTEGER")`（缺省 NULL = 关）。
+- `Entities/SessionEntity.cs`：`SessionEntity` / `SessionRow` 各加 `ContextCapEnabled`（int 0/1），`FromEntity` 转发。
+- `EntityMappers.cs`：`MapSession` 用 `GetBoolAsInt`（0/1 且容忍 NULL）。
+- `DbSessionTools.cs`：Create 的 INSERT、Update 的 UPDATE、`ReadSessionInput`、`ApplySessionPatch` 四处补齐 —— 缺任一处，开关点完一存就丢。
+
+**渲染端**
+- `lib/session-context.ts`：归一化加 `contextCapEnabled`（**只有显式 true 才算开**，其余一律关）。
+- `stores/chat-store/types.ts`：`Session` 加必填 `contextCapEnabled`、`CreateSessionOptions` 加可选同名项、`createRestorableSessionSnapshot` 转发。
+- `stores/chat-store/db-helpers.ts`：`SessionRow` 接口、迁移判定、`rowToSession`、`dbCreateSession`、`dbUpdateSession` 五处。
+- `stores/chat-store/session-slice.ts`：`createSession` 透传 + 新增 `updateSessionContextCap(id, enabled)`（走同一套归一化与落库）。
+- `lib/agent/context-compression-config.ts`：新增 `SESSION_CONTEXT_CAP_TOKENS = 256 * 1024`（注释写明与 Worker 常量必须同值）与 `applySessionContextCap(contextLength, enabled)`；`lib/agent/context-compression.ts` re-export。
+- `components/chat/InputArea/context-ring.tsx`：环的有效窗口改 `applySessionContextCap(resolveCompressionContextLength(...), session.contextCapEnabled)`；**UI 入口就落在这个环上** —— 外面包一层 `DropdownMenu`（hover 仍是原提示、双击仍是压缩），菜单里一项 `DropdownMenuCheckboxItem` 切上限、一项「立即压缩上下文」。**模型档案里的 `contextLength` 不动**，只有运行期窗口变。
+- run params 透传 8 个调用点补 `contextCapEnabled`：`hooks/use-chat-actions.ts` ×4、`hooks/use-channel-auto-reply.ts`、`hooks/use-background-subagent-wakeup.ts`、`lib/agent/provider-auto-fallback.ts`、`lib/tools/project-send-message.ts`；`stores/chat-store/index.ts` 的 `SendMessageRequest` 加字段。
+- locale zh/en `chat.json`：`input.contextCapToggle` / `input.compressContextNow`。
+
+**默认态**：关（V2）。**取值**：固定 256K，无下拉（V6）。
+
+**测试**
+- 新增 `tests/WishfulClaw.SessionTaskCascadeRegressionTests/SessionContextCapTests.cs`（`RunSessionContextCapSuite`）：创建带/不带开关、patch 开与关、改别的字段不冲掉开关、`MapSession` 与 `SessionRow` 读回。
+- 新增 `tests/WishfulClaw.GoalRegressionTests/Program.ContextCap.cs`（`RunContextCapSuite`）：关着不动、1M 夹到 256K、128K 保持、未声明 `contextLength` 不新增字段、其余字段保留、恰好等于上限不改写。
+
+**门禁**：Worker 与 tests.sln 各 0 警告 0 错误；C# 回归 **10/10**；typecheck 三配置 `WEB=0 NODE=0 ROOT=0`；全量 `test*` **31/31**；触碰文件 BOM clean。
+
+**真机待验**（需 `npm run dev:full` 重编 Worker）：1M 模型开启后环显示 256K、到阈值触发压缩；关闭后恢复 1M；重启后开关仍在。
+
 ---
 
 ## S-74 输入框底部工具栏控件间距过宽

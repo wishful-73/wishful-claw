@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   AIModelConfig,
 } from '../api/types'
 
@@ -42,6 +42,13 @@ export const CONTEXT_COMPRESSION_AUTO_BUFFER_TOKENS = 13_000
 export const CONTEXT_COMPRESSION_PRE_BUFFER_TOKENS = 20_000
 export const CONTEXT_COMPRESSION_PRE_GAP_TOKENS = 8_000
 
+/**
+ * 会话级「请求上下文上限」（iter-32 S-73）的有效窗口上限，256K。
+ * 与 Worker 侧 AgentLoop.SessionContextCapTokens 同值 —— 两边必须是同一个数，
+ * 否则环上显示的和实际触发压缩的窗口会各说各话。
+ */
+export const SESSION_CONTEXT_CAP_TOKENS = 256 * 1024
+
 const DEFAULT_PRECOMPRESS_THRESHOLD = 0.65
 export const LEGACY_SUMMARY_PREFIXES = [
   '[Context Memory Compressed Summary]',
@@ -84,6 +91,18 @@ export function resolveCompressionContextLength(
   }
 
   return configuredContextLength
+}
+
+/**
+ * 套用会话级「请求上下文上限」：开启且模型窗口大于上限时返回 256K，否则原样返回。
+ * 模型档案里存的 contextLength 不动，只影响运行期展示与触发计算。
+ */
+export function applySessionContextCap(
+  contextLength: number,
+  enabled?: boolean | null
+): number {
+  if (!enabled || contextLength <= 0) return contextLength
+  return Math.min(contextLength, SESSION_CONTEXT_CAP_TOKENS)
 }
 
 export function resolveCompressionReservedOutputBudget(

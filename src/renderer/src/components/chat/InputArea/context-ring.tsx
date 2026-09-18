@@ -4,6 +4,15 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@renderer/components/ui/dropdown-menu'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
@@ -11,6 +20,8 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 import type { AIModelConfig } from '@renderer/lib/api/types'
 import { formatTokens } from '@renderer/lib/format-tokens'
 import {
+  SESSION_CONTEXT_CAP_TOKENS,
+  applySessionContextCap,
   getEffectiveContextWindow,
   resolveCompressionContextLength,
   resolveCompressionReservedOutputBudget,
@@ -32,6 +43,8 @@ export function ContextRing({
     return idx !== undefined ? (s.sessions[idx] ?? null) : null
   })
   const mainModelSelectionMode = useSettingsStore((s) => s.mainModelSelectionMode)
+  // Session-level request-context cap (iter-32 S-73) is toggled from this ring's menu.
+  const updateSessionContextCap = useChatStore((s) => s.updateSessionContextCap)
   const contextCompressionThreshold = useSettingsStore((s) => s.contextCompressionThreshold)
   const channels = useChannelStore((s) => s.channels)
 
@@ -56,7 +69,11 @@ export function ContextRing({
   const compressionConfig = activeModelCfg
     ? {
         enabled: true,
-        contextLength: resolveCompressionContextLength(activeModelCfg),
+        // 会话开了「请求上下文上限」时，显示与触发都按 min(真实窗口, 256K) 算（iter-32 S-73）。
+        contextLength: applySessionContextCap(
+          resolveCompressionContextLength(activeModelCfg),
+          activeSession?.contextCapEnabled
+        ),
         threshold: resolveCompressionThreshold(contextCompressionThreshold),
         preCompressThreshold: 0.65,
         reservedOutputBudget: resolveCompressionReservedOutputBudget(activeModelCfg)
@@ -159,6 +176,7 @@ export function ContextRing({
   const strokeColor =
     pct > 80 ? 'stroke-red-500' : pct > 50 ? 'stroke-amber-500' : 'stroke-emerald-500'
   const canCompress = Boolean(onCompressContext) && !isCompressing
+  const capEnabled = activeSession.contextCapEnabled === true
   const handleDoubleClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
     event.preventDefault()
     event.stopPropagation()
@@ -174,76 +192,103 @@ export function ContextRing({
   const dashOffset = circumference * (1 - pct / 100)
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-disabled={!canCompress}
-          aria-label={t('input.doubleClickCompressContext', {
-            defaultValue: 'Double-click to compress context'
-          })}
-          className={cn(
-            'flex items-center justify-center rounded-full outline-none focus-visible:ring-1 focus-visible:ring-ring',
-            canCompress ? 'cursor-pointer' : 'cursor-default',
-            isCompressing && 'opacity-70'
-          )}
-          onDoubleClick={handleDoubleClick}
-          onMouseDown={(event) => {
-            event.preventDefault()
-          }}
-        >
-          <div className="relative flex size-[26px] shrink-0 items-center justify-center">
-            <svg width={size} height={size} className="-rotate-90">
-              <circle
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                fill="none"
-                className="stroke-muted/30"
-                strokeWidth={strokeWidth}
-              />
-              {isCurrentSessionUsageFresh && (
-                <circle
-                  cx={size / 2}
-                  cy={size / 2}
-                  r={radius}
-                  fill="none"
-                  className={`${strokeColor} transition-all duration-500`}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray={circumference}
-                  strokeDashoffset={dashOffset}
-                  strokeLinecap="round"
-                />
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-disabled={!canCompress}
+              aria-label={t('input.doubleClickCompressContext', {
+                defaultValue: 'Double-click to compress context'
+              })}
+              className={cn(
+                'flex items-center justify-center rounded-full outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                canCompress ? 'cursor-pointer' : 'cursor-default',
+                isCompressing && 'opacity-70'
               )}
-            </svg>
-            {isCurrentSessionUsageFresh && (
-              <span className="absolute text-[7px] font-medium text-muted-foreground tabular-nums select-none">
-                {pct.toFixed(0)}%
-              </span>
+              onDoubleClick={handleDoubleClick}
+              onMouseDown={(event) => {
+                event.preventDefault()
+              }}
+            >
+              <div className="relative flex size-[26px] shrink-0 items-center justify-center">
+                <svg width={size} height={size} className="-rotate-90">
+                  <circle
+                    cx={size / 2}
+                    cy={size / 2}
+                    r={radius}
+                    fill="none"
+                    className="stroke-muted/30"
+                    strokeWidth={strokeWidth}
+                  />
+                  {isCurrentSessionUsageFresh && (
+                    <circle
+                      cx={size / 2}
+                      cy={size / 2}
+                      r={radius}
+                      fill="none"
+                      className={`${strokeColor} transition-all duration-500`}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray={circumference}
+                      strokeDashoffset={dashOffset}
+                      strokeLinecap="round"
+                    />
+                  )}
+                </svg>
+                {isCurrentSessionUsageFresh && (
+                  <span className="absolute text-[7px] font-medium text-muted-foreground tabular-nums select-none">
+                    {pct.toFixed(0)}%
+                  </span>
+                )}
+              </div>
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <div className="text-xs space-y-0.5">
+            <p className="font-medium">{t('input.compressionBudget')}</p>
+            <p className="text-muted-foreground">
+              {formatTokens(ctxUsed)} / {formatTokens(ctxGaugeLimit)} ({pct.toFixed(1)}%)
+            </p>
+            <p className="text-muted-foreground">
+              {formatTokens(remaining)} {t('input.remaining')}
+            </p>
+            {onCompressContext && (
+              <p className="text-muted-foreground">
+                {isCompressing
+                  ? t('input.compressingContext', { defaultValue: 'Compressing context...' })
+                  : t('input.doubleClickCompressContext', {
+                      defaultValue: 'Double-click to compress context'
+                    })}
+              </p>
             )}
           </div>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        <div className="text-xs space-y-0.5">
-          <p className="font-medium">{t('input.compressionBudget')}</p>
-          <p className="text-muted-foreground">
-            {formatTokens(ctxUsed)} / {formatTokens(ctxGaugeLimit)} ({pct.toFixed(1)}%)
-          </p>
-          <p className="text-muted-foreground">
-            {formatTokens(remaining)} {t('input.remaining')}
-          </p>
-          {onCompressContext && (
-            <p className="text-muted-foreground">
-              {isCompressing
-                ? t('input.compressingContext', { defaultValue: 'Compressing context...' })
-                : t('input.doubleClickCompressContext', {
-                    defaultValue: 'Double-click to compress context'
-                  })}
-            </p>
-          )}
-        </div>
-      </TooltipContent>
-    </Tooltip>
+        </TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end" side="top" className="w-56">
+        <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+          {formatTokens(ctxUsed)} / {formatTokens(ctxGaugeLimit)}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuCheckboxItem
+          checked={capEnabled}
+          onCheckedChange={(checked) => {
+            if (!sessionId) return
+            updateSessionContextCap(sessionId, checked === true)
+          }}
+        >
+          {t('input.contextCapToggle', {
+            tokens: formatTokens(SESSION_CONTEXT_CAP_TOKENS),
+            defaultValue: 'Limit request context to {{tokens}}'
+          })}
+        </DropdownMenuCheckboxItem>
+        {canCompress && (
+          <DropdownMenuItem onSelect={() => onCompressContext?.()}>
+            {t('input.compressContextNow', { defaultValue: 'Compress context now' })}
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

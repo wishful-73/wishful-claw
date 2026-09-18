@@ -40,7 +40,7 @@ export function MarkdownViewer({
   }
 
   return (
-    <div className="size-full overflow-y-auto p-6">
+    <div className="markdown-doc size-full overflow-y-auto p-6">
       <div className="prose prose-sm dark:prose-invert max-w-none">
         <ReactMarkdown
           remarkPlugins={MARKDOWN_REMARK_PLUGINS}

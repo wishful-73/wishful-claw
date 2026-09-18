@@ -1,4 +1,4 @@
-﻿@import 'tailwindcss';
+@import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
 
@@ -281,16 +281,24 @@
   #root {
     height: 100%;
   }
+
+  /* 全局滚动条与滚动行为。必须待在 @layer base 里 —— 裸写在 layer 外的通配符
+     规则会盖住所有组件样式：iter-30 修聊天窗滚动时，`scroll-behavior: smooth`
+     就只能靠 inline style 硬顶。收进 base 后普通 class 即可按需覆盖（需要
+     程序化跟随的容器给 scroll-auto 就行）。 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.7 0 0 / 0.2) transparent;
+    scroll-behavior: smooth;
+  }
+
+  .dark * {
+    scrollbar-color: oklch(0.5 0 0 / 0.25) transparent;
+  }
 }
 
-/* Custom scrollbars */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: oklch(0.7 0 0 / 0.2) transparent;
-}
-.dark * {
-  scrollbar-color: oklch(0.5 0 0 / 0.25) transparent;
-}
+/* Custom scrollbars —— 颜色与宽度这些留在 layer 外无妨，通配符规则本身见上面
+   @layer base 里的说明 */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -320,10 +328,6 @@
   background: oklch(0.65 0.15 250 / 0.3);
 }
 
-* {
-  scroll-behavior: smooth;
-}
-
 /* ── Title bar drag region ── */
 .titlebar-drag {
   -webkit-app-region: drag;
@@ -334,6 +338,20 @@
 
 /* ── Composer shell styles ── */
 @layer components {
+/* ── 文档预览的「排版语义」复位 ──
+   这一层只管「元素该 inline 还是 block、空白怎么折叠」，不管颜色 / 字体 / 圆角
+   —— 皮肤继续跟随产品主题，语义回到标准。
+   集中放这里是刻意的：文档预览会渲染 markdown 里的原生 HTML（rehype-raw），而
+   产品的全局规则不该管到它 —— 尤其 Tailwind preflight 的 img/video
+   display:block（那是为「正文插图一张占一段」定的，落到 badge 上就是一排图
+   各占一行）。以后 CSS 或 preflight 再动排版语义，往这里补一条即可，不用翻遍
+   markdown 组件。 */
+.markdown-doc :where(img),
+.markdown-doc :where(video) {
+  /* 并排铺的一排图（README 顶部的 badge）必须留在同一行，放不下才折行。 */
+  display: inline-block;
+}
+
 .composer-shell {
   position: relative;
   isolation: isolate;

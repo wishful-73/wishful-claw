@@ -9,6 +9,7 @@ import { TitleBar } from './TitleBar'
 import { RightPanel } from './RightPanel'
 import { RuntimeStatusPanel } from './RuntimeStatusPanel'
 import { CommandPalette } from './CommandPalette'
+import { LocalImagePreviewDialog } from '@renderer/components/chat/LocalImagePreviewDialog'
 import { SessionConversationPane } from './SessionConversationPane'
 import { PlaceholderPage } from './PlaceholderPage'
 import { AutomationPage } from '@renderer/components/automation/AutomationPage'
@@ -180,6 +181,9 @@ export function MainLayout(): React.JSX.Element {
 
         {/* Command palette overlay */}
         <CommandPalette />
+
+        {/* Fullscreen preview for image paths clicked in agent replies */}
+        <LocalImagePreviewDialog />
       </div>
     </TooltipProvider>
   )

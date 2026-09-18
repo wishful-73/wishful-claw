@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next'
 import { FileTreePanel } from '@renderer/components/cowork/FileTreePanel'
-import { ChangesPanel } from '@renderer/components/cowork/changes-panel'
 import { BranchPanel } from '@renderer/components/cowork/branch-panel'
 import { GitPage } from '@renderer/components/chat/GitPage'
 import { useState } from 'react'
@@ -14,7 +13,6 @@ export interface AgentFilesPanelProps {
 
 const TABS = [
   { id: 'files', labelKey: 'agentFiles.files', fallback: 'Files' },
-  { id: 'changes', labelKey: 'agentFiles.changes', fallback: 'Changes' },
   { id: 'branches', labelKey: 'agentFiles.branches', fallback: 'Branches' },
   { id: 'git', labelKey: 'agentFiles.git', fallback: 'Git' }
 ] as const
@@ -74,8 +72,6 @@ export function AgentFilesPanel(props: AgentFilesPanelProps) {
       <div className="min-h-0 flex-1 overflow-hidden">
         {activeTab === 'files' ? (
           <FileTreePanel sessionId={sessionView.sessionId} surface="agent" watchEnabled />
-        ) : activeTab === 'changes' ? (
-          <ChangesPanel workingFolder={sessionView.workingFolder} />
         ) : activeTab === 'branches' ? (
           <BranchPanel workingFolder={sessionView.workingFolder} />
         ) : (

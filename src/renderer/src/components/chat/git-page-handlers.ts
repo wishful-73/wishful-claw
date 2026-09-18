@@ -11,6 +11,16 @@ import {
 import { type ScmFileRow, parseRemoteBranchName } from './GitPage/utils'
 import type { TFunction } from 'i18next'
 
+/** 提交区的四个动作：普通提交 / 修订 / 提交后推送 / 提交后同步。 */
+export type CommitAction = 'commit' | 'amend' | 'push' | 'sync'
+
+const COMMIT_DONE_KEYS: Record<CommitAction, string> = {
+  commit: 'commitDone',
+  amend: 'commitAmendDone',
+  push: 'commitPushDone',
+  sync: 'commitSyncDone'
+}
+
 interface GitPageHandlersOptions {
   selectedRepoPath: string | null
   newBranchName: string
@@ -168,17 +178,35 @@ export function useGitPageHandlers(opts: GitPageHandlersOptions) {
     setBranchNameInput('')
   }
 
-  const handleCommit = async (): Promise<void> => {
+  const handleCommit = async (action: CommitAction = 'commit'): Promise<void> => {
     if (!selectedRepoPath || !commitMessage.trim()) return
     setCommitting(true)
     try {
-      const result = await store.commit(selectedRepoPath, commitMessage.trim())
+      // 与旧「变更」面板一致：先把工作区改动全部暂存，再提交。
+      const stageResult = await store.stageAll(selectedRepoPath)
+      if (!stageResult.success) {
+        toast.error(stageResult.error)
+        return
+      }
+      const result = await store.commit(selectedRepoPath, commitMessage.trim(), {
+        amend: action === 'amend'
+      })
       if (!result.success) {
         toast.error(result.error)
         return
       }
+      if (action === 'push' || action === 'sync') {
+        const followUp =
+          action === 'push'
+            ? await store.pushRepository(selectedRepoPath)
+            : await store.syncRepository(selectedRepoPath)
+        if (!followUp.success) {
+          toast.error(followUp.error)
+          return
+        }
+      }
       setCommitMessage('')
-      toast.success(t('commitDone'))
+      toast.success(t(COMMIT_DONE_KEYS[action]))
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err))
     } finally {

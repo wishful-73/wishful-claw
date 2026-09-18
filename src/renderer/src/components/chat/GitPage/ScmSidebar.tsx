@@ -31,6 +31,7 @@ import {
 } from '@renderer/components/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
+import type { CommitAction } from '../git-page-handlers'
 import {
   useGitStore,
   type GitBranchItem,
@@ -44,7 +45,16 @@ import {
 } from './utils'
 import type { TFunction } from 'i18next'
 import { Textarea } from '@renderer/components/ui/textarea'
-import { CloudDownload, CloudUpload, EllipsisVertical, Upload, Wand2 } from 'lucide-react'
+import {
+  Cloud,
+  CloudDownload,
+  CloudUpload,
+  EllipsisVertical,
+  GitCommitHorizontal,
+  RotateCcw,
+  Upload,
+  Wand2
+} from 'lucide-react'
 
 interface ScmSidebarProps {
   /** 紧凑形态（右侧面板）传 `'100%'` 占满宿主宽度；宽态传拖拽后的像素值。 */
@@ -97,7 +107,7 @@ interface ScmSidebarProps {
   setCommitMessage: (v: string) => void
   committing: boolean
   aiCommitLoading: boolean
-  handleCommit: () => Promise<void>
+  handleCommit: (action: CommitAction) => Promise<void>
   handleAiCommitMessage: () => Promise<void>
   onScmResizePointerDown: (e: React.PointerEvent) => void
 }
@@ -152,6 +162,11 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
     handleAiCommitMessage,
     onScmResizePointerDown
   } = props
+
+  // 提交前会自动暂存全部改动（与旧「变更」面板一致），所以只看有没有可提交的东西 + 有没有写说明。
+  const hasPendingChanges = stagedRows.length > 0 || unstagedRows.length > 0
+  const commitDisabled =
+    busy || committing || aiCommitLoading || !hasPendingChanges || !commitMessage.trim()
 
   return (
         <>
@@ -443,6 +458,91 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
                     ) : null}
                   </div>
 
+                  <div className="shrink-0 border-b border-border p-2">
+                    <div className="relative">
+                      <Textarea
+                        value={commitMessage}
+                        onChange={(event) => setCommitMessage(event.target.value)}
+                        placeholder={t('commitPlaceholder')}
+                        disabled={busy || aiCommitLoading}
+                        className="min-h-[72px] resize-y rounded-sm border-border/80 bg-background pr-10 text-xs"
+                        rows={3}
+                      />
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-1 right-1 size-7"
+                            disabled={busy || aiCommitLoading || stagedRows.length === 0}
+                            onClick={() => void handleAiCommitMessage()}
+                          >
+                            {aiCommitLoading ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Wand2 className="size-3.5" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">{t('aiCommitTooltip')}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <div className="mt-2 flex items-center gap-1">
+                      <Button
+                        type="button"
+                        className="h-8 min-w-0 flex-1 text-xs"
+                        disabled={commitDisabled}
+                        onClick={() => void handleCommit('commit')}
+                      >
+                        {committing ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
+                        {t('commitButton')}
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            className="size-8 shrink-0"
+                            disabled={commitDisabled}
+                          >
+                            <ChevronDown className="size-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuItem
+                            className="text-xs"
+                            onSelect={() => void handleCommit('commit')}
+                          >
+                            <GitCommitHorizontal className="mr-2 size-3.5" />
+                            {t('commitButton')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-xs"
+                            onSelect={() => void handleCommit('amend')}
+                          >
+                            <RotateCcw className="mr-2 size-3.5" />
+                            {t('commitAmend')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-xs"
+                            onSelect={() => void handleCommit('push')}
+                          >
+                            <CloudUpload className="mr-2 size-3.5" />
+                            {t('commitPush')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-xs"
+                            onSelect={() => void handleCommit('sync')}
+                          >
+                            <Cloud className="mr-2 size-3.5" />
+                            {t('commitSync')}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
                   {conflictRows.length > 0 ? (
                     <ScmSectionHeader title={t('sectionConflicts')} count={conflictRows.length}>
                       {conflictRows.map((row) => (
@@ -559,53 +659,6 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
                       ))
                     )}
                   </ScmSectionHeader>
-
-                  <div className="border-t border-border p-2">
-                    <div className="relative">
-                      <Textarea
-                        value={commitMessage}
-                        onChange={(event) => setCommitMessage(event.target.value)}
-                        placeholder={t('commitPlaceholder')}
-                        disabled={busy || aiCommitLoading}
-                        className="min-h-[72px] resize-y rounded-sm border-border/80 bg-background pr-10 text-xs"
-                        rows={3}
-                      />
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-1 right-1 size-7"
-                            disabled={busy || aiCommitLoading || stagedRows.length === 0}
-                            onClick={() => void handleAiCommitMessage()}
-                          >
-                            {aiCommitLoading ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <Wand2 className="size-3.5" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="left">{t('aiCommitTooltip')}</TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Button
-                      type="button"
-                      className="mt-2 h-8 w-full text-xs"
-                      disabled={
-                        busy ||
-                        committing ||
-                        aiCommitLoading ||
-                        stagedRows.length === 0 ||
-                        !commitMessage.trim()
-                      }
-                      onClick={() => void handleCommit()}
-                    >
-                      {committing ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
-                      {t('commitButton')}
-                    </Button>
-                  </div>
                 </>
               )}
             </div>

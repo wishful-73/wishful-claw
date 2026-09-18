@@ -28,6 +28,7 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useTaskStore, type TaskItem } from '@renderer/stores/task-store'
+import { resolveCurrentTodoBatch } from '@renderer/lib/agent/session-todo-batch'
 
 const EASE = [0.4, 0, 0.2, 1] as const
 const EMPTY_TASKS: TaskItem[] = []
@@ -109,7 +110,11 @@ export function SessionTodoPanel({
     draftSessionId ? s.runningSessions[draftSessionId] : undefined
   )
 
-  if (!projectScoped || !draftSessionId || tasks.length === 0) return null
+  // 只显示当前批次：agent 开第二批时旧任务不会清理，全量显示会让计数一路累加。
+  // 纯渲染过滤，数据一字不动（任务状态归 agent 所有）。
+  const batchTasks = React.useMemo(() => resolveCurrentTodoBatch(tasks), [tasks])
+
+  if (!projectScoped || !draftSessionId || batchTasks.length === 0) return null
 
   const isRunLive =
     Boolean(streamingMessage) ||
@@ -117,17 +122,17 @@ export function SessionTodoPanel({
     executionStatus === 'retrying'
   const now = Date.now()
   const inProgressStates = new Map<string, InProgressState>()
-  for (const task of tasks) {
+  for (const task of batchTasks) {
     if (task.status !== 'in_progress') continue
     inProgressStates.set(
       task.id,
       isRunLive ? 'running' : now - task.updatedAt > STALE_IN_PROGRESS_MS ? 'stale' : 'suspended'
     )
   }
-  const completed = tasks.filter((task) => task.status === 'completed').length
+  const completed = batchTasks.filter((task) => task.status === 'completed').length
   const isExecuting = [...inProgressStates.values()].includes('running')
-  const isComplete = completed === tasks.length
-  const summaryLabel = t('todo.tasksDone', { completed, total: tasks.length })
+  const isComplete = completed === batchTasks.length
+  const summaryLabel = t('todo.tasksDone', { completed, total: batchTasks.length })
   const transition = animationsEnabled ? { duration: 0.2, ease: EASE } : { duration: 0 }
 
   return (
@@ -180,7 +185,7 @@ export function SessionTodoPanel({
               >
                 <div className="max-h-64 overflow-y-auto px-3 py-2.5">
                   <ol className="space-y-1.5">
-                    {tasks.map((task, index) => {
+                    {batchTasks.map((task, index) => {
                       // 非「执行中」的 in_progress 得给一句解释，否则用户只看到圈不转了。
                       const inProgressState = inProgressStates.get(task.id)
                       const inProgressHint =
@@ -189,10 +194,15 @@ export function SessionTodoPanel({
                           : inProgressState === 'stale'
                             ? t('todo.inProgressStale')
                             : undefined
+                      // 正文只占一行，全文放 title；提示语不能顶掉全文，两者拼一起。
+                      const primaryText = getTaskPrimaryText(task)
+                      const rowTitle = inProgressHint
+                        ? `${primaryText}\n${inProgressHint}`
+                        : primaryText
                       return (
                         <li
                           key={task.id}
-                          title={inProgressHint}
+                          title={rowTitle}
                           className="grid grid-cols-[18px_24px_minmax(0,1fr)] gap-2 text-[12px] leading-5"
                         >
                           <span className="flex justify-center pt-0.5">
@@ -212,13 +222,13 @@ export function SessionTodoPanel({
                           <div className="min-w-0">
                             <div
                               className={cn(
-                                'min-w-0 break-words',
+                                'min-w-0 truncate',
                                 task.status === 'completed' &&
                                   'text-muted-foreground/60 line-through',
                                 task.status === 'pending' && 'text-muted-foreground/80'
                               )}
                             >
-                              {getTaskPrimaryText(task)}
+                              {primaryText}
                             </div>
                             {task.owner && (
                               <div className="text-[10px] text-muted-foreground/50">

@@ -393,7 +393,7 @@
 - **同源现象**：Worker 侧 `TodoTaskList` 也返回全部（`AgentRuntimeTaskExecutor.cs:266` `EncodeTaskListResult(LoadTasksBySession(db, sessionId))`）⇒ **agent 自己看到的也是累加值**。
 - 注：每轮注入的 `<todo_status>` 只列未完成项（S-44 `BuildSessionTodoBlock`），不受此影响。
 
-### 待裁定（实施前必须先定）
+### 裁定与实施
 
 1. **「第一批不清理」怎么解** —— 老大 2026-09-18 14:26：「其它的暂时没啥好想法」。候选：
    - **A（我推荐）** 渲染端只显示「当前批次」，**数据一字不动** —— 但得先定切批规则；我倾向「上一批全部 `completed` 之后的第一个新建任务 = 新批起点」。**纯渲染过滤**：删任务是不可逆动作，不能为了显示去删数据。
@@ -401,6 +401,38 @@
    - **C** 只改计数口径（`total` 只算未完成 + 当前批），列表仍全量。
 2. **问题 1** —— **已定**，见上（单行截断 + hover 全文）。
 3. 面板是否加「只看未完成」的过滤开关 —— 老大未提，**不擅自加**。
+
+---
+
+### 实施（2026-09-18）
+
+**裁定**：按 **V3 = A** —— 渲染端只显示「当前批次」，**数据一字不动**（任务状态归 agent 所有，删任务不可逆）。
+
+**切批判据（`src/renderer/src/lib/agent/session-todo-batch.ts`，新增纯函数 `resolveCurrentTodoBatch`）**
+
+切批需要**同时**满足两条：
+
+1. 前一批全部 `completed`（同一时刻只会有一批在跑）；
+2. 这条任务**是上一批做完之后才建的** —— `createdAt >= max(前一批的 updatedAt)`。
+
+**第 2 条不是可选项，是我第一版漏掉、被测试当场抓出来的**：只按第 1 条判断时，状态序列 `[t1=completed, t2=in_progress, t3=pending]`（同一批、agent 正常推进）会被切成 `[t2, t3]` —— **每完成一条，列表就少一条**，做完的任务凭空消失。加上第 2 条后：同批任务的 `createdAt` 必然早于本批任何一条的完成时刻，跨批的新任务则在之后，比较不需要任何时间阈值。
+
+**为什么不用「创建时间间隔」判定**：查了真实库（生产 13 条 / 开发 19 条）—— 同一批任务创建的相邻间隔最小 0s、最大 **46s**（`lOzL9w1ou1FUddATk2XEq` 8 条跨 46 秒仍是同批），秒级阈值必然误判，跨批间隔也可能只有几十秒。时间间隔这条路走不通。
+
+**落点 —— `src/renderer/src/components/chat/SessionTodoPanel.tsx`**
+
+| 项 | 改动 |
+|---|---|
+| 计数与列表 | `tasks` → `batchTasks = useMemo(() => resolveCurrentTodoBatch(tasks), [tasks])`；`completed` / `total` / `isComplete` / `inProgressStates` / 列表 `map` 全部改用 `batchTasks`（早退判断一并改） |
+| 问题 1 单行 | 正文 `min-w-0 break-words` → **`min-w-0 truncate`**（CSS 单行截断 + 省略号） |
+| 问题 1 hover | `li` 的 `title` 由「只在 suspended/stale 有值」改为**整行常挂全文**；提示语不顶掉全文，两者合并成 `全文\n提示语`（换行在原生 tooltip 里成立） |
+
+- 「只看未完成」的过滤开关**未加**（老大未提）。
+- 文案一个没动。
+
+**测试**：新增 `tests/session-todo-batch/program.ts` + `package.json` 的 `test:session-todo-batch`，**12 断言**。含两条防回归关键例：同批中途完成不能切（`testSameBatchMidProgress`）、批内乱序完成不能切（`testOutOfOrderCompletionStillCounts`）。
+
+**门禁**：`tsc --noEmit` 三配置 0 错；`npm run test:*` 31 套全过；BOM clean。
 
 ---
 

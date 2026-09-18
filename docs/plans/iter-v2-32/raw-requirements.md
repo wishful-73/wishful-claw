@@ -36,6 +36,22 @@
 2. 流式期间点发送后，输入框是否应清空并进队列面板（对齐回车行为）。
 3. 「有附件无文字」算不算有内容（现有 `disabled` 判据把图片算进去，倾向沿用）。
 
+### 实施（2026-09-18）
+
+三条待核实全部实测确认：
+
+1. **点按钮与回车完全同路径** —— `composer-toolbar` 的 `onSend` 就是 `index.tsx:249` 的 `handleSend`，回车走 `use-composer-keydown.ts:123` 调的是同一个函数；`handleSend` 内部**不判 `isStreaming`**（`index.tsx:258-259` 只挡空内容、`disabled`、缺工作目录、图片读取中），所以流式下点按钮与回车行为一致，清稿（`resetComposer()`）也一致。
+2. 输入框清空并入队 —— 由 `handleSend` → `use-chat-actions` → `chat-store.sendMessage` 内部判忙入队（iter-30 S-58 地基）承担，本次未新增通道。
+3. 「有附件无文字」算有内容 —— 沿用原判据，图片也计入。
+
+改动仅在 `src/renderer/src/components/chat/InputArea/composer-toolbar.tsx` 的 `sendControl`：
+
+- 新增两个派生值：`hasSendableContent = Boolean(finalSerializedText.trim()) || attachedImagesCount > 0`；`isStopAction = isStreaming && !hasSendableContent`。
+- 原 `isStreaming` 在按钮上的四处用途（`data-tone` / `onClick` / `disabled` 分流 / 文案与 tooltip）**全部换成 `isStopAction`**，语义从「是否在跑」变为「这一下是不是要终止」。
+- `disabled` 判据结构不变：`isStopAction ? false : (!hasSendableContent || disabled || needsWorkingFolder || pendingImageReads > 0 || isOptimizingLocked)` —— 非流式路径与原 `!finalSerializedText.trim() && attachedImagesCount === 0` 逐字等价，无行为变化。
+
+门禁：`npx tsc --noEmit` 三配置 `WEB=0 NODE=0 ROOT=0`；全量 `test*` 脚本 **31/31** 通过；文件 BOM=False。
+
 ---
 
 ## S-73 新增「请求上下文上限」开关（超阈值自动压缩，控成本）

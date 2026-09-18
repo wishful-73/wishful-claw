@@ -177,6 +177,11 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
     />
   )
 
+  // 运行中只要输入框里有内容（文字或附件），按钮就该是「发送」，消息由上游排队等当前轮跑完；
+  // 只有输入框为空时才是「终止」。
+  const hasSendableContent = Boolean(finalSerializedText.trim()) || attachedImagesCount > 0
+  const isStopAction = isStreaming && !hasSendableContent
+
   const sendControl = (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -184,23 +189,23 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
           size="default"
           className="composer-send rounded-xl px-3.5 transition-[filter,box-shadow] duration-200"
           data-composer-variant={composerVariant}
-          data-tone={isStreaming ? 'warning' : undefined}
+          data-tone={isStopAction ? 'warning' : undefined}
           onMouseDown={(event) => {
             event.preventDefault()
           }}
-          onClick={isStreaming ? () => onStop?.() : onSend}
+          onClick={isStopAction ? () => onStop?.() : onSend}
           disabled={
-            isStreaming
+            isStopAction
               ? false
-              : (!finalSerializedText.trim() && attachedImagesCount === 0) ||
+              : !hasSendableContent ||
                 disabled ||
                 needsWorkingFolder ||
                 pendingImageReads > 0 ||
                 isOptimizingLocked
           }
-          aria-label={isStreaming ? t('input.stopTooltip') : t('input.sendTooltip')}
+          aria-label={isStopAction ? t('input.stopTooltip') : t('input.sendTooltip')}
         >
-          {isStreaming ? (
+          {isStopAction ? (
             <>
               <Spinner className="mr-1.5 size-3.5" />
               <span>{t('action.stop', { ns: 'common' })}</span>
@@ -214,7 +219,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {isStreaming ? t('input.stopTooltip') : t('input.sendTooltip')}
+        {isStopAction ? t('input.stopTooltip') : t('input.sendTooltip')}
       </TooltipContent>
     </Tooltip>
   )

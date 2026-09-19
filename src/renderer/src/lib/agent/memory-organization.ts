@@ -380,28 +380,11 @@ async function organizeScope(
       target.root.scope === 'project' ? PROJECT_MEMORY_TEMPLATE : GLOBAL_MEMORY_TEMPLATE
     const nextContent = ensureMarkdownDocument(sanitized.content, template)
 
-    if (nextContent.trim() === descriptor.content.trim()) {
-      result.organized = true
-      result.skippedReason = 'no_changes'
-      return result
-    }
-
-    // Sink outdated hot paragraphs first. The original MEMORY.md remains intact
-    // until every FTS append and the warm status transition succeed.
-    const sink = await sinkOutdatedParagraphs(
-      target,
-      organization.outdatedParagraphs ?? [],
-      nextContent
-    )
-    result.outdatedSunk = sink.count
-    if (sink.error) {
-      result.error = sink.error
-      return result
-    }
-
-    // S-93: mirror the surviving memories into the retrievable DB tier. A failure here must not
-    // roll back the organization itself — the hot file stays the source of truth and the next
-    // run retries — so it is reported separately instead of aborting the scope.
+    // S-93: mirror the surviving memories into the retrievable DB tier — and do it BEFORE the
+    // no_changes bail-out below. Once MEMORY.md has been organised a few times the pass stops
+    // changing the file, so a mirror placed after that check would never run again and recall
+    // would silently stop receiving new memories. A failure here must not roll back the
+    // organization: the hot file stays the source of truth and the next run retries.
     const sync = await mirrorHotParagraphsToDb({
       scope: target.root.scope === 'project' ? 'project' : 'global',
       markdown: nextContent,
@@ -413,6 +396,25 @@ async function organizeScope(
     if (sync.error) {
       result.dbSyncError = sync.error
       console.warn(`[MemoryOrganization] Hot→DB mirror failed (${target.label}): ${sync.error}`)
+    }
+
+    if (nextContent.trim() === descriptor.content.trim()) {
+      result.organized = true
+      result.skippedReason = 'no_changes'
+      return result
+    }
+
+    // Sink outdated hot paragraphs. The original MEMORY.md remains intact
+    // until every FTS append and the warm status transition succeed.
+    const sink = await sinkOutdatedParagraphs(
+      target,
+      organization.outdatedParagraphs ?? [],
+      nextContent
+    )
+    result.outdatedSunk = sink.count
+    if (sink.error) {
+      result.error = sink.error
+      return result
     }
 
     // beforeContent snapshot keeps the write undoable via the fs handlers.

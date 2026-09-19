@@ -113,7 +113,7 @@
   - 验证：`npx tsc --noEmit -p tsconfig.web.json` + `-p tsconfig.node.json` 零错误
 - [x] 步骤 2（可诊断性）：`memory-organization.ts:329-335` —— catch 里把真实错误写进 `result.error`（字段**已存在**，`memory-organization.ts:51`），别再塌成 `llm_unavailable`；`scopeLabel` + 真实错误进 report
   - 验证：TS 编译零错误；真机触发一次整理，日志/界面能看到 HTTP 状态与 provider
-  - **大文件红线豁免（AGENTS.md：>500 行必须拆）**：`memory-organization.ts` 实读 **580 行**。本刀只改 catch 分支（净增 ~5 行），**不在本刀拆分** —— 拆分要重组自动化链多个模块，属独立重构，**登记待办另开一刀**（记进 raw 裁定记录；另两处超线文件已由 S-90 / S-91 顺手拆掉）
+  - **大文件红线豁免（AGENTS.md：>500 行必须拆）**：`memory-organization.ts` 规划态实读 **580 行**（**〔收尾实测 636 行〕**，S-93 镜像块前移 +2 行）。本刀只改 catch 分支（净增 ~5 行），**不在本刀拆分** —— 拆分要重组自动化链多个模块，属独立重构，**登记待办另开一刀**（记进 raw 裁定记录；另两处超线文件已由 S-90 / S-91 顺手拆掉）
 - [x] 步骤 3（口径订正）：`buildProviderPayload`（`provider-payload.ts:19`）与 `chat-store/index.ts:397-401` 的注释声称 opencode-go 靠 `provider.sessionId` / `{{sessionId}}` 模板，与实读不符 —— 一并订正，避免下次误判
   - 验证：注释与 `OpenAIChatHeaders.cs:27-32` 的实际条件一致
 - [x] 步骤 4（记档，**不改**）：`ContextCompression.cs:725-730` 是同因下游（同样读 `state.SessionId`）；nightly「错过不补跑」（`memory-organization-scheduler.ts:101-107`）、`requestMaxRetries=10` / timeout 100s 导致每次失败耗 ~11 分钟 —— 均只登记
@@ -126,7 +126,7 @@
 - [x] 步骤 1：页内加内层 tab（`useState<'settings'|'log'>` + 顶部 tab bar）。**无共享 tab 组件**（`components/ui/` 下只有 `segmented-control.tsx`），照抄最规范的先例 **`ProviderPanel.tsx:54-107` 的 `ProviderPanelTabs`**（`role="tablist"/"tab"` + 方向键 + pill 样式）
   - 验证：`npx tsc --noEmit -p tsconfig.web.json` 零错误
 - [x] 步骤 2：内容分流 —— 前三段进「设置」分页，`sec-memory-execution-log` 整段进「执行记录」分页（按 V4 无关；`:432` 的 `max-h-64` 内滚**去掉**改成整页滚动，既然已独立成页签）
-  - **大文件红线拆分（AGENTS.md：>500 行必须拆）**：拆出 `src/renderer/src/components/settings/MemoryExecutionLogSection.tsx`，装 `sec-memory-execution-log` 段（`:424-478`）—— `MemorySettingsPanel.tsx` 实读 **520 行**，抽出后 ≈465 行回到线内
+  - **大文件红线拆分（AGENTS.md：>500 行必须拆）**：拆出 `src/renderer/src/components/settings/MemoryExecutionLogSection.tsx`，装 `sec-memory-execution-log` 段（`:424-478`）—— `MemorySettingsPanel.tsx` 规划态实读 **520 行**，抽出后 ≈465 行回到线内（**〔收尾实测 355 行〕**：第一刀只拆 `MemoryExecutionLogSection.tsx`（85 行）后为 521 行**未达标**，审查 ❌-2；修正刀再拆 `MemoryTierSettingsSections.tsx`（229 行）+ 补 `aria-labelledby` ⇒ **355 行**）
   - 验证：tsc 零错误；真机两页签可切换、执行记录完整可见；`MemorySettingsPanel.tsx` 行数 < 500
 - [x] 步骤 3：`SettingsPage.tsx:214` 的 `SectionAnchorNav` —— 内层 tab 切到「执行记录」时隐藏锚点导航（`MEMORY_ANCHORS`（`:53-57`）只覆盖设置三段）
   - 验证：tsc 零错误；真机确认锚点在两个页签下的显隐正确
@@ -148,7 +148,7 @@
   - 验证：tsc 零错误
 - [x] 步骤 3：`daily` tab → **记忆库** —— `ProjectArchivePage.tsx` 的 `MEMORY_TABS`（`:44-48`）把 `daily` 换成 `database`（图标 `Database`、文案「记忆库」/「Memory Library」）；列表渲染本项目条目，首版**只读**
   - **scope 构造（照上文「勘测修正」第 3 条）**：**不要渲染端自拼 `project:ssh:{…}`**，而是照 `memoryEntriesByStatus` 既有范式（`memory-helpers.ts:219-235`）传 `scope='project'` + `projectId` / `workingFolder` / `sshConnectionId`，由 Worker `GetScope`（`MemoryModule.cs:358-393`）解析 —— 少一处易错分支
-  - **大文件红线拆分**：新列表抽成 `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` —— `ProjectArchivePage.tsx` 实读 **596 行**，步骤 4 删 daily + 本次抽列表后回到线内
+  - **大文件红线拆分**：新列表抽成 `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` —— `ProjectArchivePage.tsx` 规划态实读 **596 行**，步骤 4 删 daily + 本次抽列表后回到线内（**〔收尾实测 377 行〕**：第一刀未拆、内联到 647 行，审查 ❌-1；修正刀拆出 `ProjectMemoryFileTab.tsx`（191 行）+ `ProjectMemoryLibraryTab.tsx`（132 行）⇒ **377 行**）
   - 验证：tsc 零错误；真机打开档案页 → 记忆库，能看到本项目条目（**本地项目与 SSH 项目各测一次**，确认 scope 不误落 `global`）
 - [x] 步骤 4：清理 daily 残留 —— `ProjectArchivePage.tsx` 的 `dailyFile` state（`:68-76`）、`dailyPath`（`:102-105`）、`loadDailyFile`（`:148-177`）、`handleSave` / `handleReset` / `handleReload` 的 daily 分支（`:257` / `:260` / `:283-289` / `:298-299`）、编辑区分支（`:510-516`）、tab 判定（`:450`）、dormant 注释（`:252` / `:591`）；`project-archive-helpers.ts` 的 `DEFAULT_DAILY_TEMPLATE`（`:56-60`）与 `ArchiveTabId`（`:6`）
   - 验证：tsc 零错误；全仓 grep `DEFAULT_DAILY_TEMPLATE` / `loadDailyFile` 无残留引用

@@ -6,6 +6,7 @@
 > 本迭代提交：`dc1a3e75`(S-88) `42232cbf`(S-92) `7f7d3990`(S-94) `48e0d05f`(S-87) `102fe81a`(S-89) `84dee523`(S-90) `146b1fb2`(S-91) `3e5d2aa9`(S-93) `3d9ad49d`(审查修正)
 > 环境：Windows / PowerShell 7（shell=powershell.exe）；`DOTNET_ROOT=D:\claw\dotnet-sdk`，SDK `11.0.100-preview.7`；Node `v24.14.1`
 > 范围说明：`022111c0` / `0c354cb9`（S-95）**不在本次验证范围**。
+> **验证时点（收尾补记）**：HEAD = `3d9ad49d`。该提交随后被 `git reset --soft` 折叠重提为 `a119fd9a`，且折叠后又落了工作区改动 ⇒ 本报告 `PASS` **不覆盖当前工作区**，缺口与增量重验见文末「〔2026-09-19 收尾订正〕」。
 
 ---
 
@@ -181,3 +182,118 @@ SQLite（readOnly）                         -> memory_entries=130, memory_archi
 ```
 
 > 本报告由独立验证会话生成；**验证期间未修改任何源代码/配置**，仅新建本报告文件。
+
+---
+
+## 〔2026-09-19 收尾订正〕验证覆盖面缺口与增量重验
+
+### 一、缺口（成立，本报告此前未自陈）
+
+**验证时点 HEAD = `3d9ad49d`；当前 HEAD = `a119fd9a`。** `git diff 3d9ad49d a119fd9a --stat` 证明两处**代码**变化未被本报告覆盖：
+
+| 文件 | 变化 | 性质 |
+|---|---|---|
+| `src/renderer/src/components/settings/MemorySettingsPanel.tsx` | +14 / −2 | 两个 `role="tabpanel"` 补 `aria-labelledby` —— 静态属性，风险低 |
+| `src/renderer/src/components/chat/ProjectArchivePage.tsx` | +7 / −3 | memory tab 由「按需挂载」改为**常驻挂载**（`hidden` / `contents` 切换），以免切换 tab 丢未保存草稿 —— **有行为变化，须重验** |
+
+折叠之后、收尾之前又落了工作区改动（同样未被覆盖）：
+
+| 文件 | 变化 | 性质 |
+|---|---|---|
+| `src/runtime/WishfulClaw.Agent/Tools/SearchTools/GrepTool.cs` | 行尾损坏修复：598 行 / 345 空行 → **299 行 / 46 空行**，内容零改动 | 已有证据：`dotnet build`（Agent 项目 + `tests.sln`）0 错 0 警、`GrepPatternRegressionTests` 21 断言全过 |
+| `src/renderer/src/lib/agent/memory-organization.ts` | S-93 镜像块移到 `no_changes` 早退**之前**，修「MEMORY.md 稳定后镜像永不执行」 | **须重验**；副作用：sink 失败时 DB 已镜像（幂等 + 下一轮自愈，可接受，须记档） |
+
+⇒ 本报告原 `PASS` 仅对 `3d9ad49d` 成立；**对 `a119fd9a` 与当前工作区不完整**，须增量重验。
+
+### 二、增量重验（范围与结果）
+
+> 执行者：独立验证 subagent（只读验证；仅写本节，未改任何源码/配置/其他文档）
+> 时间：2026-09-19 20:24~20:30 (+08:00)｜仓库 `D:\claw\wishful-claw`｜分支 `dev/v2-iter-33`｜HEAD `a119fd9a`｜**验证对象 = 当前工作区（含未提交改动）**
+> 环境：Windows / `powershell.exe`；`$env:DOTNET_ROOT='D:\claw\dotnet-sdk'`；Node `v24.14.1`
+
+**VERDICT：PASS（增量范围）** —— 4 处改动全部复验通过，无阻断项；同时**更正 1 处环境约束**（§2.6 末：MSB3027 未复现）、**更正 1 处口径**（§2.7：§5 的 328/583 是「非空行」口径，非漂移），并登记 6 项残余风险 R1~R6（§2.8）。原报告 `PASS`（对 `3d9ad49d`）与本增量 `PASS` 合并后，对**当前工作区**成立。
+
+#### 2.1 范围界定（与简报口径的偏差，须记档）
+
+| 项 | 简报 | 实测（`git status --porcelain`） | 处置 |
+|---|---|---|---|
+| 工作区未提交文件 | 4 个 | **7 个**：4 个代码/文档之外，还有 `plan.md`、`review_report.md`、`verification_report.md` | 多出的 3 个是 docs 收尾文档，**不属本次验证对象**；代码改动仍是 2 个（`GrepTool.cs`、`memory-organization.ts`）✅ 与简报一致 |
+
+增量集合 = ① `MemorySettingsPanel.tsx` ② `ProjectArchivePage.tsx`（`git diff 3d9ad49d a119fd9a` 内，已提交）+ ③ `GrepTool.cs` ④ `memory-organization.ts`（工作区未提交，`git diff` 内）。合计 `git diff 3d9ad49d a119fd9a --stat` 的 6 个文件里，代码 2 个 + docs 4 个；工作区代码 2 个。
+
+#### 2.2 逐项证据表
+
+| # | 增量 | 实测 diff | 取证命令（实跑） | 结果 |
+|---|---|---|---|---|
+| ① | `MemorySettingsPanel.tsx` 两个 `role="tabpanel"` 补 `aria-labelledby` | `+12 / −2`（总行 345→355） | `Select-String "memory-page-tab"` | ✅ tab 侧 `id={memory-page-tab-${tab}}`（:94）、`MEMORY_PAGE_TABS = ['settings','log']`（:48）与 panel 侧 `aria-labelledby="memory-page-tab-settings"`（:164）/`"memory-page-tab-log"`（:345）**逐一配对**，无悬空 ID |
+| ② | memory tab 常驻挂载（`hidden`/`contents`） | `+4 / −3`（总行 375→376） | `Read` 全文 + `Grep` | ✅ 见 §2.3 |
+| ③ | `GrepTool.cs` 行尾折叠 | `0 增 / 299 删`，598→299 行、空行 345→46 | `git diff --ignore-blank-lines --ignore-cr-at-eol` | ✅ **零内容改动**，见 §2.4 |
+| ④ | `memory-organization.ts` S-93 镜像块前移 | `+19 / −17`，总行 634→636（非空 583→585） | `git diff`（工作区）+ `Read` | ✅ 落点正确，语义见 §2.5 |
+
+#### 2.3 必核点一：常驻挂载是否引入重复 load / 隐藏轮询 / 泄漏 / 依赖挂载语义
+
+读 `ProjectMemoryFileTab.tsx`（191 行）与 `project-archive-helpers.ts` 全文：
+
+- **无重复 load / 无轮询 / 无监听泄漏**：全组件只有 `useEffect(() => { void load() }, [load])`（:71-73），`load` 仅依赖 `path`；无 `setInterval`/`setTimeout`、无 `window.api.on*` 注册、无订阅；其数据源 `readTextFile`/`writeTextFile`（`project-archive-helpers.ts`）都是**一次性 `ipcClient.invoke`**，不注册持久监听 ⇒ 常驻挂载不会累积监听器。
+- **挂载/卸载语义未丢**：`key={`memory-${reloadToken}`}`（`ProjectArchivePage.tsx:304`）保留，页头 Refresh（`handleReload` :159-165 → `setReloadToken(+1)`）仍**强制重挂载 + 重读盘**；项目切换走 `memoryPath`（:80 `useMemo`）变化 → `load` 依赖触发重读。
+- **布局未变**：`contents`（`display:contents`）使包装 div 不生成盒子，子组件仍是父 flex 列的直接 flex 项，与改动前（组件直接挂在 `flex min-h-0 flex-1 flex-col` 下）一致；`hidden`（`display:none`）隐藏时 `Textarea` 不可聚焦、不进 a11y 树，不产生重复可访问节点。
+- **行为变化（可接受，符合改动意图）**：隐藏期间**不再重读盘** ⇒ 若 `MEMORY.md` 被外部（记忆整理/agent 写入）改写，切回 memory tab 看到的是缓存草稿，需点 Refresh；这正是「保草稿」的代价，非缺陷。
+- ⚠️ **修复边界未闭合（登记为风险 R4）**：Refresh 或项目切换会在**隐藏状态下**清掉常驻的未保存草稿 —— 改动前草稿在切 tab 时已丢，故**非回归**，但「切 tab 不丢草稿」的承诺不覆盖 Refresh/换项目。
+
+#### 2.4 必核点二：行尾折叠是否零内容改动（自设计取证）
+
+三层证据，全部实跑：
+
+1. **git 语义层**：`git diff --ignore-blank-lines --ignore-cr-at-eol -- <path>` 输出 **0 行**（exit 0）；仅 `--ignore-cr-at-eol` 时仍为 `0 增 / 299 删` ⇒ **被删的 299 行全部是空行**，无任何非空行被删/改。
+2. **字节层**（node 脚本，避免 PowerShell 编码干扰）：HEAD blob 与工作区文件的**非空行序列逐字节相同** —— 双方 253 行、`sha256` 均为 `b109eceecdd2ddcf`、首个分歧索引 = `none`、行尾空白 0/0；空行 345→46；总行 598→299。
+3. **历史层**（排除「顺手重排版式」的怀疑）：该文件**每个历史提交的仓库形态都带畸形空行比** —— `a119fd9a` 598/345、`dc1a3e75` 598/345、`b05c3734` 432/250、`d407893b` 430/249、`30814e6c` 414/240（空行恒占 ~58%），折叠后为 46/253（15.4%）⇒ 与「CRLF 被按两个换行符拆分后重写」的经典损坏一致，**折叠是恢复原始版式，不是改版式**。
+
+旁证：Agent 项目 `-t:Rebuild` 0 警 0 错、`GrepPatternRegressionTests` exit=0 **21 断言**（S-88 的 glob 匹配器仍在文件内）。
+
+#### 2.5 必核点三：镜像前移（`sinkOutdatedParagraphs` 失败时 DB/MEMORY.md 不一致 + 幂等性）
+
+读工作区 `memory-organization.ts:383-405`、`sinkOutdatedParagraphs`（:271-325）、`memory-hot-sync.ts`（96 行）全文：
+
+- **落点正确**：镜像块（:388-399）现位于 `no_changes` 早退（:401-405）**之前** ⇒ 稳定态 `MEMORY.md` 每次整理都会尝试镜像，正是修「稳定后镜像永不再跑」。
+- **幂等成立**：`mirrorHotParagraphsToDb` 先 `memoryEntries`（`memory/entries`，**不带 status 谓词**，含 warm/cold）→ `known` 归一化后「互相包含」判重（`memory-hot-sync.ts:68-76`），命中即 `continue`；重跑应 0 新增，且无重复插入（`test:settings-tabs` 类断言不涉及此链，需真机复跑，见 R2）。
+- **同一轮不会重复插入**：镜像只 append **最终稿中存在**的段落；sink 只 append `outdatedParagraphs` 中**已不在最终稿**的段落（`paragraphStillPresent` 过滤，:276-278）⇒ 两个集合**不相交**。
+- **sink / write 失败时的不一致：可接受**。镜像先跑，sink 失败（:415-418）或写盘失败（:422-425）时 DB 已含新镜像行而 `MEMORY.md` 未更新 ⇒ **DB 短时是热文件的超集**。理由：热文件仍是 source of truth，下一轮以文件内容重算并收敛；且「DB 先写、文件后写」的同类不一致在 sink 自身（先 `memoryAppend` 后 `writeTargetContent`）中**早已存在**，非本次引入。
+- **可观测性已闭合**：`result.dbSyncError`（:397）在 UI 已暴露（`MemoryExecutionLogSection.tsx:40`，作为 `detail` 触发 amber 边框），`syncedToDb` 聚合进执行记录文案（`memory-organization.ts:586` 的 `N mirrored to DB`）⇒ 手测 M5 可达。刻意**不**把 dbSyncError 并入 `report.error`（:586 / :593 的 `error` 与 `status='error'`）= 镜像失败不阻断整理，与代码注释一致。
+
+#### 2.6 门禁实跑汇总（命令 + 退出码）
+
+| # | 命令 | 退出码 | 结果 |
+|---|---|---|---|
+| G1 | `dotnet build src/runtime/WishfulClaw.Agent/WishfulClaw.Agent.csproj --nologo -v q` | 0 | 生成成功，0 警告 0 错误 |
+| G1b | 同上 `-t:Rebuild`（**强制全量**，排除「增量跳过编译」） | 0 | 生成成功，0 警告 0 错误（3.00s） |
+| G2 | `dotnet build tests/WishfulClaw.Tests.sln --nologo -v q` | 0 | 生成成功，0 警告 0 错误 |
+| G3 | `npx tsc -p tsconfig.web.json --noEmit` | 0 | 无输出（0 错） |
+| G4 | `npx tsc -p tsconfig.node.json --noEmit` | 0 | 无输出（0 错） |
+| G5 | `npx tsc -p tsconfig.json --noEmit` | 0 | 无输出（0 错） |
+| G5b | `npx tsc -p tsconfig.web.json --noEmit --listFiles` | 0 | 5 个改动的前端文件**全部在程序内**（`memory-organization.ts`/`memory-hot-sync.ts`/`ProjectArchivePage.tsx`/`ProjectMemoryFileTab.tsx`/`MemorySettingsPanel.tsx`）⇒ 类型检查**确实覆盖**改动文件 |
+| G6 | 32 个 `npm run test:*`（脚本名由 `package.json` 枚举） | **32/32 = 0** | 0 失败；断言数与既有报告**逐条一致**（`context-cap` 52、`provider-presets` 552/46、`streaming-render-pool` 20045、`ipc-msgpack-routing` 96/272 channels …）⇒ 无既有断言失效 |
+| G7 | 11 个 `tests/WishfulClaw.*RegressionTests/bin/Debug/net11.0/*.exe` | **11/11 = 0** | 25 / 72 / **122** / 2 / 42 / 313 / **21** / **31** / passed / 225 / passed，与既有报告一致 |
+
+> **未复现的环境约束（更正简报口径）**：简报称 `dotnet build src/runtime/WishfulClaw.sln` 会因 `WishfulClaw.Worker` PID 23668 锁定 `bin/Debug/net11.0/*.dll` 而 `MSB3027` 失败。实测：该进程**确实在跑**（`Get-Process -Id 23668` → `WishfulClaw.Worker`，`StartTime 2026/9/19 20:04:42`），但 `.sln` **增量构建 EXIT=0，未出现 MSB3027**（未匹配到任何 error/MSB3027/被锁定行）⇒ 该约束**本次未复现**，故 G1（按简报指定的替代路径）与 G1b 都实际跑到了 0 警 0 错。**未对整方案强跑 `-t:Rebuild`**：那会在运行中的 Worker 删除/替换其 `bin` 下 DLL，可能破坏正在运行的实例（且简报已明确指定用 Agent-only 构建替代）；如需整方案 Rebuild，须先停 Worker。
+
+#### 2.7 口径更正：§5 的「328 行 / 583 行」不是漂移
+
+§5 把 `MemorySettingsPanel.tsx` 记为「实测 328 行」、`memory-organization.ts` 记为「583 行」——实为**非空行口径**，与 `plan.md` 的**总行口径**（355 / 636）各自自洽，**不构成文档漂移**（node 实测：`MemorySettingsPanel.tsx` `3d9ad49d` = 345 总/328 非空，`a119fd9a` = 355 总/338 非空；`memory-organization.ts` `a119fd9a` = 634 总/583 非空，工作区 = **636 总/585 非空**，与 `plan.md` 的〔收尾实测 636 行〕一致 ✅）。建议后续统一写「总行/非空行」两个数，避免复核时误判。
+
+#### 2.8 未覆盖项与残余风险
+
+| # | 风险 | 性质/严重度 | 依据 | 建议 |
+|---|---|---|---|---|
+| R1 | ② 常驻挂载**无自动化断言** | 低（已静态核对+tsc） | 全仓无针对 `ProjectArchivePage` 挂载语义的测试；`test:settings-tabs` 不涉及档案页 | 真机手测 M6（见 §2.9） |
+| R2 | ④ 镜像前移 + 幂等**无自动化断言** | 中 | `Grep tests/ -e "memory-organization\|memory-hot-sync\|mirrorHotParagraphs"` → **0 命中** | 建议补纯函数级单测（`extractHotParagraphs` + 判重：第二次 `count=0`），目前只能靠真机复跑 M5③ |
+| R3 | ① `aria-labelledby` 无自动化断言 | 低（纯静态属性，id 配对已核对） | 同上，测试套件不含 `memory-page-tab*` | 可加 5 行断言进现有 TS 测试，或真机读屏手测 |
+| R4 | Refresh / 换项目会丢弃常驻草稿 | 低-中（非回归，但修复承诺未闭合） | `handleReload` :159-165 无条件 `reloadToken+1` → remount；`memoryPath` 变化 → `load` 重跑 | 可改为「有脏稿时先提示/不刷新」，或登记为已知取舍 |
+| R5 | 判重是**子串包含** + `DB_SYNC_SCAN_LIMIT=500` 扫描窗口 | 中（既有逻辑，前移后被**更频繁**触发） | `memory-hot-sync.ts:15/68-76`：新记忆若是既有条目的子串/超串会被永久跳过；单 scope 超 500 条后窗口外重复项可能重复插入 | 建议登记：改指纹（如 `normalizeMemoryText` 精确等值或哈希）并分页读取 |
+| R6 | 无真机 UI/E2E（Electron 未启动） | 已知（原报告 §4 M1~M5 保留） | 无 GUI 环境 | 追加 **M6**：① 在 memory tab 输入不保存 → 切「记忆库」→ 切回，草稿仍在；② 点 Refresh → 草稿被清空并重读盘（与 §2.3 行为一致） |
+
+#### 2.9 结论
+
+- 4 处增量**全部复验通过**：2 处 TSX（a11y id 配对正确；常驻挂载无重复 load/轮询/泄漏）、2 处工作区（`GrepTool.cs` 零内容改动；`memory-organization.ts` 镜像前移语义与幂等成立）。
+- **0 阻断项**；门禁全绿（Agent 构建 0/0、`tests.sln` 0/0、tsc×3 = 0、`test:*` 32/32、C# 套件 11/11），未发现新 tsc/编译错误，未发现既有断言失效。
+- 需记档：R1~R6（其中 R2/R5 建议各开一条轻量待办），§2.6 的环境约束更正（MSB3027 未复现），§2.7 的口径说明。
+- 验证期间**只读**：未修改任何源码/配置；仅新建 `.wishful-claw/notes/` 下 3 个取证脚本（`linecounts.js`、`greptool-content-proof.js`、`greptool-history.js`）并写入本节。

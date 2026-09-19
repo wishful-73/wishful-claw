@@ -168,9 +168,16 @@ if (pattern.StartsWith("*."))
 - `SearchFilter.IsExcluded` 的默认排除名单（`GrepTool.cs:353`）—— 本次三条命令不是它导致的，但它同样能把文件静默筛空，值得一并核。
 - `GlobTool.cs` 是否共用同一套文件名匹配逻辑（若共用，同一 bug 也在那边）。
 
-### 实施记录
+### 实施记录（2026-09-19）
 
-（未实施）
+- `GrepTool.cs`：`MatchesFileName` 由「只认 `"*.ext"`、其余按字面名比较」改为**真通配符** —— 新增 `CreateFileNameMatcher`（`*` / `?` 译成锚定正则，`IgnoreCase | CultureInvariant`；`"*.ext"` 形式保留 `EndsWith` 快路径，**但先判除开头 `*.` 外不含其它通配符**）；生产路径只构造一次匹配器。`MatchesFileName` 改 `internal static` 供测试。
+- **可诊断性**：`EnumerateSearchableFiles` 统计候选文件数与被 `file_pattern` 拒绝的数目，全部被拒时返回带 `file_pattern` + 候选数的提示（`ShouldReportPatternRejected`），不再塌成一句 `No matches found.`
+- 新增回归套件 `tests/WishfulClaw.GrepPatternRegressionTests`（`OutputType=Exe`、`net11.0`、`ProjectReference` → `WishfulClaw.Agent`；**21 断言**，含 `*.ts*` 双扩展名）；`WishfulClaw.Agent.csproj` 加 `InternalsVisibleTo`；`tests/WishfulClaw.Tests.sln` 注册。
+- **同族复核**（只读，未改）：`GlobTool.cs` 有自己一套路径级 `MatchesGlob`（`**` / `*`），**不共用** `MatchesFileName`；`SearchFilter.IsExcluded` 未动 —— 两条均只登记结论。
+- **审查修正（`a119fd9a`）**：
+  - 零命中诊断文案原写「only \"*\" and \"?\" are supported as wildcards (e.g. \"*.ts*\" is not a plain suffix match)」—— 修好之后 `*.ts*` **是能命中的**，这句会误导模型放弃可用的模式（也正是本需求的起因）⇒ 改为「matched none of the N candidate file(s) under ROOT. Globs support \"*\" and \"?\" — check the extension you meant」。
+  - 顺手修掉 `GrepTool.cs` 的**行尾损坏**（磁盘上是 `\r\n\r\n`，每个逻辑行后多一个空白行）：432（修复前）→ 598（诊断案）→ **299 行 / 46 空行**，内容零改动，`dotnet build` 0 错 0 警 + `GrepPatternRegressionTests` 全过。
+- **剩余记档（另开一刀）**：文件名 glob 正则无超时、连续 `*` 未折叠（审查 ⚠️-5）；仓库另有约 20 个文件是同类行尾损坏。
 
 ---
 
@@ -956,15 +963,51 @@ FTS5 `trigram` tokenizer 把文本切成 **3 字符**滑动窗口。**查询词�
 5. **E 是否单独立项** —— 口径混用（本地粗估覆盖真实 usage）与压缩效果是两件事，可拆。
 6. **锁死后的兜底** —— 检测到「连续 N 次压缩且 fold 条数 < 阈值」（本次实测 3/2/2/4）时是否短路，避免继续空烧摘要调用。
 
-### 实施记录
+### 实施记录（2026-09-19，口径 A）
 
-（未实施）
+**根因**：`CompactAsync` 从未实现「摘要前的消息全部滚蛋」的滚动摘要语义 —— `PinnedPrefixLen` 把连续旧摘要 pin 进 `head`、`PartitionFold` 第一条判据把摘要归 `kept`，旧摘要永远进不了 fold、也就吸不进新摘要 ⇒ 1 → 2 → … → 53 条单调累积（实测 wire 里摘要占 98.29% 字符、真实 `usage.contextTokens` 26 万）。
+
+**改动（`022111c0`，11 文件）**：
+
+- `ContextCompression.cs`（`+72`）：`PinnedPrefixLen` 只 pin system + 首条 user；`PartitionFold` 摘要**全进 fold**、`IsSmallUserTurn` 补 `!IsCompactionSummary` 守卫（防 ≤1500 字符的短摘要漏回 kept）；结果构造按 `summarizerFailed` **双路径**（成功 = head + kept 小 user + [新摘要] + tail；失败 = 保留旧摘要 + 用户原话 + 机械摘要）；`TailStart` 遇压缩摘要即停；日志改 `kept={survivors}`。
+- `AgentLoop.ContextCompression.cs`（`+19`）：成功判据由**条数改 token 估算**（`EstimateMessagesTokens`）；成功路径改 `ResetCompactionWatermark`。
+- `AgentRuntimeContextCompressionTools.cs`（`+21`）：手动压缩路径同 token 判据；两处 skipped（无可折叠 / 跑了没缩小）也推进水位；成功路径重置水位。
+- `SessionConversation.cs`（`+14`）：新增 `ResetCompactionWatermark(int)` —— 原 `MarkCompactionWatermark` 是 `Math.Max`，只增不减。
+- 新增 `tests/WishfulClaw.CompactionSnapshotRegressionTests/SummaryRollingChecks.cs`（`+110`，13 断言，含 `CompactAsync` 失败路径端到端），`Program.cs` 挂载。
+- 契约注：`docs/plans/iter-v2-23/compression-contract.md` `+9`（**字段不动**，只补修订注）。
+
+**验证（真实库 `~/.wishful-claw/index.db`，session `lOzL9w1ou1FUddATk2XEq`）**：128 条 wire / 53 条摘要 324,874 字符 → head 摘要 0、kept 摘要 0、fold 摘要 53 ⇒ 成功路径结果 **1 条摘要**；估算 token **343,515 → 18,427**。53 条残留的畸形会话第一次压缩即自愈，**无需数据迁移**。
+
+**审查与验证（`0c354cb9`，6 文件）**：`review_report.md` `+63`、`verification_report.md` `+106`、`plan.md` 订正、`ContextCompression.cs` `+5`、`AgentRuntimeContextCompressionTools.cs` `+5`、`SummaryRollingChecks.cs` `+54`。
+
+**唯一未验项**：真机手动压缩那一下（需老大实测：53 → 1、环上数字下降）。
 
 ---
 
 ## 待登记
 
-（暂无）
+（以下是 iter-33 收尾阶段新发现、**未纳入本次实施**的项，按来源标注；均已完成取证，可直接开工。）
+
+**代码/行为类**
+
+1. **S-91 修复边界未闭合：档案页 Refresh 或切换项目会丢弃未保存草稿**（来源：`verification_report.md` §2.8 R4）。`ProjectArchivePage.tsx:159-165` 的 `handleReload` 无条件 `reloadToken + 1` → `key` 变化强制重挂载；`memoryPath` 变化同样重跑 `load`。改动前草稿在**切 tab** 时已丢，故非回归，但本迭代承诺的「切 tab 不丢草稿」不覆盖这两条路径。建议：有脏稿时先提示或跳过刷新。
+2. **S-93 镜像判重是「子串包含」+ 500 条扫描窗口**（来源：`verification_report.md` §2.8 R5）。`memory-hot-sync.ts:15` 的 `DB_SYNC_SCAN_LIMIT = 500`、`:68-76` 用归一化后的**互相包含**判重：新记忆若是既有条目的子串/超串会被**永久跳过**；单 scope 超 500 条后窗口外的重复项可能被重复插入。改动前该链极少触发，镜像前移后被**更频繁**触发。建议：改指纹（精确等值或哈希）+ 分页读取。
+3. **GrepTool 残余**（来源：S-88 审查 ⚠️-5）：文件名 glob 正则**无超时**（agent 入参可控）；连续 `*` 未折叠成单 `*`；`SearchFilter.IsExcluded` 默认排除名单未核。
+
+**测试缺口**
+
+4. **常驻挂载（S-91 tab 语义）/ 镜像前移与幂等（S-93）/ `aria-labelledby`（S-90）三处均无自动化断言**（来源：`verification_report.md` §2.8 R1/R2/R3）。`Grep tests/` 对 `memory-organization|memory-hot-sync|mirrorHotParagraphs` **0 命中**。建议补纯函数级单测（`extractHotParagraphs` + 判重：第二次 `count = 0`）。
+
+**大文件红线（AGENTS.md：>500 行必须拆）**
+
+5. 收尾实测仍超线：`ContextCompression.cs` **839 行**（S-95 落点，已 partial 拆分）、`memory-organization.ts` **636 行**（本迭代已豁免记档）、`memory-automation-utils.ts` **618 行**（**死代码链**）、`ToolDispatchRouter.cs` **573 行**。建议按模块重组另开一刀。
+6. **行尾损坏**：仓库约 20 个文件的磁盘形态是 `\r\n\r\n`（每个逻辑行后多一个空白行），历史层取证显示**每个历史提交都如此**（`GrepTool.cs` 空行恒占 ~58%）。本迭代只修了 `GrepTool.cs`（598 → 299 行，内容零改动）。建议全仓一次性折叠并加 `.gitattributes` / 提交钩子防复发。
+
+**既有残留（本轮未动）**
+
+7. `projectArchive.tabs.dormant` 孤儿 i18n key；`memory-files.ts` 的 daily 三函数；`MemoryModels.cs` 的 `DailyCount` / `TopicsCount` 死字段（「每日记忆」无实体）。
+8. cron `CronRuns` 的跨会话权限面（是否该限制到本会话项目）；sidecar 共用合成 `sessionId` 的语义（V3 常量已落地，多调用点共用一个值）。
+9. `AgentLoop.Helpers.cs` 的 `state.PendingMemoryRecall` 是死变量（消费点永远早于设置点）。
 
 ---
 

@@ -234,3 +234,27 @@
 | 工作树状态 | `git status --porcelain` | 空（复核期间未产生受版本控制的改动） |
 
 —— 复核者签名：code-reviewer（第二轮），2026-09-19
+
+---
+
+## 〔2026-09-19 收尾订正〕行数复测（以本表为准）
+
+本报告正文里的行数是**审查当时（HEAD `3d9ad49d`）**的实测值。收尾阶段又落了改动（`a119fd9a` 的 `aria-labelledby` 与 tab 常驻挂载、`GrepTool.cs` 行尾损坏修复、S-93 镜像块前移），行数已变。此处**统一复测一次**，上文 `:133`「376 行」、`:134`「345 行」、`:53`「634 行」、`:217`「573 行」等旧值**作废**，一律以本表为准。
+
+| 文件 | 审查当时 | 收尾实测 | 空行 | 结论 |
+|---|---|---|---|---|
+| `src/renderer/src/components/chat/ProjectArchivePage.tsx` | 376 | **377** | 33 | ❌-1 已消除（拆出两个子 tab 组件） |
+| `src/renderer/src/components/settings/MemorySettingsPanel.tsx` | 345 | **355** | 17 | ❌-2 已消除；+10 来自补 `aria-labelledby`（N-2） |
+| `src/renderer/src/components/settings/MemoryExecutionLogSection.tsx` | 82 | **85** | 4 | S-90 抽出物 |
+| `src/renderer/src/components/settings/MemoryTierSettingsSections.tsx` | 229 | **229** | 8 | N-2 抽出物 |
+| `src/renderer/src/components/chat/ProjectMemoryFileTab.tsx` | 191 | **191** | 16 | ❌-1 抽出物 |
+| `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` | 132 | **132** | 8 | 同上 |
+| `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs` | — | **495** | 31 | 未超线 |
+| `src/runtime/WishfulClaw.Agent/Tools/SearchTools/GrepTool.cs` | 432 / 598 | **299** | 46 | 原行数是 `\r\n\r\n` 行尾损坏下的**虚高值**（598 行里 345 行是空行）；折叠修复后内容零改动、编译 0 错、`GrepPatternRegressionTests` 21 断言全过 ⇒ 回到红线内 |
+| `src/runtime/WishfulClaw.Agent/ContextCompression.cs` | — | **839** | 82 | ⚠️ 超线（S-95 落点，part. 拆分文件，本轮未动） |
+| `src/renderer/src/lib/agent/memory-organization.ts` | 634 | **636** | 51 | ⚠️-2 **仍超线**，plan 已记档豁免、另开一刀 |
+| `src/renderer/src/lib/agent/memory-automation-utils.ts` | — | **618** | 72 | ⚠️ 超线（死代码链，未记档 ⇒ 本次补记） |
+| `src/runtime/WishfulClaw.Agent/ToolDispatchRouter.cs` | 573 | **573** | 7 | ⚠️-1 **仍超线**，记档另开一刀 |
+| `src/renderer/src/lib/agent/memory-hot-sync.ts` | 96 | **96** | 10 | S-93 新模块 |
+
+**行数口径纪律（已犯两次，勿再犯）**：任何「N → M 行」的结论，必须在**全部改动落地后重测**再写进文档 —— 本迭代 S-90 先写 472、再写 327，两次都错。本表数值由 `[System.IO.File]::ReadAllLines()` 直接计数得出，可作为收尾基线。

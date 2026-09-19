@@ -1041,9 +1041,15 @@
     "errorLabel": "错误：",
     "tabs": {
       "memory": "项目记忆",
-      "daily": "每日记忆",
+      "database": "记忆库",
       "persona": "项目人格",
       "dormant": "记忆归档"
+    },
+    "memoryLibrary": {
+      "desc": "本项目存储在本地记忆库中的条目。",
+      "refresh": "刷新",
+      "empty": "本项目暂无记忆条目。",
+      "untitled": "未命名"
     },
     "persona": {
       "noPersonas": "暂无项目专属人格，请通过人格设置页面添加。",

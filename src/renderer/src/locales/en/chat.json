@@ -1041,9 +1041,15 @@
     "errorLabel": "Error: ",
     "tabs": {
       "memory": "Project Memory",
-      "daily": "Daily Memory",
+      "database": "Memory Library",
       "persona": "Project Persona",
       "dormant": "Memory Archive"
+    },
+    "memoryLibrary": {
+      "desc": "Entries stored in the local memory database for this project.",
+      "refresh": "Refresh",
+      "empty": "No memory entries stored for this project yet.",
+      "untitled": "Untitled"
     },
     "persona": {
       "noPersonas": "No project-specific personas yet. Add personas via the persona settings page.",

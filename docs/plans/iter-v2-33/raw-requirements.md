@@ -450,9 +450,30 @@ iter-29 修 F-8（提交 `ef16bf6f`）把 `sessionId` 盖章收口到 **`stores/
   - locale：`projectArchive.tabs.daily` 改文案或换 key；`projectArchive.tabs.dormant`（孤儿）删掉
 - **记忆库只读还是可写**？若允许编辑/删除要接 `memory/update`。**倾向首版只读 + 跳右侧检索**，不再开一条写入路径 —— **待老大定**。
 
-### 实施记录
+### 实施记录（2026-09-19）
 
-（未实施）
+**先读实现确认（照实施要点的 ⚠️ 执行）**：`memory/entries-by-status` 对空 status **返回空列表**（`MemoryModule.cs:287-289`：`status` 不在 `active|warm|cold` 就直接 `[]`），**不是**「不过滤」。所以补了 `memory/entries` 变体，而不是复用空 status。
+
+**改动**：
+
+- **Worker** `Modules/MemoryModule.cs`：新增端点 `memory/entries`（`MemoryEntries`）。响应类型沿用 `MemoryEntriesByStatusResponse`（JSON 源生成无需改），差别是**不挂 status 谓词**（`WHERE 1 = 1{scopeClause}`）；`scope` 语义照旧 —— `all` / 省略 = 全 scope，显式 scope 交给 `GetScope` 解析（`project:ssh:{id}` / `project:{workingFolder}`）。
+- **渲染端** `stores/chat-store/memory-helpers.ts`：新增 `memoryEntries(scope, workingFolder, limit, projectId, sshConnectionId)`。
+- **档案页** `components/chat/ProjectArchivePage.tsx`：
+  - `MEMORY_TABS` 第二项 `daily`（`Clock`）→ `database`（`Database`），文案 key `projectArchive.tabs.database`。
+  - 删 `dailyFile` 状态 / `dailyPath` / `loadDailyFile`；新增 `memoryDbEntries`、`memoryDbLoading`、`memoryDbError` 与 `loadMemoryDb()` —— 只读拉取，传 `scope='project'` + 本项目的 `workingFolder` / `projectId` / `sshConnectionId`。**scope 字符串不在渲染端手拼**，由 Worker `GetScope` 解析（与 `memoryEntriesByStatus` 同一范式，SSH 项目路径自动覆盖）。
+  - `MEMORY.md` 编辑器收窄为 memory tab 专属：`handleSave` / `handleReset` / `activeFile` 不再按 tab 分叉；`handleReload` 的 `daily` 分支换成 `database`。
+  - 新增「记忆库」tab 内容：只读列表（标题 / `priority · status` / 正文），带刷新按钮、加载态、空态、错误条。**首版只读**（老大裁定），不开写入路径。
+- **helpers** `components/chat/project-archive-helpers.ts`：`ArchiveTabId` 的 `'daily'` → `'database'`；删死代码 `DEFAULT_DAILY_TEMPLATE`、`getTodayDate`（全仓唯一消费方就是刚下线的 daily tab）。
+- **locale** `zh/en chat.json`：`projectArchive.tabs.daily` 换成 `tabs.database`（「记忆库」/ "Memory Library"），新增 `projectArchive.memoryLibrary.{desc,refresh,empty,untitled}`。
+
+**本轮未动（记档，另开一刀）**：
+
+- `projectArchive.tabs.dormant` 孤儿 locale key 仍在（`zh/en chat.json:1046`）。它和 `DailyCount` / `TopicsCount` 两个恒 0 死字段属同一类清理，**不混进本刀**。
+- `memory-files.ts` 的 `loadDailyMemoryEntries` / `loadProjectDailyMemoryEntries` / `buildDailyMemoryDates`：已复核**无消费方**，但删除要连带核对 `memory-files.ts` 其余导出，归入同一刀。
+
+**门禁**：`tsc -p tsconfig.web.json / tsconfig.node.json / tsconfig.json` 三配置 **0 错**；`dotnet build src/runtime/WishfulClaw.sln` **0 错 0 警**；11 个回归套件全 **exit=0**；`npm run test:i18n-coverage` PASS（2 checks）。
+
+**未验（需真机）**：打开档案页 → 「记忆库」tab 应列出本项目的 `memory_entries`（prod 库 `project:D:\claw\wishful-claw` 实测 59 条）。
 
 ---
 

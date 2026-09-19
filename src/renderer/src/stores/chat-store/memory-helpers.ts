@@ -234,6 +234,29 @@ export async function memoryEntriesByStatus(
   })
 }
 
+/**
+ * Lists every entry of a scope regardless of status (iter-33 S-91). The archive
+ * page's memory library needs "everything in this project"; memoryEntriesByStatus
+ * cannot express that because an empty status returns an empty list.
+ * scope='project' is resolved worker-side by GetScope (workingFolder / projectId /
+ * sshConnectionId), so the renderer never hand-builds a `project:ssh:{…}` scope.
+ */
+export async function memoryEntries(
+  scope: string = 'all',
+  workingFolder?: string | null,
+  limit: number = 200,
+  projectId?: string | null,
+  sshConnectionId?: string | null
+): Promise<{ entries?: MemoryStatusEntry[] }> {
+  return window.api.workerRequest('memory/entries', {
+    scope,
+    workingFolder,
+    projectId,
+    sshConnectionId,
+    limit
+  })
+}
+
 export async function memoryBatchStatus(
   ids: number[],
   status: 'active' | 'warm' | 'cold',

@@ -1,7 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronRight,
   Clock,
+  Database,
   FileText,
   FolderOpen,
   Loader2,
@@ -29,21 +30,22 @@ import {
   WISHFUL_CLAW_DIR,
   PERSONA_FILE_NAMES,
   DEFAULT_MEMORY_TEMPLATE,
-  DEFAULT_DAILY_TEMPLATE,
   joinFsPath,
-  getTodayDate,
   getHomeDir,
   readTextFile,
   writeTextFile,
   listDir
 } from './project-archive-helpers'
+import { memoryEntries, type MemoryStatusEntry } from '@renderer/stores/chat-store/memory-helpers'
 import { PersonaFilePreview } from './PersonaFilePreview'
 import { CodeGraphProjectIndexSection } from './codegraph-project-index'
 
 
 const MEMORY_TABS: { id: ArchiveTabId; icon: typeof FileText; i18nKey: string }[] = [
   { id: 'memory', icon: FileText, i18nKey: 'projectArchive.tabs.memory' },
-  { id: 'daily', icon: Clock, i18nKey: 'projectArchive.tabs.daily' },
+  // S-91: the old "daily" tab had no backing file (daily memory is never materialised),
+  // so it only ever rendered today's empty template. It becomes the read-only memory library.
+  { id: 'database', icon: Database, i18nKey: 'projectArchive.tabs.database' },
   { id: 'persona', icon: User, i18nKey: 'projectArchive.tabs.persona' }
 ]
 
@@ -65,20 +67,16 @@ export function ProjectArchivePage(): React.JSX.Element {
     missingFile: true,
     error: null
   })
-  const [dailyFile, setDailyFile] = useState<FileState>({
-    path: '',
-    savedContent: '',
-    draftContent: '',
-    loading: true,
-    saving: false,
-    missingFile: true,
-    error: null
-  })
+  // Memory library (S-91): read-only view over memory_entries for this project.
+  const [memoryDbEntries, setMemoryDbEntries] = useState<MemoryStatusEntry[]>([])
+  const [memoryDbLoading, setMemoryDbLoading] = useState(false)
+  const [memoryDbError, setMemoryDbError] = useState<string | null>(null)
   const [personas, setPersonas] = useState<PersonaSummary[]>([])
   const [personasLoading, setPersonasLoading] = useState(false)
   // unused: dormant files are stored in SQLite, not filesystem
 
   const sshConnectionId = activeProject?.sshConnectionId
+  const workingFolder = activeProject?.workingFolder
   const isSshProject = !!sshConnectionId
   const [sshConnectionInfo, setSshConnectionInfo] = useState<SshConnectionInfo | null>(null)
 
@@ -97,10 +95,6 @@ export function ProjectArchivePage(): React.JSX.Element {
 
   const memoryPath = useMemo(
     () => (memoryRoot ? joinFsPath(memoryRoot, 'MEMORY.md') : ''),
-    [memoryRoot]
-  )
-  const dailyPath = useMemo(
-    () => (memoryRoot ? joinFsPath(memoryRoot, 'memory', 'daily', `${getTodayDate()}.md`) : ''),
     [memoryRoot]
   )
   const personasDir = useMemo(
@@ -143,38 +137,29 @@ export function ProjectArchivePage(): React.JSX.Element {
     }
   }, [memoryPath])
 
-  // ─── Load daily file ───
+  // ─── Load memory library (read-only, S-91) ───
 
-  const loadDailyFile = useCallback(async () => {
-    if (!dailyPath) {
-      setDailyFile((prev) => ({ ...prev, loading: false, path: '' }))
-      return
+  const loadMemoryDb = useCallback(async () => {
+    setMemoryDbLoading(true)
+    setMemoryDbError(null)
+    try {
+      // scope='project' is resolved worker-side (workingFolder for local projects,
+      // projectId + sshConnectionId for SSH ones) — never hand-build the scope here.
+      const result = await memoryEntries(
+        'project',
+        workingFolder ?? undefined,
+        200,
+        activeProjectId ?? undefined,
+        sshConnectionId ?? undefined
+      )
+      setMemoryDbEntries(result.entries ?? [])
+    } catch (e) {
+      setMemoryDbError(e instanceof Error ? e.message : String(e))
+      setMemoryDbEntries([])
+    } finally {
+      setMemoryDbLoading(false)
     }
-    setDailyFile((prev) => ({ ...prev, loading: true, path: dailyPath, error: null }))
-    const result = await readTextFile(dailyPath)
-    if (result.error) {
-      const isMissing = result.error.toLowerCase().includes('no such') || result.error.toLowerCase().includes('enotfound') || result.error.toLowerCase().includes('找不到')
-      setDailyFile({
-        path: dailyPath,
-        savedContent: isMissing ? DEFAULT_DAILY_TEMPLATE : '',
-        draftContent: isMissing ? DEFAULT_DAILY_TEMPLATE : '',
-        loading: false,
-        saving: false,
-        missingFile: isMissing,
-        error: isMissing ? null : result.error
-      })
-    } else {
-      setDailyFile({
-        path: dailyPath,
-        savedContent: result.content ?? '',
-        draftContent: result.content ?? '',
-        loading: false,
-        saving: false,
-        missingFile: false,
-        error: null
-      })
-    }
-  }, [dailyPath])
+  }, [workingFolder, activeProjectId, sshConnectionId])
 
   // ─── Load personas ───
 
@@ -242,32 +227,30 @@ export function ProjectArchivePage(): React.JSX.Element {
   }, [loadMemoryFile])
 
   useEffect(() => {
-    if (activeTab === 'daily') void loadDailyFile()
-  }, [activeTab, loadDailyFile])
+    if (activeTab === 'database') void loadMemoryDb()
+  }, [activeTab, loadMemoryDb])
 
   useEffect(() => {
     if (activeTab === 'persona') void loadPersonas()
   }, [activeTab, loadPersonas])
 
-  // Dormant memory tab removed — cold memory is stored in SQLite, accessed via memory/search
+  // Cold memory is stored in SQLite — browsed read-only through the memory library tab
 
-  // ─── Save handler ───
+  // ─── Save handler (MEMORY.md only) ───
 
   const handleSave = useCallback(async () => {
-    const file = activeTab === 'memory' ? memoryFile : dailyFile
-    if (!file.path) return
+    if (!memoryFile.path) return
 
-    const setter = activeTab === 'memory' ? setMemoryFile : setDailyFile
-    setter((prev) => ({ ...prev, saving: true, error: null }))
+    setMemoryFile((prev) => ({ ...prev, saving: true, error: null }))
 
-    const err = await writeTextFile(file.path, file.draftContent)
+    const err = await writeTextFile(memoryFile.path, memoryFile.draftContent)
     if (err) {
-      setter((prev) => ({ ...prev, saving: false, error: err }))
+      setMemoryFile((prev) => ({ ...prev, saving: false, error: err }))
       toast.error(t('projectArchive.saveFailed', { defaultValue: 'Failed to save' }), {
         description: err
       })
     } else {
-      setter((prev) => ({
+      setMemoryFile((prev) => ({
         ...prev,
         saving: false,
         savedContent: prev.draftContent,
@@ -276,17 +259,13 @@ export function ProjectArchivePage(): React.JSX.Element {
       }))
       toast.success(t('projectArchive.saved', { defaultValue: 'Saved' }))
     }
-  }, [activeTab, memoryFile, dailyFile, t])
+  }, [memoryFile, t])
 
   // ─── Reset handler ───
 
   const handleReset = useCallback(() => {
-    if (activeTab === 'memory') {
-      setMemoryFile((prev) => ({ ...prev, draftContent: prev.savedContent, error: null }))
-    } else {
-      setDailyFile((prev) => ({ ...prev, draftContent: prev.savedContent, error: null }))
-    }
-  }, [activeTab])
+    setMemoryFile((prev) => ({ ...prev, draftContent: prev.savedContent, error: null }))
+  }, [])
 
   // ─── Reload current tab ───
 
@@ -295,25 +274,25 @@ export function ProjectArchivePage(): React.JSX.Element {
       case 'memory':
         void loadMemoryFile()
         break
-      case 'daily':
-        void loadDailyFile()
+      case 'database':
+        void loadMemoryDb()
         break
       case 'persona':
         void loadPersonas()
         break
     }
-  }, [activeTab, loadMemoryFile, loadDailyFile, loadPersonas])
+  }, [activeTab, loadMemoryFile, loadMemoryDb, loadPersonas])
 
   // ─── Derived state ───
 
-  const activeFile = activeTab === 'memory' ? memoryFile : dailyFile
-  const hasUnsavedChanges = activeFile.draftContent !== activeFile.savedContent
-  const canSave = activeFile.missingFile || hasUnsavedChanges
+  const activeFile = memoryFile
+  const hasUnsavedChanges = memoryFile.draftContent !== memoryFile.savedContent
+  const canSave = memoryFile.missingFile || hasUnsavedChanges
   const isLoading =
     activeTab === 'memory'
       ? memoryFile.loading
-      : activeTab === 'daily'
-        ? dailyFile.loading
+      : activeTab === 'database'
+        ? memoryDbLoading
         : personasLoading
 
   // ─── Empty state: no project ───
@@ -446,8 +425,8 @@ export function ProjectArchivePage(): React.JSX.Element {
 
         {/* ── Tab content ── */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-4">
-          {/* Tab 1: Project Memory / Tab 2: Daily Memory */}
-          {(activeTab === 'memory' || activeTab === 'daily') && (
+          {/* Tab 1: Project Memory (editable MEMORY.md) */}
+          {activeTab === 'memory' && (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
@@ -509,11 +488,7 @@ export function ProjectArchivePage(): React.JSX.Element {
                     value={activeFile.draftContent}
                     onChange={(e) => {
                       const value = e.target.value
-                      if (activeTab === 'memory') {
-                        setMemoryFile((prev) => ({ ...prev, draftContent: value }))
-                      } else {
-                        setDailyFile((prev) => ({ ...prev, draftContent: value }))
-                      }
+                      setMemoryFile((prev) => ({ ...prev, draftContent: value }))
                     }}
                     placeholder={t('projectArchive.placeholder', {
                       defaultValue: 'Edit content here...'
@@ -530,6 +505,82 @@ export function ProjectArchivePage(): React.JSX.Element {
                   {activeFile.error}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Tab 2: Memory Library — read-only memory_entries of this project (S-91) */}
+          {activeTab === 'database' && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                  <Database className="size-4 shrink-0" />
+                  <span className="truncate text-xs">
+                    {t('projectArchive.memoryLibrary.desc', {
+                      defaultValue: 'Entries stored in the local memory database for this project.'
+                    })}
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 rounded-md px-2.5 text-xs"
+                  onClick={() => void loadMemoryDb()}
+                  disabled={memoryDbLoading}
+                >
+                  {memoryDbLoading ? (
+                    <Loader2 className="mr-1 size-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-1 size-3" />
+                  )}
+                  {t('projectArchive.memoryLibrary.refresh', { defaultValue: 'Refresh' })}
+                </Button>
+              </div>
+
+              {memoryDbError && (
+                <p className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  {memoryDbError}
+                </p>
+              )}
+
+              <div className="mt-3 flex-1 overflow-auto">
+                {memoryDbLoading && memoryDbEntries.length === 0 ? (
+                  <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    {t('projectArchive.loading', { defaultValue: 'Loading...' })}
+                  </div>
+                ) : memoryDbEntries.length === 0 ? (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center">
+                    <Database className="size-8 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">
+                      {t('projectArchive.memoryLibrary.empty', {
+                        defaultValue: 'No memory entries stored for this project yet.'
+                      })}
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {memoryDbEntries.map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="rounded-md border border-border/60 bg-background/60 px-3 py-2"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="truncate text-xs font-medium text-foreground">
+                            {entry.title ||
+                              t('projectArchive.memoryLibrary.untitled', { defaultValue: 'Untitled' })}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-muted-foreground">
+                            {entry.priority} · {entry.status}
+                          </span>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">
+                          {entry.content}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           )}
 

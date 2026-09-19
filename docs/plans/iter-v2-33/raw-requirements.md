@@ -322,9 +322,16 @@ iter-29 修 F-8（提交 `ef16bf6f`）把 `sessionId` 盖章收口到 **`stores/
 1. 选项卡落点 —— 记忆页内部自建一层 tab（倾向），还是复用设置页已有的 tab 机制
 2. 执行记录是否保留 `max-h-64` 内滚，还是改成整页滚动（既然已经独立成页签，内滚可能没必要）
 
-### 实施记录
+### 实施记录（2026-09-19）
 
-（未实施）
+**待裁定 1 取「记忆页内部自建一层 tab」；待裁定 2 取「去掉内滚、改整页滚动」。**
+
+- `MemorySettingsPanel.tsx` 新增 `MemoryPageTabs`（`role="tablist"` + pill 样式，形状照 `ProviderPanel.tsx` 的 `ProviderPanelTabs` 抄 —— `components/ui/` 下只有 `segmented-control.tsx`，没有可复用的 tab 原语）；`useState<'settings' | 'log'>` 分流：三个设置段进「设置」，执行记录进「执行记录」。
+- **大文件红线拆分（AGENTS.md >500 行必须拆）**：执行记录段（原 `:424-478`）抽成新组件 `src/renderer/src/components/settings/MemoryExecutionLogSection.tsx`（自带 `formatMemoryTimestamp`，props 只收 `reports`）；`:432` 的 `max-h-64 overflow-y-auto` **去掉**，随页滚动。主文件 520 → 472 行。
+- **锚点导航**：`MEMORY_ANCHORS` 只覆盖设置三段，切到「执行记录」后那三个 section 不在 DOM 里 —— `section-anchor-nav.tsx` 增加 `MutationObserver` 探测：所有锚点目标都不存在时整个 nav 返回 null，不再提供死链接。
+- locale：`locales/{zh,en}/settings.json` 的 `memoryPage.tabs` 新增 `label` / `settings` / `executionLog`。
+
+**验证**：`npx tsc --noEmit -p tsconfig.web.json` 零错误；`npm run test:i18n-coverage` 通过。**未验**：真机两个页签切换、执行记录完整可见、锚点导航在「执行记录」下消失。
 
 ---
 

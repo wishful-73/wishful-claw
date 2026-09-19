@@ -1403,6 +1403,11 @@
   "memoryPage": {
     "title": "Memory",
     "subtitle": "Daily auto organization, tier demotion thresholds and proactive recall parameters",
+    "tabs": {
+      "label": "Memory page sections",
+      "settings": "Settings",
+      "executionLog": "Execution Log"
+    },
     "organization": {
       "title": "Daily Auto Organization",
       "desc": "Scheduled memory organization: deduplicate/merge MEMORY.md and demote stale entries across tiers (demotion never deletes and is recoverable)",

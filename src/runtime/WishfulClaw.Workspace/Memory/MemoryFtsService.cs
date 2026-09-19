@@ -94,6 +94,10 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
             // hits: a title hit (2) outranks a content-only hit (1), and updated_at
             // breaks ties. Without this, PassesThreshold saw a null score and let
             // everything through, so short queries came back unordered (S-94).
+            // NOTE: this 0..2 scale is NOT comparable to the FTS path's -bm25 rank.
+            // MemoryRecallService merges both channels and applies one minScore to the
+            // result, so a non-zero threshold filters the two sources with different
+            // yardsticks; ordering is only meaningful within a channel.
             var likeSql = $"""
                 SELECT id, title, content, scope, priority, status, updated_at,
                        (CASE WHEN title LIKE @pattern THEN 2 ELSE 0 END

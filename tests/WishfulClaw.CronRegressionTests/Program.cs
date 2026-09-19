@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent.Tools.Providers;
@@ -327,6 +327,36 @@ internal static class Program
         AssertEqual(1, listedRuns.Count, "cron run list filters by task and session");
         AssertEqual(RunId, listedRuns[0].GetProperty("runId").GetString(), "cron run list returns the persisted run");
 
+        // S-87 review follow-up: ListReadOnly must never finalize orphan rows. List's lazy
+        // "running → aborted" sweep needs the caller's set of live run ids, which the worker cannot
+        // see, so a read-only caller reusing it would abort runs that are still executing.
+        const string liveRunId = "cron-run-live-1";
+        AssertMutationSuccess(DbCronRunTools.Start(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("runId", liveRunId);
+            writer.WriteString("cronId", PersistentJobId);
+            writer.WriteString("fireId", "fire-live-1");
+            writer.WriteString("sessionId", "session-cron");
+            writer.WriteNumber("startedAt", 4001L);
+        })), "read-only suite seeds a still-running cron run");
+
+        var readonlyRuns = ResultArray(DbCronRunTools.ListReadOnly(Parameters(dbPath, writer =>
+        {
+            writer.WriteString("cronId", PersistentJobId);
+        })));
+        Assert(readonlyRuns.Count >= 1, "ListReadOnly lists runs for the requested task");
+
+        JsonElement liveRow = default;
+        foreach (var row in readonlyRuns)
+        {
+            if (row.GetProperty("runId").GetString() == liveRunId) liveRow = row;
+        }
+        Assert(liveRow.ValueKind == JsonValueKind.Object, "ListReadOnly returns the seeded running run");
+        AssertEqual("running", liveRow.GetProperty("status").GetString(),
+            "ListReadOnly returns a running run as-is instead of aborting it");
+        AssertEqual(1L, CountRunningRuns(dbPath, liveRunId),
+            "ListReadOnly leaves the still-running row untouched in the database");
+
         AssertMutationSuccess(DbCronTools.Delete(Parameters(dbPath, writer => writer.WriteString("id", PersistentJobId))),
             "delete soft-deletes and disables a task");
         var defaultGet = ResultObject(DbCronTools.Get(Parameters(dbPath, writer => writer.WriteString("id", PersistentJobId))));
@@ -362,8 +392,17 @@ internal static class Program
             "reasoning effort survives process restart");
         var reopenedRuns = ResultArray(DbCronRunTools.List(Parameters(dbPath, writer =>
             writer.WriteString("cronId", PersistentJobId))));
-        AssertEqual(1, reopenedRuns.Count, "cron execution history survives process restart");
-        AssertEqual(RunId, reopenedRuns[0].GetProperty("runId").GetString(), "reopened history retains run id");
+        // The read-only suite seeds a second, still-running run, so locate the original by id
+        // instead of assuming it is the only row (S-87 review follow-up).
+        JsonElement reopenedRun = default;
+        foreach (var row in reopenedRuns)
+        {
+            if (row.GetProperty("runId").GetString() == RunId) reopenedRun = row;
+        }
+        Assert(reopenedRun.ValueKind == JsonValueKind.Object, "cron execution history survives process restart");
+        AssertEqual(RunId, reopenedRun.GetProperty("runId").GetString(), "reopened history retains run id");
+        AssertEqual("failed", reopenedRun.GetProperty("status").GetString(),
+            "reopened history retains the terminal status");
 
         var active = ResultObject(DbCronTools.Get(Parameters(dbPath, writer => writer.WriteString("id", DisabledJobId))));
         Assert(active.GetProperty("success").GetBoolean(), "non-deleted task survives process restart");
@@ -514,6 +553,20 @@ internal static class Program
         "max_iterations", "enabled", "deleted_at", "last_fired_at", "last_run_at", "last_run_status",
         "last_run_summary", "last_error", "fire_count", "created_at", "updated_at"
     ];
+
+    /// <summary>
+    /// Reads a run's status straight from the database file (S-87 review follow-up) so the
+    /// assertion cannot be satisfied by a stale in-memory view.
+    /// </summary>
+    private static long CountRunningRuns(string dbPath, string runId)
+    {
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM cron_runs WHERE run_id = $runId AND status = 'running'";
+        command.Parameters.AddWithValue("$runId", runId);
+        return Convert.ToInt64(command.ExecuteScalar());
+    }
 
     private static void SeedLegacyCronDatabase(string dbPath)
     {

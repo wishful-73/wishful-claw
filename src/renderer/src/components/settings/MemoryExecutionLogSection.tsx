@@ -35,6 +35,9 @@ function MemoryExecutionLogSection({
             const detail =
               report.error ??
               report.scopes.find((scope) => scope.error)?.error ??
+              // A failed hot→DB mirror does not abort the organization (S-93), so it never lands in
+              // scope.error — surface it here, otherwise the failure is invisible in the UI.
+              report.scopes.find((scope) => scope.dbSyncError)?.dbSyncError ??
               report.scopes.find((scope) => scope.skippedReason && !scope.organized)
                 ?.skippedReason ??
               null

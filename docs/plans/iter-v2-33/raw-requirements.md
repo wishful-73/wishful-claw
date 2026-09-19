@@ -328,6 +328,11 @@ iter-29 修 F-8（提交 `ef16bf6f`）把 `sessionId` 盖章收口到 **`stores/
 
 - `MemorySettingsPanel.tsx` 新增 `MemoryPageTabs`（`role="tablist"` + pill 样式，形状照 `ProviderPanel.tsx` 的 `ProviderPanelTabs` 抄 —— `components/ui/` 下只有 `segmented-control.tsx`，没有可复用的 tab 原语）；`useState<'settings' | 'log'>` 分流：三个设置段进「设置」，执行记录进「执行记录」。
 - **大文件红线拆分（AGENTS.md >500 行必须拆）**：执行记录段（原 `:424-478`）抽成新组件 `src/renderer/src/components/settings/MemoryExecutionLogSection.tsx`（自带 `formatMemoryTimestamp`，props 只收 `reports`）；`:432` 的 `max-h-64 overflow-y-auto` **去掉**，随页滚动。主文件 520 → 472 行。
+  - ⚠️ **订正（2026-09-19，审查态）**：当时对外声称「520 → 472 行」，**实测是 521 行** —— 新加的 `MemoryPageTabs`（51 行）加 tab 包裹层把抽走 `MemoryExecutionLogSection` 的 −82 行收益吃掉了，红线**未达成**。审查报告 ❌-2 记录在案。
+  - **审查修正**：把 tier 阈值段、recall 段、`TierRow`、`clampInt` / `clampTierDays` 一并抽成 `src/renderer/src/components/settings/MemoryTierSettingsSections.tsx`（229 行），主文件回到线内。同时给 `MemoryPageTabs` 补上方向键导航与真实的 `role="tabpanel"` 容器（审查 ⚠️-6）。
+  - ⚠️ **二次订正（2026-09-19，第二轮复审 N-3）**：修正刀的 commit message 与本节初稿都写「327 行」，**实测是 345 行**（随后补 `aria-labelledby` 再 +10 ⇒ **355 行**）—— 又一次「改完没重测就把数字写进文档」。
+    **最终实测值**（`(Get-Content <path>).Count`）：`MemorySettingsPanel.tsx` = **355**、`MemoryTierSettingsSections.tsx` = 229、`ProjectArchivePage.tsx` = **377**、`ProjectMemoryFileTab.tsx` = 191、`ProjectMemoryLibraryTab.tsx` = 132。全部 < 500。
+    **教训**：行数这类结论必须**在全部改动落地之后重新测量**才写进文档。
 - **锚点导航**：`MEMORY_ANCHORS` 只覆盖设置三段，切到「执行记录」后那三个 section 不在 DOM 里 —— `section-anchor-nav.tsx` 增加 `MutationObserver` 探测：所有锚点目标都不存在时整个 nav 返回 null，不再提供死链接。
 - locale：`locales/{zh,en}/settings.json` 的 `memoryPage.tabs` 新增 `label` / `settings` / `executionLog`。
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -23,21 +23,7 @@ import {
 } from '@renderer/lib/agent/memory-organization'
 import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
 import MemoryExecutionLogSection from './MemoryExecutionLogSection'
-
-function clampInt(value: number, min: number, max: number, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback
-  return Math.min(max, Math.max(min, Math.floor(value)))
-}
-
-/** Clamp a day threshold and keep Cold >= Warm per priority tier. */
-function clampTierDays(
-  value: number,
-  kind: 'warm' | 'cold',
-  counterpart: number
-): number {
-  const clamped = clampInt(value, 1, 365, counterpart)
-  return kind === 'warm' ? Math.min(clamped, counterpart) : Math.max(clamped, counterpart)
-}
+import { MemoryTiersSection, MemoryRecallSection } from './MemoryTierSettingsSections'
 
 function isTextModel(
   model: { id: string; enabled: boolean; category?: string; type?: string },
@@ -76,9 +62,21 @@ function MemoryPageTabs({
   onChange: (tab: MemoryPageTab) => void
 }): React.JSX.Element {
   const { t } = useTranslation('settings')
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const labels: Record<MemoryPageTab, string> = {
     settings: t('memoryPage.tabs.settings'),
     log: t('memoryPage.tabs.executionLog')
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const nextIndex =
+      event.key === 'ArrowRight'
+        ? (index + 1) % MEMORY_PAGE_TABS.length
+        : (index - 1 + MEMORY_PAGE_TABS.length) % MEMORY_PAGE_TABS.length
+    onChange(MEMORY_PAGE_TABS[nextIndex])
+    tabRefs.current[nextIndex]?.focus()
   }
 
   return (
@@ -87,9 +85,10 @@ function MemoryPageTabs({
       aria-label={t('memoryPage.tabs.label')}
       className="flex w-fit shrink-0 items-center gap-1 rounded-lg border bg-muted/50 p-1"
     >
-      {MEMORY_PAGE_TABS.map((tab) => (
+      {MEMORY_PAGE_TABS.map((tab, index) => (
         <button
           key={tab}
+          ref={(element) => { tabRefs.current[index] = element }}
           type="button"
           role="tab"
           id={`memory-page-tab-${tab}`}
@@ -97,6 +96,7 @@ function MemoryPageTabs({
           aria-selected={activeTab === tab}
           tabIndex={activeTab === tab ? 0 : -1}
           onClick={() => onChange(tab)}
+          onKeyDown={(event) => handleKeyDown(event, index)}
           className={cn(
             'inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors',
             activeTab === tab
@@ -147,51 +147,6 @@ function MemorySettingsPanel(): React.JSX.Element {
     }
   }, [])
 
-  const tierRows = [
-    {
-      key: 'ephemeral' as const,
-      label: t('memoryPage.tiers.ephemeral'),
-      warm: settings.memoryWarmThresholdEphemeral,
-      cold: settings.memoryColdThresholdEphemeral,
-      setWarm: (v: number) =>
-        settings.updateSettings({
-          memoryWarmThresholdEphemeral: clampTierDays(v, 'warm', settings.memoryColdThresholdEphemeral)
-        }),
-      setCold: (v: number) =>
-        settings.updateSettings({
-          memoryColdThresholdEphemeral: clampTierDays(v, 'cold', settings.memoryWarmThresholdEphemeral)
-        })
-    },
-    {
-      key: 'standard' as const,
-      label: t('memoryPage.tiers.standard'),
-      warm: settings.memoryWarmThresholdStandard,
-      cold: settings.memoryColdThresholdStandard,
-      setWarm: (v: number) =>
-        settings.updateSettings({
-          memoryWarmThresholdStandard: clampTierDays(v, 'warm', settings.memoryColdThresholdStandard)
-        }),
-      setCold: (v: number) =>
-        settings.updateSettings({
-          memoryColdThresholdStandard: clampTierDays(v, 'cold', settings.memoryWarmThresholdStandard)
-        })
-    },
-    {
-      key: 'lasting' as const,
-      label: t('memoryPage.tiers.lasting'),
-      warm: settings.memoryWarmThresholdLasting,
-      cold: settings.memoryColdThresholdLasting,
-      setWarm: (v: number) =>
-        settings.updateSettings({
-          memoryWarmThresholdLasting: clampTierDays(v, 'warm', settings.memoryColdThresholdLasting)
-        }),
-      setCold: (v: number) =>
-        settings.updateSettings({
-          memoryColdThresholdLasting: clampTierDays(v, 'cold', settings.memoryWarmThresholdLasting)
-        })
-    }
-  ]
-
   return (
     <div className="mx-auto max-w-4xl space-y-4 px-8 pb-16 pt-10">
       {/* Title */}
@@ -203,7 +158,12 @@ function MemorySettingsPanel(): React.JSX.Element {
       <MemoryPageTabs activeTab={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'settings' && (
-        <>
+        <div
+          role="tabpanel"
+          id="memory-page-tabpanel-settings"
+          aria-labelledby="memory-page-tab-settings"
+          className="space-y-4"
+        >
         {/* Auto organization */}
         <SettingsSection
           id="sec-memory-organization"
@@ -370,151 +330,25 @@ function MemorySettingsPanel(): React.JSX.Element {
         </SettingsSection>
 
         {/* Tier thresholds */}
-        <SettingsSection
-          id="sec-memory-tiers"
-          title={t('memoryPage.tiers.title')}
-          description={t('memoryPage.tiers.desc')}
-        >
-          <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-6 gap-y-2">
-            <div />
-            <div className="w-28 text-center text-xs font-medium text-muted-foreground">
-              {t('memoryPage.tiers.warm')}
-            </div>
-            <div className="w-28 text-center text-xs font-medium text-muted-foreground">
-              {t('memoryPage.tiers.cold')}
-            </div>
-            {tierRows.map((row) => (
-              <TierRow key={row.key} label={row.label} warm={row.warm} cold={row.cold} setWarm={row.setWarm} setCold={row.setCold} />
-            ))}
-          </div>
-          <SettingHint>{t('memoryPage.tiers.hint')}</SettingHint>
-        </SettingsSection>
+        <MemoryTiersSection />
 
         {/* Recall */}
-        <SettingsSection
-          id="sec-memory-recall"
-          title={t('memoryPage.recall.title')}
-          description={t('memoryPage.recall.desc')}
-        >
-          <SettingRow
-            label={t('memoryPage.recall.maxNotes.label')}
-            description={t('memoryPage.recall.maxNotes.desc')}
-            control={
-              <Input
-                type="number"
-                min={1}
-                max={32}
-                value={settings.memoryRecallMaxNotes}
-                onChange={(event) =>
-                  settings.updateSettings({
-                    memoryRecallMaxNotes: clampInt(Number(event.target.value), 1, 32, 5)
-                  })
-                }
-                className="w-24 text-xs"
-              />
-            }
-          />
-          <SettingRow
-            label={t('memoryPage.recall.maxChars.label')}
-            description={t('memoryPage.recall.maxChars.desc')}
-            control={
-              <Input
-                type="number"
-                min={256}
-                max={100000}
-                step={256}
-                value={settings.memoryRecallMaxChars}
-                onChange={(event) =>
-                  settings.updateSettings({
-                    memoryRecallMaxChars: clampInt(Number(event.target.value), 256, 100_000, 4000)
-                  })
-                }
-                className="w-28 text-xs"
-              />
-            }
-          />
-          <SettingRow
-            label={t('memoryPage.recall.minScore.label')}
-            description={t('memoryPage.recall.minScore.desc')}
-            control={
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={settings.memoryRecallMinScore}
-                onChange={(event) =>
-                  settings.updateSettings({
-                    memoryRecallMinScore: clampInt(Number(event.target.value), 0, 100, 0)
-                  })
-                }
-                className="w-24 text-xs"
-              />
-            }
-          />
-          <SettingRow
-            label={t('memoryPage.recall.fallback.label')}
-            description={t('memoryPage.recall.fallback.desc')}
-            control={
-              <Switch
-                checked={settings.memoryRecallGlobalFallback}
-                onCheckedChange={(checked) => settings.updateSettings({ memoryRecallGlobalFallback: checked })}
-              />
-            }
-          />
-          <SettingRow
-            label={t('memoryPage.recall.visibility.label')}
-            description={t('memoryPage.recall.visibility.desc')}
-            control={
-              <Switch
-                checked={settings.memoryRecallVisibility}
-                onCheckedChange={(checked) => settings.updateSettings({ memoryRecallVisibility: checked })}
-              />
-            }
-          />
-        </SettingsSection>
+        <MemoryRecallSection />
 
-        </>
+        </div>
       )}
 
-      {activeTab === 'log' && <MemoryExecutionLogSection reports={organizationReports} />}
+      {activeTab === 'log' && (
+        <div
+          role="tabpanel"
+          id="memory-page-tabpanel-log"
+          aria-labelledby="memory-page-tab-log"
+          className="space-y-4"
+        >
+          <MemoryExecutionLogSection reports={organizationReports} />
+        </div>
+      )}
     </div>
-  )
-}
-
-function TierRow(props: {
-  label: string
-  warm: number
-  cold: number
-  setWarm: (value: number) => void
-  setCold: (value: number) => void
-}): React.JSX.Element {
-  const { t } = useTranslation('settings')
-  return (
-    <>
-      <div className="text-sm font-medium">{props.label}</div>
-      <div className="flex w-28 items-center justify-center gap-1.5">
-        <Input
-          type="number"
-          min={1}
-          max={365}
-          value={props.warm}
-          onChange={(event) => props.setWarm(Number(event.target.value))}
-          className="w-20 text-xs"
-        />
-        <span className="text-xs text-muted-foreground">{t('memoryPage.tiers.days')}</span>
-      </div>
-      <div className="flex w-28 items-center justify-center gap-1.5">
-        <Input
-          type="number"
-          min={1}
-          max={365}
-          value={props.cold}
-          onChange={(event) => props.setCold(Number(event.target.value))}
-          className="w-20 text-xs"
-        />
-        <span className="text-xs text-muted-foreground">{t('memoryPage.tiers.days')}</span>
-      </div>
-    </>
   )
 }
 

@@ -272,9 +272,9 @@ public sealed class GrepTool : IToolExecutor
 
                     return new ToolResult(
 
-                        $"No matches found. file_pattern \"{filePattern}\" rejected all {stats.Candidates} candidate file(s) under {root}; " +
+                        $"No matches found. file_pattern \"{filePattern}\" matched none of the {stats.Candidates} candidate file(s) under {root}. " +
 
-                        "only \"*\" and \"?\" are supported as wildcards (e.g. \"*.ts*\" is not a plain suffix match).");
+                        "Globs support \"*\" and \"?\" — check the extension you meant, e.g. \"*.ts\" or \"*.tsx\".");
 
                 }
 

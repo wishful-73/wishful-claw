@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WishfulClaw.Agent;
+using WishfulClaw.Contracts;
 
 namespace WishfulClaw.CompactionSnapshotRegressionTests;
 
@@ -75,6 +76,38 @@ internal static class SummaryRollingChecks
         AssertEqual(53, pathFold.Count(IsSummary), "all 53 prior summaries fold in a single pass");
         AssertEqual(0, pathKept.Count(IsSummary), "none of the 53 summaries is kept");
 
+        // ── CompactAsync failure path: prior summaries survive, user turns survive ──
+        // The summarizer cannot run (unknown provider type), so this exercises the
+        // mechanical-digest branch end to end — the branch that MUST keep the old
+        // summaries, since the digest itself carries no information.
+        var keptUser = AgentRuntimeChatMessage.User("keep me verbatim");
+        var failureConversation = new List<AgentRuntimeChatMessage>
+        {
+            Message("system", "system prompt"),
+            AgentRuntimeChatMessage.User("first user turn"),
+            SummaryOf("older", repeat: 3),
+            SummaryOf("newer", repeat: 3),
+            Message("assistant", new string('y', 800)),
+            keptUser,
+            Message("assistant", new string('z', 800)),
+        };
+
+        var outcome = ContextCompression.CompactAsync(
+                failureConversation,
+                failureConversation.Select(m => Wire(m.Role, m.Text)).ToList(),
+                provider,
+                SilentRequestContext.Instance,
+                CancellationToken.None,
+                preserveTail: false)
+            .GetAwaiter().GetResult();
+
+        Assert(outcome.Compacted, "a foldable region compacts");
+        Assert(outcome.SummarizerFailed, "an unusable provider degrades to the mechanical digest");
+        AssertEqual(3, outcome.Conversation.Count(IsSummary),
+            "failure path keeps both prior summaries plus the mechanical digest");
+        Assert(outcome.Conversation.Any(m => ReferenceEquals(m, keptUser)),
+            "failure path keeps the small user turn verbatim");
+
         Console.WriteLine($"Summary rolling checks passed: {_passed}");
     }
 
@@ -86,6 +119,27 @@ internal static class SummaryRollingChecks
 
     private static bool IsSummary(AgentRuntimeChatMessage message)
         => message.Role == "user" && message.Text.TrimStart().StartsWith(Tag, StringComparison.Ordinal);
+
+    private static JsonElement Wire(string role, string text)
+    {
+        var json = $"{{\"role\":{JsonSerializer.Serialize(role)},\"content\":{JsonSerializer.Serialize(text)}}}";
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private sealed class SilentRequestContext : IWorkerRequestContext
+    {
+        public static SilentRequestContext Instance { get; } = new();
+        public CancellationToken CancellationToken => CancellationToken.None;
+        public CancellationToken ConnectionCancellationToken => CancellationToken.None;
+        public IWorkerRequestContext ForBackgroundOperation() => this;
+        public ValueTask EmitEventAsync<T>(string eventName, T parameters, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo)
+            => ValueTask.CompletedTask;
+        public ValueTask EmitEventIgnoringCancellationAsync<T>(string eventName, T parameters, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo)
+            => ValueTask.CompletedTask;
+        public ValueTask EmitMessagePackEventAsync(string eventName, ReadOnlyMemory<byte> payload)
+            => ValueTask.CompletedTask;
+    }
 
     private static JsonElement Json(string json)
     {

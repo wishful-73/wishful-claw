@@ -373,6 +373,11 @@ public static partial class ContextCompression
 
         for (var i = conversation.Count - 1; i > head; i--)
         {
+            // A prior compaction summary always belongs to the fold region, never to the
+            // verbatim tail: a summary left in the tail would be carried into the result
+            // alongside the new summary, breaking the one-summary invariant (S-95).
+            if (IsCompactionSummary(conversation[i]) && conversation.Count - i > minKeep)
+                break;
             var tok = EstimateMessageTokens(conversation[i]);
             if (conversation.Count - i > minKeep && acc + tok > budgetTokens)
                 break;

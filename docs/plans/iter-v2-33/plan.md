@@ -52,19 +52,19 @@
 
 ### 步骤组一：A —— 滚动摘要（`src/runtime/WishfulClaw.Agent/ContextCompression.cs`）
 
-- [ ] 步骤 1：`PinnedPrefixLen`（`:318-345`）收窄——删掉 `:340-342` 的 `while (i < conversation.Count && IsCompactionSummary(conversation[i])) i++;`，`head` 只到「system + 首条可 pin user」为止（`:323-338` 段保持不动）。旧摘要不再进 `head`，自然落进可折叠区。
+- [x] 步骤 1：`PinnedPrefixLen`（`:318-345`）收窄——删掉 `:340-342` 的 `while (i < conversation.Count && IsCompactionSummary(conversation[i])) i++;`，`head` 只到「system + 首条可 pin user」为止（`:323-338` 段保持不动）。旧摘要不再进 `head`，自然落进可折叠区。
   - 顺带：修正随之陈旧的注释 —— `:25`（flow 第 5 步「[pinned prefix] + [kept user turns] + [summary] + [recent tail]」）、`:271` 与 `:315-316`（`head = … + prior summaries`）
   - 验证：`dotnet build src/runtime/WishfulClaw.sln` 零错误；`tests/WishfulClaw.CompactionSnapshotRegressionTests` 无既有断言依赖旧 head 语义
-- [ ] 步骤 2：`PartitionFold`（`:393-414`）改造：
+- [x] 步骤 2：`PartitionFold`（`:393-414`）改造：
   - ① 删掉 `:402` 的 `IsCompactionSummary(message)` 判据；
   - ② **给 `:403` 的小 user 判据补 `&& !IsCompactionSummary(message)` 守卫** —— 否则 ≤1500 字符的旧摘要会被当成「小 user 消息」留在 kept（`IsPinnableUserTurn` 预算 `min(1500, 窗口×15%)`，且 `EstimateTextTokens = Math.Max((len+3)/4, len)` 对 ASCII 恒等于字符数；实测摘要长 1,300~9,200 字符）。`:334` 的首条 user 判据**已有同款守卫**，照搬即可；
   - ③ 按 V4 定案（口径 A）：摘要**全部进 fold**，结果里不保留任何旧摘要。
   - 验证：`dotnet build` 零错误；覆盖断言见「收尾」步骤 2（**不靠临时探针**）
-- [ ] 步骤 3：核对分区覆盖边界——① 最近一条摘要在 `tail`（`start` 之后）时由 tail 原样带出，`kept` 不重复放它；② 全 wire 无摘要时 kept 里的摘要为空；③ `lastSummaryIdx < head` 不应出现（步骤 1 后 head 不含摘要）。
+- [x] 步骤 3：核对分区覆盖边界——① 最近一条摘要在 `tail`（`start` 之后）时由 tail 原样带出，`kept` 不重复放它；② 全 wire 无摘要时 kept 里的摘要为空；③ `lastSummaryIdx < head` 不应出现（步骤 1 后 head 不含摘要）。
   - 验证：同样进「收尾」的持久断言
-- [ ] 步骤 4：`fold` 口径改激进——确保传给 `SummarizeAsync`（`:421+`）的 fold 含**全部旧摘要**（含最近一条）+ assistant / tool / 大 user。**成功路径要删掉的一切，必须已进新摘要。**
+- [x] 步骤 4：`fold` 口径改激进——确保传给 `SummarizeAsync`（`:421+`）的 fold 含**全部旧摘要**（含最近一条）+ assistant / tool / 大 user。**成功路径要删掉的一切，必须已进新摘要。**
   - 验证：持久断言 —— fold 里旧摘要条数 == 全 wire 摘要总数
-- [ ] 步骤 5：结果构造按 `summarizerFailed` 双路径分流（`:167-214`）——
+- [x] 步骤 5：结果构造按 `summarizerFailed` 双路径分流（`:167-214`）——
   - **成功**：`[head: system + 首条 user] + [kept: 小 user 消息] + [新摘要] + [tail]`（旧摘要一律不留）
   - **失败**：现状口径（kept 含旧摘要与小 user 消息 + 机械摘要 + tail），**旧摘要一条不删**
   - **role / tool 配对结论（已实读，不再留「实施时确认」）**：① 摘要是 `user` 角色（`:199`），结果里会出现相邻 user 消息（`kept(user) + 摘要(user)`）—— **现状产物已经如此**（`:178-207`），线上一直可用，非新增违规；② tool 配对不受影响：`TailStart`（`:378-381`）与「无 tool_results」约束保证折掉 assistant(tool_use) 时不留孤儿 tool_result。若 `ConversationCodec` 有相邻合并逻辑，以其实测为准。
@@ -74,30 +74,30 @@
 
 ### 步骤组二：C —— 成功判据从条数改 token
 
-- [ ] 步骤 1：把 `AgentLoop.ContextCompression.cs:118` 与 `AgentRuntimeContextCompressionTools.cs:176` 的 `newWireConversation.Count >= originalCount` 改为 token 估算比较：`EstimateMessagesTokens(newConversation) < EstimateMessagesTokens(conversation)` 才算压动。两处自动 / 手动**必须同口径**。注意 `errorDriven`（context-window overflow）仍走 `AgentLoop.ContextCompression.cs:109-116` 的截断兜底，**不受本改影响**。
+- [x] 步骤 1：把 `AgentLoop.ContextCompression.cs:118` 与 `AgentRuntimeContextCompressionTools.cs:176` 的 `newWireConversation.Count >= originalCount` 改为 token 估算比较：`EstimateMessagesTokens(newConversation) < EstimateMessagesTokens(conversation)` 才算压动。两处自动 / 手动**必须同口径**。注意 `errorDriven`（context-window overflow）仍走 `AgentLoop.ContextCompression.cs:109-116` 的截断兜底，**不受本改影响**。
   - 验证：持久断言 —— 「折 2 条换 1 条长摘要」判 skipped 而非 compressed
-- [ ] 步骤 2：（按 V2 方案乙）「跑了但没缩小」的 skipped **统一 mark 推大水位**（与 `Compacted=false` 的 skipped 同一处理），消除「不前进水位 / 保持现状」的自相矛盾。代价记档：阈值仍超时该轮不再重试，直到有新消息。
+- [x] 步骤 2：（按 V2 方案乙）「跑了但没缩小」的 skipped **统一 mark 推大水位**（与 `Compacted=false` 的 skipped 同一处理），消除「不前进水位 / 保持现状」的自相矛盾。代价记档：阈值仍超时该轮不再重试，直到有新消息。
   - 验证：持久断言 —— 两类 skipped 都调用 mark；`errorDriven` 路径不落这条
 
 ### 步骤组三：D —— 压缩水位成功后重置
 
-- [ ] 步骤 1：`SessionConversation.cs:43-49` 的 `MarkCompactionWatermark` 由 `Math.Max(_compactionWatermark, messageCount)` 改为成功路径的**重置语义**（成功后直接赋值当前长度），或新增 `ResetCompactionWatermark` 供成功路径调用。
+- [x] 步骤 1：`SessionConversation.cs:43-49` 的 `MarkCompactionWatermark` 由 `Math.Max(_compactionWatermark, messageCount)` 改为成功路径的**重置语义**（成功后直接赋值当前长度），或新增 `ResetCompactionWatermark` 供成功路径调用。
   - 验证：持久断言 —— 压缩成功后水位 == 新 wire 长度
-- [ ] 步骤 2：核对**全部 6 处调用点**（另有 1 处定义 `SessionConversation.cs:43`，不计）：`AgentLoop.ContextCompression.cs:126`（skipped）、`:163`（成功）、`AgentLoop.cs:101`（restore）、`AgentRuntimeContextCompressionTools.cs:243`（手动成功）、`:320`（手动 restore）、`SessionRestoreTools.cs:107`（restore）。
+- [x] 步骤 2：核对**全部 6 处调用点**（另有 1 处定义 `SessionConversation.cs:43`，不计）：`AgentLoop.ContextCompression.cs:126`（skipped）、`:163`（成功）、`AgentLoop.cs:101`（restore）、`AgentRuntimeContextCompressionTools.cs:243`（手动成功）、`:320`（手动 restore）、`SessionRestoreTools.cs:107`（restore）。
   - **结论（已实读，不再留「要区分」）**：三处 restore 都在 `InitializeIfEmpty(...) == true`（冷启动、水位原为 0）内执行，随后 `Append` 会把水位归零（`SessionConversation.cs:195`）⇒ **不存在「restore 重置成小值 ⇒ 每轮重复压缩」的路径**；是否压缩仍由 `ShouldCompress` 的 token 阈值决定。
   - 验证：`git grep -n "MarkCompactionWatermark"` 逐条确认 6 处语义
 
 ### 收尾：门禁、断言与提交
 
-- [ ] 步骤 1：TS 三配置零错误：`npx tsc --noEmit -p tsconfig.web.json` + `-p tsconfig.node.json` + `-p tsconfig.json`；C# `dotnet build src/runtime/WishfulClaw.sln` 零错误 + `tests/WishfulClaw.Tests.sln` 编译 + 全部回归套件跑通
-- [ ] 步骤 2：**在 `tests/WishfulClaw.CompactionSnapshotRegressionTests` 增持久断言**（不是临时探针；exploration_findings 已要求「扩断言」）：
+- [x] 步骤 1：TS 三配置零错误：`npx tsc --noEmit -p tsconfig.web.json` + `-p tsconfig.node.json` + `-p tsconfig.json`；C# `dotnet build src/runtime/WishfulClaw.sln` 零错误 + `tests/WishfulClaw.Tests.sln` 编译 + 全部回归套件跑通
+- [x] 步骤 2：**在 `tests/WishfulClaw.CompactionSnapshotRegressionTests` 增持久断言**（不是临时探针；exploration_findings 已要求「扩断言」）：
   - ① 结果里摘要条数 == 1
   - ② fold 含全部旧摘要
   - ③ 失败路径旧摘要条数不变
   - ④ 53 条残留摘要的输入一次压缩后的摘要条数
   - ⑤ ≤1500 字符的小摘要不漏进 kept
-- [ ] 步骤 3：契约同步 —— `docs/plans/iter-v2-23/compression-contract.md` 的 §二（结果逻辑结构）、§三（`newCount >= originalCount` 判据）随本刀加注 / 小幅修订，**字段一律不动**
-- [ ] 步骤 4：需求整体测通后**一个 commit**（`fix(compaction): S-95 压缩实现滚动摘要，修越压越多与压不动`），规划 / 审查 / 验证文档并入该 commit，**不 push**
+- [x] 步骤 3：契约同步 —— `docs/plans/iter-v2-23/compression-contract.md` 的 §二（结果逻辑结构）、§三（`newCount >= originalCount` 判据）随本刀加注 / 小幅修订，**字段一律不动**
+- [x] 步骤 4：需求整体测通后**一个 commit**（`fix(compaction): S-95 压缩实现滚动摘要，修越压越多与压不动`），规划 / 审查 / 验证文档并入该 commit，**不 push**
 
 ## 涉及文件
 

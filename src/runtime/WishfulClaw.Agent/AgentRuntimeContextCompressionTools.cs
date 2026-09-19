@@ -173,6 +173,9 @@ public static class AgentRuntimeContextCompressionTools
                     WorkerLog.Info(
                         $"manual context compression skipped session={AgentLoop.FormatSessionId(sessionId)} " +
                         $"count={originalCount} tokens={originalTokens} (nothing foldable)");
+                    // S-95: same rule as the automatic path — advance the watermark so the
+                    // loop does not immediately re-attempt a compression that is pointless now.
+                    sessionConv?.MarkCompactionWatermark(wireMessages.Count);
                     return BuildResponse(
                         wireMessages,
                         new ContextCompressionResult(false, originalCount, originalCount,
@@ -195,6 +198,8 @@ public static class AgentRuntimeContextCompressionTools
                     WorkerLog.Info(
                         $"manual context compression skipped session={AgentLoop.FormatSessionId(sessionId)} " +
                         $"count={originalCount} tokens={originalTokens} (no reduction)");
+                    // S-95: mirror the automatic path — no reduction means no value in retrying now.
+                    sessionConv?.MarkCompactionWatermark(wireMessages.Count);
                     return BuildResponse(
                         wireMessages,
                         new ContextCompressionResult(false, originalCount, originalCount,

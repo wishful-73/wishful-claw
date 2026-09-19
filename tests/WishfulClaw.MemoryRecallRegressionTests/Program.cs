@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Workspace.Memory;
@@ -18,6 +18,7 @@ internal static class Program
             RunFtsLiteralQuerySuite(Path.Combine(testRoot, "memory.db"));
             RunSessionDeduplicationSuite();
             RunRecallFilteringSuite();
+            RunInjectedBlockStrippingSuite();
             Console.WriteLine($"Memory recall regression checks passed: {_passed}");
             return 0;
         }
@@ -108,6 +109,28 @@ internal static class Program
             && search.Scopes.Take(firstGlobal).All(scope => scope == "project:demo")
             && search.Scopes.Skip(firstGlobal).All(scope => scope == "global"),
             "recall searches project variants before global variants after deduplication");
+    }
+
+    private static void RunInjectedBlockStrippingSuite()
+    {
+        const string userText = "为什么手动压缩反而越压越多";
+
+        const string recall = "<memory-recall>\n- memory #7: compression notes\n</memory-recall>\n\n";
+        const string update = "<memory-update>\nThe following memory changes were just made and apply from now on:\n- memory #9 added\n</memory-update>\n\n";
+        const string time = "<current_time>\n2026-09-19 18:30 +08:00 (星期六)\n</current_time>\n\n";
+
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(recall + time + userText), "strips recall + time ahead of the user text");
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(update + time + userText), "strips memory-update + time ahead of the user text");
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(recall + update + time + userText), "strips all three injected blocks");
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(userText), "plain user text passes through unchanged");
+        AssertEqual("前言" + userText + "后记", AgentLoop.StripInjectedBlocks("前言" + userText + "后记"), "text without blocks is untouched");
+        AssertEqual("kept <b>bold</b>", AgentLoop.StripInjectedBlocks("kept <b>bold</b>"), "unrelated tags are preserved");
+        AssertEqual(string.Empty, AgentLoop.StripInjectedBlocks(time), "a message that is only a block strips to empty");
+        AssertEqual(string.Empty, AgentLoop.StripInjectedBlocks("<current_time>\n2026-09-19 18:30 +08:00"), "unterminated block is dropped to the end");
+
+        var stripped = AgentLoop.StripInjectedBlocks(recall + update + time + userText);
+        Assert(!stripped.Contains("2026-09-19", StringComparison.Ordinal), "timestamp no longer reaches the recall query");
+        Assert(stripped.Contains(userText, StringComparison.Ordinal), "user keywords survive stripping");
     }
 
     private static MemorySearchResult Hit(long id, string scope, string content) => new()

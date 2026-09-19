@@ -38,6 +38,17 @@ internal static partial class AgentLoop
             if (string.IsNullOrWhiteSpace(userMessage))
                 return;
 
+            // S-92: the latest user message carries transient blocks that
+            // InjectTransientPrefix (and this method, when it injects) prepended —
+            // <memory-recall> / <memory-update> / <current_time>. Recall must run on
+            // the user's own words: the block tags, the injected note list and the
+            // timestamp otherwise eat the refiner's variant budget. Only the search
+            // query is stripped — the conversation text is left untouched (the
+            // <current_time> guard in InjectTransientPrefix depends on it).
+            var recallQuery = StripInjectedBlocks(userMessage);
+            if (string.IsNullOrWhiteSpace(recallQuery))
+                return;
+
             var runContext = AgentRunContextPolicy.Resolve(parameters);
             var projectId = runContext.Scope == "project"
                 ? JsonHelpers.GetString(parameters, "projectId")
@@ -83,7 +94,7 @@ internal static partial class AgentLoop
             }
 
             var outcome = await recall.TryInjectRecallAsync(
-                userMessage, scope,
+                recallQuery, scope,
                 maxChars: maxChars, maxNotes: maxNotes,
                 minScore: minScore, globalFallback: globalFallback,
                 state.CancellationToken,
@@ -147,5 +158,54 @@ internal static partial class AgentLoop
     {
         var payload = $"{hit.Scope}\u001f{hit.Title}\u001f{hit.Content}";
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+    }
+
+    /// <summary>
+    /// Tags of the transient blocks that <see cref="InjectTransientPrefix"/> and the
+    /// recall pass prepend to the latest user message.
+    /// </summary>
+    private static readonly string[] InjectedBlockTags = { "memory-recall", "memory-update", "current_time" };
+
+    /// <summary>
+    /// Strips the transient prefix blocks (<c>&lt;memory-recall&gt;</c>,
+    /// <c>&lt;memory-update&gt;</c>, <c>&lt;current_time&gt;</c>) from a user message so
+    /// recall searches the user's own words — the tags, the injected note list and the
+    /// timestamp otherwise consume the refiner's variant budget (S-92). An unterminated
+    /// block is dropped to the end of the text. Text without any block is returned
+    /// unchanged.
+    /// </summary>
+    internal static string StripInjectedBlocks(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text.IndexOf('<') < 0)
+        {
+            return text;
+        }
+
+        var result = text;
+        foreach (var tag in InjectedBlockTags)
+        {
+            result = RemoveInjectedBlock(result, tag);
+        }
+
+        return result.Trim();
+    }
+
+    private static string RemoveInjectedBlock(string text, string tag)
+    {
+        var open = $"<{tag}>";
+        var close = $"</{tag}>";
+
+        while (true)
+        {
+            var start = text.IndexOf(open, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return text;
+            }
+
+            var end = text.IndexOf(close, start, StringComparison.Ordinal);
+            var removeEnd = end < 0 ? text.Length : end + close.Length;
+            text = text.Remove(start, removeEnd - start);
+        }
     }
 }

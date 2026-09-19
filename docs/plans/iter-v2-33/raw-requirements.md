@@ -523,9 +523,19 @@ dev 日志里 recall **每次都是 `merged=0` / `reason=no_match`**。⇒ 在�
 - 缺陷二取 A 还是 B，还是维持「一次就够」。
 - 是否把「召回」开放成 agent 可显式调用的工具（目前只有自动召回一条路）。
 
-### 实施记录
+### 实施记录（2026-09-19）
 
-（未实施）
+**缺陷一：取方案 2（剥块）—— 已落地。**
+
+- `AgentLoop.MemoryRecall.cs` 新增纯函数 `internal static string StripInjectedBlocks(string)`：剥掉 `<memory-recall>` / `<memory-update>` / `<current_time>` 三块（未闭合块删到文本末尾、无块则原样返回），只作用于**喂检索的 query**，不碰 conversation 原文（`InjectTransientPrefix` 的 `<current_time>` 重复注入守卫依赖原文）。
+- 召回调用点由 `userMessage` 改传 `recallQuery`；剥完为空则直接返回。
+- 回归：`tests/WishfulClaw.MemoryRecallRegressionTests` 新增 `RunInjectedBlockStrippingSuite`（11 断言，套件 18 → 28）；`WishfulClaw.Agent.csproj` 为该套件补 `InternalsVisibleTo`。
+
+**缺陷二（召回频率）：维持暂不定案**（plan V7）—— 等缺陷一落地后观察几天真实召回率再定。
+
+**待裁定第三条（是否把召回开放成 agent 可显式调用的工具）：本刀不做**（plan V8），记档留观。
+
+**遗留记档（不与本刀合）**：① `state.PendingMemoryRecall` 是死变量（消费点 `AgentLoop.Helpers.cs:315-319` 永远早于设置点 `AgentLoop.MemoryRecall.cs`）—— 本次加了 `StripInjectedBlocks` 后该分支更无意义，清理另开；② 方案 1（挪时序）的连带三项改动（复活分支、`MarkMemoryInjected` 时机、queued message 语义）另开。
 
 ---
 

@@ -179,6 +179,43 @@ public static class DbCronRunTools
         }
     }
 
+    /// <summary>
+    /// Read-only counterpart of <see cref="List"/> for agent tool use (S-87).
+    ///
+    /// Unlike <c>List</c> it performs NO orphan finalization — it never writes. <c>List</c>'s
+    /// lazy "running → aborted" sweep needs the caller's set of live run ids, which lives in
+    /// renderer memory and is unavailable inside the worker, so a caller that cannot supply
+    /// them would abort runs that are still executing. Stale <c>running</c> rows are therefore
+    /// returned as-is here; <c>db/cron-runs-list</c> stays the place that finalizes them.
+    /// </summary>
+    public static WorkerResponse ListReadOnly(JsonElement parameters)
+    {
+        try
+        {
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+            var cronId = GetString(parameters, "cronId");
+            var sessionId = GetString(parameters, "sessionId");
+            var limit = Math.Clamp(GetInt(parameters, "limit", 20), 1, 200);
+
+            var conditions = new List<string>();
+            var values = new List<SqliteParameter>();
+            if (cronId is not null) { conditions.Add("cron_id = @cronId"); values.Add(new SqliteParameter("@cronId", cronId)); }
+            if (sessionId is not null) { conditions.Add("session_id = @sessionId"); values.Add(new SqliteParameter("@sessionId", sessionId)); }
+            var sql = "SELECT * FROM cron_runs" + (conditions.Count == 0 ? string.Empty : " WHERE " + string.Join(" AND ", conditions)) +
+                      " ORDER BY started_at DESC, run_id DESC LIMIT @limit";
+            values.Add(new SqliteParameter("@limit", limit));
+            var rows = db.Query(sql, EntityMappers.MapCronRun, values.ToArray())
+                .Select(CronRunRow.FromEntity).ToList();
+            return WorkerResponse.Json(rows, InfrastructureJsonContext.Default.ListCronRunRow);
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Error($"DbCronRunTools.ListReadOnly failed: {ex.Message}");
+            return WorkerResponse.Error(ex.Message);
+        }
+    }
+
     private static string RequireString(JsonElement parameters, string name) =>
         GetString(parameters, name) ?? throw new InvalidOperationException($"{name} is required");
 

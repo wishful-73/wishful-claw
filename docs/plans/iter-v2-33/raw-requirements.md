@@ -92,9 +92,20 @@ if (scope == "global")
 3. 执行记录怎么给 —— 扩 `CronList` 带一个 `includeRuns` 参数，还是新增一个只读 `CronRuns` 工具
 4. 创建 / 修改是否保留审批 —— 现状 `AgentRuntimeCronExecutor.RequiresApproval` 对 `CronAdd` / `CronCreate` / `CronUpdate` 返回 true；放开的会话是否照旧走审批
 
-### 实施记录
+### 实施记录（2026-09-19）
 
-（未实施）
+**六项能力对全局会话放开，执行记录补一个只读工具。**
+
+- `CronToolProvider`：六个工具的 `visibleScopes` 由 `WorkRunsOnly` 换成 `GlobalSideAndWorkRuns`（`["global:*@*", "*:cowork@*"]`）—— 全局会话（含渠道，按上文「已按预期处理」）立刻拿到；`*:cowork@*` 那半腿保证项目协作会话能力不回退。
+- **执行记录（待裁定 3 取「新增只读 `CronRuns`」）**：新增工具 `CronRuns`（`jobId?` + `limit?`，默认 20）。**不走 reverse-request** —— 数据本来就在本地，且 `DbCronRunTools.List` 的 orphan 归一化会执行 `UPDATE cron_runs SET status='aborted' WHERE status='running'`，而它排除活跃行所需的 `activeRunIds` 只存在于渲染端内存（`src/renderer/src/lib/tools/cron-runtime.ts:27,41`），Agent 侧拿不到 ⇒ 直调会**误杀正在跑的运行**。改为在 `DbCronRunTools` 新增**纯只读** `ListReadOnly`（只 SELECT、不做 orphan 写），由 `AgentRuntimeCronRunReader` 直调（先例：`Goal/GoalOrchestrator*.cs` 直调 `DbGoal*Tools`），`ToolDispatchRouter` 加一条直连分支；`jobId` → `cron_id` 显式映射。
+  - **已知取舍**：`CronRuns` 不做 orphan 归一化 ⇒ 崩溃/退出残留的 `running` 行会原样列出；清理职责仍归 `db/cron-runs-list`（界面侧传 `activeRunIds`）。
+  - `channels.ts:218` 的 `CRON_RUNS: 'cron:runs'` 常量与 `messagepack-channel-routing.ts:221` 的登记**无 handler**，本刀**不启用**。
+- **审批（待裁定 4）**：`AgentRuntimeCronExecutor.RequiresApproval`（Add/Create/Update）**保持不动** —— `CronRuns` 是只读，本就不在名单里。
+- 附带记档的问题（上文「`WorkRunsOnly` 注释对 cron 不成立」）**仍不改**。
+
+**回归**：`WishfulClaw.ChannelToolVisibilityRegressionTests` 新增 `AssertCronToolsReachableViaProxy`（套件 98 → 122）：cron 七工具不进 `direct`（非 IsCore）、在 global/渠道下经 `use_capability` 代理可达、在 `project:chat` 下不可达、在 `project:cowork` 下保留；`OverExposureTools` 移除 `CronAdd/Create/Update`（语义过时），另立 `CronTools` 数组。
+
+**未验**：真机让 agent 调一次 `CronRuns` 看返回。
 
 ---
 

@@ -68,6 +68,26 @@ const MAX_LOG_ENTRIES = 200
 const PROJECT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000
 const MIN_ORGANIZABLE_CHARS = 40
 
+/**
+ * Turns a thrown sidecar/provider failure into a short, actionable string. The organisation chain
+ * used to swallow the cause and report a bare 'llm_unavailable', which made a deterministic
+ * upstream 400 (a missing session id) indistinguishable from "the model is temporarily down" for
+ * weeks (S-89).
+ */
+function describeOrganizationError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+  if (typeof error === 'string') {
+    return error
+  }
+  try {
+    return JSON.stringify(error) ?? String(error)
+  } catch {
+    return String(error)
+  }
+}
+
 let organizationRunning = false
 
 // ─── Watermark (last organization time, ~/.wishful-claw/config.json) ───
@@ -327,10 +347,21 @@ async function organizeScope(
         memoryMarkdown: descriptor.content
       })
     } catch (error) {
-      console.warn('[MemoryOrganization] LLM organization pass failed:', error)
+      // Keep the real failure on the result instead of collapsing it into a bare
+      // 'llm_unavailable': a deterministic upstream 400 (missing session id) looked exactly like
+      // "the model is down" for weeks (S-89).
+      const detail = describeOrganizationError(error)
+      result.skippedReason = 'llm_unavailable'
+      result.error = detail
+      console.warn(
+        `[MemoryOrganization] LLM organization pass failed (${result.scopeLabel}): ${detail}`,
+        error
+      )
+      return result
     }
     if (!organization?.memoryMarkdown) {
       result.skippedReason = 'llm_unavailable'
+      result.error ??= 'organization pass returned no usable content'
       return result
     }
 

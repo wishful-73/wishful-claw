@@ -276,9 +276,19 @@ iter-29 修 F-8（提交 `ef16bf6f`）把 `sessionId` 盖章收口到 **`stores/
 - **可诊断性**：把真实错误（HTTP 状态 + provider + body 摘要）带进 `MemoryOrganizationScopeResult.error`，别再塌成 `llm_unavailable`
 - **可选**：nightly 支持「错过补跑」（只补一次，不做无限追）
 
-### 实施记录
+### 实施记录（2026-09-19）
 
-（未实施）
+**主修取「下沉到 `runSidecarTextRequest`」—— 一处修，四个调用点同时受益。**
+
+- `src/renderer/src/lib/ipc/agent-bridge-streaming.ts`：`runSidecarTextRequest` 新增 `sessionId?: string` 形参，缺省用新常量 `SIDECAR_TEXT_REQUEST_SESSION_ID = 'wishful-claw-sidecar-text'` 透传给 `buildSidecarAgentRunRequest`。调用点**无需同步改**（可选形参），但都同时受益：
+  - `memory-automation-utils.ts:409`（stage1 抽取）、`memory-automation-internal.ts:192`（consolidation）/ `:217`（organization pass）、`api/generate-title.ts:245`（**会话标题生成本来也在静默失败**）。
+- **可诊断性**：`memory-organization.ts` 的 organization 分支不再把异常吞成一句 `llm_unavailable` —— 新增 `describeOrganizationError`，把真实错误写进 `result.error`（字段本就有）并带 `scopeLabel` 进 `console.warn`；「跑通了但没内容」那条也补了 `result.error`。
+- **口径订正**：`provider-payload.ts` 顶部与 `chat-store/index.ts:397-401` 的注释都暗示 opencode-go 靠 `provider.sessionId` / `{{sessionId}}` 模板 —— 与实读不符，均已订正：`{{sessionId}}` 只描述自定义 header 模板机制（codex 那条），opencode-go 的 `x-opencode-session` 由 C# provider 读 run request 的**顶层 `sessionId`**。
+- **为何是下沉而不是补 `resolveAutomationProvider()`**：原文候选 A（只补 `provider.sessionId`）对本例**无效**；下沉一处能让所有走 sidecar 的功能同时受益，且防第三次踩同一个坑。
+
+**不做（记档）**：nightly「错过补跑」；`requestMaxRetries=10` / timeout 100s 使每次失败耗 ~11 分钟；`ContextCompression.cs` 同因下游（同样读 `state.SessionId`）。
+
+**验证**：`npx tsc --noEmit` 三配置（web / node / root）零错误。**未验**：真机触发一次整理，看日志/界面是否出现真实 HTTP 状态与 provider。
 
 ---
 

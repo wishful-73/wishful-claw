@@ -16,6 +16,7 @@ internal static class Program
         try
         {
             RunFtsLiteralQuerySuite(Path.Combine(testRoot, "memory.db"));
+            RunShortQuerySuite();
             RunSessionDeduplicationSuite();
             RunRecallFilteringSuite();
             RunInjectedBlockStrippingSuite();
@@ -65,7 +66,40 @@ internal static class Program
     {
         var hits = search.SearchAsync(query, "global").GetAwaiter().GetResult();
         Assert(hits.Count > 0, $"FTS literal query returns a hit: {query}");
-        Assert(hits[0].Score is not null, $"FTS literal query does not fall back to LIKE: {query}");
+        Assert(hits[0].Score is not null, $"FTS literal query scores its hit: {query}");
+    }
+
+    /// <summary>
+    /// S-94: the FTS index is tokenize='trigram' (3-character floor), so a two-character
+    /// CJK query can only be served by the LIKE path. That path used to report a null
+    /// score, which made PassesThreshold let everything through and left the hits
+    /// unordered by relevance. The title hit is inserted with an OLDER updated_at so the
+    /// ordering assertion actually distinguishes relevance from recency.
+    /// </summary>
+    private static void RunShortQuerySuite()
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        InsertMemory("短词 标题命中", "与关键词无关的正文", now - 10);
+        InsertMemory("无关标题", "短词 只出现在正文里", now);
+
+        var search = new MemoryFtsService();
+        var hits = search.SearchAsync("短词", "global").GetAwaiter().GetResult();
+
+        Assert(hits.Count >= 2, "two-character query is served by the LIKE path");
+        Assert(hits.All(h => h.Score is not null), "short-query hits carry a synthesised score");
+        AssertEqual("短词 标题命中", hits[0].Title, "title hit outranks content-only hit for short queries");
+    }
+
+    private static void InsertMemory(string title, string content, long updatedAt)
+    {
+        DbClient.GetClient().Execute(
+            "INSERT INTO memory_entries (scope, title, content, priority, status, created_at, updated_at) " +
+            "VALUES (@scope, @title, @content, 'standard', 'active', @created, @updated)",
+            new SqliteParameter("@scope", "global"),
+            new SqliteParameter("@title", title),
+            new SqliteParameter("@content", content),
+            new SqliteParameter("@created", updatedAt),
+            new SqliteParameter("@updated", updatedAt));
     }
 
     private static void RunSessionDeduplicationSuite()

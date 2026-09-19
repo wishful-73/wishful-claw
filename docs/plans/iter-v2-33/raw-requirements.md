@@ -627,9 +627,16 @@ FTS5 `trigram` tokenizer 把文本切成 **3 字符**滑动窗口。**查询词�
 - **不建议换 tokenizer**：`unicode61` 需空格分词、中文不适用；`trigram` 已是内置方案里对中文唯一可行的一个。换它要重建索引 + 迁移（`memory_entries` 现有 prod 123 条），风险与工作量跟另外两条不是一个量级。
 - **倾向改查询层**：① 短查询（< 3 字符）识别出来直接走 LIKE，不做无用的 FTS 尝试；② 给 LIKE 结果补一个**轻量排序**（标题命中 > 内容命中、命中次数、`updated_at`），而不是恒 `hasScore: false` 全放行；③ 视情况把 LIKE 从「FTS 零命中才跑的 fallback」提升为并行通道，两条结果统一合并排序。
 
-### 实施记录
+### 实施记录（2026-09-19）
 
-（未实施）
+**取修法 ①② —— 已落地；③ 不做（plan V6，留观）。**
+
+- `MemoryFtsService.SearchAsync` 新增 `MinFtsQueryLength = 3`：`q.Length < 3` 时**跳过 FTS 直接走 LIKE**（trigram 对 2 字查询必然零命中，不做无用尝试）。
+- LIKE 路径补**合成 score**：`(title LIKE ? THEN 2) + (content LIKE ? THEN 1)` 作 `score` 列，改 `RowToResult(..., hasScore: true)`；`ORDER BY` 改为 `status 优先, score DESC, updated_at DESC` ⇒ `PassesThreshold` 恢复意义、结果按相关度排序。
+- **不做 ③**（LIKE 提升为并行通道）：改动面更大，按 plan V6 留观。
+- **不换 tokenizer**（原判断维持）：`unicode61` 需空格分词、中文不适用；换 trigram 要重建索引 + 迁移（prod 123 条），风险与工作量不是一个量级。
+
+**回归**：`WishfulClaw.MemoryRecallRegressionTests` 新增 `RunShortQuerySuite`（3 断言：2 字查询走 LIKE 命中、score 非 null、标题命中排在「更新更晚的纯内容命中」之前 —— 有区分度）；套件 28 → 31。`AssertFtsHit` 的判据文案由「does not fall back to LIKE」改为「scores its hit」—— LIKE 现在也带 score，原判据不再有区分度。
 
 ---
 

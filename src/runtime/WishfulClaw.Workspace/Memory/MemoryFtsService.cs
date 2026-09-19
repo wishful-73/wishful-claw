@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Workspace.Memory;
@@ -39,7 +39,6 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
 
         limit = Math.Clamp(limit, 1, 50);
         var q = query.Trim();
-        var ftsQuery = BuildFtsLiteralQuery(q);
         var db = DbClient.GetClient();
         var results = new List<MemorySearchResult>();
         // Tier model: active + warm are recallable by default (warm sorts
@@ -50,45 +49,58 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
             ? "" : $" AND scope = '{EscapeSql(scope)}'";
 
         // ── Method 1: FTS trigram search ──
-        try
+        // The index is tokenize='trigram', whose lower bound is 3 characters: a 1-2
+        // character query (i.e. every 2-character CJK word) can never match. Skip FTS
+        // entirely for those instead of burning a query and falling through anyway (S-94).
+        if (q.Length >= MinFtsQueryLength)
         {
-            var ftsSql = $"""
-                SELECT e.id, e.title, e.content, e.scope, e.priority, e.status, e.updated_at, -rank AS score
-                FROM memory_fts f
-                JOIN memory_entries e ON f.rowid = e.id
-                WHERE memory_fts MATCH @query{scopeFilter}{statusFilter}
-                ORDER BY CASE WHEN e.status = 'active' THEN 0 ELSE 1 END, rank
-                LIMIT @limit
-                """;
-            using var reader = db.ExecuteReader(ftsSql,
-                new SqliteParameter("@query", ftsQuery),
-                new SqliteParameter("@limit", limit));
-            while (reader.Read())
+            var ftsQuery = BuildFtsLiteralQuery(q);
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                results.Add(RowToResult(reader, hasScore: true));
+                var ftsSql = $"""
+                    SELECT e.id, e.title, e.content, e.scope, e.priority, e.status, e.updated_at, -rank AS score
+                    FROM memory_fts f
+                    JOIN memory_entries e ON f.rowid = e.id
+                    WHERE memory_fts MATCH @query{scopeFilter}{statusFilter}
+                    ORDER BY CASE WHEN e.status = 'active' THEN 0 ELSE 1 END, rank
+                    LIMIT @limit
+                    """;
+                using var reader = db.ExecuteReader(ftsSql,
+                    new SqliteParameter("@query", ftsQuery),
+                    new SqliteParameter("@limit", limit));
+                while (reader.Read())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    results.Add(RowToResult(reader, hasScore: true));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // FTS failed — log it and fall through to LIKE with a clean slate
+                // (drop any partial rows read before the failure).
+                WorkerLog.Warn($"memory fts search failed, falling back to LIKE: {ex.GetType().Name}: {ex.Message}");
+                results.Clear();
             }
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            // FTS failed — log it and fall through to LIKE with a clean slate
-            // (drop any partial rows read before the failure).
-            WorkerLog.Warn($"memory fts search failed, falling back to LIKE: {ex.GetType().Name}: {ex.Message}");
-            results.Clear();
-        }
 
-        // ── Method 2: LIKE fallback ──
+        // ── Method 2: LIKE fallback (also the only path for short queries) ──
         if (results.Count == 0)
         {
+            // Synthesise a score so LIKE hits are ordered and thresholdable like FTS
+            // hits: a title hit (2) outranks a content-only hit (1), and updated_at
+            // breaks ties. Without this, PassesThreshold saw a null score and let
+            // everything through, so short queries came back unordered (S-94).
             var likeSql = $"""
-                SELECT id, title, content, scope, priority, status, updated_at
+                SELECT id, title, content, scope, priority, status, updated_at,
+                       (CASE WHEN title LIKE @pattern THEN 2 ELSE 0 END
+                        + CASE WHEN content LIKE @pattern THEN 1 ELSE 0 END) AS score
                 FROM memory_entries
                 WHERE (content LIKE @pattern OR title LIKE @pattern){scopeFilter}{statusFilter}
-                ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, updated_at DESC
+                ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, score DESC, updated_at DESC
                 LIMIT @limit
                 """;
             using var reader = db.ExecuteReader(likeSql,
@@ -97,7 +109,7 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
             while (reader.Read())
             {
                 ct.ThrowIfCancellationRequested();
-                results.Add(RowToResult(reader, hasScore: false));
+                results.Add(RowToResult(reader, hasScore: true));
             }
         }
 
@@ -125,6 +137,12 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
             Score = score
         };
     }
+
+    /// <summary>
+    /// Lower bound of the FTS trigram tokenizer: a query shorter than this cannot match
+    /// any trigram, so it goes straight to the LIKE path (S-94).
+    /// </summary>
+    private const int MinFtsQueryLength = 3;
 
     private static string BuildFtsLiteralQuery(string query) =>
         $"\"{query.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";

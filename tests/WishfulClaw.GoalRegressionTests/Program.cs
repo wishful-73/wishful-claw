@@ -49,6 +49,11 @@ internal static partial class Program
             RunSubAgentReminderSuite();
             RunToolPairingRepairSuite();
             RunSendSessionMessageResultSuite();
+            RunContextCapSuite();
+            RunSandboxSuite();
+            RunSandboxPromptSuite();
+            RunBomPolicySuite();
+            RunMemoryHotWriteSuite();
             RunImageContentSuite();
             Console.WriteLine($"Goal regression tests passed: {_passed}");
             return 0;

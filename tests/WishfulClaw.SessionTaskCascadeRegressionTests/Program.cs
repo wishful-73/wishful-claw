@@ -66,6 +66,7 @@ internal static partial class Program
                 RunPluginSessionSuite(dbPath, db);
                 RunPluginSessionRoutingSuite(dbPath, db);
                 RunSessionPermissionModeSuite(dbPath, db);
+        RunSessionContextCapSuite(dbPath, db);
                 RunClearAllSuite(dbPath, db);
                 RunGlobalTaskSuite(dbPath, db);
                 RunGlobalToolProviderSuite();

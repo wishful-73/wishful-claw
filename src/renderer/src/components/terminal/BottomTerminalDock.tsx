@@ -222,7 +222,10 @@ export function BottomTerminalDock({
         'relative flex min-h-0 flex-col',
         isResizing && 'select-none'
       )}
-      style={{ height: fullscreen ? '100%' : dockHeight }}
+      // 高度必须是确定值。父容器（SessionConversationPane 里 `shrink-0 border-t` 那层）自身没设高度，
+      // 高度由内容撑开 —— 这里再写 `height: '100%'` 就成了循环依赖，浏览器解析不出百分比、退化成
+      // auto，全屏反而塌成只剩 tab bar 那一行（2026-09-19 实测）。dockHeight 两个分支都已算好。
+      style={{ height: dockHeight }}
     >
       {/* Resize handle */}
       {!fullscreen && (

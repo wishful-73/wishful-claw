@@ -289,7 +289,8 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
       language: settings.language,
       userRules: settings.systemPrompt || undefined,
       contextCompressionEnabled: settings.contextCompressionEnabled,
-      contextCompressionThreshold: settings.contextCompressionThreshold
+      contextCompressionThreshold: settings.contextCompressionThreshold,
+      sandboxEnabled: settings.sandboxEnabled
     })
 
     // beginUserTurn has already run synchronously inside sendMessage,

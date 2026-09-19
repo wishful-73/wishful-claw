@@ -65,7 +65,7 @@ export function PersonaSwitcher({ sessionId, workingFolder }: PersonaSwitcherPro
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-muted/30 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
           title={t('personaSwitcher.title')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

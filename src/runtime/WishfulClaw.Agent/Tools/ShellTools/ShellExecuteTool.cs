@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -149,7 +149,7 @@ public sealed partial class ShellExecuteTool : IToolExecutor
 
 
 
-        var cwd = ResolveCwd(GetString(input, "cwd"), context.WorkingFolder);
+        var cwd = ResolveCwd(GetString(input, "cwd"), context);
 
         var preferredShell = GetString(input, "shell");
 

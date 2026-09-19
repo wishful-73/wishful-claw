@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   CompactBoundaryMeta,
   UnifiedMessage
 } from '@renderer/lib/api/types'
@@ -22,6 +22,11 @@ export interface RenderableMessageItem {
   fragment?: {
     position: MessageFragmentPosition
     operationId: string
+    /**
+     * 整轮总耗时（ms）。只挂在压缩切分的最后一段上：分段后每段只报自己那一截的时长，
+     * 整个回复花了多久会看不到。无压缩的消息不产生片段，走原路径，不受影响。
+     */
+    totalElapsedMs?: number
   }
   isLastUserMessage: boolean
   isLastAssistantMessage: boolean
@@ -170,13 +175,29 @@ function getContentBlockCount(message: UnifiedMessage): number {
   return Array.isArray(message.content) ? message.content.length : 0
 }
 
+/**
+ * 一刀（压缩工件对）落下的时刻。取边界与摘要里更晚的那个 —— 与 context-compression.ts
+ * 判定「哪个压缩是活的」用的是同一口径。
+ * 压缩进行中（live）没有工件对，用它的开始时刻当这一刀的时间。
+ */
+function resolveCutTime(
+  pair: CompactArtifactPair | null,
+  liveState?: LiveCompressionState
+): number | null {
+  if (!pair) return liveState?.startedAt ?? null
+  const score = Math.max(pair.boundary.createdAt, pair.summary.createdAt)
+  return score > 0 ? score : null
+}
+
 function createAssistantFragment(
   message: UnifiedMessage,
   start: number,
   end: number,
   id: string,
   position: MessageFragmentPosition,
-  operationId: string
+  operationId: string,
+  createdAt: number | undefined,
+  updatedAt: number | undefined
 ): RenderableMessageItem | null {
   if (message.role !== 'assistant' || end <= start) return null
   const content = typeof message.content === 'string'
@@ -188,7 +209,9 @@ function createAssistantFragment(
 
   return {
     kind: 'message',
-    message: { ...message, id, content },
+    // 片段是渲染层切出来的，不是真实消息边界，原本没有自己的时间戳；不覆盖的话每段都会
+    // 显示整条消息的结束时间，看着像同一个耗时重复了好几遍。
+    message: { ...message, id, content, createdAt: createdAt ?? message.createdAt, updatedAt },
     displayId: id,
     messageId: id,
     originMessageId: message.id,
@@ -368,9 +391,13 @@ export function buildRenderableChatItems(
 
       const assistantItemIndexes: number[] = []
       let cursor = 0
+      // 首尾相接：每段的起点时间是上一刀的时间（第一段是消息创建时间），
+      // 终点时间就是这一刀的时间，相邻段不重不漏。
+      let cursorTime = message.createdAt
       let previousOperationId: string | null = null
 
       for (const { pair, splitAt } of splits) {
+        const cutTime = resolveCutTime(pair, liveState)
         if (pair) {
           const operationId = getOperationId(pair.boundary, pair.summary)
           const fragment = createAssistantFragment(
@@ -379,7 +406,9 @@ export function buildRenderableChatItems(
             splitAt,
             `${message.id}:compression-before:${operationId}`,
             'before',
-            operationId
+            operationId,
+            cursorTime,
+            cutTime ?? undefined
           )
           if (fragment) {
             assistantItemIndexes.push(items.length)
@@ -387,6 +416,7 @@ export function buildRenderableChatItems(
           }
           appendCompression(pair)
           cursor = splitAt
+          if (cutTime !== null) cursorTime = cutTime
           previousOperationId = operationId
         } else {
           // Live anchor cut: keep the blocks before the cut visible, then the
@@ -397,7 +427,9 @@ export function buildRenderableChatItems(
             splitAt,
             `${message.id}:compression-before:live`,
             'before',
-            'live'
+            'live',
+            cursorTime,
+            cutTime ?? undefined
           )
           if (fragment) {
             assistantItemIndexes.push(items.length)
@@ -405,6 +437,7 @@ export function buildRenderableChatItems(
           }
           items.push(makeLiveItem())
           cursor = splitAt
+          if (cutTime !== null) cursorTime = cutTime
           if (previousOperationId === null) previousOperationId = 'live'
         }
       }
@@ -416,11 +449,23 @@ export function buildRenderableChatItems(
           getContentBlockCount(message),
           `${message.id}:compression-after:${previousOperationId}`,
           'after',
-          previousOperationId
+          previousOperationId,
+          cursorTime,
+          message.updatedAt
         )
         if (fragment) {
+          // 末段额外带上整轮总耗时：分段后每段只报自己那一截，看不出总共花了多久。
+          const totalElapsedMs =
+            message.updatedAt != null && message.updatedAt > message.createdAt
+              ? message.updatedAt - message.createdAt
+              : undefined
           assistantItemIndexes.push(items.length)
-          items.push(fragment)
+          const fragmentMeta = fragment.fragment
+          items.push(
+            totalElapsedMs == null || !fragmentMeta
+              ? fragment
+              : { ...fragment, fragment: { ...fragmentMeta, totalElapsedMs } }
+          )
         }
       }
 

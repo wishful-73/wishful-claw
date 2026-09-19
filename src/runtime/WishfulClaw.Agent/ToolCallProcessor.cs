@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
+using WishfulClaw.Agent.Tools;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -172,6 +173,10 @@ public static partial class ToolCallProcessor
         var permissionMode = JsonHelpers.GetString(parameters, "permissionMode");
         var defaultModeApproval = string.Equals(permissionMode, "default", StringComparison.OrdinalIgnoreCase);
 
+        // 沙箱边界（S-79）一批算一次：整批工具调用共用同一份根集合，
+        // 免得跑到一半用户加了项目、前后两次调用判据不一样。
+        var sandbox = PathBoundary.ResolvePolicy(parameters);
+
         // Two semaphores: one for regular tools, one for sub-agent (Task) calls.
         // This prevents a burst of Task calls from consuming all parallel slots
         // and blocking regular tools (or vice versa).
@@ -228,7 +233,7 @@ public static partial class ToolCallProcessor
                 toolTasks.Add(ExecuteGatedAsync(
                     toolCall, workingFolder, projectId, sshConnectionId, state, context,
                     isTaskTool ? null : toolSemaphore, registry,
-                    defaultModeApproval, prevBarrier, gateTcs));
+                    defaultModeApproval, prevBarrier, gateTcs, sandbox));
             }
             else
             {
@@ -241,7 +246,7 @@ public static partial class ToolCallProcessor
                 toolTasks.Add(ExecuteSingleAsync(
                     toolCall, workingFolder, projectId, sshConnectionId, state, context,
                     isTaskTool ? null : toolSemaphore, registry,
-                    defaultModeApproval));
+                    defaultModeApproval, sandbox));
             }
         }
 
@@ -377,7 +382,8 @@ public static partial class ToolCallProcessor
         ToolRegistry? registry,
         bool defaultModeApproval,
         Task? prevBarrier,
-        TaskCompletionSource gateTcs)
+        TaskCompletionSource gateTcs,
+        PathBoundary.Policy sandbox)
     {
         try
         {
@@ -387,7 +393,7 @@ public static partial class ToolCallProcessor
             }
             return await ExecuteSingleAsync(
                 toolCall, workingFolder, projectId, sshConnectionId, state, context, semaphore, registry,
-                defaultModeApproval).ConfigureAwait(false);
+                defaultModeApproval, sandbox).ConfigureAwait(false);
         }
         finally
         {
@@ -410,7 +416,8 @@ public static partial class ToolCallProcessor
         IWorkerRequestContext context,
         SemaphoreSlim? semaphore,
         ToolRegistry? registry,
-        bool defaultModeApproval = false)
+        bool defaultModeApproval = false,
+        PathBoundary.Policy sandbox = default)
     {
         try
         {
@@ -573,7 +580,7 @@ public static partial class ToolCallProcessor
 
             // Dispatch to the appropriate executor
             var (toolOutput, isToolError) = await ToolDispatchRouter.DispatchAsync(
-                toolCall, state, context, registry, workingFolder, projectId, sshConnectionId);
+                toolCall, state, context, registry, workingFolder, projectId, sshConnectionId, sandbox);
 
             // When this call went through user approval, tell the LLM explicitly:
             // it paused here waiting for the user, and the user allowed this step.

@@ -183,6 +183,11 @@
     "apiRequestTimeoutNoLimit": "No limit",
     "apiRequestTimeoutSeconds": "{{count}} seconds",
     "apiRequestTimeoutHint": "Default: {{default}} seconds. Applies to all providers.",
+    "sandbox": {
+        "label": "Sandbox mode",
+        "desc": "Restrict tool path arguments to their own working directories",
+        "hint": "Project sessions are limited to that project\u0027s working folder; global and channel sessions to every registered project\u0027s working folder, with out-of-scope calls rejected. Only path arguments are checked — paths referenced inside a command line are not."
+    },
     "contextCompression": {
       "label": "Context Compression",
       "desc": "Automatically summarize earlier messages when the conversation approaches the context window limit",

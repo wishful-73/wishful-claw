@@ -215,16 +215,29 @@ internal static partial class AgentLoop
             var sshConnectionId = JsonHelpers.GetString(parameters, "sshConnectionId");
             var projectId = JsonHelpers.GetString(parameters, "projectId");
             WorkerLog.Warn($"agent run sshConnectionId={sshConnectionId ?? "(null)"} personaId={personaId} projectId={projectId ?? "(null)"}");
+            // 沙箱状态进了系统提示词，就必须进 cacheKey —— 否则用户切开关后会一直命中旧提示词，
+            // 提示词和实际拦截行为对不上（一边说「在沙箱里」一边放行，或反过来）。
+            var sandboxEnabled = Tools.PathBoundary.IsEnabled(parameters);
             var cacheKey = SystemPromptCache.ComputeKey(
                 personaId, workingFolder, language, userRules, sshConnectionId, projectId, sessionMode,
                 JsonHelpers.GetString(parameters, "pluginId"),
-                JsonHelpers.GetString(parameters, "externalChatId"));
+                JsonHelpers.GetString(parameters, "externalChatId"),
+                sandboxEnabled);
             var builtPrompt = SystemPromptCache.GetOrBuild(cacheKey, () =>
                 PromptBuilder.Build(
-                    PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules));
+                    PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules,
+                    sandboxEnabled: sandboxEnabled));
             provider = InjectSystemPrompt(provider, builtPrompt);
             WorkerLog.Info($"persona system prompt (cached) id={personaId} length={builtPrompt.Length}");
         }
+
+        // Session-level request-context cap (iter-32 S-73/S-84). Applied once here, after the
+        // provider payload is final: every downstream reader of provider.contextLength
+        // (ShouldCompress, ManualCompressionValueFloorTokens, ContextCompression's tail and
+        // pin budgets) then sees the same effective window, so nothing can drift. The value
+        // is already 0 when the cap was set on a different model than the one in use — the
+        // renderer decides that, since it is the side that knows the model id.
+        provider = ApplyContextCap(provider, JsonHelpers.GetInt(parameters, "contextCapTokens", 0));
 
         // Inject timestamp + memory updates directly into the user message
         // stored in SessionConversation. This makes the timestamp part of the

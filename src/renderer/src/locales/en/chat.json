@@ -113,8 +113,8 @@
     "clearConversation": "Clear conversation",
     "clearConfirmTitle": "Clear all messages?",
     "clearConfirmDesc": "This will remove all messages in this conversation. This action cannot be undone.",
-    "compressionBudget": "Compression Budget",
-    "remaining": "remaining",
+    "panelTitle": "Context usage",
+    "panelCollapse": "Collapse",
     "runtimeMetrics": {
       "input": "Uncached",
       "cache": "Cache",
@@ -215,7 +215,15 @@
     "noFilesFound": "No matching files",
     "loadingSuggestions": "Loading suggestions...",
     "noSuggestions": "No matching suggestions",
-    "doubleClickCompressContext": "Double-click to compress context",
+    "compressionTriggersAt": "auto-compress at {{tokens}}",
+    "outputReserved": "{{tokens}} reserved for output",
+    "contextCapTitle": "Request context limit",
+    "contextCapUnlimited": "Model max",
+    "contextCapHint": "Lower limit, lower cost",
+    "compressionThresholdTitle": "Compression threshold",
+    "compressionThresholdFollow": "Global {{percent}}",
+    "compressionThresholdUseGlobal": "Follow global",
+    "compressContextNow": "Compress context now",
     "pastedBlock": {
       "label": "Pasted",
       "labelWithLines": "Pasted · {{lines}} lines",
@@ -1257,7 +1265,8 @@
     "shareFailed": "Share failed",
     "speechNotSupported": "Speech synthesis is not supported in this environment",
     "collapsedMessage": "Message collapsed",
-    "imagesCollapsed": "{{count}} images"
+    "imagesCollapsed": "{{count}} images",
+    "elapsedTotal": "{{duration}} total"
   },
   "toolGroup": {
     "readFiles": "Read {{count}} files",

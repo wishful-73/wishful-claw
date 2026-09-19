@@ -60,7 +60,7 @@ public sealed class FileReadTool : IToolExecutor
 
     {
 
-        var path = ResolveFilePath(input, context.WorkingFolder);
+        var path = ResolveFilePath(input, context);
 
         if (string.IsNullOrWhiteSpace(path))
 

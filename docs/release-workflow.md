@@ -208,7 +208,54 @@ release/wishful-claw-0.2.{N}-setup.exe.blockmap
 
 > 核验 gh 输出时注意：`gh release view --json` 直接接 `ConvertFrom-Json` 会被流混入搞坏，**先重定向到临时文件再解析**。
 
-## 七、收尾之后
+## 七、清理本地产物
+
+**前提：Release 已上传、第六节核验全部通过。** 发布没成功之前，本地旧产物是**回滚备份**，一个都不能删。
+
+### 7.1 `release/` 只留当前版本
+
+历史安装包（每个 100+ MB）已在 GitHub Release 上，本地留着的唯一价值是回滚，而回滚只需**上一个**版本——攒着就是纯占盘。
+
+核验通过后，只保留当前版本的三个文件：
+
+```
+release/wishful-claw-0.2.{N}-setup.exe
+release/wishful-claw-0.2.{N}-setup.exe.blockmap
+release/latest.yml
+```
+
+清掉更早版本：
+
+```powershell
+$keep = '0.2.{N}'   # 换成刚发布的版本号
+Get-ChildItem release -File |
+  Where-Object { $_.Name -match '^wishful-claw-0\.2\.\d+-' -and $_.Name -notlike "*$keep*" } |
+  Remove-Item -Force
+```
+
+> 📌 **实测**：iter-31 收尾时 `release/` 攒了 `0.2.23` ~ `0.2.31` 共 9 个版本、**4.9 GB**；2026-09-18 按本节清理后降到 **521 MB**。
+
+**历史版本目录才是大头，也要一并清** —— 每个 `v0.2.x/` 目录里都躺着一份完整的 `win-unpacked/`（300~570 MB），比根下的安装包还占地方：
+
+```powershell
+Get-ChildItem release -Directory | Where-Object { $_.Name -match '^v0\.2\.\d+$' } | Remove-Item -Recurse -Force
+```
+
+清理后 `release/` 应只剩当前版本相关的东西：
+
+| 保留 | 说明 |
+|------|------|
+| `wishful-claw-0.2.{N}-setup.exe` + `.blockmap` | 当前版安装包（本地回滚用） |
+| `latest.yml` / `builder-debug.yml` / `builder-effective-config.yaml` | electron-builder 元数据 |
+| `win-unpacked/` | 当前版的解包目录（下次打包会重建，不需要本地回滚的话也可删，再省约 400 MB） |
+| `build/` | **仅当里面是当前版产物**；若是上古残留（如 `wishful-0.2.11.zip`）一并删 |
+
+### 7.2 顺带清掉临时验证产物
+
+- **临时编译输出目录** —— 为绕开运行实例锁 dll（`MSB3021` / `MSB3027`）而用 `-p:BaseOutputPath=` 指到工程外的目录（如 `D:\claw\wc-verify*`），**跑完门禁当次就删**，不要跨会话攒着。删前确认没有进程在用那批 dll（dev 实例跑的是 `src/runtime/**/bin/Debug/`，与这些外置目录无关，删了安全）。
+- **`.wishful-claw/notes/` 草稿区** —— 一次性探针（`probe-*` / `check-*` / `inspect-*`）**定位完即删**，只留仍有复用价值的（当前版 release notes、审查报告）。**这是草稿区，不是存档区**。
+
+## 八、收尾之后
 
 当前会话结束。下个会话从 main 拉最新代码开新迭代：
 

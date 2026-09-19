@@ -4,6 +4,7 @@ import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
+import { clampSessionCompressionThreshold } from '@renderer/lib/agent/context-compression-config'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 
 // T-3: 运行时驻留会话的内存窗口收缩。
@@ -56,6 +57,10 @@ export interface SessionSlice {
   updateSessionMode: (id: string, mode: Session['mode']) => void
   updateSessionCollaborationMode: (id: string, mode: Session['collaborationMode']) => void
   updateSessionPermissionMode: (id: string, mode: Session['permissionMode']) => void
+  /** iter-32 S-73/S-84：会话级「请求上下文上限」，tokens = 0 表示不限制。 */
+  updateSessionContextCap: (id: string, tokens: number, modelId: string | null) => void
+  /** iter-32 S-85：会话级「压缩阈值」，比例 0.3~0.9；传 0 表示跟随全局设置。 */
+  updateSessionCompressionThreshold: (id: string, threshold: number) => void
   setSessionModelManual: (sessionId: string, providerId: string, modelId: string) => void
   setSessionModelAuto: (sessionId: string) => void
   /** iter-29 / S-21: auto 模式下换服务商+模型，mode 保持 auto（不清绑定）。 */
@@ -134,6 +139,9 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         scope: requestedScope,
         collaborationMode: options?.collaborationMode,
         permissionMode: options?.permissionMode,
+        contextCapTokens: options?.contextCapTokens,
+        contextCapModelId: options?.contextCapModelId,
+        compressionThreshold: options?.compressionThreshold,
         projectId
       },
       {
@@ -364,6 +372,48 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     const settings = useSettingsStore.getState()
     const context = normalizeSessionContext(
       { ...session, permissionMode: mode },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const now = Date.now()
+    set((state) => {
+      const target = state.sessions.find((item) => item.id === id)
+      if (!target) return
+      Object.assign(target, context, { updatedAt: now })
+    })
+    void dbUpdateSession(id, { ...context, updatedAt: now })
+  },
+
+  updateSessionContextCap: (id, tokens, modelId) => {
+    const session = get().sessions.find((item) => item.id === id)
+    if (!session) return
+    const settings = useSettingsStore.getState()
+    const context = normalizeSessionContext(
+      { ...session, contextCapTokens: tokens, contextCapModelId: modelId },
+      {
+        projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
+        coworkPermissionMode: settings.coworkDefaultPermissionMode
+      }
+    )
+    const now = Date.now()
+    set((state) => {
+      const target = state.sessions.find((item) => item.id === id)
+      if (!target) return
+      Object.assign(target, context, { updatedAt: now })
+    })
+    void dbUpdateSession(id, { ...context, updatedAt: now })
+  },
+
+  updateSessionCompressionThreshold: (id, threshold) => {
+    const session = get().sessions.find((item) => item.id === id)
+    if (!session) return
+    const settings = useSettingsStore.getState()
+    // 越界/非法一律落成 0 = 跟随全局，界面与存储同一口径。
+    const normalized = clampSessionCompressionThreshold(threshold)
+    const context = normalizeSessionContext(
+      { ...session, compressionThreshold: normalized },
       {
         projectCollaborationMode: settings.projectSessionDefaultCollaborationMode,
         coworkPermissionMode: settings.coworkDefaultPermissionMode

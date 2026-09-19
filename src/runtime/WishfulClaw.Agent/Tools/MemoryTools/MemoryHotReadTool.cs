@@ -68,7 +68,9 @@ public sealed class MemoryHotReadTool : IToolExecutor
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
-            await File.WriteAllTextAsync(path, "# Long-Term Memory\n", Encoding.UTF8, context.CancellationToken);
+            // 不带 Encoding 参数 = 无 BOM（iter-32 S-80）。传 Encoding.UTF8 会写出 BOM，
+            // 那是这只文件唯一的 BOM 来源，渲染端还得专门 strip。
+            await File.WriteAllTextAsync(path, "# Long-Term Memory\n", context.CancellationToken);
 
         }
 

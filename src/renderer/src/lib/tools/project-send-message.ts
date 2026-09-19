@@ -226,7 +226,8 @@ export async function handleProjectSendSessionMessage(
       language: settings.language,
       userRules: settings.systemPrompt || undefined,
       contextCompressionEnabled: settings.contextCompressionEnabled,
-      contextCompressionThreshold: settings.contextCompressionThreshold
+      contextCompressionThreshold: settings.contextCompressionThreshold,
+      sandboxEnabled: settings.sandboxEnabled
     })
     if (!started) {
       // S-58：排队不是失败。消息已经受理，当前轮跑完会自动出队 —— 这条分支不能撤渠道

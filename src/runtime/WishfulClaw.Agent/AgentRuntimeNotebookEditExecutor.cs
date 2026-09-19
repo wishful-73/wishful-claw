@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Agent;
@@ -95,7 +95,8 @@ public static class AgentRuntimeNotebookEditExecutor
             }
 
             var result = System.Text.Encoding.UTF8.GetString(ms.ToArray());
-            await File.WriteAllTextAsync(path, result, cancellationToken);
+            // 走统一写路径，顺带保留 .ipynb 原本的 BOM 状态（iter-32 S-80）。
+            await Tools.ToolHelpers.WriteAndFlushAsync(path, result, cancellationToken);
         }
 
         return "{\"success\":true,\"message\":\"Notebook cell updated.\"}";

@@ -46,6 +46,47 @@ internal static partial class AgentLoop
         return doc.RootElement.Clone();
     }
 
+    /// <summary>
+    /// 会话级「请求上下文上限」（iter-32 S-73，S-84 由开关改成数值）。把 provider 的运行期
+    /// contextLength 夹到会话设的上限，让自动压缩的触发点、手动压缩的价值下限、保留尾部的
+    /// 预算全部按同一个有效窗口计算。模型档案里的 contextLength 不动，这里只改这一份运行期副本。
+    /// </summary>
+    /// <param name="capTokens">
+    /// 上限，单位 token。&lt;= 0 表示不限制 —— 渲染端已按「上限是否设在当前模型上」判过，
+    /// 换模型后传过来的就是 0。
+    /// </param>
+    internal static JsonElement ApplyContextCap(JsonElement provider, int capTokens)
+    {
+        if (capTokens <= 0) return provider;
+        // 模型自身窗口本来就小于（或等于）上限时 min() 就是原值；没声明 contextLength 时
+        // 压缩走 DefaultContextCompressionLimit 兜底，与上限无关，同样不动。
+        if (JsonHelpers.GetIntNullable(provider, "contextLength") is not { } contextLength ||
+            contextLength <= capTokens)
+        {
+            return provider;
+        }
+
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartObject();
+            foreach (var prop in provider.EnumerateObject())
+            {
+                if (prop.NameEquals("contextLength"))
+                {
+                    writer.WriteNumber("contextLength", capTokens);
+                }
+                else
+                {
+                    prop.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
+        }
+        using var doc = JsonDocument.Parse(buffer.WrittenMemory);
+        return doc.RootElement.Clone();
+    }
+
     internal static JsonElement GetObject(JsonElement element, string propertyName)
     {
         if (element.ValueKind == JsonValueKind.Object &&

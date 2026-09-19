@@ -76,6 +76,20 @@ export interface Session {
   scope: SessionScope
   collaborationMode: CollaborationMode
   permissionMode: PermissionMode
+  /**
+   * 会话级「请求上下文上限」（iter-32 S-73/S-84），单位 token，0 = 不限制。
+   * 只在 contextCapModelId 与当前模型一致时生效 —— 换模型即作废，见
+   * lib/agent/context-compression-config.ts 的 resolveSessionContextCapTokens。
+   */
+  contextCapTokens: number
+  /** 设这个上限时的模型 id；null = 没设过。 */
+  contextCapModelId: string | null
+  /**
+   * 会话级「压缩阈值」（iter-32 S-85），0.3~0.9 的比例。
+   * 0 = 没设过，跟随全局设置；见 lib/agent/context-compression-config.ts 的
+   * resolveSessionCompressionThreshold。
+   */
+  compressionThreshold: number
   messages: ChatMessage[]
   messageCount: number
   messagesLoaded: boolean
@@ -136,6 +150,9 @@ export interface CreateSessionOptions {
   scope?: SessionScope
   collaborationMode?: CollaborationMode
   permissionMode?: PermissionMode
+  contextCapTokens?: number
+  contextCapModelId?: string | null
+  compressionThreshold?: number
   preserveProjectless?: boolean
   planId?: string | null
   workingFolder?: string | null
@@ -168,6 +185,9 @@ export function createRestorableSessionSnapshot(session: Session): Session {
     scope: session.scope,
     collaborationMode: session.collaborationMode,
     permissionMode: session.permissionMode,
+    contextCapTokens: session.contextCapTokens,
+    contextCapModelId: session.contextCapModelId,
+    compressionThreshold: session.compressionThreshold,
     messages: session.messages,
     messageCount: session.messageCount,
     messagesLoaded: session.messagesLoaded,

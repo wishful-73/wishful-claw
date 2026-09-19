@@ -35,7 +35,8 @@ public static class PromptBuilder
         string? workingFolder,
         string? language,
         string? userRules,
-        int? characterBudget = null)
+        int? characterBudget = null,
+        bool sandboxEnabled = true)
     {
         var parts = new List<string>();
 
@@ -54,6 +55,12 @@ public static class PromptBuilder
         if (!string.IsNullOrWhiteSpace(workingFolder))
         {
             parts.Add(BuildProjectContext(workingFolder, JsonHelpers.GetString(parameters, "sshConnectionId")));
+        }
+
+        // ── Sandbox (iter-32 S-79) — same priority tier as the folder rules above ──
+        if (sandboxEnabled)
+        {
+            parts.Add(BuildSandboxContext());
         }
 
         // ── Channel session compatibility — high priority, before persona ──
@@ -330,6 +337,25 @@ Runtime: **WishfulClaw** — a desktop AI agent application.
 - Working Folder: `{workingFolder}`
 All relative paths should be resolved against this folder. Use this as the default cwd for terminal commands run via the Bash tool.
 - Scratch notes, briefs and other temporary documents belong in `.wishful-claw/notes/`, not loose in the project tree.
+""";
+    }
+
+    /// <summary>
+    /// iter-32 S-79：沙箱模式开着时，把边界告诉模型。
+    ///
+    /// 为什么放系统提示词而不是每轮注入：开关是 run 级参数，同一 run 内不变，进 cacheKey 即可稳定，
+    /// 不像会话 todo 那样会在 turn 中途长出来。
+    ///
+    /// 第二句不是可选的。沙箱只校验工具参数里的路径，命令行内部拦不住（见 raw-requirements
+    /// 「机制边界」节）—— 代码管不了的那一半只能在这里讲清楚，让模型自己不去绕。
+    /// 措辞上不写「工作目录外的一切访问都会被拦」：那是假事实，会让人以为开了就安全。
+    /// </summary>
+    private static string BuildSandboxContext()
+    {
+        return """
+## Sandbox mode
+Sandbox mode is on for this run. Paths passed to file and search tools must resolve inside the session's working directories; calls outside are rejected before they run.
+You must not use a command line to reach outside those directories — the check covers tool arguments, not command contents.
 """;
     }
 

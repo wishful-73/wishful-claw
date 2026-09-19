@@ -142,6 +142,11 @@ interface SettingsStore {
   freeChatOpenTabIds: string[]
   freeChatActiveTabId: string
   contextCompressionEnabled: boolean
+  /**
+   * 沙箱模式（iter-32 / S-79）：开启后工具的路径参数必须落在允许的工作目录内 ——
+   * 项目会话 = 该项目的工作目录，全局会话 = 所有已注册项目的工作目录。
+   */
+  sandboxEnabled: boolean
   /** Global trigger ratio shared by every chat model. */
   contextCompressionThreshold: number
   editorWorkspaceEnabled: boolean
@@ -298,6 +303,7 @@ export const useSettingsStore = create<SettingsStore>()(
       freeChatActiveTabId: '',
       contextCompressionEnabled: true,
       contextCompressionThreshold: 0.8,
+      sandboxEnabled: true,
       editorWorkspaceEnabled: false,
       editorRemoteLanguageServiceEnabled: false,
       maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,
@@ -461,6 +467,7 @@ export const useSettingsStore = create<SettingsStore>()(
         teamToolsEnabled: state.teamToolsEnabled,
         contextCompressionEnabled: state.contextCompressionEnabled,
         contextCompressionThreshold: state.contextCompressionThreshold,
+        sandboxEnabled: state.sandboxEnabled,
         editorWorkspaceEnabled: state.editorWorkspaceEnabled,
         editorRemoteLanguageServiceEnabled: state.editorRemoteLanguageServiceEnabled,
         maxParallelToolCalls: clampMaxParallelToolCalls(state.maxParallelToolCalls),

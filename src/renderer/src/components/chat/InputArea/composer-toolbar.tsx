@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Send, FolderOpen, Wand2 } from 'lucide-react'
+import { Send, FolderOpen } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
@@ -48,11 +48,8 @@ interface ComposerToolbarProps {
   onSelectFolder?: () => void
   hideWorkingFolderPicker: boolean
 
-  // Optimize
-  isOptimizing: boolean
+  // Optimize (only the lock is left: it still gates send + editor)
   isOptimizingLocked: boolean
-  handleOptimizePrompt: () => void
-  hasText: boolean
 
   // Permission
   permissionMode: 'default' | 'fullAccess'
@@ -96,7 +93,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
     activeProjectId, mode, hideModeSwitch, planMode, goalModeEnabled,
     planModeDisabled, goalModeDisabled, onPlanModeChange, onGoalModeChange,
     onSelectFolder, hideWorkingFolderPicker,
-    isOptimizing, isOptimizingLocked, handleOptimizePrompt, hasText,
+    isOptimizingLocked,
     permissionMode, showPermissionControl, onSelectPermissionMode, onOpenSettings,
     onStop, onSend, finalSerializedText, attachedImagesCount, needsWorkingFolder, pendingImageReads,
     onCompressContext, isContextCompressing,
@@ -150,25 +147,6 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
     </Tooltip>
   )
 
-  const optimizeControl = !isStreaming && (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className={composerIconControlClass}
-          onClick={handleOptimizePrompt}
-          disabled={!hasText || disabled || isOptimizingLocked}
-        >
-          {isOptimizing ? <Spinner className="size-4" /> : <Wand2 className="size-4" />}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        {isOptimizing ? t('input.optimizing') : t('input.optimizePrompt')}
-      </TooltipContent>
-    </Tooltip>
-  )
-
   const permissionControl = (
     <PermissionControl
       permissionMode={permissionMode}
@@ -177,6 +155,11 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
     />
   )
 
+  // 运行中只要输入框里有内容（文字或附件），按钮就该是「发送」，消息由上游排队等当前轮跑完；
+  // 只有输入框为空时才是「终止」。
+  const hasSendableContent = Boolean(finalSerializedText.trim()) || attachedImagesCount > 0
+  const isStopAction = isStreaming && !hasSendableContent
+
   const sendControl = (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -184,23 +167,23 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
           size="default"
           className="composer-send rounded-xl px-3.5 transition-[filter,box-shadow] duration-200"
           data-composer-variant={composerVariant}
-          data-tone={isStreaming ? 'warning' : undefined}
+          data-tone={isStopAction ? 'warning' : undefined}
           onMouseDown={(event) => {
             event.preventDefault()
           }}
-          onClick={isStreaming ? () => onStop?.() : onSend}
+          onClick={isStopAction ? () => onStop?.() : onSend}
           disabled={
-            isStreaming
+            isStopAction
               ? false
-              : (!finalSerializedText.trim() && attachedImagesCount === 0) ||
+              : !hasSendableContent ||
                 disabled ||
                 needsWorkingFolder ||
                 pendingImageReads > 0 ||
                 isOptimizingLocked
           }
-          aria-label={isStreaming ? t('input.stopTooltip') : t('input.sendTooltip')}
+          aria-label={isStopAction ? t('input.stopTooltip') : t('input.sendTooltip')}
         >
-          {isStreaming ? (
+          {isStopAction ? (
             <>
               <Spinner className="mr-1.5 size-3.5" />
               <span>{t('action.stop', { ns: 'common' })}</span>
@@ -214,7 +197,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {isStreaming ? t('input.stopTooltip') : t('input.sendTooltip')}
+        {isStopAction ? t('input.stopTooltip') : t('input.sendTooltip')}
       </TooltipContent>
     </Tooltip>
   )
@@ -222,10 +205,11 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
   return (
     <div
       ref={toolbarRef}
-      className="composer-toolbar relative z-20 mt-1 shrink-0 flex items-center justify-between gap-2 px-2 pb-2"
+      className="composer-toolbar relative z-20 mt-1 shrink-0 flex items-center justify-between gap-1 px-2 pb-2"
     >
-      <div className="flex w-full items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pr-1 [scrollbar-width:none]">
+      <div className="flex w-full items-center justify-between gap-1">
+        {/* 左侧组：控件自带 px-2，间距收到 0.5 由它们自己的内边距承担分隔 */}
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto pr-1 [scrollbar-width:none]">
           {onCollabModeChange && (
             <div className="shrink-0">
               <CollabModeSwitcher
@@ -250,13 +234,8 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
           {folderControl}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
-          <ContextRing
-            sessionId={draftSessionId}
-            onCompressContext={onCompressContext}
-            isCompressing={isContextCompressing}
-          />
-
+        {/* 右侧组是图标按钮，没有 px-2 兜底，留一点间隔免得 hover 底色块粘连 */}
+        <div className="flex shrink-0 items-center gap-1">
           <ClearConversationDialog
             show={showInlineClearConversation}
             hasMessages={hasMessages}
@@ -266,7 +245,11 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
             onClearSession={onClearSession}
           />
 
-          {optimizeControl}
+          <ContextRing
+            sessionId={draftSessionId}
+            onCompressContext={onCompressContext}
+            isCompressing={isContextCompressing}
+          />
           {showPermissionControl ? permissionControl : null}
           {sendControl}
         </div>

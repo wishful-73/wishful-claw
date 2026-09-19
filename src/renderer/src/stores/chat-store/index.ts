@@ -29,7 +29,9 @@ import {
   getCompactSummaryDisplayText,
   isCompactBoundaryMessage,
   isCompactSummaryLikeMessage,
-  mergeCompressedMessagesKeepHistory
+  mergeCompressedMessagesKeepHistory,
+  resolveSessionContextCapTokens,
+  resolveSessionCompressionThreshold
 } from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, ContentBlock, MessageMeta, UnifiedMessage } from '@renderer/lib/api/types'
 
@@ -108,6 +110,10 @@ export interface AgentActions {
     skipSessionRestore?: boolean
     contextCompressionEnabled?: boolean
     contextCompressionThreshold?: number
+    /** 沙箱模式（iter-32 S-79）：工具路径参数必须落在允许的工作目录内。 */
+    sandboxEnabled?: boolean
+    /** 会话级「请求上下文上限」（iter-32 S-84）：token 数，0 = 不限制。由 sendMessage 盖章。 */
+    contextCapTokens?: number
     sshConnectionId?: string
     permissionMode?: 'default' | 'whitelist' | 'fullAccess'
     nonInteractive?: boolean
@@ -386,6 +392,7 @@ export const useChatStore = create<ChatStore>()(
         const workerParams = { ...params }
         delete workerParams.userMessageText
         delete workerParams.meta
+        const capSession = get().sessions.find((item) => item.id === sessionId)
 
         // The Worker resolves `{{sessionId}}` in requestOverrides headers (codex,
         // opencode-go) from `provider.sessionId`. sendMessage is the only door to
@@ -395,6 +402,28 @@ export const useChatStore = create<ChatStore>()(
         if (workerParams.provider) {
           workerParams.provider = { ...workerParams.provider, sessionId }
         }
+
+        // 会话级「请求上下文上限」（iter-32 S-84）同样在这里盖章。上限记着它是
+        // 在哪个模型上设的，模型换了就作废（老大口径：切换模型时这个值改成模型
+        // 的最大上下文，需要重新设置）。比对需要「当前模型 id」，而 sendMessage
+        // 是唯一通往 agent/run 的门，provider.model 现成 —— 放这里做，六个透传点
+        // 就不必各自解析一遍模型，也不会像当年 provider.sessionId 那样只在某条
+        // 路径上生效。
+        workerParams.contextCapTokens = resolveSessionContextCapTokens({
+          capTokens: capSession?.contextCapTokens,
+          capModelId: capSession?.contextCapModelId,
+          currentModelId:
+            typeof workerParams.provider?.model === 'string' ? workerParams.provider.model : null
+        })
+
+        // 会话级「压缩阈值」（iter-32 S-85）同款盖章：会话设过就用会话的，否则用全局的。
+        // 覆盖的是同一个 run param，所以 Worker 侧一行都不用改 —— 它本来就只读
+        // contextCompressionThreshold 这一个值。其余没走 sendMessage 的路径
+        // （cron 等）继续用它们自己传的全局值，行为不变。
+        workerParams.contextCompressionThreshold = resolveSessionCompressionThreshold(
+          capSession?.compressionThreshold,
+          recallSettings.contextCompressionThreshold
+        )
 
         const result = await window.api.workerRequest<{ started: boolean; runId: string }>(
 

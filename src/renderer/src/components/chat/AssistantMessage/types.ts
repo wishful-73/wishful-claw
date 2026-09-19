@@ -14,6 +14,8 @@ export interface AssistantMessageProps {
   createdAt?: number
   /** 这一轮跑完的时刻；缺省（老消息 / 流式中）时时间戳回落 createdAt，也不显示耗时。 */
   updatedAt?: number
+  /** 整轮总耗时（ms）。只有被压缩切分过的消息才带 —— 分段后每段只报自己那一截。 */
+  totalElapsedMs?: number
   usage?: TokenUsage
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
   liveToolCallMap?: Map<string, ToolCallState> | null

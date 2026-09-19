@@ -244,7 +244,8 @@ async function runAutoFallback(sessionId: string, target: AutoFallbackTarget): P
       language: settings.language,
       userRules: settings.systemPrompt || undefined,
       contextCompressionEnabled: settings.contextCompressionEnabled,
-      contextCompressionThreshold: settings.contextCompressionThreshold
+      contextCompressionThreshold: settings.contextCompressionThreshold,
+      sandboxEnabled: settings.sandboxEnabled
     })
     return true
   } catch (error) {

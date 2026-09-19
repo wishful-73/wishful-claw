@@ -1,4 +1,4 @@
-﻿import i18n from 'i18next'
+import i18n from 'i18next'
 import type {
   CompactBoundaryMeta,
   ProviderConfig,
@@ -21,11 +21,19 @@ export {
   CONTEXT_COMPRESSION_AUTO_BUFFER_TOKENS,
   CONTEXT_COMPRESSION_PRE_BUFFER_TOKENS,
   CONTEXT_COMPRESSION_PRE_GAP_TOKENS,
+  MIN_SESSION_CONTEXT_CAP_TOKENS,
+  CONTEXT_CAP_STEP_TOKENS,
   resetCompressionFailures,
   clampCompressionThreshold,
   resolveCompressionThreshold,
+  SESSION_COMPRESSION_THRESHOLD_STEP,
+  clampSessionCompressionThreshold,
+  resolveSessionCompressionThreshold,
   resolveCompressionContextLength,
   resolveCompressionReservedOutputBudget,
+  resolveSessionContextCapTokens,
+  resolveSessionContextCapRange,
+  applySessionContextCap,
   getEffectiveContextWindow,
   getCompressionTriggerTokens,
   getPreCompressionTriggerTokens,

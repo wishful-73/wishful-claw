@@ -3,7 +3,8 @@ import {
   LEFT_SIDEBAR_DEFAULT_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH,
   clampLeftSidebarWidth,
-  clampRightPanelWidth
+  clampRightPanelWidth,
+  resolveChatWidthGuard
 } from '@renderer/components/layout/right-panel-defs'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { resolveSessionProjectId } from '@renderer/lib/session-context'
@@ -42,6 +43,35 @@ export type { PreviewPanelState, PreviewPanelTab, OpenDiffParams } from './previ
 
 
 
+// ─── 聊天窗最低宽度守卫 ───
+// 聊天窗不可侵犯：任何「展开 / 拖宽某一侧面板」的动作都过 resolveChatWidthGuard，
+// 若把聊天窗挤到低于 CHAT_MIN_WIDTH，就收掉另一侧。拖拽与开关路径共用同一判定。
+
+function yieldIfChatSqueezed(
+  state: any,
+  changed: 'left' | 'right',
+  width: number
+): Record<string, unknown> {
+  const yieldSide = resolveChatWidthGuard({
+    changed,
+    // 被操作的那一侧按「已展开」计（正在开或正在拖），另一侧取当前状态
+    leftOpen: changed === 'left' ? true : Boolean(state.leftSidebarOpen),
+    leftWidth: changed === 'left' ? width : state.leftSidebarWidth,
+    rightOpen: changed === 'right' ? true : Boolean(state.rightPanelOpen),
+    rightWidth: changed === 'right' ? width : state.rightPanelWidth
+  })
+  if (!yieldSide) return {}
+  return yieldSide === 'left' ? { leftSidebarOpen: false } : { rightPanelOpen: false }
+}
+
+function openLeftSidebarWithGuard(state: any): Record<string, unknown> {
+  return { leftSidebarOpen: true, ...yieldIfChatSqueezed(state, 'left', state.leftSidebarWidth) }
+}
+
+function openRightPanelWithGuard(state: any): Record<string, unknown> {
+  return { rightPanelOpen: true, ...yieldIfChatSqueezed(state, 'right', state.rightPanelWidth) }
+}
+
 export const useUIStore = create<UIStore>((set, get) => ({
   // Top-level view
   view: 'splash',
@@ -61,21 +91,47 @@ export const useUIStore = create<UIStore>((set, get) => ({
   // Navigation rail
   activeNavItem: 'chat',
   setActiveNavItem: (item: any) =>
-    set({ activeNavItem: item, leftSidebarOpen: true }),
+    set((state: any) => ({ activeNavItem: item, ...openLeftSidebarWithGuard(state) })),
 
   // Left sidebar
   leftSidebarOpen: true,
   leftSidebarWidth: LEFT_SIDEBAR_DEFAULT_WIDTH,
-  toggleLeftSidebar: () => set((state: any) => ({ leftSidebarOpen: !state.leftSidebarOpen })),
-  setLeftSidebarOpen: (open: any) => set({ leftSidebarOpen: open }),
-  setLeftSidebarWidth: (width: any) => set({ leftSidebarWidth: clampLeftSidebarWidth(width) }),
+  toggleLeftSidebar: () =>
+    set((state: any) =>
+      state.leftSidebarOpen ? { leftSidebarOpen: false } : openLeftSidebarWithGuard(state)
+    ),
+  setLeftSidebarOpen: (open: any) =>
+    set((state: any) =>
+      open ? openLeftSidebarWithGuard(state) : { leftSidebarOpen: false }
+    ),
+  setLeftSidebarWidth: (width: any) =>
+    set((state: any) => {
+      const nextWidth = clampLeftSidebarWidth(width)
+      return {
+        leftSidebarWidth: nextWidth,
+        ...yieldIfChatSqueezed(state, 'left', nextWidth)
+      }
+    }),
 
   // Right panel
   rightPanelOpen: false,
-  toggleRightPanel: () => set((state: any) => ({ rightPanelOpen: !state.rightPanelOpen })),
-  setRightPanelOpen: (open: any) => set({ rightPanelOpen: open }),
+  toggleRightPanel: () =>
+    set((state: any) =>
+      state.rightPanelOpen ? { rightPanelOpen: false } : openRightPanelWithGuard(state)
+    ),
+  setRightPanelOpen: (open: any) =>
+    set((state: any) =>
+      open ? openRightPanelWithGuard(state) : { rightPanelOpen: false }
+    ),
   rightPanelWidth: RIGHT_PANEL_DEFAULT_WIDTH,
-  setRightPanelWidth: (width: any) => set({ rightPanelWidth: clampRightPanelWidth(width) }),
+  setRightPanelWidth: (width: any) =>
+    set((state: any) => {
+      const nextWidth = clampRightPanelWidth(width)
+      return {
+        rightPanelWidth: nextWidth,
+        ...yieldIfChatSqueezed(state, 'right', nextWidth)
+      }
+    }),
   rightPanelTab: 'preview',
   setRightPanelTab: (tab: any) => set({ rightPanelTab: tab }),
   rightPanelSection: 'execution',
@@ -215,7 +271,8 @@ export const useUIStore = create<UIStore>((set, get) => ({
       taskBoardPageOpen: false
     }),
   // 返回主界面时把左侧栏放回来：进页面时让出去的宽度，出来要还回去。
-  closeFreeChatPage: () => set({ freeChatPageOpen: false, leftSidebarOpen: true }),
+  closeFreeChatPage: () =>
+    set((state: any) => ({ freeChatPageOpen: false, ...openLeftSidebarWithGuard(state) })),
   tasksPageOpen: false,
   openTasksPage: () => set({ drawPageOpen: false, tasksPageOpen: true, taskBoardPageOpen: false }),
   closeTasksPage: () => set({ tasksPageOpen: false }),

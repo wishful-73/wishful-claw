@@ -74,7 +74,7 @@ public sealed class GlobTool : IToolExecutor
 
 
 
-        var root = ResolveSearchPath(input, context.WorkingFolder);
+        var root = ResolveSearchPath(input, context);
 
         if (!Directory.Exists(root))
 

@@ -41,6 +41,12 @@ public static class DbReaderExtensions
         return r.GetString(r.GetOrdinal(name));
     }
 
+    public static double? GetNullableDouble(this SqliteDataReader r, string name)
+    {
+        var ord = r.GetOrdinal(name);
+        return r.IsDBNull(ord) ? null : r.GetDouble(ord);
+    }
+
     public static int GetBoolAsInt(this SqliteDataReader r, string name)
     {
         var ord = r.GetOrdinal(name);

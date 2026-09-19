@@ -19,9 +19,11 @@ namespace WishfulClaw.Agent;
 ///
 /// Flow:
 /// 1. PlanCompaction: split conversation into pinned prefix + foldable middle + recent tail
-/// 2. PartitionFold: in the middle, keep small user turns verbatim, fold assistant/tool messages
+/// 2. PartitionFold: in the middle, keep small user turns verbatim; fold assistant messages,
+///    tool results, large user turns and every prior compaction summary
 /// 3. SummarizeAsync: call the provider's LLM (no tools) to distill the foldable region into a briefing
-/// 4. On failure: MechanicalFold (deterministic stand-in)
+/// 4. On failure: MechanicalFold (deterministic stand-in); the prior summaries are then kept
+///    in the result as well, since the mechanical digest carries no information
 /// 5. Replace: session becomes [pinned prefix] + [kept user turns] + [summary] + [recent tail]
 ///
 /// The summary is wrapped in &lt;compaction-summary&gt; tags so the model can distinguish it
@@ -130,8 +132,9 @@ public static partial class ContextCompression
 
         var region = conversation.Skip(head).Take(start - head).ToList();
 
-        // Partition: keep small user turns + prior summaries, fold the rest
-        var (kept, fold) = PartitionFold(region, provider);
+        // Partition: keep small user turns verbatim; fold everything else — assistant
+        // messages, tool results, large user turns and every prior compaction summary.
+        var (_, fold) = PartitionFold(region, provider);
 
         if (fold.Count == 0)
             return new CompactionOutcome(conversation, wireConversation, false, false, 0, originalCount, null);
@@ -168,23 +171,27 @@ public static partial class ContextCompression
         var newConversation = new List<AgentRuntimeChatMessage>();
         var newWireConversation = new List<JsonElement>();
 
-        // Pinned prefix
+        // Pinned prefix (system prompt + first user turn)
         for (var i = 0; i < head; i++)
         {
             newConversation.Add(conversation[i]);
             newWireConversation.Add(wireConversation[i]);
         }
 
-        // Kept user turns (from the foldable region)
-        var keptOffset = head;
-        foreach (var keptMsg in kept)
+        // Region survivors, in original order. Small user turns always survive; on
+        // summarizer failure the prior summaries survive too — MechanicalFoldDigest is a
+        // zero-information placeholder, and those summaries are the only carrier of the
+        // earlier history, so dropping them would erase it from the model's view. On
+        // success they are gone: their content now lives in the new summary below.
+        var survivors = 0;
+        for (var i = head; i < start; i++)
         {
-            var keptIdx = conversation.IndexOf(keptMsg, keptOffset);
-            if (keptIdx >= 0)
+            var message = conversation[i];
+            if (IsSmallUserTurn(message, provider) || (summarizerFailed && IsCompactionSummary(message)))
             {
-                newConversation.Add(keptMsg);
-                newWireConversation.Add(wireConversation[keptIdx]);
-                keptOffset = keptIdx + 1;
+                newConversation.Add(message);
+                newWireConversation.Add(wireConversation[i]);
+                survivors++;
             }
         }
 
@@ -215,7 +222,7 @@ public static partial class ContextCompression
 
         WorkerLog.Info(
             $"context compression completed: original={conversation.Count} " +
-            $"folded={fold.Count} kept={kept.Count} summary={summary.Length}chars " +
+            $"folded={fold.Count} kept={survivors} summary={summary.Length}chars " +
             $"result={newConversation.Count} summarizerFailed={summarizerFailed}");
 
         return new CompactionOutcome(
@@ -268,7 +275,7 @@ public static partial class ContextCompression
 
     /// <summary>
     /// Locates the region to summarize.
-    /// head = count of leading messages preserved verbatim (system + first user + prior summaries).
+    /// head = count of leading messages preserved verbatim (system + first user).
     /// start = where the preserved recent tail begins.
     /// msgs[head:start] is the compactable region.
     /// </summary>
@@ -312,10 +319,12 @@ public static partial class ContextCompression
     }
 
     /// <summary>
-    /// Counts leading messages a fold keeps verbatim: system prompt, first user turn (if small enough),
-    /// and any prior compaction summaries.
+    /// Counts leading messages a fold keeps verbatim: system prompt and the first user turn
+    /// (if small enough). Prior compaction summaries are deliberately NOT pinned here —
+    /// S-95 moved them into the foldable region so the new summary absorbs them; pinning
+    /// them was what made summaries accumulate instead of rolling over.
     /// </summary>
-    private static int PinnedPrefixLen(List<AgentRuntimeChatMessage> conversation, JsonElement provider)
+    internal static int PinnedPrefixLen(List<AgentRuntimeChatMessage> conversation, JsonElement provider)
     {
         var i = 0;
 
@@ -336,10 +345,6 @@ public static partial class ContextCompression
         {
             i++;
         }
-
-        // Prior compaction summaries
-        while (i < conversation.Count && IsCompactionSummary(conversation[i]))
-            i++;
 
         return i;
     }
@@ -386,11 +391,21 @@ public static partial class ContextCompression
     // ── Partitioning ──
 
     /// <summary>
-    /// Splits a compaction region into:
-    /// - kept: small user turns (verbatim) + prior compaction summaries
-    /// - fold: assistant messages, tool results, large user messages (to be summarized)
+    /// True for a user turn small enough to survive compaction verbatim (and not a
+    /// tool-result-only turn, which would orphan its tool_use partner when folded).
     /// </summary>
-    private static (List<AgentRuntimeChatMessage> kept, List<AgentRuntimeChatMessage> fold) PartitionFold(
+    private static bool IsSmallUserTurn(AgentRuntimeChatMessage message, JsonElement provider) =>
+        message.Role == "user" &&
+        message.ToolResults.Count == 0 &&
+        IsPinnableUserTurn(message, provider);
+
+    /// <summary>
+    /// Splits a compaction region into:
+    /// - kept: small user turns (verbatim)
+    /// - fold: everything else — assistant messages, tool results, large user messages,
+    ///   and EVERY prior compaction summary (their content is absorbed by the new summary)
+    /// </summary>
+    internal static (List<AgentRuntimeChatMessage> kept, List<AgentRuntimeChatMessage> fold) PartitionFold(
         List<AgentRuntimeChatMessage> region,
         JsonElement provider)
     {
@@ -399,8 +414,11 @@ public static partial class ContextCompression
 
         foreach (var message in region)
         {
-            if (IsCompactionSummary(message) ||
-                (message.Role == "user" && message.ToolResults.Count == 0 && IsPinnableUserTurn(message, provider)))
+            // Compaction summaries always fold (S-95 rolling summary). The explicit
+            // IsCompactionSummary guard matters: a short summary would otherwise satisfy
+            // IsSmallUserTurn and leak back into kept, so the result would retain it
+            // instead of rolling it into the new summary.
+            if (!IsCompactionSummary(message) && IsSmallUserTurn(message, provider))
             {
                 kept.Add(message);
             }

@@ -1,0 +1,880 @@
+# iter-v2-33 原始需求登记
+
+> 2026-09-19 建。分支 `dev/v2-iter-33`（base `main` @ `f6922f6c`，v0.2.32）。
+> 本文件为权威需求文档。本迭代节奏放缓，需求**逐步积攒**，不定收口时间。
+> **已立项 9 项**：S-87 定时任务（cron）工具对全局会话开放／S-88 Grep 工具的 `file_pattern` 通配符静默失配／S-89 记忆整理持续失败（请求缺 sessionId 被上游 400）／S-90 记忆页拆成「设置 / 执行记录」两个选项卡／S-91 记忆呈现割裂（每日记忆无实体、数据库记忆无入口）／S-92 记忆召回链缺陷（查询被注入块吃掉、只召回一次）／S-93 自动沉淀的记忆进不了召回检索源／S-94 记忆检索主力对中文双字词结构性失效（trigram 下限 3 字符）／S-95 压缩「越压越多」（未实现「摘要前的消息全部滚蛋」的滚动摘要语义，产物只增不减）。
+> 其余候选见文末「待登记」，**未点名，不擅自排入**。
+> 勘测行号均为 2026-09-19 实读。
+
+---
+
+## S-87 定时任务（cron）工具对全局会话开放
+
+### 需求（2026-09-19 老大口述）
+
+老大先要求核实全局 PM 对定时任务的权限，核实结论为「四项全没有」后下达：
+
+> 「要放出来，这是需求哈，当前只需要登记，不需要执行」
+
+四项都要放出来：**创建 / 查看 / 修改 / 查看执行记录**。
+
+### 勘测：现状是「四项全没有」（2026-09-19 实读）
+
+**一、六个 cron 工具的可见性声明**（`src/runtime/WishfulClaw.Agent/Tools/Providers/CronToolProvider.cs:31-77`）
+
+```
+CronAdd / CronCreate / CronUpdate / CronRemove / CronDelete / CronList
+    availableModes: ["normal", "goal", "global"]
+    visibleScopes:  ToolVisibilityScopes.WorkRunsOnly   // = ["*:cowork@*"]
+```
+
+**二、全局会话的协作模式被硬编码成 `chat`**（`AgentRunContextPolicy.cs:53-57`）
+
+```csharp
+var collaborationMode = Normalize(JsonHelpers.GetString(parameters, "collaborationMode"));
+if (scope == "global")
+{
+    collaborationMode = "chat";   // 全局会话恒为 chat，入参传什么都不看
+}
+```
+
+**三、匹配结果**：全局会话渲染出的上下文串是 `global:chat`，而声明要求 `*:cowork@*` ⇒ 模式段对不上，**不匹配**（`ToolVisibilityPolicy.MatchesPattern`）。
+
+**这不是只挡直连**：`use_capability` 代理的 list / inspect / call 三路共用 `IsProxyBuiltinVisible` → `AgentRunContextPolicy.IsToolAllowed`，同一个谓词（`AgentRuntimeUseCapabilityDiscovery.cs:111-124`）⇒ **没有任何一条路能绕进去**。
+
+**四、现状权限表**
+
+| 运行上下文 | 能否用 cron |
+|---|---|
+| 项目协作会话 `project:cowork` | ✅ |
+| 项目协作的 subagent / goalrunner / goalsubagent（角色段 `@*` 通配） | ✅ |
+| 定时任务自己触发时 `global`/`project:cowork@automation` | ✅ |
+| **全局会话（全局 PM）`global:chat`** | ❌ |
+| 项目 chat 会话 `project:chat` | ❌ |
+| 渠道会话 `global:channel` | ❌ |
+
+### 第二个缺口：执行记录 agent 侧根本无工具
+
+分两层，都跟全局 PM 无关：
+
+- **UI 层有** —— 渲染端「自动化」页 `components/automation/AutomationPage.tsx:56-63` 调 `db/cron-runs-list`，按任务列最近 10 条（`status` / `summary` / `error` / `toolCallCount` / `startedAt` / `finishedAt`）。
+- **agent 层没有** —— 六个工具里只有 `CronList`，走 `cron:list` 返回 `cron_tasks` 行 + `nextRunAt`（`cron-reverse-handler.ts:644-653`），也就是 `last_run_at` / `last_run_status` / `last_run_summary` / `last_error` 这套「最近一次」。**`cron_runs` 的全量历史没有任何 agent 工具能读**。
+
+⇒ 即使只放开可见性，agent 也**只看得到最近一次结果**，拿不到历史记录。这项是独立缺口。
+
+### 放开的现成路径
+
+`ToolVisibilityScopes.GlobalSideAndWorkRuns = ["global:*@*", "*:cowork@*"]`（memory 那批工具用的就是它）。把 cron 的 `visibleScopes` 换过去，全局会话立刻拿到这六个工具；`*:cowork@*` 那半腿保证项目协作会话的现有能力不回退。
+
+### 渠道会话会被一并放开（符合预期，不是副作用）
+
+`global:*@*` 的模式段是通配，而渠道会话的 scope 正是 `global`（`AgentRunContextPolicy.cs:35-40`：`sessionMode == "channel"` ⇒ `scope = "global"`）。所以换成 `GlobalSideAndWorkRuns` 后，**渠道会话也会拿到 cron 工具**。
+
+**这条已按预期处理** —— 老大 2026-09-19：
+
+> 「渠道就是特殊的全局对话，这个你自己记一下吧」
+
+即渠道会话不是「全局会话之外的第三种东西」，而是全局会话在**回复出口**上的变体（回复不走窗口、走消息插件）。**凡是全局会话有的能力，渠道拿到属预期内，不算越权**。原先列的 B 方案（补 `excludedScopes: NoHumanToAnswer` 排除渠道）**作废**。
+
+渠道与全局会话的已知差异（记档，均为有意为之，不作为阻碍）：自 S-59 起默认 `fullAccess`（YOLO）、审批门短路、回审批走文本；持有 `ChannelOnly` 专属工具；不显示权限控件。
+
+**反向纪律**：渠道被排除的地方，理由必须是具体的（无人能应答 / 无人看着窗口），不能是「因为它是渠道」这种笼统说法。
+
+
+### 附带记档（同文件的小问题，未处理）
+
+`ToolVisibilityScopes.WorkRunsOnly` 的文档注释写着「`availableModes` already refused them a chat」，但 cron 的 `availableModes` 是 `["normal", "goal", "global"]` —— 全局会话解析出的 availableMode 恰好落在名单里（`global` 或 `normal`，见 `AgentRunContextPolicy.ResolveAvailableMode`）。真正挡住它的是 `visibleScopes` 这一条腿，**注释那句话对 cron 不成立**。
+
+### 待裁定（实施前必须先定）
+
+1. ~~渠道会话跟不跟~~ —— **已定**：跟。渠道是特殊的全局对话，一并放开属预期内
+2. 项目 chat 会话（`project:chat`）跟不跟 —— 老大本次只问全局 PM；`GlobalSideAndWorkRuns` 不会放开它，保持现状
+3. 执行记录怎么给 —— 扩 `CronList` 带一个 `includeRuns` 参数，还是新增一个只读 `CronRuns` 工具
+4. 创建 / 修改是否保留审批 —— 现状 `AgentRuntimeCronExecutor.RequiresApproval` 对 `CronAdd` / `CronCreate` / `CronUpdate` 返回 true；放开的会话是否照旧走审批
+
+### 实施记录
+
+（未实施）
+
+---
+
+## S-88 Grep 工具的 `file_pattern` 通配符静默失配
+
+### 需求（2026-09-19 老大口述）
+
+勘测 S-87 期间，Grep 工具对同一目录反复返回 `No matches found.`（实际有大量匹配）。老大：
+
+> 「还有刚刚 grep 工具不是有问题么，这个工具的修复也登记需求」
+
+### 现象（2026-09-19 实测）
+
+| 调用 | 结果 |
+|---|---|
+| `path=src\runtime`，`file_pattern=*.cs`，`pattern=cron` | ✅ 正常命中 |
+| `path=src\renderer`，`file_pattern=*.ts*`，`pattern=cron`（含 case_insensitive） | ❌ `No matches found.`（实际有 `components/automation/AutomationPage.tsx` 等） |
+| `path=src`，`file_pattern=*.ts*`，`pattern=cron:fire` | ❌ `No matches found.`（实际 `src/main/ipc/reverse-handlers/cron-reverse-handler.ts:320` 就有） |
+
+三条命令里**唯一变量是 `file_pattern`**：成功那条是 `*.cs`，失败两条是 `*.ts*`。
+
+**这是产品自己的工具，不是外部 harness**：宿主 Grep 工具的 description 与 input schema 和 `GrepTool.cs:53` / `:61-63` **逐字一致**（`pattern` / `path` / `file_pattern` / `case_insensitive` / `context_lines` / `limit` / `exclude_dirs`）。
+
+### 根因（已钉死）
+
+`Tools/SearchTools/GrepTool.cs:397-425` 的 `MatchesFileName`：
+
+```csharp
+if (pattern.StartsWith("*."))
+{
+    var ext = pattern[1..]; // ".cs"
+    return fileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase);
+}
+```
+
+`*.ts*` **也以 `*.` 开头**，于是走同一分支，`pattern[1..]` 取出的是字面量 **`".ts*"`**，再拿它做 `EndsWith` —— 没有任何文件名以 `.ts*` 结尾 ⇒ 一个文件都匹配不上 ⇒ 遍历跑完 `results.Count == 0` ⇒ 返回 `No matches found.`（`GrepTool.cs:263-269`）。
+
+**三类模式的实际行为**：
+
+| `file_pattern` | 结果 |
+|---|---|
+| `*.cs` / `*.ts` / `*.tsx` | ✅ 正常（`[1..]` 得到的正是扩展名） |
+| `*.ts*` / `*.c*` / `*.t?s` | ❌ **静默全失配** |
+| `Foo.cs`（精确名） | ✅ 正常（走 `Equals` 分支） |
+
+### 为什么危害大
+
+1. **静默**：不报错、不警告，返回的就是一句「没找到」—— 调用方会据此得出**「全仓没有」的结论**。这正好踩中既有纪律（结论性判断必须复核），而且比 PowerShell 通配符那个坑更难防：那个至少是「搜错范围」，这个是「搜了个空壳」。
+2. **模式本身很自然**：想同时匹配 `.ts` 与 `.tsx` 就会写 `*.ts*`；工具自己的描述还写着「e.g. *.cs」，等于引导用户使用 `*.` 前缀形式。
+3. 影响面不止 agent —— 任何走这个工具的调用方，结论都可能被污染。
+
+### 修法（方向已定，细节实施时定）
+
+`MatchesFileName` 不要再用「`*.` 前缀 ⇒ 扩展名后缀比较」这种字符串特判，改成**真正的 glob 匹配**（把 `*` / `?` 翻译成正则；`*.cs` 这种单星形式自然被覆盖）。可以保留原来的后缀比较当快路径，但**必须先判定模式里除开头 `*.` 之外不含其它通配符**才敢走。
+
+配套：**未匹配到任何文件时，要能区分**「目录里真的没有」和「模式把文件全筛掉了」—— 后者应当是可诊断的，不能都塌成一句 `No matches found.`。
+
+### 同族待查（未取证，实施时一并看）
+
+- `SearchFilter.IsExcluded` 的默认排除名单（`GrepTool.cs:353`）—— 本次三条命令不是它导致的，但它同样能把文件静默筛空，值得一并核。
+- `GlobTool.cs` 是否共用同一套文件名匹配逻辑（若共用，同一 bug 也在那边）。
+
+### 实施记录
+
+（未实施）
+
+---
+
+## S-89 记忆整理持续失败：请求缺 sessionId 被上游 400
+
+### 需求（2026-09-19 老大口述）
+
+> 「1.当前记忆整理有问题 我们是凌晨整理，昨天我们开发了32迭代，结果最后整理什么都没整理」
+>
+> 「登记一下这些需求和bug」
+
+### 现象（日志实证）
+
+`~/.wishful-claw/memory-organization-log.json` 近 10 次记录（倒序，原文时间戳换算后）：
+
+| 时间 | 触发 | 结果 |
+|---|---|---|
+| 2026-09-19 00:00 | nightly | global: `empty` ｜ **wishful-claw: `llm_unavailable`** |
+| 2026-09-18 00:00 | nightly | global: `empty` ｜ **wishful-claw: `llm_unavailable`** |
+| 2026-09-17 00:00 | nightly | 全 `missing_provider` |
+| 2026-09-15 00:00 | nightly | 全 `missing_provider` |
+| 2026-09-04 00:00 | nightly | 4 个 scope 全 `missing_provider` |
+| 2026-09-01 09:59 | catchup | global OK/sunk4 ｜ Obsidian OK ← **最后一次成功** |
+| 2026-08-31 00:00 | nightly | global `llm_unavailable` ｜ Obsidian OK/sunk3 |
+| 2026-08-30 00:00 | nightly | global OK/sunk1 ｜ Obsidian OK ｜ wishful OK/sunk1 |
+| 2026-08-29 04:28 | catchup | 全 `llm_unavailable` |
+| 2026-08-28 09:03 | catchup | global `llm_unavailable` |
+
+**9 月 4 日起每一次 nightly 都是 0 整理**（`warm` / `cold` 全为 0），与「什么都没整理」完全吻合。9/16 那天无记录 —— 见下方「触发机制」。
+
+### 真因（日志实锤）
+
+`~/.wishful-claw/logs/2026-09-19.log`（本地时间 2026-09-19 00:11:50）：
+
+```
+[WARN] [renderer] [MemoryOrganization] LLM organization pass failed:
+Error: ProviderHttpException: OpenAI-compatible chat request failed HTTP 400:
+{"type":"error","error":{"type":"MissingSessionID","message":"Error from provider (Console Go):
+Request is missing x-opencode-session and cannot be routed efficiently. ..."}}
+```
+
+记忆整理绑定的服务商是 **OpenCode Go**，它要求每个请求带 `x-opencode-session` 头 —— 这条链路没带 ⇒ HTTP 400 ⇒ 整理放弃。
+
+### 根因链（三跳，逐跳已读原文）
+
+1. **C# 侧**：`OpenAIChatHeaders.cs:27-32`（聊天链路）、`ContextCompression.cs:702-707`（上下文压缩）、`ProviderTestService.cs:207-210`（连接测试）三处，都是「`providerBuiltinId == "opencode-go"` **且 `sessionId` 非空**」才注入该头 ⇒ sessionId 为空就不加。
+2. **sidecar 请求**：`sidecar-mapping.ts:155` 写的是 `...(provider.sessionId ? { sessionId: provider.sessionId } : {})` —— **可选**，完全取决于 `provider.sessionId`。
+3. **记忆整理的 provider 对象**由 `memory-automation-utils.ts:243-296` 的 `resolveAutomationProvider()` **手工构造**，字段清单里**没有 `sessionId`** ⇒ 第 2 跳不带 ⇒ 第 1 跳不加头 ⇒ 400。
+
+### 这是 iter-29 F-8 修复的漏点
+
+iter-29 修 F-8（提交 `ef16bf6f`）把 `sessionId` 盖章收口到 **`stores/chat-store/index.ts:397-404` 的 `sendMessage`**，注释给的理由是：
+
+> sendMessage is the only door to agent/run and it knows the session, so the identity is stamped here instead of being remembered at every send site
+
+**这个前提不成立**：`runSidecarTextRequest`（`agent-bridge-streaming.ts:254`）经 `buildSidecarAgentRunRequest` **也构造 agent/run 请求**，是第二扇门，iter-29 没有覆盖它。
+
+### 影响面：同类受害者（都走 `runSidecarTextRequest`）
+
+| 调用点 | 用途 |
+|---|---|
+| `memory-automation-utils.ts:409` | 记忆阶段 1 抽取（`extractStage1Outputs`） |
+| `memory-automation-internal.ts:192` / `:217` | 记忆整理 pass |
+| `lib/api/generate-title.ts:245` | **会话标题生成** |
+
+⇒ 若绑定 provider 是 opencode-go，**会话标题生成也在静默失败**（待真机确认）。
+
+### 次要缺陷（同一现象上的三层叠加）
+
+1. **真实异常被吞**（`memory-organization.ts:329-335`）：
+
+   ```js
+   } catch (error) {
+     console.warn('[MemoryOrganization] LLM organization pass failed:', error)
+   }
+   if (!organization?.memoryMarkdown) {
+     result.skippedReason = 'llm_unavailable'
+   ```
+
+   两种完全不同的故障（**抛异常** vs **正常返回但内容为空**）塌成同一个原因码，界面上只显示「LLM 不可用」。
+2. **每次失败要耗约 11 分钟**：日志显示 00:00 触发、00:11:50 才报错（`requestMaxRetries` 默认 10、`apiRequestTimeoutSeconds` 默认 100s）。整晚只尝试一次就作罢。
+3. **nightly 严格按时间，错过不补**：`memory-organization-scheduler.ts:101-107` 注释明写「normal startup only arms the nightly timer and **must not run an early catch-up** when the watermark is stale」⇒ 凌晨应用没运行就整晚不整理（日志中 9/16 缺失即此）。
+
+### `global` scope 的 `empty` 是正确判定，不要误修
+
+`~/.wishful-claw/MEMORY.md` 实际只有 **81 字节 / 5 行**（`# Long-Term Memory` + `## 兄弟身份`），mtime 2026-09-01。`hasOrganizableContent`（`memory-organization.ts:146-149`）会先去掉所有标题行、再按 `MIN_ORGANIZABLE_CHARS = 40` 判定 —— 判 `empty` 属实。
+
+真正有内容的是**项目 scope**：`D:\claw\wishful-claw\.wishful-claw\MEMORY.md`（2936 字节 / 31 行），它失败的原因正是上面的 400。
+
+### 另一类失败：missing_provider（9/04、9/15、9/17）
+
+`memory-organization.ts:492-507`：`hasUsableProvider(provider)` 为假时统一标 `missing_provider`。而 `resolveAutomationProvider()`（`memory-automation-utils.ts:243-257`）在三种情况下返回 null：
+
+- 未绑定模型（`!binding?.providerId || !binding.modelId`）
+- provider 不存在，或 `isProviderAvailableForModelSelection` 为假
+- 绑定的模型不存在 / `enabled: false` / 类型是图片或视频
+
+⇒ 与 400 是两个独立故障，实施时先分清是「绑定丢失」还是「绑定在但服务商不可用」。
+
+### 修法方向（实施时定）
+
+- **主修**：让非 `sendMessage` 的 sidecar 路径也带上会话身份 —— 或给 `resolveAutomationProvider()` 补 `sessionId`，或把盖章下沉到 `runSidecarTextRequest` / `buildSidecarAgentRunRequest`（一处盖、所有走 sidecar 的功能同时受益，且能防第三次踩同一个坑）
+- **可诊断性**：把真实错误（HTTP 状态 + provider + body 摘要）带进 `MemoryOrganizationScopeResult.error`，别再塌成 `llm_unavailable`
+- **可选**：nightly 支持「错过补跑」（只补一次，不做无限追）
+
+### 实施记录
+
+（未实施）
+
+---
+
+## S-90 记忆页拆成「设置 / 执行记录」两个选项卡
+
+### 需求（2026-09-19 老大口述）
+
+> 「2.记忆整理执行记录是会一直累加的，所以这个不能放在记忆设置下方，我希望记忆分成设置和执行记录两个选项卡在最顶上」
+
+### 勘测（现状）
+
+`src/renderer/src/components/settings/MemorySettingsPanel.tsx` 是**单一长页**，四个 `SettingsSection` 自上而下：
+
+| 段 id | 内容 | 行 |
+|---|---|---|
+| `sec-memory-organization` | 自动整理（开关 / 时间 / 模型绑定） | :155 |
+| `sec-memory-tiers` | 分层阈值 | :320 |
+| `sec-memory-recall` | 召回 | :341 |
+| `sec-memory-execution-log` | **执行记录** | :424 |
+
+执行记录是 iter-30 S-29 加的，挂在**最下方**，用 `max-h-64 overflow-y-auto` 内部滚动（`MemorySettingsPanel.tsx:432`）。
+
+挂载点：设置页 `memory` tab（AI 服务组）→ `MemorySettingsPanel`。
+
+### 需求
+
+把「执行记录」从设置列表里摘出来，与设置并列成**顶部两个选项卡**：**设置** / **执行记录**。
+
+### 待裁定（实施前定）
+
+1. 选项卡落点 —— 记忆页内部自建一层 tab（倾向），还是复用设置页已有的 tab 机制
+2. 执行记录是否保留 `max-h-64` 内滚，还是改成整页滚动（既然已经独立成页签，内滚可能没必要）
+
+### 实施记录
+
+（未实施）
+
+---
+
+## S-91 记忆的呈现割裂：每日记忆没有实体，「数据库记忆」没有入口
+
+### 需求（2026-09-19 老大口述）
+
+> 「项目档案下也有记忆， 目前是割裂的，热记忆是没问题，但是每日记忆就有问题，我们并没有每日记忆的文件，而且我们数据库也是支持记忆的，所以我们的显示和呈现需要调整一下」
+
+### 当前架构：只有两层，没有「每日」这一层
+
+`src/runtime/WishfulClaw.Workspace/Memory/IMemoryStore.cs:4-5` 的接口注释就是结论：
+
+> File-based hot memory store — **only manages MEMORY.md**.
+> All other memory data lives in SQLite (memory_entries table).
+
+- **热记忆**：`MEMORY.md` 文件。路径 `MemoryPathResolver.GetMemoryFilePath(scope)`（`MemoryPathResolver.cs:74-75`）。由 `memory_hot_read` / `memory_hot_write` 两工具读写。
+- **数据库记忆**：`memory_entries` + `memory_archive` + `memory_fts`（trigram FTS5），三表定义在 `DbClient.cs:275-291` 与 `:492-511`。由 `memory_append` / `memory_update` / `memory_search` 三工具读写（`ToolModule.cs:139-143` 注册）。
+- **「每日记忆」不存在**：`MemoryPathResolver` 只有 `GetMemoryFilePath` 与 `GetMemoryDir`（`{root}/memory`），没有任何 daily 相关方法。
+
+### 「每日记忆」是空壳（四处独立证据）
+
+| 层 | 事实 |
+|---|---|
+| 统计 | `MemoryStats` 有 `DailyCount`（`MemoryModels.cs:99`），但两处实现**都恒写 0** —— `MemoryModule.cs:58`、`MemoryStore.cs:111`。同批死的还有 `TopicsCount` |
+| 路径 | `MemoryPathResolver` 无 daily 概念 |
+| 写入 | 全 `src` 搜 `memory/daily` **只命中 `ProjectArchivePage.tsx` 自己**（读 + 写都用那一个路径），**没有任何生成方** |
+| 路径不一致 | 三处口径互不相同 ⬇️ |
+
+**三处路径不一致（割裂的直接证据）**：
+
+| 位置 | 拼接结果 |
+|---|---|
+| `ProjectArchivePage.tsx:103`（档案页 daily tab） | `{memoryRoot}/memory/daily/{YYYY-MM-DD}.md` |
+| `memory-files.ts:141`（全局分层快照） | `{basePath}/memory/{YYYY-MM-DD}.md`（**少了 `daily` 层**） |
+| `memory-files.ts:169`（项目分层快照） | `{projectRoot}/.wishful-claw/memory/{YYYY-MM-DD}.md`（**也少 `daily` 层**） |
+
+⇒ 即便哪天有人往 `memory/daily/` 写了文件，分层快照那两条**也读不到**。
+
+### 「数据库记忆」是真实存在的，但 UI 入口只剩半个
+
+**实测数据**（`node --experimental-sqlite` 只读打开）：
+
+| 库 | `memory_entries` | 明细 |
+|---|---|---|
+| prod `~/.wishful-claw/index.db` | **123 条** | global 35 ／ `project:D:\claw\wishful-claw` **59** ／ `D:\koda\Obsidian` 17 ／ `D:\koda\wishful` 7 ／ `D:\claw\test-claw` 3 ／ `D:\koda\koda-agent-v2` 2 |
+| dev `~/.wishful-claw-dev/index.db` | 7 条 | `D:\claw\OpenCowork` 6 ／ `D:\koda\Obsidian` 1 |
+
+`memory_archive` **两库均为 0 条**。
+
+**唯一的呈现入口是右侧面板**：`components/memory/MemoryPanel.tsx`（挂在 `components/layout/RightPanel.tsx:12`）—— Hot/Warm/Cold 三张统计卡（`:239-241`）、记忆搜索框（`:253`）、组织计划与最近报告（`:270-291`）、暖/冷记忆恢复区（`:308-329`）、搜索结果列表（`:341-360`）。
+
+### 项目档案页：曾被删掉一个「记忆归档」tab
+
+`ProjectArchivePage.tsx` 现有三个 tab（`MEMORY_TABS`，`:44-48`）：
+
+| id | 图标 | 读什么 | 现状 |
+|---|---|---|---|
+| `memory` | `FileText` | `{memoryRoot}/MEMORY.md` | **正常**（热记忆，可编辑） |
+| `daily` | `Clock` | `{memoryRoot}/memory/daily/{today}.md` | **永远不存在**；读不到时回填 `DEFAULT_DAILY_TEMPLATE` 默认模板，用户可能误以为是真内容 |
+| `persona` | `User` | `{memoryRoot}/personas` | 正常 |
+
+`ProjectArchivePage.tsx:252` 留着一行注释：
+
+```
+// Dormant memory tab removed — cold memory is stored in SQLite, accessed via memory/search
+```
+
+即**曾经有一个「dormant（记忆归档）」tab 用来呈现数据库记忆，被删掉了**，理由是「冷记忆在 SQLite，通过 memory/search 访问」。
+
+**但 locale key 没跟着删** —— `zh/chat.json:1046` 与 `en/chat.json:1046` 里 `projectArchive.tabs.dormant`「记忆归档」/ "Memory Archive" **仍是孤儿 key**。
+
+⇒ 现在的割裂形态：**项目档案页给了一个空的「每日记忆」，把有 123 条真实数据的「数据库记忆」入口删了；数据库记忆只剩右侧面板那半个（能搜、能看统计，不按项目浏览）**。
+
+### 需求
+
+「显示和呈现需要调整」—— 方向是把**呈现对齐真实存储**：
+
+- 「每日记忆」这个没有实体的 tab 要处理（删掉 / 换成数据库记忆 / 重新定义）
+- 数据库记忆（123 条）需要正经入口，而不是只有右侧面板的搜索结果
+- 两处呈现（项目档案页 vs 右侧面板）的关系要理顺，别各说各的
+
+### 待裁定（实施前定）
+
+1. **每日记忆 tab 的去留** —— 删除（承认这个概念没落地）／改造成「数据库记忆」入口／保留但补齐写入方（等于新功能）
+2. 数据库记忆的呈现形态 —— 按 scope 分组列表？沿用 `memory_search` 检索？分页/按 tier 筛？
+3. 右侧面板 `MemoryPanel` 与项目档案页的**分工**（谁看全局、谁看项目）
+4. 三处路径不一致是否顺手统一（`memory-files.ts` 的两条 vs 档案页的 `memory/daily/`）；注意 `memory-files.ts` 的分层快照**目前消费方只有项目档案页**，统一成本低
+5. `TopicsCount` / `DailyCount` 两个恒 0 的死字段，以及 `dormant` 孤儿 locale key —— 一并清还是保留
+
+### 裁定（2026-09-19，老大选 A）
+
+**A 案**：项目档案页的 `daily` tab 改造成「**记忆库**」，列**本项目 scope** 的 `memory_entries`；右侧面板 `MemoryPanel` 退回「**全局检索 + 统计 + 整理控制台**」，两边分工清楚。
+
+老大原话：`A`。
+
+分工定稿：
+
+| 位置 | 职责 | 数据来源 |
+|---|---|---|
+| 档案页 · **记忆库**（`daily` tab 改造） | 本项目的记忆条目，按 `scope = project:{workingFolder}` 全列 | SQLite `memory_entries` |
+| 档案页 · 项目记忆 | 热记忆 `MEMORY.md`（**保持不变**） | 文件 |
+| 档案页 · 项目人格 | personas（**保持不变**） | 文件 |
+| 右侧面板 `MemoryPanel` | 全局检索 + Hot/Warm/Cold 统计 + 整理控制台（**保持不变**） | `memory/stats`、`memory/search`、`memory/entries-by-status` |
+
+### 实施要点（待开工，已勘测）
+
+- **数据通道现成**：Worker `memory/entries-by-status`（`MemoryModule.cs:30`）→ 渲染端 `memoryEntriesByStatus(status, scope, …)`（`stores/chat-store/memory-helpers.ts`）。
+  - ⚠️ 该入口**按 status 过滤**，而「全列本项目记忆」需要不过滤的列表 —— 要么它接受空 status，要么补一个 `memory/entries` 变体。**开工前先读实现确认**，别猜。
+  - `memory-helpers.ts` 所有入口都带 `workingFolder` / `projectId` / `sshConnectionId` ⇒ **SSH 项目路径已支持**，档案页可直接复用。
+  - 全套可用端点：`memory/stats`、`memory/read`、`memory/write`、`memory/search`、`memory/append`、`memory/update`、`memory/demotion-candidates`、`memory/batch-status`、`memory/entries-by-status`。
+- **scope 键格式**（实测）：`project:{workingFolder}`，例如 `project:D:\claw\wishful-claw`。档案页已有 `memoryRoot` / `workingFolder` 推导（`ProjectArchivePage.tsx:88-95`），构造 scope 是纯拼接。
+- **要一并处理的死代码**（`daily` tab 下线后）：
+  - `ProjectArchivePage.tsx` 的 `dailyFile` 状态、`loadDailyFile`、`handleSave` / `handleReset` / `handleReload` 里的 `daily` 分支、`DEFAULT_DAILY_TEMPLATE`
+  - `memory-files.ts` 的 `loadDailyMemoryEntries` / `loadProjectDailyMemoryEntries` / `buildDailyMemoryDates`（正是三处路径不一致里的两条）失去消费方
+  - locale：`projectArchive.tabs.daily` 改文案或换 key；`projectArchive.tabs.dormant`（孤儿）删掉
+- **记忆库只读还是可写**？若允许编辑/删除要接 `memory/update`。**倾向首版只读 + 跳右侧检索**，不再开一条写入路径 —— **待老大定**。
+
+### 实施记录
+
+（未实施）
+
+---
+
+## S-92 记忆召回链缺陷：召回查询被注入块吃掉、只召回一次
+
+> 来源：2026-09-19 老大指派「全面审查记忆相关使用」。老大原话：「运行前主动检索这些，体验不是很深」。
+
+### 缺陷一：召回查询被注入块污染 —— 实为「用户关键词一个都进不去」（2026-09-19 实测升级）
+
+> **定案（2026-09-19）：取方案 2（query 组装处剥块）。** 原「被稀释」的定性是**低估**，实测证明是「替换 + 全灭」，见下。
+
+时序（实读 `AgentLoop.cs`）：
+
+| 顺序 | 位置 | 动作 |
+|---|---|---|
+| 1 | `AgentLoop.cs:247` | `InjectTransientPrefix(conversation, state)` —— **在 while 循环之前**执行，把 `<memory-update>` 与 `<current_time>\n{时间戳}\n</current_time>` **直接写进 `conversation` 的最后一条 user 消息**（`AgentLoop.Helpers.cs:275-345`） |
+| 2 | `AgentLoop.cs:335` | `TryInjectMemoryRecallAsync` —— iteration 1，**晚于上一步**；`conversation.Where(Role=="user").Select(Text).LastOrDefault()` 取到的已是**组装后**的文本 |
+| 3 | `MemoryRecallQueryRefiner.ExtractVariants` | 再从这段文本提关键词变体 |
+
+**实测一：变体列表被块标签整表吃掉**（复刻 `ExtractVariants`，`maxVariants = 4` 是硬上限）：
+
+| 输入 query | 抽出的变体 |
+|---|---|
+| 干净 `帮我把记忆召回链的 query 污染问题查清楚` | `["把记忆召回链的","query","污染问题查清楚"]` |
+| + `<current_time>` | `["<current_time>","2026-09-19","11","+08"]` |
+| + `<current_time>` + `<memory-update>` | `["<memory-update>","following","memory","changes"]` |
+
+⇒ 4 个名额被块标签/日期占满，**用户关键词一个都进不了 queries 列表**。有 `<memory-update>` 时退化成 `following` / `memory` / `changes` 这类英文噪声词。
+
+**实测二：变体是唯一还能工作的检索人口，掐断即全灭**（生产库 `project:D:\claw\wishful-claw`，60 条）：
+
+| 词 | 长度 | FTS | LIKE |
+|---|---|---|---|
+| `路径` | 2 | **0** | 12 |
+| `记忆` | 2 | **0** | 10 |
+| `工具` | 2 | **0** | 22 |
+| `提示词` | 3 | 3 | 3 |
+| `上下文` | 3 | 3 | 3 |
+
+（FTS 对 2 字词恒 0 是 S-94 的病因；此处只需知道：变体是同时走 FTS 与 LIKE 的唯一人口。）
+
+**另一条路本来就是死的**：`MemoryFtsService.BuildFtsLiteralQuery` 把整条 query 用双引号包起来（FTS5 **短语查询**），配合 `tokenize='trigram'`，一条含 `<current_time>` 的长串当短语匹配 → 零命中；LIKE fallback 吃的是**同一个整串** → 也零命中。
+
+**净效果不是「稀释」而是「替换」**：用污染 query 跑变体并集，实测命中 **5 条**（来自 `2026-09-19` 的 trigram 碎片，如 `202`／`09`／`19`）—— 与用户所问毫无关系。⇒ **该出现的从不出现，不该出现的稳定出现。**
+
+**修法定案：方案 2（剥块）** —— 在 query 组装处加纯函数，剥掉开头的 `<memory-recall>`／`<memory-update>`／`<current_time>` 块。理由：污染的本质是「取文本时拿到的是组装后的产物」，剥块正是它的直接对偶；零时序改动、可单测、以后谁再往 user 消息里塞块都自动免疫。
+
+**一并记档（整洁债，建议单开一刀，不要与本次 bug 修复合刀）**：
+
+- 方案 1（挪时序，把 recall 提到 `:247` 之前）看似更根治，但连带三件事：① `InjectTransientPrefix:315-319` 那段消费 `state.PendingMemoryRecall` 的分支会**复活**，而 `TryInjectMemoryRecallAsync` 里「自己直接改 conversation」那段立刻变成**重复注入**，必须同刀删；② `MarkMemoryInjected` 的时机要重排；③ queued message 语义会变（现在 recall 在 `DrainQueuedMessages:312` 之后，能拿插入的消息当 query）。
+- **`state.PendingMemoryRecall` 在当前时序下是死变量**：消费点在 `:316`（`:247` 内），设置点在 `:335`，设置永远晚于消费 ⇒ 该分支走不到，`:426` 的 `= null` 是多余动作。这是某次半成品改动的残留（把 recall 从「设 `PendingMemoryRecall`、交给 `InjectTransientPrefix` 统一组装」改成「recall 自己直接注入」，但没调 `:247`／`:335` 的顺序）。**这正是污染的成因。**
+
+### 缺陷二：只召回一次 —— **暂不定案，先等缺陷一落地**
+
+- `AgentLoop.cs:16` 注释自述移植自 OpenClaw.net 的 `TryInjectRecallAsync (iteration 7)`，实现改成 **iteration 1**。
+- `AgentLoop.cs:424-426` 注释「Clear transient memory recall after first API call」+ `state.PendingMemoryRecall = null;` ⇒ **不是每轮可召回，是一次性的**。
+
+**先厘清范围**：`iteration == 1` 是 **per-run**，不是 per-session。用户每发一条消息 = 一次新 run = 召回一次。所以问题域是**单个 run 内的多轮工具调用**（长任务／子 agent／goal runner），不是日常对话。
+
+| 方案 | 触发 | query 用什么 | 硬伤 |
+|---|---|---|---|
+| 1 每 N 轮 | 计数器 | ？ | N 是玄学；**query 不变则零收益** —— 去重是 per-session 的 `(id → fingerprint)`（`SessionConversation.cs:51-66`），同 query 第二次必然 0 新命中；N 小则纯噪音 |
+| **2 压缩后重召回** | 压缩完成 | 压缩摘要 | 无 |
+| 3 维持一次 | — | — | 长任务后半段无记忆；压缩后彻底没有 |
+
+**「频繁」到底贵不贵（实测三点）**：① 检索本身 = 本地 SQLite 查询，毫秒级，**不花钱**；② `MemoryRecallQueryRefiner` 是纯规则函数，**零 LLM 调用**；③ 唯一成本是注入 token，而去重（`_injectedMemoryFingerprints`：同 id 同内容不再注入）**把它封了顶**。
+⇒ **所谓「太频繁」的代价不是钱，是噪音**（往上下文里塞新的、可能不相关的记忆，打断当前工作）。
+
+**我推荐方案 2，三条理由**：
+
+1. **因果对得上**：`ContextCompression.TailStart` 的 `minKeep = 2` —— 压缩只保留最近 2 条消息，**第一轮注入的 recall 块必然被压缩砍掉**；不重召回，长任务后半段等于没有记忆。这不是拍脑袋定的周期，是压缩自己造成的缺口。
+2. **天然低频**：自动压缩要上下文涨到触发线（1M 窗口 = 784K）才发生，一次长任务也就几次。
+3. **query 自动跟着活儿走**：压缩摘要正好浓缩了「前段在干什么」，拿它当 query 天然合理 —— 方案 1 用固定轮次 + 原始 query 恰恰做不到这点。
+
+**为什么现在不定案**：缺陷一未修之前，召回注入的是日期命中的无关记忆。**在这个基线上调频率，调什么参数都是错的。** 缺陷一先落一刀，看几天真实召回率，再定频率 —— 那时行为会从「永远注入无关记忆」跳到「注入相关记忆」，才有观察依据。
+
+### 缺陷三：开发实例上无法验证（非 bug，记档避免误判）
+
+实测两库 `memory_entries` 的 scope 分布：
+
+| 库 | 总数 | `project:D:\claw\wishful-claw` |
+|---|---|---|
+| `~/.wishful-claw/index.db`（生产） | 123 | 59 |
+| `~/.wishful-claw-dev/index.db`（开发） | 7 | **0** |
+
+dev 日志里 recall **每次都是 `merged=0` / `reason=no_match`**。⇒ 在开发实例上测召回，看到的永远是「没反应」，与实现好坏无关；要验证必须用有数据的项目，或先手工写入若干条。
+
+### 已核对无误（记录在案，别乱改）
+
+- `InjectTransientPrefix` 把时间戳注进**最后一条 user 消息**而不是 system prompt，是为了 **prefix cache 稳定**（system prompt 是每轮重发的前缀，改它等于每轮失效）。设计正确。
+- 召回结果有前端展示面（`AssistantMessage/action-bar.tsx` 的 `MemoryRecallInfo`）。
+
+### 待裁定
+
+- 缺陷一取 A 还是 B。
+- 缺陷二取 A 还是 B，还是维持「一次就够」。
+- 是否把「召回」开放成 agent 可显式调用的工具（目前只有自动召回一条路）。
+
+### 实施记录
+
+（未实施）
+
+---
+
+## S-93 自动沉淀的记忆进不了召回检索源（两条链不相通）
+
+### 取证
+
+**召回读的是 SQLite `memory_entries`**（`MemoryRecallService` 走 FTS/LIKE）。
+
+**而 `memory_entries` 全仓只有两个写入方**（实读 `INSERT INTO memory_entries`，仅此两处）：
+
+| 写入方 | 位置 |
+|---|---|
+| RPC `memory/append` | `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs:140` |
+| agent 工具 `memory_append` | `src/runtime/WishfulClaw.Agent/Tools/MemoryTools/MemoryAppendTool.cs:105` |
+
+渲染端 `memoryAppend()`（`stores/chat-store/memory-helpers.ts:116`）**只有一处调用**：`lib/agent/memory-organization.ts:259` —— 整理时把热记忆里「挪出来」的段落 append 进 DB。
+
+**自动记忆链走的是文件**，是另一条路：
+
+```
+rollout → stage1 抽取 → raw_memories.md（memory-automation-internal.ts:164-166）
+        → phase2 consolidate → MEMORY.md / summary（memory-automation-internal.ts:237+）
+```
+
+**未取证到任何一处把它写进 `memory_entries`。**
+
+⇒ **结构性缺口：自动沉淀的记忆与召回检索源是两条不相通的链。** DB 里那 123 条（`project:D:\claw\wishful-claw` 59、`global` 35）几乎全靠 agent 主动 `memory_append` 写入 —— 即「agent 想起来才记」。
+
+**叠加 S-89**：整理是唯一「热记忆 → DB」的通道（`memory-organization.ts:257-265`），而它自 9/4 起持续失败 ⇒ 这条也断了。「记忆整体不够」的根因就是这两条一起断。
+
+### 待裁定
+
+- 让自动链也写 DB（保持 DB 为单一检索源），还是让召回也检索文件（两套源，需统一去重与排序）。
+- **倾向 A（自动链写 DB）**：召回只认一个源，排序/阈值/去重只有一套逻辑；文件继续作为人类可读的镜像。
+
+### 实施记录
+
+（未实施）
+
+---
+
+## S-94 记忆检索主力对中文双字词结构性失效（trigram 下限 3 字符）
+
+> 来源：同 S-92 的记忆系统全面审查（2026-09-19）。与 S-92 缺陷一**病根不同**（tokenizer 选型 vs 时序错位），修法与风险等级也独立，故单独立项。
+
+### 取证（2026-09-19 实测生产库 `project:D:\claw\wishful-claw`，60 条）
+
+`memory_fts` 建表语句实读：
+
+```sql
+CREATE VIRTUAL TABLE memory_fts USING fts5(title, content, content='memory_entries', content_rowid='id', tokenize='trigram')
+```
+
+按词长对照 FTS 与 LIKE 的实际命中数：
+
+| 词 | 长度 | FTS | LIKE |
+|---|---|---|---|
+| `沙箱` | 2 | **0** | 0 |
+| `路径` | 2 | **0** | 12 |
+| `记忆` | 2 | **0** | 10 |
+| `优化` | 2 | **0** | 0 |
+| `迭代` | 2 | **0** | 17 |
+| `分支` | 2 | **0** | 7 |
+| `工具` | 2 | **0** | 22 |
+| `压缩` | 2 | **0** | 6 |
+| `提示词` | 3 | **3** | 3 |
+| `上下文` | 3 | **3** | 3 |
+| `路径边界` | 4 | 1 | 1 |
+| `记忆整理` | 4 | 2 | 2 |
+| `沙箱模式` | 4 | **0** | 0 |
+| `迭代状态` | 4 | **0** | 0 |
+| `提示词优化` | 5 | **0** | 0 |
+
+### 机制
+
+FTS5 `trigram` tokenizer 把文本切成 **3 字符**滑动窗口。**查询词少于 3 字符时无法生成任何 trigram，FTS 必然返回空。** 上表「2 字词 FTS 恒 0、3 字词 FTS 有值」完全吻合。
+
+4 字词也不稳（`路径边界` = 1 但 `沙箱模式` = 0）：trigram 短语查询要求**字符级连续**，标点/空格一断就失配。
+
+### 后果
+
+- **中文词汇的主体是双字词** ⇒ FTS 那条「带相关度排序 + 阈值过滤」的高质量路对中文基本是空的。
+- 实际全靠 LIKE fallback 兜底，而 LIKE 结果质量差：`RowToResult(..., hasScore: false)` ⇒ `MemoryRecallService.PassesThreshold` 对 `Score is null` 直接 `return true`，**无相关度排序、无阈值过滤**，只能按 `status` + `updated_at DESC` 排。
+- 叠加 `maxNotes = 5` 的名额限制 ⇒ 低相关度的双字词子串命中会**占掉本该给高相关条目的名额**。
+
+### 修法方向（实施时定）
+
+- **不建议换 tokenizer**：`unicode61` 需空格分词、中文不适用；`trigram` 已是内置方案里对中文唯一可行的一个。换它要重建索引 + 迁移（`memory_entries` 现有 prod 123 条），风险与工作量跟另外两条不是一个量级。
+- **倾向改查询层**：① 短查询（< 3 字符）识别出来直接走 LIKE，不做无用的 FTS 尝试；② 给 LIKE 结果补一个**轻量排序**（标题命中 > 内容命中、命中次数、`updated_at`），而不是恒 `hasScore: false` 全放行；③ 视情况把 LIKE 从「FTS 零命中才跑的 fallback」提升为并行通道，两条结果统一合并排序。
+
+### 实施记录
+
+（未实施）
+
+---
+
+## S-95 压缩「越压越多」：未实现「摘要前的消息全部滚蛋」（滚动摘要），产物单调膨胀
+
+### 需求（2026-09-19 老大口述）
+
+> 「查看 32 迭代，我们调整了压缩，目前点击手动压缩后，反而越压缩越多，自动压缩也是压缩不动。」
+
+两个现象：
+
+1. **手动压缩**：点一次，上下文不减反增。
+2. **自动压缩**：能触发、能跑完、报「已压缩」，但实际几乎不减少。
+
+**老大澄清的三条口径（同日，按口述顺序）：**
+
+> 「理论上新摘要是 摘要 + 后续新内容 进行压缩总结，怎么还变大了呢？」
+> 「压缩触发后，消息里面就只剩摘要，摘要前的消息全部滚蛋。」
+> 「32 迭代本身是运行时的上下文限制强制变小，不影响压缩本身的逻辑。」
+
+**第一条 + 第二条 = 目标语义（滚动摘要）**：
+
+```
+[旧摘要 + 后续新内容] → 一次新总结 → 新摘要
+结果 = [新摘要] + [后续消息]        ← 摘要之前的一切（含旧摘要本身）全部移除
+```
+
+**第三条 = 归因纪律（写在这里防止再跑偏）**：S-73/S-84 的会话级上限是**按设计**把「有效窗口」本身改小（`min(真实窗口, cap)`），压缩规则照旧按比例跑、分母换了而已 —— **cap 不是本 bug 的原因，本条修法不许改 cap 的语义**。
+
+### 缺陷（唯一主因）
+
+**`CompactAsync` 从未实现上面那个「全部移除」**，它构造结果的方式是：
+
+```
+结果 = head（含连续旧摘要）+ kept（含 全部旧摘要 + 小 user 消息）+ [新摘要] + tail
+移除的只有 fold（assistant / tool 消息）
+```
+
+- `ContextCompression.cs:318-345` `PinnedPrefixLen`：`while (IsCompactionSummary(...)) i++` —— 连续旧摘要进 `head`；
+- `ContextCompression.cs:393-414` `PartitionFold`：`IsCompactionSummary(msg)` **第一条判据就归 kept**；
+- ⇒ 新摘要进 `SummarizeAsync` 的输入里**一条旧摘要都没有**，它只能记录本刀内容；
+- ⇒ 旧摘要「没被新摘要吸掉」，因此**再没有任何理由删它** —— 摘要只增不减，1 → 2 → … → 53 条。
+
+`kept` 还额外保留了**所有 ≤1500 token 的 user 消息**（`IsPinnableUserTurn`）—— **这部分是设计意图，本轮不动**（老大 2026-09-19：「用户消息就是之前的逻辑」）。实测这部分**只占 5,652 字符（1.71%）**，不是问题所在。
+
+**问题的量级（实测同一份 wire）**：
+
+| 内容 | 条数 | 字符 | 占比 |
+|---|---|---|---|
+| 旧摘要 `<compaction-summary>` | 53 | **324,874** | **98.29%** |
+| 其它 user 消息 | 74 | 5,652 | 1.71% |
+
+⇒ **修法范围只有一处**：把「摘要 → kept」这条判据拿掉。user 消息保留逻辑原样保留。
+
+### 取证（2026-09-19 实读开发库 `~/.wishful-claw/index.db`，非推测）
+
+**一、Worker 权威会话的最新快照**（`session_compaction_snapshots`，trigger=`auto`，orig=131 → new=128，snapshot `4d29bb4ea9…`）：
+
+| 项 | 实测 |
+|---|---|
+| wire 条数 | **128**（user **127** / assistant **1**） |
+| 其中 `<compaction-summary>` 摘要 | **53 条** |
+| 摘要总字符 | **324,874** |
+| 其余内容总字符 | 5,652 |
+| 全史 `messages` 表该会话条数 | 862 |
+
+**二、真实上下文用量**（`messages.usage.contextTokens`，provider 回报）：**261,205**（同会话另有 92,057 / 124,864 两条）。压缩跑完，上下文仍在 26 万量级。
+
+**三、`new_count` 时间序列**（同一会话，按 created_at 递增）：
+
+```
+97 → 99 → 100 → 102 → 106 → 107 → 107 → 106 → 109 → 110 → 115
+   → 129 → 122 → 128 → 124 → 123 → 120 → 119 → 122 → 125 → 126 → 127 → 128
+```
+
+**压缩产物条数一路爬升，跨十几天从不收敛。** 这就是「越压缩越多」的字面含义。
+
+**四、今天的自动压缩记录**（`messages_summarized` = 本次进 fold 的条数）：
+
+| trigger | orig | new | 折叠条数 |
+|---|---|---|---|
+| auto | 127 | 126 | 2 |
+| auto | 127 | 125 | 3 |
+| auto | 128 | 127 | 2 |
+| auto | 131 | 128 | 4 |
+| manual | 139 | 119 | 21 |
+| manual | 187 | 122 | 66 |
+
+**自动压缩每次只折 2~4 条消息，换回 1 条新摘要 → 净变化 ≈ 0。** 这就是「压缩不动」的字面含义。
+
+### 为什么 32 之后才显性暴露（放大因素，不是原因）
+
+**结论先说：cap 本身按 S-73 设计不改；它拉到多低都不会有本 bug —— 只要压缩产物的下限够低。** 下面这节只解释「为什么以前看不出来」。
+
+会话 `lOzL9w1ou1FUddATk2XEq` 的实测设置（`sessions` 表）：
+
+| 字段 | 实测值 |
+|---|---|
+| `model_id` / `context_cap_model_id` | `deepseek-v4-flash`（真实 `contextLength = 1,000,000`） |
+| `context_cap_tokens` | **200,000** |
+| `compression_threshold` | `0.0`（= 跟随全局，默认 0.8） |
+
+**触发线**（`AgentLoop.ShouldCompress`，常量 `ReservedOutput = 20,000`、`AutoBuffer = 13,000`、`Threshold = 0.8`）：
+
+| | 32 迭代之前 | 32 迭代之后（当前） |
+|---|---|---|
+| 有效窗口 | 1,000,000（无 cap） | **200,000**（S-73/S-84 的会话级上限） |
+| `ratioThreshold` | 784,000 | 144,000 |
+| `bufferedThreshold` | 967,000 | 167,000 |
+| **触发线 = min** | **784,000** | **144,000** |
+
+**畸形产物的地板**（53 条摘要 + 被 keep 的小 user 消息），实测真实 token = **261,205**。
+
+⇒ **32 之前：触发线 78.4 万 > 地板 26.1 万** —— 即使产物畸形，压缩一跑也能落到线下，所以「运行效果一直挺好」。
+⇒ **32 之后：触发线 14.4 万 < 地板 26.1 万** —— 压缩在数学上不可能压到线下 ⇒ 每轮 iteration 都触发、每次只折新冒出来的那几条 ⇒ 死锁，且每循环一次新增 1 条摘要、地板继续抬高（正反馈）。
+
+**修好主缺陷后**，产物 = `[1 条摘要] + tail`（摘要在 8K 输出上限内，tail 预算 16,384 token）≈ 2~3 万 token，**远低于 14.4 万触发线** ⇒ cap 调多低都安全。**这条是「先有畸形产物、才被 cap 照出来」，因果不能倒过来。**
+
+**时间线实证**（`session_compaction_snapshots`，按 created_at）：
+
+| 时间 | new_count | fold | 状态 |
+|---|---|---|---|
+| 09-16 09:26 | 28 | 86 | 有效 |
+| 09-17 22:02 | 87 | 136 | 有效 |
+| 09-18 21:41 | 120 | 296 | 有效 |
+| 09-19 08:23 | 129 | 225 | 有效 |
+| 09-19 16:12:46 | 122 | 66（manual） | 临界 |
+| **09-19 16:13:55** | **125** | **3** | ← **锁死** |
+| 09-19 16:14:09 | 126 | 2 | 死循环 |
+| 09-19 16:14:31 | 127 | 2 | 死循环 |
+| 09-19 16:14:51 | 128 | 4 | 死循环 |
+
+`fold` 由 100~300 骤降到 2~4，四轮间隔 13~20 秒（同一次 run 内逐 iteration 触发）—— 即「点了手动压缩之后反而越压越多」的现场。
+
+**长期趋势**：同会话 `new_count` 从 09-16 的 **24** 爬到 09-19 的 **128**；`messages` 表内 `<compaction-summary>` 累计 **53 条**（每条 1,300~9,200 字符）。**地板是随摘要累积单调抬升的**，越过触发线的那一刻（16:13）才显性锁死。
+
+### 两条放大器（不是独立根因，是让畸形产物滚起来的原因）
+
+**放大器一：可折叠区被「小 user 消息」吃干净，fold 区只剩个位数。**
+
+- `ContextCompression.cs:347-357` `IsPinnableUserTurn`：`budget = min(1500, 窗口 × 15%)`。**所有 ≤1500 token 的 user 消息全部原样保留**（`PartitionFold` 第二条判据）。
+- 与主缺陷叠加：wire 里 127 条 user（其中 53 条摘要）里可折的只剩 assistant / tool。
+- 于是自动压缩每次只能折 2~4 条 ⇒ 触发费一次 LLM 调用，换回的压缩收益 ≈ 0。
+- 注：**这条本身是移植时的有意设计**（保用户原话，同 OpenCowork）。但配合老大「摘要前的消息全部滚蛋」的语义，摘要之前的 user 消息也应当在移除范围内 —— 二者冲突，见「待裁定」第 1 条。
+
+**放大器二：判「压缩成功」用的是条数，不是 token。**
+
+- `AgentLoop.ContextCompression.cs:118`、`AgentRuntimeContextCompressionTools.cs:176`：`if (newWireConversation.Count >= originalCount)` 才算没压动。
+- 127 条折 2 条 → 126 条，**判定「成功」**并落快照、发 `context_compressed(compressed)`。
+- 但一条摘要（数千 token）换掉两条短消息，**token 是净增的**。条数判据把「越压越多」放行成了「压缩成功」。
+
+### 附带缺陷（同一现象上叠加，观感被放大，修不修分开定）
+
+**附一：压缩后环上的数字被本地粗估覆盖，与真实 usage 不同口径。**
+
+- `use-chat-actions.ts:699-704`：压缩成功后 `updateSessionContextTokens(sessionId, result.estimatedNewTokens)`；`chat-store/index.ts:2093-2118` 把它写进**最后一条带 usage 的消息**并 `dbUpsertMessage` 持久化。
+- `ContextCompression.TokenEstimation.cs:45-51`：`EstimateTextTokens = Math.Max((len + 3) / 4, len)` —— 对 ASCII（代码、路径、英文）直接返回**字符数**，真实 token 约为其 1/4 ⇒ **约 4 倍高估**；对中文才大致接近。
+- 平时环上显示的是 provider 回报的真实 `contextTokens`，一按手动压缩就切成粗估口径 ⇒ 「压完数字反而涨」。压缩卡片上的 `PreTokens` 也是同一粗估口径（`AgentRuntimeContextCompressionTools.cs:110`），与环上的数不同源。
+
+**附二：压缩水位只增不减。**
+
+- `SessionConversation.cs:43-49`：`_compactionWatermark = Math.Max(_compactionWatermark, messageCount)`。
+- 门控 `AgentLoop.cs:282-284` 要求 `CompactionWatermark < wireConversation.Count`；而 skipped 分支（`AgentLoop.ContextCompression.cs:126`）把水位 mark 到**当时的完整长度**（大值）。压缩成功后条数骤降，水位却停在旧高位 ⇒ **之后很长一段时间自动压缩不再触发**。
+
+**附三：`<current_time>` 会注进压缩摘要，破坏它的身份判定。**
+
+- 手动压缩 `preserveTail=false`（`AgentRuntimeContextCompressionTools.cs:154`）⇒ 摘要落在**会话最后一条**。
+- 下一轮 `AgentLoop.Helpers.cs:297-345` `InjectTransientPrefix` 找「最后一条 user 消息」并前缀 `<current_time>` ⇒ 摘要文本不再以 `<compaction-summary>` 开头。
+- `IsCompactionSummary`（`ContextCompression.TokenEstimation.cs:55-60`）要求 `TrimStart().StartsWith("<compaction-summary>")` ⇒ **身份丢失**，pin/kept 行为与设计意图不一致；同时这条持久消息的字节每轮被改，前缀缓存白掉。
+
+### 修法方向（实施时定）
+
+| 编号 | 方向 | 落点 |
+|---|---|---|
+| **A（推荐，本 bug 的正解）** | **实现滚动摘要**：全 wire 中**只保留「上一条摘要」（最近的那一条）**，其余旧摘要一律进 fold、被新摘要吸收后**随摘要一起移除**；用户消息与 tail 照旧保留。双路径（成功激进 / 失败保守）见下方说明 | `ContextCompression.cs:340-342`（pin 由「连续全部摘要」收窄为「仅最近一条」）、`:402`（去掉「摘要 → kept」判据，改为只对最近一条保留）、`:143-214`（按 `summarizerFailed` 分流） |
+| B | （备选）给摘要总量设 token 上限，超出按时间序丢最旧 | 同上 |
+| C | **成功判据从条数改为 token 估算**：`EstimateMessagesTokens(new) < EstimateMessagesTokens(old)` 才算压动；否则按 skipped 处理（且此时**不要**把水位前进，见附二） | `AgentLoop.ContextCompression.cs:109-139`、`AgentRuntimeContextCompressionTools.cs:165-195` |
+| D | 压缩水位在**确实压缩成功**后重置为当前长度（而非 `Math.Max` 只增不减） | `SessionConversation.cs:43-49` + 两处调用点 |
+| E | 压缩后刷新环上数字：不要用本地粗估覆盖 provider 真实 usage（或统一口径并加「估算」标注） | `use-chat-actions.ts:699-704` |
+| F | `InjectTransientPrefix` 跳过压缩摘要消息，别往它头上注时间戳 | `AgentLoop.Helpers.cs:299-311` |
+
+**A 的实施口径（老大 2026-09-19 三条澄清合并后的定稿）**：
+
+> 「压缩触发后，消息里面就只剩摘要，摘要前的消息全部滚蛋。」
+> 「用户消息 就是之前的逻辑。」（= 小 user 消息按现有 `IsPinnableUserTurn` 继续保留）
+> 「我说的全滚，只是让内存中没有，实际上是不会删除的哈。」（= 只改模型看到的上下文 wire，DB / 聊天记录一字不删，现有设计正确，不用动）
+> 「旧摘要只是上一条旧摘要哦。别给我搞所有的旧摘要哈。」（= **只认最近一条摘要**，不是保留一串）
+
+| 路径 | 结果构造 | 移除范围 |
+|---|---|---|
+| 摘要**成功** | `[system?] + [首条 user] + [kept: 小 user 消息] + [新摘要] + [tail]`（**2026-09-19 二次确认修正**：原写「+ [上一条摘要]」，已作废，见裁定记录） | **全部旧摘要（进 fold 被新摘要吸收）+ assistant + tool + 大 user 消息** |
+| 摘要**失败** | 现状口径（`head` 含连续旧摘要 + `kept` 含旧摘要与小 user 消息 + 机械摘要 + tail） | 只有 assistant / tool |
+
+**「只认上一条」顺带带来两个好处**：
+
+- **正常态下摘要恒为 1 条** —— 每次压缩把上一条吸收进新摘要 → 上下文里永远只有最新那一份，收敛。
+- **畸形会话能自愈** —— 当前这种 53 条残留的会话，修复后第一次压缩会把除最后一条外的 52 条全部折进新摘要 → 一次回到 1 条。**不需要写数据迁移**。
+
+**四条实施要点**：
+
+1. **摘要的保留范围 = 最近一条** —— 判定方法建议：扫全 wire 取最后一个 `IsCompactionSummary` 消息的下标，仅该条保 `kept`/`pin`，其余摘要全部进 fold。**不要**沿用在 `PinnedPrefixLen` 里 `while` 连续跳过的写法（那正是收集全部的地方）。
+2. **「小 user 消息 → kept」判据保留不动**（实测这部分只占 1.71%，去掉收益极小、丢的是用户原话）。
+3. **摘要输入必须用激进口径的 fold**（含**全部**旧摘要，最近一条也在内；**2026-09-19 二次确认修正**）—— 否则成功路径删掉的旧摘要没进新摘要，那才是真丢。失败路径只影响「结果保留什么」，不影响输入。
+4. **失败路径绝不可去掉旧摘要** —— 机械摘要零信息量，旧摘要是更早历史的唯一载体，删了模型视角即失忆（DB 里虽有，模型看不到）。保留只是暂存，下次成功压缩会一并吸收。**失败路径按 `summarizerFailed` 走现状口径，别只换结果拼接。**
+
+**A 是本 bug 的正解，单独修它即可解除死锁。C/D 是让「压不动」不再被判成「成功」并让水位不卡死，建议与 A 同刀。E/F 是观感与缓存，独立，是否并入由老大定。**
+
+**G（cap 地板保护）已撤销** —— 2026-09-19 老大口径：「32 迭代本身是运行时的上下文限制强制变小，不影响压缩本身的逻辑」。cap 的语义不动；A 修好后产物降到 2~3 万 token，cap 拉多低都不会锁死。
+
+### 待裁定（实施前必须定）
+
+1. ~~摘要在移除范围内是否包含 user 消息~~ —— **已定（2026-09-19 老大）**：「用户消息 就是之前的逻辑」+「第一条 user 可以保留」⇒ **用户消息（首条 + 全部小 user 消息）按现有逻辑保留**，不在移除范围内。移除范围**只有旧摘要、assistant、tool、大 user 消息**。
+2. **A 还是 B** —— A = 每次压缩把旧摘要重新总结进新摘要（收敛，多一次输入）；B = 给摘要总量封顶、超了丢最旧。**A 为定稿方向**，B 仅作备选记档。
+3. **C 的严格度** —— 若严格按 token 判成功，会出现「触发压缩但结果不达标」的频繁 skipped（每次白烧一次摘要调用）。token 判据不达标时是放弃本次结果，还是降级机械截断。
+4. ~~摘要失败时是否照旧执行替换~~ —— **已定（2026-09-19 老大）：「摘要 LLM 失败的时候，原有的 kept 机制生效。成功的时候，就是用户消息 + 摘要。」** ⇒ 双路径，见修法 A。失败路径保守（保旧摘要 + 用户原话），成功路径激进（旧摘要随新摘要移除）。
+5. **E 是否单独立项** —— 口径混用（本地粗估覆盖真实 usage）与压缩效果是两件事，可拆。
+6. **锁死后的兜底** —— 检测到「连续 N 次压缩且 fold 条数 < 阈值」（本次实测 3/2/2/4）时是否短路，避免继续空烧摘要调用。
+
+### 实施记录
+
+（未实施）
+
+---
+
+## 待登记
+
+（暂无）
+
+---
+
+## 裁定记录
+
+- 2026-09-19：S-87 立项，**只登记不执行**（老大：「当前只需要登记，不需要执行」）。
+- 2026-09-19：渠道会话一并放开**已确认**，原「副作用」定性作废 —— 老大「渠道就是特殊的全局对话」。渠道 = 全局会话在回复出口上的变体，全局会话有的能力它拿到属预期内。
+- 2026-09-19：S-88 立项，**只登记不执行**。根因已钉死在 `GrepTool.cs:397-425` 的 `MatchesFileName`（`*.ts*` 被当成字面扩展名 `".ts*"`）。
+- 2026-09-19：S-89（记忆整理空转，实为上游 400）与 S-90（记忆页拆选项卡）立项，**只登记不执行**。
+- 2026-09-19：S-89 的 `global` scope 报 `empty` **已核实为正确判定**（`~/.wishful-claw/MEMORY.md` 只有 81 字节），不是 bug —— 实施时别去「修」它；真凶在项目 scope。
+- 2026-09-19：S-91 立项，**只登记不执行**。已实测确认：架构上只有「热记忆（MEMORY.md 文件）+ 数据库记忆（SQLite `memory_entries`）」，**没有每日记忆层**（`IMemoryStore.cs:4-5` 接口注释即结论）；`DailyCount` 两处实现恒写 0；档案页 `daily` tab 读的文件无任何生成方。数据库记忆 prod 实测 **123 条**，唯一呈现入口只剩右侧面板。
+- 2026-09-19：S-92 / S-93 立项（记忆系统全面审查的产出），**只登记不执行**。审查覆盖写入（`memory_append` / `memory_hot_write` / 自动抽取）、召回（`MemoryRecallService` / `AgentLoop.MemoryRecall.cs`）、检索（FTS/LIKE + refiner）、整理（S-89）、呈现（S-91）。S-92 三条缺陷均有行号取证；S-93 的结论基于「全仓 `INSERT INTO memory_entries` 仅两处」的取证。
+- 2026-09-19（下午，实测升级）：S-92 缺陷一的定性由「被稀释」**更正为「用户关键词一个都进不去」** —— 复刻 `ExtractVariants` 实测：`maxVariants = 4` 被 `<current_time>`／日期占满；污染 query 的变体并集在生产库命中 5 条**无关**记忆（日期 trigram 碎片）。**修法定案取方案 2（剥块）**；`PendingMemoryRecall` 死变量清理建议单开一刀，不与 bug 修复合刀。
+- 2026-09-19（下午）：S-92 缺陷二（重召回频率）**暂不定案** —— 理由：缺陷一未修前召回注入的是无关记忆，在该基线上调频率无意义。倾向方案 2（压缩后重召回，query = 压缩摘要），待缺陷一落地跑出真实数据后再定。
+- 2026-09-19（下午）：**S-94 立项**（记忆检索主力对中文双字词结构性失效）。与 S-92 缺陷一病根不同（tokenizer 选型 vs 时序错位），修法与风险等级亦独立，故单开。**只登记不执行。**
+- 2026-09-19（傍晚）：**S-95 立项**（压缩越压越多 / 自动压缩压不动）。**定性更正过两次，如实记录：**
+  - **初稿**：「32 迭代只是暴露、非引入」——**错**。
+  - **二稿**：「cap 把触发线压到产物地板以下 ⇒ 死锁，两个因子缺一不可」——**仍错**：把锅甩给了 cap。老大纠正：「32 迭代本身是运行时的上下文限制强制变小，不影响压缩本身的逻辑」。
+  - **定稿**：**唯一主因 = 压缩从未实现「摘要前的消息全部滚蛋」**（老大的滚动摘要语义）。代码构造结果是 `head + kept + [新摘要] + tail`，只移除 `fold`，旧摘要与小 user 消息永不进移除范围。cap 只是**放大因素**（触发线 78.4 万 → 14.4 万，让畸形产物显性锁死），**cap 语义不动、修法 G 撤销**。修好 A 后产物 ≈ 2~3 万 token，cap 拉多低都安全。
+  - **只登记不执行。**
+- 2026-09-19（傍晚）：**S-95 移除范围的裁定** —— 老大：「还有 `PinnedPrefixLen` 里 pin 住的第一条 user 消息（用户最初的任务交代）**这个可以保留**」。⇒ 首条 user 消息保留。**（后被「用户消息 就是之前的逻辑」进一步扩展为「全部小 user 消息都保留」，见下条 —— 以此为准。）** 移除范围最终定为 **旧摘要 + assistant + tool**；`PartitionFold` 只取消「摘要 → kept」这一条判据，「小 user 消息 → kept」保留不动。
+  **新增风险（必须与 A 同批处理）**：`kept` 去掉后，摘要若降级为 `MechanicalFoldDigest`，被折区间的用户原话将永久丢失（原来至少保住用户原文）。→ **同日已定**：见下条。
+  **风险等级更正（同日）**：老大补充「我说的全滚，只是让内存中没有，实际上是不会删除的哈」⇒ **数据不丢**（DB `messages` 与聊天记录保留全史，实测该会话 862 条），丢的是**模型视角的上下文**。故风险不是「永久丢失」，而是「模型失忆」。等级下调，但失败路径仍应保守（机械摘要零信息量）。
+- 2026-09-19（傍晚）：**S-95 摘要失败的处置裁定（双路径）** —— 老大：「摘要 LLM 失败的时候，原有的 kept 机制生效。成功的时候，就是用户消息 + 摘要。」⇒ **成功路径**走激进口径（`[首条 user] + [新摘要] + [后续消息]`，旧摘要与其他 user 消息全滚）；**失败路径**退回现状 `kept` 口径（保用户原话，只折 assistant/tool）。**摘要输入统一用激进口径的 fold**，保证成功路径删掉的信息已进摘要。
+- 2026-09-19（傍晚）：**S-95 失败路径的旧摘要处置** —— 老大问「既然有机械摘要，旧摘要能不能不要呢」。**答：不能。** `MechanicalFoldDigest` 只是「N 条消息被折叠，摘要不可用」一句英文占位，**含零信息量**；旧摘要是更早那几十刀历史的**唯一载体**（实测 53 条 / 324,874 字符），失败路径删掉它 = 模型视角把 32 万字符历史换成一句废话。**只有成功路径能删旧摘要**（内容已被新摘要吸收）。保留只是暂存，下次成功压缩时会一并被吸收。
+- 2026-09-19（傍晚）：**S-95 移除范围最终收紧** —— 老大：「用户消息 就是之前的逻辑」+「我说的全滚，只是让内存中没有，实际上是不会删除的哈」。⇒ ① **用户消息（首条 + 全部小 user 消息）保留不动**，「全滚」只针对**旧摘要 / assistant / tool**；② 压缩只改**模型看到的 wire**，DB 与聊天记录一字不删（现有 `mergeCompressedMessagesKeepHistory` 设计正确，不用动）。
+  **实测支撑修法范围**：同一份 wire 里旧摘要 **324,874 字符（98.29%）** vs 其余 user 消息 **5,652 字符（1.71%）** ⇒ 只去掉「摘要 → kept」一条判据即可解锁，动 user 消息收益极小。
+- 2026-09-19（傍晚）：**S-95 摘要保留范围收窄为「仅上一条」** —— 老大：「旧摘要只是上一条旧摘要哦。别给我搞所有的旧摘要哈。」⇒ 全 wire 中**只保留最近一条摘要**，其余旧摘要一律进 fold 被新摘要吸收。① 正常态下摘要恒为 1 条；② 当前 53 条残留的畸形会话**自愈**（第一次压缩折掉 52 条），**不需要数据迁移**。实现上不得沿用 `PinnedPrefixLen` 里 `while (IsCompactionSummary(...))` 的连续跳过写法（那正是收集全部的地方）。
+- 2026-09-19（傍晚，二次确认，**最终定案**）：**S-95 压缩结果口径 = 口径 A（吸收式，稳态 1 条摘要）** —— 老大原话：「信息的逻辑是压缩后内存中就是新摘要，然后继续积累消息；下一轮压缩的时候，只有最近的那条旧摘要，也就是上一轮的摘要 + 消息，需要拿去压缩，压缩后成为新摘要，这时候内存中就只有新摘要 + 第一条用户消息了。如果压缩失败才是另外的处理。」⇒ ① **结果里只留新摘要一条**（旧摘要内容随其进新摘要，不单独留存）；② 摘要**输入** = 上一轮摘要 + 其后积累的消息；③ 畸形会话 **53 条 → 1 条**。
+  **本文档正文的两处口径按此修正（历史原话保留，仅供追溯）**：§813 表格的「`+ [上一条摘要]`」**作废**（与 §817/§819 打架，以本条为准）；§825 的「输入含除上一条外的旧摘要」修正为「含**全部**旧摘要」（53 条其余摘要进输入被吸收，不直接丢 —— 丢会让更早历史在模型视角失联，§874 的论证对成功路径同样成立）。
+  实施口径与验证检查点见 `docs/plans/iter-v2-33/plan.md`（V4 已定案）。

@@ -20,6 +20,8 @@ internal static class Program
         {
             // iter-29 T-13: pure string checks, no DB — run before the child-mode dispatch.
             PastedBlockRestoreChecks.Run();
+            // iter-33 S-95: rolling-summary partition checks (also no DB).
+            SummaryRollingChecks.Run();
 
             if (args.Length == 2)
                 return RunChildMode(args[0], args[1]);

@@ -103,23 +103,30 @@ internal static partial class AgentLoop
             var summarizerFailed = outcome.SummarizerFailed;
             var messagesSummarized = outcome.MessagesSummarized;
             var compactArtifacts = ContextCompression.BuildCompactArtifacts(outcome, "auto", preTokens);
+            // S-95: "did it shrink?" is measured in tokens, not message count — folding two
+            // short messages into one long summary grows the context while reducing the
+            // count, which is exactly how "compression" used to be reported as a success.
+            var originalTokens = ContextCompression.EstimateMessagesTokens(conversation);
+            var newTokens = ContextCompression.EstimateMessagesTokens(newConversation);
+
             // errorDriven (context-window overflow) must shrink at any cost —
             // truncation is the last resort before the run fails. Threshold-driven
-            // compression with nothing foldable is a normal no-op, not a failure.
-            if (newWireConversation.Count >= originalCount && (errorDriven || outcome.SummarizerFailed))
+            // compression that produced no reduction is a normal no-op, not a failure.
+            if (newTokens >= originalTokens && (errorDriven || outcome.SummarizerFailed))
             {
                 (newConversation, newWireConversation) = ContextCompression.TruncateMessages(
                     conversation, wireConversation, provider);
                 summarizerFailed = true;
                 messagesSummarized = 0;
                 compactArtifacts = null;
+                newTokens = ContextCompression.EstimateMessagesTokens(newConversation);
             }
 
-            if (newWireConversation.Count >= originalCount)
+            if (newTokens >= originalTokens)
             {
                 WorkerLog.Info(
                     $"agent context compression skipped runId={state.RunId} " +
-                    $"count={originalCount} (nothing foldable)");
+                    $"count={originalCount} tokens={originalTokens} (no reduction)");
                 // Mark the watermark through the current length so the loop does
                 // not re-attempt compression every turn while tokens stay above
                 // the threshold; new messages grow the count and reopen the gate.
@@ -160,7 +167,9 @@ internal static partial class AgentLoop
             }
 
             sessionConv.Replace(newConversation, newWireConversation);
-            sessionConv.MarkCompactionWatermark(newWireConversation.Count);
+            // S-95 D: the wire just shrank, so reset (not Max) the watermark — otherwise it
+            // stays parked at the pre-compression high and the gate never reopens.
+            sessionConv.ResetCompactionWatermark(newWireConversation.Count);
             conversation = sessionConv.GetConversation();
             wireConversation = sessionConv.GetWireConversation();
             await AgentRuntimeTools.EmitAsync(

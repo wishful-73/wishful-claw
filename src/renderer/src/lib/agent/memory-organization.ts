@@ -17,6 +17,7 @@ import {
   memoryBatchStatus,
   memoryDemotionCandidates
 } from '@renderer/stores/chat-store/memory-helpers'
+import { mirrorHotParagraphsToDb } from './memory-hot-sync'
 import {
   getProjectMemoryCandidatePaths,
   joinFsPath,
@@ -47,6 +48,10 @@ export interface MemoryOrganizationScopeResult {
   targetPath?: string | null
   organized: boolean
   outdatedSunk: number
+  /** Paragraphs mirrored into SQLite memory_entries by this run (S-93). */
+  syncedToDb?: number
+  /** Set when the hot→DB mirror failed. The organization result itself stays valid. */
+  dbSyncError?: string | null
   skippedReason?: 'empty' | 'llm_unavailable' | 'empty_output' | 'no_changes' | string | null
   error?: string | null
 }
@@ -328,7 +333,8 @@ async function organizeScope(
     rootScope: target.root.scope === 'project' ? 'project' : 'global',
     projectId: target.projectId ?? null,
     organized: false,
-    outdatedSunk: 0
+    outdatedSunk: 0,
+    syncedToDb: 0
   }
   try {
     const descriptor = await loadMemoryFile(target)
@@ -391,6 +397,22 @@ async function organizeScope(
     if (sink.error) {
       result.error = sink.error
       return result
+    }
+
+    // S-93: mirror the surviving memories into the retrievable DB tier. A failure here must not
+    // roll back the organization itself — the hot file stays the source of truth and the next
+    // run retries — so it is reported separately instead of aborting the scope.
+    const sync = await mirrorHotParagraphsToDb({
+      scope: target.root.scope === 'project' ? 'project' : 'global',
+      markdown: nextContent,
+      workingFolder: target.workingFolder,
+      projectId: target.projectId,
+      sshConnectionId: target.sshConnectionId
+    })
+    result.syncedToDb = sync.count
+    if (sync.error) {
+      result.dbSyncError = sync.error
+      console.warn(`[MemoryOrganization] Hot→DB mirror failed (${target.label}): ${sync.error}`)
     }
 
     // beforeContent snapshot keeps the write undoable via the fs handlers.
@@ -533,6 +555,7 @@ export async function runMemoryOrganization(options: {
           projectId: target.projectId ?? null,
           organized: false,
           outdatedSunk: 0,
+          syncedToDb: 0,
           skippedReason: 'missing_provider'
         })
       }
@@ -558,7 +581,7 @@ export async function runMemoryOrganization(options: {
       projectId: null,
       target: 'global_memory',
       kind: 'workflow_habit',
-      content: `Memory organization (${report.trigger}): ${report.scopes.filter((scope) => scope.organized).length}/${report.scopes.length} scopes organized, ${report.demotedToWarm} demoted to warm, ${report.demotedToCold} demoted to cold${report.error ? `, error: ${report.error}` : ''}`,
+      content: `Memory organization (${report.trigger}): ${report.scopes.filter((scope) => scope.organized).length}/${report.scopes.length} scopes organized, ${report.demotedToWarm} demoted to warm, ${report.demotedToCold} demoted to cold, ${report.scopes.reduce((sum, scope) => sum + (scope.syncedToDb ?? 0), 0)} mirrored to DB${report.error ? `, error: ${report.error}` : ''}`,
       confidence: 1,
       sourceSessionId: null,
       targetPath: null,

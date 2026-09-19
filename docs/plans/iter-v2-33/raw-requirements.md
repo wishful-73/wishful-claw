@@ -621,9 +621,56 @@ rollout → stage1 抽取 → raw_memories.md（memory-automation-internal.ts:16
 - 让自动链也写 DB（保持 DB 为单一检索源），还是让召回也检索文件（两套源，需统一去重与排序）。
 - **倾向 A（自动链写 DB）**：召回只认一个源，排序/阈值/去重只有一套逻辑；文件继续作为人类可读的镜像。
 
-### 实施记录
+### 开工前复核（2026-09-19，取证修正 —— 登记证据用错了链）
 
-（未实施）
+**老大指出**：设置页记忆设置的「凌晨梳理」有执行记录，说明自动链有调用方。核对结论：**对，我核错了对象。**
+
+登记时把「自动链」等同于 `memory-automation-internal.ts` 的 stage1 / phase2 链（`appendStage1Outputs:153` / `runPhase2ForRoot:237`）。**那条确实是死代码**（全 `src` grep 零调用方；`runMemoryAutomationForSession` 代码里已不存在；`memory-pipeline:*` / `memory-automation:record` 通道 main / worker 零实现）—— 但它**不是**老大说的「凌晨梳理」，拿它当 S-93 的证据是**取证错误**。
+
+**「凌晨梳理」是另一条，而且是活的**：
+
+| 层 | 落点 |
+|---|---|
+| 调度 | `src/main/ipc/memory-organization-scheduler.ts`（`nightly` / `startup` / `catchup`，`:115-165`）→ 广播 `IPC.MEMORY_ORGANIZATION_RUN` |
+| 桥接 | `memory-organization.ts:601` `initializeMemoryOrganizationRuntime` → `:589` `handleOrganizationRunEvent` |
+| 编排 | `memory-organization.ts:500` `runMemoryOrganization({ trigger })` |
+| 每 scope | `:323` `organizeScope` → `:344` `runOrganizationPass`（LLM 整理 MEMORY.md）→ `:385` `sinkOutdatedParagraphs` → `:397` `writeTargetContent` |
+| 收尾 | `:541` `runDbDemotion`（DB 条目按 priority × idle 降级）→ `:551` `writeOrganizationWatermark` → `:553` `persistOrganizationReport`（**设置页「执行记录」页的数据源**） |
+
+⇒ 这条链**确实在写 DB**，但只写**被淘汰的过时段落**（`sinkOutdatedParagraphs` → `memoryAppend` → 转 warm）；**现役有效的记忆只落在 `MEMORY.md` 文件里，不进 DB**。自 9/4 起失败的原因是 S-89（请求缺 sessionId），与「有没有调用方」无关。
+
+**因此 S-93 的落点修正**：
+
+- 落点是 `memory-organization.ts` 的 `organizeScope`（`:323-408`）与 `sinkOutdatedParagraphs`（`:266-320`），**不是** `runPhase2ForRoot`。
+- 步骤 1「补 `workingFolder`」**不需要做**：`OrganizationTarget` 本就有 `workingFolder`（`:124`），`sinkOutdatedParagraphs`（`:283`）和 `runDbDemotion`（`:430`）都已在用。
+- 步骤 2 / 3（写 DB + 插入前去重）要挂到 `organizeScope` 上，口径**待老大确认**：凌晨梳理是否要把 `MEMORY.md` 里**现役**记忆也 `memoryAppend` 进 DB（插入前用 `memoryEntries` 判重）。
+
+### 实施记录（2026-09-19，口径 A）
+
+**老大裁定**：「我以为记忆整理就是记忆沉淀呢 A」—— 确认「记忆整理」（凌晨梳理）就是「记忆沉淀」，按口径 A 实施。
+
+**改动**：
+
+- **新模块** `src/renderer/src/lib/agent/memory-hot-sync.ts`（96 行）：
+  - `extractHotParagraphs(markdown)`：按空行分块，剔掉纯标题行与模板留白，只留 `normalizeMemoryText` 后 ≥ 24 字符的段落。
+  - `mirrorHotParagraphsToDb({ scope, markdown, workingFolder, projectId, sshConnectionId })`：先用 `memoryEntries`（S-91 新建）拉本 scope 已有条目，`normalizeMemoryText` 后做**双向包含**判重（`item.includes(normalized) || normalized.includes(item)`），未命中才 `memoryAppend`。⇒ 重复运行是 no-op，不会重复插入。
+  - 抽成独立文件是为了守住 `AGENTS.md` 的 500 行红线 —— 内联进 `memory-organization.ts` 会把它推到 ~700 行。
+- **`memory-organization.ts`**：
+  - `organizeScope` 在 `sinkOutdatedParagraphs`（淘汰段落 → warm）之后、写回 `MEMORY.md` 之前调 `mirrorHotParagraphsToDb`：先处理淘汰的，再保住宅现役的。
+  - **镜像失败不中止整理**：`result.dbSyncError` 单独记，`result.syncedToDb` 记本次写入条数，仍然写回 `MEMORY.md`。理由 —— 热文件仍是唯一真相，镜像失败不该把 S-89 修好后本来能成的整理一起拖下水；下一轮重试即可。
+  - `MemoryOrganizationScopeResult` 新增 `syncedToDb?` / `dbSyncError?`（可选字段，旧报告 JSON 缺字段时按 `?? 0` 读，不破坏已持久化记录）。
+  - `runMemoryOrganization` 的 `recordEntry` 文案补 `N mirrored to DB`，执行记录里可直接看见。
+
+**为什么不往 `runPhase2ForRoot` 加**：见上「开工前复核」—— 那条 stage1 / phase2 链零调用方。真正的自动沉淀入口是凌晨梳理。
+
+**未做 / 记档**：
+
+- 设置页「执行记录」tab（S-90）未展示 `syncedToDb` —— 避免范围蔓延；数据已落 `memory-organization-log.json`，后续要用直接读。
+- `memory-organization.ts` 仍 634 行，**超 500 行红线**（规划验证阶段已列为豁免项）。本刀把新增逻辑全部外移到新模块、没有继续撑大它，真正的拆分**另开一刀**。
+
+**门禁**：`tsc -p tsconfig.web.json / tsconfig.node.json / tsconfig.json` 三配置 **0 错**；`dotnet build src/runtime/WishfulClaw.sln` **0 错 0 警**；11 个 C# 回归套件全 **exit=0**；`package.json` 里 **32 个 TS 测试脚本全 ok**（含 `test:i18n-coverage`）。
+
+**未验（需真机）**：跑一次凌晨梳理（或用设置页手动触发），确认 —— ① 执行记录出现 `N mirrored to DB`；② 本项目的现役记忆能在召回里搜到；③ 同 scope **再跑一次应为 0**（幂等）。
 
 ---
 

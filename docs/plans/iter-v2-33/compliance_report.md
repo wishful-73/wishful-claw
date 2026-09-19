@@ -124,3 +124,147 @@
 - 上轮 3 项 ❌ 已全部处置到位（❌-2/❌-3 直接修入；❌-1 因需求原文自相矛盾而合规转为待裁定项 V4，plan 内部已用条件式 + 分支附注消解矛盾），7 项 ⚠️ 全部采纳并落纸（其中 ⚠️-1~4、7 为方案性采纳，⚠️-5/6 为行号与契约同步采纳）。
 - 新增 2 条提示级问题（plan:34 引证偏松、口径 A 的 tail 边界断言可再补），均不阻断。
 - **最终判定：PASS**。修订版 plan 消除了首轮全部阻断项且未引入新硬伤，可进入用户确认环节（V4 口径 A/R 仍需老大拍板，V1/V2/V3 按 plan 暂取值执行）。
+
+---
+
+## 五、S-87 ~ S-94 规划验证（第二轮 plan）
+
+- 被审文档：docs/plans/iter-v2-33/plan.md（全迭代版）
+- 需求基准：docs/plans/iter-v2-33/raw-requirements.md 第 11–622 行（S-87 ~ S-94 各节，含「待裁定」）
+- 规范基准：AGENTS.md（7 层单向依赖 / AOT / 大文件拆分 / 命名）、docs/dev-workflow.md（阶段二·三）
+- 审查者：独立 subagent（architect-reviewer）
+- 日期：2026-09-19
+- 结论：**FAIL（1 个 ❌）**
+
+> 审查方式：plan 逐节与 raw 对读；plan 引用的**每一处 `文件:行`** 均回源码实读核对（grep -n 取权威行号）；可行性项逐个落地核实（测试工程骨架、sln、InternalsVisibleTo、JSON 源生成上下文、DbClient/DbCronRunTools 契约、既有可见性回归套件与金样）。所有行号均为 2026-09-19 实读，非推测。
+
+| # | 检查项 | 结论 | 证据 / 说明 |
+|---|---|---|---|
+| 1 | 覆盖度：S-87 四项能力（创建/查看/修改/执行记录） | ✅ | 创建/查看/修改 = 步骤 1 放宽 `CronAdd/Create/Update/List` 可见性；执行记录 = 步骤 2 新增 `CronRuns`。raw §63「执行记录是独立缺口」被单列步骤承接。待裁定 3/4 由 V1/V2 承接，待裁定 1（渠道）已在 raw 定案并被步骤 1 记档 |
+| 2 | 覆盖度：S-88 匹配修复 + 可诊断性 | ✅ | 步骤 1（真 glob）= raw §151；步骤 2（零命中区分「真没有 / 被模式筛空」）= raw §153；步骤 3 回归 = 配套；步骤 4 同族复核 = raw §157-158 |
+| 3 | 覆盖度：S-89 主修 + 可诊断性 + 可选补跑 | ✅ | 步骤 1 = raw §264 主修（下沉到 `runSidecarTextRequest`，`4` 个调用点同时受益，实读确认调用点为 `memory-automation-utils.ts:409` / `memory-automation-internal.ts:192`·`:217` / `generate-title.ts:245`）；步骤 2 = raw §265；步骤 4 = raw §266（nightly 补跑，记档不修） |
+| 4 | 覆盖度：S-90 两 tab + 内滚处置 | ✅ | 步骤 1（页内自建 tab，抄 `ProviderPanel.tsx` 先例）= raw 待裁定 1；步骤 2（去 `max-h-64`）= 待裁定 2；步骤 3/4 = 锚点与 locale 配套 |
+| 5 | 覆盖度：S-91 裁定 A + 五项待裁定 | ✅ | 裁定 A 落步骤 3；待裁定 1（daily 去向）、2（呈现形态）、3（分工）、4（三处路径）、5（死字段/孤儿 key）分别由步骤 3/4/6 与 V4 承接；勘测对 raw 的三处纠正均以 Plan 为准且核对属实 |
+| 6 | 覆盖度：S-92 缺陷一 + 缺陷二 | ⚠️ | 缺陷一（方案 2 剥块）落步骤 1-2；缺陷二按 V7 暂不定案（raw §480 同口径）。**raw §524 第三条待裁定「是否把召回开放成 agent 可显式调用的工具」在 plan 与 V1~V7 中均无承接** —— 遗漏（见 ⚠️-1） |
+| 7 | 覆盖度：S-93 两链合并 | ✅ | 步骤 1（补 `workingFolder`）+ 步骤 2（phase2 写 DB）+ 步骤 3（去重）= V5 的两条硬缺口；步骤 4 记档 S-89 关系 |
+| 8 | 覆盖度：S-94 修法 ①②③ | ✅ | 步骤 1 = ①，步骤 2 = ②，③按 V6 明确不做；与 raw §618 倾向一致 |
+| 9 | 落点真实性（重点） | ⚠️ | 全部 C#/TS 行号实读核对，**绝大多数属实**（见「行号核对汇总」）；**2 处错引**：`DbCronRunTools` 的 `List` 实为 `:115`（plan 写 `:168`，那是 SQL 行）、`OrganizationTarget` 接口实为 `memory-organization.ts:100`（plan 写 `:105`，那是 `sshConnectionId` 字段行） |
+| 10 | 可行性：S-88 新建回归套件 | ✅ | 可落地，落地清单见下；`MatchesFileName` 现为 `private static`（`GrepTool.cs:397`），改 `internal static` + `InternalsVisibleTo` 即可被新套件调用；`GrepTool` 为 `public sealed class` |
+| 11 | 可行性：S-87 执行侧「首选直连 DbCronRunTools」 | ❌ | **首选路径有副作用与契约错配**：`DbCronRunTools.List` 在只读名义下会执行 `UPDATE cron_runs SET status='aborted' WHERE status='running'`（`DbCronRunTools.cs:148-162`），仅当传入 `activeRunIds` 时才加 `NOT IN` 排除；Agent 层（Worker 内）拿不到 Main/渲染端的活跃 runId ⇒ **任何在用 cron 运行会被误标 aborted**。且参数名不符（工具参数 `jobId` vs `List` 期望 `cronId`，`DbCronRunTools.cs:121`）。见 ❌-1 |
+| 12 | 可行性：S-89 加 `sessionId?` 形参 | ✅ | `buildSidecarAgentRunRequest` 签名已含 `sessionId?: string`（`sidecar-mapping.ts:204`）并在 `:306` 透传；给 `runSidecarTextRequest` 加**可选**形参是向后兼容改动，**4 个调用点无需同改**（缺省走合成常量） |
+| 13 | 可行性：S-91 新增 `memory/entries` | ✅ | 复用类型已在 JSON 源生成上下文注册：`WishfulClawJsonContext.cs:87-89`（`MemoryEntryRow` / `List<MemoryEntryRow>` / `MemoryEntriesByStatusResponse`）⇒ **无需改 JSON 源生成**（plan 判断正确）；注册写法 = `MemoryModule.cs:30` 旁 `context.Register("memory/entries", MemoryEntries)` |
+| 14 | 可行性：S-93 插入前去重 | ⚠️ | 可做，但 plan 未指明**「取同 scope 已有条目」用哪个调用**（`memorySearch` / `memoryEntriesByStatus` / 新建 `memoryEntries` 三者皆可），实施者需自行拍板；`memory-automation-internal.ts` 现有依赖面需确认可引渲染端 helper（见 ⚠️-7） |
+| 15 | 验证检查点：可执行、有硬证据 | ⚠️ | 编译命令（`dotnet build` / 三配置 `tsc`）、套件退出码、真机现象均写明，无「应该没问题」式空话。但 S-87 两处「断言」**未指定落点的套件**（见 ⚠️-2） |
+| 16 | 分层与规范：改动落层 / 逆向依赖 | ✅ | S-88/S-92 落 Agent；S-94 落 Workspace；S-91 落 Worker+renderer；S-89/S-90/S-93 落 renderer。**无逆向依赖**：S-87 Agent 引用 Infrastructure（`DbCronRunTools`）合符 AGENTS.md「Agent 依赖 Infrastructure」；`MemoryModule` 仍只在 Worker |
+| 17 | AOT 规范 | ✅ | S-91 复用已注册的具名类型；S-87 返回 Infrastructure 既有序列化类型；无匿名类型序列化、无反射 |
+| 18 | 大文件红线（>500 行） | ⚠️ | 实读行数：`MemorySettingsPanel.tsx = 520`、`ProjectArchivePage.tsx = 596`、`memory-organization.ts = 580` —— **三处均超 AGENTS.md「超过 500 行必须拆分」**，plan 既未拆分也未给豁免说明（`MemoryModule.cs` 450、`MemoryFtsService.cs` 133、`GrepTool.cs` 432 未超） |
+| 19 | 待裁定项完备性（V1~V7） | ⚠️ | V1↔S-87#3、V2↔S-87#4、V3↔S-89 口径、V4↔S-91#、V5↔S-93、V6↔S-94、V7↔S-92 缺陷二，**覆盖正确且暂取值与 raw 倾向一致**；唯一缺口是 raw §524 S-92 第三条待裁定（同 ⚠️-1） |
+| 20 | 遗漏与矛盾 | ⚠️ | 内部无明显自相矛盾；三处小瑕：S-91 步骤 3 引用不存在的「步骤 0」、S-87 步骤 2 把「直连 DB」与「`:45-48` op 映射」并列（互斥接线）、「涉及文件」清单不全（见 ⚠️-5/⚠️-6） |
+| 21 | 实施顺序 | ✅ | S-88→S-92→S-94→S-87→S-89→S-90→S-91→S-93 的理由链自洽：同链修复先行（S-92 是 S-93/S-94 的前置口径）、S-90 页面结构先于 S-91、S-89（热记忆→DB 通道）先于 S-93 |
+
+### ❌ 阻断项
+
+**❌-1：S-87 步骤 2「执行侧首选直连 `DbCronRunTools.List`」不可直接照做 —— 会在只读名义下误杀在用 cron 运行，且参数名不匹配**
+
+- **问题**：plan:90 写「首选：直接复用 `Infrastructure/Db/DbCronRunTools.cs`（`:168` 的 `List`，agent 层可依赖 Infrastructure，无需为读一张 SQLite 表再开一条 reverse-request 通道）」。但实读 `DbCronRunTools.List`（**定义在 `:115`，非 `:168`**）在查询前会先执行一段**写操作**：
+  - `DbCronRunTools.cs:148-162`：`UPDATE cron_runs SET status='aborted', error=@orphanError, finished_at=@now WHERE status='running'`，**仅当 `parameters.activeRunIds` 非空**时才追加 `AND run_id NOT IN (…)`。
+  - 即：**不传 `activeRunIds` 时，该 UPDATE 会把当下每一个 `running` 行一律标成 `aborted`**。
+- **为什么 Agent 拿不到 `activeRunIds`**：该集合是 cron 执行器**内存态**（`AutomationPage.tsx:50-54` 从 `window.__cronRuntime.getActiveRunIds()` 取），属 Main/渲染侧；Agent 工具在 Worker 内执行，无从取得。⇒ 照「首选」实现后，只要用户在定时任务正在跑时让 agent 调一次 `CronRuns`，正在运行的记录会被误标 aborted，随后 `Finish`（`:60` 要求 `status='running'`）不再命中，**该次运行的状态/摘要/错误永久丢失**。
+- **附带的契约错配**：`List` 过滤键是 `cronId`（`:121`、`:166`），而 plan 给工具的形参是 `jobId`；直连需显式映射，plan 未写。
+- **结论**：「直连」不是「读一张表」那样无副作用，plan 给出的理由（去掉一条 reverse 通道）不成立。
+- **修法建议（三选一，写死即可解）**：
+  1. **改用 plan 自备的退回路径**：走 reverse-handler 新增 `cron:runs`（`AgentRuntimeCronExecutor.cs:45-48` 加 `"CronRuns" => "cron:runs"`），在 Main 侧调用时**带上 `activeRunIds`**（与 `db/cron-runs-list` 同范式，`AutomationPage.tsx:57`）—— 与 plan 已在 `:90` 记的退回方案一致，风险最低；
+  2. 若坚持 Worker 内直连：**不复用 `DbCronRunTools.List`**，改为新增一个纯只读查询（`SELECT … FROM cron_runs` + `cron_id`/`limit`），绕开 orphan 归一化写；
+  3. 若坚持复用 `List`：则必须让 Agent 侧能拿到 `activeRunIds`（新增一条反向请求取活跃集合），等于是把「直连去掉一条通道」的收益又还回去 —— 不推荐。
+- 无论选哪条，plan 都需把工具参数 `jobId` 与底层 `cronId` 的映射写进步骤。
+
+### ⚠️ 建议项
+
+- **⚠️-1（覆盖缺口）S-92 第三条待裁定未承接**：raw §524 明列「是否把『召回』开放成 agent 可显式调用的工具（目前只有自动召回一条路）」，plan 的 S-92 步骤与 V1~V7 均未涉及。建议：要么新增 V8 承接（并给暂取值，如「本刀不做、记档」），要么在 S-92 步骤 4 的记档项里显式写「不开放」。
+- **⚠️-2（验证落点）S-87 的「断言」无处可落**：plan:88/91 写「断言：`global:chat` 可见、`project:cowork` 仍可见、`project:chat` 不可见」「能列出 `cron_runs` 行、`jobId` 过滤生效」，但未指定套件。实读现有套件：`ChannelToolVisibilityRegressionTests` 与 `ProviderHeaderRegressionTests` 的可见性断言只查 **`direct` 集（`scope ∧ IsCore`）**（`ChannelToolVisibilityRegressionTests/Program.cs:204`、`VisibilitySnapshot.cs:92-116`），而 cron 工具**非 `IsCore`**（`CronToolProvider` 未传 `isCore`，`ToolDefinitionPlaceholder` 默认 `false`）⇒ 放宽 `visibleScopes` 后 cron 只进 `use_capability` 代理，**不进 `direct`**，也不会改动金样 `visibility-snapshot.expected.txt`（实读该文件仅 16 行，无 `Cron*`）。**结论：金样无需重生成（属正确判断），但 plan 所述断言当前没有承载套件** —— 建议明确把「cron 类别在 `global:chat`/`global:channel` 的代理可达性」写进 `ChannelToolVisibilityRegressionTests`（或 `ToolDeclarationChecks`），否则该验证只有人工 `tsc`/编译证据。**同时提醒**：plan 应显式声明「金样不受影响、无需重生」，避免实施者看到可见性改动就去盲改金样（iter-30/31 已有「金样只能证明行为没变、发现不了漏改」的教训）。
+- **⚠️-3（行号错引）2 处，须修正**：
+  - `DbCronRunTools` 的 `List`：plan 写 `:168` → 实为 **`:115`**（`:168` 是 SQL 拼接行）。
+  - `OrganizationTarget`：plan S-93 步骤 1 写 `memory-organization.ts:105` → 接口声明在 **`:100`**（`:105` 是 `sshConnectionId?` 字段）。
+- **⚠️-4（大文件红线）三处 >500 行未处置**：`MemorySettingsPanel.tsx`（520 行，S-90 还要加 tab bar）、`ProjectArchivePage.tsx`（596 行）、`memory-organization.ts`（580 行，S-89 步骤 2 要改）。AGENTS.md 硬规则「超过 500 行必须拆分」。`ProjectArchivePage` 因步骤 4 删 daily 可能净减，但仍超线。建议：至少在 plan 里给一句「本次不拆 / 或拆分落点」，别默认无视红线（`MemorySettingsPanel` 的拆分可参考其文档注释第 5 条例外，但需说明）。
+- **⚠️-5（涉及文件不全）**：
+  - S-88：还需改 `src/runtime/WishfulClaw.Agent/WishfulClaw.Agent.csproj`（追加 `<InternalsVisibleTo Include="WishfulClaw.GrepPatternRegressionTests" />`，现 `:17-24` 列 6 条）与 `tests/WishfulClaw.Tests.sln`（新增 Project 项 + 12 行 `ProjectConfigurationPlatforms`）；plan 只列了新测试目录与 `GrepTool.cs`。
+  - S-89：步骤 3（口径订正）要改 `provider-payload.ts:19` 与 `chat-store/index.ts:397-401` 的注释 —— 均在「涉及文件」清单外。
+  - S-92：新增纯函数 `StripInjectedBlocks` 的**落点文件**未指定（plan 只说「放 Agent 层」）。
+- **⚠️-6（表述/冗余）**：S-91 步骤 3 引用「步骤 0」不存在（S-91 步骤为 1~6）；SSH scope 构造建议不要渲染端自拼 `project:ssh:{…}`，而是照 `memoryEntriesByStatus` 的既有范式传 `scope='project'` + `projectId`/`workingFolder`/`sshConnectionId`，由 Worker `GetScope`（`MemoryModule.cs:358-393`）解析 —— 与 `memory-helpers.ts:219-235` 一致，少一处易错分支。S-87 步骤 2 同段并置「直连 DB」与「`:45-48` op 映射」两种**互斥**接线，建议按 ❌-1 的结论二选一写死。
+- **⚠️-7（去重调用未写死）**：S-93 步骤 3 的「取同 scope 已有条目」需指定调用（推荐新建的 `memoryEntries` 或既有 `memoryEntriesByStatus`）；`paragraphStillPresent`（`memory-organization.ts:178`）只是**字符串包含**范式，不等于能取到 DB 现有行。另需确认 `memory-automation-internal.ts` 的 `runPhase2ForRoot` 引入渲染端 helper 后不破坏其现有依赖面。
+
+### 行号核对汇总
+
+（plan 引用 → 实读结果；未标错者均为 ✅）
+
+- `GrepTool.cs:397-425`（`MatchesFileName` 定义 `:397`，`StartsWith("*.")` 在 `:411`、`pattern[1..]` 在 `:415`）→ ✅；`:343-393`（`EnumerateSearchableFiles`）→ ✅；`:263-269`（`No matches found.` 在 `:267`）→ ✅；`:353`（`SearchFilter.IsExcluded`）→ ✅；`GlobTool.cs` **无** `MatchesFileName`（仅共用 `SearchFilter.IsExcluded`，`GlobTool.cs:205`）→ plan「不共用」结论 ✅。
+- `AgentLoop.MemoryRecall.cs:33-36`（`conversation.Where(...).LastOrDefault()`）→ ✅；`AgentLoop.cs:16`（`OpenClaw.net: TryInjectRecallAsync (iteration 7)`）→ ✅；`:247`（`InjectTransientPrefix`）→ ✅；`:333-335`（`if (iteration == 1)` / recall 调用）→ ✅；`AgentLoop.Helpers.cs:297-351`（`InjectTransientPrefix` 定义）→ ✅；`:315-319`（`PendingMemoryRecall` 消费点）→ ✅；`MemoryRecallQueryRefiner.cs:41`（`ExtractVariants(maxVariants=4)`，实为 Workspace 层 `Memory/MemoryRecallQueryRefiner.cs`）→ ✅；「全仓无现成剥块辅助」→ ✅。
+- `MemoryFtsService.cs:41-42`（`q = query.Trim()` / `BuildFtsLiteralQuery`）→ ✅；`:85`（LIKE fallback 门控）→ ✅；`:107-127`（`RowToResult(…, hasScore)`）→ ✅；`MemoryRecallService.cs:199-205`（`PassesThreshold`）→ ✅。
+- `CronToolProvider.cs:36/43/56/63/70/77`（六处 `visibleScopes: WorkRunsOnly`）→ ✅；`AgentRuntimeCronExecutor.cs:26`（工具名单）/`:36`（`RequiresApproval`）/`:45-48`（op 映射）→ ✅；`ToolVisibilityScopes.GlobalSideAndWorkRuns = ["global:*@*","*:cowork@*"]`（`WishfulClaw.Core/Tools/ToolVisibilityScopes.cs:39`）、`WorkRunsOnly = ["*:cowork@*"]`（`:32`）→ ✅；`AgentRunContextPolicy.cs:53-57`（global⇒chat）→ ✅。
+- `DbCronRunTools.cs` 的 `List` → **`:115`（plan 写 `:168`，错）**；orphan 写见 `:148-162`；过滤键 `cronId` 见 `:121`；`db/cron-runs-list` 注册在 `DbModule.cs:183`。
+- `MemoryModule.cs:30`（`context.Register("memory/entries-by-status",…)`）/`:140`（`INSERT INTO memory_entries`）/`:288-289`（空 status 返回空）/`:305-309`（`SELECT … entries-by-status`）/`:368-371`（SSH `GetScope` 分支）→ ✅；`WishfulClawJsonContext.cs:87-89` → ✅；`DbClient.cs:275-284`（`memory_entries` 建表，无唯一索引）→ ✅。
+- `agent-bridge-streaming.ts:254-274`（`runSidecarTextRequest`，`buildSidecarAgentRunRequest` 调用在 `:265-274`，未传 `sessionId`）→ ✅；`sidecar-mapping.ts:204`（`sessionId?: string`）/`:306`（透传）→ ✅；S-89 四个调用点 `memory-automation-utils.ts:409` / `memory-automation-internal.ts:192`·`:217` / `generate-title.ts:245` → ✅。
+- `memory-organization.ts:51`（`error?: string | null`）→ ✅；`:329-335`（catch + `llm_unavailable`）→ ✅；`:259`（`memoryAppend` 调用）→ ✅；`:178`（`paragraphStillPresent`）→ ✅；`OrganizationTarget` 接口 → **`:100`（plan 写 `:105`，错）**。
+- `memory-automation-internal.ts:333`（`evidence: { writtenItems: … }`）→ ✅；plan 写的「约 `:319`」（写文件之后/`recordEntry` 之前）→ 实读 `:315-320` 区间，✅（「约」可接受）。
+- `memory-helpers.ts:116-132`（`memoryAppend` 签名）→ ✅；`memoryEntriesByStatus` 在 `:219-235`（`status` 必填，非空 `scope='all'` 语义）→ ✅；`shared/memory-automation-types.ts:74-80`（`MemoryRootDescriptor` 无 `workingFolder`）→ ✅；`DbCronRunTools`/`MemoryEntryRow` 相关类型 ✓。
+- `MemorySettingsPanel.tsx:147`（容器 `mx-auto max-w-4xl`）→ ✅；`:424-478`（`sec-memory-execution-log`）→ ✅；`:432`（`max-h-64`）→ ✅；`SettingsPage.tsx:53-57`（`MEMORY_ANCHORS`）→ ✅；`:214`（`SectionAnchorNav`）→ ✅。
+- `ProjectArchivePage.tsx:44-48`（`MEMORY_TABS`）/`:68-76`（`dailyFile`）/`:102-105`（`dailyPath`）/`:148-177`（`loadDailyFile`）/`:252`·`:591`（dormant 注释）/`:257`·`:260`·`:283-289`·`:298-299`（save/reset/reload daily 分支）/`:450`（tab 判定）/`:510-516`（编辑区分支）→ ✅；`project-archive-helpers.ts:6`（`ArchiveTabId`）/`:56-60`（`DEFAULT_DAILY_TEMPLATE`）→ ✅；`memory-files.ts:108/133/160`（daily 三函数）→ ✅；其消费方 `memory-snapshot.ts:145-148`（非档案页）→ ✅（plan 对 raw 的纠正成立）。
+- `locales/zh|en/chat.json:1044`（`tabs.daily`）/`:1046`（`tabs.dormant` 孤儿 key）→ ✅；`settings.json` 的 `memoryPage`（zh `:1542`/en `:1403`）与 `usage.tabs.*` 先例（zh `:1651`/en `:1512`）存在 → ✅；`AutomationPage.tsx:57`（`db/cron-runs-list`）→ ✅。
+- `WishfulClaw.Agent.csproj:17-23`（`InternalsVisibleTo` 6 条，实为 `:17-24`）→ ✅。
+
+### S-88 落地清单（复验用）
+
+新增回归套件需 **4 处动作**，缺一即不编译/不生效：
+1. 新建 `tests/WishfulClaw.GrepPatternRegressionTests/WishfulClaw.GrepPatternRegressionTests.csproj`（照 `tests/WishfulClaw.MemoryRecallRegressionTests/*.csproj`：`OutputType=Exe`、`net11.0`、`Nullable`、ProjectReference 到 `WishfulClaw.Agent`（+ 如需要 Infrastructure/Workspace））。
+2. 新建 `tests/WishfulClaw.GrepPatternRegressionTests/Program.cs`（`internal static class Program` + `Main()` 返回 0/1 的断言范式）。
+3. 在 `src/runtime/WishfulClaw.Agent/WishfulClaw.Agent.csproj` 的 `InternalsVisibleTo` ItemGroup 追加 `WishfulClaw.GrepPatternRegressionTests`。
+4. 在 `tests/WishfulClaw.Tests.sln` 追加 Project 项（新 GUID）**并**补齐 12 行 `ProjectConfigurationPlatforms`（Debug/Release × Any CPU/x64/x86 各 ActiveCfg+Build）。**不需要**改 `src/runtime/WishfulClaw.sln`。
+> 另：`MatchesFileName` 需由 `private static` 改 `internal static`（步骤 3 已写明，✅）。
+
+### 复验结论
+
+- 阻断规则：❌ > 0 禁止进入用户确认环节。**本轮 ❌ = 1**（S-87 执行侧「直连 `DbCronRunTools.List`」的首选路径含误杀在用运行的副作用 + 参数名错配）。
+- **最终判定：FAIL**。须先把 ❌-1 二选一写死（推荐改走 plan 自备的 `cron:runs` reverse 路径并带 `activeRunIds`），并把 ⚠️-3 的两处行号、⚠️-1 的漏项、⚠️-2 的断言落点补进 plan。
+- 其余 20 项检查中，覆盖度（除 S-92 一项）、分层依赖、AOT、实施顺序均为 ✅；S-88/S-89/S-91 三项可行性经源码核实为**可落地**（含具体清单与结论）。
+- 修掉上列后即可复验（预计仅需针对 S-87 步骤 2 与三处文档项重读，不需重跑全量）。
+---
+
+## 六、复验（第二轮 plan 修订后）
+
+- 被审文档：docs/plans/iter-v2-33/plan.md（修订版）
+- 审查者：独立 subagent（architect-reviewer）
+- 日期：2026-09-19
+- 结论：**PASS（0 个 ❌；1 个 ⚠️ 残余）**
+
+> 复验方式：只针对 §五 的 1 个 ❌ + 7 个 ⚠️ 逐条回源码实读核对（未重跑全量）。所有行号为 2026-09-19 实读。修订版 plan 已消除唯一的阻断项，7 个 ⚠️ 中 6 个处置到位、1 个仅部分处置（均非阻断）。
+
+| # | 复验项 | 结论 | 证据 |
+|---|---|---|---|
+| 1 | ❌-1（关键）S-87 步骤 2 执行侧改法：新增纯只读 `ListReadOnly` + Agent 直调 + `jobId`→`cronId` 映射 + 不经 `AgentRuntimeCronExecutor` | ✅ | **逐条回源码核实全部属实**：`DbCronRunTools.List` 定义在 **`:115`**（plan:94 写 `:115` 且显式注明「不是 `:168`，`:168` 是 SQL 拼接行」）；orphan 写 `UPDATE cron_runs SET status='aborted' … WHERE status='running'` 在 **`:148-162`**，`NOT IN` 仅当 `activeRunIds` 非空才拼（`:151-161`）；过滤键 `cronId` 在 **`:121`** 与 **`:166`**；helper `RequireString`/`GetString`/`GetInt`/`GetLong` 均在（`:182-195`，新方法可复用）；返回类型 `WorkerResponse.Json` ✅。`cron-runtime.ts` 的 `activeRunIds` Set 在 **`:27`**、`getActiveRunIds()` 在 **`:41`** ✅。`AutomationPage.tsx` 的 `window.__cronRuntime.getActiveRunIds` 在 **`:51-54`**、`db/cron-runs-list` 调用在 **`:57`** ✅。`CronRunLock`（`cron-execution-coordinator.ts:6-38`）**以 `jobId` 为键、不含 runId** ✅。`handleCronReverseRequest`（`cron-reverse-handler.ts:731-757`）**无 `cron:runs`**（switch 仅 add/update/delete/toggle/list/run-now/run-complete）✅。`channels.ts:218` `CRON_RUNS='cron:runs'` 存在且 `registerCronHandlers`（`:697-705`）**未注册** ⇒ 确无 handler ✅。`ToolDispatchRouter.cs:329` 确为 `IsCronTool` 分支（`:329-343`），另加直连分支可行 ✅。**可行性成立**：Agent 直调 Infrastructure `Db*Tools` 有先例 —— `GoalProgressTool.cs:56-65` 以 `parameters` 直调 `DbGoalPlanTaskRoundTools.InsertPlanTask`；`GoalOrchestratorMaterialize.cs:244` 用 `DbClient.GetClient(parameters)`；WorkerResponse→工具输出串的转换先例见「实施注意」 |
+| 2 | ⚠️-1 V8 承接 raw §524 | ✅ | plan:40 新增 **V8**（「S-92 第三条待裁定：是否把『召回』开放成 agent 可显式调用的工具」→ 暂取「本刀不做，记档」，出处 raw §524）；plan:70（S-92 步骤 4 ③）再次引用 V8。漏项已补 |
+| 3 | ⚠️-2 S-87 断言落点 + 金样声明；`ChannelToolVisibilityRegressionTests` 是否合适 | ✅ | plan:91 写明落点 = `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/Program.cs`，plan:92 声明金样 `visibility-snapshot.expected.txt` **无需重生成**。**套件合适**：`Program.cs:290-291` 的 `Allowed(...)`= `AgentRunContextPolicy.IsToolAllowed(runContext, name, registry, channelSession:true)`（代理可达性口径）可直接承载 cron 断言；套件已有 `registry.IsAvailableInMode`（`:157`）与自建 `ToolRegistry`（`:239-276`，含 `new CronToolProvider()`）范式。金样核验：`tests/WishfulClaw.ProviderHeaderRegressionTests/visibility-snapshot.expected.txt` **无任何 `Cron*` 行** ⇒ 「无需重生成」属实 |
+| 4 | ⚠️-3 两处行号修正、且不再残留旧错引 | ✅ | plan:94 更正为 `DbCronRunTools.cs:115`；plan:166 更正为 `memory-organization.ts:100`。源码核对：`memory-organization.ts:100` = `interface OrganizationTarget`、`:105` = `sshConnectionId?: string \| null` ✅。**旧号 `:168` / `:105` 仅作为显式否定出现**（「不是 `:168`…」「不是 `:105`…」），非残留错引。留意：plan:160 的 `MemoryAppendTool.cs:105` 是**另一个文件**（该行确为 `INSERT INTO memory_entries`，实读属实），不是残留错引 |
+| 5 | ⚠️-4 三个 >500 行文件的拆分/豁免 | ⚠️ | 行数实读：`MemorySettingsPanel.tsx=520`、`ProjectArchivePage.tsx=596`、`memory-organization.ts=580`（均 >500）。前两者已处置：plan:128 拆出 `components/settings/MemoryExecutionLogSection.tsx`（抽出后 ≈465 行）；plan:150 拆出 `components/chat/ProjectMemoryLibraryTab.tsx`。**但 `memory-organization.ts`（580 行、S-89 步骤 2 还要改 `:329-335`）全文无拆分/豁免说明** ⇒ 仍留 1 处缺口（非阻断） |
+| 6 | ⚠️-5 涉及文件清单补全 | ✅ | plan:196 `WishfulClaw.Agent.csproj`；plan:216 `tests/WishfulClaw.Tests.sln`；plan:207 `provider-payload.ts` + `chat-store/index.ts`；`StripInjectedBlocks` 落点在 plan:63 与 plan:197（`AgentLoop.MemoryRecall.cs`）；新拆组件 plan:210 / plan:212。5 项缺项全部补齐 |
+| 7 | ⚠️-6 / ⚠️-7「步骤 0」失引、SSH scope 范式、S-87 二选一、S-93 去重调用 | ✅ | 「步骤 0」已消失，plan:149 改引「照上文『勘测修正』第 3 条」；SSH scope 范式写死（plan:142 勘测修正第 3 条 + plan:149：**不自拼 `project:ssh:{…}`**，传 `scope='project'`+`projectId`/`workingFolder`/`sshConnectionId`，由 Worker `GetScope` 解析）；S-87 执行侧**唯一路径**写死（plan:94-96：新增 `ListReadOnly` 直连，不经 reverse / 不经 op 映射）；S-93 去重调用写死（plan:172 用 `memoryEntries(scope, …)`，明确不用 `memoryEntriesByStatus`）+ 比对口径（plan:173） |
+| 8 | 新增回归检查：修订是否引入新问题 | ✅ | ① `CronRuns` 不在 `AgentRuntimeCronExecutor.CronToolNames`（`:24-27` 六项）⇒ 与 `IsCronTool` 无冲突；② `RequiresApproval`（`:36-37`）仅 `CronAdd/Create/Update`，且 default-mode 审批集 `DefaultModeApprovalTools`（`ToolCallProcessor.Approval.cs:49-57`）不含 `CronRuns` ⇒ **不会被误拦**；③ 可见性放宽**不破坏既有断言**：`ChannelToolVisibilityRegressionTests` 的 `OverExposureTools`（含 CronAdd/Create/Update，`:42-48`）只在 `direct`（scope ∧ IsCore）集断言不可见（`:144`/`:204`），cron 非 IsCore ⇒ 只进代理、不进 `direct`；`CronRegressionTests.cs:96` 只断言六项存在、不断言缺 CronRuns；④ 新增直调方法**无需注册 Worker op**（in-process 直调），plan 判断正确；⑤ 命名 `ListReadOnly` 与本文件 terse 风格（Start/Finish/Get/List）略异但无冲突（详见「新引入问题」） |
+
+### 仍未解决
+
+- **⚠️-4 残余（非阻断）**：`memory-organization.ts` 实读 **580 行**（>500 红线），S-89 步骤 2 仍要改它，修订版 plan 未给拆分落点或豁免说明。建议补一句处置（如抽出 `paragraphStillPresent`/错误诊断等纯函数到同目录小模块，或显式声明豁免并给理由）。
+
+### 新引入问题
+
+- 无阻断项、无新的 ❌。两条非阻断提示：
+  1. **（提示）`ListReadOnly` 命名与文件风格略异**：`DbCronRunTools` 现有方法为 `Start/Finish/Get/List`（动词式），`ListReadOnly` 为「动词+限定」，全仓 `*/Db/*.cs` 无同名范式。不冲突，但若求一致可考虑 `ListSafe` / `Query`；实施时按 plan 原样命名亦可。
+  2. **（提示）`ListReadOnly` 的返回类型/转串方式未写死**：plan:95 只说「只 `SELECT …`」，未指明返回值沿用 `WorkerResponse.Json(...)` 还是直接返回行列表。**可行**（先例见下），但建议在步骤 2 里写死以省实施推断。
+
+### 实施注意（供执行阶段照抄的结论）
+
+1. **Agent 直调 Infrastructure `Db*Tools` 的可行性 = 已确证**，两个可照抄的先例：
+   - **调用侧**：`GoalProgressTool.cs:56-65` —— 拿 `var parameters = state.Parameters;` 后直调 `DbGoalPlanTaskRoundTools.InsertPlanTask(parameters, …)`；Db 侧方法（`DbGoalPlanTaskRoundTools.cs:105-107`）入参即 `JsonElement parameters`，内部 `DbClient.EnsureInitialized/GetClient(parameters)`。`DbCronRunTools.ListReadOnly(JsonElement parameters)` 照此形状即可。
+   - **转工具输出串**：若 `ListReadOnly` 沿用 `WorkerResponse.Json(rows, InfrastructureJsonContext.Default.ListCronRunRow)`（与 `List` 的 `:173` 同一类型），Agent 侧转串照抄 `AgentRuntimeGlobalTaskExecutor.cs:451-458` 的 `ForwardDbResult(WorkerResponse response)`：`JsonDocument.Parse(response.ToJsonBytes(null))` → 取 `root.GetProperty("result").GetRawText()`；错误分支对齐 `ToolDispatchRouter.cs:340` 的 `$"Cron tool execution failed: {ex.Message}"` 范式（`isToolError=true`）。若改为直接返回行列表，则照 `GoalProgressTool.EncodeOk`（`:88-100`）手写 JSON 输出。
+2. **S-87 步骤 1 断言落点**：写进 `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/Program.cs`，用其既有 `AgentRunContextPolicy.IsToolAllowed(..., channelSession:true)`（`Allowed`，`:290`）断言 cron 六项的代理可达性；**project:chat 不可达**一条需另造一个 project run 上下文（套件现仅建 channel/global 上下文，`:69-70`），其余范式可直接复用。**不要碰 `visibility-snapshot.expected.txt`**（无 Cron 行）。
+3. **S-87 执行侧 = 唯一路径**：新增 `DbCronRunTools.ListReadOnly`（纯读，无 orphan 写、无 `activeRunIds` 依赖）+ `ToolDispatchRouter` 另加直连分支；**不改** `AgentRuntimeCronExecutor`（含 `RequiresApproval` 与 `CronToolNames` 六项），**不接线** `channels.ts:218` 的 `CRON_RUNS`。参数 `jobId` 在直连分支内显式映射为底层 `cronId`（`:121`/`:166`）。
+4. **S-93 去重**：用 S-91 新建的 `memoryEntries(scope, …)` 取同 scope 全量（**不要**用 `memoryEntriesByStatus`，空 status 返回空），再按归一化文本做包含判断。
+5. **⚠️-4 收尾**：补 `memory-organization.ts`（580 行）的拆分/豁免处置。

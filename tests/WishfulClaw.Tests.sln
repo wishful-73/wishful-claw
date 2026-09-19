@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -34,6 +34,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.SessionTaskCascadeRegressionTests", "WishfulClaw.SessionTaskCascadeRegressionTests\WishfulClaw.SessionTaskCascadeRegressionTests.csproj", "{14F5B3D5-80FD-40C0-9565-B21B1D3A8771}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.ToolConcurrencyRegressionTests", "WishfulClaw.ToolConcurrencyRegressionTests\WishfulClaw.ToolConcurrencyRegressionTests.csproj", "{5B5DDCBE-49A3-4D8A-95DC-56863511FF46}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.GrepPatternRegressionTests", "WishfulClaw.GrepPatternRegressionTests\WishfulClaw.GrepPatternRegressionTests.csproj", "{B2C0F992-C0D5-40CC-B061-634F1D7A897B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -237,6 +239,18 @@ Global
 		{5B5DDCBE-49A3-4D8A-95DC-56863511FF46}.Release|x64.Build.0 = Release|Any CPU
 		{5B5DDCBE-49A3-4D8A-95DC-56863511FF46}.Release|x86.ActiveCfg = Release|Any CPU
 		{5B5DDCBE-49A3-4D8A-95DC-56863511FF46}.Release|x86.Build.0 = Release|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Debug|x64.Build.0 = Debug|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Debug|x86.Build.0 = Debug|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Release|x64.ActiveCfg = Release|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Release|x64.Build.0 = Release|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Release|x86.ActiveCfg = Release|Any CPU
+		{B2C0F992-C0D5-40CC-B061-634F1D7A897B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

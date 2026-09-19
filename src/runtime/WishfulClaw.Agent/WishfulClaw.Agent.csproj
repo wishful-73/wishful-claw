@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net11.0</TargetFramework>
@@ -21,6 +21,7 @@
     <InternalsVisibleTo Include="WishfulClaw.ChannelToolVisibilityRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.ChannelShellApprovalRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.ProviderHeaderRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.GrepPatternRegressionTests" />
   </ItemGroup>
 
 </Project>

@@ -144,9 +144,11 @@ public sealed class GrepTool : IToolExecutor
 
             var totalChars = 0;
 
+            var stats = new FileEnumerationStats();
 
 
-            foreach (var file in EnumerateSearchableFiles(root, filePattern, excludeDirs))
+
+            foreach (var file in EnumerateSearchableFiles(root, filePattern, excludeDirs, stats))
 
             {
 
@@ -264,6 +266,20 @@ public sealed class GrepTool : IToolExecutor
 
             {
 
+                if (ShouldReportPatternRejected(stats.Candidates, stats.PatternRejected))
+
+                {
+
+                    return new ToolResult(
+
+                        $"No matches found. file_pattern \"{filePattern}\" rejected all {stats.Candidates} candidate file(s) under {root}; " +
+
+                        "only \"*\" and \"?\" are supported as wildcards (e.g. \"*.ts*\" is not a plain suffix match).");
+
+                }
+
+
+
                 return new ToolResult("No matches found.");
 
             }
@@ -340,9 +356,13 @@ public sealed class GrepTool : IToolExecutor
 
 
 
-    private static IEnumerable<string> EnumerateSearchableFiles(string root, string filePattern, IReadOnlyList<string> excludeDirs)
+    private static IEnumerable<string> EnumerateSearchableFiles(string root, string filePattern, IReadOnlyList<string> excludeDirs, FileEnumerationStats? stats = null)
 
     {
+
+        var matchesFileName = CreateFileNameMatcher(filePattern);
+
+
 
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
 
@@ -360,11 +380,31 @@ public sealed class GrepTool : IToolExecutor
 
 
 
-            var fileName = Path.GetFileName(file);
-
-            if (!MatchesFileName(fileName, filePattern))
+            if (stats is not null)
 
             {
+
+                stats.Candidates++;
+
+            }
+
+
+
+            var fileName = Path.GetFileName(file);
+
+            if (!matchesFileName(fileName))
+
+            {
+
+                if (stats is not null)
+
+                {
+
+                    stats.PatternRejected++;
+
+                }
+
+
 
                 continue;
 
@@ -394,33 +434,159 @@ public sealed class GrepTool : IToolExecutor
 
 
 
-    private static bool MatchesFileName(string fileName, string pattern)
+    /// <summary>Test seam: matches a single file name against a file_pattern glob.</summary>
+
+    internal static bool MatchesFileName(string fileName, string pattern)
 
     {
 
-        if (pattern == "*" || string.IsNullOrEmpty(pattern))
+        return CreateFileNameMatcher(pattern)(fileName);
+
+    }
+
+
+
+    /// <summary>
+
+    /// Builds a file-name matcher for a glob-ish pattern. Supports "*" (any run of
+
+    /// characters) and "?" (single character); the legacy "*." + literal extension
+
+    /// form keeps a fast suffix-compare path. Any other wildcard form is translated
+
+    /// into an anchored regex. Previously only "*.ext" was understood, so patterns
+
+    /// such as "*.ts*" silently matched nothing.
+
+    /// </summary>
+
+    internal static Func<string, bool> CreateFileNameMatcher(string pattern)
+
+    {
+
+        if (string.IsNullOrEmpty(pattern) || pattern == "*")
 
         {
 
-            return true;
+            return static _ => true;
 
         }
 
 
 
-        if (pattern.StartsWith("*."))
+        if (pattern.IndexOfAny(WildcardChars) < 0)
 
         {
 
-            var ext = pattern[1..]; // ".cs"
-
-            return fileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase);
+            return name => name.Equals(pattern, StringComparison.OrdinalIgnoreCase);
 
         }
 
 
 
-        return fileName.Equals(pattern, StringComparison.OrdinalIgnoreCase);
+        if (pattern.Length > 2 && pattern[0] == '*' && pattern[1] == '.' && pattern.IndexOfAny(WildcardChars, 2) < 0)
+
+        {
+
+            var suffix = pattern[1..]; // ".cs"
+
+            return name => name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+
+        }
+
+
+
+        var regex = new Regex(GlobToRegex(pattern), RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        return name => regex.IsMatch(name);
+
+    }
+
+
+
+    private static string GlobToRegex(string pattern)
+
+    {
+
+        var builder = new StringBuilder("^");
+
+        foreach (var ch in pattern)
+
+        {
+
+            switch (ch)
+
+            {
+
+                case '*':
+
+                    builder.Append(".*");
+
+                    break;
+
+                case '?':
+
+                    builder.Append('.');
+
+                    break;
+
+                default:
+
+                    builder.Append(Regex.Escape(ch.ToString()));
+
+                    break;
+
+            }
+
+        }
+
+
+
+        builder.Append('$');
+
+        return builder.ToString();
+
+    }
+
+
+
+    /// <summary>
+
+    /// True when file_pattern rejected every candidate file: no content match is
+
+    /// possible, so the empty result is worth explaining instead of a bare
+
+    /// "No matches found.".
+
+    /// </summary>
+
+    internal static bool ShouldReportPatternRejected(int candidates, int rejected)
+
+    {
+
+        return candidates > 0 && rejected == candidates;
+
+    }
+
+
+
+    private static readonly char[] WildcardChars = { '*', '?' };
+
+
+
+    private sealed class FileEnumerationStats
+
+    {
+
+        /// <summary>Files that survived directory filtering and were tested against file_pattern.</summary>
+
+        public int Candidates { get; set; }
+
+
+
+        /// <summary>Files rejected by file_pattern.</summary>
+
+        public int PatternRejected { get; set; }
 
     }
 

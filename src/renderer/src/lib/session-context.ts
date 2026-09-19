@@ -14,8 +14,12 @@ interface SessionContextInput {
   scope?: SessionScope | null
   collaborationMode?: CollaborationMode | null
   permissionMode?: PermissionMode | null
-  /** 会话级「请求上下文上限」开关（iter-32 S-73），缺省关。 */
-  contextCapEnabled?: boolean | null
+  /** 会话级「请求上下文上限」（iter-32 S-73/S-84）的 token 数，0 / 缺省 = 不限制。 */
+  contextCapTokens?: number | null
+  /** 设这个上限时的模型 id；模型换了上限即作废（见 resolveSessionContextCapTokens）。 */
+  contextCapModelId?: string | null
+  /** 会话级「压缩阈值」（iter-32 S-85）的比例，0 / 缺省 = 跟随全局设置。 */
+  compressionThreshold?: number | null
   projectId?: string | null
 }
 
@@ -27,7 +31,16 @@ export const DEFAULT_SESSION_CONTEXT: SessionContextDefaults = {
 export function normalizeSessionContext(
   input: SessionContextInput,
   defaults: SessionContextDefaults = DEFAULT_SESSION_CONTEXT
-): Pick<Session, 'scope' | 'collaborationMode' | 'permissionMode' | 'contextCapEnabled' | 'projectId'> {
+): Pick<
+  Session,
+  | 'scope'
+  | 'collaborationMode'
+  | 'permissionMode'
+  | 'contextCapTokens'
+  | 'contextCapModelId'
+  | 'compressionThreshold'
+  | 'projectId'
+> {
   const scope: SessionScope =
     input.scope === 'global' || input.scope === 'project'
       ? input.scope
@@ -45,16 +58,43 @@ export function normalizeSessionContext(
       : null
   const permissionMode = requestedPermissionMode ?? defaults.coworkPermissionMode
 
-  // Request-context cap (iter-32 S-73) is opt-in per session: anything other than an
-  // explicit true means off, so existing sessions keep the model's real window.
-  const contextCapEnabled = input.contextCapEnabled === true
+  // Request-context cap (iter-32 S-73/S-84) is opt-in per session. 0 means "not set";
+  // the model id is kept alongside so a model switch invalidates the cap instead of
+  // silently carrying an old number onto a window it was never meant for.
+  const contextCapTokens =
+    typeof input.contextCapTokens === 'number' &&
+    Number.isFinite(input.contextCapTokens) &&
+    input.contextCapTokens > 0
+      ? Math.floor(input.contextCapTokens)
+      : 0
+  const contextCapModelId =
+    contextCapTokens > 0 &&
+    typeof input.contextCapModelId === 'string' &&
+    input.contextCapModelId.trim().length > 0
+      ? input.contextCapModelId.trim()
+      : null
+
+  // Session-level compression threshold (iter-32 S-85). 0 is the sentinel for "not
+  // set — follow the global setting", so an out-of-range value must fall back to 0
+  // rather than being clamped to a boundary (that would trap the user away from the
+  // follow-global option). Keep the same 0.3 ~ 0.9 window the global setting uses.
+  const requestedThreshold = input.compressionThreshold
+  const compressionThreshold =
+    typeof requestedThreshold === 'number' &&
+    Number.isFinite(requestedThreshold) &&
+    requestedThreshold >= 0.3 &&
+    requestedThreshold <= 0.9
+      ? requestedThreshold
+      : 0
 
   if (scope === 'global') {
     return {
       scope: 'global',
       collaborationMode: 'chat',
       permissionMode,
-      contextCapEnabled,
+      contextCapTokens,
+      contextCapModelId,
+      compressionThreshold,
       projectId: undefined
     }
   }
@@ -74,7 +114,9 @@ export function normalizeSessionContext(
     // Same rule as the global branch: an explicit choice always wins, otherwise the
     // shared workspace default — collaboration mode no longer changes the fallback.
     permissionMode,
-    contextCapEnabled,
+    contextCapTokens,
+    contextCapModelId,
+    compressionThreshold,
     projectId: input.projectId
   }
 }

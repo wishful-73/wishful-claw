@@ -281,7 +281,6 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
       // 渠道会话跑 YOLO（iter-31 S-59）：对面没人守着，弹审批只会把这一轮挂死。
       // 档位以会话自身为准（DB 里渠道会话默认 fullAccess，见 DbPluginSessionRouting）。
       permissionMode: session.permissionMode ?? 'fullAccess',
-      contextCapEnabled: session.contextCapEnabled,
       skipSessionRestore: session.messageCount === 0,
       maxIterations: 0,
       maxParallelTools: settings.maxParallelToolCalls,

@@ -535,8 +535,12 @@ public static partial class DbClient
             EnsureColumn("sessions", "scope", "TEXT");
             EnsureColumn("sessions", "collaboration_mode", "TEXT");
             EnsureColumn("sessions", "permission_mode", "TEXT");
-            // 会话级「请求上下文上限」开关（iter-32 S-73），0/1，缺省 0（不设上限）。
-            EnsureColumn("sessions", "context_cap_enabled", "INTEGER");
+            // 会话级「请求上下文上限」（iter-32 S-73/S-84）：token 数，0 = 不限制；
+            // model id 记它是设在哪个模型上的，换模型即作废。
+            EnsureColumn("sessions", "context_cap_tokens", "INTEGER");
+            EnsureColumn("sessions", "context_cap_model_id", "TEXT");
+            // 会话级「压缩阈值」（iter-32 S-85）：0 或 NULL = 跟随全局设置，否则是 0.3~0.9 的比例。
+            EnsureColumn("sessions", "compression_threshold", "REAL");
             EnsureCompactionSnapshotSchema();
             _db.Execute(
                 "UPDATE sessions SET scope = CASE WHEN project_id IS NULL THEN 'global' ELSE 'project' END " +

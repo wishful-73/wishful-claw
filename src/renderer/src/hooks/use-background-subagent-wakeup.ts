@@ -107,7 +107,6 @@ async function wakeSession(sessionId: string): Promise<void> {
     collaborationMode: session.collaborationMode,
     runtimeRole: 'sessionAgent',
     permissionMode: session.permissionMode,
-    contextCapEnabled: session.contextCapEnabled,
     maxIterations: 0,
     maxParallelTools: settings.maxParallelToolCalls,
     maxConcurrentSubAgents: settings.maxConcurrentSubAgents,

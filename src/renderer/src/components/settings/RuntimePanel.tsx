@@ -101,6 +101,21 @@ function RuntimePanel(): React.JSX.Element {
         </SettingHint>
       </SettingsSection>
 
+      {/* Sandbox（iter-32 S-79） */}
+      <SettingsSection
+        id="sec-runtime-sandbox"
+        title={t('general.sandbox.label')}
+        description={t('general.sandbox.desc')}
+        actions={
+          <Switch
+            checked={settings.sandboxEnabled}
+            onCheckedChange={(checked) => settings.updateSettings({ sandboxEnabled: checked })}
+          />
+        }
+      >
+        <SettingHint>{t('general.sandbox.hint')}</SettingHint>
+      </SettingsSection>
+
       {/* Session Defaults */}
       <SettingsSection
         id="sec-runtime-session-defaults"
@@ -296,21 +311,6 @@ function RuntimePanel(): React.JSX.Element {
             </div>
           </>
         )}
-      </SettingsSection>
-
-      {/* Sandbox（iter-32 S-79） */}
-      <SettingsSection
-        id="sec-runtime-sandbox"
-        title={t('general.sandbox.label')}
-        description={t('general.sandbox.desc')}
-        actions={
-          <Switch
-            checked={settings.sandboxEnabled}
-            onCheckedChange={(checked) => settings.updateSettings({ sandboxEnabled: checked })}
-          />
-        }
-      >
-        <SettingHint>{t('general.sandbox.hint')}</SettingHint>
       </SettingsSection>
 
       {/* T-3: Chat window in-memory turn window */}

@@ -20,10 +20,20 @@ public class SessionEntity
     public string? PermissionMode { get; set; }
 
     /// <summary>
-    /// 会话级「请求上下文上限」开关（1 = 开）。开启后有效窗口 = min(真实 contextLength, 256K)，
-    /// 见 AgentLoop.ApplyContextCap。0 或缺省表示不设上限。
+    /// 会话级「请求上下文上限」（iter-32 S-73，S-84 由开关改成数值），单位 token，
+    /// 0 或缺省表示不限制。只在 <see cref="ContextCapModelId"/> 与当前模型一致时生效，
+    /// 见 AgentLoop.ApplyContextCap。
     /// </summary>
-    public int ContextCapEnabled { get; set; }
+    public int ContextCapTokens { get; set; }
+
+    /// <summary>设这个上限时的模型 id；null / 空 = 没设过。换模型后上限即作废。</summary>
+    public string? ContextCapModelId { get; set; }
+
+    /// <summary>
+    /// 会话级「压缩阈值」（iter-32 S-85），0.3~0.9 的比例。0 或缺失 = 跟随全局设置。
+    /// 只剩这一段可选覆盖，模型级那个字段从没有消费方，见 S-85 的记档。
+    /// </summary>
+    public double CompressionThreshold { get; set; }
 
     public long CreatedAt { get; set; }
 
@@ -75,8 +85,12 @@ public sealed class SessionRow
     public string? Scope { get; set; }
     public string? CollaborationMode { get; set; }
     public string? PermissionMode { get; set; }
-    /// <summary>会话级「请求上下文上限」开关（iter-32 S-73），0 = 关。</summary>
-    public int ContextCapEnabled { get; set; }
+    /// <summary>会话级「请求上下文上限」（iter-32 S-84），token 数，0 = 不限制。</summary>
+    public int ContextCapTokens { get; set; }
+    /// <summary>设这个上限时的模型 id；换模型后上限作废。</summary>
+    public string? ContextCapModelId { get; set; }
+    /// <summary>会话级「压缩阈值」（iter-32 S-85），0.3~0.9；0 = 跟随全局设置。</summary>
+    public double CompressionThreshold { get; set; }
     public long CreatedAt { get; set; }
     public long UpdatedAt { get; set; }
     public int MessageCount { get; set; }
@@ -106,7 +120,9 @@ public sealed class SessionRow
     Scope = e.Scope,
     CollaborationMode = e.CollaborationMode,
     PermissionMode = e.PermissionMode,
-    ContextCapEnabled = e.ContextCapEnabled,
+    ContextCapTokens = e.ContextCapTokens,
+    ContextCapModelId = e.ContextCapModelId,
+    CompressionThreshold = e.CompressionThreshold,
     CreatedAt = e.CreatedAt,
     UpdatedAt = e.UpdatedAt,
     MessageCount = e.MessageCount,

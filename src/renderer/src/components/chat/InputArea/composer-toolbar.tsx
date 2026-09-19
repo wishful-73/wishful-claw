@@ -8,7 +8,6 @@ import { SkillsMenu } from '../SkillsMenu'
 import { CollabModeSwitcher, type CollabMode } from '../CollabModeSwitcher'
 import { ModelSwitcher } from '../ModelSwitcher'
 import { PersonaSwitcher } from '../PersonaSwitcher'
-import { ContextCapToggle } from './context-cap-toggle'
 import { ContextRing } from './context-ring'
 import { ReadOnlyModelBadge } from './badges'
 import { PermissionControl } from './permission-control'
@@ -237,12 +236,6 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
 
         {/* 右侧组是图标按钮，没有 px-2 兜底，留一点间隔免得 hover 底色块粘连 */}
         <div className="flex shrink-0 items-center gap-1">
-          <ContextRing
-            sessionId={draftSessionId}
-            onCompressContext={onCompressContext}
-            isCompressing={isContextCompressing}
-          />
-
           <ClearConversationDialog
             show={showInlineClearConversation}
             hasMessages={hasMessages}
@@ -252,7 +245,11 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
             onClearSession={onClearSession}
           />
 
-          <ContextCapToggle sessionId={draftSessionId} className={composerIconControlClass} />
+          <ContextRing
+            sessionId={draftSessionId}
+            onCompressContext={onCompressContext}
+            isCompressing={isContextCompressing}
+          />
           {showPermissionControl ? permissionControl : null}
           {sendControl}
         </div>

@@ -250,7 +250,6 @@ export function useChatActions() {
         // Permission mode is per-session and no longer forced per collaboration mode
         // (iter-31 S-59). Channel sessions land on YOLO through their own default.
         permissionMode: session.permissionMode,
-        contextCapEnabled: session.contextCapEnabled,
         ...(isChannelSession ? {
           pluginId: session.pluginId,
           pluginType: session.pluginType,

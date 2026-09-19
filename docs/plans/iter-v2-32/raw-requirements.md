@@ -2,7 +2,7 @@
 
 > 2026-09-18 建。分支 `dev/v2-iter-32`（base `main` @ `2498dcae`，v0.2.31）。
 > 本文件为权威需求文档。本迭代节奏放缓，需求**逐步积攒**，不定收口时间。
-> **已立项 12 项**：S-72 agent 运行中「发送」按钮不可用／S-73 会话级「请求上下文上限」开关／S-74 输入框底部工具栏间距过宽／S-75 聊天窗最低宽度保护／S-76 压缩片段重复显示同一个耗时与更新时间／S-77 会话 todo 面板条数累加与单条显示方式／S-78 审批弹窗正文过多时撑出弹窗／S-79 沙箱模式：工具参数的工作目录边界校验／S-80 文件写入的 BOM 处理不一致／S-81 输入框上方多条提示互相遮挡／S-82 人格选择器 trigger 与同排控件样式不一致／S-83 工具栏「提示词优化」入口换成会话级「请求上下文上限」开关。
+> **已立项 14 项**：S-72 agent 运行中「发送」按钮不可用／S-73 会话级「请求上下文上限」开关／S-74 输入框底部工具栏间距过宽／S-75 聊天窗最低宽度保护／S-76 压缩片段重复显示同一个耗时与更新时间／S-77 会话 todo 面板条数累加与单条显示方式／S-78 审批弹窗正文过多时撑出弹窗／S-79 沙箱模式：工具参数的工作目录边界校验／S-80 文件写入的 BOM 处理不一致／S-81 输入框上方多条提示互相遮挡／S-82 人格选择器 trigger 与同排控件样式不一致／S-83 工具栏「提示词优化」入口换成会话级「请求上下文上限」开关／S-84 会话级「请求上下文上限」改成可拖动数值并绑定模型／S-85 会话级「压缩阈值」加进上下文环面板。
 > 其余候选见文末「待登记」，**未点名，不擅自排入**。
 > 勘测行号均为 2026-09-18 实读。
 
@@ -726,9 +726,63 @@
 
 ### ⚠️ 机制边界（必须知道，不要以为全拦住了）
 
-沙箱校验的是**工具参数里的路径**，**不是命令字符串内部引用的路径**。`Bash` 传 `rm -rf /etc/foo`、`powershell -c "Remove-Item C:\Windows\..."` 这类，参数里根本没有路径字段，helper 无从判定 —— 本机制**拦不住**。
+沙箱校验的是**工具参数里的路径**，**不是命令字符串内部引用的路径**。
+
+`ShellExecute` 只校验三个候选 cwd（显式 cwd / 会话工作目录 / UserProfile 兜底，见 `ShellExecuteTool.Helpers.cs:18-61` 的 `ResolveCwd`）。**cwd 一旦合法，命令字符串内部完全不受约束** —— 读、写、删、网络全部照做，返回的是真数据。这不是"命令里恰好没有路径字段所以漏判"，而是**整条命令对沙箱不透明**：`rm -rf /etc/foo`、`Set-Content -Path C:\Temp\x.txt`、`python -c "..."` 一视同仁，都拦不住。
+
+（2026-09-19 修正：上一版此处的表述是「参数里根本没有路径字段，helper 无从判定」，把**全面放行**写成了**特定形态的绕过**，严重度失真。子代理实测确认：只要 cwd 合法，命令内部想碰哪里碰哪里，且拿回的是真数据而非被拦的假象。）
+
+所以本机制的定位是：**约束文件与搜索类工具的路径参数**（`Read` / `Write` / `Edit` / `List` / `Glob` / `Grep` 等走 `ToolHelpers` 的工具），**不构成进程级隔离**。命名保留「沙箱模式」不改 —— 它描述的是这个模式，不是承诺一个真沙箱；但**文案与文档都必须把边界说清**，不能让人以为开了就安全。
 
 要拦这一层只能靠 OS 级隔离（job object / 容器 / 受限用户），不在本迭代范围，也无现成设计。老大的原始口径就是「在工具执行给参数的统一地方，对参数进行验证」，本条按此落地，边界如实记录。
+
+### 与权限档（YOLO）正交，不要混谈（老大 2026-09-19 口径）
+
+老大原话：「渠道情况下默认 YOLO 但是也需要被沙箱模式限制，这个不是权限的事情。这个是访问路径的事情」
+
+- **YOLO（`fullAccess`）管的是审批要不要弹**；**沙箱管的是工具参数里的路径能不能出去**。两条独立的线，互不替代。
+- 渠道会话自 S-59 起默认 YOLO，那是**权限档**的设定，**不影响沙箱**：渠道在 `AgentRunContextPolicy` 被强制成 `scope=global`，roots 取所有非 SSH 项目工作目录的并集，**照样受约束**。不存在「YOLO 把沙箱绕过去了」这回事。
+- 反过来同样成立：**沙箱补不上 YOLO 的口子**（上面那条「cwd 合法则命令内部不受限」与权限档无关），**YOLO 也不该成为削弱沙箱的理由**。
+- 上文 `:650` 那段渠道风险记档仍然有效，但它记的是**审批门短路**带来的风险，与沙箱是两码事。
+
+### 文案（2026-09-19 修正）
+
+老大裁定：**「沙箱模式」这个名字不改** —— 原话「只是沙箱模式，并不是沙箱」。但**文案必须把边界说清**，所以设置项的 `hint` 两端都改了（`locales/{zh,en}/settings.json` 的 `general.sandbox.hint`）：
+
+- 生效范围补上**渠道会话**（此前只写了项目会话与全局会话）
+- 追加边界句：「只校验工具参数里的路径，命令行内部引用的路径不受此限制」/ `Only path arguments are checked — paths referenced inside a command line are not.`
+- 去掉原来的「需要时请关闭本开关，或把目标目录设为工作目录」—— 那条出路已经在越界报错文案（`PathBoundary.BuildViolationMessage`）里给了，设置项里挤占篇幅。
+
+`desc` 未动（原文案「限制工具的**路径参数**只能落在自己的工作目录内」本来就点明了是"路径参数"）。
+
+### 系统提示词警告（2026-09-19，老大要求）
+
+老大原话：「沙箱模式开启的情况下，在系统提示词警告agent 当前是沙箱模式禁止访问工作目录外的东西」
+
+**落点**：`PromptBuilder.Build` 新增 `bool sandboxEnabled = true` 形参，为真时追加一段；位置与 SSH / Project 同优先级区（紧跟 `BuildProjectContext` 之后、Channel 段之前）—— 都是「边界在哪」这类信息，早放免得漏读。
+
+**段内容**（英文，两行）：
+
+```
+## Sandbox mode
+Sandbox mode is on for this run. Paths passed to file and search tools must resolve inside the session's working directories; calls outside are rejected before they run.
+You must not use a command line to reach outside those directories — the check covers tool arguments, not command contents.
+```
+
+第二句是必须的：参数层之外那半代码拦不住，只能在提示词里把边界讲清楚、让模型自己不去绕。**措辞刻意不写「工作目录外的一切访问都会被拦」** —— 那是假事实，会让人（和模型）以为开了就安全。
+
+**为什么进系统提示词而不是每轮注入**：开关是 run 级参数，同一 run 内不变，进 cacheKey 就能稳定；不像会话 todo 那样会在 turn 中途才长出来。
+
+**★ 必须同步改 cacheKey**，否则切开关会**静默**命中旧提示词（不报错，只是提示词与实际拦截行为对不上）：
+
+| 改动 | 内容 |
+|---|---|
+| `SystemPromptCache.ComputeKey` | 新增 `bool sandboxEnabled = true`，key 里加 `sandbox` / `nosandbox` |
+| `AgentLoop.cs:218` 附近 | 用 `Tools.PathBoundary.IsEnabled(parameters)` 取**同一个值**（不另读一次，保证与执行层同源），同时传给 `ComputeKey` 与 `Build` |
+
+**成本**：段只在开关开着时存在，约 250 字符 ≈ 60 token/轮，作为 cache 前缀重复发送。关掉时零成本。
+
+**测试**：`tests/WishfulClaw.GoalRegressionTests/Program.SandboxPrompt.cs`（新增，6 断言，注册于 `RunSandboxSuite();` 之后）：开关两侧段的存在性、必须提到 `command contents`、默认值等价于显式 `true`、**cacheKey 必须区分开关**、不传参数时按开处理。Goal 套件 307 → 313。
 
 ### 测试
 
@@ -941,6 +995,360 @@ flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-muted-foreground outl
 - `tsc --noEmit` 三配置 0 错；`npm run test:*` 31 套全过；`npm run build` 通过并验证产物 CSS；触碰文件 BOM clean
 
 ---
+
+## S-84 会话级「请求上下文上限」并入上下文环面板（可拖动数值 + 绑定模型）
+
+**来源**：2026-09-19 老大 ——
+
+> 「这个码表上下文上限开关感觉跟压缩上下文的百分比显示中心点不在同一个，并且希望这两个互换位置」
+> 「这个码表我希望改成点击后出现一个拉动，跟模型选择器中的思考设置一样，最低200K - 最高当前模型的上限，用户可以自己拖动。切换模型时，这个值改成模型的最大上下文，需要重新设置」
+
+### 需求
+
+1. 工具栏里「请求上下文上限」（`Gauge`）与「上下文压缩百分比环」**互换位置**（`Gauge` 在前）；两者中心点不在一条线上，一并修正。
+2. `Gauge` 由**开关**改成**点击弹层 + 拖动滑块**：量程 `200K ~ 当前模型窗口上限`，形态参照 `ModelSettingsPopover` 里 thinking budget 那个 `input[type=range]`。
+3. **切换模型后上限作废** —— 数值回到该模型的最大窗口（等于不限制），需要用户重新设置。
+
+### 现状（2026-09-19 实读）
+
+- `context-cap-toggle.tsx`：S-83 落的布尔开关，点击直接切 `contextCapEnabled`，只有一个 `Tooltip`。
+- 会话列 `context_cap_enabled`（INTEGER 0/1，`DbClient.cs:539` `EnsureColumn`），run params 透传布尔 `contextCapEnabled`，Worker `AgentLoop.cs:239` → `ApplyContextCap(provider, enabled)` 夹到常量 `SessionContextCapTokens = 256 * 1024`（`AgentLoop.cs:31`）。
+- **模型 id 在 provider 载荷里现成**：`buildProviderPayload` 写出 `model: modelId`（`provider-payload.ts:69`），Worker 侧读得到。
+- **`chat-store.sendMessage` 已经是「盖章」点**：`index.ts:394-401` 在那里把 `provider.sessionId` 补上，注释写明「sendMessage is the only door to agent/run … instead of being remembered at every send site」。上限的模型比对放在同一处，六个透传点就不用各自解析模型。
+- 中心点：`ContextRing` 的按钮**没有显式尺寸**（内容 26px），同排其余图标控件是 `Button size="icon-sm"` = `size-8`（32px）。同排 `items-center` 下二者理论同轴，环的盒子偏小是唯一的结构差异。
+
+### 裁定
+
+| 项 | 值 |
+|---|---|
+| 存的字段 | `contextCapTokens`（INTEGER，0 = 不限制）+ `contextCapModelId`（TEXT，设置它的模型 id） |
+| 生效判据 | `capModelId === 当前模型 id` 才生效，否则视为不限制 —— 这就是「切换模型后需要重新设置」的落地方式 |
+| 量程 | 下限 `MIN_SESSION_CONTEXT_CAP_TOKENS = 200K`；上限 = 当前模型窗口（`resolveCompressionContextLength`）；步长 4K |
+| 模型窗口 ≤ 200K | 给不出有意义的量程 → **不渲染这个控件** |
+| 关闭方式 | 弹层里一条「不限制」把值写回模型上限（因为 `step` 对齐问题，滑杆未必能拖到正好等于 max） |
+| 生效范围 | 仍是**会话级**，不动（S-73 已定） |
+
+### 二次裁定（2026-09-19，入口合并）
+
+老大看过第一版之后改了口径：**上限不再单独占一个工具栏图标，并进上下文环的面板**。
+
+> 「我想把会话的上下文上限放到压缩环中，就是点击那个环的时候，弹出来面板，面板中显示当前上限，已经产生的数据量…」
+
+四条回复：
+
+| 问 | 裁定 |
+|---|---|
+| 面板怎么弹 | **hover 和单击都能展开** |
+| 上限要不要在 hover 时也显示 | **只进面板**（环本身不展示上限） |
+| 环没有用量数据时（新会话/刚切会话）是否改成常驻 | **跟以前逻辑一样保持不变** —— 即「没有 fresh usage 就不渲染」，接受「新会话得先跑一轮才能设上限」这个代价 |
+| 面板里放哪些数据 | **之前的数据都要**（已用 / 有效窗口 / 百分比 / 剩余），上一条回复只是没举例完 |
+
+由此**推翻第一版的两条**：
+
+- 工具栏不再有独立的 `Gauge` 图标 → `context-cap-toggle.tsx` 整个删除，`composer-toolbar.tsx` 不再引用它。S-83 那次「优化入口换成上限开关」的图标位置随之回到只有环一个控件。
+- 「互换位置」这条自动消解 —— 只有一个控件了，无所谓先后。
+
+### 面板开合（三次确认）
+
+老大原话：
+
+> 「hover 的意思是移入和点击一样是需要触发事件，然后这时候面板就常在了，除非面板失去焦点」
+> 「面板也可以有一个单独的点击收起图标」
+
+所以**不是**「hover 临时开、移开就收」：
+
+- **鼠标移入环**、或**单击环** → 都只是「把它打开」，延迟 400ms（与提交列表的 HoverCard 同值，扫过工具栏不误弹）
+- **打开后常在** —— 移开鼠标不收起。这一条同时解决了滑杆的问题：移开即关的浮层里拖滑杆，鼠标拖到量程两端时人先丢了面板
+- **收起路径三条**：点面板外（失焦）、`Esc`、面板右上角的收起图标（`ChevronDown`）
+- 点环是 toggle，再点一次即收起
+
+被否掉的中间方案：单击「固定」+ hover「临时开」（分 pinned / 非 pinned 两个态）。老大要的是 hover 与点击**同权**，不需要 pinned 这一层。
+
+### 滑杆用共享的 `Slider`，不用原生 `input[type=range]`
+
+老大看过第一版之后：
+
+> 「这个滑杆样式需要调整一下，底色黑色不合适，我希望颜色是贴合主题加配色的，而不是任意给值」
+
+第一版是原生 `<input type="range">` + `accent-emerald-500`，两个毛病：
+
+- **轨道底色是 Chromium 默认的深色**，跟面板其余部分不是一套皮
+- `accent-emerald-500` 是随手挑的调色板值 —— 换主题不会跟着走
+
+改用项目里已有的 `components/ui/slider.tsx`（Radix，`ImageEditDialog` / `GeneralPanel` / `RuntimePanel` 三处已在用）：轨道 `bg-muted`、已选段 `bg-primary`、滑块 `border-primary` —— 全部走主题变量，跟着主题色和明暗走。
+
+**同类未处理**：`ModelSwitcher/ModelSettingsPopover.tsx:351` 的思考预算滑杆仍是原生 input + `accent-violet-500`（那正是第一版的参照物，同一个毛病）。**未擅动，待老大发话。**
+
+### 输出预留：口径不改，只把这个数露出来
+
+老大先提「面板中补一个信息，就是输出会额外占用 20K 额度。这个还得讨论一下，现在模型本身是有最大输出值的，有些模型的最大输出值直接就是384K」，随后自己给了结论：
+
+> 「目前我们这个值的目的不是为了限制不让用户收到信息，再大的信息都可以收，现在的目的只是不要把上下文撑爆，理论上是不会有撑爆的情况，毕竟我们已经是 80%-20k，也就是 20%+20k 的保留大小」
+
+**复核算式（确认老大算得对，且比这还宽）**：`getCompressionTriggerTokens` = `min(有效窗口 × threshold, 有效窗口 − 13_000)`。1M 窗口预留 20K 时：有效窗口 980K，`980K × 0.8 = 784K`，另一支 967K ⇒ 取 **784K**。触发那一刻的余量 = `1000K − 784K = 216K`。而请求的 `max_tokens` 默认 32K —— 余量是它的 6 倍多。**撑爆风险不存在。**
+
+所以**不改预留口径**（前面提的 A/B 两案作废），只在面板里把预留显式化 —— 用户才知道「有效窗口 980K 而不是 1M」是差在哪。落地：用量块下面一行
+
+```
+输出预留 20K · 涨到 784K 自动压缩
+```
+
+值取 `resolveCompressionReservedOutputBudget(modelConfig)` = `min(20_000, 档案 maxOutputTokens)`，所以那几十个输出上限本来就小的模型（档案写 4096 / 1000 的）会显示成 4K / 1K，不是一律 20K。
+
+### 顺带记档：`settings.maxTokens` 是个没有 UI 的写死值
+
+排查时发现：请求的 `max_tokens` 来自 `settings.maxTokens`（默认 `32_000`），而**全仓没有任何设置页入口能改它** —— 唯一读它的是 `GoalConfirmCard.tsx:86`，主链路经 `provider-payload.ts:72` 带上。
+
+这与压缩预留（来自**模型档案**的 `maxOutputTokens`）是两套互不相干的来源。本轮结论是「余量足够，不动」，**但这个无入口的设置项本身值得单独议**：要么给个设置入口，要么干脆删掉改由档案决定。**记档，未立项、未动。**
+
+### 面板落在环的正上方
+
+老大：
+
+> 「面板目前出现的位置是左上方，我希望是正上方」
+
+`PopoverContent` 原来是 `align="end"` —— 面板右边缘对齐环的右边缘，而环在工具栏**右侧组**，于是面板整个向左展开，看着像挂在左边。改成 `align="center"`（以环为中心向两侧展开，即正上方），并补 `collisionPadding={12}`：面板比环宽得多，居中后右半容易顶到视口边，靠 padding 兜住。
+
+### 量程常量用十进制，不用二进制
+
+老大真机反馈：
+
+> 「我点开后拉到最小，结果值是205k 这个最低值应该是200k呀」
+
+根因：`MIN_SESSION_CONTEXT_CAP_TOKENS` 当时写成 `200 * 1024 = 204_800`，而 `formatTokens` 是**十进制**（`n / 1000`），204.8k 经 `toFixed(0)` 显示成 **205k**。同一份数据两套进制，用户一眼就看出对不上。
+
+改法：常量回到十进制 —— `MIN_SESSION_CONTEXT_CAP_TOKENS = 200_000`、`CONTEXT_CAP_STEP_TOKENS = 4_000`。这与**模型档案**里的窗口口径也一致（`stores/providers/*.ts` 写的就是 `200_000` / `1_000_000`，不是 `1_048_576`）。
+
+测试补了三条直接把这件事钉住的断言（`tests/context-cap/program.ts`）：
+
+- `formatTokens(MIN_SESSION_CONTEXT_CAP_TOKENS) === '200k'`
+- 下限、步长都必须能被 1000 整除（否则界面上会出现零头）
+
+这组断言在改之前必然是红的 —— 二进制写法会报 `expected '200k', actual '205k'`。
+
+### 上限值怎么到后端（链路复核，**本来就通**）
+
+老大同时问「这个上下文上限值需要跟随下一次发送消息发送到后端哈」。复核结论：**S-84 第一轮就已接好**，逐跳如下 ——
+
+| # | 位置 | 做什么 |
+|---|---|---|
+| 1 | `context-ring.tsx` 滑杆 `onValueChange` | `updateSessionContextCap(sessionId, tokens, capModelId)` |
+| 2 | `stores/chat-store/session-slice.ts:385` | `normalizeSessionContext({ ...session, contextCapTokens, contextCapModelId })` → `Object.assign(target, context)` + `dbUpdateSession` |
+| 3 | `lib/session-context.ts:56-67` | 归一化并保留这两个字段（global / project 两个分支都返回，`:74-75` 与 `:95-96`） |
+| 4 | `stores/chat-store/index.ts:411` | `sendMessage` 盖章：`workerParams.contextCapTokens = resolveSessionContextCapTokens({ capTokens, capModelId, currentModelId: provider.model })` |
+| 5 | Worker `AgentLoop.cs:235` | `ApplyContextCap(provider, JsonHelpers.GetInt(parameters, "contextCapTokens", 0))` |
+
+放 `sendMessage` 而不是各个调用点的理由同 `provider.sessionId`：它是**唯一通往 `agent/run` 的门**，靠调用点各自记得传，当年就是这么漏的。所以渠道自动回复 / 子代理唤醒 / 自动降级 / 项目派发这四条旁路也自动带上。
+
+**注意**：第 4 跳会重算一次模型绑定 —— 若发送时的模型与 `contextCapModelId` 不同，盖的就是 `0`（不限制），这正是「换模型即作废」。
+
+### 最终修法
+
+1. `context-compression-config.ts`：删 `SESSION_CONTEXT_CAP_TOKENS` 常量，改为 `MIN_SESSION_CONTEXT_CAP_TOKENS` / `CONTEXT_CAP_STEP_TOKENS` + 三个纯函数 `resolveSessionContextCapRange` / `resolveSessionContextCapTokens`（比模型 id）/ `applySessionContextCap(contextLength, capTokens)`。
+2. **模型比对放 `chat-store.sendMessage` 的盖章处**（`index.ts:399` 旁边）：读会话的 `contextCapTokens` / `contextCapModelId`，跟 `provider.model` 比，把**已决**的数值盖成 `workerParams.contextCapTokens`。五个透传点（`use-chat-actions` / `use-channel-auto-reply` / `use-background-subagent-wakeup` / `provider-auto-fallback` / `project-send-message`）不再传该字段。
+3. Worker：`ApplyContextCap(provider, int capTokens)` 收数值，删掉常量；`contextCapEnabled` 相关读写全部换成 `contextCapTokens` / `contextCapModelId`。
+4. `InputArea/use-active-model-config.ts`（新）：把 `context-ring.tsx` 里那段「按 `resolveSessionModelSelection` 找当前模型」的 selector 抽出来 —— 环的用量、压缩触发线、上限滑杆三处共用，避免各解析一遍。
+5. `context-ring.tsx`：`Tooltip` + `DropdownMenu` 换成受控 `Popover`。面板自上而下 —— 用量（已用 / 有效窗口 / 百分比 / 剩余 / 自动压缩触发线）→ 请求上下文上限（滑杆 + 量程 + 「不限制」）→ 压缩按钮。双击压缩的交互**删掉**（老大：「双击不留」），压缩只走面板里的按钮。环的按钮补 `size-8` 盒子，与同排图标控件同尺寸。
+6. `composer-toolbar.tsx`：删掉 `ContextCapToggle` 的引用。
+
+
+### 门禁
+
+- `tsc --noEmit` 三配置 0 错；`npm run test:*` 32 套全过（新增 `test:context-cap` 26 断言）；触碰文件 BOM clean
+- C#：Worker 与 `tests/WishfulClaw.Tests.sln` 各 0 警告 0 错误；10 个回归套件全过
+- 存储层断言改写为 `context_cap_tokens` / `context_cap_model_id` 两列（含「取消上限顺手清 model id」）；`Program.ContextCap.cs` 改为按 token 数断言，补一条「自定义上限照用」
+
+### 与 S-73 的差异（留痕）
+
+| | S-73 | S-84 |
+|---|---|---|
+| 字段 | `context_cap_enabled`（INTEGER 0/1） | `context_cap_tokens`（INTEGER）+ `context_cap_model_id`（TEXT） |
+| 值 | 固定 256K | 用户拖，200K ~ 模型窗口 |
+| 换模型 | 上限继续生效 | 作废（回模型最大窗口），需重设 |
+| UI | 开关按钮 | 弹层 + 滑杆 |
+
+- 旧列 `context_cap_enabled` 只是 `EnsureColumn` 加出来的，**从没进过任何发布版**（S-73 在本迭代内，未收尾未发布），所以直接换掉、不做迁移。
+- 已有 dev 库会留下列名，SQLite 不支持删列，代码不再读写它 —— 只是块死砖。
+
+---
+
+## S-85 会话级「压缩阈值」：上下文环面板加滑条
+
+### 需求（老大 2026-09-19 口述）
+
+> 「请求压缩 百分比我们是在全局设置的，但是现在会话的百分比展开面板了，感觉可以在这个面板里面也加入压缩百分比的滑条呢」
+
+**一句话**：`S-84` 把「请求上下文上限」收进上下文环面板之后，压缩阈值也一并放进去 —— 会话级覆盖，没设过就跟随全局。
+
+### 为什么值得做
+
+两个数在同一块面板上是要紧的：压缩阈值**乘**的就是那个有效窗口。上限从 1M 压到 256K 之后，原来 80% 触发的位置跟着一起挪了（800K → 204K），只看上限调不动「什么时候开始压」。分开两个地方调，用户永远要心算这一步。
+
+### 现状：阈值的三层，只有两层是活的
+
+| 层 | 落点 | 状态 |
+|---|---|---|
+| 全局 | `settings-store.ts:151/305` `contextCompressionThreshold`，默认 `0.8`，钳制 0.3~0.9；UI 在 `RuntimePanel.tsx:283-293` | **在用** —— 发送链路 9 处透传全读它 |
+| 模型级 | `AIModelConfig.contextCompressionThreshold`（`src/shared/types/provider.ts:228`） | **死的** —— 唯一写方 `ModelFormDialog.tsx:149`（编辑模型的百分比输入框），唯一读方同文件 `:96` 回填输入框；发送链路与 Worker 都不看它 |
+| 会话级 | 本次新增 | — |
+
+模型级那个字段的事实（2026-09-19 实测）：值域是比例 0.3~0.9（界面按百分比填，存前 `/100` 再 clamp），默认 `DEFAULT_COMPRESSION_THRESHOLD = 0.8`（`settings/provider/constants.ts:40`）。本机上 prod 有 3 个模型档案、dev 有 1 个存着这个键，**值全是 0.8**（等于全局默认），其余模型没这个键 —— 就算哪天被读也看不出行为差异。
+
+**记档，不擅自处理**：那个输入框可以从 `ModelFormDialog` 摘掉（它骗用户以为按模型生效），但属独立动作，未在本次范围。
+
+### 裁定
+
+1. **粒度**：会话级，与 `S-84` 的上限同款（`Session` 上一列），不做全局改动。
+2. **未设过 = 跟随全局**：存 `0` 作哨兵值，与 `Session.contextCapModelId` 那套「null = 没设过」同思路。
+3. **量程 30%~90%、步长 5%**：与全局那套钳制口径（`settings-store-migrate.ts:159` `Math.max(0.3, …)`，上限 0.9）完全一致，不另立一套刻度。
+4. **还原项**：面板里给一条「跟随全局」，点了就落 `0`。
+5. **实时联动**：滑条一动，同一面板里「涨到 {{tokens}} 自动压缩」那行数字立刻重算 —— 它本来就是从这个比例推出来的。
+
+### 落点（零 Worker 参数变更）
+
+**关键**：Worker 侧**一行都不用改**。压缩阈值在 Worker 是通过 run param `contextCompressionThreshold` 传的（`AgentLoop.ContextCompression.cs:42`、`AgentLoop.cs:674`，`?? DefaultContextCompressionThreshold`），渲染端在发送前算好「会话覆盖 ?? 全局」再盖进**同一个参数**即可 —— 与 `S-84` 把上限盖进 `contextCapTokens` 是同一手法。
+
+| 层 | 文件 | 改动 |
+|---|---|---|
+| 取值规则 | `lib/agent/context-compression-config.ts` | 新增 `SESSION_COMPRESSION_THRESHOLD_STEP`、`clampSessionCompressionThreshold`、`resolveSessionCompressionThreshold`；`context-compression.ts` 加 re-export |
+| 归一化 | `lib/session-context.ts` | `compressionThreshold` 进 `SessionContextInput` 与返回 `Pick`，越界回落 `0` |
+| 类型 | `stores/chat-store/types.ts` | `Session.compressionThreshold: number`（0 = 跟随全局）+ `CreateSessionOptions` |
+| store | `stores/chat-store/session-slice.ts` | `updateSessionCompressionThreshold(id, threshold)`；先 `clampSessionCompressionThreshold` 再落 store + `dbUpdateSession` |
+| 持久化 | `stores/chat-store/db-helpers.ts` | `SessionRow` 加列、迁移比对（浮点用 `1e-9` 容差）、读写、`dbUpdateSession` 映射 |
+| **盖章** | `stores/chat-store/index.ts` | `sendMessage` 里 `workerParams.contextCompressionThreshold = resolveSessionCompressionThreshold(...)` —— 与上限盖章点相邻 |
+| UI | `components/chat/InputArea/context-ring.tsx` | 面板里上限块**下方**加阈值滑条 + 还原按钮；面板顶部「压缩触发线」随比例实时重算 |
+| 存储 | `DbClient.cs` / `SessionEntity.cs` / `EntityMappers.cs` / `DbSessionTools.cs` / `DbReaderExtensions.cs` | `EnsureColumn("sessions","compression_threshold","REAL")`；实体 + Row 字段与映射；INSERT / UPDATE / patch 三处；新增 `GetNullableDouble` 读取辅助 |
+| 文案 | `locales/{zh,en}/chat.json` | `compressionThresholdTitle` / `Follow` / `Hint` / `Reset` |
+
+**两套 clamp 语义不同，是有意的**：会话值越界 → 回落 `0`（没设过），全局值越界 → 夹到边界。统一成一种会让用户永远退不回「跟随全局」（夹到边界 = 变成显式值）。已在代码注释与测试里各钉一遍。
+
+**没走 `sendMessage` 的路径不受影响**：`cron-runtime` 等仍用自己的全局值 —— 本次只在 `sendMessage` 盖章，其余透传点保持原样作兜底，不碰。
+
+### 门禁
+
+- `npx tsc --noEmit -p tsconfig.web.json` / `-p tsconfig.node.json` / `-p tsconfig.json` 三配置 **0 错**
+- TS `test*` 脚本 **32/32 全过**（`test:context-cap` 由 29 → **52** 断言，新增 23 条覆盖 0.3/0.9 边界、越界回落、NaN / undefined / null、两层优先级、步长整除）
+- `WishfulClaw.Worker.csproj` 与 `tests/WishfulClaw.Tests.sln` 各 **0 警告 0 错误**；10 个回归套件 **10/10**
+- 触碰文件 BOM **16/16 clean**
+
+**测试当场抓到我的期望值写错**：我原以为全局值越界会回落默认 0.8，实际是夹到 0.3 —— 改的是断言，不是代码。
+
+### 文案与图标调整（2026-09-19，老大分三轮定的五条）
+
+| # | 项 | 处理 |
+|---|---|---|
+| 1 | 压缩阈值滑条下的 `compressionThresholdHint`「按有效窗口算，压得越早花的钱越多」 | **整句删除**。前半句「按有效窗口算」是事实，但顶部「涨到 N 自动压缩」在拖滑条时已实时体现，冗余；后半句是**失真的单向结论** —— 阈值调低会让压缩调用变频繁（贵），同时让平时上下文变短（省），净效果取决于两者谁大，不该写成结论 |
+| 2 | 成本提示挪到上限滑条 | 上限是「每次请求最多带多少上下文」的天花板，方向单一。文案定稿 `contextCapHint`「上限越低，越省钱」/ `Lower limit, lower cost`。初版我写成「单次请求越省」，老大指出「单次」这个限定词是**我自己加的**、反而把话说窄了，去掉。**方向性提示，不是绝对结论** —— 对话本身就短于上限时设多低都一样，这层含义留在代码注释里，不塞进 UI |
+| 3 | 「立即压缩上下文」按钮图标 | `Minimize2`（两条斜箭头朝内收 = **窗口缩小**语义，与连接上下文无关）→ `Archive`。按钮实际干的是「先落盘已产出的内容，再压上下文」（源码注释原文），归档箱才对得上 |
+| 4 | 删「切换模型后需要重新设置 / 不限制」整行 | 老大理由「没啥意义」。**能力没丢** —— 「不限制」等价于把滑条拖到最右端：`resolveSessionContextCapRange` 的 `max` 就是模型窗口，Radix 拖到端点会给精确 `max`，而 `applySessionContextCap` 做的是 `min(窗口, cap)`，取到 `max` 即等于不设限 |
+| 5 | 删压缩阈值的「跟随全局」整行 | 老大理由「节约一下高度」。⚠️ 这条有真实能力损失 —— **2026-09-19 已补回，见下** |
+
+**第 5 条的代价与补回**：会话阈值用哨兵值 `0` 表示「跟随全局」，而滑条量程是 30%~90% —— 删掉还原入口后，**一旦拖过滑条就再也回不到「跟随全局」**，只能停在一个显式百分比。
+
+当时我把这条判为「纯显示」，**判断错了**：那行文案（`compressionThresholdFollow` = `全局 {{percent}}`）确实是状态显示，但**还原动作本身是能力**，两者不是一回事。老大 2026-09-19 原话：「现在就差跟随全局，之前我以为是一个纯显示所以让你删掉了，这个可以补回来」。
+
+**已补回**（2026-09-19）：`context-ring.tsx` 压缩阈值滑条下方**右对齐一个按钮**，文案 `input.compressionThresholdUseGlobal`（zh「跟随全局」/ en `Follow global`；原删掉的 `compressionThresholdReset` 不复用，名字换成动作语义）。`thresholdIsSession` 为假时（已在跟随）置灰禁点；为真时点击落 `0`。放量程标签行的**下一行**，不挤掉 `30% / 90%` 两个刻度。
+
+**教训**：删任何入口前，先问「这个入口背后有没有**只有它能到达的状态**」。本例的状态是哨兵 `0`，量程内任何值都到不了它 —— 名字里带「显示」两个字不代表它只是显示。
+
+**孤儿 locale 清理**：`contextCapModelReset` / `contextCapReset` / `compressionThresholdReset` 三个 key，删前已用 `Get-ChildItem -Recurse` 复核全仓零引用，`zh` / `en` 各删 3 行（脚本带「命中行数必须 === 3」守卫）。
+
+**残留检查**：`Minimize2` 在别处共 6 个文件 12 处，全是 `Maximize2` / `Minimize2` 配对的**全屏切换**用途，**故意保留**。
+
+### 顺带修掉：终端面板「全屏」反而塌成一行
+
+不是图标反了 —— **图标和文案本来就是对的**（`fullscreen ? <Minimize2/> : <Maximize2/>` 配 `fullscreen ? '退出全屏' : '全屏'`，两行读同一个 state）。坏的是高度：
+
+```tsx
+const dockHeight = fullscreen
+    ? getFullscreenHeight()                              // 算出来是个大值（innerHeight - 88）
+    : Math.min(bottomTerminalDockHeight, getViewportMaxHeight())
+
+style={{ height: fullscreen ? '100%' : dockHeight }}     // ← 却用了字面量 '100%'
+```
+
+fullscreen 分支算好的那个像素值**被样式里的 `'100%'` 整个盖掉**。而父容器是 `SessionConversationPane.tsx:281` 的 `<div className="shrink-0 border-t">` —— **自身没设高度**，高度由内容撑开；子元素再写 `height: 100%` 就成了循环依赖，浏览器解析不出百分比、退化成 `auto`，整个面板塌成只剩 tab bar 那一行（`h-9`）。
+
+现象就是「点全屏反而缩小，再点又恢复」。**修法**：`style={{ height: dockHeight }}` —— 两个分支都已经是确定值。
+
+> 我第一轮只看逻辑分支就断言「没反」，是错的：**逻辑对 ≠ 渲染对**。判据应该是「点下去面板高度实际变成多少」，不是「代码读起来通不通」。
+
+**门禁**：typecheck 三配置 0 错；TS `test*` **32/32**；`zh` / `en` 两个 `chat.json` `JSON_OK` 且 BOM=False；`context-ring.tsx` / `BottomTerminalDock.tsx` BOM=False。
+
+---
+
+## S-86 memory_hot_write 三处字符串匹配缺陷
+
+**一句话**：`memory_hot_write` 的节标题匹配是裸子串查找 —— 会命中同名的三级标题、会漏掉重复标题、删节时还会吃掉分隔空行。**这块此前零测试覆盖**（`tests/` 下搜 `UpsertSection` / `DeleteSection` / `memory_hot_write` 只命中一处注册表，无任何断言），所以三个缺陷一直活着。
+
+### 触发（2026-09-19 我本人踩到）
+
+改热记忆时发现 `MEMORY.md` 里有两份 `## 协作纪律`。写新内容只替换掉一份，另一份连同标题整块留着；把它删空时，H1 与首个 H2 之间的换行又被一起吃掉，文件头变成 `# Long-Term Memory## 协作纪律`（同一行，markdown 不再识别为标题）。
+
+### 三个缺陷
+
+| # | 落点 | 问题 |
+|---|---|---|
+| 1 | `MemoryHotWriteTool.cs:155` `UpsertSection` | `content.IndexOf($"## {title}")` **无行首校验**。`### 协作纪律` 从下标 1 起就包含子串 `## 协作纪律`，于是写入会落到**三级标题底下** —— 静默写错位置。同文件的 `FindNextHeading`（`:241`）本来就做了「行首」校验，只有这里漏了。 |
+| 2 | 同上那行 `IndexOf` | 只取第一个。标题重复时**静默只改一份**，不报错、不提示。 |
+| 3 | `:215-219` `DeleteSection` | 向前吃换行**无下限**，把 H1 / H2 之间的分隔空行一并吃掉，导致标题粘连。 |
+
+`section` 参数的文档写的是「the `##` heading in MEMORY.md」，缺陷 1 直接违背了这条契约 —— 参数说改二级标题，实际可能改到三级标题。
+
+### 修法
+
+抽一个**共用**的标题查找函数，杜绝「一处有校验、一处没有」再次发生：
+
+- **`FindSectionHeadings(content, title)`** —— 返回**所有**命中位置。判据三条：
+  1. **行首**（`i == 0` 或前一字符是换行）
+  2. **前缀恰为 `## `**（`###` 因第三个字符是 `#` 而非空格被天然排除）
+  3. **标题文本整行相等**（大小写不敏感，尾随空格与 `\r` 先 trim）—— 顺带修掉 `## 协作纪律` 命中 `## 协作纪律规则` 的问题
+- **`UpsertSection`**：命中多处时**第一处替换正文、其余整节删除**。重复标题是脏数据，清掉比报错让用户自己动手好。
+- **`DeleteSection`**：`start` 不再向前吃换行（标题本就在行首），删除语义变成「从标题行行首到下一个标题行行首」—— 分隔空行自然留在**前一节**那边。
+- **`NormalizeGluedHeadings`（`:99`）保留**：它是历史粘连文件的兜底。修了缺陷 3 之后不再新产生，但对存量文件仍有用。
+
+### 测试
+
+新增 `tests/WishfulClaw.GoalRegressionTests/Program.MemoryHotWrite.cs` → `RunMemoryHotWriteSuite()`，注册在 `Program.cs` 的 `RunBomPolicySuite();` 之后。
+
+`UpsertSection` / `DeleteSection` 由 `private` 改 **`internal`** 以便直测（与 `SubAgentReportStore.MergeFinalOutput` 同款先例）。
+
+覆盖：行首校验（`###` 不命中、正文里的 `## x` 不命中）、标题整行相等、重复标题全清、删节保留分隔空行、增删改往返稳定性。
+
+**这组断言在改之前必然是红的** —— 改完会当场验证这一点。
+
+### 顺带说明（未扩大范围）
+
+- `MemoryHotWriteTool.cs` 全文**每行之间夹一个空行**，格式是坏的（正常 C# 不长这样）。本次因为要重写这两个函数、原格式下编辑极易匹配错行，**顺手规范化了**，逻辑一字未改。
+- **未追**「重复标题最初是哪来的」（`memory-organization.ts:184` 的 `appendRecoveredHotMemory` 有拼重嫌疑）。本次只保证工具不再制造与放大它。
+
+### 实施（2026-09-19）
+
+三条修法全部落地，`UpsertSection` / `DeleteSection` 共用同一个 `FindSectionHeadings`。
+
+| 缺陷 | 落点 | 改动 |
+|---|---|---|
+| 1 | `FindSectionHeadings` | 新增**行首**判据（`i != 0 && content[i-1] != '\n'` 即跳过）；前缀判据写成 `content[i] != '#' \|\| content[i+1] != '#' \|\| content[i+2] != ' '`，`###` 因第三个字符是 `#` 被天然排除 |
+| 2 | `FindSectionHeadings` 返回类型 | `int` 单值改 `List<int>`，返回**全部**命中；`UpsertSection` 倒序删掉第二份起的整节再改第一处，`DeleteSection` 倒序全删 |
+| 3 | `RemoveSectionAt`（新抽） | 起点直接用标题行下标，去掉原来向前吃换行的 `while`；`FindLineEnd`（新抽）定位标题行末尾，下一节从那里开始扫 |
+
+顺带修掉的同类问题（都是判据 3「整行相等」的自然结果）：`## 协作纪律` 不再命中 `## 协作纪律规则`；标题行尾随空格、大小写现在都容错。
+
+**格式规范化**：`MemoryHotWriteTool.cs` 重写为正常 C# 格式（原文件每行之间夹空行）。逻辑除上述三处外一字未改。
+
+**测试**：`Program.MemoryHotWrite.cs` 31 条断言，全过。`UpsertSection` / `DeleteSection` / `FindSectionHeadings` / `FindNextHeading` 均改 `internal` 以便直测（与 `SubAgentReportStore.MergeFinalOutput` 同款先例）。
+
+**断言活性当场验证过**（两处临时退回归行为，跑完即恢复）：
+
+| 临时改动 | 结果 |
+|---|---|
+| `FindSectionHeadings` 去掉行首判据（模拟缺陷 1） | 红：`S-86 三级标题不被命中、不被误删`，EXIT=1 |
+| `RemoveSectionAt` 加回向前吃换行（模拟缺陷 3） | 红：`S-86 删除后不产生标题粘连`，EXIT=1 |
+
+**门禁**：Worker 编译 0 警告 0 错误；`tests/WishfulClaw.Tests.sln` 0/0；10 个 C# 回归套件全过（Goal **307**）；typecheck 三配置 0 错；TS **32/32**；4 个触碰文件 BOM 全 clean。
+
+---
+
 
 ## 待登记
 

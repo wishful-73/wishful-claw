@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
@@ -45,6 +45,9 @@ public static class SystemPromptCache
     /// place — same personaId, changed files — naturally misses instead of
     /// serving a stale prompt until worker restart. MEMORY.md mtime rides along
     /// so memory hot-writes rebuild on the next session too.
+    /// iter-32 S-79: the sandbox flag rides along because the prompt carries a
+    /// sandbox section — toggling the setting must rebuild, not serve a prompt
+    /// that disagrees with what the tool layer actually enforces.
     /// </summary>
     public static string ComputeKey(
         string? personaId,
@@ -55,7 +58,8 @@ public static class SystemPromptCache
         string? projectId,
         string? sessionMode = null,
         string? pluginId = null,
-        string? externalChatId = null)
+        string? externalChatId = null,
+        bool sandboxEnabled = true)
     {
         return string.Join('|',
             personaId ?? string.Empty,
@@ -67,6 +71,7 @@ public static class SystemPromptCache
             sessionMode ?? string.Empty,
             pluginId ?? string.Empty,
             externalChatId ?? string.Empty,
+            sandboxEnabled ? "sandbox" : "nosandbox",
             GetPersonaFingerprint(personaId, workingFolder));
     }
 

@@ -96,10 +96,10 @@ public static class DbSessionTools
 
             db.Execute(
                 "INSERT INTO sessions (id, title, icon, mode, scope, collaboration_mode, permission_mode, " +
-                "context_cap_enabled, " +
+                "context_cap_tokens, context_cap_model_id, compression_threshold, " +
                 "created_at, updated_at, message_count, project_id, working_folder, ssh_connection_id, plan_id, " +
                 "pinned, plugin_id, external_chat_id, provider_id, model_id, model_selection_mode, persona_id) " +
-                "VALUES (@id, @title, @icon, @mode, @scope, @collab, @permission, @cap, @ca, @ua, 0, @pid, @wf, " +
+                "VALUES (@id, @title, @icon, @mode, @scope, @collab, @permission, @cap, @capModel, @threshold, @ca, @ua, 0, @pid, @wf, " +
                 "@ssh, @plan, @pinned, @plugin, @ext, @prov, @model, @msm, @persona)",
                 new SqliteParameter("@id", input.Id),
                 new SqliteParameter("@title", input.Title),
@@ -108,7 +108,9 @@ public static class DbSessionTools
                 new SqliteParameter("@scope", (object?)input.Scope ?? DBNull.Value),
                 new SqliteParameter("@collab", (object?)input.CollaborationMode ?? DBNull.Value),
                 new SqliteParameter("@permission", (object?)input.PermissionMode ?? DBNull.Value),
-                new SqliteParameter("@cap", input.ContextCapEnabled),
+                new SqliteParameter("@cap", input.ContextCapTokens),
+                new SqliteParameter("@capModel", (object?)input.ContextCapModelId ?? DBNull.Value),
+                new SqliteParameter("@threshold", input.CompressionThreshold),
                 new SqliteParameter("@ca", input.CreatedAt),
                 new SqliteParameter("@ua", input.UpdatedAt),
                 new SqliteParameter("@pid", (object?)input.ProjectId ?? DBNull.Value),
@@ -155,7 +157,8 @@ public static class DbSessionTools
             ApplySessionPatch(patch, current);
             var changed = db.Execute(
                 "UPDATE sessions SET title = @title, icon = @icon, mode = @mode, scope = @scope, " +
-                "collaboration_mode = @collab, permission_mode = @permission, context_cap_enabled = @cap, " +
+                "collaboration_mode = @collab, permission_mode = @permission, " +
+                "context_cap_tokens = @cap, context_cap_model_id = @capModel, compression_threshold = @threshold, " +
                 "updated_at = @ua, " +
                 "project_id = @pid, working_folder = @wf, ssh_connection_id = @ssh, plan_id = @plan, " +
                 "plugin_id = @plugin, provider_id = @prov, model_id = @model, " +
@@ -166,7 +169,9 @@ public static class DbSessionTools
                 new SqliteParameter("@scope", (object?)current.Scope ?? DBNull.Value),
                 new SqliteParameter("@collab", (object?)current.CollaborationMode ?? DBNull.Value),
                 new SqliteParameter("@permission", (object?)current.PermissionMode ?? DBNull.Value),
-                new SqliteParameter("@cap", current.ContextCapEnabled),
+                new SqliteParameter("@cap", current.ContextCapTokens),
+                new SqliteParameter("@capModel", (object?)current.ContextCapModelId ?? DBNull.Value),
+                new SqliteParameter("@threshold", current.CompressionThreshold),
                 new SqliteParameter("@ua", current.UpdatedAt),
                 new SqliteParameter("@pid", (object?)current.ProjectId ?? DBNull.Value),
                 new SqliteParameter("@wf", (object?)current.WorkingFolder ?? DBNull.Value),
@@ -321,6 +326,9 @@ public static class DbSessionTools
         var providerId = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "providerId"));
         var modelId = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "modelId"));
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // 上限只在设它的那个模型上生效，所以 tokens 与 model id 必须成对写入；
+        // tokens <= 0 表示「不限制」，此时 model id 不写。
+        var contextCapTokens = JsonHelpers.GetInt(parameters, "contextCapTokens", 0);
         var input = new SessionEntity
         {
             Id = RequireString(parameters, "id"),
@@ -330,7 +338,14 @@ public static class DbSessionTools
             Scope = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "scope")),
             CollaborationMode = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "collaborationMode")),
             PermissionMode = DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "permissionMode")),
-            ContextCapEnabled = JsonHelpers.GetBool(parameters, "contextCapEnabled", false) ? 1 : 0,
+            // tokens <= 0 = 不限制，不写 model id（留着会让人以为上限还在）。
+            ContextCapTokens = contextCapTokens > 0 ? contextCapTokens : 0,
+            ContextCapModelId = contextCapTokens > 0
+                ? DbProjectTools.NormalizeOptional(JsonHelpers.GetString(parameters, "contextCapModelId"))
+                : null,
+            // 压缩阈值（iter-32 S-85）：0 = 跟随全局；只记 0.3~0.9 的合法值。
+            CompressionThreshold = NormalizeCompressionThreshold(
+                JsonHelpers.GetDoubleNullable(parameters, "compressionThreshold") ?? 0),
             CreatedAt = JsonHelpers.GetLong(parameters, "createdAt", now),
             UpdatedAt = JsonHelpers.GetLong(parameters, "updatedAt", now),
             MessageCount = 0,
@@ -407,18 +422,57 @@ public static class DbSessionTools
             };
         }
 
-        if (patch.TryGetProperty("contextCapEnabled", out var capEl))
+        if (patch.TryGetProperty("contextCapTokens", out var capEl))
         {
-            row.ContextCapEnabled = capEl.ValueKind switch
+            var capTokens = capEl.ValueKind switch
             {
-                JsonValueKind.True => 1,
-                JsonValueKind.False => 0,
-                JsonValueKind.Number when capEl.TryGetInt32(out var v) => v == 0 ? 0 : 1,
-                _ => row.ContextCapEnabled
+                JsonValueKind.Number when capEl.TryGetInt32(out var v) && v > 0 => v,
+                _ => 0
             };
+            row.ContextCapTokens = capTokens;
+            if (capTokens > 0)
+            {
+                if (patch.TryGetProperty("contextCapModelId", out var capModelEl) &&
+                    capModelEl.ValueKind == JsonValueKind.String)
+                {
+                    row.ContextCapModelId = DbProjectTools.NormalizeOptional(capModelEl.GetString());
+                }
+            }
+            else
+            {
+                row.ContextCapModelId = null;
+            }
+        }
+
+        if (patch.TryGetProperty("compressionThreshold", out var thresholdEl))
+        {
+            // 非数字 / 越界一律回落 0 = 跟随全局，不保留脏值。
+            row.CompressionThreshold = thresholdEl.ValueKind == JsonValueKind.Number &&
+                                       thresholdEl.TryGetDouble(out var threshold)
+                ? NormalizeCompressionThreshold(threshold)
+                : 0;
         }
 
         NormalizeSessionContext(row);
+    }
+
+    /// <summary>
+    /// 会话级压缩阈值（iter-32 S-85）的合法区间，与全局设置的钳制口径一致。
+    /// 落在区间外或非有限值一律当「没设」，返回 0 = 跟随全局。
+    /// </summary>
+    internal const double MinSessionCompressionThreshold = 0.3;
+    internal const double MaxSessionCompressionThreshold = 0.9;
+
+    private static double NormalizeCompressionThreshold(double value)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+        {
+            return 0;
+        }
+
+        return value >= MinSessionCompressionThreshold && value <= MaxSessionCompressionThreshold
+            ? value
+            : 0;
     }
 
     private static void NormalizeSessionContext(SessionEntity session)

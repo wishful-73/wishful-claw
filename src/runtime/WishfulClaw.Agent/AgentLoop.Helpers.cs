@@ -47,18 +47,21 @@ internal static partial class AgentLoop
     }
 
     /// <summary>
-    /// 会话级「请求上下文上限」（iter-32 S-73）。开启后把 provider 的运行期 contextLength
-    /// 夹到 <see cref="SessionContextCapTokens"/>，让自动压缩的触发点、手动压缩的价值下限、
-    /// 保留尾部的预算全部按同一个有效窗口计算。模型档案里的 contextLength 不动，
-    /// 这里只改这一份运行期副本。
+    /// 会话级「请求上下文上限」（iter-32 S-73，S-84 由开关改成数值）。把 provider 的运行期
+    /// contextLength 夹到会话设的上限，让自动压缩的触发点、手动压缩的价值下限、保留尾部的
+    /// 预算全部按同一个有效窗口计算。模型档案里的 contextLength 不动，这里只改这一份运行期副本。
     /// </summary>
-    internal static JsonElement ApplyContextCap(JsonElement provider, bool enabled)
+    /// <param name="capTokens">
+    /// 上限，单位 token。&lt;= 0 表示不限制 —— 渲染端已按「上限是否设在当前模型上」判过，
+    /// 换模型后传过来的就是 0。
+    /// </param>
+    internal static JsonElement ApplyContextCap(JsonElement provider, int capTokens)
     {
-        if (!enabled) return provider;
+        if (capTokens <= 0) return provider;
         // 模型自身窗口本来就小于（或等于）上限时 min() 就是原值；没声明 contextLength 时
         // 压缩走 DefaultContextCompressionLimit 兜底，与上限无关，同样不动。
         if (JsonHelpers.GetIntNullable(provider, "contextLength") is not { } contextLength ||
-            contextLength <= SessionContextCapTokens)
+            contextLength <= capTokens)
         {
             return provider;
         }
@@ -71,7 +74,7 @@ internal static partial class AgentLoop
             {
                 if (prop.NameEquals("contextLength"))
                 {
-                    writer.WriteNumber("contextLength", SessionContextCapTokens);
+                    writer.WriteNumber("contextLength", capTokens);
                 }
                 else
                 {

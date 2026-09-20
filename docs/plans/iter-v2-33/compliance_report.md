@@ -268,3 +268,167 @@
 3. **S-87 执行侧 = 唯一路径**：新增 `DbCronRunTools.ListReadOnly`（纯读，无 orphan 写、无 `activeRunIds` 依赖）+ `ToolDispatchRouter` 另加直连分支；**不改** `AgentRuntimeCronExecutor`（含 `RequiresApproval` 与 `CronToolNames` 六项），**不接线** `channels.ts:218` 的 `CRON_RUNS`。参数 `jobId` 在直连分支内显式映射为底层 `cronId`（`:121`/`:166`）。
 4. **S-93 去重**：用 S-91 新建的 `memoryEntries(scope, …)` 取同 scope 全量（**不要**用 `memoryEntriesByStatus`，空 status 返回空），再按归一化文本做包含判断。
 5. **⚠️-4 收尾**：补 `memory-organization.ts`（580 行）的拆分/豁免处置。
+
+---
+
+## 规划验证（第二批 S-98 ~ S-100，2026-09-20）
+
+- 被审文档：`docs/plans/iter-v2-33/plan.md` 的「## 第二批（S-98 / S-99 / S-100）」（plan.md:187-255）
+- 需求基准：`docs/plans/iter-v2-33/raw-requirements.md` S-98（`:1120-1163`）、S-99（`:1194-1235`）、S-100（`:1239-1301`）
+- 规范基准：`AGENTS.md`（7 层单向依赖 / AOT 十条 / 单文件 ≤ 500 / 命名）、`docs/dev-workflow.md`（阶段二 plan 格式 + 阶段三检查项）
+- 审查者：独立 subagent（architect-reviewer）
+- 日期：2026-09-20
+- 结论：**FAIL（2 个 ❌）**
+
+> 审查方式：纯静态审查（未跑构建、未跑测试、未改任何源码）。plan 引用的每个文件均回源码实读；行号一律 2026-09-20 实测（`(Get-Content X).Count` 计**含空行的总行数**，与 plan 自报基线同口径 —— plan 给的 6 个基线值经复核**全部一致**：`MemoryModule.cs` 495 / `MemoryEntriesTab.tsx` 322 / `ProjectMemoryLibraryTab.tsx` 132 / `memory-helpers.ts` 293 / `MemoryFtsService.cs` 155 / `use-composer-interactions.ts` 119；`AotMemoryResultTypes.cs` 实测 **40 行**）。
+
+### 一、逐条审查项结论
+
+| # | 检查项 | 结论 | 证据 / 说明 |
+|---|---|---|---|
+| 1 | 步骤覆盖三个需求的目标 / 落点完整性 | ⚠️ | S-99（S99-1~5）与 S-100（S100-1~3）**目标覆盖完整**；S-98 覆盖 raw 的 6 条要改项 + 3 条待裁定：offset（S98-3）= §1146、tiebreaker `updated_at {dir}, id {dir}`（S98-3）= §1147、总数选 A（S98-2/3）= §1149、前端请求驱动 + 删 `ENTRY_FETCH_LIMIT`（S98-5）= §1156、排序下推 SQL（S98-3/5）= §1157、档案页一并改（S98-6）= §1163、i18n 四文件齐备（S98-7）。**缺口**：`memoryEntries()` 现有 **3 个**消费方，plan 只认 1 个（见 ⚠️-1）；S-100 缺 raw 明确要求的「定案实测」（见 ❌-2） |
+| 2 | 每步是否有可执行、可判定的验证检查点 | ❌ | 20 个步骤中 18 个的检查点可判定（tsc 三配置 / `dotnet build` 双 sln / 套件 `exit=0` / 真机三条），无「应该没问题」式空话。**S99-3 的检查点在 AND 语义下不可判定**（见 ❌-1）；S98-1 的「新文件 ≤ 130 行」自设阈值偏紧（见 ⚠️-6）；S100-1 的检查点只有 `tsc` 零错误、行为无任何可判定证据（见 ⚠️-4） |
+| 3 | 文件路径 / 分层依赖方向 | ⚠️ | 正确项：S-99 落 `WishfulClaw.Workspace/Memory/MemoryFtsService.cs`（Workspace 层 ✅）、S-98 落 `WishfulClaw.Worker/Modules/`（Worker 层 ✅）、`AotMemoryResultTypes.cs` 留 Workspace ✅、新 partial 文件 `MemoryModule.Entries.cs` 落 Worker ✅、渲染端三文件与 `locales/{zh,en}/{settings,chat}.json` 路径 ✅。**依赖方向无逆向引用**：Worker 引用 Workspace（`using WishfulClaw.Workspace.Memory;` `MemoryModule.cs:5`）符合 AGENTS.md；`MemoryFtsService` 只依赖 `Infrastructure/Db`（`MemoryFtsService.cs:3`）未上引；`memory-hot-sync.ts` 引 `stores/chat-store/memory-helpers` 为同类横切，无环。**错 1 处**：`WishfulClawJsonContext.cs` 路径见 ⚠️-2 |
+| 4 | 单文件 500 行红线 | ✅ | 见下表「500 行核算」。**全部触碰文件改动后均 ≤ 500**，无一处触线 |
+| 5 | AOT：新增 JSON record 是否注册 | ✅（附注） | S98-2 明确「注册进 `WishfulClawJsonContext`」，覆盖 AGENTS.md AOT 规则 5。核对细节：`MemoryEntriesResponse` 内含 `List<MemoryEntryRow>`，该泛型**已注册**（`WishfulClawJsonContext.cs:88`）⇒ 只需新增 1 条 record 注册，无需补 `List<T>`（规则 8）✅。两处表述需订正见 ⚠️-5 |
+| 6 | 技术性错误核验（a)(b)(c)(d) | ❌ | (a) ❌ **不成立**：`memoryEntries()` 有 3 个调用点，plan 只提 `ProjectMemoryLibraryTab`（见 ⚠️-1；(b) ✅ **成立**：`order` 白名单映射是**必要且更安全**的写法（`ORDER BY` 的值位无法参数化，白名单是唯一正确解）；(c) ✅ **成立**：单 token「逐字节一致」经现有分支核对为真（依据见下文）；(d) ✅ **成立**：`MemoryEntriesByStatusResponse` 确被两个端点共用（见下文） |
+
+#### 审查项 6(c) 细核 —— 单 token「逐字节一致」为何**成立**
+
+现有 `SearchAsync` 分支（`MemoryFtsService.cs:37-121`）：
+- `:41 q = query.Trim()`；`:55 if (q.Length >= MinFtsQueryLength)`（`MinFtsQueryLength = 3`，`:149`）⇒ FTS 路；`:57 ftsQuery = BuildFtsLiteralQuery(q)`（`:151-152` 包双引号 + 转义 `"`）。
+- `:91 if (results.Count == 0)` ⇒ LIKE 路，`@pattern = $"%{q}%"`（`:111`），score = `(title LIKE ? THEN 2) + (content LIKE ? THEN 1)`（`:103-104`）。
+
+新增 `SplitTokens` 后：单 token 时 `tokens[0] == q`（`q` 已 Trim，无空白可拆）⇒ `BuildFtsLiteralQuery(tokens[0])` 与 `BuildFtsLiteralQuery(q)` **字面相同**；LIKE 的逐 token 累加式在 n=1 时退化为 `(title?2:0)+(content?1:0)`，与 `:103-104` **同式**。∴ 承诺成立。
+**但成立的前提是「单 token 保留 FTS→LIKE 兜底」**，而 plan 的 S99-2/S99-3 把三分支写成一个 dispatch、**从未声明 FTS 零命中仍回退 LIKE**；若实施者按「全 token ≥ 3 ⇒ 只走 FTS」直译，单 token ≥ 3 就丢了兜底 ⇒ 与 S99-1 的承诺冲突（见 ⚠️-3）。
+
+#### 审查项 6(d) 细核 —— `MemoryEntriesByStatusResponse` 确为两端点共用
+
+`MemoryEntriesByStatus`（`MemoryModule.cs:286-328`）在 `:290`、`:325-326` 返回 `MemoryEntriesByStatusResponse`；`MemoryEntries`（`:337-372`）在 `:368-370` **也**返回同一类型 ⇒ plan 判断正确。附带核实「改它会波及 tier 浏览器」同样成立：`memoryEntriesByStatus` 的消费方是 `src/renderer/src/components/memory/MemoryPanel.tsx:68-69`（warm/cold 两路），若给该 record 加 `Total` 字段会同时改变 `entries-by-status` 的 wire 形状。**⇒ S98-2 新增独立 `MemoryEntriesResponse` 而不复用，是正确决策**（反向也印证 raw §1151 的提醒）。
+
+### 二、500 行红线核算（`AGENTS.md`：>500 必须拆分）
+
+| 文件 | 现状（实测） | 本批改动 | 预估 | 判定 |
+|---|---|---|---|---|
+| `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs` | **495** | S98-1 搬走 `:286-328`(48 行) + `:337-372`(43 行) = −91 | **≈ 404** | ✅（plan 自设 ≤ 420 可达） |
+| `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs`（新建） | 0 | +搬入 91 行 + usings/namespace/partial class 头 ≈ 11 行；S98-3 再 +参数/`order` 映射/`COUNT(*)`/响应构造 ≈ 15~20 | **≈ 115~125** | ✅（plan 自设 ≤ 130，**临界**，见 ⚠️-6） |
+| `src/runtime/WishfulClaw.Workspace/Memory/AotMemoryResultTypes.cs` | **40** | S98-2 +1 record（2 行，`MemoryEntriesByStatusResponse` 在 `:40`） | **≈ 42** | ✅ |
+| `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs` | **149** | S98-2 +1 条 `[JsonSerializable]`（`:89` 旁） | **≈ 150** | ✅ |
+| `src/runtime/WishfulClaw.Workspace/Memory/MemoryFtsService.cs` | **155** | S-99 +`SplitTokens` + 三分支 dispatch + 逐 token score 累加 | **≈ 215~250** | ✅ |
+| `src/renderer/src/stores/chat-store/memory-helpers.ts` | **293** | S98-4 +2 尾参 + 返回类型（`:259-273`） | **≈ 298** | ✅ |
+| `src/renderer/src/components/settings/MemoryEntriesTab.tsx` | **322** | S98-5 −`ENTRY_FETCH_LIMIT` 块（`:19-24`，≈ −6）+ 服务端分页/`total` 驱动 ≈ +15 | **≈ 331** | ✅ |
+| `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` | **132** | S98-6 +分页控件与 `total` 驱动 ≈ +30~50 | **≈ 165~185** | ✅ |
+| `src/renderer/src/components/chat/InputArea/use-composer-interactions.ts` | **119** | S100-1 +`clipboardTextOf` ≈ +20 | **≈ 140** | ✅ |
+| `src/renderer/src/lib/agent/memory-hot-sync.ts`（未列入 plan） | **96** | 无需改（尾参向后兼容） | **96** | ✅（但应从清单可见，见 ⚠️-1） |
+
+**结论：无一处触线** ⇒ 审查项 4 为 ✅。S98-1 的「先拆分再改」是**必要**动作而非美化 —— 若不动 `MemoryModule.cs`（现 495），S98-3 在 `MemoryEntries` 上追加 `offset`/`order`/`COUNT(*)` 会把它推过 500 红线。
+
+### 三、❌ 阻断项（必须修）
+
+#### ❌-1：S99-3 的验证检查点在 AND 语义下**不可判定**，打分措辞自相矛盾
+
+- **出处**：`plan.md:214`
+  > `S99-3` 多 token 且存在 < 3 字符的 token ⇒ 跳过 FTS 直接走 LIKE，WHERE 改逐 token 的 `(title LIKE ? OR content LIKE ?)` **AND** 连接；score 改为**对每个 token 累加** `(title 命中 2 + content 命中 1)`，**命中词多者分高**。验证：`记忆 整理` 能命中同含两词的条目，且**双命中的排在单命中之前**。
+- **问题 1（检查点不可判定）**：WHERE 用 **AND** 连接 ⇒ 返回集里**每一行都同时命中全部 token**，「单命中」的行在定义上不存在 ⇒ 「双命中的排在单命中之前」无法写出任何断言、无法判定。
+- **问题 2（打分语义写反）**：AND 下「命中词数」对候选集是常量（= token 数），故 score 的**唯一**变量是「token 命中 title 还是只命中 content」：全命中 title 得 `2n`，全落 content 得 `n`。∴ plan 写的「命中词多者分高」应表述为「**token 命中 title 越多者分高**」。
+- **连带影响**：S99-5「扩断言（31 → ≥ 38）」的断言集依赖这条检查点 ⇒ 照抄会让实施者写不出断言，或写出恒真的假断言（`计划外的自欺`）。
+- **修正建议**（写进 S99-3 验证即可）：
+  > 造两行：A = 标题 `记忆 整理`，正文无关；B = 标题 `无关`，正文 `记忆 整理`。断言 `记忆 整理` 命中 A、B 两行（证明 AND 生效、非同词零命中），且 A 排在 B 前（标题命中加权）；再断言 score(A) > score(B)。
+  > 并把「命中词多者分高」改为「token 命中 title 越多者分高（n=2 时 title 全中 = 4、只中 content = 2）」。
+
+#### ❌-2：S-100 把「根因未定案」当既定事实定下修法，缺 raw 明确要求的定案实测
+
+- **出处**：plan.md:190「三项均已探索完毕…**无待用户裁定项**」+ plan.md:220-221（S100-1/2 直接落地 `text/html` 回退）。
+- **对照 raw**：`raw-requirements.md:1286-1296` 的「待定案（**还差一条实测数据**）」明确列出三分支，并给出定位手段：
+  > 「**定位手段（建议先做这个，别盲改）**：在 `handlePaste` 入口加临时诊断（dev 打印 `Array.from(event.clipboardData.types)` + 各格式长度 + 走了哪一支），复现一次即可定案。」
+  且 `:1298-1301` 把「是否接受先加诊断再改」列为**待裁定 1**。
+- **问题**：plan 的修法**只覆盖三分支中的第 1 支**（源只放了富文本）。若真因是第 3 支（`types` 含 `text/plain` 但 `getData('text/plain')` 返回空串），`clipboardTextOf` 会依次取到空 `text/plain`、空 `text/html` ⇒ 返回 `''` ⇒ 仍走 `:81 if (!plainText) return`（`use-composer-interactions.ts:80-81`）⇒ **行为零变化**，需求却按「已修」交付。而 raw 的关键现象（「用一次剪贴板增强后常规 Ctrl+V 恢复」）对第 1、3 两支**都成立**（`:1281` 的 `clipboard.writeText` 既补 text/plain，也把剪贴板所有权换成自己的进程），**无法据此排除第 3 支**。
+- **为什么算阻断**：这不是「口径选择」可以由 plan 自行取值 —— 它是**缺失事实**（`clipboardData.types` 到底是什么），plan 无权替它取值。plan.md:255 也自承「S-100 的修复效果**无法用编译/单测证明**」，即**连事后验收都无从判定**，这是计划可证伪性上的硬缺口。
+- **修正建议**（低成本，二选一）：
+  1. 在 S100 前补一步 **S100-0（诊断）**：`handlePaste` 入口（`:72` 之后、`:73` 之前）加 `if (import.meta.env.DEV) console.debug('[paste]', Array.from(event.clipboardData.types), event.clipboardData.getData('text/plain')?.length, event.clipboardData.getData('text/html')?.length)`，真机复现一次记进实施记录，**再**按定案落 S100-1/2；或
+  2. 保留现有三步，但把 S100-1 的回退扩到「`text/plain` → `text/html` → **`items` 遍历取 `text/*`**」，使第 3 支也被覆盖，并在验证检查点里写明「真机需记录 `types`」。
+  > 另注：plan.md:221 保留 `document.execCommand('insertHTML')` 原样，与 raw `:1300-1301` 待裁定 2 的倾向（统一收敛到受控路径 `replaceSelectionWithText`）相反；raw 给的理由是源码 `:102-103` 已自承 `insertHTML` 与换行/撤销组冲突。plan 未写保留理由，建议补一句（非阻断，见 ⚠️-7）。
+
+### 四、⚠️ 建议项（不阻断）
+
+- **⚠️-1（消费方清单不全；(a) 项的实际答案）`memoryEntries()` 有 3 个调用点，plan 只提 1 个。**
+  实读（`Get-ChildItem -Recurse -Include *.ts,*.tsx | Select-String 'memoryEntries\('`）：
+  1. `src/renderer/src/components/settings/MemoryEntriesTab.tsx:93` —— `memoryEntries('global', undefined, ENTRY_FETCH_LIMIT)`（S98-5 会重写）；
+  2. `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx:36-42` —— 5 个位置参数（plan 唯一提到的那个）；
+  3. **`src/renderer/src/lib/agent/memory-hot-sync.ts:61-67`** —— `memoryEntries(args.scope, args.workingFolder ?? undefined, DB_SYNC_SCAN_LIMIT, args.projectId, args.sshConnectionId)`，消费 `existing.entries`（`:68`）做 S-93 的**插入前判重**，`DB_SYNC_SCAN_LIMIT = 500`（`:15`）。
+  - **结论**：plan.md:229 的断言「新增两个尾参不会破坏现有调用」**为真**（尾参默认值 + 位置参数不变 ⇒ 三处都免改、都编译）。但**依据只列了 1/3 的调用点**，且 `memory-hot-sync.ts` **不在 plan.md:234-246 的「涉及文件」清单里**。
+  - **为何要点名**：它是对**行为**敏感的唯一消费方 —— S98-3 往 `ORDER BY` 追加 `id {dir}` 破平后会改变**同秒行的相对次序**，而 `memory-hot-sync` 的判重窗口正是「按该 ORDER BY 取回的前 500 行」。风险低，但 plan 未给任何回归点。
+  - **修正建议**：①「涉及文件」补 `src/renderer/src/lib/agent/memory-hot-sync.ts — S-98（受 `memoryEntries` 参数与 `ORDER BY` 变更影响，**不改代码**）」；② 在 S98-4 验证里加一条可判定断言：`memoryEntries('project', …, 500)` 调用点仍编译且 `entries` 可读（可用既有 `memory-hot-sync` 的 `mirrorHotParagraphsToDb` 二次调用 `count = 0` 作为幂等证据，参照 `raw` §1179 的测试缺口条目）。
+
+- **⚠️-2（路径错层）`WishfulClawJsonContext.cs` 写在 Workspace 层，实际在 Worker 层。**
+  - plan.md:238 写 `src/runtime/WishfulClaw.Workspace/Memory/WishfulClawJsonContext.cs（或其所在文件）`。
+  - 实读：全仓唯一同名文件是 **`src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs`**（`[JsonSerializable(typeof(MemoryEntriesByStatusResponse))]` 在 `:89`，class 在 `:147`）；`src/runtime/WishfulClaw.Workspace/Memory/` 下**没有**该文件（该目录 15 个 .cs 已逐一列出）。
+  - **修正建议**：改为 `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs`，并去掉「（或其所在文件）」的兜底措辞（AOT 注册点若走错层会构造出第二个 context，属难查的编译期错误）。
+  - 定级说明：本仓既有先例把同类「文件:行 错引」记作 ⚠️（§五 ⚠️-3 的 `:168`→`:115`、`:105`→`:100`），故此处同样不判 ❌。
+
+- **⚠️-3（S-99 规格缺口）FTS→LIKE 兜底在 S99-2/S99-3 里未被声明。**
+  - 现状 `MemoryFtsService.cs:91 if (results.Count == 0)` 是 FTS 失败/零命中时的兜底（`:81-87` 的 catch 也清空后落到这里）。
+  - plan 的 S99-2（全 token ≥ 3 走 FTS）、S99-3（含短 token 走 LIKE）构成一个 dispatch，却**未交代**「FTS 零命中是否仍回退 LIKE」。对单 token 而言这条兜底是 S99-1「逐字节一致」承诺的组成部分（见一、6(c) 细核）。
+  - **修正建议**：在 S99-1 写明「单 token 完整保留 `:55` FTS → `:91` LIKE 的两段式」；在 S99-2 明确「all-≥3 的 FTS 分支零命中时是否也回退到逐 token LIKE AND（建议：回退，保持与现状同构）」。
+
+- **⚠️-4（可测性）`clipboardTextOf(data: DataTransfer)` 的签名使核心逻辑无法单测。**
+  - plan.md:220 的 S100-1 验证只有「`tsc` 零错误」；plan.md:255 因此自承「无法用编译/单测证明」。**这个结论是签名造成的，不是问题本身的性质。**
+  - **修正建议**：把纯逻辑与 DOM 读取分层 —— `export function textFromClipboard(plain: string, html: string): string`（纯函数，可用 `tests/*` 的 TS 断言范式覆盖：空 plain + 含 `<p>` 的 html ⇒ 提取文本；块级元素补换行；两者皆空 ⇒ `''`），`handlePaste` 内只做 `textFromClipboard(event.clipboardData.getData('text/plain'), event.clipboardData.getData('text/html'))`。这样 plan.md:255 的「无法证明」可收窄为「仅 `getData` 读取层需真机确认」，与 `use-composer-interactions.ts` 现有 `shouldCollapsePaste`（`:16-26`）同为纯函数可测（顺带补上 S100-3 的折叠断言）。
+
+- **⚠️-5（AOT 表述）S98-2 的两处说法需订正。**
+  - plan.md:227「验证：编译零告警（**AOT 下 JsonContext 漏注册会告警**）」—— 实为**编译错误**而非告警：漏注册则 `WishfulClawJsonContext.Default.MemoryEntriesResponse` 属性不存在，`WorkerResponse.Json(value, …)` 直接编译失败（AGENTS.md AOT 规则 4 要求显式传 `JsonTypeInfo`）。
+  - plan 未声明「`List<MemoryEntryRow>` 已注册、无需新增」（`WishfulClawJsonContext.cs:88`）—— 建议显式写一句，免得实施者按 AOT 规则 8 重复注册。
+  - 定级：**不阻断**（检查点「编译零告警」本身仍可执行，S98-2 的注册动作已覆盖）。
+
+- **⚠️-6（自设阈值过紧）S98-1 的「新文件 ≤ 130 行」与 S98-3 叠加后临界。**
+  - 搬入内容实测 91 行（`:286-328` = 48 行、`:337-372` = 43 行）+ 文件骨架 ≈ 11 行 ⇒ ≈ 102 行；S98-3 再给 `MemoryEntries` 加 `offset`/`order` 白名单映射/`COUNT(*)`/新响应构造 ⇒ ≈ +15~20 ⇒ **≈ 117~122**。
+  - **修正建议**：把 S98-1 的自设判据放宽为「新文件 ≤ 150 行」（或改成「`MemoryModule.cs` ≤ 420 且新文件 ≤ 200」），避免同一需求的 S98-1 与 S98-3 互相锁死。`MemoryModule.cs` 侧 ≤ 420 的判据有余量（实测 495 − 91 = 404）。
+
+- **⚠️-7（可写死的取舍未写）`offset`/`limit` 无上界 + `execCommand` 保留的理由。**
+  - `MemoryEntries` 现 `limit = GetInt(parameters, "limit", 200)`（`MemoryModule.cs:342`）**无上界**；S98-3 只对 `offset` 写了 clamp ≥ 0。建议一并写 `limit = Math.Clamp(limit, 1, 500)`（S-93 的 `DB_SYNC_SCAN_LIMIT = 500` 是现有最大调用值，上界取 500 恰好不破它）。**注意：若上界取得比 500 小会静默缩小 S-93 的判重窗口。**
+  - plan.md:221「`document.execCommand('insertHTML')` 与受控兜底路径保持原样不动」与 raw `:1300-1301` 的倾向相反，建议补一句保留理由（代价：该类受控编辑器下 `insertHTML` 失败只能靠 `:105 if (inserted)` 的 false 分支兜底，而**返回 true 但 DOM 未被 model 吸收**的情形兜不住 —— 与 S-100 的原始症状同源）。
+  - 定级：**不阻断**。
+
+### 五、审查结论
+
+- 阻断规则（`docs/dev-workflow.md` 阶段三）：❌ > 0 禁止进入用户确认环节。**本轮 ❌ = 2**。
+- 分层依赖、AOT 注册动作、文件路径（除 1 处错层）、单文件 500 行红线（全 10 个文件核算通过）四项**均无硬伤**；S-98 对 raw 三条待裁定的取值（A / 直接改掉 / 档案页一并改）与 raw 倾向一致，S99/S100 的落点选层正确。
+- 两个 ❌ 的**返工成本都很低**：❌-1 改一句验证描述；❌-2 补一步诊断（或把回退扩到 `items` 遍历）。⚠️-1/⚠️-2 是清单与路径的补字。
+- **最终判定：FAIL**。修掉 ❌-1、❌-2 即可复验（只需重读 plan.md:212-214 与 :218-222 两段，无需重跑全量；本报告第二节的 500 行核算与第一节 6(c)/6(d) 的核对结论可直接复用）。
+### 复验（第二批 S-98 ~ S-100，2026-09-20）
+
+- 复验对象：`docs/plans/iter-v2-33/plan.md` 的「## 第二批（S-98 / S-99 / S-100）」（现行 plan.md:187-261）
+- 上轮报告：本文件上一节「## 规划验证（第二批 S-98 ~ S-100，2026-09-20）」（结论 FAIL，❌2 / ⚠️7）
+- 审查者：独立 subagent（architect-reviewer）；日期 2026-09-20
+- 审查方式：纯静态复验 —— 未跑构建 / 未跑测试 / 未改任何源码；plan 每条修订均回源码实读核对行号与事实
+- 结论：**PASS**
+
+#### 一、逐项复验（上轮 ❌/⚠️ 编号 → 是否已正确处置 → 依据）
+
+| 上轮编号 | 处置 | 依据（plan.md 现行文字 / 源码实读） |
+|---|---|---|
+| **❌-1** S99-3 断言在 AND 语义下不可判定 | ✅ | plan.md:216 新增独立段落订正：明写「返回集**每一行都命中全部 token**，『命中词数』对候选集是常量、不是区分变量」；验证改为「造 A（两词都出现在 `title`）与 B（两词只在 `content`），断言 **A 排在 B 前且 `score(A) > score(B)`**；另断言只含其中一个词的条目**不被返回**」。plan.md:215 已删去「命中词多者分高」。全仓 grep「双命中 / 单命中 / 命中词多者分高」**零命中** ⇒ 无残留不可判定说法 |
+| **❌-2** S-100 根因未定案就定修法 | ✅ | plan.md:222 新增 **S100-0 诊断步骤**（`handlePaste` 入口加临时诊断：dev 打印 `Array.from(event.clipboardData.types)` + 各 `text/*` 长度 + 走了哪一支，复现一次后**立即删除**；明标「先于修法」）。plan.md:223 S100-1 写死：「**根据 S100-0 的结论决定是否追加 `items` 遍历取 `text/*`** —— 若诊断落在『**有 `text/plain` 但 `getData` 返空**』那一支，`text/html` 回退**不对症**，`items` 遍历才是」。plan.md:190 原句「无待用户裁定项」已删（grep「无待用户裁定」零命中） |
+| **⚠️-1** `memoryEntries()` 第 3 个调用点（`memory-hot-sync.ts`）缺失 | ✅ | plan.md:245「涉及文件」新增 `src/renderer/src/lib/agent/memory-hot-sync.ts — S-98（**`memoryEntries` 的第 3 个调用点**，S-93 的判重消费方；新增两个尾参有默认值使其免改，但**必须回归验证**）`。源码复核：`memory-hot-sync.ts:61-67` 确为 5 个位置参数调用、消费 `existing.entries`（`:68`）做判重，`DB_SYNC_SCAN_LIMIT = 500`（`:15`），属实 |
+| **⚠️-2** `WishfulClawJsonContext.cs` 路径错层 | ✅ | plan.md:230（S98-2）与 plan.md:241（涉及文件）均已订正为 `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs`，并注明「**实际在 Worker 层**」。grep「Workspace/Memory/WishfulClawJsonContext」「或其所在文件」**零命中** ⇒ 无残留兜底措辞 |
+| **⚠️-3** FTS 零命中仍回退 LIKE 未声明 | ✅ | plan.md:214（S99-2）已写明「**FTS 零命中时仍走 LIKE 回退**（`results.Count == 0` 的现有分支保持不变）—— 这是 S99-1『单 token 行为一致』成立的前提」。源码复核：`MemoryFtsService.cs:91 if (results.Count == 0)` 该分支存在，属实 |
+| **⚠️-4** `clipboardTextOf(DataTransfer)` 无法单测 | ✅ | plan.md:223（S100-1）已改为**只吃字符串的纯函数** `composePastedText(plain: string, html: string): string`（优先 `plain` → 从 `html` 用 `DOMParser` 提取 → 皆空 `''`），注明「签名只吃字符串（不吃 `DataTransfer`）」，`getData` 取用留在 `handlePaste` 侧；并配纯函数断言（无输入→空串 / 仅 plain→原样 / 仅 html 带标签→提取后无标签 / 两者都有→取 plain） |
+| **⚠️-5（其余）** JsonContext 漏注册定性 / `List<MemoryEntryRow>` 泛型注册 / 消费方 | ✅ | plan.md:230（S98-2）三处均已订正：①「编译**零错误**（AOT 源生成下 JsonContext 漏注册是**编译错误**，不是告警）」；②「`List<MemoryEntryRow>` 已在 `WishfulClawJsonContext.cs:88`，无需补泛型注册」；③「消费方 `MemoryPanel.tsx:68-69`」。源码复核：`WishfulClawJsonContext.cs:88` = `[JsonSerializable(typeof(List<MemoryEntryRow>))]` 属实；`MemoryPanel.tsx:68-69` 确为 `memoryEntriesByStatus('warm'/'cold', …)` 两路消费属实 |
+
+#### 二、上轮未纳入「必须逐项确认」清单的两项 ⚠️（未处置，仍 ⚠️ 级，不阻断）
+
+- **⚠️-6（S98-1 自设阈值偏紧）—— 未处置**：plan.md:229 仍写「`MemoryModule.cs` 降到 ≤ 420 行、新文件 ≤ 130 行」。按上轮核算，`MemoryModule.Entries.cs` 搬入 ≈ 102 行 + S98-3 追加 ≈ 15~20 ⇒ **≈ 117~122**，逼近 130 上限、与 S98-3 相互锁死。建议放宽（如「新文件 ≤ 150 行」）。此为上轮 ⚠️（非阻断），未处置不改变结论。
+- **⚠️-7（`limit` 无上界 + `execCommand` 保留理由）—— 未处置**：plan.md:231（S98-3）仍只对 `offset` 写「clamp ≥ 0」，未对 `limit` 设上界（源码 `MemoryModule.cs:342` `limit = GetInt(parameters, "limit", 200)` 确**无上界**）；plan.md:224（S100-2）仍只写 `document.execCommand('insertHTML') … 保持原样不动`，未补保留理由（与 raw:1300-1301「待裁定 2」的倾向——统一收敛到受控路径 `replaceSelectionWithText`——相反）。亦为上轮 ⚠️，未处置不改变结论。
+
+#### 三、本次新发现（均 ⚠️ 级，不阻断）
+
+- **N-1（新）S100-1 的「纯函数断言」缺执行落点**：plan.md:223 要求对 `composePastedText` 做纯函数断言，但 plan.md:237-250「涉及文件」为 S-100 只列了 `src/renderer/src/components/chat/InputArea/use-composer-interactions.ts`，**未列任何 TS 测试文件，也未列要新增的 npm script**。本仓 TS 测试既有范式 = `tests/<name>/program.ts` 经 esbuild 打包 + `package.json` 的 `test:<name>` 脚本（实测 28 条，如 `test:select-file-tags`）。⇒ 按现行文字该断言**没有可执行的家**（整体检查点 plan.md:254-256 也未把 TS 单测套件纳入回归）。**建议**：涉及文件补 `tests/<name>/program.ts`（新建），并在 S100-1 验证行点名对应 `npm run test:<name>`。
+- **N-2（新）plan.md:259 与 S100-1 字面轻微抵触**：plan.md:259 仍写「**验证态已知限制**：S-100 的修复效果**无法用编译/单测证明**（依赖剪贴板来源）」。上轮 ⚠️-4 的修法正是**为把该限制收窄到「仅 `getData` 读取层」**（纯逻辑本可单测）；现 S100-1 已加纯函数断言，而 :259 的全局口径未同步收窄。**建议**改为「`composePastedText` 的纯逻辑由单测覆盖；仅 `clipboardData.getData` 的读取层依赖真机」。
+- **N-3（新，实现注记，非缺陷）**：S99-3 的断言「A 排在 B 前」依赖 `MemoryFtsService.cs:107` 的 `ORDER BY CASE WHEN status='active' THEN 0 ELSE 1 END, score DESC, updated_at DESC`。造数时 A / B 需**同 status**（自然取 active），否则首键 `status` 会先于 `score` 决定次序、产生假失败。**建议**在 S99-5 断言里显式注明。
+
+#### 四、复验结论
+
+- 上轮 **2 个 ❌ 全部正确处置**（❌-1 → plan.md:215-216；❌-2 → plan.md:222-223 + 190），且被点名的 5 个 ⚠️（⚠️-1 ~ ⚠️-5）亦全部处置、逐条与源码事实相符。
+- 未处置项均为 **⚠️ 级**（⚠️-6 / ⚠️-7 + 新发现 N-1 / N-2 / N-3），**不构成阻断**。
+- **无因修订而新引入的阻断性矛盾或行号失效**。plan 现行引用的源码行号已实读核对通过：`MemoryFtsService.cs:37-121 / :55 / :91 / :103-104 / :107 / :149 / :151-152`、`WishfulClawJsonContext.cs:88`、`MemoryModule.cs:342 / :286-328 / :337-372`、`AotMemoryResultTypes.cs:40`、`memory-hot-sync.ts:61-68`、`MemoryPanel.tsx:68-69`、`use-composer-interactions.ts:80-81`；plan 自报基线行数（`MemoryModule.cs` 495 / `WishfulClawJsonContext.cs` 149 / `memory-hot-sync.ts` 96 / `memory-helpers.ts` 293）本轮实测**一致**。
+- **最终判定：PASS**（阻断规则：❌ = 0）。可进入用户确认环节。建议把 ⚠️-6 / ⚠️-7 / N-1 / N-2 / N-3 的补字一次性并入（成本极低），并在执行时按 N-3 注记造数。

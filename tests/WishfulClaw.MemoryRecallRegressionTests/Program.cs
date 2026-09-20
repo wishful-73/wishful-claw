@@ -17,6 +17,7 @@ internal static class Program
         {
             RunFtsLiteralQuerySuite(Path.Combine(testRoot, "memory.db"));
             RunShortQuerySuite();
+            RunMultiKeywordSuite();
             RunSessionDeduplicationSuite();
             RunRecallFilteringSuite();
             RunInjectedBlockStrippingSuite();
@@ -88,6 +89,43 @@ internal static class Program
         Assert(hits.Count >= 2, "two-character query is served by the LIKE path");
         Assert(hits.All(h => h.Score is not null), "short-query hits carry a synthesised score");
         AssertEqual("短词 标题命中", hits[0].Title, "title hit outranks content-only hit for short queries");
+    }
+
+    /// <summary>
+    /// S-99: a query is a set of whitespace-separated keywords ANDed together. Before this,
+    /// the whole string went to FTS as ONE phrase and to LIKE as ONE substring, so a
+    /// multi-keyword query could never match anything. Under AND every returned row carries
+    /// *all* keywords — so "how many keywords matched" is a constant and the only thing left
+    /// to order by is *where* they matched (title weighs 2, body weighs 1, accumulated per
+    /// keyword). All three samples are inserted as 'active' on purpose: the ORDER BY layers
+    /// status above score, which would otherwise mask the score ordering under test.
+    /// </summary>
+    private static void RunMultiKeywordSuite()
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        // A — both keywords in the title, older than B (score 2+2 = 4).
+        InsertMemory("记忆 整理 配置", "与关键词无关的正文", now - 20);
+        // B — both keywords only in the body, newest (score 1+1 = 2).
+        InsertMemory("无关标题", "记忆 整理 的正文说明", now);
+        // C — carries only one of the two keywords; AND must exclude it.
+        InsertMemory("记忆 单独出现", "与另一个词无关", now + 10);
+
+        var search = new MemoryFtsService();
+        var hits = search.SearchAsync("记忆 整理", "global").GetAwaiter().GetResult();
+
+        Assert(hits.Count >= 2, "multi-keyword CJK query is served by the LIKE path (both keywords are 2 chars)");
+        Assert(hits.All(h => h.Title != "记忆 单独出现"), "AND semantics exclude a row carrying only one keyword");
+        AssertEqual("记忆 整理 配置", hits[0].Title, "title-carried keywords outrank body-carried ones despite being older");
+        Assert(hits[0].Score > hits[1].Score, "score accumulates per keyword");
+
+        // Every keyword >= 3 chars keeps the query on the trigram index: the fixture inserted
+        // by RunFtsLiteralQuerySuite contains "alpha:beta (gamma)", so both literals must fire.
+        var ftsHits = search.SearchAsync("alpha gamma", "global").GetAwaiter().GetResult();
+        Assert(ftsHits.Count > 0, "multi-keyword query with all keywords >= 3 chars hits via FTS");
+
+        // A single keyword must behave exactly as it did before S-99 (substring match here).
+        var single = search.SearchAsync("记忆", "global").GetAwaiter().GetResult();
+        Assert(single.Any(h => h.Title == "记忆 整理 配置"), "single-keyword query still matches by substring");
     }
 
     private static void InsertMemory(string title, string content, long updatedAt)

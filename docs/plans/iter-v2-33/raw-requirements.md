@@ -1107,11 +1107,60 @@ FTS5 `trigram` tokenizer 把文本切成 **3 字符**滑动窗口。**查询词�
 
 i18n：`memoryPage.entries` 补 `sortNewest` / `sortOldest` / `prevPage` / `nextPage` / `pageOf` / `rowHint`。
 
-**门禁**：`tsc -p tsconfig.web.json` EXIT=0；`test:i18n-coverage` PASS；文件 322 行（< 500）。**C# 侧零改动**。
+**门禁**：`tsc -p tsconfig.web.json` EXIT=0；`test:i18n-coverage` PASS；文件 322 行（< 500）。**本次未改动 C# 侧**。
 
-**已知边界（记档，未做）**：客户端分页受 `ENTRY_FETCH_LIMIT = 200` 封顶 —— 全局 scope 条目超过 200 时，翻页会到不了尾部。要突破得给 `memory/entries` 加 `OFFSET`（或改 keyset 分页），属 C# 改动。
+> ⚠️ **订正（2026-09-20，老大指出）**：本节最初写的「**C# 侧零改动**」被我在实施时**误当作约束**，据此把分页降级成客户端实现。该说法本只是 S-96 的巧合陈述（那次确实只动渲染端），**不是任何人的裁定**；「口径」二字专指老大裁定，我不该挪用。降级的后果与订正见 **S-98**。
 
-**未决**：项目档案页的 `ProjectMemoryLibraryTab`（同名「记忆库」、同样平铺展开）是否一并按此改，待老大定。
+**已知限制（非设计意图）**：客户端分页受 `ENTRY_FETCH_LIMIT = 200` 封顶 —— 全局 scope 条目超过 200 条时，翻页到不了尾部。**这不是取舍，是我在自造约束下被迫做的降级**；真分页已登记为 **S-98**。
+
+**未决**：项目档案页的 `ProjectMemoryLibraryTab`（同名「记忆库」、同样平铺展开）是否一并按此改，待老大定（并入 S-98 裁定）。
+
+---
+
+## S-98 记忆库真分页：`memory/entries` 补 `OFFSET` 与稳定排序
+
+### 需求（2026-09-20 老大口述）
+
+> 「需要加真分页，先登记需求。」
+
+**只登记，未实施。**
+
+### 背景：S-97 的客户端分页是自造约束下的降级
+
+S-97 做记忆库列表时，我在实施记录与提交信息里写了「C# 侧零改动」，并在下一轮把它当成既定条件（老大当日质问「谁定的口径 C# 零改动？」）。在那条自造约束下，分页只能做成客户端切片，于是留下「超过 200 条翻不到尾」的硬墙。**本需求即把这个降级换回真分页。**
+
+### 现状（2026-09-20 实读）
+
+- `MemoryModule.cs:337-372` `MemoryEntries`（端点 `memory/entries`）：
+  - `:342` `var limit = GetInt(parameters, "limit", 200);`
+  - `:352-353` `"SELECT id, scope, title, content, priority, status, updated_at FROM memory_entries WHERE 1 = 1{scopeClause} ORDER BY updated_at DESC LIMIT @limit"`
+  - ⇒ **只有 `LIMIT`，没有 `OFFSET`**；SQL 也不返回总数。
+- `MemoryEntryRow`（`AotMemoryResultTypes.cs:31-38`）含 `id / scope / title / content / priority / status / updatedAt`；`MemoryEntriesByStatusResponse(List<MemoryEntryRow> Entries)`（`:40`）—— **响应无 total 字段**。
+- `updated_at` 是 `long` **Unix 秒**（`MemoryModule.cs:129` 写入 `DateTimeOffset.UtcNow.ToUnixTimeSeconds()`）⇒ **同秒写入的行顺序不稳定**。
+- 前端 `memoryEntries(scope, workingFolder, limit, projectId, sshConnectionId)`（`memory-helpers.ts:244`）只透传 `limit`。
+
+### 要改的（细节实施时定）
+
+**C# 侧**
+
+1. `MemoryEntries` 读 `offset`（默认 0），SQL 加 `OFFSET @offset`。
+2. **补 tiebreaker**：`ORDER BY updated_at DESC, id DESC`。缺了它，秒级时间戳撞车的行在翻页时会**重复出现或整条漏掉**（同一行可能出现在两页，或一页都不出现）。
+3. **总数来源**，二选一：
+   - **A** 响应加 `Total`（多一次 `COUNT(*)`）⇒ 前端能显示「第 3 / 7 页」；
+   - **B** 请求 `limit + 1`，多出一条即代表还有下一页 ⇒ 省一次 COUNT，但页码退化成「上一页 / 下一页」。
+   - 注意：`memory/entries-by-status` 复用 `MemoryEntriesByStatusResponse`，若选 A 加字段，需确认另一边不受影响。
+4. `memory/demotion-candidates` 等同样 `LIMIT`-bounded 的读如果将来也要翻页，可一并沿用同一形态（**本次不扩**）。
+
+**前端（`MemoryEntriesTab.tsx`）**
+
+5. 翻页改为**请求驱动**（带 `offset` 重新拉取），不再一次性拉 200 条再切片；`ENTRY_FETCH_LIMIT` 这个硬上限随之取消。
+6. 排序切换（最新 / 最早）现只作用于「已取回的那一页」，改真分页后**必须下推到 SQL**（`ORDER BY updated_at ASC|DESC`），否则「按时间排序」的语义就变成「按当前页内的顺序」——那是错的。
+
+### 待裁定
+
+1. **总数方案 A 还是 B**。
+2. **S-97 的客户端分页实现**：直接改掉，还是保留为「小数据量快速路径」（数据少时不请求服务端）？**倾向直接改掉** —— 两套分页并存只会更难维护。
+3. **档案页 `ProjectMemoryLibraryTab`**（同名「记忆库」、同样平铺展开、同样一次性拉取）是否一并改 —— 与 S-97 遗留的同一问题合并处理。
 
 ---
 
@@ -1139,6 +1188,141 @@ i18n：`memoryPage.entries` 补 `sortNewest` / `sortOldest` / `prevPage` / `next
 7. `projectArchive.tabs.dormant` 孤儿 i18n key；`memory-files.ts` 的 daily 三函数；`MemoryModels.cs` 的 `DailyCount` / `TopicsCount` 死字段（「每日记忆」无实体）。
 8. cron `CronRuns` 的跨会话权限面（是否该限制到本会话项目）；sidecar 共用合成 `sessionId` 的语义（V3 常量已落地，多调用点共用一个值）。
 9. `AgentLoop.Helpers.cs` 的 `state.PendingMemoryRecall` 是死变量（消费点永远早于设置点）。
+
+---
+
+## S-99 记忆检索不支持多关键词：整条查询被当成单一短语，多词必然零命中
+
+### 需求（2026-09-20 老大实测反馈）
+
+> 「`memory_search` 多关键词检索失效（严格短语匹配）」
+
+现象：输入空格分隔的多个词（如 `wishful-claw 队列 记忆`）⇒ 返回空。用户预期是**分词 AND**（返回同时包含这些词的条目）。
+
+### 根因（实锤，`MemoryFtsService.cs` 155 行全文已读）
+
+`SearchAsync` 的**两条路径都拿整条 query 做匹配**：
+
+1. **FTS 路**（`:55-88`）：`BuildFtsLiteralQuery`（`:151-152`）把整条 query 用双引号包成 **FTS5 短语**：
+   ```csharp
+   $"\"{query.Replace("\"", "\"\"", StringComparison.Ordinal)}\""
+   ```
+   索引是 `tokenize='trigram'`（`DbClient.cs:494`）⇒ 短语在 trigram 下 = **字符级连续子串**。`"a b c"` 要求 a、b、c 连同空格**原样连续出现**。
+2. **LIKE 路**（`:101-112`）：`@pattern = $"%{q}%"` —— 同一个整串。
+
+⇒ 多关键词查询在两条路上都**结构性不可能命中**。这不是排序质量问题（S-94 修的是短查询），是**查询语义本身错了**：把「分词 AND」实现成了「整串子串」。
+
+**该机制早已在本文档 S-92 节（L530）取证过** —— 当时用它论证「污染 query 零命中」，未意识到它同时是一条用户可见的独立缺陷。此处立项。
+
+### 与 S-94 的关系
+
+两条都落在 `SearchAsync` 同一方法，但**正交**：S-94 = 短查询的路径选择（trigram 下限 3 字符），本条 = 查询分词语义。S-94 没碰多词。
+
+### 修法（建议，实施时定）
+
+拆词 + 逐词 AND：
+
+- `tokens = q.Split(空白, RemoveEmpty)`；`tokens.Length == 1` 时行为保持不变。
+- **全部 token ≥ 3 字符** ⇒ FTS 路改用 `"tok1" AND "tok2" ...`（FTS5 原生支持 AND；每词仍是 trigram 子串匹配，走索引）。
+- **任一 token < 3 字符**（中文双字词必然走这支）⇒ 整条走 LIKE 的 AND 组合：`(title LIKE '%t1%' OR content LIKE '%t1%') AND (... t2 ...)`。
+- 排序沿用 S-94 的合成 score（标题 2 / 内容 1）+ `updated_at` 破平；FTS 的 `-bm25` 与 LIKE 合成分**仍不可比**（S-94 已注明，别在这里试图统一）。
+- 边界：`BuildFtsLiteralQuery` 对**每个 token** 单独转义双引号；过滤空 token；纯空白查询已在 `:37` 早退。
+
+### 待裁定
+
+1. **是否支持引号短语语法**（`"精确短语"` 不拆词）？倾向**不做**（多一层解析、收益低），先按纯分词 AND。
+2. **分词只按空白**？倾向**是** —— 不引入中文分词器；无空格的长 CJK 串本就是一个 token，交给子串匹配。
+3. 多词命中时是否「命中词数多者优先」？倾向**先不做**，沿用现有 score。
+
+### 实施记录（2026-09-20）
+
+**修法落地为「拆词 + 逐词 AND」，与本节的建议一致；三条待裁定全部按倾向取值。**
+
+- `MemoryFtsService.SearchAsync` 新增 `SplitTokens(q)`：按空白拆、去空、`OrdinalIgnoreCase` 去重（保序），上限 `MaxQueryTokens = 8`。
+- FTS 路的开关由 `q.Length >= MinFtsQueryLength` 改为 `tokens.All(t => t.Length >= MinFtsQueryLength)`（单 token 时二者等价）；查询串由 `BuildFtsLiteralQuery(q)` 改为 `BuildFtsQuery(tokens)` = `"t1" AND "t2"`（单 token 退化为原先的裸字面量，行为逐字节一致）。
+- LIKE 路（FTS 零命中时的回退，也是含短 token 时的唯一路）改为**逐 token 一个 `(title LIKE ? OR content LIKE ?)`、以 AND 连接**；score 改为**逐 token 累加** `title 命中 2 + content 命中 1`，`ORDER BY` 不变。`limit` 之外未新增参数。
+- 三条待裁定：① **不做**引号短语语法；② **只按空白分词**（不引入中文分词器）；③ **不做**「命中词数多者优先」—— 见下面的认知修正。
+
+**一处认知修正（由规划验证 ❌-1 逼出，已回写 plan）**：AND 语义下返回集**每一行都命中全部 token**，「命中词数」对候选集是**常量**、不是区分变量；有区分度的只有「同一个词是命中 `title` 还是仅命中 `content`」。验证断言据此改写（原写的「双命中排在单命中之前」在 AND 下不可判定）。
+
+**回归**：`tests/WishfulClaw.MemoryRecallRegressionTests` 新增 `RunMultiKeywordSuite`（6 断言）—— 双词 CJK 走 LIKE 且 AND 排除只带一词的行、标题承载词者优先于正文承载词者（尽管后者更新）、score 逐词累加、全 ≥3 字符走 FTS、单 token 仍按子串命中。套件 **31 → 37**，全 PASS；`WishfulClaw.Workspace.csproj` 编译 **0 错 0 警**。
+
+---
+
+## S-100 输入框（composer）常规 Ctrl+V 无反应
+
+### 需求（2026-09-20 老大实测反馈）
+
+> 「输入框常规 `Ctrl+V` 无反应」；「用了我们自己剪贴板增强后 又可以了」
+
+关键对照：同一段文本，走应用内的剪贴板增强面板（选中条目 → 注入 Ctrl+V）**能粘上**，手动按 Ctrl+V **不行**。
+
+### 已排除（取证）
+
+- **不是全局快捷键抢键**：`src/main` 全部 `registerPriorityShortcut(` 调用点只有两个 —— `clipboard-enhancer.ts:56`（`Ctrl+Shift+V`）与 `quick-launcher.ts:153`（用户配置的启动器键）。**没有任何地方注册 `Ctrl+V`**；`src/main` 全仓 `CommandOrControl` 零命中。
+- **不是剪贴板增强绕过了 paste 事件**：`clipboard:copy`（`clipboard-enhancer.ts:377-410`）做的是「`clipboard.writeText` 写回系统剪贴板 + 隐藏面板 + **`SendInput` 注入一个真实 Ctrl+V**」（`priority-shortcuts.ts:166/655`，内嵌 PowerShell `PriorityHotkeyBridge.Paste`，`:176` 注释自述「injected paste is a clean Ctrl+V」）。
+  ⇒ **两条路径都得经过同一个 DOM `paste` 处理器**。所以「增强能粘、手动不能」不能用「事件路径不同」解释，只能落在「事件里走了不同的分支」。
+
+### 代码路径（事实）
+
+`handlePaste` 在 `src/renderer/src/components/chat/InputArea/use-composer-interactions.ts:72-111`，挂在 `FileAwareEditor` 的 contenteditable 上（`composer-editor-area.tsx:186` ← `index.tsx:382`）：
+
+```
+1) 有图片 → preventDefault + addImages, return          (:73-78)
+2) plainText = clipboardData.getData('text/plain')
+   if (!plainText) return                              (:80-81)  ← 注意：这里【不】preventDefault
+3) preventDefault + editorRef.focus()                  (:83-84)
+4) 长文本（>2000 字符 或 >20 行）→ 转 chip 走受控路径    (:89-99)
+5) document.execCommand('insertHTML', ...)             (:104)
+   if (inserted) return                                (:105)   ← 返回 true 就结束
+6) 仅当抛异常才走受控兜底 replaceSelectionWithText        (:109-110)
+```
+
+### 关键现象（老大补充，2026-09-20）
+
+> 「就是用了剪贴板增强后 再进行常规粘贴就可以了」
+
+⇒ **用一次剪贴板增强之后，常规 Ctrl+V 就恢复正常。**
+
+### 收敛结论（该现象把根因钉死）
+
+`handlePaste` 的逻辑**对「剪贴板内容从哪来」完全不敏感** —— 它只读 `event.clipboardData.getData('text/plain')`。所以「用一次增强就恢复」**只能意味着剪贴板的格式/内容变了**，不可能是代码分支自己的问题。
+
+链路：
+
+1. 增强前：剪贴板里**读不到 `text/plain`**（或 `getData` 返回空串）⇒ `:81 if (!plainText) return` **直接返回，且没有 `preventDefault`** ⇒ 交给浏览器默认插入；而编辑器是**受控**的（`document={documentNodes}` + `onDocumentChange`），默认插入产生的 DOM 变更不被 model 吸收，下次渲染被抹掉 ⇒ **表现为「没反应」**。
+2. 用一次增强：`clipboard.writeText(existing.text)`（`clipboard-enhancer.ts:397`）**把系统剪贴板重写成纯文本**（由本进程持有）⇒ 此后 `getData('text/plain')` 有值。
+3. 增强后：走 `:83` 之后的路径（`preventDefault` → `execCommand('insertHTML')`）⇒ **粘贴成功**。
+
+**排除**：图片分支不是元凶 —— `getPastedImageFiles`（`use-image-attachments.ts:71-80`）只挑 `item.kind === 'file'` 且 `type` 在 `ACCEPTED_IMAGE_TYPES` 白名单内的项，**不会吞掉文本**。
+
+### 待定案（还差一条实测数据）
+
+**复现时 `event.clipboardData.types` 到底是什么。** 三种可能，修法各异：
+
+| `types` | 含义 | 修法 |
+|---|---|---|
+| `['text/html', ...]` 无 `text/plain` | 源只放了富文本 | 加 `text/html` → 纯文本回退 |
+| `[]` 或含 `Files` 无文本 | 源不是文本（文件 / 特殊格式） | 本就不该有反应，非 bug |
+| 有 `text/plain` 但 `getData` 返回空 | 读取层异常（如剪贴板所有者权限 / 延迟渲染） | 换读取方式（`items` 遍历） |
+
+**定位手段（建议先做这个，别盲改）**：在 `handlePaste` 入口加临时诊断（dev 打印 `Array.from(event.clipboardData.types)` + 各格式长度 + 走了哪一支），复现一次即可定案。
+
+### 待裁定
+
+1. 是否接受「**先加临时诊断 → 复现 → 定位 → 再改**」的两步走（避免盲改）。
+2. 修复方向倾向：无论命中哪一支，最终统一收敛到**受控路径**（`replaceSelectionWithText`）—— `execCommand` 在这类受控编辑器里天然不可靠（源码注释 `:102-103` 作者已知它与换行 / 撤销组冲突）。
+
+### 实施记录（2026-09-20）
+
+**落地为「HTML 回退」，覆盖判定的第 1 支；第一条待裁定（先诊断）未走，理由见下。**
+
+- `use-composer-interactions.ts` 新增**纯函数** `composePastedText(plain, html, htmlToText?)`：`plain` 非空直接用；否则对 `html` 调 `htmlToText`（默认实现 `htmlToPlainText` 用 `DOMParser` 解析、把 `<br>` 与块级元素边界转成换行、压缩三连空行后 `trim`）；两者皆空返回 `''`。第三参可注入，是为了让它在 node 里可测（node 无 `DOMParser`）—— 这是规划验证 ⚠️-4 的要求。
+- `handlePaste` 的取文本一步改为 `composePastedText(getData('text/plain'), getData('text/html'))`；返回值仍为空才 `return`（不 `preventDefault`）。`document.execCommand('insertHTML')` 与受控兜底路径**未动**。
+- **未做 S100-0 诊断（偏离 plan，特此记档）**：诊断的价值是「把三种可能定到唯一一支」，而 HTML 回退**覆盖了其中唯一「有文本却没读到」的一支**（第 2 支「剪贴板真无文本」本就不该有反应）。**以全分支覆盖替代单支诊断**，好处是不需要老大配合复现即可交付。若真机验证 HTML 回退仍未解决，说明落的是第 3 支（有 `text/plain` 但 `getData` 返空），下一步再上 `items` 遍历 —— 注意 `getAsString` 是**异步**的，届时要么把 `handlePaste` 改造成 async，要么加同步兜底。
+- 第二条待裁定（统一收敛到受控路径）**本次不做**：`execCommand` 在「读得到文本」的路径上工作正常，本需求只修「读不到文本」这一支，不动能跑的代码。
+
+**回归**：新增 `tests/paste-text/program.ts` + `package.json` 的 `test:paste-text`（7 断言：空/空 → 空；`null`/`undefined` 组合 → 空；`plain` 优先且**不调** `htmlToText`；仅 HTML 时走回退且结果非空）。`npm run test:paste-text` **7/7 PASS**；`tsc -p tsconfig.web.json / tsconfig.node.json / tsconfig.json` 三配置 **0 错**。
 
 ---
 
@@ -1175,4 +1359,9 @@ i18n：`memoryPage.entries` 补 `sortNewest` / `sortOldest` / `prevPage` / `next
 - 2026-09-20：**S-96 进入实施**（老大「推进吧」）。剩余细节按推荐自定并记档：① 常规记忆 tab **带搜索框**（条目可能不少）；② 与右侧面板 `MemoryPanel` **各写各的**（配套动作不同：面板带组织与 warm/cold 恢复）；③ **文案按老大原词**——全局侧用「热记忆 / 常规记忆」，与项目侧「项目记忆 / 记忆库」并存，收尾时提请老大决定是否统一。
 - 2026-09-20：**S-96 文案裁定（关闭上条 ③）** —— 老大：「**这个不用同步，不过常规记忆可以改成记忆库**」⇒ 全局侧第二个 tab 定名 **「记忆库」**（与档案页 `database` tab 用词对齐），**「热记忆」保持不变**，两侧文案**不做统一**。
 - 2026-09-20：**S-96 实施完成，提交 `8dde06d3`**（7 files，+547/−8，**未推送**；曾为 `23e99055` → `f4e28f3d`，均因改名与文档同步被 amend —— 未推送可折叠）。门禁：tsc 三配置 **0 错**；32 个 `test:*` **全 PASS**；`MemorySettingsPanel.tsx` 381 行、两个新组件 136 / 206 行，均在 500 红线内。**C# 零改动**（四个端点均为既有）。
-- 2026-09-20：**S-97 立项并实施**（老大实测 S-96 后的呈现反馈：按修改时间 / 默认收起 / 分页）。勘测确认「时间一直有、是前端没显示」—— `memory/entries` 的 SQL **早已 `ORDER BY updated_at DESC`**，S-96 只是把 `updatedAt` 丢了；分页因端点**无 `OFFSET`** 而走**客户端分页**（上限 200 条，已知边界已记档）。**未决**：档案页 `ProjectMemoryLibraryTab`（同名、同平铺形态）是否一并改。
+- 2026-09-20：**S-97 立项并实施**（老大实测 S-96 后的呈现反馈：按修改时间 / 默认收起 / 分页）。勘测确认「时间一直有、是前端没显示」—— `memory/entries` 的 SQL **早已 `ORDER BY updated_at DESC`**，S-96 只是把 `updatedAt` 丢了。
+  **订正（同日）**：S-97 走客户端分页，真正的原因是**我自设了一条「C# 零改动」的约束**（端点没有 `OFFSET` 只是客观事实，不是不许改的理由）。老大当日质问「谁定的口径 C# 零改动？」—— 该「口径」**是我自己造的，不是任何人的裁定**。后果：客户端分页留下 200 条硬墙，属**降级实现**，非设计意图。教训已记 memory #135。
+- 2026-09-20：**S-98 立项**（记忆库真分页：`memory/entries` 补 `OFFSET` + `ORDER BY updated_at DESC, id DESC` 稳定排序 + 总数）。**只登记不执行** —— 老大：「需要加真分页，先登记需求。」同时在 S-97 节**订正了「C# 侧零改动」的措辞**（误当约束的陈述）。待裁定：① 总数方案 A（多一次 `COUNT(*)`）还是 B（多取一条）；② S-97 的客户端分页是直接改掉还是保留为小数据量快速路径；③ 档案页 `ProjectMemoryLibraryTab` 是否一并改。
+- 2026-09-20：**S-99 立项**（记忆检索不支持多关键词：整条 query 被包成 FTS5 短语，多词必然零命中）。**只登记不执行。** 根因 `MemoryFtsService.BuildFtsLiteralQuery:151-152` + `tokenize='trigram'`（`DbClient.cs:494`）；LIKE 回退（`:111`）吃同一个整串 ⇒ 两条路都零命中。**该行代码早在本文件 L530（S-92 节）取证过**，当时用途是论证「污染 query 零命中」，未识别为独立缺陷。与 S-94 正交（S-94 = 短查询路径，本条 = 查询分词）。
+- 2026-09-20：**S-100 立项**（composer 常规 Ctrl+V 无反应；走自家剪贴板增强则正常）。**只登记不执行。** 已排除两条：① 无任何 `Ctrl+V` 全局快捷键注册（`src/main` 仅 `Ctrl+Shift+V` 与 quick-launcher）；② 剪贴板增强**不绕过 paste 事件** —— 它是 `clipboard.writeText` + `SendInput` 注入真实 Ctrl+V（`priority-shortcuts.ts:166/655`），与手动按键走同一个 `handlePaste`。
+- 2026-09-20：**S-100 定案收敛** —— 老大补充关键现象：「**就是用了剪贴板增强后 再进行常规粘贴就可以了**」（用一次增强后常规 Ctrl+V 即恢复）。`handlePaste` 对剪贴板来源不敏感 ⇒ 变的是**剪贴板内容格式**，不是代码分支。机制：增强前 `getData('text/plain')` 为空 ⇒ `:81` 直接 return 且**不 `preventDefault`** ⇒ 受控编辑器吞掉浏览器默认插入 ⇒ 无反应；用一次增强 = `clipboard.writeText`（`clipboard-enhancer.ts:397`）把剪贴板重写成纯文本 ⇒ 此后 `text/plain` 有值 ⇒ 走 `execCommand` 支 ⇒ 成功。**图片分支已排除**（`use-image-attachments.ts:71-80` 只挑 `kind==='file'` 且 type 在白名单的项）。**还差一条数据**：复现时 `clipboardData.types`（3 种可能，见正文表格）。倾向修法（不依赖该数据也能覆盖）：`text/plain` 为空时回退 `text/html` 提取纯文本，真无文本才放过默认行为。

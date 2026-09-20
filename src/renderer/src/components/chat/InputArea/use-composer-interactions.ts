@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import type { FileAwareEditorHandle } from '../file-aware-editor-utils'
 import type { SelectedFileItem } from '@renderer/lib/select-file-editor'
 import { buildPastedBlockLabel, createPastedBlockTag } from '@renderer/lib/select-file-tags'
@@ -32,6 +32,49 @@ const clipboardTextToHtml = (text: string): string =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>')
+
+/**
+ * Flattens an HTML clipboard flavour into plain text.
+ *
+ * `textContent` alone concatenates adjacent blocks with no separator — a copied
+ * `<ul><li>a</li><li>b</li></ul>` would collapse to `ab` — so block boundaries are turned
+ * into newlines first, then runs of blank lines are squeezed back down.
+ */
+function htmlToPlainText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  const body = doc.body
+  if (!body) return ''
+  for (const br of Array.from(body.querySelectorAll('br'))) {
+    br.replaceWith('\n')
+  }
+  for (const block of Array.from(
+    body.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6, pre, blockquote')
+  )) {
+    block.append('\n')
+  }
+  return (body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+/**
+ * Picks the paste payload off the clipboard.
+ *
+ * Plain text is preferred. When the source offered only HTML the HTML is flattened instead —
+ * that is the case that used to look like "Ctrl+V does nothing", because `handlePaste` bailed
+ * out before `preventDefault` and left the default insertion to be swallowed by the
+ * controlled editor. The clipboard-enhancer path never hit it, since it writes plain text
+ * back via `clipboard.writeText`.
+ *
+ * `htmlToText` is injectable purely so this stays unit-testable: node has no `DOMParser`.
+ */
+export function composePastedText(
+  plain: string | null | undefined,
+  html: string | null | undefined,
+  htmlToText: (html: string) => string = htmlToPlainText
+): string {
+  if (plain) return plain
+  if (!html) return ''
+  return htmlToText(html)
+}
 
 interface UseComposerInteractionsOptions {
   selectedFilesRef: React.MutableRefObject<SelectedFileItem[]>
@@ -77,7 +120,15 @@ export function useComposerInteractions({
       return
     }
 
-    const plainText = event.clipboardData.getData('text/plain')
+    // Plain text is the common case. An HTML-only clipboard (a manual Ctrl+V from a rich
+    // source) used to fall straight into `return` *without* preventDefault, leaving the
+    // browser's default insertion to be swallowed by this controlled editor — which is
+    // exactly what "Ctrl+V does nothing" looked like. The clipboard-enhancer path never hit
+    // it, because it writes plain text back via `clipboard.writeText` (S-100).
+    const plainText = composePastedText(
+      event.clipboardData.getData('text/plain'),
+      event.clipboardData.getData('text/html')
+    )
     if (!plainText) return
 
     event.preventDefault()

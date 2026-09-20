@@ -39,6 +39,11 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
 
         limit = Math.Clamp(limit, 1, 50);
         var q = query.Trim();
+        // A query is a set of whitespace-separated keywords combined with AND (S-99). Handing
+        // the raw string to FTS produced a *single* phrase — "a b c" had to appear verbatim,
+        // spaces and all — and the LIKE fallback matched that same whole string, so a
+        // multi-keyword query could never match anything.
+        var tokens = SplitTokens(q);
         var db = DbClient.GetClient();
         var results = new List<MemorySearchResult>();
         // Tier model: active + warm are recallable by default (warm sorts
@@ -52,9 +57,12 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
         // The index is tokenize='trigram', whose lower bound is 3 characters: a 1-2
         // character query (i.e. every 2-character CJK word) can never match. Skip FTS
         // entirely for those instead of burning a query and falling through anyway (S-94).
-        if (q.Length >= MinFtsQueryLength)
+        // Trigram FTS cannot match a token shorter than the tokenizer's lower bound, so a
+        // keyword set containing one goes straight to LIKE (S-94 covered the single-token
+        // case; S-99 extends the rule to keyword sets).
+        if (tokens.All(t => t.Length >= MinFtsQueryLength))
         {
-            var ftsQuery = BuildFtsLiteralQuery(q);
+            var ftsQuery = BuildFtsQuery(tokens);
             try
             {
                 var ftsSql = $"""
@@ -98,18 +106,34 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
             // MemoryRecallService merges both channels and applies one minScore to the
             // result, so a non-zero threshold filters the two sources with different
             // yardsticks; ordering is only meaningful within a channel.
+            // One LIKE clause per keyword, ANDed — the same "all keywords must match"
+            // semantics as the FTS path. The synthetic score accumulates per keyword
+            // (title 2 / content 1), so an entry carrying more of the keywords in its title
+            // outranks one that only has them in the body. Under AND every returned row
+            // matches *every* keyword, so "how many keywords matched" is a constant — where
+            // they matched is the only variable left (S-99).
+            var conditions = new List<string>(tokens.Count);
+            var scoreTerms = new List<string>(tokens.Count);
+            var likeParams = new List<SqliteParameter>(tokens.Count + 1);
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                var p = $"@like{i}";
+                likeParams.Add(new SqliteParameter(p, $"%{tokens[i]}%"));
+                conditions.Add($"(title LIKE {p} OR content LIKE {p})");
+                scoreTerms.Add(
+                    $"(CASE WHEN title LIKE {p} THEN 2 ELSE 0 END " +
+                    $"+ CASE WHEN content LIKE {p} THEN 1 ELSE 0 END)");
+            }
+            likeParams.Add(new SqliteParameter("@limit", limit));
             var likeSql = $"""
                 SELECT id, title, content, scope, priority, status, updated_at,
-                       (CASE WHEN title LIKE @pattern THEN 2 ELSE 0 END
-                        + CASE WHEN content LIKE @pattern THEN 1 ELSE 0 END) AS score
+                       ({string.Join(" + ", scoreTerms)}) AS score
                 FROM memory_entries
-                WHERE (content LIKE @pattern OR title LIKE @pattern){scopeFilter}{statusFilter}
+                WHERE ({string.Join(" AND ", conditions)}){scopeFilter}{statusFilter}
                 ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, score DESC, updated_at DESC
                 LIMIT @limit
                 """;
-            using var reader = db.ExecuteReader(likeSql,
-                new SqliteParameter("@pattern", $"%{q}%"),
-                new SqliteParameter("@limit", limit));
+            using var reader = db.ExecuteReader(likeSql, likeParams.ToArray());
             while (reader.Read())
             {
                 ct.ThrowIfCancellationRequested();
@@ -147,6 +171,41 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
     /// any trigram, so it goes straight to the LIKE path (S-94).
     /// </summary>
     private const int MinFtsQueryLength = 3;
+
+    /// <summary>
+    /// Upper bound on how many keywords one query may carry. Each keyword costs a LIKE clause
+    /// and a bound parameter; past this the clause stops buying recall and only widens the
+    /// statement (S-99).
+    /// </summary>
+    private const int MaxQueryTokens = 8;
+
+    /// <summary>
+    /// Splits a query into whitespace-separated keywords, dropping blanks and duplicates while
+    /// preserving order. A single-keyword query yields exactly one token, and that is what
+    /// keeps the pre-S-99 behaviour intact for that (the common) case.
+    /// </summary>
+    private static List<string> SplitTokens(string query)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tokens = new List<string>();
+        foreach (var part in query.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (tokens.Count >= MaxQueryTokens)
+                break;
+            if (seen.Add(part))
+                tokens.Add(part);
+        }
+        return tokens;
+    }
+
+    /// <summary>
+    /// FTS5 expression for a keyword set: each keyword stays a quoted literal (so punctuation
+    /// inside it is inert — same reasoning as the pre-S-99 single-phrase build), and the
+    /// literals are ANDed so every keyword has to appear somewhere in the row. A single
+    /// keyword degenerates to the bare literal, matching the old query exactly.
+    /// </summary>
+    private static string BuildFtsQuery(IReadOnlyList<string> tokens) =>
+        string.Join(" AND ", tokens.Select(BuildFtsLiteralQuery));
 
     private static string BuildFtsLiteralQuery(string query) =>
         $"\"{query.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";

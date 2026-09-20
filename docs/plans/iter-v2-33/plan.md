@@ -1,10 +1,10 @@
 # Plan: v2-iter-33 —— 记忆系统治理 + 压缩修复 + 工具与交互收口
 
 > 分支 `dev/v2-iter-33`（base `main` @ `f6922f6c`，v0.2.32）。
-> 需求文档（权威）：`docs/plans/iter-v2-33/raw-requirements.md`，本迭代编号接 iter-32 的 S-86 起，**已立项 9 项：S-87 ~ S-95**。
+> 需求文档（权威）：`docs/plans/iter-v2-33/raw-requirements.md`，本迭代编号接 iter-32 的 S-86 起，**已立项 12 项：S-87 ~ S-100**。
 > 探索档：`docs/plans/iter-v2-33/exploration_findings.md`；规划验证：`docs/plans/iter-v2-33/compliance_report.md`。
 > 本迭代节奏：需求逐步积攒，不定收口时间。
-> **进度**：**S-95 已完成**（2026-09-19，见文末「已完成项」）；**S-87 ~ S-94 本 Plan 实施**。
+> **进度**：**S-95 已完成**（2026-09-19，见文末「已完成项」）；**S-87 ~ S-94 本 Plan 实施**；**S-96 / S-97 已完成**（2026-09-20）；**S-98 / S-99 / S-100 见「第二批」节**。
 
 ## 目标
 
@@ -183,6 +183,85 @@
 - [x] 步骤 1：每项需求测通即 commit 一刀（`fix(...)` / `feat(...)`），规划/审查/验证文档并入所属需求的提交
 - [x] 步骤 2：全量门禁 —— C# `dotnet build src/runtime/WishfulClaw.sln` + `tests/WishfulClaw.Tests.sln` 零错误；TS **三配置**（`tsconfig.web.json` / `tsconfig.node.json` / `tsconfig.json`）全零错误；`tests/` 下全部回归套件跑通
 - [x] 步骤 3：**不 push** 直到本 Plan 覆盖的需求全部完成并通过验证（然后一次性 push）
+
+## 第二批（S-98 / S-99 / S-100）：记忆库真分页 + 检索分词 + 粘贴回退
+
+> 2026-09-20 追加。老大实测反馈产生的三项，登记见 `raw-requirements.md` 的 S-98 / S-99 / S-100。
+> 三项均已探索完毕（实读源码）；候选方案已在 raw 各节列出，本 Plan 按下述取值拍定。
+> **规划验证（2026-09-20）首轮 FAIL（❌2 / ⚠️7）** —— S99-3 的验证口径、S100 的诊断步骤、消费方清单、`JsonContext` 的层归属均已按报告订正；报告见 `compliance_report.md` 的同名节。
+
+### 目标
+
+1. **S-98 记忆库真分页** —— 拆掉 S-97 留下的「200 条硬墙」（客户端分页），改服务端 `OFFSET` + 稳定排序 + 总数；
+2. **S-99 检索分词** —— `memory_search` 的多关键词从「整串短语」改为「逐词 AND」；
+3. **S-100 粘贴回退** —— composer 的 `Ctrl+V` 在剪贴板无 `text/plain` 时不再静默失败。
+
+### 实施顺序与理由
+
+| # | 需求 | 为什么排这里 | 面 |
+|---|---|---|---|
+| 1 | **S-99** 检索分词 | 纯 C# 单方法改动，与 S-98 的端点无耦合；且 S-98 的分页 UI 要配修好的检索才看得出效果 | C# |
+| 2 | **S-100** 粘贴回退 | 纯前端单函数，独立 | TS |
+| 3 | **S-98** 真分页 | 唯一同时动 Worker 端点 + 两个前端列表的，放最后一刀好回退 | C# + TS |
+
+> **提交粒度**：S-99 + S-100 合为一刀（同批 bug 反馈、都是小改）；S-98 单独一刀。
+
+### 步骤清单
+
+#### S-99 检索分词（C#，`WishfulClaw.Workspace/Memory/MemoryFtsService.cs`）
+
+- [x] **S99-1** 加 `SplitTokens(q)`：按空白拆、去空、去重（保序）。**单 token 时行为与现状逐字节一致**（含 `< MinFtsQueryLength` 走 LIKE 的既有分支）。验证：单 token 查询结果与改动前一致。
+- [x] **S99-2** 多 token 且**全部 ≥ `MinFtsQueryLength`** ⇒ FTS 查询串改 `"t1" AND "t2" ...`（每 token 仍过 `BuildFtsLiteralQuery` 转义双引号）。**FTS 零命中时仍走 LIKE 回退**（`results.Count == 0` 的现有分支保持不变）—— 这是 S99-1「单 token 行为一致」成立的前提。验证：能命中「两个词都出现但不相邻」的条目。
+- [x] **S99-3** 多 token 且**存在 < 3 字符的 token**（中文双字词的必经支）⇒ **跳过 FTS 直接走 LIKE**，WHERE 改逐 token 的 `(title LIKE ? OR content LIKE ?)` **AND** 连接；score 改为**对每个 token 累加** `(title 命中 2 + content 命中 1)`。
+  ⚠️ **AND 语义下的断言口径（规划验证 ❌-1 订正）**：返回集**每一行都命中全部 token**，「命中词数」对候选集是常量、不是区分变量；有区分度的只有**「同一个词是命中 title 还是仅命中 content」**。验证：造两条同含「记忆」「整理」的条目 A（两词都出现在 `title`）与 B（两词只在 `content`），断言 **A 排在 B 前且 `score(A) > score(B)`**；另断言只含其中一个词的条目**不被返回**（AND 语义本身）。
+- [x] **S99-4** 边界：token 数截断到 8（防 LIKE 子句与参数数膨胀）。验证：9 个词的查询正常返回、不抛异常。
+- [x] **S99-5** `tests/WishfulClaw.MemoryRecallRegressionTests` 扩断言（31 → ≥ 38）。造 A/B 两条样本时**必须同 `status`（都用 `active`）** —— 否则 `MemoryFtsService.cs:107` 的 `ORDER BY` 先按 status 分层，「A 排在 B 前」会被 status 掩盖（规划验证 N-3）。验证：套件 exit=0。
+
+#### S-100 粘贴回退（TS，`InputArea/use-composer-interactions.ts`）
+
+- [x] **S100-0** （**实施时跳过** —— 改由 S100-1 的 HTML 回退一次性覆盖全部分支，理由与后路见 raw S-100 实施记录）【诊断，**先于修法**】在 `handlePaste` 入口加**临时**诊断（dev 模式打印 `Array.from(event.clipboardData.types)` + 每个 `text/*` 条目的长度 + 实际走了哪一支），复现一次后**立即删除**。目的：把 raw 列出的三种可能定到唯一一支 —— 否则会「修完行为零变化、却按已修交付」。验证：拿到 `types` 输出，并用它为 S100-1 定落点。
+- [x] **S100-1** 新增**纯函数** `composePastedText(plain: string, html: string, htmlToText?: (html: string) => string): string`：优先 `plain`；其为空则对 `html` 调 `htmlToText`（默认实现用 `DOMParser` 提取纯文本、块级元素补换行）；皆空返回 `''`。**签名只吃字符串**（不吃 `DataTransfer`），`getData` 的取用留在 `handlePaste` 侧；第三参可注入是为了**在 node 里可测**（node 无 `DOMParser`，测试传桩 —— 规划验证 ⚠️-4 / N-1）。**并根据 S100-0 的结论决定是否追加 `items` 遍历取 `text/*`** —— 若诊断落在「有 `text/plain` 但 `getData` 返空」那一支，`text/html` 回退**不对症**，`items` 遍历才是。
+  **验证（含落点 —— 规划验证 N-1）**：新建 `tests/paste-text/program.ts` + `package.json` 的 `test:paste-text`（仓范式：`esbuild --bundle --platform=node --alias:@renderer=./src/renderer/src` → `node`）。断言：无输入 → `''`；仅 `plain` → 原样；仅 `html`（注入桩）→ 走桩且结果非空；两者都有 → **取 `plain`、不调桩**。
+- [x] **S100-2** `handlePaste` 改调该函数；**返回值仍为空时才 return**（不 `preventDefault`，放过默认行为）。`document.execCommand('insertHTML')` 与受控兜底路径**保持原样不动** —— **保留理由**：`execCommand` 在「读得到文本」的现有路径上工作正常，本需求只修「读不到文本」这一支，**不动能跑的代码**；它与换行 / 撤销组的取舍已记在源码注释 `:102-103`，不属于本刀范围（规划验证 ⚠️-7）。验证：真机粘贴（见验证态）。
+- [x] **S100-3** `shouldCollapsePaste` 改吃**提取后**的文本（HTML 提出来的长度才是真实长度）。验证：粘贴长 HTML 表格能正确折叠成 chip。
+
+#### S-98 真分页（C# + TS）
+
+- [ ] **S98-1** 【拆分】把 `MemoryModule.MemoryEntriesByStatus`（`:286-328`）与 `MemoryModule.MemoryEntries`（`:337-372`）整体搬到新文件 `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs`（`partial class MemoryModule`）。验证：`MemoryModule.cs` 降到 ≤ 420 行、新文件 ≤ **150** 行（S98-3 还要给它加 `offset` / `order` / `COUNT`，留余量 —— 规划验证 ⚠️-6），两 sln 编译零错（**AGENTS.md 500 行红线**）。
+- [ ] **S98-2** `src/runtime/WishfulClaw.Workspace/Memory/AotMemoryResultTypes.cs` 新增 `MemoryEntriesResponse(List<MemoryEntryRow> Entries, int Total)`，并注册进 `WishfulClawJsonContext`（**它位于 Worker 层**：`src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs` —— 规划验证 ⚠️-2 订正）。**不动** `MemoryEntriesByStatusResponse`（它是 `entries-by-status` 与 `entries` 共用的契约，改它会波及 tier 浏览器 —— 消费方 `MemoryPanel.tsx:68-69`）。验证：编译**零错误**（AOT 源生成下 JsonContext 漏注册是**编译错误**，不是告警）；`List<MemoryEntryRow>` 已在 `WishfulClawJsonContext.cs:88`，无需补泛型注册。
+- [ ] **S98-3** `MemoryEntries` 端点增 `offset`（默认 0，clamp ≥ 0）、`order`（仅 `"asc"`，其余一律 `"desc"` —— **白名单映射，不拼接用户串**）两个参数，并把 `limit` **收敛出上界**（现状 `GetInt(parameters, "limit", 200)` 无上界，clamp 到 ≤ 200 防大页拖库 —— 规划验证 ⚠️-7）；SQL 改 `ORDER BY updated_at {dir}, id {dir} LIMIT @limit OFFSET @offset`（**加 `id` 破平**，兑现 S-97 承诺的稳定排序）；返回 `MemoryEntriesResponse(entries, total)`，`total` 取同 scope 的 `SELECT COUNT(*)`。验证：同一 `updated_at` 的多条跨页时 id 序稳定、不重不漏。
+- [ ] **S98-4** `memory-helpers.ts` 的 `memoryEntries()` 增 `offset` / `order` 两个**尾参**（默认 `0` / `'desc'`；**不动前 5 个形参的顺序**，`ProjectMemoryLibraryTab` 现有调用免改），返回类型改 `{ entries?: MemoryStatusEntry[]; total?: number }`。验证：`tsc` 三配置零错误。
+- [ ] **S98-5** `MemoryEntriesTab.tsx` 改服务端分页：`PAGE_SIZE=20` 作 `limit`、`(page-1)*PAGE_SIZE` 作 `offset`、`total` 驱动 `totalPages`；**删掉 `ENTRY_FETCH_LIMIT=200` 及其「硬墙」注释块**；排序开关 `newestFirst` 下推为服务端 `order`。搜索命中（`memory/search`，≤20 条）维持客户端排序不动。验证：浏览 200+ 条能翻到尾页。
+- [ ] **S98-6** `ProjectMemoryLibraryTab.tsx` 加同一套真分页（`PAGE_SIZE=20` + 上一页/下一页 + 「第 X / Y 页」）。验证：档案页记忆库能翻页。
+- [ ] **S98-7** i18n `{zh,en}/settings.json` + `{zh,en}/chat.json` 补/复用分页文案（`memoryPage.entries.pageOf` / `prevPage` / `nextPage` 已存在，档案页需新增对应键）。验证：`npm run test:i18n-coverage` PASS。
+
+### 涉及文件
+
+- `src/runtime/WishfulClaw.Workspace/Memory/MemoryFtsService.cs` — S-99（分词 + 双路 AND）
+- `src/runtime/WishfulClaw.Workspace/Memory/AotMemoryResultTypes.cs` — S-98（新增 `MemoryEntriesResponse`）
+- `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs` — S-98（注册新 record；**实际在 Worker 层**，规划验证 ⚠️-2 订正）
+- `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs` — S-98（**减负**，搬走两个端点）
+- `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs` — S-98（**新建**，partial 续写）
+- `src/renderer/src/stores/chat-store/memory-helpers.ts` — S-98（`memoryEntries` 增参）
+- `src/renderer/src/lib/agent/memory-hot-sync.ts` — S-98（**`memoryEntries` 的第 3 个调用点**，S-93 的判重消费方；新增两个尾参有默认值使其免改，但**必须回归验证** —— 规划验证 ⚠️-1 补）
+- `src/renderer/src/components/settings/MemoryEntriesTab.tsx` — S-98（服务端分页）
+- `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` — S-98（新增分页）
+- `src/renderer/src/components/chat/InputArea/use-composer-interactions.ts` — S-100（html 回退）
+- `src/renderer/src/locales/{zh,en}/{settings,chat}.json` — S-98（分页文案）
+- `tests/WishfulClaw.MemoryRecallRegressionTests/Program.cs` — S-99（新增断言）
+- `tests/paste-text/program.ts` — S-100（**新建**：`composePastedText` 的纯函数断言 —— 规划验证 N-1 补）
+- `package.json` — S-100（新增 `test:paste-text` 脚本）
+
+### 整体验证检查点
+
+- **C#**：`dotnet build src/runtime/WishfulClaw.sln` 与 `tests/WishfulClaw.Tests.sln` 均 **0 错 0 警**；
+- **TS**：`tsc -p tsconfig.web.json` / `tsconfig.node.json` / `tsconfig.json` 三配置 **0 错**；
+- **回归**：全部 `WishfulClaw.*RegressionTests` exe `exit=0`；S-99 新断言纳入 MemoryRecall 套件；`npm run test:paste-text` 通过；
+- **文件红线**：所有触碰文件 ≤ 500 行（`MemoryModule.cs` 本批**降价**）；
+- **真机（老大）**：① 多关键词能搜到；② 从「无 `text/plain`」的来源 `Ctrl+V` 能落字；③ 记忆库翻页能到尾页，且相邻页无重叠。
+- **验证态已知限制**：S-100 要**拆成两半看** —— `composePastedText` 的纯函数逻辑由 `test:paste-text` 覆盖（归门禁）；而「`getData` 在真实剪贴板下能否读到文本」**只能真机确认**（依赖剪贴板来源），归老大手测，与 S-95 的手动压缩同类（规划验证 N-2 收窄）。
+
+---
 
 ## 已完成项
 

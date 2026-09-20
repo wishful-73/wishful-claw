@@ -61,6 +61,8 @@ const PRELOAD_BINARY_ONLY = new Set([
   'log:cleanup',
   'log:list-files',
   'log:read-file',
+  'main-window:get-config',
+  'main-window:update-config',
   'worker:request:cancel',
   'worker:request:with-id'
 ])

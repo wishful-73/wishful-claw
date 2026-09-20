@@ -28,6 +28,17 @@
       "p2": "It supports searching by app name, English camelCase, Chinese pinyin, and pinyin initials. As long as you remember roughly what the app is called, typing it will find it.",
       "p3": "Beyond Start Menu apps, you can add custom entries for portable or non-installed programs. Every launched app is recorded to history, so next time you can find it without adding it manually.",
       "p4": "Once you familiarize yourself with it, you will save a significant amount of time. Instant access, no interruption, no distraction — just press, type, launch, and get back to work."
+    },
+    "mainWindow": "Main Window",
+    "mainWindowDesc": "Set a global shortcut to show / hide this window",
+    "mainWindowToggle": "Show / hide main window",
+    "mainWindowToggleDesc": "Press once to hide to the tray, again to bring it back",
+    "hideOnLaunch": "Start hidden on login",
+    "hideOnLaunchDesc": "Run tray-only at login and post a notification",
+    "mainWindowIntroTitle": "About the main window shortcut",
+    "mainWindowIntro": {
+      "p1": "The main window shortcut hides or recalls Wishful Claw at any time, without reaching for the tray icon.",
+      "p2": "No accelerator is set by default: a global shortcut is exclusive, so any default we shipped would already be taken on some machines. Click \"Add shortcut\" to set your own."
     }
   },
   "tabs": {
@@ -35,7 +46,7 @@
       "label": "Shortcuts"
     },
     "general": {
-      "label": "General",
+      "label": "Theme & Appearance",
       "desc": "Theme, appearance and preferences"
     },
     "provider": {
@@ -102,7 +113,7 @@
     }
   },
   "general": {
-    "title": "General",
+    "title": "Theme & Appearance",
     "subtitle": "Theme, appearance and preferences",
     "theme": {
       "label": "Theme Mode",
@@ -288,6 +299,7 @@
         "count": "{{total}} models, {{enabled}} enabled",
         "searchPlaceholder": "Search models...",
         "noModels": "Please fetch or add a model first",
+        "noModelsNeedApiKey": "Enter your API Key first, then fetch again",
         "noResults": "No matching results",
         "fetchModels": "Fetch Models",
         "fetchSuccess": "Fetched {{count}} models",
@@ -1414,22 +1426,22 @@
     "tabs": {
       "label": "Memory page sections",
       "settings": "Settings",
-      "hot": "Hot Memory",
+      "hot": "Global Memory",
       "entries": "Memory Library",
       "executionLog": "Execution Log"
     },
     "hot": {
-      "title": "Global hot memory",
+      "title": "Global Memory",
       "desc": "The MEMORY.md shared by every global session. Saving here overwrites the whole file and takes effect for all global sessions immediately.",
       "save": "Save",
       "reset": "Reset",
-      "saved": "Global hot memory saved",
+      "saved": "Global memory saved",
       "saveFailed": "Failed to save",
       "loadFailed": "Failed to load",
       "loading": "Loading...",
       "unsavedState": "Unsaved changes",
       "syncedState": "Content synced",
-      "placeholder": "Edit global hot memory here..."
+      "placeholder": "Edit global memory here..."
     },
     "entries": {
       "title": "Global memory library",
@@ -1448,6 +1460,18 @@
       "nextPage": "Next",
       "pageOf": "Page {{page}} / {{total}}",
       "rowHint": "Click to expand",
+      "priority": {
+        "permanent": "Permanent",
+        "lasting": "Lasting",
+        "standard": "Standard",
+        "ephemeral": "Ephemeral"
+      },
+      "status": {
+        "active": "Active",
+        "warm": "Warm",
+        "cold": "Cold",
+        "deprecated": "Deprecated"
+      },
       "ranges": {
         "all": "All",
         "today": "Today",

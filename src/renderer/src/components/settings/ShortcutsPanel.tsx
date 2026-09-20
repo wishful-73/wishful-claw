@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Clipboard, Search } from 'lucide-react'
+import { AppWindow, Clipboard, Search } from 'lucide-react'
 import { Switch } from '@renderer/components/ui/switch'
 import { MultiShortcutEditor } from './multi-shortcut-editor'
 
@@ -9,13 +9,19 @@ interface ShortcutConfig {
   accelerators: string[]
 }
 
-type TabId = 'clipboard' | 'launcher'
+/** The main-window tab shares the shortcut shape and adds the start-hidden switch. */
+interface MainWindowConfig extends ShortcutConfig {
+  hideWindowOnLaunch: boolean
+}
+
+type TabId = 'clipboard' | 'launcher' | 'main-window'
 
 function ShortcutsPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
-  const [activeTab, setActiveTab] = useState<TabId>('clipboard')
+  const [activeTab, setActiveTab] = useState<TabId>('main-window')
   const [clipboardConfig, setClipboardConfig] = useState<ShortcutConfig | null>(null)
   const [launcherConfig, setLauncherConfig] = useState<ShortcutConfig | null>(null)
+  const [mainWindowConfig, setMainWindowConfig] = useState<MainWindowConfig | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -24,6 +30,9 @@ function ShortcutsPanel(): React.JSX.Element {
     })
     void window.api.invoke<ShortcutConfig>('launcher:get-config', null).then((config) => {
       if (!cancelled) setLauncherConfig(config)
+    })
+    void window.api.invoke<MainWindowConfig>('main-window:get-config', null).then((config) => {
+      if (!cancelled) setMainWindowConfig(config)
     })
     return () => { cancelled = true }
   }, [])
@@ -38,7 +47,13 @@ function ShortcutsPanel(): React.JSX.Element {
     setLauncherConfig(config)
   }, [])
 
+  const updateMainWindowConfig = useCallback(async (patch: Partial<MainWindowConfig>): Promise<void> => {
+    const config = await window.api.invoke<MainWindowConfig>('main-window:update-config', patch)
+    setMainWindowConfig(config)
+  }, [])
+
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
+    { id: 'main-window', label: t('shortcuts.mainWindow', { defaultValue: 'Main Window' }), icon: <AppWindow className="size-4" /> },
     { id: 'clipboard', label: t('shortcuts.clipboard', { defaultValue: 'Clipboard Enhancer' }), icon: <Clipboard className="size-4" /> },
     { id: 'launcher', label: t('shortcuts.launcher', { defaultValue: 'Quick Search' }), icon: <Search className="size-4" /> }
   ]
@@ -87,6 +102,69 @@ function ShortcutsPanel(): React.JSX.Element {
 
       {/* Right: content */}
       <div className="flex-1 min-w-0 overflow-y-auto">
+        {/* Main window tab */}
+        {activeTab === 'main-window' && mainWindowConfig && (
+          <div className="space-y-6 p-6">
+            {/* Enable switch */}
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-sm font-medium text-foreground">
+                  {t('shortcuts.mainWindowToggle', { defaultValue: 'Show / hide main window' })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('shortcuts.mainWindowToggleDesc', { defaultValue: 'Press once to hide to the tray, again to bring it back' })}
+                </p>
+              </div>
+              <Switch
+                checked={mainWindowConfig.enabled}
+                onCheckedChange={(enabled) => void updateMainWindowConfig({ enabled })}
+                aria-label={t('shortcuts.mainWindowToggle', { defaultValue: 'Show / hide main window' })}
+              />
+            </div>
+
+            {/* Shortcut editor */}
+            <MultiShortcutEditor
+              accelerators={mainWindowConfig.accelerators}
+              onChange={(accelerators) => updateMainWindowConfig({ accelerators })}
+              disabled={!mainWindowConfig.enabled}
+              {...shortcutEditorProps}
+            />
+
+            {/* Quiet start at login */}
+            <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
+              <div>
+                <div className="text-sm font-medium text-foreground">
+                  {t('shortcuts.hideOnLaunch', { defaultValue: 'Start hidden on login' })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t('shortcuts.hideOnLaunchDesc', { defaultValue: 'Run tray-only at login and post a notification' })}
+                </p>
+              </div>
+              <Switch
+                checked={mainWindowConfig.hideWindowOnLaunch}
+                onCheckedChange={(hideWindowOnLaunch) => void updateMainWindowConfig({ hideWindowOnLaunch })}
+                aria-label={t('shortcuts.hideOnLaunch', { defaultValue: 'Start hidden on login' })}
+              />
+            </div>
+
+            {/* Hint */}
+            <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+              <p className="text-xs text-muted-foreground">{hint}</p>
+            </div>
+
+            {/* Introduction */}
+            <div className="space-y-3 border-t border-border pt-4">
+              <h3 className="text-sm font-medium text-foreground">
+                {t('shortcuts.mainWindowIntroTitle', { defaultValue: 'About the main window shortcut' })}
+              </h3>
+              <div className="space-y-2 text-xs leading-relaxed text-muted-foreground">
+                <p>{t('shortcuts.mainWindowIntro.p1', { defaultValue: 'The main window shortcut hides or recalls Wishful Claw at any time, without reaching for the tray icon.' })}</p>
+                <p>{t('shortcuts.mainWindowIntro.p2', { defaultValue: 'No accelerator is set by default: a global shortcut is exclusive, so any default we shipped would already be taken on some machines. Click "Add shortcut" to set your own.' })}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Clipboard tab */}
         {activeTab === 'clipboard' && clipboardConfig && (
           <div className="space-y-6 p-6">

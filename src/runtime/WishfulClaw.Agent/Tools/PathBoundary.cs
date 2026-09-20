@@ -66,20 +66,26 @@ public static class PathBoundary
         }
 
         // 全局会话：Worker 自己查一遍项目表，免得把「所有项目路径」也塞进每轮重发的 run params。
+        // 外加设置页的「工作目录父目录」（S-103）：全局 PM 要在这里建项目，也要能读写刚建出来、
+        // 还没注册成项目的目录。**只加在全局分支** —— 项目会话拿到它等于能读写兄弟项目。
+        var parentDirectory = ProjectsParentDirectory.Read();
         try
         {
             var db = DbClient.GetClient();
-            return db.Query(
-                "SELECT working_folder FROM projects " +
-                "WHERE working_folder IS NOT NULL AND working_folder <> '' " +
-                "AND (ssh_connection_id IS NULL OR ssh_connection_id = '')",
-                r => r.GetString("working_folder"));
+            return WithProjectsParent(
+                db.Query(
+                    "SELECT working_folder FROM projects " +
+                    "WHERE working_folder IS NOT NULL AND working_folder <> '' " +
+                    "AND (ssh_connection_id IS NULL OR ssh_connection_id = '')",
+                    r => r.GetString("working_folder")),
+                parentDirectory);
         }
         catch (Exception ex)
         {
             // 查不动就不带项目根。沙箱是保护措施，不能反过来把正常干活挡死。
+            // 父目录与「查不查得动项目表」无关，照加。
             WorkerLog.Warn($"sandbox: failed to resolve project roots: {ex.GetType().Name}: {ex.Message}");
-            return [];
+            return WithProjectsParent([], parentDirectory);
         }
     }
 
@@ -99,6 +105,28 @@ public static class PathBoundary
         if (dataRoot is null) return projectRoots;
 
         var roots = new List<string>(projectRoots) { dataRoot };
+        return roots;
+    }
+
+    /// <summary>
+    /// 把设置页的「工作目录父目录」加到根集合，**只给全局会话用**（S-103）。
+    ///
+    /// 为什么是整棵父目录而不是「已注册的项目目录」：agent 刚建出来的目录还没进 projects 表，
+    /// 授权它建却不让它接着往里写，工具就是半截的。放行整棵的代价见 S-103 的风险项 ——
+    /// 设置页对盘符根、用户主目录本身给了 warning。
+    ///
+    /// 为什么只挂全局分支：<see cref="ResolveRoots"/> 是项目会话与全局会话的合流点，
+    /// 加在那里等于让项目 A 的会话读写项目 B（父目录里有一堆兄弟目录），正相反。
+    ///
+    /// 与 <see cref="WithDataRoot"/> 一样是纯函数（不碰 DB、不碰文件），测试可直接断言。
+    /// </summary>
+    internal static IReadOnlyList<string> WithProjectsParent(
+        IReadOnlyList<string> globalRoots,
+        string? parentDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(parentDirectory)) return globalRoots;
+
+        var roots = new List<string>(globalRoots) { parentDirectory };
         return roots;
     }
 

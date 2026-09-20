@@ -2,7 +2,7 @@
 
 > 2026-09-19 建。分支 `dev/v2-iter-33`（base `main` @ `f6922f6c`，v0.2.32）。
 > 本文件为权威需求文档。本迭代节奏放缓，需求**逐步积攒**，不定收口时间。
-> **已立项 9 项**：S-87 定时任务（cron）工具对全局会话开放／S-88 Grep 工具的 `file_pattern` 通配符静默失配／S-89 记忆整理持续失败（请求缺 sessionId 被上游 400）／S-90 记忆页拆成「设置 / 执行记录」两个选项卡／S-91 记忆呈现割裂（每日记忆无实体、数据库记忆无入口）／S-92 记忆召回链缺陷（查询被注入块吃掉、只召回一次）／S-93 自动沉淀的记忆进不了召回检索源／S-94 记忆检索主力对中文双字词结构性失效（trigram 下限 3 字符）／S-95 压缩「越压越多」（未实现「摘要前的消息全部滚蛋」的滚动摘要语义，产物只增不减）。
+> **已立项 17 项**：S-87 ~ S-103，逐项见下文同名小节。
 > 其余候选见文末「待登记」，**未点名，不擅自排入**。
 > 勘测行号均为 2026-09-19 实读。
 
@@ -1492,6 +1492,171 @@ const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
 **门禁**：`src/runtime/WishfulClaw.sln` 与 `tests/WishfulClaw.Tests.sln` 均 **0 错 0 警**；11 个 C# 回归套件全 `exit=0`（AgentTimeline 25 / ChannelShellApproval 72 / ChannelToolVisibility 122 / CompactionSnapshot 2 / Cron 42 / Goal **325** / GrepPattern 21 / MemoryRecall 38 / ProviderHeader / SessionTaskCascade 225 / ToolConcurrency）。
 
 **未覆盖（如实）**：「生产实例只放行 `.wishful-claw`」这一条**必须打包版真机才能验** —— 开发实例的 `WISHFULCLAW_DATA_DIR` 恒指向 `-dev` 那套，本机开发模式下测不到生产根。
+
+---
+
+## S-103 工作目录父目录 + 全局 PM 项目创建工具
+
+### 需求（2026-09-20 老大口述）
+
+1. 「我还有一个需求 我们需要先讨论，我希望在软件中指定一个工作目录的父目录」
+2. 「我希望给全局PM 暴露项目创建工具，但是项目创建只能在指定了的父目录下创建」
+3. 「这个父目录也是全局PM可以额外访问的路径」
+4. 「整棵父目录 不做删除和修改，这个是需要在设置页里面设置的，然后我们需要一个默认地址」
+5. 「agent去创建的项目 只允许父目录+子目录。用户创建的可以任意位置」
+
+### 现状（2026-09-20 实读 —— 比预期近，大半个功能已在）
+
+`src/runtime/WishfulClaw.Agent/Tools/Providers/ProjectToolsProvider.cs` **已经给全局会话注册了 5 个项目工具**，执行器 `AgentRuntimeProjectExecutor.cs`（442 行）也已就位：
+
+| 工具 | visibleScopes |
+|---|---|
+| `list_projects` / `get_project_details` | `Everywhere` |
+| `create_session` | `GlobalSideAndWorkRuns` |
+| `send_session_message` / `update_session_follow_up` | `GlobalSideOnly` |
+
+**唯一缺的就是 `create_project`。** 底层也早写好了：`DbProjectTools.Create`（`src/runtime/WishfulClaw.Infrastructure/Db/DbProjectTools.cs:67`）完成 INSERT `projects` + `Directory.CreateDirectory(workingFolder)`，并已注册 RPC `db/projects-create`（`DbModule.cs:28`）。
+
+「父目录也是可访问路径」这一半由 **S-102** 铺好：`PathBoundary` 现在分 `CollectProjectRoots`（会话自己的根）+ `WithDataRoot`（追加额外根）两层，加父目录是同一处。
+
+### 口径（2026-09-20 老大拍板）
+
+- 沙箱放行**整棵父目录**（不是只放行已注册项目的 workingFolder）
+- **不做**项目删除 / 修改工具
+- 设置项放在**设置页**
+- 要有**默认地址**
+- **agent 创建的项目只允许 `父目录 + 一级子目录`；用户创建的项目不受约束、任意位置**
+
+### 关键设计：约束按「创建者」分，且零表结构改动
+
+两条创建路径本来就分开，不需要在 `projects` 表加「来源」字段：
+
+| 创建者 | 路径 | 受约束 |
+|---|---|---|
+| agent | 新的 `create_project` 工具 → 服务端拼路径 | **是**（父目录 + 一级子目录） |
+| 用户 | 既有渲染端 `createProject`（`project-slice.ts:81` → `db/projects-create`） | 否，任意位置 |
+
+约束只落在**工具层**。
+
+### 我的建议（老大未逐条否决 ⇒ 按此执行；有异议随时改）
+
+1. **默认地址 `~/WishfulClawProjects`**（`os.homedir()` 解析，跨平台一致）
+   - 不用 `.wishful-claw` 这类点号隐藏名 —— 它是**用户可见的工作区**
+   - 不放数据根内 —— 数据根是应用私有区，混进用户项目会让「删数据根」变成危险操作
+   - 不放 `~/Documents` —— Windows 上该路径可被 OneDrive 重定向，会漂
+2. **父目录不存在时自动创建**，并在工具返回里**回显最终路径**（不静默铺树）
+3. **设置存 C# 侧 `ConfigStore`**（`~/.wishful-claw/config.json`），**不走渲染端 run params**
+   - 对比：`sandboxEnabled` 散在 **7 个 run params 组装点**（`use-chat-actions.ts` 4 处 + `use-channel-auto-reply.ts` + `use-background-subagent-wakeup.ts` + `provider-auto-fallback.ts`），漏传一个设置就静默失效
+   - 父目录是**安全约束**，校验方（工具）与执行方（`DbProjectTools`）都在 C#，就该 C# 自己读
+   - 代价：**没有新端点的代价** —— `config/get` + `config/set` 已存在（`Worker/Modules/ConfigModule.cs:20-24`），设置页照常出 UI
+4. **只允许直接子目录**：工具参数只有 `name` + 可选 `folderName`（默认由 `name` 派生），**路径由服务端拼成 `父目录/folderName`** —— agent 无法提交任意路径
+5. **父目录额外根只给全局会话**，不给项目会话（给出去了，项目 A 的会话就能读写项目 B）
+6. **`create_project` 的 `visibleScopes` 取 `GlobalSideOnly`**（不是 `GlobalSideAndWorkRuns`）
+   - **理由**：S-102 已确认沙箱**只校验工具参数里的路径**，而 `create_project` 的参数只有 `name` / `folderName`、**路径由服务端拼** ⇒ **沙箱拦不住它**。若按 `GlobalSideAndWorkRuns`（含 `*:cowork@*`），项目 cowork 会话里的 agent 也能往父目录写东西，且不受沙箱保护
+   - **老大 2026-09-20 拍板：「就全局PM自己 这个全局PM 包含渠道这些哦」** ⇒ 用 `GlobalSideOnly`。
+   - **副作用（⚠️-7 订正措辞）**：被挡的是**项目作用域**（`project:cowork` 不匹配 `global:*@*`），**不是** global 域的子代理 —— `GlobalSideOnly` 的 role 段是 `*`，所以 global 作用域的子代理（上下文串 `global:cowork@subagent`）照样可见。原本写的「派出去的 cowork 子任务不能建项目」表述不准。
+7. **不加审批**（不设 `RequiresApproval`）：在已授权范围内，且项目可删（只是没有工具化的删除）
+8. 设置页对**过宽路径**（盘符根、用户主目录本身）给 warning
+
+### 风险 / 知情项
+
+- **整棵父目录放行 = 该区域对全局 PM 全开**，含尚未注册成项目的目录。父目录若设成 `D:\claw`，整个工作区就敞开了（设置页 warning 覆盖这一点）
+- **`create_project` 不受沙箱保护**（路径非参数），其边界完全由工具自身的父目录校验负责 —— 这是本需求的核心校验点，必须有断言
+- 用户创建的项目可落在父目录之外，`list_projects` 照常列出它们（既有行为，不变）
+- 沙箱的语义翻转（S-102 已记）：根集合不再为空
+
+### 实施要点（待开工时细化）
+
+1. `ConfigStore` 走 `projectsParentDir` 键（**端点已存在，不新增**）
+2. `ProjectToolsProvider` 注册 `create_project`（`GlobalSideOnly`）
+3. `AgentRuntimeProjectExecutor` 加 `create_project` 分支：读父目录 → 拼 `父目录/folderName` → 校验（父目录可解析 / folderName 合法 / 不越出父目录）→ 调 `DbProjectTools.Create`
+4. `PathBoundary`：新增纯函数 `WithProjectsParent`，**只在 `CollectProjectRoots` 的全局分支**追加父目录（`WithDataRoot` 不动 —— 它是两分支合流点）
+5. 设置页（`RuntimePanel.tsx` 的 `sec-runtime-sandbox` 旁）加父目录输入 + 浏览按钮 + warning
+6. 断言：工具的父目录校验（解析失败 / 越界 / 一级子目录 / 用户路径不受影响），落 `ChannelToolVisibilityRegressionTests`
+
+
+### 规划验证处置（2026-09-20）
+
+独立 subagent 复核 `plan.md` 第四批 → **FAIL（3 ❌ / 8 ⚠️）**，报告见 `compliance_report.md` §「第四批（S-103）规划验证」。三条 ❌ 我逐条自己复核过，**全部属实**，已修入 plan：
+
+- **❌-1 AOT 注册点写错（我的判断错）**：`AotProjectResultTypes.cs` 通篇只有 `record`、**零 `[JsonSerializable]`**；真正的注册点在 `Worker/WishfulClawJsonContext.cs:132-136`（与 `ProjectListResult` 并列）。且漏注册是**运行期** `ArgumentNullException` —— `WorkerJsonHelper.GetTypeInfo<T>()`（`Contracts/WorkerResponse.cs:104-107`）是 `(JsonTypeInfo<T>)JsonOptions.GetTypeInfo(typeof(T))!`，`!` 把 null 吞掉，**编译器与类型检查都不抓**。我原写「漏注册是编译错误」是把 S-98 的经验错误外推（那次走 `WishfulClawJsonContext.Default.XxxResponse` 属性，漏了才是编译错）。
+- **❌-2 断言工程未指定**：`WishfulClaw.Agent.csproj` 的 `InternalsVisibleTo` 只有 8 项，而 `CronRegressionTests` / `SessionTaskCascadeRegressionTests` 引用了 Agent **却不在 IVT 内** ⇒ 若把策略类写成 `internal` 并顺手把断言放进那两者，会 `CS0122` 编译不过。定案：`ProjectCreationPolicy` 写 **`public`**，断言落 **`ChannelToolVisibilityRegressionTests`**（已引用 Agent 且在 IVT 内，且本批的可见性断言本来就在那儿）。
+- **❌-3 沙箱落点（最致命）**：`ResolveRoots = WithDataRoot(CollectProjectRoots(parameters))` 里 `WithDataRoot` 被**项目会话与全局会话共用**。按 plan 字面「复用 `WithDataRoot` 的追加模式」会把父目录**泄漏进项目会话**（直接违反本需求的核心边界），且会打红 `Program.Sandbox.cs` 里断言 `WithDataRoot` 根数的既有用例。改为：新增纯函数 `WithProjectsParent(roots, parentDir)`，**只在 `CollectProjectRoots` 的全局分支**调用；`WithDataRoot` 一字不动。
+- **⚠️-1 配置语义定案**：原 plan 里「未配置 ⇒ 报错」与「未设置回退默认」自相矛盾（回退默认后「未配置」永不出现）。**定案：没有「未配置」态** —— `Read()` 恒返回生效路径（设置值 or `DefaultPath`），工具始终可用、沙箱恒加根；「恢复默认」= 删 key。于是「未配置时报错」这条检查点改为「父目录指向不可创建路径时报错」。
+- **⚠️-2 重名**：`projects` 表无唯一约束、`Directory.CreateDirectory` 幂等 ⇒ 不处理会出现「同名同路径两条项目」。已补 `S103-3d`（命中既有项目 ⇒ 报错并回显其 id/name）。
+- **⚠️-6 命名关系**：`name` 是显示名（非法字符→空格、空则 `New Project`），`folderName` 是目录名（非法字符→`-`），两者不保证相等 —— 已要求写进工具 description。
+- ⚠️-3（渲染端走 `window.api.workerRequest('config/get'|'config/set')`，需独立异步 state）/ ⚠️-4（先例订正为 `WorkingFolderSelectorDialog.tsx:210-212`）/ ⚠️-5（不暴露 `id`）/ ⚠️-8（不设 `isCore`，与既有 5 个工具一致，经 `use_capability` 代理）均已写进 plan。
+
+**结论**：plan 第四批已按上述修订；三条 ❌ 处置完毕，可开工。
+
+### 规划验证复验（2026-09-20）
+
+独立 subagent 复验修订后的 plan + raw → **PASS（❌=0）**。三条 ❌ 均确认已修，并实读源码核对：`WishfulClawJsonContext.cs:132-136` 注册模式正确；`WishfulClaw.Agent.csproj` IVT 恰 8 条、含 `ChannelToolVisibilityRegressionTests`；`PathBoundary.cs` 项目分支 `:62-66` 提前 return、全局分支 `:68-84` 有干净插入点、`WithDataRoot :96-103` 可不动；`Program.Sandbox.cs:85-92` 两条断言直调 `WithDataRoot`，按新方案不会红。8 条 ⚠️ 中 6 条已处置。
+
+复验另留 6 处措辞 / 一致性残留，**同轮一并处置**：
+
+- ⚠️-1 残留：检查点 2 仍写「未配置父目录」⇒ 改为「父目录解析失败」（定案后无「未配置」态）
+- ⚠️-7 残留：检查点 3 写「与子代理不可见」与 `GlobalSideOnly` 的 `*` role 相悖 ⇒ 改为「项目作用域不可见；global 域子代理仍可见，属预期」
+- 涉及文件未回填测试工程名 ⇒ 补 `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/Program.cs`
+- `S103-3c / 3d / 3e` 字母序错位 ⇒ 重排为 `3b → 3c → 3d → 3e`
+- raw 两处陈旧表述（「新增两个 worker 端点」、「复用 `WithDataRoot` 的模式」）⇒ 订正为「端点已存在」、「只在全局分支追加」
+- raw 实施要点 6 的「未设」⇒ 改「解析失败」+ 写明断言落点
+
+至此规划阶段闭环，进入实施。
+
+### 实施记录（2026-09-20）
+
+需求实施一刀。改动 **11 个源文件（2 新建 / 9 修改）+ 1 处既有断言同步 + i18n 两份**。
+
+**新增**
+
+- `Infrastructure/Storage/ProjectsParentDirectory.cs`（149 行）：配置键 `projectsParentDir`；`Read()` **恒返回**生效路径（设置值 or `DefaultPath` = `~/WishfulClawProjects`，没有「未配置」态）；`Write` / `Reset`（恢复默认 = 删键）；`ReadResponse` / `WriteResponse` 两个端点方法（手写 JSON，照 `ConfigStore` 自己的 `FromWriter` 惯例，顺带不添 AOT 注册点）。
+- `Agent/Tools/ProjectCreationPolicy.cs`（111 行，`public static`）：`Resolve(parentDirectory, name, folderName)` ⇒ `Target(Path, Error)`；`DeriveFolderName`。
+- `renderer/src/components/settings/ProjectsParentDirectorySection.tsx`（122 行）：生效路径 + 浏览 + 恢复默认 + 盘符根 warning。
+
+**修改**
+
+- `Agent/Tools/Providers/ProjectToolsProvider.cs`：注册 `create_project`（`availableModes: ["global"]`、`visibleScopes: GlobalSideOnly`、无审批、不设 `isCore`）。
+- `Agent/AgentRuntimeProjectExecutor.cs`：`ProjectToolNames` 加 `create_project`；新增 `CreateProjectAsync`（读父目录 → 策略校验 → 同 `working_folder` 查重 → `CreateEntity` → 回显 id/name/路径/是否复用既有目录）。
+- `Agent/AotProjectResultTypes.cs`：新增 `CreateProjectResult`。
+- `Worker/WishfulClawJsonContext.cs`：`[JsonSerializable(typeof(CreateProjectResult))]`（❌-1 的教训：漏了是**运行期**炸，编译不抓）。
+- `Worker/Modules/ConfigModule.cs`：注册 `config/projects-parent` 与 `config/projects-parent/set`。
+- `Agent/Tools/PathBoundary.cs`：新增 `internal static WithProjectsParent(globalRoots, parentDirectory)` 纯函数；`CollectProjectRoots` 的**全局分支**（try 与 catch 两处）追加父目录；**`WithDataRoot` 一字未动**（❌-3 的落点）。
+- `Infrastructure/Db/DbProjectTools.cs`：把 `Create` 的建库主体抽成 `public static ProjectEntity CreateEntity`（RPC 端点 `db/projects-create` 行为不变；agent 侧因此能拿到**真实的失败原因**而不是一个已渲染的 `WorkerResponse`）。
+- `renderer/src/components/settings/RuntimePanel.tsx`（415 → 420 行）：沙箱 section 之后挂新组件。
+- `locales/{zh,en}/settings.json`：`general.projectsParent.*`（label / desc / browse / reset / tooBroad / hint，两侧键一致，`test:i18n-coverage` PASS）。
+- `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/Program.cs`（374 → 518 行）：`ProjectTools` 加 `create_project`；新增 `AssertCreateProjectGrant`（渠道/桌面全局可见、项目 cowork 与 chat 不可见、代理可达）/ `AssertProjectCreationPolicy`（纯函数 17 条）/ `AssertSandboxProjectsParent`（`WithProjectsParent` 纯函数 + `WithDataRoot` 不被带偏）。
+
+**与 plan 的三处偏差（都是我自己的取舍，逐条说明）**
+
+1. **新增了两个 Worker 端点**（plan 写的是「不新增端点，复用 `config/get` + `config/set`」）。实做时发现前端拿不到 `DefaultPath`：设置值可能是 `null`（未配置），而「生效路径是什么」「恢复默认是否可用」这两件事都必须由 C# 回答 —— 让渲染端复刻 `~/WishfulClawProjects` 就是两处常量，迟早漂移。端点本身很小（读 + 写各一个方法，返回 `{path, configured}`）。
+2. **去掉了 `create_project` 的 `description` 参数**（plan S103-3 列了它）。`DbProjectTools.Create` 不接受它，也没有别的写入位 —— 声明了不落地的参数就是假参数，与 `GrepTool` 那个「描述里有 `output_mode`、参数里没有」是同一类毛病。
+3. **过宽路径 warning 只做盘符根**（plan 写「盘符根 / 用户主目录本身」）。`app:homedir` 在 `renderer/src/lib/ipc/channels.ts:12` 有声明，但主进程**没有注册 handler**（`src/main` 全搜无果）⇒ 拿不到主目录，硬猜一个字符串只会误报。主目录那条留在 `hint` 文案里说。
+
+**打红的既有断言（已同步，不是放宽）**
+
+`GoalRegressionTests/Program.Lifecycle.cs` 断言「全局 Chat 会话经 `use_capability` 能发现的项目工具恰好 5 个、名字精确匹配」；`create_project` 加入同一 `GlobalSideOnly` 批次后变成 6 个。已把计数与名单同步为 6 项并加注释说明来源。
+
+**门禁（实跑输出，非推断）**
+
+| 项 | 结果 |
+|---|---|
+| `src/runtime/WishfulClaw.sln` | 0 错 0 警 |
+| `tests/WishfulClaw.Tests.sln` | 0 错 0 警 |
+| 11 个 C# 回归套件 | 全 `exit=0`；`ChannelToolVisibility` **122 → 156**、`Goal` **315 → 325**（含本次同步的那条） |
+| `npm run typecheck`（node + web） | EXIT=0 |
+| 全部 `test:*` 脚本 | **34 / 34** |
+| `test:i18n-coverage` | PASS（2 checks） |
+
+**待老大真机手测**
+
+1. 设置页「运行与性能」沙箱开关下方出现「工作目录父目录」，默认值指向主目录下的 `WishfulClawProjects`，没设过时「恢复默认」是灰的
+2. 全局会话里让 agent 建项目 → 落在 `父目录/<名字>`，工具结果回显绝对路径；同一目录再建一次 → 报错并回显既有项目的 id / name
+3. 改过父目录后再建 → 落在新位置
+4. 全局会话能读写 `父目录/<刚建的>` 里的文件（父目录是额外的沙箱根）
+5. 项目会话里让 agent 建项目 → 拿不到这个工具（`use_capability` 里也没有）
+6. 用户自己从界面建项目 → 不受父目录限制（既有路径未动）
+
 
 ---
 

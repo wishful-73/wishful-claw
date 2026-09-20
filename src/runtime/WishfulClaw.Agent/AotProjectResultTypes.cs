@@ -39,3 +39,12 @@ public record CreateSessionResult(
     string Title,
     string? ProjectId,
     long CreatedAt);
+
+// S-103: create_project 的结果。WorkingFolder 是服务端拼出来的绝对路径（回显给模型，
+// 免得它去猜落在哪）；ReusedExistingDirectory 说明这个目录本来就存在、只是挂了个新项目上去。
+public record CreateProjectResult(
+    string Id,
+    string Name,
+    string WorkingFolder,
+    string ParentDirectory,
+    bool ReusedExistingDirectory);

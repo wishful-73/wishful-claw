@@ -40,6 +40,30 @@ public sealed class ProjectToolsProvider : IToolProvider
                 availableModes: new[] { "global" },
                 visibleScopes: ToolVisibilityScopes.Everywhere));
 
+        // create_project: Create a project under the parent directory configured in Settings.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "create_project",
+            "Create a new project under the user's configured projects parent directory (see Settings; "
+            + "use list_projects first to see what already exists). The directory is always the parent plus ONE level, "
+            + "and the path is built server-side from the names you pass — you cannot choose an arbitrary location. "
+            + "name is the display name (illegal characters become spaces; empty falls back to 'New Project'); "
+            + "folderName is the directory name and defaults to a sanitized form of name, so the two are not "
+            + "guaranteed to be equal. Path separators, '..' and drive letters in folderName are rejected. "
+            + "If a project already uses that directory, the call fails and returns the existing project's id and name "
+            + "instead of creating a duplicate. Returns the new project id, its working folder, and whether the "
+            + "directory already existed.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["name"] = ToolSchemaBuilder.String(
+                        "Display name of the new project."),
+                    ["folderName"] = ToolSchemaBuilder.String(
+                        "Optional directory name directly under the parent directory. Defaults to a form of 'name' with Windows-illegal characters replaced by '-'.")
+                },
+                ["name"]),
+            availableModes: new[] { "global" },
+            visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
         // create_session: Create a new session for a project
         registry.Register(new ToolDefinitionPlaceholder(
             "create_session",

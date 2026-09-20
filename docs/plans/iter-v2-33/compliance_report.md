@@ -642,3 +642,199 @@
 6. ⚠️-0 raw 措辞未订正（非 plan 职责）。
 7. `S-98-1` 的 `MemoryModule.Entries.cs ≤150` 目标可能被本批略微突破（仍 ≤500，不阻断）。
 8. **N-A**：缺 `workingFolder` 的项目会话语义由「不拦」变「只放行数据根」—— 建议明示并确认可接受。
+
+---
+
+## 第四批（S-103）规划验证（2026-09-20）
+
+### 结论：FAIL
+
+有 **3 条 ❌ 阻断**。计划的**核心意图与绝大多数探索结论经实读核实成立**（渠道可见性、config 端点、沙箱两段式、底层 Create 都已就位，判断准确）。但有三处会让实施跑偏或让安全约束/断言失效：① AOT 结果类型的**注册落点写错**（照抄会在真机运行期炸）；② **断言套件未指定工程**（IVT 决定可达性，写 internal 就编译不过）；③ 沙箱追加的**落点**若按字面「复用 `WithDataRoot`」会把父目录**泄漏进项目会话**并打红既有断言。修掉这 3 条即可开工。
+
+---
+
+### 一、事实核验结果（逐条，全部带文件:行号）
+
+| # | plan 的结论（plan.md 行） | 判定 | 证据 |
+|---|---|---|---|
+| 1 | 渠道 scope 被强制成 `global` | ✅ | `AgentRunContextPolicy.cs:35-40`（`if (sessionMode == "channel") scope = "global";`） |
+| 2 | 渲染出的上下文串是 `global:channel` | ✅ | `ToolVisibilityPolicy.cs:62-64`（`channelSession` ⇒ mode=`"channel"`）+ `:78`（no-role 时 `scope:mode`）⇒ `global:channel`；`RenderContext` 确在 `:59-79` |
+| 3 | `GlobalSideOnly = ["global:*@*"]`（mode 通配）**已覆盖渠道** | ✅ | `ToolVisibilityScopes.cs:48`；`MatchesPattern` 推演见下方「通过项 A」 |
+| 4 | `config/get` + `config/set` 端点已存在 | ✅ | `ConfigModule.cs:20-24`（`config/get`=:22、`config/set`=:23） |
+| 5 | 设置类模板 = 常量 + 静态 Read/Write + Defaults | ✅ | `GlobalChannelSettings.cs`（`Defaults` :20、`Read` :61、`Write` :73、`ConfigKey` :27） |
+| 6 | `ToolSchemaBuilder`（Object/String/Integer） | ✅ | `ToolSchemaBuilder.cs:13` / `:55` / `:91` |
+| 7 | `ProjectToolsProvider` 已有 5 工具、缺 `create_project` | ✅ | `ProjectToolsProvider.cs:13-108`；5 工具的 `visibleScopes` 与 raw §1512-1516 表**逐条一致**（list/get=`Everywhere`、create_session=`GlobalSideAndWorkRuns`、另两个=`GlobalSideOnly`） |
+| 8 | 执行器 `ProjectToolNames` + switch 分派 | ✅ | `AgentRuntimeProjectExecutor.cs:16`（集合）/`:32`（switch）；`ToolDispatchRouter.cs:441`（`IsProjectTool` 分支） |
+| 9 | 项目创建底层 + RPC | ✅ | `DbProjectTools.cs:67`（`Create`）、`Directory.CreateDirectory` 在 `:83`；`DbModule.cs:28` 注册 `db/projects-create` |
+| 10 | 沙箱两段式（S-102 后） | ✅ | `PathBoundary.cs:60` `CollectProjectRoots` / `:96` `WithDataRoot`；`ResolveRoots`=`:52-53` |
+| 11 | 设置页落点（沙箱开关旁） | ✅ | `RuntimePanel.tsx:104-117`（`sec-runtime-sandbox`） |
+| 12 | 目录选择器先例 `skill-panel.tsx:71` | ⚠️ 行号对、**先例引用不准** | `skill-panel.tsx:71` 确为 `ipcClient.invoke('fs:select-folder')`，但**不带参数**；带 `{ defaultPath }` 的正确先例是 `WorkingFolderSelectorDialog.tsx:210-212`。main 侧 handler 确支持 `defaultPath`（`main/index.ts:249-256`）⇒ 功能可行，仅先例指错 |
+| 13 | 用户创建路径（不动） | ✅ | `stores/chat-store/project-slice.ts:81` `createProject` |
+| 14 | 结果类型「加进 `AotProjectResultTypes.cs`」即完成 AOT 注册 | ❌ **错误** | `AotProjectResultTypes.cs` **只有 record 定义、无任何 `[JsonSerializable]`**；真正的源生成注册在 `WishfulClaw.Worker/WishfulClawJsonContext.cs:132-136`（`ProjectListRow/ProjectListResult/SessionListRow/ProjectDetailResult/CreateSessionResult` 全在那里）。详见 ❌-1 |
+
+**通过项 A —— `global:*@*` 能匹配 `global:channel`（按解析逻辑推一遍）：**
+- 运行时串（渠道）：`scope`=global（被强制）、`channelSession`=true ⇒ `mode`=`channel`（`ToolVisibilityPolicy.cs:62-64`）、无 `@role` ⇒ role 取默认 `sessionagent` ⇒ **`global:channel`**。
+- 模式串：`ParseScopeMode("global:*@*")` ⇒ `role="*"`、`body="global:*"` ⇒ `scope="global"`、`mode="*"`。
+- 逐段比：`MatchesSegment("global","global")`=true；`MatchesSegment("*","channel")`=true（`*` 命中任一段）；`MatchesSegment("*","sessionagent")`=true ⇒ **匹配通过**。
+- 模式串的角色段落到 `*`（通配），所以 mode 段通配 + role 段通配，渠道必然可见。**plan 结论正确**。
+
+**通过项 B —— `availableModes: ["global"]` 对渠道有效（两道闸都过）：**
+- 闸一（模式）：`ResolveAvailableMode` 对 `sessionMode == "channel"` **返回字面 `"global"`**（`AgentRunContextPolicy.cs:97-101`，注释明说这就是为了别掉 `availableModes: "global"` 的工具）；`GetToolDefinitions(sessionMode)` 用精确匹配（`ToolRegistry.cs:224`）；`ToolCallProcessor.cs:169/210` 亦用 `ResolveAvailableMode` 出参。`list_projects` 的 `["global"]` 就是现成先例 ⇒ **能过**。
+- 闸二（可见性）：见通过项 A ⇒ **能过**。两道独立闸门 `create_project` 都过得去，plan §S103-3 的「与 `list_projects` 一致 ⇒ 渠道也拿到」成立。
+
+**通过项 C：** `test:i18n-coverage` 脚本存在（`package.json`）；11 个 C# 套件 = `tests/` 下 11 个 `*Tests.csproj`（✅ 与 plan.md:413「11 个 C# 套件」一致）。
+
+---
+
+### 二、❌ 阻断项（必须修入 plan 才能开工）
+
+#### ❌-1：AOT 结果类型的**注册落点写错** —— 照 plan 字面做，工具在真机跑到该分支才炸（且不是编译错）
+
+- **plan 原文**：`plan.md:384` S103-3c「结果类型加进 `AotProjectResultTypes.cs`（AOT 源生成下漏注册是**编译错误**，不是告警）」；`plan.md:405` 涉及文件同样只列 `Agent/AotProjectResultTypes.cs`。
+- **实读**：`AotProjectResultTypes.cs` 通篇只有 `record` 定义，**没有一条 `[JsonSerializable]`**。真正的注册点是 `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs:132-136`（`ProjectListRow` :132、`ProjectListResult` :133、`SessionListRow` :134、`ProjectDetailResult` :135、`CreateSessionResult` :136）。
+- **为什么会炸**：`AgentRuntimeProjectExecutor` 走 `WorkerJsonHelper.GetTypeInfo<T>()`（`AgentRuntimeProjectExecutor.cs:81/169/235`），其实现是 `JsonOptions.GetTypeInfo(typeof(T))!`（`Contracts/WorkerResponse.cs:99-102`），而解析器是 `Program.cs:16-19` 装的 `JsonTypeInfoResolver.Combine(WishfulClawJsonContext.Default, AgentRuntimeJsonContext.Default)`。新类型两边都没注册 ⇒ `GetTypeInfo` 返回 **null** ⇒ `JsonSerializer.Serialize(value, (JsonTypeInfo<T>)null)` 抛 `ArgumentNullException`。这是**运行期**错误，**编译器不会兜底**（`GetTypeInfo<T>` 这条路径本就是为了消掉 IL2026/IL3050 而存在，故连告警都没有）—— plan 的「漏注册是编译错误」判断**错**，只有手测 `create_project` 成功分支才暴露。
+- **建议修法**：S103-3c 改为「① `CreateProjectResult`（及各新 record）定义在 `AotProjectResultTypes.cs`；② **在 `WishfulClaw.Worker/WishfulClawJsonContext.cs` 追加 `[JsonSerializable(typeof(CreateProjectResult))]`**（与既有的 `ProjectListResult` 等并列）」；`plan.md:405` 涉及文件补 `Worker/WishfulClawJsonContext.cs`。
+
+#### ❌-2：断言套件**未指定工程** —— IVT / `public` 决定可达性，选错则编译不过（`ProjectCreationPolicy` 断言写不出来）
+
+- **plan 原文**：`plan.md:377`「抽成纯函数是为了可断言 —— …验证：**断言套件**」；`plan.md:409` 涉及文件只写「**测试工程**（新增断言套件）」。**两处都没点明哪个工程**，而工程选择不是自由项。
+- **实读（IVT）**：`WishfulClaw.Agent.csproj:17-26` 的 `InternalsVisibleTo` 名单 **8 项**：`GoalRegressionTests`、`CompactionSnapshotRegressionTests`、`ToolConcurrencyRegressionTests`、`ChannelToolVisibilityRegressionTests`、`ChannelShellApprovalRegressionTests`、`ProviderHeaderRegressionTests`、`GrepPatternRegressionTests`、`MemoryRecallRegressionTests`。
+- **实读（谁引用 Agent）**：`tests/` 11 个工程里 **10 个**引用 `WishfulClaw.Agent`；**只有 `WishfulClaw.AgentTimelineRegressionTests` 不引用**（仅 `Infrastructure`）。**注意两个引用 Agent 却不在 IVT 里的**：`WishfulClaw.CronRegressionTests`、`WishfulClaw.SessionTaskCascadeRegressionTests`。
+- **推论**：`Agent` 里同类策略类 `AgentRunContextPolicy` / `ToolVisibilityPolicy` 都是 **`internal static`**（`AgentRunContextPolicy.cs:23`、`ToolVisibilityPolicy.cs:32`）。
+  - 若 `ProjectCreationPolicy` 写成 **`internal`**（与同类一致）⇒ 断言**只能**落在那 8 个 IVT 工程之一。若实现者顺手放进 `CronRegressionTests` / `SessionTaskCascadeRegressionTests`（它们确实引用 Agent）⇒ **编译不过 `CS0122`**。
+  - 若写成 **`public`**（像 `PathBoundary` `PathBoundary.cs:26`）⇒ 10 个引用 Agent 的工程都能断言。
+- **建议修法**：在 S103-2 里**写死**「`public static class ProjectCreationPolicy` + 断言落在 `WishfulClaw.ChannelToolVisibilityRegressionTests`（或 `GoalRegressionTests` —— 它已有 `Program.Sandbox.cs` 断言 `PathBoundary`，是现成先例）」。**首选 `ChannelToolVisibilityRegressionTests`**：plan.md:415 检查点 3 本来就要断言 `create_project` 的可见性（含 `global:channel`），把纯函数断言与可见性断言放同一套件最省事；该工程已引用 Agent 且在 IVT 里。
+
+#### ❌-3：沙箱追加的**落点** —— 「复用 `WithDataRoot`」按字面会把父目录**泄漏进项目会话**，且打红既有断言、让检查点 4 不可写
+
+- **plan 原文**：`plan.md:388` S103-4「`PathBoundary.ResolveRoots`：**全局分支**追加父目录（**复用 S-102 `WithDataRoot` 的追加模式**）；**项目会话不加**」。
+- **问题 1（安全）**：`ResolveRoots = WithDataRoot(CollectProjectRoots(parameters))`（`PathBoundary.cs:52-53`）—— **`WithDataRoot` 被项目会话与全局会话共用**（`PathBoundary.cs:86-95` 注释明说「项目会话和全局会话两条路都必须带上它」）。若把「追加父目录」写进 `WithDataRoot`（plan 字面「复用其追加模式」），则**项目会话也会拿到父目录** ⇒ 直接违反 plan 自己的口径（`plan.md:388`「项目会话不加」）与 raw §1553「给出去了，项目 A 的会话就能读写项目 B」。**这是本需求的核心安全边界，不能靠措辞含糊过去。**
+- **问题 2（打红既有断言）**：`GoalRegressionTests/Program.Sandbox.cs:85-92` **直接断言 `WithDataRoot` 的根数** —— `WithDataRoot([])` 必须 `==1`、`WithDataRoot([root,secondRoot])` 必须 `==3`。往 `WithDataRoot` 里追加父目录后，这两条**必红**。
+- **问题 3（检查点 4 不可写）**：`plan.md:416` 检查点 4 要「父目录进**全局分支**、不进**项目分支**」。但全局分支 `CollectProjectRoots` 会走 `DbClient.GetClient()`（`PathBoundary.cs:71`），而套件里**不能碰真库**（`Program.Sandbox.cs:82-83` 的原话：「那是会初始化真实库的写操作，套件里不能碰」）⇒ 现状**没有可断言的纯函数 seam** 能把「父目录进全局分支」单测出来。
+- **建议修法**：新增一个**接收已解析 parentDir 的纯函数**（如 `internal static IReadOnlyList<string> WithProjectsParent(IReadOnlyList<string> roots, string? parentDir)`，parentDir 为空则原样返回），**只在 `CollectProjectRoots` 的全局分支**调用它；`WithDataRoot` **一字不动**（既有断言与「纯函数」契约都保住）。检查点 4 改为断言这个新纯函数（全局调用点由 `ResolveRoots` 串起来、不碰 DB）。
+
+---
+
+### 三、⚠️ 建议项（不阻断，但建议实施前定）
+
+#### ⚠️-1：配置「未配置」语义与「回退默认地址」**自相矛盾** —— 检查点 5 的报错路径按现文字不可达
+- 证据：`plan.md:372` `Read()`「未设置时**回退默认地址**」；`plan.md:377` 策略「父目录为空 ⇒ **错误**」；`plan.md:388` 沙箱「父目录**未配置**或解析失败 ⇒ 不加」；`plan.md:417` 检查点 5「**未配置时明确报错**」。
+- 冲突：若 `Read()` 恒返回默认（`~/WishfulClawProjects`），则「未配置」**永不出现** ⇒ 工具**静默建到默认目录**、沙箱**恒加根**，检查点 5 的「未配置时报错」**永远测不到**；而 `plan.md:373`「空写入视为清除」之后又回落到默认，同样回到这条死循环。
+- 建议：拆两个入口 —— `TryReadConfigured()`（用户没设时返回 `null`，**供策略/沙箱用**）与 `Read()` / `DefaultPath`（**供设置页输入框预填**）。并明确「用户显式清空 = 未配置」之后，工具是**报错**还是**回退默认建**（二者取一，写进 plan）。
+
+#### ⚠️-2：重名 / 已存在目录未覆盖
+- 证据：`DbProjectTools.Create`（`DbProjectTools.cs:81-99`）对 `workingFolder` 只调 `Directory.CreateDirectory`（**幂等，同名目录不报错**），`projects` 表**无 name / working_folder 唯一约束**，`id` 由 `CreateId()` 生成（GUID，不冲突）。
+- 后果：agent 连续两次 `create_project name=Foo` ⇒ 两条**同名同路径**的项目；用户在 `父目录/foo` 已建过项目时 ⇒ 再来一条。
+- 建议：在策略/执行器加一条「同 `folderName`（或同路径）已存在 ⇒ 报错或返回既有项目」的处置，并在 plan 写明。
+
+#### ⚠️-3：设置页的渲染端读写通路没写明（无先例，但可达）
+- 证据：渲染端**全仓无 `config/get` / `config/set` 使用先例**（grep 为空）；但 `window.api.workerRequest(method, params)` 是通用桥（`db/*`、`memory/*`、`persona/*`、`provider/*` 均如此，见 `stores/chat-store/db-helpers.ts:10`、`persona-store.ts:38-175`），且 `config/get`/`config/set` 已在 `ConfigModule.cs:22-23` 注册 ⇒ **可达**。
+- 建议：plan S103-5 明写「渲染端走 `window.api.workerRequest('config/get'|'config/set', …)`」，免得实现者以为要新开 IPC 通道。另 `RuntimePanel.tsx` 现在是用同步的 `useSettingsStore`（`:22`），本项要引入**异步加载**（首屏 fetch + 保存态），plan 未提。
+
+#### ⚠️-4：`fs:select-folder` 先例引用不准（见事实表 #12）
+- 建议：把 `plan.md:365` 的先例改成 `chat/WorkingFolderSelectorDialog.tsx:210-212`（那是唯一传 `{ defaultPath }` 的现成调用）。
+
+#### ⚠️-5：`id` 生成方式应写明
+- `create_project` 的 schema 只有 `name/folderName/description`（`plan.md:382`），未暴露 `id` ⇒ 服务端 `CreateId()` 生成，**无冲突**。建议 plan 明写「**不传 `id`**，服务端生成」，避免实现者顺手把 `id` 加进 schema（那会让 agent 指定任意 id）。
+
+#### ⚠️-6：项目显示名与目录名会不一致（预期内，但需说明）
+- `DbProjectTools.Create` 内 `SanitizeProjectName`（`DbProjectTools.cs:299-310`）把 `<>:"/\|?*` 换**空格**并压缩空白、空则回落 `"New Project"`；而 `ProjectCreationPolicy` 派生 `folderName` 把非法字符换 **`-`**。⇒ 显示名（空格）≠ 目录名（`-`）；若 `name` 全非法字符，显示名变 `New Project` 而目录名是派生值。建议在 plan 说明二者关系。
+
+#### ⚠️-7：`GlobalSideOnly` 挡的是「项目 cowork」，不是「global 域子代理」—— raw §1556 副作用的措辞要收紧
+- 证据：`GlobalSideOnly = ["global:*@*"]`（`ToolVisibilityScopes.cs:48`）的 role 段是 `*`。global 作用域的子代理（`runtimeRole=subagent` ⇒ 串 `global:cowork@subagent`）**照样匹配**；真正被挡的是**项目作用域**（`project:cowork` 不匹配 `global:*@*`）。
+- 影响：raw §1556 那句「全局 PM 派出去的 cowork 子任务不能建项目」**表述不准**（被挡的是项目 cowork，不是 global 子代理）。功能意图（项目会话不给父目录访问）不受影响，仅措辞。建议改为「**项目会话 / 项目 cowork 不可见**」。
+
+#### ⚠️-8：`create_project` 会经 `use_capability` 代理触达，而非直接注入 —— plan 未表态
+- 证据：`ToolDefinitionPlaceholder` 默认 `isCore=false`（`ToolDefinitionPlaceholder.cs:29`），5 个既有项目工具都没设 `isCore` ⇒ `ResolveDirectInjection` 只留 `IsCore`（`AgentRunContextPolicy.cs:210-217`）⇒ 与 `list_projects` 一样**不进直接工具表**，只经 `use_capability` 代理。
+- 影响：与既有项目工具行为一致，**不是缺陷**；但 plan 未写 `IsCore`。建议明写「`isCore=false`，与既有项目工具一致」，免得实现者以为要直注入而漏 `use_capability` 路径的验证。
+
+---
+
+### 四、我的独立判断（针对本次三个重点）
+
+1. **可见性（plan 最关键的设计主张）经实读成立**：`availableModes: ["global"]` + `visibleScopes: GlobalSideOnly` 两道闸，渠道（`global:channel`）都过。plan 不需要为渠道做任何额外改动，此判断**正确**。
+2. **plan 对「沙箱拦不住 `create_project`（路径非参数）」的判断成立且重要**（raw §1555/§1563）：`create_project` 的边界 100% 依赖 `ProjectCreationPolicy`，所以 ❌-2（断言落点）与 ❌-3（沙箱落点）是本需求仅有的两道防线，必须落死。
+3. **真实性核查发现 1 处硬错（❌-1）**：plan 把 AOT 注册点记成了 `AotProjectResultTypes.cs`。这条不改，`create_project` 成功分支会在**真机运行期**抛 `ArgumentNullException`，而编译器/类型检查都抓不到 —— 属于「照 plan 做就必踩」的坑。
+
+### 五、结论
+
+**FAIL**（3 ❌ / 8 ⚠️）。修法均已给到文件:行号级别：❌-1 改 `plan.md:384`+`:405`（补 `WishfulClawJsonContext.cs` 注册）；❌-2 在 `plan.md:377`/`:409` 写死断言工程（建议 `ChannelToolVisibilityRegressionTests`）；❌-3 在 `plan.md:388` 明确「新增纯函数 `WithProjectsParent`、只在全局分支调用、`WithDataRoot` 不动」。三条落地后 → PASS。
+
+---
+
+## 第四批（S-103）规划验证复验（2026-09-20）
+
+- 复验对象：`plan.md` §「第四批（S-103）」（`plan.md:339-420`）、`raw-requirements.md` §S-103（含 §「规划验证处置（2026-09-20）」，`raw-requirements.md:1498-1590`）
+- 上一轮报告：本文件 §「第四批（S-103）规划验证（2026-09-20）」
+- 复验方式：把每一条修订文本**回源码 / 工程文件实读核对**，非推测。实读文件：`Worker/WishfulClawJsonContext.cs`、`Agent/AotProjectResultTypes.cs`、`Agent/WishfulClaw.Agent.csproj`、`tests/WishfulClaw.ChannelToolVisibilityRegressionTests/*.csproj`、`Agent/Tools/PathBoundary.cs`、`tests/WishfulClaw.GoalRegressionTests/Program.Sandbox.cs`、`Worker/Modules/ConfigModule.cs`、`Infrastructure/Storage/ConfigStore.cs`
+- **复验结论：PASS** —— 3 条 ❌ 全部**已修**且证据准确；**未新增 ❌**。残余问题均为 ⚠️ 级措辞/表述残留（详见三、四）。
+
+### 一、三条 ❌ 的复验结果
+
+| ❌ | 复验结果 |
+|---|---|
+| ❌-1 AOT 结果类型注册点 | **已修**（指向正确、注册模式对、涉及文件已补） |
+| ❌-2 断言落哪个工程 | **已修**（`public` + 工程名写死，工程可达性经实读验证） |
+| ❌-3 沙箱追加落点 | **已修**（新纯函数 + 只全局分支调用 + `WithDataRoot` 不动，结构与既有断言均相容） |
+
+#### ❌-1 —— 已修
+
+- **新文本**：`plan.md:386`（S103-3c）把两件事拆开 —— record 定义放 `Agent/AotProjectResultTypes.cs`；**`[JsonSerializable]` 注册在 `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs`**（「与既有的 `ProjectListResult` 等并列，约 `:132-136`」）。并把「漏注册是编译错误」订正为「`GetTypeInfo<T>()` 的 `!` 吞掉 null ⇒ **运行期 `ArgumentNullException`**，编译器与类型检查都不抓」。
+- **涉及文件**：`plan.md:408` 已列入 `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs`（标注「**`[JsonSerializable]` 注册点** —— ❌-1」）。
+- **实读核对**：
+  - `WishfulClawJsonContext.cs:132-136` = `[JsonSerializable(typeof(ProjectListRow))]`(`:132`) / `ProjectListResult`(`:133`) / `SessionListRow`(`:134`) / `ProjectDetailResult`(`:135`) / `CreateSessionResult`(`:136`)，模式确为并列的 `[JsonSerializable(typeof(Xxx))]`，紧邻 `ProjectListResult`。⇒ plan 的「约 `:132-136`」**准确**，「与 `ProjectListResult` 并列」**准确**。
+  - `AotProjectResultTypes.cs` 通篇只有 `record`（`ProjectListRow` / `ProjectListResult` / `SessionListRow` / `ProjectDetailResult` / `CreateSessionResult`），**零 `[JsonSerializable]`** —— 与上一轮结论一致。
+- **结论**：指向正确、模式正确、涉及文件到位。**已修。**
+
+#### ❌-2 —— 已修
+
+- **新文本**：`plan.md:377`（S103-2）写死 —— 新增 `Agent/Tools/ProjectCreationPolicy.cs`，**`public static class`**（附理由「写成 `internal` 会把断言锁死在 8 个 `InternalsVisibleTo` 工程里」）；并写「**❌-2 定案：断言落在 `tests/WishfulClaw.ChannelToolVisibilityRegressionTests`** —— 该工程已引用 Agent 且在 IVT 名单内」。
+- **实读核对（IVT）**：`WishfulClaw.Agent.csproj:17-26` 的 `InternalsVisibleTo` **恰为 8 条**（`:18` `GoalRegressionTests`、`:19` `CompactionSnapshotRegressionTests`、`:20` `ToolConcurrencyRegressionTests`、`:21` **`ChannelToolVisibilityRegressionTests`**、`:22` `ChannelShellApprovalRegressionTests`、`:23` `ProviderHeaderRegressionTests`、`:24` `GrepPatternRegressionTests`、`:25` `MemoryRecallRegressionTests`）；**不含** `WishfulClaw.CronRegressionTests` / `WishfulClaw.SessionTaskCascadeRegressionTests` —— 与上一轮完全一致。
+- **实读核对（是否引用 Agent）**：`tests/WishfulClaw.ChannelToolVisibilityRegressionTests/WishfulClaw.ChannelToolVisibilityRegressionTests.csproj:10-12` = `<ProjectReference Include="..\..\src\runtime\WishfulClaw.Agent\WishfulClaw.Agent.csproj" />` ⇒ **该工程确实引用 Agent，且 `ChannelToolVisibilityRegressionTests` 在 IVT 内** ⇒ 断言可达（`public` 使其更无约束，双保险）。
+- **结论**：`public`/`internal` 与工程名都已写死，工程选择经实读为真。**已修。**
+- 轻微残留（非阻断）：`plan.md:412` 汇总的涉及文件仍写泛化「测试工程（新增断言套件）」，未回填工程名。建议改为具名，与 S103-2 对齐。
+
+#### ❌-3 —— 已修
+
+- **新文本**：`plan.md:390`（S103-4）明确 —— 新增纯函数 `PathBoundary.WithProjectsParent(IReadOnlyList<string> roots, string? parentDir)`（parentDir 空则原样返回），**只在 `CollectProjectRoots` 的全局分支**调用它；**`WithDataRoot` 一字不动**；并写明理由（`ResolveRoots = WithDataRoot(CollectProjectRoots(parameters))` 里 `WithDataRoot` 被项目/全局**两分支共用**，写进去会把父目录泄漏进项目会话，且打红 `Program.Sandbox.cs` 的既有断言）。
+- **实读核对（结构是否支撑改法）**：`PathBoundary.cs`
+  - `ResolveRoots`（`:52-53`）= `WithDataRoot(CollectProjectRoots(parameters))`；
+  - `CollectProjectRoots`（`:60-84`）：**项目分支在 `:62-66` 提前 `return`**；全局分支在 `:68-84`（`:71` `DbClient.GetClient()` 查表 + `:78-83` catch 兜底）⇒ **全局分支确有干净插入点**（把全局分支的返回值包一层 `WithProjectsParent(roots, parentDir)` 即可），且**项目分支根本不会走到全局分支** ⇒ 天然不泄漏。
+  - `WithDataRoot`（`:96-103`）不动 ⇒ 「纯函数、不碰 DB」的原契约保住。
+  - 分层：`PathBoundary` 已 `using WishfulClaw.Infrastructure.Storage`（`:5`，用于 `WishfulClawDataDir`），在其调用点读 `ProjectsParentDirectory.Read()`（Infrastructure.Storage）**不新增跨层引用**，合规。
+- **实读核对（既有断言是否红）**：`Program.Sandbox.cs:85-87` = `AssertEqual(1, PathBoundary.WithDataRoot([]).Count, …)`、`:89-92` = `AssertEqual(3, PathBoundary.WithDataRoot([root, secondRoot]).Count, …)` —— 两条**直接调 `WithDataRoot`**，新方案不动 `WithDataRoot` ⇒ **不会红**。同文件 `:63-72` 的项目会话根数断言走「项目分支 + `WithDataRoot`」，同样不受影响。
+- **结论**：语义写死、结构与既有断言均相容、纯函数可单测。**已修。**
+- 轻微提示（非阻断）：plan 只说「全局分支调用」，未说明**全局分支的 catch 兜底路径**（`:78-83` 返回 `[]`）是否也要经 `WithProjectsParent`。若实现只在 try 的成功 `return` 上包一层，DB 查询失败时父目录根会一并丢失（与「沙箱恒加根」的表述略有出入）。建议 S103-4 明写「两处返回（成功 / catch）都要经 `WithProjectsParent`」，或注明接受该降级。
+
+### 二、⚠️-1 ~ ⚠️-8 处置情况
+
+| ⚠️ | 项目 | 处置 | 落点 |
+|---|---|---|---|
+| ⚠️-1 | 配置「未配置态」语义 | **已处置（残留 1 处措辞）** | `plan.md:372` 定案「没有未配置态，`Read()` 恒返回生效路径，「恢复默认」= 删 key」；`plan.md:420` 检查点 5 已改为「不可创建时报错」；`S103-2`（`:377`）规则①标为「配置解析失败时的兜底」与定案自洽。**残留**：`plan.md:417` 检查点 2 仍写「**未配置父目录**」作为纯函数断言用例 —— 术语与「没有未配置态」不符，宜改为「父目录为空（兜底）」 |
+| ⚠️-2 | 重名 / 已存在目录 | **已处置** | 新增 `S103-3d`（`plan.md:384`）：建前查同 scope 是否占用该 `workingFolder`，命中即报错并回显既有项目 id/name |
+| ⚠️-3 | 渲染端读写通路 | **已处置** | `S103-5`（`plan.md:394`）写明走 `window.api.workerRequest('config/get'|'config/set', …)`、不需新开 IPC 通道，并指出 `RuntimePanel` 需引入独立异步 state |
+| ⚠️-4 | `fs:select-folder` 先例 | **已处置** | `plan.md:394`（S103-5）+ 事实表 `plan.md:365`：先例订正为 `components/chat/WorkingFolderSelectorDialog.tsx:210-212` |
+| ⚠️-5 | 不暴露 `id` | **已处置** | `S103-3`（`plan.md:382`）：「⚠️-5：不暴露 `id`（服务端 `CreateId()` 生成）」 |
+| ⚠️-6 | 显示名 vs 目录名 | **已处置** | 新增 `S103-3e`（`plan.md:385`）：`name`=显示名（非法字符→空格、空→`New Project`）、`folderName`=目录名（→`-`），要求写进工具 description |
+| ⚠️-7 | `GlobalSideOnly` 措辞（挡的是项目域，非 global 域子代理） | **仅部分处置** | raw §S-103 `:1557` 已订正措辞（「被挡的是项目作用域，global 域子代理照样可见」）；但 **plan 侧未落**：`plan.md:418` 检查点 3 仍写「在项目会话**与子代理**不可见」—— 与 ⚠️-7 结论相悖/含糊（global 域子代理 `global:cowork@subagent` 被 `*` 段命中，**可见**） |
+| ⚠️-8 | `isCore` | **已处置** | `S103-3`（`plan.md:382`）：「⚠️-8：不设 `isCore`（默认 `false`，与既有 5 个项目工具一致 ⇒ 经 `use_capability` 代理触达）」 |
+
+**小结**：8 条中 **6 条完全处置**（⚠️-2/3/4/5/6/8）、**⚠️-1 已处置但残留 1 处措辞**、**⚠️-7 仅 raw 侧订正、plan 侧未落** ⇒ **仍有 2 处残留未完全闭环**（均 ⚠️ 级）。
+
+### 三、新发现的问题（均为 ⚠️ 级，不阻断）
+
+1. **（承接 ⚠️-7）检查点 3 的可见性断言若不改，实施者可能写出**不可满足**的断言**（`plan.md:418`）。`GlobalSideOnly = ["global:*@*"]`（`ToolVisibilityScopes.cs:48`）role 段为 `*`，global 域子代理（`global:cowork@subagent`）**会**可见。建议把检查点 3 改为：「在**项目会话（含项目子代理 / 项目 cowork）**不可见；**global 域子代理仍可见**」。
+2. **检查点 2 术语残留**（`plan.md:417`）：「未配置父目录」应改为「父目录为空（配置解析失败兜底）」。
+3. **涉及文件未回填工程名**（`plan.md:412`）：「测试工程（新增断言套件）」应具名为 `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/Program.cs`。
+4. **全局分支 catch 路径是否也加父目录未写明**（`plan.md:390`）：见 ❌-3 复验的「轻微提示」。
+5. **步骤字母序**（cosmetic）：`S103-3d` / `S103-3e` 排在 `S103-3c` 之前，编号不递增。功能无碍（无步骤互相引用、无缺失步骤、检查点与步骤一一对应），建议顺手按 `3c→3d→3e` 排列。
+6. **raw 侧陈旧表述（非 plan 缺陷）**：`raw-requirements.md:1570`（§实施要点 #1）仍写「新增 worker 读写端点」，而 plan 已确认 `config/get` / `config/set` **端点已存在**（实读 `ConfigModule.cs:20-24` 确含 `config/get`(:22) / `config/set`(:23)，`ConfigStore.Get/Set/Delete` 均已实现，`Set` 传 null 时即删 key，正好支撑「恢复默认=删 key」）。以 plan 为准，raw 该句宜标注为「复用既有端点」。
+
+### 四、复验结论
+
+**PASS。** 三条 ❌ 均已修入 plan，且经源码/工程文件实读验证落地可行：
+- ❌-1：注册点指向 `WishfulClaw.Worker/WishfulClawJsonContext.cs`（`:132-136` 模式正确、涉及文件 `:408` 已补）—— **已修**。
+- ❌-2：`public static class ProjectCreationPolicy` + 断言落 `ChannelToolVisibilityRegressionTests`（IVT `:21` 在册、工程 `csproj:11` 引用 Agent）—— **已修**。
+- ❌-3：新增 `PathBoundary.WithProjectsParent`、只全局分支调用、`WithDataRoot` 不动（`PathBoundary.cs` 结构与 `Program.Sandbox.cs:85-92` 既有断言均相容）—— **已修**。
+
+**遗留（不阻断开工，建议实施前顺手改）**：⚠️-1 检查点 2 术语（`plan.md:417`）、⚠️-7 检查点 3 可见性措辞（`plan.md:418`）、涉及文件回填工程名（`:412`）、全局 catch 路径说明（`:390`）、步骤字母序。**上一轮 8 条 ⚠️ 中 6 条已完全处置，2 条（⚠️-1 / ⚠️-7）尚有残留措辞未闭环。**

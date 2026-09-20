@@ -2,7 +2,9 @@ using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent.Tools;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -15,7 +17,8 @@ public static class AgentRuntimeProjectExecutor
 {
     private static readonly HashSet<string> ProjectToolNames = new(StringComparer.Ordinal)
     {
-        "list_projects", "get_project_details", "create_session", "send_session_message", "update_session_follow_up"
+        "list_projects", "get_project_details", "create_session", "create_project",
+        "send_session_message", "update_session_follow_up"
     };
 
     public static bool IsProjectTool(string toolName)
@@ -34,6 +37,7 @@ public static class AgentRuntimeProjectExecutor
             "list_projects" => await ListProjectsAsync(call.Input, parameters, cancellationToken),
             "get_project_details" => await GetProjectDetailsAsync(call.Input, parameters, cancellationToken),
             "create_session" => await CreateSessionAsync(call.Input, parameters, cancellationToken),
+            "create_project" => await CreateProjectAsync(call.Input, parameters, cancellationToken),
             "send_session_message" => await SendSessionMessageAsync(call.Input, parameters, context, cancellationToken),
             "update_session_follow_up" => await UpdateSessionFollowUpAsync(call.Input, parameters, context, cancellationToken),
             _ => EncodeError($"Project tool not registered: {call.Name}")
@@ -240,6 +244,72 @@ public static class AgentRuntimeProjectExecutor
         catch (Exception ex)
         {
             return Task.FromResult(EncodeError($"Failed to create session: {ex.Message}"));
+        }
+    }
+
+    // ── create_project ──
+
+    /// <summary>
+    /// 在设置页配的「工作目录父目录」下建一个项目（S-103）。路径完全由服务端拼 —— 工具参数里
+    /// 没有路径，沙箱那道检查根本看不到它，所以边界就靠 <see cref="ProjectCreationPolicy"/>。
+    /// </summary>
+    private static Task<string> CreateProjectAsync(
+        JsonElement input, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var name = RequireString(input, "name");
+            var folderName = JsonHelpers.GetString(input, "folderName");
+
+            var parentDirectory = ProjectsParentDirectory.Read();
+            var target = ProjectCreationPolicy.Resolve(parentDirectory, name, folderName);
+            if (target.Path is null)
+            {
+                return Task.FromResult(EncodeError(target.Error ?? "Invalid project directory."));
+            }
+
+            var workingFolder = target.Path;
+
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+
+            // projects 表对 working_folder 没有唯一约束，而 Directory.CreateDirectory 对已存在的
+            // 目录是幂等的 —— 不先查重，同一个目录上会挂出两条项目，之后谁也说不清是哪一条在生效。
+            var existing = db.QueryFirstOrDefault(
+                "SELECT * FROM projects WHERE working_folder = @wf ORDER BY created_at ASC LIMIT 1",
+                EntityMappers.MapProject,
+                new SqliteParameter("@wf", workingFolder));
+            if (existing is not null)
+            {
+                return Task.FromResult(EncodeError(
+                    $"A project already uses \"{workingFolder}\": id={existing.Id}, name=\"{existing.Name}\". " +
+                    "Use that project instead of creating a duplicate."));
+            }
+
+            var reusedDirectory = Directory.Exists(workingFolder);
+
+            var payload = WorkerJsonHelper.BuildJsonElement(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteString("name", name);
+                writer.WriteString("workingFolder", workingFolder);
+                writer.WriteEndObject();
+            });
+
+            var created = DbProjectTools.CreateEntity(payload);
+
+            var result = JsonSerializer.Serialize(
+                new CreateProjectResult(
+                    created.Id, created.Name, workingFolder, parentDirectory, reusedDirectory),
+                WorkerJsonHelper.GetTypeInfo<CreateProjectResult>());
+
+            return Task.FromResult(result);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return Task.FromResult(EncodeError($"Failed to create project: {ex.Message}"));
         }
     }
 

@@ -2,7 +2,7 @@
 
 > 2026-09-19 建。分支 `dev/v2-iter-33`（base `main` @ `f6922f6c`，v0.2.32）。
 > 本文件为权威需求文档。本迭代节奏放缓，需求**逐步积攒**，不定收口时间。
-> **已立项 17 项**：S-87 ~ S-103，逐项见下文同名小节。
+> **已立项 20 项**：S-87 ~ S-106，逐项见下文同名小节。
 > 其余候选见文末「待登记」，**未点名，不擅自排入**。
 > 勘测行号均为 2026-09-19 实读。
 
@@ -1123,7 +1123,7 @@ i18n：`memoryPage.entries` 补 `sortNewest` / `sortOldest` / `prevPage` / `next
 
 > 「需要加真分页，先登记需求。」
 
-**只登记，未实施。**
+**已实施（2026-09-20）**，实施记录见本节末。
 
 ### 背景：S-97 的客户端分页是自造约束下的降级
 
@@ -1694,6 +1694,257 @@ const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
 
 ---
 
+## S-104 主窗口显示/隐藏快捷键 + 开机启动静默
+
+**登记 2026-09-20。** 老大原话：
+
+> 「我有一个小需求，就是快捷键问题，这里需要跟你讨论一下，目前我们开机启动是直接把页面甩出来放到桌面上，这种行为有些用户其实不满意，但是我又不确定是否应该改掉，就是给我们自己主页面也增加一个快捷键显示隐藏，默认启动就只有托盘里有图标」
+
+> 「我们设置页面中有快捷键设置，这个是给其它两个额外功能准备的，这里可以增加一个主窗体的快捷键设置，登记进需求 B 需要做 A 也要改，可以在这个快捷键设置的地方增加你说的那个开关，是否默认不显示窗口，以及静默启动需要发一条系统通知」
+
+### 需求拆成两件独立的事
+
+**B：主窗口显示/隐藏快捷键**
+
+- 设置页「快捷键」增加第三项（现只有剪贴板增强、快速搜索）
+- 触发时 **toggle** 主窗口（可见 → 隐藏；隐藏或最小化 → 显示并聚焦）
+- **默认不给加速键**：全局快捷键是**抢占式**的，默认值撞上用户机器上别的软件会先被怪罪；留空 = 想要的人自己录
+
+**A：开机启动静默 + 开关 + 通知**
+
+- 现状根因：`app.setLoginItemSettings({ openAtLogin })` **不带启动参数**（`src/main/ipc/window-handlers.ts:15-17`）⇒ 开机时走的就是普通启动路径 ⇒ `ready-to-show` 一到就 `show()`（`src/main/index.ts:103-104`），窗口直接甩出来
+- 改法：登录项补 `args: ['--hidden']`；启动时 `process.argv` 含 `--hidden` ⇒ 不 `show()`
+- 开关放**快捷键设置页**（老大指定位置），文案约「开机启动时不显示窗口」，**默认关**（= 开机照旧显示窗口，静默须用户显式开启）
+- 静默启动时**发一条系统通知**（已在后台运行、点击托盘唤醒）—— 因为 Windows 默认把托盘图标折叠进 `^`，不发通知用户会以为没启动、又去双击图标
+
+### 现状（实读）
+
+| 事实 | 位置 |
+|---|---|
+| 登录项无启动参数 | `src/main/ipc/window-handlers.ts:15-17` |
+| 窗口创建后无条件显示 | `src/main/index.ts:103-104`（`ready-to-show` → `show()`） |
+| 单一恢复路径 | `index.ts:149-154` `showMainWindow()`（restore + show + focus） |
+| 托盘菜单只有「显示主窗口」，无隐藏/切换 | `index.ts:177-186`（左键 click → `showMainWindow()`） |
+| 关闭即隐藏到托盘（已有） | `index.ts:111-115` + `:617-618`（托盘在则不退出） |
+| 快捷键注册器 | `src/main/priority-shortcuts.ts:831` `registerPriorityShortcut(id, …)`；`unregister` 在 `:848` |
+| 快捷键设置页 | `src/renderer/src/components/settings/ShortcutsPanel.tsx`：现两项，各走 `clipboard:get-config` / `launcher:get-config` + `*:update-config` |
+| 开机启动开关（已有，在**运行与性能**页） | `src/renderer/src/components/settings/RuntimePanel.tsx:72` `general.launchAtLogin` |
+
+### 实施要点
+
+1. **主进程**：`showMainWindow()` 旁边加 `toggleMainWindow()`（`isVisible() && !isMinimized()` → `hide()`，否则走 `showMainWindow()`）。
+2. **`priority-shortcuts.ts`**：新增主窗口一项，走既有 `registerPriorityShortcut` 注册器，动作 = toggle。
+3. **`--hidden`**：`window-handlers.ts` 的 `setLoginItemSettings` 补 `args`；`index.ts` 启动时判 `process.argv.includes('--hidden')` 再决定要不要 `show()`。
+   - ⚠️ Windows 下**改了 `args` 必须重新调 `setLoginItemSettings`** 才生效（登录项是注册表里的一条命令）⇒ 「开关切换」与「应用升级后命令路径变化」两条路径都要写。
+4. **通知**：静默启动时发一条（形式待定，见下）。
+5. **设置页**：`ShortcutsPanel.tsx` 加第三项 + 那个开关；i18n `settings.json` zh/en。
+6. **托盘菜单**（待裁定）：现在只有「显示主窗口」，有了 toggle 语义后可一并改成切换项。
+
+### 待裁定
+
+- 托盘菜单要不要加「隐藏」或直接改成切换（实施要点 6）。
+- ~~「开机启动时不显示窗口」的**默认值**：按老大原意默认**开**（静默）；关掉则开机照旧显示。~~
+  ⇒ **已裁定（2026-09-20 实施中，老大）**：「开机启动时不显示窗口 这个默认值不对，没有设置的用户默认是显示的」—— **默认 `false`**，即开机照旧显示窗口，静默只走显式开启。理由：对从未设置过的用户，「开机看不到窗口」与「启动失败」无法区分。
+- 静默启动通知的**形式**（Electron `Notification` vs 托盘气泡）与是否只发一次。
+
+## S-105 AI 服务商详情页两处交互收口：拉取模型的 API Key 前置校验 + 协议类型折叠
+
+### 需求（2026-09-20 老大口述）
+
+> 「登记小改动需求 主要是 ai 服务商页面的
+> 1. ai 服务商详情页面 拉取模型 在 apikey 为空的情况下禁用，并且下面的模型列表中的提示是 请先输入 apikey 后尝试重新拉取
+> 2. ai 服务商详情页面中的协议类型 跟自定义请求头一样，改成一个折叠块，默认是折叠的，主要是这个协议也很少有人去改动」
+
+两项都只动渲染端，**不涉及 C#**。
+
+### 勘测（2026-09-20 实读）
+
+**落点文件**：`src/renderer/src/components/settings/provider/ProviderConfigPanel.tsx`（**771 行**，已越 `AGENTS.md` 的 500 行硬线 —— 既存债，本需求要动它，见「待裁定」1）。
+
+**一、「拉取模型」按钮有两处**
+
+| 位置 | 场景 | 现状 |
+|---|---|---|
+| `:478-486` | 模型区顶部工具条 | `onClick={handleFetchModels}` / `disabled={fetchingModels}` |
+| `:506-515` | 空列表占位区 | 同上 |
+
+两处都是 `disabled={fetchingModels}`，**没有** API Key 前置判断。
+
+**二、空列表提示**：`:504` `ts('provider.config.models.noModels')` = 「请先拉取模型或添加模型」（`locales/zh/settings.json:290`）。该分支条件是 `:501` `provider.models.length === 0`。
+
+**三、现成的判断函数（别重复造）**
+
+- `src/renderer/src/stores/provider-store.ts:386` 已导出 **`isProviderAuthReady(provider)`**：`:388-392` 先看 `authMode`（非 `'apiKey'` 直接 false），再 `requiresApiKey === false || provider.apiKey.trim().length > 0`。
+- 本文件 `:133` 有手写简化版 `authReady = provider.requiresApiKey === false || Boolean(provider.apiKey)` —— **两处缺陷**：漏了 `authMode` 判断；`Boolean(' ')` 为真 ⇒ 只填空格会被当成「已配置」。
+- ⇒ 本需求**复用 `isProviderAuthReady`**（import 进来），顺手删掉 `:133` 那行重复实现。`authReady` 的消费点已查全：**只有 `:611`「检查连接」按钮的 `disabled={!authReady || testingModelId !== null}`** —— 换掉后该按钮一并受益（`.trim()` 与 `authMode` 两个 bug 同时修掉）。
+
+**四、「自定义请求头」的折叠范式（照抄对象）**
+
+`ProviderConfigPanel.tsx:379-404`，**手写折叠**，不用 `ui/collapsible`（`:379-380` 注释给了理由：`ui/collapsible` 的 `open=false` 会把 children 整体藏掉，触发器放里面会一起没）。结构：
+
+- state：`:117` `const [headersOpen, setHeadersOpen] = useState(false)` —— **默认收起**
+- 触发器：`:382-394` 一个 `<button type="button">`（`flex w-full items-center justify-between text-sm font-medium`），左标题、右侧「计数 + `ChevronDown`」（`:390-392` `cn('size-3.5 transition-transform', headersOpen && 'rotate-180')`）
+- 展开体：`:395-403` 条件渲染 `<div className="mt-2">`
+- 外层：`:381` `<div className="mt-5 shrink-0">`
+
+**五、协议类型现状**：`:358-377`，裸 `<section className="mt-5 shrink-0 space-y-2">` 直接摊开：
+
+- `:360` label `provider.config.protocolType`
+- `:361-375` `<Select value={provider.type} onValueChange={... typeOverridden: true}>`，选项来自 `PROVIDER_TYPE_OPTIONS_EDIT`（`provider/constants.ts:31-33` = `openai-chat | openai-responses | anthropic | gemini` 4 项）
+- `:376` hint `provider.config.protocolTypeHint` = 「切换协议后请确认 Base URL 与新协议匹配」
+
+**六、顶部标题区的协议名 —— 全部服务商都显示（2026-09-20 核实，无需改动）**
+
+老大问「顶部标题下方显示的不就是协议么？是不是只有内置的才显示」。核实结论：**不是只有内置，是全部显示**。
+
+- `:242-245`：`<h3>{provider.name}</h3>` 下方紧跟 `<p>{ts('provider.providerTypes.${provider.type}')}</p>`，**无条件渲染**，无 `builtinId` / 自定义与否的判断
+- `ProviderType` 联合共 8 个值（`src/shared/types/provider.ts`：anthropic / openai-chat / openai-responses / openai-images / seedance-video / xai-video / gemini / vertex-ai）；`locales/{zh,en}/settings.json` 的 `provider.providerTypes.*` **8 个全有**，`PROVIDER_TYPE_LABELS`（`provider/constants.ts:14-23`）亦同 ⇒ 不存在「key 缺失、显示成原文」的情况
+- ⇒ 本项**无需任何改动**；连带结论：「协议类型」折叠后**不必**在折叠标题重复展示协议名（顶部标题区一直可见）
+
+### 实施要点
+
+1. **禁用条件**：两处按钮的 `disabled` 由 `fetchingModels` 改为 `fetchingModels || !authReady`。
+2. **`handleFetchModels` 内加 guard**：`:173` 开头 `if (!isProviderAuthReady(provider)) return`（防其它入口绕过按钮）。注意**别影响 `:194 handleApiKeyBlur` 的自动拉取** —— 那条路前提就是刚填了 Key，天然满足。
+3. **提示分叉**（`:504`）：`authReady` 为假 → 新文案「请先输入 API Key 后尝试重新拉取」；为真 → 保留「请先拉取模型或添加模型」。
+   - 新增 i18n key：`provider.config.models.noModelsNeedApiKey`（zh/en 各一）。
+   - 「添加模型」按钮（`:516-524`）**不跟着禁用** —— 手动加模型不需要 Key。
+4. **协议类型折叠**：新增 state（如 `protocolOpen`，默认 `false`），照抄「自定义请求头」那套结构。
+   - **折叠标题不必再显示协议名**（2026-09-20 订正，见勘测六）：顶部标题下方 `:243-245` 已无条件显示全部服务商的协议名，原先「收起后看不到当前值」的担心不成立 ⇒ **不重复展示**。
+   - hint（`:376`）随内容一起进折叠体。
+5. **`typeOverridden: true` 语义不动**（`:363`）—— 切换协议仍标记「用户手动覆盖过」。
+6. **抽公共折叠组件**（已定）：新建 `provider/CollapsibleSection.tsx`，收起/展开与标题行逻辑收敛一处，协议类型与自定义请求头两处共用。
+7. **i18n**：`locales/{zh,en}/settings.json` 补新 key（zh/en 各一）；改完跑 `npm run test:i18n-coverage`（期望值以实跑输出为准）。
+
+### 拆分方案（治 500 行越线）
+
+**现状量化**（`ProviderConfigPanel.tsx` = **771 行**，超线 271 行）：
+
+| 段落 | 行范围 | 行数 |
+|---|---|---|
+| 头部（图标 + 名称 + 协议名 + 重置/删除 + Switch） | 235-266 | 32 |
+| 官网 | 271-314 | 44 |
+| API Key | 316-345 | 30 |
+| Base URL | 347-356 | 10 |
+| 协议类型 | 358-377 | 20 |
+| 自定义请求头（折叠） | 379-404 | 26 |
+| Anthropic cache TTL | 406-426 | 21 |
+| **模型区**（label + 搜索 + 按钮 + 列表 + 行内操作） | **428-677** | **250** |
+| ModelFormDialog + ThinkingConfigDialog | 680-704 | 25 |
+| 删除/重置服务商确认框 | 706-741 | 36 |
+| 删除模型确认框 | 743-768 | 26 |
+
+**是否构成「大量 props 透传」豁免（`AGENTS.md:181` 第 3 类）？不构成。** 关键：**store actions 子组件可自行 `useProviderStore` 取，不必透传**（`fetchModels` / `setModels` / `updateModel` / `deleteModel` / `testConnection` 全在 store）；`ts` / `tc` 由 `useTranslation` 自带；`toast` 直接 import。模型区那 7 个 state（`modelSearch` / `fetchingModels` / `testingModelId` / `modelDialogOpen` / `editingModel` / `editingThinkingModel` / `deleteModelTarget`）与相关 handler **整体搬走**，父组件不再需要 ⇒ 新组件 props 只剩 **`provider`** 一个。
+
+**抽法**：新建 `provider/ProviderModelsSection.tsx` = 模型区 250 行 + 2 个模型对话框 25 行 + 删除模型确认框 26 行 + 相关 state/handler（含 `handleFetchModels` / `handleTestModel` / `handleSetAllModelsEnabled` / `handleSaveModel`）。
+
+- `ProviderConfigPanel.tsx` 预期回落到 **500 行内**（具体数字待实施后实测，**不许预写**）
+- 父组件保留：头部、官网、API Key、Base URL、协议类型、自定义请求头、cacheTTL、删除/重置服务商确认框，以及 `showKey` / `headersOpen` / `showDeleteProvider` / `apiKeyBeforeEditRef` / `handleApiKeyBlur` / `handleHeadersChange`
+- **`handleApiKeyBlur` 留在父组件** —— 它绑在 API Key 输入框上；它调 `fetchModels`/`setModels` 只是 store 直取，不构成搬进子组件的理由
+- ⚠️ 拆分须**逻辑等价**（`AGENTS.md:181` 第 6 条）：只改组织结构，不改行为
+
+### 裁定（2026-09-20 老大）
+
+老大原话：「**越线的有必要就改，折叠抽一个公共组件吧，提示文案需要增加啊**」
+
+1. **越线：有必要就改** ⇒ 按上面「拆分方案」抽 `ProviderModelsSection.tsx`。
+2. **折叠抽公共组件** ⇒ 新建 `provider/CollapsibleSection.tsx`。
+3. **提示文案：需要增加** ⇒ 走**分叉**：新增 key `provider.config.models.noModelsNeedApiKey`，**不替换**原 `noModels`；有 Key 时仍显示「请先拉取模型或添加模型」。
+
+### 实施记录（2026-09-20）
+
+**新增**
+- `src/renderer/src/components/settings/provider/CollapsibleSection.tsx`（**49 行**，实测）—— 公共折叠块，props `{ title, badge?, defaultOpen?, children }`。手写折叠（照 `RequestHeadersEditor` 与本节原「自定义请求头」的范式），**没走** `ui/collapsible`：那套要受控 `open` / `onOpenChange`，而这两处都只是本地展开态。
+- `src/renderer/src/components/settings/provider/ProviderModelsSection.tsx`（**499 行**，实测）—— 模型区整体搬走：label / 搜索 / 拉取按钮 / 列表 / 行内操作 + `ModelFormDialog` + 思考配置对话框 + 删除模型确认框 + 7 个 state 与 4 个 handler。**props 只剩 `provider` 一个**（store actions 子组件自取，`ts` / `tc` 走 `useTranslation`，`toast` 直接 import）⇒ 不构成 `AGENTS.md` 的「大量 props 透传」豁免。
+
+**修改**
+- `ProviderConfigPanel.tsx`：**771 → 311 行**（实测）。模型区外移；协议类型（原 `:358-377`）与自定义请求头（原 `:379-404`）改用 `CollapsibleSection`，**协议类型默认收起**（老大：「协议类型跟自定义请求头一样改成默认折叠」）；删掉手写的 `authReady` 局部变量（`isProviderAuthReady` import 一并移除）。
+- i18n `locales/{zh,en}/settings.json`：新增 `provider.config.models.noModelsNeedApiKey`（zh「请先输入 API Key 后尝试重新拉取」/ en "Enter your API Key first, then fetch again"）；**保留**原 `noModels` 不动。
+
+**拉取模型的 API Key 前置校验 —— 一处真回退，实施中修掉**
+- 判据最终为 `const authReady = provider.requiresApiKey === false || isProviderAuthReady(provider)`。**不能直接用 `isProviderAuthReady`**：`provider-store.ts:386-393` 对 `authMode !== 'apiKey'` **无条件返回 `false`**，而 **Codex / Copilot / Kimi 三个内置服务商是 `requiresApiKey: false` + `authMode: 'oauth'`** ⇒ 直用会让它们的「拉取模型」「检查连接」**永久禁用**、文案还错成「请先输入 API Key」（旧代码对它们恒为 true）。「本就不需要 Key」必须优先。
+- 按钮 `disabled` 与 `handleFetchModels` 的前置 guard **必须用同一个 `authReady`** —— 首版只改了按钮判据，guard 仍是裸 `isProviderAuthReady`，造成已连上的 OAuth 服务商「按钮可点、点了静默 return（无请求无提示）」。由**独立验证者**实测谓词对照表抓出（`connected-oauth` 一项两判据结果相反），已修。
+- 前提：`provider-materialization.ts:16-37` 的 `createProviderFromPreset` **不复制 `authMode`** ⇒ 纯虚拟态 OAuth 服务商不受影响，**只有 OAuth 连接成功后**（`provider-auth.ts:52` 写入 `authMode: 'oauth'`）才会踩中。
+
+**门禁（2026-09-20 实跑）**
+- `npm run typecheck` EXIT=0；`npm test` **45/45 通过**；`src/runtime/WishfulClaw.sln` 0 错 0 警（本需求未动 C#）。
+
+**未覆盖（如实）**
+- 该分支**无回归保护**：`tests/` 全目录 grep `isProviderAuthReady|authReady` **0 命中** ⇒ 上面那条 OAuth 回退只能靠人工/验证者发现，没有测试会红。
+- 无 UI / E2E 测试，两个按钮的禁用态与折叠交互**待真机手测**。
+- 文案分叉只落了 i18n key 与引用，未验证实际渲染。
+
+---
+
+## S-106 项目档案「记忆库」补搜索
+
+### 需求（2026-09-20 老大）
+
+> 「项目档案下的记忆库 ，需要也支持搜索条件」
+
+**已实施（2026-09-20）**，实施记录见本节末。原「只登记，待开工」状态作废。
+
+### 现状（2026-09-20 实读）
+
+| 能力 | 全局记忆库 `MemoryEntriesTab.tsx`（380 行） | 项目档案记忆库 `ProjectMemoryLibraryTab.tsx`（229 行） |
+|---|---|---|
+| 搜索 | ✅ 输入框 + Enter / 按钮触发 | ❌ **缺**（全文件 0 处 `memorySearch` / `Input`） |
+| 排序切换（新→旧 / 旧→新） | ✅ | ❌ |
+| 时间区间 chip | ✅ | ✅ |
+| 服务端分页（S-98） | ✅ | ✅ |
+| 行折叠 / 展开 | ✅ 默认收起 | ❌ 直接铺全文 |
+
+⇒ 老大点名的是**搜索**；排序与折叠是顺带看到的差异。
+
+### 落点：纯渲染端，无需 C# 改动
+
+- `memorySearch(query, scope, limit, workingFolder, projectId, sshConnectionId, from, to)`（`memory-helpers.ts`）**已支持 `scope='project'`**，参数与 `memoryEntries` 同形。Worker 侧 `memory/search` 与 `memory/entries` 走同一个 `GetScope` 解析（`workingFolder` / `projectId` / `sshConnectionId`）⇒ **scope 字符串一律不在渲染端手拼**。
+- 改 `ProjectMemoryLibraryTab.tsx`：照 `MemoryEntriesTab` 的**双源**范式 —— 空查询走 `memoryEntries` 浏览，非空查询切 `memorySearch`，清空恢复浏览；搜索命中是**单次有界响应**（`limit = 20`），沿用全局那边的客户端切片口径保持一致。
+- i18n：`locales/{zh,en}/chat.json` 的 `projectArchive.memoryLibrary` 段补搜索相关 key（placeholder / search / noResults / matches），并保持与设置页 `memoryPage.entries.*` 的文案口径一致。
+
+### 待裁定
+
+- ~~排序切换与行折叠要不要一并对齐（老大只点了搜索）。若只做搜索，`ProjectMemoryLibraryTab.tsx` 预计 ~330 行，仍在 500 线内。~~ **已裁定（2026-09-20）**：老大实测后点名「记忆库目前还是展开的，而且不支持收起，我需要**默认收起，点击单条记忆可以展开**」⇒ **行折叠补上**（与全局页同一范式）；**排序切换仍不做**。
+
+### 实施记录（2026-09-20）
+
+**计划**：`docs/plans/iter-v2-33/plan.md` 第六批。规划验证 0 ❌ / 7 ⚠️，报告见 `compliance_report.md`。
+
+**改动**：
+
+| 文件 | 动作 |
+|---|---|
+| `components/chat/ProjectMemoryLibraryTab.tsx` | 229 → **481 行**，双源接线（浏览 / 搜索）+ 搜索框 + 结果归一 + 越界回落 + 行折叠（默认收起） |
+| `locales/{zh,en}/chat.json` | `projectArchive.memoryLibrary` 段各补 6 个 key（`loading` / `noResults` / `searchPlaceholder` / `search` / `matches` / `rowHint`） |
+| `locales/{zh,en}/settings.json` | `memoryPage.entries` 段补 `priority.*` / `status.*` 枚举文案（两份单源，见下） |
+| `components/memory/MemoryPanel.tsx` | `:318` 分层列表 + **`:352` 搜索命中行**（后者是首轮漏掉的）| 
+
+**待真机手测**：输关键词能搜到 / 清空回浏览 / 浏览态切区间列表跟着变 / 搜索态切区间命中跟着变 / 列表默认收起且点击单条能展开 / 优先级与状态显示中文。
+| `stores/chat-store/memory-helpers.ts` | **订正 `MemorySearchResult` 接口**（见下） |
+| `components/settings/MemoryEntriesTab.tsx` | 消费方跟着改 |
+| `components/memory/MemoryPanel.tsx` | 消费方跟着改 |
+
+**范围溢出（如实记）**：`MemorySearchResult` 的 TS 声明原本是 `{ key, title, content, scope, tier, score, updatedAt }`，而 C# wire（`MemoryModels.cs:57-72`）是 `Id / Title / Content / Scope / Priority / Status / UpdatedAt / Score` —— **`key` 与 `tier` 在 wire 上根本不存在**。要写对代码必须先订正声明，订正后两个既有消费方（`MemoryEntriesTab`、`MemoryPanel:347`）编译不过 ⇒ 一并改。**结果是把病根除干净**（全仓已无记忆命中上的 `.tier` / `hit.key` 读取），但这**不是原计划的范围**。本次**未改动 C# 侧**（端点与参数早已就位）。
+
+**审查与验证**：审查 **0 ❌ / 7 ⚠️**（`review_report.md`）；独立验证 **PASS**、门禁 `npm run typecheck` EXIT=0 / `npm test` **45/45** / 两 sln 0 错 0 警（`verification_report.md`）。验证者另抓出两条审查未覆盖的真实缺陷，**均已随本刀修复**：
+1. ⚠️-1 只修了一半 —— `searchSeq` 序号守卫漏了 `onChange` 的清空路径，而搜索按钮在途时禁用，用户清空只能走那条路，竞态仍在；
+2. 搜索态下切换项目时 `hits` 不清空 ⇒ 旧项目的命中列表挂在新项目名下（切项目不重挂载该 tab）。
+
+**已知行为（记档，不修）**：① 冷 / 弃用条目浏览可见、搜索搜不到（两端点 `status` 谓词不同）；② **搜索态不可翻页** —— `memory/search` 是单次有界响应（`limit = 20`）且**不返回总数**，故分页控件恒不渲染、footer 的「N 条匹配」是命中数下界。要对齐需给 `memory/search` 补总数与 `offset`（同 S-98 给 `memory/entries` 做的改动），属新增范围。
+
+**补充（2026-09-20，老大实测反馈两轮）**：
+
+1. **列表默认收起、点击展开**（老大原话「记忆库目前还是展开的，而且不支持收起，我需要默认收起，点击单条记忆可以展开」）—— 照全局页同一范式补上（`ChevronRight` 旋转 + `aria-expanded` + `rowHint`）。排序切换仍未做。
+2. **优先级 / 状态枚举文案 i18n 化**（老大原话「记忆状态显示的是英文，需要处理 i18n —— 设置页对应的记忆库和项目档案的记忆库都是这个情况」）—— 此前两页都直接渲染 C# 原值（`active` / `warm` / `cold` / `deprecated`、`permanent` / `lasting` / `standard` / `ephemeral`）。文案键定在 **`settings.json` 的 `memoryPage.entries.priority.*` / `status.*`**，项目档案页与右侧记忆面板用双命名空间读同一份（**不各写各的**，否则必然漂移）；未知值 `defaultValue` 回退原样。`EntryRow` 的 `meta` 相应拆成两个原始值，本地化只在渲染时做。**右侧记忆面板（`MemoryPanel.tsx:316`）不在老大点名范围内，同一枚举顺手一并收**。
+
+### 裁定记录（S-106）
+
+- 2026-09-20：**S-106 立项**（老大「项目档案下的记忆库 ，需要也支持搜索条件」）。**只登记，待开工。** 勘测结论：`memorySearch` 本就支持 `scope='project'`、与 `memory/entries` 走同一个 `GetScope` ⇒ **纯渲染端**。
+- 2026-09-20：**S-106 开工**。待裁定项按推荐自定：本刀只做搜索，**排序切换与行折叠不做**（老大只点了搜索）。
+- 2026-09-20：**老大实测反馈，两项补做（范围见各条）** —— ① 「记忆库目前还是展开的，而且不支持收起，我需要默认收起，点击单条记忆可以展开」⇒ **行折叠补上**（原「待裁定」项落地），**排序切换仍未做**；② 「记忆状态显示的是英文，需要处理 i18n —— 设置页对应的记忆库和项目档案的记忆库都是这个情况」⇒ 枚举文案 i18n 化，且**右侧记忆面板同一处一并收**（不属老大点名范围，主动扩的一小步）。
+- 2026-09-20：**枚举文案单源裁定（我的判断，记档备查）** —— priority / status 的文案键**只放一份**（`settings.json` 的 `memoryPage.entries`），项目档案页与记忆面板用双命名空间引用，**不各写各的**。理由：值域来自同一个 C# 枚举，两页显示同一个东西，两份文案必然漂移。未知值一律 `defaultValue` 回退原样。
+
+---
+
 ## 裁定记录
 
 - 2026-09-19：S-87 立项，**只登记不执行**（老大：「当前只需要登记，不需要执行」）。
@@ -1735,3 +1986,4 @@ const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
 - 2026-09-20：**S-100 定案收敛** —— 老大补充关键现象：「**就是用了剪贴板增强后 再进行常规粘贴就可以了**」（用一次增强后常规 Ctrl+V 即恢复）。`handlePaste` 对剪贴板来源不敏感 ⇒ 变的是**剪贴板内容格式**，不是代码分支。机制：增强前 `getData('text/plain')` 为空 ⇒ `:81` 直接 return 且**不 `preventDefault`** ⇒ 受控编辑器吞掉浏览器默认插入 ⇒ 无反应；用一次增强 = `clipboard.writeText`（`clipboard-enhancer.ts:397`）把剪贴板重写成纯文本 ⇒ 此后 `text/plain` 有值 ⇒ 走 `execCommand` 支 ⇒ 成功。**图片分支已排除**（`use-image-attachments.ts:71-80` 只挑 `kind==='file'` 且 type 在白名单的项）。**还差一条数据**：复现时 `clipboardData.types`（3 种可能，见正文表格）。倾向修法（不依赖该数据也能覆盖）：`text/plain` 为空时回退 `text/html` 提取纯文本，真无文本才放过默认行为。
 - 2026-09-20：**S-101 立项**（记忆库按时间筛选）。老大：「记忆库，可以根据时间查询么，我的意思是增加时间筛选条件」+「按照修改时间」。**口径一次拍齐**（老大「时间那个根据你建议来」）：按 `updated_at` 筛（与列表已显示的时间一致）、UI 用快捷区间（全部 / 今天 / 近 7 天 / 近 30 天）、搜索链一起支持。**进入实施（第三批）。**
 - 2026-09-20：**S-102 立项**（沙箱模式不允许应用数据目录 ⇒ 全局 PM 读不了自家日志）。老大：「全局 PM 本身的地址还需要增加我们项目地址哦，比如让它去看 logs 我们自己的日志，结果没权限就搞笑了」。实读确认成立：`PathBoundary.ResolveRoots` 只装项目 workingFolder，`~/.wishful-claw/` 不在内，而 `AGENTS.md` 要求 agent 排查时读日志 —— 协议与沙箱互斥。**口径**：允许根 = 当前实例自己的数据根，**严格按实例类型不互串**（dev 只看 `.wishful-claw-dev`、生产只看 `.wishful-claw`）；开整个数据根（不只 `logs/`）；项目会话与全局会话都给。**附带发现**：`AGENTS.md` 的「日志位置 `~/.wishful-claw/logs/`」在开发模式下是错的（实际 `~/.wishful-claw-dev/logs/`），同批修。**进入实施（第三批）。**
+- 2026-09-20：**S-105 立项**（AI 服务商详情页两处交互收口：拉取模型的 API Key 前置校验 + 协议类型折叠）。**已实施（2026-09-20）**，实施记录见本节末。老大就三条待裁定答复：「**越线的有必要就改，折叠抽一个公共组件吧，提示文案需要增加啊**」⇒ ① 抽 `ProviderModelsSection.tsx` 治 `ProviderConfigPanel.tsx` 771 行越线；② 抽公共折叠组件 `provider/CollapsibleSection.tsx`；③ 提示文案走**分叉**（新增 key `noModelsNeedApiKey`，不替换原 `noModels`）。另核实一条：**顶部标题下方的协议名本来就是全部服务商都显示**（`:243-245` 无条件渲染；8 个 `ProviderType` 的 `providerTypes.*` i18n 在 zh/en 里全齐）⇒ 老大问的「是不是只有内置才显示」**不成立，无需改动**；连带撤销「折叠标题重复显示协议名」的建议。

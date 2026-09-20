@@ -113,7 +113,7 @@ Renderer (React 19)  ←→  Preload (contextBridge)  ←→  Main Process  ←�
 
 ## 🛠️ Quick Start
 
-**前置条件：** Node.js ≥ 18, npm ≥ 9, .NET SDK 11（AOT 发布需 preview 版；便携版 SDK 配 `DOTNET_ROOT` 亦可）
+**前置条件：** Node.js ≥ 18, npm ≥ 9, .NET SDK 11（AOT 发布需 preview 版，装系统默认位置即可）
 
 ```bash
 cd wishful-claw

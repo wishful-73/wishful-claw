@@ -158,6 +158,129 @@ git stash pop stash@{N}
 
 ---
 
+## 编译环境（阶段四 ~ 阶段六前必读）
+
+**跑编译前先确认开发实例没在跑。** 开发实例（`npm run dev:full` 起的 Electron + `WishfulClaw.Worker.exe`）会占住 `bin/Debug/net11.0/` 下的 dll，MSBuild 复制新产物时必失败：
+
+```
+error MSB3021: 无法将文件 "…\WishfulClaw.Core.dll" 复制到 "bin\Debug\net11.0\WishfulClaw.Core.dll"
+error MSB3027: 无法将 "…\WishfulClaw.Core.dll" 复制到 "…"。超出了重试计数 10。失败。
+              文件被 "WishfulClaw.Worker (23516)" 锁定
+```
+
+**怎么判断这不是代码错误**：报错全是 `MSB3021` / `MSB3027`，且**一个 `CS####` 都没有**。有 `CS` 错误才是代码问题。这类失败还会白等 —— `MSB3027` 本身要跑满 10 次重试。
+
+**处理顺序**（按序做）：
+
+**1. 先看有没有开发实例在跑**
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='WishfulClaw.Worker.exe'" |
+  Where-Object { $_.ExecutablePath -like '*\bin\Debug\*' } |
+  Select-Object ProcessId, ExecutablePath
+```
+
+**2. 有就关掉**（老大已授权：跑门禁 / 验证编译时开发实例在，允许关）
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='WishfulClaw.Worker.exe'" |
+  Where-Object { $_.ExecutablePath -like '*\bin\Debug\*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+Get-CimInstance Win32_Process -Filter "Name='electron.exe'" |
+  Where-Object { $_.ExecutablePath -like '*\wishful-claw\node_modules\electron\*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
+⚠️ **必须按 `ExecutablePath` 过滤，不能按进程名一刀切** —— 打包版（`C:\Program Files\WishfulClaw\...`）也跑着同名 `WishfulClaw.Worker.exe`，按名字关会把它一起杀掉；`Stop-Process -Name electron` 还会误伤其它 Electron 应用（VSCode 等）。
+
+关完**告知老大一声**：「开发实例我关了，要测请重开 `npm run dev:full`」。
+
+**3. 不要用外置输出绕**（`-o` / `-p:BaseOutputPath=<仓库外目录>`）
+
+它能让编译过关，但代价是两个：
+
+- 产物落在仓库外，跑回归测试时若误用了外置的 exe，**验的就不是仓库里的代码**（本迭代栽过「验证的不是 HEAD」）
+- 在仓库外留垃圾（`D:\claw\_wc_*` 就这样攒出了 291 MB）
+
+仅当**关掉实例仍编不过**（有其它进程占着）才允许外置，且必须三条都做到：输出落 `.wishful-claw/tmp/build-*`（**工作目录内**，见下一节）、**同一条命令里编完即删**、**绝不拿外置产物跑测试**。
+
+**实测对照**（2026-09-20，同一台机器、同一条 `dotnet build src/runtime/WishfulClaw.sln`）：
+
+| 条件 | 用时 | 结果 |
+|---|---|---|
+| 开发实例在跑 | 51.69 s | 14 个 `MSB3021` / `MSB3027`，0 个 `CS` |
+| 关掉开发实例后 | 1.32 s | 0 错 0 警 |
+
+---
+
+## 测试产物落点
+
+**约定：测试产物一律落在工作目录内，不出工作目录。**
+
+落点 `<仓库根>/.wishful-claw/tmp/` —— `.gitignore:63` 已整目录忽略，不会污染 `git status`。
+
+理由：散在系统临时目录里的回归数据既难找也难清。2026-09-20 实测系统 TEMP 下攒了 **717 个目录 / 1.78 GB**（从 6 月积到 9 月），用户根本不知道去哪找这些垃圾；聚到工作目录内一处后，删一个目录就干净。
+
+| 产物 | 落点 |
+|---|---|
+| C# 回归套件 | `.wishful-claw/tmp/<套件名>-<guid>/` |
+| TS 测试脚本（esbuild bundle） | `tests/<name>/out/program.cjs`（本来就在工作目录内） |
+| 编译的外置输出（最后手段） | `.wishful-claw/tmp/build-*` |
+
+**C# 套件怎么定位落点**：统一走 `tests/TestSupport/TestOutputRoot.cs`，各测试工程以 `<Compile Include="..\TestSupport\TestOutputRoot.cs" Link="..."/>` 链接进来（**不单独建工程**）。所以**改落点只需要动这一个文件**。
+
+- `Resolve()` → 产物根 `.wishful-claw/tmp`（并保证目录存在）
+- `RepositoryRoot()` → 从测试 exe 位置往上找含 `.git` 的目录；找不到才退回系统 TEMP（exe 被挪出仓库也不至于崩）
+
+**一键清理**：`npm run test:clean`
+
+**已知遗留**：部分套件的 `TryDeleteDirectory` 清不掉自己的目录 —— `Microsoft.Data.Sqlite` 的连接池持着 `.db` 句柄，`Directory.Delete(recursive)` 抛异常后被 `catch {}` 静默吞掉，于是每跑一次留一个目录。修法是删除前 `SqliteConnection.ClearAllPools()`，**尚未处理**；在那之前用 `test:clean` 兜底。
+
+---
+
+## 测试怎么跑
+
+**一条命令跑完全部回归测试：**
+
+```bash
+npm test
+```
+
+它按顺序做三件事 —— 编译 `tests/WishfulClaw.Tests.sln` → 跑 TS 脚本 → 跑 C# 套件 —— 最后给 `N/M 通过` 汇总；任一失败则非零退出。
+
+**为什么先编译**：C# 套件是直接执行 `bin/Debug/net11.0/<套件>.exe`，不编译就会**拿旧产物验新代码**（本迭代栽过「验证的不是 HEAD」）。编译被开发实例锁住时，脚本会直接把「编译环境」那一节的指向打出来。
+
+**子集与选项**：
+
+```bash
+npm test -- --ts-only           # 只跑 TS 侧
+npm test -- --csharp-only       # 只跑 C# 侧
+npm test -- --no-build          # 跳过 C# 编译（复用现有 exe）
+npm test -- --filter memory     # 只跑名字含 "memory" 的
+```
+
+单个测试仍可单独跑（调试时用）：
+
+```bash
+npm run test:context-cap                                                                    # 单个 TS
+tests/WishfulClaw.GoalRegressionTests/bin/Debug/net11.0/WishfulClaw.GoalRegressionTests.exe  # 单个 C#
+```
+
+**成本**（2026-09-20 实测，全量一次 **36 秒**）：编译 1.8 秒 + TS 34 个约 9 秒（单个 0.1~0.4 秒）+ C# 11 套约 26 秒（其中 CompactionSnapshot 15.4 秒、ProviderHeader 4.5 秒，其余 9 套合计约 5 秒）。**便宜到每步都能跑全量** —— 别为省这点时间只跑子集。
+
+**什么时候跑**：
+
+| 阶段 | 跑什么 |
+|---|---|
+| 阶段四（执行态，每步 Mini 验证） | 相关的那几个；改动面大就直接全量（36 秒） |
+| 阶段六（验证态） | **必须全量**，结果作为验证报告的证据 |
+| 迭代收尾 | 全量跑一遍，再合 main |
+
+**加新测试**：C# 在 `tests/` 下建 `WishfulClaw.<名字>RegressionTests` 工程并注册进 `tests/WishfulClaw.Tests.sln`；TS 在 `tests/<名字>/program.ts` 写脚本，并在 `package.json` 加 `test:<名字>`。两处都会被 `npm test` 自动收进来 —— **不需要改 `scripts/run-tests.mjs`**。
+
+---
+
 ## 六阶段工作流
 
 ### 阶段一：探索态（只读探测）
@@ -320,7 +443,7 @@ git checkout -- <该步涉及的文件>
 
 **验证方式**：
 - 编译通过：
-  - C#：`dotnet build src/runtime/WishfulClaw.sln`
+  - C#：`dotnet build src/runtime/WishfulClaw.sln`（**先读「编译环境」节** —— 开发实例在跑必失败）
   - TypeScript：`npx tsc --noEmit -p tsconfig.web.json` + `npx tsc --noEmit -p tsconfig.node.json` + `npx tsc --noEmit -p tsconfig.json` **三个配置必须全部零错误**
 - 运行通过（启动应用，执行对应迭代的验证标准）
 - 产出截图或日志作为证据
@@ -377,4 +500,4 @@ git checkout -- <该步涉及的文件>
 - **commit 粒度按需求，不按步骤**——一个迭代的历史提交数应当是"需求数 + 1（收尾修复调整）"（老大要求合并两个需求时，按合并后的刀数算）
 - **不要按步骤刷提交**——步骤只跑 Mini 验证，提交时机是整需求测通；需求内的中间提交必须在进下一个需求前 `git reset --soft` 折叠掉
 - **push 只在迭代收尾做**——本地 commit 只防误操作，收尾时一次性 push main + tags 才防丢数据
-- **C# 文件多为 CRLF 行尾**——批量替换用 Python 脚本处理，file 工具的 edit 容易因行尾不匹配失败
+- **行尾与编码**——仓库多数文件 CRLF、无 BOM。编辑工具（Edit）会自动做行尾归一化匹配并原样写回，**直接用 Edit 改就行，不要写临时脚本去批量替换**（写完还得删，且脚本一旦中途断言失败会留下半成品）。改完可复核：文件应全 CRLF、无裸 LF、无 BOM

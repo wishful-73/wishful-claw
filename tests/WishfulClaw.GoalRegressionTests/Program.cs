@@ -5,6 +5,7 @@ using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.GoalRegressionTests;
 
@@ -29,7 +30,7 @@ internal static partial class Program
     public static int Main()
     {
         var testRoot = Path.Combine(
-            Path.GetTempPath(),
+            TestOutputRoot.Resolve(),
             $"wishful-goal-regression-{Guid.NewGuid():N}");
         Directory.CreateDirectory(testRoot);
         var dbPath = Path.Combine(testRoot, "legacy.db");

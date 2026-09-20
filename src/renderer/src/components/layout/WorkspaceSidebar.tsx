@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { useTranslation } from 'react-i18next'
-import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3, Globe } from 'lucide-react'
+import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3, Globe, RotateCw } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuLabel } from '@renderer/components/ui/dropdown-menu'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -41,6 +41,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
   const projects = useChatStore((s) => s.projects)
   const setActiveProjectHome = useChatStore((s) => s.setActiveProjectHome)
   const createProject = useChatStore((s) => s.createProject)
+  const reloadProjects = useChatStore((s) => s.reloadProjects)
 
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
   const [extensionsOpen, setExtensionsOpen] = useState(false)
@@ -166,6 +167,13 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
   const handleNewProject = useCallback(() => {
     setCreateProjectDialogOpen(true)
   }, [])
+
+  // The agent can create projects on its own, and nothing pushes that into the store, so the
+  // sidebar needs a way to pull the authoritative list back in on demand.
+  const handleRefreshProjects = useCallback(async () => {
+    await reloadProjects()
+    toast.success(t('sidebar.projectsRefreshed', { defaultValue: 'Projects refreshed' }))
+  }, [reloadProjects, t])
 
   const handleCreateProjectWithDirectory = useCallback(
     async (folderPath: string, connectionId: string | null, projectName?: string) => {
@@ -295,6 +303,13 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
         </span>
 
         <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => { void handleRefreshProjects() }}
+            className="flex size-5 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            title={t('sidebar.refreshProjects', { defaultValue: 'Refresh projects' })}
+          >
+            <RotateCw className="size-3.5" />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button

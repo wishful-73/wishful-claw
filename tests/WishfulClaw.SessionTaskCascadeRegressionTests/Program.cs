@@ -8,6 +8,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.SessionTaskCascadeRegressionTests;
 
@@ -40,7 +41,7 @@ internal static partial class Program
         {
             WorkerJsonHelper.ConfigureAotResolver(JsonTypeInfoResolver.Combine(
                 InfrastructureJsonContext.Default, RegressionJsonContext.Default));
-            var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-task-cascade-regression-{Guid.NewGuid():N}");
+            var testRoot = Path.Combine(TestOutputRoot.Resolve(), $"wishful-task-cascade-regression-{Guid.NewGuid():N}");
             Directory.CreateDirectory(testRoot);
             try
             {

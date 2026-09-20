@@ -219,6 +219,8 @@
     "comingSoon": "coming soon",
     "moreActions": "More actions",
     "projectSortTitle": "Sort projects",
+    "refreshProjects": "Refresh projects",
+    "projectsRefreshed": "Projects refreshed",
     "projectSortBy": "Sort by",
     "projectSortRecentlyUpdated": "Recently updated",
     "projectSortName": "Name",

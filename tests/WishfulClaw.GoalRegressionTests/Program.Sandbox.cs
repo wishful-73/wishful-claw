@@ -2,6 +2,7 @@ using System.Text.Json;
 using WishfulClaw.Agent.Tools;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.GoalRegressionTests;
 
@@ -19,10 +20,10 @@ internal static partial class Program
     private static void RunSandboxSuite()
     {
         // 用临时目录拼一棵真实存在的树，避免写死盘符导致跨平台失败。
-        var root = Path.Combine(Path.GetTempPath(), "wc-sandbox-root");
+        var root = Path.Combine(TestOutputRoot.Resolve(), "wc-sandbox-root");
         var inside = Path.Combine(root, "src", "file.cs");
         var sibling = root + "-sibling";           // 前缀相同但不是子目录
-        var outside = Path.GetTempPath();
+        var outside = TestOutputRoot.Resolve();
         var escaped = Path.GetFullPath(Path.Combine(root, "..", "wc-sandbox-root-sibling", "x.cs"));
 
         IReadOnlyList<string> roots = [root];
@@ -41,7 +42,7 @@ internal static partial class Program
             "纯函数层：没有根时一律放行（正常路径下 ResolveRoots 不会返回空集合）");
 
         // 多根（全局会话）：命中任一即放行。
-        var secondRoot = Path.Combine(Path.GetTempPath(), "wc-sandbox-root-2");
+        var secondRoot = Path.Combine(TestOutputRoot.Resolve(), "wc-sandbox-root-2");
         IReadOnlyList<string> multi = [root, secondRoot];
         AssertEqual(
             true,
@@ -93,7 +94,7 @@ internal static partial class Program
 
         // ── 数据根本身的边界（S102-2）──
         // 数据根与开发版数据根是同一父目录下的兄弟，名字只差一个后缀 —— 绝不能互相穿透。
-        var dataParent = Path.Combine(Path.GetTempPath(), "wc-data-roots");
+        var dataParent = Path.Combine(TestOutputRoot.Resolve(), "wc-data-roots");
         var prodLike = Path.Combine(dataParent, ".wishful-claw");
         var devLike = Path.Combine(dataParent, ".wishful-claw-dev");
         IReadOnlyList<string> prodOnly = [prodLike];
@@ -109,7 +110,7 @@ internal static partial class Program
 
         // 数据根不要求磁盘上真有这个目录：IsInsideAnyRoot 只做字符串比较、不碰磁盘，
         // 首次启动、目录还没建出来时也不会漏拦（S102-3）。
-        var ghostRoot = Path.Combine(Path.GetTempPath(), "wc-data-ghost", ".wishful-claw");
+        var ghostRoot = Path.Combine(TestOutputRoot.Resolve(), "wc-data-ghost", ".wishful-claw");
         AssertEqual(false, Directory.Exists(ghostRoot), "该断言的前提：这个目录确实不存在");
         AssertEqual(
             true,

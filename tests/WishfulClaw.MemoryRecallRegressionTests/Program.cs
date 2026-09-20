@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Workspace.Memory;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.MemoryRecallRegressionTests;
 
@@ -11,7 +12,7 @@ internal static class Program
 
     public static int Main()
     {
-        var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-memory-recall-regression-{Guid.NewGuid():N}");
+        var testRoot = Path.Combine(TestOutputRoot.Resolve(), $"wishful-memory-recall-regression-{Guid.NewGuid():N}");
         Directory.CreateDirectory(testRoot);
         try
         {

@@ -17,7 +17,7 @@ OpenCowork 的代码经迁移和重构后已成为 WishfulClaw 的一部分；�
 ## 技术栈
 
 - **前端**：TypeScript + React 19 + Electron 35
-- **后端**：C# + .NET 11（preview SDK 11.0.100-preview.7；本机便携版位于 `D:\claw\dotnet-sdk`，构建/启动 Debug Worker 时需设 `DOTNET_ROOT` 指向它；打包产物为 AOT self-contained，不依赖运行时）
+- **后端**：C# + .NET 11（SDK `11.0.100-preview.7`，用系统安装的 `dotnet`（`C:\Program Files\dotnet`）直接 `dotnet build`，不要设 `DOTNET_ROOT`、不要依赖任何便携版副本；打包产物为 AOT self-contained，不依赖运行时）
 - **通信**：IPC + MessagePack
 
 ## 项目结构（7 层架构）
@@ -179,7 +179,8 @@ Worker
    - 单一数据对象（如 provider preset 列表、模型配置表）——内容是同质数据，拆了反而难查找
    - 高度内聚的 store / hook ——逻辑紧密耦合，拆开会割裂上下文
    - 拆分后需要大量 props 透传或 state 搬运的组件——拆出去增加了间接层，排查更难
-6. 拆分后保持逻辑等价，不改变行为，只改组织结构
+6. **语言文件（`src/renderer/src/locales/{zh,en}/*.json`）按第 5 条第 1 类豁免处理，且无需头注释** —— JSON 不支持注释，`settings.json` / `chat.json` / `layout.json` 等超 500 行属正常，一律不判 ❌。审查时直接跳过这类文件，不必逐轮复判
+7. 拆分后保持逻辑等价，不改变行为，只改组织结构
 
 ### 耦合文件拆分
 
@@ -210,7 +211,7 @@ Worker
 
 每次写完代码必须确保零报错：
 
-- **C#**：`dotnet build`（可加 `-o` 临时输出路径避免文件锁定）
+- **C#**：`dotnet build`。**被开发实例锁住时（`MSB3021` / `MSB3027`，文件被 `WishfulClaw.Worker` 占用）应关掉开发实例再编**，不要用 `-o` / `-p:BaseOutputPath` 把输出挪到仓库外绕开 —— 判断依据、处理顺序与实测数据见 `docs/dev-workflow.md` 的「编译环境」节
 - **TypeScript**：`npm run typecheck` 零错误即可 —— 它 = `typecheck:node` + `typecheck:web`，两条命令都带 `-p` 与 `--composite false`（参数写在 `package.json` 里，不要手敲一套）
 - **根 `tsconfig.json` 不要单独跑**：它是 references-only 壳（`"files": []` + `references`），对它执行 `tsc -p tsconfig.json` **不检查任何文件**，跑出来的"0 错误"是假的。真正检查内容的只有 `tsconfig.node.json` 与 `tsconfig.web.json`
 - **不允许用 `@ts-ignore` 偷懒**（可选依赖除外）

@@ -12,4 +12,8 @@
     <ProjectReference Include="..\..\src\runtime\WishfulClaw.Agent\WishfulClaw.Agent.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\TestSupport\TestOutputRoot.cs" Link="TestSupport\TestOutputRoot.cs" />
+  </ItemGroup>
+
 </Project>

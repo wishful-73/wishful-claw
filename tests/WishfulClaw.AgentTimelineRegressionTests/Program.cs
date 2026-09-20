@@ -13,6 +13,7 @@ using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.AgentTimelineRegressionTests;
 
@@ -50,7 +51,7 @@ internal static class Program
     /// <summary>Fresh temp DB with the timeline table created.</summary>
     private static (DbService Db, string Path) NewDb()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"timeline-regression-{Guid.NewGuid():N}.db");
+        var path = Path.Combine(TestOutputRoot.Resolve(), $"timeline-regression-{Guid.NewGuid():N}.db");
         var db = new DbService($"Data Source={path}");
         db.Execute(
             """

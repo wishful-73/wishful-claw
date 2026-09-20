@@ -657,6 +657,27 @@ export async function dbLoadAll(): Promise<{ projects: Project[]; sessions: Sess
   }
 }
 
+// ─── Reload Projects ───
+
+/**
+ * Re-reads the project list on its own, without touching sessions.
+ *
+ * The store's `projects` is otherwise only ever moved by the renderer's own edits, so a project
+ * created from the agent side (or anywhere else outside this window) stays invisible until a
+ * reload happens. Returns `null` rather than an empty list on failure, so a broken read cannot
+ * silently wipe the sidebar.
+ */
+export async function dbListProjects(): Promise<Project[] | null> {
+  try {
+    await ensureDbInitialized()
+    const rows = await window.api.workerRequest<ProjectRow[]>('db/projects-list', {})
+    return rows.map(rowToProject)
+  } catch (err) {
+    console.error('[DB] dbListProjects failed:', err)
+    return null
+  }
+}
+
 // ─── Ensure Default Project ───
 
 export async function dbEnsureDefaultProject(): Promise<Project | null> {

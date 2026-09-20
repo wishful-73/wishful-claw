@@ -6,6 +6,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.CronRegressionTests;
 
@@ -26,7 +27,7 @@ internal static class Program
                 return RunChildMode(args[0], args[1]);
 
             RunSchemaRegressionSuite();
-            var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-cron-regression-{Guid.NewGuid():N}");
+            var testRoot = Path.Combine(TestOutputRoot.Resolve(), $"wishful-cron-regression-{Guid.NewGuid():N}");
             Directory.CreateDirectory(testRoot);
             try
             {
@@ -496,7 +497,7 @@ internal static class Program
             writer.WriteString("prompt", "Run the persisted task");
             writer.WriteString("agentId", "CronAgent");
             writer.WriteString("model", "test-model");
-            writer.WriteString("workingFolder", Path.GetTempPath());
+            writer.WriteString("workingFolder", TestOutputRoot.Resolve());
             writer.WriteString("deliveryMode", "plugin");
             writer.WriteString("deliveryTarget", "chat-target");
             writer.WriteString("pluginId", "plugin-feishu");
@@ -568,6 +569,13 @@ internal static class Program
         return Convert.ToInt64(command.ExecuteScalar());
     }
 
+    /// <summary>
+    /// Seeds the oldest cron table shape (<c>cron_tasks</c> with nothing but an id), so opening it
+    /// through <c>DbClient.Initialize</c> has to grow the real column set.
+    ///
+    /// Not a relic: the upgrade path is covered on purpose, because a broken schema migration loses
+    /// data without raising anything.
+    /// </summary>
     private static void SeedLegacyCronDatabase(string dbPath)
     {
         using var connection = new SqliteConnection($"Data Source={dbPath}");

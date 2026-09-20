@@ -324,6 +324,26 @@
   background: oklch(0.6 0 0 / 0.45);
 }
 
+/* xterm 终端。它不是用浏览器原生滚动条，而是自带一套 `SmoothScrollableElement`，
+   宽度由 xterm.js 内联写死 —— `Viewport._getChangeOptions()` 里
+   `verticalScrollbarSize: rawOptions.overviewRuler?.width || 14`，即默认 14px。
+   所以上面那条全局 `::-webkit-scrollbar`（5px）对它完全无效，看着就比别处粗一截。
+   内联样式只能靠 !important 压住；高度一并给上，横向滚动条同理。 */
+.xterm .xterm-scrollable-element > .scrollbar {
+  width: 5px !important;
+  height: 5px !important;
+}
+
+/* 兜底：`.xterm-viewport` 自带 `overflow-y: scroll`（xterm.css），xterm 并没有把它关掉，
+   所以它自己的那条原生滚动条也可能露出来。一并收窄。 */
+.xterm .xterm-viewport {
+  scrollbar-width: auto;
+}
+.xterm .xterm-viewport::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
 ::selection {
   background: oklch(0.65 0.15 250 / 0.3);
 }

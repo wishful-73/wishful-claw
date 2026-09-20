@@ -1,10 +1,10 @@
 # Plan: v2-iter-33 —— 记忆系统治理 + 压缩修复 + 工具与交互收口
 
 > 分支 `dev/v2-iter-33`（base `main` @ `f6922f6c`，v0.2.32）。
-> 需求文档（权威）：`docs/plans/iter-v2-33/raw-requirements.md`，本迭代编号接 iter-32 的 S-86 起，**已立项 12 项：S-87 ~ S-100**。
+> 需求文档（权威）：`docs/plans/iter-v2-33/raw-requirements.md`，本迭代编号接 iter-32 的 S-86 起，**已立项 20 项：S-87 ~ S-106**。
 > 探索档：`docs/plans/iter-v2-33/exploration_findings.md`；规划验证：`docs/plans/iter-v2-33/compliance_report.md`。
 > 本迭代节奏：需求逐步积攒，不定收口时间。
-> **进度**：**S-95 已完成**（2026-09-19，见文末「已完成项」）；**S-87 ~ S-94 本 Plan 实施**；**S-96 / S-97 已完成**（2026-09-20）；**S-98 / S-99 / S-100 见「第二批」节**。
+> **进度**：**S-95 已完成**（2026-09-19，见文末「已完成项」）；**S-87 ~ S-94 本 Plan 实施**；**S-96 / S-97 已完成**（2026-09-20）；**S-98 / S-99 / S-100 见「第二批」节**；**S-101 / S-102 见「第三批」节**；**S-103 见「第四批」节**（已实施，待审查/验证）；**S-104 见「第五批」节**。
 
 ## 目标
 
@@ -421,6 +421,106 @@
 
 ---
 
+## 第五批（S-104）：主窗口显示/隐藏快捷键 + 开机启动静默
+
+**登记 2026-09-20**，老大：「我们设置页面中有快捷键设置……这里可以增加一个主窗体的快捷键设置，**登记进需求 B 需要做 A 也要改**，可以在这个快捷键设置的地方增加你说的那个开关，是否默认不显示窗口，以及静默启动需要发一条系统通知」。
+
+### 目标
+
+**B：主窗口显示/隐藏快捷键** —— 设置页「快捷键」加第三项，触发时 toggle 主窗口；**默认不给加速键**（全局快捷键抢占式，默认值撞车会先被怪罪）。
+
+**A：开机启动静默 + 开关 + 通知** —— 登录项带 `--hidden` 参数，启动时该参数在则不开窗；开关放**快捷键设置页**；静默启动时发一条系统通知（Windows 会把托盘图标折叠进 `^`，不通知用户会以为没启动）。
+
+> **默认值订正（2026-09-20 开工后，老大）**：开关默认**关**（= 开机照旧显示窗口），「静默启动」由用户显式开启。原计划写「默认开」，是把「静默」当成了通用默认 —— 对从未设置过的用户，开机看到窗口才是预期行为，不显示反而像启动失败。
+
+### 实施顺序与理由
+
+**先 A 后 B**。A 动的是主进程启动路径与登录项，B 动的是快捷键注册 + 设置页；A 的改动会让「应用能静默起来」，而 B 正是把它叫回来的手段 —— 先有静默才有「叫回来」的验证场景，顺序反了没法真机验。
+
+### 规划验证发现（2026-09-20，独立 subagent，FAIL 2❌/10⚠️，已并入下文）
+
+事实核验 11 条**全部属实**（含 `index.ts:194-201` 的 `second-instance → showMainWindow()` **已接对**，raw 里担心的「起第二个实例」不成立）。两条 ❌ 是计划缺口，已订正为 S104-2 三条语义 + S104-2b 对账 + 涉及文件补路由测试。另有三条**施工级硬约束**（原 plan 没写）：
+- **新纯函数不许放 `index.ts`** —— 该文件模块作用域直接执行 `app.setName` / `app.setPath` / `requestSingleInstanceLock`（`:189-195`），测试一 import 就崩。落点照 `src/main/updater-state.ts`（无 Electron 依赖的单文件，`tests/updater-state/program.ts:11` 就是这么 import 的）。
+- **新 TS 套件必须写进 `package.json`** —— `scripts/run-tests.mjs:26-29` 从 `pkg.scripts` 筛 `test:*`，只建 `tests/<name>/program.ts` 而不加脚本，`npm test` 会**静默不跑**它，门禁对新断言就是空的。
+- **500 行硬线**：本批要碰的文件**全都已越线且无豁免注释** —— `index.ts` **638**、`priority-shortcuts.ts` **886**、`clipboard-enhancer.ts` **645**、`quick-launcher.ts` **1018**。⇒ 本批**所有新逻辑一律进新文件**，不在这些文件里加行；新文件行数 < 500。
+
+### 步骤清单
+
+- [ ] **S104-0 探索核实**（动手前必读）
+  - `priority-shortcuts.ts:831` 的真实签名已核：`registerPriorityShortcut(id, accelerator, callback: (ctx) => void): boolean`；`unregister(id): void`。成例抄 `quick-launcher.ts:140-160`（先 `unregisterShortcut()` 清、`enabled` 假直接 return false、逐个注册、`registeredIds` 记账）
+  - **注册时机**：`index.ts:585-596` 在 `createWindow()` / `createTray()` 之后才 `registerClipboardEnhancer()` / `registerQuickLauncher()`；config 在 `register*()` 内**同步 load 再注册热键**
+  - **`ShortcutConfig` 形状**（渲染端 `ShortcutsPanel.tsx:7-10`）：`{ enabled: boolean; accelerators: string[] }` —— 是**复数**，不是 `accelerator`
+  - **持久化路线**：`clipboard-config.json` / `launcher-config.json` 落 `resolveDataDir()`，`DEFAULT_CONFIG` 在模块内，`loadConfig()` 读盘失败即用默认
+  - **通知先例有、托盘气泡没有**：`src/main/ipc/misc-handlers.ts:22-36`（`Notification.isSupported()` → `new Notification({title, body, urgency}).show()`，**title/body 由渲染端传**）；`git grep displayBalloon` 零命中。且 `src/main` **无 i18n 设施**（`quick-launcher.ts:796` 硬编码中文）
+  - ⚠️ **Windows 登录项改 `args` 必须重新 `setLoginItemSettings`** 才生效（它是注册表里的一条命令）
+- [ ] **S104-1 新模块拆两个文件**（复验 N1/N3 修正）
+  - **`src/main/startup-flags.ts`** —— **零 Electron 依赖**（照 `updater-state.ts` 那种单文件）：`shouldShowOnStartup(argv)` 纯函数 + `HIDDEN_FLAG = '--hidden'` 常量。**必须独立成文件**：套件用 esbuild 打成 CJS 后拿**纯 node** 跑（`package.json` 的 `test:*` 无一带 `--external:electron`），任何顶层碰 Electron 的模块一被 import 就崩
+  - **`src/main/main-window-visibility.ts`** —— `toggleMainWindow()` + 静默启动通知；这里可以 import Electron 与 `priority-shortcuts`。`--hidden` 常量**从 `startup-flags.ts` import**，不重复定义
+  - ⚠️ **N3 命名坑**：`src/main/main-window-registry.ts` **已存在**（`index.ts:37` 在用它，`setMainWindow`）⇒ 新文件叫 `main-window.ts` 只差一个 `-registry`，极易误 import。**两个新文件一律用 `startup-flags.ts` / `main-window-visibility.ts`**，不叫 `main-window.ts`
+  - **N1 的根因记牢**：`priority-shortcuts.ts:55` 在**模块作用域**执行 `app.on('will-quit', …)`，纯 node 下 `app` 是 undefined ⇒ 顶层 import 它 = 崩。所以「纯函数」与「要用 Electron 的 toggle」**必须分文件**
+  - `toggleMainWindow()` 的**显示分支复用 `forceActivateWindow()`**（`priority-shortcuts.ts:877`，注释原文即该 race），解决 Windows 前台锁（⚠️-2）
+- [ ] **S104-1b 启动分流**：`index.ts` 的 `ready-to-show`（`:103-104`）改为按 `shouldShowOnStartup(process.argv)` 决定要不要 `show()`；**同步补 `second-instance`（`:194-201`）的窄竞态** —— 该回调调的 `showMainWindow()` 在 `mainWindow === null` 时静默 return（`:150`），而 `mainWindow` 要到 `:585` 才建。原来自会开窗所以丢了无感，**改静默后这是唯一恢复路径**，丢了就是「双击图标什么都不发生」。⇒ 窗口未建时记「待补显示」标记，`createWindow()` 完成时兑现（⚠️-1）
+- [ ] **S104-2 登录项 `args` —— 三条语义缺一不可**（`src/main/ipc/window-handlers.ts`，**改动前**全仓唯一写入点）
+  - **(a) 取值规则**：`args` **由开关值决定**，不是常量 —— 开关开 → `['--hidden']`，关 → `[]`。写死 `['--hidden']` 会让开关形同虚设
+  - **(b) 写路径重放**：开关（S104-4b）的任何写入**必须回到这个 `setLoginItemSettings`**，否则值进不了登录项
+  - **(b2) 单一入口**（复验第三轮 ⚠️-4）：本批会引入 **≥2 个新写入点**（S104-2b 的启动对账、S104-4b 的开关写入），加上原有的一处 ⇒ 共 3 处。**必须收敛到一个函数**：在 `window-handlers.ts` 暴露 `applyLoginItem(openAtLogin, hideWindow)`，三处全走它。「唯一写点」在改动后会变成「唯一入口」，别让三处各写各的
+  - **(c) 常量单源**：`--hidden` 的字面量只许定义一次（`startup-flags.ts` 导出），判据与写路径共用，不许两处各写一份字符串
+- [ ] **S104-2b 启动时对账**（补 ❌-1 的第三条，raw 与首版 plan 都漏了）
+  - 存量用户的注册表条目**没有 `args`**，而新开关可能已被显式打开 ⇒ 升级后那次开机照旧弹窗、开关却显示已开、**永不自愈**
+  - ⇒ 启动时对账一次：`setLoginItemSettings({ openAtLogin: 当前 OS 值, args: 开关值 ? ['--hidden'] : [] })`，同时覆盖「应用升级后命令路径变化」
+  - `app:get-login-item-settings`（`:10-12`）现在只回 `openAtLogin`，**拿不到 args** ⇒ 对账靠本地开关值，不能靠回读
+- [ ] **S104-3 通知**：静默启动时发一条
+  - **文案归属先定**（⚠️-5）：走渲染端供文（照 `misc-handlers.ts:22-36` 先例）需要**新增一条「本次是静默启动」的主→渲染信号**（现在没有任何通道暴露这个事实）；走主进程硬编码则永远单语。**建议**：主进程硬编码中文（与 `quick-launcher.ts:796` 一致），少一条通道、少一处状态
+- [ ] **S104-4 快捷键接线**
+  - 动作注册**在 `index.ts` 里**做：`registerPriorityShortcut(id, accel, () => toggleMainWindow())` —— **不要**让 `priority-shortcuts.ts` 反向 import 主窗口（它现在只依赖 electron/child_process/fs/path/logger，加反向依赖会形成循环）（⚠️-8）
+  - 新增 `main-window:get-config` / `main-window:update-config`，形状对齐 `clipboard:*` / `launcher:*`（`registerMessagePackHandler`；入参 `Partial<ShortcutConfig>`）
+    - ⚠️ 形状有个细节（复验第三轮 ⚠️-5）：两个成例**不对称** —— `get-config` 返回**裸** config（`clipboard-enhancer.ts:478`），只有 `update-config` 额外带 `shortcutRegistered`（`:508` `return { ...config, shortcutRegistered }`；launcher 同构 `quick-launcher.ts:838/:852`）。照抄时别把 `shortcutRegistered` 也塞进 get
+  - ⚠️ **默认 `accelerators` 必须是 `[]`**，且注册处 **guard 空数组**：`clipboard-enhancer.ts:102` 有 `accelerators.length > 0 ? accelerators : DEFAULT_CONFIG.accelerators` —— 新项若照抄，空值会被默认值吃掉，「留空」就白留了（⚠️-7）
+- [ ] **S104-4b 开关接线**：新设置项 `hideWindowOnLaunch`（**默认 `false`**，2026-09-20 订正）+ 读写端点；写入时按 S104-2(b) 重放登录项
+  - **端点归属钉死**（复验 N5）：走**同一个 `main-window:get-config` / `main-window:update-config`**，把它并入该 config 对象（形如 `{ enabled, accelerators, hideWindowOnLaunch }`）。**不另开一套端点** —— 一个 tab 一块配置，读一次写一次，避免两套状态
+  - **存储钉死 ①**（复验第三轮 ⚠️-6 拍板，不再留二选一）：**主进程自有 JSON**（对齐 `clipboard-config.json`，与 S104-4 配套）。理由：「启动前必须知道开关值」是硬约束，主进程读自己的 JSON 最直接；渲染端 store（`settings/general.json`）要跨进程取，多一跳。先例：`settings-handlers.ts:30-36` 的 `initializeLogLevelFromSettings()`，在 `index.ts:206` 于窗口创建前调用。**不许两处各放一份** —— 双写就有同步问题
+- [ ] **S104-5 设置页**：`ShortcutsPanel.tsx` 加**第三个 tab**（`'main-window'` + 新 tab 体；现 `:12` 是 `type TabId = 'clipboard' | 'launcher'`）+ 开关。两个既有 tab 走 `window.api.invoke`，不走 `ipcClient`
+- [ ] **S104-5b IPC 路由登记**（❌-2 的订正版，复验 N2 指出首版指错文件）：新通道加进 **`tests/ipc-msgpack-routing/program.ts` 的 `PRELOAD_BINARY_ONLY`**（`:39` 定义）
+  - ⚠️ **不是** `src/renderer/src/lib/ipc/messagepack-channel-routing.ts` —— 那里只有 `MESSAGEPACK_INVOKE_CHANNELS` / `_SEND_` / `_EVENT_` 三张表，**没有** `PRELOAD_BINARY_ONLY`（首版 plan 写错了）
+  - 依据：`ShortcutsPanel` 走 `window.api.invoke`（preload 无条件二进制）⇒ 归类为 `PRELOAD_BINARY_ONLY`；现有 `clipboard:get-config`(`:45`) / `launcher:get-config`(`:52`) / `app:get-login-item-settings`(`:40`) 都在该名单里
+  - 该名单有「必须有 caller」断言（Group 3，`:180-187`）⇒ **顺序是先接线再登记**
+  - **落点就一个**（复验第三轮 ⚠️-1 删去了备选）：进测试文件的 `PRELOAD_BINARY_ONLY`。**不要**退到 `messagepack-channel-routing.ts` 的 `MESSAGEPACK_INVOKE_CHANNELS` —— 那条虽也能让 Group 2 过，但归类语义不对（那些通道走的是 preload 二进制，不是 messagepack invoke）
+- [ ] **S104-6 i18n**：`settings.json` zh/en 补新 tab 与开关文案；`npm run test:i18n-coverage` PASS
+- [ ] **S104-7 断言与门禁**
+  - 新套件 `tests/startup-flags/program.ts`（`shouldShowOnStartup` 四例）+ **写进 `package.json` 的 `test:*`**（否则静默不跑，⚠️-4）
+  - `npm run typecheck`；两 sln；**全量 `npm test`**（含 `test:ipc-msgpack-routing`，它会替我们验 ❌-2）
+
+### 涉及文件
+
+- **新增** `src/main/startup-flags.ts`（`shouldShowOnStartup` + `HIDDEN_FLAG` 常量，**零 Electron 依赖**）
+- **新增** `src/main/main-window-visibility.ts`（`toggleMainWindow` + 静默启动通知；**不叫 `main-window.ts`**，避开已存在的 `main-window-registry.ts`）
+- **新增** `tests/startup-flags/program.ts` + `package.json` 的 `test:startup-flags`
+- `src/main/index.ts`（只改调用点：启动分流、`second-instance` 补显示、注册快捷键、托盘菜单 —— **不加新逻辑体**，638 行已越线）
+- `src/main/ipc/window-handlers.ts`（登录项 `args` 三条语义）
+- `src/main/priority-shortcuts.ts`（新 config 端点 —— 886 行已越线，只加薄接线）
+- `src/renderer/src/components/settings/ShortcutsPanel.tsx`（第三 tab + 开关）
+- `tests/ipc-msgpack-routing/program.ts`（新通道进它的 `PRELOAD_BINARY_ONLY`，`:39`）⚠️ 首版 plan 指错了文件
+- `src/renderer/src/locales/{zh,en}/settings.json`
+
+### 整体验证检查点
+
+1. `npm run typecheck` EXIT=0；`npm test` 全绿（**含 `test:ipc-msgpack-routing`**）
+2. 真机：模拟 `--hidden` 启动 → **只有托盘图标 + 一条通知**，无窗口
+   - ⚠️ 通知受 Windows 系统通知设置 / 专注助手抑制，且本仓有 green zip 分发（`package.json` 的 `pack:zip`，`extraMetadata.wishfulClawDistribution=green`，无安装器 ⇒ 可能缺带 AUMID 的快捷方式）。**若通知被抑制，托盘左键仍是唯一入口** —— 别把「没看到通知」当成「功能没做对」（⚠️-6）
+3. 真机：按快捷键 → 窗口出现 → 再按 → 隐藏；托盘左键 → 显示
+4. 真机：静默启动后**双击桌面图标** → 走「显示已有窗口」，**不起第二个实例**
+5. 真机：关掉开关 → 开机**照旧显示**（证明开关真的接上了 `args`）；**再改回来 → 又静默**（证明 (b) 重放生效）
+6. **存量对账**：对一个「开关显示已开、注册表条目却没有 args」的旧装机，启动后应自愈
+
+### 待裁定（不阻塞实施，按下列建议值走）
+
+- **托盘菜单**：现只有「显示主窗口」（`index.ts:178`）。⚠️ 直接改成切换项会让标签在可见/隐藏两态下自相矛盾（显示「显示主窗口」时点下去其实是隐藏）⇒ **建议用中性标签「显示/隐藏主窗口」**（⚠️-9）
+- **静默启动通知**：文案走**主进程硬编码中文**（建议，见 S104-3）；**每次静默启动都发**（不搞「只发一次」，用户换机/重装后需要重新知道）
+- **开关默认值**：**开**（静默），与老大的「默认启动就只有托盘里有图标」一致
+- **是否单独成 S-104 的收尾刀**：本批**纯新增 + 调用点改造**，不碰 iter-33 已交付的行为；建议与本批一起收尾
+
+---
+
 ## 已完成项
 
 ### S-95 压缩「越压越多」（2026-09-19 完成）
@@ -460,6 +560,92 @@
 - `tests/WishfulClaw.Tests.sln` — S-88（注册新测试工程）
 - `tests/WishfulClaw.MemoryRecallRegressionTests/Program.cs` — S-92 / S-94（新增断言）
 - `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/Program.cs` — S-87（cron 类别可见性断言）
+
+## 第六批（S-106）：项目档案「记忆库」补搜索
+
+**登记 2026-09-20**，老大：「项目档案下的记忆库 ，需要也支持搜索条件」。
+
+### 目标
+
+项目档案页的「记忆库」选项卡补搜索，对齐全局记忆库（`MemoryEntriesTab`）的**双源**范式。**范围只做搜索**：排序切换与行折叠是顺带发现的差异，老大未点名，不擅自扩（见「待裁定」）。
+
+### 规划验证发现（2026-09-20，独立 subagent）
+
+**结论：可执行，0 ❌ / 7 ⚠️。** 19 条事实断言与实读 100% 吻合（两个文件行数、两份 locale 行号、`memorySearch` 参数序、Worker 同源 `GetScope`、两个时间单位），无行号漂移。报告全量见 `compliance_report.md` 的「## 第六批（S-106）规划验证」。七条 ⚠️ 的处置：
+
+- **⚠️-1（我判断不完整）**：原写「唯一的真陷阱」是 `updatedAt` 单位 —— **不成立**。见 S106-2 的第二个陷阱。
+- **⚠️-2**：浏览 `load` effect 必须加 `hits === null` 守卫 —— 已写进 S106-1。
+- **⚠️-3**：全局范式**搜索态切区间不重搜**（只重置页码），与「检查点 4」冲突 —— 本刀**采纳自动重跑**，见 S106-1 末条。
+- **⚠️-4**：`memory/entries` 返回**全状态**，`memory/search` 默认 `includeDeprecated=false`（只查 `active` / `warm`）⇒ 冷 / 弃用条目**浏览可见、搜索搜不到**。本刀**记档不修**（要修需给 `memorySearch` 扩 `include_deprecated` 参数 = 新增范围，待老大裁）。
+- **⚠️-5**：搜索态结果排序 —— 钉死**沿用服务端相关度序**（`active` 优先 → score），不做客户端重排。
+- **⚠️-6**：本刀补 **5** 个 i18n key，比 raw 多一个 `loading`（与全局口径对齐），已注明。
+- **⚠️-7**：页码越界回落**浏览态也缺**（现有代码只做显示钳制），不是搜索态引入的 —— 见 S106-3。
+
+### 步骤清单
+
+- [x] **S106-0 探索核实**（动手前必读）
+  - `ProjectMemoryLibraryTab.tsx`（**229 行**，实测）：已有时间区间 chip（`MEMORY_TIME_RANGE_IDS`）、服务端分页（`PAGE_SIZE = 20`）、刷新按钮；**全文件 0 处 `memorySearch` / `Input`**（`git grep -c` 实测）
+  - 范式来源 `MemoryEntriesTab.tsx`（**380 行**，实测）：`hits === null` 判浏览 / 搜索两态；`load()` 读 `memory/entries`；`handleSearch()` 读 `memory/search`；输入框清空即 `setHits(null)` 回浏览；浏览 effect 有 `if (hits === null)` 守卫（`:138-140`）
+  - **i18n 现状**：`locales/{zh,en}/chat.json` 的 `projectArchive.memoryLibrary`（两份都在 **L1048**）已有 `desc` / `refresh` / `empty` / `untitled` / `total` / `prevPage` / `nextPage` / `pageOf` / `ranges`；**待补 5 个**（见 S106-4）
+  - 文案对照源：`locales/{zh,en}/settings.json` 的 `memoryPage.entries`（zh **L1585**）
+- [x] **S106-1 双源接线**
+  - 新增 state：`query`（输入框）、`hits: EntryRow[] | null`（**null = 浏览态**）、`searching`
+  - 空查询 → `setHits(null)`；非空 → `memorySearch(trimmed, 'project', 20, workingFolder, projectId, sshConnectionId, from, to)`
+  - **scope 与三个定位参数与 `memoryEntries` 同源**：`'project'` + `workingFolder` / `projectId` / `sshConnectionId`，**一律不手拼 scope 字符串**（交给 Worker 的 `GetScope`）
+  - **`from` / `to` 必须传** —— S-101 已让 `memory/search` 支持时间区间；漏传则命中不受当前 chip 约束，与浏览态口径不一致
+  - ⚠️ **浏览 `load` effect 必须加 `hits === null` 守卫**（现状是无条件跑）。漏了就出现：搜索态切页 / 切区间仍发 `memory/entries` 并回写 `entries` / `total`，污染搜索视图
+  - ⚠️ **搜索态切区间要重跑检索**（⚠️-3）：加一条 effect，`range` 变化且 `hits !== null` 时重跑 `handleSearch`。这是**有意偏离全局范式**的地方 —— 全局只重置页码不重搜，用户改了 chip 却看到旧区间结果
+- [x] **S106-2 行归一 —— 两个陷阱**（不是原写的「唯一」）
+  - 陷阱 ①**时间单位**：浏览态行是 `MemoryStatusEntry`，`updatedAt` 是 **Unix 秒**；搜索命中是 `MemorySearchResult`，`updatedAt` 是 **ISO 字符串**（C# 侧 `DateTimeOffset`）。写反了时间列显示成 1970 年或 5 万年，**且不会有任何测试报错**
+  - 陷阱 ②**字段不存在**：`MemorySearchResult` 的 TS 声明（`memory-helpers.ts:38-46`）有 `key` / `tier`，但 **C# wire 上没有这两个字段**（`MemoryModels.cs:57-72` 只有 `Id / Title / Content / Scope / Priority / Status / UpdatedAt / Score`；renderer 直接消费 wire 原形，中途无映射）
+    ⇒ 照抄 `MemoryEntriesTab.tsx` 的 `fromHit`（`:51`、`:54`）会得到 **`hit-undefined` 重复 key**（React 警告）+ **meta 渲染成 `" · <scope>"`**（`tier` 为 undefined）
+    ⇒ **本刀直接订正 `MemorySearchResult` 接口**（改成 `id` / `priority` / `status`，并标 `score?` 可选），全局页 `MemoryEntriesTab` 与 `MemoryPanel.tsx:347` 一并改 —— 不是选择，是编译要求的（见「涉及文件」的 ⚠️-4 说明）
+  - 归一成中间类型 `EntryRow { key, title, meta, content, updatedAtMs }` + `fromEntry` / `fromHit` 两个转换
+- [x] **S106-3 分页语义**
+  - 浏览态：`total` 由 worker 给，当前页直接用（**不再切片**）
+  - 搜索态：命中是**单次有界响应**（`limit = 20`），沿用全局那边的客户端切片口径
+  - **排序**：搜索态**沿用服务端相关度序**，不做客户端重排（本刀不做排序切换）
+  - 切区间 / 进出搜索态 ⇒ `setPage(1)`
+  - ⚠️ **页码越界回落**：现状 `:92-93` 只做显示钳制（`currentPage = Math.min(...)`），而 `load` effect 加载的是 `page` ⇒ **浏览态本身就有这个缺口**。照全局范式在 `load()` 内 `setPage(lastPage)` 回写
+- [x] **S106-4 i18n**：`locales/{zh,en}/chat.json` 的 `projectArchive.memoryLibrary` 补 **5** 个 key —— `searchPlaceholder` / `search` / `noResults` / `matches` / `loading`
+  - ⚠️ **两个语言文件都要补，缺一即红**（`tests/i18n-coverage/program.ts` 校验「代码引用的 key 在 zh 且 en 都有」）
+- [x] **S106-5 门禁**：`npm run typecheck` + `npm test`（含 `test:i18n-coverage`）
+
+### 涉及文件
+
+| 文件 | 动作 |
+|---|---|
+| `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` | 改（229 → **481 行**，实测，500 线内）：双源接线 + 搜索框 + 结果归一 + 越界回落 + 行折叠 |
+| `src/renderer/src/locales/{zh,en}/chat.json` | 改（`projectArchive.memoryLibrary` 段补 6 key：`loading` / `noResults` / `searchPlaceholder` / `search` / `matches` / `rowHint`） |
+| `src/renderer/src/locales/{zh,en}/settings.json` | 改（`memoryPage.entries` 补 `priority.*` / `status.*` 枚举文案） |
+| `src/renderer/src/stores/chat-store/memory-helpers.ts` | 改（订正 `MemorySearchResult` 接口 —— 见下） |
+| `src/renderer/src/components/settings/MemoryEntriesTab.tsx` | 改（接口消费方跟着改 + 消费枚举文案） |
+| `src/renderer/src/components/memory/MemoryPanel.tsx` | 改（接口消费方跟着改 + 消费枚举文案） |
+
+**关于多出来的三个文件（⚠️-4 处置）**：plan 原写「全局页 `MemoryEntriesTab` 与 `MemoryPanel` 的同类问题记档另开一刀，不在本刀扩范围」，S106-2 也据此只让新组件用正确字段。实施时 TypeScript 直接拒绝 —— `Property 'id' does not exist on type 'MemorySearchResult'`，因为**该接口的 TS 声明本身就是错的**（`key` / `tier` 在 wire 上不存在）。要写对代码就必须先订正声明，而订正后两个既有消费方编译不过 ⇒ 只能一起改。**结果是把病根除干净了**（全仓已无记忆命中上的 `.tier` / `hit.key` 读取），但**这是被迫扩的范围，不是我原先计划的**，如实记在此处。
+
+**优先级 / 状态枚举文案单源（2026-09-20 补）**：老大实测报「记忆状态显示的是英文，需要处理 i18n —— 设置页对应的记忆库和项目档案的记忆库都是这个情况」。两份文案键定在 **`settings.json` 的 `memoryPage.entries.priority.*` / `status.*`**（值域来自 C#：priority `permanent|lasting|standard|ephemeral`，status `active|warm|cold|deprecated`），项目档案页与右侧记忆面板各用 `useTranslation(['x', 'settings'])` 读同一份 —— **不各写各的**，否则两页必然漂移。`EntryRow` 的 `meta` 因此拆成 `priority` + `status` 两个原始值，本地化只在渲染时做，**不在归一阶段烙死**；未知值走 `defaultValue` 回退原样，保证新枚举出现时不会渲染成空白。
+
+**右侧记忆面板（`MemoryPanel.tsx:316`）不在老大点名范围内，一并收了** —— 同一个枚举、同一份键、1 行改动，留着就是同一缺陷的第三处。此处如实记录为主动扩的一小步。
+
+**本次未改动 C# 侧** —— 端点与参数都已就位：`memory/search` 早支持 project scope（`GetScope`）与时间区间（S-101）。订正的是渲染端 TS 接口，让它去对齐既有的 C# contract，而不是反过来。
+
+### 已知行为（记档，本刀不修）
+
+- **冷 / 弃用条目搜索搜不到**：浏览走 `memory/entries`（无 status 谓词，全状态），搜索走 `memory/search`（`includeDeprecated=false`，只查 `active` / `warm`）。要对齐需给 `memorySearch` 扩 `include_deprecated`，属新增范围。
+- **搜索态不可翻页，命中被 `limit = 20` 静默截断**：`memory/search` 是单次有界响应，**不带总数**，所以 `hits.length ≤ 20` ⇒ `totalPages` 恒为 1 ⇒ 分页控件在搜索态永不渲染；footer 的「N 条匹配」实际是命中数的**下界**。项目命中超过 20 条时只能看到前 20 条且无从翻页。要对齐需给 `memory/search` 加总数与 `offset`（与 S-98 给 `memory/entries` 做的同款改动），属新增范围。
+- **全局页与 `MemoryPanel` 的 `hit.tier` / `hit.key` 曾是 undefined**（同一根因）—— 本刀随 `MemorySearchResult` 接口订正一并修掉，全仓已无残留。
+
+### 待裁定
+
+- ~~排序切换与行折叠要不要一并对齐（老大只点了搜索）。~~ **已裁定（2026-09-20）**：老大实测后点名「记忆库目前还是展开的，而且不支持收起，我需要默认收起，点击单条记忆可以展开」⇒ **行折叠本刀补上**（默认收起、点击展开，与全局页同一范式）；**排序切换仍不做**（老大未提）。
+
+### 验证检查点
+
+1. `npm run typecheck` EXIT=0
+2. `npm test` 全绿（含 `test:i18n-coverage`）
+3. `ProjectMemoryLibraryTab.tsx` ≤ 500 行（实测 **481 行**）
+4. 真机：项目档案 → 记忆库 → 输关键词能搜到；清空回浏览；**浏览态**切区间列表跟着变；**搜索态**切区间命中跟着变（本刀采纳自动重跑）；**列表默认收起、点击单条展开正文**
 
 ## 参考源码
 

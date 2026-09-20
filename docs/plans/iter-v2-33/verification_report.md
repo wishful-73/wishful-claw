@@ -766,3 +766,145 @@ PROBE_EXIT=0
 
 —— 增量验证者：独立 subagent（只读），2026-09-20；未改任何源码/配置，未 commit。
 
+---
+
+## S-104 + S-105 独立验证（2026-09-20）
+
+**对象**：当前**工作区**（改动未提交）。独立 subagent（`test-automator`），**自行实跑全部命令**，不采信文档自述。**未改受版本控制的文件、未 commit**（仅 2 个被 `.gitignore` 覆盖的临时产物落在 `.wishful-claw/tmp/`，可用 `npm run test:clean` 清理）。
+
+### 一、门禁实跑
+
+| # | 命令 | EXIT | 关键输出 |
+|---|---|---|---|
+| 1 | `npm run typecheck` | 0 | node + web 两配置均 0 错 |
+| 2 | `dotnet build src\runtime\WishfulClaw.sln --nologo -v q` | 0 | `已成功生成 / 0 个警告 / 0 个错误`（另 `--no-incremental` 25.83s 复核同为 0/0） |
+| 3 | `npm test` | 0 | 编译 tests.sln ok；`TypeScript（34）` 全 ok；`C# 回归套件（11）` 全 ok；**`45/45 通过`** |
+
+**总数核对**：TS 34 + C# 11 = **45**，与本批新增 1 个 `test:*` 后应有的数量一致 ✓
+
+**点名项**：`test:startup-flags` → `startup-flags: 5 checks passed`（EXIT=0）；`test:ipc-msgpack-routing` → `102 assertions, 274 registered channels`（EXIT=0）。
+
+**11 个 C# 套件**全部 EXIT=0：AgentTimeline 25 / ChannelShellApproval 72 / ChannelToolVisibility 177 / CompactionSnapshot 2（子套件 `--suite-legacy: 243`、`--suite-new: 269`；`Pasted block restore 11`、`Summary rolling 13`）/ Cron 42（子套件 `--verify-new: 8`）/ Goal 325 / GrepPattern 21 / MemoryRecall 49 / ProviderHeader（无数字行）/ SessionTaskCascade 225 / ToolConcurrency（无数字行）。
+
+**环境**：未出现 `MSB3021` / `MSB3027`；`WishfulClaw.Worker.exe` 仅 1 个进程（PID 24504 = `C:\Program Files\WishfulClaw\resources\worker\`，打包版），**无 `*\bin\Debug\*`**，故未触发锁 dll 分支、未杀任何进程。
+
+### 二、四项关键事实的独立复现
+
+**A. OAuth 服务商是否被误禁用 —— 修复生效，但验证者又抓出一条残留（已修）**
+
+- `ProviderModelsSection.tsx:120`：`const authReady = provider.requiresApiKey === false || isProviderAuthReady(provider)`
+- `provider-store.ts:386-393`：`authMode !== 'apiKey'` 时无条件 `return false`
+- `codex-oauth.ts:18-19` / `copilot-oauth.ts:17-18` / `moonshot.ts:17,27-28`：三个内置服务商确为 `requiresApiKey: false` + `authMode: 'oauth'`（预设目录实为 `src/renderer/src/stores/providers/`）
+- **验证者把真模块 `provider-store.ts` 打成 CJS 后纯 node 求值**（不是手抄逻辑）：
+
+```
+virtual-oauth(no authMode)      => isProviderAuthReady: true  | authReady(button): true
+connected-oauth(authMode=oauth) => isProviderAuthReady: false | authReady(button): true
+apikey-provider-no-key          => isProviderAuthReady: false | authReady(button): false
+apikey-provider-with-key        => isProviderAuthReady: true  | authReady(button): true
+```
+
+- ⇒ 按钮**不再被误禁用** ✓ 但验证者指出：`handleFetchModels` 的前置 guard 仍用**更严**的 `isProviderAuthReady` ⇒ 已连上 OAuth 的服务商「按钮可点、点了静默 return（无请求无提示）」。其证据是上表 `connected-oauth` 两个判据结果相反；`git show HEAD` 另确认 HEAD 的两处按钮只有 `disabled={fetchingModels}`、**无此 guard** ⇒ 属本批新引入。**已修**：guard 改用同一个 `authReady`。
+- 另记：`tests/` 全目录 grep `isProviderAuthReady|authReady` **0 命中** —— 该分支目前无回归保护。
+- 前提核实：`provider-materialization.ts:16-37` 的 `createProviderFromPreset` **不复制 `authMode`** ⇒ 纯虚拟态 OAuth 服务商不受影响，**只有 OAuth 连接成功后**（`provider-auth.ts:52` 写入 `authMode: 'oauth'`）才会踩中。
+
+**B. `startup-flags.ts` 零 Electron 依赖 —— 属实，纯 node 实跑通过**
+
+- 全文 30 行、**零 import**；`HIDDEN_FLAG = '--hidden'`(`:18`)、`shouldShowOnStartup`(`:28`)
+- 验证者动手：`npx esbuild tests/startup-flags/program.ts --bundle --platform=node --format=cjs --outfile=.wishful-claw/tmp/verify-startup-flags.cjs`（EXIT=0，3.0kb）→ `node` 跑 → `startup-flags: 5 checks passed`（EXIT=0）；打包产物 grep `electron` **0 命中** ⇒ import 链干净
+- 5 项检查覆盖：空 argv 显示 / 无关开关仍显示 / `--hidden` 任意位置抑制 / **仅精确匹配**（`--hidden-window`、`--hiddenness`、`--HIDDEN`、`--hidden=false` 都不算）/ `HIDDEN_FLAG` 字面量钉死
+
+**C. 登录项唯一写入口 —— 属实**
+
+- 全仓 grep `setLoginItemSettings`，**代码命中仅 `main-window-config.ts:136`**（在 `applyLoginItem` 内），其余为注释与 docs
+- 三个调用点全部收敛到 `applyLoginItem`：`window-handlers.ts:20`（渲染端开关）、`main-window-config.ts:158`（启动对账，由 `index.ts:246` 调用）、`main-window-config.ts:185`（设置页开关写路径）
+- `args` 确由开关值决定（`:138`）；`HIDDEN_FLAG` 单源来自 `startup-flags.ts`；`getLoginItemSettings` 只被读
+
+**D. 行数实测（`ReadAllLines`）**
+
+| 文件 | 工作区 | HEAD | 判读 |
+|---|---|---|---|
+| `src/main/index.ts` | **676** | 638 | **超 500**，本批 **+38**，无豁免依据 |
+| `main-window-visibility.ts` | 104 | 新 | 合规 |
+| `main-window-config.ts` | 191 | 新 | 合规 |
+| `startup-flags.ts` | 30 | 新 | 合规 |
+| `ipc/window-handlers.ts` | 44 | 40 | 合规 |
+| `ShortcutsPanel.tsx` | 268 | 190 | 合规 |
+| `provider/ProviderConfigPanel.tsx` | 311 | **771** | 拆分成功 |
+| `provider/ProviderModelsSection.tsx` | **502 → 499** | 新 | 验证时 502（超 2 行）⇒ **已精简注释压回 499** |
+| `provider/CollapsibleSection.tsx` | 49 | 新 | 合规 |
+| `locales/{zh,en}/settings.json` | 1842 | — | 适用 `AGENTS.md` 第 6 条（语言文件豁免、无需头注释） |
+
+（验证者另注：`Measure-Object -Line` 对 HEAD `index.ts` 给 584，与仓库注释里的 638 矛盾；改用 `git cat-file -p | -split` 得 638 —— 再次印证「别用 `Get-Content` / `Measure-Object` 数行」。）
+
+### 三、偏差与未覆盖项（如实）
+
+1. **无任何 UI / E2E 实机验证**：S-104 的快捷键 toggle、开机静默、静默启动通知、托盘「显示/隐藏主窗口」只做了源码接线核对 —— 需真机
+2. 「修复历史」无法核实：改动全在工作区未提交，验证者对**当前工作区**下结论，以 `HEAD` 作行为基线
+3. A 中「静默 return、无 toast」是**读代码 + 谓词实测**的推论，未在真实组件里点击验证
+4. `ipc-msgpack-routing` 的新通道是否登记在正确分组，只以「套件 102 assertions 通过」为间接证据，未逐行 diff allowlist
+5. `dotnet build` 的源码级数据来自补跑的 `--no-incremental`
+
+### 四、VERDICT
+
+**PASS**（带登记项）—— 三道门禁全绿；A/B/C/D 四项均由验证者亲手跑出的输出或文件:行原文复现。
+
+**随报告登记（均已处置，除 index.ts 待裁定）**
+
+| 项 | 状态 |
+|---|---|
+| ⚠️ `ProviderModelsSection` 的 handler guard 与按钮判据不一致（OAuth 可点但静默无响应） | **已修**（改用同一 `authReady`） |
+| ⚠️ `ProviderModelsSection.tsx` 502 行超线 | **已修**（精简注释 → 499） |
+| ⚠️ `src/main/index.ts` 676 行、无豁免依据、本批 +38 | **待老大裁定** |
+| ⚠️ `main-window-config.ts` 行尾为 LF（同目录为 CRLF） | **已修**（折回 CRLF，191 行、无 BOM） |
+
+—— 增量验证者：独立 subagent（`test-automator`，自行实跑），2026-09-20；未改受版本控制的文件，未 commit。
+
+---
+
+## S-106 验证（2026-09-20）
+
+**验证对象**：项目档案「记忆库」补搜索条件（工作区未提交状态；`git rev-parse HEAD` = `0cdba5bf`）。
+
+**VERDICT: PASS**（0 阻断项）
+
+### 一、门禁结果（验证者自行实跑，非采信文档）
+
+| 命令 | 期望 | 实际 | 结论 |
+|---|---|---|---|
+| `npm run typecheck` | EXIT=0 | 两子配置无输出错误，EXIT=0 | ✅ |
+| `npm test` | 45/45 | **45/45 通过**（TS 34 + C# 11），EXIT=0 | ✅ |
+| `dotnet build src\runtime\WishfulClaw.sln` | 0 错 0 警 | 0 个警告 0 个错误，EXIT=0 | ✅ |
+| `dotnet build tests\WishfulClaw.Tests.sln` | 0 错 0 警 | 0 个警告 0 个错误，EXIT=0 | ✅ |
+
+### 二、行数实测（`[IO.File]::ReadAllLines()`）
+
+| 文件 | 实测 | <500 |
+|---|---|---|
+| `components/chat/ProjectMemoryLibraryTab.tsx` | **408** | ✅ |
+| `stores/chat-store/memory-helpers.ts` | 330 | ✅ |
+| `components/settings/MemoryEntriesTab.tsx` | 380 | ✅ |
+| `components/memory/MemoryPanel.tsx` | 387 | ✅ |
+
+### 三、验收标准判定
+
+「项目档案记忆库支持搜索条件」在源码层**真实可用**：双源接线正确（空查询 → `memory/entries` 浏览，非空 → `memory/search`，清空回浏览）；scope 与 `workingFolder` / `projectId` / `sshConnectionId` 与浏览同源、**未手拼 scope 字符串**（由 Worker `GetScope` 解析）；`from` / `to` 为 Unix 秒且两端点同口径；`MemorySearchResult` 与 `MemoryModels.cs` 逐字段吻合；i18n 5 key 双语言齐全。未发现 ❌ 级（崩溃 / 编译 / 门禁）阻断项。
+
+### 四、验证者发现的真实缺陷（**均已随本刀修复**）
+
+| # | 级别 | 发现 | 处置 |
+|---|---|---|---|
+| **R1** | P2 | ⚠️-1 只被**部分处置** —— `searchSeq` 存在，但 `onChange` 的清空分支没 bump 序号；而搜索按钮在途时禁用，用户清空只能走 `onChange` ⇒ 竞态仍在 | **已修**（清空分支补序号 bump） |
+| **R2** | P2 | 搜索态下切换项目，`hits` 不清空 ⇒ 旧项目命中挂在新项目名下（切项目不重挂载 tab） | **已修**（重置 effect 补 `setHits(null)` + `setQuery('')` + 序号 bump） |
+| **R3** | P3 | 命中被 `limit = 20` 静默截断、`memory/search` 不返回总数 ⇒ footer 的「N 条匹配」是下界 | **记档**（plan「已知行为」） |
+| **R4** | P3 | ⚠️-7（搜索态翻页不可达）**未记档** | **已记档**（plan「已知行为」） |
+| **R5** | P4 | plan 第六批 checkbox 全未勾；`ProjectMemoryLibraryTab` 自述 395 实测 408 | **已修** |
+| **R6** | P4 | raw 的 S-106 节仍是「只登记」口径 | **已回填实施记录** |
+| **R7** | 过程 | 工作区 ~46 个与本需求无关的未提交改动，S-106 无独立提交 ⇒ 隔离审查较难 | **提交纪律所限**，提交时按路径精挑 |
+
+### 五、未覆盖项（真机手测）
+
+输关键词能搜到 / 清空回浏览 / 浏览态切区间列表跟着变 / 搜索态切区间命中跟着变 —— 纯渲染端交互且依赖真实 DB，静态验证做不到。
+
+—— 验证者签名：独立 subagent（`test-automator`，自行实跑门禁），2026-09-20；只读，未改任何文件，未 commit。
+

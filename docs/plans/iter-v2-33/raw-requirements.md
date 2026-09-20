@@ -1610,9 +1610,9 @@ const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
 
 **新增**
 
-- `Infrastructure/Storage/ProjectsParentDirectory.cs`（149 行）：配置键 `projectsParentDir`；`Read()` **恒返回**生效路径（设置值 or `DefaultPath` = `~/WishfulClawProjects`，没有「未配置」态）；`Write` / `Reset`（恢复默认 = 删键）；`ReadResponse` / `WriteResponse` 两个端点方法（手写 JSON，照 `ConfigStore` 自己的 `FromWriter` 惯例，顺带不添 AOT 注册点）。
-- `Agent/Tools/ProjectCreationPolicy.cs`（111 行，`public static`）：`Resolve(parentDirectory, name, folderName)` ⇒ `Target(Path, Error)`；`DeriveFolderName`。
-- `renderer/src/components/settings/ProjectsParentDirectorySection.tsx`（122 行）：生效路径 + 浏览 + 恢复默认 + 盘符根 warning。
+- `Infrastructure/Storage/ProjectsParentDirectory.cs`（**153** 行）：配置键 `projectsParentDir`；`Read()` **恒返回**生效路径（设置值 or `DefaultPath` = `~/WishfulClawProjects`，没有「未配置」态）；`Write` / `Reset`（恢复默认 = 删键）；`ReadResponse` / `WriteResponse` 两个端点方法（手写 JSON，照 `ConfigStore` 自己的 `FromWriter` 惯例，顺带不添 AOT 注册点）。
+- `Agent/Tools/ProjectCreationPolicy.cs`（**145** 行，`public static`）：`Resolve(parentDirectory, name, folderName)` ⇒ `Target(Path, Error)`；`DeriveFolderName`。
+- `renderer/src/components/settings/ProjectsParentDirectorySection.tsx`（**130** 行）：生效路径 + 浏览 + 恢复默认 + 盘符根 warning。
 
 **修改**
 
@@ -1623,15 +1623,16 @@ const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
 - `Worker/Modules/ConfigModule.cs`：注册 `config/projects-parent` 与 `config/projects-parent/set`。
 - `Agent/Tools/PathBoundary.cs`：新增 `internal static WithProjectsParent(globalRoots, parentDirectory)` 纯函数；`CollectProjectRoots` 的**全局分支**（try 与 catch 两处）追加父目录；**`WithDataRoot` 一字未动**（❌-3 的落点）。
 - `Infrastructure/Db/DbProjectTools.cs`：把 `Create` 的建库主体抽成 `public static ProjectEntity CreateEntity`（RPC 端点 `db/projects-create` 行为不变；agent 侧因此能拿到**真实的失败原因**而不是一个已渲染的 `WorkerResponse`）。
-- `renderer/src/components/settings/RuntimePanel.tsx`（415 → 420 行）：沙箱 section 之后挂新组件。
+- `renderer/src/components/settings/RuntimePanel.tsx`（415 → **419** 行）：沙箱 section 之后挂新组件。
 - `locales/{zh,en}/settings.json`：`general.projectsParent.*`（label / desc / browse / reset / tooBroad / hint，两侧键一致，`test:i18n-coverage` PASS）。
-- `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/Program.cs`（374 → 518 行）：`ProjectTools` 加 `create_project`；新增 `AssertCreateProjectGrant`（渠道/桌面全局可见、项目 cowork 与 chat 不可见、代理可达）/ `AssertProjectCreationPolicy`（纯函数 17 条）/ `AssertSandboxProjectsParent`（`WithProjectsParent` 纯函数 + `WithDataRoot` 不被带偏）。
+- `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/Program.cs`（374 → **379** 行）+ **新建** `CreateProjectChecks.cs`（**215** 行）：`ProjectTools` 加 `create_project`；新增 `AssertCreateProjectGrant`（渠道/桌面全局可见、项目 cowork 与 chat 不可见、global 域子代理可见、代理可达）/ `AssertProjectCreationPolicy`（落点策略：派生、拒绝、全角、保留名、父目录全限定）/ `AssertSandboxProjectsParent`（`WithProjectsParent` 纯函数 + `WithDataRoot` 不被带偏）/ `AssertProjectsParentDefault`（配置层唯一默认值的定义处）。
 
 **与 plan 的三处偏差（都是我自己的取舍，逐条说明）**
 
 1. **新增了两个 Worker 端点**（plan 写的是「不新增端点，复用 `config/get` + `config/set`」）。实做时发现前端拿不到 `DefaultPath`：设置值可能是 `null`（未配置），而「生效路径是什么」「恢复默认是否可用」这两件事都必须由 C# 回答 —— 让渲染端复刻 `~/WishfulClawProjects` 就是两处常量，迟早漂移。端点本身很小（读 + 写各一个方法，返回 `{path, configured}`）。
 2. **去掉了 `create_project` 的 `description` 参数**（plan S103-3 列了它）。`DbProjectTools.Create` 不接受它，也没有别的写入位 —— 声明了不落地的参数就是假参数，与 `GrepTool` 那个「描述里有 `output_mode`、参数里没有」是同一类毛病。
-3. **过宽路径 warning 只做盘符根**（plan 写「盘符根 / 用户主目录本身」）。`app:homedir` 在 `renderer/src/lib/ipc/channels.ts:12` 有声明，但主进程**没有注册 handler**（`src/main` 全搜无果）⇒ 拿不到主目录，硬猜一个字符串只会误报。主目录那条留在 `hint` 文案里说。
+3. **过宽路径 warning 的判据由 Worker 给出**（plan 写「盘符根 / 用户主目录本身」）。`app:homedir` 在 `renderer/src/lib/ipc/channels.ts:12` 有声明，但主进程**没有注册 handler**（`src/main` 全搜无果）⇒ 渲染端拿不到主目录。处置（审查 ⚠️-4 后定型）：`config/projects-parent` 的响应多返回一个 `homeDirectory`，前端据此判定「选到主目录本身」，与盘符根同一条提示。**默认值本身仍只定义在 C# 一处**（给出去只会引诱渲染端复刻目录名）。
+4. **设置页是只读展示 + 浏览 + 恢复默认，不是 plan 写的「输入框」**。刻意如此：手打路径正是「盘符相对路径」这类隐患的来源，而「浏览」拿到的一定是全限定绝对路径。审查 ⚠️-8 建议二选一，这里选**记档**。
 
 **打红的既有断言（已同步，不是放宽）**
 
@@ -1643,7 +1644,7 @@ const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
 |---|---|
 | `src/runtime/WishfulClaw.sln` | 0 错 0 警 |
 | `tests/WishfulClaw.Tests.sln` | 0 错 0 警 |
-| 11 个 C# 回归套件 | 全 `exit=0`；`ChannelToolVisibility` **122 → 156**、`Goal` **315 → 325**（含本次同步的那条） |
+| 11 个 C# 回归套件 | 全 `exit=0`；`ChannelToolVisibility` **122 → 177**；`Goal` 断言数**不变（325）**，只同步了一条既有断言的期望值（项目工具计数 5 → 6） |
 | `npm run typecheck`（node + web） | EXIT=0 |
 | 全部 `test:*` 脚本 | **34 / 34** |
 | `test:i18n-coverage` | PASS（2 checks） |
@@ -1656,6 +1657,26 @@ const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
 4. 全局会话能读写 `父目录/<刚建的>` 里的文件（父目录是额外的沙箱根）
 5. 项目会话里让 agent 建项目 → 拿不到这个工具（`use_capability` 里也没有）
 6. 用户自己从界面建项目 → 不受父目录限制（既有路径未动）
+
+### 审查修复（2026-09-20）
+
+独立 subagent 审 `ca92501c` → **FAIL（❌ 2 / ⚠️ 12）**，报告见 `review_report.md` 的「S-103 代码审查」节。**功能与安全面未发现缺陷** —— 专项分析逐类找过绕过向量（`..` / 分隔符 / 盘符 / UNC / `\\?\` / 全角 / 尾随点空格 / 短名 / 大小写），未找到出口；两条 ❌ 全部是 `AGENTS.md` 的 500 行硬线，**本刀亲手把两个文件推过了线**。修复（与全部 ⚠️ 同轮）如下：
+
+- **❌-1** `AgentRuntimeProjectExecutor.cs` 512 行 → **448**：改 `partial`，抽出 `AgentRuntimeProjectExecutor.Creation.cs`（**124** 行 —— `create_project` 与查重/归一化）。
+- **❌-2** `ChannelToolVisibilityRegressionTests/Program.cs` 517 行 → **379**：改 `partial`，抽出 `CreateProjectChecks.cs`（**215** 行 —— 四个 S-103 套件）。断言 156 → **177**。
+- **⚠️-1 查重可漏**：`WHERE working_folder = @wf` 是 SQLite TEXT 精确比较（区分大小写、尾随分隔符敏感），而 agent 侧的路径经 `GetFullPath` 归一化、用户从界面建的只做了 `Trim` ⇒ 同一个物理目录会被判成两条。改为把项目表拉回来在 C# 里比（`FindProjectAt`：`OrdinalIgnoreCase` + `TrimEndingDirectorySeparator`）。projects 表是几十行的量级，全表扫无所谓。
+- **⚠️-2 配置层零测试**：`WishfulClaw.Infrastructure.csproj` **没有 `InternalsVisibleTo`**，该层 internal 成员测试工程够不着。处置：可测的那半（「父目录必须是全限定路径」）移进已被覆盖的 `ProjectCreationPolicy.Resolve` 并加断言；另补 `ProjectsParentDirectory.DefaultPath` 的三条只读断言（非空 / 在主目录下 / 不是点号目录）。`Read` / `Write` 依赖真实 `config.json`，仍只能靠真机手测。
+- **⚠️-3 `C:` 这类盘符相对路径被放行**：`Path.IsPathRooted("C:")` 为 true，但它相对的是**进程当前目录** ⇒ 手写进 config.json 会让「父目录」随启动目录漂移。`IsUsablePath` 改判 `Path.IsPathFullyQualified`；`ProjectCreationPolicy.Resolve` 加同样检查（配置被手改时工具明确拒绝，而不是悄悄按 CWD 解析）。
+- **⚠️-4 主目录过宽 warning 名不副实**：原实施记录写「留在 hint 文案里说」，实际 hint 根本没提。改为真做（见上文偏差 3）。
+- **⚠️-5 / ⚠️-6 / ⚠️-7 文档数字订正**：`Goal` 断言数**不变**（325 —— 只同步了一条既有断言的期望值 5 → 6，「315 → 325」是错的）；`AssertProjectCreationPolicy` 的条数按实计；行数改用工具实测值（原表系统性 +1，是「末尾空行」的计数口径差，不是造假）。
+- **⚠️-8 记档**：设置页只读展示而非输入框（见上文偏差 4）。
+- **⚠️-9 断言缺口**：补 UNC（`\\server\share`）、`\\?\` 前缀、全角斜杠（应**接受** —— 它不是 Windows 分隔符）、`...`、`"  ..  "`、保留设备名 5 例 + 反例 `CONSOLE`、相对父目录 4 例、global 域子代理可见性。
+- **⚠️-10 保留设备名**：`CON` / `NUL` / `COM1` / `LPT9`（含带扩展名，只看第一个点之前那段）进黑名单并给明确错误。**不越界**（`D:\parent\CON` 的父目录仍是 `D:\parent`），纯粹是可诊断性 —— 不拦下来 agent 只会拿到一句 OS 级报错，不知道该换名字。
+- **⚠️-11 符号链接 / junction**：**记档**。父目录内的链接会让「字符串比对的直接子目录」与实际落点分离；这是既有沙箱（同样只比对参数字符串）的一贯特征，非本刀引入，闭环需 `ResolveLinkTarget`，成本高、收益低。
+- **⚠️-12 陈旧注释**：`AgentRuntimeProjectExecutor` 的类头与 `ToolDispatchRouter` 的分派注释补上 `create_project` / `update_session_follow_up`。
+
+**修复后门禁（实跑输出）**：两 sln **0 错 0 警**；11 个 C# 套件全 `exit=0`（`ChannelToolVisibility` **177**）；`npm run typecheck` EXIT=0；**34 / 34** 个 `test:*`；`test:i18n-coverage` PASS。本需求触碰的文件行数：448 / 124 / 145 / 133 / 153 / 344 / 31 / 130 / 419 / 379 / 215 —— 全部在 500 以内。`ToolDispatchRouter.cs` 仍 **573**（既存超标，本刀未使它变差，清理另开一刀）。
+
 
 
 ---

@@ -6,6 +6,8 @@ import { SettingsSection, SettingHint } from './settings-primitives'
 type ProjectsParentState = {
   path?: string
   configured?: boolean
+  /** 用户主目录。父目录选到它本身时和盘符根一样过宽 —— 判据由 Worker 给，渲染端不复刻路径规则。 */
+  homeDirectory?: string
   error?: string
 }
 
@@ -24,6 +26,7 @@ type ProjectsParentState = {
 function ProjectsParentDirectorySection(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const [path, setPath] = useState('')
+  const [home, setHome] = useState('')
   const [configured, setConfigured] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -32,6 +35,7 @@ function ProjectsParentDirectorySection(): React.JSX.Element {
   const applyState = useCallback((state: ProjectsParentState | null | undefined): void => {
     if (!state || typeof state !== 'object') return
     if (typeof state.path === 'string') setPath(state.path)
+    if (typeof state.homeDirectory === 'string') setHome(state.homeDirectory)
     setConfigured(Boolean(state.configured))
     setError(state.error ?? null)
   }, [])
@@ -78,9 +82,14 @@ function ProjectsParentDirectorySection(): React.JSX.Element {
     await save(result.path)
   }, [path, save])
 
-  // 盘符根（D: / D:\）是唯一能可靠判定的「过宽」—— 用户主目录本身同样过宽，但主进程没有
-  // 暴露取主目录的通道，硬猜一个字符串只会误报，所以那条留在提示文案里说。
-  const tooBroad = /^[a-zA-Z]:[\\/]?$/.test(path.trim())
+  // 「过宽」的两种形态：盘符根（D: 或 D:\）与用户主目录本身 —— 两者都等于把一整片区域交给
+  // 全局 PM 读写。主目录由 Worker 在同一个响应里给出（不暴露默认值本身，那只会引诱渲染端
+  // 再复刻一遍目录名），渲染端只做字符串比较，不自己拼路径规则。
+  const trimmedPath = path.trim().replace(/[\\/]+$/, '')
+  const trimmedHome = home.trim().replace(/[\\/]+$/, '')
+  const tooBroad =
+    /^[a-zA-Z]:$/.test(trimmedPath) ||
+    (trimmedHome.length > 0 && trimmedPath.toLowerCase() === trimmedHome.toLowerCase())
 
   return (
     <SettingsSection

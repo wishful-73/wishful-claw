@@ -13,6 +13,13 @@ namespace WishfulClaw.Agent.Tools;
 /// </summary>
 public static class ProjectCreationPolicy
 {
+    private static readonly HashSet<string> ReservedDeviceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    };
+
     /// <summary>解析结果：<see cref="Path"/> 与 <see cref="Error"/> 恰有一个非空。</summary>
     public readonly record struct Target(string? Path, string? Error)
     {
@@ -33,6 +40,14 @@ public static class ProjectCreationPolicy
         if (string.IsNullOrWhiteSpace(parentDirectory))
         {
             return Target.Fail("The projects parent directory is not usable; set it in Settings first.");
+        }
+
+        // 全限定，而不是 IsPathRooted：`C:` 在 Windows 上算 rooted，但它的含义取决于进程当前目录 ——
+        // 手写进 config.json 会让「父目录」随启动目录漂移，设置页也该被这条挡回去。
+        if (!Path.IsPathFullyQualified(parentDirectory.Trim()))
+        {
+            return Target.Fail(
+                $"The projects parent directory must be an absolute path: \"{parentDirectory}\"");
         }
 
         var displayName = name?.Trim() ?? string.Empty;
@@ -59,6 +74,12 @@ public static class ProjectCreationPolicy
         if (sanitized.Length == 0)
         {
             return Target.Fail("The folder name is empty after removing characters Windows does not allow.");
+        }
+
+        if (IsReservedDeviceName(sanitized))
+        {
+            return Target.Fail(
+                $"Folder name \"{sanitized}\" is a reserved Windows device name and cannot be used as a directory.");
         }
 
         string parentFull;
@@ -93,6 +114,20 @@ public static class ProjectCreationPolicy
     /// 空则回落 <c>New Project</c>）是两套规则：目录名和显示名本来就不保证相等，工具描述已说明。
     /// </summary>
     public static string DeriveFolderName(string name) => Sanitize(name?.Trim() ?? string.Empty);
+
+    /// <summary>
+    /// Windows 保留设备名（<c>CON</c> / <c>NUL</c> / <c>COM1</c> …）。带扩展名同样打不开，
+    /// 所以只看第一个点之前那一段。
+    ///
+    /// 这不是安全问题（<c>D:\parent\CON</c> 的父目录仍然是 <c>D:\parent</c>，跑不出父目录），
+    /// 而是可诊断性：不拦下来，agent 只会拿到一句 OS 级报错，不知道该换个名字。
+    /// </summary>
+    private static bool IsReservedDeviceName(string folder)
+    {
+        var dot = folder.IndexOf('.');
+        var stem = dot >= 0 ? folder[..dot] : folder;
+        return ReservedDeviceNames.Contains(stem.Trim());
+    }
 
     private static bool LooksLikePathEscape(string folder) =>
         folder is "." or ".." ||

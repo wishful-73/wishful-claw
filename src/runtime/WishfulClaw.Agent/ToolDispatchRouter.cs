@@ -437,7 +437,7 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
-        // Project management tools: list_projects / get_project_details / create_session / send_session_message
+        // Project management tools: list_projects / get_project_details / create_session / create_project / send_session_message / update_session_follow_up
         else if (AgentRuntimeProjectExecutor.IsProjectTool(toolCall.Name))
         {
             try

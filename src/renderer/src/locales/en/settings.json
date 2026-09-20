@@ -194,7 +194,7 @@
       "browse": "Browse",
       "reset": "Use default",
       "tooBroad": "That is a drive root: the whole drive would be open to the global PM. Pick a deeper directory.",
-      "hint": "The global PM can only create one level below this directory, and is given no tool to delete or modify projects \u2014 but it can read and write anything under the whole tree, including directories that are not projects yet. Projects you create from the UI are not restricted by this directory."
+      "hint": "The global PM can only create one level below this directory, and is given no tool to delete or modify projects \u2014 but it can read and write anything under the whole tree, including directories that are not projects yet. Choosing a drive root or your home directory itself raises a warning below: either one hands it a whole region. Projects you create from the UI are not restricted by this directory."
     },
     "contextCompression": {
       "label": "Context Compression",

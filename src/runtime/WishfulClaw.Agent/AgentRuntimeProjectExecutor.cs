@@ -9,11 +9,13 @@ using WishfulClaw.Infrastructure.Storage;
 namespace WishfulClaw.Agent;
 
 /// <summary>
-/// Project management tools executor — list_projects / get_project_details / create_session / send_session_message.
-/// The first three tools execute directly in Worker (DB operations).
-/// send_session_message uses a reverse-request to the renderer, which dispatches it via normal sendMessage.
+/// Project management tools executor — list_projects / get_project_details / create_session /
+/// create_project / send_session_message / update_session_follow_up.
+/// The first four execute directly in Worker (DB operations); create_project additionally validates the
+/// landing site (see the ProjectCreation partial). send_session_message uses a reverse-request to the
+/// renderer, which dispatches it via normal sendMessage.
 /// </summary>
-public static class AgentRuntimeProjectExecutor
+public static partial class AgentRuntimeProjectExecutor
 {
     private static readonly HashSet<string> ProjectToolNames = new(StringComparer.Ordinal)
     {
@@ -244,72 +246,6 @@ public static class AgentRuntimeProjectExecutor
         catch (Exception ex)
         {
             return Task.FromResult(EncodeError($"Failed to create session: {ex.Message}"));
-        }
-    }
-
-    // ── create_project ──
-
-    /// <summary>
-    /// 在设置页配的「工作目录父目录」下建一个项目（S-103）。路径完全由服务端拼 —— 工具参数里
-    /// 没有路径，沙箱那道检查根本看不到它，所以边界就靠 <see cref="ProjectCreationPolicy"/>。
-    /// </summary>
-    private static Task<string> CreateProjectAsync(
-        JsonElement input, JsonElement parameters, CancellationToken cancellationToken)
-    {
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var name = RequireString(input, "name");
-            var folderName = JsonHelpers.GetString(input, "folderName");
-
-            var parentDirectory = ProjectsParentDirectory.Read();
-            var target = ProjectCreationPolicy.Resolve(parentDirectory, name, folderName);
-            if (target.Path is null)
-            {
-                return Task.FromResult(EncodeError(target.Error ?? "Invalid project directory."));
-            }
-
-            var workingFolder = target.Path;
-
-            DbClient.EnsureInitialized(parameters);
-            var db = DbClient.GetClient(parameters);
-
-            // projects 表对 working_folder 没有唯一约束，而 Directory.CreateDirectory 对已存在的
-            // 目录是幂等的 —— 不先查重，同一个目录上会挂出两条项目，之后谁也说不清是哪一条在生效。
-            var existing = db.QueryFirstOrDefault(
-                "SELECT * FROM projects WHERE working_folder = @wf ORDER BY created_at ASC LIMIT 1",
-                EntityMappers.MapProject,
-                new SqliteParameter("@wf", workingFolder));
-            if (existing is not null)
-            {
-                return Task.FromResult(EncodeError(
-                    $"A project already uses \"{workingFolder}\": id={existing.Id}, name=\"{existing.Name}\". " +
-                    "Use that project instead of creating a duplicate."));
-            }
-
-            var reusedDirectory = Directory.Exists(workingFolder);
-
-            var payload = WorkerJsonHelper.BuildJsonElement(writer =>
-            {
-                writer.WriteStartObject();
-                writer.WriteString("name", name);
-                writer.WriteString("workingFolder", workingFolder);
-                writer.WriteEndObject();
-            });
-
-            var created = DbProjectTools.CreateEntity(payload);
-
-            var result = JsonSerializer.Serialize(
-                new CreateProjectResult(
-                    created.Id, created.Name, workingFolder, parentDirectory, reusedDirectory),
-                WorkerJsonHelper.GetTypeInfo<CreateProjectResult>());
-
-            return Task.FromResult(result);
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            return Task.FromResult(EncodeError($"Failed to create project: {ex.Message}"));
         }
     }
 

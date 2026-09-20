@@ -29,9 +29,10 @@ public static class ProjectsParentDirectory
     /// 用户分不清哪些能删）、点号隐藏目录（在文件管理器里根本找不到自己建的项目）、
     /// <c>~/Documents</c>（Windows 上常被 OneDrive 重定向，项目目录跟着上云是意外）。
     /// </summary>
-    public static string DefaultPath { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        "WishfulClawProjects");
+    public static string HomeDirectory { get; } =
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    public static string DefaultPath { get; } = Path.Combine(HomeDirectory, "WishfulClawProjects");
 
     /// <summary>
     /// 生效的父目录：设置值优先，否则默认值。设置值为空串或全空白时同样回落默认值 ——
@@ -42,8 +43,9 @@ public static class ProjectsParentDirectory
     /// <summary>
     /// 设置页读接口：生效路径 + 是否显式配置过。
     ///
-    /// 刻意不暴露 <see cref="DefaultPath"/>：设置页只需要展示生效路径，「恢复默认」是否可用的
-    /// 判据是 configured —— 少一处常量复刻就少一处漂移。手写 JSON 而不新建 record 是照
+    /// 暴露 <see cref="DefaultPath"/> 的**父**（主目录）而不是默认值本身：设置页要判的是
+    /// 「父目录选得过宽」（盘符根、主目录本身），那只需要主目录；把 DefaultPath 也给出去只会
+    /// 引诱渲染端再复刻一遍 `WishfulClawProjects` 这个名字。手写 JSON 而不新建 record 是照
     /// <see cref="ConfigStore"/> 自己的惯例（其 ToResponse 也是 FromWriter），顺带不必再添一个
     /// AOT 注册点。
     /// </summary>
@@ -56,6 +58,7 @@ public static class ProjectsParentDirectory
             writer.WriteStartObject();
             writer.WriteString("path", path);
             writer.WriteBoolean("configured", configured);
+            writer.WriteString("homeDirectory", HomeDirectory);
             writer.WriteEndObject();
         });
     }
@@ -114,7 +117,9 @@ public static class ProjectsParentDirectory
     {
         try
         {
-            if (!Path.IsPathRooted(path))
+            // IsPathFullyQualified，而不是 IsPathRooted：`C:` 在 Windows 上算 rooted，但它相对的是
+            // 进程当前目录 —— 写进 config.json 的父目录会随启动目录漂移。`\foo` 同理。
+            if (!Path.IsPathFullyQualified(path))
             {
                 return false;
             }

@@ -69,9 +69,12 @@ internal static partial class Program
     {
         var defaultPath = ProjectsParentDirectory.DefaultPath;
         Assert(defaultPath.Length > 1, "the default projects parent directory is not empty");
-        Assert(
-            defaultPath.StartsWith(ProjectsParentDirectory.HomeDirectory, StringComparison.OrdinalIgnoreCase),
-            "the default projects parent lives under the user's home directory");
+
+        // 精确到「父级就是主目录」，而不是 StartsWith —— 后者连 `~/a/b/c` 都放行，钉不住结构。
+        AssertEqual(
+            Path.TrimEndingDirectorySeparator(ProjectsParentDirectory.HomeDirectory),
+            Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(defaultPath) ?? "(null)"),
+            "the default projects parent sits directly under the user's home directory");
         Assert(
             !Path.GetFileName(defaultPath).StartsWith('.'),
             "the default directory is not a dot-directory the user cannot find");

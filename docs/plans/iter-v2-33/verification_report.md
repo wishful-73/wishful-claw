@@ -550,3 +550,125 @@ PROBE_EXIT=0
 - **新建/追加**：`docs/plans/iter-v2-33/verification_report.md`（本节）。
 - **未改**任何源码、配置、既有文档；未 `commit`、未 `push`。
 
+---
+
+## S-103 验证（2026-09-20）
+
+### 0. 验证对象与环境自证（实跑输出）
+
+- 仓库：`D:\claw\wishful-claw`，分支 `dev/v2-iter-33`
+- `git rev-parse HEAD` → `cc4c7ffcc9fe4beaf818b4c93e67f197c9517d3d`（= 预期 `cc4c7ffc` ✓）
+- `git status --porcelain` → **空**（工作区干净 ✓）
+- `git log --oneline -2` →
+  `cc4c7ffc fix(project): S-103 审查修复调整`
+  `ca92501c feat(project): S-103 全局 PM 项目创建工具 + 工作目录父目录约束`
+- 验证方式：**只读**。未改任何源码 / 配置；未 `commit` / `add` / `stash`。本次唯一新增临时文件为 `.wishful-claw/notes/_tmp_*.py`（用完已删）与本报告节。
+
+### VERDICT: **PASS**
+
+门禁全部本机复现；两条 ❌（500 行硬线）实测已解；12 条 ⚠️ 逐条实读代码核对，全部落地（含 2 条属「记档」类）。未发现「功能不正确 / 边界可绕过 / 既有行为被破坏 / 门禁不过」级别的缺陷。
+
+### 1. 门禁实跑（全部本机自己跑，非引用文档数字）
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| runtime 构建 | `dotnet build src/runtime/WishfulClaw.sln --nologo -v q` | **0 警告 0 错误**，exit 0 |
+| tests 构建 | `dotnet build tests/WishfulClaw.Tests.sln --nologo -v q` | **0 警告 0 错误**，exit 0 |
+| 11 个 C# 回归套件 | 逐个跑 `<Name>.exe` | **11 / 11 exit=0**（下表） |
+| typecheck | `npm run typecheck`（node + web） | **EXIT=0** |
+| 全部 `test:*` | 枚举 `package.json` 逐个 `npm run` | **34 / 34 exit=0** |
+| i18n | `npm run test:i18n-coverage` | **PASS（2 checks）**，exit 0 |
+
+11 个套件逐个实测：
+
+| 套件 | exit | 自报 |
+|---|---|---|
+| AgentTimeline | 0 | （无 passed 汇总行） |
+| ChannelShellApproval | 0 | 72 assertions |
+| ChannelToolVisibility | 0 | **177 assertions** |
+| CompactionSnapshot | 0 | 2 |
+| Cron | 0 | 42 |
+| Goal | 0 | **325** |
+| GrepPattern | 0 | 21 |
+| MemoryRecall | 0 | 49 |
+| ProviderHeader | 0 | （无数字） |
+| SessionTaskCascade | 0 | 225 |
+| ToolConcurrency | 0 | （无数字） |
+
+`ChannelToolVisibility` 177 与 raw 记载「156 → 177」一致；`Goal` 325 与 raw 记载「断言数不变」一致。`test:*` 枚举恰 34 个。
+
+### 2. 两条 ❌ 复验（行数实测）
+
+量法：**Python `len(bytes.decode('utf-8').splitlines())`**（权威）。附注：PS 5.1 的 `Get-Content` / `Measure-Object -Line` 对无 BOM 的 LF-only 文件会**少算**（如 `.Creation.cs` 报 111 而实为 124，`.tsx` 报 113/122 而实为 130），故本报告一律以 Python 为准。
+
+| 文件 | 审查时 | 现测 | ≤500 |
+|---|---|---|---|
+| `AgentRuntimeProjectExecutor.cs` | 512 | **448** | ✅ |
+| `AgentRuntimeProjectExecutor.Creation.cs`（新） | — | **124** | ✅ |
+| `ChannelToolVisibilityRegressionTests/Program.cs` | 517 | **379** | ✅ |
+| `CreateProjectChecks.cs`（新） | — | **215** | ✅ |
+
+**本条对两 commit 并集的全部 22 个触碰文件逐个数过**，>500 者仅以下、且均**非本刀推过线**：
+
+- `src/runtime/WishfulClaw.Agent/ToolDispatchRouter.cs` **573** —— 本刀前即 573（`ca92501c^` 实测 573），本刀只改一行注释文字，行数不变；已在 commit / raw 记档。
+- `tests/WishfulClaw.GoalRegressionTests/Program.Lifecycle.cs` **634** —— 本刀前即 633，本刀仅 +1 行；**非本刀推过线**（既存超标）。
+- `docs/plans/iter-v2-33/{compliance_report,raw-requirements,review_report}.md` 与 `src/renderer/src/locales/{zh,en}/settings.json` —— 文档 / 单一数据对象（`AGENTS.md` 明文豁免的两类），且非本需求新增。
+
+⇒ 两条 ❌ **确认已解**，未见第三处被本刀推过线。
+
+### 3. ⚠️ 逐条复验（实读代码，非查文档）
+
+| ⚠️ | 结论 | 证据（实读） |
+|---|---|---|
+| ⚠️-1 查重归一化 | **已落地** | `.Creation.cs:91-110` `FindProjectAt` 全表拉回；`NormalizeFolder:113-123` = `Path.GetFullPath(Trim())` 后 `TrimEndingDirectorySeparator`；比较用 `StringComparison.OrdinalIgnoreCase`。**能拦住** `D:\p\x` 与 `d:\p\x\`（大小写 + 尾随分隔符均已归一）⇒ 不会被判成两条。**但无断言**（private + 依赖真实 DB），仅代码实读。 |
+| ⚠️-3 父目录全限定 | **已落地** | `ProjectsParentDirectory.IsUsablePath:122` 与 `ProjectCreationPolicy.Resolve:47` 均判 `Path.IsPathFullyQualified`。`C:` → `IsPathFullyQualified("C:")==false` ⇒ **被拒**（断言：`CreateProjectChecks.cs:160` 的 `"parent"`/`".\parent"`/`"C:"`/`"C:relative"` 4 例）。 |
+| ⚠️-4 主目录 warning | **已落地** | `ProjectsParentDirectory.ReadResponse:61` 回 `homeDirectory`；`ProjectsParentDirectorySection.tsx:88-92` 真拿它做「去尾分隔符 + 大小写不敏感」比较并置 `tooBroad`；zh/en `hint` **都提到主目录本身**（zh「盘符根或用户主目录本身」/ en "your home directory itself"）。 |
+| ⚠️-10 保留设备名 | **已落地** | `ProjectCreationPolicy.cs:16-21` 黑名单；`IsReservedDeviceName:125-130` 取**第一个点之前**为 stem ⇒ `NUL.txt` 亦拒；`OrdinalIgnoreCase` ⇒ `com1` / `lpt9` 亦拒；`CONSOLE` stem 不在表 ⇒ **不误伤**（断言 `CreateProjectChecks.cs:148-156`）。 |
+| ⚠️-2 配置层可测部分 | **已落地（断言偏弱）** | `CreateProjectChecks.cs:68-78` `AssertProjectsParentDefault` 存在，断言 3 条：DefaultPath 长度 > 1 / StartsWith(HomeDirectory) / 文件名不以 `.` 开头。**非「期望值由 SUT 反推」的恒真式**，但它断的是**生产常量自身性质**（`DefaultPath := Path.Combine(HomeDirectory,"WishfulClawProjects")`），属自反式弱断言 ⇒ 实际防护力≈0，**不覆盖 `Read`/`Write`/`Reset`/`IsUsablePath` 行为**（那些依赖真实 `config.json`，仍未测）。 |
+| ⚠️-12 陈旧注释 | **已落地** | `AgentRuntimeProjectExecutor.cs:12` 类头已列全 6 个工具（含 `create_project` / `update_session_follow_up`）；`ToolDispatchRouter.cs:440` 分派注释同样补全（本刀 diff 即 +1 行注释）。 |
+| ⚠️-9 断言补充 | **已落地** | `CreateProjectChecks.cs`：UNC `\\server\share` 与 `\\?\C:\abs`(:130-132) / 全角斜杠 `／abs` 应**接受**(:141-145) / 纯点 `...`、`"  ..  "`(:130) / 保留名 5 例 + 反例 CONSOLE(:148-156) / 相对父目录 4 例(:160-165) / global 域子代理可见(:55-60)。 |
+| ⚠️-5/6/7 文档数字 | **已订正** | raw §审查修复 已改「Goal 325 不变、delta 0」；行数改实测值（与我 Python 实测一致）。 |
+| ⚠️-8 记档（只读展示非输入框） | **已记档** | raw §审查修复 + §偏差 4；代码 `ProjectsParentDirectorySection.tsx` 确为只读展示 + 浏览 + 恢复默认（无 `input` 元素）。 |
+| ⚠️-11 记档（符号链接 / junction） | **已记档** | raw §审查修复。非代码问题，无需改动。 |
+
+**⚠️-7 补充核实**：`compliance_report.md` 的规划复验节仍称「plan 侧未落 ⚠️-7（`plan.md:418` 仍写『在项目会话与子代理不可见』）」—— 该结论**已过时**：现 `plan.md:418` 实际写的是「在**项目作用域**（`project:cowork`）不可见；global 域子代理因 role 段是 `*` **仍可见**，属预期」，与代码/断言一致。（属 compliance_report 陈旧，不影响实现。）
+
+### 4. 需求覆盖表（raw §口径 / §关键设计 逐条判定）
+
+| # | 可判定条目 | 结论 | 证据（文件:行） |
+|---|---|---|---|
+| 1 | 硬口径①：agent 建项目只落 `父目录/一级子目录`，**路径服务端拼** | **已覆盖** | 工具参数仅 `name`/`folderName`（`ProjectToolsProvider.cs` schema，无路径）；`CreateProjectAsync` 读配置 → `ProjectCreationPolicy.Resolve` 拼 `父目录/sanitized` → `:99-107` 兜底「结果须为父目录直接子目录」。断言 20+ 条。 |
+| 2 | 硬口径②：父目录**只**给全局会话做沙箱额外根，**项目会话拿不到** | **已覆盖** | `PathBoundary.CollectProjectRoots`：项目分支 `:62-66` **提前 return 且不含** `WithProjectsParent`；全局分支 try `:75` 与 catch `:88` **两处**均包 `WithProjectsParent`；`WithDataRoot`（`:102-109`）一字未动。纯函数断言 `AssertSandboxProjectsParent`（追加 / null / 空白 / 计数 / `WithDataRoot([])==1`）。**「项目分支不含父目录」为结构保证 + 代码实读，无直接断言**（见 §5-7）。 |
+| 3 | 硬口径③：用户从 UI 建项目**不受**父目录约束，既有路径未动 | **已覆盖（既有路径未动）** | `git diff ca92501c^ cc4c7ffc -- …/project-slice.ts` **无输出**（未触碰）；`DbProjectTools.CreateEntity` 只 `Trim` + `Directory.CreateDirectory`，**无父目录校验**；端点 `db/projects-create` 行为保留。 |
+| 4 | 沙箱放行**整棵父目录**（非只放行已注册项目） | **已覆盖** | `WithProjectsParent` 直接 append `parentDirectory`；`IsInsideAnyRoot` 子路径放行（断言 `CreateProjectChecks.cs:200-205`）。 |
+| 5 | **不做**项目删除 / 修改工具 | **已覆盖** | 仅新增 `create_project`；执行器 `ProjectToolNames` 无 delete/modify；无新工具注册。 |
+| 6 | 设置项放**设置页** + 有**默认地址** | **已覆盖** | `RuntimePanel.tsx` 挂 `ProjectsParentDirectorySection`；`DefaultPath = ~/WishfulClawProjects`（C# 单一定义）。 |
+| 7 | `create_project` 仅全局侧（含渠道），取 `GlobalSideOnly` | **已覆盖** | `ProjectToolsProvider` `visibleScopes: GlobalSideOnly`；断言 `AssertCreateProjectGrant`：渠道可见 / desktop global 可见 / project cowork 不可见 / project chat 不可见 / global 子代理可见。 |
+| 8 | 配置存 C# 侧 `config.json`（`projectsParentDir`），**无「未配置」态** | **已覆盖** | `ProjectsParentDirectory.Read()` 恒返回生效路径；`Write` 空串=Reset；断言 DefaultPath 3 条。**`Read`/`Write` 的真实 config.json 往返未测**。 |
+| 9 | 重名处置：命中既有项目 ⇒ 报错 + 回显 id/name | **已覆盖（代码）** | `.Creation.cs:50-56`。**无断言**（需 DB）。 |
+| 10 | 结果回显最终绝对路径 + 是否复用既有目录 | **已覆盖** | `CreateProjectResult(Id,Name,WorkingFolder,ParentDirectory,ReusedExistingDirectory)`；`:58` `reusedDirectory = Directory.Exists(...)`。 |
+| 11 | 过宽路径（盘符根 / 主目录本身）给 warning | **已覆盖** | 见 ⚠️-4。 |
+| 12 | 不加审批 / 不设 `isCore` | **已覆盖** | `ProjectToolsProvider` 无 `RequiresApproval`；`isCore` 默认 false。 |
+| 13 | 父目录不存在时自动创建 + 不静默铺树 | **已覆盖** | `CreateEntity` 内 `Directory.CreateDirectory`；`reusedDirectory` 回显。 |
+
+### 5. 未覆盖 / 只能真机验的项（如实）
+
+1. **`create_project` 端到端真机**：建目录落盘、工具返回绝对路径、同目录二次建报错并回显既有项目 —— 需真实 Worker + 全局会话；本次只做了策略纯函数 + 可见性 + 沙箱纯函数的静态/断言验证。
+2. **`config/projects-parent`（读）与 `config/projects-parent/set`（写）端点往返**：`Read`/`Write`/`Reset` 依赖真实 `~/.wishful-claw/config.json`；`WishfulClaw.Infrastructure.csproj` **无 `InternalsVisibleTo`**，测试工程够不着 ⇒ **只能真机**。
+3. **设置页 UI**：浏览目录对话框（`fs:select-folder`）、取消、二次保存、`tooBroad` 的实际渲染 —— 需 GUI。
+4. **AOT 发布**（`publish-aot-worker.mjs`）：未跑；`CreateProjectResult` 的 `[JsonSerializable]` 注册已在源码确认（`WishfulClawJsonContext.cs:137`），但「AOT 0 警告」未复现。
+5. **查重（⚠️-1）与重名回显（S103-3d）的运行时行为**：`FindProjectAt` private + 依赖真实 projects 表，无断言；逻辑经代码实读确认，未做集成/真机验证。
+6. **符号链接 / junction 不穿透**（⚠️-11）：已知、记档，未闭环（需 `ResolveLinkTarget`）。
+7. **「项目作用域沙箱不含父目录」的直接断言**：目前靠 `CollectProjectRoots` 的结构（`:62-66` 提前 return）+ 纯函数断言间接保证；未构造「以 `scope=project` 参数调 `ResolveRoots` 并断言不含父目录」的用例（该路径会 `DbClient.GetClient()` 初始化真实 DB，套件不可碰）。
+
+### 6. 本次新发现（均非阻断）
+
+1. **`compliance_report.md` 规划复验节结论过时**：仍称「plan 侧未落 ⚠️-7 / `plan.md:418` 与结论相悖」，而 `plan.md:418` 现已订正为「global 域子代理仍可见，属预期」，与实现一致。建议顺手订正该复验节的 ⚠️-7 行。
+2. **`AssertProjectsParentDefault` 属自反式弱断言**（见 ⚠️-2）：只断生产常量自身性质，未覆盖 `Read`/`Write`/`IsUsablePath`。需求已如实把配置层列为「只能真机测」，故不判缺陷，但该断言防护力≈0。
+3. **`tests/…GoalRegressionTests/Program.Lifecycle.cs` = 634 行**，本需求对其 +1 行（633→634）。它**本刀前即超 500**（与 `ToolDispatchRouter.cs` 573 同类，属既存超标），独立审查未对本刀已超线者重复判 ❌ —— 从严口径下可登记为既存技术债（均无豁免头注）。
+4. **LF/CRLF 混用导致行数工具不一致**：`.Creation.cs`、`CreateProjectChecks.cs`、`ProjectsParentDirectorySection.tsx` 等为 **LF-only / 无 BOM**，PS 5.1 的 `Get-Content`/`Measure-Object` 会**少算**（13 / 7 / 8 行），易在审查时误判超线。建议统一改用 Python `splitlines()`（本报告口径）。
+
+---
+
+—— 验证者：独立 subagent（只读），2026-09-20；未改任何源码/配置，未 commit。
+

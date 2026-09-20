@@ -432,7 +432,7 @@
 
 ### S-103 工作目录父目录 + 全局 PM 项目创建工具（2026-09-20 实施，待审查/验证）
 
-`create_project` 只给全局侧（含渠道），路径由服务端拼成 `父目录/一级子目录`；父目录同时是全局会话的额外沙箱根（**只在全局分支追加**）。配置存 C# 侧 `config.json` 的 `projectsParentDir`，默认 `~/WishfulClawProjects`，没有「未配置」态。门禁全绿（两 sln 0/0、11 套件 exit=0、typecheck 0、34/34 `test:*`）。详见下方第四批 S-103 节的「实施记录」。
+`create_project` 只给全局侧（含渠道），路径由服务端拼成 `父目录/一级子目录`；父目录同时是全局会话的额外沙箱根（**只在全局分支追加**）。配置存 C# 侧 `config.json` 的 `projectsParentDir`，默认 `~/WishfulClawProjects`，没有「未配置」态。门禁全绿（两 sln 0/0、11 套件 exit=0、typecheck 0、34/34 `test:*`）。已过独立**审查**（首轮 FAIL ❌2/⚠️12 —— 两条都是本刀把两个文件推过 500 行硬线；修复刀 `cc4c7ffc`）与独立**验证**（PASS，HEAD `cc4c7ffc`）。详见下方第四批 S-103 节的「实施记录」「审查修复」「验证」。
 
 ## 涉及文件（S-87 ~ S-94）
 

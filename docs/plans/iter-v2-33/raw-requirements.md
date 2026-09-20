@@ -1677,6 +1677,19 @@ const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
 
 **修复后门禁（实跑输出）**：两 sln **0 错 0 警**；11 个 C# 套件全 `exit=0`（`ChannelToolVisibility` **177**）；`npm run typecheck` EXIT=0；**34 / 34** 个 `test:*`；`test:i18n-coverage` PASS。本需求触碰的文件行数：448 / 124 / 145 / 133 / 153 / 344 / 31 / 130 / 419 / 379 / 215 —— 全部在 500 以内。`ToolDispatchRouter.cs` 仍 **573**（既存超标，本刀未使它变差，清理另开一刀）。
 
+### 验证（2026-09-20）
+
+独立 subagent 对 **HEAD `cc4c7ffc`** 做端到端验证（先自证 `git rev-parse HEAD` 与 `git status --porcelain` 为空），报告见 `verification_report.md` 的「S-103 验证」节。**VERDICT: PASS。**
+
+门禁全部**自跑**（不引用本条记录的数字）：两 sln **0 错 0 警**；**11 / 11** 个 C# 套件 `exit=0`（`ChannelToolVisibility` **177** / `Goal` **325** / `SessionTaskCascade` 225 / `ChannelShellApproval` 72 / `MemoryRecall` 49 / `Cron` 42 / `GrepPattern` 21 / `CompactionSnapshot` 2，其余三个 `exit=0`）；`npm run typecheck` EXIT=0；**34 / 34** 个 `test:*`；`test:i18n-coverage` PASS。
+
+- **两条 ❌ 复验**（独立量行）：执行器 **448**（原 512）、`Creation.cs` **124**、测试 `Program.cs` **379**（原 517）、`CreateProjectChecks.cs` **215** —— 均 ≤ 500。并确认**没有第三个文件**被本需求推过线（其余 >500 的触碰文件要么本来就在线上、要么属豁免范围）。
+- **12 条 ⚠️ 逐条在代码里复核**，全部落地。
+- **未覆盖项（如实）**：`create_project` 的端到端真机行为；`config/projects-parent(/set)` 端点往返（Infrastructure 无 IVT，只有 `DefaultPath` 三条只读断言）；设置页 UI；AOT 发布；查重与重名回显的运行时行为;；junction 不穿透。另**缺一条直接断言** ——「项目作用域的沙箱确实拿不到父目录」目前靠 `CollectProjectRoots` 的结构 + `WithProjectsParent` 纯函数断言**间接**覆盖，没有「项目会话 → `ResolveRoots` 不含父目录」的端到端断言（`ResolveRoots` 的全局分支会初始化真实库，套件里碰不得）。
+
+**验证后调整**（并入本需求的修复刀）：① `AssertProjectsParentDefault` 由 `StartsWith(主目录)` 改为**精确断言「父级就是主目录」** —— `StartsWith` 连 `~/a/b/c` 都放行，钉不住结构；② `compliance_report.md` 的规划复验节补一条闭环补记（原文「⚠️-7 仅部分处置」是**订正前**的历史记录，不补注会被后面读的人当成现状）。
+
+
 
 
 ---

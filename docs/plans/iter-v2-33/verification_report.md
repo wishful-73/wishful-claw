@@ -672,3 +672,97 @@ PROBE_EXIT=0
 
 —— 验证者：独立 subagent（只读），2026-09-20；未改任何源码/配置，未 commit。
 
+---
+
+## S-103 增量重验（2026-09-20，HEAD 1879e27a）
+
+### 0. 环境自证（实跑输出）
+
+- 仓库：`D:\claw\wishful-claw`，分支 `dev/v2-iter-33`
+- `git rev-parse HEAD` → `1879e27a147e48bc584b86f1fa05e14d1a19b644`（= 预期 `1879e27a` ✓）
+- `git status --porcelain` → **空**（工作区干净 ✓；跑完门禁后复检仍为空）
+- `git log --oneline -3` → `1879e27a test(project): S-103 收尾 —— 断言收紧与文档补记` / `cc4c7ffc fix(project): S-103 审查修复调整` / `ca92501c feat(project): S-103 全局 PM 项目创建工具 + 工作目录父目录约束`
+- 验证方式：**只读**。未改任何源码 / 配置；未 `add` / `commit` / `stash` / `checkout`。构建未遇 dll 锁，**未使用** `-p:BaseOutputPath`（无 `D:\claw\_wc_verify_tmp2` 残留，已确认不存在）。本报告为本轮唯一写入。
+
+### VERDICT: **PASS**
+
+生产代码一个字节未动；测试改动是**收紧**（非放宽、非恒真）；门禁全绿且全部本机自跑。与上一轮（对 `cc4c7ffc`）结论一致。
+
+### 1. 「本刀只动测试与文档」声明核实（`git diff cc4c7ffc..1879e27a`）
+
+`--stat`：`5 files changed, 144 insertions(+), 4 deletions(-)`。
+
+| 文件 | 增删 | 判断 |
+|---|---|---|
+| `src/**`（生产代码） | **`git diff … --name-only -- src/` 输出为空** | ✅ **一个字节都没动** |
+| `tests/WishfulClaw.ChannelToolVisibilityRegressionTests/CreateProjectChecks.cs` | 9 (+-) | ✅ 仅 `AssertProjectsParentDefault` 一处 |
+| `docs/plans/iter-v2-33/compliance_report.md` | +2 | ✅ 文档 |
+| `docs/plans/iter-v2-33/plan.md` | 1 (+-) | ✅ 文档 |
+| `docs/plans/iter-v2-33/raw-requirements.md` | +13 | ✅ 文档 |
+| `docs/plans/iter-v2-33/verification_report.md` | +122 | ✅ 文档（上一轮 S-103 验证节） |
+
+**测试那处逐行判定**：把
+`Assert(defaultPath.StartsWith(ProjectsParentDirectory.HomeDirectory, OrdinalIgnoreCase), "…lives under the user's home directory")`
+换成
+`AssertEqual(TrimEndingDirectorySeparator(HomeDirectory), TrimEndingDirectorySeparator(GetDirectoryName(defaultPath) ?? "(null)"), "…sits directly under the user's home directory")`。
+
+- **收紧还是放宽？→ 收紧。** `StartsWith` 放行任意深度后代（`~/a/b/c` 也过）；精确断言要求「DefaultPath 的父级 == 主目录」，任何把默认值改成嵌套 / 改到别处的定义变更都会**失败**。语义确实钉得更死，与声称一致。
+- **会不会恒真？→ 不会。** `DefaultPath := Path.Combine(HomeDirectory, "WishfulClawProjects")`（`ProjectsParentDirectory.cs:35`），当前定义下该等式成立；但它是**可失败**的结构断言（非 `true==true` 恒真式）。`?? "(null)"` 兜底在 `GetDirectoryName` 返回 null 时会让实际值变成 `"(null)"` 而**断言失败**，不会静默通过 —— 兜底方向正确。
+- **覆盖面无净变化**：1 个 `Assert` → 1 个 `AssertEqual`，套件自报断言数 **177（与上一轮 177 一致）**。仍未覆盖 `Read`/`Write`/`Reset`/`IsUsablePath` 的运行时行为（需真实 `config.json`）—— 与上一轮 ⚠️-2 定性一致，本刀只是把「结构钉」拧紧一档，防护面未扩大。
+
+**文档逐文件**：`compliance_report.md` 规划复验节补「已全部闭环」补记（把订正前「⚠️-7 仅部分处置」显式标注为历史记录）；`plan.md` 的 S-103 行补审查/验证状态（审查 FAIL ❌2 → 修复刀 `cc4c7ffc` → 验证 PASS）；`raw-requirements.md` 新增「### 验证（2026-09-20）」节；`verification_report.md` 落盘上一轮 S-103 验证节（+122 行，纯新增）。
+
+**结论 —— 这些改动能否影响功能正确性？不能。** 生产代码零改动；测试改动为收紧且被证非恒真、非放宽；文档改动为记档。运行时行为与 `cc4c7ffc` 逐字节一致。
+
+### 2. 门禁实测（全部本机自己跑，非引用文档数字）
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| runtime 构建 | `dotnet build src/runtime/WishfulClaw.sln --nologo -v q` | **0 警告 0 错误**，exit 0 |
+| tests 构建 | `dotnet build tests/WishfulClaw.Tests.sln --nologo -v q` | **0 警告 0 错误**，exit 0 |
+| 11 个 C# 回归套件 | 逐个 `<Name>.exe` | **11 / 11 exit=0**（下表） |
+| typecheck | `npm run typecheck`（node + web） | **EXIT=0** |
+| 全部 `test:*` | 枚举 `package.json` 逐个 `npm run` | **34 / 34 exit=0** |
+| i18n | `npm run test:i18n-coverage` | **PASS（2 checks）**，exit 0 |
+
+11 个套件逐个实测：
+
+| 套件 | exit | 自报 |
+|---|---|---|
+| AgentTimeline | 0 | ALL PASS (25 assertions) |
+| ChannelShellApproval | 0 | 72 assertions |
+| ChannelToolVisibility | 0 | **177 assertions** |
+| CompactionSnapshot | 0 | 2 |
+| Cron | 0 | 42 |
+| Goal | 0 | **325** |
+| GrepPattern | 0 | 21 |
+| MemoryRecall | 0 | 49 |
+| ProviderHeader | 0 | （无数字） |
+| SessionTaskCascade | 0 | 225 |
+| ToolConcurrency | 0 | （无数字） |
+
+`ChannelToolVisibility` 仍 **177**（断言改写未增减计数），`Goal` 仍 **325**，与上一轮及 raw 记载一致。`test:*` 枚举恰 **34** 个。
+
+### 3. 四份文件行数实测（Python `len(splitlines())`，权威口径）
+
+| 文件 | 上一轮 | 本刀实测 | ≤500 |
+|---|---|---|---|
+| `AgentRuntimeProjectExecutor.cs` | 448 | **448** | ✅ |
+| `AgentRuntimeProjectExecutor.Creation.cs` | 124 | **124** | ✅ |
+| `ChannelToolVisibilityRegressionTests/Program.cs` | 379 | **379** | ✅ |
+| `CreateProjectChecks.cs` | 215 | **218** | ✅ |
+
+`CreateProjectChecks.cs` **215 → 218（+3）**：删 3 行旧 `Assert` 块、增 6 行（空行 + 注释 + `AssertEqual(` 三参数），净 +3，与 `--stat` 的 `9 (+-)` 吻合。四份全部 ≤ 500。
+
+### 4. 上一轮「未覆盖项」是否被本刀改变 —— **未改变（如实）**
+
+本刀零功能改动，上一轮 §5 列出的 7 项未覆盖依旧未覆盖：① `create_project` 端到端真机；② `config/projects-parent(/set)` 端点往返；③ 设置页 UI；④ AOT 发布；⑤ 查重与重名回显运行时；⑥ 符号链接 / junction 不穿透；⑦ 「项目作用域沙箱不含父目录」的直接断言。另：上一轮 §6 新发现 1（`compliance_report.md` 规划复验节那条 ⚠️-7 陈旧结论）**本刀未订正**（本刀补的是规划复验节的**另一处**闭环补记），故该陈旧行仍在，新发现 1 依然成立。
+
+### 5. 本次新发现（均非阻断）
+
+1. **断言收紧有效，但自反性质未变**：新断言能挡住「默认值改到嵌套 / 改到别处」，但断的仍是**常量自身的函数关系**（`GetDirectoryName(Combine(home, name)) == home`），`Read`/`Write`/`Reset` 行为依旧无断言。与 ⚠️-2 同源，**不新增缺口**，仅记录其防护边界。
+2. **报告与其验证对象不在同一 commit**：上一轮 S-103 验证节是**在本 commit（`1879e27a`）内**落盘的（+122 行），即「跑在 `cc4c7ffc`、写进 `1879e27a`」。属记档时序，报告已自带 HEAD 自证，不影响结论。
+3. **复跑后工作区仍干净**：`test:*` / typecheck 产物（`tests/**/out/*.cjs` 等）均被 ignore，`git status --porcelain` 复检为空；无临时构建目录残留。
+
+—— 增量验证者：独立 subagent（只读），2026-09-20；未改任何源码/配置，未 commit。
+

@@ -87,6 +87,7 @@ namespace WishfulClaw.Worker;
 [JsonSerializable(typeof(MemoryEntryRow))]
 [JsonSerializable(typeof(List<MemoryEntryRow>))]
 [JsonSerializable(typeof(MemoryEntriesByStatusResponse))]
+[JsonSerializable(typeof(MemoryEntriesResponse))]
 [JsonSerializable(typeof(AgentRuntimeRunResult))]
 [JsonSerializable(typeof(AgentRuntimeCancelResult))]
 [JsonSerializable(typeof(AgentRuntimeStopResult))]

@@ -1049,7 +1049,11 @@
       "desc": "本项目存储在本地记忆库中的条目。",
       "refresh": "刷新",
       "empty": "本项目暂无记忆条目。",
-      "untitled": "未命名"
+      "untitled": "未命名",
+      "total": "共 {{count}} 条",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageOf": "第 {{page}} / {{total}} 页"
     },
     "persona": {
       "noPersonas": "暂无项目专属人格，请通过人格设置页面添加。",

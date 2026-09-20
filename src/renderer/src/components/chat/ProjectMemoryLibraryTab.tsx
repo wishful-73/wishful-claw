@@ -8,10 +8,14 @@ import {
   type MemoryStatusEntry
 } from '@renderer/stores/chat-store/memory-helpers'
 
+/** Rows per page — the worker does the paging (iter-33 S-98). */
+const PAGE_SIZE = 20
+
 /**
  * Read-only memory library for one project (iter-33 S-91): every `memory_entries` row in this
  * project's scope, whatever its status, so the DB tier finally has an entry point next to the
- * hot MEMORY.md. Split out of ProjectArchivePage to stay inside the 500-line budget.
+ * hot MEMORY.md. Paged server-side in S-98, which is what lifts the old "one 200-row request"
+ * ceiling. Split out of ProjectArchivePage to stay inside the 500-line budget.
  */
 function ProjectMemoryLibraryTab({
   projectId,
@@ -24,34 +28,53 @@ function ProjectMemoryLibraryTab({
 }): React.JSX.Element {
   const { t } = useTranslation('chat')
   const [entries, setEntries] = useState<MemoryStatusEntry[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      // scope='project' is resolved worker-side (workingFolder for local projects,
-      // projectId + sshConnectionId for SSH ones) — never hand-build the scope here.
-      const result = await memoryEntries(
-        'project',
-        workingFolder ?? undefined,
-        200,
-        projectId ?? undefined,
-        sshConnectionId ?? undefined
-      )
-      setEntries(result.entries ?? [])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-      setEntries([])
-    } finally {
-      setLoading(false)
-    }
+  const load = useCallback(
+    async (targetPage: number): Promise<void> => {
+      setLoading(true)
+      setError(null)
+      try {
+        // scope='project' is resolved worker-side (workingFolder for local projects,
+        // projectId + sshConnectionId for SSH ones) — never hand-build the scope here.
+        const result = await memoryEntries(
+          'project',
+          workingFolder ?? undefined,
+          PAGE_SIZE,
+          projectId ?? undefined,
+          sshConnectionId ?? undefined,
+          (targetPage - 1) * PAGE_SIZE
+        )
+        setEntries(result.entries ?? [])
+        setTotal(result.total ?? 0)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+        setEntries([])
+        setTotal(0)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [projectId, workingFolder, sshConnectionId]
+  )
+
+  // Switching project invalidates the page number — page 3 of the previous project says
+  // nothing about this one.
+  useEffect(() => {
+    setPage(1)
   }, [projectId, workingFolder, sshConnectionId])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    void load(page)
+  }, [load, page])
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+
+  const hasRows = entries.length > 0
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -68,7 +91,7 @@ function ProjectMemoryLibraryTab({
           variant="outline"
           size="sm"
           className="h-7 shrink-0 rounded-md px-2.5 text-xs"
-          onClick={() => void load()}
+          onClick={() => void load(currentPage)}
           disabled={loading}
         >
           {loading ? (
@@ -87,12 +110,12 @@ function ProjectMemoryLibraryTab({
       )}
 
       <div className="mt-3 flex-1 overflow-auto">
-        {loading && entries.length === 0 ? (
+        {loading && !hasRows ? (
           <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
             <Loader2 className="mr-2 size-4 animate-spin" />
             {t('projectArchive.loading', { defaultValue: 'Loading...' })}
           </div>
-        ) : entries.length === 0 ? (
+        ) : !hasRows ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center">
             <Database className="size-8 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">
@@ -125,6 +148,46 @@ function ProjectMemoryLibraryTab({
           </ul>
         )}
       </div>
+
+      {total > 0 && (
+        <div className="mt-3 flex shrink-0 items-center justify-between gap-2 border-t border-border/40 pt-2">
+          <span className="text-[11px] text-muted-foreground">
+            {t('projectArchive.memoryLibrary.total', {
+              count: total,
+              defaultValue: '{{count}} entries'
+            })}
+          </span>
+          {totalPages > 1 && (
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-md px-2 text-xs"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage <= 1 || loading}
+              >
+                {t('projectArchive.memoryLibrary.prevPage', { defaultValue: 'Prev' })}
+              </Button>
+              <span className="text-[11px] text-muted-foreground">
+                {t('projectArchive.memoryLibrary.pageOf', {
+                  page: currentPage,
+                  total: totalPages,
+                  defaultValue: 'Page {{page}} / {{total}}'
+                })}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-md px-2 text-xs"
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={currentPage >= totalPages || loading}
+              >
+                {t('projectArchive.memoryLibrary.nextPage', { defaultValue: 'Next' })}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

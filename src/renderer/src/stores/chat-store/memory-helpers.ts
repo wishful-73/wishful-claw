@@ -255,20 +255,29 @@ export async function memoryEntriesByStatus(
  * cannot express that because an empty status returns an empty list.
  * scope='project' is resolved worker-side by GetScope (workingFolder / projectId /
  * sshConnectionId), so the renderer never hand-builds a `project:ssh:{…}` scope.
+ *
+ * Server-side paging (iter-33 S-98): pass `offset` to walk the list and read
+ * `total` off the response to know how far it goes. `order` is a whitelist —
+ * the worker treats anything other than 'asc' as newest-first. The last two
+ * parameters were appended so the existing five-argument call sites keep working.
  */
 export async function memoryEntries(
   scope: string = 'all',
   workingFolder?: string | null,
   limit: number = 200,
   projectId?: string | null,
-  sshConnectionId?: string | null
-): Promise<{ entries?: MemoryStatusEntry[] }> {
+  sshConnectionId?: string | null,
+  offset: number = 0,
+  order: 'desc' | 'asc' = 'desc'
+): Promise<{ entries?: MemoryStatusEntry[]; total?: number }> {
   return window.api.workerRequest('memory/entries', {
     scope,
     workingFolder,
     projectId,
     sshConnectionId,
-    limit
+    limit,
+    offset,
+    order
   })
 }
 

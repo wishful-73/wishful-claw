@@ -1162,6 +1162,29 @@ S-97 做记忆库列表时，我在实施记录与提交信息里写了「C# 侧
 2. **S-97 的客户端分页实现**：直接改掉，还是保留为「小数据量快速路径」（数据少时不请求服务端）？**倾向直接改掉** —— 两套分页并存只会更难维护。
 3. **档案页 `ProjectMemoryLibraryTab`**（同名「记忆库」、同样平铺展开、同样一次性拉取）是否一并改 —— 与 S-97 遗留的同一问题合并处理。
 
+### 实施记录（2026-09-20）
+
+**三条待裁定均按倾向取值：① 总数取方案 A（多一次 `COUNT(*)`）；② S-97 的客户端分页直接改掉（不保留双轨）；③ 档案页一并改。「要改的」第 4 条（demotion-candidates 等）按原文**不扩**。**
+
+**C# 侧**
+
+- **端点拆分**：`memory/entries` 与 `memory/entries-by-status` 整体搬到新文件 `MemoryModule.Entries.cs`（`internal sealed partial class MemoryModule`）⇒ `MemoryModule.cs` **495 → 402 行**，回到 500 行红线内（AGENTS.md）。共用的行映射抽为 `ReadEntryRow`。
+- **新增响应类型**：`MemoryEntriesResponse(List<MemoryEntryRow> Entries, int Total)`（`AotMemoryResultTypes.cs`），并在 Worker 的 `WishfulClawJsonContext` 注册。**未改** `MemoryEntriesByStatusResponse` —— 它被两个端点共用，而 tier 浏览器（`MemoryPanel.tsx:68-69`）不需要总数。
+- **`MemoryEntries` 增参**：`offset`（默认 0，clamp ≥ 0）与 `order`（**白名单**：只有 `"asc"` 走升序，其余一律降序 —— 方向要拼进 `ORDER BY` 文本，绝不能是调用方原串）。SQL 改 `ORDER BY updated_at {dir}, id {dir} LIMIT @limit OFFSET @offset`，兑现第 2 条的 tiebreaker。返回 `MemoryEntriesResponse(entries, CountScope(db, scope))`。
+- **`limit` 上界**：原 `GetInt(parameters, "limit", 200)` 照单全收，调用方可一次要走整张表；现两个端点都 `Math.Clamp(..., 1, MaxEntriesLimit)`（`MaxEntriesLimit = 200`）。`entries-by-status` 一并收敛（同一个洞，顺手补）。
+
+**前端**
+
+- `memory-helpers.ts` 的 `memoryEntries()` 追加 `offset` / `order` 两个**尾参**（默认 `0` / `'desc'`）—— 前 5 个形参顺序不变，`ProjectMemoryLibraryTab` 与 `lib/agent/memory-hot-sync.ts` 的既有调用点免改；返回类型加 `total?`。
+- `MemoryEntriesTab.tsx`：`load(page, newest)` 改请求驱动（`limit = PAGE_SIZE`、`offset = (page-1)*PAGE_SIZE`、`order` 下推服务端），**删掉 `ENTRY_FETCH_LIMIT = 200` 及「硬墙」注释**；`total` 驱动 `totalPages`。搜索命中（`memory/search`，≤20 条）仍是单次有界响应，保留客户端切片。
+  **实施中踩到的一个坑**：原来重置页码的 `useEffect` 依赖 `rows`，改服务端分页后 `rows`（= 当前页内容）每翻一页都变 ⇒ 会把页码**永久踢回第 1 页**；依赖已改为 `[hits, newestFirst]`，并在注释里写明原因。
+- `ProjectMemoryLibraryTab.tsx`：同样改服务端分页（`PAGE_SIZE = 20` + 总数 + 上一页 / 下一页），切换项目时页码重置。
+- i18n `zh/en` 的 `projectArchive.memoryLibrary` 补 `total` / `prevPage` / `nextPage` / `pageOf`。
+
+**回归**：`WishfulClaw.Worker.csproj` 编译 **0 错 0 警**（经 `-p:BaseOutputPath` 外置输出 —— 主 sln 被正在运行的 `WishfulClaw.Worker` 进程锁 dll，**非代码错**）；`tsc` 三配置 **0 错**；`npm run test:i18n-coverage` PASS。
+
+**未自动验证的部分**：「跨页不重不漏」依赖 `id` tiebreaker，属运行时行为 ⇒ 列真机确认项（造同秒写入的多行后连翻数页核对）。
+
 ---
 
 ## 待登记

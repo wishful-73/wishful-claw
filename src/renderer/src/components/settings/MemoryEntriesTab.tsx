@@ -13,15 +13,13 @@ import {
 } from '@renderer/stores/chat-store/memory-helpers'
 import { SettingsSection } from './settings-primitives'
 
-/** Rows shown per page. Paging is client-side — see {@link ENTRY_FETCH_LIMIT}. */
-const PAGE_SIZE = 20
-
 /**
- * How many entries one request pulls. The worker's query is `LIMIT`-bounded with no `OFFSET`
- * (`MemoryModule.MemoryEntries`), so this is a hard ceiling on what can ever be browsed: paging
- * past it would silently show nothing. Raising it means changing the query too.
+ * Rows per page. Paging is server-side (iter-33 S-98): this is the `limit` sent to
+ * `memory/entries`, and the worker's `LIMIT`/`OFFSET` plus the `total` it returns drive the
+ * pager — so there is no browsing ceiling, and flipping the sort or stepping a page re-reads
+ * from the database instead of re-slicing a fixed snapshot.
  */
-const ENTRY_FETCH_LIMIT = 200
+const PAGE_SIZE = 20
 
 /** One rendered row, normalized across the two sources below (browse list vs search hit). */
 interface EntryRow {
@@ -61,12 +59,17 @@ function formatTimestamp(ms: number): string {
 
 /**
  * Global memory library — the `memory_entries` rows in scope `global` (iter-33 S-96, list
- * presentation reworked in S-97). Read-only: the DB tier is derived data, and the editable
- * surface for hand-tuning memory is the hot tab next door.
+ * presentation reworked in S-97, paging moved server-side in S-98). Read-only: the DB tier is
+ * derived data, and the editable surface for hand-tuning memory is the hot tab next door.
  *
  * Two sources, one list: an empty query browses everything in the scope via `memory/entries`
  * (which, unlike `memory/entries-by-status`, carries no status predicate), a non-empty query
  * switches to `memory/search`. Clearing the query returns to browsing.
+ *
+ * Browsing is paged by the worker — one page per request, with the scope's total coming back
+ * alongside — because the query used to be `LIMIT`-bounded with no `OFFSET`, which put a hard
+ * ceiling on what could ever be read. Search hits are a single bounded response and stay
+ * client-side.
  *
  * Rows are collapsed by default (title + tier/status + last-modified time only) because entries
  * are long-form prose and an expanded list of hundreds is unreadable; the timestamp is the
@@ -77,6 +80,7 @@ function formatTimestamp(ms: number): string {
 function MemoryEntriesTab(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const [entries, setEntries] = useState<EntryRow[]>([])
+  const [total, setTotal] = useState(0)
   const [hits, setHits] = useState<EntryRow[] | null>(null)
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -86,25 +90,38 @@ function MemoryEntriesTab(): React.JSX.Element {
   const [page, setPage] = useState(1)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
 
-  const load = useCallback(async () => {
+  /** Reads exactly one page from the worker; nothing is sliced here any more. */
+  const load = useCallback(async (targetPage: number, newest: boolean): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
-      const result = await memoryEntries('global', undefined, ENTRY_FETCH_LIMIT)
+      const result = await memoryEntries(
+        'global',
+        undefined,
+        PAGE_SIZE,
+        undefined,
+        undefined,
+        (targetPage - 1) * PAGE_SIZE,
+        newest ? 'desc' : 'asc'
+      )
       setEntries((result.entries ?? []).map(fromEntry))
+      setTotal(result.total ?? 0)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setEntries([])
+      setTotal(0)
     } finally {
       setLoading(false)
     }
   }, [])
 
+  // Browse mode only. A search hit list is one bounded response with its own client-side
+  // slicing, so there is nothing to re-read when its page flips.
   useEffect(() => {
-    void load()
-  }, [load])
+    if (hits === null) void load(page, newestFirst)
+  }, [load, page, newestFirst, hits])
 
-  const handleSearch = useCallback(async () => {
+  const handleSearch = useCallback(async (): Promise<void> => {
     const trimmed = query.trim()
     if (!trimmed) {
       setHits(null)
@@ -123,24 +140,32 @@ function MemoryEntriesTab(): React.JSX.Element {
     }
   }, [query])
 
-  const rows = hits ?? entries
+  const browsing = hits === null
 
-  // The browse query already orders by updated_at DESC, but the sort is re-applied here so the
-  // toggle also governs search hits and so an unparsable timestamp (0) lands at the right end.
-  const sortedRows = useMemo(() => {
-    const copy = [...rows]
-    copy.sort((a, b) => (newestFirst ? b.updatedAtMs - a.updatedAtMs : a.updatedAtMs - b.updatedAtMs))
+  // Browsing: the worker applied the ordering already, so its page is served as-is. Searching:
+  // the hit list arrives in one bounded response and is ordered here, the way it always was.
+  const rows = useMemo(() => {
+    if (browsing) return entries
+    const copy = [...(hits ?? [])]
+    copy.sort((a, b) =>
+      newestFirst ? b.updatedAtMs - a.updatedAtMs : a.updatedAtMs - b.updatedAtMs
+    )
     return copy
-  }, [rows, newestFirst])
+  }, [browsing, entries, hits, newestFirst])
 
-  const totalPages = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE))
+  const rowCount = browsing ? total : rows.length
+  const totalPages = Math.max(1, Math.ceil(rowCount / PAGE_SIZE))
   const currentPage = Math.min(page, totalPages)
-  const pageRows = sortedRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const pageRows = browsing
+    ? rows
+    : rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
-  // A different result set (search, refresh) or sort order starts reading from the top.
+  // A new result set (search on/off) or a sort flip starts reading from the top. `rows` is
+  // deliberately NOT a dependency: in browse mode it changes on every page turn, which would
+  // otherwise kick the pager back to page 1 in a loop.
   useEffect(() => {
     setPage(1)
-  }, [rows, newestFirst])
+  }, [hits, newestFirst])
 
   const toggleRow = useCallback((key: string) => {
     setExpandedKeys((prev) => {
@@ -151,7 +176,7 @@ function MemoryEntriesTab(): React.JSX.Element {
     })
   }, [])
 
-  const browsingNothing = !loading && hits === null && entries.length === 0
+  const browsingNothing = !loading && browsing && rowCount === 0
 
   return (
     <SettingsSection
@@ -163,7 +188,7 @@ function MemoryEntriesTab(): React.JSX.Element {
           variant="outline"
           size="sm"
           className="h-7 rounded-md px-2.5 text-xs"
-          onClick={() => void load()}
+          onClick={() => void load(currentPage, newestFirst)}
           disabled={loading}
         >
           {loading ? (
@@ -215,7 +240,7 @@ function MemoryEntriesTab(): React.JSX.Element {
         </p>
       )}
 
-      {sortedRows.length > 0 && (
+      {rowCount > 0 && (
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Button
@@ -261,12 +286,12 @@ function MemoryEntriesTab(): React.JSX.Element {
         </div>
       )}
 
-      {loading && entries.length === 0 ? (
+      {loading && pageRows.length === 0 ? (
         <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
           <Loader2 className="mr-2 size-4 animate-spin" />
           {t('memoryPage.entries.loading')}
         </div>
-      ) : sortedRows.length === 0 ? (
+      ) : pageRows.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
           <Database className="size-8 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground">

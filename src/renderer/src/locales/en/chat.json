@@ -1049,7 +1049,11 @@
       "desc": "Entries stored in the local memory database for this project.",
       "refresh": "Refresh",
       "empty": "No memory entries stored for this project yet.",
-      "untitled": "Untitled"
+      "untitled": "Untitled",
+      "total": "{{count}} entries",
+      "prevPage": "Prev",
+      "nextPage": "Next",
+      "pageOf": "Page {{page}} / {{total}}"
     },
     "persona": {
       "noPersonas": "No project-specific personas yet. Add personas via the persona settings page.",

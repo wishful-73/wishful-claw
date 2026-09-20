@@ -1171,7 +1171,8 @@ S-97 做记忆库列表时，我在实施记录与提交信息里写了「C# 侧
 - **端点拆分**：`memory/entries` 与 `memory/entries-by-status` 整体搬到新文件 `MemoryModule.Entries.cs`（`internal sealed partial class MemoryModule`）⇒ `MemoryModule.cs` **495 → 402 行**，回到 500 行红线内（AGENTS.md）。共用的行映射抽为 `ReadEntryRow`。
 - **新增响应类型**：`MemoryEntriesResponse(List<MemoryEntryRow> Entries, int Total)`（`AotMemoryResultTypes.cs`），并在 Worker 的 `WishfulClawJsonContext` 注册。**未改** `MemoryEntriesByStatusResponse` —— 它被两个端点共用，而 tier 浏览器（`MemoryPanel.tsx:68-69`）不需要总数。
 - **`MemoryEntries` 增参**：`offset`（默认 0，clamp ≥ 0）与 `order`（**白名单**：只有 `"asc"` 走升序，其余一律降序 —— 方向要拼进 `ORDER BY` 文本，绝不能是调用方原串）。SQL 改 `ORDER BY updated_at {dir}, id {dir} LIMIT @limit OFFSET @offset`，兑现第 2 条的 tiebreaker。返回 `MemoryEntriesResponse(entries, CountScope(db, scope))`。
-- **`limit` 上界**：原 `GetInt(parameters, "limit", 200)` 照单全收，调用方可一次要走整张表；现两个端点都 `Math.Clamp(..., 1, MaxEntriesLimit)`（`MaxEntriesLimit = 200`）。`entries-by-status` 一并收敛（同一个洞，顺手补）。
+- **`limit` 上界**：原 `GetInt(parameters, "limit", 200)` 照单全收，调用方可一次要走整张表；现两个端点都 `Math.Clamp(..., 1, MaxEntriesLimit)`。`entries-by-status` 一并收敛（同一个洞，顺手补）。
+  **上界取 500 而非 200（审查 ❌-1 订正）**：`lib/agent/memory-hot-sync.ts` 的 `DB_SYNC_SCAN_LIMIT = 500` 是 S-93 镜像链的判重窗口，收成 200 会**静默缩小**它（该调用点传 `limit: 500`，被夹后不报错、只是变短）⇒ 上界定为 `500`。实施当时按 plan 的旧值取了 200，已在本节与 plan 订正。
 
 **前端**
 
@@ -1268,7 +1269,7 @@ S-97 做记忆库列表时，我在实施记录与提交信息里写了「C# 侧
 
 **一处认知修正（由规划验证 ❌-1 逼出，已回写 plan）**：AND 语义下返回集**每一行都命中全部 token**，「命中词数」对候选集是**常量**、不是区分变量；有区分度的只有「同一个词是命中 `title` 还是仅命中 `content`」。验证断言据此改写（原写的「双命中排在单命中之前」在 AND 下不可判定）。
 
-**回归**：`tests/WishfulClaw.MemoryRecallRegressionTests` 新增 `RunMultiKeywordSuite`（6 断言）—— 双词 CJK 走 LIKE 且 AND 排除只带一词的行、标题承载词者优先于正文承载词者（尽管后者更新）、score 逐词累加、全 ≥3 字符走 FTS、单 token 仍按子串命中。套件 **31 → 37**，全 PASS；`WishfulClaw.Workspace.csproj` 编译 **0 错 0 警**。
+**回归**：`tests/WishfulClaw.MemoryRecallRegressionTests` 新增 `RunMultiKeywordSuite`（7 断言）—— 双词 CJK 走 LIKE 且 AND 排除只带一词的行、标题承载词者优先于正文承载词者（尽管后者更新）、score 逐词累加（断言到**数值** 4 / 2，只比大小无法区分「累加」与「不累加」）、全 ≥3 字符的查询**仍能命中**（不声称走 FTS：零命中会回退 LIKE，返回同一行）、单 token 仍按子串命中。套件 **31 → 38**，全 PASS；`WishfulClaw.Workspace.csproj` 编译 **0 错 0 警**。
 
 ---
 
@@ -1345,7 +1346,7 @@ S-97 做记忆库列表时，我在实施记录与提交信息里写了「C# 侧
 - **未做 S100-0 诊断（偏离 plan，特此记档）**：诊断的价值是「把三种可能定到唯一一支」，而 HTML 回退**覆盖了其中唯一「有文本却没读到」的一支**（第 2 支「剪贴板真无文本」本就不该有反应）。**以全分支覆盖替代单支诊断**，好处是不需要老大配合复现即可交付。若真机验证 HTML 回退仍未解决，说明落的是第 3 支（有 `text/plain` 但 `getData` 返空），下一步再上 `items` 遍历 —— 注意 `getAsString` 是**异步**的，届时要么把 `handlePaste` 改造成 async，要么加同步兜底。
 - 第二条待裁定（统一收敛到受控路径）**本次不做**：`execCommand` 在「读得到文本」的路径上工作正常，本需求只修「读不到文本」这一支，不动能跑的代码。
 
-**回归**：新增 `tests/paste-text/program.ts` + `package.json` 的 `test:paste-text`（7 断言：空/空 → 空；`null`/`undefined` 组合 → 空；`plain` 优先且**不调** `htmlToText`；仅 HTML 时走回退且结果非空）。`npm run test:paste-text` **7/7 PASS**；`tsc -p tsconfig.web.json / tsconfig.node.json / tsconfig.json` 三配置 **0 错**。
+**回归**：新增 `tests/paste-text/program.ts` + `package.json` 的 `test:paste-text`（6 断言：空/空 → 空；`null`/`undefined` 组合 → 空；`plain` 优先且**不调** `htmlToText`；仅 HTML 时走回退桩并返回 `stub:` 前缀结果）。`npm run test:paste-text` **6/6 PASS**；`tsc -p tsconfig.web.json / tsconfig.node.json / tsconfig.json` 三配置 **0 错**。真实 `htmlToPlainText`（`DOMParser` 分支）node 下无法执行，仍**无自动化证据**，只靠真机验证覆盖。
 
 ---
 

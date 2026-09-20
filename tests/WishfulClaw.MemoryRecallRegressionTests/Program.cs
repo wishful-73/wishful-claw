@@ -116,12 +116,17 @@ internal static class Program
         Assert(hits.Count >= 2, "multi-keyword CJK query is served by the LIKE path (both keywords are 2 chars)");
         Assert(hits.All(h => h.Title != "记忆 单独出现"), "AND semantics exclude a row carrying only one keyword");
         AssertEqual("记忆 整理 配置", hits[0].Title, "title-carried keywords outrank body-carried ones despite being older");
-        Assert(hits[0].Score > hits[1].Score, "score accumulates per keyword");
+        // Asserting the value, not just the ordering: a non-accumulating implementation would
+        // also put A above B (2 vs 1), so the comparison alone cannot tell the two apart.
+        // 4 = (title 2 + content 1) × 2 keywords; 2 = content-only, × 2 keywords.
+        AssertEqual(4d, hits[0].Score ?? -1d, "score accumulates per keyword (both in the title)");
+        AssertEqual(2d, hits[1].Score ?? -1d, "score accumulates per keyword (both in the body)");
 
-        // Every keyword >= 3 chars keeps the query on the trigram index: the fixture inserted
-        // by RunFtsLiteralQuerySuite contains "alpha:beta (gamma)", so both literals must fire.
+        // Every keyword >= 3 chars keeps the query on the trigram index. Not asserting "via
+        // FTS" on purpose: a zero-hit FTS result falls back to LIKE and returns the same row,
+        // so this only proves the all-long-keyword path still matches.
         var ftsHits = search.SearchAsync("alpha gamma", "global").GetAwaiter().GetResult();
-        Assert(ftsHits.Count > 0, "multi-keyword query with all keywords >= 3 chars hits via FTS");
+        Assert(ftsHits.Count > 0, "multi-keyword query with all keywords >= 3 chars still matches");
 
         // A single keyword must behave exactly as it did before S-99 (substring match here).
         var single = search.SearchAsync("记忆", "global").GetAwaiter().GetResult();

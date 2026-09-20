@@ -258,3 +258,180 @@
 | `src/renderer/src/lib/agent/memory-hot-sync.ts` | 96 | **96** | 10 | S-93 新模块 |
 
 **行数口径纪律（已犯两次，勿再犯）**：任何「N → M 行」的结论，必须在**全部改动落地后重测**再写进文档 —— 本迭代 S-90 先写 472、再写 327，两次都错。本表数值由 `[System.IO.File]::ReadAllLines()` 直接计数得出，可作为收尾基线。
+
+## 审查（第二批 S-98 ~ S-100，2026-09-20）
+
+- 被审提交：`e15ed074`（S-99 + S-100）、`53c23c5a`（S-98）；HEAD = `53c23c5a`，分支 `dev/v2-iter-33`
+- 需求基准：`raw-requirements.md` 的 S-98（`:1120-1188`）/ S-99（`:1217-1272`）/ S-100（`:1275-1348`）；计划 `plan.md`「## 第二批（S-98 / S-99 / S-100）」（`:187-262`）；规划验证 `compliance_report.md`「## 规划验证（第二批 S-98 ~ S-100，2026-09-20）」（`:274-397`）与「### 复验（第二批 S-98 ~ S-100，2026-09-20）」（`:398-434`）
+- 规范基准：`AGENTS.md`（分层与单向依赖 `:159-177`、AOT 十条 `:222-235`、大文件拆分 `:237-247`、命名 `:202-203`、提交规范 `:302-319`）；`docs/dev-workflow.md`（审查态定义）
+- 审查者：独立 subagent（code-reviewer）
+- 审查方式：**纯静态审查** —— `git show` 读两份完整 diff + 实读 HEAD 源文件与调用点取证；按本轮指令**未跑构建、未跑测试、未改任何源码**；行号均为 HEAD 物理行号
+- 行数口径：`(Get-Content <file>).Count`（含空行），与前几批同口径
+
+### 一、逐审查项结论
+
+| # | 审查项 | 结论 | 证据 / 说明 |
+|---|---|---|---|
+| 1 | 分层约定（Contracts→Core→Infrastructure→Workspace→Persona→Agent→Worker），有无逆向依赖 | ✅ | 三处改动都落在正确层：`MemoryFtsService`（Workspace）只 `using WishfulClaw.Infrastructure.Db` + `WishfulClaw.Core.Protocol`（`MemoryFtsService.cs:1-4`）；新类型 `MemoryEntriesResponse` 落 Workspace（`AotMemoryResultTypes.cs:41-49`）；新端点文件 `MemoryModule.Entries.cs` 落 Worker（`internal sealed partial class MemoryModule`，`:13`），只 `using Contracts / Infrastructure.Db / Workspace.Memory`（`:1-5`）—— Worker→Workspace 是允许方向（`AGENTS.md:154`）。渲染端 `memory-helpers.ts`（stores）与两个 Tab（components）只经 `window.api.workerRequest` 走 RPC（`memory-helpers.ts:273`），未越层直连 Worker/DB。**未发现任何逆向引用**（无 Workspace→Worker / Infrastructure→Workspace 的新增引用） |
+| 2 | 是否真的实现了需求 | ⚠️ | S-99 ✅（单 token 等价**成立**，见 2.1）；S-98 ✅ 主体（`order` 白名单与 `offset` clamp 均**无注入面**，见 2.2）但**夹带一处跨模块行为收缩**（❌-1）；S-100 ✅ 代码正确（回退确在 plain 为空时发生，见 2.3），但**唯一真实逻辑零自动化证据**（⚠️-1）。另：plan 的 S99-4 检查点（9 词不抛异常）无落点（⚠️-4） |
+| 3 | 错误处理是否充分 | ⚠️ | 合格项：FTS 失败/零命中仍回退 LIKE，且 `results.Clear()` 丢弃半读行（`MemoryFtsService.cs:89-95`）；DB 异常被 `RunAsync` 包成 `SimpleOkResult(false, Error)`（`MemoryModule.cs:391-401`），两个前端都有 try/catch + 错误条 + 清空态（`MemoryEntriesTab.tsx:109-115`、`ProjectMemoryLibraryTab.tsx:53-59`）。缺口：① LIKE 路**无 try/catch**（`MemoryFtsService.cs:136`），SQL 失败会直穿；② `offset`/`limit` 在 `RunAsync` **之外**解析（`MemoryModule.Entries.cs:80-85`），畸形入参会绕过模块自己的错误包装（⚠️-3）；③ 前端未按 `totalPages` 夹紧请求页码（⚠️-2） |
+| 4 | 硬编码路径 / 密钥 / 不必要的新依赖 | ✅ | 两份 diff 无绝对路径、无密钥/凭据字面量；`package.json` 只 +1 条 `test:paste-text` 脚本，无新依赖（`tests/paste-text/program.ts` 只 import 被测模块 + esbuild 打包，与既有 28 条 TS 测试同范式）；C# 侧无新 NuGet |
+| 5 | 单文件 500 行红线（逐个实测） | ✅ | 见「二、行数实测」—— 12 个触碰/受影响文件**全部 ≤ 500**，且 plan 自设的更严阈值也达成（`MemoryModule.cs` 402 ≤ 420；`MemoryModule.Entries.cs` 132 ≤ 150） |
+| 6 | 行为回归风险 | ❌ | 六个点名面逐一核过（见 2.4）：5 参调用点编译兼容 ✅；重置页码 `useEffect` 的依赖改动**正确且无死循环** ✅；`entries-by-status` 的 `limit` 收敛**未影响 tier 浏览器**（唯一调用点正好传 200）✅；但 `memory/entries` 的 `limit` 上界把 `memory-hot-sync.ts` 的 500 行判重窗口**静默缩到 200**（❌-1），另有跨页请求竞态与「页码越界→假空列表」两处 UX 回归（⚠️-2） |
+| 7 | 测试断言是否真能证伪 | ⚠️ | `RunMultiKeywordSuite` **能证伪改动前行为**（旧实现的整串短语 + 整串 LIKE 在 `alpha gamma` / `记忆 整理` 上都必然 0 命中，`:116` 会先失败），但两条断言名过其实（不能区分 FTS 与 LIKE 回退；不能证明 score「逐词累加」）⇒ ⚠️-5；`tests/paste-text/program.ts` 6/7 条是纯路由断言，**唯一标注「this is the S-100 fix」的那条恒真**，且 S-100 唯一真实逻辑 `htmlToPlainText` 在测试中**从未被执行**（⚠️-1） |
+
+#### 2.1 S-99「单 token 行为与改动前逐字节一致」—— 成立
+
+逐处对照（旧 = `e15ed074^` 的 `SearchAsync`，新 = HEAD）：
+- 开关：旧 `if (q.Length >= MinFtsQueryLength)`（原 `:55`）→ 新 `if (tokens.All(t => t.Length >= MinFtsQueryLength))`（`:63`）。`q` 已在 `:41` `Trim()`；单 token 意味着无任何空白 ⇒ `tokens = [q]` ⇒ 两者等价 ✅
+- FTS 串：旧 `BuildFtsLiteralQuery(q)` → 新 `BuildFtsQuery([q])` = `string.Join(" AND ", [BuildFtsLiteralQuery(q)])`（`:207-208`）⇒ n=1 时退化为同一字面量、同一转义 ✅
+- LIKE 回退：子句由 `(content LIKE @pattern OR title LIKE @pattern)` 变 `(title LIKE @like0 OR content LIKE @like0)`（`:122`）—— 同一谓词、仅操作数顺序不同 ✅；score 由 `(title?2)+(content?1)`（旧 `:103-104`）变为同式的单 token 展开（`:123-125`）✅；`ORDER BY` 未动（`:133`）✅
+- 早退、`limit` clamp（`:40`）、`statusFilter`/`scopeFilter`（`:52-54`）均未动 ✅
+
+结论：**该承诺为真**；且未出现「all-≥3 走 FTS 就丢掉 LIKE 兜底」—— `:99 if (results.Count == 0)` 兜底仍在（规划验证 ⚠️-3 记的隐患未落地）。
+⚠️ 附注：该等价**依赖 `:37-38` 的空查询早退** —— 若将来该早退被移除，`tokens` 为空 ⇒ `tokens.All(...)` 为**真** ⇒ `BuildFtsQuery([])` 得 `""`，LIKE 子句退化成 `WHERE (){...}`（`:132`）语法错误且**无 try/catch**。建议在 `:46` 后补一句 `if (tokens.Count == 0) return …;` 把不变式写进代码（防御性，非阻断）。
+
+#### 2.2 注入面复核
+
+- `order`：**白名单** —— 只做 `!Equals(order, "asc", OrdinalIgnoreCase)` ⇒ `descending`（`MemoryModule.Entries.cs:85`），SQL 里拼的是自己产生的 `direction = descending ? "DESC" : "ASC"`（`:93`、`:98`）⇒ 调用方串**永不进入 SQL 文本** ✅（`ORDER BY` 值位无法参数化时这是唯一正确解）
+- `offset`：`Math.Max(0, GetInt(parameters, "offset", 0))`（`:81`）+ `@offset` 参数（`:100`）✅；无上界不影响正确性（大 offset 只返回空页）
+- `limit`：`Math.Clamp(..., 1, MaxEntriesLimit)`（`:80`）✅ 有上界（**上界选值见 ❌-1**）
+- 关键词：全部走参数（`@like{i}` 逐个绑定，`MemoryFtsService.cs:115-127`）；`scope` 仍是既有 `EscapeSql` 拼接（`:213`、`MemoryModule.Entries.cs:92/116`），**未新增**注入面（`scope` 由 `GetScope` 产出，非调用方原串）
+- ⚠️ 附带：LIKE 的 `%` / `_` **未转义**（`:121` `$"%{tokens[i]}%"`）—— 属改动前既有行为，但**改动后 LIKE 路的覆盖面变大了**（含短 token 的多词查询全部走它），用户输入 `%` 会变通配符 ⇒ ⚠️-6
+
+#### 2.3 S-100 回退条件复核
+
+`composePastedText(plain, html, htmlToText)`（`use-composer-interactions.ts:69-77`）：`if (plain) return plain` ⇒ **只有 plain 为 `null`/`undefined`/`''` 才读 html** ✅；html 为空则 `''` ✅；调用点 `:128-132` 用组合结果做 `if (!plainText) return`（仍**不** `preventDefault`）✅。`shouldCollapsePaste` 现吃**提取后**的文本（`:140`），兑现 plan S100-3 ✅。`clipboardTextToHtml` 先转义 `&<>` 再进 `execCommand('insertHTML')`（`:28-34`、`:155`）⇒ 从 HTML 剪贴板提取的内容**不会**被当 HTML 注入 ✅（`DOMParser` 文档是 inert 的，脚本/`onerror` 不执行）。
+⚠️ 小口径：`plain = ' '`（仅空白）仍算「有 plain」⇒ 富文本源若同时提供空白 plain，仍会插入空白（与改动前一致，非回归）。
+
+#### 2.4 六个回归面逐一核
+
+1. **`memoryEntries()` 新尾参对 3 个调用点**：`MemoryEntriesTab`（7 参，`:98-106`）、`ProjectMemoryLibraryTab`（6 参，`:43-50`）、`lib/agent/memory-hot-sync.ts`（5 参，`:61-67`，吃默认 `offset=0/order='desc'`）⇒ 语法与默认值均兼容 ✅；**但第 3 个调用点的语义被服务端 clamp 改了**（❌-1）
+2. **重置页码 `useEffect` 依赖**：`[rows, newestFirst]` → `[hits, newestFirst]`（`MemoryEntriesTab.tsx:166-168`）。`setPage(1)` 幂等（React 同值 bail-out）⇒ **无死循环** ✅；`rows` 不再是依赖 ⇒ 翻页不会被踢回第 1 页 ✅（plan 记的实施坑确已修）。**但**：`hits` 由非 null 变 null 的那次提交里，load effect（`:120`）声明**早于** setPage effect（`:166`）⇒ 会先按**旧页码**发一次请求、再按 page=1 发第二次，两响应无序号保护、可能乱序落地（⚠️-2）
+3. **`entries-by-status` 的 `limit` 收敛**：唯一调用点是 `MemoryPanel.tsx:68-69`，硬编码 `200` ⇒ `Math.Clamp(200,1,200)=200`，**行为完全不变** ✅；`MemoryEntriesByStatusResponse` 未改（`AotMemoryResultTypes.cs`），tier 浏览器读 `.entries` 不受新的 `total` 影响（`total` 只加在独立的 `MemoryEntriesResponse` 上）✅
+4. **排序/响应契约**：`memory/entries` 的 wire 形状由 `{entries}` 变为 `{entries,total}`（**加字段**，向后兼容）✅；`order` 缺省仍 `updated_at DESC`（`MemoryModule.Entries.cs:85`）✅；`entries-by-status` 顺带补 `id DESC` 破平（`:48`）—— 行为变更但严格更确定，tier 浏览器不依赖同行相对次序 ✅
+5. **i18n**：`chat.json` zh/en 各 +4 键（`total/prevPage/nextPage/pageOf`）且**两侧对称**；`settings.json` 的 `memoryPage.entries.{prevPage,nextPage,pageOf,matches,sortNewest,sortOldest,rowHint}` 均已存在（zh `:1575-1581` / en `:1436-1442`）⇒ 无缺失 key ✅（未跑 `test:i18n-coverage`，见「六、残余风险」）
+6. **`ENTRY_FETCH_LIMIT` 残留**：全仓 grep **0 命中**（`src` / `tests`）✅；新注释已把「服务端分页」语义写清（`MemoryEntriesTab.tsx:16-22`、`:69-72`）✅
+
+### 二、行数实测（HEAD `53c23c5a`，`(Get-Content).Count` 含空行）
+
+| 文件 | 改动前 | 改动后 | ≤500 |
+|---|---|---|---|
+| `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs` | 495 | **402** | ✅（且 ≤ plan 自设 420） |
+| `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs`（新） | — | **132** | ✅（且 ≤ plan 自设 150） |
+| `src/runtime/WishfulClaw.Workspace/Memory/MemoryFtsService.cs` | 155 | **214** | ✅ |
+| `src/runtime/WishfulClaw.Workspace/Memory/AotMemoryResultTypes.cs` | 40 | **49** | ✅ |
+| `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs` | 149 | **150** | ✅ |
+| `src/renderer/src/stores/chat-store/memory-helpers.ts` | 293 | **302** | ✅ |
+| `src/renderer/src/components/settings/MemoryEntriesTab.tsx` | 322 | **347** | ✅ |
+| `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` | 132 | **195** | ✅ |
+| `src/renderer/src/components/chat/InputArea/use-composer-interactions.ts` | 119 | **170** | ✅ |
+| `src/renderer/src/lib/agent/memory-hot-sync.ts`（受影响未改） | 96 | **96** | ✅ |
+| `tests/paste-text/program.ts`（新） | — | **60** | ✅ |
+| `tests/WishfulClaw.MemoryRecallRegressionTests/Program.cs` | 220 | **256** | ✅ |
+
+**结论：红线与 plan 自设阈值全部达成**。`MemoryModule.cs` 的拆分（495→402）是**必要动作**而非美化 —— 规划验证 §二已论证：不拆则 S98-3 的增参会把它推过 500。
+
+### 三、❌ 阻断项
+
+#### ❌-1 `limit` 上界 200 把 `memory-hot-sync.ts` 的 500 行判重窗口**静默缩到 200**
+
+- **服务端**：`MemoryModule.Entries.cs:19` `private const int MaxEntriesLimit = 200;` + `:80` `var limit = Math.Clamp(GetInt(parameters, "limit", MaxEntriesLimit), 1, MaxEntriesLimit);`
+- **消费方**：`src/renderer/src/lib/agent/memory-hot-sync.ts:15` `const DB_SYNC_SCAN_LIMIT = 500`（注释「How many existing entries to scan for duplicates before mirroring」），`:61-67` 以它作 `limit` 调 `memoryEntries(...)`，`:68-76` 对取回的既有条目做插入前判重。
+- **问题**：改动前该入参**照单全收**（旧 `GetInt(parameters, "limit", 200)` 无 clamp）⇒ 窗口 = 500；改动后 `Math.Clamp(500,1,200)` = **200**。这是本刀引入的、跨模块的、**无任何断言覆盖**的行为回归：S-93 镜像链在单 scope 条目超 200 后，窗口外已存在的重复项会被**重复插入**（正是 `raw-requirements.md:1197`「待登记 #2」记的那类缺陷被放大）。同时 `DB_SYNC_SCAN_LIMIT = 500` 这个常量与它的注释**已与事实不符**，成了误导性常量。
+- **这不是「取值偏好」，是规划验证早已点名的风险**：`compliance_report.md:388`（⚠️-7）原文「**注意：若上界取得比 500 小会静默缩小 S-93 的判重窗口**」，并建议上界取 500；而 `plan.md:232` 写的是「clamp 到 ≤ 200」—— **plan 自身的取值与它引用的 ⚠️-7 相反**，实施按 plan 字面取值，于是把这条风险落地了。commit message 与 `raw-requirements.md:1178` 都写着 `memory-hot-sync.ts` 免改，实际是**免改编译、改了行为**。
+- **当前数据量下后果轻微**（仓内记档 prod 123 条 < 200，见 `raw-requirements.md:1359`），故**修法极廉价、没有理由拖**。
+- **修正建议（二选一，务必让常量与事实一致）**：
+  1. 上界对齐最大既有调用值：`MaxEntriesLimit = 500`，并在 `:16-18` 注释写明「= `memory-hot-sync.ts` 的 `DB_SYNC_SCAN_LIMIT`，不得调小」；或
+  2. 保持页面上界 200，但把 `memory-hot-sync.ts:15` 改成 200，注释改为「受 `memory/entries` 的 `MaxEntriesLimit` 约束 —— 判重窗口 = 200，超出部分靠下次整理收敛」，即**把收缩显式化**。
+  并把 S-98 实施记录里 `memory-hot-sync.ts` 的「不改代码」订正为「不改代码，但行为受上界影响（窗口 500→200）」。
+
+### 四、⚠️ 建议项（不阻断）
+
+- **⚠️-1（S-100 证据缺口：唯一真实逻辑零覆盖 + 一条恒真断言）**
+  - `tests/paste-text/program.ts:56-59` 的 `assert(composePastedText('', htmlFlavour, (v) => \`stub:${v}\`).length > 0, 'the html fallback yields insertable text (this is the S-100 fix)')` —— 传进去的桩**恒返回非空**，该断言**不可能失败**，而它偏偏是唯一被标为「S-100 的修复」的那条。
+  - 更实质：`htmlToPlainText`（`use-composer-interactions.ts:43-56`，含 `<br>`→换行、块级元素补换行、`\n{3,}` 压缩、`trim`）**在任何测试里都未被执行**（测试用第三参把整段逻辑换掉了）⇒ **S-100 真正改的那段代码目前零自动化证据**：把它改成 `return ''`，套件照样 7/7 PASS（此时线上症状就是「再次静默失败」）。
+  - 建议（低成本）：把「块边界 → 换行 + 空行压缩」抽成**不吃 `Document`** 的纯函数（或让 `htmlToPlainText` 接受可注入的 `parse`），补 3 条真断言（`<ul><li>a</li><li>b</li></ul>` ⇒ `"a\nb"`；`a<br>b` ⇒ `"a\nb"`；三连空行压成两行）；退一步至少把 `:56-59` 的文案从「this is the S-100 fix」降为「html 桩被调用」—— **别让恒真断言冒充证据**。
+  - 附：`raw-requirements.md:1336-1337` 的「待裁定 1（是否先诊断再改）」**至今无人拍板**，实施（`:1345`）以「全分支覆盖替代单支诊断」自行取值 ⇒ 若真机仍不生效，说明落的是第 3 支（有 `text/plain` 但 `getData` 返空），届时 `text/html` 回退**不对症**。建议真机验证时记录一次 `event.clipboardData.types`，把这条不确定性关掉。
+
+- **⚠️-2（两处前端回归：跨页请求竞态 + 越界页码显示假空）**
+  - 竞态：`MemoryEntriesTab.tsx:120-122` 的 load effect 声明**先于** `:166-168` 的 `setPage(1)`，故「清空搜索框回到浏览」「切换排序」时会先按旧页码发一次请求、再按 page=1 发一次；两请求**无序号/取消机制**，后到的旧响应可能覆盖新页内容（页码显示第 1 页、列表却是第 3 页）。`ProjectMemoryLibraryTab.tsx:66-72` 同形（切项目时先 `load(旧page)` 再 `load(1)`）。
+  - 越界：两处 load 都吃**未夹紧的 `page`**（`MemoryEntriesTab.tsx:121`、`ProjectMemoryLibraryTab.tsx:71`），而显示用 `currentPage = Math.min(page, totalPages)`。若数据外部变少（总条数 45→5），会请求 offset=40 得空页 ⇒ 渲染「没有匹配的记忆条目」而页码写着「第 1 / 1 页」，**看起来像数据丢了**。
+  - 建议：① 请求改吃 `currentPage`（或在 `load` 内先 `Math.min`）；② 加请求序号（`const seq = useRef(0)`，回填前 `if (seq.current !== mine) return`），或把两个 effect 合成单个「参数变化即重新取数」的 effect。属既有交互模型的欠账，但本刀把「一次拉全量」换成「每页一次请求」**放大了它**。
+
+- **⚠️-3（参数解析在错误包装之外；LIKE 路无 try/catch）**
+  - `MemoryModule.Entries.cs:80-85`（`limit`/`offset`/`order`）都在 `RunAsync(...)`（`:87`）**之前**执行：`GetInt` 走 `prop.GetInt32()`（`MemoryModule.cs:358-367`），调用方给超 Int32 范围的数字时抛异常，而 `WorkerDispatcher.DispatchAsync`（`WorkerDispatcher.cs:34-45`）**不捕获** ⇒ 该请求拿不到模块统一风格的错误响应（`limit` 的同一形态是既有；`offset` 是本刀新增的同类入口）。
+  - `MemoryFtsService.cs:136` 的 LIKE 查询**无 try/catch**（FTS 路有）：SQL 构造一旦失败异常直穿到 `memory/search`。
+  - 建议：三个参数解析挪进 `RunAsync` 内；给 LIKE 路补与 FTS 路对称的 catch + `WorkerLog.Warn`。
+
+- **⚠️-4（plan 自设检查点无落点：S99-4 的 9 词查询）**
+  `plan.md:217`（S99-4）验证写「9 个词的查询正常返回、不抛异常」，但 `RunMultiKeywordSuite`（`tests/WishfulClaw.MemoryRecallRegressionTests/Program.cs:103-129`）的 6 条断言里没有这条，`MaxQueryTokens = 8`（`MemoryFtsService.cs:180`）的截断语义**无断言覆盖**。建议补一条：9 词查询返回非空、不抛异常，顺带钉住「第 9 个词被丢弃」。
+
+- **⚠️-5（`RunMultiKeywordSuite` 两条断言名不副实）**
+  - `Program.cs:123-124`：`Assert(ftsHits.Count > 0, "multi-keyword query with all keywords >= 3 chars hits via FTS")` —— 它**能证伪改动前行为**（旧实现必然 0 命中），但**无法证明命中来自 FTS**：若 FTS 分支将来坏掉/恒零命中，`:99` 的 LIKE 回退会给出同样的行，断言照过。名字里的 `via FTS` 是**过度声明**，建议改文案或加可区分的探针。
+  - `Program.cs:119`：`Assert(hits[0].Score > hits[1].Score, "score accumulates per keyword")` —— **不能证明「累加」**：换成「title 命中 2 / 只命中 content 1」的**不累加**实现，A(2) > B(1) 照样成立。要可证伪应断言具体值（A = `2+2 = 4`、B = `1+1 = 2`，即 `AssertEqual(4d, hits[0].Score)`）—— `Score` 是 `double?`，可直接比。
+  - 正面：`:117`「AND 必须排除只含一词的行」是**真断言**（改 OR 立即失败）；`:118` 的排序断言也是真的（A 比 B 旧仍排在前，证明排序按 score 而非 recency）。
+
+- **⚠️-6（LIKE 通配符未转义）**：`MemoryFtsService.cs:121` 的 `$"%{tokens[i]}%"` 未转义 `%` / `_`；改动后 LIKE 路覆盖面变大（含短 token 的多词查询、FTS 零命中回退）。建议加 `ESCAPE '\'` 并对 token 做 `%`/`_`/`\` 转义。属既有欠账，可一并收（不阻断）。
+
+- **⚠️-7（跨页一致性 + 缺索引）**：`MemoryEntries` 先查页（`MemoryModule.Entries.cs:95-106`）、再 `CountScope`（`:109`、`:114-119`），两者**不在一个事务里** ⇒ 并发写入时 `total` 与当前页可能不同源（翻末页可能得空页）。且 `memory_entries` **没有 `(scope, updated_at)` 索引**（`DbClient.cs` 的索引清单里无 memory_entries 相关项）⇒ 每页一次全扫 + 排序 + 一次 `COUNT(*)`。当前规模无影响，仅记档；量大后建议 `CREATE INDEX ix_memory_entries_scope_updated ON memory_entries(scope, updated_at DESC, id DESC)`。
+
+- **⚠️-8（搜索态下 Refresh 做无用功）**：`MemoryEntriesTab.tsx:191` 的 Refresh 在 `hits !== null` 时仍 `load(currentPage, newestFirst)` 重取浏览页，但列表渲染的是 `hits` ⇒ 用户看到「什么都没发生」。建议搜索态下禁用 Refresh 或提示先清空查询。（改动前同形，非本刀引入。）
+
+- **⚠️-9（提交卫生两点，均不判问题但要记）**：① `e15ed074` 把 S-99 与 S-100 合成一刀，与 `AGENTS.md:304-306`「一个需求一个 commit」字面冲突，但 `plan.md:207` 明示「S-99 + S-100 合为一刀」⇒ 属已记录取舍，**不判问题**；② 该 diff 第 1 行**顺手删掉了 `use-composer-interactions.ts` 的 UTF-8 BOM**（`-import` → `+import`）—— 与本需求无关的顺手改动，建议 commit message 点一句，或留给专门的行尾/BOM 清理刀（仓内另记有「行尾损坏」整改项，`raw-requirements.md:1207`）。
+
+### 五、正面记录（值得保留的做法）
+
+1. **端点拆分是必要设计而非美化**：`MemoryModule.cs` 495→402 行，且把共用的行映射抽成 `ReadEntryRow`（`MemoryModule.Entries.cs:121-131`）—— 两份原实现的逐字段读取完全同构，抽取无重复。
+2. **契约克制**：新增 `MemoryEntriesResponse`（`AotMemoryResultTypes.cs:41-49`）而**不动**两端点共用的 `MemoryEntriesByStatusResponse`，并同步注册 AOT context（`WishfulClawJsonContext.cs:90`；`List<MemoryEntryRow>` 已在 `:88`）✅ 符合 `AGENTS.md` AOT 规则 4/5/8。
+3. **`order` 用白名单而非拼接用户串**（`MemoryModule.Entries.cs:83-85`）—— `ORDER BY` 值位无法参数化时的正确写法，且有注释说明理由。
+4. **稳定排序承诺落地**：`updated_at {dir}, id {dir}`（`:98`）与 `entries-by-status` 的 `id DESC`（`:48`）都补了 tiebreaker，注释写明「缺全序会跨页重复/漏行」。
+5. **FTS 失败路径健壮**：`results.Clear()` + `WorkerLog.Warn`（`MemoryFtsService.cs:89-95`）—— 半读结果不会混进 LIKE 结果集。
+6. **踩坑留痕**：`MemoryEntriesTab.tsx:163-165` 用注释写明「为什么不把 `rows` 放进依赖」（否则翻页被踢回第 1 页）—— 正是这类注释让后人不会把依赖「改回去」。
+7. **测试用例设计有讲究**：`RunMultiKeywordSuite` 特意把三条样本都设为 `active`（`Program.cs:100-101`），避免 `ORDER BY` 的 status 首键掩盖 score 排序（规划验证 N-3 的注记被如实执行）；A 比 B 旧却排在前，使「按相关度而非时间」可被证伪。
+
+### 六、残余风险 / 本次未能验证的部分（非缺陷，交门禁与验证态）
+
+- 按本轮指令**未跑任何构建/测试**，故以下结论**未由本报告独立复核**，仅有 commit 自述：`WishfulClaw.Workspace.csproj` / `WishfulClaw.Worker.csproj` 0 错 0 警、`tsc` 三配置 0 错、`test:i18n-coverage` PASS、`test:paste-text` 7/7、MemoryRecall 套件 31→37 全 PASS。**尤其**：`e15ed074` 的 commit message 自述主 sln 编译曾被运行中的 Worker 进程锁 dll（「留待门禁阶段复验」），而 `53c23c5a` 又改了 `AotMemoryResultTypes.cs` / `WishfulClawJsonContext.cs` ⇒ **建议门禁阶段以 `-p:BaseOutputPath`（外置输出）实跑两个 sln 并留记录**，确认 AOT 源生成注册（`MemoryEntriesResponse`）真的编过。
+- S-98 的「跨页不重不漏」是运行时行为（依赖 `id` tiebreaker），`raw-requirements.md:1186` 已列为真机确认项 —— 本报告的静态结论只能到「SQL 形态正确、全序成立」为止。
+- S-100 的「真实剪贴板能否读到文本」只能真机确认（`plan.md:262` 已收窄口径）。
+
+### 七、VERDICT
+
+**FAIL**（❌ 1 条 / ⚠️ 9 条）
+
+| | 计数 | 内容 |
+|---|---|---|
+| ❌ 阻断 | 1 | ❌-1 `limit` 上界 200 静默缩小 `memory-hot-sync.ts` 的 500 行判重窗口（跨模块行为回归 + 常量与事实不符） |
+| ⚠️ 建议 | 9 | ⚠️-1 S-100 零覆盖 + 恒真断言（含 raw「待裁定 1」仍未拍板）／⚠️-2 跨页请求竞态 + 越界页码假空态／⚠️-3 参数解析在错误包装外 + LIKE 路无 catch／⚠️-4 S99-4 检查点无落点／⚠️-5 两条断言名不副实／⚠️-6 LIKE 通配符未转义／⚠️-7 COUNT 与页非同快照 + 无索引／⚠️-8 搜索态 Refresh 无效／⚠️-9 提交卫生两点 |
+
+- 七项审查项中：**✅ 3 项**（#1 分层依赖方向、#4 硬编码/依赖、#5 500 行红线）、**⚠️ 3 项**（#2 需求符合度、#3 错误处理、#7 测试证伪力）、**❌ 1 项**（#6 回归风险）。
+- 三个需求的**主体实现正确、落层正确、红线全部达成**；S-98 对 raw 三条待裁定的取值（总数方案 A / 直接改掉客户端分页 / 档案页一并改）与 raw 倾向一致；`order`、`offset` 无注入面；S-99 的单 token 等价承诺**经逐处对照成立**。
+- ❌-1 的返工成本是**改一个常量 + 订正一句文档**（或改另一个常量），修完即可复验（只需重读 `MemoryModule.Entries.cs:19/80` 与 `memory-hot-sync.ts:15`）；⚠️-2 / ⚠️-3 建议同刀收掉。**修掉 ❌-1 后本报告结论可翻为 PASS。**
+
+—— 审查者签名：code-reviewer（第二批 S-98 ~ S-100），2026-09-20
+
+---
+
+## 复验（第 2 轮，增量）
+
+**复验者**：architect-reviewer（独立，只读）
+**复验对象**：收尾修复提交（代码 5 处 + 文档口径订正）
+
+### VERDICT: PASS
+
+| 上轮问题 | 复验结论 | 依据 |
+|---|---|---|
+| ❌-1 `limit` 上界静默缩小判重窗口 | **消除** | `MemoryModule.Entries.cs:23` `MaxEntriesLimit = 500`；`:38`（by-status）与 `:84`（entries）都走 `Math.Clamp(..., 1, MaxEntriesLimit)`；`memory-hot-sync.ts:15` `DB_SYNC_SCAN_LIMIT = 500` 经 `memory-helpers.ts:264-272` 第 3 位形参传入，`Clamp(500,1,500)=500` 不再被夹 |
+| 验证 D3 页码越界空白页 | **修复** | `MemoryEntriesTab.tsx:107-115` 用返回的 `total` 算 `lastPage`，越界则 `setPage(lastPage)` + 早退；`setPage` 后 effect 重读时 `targetPage > lastPage` 恒 false ⇒ **无死循环**；早退仍过 `finally` ⇒ 无 loading 卡死 |
+| paste-text 恒真断言 | **已删且无覆盖损失** | 剩余 6 条中 `:50` 断言返回值等于 `stub:${htmlFlavour}` —— 把回退分支改成 `return ''` 该条即红 |
+| MemoryRecall 两条断言名不副实 | **已获真区分度** | 改为断言数值 `4d` / `2d`；不累加的实现会得 2 / 1，旧写法（只比大小）区分不出、新写法能 FAIL |
+| 验证 D1 断言计数（≥38 / 37） | **两版都写错，已订正为 38** | 实跑修复后的 exe 打印 `passed: 38`；`plan.md:218`、`raw-requirements.md:1272` 改 38（`RunMultiKeywordSuite` 7 断言）、`:1349` paste-text 改 6 |
+
+### 残余 ⚠️（不阻断，延续记档）
+
+1. **S-100 真实 `htmlToPlainText`（`DOMParser` 分支）仍无自动化证据** —— node 无 `DOMParser`，测试只能注入桩；唯一覆盖是真机验证。已写进 raw S-100 回归段。
+2. **搜索态 Refresh 与页码 clamp 交叠**（`MemoryEntriesTab.tsx:196-210`）—— 需「搜索结果 ≥3 页 + 浏览态仅 1 页 + 手点 Refresh」的窄条件，无崩溃无死循环；属既有 wart，非本刀引入，建议另开刀。
+3. **LIKE 通配符 `%` / `_` 未转义**、**`COUNT(*)` 与页非同快照 / `updated_at` 无索引**、**跨页请求竞态无序号保护** —— 上轮 ⚠️-2 / ⚠️-6 / ⚠️-7 的延续，本次按「不扩大范围」记档不修。
+
+—— 复验者签名：architect-reviewer，2026-09-20

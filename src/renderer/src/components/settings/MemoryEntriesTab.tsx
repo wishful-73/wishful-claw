@@ -104,8 +104,17 @@ function MemoryEntriesTab(): React.JSX.Element {
         (targetPage - 1) * PAGE_SIZE,
         newest ? 'desc' : 'asc'
       )
+      const pageTotal = result.total ?? 0
+      // The list can shrink under the pager (entries removed elsewhere, a refresh after the
+      // page number was set). Landing past the end would render an empty page whose only way
+      // out is "previous", so snap back to the last real page and let the effect re-read it.
+      const lastPage = Math.max(1, Math.ceil(pageTotal / PAGE_SIZE))
+      if (targetPage > lastPage) {
+        setPage(lastPage)
+        return
+      }
       setEntries((result.entries ?? []).map(fromEntry))
-      setTotal(result.total ?? 0)
+      setTotal(pageTotal)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setEntries([])

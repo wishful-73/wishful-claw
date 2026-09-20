@@ -15,8 +15,12 @@ internal sealed partial class MemoryModule
     /// <summary>
     /// Upper bound on a single page. The parameter used to be taken at face value, so a caller
     /// could ask for the entire table in one response (S-98).
+    ///
+    /// 500 rather than 200 on purpose: the memory-mirror sync reads a 500-row deduplication
+    /// window (`src/renderer/src/lib/agent/memory-hot-sync.ts`, `DB_SYNC_SCAN_LIMIT`), and a
+    /// tighter clamp would silently shrink that window instead of rejecting the call.
     /// </summary>
-    private const int MaxEntriesLimit = 200;
+    private const int MaxEntriesLimit = 500;
 
     /// <summary>
     /// Lists entries by status for the tier browser / restore UI. Cold includes

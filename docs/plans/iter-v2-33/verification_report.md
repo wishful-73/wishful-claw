@@ -297,3 +297,256 @@ SQLite（readOnly）                         -> memory_entries=130, memory_archi
 - **0 阻断项**；门禁全绿（Agent 构建 0/0、`tests.sln` 0/0、tsc×3 = 0、`test:*` 32/32、C# 套件 11/11），未发现新 tsc/编译错误，未发现既有断言失效。
 - 需记档：R1~R6（其中 R2/R5 建议各开一条轻量待办），§2.6 的环境约束更正（MSB3027 未复现），§2.7 的口径说明。
 - 验证期间**只读**：未修改任何源码/配置；仅新建 `.wishful-claw/notes/` 下 3 个取证脚本（`linecounts.js`、`greptool-content-proof.js`、`greptool-history.js`）并写入本节。
+
+---
+
+## 验证（第二批 S-98 ~ S-100，2026-09-20）
+
+> **独立重新验证**，验证对象 HEAD = `53c23c5a`（父提交 `e15ed074`）。验证者未参考实施者自述结论，全部检查项由本机重新执行并留存原始输出。
+> 环境：Windows / PowerShell，仓库根 `D:\claw\wishful-claw`；`DOTNET_ROOT=D:\claw\dotnet-sdk`。
+> **验证期间零源码改动**；只新建外置构建目录 `D:\claw\_wc_verify_tmp\`（已删除，见 §7）与本节报告。
+
+### 0. 需求与检查点（先读）
+
+读入并作为判据的文件：
+
+- `docs/plans/iter-v2-33/plan.md` 的「## 第二批（S-98 / S-99 / S-100）」节 —— 目标、实施顺序、步骤清单（S99-1~5 / S100-0~3 / S98-1~7）、整体验证检查点。
+- `docs/plans/iter-v2-33/raw-requirements.md` 的 S-98（`:1120-1186`）、S-99（`:1217-1271`）、S-100（`:1275-1348`）三节「实施记录」。
+- 提交内容：`git show e15ed074 --stat`（8 文件，+657/-16）、`git show 53c23c5a --stat`（11 文件，+339/-162）。工作树 `git status --short` 干净（无未提交改动污染验证对象）。
+
+---
+
+### 1. C# 编译
+
+| # | 检查项 | 实际命令 | 原始结果 | 结论 |
+|---|---|---|---|---|
+| C1 | 测试 sln 编译 | `$env:DOTNET_ROOT='D:\claw\dotnet-sdk'; & 'D:\claw\dotnet-sdk\dotnet.exe' build tests\WishfulClaw.Tests.sln --nologo -v q` | `已成功生成。 0 个警告 0 个错误`；`EXIT=0` | ✅ 0 错 0 警 |
+| C2 | 源码主 sln 编译（外置输出绕过 Worker 锁） | `... build src\runtime\WishfulClaw.sln --nologo -v q -p:BaseOutputPath=D:\claw\_wc_verify_tmp\` | `已成功生成。 0 个警告 0 个错误`；`EXIT=0` | ✅ 0 错 0 警 |
+
+**说明**：简报提到的「主 sln 被运行中的 `WishfulClaw.Worker` 锁 dll ⇒ MSB3021/MSB3027」在本机**以指定替代路径（`-p:BaseOutputPath`）成功绕过**，输出落在外置目录，仓库内 `bin/` 未被写入。未在整方案上跑 `-t:Rebuild`（会删/换运行中实例的 `bin` DLL，属破坏性操作，且非本次要求）。
+
+---
+
+### 2. TS 编译
+
+| # | 检查项 | 实际命令 | 原始结果 | 结论 |
+|---|---|---|---|---|
+| T1 | web 配置 | `npx tsc -p tsconfig.web.json --noEmit` | 无输出；`EXIT_WEB=0` | ✅ 0 错 |
+| T2 | node 配置 | `npx tsc -p tsconfig.node.json --noEmit` | 无输出；`EXIT_NODE=0` | ✅ 0 错 |
+| T3 | 根配置 | `npx tsc -p tsconfig.json --noEmit` | 无输出；`EXIT_ROOT=0` | ✅ 0 错 |
+
+---
+
+### 3. C# 回归套件（11/11）
+
+命令：`foreach ($exe in (Get-ChildItem tests\WishfulClaw.*RegressionTests\bin\Debug\net11.0\*.exe | Sort-Object Name)) { & $exe.FullName *> "<tmp>\wc_suite_<name>.log"; "$($exe.BaseName) EXIT=$LASTEXITCODE" }`
+
+| 套件 | exit | 自报断言数 |
+|---|---|---|
+| WishfulClaw.AgentTimelineRegressionTests | 0 | 25 |
+| WishfulClaw.ChannelShellApprovalRegressionTests | 0 | 72 |
+| WishfulClaw.ChannelToolVisibilityRegressionTests | 0 | 122 |
+| WishfulClaw.CompactionSnapshotRegressionTests | 0 | 269（child `--suite-new`）+ 2（parent）；另 `Summary rolling checks passed: 13`、`Pasted block restore checks passed: 11` |
+| WishfulClaw.CronRegressionTests | 0 | child 101 / 14 / 8 + parent 42 |
+| WishfulClaw.GoalRegressionTests | 0 | 313 |
+| WishfulClaw.GrepPatternRegressionTests | 0 | 21 |
+| **WishfulClaw.MemoryRecallRegressionTests** | **0** | **37** |
+| WishfulClaw.ProviderHeaderRegressionTests | 0 | `Provider header regression checks passed.`（无数字） |
+| WishfulClaw.SessionTaskCascadeRegressionTests | 0 | 225 |
+| WishfulClaw.ToolConcurrencyRegressionTests | 0 | `Tool concurrency regression checks passed.`（无数字） |
+
+**结论**：11/11 `exit=0` ✅
+
+#### 3.1 `WishfulClaw.MemoryRecallRegressionTests.exe` 完整原始输出（S-99 落点）
+
+```
+PASS: temporary memory database initializes: 
+PASS: FTS literal query returns a hit: <memory-recall>
+PASS: FTS literal query scores its hit: <memory-recall>
+PASS: FTS literal query returns a hit: say "hello"
+PASS: FTS literal query scores its hit: say "hello"
+PASS: FTS literal query returns a hit: OR token
+PASS: FTS literal query scores its hit: OR token
+PASS: FTS literal query returns a hit: alpha:beta (gamma)
+PASS: FTS literal query scores its hit: alpha:beta (gamma)
+PASS: two-character query is served by the LIKE path
+PASS: short-query hits carry a synthesised score
+PASS: title hit outranks content-only hit for short queries
+PASS: multi-keyword CJK query is served by the LIKE path (both keywords are 2 chars)
+PASS: AND semantics exclude a row carrying only one keyword
+PASS: title-carried keywords outrank body-carried ones despite being older
+PASS: score accumulates per keyword
+PASS: multi-keyword query with all keywords >= 3 chars hits via FTS
+PASS: single-keyword query still matches by substring
+PASS: new memory needs injection
+PASS: same memory content is skipped
+PASS: changed memory content is injected again
+PASS: context replacement clears recall deduplication state
+PASS: session clear resets recall deduplication state
+PASS: global fallback injects when project hits were already present
+PASS: global fallback injects one new entry
+PASS: global fallback injects the new global entry
+PASS: recall searches project variants before global variants after deduplication
+PASS: strips recall + time ahead of the user text
+PASS: strips memory-update + time ahead of the user text
+PASS: strips all three injected blocks
+PASS: plain user text passes through unchanged
+PASS: text without blocks is untouched
+PASS: unrelated tags are preserved
+PASS: a message that is only a block strips to empty
+PASS: unterminated block is dropped to the end
+PASS: timestamp no longer reaches the recall query
+PASS: user keywords survive stripping
+Memory recall regression checks passed: 37
+```
+
+**断言数独立核算**：`Select-String -Pattern '^PASS:'` 计数 = **37**，与套件自报 `passed: 37` 一致。
+**S-99 新增子套件**（`RunMultiKeywordSuite`，见 `git show e15ed074 -- tests/.../Program.cs`）共 6 条断言：`hits.Count >= 2`、`AND 排除只带一词的行`、`标题承载词者优先（尽管更旧）`、`score 逐词累加`、`全 ≥3 字符走 FTS`、`单 token 仍按子串命中`。旧基线 31 + 6 = 37 ✔ 与 raw-requirements 的「31 → 37」吻合。
+
+> ⚠️ **偏差 D1**：`plan.md` S99-5 写的是「扩断言（31 → **≥ 38**）」，实际落 **37**，比 plan 口径少 1 条（raw-requirements 写的是 37）。plan 与 raw 两处口径不一致，实施按 raw 落地。**功能断言面（S99-3 要求的 A/B 排序 + score + AND 排除）已全部具备**，差额属文档口径未对齐，非覆盖缺失。
+
+---
+
+### 4. TS 测试脚本（33/33）
+
+命令：从 `package.json` 枚举全部 `test:*` 脚本（`scripts.PSObject.Properties | Where-Object Name -like 'test:*'`）逐个 `npm run <name>`。
+
+**枚举结果：33 个**（与任务描述「当前 33 个」一致）。
+**逐个执行：PASS=33，FAIL=0**，全部 `exit=0`。脚本名单：
+`background-wake-message, browser-user-agent, channel-account-label, channel-cancel-commands, channel-reply-event-policy, channel-shell-approval, codegraph-availability, context-cap, fallback-chain, free-chat-sites, free-chat-tabs, i18n-coverage, ipc-msgpack-routing, live-cursor, message-timestamp, paste-text, provider-fallback, provider-payload, provider-presets, queued-message-text, renderable-chat-items, selected-file-context, select-file-tags, session-follow-up, session-model-resolution, session-permission-mode, session-todo-batch, settings-tabs, shell-executable, streaming-render-pool, updater-progress, updater-release-notes, updater-state`
+
+其中与本批直接相关的两条原始输出：
+
+- `test:paste-text`（S-100）→ `Paste text checks passed: 7`，7 条 `PASS:` 全绿，`exit=0`。
+- `test:i18n-coverage`（S-98 的 S98-7）→ `i18n coverage checks passed: 2`，`exit=0`。
+
+---
+
+### 5. 逐条核实（S-99 / S-98 / S-100 的核心承诺）
+
+#### 5.1 S-99「单 token 行为与改动前一致」—— ✅ 成立（静态逐条对照）
+
+对照 `git show e15ed074 -- .../MemoryFtsService.cs` 与当前 `src/runtime/WishfulClaw.Workspace/Memory/MemoryFtsService.cs`（全文 214 行，已通读）：
+
+| 环节 | 改动前 | 改动后 | 单 token 是否等价 |
+|---|---|---|---|
+| FTS 开关 | `if (q.Length >= MinFtsQueryLength)` | `if (tokens.All(t => t.Length >= MinFtsQueryLength))` | ✅ 单 token 时 `tokens=[q]`，`All(...)` ≡ `q.Length>=3` |
+| FTS 查询串 | `BuildFtsLiteralQuery(q)` = `"q"`（内部 `"`→`""`） | `BuildFtsQuery([q])` = `string.Join(" AND ", [BuildFtsLiteralQuery(q)])` = `"q"` | ✅ 逐字节相同（`AND` 只有 1 个操作数时不出现） |
+| LIKE 条件 | `(content LIKE @pattern OR title LIKE @pattern)` | `(title LIKE @like0 OR content LIKE @like0)` | ✅ `OR` 交换律等价；绑定值同为 `%q%` |
+| score 表达式 | `CASE WHEN title LIKE @pattern THEN 2 ELSE 0 END + CASE WHEN content LIKE @pattern THEN 1 ELSE 0 END` | 同一表达式，仅参数名 `@pattern`→`@like0` | ✅ 语义/数值完全相同 |
+| ORDER BY / LIMIT | `CASE WHEN status='active' THEN 0 ELSE 1 END, score DESC, updated_at DESC LIMIT @limit` | 未变 | ✅ |
+| 早退 | `string.IsNullOrWhiteSpace(query) \|\| limit<=0` → 空 | 未变（`:37`，在 `SplitTokens` 之前） | ✅ |
+| 去重 / 8 词上限 | 不存在 | `SplitTokens` 里 `OrdinalIgnoreCase` 去重 + `MaxQueryTokens=8` | ✅ 单 token 均不触发 |
+
+**结论**：单 token 下 FTS 查询串与 LIKE 条件、score 表达式与改动前等价，成立。
+**佐证（行为侧）**：改动前就存在的 6 条单 token 断言（4 条 `FTS literal query …`（含 `"hello"` 引号、`OR token`、`alpha:beta (gamma)` 标点）+ 2 条短查询）在改动后仍全部 PASS，未见行为漂移。
+**边界**：这是**静态论证 + 既有断言旁证**，未做「检出 `e15ed074^` 重编译同库对跑」的双版本字节对比（重编译会与运行中的 Worker 争 `bin` DLL），列入未覆盖项 U3。
+
+#### 5.2 S-98 稳定排序 / 分页参数 —— ✅ 全部满足
+
+读 `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs`（全文 132 行，已通读）：
+
+| 承诺 | 实际代码 | 结论 |
+|---|---|---|
+| `ORDER BY` 带 `id` 破平 | `:98` `ORDER BY updated_at {direction}, id {direction} LIMIT @limit OFFSET @offset` | ✅ |
+| `offset` 有 clamp | `:81` `var offset = Math.Max(0, GetInt(parameters, "offset", 0));` | ✅ clamp ≥ 0 |
+| `order` 是白名单 | `:85` `descending = !string.Equals(GetString(parameters,"order"), "asc", OrdinalIgnoreCase);` → `:93` `direction = descending ? "DESC" : "ASC"` | ✅ 方向只取自建常量，调用方字符串**不进** SQL |
+| `limit` 有上界 | `:19` `MaxEntriesLimit = 200`；`:80` `Math.Clamp(GetInt(parameters,"limit",MaxEntriesLimit),1,MaxEntriesLimit)` | ✅ 另有 `entries-by-status`（`:34`）同款收敛 |
+| 新增 `total` | `:109` 返回 `new MemoryEntriesResponse(entries, CountScope(db, scope))`，`:114-119` 独立 `SELECT COUNT(*)` | ✅ |
+| 不动共用契约 | `AotMemoryResultTypes.cs:40` `MemoryEntriesByStatusResponse` 未改；`:49` 新增 `MemoryEntriesResponse(List<MemoryEntryRow> Entries, int Total)` | ✅ |
+| JsonContext 注册 | `src/runtime/WishfulClaw.Worker/WishfulClawJsonContext.cs:90` `[JsonSerializable(typeof(MemoryEntriesResponse))]`（`List<MemoryEntryRow>` 已在 `:88`） | ✅ |
+| 端点仍挂载 | `MemoryModule.cs:30-31` `Register("memory/entries-by-status", …)` / `Register("memory/entries", MemoryEntries)`；两文件同为 `internal sealed partial class MemoryModule` | ✅ |
+
+> **轻微偏差 D2**：`order` 白名单比较用了 `OrdinalIgnoreCase`，即 `"ASC"` / `"Asc"` 也会走升序（plan 原文「只有 `"asc"` 走升序，其余一律降序」）。更宽松，但**不构成注入面**（仍是白名单映射，绝不拼接用户串），且不会产生 `"desc"` 被误判为升序的反向错误。
+
+前端侧（`memory-helpers.ts` / `MemoryEntriesTab.tsx` / `ProjectMemoryLibraryTab.tsx`）：`memoryEntries()` 的 `offset`/`order` 确为**末两个形参**（`:270-271`，默认 `0`/`'desc'`），前 5 参顺序未动（`memory-hot-sync.ts` 等既有 5 参调用点免改，tsc 三配置 0 错为证）；`MemoryEntriesTab` 的 `ENTRY_FETCH_LIMIT` 已消失，`load()` 改请求驱动（`PAGE_SIZE=20`、`offset=(page-1)*PAGE_SIZE`、`order` 下推服务端），`total` 驱动 `totalPages`；重置页码的 `useEffect` 依赖已从 `rows` 改为 `[hits, newestFirst]`（`:166-168`，注释写明原因）；`ProjectMemoryLibraryTab` 同样服务端分页 + 切项目重置页码。
+
+> **轻微偏差 D3**：`MemoryEntriesTab.tsx:121` 的 `load(page, newestFirst)` 用**未 clamp** 的 `page`（渲染用的是 `currentPage = Math.min(page, totalPages)`）。UI 上 Next 按钮已 `Math.min(totalPages, prev+1)`、Refresh 用 `currentPage`，故正常操作不可达；仅当底层数据在他处缩减时理论上会请求到空页。低危，登记备查。
+
+#### 5.3 S-100 测试「确实在测东西」—— ✅ 非恒真
+
+读 `tests/paste-text/program.ts`（60 行）与 `src/renderer/src/components/chat/InputArea/use-composer-interactions.ts` 的 `composePastedText`（`:69-77`）：
+
+- 断言框架：`assert(cond, name)` 在 `!cond` 时 `console.error` + `process.exit(1)`，**失败即非零退出**（`npm run` 会红）——不是只打印的恒真式。
+- `composePastedText('from plain', '<b>ignored</b>', mustNotBeCalled)` 里 `mustNotBeCalled` **抛异常**：只要实现去碰 HTML 味道就会炸，这条真实钉住「plain 优先且不调 html 转换」。
+- 每条断言都比较**函数实际返回值**（`assertEqual` 用 `Object.is`），无 `assert(true)` 之类的自证。
+- 唯一冗余项：`'the html fallback yields insertable text'`（`.length > 0`）与上一条 `assertEqual('stub:…')` 部分重叠；但它仍是**对真实返回值的断言**（若回退返回空串会红），属冗余而非恒真。
+- **独立复算**：我在工作路径外临时目录用 `esbuild --bundle --platform=node --alias:@renderer=./src/renderer/src` 打包了一段自写探针（非仓库测试），直接调真实导出函数：
+
+```
+PROBE OK: plain empty + html empty -> empty
+PROBE OK: null/null -> empty
+PROBE OK: plain wins
+PROBE OK: html fallback via stub
+PROBE OK: exposes the real default (arity 3, optional)
+PROBE TOTAL=5
+PROBE_EXIT=0
+```
+
+与仓库自带 7 条断言的行为一致 ⇒ **断言反映真实行为，非恒真**。`handlePaste`（`:128-132`）确认改调 `composePastedText(getData('text/plain'), getData('text/html'))`，`if (!plainText) return` 保留（不 `preventDefault`），`execCommand('insertHTML')` 与受控兜底路径按 diff **未改动**；`shouldCollapsePaste(plainText)` 吃的是**提取后**文本（S100-3 达成）。
+
+---
+
+### 6. 文件行数红线（AGENTS.md ≤ 500）
+
+`[System.IO.File]::ReadAllLines().Count` 与 `(Get-Content).Count` **两种量法都报**（任务指出的 `\r\n\r\n` 畸形行尾在这 5 个文件上**不存在**，两法结果完全一致）：
+
+| 文件 | ReadAllLines | (Get-Content).Count | 字节 | 红线 | 结论 |
+|---|---|---|---|---|---|
+| `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs` | 402 | 402 | 18739 | ≤500（plan S98-1 另要求 ≤420） | ✅ |
+| `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs` | 132 | 132 | 6618 | ≤500（plan S98-1 另要求 ≤150） | ✅ |
+| `src/runtime/WishfulClaw.Workspace/Memory/MemoryFtsService.cs` | 214 | 214 | 10528 | ≤500 | ✅ |
+| `src/renderer/src/components/settings/MemoryEntriesTab.tsx` | 347 | 347 | 13010 | ≤500 | ✅ |
+| `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` | 195 | 195 | 7207 | ≤500 | ✅ |
+
+**本批所有触碰文件均 ≤ 500 行；`MemoryModule.cs` 由 495 → 402（降价），`MemoryModule.Entries.cs` 132 ≤ 150，全部兑现 plan S98-1。**
+
+---
+
+### 7. 汇总表
+
+| # | 检查项 | 命令/方法 | 结果 | 结论 |
+|---|---|---|---|---|
+| C1 | `tests/WishfulClaw.Tests.sln` 编译 | `dotnet build … -v q` | 0 警 0 错，exit 0 | ✅ |
+| C2 | `src/runtime/WishfulClaw.sln` 编译（外置输出） | `… -p:BaseOutputPath=D:\claw\_wc_verify_tmp\` | 0 警 0 错，exit 0 | ✅ |
+| T1~T3 | tsc 三配置 | `npx tsc -p {web,node,root}` | exit 0 / 0 / 0，无输出 | ✅ |
+| R | C# 回归套件 | 11 个 exe | **11/11 exit=0** | ✅ |
+| R-M | MemoryRecall 套件 | 同上 | **37 断言全 PASS**，独立计数 37 | ✅ |
+| P | TS 测试脚本 | 33 个 `npm run test:*` | **33/33 exit=0** | ✅ |
+| V1 | S-99 单 token 等价 | 读 diff + 现码逐条对照 | FTS 串/LIKE 条件/score 等价 | ✅ |
+| V2 | S-98 稳定排序+参数收敛 | 读 `MemoryModule.Entries.cs` | `id` 破平 / offset clamp / order 白名单 / limit 上界 / total 全在 | ✅ |
+| V3 | S-98 契约与注册 | 读 `AotMemoryResultTypes.cs`、`WishfulClawJsonContext.cs`、`MemoryModule.cs` | 新 record + 注册 + 路由齐备，共用契约未动 | ✅ |
+| V4 | S-100 断言有效性 | 读 `tests/paste-text` + 独立探针 | 非恒真；探针 5/5 复算通过 | ✅ |
+| V5 | 文件行数红线 | 两种量法 | 5 文件全部 ≤500，无畸形行尾 | ✅ |
+| V6 | i18n 覆盖 | `npm run test:i18n-coverage` | PASS（档案页 `total/prevPage/nextPage/pageOf` 已补，zh/en 对齐） | ✅ |
+
+---
+
+### VERDICT: **PASS**
+
+四项门禁（C# 两 sln 0 错 0 警、tsc 三配置 0 错、C# 回归 11/11、TS 脚本 33/33）全部复现通过；三项需求的核心承诺（S-99 单 token 等价 + 多词 AND + 短词走 LIKE 逐词累加 score；S-98 OFFSET/稳定排序/总数/白名单/上界 + 前端真分页；S-100 HTML 回退 + 纯函数断言非恒真）逐条独立核实成立，无阻断项。
+
+#### 登记：偏差（不影响 PASS，建议记档）
+
+| # | 偏差 | 严重度 | 依据 | 建议 |
+|---|---|---|---|---|
+| D1 | `plan.md` S99-5 要求「31 → ≥38」，实际 **37**（raw-requirements 写 37） | 低（文档口径不一致） | `plan.md:218` vs 实际套件自报 37；S99-3 要求的功能断言已全部具备 | 对齐 plan 口径为 37，或补 1 条断言 |
+| D2 | `order` 白名单用 `OrdinalIgnoreCase`（`"ASC"` 也升序），plan 原文是「仅 `"asc"`」 | 极低 | `MemoryModule.Entries.cs:85` | 无需修（更宽松但无注入面），或对齐注释 |
+| D3 | `MemoryEntriesTab.tsx:121` 的 `load(page,…)` 用未 clamp 的 `page` | 低 | `:121` vs `:158`；UI 上不可达 | 可传 `currentPage` 兜底 |
+
+#### 未覆盖项 / 风险登记
+
+| # | 未覆盖 | 原因 | 归属 |
+|---|---|---|---|
+| U1 | S-98「跨页不重不漏」 | 依赖 `id` tiebreaker 的运行时行为，无 GUI/E2E 环境；须造同秒写入多行后连翻数页核对 | 真机手测（plan 已列） |
+| U2 | S-100「真实剪贴板 `getData` 能否读到文本」+ **真实 `htmlToPlainText`（`DOMParser`）路径** | node 无 `DOMParser`，测试只覆盖注入桩；`getData` 依赖剪贴板来源 | 真机手测（plan N-2 已收窄） |
+| U3 | S-99「单 token 逐字节一致」的双版本对跑 | 未检出 `e15ed074^` 重编译同库对跑（会与运行中 Worker 争 `bin` DLL）；本次为**静态逐条论证 + 既有单 token 断言全 PASS 旁证** | 可接受；如需强证可在停 Worker 后双跑 |
+| U4 | 未在整方案上跑 `dotnet build … -t:Rebuild` | 会删/换运行中 Worker 实例的 `bin` DLL，属破坏性操作且非本次要求 | 环境约束，非代码风险 |
+| U5 | 未跑 Electron GUI / 真机交互 | 无 GUI 环境 | 真机手测（M1~M6 沿用） |
+
+#### 验证期间的文件系统改动（可审计）
+
+- **新建**：`D:\claw\_wc_verify_tmp\`（外置 `BaseOutputPath` 构建输出 + `probe.ts`/`probe.cjs` 独立探针）→ **验证完毕已整目录删除**（见下）。
+- **新建/追加**：`docs/plans/iter-v2-33/verification_report.md`（本节）。
+- **未改**任何源码、配置、既有文档；未 `commit`、未 `push`。
+

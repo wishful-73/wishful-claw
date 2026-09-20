@@ -52,9 +52,5 @@ assertEqual(
   composePastedText('', htmlFlavour, (value) => `stub:${value}`),
   'html-only clipboard falls back to the html flavour'
 )
-assert(
-  composePastedText('', htmlFlavour, (value) => `stub:${value}`).length > 0,
-  'the html fallback yields insertable text (this is the S-100 fix)'
-)
 
 console.log(`Paste text checks passed: ${passed}`)

@@ -17,80 +17,15 @@ OpenCowork 的代码经迁移和重构后已成为 WishfulClaw 的一部分；�
 ## 技术栈
 
 - **前端**：TypeScript + React 19 + Electron 35
-- **后端**：C# + .NET 11（preview SDK 11.0.100-preview.7；本机便携版位于 `D:\claw\dotnet-sdk`，构建/启动 Debug Worker 时需设 `DOTNET_ROOT` 指向它；打包产物为 AOT self-contained，不依赖运行时）
+- **后端**：C# + .NET 11（SDK `11.0.100-preview.7`，用系统安装的 `dotnet`（`C:\Program Files\dotnet`）直接 `dotnet build`，不要设 `DOTNET_ROOT`、不要依赖任何便携版副本；打包产物为 AOT self-contained，不依赖运行时）
 - **通信**：IPC + MessagePack
 
 ## 项目结构（7 层架构）
 
-> 当前状态：7 项目已落地（Contracts / Core / Infrastructure / Workspace / Persona / Agent / Worker）；另有 `src/runtime/WishfulClaw.CodeGraph` vendored 项目（不参与 7 层依赖链，仅被 Worker 引用）。
+7 个项目已落地（Contracts / Core / Infrastructure / Workspace / Persona / Agent / Worker）；另有 `src/runtime/WishfulClaw.CodeGraph` vendored 项目（不参与 7 层依赖链，仅被 Worker 引用）。
 
-```
-src/
-├── main/           # Electron Main 进程（窗口管理、IPC 桥接、Worker 生命周期）
-├── renderer/       # React 前端（UI / 交互 / 状态管理）
-├── preload/        # Electron Preload（安全桥接）
-├── shared/         # 前后端共享类型定义（TS）
-└── runtime/                              # .NET 后端工程
-    ├── WishfulClaw.sln
-    ├── WishfulClaw.CodeGraph/            # 0. CodeGraph 引擎（vendored自 github.com/AIDotNet/CodeGraph；代码图谱索引/检索，全局命名空间 + internal，195 个 .cs；不参与 7 层依赖链，仅被 Worker 引用）
-    ├── WishfulClaw.Contracts/            # 1. 接口契约（纯接口，无实现）
-    │   └── IWorkerModule / IWorkerModuleContext / IWorkerRequestContext / WorkerResponse
-    │
-    ├── WishfulClaw.Core/                 # 2. Agent 通用框架（不含业务逻辑）
-    │   ├── Protocol/                     #   通信协议（MessagePack 编解码、流式事件、Worker 分发）
-    │   └── Tools/                        #   工具框架（IToolExecutor / IToolProvider / ToolRegistry / ToolSchemaBuilder）
-    │
-    ├── WishfulClaw.Infrastructure/       # 3. 基础设施（Db / Storage / Http）
-    │   ├── Db/                           #   DbClient + Entities + Db*Tools（SQLite 持久化）
-    │   ├── Storage/                      #   ConfigStore + ProviderStore + JsonFileNodeCache（JSON 配置读写）
-    │   └── Http/                         #   WorkerHttpClientFactory（HTTP 客户端工厂）
-    │
-    ├── WishfulClaw.Workspace/            # 4. 记忆系统（业务层）
-    │   └── Memory/                       #   记忆读写/检索/分层流转/巩固/语义降级/FTS5 + MemoryFtsService
-    │
-    ├── WishfulClaw.Persona/              # 5. 人格系统
-    │   ├── PromptBuilder.cs              #   分段组装 System Prompt + 字符预算
-    │   ├── PersonaGenerator.cs           #   人格生成
-    │   ├── PersonaStore.cs               #   人格持久化
-    │   └── PersonaPresetService.cs       #   预设管理
-    │
-    ├── WishfulClaw.Agent/                # 6. Agent 运行时（核心业务逻辑）
-    │   ├── AgentLoop*.cs                 #   Agent Loop 循环主体（partial class 拆分）
-    │   ├── SessionConversation.cs        #   per-session 会话状态管理（增量追加 + prefix cache 优化 + 缓存计数器）
-    │   ├── ContextCompression.cs         #   LLM 总结式上下文压缩
-    │   ├── ToolCallProcessor.cs          #   工具调用处理
-    │   ├── ToolDispatchRouter.cs         #   工具分派路由
-    │   ├── SubAgent*.cs                  #   子 Agent 生命周期管理
-    │   ├── Providers/                    #   模型 Provider（Anthropic / OpenAI Chat / Gemini / Vertex AI）
-    │   │   ├── AnthropicMessages*.cs
-    │   │   ├── OpenAIChat*.cs
-    │   │   └── ...
-    │   ├── Tools/                        #   工具实现（FileTools / SearchTools / ShellTools / MemoryTools / Providers / AgentChanges）
-    │   ├── Modules/                      #   业务模块（Git / Skills / Extensions / Channels / Video / Media / OpenAIAudio / ProviderTest / WebFetch）
-    │   ├── *Executor.cs                  #   工具执行器（AskUser / Browser / ImageGenerate / SSH / Task / WebFetch / WebSearch ...）
-    │   ├── ConversationCodec.cs          #   对话编解码
-    │   └── StreamEventModels.cs          #   流式事件模型
-    │
-    └── WishfulClaw.Worker/               # 7. 进程入口（薄层 IPC 宿主）
-        ├── Program.cs                    #   入口（含 CodeGraphNativeLibraryResolver.Install）
-        ├── WorkerHost*.cs                #   宿主构建 + 模块装载
-        └── WorkerModuleCatalog.cs        #   模块注册（含 CodeGraphModule，引用 Agent / Infrastructure / WishfulClaw.CodeGraph 中的实现）
-```
-
-### 各项目文件数（当前实际）
-
-| 项目 | 文件数 | 职责 |
-|------|--------|------|
-| Contracts | 6 | 纯接口契约 |
-| Core | 19 | Agent 通用框架（Protocol + Tools） |
-| Infrastructure | 57 | 基础设施（Db / Storage / Http + Db Tools） |
-| Workspace | 15 | 记忆系统（含 MemoryFtsService） |
-| Persona | 9 | 人格系统 |
-| Agent | 205 | Agent 运行时（Loop / Provider / Executor / Compression / SubAgent / Tools / Modules） |
-| Worker | 14 | IPC 宿主（Program + Host + Catalog + 5 核心 Module） |
-| CodeGraph | 195 | 代码图谱引擎（vendored，索引/同步/探索/检索，经 Worker 注册 `codegraph/*` 方法） |
-
-> 统计不含 obj/ 目录下的自动生成文件。
+- **目录地图**（哪层有哪些子目录、东西在哪）：[`docs/project-structure.md`](docs/project-structure.md)。那份文档**只写到「层 → 子目录 → 一句话职责」**，不列文件名与文件数 —— 统计写死必然过期，要看实际结构直接查代码树，别在这里再抄一份
+- **依赖规则与各层职责禁忌**（什么能依赖什么、该放什么）：见下面「分层约定」
 
 ## 分层约定
 
@@ -154,7 +89,7 @@ Agent 运行时核心业务逻辑。
 - **依赖** Agent + Persona + Workspace + Core + Contracts + Infrastructure
 - 负责模块注册、依赖注入、进程生命周期
 - 被 Electron Main 进程拉起
-- 当前仅保留 Program.cs + WorkerHost + WorkerModuleCatalog（14 文件），其余已迁入 Agent / Infrastructure
+- 只保留进程入口与模块注册（Program / WorkerHost / WorkerModuleCatalog），其余已迁入 Agent / Infrastructure
 
 ### 依赖方向（严格单向）
 
@@ -236,21 +171,22 @@ Worker
 
 ### 大文件拆分
 
-1. 按职责拆分为多个文件，每个文件 200~500 行为宜，前提是不影响逻辑内聚性，可以适当超出
-2. 超过 500 行必须拆分
+1. 按职责拆分为多个文件，每个文件 200~500 行为宜
+2. **超过 500 行必须拆分** —— 这是硬线，代码审查按此判 ❌
 3. 拆分的目的是出问题时方便排查定位——按职责边界拆，让人一看文件名就知道该去哪找问题
 4. C# 用 partial class，TypeScript 用 export/import 模块化
-5. 以下情况不需要强行拆分：
+5. **只有以下三类可以超 500 行**，且必须在**文件头注释写明豁免理由与当前行数** —— 否则审查分不清「有意豁免」和「忘了拆」，一律按 ❌ 处理：
    - 单一数据对象（如 provider preset 列表、模型配置表）——内容是同质数据，拆了反而难查找
    - 高度内聚的 store / hook ——逻辑紧密耦合，拆开会割裂上下文
    - 拆分后需要大量 props 透传或 state 搬运的组件——拆出去增加了间接层，排查更难
-6. 拆分后保持逻辑等价，不改变行为，只改组织结构
+6. **语言文件（`src/renderer/src/locales/{zh,en}/*.json`）按第 5 条第 1 类豁免处理，且无需头注释** —— JSON 不支持注释，`settings.json` / `chat.json` / `layout.json` 等超 500 行属正常，一律不判 ❌。审查时直接跳过这类文件，不必逐轮复判
+7. 拆分后保持逻辑等价，不改变行为，只改组织结构
 
 ### 耦合文件拆分
 
 1. **逻辑不相关的代码不放在同一个文件**：即使参考项目把它们放在一起，搬入时也要拆分到各自的文件中
 2. **判断标准**：如果两个类/方法之间没有调用关系或数据依赖，只是参考方随手放在一起，就必须拆开
-3. **拆分到正确的目录**：拆出来的文件放到 AGENTS.md 项目结构中对应的目录
+3. **拆分到正确的目录**：拆出来的文件放到 [`docs/project-structure.md`](docs/project-structure.md) 里对应的子目录
 
 ### AI 排查规范
 
@@ -275,19 +211,16 @@ Worker
 
 每次写完代码必须确保零报错：
 
-- **C#**：`dotnet build`（可加 `-o` 临时输出路径避免文件锁定）
-- **TypeScript**：三个配置必须全部零错误（缺一不可）：
-  - `npx tsc --noEmit -p tsconfig.web.json`（渲染进程）
-  - `npx tsc --noEmit -p tsconfig.node.json`（主进程）
-  - `npx tsc --noEmit -p tsconfig.json`（根配置）
-  - 必须带 `-p`！不带 `-p` 只走 references 不检查文件内容，等于没验证
+- **C#**：`dotnet build`。**被开发实例锁住时（`MSB3021` / `MSB3027`，文件被 `WishfulClaw.Worker` 占用）应关掉开发实例再编**，不要用 `-o` / `-p:BaseOutputPath` 把输出挪到仓库外绕开 —— 判断依据、处理顺序与实测数据见 `docs/dev-workflow.md` 的「编译环境」节
+- **TypeScript**：`npm run typecheck` 零错误即可 —— 它 = `typecheck:node` + `typecheck:web`，两条命令都带 `-p` 与 `--composite false`（参数写在 `package.json` 里，不要手敲一套）
+- **根 `tsconfig.json` 不要单独跑**：它是 references-only 壳（`"files": []` + `references`），对它执行 `tsc -p tsconfig.json` **不检查任何文件**，跑出来的"0 错误"是假的。真正检查内容的只有 `tsconfig.node.json` 与 `tsconfig.web.json`
 - **不允许用 `@ts-ignore` 偷懒**（可选依赖除外）
 
 ## 协作纪律（硬规则）
 
 Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推断：
 
-**讨论态**（触发特征：老大说"先聊聊 / 先分析 / 讨论 / 先确定再进文档"，或在聊天中补充需求细节、报告问题）
+**讨论态**（触发特征：老大说"先聊聊 / 先分析 / 讨论 / 先确定再进文档"，或**开工前**在聊天中补充需求细节、报告问题）
 - 允许：读代码、查资料、出分析和方案、给 diff 预览
 - 禁止：Edit/Write 改代码文件、git commit
 - 老大补充口径、修正细节 ≠ 拍板开工。"做不做"和"怎么做"都聊完、老大明确说"改吧 / 动手 / 按这个推进"，才切实施态
@@ -296,6 +229,7 @@ Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推�
 **实施态**（触发特征：老大对方案明确拍板）
 - 按 dev-workflow 六阶段执行，测通即提交的自动规则**只在实施态内生效**
 - 实施中发现方案有误，停下来报告等拍板，不得边讨论边改
+- 实施态内老大对**当前需求**补充口径、修正细节 ⇒ 照做，**不退回讨论态**（上一条说的是"补充细节不算开工"，不是"补充细节就停工"）；他给的是**新需求 / 新规则** ⇒ 先登记，按新需求另起一刀
 
 > 背景：2026-09-13 R-10.2 讨论中，agent 把老大补充口径当成开工许可，未确认就改码并直接提交。防的是抢跑，不是效率——讨论态多问一句的成本，远低于方向错了返工。
 
@@ -303,7 +237,7 @@ Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推�
 
 **核心原则：一个需求一个 commit，迭代收尾再统一一次修复调整 commit。**
 
-即 **一个迭代的历史提交数 = 需求数 + 1**。例：迭代 28 共 7 项需求 → 7 个需求提交 + 1 个 `fix(迭代28): 审查与验证修复调整` = 8 个提交。历史里不出现步骤级提交（本项目已累积 1300+ 提交，主因就是按步骤刷提交）。
+即 **一个迭代的历史提交数 = 需求数 + 1**（老大明确要求把两个需求合成一刀时，按合并后的刀数算）。例：迭代 28 共 7 项需求 → 7 个需求提交 + 1 个 `fix(迭代28): 审查与验证修复调整` = 8 个提交。历史里不出现步骤级提交（本项目已累积 1300+ 提交，主因就是按步骤刷提交）。
 
 - **需求是提交单位**：一个需求所有步骤的代码，连同它的 plan 勾选与规划/审查/验证文档，一起进这一个 commit。中间反复修改、调试不产生 commit
 - **步骤不提交**：步骤只跑 Mini 验证并勾 [✓]，提交时机是本需求整体测通之后
@@ -312,9 +246,9 @@ Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推�
 - **大需求可临时多提交几刀做保险，但进下一个需求前必须折叠**：`git reset --soft HEAD~K` 后重新提交成该需求的单个 commit。历史里留下的必须是一需求一刀
 - **提交前必须测通（由 agent 自判，不逐需求停下等老大 OK）**：编译零错误 + 能启动 + 该需求核心流程跑得通 + 各步骤 Mini 验证已过，即可 commit
 - **老大唯一的裁定点是迭代收尾**：即他手动说"进行 xxx 迭代收尾"、把分支合并 main 的那一刻。Plan 内的需求提交与验证结论不构成停等门，照实报告即可
-- **需求 commit 后不 push**：本地 commit 就是防误操作的检查点
-- **Plan 完成后才 push**：一个 Plan 覆盖的需求提交都完成并通过验证后，一次性 push
-- **Push 优先直连**：先尝试 `git push origin <branch>`，若连接超时或被拒再走代理：`git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
+- **迭代内一律不 push**：本地 commit 就是防误操作的检查点，一个迭代从开工到收尾之间可以一次都不推
+- **只在迭代收尾 push**：老大确认收尾、合并 `main` + 打 tag 时，一次性 `push main + tags`（提交和推送是两回事）
+- **Push 优先直连，一次不通立即转代理**：直连失败会硬等 20s+，不要反复重试直连；代理写法 `git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin <branch>`
 
 > 各阶段的具体提交动作见 `docs/dev-workflow.md`「提交节奏 / 防误操作规则」，两份口径必须一致。
 
@@ -337,7 +271,7 @@ Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推�
 
 - **新分支必须从最新的 main 拆出**：开始新迭代前，先确保上一个迭代分支已合并到 main 并打 tag，然后从更新后的 main 创建新分支
 - **禁止从旧分支拆分支**：如果上一个分支未合并 main，新分支会缺少前序迭代的代码变更，导致编译错误或功能缺失
-- **标准流程**：`git checkout main` → `git pull origin main` → `git checkout -b dev/v2-iter-{N}` → 开发 → commit → push → 合并 main → 打 tag → 删除分支 → 下一个迭代从 main 重新拆出
+- **标准流程**：`git checkout main` → `git pull origin main` → `git checkout -b dev/v2-iter-{N}` → 开发（**只 commit，不 push**）→ 确认收尾 → 合并 main → 打 tag → `push main + tags` → 删除分支 → 下一个迭代从 main 重新拆出
 
 ### 迭代收尾与发布
 
@@ -353,12 +287,16 @@ Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推�
 
 项目运行时的所有异常（主进程、渲染进程、Worker、IPC 通道）会自动写入日志文件。
 
-**日志位置**：`~/.wishful-claw/logs/` 目录下，按日期命名，如 `2026-08-05.log`
+**日志位置**：本实例数据根下的 `logs/` 目录，按日期命名，如 `2026-08-05.log`。
 
-日志统一写在用户主目录下的 `.wishful-claw/logs/`，与 `config.json`、`index.db` 等配置文件同级：
-- Windows：`C:\\Users\\<用户名>\\.wishful-claw\\logs\\`
-- macOS：`~/.wishful-claw/logs/`
-- Linux：`~/.wishful-claw/logs/`
+数据根按实例类型分开 —— 同一台机器上开发版与打包版各写各的，互不干扰：
+
+- 开发版（`npm run dev`）：`~/.wishful-claw-dev/logs/`
+- 打包版（安装后运行）：`~/.wishful-claw/logs/`
+
+`config.json`、`index.db` 等也各自躺在对应数据根下，别拿开发版的状态去解释打包版的现象。
+
+**沙箱**：沙箱模式开着时，本实例数据根始终在允许范围内 —— agent 读日志、读写记忆不必额外放行。
 
 **排查方式**：Agent 排查问题时，优先读取当天日志文件中的 `[ERROR]` 级别条目，获取完整堆栈信息，而非依赖用户口述错误。
 

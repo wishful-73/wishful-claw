@@ -6,6 +6,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.ProviderHeaderRegressionTests;
 
@@ -28,8 +29,8 @@ internal static partial class UsageLogChecks
 
     public static void Run()
     {
-        _dbPath = Path.Combine(Path.GetTempPath(), $"wc-usage-log-{Guid.NewGuid():N}.db");
-        _dataDir = Path.Combine(Path.GetTempPath(), $"wc-usage-provider-{Guid.NewGuid():N}");
+        _dbPath = Path.Combine(TestOutputRoot.Resolve(), $"wc-usage-log-{Guid.NewGuid():N}.db");
+        _dataDir = Path.Combine(TestOutputRoot.Resolve(), $"wc-usage-provider-{Guid.NewGuid():N}");
         var previousDataDir = Environment.GetEnvironmentVariable(WishfulClawPaths.DataDirEnvVar);
         Environment.SetEnvironmentVariable(WishfulClawPaths.DataDirEnvVar, _dataDir);
         try

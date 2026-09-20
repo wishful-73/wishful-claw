@@ -28,6 +28,17 @@
       "p2": "It supports searching by app name, English camelCase, Chinese pinyin, and pinyin initials. As long as you remember roughly what the app is called, typing it will find it.",
       "p3": "Beyond Start Menu apps, you can add custom entries for portable or non-installed programs. Every launched app is recorded to history, so next time you can find it without adding it manually.",
       "p4": "Once you familiarize yourself with it, you will save a significant amount of time. Instant access, no interruption, no distraction — just press, type, launch, and get back to work."
+    },
+    "mainWindow": "Main Window",
+    "mainWindowDesc": "Set a global shortcut to show / hide this window",
+    "mainWindowToggle": "Show / hide main window",
+    "mainWindowToggleDesc": "Press once to hide to the tray, again to bring it back",
+    "hideOnLaunch": "Start hidden on login",
+    "hideOnLaunchDesc": "Run tray-only at login and post a notification",
+    "mainWindowIntroTitle": "About the main window shortcut",
+    "mainWindowIntro": {
+      "p1": "The main window shortcut hides or recalls Wishful Claw at any time, without reaching for the tray icon.",
+      "p2": "No accelerator is set by default: a global shortcut is exclusive, so any default we shipped would already be taken on some machines. Click \"Add shortcut\" to set your own."
     }
   },
   "tabs": {
@@ -35,7 +46,7 @@
       "label": "Shortcuts"
     },
     "general": {
-      "label": "General",
+      "label": "Theme & Appearance",
       "desc": "Theme, appearance and preferences"
     },
     "provider": {
@@ -102,7 +113,7 @@
     }
   },
   "general": {
-    "title": "General",
+    "title": "Theme & Appearance",
     "subtitle": "Theme, appearance and preferences",
     "theme": {
       "label": "Theme Mode",
@@ -187,6 +198,14 @@
         "label": "Sandbox mode",
         "desc": "Restrict tool path arguments to their own working directories",
         "hint": "Project sessions are limited to that project\u0027s working folder; global and channel sessions to every registered project\u0027s working folder, with out-of-scope calls rejected. Only path arguments are checked — paths referenced inside a command line are not."
+    },
+    "projectsParent": {
+      "label": "Projects parent directory",
+      "desc": "Where the global PM creates projects, and an extra directory global sessions may access",
+      "browse": "Browse",
+      "reset": "Use default",
+      "tooBroad": "That is a drive root: the whole drive would be open to the global PM. Pick a deeper directory.",
+      "hint": "The global PM can only create one level below this directory, and is given no tool to delete or modify projects \u2014 but it can read and write anything under the whole tree, including directories that are not projects yet. Choosing a drive root or your home directory itself raises a warning below: either one hands it a whole region. Projects you create from the UI are not restricted by this directory."
     },
     "contextCompression": {
       "label": "Context Compression",
@@ -280,6 +299,7 @@
         "count": "{{total}} models, {{enabled}} enabled",
         "searchPlaceholder": "Search models...",
         "noModels": "Please fetch or add a model first",
+        "noModelsNeedApiKey": "Enter your API Key first, then fetch again",
         "noResults": "No matching results",
         "fetchModels": "Fetch Models",
         "fetchSuccess": "Fetched {{count}} models",
@@ -1402,7 +1422,63 @@
   },
   "memoryPage": {
     "title": "Memory",
-    "subtitle": "Daily auto organization, tier demotion thresholds and proactive recall parameters",
+    "subtitle": "Global hot and regular memory, auto organization, tier thresholds and proactive recall parameters",
+    "tabs": {
+      "label": "Memory page sections",
+      "settings": "Settings",
+      "hot": "Global Memory",
+      "entries": "Memory Library",
+      "executionLog": "Execution Log"
+    },
+    "hot": {
+      "title": "Global Memory",
+      "desc": "The MEMORY.md shared by every global session. Saving here overwrites the whole file and takes effect for all global sessions immediately.",
+      "save": "Save",
+      "reset": "Reset",
+      "saved": "Global memory saved",
+      "saveFailed": "Failed to save",
+      "loadFailed": "Failed to load",
+      "loading": "Loading...",
+      "unsavedState": "Unsaved changes",
+      "syncedState": "Content synced",
+      "placeholder": "Edit global memory here..."
+    },
+    "entries": {
+      "title": "Global memory library",
+      "desc": "Memory-library entries shared by every global session. Read-only.",
+      "refresh": "Refresh",
+      "loading": "Loading...",
+      "empty": "No global memory entries yet.",
+      "noResults": "No matching memory entries.",
+      "untitled": "Untitled",
+      "searchPlaceholder": "Search global memory...",
+      "search": "Search",
+      "matches": "{{count}} matches",
+      "sortNewest": "Newest first",
+      "sortOldest": "Oldest first",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "pageOf": "Page {{page}} / {{total}}",
+      "rowHint": "Click to expand",
+      "priority": {
+        "permanent": "Permanent",
+        "lasting": "Lasting",
+        "standard": "Standard",
+        "ephemeral": "Ephemeral"
+      },
+      "status": {
+        "active": "Active",
+        "warm": "Warm",
+        "cold": "Cold",
+        "deprecated": "Deprecated"
+      },
+      "ranges": {
+        "all": "All",
+        "today": "Today",
+        "week": "Last 7 days",
+        "month": "Last 30 days"
+      }
+    },
     "organization": {
       "title": "Daily Auto Organization",
       "desc": "Scheduled memory organization: deduplicate/merge MEMORY.md and demote stale entries across tiers (demotion never deletes and is recoverable)",

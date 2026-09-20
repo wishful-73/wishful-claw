@@ -35,13 +35,29 @@ export interface MemoryEntry {
   sourcePath: string | null
 }
 
+/**
+ * A `memory/search` hit, as it actually arrives from the worker.
+ *
+ * The C# record (`MemoryModels.MemorySearchResult`) carries `Id / Title / Content / Scope /
+ * Priority / Status / UpdatedAt / Score`, and the renderer consumes it without any mapping layer.
+ * This interface previously declared `key` / `tier`, which exist nowhere on the wire — reading
+ * them yielded `undefined` at runtime (duplicate React keys, a `" · scope"` meta), and TypeScript
+ * could not see it because the declaration was the only source of the lie. Corrected in iter-33
+ * S-106 after an independent reviewer caught the mismatch.
+ */
 export interface MemorySearchResult {
-  key: string
+  /** `long Id` on the C# side — a JSON number, not a string. */
+  id: number
   title: string
   content: string
   scope: string
-  tier: string
-  score: number
+  priority: string
+  status: string
+  /**
+   * `double? Score` on the C# side, and the worker only sets it on the FTS path — LIKE fallbacks
+   * leave it null, and nulls are omitted from the payload. So it can genuinely be absent.
+   */
+  score?: number
   updatedAt: string
 }
 
@@ -75,7 +91,9 @@ export async function memorySearch(
   limit: number = 10,
   workingFolder?: string | null,
   projectId?: string | null,
-  sshConnectionId?: string | null
+  sshConnectionId?: string | null,
+  from?: number,
+  to?: number
 ): Promise<{ hits: MemorySearchResult[] }> {
   return window.api.workerRequest('memory/search', {
     query,
@@ -83,21 +101,39 @@ export async function memorySearch(
     limit,
     workingFolder,
     projectId,
-    sshConnectionId
+    sshConnectionId,
+    from,
+    to
   })
 }
 
+/**
+ * Reads the hot-memory file (MEMORY.md) for a scope as raw text.
+ *
+ * The worker returns the whole file (`MemoryReadResult(content)`) — it does NOT
+ * parse the markdown into `sections`. The old signature advertised `sections` /
+ * `entries` and accepted a `target` argument; neither exists on the wire
+ * (`MemoryModule.MemoryRead` reads only `scope`), and the function had zero
+ * callers, so the misleading shape was removed in iter-33 S-96 when the global
+ * hot-memory tab became its first caller.
+ */
 export async function memoryRead(
   scope: string,
-  target: string = 'memory',
   workingFolder?: string | null
-): Promise<{ sections?: MemorySection[]; entries?: MemoryEntry[]; entry?: MemoryEntry | null }> {
-  return window.api.workerRequest('memory/read', { scope, target, workingFolder })
+): Promise<{ content: string }> {
+  return window.api.workerRequest('memory/read', { scope, workingFolder })
 }
 
+/**
+ * Overwrites the hot-memory file (MEMORY.md) for a scope with `content`.
+ *
+ * Whole-file overwrite, not a per-section patch: the worker ignores any
+ * `section` field (`MemoryModule.MemoryWrite` writes `content` verbatim), so the
+ * old `section` parameter was dropped in iter-33 S-96 rather than left as a
+ * parameter that silently does nothing.
+ */
 export async function memoryWrite(
   scope: string,
-  section: string,
   content: string,
   workingFolder?: string | null,
   sessionId?: string | null
@@ -106,7 +142,6 @@ export async function memoryWrite(
   // turn (memory-update injection); omit it for session-independent writes.
   return window.api.workerRequest('memory/write', {
     scope,
-    section,
     content,
     workingFolder,
     sessionId: sessionId ?? undefined
@@ -231,6 +266,46 @@ export async function memoryEntriesByStatus(
     projectId,
     sshConnectionId,
     limit
+  })
+}
+
+/**
+ * Lists every entry of a scope regardless of status (iter-33 S-91). The archive
+ * page's memory library needs "everything in this project"; memoryEntriesByStatus
+ * cannot express that because an empty status returns an empty list.
+ * scope='project' is resolved worker-side by GetScope (workingFolder / projectId /
+ * sshConnectionId), so the renderer never hand-builds a `project:ssh:{…}` scope.
+ *
+ * Server-side paging (iter-33 S-98): pass `offset` to walk the list and read
+ * `total` off the response to know how far it goes. `order` is a whitelist —
+ * the worker treats anything other than 'asc' as newest-first. The last two
+ * parameters were appended so the existing five-argument call sites keep working.
+ *
+ * Time window (iter-33 S-101): `from` / `to` are Unix SECONDS, inclusive, and `undefined`
+ * means unbounded (the worker treats non-positive the same way). `total` honours the same
+ * window, so paging inside a range never promises rows the range excluded.
+ */
+export async function memoryEntries(
+  scope: string = 'all',
+  workingFolder?: string | null,
+  limit: number = 200,
+  projectId?: string | null,
+  sshConnectionId?: string | null,
+  offset: number = 0,
+  order: 'desc' | 'asc' = 'desc',
+  from?: number,
+  to?: number
+): Promise<{ entries?: MemoryStatusEntry[]; total?: number }> {
+  return window.api.workerRequest('memory/entries', {
+    scope,
+    workingFolder,
+    projectId,
+    sshConnectionId,
+    limit,
+    offset,
+    order,
+    from,
+    to
   })
 }
 

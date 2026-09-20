@@ -341,6 +341,23 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
+        // CronRuns: read-only query against the local DB (no reverse-request — the rows are
+        // already local, and DbCronRunTools.List's orphan sweep would need the renderer's
+        // live run ids). Kept out of IsCronTool so the reverse path stays untouched.
+        else if (string.Equals(toolCall.Name, AgentRuntimeCronRunReader.ToolName, StringComparison.Ordinal))
+        {
+            try
+            {
+                toolOutput = AgentRuntimeCronRunReader.Execute(toolCall);
+                isToolError = IsJsonError(toolOutput);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Cron tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
         // Plugin: reverse-request to Main process
         else if (AgentRuntimePluginExecutor.IsPluginTool(toolCall.Name))
         {
@@ -420,7 +437,7 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
-        // Project management tools: list_projects / get_project_details / create_session / send_session_message
+        // Project management tools: list_projects / get_project_details / create_session / create_project / send_session_message / update_session_follow_up
         else if (AgentRuntimeProjectExecutor.IsProjectTool(toolCall.Name))
         {
             try

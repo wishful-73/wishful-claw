@@ -1,12 +1,11 @@
-﻿import { app, BrowserWindow, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, shell, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
-import * as fs from 'fs'
 
 // 用 Vite ?asset 导入图标，构建时自动复制到 out/main/，路径始终正确
 // 参考 OpenCowork 的做法（src/main/index.ts 第 28 行）
 import appIcon from '../../resources/icon-256.png?asset'
 
-import { getNativeWorker, latchNativeWorkerShutdown } from './lib/native-worker'
+import { latchNativeWorkerShutdown } from './lib/native-worker'
 import { logError, logWarn, logInfo, logDebug, installGlobalExceptionHandlers, readRecentLogs, listLogFiles, readLogFile, cleanupOldLogFiles } from './lib/logger'
 import { resolveDataPath } from './lib/data-dir'
 import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '../shared/data-dir'
@@ -36,8 +35,23 @@ import { setPluginManager } from './channels/auto-reply'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import { setMainWindow } from './main-window-registry'
 import { registerLoginItemHandlers, registerWindowControlHandlers } from './ipc/window-handlers'
+import {
+  flushPendingReveal,
+  notifyHiddenStartup,
+  revealMainWindowOrDefer,
+  showMainWindow,
+  toggleMainWindow
+} from './main-window-visibility'
+import { shouldShowOnStartup } from './startup-flags'
+import {
+  applyMainWindowShortcuts,
+  reconcileLoginItemOnStartup,
+  registerMainWindowHandlers
+} from './main-window-config'
 import { registerMiscHandlers } from './ipc/misc-handlers'
+import { registerDialogHandlers } from './ipc/dialog-handlers'
 import { registerInputDraftHandlers } from './ipc/input-draft-handlers'
+import { registerWorkerForwardHandlers } from './ipc/worker-forward-handlers'
 import { registerCodeGraphHandlers } from './ipc/codegraph-handlers'
 import {
   initializeCronScheduler,
@@ -67,6 +81,12 @@ let mainWindow: BrowserWindow | null = null
 let channelManager: ChannelManager | null = null
 let tray: Tray | null = null
 let isQuiting = false
+
+/**
+ * Resolved once: `process.argv` cannot change after boot, so re-reading it in
+ * every window callback would just re-derive the same value.
+ */
+const showOnStartup = shouldShowOnStartup(process.argv)
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -101,7 +121,10 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow!.show()
+    // Quiet start (`--hidden`, written into the login item): tray only, with
+    // `notifyHiddenStartup()` telling the user the app is running. Every other
+    // launch shows the window exactly as before.
+    if (showOnStartup) mainWindow!.show()
   })
   mainWindow.webContents.on('page-title-updated', (event) => {
     event.preventDefault()
@@ -143,15 +166,14 @@ function createWindow(): void {
   // Do NOT use BrowserWindow.getAllWindows()[0] — auxiliary windows (clipboard
   // enhancer, quick launcher) can appear at index [0] and break reverse-requests.
   setMainWindow(mainWindow)
+
+  // Redeem a reveal request that arrived before this window existed.
+  flushPendingReveal()
 }
 
-/** Single restore path so the tray, the dock/second instance and update details behave identically. */
-function showMainWindow(): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return
-  if (mainWindow.isMinimized()) mainWindow.restore()
-  mainWindow.show()
-  mainWindow.focus()
-}
+// showMainWindow moved to `main-window-visibility.ts`: the tray, the second
+// instance, the toggle shortcut and update details all share that one restore
+// path, and it has to be reachable without importing this file.
 
 /**
  * The tray carries no update state: it only brings the window forward and asks the renderer to look,
@@ -175,7 +197,9 @@ function createTray(): void {
   tray = new Tray(getTrayIcon())
   tray.setToolTip(appDisplayName)
   const contextMenu = Menu.buildFromTemplate([
-    { label: '显示主窗口', click: () => showMainWindow() },
+    // Neutral wording on purpose: a "show …" label would be lying half the time,
+    // since the very same item hides the window when it is already visible.
+    { label: '显示/隐藏主窗口', click: () => toggleMainWindow() },
     // Permanent entry, not conditional on an update being in flight: with nothing pending it opens
     // the details dialog in its idle state, where the user can re-check.
     { label: '更新详情', click: () => showUpdateDetails() },
@@ -197,7 +221,9 @@ if (!gotTheLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    showMainWindow()
+    // Deferred when the window is not built yet — on a quiet start this is the
+    // only way back to a visible window.
+    revealMainWindowOrDefer()
   })
 
   app.whenReady().then(() => {
@@ -212,6 +238,13 @@ if (!gotTheLock) {
 
   // Login item (auto-start) handlers
   registerLoginItemHandlers()
+
+  // Main-window shortcut tab endpoints
+  registerMainWindowHandlers()
+
+  // Re-assert the login item's command line, so installs predating `--hidden`
+  // (and installs whose exe path has moved) self-correct.
+  reconcileLoginItemOnStartup()
 
   // Register miscellaneous IPC handlers (notifications, worker forwarders, shell, file watch, image persistence)
   registerMiscHandlers(() => mainWindow)
@@ -230,60 +263,8 @@ if (!gotTheLock) {
   registerGitHandlers()
 
 
-  // Dialog: open folder selector
-  registerMessagePackHandler<Record<string, unknown>, { folderPath: string | null; canceled: boolean }>(
-    'dialog:openFolder',
-    async (_args, event) => {
-      const win = BrowserWindow.fromWebContents(event.sender)
-      const result = win
-        ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
-        : await dialog.showOpenDialog({ properties: ['openDirectory'] })
-      return {
-        folderPath: result.canceled ? null : result.filePaths[0] ?? null,
-        canceled: result.canceled
-      }
-    }
-  )
-
-  // Folder picker: returns { canceled, path } for the renderer's fs:select-folder channel
-  registerMessagePackHandler<{ defaultPath?: string }, { canceled: boolean; path?: string }>(
-    'fs:select-folder',
-    async (args, event) => {
-      const win = BrowserWindow.fromWebContents(event.sender)
-      const opts: Electron.OpenDialogOptions = { properties: ['openDirectory'] }
-      if (args && typeof args.defaultPath === 'string') {
-        opts.defaultPath = args.defaultPath
-      }
-      const result = win
-        ? await dialog.showOpenDialog(win, opts)
-        : await dialog.showOpenDialog(opts)
-      return {
-        canceled: result.canceled,
-        path: result.canceled ? undefined : result.filePaths[0]
-      }
-    }
-  )
-
-  // List desktop directories for the working folder selector dialog
-  registerMessagePackHandler<void, { desktopPath: string; directories: { name: string; path: string; isDesktop: boolean }[] } | { error: string }>(
-    'fs:list-desktop-directories',
-    async () => {
-      try {
-        const desktopPath = app.getPath('desktop')
-        const entries = await fs.promises.readdir(desktopPath, { withFileTypes: true })
-        const directories = entries
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => ({
-            name: entry.name,
-            path: join(desktopPath, entry.name),
-            isDesktop: false
-          }))
-        return { desktopPath, directories }
-      } catch (err) {
-        return { error: String(err) }
-      }
-    }
-  )
+  // ── Folder pickers (extracted to ipc/dialog-handlers.ts) ──
+  registerDialogHandlers()
 
   // ── File system handlers (extracted to ipc/fs-handlers.ts) ──
   registerFsHandlers()
@@ -297,31 +278,8 @@ if (!gotTheLock) {
 registerWebFetchHandlers()
 registerCodeGraphHandlers()
 
-  // ── Agent history handlers (forwarded to C# Worker SQLite) ──
-  registerMessagePackHandler<{ toolUseId: string }, unknown>(
-    'agent-history:read-by-tool-use-id',
-    async (args) => getNativeWorker().request('db/sub-agent-read-by-tool-use-id', args)
-  )
-  registerMessagePackHandler<void, { total: number; sessions: unknown[] }>(
-    'agent-history:index',
-    async () => getNativeWorker().request('db/sub-agent-index', {})
-  )
-  registerMessagePackHandler<{ sessionId: string }, unknown[]>(
-    'agent-history:read',
-    async (args) => getNativeWorker().request('db/sub-agent-read-session', args)
-  )
-  registerMessagePackHandler<{
-    upserts?: unknown[]
-    removeIds?: string[]
-    removeSessionIds?: string[]
-  }, void>(
-    'agent-history:apply',
-    async (args) => { await getNativeWorker().request('db/sub-agent-apply', args) }
-  )
-  registerMessagePackHandler<{ snapshot: unknown }, void>(
-    'agent-history:replace',
-    async (args) => { await getNativeWorker().request('db/sub-agent-replace', args) }
-  )
+  // ── Worker forwarders (agent-history / db / goal) ──
+  registerWorkerForwardHandlers()
   // ── SSH handlers ──
   registerSshHandlers()
   registerSshFsHandlers()
@@ -372,153 +330,6 @@ registerCodeGraphHandlers()
   // ── Input draft persistence (JSON map under ~/.wishful-claw/) ──
   registerInputDraftHandlers()
 
-  // ── DB locator (forwarded to Worker) ──
-  registerMessagePackHandler<string, unknown[]>(
-    'db:messages:list-locator:msgpack',
-    async (sessionId) => getNativeWorker().request('db/messages-list-locator', { sessionId })
-  )
-  // ── Goal DB handlers (forwarded to Worker) ──
-  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
-    'db:goals:list:msgpack',
-    async (args) => getNativeWorker().request('db/goals-list', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goals:list-page:msgpack',
-    async (args) => getNativeWorker().request('db/goals-list-page', args)
-  )
-  registerMessagePackHandler<string, unknown | null>(
-    'db:goals:get:msgpack',
-    async (sessionId) => getNativeWorker().request('db/goals-get', { sessionId })
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goals:create:msgpack',
-    async (args) => getNativeWorker().request('db/goals-create', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goals:set:msgpack',
-    async (args) => getNativeWorker().request('db/goals-set', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goals:update:msgpack',
-    async (args) => getNativeWorker().request('db/goals-update', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goals:account:msgpack',
-    async (args) => getNativeWorker().request('db/goals-account', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'agent:drain-sub-agent-notifications',
-    async (args) => getNativeWorker().request('agent/drain-sub-agent-notifications', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
-    'db:goal-events:list:msgpack',
-    async (args) => getNativeWorker().request('db/goal-events-list', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-events:list-page:msgpack',
-    async (args) => getNativeWorker().request('db/goal-events-list-page', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-events:add:msgpack',
-    async (args) => getNativeWorker().request('db/goal-events-add', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
-    'db:goal-plan-tasks:list:msgpack',
-    async (args) => getNativeWorker().request('db/goal-plan-tasks-list', args)
-  )
-  // In-memory live snapshot for the panel's 1s poll (no SQLite round-trip).
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'goal:live:msgpack',
-    async (args) => getNativeWorker().request('goal/live', args)
-  )
-  // ── Session-scoped agent task (Todo) DB handlers (forwarded to Worker) ──
-  registerMessagePackHandler<string, unknown[]>(
-    'db:tasks:list-by-session:msgpack',
-    async (sessionId) => getNativeWorker().request('db/tasks-list-by-session', { sessionId })
-  )
-  registerMessagePackHandler<string, unknown>(
-    'db:tasks:get:msgpack',
-    async (id) => getNativeWorker().request('db/tasks-get', { id })
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:tasks:create:msgpack',
-    async (args) => getNativeWorker().request('db/tasks-create', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:tasks:update:msgpack',
-    async (args) => getNativeWorker().request('db/tasks-update', args)
-  )
-  registerMessagePackHandler<string, unknown>(
-    'db:tasks:delete:msgpack',
-    async (id) => getNativeWorker().request('db/tasks-delete', { id })
-  )
-  registerMessagePackHandler<string, unknown>(
-    'db:tasks:delete-by-session:msgpack',
-    async (sessionId) => getNativeWorker().request('db/tasks-delete-by-session', { sessionId })
-  )
-  // -- Goal plans/tasks/execution-runs handlers --
-  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
-    'db:goal-plans:list:msgpack',
-    async (args) => getNativeWorker().request('db/goal-plans-list', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-plans:get:msgpack',
-    async (args) => getNativeWorker().request('db/goal-plans-get', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-plans:update-status:msgpack',
-    async (args) => getNativeWorker().request('db/goal-plans-update-status', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-plans:update-retry:msgpack',
-    async (args) => getNativeWorker().request('db/goal-plans-update-retry', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
-    'db:goal-tasks:list:msgpack',
-    async (args) => getNativeWorker().request('db/goal-tasks-list', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-tasks:get:msgpack',
-    async (args) => getNativeWorker().request('db/goal-tasks-get', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-tasks:update-status:msgpack',
-    async (args) => getNativeWorker().request('db/goal-tasks-update-status', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-execution-runs:insert:msgpack',
-    async (args) => getNativeWorker().request('db/goal-execution-runs-insert', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'db:goal-execution-runs:finish:msgpack',
-    async (args) => getNativeWorker().request('db/goal-execution-runs-finish', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown[]>(
-    'db:goal-execution-runs:list:msgpack',
-    async (args) => getNativeWorker().request('db/goal-execution-runs-list', args)
-  )
-  // -- Goal control handlers --
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'goal:pause:msgpack',
-    async (args) => getNativeWorker().request('goal/pause', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'goal:resume:msgpack',
-    async (args) => getNativeWorker().request('goal/resume', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'goal:abort:msgpack',
-    async (args) => getNativeWorker().request('goal/abort', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'goal:status:msgpack',
-    async (args) => getNativeWorker().request('goal/status', args)
-  )
-  registerMessagePackHandler<Record<string, unknown>, unknown>(
-    'goal:confirm:msgpack',
-    async (args) => getNativeWorker().request('goal/confirm', args)
-  )
-  
   registerMessagePackHandler<unknown, string>('app:global-memory-home', async () => resolveDataPath())
   registerMessagePackHandler<unknown, boolean>('app:is-development', async () => !app.isPackaged)
 
@@ -594,6 +405,12 @@ registerCodeGraphHandlers()
   // Clipboard Enhancer and Quick Launcher desktop utilities
   registerClipboardEnhancer()
   registerQuickLauncher()
+
+  // Toggle shortcut (no accelerator by default — see the config module)
+  applyMainWindowShortcuts()
+
+  // A quiet start has no window to look at, so say where the app went.
+  if (!showOnStartup) notifyHiddenStartup()
 
   // Restore persisted Cron jobs before auto-starting channels. Session follow-ups
   // restore after the renderer explicitly announces that its listener is ready.

@@ -48,6 +48,20 @@ public sealed class SessionConversation
         }
     }
 
+    /// <summary>
+    /// Sets the compaction watermark to the current message count after a compression that
+    /// actually shrank the conversation. Unlike <see cref="MarkCompactionWatermark"/> this may
+    /// move the watermark DOWN — which is the point: the wire just got shorter, so the next
+    /// turn's appended messages must be able to reopen the compression gate (S-95).
+    /// </summary>
+    public void ResetCompactionWatermark(int messageCount)
+    {
+        lock (_lock)
+        {
+            _compactionWatermark = messageCount;
+        }
+    }
+
     public bool NeedsMemoryInjection(long memoryId, string contentFingerprint)
     {
         lock (_lock)

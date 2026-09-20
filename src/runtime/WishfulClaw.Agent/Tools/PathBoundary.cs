@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent.Tools;
 
@@ -15,8 +16,12 @@ namespace WishfulClaw.Agent.Tools;
 /// - 项目会话 → 该项目自己的 workingFolder（单根）
 /// - 全局会话（含渠道会话，渠道在 AgentRunContextPolicy 里被强制成 global）→ 所有已注册
 ///   项目 workingFolder 的并集。全局助手本来就只管调度，这里必须让它能碰到每个项目。
+/// - 外加**本实例自己的数据根**（见 <see cref="DataRoot"/>）：记忆、计划、配置都长在数据根
+///   下，不在任何用户项目里。开发实例解析到 .wishful-claw-dev、打包实例解析到 .wishful-claw，
+///   两者互不可见 —— 「开发只看开发、生产只看生产」就是靠这个保证的。
 /// - SSH 项目不参与：它的 workingFolder 是远端路径，拿到本地来比较只会误判。
-/// - 一根都没有（项目列表为空）→ 视为未开，不拦。
+/// - iter-33 S-102 起数据根恒在集合里，根集合不再为空，于是「一个项目都没有 ⇒ 随便访问」
+///   这条降级随之消失（改成「只放行数据根」）。只有连数据根都取不到时才回退到不拦。
 /// </summary>
 public static class PathBoundary
 {
@@ -42,9 +47,17 @@ public static class PathBoundary
         => JsonHelpers.GetBool(parameters, "sandboxEnabled", true);
 
     /// <summary>
-    /// 算出本次运行允许的根目录集合。空集合表示「未开」——调用方据此放行。
+    /// 算出本次运行允许的根目录集合：会话对应的项目根 + 本实例数据根（<see cref="WithDataRoot"/>）。
     /// </summary>
     public static IReadOnlyList<string> ResolveRoots(JsonElement parameters)
+        => WithDataRoot(CollectProjectRoots(parameters));
+
+    /// <summary>
+    /// 会话自己那部分根：项目会话 = 该项目的 workingFolder；全局会话 = 所有已注册项目
+    /// workingFolder 的并集。空集合只代表「没有项目根」，不代表不拦 —— 数据根由
+    /// <see cref="WithDataRoot"/> 补进来。
+    /// </summary>
+    private static IReadOnlyList<string> CollectProjectRoots(JsonElement parameters)
     {
         if (ResolveScope(parameters) == "project")
         {
@@ -53,20 +66,90 @@ public static class PathBoundary
         }
 
         // 全局会话：Worker 自己查一遍项目表，免得把「所有项目路径」也塞进每轮重发的 run params。
+        // 外加设置页的「工作目录父目录」（S-103）：全局 PM 要在这里建项目，也要能读写刚建出来、
+        // 还没注册成项目的目录。**只加在全局分支** —— 项目会话拿到它等于能读写兄弟项目。
+        var parentDirectory = ProjectsParentDirectory.Read();
         try
         {
             var db = DbClient.GetClient();
-            return db.Query(
-                "SELECT working_folder FROM projects " +
-                "WHERE working_folder IS NOT NULL AND working_folder <> '' " +
-                "AND (ssh_connection_id IS NULL OR ssh_connection_id = '')",
-                r => r.GetString("working_folder"));
+            return WithProjectsParent(
+                db.Query(
+                    "SELECT working_folder FROM projects " +
+                    "WHERE working_folder IS NOT NULL AND working_folder <> '' " +
+                    "AND (ssh_connection_id IS NULL OR ssh_connection_id = '')",
+                    r => r.GetString("working_folder")),
+                parentDirectory);
         }
         catch (Exception ex)
         {
-            // 查不动就当没有根（= 不拦）。沙箱是保护措施，不能反过来把正常干活挡死。
+            // 查不动就不带项目根。沙箱是保护措施，不能反过来把正常干活挡死。
+            // 父目录与「查不查得动项目表」无关，照加。
             WorkerLog.Warn($"sandbox: failed to resolve project roots: {ex.GetType().Name}: {ex.Message}");
-            return [];
+            return WithProjectsParent([], parentDirectory);
+        }
+    }
+
+    /// <summary>
+    /// 把本实例数据根加到项目根后面，顺序是「项目根在前、数据根在后」。
+    ///
+    /// 独立成方法有两个理由：① 数据根与「查不查得动项目表」无关，项目会话和全局会话两条路
+    /// 都必须带上它；② 它是纯函数（不碰 DB），测试可以直接断言 —— `ResolveRoots` 的全局分支
+    /// 会走 `DbClient.GetClient()`，那是会初始化真实库的写操作，套件里不能碰。
+    ///
+    /// 数据根永远是本机绝对路径，与 SSH 无关：SSH 项目的 workingFolder 是远端路径，被
+    /// `CollectProjectRoots` 的 SQL 排除了，而数据根只用于比较本地工具参数。
+    /// </summary>
+    internal static IReadOnlyList<string> WithDataRoot(IReadOnlyList<string> projectRoots)
+    {
+        var dataRoot = DataRoot();
+        if (dataRoot is null) return projectRoots;
+
+        var roots = new List<string>(projectRoots) { dataRoot };
+        return roots;
+    }
+
+    /// <summary>
+    /// 把设置页的「工作目录父目录」加到根集合，**只给全局会话用**（S-103）。
+    ///
+    /// 为什么是整棵父目录而不是「已注册的项目目录」：agent 刚建出来的目录还没进 projects 表，
+    /// 授权它建却不让它接着往里写，工具就是半截的。放行整棵的代价见 S-103 的风险项 ——
+    /// 设置页对盘符根、用户主目录本身给了 warning。
+    ///
+    /// 为什么只挂全局分支：<see cref="ResolveRoots"/> 是项目会话与全局会话的合流点，
+    /// 加在那里等于让项目 A 的会话读写项目 B（父目录里有一堆兄弟目录），正相反。
+    ///
+    /// 与 <see cref="WithDataRoot"/> 一样是纯函数（不碰 DB、不碰文件），测试可直接断言。
+    /// </summary>
+    internal static IReadOnlyList<string> WithProjectsParent(
+        IReadOnlyList<string> globalRoots,
+        string? parentDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(parentDirectory)) return globalRoots;
+
+        var roots = new List<string>(globalRoots) { parentDirectory };
+        return roots;
+    }
+
+    /// <summary>
+    /// 本实例的数据根（记忆、计划、配置、DB 都长在它下面），取不到时返回 null。
+    ///
+    /// 值来自 <see cref="WishfulClawDataDir"/>，它优先认 WISHFULCLAW_DATA_DIR 环境变量 ——
+    /// Worker 子进程由 native-worker.ts 注入该变量（dev 是 .wishful-claw-dev，打包版是
+    /// .wishful-claw），所以这里拿到的天然就是「本实例自己那一份」。
+    ///
+    /// 吞异常是故意的：沙箱宁可少一个根，也不能让一次路径解析把工具打挂。
+    /// </summary>
+    private static string? DataRoot()
+    {
+        try
+        {
+            var root = WishfulClawDataDir.Root;
+            return string.IsNullOrWhiteSpace(root) ? null : root;
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn($"sandbox: failed to resolve data root: {ex.GetType().Name}: {ex.Message}");
+            return null;
         }
     }
 

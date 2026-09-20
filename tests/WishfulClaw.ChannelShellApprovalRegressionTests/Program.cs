@@ -3,6 +3,7 @@ using WishfulClaw.Agent;
 using WishfulClaw.Agent.Modules.Channels;
 using WishfulClaw.Contracts;
 using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.ChannelShellApprovalRegressionTests;
 
@@ -32,7 +33,7 @@ internal static class Program
 
     public static int Main()
     {
-        _dataDir = Path.Combine(Path.GetTempPath(), $"wishful-shell-approval-{Guid.NewGuid():N}");
+        _dataDir = Path.Combine(TestOutputRoot.Resolve(), $"wishful-shell-approval-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dataDir);
         Environment.SetEnvironmentVariable(WishfulClawPaths.DataDirEnvVar, _dataDir);
 

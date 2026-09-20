@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -10,6 +10,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\runtime\WishfulClaw.Agent\WishfulClaw.Agent.csproj" />
     <ProjectReference Include="..\..\src\runtime\WishfulClaw.Infrastructure\WishfulClaw.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\TestSupport\TestOutputRoot.cs" Link="TestSupport\TestOutputRoot.cs" />
   </ItemGroup>
 
 </Project>

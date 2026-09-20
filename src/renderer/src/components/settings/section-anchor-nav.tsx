@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 
@@ -21,6 +21,7 @@ interface SectionAnchorNavProps {
 function SectionAnchorNav({ containerRef, anchors }: SectionAnchorNavProps): React.JSX.Element | null {
   const { t } = useTranslation('settings')
   const [activeId, setActiveId] = useState<string>(anchors[0]?.id ?? '')
+  const [hasSections, setHasSections] = useState(true)
   const clickingRef = useRef(false)
 
   // Scroll-spy: pick the last section whose top is above the container's
@@ -47,7 +48,24 @@ function SectionAnchorNav({ containerRef, anchors }: SectionAnchorNavProps): Rea
     return () => container.removeEventListener('scroll', onScroll)
   }, [anchors, containerRef])
 
-  if (anchors.length === 0) return null
+  // A panel may render its sections conditionally — the memory page swaps its settings sections for
+  // an execution-log tab (S-90) — and then every anchor points at nothing. Watch the container and
+  // drop the nav while none of its targets exist, instead of offering dead links.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const refresh = (): void => {
+      setHasSections(anchors.some((anchor) => document.getElementById(anchor.id) !== null))
+    }
+
+    refresh()
+    const observer = new MutationObserver(refresh)
+    observer.observe(container, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [anchors, containerRef])
+
+  if (anchors.length === 0 || !hasSections) return null
 
   const handleClick = (id: string): void => {
     setActiveId(id)

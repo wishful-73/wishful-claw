@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -22,21 +22,10 @@ import {
   type MemoryOrganizationReport
 } from '@renderer/lib/agent/memory-organization'
 import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
-
-function clampInt(value: number, min: number, max: number, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback
-  return Math.min(max, Math.max(min, Math.floor(value)))
-}
-
-/** Clamp a day threshold and keep Cold >= Warm per priority tier. */
-function clampTierDays(
-  value: number,
-  kind: 'warm' | 'cold',
-  counterpart: number
-): number {
-  const clamped = clampInt(value, 1, 365, counterpart)
-  return kind === 'warm' ? Math.min(clamped, counterpart) : Math.max(clamped, counterpart)
-}
+import MemoryExecutionLogSection from './MemoryExecutionLogSection'
+import MemoryEntriesTab from './MemoryEntriesTab'
+import MemoryHotTab from './MemoryHotTab'
+import { MemoryTiersSection, MemoryRecallSection } from './MemoryTierSettingsSections'
 
 function isTextModel(
   model: { id: string; enabled: boolean; category?: string; type?: string },
@@ -58,9 +47,72 @@ function getFirstEnabledModelId(provider: {
   return provider.models.find((model) => isTextModel(model, provider.type))?.id ?? ''
 }
 
-/** Timestamp formatter matching the one MemoryPanel keeps locally. */
-function formatMemoryTimestamp(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(timestamp)
+const MEMORY_PAGE_TABS = ['settings', 'hot', 'entries', 'log'] as const
+
+type MemoryPageTab = (typeof MEMORY_PAGE_TABS)[number]
+
+/**
+ * Inner tab bar for the memory page (iter-33 S-90). Mirrors ProviderPanelTabs rather than sharing
+ * one: components/ui has no tab primitive, and the two differ in icon usage, so copying the shape
+ * keeps each panel readable.
+ */
+function MemoryPageTabs({
+  activeTab,
+  onChange
+}: {
+  activeTab: MemoryPageTab
+  onChange: (tab: MemoryPageTab) => void
+}): React.JSX.Element {
+  const { t } = useTranslation('settings')
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const labels: Record<MemoryPageTab, string> = {
+    settings: t('memoryPage.tabs.settings'),
+    hot: t('memoryPage.tabs.hot'),
+    entries: t('memoryPage.tabs.entries'),
+    log: t('memoryPage.tabs.executionLog')
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const nextIndex =
+      event.key === 'ArrowRight'
+        ? (index + 1) % MEMORY_PAGE_TABS.length
+        : (index - 1 + MEMORY_PAGE_TABS.length) % MEMORY_PAGE_TABS.length
+    onChange(MEMORY_PAGE_TABS[nextIndex])
+    tabRefs.current[nextIndex]?.focus()
+  }
+
+  return (
+    <div
+      role="tablist"
+      aria-label={t('memoryPage.tabs.label')}
+      className="flex w-fit shrink-0 items-center gap-1 rounded-lg border bg-muted/50 p-1"
+    >
+      {MEMORY_PAGE_TABS.map((tab, index) => (
+        <button
+          key={tab}
+          ref={(element) => { tabRefs.current[index] = element }}
+          type="button"
+          role="tab"
+          id={`memory-page-tab-${tab}`}
+          aria-controls={`memory-page-tabpanel-${tab}`}
+          aria-selected={activeTab === tab}
+          tabIndex={activeTab === tab ? 0 : -1}
+          onClick={() => onChange(tab)}
+          onKeyDown={(event) => handleKeyDown(event, index)}
+          className={cn(
+            'inline-flex h-7 items-center rounded-md px-2.5 text-xs font-medium transition-colors',
+            activeTab === tab
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
+          )}
+        >
+          {labels[tab]}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function MemorySettingsPanel(): React.JSX.Element {
@@ -87,6 +139,7 @@ function MemorySettingsPanel(): React.JSX.Element {
     (level) => level !== 'none' && level !== 'ultra'
   ) ?? []
 
+  const [activeTab, setActiveTab] = useState<MemoryPageTab>('settings')
   const [organizationReports, setOrganizationReports] = useState<MemoryOrganizationReport[]>([])
   useEffect(() => {
     let cancelled = false
@@ -98,51 +151,6 @@ function MemorySettingsPanel(): React.JSX.Element {
     }
   }, [])
 
-  const tierRows = [
-    {
-      key: 'ephemeral' as const,
-      label: t('memoryPage.tiers.ephemeral'),
-      warm: settings.memoryWarmThresholdEphemeral,
-      cold: settings.memoryColdThresholdEphemeral,
-      setWarm: (v: number) =>
-        settings.updateSettings({
-          memoryWarmThresholdEphemeral: clampTierDays(v, 'warm', settings.memoryColdThresholdEphemeral)
-        }),
-      setCold: (v: number) =>
-        settings.updateSettings({
-          memoryColdThresholdEphemeral: clampTierDays(v, 'cold', settings.memoryWarmThresholdEphemeral)
-        })
-    },
-    {
-      key: 'standard' as const,
-      label: t('memoryPage.tiers.standard'),
-      warm: settings.memoryWarmThresholdStandard,
-      cold: settings.memoryColdThresholdStandard,
-      setWarm: (v: number) =>
-        settings.updateSettings({
-          memoryWarmThresholdStandard: clampTierDays(v, 'warm', settings.memoryColdThresholdStandard)
-        }),
-      setCold: (v: number) =>
-        settings.updateSettings({
-          memoryColdThresholdStandard: clampTierDays(v, 'cold', settings.memoryWarmThresholdStandard)
-        })
-    },
-    {
-      key: 'lasting' as const,
-      label: t('memoryPage.tiers.lasting'),
-      warm: settings.memoryWarmThresholdLasting,
-      cold: settings.memoryColdThresholdLasting,
-      setWarm: (v: number) =>
-        settings.updateSettings({
-          memoryWarmThresholdLasting: clampTierDays(v, 'warm', settings.memoryColdThresholdLasting)
-        }),
-      setCold: (v: number) =>
-        settings.updateSettings({
-          memoryColdThresholdLasting: clampTierDays(v, 'cold', settings.memoryWarmThresholdLasting)
-        })
-    }
-  ]
-
   return (
     <div className="mx-auto max-w-4xl space-y-4 px-8 pb-16 pt-10">
       {/* Title */}
@@ -151,369 +159,222 @@ function MemorySettingsPanel(): React.JSX.Element {
         <p className="text-sm text-muted-foreground">{t('memoryPage.subtitle')}</p>
       </div>
 
-      {/* Auto organization */}
-      <SettingsSection
-        id="sec-memory-organization"
-        title={t('memoryPage.organization.title')}
-        description={t('memoryPage.organization.desc')}
-        actions={
-          <Switch
-            checked={settings.memoryOrganizationEnabled}
-            onCheckedChange={(checked) => settings.updateSettings({ memoryOrganizationEnabled: checked })}
-          />
-        }
-      >
-        {!settings.memoryOrganizationEnabled ? (
-          <SettingHint>{t('memoryPage.organization.disabledHint')}</SettingHint>
-        ) : (
-          <>
-            <SettingRow
-              label={t('memoryPage.organization.schedule.label')}
-              description={t('memoryPage.organization.schedule.desc')}
-            >
-              <div className="flex flex-wrap gap-1.5">
-                {(['nightly', 'startup'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => settings.updateSettings({ memoryOrganizationSchedule: mode })}
-                    className={cn(
-                      'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
-                      settings.memoryOrganizationSchedule === mode
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-                    )}
-                  >
-                    {t(`memoryPage.organization.schedule.${mode}`)}
-                  </button>
-                ))}
-              </div>
-            </SettingRow>
-            {settings.memoryOrganizationSchedule === 'nightly' ? (
+      <MemoryPageTabs activeTab={activeTab} onChange={setActiveTab} />
+
+      {activeTab === 'settings' && (
+        <div
+          role="tabpanel"
+          id="memory-page-tabpanel-settings"
+          aria-labelledby="memory-page-tab-settings"
+          className="space-y-4"
+        >
+        {/* Auto organization */}
+        <SettingsSection
+          id="sec-memory-organization"
+          title={t('memoryPage.organization.title')}
+          description={t('memoryPage.organization.desc')}
+          actions={
+            <Switch
+              checked={settings.memoryOrganizationEnabled}
+              onCheckedChange={(checked) => settings.updateSettings({ memoryOrganizationEnabled: checked })}
+            />
+          }
+        >
+          {!settings.memoryOrganizationEnabled ? (
+            <SettingHint>{t('memoryPage.organization.disabledHint')}</SettingHint>
+          ) : (
+            <>
               <SettingRow
-                label={t('memoryPage.organization.time.label')}
-                description={t('memoryPage.organization.time.desc')}
-                control={
-                  <Input
-                    type="time"
-                    value={settings.memoryOrganizationNightlyTime}
-                    onChange={(event) => {
-                      const next = event.target.value
-                      if (/^\d{2}:\d{2}$/.test(next)) {
-                        settings.updateSettings({ memoryOrganizationNightlyTime: next })
-                      }
+                label={t('memoryPage.organization.schedule.label')}
+                description={t('memoryPage.organization.schedule.desc')}
+              >
+                <div className="flex flex-wrap gap-1.5">
+                  {(['nightly', 'startup'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => settings.updateSettings({ memoryOrganizationSchedule: mode })}
+                      className={cn(
+                        'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
+                        settings.memoryOrganizationSchedule === mode
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+                      )}
+                    >
+                      {t(`memoryPage.organization.schedule.${mode}`)}
+                    </button>
+                  ))}
+                </div>
+              </SettingRow>
+              {settings.memoryOrganizationSchedule === 'nightly' ? (
+                <SettingRow
+                  label={t('memoryPage.organization.time.label')}
+                  description={t('memoryPage.organization.time.desc')}
+                  control={
+                    <Input
+                      type="time"
+                      value={settings.memoryOrganizationNightlyTime}
+                      onChange={(event) => {
+                        const next = event.target.value
+                        if (/^\d{2}:\d{2}$/.test(next)) {
+                          settings.updateSettings({ memoryOrganizationNightlyTime: next })
+                        }
+                      }}
+                      className="w-28 text-xs"
+                    />
+                  }
+                />
+              ) : (
+                <SettingHint>{t('memoryPage.organization.startupHint')}</SettingHint>
+              )}
+              <SettingRow
+                label={t('memoryPage.organization.model.label')}
+                description={t('memoryPage.organization.model.desc')}
+              >
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Select
+                    value={settings.memoryOrganizationModel?.providerId ?? ''}
+                    onValueChange={(providerId) => {
+                      const provider = selectableProviders.find((candidate) => candidate.id === providerId)
+                      const modelId = provider ? getFirstEnabledModelId(provider) : ''
+                      settings.updateSettings({
+                        memoryOrganizationModel: provider && modelId ? { providerId, modelId } : null,
+                        memoryOrganizationThinkingMode: 'default',
+                        memoryOrganizationReasoningEffort: ''
+                      })
                     }}
-                    className="w-28 text-xs"
-                  />
-                }
-              />
-            ) : (
-              <SettingHint>{t('memoryPage.organization.startupHint')}</SettingHint>
-            )}
-            <SettingRow
-              label={t('memoryPage.organization.model.label')}
-              description={t('memoryPage.organization.model.desc')}
-            >
-              <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-                <Select
-                  value={settings.memoryOrganizationModel?.providerId ?? ''}
-                  onValueChange={(providerId) => {
-                    const provider = selectableProviders.find((candidate) => candidate.id === providerId)
-                    const modelId = provider ? getFirstEnabledModelId(provider) : ''
-                    settings.updateSettings({
-                      memoryOrganizationModel: provider && modelId ? { providerId, modelId } : null,
-                      memoryOrganizationThinkingMode: 'default',
-                      memoryOrganizationReasoningEffort: ''
-                    })
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t('memoryPage.organization.model.providerPlaceholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectableProviders.map((provider) => (
-                      <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={settings.memoryOrganizationModel?.modelId ?? ''}
-                  onValueChange={(modelId) => {
-                    const providerId = settings.memoryOrganizationModel?.providerId
-                    if (!providerId) return
-                    settings.updateSettings({
-                      memoryOrganizationModel: { providerId, modelId },
-                      memoryOrganizationThinkingMode: 'default',
-                      memoryOrganizationReasoningEffort: ''
-                    })
-                  }}
-                  disabled={!selectedOrganizationProvider}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t('memoryPage.organization.model.modelPlaceholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {selectedOrganizationProvider?.models.filter(
-                      (model) => isTextModel(model, selectedOrganizationProvider.type)
-                    ).map((model) => (
-                      <SelectItem key={model.id} value={model.id}>{model.name || model.id}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </SettingRow>
-            {organizationThinkingConfig ? (
-              <SettingRow
-                label={t('memoryPage.organization.thinking.label')}
-                description={t('memoryPage.organization.thinking.desc')}
-                control={
-                  <Select
-                    value={settings.memoryOrganizationThinkingMode}
-                    onValueChange={(selection) => settings.updateSettings({
-                      memoryOrganizationThinkingMode: selection as MemoryOrganizationThinkingMode,
-                      memoryOrganizationReasoningEffort: ''
-                    })}
                   >
-                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t('memoryPage.organization.model.providerPlaceholder')} />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="default">{t('memoryPage.organization.thinking.default')}</SelectItem>
-                      <SelectItem value="disabled">{t('memoryPage.organization.thinking.disabled')}</SelectItem>
-                      <SelectItem value="enabled">{t('memoryPage.organization.thinking.enabled')}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                }
-              />
-            ) : null}
-            {organizationThinkingConfig &&
-            settings.memoryOrganizationThinkingMode === 'enabled' &&
-            reasoningEffortLevels.length > 0 ? (
-              <SettingRow
-                label={t('memoryPage.organization.thinking.effortLabel')}
-                description={t('memoryPage.organization.thinking.effortDesc')}
-                control={
-                  <Select
-                    value={settings.memoryOrganizationReasoningEffort || 'default'}
-                    onValueChange={(selection) => settings.updateSettings({
-                      memoryOrganizationReasoningEffort: selection === 'default'
-                        ? ''
-                        : selection as ReasoningEffortLevel
-                    })}
-                  >
-                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="default">{t('memoryPage.organization.thinking.effortDefault')}</SelectItem>
-                      {reasoningEffortLevels.map((level) => (
-                        <SelectItem key={level} value={level}>
-                          {t(`memoryPage.organization.thinking.effort.${level}`)}
-                        </SelectItem>
+                      {selectableProviders.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>{provider.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                }
-              />
-            ) : null}
-          </>
-        )}
-      </SettingsSection>
-
-      {/* Tier thresholds */}
-      <SettingsSection
-        id="sec-memory-tiers"
-        title={t('memoryPage.tiers.title')}
-        description={t('memoryPage.tiers.desc')}
-      >
-        <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-6 gap-y-2">
-          <div />
-          <div className="w-28 text-center text-xs font-medium text-muted-foreground">
-            {t('memoryPage.tiers.warm')}
-          </div>
-          <div className="w-28 text-center text-xs font-medium text-muted-foreground">
-            {t('memoryPage.tiers.cold')}
-          </div>
-          {tierRows.map((row) => (
-            <TierRow key={row.key} label={row.label} warm={row.warm} cold={row.cold} setWarm={row.setWarm} setCold={row.setCold} />
-          ))}
-        </div>
-        <SettingHint>{t('memoryPage.tiers.hint')}</SettingHint>
-      </SettingsSection>
-
-      {/* Recall */}
-      <SettingsSection
-        id="sec-memory-recall"
-        title={t('memoryPage.recall.title')}
-        description={t('memoryPage.recall.desc')}
-      >
-        <SettingRow
-          label={t('memoryPage.recall.maxNotes.label')}
-          description={t('memoryPage.recall.maxNotes.desc')}
-          control={
-            <Input
-              type="number"
-              min={1}
-              max={32}
-              value={settings.memoryRecallMaxNotes}
-              onChange={(event) =>
-                settings.updateSettings({
-                  memoryRecallMaxNotes: clampInt(Number(event.target.value), 1, 32, 5)
-                })
-              }
-              className="w-24 text-xs"
-            />
-          }
-        />
-        <SettingRow
-          label={t('memoryPage.recall.maxChars.label')}
-          description={t('memoryPage.recall.maxChars.desc')}
-          control={
-            <Input
-              type="number"
-              min={256}
-              max={100000}
-              step={256}
-              value={settings.memoryRecallMaxChars}
-              onChange={(event) =>
-                settings.updateSettings({
-                  memoryRecallMaxChars: clampInt(Number(event.target.value), 256, 100_000, 4000)
-                })
-              }
-              className="w-28 text-xs"
-            />
-          }
-        />
-        <SettingRow
-          label={t('memoryPage.recall.minScore.label')}
-          description={t('memoryPage.recall.minScore.desc')}
-          control={
-            <Input
-              type="number"
-              min={0}
-              max={100}
-              value={settings.memoryRecallMinScore}
-              onChange={(event) =>
-                settings.updateSettings({
-                  memoryRecallMinScore: clampInt(Number(event.target.value), 0, 100, 0)
-                })
-              }
-              className="w-24 text-xs"
-            />
-          }
-        />
-        <SettingRow
-          label={t('memoryPage.recall.fallback.label')}
-          description={t('memoryPage.recall.fallback.desc')}
-          control={
-            <Switch
-              checked={settings.memoryRecallGlobalFallback}
-              onCheckedChange={(checked) => settings.updateSettings({ memoryRecallGlobalFallback: checked })}
-            />
-          }
-        />
-        <SettingRow
-          label={t('memoryPage.recall.visibility.label')}
-          description={t('memoryPage.recall.visibility.desc')}
-          control={
-            <Switch
-              checked={settings.memoryRecallVisibility}
-              onCheckedChange={(checked) => settings.updateSettings({ memoryRecallVisibility: checked })}
-            />
-          }
-        />
-      </SettingsSection>
-
-      {/* Execution log: lets the user confirm the organization task actually ran. */}
-      <SettingsSection
-        id="sec-memory-execution-log"
-        title={t('memoryPage.executionLog.title')}
-        description={t('memoryPage.executionLog.desc')}
-      >
-        {organizationReports.length === 0 ? (
-          <SettingHint>{t('memoryPage.executionLog.empty')}</SettingHint>
-        ) : (
-          <div className="max-h-64 space-y-1.5 overflow-y-auto">
-            {organizationReports.map((report) => {
-              const organized = report.scopes.filter((scope) => scope.organized).length
-              const detail =
-                report.error ??
-                report.scopes.find((scope) => scope.error)?.error ??
-                report.scopes.find((scope) => scope.skippedReason && !scope.organized)
-                  ?.skippedReason ??
-                null
-              return (
-                <div
-                  key={report.id}
-                  className={cn(
-                    'rounded-md border border-border p-2 text-xs',
-                    detail && 'border-amber-500/40'
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-medium">
-                      {t(`memoryPage.executionLog.trigger.${report.trigger}`, {
-                        defaultValue: report.trigger
-                      })}
-                    </span>
-                    <span className="shrink-0 text-muted-foreground">
-                      {formatMemoryTimestamp(report.finishedAt)}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-muted-foreground/70">
-                    {t('memoryPage.executionLog.progress', {
-                      organized,
-                      total: report.scopes.length
-                    })}
-                  </p>
-                  {detail && (
-                    <p
-                      className="mt-0.5 truncate text-[10px] text-muted-foreground/70"
-                      title={detail}
-                    >
-                      {detail}
-                    </p>
-                  )}
+                  <Select
+                    value={settings.memoryOrganizationModel?.modelId ?? ''}
+                    onValueChange={(modelId) => {
+                      const providerId = settings.memoryOrganizationModel?.providerId
+                      if (!providerId) return
+                      settings.updateSettings({
+                        memoryOrganizationModel: { providerId, modelId },
+                        memoryOrganizationThinkingMode: 'default',
+                        memoryOrganizationReasoningEffort: ''
+                      })
+                    }}
+                    disabled={!selectedOrganizationProvider}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t('memoryPage.organization.model.modelPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedOrganizationProvider?.models.filter(
+                        (model) => isTextModel(model, selectedOrganizationProvider.type)
+                      ).map((model) => (
+                        <SelectItem key={model.id} value={model.id}>{model.name || model.id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </SettingsSection>
-    </div>
-  )
-}
+              </SettingRow>
+              {organizationThinkingConfig ? (
+                <SettingRow
+                  label={t('memoryPage.organization.thinking.label')}
+                  description={t('memoryPage.organization.thinking.desc')}
+                  control={
+                    <Select
+                      value={settings.memoryOrganizationThinkingMode}
+                      onValueChange={(selection) => settings.updateSettings({
+                        memoryOrganizationThinkingMode: selection as MemoryOrganizationThinkingMode,
+                        memoryOrganizationReasoningEffort: ''
+                      })}
+                    >
+                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">{t('memoryPage.organization.thinking.default')}</SelectItem>
+                        <SelectItem value="disabled">{t('memoryPage.organization.thinking.disabled')}</SelectItem>
+                        <SelectItem value="enabled">{t('memoryPage.organization.thinking.enabled')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  }
+                />
+              ) : null}
+              {organizationThinkingConfig &&
+              settings.memoryOrganizationThinkingMode === 'enabled' &&
+              reasoningEffortLevels.length > 0 ? (
+                <SettingRow
+                  label={t('memoryPage.organization.thinking.effortLabel')}
+                  description={t('memoryPage.organization.thinking.effortDesc')}
+                  control={
+                    <Select
+                      value={settings.memoryOrganizationReasoningEffort || 'default'}
+                      onValueChange={(selection) => settings.updateSettings({
+                        memoryOrganizationReasoningEffort: selection === 'default'
+                          ? ''
+                          : selection as ReasoningEffortLevel
+                      })}
+                    >
+                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">{t('memoryPage.organization.thinking.effortDefault')}</SelectItem>
+                        {reasoningEffortLevels.map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {t(`memoryPage.organization.thinking.effort.${level}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  }
+                />
+              ) : null}
+            </>
+          )}
+        </SettingsSection>
 
-function TierRow(props: {
-  label: string
-  warm: number
-  cold: number
-  setWarm: (value: number) => void
-  setCold: (value: number) => void
-}): React.JSX.Element {
-  const { t } = useTranslation('settings')
-  return (
-    <>
-      <div className="text-sm font-medium">{props.label}</div>
-      <div className="flex w-28 items-center justify-center gap-1.5">
-        <Input
-          type="number"
-          min={1}
-          max={365}
-          value={props.warm}
-          onChange={(event) => props.setWarm(Number(event.target.value))}
-          className="w-20 text-xs"
-        />
-        <span className="text-xs text-muted-foreground">{t('memoryPage.tiers.days')}</span>
-      </div>
-      <div className="flex w-28 items-center justify-center gap-1.5">
-        <Input
-          type="number"
-          min={1}
-          max={365}
-          value={props.cold}
-          onChange={(event) => props.setCold(Number(event.target.value))}
-          className="w-20 text-xs"
-        />
-        <span className="text-xs text-muted-foreground">{t('memoryPage.tiers.days')}</span>
-      </div>
-    </>
+        {/* Tier thresholds */}
+        <MemoryTiersSection />
+
+        {/* Recall */}
+        <MemoryRecallSection />
+
+        </div>
+      )}
+
+      {activeTab === 'hot' && (
+        <div
+          role="tabpanel"
+          id="memory-page-tabpanel-hot"
+          aria-labelledby="memory-page-tab-hot"
+          className="space-y-4"
+        >
+          <MemoryHotTab />
+        </div>
+      )}
+
+      {activeTab === 'entries' && (
+        <div
+          role="tabpanel"
+          id="memory-page-tabpanel-entries"
+          aria-labelledby="memory-page-tab-entries"
+          className="space-y-4"
+        >
+          <MemoryEntriesTab />
+        </div>
+      )}
+
+      {activeTab === 'log' && (
+        <div
+          role="tabpanel"
+          id="memory-page-tabpanel-log"
+          aria-labelledby="memory-page-tab-log"
+          className="space-y-4"
+        >
+          <MemoryExecutionLogSection reports={organizationReports} />
+        </div>
+      )}
+    </div>
   )
 }
 

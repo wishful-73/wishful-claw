@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Project } from './types'
-import { dbCreateProject, dbDeleteProject, dbUpdateProject } from './db-helpers'
+import { dbCreateProject, dbDeleteProject, dbListProjects, dbUpdateProject } from './db-helpers'
 import type { SessionSlice } from './session-slice'
 
 interface ProjectSliceState {
@@ -16,6 +16,7 @@ interface ProjectSliceState {
   deleteProject: (projectId: string) => Promise<void>
   togglePinProject: (projectId: string) => void
   updateProjectDirectory: (projectId: string, patch: Partial<{ workingFolder: string | null; sshConnectionId: string | null }>) => void
+  reloadProjects: () => Promise<void>
 }
 
 export type ProjectSlice = ProjectSliceState
@@ -164,5 +165,20 @@ export const createProjectSlice: StateCreator<
       project.updatedAt = now
     })
     void dbUpdateProject(projectId, { updatedAt: now })
+  },
+
+  // The store is otherwise the only source of truth for `projects`, so anything created outside
+  // this window (the agent's create_project tool, for one) never reaches the sidebar. This pulls
+  // the authoritative list back in. A failed read leaves the current list alone rather than
+  // emptying it; `activeProjectId` is re-homed only if the selected project disappeared.
+  reloadProjects: async () => {
+    const rows = await dbListProjects()
+    if (!rows) return
+    set((state) => {
+      state.projects = rows
+      if (state.activeProjectId && !rows.some((p) => p.id === state.activeProjectId)) {
+        state.activeProjectId = rows[0]?.id ?? null
+      }
+    })
   }
 })

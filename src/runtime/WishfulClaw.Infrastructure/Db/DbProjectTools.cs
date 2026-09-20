@@ -64,53 +64,68 @@ public static class DbProjectTools
         }
     }
 
+    /// <summary>
+    /// RPC 端点 <c>db/projects-create</c>：渲染端建项目（用户自己选目录，不受父目录约束）。
+    /// 建库逻辑在 <see cref="CreateEntity"/>，与 agent 的 <c>create_project</c> 共用同一条路径，
+    /// 免得「显示名怎么清洗」「id 怎么生成」在两处各说各话。
+    /// </summary>
     public static WorkerResponse Create(JsonElement parameters)
     {
         try
         {
-            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var id = NormalizeOptional(JsonHelpers.GetString(parameters, "id")) ?? CreateId();
-            var name = SanitizeProjectName(RequireString(parameters, "name"));
-            var sshConnectionId = NormalizeOptional(JsonHelpers.GetString(parameters, "sshConnectionId"));
-            var workingFolder = NormalizeOptional(JsonHelpers.GetString(parameters, "workingFolder"));
-            var pluginId = NormalizeOptional(JsonHelpers.GetString(parameters, "pluginId"));
-            var pinned = JsonHelpers.GetBool(parameters, "pinned", false) ? 1 : 0;
-            var createdAt = JsonHelpers.GetLong(parameters, "createdAt", now);
-            var updatedAt = JsonHelpers.GetLong(parameters, "updatedAt", now);
-
-            if (workingFolder is not null && sshConnectionId is null)
-            {
-                Directory.CreateDirectory(workingFolder);
-            }
-
-            DbClient.EnsureInitialized(parameters);
-            var db = DbClient.GetClient(parameters);
-
-            db.Execute(
-                "INSERT INTO projects (id, name, working_folder, ssh_connection_id, plugin_id, pinned, created_at, updated_at) " +
-                "VALUES (@id, @name, @wf, @ssh, @plugin, @pinned, @ca, @ua)",
-                new SqliteParameter("@id", id),
-                new SqliteParameter("@name", name),
-                new SqliteParameter("@wf", (object?)workingFolder ?? DBNull.Value),
-                new SqliteParameter("@ssh", (object?)sshConnectionId ?? DBNull.Value),
-                new SqliteParameter("@plugin", (object?)pluginId ?? DBNull.Value),
-                new SqliteParameter("@pinned", pinned),
-                new SqliteParameter("@ca", createdAt),
-                new SqliteParameter("@ua", updatedAt));
-
-            var entity = new ProjectEntity
-            {
-                Id = id, Name = name, WorkingFolder = workingFolder,
-                SshConnectionId = sshConnectionId, PluginId = pluginId,
-                Pinned = pinned, CreatedAt = createdAt, UpdatedAt = updatedAt
-            };
-
-            return WorkerResponse.Json(ProjectRow.FromEntity(entity), InfrastructureJsonContext.Default.ProjectRow);
+            return WorkerResponse.Json(
+                ProjectRow.FromEntity(CreateEntity(parameters)),
+                InfrastructureJsonContext.Default.ProjectRow);
         }
         catch (Exception ex)
         {
             return WorkerResponse.Error(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// 建项目并返回落库后的实体；失败**抛异常**。抽出它是为了给 agent 的 <c>create_project</c>
+    /// 执行器一条能拿到真实失败原因的路径 —— 走 <see cref="Create"/> 的话只剩一个已经渲染成
+    /// JSON 的 <c>WorkerResponse</c>，得反过来解析才知道成没成。
+    /// </summary>
+    public static ProjectEntity CreateEntity(JsonElement parameters)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var id = NormalizeOptional(JsonHelpers.GetString(parameters, "id")) ?? CreateId();
+        var name = SanitizeProjectName(RequireString(parameters, "name"));
+        var sshConnectionId = NormalizeOptional(JsonHelpers.GetString(parameters, "sshConnectionId"));
+        var workingFolder = NormalizeOptional(JsonHelpers.GetString(parameters, "workingFolder"));
+        var pluginId = NormalizeOptional(JsonHelpers.GetString(parameters, "pluginId"));
+        var pinned = JsonHelpers.GetBool(parameters, "pinned", false) ? 1 : 0;
+        var createdAt = JsonHelpers.GetLong(parameters, "createdAt", now);
+        var updatedAt = JsonHelpers.GetLong(parameters, "updatedAt", now);
+
+        if (workingFolder is not null && sshConnectionId is null)
+        {
+            Directory.CreateDirectory(workingFolder);
+        }
+
+        DbClient.EnsureInitialized(parameters);
+        var db = DbClient.GetClient(parameters);
+
+        db.Execute(
+            "INSERT INTO projects (id, name, working_folder, ssh_connection_id, plugin_id, pinned, created_at, updated_at) " +
+            "VALUES (@id, @name, @wf, @ssh, @plugin, @pinned, @ca, @ua)",
+            new SqliteParameter("@id", id),
+            new SqliteParameter("@name", name),
+            new SqliteParameter("@wf", (object?)workingFolder ?? DBNull.Value),
+            new SqliteParameter("@ssh", (object?)sshConnectionId ?? DBNull.Value),
+            new SqliteParameter("@plugin", (object?)pluginId ?? DBNull.Value),
+            new SqliteParameter("@pinned", pinned),
+            new SqliteParameter("@ca", createdAt),
+            new SqliteParameter("@ua", updatedAt));
+
+        return new ProjectEntity
+        {
+            Id = id, Name = name, WorkingFolder = workingFolder,
+            SshConnectionId = sshConnectionId, PluginId = pluginId,
+            Pinned = pinned, CreatedAt = createdAt, UpdatedAt = updatedAt
+        };
     }
 
     public static WorkerResponse Update(JsonElement parameters)

@@ -394,11 +394,17 @@ export const useChatStore = create<ChatStore>()(
         delete workerParams.meta
         const capSession = get().sessions.find((item) => item.id === sessionId)
 
-        // The Worker resolves `{{sessionId}}` in requestOverrides headers (codex,
-        // opencode-go) from `provider.sessionId`. sendMessage is the only door to
-        // agent/run and it knows the session, so the identity is stamped here
-        // instead of being remembered at every send site — that is how it went
-        // missing on the chat path while the sidecar path had it.
+        // sendMessage is the only door to agent/run and it knows the session, so the
+        // identity is stamped here instead of being remembered at every send site.
+        //
+        // Two consumers, and they do not read the same field (S-89):
+        //  - `{{sessionId}}` in requestOverrides headers (codex) is resolved by the Worker
+        //    from `provider.sessionId` — that is the value stamped just below.
+        //  - opencode-go's `x-opencode-session` header is NOT template-driven: the C#
+        //    provider composes it from the TOP-LEVEL `sessionId` of the run request
+        //    (OpenAIChatHeaders.cs + OpenAIChatProvider.cs). A sidecar request that set
+        //    only `provider.sessionId` therefore still reached opencode-go with no session
+        //    and came back 400 — which is what S-89 was.
         if (workerParams.provider) {
           workerParams.provider = { ...workerParams.provider, sessionId }
         }

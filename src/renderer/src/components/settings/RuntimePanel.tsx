@@ -16,6 +16,7 @@ import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
 import { Slider } from '@renderer/components/ui/slider'
 import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
+import { ProjectsParentDirectorySection } from './ProjectsParentDirectorySection'
 
 function RuntimePanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
@@ -115,6 +116,9 @@ function RuntimePanel(): React.JSX.Element {
       >
         <SettingHint>{t('general.sandbox.hint')}</SettingHint>
       </SettingsSection>
+
+      {/* Projects parent directory（iter-33 S-103） */}
+      <ProjectsParentDirectorySection />
 
       {/* Session Defaults */}
       <SettingsSection

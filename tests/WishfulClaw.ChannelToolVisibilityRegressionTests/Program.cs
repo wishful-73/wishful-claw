@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WishfulClaw.Agent;
+using WishfulClaw.Agent.Tools;
 using WishfulClaw.Agent.Tools.Providers;
 using WishfulClaw.Core.Tools;
 
@@ -12,14 +13,14 @@ namespace WishfulClaw.ChannelToolVisibilityRegressionTests;
 /// <c>ResolveAvailableMode</c> still returned the literal "channel", so every tool whose
 /// availableModes said "global" (project tools, plugin messaging) silently vanished.
 /// </summary>
-internal static class Program
+internal static partial class Program
 {
     private const string ChannelParametersJson =
         """{"sessionMode":"channel","channelSession":true,"pluginId":"feishu","externalChatId":"oc_test"}""";
 
     private static readonly string[] ProjectTools =
     [
-        "list_projects", "get_project_details", "create_session", "send_session_message"
+        "list_projects", "get_project_details", "create_session", "create_project", "send_session_message"
     ];
 
     private static readonly string[] GlobalTaskTools =
@@ -35,16 +36,30 @@ internal static class Program
     ];
 
     /// <summary>
-    /// Representatives of the categories a channel session must not reach: cron, desktop, team and
-    /// skill-management. None of them is reachable by a chat reply, so seeing one here means the
-    /// visibility rules were widened rather than the mode being normalized.
+    /// Representatives of the categories a channel session must not receive as direct tool
+    /// definitions: desktop, team and skill-management. None of them is reachable by a chat reply, so
+    /// seeing one in <c>direct</c> means the visibility rules were widened rather than the mode being
+    /// normalized. The cron tools used to be listed here as well; since S-87 they are deliberately
+    /// granted to the global side (a channel is a global session), and they still stay out of
+    /// <c>direct</c> because they carry no IsCore flag — see <see cref="CronTools"/>.
     /// </summary>
     private static readonly string[] OverExposureTools =
     [
-        "CronAdd", "CronCreate", "CronUpdate",
         "DesktopScreenshot", "DesktopClick", "DesktopType",
         "TeamCreate", "TeamStatus", "TeamDelete",
         "list_installed_skills"
+    ];
+
+    /// <summary>
+    /// S-87: the cron family is granted to the global side (<c>global:*@*</c>) and to work runs
+    /// (<c>*:cowork@*</c>). A channel session is a global session, so it reaches them through the
+    /// <c>use_capability</c> proxy — intended, not a leak ("渠道就是特殊的全局对话"). CronRuns is the
+    /// read-only execution log added by the same change; unlike its siblings it reads the local
+    /// database directly instead of going through the main-process reverse request.
+    /// </summary>
+    private static readonly string[] CronTools =
+    [
+        "CronAdd", "CronCreate", "CronUpdate", "CronRemove", "CronDelete", "CronList", "CronRuns"
     ];
 
     /// <summary>
@@ -86,6 +101,7 @@ internal static class Program
             AssertProjectToolsReachable(runContext, registry);
             AssertPluginToolsReachable(runContext, registry);
             AssertGlobalTaskToolsProxyOnly(registry, direct);
+            AssertCronToolsReachableViaProxy(registry, runContext, direct);
             AssertNoOverExposure(direct);
             AssertCapabilityProxySurvives(direct);
 
@@ -93,6 +109,11 @@ internal static class Program
             AssertDesktopProjectSessionNotLoosened(registry);
 
             AssertAgentVisibleSet(runContext, registry, direct);
+
+            AssertCreateProjectGrant(runContext, registry);
+            AssertProjectCreationPolicy();
+            AssertSandboxProjectsParent();
+            AssertProjectsParentDefault();
 
             Console.WriteLine($"Channel tool visibility regression checks passed ({_checks} assertions).");
             return 0;
@@ -156,6 +177,43 @@ internal static class Program
             Assert(
                 registry.IsAvailableInMode(name, "global"),
                 $"{name} is available in the global mode, so the capability proxy can still reach it");
+        }
+    }
+
+    private static void AssertCronToolsReachableViaProxy(ToolRegistry registry, AgentRunContext channelContext, HashSet<string> direct)
+    {
+        // Cron tools carry no IsCore flag, so widening their visibleScopes (S-87) reaches the
+        // use_capability proxy rather than the direct definitions — the same shape as the
+        // global-task batch above. Asserting both halves keeps a future IsCore flip from silently
+        // pushing seven tools into every channel prompt.
+        AssertContainsNone(direct, CronTools, "cron tools stay out of the direct injection set");
+
+        foreach (var name in CronTools)
+        {
+            Assert(Allowed(channelContext, registry, name),
+                $"a global/channel session reaches {name} through the capability proxy");
+        }
+
+        // The grant is "the global side, plus work runs" — a project chat is on neither side.
+        var projectChat = AgentRunContextPolicy.Resolve(
+            Parse("""{"scope":"project","projectId":"p1","collaborationMode":"chat"}"""));
+        AssertEqual("project", projectChat.Scope, "the cron exclusion probe resolves to the project scope");
+        AssertEqual("chat", projectChat.CollaborationMode, "the cron exclusion probe resolves to the chat collaboration mode");
+        foreach (var name in CronTools)
+        {
+            Assert(
+                !AgentRunContextPolicy.IsToolAllowed(projectChat, name, registry, channelSession: false),
+                $"a project chat session does not gain {name}");
+        }
+
+        // ...while the '*:cowork@*' half of the grant keeps them on project work runs.
+        var projectCowork = AgentRunContextPolicy.Resolve(
+            Parse("""{"scope":"project","projectId":"p1","collaborationMode":"cowork"}"""));
+        foreach (var name in CronTools)
+        {
+            Assert(
+                AgentRunContextPolicy.IsToolAllowed(projectCowork, name, registry, channelSession: false),
+                $"a project cowork session keeps {name}");
         }
     }
 

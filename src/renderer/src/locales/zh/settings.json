@@ -28,6 +28,17 @@
       "p2": "支持按应用名称、英文驼峰、中文拼音、拼音首字母搜索。只要你还记得大概的名字，输入基本都能找到。",
       "p3": "除了开始菜单中的应用，你还可以添加自定义启动项来收录绿色版或未安装的程序。启动过的应用会自动记录到历史中，下次无需添加即可搜到。",
       "p4": "一旦熟悉它，能够为你节约大量时间。即用即走、不中断、无干扰，让你可以更加专注地改变世界。"
+    },
+    "mainWindow": "主窗口",
+    "mainWindowDesc": "为该窗口设置显示 / 隐藏的全局快捷键",
+    "mainWindowToggle": "显示 / 隐藏主窗口",
+    "mainWindowToggleDesc": "按一次隐藏到托盘，再按一次唤回",
+    "hideOnLaunch": "开机启动时不显示窗口",
+    "hideOnLaunchDesc": "开机自启时只在托盘运行，并发送一条通知",
+    "mainWindowIntroTitle": "关于主窗口快捷键",
+    "mainWindowIntro": {
+      "p1": "主窗口快捷键让你随时隐藏或唤回 Wishful Claw，不必绕到托盘图标。",
+      "p2": "默认不预设快捷键：全局快捷键是独占的，我们预设的值在你机器上很可能已被别的应用占用。需要时点「添加」自行设置。"
     }
   },
   "tabs": {
@@ -35,7 +46,7 @@
       "label": "快捷键"
     },
     "general": {
-      "label": "通用设置",
+      "label": "主题外观",
       "desc": "主题、外观和偏好设置"
     },
     "provider": {
@@ -102,7 +113,7 @@
     }
   },
   "general": {
-    "title": "通用",
+    "title": "主题外观",
     "subtitle": "主题、外观和偏好设置",
     "theme": {
       "label": "主题模式",
@@ -187,6 +198,14 @@
         "label": "沙箱模式",
         "desc": "限制工具的路径参数只能落在自己的工作目录内",
         "hint": "项目会话限该项目的工作目录；全局会话与渠道会话限所有已注册项目的工作目录，越界直接拒绝。只校验工具参数里的路径，命令行内部引用的路径不受此限制。"
+    },
+    "projectsParent": {
+      "label": "工作目录父目录",
+      "desc": "全局 PM 创建项目的落点，同时也是全局会话可额外访问的目录",
+      "browse": "浏览",
+      "reset": "恢复默认",
+      "tooBroad": "这是盘符根：整块盘都会对全局 PM 敞开，建议选个更靠下的目录。",
+      "hint": "全局 PM 只能在这个目录下建一级子目录，不提供删除或修改项目的工具；但它可以读写这棵目录下的任何路径，包括还没建成项目的目录。父目录选成盘符根或用户主目录本身时，下面会给一条提示 —— 那两种都等于把一整片区域交给它。你自己从界面建的项目不受这个目录限制。"
     },
     "contextCompression": {
       "label": "上下文压缩",
@@ -280,6 +299,7 @@
         "count": "共 {{total}} 个模型，{{enabled}} 个已启用",
         "searchPlaceholder": "搜索模型...",
         "noModels": "请先拉取模型或添加模型",
+        "noModelsNeedApiKey": "请先输入 API Key 后尝试重新拉取",
         "noResults": "无匹配结果",
         "fetchModels": "拉取模型",
         "fetchSuccess": "已拉取 {{count}} 个模型",
@@ -1541,7 +1561,63 @@
   },
   "memoryPage": {
     "title": "记忆",
-    "subtitle": "每日自动整理、分层降级阈值与主动回忆参数",
+    "subtitle": "全局记忆与记忆库、自动整理、分层降级阈值与主动回忆参数",
+    "tabs": {
+      "label": "记忆页分页",
+      "settings": "设置",
+      "hot": "全局记忆",
+      "entries": "记忆库",
+      "executionLog": "执行记录"
+    },
+    "hot": {
+      "title": "全局记忆",
+      "desc": "所有全局会话共享的 MEMORY.md。这里的保存会整份覆盖该文件，对所有全局会话立即生效。",
+      "save": "保存",
+      "reset": "重置",
+      "saved": "已保存全局记忆",
+      "saveFailed": "保存失败",
+      "loadFailed": "读取失败",
+      "loading": "加载中…",
+      "unsavedState": "有未保存的修改",
+      "syncedState": "内容已同步",
+      "placeholder": "在此编辑全局记忆…"
+    },
+    "entries": {
+      "title": "全局记忆库",
+      "desc": "全局会话共享的记忆库条目。只读。",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "empty": "暂无全局记忆条目。",
+      "noResults": "没有匹配的记忆条目。",
+      "untitled": "未命名",
+      "searchPlaceholder": "搜索全局记忆…",
+      "search": "搜索",
+      "matches": "{{count}} 条匹配",
+      "sortNewest": "最新优先",
+      "sortOldest": "最早优先",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageOf": "第 {{page}} / {{total}} 页",
+      "rowHint": "点击展开内容",
+      "priority": {
+        "permanent": "永久",
+        "lasting": "持久",
+        "standard": "标准",
+        "ephemeral": "临时"
+      },
+      "status": {
+        "active": "活跃",
+        "warm": "温",
+        "cold": "冷",
+        "deprecated": "已弃用"
+      },
+      "ranges": {
+        "all": "全部",
+        "today": "今天",
+        "week": "近 7 天",
+        "month": "近 30 天"
+      }
+    },
     "organization": {
       "title": "每日自动整理",
       "desc": "定时整理记忆：MEMORY.md 去重合并、过期条目分层降级（降级不删除，可恢复）",

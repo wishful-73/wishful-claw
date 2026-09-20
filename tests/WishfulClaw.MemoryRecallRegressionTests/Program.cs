@@ -1,7 +1,8 @@
-﻿using Microsoft.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Workspace.Memory;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.MemoryRecallRegressionTests;
 
@@ -11,13 +12,17 @@ internal static class Program
 
     public static int Main()
     {
-        var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-memory-recall-regression-{Guid.NewGuid():N}");
+        var testRoot = Path.Combine(TestOutputRoot.Resolve(), $"wishful-memory-recall-regression-{Guid.NewGuid():N}");
         Directory.CreateDirectory(testRoot);
         try
         {
             RunFtsLiteralQuerySuite(Path.Combine(testRoot, "memory.db"));
+            RunShortQuerySuite();
+            RunMultiKeywordSuite();
             RunSessionDeduplicationSuite();
             RunRecallFilteringSuite();
+            RunInjectedBlockStrippingSuite();
+            RunTimeFilterSuite();
             Console.WriteLine($"Memory recall regression checks passed: {_passed}");
             return 0;
         }
@@ -64,7 +69,153 @@ internal static class Program
     {
         var hits = search.SearchAsync(query, "global").GetAwaiter().GetResult();
         Assert(hits.Count > 0, $"FTS literal query returns a hit: {query}");
-        Assert(hits[0].Score is not null, $"FTS literal query does not fall back to LIKE: {query}");
+        Assert(hits[0].Score is not null, $"FTS literal query scores its hit: {query}");
+    }
+
+    /// <summary>
+    /// S-94: the FTS index is tokenize='trigram' (3-character floor), so a two-character
+    /// CJK query can only be served by the LIKE path. That path used to report a null
+    /// score, which made PassesThreshold let everything through and left the hits
+    /// unordered by relevance. The title hit is inserted with an OLDER updated_at so the
+    /// ordering assertion actually distinguishes relevance from recency.
+    /// </summary>
+    private static void RunShortQuerySuite()
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        InsertMemory("短词 标题命中", "与关键词无关的正文", now - 10);
+        InsertMemory("无关标题", "短词 只出现在正文里", now);
+
+        var search = new MemoryFtsService();
+        var hits = search.SearchAsync("短词", "global").GetAwaiter().GetResult();
+
+        Assert(hits.Count >= 2, "two-character query is served by the LIKE path");
+        Assert(hits.All(h => h.Score is not null), "short-query hits carry a synthesised score");
+        AssertEqual("短词 标题命中", hits[0].Title, "title hit outranks content-only hit for short queries");
+    }
+
+    /// <summary>
+    /// S-99: a query is a set of whitespace-separated keywords ANDed together. Before this,
+    /// the whole string went to FTS as ONE phrase and to LIKE as ONE substring, so a
+    /// multi-keyword query could never match anything. Under AND every returned row carries
+    /// *all* keywords — so "how many keywords matched" is a constant and the only thing left
+    /// to order by is *where* they matched (title weighs 2, body weighs 1, accumulated per
+    /// keyword). All three samples are inserted as 'active' on purpose: the ORDER BY layers
+    /// status above score, which would otherwise mask the score ordering under test.
+    /// </summary>
+    private static void RunMultiKeywordSuite()
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        // A — both keywords in the title, older than B (score 2+2 = 4).
+        InsertMemory("记忆 整理 配置", "与关键词无关的正文", now - 20);
+        // B — both keywords only in the body, newest (score 1+1 = 2).
+        InsertMemory("无关标题", "记忆 整理 的正文说明", now);
+        // C — carries only one of the two keywords; AND must exclude it.
+        InsertMemory("记忆 单独出现", "与另一个词无关", now + 10);
+
+        var search = new MemoryFtsService();
+        var hits = search.SearchAsync("记忆 整理", "global").GetAwaiter().GetResult();
+
+        Assert(hits.Count >= 2, "multi-keyword CJK query is served by the LIKE path (both keywords are 2 chars)");
+        Assert(hits.All(h => h.Title != "记忆 单独出现"), "AND semantics exclude a row carrying only one keyword");
+        AssertEqual("记忆 整理 配置", hits[0].Title, "title-carried keywords outrank body-carried ones despite being older");
+        // Asserting the value, not just the ordering: a non-accumulating implementation would
+        // also put A above B (2 vs 1), so the comparison alone cannot tell the two apart.
+        // 4 = (title 2 + content 1) × 2 keywords; 2 = content-only, × 2 keywords.
+        AssertEqual(4d, hits[0].Score ?? -1d, "score accumulates per keyword (both in the title)");
+        AssertEqual(2d, hits[1].Score ?? -1d, "score accumulates per keyword (both in the body)");
+
+        // Every keyword >= 3 chars keeps the query on the trigram index. Not asserting "via
+        // FTS" on purpose: a zero-hit FTS result falls back to LIKE and returns the same row,
+        // so this only proves the all-long-keyword path still matches.
+        var ftsHits = search.SearchAsync("alpha gamma", "global").GetAwaiter().GetResult();
+        Assert(ftsHits.Count > 0, "multi-keyword query with all keywords >= 3 chars still matches");
+
+        // A single keyword must behave exactly as it did before S-99 (substring match here).
+        var single = search.SearchAsync("记忆", "global").GetAwaiter().GetResult();
+        Assert(single.Any(h => h.Title == "记忆 整理 配置"), "single-keyword query still matches by substring");
+    }
+
+    /// <summary>
+    /// S-101: 记忆库按修改时间筛选。两层都要钉住 ——
+    /// ① Workspace 层纯函数拼出的条件与参数（列表端点与检索链共用它）；
+    /// ② 检索两条路都真的按 updated_at 收窄。少任何一条，症状都是
+    /// 「列表里筛出来的条目搜不到」，而那种漂移最难查。
+    ///
+    /// 两条路用的是同一个构造器，所以即使某次 FTS 零命中触发了 LIKE 回退，
+    /// 断言测到的仍然是同一份逻辑 —— 这里不断言「走了哪条路」。
+    /// </summary>
+    private static void RunTimeFilterSuite()
+    {
+        // ── 纯函数：条件段与参数 ──
+        var unbounded = MemoryTimeFilter.Build(null, null);
+        AssertEqual(string.Empty, unbounded.Sql, "两道边界都不给时不追加任何条件");
+        AssertEqual(0, unbounded.Parameters.Count, "无界时不绑定参数");
+
+        var both = MemoryTimeFilter.Build(100, 200);
+        Assert(
+            both.Sql.Contains("updated_at >= @updatedFrom", StringComparison.Ordinal)
+            && both.Sql.Contains("updated_at <= @updatedTo", StringComparison.Ordinal),
+            "两端都给时两侧都收窄");
+        AssertEqual(2, both.Parameters.Count, "两端各绑一个参数");
+
+        // 非正数 = 不限：前端「全部」就是不给字段，但 0 也该按同义处理，
+        // 否则区间会被收成「1970 年那一秒」，什么都筛不出来。
+        var zeroed = MemoryTimeFilter.Build(0, 0);
+        AssertEqual(string.Empty, zeroed.Sql, "0 当「不限」处理");
+
+        var halfOpen = MemoryTimeFilter.Build(null, 200);
+        Assert(
+            halfOpen.Sql.Contains("updated_at <= @updatedTo", StringComparison.Ordinal)
+            && !halfOpen.Sql.Contains("updated_at >=", StringComparison.Ordinal),
+            "只给上界时只收上界");
+
+        var qualified = MemoryTimeFilter.Build(100, null, "e.");
+        Assert(
+            qualified.Sql.Contains("e.updated_at >= @updatedFrom", StringComparison.Ordinal),
+            "限定符加在列名上（FTS 路径的表别名）");
+
+        // ── 检索链：两条路都吃区间 ──
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        InsertMemory("区间内条目", "记忆筛选 样本正文", now);
+        InsertMemory("区间外条目", "记忆筛选 样本正文", now - 90L * 24 * 3600);
+
+        var search = new MemoryFtsService();
+
+        // 关键词 4 个字（>= trigram 下限 3），走索引那一侧。
+        var insideOnly = search.SearchAsync(
+            "记忆筛选", "global", from: now - 3600, to: now + 60).GetAwaiter().GetResult();
+        Assert(
+            insideOnly.Any(h => h.Title == "区间内条目"),
+            "带区间时区间内的条目仍然可见");
+        Assert(
+            insideOnly.All(h => h.Title != "区间外条目"),
+            "带区间时区间外的条目被挡住");
+
+        // 关键词 2 个字，只能走 LIKE 那一侧；区间条件必须同样生效。
+        var shortQuery = search.SearchAsync(
+            "筛选", "global", from: now - 3600, to: now + 60).GetAwaiter().GetResult();
+        Assert(
+            shortQuery.All(h => h.Title != "区间外条目"),
+            "短词（LIKE 路径）一样被区间挡住");
+
+        // 回归：不给区间时两条都在 —— 区间是可选参数，不能改变既有行为。
+        var unboundedHits = search.SearchAsync("记忆筛选", "global").GetAwaiter().GetResult();
+        Assert(
+            unboundedHits.Any(h => h.Title == "区间内条目")
+            && unboundedHits.Any(h => h.Title == "区间外条目"),
+            "不给区间时不过滤");
+    }
+
+    private static void InsertMemory(string title, string content, long updatedAt)
+    {
+        DbClient.GetClient().Execute(
+            "INSERT INTO memory_entries (scope, title, content, priority, status, created_at, updated_at) " +
+            "VALUES (@scope, @title, @content, 'standard', 'active', @created, @updated)",
+            new SqliteParameter("@scope", "global"),
+            new SqliteParameter("@title", title),
+            new SqliteParameter("@content", content),
+            new SqliteParameter("@created", updatedAt),
+            new SqliteParameter("@updated", updatedAt));
     }
 
     private static void RunSessionDeduplicationSuite()
@@ -110,6 +261,28 @@ internal static class Program
             "recall searches project variants before global variants after deduplication");
     }
 
+    private static void RunInjectedBlockStrippingSuite()
+    {
+        const string userText = "为什么手动压缩反而越压越多";
+
+        const string recall = "<memory-recall>\n- memory #7: compression notes\n</memory-recall>\n\n";
+        const string update = "<memory-update>\nThe following memory changes were just made and apply from now on:\n- memory #9 added\n</memory-update>\n\n";
+        const string time = "<current_time>\n2026-09-19 18:30 +08:00 (星期六)\n</current_time>\n\n";
+
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(recall + time + userText), "strips recall + time ahead of the user text");
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(update + time + userText), "strips memory-update + time ahead of the user text");
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(recall + update + time + userText), "strips all three injected blocks");
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(userText), "plain user text passes through unchanged");
+        AssertEqual("前言" + userText + "后记", AgentLoop.StripInjectedBlocks("前言" + userText + "后记"), "text without blocks is untouched");
+        AssertEqual("kept <b>bold</b>", AgentLoop.StripInjectedBlocks("kept <b>bold</b>"), "unrelated tags are preserved");
+        AssertEqual(string.Empty, AgentLoop.StripInjectedBlocks(time), "a message that is only a block strips to empty");
+        AssertEqual(string.Empty, AgentLoop.StripInjectedBlocks("<current_time>\n2026-09-19 18:30 +08:00"), "unterminated block is dropped to the end");
+
+        var stripped = AgentLoop.StripInjectedBlocks(recall + update + time + userText);
+        Assert(!stripped.Contains("2026-09-19", StringComparison.Ordinal), "timestamp no longer reaches the recall query");
+        Assert(stripped.Contains(userText, StringComparison.Ordinal), "user keywords survive stripping");
+    }
+
     private static MemorySearchResult Hit(long id, string scope, string content) => new()
     {
         Id = id,
@@ -131,6 +304,8 @@ internal static class Program
             string? scope = null,
             int limit = 10,
             bool includeDeprecated = false,
+            long? from = null,
+            long? to = null,
             CancellationToken ct = default)
         {
             Scopes.Add(scope ?? "");

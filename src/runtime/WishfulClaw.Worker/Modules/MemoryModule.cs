@@ -13,7 +13,7 @@ namespace WishfulClaw.Worker.Modules;
 /// <summary>
 /// Worker module for memory IPC endpoints.
 /// </summary>
-internal sealed class MemoryModule : IWorkerModule
+internal sealed partial class MemoryModule : IWorkerModule
 {
     public string Name => "memory";
 
@@ -28,6 +28,7 @@ internal sealed class MemoryModule : IWorkerModule
         context.Register("memory/demotion-candidates", MemoryDemotionCandidates);
         context.Register("memory/batch-status", MemoryBatchStatus);
         context.Register("memory/entries-by-status", MemoryEntriesByStatus);
+        context.Register("memory/entries", MemoryEntries);
     }
 
     // ── Handlers ──
@@ -108,10 +109,13 @@ internal sealed class MemoryModule : IWorkerModule
         var scope = GetScope(parameters);
         var limit = GetInt(parameters, "limit", 10);
         var includeDeprecated = GetBool(parameters, "include_deprecated", false);
+        // 时间区间（S-101）：GetLong 缺字段返回 0，正好被 MemoryTimeFilter 当成「不限」。
+        var from = GetLong(parameters, "from");
+        var to = GetLong(parameters, "to");
         var search = GetSearch();
         return RunAsync(async () =>
         {
-            var hits = await search.SearchAsync(query, scope, limit, includeDeprecated);
+            var hits = await search.SearchAsync(query, scope, limit, includeDeprecated, from, to);
             return WorkerResponse.Json(new MemorySearchResponse(hits.ToList()), WishfulClawJsonContext.Default.MemorySearchResponse);
         });
     }
@@ -274,55 +278,6 @@ internal sealed class MemoryModule : IWorkerModule
                 : idParams.Append(new SqliteParameter("@status", status)).ToArray();
             var affected = db.Execute(sql, allParams);
             return Task.FromResult(WorkerResponse.Json(new MemoryBatchStatusResult(true, affected), WishfulClawJsonContext.Default.MemoryBatchStatusResult));
-        });
-    }
-
-    /// <summary>
-    /// Lists entries by status for the tier browser / restore UI. Cold includes
-    /// legacy 'deprecated' rows. scope="all" scans every scope; explicit scopes
-    /// are exact, same semantics as demotion-candidates.
-    /// </summary>
-    private static Task<WorkerResponse> MemoryEntriesByStatus(JsonElement parameters)
-    {
-        var status = GetString(parameters, "status")?.ToLowerInvariant();
-        if (status != "active" && status != "warm" && status != "cold")
-            return Task.FromResult(WorkerResponse.Json(new MemoryEntriesByStatusResponse([]), WishfulClawJsonContext.Default.MemoryEntriesByStatusResponse));
-        var rawScope = GetString(parameters, "scope");
-        var explicitAll = string.IsNullOrWhiteSpace(rawScope) || rawScope == "all";
-        var scope = explicitAll ? null : GetScope(parameters);
-        var limit = GetInt(parameters, "limit", 200);
-
-        return RunAsync(() =>
-        {
-            var db = DbClient.GetClient();
-            var scopeClause = scope is null
-                ? ""
-                : $" AND scope = '{EscapeSql(scope)}'";
-            var statusClause = status == "cold"
-                ? "status IN ('cold', 'deprecated')"
-                : "status = @status";
-            var entries = new List<MemoryEntryRow>();
-            using (var reader = db.ExecuteReader(
-                       "SELECT id, scope, title, content, priority, status, updated_at FROM memory_entries " +
-                       $"WHERE {statusClause}{scopeClause} ORDER BY updated_at DESC LIMIT @limit",
-                       new SqliteParameter("@status", status),
-                       new SqliteParameter("@limit", limit)))
-            {
-                while (reader.Read())
-                {
-                    var id = reader.GetInt64(reader.GetOrdinal("id"));
-                    var entryScope = reader.GetString("scope");
-                    var title = reader.IsDBNull(reader.GetOrdinal("title")) ? null : reader.GetString("title");
-                    var content = reader.IsDBNull(reader.GetOrdinal("content")) ? "" : reader.GetString("content");
-                    var priority = reader.GetString("priority");
-                    var entryStatus = reader.GetString("status");
-                    var updatedAt = reader.IsDBNull(reader.GetOrdinal("updated_at")) ? 0 : reader.GetInt64("updated_at");
-                    entries.Add(new MemoryEntryRow(id, entryScope, title, content, priority, entryStatus, updatedAt));
-                }
-            }
-            return Task.FromResult(WorkerResponse.Json(
-                new MemoryEntriesByStatusResponse(entries),
-                WishfulClawJsonContext.Default.MemoryEntriesByStatusResponse));
         });
     }
 

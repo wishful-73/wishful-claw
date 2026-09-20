@@ -1041,9 +1041,31 @@
     "errorLabel": "错误：",
     "tabs": {
       "memory": "项目记忆",
-      "daily": "每日记忆",
+      "database": "记忆库",
       "persona": "项目人格",
       "dormant": "记忆归档"
+    },
+    "memoryLibrary": {
+      "desc": "本项目存储在本地记忆库中的条目。",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "empty": "本项目暂无记忆条目。",
+      "noResults": "没有匹配的记忆条目。",
+      "untitled": "未命名",
+      "searchPlaceholder": "搜索本项目记忆…",
+      "search": "搜索",
+      "matches": "{{count}} 条匹配",
+      "rowHint": "点击展开内容",
+      "total": "共 {{count}} 条",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageOf": "第 {{page}} / {{total}} 页",
+    "ranges": {
+      "all": "全部",
+      "today": "今天",
+      "week": "近 7 天",
+      "month": "近 30 天"
+    }
     },
     "persona": {
       "noPersonas": "暂无项目专属人格，请通过人格设置页面添加。",

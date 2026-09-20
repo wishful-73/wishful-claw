@@ -16,7 +16,12 @@
  * MemorySettingsPanel / memory-automation-utils / cron-runtime）。只有聊天链路曾
  * 固定发服务商级类型，于是同一个模型在 chat 与 cron 走了两个协议。
  *
- * `sessionId` 是例外：它由 chat store 盖章（见下），不在这里构造。`serviceTier`
+ * `sessionId` 是例外：它由 chat store 盖章（见下），不在这里构造。另注意（S-89）：
+ * opencode-go 的 `x-opencode-session` 头**不读** `provider.sessionId`，也不是靠
+ * `{{sessionId}}` 模板 —— 它由 C# provider 读 run request 的**顶层 `sessionId`**
+ * （`OpenAIChatHeaders.cs` + `OpenAIChatProvider.cs`）。上面那句「the session id behind the
+ * `{{sessionId}}` header template」只描述自定义 header 模板机制，别据此以为补
+ * `provider.sessionId` 能修 opencode-go。`serviceTier`
  * 也不在这里 —— 类型注释写着"Effective when fast mode is enabled"，而
  * `fastModeEnabled` 目前没有任何消费方，也就是 fast mode 这个功能整体还没接；
  * 顺手带上它会悄悄把请求切到 priority 计费档，所以留给独立议题。

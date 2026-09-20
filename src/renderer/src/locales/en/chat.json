@@ -1041,9 +1041,31 @@
     "errorLabel": "Error: ",
     "tabs": {
       "memory": "Project Memory",
-      "daily": "Daily Memory",
+      "database": "Memory Library",
       "persona": "Project Persona",
       "dormant": "Memory Archive"
+    },
+    "memoryLibrary": {
+      "desc": "Entries stored in the local memory database for this project.",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "empty": "No memory entries stored for this project yet.",
+      "noResults": "No matching memory entries.",
+      "untitled": "Untitled",
+      "searchPlaceholder": "Search this project's memory…",
+      "search": "Search",
+      "matches": "{{count}} matches",
+      "rowHint": "Click to expand",
+      "total": "{{count}} entries",
+      "prevPage": "Prev",
+      "nextPage": "Next",
+      "pageOf": "Page {{page}} / {{total}}",
+    "ranges": {
+      "all": "All",
+      "today": "Today",
+      "week": "Last 7 days",
+      "month": "Last 30 days"
+    }
     },
     "persona": {
       "noPersonas": "No project-specific personas yet. Add personas via the persona settings page.",

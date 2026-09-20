@@ -1,5 +1,6 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.ProviderHeaderRegressionTests;
 
@@ -8,7 +9,7 @@ internal static class ProviderCompletionResolutionChecks
     public static void Run()
     {
         var previous = Environment.GetEnvironmentVariable("WISHFULCLAW_DATA_DIR");
-        var root = Path.Combine(Path.GetTempPath(), "wishful-provider-resolution-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(TestOutputRoot.Resolve(), "wishful-provider-resolution-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         Environment.SetEnvironmentVariable("WISHFULCLAW_DATA_DIR", root);
         try

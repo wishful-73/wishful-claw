@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { registerMessagePackHandler } from './messagepack-handler'
+import { applyLoginItem, shouldHideWindowOnLaunch } from '../main-window-config'
 
 /**
  * Login item (auto-start) IPC handlers.
@@ -13,7 +14,10 @@ export function registerLoginItemHandlers(): void {
   })
 
   registerMessagePackHandler<boolean, boolean>('app:set-login-item-settings', (openAtLogin) => {
-    app.setLoginItemSettings({ openAtLogin })
+    // Replayed through the single writer: calling setLoginItemSettings directly
+    // from here would drop HIDDEN_FLAG from the command line the registry keeps,
+    // turning "start hidden" off behind the settings switch's back.
+    applyLoginItem(openAtLogin, shouldHideWindowOnLaunch())
     return app.getLoginItemSettings().openAtLogin
   })
 }

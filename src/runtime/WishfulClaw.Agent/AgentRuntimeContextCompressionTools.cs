@@ -162,18 +162,27 @@ public static class AgentRuntimeContextCompressionTools
                 // product: nothing foldable is the EXPECTED outcome here, not a
                 // failure. Report skipped so the UI says "no compression needed"
                 // instead of silently truncating.
-                if (!outcome.Compacted && newWireConversation.Count >= originalCount)
+                // S-95: reduction is measured in tokens, not message count (same rule as the
+                // automatic path) — a long summary replacing two short messages shrinks the
+                // count while growing the context.
+                var originalTokens = ContextCompression.EstimateMessagesTokens(conversation);
+                var newTokens = ContextCompression.EstimateMessagesTokens(newConversation);
+
+                if (!outcome.Compacted && newTokens >= originalTokens)
                 {
                     WorkerLog.Info(
                         $"manual context compression skipped session={AgentLoop.FormatSessionId(sessionId)} " +
-                        $"count={originalCount} (nothing foldable)");
+                        $"count={originalCount} tokens={originalTokens} (nothing foldable)");
+                    // S-95: same rule as the automatic path — advance the watermark so the
+                    // loop does not immediately re-attempt a compression that is pointless now.
+                    sessionConv?.MarkCompactionWatermark(wireMessages.Count);
                     return BuildResponse(
                         wireMessages,
                         new ContextCompressionResult(false, originalCount, originalCount,
                             Status: "skipped", Trigger: trigger));
                 }
 
-                if (newWireConversation.Count >= originalCount)
+                if (newTokens >= originalTokens)
                 {
                     // AL-6 equivalent: summarization ran but produced no reduction —
                     // fall back to mechanical truncation before giving up.
@@ -181,13 +190,16 @@ public static class AgentRuntimeContextCompressionTools
                         conversation, wireMessages, provider);
                     summarizerFailed = true;
                     compactArtifacts = null;
+                    newTokens = ContextCompression.EstimateMessagesTokens(newConversation);
                 }
 
-                if (newWireConversation.Count >= originalCount)
+                if (newTokens >= originalTokens)
                 {
                     WorkerLog.Info(
                         $"manual context compression skipped session={AgentLoop.FormatSessionId(sessionId)} " +
-                        $"count={originalCount} (nothing foldable)");
+                        $"count={originalCount} tokens={originalTokens} (no reduction)");
+                    // S-95: mirror the automatic path — no reduction means no value in retrying now.
+                    sessionConv?.MarkCompactionWatermark(wireMessages.Count);
                     return BuildResponse(
                         wireMessages,
                         new ContextCompressionResult(false, originalCount, originalCount,
@@ -240,7 +252,9 @@ public static class AgentRuntimeContextCompressionTools
                 // Sync the Worker session so the next turn runs on the compressed
                 // context — same as the automatic path's Replace in AgentLoop.
                 sessionConv?.Replace(newConversation, newWireConversation);
-                sessionConv?.MarkCompactionWatermark(newWireConversation.Count);
+                // S-95 D: reset (not Max) — the compressed wire is shorter, and a watermark
+                // left at the pre-compression high would keep the auto gate shut for a long while.
+                sessionConv?.ResetCompactionWatermark(newWireConversation.Count);
 
                 WorkerLog.Info(
                     $"manual context compression completed session={AgentLoop.FormatSessionId(sessionId)} " +

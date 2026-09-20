@@ -3,7 +3,7 @@ import { IPC } from '@renderer/lib/ipc/channels'
 
 // ─── Types ───
 
-export type ArchiveTabId = 'memory' | 'daily' | 'persona'
+export type ArchiveTabId = 'memory' | 'database' | 'persona'
 
 export interface FileState {
   path: string
@@ -53,12 +53,6 @@ Project-level durable memory. Record stable decisions, context, and long-lived i
 ## Notes
 `
 
-export const DEFAULT_DAILY_TEMPLATE = `# Daily Memory — ${new Date().toISOString().slice(0, 10)}
-
-Temporary context for today. Can be consolidated into MEMORY.md later.
-
-`
-
 // ─── Path helpers ───
 
 /**
@@ -82,10 +76,6 @@ export function joinFsPath(...segments: string[]): string {
       ? '\\'
       : '/'
   return normalized.join(separator)
-}
-
-export function getTodayDate(): string {
-  return new Date().toISOString().slice(0, 10)
 }
 
 export function getHomeDir(): string {

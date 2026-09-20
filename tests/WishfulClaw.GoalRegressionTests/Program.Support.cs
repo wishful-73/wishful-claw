@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
@@ -10,6 +10,13 @@ namespace WishfulClaw.GoalRegressionTests;
 
 internal static partial class Program
 {
+    /// <summary>
+    /// Seeds a database whose <c>projects</c>/<c>sessions</c> tables predate the columns added since,
+    /// so <c>DbClient.Initialize</c> has to migrate them rather than assume today's shape.
+    ///
+    /// Not a relic: the migration still runs on every open, and it fails by quietly losing rows
+    /// instead of throwing, so the upgrade path stays covered on purpose.
+    /// </summary>
     private static void SeedLegacyDatabase(string dbPath)
     {
         using var connection = new SqliteConnection($"Data Source={dbPath}");

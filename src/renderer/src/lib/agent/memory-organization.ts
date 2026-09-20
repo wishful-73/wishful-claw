@@ -17,6 +17,7 @@ import {
   memoryBatchStatus,
   memoryDemotionCandidates
 } from '@renderer/stores/chat-store/memory-helpers'
+import { mirrorHotParagraphsToDb } from './memory-hot-sync'
 import {
   getProjectMemoryCandidatePaths,
   joinFsPath,
@@ -47,6 +48,10 @@ export interface MemoryOrganizationScopeResult {
   targetPath?: string | null
   organized: boolean
   outdatedSunk: number
+  /** Paragraphs mirrored into SQLite memory_entries by this run (S-93). */
+  syncedToDb?: number
+  /** Set when the hot→DB mirror failed. The organization result itself stays valid. */
+  dbSyncError?: string | null
   skippedReason?: 'empty' | 'llm_unavailable' | 'empty_output' | 'no_changes' | string | null
   error?: string | null
 }
@@ -67,6 +72,26 @@ const ORGANIZATION_LOG_FILENAME = 'memory-organization-log.json'
 const MAX_LOG_ENTRIES = 200
 const PROJECT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000
 const MIN_ORGANIZABLE_CHARS = 40
+
+/**
+ * Turns a thrown sidecar/provider failure into a short, actionable string. The organisation chain
+ * used to swallow the cause and report a bare 'llm_unavailable', which made a deterministic
+ * upstream 400 (a missing session id) indistinguishable from "the model is temporarily down" for
+ * weeks (S-89).
+ */
+function describeOrganizationError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+  if (typeof error === 'string') {
+    return error
+  }
+  try {
+    return JSON.stringify(error) ?? String(error)
+  } catch {
+    return String(error)
+  }
+}
 
 let organizationRunning = false
 
@@ -308,7 +333,8 @@ async function organizeScope(
     rootScope: target.root.scope === 'project' ? 'project' : 'global',
     projectId: target.projectId ?? null,
     organized: false,
-    outdatedSunk: 0
+    outdatedSunk: 0,
+    syncedToDb: 0
   }
   try {
     const descriptor = await loadMemoryFile(target)
@@ -327,10 +353,21 @@ async function organizeScope(
         memoryMarkdown: descriptor.content
       })
     } catch (error) {
-      console.warn('[MemoryOrganization] LLM organization pass failed:', error)
+      // Keep the real failure on the result instead of collapsing it into a bare
+      // 'llm_unavailable': a deterministic upstream 400 (missing session id) looked exactly like
+      // "the model is down" for weeks (S-89).
+      const detail = describeOrganizationError(error)
+      result.skippedReason = 'llm_unavailable'
+      result.error = detail
+      console.warn(
+        `[MemoryOrganization] LLM organization pass failed (${result.scopeLabel}): ${detail}`,
+        error
+      )
+      return result
     }
     if (!organization?.memoryMarkdown) {
       result.skippedReason = 'llm_unavailable'
+      result.error ??= 'organization pass returned no usable content'
       return result
     }
 
@@ -343,13 +380,31 @@ async function organizeScope(
       target.root.scope === 'project' ? PROJECT_MEMORY_TEMPLATE : GLOBAL_MEMORY_TEMPLATE
     const nextContent = ensureMarkdownDocument(sanitized.content, template)
 
+    // S-93: mirror the surviving memories into the retrievable DB tier — and do it BEFORE the
+    // no_changes bail-out below. Once MEMORY.md has been organised a few times the pass stops
+    // changing the file, so a mirror placed after that check would never run again and recall
+    // would silently stop receiving new memories. A failure here must not roll back the
+    // organization: the hot file stays the source of truth and the next run retries.
+    const sync = await mirrorHotParagraphsToDb({
+      scope: target.root.scope === 'project' ? 'project' : 'global',
+      markdown: nextContent,
+      workingFolder: target.workingFolder,
+      projectId: target.projectId,
+      sshConnectionId: target.sshConnectionId
+    })
+    result.syncedToDb = sync.count
+    if (sync.error) {
+      result.dbSyncError = sync.error
+      console.warn(`[MemoryOrganization] Hot→DB mirror failed (${target.label}): ${sync.error}`)
+    }
+
     if (nextContent.trim() === descriptor.content.trim()) {
       result.organized = true
       result.skippedReason = 'no_changes'
       return result
     }
 
-    // Sink outdated hot paragraphs first. The original MEMORY.md remains intact
+    // Sink outdated hot paragraphs. The original MEMORY.md remains intact
     // until every FTS append and the warm status transition succeed.
     const sink = await sinkOutdatedParagraphs(
       target,
@@ -502,6 +557,7 @@ export async function runMemoryOrganization(options: {
           projectId: target.projectId ?? null,
           organized: false,
           outdatedSunk: 0,
+          syncedToDb: 0,
           skippedReason: 'missing_provider'
         })
       }
@@ -527,7 +583,7 @@ export async function runMemoryOrganization(options: {
       projectId: null,
       target: 'global_memory',
       kind: 'workflow_habit',
-      content: `Memory organization (${report.trigger}): ${report.scopes.filter((scope) => scope.organized).length}/${report.scopes.length} scopes organized, ${report.demotedToWarm} demoted to warm, ${report.demotedToCold} demoted to cold${report.error ? `, error: ${report.error}` : ''}`,
+      content: `Memory organization (${report.trigger}): ${report.scopes.filter((scope) => scope.organized).length}/${report.scopes.length} scopes organized, ${report.demotedToWarm} demoted to warm, ${report.demotedToCold} demoted to cold, ${report.scopes.reduce((sum, scope) => sum + (scope.syncedToDb ?? 0), 0)} mirrored to DB${report.error ? `, error: ${report.error}` : ''}`,
       confidence: 1,
       sourceSessionId: null,
       targetPath: null,

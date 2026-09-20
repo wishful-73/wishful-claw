@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="visibility-snapshot.expected.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="..\TestSupport\TestOutputRoot.cs" Link="TestSupport\TestOutputRoot.cs" />
   </ItemGroup>
 
 </Project>

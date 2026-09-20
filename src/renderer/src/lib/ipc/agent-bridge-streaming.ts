@@ -1,4 +1,4 @@
-﻿import { agentBridge, canSidecarHandle } from './agent-bridge'
+import { agentBridge, canSidecarHandle } from './agent-bridge'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { CompressionResult } from '../agent/context-compression-config'
 import { toAgentEvent } from '../agent/stream-event-adapter'
@@ -251,12 +251,24 @@ export async function* streamSidecarProviderTurn(args: {
   }
 }
 
+/**
+ * Synthetic session id carried by sidecar text requests (memory organisation, title generation).
+ *
+ * opencode-go authenticates the session through an `x-opencode-session` header composed by the C#
+ * provider, which reads the TOP-LEVEL `sessionId` of the run request — not `provider.sessionId`.
+ * Leaving it unset makes the upstream answer 400, which the memory-organisation chain reported as a
+ * generic `llm_unavailable` for weeks (S-89). The value is opaque upstream: it only has to be
+ * present and stable, so one shared constant covers every caller.
+ */
+export const SIDECAR_TEXT_REQUEST_SESSION_ID = 'wishful-claw-sidecar-text'
+
 export async function runSidecarTextRequest(args: {
   provider: ProviderConfig
   messages: UnifiedMessage[]
   signal?: AbortSignal
   maxIterations?: number
   responsesSessionScope?: string
+  sessionId?: string
 }): Promise<string> {
   const provider = withAuxiliaryResponsesRequestPolicy(
     args.provider,
@@ -266,6 +278,7 @@ export async function runSidecarTextRequest(args: {
     messages: args.messages,
     provider,
     tools: [],
+    sessionId: args.sessionId ?? SIDECAR_TEXT_REQUEST_SESSION_ID,
     maxIterations: args.maxIterations ?? 1,
     forceApproval: false,
     scope: 'global',

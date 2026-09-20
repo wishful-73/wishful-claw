@@ -21,9 +21,9 @@
 
 **核心原则：一个需求一个提交，迭代收尾再统一一次修复调整提交。**
 
-**前置门：本节全部提交规则只在实施态内生效**（老大明确拍板方案、进入 dev-workflow 六阶段之后）。讨论态（老大说"先聊聊 / 先分析 / 讨论"或仅在聊天中补充口径、报问题）一律不改代码、不提交，见 agents.md「协作纪律（硬规则）」。
+**前置门：本节全部提交规则只在实施态内生效**（老大明确拍板方案、进入 dev-workflow 六阶段之后）。讨论态（老大说"先聊聊 / 先分析 / 讨论"，或**开工前**仅在聊天中补充口径、报问题）一律不改代码、不提交，见 agents.md「协作纪律（硬规则）」。
 
-即 **迭代提交数 = 需求数 + 1**。例：迭代 28 共 7 项需求（模型请求日志与统计面板、更新弹窗与悬浮窗、编辑器撤销选中态、R-1 补位模型、R-2 渠道设置全局化、R-3 工具可见性声明、R-4 使用指引与入口）→ 7 个需求提交 + 1 个收尾修复调整提交 = **8 个提交**。
+即 **迭代提交数 = 需求数 + 1**（老大明确要求把两个需求合成一刀时，按合并后的刀数算）。例：迭代 28 共 7 项需求（模型请求日志与统计面板、更新弹窗与悬浮窗、编辑器撤销选中态、R-1 补位模型、R-2 渠道设置全局化、R-3 工具可见性声明、R-4 使用指引与入口）→ 7 个需求提交 + 1 个收尾修复调整提交 = **8 个提交**。
 
 - 每个需求提交的是它的**第一版完整实现**：该需求所有步骤的代码 + 该需求的文档改动（plan 勾选、验证记录）一起进这一个提交。
 - **规划态、审查态、验证态本身不产生提交**。探索不提交；规划文档、审查报告、验证报告都并入所属需求的提交。
@@ -70,25 +70,26 @@
 2. **需求内没有 commit 检查点**——这是粗粒度提交换来的代价。安全点是"上一个需求的提交"，所以需求内每完成一步都要立刻做 Mini 验证，不要把未验证的改动一路攒下去。
 3. **风险大的需求允许内部临时多提交几刀**（大重构、跨层改动），但收尾进下一个需求前必须 `git reset --soft HEAD~K` 折叠回该需求的单个提交，别把中间提交留进历史。
 4. **验证态失败**：`git reset --hard` 回到上一个需求提交，不要在失败的代码上继续打补丁。
-5. **需求提交后不 push**：本地提交只防误操作。
-6. **Plan 完成后才 push**：该 Plan 覆盖的需求提交（正常就一两个）一次性 push。
+5. **需求提交后不 push**：本地提交只防误操作，整个迭代可以不推。
+6. **迭代收尾才 push**：老大确认收尾、合并 main + 打 tag 时，一次性推 main + tags（见「Push 规则」）。
 7. **push 失败不阻塞**：网络问题 push 失败时，记录待推送状态，继续后续工作，不为此停下来问用户
-8. **每天开工**：先 `git pull`，确保本地和远程同步
+8. **每天开工**：先 `git status` + `git log --oneline -10` 确认自己在哪。`git pull origin main` 只在**从 main 拆新分支之前**需要 —— 迭代内本地领先远程是正常的，别为了「同步」去推
 
 ### Push 规则
 
-**原则：Plan 内只 commit，Plan 完成才 push。**
+**原则：迭代内只 commit，一次都不 push；push 只发生在迭代收尾。**
 
 ```
-需求测通 → commit（不 push）→ 下一个需求 → ... → Plan 覆盖的需求全部完成并通过验证 → git push
+需求测通 → commit（不 push）→ 下一个需求 → ... → 全部需求 + 收尾修复调整 commit
+    → 用户确认收尾 → 打 tag → 合并 main → push main + tags
 ```
 
-- Plan 执行期间：只在需求测通时 commit，不 push
-- Plan 完成并通过验证后：一次性 push 该 Plan 的所有 commit
-- 规划/审查/验证文档：并入所属需求的提交，随当前 Plan 一起 push，不单独提交不单独 push
-- 验证态合并 main 后：push main + tags
+- **迭代内一律不 push**：提交是纯本地动作，整个迭代从开工到收尾之间**可以一次都不推送**（老大 2026-09-20 口径：提交和推送是两回事）
+- **只在迭代收尾 push**：老大确认收尾、合并 `main` + 打 tag 时，一次性 `push main + tags`
+- 规划/审查/验证文档：并入所属需求的提交，随迭代收尾一起 push，不单独提交不单独 push
+- dev 迭代分支**不必推**（内容已随 merge 进 main）；`main` 只接受 merge，禁止直接 push commit
 - push 失败（网络超时、连接重置等）：记录"待推送"，继续干活，不阻塞、不提问
-- 会话结束前：检查是否有未推送的 commit，尝试一次性 push
+- **直连优先，一次不通立即转代理**：直连失败会硬等 20s+，不要反复重试直连
 
 **绝对不要问用户"要不要先 push"**——这是规则，不是选项。
 
@@ -108,7 +109,7 @@
 - Plan 内步骤完成后是否继续下一步 → 自动继续
 - **需求测通后是否 commit** → 自动 commit，不逐需求等"OK"（测通标准见「提交节奏」）
 - **Plan 验证结论出来后是否继续下一个需求** → 照实报告 PASS/FAIL/PARTIAL 与证据，**不停等裁定**，继续迭代内剩余需求；最终裁定留到收尾
-- Plan 完成后是否 push → 自动 push
+- 迭代内是否 push → **不 push**（收尾才推，见「Push 规则」）
 - push 失败后是否继续 → 自动继续
 - 规划文档写完是否进入验证 → 自动进入验证
 
@@ -121,7 +122,7 @@
 1. `git status` — 检查工作区状态
 2. `git stash list` — 上次会话可能把未完成的改动存在 stash 里（命名形如 `iter{N}-{需求名}-WIP`）。**不要裸 `git stash pop`**，多条 stash 时会弹错；按 list 里的消息找到对应序号，再 `git stash pop stash@{N}`
 3. `git log --oneline -10` — 看最近提交，定位进度
-4. `git push` — 推送上次会话遗留的未推送 commit（如果有）
+4. 未推送的 commit **不用管**：迭代内本地提交是常态，push 只在迭代收尾做（见「Push 规则」）
 5. 读 `docs/PROGRESS.md` — 确认当前迭代和步骤
 6. 读对应 plan.md — 确认从哪个步骤继续
 7. 报告进度摘要，然后继续执行
@@ -129,11 +130,11 @@
 **会话即将结束时（上下文快满或用户要离开）：**
 
 1. 当前**需求**整体测通 → commit；只是某个步骤做完 → 不 commit
-2. 当前 Plan 如果完成 → push
-3. 更新 `docs/PROGRESS.md` — 标记当前进度和下次继续的步骤
-4. 需求没做完 → 把未提交改动连同 PROGRESS.md 一起存现场：`git stash push -u -m "iter{N}-{需求名}-WIP"`。**不要用 WIP 提交占位**，那等于回到碎片化提交
-5. 有已提交内容 → `git push` 确保远程是最新
-6. 输出简要总结：完成了什么、下次从哪继续、现场存在哪个 stash 里
+2. 更新 `docs/PROGRESS.md` — 标记当前进度和下次继续的步骤
+3. 需求没做完 → 把未提交改动连同 PROGRESS.md 一起存现场：`git stash push -u -m "iter{N}-{需求名}-WIP"`。**不要用 WIP 提交占位**，那等于回到碎片化提交
+4. 输出简要总结：完成了什么、下次从哪继续、现场存在哪个 stash 里
+
+> **本流程不含任何推送动作。** 提交是纯本地动作，迭代内 push 只在收尾发生（见「Push 规则」）；已提交内容留在本地就好，「远程是否最新」不是会话该管的事。
 
 **不要在会话结束时问用户"要不要继续"**——直接按上面流程收工，把状态留在 Git 和 PROGRESS.md 里，下次会话自动恢复。
 
@@ -154,6 +155,129 @@ git stash push -u -m "{迭代}-{需求}-{描述}"
 # 后悔了按 list 里的序号恢复，不要裸 pop
 git stash pop stash@{N}
 ```
+
+---
+
+## 编译环境（阶段四 ~ 阶段六前必读）
+
+**跑编译前先确认开发实例没在跑。** 开发实例（`npm run dev:full` 起的 Electron + `WishfulClaw.Worker.exe`）会占住 `bin/Debug/net11.0/` 下的 dll，MSBuild 复制新产物时必失败：
+
+```
+error MSB3021: 无法将文件 "…\WishfulClaw.Core.dll" 复制到 "bin\Debug\net11.0\WishfulClaw.Core.dll"
+error MSB3027: 无法将 "…\WishfulClaw.Core.dll" 复制到 "…"。超出了重试计数 10。失败。
+              文件被 "WishfulClaw.Worker (23516)" 锁定
+```
+
+**怎么判断这不是代码错误**：报错全是 `MSB3021` / `MSB3027`，且**一个 `CS####` 都没有**。有 `CS` 错误才是代码问题。这类失败还会白等 —— `MSB3027` 本身要跑满 10 次重试。
+
+**处理顺序**（按序做）：
+
+**1. 先看有没有开发实例在跑**
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='WishfulClaw.Worker.exe'" |
+  Where-Object { $_.ExecutablePath -like '*\bin\Debug\*' } |
+  Select-Object ProcessId, ExecutablePath
+```
+
+**2. 有就关掉**（老大已授权：跑门禁 / 验证编译时开发实例在，允许关）
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='WishfulClaw.Worker.exe'" |
+  Where-Object { $_.ExecutablePath -like '*\bin\Debug\*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+Get-CimInstance Win32_Process -Filter "Name='electron.exe'" |
+  Where-Object { $_.ExecutablePath -like '*\wishful-claw\node_modules\electron\*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
+⚠️ **必须按 `ExecutablePath` 过滤，不能按进程名一刀切** —— 打包版（`C:\Program Files\WishfulClaw\...`）也跑着同名 `WishfulClaw.Worker.exe`，按名字关会把它一起杀掉；`Stop-Process -Name electron` 还会误伤其它 Electron 应用（VSCode 等）。
+
+关完**告知老大一声**：「开发实例我关了，要测请重开 `npm run dev:full`」。
+
+**3. 不要用外置输出绕**（`-o` / `-p:BaseOutputPath=<仓库外目录>`）
+
+它能让编译过关，但代价是两个：
+
+- 产物落在仓库外，跑回归测试时若误用了外置的 exe，**验的就不是仓库里的代码**（本迭代栽过「验证的不是 HEAD」）
+- 在仓库外留垃圾（`D:\claw\_wc_*` 就这样攒出了 291 MB）
+
+仅当**关掉实例仍编不过**（有其它进程占着）才允许外置，且必须三条都做到：输出落 `.wishful-claw/tmp/build-*`（**工作目录内**，见下一节）、**同一条命令里编完即删**、**绝不拿外置产物跑测试**。
+
+**实测对照**（2026-09-20，同一台机器、同一条 `dotnet build src/runtime/WishfulClaw.sln`）：
+
+| 条件 | 用时 | 结果 |
+|---|---|---|
+| 开发实例在跑 | 51.69 s | 14 个 `MSB3021` / `MSB3027`，0 个 `CS` |
+| 关掉开发实例后 | 1.32 s | 0 错 0 警 |
+
+---
+
+## 测试产物落点
+
+**约定：测试产物一律落在工作目录内，不出工作目录。**
+
+落点 `<仓库根>/.wishful-claw/tmp/` —— `.gitignore:63` 已整目录忽略，不会污染 `git status`。
+
+理由：散在系统临时目录里的回归数据既难找也难清。2026-09-20 实测系统 TEMP 下攒了 **717 个目录 / 1.78 GB**（从 6 月积到 9 月），用户根本不知道去哪找这些垃圾；聚到工作目录内一处后，删一个目录就干净。
+
+| 产物 | 落点 |
+|---|---|
+| C# 回归套件 | `.wishful-claw/tmp/<套件名>-<guid>/` |
+| TS 测试脚本（esbuild bundle） | `tests/<name>/out/program.cjs`（本来就在工作目录内） |
+| 编译的外置输出（最后手段） | `.wishful-claw/tmp/build-*` |
+
+**C# 套件怎么定位落点**：统一走 `tests/TestSupport/TestOutputRoot.cs`，各测试工程以 `<Compile Include="..\TestSupport\TestOutputRoot.cs" Link="..."/>` 链接进来（**不单独建工程**）。所以**改落点只需要动这一个文件**。
+
+- `Resolve()` → 产物根 `.wishful-claw/tmp`（并保证目录存在）
+- `RepositoryRoot()` → 从测试 exe 位置往上找含 `.git` 的目录；找不到才退回系统 TEMP（exe 被挪出仓库也不至于崩）
+
+**一键清理**：`npm run test:clean`
+
+**已知遗留**：部分套件的 `TryDeleteDirectory` 清不掉自己的目录 —— `Microsoft.Data.Sqlite` 的连接池持着 `.db` 句柄，`Directory.Delete(recursive)` 抛异常后被 `catch {}` 静默吞掉，于是每跑一次留一个目录。修法是删除前 `SqliteConnection.ClearAllPools()`，**尚未处理**；在那之前用 `test:clean` 兜底。
+
+---
+
+## 测试怎么跑
+
+**一条命令跑完全部回归测试：**
+
+```bash
+npm test
+```
+
+它按顺序做三件事 —— 编译 `tests/WishfulClaw.Tests.sln` → 跑 TS 脚本 → 跑 C# 套件 —— 最后给 `N/M 通过` 汇总；任一失败则非零退出。
+
+**为什么先编译**：C# 套件是直接执行 `bin/Debug/net11.0/<套件>.exe`，不编译就会**拿旧产物验新代码**（本迭代栽过「验证的不是 HEAD」）。编译被开发实例锁住时，脚本会直接把「编译环境」那一节的指向打出来。
+
+**子集与选项**：
+
+```bash
+npm test -- --ts-only           # 只跑 TS 侧
+npm test -- --csharp-only       # 只跑 C# 侧
+npm test -- --no-build          # 跳过 C# 编译（复用现有 exe）
+npm test -- --filter memory     # 只跑名字含 "memory" 的
+```
+
+单个测试仍可单独跑（调试时用）：
+
+```bash
+npm run test:context-cap                                                                    # 单个 TS
+tests/WishfulClaw.GoalRegressionTests/bin/Debug/net11.0/WishfulClaw.GoalRegressionTests.exe  # 单个 C#
+```
+
+**成本**（2026-09-20 实测，全量一次 **36 秒**）：编译 1.8 秒 + TS 34 个约 9 秒（单个 0.1~0.4 秒）+ C# 11 套约 26 秒（其中 CompactionSnapshot 15.4 秒、ProviderHeader 4.5 秒，其余 9 套合计约 5 秒）。**便宜到每步都能跑全量** —— 别为省这点时间只跑子集。
+
+**什么时候跑**：
+
+| 阶段 | 跑什么 |
+|---|---|
+| 阶段四（执行态，每步 Mini 验证） | 相关的那几个；改动面大就直接全量（36 秒） |
+| 阶段六（验证态） | **必须全量**，结果作为验证报告的证据 |
+| 迭代收尾 | 全量跑一遍，再合 main |
+
+**加新测试**：C# 在 `tests/` 下建 `WishfulClaw.<名字>RegressionTests` 工程并注册进 `tests/WishfulClaw.Tests.sln`；TS 在 `tests/<名字>/program.ts` 写脚本，并在 `package.json` 加 `test:<名字>`。两处都会被 `npm test` 自动收进来 —— **不需要改 `scripts/run-tests.mjs`**。
 
 ---
 
@@ -288,7 +412,7 @@ git checkout -- <该步涉及的文件>
 
 **大需求允许临时中间提交**：一个需求跨多个会话、或改动量大到怕丢时，可以在需求内部先 commit 几刀做保险，但在进下一个需求前用 `git reset --soft HEAD~K` + 重新 commit 折叠成该需求的单个提交。历史里留下的必须是一需求一刀。
 
-**需求 commit 后**：不 push，留在本地（Plan 完成后才统一 push）
+**需求 commit 后**：不 push，留在本地（迭代收尾才统一 push）
 
 **终止检查**：所有步骤均为 [✓] / [✗]，0 个 [ ] 残留 → 自动进入审查态，不停下来问。
 
@@ -319,7 +443,7 @@ git checkout -- <该步涉及的文件>
 
 **验证方式**：
 - 编译通过：
-  - C#：`dotnet build src/runtime/WishfulClaw.sln`
+  - C#：`dotnet build src/runtime/WishfulClaw.sln`（**先读「编译环境」节** —— 开发实例在跑必失败）
   - TypeScript：`npx tsc --noEmit -p tsconfig.web.json` + `npx tsc --noEmit -p tsconfig.node.json` + `npx tsc --noEmit -p tsconfig.json` **三个配置必须全部零错误**
 - 运行通过（启动应用，执行对应迭代的验证标准）
 - 产出截图或日志作为证据
@@ -373,7 +497,7 @@ git checkout -- <该步涉及的文件>
 - 前端代码注意去掉 OpenCowork 特有的频道、CodeGraph 等不需要的功能
 - 每个 plan 编号递增（plan_001, plan_002, ...）
 - 验证报告必须有实际证据，不能只写"应该没问题"
-- **commit 粒度按需求，不按步骤**——一个迭代的历史提交数应当是"需求数 + 1（收尾修复调整）"
+- **commit 粒度按需求，不按步骤**——一个迭代的历史提交数应当是"需求数 + 1（收尾修复调整）"（老大要求合并两个需求时，按合并后的刀数算）
 - **不要按步骤刷提交**——步骤只跑 Mini 验证，提交时机是整需求测通；需求内的中间提交必须在进下一个需求前 `git reset --soft` 折叠掉
-- **push 是最后的保险**——本地 commit 只防误操作，push 到远程才防丢数据
-- **C# 文件多为 CRLF 行尾**——批量替换用 Python 脚本处理，file 工具的 edit 容易因行尾不匹配失败
+- **push 只在迭代收尾做**——本地 commit 只防误操作，收尾时一次性 push main + tags 才防丢数据
+- **行尾与编码**——仓库多数文件 CRLF、无 BOM。编辑工具（Edit）会自动做行尾归一化匹配并原样写回，**直接用 Edit 改就行，不要写临时脚本去批量替换**（写完还得删，且脚本一旦中途断言失败会留下半成品）。改完可复核：文件应全 CRLF、无裸 LF、无 BOM

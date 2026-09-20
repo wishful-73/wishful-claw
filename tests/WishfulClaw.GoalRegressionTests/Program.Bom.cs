@@ -1,5 +1,6 @@
 using System.Text;
 using WishfulClaw.Agent.Tools;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.GoalRegressionTests;
 
@@ -15,7 +16,7 @@ internal static partial class Program
 {
     private static void RunBomPolicySuite()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "wc-bom-suite");
+        var dir = Path.Combine(TestOutputRoot.Resolve(), "wc-bom-suite");
         Directory.CreateDirectory(dir);
         var scriptFile = Path.Combine(dir, "with-bom.ps1");
         var plainScriptFile = Path.Combine(dir, "plain.ps1");

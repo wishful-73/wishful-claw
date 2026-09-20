@@ -38,3 +38,12 @@ public sealed record MemoryEntryRow(
     long UpdatedAt);
 
 public sealed record MemoryEntriesByStatusResponse(List<MemoryEntryRow> Entries);
+
+/// <summary>
+/// Paged listing for the memory library (iter-33 S-98): one page of rows plus the total row
+/// count for the same scope, so the UI can render "page X of Y" without a second round trip.
+/// Deliberately a *separate* record from <see cref="MemoryEntriesByStatusResponse"/> — the
+/// tier browser consumes that one and has no use for a total, so widening it would change a
+/// contract nobody asked to change.
+/// </summary>
+public sealed record MemoryEntriesResponse(List<MemoryEntryRow> Entries, int Total);

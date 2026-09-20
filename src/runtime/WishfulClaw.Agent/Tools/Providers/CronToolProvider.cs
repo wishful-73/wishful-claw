@@ -33,14 +33,14 @@ public sealed class CronToolProvider : IToolProvider
             "Schedule a background Agent task (legacy alias for CronCreate).",
             ToolSchemaBuilder.Object(createProperties, ["name", "schedule", "prompt"]),
             availableModes: ["normal", "goal", "global"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronCreate",
             "Create a scheduled task that runs automatically at the specified time.",
             ToolSchemaBuilder.Object(createProperties, ["name", "schedule", "prompt"]),
             availableModes: ["normal", "goal", "global"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronUpdate",
@@ -53,28 +53,43 @@ public sealed class CronToolProvider : IToolProvider
                 },
                 ["jobId", "patch"]),
             availableModes: ["normal", "goal", "global"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronRemove",
             "Remove and soft-delete a scheduled task (legacy alias for CronDelete).",
             DeleteSchema(),
             availableModes: ["normal", "goal", "global"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronDelete",
             "Delete and archive a scheduled task.",
             DeleteSchema(),
             availableModes: ["normal", "goal", "global"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CronList",
             "List all cron jobs with their schedule, status, and latest execution result.",
             ToolSchemaBuilder.Object(),
             availableModes: ["normal", "goal", "global"],
-            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+            visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
+
+        // Read-only execution log. Unlike the tools above this one does NOT route through
+        // AgentRuntimeCronExecutor's reverse-request — the data is already local, and the
+        // worker-side read deliberately skips DbCronRunTools.List's orphan sweep (S-87).
+        registry.Register(new ToolDefinitionPlaceholder(
+            "CronRuns",
+            "List recent executions of scheduled tasks, newest first, optionally filtered by job.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["jobId"] = ToolSchemaBuilder.String("Optional cron job ID; omit to list runs across all jobs."),
+                    ["limit"] = ToolSchemaBuilder.Integer("Maximum number of runs to return. Defaults to 20.")
+                }),
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
     }
 
     private static Dictionary<string, System.Text.Json.JsonElement> CreateProperties(

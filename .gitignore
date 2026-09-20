@@ -52,10 +52,16 @@ dist-electron/
 !scripts/
 scripts/*
 !scripts/after-pack-remove-files.cjs
+!scripts/publish-aot-worker.mjs
+!scripts/zip-release.mjs
+!scripts/run-tests.mjs
 .kb-update/
 
 # Local scratch
 tmp/
+
+# electron-vite 每次启动会在仓库根写一份带时间戳的配置副本
+electron.vite.config.*.mjs
 \"node_out.txt\"  
 \"root_out.txt\"  
 \"stderr.txt\"  

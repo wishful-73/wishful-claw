@@ -6,6 +6,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.TestSupport;
 
 namespace WishfulClaw.CompactionSnapshotRegressionTests;
 
@@ -20,13 +21,15 @@ internal static class Program
         {
             // iter-29 T-13: pure string checks, no DB — run before the child-mode dispatch.
             PastedBlockRestoreChecks.Run();
+            // iter-33 S-95: rolling-summary partition checks (also no DB).
+            SummaryRollingChecks.Run();
 
             if (args.Length == 2)
                 return RunChildMode(args[0], args[1]);
             if (args.Length == 1 && string.Equals(args[0], "--schema-only", StringComparison.Ordinal))
                 return RunSchemaOnlyMode();
 
-            var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-compaction-regression-{Guid.NewGuid():N}");
+            var testRoot = Path.Combine(TestOutputRoot.Resolve(), $"wishful-compaction-regression-{Guid.NewGuid():N}");
             Directory.CreateDirectory(testRoot);
             try
             {
@@ -53,7 +56,7 @@ internal static class Program
 
     private static int RunSchemaOnlyMode()
     {
-        var testRoot = Path.Combine(Path.GetTempPath(), $"wishful-compaction-schema-{Guid.NewGuid():N}");
+        var testRoot = Path.Combine(TestOutputRoot.Resolve(), $"wishful-compaction-schema-{Guid.NewGuid():N}");
         Directory.CreateDirectory(testRoot);
         try
         {
@@ -1403,6 +1406,14 @@ internal static class Program
         "new_count", "messages_summarized", "summarizer_failed", "created_at", "updated_at"
     ];
 
+    /// <summary>
+    /// Seeds a pre-migration database: snapshots keyed by <c>session_id</c>, i.e. one snapshot per
+    /// session, before the <c>snapshot_id</c> rework.
+    ///
+    /// Not a relic. The migration in <c>DbClientCompactionSnapshotMigrations</c> still runs on every
+    /// <c>DbClient.Initialize</c>, and it is the kind of code that fails silently by losing rows
+    /// rather than by throwing — so the upgrade path stays covered on purpose.
+    /// </summary>
     private static void SeedLegacyDatabase(string dbPath)
     {
         using var connection = new SqliteConnection($"Data Source={dbPath}");

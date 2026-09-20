@@ -2,20 +2,25 @@ using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent.Tools;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
 /// <summary>
-/// Project management tools executor — list_projects / get_project_details / create_session / send_session_message.
-/// The first three tools execute directly in Worker (DB operations).
-/// send_session_message uses a reverse-request to the renderer, which dispatches it via normal sendMessage.
+/// Project management tools executor — list_projects / get_project_details / create_session /
+/// create_project / send_session_message / update_session_follow_up.
+/// The first four execute directly in Worker (DB operations); create_project additionally validates the
+/// landing site (see the ProjectCreation partial). send_session_message uses a reverse-request to the
+/// renderer, which dispatches it via normal sendMessage.
 /// </summary>
-public static class AgentRuntimeProjectExecutor
+public static partial class AgentRuntimeProjectExecutor
 {
     private static readonly HashSet<string> ProjectToolNames = new(StringComparer.Ordinal)
     {
-        "list_projects", "get_project_details", "create_session", "send_session_message", "update_session_follow_up"
+        "list_projects", "get_project_details", "create_session", "create_project",
+        "send_session_message", "update_session_follow_up"
     };
 
     public static bool IsProjectTool(string toolName)
@@ -34,6 +39,7 @@ public static class AgentRuntimeProjectExecutor
             "list_projects" => await ListProjectsAsync(call.Input, parameters, cancellationToken),
             "get_project_details" => await GetProjectDetailsAsync(call.Input, parameters, cancellationToken),
             "create_session" => await CreateSessionAsync(call.Input, parameters, cancellationToken),
+            "create_project" => await CreateProjectAsync(call.Input, parameters, cancellationToken),
             "send_session_message" => await SendSessionMessageAsync(call.Input, parameters, context, cancellationToken),
             "update_session_follow_up" => await UpdateSessionFollowUpAsync(call.Input, parameters, context, cancellationToken),
             _ => EncodeError($"Project tool not registered: {call.Name}")

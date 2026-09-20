@@ -404,9 +404,10 @@ internal static partial class Program
             .Select(capability => capability.GetProperty("name").GetString())
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
-        Assert(globalProjectCount == 5
+        // S-103 added create_project to the same GlobalSideOnly batch; the count moves with it.
+        Assert(globalProjectCount == 6
                && globalProjectNames.SequenceEqual([
-                   "create_session", "get_project_details", "list_projects",
+                   "create_project", "create_session", "get_project_details", "list_projects",
                    "send_session_message", "update_session_follow_up"
                ]),
             $"global Chat sessions can discover global tools through use_capability " +

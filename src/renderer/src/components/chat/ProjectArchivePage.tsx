@@ -1,20 +1,18 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronRight,
   Clock,
+  Database,
   FileText,
   FolderOpen,
   Loader2,
   RefreshCw,
-  Save,
   Terminal,
   User
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { Button } from '@renderer/components/ui/button'
-import { Textarea } from '@renderer/components/ui/textarea'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
@@ -23,27 +21,25 @@ import { cn } from '@renderer/lib/utils'
 
 import {
   type ArchiveTabId,
-  type FileState,
   type PersonaSummary,
   type SshConnectionInfo,
   WISHFUL_CLAW_DIR,
   PERSONA_FILE_NAMES,
-  DEFAULT_MEMORY_TEMPLATE,
-  DEFAULT_DAILY_TEMPLATE,
   joinFsPath,
-  getTodayDate,
   getHomeDir,
-  readTextFile,
-  writeTextFile,
   listDir
 } from './project-archive-helpers'
 import { PersonaFilePreview } from './PersonaFilePreview'
 import { CodeGraphProjectIndexSection } from './codegraph-project-index'
+import ProjectMemoryFileTab from './ProjectMemoryFileTab'
+import ProjectMemoryLibraryTab from './ProjectMemoryLibraryTab'
 
 
 const MEMORY_TABS: { id: ArchiveTabId; icon: typeof FileText; i18nKey: string }[] = [
   { id: 'memory', icon: FileText, i18nKey: 'projectArchive.tabs.memory' },
-  { id: 'daily', icon: Clock, i18nKey: 'projectArchive.tabs.daily' },
+  // S-91: the old "daily" tab had no backing file (daily memory is never materialised),
+  // so it only ever rendered today's empty template. It becomes the read-only memory library.
+  { id: 'database', icon: Database, i18nKey: 'projectArchive.tabs.database' },
   { id: 'persona', icon: User, i18nKey: 'projectArchive.tabs.persona' }
 ]
 
@@ -56,29 +52,15 @@ export function ProjectArchivePage(): React.JSX.Element {
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? null
 
   const [activeTab, setActiveTab] = useState<ArchiveTabId>('memory')
-  const [memoryFile, setMemoryFile] = useState<FileState>({
-    path: '',
-    savedContent: '',
-    draftContent: '',
-    loading: true,
-    saving: false,
-    missingFile: true,
-    error: null
-  })
-  const [dailyFile, setDailyFile] = useState<FileState>({
-    path: '',
-    savedContent: '',
-    draftContent: '',
-    loading: true,
-    saving: false,
-    missingFile: true,
-    error: null
-  })
+  // Bumped whenever the user hits Refresh: the two memory tabs are self-contained, so remounting
+  // them with a new key is how the page asks them to re-read their source.
+  const [reloadToken, setReloadToken] = useState(0)
   const [personas, setPersonas] = useState<PersonaSummary[]>([])
   const [personasLoading, setPersonasLoading] = useState(false)
   // unused: dormant files are stored in SQLite, not filesystem
 
   const sshConnectionId = activeProject?.sshConnectionId
+  const workingFolder = activeProject?.workingFolder
   const isSshProject = !!sshConnectionId
   const [sshConnectionInfo, setSshConnectionInfo] = useState<SshConnectionInfo | null>(null)
 
@@ -99,82 +81,11 @@ export function ProjectArchivePage(): React.JSX.Element {
     () => (memoryRoot ? joinFsPath(memoryRoot, 'MEMORY.md') : ''),
     [memoryRoot]
   )
-  const dailyPath = useMemo(
-    () => (memoryRoot ? joinFsPath(memoryRoot, 'memory', 'daily', `${getTodayDate()}.md`) : ''),
-    [memoryRoot]
-  )
   const personasDir = useMemo(
     () => (memoryRoot ? joinFsPath(memoryRoot, 'personas') : ''),
     [memoryRoot]
   )
   // Cold memory: stored in SQLite (memory_archive + FTS5), not file system
-
-  // ─── Load memory file ───
-
-  const loadMemoryFile = useCallback(async () => {
-    if (!memoryPath) {
-      setMemoryFile((prev) => ({ ...prev, loading: false, path: '' }))
-      return
-    }
-    setMemoryFile((prev) => ({ ...prev, loading: true, path: memoryPath, error: null }))
-    const result = await readTextFile(memoryPath)
-    if (result.error) {
-      // ENOENT — file doesn't exist yet
-      const isMissing = result.error.toLowerCase().includes('no such') || result.error.toLowerCase().includes('enotfound') || result.error.toLowerCase().includes('找不到')
-      setMemoryFile({
-        path: memoryPath,
-        savedContent: isMissing ? DEFAULT_MEMORY_TEMPLATE : '',
-        draftContent: isMissing ? DEFAULT_MEMORY_TEMPLATE : '',
-        loading: false,
-        saving: false,
-        missingFile: isMissing,
-        error: isMissing ? null : result.error
-      })
-    } else {
-      setMemoryFile({
-        path: memoryPath,
-        savedContent: result.content ?? '',
-        draftContent: result.content ?? '',
-        loading: false,
-        saving: false,
-        missingFile: false,
-        error: null
-      })
-    }
-  }, [memoryPath])
-
-  // ─── Load daily file ───
-
-  const loadDailyFile = useCallback(async () => {
-    if (!dailyPath) {
-      setDailyFile((prev) => ({ ...prev, loading: false, path: '' }))
-      return
-    }
-    setDailyFile((prev) => ({ ...prev, loading: true, path: dailyPath, error: null }))
-    const result = await readTextFile(dailyPath)
-    if (result.error) {
-      const isMissing = result.error.toLowerCase().includes('no such') || result.error.toLowerCase().includes('enotfound') || result.error.toLowerCase().includes('找不到')
-      setDailyFile({
-        path: dailyPath,
-        savedContent: isMissing ? DEFAULT_DAILY_TEMPLATE : '',
-        draftContent: isMissing ? DEFAULT_DAILY_TEMPLATE : '',
-        loading: false,
-        saving: false,
-        missingFile: isMissing,
-        error: isMissing ? null : result.error
-      })
-    } else {
-      setDailyFile({
-        path: dailyPath,
-        savedContent: result.content ?? '',
-        draftContent: result.content ?? '',
-        loading: false,
-        saving: false,
-        missingFile: false,
-        error: null
-      })
-    }
-  }, [dailyPath])
 
   // ─── Load personas ───
 
@@ -238,83 +149,24 @@ export function ProjectArchivePage(): React.JSX.Element {
   // ─── Initial load ───
 
   useEffect(() => {
-    void loadMemoryFile()
-  }, [loadMemoryFile])
-
-  useEffect(() => {
-    if (activeTab === 'daily') void loadDailyFile()
-  }, [activeTab, loadDailyFile])
-
-  useEffect(() => {
     if (activeTab === 'persona') void loadPersonas()
   }, [activeTab, loadPersonas])
 
-  // Dormant memory tab removed — cold memory is stored in SQLite, accessed via memory/search
-
-  // ─── Save handler ───
-
-  const handleSave = useCallback(async () => {
-    const file = activeTab === 'memory' ? memoryFile : dailyFile
-    if (!file.path) return
-
-    const setter = activeTab === 'memory' ? setMemoryFile : setDailyFile
-    setter((prev) => ({ ...prev, saving: true, error: null }))
-
-    const err = await writeTextFile(file.path, file.draftContent)
-    if (err) {
-      setter((prev) => ({ ...prev, saving: false, error: err }))
-      toast.error(t('projectArchive.saveFailed', { defaultValue: 'Failed to save' }), {
-        description: err
-      })
-    } else {
-      setter((prev) => ({
-        ...prev,
-        saving: false,
-        savedContent: prev.draftContent,
-        missingFile: false,
-        error: null
-      }))
-      toast.success(t('projectArchive.saved', { defaultValue: 'Saved' }))
-    }
-  }, [activeTab, memoryFile, dailyFile, t])
-
-  // ─── Reset handler ───
-
-  const handleReset = useCallback(() => {
-    if (activeTab === 'memory') {
-      setMemoryFile((prev) => ({ ...prev, draftContent: prev.savedContent, error: null }))
-    } else {
-      setDailyFile((prev) => ({ ...prev, draftContent: prev.savedContent, error: null }))
-    }
-  }, [activeTab])
-
   // ─── Reload current tab ───
 
+  // The two memory tabs load themselves; remounting them delivers the refresh. Only the persona
+  // tab still needs an explicit reload.
   const handleReload = useCallback(() => {
-    switch (activeTab) {
-      case 'memory':
-        void loadMemoryFile()
-        break
-      case 'daily':
-        void loadDailyFile()
-        break
-      case 'persona':
-        void loadPersonas()
-        break
+    if (activeTab === 'persona') {
+      void loadPersonas()
+      return
     }
-  }, [activeTab, loadMemoryFile, loadDailyFile, loadPersonas])
+    setReloadToken((token) => token + 1)
+  }, [activeTab, loadPersonas])
 
   // ─── Derived state ───
 
-  const activeFile = activeTab === 'memory' ? memoryFile : dailyFile
-  const hasUnsavedChanges = activeFile.draftContent !== activeFile.savedContent
-  const canSave = activeFile.missingFile || hasUnsavedChanges
-  const isLoading =
-    activeTab === 'memory'
-      ? memoryFile.loading
-      : activeTab === 'daily'
-        ? dailyFile.loading
-        : personasLoading
+  const isLoading = personasLoading
 
   // ─── Empty state: no project ───
 
@@ -446,91 +298,20 @@ export function ProjectArchivePage(): React.JSX.Element {
 
         {/* ── Tab content ── */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-4">
-          {/* Tab 1: Project Memory / Tab 2: Daily Memory */}
-          {(activeTab === 'memory' || activeTab === 'daily') && (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                  <FileText className="size-4 shrink-0" />
-                  <span className="truncate text-xs">{activeFile.path || t('projectArchive.pathUnavailable', { defaultValue: 'Path unavailable' })}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {activeFile.missingFile && (
-                    <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-600 dark:text-amber-400">
-                      {t('projectArchive.notCreated', { defaultValue: 'Not yet created' })}
-                    </span>
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    {hasUnsavedChanges
-                      ? t('projectArchive.unsavedState', { defaultValue: 'Unsaved changes' })
-                      : t('projectArchive.savedState', { defaultValue: 'Content synced' })}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 rounded-md px-2.5 text-xs"
-                    onClick={handleReset}
-                    disabled={!hasUnsavedChanges}
-                  >
-                    {t('projectArchive.resetAction', { defaultValue: 'Reset' })}
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="h-7 rounded-md px-2.5 text-xs"
-                    onClick={() => void handleSave()}
-                    disabled={activeFile.saving || !canSave}
-                  >
-                    {activeFile.saving ? (
-                      <Loader2 className="mr-1 size-3 animate-spin" />
-                    ) : (
-                      <Save className="mr-1 size-3" />
-                    )}
-                    {tCommon('action.save', { defaultValue: 'Save' })}
-                  </Button>
-                </div>
-              </div>
+          {/* Tab 1: Project Memory (editable MEMORY.md). Stays mounted while another tab is
+              active, otherwise switching tabs would discard an unsaved draft. */}
+          <div className={activeTab === 'memory' ? 'contents' : 'hidden'}>
+            <ProjectMemoryFileTab key={`memory-${reloadToken}`} path={memoryPath} />
+          </div>
 
-              {activeFile.missingFile && (
-                <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-                  {t('projectArchive.missingFileHint', {
-                    defaultValue: 'File does not exist yet. An initial template has been loaded — click Save to create it.'
-                  })}
-                </p>
-              )}
-
-              <div className="mt-3 flex-1 overflow-auto">
-                {activeFile.loading ? (
-                  <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    {t('projectArchive.loading', { defaultValue: 'Loading...' })}
-                  </div>
-                ) : (
-                  <Textarea
-                    value={activeFile.draftContent}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      if (activeTab === 'memory') {
-                        setMemoryFile((prev) => ({ ...prev, draftContent: value }))
-                      } else {
-                        setDailyFile((prev) => ({ ...prev, draftContent: value }))
-                      }
-                    }}
-                    placeholder={t('projectArchive.placeholder', {
-                      defaultValue: 'Edit content here...'
-                    })}
-                    rows={24}
-                    className="min-h-[480px] w-full rounded-md border-border/60 bg-background font-mono text-xs leading-5"
-                  />
-                )}
-              </div>
-
-              {activeFile.error && (
-                <div className="border-t px-5 py-3 text-sm text-destructive">
-                  {t('projectArchive.errorLabel', { defaultValue: 'Error: ' })}
-                  {activeFile.error}
-                </div>
-              )}
-            </div>
+          {/* Tab 2: Memory Library — read-only memory_entries of this project (S-91) */}
+          {activeTab === 'database' && (
+            <ProjectMemoryLibraryTab
+              key={`library-${reloadToken}`}
+              projectId={activeProjectId}
+              workingFolder={workingFolder}
+              sshConnectionId={sshConnectionId}
+            />
           )}
 
           {/* Tab 3: Project Persona */}

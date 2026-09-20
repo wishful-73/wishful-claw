@@ -83,6 +83,8 @@ internal sealed partial class MemoryModule
         var scope = explicitAll ? null : GetScope(parameters);
         var limit = Math.Clamp(GetInt(parameters, "limit", MaxEntriesLimit), 1, MaxEntriesLimit);
         var offset = Math.Max(0, GetInt(parameters, "offset", 0));
+        // 时间区间（S-101）：GetLong 缺字段返回 0，正好被 Build 当成「不限」。
+        var timeClause = MemoryTimeFilter.Build(GetLong(parameters, "from"), GetLong(parameters, "to"));
         // Whitelist rather than interpolation: the direction is spliced into the ORDER BY text,
         // so it must never be the caller's string. Anything that is not "asc" means newest
         // first, which keeps the pre-S-98 default.
@@ -98,10 +100,9 @@ internal sealed partial class MemoryModule
             var entries = new List<MemoryEntryRow>();
             using (var reader = db.ExecuteReader(
                        "SELECT id, scope, title, content, priority, status, updated_at FROM memory_entries " +
-                       $"WHERE 1 = 1{scopeClause} " +
+                       $"WHERE 1 = 1{scopeClause}{timeClause.Sql} " +
                        $"ORDER BY updated_at {direction}, id {direction} LIMIT @limit OFFSET @offset",
-                       new SqliteParameter("@limit", limit),
-                       new SqliteParameter("@offset", offset)))
+                       [new SqliteParameter("@limit", limit), new SqliteParameter("@offset", offset), .. timeClause.Parameters]))
             {
                 while (reader.Read())
                 {
@@ -110,15 +111,21 @@ internal sealed partial class MemoryModule
             }
 
             return Task.FromResult(WorkerResponse.Json(
-                new MemoryEntriesResponse(entries, CountScope(db, scope)),
+                new MemoryEntriesResponse(entries, CountScope(db, scope, timeClause)),
                 WishfulClawJsonContext.Default.MemoryEntriesResponse));
         });
     }
 
-    private static int CountScope(DbService db, string? scope)
+    /// <summary>
+    /// 同 scope 的总条数。**必须带上同一个 <paramref name="timeClause"/>** —— 少了它，
+    /// 「共 N 条 / 第 X 页」会按全量算，翻到区间内最后一页就露白了（S-98 在相邻处踩过）。
+    /// </summary>
+    private static int CountScope(DbService db, string? scope, MemoryTimeClause timeClause)
     {
         var scopeClause = scope is null ? "" : $" AND scope = '{EscapeSql(scope)}'";
-        using var reader = db.ExecuteReader($"SELECT COUNT(*) FROM memory_entries WHERE 1 = 1{scopeClause}");
+        using var reader = db.ExecuteReader(
+            $"SELECT COUNT(*) FROM memory_entries WHERE 1 = 1{scopeClause}{timeClause.Sql}",
+            timeClause.Parameters.ToArray());
         return reader.Read() ? (int)reader.GetInt64(0) : 0;
     }
 

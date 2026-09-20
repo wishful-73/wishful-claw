@@ -75,7 +75,9 @@ export async function memorySearch(
   limit: number = 10,
   workingFolder?: string | null,
   projectId?: string | null,
-  sshConnectionId?: string | null
+  sshConnectionId?: string | null,
+  from?: number,
+  to?: number
 ): Promise<{ hits: MemorySearchResult[] }> {
   return window.api.workerRequest('memory/search', {
     query,
@@ -83,7 +85,9 @@ export async function memorySearch(
     limit,
     workingFolder,
     projectId,
-    sshConnectionId
+    sshConnectionId,
+    from,
+    to
   })
 }
 
@@ -260,6 +264,10 @@ export async function memoryEntriesByStatus(
  * `total` off the response to know how far it goes. `order` is a whitelist —
  * the worker treats anything other than 'asc' as newest-first. The last two
  * parameters were appended so the existing five-argument call sites keep working.
+ *
+ * Time window (iter-33 S-101): `from` / `to` are Unix SECONDS, inclusive, and `undefined`
+ * means unbounded (the worker treats non-positive the same way). `total` honours the same
+ * window, so paging inside a range never promises rows the range excluded.
  */
 export async function memoryEntries(
   scope: string = 'all',
@@ -268,7 +276,9 @@ export async function memoryEntries(
   projectId?: string | null,
   sshConnectionId?: string | null,
   offset: number = 0,
-  order: 'desc' | 'asc' = 'desc'
+  order: 'desc' | 'asc' = 'desc',
+  from?: number,
+  to?: number
 ): Promise<{ entries?: MemoryStatusEntry[]; total?: number }> {
   return window.api.workerRequest('memory/entries', {
     scope,
@@ -277,7 +287,9 @@ export async function memoryEntries(
     sshConnectionId,
     limit,
     offset,
-    order
+    order,
+    from,
+    to
   })
 }
 

@@ -109,10 +109,13 @@ internal sealed partial class MemoryModule : IWorkerModule
         var scope = GetScope(parameters);
         var limit = GetInt(parameters, "limit", 10);
         var includeDeprecated = GetBool(parameters, "include_deprecated", false);
+        // 时间区间（S-101）：GetLong 缺字段返回 0，正好被 MemoryTimeFilter 当成「不限」。
+        var from = GetLong(parameters, "from");
+        var to = GetLong(parameters, "to");
         var search = GetSearch();
         return RunAsync(async () =>
         {
-            var hits = await search.SearchAsync(query, scope, limit, includeDeprecated);
+            var hits = await search.SearchAsync(query, scope, limit, includeDeprecated, from, to);
             return WorkerResponse.Json(new MemorySearchResponse(hits.ToList()), WishfulClawJsonContext.Default.MemorySearchResponse);
         });
     }

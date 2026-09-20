@@ -1439,7 +1439,13 @@
       "prevPage": "Previous",
       "nextPage": "Next",
       "pageOf": "Page {{page}} / {{total}}",
-      "rowHint": "Click to expand"
+      "rowHint": "Click to expand",
+      "ranges": {
+        "all": "All",
+        "today": "Today",
+        "week": "Last 7 days",
+        "month": "Last 30 days"
+      }
     },
     "organization": {
       "title": "Daily Auto Organization",

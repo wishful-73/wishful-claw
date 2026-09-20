@@ -11,6 +11,11 @@ import {
   type MemorySearchResult,
   type MemoryStatusEntry
 } from '@renderer/stores/chat-store/memory-helpers'
+import {
+  MEMORY_TIME_RANGE_IDS,
+  resolveMemoryTimeBounds,
+  type MemoryTimeRangeId
+} from '@renderer/lib/memory-time-range'
 import { SettingsSection } from './settings-primitives'
 
 /**
@@ -87,6 +92,7 @@ function MemoryEntriesTab(): React.JSX.Element {
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [newestFirst, setNewestFirst] = useState(true)
+  const [range, setRange] = useState<MemoryTimeRangeId>('all')
   const [page, setPage] = useState(1)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
 
@@ -95,6 +101,7 @@ function MemoryEntriesTab(): React.JSX.Element {
     setLoading(true)
     setError(null)
     try {
+      const { from, to } = resolveMemoryTimeBounds(range)
       const result = await memoryEntries(
         'global',
         undefined,
@@ -102,7 +109,9 @@ function MemoryEntriesTab(): React.JSX.Element {
         undefined,
         undefined,
         (targetPage - 1) * PAGE_SIZE,
-        newest ? 'desc' : 'asc'
+        newest ? 'desc' : 'asc',
+        from,
+        to
       )
       const pageTotal = result.total ?? 0
       // The list can shrink under the pager (entries removed elsewhere, a refresh after the
@@ -122,7 +131,7 @@ function MemoryEntriesTab(): React.JSX.Element {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [range])
 
   // Browse mode only. A search hit list is one bounded response with its own client-side
   // slicing, so there is nothing to re-read when its page flips.
@@ -139,7 +148,8 @@ function MemoryEntriesTab(): React.JSX.Element {
     setSearching(true)
     setError(null)
     try {
-      const result = await memorySearch(trimmed, 'global', 20)
+      const { from, to } = resolveMemoryTimeBounds(range)
+      const result = await memorySearch(trimmed, 'global', 20, undefined, undefined, undefined, from, to)
       setHits((result.hits ?? []).map(fromHit))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -147,7 +157,7 @@ function MemoryEntriesTab(): React.JSX.Element {
     } finally {
       setSearching(false)
     }
-  }, [query])
+  }, [query, range])
 
   const browsing = hits === null
 
@@ -174,7 +184,7 @@ function MemoryEntriesTab(): React.JSX.Element {
   // otherwise kick the pager back to page 1 in a loop.
   useEffect(() => {
     setPage(1)
-  }, [hits, newestFirst])
+  }, [hits, newestFirst, range])
 
   const toggleRow = useCallback((key: string) => {
     setExpandedKeys((prev) => {
@@ -241,6 +251,20 @@ function MemoryEntriesTab(): React.JSX.Element {
           )}
           {t('memoryPage.entries.search')}
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {MEMORY_TIME_RANGE_IDS.map((id) => (
+          <Button
+            key={id}
+            variant={range === id ? 'default' : 'outline'}
+            size="sm"
+            className="h-7 rounded-md px-2.5 text-xs"
+            onClick={() => setRange(id)}
+          >
+            {t(`memoryPage.entries.ranges.${id}`)}
+          </Button>
+        ))}
       </div>
 
       {error && (

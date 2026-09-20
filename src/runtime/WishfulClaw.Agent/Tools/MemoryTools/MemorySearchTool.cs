@@ -78,7 +78,7 @@ public sealed class MemorySearchTool : IToolExecutor
 
 
 
-        var hits = await _search.SearchAsync(query!, scope, limit, includeDeprecated, context.CancellationToken);
+        var hits = await _search.SearchAsync(query!, scope, limit, includeDeprecated, ct: context.CancellationToken);
 
 
 

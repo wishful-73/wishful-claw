@@ -21,6 +21,7 @@ internal static class Program
             RunSessionDeduplicationSuite();
             RunRecallFilteringSuite();
             RunInjectedBlockStrippingSuite();
+            RunTimeFilterSuite();
             Console.WriteLine($"Memory recall regression checks passed: {_passed}");
             return 0;
         }
@@ -133,6 +134,77 @@ internal static class Program
         Assert(single.Any(h => h.Title == "记忆 整理 配置"), "single-keyword query still matches by substring");
     }
 
+    /// <summary>
+    /// S-101: 记忆库按修改时间筛选。两层都要钉住 ——
+    /// ① Workspace 层纯函数拼出的条件与参数（列表端点与检索链共用它）；
+    /// ② 检索两条路都真的按 updated_at 收窄。少任何一条，症状都是
+    /// 「列表里筛出来的条目搜不到」，而那种漂移最难查。
+    ///
+    /// 两条路用的是同一个构造器，所以即使某次 FTS 零命中触发了 LIKE 回退，
+    /// 断言测到的仍然是同一份逻辑 —— 这里不断言「走了哪条路」。
+    /// </summary>
+    private static void RunTimeFilterSuite()
+    {
+        // ── 纯函数：条件段与参数 ──
+        var unbounded = MemoryTimeFilter.Build(null, null);
+        AssertEqual(string.Empty, unbounded.Sql, "两道边界都不给时不追加任何条件");
+        AssertEqual(0, unbounded.Parameters.Count, "无界时不绑定参数");
+
+        var both = MemoryTimeFilter.Build(100, 200);
+        Assert(
+            both.Sql.Contains("updated_at >= @updatedFrom", StringComparison.Ordinal)
+            && both.Sql.Contains("updated_at <= @updatedTo", StringComparison.Ordinal),
+            "两端都给时两侧都收窄");
+        AssertEqual(2, both.Parameters.Count, "两端各绑一个参数");
+
+        // 非正数 = 不限：前端「全部」就是不给字段，但 0 也该按同义处理，
+        // 否则区间会被收成「1970 年那一秒」，什么都筛不出来。
+        var zeroed = MemoryTimeFilter.Build(0, 0);
+        AssertEqual(string.Empty, zeroed.Sql, "0 当「不限」处理");
+
+        var halfOpen = MemoryTimeFilter.Build(null, 200);
+        Assert(
+            halfOpen.Sql.Contains("updated_at <= @updatedTo", StringComparison.Ordinal)
+            && !halfOpen.Sql.Contains("updated_at >=", StringComparison.Ordinal),
+            "只给上界时只收上界");
+
+        var qualified = MemoryTimeFilter.Build(100, null, "e.");
+        Assert(
+            qualified.Sql.Contains("e.updated_at >= @updatedFrom", StringComparison.Ordinal),
+            "限定符加在列名上（FTS 路径的表别名）");
+
+        // ── 检索链：两条路都吃区间 ──
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        InsertMemory("区间内条目", "记忆筛选 样本正文", now);
+        InsertMemory("区间外条目", "记忆筛选 样本正文", now - 90L * 24 * 3600);
+
+        var search = new MemoryFtsService();
+
+        // 关键词 4 个字（>= trigram 下限 3），走索引那一侧。
+        var insideOnly = search.SearchAsync(
+            "记忆筛选", "global", from: now - 3600, to: now + 60).GetAwaiter().GetResult();
+        Assert(
+            insideOnly.Any(h => h.Title == "区间内条目"),
+            "带区间时区间内的条目仍然可见");
+        Assert(
+            insideOnly.All(h => h.Title != "区间外条目"),
+            "带区间时区间外的条目被挡住");
+
+        // 关键词 2 个字，只能走 LIKE 那一侧；区间条件必须同样生效。
+        var shortQuery = search.SearchAsync(
+            "筛选", "global", from: now - 3600, to: now + 60).GetAwaiter().GetResult();
+        Assert(
+            shortQuery.All(h => h.Title != "区间外条目"),
+            "短词（LIKE 路径）一样被区间挡住");
+
+        // 回归：不给区间时两条都在 —— 区间是可选参数，不能改变既有行为。
+        var unboundedHits = search.SearchAsync("记忆筛选", "global").GetAwaiter().GetResult();
+        Assert(
+            unboundedHits.Any(h => h.Title == "区间内条目")
+            && unboundedHits.Any(h => h.Title == "区间外条目"),
+            "不给区间时不过滤");
+    }
+
     private static void InsertMemory(string title, string content, long updatedAt)
     {
         DbClient.GetClient().Execute(
@@ -231,6 +303,8 @@ internal static class Program
             string? scope = null,
             int limit = 10,
             bool includeDeprecated = false,
+            long? from = null,
+            long? to = null,
             CancellationToken ct = default)
         {
             Scopes.Add(scope ?? "");

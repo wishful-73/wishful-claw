@@ -1386,6 +1386,48 @@ S-97 做记忆库列表时，我在实施记录与提交信息里写了「C# 侧
 
 `memoryEntries()` 现为 **7 个位置参数**（`scope, workingFolder, limit, projectId, sshConnectionId, offset, order`），再加 `from/to` 就是 9 个 —— 位置参数到这个量级极易传错顺序（第 3 位 `limit`、第 6 位 `offset`，插错一个位置全乱）。**建议顺手改成 options 对象**（影响 3 个调用点）。这是我的提议，可单独砍掉，不影响 S-101 本身。
 
+### 实施记录（2026-09-20）
+
+**C#：时间区间一份实现，两处消费**
+
+1. **新增** `src/runtime/WishfulClaw.Workspace/Memory/MemoryTimeFilter.cs`：`Build(from, to, qualifier = "")` 返回 `(Sql, Parameters)`，Sql **带前导 `" AND "`**、参数名固定 `@updatedFrom` / `@updatedTo`；两端都可缺省，**非正数一律当「不限」**（Worker 的 `GetLong` 缺字段返回 0，正好落在这条上）。`qualifier` 只吃调用方字面量（FTS 路径的表别名是 `e`，LIKE 路径没有别名）。
+   - **为什么落 Workspace 层**：Worker 的端点函数是 `private static`，且**没有任何测试工程引用 Worker** ⇒ 端点级断言根本写不出来（规划验证 ❌-1）。放这里 `MemoryRecallRegressionTests` 引用得到，纯函数也就能直接断言。
+2. `IMemorySearch.SearchAsync` 加 `long? from` / `long? to`，**插在 `includeDeprecated` 之后、`ct` 之前**：按位置传参的调用点只有 `MemorySearchTool` 一处（已改 `ct:` 命名实参），`MemoryModule` 传 4 个位置参数、`MemoryRecallService` 全用命名参数，都不受影响；两个测试 stub 跟着补参数。
+3. `MemoryFtsService`：FTS 路与 LIKE 路**各自**调 `MemoryTimeFilter.Build(...)`（前者带 `"e."`），条件拼进既有 WHERE，参数用集合表达式摊进 `ExecuteReader` 调用。
+4. `MemoryModule.Entries.cs`：`MemoryEntries` 解析 `from` / `to` 并拼进 WHERE；**`CountScope` 同步加 `MemoryTimeClause` 参数** —— 少了它「共 N 条 / 第 X 页」会按全量算，翻到区间内最后一页就露白。
+5. `MemoryModule.MemorySearch` 端点透传 `from` / `to`；`MemorySearchTool` 的调用改用 `ct:` 命名实参。
+
+**TypeScript**
+
+6. **新增** `src/renderer/src/lib/memory-time-range.ts`：`MemoryTimeRangeId = 'all' | 'today' | 'week' | 'month'`、`MEMORY_TIME_RANGE_IDS`（即展示顺序）、`resolveMemoryTimeBounds(id, now?)` ⇒ `{ from?, to? }`（Unix 秒）。
+   - **边界按本地日**：起点取本地 00:00:00.000（`new Date(y, m, d - (days - 1))`），不是 UTC 午夜 —— 东八区早上 8 点前，UTC 日的「今天」还停在昨天。上界取 `now`（区间两侧都收口）。
+   - `now` 可注入 ⇒ 套件不依赖「跑测试的那一刻」。
+7. `memory-helpers.ts`：`memoryEntries` / `memorySearch` 各加 `from` / `to` **尾参**。
+8. `MemoryEntriesTab.tsx`（全局记忆库）与 `ProjectMemoryLibraryTab.tsx`（档案页记忆库）各加四个区间 chip（全部 / 今天 / 近 7 天 / 近 30 天），当前区间用 `variant="default"` 表态；切区间回第 1 页。区间同时作用于**浏览与搜索**两条路。
+   - 档案页此前**不显示时间**（筛完看不出任何变化，等于不可验证），本刀补上 `updatedAt`，与全局页同口径（`Intl.DateTimeFormat` 短日期 + 时分）。
+9. i18n：`{zh,en}/settings.json` 加 `memoryPage.entries.ranges.{all,today,week,month}`；`{zh,en}/chat.json` 加 `projectArchive.memoryLibrary.ranges.{...}`。
+
+**断言**
+
+10. `tests/WishfulClaw.MemoryRecallRegressionTests` 新增 `RunTimeFilterSuite()` —— **38 → 49 断言**（+11）
+    - 纯函数 7 条：无界不追加条件；无界不绑参数；两端都给时两侧都收窄；两端各绑一个参数；`0` 当不限；只给上界时只收上界；`qualifier` 加在列名上（FTS 表别名）。
+    - 检索 4 条：关键词 ≥ 3 字符（走索引那侧）带区间 ⇒ 区间内可见、区间外被挡；关键词 2 字符（只能走 LIKE）⇒ 区间外同样被挡；**不给区间时两条都在**（区间是可选参数，不改既有行为）。
+    - **不断言「走了哪条路」**：两条路共用同一个条件构造，FTS 零命中触发 LIKE 回退时断言测到的仍是同一份逻辑。
+11. **新增** `tests/memory-time-range/program.ts` + `package.json` 的 `test:memory-time-range` —— **13 条断言**。覆盖区间天数（今天 / 近 7 天 / 近 30 天，均含今天）、跨月（2026-03-01 往前 29 天 = 2026-01-31，二月只有 28 天）、跨年（2027-01-02 往前 6 天 = 2026-12-27），以及**正面检查起点落在本地零点**（不是某个 UTC 常量）—— 期望值全用本地时间构造，任何时区跑都成立。
+
+**S101-5（options 化）未做 —— 这是我的取舍，记在这里**：`memoryEntries` 现在是 **9 个位置参数**，确实难看；但 options 化要同时改 3 个调用点的全部实参形态，而本刀已经跨 4 层（Workspace / Worker / Agent / 渲染端 + i18n + 两套测试）。**本刀只加 `from` / `to` 两个尾参**，options 化留作独立一刀，理由也写进了 `memory-helpers.ts` 的注释。
+
+**门禁（全绿）**
+
+- `src/runtime/WishfulClaw.sln` 与 `tests/WishfulClaw.Tests.sln` 均 **0 错 0 警**
+- 11 个 C# 回归套件全 `exit=0`（MemoryRecall **49** / Goal 325 / SessionTaskCascade 225 / ChannelToolVisibility 122 / ChannelShellApproval 72 / Cron 42 / AgentTimeline 25 / GrepPattern 21 / CompactionSnapshot 2 / ProviderHeader / ToolConcurrency）
+- `npm run typecheck`（node + web 两配置）**EXIT=0**
+- **34/34** 个 `test:*` 脚本通过（含新增的 `test:memory-time-range`，含 `test:i18n-coverage`）
+
+**未覆盖（如实）**
+
+- **端点级 `total` 一致性没有自动断言**：`memory/entries` 的「`total` 与区间内实际行数一致」写不出套件 —— Worker 无测试工程引用（规划验证 ❌-1）。纯函数与检索双路已断言，端点这条**归真机手测**（见验证检查点）。
+
 ---
 
 ## S-102 沙箱模式不允许应用数据目录：全局 PM 读不了自家日志

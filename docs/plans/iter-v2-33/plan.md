@@ -296,15 +296,15 @@
 
 #### S-101 记忆库时间筛选（C# + TS）
 
-- [ ] **S101-0** 【先定可测边界】规划验证 ❌-1：`MemoryEntries` / `CountScope` 是 **Worker 内 `private static`**，而**没有任何测试工程引用 Worker**（11 个套件分别引 Agent / Infrastructure / Workspace）⇒ 端点级断言根本写不出来。**修法**：把「时间区间的 SQL 条件段 + 参数」抽成一个**纯函数**，放 **Workspace 层**（`WishfulClaw.Workspace/Memory/`，与 `MemoryFtsService` 同层，这样 `MemoryRecallRegressionTests` 直接断言得到），Worker 端点与搜索链**共用同一份实现**。验证：纯函数能被测试工程引用（编译通过即证明落层正确）。
-- [ ] **S101-1** `MemoryModule.Entries.cs` 的 `MemoryEntries` 加 `from` / `to`（Unix 秒，可选；缺省或 `<= 0` 视为不限），WHERE 用 S101-0 的纯函数拼条件。验证：真机（端点逻辑无单测，限制见 S101-7）。
-- [ ] **S101-2** **`CountScope` 必须带同样条件** —— 否则「共 N 条 / 第 X 页」全错、翻页漏行（S-98 在相邻处踩过）。**必须调用 S101-0 的同一个函数**，不许另写一份。验证：纯函数单测（同输入同输出）+ 真机 total 对齐。
-- [ ] **S101-3** 搜索链加时间筛选：`MemoryFtsService.SearchAsync` 的 **FTS 路与 LIKE 路都要带** `updated_at` 区间。**注意**：`MemoryFtsService` 实现在 `IMemorySearch` 契约下（`src/runtime/WishfulClaw.Workspace/Memory/IMemorySearch.cs`），改签名要**同步接口**，否则编译不过。验证：`MemoryRecallRegressionTests` 断言（该套件引用了 Workspace，**这条可测**）。
-- [ ] **S101-4** **时区口径**：`from` / `to` 传 Unix 秒，但「今天 / 近 7 天」的**边界必须按本地日**算（本地 00:00 为当日起点），**不要**用 UTC 日 —— 否则东八区用户在早上 8 点前会看到「今天」少几小时。验证：断言本地时区下的边界值。
-- [ ] **S101-5** `memory-helpers.ts` 透传（`memoryEntries` + `memorySearch`）；**顺带把 `memoryEntries` 的 7 个位置参数改成 options 对象**（影响 3 个调用点：`MemoryEntriesTab` / `ProjectMemoryLibraryTab` / `memory-hot-sync.ts`）—— 此项是**我自己的取舍、非需求**，若判断影响面不值就跳过，并在实施记录里写明跳过理由。
-- [ ] **S101-6** `MemoryEntriesTab.tsx` + `ProjectMemoryLibraryTab.tsx` 加区间 chip（全部 / 今天 / 近 7 天 / 近 30 天）；切区间回到第 1 页。**另**：`ProjectMemoryLibraryTab` 当前**不显示 `updatedAt`**（规划验证 ⚠️）—— 不补这个，档案页筛完看不出任何变化，等于不可验证；补一行时间显示（沿用 `MemoryEntriesTab` 的 `formatTimestamp` 口径）。验证：切区间后页码回 1、行数随区间变化、每行能看到时间。
-- [ ] **S101-6b** i18n 补四个 chip 文案（`{zh,en}/settings.json`；档案页如需另补 `chat.json`）。验证：`npm run test:i18n-coverage` PASS。
-- [ ] **S101-7** 回归断言（**落点按规划验证 ❌-1 修正**）：`tests/WishfulClaw.MemoryRecallRegressionTests` 断言 **S101-0 的纯函数**（区间内 / 区间外 / 边界取等号 / 本地日边界）+ **S101-3 的搜索双路**（都在 Workspace 层，该套件引用得到）。**明确不写**：`memory/entries` 端点的「total 与实际行数一致」—— **Worker 不可达，此条归真机手测**，并写进验证态已知限制，**不要假装测过**。验证：套件 `exit=0`。
+- [x] **S101-0** 【先定可测边界】规划验证 ❌-1：`MemoryEntries` / `CountScope` 是 **Worker 内 `private static`**，而**没有任何测试工程引用 Worker**（11 个套件分别引 Agent / Infrastructure / Workspace）⇒ 端点级断言根本写不出来。**修法**：把「时间区间的 SQL 条件段 + 参数」抽成一个**纯函数**，放 **Workspace 层**（`WishfulClaw.Workspace/Memory/`，与 `MemoryFtsService` 同层，这样 `MemoryRecallRegressionTests` 直接断言得到），Worker 端点与搜索链**共用同一份实现**。验证：纯函数能被测试工程引用（编译通过即证明落层正确）。
+- [x] **S101-1** `MemoryModule.Entries.cs` 的 `MemoryEntries` 加 `from` / `to`（Unix 秒，可选；缺省或 `<= 0` 视为不限），WHERE 用 S101-0 的纯函数拼条件。验证：真机（端点逻辑无单测，限制见 S101-7）。
+- [x] **S101-2** **`CountScope` 必须带同样条件** —— 否则「共 N 条 / 第 X 页」全错、翻页漏行（S-98 在相邻处踩过）。**必须调用 S101-0 的同一个函数**，不许另写一份。验证：纯函数单测（同输入同输出）+ 真机 total 对齐。
+- [x] **S101-3** 搜索链加时间筛选：`MemoryFtsService.SearchAsync` 的 **FTS 路与 LIKE 路都要带** `updated_at` 区间。**注意**：`MemoryFtsService` 实现在 `IMemorySearch` 契约下（`src/runtime/WishfulClaw.Workspace/Memory/IMemorySearch.cs`），改签名要**同步接口**，否则编译不过。验证：`MemoryRecallRegressionTests` 断言（该套件引用了 Workspace，**这条可测**）。
+- [x] **S101-4** **时区口径**：`from` / `to` 传 Unix 秒，但「今天 / 近 7 天」的**边界必须按本地日**算（本地 00:00 为当日起点），**不要**用 UTC 日 —— 否则东八区用户在早上 8 点前会看到「今天」少几小时。验证：断言本地时区下的边界值。
+- [x] **S101-5** `memory-helpers.ts` 透传（`memoryEntries` + `memorySearch`）；**顺带把 `memoryEntries` 的 7 个位置参数改成 options 对象**（影响 3 个调用点：`MemoryEntriesTab` / `ProjectMemoryLibraryTab` / `memory-hot-sync.ts`）—— 此项是**我自己的取舍、非需求**，若判断影响面不值就跳过，并在实施记录里写明跳过理由。
+- [x] **S101-6** `MemoryEntriesTab.tsx` + `ProjectMemoryLibraryTab.tsx` 加区间 chip（全部 / 今天 / 近 7 天 / 近 30 天）；切区间回到第 1 页。**另**：`ProjectMemoryLibraryTab` 当前**不显示 `updatedAt`**（规划验证 ⚠️）—— 不补这个，档案页筛完看不出任何变化，等于不可验证；补一行时间显示（沿用 `MemoryEntriesTab` 的 `formatTimestamp` 口径）。验证：切区间后页码回 1、行数随区间变化、每行能看到时间。
+- [x] **S101-6b** i18n 补四个 chip 文案（`{zh,en}/settings.json`；档案页如需另补 `chat.json`）。验证：`npm run test:i18n-coverage` PASS。
+- [x] **S101-7** 回归断言（**落点按规划验证 ❌-1 修正**）：`tests/WishfulClaw.MemoryRecallRegressionTests` 断言 **S101-0 的纯函数**（区间内 / 区间外 / 边界取等号 / 本地日边界）+ **S101-3 的搜索双路**（都在 Workspace 层，该套件引用得到）。**明确不写**：`memory/entries` 端点的「total 与实际行数一致」—— **Worker 不可达，此条归真机手测**，并写进验证态已知限制，**不要假装测过**。验证：套件 `exit=0`。
 
 ### 涉及文件
 

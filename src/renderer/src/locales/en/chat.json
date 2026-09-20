@@ -1053,7 +1053,13 @@
       "total": "{{count}} entries",
       "prevPage": "Prev",
       "nextPage": "Next",
-      "pageOf": "Page {{page}} / {{total}}"
+      "pageOf": "Page {{page}} / {{total}}",
+    "ranges": {
+      "all": "All",
+      "today": "Today",
+      "week": "Last 7 days",
+      "month": "Last 30 days"
+    }
     },
     "persona": {
       "noPersonas": "No project-specific personas yet. Add personas via the persona settings page.",

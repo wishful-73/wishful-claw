@@ -166,6 +166,8 @@ internal static class VisibilitySnapshotDump
             string? scope = null,
             int limit = 10,
             bool includeDeprecated = false,
+            long? from = null,
+            long? to = null,
             CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<MemorySearchResult>>(Array.Empty<MemorySearchResult>());
     }

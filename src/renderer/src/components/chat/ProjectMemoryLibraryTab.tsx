@@ -4,12 +4,25 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@renderer/components/ui/button'
 import {
+  MEMORY_TIME_RANGE_IDS,
+  resolveMemoryTimeBounds,
+  type MemoryTimeRangeId
+} from '@renderer/lib/memory-time-range'
+import {
   memoryEntries,
   type MemoryStatusEntry
 } from '@renderer/stores/chat-store/memory-helpers'
 
 /** Rows per page — the worker does the paging (iter-33 S-98). */
 const PAGE_SIZE = 20
+
+/** Same rendering as the global tab, so a timestamp reads the same on both pages. */
+function formatUpdatedAt(seconds: number): string {
+  if (!seconds) return ''
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(
+    seconds * 1000
+  )
+}
 
 /**
  * Read-only memory library for one project (iter-33 S-91): every `memory_entries` row in this
@@ -30,6 +43,7 @@ function ProjectMemoryLibraryTab({
   const [entries, setEntries] = useState<MemoryStatusEntry[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [range, setRange] = useState<MemoryTimeRangeId>('all')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,13 +54,17 @@ function ProjectMemoryLibraryTab({
       try {
         // scope='project' is resolved worker-side (workingFolder for local projects,
         // projectId + sshConnectionId for SSH ones) — never hand-build the scope here.
+        const { from, to } = resolveMemoryTimeBounds(range)
         const result = await memoryEntries(
           'project',
           workingFolder ?? undefined,
           PAGE_SIZE,
           projectId ?? undefined,
           sshConnectionId ?? undefined,
-          (targetPage - 1) * PAGE_SIZE
+          (targetPage - 1) * PAGE_SIZE,
+          'desc',
+          from,
+          to
         )
         setEntries(result.entries ?? [])
         setTotal(result.total ?? 0)
@@ -58,14 +76,14 @@ function ProjectMemoryLibraryTab({
         setLoading(false)
       }
     },
-    [projectId, workingFolder, sshConnectionId]
+    [projectId, workingFolder, sshConnectionId, range]
   )
 
   // Switching project invalidates the page number — page 3 of the previous project says
   // nothing about this one.
   useEffect(() => {
     setPage(1)
-  }, [projectId, workingFolder, sshConnectionId])
+  }, [projectId, workingFolder, sshConnectionId, range])
 
   useEffect(() => {
     void load(page)
@@ -103,6 +121,20 @@ function ProjectMemoryLibraryTab({
         </Button>
       </div>
 
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {MEMORY_TIME_RANGE_IDS.map((id) => (
+          <Button
+            key={id}
+            variant={range === id ? 'default' : 'outline'}
+            size="sm"
+            className="h-7 rounded-md px-2.5 text-xs"
+            onClick={() => setRange(id)}
+          >
+            {t(`projectArchive.memoryLibrary.ranges.${id}`, { defaultValue: id })}
+          </Button>
+        ))}
+      </div>
+
       {error && (
         <p className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
@@ -137,7 +169,9 @@ function ProjectMemoryLibraryTab({
                       t('projectArchive.memoryLibrary.untitled', { defaultValue: 'Untitled' })}
                   </span>
                   <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {entry.priority} · {entry.status}
+                    {entry.updatedAt > 0
+                      ? `${formatUpdatedAt(entry.updatedAt)} · ${entry.priority} · ${entry.status}`
+                      : `${entry.priority} · ${entry.status}`}
                   </span>
                 </div>
                 <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">

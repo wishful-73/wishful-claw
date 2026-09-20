@@ -32,7 +32,8 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
 
     public Task<IReadOnlyList<MemorySearchResult>> SearchAsync(
         string query, string? scope = null, int limit = 10,
-        bool includeDeprecated = false, CancellationToken ct = default)
+        bool includeDeprecated = false, long? from = null, long? to = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query) || limit <= 0)
             return Task.FromResult<IReadOnlyList<MemorySearchResult>>([]);
@@ -52,6 +53,10 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
         var statusFilter = includeDeprecated ? "" : " AND status IN ('active', 'warm')";
         var scopeFilter = string.IsNullOrWhiteSpace(scope)
             ? "" : $" AND scope = '{EscapeSql(scope)}'";
+        // 时间区间（S-101）：FTS 那一段的表别名是 e，LIKE 那一段没有别名 —— 同一个构造器，
+        // 只差一个列限定符，免得两处各写一份条件然后各漂一半。
+        var ftsTime = MemoryTimeFilter.Build(from, to, "e.");
+        var likeTime = MemoryTimeFilter.Build(from, to);
 
         // ── Method 1: FTS trigram search ──
         // The index is tokenize='trigram', whose lower bound is 3 characters: a 1-2
@@ -69,13 +74,12 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
                     SELECT e.id, e.title, e.content, e.scope, e.priority, e.status, e.updated_at, -rank AS score
                     FROM memory_fts f
                     JOIN memory_entries e ON f.rowid = e.id
-                    WHERE memory_fts MATCH @query{scopeFilter}{statusFilter}
+                    WHERE memory_fts MATCH @query{scopeFilter}{statusFilter}{ftsTime.Sql}
                     ORDER BY CASE WHEN e.status = 'active' THEN 0 ELSE 1 END, rank
                     LIMIT @limit
                     """;
                 using var reader = db.ExecuteReader(ftsSql,
-                    new SqliteParameter("@query", ftsQuery),
-                    new SqliteParameter("@limit", limit));
+                    [new SqliteParameter("@query", ftsQuery), new SqliteParameter("@limit", limit), .. ftsTime.Parameters]);
                 while (reader.Read())
                 {
                     ct.ThrowIfCancellationRequested();
@@ -129,11 +133,11 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
                 SELECT id, title, content, scope, priority, status, updated_at,
                        ({string.Join(" + ", scoreTerms)}) AS score
                 FROM memory_entries
-                WHERE ({string.Join(" AND ", conditions)}){scopeFilter}{statusFilter}
+                WHERE ({string.Join(" AND ", conditions)}){scopeFilter}{statusFilter}{likeTime.Sql}
                 ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, score DESC, updated_at DESC
                 LIMIT @limit
                 """;
-            using var reader = db.ExecuteReader(likeSql, likeParams.ToArray());
+            using var reader = db.ExecuteReader(likeSql, [.. likeParams, .. likeTime.Parameters]);
             while (reader.Read())
             {
                 ct.ThrowIfCancellationRequested();

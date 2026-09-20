@@ -35,13 +35,29 @@ export interface MemoryEntry {
   sourcePath: string | null
 }
 
+/**
+ * A `memory/search` hit, as it actually arrives from the worker.
+ *
+ * The C# record (`MemoryModels.MemorySearchResult`) carries `Id / Title / Content / Scope /
+ * Priority / Status / UpdatedAt / Score`, and the renderer consumes it without any mapping layer.
+ * This interface previously declared `key` / `tier`, which exist nowhere on the wire — reading
+ * them yielded `undefined` at runtime (duplicate React keys, a `" · scope"` meta), and TypeScript
+ * could not see it because the declaration was the only source of the lie. Corrected in iter-33
+ * S-106 after an independent reviewer caught the mismatch.
+ */
 export interface MemorySearchResult {
-  key: string
+  /** `long Id` on the C# side — a JSON number, not a string. */
+  id: number
   title: string
   content: string
   scope: string
-  tier: string
-  score: number
+  priority: string
+  status: string
+  /**
+   * `double? Score` on the C# side, and the worker only sets it on the FTS path — LIKE fallbacks
+   * leave it null, and nulls are omitted from the payload. So it can genuinely be absent.
+   */
+  score?: number
   updatedAt: string
 }
 

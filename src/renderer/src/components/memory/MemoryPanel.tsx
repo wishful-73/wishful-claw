@@ -43,7 +43,8 @@ export function MemoryPanel({
   const [tierLoading, setTierLoading] = React.useState(false)
   const [tierActionId, setTierActionId] = React.useState<number | null>(null)
   const settings = useSettingsStore()
-  const { t } = useTranslation('layout')
+  // `settings` supplies the priority/status enum labels, shared with the memory library pages.
+  const { t } = useTranslation(['layout', 'settings'])
 
   const scope = workingFolder ? 'project' : 'global'
 
@@ -313,7 +314,11 @@ export function MemoryPanel({
               <div key={entry.id} className="rounded-md border border-border p-2.5 text-xs">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="truncate font-medium">{entry.title || entry.content.slice(0, 80)}</span>
-                  <span className="shrink-0 text-muted-foreground">{entry.status}</span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {t(`memoryPage.entries.status.${entry.status}`, {
+                      defaultValue: entry.status
+                    })}
+                  </span>
                 </div>
                 <div className="flex items-start justify-between gap-2">
                   <p className="line-clamp-2 whitespace-pre-wrap text-muted-foreground">{entry.content}</p>
@@ -344,7 +349,10 @@ export function MemoryPanel({
               <div className="mb-1 flex items-center justify-between">
                 <span className="font-medium">{hit.title}</span>
                 <span className="text-xs text-muted-foreground">
-                  {hit.tier} · {hit.scope === 'global' ? t('memory.scope.global', { defaultValue: 'global' }) : t('memory.scope.project', { defaultValue: 'project' })}
+                  {t(`memoryPage.entries.status.${hit.status}`, { defaultValue: hit.status })} ·{' '}
+                  {hit.scope === 'global'
+                    ? t('memory.scope.global', { defaultValue: 'global' })
+                    : t('memory.scope.project', { defaultValue: 'project' })}
                 </span>
               </div>
               <p className="line-clamp-3 whitespace-pre-wrap text-muted-foreground">

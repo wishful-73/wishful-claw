@@ -30,7 +30,9 @@ const PAGE_SIZE = 20
 interface EntryRow {
   key: string
   title: string
-  meta: string
+  /** Raw worker enum values — localized at render time, never baked into the row. */
+  priority: string
+  status: string
   content: string
   /** Milliseconds since epoch; 0 when the source carried no parsable timestamp. */
   updatedAtMs: number
@@ -40,7 +42,8 @@ function fromEntry(entry: MemoryStatusEntry): EntryRow {
   return {
     key: `entry-${entry.id}`,
     title: entry.title ?? '',
-    meta: `${entry.priority} · ${entry.status}`,
+    priority: entry.priority,
+    status: entry.status,
     content: entry.content,
     // memory/entries reports updated_at as Unix SECONDS (MemoryEntryRow.UpdatedAt is a long).
     updatedAtMs: (entry.updatedAt ?? 0) * 1000
@@ -49,13 +52,34 @@ function fromEntry(entry: MemoryStatusEntry): EntryRow {
 
 function fromHit(hit: MemorySearchResult): EntryRow {
   return {
-    key: `hit-${hit.key}`,
+    key: `hit-${hit.id}`,
     title: hit.title,
-    meta: `${hit.tier} · ${hit.scope}`,
+    priority: hit.priority,
+    status: hit.status,
     content: hit.content,
     // memory/search reports updated_at as an ISO string (MemorySearchResult.UpdatedAt is DateTimeOffset).
     updatedAtMs: Date.parse(hit.updatedAt) || 0
   }
+}
+
+/**
+ * Renders the two worker enums through i18n, falling back to the raw value so a status or priority
+ * this build does not know about still shows *something* rather than an empty meta column.
+ */
+function localizeMeta(
+  t: (key: string, options?: { defaultValue?: string; ns?: string }) => string,
+  priority: string,
+  status: string
+): string {
+  const priorityLabel = t(`memoryPage.entries.priority.${priority}`, {
+    ns: 'settings',
+    defaultValue: priority
+  })
+  const statusLabel = t(`memoryPage.entries.status.${status}`, {
+    ns: 'settings',
+    defaultValue: status
+  })
+  return `${priorityLabel} · ${statusLabel}`
 }
 
 function formatTimestamp(ms: number): string {
@@ -357,7 +381,7 @@ function MemoryEntriesTab(): React.JSX.Element {
                     {row.title || t('memoryPage.entries.untitled')}
                   </span>
                   <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
-                    {row.meta}
+                    {localizeMeta(t, row.priority, row.status)}
                   </span>
                   <span className="shrink-0 text-[11px] text-muted-foreground/70">
                     {row.updatedAtMs > 0 ? formatTimestamp(row.updatedAtMs) : ''}

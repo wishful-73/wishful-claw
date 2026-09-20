@@ -1081,6 +1081,40 @@ FTS5 `trigram` tokenizer 把文本切成 **3 字符**滑动窗口。**查询词�
 
 ---
 
+## S-97 记忆库列表呈现：按修改时间 / 默认收起 / 分页
+
+### 需求（2026-09-20 老大口述，S-96 落地后实测反馈）
+
+> 「记忆库的呈现有点问题 1.可以根据时间查，最好根据修改时间查 2.目前是默认展开的，默认收起，只用看标题 3.需要支持分页」
+
+1. **按修改时间** —— 列表要能看到时间，并能按它排（用 `updated_at`，不是 `created_at`）。
+2. **默认收起** —— 行默认折叠，只留标题（+ 元信息 + 时间），点击才展开正文。
+3. **分页** —— 不能一次把全部条目铺满。
+
+### 勘测（2026-09-20 实读）
+
+- **时间本来就有，是前端没显示**：`memory/entries`（`MemoryModule.cs:352-353`）的 SQL 已经是 `SELECT id, scope, title, content, priority, status, updated_at … ORDER BY updated_at DESC LIMIT @limit` —— **后端早就按修改时间倒序**；`updated_at` 是 `MemoryEntryRow.UpdatedAt`（`long`，**Unix 秒**，写入时 `DateTimeOffset.UtcNow.ToUnixTimeSeconds()`）。S-96 的列表把 `updatedAt` 整个丢掉了，只渲染了 `priority · status`。
+- **搜索侧的时间是另一种类型**：`MemorySearchResult.UpdatedAt` 在 C# 是 `DateTimeOffset` ⇒ JSON 里是 **ISO 字符串**（渲染端也声明为 `string`）。两个来源归一时要分别换算（`×1000` vs `Date.parse`）。
+- **分页没有服务端支持**：`MemoryEntries` 只有 `LIMIT @limit`，**没有 `OFFSET`**，也不返回总数 ⇒ 本次取**客户端分页**（一次拉 200 条、前端切片），并把 `ENTRY_FETCH_LIMIT` 与 `PAGE_SIZE` 的耦合写进代码注释。
+
+### 实施（2026-09-20）
+
+`MemoryEntriesTab.tsx`（206 → 322 行），三处：
+
+1. **时间 + 排序**：`EntryRow` 加 `updatedAtMs`；行右侧显示本地化「日期 + 时间」；新增排序切换按钮（最新优先 ⇄ 最早优先，默认最新在前）。排序在**渲染端重排**而非沿用后端顺序 —— 这样搜索命中（后端按相关度排）也受同一开关管辖，且时间解析失败（0）的行自然落到正确一端。
+2. **默认收起**：`expandedKeys: Set<string>` 管理展开态，行默认只显示 标题 + 元信息 + 时间；点击展开正文，带 `aria-expanded` 与 `ChevronRight` 旋转指示。
+3. **分页**：`PAGE_SIZE = 20`，页码 + 上一页/下一页（仅 `totalPages > 1` 时出现）；换结果集（搜索 / 刷新）或切换排序都回到第 1 页。
+
+i18n：`memoryPage.entries` 补 `sortNewest` / `sortOldest` / `prevPage` / `nextPage` / `pageOf` / `rowHint`。
+
+**门禁**：`tsc -p tsconfig.web.json` EXIT=0；`test:i18n-coverage` PASS；文件 322 行（< 500）。**C# 侧零改动**。
+
+**已知边界（记档，未做）**：客户端分页受 `ENTRY_FETCH_LIMIT = 200` 封顶 —— 全局 scope 条目超过 200 时，翻页会到不了尾部。要突破得给 `memory/entries` 加 `OFFSET`（或改 keyset 分页），属 C# 改动。
+
+**未决**：项目档案页的 `ProjectMemoryLibraryTab`（同名「记忆库」、同样平铺展开）是否一并按此改，待老大定。
+
+---
+
 ## 待登记
 
 （以下是 iter-33 收尾阶段新发现、**未纳入本次实施**的项，按来源标注；均已完成取证，可直接开工。）
@@ -1140,4 +1174,5 @@ FTS5 `trigram` tokenizer 把文本切成 **3 字符**滑动窗口。**查询词�
 - 2026-09-20：**S-96 口径二次裁定（推翻上条的"只读"）** —— 老大：「**全局热记忆也可以编写**，我只是担心会影响 agent 自身发挥，**可以编辑问题不大**。推进吧。」⇒ **热记忆 tab = 可编辑**（走 `memory/write`，与项目档案页的 `ProjectMemoryFileTab` 一致）；**常规记忆 tab 仍只读**。上条的「项目侧可编辑 / 全局侧只读」不对称**作废**。
 - 2026-09-20：**S-96 进入实施**（老大「推进吧」）。剩余细节按推荐自定并记档：① 常规记忆 tab **带搜索框**（条目可能不少）；② 与右侧面板 `MemoryPanel` **各写各的**（配套动作不同：面板带组织与 warm/cold 恢复）；③ **文案按老大原词**——全局侧用「热记忆 / 常规记忆」，与项目侧「项目记忆 / 记忆库」并存，收尾时提请老大决定是否统一。
 - 2026-09-20：**S-96 文案裁定（关闭上条 ③）** —— 老大：「**这个不用同步，不过常规记忆可以改成记忆库**」⇒ 全局侧第二个 tab 定名 **「记忆库」**（与档案页 `database` tab 用词对齐），**「热记忆」保持不变**，两侧文案**不做统一**。
-- 2026-09-20：**S-96 实施完成，提交 `f4e28f3d`**（7 files，+545/−8，**未推送**）。门禁：tsc 三配置 **0 错**；32 个 `test:*` **全 PASS**；`MemorySettingsPanel.tsx` 381 行、两个新组件 136 / 206 行，均在 500 红线内。**C# 零改动**（四个端点均为既有）。**待老大真机手测**：设置 → 记忆 → 两个新 tab 可打开、热记忆能读能存。
+- 2026-09-20：**S-96 实施完成，提交 `8dde06d3`**（7 files，+547/−8，**未推送**；曾为 `23e99055` → `f4e28f3d`，均因改名与文档同步被 amend —— 未推送可折叠）。门禁：tsc 三配置 **0 错**；32 个 `test:*` **全 PASS**；`MemorySettingsPanel.tsx` 381 行、两个新组件 136 / 206 行，均在 500 红线内。**C# 零改动**（四个端点均为既有）。
+- 2026-09-20：**S-97 立项并实施**（老大实测 S-96 后的呈现反馈：按修改时间 / 默认收起 / 分页）。勘测确认「时间一直有、是前端没显示」—— `memory/entries` 的 SQL **早已 `ORDER BY updated_at DESC`**，S-96 只是把 `updatedAt` 丢了；分页因端点**无 `OFFSET`** 而走**客户端分页**（上限 200 条，已知边界已记档）。**未决**：档案页 `ProjectMemoryLibraryTab`（同名、同平铺形态）是否一并改。

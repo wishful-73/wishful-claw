@@ -1433,7 +1433,13 @@
       "untitled": "Untitled",
       "searchPlaceholder": "Search global memory...",
       "search": "Search",
-      "matches": "{{count}} matches"
+      "matches": "{{count}} matches",
+      "sortNewest": "Newest first",
+      "sortOldest": "Oldest first",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "pageOf": "Page {{page}} / {{total}}",
+      "rowHint": "Click to expand"
     },
     "organization": {
       "title": "Daily Auto Organization",

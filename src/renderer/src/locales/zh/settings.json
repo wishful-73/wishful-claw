@@ -1572,7 +1572,13 @@
       "untitled": "未命名",
       "searchPlaceholder": "搜索全局记忆…",
       "search": "搜索",
-      "matches": "{{count}} 条匹配"
+      "matches": "{{count}} 条匹配",
+      "sortNewest": "最新优先",
+      "sortOldest": "最早优先",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageOf": "第 {{page}} / {{total}} 页",
+      "rowHint": "点击展开内容"
     },
     "organization": {
       "title": "每日自动整理",

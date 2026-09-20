@@ -109,7 +109,7 @@ Renderer (React 19)  ←→  Preload (contextBridge)  ←→  Main Process  ←�
 - **记忆必须被用上** — 不靠 System Prompt 全量塞入，Agent 通过工具主动检索读取和实时写入
 - **人格在输出时体现** — 不介入 Agent Loop 决策，只在最终输出给用户时加工
 
-各目录职责与文件数见 [project-structure.md](project-structure.md)，数据落盘结构见 [data-storage.md](data-storage.md)。
+各目录职责与结构见 [project-structure.md](project-structure.md)，数据落盘结构见 [data-storage.md](data-storage.md)。
 
 ## 🛠️ Quick Start
 

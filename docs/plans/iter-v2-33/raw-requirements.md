@@ -1350,6 +1350,109 @@ S-97 做记忆库列表时，我在实施记录与提交信息里写了「C# 侧
 
 ---
 
+## S-101 记忆库支持按时间筛选
+
+### 需求（2026-09-20 老大口述）
+
+老大原话：「记忆库，可以根据时间查询么，我的意思是增加时间筛选条件」+「按照修改时间」。
+
+### 现状（2026-09-20 实读）
+
+| 层 | 现状 | 缺什么 |
+|---|---|---|
+| 表 `memory_entries` | 有 `created_at` + `updated_at`（INTEGER，Unix 秒；`DbClient.cs` 建表语句） | 无 |
+| `memory/entries` 端点 | 参数 `scope` / `limit` / `offset` / `order`（`MemoryModule.Entries.cs:79-116`） | **无时间条件** |
+| 返回体 `MemoryEntryRow` | `Id, Scope, Title, Content, Priority, Status, UpdatedAt` | 不含 `created_at`（本次不需要） |
+| `memory/search` | 参数 `query` / `scope` / `limit` / `workingFolder` / `projectId` / `sshConnectionId` | **无时间条件** |
+| UI | 全局 `MemoryEntriesTab.tsx`（搜索 + 排序 + 分页）、项目 `ProjectMemoryLibraryTab.tsx` | 无筛选控件 |
+| 索引 | `memory_entries` 上**无时间索引**（现有 `ORDER BY updated_at` 已是全表扫） | 数据量小，暂不加 |
+
+### 口径（2026-09-20 老大拍板：「时间那个根据你建议来」）
+
+- **按 `updated_at`（修改时间）筛** —— 与列表右侧**已经显示**的时间一致，「所见即所筛」。`created_at` 界面上不可见，不选（选了会出现「筛近 7 天、显示的时间却不在 7 天内」）
+- **UI = 快捷区间**：`全部 / 今天 / 近 7 天 / 近 30 天` 四个 chip
+- **搜索链一起支持** —— 否则会出现「筛了近 7 天 → 搜关键词 → 结果全是全时段」，看着像 bug
+- 时间语义按**本地日**（「今天」= 当日 00:00 起），不是滚动 24 小时
+
+### 实施要点
+
+1. `memory/entries` 加 `from` / `to`（Unix 秒，可选）；**`COUNT(*)` 必须带同样条件**，否则「共 N 条 / 第 X 页」全错、翻页漏行（S-98 在相邻处踩过这个坑）
+2. `memory/search` 的 **FTS 路与 LIKE 路都要带时间 WHERE**（`MemoryFtsService.cs` 的 `SearchAsync` 分支）
+3. `memory-helpers.ts` 透传新参数
+4. 两个列表组件 + i18n（zh/en）
+5. 回归：`MemoryRecallRegressionTests` 补时间筛选断言；`test:*` 与 tsc 三配置全绿
+
+### 备注（**我自己的取舍，不是需求**）
+
+`memoryEntries()` 现为 **7 个位置参数**（`scope, workingFolder, limit, projectId, sshConnectionId, offset, order`），再加 `from/to` 就是 9 个 —— 位置参数到这个量级极易传错顺序（第 3 位 `limit`、第 6 位 `offset`，插错一个位置全乱）。**建议顺手改成 options 对象**（影响 3 个调用点）。这是我的提议，可单独砍掉，不影响 S-101 本身。
+
+---
+
+## S-102 沙箱模式不允许应用数据目录：全局 PM 读不了自家日志
+
+### 需求（2026-09-20 老大口述）
+
+老大原话：「我还有个以为我们不是做了沙箱模式么，全局 PM 本身的地址还需要增加我们项目地址哦 比如让它去看 logs 我们自己的日志，结果没权限就搞笑了」。
+
+### 根因（2026-09-20 实读，成立）
+
+`PathBoundary.ResolveRoots`（`src/runtime/WishfulClaw.Agent/Tools/PathBoundary.cs:47-71`）的允许根只有两类：
+
+- 项目会话 → 该会话的 `workingFolder`（单根）
+- 全局会话（含渠道，渠道在 `ResolveScope` 里被强制成 global）→ `projects` 表里所有 `working_folder` 的并集（排除 SSH）
+
+⇒ **`~/.wishful-claw/` 不在任何一支里**。而 `AGENTS.md`「异常日志」节明确要求「Agent 排查问题时，优先读取当天日志文件」 ⇒ **协议要求的事，沙箱不让做**。全局 PM 会撞 `PathSandboxViolationException`，并被文案建议「把该目录加为项目工作目录」。
+
+### 更绕的一层：日志目录有两个
+
+`src/main/lib/data-dir.ts:10-18`：
+
+```ts
+const directoryName = app.isPackaged ? '.wishful-claw' : '.wishful-claw-dev'
+```
+
+⇒ 打包版写 `~/.wishful-claw/logs/`，`npm run dev` 写 `~/.wishful-claw-dev/logs/`。本机**两个都存在且当天都在写**（实测 2026-09-20）。
+
+⇒ **`AGENTS.md` 那句「日志位置：`~/.wishful-claw/logs/`」在开发模式下是错的** —— 同批要修的另一个假事实。
+
+**好消息**：`native-worker.ts:178` 启动 Worker 时传 `WISHFULCLAW_DATA_DIR: resolvedDataDir`（值里已含 `-dev` 判断），C# 侧**直接读该环境变量**即可，不必复刻 `app.isPackaged`。
+
+### 口径（2026-09-20 老大拍板）
+
+- **允许根 = 当前实例自己的数据根**，**严格按实例类型**：开发实例只放行 `.wishful-claw-dev`、生产实例只放行 `.wishful-claw`，**两者不互串**
+- 开**整个数据根**（不是只开 `logs/`）—— 排查还常要看 `config.json` / `memory-organization-log.json` / `MEMORY.md`，只开 `logs/` 是打地鼠
+- **项目会话与全局会话都给**（此项老大未明说，我按自己的建议 A 定；若要走别的口径请指出）
+
+### 实施要点
+
+1. `PathBoundary.ResolveRoots`：**两个分支**的返回集合都追加数据根
+2. 数据根解析：优先读 `WISHFULCLAW_DATA_DIR` 环境变量，回退 `~/.wishful-claw`（**不要**在 C# 里复刻 `-dev` 判断，两处判断必然漂移）
+3. `AGENTS.md`「异常日志」节补两句：① 开发 / 打包两套路径，差在哪；② 沙箱开着时该目录已放行
+4. 回归：补边界断言 —— 项目会话 / 全局会话 / 数据根内 / 数据根外 / SSH 不参与
+
+### 实施记录（2026-09-20）
+
+**改动**（4 文件：1 源 + 1 测试 + 2 文档）
+
+1. `src/runtime/WishfulClaw.Agent/Tools/PathBoundary.cs`：
+   - 原 `ResolveRoots` 拆成两层：`CollectProjectRoots(parameters)` 只算会话自己的根（项目会话 = `workingFolder`；全局会话 = 项目表并集，查不动就返回空），`WithDataRoot(projectRoots)` 在其后追加本实例数据根。`ResolveRoots` 现在是一行 `=> WithDataRoot(CollectProjectRoots(parameters))`。
+   - 新增 `private static string? DataRoot()`：读 `WishfulClawDataDir.Root`（它优先认 `WISHFULCLAW_DATA_DIR` 环境变量，Worker 子进程由 `native-worker.ts:178` 注入 ⇒ 天然拿到「本实例自己那一份」），异常或空值一律返回 `null` —— 宁可少一个根，也不让一次路径解析把工具打挂。
+   - **为什么拆两层**：`WithDataRoot` 是纯函数（不碰 DB），套件可直接断言；而 `CollectProjectRoots` 的全局分支会走 `DbClient.GetClient()`，那是 **auto-initialize（会建表 / 迁移真实库）** 的写操作，测试里不能碰。
+   - 类注释写明语义翻转：数据根恒在 ⇒ 根集合不再为空 ⇒ 原先「一个项目都没有 ⇒ 随便访问」变成「只放行数据根」。仅当数据根也取不到时才回退到不拦。
+2. `tests/WishfulClaw.GoalRegressionTests/Program.Sandbox.cs`：同步两条既有断言 + 新增十条数据根断言（见下）。**没有**断言全局会话走 `ResolveRoots` 的路径 —— 理由同上（会初始化真实库），改断言 `WithDataRoot`。
+3. `AGENTS.md`：订正「异常日志」节的日志路径（原文只写 `~/.wishful-claw/logs/`，**开发版实际是 `~/.wishful-claw-dev/logs/`**，由 `src/main/lib/data-dir.ts` 的 `app.isPackaged` 分支决定），并补一句「沙箱开着时本实例数据根始终在允许范围内」。
+
+**回归**：`WishfulClaw.GoalRegressionTests` **313 → 325 断言**（`exit=0`）
+
+- 改断言 2 条：项目会话根数 `1 → 2`（第二条 = 数据根）；缺 `workingFolder` 时根数 `0 → 1`（= 数据根）
+- 新增 10 条：`WithDataRoot([])` 仍剩数据根 / `WithDataRoot([项目根×2])` = 3 且项目根在前、数据根在末 / 数据根内部放行 / **`.wishful-claw-dev` 不被 `.wishful-claw` 放行（兄弟目录不穿透）** / 数据根父目录仍拒绝 / 目录不存在时仍按路径字符串判定放行
+
+**门禁**：`src/runtime/WishfulClaw.sln` 与 `tests/WishfulClaw.Tests.sln` 均 **0 错 0 警**；11 个 C# 回归套件全 `exit=0`（AgentTimeline 25 / ChannelShellApproval 72 / ChannelToolVisibility 122 / CompactionSnapshot 2 / Cron 42 / Goal **325** / GrepPattern 21 / MemoryRecall 38 / ProviderHeader / SessionTaskCascade 225 / ToolConcurrency）。
+
+**未覆盖（如实）**：「生产实例只放行 `.wishful-claw`」这一条**必须打包版真机才能验** —— 开发实例的 `WISHFULCLAW_DATA_DIR` 恒指向 `-dev` 那套，本机开发模式下测不到生产根。
+
+---
+
 ## 裁定记录
 
 - 2026-09-19：S-87 立项，**只登记不执行**（老大：「当前只需要登记，不需要执行」）。
@@ -1389,3 +1492,5 @@ S-97 做记忆库列表时，我在实施记录与提交信息里写了「C# 侧
 - 2026-09-20：**S-99 立项**（记忆检索不支持多关键词：整条 query 被包成 FTS5 短语，多词必然零命中）。**只登记不执行。** 根因 `MemoryFtsService.BuildFtsLiteralQuery:151-152` + `tokenize='trigram'`（`DbClient.cs:494`）；LIKE 回退（`:111`）吃同一个整串 ⇒ 两条路都零命中。**该行代码早在本文件 L530（S-92 节）取证过**，当时用途是论证「污染 query 零命中」，未识别为独立缺陷。与 S-94 正交（S-94 = 短查询路径，本条 = 查询分词）。
 - 2026-09-20：**S-100 立项**（composer 常规 Ctrl+V 无反应；走自家剪贴板增强则正常）。**只登记不执行。** 已排除两条：① 无任何 `Ctrl+V` 全局快捷键注册（`src/main` 仅 `Ctrl+Shift+V` 与 quick-launcher）；② 剪贴板增强**不绕过 paste 事件** —— 它是 `clipboard.writeText` + `SendInput` 注入真实 Ctrl+V（`priority-shortcuts.ts:166/655`），与手动按键走同一个 `handlePaste`。
 - 2026-09-20：**S-100 定案收敛** —— 老大补充关键现象：「**就是用了剪贴板增强后 再进行常规粘贴就可以了**」（用一次增强后常规 Ctrl+V 即恢复）。`handlePaste` 对剪贴板来源不敏感 ⇒ 变的是**剪贴板内容格式**，不是代码分支。机制：增强前 `getData('text/plain')` 为空 ⇒ `:81` 直接 return 且**不 `preventDefault`** ⇒ 受控编辑器吞掉浏览器默认插入 ⇒ 无反应；用一次增强 = `clipboard.writeText`（`clipboard-enhancer.ts:397`）把剪贴板重写成纯文本 ⇒ 此后 `text/plain` 有值 ⇒ 走 `execCommand` 支 ⇒ 成功。**图片分支已排除**（`use-image-attachments.ts:71-80` 只挑 `kind==='file'` 且 type 在白名单的项）。**还差一条数据**：复现时 `clipboardData.types`（3 种可能，见正文表格）。倾向修法（不依赖该数据也能覆盖）：`text/plain` 为空时回退 `text/html` 提取纯文本，真无文本才放过默认行为。
+- 2026-09-20：**S-101 立项**（记忆库按时间筛选）。老大：「记忆库，可以根据时间查询么，我的意思是增加时间筛选条件」+「按照修改时间」。**口径一次拍齐**（老大「时间那个根据你建议来」）：按 `updated_at` 筛（与列表已显示的时间一致）、UI 用快捷区间（全部 / 今天 / 近 7 天 / 近 30 天）、搜索链一起支持。**进入实施（第三批）。**
+- 2026-09-20：**S-102 立项**（沙箱模式不允许应用数据目录 ⇒ 全局 PM 读不了自家日志）。老大：「全局 PM 本身的地址还需要增加我们项目地址哦，比如让它去看 logs 我们自己的日志，结果没权限就搞笑了」。实读确认成立：`PathBoundary.ResolveRoots` 只装项目 workingFolder，`~/.wishful-claw/` 不在内，而 `AGENTS.md` 要求 agent 排查时读日志 —— 协议与沙箱互斥。**口径**：允许根 = 当前实例自己的数据根，**严格按实例类型不互串**（dev 只看 `.wishful-claw-dev`、生产只看 `.wishful-claw`）；开整个数据根（不只 `logs/`）；项目会话与全局会话都给。**附带发现**：`AGENTS.md` 的「日志位置 `~/.wishful-claw/logs/`」在开发模式下是错的（实际 `~/.wishful-claw-dev/logs/`），同批修。**进入实施（第三批）。**

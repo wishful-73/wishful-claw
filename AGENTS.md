@@ -286,12 +286,16 @@ Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推�
 
 项目运行时的所有异常（主进程、渲染进程、Worker、IPC 通道）会自动写入日志文件。
 
-**日志位置**：`~/.wishful-claw/logs/` 目录下，按日期命名，如 `2026-08-05.log`
+**日志位置**：本实例数据根下的 `logs/` 目录，按日期命名，如 `2026-08-05.log`。
 
-日志统一写在用户主目录下的 `.wishful-claw/logs/`，与 `config.json`、`index.db` 等配置文件同级：
-- Windows：`C:\\Users\\<用户名>\\.wishful-claw\\logs\\`
-- macOS：`~/.wishful-claw/logs/`
-- Linux：`~/.wishful-claw/logs/`
+数据根按实例类型分开 —— 同一台机器上开发版与打包版各写各的，互不干扰：
+
+- 开发版（`npm run dev`）：`~/.wishful-claw-dev/logs/`
+- 打包版（安装后运行）：`~/.wishful-claw/logs/`
+
+`config.json`、`index.db` 等也各自躺在对应数据根下，别拿开发版的状态去解释打包版的现象。
+
+**沙箱**：沙箱模式开着时，本实例数据根始终在允许范围内 —— agent 读日志、读写记忆不必额外放行。
 
 **排查方式**：Agent 排查问题时，优先读取当天日志文件中的 `[ERROR]` 级别条目，获取完整堆栈信息，而非依赖用户口述错误。
 

@@ -263,6 +263,79 @@
 
 ---
 
+## 第三批（S-101 / S-102）：记忆库时间筛选 + 沙箱放行应用数据目录
+
+> 2026-09-20 追加。老大实测 / 自查产生的两项，登记见 `raw-requirements.md` 的 S-101 / S-102。
+> 两项均已探索完毕（实读源码），口径由老大一次拍齐，下方即拍定值。
+
+### 目标
+
+1. **S-101 记忆库按时间筛选** —— 记忆库列表与搜索都支持「全部 / 今天 / 近 7 天 / 近 30 天」，按**修改时间**；
+2. **S-102 沙箱放行应用数据目录** —— 让 agent（尤其全局 PM）能读自家日志与数据文件，消掉「协议要求读日志、沙箱不让读」的矛盾。
+
+### 实施顺序与理由
+
+| # | 需求 | 为什么排这里 | 面 |
+|---|---|---|---|
+| 1 | **S-102** 沙箱放行数据根 | 纯 C# 单方法 + 文档订正，独立、风险最低；先落它，之后排查问题才有日志可读（**自己给自己开路**） | C# + docs |
+| 2 | **S-101** 时间筛选 | 要动 Worker 端点 + 搜索链 + 两个前端列表，是本批唯一跨层的 | C# + TS |
+
+> **提交粒度**：各单独一刀。
+
+### 步骤清单
+
+#### S-102 沙箱放行应用数据目录（C# + docs）
+
+- [x] **S102-0** 【先读再改】读 `WishfulClawDataDir`（`Root` 的解析口径 —— 是否已含 `-dev`）与 `tests/WishfulClaw.GoalRegressionTests/Program.Sandbox.cs`（既有断言钉了哪几条根数）。**规划验证 ❌-2：不先做这步，S102-1 改完必红既有断言。**
+- [x] **S102-1** `src/runtime/WishfulClaw.Agent/Tools/PathBoundary.cs` 的 `ResolveRoots`：**两个分支**（project / global）返回集合**都**追加**已有的应用数据根** —— 直接复用 `WishfulClawDataDir.Root`（**规划验证 ⚠️**：全仓已有 17 处消费方 —— `DbClient.cs:34` / `ConfigStore.cs:192` / `MemoryPathResolver.cs:17` 等，**不要再自行解析环境变量或复刻 `isPackaged`**）。验证：断言「项目会话的根含数据根」「全局会话的根含数据根」。
+- [x] **S102-1b** **同步既有断言**：`tests/WishfulClaw.GoalRegressionTests/Program.Sandbox.cs:61`（项目会话根集合）与 `:65-68`（无 `workingFolder` 时的根数）按新集合更新，并**新增**「数据根在集合内」「数据根外仍拒绝」。验证：`WishfulClaw.GoalRegressionTests.exe` `exit=0`（规划验证 ❌-2）。
+- [x] **S102-1c** **明示语义翻转（复验新发现 N-A，须你知情）**：现在的规则是「根集合为空 ⇒ 不拦」，而追加数据根后**集合永不为空** ⇒ 原先「一个项目都没有 ⇒ agent 随便访问」的情形，会变成「**只能访问数据根，其余一律拒绝**」。这是**有意收紧**（沙箱本就该拦），但要：① 在 `PathBoundary` 类注释里写明；② 在收尾报告里如实告知（可能影响「还没建项目时随手用」的场景）。验证：断言「无项目时根集合 = [数据根]」且「数据根外仍拒绝」。
+- [x] **S102-2** 边界断言：数据根内放行、数据根外拒绝、**兄弟目录不穿透**（`.wishful-claw` 与 `.wishful-claw-dev` 不得互相放行）。规划验证已论证现有 `IsInsideAnyRoot:114-122` 的目录分隔符判定**天然挡住**，但要有断言钉住。验证：断言套件 `exit=0`。
+- [x] **S102-3** **SSH 与边界情形**：SSH 项目的 `working_folder` 是远端路径（现有代码已排除），数据根是**本地绝对路径** —— 两分支都追加不影响 SSH 语义，需在代码注释里写明「数据根始终是本地的，与 SSH 无关」。另确认数据根目录**不存在**时不抛异常（`IsInsideAnyRoot` 只做字符串比较、不碰磁盘 —— 复核一次）。验证：注释 + 断言。
+- [x] **S102-4** `AGENTS.md`「异常日志」节订正两处：① 日志目录有**两套**（打包版 `~/.wishful-claw/logs/`，开发版 `~/.wishful-claw-dev/logs/`，由 `src/main/lib/data-dir.ts` 的 `isPackaged` 决定）；② 说明沙箱开着时该目录**已在允许范围内**。验证：与 `data-dir.ts` 实现逐字对照。
+
+#### S-101 记忆库时间筛选（C# + TS）
+
+- [ ] **S101-0** 【先定可测边界】规划验证 ❌-1：`MemoryEntries` / `CountScope` 是 **Worker 内 `private static`**，而**没有任何测试工程引用 Worker**（11 个套件分别引 Agent / Infrastructure / Workspace）⇒ 端点级断言根本写不出来。**修法**：把「时间区间的 SQL 条件段 + 参数」抽成一个**纯函数**，放 **Workspace 层**（`WishfulClaw.Workspace/Memory/`，与 `MemoryFtsService` 同层，这样 `MemoryRecallRegressionTests` 直接断言得到），Worker 端点与搜索链**共用同一份实现**。验证：纯函数能被测试工程引用（编译通过即证明落层正确）。
+- [ ] **S101-1** `MemoryModule.Entries.cs` 的 `MemoryEntries` 加 `from` / `to`（Unix 秒，可选；缺省或 `<= 0` 视为不限），WHERE 用 S101-0 的纯函数拼条件。验证：真机（端点逻辑无单测，限制见 S101-7）。
+- [ ] **S101-2** **`CountScope` 必须带同样条件** —— 否则「共 N 条 / 第 X 页」全错、翻页漏行（S-98 在相邻处踩过）。**必须调用 S101-0 的同一个函数**，不许另写一份。验证：纯函数单测（同输入同输出）+ 真机 total 对齐。
+- [ ] **S101-3** 搜索链加时间筛选：`MemoryFtsService.SearchAsync` 的 **FTS 路与 LIKE 路都要带** `updated_at` 区间。**注意**：`MemoryFtsService` 实现在 `IMemorySearch` 契约下（`src/runtime/WishfulClaw.Workspace/Memory/IMemorySearch.cs`），改签名要**同步接口**，否则编译不过。验证：`MemoryRecallRegressionTests` 断言（该套件引用了 Workspace，**这条可测**）。
+- [ ] **S101-4** **时区口径**：`from` / `to` 传 Unix 秒，但「今天 / 近 7 天」的**边界必须按本地日**算（本地 00:00 为当日起点），**不要**用 UTC 日 —— 否则东八区用户在早上 8 点前会看到「今天」少几小时。验证：断言本地时区下的边界值。
+- [ ] **S101-5** `memory-helpers.ts` 透传（`memoryEntries` + `memorySearch`）；**顺带把 `memoryEntries` 的 7 个位置参数改成 options 对象**（影响 3 个调用点：`MemoryEntriesTab` / `ProjectMemoryLibraryTab` / `memory-hot-sync.ts`）—— 此项是**我自己的取舍、非需求**，若判断影响面不值就跳过，并在实施记录里写明跳过理由。
+- [ ] **S101-6** `MemoryEntriesTab.tsx` + `ProjectMemoryLibraryTab.tsx` 加区间 chip（全部 / 今天 / 近 7 天 / 近 30 天）；切区间回到第 1 页。**另**：`ProjectMemoryLibraryTab` 当前**不显示 `updatedAt`**（规划验证 ⚠️）—— 不补这个，档案页筛完看不出任何变化，等于不可验证；补一行时间显示（沿用 `MemoryEntriesTab` 的 `formatTimestamp` 口径）。验证：切区间后页码回 1、行数随区间变化、每行能看到时间。
+- [ ] **S101-6b** i18n 补四个 chip 文案（`{zh,en}/settings.json`；档案页如需另补 `chat.json`）。验证：`npm run test:i18n-coverage` PASS。
+- [ ] **S101-7** 回归断言（**落点按规划验证 ❌-1 修正**）：`tests/WishfulClaw.MemoryRecallRegressionTests` 断言 **S101-0 的纯函数**（区间内 / 区间外 / 边界取等号 / 本地日边界）+ **S101-3 的搜索双路**（都在 Workspace 层，该套件引用得到）。**明确不写**：`memory/entries` 端点的「total 与实际行数一致」—— **Worker 不可达，此条归真机手测**，并写进验证态已知限制，**不要假装测过**。验证：套件 `exit=0`。
+
+### 涉及文件
+
+- `src/runtime/WishfulClaw.Agent/Tools/PathBoundary.cs` — S-102（数据根进允许集合）
+- `WishfulClawDataDir.cs` — S-102（**复用其 `Root`，预期零改动**；若需暴露新成员才在此加）
+- `AGENTS.md` — S-102（日志路径订正 + 沙箱说明）
+- `src/runtime/WishfulClaw.Workspace/Memory/`（**新建**时间区间纯函数，S101-0 定名）— S-101（Worker 与搜索链共用）
+- `src/runtime/WishfulClaw.Workspace/Memory/IMemorySearch.cs` — S-101（签名同步；规划验证 ⚠️ 补）
+- `src/runtime/WishfulClaw.Workspace/Memory/MemoryFtsService.cs` — S-101（两条路都带时间）
+- `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs` — S-101（`from`/`to` + `CountScope` 共用纯函数）
+- `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs` — S-101（若 `GetScope` 需随之调整；规划验证 ⚠️ 补）
+- `src/renderer/src/stores/chat-store/memory-helpers.ts` — S-101（透传；options 化可选）
+- `src/renderer/src/components/settings/MemoryEntriesTab.tsx` — S-101（区间 chip）
+- `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` — S-101（区间 chip + 补时间显示）
+- `src/renderer/src/locales/{zh,en}/settings.json`（+ `chat.json`）— S-101（文案）
+- `tests/WishfulClaw.MemoryRecallRegressionTests/Program.cs` — S-101（纯函数 + 搜索双路断言）
+- `tests/WishfulClaw.GoalRegressionTests/Program.Sandbox.cs` — S-102（**既有断言同步** + 新增数据根断言；规划验证 ❌-2）
+
+### 整体验证检查点
+
+- **C#**：`dotnet build src/runtime/WishfulClaw.sln` 与 `tests/WishfulClaw.Tests.sln` 均 **0 错 0 警**；
+- **TS**：`npm run typecheck`（node + web）**0 错**；
+- **回归**：全部 `WishfulClaw.*RegressionTests` exe `exit=0`（含 `GoalRegressionTests` 的沙箱断言更新、`MemoryRecallRegressionTests` 的新断言）；`test:*` 脚本全 PASS；
+- **文件红线**：所有触碰文件 ≤ 500 行（`AGENTS.md` 会略长，仍远低于红线）；
+- **真机（老大）**：① 记忆库切「近 7 天」条目变少，且每行显示的修改时间都落在区间内；② 搜索在区间内生效；③ 项目档案页「记忆库」也能切区间且看得到时间；④ 全局会话里让 agent 读 `~/.wishful-claw-dev/logs/<当天>.log` 能成功（改前报沙箱越界）。
+- **验证态已知限制 ①**（规划验证 ❌-1）：`memory/entries` 端点的「`total` 与实际行数一致」**无自动化覆盖** —— Worker 不被任何测试工程引用，只能真机验。收尾报告**如实标注**，不得记作「已验证」。
+- **验证态已知限制 ②**（规划验证 ⚠️）：S-102 的「生产实例只放行 `.wishful-claw`」需**打包版**才能真机验，开发模式只能验 dev 那支 —— 用环境变量模拟断言覆盖。
+- **S-102 的代价（须明示）**：把整个数据根放进允许集合 = agent 可读写 `config.json`（含 API Key）/ `index.db`。这是老大拍板的选择（换取「排查时读得到日志与配置」），**不是遗漏** —— 收尾报告里要写清这一条。
+
+---
+
 ## 已完成项
 
 ### S-95 压缩「越压越多」（2026-09-19 完成）

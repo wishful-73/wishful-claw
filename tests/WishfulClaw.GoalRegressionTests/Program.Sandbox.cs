@@ -1,6 +1,7 @@
 using System.Text.Json;
 using WishfulClaw.Agent.Tools;
 using WishfulClaw.Core.Tools;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.GoalRegressionTests;
 
@@ -10,7 +11,8 @@ namespace WishfulClaw.GoalRegressionTests;
 /// 这里守三件事：
 /// 1. 边界判定本身（含两个最容易错的地方：目录前缀陷阱 C:\a vs C:\abc，和 .. 逃逸）
 /// 2. 开关与边界集合的三种组合（关 / 开但无根 / 开且有根）
-/// 3. 「没有根就不拦」这条降级 —— 沙箱是保护措施，不能反过来把正常干活挡死
+/// 3. 根集合的构成（iter-33 S-102：项目根 + 本实例数据根），以及「数据根都取不到才不拦」
+///    这条最后的降级 —— 沙箱是保护措施，不能反过来把正常干活挡死
 /// </summary>
 internal static partial class Program
 {
@@ -36,7 +38,7 @@ internal static partial class Program
         AssertEqual(
             true,
             PathBoundary.IsInsideAnyRoot(outside, []),
-            "没有任何根时一律放行（项目列表为空的降级路径）");
+            "纯函数层：没有根时一律放行（正常路径下 ResolveRoots 不会返回空集合）");
 
         // 多根（全局会话）：命中任一即放行。
         var secondRoot = Path.Combine(Path.GetTempPath(), "wc-sandbox-root-2");
@@ -58,17 +60,61 @@ internal static partial class Program
             $$"""{"scope":"project","workingFolder":{{JsonSerializer.Serialize(root)}}}""");
         var projectPolicy = PathBoundary.ResolvePolicy(projectParams);
         AssertEqual(true, projectPolicy.Enabled, "项目会话默认开沙箱");
-        AssertEqual(1, projectPolicy.Roots.Count, "项目会话只有一个根");
-        AssertEqual(root, projectPolicy.Roots[0], "项目会话的根就是该项目工作目录");
-
-        // 项目会话没给 workingFolder：没有根可依，解析结果为空（= 不拦）。
+        AssertEqual(2, projectPolicy.Roots.Count, "项目会话 = 该项目工作目录 + 本实例数据根");
+        AssertEqual(root, projectPolicy.Roots[0], "第一个根是该项目的 workingFolder");
         AssertEqual(
-            0,
-            PathBoundary.ResolvePolicy(ParseJson("""{"scope":"project"}""")).Roots.Count,
-            "项目会话缺 workingFolder 时没有根");
+            Path.GetFullPath(WishfulClawDataDir.Root),
+            Path.GetFullPath(projectPolicy.Roots[1]),
+            "第二个根是本实例数据根（开发实例解析到 .wishful-claw-dev）");
+
+        // 项目会话没给 workingFolder：项目根缺失，但数据根仍在 —— 只放行数据根，不是「不拦」。
+        var noFolderRoots = PathBoundary.ResolvePolicy(ParseJson("""{"scope":"project"}""")).Roots;
+        AssertEqual(1, noFolderRoots.Count, "项目会话缺 workingFolder 时只剩数据根");
+        AssertEqual(
+            Path.GetFullPath(WishfulClawDataDir.Root),
+            Path.GetFullPath(noFolderRoots[0]),
+            "缺 workingFolder 时唯一的根就是本实例数据根");
 
         // 关掉开关时不查库也不算根 —— 全局会话走的就是这条。
         AssertEqual(0, PathBoundary.ResolvePolicy(off).Roots.Count, "关闭的开关不带根");
+
+        // 全局会话：项目根之外必须带上本实例数据根。这里直接断言 WithDataRoot ——
+        // ResolveRoots 的全局分支会走 DbClient.GetClient()，那是会初始化真实库的写操作，
+        // 套件里不能碰。
+        var dataRoot = Path.GetFullPath(WishfulClawDataDir.Root);
+        var noProjects = PathBoundary.WithDataRoot([]);
+        AssertEqual(1, noProjects.Count, "全局会话一个项目都没有时仍留下数据根（不再退化成全部放行）");
+        AssertEqual(dataRoot, Path.GetFullPath(noProjects[0]), "留下的是本实例数据根");
+
+        var withProjects = PathBoundary.WithDataRoot([root, secondRoot]);
+        AssertEqual(3, withProjects.Count, "全局会话 = 项目根 + 数据根");
+        AssertEqual(root, withProjects[0], "项目根原样保留，排在数据根之前");
+        AssertEqual(dataRoot, Path.GetFullPath(withProjects[2]), "数据根追加在末尾");
+
+        // ── 数据根本身的边界（S102-2）──
+        // 数据根与开发版数据根是同一父目录下的兄弟，名字只差一个后缀 —— 绝不能互相穿透。
+        var dataParent = Path.Combine(Path.GetTempPath(), "wc-data-roots");
+        var prodLike = Path.Combine(dataParent, ".wishful-claw");
+        var devLike = Path.Combine(dataParent, ".wishful-claw-dev");
+        IReadOnlyList<string> prodOnly = [prodLike];
+        AssertEqual(
+            true,
+            PathBoundary.IsInsideAnyRoot(Path.Combine(prodLike, "logs", "a.log"), prodOnly),
+            "数据根内部放行");
+        AssertEqual(
+            false,
+            PathBoundary.IsInsideAnyRoot(Path.Combine(devLike, "logs", "a.log"), prodOnly),
+            "开发版数据根不得被生产数据根放行（兄弟目录不穿透）");
+        AssertEqual(false, PathBoundary.IsInsideAnyRoot(dataParent, prodOnly), "数据根的父目录仍拒绝");
+
+        // 数据根不要求磁盘上真有这个目录：IsInsideAnyRoot 只做字符串比较、不碰磁盘，
+        // 首次启动、目录还没建出来时也不会漏拦（S102-3）。
+        var ghostRoot = Path.Combine(Path.GetTempPath(), "wc-data-ghost", ".wishful-claw");
+        AssertEqual(false, Directory.Exists(ghostRoot), "该断言的前提：这个目录确实不存在");
+        AssertEqual(
+            true,
+            PathBoundary.IsInsideAnyRoot(Path.Combine(ghostRoot, "index.db"), [ghostRoot]),
+            "目录不存在时仍按路径字符串判定放行");
 
         // ── 执行层：工具 helper 真的会拦 ──
         var disabled = new ToolExecutionContext(SandboxEnabled: false);

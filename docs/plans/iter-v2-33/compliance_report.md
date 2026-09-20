@@ -432,3 +432,213 @@
 - 未处置项均为 **⚠️ 级**（⚠️-6 / ⚠️-7 + 新发现 N-1 / N-2 / N-3），**不构成阻断**。
 - **无因修订而新引入的阻断性矛盾或行号失效**。plan 现行引用的源码行号已实读核对通过：`MemoryFtsService.cs:37-121 / :55 / :91 / :103-104 / :107 / :149 / :151-152`、`WishfulClawJsonContext.cs:88`、`MemoryModule.cs:342 / :286-328 / :337-372`、`AotMemoryResultTypes.cs:40`、`memory-hot-sync.ts:61-68`、`MemoryPanel.tsx:68-69`、`use-composer-interactions.ts:80-81`；plan 自报基线行数（`MemoryModule.cs` 495 / `WishfulClawJsonContext.cs` 149 / `memory-hot-sync.ts` 96 / `memory-helpers.ts` 293）本轮实测**一致**。
 - **最终判定：PASS**（阻断规则：❌ = 0）。可进入用户确认环节。建议把 ⚠️-6 / ⚠️-7 / N-1 / N-2 / N-3 的补字一次性并入（成本极低），并在执行时按 N-3 注记造数。
+
+---
+
+## 第三批（S-101 / S-102）规划验证（2026-09-20）
+
+- **审查对象**：`plan.md`「## 第三批（S-101 / S-102）」（现行 `plan.md:266-323`）；`raw-requirements.md`「## S-101」（`:1353-1389`）与「## S-102」（`:1391-1433`）。
+- **审查者**：独立 subagent（architect-reviewer）；日期 2026-09-20。
+- **方式**：纯静态 —— 未跑构建 / 未跑测试 / 未改任何源码；plan / raw 每条「实读」断言均回源码核对行号与事实，本报告即本次唯一写入。
+
+### VERDICT: FAIL
+
+- 阻断规则（`docs/dev-workflow.md` 阶段三）：❌ > 0 禁止进入用户确认环节。**本轮 ❌ = 2**（❌-1 S101 的回归验证落点在指定工程内不可达；❌-2 S102-1 与既有沙箱断言确定性冲突，且计划未覆盖该步骤）。
+- 事实核验 8 条：**7 条完全属实**（A1/A2/A3/A5/A6/A7/A8），A4 主体属实但「只有」措辞不完整（列 ⚠️-0，不判 ❌，理由见该条）。
+
+### 事实核验结果（逐条，带文件:行号）
+
+| # | plan/raw 断言 | 判定 | 源码证据（实读） |
+|---|---|---|---|
+| **A1** | `PathBoundary.ResolveRoots` 只装两类根（项目 `workingFolder` / 全局项目并集），`~/.wishful-claw/` 不在内；行号 `:47-71` | ✅ | `src/runtime/WishfulClaw.Agent/Tools/PathBoundary.cs:47-71`：project 分支 `:49-53` 返回 `[workingFolder]`（空则 `[]`）；global 分支 `:56-64` 查 `projects.working_folder` 并集（`ssh_connection_id` 为空）。**两支均无数据根**。行号一致 |
+| **A2** | `src/main/lib/data-dir.ts` 按 `app.isPackaged` 分 `.wishful-claw` / `.wishful-claw-dev`；行号 `:10-18` | ✅ | `data-dir.ts:10-18`；三元式在 `:14-16`（`WISHFUL_CLAW_DATA_DIR_NAME` / 名字 `-dev`）。行号一致。**补注**：`resolveDataDir` 还先短路读 `WISHFULCLAW_DATA_DIR`（`:11-12`），raw 未提，但不与断言矛盾 |
+| **A3** | `native-worker.ts:178` 把 `WISHFULCLAW_DATA_DIR` 传给 Worker，且传的是**已解析值（含 `-dev`）** | ✅ | `native-worker.ts:175` `const resolvedDataDir = resolveDataDir()`，`:178` `WISHFULCLAW_DATA_DIR: resolvedDataDir`。`resolveDataDir` 返回绝对路径（env 覆盖 或 `join(homedir, name[-dev])`）⇒ **传的是已解析值**，S102-1 的「读环境变量」方案成立。行号一致。**补注**：C# 侧已有同义助手 `WishfulClaw.Infrastructure/Storage/WishfulClawDataDir.cs:7-19`（`Root`：env 优先、回退 `~/.wishful-claw`）+ 常量 `WishfulClaw.Contracts/WishfulClawPaths.cs:6`（`DataDirEnvVar`）—— 见 ⚠️-1 |
+| **A4** | `MemoryModule.Entries.cs` 的 `MemoryEntries` 现有参数「只有 `scope/limit/offset/order`」；`CountScope` 无时间条件且被 `MemoryEntries` 用于 `total` | ⚠️（主体✅） | `MemoryModule.Entries.cs`：`MemoryEntries` 直读 `scope`(`:81`)/`limit`(`:84`)/`offset`(`:85`)/`order`(`:89`)；`CountScope`(`:118-123`)**无时间条件**且被 `:113` 用作 `total` ⇒ **动作相关的两半全对**。但端点还经 `GetScope` 消费 `workingFolder`/`projectId`/`sshConnectionId`（`MemoryModule.cs:310-327`）⇒ 「**只有**」四参字面不成立（见 ⚠️-0） |
+| **A5** | `MemoryFtsService.SearchAsync` 有 **FTS 路 + LIKE 路**两条，两条都要加时间条件 | ✅ | `src/runtime/WishfulClaw.Workspace/Memory/MemoryFtsService.cs:33-145`：FTS 路 `:63-96`（`memory_fts MATCH`，带 `{scopeFilter}{statusFilter}` `:72`）；LIKE 路 `:98-142`（逐 token `LIKE`，带 `{scopeFilter}{statusFilter}` `:132`）⇒ **两条**，S101-3 写对 |
+| **A6** | `memory_entries` 有 `created_at` + `updated_at` 两个 INTEGER 列 | ✅ | `src/runtime/WishfulClaw.Infrastructure/Db/DbClient.cs:275-284`：`:282 created_at INTEGER NOT NULL`、`:283 updated_at INTEGER NOT NULL` |
+| **A7** | `memory-helpers.ts` 的 `memoryEntries` 现为 7 个位置参数；调用点恰 3 个（`MemoryEntriesTab` / `ProjectMemoryLibraryTab` / `memory-hot-sync.ts`） | ✅ | `memory-helpers.ts:264-272` = `scope, workingFolder, limit, projectId, sshConnectionId, offset, order`（**7 个**）。全仓 `memoryEntries(` 调用点（grep）：`MemoryEntriesTab.tsx:98`、`ProjectMemoryLibraryTab.tsx:43`、`memory-hot-sync.ts:61` ⇒ **恰 3 个，无多无少** |
+| **A8** | `AGENTS.md`「异常日志」节写「日志位置：`~/.wishful-claw/logs/`」（开发模式下是错的） | ✅ | `AGENTS.md:285-296`：`:289` 明写 `~/.wishful-claw/logs/`，`:292-294` 的 Win/macOS/Linux 三行**全是 `.wishful-claw`**（无 `-dev`）⇒ 与 `data-dir.ts` 的 dev 分支矛盾，确为假事实 |
+
+### ❌ 阻断项（必须修）
+
+#### ❌-1：S101-7 的回归验证落点**在指定工程内不可达**，S101-1/S101-2 的核心风险无检查点
+
+- **出处**：`plan.md:301`「**S101-7** 回归断言：`MemoryRecallRegressionTests` 补时间筛选（区间内 / 区间外 / 边界值 / **`total` 与行数一致**）。验证：套件 `exit=0`」（`plan.md:313` 亦把 `tests/WishfulClaw.MemoryRecallRegressionTests/Program.cs` 列为 S-101 唯一测试落点）。
+- **不可达事实**：
+  - `tests/WishfulClaw.MemoryRecallRegressionTests/WishfulClaw.MemoryRecallRegressionTests.csproj` 的 `ProjectReference` 只有 **Agent / Infrastructure / Workspace**，**没有 Worker**（逐行实读）。
+  - 全仓 `tests/` 内 **无一处** `WishfulClaw.Worker` 或 `MemoryModule`（grep 零命中）。
+  - 被测端点 `MemoryEntries`（`MemoryModule.Entries.cs:79`）与 `CountScope`（`:118`）是 **`private static`**，宿主为 Worker 内 `internal sealed partial class MemoryModule`（`:13`）⇒ 即便加了 Worker 引用也**够不到**，还要 `InternalsVisibleTo` + 提升可见性。
+  - ⇒「`total` 与行数一致」这一**端点级**断言在该工程里**写不出来**。（S101-3 那半可测 —— Workspace 被引用，`MemoryFtsService.SearchAsync` 可直调；但 S101-1/S101-2 正是 raw §1379 亲口点名的坑：**「`COUNT(*)` 必须带同样条件，否则共 N 条/翻页漏行（S-98 在相邻处踩过）」**，此坑**无任何可执行落点**。）
+- **连带**：`plan.md:320`「回归：全部 `WishfulClaw.*RegressionTests` exe `exit=0`」对 S-101 而言**部分为空头支票**（端点侧无从判定）。
+- **修法（任选，均低成本）**：
+  1. 新建 `tests/WishfulClaw.MemoryEntriesRegressionTests`（照既有骨架），`ProjectReference` 到 `WishfulClaw.Worker` 并在 `WishfulClaw.Worker.csproj` 加 `InternalsVisibleTo`，同时把 `MemoryEntries`/`CountScope` 由 `private` 提为 `internal`（须先确认 Worker 作为 `Exe` 可被测试工程引用，否则改用方案 2）；或
+  2. 把「`where` 子句 + `COUNT(*)`」抽成一个 Workspace 层可测的纯 helper（如 `MemoryEntryFilter.BuildWhere(from,to,scope)` + `CountSql(...)`），让 **entries 与 COUNT 共用同一段构造**，再在现有 `MemoryRecallRegressionTests`（已引用 Workspace）里断言「同一 filter 下 `COUNT` == 行数、边界取等号」。方案 2 还能从结构上消灭「两处各写一遍 WHERE」这个反复出事的模式。
+
+#### ❌-2：S102-1 与**既有沙箱断言确定性冲突**，计划未覆盖该步骤（计划自设 gate 必红）
+
+- **出处**：`plan.md:289`「S102-1 … `ResolveRoots` 的**两个分支**（project / global）返回集合**都**追加该根」；`plan.md:318-321` 的 gate「全部 `WishfulClaw.*RegressionTests` exe `exit=0`」。
+- **既有断言（实读）** `tests/WishfulClaw.GoalRegressionTests/Program.Sandbox.cs`：
+  - `:59-62`：`projectPolicy = ResolvePolicy({"scope":"project","workingFolder":root})` ⇒ `AssertEqual(1, projectPolicy.Roots.Count, "项目会话只有一个根")` 且 `AssertEqual(root, Roots[0])`。
+  - `:64-68`：`AssertEqual(0, ResolvePolicy({"scope":"project"}).Roots.Count, "项目会话缺 workingFolder 时没有根")`。
+- **冲突**：S102-1 落地后，上两条分别变为 **2** 与 **1** ⇒ **两断言必红**，直接击穿 gate。
+- **为何算阻断（而非普通「测试待补」）**：`:61`/`:67` 编码的是**产品语义**——「项目会话只有一个根」「无 `workingFolder` 即无根＝不拦」；S102-1 恰恰改变了它。计划对 S102 只写「边界断言落点（`tests/WishfulClaw.*`，S-102-2 实施时定）」（`plan.md:314`），**从未交代**要修订这两条既有断言或重申新语义（如「项目会话的根 = 该工作目录 **+ 本实例数据根**，恒 ≥ 1」），也未提 raw §1431 要求的「SSH 不参与」。
+- **修法**：S102 增一步（明写）：把 `Program.Sandbox.cs:61` 改为 `Roots.Count == 2` 且含数据根；把 `:67` 的「无根」语义改述为「缺 workingFolder 时仍含数据根（唯一根）」或按新口径重写；并补 raw §1431 的 SSH 断言。位置可直接钉在 `Program.Sandbox.cs`（该文件已在括号外，且已引用 Agent，`PathBoundary` 可达）。
+
+### ⚠️ 建议项（不阻断）
+
+- **⚠️-0（raw §1364/§1391 措辞不精确）**「`memory/entries` 参数 `scope/limit/offset/order`」漏了 `workingFolder`/`projectId`/`sshConnectionId`（这三者由 `GetScope` 消费，`MemoryModule.cs:310-327`）。**动作不受影响**（S101-1/2 只加 `from/to` 且已正确指向 `CountScope`），故不判 ❌，但建议 raw 表述补全，免得后人照抄得出「项目 scope 靠 scope 字段传」的错误推论。
+- **⚠️-1（应复用既有数据根解析）** plan S102-1 写「**新增**数据根解析（优先读 `WISHFULCLAW_DATA_DIR`，回退 `~/.wishful-claw`）」，但该逻辑**已存在且是全仓唯一权威**：`WishfulClaw.Infrastructure/Storage/WishfulClawDataDir.cs:7-19` `Root`（env → `Path.GetFullPath`；否则 `UserProfile/.wishful-claw`），配常量 `WishfulClawPaths.DataDirEnvVar`（`Contracts/WishfulClawPaths.cs:6`）。`PathBoundary`（Agent）本就依赖 Infrastructure（`AGENTS.md:81`），**直接 `WishfulClawDataDir.Root` 即可**。另起一份 env 解析正是计划自己警惕的「两处判断必然漂移」的翻版。建议改「复用 `WishfulClawDataDir.Root`」。
+- **⚠️-2（S102 SSH 语义缺）** raw §1431 明确要求断言含「SSH 不参与」，plan S102-2 未提；且 project 分支对 **SSH 项目**同样返回其（远端）`workingFolder`，此时再把**本地**数据根塞进同一集合，语义需一句说明（本地根 + 远端根混装对 SSH 是否可接受）。
+- **⚠️-3（S102 断言落点未定）**「S-102-2 实施时定」属可避免的悬空 —— 现成落点就是 `Program.Sandbox.cs`（已引用 Agent）。建议直接钉死（顺带解决 ❌-2）。
+- **⚠️-4（数据根不存在时）** 若 `~/.wishful-claw-dev` 尚未创建，把它作为允许根无副作用（`IsInsideAnyRoot` 用 `Path.GetFullPath` 对不存在路径也成立，`PathBoundary.cs:143-153`），但「首次运行即已放行（目录随后会建）」这一点值得在实现记录写一句；`Root` 亦不做 `Directory.CreateDirectory`。
+- **⚠️-5（安全：开整个数据根的爆炸半径）** 见「我的独立判断」第 12 条。
+- **⚠️-6（S-101 接口与清单缺项）** 给搜索链加 `from/to` 需改 **`IMemorySearch.SearchAsync`**（`Workspace/Memory/IMemorySearch.cs:18-23`）并更新另 **2 处调用方**（`MemoryRecallService.cs:165` 自动召回、`MemorySearchTool.cs:81` agent 工具，均传默认=不限），以及 **`memory/search` 端点**（`MemoryModule.cs:106-118`，它才是读 `from/to` 的地方）。plan「涉及文件」（`plan.md:305-314`）**未列 `MemoryModule.cs` 与 `IMemorySearch.cs`**（只列了 `MemoryModule.Entries.cs`），S101-3 也只用「`MemoryFtsService.SearchAsync` 两条路」一语带过接口面。
+- **⚠️-7（`MemoryEntriesByStatus` 未表态）** tier 浏览器的 `memory/entries-by-status`（`MemoryModule.Entries.cs:30-65`，消费方 `MemoryPanel.tsx:68-69`）要不要也支持时间筛选？plan 与 raw 都未提。若「不」，建议一句理由（该面板按 status 分组、无时间筛选语义）；否则会给人「筛了时间但 tier 面板不跟」的错觉。
+- **⚠️-8（时区口径 + 项目 tab 无时间列）** 见「我的独立判断」第 14 条。
+- **⚠️-9（S101-4 取值）** options 重构标注为「我自己的取舍、非需求、可跳过」—— 可以接受。但若跳过后 `from/to` 以**位置参数**追加，`memoryEntries` 将达 **9 个位置参数**（第 3 位 `limit`、第 6 位 `offset`，raw §1387 已自陈易错）。建议明确：**要么做 options 化，要么把 `from/to` 也用 options（尾参对象）承载**，别走 9 个裸位置参数。
+
+### ✅ 通过项
+
+- **事实核验 A1/A2/A3/A5/A6/A7/A8 七条逐字属实**（证据见上表）；**A8 的「假事实」成立**（开发模式下 `AGENTS.md` 的日志路径确实指错）。
+- **落层正确（审查项 16）**：Worker 端点改动落在 `MemoryModule.Entries.cs`（Worker 层）；搜索能力落在 `MemoryFtsService.cs`（Workspace 层）；UI 落在渲染端两个列表组件；沙箱落在 `PathBoundary.cs`（Agent 层）。无错层、无逆向依赖（`AGENTS.md:112` 约束未破）。
+- **单文件 500 行红线全通过（审查项 15）**（实测当前行数）：
+  | 文件 | 现 | 本批增 | 预估 | 判定 |
+  |---|---|---|---|---|
+  | `src/runtime/WishfulClaw.Agent/Tools/PathBoundary.cs` | 161 | S102-1 +≈15 | ≈176 | ✅ |
+  | `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs` | 136 | S101-1/2 +≈20 | ≈156 | ✅ |
+  | `src/runtime/WishfulClaw.Workspace/Memory/MemoryFtsService.cs` | 214 | S101-3 +≈20 | ≈234 | ✅ |
+  | `src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs`（**未列入涉及文件，但必被 S101-3 触碰**） | 402 | +≈6 | ≈408 | ✅（见 ⚠️-6） |
+  | `src/renderer/src/stores/chat-store/memory-helpers.ts` | 302 | S101-4 +≈10 | ≈312 | ✅ |
+  | `src/renderer/src/components/settings/MemoryEntriesTab.tsx` | 356 | S101-5 +≈40 | ≈396 | ✅ |
+  | `src/renderer/src/components/chat/ProjectMemoryLibraryTab.tsx` | 195 | S101-5 +≈50 | ≈245 | ✅ |
+  | `AGENTS.md`（文档） | 307 | S102-3 +几行 | — | ✅ |
+- **S102-2「兄弟目录不穿透」断言在现有实现下成立（审查项 13）**：`PathBoundary.cs:114-122` —— 先比 `string.Equals(target, root)`；再要求 `target.StartsWith(root)` **且** `target[root.Length] == Path.DirectorySeparatorChar`。`.wishful-claw-dev` 相对根 `.wishful-claw` 前缀虽同，但越界字符是 `-` 而非 `\` ⇒ 直接拒绝；反向同理。`GetFullPath` 已把 `/` 归一为平台分隔符（`Normalize` `:143-153`），Windows 下比较用 `OrdinalIgnoreCase`（`:103-105`）。**断言可钉死，不是纸面承诺。**
+- **S102 的 env-var 取值路径与实现一致**：放弃在 C# 复刻 `app.isPackaged` 的判断是对的（`data-dir.ts:11-12` 甚至允许 env 覆盖，C# 复刻必然漂移）。
+- **`AGENTS.md`「异常日志」节定位准确**（`AGENTS.md:285-296`），S102-3 的两处订正方向正确。
+
+### 我的独立判断（重点第 12、13、14 条）
+
+**12（S-102 会不会削弱沙箱本意 / 开整个数据根值不值）—— 我不同意「开整个数据根」的默认取值，但承认它是用户已拍板的决定，故不作阻断，只要求「明示代价」。**
+- 数据根里有 `config.json`（**Provider API Key**）、`index.db`（**全部记忆 + 会话库**）、`ai-provider/*.json`、`codegraph/`。沙箱是**纯路径维度**的（`PathBoundary` + `ToolHelpers.EnsureInsideSandbox`），**没有读写区分**，而 `ToolHelpers.ResolveFilePath`（`:63-79`）同时服务 **Read 与 Write/Edit** ⇒ 把数据根放进允许集合，等于**同时授予 agent 对这些文件的读 + 写权限**（可覆写 `config.json`、可写坏自己赖以运行的 `index.db`）。
+- 风险不是「越权读日志」，而是两条新面：① **提示注入外泄** —— agent 若被它读到的文件内容诱导，可把 `config.json` 的密钥读出来再发往别处；② **自伤** —— 误写 `index.db`/`config.json` 会导致产品不可用，且排障面收窄。
+- 我的建议（不改用户口径前提下）：① 在 S102 的 commit / `AGENTS.md` 明写「**沙箱开启时，本实例数据根（含 `config.json`、`index.db`）已对 agent 读写放行**」，让「协议要求读日志」与「已放行」的因果关系显式；② 若能接受，给数据根加一个**极小 denylist**（`config.json` 至少，`index.db` 建议），代价低、收益明确；③ 明确「只开 `logs/` 是打地鼠」这个否决理由是对的（确实还要 `MEMORY.md` / `memory-organization-log.json` / `config.json`），但可考虑**白名单**（`logs/` + 若干 *.json/*.md）而非**整根**。综合：本地单机自用产品、用户明确要求，风险可接受；但计划应把「读 + 写 + 密钥在范围内」这句话写出来，不能只写「放行数据根」。
+
+**13（兄弟目录不穿透是否成立）** —— **成立**（论证见 ✅ 段）。这一条 S102-2 的断言是**正确且可验证**的，是本次审查里少数可以「照抄进测试」的承诺。补一句：该性质依赖「根路径先经 `Path.GetFullPath` 归一、末尾分隔符已裁掉」（`Normalize`），实现时不要绕开 `Normalize` 直拼字符串。
+
+**14（`from/to` 用 Unix 秒 + UI 用本地日，时区有没有坑）** —— **无内在 bug，但口径必须钉死「按本地日算边界」，否则必踩一个 +8h 的偏移坑。**
+- `updated_at` 存的是**绝对** Unix 秒（`MemoryAppend` 用 `DateTimeOffset.UtcNow.ToUnixTimeSeconds()`，`MemoryModule.cs:129`），与展示端**本地**渲染（`MemoryEntriesTab.tsx:57` `Intl.DateTimeFormat(undefined, {dateStyle,timeStyle})`）在语义上是自洽的：两侧都用绝对时间，只要 `from`/`to` 也由**本地日**换算成绝对秒即可。
+- **唯一的坑**：前端算「今天 00:00」若图省事用 `new Date().toISOString().slice(0,10)`（**UTC 日**）再转秒，东八区会整体偏 **−8h** —— 出现「筛『今天』却带出昨天 16:00 之后的条目」或漏掉当天 00:00–08:00。正确写法是 `Math.floor(new Date(y, m, d).getTime() / 1000)`（`Date` 构造用**本地**时区），或 `setHours(0,0,0,0)`。DST 时 `Date` 自会处理，无需手算。
+- **另外两点必须写进步骤**：① `to` 的**含端点**语义（`<=` 已在 S101-1 写为「边界取等号」✅），且「今天」的 `to` 应取**当日 24:00 / now**，而非「今天 00:00」；② **`ProjectMemoryLibraryTab` 根本不显示 `updatedAt`**（逐行实读，`:128-148` 无时间列）⇒ raw §1372 选 `updated_at` 的理由「与列表右侧**已经显示**的时间一致、所见即所筛」**只对全局 tab 成立**。建议：要么给项目 tab 也加一列修改时间（顺带消除「按什么时间筛用户看不出来」），要么把「所见即所筛」的验收口径限定在全局 tab。
+
+**15/16/17（规范符合性）** —— 15 ✅（上表核算，无文件触 500 红线；`MemoryModule.cs` 虽被漏列但 402→408 仍安全）；16 ✅（落层全对）；17 ✅（未见 `AGENTS.md` 分层约定被违反；`PathBoundary`(Agent) 读 Infrastructure 属允许方向 —— 唯一的规范层小瑕疵是 ⚠️-1 的「重复造 env 解析」而非依赖方向）。
+
+### 本次结论小结
+
+- **❌ = 2**（皆可用极小成本收敛：❌-1 定一个能触达 Worker 端点的断言落点，或把 `where`/`COUNT` 抽成 Workspace 纯 helper；❌-2 在 S102 补一步、改 `Program.Sandbox.cs:61/:67` 并重申新语义）。
+- ⚠️ = 10（⚠️-0 ~ ⚠️-9，其中 ⚠️-1 复用既有 `WishfulClawDataDir.Root`、⚠️-6 补 `IMemorySearch`/`MemoryModule.cs`/2 调用方、⚠️-8 时区口径+项目 tab 时间列，这三条建议一并并入）。
+- 事实地基扎实（8 条 7 条全对），**不是「根因没定就定修法」那一类问题**；两项的落层选择正确、文件红线安全。**修掉 2 个 ❌ 即可复验通过。**
+
+---
+
+## 第三批（S-101 / S-102）规划验证复验（2026-09-20）
+
+- **审查对象**：`plan.md`「## 第三批（S-101 / S-102）」（现行 `plan.md:266-334`，**已按上轮 FAIL 订正**）；对照上轮报告同节 + `raw-requirements.md` S-101（`:1353-1387`）/ S-102（`:1391-1431`）。
+- **审查者**：独立 subagent（architect-reviewer）；日期 2026-09-20。**方式**：纯静态（未跑构建 / 未跑测试 / 未改任何源码）。本报告为本次唯一写入。
+- **实读文件清单**：`plan.md`（全文）、`tests/WishfulClaw.MemoryRecallRegressionTests/WishfulClaw.MemoryRecallRegressionTests.csproj`、`src/runtime/WishfulClaw.Workspace/WishfulClaw.Workspace.csproj`、`src/runtime/WishfulClaw.Workspace/Memory/{IMemorySearch,MemoryFtsService}.cs`、`src/runtime/WishfulClaw.Worker/Modules/MemoryModule.Entries.cs`、`src/runtime/WishfulClaw.Worker/Modules/MemoryModule.cs`、`src/runtime/WishfulClaw.Agent/Tools/PathBoundary.cs`、`tests/WishfulClaw.GoalRegressionTests/{Program.cs,Program.Sandbox.cs,Program.SandboxPrompt.cs}`、`src/runtime/WishfulClaw.Infrastructure/Storage/WishfulClawDataDir.cs`、`src/renderer/src/components/{chat/ProjectMemoryLibraryTab.tsx,settings/MemoryEntriesTab.tsx}`、`src/renderer/src/stores/chat-store/memory-helpers.ts`、`AGENTS.md`、`raw-requirements.md`（S-101/S-102 节）。
+
+### VERDICT: PASS
+
+- 阻断规则（`docs/dev-workflow.md` 阶段三）：❌ > 0 禁止进入用户确认环节。**本轮 ❌ = 0** —— 上轮 ❌-1 / ❌-2 均被 plan 实质修掉，且修法**技术可行、有可执行落点**（非纸面）。
+- 5 条主要 ⚠️ 全部吸收（复用 `WishfulClawDataDir.Root` / SSH 语义 / 本地日时区 / 档案页补时间 / 涉及文件补 `IMemorySearch.cs`+`MemoryModule.cs`）。
+- **无因订正新引入的阻断性矛盾**；step 编号通（无跳号/重号），i18n 步仍在（`S101-6b`），跨批参数口径一致。
+- 残余 6 条（**皆不阻断**，见文末「残余」）：`WishfulClawDataDir` 消费方计数不准、⚠️-6 的 2 处调用方与「MemoryModule 改动理由写偏」、⚠️-9 后路未落、⚠️-7 tier 端点未表态、⚠️-0 raw 措辞、**新发现 N-A「缺 workingFolder 的项目会话」语义变更未明示**。
+
+### 逐条复验
+
+#### ❌-1｜S101-7 断言落点不可达 → **已解决（技术可行）**
+
+- **plan 的修法**：`S101-0`（`plan.md:298`）把「时间区间 SQL 条件段 + 参数」抽成 **Workspace 层纯函数**（`WishfulClaw.Workspace/Memory/`），Worker 端点与搜索链**共用同一份实现**；`S101-7`（`plan.md:306`）明确「**不写** `memory/entries` 端点的『total 与实际行数一致』—— Worker 不可达，此条归真机手测，**不要假装测过**」。
+- **可达性核验（逐项实读）**：
+  - **测试工程能引用 Workspace**：`WishfulClaw.MemoryRecallRegressionTests.csproj:13` → `ProjectReference` 到 `WishfulClaw.Workspace.csproj`。✅
+  - **原 ❌ 前提仍成立**：全仓 `tests/*/*.csproj` **无任何** `ProjectReference` 到 `WishfulClaw.Worker`（11 个套件分别引 Agent / Infrastructure / Workspace，逐文件 grep 确认）；`MemoryEntries`（`MemoryModule.Entries.cs:79`）与 `CountScope`（`:118`）确为 Worker 内 `private static`（宿主 `internal sealed partial class MemoryModule`，`:13`）。⇒ 端点级断言在该工程里**确实写不出来**，plan 的判断正确。
+  - **Worker 消费 Workspace 纯函数合法**：`AGENTS.md:89`「Worker 层**依赖** Agent + Persona + **Workspace** + …」；`MemoryModule.Entries.cs:5` 本就有 `using WishfulClaw.Workspace.Memory;`。⇒ 无错层、无逆向依赖。✅
+  - **纯函数能被测试工程够到 ⇒ 必须 `public`（且设计上被强制）**：`WishfulClaw.Workspace.csproj` **无 `InternalsVisibleTo`**（全仓仅 `WishfulClaw.Agent.csproj:18-25` 与 `WishfulClaw.CodeGraph.csproj:24` 有；无 `Directory.Build.props`）。而 Worker 是**异程序集**也要消费该函数 ⇒ 只能 `public` ⇒ 测试工程（引用了 Workspace）必然可达。`plan.md:313` 已把它列入涉及文件。✅
+  - **S101-3 的双路可加时间过滤**：FTS 路 `JOIN memory_entries e ON f.rowid = e.id`（`MemoryFtsService.cs:71`）⇒ `e.updated_at` 可达；LIKE 路直读 `memory_entries`（`:131`）⇒ `updated_at` 可达。两条路都能拼 `{timeFilter}`。✅
+- **结论**：**解决**。plan 采纳了上轮「修法 2」（Workspace 纯 helper），且 `S101-2`（`plan.md:300`）要求 `CountScope` 与 `MemoryEntries`「**必须调用 S101-0 的同一个函数**，不许另写一份」⇒ 从结构上消灭了 raw §1379 点名的「两处各写一遍 WHERE」模式。未测到的端点级一致性被**如实**降级为真机手测（`plan.md:332` 列入「验证态已知限制 ①」），非空头支票。
+- **附注（残余，不阻断）**：`plan.md:298` 的验证写「纯函数能被测试工程引用（编译通过即证明落层正确）」—— 建议实现记录里**显式写明该类型为 `public`**，免得后人误设 `internal`（现措辞虽会因编译失败暴露，但意图不够直白）。
+
+#### ❌-2｜S102-1 必红既有沙箱断言 → **已解决**
+
+- **plan 的修法**：`S102-0`（`plan.md:289`）先读 `WishfulClawDataDir` 与 `Program.Sandbox.cs` 既有断言；`S102-1b`（`plan.md:291`）**同步既有断言**：「`Program.Sandbox.cs:61`（项目会话根集合）与 `:65-68`（无 `workingFolder` 时的根数）按新集合更新」，并**新增**「数据根在集合内」「数据根外仍拒绝」；`plan.md:323` 把该文件列进涉及文件。
+- **行号 / 断言对得上（逐行实读 `Program.Sandbox.cs`）**：
+  - `:61` `AssertEqual(1, projectPolicy.Roots.Count, "项目会话只有一个根")`（`:62` `AssertEqual(root, projectPolicy.Roots[0])`）—— plan 点名的「项目会话根集合」。
+  - `:65-68` `AssertEqual(0, PathBoundary.ResolvePolicy({"scope":"project"}).Roots.Count, "项目会话缺 workingFolder 时没有根")` —— plan 点名的「无 `workingFolder` 时的根数」。
+- **追加/前置的连带核验**：
+  - `:62` `Roots[0] == root` 仅在「**追加**」时保持（`plan.md:290` 用词正是「返回集合**都追加**」）⇒ 不破；若实现成 prepend 则 `:62` 红 —— 「追加」是承重词。
+  - `:71` `AssertEqual(0, ResolvePolicy({"sandboxEnabled":false}).Roots.Count)` 走 `Policy.Disabled`（`PathBoundary.cs:34-35`）**不经** `ResolveRoots` ⇒ 不受影响，plan 未提该行亦无碍。
+  - `:28-39/:75-107` 全用**显式** roots，不经 `ResolvePolicy` ⇒ 不受影响。
+  - `Program.SandboxPrompt.cs` 只断言「段出现与否 + cacheKey」，**不查根集合内容** ⇒ 不受影响。
+- **新断言可确定性钉住数据根**：`Program.cs:36` `Environment.SetEnvironmentVariable("WISHFULCLAW_DATA_DIR", testRoot)` ⇒ 进程内 `WishfulClawDataDir.Root == testRoot`（`WishfulClawDataDir.cs:11-13`）；且 `:43 DbClient.Initialize` 先于 `:53 RunSandboxSuite` ⇒ 全局分支查 `projects` 表可跑。「数据根在集合内」对 `WishfulClawDataDir.Root` 直接断言即可，**确定性的**。（`:23 outside = Path.GetTempPath()` 是 `testRoot` 的**父**目录，不在 `[root, dataRoot]` 任一之内 ⇒「数据根外仍拒绝」成立。）
+- **结论**：**解决**。两处行号与断言内容完全吻合，S102-0 + S102-1b 覆盖到位。
+
+#### ⚠️-1｜复用 `WishfulClawDataDir.Root` → **已吸收**
+
+- `plan.md:290`：「**直接复用 `WishfulClawDataDir.Root`**（… 不要再自行解析环境变量或复刻 `isPackaged`）」；`plan.md:311` 列该文件「复用其 `Root`，预期零改动」。实体核对：`WishfulClawDataDir.cs:7-19`（env `WISHFULCLAW_DATA_DIR` 优先 → `Path.GetFullPath`；否则 `UserProfile/.wishful-claw`）—— 与 raw §1429 口径**逐字一致**。✅
+- **残余（不阻断）**：`plan.md:290` 称「全仓已有 **17 处**消费方」。实测 `WishfulClawDataDir` 引用 = `src` 15 处（`AgentLoop:183` / `SubAgentDefinition:50` / `SystemPromptCache:92` / `PersonaStore:33` / `SpillStore:28` / `DbClient:34` / `ConfigStore:192` / `ProviderStore:163` / `MemoryPathResolver:17` / `ChannelConfigStore:183` / `QqSessionStore:144` / `ExtensionManifestHelpers:136` / `OpenAIAudioTools:216` / `SeedanceVideoTools:144` / `XaiVideoTools:143`）+ `tests` 1 处（`Program.Spill.cs:59`）= **16**。举例的三处均真实存在，数字不精确但不影响动作。
+
+#### ⚠️-2｜S102 SSH 语义 → **已吸收**
+
+- `plan.md:293` `S102-3`：「SSH 项目的 `working_folder` 是远端路径（现有代码已排除），数据根是**本地绝对路径** —— 两分支都追加不影响 SSH 语义，需在代码注释里写明『数据根始终是本地的，与 SSH 无关』」+「验证：注释 + 断言」。✅（覆盖 raw §1431「SSH 不参与」）
+
+#### ⚠️-3｜S102 断言落点 → **已吸收**
+
+- 落点钉死在 `tests/WishfulClaw.GoalRegressionTests/Program.Sandbox.cs`（`S102-1b`/`S102-2`，`plan.md:291-292`；涉及文件 `plan.md:323`）。该文件已 `using WishfulClaw.Agent.Tools;`（`Program.Sandbox.cs:2`）⇒ `PathBoundary` 可达。✅
+
+#### ⚠️-4｜数据根不存在时 → **已吸收**
+
+- `plan.md:293`：「另确认数据根目录**不存在**时不抛异常（`IsInsideAnyRoot` 只做字符串比较、不碰磁盘 —— 复核一次）」。✅
+
+#### ⚠️-8｜时区本地日 → **已吸收**
+
+- `plan.md:302` `S101-4`：「`from`/`to` 传 Unix 秒，但『今天 / 近 7 天』的**边界必须按本地日**算（本地 00:00 为当日起点），**不要**用 UTC 日 —— 否则东八区用户在早上 8 点前会看到『今天』少几小时」。✅ 与上轮 ⚠️-8 建议逐字对应。
+
+#### ⚠️-8b｜档案页补时间显示 → **已吸收**
+
+- `plan.md:304` `S101-6`：「`ProjectMemoryLibraryTab` 当前**不显示 `updatedAt`** … 补一行时间显示（沿用 `MemoryEntriesTab` 的 `formatTimestamp` 口径）」。实读核对：`ProjectMemoryLibraryTab.tsx:139-141` 只渲染 `{entry.priority} · {entry.status}`，**无时间列**，⚠️ 属实；`MemoryEntriesTab.tsx:56-58` 有 `formatTimestamp` + `:339` 渲染。✅
+
+#### ⚠️-6｜涉及文件补 `IMemorySearch.cs` / `MemoryModule.cs` → **已吸收（不完整）**
+
+- `plan.md:314` 列 `WishfulClaw.Workspace/Memory/IMemorySearch.cs`（签名同步）；`plan.md:317` 列 `WishfulClaw.Worker/Modules/MemoryModule.cs`。**两个点名文件都进了**。✅
+- **残余（不阻断）**：(a) 上轮 ⚠️-6 还点名「另 2 处调用方」`MemoryRecallService.cs:165`、`MemorySearchTool.cs:81`（grep 确认二者均消费 `IMemorySearch.SearchAsync`），plan 未列；若新参数带默认值且追加在 `ct` 之后（或调用方用命名参）则二者免改，但 **plan 未写明参数落位**。(b) `plan.md:317` 把 `MemoryModule.cs` 的改动理由写成「若 `GetScope` 需随之调整」—— **理由写偏**：实际必须改的是 `MemorySearch` handler（`MemoryModule.cs:106-118`，读 `query/scope/limit/include_deprecated` 后调 `search.SearchAsync`）要解析并透传 `from`/`to`；`GetScope:310-344` 本身无需动。文件已列，故不阻断，但实现时按现文字会漏掉端点解析。
+
+#### ⚠️-9｜options 化 vs 9 个裸位置参数 → **未完全吸收（残余）**
+
+- `plan.md:303` `S101-5` 仍把 options 化列为「**我自己的取舍、非需求**，若判断影响面不值就跳过」。上轮 ⚠️-9 的**后路**（「若跳过，`from`/`to` 也要用 options 尾参承载，别走 9 个裸位置参数」）未写进 plan（raw §1387 也只是「建议」）。不阻断（raw 明示可砍）。
+
+#### ⚠️-5｜安全爆炸半径 → **已吸收**
+
+- `plan.md:334`「**S-102 的代价（须明示）**：把整个数据根放进允许集合 = agent 可读写 `config.json`（含 API Key）/ `index.db` … 收尾报告里要写清这一条」。✅
+
+#### ⚠️-7｜tier 端点 `entries-by-status` 未表态 → **未吸收（残余）**
+
+- plan 与 raw 仍未提 `MemoryModule.Entries.cs:30-65` 的 `memory/entries-by-status`（消费方 `MemoryPanel.tsx:68-69`）要不要同样支持时间筛选。不阻断。
+
+#### ⚠️-0｜raw 措辞（`scope/limit/offset/order` 漏 `workingFolder`/`projectId`/`sshConnectionId`）→ **未改（残余，非 plan 职责）**
+
+### 新问题（本轮复验新增，均不阻断）
+
+- **N-A（语义变更未明示，⚠️）**：`S102-1` 落地后，「项目会话缺 `workingFolder`」由 **`[]`（= 不拦）** 变为 **`[数据根]`（= 只放行数据根，其余全拦）** —— 与 `Program.Sandbox.cs:64` 自己的注释「没有根可依，解析结果为空（= 不拦）」**语义相悖**。`plan.md:291` 只说「按新集合更新」根数，**未写明这条行为语义的翻转**（原「无根即不拦」的降级对该分支失效）；SSH 项目 `workingFolder` 为远端/缺省时同理（`S102-3` 只讲「不影响 SSH 语义」，未讲这条降级变化）。建议在 `S102-1b` 明写新语义（「项目会话恒 ≥ 1 根，缺 `workingFolder` 时根 = 数据根」）并确认可接受。
+- **N-B（编号通，✅）**：`S102` = 0 / 1 / 1b / 2 / 3 / 4；`S101` = 0 / 1 / 2 / 3 / 4 / 5 / 6 / **6b** / 7。**无跳号、无重号**；原 i18n 步仍在（= `S101-6b`，`plan.md:305`）。`1b`/`6b` 为插入式编号，连贯。
+- **N-C（跨批一致性 ✅）**：`memoryEntries` 参数顺序 —— `S-98-4`（`plan.md:233`）= 7 参（`scope, workingFolder, limit, projectId, sshConnectionId, offset, order`），实测 `memory-helpers.ts:264-271` **逐字一致**，与 `S-101-5`「7 个位置参数」一致；`MaxEntriesLimit = 500`（`MemoryModule.Entries.cs:23`）在第三批**未被触碰**，无冲突。
+- **N-D（行数 watch，⚠️/不阻断）**：`MemoryModule.Entries.cs` 现 **136** 行；`S-98-1` 曾定该新文件目标 **≤150** 行，`S101-1/2` 再增 `from`/`to` + 共用函数调用后逼近（约 +7~15）⇒ 可能**略超 150**，但第三批检查点是 **≤500 硬线**（`plan.md:330`）⇒ 不阻断，留观。
+
+### 残余（不阻断）
+
+1. `plan.md:290` 的「17 处消费方」计数不准（实测 16）。
+2. ⚠️-6 的 2 处调用方（`MemoryRecallService.cs:165` / `MemorySearchTool.cs:81`）未列、新参数落位未写明；`plan.md:317` 对 `MemoryModule.cs` 的改动理由写偏（应为 `MemorySearch` handler 解析 `from/to`，非 `GetScope`）。
+3. `S101-0` 的 `public` 可见性未显式写死（设计上被强制，建议点明）。
+4. ⚠️-9 后路（跳过 options 时 `from/to` 用 options 尾参承载）未落。
+5. ⚠️-7 tier 端点 `memory/entries-by-status` 是否支持时间筛选未表态。
+6. ⚠️-0 raw 措辞未订正（非 plan 职责）。
+7. `S-98-1` 的 `MemoryModule.Entries.cs ≤150` 目标可能被本批略微突破（仍 ≤500，不阻断）。
+8. **N-A**：缺 `workingFolder` 的项目会话语义由「不拦」变「只放行数据根」—— 建议明示并确认可接受。

@@ -23,6 +23,8 @@ import {
 } from '@renderer/lib/agent/memory-organization'
 import { SettingsSection, SettingRow, SettingHint } from './settings-primitives'
 import MemoryExecutionLogSection from './MemoryExecutionLogSection'
+import MemoryEntriesTab from './MemoryEntriesTab'
+import MemoryHotTab from './MemoryHotTab'
 import { MemoryTiersSection, MemoryRecallSection } from './MemoryTierSettingsSections'
 
 function isTextModel(
@@ -45,7 +47,7 @@ function getFirstEnabledModelId(provider: {
   return provider.models.find((model) => isTextModel(model, provider.type))?.id ?? ''
 }
 
-const MEMORY_PAGE_TABS = ['settings', 'log'] as const
+const MEMORY_PAGE_TABS = ['settings', 'hot', 'entries', 'log'] as const
 
 type MemoryPageTab = (typeof MEMORY_PAGE_TABS)[number]
 
@@ -65,6 +67,8 @@ function MemoryPageTabs({
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const labels: Record<MemoryPageTab, string> = {
     settings: t('memoryPage.tabs.settings'),
+    hot: t('memoryPage.tabs.hot'),
+    entries: t('memoryPage.tabs.entries'),
     log: t('memoryPage.tabs.executionLog')
   }
 
@@ -335,6 +339,28 @@ function MemorySettingsPanel(): React.JSX.Element {
         {/* Recall */}
         <MemoryRecallSection />
 
+        </div>
+      )}
+
+      {activeTab === 'hot' && (
+        <div
+          role="tabpanel"
+          id="memory-page-tabpanel-hot"
+          aria-labelledby="memory-page-tab-hot"
+          className="space-y-4"
+        >
+          <MemoryHotTab />
+        </div>
+      )}
+
+      {activeTab === 'entries' && (
+        <div
+          role="tabpanel"
+          id="memory-page-tabpanel-entries"
+          aria-labelledby="memory-page-tab-entries"
+          className="space-y-4"
+        >
+          <MemoryEntriesTab />
         </div>
       )}
 

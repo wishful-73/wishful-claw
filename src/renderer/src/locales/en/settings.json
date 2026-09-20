@@ -1402,11 +1402,38 @@
   },
   "memoryPage": {
     "title": "Memory",
-    "subtitle": "Daily auto organization, tier demotion thresholds and proactive recall parameters",
+    "subtitle": "Global hot and regular memory, auto organization, tier thresholds and proactive recall parameters",
     "tabs": {
       "label": "Memory page sections",
       "settings": "Settings",
+      "hot": "Hot Memory",
+      "entries": "Memory Library",
       "executionLog": "Execution Log"
+    },
+    "hot": {
+      "title": "Global hot memory",
+      "desc": "The MEMORY.md shared by every global session. Saving here overwrites the whole file and takes effect for all global sessions immediately.",
+      "save": "Save",
+      "reset": "Reset",
+      "saved": "Global hot memory saved",
+      "saveFailed": "Failed to save",
+      "loadFailed": "Failed to load",
+      "loading": "Loading...",
+      "unsavedState": "Unsaved changes",
+      "syncedState": "Content synced",
+      "placeholder": "Edit global hot memory here..."
+    },
+    "entries": {
+      "title": "Global memory library",
+      "desc": "Memory-library entries shared by every global session. Read-only.",
+      "refresh": "Refresh",
+      "loading": "Loading...",
+      "empty": "No global memory entries yet.",
+      "noResults": "No matching memory entries.",
+      "untitled": "Untitled",
+      "searchPlaceholder": "Search global memory...",
+      "search": "Search",
+      "matches": "{{count}} matches"
     },
     "organization": {
       "title": "Daily Auto Organization",

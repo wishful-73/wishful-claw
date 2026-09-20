@@ -87,17 +87,33 @@ export async function memorySearch(
   })
 }
 
+/**
+ * Reads the hot-memory file (MEMORY.md) for a scope as raw text.
+ *
+ * The worker returns the whole file (`MemoryReadResult(content)`) — it does NOT
+ * parse the markdown into `sections`. The old signature advertised `sections` /
+ * `entries` and accepted a `target` argument; neither exists on the wire
+ * (`MemoryModule.MemoryRead` reads only `scope`), and the function had zero
+ * callers, so the misleading shape was removed in iter-33 S-96 when the global
+ * hot-memory tab became its first caller.
+ */
 export async function memoryRead(
   scope: string,
-  target: string = 'memory',
   workingFolder?: string | null
-): Promise<{ sections?: MemorySection[]; entries?: MemoryEntry[]; entry?: MemoryEntry | null }> {
-  return window.api.workerRequest('memory/read', { scope, target, workingFolder })
+): Promise<{ content: string }> {
+  return window.api.workerRequest('memory/read', { scope, workingFolder })
 }
 
+/**
+ * Overwrites the hot-memory file (MEMORY.md) for a scope with `content`.
+ *
+ * Whole-file overwrite, not a per-section patch: the worker ignores any
+ * `section` field (`MemoryModule.MemoryWrite` writes `content` verbatim), so the
+ * old `section` parameter was dropped in iter-33 S-96 rather than left as a
+ * parameter that silently does nothing.
+ */
 export async function memoryWrite(
   scope: string,
-  section: string,
   content: string,
   workingFolder?: string | null,
   sessionId?: string | null
@@ -106,7 +122,6 @@ export async function memoryWrite(
   // turn (memory-update injection); omit it for session-independent writes.
   return window.api.workerRequest('memory/write', {
     scope,
-    section,
     content,
     workingFolder,
     sessionId: sessionId ?? undefined

@@ -984,6 +984,103 @@ FTS5 `trigram` tokenizer 把文本切成 **3 字符**滑动窗口。**查询词�
 
 ---
 
+## S-96 全局记忆页扩容：新增「热记忆」与「记忆库」两个选项卡
+
+### 需求（2026-09-20 老大口述）
+
+> 「全局的记忆设置，之前是增加了执行记录，现在还需要继续增加内容，我们全局会话的所有热记忆是共享的，以及全局记忆也是共享的，所以需再增加热记忆和记忆查询选项卡。」
+
+- 落点：设置页 →「记忆」页（`MemorySettingsPanel`），现有 2 个选项卡（设置 / 执行记录）**再增加 2 个**。
+- 依据：全局会话的热记忆与全局记忆都是**跨会话共享**的，属于「全局资产」，理应在全局设置页有入口。
+
+### 勘测（2026-09-20 实读）
+
+**① 现有选项卡机制**（`MemorySettingsPanel.tsx`，355 行）
+
+- `:48` `const MEMORY_PAGE_TABS = ['settings', 'log'] as const`；`:50` `type MemoryPageTab`
+- `:57-112` `MemoryPageTabs`（`role="tablist"` + 方向键 roving tabindex，形状抄 `ProviderPanelTabs`）
+- `:66-69` labels：`settings → t('memoryPage.tabs.settings')`、`log → t('memoryPage.tabs.executionLog')`
+- `:138` `useState<MemoryPageTab>('settings')`；`:160` / `:341` 两个 `role="tabpanel"`
+- 挂载点：`SettingsPage.tsx:212`
+
+**② 全局热记忆目前完全没有 UI 入口**
+
+- `MemoryPanel.tsx`（387 行，挂 `RightPanel.tsx:175`）只有：hot/warm/cold **统计卡**、搜索框、组织调度、warm/cold 恢复。**既不展示也不编辑 MEMORY.md 正文**。
+- 该项目面板取参自 `memoryProject`（`RightPanel.tsx:68-73`）；全局会话无项目 ⇒ `workingFolder=null`，其 `scope` 自动落 `'global'`（`MemoryPanel.tsx:48`），但入口在右侧面板而非设置页，且仍不呈现 MEMORY.md 正文。
+
+**③ 数据通道已齐，无需新增 Worker 端点**
+
+| 用途 | Renderer helper | Worker 端点 | 返回 |
+|---|---|---|---|
+| 读热记忆 | `memoryRead(scope, 'memory', workingFolder)` | `memory/read` | `{ sections? }` |
+| 写热记忆 | `memoryWrite(scope, section, content, workingFolder, sessionId?)` | `memory/write` | `{ ok, key }` |
+| 查记忆 | `memorySearch(query, scope, limit, workingFolder, projectId, sshConnectionId)` | `memory/search` | `{ hits }` |
+
+- `MemoryModule.cs:23-25` 三端点均已注册；`:93-100` 的 `memory/write` 在带 `sessionId` 时会 `MemoryUpdateQueue.Enqueue`，让下一轮看到覆盖通告。
+- 全局 scope 取值：`scope='global'`，其余三个上下文参数传 `null`。
+
+### 两个新选项卡的内容（2026-09-20 定案：**均只读**）
+
+1. **热记忆**（`hot`）—— 只读展示全局 `MEMORY.md` 的章节（`## 标题` + 内容），来源 `memoryRead('global','memory')` 的 `sections`。
+2. **常规记忆**（`search`）—— 只读列表（含查询），来源 `memoryEntries('global')`（S-91 新增的不带 status 谓词的端点）或 `memorySearch(...)` 的 `hits`。
+
+老大原话：「**这里是只读，只会看，包括常规记忆也是**」⇒ 两个 tab **都不可编辑**。
+
+### 项目侧已就位（本次不动）
+
+老大：「我们记忆分为项目下热记忆和常规记忆，**这个放到项目档案下**」——**项目侧已是这个结构**，无需改动：
+
+| 档案页 tab（`ProjectArchivePage.tsx:38-43`） | 组件 | 对应 | 能力 |
+|---|---|---|---|
+| `memory`「项目记忆」 | `ProjectMemoryFileTab.tsx`（191 行） | 项目**热记忆**（`{memoryRoot}/MEMORY.md`） | **可编辑**（Textarea + Save + 未保存标记） |
+| `database`「记忆库」 | `ProjectMemoryLibraryTab.tsx`（132 行） | 项目**常规记忆**（DB 条目） | 只读 + 刷新 |
+| `persona`「项目人格」 | `PersonaFilePreview` | — | — |
+
+### ⚠️ 已记录的不对称（实施时别顺手「改好」）
+
+- **项目侧热记忆可编辑，全局侧只读** —— 这是老大明确指定的口径，**不是遗漏**。
+- 全局热记忆一改就影响**所有全局会话**（共享资产），只读是更稳的默认；真要改仍可走 `memory/write` 或直接改 `~/.wishful-claw/MEMORY.md`。
+- **命名待定**：项目侧用「项目记忆 / 记忆库」，全局侧若用「热记忆 / 常规记忆」则两套词汇并存。倾向对齐 —— 要么全局侧也用「记忆 / 记忆库」，要么两侧统一改叫「热记忆 / 常规记忆」。实施前定一句。
+
+### 剩余待裁定（实施前定）
+
+1. **常规记忆 tab 的形态**：纯列表 / 列表 + 搜索框（`memorySearch`）。
+2. **与右侧面板 `MemoryPanel` 的关系？** 搜索 / 展示逻辑是否抽公共组件，还是各自独立（两侧配套动作不同：面板带组织与 warm/cold 恢复，设置页是全局 scope 只读）。
+
+### 实施要点（待开工）
+
+- **文件红线**：`MemorySettingsPanel.tsx` 现 355 行，再塞两个 tab 必然破 500（AGENTS.md 硬规则）⇒ 照 S-90 先例各自抽独立文件（如 `MemoryHotTab.tsx` / `MemorySearchTab.tsx`），本文件只留 tab 注册与分发。
+- i18n：`locales/zh|en/settings.json` 的 `memoryPage.tabs` 补 `hot` / `search` 两个 label。
+- `section-anchor-nav.tsx` 已具备「目标 section 不存在时隐藏」的探测（S-90 落地），新 tab 若不含锚点 section，需确认导航行为。
+- **共享语义要写在界面上**：这两个 tab 操作的是**全局共享**数据（所有全局会话可见），不是当前会话私有 —— 措辞要明确，避免用户误以为是会话级改动。
+
+### 实施记录（2026-09-20）
+
+**改动**：
+
+- **新增 `MemoryHotTab.tsx`（136 行）** —— 全局热记忆，**可编辑**。读 `memoryRead('global')` 取整份 `MEMORY.md` 原文，保存走 `memoryWrite('global', draft)` 整份覆盖；带保存 / 重置 / 未保存标记 / 错误展示，卡片用 `SettingsSection` 承载（`id="sec-memory-hot"`）。
+- **新增 `MemoryEntriesTab.tsx`（206 行）** —— 全局记忆库，**只读**（tab 名定「记忆库」，与项目档案页用词对齐）。空查询走 `memoryEntries('global')` 浏览全量（该端点无 status 谓词，S-91 新建），非空查询切 `memorySearch(query,'global')`；两个来源归一成同一 `EntryRow` 后渲染，清空搜索框即回到浏览态。
+- **`MemorySettingsPanel.tsx`（355 → 381 行）**：`MEMORY_PAGE_TABS` 加 `hot` / `entries`（顺序 `settings → hot → entries → log`），补两个 label 与两个 `role="tabpanel"`。
+- **i18n**：`locales/zh|en/settings.json` 的 `memoryPage.tabs` 补 `hot` / `entries`，新增 `memoryPage.hot.*` 与 `memoryPage.entries.*` 两段；`subtitle` 同步覆盖新内容。
+- `memory-helpers.ts` —— 见下。
+
+**顺带修的「参数骗人」两处**（该 helper 全函数零调用点，所以错误声明从没被撞上）：
+
+1. `memoryRead` 原签名 `(scope, target='memory', workingFolder)`，声明返回 `{ sections?, entries?, entry? }` —— **全错**。Worker 的 `MemoryRead` 只读 `scope`（不读 `target`），返回 `MemoryReadResult(content)`，即**整份原文**，从不解析 markdown 成 `sections`。已改为 `(scope, workingFolder?) → { content: string }` 并注明实际语义。
+2. `memoryWrite` 原签名 `(scope, section, content, …)` 的 `section` 同属死参数：Worker 的 `MemoryWrite` 只写 `content`（整文件覆盖），**从不读 `section`**。已删该形参 —— 留着它，新调用点会把「能按章节写」这个错觉固化下来。
+
+**验证（门禁全绿）**：
+
+- `npx tsc -p tsconfig.web.json / tsconfig.node.json / tsconfig.json --noEmit` —— 三配置 **EXIT=0**。
+- 32 个 `test:*` 脚本（含 `test:i18n-coverage`、`test:settings-tabs`）**全部 PASS**。
+- 文件红线：新文件 136 / 206 行，`MemorySettingsPanel.tsx` 381 行，均在 500 以内。
+- **锚点导航（实施要点里那条待确认项）**：新 tab 的 section id（`sec-memory-hot` / `sec-memory-entries`）**不在** `SettingsPage.tsx:54-56` 的 `MEMORY_ANCHORS`（只有 organization / tiers / recall）中 ⇒ 切到这两个 tab 时 `SectionAnchorNav` 的 `hasSections` 判定为 false 而**自动隐藏**，正是 S-90 已落地的逻辑，**无需改动**。
+- **C# 侧零改动**：三个端点（`memory/read` / `memory/write` / `memory/search` / `memory/entries`）全部是既有的，本需求只做渲染端接线。
+
+**文案（2026-09-20 已定）**：全局侧第二个 tab 定名 **「记忆库」**，与项目档案页的 `database` tab 用词对齐（老大：「不过常规记忆 可以改成记忆库」）；**「热记忆」保持不变** —— 老大明确「这个不用同步」，即**不做**两侧文案的统一。
+
+---
+
 ## 待登记
 
 （以下是 iter-33 收尾阶段新发现、**未纳入本次实施**的项，按来源标注；均已完成取证，可直接开工。）
@@ -1039,3 +1136,8 @@ FTS5 `trigram` tokenizer 把文本切成 **3 字符**滑动窗口。**查询词�
 - 2026-09-19（傍晚，二次确认，**最终定案**）：**S-95 压缩结果口径 = 口径 A（吸收式，稳态 1 条摘要）** —— 老大原话：「信息的逻辑是压缩后内存中就是新摘要，然后继续积累消息；下一轮压缩的时候，只有最近的那条旧摘要，也就是上一轮的摘要 + 消息，需要拿去压缩，压缩后成为新摘要，这时候内存中就只有新摘要 + 第一条用户消息了。如果压缩失败才是另外的处理。」⇒ ① **结果里只留新摘要一条**（旧摘要内容随其进新摘要，不单独留存）；② 摘要**输入** = 上一轮摘要 + 其后积累的消息；③ 畸形会话 **53 条 → 1 条**。
   **本文档正文的两处口径按此修正（历史原话保留，仅供追溯）**：§813 表格的「`+ [上一条摘要]`」**作废**（与 §817/§819 打架，以本条为准）；§825 的「输入含除上一条外的旧摘要」修正为「含**全部**旧摘要」（53 条其余摘要进输入被吸收，不直接丢 —— 丢会让更早历史在模型视角失联，§874 的论证对成功路径同样成立）。
   实施口径与验证检查点见 `docs/plans/iter-v2-33/plan.md`（V4 已定案）。
+- 2026-09-20：**S-96 立项**（全局记忆页扩容：新增「热记忆」「记忆查询」两个选项卡）。**只登记不执行**，待三项口径裁定：① 热记忆只读 / 可编辑；② 查询范围 global / all；③ 与右侧面板 `MemoryPanel` 的关系（是否抽公共组件）。勘测结论：数据通道（`memory/read` / `memory/write` / `memory/search`）已齐，**无需新增 Worker 端点**；全局热记忆当前**零 UI 入口**（右侧面板只有统计卡，不呈现 MEMORY.md 正文）。
+- 2026-09-20：**S-96 口径二次裁定（推翻上条的"只读"）** —— 老大：「**全局热记忆也可以编写**，我只是担心会影响 agent 自身发挥，**可以编辑问题不大**。推进吧。」⇒ **热记忆 tab = 可编辑**（走 `memory/write`，与项目档案页的 `ProjectMemoryFileTab` 一致）；**常规记忆 tab 仍只读**。上条的「项目侧可编辑 / 全局侧只读」不对称**作废**。
+- 2026-09-20：**S-96 进入实施**（老大「推进吧」）。剩余细节按推荐自定并记档：① 常规记忆 tab **带搜索框**（条目可能不少）；② 与右侧面板 `MemoryPanel` **各写各的**（配套动作不同：面板带组织与 warm/cold 恢复）；③ **文案按老大原词**——全局侧用「热记忆 / 常规记忆」，与项目侧「项目记忆 / 记忆库」并存，收尾时提请老大决定是否统一。
+- 2026-09-20：**S-96 文案裁定（关闭上条 ③）** —— 老大：「**这个不用同步，不过常规记忆可以改成记忆库**」⇒ 全局侧第二个 tab 定名 **「记忆库」**（与档案页 `database` tab 用词对齐），**「热记忆」保持不变**，两侧文案**不做统一**。
+- 2026-09-20：**S-96 实施完成，提交 `f4e28f3d`**（7 files，+545/−8，**未推送**）。门禁：tsc 三配置 **0 错**；32 个 `test:*` **全 PASS**；`MemorySettingsPanel.tsx` 381 行、两个新组件 136 / 206 行，均在 500 红线内。**C# 零改动**（四个端点均为既有）。**待老大真机手测**：设置 → 记忆 → 两个新 tab 可打开、热记忆能读能存。

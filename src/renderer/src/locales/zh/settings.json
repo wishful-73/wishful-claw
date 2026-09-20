@@ -1541,11 +1541,38 @@
   },
   "memoryPage": {
     "title": "记忆",
-    "subtitle": "每日自动整理、分层降级阈值与主动回忆参数",
+    "subtitle": "全局热记忆与常规记忆、自动整理、分层降级阈值与主动回忆参数",
     "tabs": {
       "label": "记忆页分页",
       "settings": "设置",
+      "hot": "热记忆",
+      "entries": "记忆库",
       "executionLog": "执行记录"
+    },
+    "hot": {
+      "title": "全局热记忆",
+      "desc": "所有全局会话共享的 MEMORY.md。这里的保存会整份覆盖该文件，对所有全局会话立即生效。",
+      "save": "保存",
+      "reset": "重置",
+      "saved": "已保存全局热记忆",
+      "saveFailed": "保存失败",
+      "loadFailed": "读取失败",
+      "loading": "加载中…",
+      "unsavedState": "有未保存的修改",
+      "syncedState": "内容已同步",
+      "placeholder": "在此编辑全局热记忆…"
+    },
+    "entries": {
+      "title": "全局记忆库",
+      "desc": "全局会话共享的记忆库条目。只读。",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "empty": "暂无全局记忆条目。",
+      "noResults": "没有匹配的记忆条目。",
+      "untitled": "未命名",
+      "searchPlaceholder": "搜索全局记忆…",
+      "search": "搜索",
+      "matches": "{{count}} 条匹配"
     },
     "organization": {
       "title": "每日自动整理",

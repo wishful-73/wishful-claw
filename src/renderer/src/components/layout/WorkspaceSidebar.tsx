@@ -16,6 +16,7 @@ import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '@share
 import { SessionItem, ProjectItem, sortProjects, sortSessions, readProjectSortMode, writeProjectSortMode, PROJECT_SORT_MODES, type ProjectSortMode } from './workspace-sidebar-items'
 import { ResizeHandle, renderNavItem, renderSplitNavItem, NavButtonItem } from './workspace-sidebar-nav'
 import { SearchDialog } from './search-dialog'
+import { clampLeftSidebarWidth } from './right-panel-defs'
 import * as React from 'react'
 
 export function WorkspaceSidebar(): React.JSX.Element | null {
@@ -217,7 +218,10 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     { id: 'taskboard', icon: <SquareKanban className="size-4" />, label: t('sidebar.taskBoardLabel', { defaultValue: 'Task Board' }), onClick: openTaskBoardPage }
   ]
 
-  const currentWidth = leftSidebarWidth || 260
+  // 按当前视口收窄：右栏 RightPanel 一直这么做，左栏此前是裸用存值，
+  // 于是把窗口拖窄后聊天窗会被挤到 CHAT_MIN_WIDTH 以下。
+  // 只收渲染值、不回写 store，窗口拉回来能自动恢复。
+  const currentWidth = clampLeftSidebarWidth(leftSidebarWidth || 260)
 
   const freeChatNavItem: NavButtonItem = {
     key: 'free-chat',

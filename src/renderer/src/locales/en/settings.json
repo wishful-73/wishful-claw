@@ -843,7 +843,7 @@
       "label": "App Updates",
       "desc": "Check for and install new Wishful Claw versions",
       "autoCheck": "Check for updates at startup",
-      "autoCheckDesc": "Only checks at startup; downloading and installing always require your confirmation.",
+      "autoCheckDesc": "Checks once at startup, then every 6 hours in the background; downloading and installing always require your confirmation.",
       "check": "Check for updates",
       "latest": "You are using the latest version."
     }
@@ -1371,7 +1371,7 @@
       "noNotes": "No release notes provided for this release.",
       "downloading": "Downloading update…",
       "backgroundHint": "The download continues in the background. Closing this window will not interrupt it.",
-      "trayHint": "You can reopen the progress at any time from “Update details” in the tray.",
+      "trayHint": "You can reopen the progress at any time from the top bar icon or “Update details” in the tray.",
       "download": "Download in background",
       "manualDownload": "Manual download",
       "install": "Restart and install",
@@ -1384,15 +1384,16 @@
       "fullscreen": "Read fullscreen",
       "exitFullscreen": "Exit fullscreen"
     },
-    "banner": {
+    "indicator": {
       "available": "Update {{version}} available",
-      "availableCurrent": "Currently on {{current}}",
-      "downloading": "Downloading update in the background…",
-      "downloaded": "Update {{version}} downloaded, waiting to install",
-      "error": "Update failed",
-      "install": "Restart and install",
-      "details": "Details",
-      "dragHint": "Drag to move"
+      "downloading": "Downloading update…",
+      "downloadingPercent": "Downloading update {{percent}}",
+      "downloaded": "Update {{version}} downloaded — click to review",
+      "error": "Update failed — click to review"
+    },
+    "toast": {
+      "downloaded": "Update {{version}} downloaded. Restart to install.",
+      "error": "Update failed. Click the top bar icon for details."
     },
     "progress": {
       "unknown": "Unknown",

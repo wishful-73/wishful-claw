@@ -29,7 +29,6 @@ import { type ModelBinding, type CodexConfig, type FreeChatSite, type MemoryOrga
 import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
-import type { UpdateBannerPosition } from '../../../shared/updater/types'
 
 /** Default free web-chat sites offered on the Free Chat page (iter-30 / S-27).
  *  Users can add/remove entries in 设置 → AI 服务 → 免费对话. */
@@ -204,11 +203,6 @@ interface SettingsStore {
   liveOutputAnimationStyle: LiveOutputAnimationStyle
   toolbarCollapsedByDefault: boolean
   leftSidebarWidth: number
-  /**
-   * Where the floating update banner was dragged to, or `null` while it still lives on its default
-   * anchored corner. See {@link UpdateBannerPosition} for why `null` is not a position.
-   */
-  updateBannerPosition: UpdateBannerPosition | null
   /** Chat column fills the whole conversation panel instead of the 820px cap. */
   conversationPanelFullWidth: boolean
 
@@ -358,7 +352,6 @@ export const useSettingsStore = create<SettingsStore>()(
       liveOutputAnimationStyle: 'agile',
       toolbarCollapsedByDefault: false,
       leftSidebarWidth: LEFT_SIDEBAR_DEFAULT_WIDTH,
-      updateBannerPosition: null,
       conversationPanelFullWidth: false,
 
       // Search (iter-29 S-23)

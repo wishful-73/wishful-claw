@@ -3,6 +3,8 @@ import { FolderOpen, Globe, HelpCircle, PanelLeftClose, PanelLeftOpen, PanelRigh
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
+import { UpdateIndicator } from '@renderer/components/updater/UpdateIndicator'
+import { useUpdateContext } from '@renderer/components/updater/update-context'
 import { WindowControls } from './WindowControls'
 
 interface TitleBarProps {
@@ -24,6 +26,8 @@ export function TitleBar({
   const ensureBrowserTab = useUIStore((s) => s.ensureBrowserTab)
   const toggleBottomTerminalDock = useUIStore((s) => s.toggleBottomTerminalDock)
   const openSettings = useUIStore((s) => s.openSettings)
+  // 更新图标的状态归 App 所有，中间隔着 MainLayout，所以走 context 而不是逐层透传 props。
+  const update = useUpdateContext()
 
   // Get current session ID and terminal dock state
   const currentSessionId = useChatStore((s) => s.activeSessionId)
@@ -87,8 +91,12 @@ export function TitleBar({
         )}
       </div>
 
-      {/* Right: user guide, files, browser, terminal, right panel toggle, window controls */}
+      {/* Right: update indicator, about, files, browser, terminal, right panel toggle, window controls */}
       <div className="flex items-center gap-1 px-2">
+        {update ? (
+          <UpdateIndicator state={update.state} onClick={update.showDetails} />
+        ) : null}
+
         <Tooltip>
           <TooltipTrigger asChild>
             <button

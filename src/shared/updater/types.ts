@@ -110,27 +110,3 @@ export type UpdateDownloadStartResult = { success: true; operationId: number } |
 export type RendererUpdateState = UpdateStateSnapshot & UpdateDistributionInfo
 
 export type UpdateStatus = RendererUpdateState & { success: true }
-
-/**
- * Where the user dragged the floating update banner to, in viewport CSS pixels.
- *
- * `null` is not the same as a position — it means "never placed by hand", which keeps the banner on
- * its default anchored corner (bottom-left, following the sidebar width). That distinction is what
- * lets the anchored behaviour stay the default and the hand-placed behaviour stay put.
- */
-export interface UpdateBannerPosition {
-  left: number
-  top: number
-}
-
-/**
- * Shape-only check for a value read back from persisted settings — a stale or hand-edited settings
- * file must not be able to hand the banner a NaN or a string. Bounds are *not* checked here: only
- * the renderer knows the viewport and the banner's own size, so clamping happens there.
- */
-export function normalizeUpdateBannerPosition(value: unknown): UpdateBannerPosition | null {
-  if (!value || typeof value !== 'object') return null
-  const candidate = value as { left?: unknown; top?: unknown }
-  if (!Number.isFinite(candidate.left) || !Number.isFinite(candidate.top)) return null
-  return { left: candidate.left as number, top: candidate.top as number }
-}

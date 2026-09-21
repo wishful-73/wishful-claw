@@ -48,8 +48,11 @@ const PROGRESS_LOG_INTERVAL_MS = 5_000
 /**
  * 后台巡检间隔。这个软件的定位是 24 小时常驻、电脑不关机 —— 只在启动时查一次，等于永远停在
  * 开机那一刻的版本判断上，一直开着的用户反而永远看不到新版本。
+ *
+ * 6 小时是折中：半天里总有一次机会发现新版本，又不至于让 GitHub 直连时通时不通的机器反复去问。
+ * 一旦真发现有新版本，巡检就自行停掉（见 runPeriodicRecheck），所以这只是「多久空跑一次」。
  */
-const PERIODIC_RECHECK_INTERVAL_MS = 60 * 60 * 1000
+const PERIODIC_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
 let updater: AutoUpdater | null = null
 let initializePromise: Promise<void> | null = null
@@ -107,6 +110,30 @@ function getInstallGate(instance: AutoUpdater): UpdateInstallGate {
     }
   })
   return installGate
+}
+
+/**
+ * 丢掉已被新版本取代的安装包。
+ *
+ * 状态层面 `applyAvailable` 已经清掉 `downloadedVersion`，所以那个包再也装不上 —— 但磁盘上那份
+ * 还在，不删就一直占着缓存目录。`downloadedUpdateHelper` 在 electron-updater 里是 protected 且
+ * 懒创建，只能结构化访问：拿不到就说明这台机器还没下载过东西，本来也无事可做。
+ *
+ * 只允许在 `applyAvailable` 成功之后调用 —— 那条分支已经排除了「正在下载」的相位，所以这里不可能
+ * 清掉一个正在被写入的缓存目录。
+ */
+async function discardDownloadedPackage(instance: AutoUpdater): Promise<void> {
+  const helper = (
+    instance as unknown as { downloadedUpdateHelper?: { clear(): Promise<void> } | null }
+  ).downloadedUpdateHelper
+  if (!helper) return
+  try {
+    await helper.clear()
+    logInfo('main', 'Updater discarded the superseded downloaded package')
+  } catch (error) {
+    // 删不掉只是多占点磁盘，不影响「重新下载最新版」这条路，所以不往外抛。
+    logWarn('main', `Updater could not discard the superseded package: ${getErrorMessage(error)}`)
+  }
 }
 
 function currentVersion(): string {
@@ -329,14 +356,28 @@ function attachEvents(instance: AutoUpdater): void {
       updaterState().applyNotAvailable()
       return
     }
+    // 磁盘上躺着的就是这个版本 ⇒ 这次「发现」没带来任何新东西，状态不必推倒重来。用户点图标重查
+    // 走的正是这条路，若照常 applyAvailable，那个已经下载好的包会被当成作废，只能重下一遍。
+    if (updaterState().snapshot().downloadedVersion === version) {
+      logInfo('main', `Updater kept the already-downloaded version ${version}`)
+      return
+    }
 
     const releaseNotes = formatReleaseNotes(info.releaseNotes)
     const declaredInstallerSize = resolveDeclaredInstallerSize(info)
+    // 取在 applyAvailable 之前 —— 清掉 downloadedVersion 的正是那一步，而「上一个包被取代了」这个
+    // 判断要的是改之前的值。
+    const supersededVersion = updaterState().snapshot().downloadedVersion
     if (
       !updaterState().applyAvailable({ newVersion: version, releaseNotes, declaredInstallerSize })
     ) {
       logWarn('main', `Updater dropped update-available for ${version} in current phase`)
       return
+    }
+    // 旧包已经作废（coordinator 再不认它，「重启安装」会以 noDownloadedUpdate 被拒），磁盘上那份
+    // 也一起丢掉，让用户重新下载的就是最新版本。
+    if (supersededVersion && supersededVersion !== version) {
+      void discardDownloadedPackage(instance)
     }
 
     const payload: UpdateAvailablePayload = {

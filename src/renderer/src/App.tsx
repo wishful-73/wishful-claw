@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { Toaster } from '@renderer/components/ui/sonner'
 import { ThemeProvider } from '@renderer/components/theme-provider'
 import { ThemeRuntimeSync } from '@renderer/components/ThemeRuntimeSync'
@@ -26,11 +28,7 @@ import { useChannelAutoReply } from '@renderer/hooks/use-channel-auto-reply'
 import { useBackgroundSubAgentWakeup } from '@renderer/hooks/use-background-subagent-wakeup'
 import { useAppUpdater } from '@renderer/hooks/use-app-updater'
 import { UpdateDialog } from '@renderer/components/updater/UpdateDialog'
-import {
-  shouldLiftToastsForBanner,
-  UPDATE_BANNER_TOAST_BOTTOM,
-  UpdateStatusBanner
-} from '@renderer/components/updater/UpdateStatusBanner'
+import { UpdateProvider } from '@renderer/components/updater/update-context'
 import type { UpdateShowDetailsPayload } from '@shared/updater/types'
 import { initializeCronRuntime } from '@renderer/lib/tools/cron-runtime'
 import { initializeSessionFollowUpRuntime } from '@renderer/lib/tools/session-follow-up-runtime'
@@ -47,39 +45,58 @@ import { useActivityStore } from '@renderer/stores/activity-store'
 initProviderStore()
 
 function App(): React.JSX.Element | null {
+  const { t } = useTranslation('settings')
   const view = useUIStore((s) => s.view)
   const language = useSettingsStore((s) => s.language)
-  const updateBannerPosition = useSettingsStore((s) => s.updateBannerPosition)
   const [i18nReady, setI18nReady] = useState(false)
   const [i18nError, setI18nError] = useState<Error | null>(null)
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const updater = useAppUpdater()
 
+  const updatePhase = updater.state.phase
+
   useEffect(() => {
-    // 后台巡检发现的更新只点亮横幅，不弹窗 —— 一小时一次的后台检查要是每次都抢焦点，比不提示
-    // 还烦。downloaded / error 仍然直接弹：前者是用户已经开始的下载有结果了，后者是手动检查失败。
-    if (updater.state.phase === 'available' && updater.silentAnnounce) return
-    if (
-      updater.state.phase === 'available' ||
-      updater.state.phase === 'downloaded' ||
-      updater.state.phase === 'error'
-    ) {
+    // 后台巡检发现的更新只点亮顶栏图标，不弹窗 —— 巡检时用户多半不在跟前，抢焦点比不提示还烦。
+    // downloaded / error 仍然直接弹：前者是用户已经开始的下载有结果了，后者是检查或下载失败了。
+    if (updatePhase === 'available' && updater.silentAnnounce) return
+    if (updatePhase === 'downloaded') {
+      // 必须主动说一声：左下角那块常驻浮块已经砍掉，下载完成不再有任何自来的提示。
+      toast.success(
+        t('updater.toast.downloaded', {
+          version: updater.state.downloadedVersion ?? '',
+          defaultValue: '更新 {{version}} 已下载，可以重启安装了'
+        })
+      )
+    }
+    if (updatePhase === 'error') {
+      toast.error(t('updater.toast.error', { defaultValue: '更新失败，点击顶栏图标查看详情。' }))
+    }
+    if (updatePhase === 'available' || updatePhase === 'downloaded' || updatePhase === 'error') {
       setUpdateDialogOpen(true)
     }
-  }, [updater.state.phase, updater.silentAnnounce])
+  }, [updatePhase, updater.silentAnnounce, updater.state.downloadedVersion, t])
 
   // Refresh before opening: a tray click can arrive long after the renderer last heard from Main,
   // and showing a stale phase would be worse than showing nothing.
   const showUpdateDetails = useCallback(async (): Promise<void> => {
     await updater.refreshStatus()
     setUpdateDialogOpen(true)
-  }, [updater.refreshStatus])
+    // 重查排在开窗之后且不等它：这样「发现有更新却一直没处理」的人这一次能直接跳到最新版，
+    // 而不是先盯着一屏旧快照等一次网络往返。
+    void updater.recheckLatest()
+  }, [updater.refreshStatus, updater.recheckLatest])
 
   useEffect(() => {
     return window.api.on<UpdateShowDetailsPayload>('update:show-details', () => {
       void showUpdateDetails()
     })
   }, [showUpdateDetails])
+
+  // TitleBar 里的更新图标从 context 取状态：中间隔着 MainLayout，props 透传会把布局组件拖进业务字段。
+  const updateContextValue = useMemo(
+    () => ({ state: updater.state, showDetails: () => void showUpdateDetails() }),
+    [updater.state, showUpdateDetails]
+  )
 
   const handleDownload = useCallback(async (): Promise<void> => {
     // Collapse only once Main confirms the start — the native download keeps running in Main
@@ -219,30 +236,23 @@ function App(): React.JSX.Element | null {
       <ThemeRuntimeSync />
       <ErrorBoundary>
         <TooltipProvider delayDuration={0}>
-          {view === 'splash' && <SplashPage />}
-          {view === 'main' && <MainLayout />}
-          {view === 'settings' && <SettingsPage />}
-          <Toaster
-            position="bottom-left"
-            theme="system"
-            richColors
-            offset={shouldLiftToastsForBanner(updater.state.phase, updateBannerPosition) ? { bottom: UPDATE_BANNER_TOAST_BOTTOM } : undefined}
-          />
-          <UpdateStatusBanner
-            state={updater.state}
-            onShowDetails={() => void showUpdateDetails()}
-            onInstall={updater.installUpdate}
-          />
-          <UpdateDialog
-            state={updater.state}
-            open={updateDialogOpen}
-            onOpenChange={setUpdateDialogOpen}
-            onDownload={handleDownload}
-            onInstall={updater.installUpdate}
-            onCheck={updater.checkForUpdates}
-            onOpenReleasePage={updater.openReleasePage}
-          />
-          <ConfirmDialogProvider />
+          <UpdateProvider value={updateContextValue}>
+            {view === 'splash' && <SplashPage />}
+            {view === 'main' && <MainLayout />}
+            {view === 'settings' && <SettingsPage />}
+            {/* 浮块没了，toast 重新独占左下角 —— 那个给它让位的 offset 随浮块一起撤掉。 */}
+            <Toaster position="bottom-left" theme="system" richColors />
+            <UpdateDialog
+              state={updater.state}
+              open={updateDialogOpen}
+              onOpenChange={setUpdateDialogOpen}
+              onDownload={handleDownload}
+              onInstall={updater.installUpdate}
+              onCheck={updater.checkForUpdates}
+              onOpenReleasePage={updater.openReleasePage}
+            />
+            <ConfirmDialogProvider />
+          </UpdateProvider>
         </TooltipProvider>
       </ErrorBoundary>
     </ThemeProvider>

@@ -3,7 +3,6 @@ import { FolderOpen, Globe, HelpCircle, PanelLeftClose, PanelLeftOpen, PanelRigh
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
-import { openUserGuide } from '@renderer/lib/user-guide'
 import { WindowControls } from './WindowControls'
 
 interface TitleBarProps {
@@ -24,6 +23,7 @@ export function TitleBar({
   const ensureFilesTab = useUIStore((s) => s.ensureFilesTab)
   const ensureBrowserTab = useUIStore((s) => s.ensureBrowserTab)
   const toggleBottomTerminalDock = useUIStore((s) => s.toggleBottomTerminalDock)
+  const openSettings = useUIStore((s) => s.openSettings)
 
   // Get current session ID and terminal dock state
   const currentSessionId = useChatStore((s) => s.activeSessionId)
@@ -92,13 +92,13 @@ export function TitleBar({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              onClick={openUserGuide}
+              onClick={() => openSettings('about')}
               className="titlebar-no-drag flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <HelpCircle className="size-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="bottom">{t('topbar.userGuide', { defaultValue: '使用指引' })}</TooltipContent>
+          <TooltipContent side="bottom">{t('topbar.about', { defaultValue: '关于' })}</TooltipContent>
         </Tooltip>
 
         {hasProject && (

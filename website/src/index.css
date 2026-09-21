@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@plugin '@tailwindcss/typography';
 
 /* 设计 token —— 参考 reasonix.io 的视觉语言（2026-09-21 老大指定）：
    浅色纸面底 + 单一饱和强调色、大留白、13px 圆角卡片、细边框、双语标题排版。
@@ -13,10 +14,63 @@
   --color-paper-soft: #f7f8fa;
   --color-accent: #ea580c;
   --color-accent-soft: #f97316;
+  --color-accent-tint: color-mix(in srgb, var(--color-accent) 9%, white); /* 目录选中项的药丸底 */
 }
 
 html {
   scroll-behavior: smooth;
+  /* 钉住浅色：不写这条，系统深色模式下 UA 会给浅色页面配一套深灰滚动条 */
+  color-scheme: light;
+}
+
+/* 滚动条：系统默认 15px 灰条在纸面底色上很脏。细到 8px、轨道透明，滑块**静置就带品牌色**
+   （淡橙，白底上看得见但不抢内容），hover 才加深。
+   ⚠️ 标准属性 scrollbar-width / scrollbar-color 只能圈给 Firefox：Chromium 121+ 一旦识别它们，
+   就改走原生渲染路径，把下面 ::-webkit-scrollbar 的自定义样式整个屏蔽掉
+   （实测滑块变 10px 原生条且颜色失效）。 */
+:root {
+  --scrollbar-thumb: color-mix(in srgb, var(--color-accent) 26%, white);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-accent) 52%, white);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  /* 这两个属性不被继承，只能靠 * 逐个命中 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 目录栏不显示自己的滚动条：滑块静置就带颜色之后，贴着目录那条 8px 竖条看着像多画的设计元素。
+   目录靠滚轮 / 键盘滚动，选中项会被自动带进可视区（见 doc-page.tsx），不需要这条。 */
+.doc-rail {
+  scrollbar-width: none;
+}
+
+.doc-rail::-webkit-scrollbar {
+  display: none;
 }
 
 body {
@@ -36,6 +90,269 @@ body {
 
 ::selection {
   background-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* 文档页正文（使用指引 / 更新日志）：把 typography 的默认灰阶与链接色接到本站 token。
+   变量覆盖是 typography 官方主题方式，比逐条 !important 覆写样式稳。 */
+.prose {
+  --tw-prose-body: var(--color-ink-900);
+  --tw-prose-headings: var(--color-ink-950);
+  --tw-prose-bold: var(--color-ink-950);
+  --tw-prose-links: var(--color-accent);
+  --tw-prose-quotes: var(--color-ink-900);
+  --tw-prose-quote-borders: var(--color-accent);
+  --tw-prose-bullets: var(--color-accent-soft);
+  --tw-prose-counters: var(--color-ink-900);
+  --tw-prose-code: var(--color-ink-950);
+  --tw-prose-hr: var(--color-ink-700);
+  --tw-prose-th-borders: var(--color-ink-700);
+  --tw-prose-td-borders: var(--color-ink-700);
+  max-width: none;
+}
+
+.prose :where(code):not(:where(pre code)) {
+  background-color: var(--color-paper-soft);
+  border: 1px solid var(--color-ink-700);
+  border-radius: 6px;
+  padding: 0.1em 0.35em;
+  font-size: 0.86em;
+}
+
+/* 文档页正文排版：对齐 reasonix.io/docs 的度量（正文 17/28、h2 25/600 且上方一条 hairline）。
+   全站只有文档页用 .prose，所以代码块只留暗色一份 —— 浅色版与暗色版特异性相同，
+   并存只会让下一个改样式的人猜哪条生效。 */
+.doc-prose {
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.doc-prose :where(p, li, td, th) {
+  letter-spacing: 0.005em;
+}
+
+.doc-prose :where(h2) {
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 3.4rem;
+  padding-top: 2.1rem;
+  border-top: 1px solid var(--color-ink-700);
+}
+
+/* 第一节紧跟首屏，上面再来一条线就成了两道横杠 */
+.doc-prose > h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.doc-prose :where(h3) {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 2.2rem;
+}
+
+.doc-prose :where(pre) {
+  background-color: var(--color-ink-950);
+  border: 0;
+  border-radius: 9px;
+  color: color-mix(in srgb, white 90%, var(--color-ink-700));
+  font-size: 13.5px;
+  line-height: 1.75;
+  padding: 18px 22px;
+}
+
+.doc-prose :where(pre) code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 正文卡片块（见 components/doc-blocks.tsx）：步骤卡 / 特性卡网格 / callout / 表格卡。
+   选择器一律写成 .doc-prose + 元素 + 类，压过 typography 的 `.prose :where(x)`（它靠 :where 归零，
+   但基础样式仍比单类名强），并显式掐掉它给 li / blockquote 加的圆点与引号。 */
+.doc-prose ol.steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 1.4rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.doc-prose ol.steps > li {
+  counter-increment: step;
+  position: relative;
+  margin: 0;
+  padding: 13px 16px 13px 52px;
+  border: 1px solid var(--color-ink-700);
+  border-radius: 13px;
+  background-color: var(--color-paper);
+  font-size: 15.5px;
+  line-height: 1.75;
+}
+
+.doc-prose ol.steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 14px;
+  top: 13px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background-color: var(--color-accent-tint);
+  color: var(--color-accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-style: normal;
+}
+
+.doc-prose ul.feature-grid {
+  list-style: none;
+  margin: 1.4rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.doc-prose ul.feature-grid > li {
+  margin: 0;
+  padding: 12px 15px;
+  border: 1px solid var(--color-ink-700);
+  border-radius: 13px;
+  background-color: var(--color-paper-soft);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.doc-prose ul.feature-grid > li::before {
+  content: none;
+}
+
+.doc-prose ul.feature-grid > li > strong:first-child {
+  color: var(--color-ink-950);
+}
+
+.doc-prose blockquote.callout {
+  display: flex;
+  gap: 12px;
+  margin: 1.5rem 0;
+  padding: 15px 18px;
+  border-radius: 11px;
+  border: 1px solid var(--color-ink-700);
+  background-color: var(--color-paper-soft);
+  font-style: normal;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--color-ink-900);
+}
+
+/* typography 的引号加在 blockquote 的首尾 <p> 上（open-quote / close-quote），
+   不是加在 blockquote 本身 —— 只掐 blockquote 那一层会漏，callout 会带着引号显示。 */
+.doc-prose blockquote.callout::before,
+.doc-prose blockquote.callout::after,
+.doc-prose blockquote.callout p::before,
+.doc-prose blockquote.callout p::after {
+  content: none;
+}
+
+.callout-badge {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background-color: var(--color-ink-900);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.callout-body {
+  min-width: 0;
+}
+
+.callout-body > p {
+  margin: 0.2em 0;
+}
+
+.callout-label {
+  display: block;
+  margin-bottom: 1px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+}
+
+/* 变体必须和基础规则同层级（.doc-prose + 元素 + 类），否则单类名 .callout--tip 的特异性
+   压不过 .doc-prose blockquote.callout，实测三个 callout 会全染成 note 的浅灰底。 */
+.doc-prose blockquote.callout--tip {
+  border-color: color-mix(in srgb, var(--color-accent) 18%, white);
+  background-color: var(--color-accent-tint);
+}
+
+.callout--tip .callout-badge {
+  background-color: var(--color-accent);
+}
+
+.doc-prose blockquote.callout--warning {
+  border-color: color-mix(in srgb, var(--color-accent) 34%, white);
+  border-left-width: 3px;
+  border-left-color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 6%, white);
+}
+
+.callout--warning .callout-badge {
+  background-color: var(--color-accent);
+}
+
+.doc-prose .doc-table {
+  margin: 1.5rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-ink-700);
+  border-radius: 13px;
+}
+
+.doc-prose .doc-table table {
+  margin: 0;
+  border: 0;
+  display: table;
+}
+
+.doc-prose .doc-table th {
+  background-color: var(--color-paper-soft);
+}
+
+@media (max-width: 640px) {
+  .doc-prose ul.feature-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.prose :where(table) {
+  font-size: 0.9em;
+  display: block;
+  overflow-x: auto;
+}
+
+.prose :where(th) {
+  background-color: var(--color-paper-soft);
+}
+
+/* 顶栏是 sticky 的，锚点跳转要给标题留出它的高度，否则跳过去标题被压在顶栏下 */
+.prose :where(h2, h3) {
+  scroll-margin-top: 5rem;
 }
 
 @keyframes reveal-up {

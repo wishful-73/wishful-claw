@@ -1,7 +1,7 @@
 import { advantages } from '../content/site'
 import { AssetPlaceholder, Reveal, Section } from '../components/ui'
 
-// 三类按 content/site.ts 内既定顺序呈现：门槛低（lead）→ 自由 → 好看
+// 两类按 content/site.ts 内既定顺序呈现：门槛低（lead）→ 好看
 export function Advantages() {
   return (
     <Section id="advantages" eyebrow="Why WishfulClaw" title={advantages.title}>

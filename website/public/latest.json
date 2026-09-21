@@ -1,10 +1,9 @@
 {
   "version": "0.2.33",
-  "systemRequirements": "Windows 10/11（64 位）",
-  "officialRelease": false,
   "downloads": {
-    "direct": "",
-    "github": "https://github.com/wishful-73/wishful-claw/releases/latest"
-  },
-  "releasesUrl": "https://github.com/wishful-73/wishful-claw/releases"
+    "windows": "https://github.com/wishful-73/wishful-claw/releases/download/v0.2.33/wishful-claw-0.2.33-setup.exe",
+    "github": "https://github.com/wishful-73/wishful-claw/releases/latest",
+    "macos": "",
+    "linux": ""
+  }
 }

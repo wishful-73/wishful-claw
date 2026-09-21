@@ -20,31 +20,3 @@ export function useLatestInfo(): LatestInfo | undefined {
   }, [])
   return info
 }
-
-export interface ReleaseEntry {
-  tag_name: string
-  name: string
-  html_url: string
-  published_at: string
-  body: string
-}
-
-// 阶段 1 直接吃 GitHub API（CORS 放开）。若被限流则返回空数组，区块自动隐藏
-export function useRecentReleases(): ReleaseEntry[] | undefined {
-  const [releases, setReleases] = useState<ReleaseEntry[]>()
-  useEffect(() => {
-    let alive = true
-    fetch('https://api.github.com/repos/wishful-73/wishful-claw/releases?per_page=5')
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: ReleaseEntry[]) => {
-        if (alive) setReleases(Array.isArray(data) ? data.slice(0, 5) : [])
-      })
-      .catch(() => {
-        if (alive) setReleases([])
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
-  return releases
-}

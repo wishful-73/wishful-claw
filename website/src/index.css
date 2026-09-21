@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+
+/* 设计 token —— 参考 reasonix.io 的视觉语言（2026-09-21 老大指定）：
+   浅色纸面底 + 单一饱和强调色、大留白、13px 圆角卡片、细边框、双语标题排版。
+   强调色保留品牌琥珀（龙虾红橙系），不抄 Reasonix 的蓝。
+   注：token 名沿用 ink-*（历史命名），值已全部翻转为浅色主题。 */
+@theme {
+  --color-ink-950: #1b1e24; /* 正文最深色（原深色主题的文字色翻转复用） */
+  --color-ink-900: #33373f;
+  --color-ink-800: #f6f7f9; /* 浅灰面板底（Reasonix 卡片灰） */
+  --color-ink-700: #e4e7ec; /* 细边框色 */
+  --color-paper: #ffffff;
+  --color-paper-soft: #f7f8fa;
+  --color-accent: #ea580c;
+  --color-accent-soft: #f97316;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink-950);
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal {
+  animation: reveal-up 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+  }
+}

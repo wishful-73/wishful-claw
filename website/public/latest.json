@@ -1,0 +1,10 @@
+{
+  "version": "0.2.33",
+  "systemRequirements": "Windows 10/11（64 位）",
+  "officialRelease": false,
+  "downloads": {
+    "direct": "",
+    "github": "https://github.com/wishful-73/wishful-claw/releases/latest"
+  },
+  "releasesUrl": "https://github.com/wishful-73/wishful-claw/releases"
+}

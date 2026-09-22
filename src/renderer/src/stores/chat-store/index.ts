@@ -2234,13 +2234,16 @@ function flushStreamDeltas(): void {
 
           }
 
-          // Append to last text segment of current iteration, or create new
+          // Append to the current iteration's text segment, or create new.
+          // 工具卡会 push 到 segments 末尾；若只认末尾（要求它必须是 text），同一段正文会被
+          // 一串 tool_use 劈成多个 text segment —— 渲染时表现为正文被工具卡从中间截断（S-133）。
+          // 所以跨过末尾连续的 tool_use 往前找，撞到 text / thinking 就停。
 
-          const lastSeg = msg.segments[msg.segments.length - 1]
+          const targetTextSeg = msg.segments.findLast((seg) => seg.type !== 'tool_use')
 
-          if (lastSeg && lastSeg.type === 'text' && lastSeg.iteration === msg.currentIteration) {
+          if (targetTextSeg && targetTextSeg.type === 'text' && targetTextSeg.iteration === msg.currentIteration) {
 
-            lastSeg.text = (lastSeg.text ?? '') + delta.text
+            targetTextSeg.text = (targetTextSeg.text ?? '') + delta.text
 
           } else {
 

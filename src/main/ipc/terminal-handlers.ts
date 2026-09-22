@@ -5,6 +5,14 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
+/*
+ * 500-line exemption: 512 lines as of 2026-09-22 (before this iteration's sessionId/projectId
+ * fields). This is the node-pty session store and nothing else — the session map, its output/exit
+ * bookkeeping, the owner-window routing and the IPC surface that mutates it all share one lifetime,
+ * and the map is deliberately module-private so nothing outside this file can hold a session. Moving
+ * the handlers out would mean exporting the map. See AGENTS.md.
+ */
+
 import { BrowserWindow, type WebContents } from 'electron'
 import { homedir } from 'os'
 import { randomUUID } from 'crypto'
@@ -26,6 +34,10 @@ interface CreateTerminalSessionArgs {
   title?: string
   command?: string
   env?: Record<string, string>
+  /** Session this terminal belongs to — set by agent-started terminals, absent for user tabs. */
+  sessionId?: string
+  /** Project the session belongs to — carried so the dock can match tabs to the right pane. */
+  projectId?: string
 }
 
 interface CreateTerminalSessionResult {
@@ -57,7 +69,7 @@ interface TerminalExitEvent {
   signal?: number
 }
 
-interface TerminalSessionListEntry {
+export interface TerminalSessionListEntry {
   id: string
   shell: string
   cwd: string
@@ -68,6 +80,8 @@ interface TerminalSessionListEntry {
   command?: string
   exitCode?: number
   exitSignal?: number
+  sessionId?: string
+  projectId?: string
   buffer?: TerminalOutputChunk[]
 }
 
@@ -94,6 +108,9 @@ interface TerminalSession {
   nextSeq: number
   ownerWindowId: number | null
   signalFirstOutput: () => void
+  /** Set for agent-started terminals so the dock can filter tabs per session. */
+  sessionId?: string
+  projectId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -264,6 +281,8 @@ function toSessionRecord(
     ...(session.command ? { command: session.command } : {}),
     ...(session.exitCode !== undefined ? { exitCode: session.exitCode } : {}),
     ...(session.exitSignal !== undefined ? { exitSignal: session.exitSignal } : {}),
+    ...(session.sessionId ? { sessionId: session.sessionId } : {}),
+    ...(session.projectId ? { projectId: session.projectId } : {}),
     ...(includeBuffer ? { buffer: session.buffer.slice() } : {})
   }
 }
@@ -295,6 +314,19 @@ function waitForInitialOutput(session: TerminalSession, timeoutMs: number): Prom
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/**
+ * Snapshot of every live session, oldest first.
+ *
+ * The buffer is opt-in because it is the whole 64 KB the pty wrote; only the two callers that turn it
+ * into text for a reader (the terminal:list handler, and the agent's read action) need it.
+ */
+export function listTerminalSessionRecords(includeBuffer = false): TerminalSessionListEntry[] {
+  pruneExpiredExitedSessions()
+  return Array.from(terminalSessions.values())
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((session) => toSessionRecord(session, includeBuffer))
+}
 
 export async function createTerminalSession(
   args: CreateTerminalSessionArgs,
@@ -344,6 +376,8 @@ export async function createTerminalSession(
         createdAt: Date.now(),
         title: args.title?.trim() || launch.shell.split(/[\\/]/).pop() || launch.shell,
         ...(command ? { command } : {}),
+        ...(args.sessionId?.trim() ? { sessionId: args.sessionId.trim() } : {}),
+        ...(args.projectId?.trim() ? { projectId: args.projectId.trim() } : {}),
         buffer: [],
         bufferBytes: 0,
         nextSeq: 0,
@@ -504,9 +538,6 @@ export function registerTerminalHandlers(): void {
   })
 
   registerMessagePackHandler<undefined>('terminal:list', async () => {
-    pruneExpiredExitedSessions()
-    return Array.from(terminalSessions.values())
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .map((session) => toSessionRecord(session, true))
+    return listTerminalSessionRecords(true)
   })
 }

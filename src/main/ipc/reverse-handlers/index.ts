@@ -9,6 +9,11 @@
 import { handleCronReverseRequest } from './cron-reverse-handler'
 import { handleImageGenerate } from './image-reverse-handler'
 import { handleStubReverseRequest } from './stub-reverse-handler'
+import {
+  handleTerminalRead,
+  handleTerminalStart,
+  handleTerminalStop
+} from './terminal-reverse-handler'
 import { handleWindowCaptureSelf } from './window-capture-handler'
 import { handleCodeGraphTool } from '../codegraph-handlers'
 import { executeMcpToolFromMain, readMcpResourceFromMain } from '../mcp-handlers'
@@ -63,6 +68,10 @@ const directHandlers = new Map<string, ReverseHandler>([
       authType: meta.authType
     }))
   }],
+  // Terminal tool (agent-started long-lived processes in the bottom dock)
+  ['terminal:start', (p) => handleTerminalStart(p)],
+  ['terminal:read', (p) => handleTerminalRead(p)],
+  ['terminal:stop', (p) => handleTerminalStop(p)],
 ])
 
 // Channel-specific plugin methods — routed to real channel handlers

@@ -262,6 +262,9 @@ export function BottomTerminalDock({
                     {tab.kind === 'ssh-agent' && (
                       <SquareTerminal className="size-3 shrink-0 text-cyan-500" />
                     )}
+                    {tab.kind === 'local-agent' && (
+                      <SquareTerminal className="size-3 shrink-0 text-emerald-500" />
+                    )}
                     <StatusDot status={tab.status} />
                     <span className="max-w-[120px] truncate text-xs font-medium">
                       {tab.title}

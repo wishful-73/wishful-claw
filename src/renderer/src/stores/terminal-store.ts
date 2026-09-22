@@ -7,7 +7,7 @@ import { resolveShellExecutable } from '@renderer/stores/settings-store-types'
 
 // ─── Types ───
 
-export type TerminalTabKind = 'local' | 'ssh-agent'
+export type TerminalTabKind = 'local' | 'local-agent' | 'ssh-agent'
 
 export interface TerminalTab {
   id: string
@@ -41,6 +41,16 @@ interface TerminalStore {
   /** Check if an agent tab exists for a session */
   hasSshAgentTabForSession: (sessionId: string) => boolean
 
+  _onCreated: (event: {
+    id?: string
+    title?: string
+    shell?: string
+    cwd?: string
+    createdAt?: number
+    exitCode?: number
+    sessionId?: string
+    projectId?: string
+  }) => void
   _onOutput: (event: { id?: string; data?: string; seq?: number }) => void
   _onExit: (event: { id?: string; exitCode?: number; signal?: number }) => void
 }
@@ -60,6 +70,12 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     ipcClient.on(IPC.TERMINAL_EXIT, (payload) => {
       const event = payload as { id?: string; exitCode?: number; signal?: number }
       get()._onExit(event)
+    })
+
+    // Listen for terminals created outside this window's own createTab call — the agent's Terminal
+    // tool starts processes through the Main process, and Main announces each one here.
+    ipcClient.on(IPC.TERMINAL_CREATED, (payload) => {
+      get()._onCreated(payload as Parameters<TerminalStore['_onCreated']>[0])
     })
 
     // Listen for SSH exec output — ensure a single agent tab per session
@@ -203,6 +219,32 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     return get().tabs.some(
       (t) => t.kind === 'ssh-agent' && t.sessionId === sessionId
     )
+  },
+
+  _onCreated: (event) => {
+    const id = event.id
+    if (!id) return
+
+    // Already known — this window created it, or an earlier event raced with the invoke reply.
+    if (get().tabs.some((tab) => tab.id === id)) return
+
+    const tab: TerminalTab = {
+      id,
+      kind: 'local-agent',
+      title: event.title || 'Agent',
+      shell: event.shell || 'shell',
+      cwd: event.cwd || '~',
+      status: event.exitCode === undefined ? 'running' : event.exitCode === 0 ? 'exited' : 'error',
+      createdAt: event.createdAt || Date.now(),
+      projectId: event.projectId ?? null,
+      sessionId: event.sessionId ?? null,
+      ...(event.exitCode !== undefined ? { exitCode: event.exitCode } : {})
+    }
+
+    // Do NOT auto-open the dock, and do NOT steal activeTabId: the agent starting a server is not a
+    // reason to rearrange the user's screen. The dock keeps its xterm mounted while CSS-hidden, so
+    // output accumulates and is all there the moment the user opens the dock themselves.
+    set((state) => ({ tabs: [...state.tabs, tab] }))
   },
 
   _onOutput: (_event) => {},

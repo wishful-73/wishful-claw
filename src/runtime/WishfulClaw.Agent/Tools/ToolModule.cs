@@ -54,6 +54,7 @@ public sealed class ToolModule : IWorkerModule
             new Providers.SshToolProvider(),
             new Providers.TaskToolProvider(),
             new Providers.TeamToolProvider(),
+            new Providers.TerminalToolProvider(),
             new Providers.UseCapabilityToolProvider(),
             new Providers.WebToolProvider(),
             new Providers.WidgetToolProvider(),

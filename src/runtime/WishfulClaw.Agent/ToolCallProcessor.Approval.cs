@@ -31,10 +31,15 @@ public static partial class ToolCallProcessor
     /// The shell subset of <see cref="DefaultModeApprovalTools"/>. It is split out because
     /// it is the only group a channel session may waive approval for, and the approval set
     /// is built from it so the two lists cannot drift apart.
+    ///
+    /// <c>Terminal</c> is a shell in the sense that matters here: it starts a process on the user's
+    /// machine, so it must pause in default mode exactly as Bash does. Listing it here also puts it in
+    /// the channel waiver's reach, which is harmless rather than intentional — the tool is excluded
+    /// from channel sessions by scope (<c>*:channel@*</c>), so no channel run can get that far.
     /// </summary>
     private static readonly HashSet<string> ShellApprovalTools = new(StringComparer.Ordinal)
     {
-        "Bash", "Shell", "ShellExec", "PowerShell"
+        "Bash", "Shell", "ShellExec", "PowerShell", "Terminal"
     };
 
     /// <summary>

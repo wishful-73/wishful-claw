@@ -1,3 +1,8 @@
+// 500-line exemption (573 lines as of 2026-09-22, before this iteration's Terminal branch). This is
+// one ordered if/else chain, not a grab-bag: the order of the branches IS the routing contract (an
+// earlier branch wins, so the admission checks must stay above the generic ones), and every branch is
+// three lines of delegate-and-catch. Splitting it would spread a single decision table across files
+// and make "which branch wins" a question you answer by opening several of them. See AGENTS.md.
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -418,6 +423,21 @@ public static class ToolDispatchRouter
             catch (Exception ex)
             {
                 toolOutput = $"SSH info tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
+        // Terminal: start/read/stop a long-lived process in the bottom dock, via Main process
+        else if (AgentRuntimeTerminalExecutor.IsTerminalTool(toolCall.Name))
+        {
+            try
+            {
+                (toolOutput, isToolError) = await AgentRuntimeTerminalExecutor.ExecuteAsync(
+                    toolCall, state.Parameters, context, state.CancellationToken);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Terminal tool execution failed: {ex.Message}";
                 isToolError = true;
             }
         }

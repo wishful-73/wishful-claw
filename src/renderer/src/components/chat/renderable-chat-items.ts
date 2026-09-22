@@ -30,7 +30,6 @@ export interface RenderableMessageItem {
   }
   isLastUserMessage: boolean
   isLastAssistantMessage: boolean
-  showContinue: boolean
 }
 
 export interface RenderableContextCompressionItem {
@@ -43,7 +42,6 @@ export interface RenderableContextCompressionItem {
   trigger: 'auto' | 'manual'
   isLastUserMessage: false
   isLastAssistantMessage: false
-  showContinue: false
 }
 
 export interface RenderableLiveCompressionItem {
@@ -59,7 +57,6 @@ export interface RenderableLiveCompressionItem {
   maxAttempts: number
   isLastUserMessage: false
   isLastAssistantMessage: false
-  showContinue: false
 }
 
 export type RenderableChatItem =
@@ -217,8 +214,7 @@ function createAssistantFragment(
     originMessageId: message.id,
     fragment: { position, operationId },
     isLastUserMessage: false,
-    isLastAssistantMessage: false,
-    showContinue: false
+    isLastAssistantMessage: false
   }
 }
 
@@ -329,8 +325,7 @@ export function buildRenderableChatItems(
       operationId,
       trigger: boundary.trigger,
       isLastUserMessage: false,
-      isLastAssistantMessage: false,
-      showContinue: false
+      isLastAssistantMessage: false
     })
   }
 
@@ -342,8 +337,7 @@ export function buildRenderableChatItems(
       messageId: message.id,
       originMessageId: message.id,
       isLastUserMessage: message.id === lastUserId,
-      isLastAssistantMessage: message.id === lastAssistantId,
-      showContinue: false
+      isLastAssistantMessage: message.id === lastAssistantId
     }
     items.push(item)
   }
@@ -360,8 +354,7 @@ export function buildRenderableChatItems(
     attempt: liveState!.attempt,
     maxAttempts: liveState!.maxAttempts,
     isLastUserMessage: false,
-    isLastAssistantMessage: false,
-    showContinue: false
+    isLastAssistantMessage: false
   })
 
   for (let index = 0; index <= displayMessages.length; index += 1) {

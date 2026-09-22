@@ -247,7 +247,15 @@ internal static partial class AgentLoop
         InjectTransientPrefix(conversation, state);
 
         var requestedMaxIterations = JsonHelpers.GetInt(parameters, "maxIterations", 0); // 0 = unlimited
-        var hasIterationLimit = requestedMaxIterations > 0;
+        // S-132：真子代理 run 不接受轮次上限（definition.MaxTurns 已降级为「轮次提醒点」）。
+        // 判据在此自算，不复用 :59-60 的变量 —— 那对变量读的是归一化（:171）之前的参数，
+        // 且比较用 Ordinal，等于依赖「调用方写对大小写」这个隐式约定。此处显式放宽大小写。
+        // sidecar 的单轮语义（maxIterations: 1）走的不是子代理 run，不受影响。
+        // 注意用 string.Equals 静态重载：sessionModeForConv 可能为 null。
+        var isSubAgentRun =
+            string.Equals(sessionModeForConv, "subAgent", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(sessionModeForConv, "goalSubAgent", StringComparison.OrdinalIgnoreCase);
+        var hasIterationLimit = requestedMaxIterations > 0 && !isSubAgentRun;
         var providerTurnOnly = JsonHelpers.GetBool(parameters, "providerTurnOnly", false);
         // Reuse the most recent provider-reported context usage from the wire
         // conversation. Resident sessions already carry it in memory, and lazy

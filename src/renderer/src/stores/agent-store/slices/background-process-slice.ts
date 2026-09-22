@@ -55,8 +55,12 @@ export const createBackgroundProcessSlice: Slice = (set, _get) => ({
       },
       abortForegroundShellExec: async (toolUseId) => {
         const exec = useAgentStore.getState().foregroundShellExecByToolUseId[toolUseId]
-        if (!exec?.execId) return
-        ipcClient.send(IPC.SHELL_ABORT, { execId: exec.execId })
+        // C# 侧按 tool call id 登记运行中的进程，toolUseId 本身就是那个 id；
+        // 显式 execId 只在这条老路径（foregroundShellExecByToolUseId 被填充时）才有。
+        // 注册点可能为空，所以回退到 toolUseId（iter-34 S-137）。
+        const execId = exec?.execId ?? toolUseId
+        if (!execId) return
+        await ipcClient.invoke(IPC.SHELL_ABORT, { execId })
         set((state) => {
           delete state.foregroundShellExecByToolUseId[toolUseId]
         })

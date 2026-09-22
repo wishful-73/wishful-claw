@@ -27,7 +27,9 @@ public sealed partial class ShellExecuteTool
 
         int timeoutMs,
 
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+
+        string? execId)
 
     {
 
@@ -81,39 +83,85 @@ public sealed partial class ShellExecuteTool
 
         bool timedOut = false;
 
+        // 登记进中止表：渲染层的「停止进程」按钮拿同一个 execId 找回来
+        // （iter-34 S-137）。execId 就是模型返回的 tool call id。
+        if (execId is not null)
+
+        {
+
+            Running[execId] = new RunningProcess(process);
+
+        }
+
 
 
         try
 
         {
 
-            await process.WaitForExitAsync(linkedCts.Token);
+            try
+
+            {
+
+                await process.WaitForExitAsync(linkedCts.Token);
+
+            }
+
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+
+            {
+
+                // 外部中止（会话停止 / shell:abort 之外的取消）：必须显式杀掉进程树。
+
+                // 只靠 using 去 dispose 的话，Process 对象没了，子进程会变成孤儿继续跑。
+
+                TryKillProcessTree(process);
+
+                try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
+
+                throw;
+
+            }
+
+            catch (OperationCanceledException)
+
+            {
+
+                timedOut = true;
+
+                TryKillProcessTree(process);
+
+                try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
+
+            }
+
+
+
+            try { await stdoutTask; } catch { }
+
+            try { await stderrTask; } catch { }
+
+
+
+            var exitCode = timedOut ? 124 : process.ExitCode;
+
+            return (stdoutCollector.ToString(), stderrCollector.ToString(), exitCode, timedOut, spawnMs, firstChunkMs);
 
         }
 
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        finally
 
         {
 
-            timedOut = true;
+            if (execId is not null)
 
-            TryKillProcessTree(process);
+            {
 
-            try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
+                Running.TryRemove(execId, out _);
+
+            }
 
         }
-
-
-
-        try { await stdoutTask; } catch { }
-
-        try { await stderrTask; } catch { }
-
-
-
-        var exitCode = timedOut ? 124 : process.ExitCode;
-
-        return (stdoutCollector.ToString(), stderrCollector.ToString(), exitCode, timedOut, spawnMs, firstChunkMs);
 
     }
 

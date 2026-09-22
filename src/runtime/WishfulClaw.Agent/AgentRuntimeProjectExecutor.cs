@@ -223,10 +223,12 @@ public static partial class AgentRuntimeProjectExecutor
                 Pinned = 0
             };
 
+            // model_selection_mode 是 NOT NULL 且无默认值：存量库该列由 SqlSugar 迁移建出，
+            // 只有类型没有 DEFAULT，漏列直接撞 NOT NULL 约束（S-115）。值随 SessionEntity 默认走。
             db.Execute(
                 "INSERT INTO sessions (id, title, mode, created_at, updated_at, message_count, " +
-                "project_id, working_folder, ssh_connection_id, pinned) " +
-                "VALUES (@id, @title, @mode, @ca, @ua, 0, @pid, @wf, @ssh, 0)",
+                "project_id, working_folder, ssh_connection_id, pinned, model_selection_mode) " +
+                "VALUES (@id, @title, @mode, @ca, @ua, 0, @pid, @wf, @ssh, 0, @msm)",
                 new SqliteParameter("@id", entity.Id),
                 new SqliteParameter("@title", entity.Title),
                 new SqliteParameter("@mode", entity.Mode),
@@ -234,7 +236,8 @@ public static partial class AgentRuntimeProjectExecutor
                 new SqliteParameter("@ua", entity.UpdatedAt),
                 new SqliteParameter("@pid", (object?)entity.ProjectId ?? DBNull.Value),
                 new SqliteParameter("@wf", (object?)entity.WorkingFolder ?? DBNull.Value),
-                new SqliteParameter("@ssh", (object?)entity.SshConnectionId ?? DBNull.Value));
+                new SqliteParameter("@ssh", (object?)entity.SshConnectionId ?? DBNull.Value),
+                new SqliteParameter("@msm", entity.ModelSelectionMode));
 
             var result = JsonSerializer.Serialize(
                 new CreateSessionResult(sessionId, title, projectId, now),

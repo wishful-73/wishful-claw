@@ -18,10 +18,7 @@ import type { MessageListProps } from './MessageList/utils'
 function MessageListInner(props: MessageListProps): React.JSX.Element {
   const {
     sessionId,
-    onRetry,
-    onContinue,
     onEditUserMessage,
-    onDeleteMessage,
     exportAll = false,
     fullWidth = false
   } = props
@@ -108,7 +105,6 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
                 isStreaming={row.kind === 'message' && streamingMessageId === row.originMessageId}
                 isLastUserMessage={row.isLastUserMessage}
                 isLastAssistantMessage={row.isLastAssistantMessage}
-                showContinue={row.showContinue}
                 disableAnimation
                 toolResults={originMessageId ? (data.toolResultsLookup.get(originMessageId) as any) : undefined}
                 orchestrationRun={orchestration?.primaryRun ?? null}
@@ -122,10 +118,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
                   row.isLastAssistantMessage ? ((data.sessionRequestRetryState ?? null) as any) : null
                 }
                 fullWidth={fullWidth}
-                onRetry={onRetry}
-                onContinue={onContinue}
                 onEditUserMessage={onEditUserMessage}
-                onDeleteMessage={onDeleteMessage}
               />
             )
           })}
@@ -171,10 +164,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
       handleJumpToAssistantMessage={scroll.handleJumpToAssistantMessage as any}
       scrollToBottom={scroll.scrollToBottom}
       t={t}
-      onRetry={onRetry}
-      onContinue={onContinue}
       onEditUserMessage={onEditUserMessage}
-      onDeleteMessage={onDeleteMessage}
     />
   )
 

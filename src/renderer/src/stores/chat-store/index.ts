@@ -30,7 +30,7 @@ import {
   isCompactBoundaryMessage,
   isCompactSummaryLikeMessage,
   mergeCompressedMessagesKeepHistory,
-  resolveSessionContextCapTokens,
+  resolveEffectiveContextCapTokens,
   resolveSessionCompressionThreshold
 } from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, ContentBlock, MessageMeta, UnifiedMessage } from '@renderer/lib/api/types'
@@ -409,17 +409,19 @@ export const useChatStore = create<ChatStore>()(
           workerParams.provider = { ...workerParams.provider, sessionId }
         }
 
-        // 会话级「请求上下文上限」（iter-32 S-84）同样在这里盖章。上限记着它是
-        // 在哪个模型上设的，模型换了就作废（老大口径：切换模型时这个值改成模型
-        // 的最大上下文，需要重新设置）。比对需要「当前模型 id」，而 sendMessage
-        // 是唯一通往 agent/run 的门，provider.model 现成 —— 放这里做，六个透传点
-        // 就不必各自解析一遍模型，也不会像当年 provider.sessionId 那样只在某条
-        // 路径上生效。
-        workerParams.contextCapTokens = resolveSessionContextCapTokens({
-          capTokens: capSession?.contextCapTokens,
-          capModelId: capSession?.contextCapModelId,
+        // 会话级「请求上下文上限」（iter-32 S-84，iter-34 S-107 加全局继承）同样在这里
+        // 盖章。优先级：会话设过（且仍适用于当前模型）就用会话的，否则落到全局设置。
+        // 上限记着它是在哪个模型上设的，模型换了就作废（老大口径：切换模型时这个值改成
+        // 模型的最大上下文，需要重新设置）——注意这条只约束**会话级**，全局值不绑模型。
+        // 比对需要「当前模型 id」，而 sendMessage 是唯一通往 agent/run 的门，
+        // provider.model 现成 —— 放这里做，六个透传点就不必各自解析一遍模型，也不会
+        // 像当年 provider.sessionId 那样只在某条路径上生效。
+        workerParams.contextCapTokens = resolveEffectiveContextCapTokens({
+          sessionCapTokens: capSession?.contextCapTokens,
+          sessionCapModelId: capSession?.contextCapModelId,
           currentModelId:
-            typeof workerParams.provider?.model === 'string' ? workerParams.provider.model : null
+            typeof workerParams.provider?.model === 'string' ? workerParams.provider.model : null,
+          globalCapTokens: recallSettings.contextCapTokens
         })
 
         // 会话级「压缩阈值」（iter-32 S-85）同款盖章：会话设过就用会话的，否则用全局的。
@@ -2234,13 +2236,20 @@ function flushStreamDeltas(): void {
 
           }
 
-          // Append to last text segment of current iteration, or create new
+          // Append to the current iteration's text segment, or create new.
+          // 工具卡与思考块都会 push 到 segments 末尾；若只认末尾（要求它必须是 text），同一段正文
+          // 会被一串 tool_use 或 thinking 劈成多个 text segment —— 渲染时表现为正文被工具卡或
+          // 「已深度思考」条从中间截断（S-133 及其补完）。
+          // 所以跨过末尾连续的 tool_use 与 thinking 往前找：撞到上一个 text 就并进去，
+          // 撞到别的（目前只有这三类 segment）就停。
 
-          const lastSeg = msg.segments[msg.segments.length - 1]
+          const targetTextSeg = msg.segments.findLast(
+            (seg) => seg.type !== 'tool_use' && seg.type !== 'thinking'
+          )
 
-          if (lastSeg && lastSeg.type === 'text' && lastSeg.iteration === msg.currentIteration) {
+          if (targetTextSeg && targetTextSeg.type === 'text' && targetTextSeg.iteration === msg.currentIteration) {
 
-            lastSeg.text = (lastSeg.text ?? '') + delta.text
+            targetTextSeg.text = (targetTextSeg.text ?? '') + delta.text
 
           } else {
 

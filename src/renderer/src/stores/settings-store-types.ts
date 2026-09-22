@@ -142,6 +142,17 @@ export const MAX_MAX_TOOL_CALLS_PER_TURN = 50
 export const DEFAULT_MAX_RESIDENT_TURNS = 15
 export const MIN_MAX_RESIDENT_TURNS = 5
 export const MAX_MAX_RESIDENT_TURNS = 50
+// S-107: 全局「请求上下文上限」，绝对 token 数。
+//
+// 没有「不限制」这一档 —— 全局上限永远是个具体数字（老大 2026-09-22：档位里不要 0）。
+// 默认取最高档 1M：它顶替的就是原来那个 0，对当前所有模型（窗口 ≤1M）等价于旧行为，
+// 老配置里的 0 也顺着这里迁过来，不会被静默压到最低档。
+export const DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS = 1_000_000
+/**
+ * 全局上限的固定档位。只给档位、不给手输 —— 手输出来的数字没法横向比较，
+ * 而且上一轮那个「前后端两套分母」的悬案就是从手输的 384000 冒出来的。
+ */
+export const GLOBAL_CONTEXT_CAP_STAGES: readonly number[] = [200_000, 400_000, 800_000, 1_000_000]
 
 export interface RecentWorkingTarget {
   workingFolder: string
@@ -272,6 +283,29 @@ export function clampMaxResidentTurns(value: number): number {
     MAX_MAX_RESIDENT_TURNS,
     Math.max(MIN_MAX_RESIDENT_TURNS, Math.floor(value))
   )
+}
+/**
+ * S-107 全局「请求上下文上限」的收口：一律吸附到固定档位。
+ *
+ * 档位是白名单、不是量程，所以这里不能像上面几个 clamp 那样「夹一下」了事：
+ * 老配置里的手输值（比如 384000）会被吸附到最近的档（400K），顺手把历史值迁到档位上。
+ * 非正数（含老配置里那个「不限制」哨兵 0）和非法值全部回落默认档，**不是**吸附到最低档 ——
+ * 吸附到 200K 等于把老用户的窗口静默砍一半。
+ */
+export function clampGlobalContextCapTokens(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS
+  const target = Math.floor(value)
+  let best = GLOBAL_CONTEXT_CAP_STAGES[0]
+  for (const stage of GLOBAL_CONTEXT_CAP_STAGES) {
+    if (Math.abs(stage - target) < Math.abs(best - target)) best = stage
+  }
+  return best
+}
+
+/** 档位下标，滑杆的值用它；取不到档位就退到第一档。 */
+export function globalContextCapStageIndex(value: number): number {
+  const index = GLOBAL_CONTEXT_CAP_STAGES.indexOf(clampGlobalContextCapTokens(value))
+  return index < 0 ? 0 : index
 }
 export function normalizeShellExecutionEndpoint(value: unknown): ShellExecutionEndpoint {
   if (

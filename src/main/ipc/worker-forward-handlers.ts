@@ -186,4 +186,11 @@ export function registerWorkerForwardHandlers(): void {
     'goal:confirm:msgpack',
     async (args) => getNativeWorker().request('goal/confirm', args)
   )
+
+  // ── Shell process control (forwarded to Worker) ──
+  // Kills a running shell process by tool call id (iter-34 S-137).
+  registerMessagePackHandler<{ execId: string }, unknown>(
+    'shell:abort',
+    async (args) => getNativeWorker().request('shell/abort', args)
+  )
 }

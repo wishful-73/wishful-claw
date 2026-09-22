@@ -1,0 +1,9 @@
+{
+  "version": "0.2.33",
+  "downloads": {
+    "windows": "https://github.com/wishful-73/wishful-claw/releases/download/v0.2.33/wishful-claw-0.2.33-setup.exe",
+    "github": "https://github.com/wishful-73/wishful-claw/releases/latest",
+    "macos": "",
+    "linux": ""
+  }
+}

@@ -1,3 +1,8 @@
+// 500-line exemption (573 lines as of 2026-09-22, before this iteration's Terminal branch). This is
+// one ordered if/else chain, not a grab-bag: the order of the branches IS the routing contract (an
+// earlier branch wins, so the admission checks must stay above the generic ones), and every branch is
+// three lines of delegate-and-catch. Splitting it would spread a single decision table across files
+// and make "which branch wins" a question you answer by opening several of them. See AGENTS.md.
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -421,6 +426,21 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
+        // Terminal: start/read/stop a long-lived process in the bottom dock, via Main process
+        else if (AgentRuntimeTerminalExecutor.IsTerminalTool(toolCall.Name))
+        {
+            try
+            {
+                (toolOutput, isToolError) = await AgentRuntimeTerminalExecutor.ExecuteAsync(
+                    toolCall, state.Parameters, context, state.CancellationToken);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Terminal tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
         // SSH remote execution: route Bash/Shell to remote server when sshConnectionId is present
         else if (AgentRuntimeSshToolExecutor.ShouldRouteToSsh(
             toolCall.Name, toolCall.Input, state.Parameters))
@@ -524,7 +544,7 @@ public static class ToolDispatchRouter
             {
                 var toolContext = new ToolExecutionContext(
                 workingFolder, state.SessionId, state.RunId, projectId, sshConnectionId, state.CancellationToken,
-                sandbox.Enabled, sandbox.Roots);
+                sandbox.Enabled, sandbox.Roots, toolCall.Id);
                 var result = await executor!.ExecuteAsync(toolCall.Input, toolContext);
                 toolOutput = result.Content;
                 isToolError = result.IsError;

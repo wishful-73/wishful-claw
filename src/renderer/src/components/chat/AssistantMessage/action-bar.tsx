@@ -3,10 +3,7 @@
 import * as React from 'react'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
-import {
-  Copy, ChevronsDownUp, ChevronsUpDown, RotateCcw, Play, Ellipsis,
-  Volume2, Share2, GitFork, Trash2
-} from 'lucide-react'
+import { Copy, ChevronsDownUp, ChevronsUpDown, Ellipsis, Volume2, Share2, GitFork } from 'lucide-react'
 import type { RequestDebugInfo } from '@renderer/lib/api/types'
 import type { MemoryRecallInfo } from '@renderer/stores/chat-store/types'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -16,10 +13,11 @@ import { CompletionSummaryBar } from './token-summary'
 import { ActionIconButton, DebugToggleButton } from './ui-buttons'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger
+  DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { formatDurationMs } from '@renderer/lib/format-duration'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import { isSpeechSupported, speakMessage } from '@renderer/lib/speech'
 
 export interface ActionBarProps {
   isStreaming: boolean
@@ -31,11 +29,6 @@ export interface ActionBarProps {
   updatedAt?: number
   /** 整轮总耗时（ms）。只有被压缩切分过的消息才有：分段后每段只报自己那一截。 */
   totalElapsedMs?: number
-  showRetry?: boolean
-  showContinue?: boolean
-  onRetry?: (messageId: string) => void
-  onContinue?: () => void
-  onDelete?: (messageId: string) => void
   devMode: boolean
   debugInfo?: RequestDebugInfo
   collapsed: boolean
@@ -53,11 +46,6 @@ export function AssistantActionBar({
   isLiveMode,
   sessionId,
   msgId,
-  showRetry,
-  showContinue,
-  onRetry,
-  onContinue,
-  onDelete,
   devMode,
   debugInfo,
   collapsed,
@@ -88,14 +76,17 @@ export function AssistantActionBar({
   const handleSpeak = useCallback((): void => {
     const text = plainText.trim()
     if (!text) return
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    if (!isSpeechSupported()) {
       toast.error(t('messageActions.speechNotSupported'))
       return
     }
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = /[\u4e00-\u9fff]/.test(text) ? 'zh-CN' : 'en-US'
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(utterance)
+    // 在回调里读最新设置：音色 / 语速随时可改，不必让每条消息都订阅一遍。
+    const { speechVoice, speechRate, speechPitch } = useSettingsStore.getState()
+    speakMessage(text, {
+      voice: speechVoice ?? '',
+      rate: speechRate ?? 1,
+      pitch: speechPitch ?? 1
+    })
   }, [plainText, t])
 
   const handleShare = useCallback(async (): Promise<void> => {
@@ -119,7 +110,7 @@ export function AssistantActionBar({
 
     setForking(true)
     try {
-      const forkedSessionId = await forkSessionFromMessage?.(sessionId, msgId) ?? null
+      const forkedSessionId = await forkSessionFromMessage(sessionId, msgId)
       if (!forkedSessionId) {
         toast.error(t('messageActions.forkFailed'))
         return
@@ -134,11 +125,6 @@ export function AssistantActionBar({
       setForking(false)
     }
   }, [forkSessionFromMessage, forking, msgId, navigateToSession, sessionId, t])
-
-  const handleDeleteAndRegenerate = useCallback((): void => {
-    if (!showRetry || !onRetry || !msgId) return
-    onRetry(msgId)
-  }, [msgId, onRetry, showRetry])
 
   return (
     <div className="group/msg flex flex-col">
@@ -169,14 +155,9 @@ export function AssistantActionBar({
           </p>
         )}
         {!isStreaming &&
-          (plainText ||
-            (isLiveMode && sessionId && msgId) ||
-            (msgId && onDelete) ||
-            (devMode && debugInfo) ||
-            (showContinue && onContinue) ||
-            (showRetry && onRetry)) && (
+          (plainText || (isLiveMode && sessionId && msgId) || (devMode && debugInfo)) && (
             <div
-              className={`mt-2 flex items-center gap-1 transition-opacity ${showContinue && onContinue ? 'opacity-100' : 'opacity-0 group-hover/msg:opacity-100'}`}
+              className="mt-2 flex items-center gap-1 opacity-0 transition-opacity group-hover/msg:opacity-100"
             >
               {plainText && (
                 <ActionIconButton
@@ -191,37 +172,6 @@ export function AssistantActionBar({
                   icon={<GitFork className="size-3.5" />}
                   onClick={() => void handleFork()}
                   disabled={forking}
-                />
-              ) : null}
-              {showContinue && onContinue ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={onContinue}
-                      aria-label={t('assistantMessage.continueToolExecution', {
-                        defaultValue: 'Continue execution'
-                      })}
-                      className="flex size-7 items-center justify-center rounded-md border border-border/50 bg-background/90 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                    >
-                      <Play className="size-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {t('assistantMessage.continueToolExecutionHint', {
-                      defaultValue:
-                        'Detected that the last run stopped at tool execution. Click to continue in this message without creating a new AI message'
-                    })}
-                  </TooltipContent>
-                </Tooltip>
-              ) : null}
-              {showRetry && onRetry ? (
-                <ActionIconButton
-                  label={t('assistantMessage.regenerateReference', {
-                    defaultValue: 'Regenerate reference'
-                  })}
-                  icon={<RotateCcw className="size-3.5" />}
-                  onClick={() => msgId && onRetry?.(msgId)}
                 />
               ) : null}
               <DropdownMenu>
@@ -265,37 +215,6 @@ export function AssistantActionBar({
                     )}
                     {collapsed ? t('messageActions.expand') : t('messageActions.collapse')}
                   </DropdownMenuItem>
-                  {showContinue && onContinue && (
-                    <DropdownMenuItem onSelect={onContinue}>
-                      <Play className="size-4" />
-                      {t('assistantMessage.continueToolExecution', {
-                        defaultValue: 'Continue execution'
-                      })}
-                    </DropdownMenuItem>
-                  )}
-                  {showRetry && onRetry && (
-                    <DropdownMenuItem onSelect={() => msgId && onRetry?.(msgId)}>
-                      <RotateCcw className="size-4" />
-                      {t('assistantMessage.regenerateReference', {
-                        defaultValue: 'Regenerate reference'
-                      })}
-                    </DropdownMenuItem>
-                  )}
-                  {showRetry && onRetry && (
-                    <DropdownMenuItem onSelect={handleDeleteAndRegenerate}>
-                      <RotateCcw className="size-4" />
-                      {t('messageActions.deleteAndRegenerate')}
-                    </DropdownMenuItem>
-                  )}
-                  {msgId && onDelete && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem variant="destructive" onSelect={() => onDelete(msgId)}>
-                        <Trash2 className="size-4" />
-                        {t('action.delete', { ns: 'common' })}
-                      </DropdownMenuItem>
-                    </>
-                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
               {devMode && debugInfo && (

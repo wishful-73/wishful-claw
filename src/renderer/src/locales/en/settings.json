@@ -173,6 +173,31 @@
         "default": "System Default"
       }
     },
+    "speech": {
+      "label": "Read Aloud",
+      "desc": "System voice used to read messages aloud, plus speed and pitch",
+      "voice": {
+        "label": "Voice",
+        "desc": "System voices available on this machine; pick Auto to match the message language",
+        "auto": "Auto",
+        "empty": "No local voices detected"
+      },
+      "rate": {
+        "label": "Speed",
+        "desc": "Reading speed, 1 is normal"
+      },
+      "pitch": {
+        "label": "Pitch",
+        "desc": "Reading pitch, 1 is default"
+      },
+      "preview": {
+        "label": "Preview",
+        "desc": "Read a sample line with the current voice, speed, and pitch",
+        "play": "Play",
+        "stop": "Stop",
+        "sample": "Hi, this is the WishfulClaw voice preview, for tuning voice, speed, and pitch."
+      }
+    },
     "language": {
       "label": "Language",
       "desc": "Interface display language"
@@ -214,6 +239,11 @@
       "threshold": {
         "label": "Compression Threshold",
         "desc": "Trigger compression at this context window usage ratio. Range: 30% - 90%"
+      },
+      "contextCap": {
+        "label": "Request Context Limit",
+        "desc": "How much context a request may carry. Pick one of the fixed levels below",
+        "hint": "Lower levels carry less context per request and cost less. Applies only to sessions that have not set their own \u2014 a session can override it from the context ring panel."
       }
     },
     "developerMode": {
@@ -843,7 +873,7 @@
       "label": "App Updates",
       "desc": "Check for and install new Wishful Claw versions",
       "autoCheck": "Check for updates at startup",
-      "autoCheckDesc": "Only checks at startup; downloading and installing always require your confirmation.",
+      "autoCheckDesc": "Checks once at startup, then every 6 hours in the background; downloading and installing always require your confirmation.",
       "check": "Check for updates",
       "latest": "You are using the latest version."
     }
@@ -1371,8 +1401,9 @@
       "noNotes": "No release notes provided for this release.",
       "downloading": "Downloading update…",
       "backgroundHint": "The download continues in the background. Closing this window will not interrupt it.",
-      "trayHint": "You can reopen the progress at any time from “Update details” in the tray.",
-      "download": "Download in background",
+      "trayHint": "You can reopen the progress at any time from the top bar icon or “Update details” in the tray.",
+      "download": "Start download",
+      "backgroundDownload": "Download in background",
       "manualDownload": "Manual download",
       "install": "Restart and install",
       "installing": "Preparing installation…",
@@ -1384,15 +1415,16 @@
       "fullscreen": "Read fullscreen",
       "exitFullscreen": "Exit fullscreen"
     },
-    "banner": {
+    "indicator": {
       "available": "Update {{version}} available",
-      "availableCurrent": "Currently on {{current}}",
-      "downloading": "Downloading update in the background…",
-      "downloaded": "Update {{version}} downloaded, waiting to install",
-      "error": "Update failed",
-      "install": "Restart and install",
-      "details": "Details",
-      "dragHint": "Drag to move"
+      "downloading": "Downloading update…",
+      "downloadingPercent": "Downloading update {{percent}}",
+      "downloaded": "Update {{version}} downloaded — click to review",
+      "error": "Update failed — click to review"
+    },
+    "toast": {
+      "downloaded": "Update {{version}} downloaded. Restart to install.",
+      "error": "Update failed. Click the top bar icon for details."
     },
     "progress": {
       "unknown": "Unknown",

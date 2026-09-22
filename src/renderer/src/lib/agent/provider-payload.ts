@@ -61,6 +61,22 @@ export function buildProviderPayload(
       })
     : undefined
 
+  // contextLength 缺失不能静默：Worker 读不到 `provider.contextLength` 就兜底
+  // DefaultContextCompressionLimit（200K），前端看着一切正常，只在「阈值远没用满就开始
+  // 压缩」时才露馅（S-108）。两种情况分开报，一眼能看出是模型不在 provider 的列表里，
+  // 还是模型档案压根没填 contextLength。走 console.warn 是因为 error-logger 会把它落盘。
+  const contextLength = modelConfig?.contextLength
+  if (contextLength === undefined) {
+    const knownIds = provider.models.map((model) => model.id).join(', ')
+    console.warn(
+      '[provider-payload] contextLength 缺失，Worker 将兜底 200K 压缩窗口' +
+        `（provider=${provider.id}, model=${modelId}）：` +
+        (modelConfig === undefined
+          ? `模型不在该 provider 的 models 列表里（已知：${knownIds || '空'}）`
+          : '模型档案没有填 contextLength')
+    )
+  }
+
   return {
     id: provider.id,
     name: provider.name,
@@ -72,7 +88,7 @@ export function buildProviderPayload(
     providerId: provider.id,
     providerBuiltinId: provider.builtinId ?? undefined,
     model: modelId,
-    contextLength: modelConfig?.contextLength ?? undefined,
+    contextLength,
     temperature: settings.temperature ?? undefined,
     maxTokens: settings.maxTokens ?? undefined,
     thinkingEnabled,

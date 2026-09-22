@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import type { RequestRetryState } from '@renderer/lib/agent/types'
 import { MessageRow } from './MessageRow'
 import type {
@@ -21,10 +21,7 @@ interface ExportViewProps {
   sessionRequestRetryState: RequestRetryState | null
   targetSessionId: string | null
   fullWidth: boolean
-  onRetry: MessageListProps['onRetry']
-  onContinue: MessageListProps['onContinue']
   onEditUserMessage: MessageListProps['onEditUserMessage']
-  onDeleteMessage: MessageListProps['onDeleteMessage']
 }
 
 export function ExportView(props: ExportViewProps): React.JSX.Element {
@@ -40,10 +37,7 @@ export function ExportView(props: ExportViewProps): React.JSX.Element {
     sessionRequestRetryState,
     targetSessionId,
     fullWidth,
-    onRetry,
-    onContinue,
-    onEditUserMessage,
-    onDeleteMessage
+    onEditUserMessage
   } = props
 
   return (
@@ -65,7 +59,6 @@ export function ExportView(props: ExportViewProps): React.JSX.Element {
               isStreaming={row.kind === 'message' && streamingMessageId === row.originMessageId}
               isLastUserMessage={row.isLastUserMessage}
               isLastAssistantMessage={row.isLastAssistantMessage}
-              showContinue={row.showContinue}
               disableAnimation
               toolResults={originMessageId ? (toolResultsLookup.get(originMessageId) as any) : undefined}
               orchestrationRun={orchestration?.primaryRun ?? null}
@@ -79,10 +72,7 @@ export function ExportView(props: ExportViewProps): React.JSX.Element {
                 row.isLastAssistantMessage ? (sessionRequestRetryState ?? null) : null
               }
               fullWidth={fullWidth}
-              onRetry={onRetry}
-              onContinue={onContinue}
               onEditUserMessage={onEditUserMessage}
-              onDeleteMessage={onDeleteMessage}
             />
           )
         })}

@@ -16,6 +16,7 @@ import {
   getEffectiveContextWindow,
   resolveCompressionContextLength,
   resolveCompressionReservedOutputBudget,
+  resolveEffectiveContextCapTokens,
   resolveSessionCompressionThreshold,
   resolveSessionContextCapRange,
   resolveSessionContextCapTokens
@@ -49,6 +50,9 @@ export function ContextRing({
     return idx !== undefined ? (s.sessions[idx] ?? null) : null
   })
   const contextCompressionThreshold = useSettingsStore((s) => s.contextCompressionThreshold)
+  // S-107：全局「请求上下文上限」。会话没设过就继承它，这里读出来既供展示也供
+  // 「跟随全局」判断 —— 面板本身只写会话级的值。
+  const globalContextCapTokens = useSettingsStore((s) => s.contextCapTokens)
   const updateSessionContextCap = useChatStore((s) => s.updateSessionContextCap)
   const updateSessionCompressionThreshold = useChatStore(
     (s) => s.updateSessionCompressionThreshold
@@ -67,14 +71,16 @@ export function ContextRing({
   const compressionConfig = activeModelCfg
     ? {
         enabled: true,
-        // 会话设了「请求上下文上限」时，显示与触发都按 min(真实窗口, 上限) 算
-        // （iter-32 S-73/S-84）。上限只在它当初被设置的那个模型上生效。
+        // 生效的「请求上下文上限」时，显示与触发都按 min(真实窗口, 上限) 算
+        // （iter-32 S-73/S-84）。会话级上限只在它当初被设置的那个模型上生效；
+        // 没设过则继承全局（iter-34 S-107）。
         contextLength: applySessionContextCap(
           resolveCompressionContextLength(activeModelCfg),
-          resolveSessionContextCapTokens({
-            capTokens: activeSession?.contextCapTokens,
-            capModelId: activeSession?.contextCapModelId,
-            currentModelId: activeModelCfg.id
+          resolveEffectiveContextCapTokens({
+            sessionCapTokens: activeSession?.contextCapTokens,
+            sessionCapModelId: activeSession?.contextCapModelId,
+            currentModelId: activeModelCfg.id,
+            globalCapTokens: globalContextCapTokens
           })
         ),
         threshold: effectiveThreshold,
@@ -233,10 +239,20 @@ export function ContextRing({
   const capRange = activeModelCfg
     ? resolveSessionContextCapRange(resolveCompressionContextLength(activeModelCfg))
     : null
-  const capTokens = resolveSessionContextCapTokens({
+  const sessionCapTokens = resolveSessionContextCapTokens({
     capTokens: activeSession.contextCapTokens,
     capModelId: activeSession.contextCapModelId,
     currentModelId: capModelId
+  })
+  // 展示与滑杆都按**生效值**走：会话设过就用会话的，否则是继承来的全局值（S-107）。
+  // sessionCapTokens 只用来判断「这一项是不是会话自己设的」——「跟随全局」按钮靠它决定
+  // 可用性，值本身在生效值里已经算过了。
+  const capIsSession = sessionCapTokens > 0
+  const capTokens = resolveEffectiveContextCapTokens({
+    sessionCapTokens: activeSession.contextCapTokens,
+    sessionCapModelId: activeSession.contextCapModelId,
+    currentModelId: capModelId,
+    globalCapTokens: globalContextCapTokens
   })
   const isCapped = capTokens > 0
   // 未设上限时滑杆停在最右端 —— 「模型最大窗口」与「不限制」本来就是同一个状态。
@@ -368,9 +384,14 @@ export function ContextRing({
                 {t('input.contextCapTitle', { defaultValue: 'Request context limit' })}
               </span>
               <span className="text-xs font-semibold tabular-nums text-foreground">
-                {isCapped
-                  ? formatTokens(capTokens)
-                  : t('input.contextCapUnlimited', { defaultValue: 'Model max' })}
+                {!isCapped
+                  ? t('input.contextCapUnlimited', { defaultValue: 'Model max' })
+                  : capIsSession
+                    ? formatTokens(capTokens)
+                    : t('input.contextCapFollow', {
+                        tokens: formatTokens(capTokens),
+                        defaultValue: 'Global {{tokens}}'
+                      })}
               </span>
             </div>
             <Slider
@@ -432,16 +453,23 @@ export function ContextRing({
             <span className="tabular-nums">{THRESHOLD_SLIDER_MIN}%</span>
             <span className="tabular-nums">{THRESHOLD_SLIDER_MAX}%</span>
           </div>
-          {/* 会话覆盖的还原出口。「跟随全局」是滑条量程（30~90%）之外的哨兵值 0 ——
-              没有这个按钮，用户只要拖过一次就再也回不到跟随全局了。 */}
+          {/* 会话覆盖的还原出口，压缩阈值与「请求上下文上限」共用（S-107 起上限也走它）。
+              「跟随全局」是滑条量程（30~90%）之外的哨兵值 0 —— 没有这个按钮，用户只要
+              拖过一次就再也回不到跟随全局了。两个值一起还原：它们本来就都是「继承全局」
+              的会话级覆盖，留一个挂着会让人以为还原没生效。 */}
           <div className="mt-1 flex justify-end">
             <button
               type="button"
-              disabled={!thresholdIsSession}
-              onClick={() => updateSessionCompressionThreshold(sessionId, 0)}
+              disabled={!thresholdIsSession && !capIsSession}
+              onClick={() => {
+                if (thresholdIsSession) updateSessionCompressionThreshold(sessionId, 0)
+                if (capIsSession) updateSessionContextCap(sessionId, 0, capModelId)
+              }}
               className={cn(
                 'rounded px-1.5 py-0.5 text-[10px] transition-colors',
-                thresholdIsSession ? 'text-primary hover:bg-primary/10' : 'text-muted-foreground/50'
+                thresholdIsSession || capIsSession
+                  ? 'text-primary hover:bg-primary/10'
+                  : 'text-muted-foreground/50'
               )}
             >
               {t('input.compressionThresholdUseGlobal', { defaultValue: 'Follow global' })}

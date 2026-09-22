@@ -25,11 +25,10 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type CodexConfig, type FreeChatSite, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
+import { type ModelBinding, type CodexConfig, type FreeChatSite, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampGlobalContextCapTokens, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
 import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
-import type { UpdateBannerPosition } from '../../../shared/updater/types'
 
 /** Default free web-chat sites offered on the Free Chat page (iter-30 / S-27).
  *  Users can add/remove entries in 设置 → AI 服务 → 免费对话. */
@@ -84,6 +83,7 @@ export {
   MAX_REQUEST_MAX_RETRIES,
   clampRequestMaxRetries,
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
+  DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS,
   DEFAULT_MAX_TOOL_CALLS_PER_TURN,
   DEFAULT_MAX_RESIDENT_TURNS,
   DEFAULT_SHELL_EXECUTION_ENDPOINT,
@@ -96,6 +96,9 @@ export {
   MIN_MAX_PARALLEL_TOOL_CALLS,
   MIN_MAX_TOOL_CALLS_PER_TURN,
   MIN_MAX_RESIDENT_TURNS,
+  GLOBAL_CONTEXT_CAP_STAGES,
+  clampGlobalContextCapTokens,
+  globalContextCapStageIndex,
   clampMaxConcurrentSubAgents,
   clampMaxParallelToolCalls,
   clampMaxToolCallsPerTurn,
@@ -149,6 +152,11 @@ interface SettingsStore {
   sandboxEnabled: boolean
   /** Global trigger ratio shared by every chat model. */
   contextCompressionThreshold: number
+  /**
+   * S-107：全局「请求上下文上限」，绝对 token 数。0 = 不限制（跟随当前模型的窗口）。
+   * 会话级覆盖优先级与压缩阈值同构，见 resolveEffectiveContextCapTokens。
+   */
+  contextCapTokens: number
   editorWorkspaceEnabled: boolean
   editorRemoteLanguageServiceEnabled: boolean
   maxParallelToolCalls: number
@@ -204,13 +212,16 @@ interface SettingsStore {
   liveOutputAnimationStyle: LiveOutputAnimationStyle
   toolbarCollapsedByDefault: boolean
   leftSidebarWidth: number
-  /**
-   * Where the floating update banner was dragged to, or `null` while it still lives on its default
-   * anchored corner. See {@link UpdateBannerPosition} for why `null` is not a position.
-   */
-  updateBannerPosition: UpdateBannerPosition | null
   /** Chat column fills the whole conversation panel instead of the 820px cap. */
   conversationPanelFullWidth: boolean
+
+  // Speech (TTS) Settings (S-138) —— 朗读消息时使用的系统语音。
+  /** 选中的语音 `voiceURI`；空串 = 按消息语言自动挑一个。 */
+  speechVoice: string
+  /** 语速倍率（0.5 ~ 2）。 */
+  speechRate: number
+  /** 音调（0 ~ 2）。 */
+  speechPitch: number
 
   // Search (iter-29 S-23). The API-backed WebSearch chain was retired; the
   // multi-engine scraper is configured here instead.
@@ -303,6 +314,7 @@ export const useSettingsStore = create<SettingsStore>()(
       freeChatActiveTabId: '',
       contextCompressionEnabled: true,
       contextCompressionThreshold: 0.8,
+      contextCapTokens: DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS,
       sandboxEnabled: true,
       editorWorkspaceEnabled: false,
       editorRemoteLanguageServiceEnabled: false,
@@ -358,8 +370,12 @@ export const useSettingsStore = create<SettingsStore>()(
       liveOutputAnimationStyle: 'agile',
       toolbarCollapsedByDefault: false,
       leftSidebarWidth: LEFT_SIDEBAR_DEFAULT_WIDTH,
-      updateBannerPosition: null,
       conversationPanelFullWidth: false,
+
+      // Speech (TTS) Settings (S-138)
+      speechVoice: '',
+      speechRate: 1,
+      speechPitch: 1,
 
       // Search (iter-29 S-23)
       browserSearch: { ...DEFAULT_BROWSER_SEARCH_SETTINGS },
@@ -414,7 +430,10 @@ export const useSettingsStore = create<SettingsStore>()(
                 }),
             ...(patch.maxResidentTurns === undefined
               ? {}
-              : { maxResidentTurns: clampMaxResidentTurns(patch.maxResidentTurns) })
+              : { maxResidentTurns: clampMaxResidentTurns(patch.maxResidentTurns) }),
+            ...(patch.contextCapTokens === undefined
+              ? {}
+              : { contextCapTokens: clampGlobalContextCapTokens(patch.contextCapTokens) })
           }
 
           const hasChanges = (Object.keys(nextPatch) as Array<keyof SettingsStoreData>).some(
@@ -437,7 +456,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 40,
+      version: 41,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore
@@ -467,6 +486,7 @@ export const useSettingsStore = create<SettingsStore>()(
         teamToolsEnabled: state.teamToolsEnabled,
         contextCompressionEnabled: state.contextCompressionEnabled,
         contextCompressionThreshold: state.contextCompressionThreshold,
+        contextCapTokens: clampGlobalContextCapTokens(state.contextCapTokens),
         sandboxEnabled: state.sandboxEnabled,
         editorWorkspaceEnabled: state.editorWorkspaceEnabled,
         editorRemoteLanguageServiceEnabled: state.editorRemoteLanguageServiceEnabled,
@@ -520,6 +540,10 @@ export const useSettingsStore = create<SettingsStore>()(
         toolbarCollapsedByDefault: state.toolbarCollapsedByDefault,
         leftSidebarWidth: clampLeftSidebarWidth(state.leftSidebarWidth),
         conversationPanelFullWidth: state.conversationPanelFullWidth,
+        // Speech (TTS) Settings (S-138)
+        speechVoice: state.speechVoice,
+        speechRate: state.speechRate,
+        speechPitch: state.speechPitch,
         // Search (iter-29 S-23)
         browserSearch: state.browserSearch,
         legacyWebSearch: state.legacyWebSearch,

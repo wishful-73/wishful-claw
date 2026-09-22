@@ -40,12 +40,8 @@ interface MessageItemProps {
   isStreaming?: boolean
   isLastUserMessage?: boolean
   isLastAssistantMessage?: boolean
-  showContinue?: boolean
   disableAnimation?: boolean
-  onRetryAssistantMessage?: (messageId: string) => void
-  onContinueAssistantMessage?: () => void
   onEditUserMessage?: (messageId: string, draft: EditableUserMessageDraft) => void
-  onDeleteMessage?: (messageId: string) => void
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
   liveToolCallMap?: Map<string, ToolCallState> | null
   renderMode?: MessageRenderMode
@@ -141,12 +137,8 @@ function MessageItemInner({
   isStreaming,
   isLastUserMessage,
   isLastAssistantMessage,
-  showContinue,
   disableAnimation,
-  onRetryAssistantMessage,
-  onContinueAssistantMessage,
   onEditUserMessage,
-  onDeleteMessage,
   toolResults,
   liveToolCallMap,
   item,
@@ -192,7 +184,6 @@ function MessageItemInner({
             isLast={isLastUserMessage}
             createdAt={effectiveMessage.createdAt}
             onEdit={onEditUserMessage}
-            onDelete={onDeleteMessage}
           />
         )
       }
@@ -203,16 +194,13 @@ function MessageItemInner({
             isStreaming={isStreaming}
             usage={effectiveMessage.usage}
             toolResults={toolResults}
-            msgId={effectiveMessage.id}
+            // 压缩会把一条 assistant 消息切成多个渲染片段，片段 id 带 `:compression-*` 后缀，
+            // 不是库里真实的消息 id。分叉/重试/删除这类操作要按真实 id 回查，必须用 originMessageId。
+            msgId={item?.kind === 'message' ? item.originMessageId : effectiveMessage.id}
             sessionId={sessionId}
             sessionAssistantMessageIds={sessionAssistantMessageIds}
             sessionToolUseIds={sessionToolUseIds}
-            showRetry={renderMode !== 'transcript'}
-            showContinue={showContinue && isLastAssistantMessage}
             isLastAssistantMessage={isLastAssistantMessage}
-            onRetry={onRetryAssistantMessage}
-            onContinue={onContinueAssistantMessage}
-            onDelete={onDeleteMessage}
             liveToolCallMap={liveToolCallMap}
             // 两个时间戳都往下传：action-bar 用 updatedAt 显示结束时间，并靠这一对算耗时。
             createdAt={effectiveMessage.createdAt}
@@ -334,12 +322,8 @@ function areEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
     prev.isStreaming === next.isStreaming &&
     prev.isLastUserMessage === next.isLastUserMessage &&
     prev.isLastAssistantMessage === next.isLastAssistantMessage &&
-    prev.showContinue === next.showContinue &&
     prev.disableAnimation === next.disableAnimation &&
-    prev.onRetryAssistantMessage === next.onRetryAssistantMessage &&
-    prev.onContinueAssistantMessage === next.onContinueAssistantMessage &&
     prev.onEditUserMessage === next.onEditUserMessage &&
-    prev.onDeleteMessage === next.onDeleteMessage &&
     areToolResultsEqual(prev.toolResults, next.toolResults) &&
     prev.liveToolCallMap === next.liveToolCallMap &&
     prev.renderMode === next.renderMode &&

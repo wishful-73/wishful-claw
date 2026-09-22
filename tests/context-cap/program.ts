@@ -11,6 +11,15 @@
 // 另有一条**显示口径**的断言：滑杆左下角那个 200K 是十进制还是二进制，用户一眼就能
 // 看出对不上（二进制 200*1024 会被 formatTokens 显示成 205k）。这条不是洁癖 —— 是
 // 老大真机拖到最左看到 205k 报上来的。
+//
+// iter-34 S-107 在本文件尾部追加了「全局上限 + 会话继承」一组：全局值存的是**绝对
+// token 数**（0 = 不限制），会话没设过就继承它；会话值仍然受 S-84 的「换模型作废」
+// 约束，而**全局值不绑模型** —— 两者口径不同，别顺手统一。
+//
+// 同一组后来又追加了「全局上限调档」（老大：不要手输，只给 200K / 400K / 800K / 1M）：
+// clampGlobalContextCapTokens 的语义从「夹到量程」改成了「吸附到档位」，档位是**白名单**
+// 不是范围 —— 老配置里的 384000 会在收口时被迁到 400K。档位里**没有 0 / 不限制**：
+// 全局上限永远是个具体数字，老配置的 0 与缺失值都落到默认档 1M，不能被压到最低档。
 
 import assert from 'node:assert/strict'
 import {
@@ -19,10 +28,16 @@ import {
   SESSION_COMPRESSION_THRESHOLD_STEP,
   applySessionContextCap,
   clampSessionCompressionThreshold,
+  resolveEffectiveContextCapTokens,
   resolveSessionContextCapRange,
   resolveSessionContextCapTokens,
   resolveSessionCompressionThreshold
 } from '../../src/renderer/src/lib/agent/context-compression-config'
+import {
+  GLOBAL_CONTEXT_CAP_STAGES,
+  clampGlobalContextCapTokens,
+  globalContextCapStageIndex
+} from '../../src/renderer/src/stores/settings-store-types'
 import { formatTokens } from '../../src/renderer/src/lib/format-tokens'
 
 let checks = 0
@@ -212,5 +227,133 @@ eq(
   0,
   '步长能整除 1 个百分点，滑条刻度不会出现小数'
 )
+
+// —— iter-34 S-107：全局「请求上下文上限」与会话继承 ——
+
+// 优先级与会话级压缩阈值同构：会话设过（且仍适用于当前模型）就用会话的，否则落到
+// 全局；全局也是 0 就 0 = 不限制。两条容易写错的边界都钉在这里：① 会话值因换模型
+// 作废时**落回全局**而不是 0；② 全局值**不绑模型**，没有当前模型 id 照样生效。
+const GLOBAL_CAP = 384_000
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: SOME_CAP,
+    sessionCapModelId: 'model-a',
+    currentModelId: 'model-a',
+    globalCapTokens: GLOBAL_CAP
+  }),
+  SOME_CAP,
+  '会话设过且模型匹配 ⇒ 会话值覆盖全局'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    sessionCapModelId: 'model-a',
+    currentModelId: 'model-a',
+    globalCapTokens: GLOBAL_CAP
+  }),
+  GLOBAL_CAP,
+  '会话没设过 ⇒ 继承全局'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: undefined,
+    sessionCapModelId: null,
+    currentModelId: 'model-a',
+    globalCapTokens: GLOBAL_CAP
+  }),
+  GLOBAL_CAP,
+  '会话字段缺失 ⇒ 继承全局'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: SOME_CAP,
+    sessionCapModelId: 'model-a',
+    currentModelId: 'model-b',
+    globalCapTokens: GLOBAL_CAP
+  }),
+  GLOBAL_CAP,
+  '会话值因换模型作废 ⇒ 落回全局，不是 0'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: SOME_CAP,
+    sessionCapModelId: 'model-a',
+    currentModelId: 'model-a',
+    globalCapTokens: 0
+  }),
+  SOME_CAP,
+  '全局为 0（不限制）不影响会话值生效'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    currentModelId: 'model-a',
+    globalCapTokens: 0
+  }),
+  0,
+  '两边都没设 ⇒ 0 = 不限制'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({ globalCapTokens: GLOBAL_CAP }),
+  GLOBAL_CAP,
+  '全局值不绑模型，拿不到模型 id 也照样生效'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    globalCapTokens: Number.NaN
+  }),
+  0,
+  '全局 NaN 当不限制'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    globalCapTokens: -1
+  }),
+  0,
+  '全局负数当不限制'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    globalCapTokens: 300_000.9
+  }),
+  300_000,
+  '全局小数向下取整'
+)
+
+// —— iter-34 S-107 调档：全局上限只认固定档位 ——
+
+// 档位是白名单不是量程，所以收口是「吸附」不是「夹」：手输的数字要落到最近的档上，
+// 顺手把老配置迁走。**没有「不限制」这一档** —— 全局上限永远是个具体数字。
+eq(clampGlobalContextCapTokens(200_000), 200_000, '正好在档位上 ⇒ 原样保留')
+eq(clampGlobalContextCapTokens(384_000), 400_000, '手输的 384000 吸附到最近的 400K 档')
+eq(clampGlobalContextCapTokens(190_000), 200_000, '离 200K 更近 ⇒ 吸附到 200K')
+eq(clampGlobalContextCapTokens(100_000), 200_000, '低于最低档 ⇒ 吸附到最低档 200K')
+eq(clampGlobalContextCapTokens(1_500_000), 1_000_000, '超出最高档 ⇒ 吸附到 1M')
+// 非正数走的是「回落默认档」，**不是**吸附到最低档：老配置里的 0 就是旧的「不限制」，
+// 吸附到 200K 等于把老用户的窗口静默砍一半。
+eq(clampGlobalContextCapTokens(0), 1_000_000, '老配置的 0（旧「不限制」哨兵）⇒ 默认档 1M')
+eq(clampGlobalContextCapTokens(-1), 1_000_000, '负数回落默认档，不吸附到 200K')
+eq(clampGlobalContextCapTokens(Number.NaN), 1_000_000, 'NaN 回落默认档')
+eq(GLOBAL_CONTEXT_CAP_STAGES.length, 4, '档位数：200K / 400K / 800K / 1M')
+eq(GLOBAL_CONTEXT_CAP_STAGES[0], 200_000, '最低档就是 200K，档位里没有 0 / 不限制')
+
+// 滑杆吃的是**下标**，不是 token 数 —— 两边换算只有这一个入口，别在组件里再算一遍。
+eq(globalContextCapStageIndex(200_000), 0, '200K = 第 0 档')
+eq(globalContextCapStageIndex(384_000), 1, '手输值先吸附到 400K 再取下标 = 第 1 档')
+eq(globalContextCapStageIndex(1_000_000), 3, '1M = 最后一档')
+eq(globalContextCapStageIndex(0), 3, '0 回落默认档 1M ⇒ 下标落在最后一档')
 
 console.log(`context-cap: ${checks} assertions passed`)

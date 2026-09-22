@@ -13,7 +13,9 @@ import {
   CHAT_REHYPE_PLUGINS, MARKDOWN_REMARK_PLUGINS,
   resolveLocalFilePath, openMarkdownHref
 } from '@renderer/lib/preview/viewers/markdown-components'
+import { isWebUrl } from '@renderer/lib/preview/web-url'
 import { LocalPathCode } from './LocalPathCode'
+import { WebUrlCode } from './WebUrlCode'
 import { useStreamingRenderPool } from '@renderer/hooks/use-typewriter'
 import { useStreamingMarkdownBlocks } from '@renderer/hooks/use-streaming-markdown-blocks'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -261,6 +263,9 @@ const MarkdownCode: NonNullable<Components['code']> = ({ children, className, no
   const isInline = !match && !className && !isMarkdownCodeBlock(rawCode, node)
   if (isInline) {
     const code = rawCode.replace(/\n$/, '')
+    if (isWebUrl(code)) {
+      return <WebUrlCode url={code} style={{ fontFamily: MONO_FONT }} />
+    }
     const resolvedPath = resolveLocalFilePath(code)
     if (resolvedPath) {
       return (

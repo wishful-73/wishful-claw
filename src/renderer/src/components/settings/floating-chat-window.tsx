@@ -6,6 +6,8 @@ import { MessageList } from '@renderer/components/chat/MessageList'
 import { InputArea } from '@renderer/components/chat/InputArea'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useChatActions } from '@renderer/hooks/use-chat-actions'
+import { useUIStore } from '@renderer/stores/ui-store'
+import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
 
 interface FloatingChatWindowProps {
   sessionId: string | null
@@ -72,6 +74,16 @@ export function FloatingChatWindow({
     useChatStore.getState().cancelStream()
   }, [])
 
+  // S-139：编辑用户消息只把内容回填到底部输入框，不动历史消息。
+  const handleEditUserMessage = useCallback(
+    (_messageId: string, draft: EditableUserMessageDraft): void => {
+      const ui = useUIStore.getState()
+      ui.setPendingInsertText(draft.text)
+      ui.setPendingInsertImages(draft.images.length > 0 ? draft.images : null)
+    },
+    []
+  )
+
   useEffect(() => {
     if (sessionId) {
       void useChatStore.getState().loadRecentSessionMessages(sessionId)
@@ -104,7 +116,11 @@ export function FloatingChatWindow({
       {/* Message list or empty state */}
       <div className="flex-1 min-h-0">
         {sessionId ? (
-          <MessageList sessionId={sessionId} fullWidth />
+          <MessageList
+            sessionId={sessionId}
+            fullWidth
+            onEditUserMessage={handleEditUserMessage}
+          />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
             <Sparkles className="size-8 text-muted-foreground/40" />

@@ -452,7 +452,7 @@ export const createSubAgentSlice: Slice = (set, _get) => ({
           ipcClient.invoke(IPC.PROCESS_KILL, { id }).catch(() => {})
         }
         for (const execId of shellExecIdsToAbort) {
-          ipcClient.send(IPC.SHELL_ABORT, { execId })
+          ipcClient.invoke(IPC.SHELL_ABORT, { execId }).catch(() => {})
         }
       },
       releaseDormantSessionData: (residentSessionIds) => {

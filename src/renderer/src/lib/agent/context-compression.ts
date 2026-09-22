@@ -32,6 +32,7 @@ export {
   resolveCompressionContextLength,
   resolveCompressionReservedOutputBudget,
   resolveSessionContextCapTokens,
+  resolveEffectiveContextCapTokens,
   resolveSessionContextCapRange,
   applySessionContextCap,
   getEffectiveContextWindow,

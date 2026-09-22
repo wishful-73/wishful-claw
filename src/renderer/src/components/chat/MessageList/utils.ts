@@ -1,7 +1,6 @@
 // Pure utility functions and types extracted from MessageList.tsx
 
 import type { ContentBlock, ToolResultContent, UnifiedMessage } from '@renderer/lib/api/types'
-import type { TailToolExecutionState } from '../transcript-utils'
 import type { RenderableChatItem } from '../renderable-chat-items'
 import type { ActiveTeam } from '@renderer/stores/team-store'
 import type { useChatStore } from '@renderer/stores/chat-store'
@@ -14,10 +13,7 @@ import { buildChatMessageContent } from '@renderer/lib/agent/chat-message-blocks
 
 export interface MessageListProps {
   sessionId?: string | null
-  onRetry?: () => void
-  onContinue?: () => void
   onEditUserMessage?: (messageId: string, draft: EditableUserMessageDraft) => void
-  onDeleteMessage?: (messageId: string) => void
   exportAll?: boolean
   fullWidth?: boolean
 }
@@ -114,12 +110,6 @@ export function mergeHiddenToolUseIds(first?: Set<string>, second?: Set<string>)
   return new Set([...first, ...second])
 }
 
-export function hasCompleteTailToolExecutionResults(state: TailToolExecutionState | null): boolean {
-  if (!state || state.toolUseBlocks.length === 0) return false
-
-  return state.toolUseBlocks.every((toolUse) => state.toolResultMap.has(toolUse.id))
-}
-
 export function hasEmptyAssistantContent(message: UnifiedMessage): boolean {
   if (message.role !== 'assistant') return false
   if (typeof message.content === 'string') return message.content.length === 0
@@ -184,7 +174,6 @@ export interface MessageRowProps {
   isStreaming: boolean
   isLastUserMessage: boolean
   isLastAssistantMessage: boolean
-  showContinue: boolean
   disableAnimation: boolean
   toolResults?: ToolResultsLookup
   orchestrationRun?: import('@renderer/lib/orchestration/types').OrchestrationRun | null
@@ -195,10 +184,7 @@ export interface MessageRowProps {
   renderMode?: 'default' | 'transcript' | 'static'
   showChangeSummary?: boolean
   fullWidth?: boolean
-  onRetry?: () => void
-  onContinue?: () => void
   onEditUserMessage?: (messageId: string, draft: EditableUserMessageDraft) => void
-  onDeleteMessage?: (messageId: string) => void
 }
 
 export const EMPTY_MESSAGES: UnifiedMessage[] = []
@@ -600,7 +586,6 @@ export function areMessageRowPropsEqual(prev: MessageRowProps, next: MessageRowP
     prev.isStreaming === next.isStreaming &&
     prev.isLastUserMessage === next.isLastUserMessage &&
     prev.isLastAssistantMessage === next.isLastAssistantMessage &&
-    prev.showContinue === next.showContinue &&
     prev.disableAnimation === next.disableAnimation &&
     prev.fullWidth === next.fullWidth &&
     (prev.toolResults === next.toolResults ||
@@ -612,10 +597,7 @@ export function areMessageRowPropsEqual(prev: MessageRowProps, next: MessageRowP
     prev.renderMode === next.renderMode &&
     prev.showChangeSummary === next.showChangeSummary &&
     areRequestRetryStatesEqual(prev.requestRetryState, next.requestRetryState) &&
-    prev.onRetry === next.onRetry &&
-    prev.onContinue === next.onContinue &&
-    prev.onEditUserMessage === next.onEditUserMessage &&
-    prev.onDeleteMessage === next.onDeleteMessage
+    prev.onEditUserMessage === next.onEditUserMessage
   )
 }
 

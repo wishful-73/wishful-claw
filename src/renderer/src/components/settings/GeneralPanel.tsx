@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Monitor, MoonStar, SunMedium } from 'lucide-react'
+import { Monitor, MoonStar, Play, Square, SunMedium } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import {
   APP_THEME_PRESETS,
@@ -24,6 +25,7 @@ import {
 import { PresetCard } from './general-preset-card'
 import { SettingsSection } from './settings-primitives'
 import { Slider } from '@renderer/components/ui/slider'
+import { isSpeechSupported, speakMessage, stopSpeaking } from '@renderer/lib/speech'
 
 const FONT_OPTIONS = [
   { label: '__default__', value: '__default__' },
@@ -49,6 +51,43 @@ function GeneralPanel(): React.JSX.Element {
   ]
 
   const clampFontSize = (value: number): number => Math.min(20, Math.max(12, value))
+
+  // S-138：朗读音色。本机语音列表要等 speechSynthesis 就绪才有值 —— 首次
+  // getVoices() 通常返回空数组，必须再听一次 voiceschanged 才拿得到。
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    const loadVoices = (): void => setVoices(window.speechSynthesis.getVoices())
+    loadVoices()
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices)
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', loadVoices)
+  }, [])
+
+  // 老配置里没有这两个键时兜底，避免渲染 undefined。
+  const speechRate = settings.speechRate ?? 1
+  const speechPitch = settings.speechPitch ?? 1
+
+  // S-139：试听。念的是当前这一屏的值，改完立刻就能听效果，不必先存。
+  const speechReady = isSpeechSupported()
+  const [previewing, setPreviewing] = useState(false)
+
+  const handlePreview = (): void => {
+    if (previewing) {
+      stopSpeaking()
+      setPreviewing(false)
+      return
+    }
+    setPreviewing(true)
+    speakMessage(
+      t('general.speech.preview.sample'),
+      {
+        voice: settings.speechVoice ?? '',
+        rate: speechRate,
+        pitch: speechPitch
+      },
+      () => setPreviewing(false)
+    )
+  }
 
   const handleLanguageChange = (value: string): void => {
     settings.updateSettings({ language: value as typeof settings.language })
@@ -211,6 +250,95 @@ function GeneralPanel(): React.JSX.Element {
               {t('general.reset')}
             </button>
           </div>
+        </div>
+      </SettingsSection>
+
+      {/* Speech (iter-34 S-138) */}
+      <SettingsSection id="sec-general-speech" title={t('general.speech.label')} description={t('general.speech.desc')}>
+        {/* Voice */}
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs font-medium">{t('general.speech.voice.label')}</label>
+            <p className="text-xs text-muted-foreground">{t('general.speech.voice.desc')}</p>
+          </div>
+          <Select
+            value={settings.speechVoice || '__auto__'}
+            onValueChange={(value) =>
+              settings.updateSettings({ speechVoice: value === '__auto__' ? '' : value })
+            }
+          >
+            <SelectTrigger className="w-80 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__auto__" className="text-xs">
+                {t('general.speech.voice.auto')}
+              </SelectItem>
+              {voices.map((voice) => (
+                <SelectItem key={voice.voiceURI} value={voice.voiceURI} className="text-xs">
+                  {voice.name} ({voice.lang})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {voices.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t('general.speech.voice.empty')}</p>
+          ) : null}
+        </div>
+
+        {/* Rate */}
+        <div className="space-y-2">
+          <div className="flex max-w-lg items-center justify-between">
+            <div>
+              <label className="text-xs font-medium">{t('general.speech.rate.label')}</label>
+              <p className="text-xs text-muted-foreground">{t('general.speech.rate.desc')}</p>
+            </div>
+            <span className="text-xs text-muted-foreground">{speechRate.toFixed(1)}x</span>
+          </div>
+          <Slider
+            min={0.5}
+            max={2}
+            step={0.1}
+            value={[speechRate]}
+            onValueChange={([v]) => settings.updateSettings({ speechRate: v })}
+            className="max-w-lg flex-1"
+          />
+        </div>
+
+        {/* Pitch */}
+        <div className="space-y-2">
+          <div className="flex max-w-lg items-center justify-between">
+            <div>
+              <label className="text-xs font-medium">{t('general.speech.pitch.label')}</label>
+              <p className="text-xs text-muted-foreground">{t('general.speech.pitch.desc')}</p>
+            </div>
+            <span className="text-xs text-muted-foreground">{speechPitch.toFixed(1)}</span>
+          </div>
+          <Slider
+            min={0}
+            max={2}
+            step={0.1}
+            value={[speechPitch]}
+            onValueChange={([v]) => settings.updateSettings({ speechPitch: v })}
+            className="max-w-lg flex-1"
+          />
+        </div>
+
+        {/* Preview (iter-34 S-139) */}
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs font-medium">{t('general.speech.preview.label')}</label>
+            <p className="text-xs text-muted-foreground">{t('general.speech.preview.desc')}</p>
+          </div>
+          <button
+            type="button"
+            disabled={!speechReady}
+            className="flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs text-muted-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={handlePreview}
+          >
+            {previewing ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+            {previewing ? t('general.speech.preview.stop') : t('general.speech.preview.play')}
+          </button>
         </div>
       </SettingsSection>
 

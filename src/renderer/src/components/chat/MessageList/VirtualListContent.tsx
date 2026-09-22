@@ -57,10 +57,7 @@ interface VirtualListContentProps {
   handleJumpToAssistantMessage: (item: { id: string; sortOrder: number }) => Promise<void>
   scrollToBottom: () => void
   t: (key: string, options?: Record<string, unknown>) => string
-  onRetry: MessageListProps['onRetry']
-  onContinue: MessageListProps['onContinue']
   onEditUserMessage: MessageListProps['onEditUserMessage']
-  onDeleteMessage: MessageListProps['onDeleteMessage']
 }
 
 export function VirtualListContent(props: VirtualListContentProps): React.JSX.Element {
@@ -98,10 +95,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     handleJumpToAssistantMessage,
     scrollToBottom,
     t,
-    onRetry,
-    onContinue,
-    onEditUserMessage,
-    onDeleteMessage
+    onEditUserMessage
   } = props
 
   // R-10.5: 吸附卡改为紧凑指示条——不再全量渲染 UserMessage（长粘贴会把
@@ -219,7 +213,6 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                     const originMessageId = item.kind === 'message' ? item.originMessageId : null
                     const isLastUserMessage = item.isLastUserMessage
                     const isLastAssistantMessage = item.isLastAssistantMessage
-                    const showContinue = item.showContinue
                     const isEmptyAssistantLoading =
                       message !== undefined &&
                       isLastAssistantMessage &&
@@ -243,7 +236,6 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                         isStreaming={isStreaming}
                         isLastUserMessage={isLastUserMessage}
                         isLastAssistantMessage={isLastAssistantMessage}
-                        showContinue={showContinue}
                         disableAnimation={disableAnimation}
                         toolResults={originMessageId ? (toolResultsLookup.get(originMessageId) as any) : undefined}
                         orchestrationRun={orchestration?.primaryRun ?? null}
@@ -258,10 +250,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
                           isLastAssistantMessage ? (sessionRequestRetryState ?? null) : null
                         }
                         fullWidth={fullWidth}
-                        onRetry={onRetry}
-                        onContinue={onContinue}
                         onEditUserMessage={onEditUserMessage}
-                        onDeleteMessage={onDeleteMessage}
                       />
                     )
                   })()

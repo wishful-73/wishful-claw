@@ -20,7 +20,7 @@ import {
   buildTranscriptStaticAnalysis,
   type TailToolExecutionState
 } from '../transcript-utils'
-import { type MessageListRow, type MessageLocatorIndexRow, type MessageLocatorSource, type AssistantRailLayout, type AssistantReplyRailItem, type AssistantRailLayoutRow, getMessageToolUseIds, collectDuplicatePlanReviewToolUseIds, hasCompleteTailToolExecutionResults, buildAssistantRailLayout, parseLocatorRowSource, findPendingAskUserQuestion, EMPTY_MESSAGE_LOCATOR_ROWS, EMPTY_ORCHESTRATION_STATE } from './utils'
+import { type MessageListRow, type MessageLocatorIndexRow, type MessageLocatorSource, type AssistantRailLayout, type AssistantReplyRailItem, type AssistantRailLayoutRow, getMessageToolUseIds, collectDuplicatePlanReviewToolUseIds, buildAssistantRailLayout, parseLocatorRowSource, findPendingAskUserQuestion, EMPTY_MESSAGE_LOCATOR_ROWS, EMPTY_ORCHESTRATION_STATE } from './utils'
 import {
   selectMessageListSession,
   selectSessionScopedTeamState,
@@ -62,7 +62,6 @@ export interface MessageListDataOutput {
   hasLoadOlderRow: boolean
   pinnedTurnMessage: UnifiedMessage | null
   duplicatePlanReviewToolUseIds: Set<string>
-  continueAssistantMessageId: string | null
   pendingAskUserQuestion: ReturnType<typeof findPendingAskUserQuestion>
   isAwaitingInitialMessages: boolean
   orchestrationMessages: UnifiedMessage[]
@@ -241,13 +240,6 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
       hasSessionOrchestrationData, orchestrationMessages, subAgentHistory, teamHistory
     ]
   )
-
-  // ── Continue assistant message ──────────────────────────────────
-  const continueAssistantMessageId = React.useMemo(() => {
-    if (streamingMessageId || isSessionRunning) return null
-    if (!hasCompleteTailToolExecutionResults(tailToolExecutionState)) return null
-    return tailToolExecutionState?.assistantMessageId ?? null
-  }, [isSessionRunning, streamingMessageId, tailToolExecutionState])
 
   const renderableMessages = React.useMemo(
     () =>
@@ -458,7 +450,6 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     hasLoadOlderRow,
     pinnedTurnMessage,
     duplicatePlanReviewToolUseIds,
-    continueAssistantMessageId,
     pendingAskUserQuestion,
     isAwaitingInitialMessages,
     orchestrationMessages,

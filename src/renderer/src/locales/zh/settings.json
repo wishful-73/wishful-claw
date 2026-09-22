@@ -173,6 +173,31 @@
         "default": "系统默认"
       }
     },
+    "speech": {
+      "label": "朗读",
+      "desc": "朗读消息时使用的系统语音，以及语速和音调",
+      "voice": {
+        "label": "音色",
+        "desc": "本机可用的系统语音；选「自动」按消息语言挑选",
+        "auto": "自动",
+        "empty": "未检测到本机语音"
+      },
+      "rate": {
+        "label": "语速",
+        "desc": "朗读速度，1 为正常语速"
+      },
+      "pitch": {
+        "label": "音调",
+        "desc": "朗读音调，1 为默认音调"
+      },
+      "preview": {
+        "label": "试听",
+        "desc": "用当前音色、语速和音调念一段示例文本",
+        "play": "试听",
+        "stop": "停止",
+        "sample": "你好，这是 WishfulClaw 的朗读试听，用来调整音色、语速和音调。"
+      }
+    },
     "language": {
       "label": "语言 / Language",
       "desc": "界面显示语言"
@@ -214,6 +239,11 @@
       "threshold": {
         "label": "压缩阈值",
         "desc": "达到上下文窗口使用率后触发压缩，范围 30% - 90%"
+      },
+      "contextCap": {
+        "label": "请求上下文上限",
+        "desc": "每次请求最多带多少上下文，只在下面几个档位里选",
+        "hint": "档位越低，单次请求带的上下文越少，越省钱。只作用于没单独设过的会话 —— 会话可以在上下文环面板里覆盖它。"
       }
     },
     "developerMode": {
@@ -843,7 +873,7 @@
       "label": "应用更新",
       "desc": "检查并安装 Wishful Claw 的新版本",
       "autoCheck": "启动时自动检查更新",
-      "autoCheckDesc": "只在启动时检查，下载和安装始终需要你确认。",
+      "autoCheckDesc": "启动时检查一次，之后每 6 小时在后台巡检；下载和安装始终需要你确认。",
       "check": "检查更新",
       "latest": "当前已是最新版本。"
     }
@@ -1510,8 +1540,9 @@
       "noNotes": "本次发布未提供更新说明。",
       "downloading": "正在下载更新…",
       "backgroundHint": "下载会在后台继续，关闭此窗口不会中断。",
-      "trayHint": "可随时从托盘“更新详情”查看进度。",
-      "download": "后台下载",
+      "trayHint": "可随时从顶栏的更新图标或托盘“更新详情”查看进度。",
+      "download": "开始下载",
+      "backgroundDownload": "后台下载",
       "manualDownload": "手动下载",
       "install": "立即重启安装",
       "installing": "正在准备安装…",
@@ -1523,15 +1554,16 @@
       "fullscreen": "全屏阅读",
       "exitFullscreen": "退出全屏阅读"
     },
-    "banner": {
+    "indicator": {
       "available": "发现新版本 {{version}}",
-      "availableCurrent": "当前版本 {{current}}",
-      "downloading": "正在后台下载更新…",
-      "downloaded": "更新 {{version}} 已下载，等待重启安装",
-      "error": "更新失败",
-      "install": "重启安装",
-      "details": "详情",
-      "dragHint": "按住可拖动"
+      "downloading": "正在下载更新…",
+      "downloadingPercent": "正在下载更新 {{percent}}",
+      "downloaded": "更新 {{version}} 已下载，点击查看",
+      "error": "更新失败，点击查看"
+    },
+    "toast": {
+      "downloaded": "更新 {{version}} 已下载，可以重启安装了。",
+      "error": "更新失败，点击顶栏图标查看详情。"
     },
     "progress": {
       "unknown": "未知",

@@ -12,10 +12,6 @@ export interface RenderableMessageMeta {
   isLastAssistantMessage: boolean
 }
 
-export interface ChatRenderableMessageMeta extends RenderableMessageMeta {
-  showContinue: boolean
-}
-
 export interface TailToolExecutionState {
   assistantIndex: number
   assistantMessageId: string
@@ -289,17 +285,6 @@ export function buildRenderableMessageMetaFromAnalysis(
   }))
 }
 
-export function buildChatRenderableMessageMetaFromAnalysis(
-  analysis: TranscriptStaticAnalysis,
-  streamingMessageId: string | null,
-  continueAssistantMessageId: string | null
-): ChatRenderableMessageMeta[] {
-  return buildRenderableMessageMetaFromAnalysis(analysis, streamingMessageId).map((message) => ({
-    ...message,
-    showContinue: message.messageId === continueAssistantMessageId
-  }))
-}
-
 export function getToolResultsLookup(
   messages: UnifiedMessage[]
 ): Map<string, Map<string, { content: ToolResultContent; isError?: boolean }>> {
@@ -358,17 +343,5 @@ export function buildRenderableMessageMeta(
   return buildRenderableMessageMetaFromAnalysis(
     buildTranscriptStaticAnalysis(messages),
     streamingMessageId
-  )
-}
-
-export function buildChatRenderableMessageMeta(
-  messages: UnifiedMessage[],
-  streamingMessageId: string | null,
-  continueAssistantMessageId: string | null
-): ChatRenderableMessageMeta[] {
-  return buildChatRenderableMessageMetaFromAnalysis(
-    buildTranscriptStaticAnalysis(messages),
-    streamingMessageId,
-    continueAssistantMessageId
   )
 }

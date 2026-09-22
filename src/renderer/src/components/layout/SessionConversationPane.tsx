@@ -1,4 +1,4 @@
-﻿import { useCallback, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GitCompare, Maximize2, Minimize2, FolderOpen, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
@@ -18,6 +18,7 @@ import { useChatActions, compressSessionContext, type SendMessageOptions } from 
 import { useTerminalStore } from '@renderer/stores/terminal-store'
 import { BottomTerminalDock } from '@renderer/components/terminal/BottomTerminalDock'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
+import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
 
 interface SessionConversationPaneProps {
   sessionId?: string | null
@@ -142,6 +143,16 @@ export function SessionConversationPane({
     return compressSessionContext(resolvedSessionId)
   }, [resolvedSessionId])
 
+  // S-139：编辑用户消息只把内容回填到底部输入框，不动历史消息。
+  const handleEditUserMessage = useCallback(
+    (_messageId: string, draft: EditableUserMessageDraft): void => {
+      const ui = useUIStore.getState()
+      ui.setPendingInsertText(draft.text)
+      ui.setPendingInsertImages(draft.images.length > 0 ? draft.images : null)
+    },
+    []
+  )
+
   if (!session) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -158,7 +169,10 @@ export function SessionConversationPane({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Messages — the session action block floats over the top-right corner */}
         <div className="relative flex flex-1 min-h-0">
-          <MessageList fullWidth={conversationFullWidth} />
+          <MessageList
+            fullWidth={conversationFullWidth}
+            onEditUserMessage={handleEditUserMessage}
+          />
 
           {/* Floating vertical session action block */}
           <div className="absolute right-3 top-3 z-30 flex flex-col items-center gap-0.5 rounded-lg border border-border/60 bg-background/70 p-0.5 shadow-sm backdrop-blur-sm">

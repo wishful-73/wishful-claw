@@ -1,16 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Button } from '@renderer/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@renderer/components/ui/dropdown-menu'
-import { Check, X, Copy, Sparkles, Loader2, FileText, AlertCircle } from 'lucide-react'
+import { Check, X, Copy, FileText, AlertCircle } from 'lucide-react'
 import {
   writeImageBlobToClipboard,
   writeImageDataUrlToClipboard
@@ -20,9 +11,6 @@ import type {
 } from '@renderer/lib/api/types'
 import { type ImageAttachment } from '@renderer/lib/image-attachments'
 import { cn } from '@renderer/lib/utils'
-
-
-
 
 export function UserSelectedFileReadsView({
   reads
@@ -117,99 +105,6 @@ export function UserSelectedFileReadsView({
           )
         })}
       </div>
-    </div>
-  )
-}
-
-export function UserSkillEditControl({
-  name,
-  skills,
-  loading,
-  onChange,
-  onOpen
-}: {
-  name: string
-  skills: { name: string; description?: string }[]
-  loading: boolean
-  onChange: (name: string) => void
-  onOpen: () => void | Promise<void>
-}): React.JSX.Element {
-  const { t } = useTranslation('chat')
-  const [open, setOpen] = useState(false)
-  const selectedName = name.trim()
-
-  const handleOpenChange = (nextOpen: boolean): void => {
-    setOpen(nextOpen)
-    if (nextOpen) {
-      void onOpen()
-    }
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {selectedName && (
-        <div className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-300">
-          <Sparkles className="size-3 shrink-0" />
-          <span className="shrink-0 font-medium">{t('userMessage.skillLabel')}</span>
-          <span className="min-w-0 truncate font-mono" title={selectedName}>
-            {selectedName}
-          </span>
-          <button
-            type="button"
-            aria-label={t('userMessage.removeSkill')}
-            title={t('userMessage.removeSkill')}
-            className="ml-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-emerald-700/70 transition-colors hover:bg-emerald-500/15 hover:text-emerald-900 dark:text-emerald-200/75 dark:hover:text-emerald-50"
-            onClick={() => onChange('')}
-          >
-            <X className="size-3" />
-          </button>
-        </div>
-      )}
-
-      <DropdownMenu open={open} onOpenChange={handleOpenChange}>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" size="sm" variant="outline" className="h-6 gap-1 px-2 text-xs">
-            {loading ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              <Sparkles className="size-3" />
-            )}
-            {selectedName ? t('userMessage.changeSkill') : t('userMessage.addSkill')}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel>{t('userMessage.selectSkill')}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {loading ? (
-            <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
-              <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-              {t('skills.loadingSkills')}
-            </div>
-          ) : skills.length === 0 ? (
-            <div className="px-2 py-4 text-center text-xs text-muted-foreground">
-              {t('skills.noSkills')}
-            </div>
-          ) : (
-            skills.map((skill) => (
-              <DropdownMenuItem
-                key={skill.name}
-                className="flex flex-col items-start gap-1 py-2"
-                onSelect={() => onChange(skill.name)}
-              >
-                <span className="flex w-full min-w-0 items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate font-medium">{skill.name}</span>
-                  {skill.name === selectedName && <Check className="size-3.5 text-emerald-500" />}
-                </span>
-                {skill.description && (
-                  <span className="line-clamp-2 text-xs text-muted-foreground">
-                    {skill.description}
-                  </span>
-                )}
-              </DropdownMenuItem>
-            ))
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
     </div>
   )
 }

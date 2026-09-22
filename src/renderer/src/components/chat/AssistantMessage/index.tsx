@@ -46,12 +46,7 @@ export function AssistantMessage({
   sessionId,
   sessionAssistantMessageIds = EMPTY_ID_LIST,
   sessionToolUseIds = EMPTY_ID_LIST,
-  showRetry,
-  showContinue,
   isLastAssistantMessage,
-  onRetry,
-  onContinue,
-  onDelete,
   renderMode = 'default',
   orchestrationRun,
   hiddenToolUseIds,
@@ -456,11 +451,6 @@ export function AssistantMessage({
       isLiveMode={isLiveMode}
       sessionId={sessionId}
       msgId={msgId}
-      showRetry={showRetry}
-      showContinue={showContinue}
-      onRetry={onRetry}
-      onContinue={onContinue}
-      onDelete={onDelete}
       devMode={devMode}
       debugInfo={debugInfo}
       collapsed={collapsed}

@@ -23,12 +23,7 @@ export interface AssistantMessageProps {
   sessionId?: string | null
   sessionAssistantMessageIds?: readonly string[]
   sessionToolUseIds?: readonly string[]
-  showRetry?: boolean
-  showContinue?: boolean
   isLastAssistantMessage?: boolean
-  onRetry?: (messageId: string) => void
-  onContinue?: () => void
-  onDelete?: (messageId: string) => void
   renderMode?: AssistantRenderMode
   orchestrationRun?: OrchestrationRun | null
   hiddenToolUseIds?: Set<string>

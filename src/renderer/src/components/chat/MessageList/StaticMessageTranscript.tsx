@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useTeamStore } from '@renderer/stores/team-store'
@@ -112,7 +112,6 @@ export function StaticMessageTranscript({
             isStreaming={false}
             isLastUserMessage={row.isLastUserMessage}
             isLastAssistantMessage={row.isLastAssistantMessage}
-            showContinue={false}
             disableAnimation
             toolResults={originMessageId ? toolResultsLookup.get(originMessageId) : undefined}
             orchestrationRun={orchestration?.primaryRun ?? null}

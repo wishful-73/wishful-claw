@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import { MessageItem } from '../MessageItem'
 import { SessionChangeSummaryCard } from '../SessionChangeSummaryCard'
 import {
@@ -16,7 +16,6 @@ export const MessageRow = React.memo(function MessageRow({
   isStreaming,
   isLastUserMessage,
   isLastAssistantMessage,
-  showContinue,
   disableAnimation,
   toolResults,
   orchestrationRun,
@@ -27,10 +26,7 @@ export const MessageRow = React.memo(function MessageRow({
   renderMode,
   showChangeSummary = true,
   fullWidth = false,
-  onRetry,
-  onContinue,
-  onEditUserMessage,
-  onDeleteMessage
+  onEditUserMessage
 }: MessageRowProps): React.JSX.Element {
   const message = item.kind === 'message' ? item.message : null
   const messageId = item.kind === 'message' ? item.originMessageId : item.messageId
@@ -61,13 +57,9 @@ export const MessageRow = React.memo(function MessageRow({
         isStreaming={isStreaming}
         isLastUserMessage={isLastUserMessage}
         isLastAssistantMessage={isLastAssistantMessage}
-        showContinue={showContinue}
         disableAnimation={disableAnimation}
         renderMode={renderMode}
-        onRetryAssistantMessage={onRetry}
-        onContinueAssistantMessage={onContinue}
         onEditUserMessage={onEditUserMessage}
-        onDeleteMessage={onDeleteMessage}
         toolResults={toolResults}
         orchestrationRun={orchestrationRun}
         hiddenToolUseIds={hiddenToolUseIds}

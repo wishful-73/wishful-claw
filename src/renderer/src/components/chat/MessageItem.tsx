@@ -40,12 +40,8 @@ interface MessageItemProps {
   isStreaming?: boolean
   isLastUserMessage?: boolean
   isLastAssistantMessage?: boolean
-  showContinue?: boolean
   disableAnimation?: boolean
-  onRetryAssistantMessage?: (messageId: string) => void
-  onContinueAssistantMessage?: () => void
   onEditUserMessage?: (messageId: string, draft: EditableUserMessageDraft) => void
-  onDeleteMessage?: (messageId: string) => void
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
   liveToolCallMap?: Map<string, ToolCallState> | null
   renderMode?: MessageRenderMode
@@ -141,12 +137,8 @@ function MessageItemInner({
   isStreaming,
   isLastUserMessage,
   isLastAssistantMessage,
-  showContinue,
   disableAnimation,
-  onRetryAssistantMessage,
-  onContinueAssistantMessage,
   onEditUserMessage,
-  onDeleteMessage,
   toolResults,
   liveToolCallMap,
   item,
@@ -192,7 +184,6 @@ function MessageItemInner({
             isLast={isLastUserMessage}
             createdAt={effectiveMessage.createdAt}
             onEdit={onEditUserMessage}
-            onDelete={onDeleteMessage}
           />
         )
       }
@@ -209,12 +200,7 @@ function MessageItemInner({
             sessionId={sessionId}
             sessionAssistantMessageIds={sessionAssistantMessageIds}
             sessionToolUseIds={sessionToolUseIds}
-            showRetry={renderMode !== 'transcript'}
-            showContinue={showContinue && isLastAssistantMessage}
             isLastAssistantMessage={isLastAssistantMessage}
-            onRetry={onRetryAssistantMessage}
-            onContinue={onContinueAssistantMessage}
-            onDelete={onDeleteMessage}
             liveToolCallMap={liveToolCallMap}
             // 两个时间戳都往下传：action-bar 用 updatedAt 显示结束时间，并靠这一对算耗时。
             createdAt={effectiveMessage.createdAt}
@@ -336,12 +322,8 @@ function areEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
     prev.isStreaming === next.isStreaming &&
     prev.isLastUserMessage === next.isLastUserMessage &&
     prev.isLastAssistantMessage === next.isLastAssistantMessage &&
-    prev.showContinue === next.showContinue &&
     prev.disableAnimation === next.disableAnimation &&
-    prev.onRetryAssistantMessage === next.onRetryAssistantMessage &&
-    prev.onContinueAssistantMessage === next.onContinueAssistantMessage &&
     prev.onEditUserMessage === next.onEditUserMessage &&
-    prev.onDeleteMessage === next.onDeleteMessage &&
     areToolResultsEqual(prev.toolResults, next.toolResults) &&
     prev.liveToolCallMap === next.liveToolCallMap &&
     prev.renderMode === next.renderMode &&

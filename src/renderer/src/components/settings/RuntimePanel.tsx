@@ -11,11 +11,10 @@ import {
   clampMaxResidentTurns,
   MIN_MAX_RESIDENT_TURNS,
   MAX_MAX_RESIDENT_TURNS,
-  clampGlobalContextCapTokens,
-  MIN_GLOBAL_CONTEXT_CAP_TOKENS,
-  MAX_GLOBAL_CONTEXT_CAP_TOKENS,
-  GLOBAL_CONTEXT_CAP_STEP_TOKENS
+  globalContextCapStageIndex,
+  GLOBAL_CONTEXT_CAP_STAGES
 } from '@renderer/stores/settings-store'
+import { formatTokens } from '@renderer/lib/format-tokens'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
 import { Slider } from '@renderer/components/ui/slider'
@@ -318,9 +317,10 @@ function RuntimePanel(): React.JSX.Element {
               />
             </div>
 
-            {/* S-107：全局「请求上下文上限」。存的是绝对 token 数，0 = 不限制。
+            {/* S-107：全局「请求上下文上限」。存的是绝对 token 数。
                 量纲就必须是 token，不能换算成比例 —— 上限是按模型窗口来设的，
-                换算成百分比会随模型漂移。会话级覆盖见 context-ring 面板。 */}
+                换算成百分比会随模型漂移。会话级覆盖见 context-ring 面板。
+                档位固定（200K / 400K / 800K / 1M），不给手输，也没有「不限制」这一档。 */}
             <div className="space-y-2 pt-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -331,19 +331,29 @@ function RuntimePanel(): React.JSX.Element {
                     {t('general.contextCompression.contextCap.desc')}
                   </p>
                 </div>
-                <Input
-                  type="number"
-                  min={MIN_GLOBAL_CONTEXT_CAP_TOKENS}
-                  max={MAX_GLOBAL_CONTEXT_CAP_TOKENS}
-                  step={GLOBAL_CONTEXT_CAP_STEP_TOKENS}
-                  value={settings.contextCapTokens}
-                  onChange={(event) =>
-                    settings.updateSettings({
-                      contextCapTokens: clampGlobalContextCapTokens(Number(event.target.value))
-                    })
-                  }
-                  className="w-28 text-xs"
-                />
+                <span className="text-xs font-mono text-muted-foreground">
+                  {formatTokens(settings.contextCapTokens)}
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={GLOBAL_CONTEXT_CAP_STAGES.length - 1}
+                step={1}
+                value={[globalContextCapStageIndex(settings.contextCapTokens)]}
+                onValueChange={([index]) => {
+                  const stage = GLOBAL_CONTEXT_CAP_STAGES[index ?? 0]
+                  if (stage === undefined) return
+                  settings.updateSettings({ contextCapTokens: stage })
+                }}
+                aria-label={t('general.contextCompression.contextCap.label')}
+              />
+              <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
+                <span>{formatTokens(GLOBAL_CONTEXT_CAP_STAGES[0] ?? 0)}</span>
+                <span>
+                  {formatTokens(
+                    GLOBAL_CONTEXT_CAP_STAGES[GLOBAL_CONTEXT_CAP_STAGES.length - 1] ?? 0
+                  )}
+                </span>
               </div>
               <SettingHint>
                 {t('general.contextCompression.contextCap.hint')}

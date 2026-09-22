@@ -96,10 +96,9 @@ export {
   MIN_MAX_PARALLEL_TOOL_CALLS,
   MIN_MAX_TOOL_CALLS_PER_TURN,
   MIN_MAX_RESIDENT_TURNS,
-  MIN_GLOBAL_CONTEXT_CAP_TOKENS,
-  MAX_GLOBAL_CONTEXT_CAP_TOKENS,
-  GLOBAL_CONTEXT_CAP_STEP_TOKENS,
+  GLOBAL_CONTEXT_CAP_STAGES,
   clampGlobalContextCapTokens,
+  globalContextCapStageIndex,
   clampMaxConcurrentSubAgents,
   clampMaxParallelToolCalls,
   clampMaxToolCallsPerTurn,
@@ -444,7 +443,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'wishfulclaw-settings',
-      version: 40,
+      version: 41,
       storage: createJSONStorage(() => ipcStorage),
       migrate: (persisted: unknown, version: number) => {
         return migrateSettings(persisted, version) as unknown as SettingsStore

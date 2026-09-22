@@ -29,6 +29,8 @@ import {
   DEFAULT_MAX_TOOL_CALLS_PER_TURN,
   DEFAULT_MAX_RESIDENT_TURNS,
   DEFAULT_THEME_MODE,
+  DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS,
+  clampGlobalContextCapTokens,
   clampMaxConcurrentSubAgents,
   clampRequestMaxRetries,
   clampMaxParallelToolCalls,
@@ -157,6 +159,15 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
       0.9,
       Math.max(0.3, state.contextCompressionThreshold as number)
     )
+  }
+  // v41 / S-107 调档：全局上限从手输数字改成固定档位（200K / 400K / 800K / 1M），
+  // 取消了「不限制」。历史值必须在这里吸附一次 —— 只靠 partialize 是不够的：那只管写回
+  // 磁盘，内存里仍是老值，会出现「滑杆停在 400K、发给后端的还是 384000」这种前后端两套账。
+  // 老配置里的 0（旧的「不限制」哨兵）和缺失值一律落到默认档 1M，不会被压到 200K。
+  if (state.contextCapTokens === undefined || typeof state.contextCapTokens !== 'number') {
+    state.contextCapTokens = DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS
+  } else {
+    state.contextCapTokens = clampGlobalContextCapTokens(state.contextCapTokens as number)
   }
   if (state.mainModelSelectionMode === undefined) {
     state.mainModelSelectionMode = 'auto'

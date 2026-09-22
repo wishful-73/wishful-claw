@@ -13,8 +13,9 @@ using WishfulClaw.TestSupport;
 namespace WishfulClaw.SessionTaskCascadeRegressionTests;
 
 /// <summary>
-/// Local AOT context for the global-task executor result records (registered in
-/// WishfulClawJsonContext at runtime; mirrored here so the test can resolve them).
+/// Local AOT context for the tool result records the suites serialize directly —
+/// the global-task executor results plus create_session's result (registered in
+/// WishfulClawJsonContext at runtime; mirrored here so the tests can resolve them).
 /// </summary>
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(GlobalTaskCreateToolResult))]
@@ -22,6 +23,7 @@ namespace WishfulClaw.SessionTaskCascadeRegressionTests;
 [JsonSerializable(typeof(GlobalDispatchCreateToolResult))]
 [JsonSerializable(typeof(GlobalDispatchUpdateToolResult))]
 [JsonSerializable(typeof(GlobalDispatchReplyToolResult))]
+[JsonSerializable(typeof(CreateSessionResult))]
 internal partial class RegressionJsonContext : JsonSerializerContext
 {
 }
@@ -75,6 +77,7 @@ internal static partial class Program
                 await RunGlobalTaskExecutorSuiteAsync(dbPath);
                 await RunDispatchProtocolSuiteAsync(dbPath);
                 RunDeleteBySessionSuite(dbPath, db);
+                await RunCreateSessionInsertSuiteAsync(dbPath, db);
             }
             finally
             {

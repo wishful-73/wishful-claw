@@ -23,8 +23,10 @@ export const BOTTOM_TERMINAL_DOCK_MAX_HEIGHT = 560
  * （`composer-toolbar.tsx`），放不下时是横向滚动而非裁切；真正的硬约束只剩右组
  * （`shrink-0`：清空对话 / 上下文环 / 权限档 / 发送），估算约 260~280。
  * 530 在「右组硬约束」与「窄窗下左组仍能一屏看到模型 + 人格」之间取值。
+ *
+ * 2026-09-22（老大）：530 → 600。
  */
-export const CHAT_MIN_WIDTH = 530
+export const CHAT_MIN_WIDTH = 600
 
 /** 视口留给两侧面板的总预算 = 视口宽 - 聊天窗最低宽度。视口不可知时视为不限。 */
 function panelBudget(): number {

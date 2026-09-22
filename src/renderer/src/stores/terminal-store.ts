@@ -4,6 +4,7 @@ import { IPC } from '@renderer/lib/ipc/channels'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { resolveShellExecutable } from '@renderer/stores/settings-store-types'
+import { useUIStore } from '@renderer/stores/ui-store'
 
 // ─── Types ───
 
@@ -241,10 +242,20 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       ...(event.exitCode !== undefined ? { exitCode: event.exitCode } : {})
     }
 
-    // Do NOT auto-open the dock, and do NOT steal activeTabId: the agent starting a server is not a
-    // reason to rearrange the user's screen. The dock keeps its xterm mounted while CSS-hidden, so
-    // output accumulates and is all there the moment the user opens the dock themselves.
     set((state) => ({ tabs: [...state.tabs, tab] }))
+
+    // An agent-started terminal the user cannot see is one they cannot supervise, so bring the dock up
+    // for that session and put the new tab in front. Two restraint rules: only for the session the user
+    // is actually looking at (a background run's terminal belongs to a session they are not in), and
+    // never re-select a tab while the dock is already open — there the user is watching something of
+    // their own choosing, and the new tab is on the strip either way.
+    const sessionId = event.sessionId
+    if (!sessionId) return
+    if (useChatStore.getState().activeSessionId !== sessionId) return
+    const ui = useUIStore.getState()
+    if (ui.isBottomTerminalDockOpen(sessionId)) return
+    ui.setBottomTerminalDockOpen(sessionId, true)
+    set({ activeTabId: id })
   },
 
   _onOutput: (_event) => {},

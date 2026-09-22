@@ -75,6 +75,14 @@ internal static class Program
         // able to tell them apart, so both names must appear in it.
         Assert("the description names Bash as the one-shot alternative", definition.Description.Contains("Bash", StringComparison.Ordinal));
 
+        // `read` follows the tail instead of re-taking a snapshot. The two are indistinguishable from
+        // the JSON shape, so the description is the only place the model can learn which one it got —
+        // a description that goes back to promising "the output" would quietly restore the replay that
+        // made a second read repeat the first, and nothing else would fail.
+        Assert(
+            "the description says a read returns only what is new",
+            definition.Description.Contains("SINCE THE PREVIOUS READ", StringComparison.Ordinal));
+
         return definition;
     }
 

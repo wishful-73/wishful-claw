@@ -142,6 +142,9 @@ public static class AgentRuntimeTerminalExecutor
         var reused = JsonHelpers.GetBool(response, "reused", false);
         var tail = JsonHelpers.GetString(response, "tail") ?? string.Empty;
         var exitCode = JsonHelpers.GetInt(response, "exitCode", -1);
+        // Main owns the wording because it owns the reason: "attached to the running process" and
+        // "typed it in again after an interrupt" are different answers to the same call.
+        var note = JsonHelpers.GetString(response, "note") ?? string.Empty;
 
         WorkerLog.Debug($"agent terminal start done terminal={MaskId(terminalId)} reused={reused} status={status}");
 
@@ -158,9 +161,9 @@ public static class AgentRuntimeTerminalExecutor
                 writer.WriteNumber("exitCode", exitCode);
             writer.WriteString("command", command);
             writer.WriteString("tail", tail);
-            if (reused)
+            if (!string.IsNullOrEmpty(note))
             {
-                writer.WriteString("note", "Attached to the terminal already running this command in this session.");
+                writer.WriteString("note", note);
             }
         });
 

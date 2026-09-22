@@ -10,12 +10,12 @@
 
 import {
   createTerminalSession,
-  getTerminalSessionSnapshot,
   killTerminalSession,
   listTerminalSessionRecords,
-  type TerminalSessionListEntry
+  readTerminalOutput,
+  submitTerminalCommand,
+  type TerminalOutputView
 } from '../terminal-handlers'
-import { renderTerminalBuffer } from '../terminal-output-text'
 
 const DEFAULT_TITLE_MAX_CHARS = 40
 
@@ -69,17 +69,18 @@ function readEnv(value: unknown): Record<string, string> | undefined {
 
 /**
  * The read-back shape. `textField` is named per action so the two answers stay distinguishable to the
- * model: `start` hands over the startup `tail`, `read` hands over the accumulated `text`.
+ * model: `start` hands over the startup `tail`, `read` hands over what is new as `text`.
  */
 function describe(
-  record: TerminalSessionListEntry,
+  terminalId: string,
+  view: TerminalOutputView,
   textField: 'tail' | 'text'
 ): Record<string, unknown> {
   return {
-    terminalId: record.id,
-    status: record.exitCode === undefined ? 'running' : 'exited',
-    ...(record.exitCode !== undefined ? { exitCode: record.exitCode } : {}),
-    [textField]: renderTerminalBuffer(record.buffer ?? [])
+    terminalId,
+    status: view.status,
+    ...(view.exitCode !== undefined ? { exitCode: view.exitCode } : {}),
+    [textField]: view.text
   }
 }
 
@@ -99,18 +100,39 @@ export async function handleTerminalStart(params: Record<string, unknown>): Prom
 
   // Re-running the same command is the common case — the model checks on a server it already
   // started. Attach to the live terminal instead of spending a second pty on the same job.
-  const running = listTerminalSessionRecords().find(
+  const sameCommand = listTerminalSessionRecords().filter(
     (record) =>
       record.exitCode === undefined && record.sessionId === sessionId && record.command === command
   )
+
+  const running = sameCommand.find((record) => !record.interrupted)
   if (running) {
-    const snapshot = await getTerminalSessionSnapshot(running.id)
+    const view = await readTerminalOutput(running.id)
     return {
       success: true,
-      ...(snapshot
-        ? describe(snapshot, 'tail')
+      ...(view
+        ? describe(running.id, view, 'tail')
         : { terminalId: running.id, status: 'running', tail: '' }),
-      reused: true
+      reused: true,
+      note: 'Attached to the terminal already running this command in this session.'
+    }
+  }
+
+  // The tab is alive but the user pressed Ctrl+C in it, so the command is not running any more.
+  // Attaching would hand back a bare prompt as if it were the answer; type the command into the same
+  // shell instead — same tab, new run. `read` returning only what is new is what makes this honest:
+  // the model sees the echoed command and the new output, not the previous run's log.
+  const idle = sameCommand.find((record) => record.interrupted)
+  if (idle) {
+    const submitted = await submitTerminalCommand(idle.id, command)
+    if (submitted.error || !submitted.view) {
+      return { success: false, error: submitted.error ?? 'Failed to start terminal' }
+    }
+    return {
+      success: true,
+      ...describe(idle.id, submitted.view, 'tail'),
+      reused: true,
+      note: 'The command was no longer running in this terminal (it had been interrupted), so it was typed into the existing shell again.'
     }
   }
 
@@ -133,13 +155,15 @@ export async function handleTerminalStart(params: Record<string, unknown>): Prom
     return { success: false, error: created.error ?? 'Failed to start terminal' }
   }
 
-  // createTerminalSession already waited for the first output, so this tail is the startup banner
-  // rather than an empty string.
-  const snapshot = await getTerminalSessionSnapshot(created.id)
+  // createTerminalSession already waited for the prompt and typed the command into it, so this tail
+  // is the prompt plus the echoed command rather than an empty string. Reading through the cursor
+  // rather than off the buffer keeps the two in step: everything handed back here is exactly what the
+  // next `read` will not repeat.
+  const view = await readTerminalOutput(created.id)
   return {
     success: true,
-    ...(snapshot
-      ? describe(snapshot, 'tail')
+    ...(view
+      ? describe(created.id, view, 'tail')
       : { terminalId: created.id, status: 'running', tail: '' }),
     reused: false
   }
@@ -149,10 +173,16 @@ export async function handleTerminalRead(params: Record<string, unknown>): Promi
   const terminalId = readString((params as TerminalRefParams).terminalId)
   if (!terminalId) return { success: false, error: 'terminalId is required' }
 
-  const snapshot = await getTerminalSessionSnapshot(terminalId)
-  if (!snapshot) return { success: false, error: `Terminal not found: ${terminalId}` }
+  const view = await readTerminalOutput(terminalId)
+  if (!view) return { success: false, error: `Terminal not found: ${terminalId}` }
 
-  return { success: true, ...describe(snapshot, 'text') }
+  return {
+    success: true,
+    ...describe(terminalId, view, 'text'),
+    // Nothing new is a normal answer on a quiet terminal, not a failure — say so in words, so the
+    // model does not read an empty string as a broken read.
+    ...(view.text.length === 0 ? { note: 'No new output since the previous read.' } : {})
+  }
 }
 
 export async function handleTerminalStop(params: Record<string, unknown>): Promise<unknown> {

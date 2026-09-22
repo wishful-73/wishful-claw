@@ -25,6 +25,8 @@ import {
   MARKDOWN_REHYPE_PLUGINS,
   MARKDOWN_REMARK_PLUGINS
 } from '@renderer/lib/preview/viewers/markdown-components'
+import { isWebUrl } from '@renderer/lib/preview/web-url'
+import { WebUrlCode } from './AssistantMessage/WebUrlCode'
 import { useStreamingRenderPool } from '@renderer/hooks/use-typewriter'
 import { CollapsibleHeightPanel } from './CollapsibleHeightPanel'
 
@@ -211,6 +213,9 @@ export const ThinkingBlock = memo(function ThinkingBlock({
                         const isInline = !className
                         if (isInline) {
                           const code = String(children ?? '').replace(/\n$/, '')
+                          if (isWebUrl(code)) {
+                            return <WebUrlCode url={code} style={{ fontFamily: MONO_FONT }} />
+                          }
                           const resolvedPath = resolveLocalFilePath(code)
                           if (resolvedPath) {
                             return (

@@ -93,8 +93,8 @@ export function UpdateDialog({
       <DialogContent
         className={cn(
           // The body must own the leftover height: without an explicit row template every grid row
-          // stays auto-sized, so `sm:min-h-[70vh]` leaves a blank band under the release notes.
-          'sm:max-w-5xl sm:min-h-[70vh] grid-rows-[auto_minmax(0,1fr)_auto]',
+          // stays auto-sized, so `sm:min-h-[28rem]` leaves a blank band under the release notes.
+          'sm:max-w-2xl sm:min-h-[28rem] grid-rows-[auto_minmax(0,1fr)_auto]',
           // Tailwind v4 compiles translate-x/y-* into the standalone `translate` property, so the
           // base dialog's centering must be cancelled with classes rather than inline transform.
           isFullscreen &&

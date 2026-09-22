@@ -1,10 +1,11 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import Markdown from 'react-markdown'
+import Markdown, { type Components } from 'react-markdown'
 import { FileCode } from 'lucide-react'
 import {
   MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
+  MARKDOWN_REMARK_PLUGINS,
+  openMarkdownHref
 } from '@renderer/lib/preview/viewers/markdown-components'
 import { MONO_FONT } from '@renderer/lib/constants'
 import type { ImageBlock, TextBlock, ToolResultContent } from '@renderer/lib/api/types'
@@ -62,6 +63,28 @@ export function ImageOutputBlock({ output }: { output: ToolResultContent }): Rea
 
 // ── MarkdownOutputBlock ──
 
+/**
+ * 工具输出里的链接必须自己接住。react-markdown 默认渲染的 `<a href>` 点在 Electron
+ * 主窗口上就是**当前帧导航** —— 主进程只拦了 window.open（setWindowOpenHandler），
+ * 没有 will-navigate 兜底，于是一条 `http://localhost:3000` 的输出被点一下，整个应用
+ * 就变成那个网页。归宿与正文一致：走 openMarkdownHref（网址 → 右侧浏览器面板，
+ * 本地路径 → 预览面板）。
+ */
+const TOOL_OUTPUT_MARKDOWN_COMPONENTS: Components = {
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      className="text-primary underline underline-offset-2 hover:text-primary/80 break-all"
+      onClick={(event) => {
+        if (!href || href.startsWith('#')) return
+        if (openMarkdownHref(href)) event.preventDefault()
+      }}
+    >
+      {children}
+    </a>
+  )
+}
+
 export function MarkdownOutputBlock({ output }: { output: string }): React.JSX.Element {
   const { t } = useTranslation('chat')
   const [expanded, setExpanded] = React.useState(false)
@@ -78,7 +101,11 @@ export function MarkdownOutputBlock({ output }: { output: string }): React.JSX.E
         }`}
       >
         <div className="prose prose-sm dark:prose-invert max-w-none text-xs prose-headings:mb-1.5 prose-headings:mt-3 prose-headings:text-sm prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5 prose-pre:bg-muted prose-pre:px-2.5 prose-pre:py-2 prose-code:before:content-none prose-code:after:content-none">
-          <Markdown remarkPlugins={MARKDOWN_REMARK_PLUGINS} rehypePlugins={MARKDOWN_REHYPE_PLUGINS}>
+          <Markdown
+            remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+            rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+            components={TOOL_OUTPUT_MARKDOWN_COMPONENTS}
+          >
             {output}
           </Markdown>
         </div>

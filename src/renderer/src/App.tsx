@@ -99,9 +99,9 @@ function App(): React.JSX.Element | null {
   )
 
   const handleDownload = useCallback(async (): Promise<void> => {
-    // Collapse only once Main confirms the start — the native download keeps running in Main
-    // regardless, so an open dialog would just imply the user has to sit and watch it.
-    if (await updater.downloadUpdate()) setUpdateDialogOpen(false)
+    // 收起要等用户自己点「后台下载」，不能替他做主：下载在 Main 里本来就继续跑，但点完
+    // 「开始下载」直接把窗关掉，等于把「后台下载」那个按钮整个跳过了，也看不到进度。
+    await updater.downloadUpdate()
   }, [updater.downloadUpdate])
 
   // Initialize i18n on mount

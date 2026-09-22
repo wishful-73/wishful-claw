@@ -21,6 +21,7 @@ import { spawn, type IPty } from 'node-pty'
 import { safeSendMessagePackToWindow } from '../window-ipc'
 import { getMainWindow } from '../main-window-registry'
 import { registerMessagePackHandler } from './messagepack-handler'
+import { renderTerminalBuffer } from './terminal-output-text'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,7 +83,26 @@ export interface TerminalSessionListEntry {
   exitSignal?: number
   sessionId?: string
   projectId?: string
+  /**
+   * The tab is alive but no command is running in it — the user pressed Ctrl+C. Present so `start`
+   * can tell "attach to the thing still running" from "type the command again"; see
+   * `writeTerminalSession`.
+   */
+  interrupted?: boolean
   buffer?: TerminalOutputChunk[]
+}
+
+/**
+ * What the agent gets back from a terminal: a plain-text slice, plus the shell's own liveness.
+ *
+ * There is deliberately no "is a command running" field. The text answers that — after the user
+ * presses Ctrl+C the new output is `^C` and a fresh prompt — and a second source of truth for it
+ * could only ever be a guess (node-pty does not expose the foreground process on Windows).
+ */
+export interface TerminalOutputView {
+  text: string
+  status: 'running' | 'exited'
+  exitCode?: number
 }
 
 interface TerminalShellLaunch {
@@ -111,6 +131,13 @@ interface TerminalSession {
   /** Set for agent-started terminals so the dock can filter tabs per session. */
   sessionId?: string
   projectId?: string
+  /**
+   * Highest chunk seq already handed to the agent. `read` returns only what came after it, so a
+   * second read is the new output rather than the whole buffer over again.
+   */
+  lastReadSeq: number
+  /** See `TerminalSessionListEntry.interrupted`. */
+  interrupted?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +152,21 @@ const MAX_OUTPUT_BUFFER_BYTES = 64 * 1024
 const MAX_ACTIVE_SESSIONS = 32
 const EXITED_SESSION_RETENTION_MS = 120_000
 const INITIAL_OUTPUT_WAIT_MS = 120
+/**
+ * A command from the agent is typed into the shell rather than passed to it, and these are the waits
+ * that make that safe.
+ *
+ * `SHELL_READY_TIMEOUT_MS` is what a cold shell gets to paint its prompt when the create call's own
+ * budget (`INITIAL_OUTPUT_WAIT_MS`) was not enough. `COMMAND_SUBMIT_DELAY_MS` is the grace period
+ * after that, because PSReadLine drops keystrokes that arrive before it is listening — a dropped
+ * first character turns `npm run dev` into `pm run dev`. `COMMAND_ECHO_WAIT_MS` then lets the echo
+ * land in the buffer, so the tail the caller hands back shows the command line instead of a blank.
+ */
+const SHELL_READY_TIMEOUT_MS = 2000
+const COMMAND_SUBMIT_DELAY_MS = 250
+const COMMAND_ECHO_WAIT_MS = 150
+/** Ctrl+C — the only keystroke with a settled session-level meaning. See `writeTerminalSession`. */
+const INTERRUPT_CHAR = '\u0003'
 
 // ---------------------------------------------------------------------------
 // State
@@ -140,6 +182,10 @@ const terminalExitListeners = new Set<(event: TerminalExitEvent) => void>()
 
 function resolveOwnerWindowId(sender?: WebContents | null): number | null {
   return sender ? (BrowserWindow.fromWebContents(sender)?.id ?? null) : null
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function createWindowEvent(windowId: number | null, channel: string, payload: unknown): void {
@@ -241,16 +287,21 @@ function getShellLaunchCandidates(
   return launches.length > 0 ? launches : [{ shell: '/bin/sh', args: [] }]
 }
 
-function getLaunchArgs(launch: TerminalShellLaunch, command?: string): string[] {
+/**
+ * Flags for an INTERACTIVE shell. A command from the agent is never one of them.
+ *
+ * `-Command <cmd>` looks like the obvious way to run something, and it is what this used to do:
+ * PowerShell then runs non-interactively, which costs everything a terminal is for. No prompt, no
+ * echo of the command, `-NoProfile` so the session does not match the user's own tab, and Ctrl+C
+ * kills the whole shell instead of cancelling the line. Typing the command into an interactive shell
+ * instead (see `createTerminalSession`) gives back all four, and makes an agent-started tab the same
+ * object as one the user opened.
+ */
+function getLaunchArgs(launch: TerminalShellLaunch): string[] {
   if (process.platform === 'win32') {
-    if (!command) {
-      return isPowerShell(launch.shell) ? ['-NoLogo'] : []
-    }
-    return isPowerShell(launch.shell)
-      ? ['-NoLogo', '-NoProfile', '-Command', command]
-      : ['/d', '/s', '/c', command]
+    return isPowerShell(launch.shell) ? ['-NoLogo'] : []
   }
-  return command ? ['-lc', command] : launch.args
+  return launch.args
 }
 
 function appendSessionOutput(session: TerminalSession, data: string): TerminalOutputChunk {
@@ -283,6 +334,7 @@ function toSessionRecord(
     ...(session.exitSignal !== undefined ? { exitSignal: session.exitSignal } : {}),
     ...(session.sessionId ? { sessionId: session.sessionId } : {}),
     ...(session.projectId ? { projectId: session.projectId } : {}),
+    ...(session.interrupted ? { interrupted: true } : {}),
     ...(includeBuffer ? { buffer: session.buffer.slice() } : {})
   }
 }
@@ -354,7 +406,7 @@ export async function createTerminalSession(
 
   for (const launch of getShellLaunchCandidates(args.shell, env)) {
     try {
-      const pty = spawn(launch.shell, getLaunchArgs(launch, command), {
+      const pty = spawn(launch.shell, getLaunchArgs(launch), {
         name: 'xterm-256color',
         cols,
         rows,
@@ -381,6 +433,7 @@ export async function createTerminalSession(
         buffer: [],
         bufferBytes: 0,
         nextSeq: 0,
+        lastReadSeq: 0,
         ownerWindowId,
         signalFirstOutput: () => {}
       }
@@ -409,6 +462,28 @@ export async function createTerminalSession(
       })
 
       await waitForInitialOutput(session, INITIAL_OUTPUT_WAIT_MS)
+
+      // The command goes IN, not on the launch line — this is the half that makes an agent-started
+      // tab behave like one the user opened, with the command typed at the prompt. See getLaunchArgs.
+      // The read cursor stays at 0, so whoever asked for the terminal gets the prompt plus the echoed
+      // command as its opening `tail` and the first `read` starts from there.
+      if (command && session.exitCode === undefined) {
+        // A cold shell can take well over the 120 ms the create call budgets for its first output. If
+        // nothing has arrived yet, wait for the prompt properly before typing — a keystroke sent
+        // before the shell is listening is simply dropped, and a dropped first character turns
+        // `npm run dev` into `pm run dev`.
+        if (session.buffer.length === 0) {
+          await waitForInitialOutput(session, SHELL_READY_TIMEOUT_MS)
+        }
+        await delay(COMMAND_SUBMIT_DELAY_MS)
+        try {
+          session.pty.write(`${command}\r`)
+        } catch {
+          // The shell exited while we waited for its prompt. onExit already recorded that, and the
+          // caller reads `status` to tell an exited terminal from a running one.
+        }
+        await delay(COMMAND_ECHO_WAIT_MS)
+      }
 
       createWindowEvent(ownerWindowId, 'terminal:created', toSessionRecord(session, false))
 
@@ -454,6 +529,66 @@ export async function getTerminalSessionSnapshot(
   return session ? toSessionRecord(session, true) : undefined
 }
 
+/**
+ * The terminal's output since its last read, as plain text, plus the shell's liveness.
+ *
+ * `read` follows the tail instead of re-taking a snapshot. A snapshot answers "what ever happened",
+ * which buries the new lines inside text the model has already paid for — and on the second read that
+ * is most of the answer. The cursor also makes the text self-describing: after the user presses
+ * Ctrl+C, the new output is `^C` followed by a fresh prompt, so the model can see the command stopped
+ * without anyone having to model "is a command running" (which node-pty cannot answer on Windows).
+ *
+ * Returns undefined when there is no such terminal.
+ */
+export async function readTerminalOutput(id: string): Promise<TerminalOutputView | undefined> {
+  pruneExpiredExitedSessions()
+  const session = terminalSessions.get(id)
+  if (!session) return undefined
+
+  const fresh = session.buffer.filter((chunk) => chunk.seq > session.lastReadSeq)
+  session.lastReadSeq = session.nextSeq
+
+  return {
+    // Empty is a real answer — "nothing new since you last looked" — and the caller says so in words
+    // rather than handing the model a blank it cannot tell from a broken read.
+    text: fresh.length > 0 ? renderTerminalBuffer(fresh) : '',
+    status: session.exitCode === undefined ? 'running' : 'exited',
+    ...(session.exitCode !== undefined ? { exitCode: session.exitCode } : {})
+  }
+}
+
+/**
+ * Types a command into an already-running shell, exactly as the user would at its prompt, and returns
+ * what that produced.
+ *
+ * This is what `start` uses when it finds its terminal alive but idle: re-using the tab is right,
+ * attaching to it is not — the command the model asked for is no longer running, and an attach would
+ * hand back a bare prompt as if it were output.
+ */
+export async function submitTerminalCommand(
+  id: string,
+  command: string
+): Promise<{ success?: true; view?: TerminalOutputView; error?: string }> {
+  pruneExpiredExitedSessions()
+  const session = terminalSessions.get(id)
+  if (!session) return { error: 'Terminal not found' }
+  if (session.exitCode !== undefined) return { error: 'Terminal already exited' }
+
+  try {
+    session.pty.write(`${command}\r`)
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) }
+  }
+
+  // The command is running again, so the tab is no longer idle. The read cursor stays where it was,
+  // and readTerminalOutput picks up the echoed command and whatever the new run printed.
+  session.interrupted = false
+  await delay(COMMAND_ECHO_WAIT_MS)
+
+  const view = await readTerminalOutput(id)
+  return view ? { success: true, view } : { error: 'Terminal not found' }
+}
+
 export async function writeTerminalSession(
   id: string,
   data: string
@@ -464,6 +599,12 @@ export async function writeTerminalSession(
   if (session.exitCode !== undefined) return { error: 'Terminal already exited' }
   try {
     session.pty.write(data)
+    // Ctrl+C is the one input whose meaning is settled at the session level: whether it cancelled a
+    // running command or an empty prompt line, no command is running afterwards. Nothing else says
+    // so — the shell stays alive and no exit code ever arrives — which is why the mark is kept here,
+    // off the wire, instead of being derived from output the model would have to guess at. Any other
+    // keystroke means the user has taken the tab back, so the mark comes off.
+    session.interrupted = data.includes(INTERRUPT_CHAR)
     return { success: true }
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) }

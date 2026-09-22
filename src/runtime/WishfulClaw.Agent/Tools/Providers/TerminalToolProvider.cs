@@ -18,9 +18,11 @@ public sealed class TerminalToolProvider : IToolProvider
         + "Use it for servers and watchers that must outlive a single call — a dev server, a file watcher, a log stream, a REPL you want to poke at — because the terminal stays alive between turns and the user can watch it, read it, and type into it.\n"
         + "Do NOT use it for ordinary commands whose output and exit code you need in this turn: use Bash. Bash runs the command, waits, and hands back stdout/stderr/exit code; Terminal only starts something and returns the first output, so a short command leaves you with a terminal to clean up and nothing else.\n"
         + "\n"
+        + "The terminal is a real interactive shell and your command is typed into it, so the output carries the prompt and the command line the same way a hand-typed one would, and the user can take the tab over. If the user presses Ctrl+C the command stops while the shell stays alive: a read then shows `^C` and a fresh prompt, and start with the same command types it in again instead of attaching to an idle prompt.\n"
+        + "\n"
         + "Actions:\n"
-        + "- start: launch a process. Returns the terminalId plus the first output. Reusing start with the same command in the same session attaches to the running terminal instead of spawning a second one.\n"
-        + "- read: fetch the plain-text tail of a terminal's output, for a terminalId you got from start. Output is bounded (about the last 12000 characters), and it is a text projection — no colours, no cursor moves.\n"
+        + "- start: launch a process. Returns the terminalId plus the opening output (prompt and echoed command included). Reusing start with the same command in the same session re-uses the existing terminal instead of spawning a second one.\n"
+        + "- read: fetch what the terminal printed SINCE THE PREVIOUS READ, for a terminalId you got from start — the first read picks up right after the `tail` start already returned. Output is bounded (about the last 12000 characters) and is a text projection — no colours, no cursor moves. Empty text means nothing new, which is normal on a quiet terminal.\n"
         + "- stop: kill a terminal's process and close its tab.\n"
         + "\n"
         + "Always LOCAL, even in an SSH project: this tool never runs on the remote host. It also does not inherit Bash's environment setup — it starts from the app's own environment plus the shell configured in Settings → Terminal & SSH, so a command that works under Bash may need its environment spelled out here.";

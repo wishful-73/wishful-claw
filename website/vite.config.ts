@@ -7,6 +7,12 @@ import tailwindcss from '@tailwindcss/vite'
 // 浏览器停在 /guide/ 时会把 ./assets/... 解析成 /guide/assets/... 直接 404。
 const PAGES = ['download', 'guide', 'changelog'] as const
 
+// 官网固定端口，刻意避开 Vite 默认的 5173 / 4173：主项目 electron-vite 的 renderer dev / preview
+// 正占着这两个默认值，同机同开时 Vite 会把官网静默挪到 5174 / 4174 —— 看着在自己端口上测官网，
+// 其实打开的是主项目。strictPort 让端口被占时直接报错，不偷偷换端口。
+const DEV_PORT = 5280
+const PREVIEW_PORT = 5281
+
 function rewriteCleanUrls(middlewares: Connect.Server): void {
   middlewares.use((req, _res, next) => {
     const url = req.url ?? ''
@@ -26,6 +32,8 @@ export default defineConfig({
   // 四个入口的 MPA：默认 'spa' 会把任意未知路径回退成首页，打错 /guid 也"看着像 200"，
   // 排错时最容易骗到自己；'mpa' 下未知路径正常 404。
   appType: 'mpa',
+  server: { port: DEV_PORT, strictPort: true },
+  preview: { port: PREVIEW_PORT, strictPort: true },
   plugins: [
     react(),
     tailwindcss(),

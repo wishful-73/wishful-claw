@@ -9,16 +9,17 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { LocalPathCode } from '@renderer/components/chat/AssistantMessage/LocalPathCode'
+import { WebUrlCode } from '@renderer/components/chat/AssistantMessage/WebUrlCode'
 import { LazySyntaxHighlighter } from '@renderer/components/chat/LazySyntaxHighlighter'
 import { MONO_FONT } from '@renderer/lib/constants'
 import { openLocalTarget } from '@renderer/lib/preview/local-target'
+import { isWebUrl, openWebUrl } from '@renderer/lib/preview/web-url'
 
 const MermaidBlock = lazy(async () => {
   const mod = await import('./MermaidBlock')
   return { default: mod.MermaidBlock }
 })
 
-const HTTP_URL_RE = /^https?:\/\//i
 /** 需要交给操作系统、而不是我们接管的 scheme。白名单而不是「任意非 http scheme」——
  *  渲染端是主窗口，不该把任意 scheme 都递给系统。 */
 const EXTERNAL_APP_SCHEME_RE = /^(?:mailto|tel):/i
@@ -147,7 +148,7 @@ function joinPath(baseDir: string, relativePath: string): string {
 
 export function isLikelyLocalFilePath(value: string): boolean {
   const raw = value.trim()
-  if (!raw || raw.startsWith('#') || HTTP_URL_RE.test(raw)) return false
+  if (!raw || raw.startsWith('#') || isWebUrl(raw)) return false
   if (FILE_URL_RE.test(raw)) return true
 
   const normalized = stripLocalPathDecorators(raw)
@@ -215,13 +216,9 @@ export function openMarkdownHref(href: string, filePath?: string): boolean {
   const link = href.trim()
   if (!link) return false
   if (link.startsWith('#')) return false
-  if (HTTP_URL_RE.test(link)) {
-    // Use Electron's shell.openExternal if available, otherwise window.open
-    if (typeof window !== 'undefined' && (window as any).electron?.shell?.openExternal) {
-      void (window as any).electron.shell.openExternal(link)
-    } else {
-      window.open(link, '_blank', 'noopener,noreferrer')
-    }
+  if (isWebUrl(link)) {
+    // 网址走内置浏览器面板，不递系统浏览器 —— 归宿与正文里那些可点的网址标签一致。
+    openWebUrl(link)
     return true
   }
   // 调用方已统一拦下默认导航，所以这里必须自己把「交给系统」的情况接住，
@@ -398,6 +395,9 @@ export function createMarkdownComponents(filePath?: string): Components {
       const language = languageMatch?.[1]?.toLowerCase()
 
       if (!className && !isMarkdownCodeBlock(rawCode, node)) {
+        if (isWebUrl(code)) {
+          return <WebUrlCode url={code} />
+        }
         const resolvedPath = resolveLocalFilePath(code, filePath)
         if (resolvedPath) {
           return (

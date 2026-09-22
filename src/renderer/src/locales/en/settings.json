@@ -173,6 +173,31 @@
         "default": "System Default"
       }
     },
+    "speech": {
+      "label": "Read Aloud",
+      "desc": "System voice used to read messages aloud, plus speed and pitch",
+      "voice": {
+        "label": "Voice",
+        "desc": "System voices available on this machine; pick Auto to match the message language",
+        "auto": "Auto",
+        "empty": "No local voices detected"
+      },
+      "rate": {
+        "label": "Speed",
+        "desc": "Reading speed, 1 is normal"
+      },
+      "pitch": {
+        "label": "Pitch",
+        "desc": "Reading pitch, 1 is default"
+      },
+      "preview": {
+        "label": "Preview",
+        "desc": "Read a sample line with the current voice, speed, and pitch",
+        "play": "Play",
+        "stop": "Stop",
+        "sample": "Hi, this is the WishfulClaw voice preview, for tuning voice, speed, and pitch."
+      }
+    },
     "language": {
       "label": "Language",
       "desc": "Interface display language"

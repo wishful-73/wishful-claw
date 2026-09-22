@@ -7,6 +7,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useProviderStore, modelSupportsVision } from '@renderer/stores/provider-store'
 import { Pencil, Check, X, Copy, ImagePlus, Trash2, Ellipsis, Volume2, Share2, ChevronsUpDown, ChevronsDownUp, CornerDownRight } from 'lucide-react'
 import { formatTokens } from '@renderer/lib/format-tokens'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import { isSpeechSupported, speakMessage } from '@renderer/lib/speech'
 import { useMemoizedTokens } from '@renderer/hooks/use-estimated-tokens'
 import type {
   AIModelConfig,
@@ -155,14 +157,17 @@ export function UserMessage({
   const handleSpeak = useCallback((): void => {
     const text = expandedText.trim()
     if (!text) return
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    if (!isSpeechSupported()) {
       toast.error(t('messageActions.speechNotSupported'))
       return
     }
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = /[\u4e00-\u9fff]/.test(text) ? 'zh-CN' : 'en-US'
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(utterance)
+    // 在回调里读最新设置：音色 / 语速随时可改，不必让每条消息都订阅一遍。
+    const { speechVoice, speechRate, speechPitch } = useSettingsStore.getState()
+    speakMessage(text, {
+      voice: speechVoice ?? '',
+      rate: speechRate ?? 1,
+      pitch: speechPitch ?? 1
+    })
   }, [expandedText, t])
 
   const handleShare = useCallback(async (): Promise<void> => {

@@ -20,6 +20,8 @@ import {
 } from '@renderer/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { formatDurationMs } from '@renderer/lib/format-duration'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import { isSpeechSupported, speakMessage } from '@renderer/lib/speech'
 
 export interface ActionBarProps {
   isStreaming: boolean
@@ -88,14 +90,17 @@ export function AssistantActionBar({
   const handleSpeak = useCallback((): void => {
     const text = plainText.trim()
     if (!text) return
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    if (!isSpeechSupported()) {
       toast.error(t('messageActions.speechNotSupported'))
       return
     }
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = /[\u4e00-\u9fff]/.test(text) ? 'zh-CN' : 'en-US'
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(utterance)
+    // 在回调里读最新设置：音色 / 语速随时可改，不必让每条消息都订阅一遍。
+    const { speechVoice, speechRate, speechPitch } = useSettingsStore.getState()
+    speakMessage(text, {
+      voice: speechVoice ?? '',
+      rate: speechRate ?? 1,
+      pitch: speechPitch ?? 1
+    })
   }, [plainText, t])
 
   const handleShare = useCallback(async (): Promise<void> => {

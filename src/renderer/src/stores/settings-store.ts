@@ -215,6 +215,14 @@ interface SettingsStore {
   /** Chat column fills the whole conversation panel instead of the 820px cap. */
   conversationPanelFullWidth: boolean
 
+  // Speech (TTS) Settings (S-138) —— 朗读消息时使用的系统语音。
+  /** 选中的语音 `voiceURI`；空串 = 按消息语言自动挑一个。 */
+  speechVoice: string
+  /** 语速倍率（0.5 ~ 2）。 */
+  speechRate: number
+  /** 音调（0 ~ 2）。 */
+  speechPitch: number
+
   // Search (iter-29 S-23). The API-backed WebSearch chain was retired; the
   // multi-engine scraper is configured here instead.
   browserSearch: BrowserSearchSettings
@@ -363,6 +371,11 @@ export const useSettingsStore = create<SettingsStore>()(
       toolbarCollapsedByDefault: false,
       leftSidebarWidth: LEFT_SIDEBAR_DEFAULT_WIDTH,
       conversationPanelFullWidth: false,
+
+      // Speech (TTS) Settings (S-138)
+      speechVoice: '',
+      speechRate: 1,
+      speechPitch: 1,
 
       // Search (iter-29 S-23)
       browserSearch: { ...DEFAULT_BROWSER_SEARCH_SETTINGS },
@@ -527,6 +540,10 @@ export const useSettingsStore = create<SettingsStore>()(
         toolbarCollapsedByDefault: state.toolbarCollapsedByDefault,
         leftSidebarWidth: clampLeftSidebarWidth(state.leftSidebarWidth),
         conversationPanelFullWidth: state.conversationPanelFullWidth,
+        // Speech (TTS) Settings (S-138)
+        speechVoice: state.speechVoice,
+        speechRate: state.speechRate,
+        speechPitch: state.speechPitch,
         // Search (iter-29 S-23)
         browserSearch: state.browserSearch,
         legacyWebSearch: state.legacyWebSearch,

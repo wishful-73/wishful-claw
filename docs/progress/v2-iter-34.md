@@ -1,13 +1,15 @@
-# v2-iter-34：S-107~S-134
+# v2-iter-34：S-107 ~ S-139
 
-- 状态：**实施完成**（13 刀全部落盘，未推送；差收尾）
+- 状态：**已收尾**（合并 main + tag `v0.2.34` + Release）
 - 分支：`dev/v2-iter-34`（base `main` @ `02e57d3f`，即 v0.2.33 收尾点）
 - Plan：`docs/plans/iter-v2-34/`（`plan.md` / `plan-b2.md` / `plan-s113/` / `plan-s114/` / `plan-s132/` / `plan-s134/`）
 - 原始需求：`docs/plans/iter-v2-34/raw-requirements.md`
-- 产品版本：`0.2.33`（未升）
+- 产品版本：`0.2.34`
 - 日期：2026-09-21 ~ 2026-09-22
 
-## 已落刀（13）
+## 已落刀（20）
+
+> 另有质量刀 `424c4d64`「验收修正与文档组织改制」（98 files，+3672/−1812）：S-109 弹窗收缩与按钮行为、`CHAT_MIN_WIDTH` 530 → **600**、S-134 三条微调、正文网址可点（`web-url.ts` + `WebUrlCode.tsx`）、官网端口 5280 / 5281，以及文档改制（`iteration-plan.md` 988 行 → 166 行 + `docs/iterations/` 38 个明细 + `dev-workflow.md` 目录约定）。
 
 | 提交 | 需求 | 内容 |
 |---|---|---|
@@ -24,6 +26,13 @@
 | `df857315` | S-107 | 全局请求上下文上限，会话默认继承 |
 | `466ca6a4` | S-107 调档 | 全局上下文上限改固定档位滑条（200K / 400K / 800K / 1M） |
 | `244e4d18` | S-134 | agent 可起、可读、可停的常驻终端 |
+| `951706d4` | S-135 | 流式渲染降级：主进程侧自适应事件批处理 |
+| `30c4392b` | S-136 | 消息「分叉」成新会话 |
+| `e1c7447e` | S-136 修正 | 分叉按**真实消息 id** 回查 —— 原按排序下标，中途压缩过就对不上 |
+| `f0d99d4c` | S-137 | shell「停止进程」真生效（C# 侧杀进程树，main 只转发） |
+| `4eb5fc05` | S-138 | 朗读音色可配（音色 / 语速 / 音调）+ 设置页试听 |
+| `3366f8f1` | S-133 补完 | 流式正文不再被**思考块**从中间劈开 |
+| `51571a62` | S-139 | 消息操作按钮组死链清理 + 「编辑」改回填输入框 |
 
 ### S-111 更新机制调整：巡检 6h + 顶栏图标取代常驻浮块
 
@@ -83,7 +92,7 @@
 
 ### S-109 更新弹窗主按钮语义
 
-`e5dd5ee0` 把主按钮拆成两步：初始「开始下载」→ 下载中变「后台下载」，点后收窗。**老大 2026-09-22 追加两处小调整（未提交，攒收尾）**：① 点「开始下载」不再自动收窗（原先直接跳过「后台下载」那个按钮，进度也看不见）；② 弹窗尺寸 `sm:max-w-5xl / min-h-[70vh]` 收到 `sm:max-w-2xl / min-h-[28rem]`（缩约三分之一，全屏查阅仍在）。
+`e5dd5ee0` 把主按钮拆成两步：初始「开始下载」→ 下载中变「后台下载」，点后收窗。**老大 2026-09-22 追加两处小调整（已随 `424c4d64` 落盘）**：① 点「开始下载」不再自动收窗（原先直接跳过「后台下载」那个按钮，进度也看不见）；② 弹窗尺寸 `sm:max-w-5xl / min-h-[70vh]` 收到 `sm:max-w-2xl / min-h-[28rem]`（缩约三分之一，全屏查阅仍在）。
 
 ### S-115 项目工具建会话撞 NOT NULL
 
@@ -93,11 +102,48 @@
 
 `244e4d18`，16 files，+981/−7。新增 `Terminal` 工具（`action: start / read / stop`），反请求落到 main 现成真 PTY 会话管理器，复用现成 `LocalTerminal` 渲染、**零新增渲染组件**；agent 起的进程建 tab 并**打开该会话的底部面板**（非当前会话、或面板已打开时只加 tab 不抢选中 —— 口径见下方验收修正）；`ShellApprovalTools` 加 `"Terminal"` 接同一套审批（子代理 / 自动化 / 频道仍被 `NoHumanToAnswer` 挡住）。两个改动前即超 500 行的文件（`ToolDispatchRouter.cs` 573 / `terminal-handlers.ts` 512）补豁免头注释。详见 `raw-requirements.md` 与 `plan-s134/`（阶段三 PASS ❌0 ⚠️5，5 条建议已全部回写计划）。
 
-**验收修正（未提交，归收尾刀）**：老大真机报「没有 `PS D:\claw\wishful-claw>` 那行」「Ctrl+C 观感不对」——同一根因：带 `command` 时走 `powershell -NoProfile -Command`，PowerShell 进非交互模式（无提示符 / 无回显 / 无 profile / Ctrl+C 杀整个 shell）。改成**启交互式 shell 再把命令敲进去**；同时 `read` 改**增量**（`lastReadSeq` 游标，第一次 read 不重放 start 的 tail），并用 `\x03` 中断标记修掉「用户 Ctrl+C 后 start 同命令仍 attach 到空闲终端」。代价：短命令不再回 `exitCode`（契约本意就是要 exitCode 用 Bash）。`TerminalTool` 断言 26 → 27。**追加（同轮）**：老大真机反馈「启动终端没有默认打开底部终端面板」⇒ `_onCreated` 反转原「建 tab 但不动屏幕」口径，起终端即打开该会话面板（非当前会话、或面板已打开时只加 tab 不抢选中），详见 `raw-requirements.md` S-134「验收修正」第 4 条。
+**验收修正（已随 `424c4d64` 落盘）**：老大真机报「没有 `PS D:\claw\wishful-claw>` 那行」「Ctrl+C 观感不对」——同一根因：带 `command` 时走 `powershell -NoProfile -Command`，PowerShell 进非交互模式（无提示符 / 无回显 / 无 profile / Ctrl+C 杀整个 shell）。改成**启交互式 shell 再把命令敲进去**；同时 `read` 改**增量**（`lastReadSeq` 游标，第一次 read 不重放 start 的 tail），并用 `\x03` 中断标记修掉「用户 Ctrl+C 后 start 同命令仍 attach 到空闲终端」。代价：短命令不再回 `exitCode`（契约本意就是要 exitCode 用 Bash）。`TerminalTool` 断言 26 → 27。**追加（同轮）**：老大真机反馈「启动终端没有默认打开底部终端面板」⇒ `_onCreated` 反转原「建 tab 但不动屏幕」口径，起终端即打开该会话面板（非当前会话、或面板已打开时只加 tab 不抢选中），详见 `raw-requirements.md` S-134「验收修正」第 4 条。
 
-## 验收期小调整（不登记需求，按纪律归收尾刀）
+### S-135 流式渲染降级
 
-老大真机验收期间下的零散改动，都不构成独立需求，攒着进收尾那一刀：
+主进程侧新增**自适应事件批处理**（`src/main/ipc/batcher/` 三文件：批处理本体 / codec / config），`agent-stream-handler.ts` 由「17 行裸转发」改为经批处理再广播。**前台 / 后台两档刷新率**（约 30fps 与更低的背景档）+ `maxBufferSize` 上限 + idle 超时；控制类事件**不走合批、直通**。新增 `test:adaptive-event-batcher`（26 断言）。落点选 **main** —— 少一次跨进程 IPC 就少一次渲染。
+
+### S-136 消息「分叉」成新会话
+
+`session-slice.ts` 补上原先**只有类型声明、没有实现体**的 `forkSessionFromMessage`：截到目标消息为止复制（消息重 id）→ 建新会话并切 active → **逐条 `dbAddMessage` 落库** → 返回新 id。`action-bar` 接线。
+**修正刀 `e1c7447e`**：原实现按**排序下标**定位消息，会话中途触发过上下文压缩就对不上 ⇒ 改为按**真实消息 id** 回查。
+
+### S-137 shell「停止进程」真生效
+
+选**方案 B（接通）而不是 A（删按钮）**。关键架构差异：我们的 `Bash` 是 **C# 内联执行**，**main 手里没有进程句柄** ⇒ 中止只能由 C# 侧做、main 只转发（OpenCowork 那套 main 直接 abort 的代码抄不动，只能抄设计）。
+
+- `ShellExecuteTool.Process.cs`：杀**进程树**；并补回「**外部取消也应走 kill 分支**」—— 原 `catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)` 恰好把外部取消排除在外 ⇒ 会话「停止」时留孤儿进程（顺带修掉的独立真 bug）。
+- main `worker-forward-handlers.ts` + 渲染层 IPC 路由接上转发链路。
+- **同时砍掉恒不渲染的后台按钮组**：`backgroundProcesses` 初值 `{}` 且两个写入点全仓零调用 ⇒ 那组「打开会话 / Ctrl+C / 停止进程」**从不出现**。纯删除、不改逻辑。
+
+### S-138 朗读音色可配
+
+设置页「通用」新增**音色下拉 + 语速 / 音调 + 预设文本试听**；`lib/speech.ts` 收敛朗读入口（在回调里读最新设置，不让每条消息各订阅一遍）。**砍掉两件**：① 云端 TTS —— 老大否掉，且它是给用户用的，收费就尴尬；② 「引导下载语音包」—— 实测本机 OneCore 中文语音**只有 3 个且全部已装**，引导等于引导去空货架。
+**变声器路线当场否掉**：`speechSynthesis` 的音频由浏览器直接交给系统音频输出，JS 侧**拿不到任何音频出口**（无 `MediaStream` / `AudioBuffer` / 回调）⇒ 不是代价大小问题，是**通路不存在**。
+
+### S-133 补完（`3366f8f1`）
+
+首刀 `544e1eb7` 修的是「**工具卡**劈开正文」；老大真机复现的另一形态是「**思考块**劈开正文」（「沙」+ 思考块 + 「箱」被挤到下一行）。`chat-store/index.ts` 同法收口：跨过末尾的 `thinking` 段往前找最近的 text 段并回去。
+
+### S-139 消息操作按钮组死链清理
+
+`51571a62`，**20 files，+68 / −571**（净删 503 行）。TS → C# 迁移留下的孤儿 UI 契约。
+
+- **删三条死链**：重新生成 / 删除消息 / 继续执行 —— 含横跨 13 个文件的 `showContinue` 判定位与数据字段（`useMessageListData` 真算过 `continueAssistantMessageId`，但**零消费**；渲染链实际走的是硬编码 `false` 的 `RenderableChatItem.showContinue`）。
+- **删 `UserMessage` 内联编辑态整套**（state / 副作用 / 逻辑 / UI / 11 个 import），连带 `UserSkillEditControl` 变死组件一并删。
+- **「编辑」按钮改为把内容追加回底部输入框**（命令 `/名字 正文`、技能 `[Skill: 名字]` + 换行正文、普通为展开正文，图片一并带上）：**不截断历史、不自动重发**。回填由**拥有输入框的容器**（`SessionConversationPane` / `floating-chat-window`）接 `onEditUserMessage` 灌 store —— **不能在 `UserMessage` 内直连 store**，导出视图与静态转录也会渲染它。
+- 清 zh / en `chat.json` 死键 9 个。
+
+**踩到一个坑（已修正）**：我最初把回填逻辑放进 `MessageList/utils.ts`，那里一条静态 `import { useUIStore }` 把**整条 store 链**（含 `@shared/messagepack/binary-ipc` / `@shared/data-dir`）拉进了 `test:message-timestamp` 的 esbuild bundle —— 该测试只配了 `@renderer` 一个 alias ⇒ 门禁从 `48/48` 掉到 `47/48`。改为**容器内联调用 store**（与队列「取回」等 5 个现成调用方同一写法），`utils.ts` 保持纯净，门禁回绿。
+
+## 验收期小调整（不登记需求，已随 `424c4d64` 落盘）
+
+老大真机验收期间下的零散改动，都不构成独立需求，**已随质量刀 `424c4d64` 一并落盘**：
 
 | # | 调整 | 落点 |
 |:--:|---|---|
@@ -118,16 +164,16 @@
 
 ## 待办
 
-- **立项项全部落刀**：S-107 ~ S-134 各自成刀，共 **13 刀**，`dev/v2-iter-34` **未推送**。
-- **工作区攒着验收期小调整**（见上节 4 项，含 `App.tsx` / `UpdateDialog.tsx` 的 S-109 微调）—— 老大定性「不登记成需求」⇒ 按提交纪律不单独成刀，攒进收尾刀。
+- **立项项全部落刀**：S-107 ~ S-139 各自成刀，共 **20 刀**，`dev/v2-iter-34` **未推送**。
+- **工作区只剩收尾刀的文档改动**（本文 / `changelog.md` / `S-139.md` 实施记录 / `raw-requirements.md` 状态）—— 按提交纪律**攒进收尾刀**。
 - **S-129**（更新源全面切换到官网）：需要官网先上线，**等域名备案**，本轮不动手。
-- **收尾未做**：合并 `dev/v2-iter-34` → `main` → 版本号 v0.2.34 → tag → push（流程见 `docs/release-workflow.md`）。
+- **收尾已完成**：合并 `dev/v2-iter-34` → `main`（`--no-ff`）+ tag `v0.2.34` + GitHub Release（流程见 `docs/release-workflow.md`）。
 
-## 门禁（本轮实测）
+## 门禁（S-139 落刀后实测）
 
 - `npm run typecheck` → `EXIT=0`（node + web 两段）
+- `npm test` → **48/48 通过**：TypeScript 36 + C# 12（含新增 `adaptive-event-batcher` **26 断言**；`TerminalTool` 27、`context-cap` 76、Goal 329）
 - C# 两 sln（`src/runtime/WishfulClaw.sln` / `tests/WishfulClaw.Tests.sln`）→ **0 错 0 警**
-- `npm test` → **47/47 通过**：TypeScript 35（含新增 `test:terminal-output-text` 23 断言、`test:context-cap` 76 断言）+ C# 12（含新增 `TerminalTool` **27** 断言；Goal 套件 329 断言）
 - `website/` 构建：`tsc --noEmit && vite build` 零错
 
 ## 已知限制 / 待真机验证
@@ -136,9 +182,9 @@
 - **S-131 路径二未修**：两侧面板同开时缩窗照样破底线（左 370 + 右 370，视口 900 ⇒ 聊天窗仅 160）。收侧判定只在展开 / 拖宽时跑，**无 resize 监听**；主窗口最小 900×600。修法 A（加视口监听，变窄时重跑收侧判定）待老大裁定。
 - **S-108 挂账未修**：前后端两套分母、滑条最左端 200000 的语义坑仍在。
 
-## 真机验收进度（2026-09-22 12:42 老大确认）
+## 真机验收进度（2026-09-22）
 
-老大口径：「子代理的轮次这个没测试，其它基本都测试过了」。
+老大口径（12:42，当时 13 刀）：「子代理的轮次这个没测试，其它基本都测试过了」。
 
 **已验**：
 
@@ -151,9 +197,11 @@
 - 终端面板滚动条宽度
 - 官网页面本身
 
-**待验**：
+**老大 19:37 复验**：「基本都测试过了，除了长任务下页面停止，这个不太好测试，只有等后面看真实运行的咯」⇒ 下列各项**全部验过**：S-132 子代理轮次上限、S-136 分叉（含中途压缩过的修正）、S-137 shell「停止进程」、S-138 朗读音色 / 语速 / 音调 + 试听、S-133 补完（思考块不再劈正文）、S-139（编辑回填 / 三条死链消失 / 导出视图无编辑按钮）。
 
-- **S-132 子代理轮次上限**（老大 12:42 正在测）：用 `reviewer`（md 里 `maxTurns: 8`）跑一个 **> 8 轮**的任务，确认不再第 8 轮被掐。
+**观察项（唯一未验）**：
+
+- **S-135 流式渲染降级**：高压长任务（工具快 + 模型快 ⇒ 单位时间渲染量大）**人工不好造**，留待真实运行观察。判据两条：① 页面不再「像截图一样静止」；② 主会话「停止」即时生效。
 
 **待确认**：
 

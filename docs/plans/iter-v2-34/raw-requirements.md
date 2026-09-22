@@ -42,7 +42,7 @@
 | S-136 | agent 回复操作栏「分叉」按钮点击必报失败 | ✅ `30c4392b` | [S-136.md](requirements/S-136.md) |
 | S-137 | shell 渲染组件「停止进程」点击无反应 | ✅ `f0d99d4c` | [S-137.md](requirements/S-137.md) |
 | S-138 | 朗读音色：放出本机已有语音 + 语速音调控制 + 设置页试听 | ✅ `4eb5fc05` | [S-138.md](requirements/S-138.md) |
-| S-139 | 消息操作按钮组死链清理（重新生成 / 删除 / 继续执行 + `showContinue`）+ `UserMessage` 内联编辑态删除 + 「编辑」改为回填输入框 | ⬜ 待实施 | [S-139.md](requirements/S-139.md) |
+| S-139 | 消息操作按钮组死链清理（重新生成 / 删除 / 继续执行 + `showContinue`）+ `UserMessage` 内联编辑态删除 + 「编辑」改为回填输入框 | ✅ `51571a62` | [S-139.md](requirements/S-139.md) |
 
 ---
 

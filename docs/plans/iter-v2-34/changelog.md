@@ -94,4 +94,12 @@
   - **订正我前次一处判断**：`process-summary.ts:152-167` 的 `splitProcessAndFinal` **不是本案成因** —— 它切的是 render item 边界，不会从字符中间劈；劈开完全由数据层产生。**渲染层本刀不动**。
   - **本刀范围**：`chat-store/index.ts` 一处判据（9 insertions / 5 deletions，含注释）+ 本文件与 `S-133.md` 的文档。**历史数据不回填**（老会话历史消息仍显示劈开，新消息不再劈）。**残留不修**：`thinking("Id.")` 仅 3 字符 / 51ms 的碎片来源未查；`:2268` 的 thinking 追加判据缺 `!lastSeg.completedAt`（对比 OpenCowork `appendThinking:1318`）；`:2266` 的 thinking 分支同样是「只认末尾」，同 iteration 内 `thinking → text → thinking` 会留多个思考段（性质与正文被切断不同，记档备查）。
 
+- 2026-09-22 18:56：**S-139「消息操作按钮组死链清理」落刀** —— `51571a62`（`fix(chat): S-139 消息操作按钮组死链清理 + 编辑改回填输入框`），**20 files，+68 / −571**（净删 503 行）。编号由来：S-139 原给「朗读试听」，15:14 撤销后复用给本需求。
+  - **删三条死链**：重新生成 / 删除消息 / 继续执行 —— 三个 `on*` 回调全仓无实现体。**`showContinue` 三层全拔**（`useMessageListData` 算而不被消费 → `transcript-utils` 包装函数零调用 → 渲染链实走硬编码 `false` 的 `RenderableChatItem.showContinue`），连带 `tailToolExecutionState` / `hasCompleteTailToolExecutionResults` / `TailToolExecutionState` 下线，横跨 **13 个文件**。
+  - **删 `UserMessage` 内联编辑态整套**（state / 两个 effect / `handleSave` 等 6 个逻辑 / `:251-330` UI / `!editing` 判断 / 三元收敛），`UserSkillEditControl` 随最后引用消失一并删。
+  - **「编辑」改为回填底部输入框**（追加语义）：命令 `/名 正文`、技能 `[Skill: 名]\n正文`、普通 `expandedText`，图片走 `pendingInsertImages`。由**拥有输入框的容器**（`SessionConversationPane` / `floating-chat-window`）接 `onEditUserMessage` 灌 store —— **不在 `UserMessage` 内直连 store**，否则导出视图（`ExportView.tsx:59`）与静态转录（`StaticMessageTranscript.tsx:106`）也会长出编辑按钮。**不截断历史、不自动重发。**
+  - **清 9 个 i18n 死键**（zh / en 各 9）：`regenerateReference` / `continueToolExecution`(+`hint`) / `deleteAndRegenerate` / `saveAndResend` / `userMessage.addSkill|changeSkill|removeSkill|selectSkill`。**未动 `action.delete`** —— 8 处共用。
+  - **门禁**：`typecheck` EXIT=0；`npm test` **48/48**（TS 36 + C# 12）；C# 两 sln 0 错 0 警。
+  - **实施中踩到并修正的坑**：回填逻辑最初放在 `MessageList/utils.ts`，那里一条静态 `import { useUIStore }` 把整条 store 链（含 `@shared/messagepack/binary-ipc` / `@shared/data-dir`）拉进 `test:message-timestamp` 的 esbuild bundle —— 该测试只配 `@renderer` 一个 alias ⇒ 门禁 `48/48` → `47/48`。改为**容器内联调用 store**（同队列「取回」等 5 个现成调用方），`utils.ts` 保持纯净后回绿。
+
 ---

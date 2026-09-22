@@ -119,7 +119,7 @@ export function AssistantActionBar({
 
     setForking(true)
     try {
-      const forkedSessionId = await forkSessionFromMessage?.(sessionId, msgId) ?? null
+      const forkedSessionId = await forkSessionFromMessage(sessionId, msgId)
       if (!forkedSessionId) {
         toast.error(t('messageActions.forkFailed'))
         return

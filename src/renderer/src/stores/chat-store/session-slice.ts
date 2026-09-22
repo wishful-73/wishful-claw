@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
-import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats } from './db-helpers'
+import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats, dbUpsertMessage } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
 import { clampSessionCompressionThreshold } from '@renderer/lib/agent/context-compression-config'
@@ -40,7 +40,7 @@ export interface SessionSlice {
   sessions: Session[]
   sessionsById: Record<string, number>
   activeSessionId: string | null
-  forkSessionFromMessage?: (sessionId: string, messageId: string) => Promise<string | null>
+  forkSessionFromMessage: (sessionId: string, messageId: string) => Promise<string | null>
   loadMessageWindowAround?: (sessionId: string, options?: { messageId?: string; sortOrder?: number }, windowSize?: number) => Promise<void>
   getLatestSessionByPlanId?: (planId: string) => Session | null
 
@@ -493,6 +493,65 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       syncSessionsById(state)
     })
     void dbCreateSession(copy)
+    void get().setActiveSession(newId)
+    return newId
+  },
+
+  forkSessionFromMessage: async (sessionId, messageId) => {
+    // 分叉 = 截至目标消息（含本身）的完整副本。只换 message.id，内部引用
+    // （toolUseId / toolResultId 等）保持原值 —— 分叉会话引用的是同一段历史
+    // 工具调用，重写这些 id 反而会让工具结果对不上调用。
+    const source = get().sessions.find((s) => s.id === sessionId)
+    if (!source) return null
+
+    const messageIndex = source.messages.findIndex((message) => message.id === messageId)
+    if (messageIndex < 0) return null
+
+    const newId = nanoid()
+    const now = Date.now()
+    const clonedMessages = source.messages
+      .slice(0, messageIndex + 1)
+      .map((message) => ({ ...message, id: `${message.id}_fork_${nanoid(6)}` }))
+    const userTurns = clonedMessages.reduce(
+      (count, message) => count + (message.role === 'user' ? 1 : 0),
+      0
+    )
+
+    const forkedSession: Session = {
+      ...source,
+      id: newId,
+      title: `${source.title}（分支）`,
+      messages: clonedMessages,
+      messageCount: clonedMessages.length,
+      // 分叉是独立副本：消息天然全量到手，不继承源会话的加载窗口与驻留状态。
+      messagesLoaded: true,
+      loadedRangeStart: 0,
+      loadedRangeEnd: clonedMessages.length,
+      totalTurns: userTurns,
+      lastKnownMessageCount: clonedMessages.length,
+      isRuntimeResident: true,
+      createdAt: now,
+      updatedAt: now,
+      pinned: false
+    }
+
+    set((state) => {
+      state.sessions.push(forkedSession)
+      syncSessionsById(state)
+    })
+
+    // dbCreateSession 只写会话元数据（db/sessions-create），消息必须逐条落库，
+    // 否则刷新 / 重启后新会话是个空壳。先 await 会话行落地，消掉 worker 端
+    // 「消息先到、会话后到」的竞态，再异步批量补消息。
+    try {
+      await dbCreateSession(forkedSession)
+      for (let index = 0; index < clonedMessages.length; index += 1) {
+        void dbUpsertMessage(newId, clonedMessages[index], index)
+      }
+    } catch (error) {
+      console.error('[chat-store] failed to persist forked session', newId, error)
+    }
+
     void get().setActiveSession(newId)
     return newId
   },

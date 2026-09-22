@@ -210,8 +210,11 @@ export function UpdateDialog({
               </Button>
 
               {isDownloading ? (
-                <Button variant="outline" onClick={() => handleOpenChange(false)}>
-                  {t('updater.dialog.later', { defaultValue: '稍后' })}
+                // 下载已经跑起来，这个按钮只剩一个职责：把窗口收起来。下载在后台继续，
+                // 点它等同于关掉弹窗 —— 所以文案得说清是「后台下载」，而不是「稍后」。
+                <Button onClick={() => handleOpenChange(false)}>
+                  <Download className="size-4" />
+                  {t('updater.dialog.backgroundDownload', { defaultValue: '后台下载' })}
                 </Button>
               ) : canRetryInstall ? (
                 <Button onClick={() => void onInstall()}>
@@ -229,9 +232,11 @@ export function UpdateDialog({
                   {t('updater.dialog.manualDownload', { defaultValue: '手动下载' })}
                 </Button>
               ) : hasAvailableUpdate ? (
-                <Button onClick={() => void onDownload()} disabled={isDownloading}>
+                // 走到这里 isDownloading 必然是 false —— 原先那句 disabled={isDownloading}
+                // 是一句永远为假的死条件，删掉它不改变任何行为。
+                <Button onClick={() => void onDownload()}>
                   <Download className="size-4" />
-                  {t('updater.dialog.download', { defaultValue: '后台下载' })}
+                  {t('updater.dialog.download', { defaultValue: '开始下载' })}
                 </Button>
               ) : (
                 <Button onClick={() => void onCheck()} disabled={isChecking}>

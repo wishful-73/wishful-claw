@@ -36,7 +36,7 @@ public static partial class SubAgentExecutor
 
     // ── Child parameter building ──
 
-    private static JsonElement BuildChildParameters(
+    internal static JsonElement BuildChildParameters(
         JsonElement parentParameters,
         SubAgentDefinition definition,
         string prompt,
@@ -57,15 +57,19 @@ public static partial class SubAgentExecutor
                     prop.NameEquals("personaId") ||
                     prop.NameEquals("userRules") ||
                     prop.NameEquals("providerTurnOnly") ||
-                    prop.NameEquals("runtimeRole"))
+                    prop.NameEquals("runtimeRole") ||
+                    prop.NameEquals("maxIterations"))   // ← 新增：下面统一恒写 0，避免重复键
                 {
                     continue;
                 }
                 prop.WriteTo(writer);
             }
 
-            // Override maxIterations with the definition's maxTurns
-            writer.WriteNumber("maxIterations", definition.MaxTurns);
+            // ⚠️ 恒写 0 = 不限轮次（iter-34 S-132）。definition.MaxTurns 已降级为「轮次提醒点」，
+            // 不再作为硬截断依据 —— 它曾在这里直接送进 maxIterations，撞上限即被掐断且状态仍报
+            // completed，产出全丢。防跑飞由轮次提醒（AgentLoop.SubAgentReminder）与父 run 的
+            // 取消令牌承担，与 goalSubAgent 一路（GoalSubAgentExecutor.cs:107）保持一致。
+            writer.WriteNumber("maxIterations", 0);
             if (definition.ProviderTurnOnly)
                 writer.WriteBoolean("providerTurnOnly", true);
 

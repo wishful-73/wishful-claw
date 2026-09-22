@@ -1,4 +1,6 @@
+using System.Text.Json;
 using WishfulClaw.Agent;
+using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.GoalRegressionTests;
 
@@ -58,6 +60,32 @@ internal static partial class Program
             "maxIterations: 0 means unlimited, not 'fall back to default'");
         AssertEqual(0, Parse("name: a\ndescription: b")!.MaxTurns, "unset → unlimited by default");
 
+        // ── S-132：真子代理 run 一律不限轮次（maxTurns 降级为「轮次提醒点」） ──
+        // 改动前：定义里的 maxTurns 被原样送进子 run 的 maxIterations ⇒ 撞上限即被硬截断，
+        // 且状态仍报 completed，产出全丢。以下四条锁住「组装后恒 0」。
+        var cappedDef = Parse("name: a\ndescription: b\nmaxTurns: 8")!;
+        AssertEqual(8, cappedDef.MaxTurns, "S-132 sanity: maxTurns is still parsed (it is now a reminder point)");
+
+        using var cappedParent = JsonDocument.Parse("{\"maxIterations\":7,\"provider\":{}}");
+        var cappedChild = SubAgentExecutor.BuildChildParameters(cappedParent.RootElement, cappedDef, "do it", 1);
+        AssertEqual(0, JsonHelpers.GetInt(cappedChild, "maxIterations", -1),
+            "child run is unlimited even though the definition writes maxTurns: 8");
+
+        var maxIterationsKeyCount = 0;
+        foreach (var prop in cappedChild.EnumerateObject())
+        {
+            if (prop.NameEquals("maxIterations")) maxIterationsKeyCount++;
+        }
+        AssertEqual(1, maxIterationsKeyCount,
+            "maxIterations is written exactly once (the parent value is not copied through)");
+
+        using var bareParent = JsonDocument.Parse("{}");
+        var bareChild = SubAgentExecutor.BuildChildParameters(
+            bareParent.RootElement, Parse("name: a\ndescription: b")!, "do it", 1);
+        AssertEqual(0, JsonHelpers.GetInt(bareChild, "maxIterations", -1),
+            "child run is unlimited when the definition omits maxTurns");
+
         Console.WriteLine("  sub-agent turn reminder + maxTurns parsing (S-53): 17 assertions passed");
+        Console.WriteLine("  child run is always unlimited regardless of maxTurns (S-132): 4 assertions passed");
     }
 }

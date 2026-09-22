@@ -25,7 +25,7 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type CodexConfig, type FreeChatSite, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
+import { type ModelBinding, type CodexConfig, type FreeChatSite, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampGlobalContextCapTokens, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
 import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
@@ -83,6 +83,7 @@ export {
   MAX_REQUEST_MAX_RETRIES,
   clampRequestMaxRetries,
   DEFAULT_MAX_PARALLEL_TOOL_CALLS,
+  DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS,
   DEFAULT_MAX_TOOL_CALLS_PER_TURN,
   DEFAULT_MAX_RESIDENT_TURNS,
   DEFAULT_SHELL_EXECUTION_ENDPOINT,
@@ -95,6 +96,10 @@ export {
   MIN_MAX_PARALLEL_TOOL_CALLS,
   MIN_MAX_TOOL_CALLS_PER_TURN,
   MIN_MAX_RESIDENT_TURNS,
+  MIN_GLOBAL_CONTEXT_CAP_TOKENS,
+  MAX_GLOBAL_CONTEXT_CAP_TOKENS,
+  GLOBAL_CONTEXT_CAP_STEP_TOKENS,
+  clampGlobalContextCapTokens,
   clampMaxConcurrentSubAgents,
   clampMaxParallelToolCalls,
   clampMaxToolCallsPerTurn,
@@ -148,6 +153,11 @@ interface SettingsStore {
   sandboxEnabled: boolean
   /** Global trigger ratio shared by every chat model. */
   contextCompressionThreshold: number
+  /**
+   * S-107：全局「请求上下文上限」，绝对 token 数。0 = 不限制（跟随当前模型的窗口）。
+   * 会话级覆盖优先级与压缩阈值同构，见 resolveEffectiveContextCapTokens。
+   */
+  contextCapTokens: number
   editorWorkspaceEnabled: boolean
   editorRemoteLanguageServiceEnabled: boolean
   maxParallelToolCalls: number
@@ -297,6 +307,7 @@ export const useSettingsStore = create<SettingsStore>()(
       freeChatActiveTabId: '',
       contextCompressionEnabled: true,
       contextCompressionThreshold: 0.8,
+      contextCapTokens: DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS,
       sandboxEnabled: true,
       editorWorkspaceEnabled: false,
       editorRemoteLanguageServiceEnabled: false,
@@ -407,7 +418,10 @@ export const useSettingsStore = create<SettingsStore>()(
                 }),
             ...(patch.maxResidentTurns === undefined
               ? {}
-              : { maxResidentTurns: clampMaxResidentTurns(patch.maxResidentTurns) })
+              : { maxResidentTurns: clampMaxResidentTurns(patch.maxResidentTurns) }),
+            ...(patch.contextCapTokens === undefined
+              ? {}
+              : { contextCapTokens: clampGlobalContextCapTokens(patch.contextCapTokens) })
           }
 
           const hasChanges = (Object.keys(nextPatch) as Array<keyof SettingsStoreData>).some(
@@ -460,6 +474,7 @@ export const useSettingsStore = create<SettingsStore>()(
         teamToolsEnabled: state.teamToolsEnabled,
         contextCompressionEnabled: state.contextCompressionEnabled,
         contextCompressionThreshold: state.contextCompressionThreshold,
+        contextCapTokens: clampGlobalContextCapTokens(state.contextCapTokens),
         sandboxEnabled: state.sandboxEnabled,
         editorWorkspaceEnabled: state.editorWorkspaceEnabled,
         editorRemoteLanguageServiceEnabled: state.editorRemoteLanguageServiceEnabled,

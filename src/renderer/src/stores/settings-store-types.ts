@@ -142,6 +142,12 @@ export const MAX_MAX_TOOL_CALLS_PER_TURN = 50
 export const DEFAULT_MAX_RESIDENT_TURNS = 15
 export const MIN_MAX_RESIDENT_TURNS = 5
 export const MAX_MAX_RESIDENT_TURNS = 50
+// S-107: 全局「请求上下文上限」，绝对 token 数。0 = 不限制（跟随当前模型的窗口）。
+export const DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS = 0
+export const MIN_GLOBAL_CONTEXT_CAP_TOKENS = 0
+export const MAX_GLOBAL_CONTEXT_CAP_TOKENS = 2_000_000
+/** 上限输入框的步长，4K。 */
+export const GLOBAL_CONTEXT_CAP_STEP_TOKENS = 4_000
 
 export interface RecentWorkingTarget {
   workingFolder: string
@@ -272,6 +278,15 @@ export function clampMaxResidentTurns(value: number): number {
     MAX_MAX_RESIDENT_TURNS,
     Math.max(MIN_MAX_RESIDENT_TURNS, Math.floor(value))
   )
+}
+/**
+ * S-107 全局「请求上下文上限」的收口。0 是「不限制」的哨兵，所以不能像上面几个
+ * clamp 那样把越界值夹到下限 —— 夹了就再也回不到不限制。只有非有限值回默认、
+ * 超过量程上限时夹到上限。
+ */
+export function clampGlobalContextCapTokens(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS
+  return Math.min(MAX_GLOBAL_CONTEXT_CAP_TOKENS, Math.max(MIN_GLOBAL_CONTEXT_CAP_TOKENS, Math.floor(value)))
 }
 export function normalizeShellExecutionEndpoint(value: unknown): ShellExecutionEndpoint {
   if (

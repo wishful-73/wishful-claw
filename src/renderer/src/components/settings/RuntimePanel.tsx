@@ -10,7 +10,11 @@ import {
   MAX_API_REQUEST_TIMEOUT_SECONDS,
   clampMaxResidentTurns,
   MIN_MAX_RESIDENT_TURNS,
-  MAX_MAX_RESIDENT_TURNS
+  MAX_MAX_RESIDENT_TURNS,
+  clampGlobalContextCapTokens,
+  MIN_GLOBAL_CONTEXT_CAP_TOKENS,
+  MAX_GLOBAL_CONTEXT_CAP_TOKENS,
+  GLOBAL_CONTEXT_CAP_STEP_TOKENS
 } from '@renderer/stores/settings-store'
 import { Input } from '@renderer/components/ui/input'
 import { Switch } from '@renderer/components/ui/switch'
@@ -312,6 +316,38 @@ function RuntimePanel(): React.JSX.Element {
                   settings.updateSettings({ contextCompressionThreshold: ratio })
                 }}
               />
+            </div>
+
+            {/* S-107：全局「请求上下文上限」。存的是绝对 token 数，0 = 不限制。
+                量纲就必须是 token，不能换算成比例 —— 上限是按模型窗口来设的，
+                换算成百分比会随模型漂移。会话级覆盖见 context-ring 面板。 */}
+            <div className="space-y-2 pt-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <label className="text-xs font-medium">
+                    {t('general.contextCompression.contextCap.label')}
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    {t('general.contextCompression.contextCap.desc')}
+                  </p>
+                </div>
+                <Input
+                  type="number"
+                  min={MIN_GLOBAL_CONTEXT_CAP_TOKENS}
+                  max={MAX_GLOBAL_CONTEXT_CAP_TOKENS}
+                  step={GLOBAL_CONTEXT_CAP_STEP_TOKENS}
+                  value={settings.contextCapTokens}
+                  onChange={(event) =>
+                    settings.updateSettings({
+                      contextCapTokens: clampGlobalContextCapTokens(Number(event.target.value))
+                    })
+                  }
+                  className="w-28 text-xs"
+                />
+              </div>
+              <SettingHint>
+                {t('general.contextCompression.contextCap.hint')}
+              </SettingHint>
             </div>
           </>
         )}

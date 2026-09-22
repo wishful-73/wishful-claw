@@ -148,6 +148,33 @@ export function resolveSessionContextCapTokens(input: {
 }
 
 /**
+ * 会话实际生效的「请求上下文上限」（iter-34 S-107）。
+ *
+ * 优先级与会话级压缩阈值完全同构：会话设过（且仍适用于当前模型）就用会话的，
+ * 否则落到全局设置；全局也是 0 就返回 0 = 不限制。
+ *
+ * 这个函数是上限的**唯一出口** —— `chat-store` 的 `sendMessage` 盖章与
+ * `context-ring` 的展示都走它，免得两边各算一遍再慢慢漂移。
+ */
+export function resolveEffectiveContextCapTokens(input: {
+  sessionCapTokens?: number | null
+  sessionCapModelId?: string | null
+  currentModelId?: string | null
+  globalCapTokens?: number | null
+}): number {
+  const sessionCap = resolveSessionContextCapTokens({
+    capTokens: input.sessionCapTokens,
+    capModelId: input.sessionCapModelId,
+    currentModelId: input.currentModelId
+  })
+  if (sessionCap > 0) return sessionCap
+
+  const globalCap = input.globalCapTokens
+  if (typeof globalCap !== 'number' || !Number.isFinite(globalCap) || globalCap <= 0) return 0
+  return Math.floor(globalCap)
+}
+
+/**
  * 滑杆量程：下限固定 200K，上限是当前模型的窗口。
  * 模型窗口本身不超过下限时返回 null —— 这种模型没什么可压的，控件不渲染。
  */

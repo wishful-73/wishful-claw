@@ -11,6 +11,10 @@
 // 另有一条**显示口径**的断言：滑杆左下角那个 200K 是十进制还是二进制，用户一眼就能
 // 看出对不上（二进制 200*1024 会被 formatTokens 显示成 205k）。这条不是洁癖 —— 是
 // 老大真机拖到最左看到 205k 报上来的。
+//
+// iter-34 S-107 在本文件尾部追加了「全局上限 + 会话继承」一组：全局值存的是**绝对
+// token 数**（0 = 不限制），会话没设过就继承它；会话值仍然受 S-84 的「换模型作废」
+// 约束，而**全局值不绑模型** —— 两者口径不同，别顺手统一。
 
 import assert from 'node:assert/strict'
 import {
@@ -19,6 +23,7 @@ import {
   SESSION_COMPRESSION_THRESHOLD_STEP,
   applySessionContextCap,
   clampSessionCompressionThreshold,
+  resolveEffectiveContextCapTokens,
   resolveSessionContextCapRange,
   resolveSessionContextCapTokens,
   resolveSessionCompressionThreshold
@@ -211,6 +216,111 @@ eq(
   Math.round((1 / SESSION_COMPRESSION_THRESHOLD_STEP) * 100) % 100,
   0,
   '步长能整除 1 个百分点，滑条刻度不会出现小数'
+)
+
+// —— iter-34 S-107：全局「请求上下文上限」与会话继承 ——
+
+// 优先级与会话级压缩阈值同构：会话设过（且仍适用于当前模型）就用会话的，否则落到
+// 全局；全局也是 0 就 0 = 不限制。两条容易写错的边界都钉在这里：① 会话值因换模型
+// 作废时**落回全局**而不是 0；② 全局值**不绑模型**，没有当前模型 id 照样生效。
+const GLOBAL_CAP = 384_000
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: SOME_CAP,
+    sessionCapModelId: 'model-a',
+    currentModelId: 'model-a',
+    globalCapTokens: GLOBAL_CAP
+  }),
+  SOME_CAP,
+  '会话设过且模型匹配 ⇒ 会话值覆盖全局'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    sessionCapModelId: 'model-a',
+    currentModelId: 'model-a',
+    globalCapTokens: GLOBAL_CAP
+  }),
+  GLOBAL_CAP,
+  '会话没设过 ⇒ 继承全局'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: undefined,
+    sessionCapModelId: null,
+    currentModelId: 'model-a',
+    globalCapTokens: GLOBAL_CAP
+  }),
+  GLOBAL_CAP,
+  '会话字段缺失 ⇒ 继承全局'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: SOME_CAP,
+    sessionCapModelId: 'model-a',
+    currentModelId: 'model-b',
+    globalCapTokens: GLOBAL_CAP
+  }),
+  GLOBAL_CAP,
+  '会话值因换模型作废 ⇒ 落回全局，不是 0'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: SOME_CAP,
+    sessionCapModelId: 'model-a',
+    currentModelId: 'model-a',
+    globalCapTokens: 0
+  }),
+  SOME_CAP,
+  '全局为 0（不限制）不影响会话值生效'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    currentModelId: 'model-a',
+    globalCapTokens: 0
+  }),
+  0,
+  '两边都没设 ⇒ 0 = 不限制'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({ globalCapTokens: GLOBAL_CAP }),
+  GLOBAL_CAP,
+  '全局值不绑模型，拿不到模型 id 也照样生效'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    globalCapTokens: Number.NaN
+  }),
+  0,
+  '全局 NaN 当不限制'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    globalCapTokens: -1
+  }),
+  0,
+  '全局负数当不限制'
+)
+
+eq(
+  resolveEffectiveContextCapTokens({
+    sessionCapTokens: 0,
+    globalCapTokens: 300_000.9
+  }),
+  300_000,
+  '全局小数向下取整'
 )
 
 console.log(`context-cap: ${checks} assertions passed`)

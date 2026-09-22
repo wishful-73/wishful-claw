@@ -219,6 +219,7 @@
     "outputReserved": "{{tokens}} reserved for output",
     "contextCapTitle": "Request context limit",
     "contextCapUnlimited": "Model max",
+    "contextCapFollow": "Global {{tokens}}",
     "contextCapHint": "Lower limit, lower cost",
     "compressionThresholdTitle": "Compression threshold",
     "compressionThresholdFollow": "Global {{percent}}",

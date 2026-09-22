@@ -219,6 +219,7 @@
     "outputReserved": "输出预留 {{tokens}}",
     "contextCapTitle": "请求上下文上限",
     "contextCapUnlimited": "模型最大窗口",
+    "contextCapFollow": "全局 {{tokens}}",
     "contextCapHint": "上限越低，越省钱",
     "compressionThresholdTitle": "压缩阈值",
     "compressionThresholdFollow": "全局 {{percent}}",

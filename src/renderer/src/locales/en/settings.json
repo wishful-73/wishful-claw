@@ -214,6 +214,11 @@
       "threshold": {
         "label": "Compression Threshold",
         "desc": "Trigger compression at this context window usage ratio. Range: 30% - 90%"
+      },
+      "contextCap": {
+        "label": "Request Context Limit",
+        "desc": "How much context a request may carry, in tokens",
+        "hint": "0 means unlimited and follows the current model\u0027s window. Applies only to sessions that have not set their own \u2014 a session can override it from the context ring panel."
       }
     },
     "developerMode": {

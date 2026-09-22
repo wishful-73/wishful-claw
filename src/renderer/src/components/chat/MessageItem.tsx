@@ -203,7 +203,9 @@ function MessageItemInner({
             isStreaming={isStreaming}
             usage={effectiveMessage.usage}
             toolResults={toolResults}
-            msgId={effectiveMessage.id}
+            // 压缩会把一条 assistant 消息切成多个渲染片段，片段 id 带 `:compression-*` 后缀，
+            // 不是库里真实的消息 id。分叉/重试/删除这类操作要按真实 id 回查，必须用 originMessageId。
+            msgId={item?.kind === 'message' ? item.originMessageId : effectiveMessage.id}
             sessionId={sessionId}
             sessionAssistantMessageIds={sessionAssistantMessageIds}
             sessionToolUseIds={sessionToolUseIds}

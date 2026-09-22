@@ -87,4 +87,11 @@
   - **教训记账**：朗读相关的 UI 小改属于**既有功能本身的完善**，不是新需求 —— 判据是「它是不是一个独立可交付的诉求」，不是「有没有单独的文件改动」。
 - 2026-09-22 15:21：**音调上限实测：加不了，2 是硬顶** —— 老大问「音调上限还可以加不」。探针 `.wishful-claw/tmp/pitch-probe.js`（Electron 43.2.0 / Chromium 150.0.7871.129）实测：赋 `pitch` 2.5 / 3 / 4 / 10 全部读回 **2**（夹回上限），赋 −1 读回 0；`rate` 同源（赋 20 读回 10、赋 0 / −1 读回 0.1）。⇒ 滑条往上加**没有意义**，拖到 3 与拖到 2 在 API 层是同一个值，只会让用户以为滑条坏了。**要更宽的变调只能自己做音频流**，该路线已在 `S-138.md`「已否路线一」否掉（`window.speechSynthesis` 拿不到音频出口）。详见 `requirements/S-138.md`。
 
+- 2026-09-22 18:35：**S-133 补完立项 —— 算补完、不另开编号**（老大一问一答：「算 S-133 补完 6点后改，不用刻意合并到一个提交去」）。**触发**：老大 16:31 报「沙箱」被切（「沙」在前、「箱」掉下一行），截图里一句话被切 **5 截**、每截都跟一条「已深度思考」绑在一起。**定性**：第一版修的是「正文被工具卡劈开」，**漏了「被思考块劈开」** —— 而本文件 `S-133.md:3` 的老大原话里**两个都提了**（「文本会被思考 或者 组件的渲染打断」）。⇒ 同一需求的**未覆盖分支**，不新立项。
+  - **DB 取证（dev 库 `index.db`，消息 `wc-agent-1790065732576-7ecq04`）**：`content` / `msg.text` **完整连贯**，`meta.segments` **已劈成 `[thinking, text1, thinking("Id."), text2, tool_use]`** ⇒ **数据层劈开，渲染层只是如实画**。`msg.text` 与 `msg.segments` 是两条独立累积路径（`:2227` 的 `msg.text += delta.text` 不碰 segments），所以正文看着完整、段却碎了。
+  - **根因 = 与第一版同一行**：`chat-store/index.ts:2246` 的 `findLast((seg) => seg.type !== 'tool_use')` —— 判据只排除 tool_use，**思考段满足「不是 tool_use」就停在那儿**，`:2250` 的 `type === 'text'` 判否 ⇒ 走 `else` 新建段。**修法**：谓词加 `&& seg.type !== 'thinking'`（`ContentSegment.type` 只三种 ⇒ 等价「找本 iteration 最近的 text 段」）；跨 iteration 误合并由 `:2250` 的 `iteration === msg.currentIteration` 兜住。
+  - **参考实现（老大要求先看）**：**Reasonix** 是 `reasoning?: string` + `content: string` **两个消息级字段、不按段切**，渲染固定把 reasoning 摆正文之上 ⇒ **根治**（但丢掉「思考-正文-思考」的交替时序）；**OpenCowork** 的 `appendText`（`cron-agent-background.ts:1303-1312`）**只看末尾** ⇒ **同源病根**，它自己也劈。⇒ **不抄 OpenCowork**、**不改成 Reasonix 那样彻底分离**（要放弃 segments 时序模型）。
+  - **订正我前次一处判断**：`process-summary.ts:152-167` 的 `splitProcessAndFinal` **不是本案成因** —— 它切的是 render item 边界，不会从字符中间劈；劈开完全由数据层产生。**渲染层本刀不动**。
+  - **本刀范围**：`chat-store/index.ts` 一处判据（9 insertions / 5 deletions，含注释）+ 本文件与 `S-133.md` 的文档。**历史数据不回填**（老会话历史消息仍显示劈开，新消息不再劈）。**残留不修**：`thinking("Id.")` 仅 3 字符 / 51ms 的碎片来源未查；`:2268` 的 thinking 追加判据缺 `!lastSeg.completedAt`（对比 OpenCowork `appendThinking:1318`）；`:2266` 的 thinking 分支同样是「只认末尾」，同 iteration 内 `thinking → text → thinking` 会留多个思考段（性质与正文被切断不同，记档备查）。
+
 ---

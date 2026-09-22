@@ -23,6 +23,11 @@ import type { AIModelConfig, AIProvider } from '../../src/shared/types/provider'
 
 let checks = 0
 
+// buildProviderPayload 现在会在 contextLength 缺失时告警（S-108），而下面绝大多数用例用的都是
+// 没填 contextLength 的合成模型 —— 不静音的话，预期内的告警会把真正的失败淹掉。S-108 那一节
+// 自己接管 console.warn 来断言，用完再交还这个静音版。
+console.warn = (): void => {}
+
 function check(condition: unknown, message: string): asserts condition {
   checks++
   assert.ok(condition, message)
@@ -312,6 +317,45 @@ const WORKER_READ_KEYS = [
       `${relative} does not hand-write a provider payload literal`
     )
   }
+}
+
+// ── S-108: contextLength 缺失必须留痕，不能静默 undefined ─────────────────────
+// Worker 读不到 `provider.contextLength` 就兜底 200K 压缩窗口（DefaultContextCompressionLimit），
+// 前端看着一切正常 —— 用户报「上下文上限 384K 却按 200K 压缩」时，链路上得有一句能指的告警。
+// 两种缺法要能分开：模型不在 provider 的列表里，还是模型档案没填这个字段。
+{
+  const warnings: string[] = []
+  console.warn = (...args: unknown[]): void => {
+    warnings.push(args.map((arg) => String(arg)).join(' '))
+  }
+
+  // 情形一：模型不在 provider 的 models 列表里
+  const missingModel = buildProviderPayload(makeProvider({ models: [makeModel()] }), 'model-x', makeSettings())
+  eq(missingModel.contextLength, undefined, '找不到的模型不凭空造 contextLength')
+  check(
+    warnings.some((line) => line.includes('contextLength') && line.includes('model-x')),
+    '模型不在列表里时告警，并带上模型 id'
+  )
+
+  // 情形二：模型在列表里，但档案没填 contextLength
+  warnings.length = 0
+  buildProviderPayload(makeProvider({ models: [makeModel()] }), 'model-1', makeSettings())
+  check(
+    warnings.some((line) => line.includes('model-1') && line.includes('没有填')),
+    '模型档案没填 contextLength 时告警'
+  )
+
+  // 情形三：填了就闭嘴，值原样带出去
+  warnings.length = 0
+  const withLength = buildProviderPayload(
+    makeProvider({ models: [makeModel({ contextLength: 384000 })] }),
+    'model-1',
+    makeSettings()
+  )
+  eq(withLength.contextLength, 384000, '填了 contextLength 就原样带出去')
+  eq(warnings.length, 0, 'contextLength 齐全时不产生噪音告警')
+
+  console.warn = (): void => {}
 }
 
 console.log(`provider payload checks passed: ${checks}`)

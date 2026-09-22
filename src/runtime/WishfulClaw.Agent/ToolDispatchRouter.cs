@@ -544,7 +544,7 @@ public static class ToolDispatchRouter
             {
                 var toolContext = new ToolExecutionContext(
                 workingFolder, state.SessionId, state.RunId, projectId, sshConnectionId, state.CancellationToken,
-                sandbox.Enabled, sandbox.Roots);
+                sandbox.Enabled, sandbox.Roots, toolCall.Id);
                 var result = await executor!.ExecuteAsync(toolCall.Input, toolContext);
                 toolOutput = result.Content;
                 isToolError = result.IsError;

@@ -73,4 +73,9 @@ public sealed record ToolExecutionContext(
     /// </summary>
     bool SandboxEnabled = false,
     /// <summary>允许的根目录集合，空/ null 表示没有边界可依，一律放行。</summary>
-    IReadOnlyList<string>? SandboxRoots = null);
+    IReadOnlyList<string>? SandboxRoots = null,
+    /// <summary>
+    /// 本次工具调用的 id（模型返回的 tool call id）。长跑的 shell 靠它把自己
+    /// 登记进中止表，渲染层的「停止进程」按钮按同一个 id 找回来（iter-34 S-137）。
+    /// </summary>
+    string? ToolUseId = null);

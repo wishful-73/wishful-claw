@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -104,6 +105,26 @@ public sealed class ToolModule : IWorkerModule
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }));
+        });
+
+        // Register IPC handler: shell/abort — kills a running shell process by tool call id.
+        // The renderer's "stop process" button calls this (iter-34 S-137).
+        context.Register("shell/abort", args =>
+        {
+            var execId = args.TryGetProperty("execId", out var idElement)
+                && idElement.ValueKind == JsonValueKind.String
+                ? idElement.GetString()
+                : null;
+
+            var aborted = !string.IsNullOrWhiteSpace(execId)
+                && ShellExecuteTool.Abort(execId!, "aborted by user");
+
+            return WorkerResponse.FromWriter(writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteBoolean("aborted", aborted);
+                writer.WriteEndObject();
+            });
         });
     }
 

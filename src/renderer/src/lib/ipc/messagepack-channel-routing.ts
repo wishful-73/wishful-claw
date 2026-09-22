@@ -348,7 +348,10 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'update:download',
   'update:status',
   'update:install',
-  'memory-organization:settings-changed'
+  'memory-organization:settings-changed',
+  // shell:abort is called by the renderer's "stop process" button and must reach the
+  // C# Worker's shell/abort endpoint, so it rides the invoke path, not send (iter-34 S-137).
+  'shell:abort'
 ])
 
 const MESSAGEPACK_SEND_CHANNELS = new Set<string>([
@@ -356,7 +359,6 @@ const MESSAGEPACK_SEND_CHANNELS = new Set<string>([
   'session-runtime:sync',
   'session-control:sync',
   'agent-runtime:sync',
-  'shell:abort',
   'ssh:data',
   'ssh:resize',
   'sidecar:notify'

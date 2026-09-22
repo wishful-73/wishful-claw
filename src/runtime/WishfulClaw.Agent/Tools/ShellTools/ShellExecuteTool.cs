@@ -175,7 +175,7 @@ public sealed partial class ShellExecuteTool : IToolExecutor
 
             var (stdout, stderr, exitCode, timedOut, spawnMs, firstChunkMs) = await RunProcessAsync(
 
-                command, cwd, launch, input, timeoutMs, context.CancellationToken);
+                command, cwd, launch, input, timeoutMs, context.CancellationToken, context.ToolUseId);
 
 
 
@@ -224,5 +224,35 @@ public sealed partial class ShellExecuteTool : IToolExecutor
     }
 
 
+
+    /// <summary>
+
+    /// 中止一个正在跑的 shell 进程（iter-34 S-137）。渲染层的「停止进程」按钮
+
+    /// 走 shell/abort 端点进来，按模型给的 tool call id 找回进程并杀掉整棵树。
+
+    /// 返回 false 表示这个 id 当前没有在跑的进程（已经结束或从未登记）。
+
+    /// </summary>
+
+    public static bool Abort(string execId, string reason)
+
+    {
+
+        if (string.IsNullOrWhiteSpace(execId) || !Running.TryGetValue(execId, out var running))
+
+        {
+
+            return false;
+
+        }
+
+
+
+        running.Abort(reason);
+
+        return true;
+
+    }
 
 }

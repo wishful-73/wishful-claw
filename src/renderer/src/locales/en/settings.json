@@ -1660,6 +1660,7 @@
       "title": "Request detail",
       "truncated": "Showing the latest {{shown}} of {{total}}",
       "count": "{{total}} requests in total",
+      "copyError": "Copy error message",
       "columns": {
         "time": "Time",
         "model": "Model",

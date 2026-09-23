@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ChevronLeft, ChevronRight, Columns3, Loader2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Columns3,
+  Copy,
+  Loader2
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -123,6 +131,36 @@ function formatDuration(ms: number | null | undefined): string {
 export const DETAIL_PAGE_SIZE_MIN = 10
 export const DETAIL_PAGE_SIZE_MAX = 200
 
+/**
+ * 失败行的错误信息此前只挂在 `<tr title>` 上（悬浮才看得到），没有任何复制入口 ——
+ * 而这段文本的用途恰恰是「拿去排查 / 贴给上游」。按钮复制的就是悬浮看到的那一整段
+ * （`errorMessage` 优先，退回 `errorKind`）。
+ *
+ * 点击后 1.5s 内换成对勾，与仓库里其它复制按钮同款写法（`change-review-helpers` /
+ * `file-change-diff`）。
+ */
+function CopyErrorButton({ text }: { text: string }): React.JSX.Element {
+  const { t } = useTranslation('settings')
+  const [copied, setCopied] = useState(false)
+
+  return (
+    <button
+      type="button"
+      className="rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+      title={t('usage.detail.copyError', { defaultValue: '复制错误信息' })}
+      onClick={(event) => {
+        // 行本身带 title，将来也可能挂行级点击 —— 显式停掉冒泡。
+        event.stopPropagation()
+        void navigator.clipboard.writeText(text)
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1500)
+      }}
+    >
+      {copied ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+    </button>
+  )
+}
+
 export function UsageDetailTable({
   rows,
   total,
@@ -231,6 +269,8 @@ export function UsageDetailTable({
             {rows.map((row) => {
               const failed = row.status === 'error'
               const baseUrl = providerBaseUrlFor(row.providerId)
+              // 与 `<tr title>` 同源：有 detail 用 detail，只有分类就退回分类；两者都空 ⇒ 不给复制按钮。
+              const errorCopyText = row.errorMessage?.trim() || row.errorKind?.trim() || ''
               return (
                 <tr
                   key={row.id}
@@ -306,6 +346,7 @@ export function UsageDetailTable({
                         <span className="inline-flex items-center gap-1">
                           <AlertTriangle className="size-3" />
                           {row.errorKind ?? 'error'}
+                          {errorCopyText ? <CopyErrorButton text={errorCopyText} /> : null}
                         </span>
                       ) : (
                         formatCost(row.totalCostUsd)

@@ -87,3 +87,7 @@
   - **修法**：抽纯函数模块 `src/main/lib/updater-error-format.ts`（零 electron 依赖 ⇒ main 与回归套件跑同一份代码，同 S-142 抽 `stream-segments` 的做法）—— `classifyUpdaterError()` 出 `{ kind: 'missingMetadata' | 'network' | 'unknown' | 'fallback', code? }`；网络码表**扩到三套**（Node/undici 系、Chromium `net::ERR_*`、HTTP 408/429/5xx）；短码优先级 `net::ERR_*` > `ERR_UPDATER_*` > `HTTP nnn`，**只放行短码**上屏；兜底不再回吐原文（原文照旧进 `logError` 的 extra，排查不受影响）。`updater.ts` 的 `formatError()` 改按分类取文案，新增双语键 `unknownWithCode`（`更新失败（{code}），请稍后重试。` / `Update failed ({code}). Please try again later.`）。
   - **范围**：只覆盖 **app 内更新**这条链（检查 / 下载 / 安装的失败展示）。官网下载按钮失败是浏览器行为，不归本应用展示；工具内下载不在本轮。老大若指的是别的下载界面，说一声另行登记。
   - **门禁**：`npm run typecheck` EXIT=0；新增套件 `tests/updater-error-format`（**38 断言**）。
+- 2026-09-23：**S-147 登记 + 实施：请求日志报错信息可一键复制** —— 老大 16:05「再新增一个需求 请求日志里面如果请求报错有错误信息，希望有复制图标点击后可以复制」。正文见 [S-147.md](requirements/S-147.md)。
+  - **定位**：老大说的「请求日志」= 设置 → 用量统计 → **请求明细**（`components/settings/usage-detail-table.tsx`；该页脚注原话「统计基于模型请求日志（每次 HTTP 请求一行，含重试与失败）」，行数据带 `status` / `errorKind` / `errorMessage` / `httpStatusCode`）。失败行只在成本列显示 `⚠ errorKind`，**完整错误信息仅挂在 `<tr title>`** —— 悬浮能看到全文，但没有可见文本、也没有任何复制入口。
+  - **改法**：成本列 `⚠ errorKind` 之后加复制图标按钮，**仅有错误文本时才渲染**（`errorMessage?.trim() || errorKind?.trim()`，不给空按钮）；复制内容 = 悬浮那一段（`errorMessage` 优先，退回 `errorKind`）；点击后 1.5s 换对勾（与 `change-review-helpers` / `file-change-diff` 同款写法）；`stopPropagation` 防将来行级点击打架；`<tr title>` 保留。新增 i18n 键 `usage.detail.copyError`（zh「复制错误信息」/ en「Copy error message」）。
+  - **门禁**：`npm run typecheck` EXIT=0；`npm run test:i18n-coverage` 通过（新键在两个 locale 就位）。

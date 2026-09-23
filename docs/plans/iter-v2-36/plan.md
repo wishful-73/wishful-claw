@@ -24,6 +24,7 @@
 | S-144 | 沙箱模式下 Write 写特定路径被拦（中文 / 下划线 / 深层子目录，触发项未定位） | 📝 已登记，待勘测 | [iter-v2-35/S-144.md](../iter-v2-35/requirements/S-144.md) |
 | S-145 | Read 工具支持读取本地图片（含 Anthropic `tool_result` 丢图修复） | ✅ 已完成 | [iter-v2-35/S-145.md](../iter-v2-35/requirements/S-145.md) |
 | S-146 | 下载类报错未包装：界面上出现原始报错报文 | ✅ 已实施（app 内更新链） | [S-146.md](requirements/S-146.md) |
+| S-147 | 请求日志（用量统计 → 请求明细）的报错信息支持一键复制 | ✅ 已实施 | [S-147.md](requirements/S-147.md) |
 
 ### 承接 iter-34 挂账（仍未做）
 

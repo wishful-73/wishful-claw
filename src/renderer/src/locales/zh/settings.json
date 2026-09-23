@@ -1799,6 +1799,7 @@
       "title": "请求明细",
       "truncated": "显示最近 {{shown}} 条，共 {{total}} 条",
       "count": "共 {{total}} 条",
+      "copyError": "复制错误信息",
       "columns": {
         "time": "时间",
         "model": "模型",

@@ -114,6 +114,10 @@ export type AgentEvent =
   | { type: 'text_phase'; reason: 'pre_tool' }
   | { type: 'text_delta'; text: string }
   | { type: 'thinking_delta'; thinking: string }
+  // Segment boundaries (iter-35 S-142) — see shared/agent-stream-protocol.ts.
+  | { type: 'text_start' }
+  | { type: 'thinking_start' }
+  | { type: 'thinking_end' }
   | {
       type: 'thinking_encrypted'
       thinkingEncryptedContent: string

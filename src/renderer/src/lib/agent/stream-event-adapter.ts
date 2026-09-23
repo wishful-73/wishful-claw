@@ -26,6 +26,9 @@ export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
     case 'text_phase':
     case 'text_delta':
     case 'thinking_delta':
+    case 'text_start':
+    case 'thinking_start':
+    case 'thinking_end':
     case 'translation_buffer_update':
     case 'image_generation_started':
     case 'context_compression_started':

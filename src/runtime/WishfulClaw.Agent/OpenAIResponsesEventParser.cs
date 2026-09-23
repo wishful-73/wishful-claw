@@ -46,6 +46,10 @@ internal static partial class OpenAIResponsesProvider
                     MarkFirstToken(parseState, startedAt);
                     parseState.AssistantText.Append(delta);
                     parseState.EstimatedOutputTokens += EstimateTokenCount(delta);
+                    // S-142: boundary before the first delta of a text block.
+                    await StreamSegmentBoundary.EmitAsync(
+                        state, context,
+                        parseState.Boundaries.BeforeDelta(StreamSegmentBoundary.TextKind));
                     await EmitProjectedEventAsync(
                         parseState, state, context,
                         new AgentRuntimeStreamEvent("text_delta", Text: delta));
@@ -58,6 +62,10 @@ internal static partial class OpenAIResponsesProvider
                 {
                     MarkFirstToken(parseState, startedAt);
                     parseState.EmittedThinkingDelta = true;
+                    // S-142: boundary before the first delta of a thinking block.
+                    await StreamSegmentBoundary.EmitAsync(
+                        state, context,
+                        parseState.Boundaries.BeforeDelta(StreamSegmentBoundary.ThinkingKind));
                     await EmitProjectedEventAsync(
                         parseState, state, context,
                         new AgentRuntimeStreamEvent("thinking_delta", Thinking: thinking));

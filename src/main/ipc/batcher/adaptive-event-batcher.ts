@@ -19,8 +19,10 @@ export type EnvelopeHandler = (envelope: AgentStreamEnvelope) => void
  *
  * 契约：
  * - 可加事件（正文 / 思考 / 工具参数）按 run 攒，最多等一个 flushMs 推一次；
- * - 控制类事件（工具生命周期、循环起止、错误等）先把攒着的 delta 推出去
- *   （保序），再单独立即直通 —— 降频不能改变渲染层看到的事件先后；
+ * - 窗口内**同类才攒**：不同类的 delta（正文 vs 思考）先 flush 再直通，
+ *   否则固定倒出顺序会重排到达顺序（见 batcher-codec.ts 的 accumulateEvent）；
+ * - 控制类事件（工具生命周期、循环起止、段边界、错误等）先把攒着的 delta
+ *   推出去（保序），再单独立即直通 —— 降频不能改变渲染层看到的事件先后；
  * - 缓冲体积超 maxBufferSize 就直接 flush，不等定时器；
  * - 每个 run 的信封 seq 自己从 0 单调递增，渲染层按它检测丢包，
  *   所以绝不能跳号或回退。

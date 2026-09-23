@@ -402,6 +402,9 @@ internal static class Program
         AssertEqual($"{prefix}-m5", restoredTail[0], "restored increment keeps transcript order at equal created_at (first)");
         AssertEqual($"{prefix}-m6", restoredTail[1], "restored increment breaks equal-timestamp ties via sort_order");
 
+        // ── S-141: snapshot-borne stale usage never seeds the compression gate ──
+        RunSnapshotUsageStripSuite(dbPath, prefix);
+
         // ── Delete endpoint ──
         var deleted = ResultObject(DbCompactionSnapshotTools.Delete(Params(dbPath, writer => writer.WriteString("sessionId", sessionA))));
         Assert(deleted.GetProperty("success").GetBoolean(), "delete endpoint succeeds");
@@ -1226,6 +1229,59 @@ internal static class Program
         AddBatchMessages(dbPath, forked, $"{prefix}-fork-tgt", startIndex: 0, count: 3, baseCreatedAt: 2400, baseSortOrder: 0);
         AssertNoSnapshot(dbPath, forked, "forked session does not inherit the source snapshot");
         AssertHasSnapshot(dbPath, source, "fork leaves the source snapshot untouched");
+    }
+
+    /// <summary>
+    /// S-141: a compaction snapshot's wire is copied out of the folded (pre-compression)
+    /// context, so its <c>usage</c> reports a token count the restored wire no longer
+    /// matches. Restore must drop that stale usage — otherwise the first turn after a
+    /// restart compresses a context that is nowhere near the limit — while keeping the
+    /// usage of messages created after the snapshot commit (theirs describes exactly the
+    /// restored context).
+    /// </summary>
+    private static void RunSnapshotUsageStripSuite(string dbPath, string prefix)
+    {
+        var sessionId = $"{prefix}-snapshot-usage";
+        AssertMutationSuccess(DbSessionTools.Create(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", sessionId);
+            writer.WriteString("title", "Snapshot Usage Session");
+        })), "S-141 session is created");
+
+        AddMessage(dbPath, sessionId, $"{prefix}-susage-seed", 5000, 0);
+
+        AssertMutationSuccess(DbCompactionSnapshotTools.Upsert(Params(dbPath, writer =>
+        {
+            writer.WriteString("sessionId", sessionId);
+            writer.WriteString("trigger", "auto");
+            writer.WriteString("wireConversation",
+                "[{\"id\":\"wire-folded\",\"role\":\"assistant\",\"content\":\"folded\",\"usage\":{\"contextTokens\":144083}},"
+                + "{\"id\":\"wire-kept\",\"role\":\"user\",\"content\":\"kept\"}]");
+            writer.WriteString("compactArtifacts", "[{\"id\":\"compact-boundary\"}]");
+            writer.WriteNumber("originalCount", 3);
+            writer.WriteNumber("newCount", 2);
+            writer.WriteNumber("messagesSummarized", 1);
+            writer.WriteBoolean("summarizerFailed", false);
+        })), "S-141 snapshot with a usage-bearing wire is upserted");
+
+        var afterCommit = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 1000;
+        AssertMutationSuccess(DbMessageTools.Add(Params(dbPath, writer =>
+        {
+            writer.WriteString("id", $"{prefix}-susage-turn");
+            writer.WriteString("sessionId", sessionId);
+            writer.WriteString("role", "assistant");
+            writer.WriteString("content", "fresh turn");
+            writer.WriteString("usage", "{\"contextTokens\":21000}");
+            writer.WriteNumber("createdAt", afterCommit);
+            writer.WriteNumber("sortOrder", 1);
+        })), "S-141 post-snapshot turn with fresh usage is inserted");
+
+        var restored = SessionRestoreTools.RestoreFromDb(DbClient.GetClient(), sessionId);
+        Assert(restored.FromSnapshot, "S-141 restore takes the snapshot branch");
+        Assert(!restored.WireMessages[0].TryGetProperty("usage", out _),
+            "S-141 snapshot-borne stale usage is stripped from the restored wire");
+        AssertEqual(21000, AgentLoop.FindRecentContextUsage(restored.WireMessages),
+            "S-141 compression gate reads the post-snapshot turn's real usage, not the stale one");
     }
 
     // ─── Helpers ───

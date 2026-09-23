@@ -23,6 +23,7 @@
     <InternalsVisibleTo Include="WishfulClaw.ProviderHeaderRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.GrepPatternRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.MemoryRecallRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.StreamSegmentRegressionTests" />
   </ItemGroup>
 
 </Project>

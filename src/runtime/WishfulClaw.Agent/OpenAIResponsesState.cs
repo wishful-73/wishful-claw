@@ -129,6 +129,8 @@ internal static partial class OpenAIResponsesProvider
         public Dictionary<string, string> CallIdAliases { get; } = new(StringComparer.Ordinal);
         public HashSet<string> EmittedToolCallKeys { get; } = new(StringComparer.Ordinal);
         public bool EmittedThinkingDelta { get; set; }
+        /// <summary>Segment boundary tracker for text / thinking blocks (S-142).</summary>
+        public StreamSegmentBoundary Boundaries { get; } = new();
         public bool ReceivedAnyMessage { get; set; }
         public bool ProjectedAnyOutput { get; set; }
         public long? FirstTokenMs { get; set; }

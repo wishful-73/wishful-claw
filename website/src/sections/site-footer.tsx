@@ -19,7 +19,17 @@ export function SiteFooter() {
             </a>
           </p>
         </div>
-        <p className="text-xs text-ink-900/35">© {new Date().getFullYear()} WishfulClaw · 备案信息上线时补充于此处</p>
+        <p className="text-xs text-ink-900/35">
+          © {new Date().getFullYear()} WishfulClaw ·{' '}
+          <a
+            href={footer.icpUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-ink-900/45 hover:text-accent"
+          >
+            {footer.icp}
+          </a>
+        </p>
       </div>
     </footer>
   )

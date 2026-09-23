@@ -104,6 +104,10 @@ internal static partial class OpenAIResponsesProvider
             };
         }
 
+        // S-142: the stream is over — close a thinking block that never switched to
+        // text, so the renderer marks it complete without waiting.
+        await StreamSegmentBoundary.EmitAsync(state, context, parseState.Boundaries.AtEnd());
+
         await AgentRuntimeTools.EmitAsync(
             state, context,
             new AgentRuntimeStreamEvent(

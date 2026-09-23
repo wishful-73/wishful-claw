@@ -23,6 +23,16 @@ import { createProjectSlice, type ProjectSlice } from './project-slice'
 import { createStreamingSlice, type StreamingSlice } from './streaming-slice'
 
 import type { ChatMessage } from './types'
+
+import {
+
+  applyStreamDelta,
+
+  closeThinkingSegmentOfIteration,
+
+  insertSegment
+
+} from './stream-segments'
 import { writeLog } from '@renderer/lib/error-logger'
 
 import {
@@ -940,6 +950,56 @@ export const useChatStore = create<ChatStore>()(
 
 
 
+          // 正文 / 思考的块边界事件（worker 的 StreamSegmentBoundary）。它们现在的职责只有一条：
+          // 宣告思考块结束 —— `thinking_end` / `text_start` 都给本 iteration 的思考段打上
+          // completedAt。「段的归并」不再看它们：段的身份是 (iteration, type)，见
+          // flushStreamDeltas。`thinking_start` 因此没有对应 case（它只宣告边界，不参与建段）。
+
+          case 'thinking_end': {
+
+            // 思考块结束：给本 iteration 的思考段打完成标记。
+
+            set((state) => {
+
+              const session = state.sessions.find((s) => s.id === targetSessionId)
+
+              const msg = session?.messages.find((m) => m.id === envelope.runId)
+
+              if (!msg) return
+
+              closeOpenThinkingSegment(msg, Date.now())
+
+            })
+
+            break
+
+          }
+
+
+
+          case 'text_start': {
+
+            // 正文开始 ⇒ 它之前的思考块结束。正文自己按 (iteration, text) 归并
+            // （S-133 及其补完），边界事件只负责关思考块，不强制开新正文段。
+
+            set((state) => {
+
+              const session = state.sessions.find((s) => s.id === targetSessionId)
+
+              const msg = session?.messages.find((m) => m.id === envelope.runId)
+
+              if (!msg) return
+
+              closeOpenThinkingSegment(msg, Date.now())
+
+            })
+
+            break
+
+          }
+
+
+
           // message_end = one LLM turn finished, but the loop may continue
 
           // (tool calls → next iteration). Do NOT set isStreaming=false here.
@@ -1178,7 +1238,7 @@ export const useChatStore = create<ChatStore>()(
 
                   if (!msg.segments.find((s) => s.type === 'tool_use' && s.toolCallId === event.toolCallId)) {
 
-                    msg.segments.push({
+                    insertSegment(msg.segments, {
 
                       type: 'tool_use',
 
@@ -1380,7 +1440,7 @@ export const useChatStore = create<ChatStore>()(
 
                   } else {
 
-                    msg.segments.push({
+                    insertSegment(msg.segments, {
 
                       type: 'tool_use',
 
@@ -2160,6 +2220,22 @@ getAgentStreamReceiver().start((envelope) => {
 
 
 
+// S-142: close the thinking segment that is still open. Driven by the explicit
+// `thinking_end` / `text_start` boundaries — previously a thinking segment only
+// got its `completedAt` when a text delta happened to land in the same flush
+// window, and the check only ever looked at the segment at the tail of the list.
+
+// 段的落位规则（`insertSegment` / `findSegmentSlot` / `closeThinkingSegmentOfIteration`）
+// 抽在 ./stream-segments 里 —— 纯函数、可单测（tests/stream-segments）。
+
+function closeOpenThinkingSegment(msg: ChatMessage, at: number): void {
+
+  closeThinkingSegmentOfIteration(msg.segments, msg.currentIteration ?? 1, at)
+
+}
+
+
+
 function flushStreamDeltas(): void {
 
   _streamDeltaRafId = null
@@ -2222,58 +2298,19 @@ function flushStreamDeltas(): void {
 
       for (const delta of sessionDeltas) {
 
+        // 段的落位与归并都在 applyStreamDelta 里（(iteration, type) 定位 + 按 kind 固定序），
+        // 这里只同步 msg 级的整段文本 —— 它供喂模型 / 复制 / 落库用。
         if (delta.kind === 'text') {
 
           msg.text += delta.text
 
-          // Mark the last thinking segment as completed when text output starts
-
-          const lastSegForText = msg.segments[msg.segments.length - 1]
-
-          if (lastSegForText && lastSegForText.type === 'thinking' && !lastSegForText.completedAt) {
-
-            lastSegForText.completedAt = now
-
-          }
-
-          // Append to the current iteration's text segment, or create new.
-          // 工具卡与思考块都会 push 到 segments 末尾；若只认末尾（要求它必须是 text），同一段正文
-          // 会被一串 tool_use 或 thinking 劈成多个 text segment —— 渲染时表现为正文被工具卡或
-          // 「已深度思考」条从中间截断（S-133 及其补完）。
-          // 所以跨过末尾连续的 tool_use 与 thinking 往前找：撞到上一个 text 就并进去，
-          // 撞到别的（目前只有这三类 segment）就停。
-
-          const targetTextSeg = msg.segments.findLast(
-            (seg) => seg.type !== 'tool_use' && seg.type !== 'thinking'
-          )
-
-          if (targetTextSeg && targetTextSeg.type === 'text' && targetTextSeg.iteration === msg.currentIteration) {
-
-            targetTextSeg.text = (targetTextSeg.text ?? '') + delta.text
-
-          } else {
-
-            msg.segments.push({ type: 'text', iteration: msg.currentIteration, text: delta.text })
-
-          }
+          applyStreamDelta(msg.segments, msg.currentIteration, { kind: 'text', value: delta.text }, now)
 
         } else {
 
           msg.thinking = (msg.thinking ?? '') + delta.thinking
 
-          // Append to last thinking segment of current iteration, or create new
-
-          const lastSeg = msg.segments[msg.segments.length - 1]
-
-          if (lastSeg && lastSeg.type === 'thinking' && lastSeg.iteration === msg.currentIteration) {
-
-            lastSeg.thinking = (lastSeg.thinking ?? '') + delta.thinking
-
-          } else {
-
-            msg.segments.push({ type: 'thinking', iteration: msg.currentIteration, thinking: delta.thinking, startedAt: now })
-
-          }
+          applyStreamDelta(msg.segments, msg.currentIteration, { kind: 'thinking', value: delta.thinking }, now)
 
         }
 

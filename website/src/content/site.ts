@@ -128,11 +128,11 @@ export const features = {
   title: '它能干什么',
   items: [
     { name: '真干活', desc: '在你电脑上读写文件、跑命令、改代码，不是只会在对话框里聊天' },
-    { name: '全局助理派活', desc: '一个总助理管多个项目会话，派活、盯进度、汇总回报', image: { label: '全局派活录屏（GIF）', assetNo: 5 } },
+    { name: '全局助理派活', desc: '一个总助理管多个项目会话，派活、盯进度、汇总回报', image: { label: '全局派活截图', assetNo: 5 } },
     { name: '微信遥控', desc: '出门在外发条微信，家里电脑照干，结果推回微信', image: { label: '微信遥控截图（手机 + 电脑对照）', assetNo: 6 } },
     { name: '定时任务', desc: '按间隔或固定时间自动跑，无人值守', image: { label: '定时任务配置页截图', assetNo: 10 } },
     { name: '用量统计', desc: '曲线图 / 柱状图 / 请求明细，花了多少一目了然', image: { label: '用量统计页截图', assetNo: 3 } },
-    { name: '桌面控制', desc: `能操作${BRAND.name}之外的任意桌面程序`, image: { label: '桌面控制演示 GIF', assetNo: 8 } }
+    { name: '桌面控制', desc: `能操作${BRAND.name}之外的任意桌面程序`, image: { label: '桌面控制截图', assetNo: 8 } }
   ]
 }
 
@@ -158,7 +158,7 @@ export const quickStart = {
   ],
   media: [
     { step: '第 3 步', label: '服务商设置页截图（含添加自定义服务商）', assetNo: 2 },
-    { step: '全流程', label: '上手流程 GIF（安装 → 免费对话 → 填 key → 派活）', assetNo: 7 }
+    { step: '全流程', label: '上手流程截图（安装 → 免费对话 → 填 key → 派活）', assetNo: 7 }
   ]
 }
 
@@ -189,5 +189,9 @@ export const faq = {
 
 export const footer = {
   github: `${GITHUB_REPO_URL}/releases`,
-  feedback: `${GITHUB_REPO_URL}/issues`
+  feedback: `${GITHUB_REPO_URL}/issues`,
+  // 工信部 ICP 备案号（2026-09-23 通过；主体：龚翼）。合规硬要求：必须悬挂在页脚并链接到
+  // beian.miit.gov.cn，且站内显示名应与备案的网站全称一致 —— 即 BRAND.fullName「心相智能助手」。
+  icp: '蜀ICP备2026057067号',
+  icpUrl: 'https://beian.miit.gov.cn/'
 }

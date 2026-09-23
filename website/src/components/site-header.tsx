@@ -5,7 +5,7 @@ import { BRAND, nav } from '../content/site'
 export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b border-ink-700 bg-paper/85 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-6">
+      <div className="flex h-14 w-full items-center justify-between gap-4 px-6 sm:px-10 lg:px-14">
         <a href="./" className="flex shrink-0 items-center gap-2 whitespace-nowrap text-[15px] font-semibold text-ink-950">
           <img src="./logo.png" alt={`${BRAND.name} Logo`} className="h-6 w-6 rounded" />
           {BRAND.name}

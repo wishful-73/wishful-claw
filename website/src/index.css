@@ -375,3 +375,216 @@ body {
     animation: none;
   }
 }
+
+/* 文字闪光（2026-09-23 老大）：底色字里一道高光从左到右扫过。
+   刻意只点几处关键的 —— 满屏都闪就成了霓虹灯，重点也就没了。
+   做法：文字铺成渐变背景 + background-clip: text，再靠 background-position 移动那道高光。
+   底色和高光走两个变量，同一个 `.shine` 就能用在橙字、灰字、深字上。
+
+   ⚠️ 背景必须**始终盖满整段文字**，否则没被盖住的那段就是透明（文字凭空消失，实测踩过）。
+   所以背景做成容器的 3 倍宽、并让 position 全程停在 0%~100% 之间：
+     bgW = 3W 时，左边缘 = p% × (W − 3W) = −2W × p%
+     p=100% → 左边缘 −2W，右边缘 +W  ⇒ 盖满
+     p=0%   → 左边缘 0，右边缘 3W    ⇒ 盖满
+   两端都盖满，中间更不可能露白。高光带落在背景正中（50%），
+   于是 p 从 100% 走到 0% 时，高光正好从容器左外侧穿到右外侧。 */
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .shine {
+    --shine-base: var(--color-ink-950);
+    --shine-hi: var(--color-accent);
+    background-image: linear-gradient(
+      100deg,
+      var(--shine-base) 0%,
+      var(--shine-base) 48%,
+      var(--shine-hi) 50%,
+      var(--shine-base) 52%,
+      var(--shine-base) 100%
+    );
+    background-size: 300% 100%;
+    background-position: 100% center;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shine-sweep 4s linear infinite;
+  }
+
+  /* 灰字：扫过去的是品牌橙，一下就有精神 */
+  .shine-muted {
+    --shine-base: color-mix(in srgb, var(--color-ink-900) 45%, white);
+    --shine-hi: var(--color-accent);
+  }
+
+  /* 首屏大标题：整段「你说一句，它去把活干完」一起扫一道白光。
+     起初只给后半段橙色 span 挂 .shine，光只在「它去把活干完」上走、前半段一动不动
+     —— 老大点了这个。难点是这段有两个底色（深墨 + 橙），两个 span 各挂一个 .shine
+     只能各扫各的，而且各自按自身宽度算速度，快慢还不一样。
+     所以改成让 ::after 复制一份整段文字、只负责"光"：真文字负责颜色，光在同一个坐标系里
+     扫过去，整段才是一整道光。高光用白 —— 深墨字上看得见，橙字上也看得见
+     （在橙字上再扫一道橙光等于没扫）。
+     ⚠️ 整条规则必须待在 @supports 里：不支持 background-clip: text 时，
+     那块白色渐变会被当成普通背景涂满整个标题。 */
+  .hero-shine {
+    position: relative;
+  }
+
+  .hero-shine::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      100deg,
+      transparent 0%,
+      transparent 42%,
+      #fff 50%,
+      transparent 58%,
+      transparent 100%
+    );
+    background-size: 300% 100%;
+    background-position: 100% center;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    pointer-events: none;
+    animation: shine-sweep 4s linear infinite;
+  }
+}
+
+/* 2026-09-23 老大「闪光时间间隔太远」：一轮 7s（扫 1.82s + 静 5.18s）→ 4s。
+   关键：**扫过本身的速度没动**。原 7s × 26% = 1.82s，现 4s × 45% = 1.8s —— 光带走得一样快，
+   只是静止段从 5.18s 缩到 2.2s。所以是「来得更勤」，不是「闪得更急」。
+   两端都停在「背景盖满」的位置上，不会露出没背景的那段。 */
+@keyframes shine-sweep {
+  0% {
+    background-position: 100% center;
+  }
+  45% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 0% center;
+  }
+}
+
+/* 系统开了「减少动态效果」：退回纯色字，闪都不闪 */
+@media (prefers-reduced-motion: reduce) {
+  .shine {
+    background-image: none;
+    animation: none;
+    color: var(--shine-base);
+  }
+
+  .hero-shine::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* 「不花钱，也能用起来」那三列：三列**自动依次点亮**，不用鼠标去碰
+   （2026-09-23 老大：不要移入触发，要自己播）。
+   一轮 4.8s，三列各错开 1.6s ⇒ 任一刻只有一列亮着，看完一圈循环回来。
+   （2026-09-23 老大：原来错开 2.2s 等得太久，光扫完一列要空等半拍才轮到下一列，
+   整块看着是三次孤立的闪；收窄到 1.6s，能连成一串流动。）
+
+   亮起来两个动作，同步：
+   1. 顶上那条分隔线走一道橙光（::after 铺的渐变，见下）；
+   2. 整列轻轻抬 2px，静默期落回去。
+
+   ⚠️ 橙光只在**列内**走，绝不从列外挤进来（老大点过这个）。
+   做法不是平移光带，而是把 ::after 铺成 3 倍宽的渐变、动 background-position：
+   渐变里两侧是分隔线同色的灰、正中夹一道橙，所以「线本身一直在，只是有道光在上面过」。
+   bgW = 3W 时橙带中心 = p% × (W − 3W) + 1.5W，取
+     p=75% ⇒ 中心 0（列左边缘）   p=25% ⇒ 中心 W（列右边缘）
+   而背景绘制区就是元素自身那 W 宽，超出元素框的部分浏览器不画 ⇒ 列外根本没有光。
+   静默期用 opacity 藏起来，顺便遮掉 position 瞬移回左端那一下。 */
+.tier {
+  position: relative;
+  animation: tier-lift 4.8s ease-in-out infinite;
+  animation-delay: calc(var(--tier-i) * 1.6s);
+}
+
+.tier:nth-child(1) {
+  --tier-i: 0;
+}
+
+.tier:nth-child(2) {
+  --tier-i: 1;
+}
+
+.tier:nth-child(3) {
+  --tier-i: 2;
+}
+
+.tier::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-image: linear-gradient(
+    90deg,
+    var(--color-ink-700) 0%,
+    var(--color-ink-700) 40%,
+    var(--color-accent) 50%,
+    var(--color-ink-700) 60%,
+    var(--color-ink-700) 100%
+  );
+  background-size: 300% 100%;
+  background-position-x: 75%;
+  opacity: 0;
+  pointer-events: none;
+  animation: tier-sweep 4.8s ease-in-out infinite;
+  animation-delay: calc(var(--tier-i) * 1.6s);
+}
+
+@keyframes tier-sweep {
+  0% {
+    background-position-x: 75%;
+    opacity: 0;
+  }
+  /* 橙光在列左边缘淡入 */
+  5% {
+    background-position-x: 75%;
+    opacity: 1;
+  }
+  /* 走到列右边缘 */
+  27% {
+    background-position-x: 25%;
+    opacity: 1;
+  }
+  31% {
+    background-position-x: 25%;
+    opacity: 0;
+  }
+  100% {
+    background-position-x: 25%;
+    opacity: 0;
+  }
+}
+
+@keyframes tier-lift {
+  0%,
+  4% {
+    transform: none;
+  }
+  7%,
+  25% {
+    transform: translateY(-2px);
+  }
+  30%,
+  100% {
+    transform: none;
+  }
+}
+
+/* 系统开了「减少动态效果」：不播，露出原来那条 1px 灰分隔线（::after 就藏在它上面） */
+@media (prefers-reduced-motion: reduce) {
+  .tier,
+  .tier::after {
+    animation: none;
+  }
+
+  .tier::after {
+    opacity: 0;
+  }
+}

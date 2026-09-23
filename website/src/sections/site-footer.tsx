@@ -3,7 +3,7 @@ import { BRAND, footer } from '../content/site'
 export function SiteFooter() {
   return (
     <footer className="border-t border-ink-700 bg-paper-soft py-12">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-6 text-sm text-ink-900/55 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex w-full flex-col gap-4 px-6 text-sm text-ink-900/55 sm:flex-row sm:items-center sm:justify-between sm:px-10 lg:px-14">
         <div className="flex flex-col gap-3">
           <p className="flex items-center gap-2 font-semibold text-ink-950">
             <img src="./logo.png" alt={`${BRAND.name} Logo`} className="h-5 w-5 rounded" />

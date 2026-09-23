@@ -1,3 +1,5 @@
+using Microsoft.Data.Sqlite;
+
 using System.IO;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
@@ -61,7 +63,7 @@ public static class PathBoundary
     {
         if (ResolveScope(parameters) == "project")
         {
-            var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
+            var workingFolder = ResolveProjectWorkingFolder(parameters);
             return string.IsNullOrWhiteSpace(workingFolder) ? [] : [workingFolder];
         }
 
@@ -86,6 +88,41 @@ public static class PathBoundary
             // 父目录与「查不查得动项目表」无关，照加。
             WorkerLog.Warn($"sandbox: failed to resolve project roots: {ex.GetType().Name}: {ex.Message}");
             return WithProjectsParent([], parentDirectory);
+        }
+    }
+
+    /// <summary>
+    /// 项目会话的工作目录：优先 run params 的 <c>workingFolder</c>，缺失时按 <c>projectId</c> 回查项目表（S-144）。
+    ///
+    /// 为什么必须回查：<c>workingFolder</c> 由渲染端**每个** run 组装点各自透传，漏传一处的后果不是
+    /// 「少一层保护」，而是**整个项目目录变成越界** —— 工具用的基准路径与这里的根集合会一起退化成
+    /// 「只剩数据根」，于是项目内的正常写入被拦，而报错还在劝用户「把目录加进项目工作目录」
+    /// （他早就加了）。这正是 S-144 观察到的现象。
+    ///
+    /// 回查是纯读：拿不到就返回 null，行为与从前一致（只有数据根）。
+    /// </summary>
+    internal static string? ResolveProjectWorkingFolder(JsonElement parameters)
+    {
+        var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
+        if (!string.IsNullOrWhiteSpace(workingFolder)) return workingFolder;
+
+        var projectId = JsonHelpers.GetString(parameters, "projectId");
+        if (string.IsNullOrWhiteSpace(projectId)) return null;
+
+        try
+        {
+            var db = DbClient.GetClient();
+            var rows = db.Query(
+                "SELECT working_folder FROM projects WHERE id = @id LIMIT 1",
+                r => r.GetString("working_folder"),
+                new SqliteParameter("@id", projectId));
+            return rows.Count > 0 && !string.IsNullOrWhiteSpace(rows[0]) ? rows[0] : null;
+        }
+        catch (Exception ex)
+        {
+            // 查不动就不带这个根：沙箱是保护措施，不能因为一次查询失败把工具打挂。
+            WorkerLog.Warn($"sandbox: failed to resolve project working folder: {ex.GetType().Name}: {ex.Message}");
+            return null;
         }
     }
 

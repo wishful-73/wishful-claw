@@ -384,7 +384,11 @@ export async function sendImplementPlan(sessionId: string, planId: string): Prom
   const { provider: activeProvider, modelId } = resolved
   const session = chatStore.sessions.find((s) => s.id === sessionId)
   if (!session) return
-  const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+  // S-144：会话行可能没带 workingFolder，回退到项目表的 workingFolder —— 漏传这一处，
+  // 整个 run 的沙箱根集合与工具基准路径就同时落空，项目内的写入会被判越界。
+  const workingFolder = session.scope === 'project'
+    ? session.workingFolder ?? chatStore.projects.find((p) => p.id === session.projectId)?.workingFolder ?? undefined
+    : undefined
   const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
   const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 
@@ -439,7 +443,11 @@ export async function sendPlanRevision(sessionId: string, planId: string, feedba
   const { provider: activeProvider, modelId } = resolved
   const session = chatStore.sessions.find((s) => s.id === sessionId)
   if (!session) return
-  const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+  // S-144：会话行可能没带 workingFolder，回退到项目表的 workingFolder —— 漏传这一处，
+  // 整个 run 的沙箱根集合与工具基准路径就同时落空，项目内的写入会被判越界。
+  const workingFolder = session.scope === 'project'
+    ? session.workingFolder ?? chatStore.projects.find((p) => p.id === session.projectId)?.workingFolder ?? undefined
+    : undefined
   const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
   const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 
@@ -519,7 +527,11 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
     if (!modelId) return
     const session = chatStore.sessions.find((s) => s.id === sessionId)
     if (!session) return
-    const workingFolder = session.scope === 'project' ? session.workingFolder ?? undefined : undefined
+    // S-144：会话行可能没带 workingFolder，回退到项目表的 workingFolder —— 漏传这一处，
+  // 整个 run 的沙箱根集合与工具基准路径就同时落空，项目内的写入会被判越界。
+  const workingFolder = session.scope === 'project'
+    ? session.workingFolder ?? chatStore.projects.find((p) => p.id === session.projectId)?.workingFolder ?? undefined
+    : undefined
     const sshConnectionId = session.scope === 'project' ? session.sshConnectionId ?? undefined : undefined
     const projectId = session.scope === 'project' ? session.projectId ?? undefined : undefined
 

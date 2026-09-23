@@ -155,8 +155,10 @@ public static partial class ToolCallProcessor
         IWorkerRequestContext context)
     {
         var runContext = AgentRunContextPolicy.Resolve(parameters);
+        // S-144：基准路径与沙箱根集合必须用同一个解析（含 projectId 回查）。各取各的时候，
+        // run params 漏带 workingFolder 会让项目内的写入同时失去基准和根 —— 整个项目目录被判越界。
         var workingFolder = runContext.Scope == "project"
-            ? JsonHelpers.GetString(parameters, "workingFolder")
+            ? PathBoundary.ResolveProjectWorkingFolder(parameters)
             : null;
         var projectId = runContext.Scope == "project"
             ? JsonHelpers.GetString(parameters, "projectId")

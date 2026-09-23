@@ -55,3 +55,9 @@
   - **两处本轮定**（iter-35 写「实施时定」）：① 非 vision 降级的数据来源 = 渲染端在 `sendMessage` 盖章 `supportsVision`（唯一门，避免六个透传点漏传）；查不到模型时返回 true（**宁可让上游报错，也不要静默吞像素让模型猜内容**）。② DB 不落 base64 是**结构上成立**：base64 只走 wire，事件里的 `Result` 保持文本摘要，会话恢复时 wire 的 tool_result 由渲染端存的文本在内存合成 ⇒ 跨轮/重启历史里没有 base64，要再看就重新 Read（§3.3 口径）。兜底另有 `limitToolResultContent` 的超限剥离。
   - **门禁**：`npm run build:worker` 0 错 0 警告；`npm run typecheck` EXIT=0；新增 `WishfulClaw.ReadImageRegressionTests`（**33 断言**）→ `npm test` **52 / 52**。
   - **未做**：工具卡片缩略图（事件刻意不带 base64，只有文本摘要）；SSH 远程图 / `pet` / `translate` 的 Read 按 iter-35 §3.4 继续挂账。正文见 [S-145.md](requirements/S-145.md)。
+- 2026-09-23：**S-144 勘测 + 修复：沙箱 Write 被拦** —— 知识库登记的三个候选（中文文件名 / 下划线 / 两层子目录）**都不是触发项**。
+  - **勘测结论**：`PathBoundary.IsInsideAnyRoot` 全程只做一次规范化 + 前缀比较（根本身 or `root + 分隔符` 开头），没有任何按文件名、字符集或层数分支的逻辑 ⇒ 中文/下划线/十层子目录都走同一条命中路径，**不可能**因文件名或层数被拦。三个候选已固化成断言（新套件 14 条）。
+  - **真机制**：`workingFolder` 由渲染端**每个** run 组装点各自透传，而 Worker 侧两处依赖它 —— 沙箱根集合（`CollectProjectRoots`）与文件工具路径基准（`ToolCallProcessor` → `ToolExecutionContext.WorkingFolder`）。漏传一处 ⇒ **两者同时落空**：roots 退化成「只有数据根」，相对路径也不再挂工作目录（`GetFullPath` 落到应用目录）⇒ 项目内写入被判越界，报错还劝用户「把目录加进项目工作目录」（他早加了）。与知识库「写深层子目录被拦 → 反复重试 → 改走 py 脚本」的现象吻合。
+  - **实修两侧**：① C# 新增 `PathBoundary.ResolveProjectWorkingFolder`（params 优先，缺失时按 `projectId` 回查项目表），`CollectProjectRoots` 与 `ToolCallProcessor` 共用 —— 从机制上关掉「漏传即整体越界」；② 渲染端 `use-chat-actions.ts` 三处（plan 批准 / plan 驳回 / 退出 plan 模式）补上 `?? project?.workingFolder` 回退，与主路径对齐（那三处此前是 `session.workingFolder ?? undefined`）。
+  - **门禁**：`npm run build:worker` 0 错 0 警告；`npm run typecheck` EXIT=0；新增 `WishfulClaw.SandboxPathRegressionTests`（**14 断言**）→ `npm test` **53 / 53**。
+  - **未验**：知识库那台机器的现场无法复现，本轮修的是「由代码读出的机制」这条链的每一环，不是「在某台机器上抓到了那一次拒绝」。正文见 [S-144.md](requirements/S-144.md)。

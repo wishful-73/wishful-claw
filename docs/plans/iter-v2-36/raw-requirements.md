@@ -23,12 +23,12 @@
 | S-143 | 官网上线 + 公安备案 | 站点已上线；备案号已入本地代码；公安备案待办 |
 | S-144 | 沙箱模式下 Write 写特定路径被拦 | 已登记，待勘测 |
 | S-145 | Read 工具支持读取本地图片 | 已定稿，待实施 |
-| S-131 | 左栏渲染漏按视口收窄（路径二：缩窗无 resize 监听） | iter-34 挂账 |
-| S-134 | 切会话 / 结束会话但 tab 还开着 ⇒ 进程是否仍在 | iter-34 挂账 |
-| S-108 | 模型窗口 384K 未生效（后端按 200K 兜底） | 结案依据已被 S-141 推翻，待重新裁定 |
-| — | `will-navigate` 同源隐患 10 处未拦 | 安全类 |
-| — | `memory-output.tsx:115` 的 `hit.priority` 裸英文 | i18n 遗漏 |
-| — | `electron-updater`：`disableWebInstaller` 未设 | 建议设 `true` 消噪 |
+| S-131 | 左栏渲染漏按视口收窄（路径二：缩窗无 resize 监听） | ✅ 已修（视口变窄重跑收侧判定） |
+| S-134 | 切会话 / 结束会话但 tab 还开着 ⇒ 进程是否仍在 | ⏸ 待老大一句话 |
+| S-108 | 模型窗口 384K 未生效（后端按 200K 兜底） | ⏸ 待重新裁定 |
+| — | `will-navigate` 同源隐患 10 处未拦 | ✅ 已收口（主进程兜底 + 10 处接 `SAFE_LINK_COMPONENTS`） |
+| — | `memory-output.tsx:115` 的 `hit.priority` 裸英文 | ✅ 已修 |
+| — | `electron-updater`：`disableWebInstaller` 未设 | ✅ 已设 `true` 消噪 |
 
 ---
 

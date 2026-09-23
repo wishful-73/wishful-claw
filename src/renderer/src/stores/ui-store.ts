@@ -4,7 +4,8 @@ import {
   RIGHT_PANEL_DEFAULT_WIDTH,
   clampLeftSidebarWidth,
   clampRightPanelWidth,
-  resolveChatWidthGuard
+  resolveChatWidthGuard,
+  resolveViewportYield
 } from '@renderer/components/layout/right-panel-defs'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { resolveSessionProjectId } from '@renderer/lib/session-context'
@@ -111,6 +112,17 @@ export const useUIStore = create<UIStore>((set, get) => ({
         leftSidebarWidth: nextWidth,
         ...yieldIfChatSqueezed(state, 'left', nextWidth)
       }
+    }),
+  enforceViewportWidthGuard: () =>
+    set((state: any) => {
+      const yieldSide = resolveViewportYield({
+        leftOpen: Boolean(state.leftSidebarOpen),
+        leftWidth: state.leftSidebarWidth,
+        rightOpen: Boolean(state.rightPanelOpen),
+        rightWidth: state.rightPanelWidth
+      })
+      if (!yieldSide) return state
+      return yieldSide === 'left' ? { leftSidebarOpen: false } : { rightPanelOpen: false }
     }),
 
   // Right panel

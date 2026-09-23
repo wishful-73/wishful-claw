@@ -61,3 +61,16 @@
   - **实修两侧**：① C# 新增 `PathBoundary.ResolveProjectWorkingFolder`（params 优先，缺失时按 `projectId` 回查项目表），`CollectProjectRoots` 与 `ToolCallProcessor` 共用 —— 从机制上关掉「漏传即整体越界」；② 渲染端 `use-chat-actions.ts` 三处（plan 批准 / plan 驳回 / 退出 plan 模式）补上 `?? project?.workingFolder` 回退，与主路径对齐（那三处此前是 `session.workingFolder ?? undefined`）。
   - **门禁**：`npm run build:worker` 0 错 0 警告；`npm run typecheck` EXIT=0；新增 `WishfulClaw.SandboxPathRegressionTests`（**14 断言**）→ `npm test` **53 / 53**。
   - **未验**：知识库那台机器的现场无法复现，本轮修的是「由代码读出的机制」这条链的每一环，不是「在某台机器上抓到了那一次拒绝」。正文见 [S-144.md](requirements/S-144.md)。
+- 2026-09-23：**小项清扫（一）：`disableWebInstaller` + `memory-output` 硬编码文案** —— iter-34 挂账里两条「i18n / 日志噪声」级别的小事，一并收掉。
+  - `src/main/updater.ts` 的 `configureUpdater` 补 `instance.disableWebInstaller = true`。我们只发 NSIS 全量包 + `.blockmap`（差分），没有「下载器再回网页取包」的 Web Installer 流程；不设它，**每次**下载 electron-updater 都打一条 warn（`NsisUpdater`：`disableWebInstaller is set to false`），既吵又像漏配（将来 electron-updater 默认值若翻转，行为会跟着变）。
+  - `memory-output.tsx` 的 i18n 补齐：`PRIORITY_LABELS` 里硬编码的中文标签（永久 / 重要 / 常规 / 临时）与 `找到 N 条记忆` 全部改走 `chat` 命名空间的 `memory.priority.*` / `memory.hits`（zh + en 双语、键名对齐）。**未知优先级值原样回显**（上游将来加枚举时不猜含义）。`PriorityBadge` 的类型从「label + tone 一张表」拆成「tone 表 + 键存在性判断」，避免给未知值编造翻译键。
+  - 门禁：`npm run typecheck` EXIT=0；`npm run test:i18n-coverage` 通过（2 checks）。
+- 2026-09-23：**小项清扫（二）：`will-navigate` 兜底 + 默认 Markdown 链接收口**（iter-34 挂账「10 处未拦」，安全类）
+  - **主进程补兜底**（`src/main/index.ts`）：新增 `mainWindow.webContents.on('will-navigate', …)` —— 除 `http:` / `https:`（交系统浏览器，归宿与 `setWindowOpenHandler` 一致）外**一律 `preventDefault`**。`setWindowOpenHandler` 只管 `window.open` / `target=_blank`；同帧点 `<a href>` 走的是 **will-navigate**，此前全仓没有这一道 ⇒ 渲染端任意一处漏接的链接点一下就把整个应用导航走，而渲染端是带 preload 桥的。SPA 内部路由（`history` / hash）不触发本事件，拦这里不影响应用自身跳转。
+  - **渲染端统一收口**：`markdown-components.tsx` 新增导出 `SAFE_LINK_COMPONENTS`（只带 `<a>` 拦截的最小 components 集，判定与 `markdown-renderer.tsx` 同款：除页内锚点外**先 `preventDefault` 再交给 `openMarkdownHref`**）；此前裸用默认 Markdown 的 10 处全部接上 —— `memory-output.tsx`（3 处）、`ask-user-question-block.tsx`、`CodeGraphToolCard.tsx`、`ContextCompressionMessage.tsx`、`MessageItem.tsx`、`PlanReviewCard.tsx`、`SystemCommandCard.tsx`、`SessionSummaryPanel.tsx`。主进程那道是安全底线（拦下来 = 点了没反应），这一道才是正确归宿（网址 → 右侧浏览器面板、本地路径 → 预览面板）。
+  - 门禁：`npm run typecheck` EXIT=0；`npm test` **53 / 53**。
+- 2026-09-23：**S-131 路径二（视口变窄也要收侧）** —— iter-34 挂账「左栏渲染漏按视口收窄」的**路径二**（路径一 `24311a9e` 只修了「渲染值按视口 clamp」）。
+  - **问题**：收侧判定（`resolveChatWidthGuard`）只在「展开 / 拖宽某一侧」时跑。窗口被拖小没有动作可挂 ⇒ 两侧面板同开（左 370 + 右 370）时把窗口拖到 900，聊天窗只剩 **160**，破了 `CHAT_MIN_WIDTH = 600` 的底线，而所有 width 值都没人质疑过。
+  - **修法**（iter-34 记的「修法 A」）：`right-panel-defs.ts` 新增纯函数 `resolveViewportYield()` —— 与 `resolveChatWidthGuard` 的区别是**没有「正在动的那一侧」**，两侧都按既有状态判；先收右侧（预览/浏览器是辅助面），右侧没开才收左栏（导航）。`ui-store` 加 action `enforceViewportWidthGuard()`（不需要收时 **`return state` 而非 `{}`**，避免一次无谓的全量通知）。`MainLayout.tsx` 挂 `resize` 监听，**只在变窄时**补跑判定；变宽不动（收掉的面板不会自动弹回，需用户自己点开 —— 与「窗口拉回来宽度值自动恢复」是两回事）。
+  - 门禁：`npm run typecheck` EXIT=0；`npm test` **53 / 53**。
+- 2026-09-23：**小项清扫尚未动的两项（需老大一句话）** —— 见本文件末「遗留待裁定」。

@@ -156,6 +156,26 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // 顶层导航兜底：主窗口就是应用本体，任何「把它导航走」的请求都必须拦下。
+  //
+  // `setWindowOpenHandler` 只管 `window.open` / `target=_blank`；`<a href>` 在同一帧里
+  // 点下去走的是 **will-navigate**，没有这道兜底，渲染端任意一处漏接的链接（新增卡片、
+  // 第三方组件、记忆/计划/压缩摘要这些用默认 Markdown 的地方）点一下就会把整个应用
+  // 换成那个网页，而渲染端是带 preload 桥的。
+  //
+  // SPA 内部路由（history.pushState / hash）不触发本事件，所以拦这里不影响应用自身跳转。
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    event.preventDefault()
+    let protocol = ''
+    try {
+      protocol = new URL(url).protocol
+    } catch {
+      protocol = ''
+    }
+    // 归宿与 setWindowOpenHandler 一致：外链交系统浏览器，其余（file: / 自定义协议）丢弃。
+    if (protocol === 'http:' || protocol === 'https:') shell.openExternal(url)
+  })
+
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {

@@ -28,12 +28,12 @@
 
 | 来源 | 事项 | 备注 |
 |---|---|---|
-| S-131 | 左栏渲染漏按视口收窄（**路径二**：缩窗无 resize 监听） | 路径一已在 `24311a9e` 修复 |
-| S-134 | 切会话 / 结束会话但 tab 还开着 ⇒ 进程是否仍在 | 待确认的实际行为 |
-| S-108 | 模型窗口 384K 未生效（后端按 200K 兜底） | 「未复现结案」的依据已被 S-141 推翻，待重新裁定 |
-| — | `will-navigate` 同源隐患 10 处未拦 | 安全类，未评估 |
-| — | `memory-output.tsx:115` 的 `hit.priority` 裸英文 | i18n 遗漏 |
-| — | `electron-updater`：`disableWebInstaller` 未设 | 日志持续告警，建议设 `true` |
+| S-131 | 左栏渲染漏按视口收窄（**路径二**：缩窗无 resize 监听） | ✅ 已修（`resolveViewportYield` + `MainLayout` resize 监听；路径一在 `24311a9e`） |
+| S-134 | 切会话 / 结束会话但 tab 还开着 ⇒ 进程是否仍在 | ⏸ 待老大一句话（需真机确认） |
+| S-108 | 模型窗口 384K 未生效（后端按 200K 兜底） | ⏸ 待老大重新裁定（结案依据已被 S-141 推翻） |
+| — | `will-navigate` 同源隐患 10 处未拦 | ✅ 已收口（主进程兜底 + `SAFE_LINK_COMPONENTS` 覆盖 10 处） |
+| — | `memory-output.tsx:115` 的 `hit.priority` 裸英文 | ✅ 已修（走 `chat` 的 `memory.*` 键，zh/en 对齐） |
+| — | `electron-updater`：`disableWebInstaller` 未设 | ✅ 已设 `true` |
 | — | 官网 `latest.json` 与发版联动 | 已并入 S-129（清单单一真源），不再单列 |
 
 ---

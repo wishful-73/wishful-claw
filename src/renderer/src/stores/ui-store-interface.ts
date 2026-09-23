@@ -45,6 +45,11 @@ export interface UIStore {
   toggleLeftSidebar: () => void
   setLeftSidebarOpen: (open: boolean) => void
   setLeftSidebarWidth: (width: number) => void
+  /**
+   * 视口自身变窄后（窗口被拖小）按新视口重跑收侧判定。
+   * 与 open/width 那几个 action 的区别：没有「本次动作作用在哪一侧」，两侧都按既有状态判。
+   */
+  enforceViewportWidthGuard: () => void
 
   // Right panel
   rightPanelOpen: boolean

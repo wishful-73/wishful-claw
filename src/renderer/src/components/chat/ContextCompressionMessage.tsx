@@ -1,4 +1,4 @@
-﻿import * as React from 'react'
+import * as React from 'react'
 import Markdown from 'react-markdown'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, ChevronDown, Scissors } from 'lucide-react'
@@ -9,7 +9,8 @@ import {
 } from '@renderer/lib/agent/context-compression'
 import {
   MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
+  MARKDOWN_REMARK_PLUGINS,
+  SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 
 function LiveCompressionDraft({
@@ -119,7 +120,11 @@ export function ContextCompressionMessage({
       ) : null}
       {expanded ? (
         <div className="mt-2 rounded-md border border-border bg-muted/25 px-3 py-2.5 prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground dark:prose-invert [&_h1]:mb-2 [&_h1]:mt-1 [&_h1]:text-base [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:text-sm [&_li]:my-0.5 [&_p]:my-1.5 [&_pre]:overflow-x-auto">
-          <Markdown remarkPlugins={MARKDOWN_REMARK_PLUGINS} rehypePlugins={MARKDOWN_REHYPE_PLUGINS}>
+          <Markdown
+            remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+            rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+            components={SAFE_LINK_COMPONENTS}
+          >
             {content}
           </Markdown>
         </div>

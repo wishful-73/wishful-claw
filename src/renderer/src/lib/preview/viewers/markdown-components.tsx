@@ -233,6 +233,42 @@ export function openMarkdownHref(href: string, filePath?: string): boolean {
   return openLocalFilePath(link, filePath)
 }
 
+/**
+ * 只带 `<a>` 拦截的最小 components 集 —— 给那些「用默认 Markdown 渲染、只需要
+ * 一个安全出口」的卡片用（工具输出、系统命令、压缩摘要、计划卡、提问卡 …）。
+ *
+ * 为什么必须有：react-markdown 默认的 `<a href>` 点在 Electron 主窗口上就是**当前帧
+ * 导航**。主进程只拦了 `window.open`（`setWindowOpenHandler`），顶层导航的
+ * `will-navigate` 兜底是另一道（见 `src/main/index.ts`）—— 光靠主进程那道拦下来，
+ * 表现为「点了没反应」；这里接住才是正确归宿（网址 → 右侧浏览器面板、本地路径 → 预览）。
+ *
+ * 与 `markdown-renderer.tsx` 同款判定：除页内锚点外**一律 preventDefault 再交给
+ * openMarkdownHref**。反过来写成「打开成功才 preventDefault」是不行的 —— 识别失败
+ * （相对路径拿不到 baseDir）时就会放行默认导航，把整个应用导航走。
+ */
+export const SAFE_LINK_COMPONENTS: Components = {
+  a: ({ href, children, ...props }) => {
+    const link = href?.trim() || ''
+
+    return (
+      <a
+        {...props}
+        href={link || href}
+        className="text-primary underline underline-offset-2 hover:text-primary/80 break-all"
+        title={link || href}
+        onClick={(event) => {
+          if (!link) return
+          if (link.startsWith('#')) return
+          event.preventDefault()
+          openMarkdownHref(link)
+        }}
+      >
+        {children}
+      </a>
+    )
+  }
+}
+
 export function createMarkdownComponents(filePath?: string): Components {
   const fileDir = filePath ? filePath.replace(/[\\/][^\\/]*$/, '') : ''
 

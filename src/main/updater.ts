@@ -334,6 +334,10 @@ function configureUpdater(instance: AutoUpdater): void {
   instance.autoInstallOnAppQuit = false
   instance.allowPrerelease = false
   instance.allowDowngrade = false
+  // 我们只发 NSIS 全量包 + blockmap（差分），没有「先下载再回网页取包」的 Web Installer 流程。
+  // 不设它，每次下载 electron-updater 都会打一条 warn（NsisUpdater：disableWebInstaller is set
+  // to false…），日志里噪音大且会让人以为配置漏了。
+  instance.disableWebInstaller = true
   if (!app.isPackaged) instance.forceDevUpdateConfig = true
   instance.logger = {
     info: (message?: unknown) => logInfo('main', `[updater] ${String(message ?? '')}`),

@@ -35,7 +35,8 @@ import { resolvePlanReview } from '@renderer/lib/tools/plan-native-ui'
 import { cn } from '@renderer/lib/utils'
 import {
   MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
+  MARKDOWN_REMARK_PLUGINS,
+  SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 
 interface PlanReviewCardProps {
@@ -348,6 +349,7 @@ export function PlanReviewCard({
             <Markdown
               remarkPlugins={MARKDOWN_REMARK_PLUGINS}
               rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+              components={SAFE_LINK_COMPONENTS}
             >
               {payload.content}
             </Markdown>

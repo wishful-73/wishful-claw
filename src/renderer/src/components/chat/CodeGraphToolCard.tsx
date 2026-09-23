@@ -14,7 +14,8 @@ import type { ToolCallStatus } from '@renderer/lib/agent/types'
 import type { ToolResultContent } from '@renderer/lib/api/types'
 import {
   MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
+  MARKDOWN_REMARK_PLUGINS,
+  SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { useUIStore } from '@renderer/stores/ui-store'
@@ -434,6 +435,7 @@ export function CodeGraphToolCard({
                       <Markdown
                         remarkPlugins={MARKDOWN_REMARK_PLUGINS}
                         rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                        components={SAFE_LINK_COMPONENTS}
                       >
                         {markdown}
                       </Markdown>

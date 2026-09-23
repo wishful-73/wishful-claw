@@ -56,13 +56,6 @@ export interface ChatMessage {
   toolCalls?: ToolCallInfo[]
   segments?: ContentSegment[]
   currentIteration?: number
-  /**
-   * Transient renderer state, never persisted: the worker announced that a new
-   * thinking block opens here (`thinking_start`) and its first delta still has to
-   * create the segment. Cleared by the delta that opens it, and by
-   * `thinking_end` / `text_start` (iter-35 S-142).
-   */
-  thinkingBlockPending?: boolean
   debugInfo?: RequestDebugInfo
   memoryRecall?: MemoryRecallInfo
   meta?: MessageMeta

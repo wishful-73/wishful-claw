@@ -22,7 +22,7 @@ import { createProjectSlice, type ProjectSlice } from './project-slice'
 
 import { createStreamingSlice, type StreamingSlice } from './streaming-slice'
 
-import type { ChatMessage } from './types'
+import type { ChatMessage, ContentSegment } from './types'
 import { writeLog } from '@renderer/lib/error-logger'
 
 import {
@@ -940,33 +940,14 @@ export const useChatStore = create<ChatStore>()(
 
 
 
-          // S-142: text / thinking block boundaries from the worker. They double as
-          // ordering barriers (the batcher flushes buffered deltas before passing
-          // them through) and as the authoritative 「续段还是开段」 signal — segment
-          // assembly no longer has to guess from the surrounding segment types.
-
-          case 'thinking_start': {
-
-            set((state) => {
-
-              const session = state.sessions.find((s) => s.id === targetSessionId)
-
-              const msg = session?.messages.find((m) => m.id === envelope.runId)
-
-              if (msg) msg.thinkingBlockPending = true
-
-            })
-
-            break
-
-          }
-
-
+          // 正文 / 思考的块边界事件（worker 的 StreamSegmentBoundary）。它们现在的职责只有一条：
+          // 宣告思考块结束 —— `thinking_end` / `text_start` 都给本 iteration 的思考段打上
+          // completedAt。「段的归并」不再看它们：段的身份是 (iteration, type)，见
+          // flushStreamDeltas。`thinking_start` 因此没有对应 case（它只宣告边界，不参与建段）。
 
           case 'thinking_end': {
 
-            // The thinking block is over: mark its segment finished and drop a
-            // pending block that never produced a delta.
+            // 思考块结束：给本 iteration 的思考段打完成标记。
 
             set((state) => {
 
@@ -975,8 +956,6 @@ export const useChatStore = create<ChatStore>()(
               const msg = session?.messages.find((m) => m.id === envelope.runId)
 
               if (!msg) return
-
-              msg.thinkingBlockPending = false
 
               closeOpenThinkingSegment(msg, Date.now())
 
@@ -990,10 +969,8 @@ export const useChatStore = create<ChatStore>()(
 
           case 'text_start': {
 
-            // Text begins ⇒ the thinking block before it is over. Text itself keeps
-            // merging into the previous text segment of this iteration (S-133:
-            // 同一段正文不该被思考块或工具卡从中间劈开) — the boundary closes the
-            // thinking block, it does not force a new text segment.
+            // 正文开始 ⇒ 它之前的思考块结束。正文自己按 (iteration, text) 归并
+            // （S-133 及其补完），边界事件只负责关思考块，不强制开新正文段。
 
             set((state) => {
 
@@ -1002,8 +979,6 @@ export const useChatStore = create<ChatStore>()(
               const msg = session?.messages.find((m) => m.id === envelope.runId)
 
               if (!msg) return
-
-              msg.thinkingBlockPending = false
 
               closeOpenThinkingSegment(msg, Date.now())
 
@@ -1253,7 +1228,7 @@ export const useChatStore = create<ChatStore>()(
 
                   if (!msg.segments.find((s) => s.type === 'tool_use' && s.toolCallId === event.toolCallId)) {
 
-                    msg.segments.push({
+                    insertSegment(msg.segments, {
 
                       type: 'tool_use',
 
@@ -1455,7 +1430,7 @@ export const useChatStore = create<ChatStore>()(
 
                   } else {
 
-                    msg.segments.push({
+                    insertSegment(msg.segments, {
 
                       type: 'tool_use',
 
@@ -2240,17 +2215,83 @@ getAgentStreamReceiver().start((envelope) => {
 // got its `completedAt` when a text delta happened to land in the same flush
 // window, and the check only ever looked at the segment at the tail of the list.
 
+// 段在本 iteration 段组内的固定次序：思考 → 正文 → 工具卡。与到达顺序无关，
+// 所以上游把两条流交错发来时，段的相对位置仍然是稳定的。
+const SEGMENT_KIND_ORDER: Record<ContentSegment['type'], number> = { thinking: 0, text: 1, tool_use: 2 }
+
+/**
+
+ * 把新段插进「本 iteration 段组」里按 kind 固定序的位置。
+
+ * 同一 iteration 的段天然连续（都由这里落位）；该轮还没有任何段时直接追加到末尾，
+
+ * 跨轮时序因此保持不变。
+
+ */
+
+function insertSegment(segments: ContentSegment[], seg: ContentSegment): void {
+
+  let last = -1
+
+  for (let i = segments.length - 1; i >= 0; i--) {
+
+    if (segments[i].iteration === seg.iteration) {
+
+      last = i
+
+      break
+
+    }
+
+  }
+
+  if (last < 0) {
+
+    segments.push(seg)
+
+    return
+
+  }
+
+  const order = SEGMENT_KIND_ORDER[seg.type]
+
+  let at = last + 1
+
+  for (let i = last; i >= 0 && segments[i].iteration === seg.iteration; i--) {
+
+    if (SEGMENT_KIND_ORDER[segments[i].type] > order) {
+
+      at = i
+
+    } else {
+
+      break
+
+    }
+
+  }
+
+  segments.splice(at, 0, seg)
+
+}
+
 function closeOpenThinkingSegment(msg: ChatMessage, at: number): void {
 
   const segments = msg.segments
 
   if (!segments) return
 
+  // 只关本轮（msg.currentIteration）的思考段：段按 (iteration, type) 定位后，倒扫可能先
+
+  // 撞上后面轮次的段，必须比对 iteration。
+
   for (let i = segments.length - 1; i >= 0; i--) {
 
     const segment = segments[i]
 
     if (segment.type !== 'thinking') continue
+
+    if (segment.iteration !== msg.currentIteration) continue
 
     if (!segment.completedAt) segment.completedAt = at
 
@@ -2328,62 +2369,54 @@ function flushStreamDeltas(): void {
 
           msg.text += delta.text
 
-          // Mark the last thinking segment as completed when text output starts
+          // 段按 (iteration, type) 定位：本轮正文只有一个槽，交错到达的分片都追加进去。
+          // 上游把思考与正文当两条独立通道发（思考 1_1 / 正文 2_1 / 思考 1_2 …），按到达
+          // 顺序 push 会把一段正文劈成多段（S-133 的病根）；按类型定位才对得上 Reasonix
+          // 的 reasoning / content 双字段模型。
 
-          const lastSegForText = msg.segments[msg.segments.length - 1]
-
-          if (lastSegForText && lastSegForText.type === 'thinking' && !lastSegForText.completedAt) {
-
-            lastSegForText.completedAt = now
-
-          }
-
-          // Append to the current iteration's text segment, or create new.
-          // 工具卡与思考块都会 push 到 segments 末尾；若只认末尾（要求它必须是 text），同一段正文
-          // 会被一串 tool_use 或 thinking 劈成多个 text segment —— 渲染时表现为正文被工具卡或
-          // 「已深度思考」条从中间截断（S-133 及其补完）。
-          // 所以跨过末尾连续的 tool_use 与 thinking 往前找：撞到上一个 text 就并进去，
-          // 撞到别的（目前只有这三类 segment）就停。
-
-          const targetTextSeg = msg.segments.findLast(
-            (seg) => seg.type !== 'tool_use' && seg.type !== 'thinking'
+          let textSeg = msg.segments.find(
+            (seg) => seg.type === 'text' && seg.iteration === msg.currentIteration
           )
 
-          if (targetTextSeg && targetTextSeg.type === 'text' && targetTextSeg.iteration === msg.currentIteration) {
+          if (!textSeg) {
 
-            targetTextSeg.text = (targetTextSeg.text ?? '') + delta.text
+            textSeg = { type: 'text', iteration: msg.currentIteration, text: '' }
 
-          } else {
-
-            msg.segments.push({ type: 'text', iteration: msg.currentIteration, text: delta.text })
+            insertSegment(msg.segments, textSeg)
 
           }
+
+          textSeg.text = (textSeg.text ?? '') + delta.text
+
+          // 正文一开始，本轮思考即完结（等价 Reasonix 的 reasoningComplete）。
+
+          closeOpenThinkingSegment(msg, now)
 
         } else {
 
           msg.thinking = (msg.thinking ?? '') + delta.thinking
 
-          // Append to the thinking segment of the current iteration, or open a new one.
+          // 同理：本轮思考只有一个槽。上游在思考被正文/工具卡打断后又继续发的分片，
+          // 全部并回同一段 —— S-142 初版的 thinkingBlockPending 正是在这里把一段思考切成
+          // 两段（宣告「新块」就另开一段，可上游只是把两条流交错发）。
 
-          // S-142: an announced block boundary (`thinking_start`) always opens a new
+          let thinkingSeg = msg.segments.find(
+            (seg) => seg.type === 'thinking' && seg.iteration === msg.currentIteration
+          )
 
-          // segment — that is what keeps one thinking block from being split around
+          if (!thinkingSeg) {
 
-          // the text that follows it.
+            thinkingSeg = { type: 'thinking', iteration: msg.currentIteration, thinking: '', startedAt: now }
 
-          const lastSeg = msg.segments[msg.segments.length - 1]
-
-          if (!msg.thinkingBlockPending && lastSeg && lastSeg.type === 'thinking' && lastSeg.iteration === msg.currentIteration) {
-
-            lastSeg.thinking = (lastSeg.thinking ?? '') + delta.thinking
-
-          } else {
-
-            msg.segments.push({ type: 'thinking', iteration: msg.currentIteration, thinking: delta.thinking, startedAt: now })
-
-            msg.thinkingBlockPending = false
+            insertSegment(msg.segments, thinkingSeg)
 
           }
+
+          thinkingSeg.thinking = (thinkingSeg.thinking ?? '') + delta.thinking
+
+          // 续写 ⇒ 撤回「已完成」（正文/工具卡曾在中间把它标记成完结）。
+
+          if (thinkingSeg.completedAt) delete thinkingSeg.completedAt
 
         }
 

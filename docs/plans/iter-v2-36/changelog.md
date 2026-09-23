@@ -31,3 +31,19 @@
   - **待办（归属待定）**：`deploy.mjs` 目前只传 exe + 生成 `latest.json`，需补齐三处 —— ① `deployInstaller()` 改传**三件**；② 删 `writeLatestJson()`（清单改由 builder 的 `latest.yml` 担任，不再有生成物入库）；③ `verifyLive()` 改抽查 `/downloads/latest.yml` 与 `.blockmap`。脚本**不在版本库**（`.gitignore:53` 的 `scripts/*` 刻意排除，含服务器地址与密钥路径）⇒ 老大自己改 / 那个会话改 / 授权我改，**待定**。
 - 2026-09-23：**`deploy.mjs` 三件化改造（15:00，老大「1.你改呀」授权）** —— `deployInstaller()` 从「传 1 个 exe + 写 `latest.json`」改为「**传三件**（exe + `.blockmap` + `latest.yml`，一次 tar 上传）→ 服务器侧解包 → 归正权限 → 移进下载目录 → **清掉非当前版本的旧包**（`find … ! -name '*<version>*' -delete`）→ 三件逐一 sha512 校验，全程下载目录里都有可用文件、不留空窗」；**删除 `writeLatestJson()` / `LATEST_JSON` / `writeFileSync` import**（清单改由 builder 的 `latest.yml` 担任，不再有生成物入库、不再需要「记得提交」）；`verifyLive()` 抽查项 `/latest.json` → `/downloads/latest.yml`；用法说明与文件头注释同步（新增「发布资产为什么是三件」一节）。**验证**：`node --check` 通过、`--help` 实跑正常、无残留引用。**尚未实跑**（动线上，待老大定）。
 - 2026-09-23：**S-143 本轮增补（14:59，老大定）：官网去掉更新日志页** —— 老大「更新日志范围，就是官网不留这个，全部应该跳转去GitHub看」，即上一条问的 **B+**（连页面与内容一并删 **且** 入口改指 GitHub）。**已实施**（官网本地代码，未提交）：删 `changelog.html` / `changelog-page.tsx` / `changelog-main.tsx` / `lib/changelog.ts` / `content/changelog.md` 共 5 个文件；`vite.config.ts` 的 `PAGES` 与 `rollupOptions.input` 从四个入口减到三个（index / download / guide）；顶栏「更新日志」改**外链** `${GITHUB_REPO_URL}/releases`（`nav` 各项加 `external` 字段，`site-header.tsx` 据此渲染 `target="_blank" rel="noopener noreferrer"`）；`App.tsx` 注释同步。其余提到更新日志的入口本就指 GitHub（`download-cta` / `download-page`），无需改。**验证**：`typecheck` EXIT=0、`build` EXIT=0、产物只剩 3 个 html 且全 chunk `changelog` 零命中、顶栏外链已进产物（`external:!0` → `target:'_blank'`）。连带：`deploy.mjs` 的 `verifyLive()` 去掉 `/changelog` 抽查项。文档见 [S-143.md](requirements/S-143.md)。
+- 2026-09-23：**S-129 收尾：`publish` 切官网（15:2x）** —— 按 §一 顺序的第 4 步（前 3 步已验通：官网 `latest.yml` / `.blockmap` / exe 三件 200）。
+  - `electron-builder.yml`：`publish` 由 `provider: github`（owner/repo/releaseType）改为 **`provider: generic` + `url: https://wishful-claw.work/downloads/`**，并加注释说明「清单即 builder 自产的 `latest.yml`，三件成套覆盖上传；GitHub 退为存档与找旧版」。
+  - `dev-app-update.yml`（开发态手工测更新用）同步切 `generic` + 同址 —— 否则 dev 下 `checkForUpdates` 仍打 GitHub。
+  - **不加 GitHub fallback**：只配单源。`in-app-update-plan.md` 的「保留 GitHub fallback」是首期设想（原话「后续可增加 Generic Provider 镜像」），不是硬要求；双源需运行时代码支持，先单源跑通，确有需要再加。
+  - **实测验证**（这是关键，别只看配置）：`npm run pack`（`--dir`）**不产 `app-update.yml`** —— 它由 NSIS 目标打包器写。改跑 `npx electron-builder --win`（EXIT=0），产物 `release/win-unpacked/resources/app-update.yml` 恰为：
+
+    ```
+    provider: generic
+    url: https://wishful-claw.work/downloads/
+    updaterCacheDirName: wishful-claw-updater
+    ```
+
+  - **打包踩坑（本次复发）**：首次 `npm run pack` 报 `EPERM: operation not permitted, rename 'release\win-unpacked.tmp' -> 'release\win-unpacked'` —— 上次失败留下的 `win-unpacked.tmp` 残留。删掉 `release/win-unpacked.tmp` 与 `release/win-unpacked`（PowerShell `Remove-Item` 在本机被环境拦，走 `node fs.rmSync`）后重跑即过。**已写进 `release-workflow.md` §4.2 的 ⚠️ 清单。**
+  - **未污染已发布产物**：验证前把 `release/` 里已发布的 0.2.35 三件挪进 `release/_released-0.2.35/`，验证后删除重打包产物并把三件移回 —— 三件 sha512 与发布版逐字一致（exe `4F9916FBD9CFDA30…` / blockmap `F7C09B0588AC6FBF…` / latest.yml `17D5983561A6BDDB…`）。
+  - **生效时点**：只对**下一次打包**生效。0.2.35 包内仍是 `provider: github`（实测），已装用户检查更新仍走 GitHub；官网成为应用内更新源要等 **0.2.36 的包**装机。
+  - 文档：`release-workflow.md` §4.2 补「更新源指向官网的核验方法」+「`--dir` 不产 `app-update.yml`」+「EPERM 残留处理」；§4.4 的「脚本尚需补齐」过期提示改为**已三件化**的口径。

@@ -3,11 +3,13 @@ productName: Wishful Claw
 directories:
   output: release
 
+# 更新源：官网下载目录（S-129）。
+# electron-updater 取 `<url>latest.yml`，安装包与 blockmap 与清单同目录 ⇒ 支持差分。
+# 该清单就是 electron-builder 自己产出的 latest.yml（单一真源，发版时连同 exe/.blockmap 一起覆盖上传）。
+# GitHub Releases 退为「存档 + 手工下载 + 找旧版」，不再参与应用内更新。
 publish:
-  provider: github
-  owner: wishful-73
-  repo: wishful-claw
-  releaseType: release
+  provider: generic
+  url: https://wishful-claw.work/downloads/
 
 extraMetadata:
   wishfulClawDistribution: installer

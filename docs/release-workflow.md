@@ -167,6 +167,18 @@ release/wishful-claw-0.2.{N}-setup.exe.blockmap
 - ⚠️ 打包前确认无残留 WishfulClaw / electron 进程（`tasklist` 检查），否则旧 `release/win-unpacked/` 被锁报 `EBUSY`
 - ⚠️ 若 `win-unpacked/app.asar` 被锁（杀软 / 索引句柄）且杀进程无效，换输出目录绕开：
   `npx electron-builder --win -c.directories.output=release/v0.2.{N}`
+- ⚠️ 若报 `EPERM: operation not permitted, rename 'release\win-unpacked.tmp' -> 'release\win-unpacked'`：
+  上一次打包失败留下的 `win-unpacked.tmp` 残留所致。删掉 `release/win-unpacked.tmp` 与 `release/win-unpacked` 后重跑即过。
+- ✅ **更新源已指向官网**（S-129）：`electron-builder.yml` 用 `provider: generic` + `url: https://wishful-claw.work/downloads/`，
+  包内 `resources/app-update.yml` 同址。打包后可这样核验：
+
+  ```
+  provider: generic
+  url: https://wishful-claw.work/downloads/
+  updaterCacheDirName: wishful-claw-updater
+  ```
+
+- ⚠️ **`app-update.yml` 只在带目标的打包（`--win` / `pack:installer*`）里生成** —— `npm run pack`（`--dir`）不产出它，用它验更新源会验空。
 
 ### 4.3 上传资产
 
@@ -213,9 +225,10 @@ node scripts/deploy.mjs site          # 只发布官网
 node scripts/deploy.mjs cert          # 查证书状态
 ```
 
-> 📌 **前置**：脚本当前只上传 exe（并生成 `latest.json`），尚需补齐为「传三件 + 废 `latest.json`」，
-> 见 [iter-v2-36/S-129.md](../plans/iter-v2-36/requirements/S-129.md) §五。补齐前手工传
-> `latest.yml` 与 `.blockmap`，否则 app 内更新与差分都不成立。
+> ✅ **脚本已三件化**（2026-09-23）：`deploy.mjs` 收 exe + `.blockmap` + `latest.yml`（缺件直接报错），
+> 一次上传、远端解包归位、逐件 sha512 校验，并**清掉下载目录里的非当前版本旧包**（只留最新）；
+> 人手写的 `latest.json` 已退役，清单唯一真源就是 electron-builder 的 `latest.yml`。
+> 变更明细见 [iter-v2-36/S-129.md](../plans/iter-v2-36/requirements/S-129.md) §五。
 
 > ⚠️ **`deploy.mjs` 不在版本库** —— `.gitignore:53` 的 `scripts/*` 刻意排除它（内含服务器地址与
 > 部署密钥路径）。换机器时手动拷过去，密钥生成见知识库《官网部署》。

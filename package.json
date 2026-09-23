@@ -57,6 +57,7 @@
     "test:terminal-output-text": "esbuild tests/terminal-output-text/program.ts --bundle --platform=node --format=cjs --outfile=tests/terminal-output-text/out/program.cjs && node tests/terminal-output-text/out/program.cjs",
     "test:adaptive-event-batcher": "esbuild tests/adaptive-event-batcher/program.ts --bundle --platform=node --format=cjs --outfile=tests/adaptive-event-batcher/out/program.cjs && node tests/adaptive-event-batcher/out/program.cjs",
     "test:stream-segments": "esbuild tests/stream-segments/program.ts --bundle --platform=node --format=cjs --outfile=tests/stream-segments/out/program.cjs && node tests/stream-segments/out/program.cjs",
+    "test:latest-yml": "esbuild tests/latest-yml/program.ts --bundle --platform=node --format=cjs --outfile=tests/latest-yml/out/program.cjs && node tests/latest-yml/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

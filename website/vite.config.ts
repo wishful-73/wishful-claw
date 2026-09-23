@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 // 干净路由：/guide 而不是 /guide.html。
 // 只重写「无斜杠」那一种：产物 HTML 里资源是相对路径（base './'），
 // 浏览器停在 /guide/ 时会把 ./assets/... 解析成 /guide/assets/... 直接 404。
-const PAGES = ['download', 'guide', 'changelog'] as const
+const PAGES = ['download', 'guide'] as const
 
 // 官网固定端口，刻意避开 Vite 默认的 5173 / 4173：主项目 electron-vite 的 renderer dev / preview
 // 正占着这两个默认值，同机同开时 Vite 会把官网静默挪到 5174 / 4174 —— 看着在自己端口上测官网，
@@ -29,8 +29,9 @@ function rewriteCleanUrls(middlewares: Connect.Server): void {
 // base './'：产物落任意域名/子路径的 Nginx 根都可用，无需按环境构建
 // input 用相对 root 的路径 —— rollup 自行解析，避免 ESM 下无 __dirname
 export default defineConfig({
-  // 四个入口的 MPA：默认 'spa' 会把任意未知路径回退成首页，打错 /guid 也"看着像 200"，
-  // 排错时最容易骗到自己；'mpa' 下未知路径正常 404。
+  // 三个入口的 MPA（首页 + 下载 + 使用指引）：默认 'spa' 会把任意未知路径回退成首页，
+  // 打错 /guid 也"看着像 200"，排错时最容易骗到自己；'mpa' 下未知路径正常 404。
+  // 原第四个入口 changelog 已删（老大 2026-09-23：官网不留更新日志，入口一律跳 GitHub）。
   appType: 'mpa',
   server: { port: DEV_PORT, strictPort: true },
   preview: { port: PREVIEW_PORT, strictPort: true },
@@ -49,8 +50,7 @@ export default defineConfig({
       input: {
         index: 'index.html',
         download: 'download.html',
-        guide: 'guide.html',
-        changelog: 'changelog.html'
+        guide: 'guide.html'
       }
     }
   }

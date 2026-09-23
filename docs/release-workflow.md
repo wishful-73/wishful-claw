@@ -187,6 +187,39 @@ release/wishful-claw-0.2.{N}-setup.exe.blockmap
 
 **`latest.yml` 是 electron-updater 检查更新的必需元数据，不能只传 setup.exe。**
 
+### 4.4 上传到官网下载目录（S-129）
+
+官网是**追加**的第二个发布面（GitHub 流程照旧，不替代）。安装包与版本清单放在**站点目录之外**
+的下载目录，nginx 以 `/downloads` 映射对外 —— 因为官网静态发布是**整体替换站点目录**
+（`deploy.mjs` 的 `deploySite`：先把线上目录 `mv` 走，再把新的 `mv` 进来），资产放站点里会被清掉。
+
+```
+/data/downloads/wishfulclaw/                              ← nginx: https://wishful-claw.work/downloads
+├── latest.yml
+├── wishful-claw-0.2.{N}-setup.exe
+└── wishful-claw-0.2.{N}-setup.exe.blockmap
+```
+
+**三件必须同目录、成套覆盖。** `latest.yml` 里的 `url` / `path` 都是相对文件名，updater 与站点
+下载按钮一律按「同目录」解析 —— 少任何一个，更新或下载都会 404。
+
+**只放最新版本**（老大 2026-09-23 定）：不攒历史包，差分不需要旧包，回滚靠 GitHub Release。
+
+一条命令搞定（构建官网 + 上传 + 远端替换 + 线上抽查 + 报证书）：
+
+```bash
+node scripts/deploy.mjs installer     # 传安装包 + 发布官网
+node scripts/deploy.mjs site          # 只发布官网
+node scripts/deploy.mjs cert          # 查证书状态
+```
+
+> 📌 **前置**：脚本当前只上传 exe（并生成 `latest.json`），尚需补齐为「传三件 + 废 `latest.json`」，
+> 见 [iter-v2-36/S-129.md](../plans/iter-v2-36/requirements/S-129.md) §五。补齐前手工传
+> `latest.yml` 与 `.blockmap`，否则 app 内更新与差分都不成立。
+
+> ⚠️ **`deploy.mjs` 不在版本库** —— `.gitignore:53` 的 `scripts/*` 刻意排除它（内含服务器地址与
+> 部署密钥路径）。换机器时手动拷过去，密钥生成见知识库《官网部署》。
+
 ## 五、进度文档
 
 收尾时两步：
@@ -204,6 +237,10 @@ release/wishful-claw-0.2.{N}-setup.exe.blockmap
 - `latest.yml` 的 `sha512` 与 setup.exe 的**实际 sha512 一致**
 - `.blockmap` 的下载地址不返回 404
 - Release 状态：`draft=false`、`prerelease=false`、**是 Latest**（`isLatest=true`）
+- **官网侧（S-129）**：
+  - `downloads/latest.yml` 可达（HTTP 200），且 `version` 与本次发布一致
+  - `downloads/<setup>.exe.blockmap` 可达（非 404）—— 差分下载靠它
+  - 站点下载按钮指向的地址能下到包（与 `latest.yml` 的 `files[0].url` 同源）
 - 端到端：用低于当前 Release 的本地版本实际调用 `electron-updater.checkForUpdates()`，确认进入 `update-available`，再测下载确认与安装确认流程
 
 > 核验 gh 输出时注意：`gh release view --json` 直接接 `ConvertFrom-Json` 会被流混入搞坏，**先重定向到临时文件再解析**。

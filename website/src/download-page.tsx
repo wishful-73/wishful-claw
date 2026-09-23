@@ -1,11 +1,11 @@
 import { SiteHeader } from './components/site-header'
 import { SiteFooter } from './sections/site-footer'
 import { DownloadButtons } from './components/download-buttons'
-import { useLatestInfo } from './lib/site-data'
+import { useReleaseManifest } from './lib/site-data'
 import { BRAND, footer, quickStart } from './content/site'
 
 export default function DownloadPage() {
-  const info = useLatestInfo()
+  const manifest = useReleaseManifest()
   return (
     <>
       <SiteHeader />
@@ -20,10 +20,10 @@ export default function DownloadPage() {
         <div className="mt-10 rounded-[13px] border border-ink-700 bg-paper p-8 shadow-[0_1px_2px_rgba(27,30,36,0.06),0_12px_32px_-16px_rgba(27,30,36,0.24)]">
           <p className="text-sm text-ink-900/65">
             当前版本：
-            <span className="font-semibold text-ink-950">v{info?.version ?? '—'}</span>
+            <span className="font-semibold text-ink-950">v{manifest?.version ?? '—'}</span>
           </p>
           <div className="mt-7">
-            <DownloadButtons info={info} />
+            <DownloadButtons manifest={manifest} />
           </div>
           <p className="mt-5 text-sm text-ink-900/45">
             想看每个迭代改了什么、或需要旧版本，都在 GitHub Releases：

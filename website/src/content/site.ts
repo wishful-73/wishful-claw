@@ -14,23 +14,16 @@ export const BRAND = {
 
 export const GITHUB_REPO_URL = 'https://github.com/wishful-73/wishful-claw'
 
-// 只放页面真正读的字段；阶段 4 由 latest.yml 派生时再按需加（别为假想需求预留字段）
-export interface LatestInfo {
-  version: string
-  downloads: { windows: string; github: string; macos: string; linux: string }
-}
-
-// 下载平台：urlKey 对应 latest.json 的 downloads 字段，留空即置灰、填了 URL 自动变真按钮。
-// key 一律按平台命名（windows / macos / linux）。原 Windows 用 'direct'（「官网直链」）——
-// 那是把「包放哪」的实现细节写进了数据键名；包今天在 GitHub、明天在官网，键名不该跟着搬家。
-// 2026-09-21：Windows 先填 GitHub Release 的安装包直链 —— 有包就不该给灰按钮（参考 Reasonix 官网，
-// 它的下载区里没有「通道建设中」这种东西）。官网上线后把 latest.json 里这个值换成官网地址，前端零改动。
+// 下载平台。产物目前只有 Windows（electron-builder.yml 只配了 nsis）⇒ 只有它绑清单里的安装包；
 // Mac / Linux 能出包（老大 2026-09-21：目前用不到所以没做）⇒ 是「待发布」占位，不是「不支持」，不给时间承诺。
+// 原每个平台带一个 urlKey 去 latest.json 的 downloads 取 URL；S-129 把数据源换成 builder 生成的
+// latest.yml 后，清单里只有「当前唯一产物」的安装包文件名、没有按平台分的字段，urlKey 随之删掉 ——
+// 哪个平台能下由这张表决定，不再由站点上的数据文件决定。
 // 不写系统要求备注：产物是 AOT self-contained，不挑运行环境（老大 2026-09-21）。
 export const platforms = [
-  { id: 'windows', label: 'Windows', urlKey: 'windows', pendingTag: '暂不可用' },
-  { id: 'macos', label: 'macOS', urlKey: 'macos', pendingTag: '待发布' },
-  { id: 'linux', label: 'Linux', urlKey: 'linux', pendingTag: '待发布' }
+  { id: 'windows', label: 'Windows', pendingTag: '暂不可用' },
+  { id: 'macos', label: 'macOS', pendingTag: '待发布' },
+  { id: 'linux', label: 'Linux', pendingTag: '待发布' }
 ] as const
 
 export const hero = {
@@ -55,10 +48,12 @@ export const hero = {
 // 页内锚点（为什么是它 / 不花钱也能用起来 / 它能干什么 / 快速上手）不在顶栏 —— 中文在顶栏 flex 里挤不下更多项，会逐字折行。
 // href 带首页文件名：在其他页上点击也能跳回单页对应锚点，而非死链到本页
 export const nav = [
-  { label: '首页', href: './' },
-  { label: '使用指引', href: './guide' },
-  { label: '更新日志', href: './changelog' },
-  { label: 'FAQ', href: './#faq' }
+  { label: '首页', href: './', external: false },
+  { label: '使用指引', href: './guide', external: false },
+  // 2026-09-23（老大定）：官网不再有更新日志页，这一项改为**外链跳 GitHub Releases**
+  // —— 每个 Release 的 notes 就是那次的完整日志。`external` 由顶栏渲染成新窗口打开。
+  { label: '更新日志', href: `${GITHUB_REPO_URL}/releases`, external: true },
+  { label: 'FAQ', href: './#faq', external: false }
 ]
 
 // 竞争优势：按「门槛低 / 好看」两类呈现，门槛低打头（2026-09-20 定稿三类；2026-09-21 S-124 删掉「自由」整类）

@@ -15,7 +15,12 @@ export function SiteHeader() {
         </a>
         <nav className="hidden items-center gap-6 whitespace-nowrap text-sm text-ink-900/65 sm:flex">
           {nav.map((item) => (
-            <a key={item.href} href={item.href} className="shrink-0 transition-colors hover:text-ink-950">
+            <a
+              key={item.href}
+              href={item.href}
+              {...(item.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              className="shrink-0 transition-colors hover:text-ink-950"
+            >
               {item.label}
             </a>
           ))}

@@ -68,6 +68,9 @@ internal static partial class OpenAIChatProvider
         var reasoningDetails = new List<ReasoningDetailAccumulator>();
         var toolBuffers = new Dictionary<int, ToolCallBuffer>();
         var toolCalls = new List<AgentRuntimeNativeToolCall>();
+        // S-142: per-attempt text/thinking block tracker — the boundary events it
+        // emits are what keep the renderer from merging the two kinds out of order.
+        var boundary = new StreamSegmentBoundary();
         string? nativeFinishReason = null;
 
         // Connection aborts (unstable upstreams, e.g. OpenRouter stealth routes)
@@ -78,6 +81,7 @@ internal static partial class OpenAIChatProvider
             await ReadProviderStreamAsync(
                 request, provider, state, context,
                 toolBuffers, toolCalls, assistantText, reasoningContent, reasoningDetails,
+                boundary,
                 startedAt,
                 value => firstTokenMs ??= value,
                 value => estimatedOutputTokens += value,
@@ -157,6 +161,10 @@ internal static partial class OpenAIChatProvider
             };
         }
 
+        // S-142: the response stream is done — close a thinking block that never
+        // switched to text, so the renderer marks it complete without waiting.
+        await StreamSegmentBoundary.EmitAsync(state, context, boundary.AtEnd());
+
         await AgentRuntimeTools.EmitAsync(
             state, context,
             new AgentRuntimeStreamEvent(
@@ -199,6 +207,7 @@ internal static partial class OpenAIChatProvider
         StringBuilder assistantText,
         StringBuilder reasoningContent,
         List<ReasoningDetailAccumulator> reasoningDetails,
+        StreamSegmentBoundary boundary,
         long startedAt,
         Action<long> markFirstTokenMs,
         Action<int> addEstimatedOutputTokens,
@@ -238,7 +247,7 @@ internal static partial class OpenAIChatProvider
                     var shouldStop = await ProcessSseDataAsync(
                         dataBuilder.ToString(),
                         toolBuffers, toolCalls, assistantText, reasoningContent, reasoningDetails,
-                        state, context, startedAt,
+                        state, context, boundary, startedAt,
                         markFirstTokenMs, addEstimatedOutputTokens, setUsage, setStopReason,
                         setNativeStopReason);
                     dataBuilder.Clear();
@@ -269,7 +278,7 @@ internal static partial class OpenAIChatProvider
             await ProcessSseDataAsync(
                 dataBuilder.ToString(),
                 toolBuffers, toolCalls, assistantText, reasoningContent, reasoningDetails,
-                state, context, startedAt,
+                state, context, boundary, startedAt,
                 markFirstTokenMs, addEstimatedOutputTokens, setUsage, setStopReason,
                 setNativeStopReason);
         }
@@ -278,7 +287,7 @@ internal static partial class OpenAIChatProvider
             await ProcessJsonResponseAsync(
                 rawResponseBuilder.ToString(),
                 toolCalls, assistantText, reasoningContent, reasoningDetails,
-                state, context, startedAt,
+                state, context, boundary, startedAt,
                 markFirstTokenMs, addEstimatedOutputTokens, setUsage, setStopReason);
         }
 
@@ -309,6 +318,7 @@ internal static partial class OpenAIChatProvider
         List<ReasoningDetailAccumulator> reasoningDetails,
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
+        StreamSegmentBoundary boundary,
         long startedAt,
         Action<long> markFirstTokenMs,
         Action<int> addEstimatedOutputTokens,
@@ -346,6 +356,10 @@ internal static partial class OpenAIChatProvider
             {
                 reasoningContent.Append(reasoning);
                 markFirstTokenMs(AgentLoop.ElapsedMs(startedAt));
+                // S-142: boundary before the first delta of a thinking block.
+                await StreamSegmentBoundary.EmitAsync(
+                    state, context,
+                    boundary.BeforeDelta(StreamSegmentBoundary.ThinkingKind));
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
                     new AgentRuntimeStreamEvent("thinking_delta", Thinking: reasoning));
@@ -357,6 +371,10 @@ internal static partial class OpenAIChatProvider
                 markFirstTokenMs(AgentLoop.ElapsedMs(startedAt));
                 addEstimatedOutputTokens(AgentLoop.EstimateTokenCount(text));
                 assistantText.Append(text);
+                // S-142: boundary before the first delta of a text block.
+                await StreamSegmentBoundary.EmitAsync(
+                    state, context,
+                    boundary.BeforeDelta(StreamSegmentBoundary.TextKind));
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
                     new AgentRuntimeStreamEvent("text_delta", Text: text));
@@ -411,6 +429,7 @@ internal static partial class OpenAIChatProvider
         List<ReasoningDetailAccumulator> reasoningDetails,
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
+        StreamSegmentBoundary boundary,
         long startedAt,
         Action<long> markFirstTokenMs,
         Action<int> addEstimatedOutputTokens,
@@ -440,6 +459,10 @@ internal static partial class OpenAIChatProvider
             {
                 reasoningContent.Append(reasoning);
                 markFirstTokenMs(AgentLoop.ElapsedMs(startedAt));
+                // S-142: boundary before the first delta of a thinking block.
+                await StreamSegmentBoundary.EmitAsync(
+                    state, context,
+                    boundary.BeforeDelta(StreamSegmentBoundary.ThinkingKind));
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
                     new AgentRuntimeStreamEvent("thinking_delta", Thinking: reasoning));
@@ -451,6 +474,10 @@ internal static partial class OpenAIChatProvider
                 markFirstTokenMs(AgentLoop.ElapsedMs(startedAt));
                 addEstimatedOutputTokens(AgentLoop.EstimateTokenCount(text));
                 assistantText.Append(text);
+                // S-142: boundary before the first delta of a text block.
+                await StreamSegmentBoundary.EmitAsync(
+                    state, context,
+                    boundary.BeforeDelta(StreamSegmentBoundary.TextKind));
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
                     new AgentRuntimeStreamEvent("text_delta", Text: text));

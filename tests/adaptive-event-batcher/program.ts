@@ -1,12 +1,14 @@
 /*
- * AdaptiveEventBatcher（iter-34 S-135）。
+ * AdaptiveEventBatcher（iter-34 S-135，iter-35 S-142 补强）。
  *
  * 存在理由：模型和工具都快的时侯，逐条 delta 直推渲染层会把主线程压死，
- * 表现出来就是「整页像截图一样静止」。这里锁住三条不能破的规矩：
+ * 表现出来就是「整页像截图一样静止」。这里锁住四条不能破的规矩：
  *
  *   1. 可加事件在一个窗口内合并成一条 —— 降频真的生效；
  *   2. 控制类事件立即直通，且不越过已经攒着的 delta —— 降频不许改事件顺序；
- *   3. 缓冲体积超上限就立刻 flush，不等定时器 —— 防一次性推太大的一坨。
+ *   3. 缓冲体积超上限就立刻 flush，不等定时器 —— 防一次性推太大的一坨；
+ *   4. 窗口内同类才攒：正文与思考不同类，第二个不同类的 delta 会让攒着的
+ *      先 flush —— 固定倒出顺序不会重排到达顺序（S-142 的病灶）。
  */
 
 import assert from 'node:assert/strict'
@@ -61,7 +63,7 @@ function makeBatcher(overrides: { flushMs?: number; maxBufferSize?: number } = {
   batcher.stop()
 }
 
-// ── 正文与思考分开累加，不会串到一条里去 ────────────────────────────────────
+// ── 正文与思考分开累加，且**不许重排到达顺序**（iter-35 S-142） ──────────────
 {
   const { batcher, envelopes } = makeBatcher()
 
@@ -70,11 +72,43 @@ function makeBatcher(overrides: { flushMs?: number; maxBufferSize?: number } = {
   batcher.push('run-1', 'sess-1', thinking('完'))
   batcher.flushRun('run-1')
 
-  const events = envelopes[0].events
-  check(events.length === 2, 'text and thinking stay in separate events')
+  const emitted = envelopes.flatMap((envelope) => envelope.events)
   check(
-    events[0].type === 'text_delta' && events[1].type === 'thinking_delta',
-    'flush order is text first, then thinking'
+    emitted.map((event) => event.type).join(',') === 'thinking_delta,text_delta,thinking_delta',
+    'different kinds never share a window — arrival order survives the batching'
+  )
+  check(
+    emitted[0].type === 'thinking_delta' && emitted[0].thinking === '想',
+    'the buffered thinking goes out before the conflicting text delta'
+  )
+  check(
+    emitted[1].type === 'text_delta' && emitted[1].text === '说',
+    'the conflicting delta passes straight through, unbatched'
+  )
+
+  batcher.stop()
+}
+
+// ── 段边界事件（text_start / thinking_start / thinking_end）直通且保序 ────────
+{
+  const { batcher, envelopes } = makeBatcher()
+
+  batcher.push('run-1', 'sess-1', { type: 'thinking_start' })
+  batcher.push('run-1', 'sess-1', thinking('推理'))
+  batcher.push('run-1', 'sess-1', { type: 'thinking_end' })
+  batcher.push('run-1', 'sess-1', { type: 'text_start' })
+  batcher.push('run-1', 'sess-1', text('正文'))
+  batcher.flushRun('run-1')
+
+  const emitted = envelopes.flatMap((envelope) => envelope.events)
+  check(
+    emitted.map((event) => event.type).join(',') ===
+      'thinking_start,thinking_delta,thinking_end,text_start,text_delta',
+    'boundaries pass through as control events: buffered deltas flush first, then the boundary'
+  )
+  check(
+    envelopes.every((envelope, index) => envelope.seq === index),
+    'sequence numbers stay contiguous across the extra envelopes the boundaries force'
   )
 
   batcher.stop()

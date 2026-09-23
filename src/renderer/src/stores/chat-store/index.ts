@@ -940,6 +940,81 @@ export const useChatStore = create<ChatStore>()(
 
 
 
+          // S-142: text / thinking block boundaries from the worker. They double as
+          // ordering barriers (the batcher flushes buffered deltas before passing
+          // them through) and as the authoritative 「续段还是开段」 signal — segment
+          // assembly no longer has to guess from the surrounding segment types.
+
+          case 'thinking_start': {
+
+            set((state) => {
+
+              const session = state.sessions.find((s) => s.id === targetSessionId)
+
+              const msg = session?.messages.find((m) => m.id === envelope.runId)
+
+              if (msg) msg.thinkingBlockPending = true
+
+            })
+
+            break
+
+          }
+
+
+
+          case 'thinking_end': {
+
+            // The thinking block is over: mark its segment finished and drop a
+            // pending block that never produced a delta.
+
+            set((state) => {
+
+              const session = state.sessions.find((s) => s.id === targetSessionId)
+
+              const msg = session?.messages.find((m) => m.id === envelope.runId)
+
+              if (!msg) return
+
+              msg.thinkingBlockPending = false
+
+              closeOpenThinkingSegment(msg, Date.now())
+
+            })
+
+            break
+
+          }
+
+
+
+          case 'text_start': {
+
+            // Text begins ⇒ the thinking block before it is over. Text itself keeps
+            // merging into the previous text segment of this iteration (S-133:
+            // 同一段正文不该被思考块或工具卡从中间劈开) — the boundary closes the
+            // thinking block, it does not force a new text segment.
+
+            set((state) => {
+
+              const session = state.sessions.find((s) => s.id === targetSessionId)
+
+              const msg = session?.messages.find((m) => m.id === envelope.runId)
+
+              if (!msg) return
+
+              msg.thinkingBlockPending = false
+
+              closeOpenThinkingSegment(msg, Date.now())
+
+            })
+
+            break
+
+          }
+
+
+
           // message_end = one LLM turn finished, but the loop may continue
 
           // (tool calls → next iteration). Do NOT set isStreaming=false here.
@@ -2160,6 +2235,33 @@ getAgentStreamReceiver().start((envelope) => {
 
 
 
+// S-142: close the thinking segment that is still open. Driven by the explicit
+// `thinking_end` / `text_start` boundaries — previously a thinking segment only
+// got its `completedAt` when a text delta happened to land in the same flush
+// window, and the check only ever looked at the segment at the tail of the list.
+
+function closeOpenThinkingSegment(msg: ChatMessage, at: number): void {
+
+  const segments = msg.segments
+
+  if (!segments) return
+
+  for (let i = segments.length - 1; i >= 0; i--) {
+
+    const segment = segments[i]
+
+    if (segment.type !== 'thinking') continue
+
+    if (!segment.completedAt) segment.completedAt = at
+
+    return
+
+  }
+
+}
+
+
+
 function flushStreamDeltas(): void {
 
   _streamDeltaRafId = null
@@ -2261,17 +2363,25 @@ function flushStreamDeltas(): void {
 
           msg.thinking = (msg.thinking ?? '') + delta.thinking
 
-          // Append to last thinking segment of current iteration, or create new
+          // Append to the thinking segment of the current iteration, or open a new one.
+
+          // S-142: an announced block boundary (`thinking_start`) always opens a new
+
+          // segment — that is what keeps one thinking block from being split around
+
+          // the text that follows it.
 
           const lastSeg = msg.segments[msg.segments.length - 1]
 
-          if (lastSeg && lastSeg.type === 'thinking' && lastSeg.iteration === msg.currentIteration) {
+          if (!msg.thinkingBlockPending && lastSeg && lastSeg.type === 'thinking' && lastSeg.iteration === msg.currentIteration) {
 
             lastSeg.thinking = (lastSeg.thinking ?? '') + delta.thinking
 
           } else {
 
             msg.segments.push({ type: 'thinking', iteration: msg.currentIteration, thinking: delta.thinking, startedAt: now })
+
+            msg.thinkingBlockPending = false
 
           }
 

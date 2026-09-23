@@ -98,6 +98,16 @@ export type AgentStreamEvent =
   // Streaming deltas
   | { type: 'text_delta'; text: string }
   | { type: 'thinking_delta'; thinking: string }
+  // Segment boundaries (iter-35 S-142). The worker emits these whenever the
+  // streamed block kind switches, so the renderer never has to guess whether a
+  // delta continues the previous block or opens a new one. They are control
+  // events on the wire: the batcher flushes buffered deltas before passing them
+  // through, which keeps text/thinking blocks from being reordered — the drain
+  // used to emit "text first, thinking second", which split one thinking block
+  // around the text that followed it.
+  | { type: 'text_start' }
+  | { type: 'thinking_start' }
+  | { type: 'thinking_end' }
   | { type: 'thinking_encrypted'; content: string; provider: string }
   // Message completion
   | {
@@ -210,6 +220,9 @@ export const CHAT_STREAM_EVENTS: ReadonlySet<string> = new Set([
   'loop_end',
   'text_delta',
   'thinking_delta',
+  'text_start',
+  'thinking_start',
+  'thinking_end',
   'thinking_encrypted',
   'message_end',
   'error',

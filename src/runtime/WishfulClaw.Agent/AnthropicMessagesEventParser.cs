@@ -105,7 +105,31 @@ internal static partial class AnthropicMessagesProvider
                     "tool_use_streaming_start",
                     ToolCallId: id,
                     ToolName: name));
+            return;
         }
+
+        // S-142: Anthropic states the kind of every content block up front, so this
+        // is the exact segment boundary — no kind-switch guessing needed. Remember
+        // the kind so content_block_stop can close it (thinking has an end event).
+        if (string.IsNullOrEmpty(blockType))
+        {
+            return;
+        }
+
+        parseState.BlockKinds[index] = blockType;
+        var boundaryKind = blockType == "text"
+            ? StreamSegmentBoundary.TextKind
+            : blockType is "thinking" or "redacted_thinking"
+                ? StreamSegmentBoundary.ThinkingKind
+                : null;
+        if (boundaryKind is null)
+        {
+            return;
+        }
+
+        await StreamSegmentBoundary.EmitAsync(
+            state, context,
+            parseState.Boundaries.OpenBlock(boundaryKind));
     }
 
     private static async Task ProcessContentBlockDeltaAsync(
@@ -176,7 +200,29 @@ internal static partial class AnthropicMessagesProvider
         IWorkerRequestContext context)
     {
         var index = JsonHelpers.GetInt(root, "index", -1);
-        if (index < 0 || !parseState.ToolBuffers.TryGetValue(index, out var buffer))
+        if (index < 0)
+        {
+            return;
+        }
+
+        // S-142: close the block that was announced in content_block_start. Only
+        // thinking carries an end event; the open kind is cleared either way.
+        if (parseState.BlockKinds.Remove(index, out var blockKind))
+        {
+            var boundaryKind = blockKind == "text"
+                ? StreamSegmentBoundary.TextKind
+                : blockKind is "thinking" or "redacted_thinking"
+                    ? StreamSegmentBoundary.ThinkingKind
+                    : null;
+            if (boundaryKind is not null)
+            {
+                await StreamSegmentBoundary.EmitAsync(
+                    state, context,
+                    parseState.Boundaries.CloseBlock(boundaryKind));
+            }
+        }
+
+        if (!parseState.ToolBuffers.TryGetValue(index, out var buffer))
         {
             return;
         }

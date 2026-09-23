@@ -118,6 +118,9 @@ internal static partial class AnthropicMessagesProvider
                 }
             }
 
+            // S-142: the stream is over — close a thinking block that never got its
+            // content_block_stop (truncated upstream response, no text after it).
+            await StreamSegmentBoundary.EmitAsync(state, context, parseState.Boundaries.AtEnd());
             await FlushPendingToolCallsAsync(parseState, state, context);
         }
         catch (HttpRequestException ex) when (
@@ -248,6 +251,10 @@ internal static partial class AnthropicMessagesProvider
     {
         public StringBuilder AssistantText { get; } = new();
         public Dictionary<int, AnthropicToolBuffer> ToolBuffers { get; } = new();
+        /// <summary>Block kind per content_block index, set on start and cleared on stop (S-142).</summary>
+        public Dictionary<int, string> BlockKinds { get; } = new();
+        /// <summary>Segment boundary tracker for text / thinking blocks (S-142).</summary>
+        public StreamSegmentBoundary Boundaries { get; } = new();
         public List<AgentRuntimeNativeToolCall> ToolCalls { get; } = new();
         public HashSet<string> EmittedEncryptedReasoning { get; } = new(StringComparer.Ordinal);
         public long? FirstTokenMs { get; set; }

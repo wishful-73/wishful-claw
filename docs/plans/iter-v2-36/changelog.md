@@ -73,4 +73,17 @@
   - **问题**：收侧判定（`resolveChatWidthGuard`）只在「展开 / 拖宽某一侧」时跑。窗口被拖小没有动作可挂 ⇒ 两侧面板同开（左 370 + 右 370）时把窗口拖到 900，聊天窗只剩 **160**，破了 `CHAT_MIN_WIDTH = 600` 的底线，而所有 width 值都没人质疑过。
   - **修法**（iter-34 记的「修法 A」）：`right-panel-defs.ts` 新增纯函数 `resolveViewportYield()` —— 与 `resolveChatWidthGuard` 的区别是**没有「正在动的那一侧」**，两侧都按既有状态判；先收右侧（预览/浏览器是辅助面），右侧没开才收左栏（导航）。`ui-store` 加 action `enforceViewportWidthGuard()`（不需要收时 **`return state` 而非 `{}`**，避免一次无谓的全量通知）。`MainLayout.tsx` 挂 `resize` 监听，**只在变窄时**补跑判定；变宽不动（收掉的面板不会自动弹回，需用户自己点开 —— 与「窗口拉回来宽度值自动恢复」是两回事）。
   - 门禁：`npm run typecheck` EXIT=0；`npm test` **53 / 53**。
-- 2026-09-23：**小项清扫尚未动的两项（需老大一句话）** —— 见本文件末「遗留待裁定」。
+- 2026-09-23：**S-108 复勘：结案结论成立，不是「被 S-141 推翻」** —— iter-36 立项时按 iter-35 早期（08:42）那句「S-108 的真复现」登记，本次按 DB 实证复核，**该说法是当时的初版误判，S-141 自己在 §三/§七 已订正过，只是 iter-35 `changelog` 那句没回改**。
+  - **判据**：S-141 的 61 条 DIAG 全部来自会话 `YUWPQgpeb7rzuWNGusOiZ`（08:27 那次）。直查打包版库 `C:\Users\龚翼\.wishful-claw\index.db`（`node:sqlite` 只读）：`context_cap_tokens = 200000`、`context_cap_model_id = deepseek-flash`、`model_id = null`（inherit）、`compression_threshold = 0` —— 与 `S-108.md` §二 2026-09-22 记的**逐字一致**（全库 119 个会话里非零 cap 的只有 2 个，都是 200000）。
+  - ⇒ `contextLength=200000` **就是会话级 cap 生效**，不是「模型窗口没送到后端、后端吃兜底 200K」。S-108 的三条结论（取值链无缺陷 / 200000 的唯一来源是滑条最左端被拖到底 / 症状是前后端两套分母）**原样成立**，**不需要重新开刀**。
+  - **仍挂着的三个遗留隐患**（S-108.md 原文记档，非本需求范围）：① **滑条最左端 = 200000** —— 想「放开限制」的人拖到底，恰好把上限设成最小值 20 万（建议 `0 = 不限制`，与全局项 0 哨兵口径统一）；② **两处 `currentModelId` 不同源**（上下文环显示端用 `activeModelCfg?.id`、payload 盖章端用 `provider.model`）；③ 前端按模型窗口算百分比、后端按会话 cap 算触发线，两套分母未统一。**这三条要不要单独立项，等老大一句。**
+- 2026-09-23：**S-134 现状勘测（代码层面，未真机）** —— 「切会话 / 结束会话但 tab 还开着 ⇒ 进程是否仍在」的现状：
+  - **终端 tab 是按会话分区的**：`TerminalTab.sessionId`（`terminal-store.ts`），agent 起的 tab 带 `sessionId`；`ensureSshAgentTab` / `hasSshAgentTabForSession` 都按 `sessionId` 找。
+  - **只有关 tab 才杀进程**：`closeTab()` 对非 `ssh-agent` 的 tab 发 `TERMINAL_KILL`（`terminal-store.ts:161-168` → `terminal-handlers.ts` 的 `killTerminalSession`）。**切会话不关 tab ⇒ 不发 kill ⇒ PTY 进程仍在**（主进程 `terminalSessions` 里那条记录也还在，输出继续累积）。
+  - **这是现状、不是缺陷**：没找到任何「会话切换 / 会话结束」触发的终端清理路径。所以待裁的是**期望**：保留（切回来还能看，符合「常驻终端」的命名）还是切会话即杀（省资源、避免后台进程失控）。**等老大一句话。**
+- 2026-09-23：**S-146 登记 + 实施：下载类报错未包装** —— 老大 16:00「增加一个小需求，下载之类的 网络波动导致报错，并没有处理包装，用户看到的是原始的报错报文，这个需要调整」。正文见 [S-146.md](requirements/S-146.md)。
+  - **定位**：`updater.ts` 的 `formatError()` 三层判定，前两层（`latest.yml` + 404 → 清单缺失；Node 系网络码 → 网络）有包装，**第三层兜底 `return message` 把原始报文直接送进更新对话框**（`UpdateDialog` 里 `<p>{state.error}</p>` 摊开）。
+  - **第二层还有个漏**：码表只认 **Node 系**（`ETIMEDOUT` / `ECONNRESET` / `ENOTFOUND` …），而 Electron 的 `net` 模块与 electron-updater 的下载走 **Chromium 网络栈**，报文里是 `net::ERR_CONNECTION_RESET` 这种带前缀的形式 ⇒ **一个都匹配不上**，全部落进裸吐分支；HTTP 5xx / 408 / 429（服务端抖动）同样不在表内。
+  - **修法**：抽纯函数模块 `src/main/lib/updater-error-format.ts`（零 electron 依赖 ⇒ main 与回归套件跑同一份代码，同 S-142 抽 `stream-segments` 的做法）—— `classifyUpdaterError()` 出 `{ kind: 'missingMetadata' | 'network' | 'unknown' | 'fallback', code? }`；网络码表**扩到三套**（Node/undici 系、Chromium `net::ERR_*`、HTTP 408/429/5xx）；短码优先级 `net::ERR_*` > `ERR_UPDATER_*` > `HTTP nnn`，**只放行短码**上屏；兜底不再回吐原文（原文照旧进 `logError` 的 extra，排查不受影响）。`updater.ts` 的 `formatError()` 改按分类取文案，新增双语键 `unknownWithCode`（`更新失败（{code}），请稍后重试。` / `Update failed ({code}). Please try again later.`）。
+  - **范围**：只覆盖 **app 内更新**这条链（检查 / 下载 / 安装的失败展示）。官网下载按钮失败是浏览器行为，不归本应用展示；工具内下载不在本轮。老大若指的是别的下载界面，说一声另行登记。
+  - **门禁**：`npm run typecheck` EXIT=0；新增套件 `tests/updater-error-format`（**38 断言**）。

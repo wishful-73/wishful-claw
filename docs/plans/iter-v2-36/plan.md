@@ -22,7 +22,8 @@
 | S-140 | 0.2.33 → 0.2.34 更新走了全量下载（108 MB），未走差分 | ⏸ 挂起（观察点：0.2.35 → 0.2.36 是否再见全量） | [iter-v2-35/S-140.md](../iter-v2-35/requirements/S-140.md) |
 | S-143 | 官网上线 + 公安备案（ICP 蜀ICP备2026057067号已通过；**本轮去掉更新日志页**） | 🔄 进行中（更新日志页已下架；备案号本地已改；公安备案待办） | [S-143.md](requirements/S-143.md)（承接 [iter-35](../iter-v2-35/requirements/S-143.md)） |
 | S-144 | 沙箱模式下 Write 写特定路径被拦（中文 / 下划线 / 深层子目录，触发项未定位） | 📝 已登记，待勘测 | [iter-v2-35/S-144.md](../iter-v2-35/requirements/S-144.md) |
-| S-145 | Read 工具支持读取本地图片（含 Anthropic `tool_result` 丢图修复） | 📝 已定稿，待实施 | [iter-v2-35/S-145.md](../iter-v2-35/requirements/S-145.md) |
+| S-145 | Read 工具支持读取本地图片（含 Anthropic `tool_result` 丢图修复） | ✅ 已完成 | [iter-v2-35/S-145.md](../iter-v2-35/requirements/S-145.md) |
+| S-146 | 下载类报错未包装：界面上出现原始报错报文 | ✅ 已实施（app 内更新链） | [S-146.md](requirements/S-146.md) |
 
 ### 承接 iter-34 挂账（仍未做）
 
@@ -30,7 +31,7 @@
 |---|---|---|
 | S-131 | 左栏渲染漏按视口收窄（**路径二**：缩窗无 resize 监听） | ✅ 已修（`resolveViewportYield` + `MainLayout` resize 监听；路径一在 `24311a9e`） |
 | S-134 | 切会话 / 结束会话但 tab 还开着 ⇒ 进程是否仍在 | ⏸ 待老大一句话（需真机确认） |
-| S-108 | 模型窗口 384K 未生效（后端按 200K 兜底） | ⏸ 待老大重新裁定（结案依据已被 S-141 推翻） |
+| S-108 | 模型窗口 384K 未生效（后端按 200K 兜底） | ✅ 复勘结案成立（DB 实证 200000 = 会话 cap；三个遗留隐患待裁） |
 | — | `will-navigate` 同源隐患 10 处未拦 | ✅ 已收口（主进程兜底 + `SAFE_LINK_COMPONENTS` 覆盖 10 处） |
 | — | `memory-output.tsx:115` 的 `hit.priority` 裸英文 | ✅ 已修（走 `chat` 的 `memory.*` 键，zh/en 对齐） |
 | — | `electron-updater`：`disableWebInstaller` 未设 | ✅ 已设 `true` |

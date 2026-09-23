@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { logError, logInfo, logWarn } from './lib/logger'
 import { readPersistedSettings } from './lib/settings-store'
 import { getUpdateDistributionInfo } from './lib/distribution'
+import { classifyUpdaterError } from './lib/updater-error-format'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import {
   createUpdateDownloadGate,
@@ -165,14 +166,15 @@ function getErrorMessage(error: unknown): string {
 }
 
 function formatError(error: unknown): string {
-  const message = getErrorMessage(error)
-  if (/latest\.yml/i.test(message) && /\b404\b/.test(message)) {
-    return tr('missingMetadata')
-  }
-  if (/\b(ETIMEDOUT|ERR_TIMED_OUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN)\b/i.test(message)) {
-    return tr('network')
-  }
-  return message || tr('fallback')
+  // 分类规则住在 `lib/updater-error-format.ts`（纯函数、有回归套件钉着）。
+  const { kind, code } = classifyUpdaterError(getErrorMessage(error))
+  if (kind === 'missingMetadata') return tr('missingMetadata')
+  if (kind === 'network') return tr('network')
+  // 认不出的错误**不回吐原文**（此前这里直接 `return message`）：那头常是整段 HTML 错误页、
+  // JSON 或带栈文本，用户读不懂也拿不到可操作的信息。只放行一个能进日志对照的短码，
+  // 全文照旧走 logError 的 extra。
+  if (kind === 'unknown' && code) return tr('unknownWithCode').replace('{code}', code)
+  return tr('fallback')
 }
 
 function formatReleaseNotes(notes: unknown): string {
@@ -243,6 +245,7 @@ function sendUpdateEvent<T>(channel: string, payload: T): void {
 type UpdaterMessageKey =
   | 'missingMetadata'
   | 'network'
+  | 'unknownWithCode'
   | 'fallback'
   | 'unsupportedInstall'
   | 'noAvailableDownload'
@@ -257,6 +260,10 @@ const UPDATER_MESSAGES: Record<UpdaterMessageKey, { zh: string; en: string }> = 
   network: {
     zh: '无法连接更新服务器，请检查网络后重试。',
     en: 'Cannot reach the update server. Check your network and try again.'
+  },
+  unknownWithCode: {
+    zh: '更新失败（{code}），请稍后重试。',
+    en: 'Update failed ({code}). Please try again later.'
   },
   fallback: {
     zh: '更新失败，请稍后重试。',

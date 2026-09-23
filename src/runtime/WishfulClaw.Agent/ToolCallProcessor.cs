@@ -579,7 +579,7 @@ public static partial class ToolCallProcessor
             }
 
             // Dispatch to the appropriate executor
-            var (toolOutput, isToolError) = await ToolDispatchRouter.DispatchAsync(
+            var (toolOutput, isToolError, toolContentBlocks) = await ToolDispatchRouter.DispatchAsync(
                 toolCall, state, context, registry, workingFolder, projectId, sshConnectionId, sandbox);
 
             // When this call went through user approval, tell the LLM explicitly:
@@ -624,7 +624,9 @@ public static partial class ToolCallProcessor
 
             return new AgentRuntimeToolResult(
                 toolCall.Id,
-                AgentRuntimeProviderSupport.CreateStringElement(truncatedOutput),
+                // S-145: 内部工具可以返回结构化 content（Read 读图 → image 块）。有它就用它 ——
+                // 文本截断是按字符做的，对 base64 图像块没有意义也不该动它。
+                toolContentBlocks ?? AgentRuntimeProviderSupport.CreateStringElement(truncatedOutput),
                 isToolError ? true : null);
         }
         finally

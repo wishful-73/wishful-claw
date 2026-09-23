@@ -124,6 +124,11 @@ export interface AgentActions {
     sandboxEnabled?: boolean
     /** 会话级「请求上下文上限」（iter-32 S-84）：token 数，0 = 不限制。由 sendMessage 盖章。 */
     contextCapTokens?: number
+    /**
+     * 当前模型是否支持图像输入（S-145）。Worker 的 Read 读图按它决定送像素还是只回路径提示。
+     * 由 sendMessage 盖章，透传点不必各自查模型能力。
+     */
+    supportsVision?: boolean
     sshConnectionId?: string
     permissionMode?: 'default' | 'whitelist' | 'fullAccess'
     nonInteractive?: boolean
@@ -188,6 +193,19 @@ let _streamDeltaRafId: number | null = null
 let _scheduleStreamDeltaFlush: () => void = () => {}
 
 
+
+// S-145：Read 读图要知道「当前模型是否支持图像输入」—— 非视觉模型收到 image 块会被上游拒。
+// 查不到模型就返回 true（不降级）：宁可把图送出去让上游报错，也不要静默吞掉像素让模型猜内容。
+async function resolveSessionSupportsVision(modelId: string | null): Promise<boolean> {
+  if (!modelId) return true
+  const { useProviderStore, modelSupportsVision } = await import('@renderer/stores/provider-store')
+  const { providers } = useProviderStore.getState()
+  for (const provider of providers) {
+    const model = provider.models?.find((item) => item.id === modelId)
+    if (model) return modelSupportsVision(model)
+  }
+  return true
+}
 
 // Use immer middleware so set((state) => { state.x = y }) works
 
@@ -441,6 +459,13 @@ export const useChatStore = create<ChatStore>()(
         workerParams.contextCompressionThreshold = resolveSessionCompressionThreshold(
           capSession?.compressionThreshold,
           recallSettings.contextCompressionThreshold
+        )
+
+        // S-145：Read 读图同款盖章 —— 非视觉模型只回路径与尺寸，不产出 image 块。
+        // 放这里而不是六个透传点：漏传一处的表现很隐蔽（某条路径下 Read 图要么静默吞掉、
+        // 要么把 image 块送给不支持它的模型换来一个 400）。
+        workerParams.supportsVision = await resolveSessionSupportsVision(
+          typeof workerParams.provider?.model === 'string' ? workerParams.provider.model : null
         )
 
         const result = await window.api.workerRequest<{ started: boolean; runId: string }>(

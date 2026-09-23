@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -239,8 +239,71 @@ internal static partial class OpenAIResponsesProvider
         writer.WriteStartObject();
         writer.WriteString("type", "function_call_output");
         writer.WriteString("call_id", toolResult.ToolUseId);
-        writer.WriteString("output", ToolResultToString(toolResult.Content));
+        writer.WritePropertyName("output");
+        if (HasToolImage(toolResult.Content))
+        {
+            // S-145: output 也接受 parts 数组（input_text / input_image）。图像走 input_image ——
+            // 从前这里只写字符串，图像会退化成 JSON 文本（看不见图，还把 base64 撑进上下文）。
+            WriteToolOutputParts(writer, toolResult.Content);
+        }
+        else
+        {
+            writer.WriteStringValue(ProviderContentHelpers.ToolResultToString(toolResult.Content));
+        }
         writer.WriteEndObject();
+    }
+
+    /// <summary>True when a tool result's content array carries a usable image (S-145).</summary>
+    private static bool HasToolImage(JsonElement content)
+    {
+        if (content.ValueKind != JsonValueKind.Array) return false;
+        foreach (var block in content.EnumerateArray())
+        {
+            if (JsonHelpers.GetString(block, "type") != "image") continue;
+            if (!block.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object) continue;
+            var isUrl = JsonHelpers.GetString(source, "type") == "url";
+            var present = isUrl
+                ? !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))
+                : !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data"));
+            if (present) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Writes a tool result's content array as Responses input parts (S-145).</summary>
+    private static void WriteToolOutputParts(Utf8JsonWriter writer, JsonElement content)
+    {
+        writer.WriteStartArray();
+        foreach (var block in content.EnumerateArray())
+        {
+            var type = JsonHelpers.GetString(block, "type");
+            if (type == "text")
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", "input_text");
+                writer.WriteString("text", JsonHelpers.GetString(block, "text") ?? string.Empty);
+                writer.WriteEndObject();
+                continue;
+            }
+
+            if (type != "image" ||
+                !block.TryGetProperty("source", out var source) ||
+                source.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var imageUrl = JsonHelpers.GetString(source, "type") == "url"
+                ? JsonHelpers.GetString(source, "url")
+                : BuildBase64ImageUrl(source);
+            if (string.IsNullOrWhiteSpace(imageUrl)) continue;
+
+            writer.WriteStartObject();
+            writer.WriteString("type", "input_image");
+            writer.WriteString("image_url", imageUrl);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
     }
 
     private static void WriteResponsesToolUse(Utf8JsonWriter writer, AgentRuntimeChatToolUse toolUse)

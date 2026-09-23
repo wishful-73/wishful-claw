@@ -47,3 +47,11 @@
   - **未污染已发布产物**：验证前把 `release/` 里已发布的 0.2.35 三件挪进 `release/_released-0.2.35/`，验证后删除重打包产物并把三件移回 —— 三件 sha512 与发布版逐字一致（exe `4F9916FBD9CFDA30…` / blockmap `F7C09B0588AC6FBF…` / latest.yml `17D5983561A6BDDB…`）。
   - **生效时点**：只对**下一次打包**生效。0.2.35 包内仍是 `provider: github`（实测），已装用户检查更新仍走 GitHub；官网成为应用内更新源要等 **0.2.36 的包**装机。
   - 文档：`release-workflow.md` §4.2 补「更新源指向官网的核验方法」+「`--dir` 不产 `app-update.yml`」+「EPERM 残留处理」；§4.4 的「脚本尚需补齐」过期提示改为**已三件化**的口径。
+- 2026-09-23：**S-145 实施：Read 读图（已定稿方案落地）** —— iter-35 定稿、iter-36 实施；老大「除了官网发布，根据 docs 下开发工作流推进所有已经定稿的需求」。
+  - **主体**：`ToolResult` 加可选 `ContentBlocks`（结构化 content 数组）；`FileReadTool` 对 `.png/.jpg/.jpeg/.webp/.gif/.bmp` 走图像分支，产出 `[text, image(base64)]`；`ToolDispatchRouter` / `ToolCallProcessor` 把结构化 content 一路送到 wire 的 `tool_result.content`。**没有新增工具** —— Read 就是 Read。
+  - **新增 `ImageFileProbe`**：按扩展名判 mediaType + 从文件头读尺寸（PNG / JPEG / GIF / BMP / WebP 三变体）。刻意不引图像库：尺寸只用来写一行说明，为它拖一个解码依赖（AOT 体积 + 攻击面）不划算。
+  - **一并修 Anthropic 丢图**：`AnthropicMessagesInputWriter` 对数组型 `tool_result.content` 按 block 数组写出（从前一律 `ToolResultToString` ⇒ image 块被丢）。顺带修掉 `DesktopScreenshot` / `CaptureAppWindow` 在 Anthropic 下看不见图的隐性 bug。
+  - **OpenAI 两条线同时做**（iter-35 §2.3 标「待实施时核」）：Chat 的 tool 消息 content 与 Responses 的 `function_call_output.output` 都改走 parts 数组。**这条必须有** —— 原来非字符串 content 走 `GetRawText()`，base64 会以纯文本进 prompt（既看不见图，又撑爆 token）。
+  - **两处本轮定**（iter-35 写「实施时定」）：① 非 vision 降级的数据来源 = 渲染端在 `sendMessage` 盖章 `supportsVision`（唯一门，避免六个透传点漏传）；查不到模型时返回 true（**宁可让上游报错，也不要静默吞像素让模型猜内容**）。② DB 不落 base64 是**结构上成立**：base64 只走 wire，事件里的 `Result` 保持文本摘要，会话恢复时 wire 的 tool_result 由渲染端存的文本在内存合成 ⇒ 跨轮/重启历史里没有 base64，要再看就重新 Read（§3.3 口径）。兜底另有 `limitToolResultContent` 的超限剥离。
+  - **门禁**：`npm run build:worker` 0 错 0 警告；`npm run typecheck` EXIT=0；新增 `WishfulClaw.ReadImageRegressionTests`（**33 断言**）→ `npm test` **52 / 52**。
+  - **未做**：工具卡片缩略图（事件刻意不带 base64，只有文本摘要）；SSH 远程图 / `pet` / `translate` 的 Read 按 iter-35 §3.4 继续挂账。正文见 [S-145.md](requirements/S-145.md)。

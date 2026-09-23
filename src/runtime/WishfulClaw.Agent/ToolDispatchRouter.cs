@@ -18,9 +18,11 @@ public static class ToolDispatchRouter
 {
     /// <summary>
     /// Dispatches a single tool call to the matching executor.
-    /// Returns (toolOutput, isToolError).
+    /// Returns (toolOutput, isToolError, contentBlocks).
+    /// <c>contentBlocks</c> 仅由 C# 内部工具（registry 分支）填充，非 null 时它就是该
+    /// tool_result 的 content 数组（S-145：Read 读图返回 image 块）。
     /// </summary>
-    public static async Task<(string Output, bool IsError)> DispatchAsync(
+    public static async Task<(string Output, bool IsError, JsonElement? ContentBlocks)> DispatchAsync(
         AgentRuntimeNativeToolCall toolCall,
         AgentRuntimeRunState state,
         IWorkerRequestContext context,
@@ -32,6 +34,7 @@ public static class ToolDispatchRouter
     {
         var toolOutput = string.Empty;
         var isToolError = false;
+        JsonElement? contentBlocks = null;
 
         // Cron/background runs are non-interactive: never wait for a renderer/user
         // answer. Return a tool error so the model can continue autonomously.
@@ -39,7 +42,7 @@ public static class ToolDispatchRouter
             JsonHelpers.GetBool(state.Parameters, "nonInteractive", false))
         {
             const string message = "This is a background scheduled task and cannot wait for user answers. Continue without asking the user.";
-            return (message, true);
+            return (message, true, null);
         }
 
         // AskUserQuestion: route to renderer via reverse-request
@@ -544,10 +547,12 @@ public static class ToolDispatchRouter
             {
                 var toolContext = new ToolExecutionContext(
                 workingFolder, state.SessionId, state.RunId, projectId, sshConnectionId, state.CancellationToken,
-                sandbox.Enabled, sandbox.Roots, toolCall.Id);
+                sandbox.Enabled, sandbox.Roots, toolCall.Id,
+                JsonHelpers.GetBool(state.Parameters, "supportsVision", true));
                 var result = await executor!.ExecuteAsync(toolCall.Input, toolContext);
                 toolOutput = result.Content;
                 isToolError = result.IsError;
+                contentBlocks = result.ContentBlocks;
             }
             catch (OperationCanceledException)
             {
@@ -567,7 +572,7 @@ public static class ToolDispatchRouter
             }
         }
 
-        return (toolOutput, isToolError);
+        return (toolOutput, isToolError, contentBlocks);
     }
 
     /// <summary>

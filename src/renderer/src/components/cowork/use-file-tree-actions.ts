@@ -10,6 +10,8 @@ import {
   getErrorMessage, getIpcError, validateEntryName, parentPath, joinPath,
   countTreeStats, collapseTree, type EntryNameValidationError
 } from './file-tree-utils'
+import { isBrowserPreviewFilePath, localPathToFileUrl } from '@renderer/lib/preview/local-target'
+import { openWebUrl } from '@renderer/lib/preview/web-url'
 import type { FileTreeState } from './use-file-tree'
 
 export interface UseFileTreeActionsOptions {
@@ -351,9 +353,16 @@ export function useFileTreeActions(state: FileTreeState, options: UseFileTreeAct
   const handlePreview = useCallback(
     (filePath: string) => {
       if (!filePath) return
+      // PDF / HTML 这类交给内置浏览器（Chromium 自带阅读器）—— 老大 2026-09-23 定。
+      // SSH 远端文件不在本地文件系统上，转出来会是个指向不存在文件的 file:// URL，
+      // 所以那种情况仍然回预览面板。
+      if (!sshConnectionId && isBrowserPreviewFilePath(filePath)) {
+        openWebUrl(localPathToFileUrl(filePath))
+        return
+      }
       useUIStore.getState().openFilePreview(filePath, undefined, undefined, sessionView.sessionId)
     },
-    [sessionView.sessionId]
+    [sshConnectionId, sessionView.sessionId]
   )
 
   const editState: TreeEditState = { renamingPath, newItemParent, newItemType }

@@ -10,6 +10,7 @@ import { Music, Volume2, VolumeX } from 'lucide-react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 const MIME_TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg',
@@ -63,7 +64,8 @@ export function AudioViewer({
       if (cancelled) return
       const result = raw as { data?: string; error?: string }
       if (result.error || !result.data) {
-        setError(result.error || 'Failed to read audio file')
+        const readFailed = viewerText('failReadAudio')
+        setError(result.error ? `${readFailed}: ${result.error}` : readFailed)
         return
       }
 
@@ -96,7 +98,7 @@ export function AudioViewer({
     return (
       <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
         <Music className="size-5 animate-pulse" />
-        Loading audio...
+        {viewerText('loadingAudio')}
       </div>
     )
   }

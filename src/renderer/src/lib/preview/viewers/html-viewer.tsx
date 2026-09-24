@@ -8,6 +8,7 @@
 import { useRef, useEffect } from 'react'
 import { CodeEditor } from '@renderer/components/editor/CodeEditor'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 export function HtmlViewer({
   filePath,
@@ -33,7 +34,7 @@ export function HtmlViewer({
         ref={iframeRef}
         className="size-full border-0 bg-white"
         sandbox="allow-scripts allow-same-origin"
-        title="HTML Preview"
+        title={viewerText('titleHtml')}
       />
     )
   }

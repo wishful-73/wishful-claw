@@ -13,6 +13,7 @@ import { Button } from '@renderer/components/ui/button'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 
@@ -51,7 +52,8 @@ export function PdfViewer({
       if (cancelled) return
       const result = raw as { data?: string; error?: string }
       if (result.error || !result.data) {
-        setError(result.error || 'Failed to read file')
+        const readFailed = viewerText('failReadFile')
+        setError(result.error ? `${readFailed}: ${result.error}` : readFailed)
         setLoading(false)
         setLoadedFilePath(filePath)
         return
@@ -79,7 +81,13 @@ export function PdfViewer({
   }, [filePath, fileVersion, sshConnectionId])
 
   if (isHttpUrl(filePath)) {
-    return <iframe className="size-full border-0 bg-white" src={filePath} title="PDF Preview" />
+    return (
+      <iframe
+        className="size-full border-0 bg-white"
+        src={filePath}
+        title={viewerText('titlePdf')}
+      />
+    )
   }
 
   const onDocumentLoadSuccess = ({ numPages: n }: { numPages: number }): void => {
@@ -94,7 +102,7 @@ export function PdfViewer({
     return (
       <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
         <FileText className="size-5 animate-pulse" />
-        Loading PDF...
+        {viewerText('loadingPdf')}
       </div>
     )
   }
@@ -140,9 +148,14 @@ export function PdfViewer({
           <Document
             file={{ data: pdfData }}
             onLoadSuccess={onDocumentLoadSuccess}
+            error={
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <FileText className="size-4" /> {viewerText('failParsePdf')}
+              </div>
+            }
             loading={
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <FileText className="size-4 animate-pulse" /> Loading...
+                <FileText className="size-4 animate-pulse" /> {viewerText('loadingGeneric')}
               </div>
             }
           >

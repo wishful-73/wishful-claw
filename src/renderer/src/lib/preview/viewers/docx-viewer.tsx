@@ -6,11 +6,11 @@
  */
 
 import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
 import { FileText } from 'lucide-react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 async function convertDocxToHtml(base64: string): Promise<string> {
   // @ts-ignore - mammoth is an optional dependency
@@ -25,7 +25,6 @@ export function DocxViewer({
   sshConnectionId,
   fileVersion
 }: ViewerProps): React.JSX.Element {
-  const { t } = useTranslation('layout')
   const [html, setHtml] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,7 +42,8 @@ export function DocxViewer({
       if (cancelled) return
       const result = raw as { data?: string; error?: string }
       if (result.error || !result.data) {
-        setError(result.error || 'Failed to read file')
+        const readFailed = viewerText('failReadFile')
+        setError(result.error ? `${readFailed}: ${result.error}` : readFailed)
         setLoading(false)
         return
       }
@@ -66,7 +66,7 @@ export function DocxViewer({
     return (
       <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
         <FileText className="size-5 animate-pulse" />
-        Loading document...
+        {viewerText('loadingDocument')}
       </div>
     )
   }
@@ -82,7 +82,7 @@ export function DocxViewer({
   return (
     <div className="size-full overflow-y-auto p-6">
       <div className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-        {t('preview.docxCompatibilityHint')}
+        {viewerText('docxCompatibilityHint')}
       </div>
       <div
         className="prose prose-sm dark:prose-invert max-w-none"

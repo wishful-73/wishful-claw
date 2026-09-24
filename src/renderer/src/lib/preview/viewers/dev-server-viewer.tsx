@@ -9,6 +9,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Play, Square, RefreshCw, Terminal } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 interface DevServerViewerProps extends ViewerProps {
   port?: number
@@ -93,7 +94,7 @@ export function DevServerViewer({
               key={iframeKey}
               src={url}
               className="size-full border-0 bg-white"
-              title="Dev Server Preview"
+              title={viewerText('titleDevServer')}
             />
           ) : (
             <div className="flex size-full items-center justify-center text-sm text-muted-foreground">

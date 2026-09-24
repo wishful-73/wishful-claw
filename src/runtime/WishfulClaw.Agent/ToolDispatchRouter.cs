@@ -548,7 +548,9 @@ public static class ToolDispatchRouter
                 var toolContext = new ToolExecutionContext(
                 workingFolder, state.SessionId, state.RunId, projectId, sshConnectionId, state.CancellationToken,
                 sandbox.Enabled, sandbox.Roots, toolCall.Id,
-                JsonHelpers.GetBool(state.Parameters, "supportsVision", true));
+                JsonHelpers.GetBool(state.Parameters, "supportsVision", true),
+                // S-145 §六：Read 命中视频时靠这条通路把帧从渲染端取回来（解码器只在那边）。
+                AgentRuntimeVideoFrameExtraction.CreateExtractor(context));
                 var result = await executor!.ExecuteAsync(toolCall.Input, toolContext);
                 toolOutput = result.Content;
                 isToolError = result.IsError;

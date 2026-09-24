@@ -93,4 +93,10 @@ public sealed record ToolExecutionContext(
     /// 当前模型是否支持图像输入（S-145）。默认 true = 不做降级：拿不到模型能力信息时
     /// 宁可照常送出图像块，也不要把图悄悄吞掉。渲染端在 run 参数里带 supportsVision 时以它为准。
     /// </summary>
-    bool SupportsVision = true);
+    bool SupportsVision = true,
+    /// <summary>
+    /// 视频抽帧通路（S-145 §六）。视频只有渲染端的 Chromium 能解码，C# 的 Read 靠这个回调
+    /// 把请求递过去、把 JPEG 帧收回来。<c>null</c> = 当前调用方没有这条通路（离线执行、测试），
+    /// Read 命中视频时退回纯文本说明。由 <c>AgentRuntimeVideoFrameExtraction</c> 装配。
+    /// </summary>
+    Func<string, CancellationToken, Task<VideoFrameExtraction>>? VideoFrameExtractor = null);

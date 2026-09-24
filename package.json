@@ -58,6 +58,7 @@
     "test:adaptive-event-batcher": "esbuild tests/adaptive-event-batcher/program.ts --bundle --platform=node --format=cjs --outfile=tests/adaptive-event-batcher/out/program.cjs && node tests/adaptive-event-batcher/out/program.cjs",
     "test:stream-segments": "esbuild tests/stream-segments/program.ts --bundle --platform=node --format=cjs --outfile=tests/stream-segments/out/program.cjs && node tests/stream-segments/out/program.cjs",
     "test:latest-yml": "esbuild tests/latest-yml/program.ts --bundle --platform=node --format=cjs --outfile=tests/latest-yml/out/program.cjs && node tests/latest-yml/out/program.cjs",
+    "test:video-frames": "esbuild tests/video-frames/program.ts --bundle --platform=node --format=cjs --outfile=tests/video-frames/out/program.cjs && node tests/video-frames/out/program.cjs",
     "test:updater-error-format": "esbuild tests/updater-error-format/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-error-format/out/program.cjs && node tests/updater-error-format/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },

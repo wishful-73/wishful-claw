@@ -9,34 +9,9 @@ import * as React from 'react'
 import { Film, VideoOff } from 'lucide-react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
+import { videoMediaTypeFor } from '@renderer/lib/media-file-types'
 import type { ViewerProps } from '../viewer-registry'
 import { viewerText } from '../viewer-text'
-
-const MIME_TYPES: Record<string, string> = {
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-  '.ogv': 'video/ogg',
-  '.ogg': 'video/ogg',
-  '.mov': 'video/quicktime',
-  '.m4v': 'video/x-m4v',
-  '.mkv': 'video/x-matroska',
-  '.avi': 'video/x-msvideo',
-  '.mpeg': 'video/mpeg',
-  '.mpg': 'video/mpeg',
-  '.3gp': 'video/3gpp',
-  '.3g2': 'video/3gpp2',
-  '.mts': 'video/mp2t',
-  '.m2ts': 'video/mp2t'
-}
-
-function getExtension(filePath: string): string {
-  const dot = filePath.lastIndexOf('.')
-  return dot >= 0 ? filePath.slice(dot).toLowerCase() : ''
-}
-
-function getMimeType(filePath: string): string {
-  return MIME_TYPES[getExtension(filePath)] ?? 'video/mp4'
-}
 
 export function VideoViewer({
   filePath,
@@ -69,7 +44,7 @@ export function VideoViewer({
 
       try {
         const bytes = Uint8Array.from(atob(result.data), (char) => char.charCodeAt(0))
-        const blob = new Blob([bytes], { type: getMimeType(filePath) })
+        const blob = new Blob([bytes], { type: videoMediaTypeFor(filePath) })
         objectUrl = URL.createObjectURL(blob)
         if (!cancelled) setSrc(objectUrl)
       } catch (err) {

@@ -47,7 +47,7 @@ public sealed class FileReadTool : IToolExecutor
 
 
 
-    public string Description => "Read the contents of a file. Supports line range via offset and limit parameters. Returns content with line numbers. Image files (.png/.jpg/.jpeg/.webp/.gif/.bmp) are returned as an image you can see directly; offset/limit do not apply to them.";
+    public string Description => "Read the contents of a file. Supports line range via offset and limit parameters. Returns content with line numbers. Image files (.png/.jpg/.jpeg/.webp/.gif/.bmp) are returned as an image you can see directly. Video files (.mp4/.webm/.mov/.mkv/.avi/.ogv/.m4v/...) are sampled into a few frames spread across their duration and returned as images. offset/limit do not apply to images or videos.";
 
 
 
@@ -100,6 +100,13 @@ public sealed class FileReadTool : IToolExecutor
         if (imageMediaType is not null)
         {
             return ReadImage(path, imageMediaType, context.SupportsVision);
+        }
+
+        // S-145 §六: 视频走抽帧分支 —— 解码器只在渲染端，帧靠反向请求取回来。
+        var videoMediaType = VideoFileProbe.MediaTypeFor(path);
+        if (videoMediaType is not null)
+        {
+            return await ReadVideoAsync(path, videoMediaType, context);
         }
 
 
@@ -196,6 +203,115 @@ public sealed class FileReadTool : IToolExecutor
         var data = Convert.ToBase64String(File.ReadAllBytes(path));
         var summary = $"Read image: {path} ({sizeText}, {mediaType})";
         return new ToolResult(summary, false, null, BuildImageContent(summary, path, mediaType, data));
+    }
+
+    /// <summary>
+    /// 视频分支（S-145 §六）：把整段视频取样成几张静态帧交给模型。
+    ///
+    /// 为什么要抽帧而不是把视频给模型：本条链路（以及当前所有 provider 协议）只认图像块，
+    /// 没有视频输入通道。抽帧是唯一能让模型「看见」视频内容的办法。
+    ///
+    /// 四种降级全都退回纯文本，并且都必须说清原因（不支持视觉 / 没有抽帧通路 / 文件超限 /
+    /// 渲染端抽帧失败）—— 让模型以为看过了是比看不到更坏的结果。
+    /// </summary>
+    private static async Task<ToolResult> ReadVideoAsync(
+        string path,
+        string mediaType,
+        ToolExecutionContext context)
+    {
+        var byteLength = new FileInfo(path).Length;
+        var sizeText = FormatMegabytes(byteLength);
+
+        if (!context.SupportsVision)
+        {
+            return new ToolResult(
+                $"Read video: {path} ({sizeText}, {mediaType}). " +
+                "The current model is not marked as vision-capable, so frames were not extracted.");
+        }
+
+        if (context.VideoFrameExtractor is null)
+        {
+            return new ToolResult(
+                $"Read video: {path} ({sizeText}, {mediaType}). " +
+                "Frame extraction is not available in this run, so only this summary is returned.");
+        }
+
+        if (byteLength > VideoFileProbe.MaxBytes)
+        {
+            return new ToolResult(
+                $"Read video: {path} ({sizeText}, {mediaType}). " +
+                $"The file is over the {FormatMegabytes(VideoFileProbe.MaxBytes)} limit for frame extraction, " +
+                "so frames were not extracted. Ask the user for a shorter clip or for still frames.");
+        }
+
+        var extraction = await context.VideoFrameExtractor(path, context.CancellationToken);
+        if (extraction.Error is not null || extraction.Frames is null || extraction.Frames.Count == 0)
+        {
+            var reason = extraction.Error ?? "no frame was returned";
+            return new ToolResult(
+                $"Read video: {path} ({sizeText}, {mediaType}). " +
+                $"Frames could not be extracted: {reason}. " +
+                "Tell the user the video could not be viewed instead of guessing what is in it.");
+        }
+
+        var dimensions = extraction.Width > 0 && extraction.Height > 0
+            ? $"{extraction.Width}x{extraction.Height}, "
+            : string.Empty;
+
+        var builder = new StringBuilder();
+        for (var index = 0; index < extraction.Frames.Count; index++)
+        {
+            if (index > 0) builder.Append(", ");
+            builder.Append(FormatSeconds(extraction.Frames[index].TimestampSec));
+        }
+
+        var summary =
+            $"Read video: {path} ({dimensions}{FormatSeconds(extraction.DurationSec)}s, {mediaType}, {sizeText}) — " +
+            $"{extraction.Frames.Count} frames sampled at {builder}s, attached below in time order.";
+
+        return new ToolResult(summary, false, null, BuildVideoContent(summary, extraction.Frames));
+    }
+
+    private static string FormatSeconds(double seconds) =>
+        seconds.ToString("0.##", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// 与 <see cref="BuildImageContent"/> 同形：[text, image, image, …]。
+    ///
+    /// 帧一律不带 <c>filePath</c> —— 它不是「某个图片文件」，而是视频的一帧。带上路径会让
+    /// 持久化把 base64 换成只留路径的图像引用，重新加载时又拿那个路径去当图片读（读回来的是
+    /// 整段视频），预览面板也会渲染出一个打不开的图。宁可让大帧在历史里落成
+    /// `[image data omitted, N base64 chars]` 这句文本，也不留一个指向视频的假图像引用。
+    /// </summary>
+    private static JsonElement BuildVideoContent(string summary, IReadOnlyList<VideoFrame> frames)
+    {
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartArray();
+            writer.WriteStartObject();
+            writer.WriteString("type", "text");
+            writer.WriteString("text", summary);
+            writer.WriteEndObject();
+
+            foreach (var frame in frames)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", "image");
+                writer.WritePropertyName("source");
+                writer.WriteStartObject();
+                writer.WriteString("type", "base64");
+                writer.WriteString("mediaType", frame.MediaType);
+                writer.WriteString("data", frame.Data);
+                writer.WriteEndObject();
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+        }
+
+        using var document = JsonDocument.Parse(buffer.WrittenMemory);
+        return document.RootElement.Clone();
     }
 
     private static string FormatMegabytes(long bytes) =>

@@ -31,7 +31,10 @@ export function buildToc(md: string, slugs?: Record<string, string>): DocToc {
   const used = new Map<string, number>()
   let inFence = false
 
-  for (const line of md.split('\n')) {
+  // 先归一 CRLF：这份 md 在 Windows 检出下是 CRLF（core.autocrlf=true，仓库存的也是 CRLF），
+  // 而 JS 正则的 '.' 与 '$' 都不吃 '\r' ⇒ 不归一的话「^(#{2,3}) (.+)$」一行也匹配不上，
+  // 目录会整片空掉、h2/h3 的 id 也挂不上（锚点跟着一起没）。顺带收掉老 Mac 的孤立 '\r'。
+  for (const line of md.replace(/\r\n?/g, '\n').split('\n')) {
     if (line.startsWith('```')) {
       inFence = !inFence
       continue

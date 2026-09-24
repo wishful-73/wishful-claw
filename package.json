@@ -60,6 +60,7 @@
     "test:latest-yml": "esbuild tests/latest-yml/program.ts --bundle --platform=node --format=cjs --outfile=tests/latest-yml/out/program.cjs && node tests/latest-yml/out/program.cjs",
     "test:video-frames": "esbuild tests/video-frames/program.ts --bundle --platform=node --format=cjs --outfile=tests/video-frames/out/program.cjs && node tests/video-frames/out/program.cjs",
     "test:updater-error-format": "esbuild tests/updater-error-format/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-error-format/out/program.cjs && node tests/updater-error-format/out/program.cjs",
+    "test:scroll-collapse-gate": "esbuild tests/scroll-collapse-gate/program.ts --bundle --platform=node --format=cjs --outfile=tests/scroll-collapse-gate/out/program.cjs && node tests/scroll-collapse-gate/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

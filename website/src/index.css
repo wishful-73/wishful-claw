@@ -588,3 +588,105 @@ body {
     opacity: 0;
   }
 }
+
+/* ── 下载胶囊按钮的光效（2026-09-24 老大：抄小米的下载按钮，mimo.xiaomimimo.com/desktop）──────
+   只有「当前真能下」的那个平台挂 .dl-current —— 小米也只给 data-current 的按钮加光环，其余是素胶囊。
+   两件事叠在一起：
+     ① .dl-current 的 ::before / ::after：2px 的旋转描边光环（conic-gradient 转圈）；
+     ② .dl-shine 里的两道扫光：星点噪点 + 30% 白斜带，3s 一轮从左穿到右。
+   ⚠️ 光环用负 z-index，靠按钮上的 isolation: isolate 圈住层级：负 z-index 落在「按钮自身背景之上、
+      内容之下」那一层，正是要的位置；少了 isolation 它们会穿到父容器的背景后面，整圈光环看不见。
+   ⚠️ 扫光两层必须待在 .dl-shine 里（inset: 2px + overflow: hidden 的胶囊内壳）：光带靠 transform
+      平移，没有这层遮挡会从胶囊外面挤进来。 */
+.dl-current {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.dl-current::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: -2;
+  width: 110%;
+  aspect-ratio: 1;
+  background: conic-gradient(#0000 0deg, #ffffff73 35deg, #fff 65deg, #ffffffa6 95deg, #0000 140deg 360deg);
+  animation: dl-ring 3s linear infinite;
+}
+
+/* 内层实心（与按钮同色）盖住光环中央，只在边缘留 2px 露出那圈转着的高光 */
+.dl-current::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--color-accent);
+}
+
+.dl-shine {
+  position: absolute;
+  inset: 2px;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dl-shine::before,
+.dl-shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+/* 星点噪点：4px 网格上 0.5px 的白点，只在 110° 的斜带里透出来 */
+.dl-shine::before {
+  background: radial-gradient(circle, #fff 0.5px, #0000 0.6px) 0 0 / 4px 4px;
+  opacity: 0.2;
+  -webkit-mask-image: linear-gradient(110deg, #0000 25%, #000 50%, #0000 75%);
+  mask-image: linear-gradient(110deg, #0000 25%, #000 50%, #0000 75%);
+  animation: dl-sweep 3s ease-in-out infinite;
+}
+
+/* 扫光带本身 */
+.dl-shine::after {
+  background: linear-gradient(110deg, #0000 25%, #ffffff4d 50%, #0000 75%);
+  animation: dl-sweep 3s ease-in-out infinite;
+}
+
+@keyframes dl-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  65%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes dl-ring {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* 系统开了「减少动态效果」：环停住（静止的环就是一圈亮描边，留着），扫光整层藏掉 */
+@media (prefers-reduced-motion: reduce) {
+  .dl-current::before,
+  .dl-shine::before,
+  .dl-shine::after {
+    animation: none;
+  }
+
+  .dl-shine::before,
+  .dl-shine::after {
+    opacity: 0;
+  }
+}

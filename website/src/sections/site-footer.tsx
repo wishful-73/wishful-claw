@@ -29,6 +29,16 @@ export function SiteFooter() {
           >
             {footer.icp}
           </a>
+          {' · '}
+          <a
+            href={footer.policeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 align-middle text-ink-900/45 hover:text-accent"
+          >
+            <img src="./police-badge.png" alt="" className="h-3.5 w-auto" />
+            {footer.police}
+          </a>
         </p>
       </div>
     </footer>

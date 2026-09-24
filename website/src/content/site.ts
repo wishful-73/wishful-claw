@@ -214,5 +214,9 @@ export const footer = {
   // 工信部 ICP 备案号（2026-09-23 通过；主体：龚翼）。合规硬要求：必须悬挂在页脚并链接到
   // beian.miit.gov.cn，且站内显示名应与备案的网站全称一致 —— 即 BRAND.fullName「心相智能助手」。
   icp: '蜀ICP备2026057067号',
-  icpUrl: 'https://beian.miit.gov.cn/'
+  icpUrl: 'https://beian.miit.gov.cn/',
+  // 公安联网备案（2026-09-24 通过；主体：龚翼）。同属合规硬要求，与 ICP 号并排悬挂页脚，
+  // 链接指向公安部备案系统的按号查询页 —— code 就是号里的注册号，去掉「川公网安备」「号」前后缀。
+  police: '川公网安备51080202020186号',
+  policeUrl: 'https://beian.mps.gov.cn/#/query/webSearch?code=51080202020186'
 }

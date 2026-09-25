@@ -58,6 +58,14 @@ export interface GetUpdatesResponse {
   longpolling_timeout_ms?: number
 }
 
+/** `ilink/bot/getconfig` 响应 —— typing 的唯一取票途径（S-152）。 */
+export interface WeixinGetConfigResponse {
+  ret?: number
+  errcode?: number
+  errmsg?: string
+  typing_ticket?: string
+}
+
 export interface WeixinGetUploadUrlResponse {
   ret?: number
   errcode?: number

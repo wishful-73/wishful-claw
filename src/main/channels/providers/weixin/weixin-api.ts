@@ -3,6 +3,7 @@ import {
   DEFAULT_WEIXIN_CDN_BASE_URL,
   type GetUpdatesResponse,
   type WeixinCdnMedia,
+  type WeixinGetConfigResponse,
   type WeixinGetUploadUrlResponse,
   type WeixinUploadedFileInfo
 } from './weixin-types'
@@ -61,6 +62,58 @@ export class WeixinApi {
       timeoutMs,
       signal
     })
+  }
+
+  /**
+   * `ilink/bot/getconfig` —— 换 `typing_ticket`。
+   * typing 不能直接调 sendtyping，必须先拿票；票不缓存，每条消息重新取。
+   */
+  async getConfig(params: {
+    toUserId: string
+    contextToken: string
+    signal?: AbortSignal
+  }): Promise<WeixinGetConfigResponse> {
+    return postJson<WeixinGetConfigResponse>({
+      baseUrl: this.baseUrl,
+      path: 'ilink/bot/getconfig',
+      body: {
+        ilink_user_id: params.toUserId,
+        context_token: params.contextToken
+      },
+      token: this.token,
+      routeTag: this.routeTag,
+      wechatUin: this.wechatUin,
+      timeoutMs: 20000,
+      signal: params.signal
+    })
+  }
+
+  /** `ilink/bot/sendtyping` —— status: 1 = 开始输入，2 = 取消。 */
+  async sendTyping(params: {
+    toUserId: string
+    typingTicket: string
+    status: number
+    signal?: AbortSignal
+  }): Promise<void> {
+    const response = await postJson<{ ret?: number; errcode?: number; errmsg?: string }>({
+      baseUrl: this.baseUrl,
+      path: 'ilink/bot/sendtyping',
+      body: {
+        ilink_user_id: params.toUserId,
+        typing_ticket: params.typingTicket,
+        status: params.status
+      },
+      token: this.token,
+      routeTag: this.routeTag,
+      wechatUin: this.wechatUin,
+      timeoutMs: 20000,
+      signal: params.signal
+    })
+
+    const errcode = response.errcode ?? response.ret ?? 0
+    if (errcode !== 0) {
+      throw new Error(`Weixin sendtyping failed: ${response.errmsg || `errcode ${errcode}`}`)
+    }
   }
 
   private async getUploadUrl(params: {

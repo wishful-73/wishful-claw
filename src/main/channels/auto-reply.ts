@@ -1,4 +1,4 @@
-﻿import { randomUUID } from 'crypto'
+import { randomUUID } from 'crypto'
 import { getNativeWorker } from '../lib/native-worker'
 import { readChannelPlugins } from './channel-config-store'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
@@ -261,6 +261,13 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent, channelTaskId: s
       workingFolder: pluginWorkDir || undefined,
       sshConnectionId: pluginSshConnectionId
     }
+    // S-152: 可选能力 —— 开始生成回复时点亮渠道的「正在输入」（目前只有微信实现）。
+    // 不 await：typing 是尽力而为，不能拖慢入站消息路由；失败在服务层已吞掉。
+    const typingService = service as unknown as
+      | { startTyping?: (chatId: string) => Promise<void> }
+      | undefined
+    void typingService?.startTyping?.(data.chatId)
+
     safeSendMessagePackToAllWindows('plugin:session-task', taskPayload)
 
     console.log(

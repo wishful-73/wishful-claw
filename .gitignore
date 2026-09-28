@@ -41,6 +41,10 @@ artifacts/
 TestResults/
 resources/worker/
 
+# 内置 Everything 命令行工具 es.exe —— 随安装包分发，必须入库
+!resources/es/
+!resources/es/**
+
 # Logs
 logs/
 *.log

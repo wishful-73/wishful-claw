@@ -29,6 +29,7 @@ import {
   getKnownInstallCandidates,
   isEverythingExecutableName,
   isEverythingVersionInfoHit,
+  isThirdPartyPrivateEverythingPath,
   parseEverythingServiceImagePath,
   parseExecutablePathLines,
   parseRegistryUninstallBlocks,
@@ -38,6 +39,25 @@ import {
   type EverythingExeMatch,
   type EverythingExeSource
 } from './lib/everything-search'
+import {
+  ES_EXE_BASENAME,
+  ES_PROCESS_TIMEOUT_MS,
+  ES_SEARCH_LIMIT,
+  buildEsArgs,
+  classifyEsFailure,
+  getEsAlongsideCandidates,
+  getEsBuiltinPath,
+  getEsKnownDirCandidates,
+  isEsExecutableName,
+  isEsVersionInfoHit,
+  parseEsJson,
+  parseEsPathLines,
+  pickEsCandidate,
+  type EsExeMatch,
+  type EsExeSource,
+  type EsFailure,
+  type FileHit
+} from './lib/es-search'
 
 let launcherWindow: BrowserWindow | null = null
 let launcherBlurHideTimer: NodeJS.Timeout | null = null
@@ -101,6 +121,15 @@ interface LauncherConfig {
    * 会被标成「手动指定」，用户看着莫名其妙。
    */
   everythingExePathAuto: boolean
+  /**
+   * S-155：取数用的 es.exe。空串 = 未指定，走自动探测（Everything 同目录 / 常见安装位 / PATH）。
+   *
+   * 与 `everythingExePath` 是两个槽位 —— 一个指 GUI 本体（投递式降级与索引靠它），一个指命令行版
+   * （自渲染取数靠它），两者可以只有一个存在。
+   */
+  esExePath: string
+  /** S-155：`esExePath` 是「本机检测」自动绑定的（true）还是用户手选的（false）。 */
+  esExePathAuto: boolean
 }
 
 /** S-151：launcher 面板的两种搜索模式。 */
@@ -123,7 +152,9 @@ const DEFAULT_CONFIG: LauncherConfig = {
   launchHistory: [],
   searchMode: 'app',
   everythingExePath: '',
-  everythingExePathAuto: false
+  everythingExePathAuto: false,
+  esExePath: '',
+  esExePathAuto: false
 }
 
 // ── Config persistence ──
@@ -151,7 +182,9 @@ function loadConfig(): LauncherConfig {
         searchMode: parsed.searchMode === 'file' ? 'file' : 'app',
         everythingExePath:
           typeof parsed.everythingExePath === 'string' ? parsed.everythingExePath : DEFAULT_CONFIG.everythingExePath,
-        everythingExePathAuto: parsed.everythingExePathAuto === true
+        everythingExePathAuto: parsed.everythingExePathAuto === true,
+        esExePath: typeof parsed.esExePath === 'string' ? parsed.esExePath : DEFAULT_CONFIG.esExePath,
+        esExePathAuto: parsed.esExePathAuto === true
       }
     }
   } catch {
@@ -981,7 +1014,11 @@ async function listFixedDriveRoots(): Promise<string[]> {
  * 全局超时 `timeoutMs`：到点返回已找到的（通常是空），扫不完不拖住面板。实测根+两层
  * C: 0.84s / D: 0.09s，这个量级才敢让用户点。
  */
-async function collectScanCandidates(timeoutMs: number): Promise<string[]> {
+async function collectScanCandidates(
+  timeoutMs: number,
+  matchesName: (fileName: string) => boolean = isEverythingExecutableName,
+  sanitize: (paths: readonly string[]) => string[] = sanitizeEverythingCandidates
+): Promise<string[]> {
   const roots = await listFixedDriveRoots()
   const deadline = Date.now() + timeoutMs
   const found: string[] = []
@@ -997,7 +1034,7 @@ async function collectScanCandidates(timeoutMs: number): Promise<string[]> {
     }
 
     for (const entry of entries) {
-      if (entry.isFile() && isEverythingExecutableName(entry.name)) {
+      if (entry.isFile() && matchesName(entry.name)) {
         found.push(join(dir, entry.name))
         return
       }
@@ -1015,7 +1052,7 @@ async function collectScanCandidates(timeoutMs: number): Promise<string[]> {
     if (found.length > 0 || Date.now() > deadline) break
     await walk(root, 0)
   }
-  return sanitizeEverythingCandidates(found)
+  return sanitize(found)
 }
 
 /**
@@ -1025,7 +1062,10 @@ async function collectScanCandidates(timeoutMs: number): Promise<string[]> {
  * 再拦一道只是白等 0.4s。**读不到版本信息时放行**（fail-open）：老版本 / 精简 exe 可能不带
  * `ProductName`，不能因为查不出来就把真货丢掉。
  */
-async function verifyDiscoveredCandidates(paths: string[]): Promise<string[]> {
+async function verifyDiscoveredCandidates(
+  paths: string[],
+  hit: (versionInfo: string) => boolean = isEverythingVersionInfoHit
+): Promise<string[]> {
   const existing = (paths ?? []).filter((path) => fs.existsSync(path))
   if (existing.length === 0) return []
 
@@ -1049,7 +1089,7 @@ async function verifyDiscoveredCandidates(paths: string[]): Promise<string[]> {
     verdicts.set(line.slice(0, separator), line.slice(separator + 1))
   }
 
-  return existing.filter((path) => isEverythingVersionInfoHit(verdicts.get(path) ?? ''))
+  return existing.filter((path) => hit(verdicts.get(path) ?? ''))
 }
 
 /**
@@ -1159,6 +1199,355 @@ function spawnEverythingSearch(
     )
     child.unref()
   })
+}
+
+// ── es.exe 取数（S-155）──
+//
+// S-151 的口径是「把关键词投给 Everything，剩下的跟我们没关系」；S-155 改成**我们取数、我们渲染**：
+// 走官方命令行版 es.exe 把命中结果导成 JSON，解析成列表交给渲染端。
+//
+// 降级三档（渲染端按两个状态自己选）：
+//   Everything✅ + es✅ → 自渲染结果列表
+//   Everything✅ + es❌ → 退回 S-151 的投递式（`launcher:open-in-everything`）
+//   Everything❌        → 保持引导页
+
+interface EsStatus {
+  /** 平台是否支持（本需求只做 Windows）。 */
+  supported: boolean
+  /** 探到了可用的 es.exe。 */
+  ready: boolean
+  exePath: string | null
+  source: EsExeSource | null
+  /** exePath 是「本机检测」自动绑定的 —— 设置页文案要跟「手动指定」分开。 */
+  detected: boolean
+}
+
+const ES_NOT_READY: EsStatus = {
+  supported: true,
+  ready: false,
+  exePath: null,
+  source: null,
+  detected: false
+}
+
+/** 轻探的缓存窗口。 */
+const ES_PROBE_TTL_MS = 30 * 1000
+/** 重探（含扫盘）的缓存窗口：扫盘贵，绑上了别反复扫。 */
+const ES_DEEP_PROBE_TTL_MS = 5 * 60 * 1000
+/** 取数落盘的临时 JSON —— 读完就删，不常驻（见 `runEsSearch`）。 */
+const ES_OUT_FILENAME = 'es-search-out.json'
+
+/**
+ * Everything 未运行时的自动拉起（S-155 调整②）：起进程后**等 IPC 上线**的总预算与轮询间隔。
+ *
+ * 冷启动 Everything 要读索引，几百毫秒到两三秒是正常的；轮询直接拿用户那次搜索重试，不额外探测
+ * （省一次无用查询，命中那一次的结果本身就是最终结果）。
+ */
+const EVERYTHING_AUTOSTART_WAIT_MS = 3000
+const EVERYTHING_AUTOSTART_POLL_MS = 250
+
+/**
+ * 自动拉起的冷却窗口。
+ *
+ * 连打关键词会连着好几次搜索、每次都会看到 `not-running` —— 没有冷却就会一秒起一堆 Everything。
+ * 窗口内只起一次，后面的搜索靠轮询等它上线。
+ */
+const EVERYTHING_AUTOSTART_COOLDOWN_MS = 10 * 1000
+
+let esProbeCache: { at: number; status: EsStatus; deep: boolean } | null = null
+
+/** 上次自动拉起 Everything 的时刻（0 = 从没起过），用于 `EVERYTHING_AUTOSTART_COOLDOWN_MS` 冷却。 */
+let everythingAutostartAt = 0
+
+function invalidateEsProbe(): void {
+  esProbeCache = null
+}
+
+/** 去重 + 剔第三方私有副本 + 只留 `es.exe`（常见安装位 / 扫盘的输出都过这道）。 */
+function sanitizeEsCandidates(paths: readonly string[]): string[] {
+  const found: string[] = []
+  for (const raw of paths ?? []) {
+    const candidate = (raw ?? '').trim()
+    if (!candidate) continue
+    const base = candidate.split(/[\\/]/).pop() ?? ''
+    if (!isEsExecutableName(base)) continue
+    if (isThirdPartyPrivateEverythingPath(candidate)) continue
+    if (!found.includes(candidate)) found.push(candidate)
+  }
+  return found
+}
+
+/** `where es.exe`。 */
+async function collectEsPathCandidates(): Promise<string[]> {
+  const stdout = await runProbeCommand('where', [ES_EXE_BASENAME], 3000)
+  return sanitizeEsCandidates(parseEsPathLines(stdout))
+}
+
+/**
+ * 内置 es.exe 的可能落点（S-155 调整①：不再引导用户去装 es.exe）。
+ *
+ * 三个 root 都算一遍、交给 `pickEsCandidate` 的 `exists` 筛 —— 不在这里判存在，省得两处判断漂移：
+ *   - dev：`<repo>/resources/es/es.exe`（`process.cwd()` = 仓库根）；
+ *   - 打包：`<resources>/es/es.exe`（electron-builder `extraResources` 的落点）；
+ *   - 兜底：`<app>/resources/es/es.exe`（asar 外挂路径的另一种摆法）。
+ *
+ * process.resourcesPath 在 dev 下指向 `node_modules/electron/dist/resources`，所以 dev 命中的是
+ * 第一条而不是它 —— 三条并列扫一遍，谁真存在算谁。
+ */
+function getEsBuiltinCandidates(): string[] {
+  const roots = [
+    join(process.cwd(), 'resources'),
+    process.resourcesPath ?? '',
+    join(app.getAppPath(), 'resources')
+  ]
+  const found: string[] = []
+  for (const root of roots) {
+    const candidate = getEsBuiltinPath(root)
+    if (candidate && !found.includes(candidate)) found.push(candidate)
+  }
+  return found
+}
+
+/**
+ * 分级探测 —— 档位按**代价**排：手动指定 → 内置件 → Everything 同目录 / 常见安装位 / PATH → 扫盘（仅重探）。
+ *
+ * 比 S-151 少四档（注册表 / 服务 / 快捷方式 / 进程）：es.exe 是**单文件**，不装、不跑、不当快捷
+ * 方式目标，那四档没有对应物（理由写在 `lib/es-search.ts` 的 `EsExeSource` 上）。
+ */
+async function probeEs(deep: boolean): Promise<EsStatus> {
+  if (process.platform !== 'win32') return { ...ES_NOT_READY, supported: false }
+
+  const toStatus = (match: EsExeMatch | null): EsStatus => ({
+    supported: true,
+    ready: match !== null,
+    exePath: match?.path ?? null,
+    source: match?.source ?? null,
+    detected: match?.source === 'manual' && config.esExePathAuto
+  })
+  const exists = (candidate: string): boolean => fs.existsSync(candidate)
+
+  // ① 手动指定（含「本机检测」自动绑定的）—— 用户自己的选择，直接认。
+  const manual = (config.esExePath ?? '').trim()
+  if (manual && exists(manual)) return toStatus({ path: manual, source: 'manual' })
+
+  // ② 便宜档。内置件排最前（默认落点，零外部依赖）；「与 Everything 同目录」要拿本体的路径，
+  //    先问一句本体（它有缓存，通常零成本）。内置路径不过 `sanitizeEsCandidates` —— 那是我们自己
+  //    打包的确定落点，多一道「第三方私有路径」过滤反而可能误伤。
+  const everything = await getEverythingStatus()
+  const fromPath = await collectEsPathCandidates()
+  const cheap = pickEsCandidate(
+    {
+      builtin: getEsBuiltinCandidates(),
+      alongside: sanitizeEsCandidates(getEsAlongsideCandidates(everything.exePath)),
+      'program-files': sanitizeEsCandidates(getEsKnownDirCandidates(process.env)),
+      path: fromPath
+    },
+    exists
+  )
+  if (cheap) return toStatus(cheap)
+
+  if (!deep) return toStatus(null)
+
+  // ③ 扫盘（仅重探）。猜出来的必须过版本检测 —— 叫 es.exe 的杂鱼不少（它的版本信息就是 `es`）。
+  const scanned = pickEsCandidate(
+    {
+      scan: await verifyDiscoveredCandidates(
+        await collectScanCandidates(
+          EVERYTHING_SCAN_TIMEOUT_MS,
+          isEsExecutableName,
+          sanitizeEsCandidates
+        ),
+        isEsVersionInfoHit
+      )
+    },
+    exists
+  )
+  return toStatus(scanned)
+}
+
+async function getEsStatus(deep = false): Promise<EsStatus> {
+  const now = Date.now()
+  const cached = esProbeCache
+  if (cached && now - cached.at < (cached.deep ? ES_DEEP_PROBE_TTL_MS : ES_PROBE_TTL_MS)) {
+    // 轻探答不了重探（重探多扫一层盘），重探可以答轻探。
+    if (cached.deep || !deep) return cached.status
+  }
+  const status = await probeEs(deep)
+  esProbeCache = { at: now, status, deep }
+  return status
+}
+
+/** 取数结果。`ok: true` + 空 `hits` = **成功但没搜到**（不是失败）。 */
+interface EsSearchResult {
+  ok: boolean
+  hits: FileHit[]
+  failure?: EsFailure
+  error?: string
+}
+
+/**
+ * 取数串行队列。
+ *
+ * 所有调用共用同一个输出文件，并发会互踩（A 写 B 读、B 删 A 写），最坏拿到别人关键词的结果。
+ * 单次实测 ~130ms，串行完全够。队列吞掉前一个的异常，不让一次失败堵死后续查询。
+ */
+let esSearchQueue: Promise<unknown> = Promise.resolve()
+
+function enqueueEsSearch<T>(task: () => Promise<T>): Promise<T> {
+  const next = esSearchQueue.then(task, task)
+  esSearchQueue = next.catch(() => undefined)
+  return next
+}
+
+function resolveEsOutFile(): string {
+  return join(resolveDataDir(), ES_OUT_FILENAME)
+}
+
+/**
+ * 跑一次 es.exe 取数。
+ *
+ * 三个实测踩坑点（原文在 `lib/es-search.ts` 头注，这里是对应的处理）：
+ *   - 输出文件**先删**：es.exe 失败时照样会建它（实测 exit 8 也建），不删会把上一轮的陈旧结果
+ *     当成这次的结果；
+ *   - 失败分类**看退出码**（exit 8 = Everything 没在跑），不能只看文件在不在；
+ *   - 空结果文件只有 3 字节 BOM，`parseEsJson` 已把它当空数组，不算错误。
+ *
+ * 临时文件**用完即删**，不常驻 —— 别在用户数据目录里留一堆没人清理的中间产物。
+ */
+async function runEsSearch(exePath: string, query: string): Promise<EsSearchResult> {
+  const outFile = resolveEsOutFile()
+  const args = buildEsArgs(query, outFile, ES_SEARCH_LIMIT)
+  // 空关键词不启动进程，直接当「没搜到」。
+  if (!args) return { ok: true, hits: [] }
+
+  try {
+    await fs.promises.rm(outFile, { force: true })
+  } catch {
+    // 删不掉就继续 —— 后面读不到内容会走 bad-output，不会静默错。
+  }
+
+  const outcome = await new Promise<{ code: number | null; stderr: string; timedOut: boolean }>(
+    (resolve) => {
+      try {
+        execFile(
+          exePath,
+          args,
+          {
+            windowsHide: true,
+            timeout: ES_PROCESS_TIMEOUT_MS,
+            encoding: 'utf8',
+            maxBuffer: 16 * 1024 * 1024,
+            cwd: resolveDataDir()
+          },
+          (error, _stdout, stderr) => {
+            resolve({
+              code: error ? (typeof error.code === 'number' ? error.code : null) : 0,
+              stderr: typeof stderr === 'string' ? stderr : '',
+              timedOut: Boolean(error && error.killed)
+            })
+          }
+        )
+      } catch (error) {
+        resolve({
+          code: null,
+          stderr: error instanceof Error ? error.message : String(error),
+          timedOut: false
+        })
+      }
+    }
+  )
+
+  try {
+    // 超时杀进程时 code 也是 null，但那是「跑了没在 2s 内回来」，不是「没起来」——
+    // 归 search-failed，免得调用方白跑一轮重新探测。
+    if (outcome.timedOut && outcome.code === null) {
+      return { ok: false, hits: [], failure: 'search-failed', error: 'es.exe timed out' }
+    }
+
+    const failure = classifyEsFailure(outcome.code, outcome.stderr)
+    if (failure) {
+      return { ok: false, hits: [], failure, error: outcome.stderr.trim() || `exit ${outcome.code}` }
+    }
+
+    let raw = ''
+    try {
+      raw = await fs.promises.readFile(outFile, 'utf8')
+    } catch {
+      return { ok: false, hits: [], failure: 'bad-output', error: 'output file missing' }
+    }
+
+    try {
+      return { ok: true, hits: parseEsJson(raw) }
+    } catch (error) {
+      return {
+        ok: false,
+        hits: [],
+        failure: 'bad-output',
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  } finally {
+    try {
+      await fs.promises.rm(outFile, { force: true })
+    } catch {
+      // 清理失败不该影响结果。
+    }
+  }
+}
+
+/** 等一会儿（`setTimeout` 的 Promise 版）。 */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Everything 没在跑 ⇒ 替他拉起来，再重试这次搜索（S-155 调整②）。
+ *
+ * 老大 2026-09-29 的口径：用户装了 Everything 却没开机自启 / 没手动开，不该让他自己去开 ——
+ * 我们替他起。步骤：
+ *   ① 问一句本体路径（走缓存）；**没探到就如实回 `not-running`** —— 那是「压根没装」，
+ *      交给 UI 走「下载并安装」引导，我们不越权去装东西；
+ *   ② `spawn <Everything.exe> -startup`：`-startup` 是官方的「静默启动」开关（已在跑则什么都不做），
+ *      detached + 不挂窗口，别弹个主窗口糊用户一脸。冷却窗口内只起一次；
+ *   ③ 轮询重试**用户这次搜索本身**，直到失败分类不再是 `not-running`（IPC 上线了）或超预算。
+ *
+ * 边界（写进 S-155.md 待实测项）：Everything 若配置成需要提权才能索引，这一步会弹 UAC —— 用户
+ * 允许即正常；不允许则重试到超时，如实回 `not-running`。
+ */
+async function startEverythingAndRetry(
+  esExePath: string,
+  keyword: string,
+  firstResult: EsSearchResult
+): Promise<EsSearchResult> {
+  const everything = await getEverythingStatus()
+  const everythingExe = (everything.exePath ?? '').trim()
+  if (!everything.ready || !everythingExe) return firstResult
+
+  const now = Date.now()
+  if (now - everythingAutostartAt > EVERYTHING_AUTOSTART_COOLDOWN_MS) {
+    everythingAutostartAt = now
+    try {
+      const child = spawn(everythingExe, ['-startup'], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true
+      })
+      child.on('error', (error) =>
+        console.warn(`[QuickLauncher] Failed to start Everything: ${error.message}`)
+      )
+      child.unref()
+    } catch (error) {
+      console.warn(`[QuickLauncher] Failed to start Everything: ${String(error)}`)
+    }
+  }
+
+  const deadline = now + EVERYTHING_AUTOSTART_WAIT_MS
+  let result = firstResult
+  while (result.failure === 'not-running' && Date.now() < deadline) {
+    await delay(EVERYTHING_AUTOSTART_POLL_MS)
+    result = await enqueueEsSearch(() => runEsSearch(esExePath, keyword))
+  }
+  return result
 }
 
 // ── IPC ──
@@ -1351,8 +1740,41 @@ function registerLauncherIpc(): void {
     return bound
   })
 
+  /**
+   * 文件搜索（S-155 起**改语义**）：返回结构化结果给渲染端自己渲染。
+   *
+   * S-151 时代这个通道的返回值是「投没投出去」（`{ success, error }`），投完还会收面板；
+   * 现在结果由我们自己渲染，面板**不能收**（收了用户就看不着结果了）。
+   */
+  registerMessagePackHandler<string, EsSearchResult>('launcher:search-files', async (keyword) => {
+    const status = await getEsStatus()
+    if (!status.ready || !status.exePath) {
+      return { ok: false, hits: [], failure: 'spawn-failed', error: 'es-not-ready' }
+    }
+
+    const esExePath = status.exePath
+    let result = await enqueueEsSearch(() => runEsSearch(esExePath, keyword))
+
+    // es.exe 失效（用户删了 / 换了盘）⇒ 让下一轮探测重新找，别一直拿死路径报错。
+    if (result.failure === 'spawn-failed') {
+      invalidateEsProbe()
+      return result
+    }
+
+    // Everything 没在跑 ⇒ 替他拉起来再重试（S-155 调整②），别让用户自己去找。
+    if (result.failure === 'not-running') {
+      result = await startEverythingAndRetry(esExePath, keyword, result)
+    }
+    return result
+  })
+
+  /**
+   * 降级档：Everything 在、es.exe 不在 —— 退回 S-151 的投递式（关键词交给 Everything 自己的窗口）。
+   *
+   * 这是 **S-155 §七 裁定②** 的落点：有 Everything 却拿不到 es.exe 时，不能让用户什么都搜不了。
+   */
   registerMessagePackHandler<string, { success: boolean; error?: string }>(
-    'launcher:search-files',
+    'launcher:open-in-everything',
     async (keyword) => {
       const status = await getEverythingStatus()
       if (!status.ready || !status.exePath) return { success: false, error: 'not-ready' }
@@ -1363,6 +1785,72 @@ function registerLauncherIpc(): void {
       return result
     }
   )
+
+  /** 点结果项：`reveal` 时定位到所在目录，否则用系统默认程序打开它。 */
+  registerMessagePackHandler<
+    { path: string; reveal?: boolean },
+    { success: boolean; error?: string }
+  >('launcher:open-hit', async (payload) => {
+    const target = (payload?.path ?? '').trim()
+    if (!target) return { success: false, error: 'empty-path' }
+
+    if (payload?.reveal) {
+      shell.showItemInFolder(target)
+      return { success: true }
+    }
+
+    const failed = await shell.openPath(target)
+    // openPath 成功返回空串，失败返回错误描述 —— 不看返回值等于假装用户点开了。
+    return failed ? { success: false, error: failed } : { success: true }
+  })
+
+  registerMessagePackHandler<void, EsStatus>('launcher:get-es-status', () => getEsStatus())
+
+  registerMessagePackHandler<void, EsStatus>('launcher:refresh-es-status', async () => {
+    invalidateEsProbe()
+    return getEsStatus(true)
+  })
+
+  /**
+   * 手动指定 es.exe。挑错文件就说清楚，不静默存进去让用户后面一脸问号。
+   *
+   * S-155 调整① 后这是**唯一的覆盖入口** —— es.exe 已内置，不再有「本机检测 / 获取 ES」两个通道。
+   * 留着它只为一种场景：用户自己那份 es.exe 版本更新，想顶掉内置的。
+   */
+  registerMessagePackHandler<void, { canceled: boolean; status: EsStatus; error?: string }>(
+    'launcher:set-es-exe',
+    async () => {
+      const options = {
+        title: '选择 es.exe',
+        properties: ['openFile' as const],
+        filters: [{ name: 'es.exe', extensions: ['exe'] }]
+      }
+      const result = launcherWindow
+        ? await dialog.showOpenDialog(launcherWindow, options)
+        : await dialog.showOpenDialog(options)
+      if (result.canceled || result.filePaths.length === 0) {
+        return { canceled: true, status: await getEsStatus() }
+      }
+
+      const filePath = result.filePaths[0]
+      const fileName = filePath.split(/[\\/]/).pop() ?? ''
+      if (!isEsExecutableName(fileName)) {
+        return { canceled: false, status: await getEsStatus(), error: 'not-es-exe' }
+      }
+
+      config = { ...config, esExePath: filePath, esExePathAuto: false }
+      saveConfig()
+      invalidateEsProbe()
+      return { canceled: false, status: await getEsStatus() }
+    }
+  )
+
+  registerMessagePackHandler<void, EsStatus>('launcher:clear-es-exe', async () => {
+    config = { ...config, esExePath: '', esExePathAuto: false }
+    saveConfig()
+    invalidateEsProbe()
+    return getEsStatus()
+  })
 
   registerMessagePackHandler<void, void>('launcher:open-everything-download', () => {
     // 固定 URL 写死在这里，不接受渲染端传任意地址。

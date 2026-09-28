@@ -13,7 +13,9 @@ import {
   Download,
   RefreshCw,
   Check,
-  AlertCircle
+  AlertCircle,
+  Folder,
+  Loader2
 } from 'lucide-react'
 import { syncThemeFromSettings } from '../lib/theme-sync'
 
@@ -52,6 +54,96 @@ interface EverythingStatus {
   detected: boolean
 }
 
+type EsExeSource = 'manual' | 'builtin' | 'alongside' | 'program-files' | 'path' | 'scan'
+
+/** es.exe（取数用）的探测状态 —— 与 Everything 本体是两个槽位，可以只有一个就绪。 */
+interface EsStatus {
+  supported: boolean
+  ready: boolean
+  exePath: string | null
+  source: EsExeSource | null
+  /** exePath 是「本机检测」自动绑定的（跟「手动指定」区分显示）。 */
+  detected: boolean
+}
+
+interface FileHit {
+  fullPath: string
+  name: string
+  dir: string
+  isDir: boolean
+  size: number | null
+  /** epoch 毫秒；解析不出来是 null。 */
+  mtime: number | null
+  ext: string
+}
+
+/** 取数结果。`ok: true` + 空 `hits` = 成功但没搜到。 */
+interface EsSearchResult {
+  ok: boolean
+  hits: FileHit[]
+  failure?: 'not-running' | 'spawn-failed' | 'bad-output' | 'search-failed'
+  error?: string
+}
+
+const ES_SOURCE_LABEL: Record<EsExeSource, string> = {
+  manual: '手动指定',
+  builtin: '应用内置',
+  alongside: '随 Everything 安装',
+  'program-files': '安装目录',
+  path: 'PATH',
+  scan: '本机扫描'
+}
+
+/** 来源文案：自动绑定的那条一律显示「本机检测」，比「手动指定」诚实。 */
+function esSourceLabel(status: EsStatus): string {
+  if (status.detected) return '本机检测'
+  return status.source ? ES_SOURCE_LABEL[status.source] : ''
+}
+
+/** 文件搜索的防抖窗口。es.exe 单次取数实测 ~130ms，250ms 足够把连打收敛成一次。 */
+const FILE_SEARCH_DEBOUNCE_MS = 250
+
+/** 取数失败 → 给用户看的话。不甩 exit code 这种内部细节，但说清「下一步能做什么」。 */
+function fileSearchFailureText(result: EsSearchResult): string {
+  switch (result.failure) {
+    case 'not-running':
+      return 'Everything 没有在运行，先启动它再搜'
+    case 'spawn-failed':
+      return 'es.exe 启动失败，可能路径已失效（设置里可以重新检测）'
+    case 'bad-output':
+      return 'es.exe 的输出无法解析，换个关键词试试'
+    default:
+      return `搜索失败：${result.error ?? '未知原因'}`
+  }
+}
+
+/** 字节数 → 人类可读。目录没有大小，显示空串。 */
+function formatHitSize(size: number | null): string {
+  if (size === null || !Number.isFinite(size) || size < 0) return ''
+  if (size < 1024) return `${Math.round(size)} B`
+
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = size / 1024
+  let index = 0
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024
+    index += 1
+  }
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[index]}`
+}
+
+/** epoch 毫秒 → `YYYY-MM-DD HH:mm`。 */
+function formatHitTime(mtime: number | null): string {
+  if (mtime === null || !Number.isFinite(mtime)) return ''
+  const date = new Date(mtime)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (value: number): string => String(value).padStart(2, '0')
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    ` ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  )
+}
+
 const EVERYTHING_SOURCE_LABEL: Record<EverythingExeSource, string> = {
   manual: '手动指定',
   registry: '注册表',
@@ -85,6 +177,13 @@ function QuickLauncher(): React.JSX.Element {
   const [fileSearchError, setFileSearchError] = useState('')
   const [detecting, setDetecting] = useState(false)
 
+  // ── S-155：文件结果由我们自己渲染（es.exe 取数）──
+  const [esStatus, setEsStatus] = useState<EsStatus | null>(null)
+  const [hits, setHits] = useState<FileHit[]>([])
+  const [searching, setSearching] = useState(false)
+  /** 回填顺序令牌：慢的那次回来时若已不是最新，直接丢弃（否则旧结果会盖掉新结果）。 */
+  const searchTokenRef = useRef(0)
+
   // 「重新检测」：轻探重跑一遍（含探测缓存失效）。
   //
   // 不能走 `launcher:get-everything-status` —— 它吃 30s 探测缓存，用户点了「重新检测」却拿到
@@ -96,6 +195,12 @@ function QuickLauncher(): React.JSX.Element {
       null
     )
     setEverythingStatus(status)
+  }, [])
+
+  // es.exe 版「重新检测」（S-155）：同上，绕开 30s 探测缓存，用户点了就拿到当下结论。
+  const refreshEsStatus = useCallback(async (): Promise<void> => {
+    const status = await window.api.invoke<EsStatus>('launcher:refresh-es-status', null)
+    setEsStatus(status)
   }, [])
 
   // 「本机检测」：重探（含扫盘）→ 命中就直接绑定，用户什么都不用选。扫盘是秒级的，所以要有
@@ -118,9 +223,12 @@ function QuickLauncher(): React.JSX.Element {
       setFileSearchError('')
       setSelectedIndex(0)
       void window.api.invoke('launcher:update-config', { searchMode: next })
-      if (next === 'file') void refreshEverythingStatus()
+      if (next === 'file') {
+        void refreshEverythingStatus()
+        void refreshEsStatus()
+      }
     },
-    [mode, refreshEverythingStatus]
+    [mode, refreshEverythingStatus, refreshEsStatus]
   )
 
   const doSearch = useCallback(async (q: string): Promise<void> => {
@@ -158,9 +266,12 @@ function QuickLauncher(): React.JSX.Element {
     void window.api.invoke<{ searchMode?: SearchMode }>('launcher:get-config', null).then((config) => {
       const saved: SearchMode = config.searchMode === 'file' ? 'file' : 'app'
       setMode(saved)
-      if (saved === 'file') void refreshEverythingStatus()
+      if (saved === 'file') {
+        void refreshEverythingStatus()
+        void refreshEsStatus()
+      }
     })
-  }, [focusInputUntilActive, loadRecent, refreshEverythingStatus])
+  }, [focusInputUntilActive, loadRecent, refreshEverythingStatus, refreshEsStatus])
 
   useEffect(() => {
     if (view !== 'list') return
@@ -203,7 +314,10 @@ function QuickLauncher(): React.JSX.Element {
       void loadRecent()
       // 面板每次唤起都要面对「用户刚装完 / 刚删掉 Everything」的现实，但探测本身有 TTL，
       // 在文件模式下才顺手问一次。
-      if (mode === 'file') void refreshEverythingStatus()
+      if (mode === 'file') {
+        void refreshEverythingStatus()
+        void refreshEsStatus()
+      }
       // Retry focus until it lands — covers the settings→list view transition
       // and the window-not-yet-activated race
       focusInputUntilActive()
@@ -211,11 +325,70 @@ function QuickLauncher(): React.JSX.Element {
     return cleanup
   }, [mode, loadRecent, refreshEverythingStatus, focusInputUntilActive])
 
-  const submitFileSearch = useCallback(async (): Promise<void> => {
+  /**
+   * 文件模式的取数（S-155）：**输入即搜**，防抖 250ms。
+   *
+   * 与 S-151 的「回车才投出去」不同 —— 现在结果是我们自己渲染的，没有「投出去」这个动作，
+   * 回车改成「打开选中的那一条」。es.exe 单次 ~130ms，250ms 的坎足够把连打收敛成一次。
+   */
+  const esReady = esStatus?.ready === true
+
+  useEffect(() => {
+    if (mode !== 'file') return
+    const trimmed = query.trim()
+    if (!trimmed) {
+      setHits([])
+      setFileSearchError('')
+      setSearching(false)
+      return
+    }
+    // es.exe 没就绪时不取数 —— 此时界面走「投递式」降级（见 FileSearchPanel）。
+    if (!esReady) return
+
+    const timer = setTimeout(() => {
+      const token = ++searchTokenRef.current
+      setSearching(true)
+      void window.api
+        .invoke<EsSearchResult>('launcher:search-files', trimmed)
+        .then((result) => {
+          // 过期回填直接丢：慢的那次回来时，新关键词的结果可能已经在屏幕上了。
+          if (token !== searchTokenRef.current) return
+          if (result.ok) {
+            setHits(result.hits)
+            setFileSearchError('')
+            setSelectedIndex(0)
+          } else {
+            setHits([])
+            setFileSearchError(fileSearchFailureText(result))
+          }
+        })
+        .finally(() => {
+          if (token === searchTokenRef.current) setSearching(false)
+        })
+    }, FILE_SEARCH_DEBOUNCE_MS)
+
+    return () => clearTimeout(timer)
+  }, [query, mode, esReady])
+
+  /** 点结果项：`reveal` 时定位到所在目录，否则用系统默认程序打开。成功了就收起面板。 */
+  const openHit = useCallback(async (hit: FileHit, reveal: boolean): Promise<void> => {
+    const result = await window.api.invoke<{ success: boolean; error?: string }>(
+      'launcher:open-hit',
+      { path: hit.fullPath, reveal }
+    )
+    if (result.success) {
+      void window.api.invoke('launcher:hide', null)
+    } else {
+      setFileSearchError(`打开失败：${result.error ?? '未知原因'}`)
+    }
+  }, [])
+
+  /** 降级档（S-155 §七 裁定②）：拿不到 es.exe，就把关键词交给 Everything 自己的窗口。 */
+  const openInEverything = useCallback(async (): Promise<void> => {
     if (!query.trim()) return
     setFileSearchError('')
     const result = await window.api.invoke<{ success: boolean; error?: string }>(
-      'launcher:search-files',
+      'launcher:open-in-everything',
       query
     )
     // 成功时主进程已经把面板收起来了；只有失败才留在屏幕上说明原因。
@@ -236,9 +409,22 @@ function QuickLauncher(): React.JSX.Element {
       return
     }
     if (mode === 'file') {
-      if (e.key === 'Enter') {
+      if (e.key === 'ArrowDown') {
         e.preventDefault()
-        void submitFileSearch()
+        setSelectedIndex((prev) => Math.min(prev + 1, hits.length - 1))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex((prev) => Math.max(prev - 1, 0))
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        const hit = hits[selectedIndex]
+        if (hit) {
+          // Ctrl/Cmd + Enter 打开所在目录（列表快捷键的通用约定）。
+          void openHit(hit, e.ctrlKey || e.metaKey)
+        } else if (!esReady) {
+          // 没有结果列表（es 未就绪）时，回车是「交给 Everything 去搜」。
+          void openInEverything()
+        }
       } else if (e.key === 'Escape') {
         if (query) {
           setQuery('')
@@ -330,12 +516,19 @@ function QuickLauncher(): React.JSX.Element {
 
       {mode === 'file' ? (
         <FileSearchPanel
-          status={everythingStatus}
+          everythingStatus={everythingStatus}
+          esStatus={esStatus}
+          hits={hits}
           query={query}
           error={fileSearchError}
+          searching={searching}
+          selectedIndex={selectedIndex}
+          onSelect={setSelectedIndex}
+          onOpenHit={(hit, reveal) => void openHit(hit, reveal)}
+          onOpenInEverything={() => void openInEverything()}
           detecting={detecting}
-          onRefresh={() => void refreshEverythingStatus()}
-          onDetect={() => void detectEverything()}
+          onRefreshEverything={() => void refreshEverythingStatus()}
+          onDetectEverything={() => void detectEverything()}
         />
       ) : hasQuery ? (
         <>
@@ -418,29 +611,48 @@ function QuickLauncher(): React.JSX.Element {
   )
 }
 
-// ── File search panel (S-151) ──
+// ── 文件搜索面板（S-155）──
 //
-// 我们**不渲染结果**：命中由 Everything 自己的窗口呈现。这里只有三种状态 ——
-// 未探到（下载 / 本机检测）、就绪（提示回车把关键词投出去）、失败（说清原因）。
+// 三档降级（S-155 §七 裁定②）：
+//   es.exe 就绪                 → 我们自己渲染结果列表
+//   Everything 就绪但 es 不就绪 → 退回投递式（回车交给 Everything 自己的窗口）
+//   两者都没有                  → 引导页（下载 Everything / 本机检测）
 
 function FileSearchPanel({
-  status,
+  everythingStatus,
+  esStatus,
+  hits,
   query,
   error,
+  searching,
+  selectedIndex,
+  onSelect,
+  onOpenHit,
+  onOpenInEverything,
   detecting,
-  onRefresh,
-  onDetect
+  onRefreshEverything,
+  onDetectEverything
 }: {
-  status: EverythingStatus | null
+  everythingStatus: EverythingStatus | null
+  esStatus: EsStatus | null
+  hits: FileHit[]
   query: string
   error: string
+  searching: boolean
+  selectedIndex: number
+  onSelect: (index: number) => void
+  onOpenHit: (hit: FileHit, reveal: boolean) => void
+  onOpenInEverything: () => void
   detecting: boolean
-  onRefresh: () => void
-  onDetect: () => void
+  onRefreshEverything: () => void
+  onDetectEverything: () => void
 }): React.JSX.Element {
   const trimmed = query.trim()
+  const esReady = esStatus?.ready === true
+  const everythingReady = everythingStatus?.ready === true
+  const esLabel = esStatus ? esSourceLabel(esStatus) : ''
 
-  if (!status) {
+  if (!everythingStatus) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
         正在检测 Everything...
@@ -448,7 +660,7 @@ function FileSearchPanel({
     )
   }
 
-  if (!status.supported) {
+  if (!everythingStatus.supported) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
         <AlertCircle className="size-5 text-muted-foreground" />
@@ -457,66 +669,140 @@ function FileSearchPanel({
     )
   }
 
-  if (!status.ready) {
+  // ① es.exe 就绪：结果列表（这是我们自己渲染的那一档）。
+  if (esReady) {
+    return (
+      <>
+        <div className="flex-1 overflow-y-auto py-1">
+          {searching && hits.length === 0 ? (
+            <div className="flex h-full items-center justify-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              搜索中...
+            </div>
+          ) : hits.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1.5 px-6 text-center text-xs text-muted-foreground">
+              <span>{trimmed ? '没有匹配的文件' : '输入关键词开始搜索'}</span>
+              {error && <span className="text-destructive">{error}</span>}
+            </div>
+          ) : (
+            hits.map((hit, index) => (
+              <div
+                key={hit.fullPath}
+                onClick={() => onOpenHit(hit, false)}
+                onMouseEnter={() => onSelect(index)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  onOpenHit(hit, true)
+                }}
+                title={hit.fullPath}
+                className={
+                  'flex cursor-pointer items-center gap-3 px-4 py-2 transition-colors ' +
+                  (index === selectedIndex
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:bg-accent/50')
+                }
+              >
+                <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                  {hit.isDir ? (
+                    <Folder className="size-4 text-muted-foreground" />
+                  ) : (
+                    <FileText className="size-4 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-foreground">{hit.name}</p>
+                  <p className="truncate text-[10px] text-muted-foreground">{hit.dir}</p>
+                </div>
+                <div className="shrink-0 text-right text-[10px] leading-tight text-muted-foreground">
+                  {hit.size !== null && <p>{formatHitSize(hit.size)}</p>}
+                  {hit.mtime !== null && <p>{formatHitTime(hit.mtime)}</p>}
+                </div>
+                {index === selectedIndex && (
+                  <CornerDownLeft className="size-3 shrink-0 text-muted-foreground" />
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+          <span>
+            {hits.length > 0 ? `共 ${hits.length} 条 · ` : ''}
+            {'\u2191\u2193'} 选择 · Enter 打开 · Ctrl+Enter 定位 · Tab 切换模式
+          </span>
+          <span className="truncate" title={esStatus?.exePath ?? ''}>
+            {esLabel ? `${esLabel} · ` : ''}
+            {esStatus?.exePath}
+          </span>
+        </div>
+      </>
+    )
+  }
+
+  // ② Everything 在、内置 es.exe 不可用（被安全软件清理 / 版本失效）：退回投递式。
+  if (everythingReady) {
     return (
       <div className="flex-1 overflow-y-auto px-4 py-3">
         <div className="rounded-xl border border-border bg-muted/30 p-3">
-          <p className="text-xs font-medium text-foreground">文件搜索需要 Everything</p>
+          <p className="text-xs font-medium text-foreground">文件搜索</p>
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-            我们不做自己的文件索引 —— 装了 Everything 就直接把关键词交给它，搜索由它完成。
+            内置的搜索组件没起来，已退回用 Everything 自己的窗口搜 —— 回车把「{trimmed || '…'}」
+            交过去。
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
-              onClick={onDetect}
-              disabled={detecting}
-              className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11px] text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+              onClick={onOpenInEverything}
+              className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11px] text-primary-foreground transition-opacity hover:opacity-90"
             >
-              <Search className="size-3" />
-              {detecting ? '正在本机检测...' : '本机检测'}
-            </button>
-            <button
-              onClick={() => void window.api.invoke('launcher:open-everything-download', null)}
-              className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <Download className="size-3" />
-              下载并安装
-            </button>
-            <button
-              onClick={onRefresh}
-              className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <RefreshCw className="size-3" />
-              重新检测
+              <CornerDownLeft className="size-3" />
+              用 Everything 搜索
             </button>
           </div>
           <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-            「本机检测」会扫一遍本机的注册表、快捷方式、正在运行的进程和常见目录 —— 已经装了的话
-            直接就绑上，不需要你去找路径。
+            这多半是杀毒软件把内置组件清掉了。重启一下应用通常能恢复。
           </p>
+          {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
         </div>
       </div>
     )
   }
 
+  // ③ 两者都没有：引导页。
   return (
-    <div className="flex flex-1 flex-col justify-center gap-3 px-6">
-      <div className="flex items-center justify-center gap-1.5 text-xs text-foreground">
-        <CornerDownLeft className="size-3.5 text-muted-foreground" />
-        <span>按回车用 Everything 搜索「{trimmed || '…'}」</span>
-      </div>
-      <p className="text-center text-[10px] text-muted-foreground">
-        结果会显示在 Everything 窗口中
-      </p>
-      {error && <p className="text-center text-[10px] text-destructive">{error}</p>}
-      <p className="truncate text-center text-[10px] text-muted-foreground" title={status.exePath ?? ''}>
-        {everythingSourceLabel(status) ? `${everythingSourceLabel(status)} · ` : ''}
-        {status.exePath}
-      </p>
-      <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
-        <Check className="size-3" />
-        <button onClick={onRefresh} className="underline-offset-2 hover:underline">
-          重新检测
-        </button>
+    <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="rounded-xl border border-border bg-muted/30 p-3">
+        <p className="text-xs font-medium text-foreground">文件搜索需要 Everything</p>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+          全盘文件名秒级出结果，支持通配符、正则，也能按大小和时间排序。
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            onClick={onDetectEverything}
+            disabled={detecting}
+            className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-[11px] text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            <Search className="size-3" />
+            {detecting ? '正在本机检测...' : '本机检测'}
+          </button>
+          <button
+            onClick={() => void window.api.invoke('launcher:open-everything-download', null)}
+            className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Download className="size-3" />
+            下载并安装
+          </button>
+          <button
+            onClick={onRefreshEverything}
+            className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <RefreshCw className="size-3" />
+            重新检测
+          </button>
+        </div>
+        <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+          装过 Everything？点「本机检测」会自动认出来 —— 不需要你去找路径。
+        </p>
+        {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
       </div>
     </div>
   )
@@ -528,7 +814,9 @@ function FileSearchPanel({
 function LauncherSettings({ onBack }: { onBack: () => void }): React.JSX.Element {
   const [customApps, setCustomApps] = useState<CustomApp[]>([])
   const [everythingStatus, setEverythingStatus] = useState<EverythingStatus | null>(null)
+  const [esStatus, setEsStatus] = useState<EsStatus | null>(null)
   const [pickError, setPickError] = useState('')
+  const [esError, setEsError] = useState('')
   const [detecting, setDetecting] = useState(false)
 
   useEffect(() => {
@@ -537,6 +825,9 @@ function LauncherSettings({ onBack }: { onBack: () => void }): React.JSX.Element
     })
     void window.api.invoke<EverythingStatus>('launcher:get-everything-status', null).then((status) => {
       setEverythingStatus(status)
+    })
+    void window.api.invoke<EsStatus>('launcher:get-es-status', null).then((status) => {
+      setEsStatus(status)
     })
   }, [])
 
@@ -582,6 +873,26 @@ function LauncherSettings({ onBack }: { onBack: () => void }): React.JSX.Element
     } finally {
       setDetecting(false)
     }
+  }, [])
+
+  const handlePickEs = useCallback(async (): Promise<void> => {
+    setEsError('')
+    const result = await window.api.invoke<{
+      canceled: boolean
+      status: EsStatus
+      error?: string
+    }>('launcher:set-es-exe', null)
+    if (result.canceled) return
+    setEsStatus(result.status)
+    if (result.error === 'not-es-exe') {
+      setEsError('请选择 es.exe（Everything 官方命令行版）')
+    }
+  }, [])
+
+  const handleClearEs = useCallback(async (): Promise<void> => {
+    setEsError('')
+    const status = await window.api.invoke<EsStatus>('launcher:clear-es-exe', null)
+    setEsStatus(status)
   }, [])
 
   return (
@@ -647,7 +958,7 @@ function LauncherSettings({ onBack }: { onBack: () => void }): React.JSX.Element
               <div>
                 <label className="block text-sm text-foreground">文件搜索</label>
                 <p className="text-[11px] text-muted-foreground">
-                  由 Everything 完成搜索，我们不建自己的索引
+                  复用本机 Everything 的索引，全盘文件名秒级出结果
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -723,6 +1034,63 @@ function LauncherSettings({ onBack }: { onBack: () => void }): React.JSX.Element
             )}
 
             {pickError && <p className="mt-1.5 text-[11px] text-destructive">{pickError}</p>}
+
+            {/* 结果列表（S-155）：用官方命令行版 es.exe 取数，结果由我们自己渲染 */}
+            <div className="mt-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+              <div className="flex items-center gap-2">
+                {esStatus?.ready ? (
+                  <Check className="size-3.5 shrink-0 text-primary" />
+                ) : (
+                  <AlertCircle className="size-3.5 shrink-0 text-muted-foreground" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-foreground">
+                    {esStatus === null
+                      ? '正在检测...'
+                      : esStatus.ready
+                        ? '结果列表已启用'
+                        : '结果列表未启用'}
+                    {esStatus && esStatus.ready && esSourceLabel(esStatus) && (
+                      <span className="ml-1.5 text-[10px] text-muted-foreground">
+                        （{esSourceLabel(esStatus)}）
+                      </span>
+                    )}
+                  </p>
+                  {esStatus && esStatus.ready && (
+                    <p
+                      className="truncate text-[10px] text-muted-foreground"
+                      title={esStatus.exePath ?? ''}
+                    >
+                      {esStatus.exePath}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => void handlePickEs()}
+                    className="flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Plus className="size-2.5" />
+                    指定路径
+                  </button>
+                  {esStatus?.source === 'manual' && (
+                    <button
+                      onClick={() => void handleClearEs()}
+                      className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive"
+                      title="清除手动指定的路径"
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                {esStatus?.ready
+                  ? '搜索结果直接在面板里列出来，不再跳到 Everything 自己的窗口。Everything 没开的话，我们会替你启动它。'
+                  : '内置的搜索组件没起来（多半被安全软件清理），重启应用通常能恢复，也可以手动指定一份 es.exe 顶掉它。'}
+              </p>
+              {esError && <p className="mt-1 text-[10px] text-destructive">{esError}</p>}
+            </div>
           </div>
 
           {/* Hint */}

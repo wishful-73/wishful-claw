@@ -110,6 +110,12 @@ extraResources:
     to: icon-256.png
   - from: resources/icon.ico
     to: icon.ico
+  # 内置 Everything 命令行工具 es.exe（262KB）。Everything 本体不内置，
+  # 用户未安装时由应用引导下载并自动拉起，见 S-155。
+  - from: resources/es
+    to: es
+    filter:
+      - '**/*'
 
 asarUnpack:
   - resources/**

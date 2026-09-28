@@ -62,6 +62,7 @@
     "test:updater-error-format": "esbuild tests/updater-error-format/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-error-format/out/program.cjs && node tests/updater-error-format/out/program.cjs",
     "test:scroll-collapse-gate": "esbuild tests/scroll-collapse-gate/program.ts --bundle --platform=node --format=cjs --outfile=tests/scroll-collapse-gate/out/program.cjs && node tests/scroll-collapse-gate/out/program.cjs",
     "test:generated-image-dir": "esbuild tests/generated-image-dir/program.ts --bundle --platform=node --format=cjs --outfile=tests/generated-image-dir/out/program.cjs && node tests/generated-image-dir/out/program.cjs",
+    "test:terminal-tab-lifecycle": "esbuild tests/terminal-tab-lifecycle/program.ts --bundle --platform=node --format=cjs --outfile=tests/terminal-tab-lifecycle/out/program.cjs && node tests/terminal-tab-lifecycle/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

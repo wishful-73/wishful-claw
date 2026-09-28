@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Quick Launcher — configurable global shortcut launcher (utools-style).
  *
  * Scans Windows Start Menu .lnk files, provides fuzzy search,
@@ -9,7 +9,7 @@
  */
 
 import { app, BrowserWindow, shell, dialog } from 'electron'
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { join } from 'path'
 import * as fs from 'fs'
 import { pinyin } from 'pinyin-pro'
@@ -20,6 +20,24 @@ import { safeSendMessagePackToWindow } from './window-ipc'
 import { WINDOWS_SETTINGS } from './launcher-system-settings'
 import { extractPeIcon } from './pe-icon-extractor'
 import { resolveDataDir } from './lib/data-dir'
+import {
+  EVERYTHING_DOWNLOAD_URL,
+  EVERYTHING_EXE_BASENAMES,
+  EVERYTHING_SCAN_MAX_DEPTH,
+  buildEverythingSearchArgs,
+  extractEverythingRegistryCandidates,
+  getKnownInstallCandidates,
+  isEverythingExecutableName,
+  isEverythingVersionInfoHit,
+  parseEverythingServiceImagePath,
+  parseExecutablePathLines,
+  parseRegistryUninstallBlocks,
+  pickEverythingExePath,
+  sanitizeEverythingCandidates,
+  shouldScanIntoDirectory,
+  type EverythingExeMatch,
+  type EverythingExeSource
+} from './lib/everything-search'
 
 let launcherWindow: BrowserWindow | null = null
 let launcherBlurHideTimer: NodeJS.Timeout | null = null
@@ -72,7 +90,21 @@ interface LauncherConfig {
   accelerators: string[]
   customApps: CustomApp[]
   launchHistory: CustomApp[]
+  /** S-151：搜索模式。`app` 走开始菜单扫描，`file` 交给 Everything 接管。 */
+  searchMode: LauncherSearchMode
+  /** S-151：用户手动指定的 Everything.exe。空串 = 未指定，走自动探测。 */
+  everythingExePath: string
+  /**
+   * S-151 二轮：`everythingExePath` 是「本机检测」自动绑定的（true）还是用户手选的（false）。
+   *
+   * 两者占同一个槽位（用户手选永远最高优先级），只在设置页文案上区分 —— 不然自动绑上的路径
+   * 会被标成「手动指定」，用户看着莫名其妙。
+   */
+  everythingExePathAuto: boolean
 }
+
+/** S-151：launcher 面板的两种搜索模式。 */
+type LauncherSearchMode = 'app' | 'file'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const UWP_CACHE_TTL_MS = 24 * 60 * 60 * 1000
@@ -88,7 +120,10 @@ const DEFAULT_CONFIG: LauncherConfig = {
   enabled: true,
   accelerators: ['Alt+Space'],
   customApps: [],
-  launchHistory: []
+  launchHistory: [],
+  searchMode: 'app',
+  everythingExePath: '',
+  everythingExePathAuto: false
 }
 
 // ── Config persistence ──
@@ -110,7 +145,13 @@ function loadConfig(): LauncherConfig {
         enabled: parsed.enabled ?? DEFAULT_CONFIG.enabled,
         accelerators: accelerators.length > 0 ? accelerators : DEFAULT_CONFIG.accelerators,
         customApps: Array.isArray(parsed.customApps) ? parsed.customApps : [],
-        launchHistory: Array.isArray(parsed.launchHistory) ? parsed.launchHistory : []
+        launchHistory: Array.isArray(parsed.launchHistory) ? parsed.launchHistory : [],
+        // Anything other than an explicit 'file' falls back to 'app' — a hand-edited
+        // config must never leave the launcher in a mode it cannot render.
+        searchMode: parsed.searchMode === 'file' ? 'file' : 'app',
+        everythingExePath:
+          typeof parsed.everythingExePath === 'string' ? parsed.everythingExePath : DEFAULT_CONFIG.everythingExePath,
+        everythingExePathAuto: parsed.everythingExePathAuto === true
       }
     }
   } catch {
@@ -737,6 +778,389 @@ async function searchApps(query: string): Promise<AppShortcut[]> {
   return Promise.all(scored.slice(0, 50).map((entry) => withIcon(entry.item)))
 }
 
+// ── Everything 文件搜索（S-151）──
+//
+// 口径（老大 2026-09-28）：「判断 Everything 装了没，如果不存在引导用户去下载，如果存在，把搜索的值
+// 发给 Everything 并且启动它。剩下的就跟我们没关系了，带参数启动」。
+//
+// ⇒ 我们**不接搜索结果**，只把关键词投给 Everything，由它自己的窗口显示。探测优先级、参数形态、
+//   「不碰第三方私有副本」的理由都在 `lib/everything-search.ts` 顶部写死了。
+
+interface EverythingStatus {
+  /** 平台是否支持（本需求只做 Windows）。 */
+  supported: boolean
+  /** 探到了可用的 Everything.exe。 */
+  ready: boolean
+  exePath: string | null
+  source: EverythingExeSource | null
+  /** exePath 是「本机检测」自动绑定的 —— 设置页文案要跟「手动指定」分开，不然用户看着莫名其妙。 */
+  detected: boolean
+}
+
+const EVERYTHING_NOT_READY: EverythingStatus = {
+  supported: true,
+  ready: false,
+  exePath: null,
+  source: null,
+  detected: false
+}
+
+/** 轻探的缓存窗口。设置页反复切换不该每次都去查注册表。 */
+const EVERYTHING_PROBE_TTL_MS = 30 * 1000
+/** 重探（含扫盘）的缓存窗口：扫盘贵，绑上了别反复扫。 */
+const EVERYTHING_DEEP_PROBE_TTL_MS = 5 * 60 * 1000
+/** 扫盘的全局硬超时：到点就拿已找到的（通常是没有），不拖住面板。 */
+const EVERYTHING_SCAN_TIMEOUT_MS = 2000
+/** 快捷方式目录递归深度（`Start Menu\Programs\<厂商>\<应用>.lnk` 是 2 层）。 */
+const EVERYTHING_SHORTCUT_MAX_DEPTH = 3
+/** 等子进程给个说法的时间：超时按成功算（Everything 常驻实例收下参数后自己不会退出）。 */
+const EVERYTHING_SPAWN_CONFIRM_MS = 1000
+
+const EVERYTHING_UNINSTALL_KEYS = [
+  'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+  'HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall'
+]
+
+/** 服务模式（`Everything.exe -svc`）注册的服务名，1.4 / 1.5 都是 `Everything`。 */
+const EVERYTHING_SERVICE_NAME = 'Everything'
+
+let everythingProbeCache: { at: number; status: EverythingStatus; deep: boolean } | null = null
+
+function invalidateEverythingProbe(): void {
+  everythingProbeCache = null
+}
+
+/**
+ * 跑一条只读探测命令，失败一律当「没有输出」。
+ *
+ * `reg query` 在键不存在时返回非 0，那是正常情况而非错误 —— 所以这里不看退出码，只要 stdout。
+ */
+function runProbeCommand(file: string, args: string[], timeout = 5000): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        file,
+        args,
+        { windowsHide: true, timeout, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
+        (error, stdout) => {
+          resolve(error && !stdout ? '' : (stdout ?? ''))
+        }
+      )
+    } catch {
+      resolve('')
+    }
+  })
+}
+
+/** 拉一次 Windows PowerShell（`-Command` 里的引号是命令行字面量，不走 shell，无需再转义）。 */
+function runPowerShell(command: string, timeout = 5000): Promise<string> {
+  return runProbeCommand('powershell', ['-NoProfile', '-NonInteractive', '-Command', command], timeout)
+}
+
+/**
+ * 注册表卸载项里的 Everything。
+ *
+ * 只认三项官方卸载键，**不去翻第三方私有副本**（uTools / WPS 内置的那几份，理由见模块头注释）。
+ */
+async function collectRegistryCandidates(): Promise<string[]> {
+  const found: string[] = []
+  for (const key of EVERYTHING_UNINSTALL_KEYS) {
+    const stdout = await runProbeCommand('reg', ['query', key, '/s'])
+    if (!stdout) continue
+    for (const candidate of extractEverythingRegistryCandidates(parseRegistryUninstallBlocks(stdout))) {
+      if (!found.includes(candidate)) found.push(candidate)
+    }
+  }
+  return found
+}
+
+async function collectPathCandidates(): Promise<string[]> {
+  const found: string[] = []
+  // `where` 一次只按一个名字找，1.4 与 1.5 的两种命名都要问。
+  for (const name of EVERYTHING_EXE_BASENAMES) {
+    const stdout = await runProbeCommand('where', [name], 3000)
+    for (const candidate of parseExecutablePathLines(stdout)) {
+      if (!found.includes(candidate)) found.push(candidate)
+    }
+  }
+  return found
+}
+
+/** 服务模式（`Everything.exe -svc`）的 ImagePath 就是本体路径。 */
+async function collectServiceCandidates(): Promise<string[]> {
+  const stdout = await runProbeCommand('sc', ['qc', EVERYTHING_SERVICE_NAME], 3000)
+  return sanitizeEverythingCandidates([parseEverythingServiceImagePath(stdout)])
+}
+
+/**
+ * 正在运行的 Everything 进程路径 —— 最准的一档（用户此刻就在用它）。
+ *
+ * 用 CIM 而不是 `Get-Process -Name 'Everything*'`：后者会把服务宿主 `EverythingService.exe` 也算
+ * 进来，而 CIM 能按两个精确进程名过滤。实测含拉起 PowerShell 约 0.4s，所以只在便宜的档全空时才跑。
+ */
+async function collectProcessCandidates(): Promise<string[]> {
+  const stdout = await runPowerShell(
+    "Get-CimInstance Win32_Process -Filter \"Name='Everything.exe' OR Name='Everything64.exe'\" " +
+      '| Select-Object -ExpandProperty ExecutablePath'
+  )
+  return sanitizeEverythingCandidates(parseExecutablePathLines(stdout))
+}
+
+/** 递归收 `.lnk` 文件（深度受限）。开始菜单目录上千个文件，readdirSync 足够快。 */
+function listShortcutFiles(dir: string, maxDepth: number, depth = 0): string[] {
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  const files: string[] = []
+  const subdirs: string[] = []
+  for (const entry of entries) {
+    if (entry.isFile() && entry.name.toLowerCase().endsWith('.lnk')) files.push(join(dir, entry.name))
+    else if (entry.isDirectory()) subdirs.push(join(dir, entry.name))
+  }
+  if (depth < maxDepth) {
+    for (const sub of subdirs) files.push(...listShortcutFiles(sub, maxDepth, depth + 1))
+  }
+  return files
+}
+
+/**
+ * 开始菜单 / 任务栏固定 / 桌面的 `.lnk` 指向哪 —— 便携版用户跑不掉这一档。
+ *
+ * 用 Electron 原生的 `shell.readShortcutLink()` 解析，比自己去解 Shell Link 二进制靠谱。
+ */
+function collectShortcutCandidates(): string[] {
+  const appData = process.env['APPDATA'] ?? ''
+  const programData = process.env['ProgramData'] ?? ''
+  const userProfile = process.env['USERPROFILE'] ?? ''
+  const publicDir = process.env['PUBLIC'] ?? ''
+
+  const dirs = [
+    appData ? join(appData, 'Microsoft', 'Windows', 'Start Menu') : '',
+    programData ? join(programData, 'Microsoft', 'Windows', 'Start Menu') : '',
+    appData
+      ? join(appData, 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar')
+      : '',
+    userProfile ? join(userProfile, 'Desktop') : '',
+    publicDir ? join(publicDir, 'Desktop') : ''
+  ].filter((dir) => dir.length > 0)
+
+  const targets: string[] = []
+  for (const dir of dirs) {
+    for (const lnk of listShortcutFiles(dir, EVERYTHING_SHORTCUT_MAX_DEPTH)) {
+      try {
+        const target = shell.readShortcutLink(lnk).target
+        if (target) targets.push(target)
+      } catch {
+        // 坏快捷方式 / 指向 MSI 广告入口 —— 跳过，不该让一条坏 lnk 打断整轮探测。
+      }
+    }
+  }
+  return sanitizeEverythingCandidates(targets)
+}
+
+/** 固定盘（`DriveType=3`）。可移动盘不扫 —— 老大 2026-09-28 定的。 */
+async function listFixedDriveRoots(): Promise<string[]> {
+  const stdout = await runPowerShell(
+    'Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Select-Object -ExpandProperty DeviceID'
+  )
+  return (stdout ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^[A-Za-z]:$/.test(line))
+    .map((root) => `${root}\\`)
+}
+
+/**
+ * 盘根往下扫 `EVERYTHING_SCAN_MAX_DEPTH` 层，找到第一个就收手。
+ *
+ * 全局超时 `timeoutMs`：到点返回已找到的（通常是空），扫不完不拖住面板。实测根+两层
+ * C: 0.84s / D: 0.09s，这个量级才敢让用户点。
+ */
+async function collectScanCandidates(timeoutMs: number): Promise<string[]> {
+  const roots = await listFixedDriveRoots()
+  const deadline = Date.now() + timeoutMs
+  const found: string[] = []
+
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (found.length > 0 || Date.now() > deadline) return
+
+    let entries: fs.Dirent[]
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (entry.isFile() && isEverythingExecutableName(entry.name)) {
+        found.push(join(dir, entry.name))
+        return
+      }
+    }
+    if (depth >= EVERYTHING_SCAN_MAX_DEPTH) return
+
+    for (const entry of entries) {
+      if (found.length > 0 || Date.now() > deadline) return
+      if (!entry.isDirectory() || !shouldScanIntoDirectory(entry.name)) continue
+      await walk(join(dir, entry.name), depth + 1)
+    }
+  }
+
+  for (const root of roots) {
+    if (found.length > 0 || Date.now() > deadline) break
+    await walk(root, 0)
+  }
+  return sanitizeEverythingCandidates(found)
+}
+
+/**
+ * 「本机检测」搜出来的候选要过一道检测：文件的版本信息得说自己是 Everything。
+ *
+ * **只对猜出来的档（快捷方式 / 扫盘）做** —— 手动指定、注册表、服务、常见安装位都是强证据，
+ * 再拦一道只是白等 0.4s。**读不到版本信息时放行**（fail-open）：老版本 / 精简 exe 可能不带
+ * `ProductName`，不能因为查不出来就把真货丢掉。
+ */
+async function verifyDiscoveredCandidates(paths: string[]): Promise<string[]> {
+  const existing = (paths ?? []).filter((path) => fs.existsSync(path))
+  if (existing.length === 0) return []
+
+  const command = existing
+    .map((path) => {
+      const escaped = path.replace(/'/g, "''")
+      return (
+        `$info = (Get-Item -LiteralPath '${escaped}' -ErrorAction SilentlyContinue).VersionInfo; ` +
+        `if ($info) { '${escaped}|' + $info.ProductName + '|' + $info.FileDescription }`
+      )
+    })
+    .join('; ')
+
+  const stdout = await runPowerShell(command)
+  const verdicts = new Map<string, string>()
+  for (const rawLine of (stdout ?? '').split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line) continue
+    const separator = line.indexOf('|')
+    if (separator <= 0) continue
+    verdicts.set(line.slice(0, separator), line.slice(separator + 1))
+  }
+
+  return existing.filter((path) => isEverythingVersionInfoHit(verdicts.get(path) ?? ''))
+}
+
+/**
+ * 分级探测。
+ *
+ * 档位按**代价**分三批，便宜的先跑，命中就早返回 —— 挂载面板的常见路径（装在本机标准位置）
+ * 不该为「扫盘 / 进程查询」白等一秒：
+ *   ① 手动指定 → ② 注册表 / 常见安装位 / PATH → ③ 服务 / 正在运行的进程
+ *   → ④ 快捷方式（要过版本检测）→ ⑤ 扫盘（**只有重探才跑**，同样过版本检测）
+ */
+async function probeEverything(deep: boolean): Promise<EverythingStatus> {
+  if (process.platform !== 'win32') return { ...EVERYTHING_NOT_READY, supported: false }
+
+  const toStatus = (match: EverythingExeMatch | null): EverythingStatus => ({
+    supported: true,
+    ready: match !== null,
+    exePath: match?.path ?? null,
+    source: match?.source ?? null,
+    detected: match?.source === 'manual' && config.everythingExePathAuto
+  })
+  const exists = (candidate: string): boolean => fs.existsSync(candidate)
+
+  // ① 手动指定（含「本机检测」自动绑定的）—— 用户自己的选择，直接认。
+  const manual = (config.everythingExePath ?? '').trim()
+  if (manual && exists(manual)) return toStatus({ path: manual, source: 'manual' })
+
+  // ② 便宜且强的档。
+  const [registry, fromPath] = await Promise.all([collectRegistryCandidates(), collectPathCandidates()])
+  const cheap = pickEverythingExePath(
+    { registry, 'program-files': getKnownInstallCandidates(process.env), path: fromPath },
+    exists
+  )
+  if (cheap) return toStatus(cheap)
+
+  // ③ 稍贵的强档。
+  const [service, fromProcess] = await Promise.all([
+    collectServiceCandidates(),
+    collectProcessCandidates()
+  ])
+  const strong = pickEverythingExePath({ service, process: fromProcess }, exists)
+  if (strong) return toStatus(strong)
+
+  // ④ 猜出来的档：快捷方式。
+  const shortcut = pickEverythingExePath(
+    { shortcut: await verifyDiscoveredCandidates(collectShortcutCandidates()) },
+    exists
+  )
+  if (shortcut) return toStatus(shortcut)
+
+  if (!deep) return toStatus(null)
+
+  // ⑤ 重探才有的扫盘。
+  const scanned = pickEverythingExePath(
+    { scan: await verifyDiscoveredCandidates(await collectScanCandidates(EVERYTHING_SCAN_TIMEOUT_MS)) },
+    exists
+  )
+  return toStatus(scanned)
+}
+
+async function getEverythingStatus(deep = false): Promise<EverythingStatus> {
+  const now = Date.now()
+  const cached = everythingProbeCache
+  if (cached && now - cached.at < (cached.deep ? EVERYTHING_DEEP_PROBE_TTL_MS : EVERYTHING_PROBE_TTL_MS)) {
+    // 轻探的结果答不了重探（重探多扫一层盘），重探的结果可以答轻探。
+    if (cached.deep || !deep) return cached.status
+  }
+  const status = await probeEverything(deep)
+  everythingProbeCache = { at: now, status, deep }
+  return status
+}
+
+/**
+ * 把关键词投给 Everything 并放它出来。
+ *
+ * 成功 = 子进程没报错、且要么活着（新起了窗口）要么以 0 退出（参数交给了已在运行的实例，
+ * Everything 自己会复用实例 —— 我们不加 `-new-window`）。失败就如实回给面板，不假装成功。
+ */
+function spawnEverythingSearch(
+  exePath: string,
+  keyword: string
+): Promise<{ success: boolean; error?: string }> {
+  const args = buildEverythingSearchArgs(keyword)
+  if (!args) return Promise.resolve({ success: false, error: 'empty-query' })
+
+  return new Promise((resolve) => {
+    let settled = false
+    let timer: NodeJS.Timeout | null = null
+    const finish = (result: { success: boolean; error?: string }): void => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      resolve(result)
+    }
+
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(exePath, args, { detached: true, stdio: 'ignore', windowsHide: false })
+    } catch (error) {
+      resolve({ success: false, error: error instanceof Error ? error.message : String(error) })
+      return
+    }
+
+    timer = setTimeout(() => finish({ success: true }), EVERYTHING_SPAWN_CONFIRM_MS)
+    child.once('error', (error) => finish({ success: false, error: error.message }))
+    child.once('exit', (code) =>
+      finish(code === 0 ? { success: true } : { success: false, error: `exit ${code ?? 'unknown'}` })
+    )
+    child.unref()
+  })
+}
+
 // ── IPC ──
 
 let ipcRegistered = false
@@ -850,6 +1274,99 @@ function registerLauncherIpc(): void {
     }
 
     return { ...config, shortcutRegistered }
+  })
+
+  // ── Everything 文件搜索 IPC（S-151）──
+
+  registerMessagePackHandler<void, EverythingStatus>('launcher:get-everything-status', () =>
+    getEverythingStatus()
+  )
+
+  registerMessagePackHandler<void, EverythingStatus>('launcher:refresh-everything-status', () => {
+    invalidateEverythingProbe()
+    return getEverythingStatus()
+  })
+
+  registerMessagePackHandler<
+    void,
+    { canceled: boolean; status: EverythingStatus; error?: string }
+  >('launcher:pick-everything-exe', async () => {
+    const options: Electron.OpenDialogOptions = {
+      title: '选择 Everything 主程序',
+      filters: [{ name: 'Everything', extensions: ['exe'] }],
+      properties: ['openFile']
+    }
+    const result = launcherWindow
+      ? await dialog.showOpenDialog(launcherWindow, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true, status: await getEverythingStatus() }
+    }
+
+    const filePath = result.filePaths[0]
+    const fileName = filePath.split(/[\\/]/).pop() ?? ''
+    // 选错文件（比如挑了 unins000.exe）就说清楚，不静默存进去让用户后面一脸问号。
+    if (!isEverythingExecutableName(fileName)) {
+      return {
+        canceled: false,
+        status: await getEverythingStatus(),
+        error: 'not-everything-exe'
+      }
+    }
+
+    config = { ...config, everythingExePath: filePath, everythingExePathAuto: false }
+    saveConfig()
+    invalidateEverythingProbe()
+    return { canceled: false, status: await getEverythingStatus() }
+  })
+
+  registerMessagePackHandler<void, EverythingStatus>('launcher:clear-everything-exe', async () => {
+    config = { ...config, everythingExePath: '', everythingExePathAuto: false }
+    saveConfig()
+    invalidateEverythingProbe()
+    return getEverythingStatus()
+  })
+
+  /**
+   * 「本机检测」（S-151 二轮）：跑一轮**重探**（含扫盘），检测到就**直接绑定**。
+   *
+   * 老大 2026-09-28 15:38 的口径：「如果用户本机没有，那么我们提供两个选项 1.去安装 2.本机检测，
+   * 如果检测到直接给他绑定上，**而不是引导用户去绑定**」。
+   *
+   * 绑定写进 `everythingExePath`（与手动指定同一个槽位 —— 它本来就是最高优先级），但
+   * `everythingExePathAuto = true`，设置页据此显示「本机检测」而不是「手动指定」。
+   * 用户已经手选过路径时**不动它** —— 那是用户自己的判断，优先级更高。
+   */
+  registerMessagePackHandler<void, EverythingStatus>('launcher:detect-everything', async () => {
+    invalidateEverythingProbe()
+    const status = await getEverythingStatus(true)
+    if (!status.ready || !status.exePath || config.everythingExePath.trim()) return status
+
+    config = { ...config, everythingExePath: status.exePath, everythingExePathAuto: true }
+    saveConfig()
+
+    // 绑定后直接构造结果，不再重探一遍（重探要再扫一次盘 + 四个子进程，纯浪费）。
+    const bound: EverythingStatus = { ...status, source: 'manual', detected: true }
+    everythingProbeCache = { at: Date.now(), status: bound, deep: true }
+    return bound
+  })
+
+  registerMessagePackHandler<string, { success: boolean; error?: string }>(
+    'launcher:search-files',
+    async (keyword) => {
+      const status = await getEverythingStatus()
+      if (!status.ready || !status.exePath) return { success: false, error: 'not-ready' }
+
+      const result = await spawnEverythingSearch(status.exePath, keyword)
+      // 只有确实投出去了才收起面板，否则用户连报错都看不到（面板一关就没了）。
+      if (result.success) hideLauncherWindow()
+      return result
+    }
+  )
+
+  registerMessagePackHandler<void, void>('launcher:open-everything-download', () => {
+    // 固定 URL 写死在这里，不接受渲染端传任意地址。
+    void shell.openExternal(EVERYTHING_DOWNLOAD_URL)
   })
 }
 

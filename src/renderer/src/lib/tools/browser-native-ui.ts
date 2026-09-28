@@ -4,6 +4,7 @@ import { describeWebviewOperationError } from '../browser/webview-helpers'
 import { IPC } from '../ipc/channels'
 import { ipcClient } from '../ipc/ipc-client'
 import { useUIStore } from '../../stores/ui-store'
+import { useChatStore } from '../../stores/chat-store'
 import { encodeStructuredToolResult, encodeToolError } from './tool-result-format'
 import { executeBrowserSearch, WEB_SEARCH_TOOL_NAME } from './browser-search'
 import type { ToolContext } from './tool-types'
@@ -191,6 +192,32 @@ async function executeBrowserGetContent(
   })
 }
 
+/**
+ * Session scope facts for `image:persist-generated`, so a screenshot with no
+ * explicit target lands in a directory the session sandbox already covers
+ * (`{workingFolder}/.wishful-claw/image` for a local project, the data root for
+ * a global session, an SSH project's slot under it otherwise). Unknown session
+ * ⇒ `{}` ⇒ the main process falls back to the data root.
+ */
+function resolveScreenshotPersistScope(sessionId?: string): {
+  scope?: 'global' | 'project'
+  workingFolder?: string | null
+  projectId?: string | null
+  sshConnectionId?: string | null
+} {
+  if (!sessionId) return {}
+  const state = useChatStore.getState()
+  const index = state.sessionsById[sessionId]
+  const session = typeof index === 'number' ? state.sessions[index] : undefined
+  if (!session) return {}
+  return {
+    scope: session.scope,
+    workingFolder: session.workingFolder ?? null,
+    projectId: session.projectId ?? null,
+    sshConnectionId: session.sshConnectionId ?? null
+  }
+}
+
 async function executeBrowserScreenshot(
   _input: Record<string, unknown>,
   ctx: ToolContext
@@ -210,7 +237,8 @@ async function executeBrowserScreenshot(
   const size = nativeImage.getSize()
   const persisted = (await ctx.ipc.invoke(IPC.IMAGE_PERSIST_GENERATED, {
     data: encodedImage.data,
-    mediaType: encodedImage.mediaType
+    mediaType: encodedImage.mediaType,
+    ...resolveScreenshotPersistScope(ctx.sessionId)
   })) as { filePath?: string; mediaType?: string; data?: string; error?: string }
   const image: ImageBlock = {
     type: 'image',

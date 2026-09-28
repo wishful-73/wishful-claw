@@ -1,7 +1,9 @@
-﻿import { BrowserWindow, Notification, dialog, shell } from 'electron'
+import { BrowserWindow, Notification, dialog, shell } from 'electron'
 import * as fs from 'fs'
 import { getNativeWorker } from '../lib/native-worker'
 import { persistImageBuffer } from '../lib/image-persist'
+import { resolveDataDir } from '../lib/data-dir'
+import { resolveGeneratedImagesDir } from '../lib/generated-image-dir'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { safeSendMessagePackToWindow } from '../window-ipc'
 import { resolveCodeGraphDataRoot } from './codegraph-handlers'
@@ -242,7 +244,17 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
   // -- Image persistence (browser screenshots, generated images) --
   // The write itself lives in `lib/image-persist.ts`, so the main-process
   // `window:capture-self` reverse-request can reuse the exact same rules.
-  registerMessagePackHandler<{ data?: string; mediaType?: string; targetPath?: string; baseDir?: string }, { filePath?: string; mediaType?: string; data?: string; error?: string }>(
+  registerMessagePackHandler<{
+    data?: string
+    mediaType?: string
+    targetPath?: string
+    baseDir?: string
+    /** Session scope facts — pick the default output dir, see `image-persist.ts`. */
+    scope?: 'global' | 'project'
+    workingFolder?: string | null
+    projectId?: string | null
+    sshConnectionId?: string | null
+  }, { filePath?: string; mediaType?: string; data?: string; error?: string }>(
     'image:persist-generated',
     async (args) => {
       try {
@@ -253,7 +265,16 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
         const mediaType = args.mediaType || 'image/png'
         const persisted = persistImageBuffer(buffer, mediaType, {
           targetPath: args.targetPath,
-          baseDir: args.baseDir
+          baseDir: args.baseDir,
+          defaultDir: resolveGeneratedImagesDir(
+            {
+              scope: args.scope,
+              workingFolder: args.workingFolder,
+              projectId: args.projectId,
+              sshConnectionId: args.sshConnectionId
+            },
+            resolveDataDir()
+          )
         })
         return {
           filePath: persisted.filePath,

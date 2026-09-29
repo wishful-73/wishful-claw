@@ -49,7 +49,7 @@
 git checkout main
 git merge dev/v2-iter-{N} --no-ff -m "merge: v2-iter-{N} - {迭代名称}"
 
-# 2. 打 tag（annotated；message 格式见 4.1「tag message 口径」）
+# 2. 打 tag（annotated；message 格式见 4.3「tag message 口径」）
 git tag -a v0.2.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
 
 # 3. 推送远程
@@ -85,12 +85,97 @@ git remote -v               # 确认 remote 是 wishful-73/wishful-claw
 
 > `git rev-parse v0.2.{N}^{commit}` 在 PowerShell 里会炸（`^` 是转义符），用 `git rev-list -n 1`。
 
-## 四、发布到 GitHub Release
+## 四、发布（官网是更新源，GitHub 是存档）
 
-仓库：<https://github.com/wishful-73/wishful-claw>
-（旧地址 `731471991/wishful-claw` 已迁移；remote 还指旧地址就先 `git remote set-url origin` 更新）
+> **两个发布面，顺序有讲究**（2026-09-23 调整）：
+>
+> 1. **官网下载目录**（`https://wishful-claw.work/downloads/`）= app 内自动更新的**唯一源**
+>    —— S-129 起 `electron-builder.yml` 的 `publish` 是 `provider: generic` 指向它。
+>    **漏传 = 所有已装客户端收不到更新** ⇒ **强制项**。
+> 2. **GitHub Release**（<https://github.com/wishful-73/wishful-claw>）= **存档** + 「找旧版 / 回滚」
+>    入口（官网只放最新版）。**建议做**；不做只影响回滚，不影响更新。
+>
+> **执行顺序：`4.1 打包` → `4.2 更新下载目录（三件）` → `4.3 建 Release` → `4.4 传资产`。**
+> 原流程把「创建 Release」排在打包之前 —— 资产还不存在就先建了 Release，顺序是反的。
 
-### 4.1 创建 Release
+### 4.1 打包安装包
+
+```bash
+npm run pack:installer:full   # AOT Worker → 前端打包 → electron-builder NSIS
+```
+
+典型产物：
+
+```
+release/wishful-claw-0.2.{N}-setup.exe
+release/latest.yml
+release/wishful-claw-0.2.{N}-setup.exe.blockmap
+```
+
+- ⚠️ 打包前确认无残留 WishfulClaw / electron 进程（`tasklist` 检查），否则旧 `release/win-unpacked/` 被锁报 `EBUSY`
+- ⚠️ 若 `win-unpacked/app.asar` 被锁（杀软 / 索引句柄）且杀进程无效，换输出目录绕开：
+  `npx electron-builder --win -c.directories.output=release/v0.2.{N}`
+- ⚠️ 若报 `EPERM: operation not permitted, rename 'release\win-unpacked.tmp' -> 'release\win-unpacked'`：
+  上一次打包失败留下的 `win-unpacked.tmp` 残留所致。删掉 `release/win-unpacked.tmp` 与 `release/win-unpacked` 后重跑即过。
+- ✅ **更新源已指向官网**（S-129）：`electron-builder.yml` 用 `provider: generic` + `url: https://wishful-claw.work/downloads/`，
+  包内 `resources/app-update.yml` 同址。打包后可这样核验：
+
+  ```
+  provider: generic
+  url: https://wishful-claw.work/downloads/
+  updaterCacheDirName: wishful-claw-updater
+  ```
+
+- ⚠️ **`app-update.yml` 只在带目标的打包（`--win` / `pack:installer*`）里生成** —— `npm run pack`（`--dir`）不产出它，用它验更新源会验空。
+
+### 4.2 上传到官网下载目录（更新源，必做）
+
+**这一步不做，所有客户端就收不到这次更新** —— 官网下载目录是 `provider: generic` 指向的更新源。
+
+安装包与版本清单放在**站点目录之外**的下载目录，nginx 以 `/downloads` 映射对外 ——
+因为官网静态发布是**整体替换站点目录**（`deploy.mjs` 的 `deploySite`：先把线上目录 `mv` 走，
+再把新的 `mv` 进来），资产放站点里会被清掉。
+
+```
+/data/downloads/wishfulclaw/                              ← nginx: https://wishful-claw.work/downloads
+├── latest.yml
+├── wishful-claw-0.2.{N}-setup.exe
+└── wishful-claw-0.2.{N}-setup.exe.blockmap
+```
+
+**三件必须同目录、成套覆盖。** `latest.yml` 里的 `url` / `path` 都是相对文件名，updater 与站点
+下载按钮一律按「同目录」解析 —— 少任何一个，更新或下载都会 404。
+
+**只放最新版本**（老大 2026-09-23 定）：不攒历史包，差分不需要旧包，回滚靠 GitHub Release。
+
+一条命令搞定（上传三件 + 远端归位 + sha512 逐件校验 + 清旧包 + 报证书）：
+
+```bash
+node scripts/deploy.mjs installer   # 更新下载目录（三件：exe + blockmap + latest.yml）
+node scripts/deploy.mjs site        # 官网自身内容有改动时才发 —— 发版不需要
+node scripts/deploy.mjs cert        # 查证书状态
+```
+
+> **发版不重建官网**（2026-09-23 定）：站点前端是**运行时**读 `./downloads/latest.yml`，下载按钮
+> 与版本号都由此而来，所以只换下载目录里的三件就生效。`installer` 动作**不碰官网**；仅当官网
+> 自身内容有改动（文案、备案信息、配图）才另跑 `site`。
+
+发布后立即抽查（这几条也是第六节的核验项）：
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://wishful-claw.work/downloads/latest.yml
+curl -s https://wishful-claw.work/downloads/latest.yml | Select-String 'version:'
+```
+
+> ✅ **脚本已三件化**（2026-09-23）：`deploy.mjs` 收 exe + `.blockmap` + `latest.yml`（缺件直接报错），
+> 一次上传、远端解包归位、逐件 sha512 校验，并**清掉下载目录里的非当前版本旧包**（只留最新）；
+> 人手写的 `latest.json` 已退役，清单唯一真源就是 electron-builder 的 `latest.yml`。
+> 变更明细见 [iter-v2-36/S-129.md](../plans/iter-v2-36/requirements/S-129.md) §五。
+
+> ⚠️ **`deploy.mjs` 不在版本库** —— `.gitignore:53` 的 `scripts/*` 刻意排除它（内含服务器地址与
+> 部署密钥路径）。换机器时手动拷过去，密钥生成见知识库《官网部署》。
+
+### 4.3 创建 GitHub Release（存档）
 
 gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝对路径**调用）。
 
@@ -150,37 +235,7 @@ git tag -a v0.2.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通�
 
 亮点用 ` + ` 连接，取本迭代最值得说的几件事（3~5 个为宜），不写编号、不写「N 项需求」这种计数。
 
-### 4.2 打包安装包
-
-```bash
-npm run pack:installer:full   # AOT Worker → 前端打包 → electron-builder NSIS
-```
-
-典型产物：
-
-```
-release/wishful-claw-0.2.{N}-setup.exe
-release/latest.yml
-release/wishful-claw-0.2.{N}-setup.exe.blockmap
-```
-
-- ⚠️ 打包前确认无残留 WishfulClaw / electron 进程（`tasklist` 检查），否则旧 `release/win-unpacked/` 被锁报 `EBUSY`
-- ⚠️ 若 `win-unpacked/app.asar` 被锁（杀软 / 索引句柄）且杀进程无效，换输出目录绕开：
-  `npx electron-builder --win -c.directories.output=release/v0.2.{N}`
-- ⚠️ 若报 `EPERM: operation not permitted, rename 'release\win-unpacked.tmp' -> 'release\win-unpacked'`：
-  上一次打包失败留下的 `win-unpacked.tmp` 残留所致。删掉 `release/win-unpacked.tmp` 与 `release/win-unpacked` 后重跑即过。
-- ✅ **更新源已指向官网**（S-129）：`electron-builder.yml` 用 `provider: generic` + `url: https://wishful-claw.work/downloads/`，
-  包内 `resources/app-update.yml` 同址。打包后可这样核验：
-
-  ```
-  provider: generic
-  url: https://wishful-claw.work/downloads/
-  updaterCacheDirName: wishful-claw-updater
-  ```
-
-- ⚠️ **`app-update.yml` 只在带目标的打包（`--win` / `pack:installer*`）里生成** —— `npm run pack`（`--dir`）不产出它，用它验更新源会验空。
-
-### 4.3 上传资产
+### 4.4 上传资产到 Release（存档）
 
 ```bash
 # setup.exe + latest.yml 必须一起传
@@ -199,39 +254,8 @@ release/wishful-claw-0.2.{N}-setup.exe.blockmap
 
 **`latest.yml` 是 electron-updater 检查更新的必需元数据，不能只传 setup.exe。**
 
-### 4.4 上传到官网下载目录（S-129）
-
-官网是**追加**的第二个发布面（GitHub 流程照旧，不替代）。安装包与版本清单放在**站点目录之外**
-的下载目录，nginx 以 `/downloads` 映射对外 —— 因为官网静态发布是**整体替换站点目录**
-（`deploy.mjs` 的 `deploySite`：先把线上目录 `mv` 走，再把新的 `mv` 进来），资产放站点里会被清掉。
-
-```
-/data/downloads/wishfulclaw/                              ← nginx: https://wishful-claw.work/downloads
-├── latest.yml
-├── wishful-claw-0.2.{N}-setup.exe
-└── wishful-claw-0.2.{N}-setup.exe.blockmap
-```
-
-**三件必须同目录、成套覆盖。** `latest.yml` 里的 `url` / `path` 都是相对文件名，updater 与站点
-下载按钮一律按「同目录」解析 —— 少任何一个，更新或下载都会 404。
-
-**只放最新版本**（老大 2026-09-23 定）：不攒历史包，差分不需要旧包，回滚靠 GitHub Release。
-
-一条命令搞定（构建官网 + 上传 + 远端替换 + 线上抽查 + 报证书）：
-
-```bash
-node scripts/deploy.mjs installer     # 传安装包 + 发布官网
-node scripts/deploy.mjs site          # 只发布官网
-node scripts/deploy.mjs cert          # 查证书状态
-```
-
-> ✅ **脚本已三件化**（2026-09-23）：`deploy.mjs` 收 exe + `.blockmap` + `latest.yml`（缺件直接报错），
-> 一次上传、远端解包归位、逐件 sha512 校验，并**清掉下载目录里的非当前版本旧包**（只留最新）；
-> 人手写的 `latest.json` 已退役，清单唯一真源就是 electron-builder 的 `latest.yml`。
-> 变更明细见 [iter-v2-36/S-129.md](../plans/iter-v2-36/requirements/S-129.md) §五。
-
-> ⚠️ **`deploy.mjs` 不在版本库** —— `.gitignore:53` 的 `scripts/*` 刻意排除它（内含服务器地址与
-> 部署密钥路径）。换机器时手动拷过去，密钥生成见知识库《官网部署》。
+> ⚠️ **GitHub 是存档面**：app 内更新走官网（4.2），这里的资产用于「找旧版 / 回滚 / 手动下载」。
+> 但**仍要传全三件** —— 回滚时那份 `latest.yml` 就是历史版本的清单，缺了说不清那个版本对应哪个包。
 
 ## 五、进度文档
 
@@ -244,23 +268,30 @@ node scripts/deploy.mjs cert          # 查证书状态
 
 ## 六、发布后核验
 
-- GitHub 上 **main 分支 / tag / Release** 三者均到位
+**官网侧（更新源，必做）** —— 这一面不过，客户端就收不到更新：
+
+- `downloads/latest.yml` 可达（HTTP 200），且 `version` 与本次发布一致
+- `downloads/<setup>.exe` 与 `downloads/<setup>.exe.blockmap` 均非 404（差分下载靠 blockmap）
+- 本地三件的 sha512 与线上一致（`deploy.mjs` 上传后已自动逐件校验，这里只需确认它没报错）
+- 站点下载按钮指向的地址能下到包（与 `latest.yml` 的 `files[0].url` 同源）
+
+**GitHub 侧（存档）**：
+
+- main 分支 / tag / Release 三者均到位
 - Release 资产齐全且 `state=uploaded`：`setup.exe` + `latest.yml` + `.blockmap`（若有）
 - `latest.yml` 与实际 setup.exe **逐项对上**：`version`、`path`、`files[].url`、`sha512`、`size`
 - `latest.yml` 的 `sha512` 与 setup.exe 的**实际 sha512 一致**
 - `.blockmap` 的下载地址不返回 404
 - Release 状态：`draft=false`、`prerelease=false`、**是 Latest**（`isLatest=true`）
-- **官网侧（S-129）**：
-  - `downloads/latest.yml` 可达（HTTP 200），且 `version` 与本次发布一致
-  - `downloads/<setup>.exe.blockmap` 可达（非 404）—— 差分下载靠它
-  - 站点下载按钮指向的地址能下到包（与 `latest.yml` 的 `files[0].url` 同源）
-- 端到端：用低于当前 Release 的本地版本实际调用 `electron-updater.checkForUpdates()`，确认进入 `update-available`，再测下载确认与安装确认流程
+
+**端到端**：用低于当前版本的本地包实际跑一次 `electron-updater.checkForUpdates()`（此时更新源是官网），
+确认进入 `update-available`，再测下载确认与安装确认流程。
 
 > 核验 gh 输出时注意：`gh release view --json` 直接接 `ConvertFrom-Json` 会被流混入搞坏，**先重定向到临时文件再解析**。
 
 ## 七、清理本地产物
 
-**前提：Release 已上传、第六节核验全部通过。** 发布没成功之前，本地旧产物是**回滚备份**，一个都不能删。
+**前提：官网与 GitHub 两个发布面都已完成、第六节核验全部通过。** 发布没成功之前，本地旧产物是**回滚备份**，一个都不能删。
 
 ### 7.1 `release/` 只留当前版本
 

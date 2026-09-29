@@ -12,7 +12,8 @@ import {
   admitCollapse,
   COLLAPSE_GATE_CONFIG,
   createCollapseGate,
-  isCollapseCoolingDown
+  isCollapseCoolingDown,
+  trackContentBottom
 } from '../../src/renderer/src/components/chat/MessageList/scroll-collapse-gate'
 
 let checks = 0
@@ -104,5 +105,44 @@ for (let i = 1; i < admittedAt.length; i++) {
 let single = createCollapseGate()
 single = admitCollapse(single, 10_000)
 check(!isCollapseCoolingDown(single, 10_000 + cooldownMs), '单次收缩之后窗口一到就能再收')
+
+// ── S-150 补充：内容底单调下界 ─────────────────────────────────────────────
+//
+// 冷却锁管的是「受理回收的节奏」，管不到「内容底本身在跳」。虚拟化下
+// getRealContentBottom 遍历的是**当前挂载的行**，尾行在可见范围边界进出会让它骤降一整行，
+// 跟随目标于是每帧一个值、每帧写一次 scrollTop —— 滚动条高频重定位。流式内容底只会增大，
+// 取历史最大值即可把这类噪声滤掉。
+
+// 增长必须透传，否则跟随就没了
+eq(trackContentBottom(0, 500), 500, '首次实测直接采纳')
+eq(trackContentBottom(500, 620), 620, '内容继续增大时透传新值')
+
+// 骤降一律滤掉 —— 这就是抖动的直接来源
+eq(trackContentBottom(620, 300), 620, '内容底骤降（尾行卸载）被滤掉')
+eq(trackContentBottom(620, 619), 620, '哪怕只降 1px 也不采纳')
+eq(trackContentBottom(620, 620), 620, '持平保持原值')
+
+// 无挂载行 / 越界瞬间态：不参与比较，保留上次
+eq(trackContentBottom(620, 0), 620, '0 视为无测量，保留上次')
+eq(trackContentBottom(0, 0), 0, '从未测到过时保持 0')
+eq(trackContentBottom(620, Number.NaN), 620, 'NaN 视为无测量，保留上次')
+eq(trackContentBottom(620, -5), 620, '负值视为无测量，保留上次')
+
+// 核心契约：尾行反复挂载/卸载（实测值一帧降一帧升），下界把它压成单调序列 ——
+// 跟随目标不再每帧反转，写出的 scrollTop 也就不再来回。
+let floor = 0
+let reversals = 0
+const targetAt: number[] = []
+for (let frame = 0; frame < 20; frame += 1) {
+  const measured = frame % 2 === 0 ? 400 : 900
+  const next = trackContentBottom(floor, measured)
+  if (next < floor) reversals += 1
+  floor = next
+  targetAt.push(next)
+}
+eq(reversals, 0, '20 帧往复之后，下界从未反向')
+eq(targetAt[0], 400, '首帧采纳 400')
+eq(targetAt[19], 900, '末帧停在 900')
+eq(new Set(targetAt).size, 2, '20 帧只出现 2 个不同目标值（400 → 900），不是逐帧翻转')
 
 console.log(`collapse gate checks passed: ${checks}`)

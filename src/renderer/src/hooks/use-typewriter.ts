@@ -20,16 +20,24 @@ interface RenderPoolConfig {
   /** Frames needed to drain the whole backlog: each frame consumes 1/K of it. */
   catchupFrames: number
   frameIntervalMs: number
+  /** S-149：池子超过这个体积就算「压力大」，帧间隔开始放宽。 */
+  pressurePoolSize: number
+  /** S-149：压力拉满时允许放到的最长帧间隔（ms）。 */
+  maxFrameIntervalMs: number
 }
 
 export const RENDER_POOL_CONFIG: Record<LiveOutputAnimationStyle, RenderPoolConfig> = {
   agile: {
     catchupFrames: 2,
-    frameIntervalMs: 32
+    frameIntervalMs: 32,
+    pressurePoolSize: 2_000,
+    maxFrameIntervalMs: 64
   },
   elegant: {
     catchupFrames: 3,
-    frameIntervalMs: 36
+    frameIntervalMs: 36,
+    pressurePoolSize: 1_500,
+    maxFrameIntervalMs: 72
   }
 }
 
@@ -56,6 +64,27 @@ export const RENDER_POOL_CONFIG: Record<LiveOutputAnimationStyle, RenderPoolConf
 export function getCatchupStep(poolSize: number, config: RenderPoolConfig): number {
   if (poolSize <= 0) return 0
   return Math.max(1, Math.ceil(poolSize / config.catchupFrames))
+}
+
+/**
+ * S-149 — 帧间隔由池子压力决定。
+ *
+ * 池子小（渲染追得上上游）：固定 `frameIntervalMs`，观感与原来完全一致。
+ * 池子大（上游在爆发）：**每帧的渲染成本也随之变大** —— 正文每帧要重解析 markdown、
+ * 思考块每帧要重排整段长文本。此时再按 32ms 一帧催，主线程就被连续占满，
+ * 「整页像截图一样静止、停止按钮点下去几分钟才生效」正是这条链走到极端的样子。
+ *
+ * 所以池子越大，允许拉得越长（线性逼近 `maxFrameIntervalMs`），把主线程让出来给
+ * 点击 / 滚动 / 停止。压力从 `pressurePoolSize` 起算，到 4 倍时拉满。
+ *
+ * **只放宽间隔，不动步长** —— 步长仍是 `ceil(pool/K)`。iter-29 T-15 取消的是步长上限
+ * （让长思考能追上上游），跟帧频是两件事，不要把这条当成回退。
+ */
+export function resolveFrameIntervalMs(poolSize: number, config: RenderPoolConfig): number {
+  const { frameIntervalMs, maxFrameIntervalMs, pressurePoolSize } = config
+  if (poolSize <= pressurePoolSize) return frameIntervalMs
+  const ratio = Math.min(1, (poolSize - pressurePoolSize) / (pressurePoolSize * 3))
+  return frameIntervalMs + (maxFrameIntervalMs - frameIntervalMs) * ratio
 }
 
 /**
@@ -103,14 +132,18 @@ export function useStreamingRenderPool(
     lastFlushAtRef.current = 0
 
     const tick = (now: number): void => {
-      const lastFlushAt = lastFlushAtRef.current
-      const elapsedMs = lastFlushAt > 0 ? now - lastFlushAt : config.frameIntervalMs
+      const targetLength = targetLengthRef.current
+      const currentLength = renderedLengthRef.current
+      const poolSize = Math.max(0, targetLength - currentLength)
+      // S-149：帧间隔随池子压力浮动 —— 池子越大，单帧渲染越贵，就放得越慢，
+      // 把主线程让出来（见 resolveFrameIntervalMs）。池子空时即基准间隔，语义同原来。
+      const intervalMs = resolveFrameIntervalMs(poolSize, config)
 
-      if (elapsedMs >= config.frameIntervalMs) {
+      const lastFlushAt = lastFlushAtRef.current
+      const elapsedMs = lastFlushAt > 0 ? now - lastFlushAt : intervalMs
+
+      if (elapsedMs >= intervalMs) {
         lastFlushAtRef.current = now
-        const targetLength = targetLengthRef.current
-        const currentLength = renderedLengthRef.current
-        const poolSize = Math.max(0, targetLength - currentLength)
 
         if (poolSize > 0) {
           const measureStart = performance.now()

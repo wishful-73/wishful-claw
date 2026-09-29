@@ -155,8 +155,10 @@ public static partial class ToolCallProcessor
         IWorkerRequestContext context)
     {
         var runContext = AgentRunContextPolicy.Resolve(parameters);
+        // S-144：基准路径与沙箱根集合必须用同一个解析（含 projectId 回查）。各取各的时候，
+        // run params 漏带 workingFolder 会让项目内的写入同时失去基准和根 —— 整个项目目录被判越界。
         var workingFolder = runContext.Scope == "project"
-            ? JsonHelpers.GetString(parameters, "workingFolder")
+            ? PathBoundary.ResolveProjectWorkingFolder(parameters)
             : null;
         var projectId = runContext.Scope == "project"
             ? JsonHelpers.GetString(parameters, "projectId")
@@ -579,7 +581,7 @@ public static partial class ToolCallProcessor
             }
 
             // Dispatch to the appropriate executor
-            var (toolOutput, isToolError) = await ToolDispatchRouter.DispatchAsync(
+            var (toolOutput, isToolError, toolContentBlocks) = await ToolDispatchRouter.DispatchAsync(
                 toolCall, state, context, registry, workingFolder, projectId, sshConnectionId, sandbox);
 
             // When this call went through user approval, tell the LLM explicitly:
@@ -624,7 +626,9 @@ public static partial class ToolCallProcessor
 
             return new AgentRuntimeToolResult(
                 toolCall.Id,
-                AgentRuntimeProviderSupport.CreateStringElement(truncatedOutput),
+                // S-145: 内部工具可以返回结构化 content（Read 读图 → image 块）。有它就用它 ——
+                // 文本截断是按字符做的，对 base64 图像块没有意义也不该动它。
+                toolContentBlocks ?? AgentRuntimeProviderSupport.CreateStringElement(truncatedOutput),
                 isToolError ? true : null);
         }
         finally

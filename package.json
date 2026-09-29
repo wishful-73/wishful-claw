@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.35",
+  "version": "0.2.36",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -57,6 +57,14 @@
     "test:terminal-output-text": "esbuild tests/terminal-output-text/program.ts --bundle --platform=node --format=cjs --outfile=tests/terminal-output-text/out/program.cjs && node tests/terminal-output-text/out/program.cjs",
     "test:adaptive-event-batcher": "esbuild tests/adaptive-event-batcher/program.ts --bundle --platform=node --format=cjs --outfile=tests/adaptive-event-batcher/out/program.cjs && node tests/adaptive-event-batcher/out/program.cjs",
     "test:stream-segments": "esbuild tests/stream-segments/program.ts --bundle --platform=node --format=cjs --outfile=tests/stream-segments/out/program.cjs && node tests/stream-segments/out/program.cjs",
+    "test:latest-yml": "esbuild tests/latest-yml/program.ts --bundle --platform=node --format=cjs --outfile=tests/latest-yml/out/program.cjs && node tests/latest-yml/out/program.cjs",
+    "test:video-frames": "esbuild tests/video-frames/program.ts --bundle --platform=node --format=cjs --outfile=tests/video-frames/out/program.cjs && node tests/video-frames/out/program.cjs",
+    "test:updater-error-format": "esbuild tests/updater-error-format/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-error-format/out/program.cjs && node tests/updater-error-format/out/program.cjs",
+    "test:scroll-collapse-gate": "esbuild tests/scroll-collapse-gate/program.ts --bundle --platform=node --format=cjs --outfile=tests/scroll-collapse-gate/out/program.cjs && node tests/scroll-collapse-gate/out/program.cjs",
+    "test:generated-image-dir": "esbuild tests/generated-image-dir/program.ts --bundle --platform=node --format=cjs --outfile=tests/generated-image-dir/out/program.cjs && node tests/generated-image-dir/out/program.cjs",
+    "test:terminal-tab-lifecycle": "esbuild tests/terminal-tab-lifecycle/program.ts --bundle --platform=node --format=cjs --outfile=tests/terminal-tab-lifecycle/out/program.cjs && node tests/terminal-tab-lifecycle/out/program.cjs",
+    "test:everything-search": "esbuild tests/everything-search/program.ts --bundle --platform=node --format=cjs --outfile=tests/everything-search/out/program.cjs && node tests/everything-search/out/program.cjs",
+    "test:es-search": "esbuild tests/es-search/program.ts --bundle --platform=node --format=cjs --outfile=tests/es-search/out/program.cjs && node tests/es-search/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

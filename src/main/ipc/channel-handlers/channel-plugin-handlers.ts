@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Plugin CRUD + session management + streaming IPC handlers.
  *
  * Extracted from channel-handlers.ts.
@@ -119,6 +119,11 @@ export async function sendChannelMessage(args: SendChannelMessageArgs): Promise<
       args.isWakeup === true && typeof target.sendWakeupMessage === 'function'
         ? await target.sendWakeupMessage(chatId, content)
         : await service.sendMessage(chatId, content)
+    // S-152: 回复已送达 → 收掉渠道的「正在输入」（目前只有微信实现）。尽力而为，不阻塞、不抛错。
+    const typingTarget = service as unknown as {
+      stopTyping?: (chatId: string) => Promise<void>
+    }
+    void typingTarget.stopTyping?.(chatId)
     logInfo('main', `[ChannelSend] Succeeded task=${taskId}`, {
       extra: { taskId, pluginId, pluginType: service.pluginType, chatId, contentLength: content.length, messageId: result.messageId }
     })

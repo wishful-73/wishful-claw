@@ -2,27 +2,23 @@
  * Persisting image buffers — shared by the renderer's `image:persist-generated`
  * channel and by the main-process `window:capture-self` reverse-request.
  *
- * Historically this only ever wrote into `~/wishful-claw/image`, which made it
- * useless for the one job an agent actually needs: dropping a screenshot next to
- * the documentation it is writing. Callers can now pass a `targetPath`.
+ * Callers that care where the file lands pass a `targetPath`. Everything else
+ * (a browser screenshot with no target, say) falls into the session's own
+ * `.wishful-claw/image` — see `resolveGeneratedImagesDir`. That directory sits
+ * inside the session's sandbox, so the agent can read back what it just
+ * produced; the old fixed `~/wishful-claw/image` did not.
  */
 
 import { randomUUID } from 'crypto'
 import * as fs from 'fs'
-import { homedir } from 'os'
 import { dirname, extname, isAbsolute, join, normalize, resolve } from 'path'
+import { resolveDataDir } from './data-dir'
+import { resolveGeneratedImagesDir, type GeneratedImageScope } from './generated-image-dir'
 
-const GENERATED_IMAGES_DIR = 'wishful-claw'
-const GENERATED_IMAGES_SUBDIR = 'image'
+export type { GeneratedImageScope }
 
 /** Extensions we will write to. Anything else gets the media-type extension appended. */
 const KNOWN_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
-
-export function getGeneratedImagesDir(): string {
-  const dir = join(homedir(), GENERATED_IMAGES_DIR, GENERATED_IMAGES_SUBDIR)
-  fs.mkdirSync(dir, { recursive: true })
-  return dir
-}
 
 export function guessExtensionFromMimeType(mediaType?: string): string {
   switch ((mediaType || '').toLowerCase()) {
@@ -42,11 +38,16 @@ export function guessExtensionFromMimeType(mediaType?: string): string {
 export interface PersistImageOptions {
   /**
    * Where to write the file. Relative paths resolve against `baseDir` (the working
-   * folder), absolute paths are used as-is. Omit to keep the old behaviour of
-   * dropping the image into the app's generated-images directory.
+   * folder), absolute paths are used as-is.
    */
   targetPath?: string
   baseDir?: string
+  /**
+   * Directory for images with no `targetPath`. Callers pass the directory they
+   * resolved for the session (`resolveGeneratedImagesDir`); omitting it falls
+   * back to the data root's own `image/` folder.
+   */
+  defaultDir?: string
 }
 
 export interface PersistImageResult {
@@ -70,7 +71,11 @@ export function persistImageBuffer(
   const target = typeof options.targetPath === 'string' ? options.targetPath.trim() : ''
 
   if (!target) {
-    const filePath = join(getGeneratedImagesDir(), `${Date.now()}-${randomUUID()}${extension}`)
+    const dir = options.defaultDir?.trim()
+      ? options.defaultDir.trim()
+      : resolveGeneratedImagesDir({}, resolveDataDir())
+    fs.mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, `${Date.now()}-${randomUUID()}${extension}`)
     fs.writeFileSync(filePath, buffer)
     return { filePath, mediaType }
   }

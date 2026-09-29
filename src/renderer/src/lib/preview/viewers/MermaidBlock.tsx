@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { viewerText } from '../viewer-text'
 
 interface MermaidBlockProps {
   code: string
@@ -49,7 +50,7 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
     return (
       <pre className="not-prose my-3 overflow-x-auto rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs leading-relaxed text-destructive">
         <code className="font-mono">{code}</code>
-        <div className="mt-2 text-destructive/80">Mermaid error: {error}</div>
+        <div className="mt-2 text-destructive/80">{viewerText('mermaidRenderFailed')}: {error}</div>
       </pre>
     )
   }
@@ -57,7 +58,7 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
   if (!svg) {
     return (
       <div className="my-3 flex items-center justify-center rounded-md border border-border/50 bg-muted/60 p-8 text-xs text-muted-foreground">
-        Rendering diagram...
+        {viewerText('loadingDiagram')}
       </div>
     )
   }

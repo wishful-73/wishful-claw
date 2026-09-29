@@ -18,7 +18,8 @@ import { Textarea } from '@renderer/components/ui/textarea'
 import type { AskUserQuestionItem } from '@renderer/lib/tools/ask-user-tool'
 import {
   MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
+  MARKDOWN_REMARK_PLUGINS,
+  SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 import {
   getOptionLabel,
@@ -79,6 +80,7 @@ export function PreviewPane({ preview }: { preview: string }): React.JSX.Element
             <Markdown
               remarkPlugins={MARKDOWN_REMARK_PLUGINS}
               rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+              components={SAFE_LINK_COMPONENTS}
             >
               {preview}
             </Markdown>

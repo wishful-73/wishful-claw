@@ -10,6 +10,7 @@ import { Button } from '@renderer/components/ui/button'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 function fileName(filePath: string): string {
   return filePath.split(/[\\/]/).pop() || filePath
@@ -39,7 +40,7 @@ export function BinaryFileViewer({ filePath, sshConnectionId }: ViewerProps): Re
         </p>
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-left text-[11px] leading-4 text-muted-foreground">
           <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span>Use the system app when you need to inspect or extract this file.</span>
+          <span>{viewerText('binaryFileHint')}</span>
         </div>
         {!sshConnectionId ? (
           <Button
@@ -49,7 +50,7 @@ export function BinaryFileViewer({ filePath, sshConnectionId }: ViewerProps): Re
             onClick={() => void openInSystem()}
           >
             <ExternalLink className="size-3.5" />
-            Open in system app
+            {viewerText('openInSystemApp')}
           </Button>
         ) : null}
       </div>

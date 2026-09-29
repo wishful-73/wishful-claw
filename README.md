@@ -7,6 +7,7 @@
 </p>
 
 <p align="center">
+  <a href="https://wishful-claw.work/">官网</a> •
   <a href="#-快速上手">快速上手</a> •
   <a href="#-它能为你做什么">功能</a> •
   <a href="docs/user-guide.md">使用指引</a> •
@@ -15,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.2.35-orange" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.2.36-orange" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows-blue" alt="Windows">
   <img src="https://img.shields.io/badge/.NET-11-blue" alt=".NET">
   <img src="https://img.shields.io/badge/Electron-43-blue" alt="Electron">
@@ -26,7 +27,7 @@
 
 ## 🚀 快速上手
 
-1. 到 [Releases](https://github.com/wishful-73/wishful-claw/releases/latest) 下载 `wishful-claw-x.y.z-setup.exe`，双击安装（无需另装运行时）。
+1. 到 **[官网下载页](https://wishful-claw.work/download)** 或 [GitHub Releases](https://github.com/wishful-73/wishful-claw/releases/latest) 下载 `wishful-claw-x.y.z-setup.exe`，双击安装（无需另装运行时）。
 2. 打开后进入 **设置 → AI 服务商**，选一家模型服务商，填入你自己的 API Key，点测试连通性并设为当前使用。还没决定用哪家？可以先跳过 —— [不花 Token 也能用](#-不花-token-也能用) 里那几项不用 Key 就能跑。
 3. 回到主界面，新建一个项目指向你的代码目录，把任务说出来。第一次建议打开**计划模式**，先看它的方案再放它动手。
 

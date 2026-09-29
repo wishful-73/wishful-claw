@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -30,6 +30,9 @@ const VOICE_ITEM = 3
 const FILE_ITEM = 4
 const VIDEO_ITEM = 5
 const DEFAULT_POLL_DELAY_MS = 35000
+/** `ilink/bot/sendtyping` 的 status：1 = 开始输入，2 = 取消（S-152）。 */
+const TYPING_STATUS_START = 1
+const TYPING_STATUS_STOP = 2
 /** Min interval between identical session-expiry warnings (avoid log spam on success/failure flaps). */
 const SESSION_EXPIRY_LOG_INTERVAL_MS = 5 * 60 * 1000
 
@@ -187,6 +190,36 @@ export class WeixinService extends BasePluginService {
       text: content,
       contextToken: meta.contextToken
     })
+  }
+
+  /**
+   * S-152: 微信「正在输入」。typing 是尽力而为的可选特性 ——
+   * 取票失败、发状态失败一律只记日志，绝不影响正常收发消息。
+   */
+  private async sendTypingStatus(chatId: string, status: number): Promise<void> {
+    try {
+      const contextToken = this.getContextTokenForChat(chatId)
+      const config = await this.api.getConfig({ toUserId: chatId, contextToken })
+      const errcode = config.errcode ?? config.ret ?? 0
+      const typingTicket = config.typing_ticket?.trim()
+      if (errcode !== 0 || !typingTicket) {
+        console.warn(
+          `[Weixin:${this.pluginId}] getconfig returned no typing ticket (errcode ${errcode})`
+        )
+        return
+      }
+      await this.api.sendTyping({ toUserId: chatId, typingTicket, status })
+    } catch (error) {
+      console.warn(`[Weixin:${this.pluginId}] Failed to send typing status ${status}:`, error)
+    }
+  }
+
+  async startTyping(chatId: string): Promise<void> {
+    await this.sendTypingStatus(chatId, TYPING_STATUS_START)
+  }
+
+  async stopTyping(chatId: string): Promise<void> {
+    await this.sendTypingStatus(chatId, TYPING_STATUS_STOP)
   }
 
   async getGroupMessages(chatId: string, count?: number): Promise<ChannelMessage[]> {

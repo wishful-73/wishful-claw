@@ -24,6 +24,8 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useUIStore, type PreviewPanelTab } from '@renderer/stores/ui-store'
 import { useFileWatcher } from '@renderer/hooks/use-file-watcher'
 import { viewerRegistry } from '@renderer/lib/preview/viewer-registry'
+import { isBrowserPreviewFilePath, localPathToFileUrl } from '@renderer/lib/preview/local-target'
+import { openWebUrl } from '@renderer/lib/preview/web-url'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import {
@@ -273,6 +275,12 @@ export function PreviewPanel({
 
     const selectedPaths = result.paths?.length ? result.paths : result.path ? [result.path] : []
     for (const selectedPath of selectedPaths) {
+      // PDF / HTML 交给内置浏览器（S-148）；其余仍按文件 tab 打开 ——
+      // 这里是多选入口，图片那套「全屏预览」不适用。
+      if (isBrowserPreviewFilePath(selectedPath)) {
+        openWebUrl(localPathToFileUrl(selectedPath))
+        continue
+      }
       useUIStore.getState().openFilePreview(selectedPath)
     }
   }

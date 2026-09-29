@@ -7,6 +7,15 @@
     "toolExecuting": "Tool executing",
     "toolResult": "Tool result"
   },
+  "memory": {
+    "hits": "Found {{count}} memories",
+    "priority": {
+      "permanent": "Permanent",
+      "lasting": "Important",
+      "standard": "Standard",
+      "ephemeral": "Temporary"
+    }
+  },
   "home": {
     "title": "How can I help you today?",
     "subtitle": "Start a conversation or pick a quick prompt below.",

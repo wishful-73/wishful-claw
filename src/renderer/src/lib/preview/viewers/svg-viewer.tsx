@@ -7,6 +7,7 @@
 
 import { CodeEditor } from '@renderer/components/editor/CodeEditor'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 export function SvgViewer({
   filePath,
@@ -40,7 +41,7 @@ export function SvgViewer({
             className="h-full min-h-[360px] w-full rounded-lg border border-border/60 bg-white shadow-sm"
             sandbox=""
             srcDoc={content}
-            title="SVG Preview"
+            title={viewerText('titleSvg')}
           />
         </div>
       </div>

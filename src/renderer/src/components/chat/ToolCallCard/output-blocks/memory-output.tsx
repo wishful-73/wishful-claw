@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import Markdown from 'react-markdown'
 import {
   MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
+  MARKDOWN_REMARK_PLUGINS,
+  SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 import { CopyBtn } from '../shared'
 
@@ -71,29 +72,37 @@ function parseSearchHits(output: string): { count: number; hits: MemoryHit[] } |
   return { count, hits }
 }
 
-const PRIORITY_LABELS: Record<string, { label: string; tone: string }> = {
-  permanent: { label: '永久', tone: 'text-purple-500 bg-purple-500/10' },
-  lasting: { label: '重要', tone: 'text-amber-500 bg-amber-500/10' },
-  standard: { label: '常规', tone: 'text-blue-500 bg-blue-500/10' },
-  ephemeral: { label: '临时', tone: 'text-gray-500 bg-gray-500/10' }
+const PRIORITY_TONES: Record<string, string> = {
+  permanent: 'text-purple-500 bg-purple-500/10',
+  lasting: 'text-amber-500 bg-amber-500/10',
+  standard: 'text-blue-500 bg-blue-500/10',
+  ephemeral: 'text-gray-500 bg-gray-500/10'
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
-  const config = PRIORITY_LABELS[priority] || { label: priority, tone: 'text-gray-500 bg-gray-500/10' }
+  const { t } = useTranslation('chat')
+  const tone = PRIORITY_TONES[priority] ?? 'text-gray-500 bg-gray-500/10'
+  // 已知优先级走 i18n；上游新增的未知值原样回显，不猜含义。
+  const label = PRIORITY_TONES[priority] ? t(`memory.priority.${priority}`) : priority
   return (
-    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${config.tone}`}>
-      {config.label}
+    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${tone}`}>
+      {label}
     </span>
   )
 }
 
 function SearchResults({ output }: { output: string }) {
+  const { t } = useTranslation('chat')
   const parsed = parseSearchHits(output)
 
   if (!parsed || parsed.hits.length === 0) {
     return (
       <div className="px-3.5 py-2.5 text-xs text-muted-foreground">
-        <Markdown remarkPlugins={MARKDOWN_REMARK_PLUGINS} rehypePlugins={MARKDOWN_REHYPE_PLUGINS}>
+        <Markdown
+          remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+          rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+          components={SAFE_LINK_COMPONENTS}
+        >
           {output}
         </Markdown>
       </div>
@@ -103,7 +112,7 @@ function SearchResults({ output }: { output: string }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="px-0.5 text-[11px] text-muted-foreground">
-        找到 {parsed.count} 条记忆
+        {t('memory.hits', { count: parsed.count })}
       </div>
       {parsed.hits.map((hit) => (
         <div
@@ -115,7 +124,11 @@ function SearchResults({ output }: { output: string }) {
             <PriorityBadge priority={hit.priority} />
           </div>
           <div className="prose prose-sm dark:prose-invert max-w-none text-xs prose-p:my-0.5 prose-ul:my-0.5 prose-li:my-0">
-            <Markdown remarkPlugins={MARKDOWN_REMARK_PLUGINS} rehypePlugins={MARKDOWN_REHYPE_PLUGINS}>
+            <Markdown
+              remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+              rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+              components={SAFE_LINK_COMPONENTS}
+            >
               {hit.content}
             </Markdown>
           </div>
@@ -211,7 +224,11 @@ export function MemoryOutputBlock({
         }`}
       >
         <div className="prose prose-sm dark:prose-invert max-w-none text-xs prose-headings:mb-1.5 prose-headings:mt-2 prose-headings:text-sm prose-p:my-1.5 prose-ul:my-1.5 prose-li:my-0.5 prose-pre:bg-muted prose-pre:px-2.5 prose-pre:py-2 prose-code:before:content-none prose-code:after:content-none">
-          <Markdown remarkPlugins={MARKDOWN_REMARK_PLUGINS} rehypePlugins={MARKDOWN_REHYPE_PLUGINS}>
+          <Markdown
+            remarkPlugins={MARKDOWN_REMARK_PLUGINS}
+            rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+            components={SAFE_LINK_COMPONENTS}
+          >
             {displayed}
           </Markdown>
         </div>

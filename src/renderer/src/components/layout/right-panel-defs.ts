@@ -75,6 +75,31 @@ export function resolveChatWidthGuard(params: {
   return otherOpen ? other : null
 }
 
+/**
+ * 视口**自己**变窄时的收侧判定（窗口被拖小 / 屏幕变窄）。
+ *
+ * 与 `resolveChatWidthGuard` 的区别：那个问的是「这次展开 / 拖宽动作把聊天窗挤爆了吗」，
+ * 所以有一侧是「正在动的那一侧」，要收的是**另一侧**。这里没有动作 —— 两侧都是既有状态，
+ * 是视口变了把两者之和顶出去了，所以要收的是其中之一：
+ * 先收右侧（预览 / 浏览器是辅助面），右侧本来就没开才收左栏（导航，收了对操作影响更大）。
+ *
+ * 只收一侧：两侧都收会让人看不出发生了什么，而剩下的那一侧通常够用；
+ * 窗口再窄也放不下时（另一侧也收掉仍不够）保持现状，避免抖动。
+ */
+export function resolveViewportYield(params: {
+  leftOpen: boolean
+  leftWidth: number
+  rightOpen: boolean
+  rightWidth: number
+}): 'left' | 'right' | null {
+  if (typeof window === 'undefined' || !(window.innerWidth > 0)) return null
+  const used = (params.leftOpen ? params.leftWidth : 0) + (params.rightOpen ? params.rightWidth : 0)
+  if (used + CHAT_MIN_WIDTH <= window.innerWidth) return null
+  if (params.rightOpen) return 'right'
+  if (params.leftOpen) return 'left'
+  return null
+}
+
 export function clampBottomTerminalDockHeight(
   height: number,
   maxHeight = BOTTOM_TERMINAL_DOCK_MAX_HEIGHT

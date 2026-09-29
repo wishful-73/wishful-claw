@@ -1,12 +1,22 @@
 import { BRAND, hero } from '../content/site'
-import { AssetPlaceholder } from '../components/ui'
 
+// 2026-09-23（老大）：首屏大图撤掉 —— 主界面截图压在「不花钱，也能用起来」上方太突兀。
+// 那张图已交给「它能干什么 → 真干活」，首屏回归纯文案 + 两个入口。
 export function Hero() {
   return (
     <section className="pt-28 pb-16 sm:pt-36">
-      <div className="mx-auto w-full max-w-5xl px-6 text-center">
-        <p className="reveal mb-3 text-sm tracking-[0.24em] text-ink-900/45">{BRAND.vision}</p>
-        <h1 className="reveal mx-auto max-w-3xl text-4xl leading-tight font-semibold tracking-tight text-ink-950 sm:text-[52px] sm:leading-[1.15]">
+      <div className="w-full px-6 text-center sm:px-10 lg:px-14">
+        <p className="reveal mb-3 text-sm tracking-[0.24em] text-ink-900/45">
+          {/* 闪光挂在内层 span 上：这个 p 自己带 `reveal` 的进场动画，
+              同一个元素上压两条 animation 会互相覆盖（后定义的那条赢） */}
+          <span className="shine shine-muted">{BRAND.vision}</span>
+        </p>
+        {/* 整段一起扫光：光由 h1 自己的 ::after 铺（见 index.css 的 .hero-shine），
+            data-text 就是它的文字来源 —— 两处得同步改，别只改一边。 */}
+        <h1
+          data-text={`${hero.title.lead}${hero.title.highlight}`}
+          className="hero-shine reveal mx-auto max-w-3xl text-4xl leading-tight font-semibold tracking-tight text-ink-950 sm:text-[52px] sm:leading-[1.15]"
+        >
           {hero.title.lead}
           <span className="text-accent">{hero.title.highlight}</span>
         </h1>
@@ -18,12 +28,6 @@ export function Hero() {
           >
             {hero.primaryCta}
           </a>
-          <a href={hero.secondaryAnchor} className="px-2 text-base font-medium text-ink-950 transition-colors hover:text-accent">
-            {hero.secondaryCta}
-          </a>
-        </div>
-        <div className="reveal mx-auto mt-16 max-w-4xl" style={{ animationDelay: '0.12s' }}>
-          <AssetPlaceholder label={hero.image.label} assetNo={hero.image.assetNo} aspect={hero.image.aspect} />
         </div>
       </div>
     </section>

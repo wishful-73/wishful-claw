@@ -12,6 +12,7 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { writeImageBlobToClipboard } from '@renderer/lib/utils/image-clipboard'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -85,7 +86,8 @@ export function ImageViewer({
       if (cancelled) return
       const result = raw as { data?: string; error?: string }
       if (result.error || !result.data) {
-        setError(result.error || 'Failed to read image file')
+        const readFailed = viewerText('failReadImage')
+        setError(result.error ? `${readFailed}: ${result.error}` : readFailed)
         return
       }
       try {
@@ -223,7 +225,7 @@ export function ImageViewer({
   if (!src) {
     return (
       <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
-        Loading image...
+        {viewerText('loadingImage')}
       </div>
     )
   }

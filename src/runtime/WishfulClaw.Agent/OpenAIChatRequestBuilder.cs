@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Net.Http;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
@@ -120,9 +120,15 @@ internal static partial class OpenAIChatProvider
                 {
                     writer.WriteStringValue(toolResult.Content.GetString() ?? string.Empty);
                 }
+                else if (HasImageBlock(toolResult.Content))
+                {
+                    // S-145: tool 消息的 content 也接受 parts 数组。图像必须走 image_url ——
+                    // 否则 GetRawText 会把 base64 当纯文本塞进上下文（既看不见图，又撑爆 token）。
+                    WriteToolImageParts(writer, toolResult.Content);
+                }
                 else
                 {
-                    writer.WriteStringValue(toolResult.Content.GetRawText());
+                    writer.WriteStringValue(ProviderContentHelpers.ToolResultToString(toolResult.Content));
                 }
                 writer.WriteEndObject();
             }
@@ -271,6 +277,67 @@ internal static partial class OpenAIChatProvider
             ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ??
             "image/png";
         return $"data:{mediaType};base64,{ProviderContentHelpers.StripDataUrlPrefix(data)}";
+    }
+
+    /// <summary>
+    /// True when a tool result's content array actually carries a usable image (S-145).
+    /// </summary>
+    private static bool HasImageBlock(JsonElement content)
+    {
+        if (content.ValueKind != JsonValueKind.Array) return false;
+        foreach (var block in content.EnumerateArray())
+        {
+            if (JsonHelpers.GetString(block, "type") != "image") continue;
+            if (!block.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object) continue;
+            var isUrl = JsonHelpers.GetString(source, "type") == "url";
+            var present = isUrl
+                ? !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))
+                : !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data"));
+            if (present) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Writes a tool result's content array as OpenAI chat parts (text + image_url), dropping
+    /// everything else — the tool_result block is not a place to hand unknown shapes to the API.
+    /// </summary>
+    private static void WriteToolImageParts(Utf8JsonWriter writer, JsonElement content)
+    {
+        writer.WriteStartArray();
+        foreach (var block in content.EnumerateArray())
+        {
+            var type = JsonHelpers.GetString(block, "type");
+            if (type == "text")
+            {
+                writer.WriteStartObject();
+                writer.WriteString("type", "text");
+                writer.WriteString("text", JsonHelpers.GetString(block, "text") ?? string.Empty);
+                writer.WriteEndObject();
+                continue;
+            }
+
+            if (type != "image" ||
+                !block.TryGetProperty("source", out var source) ||
+                source.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var imageUrl = JsonHelpers.GetString(source, "type") == "url"
+                ? JsonHelpers.GetString(source, "url")
+                : BuildBase64ImageUrl(source);
+            if (string.IsNullOrWhiteSpace(imageUrl)) continue;
+
+            writer.WriteStartObject();
+            writer.WriteString("type", "image_url");
+            writer.WritePropertyName("image_url");
+            writer.WriteStartObject();
+            writer.WriteString("url", imageUrl);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
     }
 
     private static void WriteTools(Utf8JsonWriter writer, IReadOnlyList<ToolDefinition> toolDefs)

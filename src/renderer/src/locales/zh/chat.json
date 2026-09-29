@@ -7,6 +7,15 @@
     "toolExecuting": "工具执行中",
     "toolResult": "工具结果"
   },
+  "memory": {
+    "hits": "找到 {{count}} 条记忆",
+    "priority": {
+      "permanent": "永久",
+      "lasting": "重要",
+      "standard": "常规",
+      "ephemeral": "临时"
+    }
+  },
   "home": {
     "title": "今天我能帮你做什么？",
     "subtitle": "开始对话或选择下方快捷提示。",

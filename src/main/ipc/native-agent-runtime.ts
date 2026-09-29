@@ -1,4 +1,4 @@
-﻿import { Notification, ipcMain, type BrowserWindow } from 'electron'
+import { Notification, ipcMain, type BrowserWindow } from 'electron'
 import { getNativeWorker } from '../lib/native-worker'
 import { safeSendMessagePackToWindow, safeSendMessagePackToAllWindows } from '../window-ipc'
 import {
@@ -35,6 +35,15 @@ const USER_INTERACTION_METHODS = new Set([
   'goal/confirm-request',
   'sub-agent:approve-tool'
 ])
+
+// Long-running renderer work: no human in the loop, but minutes of compute.
+// Video frame extraction (S-145 §六) reads the file in 4 MB chunks and seeks
+// frame by frame; the renderer caps itself at 120 s. Give the main side a bit
+// more so the renderer's own timeout wins — it carries a real reason (which
+// container, which MediaError), ours would only ever say "timed out".
+const RENDERER_LONG_TASK_TIMEOUT_MS = 150_000
+
+const LONG_RUNNING_RENDERER_METHODS = new Set(['vision/extract-video-frames'])
 
 type RendererToolRequest = {
   id?: number | string
@@ -209,7 +218,11 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
     'mcp:capability-inspect',
     'skill-management:execute',
     'project/send-session-message',
-    'session-follow-up/update'
+    'session-follow-up/update',
+    // S-145 §六：C# 侧 Read 没有解码器，视频抽帧必须落到渲染端
+    // （`renderer-tool-bridge.ts` 已实现）。漏登记这条时请求会掉进
+    // `dispatchReverseRequest`，主进程没有对应 handler ⇒ 当场报错、够不着渲染端。
+    'vision/extract-video-frames'
   ])
   if (rendererMethods.has(method)) {
     const requestId = `sidecar-renderer-tool-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -220,7 +233,9 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
         // much longer one so a crashed renderer can't leak the entry forever.
         const timeoutMs = USER_INTERACTION_METHODS.has(method)
           ? USER_INTERACTION_TIMEOUT_MS
-          : SIDECAR_RENDERER_REQUEST_TIMEOUT_MS
+          : LONG_RUNNING_RENDERER_METHODS.has(method)
+            ? RENDERER_LONG_TASK_TIMEOUT_MS
+            : SIDECAR_RENDERER_REQUEST_TIMEOUT_MS
         const timer = setTimeout(() => {
           removePendingRendererToolRequest(requestId)
           reject(new Error(`Renderer tool request timed out: ${method}`))

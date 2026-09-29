@@ -20,6 +20,13 @@ import type { UnifiedMessage } from '@renderer/lib/api/types'
 import type { AssistantReplyRailItem as RailItem } from './utils'
 import { createJumpToAssistantMessage, applySuggestedPrompt as applySuggestedPromptImpl } from './scroll-utils'
 import { AssistantReplyRailItem } from './utils'
+import {
+  admitCollapse,
+  createCollapseGate,
+  isCollapseCoolingDown,
+  trackContentBottom,
+  type CollapseGate
+} from './scroll-collapse-gate'
 
 export interface MessageListScrollInput {
   activeSessionId: string | null
@@ -124,6 +131,13 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   // 内容底 DOM 真值缓存（getRealContentBottom 的最近一次结果）。scroll 事件
   // 频率高，syncBottomState 用缓存判定即可，80px 阈值下毫秒级滞后无感。
   const realContentBottomRef = React.useRef(0)
+  // S-150 补充：流式期内内容底的单调下界。虚拟化下 getRealContentBottom 的挂载行集合是动态的，
+  // 尾行在可见范围边界进出会让内容底骤降回升，跟随目标于是每帧变、每帧写 scrollTop。
+  // 流式内容底只会增大，取历史最大值即可滤掉这类「传感器噪声」。见 trackContentBottom。
+  const streamingBottomFloorRef = React.useRef(0)
+  // S-150：高度回收冷却锁。折叠动画 / 行高重测 / 水位线撤销会在同一瞬间连着报几次
+  // 高度回缩，每报一次跟随逻辑就往回收一把 ⇒ 来回拉锯。见 scroll-collapse-gate.ts。
+  const collapseGateRef = React.useRef<CollapseGate>(createCollapseGate())
 
   // ── Helpers ─────────────────────────────────────────────────────
   const canAutoScroll = React.useCallback(() => {
@@ -165,8 +179,14 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       if (contentHeightWatermarkRef.current > 0) {
         // R-10.2：水位线激活时地面真值用 DOM（getRealContentBottom），totalSize
         // 是账面值（未测行按估算计）不可用。
-        const realBottom = getRealContentBottom()
+        // S-150 补充：先过单调下界 —— 挂载行集合逐帧变化时，实测底会骤降一整行，
+        // 跟随目标跟着跳，写出的 scrollTop 每帧一个值，滚动条就高频重定位。
+        const realBottom = trackContentBottom(
+          streamingBottomFloorRef.current,
+          getRealContentBottom()
+        )
         if (realBottom > 0) {
+          streamingBottomFloorRef.current = realBottom
           realContentBottomRef.current = realBottom
           // 余量目标 = 视口底边应当停在内容底下方多远。
           // 上限取半屏：内容缩回去时视口最多漂到这么深，再深就纯是空白了。
@@ -177,6 +197,12 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
           const followTarget = Math.max(0, realBottom + gapTarget - ref.clientHeight)
           if (ref.scrollTop > realBottom + 1) {
             // 整屏悬空（收缩使视口内零内容）：无条件救回跟随姿态，一次到位。
+            // S-150：救援**不受冷却锁阻挡**（挡了就是让用户盯着空白屏），但救完立刻记账 ——
+            // 紧接着那一串跟随回收要被压掉，否则「救一次 + 补几次」又是一次拉锯。
+            collapseGateRef.current = admitCollapse(
+              collapseGateRef.current,
+              window.performance.now()
+            )
             markProgrammaticScroll()
             ref.scrollTop = followTarget
             return
@@ -200,6 +226,16 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
           // 收缩由只增不减的水位线兜住，本函数只管「用尽 → 补满」。
           const remaining = ref.scrollTop + ref.clientHeight - realBottom
           if (remaining >= STREAMING_BOTTOM_FOLLOW_REFILL_AT && remaining <= gapCeiling) return
+          // `remaining > gapCeiling` 是**回收**方向：视口超前内容太多，要把 scrollTop 拉回来。
+          // S-150：冷却窗口内不做 —— 一次回收之后紧接着又来一次，正是本需求要治的抖动。
+          // 窗口过了再按当时的几何重判，**不补做**窗口里被压掉的那几次
+          // （每次收缩都补一遍 = 位移总量不变、只是分几刀落，照样看得出上下动）。
+          if (
+            remaining > gapCeiling &&
+            isCollapseCoolingDown(collapseGateRef.current, window.performance.now())
+          ) {
+            return
+          }
           bottom = followTarget
         }
       }
@@ -208,6 +244,11 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       // effects — that cycle is what React reports as "Maximum update depth
       // exceeded".
       if (Math.abs(ref.scrollTop - bottom) <= 1) return
+      // S-150：向小（回收）方向的位移才记账开冷却；向大（贴底 / 补提前量）永远放行 ——
+      // 内容长出去不跟才是真问题，那不叫抖动。
+      if (bottom < ref.scrollTop) {
+        collapseGateRef.current = admitCollapse(collapseGateRef.current, window.performance.now())
+      }
       markProgrammaticScroll()
       if (behavior === 'auto') {
         ref.scrollTop = bottom
@@ -517,7 +558,11 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     // R-10.2: 水位线不跨会话残留
     contentHeightWatermarkRef.current = 0
     realContentBottomRef.current = 0
+    // S-150 补充：单调下界同样不跨会话
+    streamingBottomFloorRef.current = 0
     applyMinHeight(0)
+    // S-150: 冷却锁同理 —— 上个会话的回收时间戳不能压住新会话的第一屏跟随
+    collapseGateRef.current = createCollapseGate()
   }, [activeSessionId, setActiveAssistantRailIds])
 
   // ── Initial scroll to bottom ────────────────────────────────────
@@ -609,8 +654,14 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     // 内容底附近。用户看到的留白始终是基准值；水位线多撑出来的那部分在视口之外，
     // 看不见，也就无所谓它多大。
     if (isSessionOutputting) {
-      const realBottom = getRealContentBottom()
+      // S-150 补充：与 scrollToBottomImmediate 共用同一份单调下界 —— 若两边各取一份实测量，
+      // 内容底骤降时一边抬水位线一边不抬，min-height 与跟随目标互相追，同样是抖源。
+      const realBottom = trackContentBottom(
+        streamingBottomFloorRef.current,
+        getRealContentBottom()
+      )
       if (realBottom > 0) {
+        streamingBottomFloorRef.current = realBottom
         // 补给量上限取半屏：视口矮的时候 CHUNK(240) 可能不止半屏，撑个比视口还深的坑没意义。
         const viewportHeight = listRef.current?.clientHeight ?? 0
         const gapCeiling = viewportHeight > 0 ? viewportHeight / 2 : Number.POSITIVE_INFINITY
@@ -647,6 +698,8 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
         }
       }
       contentHeightWatermarkRef.current = 0
+      // S-150 补充：下界与水位线同生命周期 —— 一起归零，下一轮重新起算。
+      streamingBottomFloorRef.current = 0
       realContentBottomRef.current = realBottom
       applyMinHeight(0)
       return

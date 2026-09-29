@@ -1,22 +1,22 @@
 import { BRAND, footer, platforms } from '../content/site'
 import { PlatformButton } from '../components/download-buttons'
-import { useLatestInfo } from '../lib/site-data'
+import { useReleaseManifest } from '../lib/site-data'
 import { Reveal, Section } from '../components/ui'
 
 // 双卡并排布局参考 Reasonix 首屏下载区：左卡官网直链（逐平台），右卡 GitHub
 export function DownloadCta() {
-  const info = useLatestInfo()
+  const manifest = useReleaseManifest()
   return (
     <Section id="download" eyebrow="Download" title={`下载${BRAND.name}`}>
       <Reveal>
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="rounded-[13px] border border-accent/45 bg-accent/[0.04] p-8">
             <p className="text-xs font-semibold text-accent">直接下载</p>
-            <h3 className="mt-2 text-lg font-semibold text-ink-950">当前版本 v{info?.version ?? '—'}</h3>
+            <h3 className="mt-2 text-lg font-semibold text-ink-950">当前版本 v{manifest?.version ?? '—'}</h3>
             <ul className="mt-6 flex flex-col gap-3">
               {platforms.map((platform) => (
                 <li key={platform.id}>
-                  <PlatformButton platform={platform} info={info} />
+                  <PlatformButton platform={platform} manifest={manifest} />
                 </li>
               ))}
             </ul>
@@ -30,7 +30,7 @@ export function DownloadCta() {
               每个迭代改了什么、需要旧版本时去哪找，都在这里。
             </p>
             <a
-              href={info?.downloads.github ?? footer.github}
+              href={footer.github}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-6 inline-block rounded-[10px] border border-ink-700 bg-paper px-6 py-3 text-center text-[15px] font-semibold text-ink-950 transition-colors hover:border-accent hover:text-accent"

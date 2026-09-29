@@ -78,6 +78,23 @@ export function MainLayout(): React.JSX.Element {
   const runtimeStatusPanelOpen = useUIStore((s) => s.runtimeStatusPanelOpen)
   const ensureDefaultProject = useChatStore((s) => s.ensureDefaultProject)
 
+  // 视口自己变窄时也要收侧（S-131 路径二）。
+  //
+  // 收侧判定只在「展开 / 拖宽某一侧」时跑，窗口被拖小没有动作可挂：两侧面板同开
+  // （左 370 + 右 370）时把窗口拖到 900，聊天窗只剩 160 —— 破了 CHAT_MIN_WIDTH 的底线，
+  // 而所有 width 值都没人质疑过。这里补一手：只在**变窄**时重跑判定（变宽不动，
+  // 收掉的面板不会自动弹回 —— 与「拖宽就把面板拉回来」是两回事，需要用户自己点开）。
+  useEffect(() => {
+    let lastWidth = window.innerWidth
+    const onResize = (): void => {
+      const width = window.innerWidth
+      if (width < lastWidth) useUIStore.getState().enforceViewportWidthGuard()
+      lastWidth = width
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   // Load projects + sessions from DB on startup, then ensure default project
   useEffect(() => {
     void (async () => {

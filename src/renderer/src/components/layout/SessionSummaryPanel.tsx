@@ -41,7 +41,8 @@ import {
 } from '@renderer/lib/agent/context-compression'
 import {
   MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
+  MARKDOWN_REMARK_PLUGINS,
+  SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 
 const GIT_SUMMARY_CACHE_MS = 5_000
@@ -579,6 +580,7 @@ export function SessionSummaryPanel({
                 <Markdown
                   remarkPlugins={MARKDOWN_REMARK_PLUGINS}
                   rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+                  components={SAFE_LINK_COMPONENTS}
                 >
                   {content}
                 </Markdown>

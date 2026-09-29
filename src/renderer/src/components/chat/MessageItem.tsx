@@ -25,7 +25,8 @@ import {
 } from '@renderer/lib/agent/sub-agents/background-wake-message'
 import {
   MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
+  MARKDOWN_REMARK_PLUGINS,
+  SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 
 type MessageRenderMode = 'default' | 'transcript' | 'static'
@@ -118,6 +119,7 @@ function AgentWakeNotification({ content }: { content: string }): React.JSX.Elem
             <Markdown
               remarkPlugins={MARKDOWN_REMARK_PLUGINS}
               rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+              components={SAFE_LINK_COMPONENTS}
             >
               {body}
             </Markdown>

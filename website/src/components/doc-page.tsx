@@ -44,7 +44,9 @@ export function DocPage(props: {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto w-full max-w-6xl px-6 py-14 sm:py-16">
+      {/* 宽度对齐首页（ui.tsx 的 Section / SiteHeader / SiteFooter 同款）：去掉 max-w-6xl 的居中收束，
+          改成与首页一致的 w-full + px-6 sm:px-10 lg:px-14 —— 2026-09-24 老大：指引页跟首页宽度不搭。 */}
+      <main className="w-full px-6 py-14 sm:px-10 sm:py-16 lg:px-14">
         {/* 字距压到 0.08em：拉丁文用 0.2em 是 reasonix 那种 mono 眉标的观感，中文是等宽方块字，
             照抄会把「心 相 · 使 用 指 引」拉成一片空格，反而像坏掉了。 */}
         <p className="font-mono text-xs font-semibold tracking-[0.08em] text-accent">{props.eyebrow}</p>

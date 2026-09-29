@@ -440,13 +440,16 @@ export function BrowserPanel({
       {/* Content */}
       <div className="relative min-h-0 flex-1">
         {committedUrl && (
+          /* 必须常开：Chromium 的 PDF 查看器是插件式实现，plugins 关掉时 file:// 的 .pdf
+             会被导航成一张空白页（无 embed、无标题），预览 PDF 就等于失败。
+             原先只在「复用浏览器数据」模式下开，导致默认分区下 PDF 一律白屏。 */
           <webview
             key={runtimeBrowserUserDataReuseEnabled ? 'user-browser-profile' : 'wishfulclaw-profile'}
             ref={handleWebviewRef as React.Ref<Electron.WebviewTag>}
             src={committedUrl}
             className="size-full"
             {...webviewSessionProps}
-            {...(runtimeBrowserUserDataReuseEnabled ? { plugins: 'true' as unknown as boolean } : {})}
+            plugins={'true' as unknown as boolean}
           />
         )}
         {errorInfo ? (

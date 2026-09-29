@@ -14,23 +14,16 @@ export const BRAND = {
 
 export const GITHUB_REPO_URL = 'https://github.com/wishful-73/wishful-claw'
 
-// 只放页面真正读的字段；阶段 4 由 latest.yml 派生时再按需加（别为假想需求预留字段）
-export interface LatestInfo {
-  version: string
-  downloads: { windows: string; github: string; macos: string; linux: string }
-}
-
-// 下载平台：urlKey 对应 latest.json 的 downloads 字段，留空即置灰、填了 URL 自动变真按钮。
-// key 一律按平台命名（windows / macos / linux）。原 Windows 用 'direct'（「官网直链」）——
-// 那是把「包放哪」的实现细节写进了数据键名；包今天在 GitHub、明天在官网，键名不该跟着搬家。
-// 2026-09-21：Windows 先填 GitHub Release 的安装包直链 —— 有包就不该给灰按钮（参考 Reasonix 官网，
-// 它的下载区里没有「通道建设中」这种东西）。官网上线后把 latest.json 里这个值换成官网地址，前端零改动。
+// 下载平台。产物目前只有 Windows（electron-builder.yml 只配了 nsis）⇒ 只有它绑清单里的安装包；
 // Mac / Linux 能出包（老大 2026-09-21：目前用不到所以没做）⇒ 是「待发布」占位，不是「不支持」，不给时间承诺。
+// 原每个平台带一个 urlKey 去 latest.json 的 downloads 取 URL；S-129 把数据源换成 builder 生成的
+// latest.yml 后，清单里只有「当前唯一产物」的安装包文件名、没有按平台分的字段，urlKey 随之删掉 ——
+// 哪个平台能下由这张表决定，不再由站点上的数据文件决定。
 // 不写系统要求备注：产物是 AOT self-contained，不挑运行环境（老大 2026-09-21）。
 export const platforms = [
-  { id: 'windows', label: 'Windows', urlKey: 'windows', pendingTag: '暂不可用' },
-  { id: 'macos', label: 'macOS', urlKey: 'macos', pendingTag: '待发布' },
-  { id: 'linux', label: 'Linux', urlKey: 'linux', pendingTag: '待发布' }
+  { id: 'windows', label: 'Windows', pendingTag: '暂不可用' },
+  { id: 'macos', label: 'macOS', pendingTag: '待发布' },
+  { id: 'linux', label: 'Linux', pendingTag: '待发布' }
 ] as const
 
 export const hero = {
@@ -44,21 +37,22 @@ export const hero = {
   subtitle: `跑在你自己电脑上的${BRAND.category}：读写文件、执行命令、操作浏览器和桌面软件。不花钱就能开始——装完打开先问起来；要它真动手，填一个模型 Key，用哪家、花多少你说了算。`,
   primaryCta: '立即下载',
   primaryCtaHref: './download',
-  // 原为「三种用法 →」跳 #value-ladder；2026-09-21 三层阶梯被挪到 Hero 之上后，往下滚的按钮不能回头指向上方，
-  // 曾改指功能展示。S-127 方案 A 把阶梯放回 Hero 之下 ⇒ 本按钮跟着改回指它，文案取区块标题的动词化，不另造词。
-  secondaryCta: '不花钱怎么用 →',
-  secondaryAnchor: '#value-ladder',
-  image: { label: '主界面截图（聊天 + 侧栏）', assetNo: 1, aspect: '16 / 10' }
+  // 2026-09-23（老大）：次要 CTA「不花钱怎么用 →」撤掉 —— 它指的是紧随其后的
+  // 「不花钱，也能用起来」，两者本来就在同一屏里，「往下滚去看」这个引导已经没意义了。
+  // 2026-09-23（老大）：Hero 大图撤了 —— 主界面截图压在紧随其后的「不花钱，也能用起来」上方，非常突兀。
+  // 那张图移交给「它能干什么 → 真干活」（assetNo 1），画面放到真需要看它干活的地方去。
 }
 
 // 顶栏（老大 2026-09-21 定）：首页 / 使用指引 / 更新日志 / FAQ + 下载按钮。
 // 页内锚点（为什么是它 / 不花钱也能用起来 / 它能干什么 / 快速上手）不在顶栏 —— 中文在顶栏 flex 里挤不下更多项，会逐字折行。
 // href 带首页文件名：在其他页上点击也能跳回单页对应锚点，而非死链到本页
 export const nav = [
-  { label: '首页', href: './' },
-  { label: '使用指引', href: './guide' },
-  { label: '更新日志', href: './changelog' },
-  { label: 'FAQ', href: './#faq' }
+  { label: '首页', href: './', external: false },
+  { label: '使用指引', href: './guide', external: false },
+  // 2026-09-23（老大定）：官网不再有更新日志页，这一项改为**外链跳 GitHub Releases**
+  // —— 每个 Release 的 notes 就是那次的完整日志。`external` 由顶栏渲染成新窗口打开。
+  { label: '更新日志', href: `${GITHUB_REPO_URL}/releases`, external: true },
+  { label: 'FAQ', href: './#faq', external: false }
 ]
 
 // 竞争优势：按「门槛低 / 好看」两类呈现，门槛低打头（2026-09-20 定稿三类；2026-09-21 S-124 删掉「自由」整类）
@@ -87,8 +81,10 @@ export const advantages = {
         {
           name: '界面样式好看',
           quote: '不用解释，看一眼就知道。',
-          body: '深色界面、清晰的信息层级、顺手的双栏布局。',
-          image: { label: '界面大图（样式展示）', assetNo: 9, aspect: '16 / 10' }
+          // 2026-09-23（老大）：配图撤掉（全页配图太密），文本加厚。
+          // 内容取自软件实有的外观选项，不是泛泛而谈：主题预设见 locales/zh/settings.json 的
+          // `presets`（6 套），浅色/深色/跟随系统见 theme mode，字体字号见 appearance 一节。
+          body: '六套主题配色随你挑 —— 黑曜灰、远航蓝、深海青、松林绿、暖曦橙、石墨工具；浅色、深色、跟随系统一键切，字体和字号也能自己调。信息层级分明，左边管会话、右边干活，双栏各就各位，长时间盯着也不累。'
         }
       ]
     }
@@ -127,12 +123,36 @@ export const valueLadder = {
 export const features = {
   title: '它能干什么',
   items: [
-    { name: '真干活', desc: '在你电脑上读写文件、跑命令、改代码，不是只会在对话框里聊天' },
+    // 2026-09-23（老大）：零成本三件套打头 —— 它们属「零成本层」（见上面 valueLadder），
+    // 是「不花钱也能用起来」的落地证据：先让人看到一分钱不花就能用上什么，再往后讲要接服务商的重活。
+    // 三条素材位 11 / 12 / 13 已于 2026-09-23 到位，路径登记在 components/ui.tsx 的 assetSources。
+    {
+      name: '免费对话',
+      desc: '内置 DeepSeek / Kimi / 元宝 / 豆包等官方网页版，登录就能聊，不填模型 Key 也能用',
+      image: { label: '免费对话截图（内置浏览器里的网页版对话）', assetNo: 11 }
+    },
+    {
+      name: '快捷启动',
+      desc: '一个热键唤起，随手问一句、丢个文件，不用先切回主窗口',
+      image: { label: '快捷启动截图（全局热键唤起）', assetNo: 12 }
+    },
+    {
+      name: '剪贴板增强',
+      desc: '复制过的文字、图片、长内容自动留档，回头还能翻出来',
+      image: { label: '剪贴板增强截图（历史记录）', assetNo: 13 }
+    },
+    {
+      name: '真干活',
+      desc: '在你电脑上读写文件、跑命令、改代码，不是只会在对话框里聊天',
+      // 2026-09-23（老大）：本板块改选项卡后，每条都要给画面 —— 否则切到没配图的这条，
+      // 右侧面板只剩一行字、高度整个塌掉。用的就是原 Hero 那张主界面截图（原 assetNo 1，已从首屏撤下）。
+      image: { label: '主界面截图（聊天 + 侧栏）', assetNo: 1 }
+    },
     { name: '全局助理派活', desc: '一个总助理管多个项目会话，派活、盯进度、汇总回报', image: { label: '全局派活截图', assetNo: 5 } },
-    { name: '微信遥控', desc: '出门在外发条微信，家里电脑照干，结果推回微信', image: { label: '微信遥控截图（手机 + 电脑对照）', assetNo: 6 } },
+    { name: '微信遥控', desc: '出门在外发条微信，家里电脑照干，结果推回微信', image: { label: '微信遥控截图（微信对话）', assetNo: 6 } },
     { name: '定时任务', desc: '按间隔或固定时间自动跑，无人值守', image: { label: '定时任务配置页截图', assetNo: 10 } },
-    { name: '用量统计', desc: '曲线图 / 柱状图 / 请求明细，花了多少一目了然', image: { label: '用量统计页截图', assetNo: 3 } },
-    { name: '桌面控制', desc: `能操作${BRAND.name}之外的任意桌面程序`, image: { label: '桌面控制截图', assetNo: 8 } }
+    { name: '用量统计', desc: '曲线图 / 柱状图 / 请求明细，花了多少一目了然', image: { label: '用量统计页截图', assetNo: 3 } }
+    // 2026-09-23（老大）：原「桌面控制」条目已删，素材位 8 不要了。
   ]
 }
 
@@ -156,10 +176,11 @@ export const quickStart = {
     },
     { name: '开始派活', desc: '直接说你要干什么，它在你的电脑上执行。' }
   ],
-  media: [
-    { step: '第 3 步', label: '服务商设置页截图（含添加自定义服务商）', assetNo: 2 },
-    { step: '全流程', label: '上手流程截图（安装 → 免费对话 → 填 key → 派活）', assetNo: 7 }
-  ]
+  // 2026-09-23（老大）：原「全流程」（素材 7）那条占位撤掉 —— 只留这张，
+  // 并且让它占满整行（布局见 sections/quick-start.tsx）。
+  // 图注原写「第 3 步」（那是它在上面四步里的序号），单张成图后序号没有参照物，
+  // 直接点名它拍的是什么：接入服务商。
+  media: [{ step: '接入服务商', label: '服务商设置页截图（含添加自定义服务商）', assetNo: 2 }]
 }
 
 export const faq = {
@@ -193,5 +214,9 @@ export const footer = {
   // 工信部 ICP 备案号（2026-09-23 通过；主体：龚翼）。合规硬要求：必须悬挂在页脚并链接到
   // beian.miit.gov.cn，且站内显示名应与备案的网站全称一致 —— 即 BRAND.fullName「心相智能助手」。
   icp: '蜀ICP备2026057067号',
-  icpUrl: 'https://beian.miit.gov.cn/'
+  icpUrl: 'https://beian.miit.gov.cn/',
+  // 公安联网备案（2026-09-24 通过；主体：龚翼）。同属合规硬要求，与 ICP 号并排悬挂页脚，
+  // 链接指向公安部备案系统的按号查询页 —— code 就是号里的注册号，去掉「川公网安备」「号」前后缀。
+  police: '川公网安备51080202020186号',
+  policeUrl: 'https://beian.mps.gov.cn/#/query/webSearch?code=51080202020186'
 }

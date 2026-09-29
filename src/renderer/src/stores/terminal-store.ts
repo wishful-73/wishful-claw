@@ -5,10 +5,18 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { resolveShellExecutable } from '@renderer/stores/settings-store-types'
 import { useUIStore } from '@renderer/stores/ui-store'
+import {
+  countTabsForSession,
+  removeTabAndPickActive,
+  shouldCloseTabOnExit,
+  type TerminalTabKind
+} from '@renderer/stores/terminal-tab-lifecycle'
 
 // ─── Types ───
 
-export type TerminalTabKind = 'local' | 'local-agent' | 'ssh-agent'
+// 判据（哪些 tab 退出即关、删 tab 后选谁、某会话还剩几个 tab）在零依赖模块里，
+// renderer 与回归套件跑同一份代码。对外导入路径不变。
+export type { TerminalTabKind }
 
 export interface TerminalTab {
   id: string
@@ -167,16 +175,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
       }
     }
 
-    set((state) => {
-      const tabs = state.tabs.filter((t) => t.id !== id)
-      const activeTabId =
-        state.activeTabId === id
-          ? tabs.length > 0
-            ? tabs[tabs.length - 1].id
-            : null
-          : state.activeTabId
-      return { tabs, activeTabId }
-    })
+    set((state) => removeTabAndPickActive(state.tabs, id, state.activeTabId))
   },
 
   setActiveTab: (id) => set({ activeTabId: id }),
@@ -263,6 +262,27 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
   _onExit: (event) => {
     const id = event.id
     if (!id) return
+
+    const exited = get().tabs.find((tab) => tab.id === id)
+
+    // agent 的常驻终端一死，那个选项卡就没有存在意义了 —— 留着只会越堆越多的死 tab（S-154）。
+    // 用户自己开的 `local`、SSH 观察窗 `ssh-agent` 不进这条路：那两类的输出用户可能还要看。
+    if (exited && shouldCloseTabOnExit(exited.kind)) {
+      const removed = removeTabAndPickActive(get().tabs, id, get().activeTabId)
+      set(removed)
+
+      // 摘掉某会话最后一个 tab 时顺手收起它的停靠栏：空停靠栏会自动新建一个终端
+      // （BottomTerminalDock 的 `dockOpen && sessionTabs.length === 0` 分支），
+      // 不收的话用户会看到「死 tab 消失 → 冒出个全新空白终端」。
+      const sessionId = exited.sessionId
+      if (sessionId && countTabsForSession(removed.tabs, sessionId) === 0) {
+        const ui = useUIStore.getState()
+        if (ui.isBottomTerminalDockOpen(sessionId)) {
+          ui.setBottomTerminalDockOpen(sessionId, false)
+        }
+      }
+      return
+    }
 
     set((state) => ({
       tabs: state.tabs.map((tab) =>

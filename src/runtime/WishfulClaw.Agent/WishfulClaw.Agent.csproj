@@ -24,6 +24,9 @@
     <InternalsVisibleTo Include="WishfulClaw.GrepPatternRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.MemoryRecallRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.StreamSegmentRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.ReadImageRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.ReadVideoRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.SandboxPathRegressionTests" />
   </ItemGroup>
 
 </Project>

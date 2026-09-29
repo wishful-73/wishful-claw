@@ -10,6 +10,7 @@ import { Button } from '@renderer/components/ui/button'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 function isPublicHttpUrl(value: string): boolean {
   return /^https:\/\/\S+/i.test(value)
@@ -32,7 +33,7 @@ export function OfficeOnlineViewer({ filePath, sshConnectionId }: ViewerProps): 
       <iframe
         className="size-full border-0 bg-white"
         src={microsoftOfficeViewerUrl(filePath)}
-        title="Microsoft Office Preview"
+        title={viewerText('titleOffice')}
       />
     )
   }
@@ -43,14 +44,11 @@ export function OfficeOnlineViewer({ filePath, sshConnectionId }: ViewerProps): 
         <div className="mx-auto mb-3 flex size-10 items-center justify-center rounded-full bg-background text-muted-foreground">
           <FileText className="size-5" />
         </div>
-        <h3 className="text-sm font-medium text-foreground">Document preview needs a public URL</h3>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          Microsoft Office online preview can only load Office-like documents from a reachable HTTPS
-          URL. Local and SSH files are not sent online automatically.
-        </p>
+        <h3 className="text-sm font-medium text-foreground">{viewerText('officeNeedsPublicUrl')}</h3>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">{viewerText('officeOnlineHint')}</p>
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-left text-[11px] leading-4 text-amber-700 dark:text-amber-300">
           <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span>Use local preview or open the file in the system app for private documents.</span>
+          <span>{viewerText('officePrivateHint')}</span>
         </div>
         {!sshConnectionId ? (
           <Button
@@ -60,7 +58,7 @@ export function OfficeOnlineViewer({ filePath, sshConnectionId }: ViewerProps): 
             onClick={() => void openInSystem()}
           >
             <ExternalLink className="size-3.5" />
-            Open in system app
+            {viewerText('openInSystemApp')}
           </Button>
         ) : null}
       </div>

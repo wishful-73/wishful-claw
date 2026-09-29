@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -190,7 +190,17 @@ internal static partial class AnthropicMessagesProvider
                 }
                 else
                 {
-                    writer.WriteStringValue(ProviderContentHelpers.ToolResultToString(toolResult.Content));
+                    // S-145: Anthropic 的 tool_result.content 本身就接受 block 数组，其中可以有 image。
+                    // 从前一律压成字符串，Read / 截图带回的像素就被悄悄丢了。
+                    var resultBlocks = ToBlockList(toolResult.Content);
+                    if (HasImageContent(resultBlocks))
+                    {
+                        WriteAnthropicContentBlocks(writer, resultBlocks, addCacheControl: false);
+                    }
+                    else
+                    {
+                        writer.WriteStringValue(ProviderContentHelpers.ToolResultToString(toolResult.Content));
+                    }
                 }
                 if (toolResult.IsError.HasValue)
                 {
@@ -259,6 +269,21 @@ internal static partial class AnthropicMessagesProvider
         }
 
         writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// Tool results carry their content blocks as a raw JsonElement (it may be a string), while the
+    /// writers work on lists. Non-array content yields an empty list.
+    /// </summary>
+    private static List<JsonElement> ToBlockList(JsonElement content)
+    {
+        var blocks = new List<JsonElement>();
+        if (content.ValueKind != JsonValueKind.Array) return blocks;
+        foreach (var block in content.EnumerateArray())
+        {
+            blocks.Add(block);
+        }
+        return blocks;
     }
 
     private static bool HasImageContent(IReadOnlyList<JsonElement>? contentBlocks)

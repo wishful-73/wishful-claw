@@ -162,16 +162,32 @@ export function registerFsHandlers(): void {
       }
     )
 
-    registerMessagePackHandler<{ path: string }, { data: string } | { error: string }>(
+    registerMessagePackHandler<
+      { path: string; offset?: number; length?: number },
+      { data: string } | { error: string }
+    >(
       'fs:read-file-binary',
       async (args) => {
         try {
           const stat = await fs.promises.stat(args.path)
-          if (stat.size > MAX_BINARY_READ_BYTES) {
-            return { error: `File too large to read into memory (${stat.size} bytes)` }
+          // 分片读（S-145 §六）：视频抽帧要把整段视频搬进渲染端，一次搬完会同时顶爆
+          // 内存和 IPC，所以按 offset/length 切片。上限约束的是「本次读多少字节」，
+          // 不再是整个文件 —— 不传 offset/length 时 start=0、length=文件长度，
+          // 与从前「整文件读、超限报错」的行为逐字一致。
+          const start = Math.max(0, Math.min(Math.floor(args.offset ?? 0), stat.size))
+          const requested = Math.max(0, Math.floor(args.length ?? stat.size - start))
+          const byteCount = Math.min(requested, stat.size - start)
+          if (byteCount > MAX_BINARY_READ_BYTES) {
+            return { error: `File too large to read into memory (${byteCount} bytes)` }
           }
-          const buffer = await fs.promises.readFile(args.path)
-          return { data: buffer.toString('base64') }
+          const handle = await fs.promises.open(args.path, 'r')
+          try {
+            const buffer = Buffer.alloc(byteCount)
+            const { bytesRead } = await handle.read(buffer, 0, byteCount, start)
+            return { data: buffer.subarray(0, bytesRead).toString('base64') }
+          } finally {
+            await handle.close()
+          }
         } catch (err) {
           return { error: err instanceof Error ? err.message : String(err) }
         }

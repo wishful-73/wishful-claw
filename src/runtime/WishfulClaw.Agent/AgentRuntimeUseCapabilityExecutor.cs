@@ -329,7 +329,7 @@ internal static partial class AgentRuntimeUseCapabilityExecutor
 
             // 代理路径也要过同一道沙箱边界（S-79）：否则 Read/Write/Bash 经 use_capability
             // 绕一圈就跳出去了。策略就地算 —— 代理调用不像主循环那样有整批共享的机会。
-            var (output, isError) = await ToolDispatchRouter.DispatchAsync(
+            var (output, isError, _) = await ToolDispatchRouter.DispatchAsync(
                 builtinCall, state, context, registry, workingFolder, projectId, sshConnectionId,
                 Tools.PathBoundary.ResolvePolicy(state.Parameters));
 

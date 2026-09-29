@@ -10,6 +10,7 @@ import { Baseline, Type } from 'lucide-react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { ViewerProps } from '../viewer-registry'
+import { viewerText } from '../viewer-text'
 
 const MIME_TYPES: Record<string, string> = {
   '.ttf': 'font/ttf',
@@ -64,7 +65,8 @@ export function FontViewer({
       if (cancelled) return
       const result = raw as { data?: string; error?: string }
       if (result.error || !result.data) {
-        setError(result.error || 'Failed to read font file')
+        const readFailed = viewerText('failReadFont')
+        setError(result.error ? `${readFailed}: ${result.error}` : readFailed)
         return
       }
 
@@ -97,7 +99,7 @@ export function FontViewer({
     return (
       <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
         <Type className="size-5 animate-pulse" />
-        Loading font...
+        {viewerText('loadingFont')}
       </div>
     )
   }

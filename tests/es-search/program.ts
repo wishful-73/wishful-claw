@@ -5,9 +5,10 @@
  * 命令行版 es.exe。这一层全是纯逻辑（拼参数、解析导出文件、挑候选、分类失败），错一处用户看到的
  * 就是「搜不到」「乱码」「明明装了却报错」。
  *
- * 这一套钉死七件事：
- *   ① es.exe 的**参数配方**（`-export-json` + `-utf8-bom` + `-date-format 1` + `-n`），顺序与
- *      取值都不能飘 —— 少 `-no-digit-grouping` 数字就带千分位逗号，JSON 直接废；
+ * 这一套钉死八件事：
+ *   ① es.exe 的**参数配方**（`-export-json` + `-utf8-bom` + `-date-format 1` + `-sort` +
+ *      `-viewport-offset/-count`），顺序与取值都不能飘 —— 少 `-no-digit-grouping` 数字就带千分位
+ *      逗号，JSON 直接废；
  *   ② **空结果是 3 字节纯 BOM、连 `[]` 都没有**（本机实测）⇒ 剥 BOM 后为空必须返回 `[]`，
  *      不能抛异常把「没搜到」误判成故障；
  *   ③ **Everything 没在跑时 exit 8**（`Error 8: Everything IPC not found`）且输出文件照样被建
@@ -16,7 +17,9 @@
  *      名称/目录拆列在 JS 里做（es.exe 的 `-name -path-column` 实测不拆）；
  *   ⑤ **版本信息是 `ProductName=es`**（实测），只认 `Everything` 会误杀自家 exe；
  *   ⑥ 探测优先级顺序本身，以及「第三方私有副本（uTools / WPS）必须剔」；
- *   ⑦ 展示层格式化（字节数、本地时间）的边界值。
+ *   ⑦ 展示层格式化（字节数、本地时间）的边界值；
+ *   ⑧ 分页 / 排序 / 分类过滤 / 结果总数四项的拼装规则（调整⑤ 加的），尤其「文件夹分类绝不能带
+ *      `ext:`」（实测 `"/ad ext:pdf"` 恒 0 条）与「总数要容忍千分位」。
  *
  * 只测纯函数：不碰文件系统、不开进程，`exists` 由这里注入。
  */
@@ -24,20 +27,31 @@
 import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import {
+  ES_CATEGORY_EXTENSIONS,
+  ES_CATEGORY_ORDER,
+  ES_DEFAULT_SORT,
   ES_EXE_BASENAME,
-  ES_SEARCH_LIMIT,
+  ES_MAX_PAGE_SIZE,
+  ES_PAGE_SIZE,
+  ES_SORT_KEYS,
   ES_SOURCE_PRIORITY,
   buildEsArgs,
+  buildEsCountArgs,
+  buildEsQuery,
+  buildEsSortArg,
   classifyEsFailure,
   formatHitSize,
   formatHitTime,
   getEsAlongsideCandidates,
   getEsBuiltinPath,
   getEsKnownDirCandidates,
+  isEsCategory,
   isEsExecutableName,
+  isEsSortKey,
   isEsVersionInfoHit,
   parseEsJson,
   parseEsPathLines,
+  parseEsResultCount,
   pickEsCandidate
 } from '../../src/main/lib/es-search'
 
@@ -68,7 +82,8 @@ check(!isEsExecutableName('es.exe.bak'), '备份文件不算')
 check(!isEsExecutableName('nes.exe'), '前缀不同的不算')
 check(!isEsExecutableName(''), '空文件名不算')
 eq(ES_EXE_BASENAME, 'es.exe', '文件名常量固定')
-eq(ES_SEARCH_LIMIT, 50, '单次取数上限固定')
+eq(ES_PAGE_SIZE, 100, '单页条数固定')
+eq(ES_MAX_PAGE_SIZE, 500, '单页上限固定')
 
 // ── ② 版本信息判定（实测 ProductName 就是 es）────────────────────────────────
 
@@ -177,19 +192,123 @@ deepEq(
     '1',
     '-timeout',
     '1000',
-    '-n',
-    '50',
-    '龚翼'
+    '-sort',
+    'date-modified-descending',
+    '-viewport-offset',
+    '0',
+    '-viewport-count',
+    '100',
+    '<龚翼>'
   ],
-  '配方逐项固定（含 -no-digit-grouping 与 -date-format 1）'
+  '配方逐项固定（含 -no-digit-grouping / -date-format 1 / 默认排序 / 第一页）'
 )
-eq(buildEsArgs('', 'C:\\out.json'), null, '空关键词不启动（白跑一次进程）')
+eq(buildEsArgs('', 'C:\\out.json'), null, '空关键词 + 全部分类 ⇒ 不启动（空查询在 es.exe 那边等于全盘）')
 eq(buildEsArgs('   ', 'C:\\out.json'), null, '纯空白同理')
 eq(buildEsArgs('a', ''), null, '没有落盘路径没法取数')
-eq(buildEsArgs('a', 'f', 10)?.[12], '10', 'limit 原样透传')
-eq(buildEsArgs('a', 'f', 0)?.[12], '50', '非法 limit 回落到默认值')
-eq(buildEsArgs('a', 'f', 9999)?.[12], '500', 'limit 上限夹紧（防一次拉爆）')
-eq(buildEsArgs('a', 'f', 50, 0)?.[10], '0', '内部超时可控')
+check(!buildEsArgs('a', 'f')?.includes('-n'), '-n 已退场（与 -viewport-count 语义重叠，同时给会误解成「先取 N 再切片」）')
+
+const paged = buildEsArgs('a', 'f', { offset: 200, pageSize: 50, timeoutMs: 2500 })
+eq(paged?.[13], '-viewport-offset', '分页参数位固定')
+eq(paged?.[14], '200', 'offset 原样透传')
+eq(paged?.[16], '50', 'pageSize 原样透传')
+eq(paged?.[17], '<a>', '完整查询词永远是最后一个位置参数（拼完分类、分过组的那个）')
+eq(paged?.[10], '2500', '内部超时可控')
+eq(buildEsArgs('a', 'f', { pageSize: 0 })?.[16], '100', '非法 pageSize 回落默认页大小')
+eq(buildEsArgs('a', 'f', { pageSize: 9999 })?.[16], '500', 'pageSize 上限夹紧（防一次拉爆）')
+eq(buildEsArgs('a', 'f', { offset: -5 })?.[14], '0', '负偏移夹到 0')
+eq(buildEsArgs('a', 'f', { offset: Number.NaN })?.[14], '0', 'NaN 偏移同 0')
+eq(buildEsArgs('a', 'f', { timeoutMs: 0 })?.[10], '0', '内部超时可置 0')
+eq(buildEsArgs('a', 'f', { timeoutMs: Number.NaN })?.[10], '1000', '非法超时回落默认')
+
+// ── ⑤.1 排序 ───────────────────────────────────────────────────────────────
+
+deepEq(
+  ES_SORT_KEYS,
+  ['name', 'path', 'size', 'extension', 'date-created', 'date-modified', 'date-accessed'],
+  '可选排序键固定（实测 es.exe 认的七个）'
+)
+deepEq(ES_DEFAULT_SORT, { key: 'date-modified', order: 'descending' }, '默认排序：修改时间倒序')
+eq(buildEsSortArg(undefined), 'date-modified-descending', '不传就用默认')
+eq(buildEsSortArg(null), 'date-modified-descending', 'null 同理')
+eq(buildEsSortArg({ key: 'name', order: 'ascending' }), 'name-ascending', '键 + 方向拼成 es.exe 的写法')
+eq(buildEsSortArg({ key: 'size', order: 'descending' }), 'size-descending', '实测通过的组合')
+eq(
+  buildEsSortArg({ key: 'bogus' as never, order: 'ascending' }),
+  'date-modified-ascending',
+  '非法键回落默认键，但方向照用（脏数据不能把整条查询弄失败）'
+)
+eq(buildEsSortArg({ key: 'name', order: 'sideways' as never }), 'name-descending', '非法方向回落默认方向')
+check(isEsSortKey('size'), '合法键认得出来')
+check(!isEsSortKey('run-count'), '不在白名单里的键不认')
+check(!isEsSortKey(7), '非字符串不认')
+
+// ── ⑤.2 分类（拼进查询词，不做本地过滤）────────────────────────────────────
+
+deepEq(ES_CATEGORY_ORDER, ['all', 'folder', 'document', 'image', 'video', 'audio', 'archive'], '分类清单固定')
+check(ES_CATEGORY_ORDER[0] === 'all' && ES_CATEGORY_ORDER[1] === 'folder', '全部与文件夹排最前（左栏次序）')
+check(isEsCategory('video'), '合法分类认得出来')
+check(!isEsCategory('excel'), 'uTools 那种 excel/word 细分我们不做')
+check(!isEsCategory(undefined), 'undefined 不认')
+check(
+  ES_CATEGORY_EXTENSIONS.document.includes('pdf') &&
+    ES_CATEGORY_EXTENSIONS.archive.includes('7z') &&
+    ES_CATEGORY_EXTENSIONS.image.includes('png'),
+  '白名单里必须有常见后缀'
+)
+
+// 拼查询词：**全程不留空格**（头注 ⑪ —— 本机 Everything 把空格当「整文件名精确匹配」，
+// `package ext:json` 恒 0 条），关键词按空白拆词、每词各自 `<>` 分组后紧挨着拼。
+eq(buildEsQuery('报告'), '<报告>', '全部：查询词分组')
+eq(buildEsQuery('报告', 'folder'), '<报告><folder:>', '文件夹走 <folder:>')
+eq(buildEsQuery('报告', null), '<报告>', '没给分类当全部')
+eq(buildEsQuery('报告', 'nope' as never), '<报告>', '非法分类当全部（脏数据不能把整条查询弄失败）')
+eq(
+  buildEsQuery('cats', 'image'),
+  `<cats><ext:${ES_CATEGORY_EXTENSIONS.image.join(';')}>`,
+  '图片类拼 <ext:> 白名单'
+)
+eq(buildEsQuery('we chat'), '<we><chat>', '多词拆开逐词分组（实测 360 条；带空格写法 0 条）')
+eq(buildEsQuery('  a   b  '), '<a><b>', '多空白折叠、首尾空白丢掉')
+eq(buildEsQuery('package ext:json'), '<package><ext:json>', '用户自写函数词也一并分组')
+eq(buildEsQuery('big size:>10mb'), '<big>size:>10mb', '自带尖括号的词原样放行（包起来会破坏函数语法）')
+check(!buildEsQuery('报告', 'folder').includes('ext:'), '文件夹分类绝不能带 ext:（实测带 ext: 恒 0 条）')
+check(!buildEsQuery('报告', 'image').includes(' '), '拼出来的查询词里绝不能有空格（头注 ⑪）')
+check(!buildEsQuery('we chat', 'document').includes(' '), '多词 + 分类同样不留空格')
+check(buildEsQuery('', 'image').includes('<ext:'), '空关键词 + 分类 ⇒ 过滤词自己成立')
+eq(buildEsQuery('', 'folder'), '<folder:>', '空关键词 + 文件夹 ⇒ 只剩 <folder:>')
+eq(buildEsQuery('', 'all'), '', '空关键词 + 全部 ⇒ 空（由 buildEsArgs 拦住）')
+
+eq(
+  buildEsArgs('', 'f', { category: 'video' })?.[17],
+  `<ext:${ES_CATEGORY_EXTENSIONS.video.join(';')}>`,
+  '空关键词 + 视频类照样搜（分类让空查询变成有意义查询）'
+)
+eq(buildEsArgs('', 'f', { category: 'all' }), null, '空关键词 + 全部仍是空查询 ⇒ 拦住')
+
+// ── ⑤.3 结果总数 ───────────────────────────────────────────────────────────
+
+deepEq(
+  buildEsCountArgs('报告'),
+  ['-get-result-count', '-no-digit-grouping', '<报告>'],
+  '计数参数配方固定'
+)
+deepEq(
+  buildEsCountArgs('', 'folder'),
+  ['-get-result-count', '-no-digit-grouping', '<folder:>'],
+  '总数也吃分类（总数是整条查询命中多少）'
+)
+eq(buildEsCountArgs(''), null, '空查询不报数')
+eq(buildEsCountArgs('   '), null, '纯空白同理')
+
+eq(parseEsResultCount('2142298'), 2142298, '实测本机输出（裸数字、无千分位）')
+eq(parseEsResultCount('  10382\r\n'), 10382, '带空白与 CRLF')
+eq(parseEsResultCount('2,142,298'), 2142298, '别的 es.exe 版本带千分位也要吃（否则 214 万会显示成 214）')
+eq(parseEsResultCount('\uFEFF0'), 0, '零结果合法')
+eq(parseEsResultCount('noise\r\n42'), 42, '多行里挑出那行纯数字')
+eq(parseEsResultCount(''), null, '空输出 ⇒ null（底栏就不显示，而不是显示假数）')
+eq(parseEsResultCount('   '), null, '纯空白同理')
+eq(parseEsResultCount('Error 8: Everything IPC not found.'), null, '失败文案不能当数字')
+eq(parseEsResultCount('结果 12 条'), null, '带非数字字符的整行不认')
 
 // ── ⑥ 导出文件解析（样本取自本机实测输出）──────────────────────────────────
 

@@ -33,7 +33,8 @@ export default defineConfig({
         input: {
           index: resolve('src/renderer/index.html'),
           launcher: resolve('src/renderer/launcher.html'),
-          clipboard: resolve('src/renderer/clipboard.html')
+          clipboard: resolve('src/renderer/clipboard.html'),
+          'file-search': resolve('src/renderer/file-search.html')
         }
       }
     }

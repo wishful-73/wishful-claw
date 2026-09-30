@@ -1,12 +1,19 @@
 /**
  * Image generation reverse-request handler.
  *
- * Calls the OpenAI Images API (or compatible endpoint) to generate images.
- * The API key and base URL are read from the AI provider store so that
- * the user's configured provider is used automatically.
+ * Calls an OpenAI-compatible Images API (`POST {baseUrl}/images/generations`).
+ * The endpoint is resolved from the AI provider store, preferring the provider
+ * the user is currently talking to, so a dedicated image provider is not
+ * required as long as some configured provider exposes image generation.
  */
 
 import { readPersistedProviderStore } from '../../lib/ai-provider-store'
+import {
+  readString,
+  resolveImageEndpoint,
+  summarizeApiError,
+  type ProviderRecord
+} from '../../lib/image-endpoint'
 
 interface ImageGenerateParams {
   prompt: string
@@ -35,28 +42,37 @@ export async function handleImageGenerate(
     return { success: false, error: 'prompt is required' }
   }
 
-  const model = (params.model as string) || 'dall-e-3'
   const size = (params.size as ImageGenerateParams['size']) || '1024x1024'
   const quality = (params.quality as ImageGenerateParams['quality']) || 'standard'
   const style = (params.style as ImageGenerateParams['style']) || 'vivid'
-  const n = Math.min((params.n as number) || 1, 4)
+  // The tool executor sends `count`; `n` is kept for older callers.
+  const requestedCount = (params.count as number) ?? (params.n as number)
+  const n = Math.min(typeof requestedCount === 'number' && requestedCount > 0 ? requestedCount : 1, 4)
 
-  // Get the configured provider's API key and base URL
   const store = readPersistedProviderStore()
-  const providers = (store?.state?.providers as Array<Record<string, unknown>>) ?? []
-  const openaiProvider = providers.find(
-    (p) => p.type === 'openai' && typeof p.apiKey === 'string' && p.apiKey
+  const state = store?.state ?? {}
+  const providers = Array.isArray(state.providers) ? (state.providers as ProviderRecord[]) : []
+  const endpoint = resolveImageEndpoint(
+    providers,
+    readString(state.activeProviderId),
+    readString(params.model)
   )
 
-  if (!openaiProvider || !openaiProvider.apiKey) {
+  if (!endpoint) {
     return {
       success: false,
-      error: 'No OpenAI-compatible provider with API key configured. Configure a provider in Settings first.'
+      error:
+        'Image generation is unavailable: no configured provider exposes image generation. ' +
+        'Add an image model to a provider under Settings → Models, or switch to a provider that offers one.'
     }
   }
 
-  const baseUrl = ((openaiProvider.baseUrl as string) || 'https://api.openai.com/v1').replace(/\/$/, '')
-  const url = `${baseUrl}/images/generations`
+  const url = `${endpoint.baseUrl}/images/generations`
+  // `quality` / `style` / `n` are OpenAI-only fields; compatible endpoints
+  // reject or misread them, so only the official endpoint gets the full body.
+  const body = endpoint.officialOpenAI
+    ? { model: endpoint.model, prompt, size, quality, style, n }
+    : { model: endpoint.model, prompt, size }
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), IMAGE_REQUEST_TIMEOUT_MS)
@@ -66,22 +82,18 @@ export async function handleImageGenerate(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiProvider.apiKey as string}`
+        Authorization: `Bearer ${endpoint.apiKey}`
       },
-      body: JSON.stringify({
-        model,
-        prompt,
-        size,
-        quality,
-        style,
-        n
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     })
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => response.statusText)
-      return { success: false, error: `Image API error (${response.status}): ${errorText}` }
+      return {
+        success: false,
+        error: `Image generation failed (HTTP ${response.status} via ${endpoint.providerName}): ${summarizeApiError(errorText)}`
+      }
     }
 
     const data = await response.json() as {

@@ -67,6 +67,7 @@
     "test:es-search": "esbuild tests/es-search/program.ts --bundle --platform=node --format=cjs --outfile=tests/es-search/out/program.cjs && node tests/es-search/out/program.cjs",
     "test:image-format": "esbuild tests/image-format/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-format/out/program.cjs && node tests/image-format/out/program.cjs",
     "test:image-block-source": "esbuild tests/image-block-source/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/image-block-source/out/program.cjs && node tests/image-block-source/out/program.cjs",
+    "test:image-endpoint": "esbuild tests/image-endpoint/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-endpoint/out/program.cjs && node tests/image-endpoint/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

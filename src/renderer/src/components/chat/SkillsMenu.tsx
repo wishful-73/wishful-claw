@@ -43,6 +43,7 @@ import {
   useExtensionStore
 } from '@renderer/stores/extension-store'
 import { refreshExtensionTools } from '@renderer/lib/extensions/extension-tools'
+import { WISHFUL_CLAW_DATA_DIR_NAME } from '@shared/data-dir'
 
 interface SkillsMenuProps {
   onSelectSkill: (skillName: string) => void
@@ -367,7 +368,7 @@ function SkillsMenuContent({
               ) : commands.length === 0 ? (
                 <div className="px-2 py-4 text-center text-xs text-muted-foreground">
                   <p>{t('skills.noCommands')}</p>
-                  <p className="mt-1 text-[10px] opacity-70">~/.wishful-claw/commands/</p>
+                  <p className="mt-1 text-[10px] opacity-70">{`~/${WISHFUL_CLAW_DATA_DIR_NAME}/commands/`}</p>
                 </div>
               ) : (
                 commands.map((command) => (
@@ -413,7 +414,7 @@ function SkillsMenuContent({
               ) : visibleSkills.length === 0 ? (
                 <div className="px-2 py-4 text-center text-xs text-muted-foreground">
                   <p>{t('skills.noSkills')}</p>
-                  <p className="mt-1 text-[10px] opacity-70">~/.wishful-claw/skills/</p>
+                  <p className="mt-1 text-[10px] opacity-70">{`~/${WISHFUL_CLAW_DATA_DIR_NAME}/skills/`}</p>
                 </div>
               ) : (
                 visibleSkills.map((skill) => (

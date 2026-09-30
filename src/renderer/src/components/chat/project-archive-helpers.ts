@@ -1,5 +1,6 @@
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
+import { WISHFUL_CLAW_DATA_DIR_NAME } from '@shared/data-dir'
 
 // ─── Types ───
 
@@ -38,7 +39,7 @@ export interface SshConnectionInfo {
 
 // ─── Constants ───
 
-export const WISHFUL_CLAW_DIR = '.wishful-claw'
+export const WISHFUL_CLAW_DIR = WISHFUL_CLAW_DATA_DIR_NAME
 
 export const PERSONA_FILE_NAMES = ['IDENTITY.md', 'SOUL.md', 'ONTOLOGY.md', 'AGENTS.md']
 

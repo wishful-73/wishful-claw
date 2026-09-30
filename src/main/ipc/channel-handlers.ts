@@ -15,14 +15,13 @@ import type { ChannelManager } from '../channels/channel-manager'
 import {
   registerPluginHandlers,
   autoStartChannels,
-  executePluginAction,
-  isPluginToolEnabled
+  executePluginAction
 } from './channel-handlers/channel-plugin-handlers'
 import { registerFeishuHandlers, executeFeishuChannelTool } from './channel-handlers/channel-feishu-handlers'
 import { registerWeixinHandlers, executeWeixinChannelTool } from './channel-handlers/channel-weixin-handlers'
 
 // Re-export for reverse-request dispatch
-export { executePluginAction, isPluginToolEnabled, autoStartChannels }
+export { executePluginAction, autoStartChannels }
 
 /**
  * Channel-specific plugin tool executor — dispatched by reverse-handlers/index.ts.

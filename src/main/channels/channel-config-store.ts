@@ -48,15 +48,6 @@ export async function getChannelPlugin(id: string): Promise<ChannelInstance | nu
   return result.plugin ?? null
 }
 
-export async function isChannelPluginToolEnabled(
-  pluginId: string,
-  toolName: string
-): Promise<boolean> {
-  const plugin = await getChannelPlugin(pluginId)
-  if (!plugin?.tools) return true
-  return plugin.tools[toolName] !== false
-}
-
 /**
  * The Worker applies the defaults, so a failed read must not be masked by a
  * local fallback — that is how the retired per-channel flags ended up with

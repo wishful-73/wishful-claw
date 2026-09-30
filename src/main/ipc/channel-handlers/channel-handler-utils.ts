@@ -10,7 +10,6 @@ import * as path from 'path'
 import { nanoid } from 'nanoid'
 import { ChannelManager } from '../../channels/channel-manager'
 import {
-  isChannelPluginToolEnabled,
   readChannelPlugins,
   readGlobalChannelSettings,
   writeChannelPlugins,
@@ -36,7 +35,6 @@ import { captureQrElementAsDataUrl } from './qr-page-capture'
 import type {
   ChannelInstance,
   ChannelEvent,
-  ChannelProviderDescriptor,
   GlobalChannelSettings
 } from '../../channels/channel-types'
 
@@ -250,26 +248,8 @@ export async function readBinarySource(
   }
 }
 
-export function buildToolsMap(
-  descriptor?: ChannelProviderDescriptor,
-  existing?: Record<string, boolean>
-): Record<string, boolean> | undefined {
-  if (!descriptor?.tools || descriptor.tools.length === 0) {
-    return existing
-  }
-  const next: Record<string, boolean> = {}
-  for (const toolName of descriptor.tools) {
-    next[toolName] = existing?.[toolName] ?? true
-  }
-  return next
-}
-
 export async function readPlugins(): Promise<ChannelInstance[]> {
   return await readChannelPlugins()
-}
-
-export async function isPluginToolEnabledHandler(pluginId: string, toolName: string): Promise<boolean> {
-  return await isChannelPluginToolEnabled(pluginId, toolName)
 }
 
 export async function writePlugins(plugins: ChannelInstance[]): Promise<void> {

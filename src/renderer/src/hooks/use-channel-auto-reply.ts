@@ -17,15 +17,14 @@ import { useEffect } from 'react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { agentStream } from '@renderer/lib/ipc/agent-stream-receiver'
 import { useChatStore } from '@renderer/stores/chat-store'
-import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
-import { useChannelStore } from '@renderer/stores/channel-store'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { AgentStreamEvent } from '../../../shared/agent-stream-protocol'
 import type { ChatMessage } from '@renderer/stores/chat-store/types'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
 import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
+import { resolveSendModel } from '@renderer/lib/send-model-resolution'
 import {
   isChannelReplyEvent,
   isChannelReplyTextDelta
@@ -141,10 +140,11 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     return false
   }
 
-  // 1. Resolve the channel instance — its binding supplies the provider/model below.
-  //    No global auto-reply switch: a configured channel that is running replies. The
+  // 1. No global auto-reply switch: a configured channel that is running replies. The
   //    per-channel enable flag (the start/stop button) is the real gate.
-  const channelMeta = useChannelStore.getState().channels.find((c) => c.id === pluginId)
+  //    （渠道实例的查找已收进 resolveSendModel —— 它按 session.pluginId 找 channel，
+  //    与原先在这里自己查的 channelMeta 同源。）
+
 
   // 2. Ensure session exists in chat store
   const chatStore = useChatStore.getState()
@@ -198,23 +198,15 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     })
   }
 
-  // 3. Build provider config
-  const providerStore = useProviderStore.getState()
-  const targetProviderId = channelMeta?.providerId ?? providerStore.activeProviderId
-  const targetProvider = targetProviderId
-    ? providerStore.providers.find((p) => p.id === targetProviderId)
-    : providerStore.getActiveProvider()
-
-  if (!targetProvider) {
-    console.error('[ChannelAutoReply] No provider configured')
+  // 3. Resolve provider/model through the single entry point the UI uses.
+  //    S-167：渠道自动回复同样属于「外部投递」，模型与思考设置必须与会话自身一致。
+  //    这里原先自己拼了一遍兜底序（channel 绑定 > 全局激活 > provider 默认），漏掉了
+  //    会话绑定 —— 用户在渠道会话里手切过模型时，UI 显示会话的模型、实际请求发的却是
+  //    这里拼出来的那个。resolveSendModel 的兜底序是同一套，外加会话绑定优先。
+  const resolved = resolveSendModel(sessionId)
+  if (!resolved) {
+    console.error('[ChannelAutoReply] No provider/model for session')
     await sendChannelNotice(task, 'Model provider not configured. Please configure in Settings.')
-    return false
-  }
-
-  const modelId = channelMeta?.model || providerStore.activeModelId || targetProvider.defaultModel
-  if (!modelId) {
-    console.error('[ChannelAutoReply] No model configured')
-    await sendChannelNotice(task, 'No model configured. Please select a model in Settings.')
     return false
   }
 
@@ -229,7 +221,7 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
   const settings = useSettingsStore.getState()
   // One builder for the agent/run provider payload; see lib/agent/provider-payload.ts.
   // It derives the thinking flags exactly the way this path used to.
-  const provider = buildProviderPayload(targetProvider, modelId, settings)
+  const provider = buildProviderPayload(resolved.provider, resolved.modelId, settings)
 
   // The cancel event may arrive while session/provider setup is awaiting.
   if (task.channelTaskId && pendingChannelCancels.delete(task.channelTaskId)) {

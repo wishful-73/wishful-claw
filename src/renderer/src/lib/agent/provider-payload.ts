@@ -41,9 +41,15 @@ export function buildProviderPayload(
   settings: ProviderPayloadSettings,
   options?: {
     /**
-     * Force the thinking flag instead of deriving it from settings. The project
-     * dispatch path has always sent `false`; keep it that way until someone
-     * decides otherwise.
+     * Force the thinking flag instead of deriving it from settings.
+     *
+     * 历史原因：project dispatch 这条路径一直固定传 `false`（注释原文是「keep it
+     * that way until someone decides otherwise」）。S-167 已裁定 —— 外部投递的一轮
+     * 必须跟会话自己的设置一致，所以 project-send-message / 后台子 agent 唤醒 /
+     * 渠道自动回复三条投递路径都不再传这个 option，思考开关改由
+     * `settings.thinkingEnabled && !!modelConfig.thinkingConfig` 推导。
+     *
+     * 参数保留：仍有「单轮强制关思考」的合理场景（例如配额降级 / 自动兜底提示轮）。
      */
     thinkingEnabled?: boolean
   }

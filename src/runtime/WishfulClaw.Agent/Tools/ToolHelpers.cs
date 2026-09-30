@@ -118,6 +118,15 @@ internal static class ToolHelpers
     }
 
     /// <summary>
+    /// 把一段文本塞进手搓的 JSON 字符串字面量里。文件类工具用拼串回结果，
+    /// 路径里的反斜杠（Windows）必须转义，否则结果不是合法 JSON。
+    /// </summary>
+    public static string EscapeJson(string value)
+    {
+        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
+    /// <summary>
     /// Writes text to a file and flushes to disk immediately.
     /// Uses FileStream with Flush(true) to ensure subsequent reads
     /// always see the updated content (fixes Edit->Read cache issue).

@@ -79,9 +79,4 @@ public sealed class FileWriteTool : IToolExecutor
             return new ToolResult($"Failed to write file: {ex.Message}", true, ex.Message);
         }
     }
-
-    private static string EscapeJson(string s)
-    {
-        return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
-    }
 }

@@ -356,5 +356,9 @@ public sealed class FileReadTool : IToolExecutor
 
         """{"type":"object","properties":{"file_path":{"type":"string","description":"The path to the file to edit"},"old_string":{"type":"string","description":"The exact text to find and replace"},"new_string":{"type":"string","description":"The replacement text"},"replace_all":{"type":"boolean","description":"Replace all occurrences. Default: false","default":false}},"required":["file_path","old_string","new_string"]}""");
 
+    public static JsonElement SaveImageSchema { get; } = ParseSchema(
+
+        """{"type":"object","properties":{"source_path":{"type":"string","description":"Path of the image file to copy — a generated image or a screenshot."},"file_path":{"type":"string","description":"Destination path in the workspace."},"overwrite":{"type":"boolean","description":"Replace the target if it already exists. Default: false.","default":false}},"required":["source_path","file_path"]}""");
+
 }
 

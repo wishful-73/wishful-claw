@@ -10,7 +10,7 @@
   <a href="https://wishful-claw.work/">官网</a> •
   <a href="#-快速上手">快速上手</a> •
   <a href="#-它能为你做什么">功能</a> •
-  <a href="docs/user-guide.md">使用指引</a> •
+  <a href="https://wishful-claw.work/guide">使用指引</a> •
   <a href="https://github.com/wishful-73/wishful-claw/releases/latest">下载</a> •
   <a href="docs/development.md">开发说明</a>
 </p>
@@ -31,7 +31,7 @@
 2. 打开后进入 **设置 → AI 服务商**，选一家模型服务商，填入你自己的 API Key，点测试连通性并设为当前使用。还没决定用哪家？可以先跳过 —— [不花 Token 也能用](#-不花-token-也能用) 里那几项不用 Key 就能跑。
 3. 回到主界面，新建一个项目指向你的代码目录，把任务说出来。第一次建议打开**计划模式**，先看它的方案再放它动手。
 
-完整上手步骤、每一项能力的用法和排查方法都在 **[使用指引](docs/user-guide.md)** 里（应用内点顶栏的问号图标也能打开）。
+完整上手步骤、每一项能力的用法和排查方法都在 **[官网使用指引](https://wishful-claw.work/guide)** 里（应用内点顶栏的问号图标也能打开）。
 
 ## ✨ 它能为你做什么
 
@@ -121,10 +121,10 @@ Agent 干活时你可以随时插话：消息进队列，等当前这轮结束�
 ## ❓ 常见问题
 
 - **对话没有回复** —— 到 设置 → AI 服务商 点测试连通性，确认 Key 有效、模型名可用。
-- **Agent 说找不到某个工具** —— 对应插件可能被停用，或当前会话类型不开放该工具；见使用指引第 8、9 节。
+- **Agent 说找不到某个工具** —— 对应插件可能被停用，或当前会话类型不开放该工具；见[官网使用指引](https://wishful-claw.work/guide)。
 - **想彻底排查问题** —— 把 `~/.wishful-claw/logs/` 当天日志里的 `[ERROR]` 段落带上提问。
 
-更多见 **[使用指引 · 常见问题排查](docs/user-guide.md#16-常见问题排查)**。
+更多见 **[使用指引 · 常见问题排查](https://wishful-claw.work/guide)**。
 
 ## 🛠️ 二次开发
 

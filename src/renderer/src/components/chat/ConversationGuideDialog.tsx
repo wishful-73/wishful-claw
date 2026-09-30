@@ -9,6 +9,7 @@ import * as React from 'react'
 import { ExternalLink, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
+import { WEBSITE_URL } from '@renderer/lib/user-guide'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 
@@ -310,7 +311,7 @@ export function ConversationGuideDialog({
               size="sm"
               className="gap-1.5"
               onClick={() =>
-                window.open('https://wishful-claw.shop/', '_blank', 'noopener,noreferrer')
+                window.open(`${WEBSITE_URL}/`, '_blank', 'noopener,noreferrer')
               }
             >
               <ExternalLink className="size-3.5" />

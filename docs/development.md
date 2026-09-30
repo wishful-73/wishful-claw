@@ -1,7 +1,7 @@
 # Wishful Claw — 开发说明
 
 > 本文是给**开发者 / AI 编程助手**看的仓库说明（架构、构建、技术选型、参考来源）。
-> 只想知道这个软件能做什么、怎么用：请看 [《使用指引》](user-guide.md) 或[根 README](../README.md)。
+> 只想知道这个软件能做什么、怎么用：请看[官网《使用指引》](https://wishful-claw.work/guide) 或[根 README](../README.md)。
 > 参与开发的操作流程（分支、提交节奏、迭代收尾、发布）见 [dev-workflow.md](dev-workflow.md)，构建与打包细节见 [build-guide.md](build-guide.md)。
 
 <p align="center">

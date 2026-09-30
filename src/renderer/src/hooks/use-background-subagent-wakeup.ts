@@ -14,10 +14,13 @@
 import * as React from 'react'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
-import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
-import { buildProviderPayload, hasActiveSessionRunForSession } from '@renderer/hooks/use-chat-actions'
+import {
+  buildProviderPayload,
+  hasActiveSessionRunForSession,
+  resolveSendModel
+} from '@renderer/hooks/use-chat-actions'
 import { backgroundSubAgentCompletions } from '@renderer/lib/agent/sub-agents/background-events'
 import {
   buildBackgroundWakeMessage,
@@ -78,12 +81,13 @@ async function wakeSession(sessionId: string): Promise<void> {
   if (hasActiveSessionRunForSession(sessionId)) return
 
   // 先把前置条件全部探明再动缓冲：drain 是破坏性的，中途任何 return 都会让报告蒸发。
-  const providerStore = useProviderStore.getState()
-  const activeProvider = providerStore.getActiveProvider()
-  const modelId = providerStore.activeModelId || activeProvider?.defaultModel
-  if (!activeProvider || !modelId) {
+  // S-167：唤醒也属于「外部投递」，必须用目标会话自己的模型与思考设置 —— 读全局
+  // providerStore 会让被唤醒的这一轮跑在别的模型上。resolveSendModel 与 UI 同源
+  // （会话绑定 > channel 绑定 > 全局激活 > provider 默认）。
+  const resolved = resolveSendModel(sessionId)
+  if (!resolved) {
     // 没有可用服务商就没法唤醒。留个痕，否则报告会静默消失。
-    console.error('[subagent-wakeup] No active provider/model — cannot wake session:', sessionId)
+    console.error('[subagent-wakeup] No provider/model for session — cannot wake session:', sessionId)
     return
   }
 
@@ -97,7 +101,7 @@ async function wakeSession(sessionId: string): Promise<void> {
   const content = buildBackgroundWakeMessage(extractWorkerReportAgentName(reports[0]), reportText)
 
   void chatStore.sendMessage({
-    provider: buildProviderPayload(activeProvider, modelId, settings) as unknown as Record<string, unknown>,
+    provider: buildProviderPayload(resolved.provider, resolved.modelId, settings) as unknown as Record<string, unknown>,
     messages: [{ role: 'user', content }],
     sessionId,
     workingFolder: session.scope === 'project' ? session.workingFolder : undefined,

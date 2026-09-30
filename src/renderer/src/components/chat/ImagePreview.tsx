@@ -13,6 +13,10 @@ import { IPC } from '@renderer/lib/ipc/channels'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { writeBase64ImageToClipboard } from '@renderer/lib/utils/image-clipboard'
 import {
+  detectImageExtensionFromBase64,
+  withDetectedExtension
+} from '@renderer/lib/utils/image-format'
+import {
   buildImageDimensionCacheKey,
   cacheImageDimensions,
   dataUrlToBlob,
@@ -26,6 +30,14 @@ interface ImagePreviewProps {
   alt?: string
   filePath?: string
   actions?: ImagePreviewAction[]
+  /**
+   * Put copy / download on the thumbnail itself (iter-37 S-162), so an image
+   * that is a *deliverable* — a generated picture, a screenshot — can be taken
+   * away without opening the lightbox first. Off by default: the lightbox
+   * already carries both, and images embedded inline (tool output, message
+   * content) do not need the extra chrome.
+   */
+  quickActions?: boolean
 }
 
 export interface ImagePreviewAction {
@@ -33,21 +45,6 @@ export interface ImagePreviewAction {
   label: string
   icon: ReactNode
   onClick: () => void
-}
-
-function getDownloadExtension(imageSrc: string): string {
-  if (imageSrc.startsWith('data:')) {
-    const mimeType = imageSrc.slice(5, imageSrc.indexOf(';'))
-    if (mimeType === 'image/jpeg') return '.jpg'
-    if (mimeType === 'image/webp') return '.webp'
-    if (mimeType === 'image/gif') return '.gif'
-    if (mimeType === 'image/bmp') return '.bmp'
-    if (mimeType === 'image/svg+xml') return '.svg'
-    return '.png'
-  }
-
-  const fileExt = imageSrc.split('?')[0].split('.').pop()?.toLowerCase()
-  return fileExt ? `.${fileExt}` : '.png'
 }
 
 function getFileName(filePath: string): string {
@@ -127,7 +124,8 @@ export function ImagePreview({
   src,
   alt = 'Generated image',
   filePath,
-  actions = []
+  actions = [],
+  quickActions = false
 }: ImagePreviewProps): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -192,11 +190,29 @@ export function ImagePreview({
     throw new Error('Failed to read image data')
   }
 
+  // What the bytes say this file is — see `image-format.ts` for why the src
+  // string is not trusted. Null when the bytes are out of reach (a remote URL,
+  // a file past the read limit); callers then keep whatever name they had.
+  const sniffDownloadExtension = async (): Promise<string | null> => {
+    if (filePath) {
+      const data = await readFilePathBase64(filePath)
+      if (data) return detectImageExtensionFromBase64(data)
+    }
+    const inline = dataUrlBase64(src) ?? dataUrlBase64(effectiveSrc)
+    if (inline) return detectImageExtensionFromBase64(inline)
+    return null
+  }
+
   const handleDownload = async (): Promise<void> => {
     try {
+      const sniffed = await sniffDownloadExtension()
+      // A name we already have keeps its stem: renaming `logo.png` to `.bin`
+      // because the read failed would lose information for no gain.
       const defaultName = filePath
-        ? getFileName(filePath)
-        : `image-${Date.now()}${getDownloadExtension(src)}`
+        ? sniffed
+          ? withDetectedExtension(getFileName(filePath), sniffed)
+          : getFileName(filePath)
+        : `image-${Date.now()}${sniffed ?? '.bin'}`
 
       const copyResult = filePath ? await downloadLocalFileCopy(filePath, defaultName) : null
       const persistedData = filePath && !copyResult ? await readFilePathBase64(filePath) : null
@@ -259,6 +275,25 @@ export function ImagePreview({
     }
   }
 
+  // The two actions a deliverable needs. Built here rather than at each call
+  // site so `copied` reflects the same click that started the copy.
+  const quickActionItems: ImagePreviewAction[] = quickActions
+    ? [
+        {
+          key: 'copy',
+          label: 'Copy to clipboard',
+          icon: copied ? <Check className="size-4" /> : <Copy className="size-4" />,
+          onClick: () => void handleCopy()
+        },
+        {
+          key: 'download',
+          label: 'Download',
+          icon: <Download className="size-4" />,
+          onClick: () => void handleDownload()
+        }
+      ]
+    : []
+
   return (
     <>
       {/* Thumbnail */}
@@ -273,9 +308,9 @@ export function ImagePreview({
           if (effectiveSrc) setIsOpen(true)
         }}
       >
-        {actions.length > 0 && (
-          <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            {actions.map((action) => (
+        {quickActionItems.length + actions.length > 0 && (
+          <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            {[...quickActionItems, ...actions].map((action) => (
               <button
                 key={action.key}
                 type="button"

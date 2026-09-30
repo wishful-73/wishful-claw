@@ -31,7 +31,6 @@ export interface PluginInstance {
   config: Record<string, string>
   createdAt: number
   projectId?: string | null
-  tools?: Record<string, boolean>
   providerId?: string | null
   model?: string | null
 }

@@ -18,13 +18,11 @@ import {
   assertNativeMutation,
   requestNativeDb,
   normalizeQrDisplayUrl,
-  buildToolsMap,
   readPlugins,
   readGlobalSettings,
   writeGlobalSettings,
   writePlugins,
   notifyRenderer,
-  isPluginToolEnabledHandler,
   nanoid,
   CHANNEL_PROVIDERS,
   type NativePluginSessionMutationResult,
@@ -171,10 +169,6 @@ export async function executePluginAction(args: {
   }
 }
 
-export async function isPluginToolEnabled(pluginId: string, toolName: string): Promise<boolean> {
-  return await isPluginToolEnabledHandler(pluginId, toolName)
-}
-
 export async function autoStartChannels(channelManager: ChannelManager): Promise<void> {
   const channels = await readPlugins()
   const settings = await readGlobalSettings().catch((err) => {
@@ -308,8 +302,7 @@ export function registerPluginHandlers(channelManager: ChannelManager): void {
           builtin: true,
           config,
           createdAt: Date.now(),
-          projectId: null,
-          tools: buildToolsMap(descriptor)
+          projectId: null
         })
         changed = true
       } else {
@@ -357,17 +350,12 @@ export function registerPluginHandlers(channelManager: ChannelManager): void {
         if (
           ![
             'id', 'type', 'name', 'enabled', 'builtin', 'config', 'createdAt',
-            'projectId', 'tools', 'providerId', 'model'
+            'projectId', 'providerId', 'model'
           ].includes(key)
         ) {
           delete (p as unknown as Record<string, unknown>)[key]
           changed = true
         }
-      }
-      const nextTools = buildToolsMap(desc, p.tools)
-      if (nextTools && JSON.stringify(nextTools) !== JSON.stringify(p.tools)) {
-        p.tools = nextTools
-        changed = true
       }
     }
 
@@ -388,9 +376,7 @@ export function registerPluginHandlers(channelManager: ChannelManager): void {
   // Add a new plugin instance
   registerChannelMessagePackHandler<ChannelInstance>('plugin:add', async (instance) => {
     const plugins = await readPlugins()
-    const desc = CHANNEL_PROVIDERS.find((d) => d.type === instance.type)
-    const nextTools = buildToolsMap(desc, instance.tools)
-    plugins.push({ ...instance, ...(nextTools ? { tools: nextTools } : {}) })
+    plugins.push(instance)
     await writePlugins(plugins)
     return { success: true }
   })

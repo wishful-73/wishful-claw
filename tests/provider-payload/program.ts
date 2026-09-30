@@ -209,7 +209,10 @@ const WORKER_READ_KEYS = [
   )
   eq(unsupported.thinkingEnabled, false, 'a model without thinking config never reports thinking on')
 
-  // The project dispatch path has always forced this off.
+  // S-167: the project dispatch path used to force this off. It no longer does —
+  // every send path now takes the default resolution right above (see
+  // docs/plans/iter-v2-37/requirements/S-167.md). The explicit override stays
+  // supported for genuinely per-run cases (quota downgrade and the like).
   const forced = buildProviderPayload(
     makeProvider({ models: [model] }),
     'model-1',
@@ -302,6 +305,8 @@ const WORKER_READ_KEYS = [
   const sendSites = [
     'src/renderer/src/hooks/use-chat-actions.ts',
     'src/renderer/src/hooks/use-channel-auto-reply.ts',
+    'src/renderer/src/hooks/use-background-subagent-wakeup.ts',
+    'src/renderer/src/components/goal/goal-session-views.tsx',
     'src/renderer/src/lib/tools/project-send-message.ts',
     'src/renderer/src/lib/agent/provider-auto-fallback.ts'
   ]
@@ -315,6 +320,25 @@ const WORKER_READ_KEYS = [
     check(
       !source.includes('apiKey:'),
       `${relative} does not hand-write a provider payload literal`
+    )
+  }
+
+  // cron-runtime.ts is deliberately exempt from the "no hand-written apiKey"
+  // half: its `buildProviderConfig` produces a ProviderConfig (the sidecar / bot
+  // shape, which carries apiKey by design), not an agent/run payload. The
+  // "goes through the shared builder" half still applies — it uses
+  // buildProviderPayload for the in-session path and buildProviderConfig for
+  // the sidecar path.
+  {
+    const relative = 'src/renderer/src/lib/tools/cron-runtime.ts'
+    const source = fs.readFileSync(path.join(repoRoot, relative), 'utf8')
+    check(
+      source.includes('buildProviderPayload('),
+      `${relative} builds the in-session payload through the shared builder`
+    )
+    check(
+      source.includes('buildProviderConfig('),
+      `${relative} keeps its sidecar payload on the cron-only builder`
     )
   }
 }

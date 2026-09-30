@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.36",
+  "version": "0.2.37",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -65,6 +65,10 @@
     "test:terminal-tab-lifecycle": "esbuild tests/terminal-tab-lifecycle/program.ts --bundle --platform=node --format=cjs --outfile=tests/terminal-tab-lifecycle/out/program.cjs && node tests/terminal-tab-lifecycle/out/program.cjs",
     "test:everything-search": "esbuild tests/everything-search/program.ts --bundle --platform=node --format=cjs --outfile=tests/everything-search/out/program.cjs && node tests/everything-search/out/program.cjs",
     "test:es-search": "esbuild tests/es-search/program.ts --bundle --platform=node --format=cjs --outfile=tests/es-search/out/program.cjs && node tests/es-search/out/program.cjs",
+    "test:image-format": "esbuild tests/image-format/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-format/out/program.cjs && node tests/image-format/out/program.cjs",
+    "test:image-block-source": "esbuild tests/image-block-source/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/image-block-source/out/program.cjs && node tests/image-block-source/out/program.cjs",
+    "test:image-endpoint": "esbuild tests/image-endpoint/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-endpoint/out/program.cjs && node tests/image-endpoint/out/program.cjs",
+    "test:send-model-resolution": "esbuild tests/send-model-resolution/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@renderer/stores/provider-store=./tests/send-model-resolution/stubs/provider-store.ts --alias:@renderer/stores/chat-store=./tests/send-model-resolution/stubs/chat-store.ts --alias:@renderer/stores/settings-store=./tests/send-model-resolution/stubs/settings-store.ts --alias:@renderer/stores/channel-store=./tests/send-model-resolution/stubs/channel-store.ts --outfile=tests/send-model-resolution/out/program.cjs && node tests/send-model-resolution/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

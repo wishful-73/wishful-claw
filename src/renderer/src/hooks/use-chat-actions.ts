@@ -6,16 +6,14 @@ import {
   updateSessionContextTokens,
   type ChatStore
 } from '@renderer/stores/chat-store'
-import { useProviderStore } from '@renderer/stores/provider-store'
 import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import { useActivityStore } from '@renderer/stores/activity-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
-import { useChannelStore } from '@renderer/stores/channel-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { registerExternalChannelReply } from '@renderer/hooks/use-channel-auto-reply'
-import { resolveSessionModelSelection } from '@renderer/lib/session-model-resolution'
+import { resolveSendModel } from '@renderer/lib/send-model-resolution'
 import { getCachedTools, fetchToolDefinitions } from '@renderer/lib/tools/tool-cache'
 import { compressMessages } from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
@@ -312,55 +310,22 @@ export function subscribePendingSessionMessages(onStoreChange: () => void): () =
   return () => { _pendingListeners.delete(onStoreChange) }
 }
 
-// Shared provider type used by the send paths (buildProviderPayload's input).
-type SendProvider = NonNullable<ReturnType<ReturnType<typeof useProviderStore.getState>['getActiveProvider']>>
-
-// Resolve the provider/model a send will actually use, mirroring exactly what
-// the UI displays (ModelSwitcher / InputArea via resolveSessionModelSelection).
-// Session-bound model switches used to update only the UI while sends kept
-// reading the global provider store, so requests went out with the stale
-// global model. Returns null when no usable provider/model exists.
-export function resolveSendModel(sessionId: string): { provider: SendProvider; modelId: string } | null {
-  const providerStore = useProviderStore.getState()
-  const chatStore = useChatStore.getState()
-  const settings = useSettingsStore.getState()
-  const session = chatStore.sessions.find((s) => s.id === sessionId)
-  const channel = session?.pluginId
-    ? (useChannelStore.getState().channels.find((c) => c.id === session.pluginId) ?? null)
-    : null
-  const selection = resolveSessionModelSelection({
-    session,
-    providers: providerStore.providers,
-    activeProviderId: providerStore.activeProviderId,
-    activeModelId: providerStore.activeModelId,
-    globalMode: settings.mainModelSelectionMode,
-    channelProviderId: channel?.providerId,
-    channelModelId: channel?.model
-  })
-  const resolvedProviderId = selection.providerId
-  let resolvedModelId: string | null = selection.modelId
-  let provider = resolvedProviderId
-    ? (providerStore.providers.find((p) => p.id === resolvedProviderId) ?? null)
-    : null
-  if (!provider) {
-    provider = providerStore.getActiveProvider() ?? null
-    // Fell back to the global provider — realign the model with it too
-    resolvedModelId = null
-  }
-  if (!provider) return null
-  const modelId = resolvedModelId
-    || providerStore.activeModelId
-    || provider.defaultModel
-    || provider.models.find((m: any) => m.enabled)?.id
-  if (!modelId) return null
-  return { provider, modelId }
-}
+// resolveSendModel 已移到 lib/send-model-resolution.ts（S-167）。原因：本模块在顶层
+// 反向 import 了 use-channel-auto-reply（registerExternalChannelReply），函数留在这里
+// 会让「渠道自动回复」那条路径没法无环复用统一解析，只能自己再手写一遍兜底序 ——
+// 那次手写就是模型串台的来源。下面仍 re-export，既有的调用方（cron-runtime 等）不用动。
 
 // The provider payload sent to agent/run is built in exactly one place — see
 // lib/agent/provider-payload.ts for what it contains and why. Re-exported here
 // because existing callers (cron-runtime, goal-session-views, the background
 // sub-agent wakeup) import it from this module.
 export { buildProviderPayload }
+
+// Same story as buildProviderPayload: the implementation moved to
+// lib/send-model-resolution.ts (S-167) so every send path — including channel
+// auto-reply, which cannot import this module without a cycle — can share it.
+// Re-exported here for existing callers.
+export { resolveSendModel }
 
 export async function sendImplementPlan(sessionId: string, planId: string): Promise<void> {
   const planStore = (await import('@renderer/stores/plan-store')).usePlanStore.getState()
@@ -519,12 +484,12 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
     await chatStore.cancelStream()
 
     // Send a user message so the agent knows the plan was cancelled
-    const providerStore = (await import('@renderer/stores/provider-store')).useProviderStore.getState()
     const settingsStore = (await import('@renderer/stores/settings-store')).useSettingsStore.getState()
-    const activeProvider = providerStore.getActiveProvider()
-    if (!activeProvider) return
-    const modelId = providerStore.activeModelId || activeProvider.defaultModel || activeProvider.models.find((m: any) => m.enabled)?.id
-    if (!modelId) return
+    // S-167 同族：这是往**已知 sessionId** 发消息，必须读会话绑定。原先读全局
+    // getActiveProvider() —— 用户在会话里手切过模型时，这条取消通知会用全局
+    // 模型发出去，与 UI 显示对不上账。
+    const resolved = resolveSendModel(sessionId)
+    if (!resolved) return
     const session = chatStore.sessions.find((s) => s.id === sessionId)
     if (!session) return
     // S-144：会话行可能没带 workingFolder，回退到项目表的 workingFolder —— 漏传这一处，
@@ -537,7 +502,7 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
 
     useActivityStore.getState().clearActivities()
 
-    const provider = buildProviderPayload(activeProvider, modelId, settingsStore)
+    const provider = buildProviderPayload(resolved.provider, resolved.modelId, settingsStore)
 
     await chatStore.sendMessage({
       provider,

@@ -20,7 +20,6 @@
  */
 
 import { useChatStore } from '@renderer/stores/chat-store'
-import { useProviderStore } from '@renderer/stores/provider-store'
 import { useTaskStore } from '@renderer/stores/task-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { writeLog } from '@renderer/lib/error-logger'
@@ -30,7 +29,7 @@ import {
   registerExternalChannelReply,
   unregisterExternalChannelReply
 } from '@renderer/hooks/use-channel-auto-reply'
-import { getPendingSessionMessages } from '@renderer/hooks/use-chat-actions'
+import { getPendingSessionMessages, resolveSendModel } from '@renderer/hooks/use-chat-actions'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import { invokeMessagePackBinary } from '@renderer/lib/ipc/messagepack-ipc-client'
 import {
@@ -163,24 +162,23 @@ export async function handleProjectSendSessionMessage(
     }
   }
 
-  // 2. Get provider config from store
-  const providerStore = useProviderStore.getState()
-  const targetProvider = providerStore.getActiveProvider()
-  if (!targetProvider) {
-    const error = 'No active provider configured. Please configure a provider in Settings.'
-    await failScheduledFollowUp(error)
-    return { success: false, error }
-  }
-
-  const modelId = providerStore.activeModelId || targetProvider.defaultModel
-  if (!modelId) {
-    const error = 'No model configured. Please select a model in Settings.'
+  // 2. Resolve provider/model from the *target session*, never from the global store.
+  //    S-167：外部投递的一轮必须用在会话里显示的那套设置。以前这里直接读全局
+  //    providerStore，于是投递轮跑的是全局模型，而 UI 显示的是会话绑定的模型 —— 用户
+  //    看到「模型跟实际用的对不上账」，在项目会话下手切也切不回来（切回会话的模型后，
+  //    投递轮仍按全局模型 + 全局模型的思考档位发请求，个别上游直接报错）。
+  //    resolveSendModel 是唯一入口，兜底序 会话绑定 > channel 绑定 > 全局激活 >
+  //    provider 默认，与 UI（ModelSwitcher / InputArea）读的完全是同一条路径。
+  //    同时不再传 { thinkingEnabled: false }：思考开关也必须跟会话设置一致。
+  const resolved = resolveSendModel(sessionId)
+  if (!resolved) {
+    const error = 'No provider/model available for the target session. Please configure a provider in Settings.'
     await failScheduledFollowUp(error)
     return { success: false, error }
   }
 
   const settings = useSettingsStore.getState()
-  const provider = buildProviderPayload(targetProvider, modelId, settings, { thinkingEnabled: false })
+  const provider = buildProviderPayload(resolved.provider, resolved.modelId, settings)
 
   // 3. Channel echo registration — a channel-bound session must echo its reply
   //    back to the external chat no matter what triggered the turn (same rule as

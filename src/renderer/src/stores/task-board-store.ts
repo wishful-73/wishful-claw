@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Task Board store — global agent work items (global_tasks) and their dispatch
  * records (global_task_dispatches). This is the ONLY data source for the Task
  * Board; the session-scoped tasks table (agent Todos) is never read here.
@@ -21,6 +21,7 @@ import {
   type GlobalTaskStatus,
   type GlobalMutationResult
 } from '@renderer/components/taskboard/task-board-types'
+import { WISHFUL_CLAW_DATA_DIR_NAME } from '@shared/data-dir'
 
 export interface TaskCreateInput {
   title: string
@@ -100,7 +101,7 @@ function buildWorkRequestContent(dispatchId: string, taskId: string, instruction
     `${instruction}\n\n` +
     'This work request was dispatched by the global agent (Task Board). Decide yourself how to ' +
     'execute it (including whether to create your own temporary Todos). Any notes or briefs you ' +
-    'write for it belong in `.wishful-claw/notes/`, not loose in the project tree. When you finish, ' +
+    `write for it belong in \`${WISHFUL_CLAW_DATA_DIR_NAME}/notes/\`, not loose in the project tree. When you finish, ` +
     'get blocked, or need to ask the global agent a follow-up question, call the reply_global_dispatch ' +
     `tool with dispatchId '${dispatchId}' so the global agent can track the outcome.`
   )

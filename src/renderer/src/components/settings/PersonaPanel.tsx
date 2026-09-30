@@ -7,6 +7,7 @@ import { usePersonaStore } from '@renderer/stores/persona-store'
 import type { PersonaConfig } from '@renderer/lib/persona/persona-types'
 import { PersonaList } from './persona/PersonaList'
 import { PersonaEditor } from './persona/PersonaEditor'
+import { PersonaGeneratorDialog } from '@renderer/components/persona/PersonaGeneratorDialog'
 
 interface PersonaPanelProps {
   /** If provided, operate on project persona library. If omitted, operate on global library. */
@@ -34,6 +35,7 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [copying, setCopying] = useState(false)
+  const [generatorOpen, setGeneratorOpen] = useState(false)
 
   const wf = workingFolder
 
@@ -143,6 +145,10 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
               {t('persona.copyFromGlobal', { defaultValue: '从全局复制' })}
             </Button>
           )}
+          <Button size="sm" variant="outline" onClick={() => setGeneratorOpen(true)}>
+            <Sparkles className="mr-1.5 size-4" />
+            {t('persona.aiCreate', { defaultValue: 'AI 创建人格' })}
+          </Button>
           <Button size="sm" variant="default" onClick={handleNewPersona}>
             <Plus className="mr-1.5 size-4" />
             {t('persona.newPersona', { defaultValue: '新建人格' })}
@@ -196,6 +202,12 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
           />
         )}
       </div>
+
+      <PersonaGeneratorDialog
+        open={generatorOpen}
+        onClose={() => setGeneratorOpen(false)}
+        workingFolder={wf}
+      />
     </div>
   )
 }

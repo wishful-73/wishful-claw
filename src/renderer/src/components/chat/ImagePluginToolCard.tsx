@@ -24,6 +24,7 @@ import {
   type ImageGenerateRetryState
 } from '@renderer/lib/app-plugin/image-tool-retry'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
 import { Button } from '@renderer/components/ui/button'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { cn } from '@renderer/lib/utils'
@@ -331,22 +332,20 @@ export function ImagePluginToolCard({
                       className="grid gap-3 md:grid-cols-2"
                     >
                       {images.map((image, index) => {
-                        const src =
-                          image.source.type === 'base64' && image.source.data
-                            ? `data:${image.source.mediaType || 'image/png'};base64,${image.source.data}`
-                            : (image.source.url ?? '')
-                        if (!src && !image.source.filePath) return null
+                        const resolved = resolveImageBlockSource(image)
+                        if (!resolved) return null
                         return (
                           <motion.div
-                            key={`${image.source.filePath ?? src}-${index}`}
+                            key={`${resolved.filePath ?? resolved.src}-${index}`}
                             initial={{ opacity: 0, y: 10, scale: 0.98 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             transition={{ ...ITEM_TRANSITION, delay: index * 0.06 }}
                           >
                             <ImagePreview
-                              src={src}
+                              src={resolved.src}
                               alt={`Generated image ${index + 1}`}
-                              filePath={image.source.filePath}
+                              filePath={resolved.filePath}
+                              quickActions
                             />
                           </motion.div>
                         )

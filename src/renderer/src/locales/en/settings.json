@@ -863,6 +863,12 @@
       "channels": "Channels: bridge messaging platforms such as Feishu and WeChat to collaborate with your agent anywhere",
       "productivity": "Productivity tools: global launcher, clipboard enhancements, SSH terminal"
     },
+    "website": {
+      "label": "Website",
+      "desc": "Downloads, user guide and release notes",
+      "team": "Developed and maintained by the Wishful team",
+      "open": "Visit website"
+    },
     "guide": {
       "label": "User Guide",
       "desc": "Full feature walkthrough and getting-started tutorial, opened in your browser",

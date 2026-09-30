@@ -19,8 +19,7 @@ import { handleCodeGraphTool } from '../codegraph-handlers'
 import { executeMcpToolFromMain, readMcpResourceFromMain } from '../mcp-handlers'
 import {
   executePluginAction,
-  executeChannelSpecificPluginTool,
-  isPluginToolEnabled
+  executeChannelSpecificPluginTool
 } from '../channel-handlers'
 import { execSshCommand } from '../../ssh/ssh-exec'
 import { listConnections, initializeSshRepository } from '../../ssh/repository'
@@ -95,8 +94,7 @@ const channelPluginMethods = new Set([
 
 // Plugin action methods — routed to executePluginAction
 const pluginActionMethods = new Set([
-  'plugin:exec',
-  'plugin:tool-enabled',
+  'plugin:exec'
 ])
 
 // Methods still dispatched to the stub handler (not yet implemented)
@@ -158,14 +156,6 @@ export async function dispatchReverseRequest(
       action: args.action as string,
       params: (args.params as Record<string, unknown>) ?? {}
     })
-  }
-
-  // Plugin tool enabled check
-  if (method === 'plugin:tool-enabled') {
-    const pluginId = args.pluginId as string
-    const toolName = args.toolName as string
-    const enabled = await isPluginToolEnabled(pluginId, toolName)
-    return { enabled }
   }
 
   // Stub handlers (Extension, Team)

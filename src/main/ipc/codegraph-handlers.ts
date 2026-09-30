@@ -1,10 +1,11 @@
-﻿import { ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { getCodeGraphAssetStatus } from '../lib/codegraph-assets'
 import { getNativeWorker } from '../lib/native-worker'
 import { readPersistedSettings } from '../lib/settings-store'
 import { resolveDataPath } from '../lib/data-dir'
+import { WISHFUL_CLAW_DATA_DIR_NAME } from '../../shared/data-dir'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
 
 // Channel names mirror IPC.CODEGRAPH_* in src/renderer/src/lib/ipc/channels.ts.
@@ -155,8 +156,8 @@ export function resolveCodeGraphDataRoot(
       : undefined
   if (overridden) {
     const normalized = overridden.replaceAll('\\', '/')
-    const homeRelativePrefix = '~/.wishful-claw/'
-    const dataRelativePrefix = '.wishful-claw/'
+    const homeRelativePrefix = `~/${WISHFUL_CLAW_DATA_DIR_NAME}/`
+    const dataRelativePrefix = `${WISHFUL_CLAW_DATA_DIR_NAME}/`
     if (normalized.startsWith(homeRelativePrefix)) {
       return resolveDataPath(...normalized.slice(homeRelativePrefix.length).split('/'))
     }
@@ -167,7 +168,7 @@ export function resolveCodeGraphDataRoot(
   }
   if (!workingFolder) return undefined
   try {
-    const dataRoot = join(workingFolder, '.wishful-claw', 'codegraph')
+    const dataRoot = join(workingFolder, WISHFUL_CLAW_DATA_DIR_NAME, 'codegraph')
     // Writable check: the root must exist as a directory. Creating
     // .wishful-claw/codegraph happens lazily on the worker side at DB open.
     if (!existsSync(workingFolder) || !statSync(workingFolder).isDirectory()) {

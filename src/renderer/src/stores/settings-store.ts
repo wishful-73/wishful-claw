@@ -254,7 +254,6 @@ interface SettingsStore {
   logLevel: LogLevel
 
   // Session model selection
-  newSessionDefaultModel: ModelBinding | null
   mainModelSelectionMode: MainModelSelectionMode
   projectSessionDefaultCollaborationMode: ProjectSessionDefaultCollaborationMode
   coworkDefaultPermissionMode: CoworkDefaultPermissionMode
@@ -401,7 +400,6 @@ export const useSettingsStore = create<SettingsStore>()(
       logLevel: DEFAULT_LOG_LEVEL,
 
       // Session model selection
-      newSessionDefaultModel: null,
       mainModelSelectionMode: 'auto',
       projectSessionDefaultCollaborationMode: 'cowork',
       coworkDefaultPermissionMode: 'fullAccess',
@@ -560,7 +558,6 @@ export const useSettingsStore = create<SettingsStore>()(
         // Logging Settings
         logLevel: normalizeLogLevel(state.logLevel),
         // Session model selection
-        newSessionDefaultModel: state.newSessionDefaultModel,
         mainModelSelectionMode: state.mainModelSelectionMode,
         projectSessionDefaultCollaborationMode: state.projectSessionDefaultCollaborationMode,
         coworkDefaultPermissionMode: state.coworkDefaultPermissionMode,

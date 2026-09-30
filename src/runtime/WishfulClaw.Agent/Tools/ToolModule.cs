@@ -139,6 +139,8 @@ public sealed class ToolModule : IWorkerModule
         registry.Register(new FileWriteTool(), "file");
         registry.Register(new FileEditTool(), "file");
         registry.Register(new FileListTool(), "file");
+        // SaveImage: place an existing image file into the workspace (iter-37 S-162).
+        registry.Register(new FileSaveImageTool(), "file");
 
         // Search tools (category: "search" — included in chat/coding presets)
         registry.Register(new GlobTool(), "search");

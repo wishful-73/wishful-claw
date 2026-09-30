@@ -23,6 +23,8 @@ internal static class Program
             PastedBlockRestoreChecks.Run();
             // iter-33 S-95: rolling-summary partition checks (also no DB).
             SummaryRollingChecks.Run();
+            // iter-37 S-161: a compaction product must not carry pre-compaction usage.
+            UsageStripChecks.Run();
 
             if (args.Length == 2)
                 return RunChildMode(args[0], args[1]);

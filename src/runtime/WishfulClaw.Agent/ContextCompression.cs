@@ -5,6 +5,7 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
+using System.Buffers;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
@@ -171,11 +172,12 @@ public static partial class ContextCompression
         var newConversation = new List<AgentRuntimeChatMessage>();
         var newWireConversation = new List<JsonElement>();
 
-        // Pinned prefix (system prompt + first user turn)
+        // Pinned prefix (system prompt + first user turn). The wire entries carry
+        // their pre-compaction `usage` — strip it (S-161); see StripUsage.
         for (var i = 0; i < head; i++)
         {
             newConversation.Add(conversation[i]);
-            newWireConversation.Add(wireConversation[i]);
+            newWireConversation.Add(StripUsage(wireConversation[i]));
         }
 
         // Region survivors, in original order. Small user turns always survive; on
@@ -190,7 +192,7 @@ public static partial class ContextCompression
             if (IsSmallUserTurn(message, provider) || (summarizerFailed && IsCompactionSummary(message)))
             {
                 newConversation.Add(message);
-                newWireConversation.Add(wireConversation[i]);
+                newWireConversation.Add(StripUsage(wireConversation[i]));
                 survivors++;
             }
         }
@@ -217,7 +219,7 @@ public static partial class ContextCompression
         for (var i = start; i < conversation.Count; i++)
         {
             newConversation.Add(conversation[i]);
-            newWireConversation.Add(wireConversation[i]);
+            newWireConversation.Add(StripUsage(wireConversation[i]));
         }
 
         WorkerLog.Info(
@@ -233,6 +235,51 @@ public static partial class ContextCompression
             fold.Count,
             originalCount,
             summaryMessageId);
+    }
+
+    // ── Usage stripping ──
+
+    /// <summary>
+    /// Returns the wire message without its <c>usage</c> field. Every wire entry
+    /// carried over from a *previous* context must go through this: its usage
+    /// reports the token count of the context it was measured in, not of the one it
+    /// now sits in, while ConversationCodec.FindRecentContextUsage reads the tail
+    /// entry's usage as the compression gate's numerator.
+    ///
+    /// Two callers, one rule (S-141 + S-161):
+    ///   - SessionRestoreTools — a restored snapshot's wire was copied out of the
+    ///     pre-compression context (measured case: 144083 reported vs ≈35K real).
+    ///   - CompactAsync / TruncateMessages — the same situation produced in-process.
+    ///     Without this, a turn aborted right after compaction leaves the old high
+    ///     usage sitting in the tail and the next send compresses again (S-161).
+    ///
+    /// A message without usage (or a non-object) is returned as-is.
+    /// </summary>
+    internal static JsonElement StripUsage(JsonElement message)
+    {
+        if (message.ValueKind != JsonValueKind.Object ||
+            !message.TryGetProperty("usage", out _))
+        {
+            return message;
+        }
+
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        }))
+        {
+            writer.WriteStartObject();
+            foreach (var property in message.EnumerateObject())
+            {
+                if (property.NameEquals("usage")) continue;
+                property.WriteTo(writer);
+            }
+            writer.WriteEndObject();
+        }
+
+        using var doc = JsonDocument.Parse(buffer.WrittenMemory);
+        return doc.RootElement.Clone();
     }
 
     // ── Legacy truncation (kept as fallback) ──
@@ -258,14 +305,14 @@ public static partial class ContextCompression
         for (var i = 0; i < headCount; i++)
         {
             newConversation.Add(conversation[i]);
-            newWireConversation.Add(wireConversation[i]);
+            newWireConversation.Add(StripUsage(wireConversation[i]));
         }
 
         var tailStart = total - tailCount;
         for (var i = tailStart; i < total; i++)
         {
             newConversation.Add(conversation[i]);
-            newWireConversation.Add(wireConversation[i]);
+            newWireConversation.Add(StripUsage(wireConversation[i]));
         }
 
         return (newConversation, newWireConversation);

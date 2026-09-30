@@ -196,7 +196,7 @@ internal static class SessionRestoreTools
                 AgentRuntimeJsonContext.Default.ListJsonElement) ?? [];
             foreach (var message in snapshotWire)
             {
-                wireMessages.Add(StripUsage(message));
+                wireMessages.Add(ContextCompression.StripUsage(message));
             }
 
             // Ids already covered by the snapshot — dedupes the summary row whose
@@ -471,39 +471,6 @@ internal static class SessionRestoreTools
 
         return entity.Role == "user" &&
                entity.Content.AsSpan().TrimStart().StartsWith("<compaction-summary>", StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// S-141: return the wire message without its <c>usage</c> field. Only used on
-    /// messages that came out of a compaction snapshot — their usage belongs to the
-    /// pre-compression context, so it must not be mistaken for the restored wire's
-    /// token count. A message without usage (or a non-object) is returned as-is.
-    /// </summary>
-    private static JsonElement StripUsage(JsonElement message)
-    {
-        if (message.ValueKind != JsonValueKind.Object ||
-            !message.TryGetProperty("usage", out _))
-        {
-            return message;
-        }
-
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions
-        {
-            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-        }))
-        {
-            writer.WriteStartObject();
-            foreach (var property in message.EnumerateObject())
-            {
-                if (property.NameEquals("usage")) continue;
-                property.WriteTo(writer);
-            }
-            writer.WriteEndObject();
-        }
-
-        using var doc = JsonDocument.Parse(buffer.WrittenMemory);
-        return doc.RootElement.Clone();
     }
 
     /// <summary>

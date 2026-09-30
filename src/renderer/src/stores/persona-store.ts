@@ -172,11 +172,16 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
   generatePersona: async (prompt: string, provider: Record<string, unknown>, referencePersonaId?: string, workingFolder?: string) => {
     set({ loading: true, error: null })
     try {
+      // No `providerRole: 'global'` here on purpose: the caller hands us the
+      // provider/model the user picked, and the Worker resolver only honours that
+      // as the `explicit` route when the role is absent. Marking it "global"
+      // makes TryResolveExplicit bail out, so the pick would be ignored and the
+      // request would fall through to the configured/global route.
+      // `globalActiveModel` stays as the last-resort fallback.
       const result = (await window.api.workerRequest('persona/generate', {
         prompt,
         provider,
         requestKind: 'persona',
-        providerRole: 'global',
         globalActiveModel: {
           providerId: provider.id,
           modelId: provider.model

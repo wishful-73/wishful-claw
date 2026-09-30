@@ -145,10 +145,6 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
               {t('persona.copyFromGlobal', { defaultValue: '从全局复制' })}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => setGeneratorOpen(true)}>
-            <Sparkles className="mr-1.5 size-4" />
-            {t('persona.aiCreate', { defaultValue: 'AI 创建人格' })}
-          </Button>
           <Button size="sm" variant="default" onClick={handleNewPersona}>
             <Plus className="mr-1.5 size-4" />
             {t('persona.newPersona', { defaultValue: '新建人格' })}
@@ -199,6 +195,7 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
             onSave={handleSave}
             onReset={handleReset}
             onDelete={handleDelete}
+            onAiCreate={() => setGeneratorOpen(true)}
           />
         )}
       </div>
@@ -207,6 +204,10 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
         open={generatorOpen}
         onClose={() => setGeneratorOpen(false)}
         workingFolder={wf}
+        onGenerated={(generated) => {
+          setDraft(generated)
+          setDirty(true)
+        }}
       />
     </div>
   )

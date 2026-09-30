@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.2.36-orange" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.2.37-orange" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows-blue" alt="Windows">
   <img src="https://img.shields.io/badge/.NET-11-blue" alt=".NET">
   <img src="https://img.shields.io/badge/Electron-43-blue" alt="Electron">

@@ -394,8 +394,15 @@ async function runInSession(runEvent: CronFiredEvent, result: CronRunResult): Pr
       if (!resolved) throw new Error('No enabled provider/model configured for the target session')
       provider = buildProviderPayload(resolved.provider, resolved.modelId, useSettingsStore.getState())
     } else {
-      const resolved = resolveProvider(runEvent)
-      if (!resolved) throw new Error('No enabled provider/model configured for Cron task')
+      // S-167 同族清扫：这是 `new_session` 分支，同样是「往已知 sessionId 发消息」。
+      // prepareRunEvent 建完会话后已经用 setSessionModelManual 把解析结果写进会话绑定
+      // （:203），所以这里要读同一份。原先自己再 resolveProvider(runEvent) 解析一遍 ——
+      // runMode === 'session' 时 event.agentId / model 已被置 null（:178-185），于是回落
+      // 全局激活模型，会话显示的模型与这一轮实际用的模型就劈叉了（与 S-167 同一个病）。
+      // payload 仍按 ProviderConfig（sidecar 口径）构造，保留 event 自带的任务级
+      // thinkingEnabled / reasoningEffort —— 那不是「投递跟随会话设置」的管辖范围。
+      const resolved = resolveSendModel(sessionId)
+      if (!resolved) throw new Error('No enabled provider/model configured for the target session')
       provider = buildProviderConfig(resolved.provider, resolved.modelId, runEvent) as unknown as Record<string, unknown>
     }
 
@@ -462,6 +469,9 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
       return
     }
 
+    // 有意不走 resolveSendModel：这是 sidecar / bot 路径，**没有目标会话** ——
+    // 它按 event.agentId / event.model 走渠道（bot）绑定语义，provider / model
+    // 由任务自己指定，与「往某个会话发消息」不是同一件事。
     const resolved = resolveProvider(runEvent)
     if (!resolved) throw new Error('No enabled provider/model configured for Cron task')
     const provider = buildProviderConfig(resolved.provider, resolved.modelId, runEvent)

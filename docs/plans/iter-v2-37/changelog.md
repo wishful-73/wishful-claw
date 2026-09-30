@@ -121,3 +121,59 @@
   - **`provider-payload.ts:42-49` 的注释已改** —— 原文「keep it that way until someone decides otherwise」此刻已被拍板；注释不改，下一轮又会被当成「故意设计」保回来。
   - **门禁**：`npm run typecheck`（web / node / root 三配置）全 0；`npm test` **61/61**（TS 45 + C# 16）。
   - **未实测**：S-167 §六 的 1～5 条都是运行期行为，本刀只到「编译 + 回归套件」级别，未在跑起来的实例里逐条复现。
+
+- **09:05　S-156 实施（第 2 刀）—— 接通 \PersonaGeneratorDialog\** —— 老大 09-30 09:01「继续推进」。
+
+  **改动落在 \PersonaPanel.tsx\ 一个文件**：头部工具栏「新建人格」左侧加 \ariant="outline"\ 的「AI 创建人格」按钮（图标复用已在文件里 import 的 \Sparkles\，此前只用于空态占位），新增 \generatorOpen\ state，根部渲染 \<PersonaGeneratorDialog open onClose workingFolder={wf} />\。
+
+  - **文案零新增**：复用既有 key \persona.aiCreate\（弹窗标题，语义与入口一致）⇒ zh / en 两份 locale **未改**。
+  - **未传 \onSaved\**：\savePersona\ 在 store 里已自刷列表并重选，弹窗内部 \handleSave\ 也会自己 \handleClose()\，外部只需管 \open\。
+  - **未加 dirty 拦截**：AI 生成是「新增一份人格」，不切换当前 \draft\，与 \handleNewPersona\ / \handleSelectPersona\ 不同，不需要 \unsavedConfirm\。
+  - **项目侧一并生效**：全局页与项目页共用本组件，\workingFolder\ 原样透传 ⇒ 项目上下文里生成的人格落项目人格库（既有 props 语义，非新增行为）。
+  - **门禁**：\
+px tsc --noEmit\ 三配置（web / node / root）全 \EXIT=0\；\
+pm test\ **61/61**（TS 45 + C# 16）。
+  - **未实测**：生成 → 四段预览 → 保存这条链路需真机点，本刀只到「编译 + 回归套件」级别。
+- **09:08　S-157 实施（第 3 刀）—— 数据目录名收敛，代码内字面量清零** —— 登记列三处，实做**五处**：按需求自己的验收标准（全仓复搜裸字面量 0 命中）复搜后另有四处命中 —— codegraph-handlers.ts:158/:159 两处前缀串（与登记的 :170 同函数同语义）、SkillsMenu.tsx:370/:416 的 UI 空态文案、	ask-board-store.ts:103 派工单提示词正文里的路径示例。后两类同样是「数据目录名写死」，只是载体是文案 / 提示词。WISHFUL_CLAW_DIR 与 PROJECT_MEMORY_DIRNAME 保留导出名、改指向常量（二者都有消费方）。复搜余下 27 命中**全是注释** + 唯一定义点自身。门禁：tsc 三配置全 0；
+pm test 61/61。
+
+- **09:11　S-158 实施（第 4 刀）—— 删渠道「按工具逐个开关」死配置全链路** —— 登记清单 6 处全做。**登记漏掉的关联面一并清**（不清则 	sc 直接报错）：ChannelInstance.tools 有**写入方** —— uildToolsMap 专门生产这张表，被 channel-plugin-handlers.ts 三处调用（新建内置实例 / 每次 plugin:list 回写 / plugin:add）。**这几处正是「死配置看起来是活的」的原因**：每次列渠道都在重写这张表，所以它一直有内容，只是没人读。另删渲染端镜像类型 PluginInstance.tools。ChannelDescriptor.tools?: string[] 是另一个字段，保留。**一处刻意不删**：getChannelPlugin 因本次改动失去唯一调用者，但它是 channel/config-get 的通用查询口，不属本链路，留给收尾盘点。复搜 0 命中；tsc 三配置全 0；61/61。
+
+- **09:14　S-159 实施（第 5 刀）—— 删死字段 
+ewSessionDefaultModel** —— 四处全删，与登记清单一致，**无关联面溢出**（纯自留地字段，不像 S-158 有写入方）。ModelBinding 类型保留（memoryOrganizationModel 仍在用）；migrate 不写 delete。复搜 src + 	ests 0 命中，git grep 余下命中全在 docs/ 历史记录。tsc 三配置全 0；61/61。
+
+- **09:15　推进暂停 —— 余下六条全部卡在待裁定口径上** —— 本迭代十二条已落五刀（S-167 / S-156 / S-157 / S-158 / S-159）。**S-160 / S-161 / S-162 / S-163 / S-166 五条各有一组口径待老大拍板，S-165 待定「备查」与否**；再往下每条都得先有裁定，故停下报告，不擅自选路。
+
+- **09:27　六条裁定一次下齐 ⇒ 转入全面实施** —— 老大对上一轮的暂停报告逐条拍板：
+
+  - **S-160 → ①a1 + ②b1 + ③不维护仓库侧指引**：①「官网信息」装 **a1**（官网地址 + 心相团队）；②指引按钮走 **b1（替换，不并列）**；③**不再维护 GitHub 侧的 `docs/user-guide.md`**。
+  - **S-161 → 复发时复用已压快照** —— 老大原话「这个是已经成功压缩后，用户中断后续执行，然后重新发言，这种应该能**复用之前的压缩快照**才对」。**关键口径：不是「把旧 usage 删掉」就完事，而是复发那一轮要复用已经压好的快照。**
+  - **S-166 → 按 agent 推荐** —— 老大「我用 **DeepSeek v4.1 flash** 和 **glm 5.3 flash** 这些模型」⇒ 都是 chat 模型、不产图像块 ⇒ **A 方案（解析模型自产图像）否掉**，走 **B（放宽 provider 限定）+ 回落**。
+  - **S-162 / S-163 / S-164 → 按 agent 推荐** —— S-162 实做 A+B+C（卡片就地出口 + `SaveImage` + 字节魔数判扩展名）；S-163 落 `docs/design-system.md`；S-164 落 `dev-workflow.md`。
+  - **S-165 → 不做**，标「**暂不实施（备查）**」，**不占刀序**（收口与代价说明见 `requirements/S-165.md §六`）。
+
+- **第 6 刀 S-160（`99a07798`）** —— 关于页补官网信息（地址 + 心相团队），「查看指引」由 GitHub `docs/user-guide.md` 改指官网 `/guide`；`ConversationGuideDialog.tsx:313` 的 `.shop` 死链一并修掉。**按 ③ 裁定删掉仓库侧 `docs/user-guide.md`**，停维护。门禁：typecheck 0；`npm test` 61/61。
+
+- **第 7 刀 S-161（`764f9c72`）** —— 压缩产物剥离压缩前的旧 `usage`，堵住「压缩后中断、重发又触发压缩」。**按 09:27 裁定落在「复用已压快照」这一侧**（不是简单删旧值）。门禁：typecheck 0；61/61。
+
+- **第 8 刀 S-162（`37fe4f51`）** —— 生图卡片加「就地出口」（复制 / 下载，能力本就在 `ImagePreview` 浮层里），新增 `SaveImage` 工具，扩展名改按**字节魔数**判。门禁：typecheck 0；61/61。
+
+- **第 9 刀 S-166（`cc26da7e`）** —— 通用生图：不再限定 `type === 'openai'`，按「激活 provider → host 映射表 → 任何有图像能力的 provider」三级解析，都没有时给可操作的明确报错。新增 `src/main/lib/image-endpoint.ts` 与 `tests/image-endpoint/`（30 断言），**套件数由 61 涨到 64**。顺带修掉 `count` 读不到（executor 送 `count`、handler 读 `n`，张数恒为 1）。
+
+- **第 10 刀 S-163（`5cf0c100`）** —— 新增 `docs/design-system.md`（198 行 / 13.9 KB），按现有 `theme-presets` 反向固化 token 与用法。**只梳理现有、不做改造**（09-29 17:51 裁定的范围）。
+
+- **第 11 刀 S-164（`53a9c938`）** —— `dev-workflow.md` 的「文档组织」节新增「需求正文段落模板」七段（原话/来源 → 现象 → 代码链路 → 根因 → 修复方向 → 代价与取舍 → 刻意不做）。**仅对新登记需求适用**，历史需求不回溯补。
+
+- **S-165 收口（不占刀）** —— `requirements/S-165.md` 状态改 ⏸，补 §六「裁定与收口」：裁定 = 不做；**核实结果记明「不是已经被修掉，而是暂时不值得做」**（S-142 修的是 thinking / text 分段归属，`OpenAIChatSseParser.cs` 在 iter-35 三刀里零改动）。
+
+- **迭代收尾刀（审查与验证修复调整）** —— 门禁：`npm run typecheck`（web / node）全 0；`npm test` **65/65**（TS 49 + C# 16）。收尾刀内容：
+
+  - **执行 S-167 审查报告的行动项**（`review_report.md` ⚠️-1/3/4/5/6/7）：
+    - ⚠️-1：`cron-runtime.ts` 的 `new_session` 分支改走 `resolveSendModel(sessionId)`（原先自己 `resolveProvider(runEvent)` 一遍，`runMode === 'session'` 时 event 的 agentId/model 已被置 null ⇒ 回落全局，与 S-167 同病）；sidecar / bot 路径**有意保留** `resolveProvider` 并注明理由。
+    - ⚠️-7：`use-chat-actions.ts` 的 `cancelPlan` 通知消息改走 `resolveSendModel(sessionId)`（原先读全局 `getActiveProvider()`）。
+    - ⚠️-3：新增 `tests/send-model-resolution/`（9 断言，store 走 stub），把入口的优先级钉住。
+    - ⚠️-4：修 `tests/provider-payload/program.ts:212` 的过期注释；`sendSites` 补 `use-background-subagent-wakeup.ts` / `goal-session-views.tsx`，`cron-runtime.ts` 显式豁免「不得手写 apiKey」那一半并注明理由。
+    - ⚠️-5：清掉 `send-model-resolution.ts` 的 `(m: any)`。
+    - ⚠️-6：把两处优先级细节（plugin 会话实际是 **channel > session**；渠道有 provider 无 model 时取**该 provider 的默认模型**而非全局激活模型）写进 `send-model-resolution.ts` 的注释。
+  - **未采纳**：⚠️-2（`goal-session-views.tsx` 读全局 `activeModelId`）—— C# 侧注释明示那是 Goal 自身的 legacy fallback，改它会与 Goal 的优先级链打架，**单独立案**。
+  - `review_report.md` / `verification_report.md` 随本刀入库。

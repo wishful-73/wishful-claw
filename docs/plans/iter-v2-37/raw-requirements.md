@@ -15,18 +15,18 @@
 
 | 编号 | 标题 | 状态 | 正文 |
 |---|---|---|---|
-| S-156 | 设置页缺「AI 生成人格」入口：`PersonaGeneratorDialog` 组件完整但全仓无 importer | 📝 已登记（裁定：接通），待实施 | [S-156.md](requirements/S-156.md) |
-| S-157 | 数据目录名常量收敛残留：TS 侧三处硬编码 `.wishful-claw` 字面量 | 📝 已登记，待实施 | [S-157.md](requirements/S-157.md) |
-| S-158 | 渠道「按工具逐个开关」死配置：删除 `plugin:tool-enabled` 全链路 | 📝 已登记（裁定：删），待实施 | [S-158.md](requirements/S-158.md) |
-| S-159 | 设置项「新会话默认模型」死字段：删除 `newSessionDefaultModel` | 📝 已登记（裁定：删），待实施 | [S-159.md](requirements/S-159.md) |
-| S-160 | 关于页面补官网信息 + 使用指引改指官网 | 📝 已登记，待实施（三条口径待裁定） | [S-160.md](requirements/S-160.md) |
-| S-161 | 自动压缩刚完成即中断，重发消息又触发压缩 | 📝 已登记，待实施（方案 A+B / C 待裁定） | [S-161.md](requirements/S-161.md) |
-| S-162 | 图片产物的「就地出口」+ `SaveImage` 工具 | 📝 已登记，待实施（三条口径待裁定；姊妹需求 S-166） | [S-162.md](requirements/S-162.md) |
-| S-163 | 建立设计系统文档 `docs/design-system.md` | 📝 已登记，待实施（**范围已裁定：只梳理现有**） | [S-163.md](requirements/S-163.md) |
-| S-164 | 需求正文补两节：「代价与取舍」「刻意不做」 | 📝 已登记（**范围已裁定：只对新需求适用**） | [S-164.md](requirements/S-164.md) |
-| S-165 | 流式工具调用解码器加固：缺省 `index` 归格 + `id` 归并 | 📝 已登记，**建议「暂不实施（备查）」**（无实测症状；iter-35 的 S-142 不覆盖） | [S-165.md](requirements/S-165.md) |
-| S-166 | 通用图片生成：不要求单独配一个图像模型 | 📝 已登记，待实施（**方向待裁定**；姊妹需求 S-162） | [S-166.md](requirements/S-166.md) |
-| S-167 | 外部投递给会话发消息时用全局模型顶掉会话自己的绑定（**两个方向**：派工单 / 回复全局进度） | 📝 已登记，待实施（**根因已定死**：`project-send-message.ts:168,175` 绕过 `resolveSendModel`） | [S-167.md](requirements/S-167.md) |
+| S-156 | 设置页缺「AI 生成人格」入口：`PersonaGeneratorDialog` 组件完整但全仓无 importer | ✅ 已实施（第 2 刀） | [S-156.md](requirements/S-156.md) |
+| S-157 | 数据目录名常量收敛残留：TS 侧三处硬编码 `.wishful-claw` 字面量 | ✅ 已实施（第 3 刀，实做五处） | [S-157.md](requirements/S-157.md) |
+| S-158 | 渠道「按工具逐个开关」死配置：删除 `plugin:tool-enabled` 全链路 | ✅ 已实施（第 4 刀） | [S-158.md](requirements/S-158.md) |
+| S-159 | 设置项「新会话默认模型」死字段：删除 `newSessionDefaultModel` | ✅ 已实施（第 5 刀） | [S-159.md](requirements/S-159.md) |
+| S-160 | 关于页面补官网信息 + 使用指引改指官网 | ✅ 已实施（第 6 刀） | [S-160.md](requirements/S-160.md) |
+| S-161 | 自动压缩刚完成即中断，重发消息又触发压缩 | ✅ 已实施（第 7 刀） | [S-161.md](requirements/S-161.md) |
+| S-162 | 图片产物的「就地出口」+ `SaveImage` 工具 | ✅ 已实施（第 8 刀；姊妹需求 S-166） | [S-162.md](requirements/S-162.md) |
+| S-163 | 建立设计系统文档 `docs/design-system.md` | ✅ 已实施（第 10 刀） | [S-163.md](requirements/S-163.md) |
+| S-164 | 需求正文补两节：「代价与取舍」「刻意不做」 | ✅ 已实施（第 11 刀） | [S-164.md](requirements/S-164.md) |
+| S-165 | 流式工具调用解码器加固：缺省 `index` 归格 + `id` 归并 | ⏸ 暂不实施（备查），不占刀序 | [S-165.md](requirements/S-165.md) |
+| S-166 | 通用图片生成：不要求单独配一个图像模型 | ✅ 已实施（第 9 刀；姊妹需求 S-162） | [S-166.md](requirements/S-166.md) |
+| S-167 | 外部投递给会话发消息时用全局模型顶掉会话自己的绑定（**两条投递途径**：派工单 `send_work_request` / 临时小任务 `send_session_message`，外加反向 `reply_global_dispatch`） | ✅ 已实施（第 1 刀） | [S-167.md](requirements/S-167.md) |
 
 > S-160 起于老大 16:33「关于页面需要增加 官网信息，以及使用指引需要指向官网　这个需求登记上」——
 > 官网 `.work` 上线并完成 ICP / 公安备案后的应用内收口。勘测**顺带揪出一处死链**：

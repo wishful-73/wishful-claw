@@ -28,6 +28,20 @@ export type SendProvider = NonNullable<
 // Session-bound model switches used to update only the UI while sends kept
 // reading the global provider store, so requests went out with the stale
 // global model. Returns null when no usable provider/model exists.
+//
+// Two precedence details worth knowing before touching this (both verified
+// against `session-model-resolution.ts`):
+//
+//   1. For a channel-bound session (`session.pluginId`) the real order is
+//      **channel > session**, not the other way round —
+//      `session-model-resolution.ts:89` is `channelProviderId ?? session.providerId`.
+//      They only look equivalent because ModelSwitcher writes both when the
+//      user picks a model (`ModelSwitcher/utils.ts:99-105`).
+//   2. When a channel has a provider but no model, the old hand-rolled
+//      fallbacks in the send paths fell through to the *global* active model.
+//      This entry point instead takes that channel provider's default model
+//      (`resolveProviderDefaultModelId`, :91) — the global active model may not
+//      even exist in the channel provider's model list.
 export function resolveSendModel(sessionId: string): { provider: SendProvider; modelId: string } | null {
   const providerStore = useProviderStore.getState()
   const chatStore = useChatStore.getState()
@@ -59,7 +73,7 @@ export function resolveSendModel(sessionId: string): { provider: SendProvider; m
   const modelId = resolvedModelId
     || providerStore.activeModelId
     || provider.defaultModel
-    || provider.models.find((m: any) => m.enabled)?.id
+    || provider.models.find((m) => m.enabled)?.id
   if (!modelId) return null
   return { provider, modelId }
 }

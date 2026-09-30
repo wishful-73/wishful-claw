@@ -484,12 +484,12 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
     await chatStore.cancelStream()
 
     // Send a user message so the agent knows the plan was cancelled
-    const providerStore = (await import('@renderer/stores/provider-store')).useProviderStore.getState()
     const settingsStore = (await import('@renderer/stores/settings-store')).useSettingsStore.getState()
-    const activeProvider = providerStore.getActiveProvider()
-    if (!activeProvider) return
-    const modelId = providerStore.activeModelId || activeProvider.defaultModel || activeProvider.models.find((m: any) => m.enabled)?.id
-    if (!modelId) return
+    // S-167 同族：这是往**已知 sessionId** 发消息，必须读会话绑定。原先读全局
+    // getActiveProvider() —— 用户在会话里手切过模型时，这条取消通知会用全局
+    // 模型发出去，与 UI 显示对不上账。
+    const resolved = resolveSendModel(sessionId)
+    if (!resolved) return
     const session = chatStore.sessions.find((s) => s.id === sessionId)
     if (!session) return
     // S-144：会话行可能没带 workingFolder，回退到项目表的 workingFolder —— 漏传这一处，
@@ -502,7 +502,7 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
 
     useActivityStore.getState().clearActivities()
 
-    const provider = buildProviderPayload(activeProvider, modelId, settingsStore)
+    const provider = buildProviderPayload(resolved.provider, resolved.modelId, settingsStore)
 
     await chatStore.sendMessage({
       provider,

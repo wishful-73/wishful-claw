@@ -146,9 +146,6 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   if (state.codegraphFullToolSurface === undefined) {
     state.codegraphFullToolSurface = false
   }
-  if (state.newSessionDefaultModel === undefined) {
-    state.newSessionDefaultModel = null
-  }
   if (
     typeof state.contextCompressionThreshold !== 'number' ||
     !Number.isFinite(state.contextCompressionThreshold)

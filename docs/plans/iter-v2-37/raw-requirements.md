@@ -27,6 +27,10 @@
 | S-165 | 流式工具调用解码器加固：缺省 `index` 归格 + `id` 归并 | ⏸ 暂不实施（备查），不占刀序 | [S-165.md](requirements/S-165.md) |
 | S-166 | 通用图片生成：不要求单独配一个图像模型 | ✅ 已实施（第 9 刀；姊妹需求 S-162） | [S-166.md](requirements/S-166.md) |
 | S-167 | 外部投递给会话发消息时用全局模型顶掉会话自己的绑定（**两条投递途径**：派工单 `send_work_request` / 临时小任务 `send_session_message`，外加反向 `reply_global_dispatch`） | ✅ 已实施（第 1 刀） | [S-167.md](requirements/S-167.md) |
+| S-168 | AI 辅助创建人格：入口挪进新增人格页 + 生成结果回填 + 模型可当场选（**S-156 的形态调整**） | ✅ 已实施（第 13 刀） | [S-168.md](requirements/S-168.md) |
+| S-169 | OpenCode Go 内置模型清单全量更新：价格刷新 + 无效模型去除 | ✅ 已实施（第 16 刀） | [S-169.md](requirements/S-169.md) |
+| S-170 | DeepSeek 内置服务商默认协议改为 OpenAI Chat | ✅ 已实施（第 14 刀） | [S-170.md](requirements/S-170.md) |
+| S-171 | 辅助通道补头链 + persona 生成退出后端（**姊妹项 S-172 本次不做**，随 iter-38 目录登记） | ✅ 已实施（第 15 刀） | [S-171.md](requirements/S-171.md) |
 
 > S-160 起于老大 16:33「关于页面需要增加 官网信息，以及使用指引需要指向官网　这个需求登记上」——
 > 官网 `.work` 上线并完成 ICP / 公安备案后的应用内收口。勘测**顺带揪出一处死链**：
@@ -55,3 +59,21 @@
 |---|---|---|---|
 | `plugin:tool-enabled` 死配置：渠道「按工具逐个开关」两头没接 | iter-28 S-6 | 存储字段 `ChannelInstance.tools` + 主进程三层查询壳齐全；**配置方（UI）与调用方（C#）皆为零** ⇒ 恒返回 `true` | **删** ⇒ 已登记为 S-158 |
 | `newSessionDefaultModel` 死字段：设置项「新会话默认模型」 | iter-28 S-9 | 代码侧 4 处全在 store 自留地（声明 / 初始值 / persist 白名单 / migrate 补默认）；**无 UI、无读取方** ⇒ 恒为 `null` | **删** ⇒ 已登记为 S-159 |
+
+> **S-170** 起于老大 2026-10-08 08:27「登记一个简单需求归属37迭代　DeepSeek的内置api服务商　默认协议改成openai chat」——
+> 默认选型调整（非 bug）：现默认 Anthropic 协议（`type: 'anthropic'`、端点 `https://api.deepseek.com/anthropic`），诉求改为 OpenAI Chat。
+> 登记前已实读代码，**勘出一条升级路径的坑**：`isUnownedBuiltin` 要求 `baseUrl === preset.defaultBaseUrl`，而 `defaultBaseUrl` 一旦改动，
+> 已配 DeepSeek 的老记录（旧 baseUrl）将**永远不满足**该判据 ⇒ 既拿不到新协议、也不会被退回投影。正文列了 A/B/C 三条路径待裁定。
+>
+> **编号说明**：S-169 已被「OpenCode Go 模型清单全量更新」（归属本迭代，2026-10-07 登记、10-08 实施，第 17 刀）占用，故本条顺延为 S-170。
+
+> **S-169** 起于老大 2026-10-07「OpenCode Go 模型清单全量更新」（登记时只留编号说明，未落文档）。10-08 09:26 老大补范围：
+> 「这个就是 S-169 的　应该是漏了文档，当时就是更新各模型的价格这些，以及无效模型的去除」；09:40 老大给官方数据源；09:42 拍定取值口径
+> 「以文档为准，分档定价取最高档」。**范围曾在 A（对齐 models.dev 33 个）/ B（对齐网关 43 个）/ C（只修 400 + 改名）三档间待裁，最终按官方文档 31 条落地。**
+
+> **S-171** 起于老大 2026-10-08 08:54~09:07 的三段口径 —— ① 辅助通道（提示词优化 + persona）**一条头链都没有**，需仿造主链补头链
+> （`userAgent` / `requestOverrides` / opencode-go 的 `x-opencode-session`）；② 请求应统一到一个地方，**persona 不应有请求** ⇒ persona 生成退出后端、
+> 解析与请求构造放到渲染端。**落点勘误**：原计划在 persona 侧新增请求方法，老大当场否掉（「persona 不应该有请求」），改落 `lib/persona/generator.ts`（渲染端）+ 后端 `ProviderCompletionService` 按协议补头链。
+>
+> 其姊妹项 **S-172**（主链流式头链 5 份收敛：`OpenAIChatHeaders` / `AnthropicMessagesProvider` / `OpenAIResponsesProvider` / `ContextCompression` ×2）**本次不做** ——
+> 原挂 iter-37，10-08 13:36 老大「172 也归属到 38 去」⇒ 已移入 **iter-38** 目录登记（`docs/plans/iter-v2-38/requirements/S-172.md`）。

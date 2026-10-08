@@ -30,9 +30,13 @@ export function PersonaSwitcher({ sessionId, workingFolder }: PersonaSwitcherPro
   const settings = useSettingsStore()
   const currentPersonaId = session?.personaId ?? settings.defaultPersonaId
 
+  // The session's own working folder decides which project personas are visible;
+  // an explicit prop still wins for callers rendering outside a session.
+  const effectiveWorkingFolder = workingFolder ?? session?.workingFolder
+
   useEffect(() => {
-    listPersonas(workingFolder)
-  }, [workingFolder, listPersonas])
+    listPersonas(effectiveWorkingFolder)
+  }, [effectiveWorkingFolder, listPersonas])
 
   const currentPersona = personas.find((p) => p.id === currentPersonaId)
 

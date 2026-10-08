@@ -25,7 +25,6 @@ public sealed class PersonaModule : IWorkerModule
         context.Register("persona/save", Save);
         context.Register("persona/delete", Delete);
         context.Register("persona/apply-to-project", ApplyToProject);
-        context.Register("persona/generate", GenerateAsync);
     }
 
     // ── List ──
@@ -161,50 +160,6 @@ public sealed class PersonaModule : IWorkerModule
             ["success"] = true,
             ["count"] = count
         });
-    }
-
-    // ── Generate (AI-assisted) ──
-
-    /// <summary>Stand-in for an omitted provider, so the resolver skips the explicit route.</summary>
-    private static readonly JsonElement EmptyProviderJson = CreateEmptyProviderJson();
-
-    private static JsonElement CreateEmptyProviderJson()
-    {
-        using var document = JsonDocument.Parse("{}");
-        return document.RootElement.Clone();
-    }
-
-    private static async Task<WorkerResponse> GenerateAsync(JsonElement parameters, IWorkerRequestContext context)
-    {
-        var prompt = JsonHelpers.GetString(parameters, "prompt");
-        if (string.IsNullOrWhiteSpace(prompt))
-        {
-            return ToResponse(Mutation(false, "Missing prompt"));
-        }
-
-        // Provider is optional: the shared resolver can use the persona route,
-        // fallback route, or validated global active model.
-        var providerEl = parameters.TryGetProperty("provider", out var suppliedProvider) &&
-                         suppliedProvider.ValueKind == JsonValueKind.Object
-            ? suppliedProvider
-            : EmptyProviderJson;
-
-        var referencePersonaId = JsonHelpers.GetString(parameters, "referencePersonaId");
-        var workingFolder = JsonHelpers.GetString(parameters, "workingFolder");
-
-        try
-        {
-            var draft = await PersonaGenerator.GenerateAsync(
-                providerEl, prompt, referencePersonaId, workingFolder,
-                context.CancellationToken, routingParameters: parameters);
-
-            return ToResponse(draft);
-        }
-        catch (Exception ex)
-        {
-            WorkerLog.Warn($"persona generation failed: {ex.Message}");
-            return ToResponse(Mutation(false, $"Generation failed: {ex.Message}"));
-        }
     }
 
     // ── Helpers ──

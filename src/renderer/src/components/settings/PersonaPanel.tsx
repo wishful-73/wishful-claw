@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Sparkles, Copy } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { usePersonaStore } from '@renderer/stores/persona-store'
@@ -61,9 +62,14 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
   const handleSave = useCallback(async () => {
     if (!draft) return
     setSaving(true)
-    await savePersona(draft, wf)
+    const result = await savePersona(draft, wf)
     setSaving(false)
-  }, [draft, savePersona, wf])
+    // The store writes `error`, but nothing in this panel renders it — surface
+    // failures (ID collision, bad name, worker error) as a toast instead.
+    if (!result.success) {
+      toast.error(result.error ?? t('persona.saveFailed', { defaultValue: '保存失败' }))
+    }
+  }, [draft, savePersona, wf, t])
 
   const handleReset = useCallback(() => {
     if (selectedPersona) {
@@ -145,10 +151,6 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
               {t('persona.copyFromGlobal', { defaultValue: '从全局复制' })}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => setGeneratorOpen(true)}>
-            <Sparkles className="mr-1.5 size-4" />
-            {t('persona.aiCreate', { defaultValue: 'AI 创建人格' })}
-          </Button>
           <Button size="sm" variant="default" onClick={handleNewPersona}>
             <Plus className="mr-1.5 size-4" />
             {t('persona.newPersona', { defaultValue: '新建人格' })}
@@ -199,6 +201,7 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
             onSave={handleSave}
             onReset={handleReset}
             onDelete={handleDelete}
+            onAiCreate={() => setGeneratorOpen(true)}
           />
         )}
       </div>
@@ -207,6 +210,10 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
         open={generatorOpen}
         onClose={() => setGeneratorOpen(false)}
         workingFolder={wf}
+        onGenerated={(generated) => {
+          setDraft(generated)
+          setDirty(true)
+        }}
       />
     </div>
   )

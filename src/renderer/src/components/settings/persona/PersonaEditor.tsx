@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Save, RotateCcw } from 'lucide-react'
+import { Trash2, Save, RotateCcw, Sparkles } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Badge } from '@renderer/components/ui/badge'
 import { Textarea } from '@renderer/components/ui/textarea'
@@ -33,6 +33,8 @@ interface PersonaEditorProps {
   onSave: () => void
   onReset: () => void
   onDelete: (id: string) => void
+  /** Opens the AI-assisted generator. Only offered while creating a new persona. */
+  onAiCreate?: () => void
 }
 
 export function PersonaEditor({
@@ -43,7 +45,8 @@ export function PersonaEditor({
   onChange,
   onSave,
   onReset,
-  onDelete
+  onDelete,
+  onAiCreate
 }: PersonaEditorProps): React.JSX.Element {
   const { t } = useTranslation('settings')
   const [activeTab, setActiveTab] = useState<PersonaFileKey>('identityMarkdown')
@@ -52,6 +55,14 @@ export function PersonaEditor({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Meta fields */}
       <div className="shrink-0 space-y-3 border-b px-6 py-4">
+        {isNew && onAiCreate && (
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={onAiCreate}>
+              <Sparkles className="mr-1.5 size-3.5" />
+              {t('persona.aiAssist', { defaultValue: 'AI 辅助创建' })}
+            </Button>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-xs font-medium text-muted-foreground">

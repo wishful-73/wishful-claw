@@ -9,11 +9,14 @@ import type { BuiltinProviderPreset } from '@renderer/stores/providers/types'
 
 export const deepseekPreset: BuiltinProviderPreset = {
   builtinId: 'deepseek',
+  // v4: 2026-10 默认协议由 Anthropic 切到 OpenAI Chat —— 端点 https://api.deepseek.com（无 /v1）。
+  //     官方 Chat Completions API 原生支持 thinking: { type: 'enabled' | 'disabled' }，
+  //     故 thinkingConfig 未改（thinking 与 reasoning_effort 均为官方一等参数）。
   // v3: 2026-09 按官方文档核对（模型名改为 deepseek-flash、V4.1-Flash、峰谷计费取非高峰价）
-  version: 3,
+  version: 4,
   name: 'DeepSeek',
-  type: 'anthropic',
-  defaultBaseUrl: 'https://api.deepseek.com/anthropic',
+  type: 'openai-chat',
+  defaultBaseUrl: 'https://api.deepseek.com',
   homepage: 'https://platform.deepseek.com',
   apiKeyUrl: 'https://platform.deepseek.com/api_keys',
   defaultModel: 'deepseek-flash',

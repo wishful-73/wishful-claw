@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import type { PersonaSummary, PersonaConfig } from '@renderer/lib/persona/persona-types'
 import { createEmptyPersonaConfig } from '@renderer/lib/persona/persona-types'
+import { generatePersonaDraft, type PersonaDraft } from '@renderer/lib/persona/generator'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import type { AIProvider } from '@shared/types/provider'
 
 interface PersonaStore {
   // ── State ──
@@ -19,9 +23,59 @@ interface PersonaStore {
   savePersona: (config: PersonaConfig, workingFolder?: string) => Promise<{ success: boolean; id?: string; error?: string }>
   deletePersona: (id: string, workingFolder?: string) => Promise<{ success: boolean; error?: string }>
   applyToProject: (personaId: string | null, projectFolder: string) => Promise<{ success: boolean; count?: number; error?: string }>
-  generatePersona: (prompt: string, provider: Record<string, unknown>, referencePersonaId?: string, workingFolder?: string) => Promise<{ success: boolean; draft?: Partial<import('@renderer/lib/persona/persona-types').PersonaConfig>; error?: string }>
+  generatePersona: (
+    prompt: string,
+    provider: AIProvider,
+    modelId: string,
+    referencePersonaId?: string,
+    workingFolder?: string
+  ) => Promise<{ success: boolean; draft?: PersonaDraft; error?: string }>
   clearSelection: () => void
   clearError: () => void
+}
+
+/** Length of the GUID tail used when a name yields no usable slug. */
+const SHORT_ID_LENGTH = 12
+
+/**
+ * Persona name → ID.
+ *
+ * Latin names slug straight through (`Alice` → `alice`); CJK goes via pinyin
+ * (`苏妲` → `su-da`). Names that leave nothing usable — kana, emoji, pure
+ * punctuation — fall back to a short GUID, so the ID is always a valid
+ * directory name.
+ *
+ * `pinyin-pro` is imported lazily on purpose: it ships a sizeable dictionary
+ * that only matters the moment a persona is actually saved, so it stays out of
+ * the startup bundle.
+ */
+async function generatePersonaId(name: string): Promise<string> {
+  const { pinyin } = await import('pinyin-pro')
+  const slug = pinyin(name, { toneType: 'none', type: 'array' })
+    .join('-')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return slug || `p-${crypto.randomUUID().replace(/-/g, '').slice(0, SHORT_ID_LENGTH)}`
+}
+
+/**
+ * Appends a numeric suffix until the ID is free (`su-da` → `su-da-2`).
+ *
+ * A generated ID is a pure function of the name, so two personas called the
+ * same thing collide — and the Worker would silently overwrite the existing
+ * directory. Suffixing keeps both: a user-created persona and a built-in preset
+ * may legitimately share a name, and neither should be sacrificed.
+ */
+function uniquePersonaId(baseId: string, existing: PersonaSummary[]): string {
+  const taken = new Set(existing.map((p) => p.id))
+  if (!taken.has(baseId)) return baseId
+
+  for (let suffix = 2; ; suffix++) {
+    const candidate = `${baseId}-${suffix}`
+    if (!taken.has(candidate)) return candidate
+  }
 }
 
 export const usePersonaStore = create<PersonaStore>((set, get) => ({
@@ -87,8 +141,15 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
   savePersona: async (config: PersonaConfig, workingFolder?: string) => {
     set({ error: null })
     try {
+      const isNew = !config.id
+      const baseId = config.id || (await generatePersonaId(config.name))
+
+      // An existing persona must never be silently overwritten, but the user
+      // should not be blocked either — a new one simply takes the next free ID.
+      const id = isNew ? uniquePersonaId(baseId, get().personas) : baseId
+
       const result = (await window.api.workerRequest('persona/save', {
-        id: config.id || null,
+        id,
         name: config.name,
         tagline: config.tagline,
         description: config.description,
@@ -169,29 +230,32 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
     }
   },
 
-  generatePersona: async (prompt: string, provider: Record<string, unknown>, referencePersonaId?: string, workingFolder?: string) => {
+  generatePersona: async (prompt: string, provider: AIProvider, modelId: string, referencePersonaId?: string, workingFolder?: string) => {
     set({ loading: true, error: null })
     try {
-      const result = (await window.api.workerRequest('persona/generate', {
+      // Pure renderer-side flow — a single `provider/complete` call, same as the
+      // prompt optimizer. Nothing persona-specific lives in the Worker anymore.
+      //
+      // No `providerRole: 'global'` on purpose: the caller hands us the
+      // provider/model the user picked, and the Worker resolver only honours that
+      // as the `explicit` route when the role is absent. Marking it "global"
+      // makes TryResolveExplicit bail out, so the pick would be ignored and the
+      // request would fall through to the configured/global route.
+      // `globalActiveModel` stays as the last-resort fallback.
+      const result = await generatePersonaDraft({
+        provider: buildProviderPayload(provider, modelId, useSettingsStore.getState()),
         prompt,
-        provider,
-        requestKind: 'persona',
-        providerRole: 'global',
-        globalActiveModel: {
-          providerId: provider.id,
-          modelId: provider.model
-        },
-        referencePersonaId: referencePersonaId ?? null,
-        workingFolder: workingFolder ?? null
-      })) as { success?: boolean; name?: string; tagline?: string; description?: string; identityMarkdown?: string; soulMarkdown?: string; ontologyMarkdown?: string; agentsMarkdown?: string; error?: string }
+        referencePersonaId,
+        workingFolder
+      })
 
-      if (result.success === false) {
-        set({ loading: false, error: result.error ?? 'Generation failed' })
-        return { success: false, error: result.error ?? 'Generation failed' }
+      if (!result.success) {
+        set({ loading: false, error: result.error })
+        return { success: false, error: result.error }
       }
 
       set({ loading: false })
-      return { success: true, draft: result }
+      return { success: true, draft: result.draft }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to generate persona'
       set({ loading: false, error: errorMsg })

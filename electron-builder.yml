@@ -10,6 +10,14 @@ directories:
 publish:
   provider: generic
   url: https://wishful-claw.work/downloads/
+  # 差分下载走「顺序区间」，关掉「多区间并行」（S-175 ③，2026-10-08 老大拍板）。
+  # 原因：① electron-updater 的多区间分支根本不创建进度上报 transform
+  # （DifferentialDownloader.js `if (!isUseMultipleRangeRequest && onProgress)`，
+  # 配套 TODO 自述「Does not support multiple ranges」）⇒ 下载全程进度/总量/速度三样全无；
+  # ② 服务器带宽是瓶颈，并行分片拿不到额外收益。
+  # 关掉即回到 GitHub 源时代的行为（GitHubProvider 硬编码 false）。
+  # 该键随本段写进包内 resources/app-update.yml，由 electron-updater 读取 ⇒ 随下个构建生效。
+  useMultipleRangeRequest: false
 
 extraMetadata:
   wishfulClawDistribution: installer

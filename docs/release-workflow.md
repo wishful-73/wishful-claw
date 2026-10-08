@@ -139,19 +139,38 @@ release/wishful-claw-0.2.{N}-setup.exe.blockmap
 ```
 /data/downloads/wishfulclaw/                              ← nginx: https://wishful-claw.work/downloads
 ├── latest.yml
-├── wishful-claw-0.2.{N}-setup.exe
-└── wishful-claw-0.2.{N}-setup.exe.blockmap
+├── release-notes-0.2.{N}.md                              ← 应用内更新弹窗的说明
+├── wishful-claw-0.2.{N}-setup.exe                        ← 只留当前版
+└── wishful-claw-0.2.{N}-setup.exe.blockmap               ← 最近 5 版都在
 ```
 
-**三件必须同目录、成套覆盖。** `latest.yml` 里的 `url` / `path` 都是相对文件名，updater 与站点
+**四件必须同目录、成套覆盖。** `latest.yml` 里的 `url` / `path` 都是相对文件名，updater 与站点
 下载按钮一律按「同目录」解析 —— 少任何一个，更新或下载都会 404。
 
-**只放最新版本**（老大 2026-09-23 定）：不攒历史包，差分不需要旧包，回滚靠 GitHub Release。
+`release-notes-0.2.{N}.md` 是**应用内更新弹窗**的正文（S-175 ②）：清单不带 `releaseNotes` 时，客户端
+按自己那一版去清单同目录拉这份同名文件 —— **文件名必须带版本号**，写错版本等于没有。内容与 GitHub
+Release 正文同源，见 4.3「一份真源喂两个发布面」。
+
+**保留策略**（2026-10-08 修订，S-175）：
+
+| 文件 | 保留 | 理由 |
+|---|---|---|
+| `*-setup.exe` | **只留当前版**（老大 2026-09-23 定） | 不攒历史安装包，回滚靠 GitHub Release |
+| `*-setup.exe.blockmap` | **最近 5 版** | 差量下载要读**上一版**的 blockmap，那份 404 就整包回落全量 |
+
+单份 blockmap 约 116 KB，5 版不到 600 KB。数量由 `deploy.mjs` 的 `CFG.blockmapKeepCount` 控制。
+
+> ⚠️ 旧口径「差分不需要旧包」**只对 `.exe` 成立**。差分的旧安装包取**本地**
+> `%LOCALAPPDATA%\wishful-claw-updater\installer.exe`（NSIS 装机时自拷的上一次那个包），
+> 但旧 **blockmap 必须从服务器下** —— electron-updater 同时拉新旧两份 blockmap，任一 404 即
+> 回落全量（`AppUpdater.js` 的 `Promise.all(blockmapFileUrls.map(downloadBlockMap))`）。
+> 0.2.36 → 0.2.37 实测走全量 108 MB 就是这个原因，日志原文：
+> `Cannot download differentially, fallback to full download: … 0.2.36-setup.exe.blockmap, status 404`。
 
 一条命令搞定（上传三件 + 远端归位 + sha512 逐件校验 + 清旧包 + 报证书）：
 
 ```bash
-node scripts/deploy.mjs installer   # 更新下载目录（三件：exe + blockmap + latest.yml）
+node scripts/deploy.mjs installer   # 更新下载目录（四件：exe + blockmap + latest.yml + 更新说明）
 node scripts/deploy.mjs site        # 官网自身内容有改动时才发 —— 发版不需要
 node scripts/deploy.mjs cert        # 查证书状态
 ```
@@ -167,13 +186,43 @@ curl -s -o /dev/null -w "%{http_code}\n" https://wishful-claw.work/downloads/lat
 curl -s https://wishful-claw.work/downloads/latest.yml | Select-String 'version:'
 ```
 
-> ✅ **脚本已三件化**（2026-09-23）：`deploy.mjs` 收 exe + `.blockmap` + `latest.yml`（缺件直接报错），
-> 一次上传、远端解包归位、逐件 sha512 校验，并**清掉下载目录里的非当前版本旧包**（只留最新）；
+> ✅ **脚本已四件化**（2026-09-23 三件 → 2026-10-08 加更新说明）：`deploy.mjs` 收 exe + `.blockmap` +
+> `latest.yml` + `release-notes-{版本}.md`（缺件直接报错），一次上传、远端解包归位、逐件 sha512 校验，
+> 并**清旧件**（`.exe` 只留当前版、`.blockmap` 保留最近 `CFG.blockmapKeepCount` 版 —— 2026-10-08 修订，见上）；
 > 人手写的 `latest.json` 已退役，清单唯一真源就是 electron-builder 的 `latest.yml`。
 > 变更明细见 [iter-v2-36/S-129.md](../plans/iter-v2-36/requirements/S-129.md) §五。
 
-> ⚠️ **`deploy.mjs` 不在版本库** —— `.gitignore:53` 的 `scripts/*` 刻意排除它（内含服务器地址与
-> 部署密钥路径）。换机器时手动拷过去，密钥生成见知识库《官网部署》。
+> ⚠️ **`deploy.mjs` 不在版本库** —— `.gitignore:57` 的 `scripts/*`（白名单制）刻意排除它（内含服务器
+> 地址与部署密钥路径）。换机器时手动拷过去，密钥生成见知识库《官网部署》。
+
+#### 4.2.1 补传历史 blockmap（漏删时的补救）
+
+`deploy.mjs installer` 只传当前版三件 —— **历史版的 blockmap 要单独补**：
+
+```bash
+# 1) 先落 /tmp（下载目录是 root 属主）
+scp -i ~/.ssh/wishfulclaw_deploy release/wishful-claw-0.2.{M}-setup.exe.blockmap \
+    ubuntu@119.45.103.252:/tmp/wc-patch.blockmap
+
+# 2) 归位 + 权限 + 校验
+ssh -i ~/.ssh/wishfulclaw_deploy ubuntu@119.45.103.252 \
+  "sudo mv -f /tmp/wc-patch.blockmap '/data/downloads/wishfulclaw/wishful-claw-0.2.{M}-setup.exe.blockmap' \
+   && sudo chown root:root '/data/downloads/wishfulclaw/wishful-claw-0.2.{M}-setup.exe.blockmap' \
+   && sudo chmod 644 '/data/downloads/wishfulclaw/wishful-claw-0.2.{M}-setup.exe.blockmap' \
+   && sha512sum '/data/downloads/wishfulclaw/wishful-claw-0.2.{M}-setup.exe.blockmap'"
+
+# 3) 线上确认（sha512 应与本地 Get-FileHash -Algorithm SHA512 一致，且返回 200）
+curl -s -o /dev/null -w '%{http_code}\n' \
+  https://wishful-claw.work/downloads/wishful-claw-0.2.{M}-setup.exe.blockmap
+```
+
+历史 blockmap 从哪来：GitHub Release 对应 tag 的资产里那份。
+
+> ⚠️ **Windows 的 `ssh.exe` 会把参数里的引号吃掉**，多行脚本不要直接拼在命令行上（远端 bash 会
+> 报语法错）。最稳的传法是 base64：
+> `$b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($script))`，再
+> `ssh … "echo $b64 | base64 -d | bash"` —— base64 只含 `A-Za-z0-9+/=`，不被任何一层改写。
+> 2026-10-08 补传 0.2.36 的 blockmap（118,949 B）与验证新清理逻辑都是这么跑的。
 
 ### 4.3 创建 GitHub Release（存档）
 
@@ -225,7 +274,42 @@ gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝
 - 条目一律写**用户视角**：说清「解决什么问题 / 怎么用」。**不写 commit hash、不写文件路径、不写实现细节**（那些在 `docs/progress/` 里）
 - 确实需要用户知晓的限制或不兼容，在 `### 校验` **之后**加 `### 已知限制` —— 这是**唯一**允许的可选小节
 
-#### tag message 口径
+#### 一份真源喂两个发布面
+
+收尾时写的**那一份** `.wishful-claw/notes/release-notes-v0.2.{N}.md` 同时喂两个面，不另写第二份、不靠人工对齐：
+
+| 面 | 喂法 | 谁读 |
+|---|---|---|
+| GitHub Release 正文（存档） | `gh release create --notes-file …`（见上） | 人 —— 找旧版 / 回滚时看 |
+| 官网下载目录（应用内弹窗） | `deploy.mjs installer` 把它传成 `release-notes-{N}.md` | 应用 —— `src/main/lib/release-notes.ts` 按版本拉 |
+
+**为什么放清单外**：`latest.yml` 由 electron-builder 生成，本项目没配 `releaseInfo`、也没有
+`build/release-notes.md`，所以清单里**没有 `releaseNotes` 字段**。说明只能单独放一份，由客户端按自己那一版
+去清单同目录拉。**清单不带 `releaseNotes` 是正常状态，不是缺陷。**
+
+**拉不到就显示空态**：404 / 超时 / 空文档 / 版本对不上，一律当「没有说明」—— **绝不回落显示上一版的说明**
+（文件名带版本号就是为了这个）。与 blockmap 那条同一取向：宁缺勿错。
+
+> ⚠️ **过渡期：0.2.38 的 `latest.yml` 仍要手工补 `releaseNotes`**
+>
+> 已发出去的 ≤ 0.2.37 客户端**只认清单内联说明**（那时还没有兜底拉取这个能力）。若 0.2.38 的清单是干净的，
+> **0.2.37 用户升上来反而一个字都看不到**。所以这一次照旧，在打包生成 `release/latest.yml` 之后手工内联：
+>
+> ```yaml
+> releaseNotes: |
+>   ## 迭代 38
+>
+>   ...（notes 文件的原文，每行缩进两格）
+> ```
+>
+> 只动 `latest.yml`：exe / blockmap 不变，清单里的 `sha512` 是 exe 的，不受影响。内联内容与官网
+> `release-notes-0.2.38.md`、GitHub 正文**仍是同一份**。**真正「清单干净」最早从 0.2.39 起** —— 那时线上
+> 客户端都已具备兜底拉取能力。
+
+**上传顺序**：`deploy.mjs installer` 把说明与三件一次打包上传，不存在「清单先到、说明还没到」的空窗。
+**若手工分传，说明 md 必须先传、`latest.yml` 后传。**
+
+
 
 tag message 与 Release notes 分工：**前者一行亮点摘要，后者完整清单**。
 
@@ -272,6 +356,8 @@ git tag -a v0.2.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通�
 
 - `downloads/latest.yml` 可达（HTTP 200），且 `version` 与本次发布一致
 - `downloads/<setup>.exe` 与 `downloads/<setup>.exe.blockmap` 均非 404（差分下载靠 blockmap）
+- **最近 5 版的 `downloads/<setup>.exe.blockmap` 均非 404** —— 历史版 `.exe` 返回 404 是正常的
+  （官网不放历史安装包），但 blockmap 必须在，逐版 curl 一遍确认（见 4.2 保留策略）
 - 本地三件的 sha512 与线上一致（`deploy.mjs` 上传后已自动逐件校验，这里只需确认它没报错）
 - 站点下载按钮指向的地址能下到包（与 `latest.yml` 的 `files[0].url` 同源）
 

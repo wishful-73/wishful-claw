@@ -167,6 +167,15 @@ check('a finished download cannot be erased by a stray error', () => {
   assert.equal(canTransitionPhase('downloaded', 'downloading'), false)
 })
 
+// S-175 ④：「盘上有包」这个事实存在 downloadedVersion 里，而相位会因手工重查 / 空结果重查 /
+// 静默失败合法地离开 downloaded。闸门必须能在这三个落脚点装上，否则界面亮着「立即重启安装」、
+// 点下去报 noDownloadedUpdate。
+check('a package on disk stays installable from every settled phase', () => {
+  assert.equal(canTransitionPhase('idle', 'installing'), true)
+  assert.equal(canTransitionPhase('checking', 'installing'), true)
+  assert.equal(canTransitionPhase('available', 'installing'), true)
+})
+
 check('installing only ever ends in error', () => {
   assert.equal(canTransitionPhase('installing', 'idle'), false)
   assert.equal(canTransitionPhase('installing', 'downloaded'), false)
@@ -615,16 +624,59 @@ check('a failure is refused once the download already completed', () => {
 
 // ---------------------------------------------------------------- install
 
-check('install is only reachable from downloaded', () => {
+check('install needs a package on disk, not a particular phase', () => {
   const { coordinator } = createHarness()
-  assert.equal(coordinator.beginInstall(), false)
+  assert.equal(coordinator.beginInstall(), false, 'nothing was ever downloaded')
   reachAvailable(coordinator)
-  assert.equal(coordinator.beginInstall(), false)
+  assert.equal(coordinator.beginInstall(), false, 'an offer is not a package')
   const operationId = startDownload(coordinator)
-  assert.equal(coordinator.beginInstall(), false)
+  assert.equal(coordinator.beginInstall(), false, 'the package is still being written')
   assert.equal(coordinator.applyDownloaded(operationId, NEXT_VERSION), true)
   assert.equal(coordinator.beginInstall(), true)
   assert.equal(coordinator.snapshot().phase, 'installing')
+})
+
+// S-175 ④ 的三条同族路：相位飘走了，包还在盘上 —— 三条都得能装。
+check('a manual re-check after a download does not strand the package', () => {
+  const { coordinator } = createHarness()
+  reachDownloaded(coordinator)
+  assert.equal(coordinator.beginCheck(), true, 'downloaded → checking is a legal phase move')
+  assert.equal(coordinator.snapshot().downloadedVersion, NEXT_VERSION)
+  assert.equal(coordinator.beginInstall(), true, 'the package is still on disk')
+  assert.equal(coordinator.snapshot().phase, 'installing')
+})
+
+check('a re-check that finds nothing new does not strand the package', () => {
+  const { coordinator } = createHarness()
+  reachDownloaded(coordinator)
+  assert.equal(coordinator.applyNotAvailable(), true, 'downloaded → idle is a legal phase move')
+  assert.equal(coordinator.snapshot().downloadedVersion, NEXT_VERSION)
+  assert.equal(coordinator.beginInstall(), true, 'the package is still on disk')
+})
+
+check('a silent failure does not strand the package', () => {
+  const { coordinator } = createHarness()
+  reachDownloaded(coordinator)
+  assert.equal(coordinator.failSilently(), true)
+  assert.equal(coordinator.snapshot().downloadedVersion, NEXT_VERSION)
+  assert.equal(coordinator.beginInstall(), true, 'the package is still on disk')
+})
+
+check('a package left over from a superseded attempt is not installed', () => {
+  const { coordinator } = createHarness()
+  reachDownloaded(coordinator)
+  // 重查没发现新的 ⇒ idle（包留着）；用户随后点了下载、目标是另一个版本，而这一轮失败了：
+  // 盘上那份属于上一轮，expectedVersion 已经跟着换了。
+  assert.equal(coordinator.applyNotAvailable(), true)
+  assert.equal(coordinator.beginCheck(), true)
+  assert.notEqual(coordinator.beginDownload('0.2.27'), NO_UPDATE_OPERATION_ID)
+  assert.equal(coordinator.beginInstall(), false, 'an in-flight download is never installable')
+  assert.equal(coordinator.fail('download failed'), true)
+  assert.equal(
+    coordinator.beginInstall(),
+    false,
+    'the package on disk is not the one this attempt wants'
+  )
 })
 
 check('repeated install requests are idempotent', () => {

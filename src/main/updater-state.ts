@@ -9,13 +9,20 @@ import {
  * `downloaded → error` is deliberately absent: a stray electron-updater error must not erase a
  * finished download, otherwise the only "restart to install" affordance disappears and the user
  * has to re-download. `error → installing` is present so a failed install can be retried.
+ *
+ * `idle` / `checking` / `available` are also allowed to reach `installing`, and `downloading` is
+ * not: what gates an install is `downloadedVersion` (the package on disk), not how far the phase
+ * table could walk. A phase drifts away from `downloaded` through entirely legal moves — a manual
+ * re-check (`checking`) or a re-check that finds nothing new (`idle`) both keep the package — so
+ * gating on the phase made "已下载 / 立即重启安装" fail with `noDownloadedUpdate`. See
+ * `beginInstall`.
  */
 const LEGAL_TRANSITIONS: Record<UpdatePhase, readonly UpdatePhase[]> = {
-  idle: ['checking', 'error'],
+  idle: ['checking', 'error', 'installing'],
   // A user clicking "download" outranks an in-flight check; once downloading starts, that
   // check's available/not-available events fail their own transition and are dropped.
-  checking: ['available', 'downloading', 'idle', 'error'],
-  available: ['checking', 'downloading', 'idle', 'error'],
+  checking: ['available', 'downloading', 'idle', 'error', 'installing'],
+  available: ['checking', 'downloading', 'idle', 'error', 'installing'],
   downloading: ['downloaded', 'error'],
   downloaded: ['checking', 'installing', 'idle'],
   installing: ['error'],
@@ -244,11 +251,19 @@ export function createUpdaterStateCoordinator(
 
     beginInstall(): boolean {
       if (state.phase === 'installing') return true
-      // `error` is reachable from a failed check as well as a failed install; only the latter
-      // has a package on disk, so retrying install requires a completed, version-matching download.
+      // An in-flight download must not fall through to install: the package it is writing is
+      // incomplete, so `quitAndInstall` would run a truncated installer.
+      if (state.phase === 'downloading') return false
+      // The condition is the package on disk, never the phase. The phase drifts away from
+      // `downloaded` through legal moves that keep the package — a manual re-check lands in
+      // `checking` and its `update-available` is answered by the "already downloaded" guard, a
+      // re-check with nothing new lands in `idle`, a silent failure lands in `idle` — and judging
+      // by reachability refused all three with `noDownloadedUpdate` while the UI still offered
+      // "restart to install". `expectedVersion` stays in the check: it is the version this attempt
+      // targets, so a package left over from a superseded attempt is not installed by mistake.
       const hasMatchingPackage =
         state.downloadedVersion !== null && state.downloadedVersion === state.expectedVersion
-      if (state.phase === 'error' && !hasMatchingPackage) return false
+      if (!hasMatchingPackage) return false
       if (!transition('installing')) return false
       finish()
       state = { ...state, error: null }

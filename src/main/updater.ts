@@ -3,6 +3,7 @@ import { logError, logInfo, logWarn } from './lib/logger'
 import { readPersistedSettings } from './lib/settings-store'
 import { getUpdateDistributionInfo } from './lib/distribution'
 import { classifyUpdaterError } from './lib/updater-error-format'
+import { fetchReleaseNotes, resolvePublishUrl } from './lib/release-notes'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import {
   createUpdateDownloadGate,
@@ -188,6 +189,51 @@ function formatReleaseNotes(notes: unknown): string {
     })
     .filter(Boolean)
     .join('\n\n')
+}
+
+/**
+ * 说明的两级来源：清单内联优先 —— 本次发布走这条，行为一字不改；清单不带就去官网拉
+ * `release-notes-<版本>.md`。真源地址从 electron-builder 写进包里的 `app-update.yml` 读，
+ * 不在代码里手写域名（多写一份 URL 就多一处能对不上的地方）。拉不到就是空态。
+ */
+async function resolveReleaseNotes(version: string, inlineNotes: string): Promise<string> {
+  if (inlineNotes) return inlineNotes
+  const publishUrl = resolvePublishUrl({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appRoot: app.getAppPath()
+  })
+  if (!publishUrl) return ''
+  return fetchReleaseNotes({ publishUrl, version })
+}
+
+/**
+ * 通报「发现新版本」。
+ *
+ * 相位与 `availableVersion` 由调用方**同步**写进 coordinator —— `checkForUpdatesInternal` 紧接着
+ * 就要读它拼检查结果，晚一步就会被读成「没有更新」。所以推后的只有这个通报事件：清单里带说明时
+ * 它立刻发出，不带时先补拉官网那份再发，最多晚一次请求。
+ *
+ * `silent` 由调用方取好传进来 —— `checkIsPeriodic` 是模块级的，一次检查收尾就复位，而这个通报可能
+ * 晚一步发出。
+ */
+function announceUpdateAvailable(version: string, inlineNotes: string, silent: boolean): void {
+  resolveReleaseNotes(version, inlineNotes)
+    .catch((error) => {
+      // 补拉说明失败不该让「发现新版本」这件事消失：通报照发，只是没有说明。
+      logWarn('main', `Updater could not resolve release notes for ${version}: ${formatError(error)}`)
+      return ''
+    })
+    .then((releaseNotes) => {
+      const payload: UpdateAvailablePayload = {
+        currentVersion: currentVersion(),
+        newVersion: version,
+        releaseNotes,
+        ...getAppDistributionInfo(),
+        ...(silent ? { silent: true } : {})
+      }
+      sendUpdateEvent('update:available', payload)
+    })
 }
 
 /**
@@ -391,15 +437,8 @@ function attachEvents(instance: AutoUpdater): void {
       void discardDownloadedPackage(instance)
     }
 
-    const payload: UpdateAvailablePayload = {
-      currentVersion: currentVersion(),
-      newVersion: version,
-      releaseNotes,
-      ...getAppDistributionInfo(),
-      ...(checkIsPeriodic ? { silent: true } : {})
-    }
     logInfo('main', `Updater found version ${version}`, { extra: { declaredInstallerSize } })
-    sendUpdateEvent('update:available', payload)
+    announceUpdateAvailable(version, releaseNotes, checkIsPeriodic)
   })
 
   instance.on('update-not-available', (info) => {

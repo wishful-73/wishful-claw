@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -208,9 +208,7 @@ internal static partial class AnthropicMessagesProvider
 
         request.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
         request.Headers.TryAddWithoutValidation("anthropic-beta", BuildAnthropicBetaHeader(provider));
-        ApiUserAgent.Apply(request, provider);
-        ProviderRequestOverrides.ApplyHttpHeaderOverrides(request, provider);
-        ApiUserAgent.Ensure(request, provider);
+        ProviderHttpHeaders.ApplyAnthropic(request, provider);
     }
 
     private static IReadOnlyDictionary<string, string> BuildDebugHeaders(JsonElement provider)
@@ -232,11 +230,17 @@ internal static partial class AnthropicMessagesProvider
             headers["x-api-key"] = "***";
         }
 
-        ApiUserAgent.ApplyDebug(headers, provider);
-        ProviderRequestOverrides.ApplyDebugHeaderOverrides(headers, provider);
-        ApiUserAgent.EnsureDebug(headers, provider);
+        ProviderHttpHeaders.ApplyAnthropicDebug(headers, provider);
         return headers;
     }
+
+    /// <summary>
+    /// Test seam: the `request_debug` payload is otherwise unreachable from the
+    /// regression suite, and it is the only place the redacted auth values and the
+    /// `anthropic-beta` dance are observable without a live call.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, string> BuildDebugHeadersForTests(JsonElement provider) =>
+        BuildDebugHeaders(provider);
 
     private static string BuildAnthropicBetaHeader(JsonElement provider)
     {

@@ -145,7 +145,7 @@ internal static partial class OpenAIResponsesProvider
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-        ApplyHeaders(request, provider);
+        ApplyHeaders(request, provider, state.SessionId);
 
         using var response = await AgentRuntimeRequestTimeout.SendAsync(
             Http, request, provider, "OpenAI Responses", state.CancellationToken);
@@ -210,7 +210,7 @@ internal static partial class OpenAIResponsesProvider
         string body,
         string model)
     {
-        var debugHeaders = BuildDebugHeaders(provider);
+        var debugHeaders = BuildDebugHeaders(provider, state.SessionId);
         await AgentRuntimeTools.EmitAsync(
             state, context,
             new AgentRuntimeStreamEvent(
@@ -226,43 +226,31 @@ internal static partial class OpenAIResponsesProvider
                     model)));
     }
 
-    private static void ApplyHeaders(HttpRequestMessage request, JsonElement provider)
+    private static void ApplyHeaders(HttpRequestMessage request, JsonElement provider, string? sessionId)
     {
         var apiKey = JsonHelpers.GetString(provider, "apiKey") ?? string.Empty;
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-        ApiUserAgent.Apply(request, provider);
-
-        if (JsonHelpers.GetString(provider, "organization") is { Length: > 0 } organization)
-        {
-            request.Headers.TryAddWithoutValidation("OpenAI-Organization", organization);
-        }
-        if (JsonHelpers.GetString(provider, "project") is { Length: > 0 } project)
-        {
-            request.Headers.TryAddWithoutValidation("OpenAI-Project", project);
-        }
         if (JsonHelpers.GetString(provider, "serviceTier") is { Length: > 0 } serviceTier)
         {
             request.Headers.TryAddWithoutValidation("service_tier", serviceTier);
         }
 
-        ProviderRequestOverrides.ApplyHttpHeaderOverrides(request, provider);
-        ApiUserAgent.Ensure(request, provider);
+        ProviderHttpHeaders.ApplyOpenAiChat(request, provider, sessionId);
     }
 
-    private static IReadOnlyDictionary<string, string> BuildDebugHeaders(JsonElement provider)
+    private static IReadOnlyDictionary<string, string> BuildDebugHeaders(JsonElement provider, string? sessionId)
     {
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Content-Type"] = "application/json",
             ["Authorization"] = "Bearer ***"
         };
-        ApiUserAgent.ApplyDebug(headers, provider);
         if (JsonHelpers.GetString(provider, "serviceTier") is { Length: > 0 } serviceTier)
         {
             headers["service_tier"] = serviceTier;
         }
-        ProviderRequestOverrides.ApplyDebugHeaderOverrides(headers, provider);
-        ApiUserAgent.EnsureDebug(headers, provider);
+
+        ProviderHttpHeaders.ApplyOpenAiChatDebug(headers, provider, sessionId);
         return headers;
     }
 }

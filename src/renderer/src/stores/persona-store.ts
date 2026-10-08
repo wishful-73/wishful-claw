@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import type { PersonaSummary, PersonaConfig } from '@renderer/lib/persona/persona-types'
 import { createEmptyPersonaConfig } from '@renderer/lib/persona/persona-types'
+import { generatePersonaDraft, type PersonaDraft } from '@renderer/lib/persona/generator'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import type { AIProvider } from '@shared/types/provider'
 
 interface PersonaStore {
   // ── State ──
@@ -19,7 +23,13 @@ interface PersonaStore {
   savePersona: (config: PersonaConfig, workingFolder?: string) => Promise<{ success: boolean; id?: string; error?: string }>
   deletePersona: (id: string, workingFolder?: string) => Promise<{ success: boolean; error?: string }>
   applyToProject: (personaId: string | null, projectFolder: string) => Promise<{ success: boolean; count?: number; error?: string }>
-  generatePersona: (prompt: string, provider: Record<string, unknown>, referencePersonaId?: string, workingFolder?: string) => Promise<{ success: boolean; draft?: Partial<import('@renderer/lib/persona/persona-types').PersonaConfig>; error?: string }>
+  generatePersona: (
+    prompt: string,
+    provider: AIProvider,
+    modelId: string,
+    referencePersonaId?: string,
+    workingFolder?: string
+  ) => Promise<{ success: boolean; draft?: PersonaDraft; error?: string }>
   clearSelection: () => void
   clearError: () => void
 }
@@ -169,34 +179,32 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
     }
   },
 
-  generatePersona: async (prompt: string, provider: Record<string, unknown>, referencePersonaId?: string, workingFolder?: string) => {
+  generatePersona: async (prompt: string, provider: AIProvider, modelId: string, referencePersonaId?: string, workingFolder?: string) => {
     set({ loading: true, error: null })
     try {
-      // No `providerRole: 'global'` here on purpose: the caller hands us the
+      // Pure renderer-side flow — a single `provider/complete` call, same as the
+      // prompt optimizer. Nothing persona-specific lives in the Worker anymore.
+      //
+      // No `providerRole: 'global'` on purpose: the caller hands us the
       // provider/model the user picked, and the Worker resolver only honours that
       // as the `explicit` route when the role is absent. Marking it "global"
       // makes TryResolveExplicit bail out, so the pick would be ignored and the
       // request would fall through to the configured/global route.
       // `globalActiveModel` stays as the last-resort fallback.
-      const result = (await window.api.workerRequest('persona/generate', {
+      const result = await generatePersonaDraft({
+        provider: buildProviderPayload(provider, modelId, useSettingsStore.getState()),
         prompt,
-        provider,
-        requestKind: 'persona',
-        globalActiveModel: {
-          providerId: provider.id,
-          modelId: provider.model
-        },
-        referencePersonaId: referencePersonaId ?? null,
-        workingFolder: workingFolder ?? null
-      })) as { success?: boolean; name?: string; tagline?: string; description?: string; identityMarkdown?: string; soulMarkdown?: string; ontologyMarkdown?: string; agentsMarkdown?: string; error?: string }
+        referencePersonaId,
+        workingFolder
+      })
 
-      if (result.success === false) {
-        set({ loading: false, error: result.error ?? 'Generation failed' })
-        return { success: false, error: result.error ?? 'Generation failed' }
+      if (!result.success) {
+        set({ loading: false, error: result.error })
+        return { success: false, error: result.error }
       }
 
       set({ loading: false })
-      return { success: true, draft: result }
+      return { success: true, draft: result.draft }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to generate persona'
       set({ loading: false, error: errorMsg })

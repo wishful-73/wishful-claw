@@ -1,11 +1,10 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
-import type { ProviderConfig } from '../api/types'
 import { resolveLanguageName, type AppLanguage } from '../i18n-language'
 
 export interface OptimizationOption {
@@ -46,7 +45,7 @@ interface CompletionResult {
 
 /** Single-shot completion via provider/complete — no agent loop involved. */
 async function completeOnce(args: {
-  provider: ProviderConfig
+  provider: Record<string, unknown>
   systemPrompt: string
   message: string
   tools: unknown[]
@@ -59,12 +58,10 @@ async function completeOnce(args: {
   }
 
   const params = {
-    provider: {
-      providerId: args.provider.providerId,
-      type: args.provider.type,
-      baseUrl: args.provider.baseUrl,
-      apiKey: args.provider.apiKey
-    },
+    // The shared `buildProviderPayload` output — carrying User-Agent,
+    // `requestOverrides` and the builtin id, so this auxiliary call goes out
+    // with the same header chain as a normal chat turn.
+    provider: args.provider,
     requestKind: 'promptOptimizer',
     providerRole: 'global',
     globalActiveModel: {
@@ -172,7 +169,7 @@ function extractOptions(argumentsJson: string): OptimizationOption[] {
 
 export async function* optimizePrompt(
   userInput: string,
-  providerConfig: ProviderConfig,
+  providerPayload: Record<string, unknown>,
   language: AppLanguage,
   signal?: AbortSignal
 ): AsyncGenerator<{
@@ -198,7 +195,7 @@ ${languageInstruction}`
 
   try {
     const result = await completeOnce({
-      provider: providerConfig,
+      provider: providerPayload,
       systemPrompt: OPTIMIZER_SYSTEM_PROMPT,
       message,
       tools: OPTIMIZER_TOOLS,

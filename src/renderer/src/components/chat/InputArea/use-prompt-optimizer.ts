@@ -1,8 +1,10 @@
-﻿// Prompt optimization state and handlers for InputArea
+// Prompt optimization state and handlers for InputArea
 
 import * as React from 'react'
 import { toast } from 'sonner'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
+import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
 import type { AppLanguage } from '@renderer/lib/i18n-language'
 
 export interface UsePromptOptimizerOptions {
@@ -81,22 +83,21 @@ export function usePromptOptimizer(opts: UsePromptOptimizerOptions) {
         return
       }
 
-      const providerConfig = {
-        type: activeProvider.type,
-        apiKey: activeProvider.apiKey,
-        baseUrl: activeProvider.baseUrl,
-        model: modelId,
-        providerId: activeProvider.id,
-        maxTokens: 4096,
-        temperature: 0.7,
-        systemPrompt: ''
-      }
+      // Same provider payload builder as a normal chat turn — this is what
+      // carries the per-provider User-Agent, `requestOverrides` and builtin id
+      // into the auxiliary call (they used to be dropped here, so the optimizer
+      // request went out with a different header chain than chat).
+      const providerPayload = buildProviderPayload(
+        activeProvider,
+        modelId,
+        useSettingsStore.getState()
+      )
 
       // Track success locally — reading it back from a setState updater is
       // racy because updaters run lazily during render, not synchronously.
       let receivedOptions = false
 
-      for await (const event of optimizePrompt(trimmed, providerConfig, currentLanguage, controller.signal)) {
+      for await (const event of optimizePrompt(trimmed, providerPayload, currentLanguage, controller.signal)) {
         if (controller.signal.aborted) break
         if (event.type === 'text') {
           setOptimizingText((prev) => prev + event.content)

@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -40,7 +40,12 @@ public static class ProviderCompletionService
             resolved.BaseUrl,
             resolved.ApiKey,
             resolved.Model);
-        var usageSource = requestKind == "promptOptimizer" ? "promptOptimizer" : "providerCompletion";
+        var usageSource = requestKind switch
+        {
+            "promptOptimizer" => "promptOptimizer",
+            "persona" => "personaGenerator",
+            _ => "providerCompletion"
+        };
         var systemPrompt = JsonHelpers.GetString(parameters, "systemPrompt");
         var userMessage = JsonHelpers.GetString(parameters, "message");
         if (string.IsNullOrWhiteSpace(userMessage))
@@ -48,7 +53,8 @@ public static class ProviderCompletionService
             return Fail("message is required");
         }
 
-        var (url, baseRequest) = BuildRequest(provider, systemPrompt, userMessage, parameters);
+        var headerProvider = ResolveHeaderProvider(parameters, resolved);
+        var (url, baseRequest) = BuildRequest(provider, systemPrompt, userMessage, parameters, headerProvider);
 
         // Exponential backoff: ~1s → ~2s → ~4s … capped at 30s per wait.
         var delayMs = 1000;
@@ -149,8 +155,39 @@ public static class ProviderCompletionService
         string ApiKey,
         string Model);
 
+    /// <summary>Stand-in for a provider payload the caller did not supply.</summary>
+    private static readonly JsonElement EmptyProviderJson = CreateEmptyProviderJson();
+
+    private static JsonElement CreateEmptyProviderJson()
+    {
+        using var document = JsonDocument.Parse("{}");
+        return document.RootElement.Clone();
+    }
+
+    /// <summary>
+    /// The provider JSON the header chain reads — User-Agent, requestOverrides,
+    /// organization/project, providerBuiltinId. Uses the renderer-supplied
+    /// payload only when it describes the very provider the resolver picked;
+    /// otherwise (configured / fallback / global route) it reads that provider's
+    /// file, so the headers always match the provider actually being called.
+    /// </summary>
+    private static JsonElement ResolveHeaderProvider(JsonElement parameters, ResolvedProviderConfig resolved)
+    {
+        if (parameters.TryGetProperty("provider", out var supplied) &&
+            supplied.ValueKind == JsonValueKind.Object &&
+            string.Equals(
+                JsonHelpers.GetString(supplied, "providerId") ?? JsonHelpers.GetString(supplied, "id"),
+                resolved.ProviderId,
+                StringComparison.Ordinal))
+        {
+            return supplied;
+        }
+
+        return ProviderStore.GetProviderJson(resolved.ProviderId) ?? EmptyProviderJson;
+    }
+
     private static (string Url, HttpRequestMessage Request) BuildRequest(
-        ProviderConfig provider, string? systemPrompt, string userMessage, JsonElement parameters)
+        ProviderConfig provider, string? systemPrompt, string userMessage, JsonElement parameters, JsonElement headerProvider)
     {
         var baseUrl = provider.BaseUrl.TrimEnd('/');
         HttpRequestMessage request;
@@ -161,6 +198,7 @@ public static class ProviderCompletionService
             request = new HttpRequestMessage(HttpMethod.Post, url);
             request.Headers.Add("x-api-key", provider.ApiKey);
             request.Headers.Add("anthropic-version", "2023-06-01");
+            ProviderHttpHeaders.ApplyAnthropic(request, headerProvider);
             request.Content = new StringContent(
                 WorkerJsonHelper.BuildJsonString(w => WriteAnthropicBody(w, provider, systemPrompt, userMessage, parameters)),
                 Encoding.UTF8, "application/json");
@@ -174,6 +212,7 @@ public static class ProviderCompletionService
         {
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", provider.ApiKey);
         }
+        ProviderHttpHeaders.ApplyOpenAiChat(request, headerProvider, ProviderHttpHeaders.AuxiliarySessionId);
         request.Content = new StringContent(
             WorkerJsonHelper.BuildJsonString(w => WriteOpenAIChatBody(w, provider, systemPrompt, userMessage, parameters)),
             Encoding.UTF8, "application/json");

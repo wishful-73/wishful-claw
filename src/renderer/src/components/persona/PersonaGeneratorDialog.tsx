@@ -133,14 +133,8 @@ export function PersonaGeneratorDialog({
     try {
       const result = await generatePersona(
         prompt,
-        {
-          id: provider.id,
-          name: provider.name,
-          type: provider.type,
-          apiKey: provider.apiKey,
-          baseUrl: provider.baseUrl,
-          model: modelId
-        },
+        provider,
+        modelId,
         referenceId || undefined,
         workingFolder
       )

@@ -166,7 +166,7 @@ ewSessionDefaultModel** —— 四处全删，与登记清单一致，**无关�
 
 - **S-165 收口（不占刀）** —— `requirements/S-165.md` 状态改 ⏸，补 §六「裁定与收口」：裁定 = 不做；**核实结果记明「不是已经被修掉，而是暂时不值得做」**（S-142 修的是 thinking / text 分段归属，`OpenAIChatSseParser.cs` 在 iter-35 三刀里零改动）。
 
-- **迭代收尾刀（审查与验证修复调整）** —— 门禁：`npm run typecheck`（web / node）全 0；`npm test` **65/65**（TS 49 + C# 16）。收尾刀内容：
+- **`21591cfc`（⚠️ 定性订正：这不是收尾刀）** —— 提交信息自称「迭代37 收尾」，**实际迭代并未收尾**（其后又落五刀：S-168 / S-170 / S-171 / S-169 / 人格修复）。本刀真实内容 = **S-167 同族清扫 + 新增 `send-model-resolution` 套件 + 文档订正 + 版本号预升**。门禁：`npm run typecheck`（web / node）全 0；`npm test` **65/65**（TS 49 + C# 16）。内容：
 
   - **执行 S-167 审查报告的行动项**（`review_report.md` ⚠️-1/3/4/5/6/7）：
     - ⚠️-1：`cron-runtime.ts` 的 `new_session` 分支改走 `resolveSendModel(sessionId)`（原先自己 `resolveProvider(runEvent)` 一遍，`runMode === 'session'` 时 event 的 agentId/model 已被置 null ⇒ 回落全局，与 S-167 同病）；sidecar / bot 路径**有意保留** `resolveProvider` 并注明理由。
@@ -177,3 +177,56 @@ ewSessionDefaultModel** —— 四处全删，与登记清单一致，**无关�
     - ⚠️-6：把两处优先级细节（plugin 会话实际是 **channel > session**；渠道有 provider 无 model 时取**该 provider 的默认模型**而非全局激活模型）写进 `send-model-resolution.ts` 的注释。
   - **未采纳**：⚠️-2（`goal-session-views.tsx` 读全局 `activeModelId`）—— C# 侧注释明示那是 Goal 自身的 legacy fallback，改它会与 Goal 的优先级链打架，**单独立案**。
   - `review_report.md` / `verification_report.md` 随本刀入库。
+
+- **10:27 / 10:31　S-168｜登记 + 裁定** —— 老大 10:27「S-156 —— 设置页人格区点『AI 创建人格』→ 生成 → 四段预览 → 保存。这个需要调整，目前有个新增人格页面，我希望那里增加一个 ai 辅助创建按钮，弹窗输入描述，这里可能需要考虑让用户自己选择模型，生成以后的内容填充到新增人格页，用户可以手动调整」；10:31 对三个待定点一次裁定：「**A+B**（弹窗默认带出已配的，允许当场改）　**按钮撤掉**　**弹窗生成成功就回填**」。⇒ 登记 **S-168**（**S-156 的形态调整**），归本迭代。
+
+- **第 13 刀 S-168（`5243936d`，10:38）** —— 入口由设置页人格区工具栏**挪进新增人格页**，弹窗生成成功**直接回填表单**（撤掉原「按钮带回填」方案），provider / model **双下拉可当场选**，摘掉 `providerRole: 'global'` 硬绑定 ⇒ 项目上下文也能正常生成。`PersonaGeneratorDialog.tsx` 重写（+377 / −），`PersonaPanel.tsx` / `PersonaEditor.tsx` 小改，locale 两份同步。门禁：typecheck 0；65/65。
+
+---
+
+## 2026-10-08
+
+- **08:27　S-170｜新登记** —— 老大「登记一个简单需求归属37迭代　DeepSeek 的内置 api 服务商　默认协议改成 openai chat」。默认选型调整（**非 bug**）：现默认 Anthropic 协议（`type: 'anthropic'`、端点 `https://api.deepseek.com/anthropic`），诉求改为 OpenAI Chat。登记前实读代码，**勘出一条升级路径的坑**：`isUnownedBuiltin` 要求 `baseUrl === preset.defaultBaseUrl`，而 `defaultBaseUrl` 一旦改动，**已配 DeepSeek 的老记录（旧 baseUrl）将永远不满足该判据** ⇒ 既拿不到新协议、也不会被退回投影。正文列 A/B/C 三条路径待裁。**08:41 老大补口径**「已配置用户不管啊，我们只是改内置的虚拟的」⇒ 走 **A**。
+
+- **08:42　老大要求复盘 37 进度** —— 「37迭代都做了些什么，测试了哪些，放完国庆回来我还没在状态」。（无裁定，仅为状态同步。）
+
+- **08:54 ~ 09:07　S-171｜三段口径 ⇒ 登记** —— 老大：
+  - 08:54「我看到你的思考方向，觉得有点问题，**请求应该统一到一个地方去**，虽然当前是辅助创建人格，但是并不代表这个需要归属到人格那里去」
+  - 08:55「我的意思是这个请求虽然是辅助创建人格，但是并不代表需要去 persona 创建相关方法，**persona 不应该有请求**」
+  - 08:58「停止动手，先讨论」⇒ 转入讨论态
+  - 09:07「1. 辅助通道（提示词优化 + persona）现在**一条头链都没有** —— renderer 只传 providerId / type / baseUrl / apiKey / model，后端 `ProviderCompletionService` 只加 Authorization。userAgent、requestOverrides、opencode-go 的 `x-opencode-session` 这个**仿造主链增加头链**；2. 主链流式写的 5 份记录成下一个需求」
+  ⇒ ① 定 **S-171**（辅助通道补头链 + persona 生成退出后端）；② 定为 **S-172**（主链流式头链 5 份收敛），**本次不做**。**落点勘误**：我原计划在 persona 侧新增请求方法，被老大当场否掉，改落渲染端 `lib/persona/generator.ts` + 后端按协议补头链。
+
+- **09:26　S-169｜补范围（登记时漏了文档）** —— 老大「这个就是 S-169 的　应该是漏了文档，当时就是更新各模型的价格这些，以及无效模型的去除」。09:40 老大给官方数据源；09:42 拍定取值口径「**以文档为准，分档定价取最高档**」。
+
+- **10:28　37 测试暴露三条（人格），定性质为修复项** —— 老大「37迭代测试下来发现几个问题，这个属于修复，不列入新的需求：1. 人格的修改和保存，一句话标语保存不了；2. ai辅助创建的人格需要精简字数，不能一味描述；3. 后端请求默认需要带上当前的人格的信息，我发现请求好像把人格的信息给丢了」。
+  - 10:33 补两条口径：「文字上限**往桃子那档压**」「我说的人格丢了**是会话的人格丢了**，我没看到请求消息里面有人格的任何信息」。
+  - 10:39 老大在 **dev 实例**复现：新建人格、选中，系统提示词里**没有人格描述**（「你应该找错地方了，我已经说了，是在 dev 实例测试的」）。
+  - 10:49 / 10:51 定**人格只有两层**：「全局人格跟内置人格是一个意思」「项目下人格是全局人格 + 项目下自己的人格」「我们只有全局人格和项目人格，**内置人格只是我们内置的全局人格**」。
+  - 11:21「这个不单开，就是 bug 修复」；11:24「这批修完我需要继续测试，**收尾就意味着基本没什么问题才行**」。
+  - 11:41 **ID 与项目人格口径**：「自建跟出厂内置同名 id 你可以在 id 后面加后缀 123 这种，**我希望都保留**；项目人格的意思是**项目自建也保留一份，可以任意修改**」。
+  ⇒ 拆成修复项 **①②③④**（④ = 会话人格信息丢失：`GetPersona` 非内置 ID 无全局回落 + `ListPersonas` 不合并两层 + `composer-toolbar` 未传 `workingFolder`），**不占需求编号**。
+
+- **12:37 ~ 12:46　绘图 / 图片生成 ⇒ 归 38 迭代** —— 老大 12:37「我记得37迭代是处理了图片生成相关模型设置的，我没找到地方」；12:39 定实际落点「**S-166 本意确实是如果正常模型能生成图片就可以，但当前来说这个是走不通的**。所以需要在**模型管理页面**（不是 ai 服务商管理页）设置图片生成模型，主页面左侧面板扩展中的**绘图**需要接入，具体可参考 OpenCowork」；12:44「归入 38 迭代，感觉有点复杂了」；12:46 澄清「我说的**复杂是对于 37 准备收尾来说太复杂了**，列入新迭代去处理」。⇒ **S-173 / S-174 归 38 迭代**。
+
+- **12:56　iter-38 目录开出** —— 新建 `docs/plans/iter-v2-38/`（plan / raw-requirements / changelog / requirements），登记 S-172 / S-173 / S-174。
+
+- **13:36　S-172 移入 38** —— 老大「172 也归属到 38 去」⇒ `S-172.md` 由 `iter-v2-37/requirements/` 移入 `iter-v2-38/requirements/`（未跟踪文件，非 `git mv`）。
+
+- **13:40 / 13:41　S-173 落点定 A** —— 13:40 老大「A 这个归属37迭代」（**按 12:46 口径最终归 38**）；13:41「现役三档那个组件　加**第四档用途位**」⇒ 在「模型管理」tab 的 `ProviderCompletionSettingsPanel` 加「图片生成」用途位（服务商 + 模型），与现役三档同形，**不另起 UI**。S-174 暂时不定。
+
+- **13:42　老大发起迭代收尾** —— 「真机走查我已经测试过了，进行迭代收尾」。
+
+- **第 14 刀 S-170（`e2df23a0`，08:37）** —— `deepseek.ts` 三处：`type` → `openai-chat`、`defaultBaseUrl` → `https://api.deepseek.com`、`version` 3→4。**按 A 口径只改内置虚拟定义，已配置用户不动**。
+
+- **第 15 刀 S-171（`c2c61640`，09:24）** —— 新增 `Agent/ProviderHttpHeaders.cs`（仿造主链头链：`ApplyOpenAiChat` 带 UA + organization/project + requestOverrides + opencode-session；`ApplyAnthropic` 带 UA + requestOverrides），`ProviderCompletionService` 按协议调用；渲染端新增 `lib/persona/generator.ts`（system prompt + draft 解析 + 调 `provider/complete`），`persona-store.generatePersona` 改走它；**删掉后端 `PersonaGenerator.cs`（299 行）/ `PersonaGenerationPrompt.cs`（108 行）与 `PersonaModule.cs` 的 `persona/generate` 注册** ⇒ persona 不再有请求；新增 `tests/.../AuxiliaryHeaderChecks.cs`（162 行）。
+
+- **第 16 刀 S-169（`a85460d9`，09:49）** —— `opencode-go.ts` 清单全量刷新（+229 / −73，version 8→9）：按官方文档 31 条更新价格、去除无效模型。**范围三档 A/B/C 的裁定结果：按官方文档 31 条落地**，分档定价取最高档。
+
+- **第 17 刀 人格修复（`6209f136`，11:37，修复项 ①②③④，不占需求编号）** —— `PersonaStore.cs` 修保存回环与两层作用域解析；`persona-store.ts` 改 ID 生成为**拼音 + 12 位短 GUID**（`pinyin-pro` 动态 `import()`，不进主 chunk）、新建查重；`lib/persona/generator.ts` 补**字数上限**（按桃子档：IDENTITY 175 / SOUL 611 / ONTOLOGY 247 / AGENTS 293 汉字）；`PersonaSwitcher.tsx` / `PersonaPanel.tsx` 修展示与提示。门禁：typecheck 0；65/65。
+
+- **迭代收尾刀（审查与验证修复调整，本刀）** —— 门禁：`npm run typecheck` 三段 0；`npm test` **65/65**（TS 49 + C# 16）。
+  - **版本号核对**：`package.json` / `package-lock.json`（顶层与 `packages['']`）均 `0.2.37` —— 由 `21591cfc` 预升，本次无需再动。
+  - **文档订正**：`21591cfc` 定性订正（「收尾刀」→「误标」，实为 S-167 同族清扫）；补 09-30 / 10-08 两节流水；`plan.md` / `raw-requirements.md` 补 S-169 / S-171 索引与刀序、修正编号（S-165 不占刀位）；`progress/v2-iter-37.md` 按实际刀序重写刀表与要点；`PROGRESS.md` 的 v2-iter-37 行补全本迭代内容、日期改 10-08；`S-168.md` / `S-170.md` 状态行改「已实施」。
+  - **静态复核 S-168 ~ 人格修复（第 13~17 刀）**：S-171 删后端 `PersonaGenerator.cs` / `PersonaGenerationPrompt.cs` 与 `persona/generate` 注册后**无残留引用**；**修一处过期注释** `PromptProfile.cs` —— `Bootstrap` 档位原注「Used by PersonaGenerator (iteration 6)」，该类已删 ⇒ 改指真实消费方（`tests/.../Program.SandboxPrompt.cs`）；**核实 `Bootstrap` 并非死代码**（测试在用），保留枚举值与其分支。
+  - **如实记**：第 1~12 刀**无真机走查**，只到「编译 + 回归套件」级别；第 13~17 刀（S-168 / S-170 / S-171 / S-169 / 人格修复）由老大在 dev 实例逐条验证过。

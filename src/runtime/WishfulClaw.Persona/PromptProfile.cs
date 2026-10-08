@@ -12,8 +12,10 @@ public enum PromptProfile
     Main,
 
     /// <summary>
-    /// AI persona generation — minimal prompt, no persona injection.
-    /// Used by PersonaGenerator (iteration 6, plan 6-7).
+    /// Minimal prompt, no persona injection — no environment, tools or project context.
+    /// Used by the goal-regression sandbox-prompt checks
+    /// (<c>tests/WishfulClaw.GoalRegressionTests/Program.SandboxPrompt.cs</c>).
+    /// The renderer-side persona generator (S-171) no longer goes through this profile.
     /// </summary>
     Bootstrap
 }

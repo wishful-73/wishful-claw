@@ -55,7 +55,7 @@
     },
     "modelManagement": {
       "label": "Model Management",
-      "desc": "Manage providers and models for auxiliary requests"
+      "desc": "Manage providers and models for auxiliary requests and image generation"
     },
     "runtime": {
       "label": "Runtime & Performance",
@@ -1368,7 +1368,11 @@
         "label": "Fallback model",
         "desc": "Used when a request has no dedicated route. The Worker re-validates provider and model on read."
       },
-      "hint": "Deleted models and retired providers never resolve to a dangling id silently; the Worker logs a warning and tries the next level."
+      "image": {
+        "label": "Image generation",
+        "desc": "Provider and model used by the ImageGenerate tool. Only models whose usage is \"Image\" are listed."
+      },
+      "hint": "Deleted models and retired providers never resolve to a dangling id silently; the Worker logs a warning and tries the next level. Image generation is the exception — it is an explicit choice and reports an error instead of falling back."
     },
     "sessionDefaults": {
       "title": "Session Defaults",

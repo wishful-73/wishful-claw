@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
@@ -28,7 +28,8 @@ public static class ProviderCompletionSettingsService
 
             if (!IsPair(settings.FallbackProviderId, settings.FallbackModelId) ||
                 !IsPair(settings.PromptOptimizerProviderId, settings.PromptOptimizerModelId) ||
-                !IsPair(settings.PersonaProviderId, settings.PersonaModelId))
+                !IsPair(settings.PersonaProviderId, settings.PersonaModelId) ||
+                !IsPair(settings.ImageProviderId, settings.ImageModelId))
             {
                 return Fail("Provider and model must be configured together");
             }

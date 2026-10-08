@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Sparkles, Copy } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { usePersonaStore } from '@renderer/stores/persona-store'
@@ -61,9 +62,14 @@ export function PersonaPanel({ workingFolder }: PersonaPanelProps = {}): React.J
   const handleSave = useCallback(async () => {
     if (!draft) return
     setSaving(true)
-    await savePersona(draft, wf)
+    const result = await savePersona(draft, wf)
     setSaving(false)
-  }, [draft, savePersona, wf])
+    // The store writes `error`, but nothing in this panel renders it — surface
+    // failures (ID collision, bad name, worker error) as a toast instead.
+    if (!result.success) {
+      toast.error(result.error ?? t('persona.saveFailed', { defaultValue: '保存失败' }))
+    }
+  }, [draft, savePersona, wf, t])
 
   const handleReset = useCallback(() => {
     if (selectedPersona) {

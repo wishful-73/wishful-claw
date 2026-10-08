@@ -34,6 +34,50 @@ interface PersonaStore {
   clearError: () => void
 }
 
+/** Length of the GUID tail used when a name yields no usable slug. */
+const SHORT_ID_LENGTH = 12
+
+/**
+ * Persona name → ID.
+ *
+ * Latin names slug straight through (`Alice` → `alice`); CJK goes via pinyin
+ * (`苏妲` → `su-da`). Names that leave nothing usable — kana, emoji, pure
+ * punctuation — fall back to a short GUID, so the ID is always a valid
+ * directory name.
+ *
+ * `pinyin-pro` is imported lazily on purpose: it ships a sizeable dictionary
+ * that only matters the moment a persona is actually saved, so it stays out of
+ * the startup bundle.
+ */
+async function generatePersonaId(name: string): Promise<string> {
+  const { pinyin } = await import('pinyin-pro')
+  const slug = pinyin(name, { toneType: 'none', type: 'array' })
+    .join('-')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return slug || `p-${crypto.randomUUID().replace(/-/g, '').slice(0, SHORT_ID_LENGTH)}`
+}
+
+/**
+ * Appends a numeric suffix until the ID is free (`su-da` → `su-da-2`).
+ *
+ * A generated ID is a pure function of the name, so two personas called the
+ * same thing collide — and the Worker would silently overwrite the existing
+ * directory. Suffixing keeps both: a user-created persona and a built-in preset
+ * may legitimately share a name, and neither should be sacrificed.
+ */
+function uniquePersonaId(baseId: string, existing: PersonaSummary[]): string {
+  const taken = new Set(existing.map((p) => p.id))
+  if (!taken.has(baseId)) return baseId
+
+  for (let suffix = 2; ; suffix++) {
+    const candidate = `${baseId}-${suffix}`
+    if (!taken.has(candidate)) return candidate
+  }
+}
+
 export const usePersonaStore = create<PersonaStore>((set, get) => ({
   personas: [],
   selectedPersona: null,
@@ -97,8 +141,15 @@ export const usePersonaStore = create<PersonaStore>((set, get) => ({
   savePersona: async (config: PersonaConfig, workingFolder?: string) => {
     set({ error: null })
     try {
+      const isNew = !config.id
+      const baseId = config.id || (await generatePersonaId(config.name))
+
+      // An existing persona must never be silently overwritten, but the user
+      // should not be blocked either — a new one simply takes the next free ID.
+      const id = isNew ? uniquePersonaId(baseId, get().personas) : baseId
+
       const result = (await window.api.workerRequest('persona/save', {
-        id: config.id || null,
+        id,
         name: config.name,
         tagline: config.tagline,
         description: config.description,

@@ -67,6 +67,22 @@ Each persona consists of 4 markdown files:
 3. **ONTOLOGY.md** — Cognitive/values: essential definitions, capability boundaries, value priorities, honesty principles
 4. **AGENTS.md** — Behavior rules: memory writing boundaries, tool usage principles, safety strategies, error handling
 
+## Length Budget
+
+All four files are injected into every request, so length is a real cost. Stay
+under these caps — they are character counts, not word counts:
+
+| File | Max characters |
+| --- | --- |
+| IDENTITY.md | 175 |
+| SOUL.md | 611 |
+| ONTOLOGY.md | 247 |
+| AGENTS.md | 293 |
+
+Tagline: ≤ 25 characters. Description: ≤ 2 sentences. Aim below the caps —
+cut a trait rather than pad it. A tight persona reads better than a thorough
+one, and a bloated one degrades every conversation it takes part in.
+
 ## Design Principles
 
 - **Personas are not perfect.** Every persona should have personality strengths AND small flaws that make them feel human. Flaws should be endearing, not debilitating.

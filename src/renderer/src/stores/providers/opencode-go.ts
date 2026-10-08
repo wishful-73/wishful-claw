@@ -38,17 +38,42 @@ const shared = {
   }
 } as const
 
+// Go 网关是 Go 写的 OpenAI 兼容层，严格解码 —— 不认 `thinking` 字段。开着思考时把
+// `shared` 的 `{ thinking: { type: 'enabled' } }` 注入请求体会直接 400
+// （json: unknown field "thinking"）；关思考时的 `disabledBodyParams` 同理会被拒。
+// GLM 系列思考由上游默认开启，这里不注入任何 body 字段。
+const glmThinkingConfig = { bodyParams: {} }
+
 const chatModels: OpenCodeGoModel[] = [
   {
-    id: 'grok-4.5',
-    name: 'Grok 4.5',
+    id: 'grok-4.7',
+    name: 'Grok 4.7',
     icon: 'grok',
     type: 'openai-responses',
     contextLength: 256_000,
     maxOutputTokens: 32_768,
-    inputPrice: 2,
-    outputPrice: 6,
-    cacheHitPrice: 0.3,
+    inputPrice: 4,
+    outputPrice: 12,
+    cacheHitPrice: 1,
+    supportsVision: true,
+    supportsFunctionCall: true,
+    supportsThinking: true,
+    thinkingConfig: {
+      bodyParams: {},
+      reasoningEffortLevels: ['low', 'medium', 'high'],
+      defaultReasoningEffort: 'high'
+    }
+  },
+  {
+    id: 'grok-4.6',
+    name: 'Grok 4.6',
+    icon: 'grok',
+    type: 'openai-responses',
+    contextLength: 256_000,
+    maxOutputTokens: 32_768,
+    inputPrice: 4,
+    outputPrice: 12,
+    cacheHitPrice: 1,
     supportsVision: true,
     supportsFunctionCall: true,
     supportsThinking: true,
@@ -66,7 +91,8 @@ const chatModels: OpenCodeGoModel[] = [
     ...shared,
     inputPrice: 1.4,
     outputPrice: 4.4,
-    cacheHitPrice: 0.26
+    cacheHitPrice: 0.26,
+    thinkingConfig: glmThinkingConfig
   },
   {
     id: 'glm-5.3-flash',
@@ -76,7 +102,8 @@ const chatModels: OpenCodeGoModel[] = [
     ...shared,
     inputPrice: 0.15,
     outputPrice: 0.5,
-    cacheHitPrice: 0.03
+    cacheHitPrice: 0.03,
+    thinkingConfig: glmThinkingConfig
   },
   {
     id: 'glm-5.3',
@@ -88,20 +115,10 @@ const chatModels: OpenCodeGoModel[] = [
     outputPrice: 4.4,
     cacheHitPrice: 0.26,
     thinkingConfig: {
-      bodyParams: { thinking: { type: 'enabled' } },
+      bodyParams: {},
       reasoningEffortLevels: ['low', 'high', 'max'],
       defaultReasoningEffort: 'max'
     }
-  },
-  {
-    id: 'glm-5.1',
-    name: 'GLM-5.1',
-    icon: 'chatglm',
-    type: 'openai-chat',
-    ...shared,
-    inputPrice: 1.4,
-    outputPrice: 4.4,
-    cacheHitPrice: 0.26
   },
   {
     id: 'kimi-k3',
@@ -163,6 +180,45 @@ const chatModels: OpenCodeGoModel[] = [
     }
   },
   {
+    id: 'longcat-2.5-preview-free',
+    name: 'LongCat 2.5 Preview Free',
+    icon: 'longcat',
+    type: 'openai-chat',
+    contextLength: 1_048_576,
+    maxOutputTokens: 131_072,
+    inputPrice: 0,
+    outputPrice: 0,
+    cacheHitPrice: 0,
+    supportsVision: false,
+    supportsFunctionCall: true,
+    supportsThinking: true,
+    thinkingConfig: {
+      bodyParams: { thinking: { type: 'enabled' } },
+      disabledBodyParams: { thinking: { type: 'disabled' } }
+    }
+  },
+  {
+    id: 'mimo-v2.6-flash',
+    name: 'MiMo-V2.6-Flash',
+    icon: 'mimo',
+    type: 'openai-chat',
+    ...shared,
+    inputPrice: 0.14,
+    outputPrice: 0.28,
+    cacheHitPrice: 0.0028
+  },
+  {
+    id: 'mimo-v2.6-pro',
+    name: 'MiMo-V2.6-Pro',
+    icon: 'mimo',
+    type: 'openai-chat',
+    ...shared,
+    maxOutputTokens: 131_072,
+    inputPrice: 0.435,
+    outputPrice: 0.87,
+    cacheHitPrice: 0.003625
+  },
+  {
     id: 'mimo-v2.5',
     name: 'MiMo-V2.5',
     icon: 'mimo',
@@ -196,17 +252,6 @@ const chatModels: OpenCodeGoModel[] = [
   {
     id: 'minimax-m2.7',
     name: 'MiniMax M2.7',
-    icon: 'minimax',
-    type: 'anthropic',
-    ...shared,
-    inputPrice: 0.3,
-    outputPrice: 1.2,
-    cacheHitPrice: 0.06,
-    cacheCreationPrice: 0.375
-  },
-  {
-    id: 'minimax-m2.5',
-    name: 'MiniMax M2.5',
     icon: 'minimax',
     type: 'anthropic',
     ...shared,
@@ -276,17 +321,6 @@ const chatModels: OpenCodeGoModel[] = [
     cacheCreationPrice: 0.2
   },
   {
-    id: 'qwen3.7-max',
-    name: 'Qwen3.7 Max',
-    icon: 'qwen',
-    type: 'anthropic',
-    ...shared,
-    inputPrice: 2.5,
-    outputPrice: 7.5,
-    cacheHitPrice: 0.5,
-    cacheCreationPrice: 3.125
-  },
-  {
     id: 'qwen3.7-plus',
     name: 'Qwen3.7 Plus',
     icon: 'qwen',
@@ -299,16 +333,13 @@ const chatModels: OpenCodeGoModel[] = [
     cacheCreationPrice: 1.5
   },
   {
-    id: 'qwen3.6-plus',
-    name: 'Qwen3.6 Plus',
-    icon: 'qwen',
-    type: 'anthropic',
+    id: 'hy4-preview',
+    name: 'Hy4 preview',
+    type: 'openai-chat',
     ...shared,
-    // 同 qwen3.7-plus：取 >256K 档。
-    inputPrice: 2,
-    outputPrice: 6,
-    cacheHitPrice: 0.2,
-    cacheCreationPrice: 2.5
+    inputPrice: 0.834,
+    outputPrice: 2.501,
+    cacheHitPrice: 0.042
   },
   {
     id: 'hy3',
@@ -320,14 +351,39 @@ const chatModels: OpenCodeGoModel[] = [
     cacheHitPrice: 0.035
   },
   {
+    id: 'space-bunny',
+    name: 'Space Bunny',
+    type: 'openai-chat',
+    ...shared,
+    inputPrice: 0.15,
+    outputPrice: 0.6,
+    cacheHitPrice: 0.03
+  },
+  {
+    id: 'deepseek-v4.1-flash',
+    name: 'DeepSeek V4.1 Flash',
+    icon: 'deepseek',
+    type: 'openai-chat',
+    ...shared,
+    inputPrice: 0.3,
+    outputPrice: 1.2,
+    cacheHitPrice: 0.006,
+    thinkingConfig: {
+      bodyParams: { thinking: { type: 'enabled' } },
+      disabledBodyParams: { thinking: { type: 'disabled' } },
+      reasoningEffortLevels: ['low', 'high', 'max'],
+      defaultReasoningEffort: 'high'
+    }
+  },
+  {
     id: 'deepseek-v4-pro',
     name: 'DeepSeek V4 Pro',
     icon: 'deepseek',
     type: 'openai-chat',
     ...shared,
-    inputPrice: 0.66,
-    outputPrice: 1.98,
-    cacheHitPrice: 0.022,
+    inputPrice: 1.32,
+    outputPrice: 3.96,
+    cacheHitPrice: 0.044,
     thinkingConfig: {
       bodyParams: { thinking: { type: 'enabled' } },
       disabledBodyParams: { thinking: { type: 'disabled' } },
@@ -341,9 +397,9 @@ const chatModels: OpenCodeGoModel[] = [
     icon: 'deepseek',
     type: 'openai-chat',
     ...shared,
-    inputPrice: 0.22,
-    outputPrice: 0.66,
-    cacheHitPrice: 0.007,
+    inputPrice: 0.3,
+    outputPrice: 1.2,
+    cacheHitPrice: 0.006,
     thinkingConfig: {
       bodyParams: { thinking: { type: 'enabled' } },
       disabledBodyParams: { thinking: { type: 'disabled' } },
@@ -357,9 +413,9 @@ const chatModels: OpenCodeGoModel[] = [
     icon: 'deepseek',
     type: 'openai-chat',
     ...shared,
-    inputPrice: 0.22,
-    outputPrice: 0.66,
-    cacheHitPrice: 0.007,
+    inputPrice: 0.3,
+    outputPrice: 1.2,
+    cacheHitPrice: 0.006,
     supportsVision: true,
     thinkingConfig: {
       bodyParams: { thinking: { type: 'enabled' } },
@@ -369,18 +425,37 @@ const chatModels: OpenCodeGoModel[] = [
     }
   },
   {
-    id: 'ox-alpha-free',
-    name: 'Ox Alpha Free',
-    type: 'openai-chat',
-    ...shared,
-    inputPrice: 0,
-    outputPrice: 0,
-    cacheHitPrice: 0,
+    id: 'gpt-6-luna',
+    name: 'GPT 6 Luna',
+    icon: 'openai',
+    type: 'openai-responses',
+    contextLength: 400_000,
+    maxOutputTokens: 128_000,
+    inputPrice: 0.2,
+    outputPrice: 0.75,
+    cacheHitPrice: 0.02,
+    cacheCreationPrice: 0.25,
+    supportsVision: true,
+    supportsFunctionCall: true,
+    supportsThinking: true,
     thinkingConfig: {
-      bodyParams: { thinking: { type: 'enabled' } },
-      reasoningEffortLevels: ['low', 'high', 'max'],
-      defaultReasoningEffort: 'max'
+      bodyParams: {},
+      reasoningEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+      defaultReasoningEffort: 'high'
     }
+  },
+  {
+    id: 'claude-haiku-5-5',
+    name: 'Claude Haiku 5.5',
+    icon: 'claude',
+    type: 'anthropic',
+    ...shared,
+    contextLength: 200_000,
+    maxOutputTokens: 64_000,
+    inputPrice: 0.5,
+    outputPrice: 2.5,
+    cacheHitPrice: 0.05,
+    cacheCreationPrice: 0.625
   },
   {
     id: 'gpt-5.6-luna',
@@ -389,10 +464,10 @@ const chatModels: OpenCodeGoModel[] = [
     type: 'openai-responses',
     contextLength: 400_000,
     maxOutputTokens: 128_000,
-    inputPrice: 0.2,
-    outputPrice: 1.2,
-    cacheHitPrice: 0.02,
-    cacheCreationPrice: 0.25,
+    inputPrice: 0.4,
+    outputPrice: 1.8,
+    cacheHitPrice: 0.04,
+    cacheCreationPrice: 0.5,
     supportsVision: true,
     supportsFunctionCall: true,
     supportsThinking: true,
@@ -404,9 +479,17 @@ const chatModels: OpenCodeGoModel[] = [
   }
 ]
 
+// v9: 2026-09-30 修正 GLM 系列思考配置 —— Go 网关（Go 写的 OpenAI 兼容层）不认
+//     `thinking` 字段，开着思考时注入会直接 400（json: unknown field "thinking"）。
+//     四个 GLM 模型不再注入该字段，思考由上游默认开启。
+// v10: 2026-10-08 模型清单按官方文档（https://opencode.ai/v2/docs/console/go）全量刷新：
+//     增 10（Grok 4.7/4.6、GPT 6 Luna、Claude Haiku 5.5、LongCat 2.5 Preview Free、
+//     MiMo-V2.6-Flash/Pro、DeepSeek V4.1 Flash、Hy4 preview、Space Bunny），
+//     删 6（Grok 4.5、GLM-5.1、MiniMax M2.5、Qwen3.7 Max、Qwen3.6 Plus、Ox Alpha Free），
+//     并按官方价目表订正 4 处价格。官方按 token 数 / 时段分档报价的一律取最高档。
 export const opencodeGoPreset: BuiltinProviderPreset = {
   builtinId: 'opencode-go',
-  version: 8,
+  version: 10,
   name: 'OpenCode Go',
   type: 'openai-chat',
   defaultBaseUrl: OPENCODE_GO_BASE_URL,

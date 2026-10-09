@@ -265,10 +265,14 @@ export const useChatStore = create<ChatStore>()(
       // 结束后触发，rawParams 保证 sessionMode / maxIterations 这类参数原样带过去。
       // 放在 sendMessage 内部而不是只靠 handleSendMessage，是因为绕过 hook 的调用方
       // （跨会话派发、渠道自动回复、cron）拿到的就是 store 这一层。
+      //
+      // 返回值语义（iter-38 S-177）：入队也算「已受理」⇒ 返回 true。只有真正没受理
+      // （无 sessionId / Worker 拒绝 / 抛异常）才返回 false。历史上这里返回 false，被渠道
+      // 派发侧一律当「未启动」，于是空闲后首条消息误报「Agent run was not started」。
       if (state.streamingMessages[sessionId]) {
         const { enqueuePendingSessionMessage } = await import('@renderer/hooks/use-chat-actions')
         enqueuePendingSessionMessage({ text: userText, sessionId, rawParams: params }, sessionId)
-        return false
+        return true
       }
 
       const now = Date.now()

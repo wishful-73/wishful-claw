@@ -22,11 +22,21 @@ import { createJumpToAssistantMessage, applySuggestedPrompt as applySuggestedPro
 import { AssistantReplyRailItem } from './utils'
 import {
   admitCollapse,
+  COLLAPSE_GATE_CONFIG,
   createCollapseGate,
   isCollapseCoolingDown,
-  trackContentBottom,
   type CollapseGate
 } from './scroll-collapse-gate'
+import {
+  collapseRetryDelay,
+  createFloorTracker,
+  observeFloor,
+  resolveGapTarget,
+  resolveReclaimPlan,
+  shrinkProbeDelay,
+  shouldReclaim,
+  type FloorTracker
+} from './scroll-watermark'
 
 export interface MessageListScrollInput {
   activeSessionId: string | null
@@ -131,10 +141,20 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   // 内容底 DOM 真值缓存（getRealContentBottom 的最近一次结果）。scroll 事件
   // 频率高，syncBottomState 用缓存判定即可，80px 阈值下毫秒级滞后无感。
   const realContentBottomRef = React.useRef(0)
-  // S-150 补充：流式期内内容底的单调下界。虚拟化下 getRealContentBottom 的挂载行集合是动态的，
-  // 尾行在可见范围边界进出会让内容底骤降回升，跟随目标于是每帧变、每帧写 scrollTop。
-  // 流式内容底只会增大，取历史最大值即可滤掉这类「传感器噪声」。见 trackContentBottom。
-  const streamingBottomFloorRef = React.useRef(0)
+  // S-150 补充：流式期内内容底的单调下界（tracker 同时记「偏低起点时刻」）。
+  // 虚拟化下 getRealContentBottom 的挂载行集合是动态的，尾行在可见范围边界进出会让内容底
+  // 骤降回升，跟随目标于是每帧变、每帧写 scrollTop —— 自激噪声，取历史最大值即可滤掉。
+  //
+  // S-176 修正：**只增不减**把「真收缩」一并滤掉了（三个工具卡折叠各降 100px，下界纹丝不动，
+  // 那 300px 全变成可见留白且永不收回）。所以改成「上抬立即、回落要偏低持续 refloorHoldMs」——
+  // 见 scroll-watermark.ts 的 observeFloor / shouldRefloor。噪声是「一帧往返」，真收缩是
+  // 「持续偏低」，两者靠**时长**分开。同一时刻重复观测幂等，所以两处都可以喂帧。
+  const streamingBottomTrackerRef = React.useRef<FloorTracker>(createFloorTracker())
+  // S-176 真机反馈（2026-10-09）：时间制判定仍然要「有人来判」，而喂帧的只有 bottom-anchor
+  // effect（只在 re-render 之后跑）。下面两个一次性定时器补上「没人来判」的两种情形，
+  // 到点自己调一次 scrollToBottomImmediate（走同一条判定路径，不新增任何回收做法）。
+  const shrinkProbeTimerRef = React.useRef<number | null>(null)
+  const collapseRetryTimerRef = React.useRef<number | null>(null)
   // S-150：高度回收冷却锁。折叠动画 / 行高重测 / 水位线撤销会在同一瞬间连着报几次
   // 高度回缩，每报一次跟随逻辑就往回收一把 ⇒ 来回拉锯。见 scroll-collapse-gate.ts。
   const collapseGateRef = React.useRef<CollapseGate>(createCollapseGate())
@@ -171,6 +191,39 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     return bottom
   }, [])
 
+  // S-176 真机反馈（2026-10-09）：两个「没人来判」的补位定时器。
+  //
+  // 用 ref 转一手是为了断开 useCallback 的循环依赖 —— 这两个排程函数被
+  // scrollToBottomImmediate 调用，而它们到点又要回调它。
+  const scrollToBottomImmediateRef = React.useRef<(behavior?: ScrollBehavior) => void>(() => {})
+
+  // ① 偏低未确认：按剩余时长排一次。折叠动画停下、又没有新内容到达时，靠它把链收尾。
+  const scheduleShrinkProbe = React.useCallback(() => {
+    if (shrinkProbeTimerRef.current !== null) return
+    const delay = shrinkProbeDelay(streamingBottomTrackerRef.current, window.performance.now())
+    if (delay === null) return
+    shrinkProbeTimerRef.current = window.setTimeout(() => {
+      shrinkProbeTimerRef.current = null
+      scrollToBottomImmediateRef.current()
+    }, delay + 1)
+  }, [])
+
+  // ② 回收被冷却锁压掉：按剩余冷却时长排一次。把 S-150「窗口过了按当时的几何重判」落到实处，
+  // 免得几何稳定下来之后再也等不到那次重判（回收白白漏掉）。
+  const scheduleReclaimRetry = React.useCallback((now: number) => {
+    if (collapseRetryTimerRef.current !== null) return
+    const delay = collapseRetryDelay(
+      collapseGateRef.current.lastCollapseAt,
+      now,
+      COLLAPSE_GATE_CONFIG.cooldownMs
+    )
+    if (delay === null) return
+    collapseRetryTimerRef.current = window.setTimeout(() => {
+      collapseRetryTimerRef.current = null
+      scrollToBottomImmediateRef.current()
+    }, delay + 1)
+  }, [])
+
   const scrollToBottomImmediate = React.useCallback(
     (behavior: ScrollBehavior = 'auto') => {
       const ref = listRef.current
@@ -181,40 +234,68 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
         // 是账面值（未测行按估算计）不可用。
         // S-150 补充：先过单调下界 —— 挂载行集合逐帧变化时，实测底会骤降一整行，
         // 跟随目标跟着跳，写出的 scrollTop 每帧一个值，滚动条就高频重定位。
-        const realBottom = trackContentBottom(
-          streamingBottomFloorRef.current,
-          getRealContentBottom()
+        //
+        // S-176：**上抬**在这一路立即采信（内容在长，跟迟了就是丢帧）；**回落**不在这里决定 ——
+        // 回落到真收缩要「连续 K 帧确认」，计数只在 bottom-anchor effect 一处走。
+        // 两处都数会把同一帧数掉两格，K 就名存实亡（见 scroll-watermark.ts 的 observeFloor）。
+        // S-176：**总是**观测（不再只在上抬时）—— 时间制判定下重复观测幂等，
+        // 而「偏低起点」恰恰要在内容底第一次变低那一刻记下；只在上抬时观测就永远记不到起点。
+        const now = window.performance.now()
+        streamingBottomTrackerRef.current = observeFloor(
+          streamingBottomTrackerRef.current,
+          getRealContentBottom(),
+          now
         )
+        // 偏低未确认 ⇒ 排一次自驱动重判：动画停下又没有新内容时，没有别的调用会来喂帧。
+        scheduleShrinkProbe()
+        const realBottom = streamingBottomTrackerRef.current.floor
         if (realBottom > 0) {
-          streamingBottomFloorRef.current = realBottom
           realContentBottomRef.current = realBottom
-          // 余量目标 = 视口底边应当停在内容底下方多远。
-          // 上限取半屏：内容缩回去时视口最多漂到这么深，再深就纯是空白了。
-          const gapCeiling =
-            ref.clientHeight > 0 ? ref.clientHeight / 2 : Number.POSITIVE_INFINITY
-          const gapTarget = Math.min(STREAMING_BOTTOM_FOLLOW_CHUNK, gapCeiling)
+          // 余量目标 = 视口底边应当停在内容底下方多远，**同时就是可见留白的上限**：
+          // min(提前量块, 半屏, maxGap)。S-176：不再允许留白攒到半屏才清。
+          const gapTarget = resolveGapTarget(STREAMING_BOTTOM_FOLLOW_CHUNK, ref.clientHeight)
           // 悬空救援与跟随姿态共用一个目标：内容底之下留一整块余量。
           const followTarget = Math.max(0, realBottom + gapTarget - ref.clientHeight)
           if (ref.scrollTop > realBottom + 1) {
             // 整屏悬空（收缩使视口内零内容）：无条件救回跟随姿态，一次到位。
             // S-150：救援**不受冷却锁阻挡**（挡了就是让用户盯着空白屏），但救完立刻记账 ——
             // 紧接着那一串跟随回收要被压掉，否则「救一次 + 补几次」又是一次拉锯。
-            collapseGateRef.current = admitCollapse(
-              collapseGateRef.current,
-              window.performance.now()
-            )
+            collapseGateRef.current = admitCollapse(collapseGateRef.current, now)
             markProgrammaticScroll()
             ref.scrollTop = followTarget
             return
           }
-          // 余量双向跟随：太小（内容在长）→ 补；太大（内容在缩）→ 收回。
-          // 两个方向都只回到 gapTarget，位移全部由 scrollTop 承担。
-          //
-          // 关键：**这一路绝不触碰 min-height**。缩 min-height 会让 scrollHeight 骤变，
-          // 浏览器在同一帧把 scrollTop clamp 回去 —— 那一下就是回跳，收几次就跳几次。
-          // 反过来只移视口，scrollHeight 纹丝不动，压根没有 clamp 可言。
-          // 非钉底（用户在上方阅读）绝不拽。
+          // 非钉底（用户在上方阅读）：不补、不回收、也不压水位线 —— 拽了就是抢用户的位置。
           if (!canAutoScrollRef.current()) return
+          const remaining = ref.scrollTop + ref.clientHeight - realBottom
+          if (shouldReclaim(remaining, gapTarget)) {
+            // **回收**方向：余量涨过 gapTarget + ε ⇒ 内容是**真的**缩回去了（下界已按真收缩回落）。
+            // 线不再给到半屏 —— 留白涨过半屏才被清理，正是本需求要治的那几百 px。
+            // S-150：冷却窗口内不做 —— 一次回收之后紧接着又来一次，正是本需求要治的抖动。
+            // 窗口过了再按当时的几何重判，**不补做**窗口里被压掉的那几次
+            // （每次收缩都补一遍 = 位移总量不变、只是分几刀落，照样看得出上下动）。
+            if (isCollapseCoolingDown(collapseGateRef.current, now)) {
+              // S-176 真机反馈：那句「窗口过了再重判」原先只依赖**下一次调用** —— 几何稳定下来
+              // 就再也等不到，回收白漏一次（留白挂到有新内容才消）。这里按剩余冷却排一次。
+              scheduleReclaimRetry(now)
+              return
+            }
+            collapseGateRef.current = admitCollapse(collapseGateRef.current, now)
+            // S-176 真修的关键，也是与 iter-30 那次被推翻的做法**唯一的区别**：顺序。
+            // **先**把 scrollTop 对齐、**再**把水位线压到 realBottom + gapTarget，两者成对 ——
+            // 压完 scrollHeight == 水位线、maxScrollTop == 刚写下的 scrollTop
+            // ⇒ 浏览器没有可 clamp 的余量 ⇒ 这一帧不回跳（顺序契约见 resolveReclaimPlan）。
+            // iter-30 被否掉的是「**不对齐就撤**」（撤在前、clamp 在后，必然回跳），不是「撤」本身。
+            // 流式结束那一帧早就这么干了（见下面的撤水位线分支），本需求只是把它搬进流式中途。
+            const plan = resolveReclaimPlan(realBottom, gapTarget, ref.clientHeight)
+            markProgrammaticScroll()
+            ref.scrollTop = plan.scrollTop
+            if (plan.minHeight < contentHeightWatermarkRef.current) {
+              contentHeightWatermarkRef.current = plan.minHeight
+              applyMinHeight(plan.minHeight)
+            }
+            return
+          }
           // 提前量跟随（老大 2026-09-16 定）：视口底边先一步停在内容底下方 gapTarget 处，
           // 这段 gapTarget 就是「提前量」。内容长进提前量里时滚动条一动不动
           // （remaining 从 gapTarget 一路降到 REFILL_AT）；用尽那一刻再补满，垫出下一段。
@@ -223,19 +304,8 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
           // 那样下一帧又得滚一下，等于没有缓冲。
           // 也不能无条件 followTarget（每帧都跟）—— 那样内容底位置是稳的，但滚动条每帧
           // 都在滑，观感是持续晃动。
-          // 收缩由只增不减的水位线兜住，本函数只管「用尽 → 补满」。
-          const remaining = ref.scrollTop + ref.clientHeight - realBottom
-          if (remaining >= STREAMING_BOTTOM_FOLLOW_REFILL_AT && remaining <= gapCeiling) return
-          // `remaining > gapCeiling` 是**回收**方向：视口超前内容太多，要把 scrollTop 拉回来。
-          // S-150：冷却窗口内不做 —— 一次回收之后紧接着又来一次，正是本需求要治的抖动。
-          // 窗口过了再按当时的几何重判，**不补做**窗口里被压掉的那几次
-          // （每次收缩都补一遍 = 位移总量不变、只是分几刀落，照样看得出上下动）。
-          if (
-            remaining > gapCeiling &&
-            isCollapseCoolingDown(collapseGateRef.current, window.performance.now())
-          ) {
-            return
-          }
+          // 带内（REFILL_AT ≤ 余量 ≤ gapTarget + ε）什么都不做，两个方向都只回到 gapTarget。
+          if (remaining >= STREAMING_BOTTOM_FOLLOW_REFILL_AT) return
           bottom = followTarget
         }
       }
@@ -256,8 +326,18 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       }
       ref.scrollTo({ top: bottom, behavior })
     },
-    [getRealContentBottom, markProgrammaticScroll, rows.length]
+    [
+      applyMinHeight,
+      getRealContentBottom,
+      markProgrammaticScroll,
+      rows.length,
+      scheduleReclaimRetry,
+      scheduleShrinkProbe
+    ]
   )
+
+  // 两个补位定时器到点回调它（见上面 scheduleShrinkProbe / scheduleReclaimRetry）。
+  scrollToBottomImmediateRef.current = scrollToBottomImmediate
 
   const syncBottomState = React.useCallback(() => {
     const ref = listRef.current
@@ -558,11 +638,20 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     // R-10.2: 水位线不跨会话残留
     contentHeightWatermarkRef.current = 0
     realContentBottomRef.current = 0
-    // S-150 补充：单调下界同样不跨会话
-    streamingBottomFloorRef.current = 0
+    // S-150 补充：单调下界同样不跨会话（S-176 起连「偏低起点」一起归零）
+    streamingBottomTrackerRef.current = createFloorTracker()
     applyMinHeight(0)
     // S-150: 冷却锁同理 —— 上个会话的回收时间戳不能压住新会话的第一屏跟随
     collapseGateRef.current = createCollapseGate()
+    // S-176：两个补位定时器也不能跨会话 —— 上个会话排下的重判会把新会话的视口拽走。
+    if (shrinkProbeTimerRef.current !== null) {
+      window.clearTimeout(shrinkProbeTimerRef.current)
+      shrinkProbeTimerRef.current = null
+    }
+    if (collapseRetryTimerRef.current !== null) {
+      window.clearTimeout(collapseRetryTimerRef.current)
+      collapseRetryTimerRef.current = null
+    }
   }, [activeSessionId, setActiveAssistantRailIds])
 
   // ── Initial scroll to bottom ────────────────────────────────────
@@ -642,30 +731,30 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   React.useLayoutEffect(() => {
     if (pendingAskUserQuestion) return
     if (isLoadingOlderMessagesRef.current) return
-    // iter-30 S-31/S-32 水位线：min-height 只增不减。
+    // iter-30 S-31/S-32 水位线：min-height 撑住 scrollHeight，挡住「内容收缩 ⇒ scrollHeight
+    // 骤减 ⇒ 浏览器 clamp scrollTop」这条链路。只要水位线不降，就没有 clamp，也就没有回跳。
     //
-    // 作用只有一个 —— 撑住 scrollHeight，挡住「内容收缩 ⇒ scrollHeight 骤减 ⇒ 浏览器
-    // clamp scrollTop」这条链路。只要水位线不降，就没有 clamp，也就没有回跳。
-    //
-    // 留白被内容收缩撑得很大怎么办？—— 不在这里解决。2026-09-16 晚试过「超半屏就收
-    // min-height」并加节流，结果跳得更凶：收 min-height 本身就是制造 scrollHeight 骤减，
-    // 节流只是把攒了几百 px 的位移合并成一次更大的跳。
-    // 正解在 scrollToBottomImmediate 的双向跟随：scrollHeight 纹丝不动，只把视口拉回
-    // 内容底附近。用户看到的留白始终是基准值；水位线多撑出来的那部分在视口之外，
-    // 看不见，也就无所谓它多大。
+    // S-176 修正：本 effect 里**只抬不压**。「超半屏就收 min-height」+ 节流那条路 2026-09-16
+    // 试过，跳得更凶 —— 收 min-height 本身就是制造 scrollHeight 骤减，节流只是把攒下的位移
+    // 合并成一次更大的跳。**压**挪进了 scrollToBottomImmediate：那里先对齐 scrollTop、再压
+    // 水位线，压之前视口已经落位，就没有可 clamp 的余量（见该函数回收分支）。
     if (isSessionOutputting) {
-      // S-150 补充：与 scrollToBottomImmediate 共用同一份单调下界 —— 若两边各取一份实测量，
-      // 内容底骤降时一边抬水位线一边不抬，min-height 与跟随目标互相追，同样是抖源。
-      const realBottom = trackContentBottom(
-        streamingBottomFloorRef.current,
-        getRealContentBottom()
+      // S-150 补充：与 scrollToBottomImmediate 共用同一份下界（同一个 tracker）—— 若两边各取
+      // 一份实测量，内容底骤降时一边抬水位线一边不抬，min-height 与跟随目标互相追，同样是抖源。
+      // S-176：判定改时间制之后**两处都可以喂**（同一时刻重复观测幂等）。本 effect 只在 re-render
+      // 后跑 —— 折叠动画停下、又没有新内容到达时就没人喂帧，所以另有 scheduleShrinkProbe 补位。
+      streamingBottomTrackerRef.current = observeFloor(
+        streamingBottomTrackerRef.current,
+        getRealContentBottom(),
+        window.performance.now()
       )
+      scheduleShrinkProbe()
+      const realBottom = streamingBottomTrackerRef.current.floor
       if (realBottom > 0) {
-        streamingBottomFloorRef.current = realBottom
-        // 补给量上限取半屏：视口矮的时候 CHUNK(240) 可能不止半屏，撑个比视口还深的坑没意义。
+        // 补给量上限 = min(CHUNK, 半屏, maxGap)：视口矮的时候 CHUNK(240) 可能不止半屏，
+        // 撑个比视口还深的坑没意义。
         const viewportHeight = listRef.current?.clientHeight ?? 0
-        const gapCeiling = viewportHeight > 0 ? viewportHeight / 2 : Number.POSITIVE_INFINITY
-        const gapTarget = Math.min(STREAMING_BOTTOM_FOLLOW_CHUNK, gapCeiling)
+        const gapTarget = resolveGapTarget(STREAMING_BOTTOM_FOLLOW_CHUNK, viewportHeight)
 
         const hasWatermark = contentHeightWatermarkRef.current > 0
         const gap = hasWatermark ? contentHeightWatermarkRef.current - realBottom : 0
@@ -699,7 +788,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       }
       contentHeightWatermarkRef.current = 0
       // S-150 补充：下界与水位线同生命周期 —— 一起归零，下一轮重新起算。
-      streamingBottomFloorRef.current = 0
+      streamingBottomTrackerRef.current = createFloorTracker()
       realContentBottomRef.current = realBottom
       applyMinHeight(0)
       return
@@ -713,7 +802,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     }
     if (!canAutoScroll() && !isAtBottom) return
     scrollToBottomImmediate()
-  }, [canAutoScroll, getRealContentBottom, isAtBottom, isSessionOutputting, scrollToBottomImmediate, virtualListTotalSize])
+  }, [canAutoScroll, getRealContentBottom, isAtBottom, isSessionOutputting, scheduleShrinkProbe, scrollToBottomImmediate, virtualListTotalSize])
 
   // ── Pinned overlay sync on anchor/layout changes ────────────────
   React.useEffect(() => {
@@ -744,6 +833,9 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       if (initialTailReleaseFrameRef.current !== null) window.clearTimeout(initialTailReleaseFrameRef.current as unknown as number)
       if (scheduledAssistantRailSyncRef.current !== null) window.cancelAnimationFrame(scheduledAssistantRailSyncRef.current)
       if (highlightedMessageTimerRef.current !== null) window.clearTimeout(highlightedMessageTimerRef.current)
+      // S-176：两个补位定时器不能活过组件（回调会碰已卸载的 DOM）。
+      if (shrinkProbeTimerRef.current !== null) window.clearTimeout(shrinkProbeTimerRef.current)
+      if (collapseRetryTimerRef.current !== null) window.clearTimeout(collapseRetryTimerRef.current)
     }
   }, [])
 

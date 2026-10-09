@@ -201,11 +201,14 @@ export const AUTO_SCROLL_MIN_DELTA = 24
 export const PROGRAMMATIC_SCROLL_GUARD_MS = 160
 export const STREAMING_AUTO_SCROLL_POLL_MS = 500
 /**
- * iter-30 S-31/S-32 余量基准：视口底边停在内容底下方多远（px）。
+ * iter-30 S-31/S-32 余量基准：视口底边停在内容底下方多远（px），**同时就是可见留白的上限**。
  *
- * 管的是**可见留白**，两端都由 `scrollToBottomImmediate` 的双向跟随实现：
- * 余量小于 `STREAMING_BOTTOM_FOLLOW_REFILL_AT` 就补到本值，大于半屏就收回到本值。
- * 位移全部由 `scrollTop` 承担，**不碰 `min-height`** —— `scrollHeight` 不变就没有 clamp。
+ * 管的是**可见留白**。S-176 起两端都在 `scrollToBottomImmediate` 里做：
+ * 余量小于 `STREAMING_BOTTOM_FOLLOW_REFILL_AT` 就补到本值，大于 `gapTarget + ε` 就回收到本值
+ * （`shouldReclaim`，`gapTarget = resolveGapTarget(CHUNK, 视口高, WATERMARK_CONFIG.maxGap)`）。
+ * 补方向只移 `scrollTop`；**回收方向先对齐 `scrollTop`、再压水位线** —— 落位之后
+ * `maxScrollTop == scrollTop`，浏览器没有可 clamp 的余量，压水位线不产生回跳。
+ * 「绝不压 min-height」是 iter-30 的结论，那条结论的前提是**不对齐就压**，现已被 S-176 取代。
  *
  * 语义改过三轮，前两轮都错，记在这儿免得再走回去：
  * - 旧值 `STREAMING_BOTTOM_FOLLOW_GAP = 80`：目标写成「当前内容底 + GAP」，每帧跟着内容走
@@ -214,9 +217,10 @@ export const STREAMING_AUTO_SCROLL_POLL_MS = 500
  *   视口会漂进收缩后的留白深处（老大报的「正常消息被顶上去、聊天窗只有空白」）。
  * - 「超半屏就收 min-height」+ 节流：**跳得更凶**。收 min-height 本身就是制造
  *   `scrollHeight` 骤减 ⇒ 必然 clamp ⇒ 必然跳；节流只是把攒下的位移合并成一次更大的跳。
+ *   （S-176 把它救回来的唯一改动是**顺序**：先对齐 scrollTop，再压水位线。）
  *
  * 取值权衡：太小撑不住工具卡片展开那类阶跃；太大就是 T-9 那次「全是留白」。
- * 实际生效值会被夹到半屏以内（窗口矮的时候 240px 可能不止半屏）。
+ * 实际生效值会被夹到半屏和 `WATERMARK_CONFIG.maxGap` 以内。
  */
 export const STREAMING_BOTTOM_FOLLOW_CHUNK = 240
 

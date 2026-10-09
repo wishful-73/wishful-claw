@@ -62,21 +62,13 @@ export function admitCollapse(gate: CollapseGate, now: number): CollapseGate {
   return { lastCollapseAt: now }
 }
 
-/**
- * S-150 补充修复 —— 内容底「只增不减」过滤。
- *
- * `getRealContentBottom()` 遍历的是**当前挂在 DOM 里的行**。虚拟化下这是个动态集合：
- * 跟随逻辑写一次 `scrollTop`，虚拟器就按新偏移重算可见范围，尾行可能被移出范围卸载，
- * 内容底于是骤降一整行；下一帧又写回、尾行挂载、内容底回升 —— 每帧一轮，自激。症状是
- * 滚动条在高位附近高频重定位（比眨眼快），且**只在流式内容不再增长时**能持续：正文在长
- * 时方向是单调的，环被推散；只有「参数在收、正文没动」（如工具卡「正在接收参数」）才暴露。
- *
- * 流式期间真实内容底只会增大（水位线本来也只增不减），所以把「骤降」当噪声滤掉：
- * 取历史最大值。`raw <= 0` 是「无挂载行 / 越界瞬间态」，不参与比较，保留上次结果。
- *
- * 流式结束（水位线归零）由调用方清 0，下一个会话/下一轮重新起算。
- */
-export function trackContentBottom(previous: number, raw: number): number {
-  if (!(raw > 0)) return previous
-  return raw > previous ? raw : previous
-}
+// S-176（2026-10-09）：本文件原先的 `trackContentBottom`（内容底「只增不减」过滤）已删除，
+// 职责移到 `scroll-watermark.ts` 的 `observeFloor`。
+//
+// 删它的原因不是噪声过滤不需要了 —— 那个过滤仍然是必需的（`getRealContentBottom` 遍历的是
+// **当前挂载的行**，尾行在可见范围边界进出会让内容底骤降一整行、下帧回升）。问题是「只增不减」
+// 把**真收缩**一并滤掉了：三张工具卡折叠各降 100px，下界纹丝不动 ⇒ 那 300px 全变成可见留白
+// 且永不收回（S-176 的根因 ①）。新实现把区分依据从「方向」换成「持续时长」：上抬立即，
+// 回落要偏低持续 `refloorHoldMs` 才认 —— 噪声是「一帧往返」，真收缩是「持续偏低」。
+// （2026-10-09 真机反馈后又从「连续 K 帧」改成时间制：帧计数依赖 re-render 喂帧，
+// 动画停下就冻住，确认迟迟到不了。）

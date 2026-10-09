@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using WishfulClaw.Core.Protocol;
 
@@ -8,6 +8,11 @@ namespace WishfulClaw.Infrastructure.Storage;
 /// Worker-owned routing settings for auxiliary provider completions.
 /// Empty provider/model pairs mean "not configured" and are deliberately kept
 /// separate from the global active model fallback.
+///
+/// The image pair is not an auxiliary request: it is the explicit model choice
+/// for image generation, which the Worker forwards verbatim on `image:generate`
+/// and Main resolves (S-173). It lives here so all four choices are saved by one
+/// write to one file.
 /// </summary>
 public sealed record ProviderCompletionSettings(
     string? FallbackProviderId = null,
@@ -15,7 +20,9 @@ public sealed record ProviderCompletionSettings(
     string? PromptOptimizerProviderId = null,
     string? PromptOptimizerModelId = null,
     string? PersonaProviderId = null,
-    string? PersonaModelId = null);
+    string? PersonaModelId = null,
+    string? ImageProviderId = null,
+    string? ImageModelId = null);
 
 public static class ProviderCompletionSettingsStore
 {
@@ -35,7 +42,9 @@ public static class ProviderCompletionSettingsStore
             ReadString(obj, "promptOptimizerProviderId"),
             ReadString(obj, "promptOptimizerModelId"),
             ReadString(obj, "personaProviderId"),
-            ReadString(obj, "personaModelId"));
+            ReadString(obj, "personaModelId"),
+            ReadString(obj, "imageProviderId"),
+            ReadString(obj, "imageModelId"));
     }
 
     public static void Write(ProviderCompletionSettings settings)
@@ -47,7 +56,9 @@ public static class ProviderCompletionSettingsStore
             ["promptOptimizerProviderId"] = settings.PromptOptimizerProviderId,
             ["promptOptimizerModelId"] = settings.PromptOptimizerModelId,
             ["personaProviderId"] = settings.PersonaProviderId,
-            ["personaModelId"] = settings.PersonaModelId
+            ["personaModelId"] = settings.PersonaModelId,
+            ["imageProviderId"] = settings.ImageProviderId,
+            ["imageModelId"] = settings.ImageModelId
         };
         ConfigStore.SetValue(ConfigKey, node);
     }

@@ -1,4 +1,4 @@
-﻿using WishfulClaw.Agent;
+using WishfulClaw.Agent;
 
 namespace WishfulClaw.GoalRegressionTests;
 
@@ -7,8 +7,11 @@ internal static partial class Program
     private static async Task RunSubAgentConcurrencySuiteAsync()
     {
         SubAgentConcurrencyLimiter.Configure(2);
-        var first = await AcquireSubAgentAsync();
-        var second = await AcquireSubAgentAsync();
+        var queuedNotifications = new List<int>();
+        var first = await AcquireSubAgentAsync(queuedNotifications: queuedNotifications);
+        var second = await AcquireSubAgentAsync(queuedNotifications: queuedNotifications);
+        Assert(queuedNotifications.Count == 0,
+            "sub-agent limiter does not report queued while a slot is free");
         var queuedOrder = new List<int>();
         var gates = new[]
         {
@@ -19,14 +22,16 @@ internal static partial class Program
 
         var waiters = new[]
         {
-            QueueWaiterAsync(1, queuedOrder, gates[0].Task),
-            QueueWaiterAsync(2, queuedOrder, gates[1].Task),
-            QueueWaiterAsync(3, queuedOrder, gates[2].Task)
+            QueueWaiterAsync(1, queuedOrder, gates[0].Task, queuedNotifications),
+            QueueWaiterAsync(2, queuedOrder, gates[1].Task, queuedNotifications),
+            QueueWaiterAsync(3, queuedOrder, gates[2].Task, queuedNotifications)
         };
 
         await Task.Delay(25);
         Assert(queuedOrder.Count == 0,
             "sub-agent limiter queues work after global capacity is full");
+        AssertEqual(3, queuedNotifications.Count,
+            "sub-agent limiter reports queued exactly once per queued waiter");
 
         SubAgentConcurrencyLimiter.Configure(1);
         first.Dispose();
@@ -39,10 +44,12 @@ internal static partial class Program
         AssertEqual(1, queuedOrder[0], "sub-agent limiter preserves FIFO order after capacity reduction");
 
         using var cancellation = new CancellationTokenSource();
-        var cancelled = AcquireSubAgentAsync(cancellation.Token);
+        var cancelledNotifications = new List<int>();
+        var cancelled = AcquireSubAgentAsync(cancellation.Token, cancelledNotifications);
         cancellation.Cancel();
         await AssertCanceledAsync(cancelled);
-        Assert(true, "sub-agent limiter removes cancelled waiter");
+        AssertEqual(1, cancelledNotifications.Count,
+            "a waiter that joined the queue reports queued before it is cancelled");
 
         SubAgentConcurrencyLimiter.Configure(2);
         await WaitForCountAsync(queuedOrder, 2);
@@ -55,21 +62,84 @@ internal static partial class Program
         gates[1].SetResult(true);
         gates[2].SetResult(true);
         await Task.WhenAll(waiters);
-        Assert(true, "sub-agent limiter releases every queued waiter");
+        AssertEqual(3, queuedOrder.Count, "sub-agent limiter releases every queued waiter");
+
+        await AssertQueuedPrecedesLeaseAsync();
+    }
+
+    // S-178 ordering contract: the queued notification must complete BEFORE the lease is
+    // delivered, because the executor only emits sub_agent_start once AcquireAsync returns.
+    // If this ever flips, the queued card would be built after start and stay stuck queued.
+    private static async Task AssertQueuedPrecedesLeaseAsync()
+    {
+        SubAgentConcurrencyLimiter.Configure(1);
+        var holder = await AcquireSubAgentAsync();
+        var order = new List<string>();
+
+        var waiter = Task.Run(async () =>
+        {
+            using var lease = await SubAgentConcurrencyLimiter.AcquireAsync(
+                CancellationToken.None,
+                onQueued: () =>
+                {
+                    lock (order)
+                    {
+                        order.Add("queued");
+                    }
+
+                    return Task.CompletedTask;
+                });
+            lock (order)
+            {
+                order.Add("lease");
+            }
+        });
+
+        await WaitForCountAsync(order, 1);
+        AssertEqual("queued", order[0], "onQueued fires while the caller is still waiting for a slot");
+
+        holder.Dispose();
+        await waiter;
+        AssertEqual(2, order.Count, "the lease is delivered only once the queue is drained");
+        AssertEqual("lease", order[1], "lease delivery follows the queued notification");
+
+        // A token that is already cancelled never joins the queue, so it reports nothing.
+        using var preCancelled = new CancellationTokenSource();
+        preCancelled.Cancel();
+        var preNotifications = new List<int>();
+        var preCancelledTask = AcquireSubAgentAsync(preCancelled.Token, preNotifications);
+        await AssertCanceledAsync(preCancelledTask);
+        Assert(preNotifications.Count == 0, "a pre-cancelled acquire never reports queued");
+
+        SubAgentConcurrencyLimiter.Configure(2);
     }
 
     private static async Task<IDisposable> AcquireSubAgentAsync(
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        List<int>? queuedNotifications = null)
     {
-        return await SubAgentConcurrencyLimiter.AcquireAsync(cancellationToken);
+        return await SubAgentConcurrencyLimiter.AcquireAsync(
+            cancellationToken,
+            onQueued: queuedNotifications is null
+                ? null
+                : () =>
+                {
+                    lock (queuedNotifications)
+                    {
+                        queuedNotifications.Add(1);
+                    }
+
+                    return Task.CompletedTask;
+                });
     }
 
     private static async Task QueueWaiterAsync(
         int id,
         List<int> order,
-        Task releaseSignal)
+        Task releaseSignal,
+        List<int> queuedNotifications)
     {
-        using var lease = await AcquireSubAgentAsync();
+        using var lease = await AcquireSubAgentAsync(queuedNotifications: queuedNotifications);
         lock (order)
         {
             order.Add(id);
@@ -80,7 +150,7 @@ internal static partial class Program
     private static TaskCompletionSource<bool> NewGate()
         => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private static async Task WaitForCountAsync(List<int> values, int count)
+    private static async Task WaitForCountAsync<T>(List<T> values, int count)
     {
         for (var attempt = 0; attempt < 100; attempt++)
         {

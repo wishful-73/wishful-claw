@@ -23,6 +23,26 @@ public static class JsonHelpers
         {
             JsonValueKind.True => true,
             JsonValueKind.False => false,
+            JsonValueKind.String => ParseBoolText(property.GetString(), fallback),
+            _ => fallback
+        };
+    }
+
+    /// <summary>
+    /// Parses a boolean from its textual form, tolerating surrounding whitespace and casing
+    /// ("true" / " TRUE " / "False"). Only these two literals are accepted; anything else
+    /// (including null or an all-whitespace string) falls back.
+    /// </summary>
+    private static bool ParseBoolText(string? value, bool fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return fallback;
+        }
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "true" => true,
+            "false" => false,
             _ => fallback
         };
     }

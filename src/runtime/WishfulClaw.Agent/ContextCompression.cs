@@ -585,6 +585,44 @@ public static partial class ContextCompression
     }
 
     /// <summary>
+    /// The summarizer's request headers, in one place so the regression suite can pin
+    /// them: the summary call must reach the same upstream configuration as a live
+    /// turn, including the provider's User-Agent (Cloudflare-fronted gateways answer
+    /// 1010 without it) and the OpenAI organization / project pair.
+    /// </summary>
+    internal static HttpRequestMessage BuildAnthropicSummaryRequest(
+        string url,
+        string bodyJson,
+        JsonElement provider,
+        string apiKey)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("x-api-key", apiKey);
+        request.Headers.Add("anthropic-version", "2023-06-01");
+        ProviderHttpHeaders.ApplyAnthropic(request, provider);
+        return request;
+    }
+
+    /// <summary>
+    /// OpenAI-compatible counterpart of <see cref="BuildAnthropicSummaryRequest"/>.
+    /// <paramref name="sessionId"/> feeds the OpenCode Go routing header.
+    /// </summary>
+    internal static HttpRequestMessage BuildOpenAiSummaryRequest(
+        string url,
+        string bodyJson,
+        JsonElement provider,
+        string apiKey,
+        string? sessionId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("Authorization", $"Bearer {apiKey}");
+        ProviderHttpHeaders.ApplyOpenAiChat(request, provider, sessionId);
+        return request;
+    }
+
+    /// <summary>
     /// Calls Anthropic Messages API for summarization (no tools, no streaming).
     /// </summary>
     private static async Task<string> CallAnthropicSummary(
@@ -617,14 +655,7 @@ public static partial class ContextCompression
             w.WriteEndObject();
         });
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
-        // Mirror the live-turn header chain: without a User-Agent, Cloudflare-fronted
-        // gateways (error 1010) 403 the summarizer while the agent turn passes.
-        ApiUserAgent.Apply(request, provider);
-        ProviderRequestOverrides.ApplyHttpHeaderOverrides(request, provider);
-        request.Headers.Add("x-api-key", apiKey);
-        request.Headers.Add("anthropic-version", "2023-06-01");
+        using var request = BuildAnthropicSummaryRequest(url, bodyJson, provider, apiKey);
 
         using var response = await Http.SendAsync(
             request,
@@ -761,20 +792,7 @@ public static partial class ContextCompression
             w.WriteEndObject();
         });
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
-        // Mirror the live-turn header chain (see the anthropic branch above): UA for
-        // Cloudflare-fronted gateways, provider header overrides, and the
-        // x-opencode-session routing header for the OpenCode Go builtin.
-        ApiUserAgent.Apply(request, provider);
-        ProviderRequestOverrides.ApplyHttpHeaderOverrides(request, provider);
-        request.Headers.Add("Authorization", $"Bearer {apiKey}");
-        if (!string.IsNullOrWhiteSpace(sessionId) &&
-            string.Equals(JsonHelpers.GetString(provider, "providerBuiltinId"), "opencode-go", StringComparison.Ordinal) &&
-            !request.Headers.Contains("x-opencode-session"))
-        {
-            request.Headers.TryAddWithoutValidation("x-opencode-session", sessionId);
-        }
+        using var request = BuildOpenAiSummaryRequest(url, bodyJson, provider, apiKey, sessionId);
 
         using var response = await Http.SendAsync(
             request,

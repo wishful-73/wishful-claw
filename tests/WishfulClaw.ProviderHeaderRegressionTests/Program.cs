@@ -20,6 +20,7 @@ internal static class Program
             ToolProxyEntryChecks.Run();
             ProviderCompletionResolutionChecks.Run();
             AuxiliaryHeaderChecks.Run();
+            MainChainHeaderChecks.Run();
             Console.WriteLine("Provider header regression checks passed.");
             return 0;
         }

@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.37",
+  "version": "0.2.38",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -27,6 +27,7 @@
     "test:updater-release-notes": "esbuild tests/updater-release-notes/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-release-notes/out/program.cjs && node tests/updater-release-notes/out/program.cjs",
     "test:updater-state": "esbuild tests/updater-state/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/program.cjs && node tests/updater-state/out/program.cjs",
     "test:updater-progress": "esbuild tests/updater-state/download-progress.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/download-progress.cjs && node tests/updater-state/out/download-progress.cjs",
+    "test:release-notes-fetch": "esbuild tests/release-notes-fetch/program.ts --bundle --platform=node --format=cjs --outfile=tests/release-notes-fetch/out/program.cjs && node tests/release-notes-fetch/out/program.cjs",
     "test:provider-presets": "esbuild tests/provider-presets/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-presets/out/program.cjs && node tests/provider-presets/out/program.cjs",
     "test:provider-fallback": "esbuild tests/provider-fallback/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-fallback/out/program.cjs && node tests/provider-fallback/out/program.cjs",
     "test:provider-payload": "esbuild tests/provider-payload/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/provider-payload/out/program.cjs && node tests/provider-payload/out/program.cjs",
@@ -61,6 +62,7 @@
     "test:video-frames": "esbuild tests/video-frames/program.ts --bundle --platform=node --format=cjs --outfile=tests/video-frames/out/program.cjs && node tests/video-frames/out/program.cjs",
     "test:updater-error-format": "esbuild tests/updater-error-format/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-error-format/out/program.cjs && node tests/updater-error-format/out/program.cjs",
     "test:scroll-collapse-gate": "esbuild tests/scroll-collapse-gate/program.ts --bundle --platform=node --format=cjs --outfile=tests/scroll-collapse-gate/out/program.cjs && node tests/scroll-collapse-gate/out/program.cjs",
+    "test:scroll-watermark": "esbuild tests/scroll-watermark/program.ts --bundle --platform=node --format=cjs --outfile=tests/scroll-watermark/out/program.cjs && node tests/scroll-watermark/out/program.cjs",
     "test:generated-image-dir": "esbuild tests/generated-image-dir/program.ts --bundle --platform=node --format=cjs --outfile=tests/generated-image-dir/out/program.cjs && node tests/generated-image-dir/out/program.cjs",
     "test:terminal-tab-lifecycle": "esbuild tests/terminal-tab-lifecycle/program.ts --bundle --platform=node --format=cjs --outfile=tests/terminal-tab-lifecycle/out/program.cjs && node tests/terminal-tab-lifecycle/out/program.cjs",
     "test:everything-search": "esbuild tests/everything-search/program.ts --bundle --platform=node --format=cjs --outfile=tests/everything-search/out/program.cjs && node tests/everything-search/out/program.cjs",

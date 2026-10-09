@@ -9,10 +9,12 @@
  *   ① 激活 provider 有图像模型 → 用它（baseUrl / key / model 都取该 provider）
  *   ② 激活 provider 没声明图像模型，但 baseUrl host 在已知映射表里 → 用映射的模型名
  *   ③ 都没有 → 回落到其他可用 provider；再没有就返回 null（调用方给可操作的报错）
+ *   ④ 显式指定位（S-173，「模型管理」第四档）→ 压过以上三条；悬空直接报错、不回落
  */
 
 import assert from 'node:assert/strict'
 import {
+  resolveExplicitImageEndpoint,
   resolveImageEndpoint,
   summarizeApiError,
   type ProviderRecord
@@ -181,7 +183,58 @@ const noBaseUrl = resolveImageEndpoint([provider({ baseUrl: '' })], 'p1')
 check(noBaseUrl?.baseUrl === OPENAI_BASE, '缺 baseUrl → 兜底 OpenAI 官方')
 check(noBaseUrl?.model === 'gpt-image-1', '缺 baseUrl 时也按 host 命中映射表')
 
-// ─── 6. 报错摘要：不能让用户看到原始 HTTP 报文 ───
+// ─── 7. 显式指定位（S-173）───
+
+const explicitProviders: ProviderRecord[] = [
+  provider({
+    id: 'active',
+    name: 'Active',
+    baseUrl: BIGMODEL_BASE,
+    models: [{ id: 'cogview-4', category: 'image', enabled: true }]
+  }),
+  provider({
+    id: 'pinned',
+    name: 'Pinned',
+    baseUrl: OPENAI_BASE,
+    models: [
+      { id: 'gpt-image-1', category: 'image', enabled: true },
+      { id: 'glm-5.3-flash', category: 'chat', enabled: true }
+    ]
+  })
+]
+
+const explicitHit = resolveExplicitImageEndpoint(explicitProviders, 'pinned', 'gpt-image-1')
+check(explicitHit.error === null, '指定位命中 → 无错误')
+check(explicitHit.endpoint?.model === 'gpt-image-1', '指定位命中 → 用指定的模型')
+check(explicitHit.endpoint?.providerName === 'Pinned', '指定位命中 → 用指定的 provider（压过激活 provider）')
+check(explicitHit.endpoint?.baseUrl === OPENAI_BASE, '指定位命中 → baseUrl 取该 provider')
+check(explicitHit.endpoint?.officialOpenAI === true, '指定位命中 → 官方 host 标记照旧')
+
+// 悬空三种：provider 不存在 / 模型不在该 provider / provider 无 apiKey → 一律报错、不回落
+const dangling = [
+  resolveExplicitImageEndpoint(explicitProviders, 'retired', 'gpt-image-1'),
+  resolveExplicitImageEndpoint(explicitProviders, 'pinned', 'deleted-model'),
+  resolveExplicitImageEndpoint([provider({ id: 'pinned', apiKey: '' })], 'pinned', 'gpt-image-1')
+]
+for (const [index, result] of dangling.entries()) {
+  check(result.endpoint === null, `指定位悬空（第 ${index + 1} 种）→ 不给端点、不回落`)
+  check(
+    typeof result.error === 'string' && result.error.length > 0,
+    `指定位悬空（第 ${index + 1} 种）→ 给出可操作报错`
+  )
+}
+check(
+  dangling[0].error?.includes('Settings') === true,
+  '悬空报错指出到「模型管理」重选'
+)
+
+// 未指定时三条回落规则逐条不动：库函数照旧，指定位不参与
+check(
+  resolveImageEndpoint(explicitProviders, 'active')?.providerName === 'Active',
+  '未指定指定位时仍走 S-166 三级回落'
+)
+
+// ─── 8. 报错摘要：不能让用户看到原始 HTTP 报文 ───
 
 check(
   summarizeApiError('{"error":{"message":"Invalid API key provided"}}') ===

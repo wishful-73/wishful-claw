@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { Button } from '@renderer/components/ui/button'
@@ -11,9 +11,18 @@ interface ProviderCompletionSettings {
   promptOptimizerModelId: string | null
   personaProviderId: string | null
   personaModelId: string | null
+  imageProviderId: string | null
+  imageModelId: string | null
 }
 
-type RouteName = 'fallback' | 'promptOptimizer' | 'persona'
+type RouteName = 'fallback' | 'promptOptimizer' | 'persona' | 'image'
+
+// The image slot picks a generation model, not a chat model, so it cannot share
+// the other three slots' filter. This is the one place that knows the difference.
+function acceptsModel(route: RouteName, model: { enabled?: boolean; category?: string | null }): boolean {
+  if (model.enabled !== true) return false
+  return route === 'image' ? model.category === 'image' : !model.category || model.category === 'chat'
+}
 
 const EMPTY: ProviderCompletionSettings = {
   fallbackProviderId: null,
@@ -21,7 +30,9 @@ const EMPTY: ProviderCompletionSettings = {
   promptOptimizerProviderId: null,
   promptOptimizerModelId: null,
   personaProviderId: null,
-  personaModelId: null
+  personaModelId: null,
+  imageProviderId: null,
+  imageModelId: null
 }
 
 function ProviderCompletionSettingsPanel(): React.JSX.Element {
@@ -56,9 +67,7 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
 
   const updateRoute = (route: RouteName, providerId: string): void => {
     const provider = enabledProviders.find((item) => item.id === providerId)
-    const modelId = provider?.models.find(
-      (model) => model.enabled && (!model.category || model.category === 'chat')
-    )?.id ?? null
+    const modelId = provider?.models.find((model) => acceptsModel(route, model))?.id ?? null
     setSettings((current) => ({
       ...current,
       [`${route}ProviderId`]: providerId || null,
@@ -67,9 +76,9 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
     setMessage(null)
   }
 
-  const modelOptions = useMemo(() => (providerId: string | null) => {
+  const modelOptions = useMemo(() => (providerId: string | null, route: RouteName) => {
     return enabledProviders.find((provider) => provider.id === providerId)?.models.filter(
-      (model) => model.enabled && (!model.category || model.category === 'chat')
+      (model) => acceptsModel(route, model)
     ) ?? []
   }, [enabledProviders])
 
@@ -100,7 +109,7 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
     const providerId = enabledProviders.some((provider) => provider.id === configuredProviderId)
       ? configuredProviderId
       : null
-    const options = modelOptions(providerId)
+    const options = modelOptions(providerId, name)
     const modelId = options.some((model) => model.id === settings[modelKey])
       ? settings[modelKey]
       : ''
@@ -145,6 +154,7 @@ function ProviderCompletionSettingsPanel(): React.JSX.Element {
         {route('promptOptimizer')}
         {route('persona')}
         {route('fallback')}
+        {route('image')}
         <SettingHint>
           {message ??
             (loadError

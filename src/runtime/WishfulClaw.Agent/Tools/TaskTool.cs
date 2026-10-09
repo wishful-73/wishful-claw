@@ -74,7 +74,8 @@ public sealed class TaskTool : IToolExecutor
         sb.AppendLine("Usage notes:");
         sb.AppendLine("- Delegate complex tasks immediately; do simple 1-3 step tasks yourself.");
         sb.AppendLine("- Sub-agents are stateless and do not see this conversation — write self-contained prompts with all needed context.");
-        sb.AppendLine("- Set background=true to run without blocking; check progress with SubAgentStatus/SubAgentDetail.");
+        sb.AppendLine("- Set background=true to run without blocking. Do NOT block, sleep, or poll for a background sub-agent — when it finishes, its report is delivered to you automatically.");
+        sb.AppendLine("- Use SubAgentStatus/SubAgentDetail only for a deliberate mid-flight progress check, never as a way to wait for completion.");
 
         return sb.ToString().TrimEnd();
     }
@@ -108,7 +109,7 @@ public sealed class TaskTool : IToolExecutor
             "background": {
               "type": "boolean",
               "default": false,
-              "description": "If true, runs in the background and returns a sub-agent ID immediately; check progress with SubAgentStatus. If false (default), waits for completion."
+              "description": "If true, runs in the background and returns a sub-agent ID immediately. Do NOT block, sleep, or poll for it — its report is delivered to you automatically when it finishes (use SubAgentStatus only for a deliberate mid-flight check). If false (default), waits for completion."
             }
           },
           "required": ["description", "prompt"],

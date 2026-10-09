@@ -102,6 +102,69 @@ export function resolveImageEndpoint(
   return null
 }
 
+export interface ExplicitImageEndpointResult {
+  endpoint: ResolvedImageEndpoint | null
+  error: string | null
+}
+
+/**
+ * Resolves the explicit image route from Settings → 模型管理 (S-173).
+ *
+ * This is an instruction, not a preference: when it cannot be honoured the
+ * caller must report the error, **not** quietly fall back to
+ * `resolveImageEndpoint`. Silently generating with someone else's model would
+ * erase the user's choice with nothing to see in the UI.
+ *
+ * Existence is checked here rather than by the Worker because Main owns the
+ * provider store the request will actually be sent with.
+ */
+export function resolveExplicitImageEndpoint(
+  providers: ProviderRecord[],
+  explicitProviderId: string,
+  explicitModelId: string
+): ExplicitImageEndpointResult {
+  const provider = providers.find((item) => readString(item.id) === explicitProviderId)
+  if (!provider) {
+    return {
+      endpoint: null,
+      error: `Image generation model is unavailable: provider '${explicitProviderId}' no longer exists. Pick another one under Settings → 模型管理.`
+    }
+  }
+  if (!readString(provider.apiKey)) {
+    return {
+      endpoint: null,
+      error: `Image generation model is unavailable: provider '${readString(provider.name) || explicitProviderId}' has no API key. Add one under Settings → Providers.`
+    }
+  }
+
+  const models = Array.isArray(provider.models) ? provider.models : []
+  const declared = models.some(
+    (model) =>
+      typeof model === 'object' &&
+      model !== null &&
+      readString((model as ProviderRecord).id) === explicitModelId
+  )
+  if (!declared) {
+    return {
+      endpoint: null,
+      error: `Image generation model is unavailable: model '${explicitModelId}' no longer exists in provider '${readString(provider.name) || explicitProviderId}'. Pick another one under Settings → 模型管理.`
+    }
+  }
+
+  const baseUrl = (readString(provider.baseUrl) || 'https://api.openai.com/v1').replace(/\/+$/, '')
+  const host = getHost(baseUrl)
+  return {
+    endpoint: {
+      baseUrl,
+      apiKey: readString(provider.apiKey),
+      model: explicitModelId,
+      providerName: readString(provider.name) || readString(provider.id) || host,
+      officialOpenAI: host === OFFICIAL_OPENAI_HOST
+    },
+    error: null
+  }
+}
+
 /**
  * Surfaces the upstream message instead of a raw HTTP dump. The tool card shows
  * this string to the user, so it must stay short and readable.

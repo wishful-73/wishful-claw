@@ -255,6 +255,8 @@ export function useChatActions() {
           channelSession: true
         } : {})
       })
+      // 只有「未受理」才暂停派发：入队属已受理（iter-38 S-177 起 sendMessage 返 true），
+      // 由 dispatchNextQueuedMessageForSession 在当前 run 结束后自动派发，不该在这里卡住。
       if (!started) pausePendingSessionDispatch(targetSessionId)
       return started
       } catch (error) {
@@ -907,6 +909,8 @@ export function dispatchNextQueuedMessageForSession(
               queuedDispatch: true
             })
           : false
+      // 未受理才暂停（保留队列头等重试）；入队属已受理（S-177 起 sendMessage 返 true），
+      // 出队前 :875 / :890 已确认不忙，正常不会走到入队分支。
       if (!started) {
         pausePendingSessionDispatch(sessionId)
         return

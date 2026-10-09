@@ -8,6 +8,7 @@
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -61,8 +62,15 @@ public static class AgentRuntimeImageGenerateExecutor
         }
     }
 
+    /// <summary>
+    /// Builds the `image:generate` reverse request. The explicit image route (the
+    /// fourth slot in Settings → 模型管理) rides along as two ids; Main resolves and
+    /// validates them, so this side only reads the config and never falls back
+    /// (S-173).
+    /// </summary>
     private static JsonElement BuildPayload(AgentRuntimeNativeToolCall call, JsonElement parameters)
     {
+        var settings = ProviderCompletionSettingsStore.Read();
         var buffer = new System.Buffers.ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
         {
@@ -73,6 +81,14 @@ public static class AgentRuntimeImageGenerateExecutor
             if (!string.IsNullOrEmpty(size)) writer.WriteString("size", size);
             var quality = JsonHelpers.GetString(call.Input, "quality");
             if (!string.IsNullOrEmpty(quality)) writer.WriteString("quality", quality);
+            if (!string.IsNullOrEmpty(settings.ImageProviderId))
+            {
+                writer.WriteString("imageProviderId", settings.ImageProviderId);
+            }
+            if (!string.IsNullOrEmpty(settings.ImageModelId))
+            {
+                writer.WriteString("imageModelId", settings.ImageModelId);
+            }
             writer.WritePropertyName("input");
             call.Input.WriteTo(writer);
             writer.WritePropertyName("parameters");

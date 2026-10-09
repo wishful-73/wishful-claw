@@ -10,9 +10,11 @@
 import { readPersistedProviderStore } from '../../lib/ai-provider-store'
 import {
   readString,
+  resolveExplicitImageEndpoint,
   resolveImageEndpoint,
   summarizeApiError,
-  type ProviderRecord
+  type ProviderRecord,
+  type ResolvedImageEndpoint
 } from '../../lib/image-endpoint'
 
 interface ImageGenerateParams {
@@ -22,6 +24,9 @@ interface ImageGenerateParams {
   quality?: 'standard' | 'hd'
   style?: 'vivid' | 'natural'
   n?: number
+  /** Explicit image route from Settings → 模型管理 (S-173), forwarded by the Worker. */
+  imageProviderId?: string
+  imageModelId?: string
 }
 
 interface ImageGenerateResult {
@@ -52,11 +57,26 @@ export async function handleImageGenerate(
   const store = readPersistedProviderStore()
   const state = store?.state ?? {}
   const providers = Array.isArray(state.providers) ? (state.providers as ProviderRecord[]) : []
-  const endpoint = resolveImageEndpoint(
-    providers,
-    readString(state.activeProviderId),
-    readString(params.model)
-  )
+
+  // An explicit route from Settings → 模型管理 wins over the conversation's
+  // provider, and when it is dangling it errors out instead of falling through:
+  // a silent substitute would hide the user's own choice from them (S-173).
+  const explicitProviderId = readString(params.imageProviderId)
+  const explicitModelId = readString(params.imageModelId)
+  let endpoint: ResolvedImageEndpoint | null
+  if (explicitProviderId || explicitModelId) {
+    const explicit = resolveExplicitImageEndpoint(providers, explicitProviderId, explicitModelId)
+    if (explicit.error) {
+      return { success: false, error: explicit.error }
+    }
+    endpoint = explicit.endpoint
+  } else {
+    endpoint = resolveImageEndpoint(
+      providers,
+      readString(state.activeProviderId),
+      readString(params.model)
+    )
+  }
 
   if (!endpoint) {
     return {

@@ -71,14 +71,11 @@ public static partial class SubAgentExecutor
         // Background mode: fire-and-forget, return immediately
         var isBackground = JsonHelpers.GetBool(input, "background", false);
 
-        // Emit sub_agent_start event to parent's stream
-        await AgentRuntimeTools.EmitAsync(
-            parentState, context,
-            new AgentRuntimeStreamEvent(
-                "sub_agent_start",
-                SubAgentName: definition.Name,
-                ToolUseId: toolCallId,
-                Input: input.Clone()));
+        // S-178: sub_agent_start is deliberately NOT emitted here any more. Emitting it
+        // before the concurrency gate lit up every card as "working" even while the
+        // sub-agent was still queued. Both execution paths now emit
+        // queued/start around AcquireSubAgentSlotAsync instead, so "card turned on"
+        // means "actually running".
 
         if (isBackground)
         {
@@ -90,6 +87,129 @@ public static partial class SubAgentExecutor
         return await ExecuteForegroundAsync(
             input, parameters, definition, prompt,
             currentDepth, parentState, context, toolCallId);
+    }
+
+    // ── S-178: concurrency slot + queued/start notifications ──
+    //
+    // The renderer reducer already implements the whole "waiting" story:
+    // sub_agent_queued creates a queued card, sub_agent_start flips a queued card to
+    // running, sub_agent_dequeued removes a queued card. The C# side never emitted
+    // queued/dequeued, so every card showed "working" even when it was queued.
+    //
+    // Ordering contract: queued MUST precede start. A queued event that arrives once
+    // the card already exists is ignored, so start must not be emitted before the
+    // gate is acquired. Both execution paths emit through AcquireSubAgentSlotAsync.
+
+    private static async Task<IDisposable> AcquireSubAgentSlotAsync(
+        SubAgentDefinition definition,
+        string toolCallId,
+        JsonElement input,
+        AgentRuntimeRunState parentState,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var queued = false;
+        IDisposable lease;
+        try
+        {
+            lease = await SubAgentConcurrencyLimiter.AcquireAsync(
+                cancellationToken,
+                onQueued: async () =>
+                {
+                    queued = true;
+                    await TryEmitSubAgentEventAsync(
+                        "queued", toolCallId,
+                        () => EmitSubAgentQueuedAsync(
+                            definition, toolCallId, input, parentState, context));
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancelled while queued: the renderer already built a queued card, so take
+            // it back — otherwise it would sit there as a ghost card that never moves.
+            if (queued)
+            {
+                await TryEmitSubAgentEventAsync(
+                    "dequeued", toolCallId,
+                    () => EmitSubAgentDequeuedAsync(definition, toolCallId, parentState, context));
+            }
+
+            throw;
+        }
+
+        // Lease in hand ⇒ actually running. Emitting start only here is what makes the
+        // card's "on" state mean "running" (see the ordering contract above).
+        await TryEmitSubAgentEventAsync(
+            "start", toolCallId,
+            () => EmitSubAgentStartedAsync(definition, toolCallId, input, parentState, context));
+
+        return lease;
+    }
+
+    // Sub-agent events are an observation channel only: a failed emission is logged and
+    // swallowed. It must never fail the run — and, because the caller may already hold a
+    // concurrency lease by then, it must never leak that lease either.
+    private static async Task TryEmitSubAgentEventAsync(
+        string eventName,
+        string toolCallId,
+        Func<Task> emit)
+    {
+        try
+        {
+            await emit();
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Warn(
+                $"sub-agent {eventName} event emit failed toolUseId={toolCallId} " +
+                $"error={ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static Task EmitSubAgentQueuedAsync(
+        SubAgentDefinition definition,
+        string toolCallId,
+        JsonElement input,
+        AgentRuntimeRunState parentState,
+        IWorkerRequestContext context)
+    {
+        return AgentRuntimeTools.EmitAsync(
+            parentState, context,
+            new AgentRuntimeStreamEvent(
+                "sub_agent_queued",
+                SubAgentName: definition.Name,
+                ToolUseId: toolCallId,
+                Input: input.Clone()));
+    }
+
+    private static Task EmitSubAgentDequeuedAsync(
+        SubAgentDefinition definition,
+        string toolCallId,
+        AgentRuntimeRunState parentState,
+        IWorkerRequestContext context)
+    {
+        return AgentRuntimeTools.EmitAsync(
+            parentState, context,
+            new AgentRuntimeStreamEvent(
+                "sub_agent_dequeued",
+                SubAgentName: definition.Name,
+                ToolUseId: toolCallId));
+    }
+
+    private static Task EmitSubAgentStartedAsync(
+        SubAgentDefinition definition,
+        string toolCallId,
+        JsonElement input,
+        AgentRuntimeRunState parentState,
+        IWorkerRequestContext context)
+    {
+        return AgentRuntimeTools.EmitAsync(
+            parentState, context,
+            new AgentRuntimeStreamEvent(
+                "sub_agent_start",
+                SubAgentName: definition.Name,
+                ToolUseId: toolCallId,
+                Input: input.Clone()));
     }
 
     // ── Foreground execution (main conversation waits) ──
@@ -135,7 +255,8 @@ public static partial class SubAgentExecutor
 
         try
         {
-            using var concurrencyLease = await SubAgentConcurrencyLimiter.AcquireAsync(
+            using var concurrencyLease = await AcquireSubAgentSlotAsync(
+                definition, toolCallId, input, parentState, context,
                 childState.CancellationToken);
             await AgentLoop.ExecuteLoopAsync(childParameters, childState, context);
             subAgentOutput = collector.GetFinalOutput();

@@ -201,6 +201,12 @@ public static class SeedanceVideoTools
         return Encoding.UTF8.GetString(buffer.ToArray());
     }
 
+    /// <summary>
+    /// The video endpoints are not a chat protocol: they take no `requestOverrides`
+    /// and no routing header, so this stays its own two-line chain rather than going
+    /// through <see cref="ProviderHttpHeaders"/> (S-172, deliberately not merged).
+    /// Anything that is shared — the User-Agent resolver — is still applied there.
+    /// </summary>
     private static void ApplyHeaders(HttpRequestMessage request, JsonElement provider)
     {
         request.Headers.Authorization = new AuthenticationHeaderValue(

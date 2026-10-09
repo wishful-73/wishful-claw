@@ -77,6 +77,23 @@ function SubAgentStepList({
   isRunning: boolean
 }): React.JSX.Element {
   const [, forceUpdate] = React.useReducer((x: number) => x + 1, 0)
+  const listRef = React.useRef<HTMLDivElement | null>(null)
+
+  // S-179: the step list only ever grows downwards, so the 240px viewport has to follow it.
+  // The effect keys on the length alone: that is the only signal for "one more step", and it also
+  // catches in-place mutations of the array. Keying on the array itself would fire on every frame
+  // along the fallback path, where `toolCalls` is rebuilt by a `.map()` on each render.
+  // The scroll runs inside a rAF because the appended row is not laid out yet when the effect fires.
+  // These hooks must stay ABOVE the early return below: splitting them across the two render paths
+  // breaks the rules of hooks.
+  React.useEffect(() => {
+    const node = listRef.current
+    if (!node) return
+    const frame = requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [toolCalls.length])
 
   if (toolCalls.length === 0) {
     return (
@@ -87,7 +104,7 @@ function SubAgentStepList({
   }
 
   return (
-    <div className="max-h-[240px] overflow-y-auto px-3 py-1">
+    <div ref={listRef} className="max-h-[240px] overflow-y-auto px-3 py-1">
       {toolCalls.map((tc, idx) => {
         const desc = generateStepDescription(tc)
         const statusIcon = getStepStatusIcon(tc.status)

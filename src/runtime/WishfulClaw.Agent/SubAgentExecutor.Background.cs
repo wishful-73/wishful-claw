@@ -50,7 +50,8 @@ public static partial class SubAgentExecutor
         {
             try
             {
-                using var concurrencyLease = await SubAgentConcurrencyLimiter.AcquireAsync(
+                using var concurrencyLease = await AcquireSubAgentSlotAsync(
+                    definition, toolCallId, input, parentState, context,
                     childState.CancellationToken);
                 await AgentLoop.ExecuteLoopAsync(childParameters, childState, context);
 

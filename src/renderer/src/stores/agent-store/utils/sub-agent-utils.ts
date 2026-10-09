@@ -362,6 +362,17 @@ export function upsertSessionSubAgentSummary(
 
 export function buildPersistedSubAgentSnapshot(agent: SubAgentState): SubAgentState {
   const snapshot = buildSubAgentSummary(agent)
+  // S-178: a queued card is live state, not history. Once the snapshot is restored its run
+  // no longer exists, so it must never come back as a permanently "Queued" ghost card —
+  // a snapshot is by definition not alive.
+  if (snapshot.isQueued) {
+    return {
+      ...snapshot,
+      isQueued: false,
+      completedAt: snapshot.completedAt ?? snapshot.startedAt,
+      reportStatus: snapshot.report.trim() ? snapshot.reportStatus : 'missing'
+    }
+  }
   if (!snapshot.isRunning) return snapshot
 
   return {

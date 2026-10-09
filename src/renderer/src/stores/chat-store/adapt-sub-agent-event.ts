@@ -16,6 +16,26 @@ export function adaptSubAgentEvent(
   if (!toolUseId) return null
 
   switch (type) {
+    // S-178: the reducer builds a "queued" card from this, and sub_agent_start (which
+    // only arrives once the backend actually holds the concurrency slot) flips that card
+    // to running. Without these two cases the events fall into `default: return null`
+    // and the queued UI stays dead code.
+    case 'sub_agent_queued': {
+      return {
+        type: 'sub_agent_queued',
+        subAgentName,
+        toolUseId,
+        input: (event.input as Record<string, unknown>) ?? {}
+      }
+    }
+    case 'sub_agent_dequeued': {
+      // Queued card cancelled before it ever ran — the reducer removes it.
+      return {
+        type: 'sub_agent_dequeued',
+        subAgentName,
+        toolUseId
+      }
+    }
     case 'sub_agent_start': {
       const input = (event.input as Record<string, unknown>) ?? {}
       const promptText = String(input.prompt ?? input.query ?? input.task ?? '')

@@ -50,13 +50,13 @@
   - **不做**：主进程不新读 `config.json`、不新建 `main/lib/provider-completion-config.ts`（甲已把这条路去掉）。
   - **验证检查点**：`npm run typecheck` 0 错；`tests/image-endpoint/program.ts` 增断言：① 指定位命中优先于 `activeProviderId`；② 指定位悬空（provider 不存在 / 模型不在该 provider / `apiKey` 为空）走文末裁定的口径；③ 未指定（两个新参数都缺）时 S-166 三级回落**逐条不变**。
 
-- [x] **步骤 4：真机验证（与 S-174 的联动点）**
+- [ ] **步骤 4：真机验证（与 S-174 的联动点）** —— **未做**，需真实 provider，待老大真机（见 §七）
   - 「模型管理」→ 图片生成档选一个 `category === 'image'` 的模型 → 保存 → 发一次生图 → 确认请求打的是该 provider / model（抓 `image:generate` 反向请求或看日志）。
   - 清空指定位 → 确认 S-166 三级回落行为不变（回到「跟随当前对话 provider」）。
   - **验证检查点**：真机两次结果与预期一致，截图或日志留证。
 
 - [x] **步骤 5：整体测通**
-  - `npm run typecheck` 三配置 0 错；`npm test` **65/65**（含步骤 3 新增断言）；`dotnet build` 0 错 0 警。
+  - `npm run typecheck` 三配置 0 错；`npm test` **66/66**（含步骤 3 新增断言）；`dotnet build` 0 错 0 警。
   - **验证检查点**：全绿 ⇒ 本刀测通，按一需求一刀提交。
 
 ---
@@ -67,6 +67,8 @@
 
 1. **步骤 3 的实现形态**：没有给 `resolveImageEndpoint` 加显式指定位参数，而是**另起 `resolveExplicitImageEndpoint`**（返回 `{ endpoint, error }`）。原因：显式位失败语义与回落链相反（报错 vs 继续找），合进一个返回值会逼调用方反推意图；分开也让 **S-166 的既有断言一条未改**（计划原意是「增断言」，这里做到了既增又不改）。反向处理器按「两个 id 任一存在」二选一。
 2. **步骤 3 的校验位置**：三关（provider 存在 / 模型在该 provider / `apiKey` 非空）全部落在主进程的新函数里。计划只写了「命中规则」，没写放哪一侧；按「校验与使用同一份数据」定在主进程 —— 它是拿着 provider store 真正发请求的那一侧。
+3. **顺带去 BOM**：`ProviderCompletionSettingsService.cs` 与 `ProviderCompletionSettingsPanel.tsx` 首行 UTF-8 BOM 在本次改动中一并移除 —— 方向与仓库多数文件一致，非行为变化、非回退（此项系事后补验发现，已知晓）。
+4. **步骤 4 勾选订正**：原误勾 `[x]`（真机未做），已改回 `[ ]` 并注明「待老大真机」—— 属验收缺口，非计划合规性缺陷。
 
 门禁：`npm run typecheck` 0 错 / `npm test` **66/66**（`i18n-coverage`、`settings-tabs` 全绿）/ `dotnet build` 0 错 0 警 / `test:image-endpoint` **43 checks**。真机生图验证（步骤 4）未做，需真实 provider，留给老大侧。
 
@@ -77,6 +79,7 @@
 | 文件 | 动作 |
 |---|---|
 | `src/runtime/WishfulClaw.Infrastructure/Storage/ProviderCompletionSettings.cs` | 修改：record 扩两字段 + Read/Write 增两键 |
+| `src/runtime/WishfulClaw.Agent/ProviderCompletionSettingsService.cs` | 修改：`IsPair` 校验增第四对（`imageProviderId` / `imageModelId`）※事后补验补列 |
 | `src/renderer/src/components/settings/ProviderCompletionSettingsPanel.tsx` | 修改：第四档 + 按档过滤 |
 | `src/renderer/src/locales/zh/settings.json` | 修改：新增 image 档文案 + 改 tab 描述 |
 | `src/renderer/src/locales/en/settings.json` | 修改：同上（英文） |
@@ -94,7 +97,7 @@
 
 | 项目 | 位置 | 参考什么 |
 |---|---|---|
-| OpenCowork（`D:\claw\open-cowork-1.4.0`） | `settings/pages/model/ModelPage.tsx:1383-1388` | `imageOutput` 能力位 + `activeImageProviderId` / `activeImageModelId` 的成对写法 —— **注意**：它把这对值存在 provider-store，我方收起在 Worker `config.json`（与三档同源），只借它的「成对指定位」语义，不照搬存储位置 |
+| OpenCowork（`D:\claw\OpenCowork`） | `src/renderer/src/settings/pages/model/ModelPage.tsx:1383-1388` | `imageOutput` 能力位 + `activeImageProviderId` / `activeImageModelId` 的成对写法 —— **注意**：它把这对值存在 provider-store，我方收起在 Worker `config.json`（与三档同源），只借它的「成对指定位」语义，不照搬存储位置 |
 | 本仓 | `src/main/lib/image-endpoint.ts`、S-166 三级回落 | 收敛前后的复用对象 |
 
 ---

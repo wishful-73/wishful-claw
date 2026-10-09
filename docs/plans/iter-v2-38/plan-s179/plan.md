@@ -1,7 +1,7 @@
 # Plan-S179：子 Agent 卡片步骤列表「追着贴底」—— 240px 滚动区补自动滚动
 
 > 归属 iter-v2-38。需求正文见 [`../requirements/S-179.md`](../requirements/S-179.md)。
-> 状态：**已实施**（2026-10-09）。阶段二~四完成（唯一代码改动 = `SubAgentCard.tsx`）；阶段五审查 / 阶段六验证见同目录 `review_report.md` / `verification_report.md`。真机复验待老大。
+> 状态：**已完成**（2026-10-09）。阶段二~四完成（唯一代码改动 = `SubAgentCard.tsx`）；阶段五审查 / 阶段六验证见同目录 `review_report.md` / `verification_report.md`。**真机复验已通过**（老大 2026-10-09 13:45：「178和179都测试通过了」）。
 > 容器已由老大坐实 = **候选 A**（卡片内 240px 步骤列表，老大 2026-10-09 11:31）。
 > 一句话：卡片内那个 240px 滚动区**只有滚动条、没有任何自动滚动逻辑** —— 步骤往下长，视口钉在原地。
 
@@ -75,8 +75,8 @@ React.useEffect(() => {
 - [x] **步骤 3：整体门禁** —— `npm run typecheck` ＋ `dotnet build` ＋ `npm test`
   - 验证：全绿 ⇒ 本刀测通，按一需求一刀提交
   - 结果：`npm run typecheck` EXIT=0（node + web）；`dotnet build src/runtime/WishfulClaw.sln` 0 错 0 警；`npm test` **67/67**
-- [ ] **步骤 4：真机复验（老大侧）** —— 展开一个正在跑的子 Agent 卡片，步骤持续追加时视口应始终停在最新一步
-  - ⏳ **blocked：待老大真机**
+- [x] **步骤 4：真机复验（老大侧）** —— 展开一个正在跑的子 Agent 卡片，步骤持续追加时视口应始终停在最新一步
+  - ✅ **已通过**（老大 2026-10-09 13:45：「178和179都测试通过了」）
 
 ---
 

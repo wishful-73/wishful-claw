@@ -53,11 +53,11 @@
   - `:620-627`（anthropic 摘要）→ `ApplyAnthropic` + 保留 `x-api-key` / `anthropic-version`。
   - `:764-777`（openai 摘要）→ `ApplyOpenAiChat(request, provider, sessionId)` + 保留 `Authorization: Bearer`，删手抄的 opencode 门禁。
   - **行为有意变化**：两处开始带 `organization` / `project`（此前丢）—— 属修漏，需在验证里明说。
-  - **验证检查点**：编译 0 错；`git grep "ApiUserAgent.Apply\|ApplyHttpHeaderOverrides"` 结果只剩 `ProviderHttpHeaders` 内部 + 视频工具（`SeedanceVideoTools` / `XaiVideoTools`，见步骤 7）+ `ProviderTestService`（刻意不做）。
+  - **验证检查点**：编译 0 错；`git grep "ApiUserAgent.Apply\|ApplyHttpHeaderOverrides"` 结果只剩 `ProviderHttpHeaders` 内部 + 视频工具（`SeedanceVideoTools` / `XaiVideoTools`，见步骤 7）。（另见 `ProviderTestService` 手写 `Authorization` / `x-opencode-session`：该文件**不调用**上述两个符号，不会出现在本 grep 结果里，属刻意不做。）
 
 - [x] **步骤 6：补断言（新增，旧断言一条不改）**
   - 摘要路径可测性：仿 `ProviderTestService.BuildTestRequestForTests` 的先例，给 `ContextCompression` 两个摘要请求构造加测试缝（`internal static` + `...ForTests`）。
-  - 新增断言：① 两条摘要路径带上 `organization` / `project`；② 三协议（chat / responses / anthropic）收敛后的头字段集与 debug 头一致；③ opencode 门禁在三协议收敛后行为不变（`opencode` / 大小写变体 / 空值均不注入）。
+  - 新增断言：① 两条摘要路径带上 `organization` / `project`；② 三协议（chat / responses / anthropic）收敛后的头字段集与 debug 头一致；③ opencode 门禁在三协议收敛后行为不变（chat 协议注入 `opencode-go`；anthropic 协议永不注入）。（落地实测：断言 ③ 覆盖「注入 + 永不注入」两侧，未穷举大小写变体与空 sessionId。）
   - **验证检查点**：`dotnet build tests/WishfulClaw.Tests.sln` 0 错；`ProviderHeader` 套件全绿（含新增断言）。
 
 - [x] **步骤 7：视频工具并入与否的结论**
@@ -66,7 +66,7 @@
   - **验证检查点**：结论落纸，不留下「待定」。
 
 - [x] **步骤 8：整体测通**
-  - `npm run typecheck` 三配置 0 错；`dotnet build src/runtime/WishfulClaw.sln` 0 错 0 警；`npm test` **65/65**（含步骤 6 新增断言）。
+  - `npm run typecheck` 三配置 0 错；`dotnet build src/runtime/WishfulClaw.sln` 0 错 0 警；`npm test` **66/66**（含步骤 6 新增断言）。
   - 真机：配一个带 `organization` / `project` 的 OpenAI 兼容 provider，跑一轮触发自动压缩，确认**摘要请求头 = 聊天请求头**（看 `request_debug` 事件或抓包）。
   - **验证检查点**：上述三项全过 ⇒ 本刀测通，按一需求一刀提交。
 
@@ -81,7 +81,6 @@
 | `src/runtime/WishfulClaw.Agent/OpenAIResponsesProvider.cs` | 修改：`ApplyHeaders` / `BuildDebugHeaders` 收敛 |
 | `src/runtime/WishfulClaw.Agent/AnthropicMessagesProvider.cs` | 修改：`ApplyHeaders` / `BuildDebugHeaders` 收敛 |
 | `src/runtime/WishfulClaw.Agent/ContextCompression.cs` | 修改：两处摘要头链收敛 + 测试缝 |
-| `src/runtime/WishfulClaw.Agent/ProviderHttpHeaders.cs` | 修改：类注释去掉「debug 变体刻意缺失」（S-171 的边界已不成立） |
 | `tests/WishfulClaw.ProviderHeaderRegressionTests/*.cs` | 新增断言（新文件），旧断言不动 |
 | `docs/plans/iter-v2-38/requirements/S-172.md` | 回填「代价与取舍」「刻意不做」与实施记录 |
 
@@ -108,5 +107,6 @@
 1. **步骤 4/6 修正**：`AnthropicMessagesProvider` **不补** `organization` / `project`（详见 §二 表格里的「协议无关」是按错误判断写的）—— 那两项是 OpenAI 品牌头，`ApplyAnthropic` 保持「UA + overrides + Ensure」两件套。
 2. **步骤 6 的测试缝改用真名**：`BuildAnthropicSummaryRequest` / `BuildOpenAiSummaryRequest` 是调用点直接使用的真实构造方法，没有 `ForTests` 后缀；唯一纯测试转发是 `AnthropicMessagesProvider.BuildDebugHeadersForTests`。
 3. **`OpenAIResponsesProvider` 无测试缝**：其 `ApplyHeaders` / `BuildDebugHeaders` 均为 `private`，且需求不要求为它开缝，故该文件按「编译 0 错 0 警 + 代码复核」验证（sessionId 已接进 `state.SessionId`）。
+4. **顺带去 BOM**：`AnthropicMessagesProvider.cs` 第 1 行 UTF-8 BOM 在本次改动中一并移除 —— 方向与仓库「无 BOM」纪律一致，非行为变化、非回退（此项系事后补验发现，已知晓）。
 
 门禁：`dotnet build` 0 错 0 警 / `npm run typecheck` 0 错 / `npm test` **66/66**（`ProviderHeader` 全绿，旧断言一条未改）。真机自动压缩验证（§8 第二项）未做，需真实 provider，留给老大侧。

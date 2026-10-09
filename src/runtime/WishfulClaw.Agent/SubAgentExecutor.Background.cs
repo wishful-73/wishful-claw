@@ -205,8 +205,9 @@ public static partial class SubAgentExecutor
             $"  ID: {toolCallId}\n" +
             $"  Agent: {definition.Name}\n" +
             $"  Description: {description}\n" +
-            $"The sub-agent is running in the background. You can continue working.\n" +
-            $"Use SubAgentStatus to check its progress. When it completes, you will be notified automatically.";
+            $"The sub-agent is running in the background. Do not block, sleep, or poll for it.\n" +
+            $"Continue with other work, or end your turn — when it finishes, its report is delivered to you automatically as a new message.\n" +
+            $"Call SubAgentStatus only if you deliberately want a mid-flight progress check.";
 
         return Task.FromResult(new ToolResult(placeholder));
     }

@@ -1080,7 +1080,11 @@
     "persona": {
       "noPersonas": "No project-specific personas yet. Add personas via the persona settings page.",
       "goToSettings": "Persona settings",
-      "selectFile": "Select a persona file to preview"
+      "selectFile": "Select a persona file to preview",
+      "delete": "Delete",
+      "deleteConfirmTitle": "Delete project persona",
+      "deleteConfirmDesc": "Remove \"{{name}}\" from this project. Global personas and built-in presets are not affected.",
+      "deleteConfirmLabel": "Delete"
     },
     "codegraph": {
       "title": "Code graph",

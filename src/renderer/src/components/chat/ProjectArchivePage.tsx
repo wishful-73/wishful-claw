@@ -8,13 +8,16 @@ import {
   Loader2,
   RefreshCw,
   Terminal,
+  Trash2,
   User
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@renderer/components/ui/button'
+import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { usePersonaStore } from '@renderer/stores/persona-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { cn } from '@renderer/lib/utils'
@@ -57,6 +60,11 @@ export function ProjectArchivePage(): React.JSX.Element {
   const [reloadToken, setReloadToken] = useState(0)
   const [personas, setPersonas] = useState<PersonaSummary[]>([])
   const [personasLoading, setPersonasLoading] = useState(false)
+  // S-184: the persona tab used to hard-code personas[0] for the preview, so clicking a
+  // persona did nothing. Selection lives here and falls back to the first entry.
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
+  const [personaError, setPersonaError] = useState<string | null>(null)
+  const [personaDeleting, setPersonaDeleting] = useState(false)
   // unused: dormant files are stored in SQLite, not filesystem
 
   const sshConnectionId = activeProject?.sshConnectionId
@@ -112,6 +120,48 @@ export function ProjectArchivePage(): React.JSX.Element {
     setPersonas(results)
     setPersonasLoading(false)
   }, [personasDir])
+
+  // S-184 (B): the preview follows the clicked persona; the first entry stays the default.
+  const selectedPersona = useMemo(
+    () => personas.find((p) => p.id === selectedPersonaId) ?? personas[0] ?? null,
+    [personas, selectedPersonaId]
+  )
+
+  // S-184 (C): delete the selected project persona. This goes through the local fs channel
+  // rather than persona/delete because an SSH project's personas live under
+  // ~/.wishful-claw/projects/{id}/personas, which persona/delete(workingFolder) cannot address.
+  const handleDeletePersona = useCallback(async () => {
+    if (!selectedPersona || !personasDir) return
+
+    const ok = await confirm({
+      title: t('projectArchive.persona.deleteConfirmTitle', {
+        defaultValue: '删除项目人格'
+      }),
+      description: t('projectArchive.persona.deleteConfirmDesc', {
+        name: selectedPersona.name,
+        defaultValue: '将从本项目删除「{{name}}」，全局人格与内置预设不受影响。'
+      }),
+      confirmLabel: t('projectArchive.persona.deleteConfirmLabel', { defaultValue: '删除' }),
+      variant: 'destructive'
+    })
+    if (!ok) return
+
+    setPersonaDeleting(true)
+    setPersonaError(null)
+    try {
+      await ipcClient.invoke(IPC.FS_DELETE, {
+        path: joinFsPath(personasDir, selectedPersona.id)
+      })
+      setSelectedPersonaId(null)
+      await loadPersonas()
+      // Keep the persona settings page in step with what was just removed.
+      void usePersonaStore.getState().listPersonas(isSshProject ? undefined : workingFolder)
+    } catch (err) {
+      setPersonaError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPersonaDeleting(false)
+    }
+  }, [selectedPersona, personasDir, loadPersonas, isSshProject, workingFolder, t])
 
   // ─── Load dormant files ───
 
@@ -343,25 +393,43 @@ export function ProjectArchivePage(): React.JSX.Element {
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     {personas.map((p) => (
                       <Button
                         key={p.id}
-                        variant="outline"
+                        variant={p.id === selectedPersona?.id ? 'default' : 'outline'}
                         size="sm"
                         className="h-8 rounded-md px-3 text-xs"
-                        onClick={() => setActiveTab('persona')}
+                        onClick={() => setSelectedPersonaId(p.id)}
                       >
                         <User className="mr-1.5 size-3.5" />
                         {p.name}
                       </Button>
                     ))}
                   </div>
-                  <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border/60 p-4">
-                    {personas.length > 0 && (
-                      <PersonaFilePreview
-                        persona={personas[0]}
-                      />
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border/60 p-4">
+                    <div className="flex shrink-0 items-center justify-between gap-3 pb-3">
+                      <span className="truncate text-sm font-medium">{selectedPersona?.name}</span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-8 shrink-0 rounded-md px-3 text-xs"
+                        onClick={() => void handleDeletePersona()}
+                        disabled={personaDeleting}
+                      >
+                        {personaDeleting ? (
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="mr-1.5 size-3.5" />
+                        )}
+                        {t('projectArchive.persona.delete', { defaultValue: '删除' })}
+                      </Button>
+                    </div>
+                    {personaError && (
+                      <p className="shrink-0 pb-3 text-xs text-destructive">{personaError}</p>
+                    )}
+                    {selectedPersona && (
+                      <PersonaFilePreview key={selectedPersona.id} persona={selectedPersona} />
                     )}
                   </div>
                 </div>

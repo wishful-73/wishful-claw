@@ -14,6 +14,23 @@ export const BRAND = {
 
 export const GITHUB_REPO_URL = 'https://github.com/wishful-73/wishful-claw'
 
+// 安装包在 GitHub Releases 上的基址（S-186）：直链 = `{基址}/v{版本}/{文件名}`。
+// 与 GITHUB_REPO_URL 分开写，因为这里要的是 `releases/download` 那一段而非仓库首页。
+export const GITHUB_RELEASES_BASE = `${GITHUB_REPO_URL}/releases/download`
+
+// 下载源（S-186，2026-10-10 老大给的 4 个加速站 + GitHub 直链）。
+// 顺序即下拉里的顺序：实测可用的排前面，失效的保留并标注（站点状态随时会变，写死「只上能用的」迟早要改）。
+// `prefix` 为空的项不需要拼接（GitHub 直链就是直链本身）。
+// ⚠️ 下载按钮上的 href **不直指这里的前缀**，而是先到官网中转页 `/go`（S-186 §六），
+//    既让 nginx 数得到点击，也不怕第三方站点挂掉后变成死链。
+export const downloadSources = [
+  { id: 'ghproxy.net', label: 'ghproxy.net', prefix: 'https://ghproxy.net/', note: '支持断点续传' },
+  { id: 'v6.gh-proxy.org', label: 'v6.gh-proxy.org', prefix: 'https://v6.gh-proxy.org/', note: '支持 IPv6' },
+  { id: 'ghproxy.homeboyc.cn', label: 'ghproxy.homeboyc.cn', prefix: 'https://ghproxy.homeboyc.cn/', note: '当前不可用' },
+  { id: 'gitproxy.click', label: 'gitproxy.click', prefix: 'https://gitproxy.click/', note: '当前不可用' },
+  { id: 'github', label: 'GitHub 直链', prefix: '', note: '境外 / 已开代理最快' }
+] as const
+
 // 下载平台。产物目前只有 Windows（electron-builder.yml 只配了 nsis）⇒ 只有它绑清单里的安装包；
 // Mac / Linux 能出包（老大 2026-09-21：目前用不到所以没做）⇒ 是「待发布」占位，不是「不支持」，不给时间承诺。
 // 原每个平台带一个 urlKey 去 latest.json 的 downloads 取 URL；S-129 把数据源换成 builder 生成的

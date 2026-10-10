@@ -1,6 +1,7 @@
+import { useEffect, useRef, useState } from 'react'
 import type { ReleaseManifest } from '../lib/latest-yml'
-import { releaseFileUrl } from '../lib/latest-yml'
-import { platforms } from '../content/site'
+import { acceleratedUrl, githubDirectUrl, goUrl, releaseFileUrl } from '../lib/latest-yml'
+import { downloadSources, platforms } from '../content/site'
 import { PlatformIcon } from './platform-icons'
 
 export type Platform = (typeof platforms)[number]
@@ -10,6 +11,104 @@ export type Platform = (typeof platforms)[number]
 // 光效（旋转描边环 + 扫光）在 index.css 的 .dl-current / .dl-shine 里，只有真能下的平台挂。
 const box = 'flex h-14 items-center justify-center gap-3 rounded-full px-6 text-[15px] font-semibold transition-transform'
 const tag = 'whitespace-nowrap rounded border border-ink-700 px-1.5 py-0.5 text-[11px] text-ink-900/45'
+
+// 下拉菜单项：左源名、右一行小字说明；整行可点。
+const menuItem = 'flex items-center justify-between gap-3 px-3.5 py-2 text-sm text-ink-900 hover:bg-paper-soft'
+const menuNote = 'shrink-0 text-xs text-ink-900/45'
+
+// Windows 下载项（S-186，2026-10-10 老大）：主按钮 + 源菜单。
+//
+// 起因：服务器 1M 带宽，实测下载只有约 128 KB/s ⇒ 安装包改从 GitHub Releases 取，
+// 经国内公益加速站下载；软件内的自动更新链路（`latest.yml` / blockmap / 差分）**不调整**。
+//
+// 形态（助手拍定，非老大裁定）：
+//   · 主按钮 = 默认源（第一个实测可用的加速站），一次点击直接下，不多一步；
+//   · 右侧圆按钮展开菜单换源（少数情况）；
+//   · 每个源都先到官网自己的中转页 `/go`（S-186 §六）—— 页面请求本身就被 nginx 记下，
+//     中转页里不用写任何上报代码；「本站直链」那一项除外，它不经 `/go`，直接指自己服务器。
+//
+// 光效只挂主按钮：`.dl-current` 的负 z-index 光环靠 `isolation: isolate` 圈在按钮自身范围内，
+// 挂到包着「主按钮 + 箭头」的外层容器上会被 ::after 的实心层盖住箭头（该层 `z-index: -1` 且铺满容器）。
+function WindowsDownload(props: { platform: Platform; manifest: ReleaseManifest }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // 点别处 / 按 Esc 收起菜单。只认 mousedown：click 要留给菜单项自己的跳转。
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  const direct = githubDirectUrl(props.manifest)
+  const local = releaseFileUrl(props.manifest)
+  const primary = downloadSources[0]
+
+  return (
+    <div ref={rootRef} className="relative w-full">
+      <div className="flex w-full items-center gap-2">
+        {/* 主按钮：默认源。不再挂 `download` 属性 —— 跨域时浏览器本就忽略它（见下），
+            文件名改由加速站 / GitHub 的 `Content-Disposition` 决定。 */}
+        <a
+          href={goUrl(primary.id, acceleratedUrl(primary.prefix, direct))}
+          className={`${box} dl-current flex-1 bg-accent text-white hover:scale-[1.04]`}
+        >
+          <span className="dl-shine" aria-hidden="true" />
+          <PlatformIcon id={props.platform.id} />
+          {props.platform.label}
+        </a>
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="选择下载源"
+          onClick={() => setOpen((value) => !value)}
+          className="flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-white transition-transform hover:scale-[1.04]"
+        >
+          <svg viewBox="0 0 24 24" fill="none" className={`size-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-ink-700 bg-paper py-1 shadow-lg"
+        >
+          {downloadSources.map((source) => (
+            <a
+              key={source.id}
+              role="menuitem"
+              href={goUrl(source.id, acceleratedUrl(source.prefix, direct))}
+              className={menuItem}
+            >
+              <span className="truncate">{source.label}</span>
+              {source.note && <span className={menuNote}>{source.note}</span>}
+            </a>
+          ))}
+          <div className="my-1 h-px bg-ink-700" />
+          {/* 本站直链：不走 /go（它自己就是 nginx 数得到的那个来源），保留 `download`
+              —— 同域请求下这个属性真正生效。 */}
+          <a role="menuitem" href={local} download className={menuItem}>
+            <span className="truncate">本站直链</span>
+            <span className={menuNote}>服务器带宽小，较慢</span>
+          </a>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // 单平台入口：清单读到 + 该平台有产物 ⇒ 真下载链接，否则置灰并挂小标签说明状态
 // （Windows 置灰 = downloads/latest.yml 没读到；macOS / Linux 置灰 = 安装包本身还没出）
@@ -22,18 +121,10 @@ const tag = 'whitespace-nowrap rounded border border-ink-700 px-1.5 py-0.5 text-
 //      标签不占任何布局空间（与 Windows 项等高）。摆放用 `right-3` 靠右，按钮正文仍居中，二者不重叠。
 // 2026-09-24：形态改胶囊 + 平台图标（抄 mimo.xiaomimimo.com 的下载按钮）。只有能下的那个平台挂
 //   `dl-current` 拿旋转描边环与扫光 —— 三个一起闪就成了霓虹灯，重点也没了（同 .shine 文字闪光的取舍）。
+// 2026-10-10（S-186）：Windows 项改「主按钮 + 源菜单」（见 WindowsDownload）；两个占位平台的形态不动。
 export function PlatformButton(props: { platform: Platform; manifest: ReleaseManifest | undefined }) {
-  // 唯一产物是 Windows 安装包；地址落在官网的下载目录（同域的 `/downloads`）⇒
-  // `download` 属性真正生效（跨域时浏览器会忽略它，早先指 GitHub 直链就是那种情况）。
-  const url = props.platform.id === 'windows' && props.manifest ? releaseFileUrl(props.manifest) : ''
-  if (url) {
-    return (
-      <a href={url} download className={`${box} dl-current bg-accent text-white hover:scale-[1.04]`}>
-        <span className="dl-shine" aria-hidden="true" />
-        <PlatformIcon id={props.platform.id} />
-        {props.platform.label}
-      </a>
-    )
+  if (props.platform.id === 'windows' && props.manifest) {
+    return <WindowsDownload platform={props.platform} manifest={props.manifest} />
   }
   return (
     <div className="relative">
@@ -51,10 +142,17 @@ export function PlatformButton(props: { platform: Platform; manifest: ReleaseMan
 // 不再放 GitHub 按钮：同一张卡下方已有「查看全部版本 →」指向同一处，一张卡里挂两个同一链接是冗余。
 export function DownloadButtons(props: { manifest: ReleaseManifest | undefined }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {platforms.map((platform) => (
-        <PlatformButton key={platform.id} platform={platform} manifest={props.manifest} />
-      ))}
-    </div>
+    <>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {platforms.map((platform) => (
+          <PlatformButton key={platform.id} platform={platform} manifest={props.manifest} />
+        ))}
+      </div>
+      {/* 来源说明（S-186 §五 第 4 条，属实施细节）：加速站是公益服务，随时可能失效 —— 先说清楚，
+          用户遇到打不开时知道换一个，而不是以为下载坏了。 */}
+      <p className="mt-4 text-xs text-ink-900/45">
+        下载由第三方公益加速站提供；若某个源不可用，请点右侧箭头换一个。
+      </p>
+    </>
   )
 }

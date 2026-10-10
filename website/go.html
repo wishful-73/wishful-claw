@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="./logo.png" />
+    <!-- 下载中转页（S-186）：下载按钮先到这里，再由页面跳到加速站。
+         nginx 侧的 location 与独立日志归 S-182；本页只负责「跳过去」+ 兜底链接。 -->
+    <title>正在前往下载 — 心相智能助手 WishfulClaw</title>
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/go-main.tsx"></script>
+  </body>
+</html>

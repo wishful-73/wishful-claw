@@ -198,9 +198,9 @@ export function ProjectArchivePage(): React.JSX.Element {
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden bg-background px-6 pb-6 pt-4">
-      <div className="mx-auto w-full max-w-[1480px]">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1480px] flex-1 flex-col">
         {/* ── Header: Project info ── */}
-        <div className="flex flex-wrap items-end justify-between gap-4 pb-4">
+        <div className="flex shrink-0 flex-wrap items-end justify-between gap-4 pb-4">
           <div className="min-w-0">
             <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
               {t('projectArchive.title', { defaultValue: 'Project archive' })}
@@ -272,12 +272,12 @@ export function ProjectArchivePage(): React.JSX.Element {
         </div>
 
         {/* ── Code graph (per-project index) ── */}
-        <div className="pb-4">
+        <div className="shrink-0 pb-4">
           <CodeGraphProjectIndexSection />
         </div>
 
         {/* ── Tab bar ── */}
-        <div className="flex gap-1 border-b border-border/60 pb-2">
+        <div className="flex shrink-0 gap-1 border-b border-border/60 pb-2">
           {MEMORY_TABS.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.id

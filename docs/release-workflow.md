@@ -224,6 +224,53 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 > `ssh … "echo $b64 | base64 -d | bash"` —— base64 只含 `A-Za-z0-9+/=`，不被任何一层改写。
 > 2026-10-08 补传 0.2.36 的 blockmap（118,949 B）与验证新清理逻辑都是这么跑的。
 
+#### 4.2.2 官网统计口径（下载次数 / 访问次数，S-182）
+
+官网的「下载次数」与「访问次数」全部来自 **nginx 日志的每日聚合** —— **没有后端服务、没有前端埋点**。
+
+**三个日志源（互不重叠，各自去重后相加）**：
+
+| 日志 | 内容 | 对应指标 | nginx 落点 |
+|---|---|---|---|
+| `/var/log/nginx/access.log` | 页面访问（`/`、`/download`、`/guide`、`*.html`） | **访问次数**（PV） | 默认 |
+| `/var/log/nginx/wishfulclaw-clicks.log` | 官网点下载（中转页 `/go`） | 下载次数 · `web_click` | snippet `location = /go` |
+| `/var/log/nginx/wishfulclaw-downloads.log` | 安装包被下载 | 下载次数 · `web_download_local`（浏览器）/ `app_update`（updater） | snippet `location ^~ /downloads/` |
+
+- **`/downloads/` 原来是 `access_log off`** —— S-182 起改为记录；`latest.yml`（检查更新）与 `.blockmap` **不计入**。
+- **下载的两个来源靠 UA 分**：含 `electron-updater` / `electron-builder` ⇒ 应用内自动更新，否则 ⇒ 官网点的「本站直链」。
+- **中转页 `/go` 不写任何上报代码** —— 页面请求本身就被 nginx 记下。location 里写了 `access_log` 会**覆盖** server 级的 ⇒ `/go` 的请求不会同时进 `access.log`（这是「两源正交」的前提）。
+
+**计数规则**：按「客户端 IP + User-Agent + 文件名」去重，**窗口 1 小时**（实现上按小时桶）。这样并掉浏览器多线程 `Range` 与 updater 的分段请求；代价是 NAT 出口同小时的多人并成 1 次。
+
+**机器人过滤**：UA 为空或含 `bot|spider|crawl|scan|curl|wget|python-requests|zgrab|masscan|headless` 的行不计入，日文件里单独记 `filtered_bots`。
+
+**服务器侧文件**：
+
+```
+/etc/nginx/conf.d/wishfulclaw-logs.conf      ← log_format wishfulclaw_dl（log_format 只能在 http 上下文）
+/etc/nginx/snippets/wishfulclaw-site.conf    ← /go、/stats.json、/downloads/ 的 access_log
+/usr/local/bin/wishfulclaw-stats.sh          ← 聚合脚本（cron 调用，也可手工 sudo 跑）
+/data/stats/YYYY-MM-DD.json                  ← 逐日结果
+/data/stats/summary.json                     ← 累计（由全部日文件重算）
+```
+
+- cron：`25 4 * * * /usr/local/bin/wishfulclaw-stats.sh >> /var/log/wishfulclaw-stats.log 2>&1`（**追加**一条，不动既有的 stargate 心跳与证书自检两条）。
+- 聚合**幂等**：每次跑都按**日志内容**重算「日志里出现过的每一天」并覆盖日文件；轮转掉的天不再出现在日志里，日文件保持上次结果。`summary.json` 由**全部**日文件重算，不做增量累加。
+- ⚠️ **`/data/stats` 与 `/data/downloads/wishfulclaw` 同理，刻意放站点目录之外** —— `deploy site` 是整目录原子替换，放站点里会被清掉。对外由 `location = /stats.json { alias /data/stats/summary.json; expires -1; }` 提供。
+- ⚠️ **这里别用 `add_header Cache-Control`** —— 会吃掉该 location 的安全头（见 snippet 文件头注释），用 `expires -1`。
+
+**本地看报表**：
+
+```bash
+node scripts/site-stats.mjs            # 累计 + 最近 7 天
+node scripts/site-stats.mjs --days 30
+node scripts/site-stats.mjs --json     # 原样打印 summary.json
+```
+
+**前端展示**：`website/src/lib/site-stats.ts` 拉 `./stats.json`，下载页注脚显示「已下载 N 次」、全站 footer 显示「访问 N 次」。**不足 100 次不显示**（数字从 0 起算，不造假起点）；取不到 JSON 时整段不显示、不报错。
+
+**已知偏差**：数的是「**点击**」（进了中转页），不是「加速站真实传输完成」—— 第三方不回报，这是能拿到的最接近分发量的数。
+
 ### 4.3 创建 GitHub Release（存档）
 
 gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝对路径**调用）。

@@ -1,6 +1,8 @@
 import { BRAND, footer } from '../content/site'
+import { formatCount, MIN_VISIBLE_COUNT, useSiteStats } from '../lib/site-stats'
 
 export function SiteFooter() {
+  const visits = useSiteStats()?.visits
   return (
     <footer className="border-t border-ink-700 bg-paper-soft py-12">
       <div className="flex w-full flex-col gap-4 px-6 text-sm text-ink-900/55 sm:flex-row sm:items-center sm:justify-between sm:px-10 lg:px-14">
@@ -17,6 +19,8 @@ export function SiteFooter() {
             <a href={footer.feedback} target="_blank" rel="noopener noreferrer" className="hover:text-accent">
               问题反馈
             </a>
+            {/* 访问次数（S-182）：全站 footer 展示，与下载次数同一条口径（不足 100 次不显示）。 */}
+            {visits !== undefined && visits >= MIN_VISIBLE_COUNT && <span>访问 {formatCount(visits)} 次</span>}
           </p>
         </div>
         <p className="text-xs text-ink-900/35">

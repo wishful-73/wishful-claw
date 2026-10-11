@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReleaseManifest } from '../lib/latest-yml'
-import { acceleratedUrl, githubDirectUrl, goUrl, releaseFileUrl } from '../lib/latest-yml'
+import { goUrl, releaseFileUrl } from '../lib/latest-yml'
 import { downloadSources, platforms } from '../content/site'
 import { PlatformIcon } from './platform-icons'
 
@@ -21,14 +21,21 @@ const menuNote = 'shrink-0 text-xs text-ink-900/45'
 // 起因：服务器 1M 带宽，实测下载只有约 128 KB/s ⇒ 安装包改从 GitHub Releases 取，
 // 经国内公益加速站下载；软件内的自动更新链路（`latest.yml` / blockmap / 差分）**不调整**。
 //
-// 形态（助手拍定，非老大裁定）：
-//   · 主按钮 = 默认源（第一个实测可用的加速站），一次点击直接下，不多一步；
-//   · 右侧圆按钮展开菜单换源（少数情况）；
+// 形态（2026-10-11 老大：下拉与按钮合并，别单独挂一个圆钮）：
+//   · 一条分体胶囊 —— 左侧主下载区 = 默认源（第一个实测可用的加速站），一次点击直接下，不多一步；
+//   · 右侧箭头区（同一条胶囊内，1px 分隔线）展开菜单换源（少数情况）；
+//   · 所有下载入口一律 `target="_blank"` **新开选项卡**（2026-10-11 老大）—— 下载页是本站，
+//     不能被这次下载顶掉：原先当前页跳到 `/go` 再跳加速站，地址栏一换本站就「没了」，
+//     用户想换个源还得先按返回。新开选项卡后本站原地不动，下载在另一个选项卡里走完。
 //   · 每个源都先到官网自己的中转页 `/go`（S-186 §六）—— 页面请求本身就被 nginx 记下，
 //     中转页里不用写任何上报代码；「本站直链」那一项除外，它不经 `/go`，直接指自己服务器。
+//     href 只带源名（`goUrl`），加速站前缀与 GitHub 直链由中转页自己按 `latest.yml` 拼 ——
+//     地址里不再出现目标 URL（2026-10-11 收紧，原先整条直链放在 `u` 参数里）。
 //
-// 光效只挂主按钮：`.dl-current` 的负 z-index 光环靠 `isolation: isolate` 圈在按钮自身范围内，
-// 挂到包着「主按钮 + 箭头」的外层容器上会被 ::after 的实心层盖住箭头（该层 `z-index: -1` 且铺满容器）。
+// 光效挂整条胶囊容器（不再只挂主按钮）：`.dl-current` 的负 z-index 光环靠 `isolation: isolate`
+// 圈在容器自身范围内。
+// ⚠️ 容器里的箭头必须自己提层级（`absolute z-10`）—— `::after` 是铺满容器的实心层（`z-index: -1`），
+//    不提会被它盖住；主下载区在正常流里，天然落在 `::after` 之上，不用特殊处理。
 function WindowsDownload(props: { platform: Platform; manifest: ReleaseManifest }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -50,20 +57,25 @@ function WindowsDownload(props: { platform: Platform; manifest: ReleaseManifest 
     }
   }, [open])
 
-  const direct = githubDirectUrl(props.manifest)
   const local = releaseFileUrl(props.manifest)
   const primary = downloadSources[0]
 
   return (
     <div ref={rootRef} className="relative w-full">
-      <div className="flex w-full items-center gap-2">
-        {/* 主按钮：默认源。不再挂 `download` 属性 —— 跨域时浏览器本就忽略它（见下），
-            文件名改由加速站 / GitHub 的 `Content-Disposition` 决定。 */}
+      {/* 分体胶囊（2026-10-11 老大：下拉不要单独挂一个圆钮）：主下载区与右侧箭头同处一个圆角容器
+          —— 下载页三平台并排时，与 macOS / Linux 的素胶囊同宽同形。 */}
+      <div className="dl-current flex h-14 w-full items-center overflow-hidden rounded-full bg-accent text-white transition-transform hover:scale-[1.04]">
+        <span className="dl-shine" aria-hidden="true" />
+        {/* 主下载区：默认源，一次点击直接下。`px-12` 两侧对称 —— 右侧 48px 正好让给箭头区，
+            文字因此仍居中于整条胶囊，也不会被箭头压住。
+            不再挂 `download` 属性 —— 跨域时浏览器本就忽略它（见下），文件名改由加速站 / GitHub
+            的 `Content-Disposition` 决定。 */}
         <a
-          href={goUrl(primary.id, acceleratedUrl(primary.prefix, direct))}
-          className={`${box} dl-current flex-1 bg-accent text-white hover:scale-[1.04]`}
+          href={goUrl(primary.id)}
+          target="_blank"
+          rel="noopener"
+          className="flex h-full w-full items-center justify-center gap-3 px-12 text-[15px] font-semibold"
         >
-          <span className="dl-shine" aria-hidden="true" />
           <PlatformIcon id={props.platform.id} />
           {props.platform.label}
         </a>
@@ -73,7 +85,7 @@ function WindowsDownload(props: { platform: Platform; manifest: ReleaseManifest 
           aria-expanded={open}
           aria-label="选择下载源"
           onClick={() => setOpen((value) => !value)}
-          className="flex size-14 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent text-white transition-transform hover:scale-[1.04]"
+          className="absolute top-0 right-0 z-10 flex h-full w-12 cursor-pointer items-center justify-center border-l border-white/25"
         >
           <svg viewBox="0 0 24 24" fill="none" className={`size-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true">
             <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -90,7 +102,9 @@ function WindowsDownload(props: { platform: Platform; manifest: ReleaseManifest 
             <a
               key={source.id}
               role="menuitem"
-              href={goUrl(source.id, acceleratedUrl(source.prefix, direct))}
+              href={goUrl(source.id)}
+              target="_blank"
+              rel="noopener"
               className={menuItem}
             >
               <span className="truncate">{source.label}</span>
@@ -100,7 +114,7 @@ function WindowsDownload(props: { platform: Platform; manifest: ReleaseManifest 
           <div className="my-1 h-px bg-ink-700" />
           {/* 本站直链：不走 /go（它自己就是 nginx 数得到的那个来源），保留 `download`
               —— 同域请求下这个属性真正生效。 */}
-          <a role="menuitem" href={local} download className={menuItem}>
+          <a role="menuitem" href={local} download target="_blank" rel="noopener" className={menuItem}>
             <span className="truncate">本站直链</span>
             <span className={menuNote}>服务器带宽小，较慢</span>
           </a>

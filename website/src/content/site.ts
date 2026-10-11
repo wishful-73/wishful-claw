@@ -18,17 +18,16 @@ export const GITHUB_REPO_URL = 'https://github.com/wishful-73/wishful-claw'
 // 与 GITHUB_REPO_URL 分开写，因为这里要的是 `releases/download` 那一段而非仓库首页。
 export const GITHUB_RELEASES_BASE = `${GITHUB_REPO_URL}/releases/download`
 
-// 下载源（S-186，2026-10-10 老大给的 4 个加速站 + GitHub 直链）。
-// 顺序即下拉里的顺序：实测可用的排前面，失效的保留并标注（站点状态随时会变，写死「只上能用的」迟早要改）。
+// 下载源（S-186，2026-10-11 老大定稿）：两个加速站 + GitHub 直链。
+// 顺序即下拉里的顺序。失效的源**不保留** —— 2026-10-11 老大把当时标着「当前不可用」的两项
+//（ghproxy.homeboyc.cn、gitproxy.click）删了，理由：菜单里不摆废链接。
 // `prefix` 为空的项不需要拼接（GitHub 直链就是直链本身）。
 // ⚠️ 下载按钮上的 href **不直指这里的前缀**，而是先到官网中转页 `/go`（S-186 §六），
 //    既让 nginx 数得到点击，也不怕第三方站点挂掉后变成死链。
 export const downloadSources = [
   { id: 'ghproxy.net', label: 'ghproxy.net', prefix: 'https://ghproxy.net/', note: '支持断点续传' },
   { id: 'v6.gh-proxy.org', label: 'v6.gh-proxy.org', prefix: 'https://v6.gh-proxy.org/', note: '支持 IPv6' },
-  { id: 'ghproxy.homeboyc.cn', label: 'ghproxy.homeboyc.cn', prefix: 'https://ghproxy.homeboyc.cn/', note: '当前不可用' },
-  { id: 'gitproxy.click', label: 'gitproxy.click', prefix: 'https://gitproxy.click/', note: '当前不可用' },
-  { id: 'github', label: 'GitHub 直链', prefix: '', note: '境外 / 已开代理最快' }
+  { id: 'github', label: 'GitHub 直链', prefix: '', note: '源链，国内波动大' }
 ] as const
 
 // 下载平台。产物目前只有 Windows（electron-builder.yml 只配了 nsis）⇒ 只有它绑清单里的安装包；

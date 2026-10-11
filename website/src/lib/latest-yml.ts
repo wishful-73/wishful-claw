@@ -77,11 +77,16 @@ export function acceleratedUrl(prefix: string, direct: string): string {
 }
 
 /**
- * 官网中转页地址（S-186 §六）：`./go?src=<源名>&u=<目标直链>`。
+ * 官网中转页地址（S-186 §六）：`./go?src=<源名>`。
  *
  * 下载按钮指这里而不是直指第三方 —— 页面请求本身就被 nginx 记下（`clicks` 日志），
  * 中转页里一行上报代码都不用写。相对路径写法与 `releaseFileUrl` 同理（根部署 / 子目录部署都可用）。
+ *
+ * 2026-10-11 收紧：**只带源名**，目标直链由中转页自己按 `latest.yml` 拼（原先整个放进
+ * `u` 参数 ⇒ 让 URL 决定了跳去哪，等于拿官网域名当跳板的开放重定向）。现在地址里没有
+ * 任何外部可控的目标地址，源名查不到就回落默认源。计数口径不变（仍是 `$request` 里的
+ * `/go` 那条，`src` 用于分源），nginx 侧不用动。
  */
-export function goUrl(src: string, target: string): string {
-  return `./go?src=${encodeURIComponent(src)}&u=${encodeURIComponent(target)}`
+export function goUrl(src: string): string {
+  return `./go?src=${encodeURIComponent(src)}`
 }

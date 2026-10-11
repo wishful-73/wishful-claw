@@ -9,7 +9,8 @@ import { handleProjectSendSessionMessage } from '@renderer/lib/tools/project-sen
 import {
   handleProjectClearSessionQueue,
   handleProjectGetSessionQueue,
-  handleProjectRemoveSessionQueueMessage
+  handleProjectRemoveSessionQueueMessage,
+  handleProjectStopSessionRun
 } from '@renderer/lib/tools/project-session-queue'
 import { handleSessionFollowUpUpdate } from '@renderer/lib/tools/session-follow-up-runtime'
 import { extractVideoFrames, type VideoFrameRequest } from '@renderer/lib/tools/video-frames'
@@ -180,6 +181,15 @@ async function handleRendererToolRequest(payload: RendererToolRequestPayload): P
 
     if (payload.method === 'project/clear-session-queue') {
       const result = await handleProjectClearSessionQueue(payload.params)
+      await sendRendererToolResponse({
+        requestId: payload.requestId,
+        result
+      })
+      return
+    }
+
+    if (payload.method === 'project/stop-session-run') {
+      const result = await handleProjectStopSessionRun(payload.params)
       await sendRendererToolResponse({
         requestId: payload.requestId,
         result

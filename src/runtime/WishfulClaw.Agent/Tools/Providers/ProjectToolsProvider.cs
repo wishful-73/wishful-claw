@@ -179,5 +179,22 @@ public sealed class ProjectToolsProvider : IToolProvider
                 ["sessionId"]),
                 availableModes: new[] { "global" },
                 visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // stop_session_run: Interrupt the turn that is running right now.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "stop_session_run",
+            "Interrupt the turn a session is currently running, the same way the user's stop button does. "
+            + "Only the running turn stops; the pending queue is kept (its dispatch is paused, exactly as "
+            + "with a manual stop) and the session can be sent a new message afterwards. Fails when the "
+            + "session has no running turn.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session.")
+                },
+                ["sessionId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
     }
 }

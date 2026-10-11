@@ -6,11 +6,14 @@
  *   - `project/session-queue`                → read queue + live run state
  *   - `project/remove-session-queue-message` → drop one queued message
  *   - `project/clear-session-queue`          → drop every queued message
+ *   - `project/stop-session-run`             → stop the running turn (queue kept)
  *
  * The queue lives in renderer memory only (`use-chat-actions` pending store), so
  * these reuse exactly the API the queue panel in `InputArea` uses — no DB, no new
- * state. Nothing here touches the running turn: removing a queued message never
- * interrupts the active run, it only prevents that message from being dispatched.
+ * state. The queue handlers never interrupt the active run: removing a queued
+ * message only prevents it from being dispatched. Stopping the run is a separate
+ * tool (`project/stop-session-run`) that goes through the same `cancelStream` the
+ * UI stop button uses.
  */
 
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -172,5 +175,51 @@ export async function handleProjectClearSessionQueue(params: unknown): Promise<S
         ? `Cleared ${cleared} queued message(s) from session "${sessionId}". ` +
           'The running turn was not affected.'
         : `Session "${sessionId}" had no queued messages.`
+  }
+}
+
+export async function handleProjectStopSessionRun(params: unknown): Promise<SessionQueueResult> {
+  const { sessionId } = (params ?? {}) as { sessionId?: string }
+  if (!sessionId) {
+    return { success: false, error: 'Missing required field: sessionId' }
+  }
+  if (!(await ensureSessionExists(sessionId))) {
+    return {
+      success: false,
+      found: false,
+      sessionId,
+      error: `Session "${sessionId}" does not exist.`
+    }
+  }
+
+  // Same predicate `cancelStream` itself uses: a session can look "active" (a send is
+  // starting, or a status flag is set) without having a cancellable stream, and
+  // cancelStream silently returns in that case. Checking anything wider here would
+  // report a stop that never happened.
+  const runId = useChatStore.getState().streamingMessages[sessionId]
+  if (!runId) {
+    return {
+      success: false,
+      sessionId,
+      found: true,
+      error: `Session "${sessionId}" has no running turn to stop.`
+    }
+  }
+
+  await useChatStore.getState().cancelStream(sessionId)
+
+  const queued = getPendingSessionMessages(sessionId).length
+  return {
+    success: true,
+    sessionId,
+    found: true,
+    count: queued,
+    result:
+      `Stopped the running turn of session "${sessionId}". ` +
+      (queued > 0
+        ? `${queued} queued message(s) are kept, but their dispatch is now paused — ` +
+          'exactly what happens when the user presses stop in the UI. '
+        : 'The queue was empty. ') +
+      'You can send the session a new message now.'
   }
 }

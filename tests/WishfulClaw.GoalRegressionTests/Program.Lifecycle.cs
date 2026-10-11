@@ -405,12 +405,14 @@ internal static partial class Program
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
         // S-103 added create_project to the same GlobalSideOnly batch; the count moves with it.
-        // S-188 added the session-queue tools (get / remove / clear) and stop_session_run to that batch.
-        Assert(globalProjectCount == 10
+        // S-188 added the session-queue tools (get / remove / clear / resume) and stop_session_run
+        // to that batch.
+        Assert(globalProjectCount == 11
                && globalProjectNames.SequenceEqual([
                    "clear_session_queue", "create_project", "create_session", "get_project_details",
                    "get_session_queue", "list_projects", "remove_session_queue_message",
-                   "send_session_message", "stop_session_run", "update_session_follow_up"
+                   "resume_session_queue", "send_session_message", "stop_session_run",
+                   "update_session_follow_up"
                ]),
             $"global Chat sessions can discover global tools through use_capability " +
             $"(got {globalProjectCount}: {string.Join(",", globalProjectNames)})");

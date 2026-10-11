@@ -22,7 +22,7 @@ public static partial class AgentRuntimeProjectExecutor
         "list_projects", "get_project_details", "create_session", "create_project",
         "send_session_message", "update_session_follow_up",
         "get_session_queue", "remove_session_queue_message", "clear_session_queue",
-        "stop_session_run"
+        "resume_session_queue", "stop_session_run"
     };
 
     public static bool IsProjectTool(string toolName)
@@ -47,6 +47,7 @@ public static partial class AgentRuntimeProjectExecutor
             "get_session_queue" => await GetSessionQueueAsync(call.Input, context, cancellationToken),
             "remove_session_queue_message" => await RemoveSessionQueueMessageAsync(call.Input, context, cancellationToken),
             "clear_session_queue" => await ClearSessionQueueAsync(call.Input, context, cancellationToken),
+            "resume_session_queue" => await ResumeSessionQueueAsync(call.Input, context, cancellationToken),
             "stop_session_run" => await StopSessionRunAsync(call.Input, context, cancellationToken),
             _ => EncodeError($"Project tool not registered: {call.Name}")
         };
@@ -486,6 +487,32 @@ public static partial class AgentRuntimeProjectExecutor
         catch (Exception ex)
         {
             return EncodeError($"Failed to stop session run: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> ResumeSessionQueueAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/resume-session-queue", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Session queue resumed.", "Failed to resume session queue.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to resume session queue: {ex.Message}");
         }
     }
 

@@ -6,6 +6,7 @@
  *   - `project/session-queue`                → read queue + live run state
  *   - `project/remove-session-queue-message` → drop one queued message
  *   - `project/clear-session-queue`          → drop every queued message
+ *   - `project/resume-session-queue`         → lift a paused queue dispatch
  *   - `project/stop-session-run`             → stop the running turn (queue kept)
  *
  * The queue lives in renderer memory only (`use-chat-actions` pending store), so
@@ -14,16 +15,24 @@
  * message only prevents it from being dispatched. Stopping the run is a separate
  * tool (`project/stop-session-run`) that goes through the same `cancelStream` the
  * UI stop button uses.
+ *
+ * Stopping freezes the queue along the way (`cancelStream` pauses dispatch, and the
+ * aborted loop end pauses it again) — that is the user-facing "stop means the queue
+ * waits for me" rule, but it has no automatic way out. `project/resume-session-queue`
+ * is the PM-side equivalent of the「继续」button in the queue panel: it lifts the
+ * pause so the queued messages run again.
  */
 
 import { useChatStore } from '@renderer/stores/chat-store'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import {
   clearPendingSessionMessages,
+  dispatchNextQueuedMessageForSession,
   getPendingSessionMessages,
   hasActiveSessionRunForSession,
   isPendingSessionDispatchPaused,
-  removePendingSessionMessage
+  removePendingSessionMessage,
+  resumePendingSessionDispatch
 } from '@renderer/hooks/use-chat-actions'
 
 /** Per-message text preview cap — keeps a long queued prompt from flooding tool output. */
@@ -218,8 +227,74 @@ export async function handleProjectStopSessionRun(params: unknown): Promise<Sess
       `Stopped the running turn of session "${sessionId}". ` +
       (queued > 0
         ? `${queued} queued message(s) are kept, but their dispatch is now paused — ` +
-          'exactly what happens when the user presses stop in the UI. '
+          'exactly what happens when the user presses stop in the UI. ' +
+          'Call resume_session_queue to let them run, or send the session a new message. '
         : 'The queue was empty. ') +
       'You can send the session a new message now.'
+  }
+}
+
+export async function handleProjectResumeSessionQueue(params: unknown): Promise<SessionQueueResult> {
+  const { sessionId } = (params ?? {}) as { sessionId?: string }
+  if (!sessionId) {
+    return { success: false, error: 'Missing required field: sessionId' }
+  }
+  if (!(await ensureSessionExists(sessionId))) {
+    return {
+      success: false,
+      found: false,
+      sessionId,
+      error: `Session "${sessionId}" does not exist.`
+    }
+  }
+
+  const queued = getPendingSessionMessages(sessionId).length
+  const wasPaused = resumePendingSessionDispatch(sessionId)
+  // Lifting the pause is the whole job when a turn is running: the turn's own
+  // loop-end dispatch used to refuse because the flag was set, and now it won't.
+  const hasActiveRun = hasActiveSessionRunForSession(sessionId)
+
+  if (hasActiveRun) {
+    return {
+      success: true,
+      sessionId,
+      found: true,
+      hasActiveRun: true,
+      dispatchPaused: false,
+      count: queued,
+      result:
+        `Queue dispatch for session "${sessionId}" is resumed. ` +
+        (queued > 0
+          ? `A turn is running now; its ${queued} queued message(s) will be dispatched when it ends.`
+          : 'A turn is running now, and nothing was waiting behind it.')
+    }
+  }
+
+  if (queued === 0) {
+    return {
+      success: true,
+      sessionId,
+      found: true,
+      hasActiveRun: false,
+      dispatchPaused: false,
+      count: 0,
+      result: wasPaused
+        ? `Cleared the paused dispatch flag on session "${sessionId}" — it had no queued messages left.`
+        : `Session "${sessionId}" has no queued messages and its dispatch was not paused.`
+    }
+  }
+
+  const dispatched = dispatchNextQueuedMessageForSession(sessionId)
+  return {
+    success: true,
+    sessionId,
+    found: true,
+    hasActiveRun: false,
+    dispatchPaused: isPendingSessionDispatchPaused(sessionId),
+    count: queued,
+    result: dispatched
+      ? `Resumed session "${sessionId}": dispatching its ${queued} queued message(s) now.`
+      : `Session "${sessionId}" is no longer paused, but dispatching its ${queued} queued message(s) ` +
+        'could not start right now. Call get_session_queue to check the queue state.'
   }
 }

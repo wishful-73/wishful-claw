@@ -10,6 +10,7 @@ import {
   handleProjectClearSessionQueue,
   handleProjectGetSessionQueue,
   handleProjectRemoveSessionQueueMessage,
+  handleProjectResumeSessionQueue,
   handleProjectStopSessionRun
 } from '@renderer/lib/tools/project-session-queue'
 import { handleSessionFollowUpUpdate } from '@renderer/lib/tools/session-follow-up-runtime'
@@ -181,6 +182,15 @@ async function handleRendererToolRequest(payload: RendererToolRequestPayload): P
 
     if (payload.method === 'project/clear-session-queue') {
       const result = await handleProjectClearSessionQueue(payload.params)
+      await sendRendererToolResponse({
+        requestId: payload.requestId,
+        result
+      })
+      return
+    }
+
+    if (payload.method === 'project/resume-session-queue') {
+      const result = await handleProjectResumeSessionQueue(payload.params)
       await sendRendererToolResponse({
         requestId: payload.requestId,
         result

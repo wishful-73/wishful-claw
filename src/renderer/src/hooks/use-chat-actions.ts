@@ -844,6 +844,28 @@ export function pausePendingSessionDispatch(sessionId: string): void {
   notifyPendingSessionMessageListeners()
 }
 
+/**
+ * Lift a pause set by `pausePendingSessionDispatch`（S-188 第三刀）。
+ *
+ * 停止一轮（UI 的停止按钮 / 全局 PM 的 `stop_session_run`）会顺手把队列冻住 ——
+ * 这是给用户「停完先确认再放行」的保护。但这个冻结**没有出口**：所有自动派发路径
+ * 传的都是 `resumePaused = false`（`chat-store/index.ts` 的 loop_end 分支、
+ * `dispatchNextQueuedMessageForSession` 自身的尾递归），所以冻上之后队列永远不会自己
+ * 动起来；此前只有 UI 的「继续」按钮能解。PM 侧没有输入框、也点不到那个按钮，
+ * 于是就有了这个与它等价的导出。
+ *
+ * 只解冻，不派发：调用方接着调 `dispatchNextQueuedMessageForSession`，或者交给
+ * 正在跑的那一轮 —— 它的 loop_end 派发不再被这个标记挡住。
+ *
+ * @returns 会话此前是否确实处于冻结状态。
+ */
+export function resumePendingSessionDispatch(sessionId: string): boolean {
+  if (!_pausedPendingSessionDispatch.has(sessionId)) return false
+  _pausedPendingSessionDispatch.delete(sessionId)
+  notifyPendingSessionMessageListeners()
+  return true
+}
+
 export function removePendingSessionMessage(sessionId: string, messageId: string): boolean {
   const list = _pendingMessages.get(sessionId) ?? []
   const filtered = list.filter((message) => message.id !== messageId)

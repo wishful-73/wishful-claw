@@ -12,6 +12,12 @@ import {
   RotateCcw
 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger
+} from '@renderer/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/utils'
 import type { GitStatusFile } from '@renderer/stores/git-store'
@@ -172,6 +178,8 @@ export function ScmFileRowView({
   onStage,
   onUnstage,
   onDiscard,
+  onShowHistory,
+  historyLabel,
   disabled,
   labels
 }: {
@@ -181,92 +189,107 @@ export function ScmFileRowView({
   onStage: () => void
   onUnstage: () => void
   onDiscard: () => void
+  /** 右键菜单：查看该文件的提交历史；缺省则不挂右键菜单 */
+  onShowHistory?: () => void
+  /** 右键菜单项文案（由调用方给 i18n 文本） */
+  historyLabel?: string
   disabled?: boolean
   labels: { stage: string; unstage: string; discard: string }
 }): React.JSX.Element {
   const Icon = row.section === 'untracked' ? FilePlus : File
   return (
-    <div
-      className={cn(
-        'group flex min-h-[26px] cursor-pointer items-center gap-0.5 rounded-sm pr-0.5 text-[13px] leading-tight',
-        selected ? 'bg-muted' : 'hover:bg-muted/60'
-      )}
-    >
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 pl-6 pr-1 text-left"
-        onClick={onSelect}
-      >
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{row.path}</span>
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
-          {statusLetters(row.file, row.section)}
-        </span>
-      </button>
-      <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-        {row.section === 'staged' ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                disabled={disabled}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onUnstage()
-                }}
-              >
-                <Minus className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left">{labels.unstage}</TooltipContent>
-          </Tooltip>
-        ) : null}
-        {row.section === 'unstaged' ||
-        row.section === 'untracked' ||
-        row.section === 'conflicted' ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-6"
-                disabled={disabled || row.section === 'conflicted'}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onStage()
-                }}
-              >
-                <Plus className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left">{labels.stage}</TooltipContent>
-          </Tooltip>
-        ) : null}
-        {row.section !== 'conflicted' ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-6 text-destructive hover:text-destructive"
-                disabled={disabled}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onDiscard()
-                }}
-              >
-                <RotateCcw className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left">{labels.discard}</TooltipContent>
-          </Tooltip>
-        ) : null}
-      </div>
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          className={cn(
+            'group flex min-h-[26px] cursor-pointer items-center gap-0.5 rounded-sm pr-0.5 text-[13px] leading-tight',
+            selected ? 'bg-muted' : 'hover:bg-muted/60'
+          )}
+        >
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 pl-6 pr-1 text-left"
+            onClick={onSelect}
+          >
+            <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{row.path}</span>
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+              {statusLetters(row.file, row.section)}
+            </span>
+          </button>
+          <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            {row.section === 'staged' ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    disabled={disabled}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onUnstage()
+                    }}
+                  >
+                    <Minus className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">{labels.unstage}</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {row.section === 'unstaged' ||
+            row.section === 'untracked' ||
+            row.section === 'conflicted' ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    disabled={disabled || row.section === 'conflicted'}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onStage()
+                    }}
+                  >
+                    <Plus className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">{labels.stage}</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {row.section !== 'conflicted' ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 text-destructive hover:text-destructive"
+                    disabled={disabled}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onDiscard()
+                    }}
+                  >
+                    <RotateCcw className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">{labels.discard}</TooltipContent>
+              </Tooltip>
+            ) : null}
+          </div>
+        </div>
+      </ContextMenuTrigger>
+      {onShowHistory ? (
+        <ContextMenuContent className="w-56">
+          <ContextMenuItem className="text-xs" onSelect={onShowHistory}>
+            {historyLabel}
+          </ContextMenuItem>
+        </ContextMenuContent>
+      ) : null}
+    </ContextMenu>
   )
 }

@@ -25,6 +25,10 @@ export interface GitDiffDialogProps {
   title?: string
   /** 顶栏标题右侧的附加信息（例如任务描述或历史提交） */
   meta?: React.ReactNode
+  /** 左侧列表的小标题；缺省为「变更文件」 */
+  listTitle?: string
+  /** 左侧列表底部的附加内容（例如「加载更多」） */
+  listFooter?: React.ReactNode
   children: React.ReactNode
 }
 
@@ -41,6 +45,8 @@ export function GitDiffDialog({
   previewPath,
   title,
   meta,
+  listTitle,
+  listFooter,
   children
 }: GitDiffDialogProps): React.JSX.Element {
   const { t } = useTranslation('layout')
@@ -106,7 +112,7 @@ export function GitDiffDialog({
         <div className="grid min-h-0 flex-1 grid-cols-[240px_minmax(0,1fr)] bg-background">
           <div className="min-h-0 overflow-y-auto border-r border-border py-1">
             <div className="px-3 py-1 text-[11px] font-semibold text-muted-foreground">
-              {t('agentFiles.changedFiles', { defaultValue: 'Changed files' })}
+              {listTitle ?? t('agentFiles.changedFiles', { defaultValue: 'Changed files' })}
             </div>
             {rows.map((row) => (
               <button
@@ -127,6 +133,7 @@ export function GitDiffDialog({
                 ) : null}
               </button>
             ))}
+            {listFooter ? <div className="px-2 pb-1">{listFooter}</div> : null}
           </div>
           <div className="flex min-h-0 flex-col overflow-hidden p-3">{children}</div>
         </div>

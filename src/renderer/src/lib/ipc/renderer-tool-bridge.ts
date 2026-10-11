@@ -6,6 +6,11 @@ import { handleNativePlanUiUpdate, handleNativePlanReviewRequest } from '@render
 import { handleNativeGoalConfirmRequest } from '@renderer/lib/tools/goal-native-ui'
 import { handleSkillManagementExecute } from '@renderer/lib/tools/skill-management-bridge'
 import { handleProjectSendSessionMessage } from '@renderer/lib/tools/project-send-message'
+import {
+  handleProjectClearSessionQueue,
+  handleProjectGetSessionQueue,
+  handleProjectRemoveSessionQueueMessage
+} from '@renderer/lib/tools/project-session-queue'
 import { handleSessionFollowUpUpdate } from '@renderer/lib/tools/session-follow-up-runtime'
 import { extractVideoFrames, type VideoFrameRequest } from '@renderer/lib/tools/video-frames'
 import { decodeIpcMessagePack, invokeMessagePack } from '@renderer/lib/ipc/messagepack-ipc-client'
@@ -148,6 +153,33 @@ async function handleRendererToolRequest(payload: RendererToolRequestPayload): P
 
     if (payload.method === 'project/send-session-message') {
       const result = await handleProjectSendSessionMessage(payload.params)
+      await sendRendererToolResponse({
+        requestId: payload.requestId,
+        result
+      })
+      return
+    }
+
+    if (payload.method === 'project/session-queue') {
+      const result = await handleProjectGetSessionQueue(payload.params)
+      await sendRendererToolResponse({
+        requestId: payload.requestId,
+        result
+      })
+      return
+    }
+
+    if (payload.method === 'project/remove-session-queue-message') {
+      const result = await handleProjectRemoveSessionQueueMessage(payload.params)
+      await sendRendererToolResponse({
+        requestId: payload.requestId,
+        result
+      })
+      return
+    }
+
+    if (payload.method === 'project/clear-session-queue') {
+      const result = await handleProjectClearSessionQueue(payload.params)
       await sendRendererToolResponse({
         requestId: payload.requestId,
         result

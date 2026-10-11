@@ -218,6 +218,10 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
     'mcp:capability-inspect',
     'skill-management:execute',
     'project/send-session-message',
+    // S-188：全局 PM 对项目会话队列的观测与干预（读 / 撤单条 / 清空）
+    'project/session-queue',
+    'project/remove-session-queue-message',
+    'project/clear-session-queue',
     'session-follow-up/update',
     // S-145 §六：C# 侧 Read 没有解码器，视频抽帧必须落到渲染端
     // （`renderer-tool-bridge.ts` 已实现）。漏登记这条时请求会掉进

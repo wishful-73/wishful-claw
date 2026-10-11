@@ -1,0 +1,176 @@
+/**
+ * Global PM → project session queue handlers
+ *
+ * Handles the reverse-requests that let the global session (project manager)
+ * observe and intervene in another session's pending message queue:
+ *   - `project/session-queue`                → read queue + live run state
+ *   - `project/remove-session-queue-message` → drop one queued message
+ *   - `project/clear-session-queue`          → drop every queued message
+ *
+ * The queue lives in renderer memory only (`use-chat-actions` pending store), so
+ * these reuse exactly the API the queue panel in `InputArea` uses — no DB, no new
+ * state. Nothing here touches the running turn: removing a queued message never
+ * interrupts the active run, it only prevents that message from being dispatched.
+ */
+
+import { useChatStore } from '@renderer/stores/chat-store'
+import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
+import {
+  clearPendingSessionMessages,
+  getPendingSessionMessages,
+  hasActiveSessionRunForSession,
+  isPendingSessionDispatchPaused,
+  removePendingSessionMessage
+} from '@renderer/hooks/use-chat-actions'
+
+/** Per-message text preview cap — keeps a long queued prompt from flooding tool output. */
+const TEXT_PREVIEW_LIMIT = 200
+
+interface SessionQueueMessagePreview {
+  id: string
+  text: string
+}
+
+interface SessionQueueResult {
+  success: boolean
+  sessionId?: string
+  /** Whether the session exists at all — separates "empty queue" from "unknown session". */
+  found?: boolean
+  hasActiveRun?: boolean
+  dispatchPaused?: boolean
+  count?: number
+  messages?: SessionQueueMessagePreview[]
+  removed?: number
+  cleared?: number
+  result?: string
+  error?: string
+}
+
+function previewText(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  return normalized.length > TEXT_PREVIEW_LIMIT
+    ? `${normalized.slice(0, TEXT_PREVIEW_LIMIT)}…`
+    : normalized
+}
+
+/**
+ * A session that is neither in the store nor in the DB cannot have a queue we
+ * can see — reported as `found: false` rather than as an empty queue.
+ */
+async function ensureSessionExists(sessionId: string): Promise<boolean> {
+  if (useChatStore.getState().sessions.some((session) => session.id === sessionId)) return true
+  return (await dbGetSession(sessionId)) != null
+}
+
+export async function handleProjectGetSessionQueue(params: unknown): Promise<SessionQueueResult> {
+  const { sessionId } = (params ?? {}) as { sessionId?: string }
+  if (!sessionId) {
+    return { success: false, error: 'Missing required field: sessionId' }
+  }
+  if (!(await ensureSessionExists(sessionId))) {
+    return {
+      success: false,
+      found: false,
+      sessionId,
+      error: `Session "${sessionId}" does not exist.`
+    }
+  }
+
+  const messages = getPendingSessionMessages(sessionId).map((message) => ({
+    id: message.id,
+    text: previewText(message.text)
+  }))
+  const hasActiveRun = hasActiveSessionRunForSession(sessionId)
+  const dispatchPaused = isPendingSessionDispatchPaused(sessionId)
+
+  const summary =
+    messages.length === 0
+      ? `Session "${sessionId}" has no queued messages.`
+      : `Session "${sessionId}" has ${messages.length} queued message(s).`
+  const runState = hasActiveRun ? ' A turn is currently running.' : ' No turn is running.'
+  const pausedState = dispatchPaused ? ' Queue dispatch is paused.' : ''
+  // Message ids ride along in the text: the C# side only forwards `result`.
+  const detailLines = messages.map(
+    (message, index) => `[${index + 1}] id=${message.id} text=${JSON.stringify(message.text)}`
+  )
+  const detail = detailLines.length > 0 ? `\n${detailLines.join('\n')}` : ''
+
+  return {
+    success: true,
+    sessionId,
+    found: true,
+    hasActiveRun,
+    dispatchPaused,
+    count: messages.length,
+    messages,
+    result: `${summary}${runState}${pausedState}${detail}`
+  }
+}
+
+export async function handleProjectRemoveSessionQueueMessage(
+  params: unknown
+): Promise<SessionQueueResult> {
+  const { sessionId, messageId } = (params ?? {}) as { sessionId?: string; messageId?: string }
+  if (!sessionId || !messageId) {
+    return { success: false, error: 'Missing required fields: sessionId, messageId' }
+  }
+  if (!(await ensureSessionExists(sessionId))) {
+    return {
+      success: false,
+      found: false,
+      sessionId,
+      error: `Session "${sessionId}" does not exist.`
+    }
+  }
+
+  const removed = removePendingSessionMessage(sessionId, messageId)
+  if (!removed) {
+    return {
+      success: false,
+      sessionId,
+      found: true,
+      removed: 0,
+      error:
+        `Queued message "${messageId}" was not found in session "${sessionId}". ` +
+        'Call get_session_queue for the current ids.'
+    }
+  }
+
+  return {
+    success: true,
+    sessionId,
+    found: true,
+    removed: 1,
+    result:
+      `Removed queued message "${messageId}" from session "${sessionId}". ` +
+      'The running turn was not affected.'
+  }
+}
+
+export async function handleProjectClearSessionQueue(params: unknown): Promise<SessionQueueResult> {
+  const { sessionId } = (params ?? {}) as { sessionId?: string }
+  if (!sessionId) {
+    return { success: false, error: 'Missing required field: sessionId' }
+  }
+  if (!(await ensureSessionExists(sessionId))) {
+    return {
+      success: false,
+      found: false,
+      sessionId,
+      error: `Session "${sessionId}" does not exist.`
+    }
+  }
+
+  const cleared = clearPendingSessionMessages(sessionId)
+  return {
+    success: true,
+    sessionId,
+    found: true,
+    cleared,
+    result:
+      cleared > 0
+        ? `Cleared ${cleared} queued message(s) from session "${sessionId}". ` +
+          'The running turn was not affected.'
+        : `Session "${sessionId}" had no queued messages.`
+  }
+}

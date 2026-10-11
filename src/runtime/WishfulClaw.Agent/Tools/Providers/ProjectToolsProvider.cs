@@ -129,5 +129,55 @@ public sealed class ProjectToolsProvider : IToolProvider
                 ["followUpId", "claimToken", "action", "lastQueryResult"]),
                 availableModes: new[] { "normal", "goal", "global", "channel" },
                 visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // get_session_queue: Read another session's pending message queue and live run state.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "get_session_queue",
+            "Read another session's pending message queue and live run state: how many messages are "
+            + "waiting, each message's id and text preview, whether a turn is currently running, and "
+            + "whether queue dispatch is paused. Queued messages run one by one after the current turn. "
+            + "Use remove_session_queue_message or clear_session_queue to cancel them.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session (from get_project_details).")
+                },
+                ["sessionId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // remove_session_queue_message: Cancel one queued message.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "remove_session_queue_message",
+            "Cancel a single queued message in another session's pending queue, using the id returned by "
+            + "get_session_queue. Reports failure when the id is not in the queue. The turn that is "
+            + "currently running is not affected.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session."),
+                    ["messageId"] = ToolSchemaBuilder.String(
+                        "The queued message id, as reported by get_session_queue.")
+                },
+                ["sessionId", "messageId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // clear_session_queue: Cancel every queued message.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "clear_session_queue",
+            "Cancel all queued messages of another session. The turn that is currently running is not "
+            + "affected; only the messages waiting behind it are dropped.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session.")
+                },
+                ["sessionId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
     }
 }

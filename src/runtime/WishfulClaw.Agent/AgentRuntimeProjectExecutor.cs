@@ -20,7 +20,8 @@ public static partial class AgentRuntimeProjectExecutor
     private static readonly HashSet<string> ProjectToolNames = new(StringComparer.Ordinal)
     {
         "list_projects", "get_project_details", "create_session", "create_project",
-        "send_session_message", "update_session_follow_up"
+        "send_session_message", "update_session_follow_up",
+        "get_session_queue", "remove_session_queue_message", "clear_session_queue"
     };
 
     public static bool IsProjectTool(string toolName)
@@ -42,6 +43,9 @@ public static partial class AgentRuntimeProjectExecutor
             "create_project" => await CreateProjectAsync(call.Input, parameters, cancellationToken),
             "send_session_message" => await SendSessionMessageAsync(call.Input, parameters, context, cancellationToken),
             "update_session_follow_up" => await UpdateSessionFollowUpAsync(call.Input, parameters, context, cancellationToken),
+            "get_session_queue" => await GetSessionQueueAsync(call.Input, context, cancellationToken),
+            "remove_session_queue_message" => await RemoveSessionQueueMessageAsync(call.Input, context, cancellationToken),
+            "clear_session_queue" => await ClearSessionQueueAsync(call.Input, context, cancellationToken),
             _ => EncodeError($"Project tool not registered: {call.Name}")
         };
     }
@@ -375,6 +379,88 @@ public static partial class AgentRuntimeProjectExecutor
         }
     }
 
+    // ── session queue（反向请求到渲染端，队列只存在于渲染端内存） ──
+
+    private static async Task<string> GetSessionQueueAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/session-queue", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Session queue is empty.", "Failed to read session queue.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to read session queue: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> RemoveSessionQueueMessageAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+            var messageId = RequireString(input, "messageId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteString("messageId", messageId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/remove-session-queue-message", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Queued message removed.", "Failed to remove queued message.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to remove queued message: {ex.Message}");
+        }
+    }
+
+    private static async Task<string> ClearSessionQueueAsync(
+        JsonElement input, IWorkerRequestContext context, CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sessionId = RequireString(input, "sessionId");
+
+            var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("sessionId", sessionId);
+                w.WriteEndObject();
+            });
+
+            var result = await AgentRuntimeReverseRequests.RequestAsync(
+                context, "project/clear-session-queue", reverseParams, cancellationToken);
+            return FormatToolReverseResult(result, "Session queue cleared.", "Failed to clear session queue.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to clear session queue: {ex.Message}");
+        }
+    }
+
     // ── Helpers ──
 
     private static string RequireString(JsonElement element, string name)
@@ -399,25 +485,36 @@ public static partial class AgentRuntimeProjectExecutor
     /// </summary>
     internal static string FormatSendSessionMessageResult(JsonElement result)
     {
+        return FormatToolReverseResult(result, "Message sent successfully.", "Failed to send session message.");
+    }
+
+    /// <summary>
+    /// 渲染端反向请求 handler 的统一返回形状 `{ success, result?, error? }` → 工具输出。
+    /// 只有 success 为 false 才走错误通道（EncodeError），成功时只交出 result 文案，
+    /// 避免 agent 读到整份 JSON。
+    /// </summary>
+    private static string FormatToolReverseResult(
+        JsonElement result, string successFallback, string errorFallback)
+    {
         if (result.ValueKind != JsonValueKind.Object)
         {
             var text = result.ValueKind == JsonValueKind.String
                 ? result.GetString() ?? string.Empty
                 : result.ToString();
-            return string.IsNullOrEmpty(text) ? "Message sent successfully." : text;
+            return string.IsNullOrEmpty(text) ? successFallback : text;
         }
 
         var succeeded = !result.TryGetProperty("success", out var success) ||
             success.ValueKind != JsonValueKind.False;
-        var message = JsonHelpers.GetString(result, "result")?.Trim();
 
         if (!succeeded)
         {
             var error = JsonHelpers.GetString(result, "error")?.Trim();
-            return EncodeError(string.IsNullOrEmpty(error) ? "Failed to send session message." : error);
+            return EncodeError(string.IsNullOrEmpty(error) ? errorFallback : error);
         }
 
-        return string.IsNullOrEmpty(message) ? "Message sent successfully." : message;
+        var message = JsonHelpers.GetString(result, "result")?.Trim();
+        return string.IsNullOrEmpty(message) ? successFallback : message;
     }
 
     private static string EncodeError(string message)

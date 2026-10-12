@@ -156,11 +156,14 @@ public static class DbPluginSessionTools
             }
 
             db.Execute(
-                "INSERT INTO sessions (id, title, mode, created_at, updated_at, message_count, project_id, " +
+                "INSERT INTO sessions (id, title, mode, scope, created_at, updated_at, message_count, project_id, " +
                 "working_folder, ssh_connection_id, pinned, plugin_id, external_chat_id, provider_id, model_id, model_selection_mode) " +
-                "VALUES (@id, @title, @mode, @ca, @ua, 0, @pid, @wf, @ssh, 0, @plugin, @ext, @prov, @model, @msm)",
+                "VALUES (@id, @title, @mode, @scope, @ca, @ua, 0, @pid, @wf, @ssh, 0, @plugin, @ext, @prov, @model, @msm)",
                 new SqliteParameter("@id", sessionId), new SqliteParameter("@title", title),
-                new SqliteParameter("@mode", mode), new SqliteParameter("@ca", createdAt),
+                new SqliteParameter("@mode", mode),
+                // 与 DbSessionTools.Create / DbPluginSessionRouting 同口径：有 projectId 即项目会话（S-189）。
+                new SqliteParameter("@scope", projectId is not null ? "project" : "global"),
+                new SqliteParameter("@ca", createdAt),
                 new SqliteParameter("@ua", updatedAt), new SqliteParameter("@pid", (object?)projectId ?? DBNull.Value),
                 new SqliteParameter("@wf", (object?)workingFolder ?? DBNull.Value),
                 new SqliteParameter("@ssh", (object?)sshConnectionId ?? DBNull.Value),

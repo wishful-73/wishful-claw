@@ -221,6 +221,9 @@ public static partial class AgentRuntimeProjectExecutor
                 Id = sessionId,
                 Title = title,
                 Mode = "chat",
+                // 这条旁路直插 DB（不经渲染端 DbSessionTools.Create），scope 必须显式写死：
+                // projectId 是必填入参，这里建出的一定是项目会话（S-189）。
+                Scope = "project",
                 CreatedAt = now,
                 UpdatedAt = now,
                 MessageCount = 0,
@@ -232,13 +235,16 @@ public static partial class AgentRuntimeProjectExecutor
 
             // model_selection_mode 是 NOT NULL 且无默认值：存量库该列由 SqlSugar 迁移建出，
             // 只有类型没有 DEFAULT，漏列直接撞 NOT NULL 约束（S-115）。值随 SessionEntity 默认走。
+            // collaboration_mode / permission_mode 的缺省取决于渲染端用户设置（worker 读不到），
+            // 继续留 NULL，由 rowToSession 首次读取时按当前设置归一化回填（S-189）。
             db.Execute(
-                "INSERT INTO sessions (id, title, mode, created_at, updated_at, message_count, " +
+                "INSERT INTO sessions (id, title, mode, scope, created_at, updated_at, message_count, " +
                 "project_id, working_folder, ssh_connection_id, pinned, model_selection_mode) " +
-                "VALUES (@id, @title, @mode, @ca, @ua, 0, @pid, @wf, @ssh, 0, @msm)",
+                "VALUES (@id, @title, @mode, @scope, @ca, @ua, 0, @pid, @wf, @ssh, 0, @msm)",
                 new SqliteParameter("@id", entity.Id),
                 new SqliteParameter("@title", entity.Title),
                 new SqliteParameter("@mode", entity.Mode),
+                new SqliteParameter("@scope", (object?)entity.Scope ?? DBNull.Value),
                 new SqliteParameter("@ca", entity.CreatedAt),
                 new SqliteParameter("@ua", entity.UpdatedAt),
                 new SqliteParameter("@pid", (object?)entity.ProjectId ?? DBNull.Value),

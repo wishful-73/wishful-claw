@@ -1828,6 +1828,19 @@
         "rows": "条",
         "previous": "上一页",
         "next": "下一页"
+      },
+      "filters": {
+        "model": "模型",
+        "modelCount": "模型 · {{count}}",
+        "modelSearch": "搜索模型…",
+        "modelEmpty": "无匹配模型",
+        "status": "状态",
+        "statusCount": "状态 · {{count}}",
+        "statusSuccess": "成功",
+        "statusError": "失败",
+        "onlyFailed": "只看失败",
+        "httpStatusPlaceholder": "状态码，如 429,503",
+        "httpStatusHint": "按 HTTP 状态码精确匹配，多个用逗号分隔"
       }
     },
     "rollup": {

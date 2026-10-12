@@ -4,6 +4,19 @@ import { Activity, AlertTriangle, BarChart3, Loader2, RefreshCw } from 'lucide-r
 import { Button } from '@renderer/components/ui/button'
 import { SettingsSection } from '@renderer/components/settings/settings-primitives'
 import { UsageDetailTable, type UsageLogRow } from './usage-detail-table'
+import {
+  buildModelOptions,
+  parseHttpStatusCodes,
+  type UsageFilters,
+  type UsageModelOption
+} from './usage-detail-filters'
+import {
+  type UsageBuckets,
+  type UsageLogsResponse,
+  type UsageModelRow,
+  type UsageOverview,
+  type UsageResponse
+} from './usage-panel-types'
 import { cn } from '@renderer/lib/utils'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import {
@@ -31,64 +44,11 @@ import {
 type UsageRange = '24h' | '7d' | '30d'
 type UsageChartTab = 'line' | 'bar' | 'detail'
 
-interface UsageResponse {
-  success: boolean
-  error?: string | null
-}
-
-interface UsageOverview extends UsageResponse {
-  from: number
-  to: number
-  requestCount: number
-  successCount: number
-  errorCount: number
-  inputTokens: number
-  billableInputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
-  reasoningTokens: number
-  // Absent (not null) when nothing in the window was priced — see WhenWritingNull.
-  totalCostUsd?: number | null
-  avgDurationMs?: number | null
-  retryCount: number
-}
-
-export interface UsageBucket {
-  bucketStart: number
-  requestCount: number
-  successCount: number
-  errorCount: number
-  billableInputTokens: number
-  outputTokens: number
-  totalCostUsd?: number | null
-}
-
-interface UsageBuckets extends UsageResponse {
-  interval: 'hour' | 'day'
-  from: number
-  to: number
-  buckets: UsageBucket[]
-}
-
 interface UsageModelBuckets extends UsageResponse {
   interval: 'hour' | 'day'
   from: number
   to: number
   series: UsageModelSeries[]
-}
-
-interface UsageModelRow {
-  providerId?: string | null
-  modelId: string
-  providerType?: string | null
-  requestCount: number
-  errorCount: number
-  billableInputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
-  totalCostUsd?: number | null
 }
 
 const RANGES: { id: UsageRange; labelKey: string; fallback: string }[] = [
@@ -110,23 +70,23 @@ function formatCost(value: number | null | undefined): string {
   return `$${value.toFixed(2)}`
 }
 
-interface UsageLogsResponse extends UsageResponse {
-  rows: UsageLogRow[]
-  total: number
-  offset: number
-  limit: number
-}
-
 function requestUsageLogs(
   range: UsageRange,
   page: number,
-  limit: number
+  limit: number,
+  filters: UsageFilters
 ): Promise<UsageLogsResponse> {
-  return window.api.workerRequest<UsageLogsResponse>('db/usage-logs', {
+  const params: Record<string, unknown> = {
     range,
     limit,
     offset: page * limit
-  })
+  }
+  // 空筛选一律不发对应参数（不发空数组，直接省略）。
+  if (filters.models.length > 0) params.models = filters.models
+  if (filters.status.length > 0) params.status = filters.status
+  const httpStatusCodes = parseHttpStatusCodes(filters.httpStatusCodes)
+  if (httpStatusCodes.length > 0) params.httpStatusCodes = httpStatusCodes
+  return window.api.workerRequest<UsageLogsResponse>('db/usage-logs', params)
 }
 
 export function UsagePanel(): React.JSX.Element {
@@ -145,6 +105,14 @@ export function UsagePanel(): React.JSX.Element {
   const [logsPage, setLogsPage] = useState(0)
   const [logsPageSize, setLogsPageSize] = useState(DETAIL_PAGE_SIZE)
   const [logsLoading, setLogsLoading] = useState(false)
+  const [filters, setFilters] = useState<UsageFilters>({
+    models: [],
+    status: [],
+    httpStatusCodes: ''
+  })
+  // load() 是一次「整面板」刷新，不该因筛选变化而重跑（筛选只作用于明细表）；
+  // 用 ref 读最新筛选，避免把 filters 塞进 load 的依赖而触发上方 4 个统计端点重取。
+  const filtersRef = useRef<UsageFilters>(filters)
 
   // Guards against stale range and detail-page responses overwriting newer data.
   const loadSeq = useRef(0)
@@ -174,7 +142,7 @@ export function UsagePanel(): React.JSX.Element {
             'db/usage-by-model',
             params
           ),
-          requestUsageLogs(next, detailPage, detailLimit)
+          requestUsageLogs(next, detailPage, detailLimit, filtersRef.current)
         ])
         if (seq !== loadSeq.current) return
         const failed = [ov, bk, mb, bm, lg].find((response) => !response.success)
@@ -202,19 +170,24 @@ export function UsagePanel(): React.JSX.Element {
   )
 
   const loadLogsPage = useCallback(
-    async (next: UsageRange, page: number, limit: number): Promise<void> => {
+    async (
+      next: UsageRange,
+      page: number,
+      limit: number,
+      activeFilters: UsageFilters
+    ): Promise<void> => {
       const seq = ++logsLoadSeq.current
       setLogsLoading(true)
       setError(null)
       try {
         let resolvedPage = Math.max(0, page)
-        let response = await requestUsageLogs(next, resolvedPage, limit)
+        let response = await requestUsageLogs(next, resolvedPage, limit, activeFilters)
         if (!response.success) throw new Error(response.error || '请求明细加载失败')
 
         const lastPage = Math.max(0, Math.ceil(response.total / limit) - 1)
         if (resolvedPage > lastPage) {
           resolvedPage = lastPage
-          response = await requestUsageLogs(next, resolvedPage, limit)
+          response = await requestUsageLogs(next, resolvedPage, limit, activeFilters)
           if (!response.success) throw new Error(response.error || '请求明细加载失败')
         }
         if (seq !== logsLoadSeq.current) return
@@ -229,6 +202,18 @@ export function UsagePanel(): React.JSX.Element {
       }
     },
     []
+  )
+
+  // 筛选只作用明细表：改筛选时把页码重置到第 0 页，并只重取明细页；上方概览 /
+  // 折线 / 柱状 / 按模型一律不动（口径见 S-190 §四）。
+  const handleFiltersChange = useCallback(
+    (next: UsageFilters): void => {
+      setFilters(next)
+      filtersRef.current = next
+      setLogsPage(0)
+      void loadLogsPage(range, 0, logsPageSize, next)
+    },
+    [range, logsPageSize, loadLogsPage]
   )
 
   useEffect(() => {
@@ -248,6 +233,10 @@ export function UsagePanel(): React.JSX.Element {
     ...series,
     providerName: providerLabel(series.providerId, series.providerType)
   }))
+
+  // 模型筛选项来源 = 当前窗口 db/usage-by-model 的行键 (providerId, modelId)，
+  // 零额外查询、与图表口径天然一致；展示为 `服务商 · 模型`。
+  const modelOptions: UsageModelOption[] = buildModelOptions(byModel, providerLabel)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -420,10 +409,13 @@ export function UsagePanel(): React.JSX.Element {
                   pageSize={logsPageSize}
                   loading={logsLoading}
                   providerBaseUrlFor={(providerId) => providerFor(providerId)?.baseUrl}
-                  onPageChange={(page) => void loadLogsPage(range, page, logsPageSize)}
+                  filters={filters}
+                  modelOptions={modelOptions}
+                  onFiltersChange={handleFiltersChange}
+                  onPageChange={(page) => void loadLogsPage(range, page, logsPageSize, filters)}
                   onPageSizeChange={(size) => {
                     setLogsPageSize(size)
-                    void loadLogsPage(range, 0, size)
+                    void loadLogsPage(range, 0, size, filters)
                   }}
                 />
               </SettingsSection>

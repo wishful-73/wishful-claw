@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
-import type { UsageBucket } from './UsagePanel'
+import type { UsageBucket } from './usage-panel-types'
 
 export interface UsageModelBucket {
   bucketStart: number

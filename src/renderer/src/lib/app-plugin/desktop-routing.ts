@@ -1,3 +1,19 @@
-export function isDesktopControlToolName(_name: string): boolean {
-  return false
+import {
+  DESKTOP_CLICK_TOOL_NAME,
+  DESKTOP_SCREENSHOT_TOOL_NAME,
+  DESKTOP_SCROLL_TOOL_NAME,
+  DESKTOP_TYPE_TOOL_NAME,
+  DESKTOP_WAIT_TOOL_NAME
+} from './types'
+
+const DESKTOP_CONTROL_TOOL_NAMES = new Set<string>([
+  DESKTOP_SCREENSHOT_TOOL_NAME,
+  DESKTOP_CLICK_TOOL_NAME,
+  DESKTOP_TYPE_TOOL_NAME,
+  DESKTOP_SCROLL_TOOL_NAME,
+  DESKTOP_WAIT_TOOL_NAME
+])
+
+export function isDesktopControlToolName(name: string): boolean {
+  return DESKTOP_CONTROL_TOOL_NAMES.has(name)
 }

@@ -72,6 +72,7 @@
     "test:image-block-source": "esbuild tests/image-block-source/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/image-block-source/out/program.cjs && node tests/image-block-source/out/program.cjs",
     "test:image-endpoint": "esbuild tests/image-endpoint/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-endpoint/out/program.cjs && node tests/image-endpoint/out/program.cjs",
     "test:send-model-resolution": "esbuild tests/send-model-resolution/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@renderer/stores/provider-store=./tests/send-model-resolution/stubs/provider-store.ts --alias:@renderer/stores/chat-store=./tests/send-model-resolution/stubs/chat-store.ts --alias:@renderer/stores/settings-store=./tests/send-model-resolution/stubs/settings-store.ts --alias:@renderer/stores/channel-store=./tests/send-model-resolution/stubs/channel-store.ts --outfile=tests/send-model-resolution/out/program.cjs && node tests/send-model-resolution/out/program.cjs",
+    "test:token-format": "esbuild tests/token-format/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/token-format/out/program.cjs && node tests/token-format/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

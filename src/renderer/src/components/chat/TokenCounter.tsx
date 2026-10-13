@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { formatTokensDecimal } from '@renderer/lib/format-tokens'
+import { formatTokens } from '@renderer/lib/format-tokens'
 
 interface TokenCounterProps {
   /** Target token count to animate to */
@@ -80,5 +80,5 @@ export function TokenCounter({
     }
   }, [target, duration, startFrom, animate])
 
-  return <span className="tabular-nums">{formatTokensDecimal(displayValue)}</span>
+  return <span className="tabular-nums">{formatTokens(displayValue)}</span>
 }

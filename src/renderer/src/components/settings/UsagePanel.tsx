@@ -19,8 +19,8 @@ import {
 } from './usage-panel-types'
 import { cn } from '@renderer/lib/utils'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { formatTokens } from '@renderer/lib/format-tokens'
 import {
-  formatTokens,
   RollupTable,
   StatCard,
   UsageBarChart,

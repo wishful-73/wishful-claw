@@ -10,7 +10,8 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { cn } from '@renderer/lib/utils'
-import { formatTokens, sourceLabel } from './UsagePanelParts'
+import { formatTokens } from '@renderer/lib/format-tokens'
+import { sourceLabel } from './UsagePanelParts'
 import {
   HttpStatusInput,
   ModelFilter,

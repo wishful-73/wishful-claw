@@ -541,6 +541,10 @@ public static partial class DbClient
             EnsureColumn("sessions", "context_cap_model_id", "TEXT");
             // 会话级「压缩阈值」（iter-32 S-85）：0 或 NULL = 跟随全局设置，否则是 0.3~0.9 的比例。
             EnsureColumn("sessions", "compression_threshold", "REAL");
+            // 会话级「用量统计起点」（S-193）：0 = 从未重置，否则是重置那一刻的 Unix 毫秒。
+            // 聚合端点 db/messages-usage-stats 只统计 created_at > 该值的消息 —— 重置因此
+            // 既是持久的（重启不复活），又不必删除 messages.usage（逐条消息的 token 摘要照常可见）。
+            EnsureColumn("sessions", "usage_stats_reset_at", "INTEGER NOT NULL DEFAULT 0");
             EnsureCompactionSnapshotSchema();
             _db.Execute(
                 "UPDATE sessions SET scope = CASE WHEN project_id IS NULL THEN 'global' ELSE 'project' END " +

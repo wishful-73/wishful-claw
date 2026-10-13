@@ -95,6 +95,7 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(SessionFindResult))]
 [JsonSerializable(typeof(SessionMutationResult))]
 [JsonSerializable(typeof(SessionResetResult))]
+[JsonSerializable(typeof(SessionUsageResetResult))]
 [JsonSerializable(typeof(SessionStatusResult))]
 [JsonSerializable(typeof(SessionRow))]
 [JsonSerializable(typeof(List<SessionRow>))]

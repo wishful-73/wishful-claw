@@ -1,7 +1,9 @@
 import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
-import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats, dbUpsertMessage } from './db-helpers'
+import type { TokenUsage } from '@renderer/lib/api/types'
+import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats, dbResetSessionUsageStats, dbUpsertMessage } from './db-helpers'
+import type { SessionUsageStatsRow } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
 import { clampSessionCompressionThreshold } from '@renderer/lib/agent/context-compression-config'
@@ -16,6 +18,27 @@ import { useSettingsStore } from '@renderer/stores/settings-store'
 //
 // 轮 = 一条 user 消息，以及它之后的 assistant / tool 消息；
 // N = 设置项 maxResidentTurns（「运行与性能」页，默认 15，范围 5–50）。
+
+/**
+ * 把 DB 的整会话用量汇总（`db/messages-usage-stats`）换算成状态栏用的 baseline。
+ *
+ * S-193 抽出来让「首次加载会话」和「重置用量统计」共用同一套口径，避免两处漂移。
+ * 换算原因：rollup 的 totalInput 是可计费值（不含缓存），而状态栏按 inputTokens
+ * 全额累加，所以要把缓存计数加回去 —— 否则会话总量会少算 input。
+ */
+function baselineFromUsageRollup(rollup: SessionUsageStatsRow): TokenUsage {
+  return {
+    inputTokens: rollup.totalInput + rollup.totalCacheRead + rollup.totalCacheCreation,
+    outputTokens: rollup.totalOutput,
+    cacheReadTokens: rollup.totalCacheRead,
+    cacheCreationTokens: rollup.totalCacheCreation,
+    reasoningTokens: rollup.totalReasoning,
+    totalDurationMs: rollup.totalDurationMs,
+    // Kept for consumers that read it directly; addUsageToTotals recomputes
+    // billable input as inputTokens minus the cache counters.
+    billableInputTokens: rollup.totalInput
+  }
+}
 
 /**
  * 保留最近 `maxTurns` 轮，返回应保留的尾部切片与被裁掉的头部长度。
@@ -71,6 +94,11 @@ export interface SessionSlice {
   ) => void
   setSessionModelInherit: (sessionId: string) => void
   clearSessionMessages: (sessionId: string) => void
+  /**
+   * S-193：把会话的底部用量统计归零 —— 只写一个起点时间戳（不删消息、不动
+   * messages.usage），然后重拉一次 baseline，因此重启后依然有效。
+   */
+  resetSessionUsageStats: (sessionId: string) => Promise<void>
   clearSessionPromptSnapshot: (sessionId: string) => void
   applyBackgroundSnapshot?: (sessionId: string, snapshot: { patchedMessagesById: Record<string, unknown>; addedMessagesById: Record<string, unknown>; addedMessageIds: string[] }) => void
   togglePinSession: (sessionId: string) => void
@@ -458,6 +486,24 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
       .catch((err) => {
         console.warn('[chat-store] Failed to clear queued messages for cleared session:', err)
       })
+  },
+
+  resetSessionUsageStats: async (sessionId) => {
+    try {
+      const { success } = await dbResetSessionUsageStats(sessionId)
+      if (!success) return
+      // 起点时间戳已落库：聚合端点会跳过更早的消息，所以这里重拉到的就是「归零后」的值。
+      // 内存里的实时累加器同时清掉 —— 重置前这一轮跑出来的量也算在其中。
+      const usageBaseline = await dbGetSessionUsageStats(sessionId)
+      set((state) => {
+        const target = state.sessions.find((s) => s.id === sessionId)
+        if (!target) return
+        target.usageBaseline = usageBaseline ? baselineFromUsageRollup(usageBaseline) : undefined
+        target.sessionUsageTotals = undefined
+      })
+    } catch (err) {
+      console.error('[DB] resetSessionUsageStats failed:', err)
+    }
   },
 
   clearSessionPromptSnapshot: (_sessionId: string) => {
@@ -886,24 +932,7 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         target.totalTurns = totalTurns
         target.lastKnownMessageCount = actualCount
         if (usageBaseline) {
-          target.usageBaseline = {
-            // The rollup's totalInput is billable (cache excluded), but addUsageToTotals
-            // accumulates usage.inputTokens as the full input (cache included). Add the cache
-            // counters back so both sides share one footing — otherwise the session total
-            // under-counts input and cache read can appear to exceed it.
-            inputTokens:
-              usageBaseline.totalInput +
-              usageBaseline.totalCacheRead +
-              usageBaseline.totalCacheCreation,
-            outputTokens: usageBaseline.totalOutput,
-            cacheReadTokens: usageBaseline.totalCacheRead,
-            cacheCreationTokens: usageBaseline.totalCacheCreation,
-            reasoningTokens: usageBaseline.totalReasoning,
-            totalDurationMs: usageBaseline.totalDurationMs,
-            // Kept for consumers that read it directly; addUsageToTotals recomputes
-            // billable input as inputTokens minus the cache counters.
-            billableInputTokens: usageBaseline.totalInput
-          }
+          target.usageBaseline = baselineFromUsageRollup(usageBaseline)
           // The baseline supersedes everything accumulated so far (see above).
           target.sessionUsageTotals = undefined
         }

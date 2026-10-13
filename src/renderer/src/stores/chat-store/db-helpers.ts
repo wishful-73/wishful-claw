@@ -626,6 +626,23 @@ export async function dbClearMessages(sessionId: string): Promise<void> {
   await window.api.workerRequest('db/messages-clear', { sessionId })
 }
 
+/**
+ * S-193：把会话的底部用量统计清零。
+ * 只写一个起点时间戳（sessions.usage_stats_reset_at），不删消息、不动 messages.usage ——
+ * 聚合端点 db/messages-usage-stats 会据此跳过更早的消息，所以重启后依然生效。
+ */
+export async function dbResetSessionUsageStats(
+  sessionId: string
+): Promise<{ success: boolean; resetAt: number }> {
+  const result = await window.api.workerRequest<{
+    success: boolean
+    found: boolean
+    resetAt: number
+    error: string | null
+  }>('db/session-reset-usage-stats', { sessionId })
+  return { success: !!result?.success, resetAt: result?.resetAt ?? 0 }
+}
+
 // ─── Load All (startup) ───
 
 /** Fetch a single session row (channel metadata included) by id. */

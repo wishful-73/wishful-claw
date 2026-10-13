@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitCompare, Maximize2, Minimize2, FolderOpen, MoreHorizontal, Trash2, Pencil, SquareTerminal } from 'lucide-react'
+import { GitCompare, Maximize2, Minimize2, FolderOpen, MoreHorizontal, RotateCcw, Pencil, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -33,7 +33,7 @@ export function SessionConversationPane({
   const session = useChatStore((s) =>
     s.sessions.find((sess) => sess.id === resolvedSessionId)
   )
-  const deleteSession = useChatStore((s) => s.deleteSession)
+  const resetSessionUsageStats = useChatStore((s) => s.resetSessionUsageStats)
   const renameSession = useChatStore((s) => s.renameSession)
   const { sendMessage, stopStreaming } = useChatActions()
   const isStreaming = useChatStore((s) =>
@@ -82,23 +82,23 @@ export function SessionConversationPane({
     [resolvedSessionId, sendMessage]
   )
 
-  const handleDelete = useCallback(async () => {
+  // S-193：浮窗「更多」里的「删除会话」换成了「重置用量统计」——删会话是破坏性操作，
+  // 却挂在会话自身的浮窗上，误触代价太大；这里改成只把底部 token 统计归零。
+  const handleResetUsageStats = useCallback(async () => {
     if (!resolvedSessionId) return
     const ok = await confirm({
-      title: t('sidebar.deleteSessionConfirmTitle', {
-        defaultValue: 'Delete this session?'
+      title: t('sidebar.resetUsageStatsConfirmTitle', {
+        defaultValue: 'Reset token usage for this session?'
       }),
-      description: t('sidebar.deleteSessionConfirmDesc', {
+      description: t('sidebar.resetUsageStatsConfirmDesc', {
         defaultValue:
-          '"{{title}}" and its message history will be permanently deleted. This cannot be undone.',
-        title: session?.title ?? ''
+          'The counters under the composer go back to zero. Messages and their per-message token usage stay untouched.'
       }),
       variant: 'destructive'
     })
     if (!ok) return
-    deleteSession(resolvedSessionId)
-    useUIStore.getState().navigateToHome()
-  }, [resolvedSessionId, session, deleteSession, t])
+    await resetSessionUsageStats(resolvedSessionId)
+  }, [resolvedSessionId, resetSessionUsageStats, t])
 
   const handleRename = useCallback(() => {
     if (!resolvedSessionId || !session) return
@@ -267,9 +267,9 @@ export function SessionConversationPane({
                   {t('sidebar.rename', { defaultValue: 'Rename' })}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleDelete} className="text-destructive">
-                  <Trash2 className="mr-2 size-4" />
-                  {t('sidebar.deleteSession', { defaultValue: 'Delete session' })}
+                <DropdownMenuItem onClick={handleResetUsageStats} className="text-destructive">
+                  <RotateCcw className="mr-2 size-4" />
+                  {t('sidebar.resetUsageStats', { defaultValue: 'Reset token usage' })}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

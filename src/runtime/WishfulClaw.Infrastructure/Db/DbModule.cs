@@ -38,6 +38,7 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/sessions-delete", DbSessionTools.Delete);
         context.Register("db/sessions-clear-all", DbSessionTools.ClearAll);
         context.Register("db/session-reset-conversation", DbSessionTools.ResetConversation);
+        context.Register("db/session-reset-usage-stats", DbSessionTools.ResetUsageStats);
         context.Register("db/session-status", DbSessionTools.Status);
 
         // ── Messages ──

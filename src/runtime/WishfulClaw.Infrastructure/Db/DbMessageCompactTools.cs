@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization.Metadata;
+using System.Text.Json.Serialization.Metadata;
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
@@ -61,8 +61,12 @@ public static class DbMessageCompactTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
+            // S-193：会话可被「重置用量统计」—— 重置只写一个起点时间戳，这里据此跳过更早的消息。
+            // COALESCE 兜底：会话行不存在、列为 0（从未重置）时行为与改动前完全一致。
             var messages = db.Query(
-                "SELECT * FROM messages WHERE session_id = @sid AND role = 'assistant' AND usage IS NOT NULL ORDER BY created_at ASC",
+                "SELECT * FROM messages WHERE session_id = @sid AND role = 'assistant' AND usage IS NOT NULL " +
+                "AND created_at > COALESCE((SELECT usage_stats_reset_at FROM sessions WHERE id = @sid), 0) " +
+                "ORDER BY created_at ASC",
                 EntityMappers.MapMessage,
                 new SqliteParameter("@sid", sessionId));
 

@@ -151,4 +151,6 @@ public sealed record SessionFindResult(bool Success, SessionRow? Session, string
 public sealed record SessionMutationResult(bool Success, int Changed, string? Error);
 public sealed record SessionClearAllResult(bool Success, List<string> SessionIds, int DeletedMessages, int DeletedSessions, string? Error);
 public sealed record SessionResetResult(bool Success, int DeletedMessages, long UpdatedAt, string? Error);
+// S-193：「重置用量统计」的结果。ResetAt 是写进 sessions.usage_stats_reset_at 的起点时间戳。
+public sealed record SessionUsageResetResult(bool Success, bool Found, long ResetAt, string? Error);
 public sealed record SessionStatusResult(bool Success, bool Found, string? Title, long? CreatedAt, long? UpdatedAt, int MessageCount, string? Error);

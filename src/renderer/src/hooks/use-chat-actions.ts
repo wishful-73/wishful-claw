@@ -279,8 +279,13 @@ export function useChatActions() {
 
   const stopStreaming = useCallback(async () => {
     const sessionId = useChatStore.getState().activeSessionId
+    // 停之前先把队列冻住：旧 run 尚在收尾，这期间不该放行下一条。
     if (sessionId) pausePendingSessionDispatch(sessionId)
     await cancelStream()
+    // S-192：停完自动放行 —— 解冻并派发队列里的下一条，用户不必再去队列点「继续」。
+    // cancelStream 已把 streaming / sessionStatus 清干净，此处主动派发不会与旧 run 抢跑；
+    // 若这一轮尚未真正收敛（仍被判活跃），本次调用只负责解冻，派发交给它的 loop_end。
+    if (sessionId) dispatchNextQueuedMessageForSession(sessionId)
   }, [cancelStream])
 
   return {

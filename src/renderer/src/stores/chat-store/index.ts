@@ -2101,17 +2101,32 @@ function adjustCompactArtifactTimestamps(messages: ChatMessage[], boundaryIndex:
   const prev = messages[boundaryIndex - 1]
   const next = messages[summaryIndex + 1]
   if (!next) return // appended at the end — fresh timestamps are already correct
+  const boundary = messages[boundaryIndex]
+  const summary = messages[summaryIndex]
+  // 下面要把 createdAt 改写成「归属位置」上的时刻（重载后排序才不会把工件推到末尾），
+  // 此刻它还是真实落刀时刻 —— 先另存进 meta，渲染层排段起点时优先用它。
+  const cutAt = Math.max(boundary.createdAt, summary.createdAt)
   const lower = prev ? prev.createdAt : 0
   const upper = next.createdAt
   if (upper - lower >= 3) {
-    messages[boundaryIndex].createdAt = upper - 2
-    messages[summaryIndex].createdAt = upper - 1
+    boundary.createdAt = upper - 2
+    summary.createdAt = upper - 1
   } else if (prev) {
     // No millisecond room — share the predecessor's timestamp; the artifacts'
     // sort_order (their transcript index) is higher than the predecessor's
     // upsert index, so the tiebreak still lands them after it.
-    messages[boundaryIndex].createdAt = prev.createdAt
-    messages[summaryIndex].createdAt = prev.createdAt
+    boundary.createdAt = prev.createdAt
+    summary.createdAt = prev.createdAt
+  }
+  if (cutAt > 0) {
+    const boundaryMeta = boundary.meta?.compactBoundary
+    if (boundaryMeta) {
+      boundary.meta = { ...boundary.meta, compactBoundary: { ...boundaryMeta, cutAt } }
+    }
+    const summaryMeta = summary.meta?.compactSummary
+    if (summaryMeta) {
+      summary.meta = { ...summary.meta, compactSummary: { ...summaryMeta, cutAt } }
+    }
   }
 }
 

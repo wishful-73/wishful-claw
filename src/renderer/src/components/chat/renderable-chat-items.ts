@@ -176,14 +176,36 @@ function getContentBlockCount(message: UnifiedMessage): number {
  * 一刀（压缩工件对）落下的时刻。取边界与摘要里更晚的那个 —— 与 context-compression.ts
  * 判定「哪个压缩是活的」用的是同一口径。
  * 压缩进行中（live）没有工件对，用它的开始时刻当这一刀的时间。
+ *
+ * 优先读 meta 里另存的 `cutAt`（真实落刀时刻）：工件的 `createdAt` 写进转写时已被
+ * `adjustCompactArtifactTimestamps` 重定位到「归属位置」，拿它当段起点会把区间拽回
+ * 几十天前（`481h56m` 就是这么来的）。老数据没有 `cutAt`，回落 `createdAt`，
+ * 再由 `clampCutTime` 兜底。
  */
 function resolveCutTime(
   pair: CompactArtifactPair | null,
   liveState?: LiveCompressionState
 ): number | null {
   if (!pair) return liveState?.startedAt ?? null
+  const cutAt =
+    pair.summary.meta?.compactSummary?.cutAt ?? pair.boundary.meta?.compactBoundary?.cutAt
+  if (typeof cutAt === 'number' && cutAt > 0) return cutAt
   const score = Math.max(pair.boundary.createdAt, pair.summary.createdAt)
   return score > 0 ? score : null
+}
+
+/**
+ * 兜底（历史数据没有 `cutAt`）：把切点夹进这条消息自己的时间区间。
+ * 夹过之后被重定位过的切点会塌到消息起点、各段时间戳趋同 —— 这是已知代价，
+ * 但它保证**任何情况下耗时都不会超出本轮跨度**，比显示 `481h56m` 强。
+ */
+function clampCutTime(cutTime: number | null, message: UnifiedMessage): number | null {
+  if (cutTime === null) return null
+  const lower = message.createdAt
+  const upper = message.updatedAt
+  if (upper == null || upper <= lower) return cutTime < lower ? lower : cutTime
+  if (cutTime < lower) return lower
+  return cutTime > upper ? upper : cutTime
 }
 
 function createAssistantFragment(
@@ -390,7 +412,7 @@ export function buildRenderableChatItems(
       let previousOperationId: string | null = null
 
       for (const { pair, splitAt } of splits) {
-        const cutTime = resolveCutTime(pair, liveState)
+        const cutTime = clampCutTime(resolveCutTime(pair, liveState), message)
         if (pair) {
           const operationId = getOperationId(pair.boundary, pair.summary)
           const fragment = createAssistantFragment(
@@ -436,6 +458,10 @@ export function buildRenderableChatItems(
       }
 
       if (previousOperationId) {
+        // 「共 X」只有在真的切出过前面那段时才有意义：切点落在消息开头时前面那段会被
+        // createAssistantFragment 丢弃（end <= start），只剩一段还报总量就成了重复显示
+        // （`15:58 · 7m40s · 共 7m40s`）。
+        const wasSplit = assistantItemIndexes.length > 0
         const fragment = createAssistantFragment(
           message,
           cursor,
@@ -449,7 +475,7 @@ export function buildRenderableChatItems(
         if (fragment) {
           // 末段额外带上整轮总耗时：分段后每段只报自己那一截，看不出总共花了多久。
           const totalElapsedMs =
-            message.updatedAt != null && message.updatedAt > message.createdAt
+            wasSplit && message.updatedAt != null && message.updatedAt > message.createdAt
               ? message.updatedAt - message.createdAt
               : undefined
           assistantItemIndexes.push(items.length)

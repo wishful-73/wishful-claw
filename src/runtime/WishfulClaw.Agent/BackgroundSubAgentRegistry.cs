@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace WishfulClaw.Agent;
@@ -41,7 +41,10 @@ public static class BackgroundSubAgentRegistry
         string? Error,
         DateTimeOffset? CompletedAt,
         bool IsBackground,
-        IReadOnlyList<SubAgentToolCallEntry> ToolCallEntries);
+        IReadOnlyList<SubAgentToolCallEntry> ToolCallEntries,
+        // S-191: owning conversation. Lets SubAgentStatus answer "what is
+        // running in this session" instead of dumping the whole worker process.
+        string? SessionId = null);
 
     private static readonly ConcurrentDictionary<string, SubAgentRecord> _records = new();
 
@@ -79,7 +82,8 @@ public static class BackgroundSubAgentRegistry
         string agentName,
         string description,
         string prompt,
-        bool isBackground)
+        bool isBackground,
+        string? sessionId = null)
     {
         _records[toolUseId] = new SubAgentRecord(
             toolUseId,
@@ -94,7 +98,8 @@ public static class BackgroundSubAgentRegistry
             null,
             null,
             isBackground,
-            []);
+            [],
+            sessionId);
     }
 
     public static void UpdateProgress(
@@ -181,6 +186,21 @@ public static class BackgroundSubAgentRegistry
     public static IReadOnlyList<SubAgentRecord> GetAll()
     {
         return _records.Values
+            .OrderByDescending(r => r.StartedAt)
+            .ToList();
+    }
+
+    // S-191: conversation-scoped view. A blank sessionId falls back to the
+    // whole process (older callers pass no session).
+    public static IReadOnlyList<SubAgentRecord> GetForSession(string? sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return GetAll();
+        }
+
+        return _records.Values
+            .Where(r => string.Equals(r.SessionId, sessionId, StringComparison.Ordinal))
             .OrderByDescending(r => r.StartedAt)
             .ToList();
     }

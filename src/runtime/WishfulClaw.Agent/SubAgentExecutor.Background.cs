@@ -22,7 +22,7 @@ public static partial class SubAgentExecutor
         var description = JsonHelpers.GetString(input, "description") ?? definition.Name;
 
         // Register in the background registry so SubAgentStatus can query it
-        BackgroundSubAgentRegistry.Register(toolUseId: toolCallId, agentName: definition.Name, description: description, prompt: prompt, isBackground: true);
+        BackgroundSubAgentRegistry.Register(toolUseId: toolCallId, agentName: definition.Name, description: description, prompt: prompt, isBackground: true, sessionId: parentState.SessionId);
 
         var childParameters = BuildChildParameters(
             parameters, definition, prompt, currentDepth + 1);

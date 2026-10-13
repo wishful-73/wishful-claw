@@ -39,7 +39,7 @@ type Slice = StateCreator<
   AgentStore,
   [['zustand/immer', never], ['zustand/persist', unknown]],
   [],
-  Pick<AgentStore, 'handleSubAgentEvent' | 'clearSessionData' | 'releaseDormantSessionData' | 'compactMemoryFootprint'>
+  Pick<AgentStore, 'handleSubAgentEvent' | 'clearSessionData' | 'releaseDormantSessionData' | 'compactMemoryFootprint' | 'abortOrphanedSubAgents'>
 >
 
 export const createSubAgentSlice: Slice = (set, _get) => ({
@@ -339,7 +339,38 @@ export const createSubAgentSlice: Slice = (set, _get) => ({
               break
             }
             case 'sub_agent_end': {
-              const sa = findSubAgentState(state, id, sessionId)
+              let sa = findSubAgentState(state, id, sessionId)
+              if (!sa) {
+                // S-191: 收敛目标可能已被清（起新一轮时 activeSubAgents 被重置、刷新 /
+                // 重连后 live map 为空）。此时绝不能静默丢弃 —— 那会让卡片永久停在
+                // 「工作中」。用事件自带的信息补一条终态记录，随后按同一路径收敛。
+                // startedAt 无来源，只能取当前时刻（仅影响卡片上的时长显示）。
+                state.activeSubAgents[id] = {
+                  name: event.subAgentName,
+                  displayName: event.subAgentName,
+                  toolUseId: id,
+                  sessionId,
+                  description: '',
+                  prompt: '',
+                  isRunning: false,
+                  isQueued: false,
+                  success: event.result.success,
+                  endReason:
+                    event.result.endReason ?? (event.result.success ? 'completed' : 'error'),
+                  errorMessage: event.result.error ?? null,
+                  iteration: event.result.iterations ?? 0,
+                  toolCalls: [],
+                  streamingText: '',
+                  transcript: [],
+                  currentAssistantMessageId: null,
+                  report: event.result.output ?? '',
+                  reportStatus: event.result.reportSubmitted ? 'submitted' : 'missing',
+                  usage: event.result.usage,
+                  startedAt: Date.now(),
+                  completedAt: null
+                }
+                sa = state.activeSubAgents[id]
+              }
               if (sa) {
                 sa.isRunning = false
                 sa.success = event.result.success
@@ -398,6 +429,49 @@ export const createSubAgentSlice: Slice = (set, _get) => ({
         }
         if (!isAgentRuntimeSyncSuppressed()) {
           emitAgentRuntimeSync({ kind: 'subagent_event', event, sessionId })
+        }
+      },
+      /**
+       * S-191: Worker 进程断连 ⇒ 它名下的子 agent 必然全停。把仍在运行 / 排队的卡片
+       * 收敛为 aborted 并落进已完成与历史，否则它们永远不会再收到 sub_agent_end。
+       */
+      abortOrphanedSubAgents: () => {
+        const abortedIds: string[] = []
+        set((state) => {
+          const orphaned = Object.entries(state.activeSubAgents).filter(
+            ([, subAgent]) => subAgent.isRunning || subAgent.isQueued
+          )
+          if (orphaned.length === 0) return
+
+          for (const [id, subAgent] of orphaned) {
+            subAgent.isRunning = false
+            subAgent.isQueued = false
+            subAgent.success = false
+            subAgent.endReason = 'aborted'
+            subAgent.errorMessage = null
+            subAgent.completedAt = Date.now()
+            if (subAgent.reportStatus === 'pending' || subAgent.reportStatus === 'queued') {
+              subAgent.reportStatus = 'missing'
+            }
+            state.completedSubAgents[id] = subAgent
+            delete state.activeSubAgents[id]
+            const targetSessionId = subAgent.sessionId
+            if (targetSessionId) {
+              syncSessionSubAgentState(state, targetSessionId, id, subAgent)
+              const previous = state.sessionSubAgentSummaries[targetSessionId] ?? []
+              state.sessionSubAgentSummaries[targetSessionId] = [
+                buildSubAgentSummary(subAgent),
+                ...previous.filter((item) => item.toolUseId !== id)
+              ]
+            }
+            upsertSubAgentHistory(state.subAgentHistory, subAgent)
+            abortedIds.push(id)
+          }
+          trimCompletedSubAgentsMap(state.completedSubAgents)
+          rebuildRunningSubAgentDerived(state)
+        })
+        if (abortedIds.length > 0) {
+          queueAgentHistoryPersistence({ upsertIds: abortedIds })
         }
       },
       clearSessionData: (sessionId) => {

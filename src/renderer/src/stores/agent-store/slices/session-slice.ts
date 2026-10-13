@@ -140,13 +140,35 @@ export const createSessionSlice: Slice = (set, get) => ({
       resetLiveSessionExecution: (sessionId) => {
         set((state) => {
           delete state.sessionToolCallsCache[sessionId]
-          delete state.sessionSubAgentLiveCache[sessionId]
 
-          if (state.liveSessionId !== sessionId) return
+          // S-191: 只清「已结束」的子 agent。后台子 agent 的生命周期独立于父 run
+          //（S-180 设计）—— 起新一轮或收尾时把仍在跑的一起清掉，它们的 sub_agent_end
+          // 会因找不到收敛目标被静默丢弃，卡片永挂「工作中」。保留集同时写回 live
+          // 缓存，使紧随其后的 switchToolCallSession(null, sessionId) 恢复保留集而非空表。
+          const keepRunning = (map: typeof state.activeSubAgents) =>
+            Object.fromEntries(
+              Object.entries(map).filter(
+                ([, subAgent]) => subAgent.isRunning || subAgent.isQueued
+              )
+            )
+
+          if (state.liveSessionId !== sessionId) {
+            const cached = state.sessionSubAgentLiveCache[sessionId]
+            state.sessionSubAgentLiveCache[sessionId] = {
+              active: cloneSubAgentMap(keepRunning(cached?.active ?? {})),
+              completed: {}
+            }
+            return
+          }
+
           state.pendingToolCalls = []
           state.executedToolCalls = []
-          state.activeSubAgents = {}
+          state.activeSubAgents = cloneSubAgentMap(keepRunning(state.activeSubAgents))
           state.completedSubAgents = {}
+          state.sessionSubAgentLiveCache[sessionId] = {
+            active: cloneSubAgentMap(state.activeSubAgents),
+            completed: {}
+          }
           rebuildRunningSubAgentDerived(state)
         })
       },

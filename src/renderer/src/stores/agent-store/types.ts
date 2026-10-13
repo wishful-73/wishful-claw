@@ -500,6 +500,12 @@ export interface AgentStore {
 
   handleSubAgentEvent: (event: SubAgentEvent, sessionId?: string) => void
 
+  /**
+   * S-191: Worker 进程断连时，把它名下仍在运行 / 排队的子 agent 卡片收敛为 aborted。
+   * 进程都没了，不会有任何事件再来收敛它们 —— 不收就成了永挂的「工作中」。
+   */
+  abortOrphanedSubAgents: () => void
+
 
 
   clearSessionData: (sessionId: string) => void

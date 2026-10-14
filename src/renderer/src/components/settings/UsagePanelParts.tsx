@@ -1,7 +1,8 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
-import type { UsageBucket } from './UsagePanel'
+import { formatTokens } from '@renderer/lib/format-tokens'
+import type { UsageBucket } from './usage-panel-types'
 
 export interface UsageModelBucket {
   bucketStart: number
@@ -14,13 +15,6 @@ export interface UsageModelSeries {
   modelId: string
   providerType?: string | null
   buckets: UsageModelBucket[]
-}
-
-export function formatTokens(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '0'
-  if (value < 1000) return String(value)
-  if (value < 1_000_000) return `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}K`
-  return `${(value / 1_000_000).toFixed(2)}M`
 }
 
 export function formatCost(value: number | null | undefined): string {

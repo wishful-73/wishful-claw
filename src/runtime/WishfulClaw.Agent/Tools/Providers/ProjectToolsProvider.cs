@@ -129,5 +129,93 @@ public sealed class ProjectToolsProvider : IToolProvider
                 ["followUpId", "claimToken", "action", "lastQueryResult"]),
                 availableModes: new[] { "normal", "goal", "global", "channel" },
                 visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // get_session_queue: Read another session's pending message queue and live run state.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "get_session_queue",
+            "Read another session's pending message queue and live run state: how many messages are "
+            + "waiting, each message's id and text preview, whether a turn is currently running, and "
+            + "whether queue dispatch is paused. Queued messages run one by one after the current turn. "
+            + "Use remove_session_queue_message or clear_session_queue to cancel them, or "
+            + "resume_session_queue to start a paused queue running again.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session (from get_project_details).")
+                },
+                ["sessionId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // remove_session_queue_message: Cancel one queued message.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "remove_session_queue_message",
+            "Cancel a single queued message in another session's pending queue, using the id returned by "
+            + "get_session_queue. Reports failure when the id is not in the queue. The turn that is "
+            + "currently running is not affected.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session."),
+                    ["messageId"] = ToolSchemaBuilder.String(
+                        "The queued message id, as reported by get_session_queue.")
+                },
+                ["sessionId", "messageId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // clear_session_queue: Cancel every queued message.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "clear_session_queue",
+            "Cancel all queued messages of another session. The turn that is currently running is not "
+            + "affected; only the messages waiting behind it are dropped.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session.")
+                },
+                ["sessionId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // stop_session_run: Interrupt the turn that is running right now.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "stop_session_run",
+            "Interrupt the turn a session is currently running, the same way the user's stop button does. "
+            + "Only the running turn stops; the pending queue is kept (its dispatch is paused, exactly as "
+            + "with a manual stop) and the session can be sent a new message afterwards. Call "
+            + "resume_session_queue to let the kept messages run. Fails when the session has no running "
+            + "turn.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session.")
+                },
+                ["sessionId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
+
+        // resume_session_queue: Lift a paused queue dispatch so the waiting messages run again.
+        registry.Register(new ToolDefinitionPlaceholder(
+            "resume_session_queue",
+            "Resume dispatch of another session's pending message queue after it was paused. Stopping a "
+            + "turn — stop_session_run, or the user pressing stop in the UI — freezes the queue, and the "
+            + "messages waiting behind it then never run on their own. This lifts that freeze, the same "
+            + "as the user's resume button. If no turn is running the queue is dispatched immediately; "
+            + "otherwise it continues as soon as the current turn ends. The queued messages themselves "
+            + "are not changed.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["sessionId"] = ToolSchemaBuilder.String(
+                        "The ID of the target session.")
+                },
+                ["sessionId"]),
+                availableModes: new[] { "global" },
+                visibleScopes: ToolVisibilityScopes.GlobalSideOnly));
     }
 }

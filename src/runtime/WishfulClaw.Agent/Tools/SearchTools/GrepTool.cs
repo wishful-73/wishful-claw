@@ -24,12 +24,12 @@ public sealed class GrepTool : IToolExecutor
 
     public string Name => "Grep";
 
-    public string Description => "Search file contents using a regular expression pattern. Supports context lines, file pattern filtering, and case-insensitive search.";
+    public string Description => "Search file contents using a regular expression pattern. Supports context lines, file pattern filtering, and case-insensitive search. The path may be a single file, in which case file_pattern is ignored.";
 
     public string[]? VisibleScopes => ToolVisibilityScopes.Everywhere;
     public bool IsCore => true;
     public JsonElement InputSchema { get; } = ParseSchema(
-        """{"type":"object","properties":{"pattern":{"type":"string","description":"Regular expression pattern to search for"},"path":{"type":"string","description":"Root directory to search from. Defaults to working folder."},"file_pattern":{"type":"string","description":"File name pattern to filter (e.g. *.cs). Default: *","default":"*"},"case_insensitive":{"type":"boolean","description":"Case-insensitive search. Default: false","default":false},"context_lines":{"type":"integer","description":"Number of context lines before and after match. Default: 0","default":0},"limit":{"type":"integer","description":"Maximum number of matches. Default: 500","default":500},"exclude_dirs":{"type":"array","items":{"type":"string"},"description":"Directory names to exclude from the search (e.g. [\"release\", \"docs\"]). Common dependency/build dirs are always excluded."}},"required":["pattern"]}""");
+        """{"type":"object","properties":{"pattern":{"type":"string","description":"Regular expression pattern to search for"},"path":{"type":"string","description":"Root directory, or a single file, to search from. Defaults to working folder. When a single file is given, file_pattern is ignored."},"file_pattern":{"type":"string","description":"File name pattern to filter (e.g. *.cs). Default: *","default":"*"},"case_insensitive":{"type":"boolean","description":"Case-insensitive search. Default: false","default":false},"context_lines":{"type":"integer","description":"Number of context lines before and after match. Default: 0","default":0},"limit":{"type":"integer","description":"Maximum number of matches. Default: 500","default":500},"exclude_dirs":{"type":"array","items":{"type":"string"},"description":"Directory names to exclude from the search (e.g. [\"release\", \"docs\"]). Common dependency/build dirs are always excluded."}},"required":["pattern"]}""");
 
     public async Task<ToolResult> ExecuteAsync(JsonElement input, ToolExecutionContext context)
     {
@@ -40,9 +40,15 @@ public sealed class GrepTool : IToolExecutor
         }
 
         var root = ResolveSearchPath(input, context);
-        if (!Directory.Exists(root))
+        var isSingleFile = File.Exists(root) && !Directory.Exists(root);
+        if (!isSingleFile && !Directory.Exists(root))
         {
-            return new ToolResult($"Directory not found: {root}", true);
+            return new ToolResult($"Path not found: {root}", true);
+        }
+
+        if (isSingleFile && IsBinaryExtension(root))
+        {
+            return new ToolResult($"Cannot grep a binary file: {root}", true);
         }
 
         var caseInsensitive = GetBool(input, "case_insensitive", false);
@@ -73,7 +79,10 @@ public sealed class GrepTool : IToolExecutor
             var totalChars = 0;
             var stats = new FileEnumerationStats();
 
-            foreach (var file in EnumerateSearchableFiles(root, filePattern, excludeDirs, stats))
+            // 单文件模式：展示基准取父目录（Path.GetRelativePath(root, root) 会得到 "."）
+            var searchBase = isSingleFile ? Path.GetDirectoryName(root) ?? root : root;
+
+            foreach (var file in isSingleFile ? [root] : EnumerateSearchableFiles(root, filePattern, excludeDirs, stats))
             {
                 if (results.Count >= maxResults)
                 {
@@ -91,7 +100,7 @@ public sealed class GrepTool : IToolExecutor
                     continue;
                 }
 
-                var relativePath = Path.GetRelativePath(root, file).Replace('\\', '/');
+                var relativePath = Path.GetRelativePath(searchBase, file).Replace('\\', '/');
 
                 for (var i = 0; i < lines.Length; i++)
                 {
@@ -206,8 +215,7 @@ public sealed class GrepTool : IToolExecutor
             }
 
             // Skip binary-looking files
-            var ext = Path.GetExtension(file).ToLowerInvariant();
-            if (ext is ".exe" or ".dll" or ".pdb" or ".so" or ".dylib" or ".bin" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".ico" or ".zip" or ".gz" or ".tar" or ".7z" or ".rar" or ".pdf")
+            if (IsBinaryExtension(file))
             {
                 continue;
             }
@@ -285,6 +293,18 @@ public sealed class GrepTool : IToolExecutor
     }
 
     private static readonly char[] WildcardChars = { '*', '?' };
+
+    private static readonly string[] BinaryExtensions =
+    [
+        ".exe", ".dll", ".pdb", ".so", ".dylib", ".bin",
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico",
+        ".zip", ".gz", ".tar", ".7z", ".rar", ".pdf"
+    ];
+
+    private static bool IsBinaryExtension(string file)
+    {
+        return BinaryExtensions.Contains(Path.GetExtension(file).ToLowerInvariant());
+    }
 
     private sealed class FileEnumerationStats
     {

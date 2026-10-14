@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "0.2.38",
+  "version": "0.2.39",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -53,6 +53,7 @@
     "test:queued-message-text": "esbuild tests/queued-message-text/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/queued-message-text/out/program.cjs && node tests/queued-message-text/out/program.cjs",
     "test:codegraph-availability": "esbuild tests/codegraph-availability/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/codegraph-availability/out/program.cjs && node tests/codegraph-availability/out/program.cjs",
     "test:background-wake-message": "esbuild tests/background-wake-message/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/background-wake-message/out/program.cjs && node tests/background-wake-message/out/program.cjs",
+    "test:subagent-concurrency": "esbuild tests/subagent-concurrency/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/subagent-concurrency/out/program.cjs && node tests/subagent-concurrency/out/program.cjs",
     "test:session-permission-mode": "esbuild tests/session-permission-mode/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/session-permission-mode/out/program.cjs && node tests/session-permission-mode/out/program.cjs",
     "test:startup-flags": "esbuild tests/startup-flags/program.ts --bundle --platform=node --format=cjs --outfile=tests/startup-flags/out/program.cjs && node tests/startup-flags/out/program.cjs",
     "test:terminal-output-text": "esbuild tests/terminal-output-text/program.ts --bundle --platform=node --format=cjs --outfile=tests/terminal-output-text/out/program.cjs && node tests/terminal-output-text/out/program.cjs",
@@ -71,6 +72,8 @@
     "test:image-block-source": "esbuild tests/image-block-source/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/image-block-source/out/program.cjs && node tests/image-block-source/out/program.cjs",
     "test:image-endpoint": "esbuild tests/image-endpoint/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-endpoint/out/program.cjs && node tests/image-endpoint/out/program.cjs",
     "test:send-model-resolution": "esbuild tests/send-model-resolution/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@renderer/stores/provider-store=./tests/send-model-resolution/stubs/provider-store.ts --alias:@renderer/stores/chat-store=./tests/send-model-resolution/stubs/chat-store.ts --alias:@renderer/stores/settings-store=./tests/send-model-resolution/stubs/settings-store.ts --alias:@renderer/stores/channel-store=./tests/send-model-resolution/stubs/channel-store.ts --outfile=tests/send-model-resolution/out/program.cjs && node tests/send-model-resolution/out/program.cjs",
+    "test:token-format": "esbuild tests/token-format/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/token-format/out/program.cjs && node tests/token-format/out/program.cjs",
+    "test:composer-status-elapsed": "esbuild tests/composer-status-elapsed/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/composer-status-elapsed/out/program.cjs && node tests/composer-status-elapsed/out/program.cjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

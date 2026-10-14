@@ -65,7 +65,10 @@ function parseErrorMessage(output: ToolResultContent | undefined): string | null
   if (parsed && !Array.isArray(parsed) && typeof parsed.error === 'string' && parsed.error.trim()) {
     return parsed.error
   }
-  return output.trim() || null
+  // Only an explicit `error` field counts as a failure. The raw output is a
+  // successful payload (structured JSON object) most of the time — treating it
+  // as an error message marked every successful call as failed.
+  return null
 }
 
 function stringValue(value: unknown): string {

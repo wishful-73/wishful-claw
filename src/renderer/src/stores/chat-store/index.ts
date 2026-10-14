@@ -1740,9 +1740,30 @@ export const useChatStore = create<ChatStore>()(
 
             if (event.reason === 'aborted' || event.reason === 'error') {
               void import('@renderer/hooks/use-chat-actions')
-                .then(({ pausePendingSessionDispatch }) => pausePendingSessionDispatch(targetSessionId))
+                // S-202：这一轮是被中止的，它的收尾补冻会落在停止按钮的自动续 / PM 的
+                // resume_session_queue 之后，所以走 interruptedLoop 那条「显式放行优先」的路。
+                //
+                // 但放行意图还在（尚未兑现）时不能只补冻 —— 那是「放行时这一轮还没收敛、
+                // 派发被它挡下」的处境，队列正等着有人推一把。这里必须补一次派发，否则
+                // 队列就停在这儿没人管了（resume 时 run 还在跑的话，它自己不会派发）。
+                .then(
+                  ({
+                    dispatchQueuedMessageWithReplay,
+                    pausePendingSessionDispatch,
+                    isDispatchExplicitlyResumed
+                  }) => {
+                    if (isDispatchExplicitlyResumed(targetSessionId)) {
+                      // 放行意图还没兑现（放行时这一轮尚未收敛、派发被它挡下）—— 这次收尾
+                      // 要负责把队列推出去，而且要带重放：收尾事件一轮不止一条，推一次
+                      // 很可能被后到的那条重新冻上。
+                      void dispatchQueuedMessageWithReplay(targetSessionId)
+                      return
+                    }
+                    pausePendingSessionDispatch(targetSessionId, { interruptedLoop: true })
+                  }
+                )
                 .catch((err) => {
-                  console.warn('[chat-store] Failed to pause queued messages after interrupted loop:', err)
+                  console.warn('[chat-store] Failed to settle queued messages after interrupted loop:', err)
                 })
             } else {
               void import('@renderer/hooks/use-chat-actions')
@@ -1920,9 +1941,25 @@ export const useChatStore = create<ChatStore>()(
             })
 
             void import('@renderer/hooks/use-chat-actions')
-              .then(({ pausePendingSessionDispatch }) => pausePendingSessionDispatch(targetSessionId))
+              // S-202 补：与上面的 loop_end(aborted/error) 同理 —— `error` 也是这一轮的
+              // **收尾事件**，同样经 IPC 异步到达，同样可能落在停止按钮的自动续 / PM 的
+              // resume_session_queue **之后**。收尾逻辑与那里保持一致：有放行意图就补派发，
+              // 没有才补冻。
+              .then(
+                ({
+                  dispatchQueuedMessageWithReplay,
+                  pausePendingSessionDispatch,
+                  isDispatchExplicitlyResumed
+                }) => {
+                  if (isDispatchExplicitlyResumed(targetSessionId)) {
+                    void dispatchQueuedMessageWithReplay(targetSessionId)
+                    return
+                  }
+                  pausePendingSessionDispatch(targetSessionId, { interruptedLoop: true })
+                }
+              )
               .catch((err) => {
-                console.warn('[chat-store] Failed to pause queued messages after run error:', err)
+                console.warn('[chat-store] Failed to settle queued messages after run error:', err)
               })
 
             break
@@ -2101,17 +2138,32 @@ function adjustCompactArtifactTimestamps(messages: ChatMessage[], boundaryIndex:
   const prev = messages[boundaryIndex - 1]
   const next = messages[summaryIndex + 1]
   if (!next) return // appended at the end — fresh timestamps are already correct
+  const boundary = messages[boundaryIndex]
+  const summary = messages[summaryIndex]
+  // 下面要把 createdAt 改写成「归属位置」上的时刻（重载后排序才不会把工件推到末尾），
+  // 此刻它还是真实落刀时刻 —— 先另存进 meta，渲染层排段起点时优先用它。
+  const cutAt = Math.max(boundary.createdAt, summary.createdAt)
   const lower = prev ? prev.createdAt : 0
   const upper = next.createdAt
   if (upper - lower >= 3) {
-    messages[boundaryIndex].createdAt = upper - 2
-    messages[summaryIndex].createdAt = upper - 1
+    boundary.createdAt = upper - 2
+    summary.createdAt = upper - 1
   } else if (prev) {
     // No millisecond room — share the predecessor's timestamp; the artifacts'
     // sort_order (their transcript index) is higher than the predecessor's
     // upsert index, so the tiebreak still lands them after it.
-    messages[boundaryIndex].createdAt = prev.createdAt
-    messages[summaryIndex].createdAt = prev.createdAt
+    boundary.createdAt = prev.createdAt
+    summary.createdAt = prev.createdAt
+  }
+  if (cutAt > 0) {
+    const boundaryMeta = boundary.meta?.compactBoundary
+    if (boundaryMeta) {
+      boundary.meta = { ...boundary.meta, compactBoundary: { ...boundaryMeta, cutAt } }
+    }
+    const summaryMeta = summary.meta?.compactSummary
+    if (summaryMeta) {
+      summary.meta = { ...summary.meta, compactSummary: { ...summaryMeta, cutAt } }
+    }
   }
 }
 

@@ -260,6 +260,13 @@ export interface CompactBoundaryMeta {
   preTokens: number
   messagesSummarized: number
   preservedSegment?: CompactBoundarySegment
+  /**
+   * 这一刀真实落下的时刻（epoch ms）。工件写进转写时 `createdAt` 会被
+   * `adjustCompactArtifactTimestamps` 重定位到它的**归属位置**（为了 DB 排序），
+   * 于是不再等于落刀时刻；改写前把真实值另存到这里，渲染层排段起点时优先用它。
+   * 历史数据没有这个字段，渲染层回落到 clamp 兜底。
+   */
+  cutAt?: number
 }
 
 export interface CompactSummaryMeta {
@@ -274,6 +281,8 @@ export interface CompactSummaryMeta {
     afterContentBlockCount: number
     afterToolUseId?: string
   }
+  /** 与 `CompactBoundaryMeta.cutAt` 同义（同一刀的两个工件各存一份）。 */
+  cutAt?: number
 }
 
 export type CompressionStatusState =

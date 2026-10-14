@@ -6,7 +6,7 @@
 - VERDICT: PASS（编译验证 + 用户人工验证）
 - 产品版本: 0.2.38
 - Tag: v0.2.38
-- Commit: （merge 后回填）
+- Commit: `2c925c88`（merge: v2-iter-38 → main，= tag `v0.2.38`）
 - 日期: 2026-10-09
 - 范围与功能单元：
   - S-172 主链流式头链 5 份收敛到 `ProviderHttpHeaders`（`316ecaff`）

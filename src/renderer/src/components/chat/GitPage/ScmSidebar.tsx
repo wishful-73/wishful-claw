@@ -57,10 +57,6 @@ import {
 } from 'lucide-react'
 
 interface ScmSidebarProps {
-  /** 紧凑形态（右侧面板）传 `'100%'` 占满宿主宽度；宽态传拖拽后的像素值。 */
-  scmWidth: number | string
-  /** 紧凑形态：没有相邻栏可拖，隐藏右侧拖拽把手。 */
-  compact?: boolean
   t: TFunction
   isScanning: boolean
   scanError: string | null
@@ -109,13 +105,12 @@ interface ScmSidebarProps {
   aiCommitLoading: boolean
   handleCommit: (action: CommitAction) => Promise<void>
   handleAiCommitMessage: () => Promise<void>
-  onScmResizePointerDown: (e: React.PointerEvent) => void
+  /** 右键文件行「文件历史」：由宿主打开历史弹窗 */
+  onShowFileHistory?: (row: ScmFileRow) => void
 }
 
 export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
   const {
-    scmWidth,
-    compact,
     t,
     isScanning,
     scanError,
@@ -160,7 +155,7 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
     aiCommitLoading,
     handleCommit,
     handleAiCommitMessage,
-    onScmResizePointerDown
+    onShowFileHistory
   } = props
 
   // 提交前会自动暂存全部改动（与旧「变更」面板一致），所以只看有没有可提交的东西 + 有没有写说明。
@@ -170,10 +165,7 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
 
   return (
         <>
-          <aside
-            style={{ width: scmWidth }}
-            className="flex min-w-0 shrink-0 flex-col border-r border-border/60 bg-muted/10"
-          >
+          <aside className="flex min-w-0 flex-1 flex-col border-r border-border/60 bg-muted/10">
             <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 {t('title')}
@@ -557,6 +549,8 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
                           onStage={() => void stageFiles(selectedRepo.fullPath, [row.path])}
                           onUnstage={() => void unstageFiles(selectedRepo.fullPath, [row.path])}
                           onDiscard={() => void confirmDiscard(row)}
+                          onShowHistory={() => onShowFileHistory?.(row)}
+                          historyLabel={t('fileHistory')}
                           disabled={busy}
                           labels={{
                             stage: t('tooltipStage'),
@@ -603,6 +597,8 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
                           onStage={() => void stageFiles(selectedRepo.fullPath, [row.path])}
                           onUnstage={() => void unstageFiles(selectedRepo.fullPath, [row.path])}
                           onDiscard={() => void confirmDiscard(row)}
+                          onShowHistory={() => onShowFileHistory?.(row)}
+                          historyLabel={t('fileHistory')}
                           disabled={busy}
                           labels={{
                             stage: t('tooltipStage'),
@@ -649,6 +645,8 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
                           onStage={() => void stageFiles(selectedRepo.fullPath, [row.path])}
                           onUnstage={() => void unstageFiles(selectedRepo.fullPath, [row.path])}
                           onDiscard={() => void confirmDiscard(row)}
+                          onShowHistory={() => onShowFileHistory?.(row)}
+                          historyLabel={t('fileHistory')}
                           disabled={busy}
                           labels={{
                             stage: t('tooltipStage'),
@@ -663,16 +661,6 @@ export function ScmSidebar(props: ScmSidebarProps): React.JSX.Element {
               )}
             </div>
           </aside>
-
-          {compact ? null : (
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={t('resizeScmPanel')}
-              onPointerDown={onScmResizePointerDown}
-              className="w-[5px] shrink-0 cursor-col-resize border-x border-transparent bg-border/50 hover:bg-primary/35"
-            />
-          )}
         </>
   )
 }

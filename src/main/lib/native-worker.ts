@@ -1,4 +1,4 @@
-﻿// Electron types available via electron-vite/node
+// Electron types available via electron-vite/node
 import { spawn, type ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { EventEmitter } from 'events'
@@ -7,6 +7,7 @@ import * as path from 'path'
 import { decode, encode } from '@msgpack/msgpack'
 import { app } from 'electron'
 import { logError, logWarn } from './logger'
+import { safeSendMessagePackToAllWindows } from '../window-ipc'
 import { readPersistedSettings, SETTINGS_STORAGE_KEY } from './settings-store'
 import { resolveCodeGraphGrammarsDir } from './codegraph-assets'
 import { resolveDataDir } from './data-dir'
@@ -57,6 +58,12 @@ class NativeWorkerManager {
   private pendingFrameLength = -1
   private nextId = 1
   private startPromise: Promise<void> | null = null
+  // S-191: sidecar:lifecycle 的信号状态。曾经成功连上过 ⇒ 之后的断连才值得通知
+  // 渲染端（首启失败不算「断开」）；disconnectedNotified 防重复发（退出/断连多路
+  // 汇聚到 closeWorker）；shuttingDown 让主动退出静默，不误报为异常断连。
+  private everConnected = false
+  private disconnectedNotified = false
+  private shuttingDown = false
 
   get isRunning(): boolean {
     return (
@@ -239,6 +246,14 @@ class NativeWorkerManager {
     // Verify connectivity
     await this.request('worker/ping', {}, 10_000)
     console.log('[Worker] connected', { pid: child.pid })
+
+    // S-191: 曾连上过 ⇒ 本次是重启。补发 reconnected，解除挂起的断连标记，
+    // 让渲染端重新同步运行时设置（App.tsx / agent-bridge.ts 的既有订阅此前从无信号）。
+    if (this.everConnected) {
+      this.disconnectedNotified = false
+      safeSendMessagePackToAllWindows('sidecar:lifecycle', { state: 'reconnected' })
+    }
+    this.everConnected = true
   }
 
   private async connect(endpoint: string): Promise<void> {
@@ -401,6 +416,12 @@ class NativeWorkerManager {
   }
 
   private closeWorker(error: Error): void {
+    // S-191: Worker 断了 ⇒ 它名下的子 Agent 必然全停。在此广播 disconnected，
+    // 渲染端据此把仍挂「工作中」的卡片收敛为 aborted（此链此前无任何发出方）。
+    if (this.everConnected && !this.disconnectedNotified && !this.shuttingDown) {
+      this.disconnectedNotified = true
+      safeSendMessagePackToAllWindows('sidecar:lifecycle', { state: 'disconnected' })
+    }
     this.socket?.destroy()
     this.socket = null
     // Kill the child before dropping the reference — otherwise a disconnect
@@ -430,6 +451,9 @@ class NativeWorkerManager {
    * without rejecting in-flight requests — the process is going away.
    */
   shutdown(): void {
+    // S-191: 主动退出静默处理 —— 随后的 child exit 会走进 closeWorker，
+    // 这里先置位，避免把正常退出误报成异常断连。
+    this.shuttingDown = true
     this.socket?.destroy()
     this.socket = null
     if (this.child && this.child.exitCode === null && !this.child.killed) {

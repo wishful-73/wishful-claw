@@ -40,6 +40,7 @@ import { agentBridge } from '@renderer/lib/ipc/agent-bridge'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { getAgentStreamReceiver } from '@renderer/lib/ipc/agent-stream-receiver'
 import { useActivityStore } from '@renderer/stores/activity-store'
+import { useAgentStore } from '@renderer/stores/agent-store'
 
 // Initialize provider store — ensures builtin presets exist
 initProviderStore()
@@ -185,6 +186,9 @@ function App(): React.JSX.Element | null {
     const unsubscribeRuntimeLifecycle = ipcClient.on('sidecar:lifecycle', (payload) => {
       const state = (payload as { state?: string } | undefined)?.state
       if (state === 'reconnected') syncHydratedRuntimeSettings()
+      // S-191: Worker 进程断了 ⇒ 它名下的子 agent 必然全停。把它们从「工作中」收敛为
+      // aborted，否则不会有任何事件再来收敛，卡片（以及右侧面板计数）会一直挂着。
+      if (state === 'disconnected') useAgentStore.getState().abortOrphanedSubAgents()
     })
 
     // Pre-fetch tool definitions in background so first message doesn't wait

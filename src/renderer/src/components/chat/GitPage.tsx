@@ -6,7 +6,6 @@ import { useGitPageHandlers } from './git-page-handlers'
 import { ScmSidebar } from './GitPage/ScmSidebar'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@renderer/components/ui/hover-card'
 import {
   Dialog,
   DialogContent,
@@ -15,20 +14,13 @@ import {
   DialogHeader,
   DialogTitle
 } from '@renderer/components/ui/dialog'
-import { cn } from '@renderer/lib/utils'
 import { useGitStore } from '@renderer/stores/git-store'
-import { useGitPanelSplit } from '@renderer/hooks/use-git-panel-split'
 import { useChatStore } from '@renderer/stores/chat-store'
 
-
-import { type ScmFileRow, scmFileKey, parseDiffBlocks } from './GitPage/utils'
-import { GitDiffContent } from './GitPage/GitDiffContent'
+import { type ScmFileRow, scmFileKey } from './GitPage/utils'
 import { GitDiffDialog } from './GitPage/git-diff-dialog'
 import { diffTextToChunks } from './GitPage/diff-chunks'
 import { CodeDiffViewer } from './CodeDiffViewer'
-
-/** 宿主宽度低于此值时走紧凑形态（右侧面板常态 384px）。 */
-const GIT_PAGE_COMPACT_MAX_WIDTH = 640
 
 export interface GitPageProps {
   /**
@@ -38,6 +30,12 @@ export interface GitPageProps {
   workingFolder?: string | null
 }
 
+/**
+ * 右侧面板的 Git 选项卡：面板内只保留一列 SCM 文件列表（对齐 VS Code「源代码管理」）。
+ *
+ * 面板常态宽度（384px）放不下并排的 SCM / diff / 历史三栏，因此 diff 与文件历史都走弹窗：
+ * 左键文件行看工作区 diff，右键文件行看该文件的提交历史。
+ */
 export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {}): React.JSX.Element {
   const { t, i18n } = useTranslation('chat', { keyPrefix: 'git' })
   const activeProjectId = useChatStore((s) => s.activeProjectId)
@@ -66,6 +64,8 @@ export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {})
     reset
   } = useGitStore()
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [diffDialogOpen, setDiffDialogOpen] = useState(false)
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
   const [commitMessage, setCommitMessage] = useState('')
   const [committing, setCommitting] = useState(false)
@@ -78,30 +78,6 @@ export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {})
     | null
   >(null)
   const [branchNameInput, setBranchNameInput] = useState('')
-
-  // 窄宿主（右侧面板）只有 SCM 单栏 + diff 弹窗；宽宿主保持三栏。
-  const hostRef = React.useRef<HTMLDivElement>(null)
-  const [compact, setCompact] = useState(false)
-  const [compactDiffOpen, setCompactDiffOpen] = useState(false)
-
-  useEffect(() => {
-    const el = hostRef.current
-    if (!el) return
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? 0
-      setCompact(width > 0 && width < GIT_PAGE_COMPACT_MAX_WIDTH)
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  const {
-    scmWidth,
-    historyWidth,
-    containerRef,
-    onScmResizePointerDown,
-    onHistoryResizePointerDown
-  } = useGitPanelSplit()
 
   const selectedRepo = repositories.find((repo) => repo.fullPath === selectedRepoPath) ?? null
   const details = selectedRepoPath ? repoDetailsByPath[selectedRepoPath] : null
@@ -219,18 +195,13 @@ export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {})
   const showHistoryDiffSpinner =
     viewingHistoryDiff && cachedHistoryDiff === undefined && historyPatchLoading
 
-  const diffBlocks = useMemo(() => {
-    if (selectedDiffText === null) return []
-    return parseDiffBlocks(selectedDiffText)
-  }, [selectedDiffText])
-
-  // 紧凑弹窗走变更面板那套渲染（带行号、可切 split/inline），宽态内联继续用简表。
+  // 弹窗走变更面板那套渲染（带行号、可切 split/inline）。
   const diffChunks = useMemo(
     () => (selectedDiffText === null ? [] : diffTextToChunks(selectedDiffText)),
     [selectedDiffText]
   )
 
-  const compactRows = useMemo(
+  const fileRows = useMemo(
     () => allRows.map((row) => ({ key: scmFileKey(row), path: row.path, badge: row.section })),
     [allRows]
   )
@@ -240,28 +211,39 @@ export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {})
     [fileHistory, details?.history]
   )
 
+  const historyRows = useMemo(
+    () =>
+      historyListForPanel.map((commit) => ({
+        key: commit.hash,
+        path: commit.subject,
+        badge: commit.shortHash
+      })),
+    [historyListForPanel]
+  )
+
   const selectedHistoryEntry = useMemo(() => {
     if (!historyPick) return null
     return historyListForPanel.find((c) => c.hash === historyPick.hash) ?? null
   }, [historyPick, historyListForPanel])
 
-  const selectedRepoLabel = selectedRepo
-    ? selectedRepo.relativePath === '.'
-      ? selectedRepo.name
-      : selectedRepo.relativePath
-    : null
-  const totalChangeCount = conflictRows.length + stagedRows.length + unstagedRows.length
+  const previewPath =
+    selectedRepo && selectedRow ? `${selectedRepo.fullPath}/${selectedRow.path}` : null
 
-  // 全局会话没有 activeProject，标题回落到目录名。
-  const projectLabel =
-    activeProject?.name ??
-    ((workingFolder ?? '').split(/[\\/]/).filter(Boolean).pop() || workingFolder || '')
-  const titleRepoPath = selectedRepoLabel ?? workingFolder
-
-  // 紧凑形态点文件 = 打开 diff 弹窗（宽态由内联区域直接呈现，不走这里）。
-  const handleDiffSelect = (key: string | null): void => {
+  // 点文件行 = 选中该文件并打开工作区 diff 弹窗。
+  const handleFileSelect = (key: string | null): void => {
     setSelectedKey(key)
-    if (key) setCompactDiffOpen(true)
+    if (!key) return
+    setHistoryPick(null)
+    setDiffDialogOpen(true)
+  }
+
+  // 右键文件行「文件历史」= 选中该文件并打开提交历史弹窗。
+  const handleShowFileHistory = (row: ScmFileRow): void => {
+    if (!selectedRepo) return
+    setSelectedKey(scmFileKey(row))
+    setHistoryPick(null)
+    setHistoryDialogOpen(true)
+    void loadFileHistory(selectedRepo.fullPath, row.path)
   }
 
   const {
@@ -302,30 +284,10 @@ export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {})
 
   if (!workingFolder) {
     return (
-      <div
-        className={
-          compact
-            ? 'flex h-full items-center justify-center bg-background px-4'
-            : 'flex flex-1 items-center justify-center bg-background px-6'
-        }
-      >
+      <div className="flex h-full items-center justify-center bg-background px-4">
         <div className="max-w-md text-center">
-          <div
-            className={
-              compact
-                ? 'text-sm font-medium text-foreground'
-                : 'text-[28px] font-semibold tracking-tight text-foreground'
-            }
-          >
-            {t('noProject')}
-          </div>
-          <p
-            className={
-              compact
-                ? 'mt-2 text-xs leading-5 text-muted-foreground'
-                : 'mt-3 text-sm leading-6 text-muted-foreground'
-            }
-          >
+          <div className="text-sm font-medium text-foreground">{t('noProject')}</div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
             {t('pickRepo', {
               defaultValue: 'Select a project to inspect repositories and changes.'
             })}
@@ -335,49 +297,40 @@ export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {})
     )
   }
 
-  return (
-    <div
-      ref={hostRef}
-      className={
-        compact
-          ? 'flex h-full min-h-0 flex-col overflow-hidden bg-background'
-          : 'relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background px-6 pb-6 pt-4'
-      }
-    >
-      {compact ? null : (
-        <div className="mx-auto w-full max-w-[1480px] pb-4">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
-                {t('title')}
-              </p>
-              <h1 className="mt-1 truncate text-sm font-medium text-foreground/92">
-                {projectLabel}
-              </h1>
-              <p className="mt-1 max-w-[880px] truncate text-xs text-muted-foreground/72">
-                {titleRepoPath}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground/72">
-              <span>{repositories.length} repos</span>
-              <span>{totalChangeCount} changes</span>
-              {conflictRows.length > 0 ? <span>{conflictRows.length} conflicts</span> : null}
-            </div>
-          </div>
-        </div>
-      )}
-      <div
-        ref={containerRef}
-        className={
-          compact
-            ? 'flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background'
-            : 'mx-auto flex min-h-0 min-w-0 w-full max-w-[1480px] flex-1 overflow-hidden rounded-md border border-border/60 bg-background'
-        }
+  // 两个弹窗共用同一份 diff 正文：工作区 diff 与历史提交的 patch 只差数据来源。
+  const diffPane = !selectedRow ? null : selectedRow.section === 'untracked' ? (
+    <div className="px-4 py-6 text-sm text-muted-foreground">{t('untrackedNoDiff')}</div>
+  ) : showHistoryDiffSpinner ? (
+    <div className="flex flex-1 items-center justify-center py-16 text-muted-foreground">
+      <Loader2 className="size-6 animate-spin" />
+    </div>
+  ) : diffChunks.length === 0 ? (
+    <div className="px-4 py-6 text-sm text-muted-foreground">{t('noDiff')}</div>
+  ) : (
+    <CodeDiffViewer chunks={diffChunks} defaultMode="inline" showModeToggle fillHeight />
+  )
+
+  const diffMeta = selectedRow ? (
+    <span className="shrink-0 text-[10px] uppercase text-muted-foreground">
+      {selectedRow.section}
+    </span>
+  ) : null
+
+  const historyMeta =
+    viewingHistoryDiff && selectedHistoryEntry ? (
+      <span
+        className="max-w-[min(320px,45%)] shrink-0 truncate text-[10px] text-muted-foreground"
+        title={selectedHistoryEntry.subject}
       >
+        {selectedHistoryEntry.shortHash} · {selectedHistoryEntry.subject}
+      </span>
+    ) : null
+
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
         {/* SCM 侧栏 — 对齐 VS Code「源代码管理」结构 */}
         <ScmSidebar
-          scmWidth={compact ? '100%' : scmWidth}
-          compact={compact}
           t={t}
           isScanning={isScanning}
           scanError={scanError}
@@ -394,7 +347,7 @@ export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {})
           allRows={allRows}
           activeKey={activeKey}
           selectedKey={selectedKey}
-          setSelectedKey={compact ? handleDiffSelect : setSelectedKey}
+          setSelectedKey={handleFileSelect}
           setHistoryPick={setHistoryPick}
           selectRepository={selectRepository}
           scanRepositories={scanRepositories}
@@ -428,180 +381,63 @@ export function GitPage({ workingFolder: workingFolderProp }: GitPageProps = {})
           aiCommitLoading={aiCommitLoading}
           handleCommit={handleCommit}
           handleAiCommitMessage={handleAiCommitMessage}
-          onScmResizePointerDown={onScmResizePointerDown}
+          onShowFileHistory={handleShowFileHistory}
         />
-        {compact ? null : (
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-          {!selectedRepo || !selectedRow ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-              {selectedRepo ? t('pickFile') : t('noRepo')}
-            </div>
-          ) : (
-            <div className="flex min-h-0 min-w-0 flex-1 flex-row">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-border">
-                <div className="flex h-9 min-h-9 shrink-0 items-center gap-2 border-b border-border px-2">
-                  {viewingHistoryDiff ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 shrink-0 px-2 text-[11px]"
-                      onClick={() => setHistoryPick(null)}
-                    >
-                      {t('backToWorkingDiff')}
-                    </Button>
-                  ) : null}
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                    {selectedRow.path}
-                  </span>
-                  {viewingHistoryDiff && selectedHistoryEntry ? (
-                    <span
-                      className="max-w-[min(280px,45%)] shrink-0 truncate text-[10px] text-muted-foreground"
-                      title={selectedHistoryEntry.subject}
-                    >
-                      {selectedHistoryEntry.shortHash} · {selectedHistoryEntry.subject}
-                    </span>
-                  ) : (
-                    <span className="shrink-0 text-[10px] uppercase text-muted-foreground">
-                      {selectedRow.section}
-                    </span>
-                  )}
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto">
-                  {selectedRow.section === 'untracked' ? (
-                    <div className="px-4 py-6 text-sm text-muted-foreground">
-                      {t('untrackedNoDiff')}
-                    </div>
-                  ) : showHistoryDiffSpinner ? (
-                    <div className="flex flex-1 items-center justify-center py-16 text-muted-foreground">
-                      <Loader2 className="size-6 animate-spin" />
-                    </div>
-                  ) : diffBlocks.length === 0 ? (
-                    <div className="px-4 py-6 text-sm text-muted-foreground">{t('noDiff')}</div>
-                  ) : (
-                    <GitDiffContent blocks={diffBlocks} />
-                  )}
-                </div>
-              </div>
-
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label={t('resizeHistoryPanel')}
-                onPointerDown={onHistoryResizePointerDown}
-                className="w-[5px] shrink-0 cursor-col-resize border-x border-transparent bg-border/50 hover:bg-primary/35"
-              />
-
-              <div style={{ width: historyWidth }} className="flex min-h-0 shrink-0 flex-col">
-                <div className="flex h-9 shrink-0 items-center border-b border-border px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {t('fileHistory')}
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto p-2">
-                  <div className="space-y-1">
-                    {historyListForPanel.map((c) => {
-                      const canOpenHistory =
-                        Boolean(selectedRow) &&
-                        selectedRow.section !== 'untracked' &&
-                        Boolean(selectedRepoPath)
-                      const isHistorySelected =
-                        Boolean(selectedRow) &&
-                        historyPick?.hash === c.hash &&
-                        historyPick?.path === selectedRow.path
-                      return (
-                        // disabled 的 button 在 Chromium 里不派发鼠标事件，原生 title 也就
-                        // 不显示。这里让 disabled 时鼠标穿透到外层 span，由 HoverCard 接手。
-                        <HoverCard key={c.hash} openDelay={400} closeDelay={80}>
-                          <HoverCardTrigger asChild>
-                            <span className="block">
-                              <button
-                                type="button"
-                                disabled={!canOpenHistory || busy}
-                                onClick={() => void handleHistoryCommitClick(c)}
-                                className={cn(
-                                  'w-full rounded-sm border px-2 py-1.5 text-left text-xs transition-colors disabled:pointer-events-none',
-                                  canOpenHistory && !busy
-                                    ? 'cursor-pointer border-border/60 bg-muted/10 hover:bg-muted/40'
-                                    : 'cursor-not-allowed border-border/40 opacity-60',
-                                  isHistorySelected &&
-                                    'border-primary/50 bg-primary/10 ring-1 ring-primary/20'
-                                )}
-                              >
-                                <div className="line-clamp-2 font-medium leading-snug">
-                                  {c.subject}
-                                </div>
-                                <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                                  {c.shortHash} · {c.author}
-                                </div>
-                              </button>
-                            </span>
-                          </HoverCardTrigger>
-                          <HoverCardContent
-                            side="left"
-                            align="start"
-                            className="w-auto max-w-md break-words p-2 text-xs leading-relaxed"
-                          >
-                            {c.subject}
-                          </HoverCardContent>
-                        </HoverCard>
-                      )
-                    })}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2 h-7 w-full text-[11px]"
-                    disabled={busy}
-                    onClick={() =>
-                      selectedRow
-                        ? void loadFileHistory(selectedRepo.fullPath, selectedRow.path, true)
-                        : void loadMoreHistory(selectedRepo.fullPath)
-                    }
-                  >
-                    {t('loadMoreHistory')}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-        )}
-
-        {/* 紧凑形态没有并排的空间给 diff，改成弹窗看（与变更面板同款交互）。 */}
-        {compact ? (
-          <GitDiffDialog
-            open={compactDiffOpen}
-            onOpenChange={(open) => {
-              if (!open) setCompactDiffOpen(false)
-            }}
-            title={selectedRow?.path ?? ''}
-            meta={
-              selectedRow ? (
-                <span className="shrink-0 text-[10px] uppercase text-muted-foreground">
-                  {selectedRow.section}
-                </span>
-              ) : null
-            }
-            rows={compactRows}
-            activeKey={activeKey}
-            onSelect={setSelectedKey}
-            previewPath={
-              selectedRepo && selectedRow ? `${selectedRepo.fullPath}/${selectedRow.path}` : null
-            }
-          >
-            {!selectedRow ? null : selectedRow.section === 'untracked' ? (
-              <div className="px-4 py-6 text-sm text-muted-foreground">{t('untrackedNoDiff')}</div>
-            ) : showHistoryDiffSpinner ? (
-              <div className="flex flex-1 items-center justify-center py-16 text-muted-foreground">
-                <Loader2 className="size-6 animate-spin" />
-              </div>
-            ) : diffChunks.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-muted-foreground">{t('noDiff')}</div>
-            ) : (
-              <CodeDiffViewer chunks={diffChunks} defaultMode="inline" showModeToggle fillHeight />
-            )}
-          </GitDiffDialog>
-        ) : null}
       </div>
+
+      {/* 工作区 diff：面板放不下并排 diff，走弹窗（与变更面板同款交互）。 */}
+      <GitDiffDialog
+        open={diffDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) setDiffDialogOpen(false)
+        }}
+        title={selectedRow?.path ?? ''}
+        meta={diffMeta}
+        rows={fileRows}
+        activeKey={activeKey}
+        onSelect={setSelectedKey}
+        previewPath={previewPath}
+      >
+        {diffPane}
+      </GitDiffDialog>
+
+      {/* 文件历史：入口是 SCM 文件行的右键菜单，列表与 patch 复用 diff 弹窗外壳。 */}
+      <GitDiffDialog
+        open={historyDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setHistoryDialogOpen(false)
+            setHistoryPick(null)
+          }
+        }}
+        title={selectedRow?.path ?? ''}
+        listTitle={t('fileHistory')}
+        meta={historyMeta}
+        rows={historyRows}
+        activeKey={historyPick?.hash ?? null}
+        onSelect={(hash) => {
+          const commit = historyListForPanel.find((c) => c.hash === hash)
+          if (commit) void handleHistoryCommitClick(commit)
+        }}
+        previewPath={previewPath}
+        listFooter={
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-full text-[11px]"
+            disabled={busy}
+            onClick={() => {
+              if (!selectedRepo) return
+              if (selectedRow) void loadFileHistory(selectedRepo.fullPath, selectedRow.path, true)
+              else void loadMoreHistory(selectedRepo.fullPath)
+            }}
+          >
+            {t('loadMoreHistory')}
+          </Button>
+        }
+      >
+        {diffPane}
+      </GitDiffDialog>
 
       <Dialog
         open={branchNameDialog !== null}

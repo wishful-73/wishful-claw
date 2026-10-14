@@ -11,31 +11,53 @@ import { encode } from 'gpt-tokenizer/encoding/cl100k_base'
 import type { TokenUsage, AIModelConfig, ProviderType } from './api/types'
 
 /**
- * Format a token count into a compact, human-readable string.
- * Examples: 0 → "0", 850 → "850", 1200 → "1.2k", 12500 → "12.5k", 1234567 → "1.23M"
+ * Token count unit ladder. `k` stays lowercase (SI prefix, and it is what the
+ * largest share of the UI already showed); `M` / `G` / `T` are uppercase.
  */
-export function formatTokens(n: number): string {
-  if (n < 1_000) return String(n)
-  if (n < 1_000_000) {
-    const k = n / 1_000
-    return k < 10 ? `${k.toFixed(1)}k` : `${k.toFixed(0)}k`
-  }
-  const m = n / 1_000_000
-  return m < 10 ? `${m.toFixed(2)}M` : `${m.toFixed(1)}M`
+const TOKEN_UNITS: ReadonlyArray<{ divisor: number; suffix: string }> = [
+  { divisor: 1_000, suffix: 'k' },
+  { divisor: 1_000_000, suffix: 'M' },
+  { divisor: 1_000_000_000, suffix: 'G' },
+  { divisor: 1_000_000_000_000, suffix: 'T' }
+]
+
+/**
+ * Precision inside one unit: `< 10` two decimals, `< 100` one, `>= 100` none.
+ * The bucket is picked from the *rounded* value so `9.999` renders `10.0k`
+ * rather than `10.00k`.
+ */
+function formatScaledUnit(scaled: number): string {
+  if (Math.round(scaled * 100) / 100 < 10) return scaled.toFixed(2)
+  if (Math.round(scaled * 10) / 10 < 100) return scaled.toFixed(1)
+  return scaled.toFixed(0)
 }
 
 /**
- * Format token count with K/M units and always 2 decimal places (for animations)
- * Examples: 850 → "850", 1234 → "1.23K", 12500 → "12.50K", 1234567 → "1.23M"
+ * Format a token count into a compact, human-readable string.
+ *
+ * **The only implementation in the repo** (S-194) — the context ring, the
+ * composer counter and every usage panel go through it, so one number never
+ * renders as two different strings.
+ *
+ * Rules: ladder `k` / `M` / `G` / `T`; `< 1000` prints the plain integer; inside
+ * a unit `< 10` two decimals, `< 100` one, `>= 100` none; and if rounding crosses
+ * 1000 the whole thing is recomputed one unit up (`999999` → `1.00M`, not `1000k`).
+ *
+ * Examples: 0 → "0", 850 → "850", 1000 → "1.00k", 1234 → "1.23k", 12500 → "12.5k",
+ * 123456 → "123k", 999999 → "1.00M", 1127850000 → "1.13G", 1e12 → "1.00T"
  */
-export function formatTokensDecimal(n: number): string {
-  if (n < 1000) return String(Math.round(n))
-  if (n < 1_000_000) {
-    const k = n / 1000
-    return `${k.toFixed(2)}K`
+export function formatTokens(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0'
+  const value = Math.round(n)
+  if (value < 1_000) return String(value)
+  for (let index = 0; index < TOKEN_UNITS.length; index += 1) {
+    const { divisor, suffix } = TOKEN_UNITS[index]
+    const text = formatScaledUnit(value / divisor)
+    // Rounding carried into a fourth digit (`999999` → `1000k`) — redo it one unit up.
+    if (Number(text) >= 1_000 && index < TOKEN_UNITS.length - 1) continue
+    return `${text}${suffix}`
   }
-  const m = n / 1_000_000
-  return `${m.toFixed(2)}M`
+  return String(value)
 }
 
 export function getBillableInputTokens(

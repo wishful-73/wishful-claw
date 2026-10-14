@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization.Metadata;
+using System.Text.Json.Serialization.Metadata;
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
@@ -61,8 +61,12 @@ public static class DbMessageCompactTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
+            // S-193：会话可被「重置用量统计」—— 重置只写一个起点时间戳，这里据此跳过更早的消息。
+            // COALESCE 兜底：会话行不存在、列为 0（从未重置）时行为与改动前完全一致。
             var messages = db.Query(
-                "SELECT * FROM messages WHERE session_id = @sid AND role = 'assistant' AND usage IS NOT NULL ORDER BY created_at ASC",
+                "SELECT * FROM messages WHERE session_id = @sid AND role = 'assistant' AND usage IS NOT NULL " +
+                "AND created_at > COALESCE((SELECT usage_stats_reset_at FROM sessions WHERE id = @sid), 0) " +
+                "ORDER BY created_at ASC",
                 EntityMappers.MapMessage,
                 new SqliteParameter("@sid", sessionId));
 
@@ -78,9 +82,17 @@ public static class DbMessageCompactTools
                 }
             }
 
+            // S-193：重置过的会话，即使过滤后一条消息都不剩，统计结果依然「有效」—— 结果是 0。
+            // 否则调用方（dbGetSessionUsageStats）会把 null 当成「没有数据」，退到「把已加载
+            // 消息的 usage 逐条相加」的兜底分支，重置看起来没生效，且重启后依旧。
+            // 会话行不存在时 QueryScalar 给 default(long)=0，行为与改动前完全一致。
+            var resetAt = db.QueryScalar<long>(
+                "SELECT COALESCE(usage_stats_reset_at, 0) FROM sessions WHERE id = @sid",
+                new SqliteParameter("@sid", sessionId));
+
             return WorkerResponse.Json(new MessageUsageStatsResult(
                 true,
-                stats.AssistantReplies > 0,
+                stats.AssistantReplies > 0 || resetAt > 0,
                 stats.TotalInput,
                 stats.TotalOutput,
                 stats.TotalCacheCreation,

@@ -13,7 +13,7 @@ public static class GitStatusTools
     public static async Task<GitStatusDetailedResult> StatusDetailedAsync(string cwd)
     {
         var result = await GitExecutor.ExecAsync(
-            new[] { "status", "--porcelain=v1", "-b" }, cwd);
+            new[] { "status", "--porcelain=v1", "-b", "--untracked-files=all" }, cwd);
 
         if (!result.Success)
         {

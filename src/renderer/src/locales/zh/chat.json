@@ -152,7 +152,8 @@
       "runningTool": "运行 {{tool}}",
       "awaitingApproval": "等待批准：{{tool}}",
       "retrying": "重试中 {{attempt}}",
-      "runningSubAgents": "{{count}} 个 SubAgent 运行中"
+      "runningSubAgents": "{{count}} 个 SubAgent 运行中",
+      "elapsed": "耗时 {{duration}}"
     },
     "sendTooltip": "发送 (Enter)",
     "stopTooltip": "停止 (Esc)",
@@ -1080,7 +1081,11 @@
     "persona": {
       "noPersonas": "暂无项目专属人格，请通过人格设置页面添加。",
       "goToSettings": "人格设置",
-      "selectFile": "选择一个人格文件预览"
+      "selectFile": "选择一个人格文件预览",
+      "delete": "删除",
+      "deleteConfirmTitle": "删除项目人格",
+      "deleteConfirmDesc": "将从本项目删除「{{name}}」，全局人格与内置预设不受影响。",
+      "deleteConfirmLabel": "删除"
     },
     "codegraph": {
       "title": "代码图谱",

@@ -16,6 +16,8 @@
  * 取不到就返回 undefined，调用方据此退化为置灰按钮（页面照常渲染）。
  */
 
+import { GITHUB_RELEASES_BASE } from '../content/site'
+
 export interface ReleaseManifest {
   /** 版本号，如 `0.2.35` */
   version: string
@@ -53,7 +55,38 @@ export function parseReleaseManifest(text: string): ReleaseManifest | undefined 
 /**
  * 安装包在站点上的地址。相对路径（`./downloads/<文件名>`）：
  * 根部署 / 子目录部署都解析得到，与域名也解耦。
+ *
+ * S-186 后它只服务**下拉里的「本站直链」那一项**（兜底来源，也是 nginx 能直接数到的那个来源）；
+ * 主按钮与其余源都走下面的 GitHub 直链 + 加速站。
  */
 export function releaseFileUrl(manifest: ReleaseManifest): string {
   return `./downloads/${manifest.setupFile}`
+}
+
+/**
+ * 安装包在 GitHub Releases 上的直链（S-186）：tag 由 `version` 推出（`v{version}`）。
+ * 与 `gh api …/releases/latest` 实测的资产名一致（安装包名 = 清单里的 `setupFile`）。
+ */
+export function githubDirectUrl(manifest: ReleaseManifest): string {
+  return `${GITHUB_RELEASES_BASE}/v${manifest.version}/${manifest.setupFile}`
+}
+
+/** 加速站地址 = 前缀 + GitHub 直链；`prefix` 为空（GitHub 直链那一项）时原样返回。 */
+export function acceleratedUrl(prefix: string, direct: string): string {
+  return prefix ? `${prefix}${direct}` : direct
+}
+
+/**
+ * 官网中转页地址（S-186 §六）：`./go?src=<源名>`。
+ *
+ * 下载按钮指这里而不是直指第三方 —— 页面请求本身就被 nginx 记下（`clicks` 日志），
+ * 中转页里一行上报代码都不用写。相对路径写法与 `releaseFileUrl` 同理（根部署 / 子目录部署都可用）。
+ *
+ * 2026-10-11 收紧：**只带源名**，目标直链由中转页自己按 `latest.yml` 拼（原先整个放进
+ * `u` 参数 ⇒ 让 URL 决定了跳去哪，等于拿官网域名当跳板的开放重定向）。现在地址里没有
+ * 任何外部可控的目标地址，源名查不到就回落默认源。计数口径不变（仍是 `$request` 里的
+ * `/go` 那条，`src` 用于分源），nginx 侧不用动。
+ */
+export function goUrl(src: string): string {
+  return `./go?src=${encodeURIComponent(src)}`
 }

@@ -1689,6 +1689,19 @@
         "rows": "rows",
         "previous": "Previous page",
         "next": "Next page"
+      },
+      "filters": {
+        "model": "Model",
+        "modelCount": "Model · {{count}}",
+        "modelSearch": "Search models…",
+        "modelEmpty": "No matching models",
+        "status": "Status",
+        "statusCount": "Status · {{count}}",
+        "statusSuccess": "Success",
+        "statusError": "Failed",
+        "onlyFailed": "Failed only",
+        "httpStatusPlaceholder": "Codes, e.g. 429,503",
+        "httpStatusHint": "Match HTTP status code exactly; separate multiple with commas"
       }
     },
     "rollup": {

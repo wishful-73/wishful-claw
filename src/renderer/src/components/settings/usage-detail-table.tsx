@@ -1,13 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  AlertTriangle,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Columns3,
-  Copy,
-  Loader2
-} from 'lucide-react'
+import { AlertTriangle, Check, ChevronLeft, ChevronRight, Columns3, Copy, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -18,7 +10,15 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { cn } from '@renderer/lib/utils'
-import { formatTokens, sourceLabel } from './UsagePanelParts'
+import { formatTokens } from '@renderer/lib/format-tokens'
+import { sourceLabel } from './UsagePanelParts'
+import {
+  HttpStatusInput,
+  ModelFilter,
+  StatusFilter,
+  type UsageFilters,
+  type UsageModelOption
+} from './usage-detail-filters'
 
 export interface UsageLogRow {
   id: string
@@ -168,6 +168,9 @@ export function UsageDetailTable({
   pageSize,
   loading,
   providerBaseUrlFor,
+  filters,
+  modelOptions,
+  onFiltersChange,
   onPageChange,
   onPageSizeChange
 }: {
@@ -177,6 +180,9 @@ export function UsageDetailTable({
   pageSize: number
   loading: boolean
   providerBaseUrlFor: (providerId?: string | null) => string | undefined
+  filters: UsageFilters
+  modelOptions: UsageModelOption[]
+  onFiltersChange: (next: UsageFilters) => void
   onPageChange: (page: number) => void
   onPageSizeChange: (size: number) => void
 }): React.JSX.Element {
@@ -207,7 +213,20 @@ export function UsageDetailTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-2 flex shrink-0 items-center justify-end">
+      <div className="mb-2 flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <ModelFilter
+          options={modelOptions}
+          selected={filters.models}
+          onChange={(models) => onFiltersChange({ ...filters, models })}
+        />
+        <StatusFilter
+          selected={filters.status}
+          onChange={(status) => onFiltersChange({ ...filters, status })}
+        />
+        <HttpStatusInput
+          value={filters.httpStatusCodes}
+          onChange={(httpStatusCodes) => onFiltersChange({ ...filters, httpStatusCodes })}
+        />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

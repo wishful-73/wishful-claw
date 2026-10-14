@@ -29,7 +29,8 @@ function boundary(
       trigger: options.trigger ?? 'auto',
       preTokens: options.preTokens ?? 1200,
       messagesSummarized: options.messagesSummarized ?? 3,
-      ...(options.preservedSegment ? { preservedSegment: options.preservedSegment } : {})
+      ...(options.preservedSegment ? { preservedSegment: options.preservedSegment } : {}),
+      ...(options.cutAt != null ? { cutAt: options.cutAt } : {})
     }
   })
 }
@@ -44,7 +45,8 @@ function summary(
       messagesSummarized: options.messagesSummarized ?? 3,
       recentMessagesPreserved: options.recentMessagesPreserved ?? true,
       ...(options.operationId ? { operationId: options.operationId } : {}),
-      ...(options.displayAnchor ? { displayAnchor: options.displayAnchor } : {})
+      ...(options.displayAnchor ? { displayAnchor: options.displayAnchor } : {}),
+      ...(options.cutAt != null ? { cutAt: options.cutAt } : {})
     }
   })
 }
@@ -171,6 +173,71 @@ function testFragmentTimestamps(): void {
   const plain = buildRenderableChatItems([message('a3', 'assistant', 'plain', 1)])[0]
   assert.ok(plain.kind === 'message')
   assert.equal(plain.fragment, undefined)
+}
+
+function testRelocatedArtifactCutTime(): void {
+  // S-196：工件写进转写时 createdAt 会被 adjustCompactArtifactTimestamps 重定位到
+  // 它的「归属位置」（可能早几十天），渲染层不能拿它当段起点 —— 否则段起点被拽回过去，
+  // 末段耗时会虚增成整个跨度（线上实测 481h56m）。meta 里的 cutAt 才是真实落刀时刻。
+  const messageStart = 1_000_000
+  const messageEnd = 1_450_000
+  const cutAt = 1_030_000
+  const relocated = 1000 // 「归属位置」，比消息起点还早
+
+  const withCutAt = buildRenderableChatItems([
+    message('u1', 'user', 'hello', 900_000),
+    { ...message('a1', 'assistant', [text('before'), text('after')], messageStart), updatedAt: messageEnd },
+    boundary('b1', relocated, { cutAt }),
+    summary('s1', relocated, {
+      operationId: 'op-relocated',
+      displayAnchor: { assistantMessageId: 'a1', afterContentBlockCount: 1 },
+      cutAt
+    })
+  ])
+  const before = withCutAt[1]
+  const after = withCutAt[3]
+  assert.ok(before.kind === 'message' && after.kind === 'message')
+  assert.equal(before.message.createdAt, messageStart, '首段起点仍是消息创建时间')
+  assert.equal(before.message.updatedAt, cutAt, '首段终点是真实落刀时刻')
+  assert.equal(after.message.createdAt, cutAt, '末段起点是真实落刀时刻，不是被重定位的 createdAt')
+  assert.equal(after.message.updatedAt, messageEnd)
+  assert.equal(after.fragment?.totalElapsedMs, messageEnd - messageStart)
+
+  // 老数据没有 cutAt：被污染的切点必须夹进消息自身区间，
+  // 宁可想不起分段，也不能报出一个超出本轮跨度的耗时。
+  const legacy = buildRenderableChatItems([
+    message('u2', 'user', 'hello', 900_000),
+    { ...message('a2', 'assistant', [text('before'), text('after')], messageStart), updatedAt: messageEnd },
+    boundary('b2', relocated),
+    summary('s2', relocated, {
+      operationId: 'op-legacy-relocated',
+      displayAnchor: { assistantMessageId: 'a2', afterContentBlockCount: 1 }
+    })
+  ])
+  const legacyBefore = legacy[1]
+  const legacyAfter = legacy[3]
+  assert.ok(legacyBefore.kind === 'message' && legacyAfter.kind === 'message')
+  assert.equal(legacyBefore.message.updatedAt, messageStart, '夹到消息起点')
+  assert.equal(legacyAfter.message.createdAt, messageStart, '夹到消息起点')
+  assert.equal(legacyAfter.message.updatedAt, messageEnd)
+  assert.equal(legacyAfter.fragment?.totalElapsedMs, messageEnd - messageStart)
+
+  // 切点落在消息开头（压缩发生在消息之前）时，前面那段被丢弃、只剩一段 ——
+  // 此时不该再重复报一个「共 X」（否则显示成 `07:30 · 共 07:30`）。
+  const cutAtStart = buildRenderableChatItems([
+    { ...message('a4', 'assistant', [text('one'), text('two')], messageStart), updatedAt: messageEnd },
+    boundary('b4', relocated, { cutAt: messageStart - 60_000 }),
+    summary('s4', relocated, {
+      operationId: 'op-at-start',
+      displayAnchor: { assistantMessageId: 'a4', afterContentBlockCount: 0 },
+      cutAt: messageStart - 60_000
+    })
+  ])
+  const onlySegment = cutAtStart.find(
+    (item) => item.kind === 'message' && item.displayId.includes('compression-after')
+  )
+  assert.ok(onlySegment && onlySegment.kind === 'message')
+  assert.equal(onlySegment.fragment?.totalElapsedMs, undefined, '没真切过就不挂「共 X」')
 }
 
 function testArrayEdgeSplits(): void {
@@ -547,6 +614,7 @@ const tests: Array<[string, () => void | Promise<void>]> = [
   ['no artifacts', testNoArtifacts],
   ['array middle split', testArrayMiddleSplit],
   ['fragment timestamps chain and total elapsed', testFragmentTimestamps],
+  ['relocated artifact cut time uses meta cutAt', testRelocatedArtifactCutTime],
   ['array edge splits', testArrayEdgeSplits],
   ['string single-block semantics', testStringSingleBlockSemantics],
   ['between messages and transcript tail', testBetweenMessagesAndTail],

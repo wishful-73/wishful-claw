@@ -2,10 +2,13 @@ import { SiteHeader } from './components/site-header'
 import { SiteFooter } from './sections/site-footer'
 import { DownloadButtons } from './components/download-buttons'
 import { useReleaseManifest } from './lib/site-data'
+import { formatCount, MIN_VISIBLE_COUNT, useSiteStats } from './lib/site-stats'
 import { BRAND, footer, quickStart } from './content/site'
 
 export default function DownloadPage() {
   const manifest = useReleaseManifest()
+  const stats = useSiteStats()
+  const downloads = stats?.downloads
   return (
     <>
       <SiteHeader />
@@ -31,6 +34,13 @@ export default function DownloadPage() {
             放进 768 的窄列里会由一行折成两行，版本一发布版面就抖一下。 */}
         <p className="mt-5 text-center text-sm text-ink-900/45">
           当前版本 <span className="font-semibold text-ink-950">v{manifest?.version ?? '—'}</span>
+          {/* 下载次数（S-182）：不足 100 次不显示 —— 数字从 0 起算，起点写得太寒酸不如不写。 */}
+          {downloads !== undefined && downloads >= MIN_VISIBLE_COUNT && (
+            <>
+              <span className="mx-2 text-ink-900/25">·</span>
+              已下载 {formatCount(downloads)} 次
+            </>
+          )}
           <span className="mx-2 text-ink-900/25">·</span>
           想看每个迭代改了什么、或需要旧版本，都在 GitHub Releases：
           <a href={footer.github} target="_blank" rel="noopener noreferrer" className="ml-1 font-medium text-accent hover:underline">

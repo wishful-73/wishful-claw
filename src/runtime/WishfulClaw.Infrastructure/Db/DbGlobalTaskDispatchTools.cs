@@ -105,8 +105,10 @@ public static class DbGlobalTaskDispatchTools
                 if (!targetSessionExists)
                     return new GlobalTaskDispatchMutationResult(false, 0, "Target session not found");
 
+                // 判定沿用全项目同一口径（project_id 是否为空），与 getSessionScope() 及
+                // DbClient 初始化时的 scope 补写一致；不依赖 scope 列是否已被懒修复（S-189）。
                 var sessionExists = db.QueryScalar<long>(conn, tx,
-                    "SELECT COUNT(*) FROM sessions WHERE id = @id AND scope = 'project'",
+                    "SELECT COUNT(*) FROM sessions WHERE id = @id AND project_id IS NOT NULL",
                     new SqliteParameter("@id", sessionId)) > 0;
                 if (!sessionExists)
                     return new GlobalTaskDispatchMutationResult(false, 0, "Target session must be a project session");

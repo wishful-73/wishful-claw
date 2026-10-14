@@ -28,6 +28,8 @@ internal static partial class Program
         })), "S-115 探针项目建好");
 
         // 还原存量库形态。context_revision 除外 —— 老库里它确实带 DEFAULT 0。
+        // scope 是 EnsureColumn 后期补的可空列（DbClient.cs:535，建表处亦然），
+        // S-189 起 create_session 会显式写它，所以这里必须照样建出来。
         db.Execute("DROP TABLE sessions");
         db.Execute(
             "CREATE TABLE sessions (" +
@@ -35,7 +37,7 @@ internal static partial class Program
             "created_at bigint NOT NULL, updated_at bigint NOT NULL, message_count INTEGER NOT NULL, " +
             "project_id varchar(255), working_folder varchar(255), ssh_connection_id varchar(255), " +
             "pinned INTEGER NOT NULL, model_selection_mode varchar(255) NOT NULL, " +
-            "context_revision INTEGER NOT NULL DEFAULT 0)");
+            "scope TEXT, context_revision INTEGER NOT NULL DEFAULT 0)");
 
         var call = ToolCall("create_session", w =>
         {

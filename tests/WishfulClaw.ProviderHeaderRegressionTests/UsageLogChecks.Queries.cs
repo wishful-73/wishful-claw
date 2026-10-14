@@ -169,6 +169,150 @@ internal static partial class UsageLogChecks
         var clamped = Invoke(DbUsageLogQueryTools.Logs, new { limit = 100000 });
         Assert(clamped.GetProperty("limit").GetInt32() == 500,
             $"usagequery: detail clamps the limit (got {clamped.GetProperty("limit").GetInt32()})");
+
+        RunDetailFilterSuite();
+    }
+
+    /// <summary>
+    /// S-190: the detail filters (models / status / httpStatusCodes) must shape COUNT(*) and
+    /// the paged rows identically — they share one WHERE builder, so every case asserts
+    /// "reported total == rows actually returned" under the same filter set. A drift here is
+    /// exactly what makes paging skip or repeat rows.
+    /// </summary>
+    private static void RunDetailFilterSuite()
+    {
+        Reset();
+        // Two providers serve the same model name: a model filter must not leak across them.
+        SeedRequestFor("prov-1", "model-a", "success", httpStatus: null);
+        SeedRequestFor("prov-1", "model-a", "error", httpStatus: 429);
+        SeedRequestFor("prov-2", "model-a", "success", httpStatus: null);
+        SeedRequestFor("prov-1", "model-b", "success", httpStatus: 503);
+        SeedRequestFor("prov-2", "model-b", "error", httpStatus: 503);
+
+        // ① model pair — prov-1/model-a only; prov-2/model-a must NOT be matched.
+        var model = Invoke(DbUsageLogQueryTools.Logs,
+            new { models = new[] { "prov-1\u001Fmodel-a" }, limit = 500 });
+        AssertDetailConsistent(model, "usagefilter: model filter keeps total and rows in step");
+        Assert(model.GetProperty("total").GetInt32() == 2,
+            $"usagefilter: a (provider, model) pair matches only its own provider (got {model.GetProperty("total").GetInt32()})");
+
+        // ② status.
+        var status = Invoke(DbUsageLogQueryTools.Logs, new { status = new[] { "error" }, limit = 500 });
+        AssertDetailConsistent(status, "usagefilter: status filter keeps total and rows in step");
+        Assert(status.GetProperty("total").GetInt32() == 2,
+            $"usagefilter: status=error matches the two error rows (got {status.GetProperty("total").GetInt32()})");
+
+        // ③ httpStatusCodes, multi-value.
+        var codes = Invoke(DbUsageLogQueryTools.Logs,
+            new { httpStatusCodes = new[] { "429", "503" }, limit = 500 });
+        AssertDetailConsistent(codes, "usagefilter: httpStatusCodes filter keeps total and rows in step");
+        Assert(codes.GetProperty("total").GetInt32() == 3,
+            $"usagefilter: httpStatusCodes matches both codes (got {codes.GetProperty("total").GetInt32()})");
+
+        // ④ all three filters at once.
+        var combined = Invoke(DbUsageLogQueryTools.Logs, new
+        {
+            models = new[] { "prov-2\u001Fmodel-b" },
+            status = new[] { "error" },
+            httpStatusCodes = new[] { "503" },
+            limit = 500
+        });
+        AssertDetailConsistent(combined, "usagefilter: combined filters keep total and rows in step");
+        Assert(combined.GetProperty("total").GetInt32() == 1,
+            $"usagefilter: the three filters intersect (got {combined.GetProperty("total").GetInt32()})");
+
+        // An empty array is a no-op (full window), never an error and never a silent全选.
+        var empty = Invoke(DbUsageLogQueryTools.Logs, new
+        {
+            models = Array.Empty<string>(),
+            status = Array.Empty<string>(),
+            httpStatusCodes = Array.Empty<string>(),
+            limit = 500
+        });
+        AssertDetailConsistent(empty, "usagefilter: empty filters keep total and rows in step");
+        Assert(empty.GetProperty("total").GetInt32() == 5,
+            "usagefilter: empty filters fall back to the full window");
+
+        // A non-numeric code is dropped, not rejected — the other value still applies.
+        var junk = Invoke(DbUsageLogQueryTools.Logs,
+            new { httpStatusCodes = new[] { "not-a-code", "429" }, limit = 500 });
+        AssertDetailConsistent(junk, "usagefilter: dropped httpStatusCodes keep total and rows in step");
+        Assert(junk.GetProperty("total").GetInt32() == 1,
+            $"usagefilter: an unparsable code is dropped, not rejected (got {junk.GetProperty("total").GetInt32()})");
+
+        // The invariant paging depends on: the filter pins total, the limit only trims the page.
+        var paged = Invoke(DbUsageLogQueryTools.Logs, new { status = new[] { "error" }, limit = 1 });
+        Assert(paged.GetProperty("total").GetInt32() == 2 && paged.GetProperty("rows").GetArrayLength() == 1,
+            "usagefilter: the filter applies to total and to the page independently");
+
+        RunDetailFilterNullSuite();
+    }
+
+    /// <summary>
+    /// S-190: `db/usage-by-model` 把 NULL 的 provider_id / model_id 显示化成 '(unknown)'，
+    /// 渲染端回填筛选键时用哨兵保留 NULL 语义；后端见哨兵必须生成 `IS NULL`，否则用户
+    /// 点选这类模型恒得 0 条 —— 列表上却明明有流量。
+    /// </summary>
+    private static void RunDetailFilterNullSuite()
+    {
+        Reset();
+        SeedRequestFor(null, "model-a", "success", httpStatus: null);
+        SeedRequestFor("prov-1", null, "success", httpStatus: null);
+        SeedRequestFor("prov-1", "model-a", "success", httpStatus: null);
+
+        // ① 哨兵在前半段 ⇒ provider_id IS NULL。
+        var nullProvider = Invoke(DbUsageLogQueryTools.Logs,
+            new { models = new[] { "\u0000\u001Fmodel-a" }, limit = 500 });
+        AssertDetailConsistent(nullProvider, "usagefilter: a NULL-provider sentinel keeps total and rows in step");
+        Assert(nullProvider.GetProperty("total").GetInt32() == 1,
+            $"usagefilter: a NULL provider matches only the NULL row (got {nullProvider.GetProperty("total").GetInt32()})");
+
+        // ② 哨兵在后半段 ⇒ model_id IS NULL。
+        var nullModel = Invoke(DbUsageLogQueryTools.Logs,
+            new { models = new[] { "prov-1\u001F\u0000" }, limit = 500 });
+        AssertDetailConsistent(nullModel, "usagefilter: a NULL-model sentinel keeps total and rows in step");
+        Assert(nullModel.GetProperty("total").GetInt32() == 1,
+            $"usagefilter: a NULL model matches only the NULL row (got {nullModel.GetProperty("total").GetInt32()})");
+
+        // ③ 哨兵与普通值同批：NULL 行与实值行各命中各的，不互相吞并。
+        var mixed = Invoke(DbUsageLogQueryTools.Logs,
+            new { models = new[] { "\u0000\u001Fmodel-a", "prov-1\u001Fmodel-a" }, limit = 500 });
+        AssertDetailConsistent(mixed, "usagefilter: mixed NULL and concrete keys keep total and rows in step");
+        Assert(mixed.GetProperty("total").GetInt32() == 2,
+            $"usagefilter: NULL and concrete keys stay distinct (got {mixed.GetProperty("total").GetInt32()})");
+    }
+
+    private static void AssertDetailConsistent(JsonElement json, string message)
+    {
+        var total = json.GetProperty("total").GetInt32();
+        var rows = json.GetProperty("rows").GetArrayLength();
+        Assert(total == rows, $"{message} (total={total}, rows={rows})");
+    }
+
+    private static void SeedRequestFor(
+        string? providerId, string? modelId, string status, int? httpStatus)
+    {
+        var started = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 60_000;
+        DbUsageLogTools.Insert(new RequestUsageLogEntity
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            SessionId = "session-1",
+            RuntimeRole = "sessionAgent",
+            Scope = "project",
+            CollaborationMode = "chat",
+            ProviderId = providerId,
+            ProviderType = "openai",
+            ModelId = modelId,
+            Status = status,
+            HttpStatusCode = httpStatus,
+            AttemptIndex = 1,
+            TotalAttempts = 1,
+            BillableInputTokens = 100,
+            InputTokens = 100,
+            StartedAt = started,
+            CompletedAt = started + 100,
+            DurationMs = 100
+        });
     }
 
     /// <summary>

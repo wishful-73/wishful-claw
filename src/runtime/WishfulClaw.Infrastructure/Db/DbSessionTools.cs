@@ -291,6 +291,37 @@ public static class DbSessionTools
         }
     }
 
+    /// <summary>
+    /// S-193：把会话的用量统计清零 —— 只写一个起点时间戳，不删消息、不动 messages.usage。
+    /// 聚合端点 db/messages-usage-stats 只统计 created_at 晚于该值的消息，因此重置对重启同样生效。
+    /// </summary>
+    public static WorkerResponse ResetUsageStats(JsonElement parameters)
+    {
+        try
+        {
+            var sessionId = RequireString(parameters, "sessionId");
+            var resetAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            DbClient.EnsureInitialized(parameters);
+            var db = DbClient.GetClient(parameters);
+
+            var changed = db.Execute(
+                "UPDATE sessions SET usage_stats_reset_at = @at WHERE id = @id",
+                new SqliteParameter("@at", resetAt),
+                new SqliteParameter("@id", sessionId));
+
+            return WorkerResponse.Json(
+                new SessionUsageResetResult(true, changed > 0, resetAt, null),
+                InfrastructureJsonContext.Default.SessionUsageResetResult);
+        }
+        catch (Exception ex)
+        {
+            return WorkerResponse.Json(
+                new SessionUsageResetResult(false, false, 0, ex.Message),
+                InfrastructureJsonContext.Default.SessionUsageResetResult);
+        }
+    }
+
     public static WorkerResponse Status(JsonElement parameters)
     {
         try
@@ -298,7 +329,6 @@ public static class DbSessionTools
             var sessionId = RequireString(parameters, "sessionId");
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
-
             var session = db.QueryFirstOrDefault(
                 "SELECT * FROM sessions WHERE id = @id",
                 EntityMappers.MapSession,

@@ -96,8 +96,12 @@ export interface ProviderReconciliation {
  * Pure on purpose — this *is* the upgrade path, so it can be regression-tested from
  * plain node without booting the store (see `tests/provider-presets`).
  *
- * - Builtin presets with a persisted record keep that record **completely untouched**,
- *   id included (R-9.2: 已物化的用户自己管理).
+ * - Builtin presets with a persisted record keep that record untouched, id included
+ *   (R-9.2: 已物化的用户自己管理) — **except `homepage`**, which for builtins is a
+ *   read-only display field (the UI renders it as a link, never an input), so it is
+ *   refreshed from the preset. `upgradeProviderFromPreset` is dead code, so without
+ *   this line an official-site link change would never reach users who had already
+ *   configured the provider.
  * - Builtin presets without one become virtual projections, so preset data is current.
  * - Records written before R-9 have no `virtual` flag, therefore count as real and
  *   survive as-is — no migration, no user data rewritten.
@@ -131,7 +135,9 @@ export function reconcileProviders(persisted: AIProvider[]): ProviderReconciliat
     // agentId, OAuth bindings — and none of those can be remapped from here.
     // Re-keying would dangle all of them. Stable builtinId applies to records created
     // from R-9 on; legacy records keep the id they already have.
-    providers.push(existing ?? createProviderFromPreset(preset))
+    // `homepage` 只读展示字段：内置 provider 在 UI 里不可编辑（是链接不是输入框），
+    // 所以跟 preset 走、每次重投影都刷新，其余字段原样保留。
+    providers.push(existing ? { ...existing, homepage: preset.homepage } : createProviderFromPreset(preset))
   }
   for (const p of extraBuiltinRecords) providers.push(p)
   for (const p of customProviders) providers.push(p)

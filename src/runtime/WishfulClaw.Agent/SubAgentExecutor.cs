@@ -229,7 +229,8 @@ public static partial class SubAgentExecutor
         // Register in the registry so SubAgentStatus/SubAgentDetail can query it
         BackgroundSubAgentRegistry.Register(
             toolUseId: toolCallId, agentName: definition.Name,
-            description: description, prompt: prompt, isBackground: false);
+            description: description, prompt: prompt, isBackground: false,
+            sessionId: parentState.SessionId);
 
         var childParameters = BuildChildParameters(
             parameters, definition, prompt, currentDepth + 1);

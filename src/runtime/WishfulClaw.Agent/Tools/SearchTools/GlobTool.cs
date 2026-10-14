@@ -80,7 +80,23 @@ public sealed class GlobTool : IToolExecutor
 
         {
 
-            return Task.FromResult(new ToolResult($"Directory not found: {root}", true));
+            if (File.Exists(root))
+
+            {
+
+                return Task.FromResult(new ToolResult(
+
+                    $"Not a directory: {root} is a file. " +
+
+                    "Glob matches files under a directory — pass the directory, or use Read / Grep for a single file.",
+
+                    true));
+
+            }
+
+
+
+            return Task.FromResult(new ToolResult($"Path not found: {root}", true));
 
         }
 

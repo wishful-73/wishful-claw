@@ -227,23 +227,26 @@ export async function handleProjectSendSessionMessage(
       contextCompressionThreshold: settings.contextCompressionThreshold,
       sandboxEnabled: settings.sandboxEnabled
     })
-    if (!started) {
-      // S-58：排队不是失败。消息已经受理，当前轮跑完会自动出队 —— 这条分支不能撤渠道
-      // 回执注册、也不能把 followUp 标 blocked，那轮还没跑呢。
-      const pendingAfter = getPendingSessionMessages(sessionId)
-      const queued =
-        pendingAfter.some((message) => message.text === content) ||
-        pendingAfter.length > pendingCountBefore
-      if (queued) {
-        return {
-          success: true,
-          result: scheduledFollowUpId
-            ? `Message queued for session "${sessionId}"; it will run after the current turn finishes. Temporary follow-up "${scheduledFollowUpId}" is scheduled.`
-            : `Message queued for session "${sessionId}"; it will run after the current turn finishes. Check back later with get_project_details.`,
-          followUpId: scheduledFollowUpId ?? undefined
-        }
+    // S-203：先认「入队」，再认「立即执行」。
+    // S-177 起 sendMessage 返 true 也涵盖「已受理但排队」（目标会话已有活跃 run），返回值
+    // 不再能区分二者；原先把这段挂在 `if (!started)` 下面，于是它成了死代码，排队也被
+    // 报成「now processing」，PM 只能再调 get_session_queue 交叉核对。
+    // 判据看队列本身：入队是**同步**发生的（sendMessage 返回时队列已改），而出队最早也要等
+    // 派发流程的 50ms 定时器，所以「队列变长」是可靠的入队信号，与 started 真假无关。
+    const pendingAfter = getPendingSessionMessages(sessionId)
+    const queued = pendingAfter.length > pendingCountBefore
+    if (queued) {
+      return {
+        success: true,
+        result: scheduledFollowUpId
+          ? `Message queued for session "${sessionId}"; it will run after the current turn finishes. Temporary follow-up "${scheduledFollowUpId}" is scheduled.`
+          : `Message queued for session "${sessionId}"; it will run after the current turn finishes. Check back later with get_project_details.`,
+        followUpId: scheduledFollowUpId ?? undefined
       }
+    }
 
+    if (!started) {
+      // S-58：走到这里说明既没开跑、也没进队列 —— 真失败，才撤渠道回执、标 blocked。
       if (channelRegisteredHere) unregisterExternalChannelReply(sessionId)
       const error = `Failed to start message processing for session "${sessionId}".`
       await failScheduledFollowUp(error)

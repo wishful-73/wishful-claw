@@ -54,16 +54,17 @@ var lsTool = new FileListTool();
 
 try
 {
-    // #1 Grep 传真实文件 ⇒ 命中，行前缀是文件名（不是 "." / 空）
+    // #1 Grep 传真实文件 ⇒ 命中，行前缀是文件名（不是 "." / 空 / 绝对路径）
     var r1 = RunGrep(topJson, "needle");
     Check(!r1.IsError, "#1 grep single file is not an error");
-    Check(r1.Content.Contains("top.json:1:", StringComparison.Ordinal), "#1 grep single file shows 'top.json:1:'");
+    Check(r1.Content.StartsWith("top.json:1:", StringComparison.Ordinal), "#1 grep single file starts with 'top.json:1:'");
+    Check(!r1.Content.Contains(Abs(tmp), StringComparison.Ordinal), "#1 grep single file does not print an absolute path");
     Check(!r1.Content.Contains("not found", StringComparison.OrdinalIgnoreCase), "#1 grep single file has no 'not found'");
 
     // #2 单文件模式忽略 file_pattern
     var r2 = RunGrep(topJson, "needle", "*.ts");
     Check(!r2.IsError, "#2 grep single file with file_pattern is not an error");
-    Check(r2.Content.Contains("top.json:1:", StringComparison.Ordinal), "#2 file_pattern is ignored for a single file");
+    Check(r2.Content.StartsWith("top.json:1:", StringComparison.Ordinal), "#2 file_pattern is ignored for a single file");
 
     // #3 单文件无命中 ⇒ 干净的 No matches found.
     var r3 = RunGrep(topJson, "zzz");
@@ -80,6 +81,7 @@ try
     var r5 = RunGrep(tmp, "needle");
     Check(!r5.IsError, "#5 grep directory is not an error");
     Check(r5.Content.Contains("sub/inner.txt:1:", StringComparison.Ordinal), "#5 directory mode keeps root-relative paths");
+    Check(!r5.Content.Contains(Abs(tmp), StringComparison.Ordinal), "#5 directory mode does not print an absolute path");
 
     // #6 目录模式 + file_pattern 全拒 ⇒ PatternRejected 提示还活着
     var r6 = RunGrep(tmp, "needle", "*.ts");
@@ -172,3 +174,6 @@ static JsonElement Input(object payload)
     using var document = JsonDocument.Parse(JsonSerializer.Serialize(payload));
     return document.RootElement.Clone();
 }
+
+// 命中行用的是 '/'-归一后的相对路径；把临时目录同样归一，用来断言「没退化成绝对路径」。
+static string Abs(string path) => path.Replace('\\', '/');

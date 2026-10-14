@@ -288,6 +288,16 @@ public static class AgentRuntimeTools
         {
             await AgentLoop.EmitLoopEndAsync(state, context, "aborted");
         }
+        catch (Exception ex) when (state.IsCancellationRequested)
+        {
+            // 用户主动取消（UI 停止按钮 / 全局 PM 的 stop_session_run）时，provider 抛上来的
+            // 不一定是 OperationCanceledException —— abort 传到底层 HTTP / SSE 之后可能变成
+            // 别的异常类型，于是掉进下面那个「出错」分支：既发了 error 事件，渲染层又写下一张
+            // 错误卡片。取消不是出错，这里按 aborted 收尾（S-204）。
+            WorkerLog.Info(
+                $"agent run aborted runId={state.RunId} error={FormatExceptionSummary(ex)}");
+            await AgentLoop.EmitLoopEndAsync(state, context, "aborted");
+        }
         catch (Exception ex)
         {
             var errorSummary = FormatExceptionSummary(ex);

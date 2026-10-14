@@ -345,6 +345,30 @@ for (const preset of builtinProviderPresets) {
 }
 
 {
+  // R-9.C.9: 内置 provider 的 homepage 在 UI 里是只读链接（不是输入框），用户根本改不了，
+  // 所以物化记录也必须跟 preset 走 —— 否则官方换地址后老用户永远看不到新地址。
+  const preset = builtinProviderPresets[0]
+  const stale: AIProvider = {
+    ...createProviderFromPreset(preset),
+    id: 'nanoid-stale-homepage',
+    apiKey: 'sk-stale',
+    homepage: 'https://old.example.com/legacy'
+  }
+  delete stale.virtual
+
+  const { providers } = reconcileProviders([stale])
+  const refreshed = providers.find((p) => p.id === 'nanoid-stale-homepage')!
+  check(
+    refreshed.homepage === preset.homepage,
+    'R-9.C.9 a materialized builtin refreshes its read-only homepage from the preset'
+  )
+  check(
+    refreshed.apiKey === 'sk-stale',
+    'R-9.C.9 refreshing the homepage leaves the rest of the record intact'
+  )
+}
+
+{
   // R-9.6 / R-9.C.8: "restore factory defaults" restores preset values but keeps the id,
   // so sessions / plugins / cron tasks pointing at the record keep resolving.
   const preset = builtinProviderPresets.find((p) => p.builtinId === 'deepseek')!

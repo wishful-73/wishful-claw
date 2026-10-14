@@ -487,14 +487,16 @@ const chatModels: OpenCodeGoModel[] = [
 //     MiMo-V2.6-Flash/Pro、DeepSeek V4.1 Flash、Hy4 preview、Space Bunny），
 //     删 6（Grok 4.5、GLM-5.1、MiniMax M2.5、Qwen3.7 Max、Qwen3.6 Plus、Ox Alpha Free），
 //     并按官方价目表订正 4 处价格。官方按 token 数 / 时段分档报价的一律取最高档。
+// v11: 2026-10-13 产品页地址改为 https://opencode.ai/zh/go —— 官方已**取消推广返利**，
+//     故不再带 ?ref= 邀请码（旧值 https://opencode.ai/go?ref=PWHP4P4E29 作废）。
 export const opencodeGoPreset: BuiltinProviderPreset = {
   builtinId: 'opencode-go',
-  version: 10,
+  version: 11,
   name: 'OpenCode Go',
   type: 'openai-chat',
   defaultBaseUrl: OPENCODE_GO_BASE_URL,
-  // 推广链接（带邀请码），不是文档地址 —— 别顺手订正回 /docs/zh-cn/go/
-  homepage: 'https://opencode.ai/go?ref=PWHP4P4E29',
+  // 产品页地址（不是文档地址 —— 别顺手订正成 /docs/…）。2026-10-13 官方取消推广返利后不再带邀请码。
+  homepage: 'https://opencode.ai/zh/go',
   apiKeyUrl: 'https://opencode.ai/auth',
   defaultModel: 'deepseek-v4-flash',
   defaultModels: chatModels.map((model) => ({ ...model, enabled: true }))

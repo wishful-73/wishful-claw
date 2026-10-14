@@ -82,9 +82,17 @@ public static class DbMessageCompactTools
                 }
             }
 
+            // S-193：重置过的会话，即使过滤后一条消息都不剩，统计结果依然「有效」—— 结果是 0。
+            // 否则调用方（dbGetSessionUsageStats）会把 null 当成「没有数据」，退到「把已加载
+            // 消息的 usage 逐条相加」的兜底分支，重置看起来没生效，且重启后依旧。
+            // 会话行不存在时 QueryScalar 给 default(long)=0，行为与改动前完全一致。
+            var resetAt = db.QueryScalar<long>(
+                "SELECT COALESCE(usage_stats_reset_at, 0) FROM sessions WHERE id = @sid",
+                new SqliteParameter("@sid", sessionId));
+
             return WorkerResponse.Json(new MessageUsageStatsResult(
                 true,
-                stats.AssistantReplies > 0,
+                stats.AssistantReplies > 0 || resetAt > 0,
                 stats.TotalInput,
                 stats.TotalOutput,
                 stats.TotalCacheCreation,

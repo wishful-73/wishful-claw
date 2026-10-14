@@ -152,7 +152,8 @@
       "runningTool": "运行 {{tool}}",
       "awaitingApproval": "等待批准：{{tool}}",
       "retrying": "重试中 {{attempt}}",
-      "runningSubAgents": "{{count}} 个 SubAgent 运行中"
+      "runningSubAgents": "{{count}} 个 SubAgent 运行中",
+      "elapsed": "耗时 {{duration}}"
     },
     "sendTooltip": "发送 (Enter)",
     "stopTooltip": "停止 (Esc)",

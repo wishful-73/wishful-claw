@@ -3,6 +3,8 @@
 > 所属迭代：iter-v2-39 ｜ 需求明细：[`../requirements/S-186.md`](../requirements/S-186.md)
 > 与 [S-182](../requirements/S-182.md) **一起收口**：S-186 负责**前端**（下载按钮 + 中转页），S-182 负责**服务器 nginx 与聚合**（`/go` 的 location 与 `clicks` 日志）。
 > 类型：**官网侧** —— `website/` 独立轨道，**主仓业务代码零改动**，**软件内更新链路（`electron-updater` / `latest.yml` / blockmap / 差分）零改动**。
+>
+> ⚠️ **本文件是规划态快照，勿当现行口径读。** 实施分两刀：`2be923fb`（初版，落地本文件描述的中转页 `/go?src=<源>&u=<GitHub直链>`）+ **`bf4bd16f`**（2026-10-11 收紧：把 `u` 参数**整体删掉**，只留 `src=<源名>`）。**现行口径以 [`../requirements/S-186.md`](../requirements/S-186.md) 的 §九 实施记录 与 §9.1 为准。**
 
 ---
 

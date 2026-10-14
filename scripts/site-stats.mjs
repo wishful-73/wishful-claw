@@ -2,9 +2,10 @@
 /**
  * 官网统计报表（S-182）—— 拉取服务器上的聚合结果并打印。
  *
- * 数据由服务器 cron（`/usr/local/bin/wishfulclaw-stats.sh`）每日聚合 nginx 日志写入
- * `/data/stats/`：`YYYY-MM-DD.json` 逐日 + `summary.json` 累计。**聚合在服务器上做**
- * （日志只在服务器），本地只负责取回来给人看。
+ * 数据由服务器 cron（`/usr/local/bin/wishfulclaw-stats.sh`）每 5 分钟聚合 nginx 日志写入
+ * `/data/stats/`：`baseline.json`（冻结的历史累计）+ `summary.json`（对外累计 = baseline +
+ * 最近 3 天；3 天明细内嵌在 `summary.recent`）。**聚合在服务器上做**（日志只在服务器），
+ * 本地只负责取回来给人看。
  *
  * 配置与 `scripts/deploy.mjs` 同源（同主机、同密钥），但那份**不入版本库**
  * （见 `docs/release-workflow.md` 4.2），所以这里自包含一份，不 import 它。
@@ -61,12 +62,6 @@ else
 fi
 `
 
-const dailyScript = `
-set -euo pipefail
-files=$(ls -1 ${CFG.statsDir}/????-??-??.json 2>/dev/null | tail -n ${days} || true)
-if [ -z "$files" ]; then echo '[]'; else jq -s '.' $files; fi
-`
-
 const summaryRaw = await ssh(summaryScript)
 if (asJson) {
   process.stdout.write(summaryRaw)
@@ -88,23 +83,23 @@ if (!summary || Object.keys(summary).length === 0) {
 }
 
 const sources = summary.sources ?? {}
+// 累计下载含 100 的历史补偿基线（已注入 baseline.json，见 docs/release-workflow.md §4.2.2），
+// 报表里标出来，免得「累计 108」与分源明细之和（8）对不上账时让人以为是 bug。
+const seeded = Number(summary.seeded_downloads) || 0
 console.log('▶ 官网统计（/data/stats/summary.json）')
-console.log(`  累计下载   ${num(summary.downloads_total)} 次`)
+console.log(`  累计下载   ${num(summary.downloads_total)} 次${seeded ? `（含历史补偿基线 ${num(seeded)}）` : ''}`)
 console.log(`  累计访问   ${num(summary.visits_total)} 次`)
 console.log(
   `  分源明细   web_click ${num(sources.web_click)} · web_download_local ${num(sources.web_download_local)} · app_update ${num(sources.app_update)}`
 )
-console.log(`  统计天数   ${num(summary.days)} 天（生成于 ${summary.generated_at ?? '—'}）`)
+console.log(
+  `  统计天数   ${num(summary.days)} 天（baseline 覆盖至 ${summary.as_of_baseline ?? '—'}；生成于 ${summary.generated_at ?? '—'}）`
+)
 
-const dailyRaw = await ssh(dailyScript)
-let daily = []
-try {
-  daily = JSON.parse(dailyRaw)
-} catch {
-  daily = []
-}
+// 最近 KEEP_DAYS 天的明细内嵌在 summary.recent 里（服务器侧不再存日文件）
+const daily = (Array.isArray(summary.recent) ? summary.recent : []).slice(-days)
 
-if (Array.isArray(daily) && daily.length > 0) {
+if (daily.length > 0) {
   console.log(`\n  最近 ${daily.length} 天`)
   for (const day of daily) {
     console.log(
@@ -113,5 +108,5 @@ if (Array.isArray(daily) && daily.length > 0) {
     )
   }
 } else {
-  console.log('\n  暂无逐日文件。')
+  console.log('\n  暂无逐日明细。')
 }

@@ -41,6 +41,24 @@ function baselineFromUsageRollup(rollup: SessionUsageStatsRow): TokenUsage {
 }
 
 /**
+ * S-193：重置之后的「全零 baseline」。
+ *
+ * 不能把 `usageBaseline` 直接置成 `undefined` —— `runtime-status.tsx:101` 在两个字段
+ * 都为空时会退到「把已加载消息的 usage 逐条相加」的兜底分支（`:110-114`），于是刚点完
+ * 重置反而显示驻留窗口那十几轮的合计（切走再回来、重启后同样）。给一个全零真值，
+ * 状态栏才走正常路径、真的显示 0。
+ */
+const ZERO_USAGE_BASELINE: TokenUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  billableInputTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+  reasoningTokens: 0,
+  totalDurationMs: 0
+}
+
+/**
  * 保留最近 `maxTurns` 轮，返回应保留的尾部切片与被裁掉的头部长度。
  * 不足 `maxTurns` 轮（或刚好从第 0 条开始）时原样返回，`removed` 为 0。
  */
@@ -491,14 +509,22 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   resetSessionUsageStats: async (sessionId) => {
     try {
       const { success } = await dbResetSessionUsageStats(sessionId)
-      if (!success) return
+      if (!success) {
+        // 不静默失败：外层 catch 只抓异常，Worker 返回的 success=false 进不来，
+        // 而这是用户刚点过的一个不可逆动作 —— 至少要留下一条线索。
+        console.warn('[DB] resetSessionUsageStats rejected by worker:', sessionId)
+        return
+      }
       // 起点时间戳已落库：聚合端点会跳过更早的消息，所以这里重拉到的就是「归零后」的值。
       // 内存里的实时累加器同时清掉 —— 重置前这一轮跑出来的量也算在其中。
       const usageBaseline = await dbGetSessionUsageStats(sessionId)
       set((state) => {
         const target = state.sessions.find((s) => s.id === sessionId)
         if (!target) return
-        target.usageBaseline = usageBaseline ? baselineFromUsageRollup(usageBaseline) : undefined
+        // 零值兜底，不置 undefined —— 理由见 ZERO_USAGE_BASELINE 的注释。
+        target.usageBaseline = usageBaseline
+          ? baselineFromUsageRollup(usageBaseline)
+          : ZERO_USAGE_BASELINE
         target.sessionUsageTotals = undefined
       })
     } catch (err) {

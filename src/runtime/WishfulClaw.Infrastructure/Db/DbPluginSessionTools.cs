@@ -161,7 +161,8 @@ public static class DbPluginSessionTools
                 "VALUES (@id, @title, @mode, @scope, @ca, @ua, 0, @pid, @wf, @ssh, 0, @plugin, @ext, @prov, @model, @msm)",
                 new SqliteParameter("@id", sessionId), new SqliteParameter("@title", title),
                 new SqliteParameter("@mode", mode),
-                // 与 DbSessionTools.Create / DbPluginSessionRouting 同口径：有 projectId 即项目会话（S-189）。
+                // 与 DbPluginSessionRouting:69 同口径：有 projectId 即项目会话（S-189）。
+                // DbSessionTools.Create 的 scope 由渲染端传入，不在此参照。
                 new SqliteParameter("@scope", projectId is not null ? "project" : "global"),
                 new SqliteParameter("@ca", createdAt),
                 new SqliteParameter("@ua", updatedAt), new SqliteParameter("@pid", (object?)projectId ?? DBNull.Value),

@@ -247,7 +247,7 @@ export function ComposerStatusIndicator({
   return (
     <div
       className={cn(
-        'pointer-events-none absolute left-5 top-2 z-10 inline-flex min-w-0 items-center gap-1 truncate text-[10px] leading-4',
+        'pointer-events-none absolute left-5 top-2 z-10 inline-flex min-w-0 items-center gap-1 text-[10px] leading-4',
         statusView.className,
         className
       )}
@@ -256,10 +256,15 @@ export function ComposerStatusIndicator({
       <StatusIcon className={cn('size-3 shrink-0', statusView.spin && 'animate-spin')} />
       <span className="min-w-0 truncate">{statusView.text}</span>
       {runningElapsedLabel ? (
-        // 形态 B：右侧独立一段。shrink-0 保证长工具名先被 truncate、耗时不被挤掉；
+        // 形态 B：紧跟状态词后一小段（ml-1 = 额外 4px，连容器 gap-1 共 8px），**不贴右边缘**。
+        // 与状态词靠「颜色 + 前缀」分组，而不是靠拉开的距离 —— 参照 Reasonix 的 run strip：
+        // 读数色**不跟随状态色**（否则 thinking 的紫 + 紧邻的耗时读成「思考了 12s」），
+        // 固定用 sky —— 与 runtime-metrics 的数值色同源，且深色主题 --primary 本就是蓝。
+        // 前缀「耗时」二字把读数钉成名词短语，彻底断开与状态词的连读。
+        // shrink-0 保证空间不够时先截状态词（截在词上），读数不被挤掉（截在数字里最糟）；
         // tabular-nums 让每秒跳字时宽度不抖；aria-hidden 避免 aria-live 每秒播报。
-        <span className="shrink-0 tabular-nums opacity-70" aria-hidden="true">
-          {runningElapsedLabel}
+        <span className="ml-1 shrink-0 tabular-nums text-sky-500/85 dark:text-sky-300/85" aria-hidden="true">
+          {t('input.runtimeStatus.elapsed', { duration: runningElapsedLabel, defaultValue: 'Elapsed {{duration}}' })}
         </span>
       ) : null}
     </div>

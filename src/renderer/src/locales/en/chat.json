@@ -152,7 +152,8 @@
       "runningTool": "Running {{tool}}",
       "awaitingApproval": "Awaiting approval: {{tool}}",
       "retrying": "Retrying {{attempt}}",
-      "runningSubAgents": "{{count}} sub-agents running"
+      "runningSubAgents": "{{count}} sub-agents running",
+      "elapsed": "Elapsed {{duration}}"
     },
     "sendTooltip": "Send (Enter)",
     "stopTooltip": "Stop (Esc)",

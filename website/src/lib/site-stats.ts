@@ -19,6 +19,8 @@ export interface SiteStats {
 /**
  * 不足这个数就不显示（S-182 §二 第 4 条）。
  * 数字从 0 起算（历史无法回溯），刚上线时「已下载 3 次」比干脆不显示更劝退。
+ * 服务端的 `downloads_total` 含 100 的历史补偿基线（已注入 `baseline.json`，见
+ * `docs/release-workflow.md` §4.2.2），天然过线；这个门槛如今实际拦的是「访问数从零起步」的那几天。
  */
 export const MIN_VISIBLE_COUNT = 100
 

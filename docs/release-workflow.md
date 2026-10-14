@@ -226,7 +226,7 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 
 #### 4.2.2 官网统计口径（下载次数 / 访问次数，S-182）
 
-官网的「下载次数」与「访问次数」全部来自 **nginx 日志的每日聚合** —— **没有后端服务、没有前端埋点**。
+官网的「下载次数」与「访问次数」全部来自 **nginx 日志的定时聚合**（现为每 5 分钟一次）—— **没有后端服务、没有前端埋点**。
 
 **三个日志源（互不重叠，各自去重后相加）**：
 
@@ -250,12 +250,25 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 /etc/nginx/conf.d/wishfulclaw-logs.conf      ← log_format wishfulclaw_dl（log_format 只能在 http 上下文）
 /etc/nginx/snippets/wishfulclaw-site.conf    ← /go、/stats.json、/downloads/ 的 access_log
 /usr/local/bin/wishfulclaw-stats.sh          ← 聚合脚本（cron 调用，也可手工 sudo 跑）
-/data/stats/YYYY-MM-DD.json                  ← 逐日结果
-/data/stats/summary.json                     ← 累计（由全部日文件重算）
+/data/stats/baseline.json                    ← 冻结的历史累计（含 100 补偿，带 as_of）
+/data/stats/summary.json                     ← 对外累计 = baseline + 最近 KEEP_DAYS 天（明细在 .recent）
 ```
 
-- cron：`25 4 * * * /usr/local/bin/wishfulclaw-stats.sh >> /var/log/wishfulclaw-stats.log 2>&1`（**追加**一条，不动既有的 stargate 心跳与证书自检两条）。
-- 聚合**幂等**：每次跑都按**日志内容**重算「日志里出现过的每一天」并覆盖日文件；轮转掉的天不再出现在日志里，日文件保持上次结果。`summary.json` 由**全部**日文件重算，不做增量累加。
+- cron：`*/5 * * * * /usr/local/bin/wishfulclaw-stats.sh >> /var/log/wishfulclaw-stats.log 2>&1`（**追加**一条，不动既有的 stargate 心跳与证书自检两条）。
+  - **2026-10-13 由 `25 4 * * *` 改为每 5 分钟** —— 每日一次时页面数字最长滞后近 24 小时（老大反馈「访问次数滞后严重」）。脚本是幂等全量重算，14 天日志合计约 1 MB，5 分钟一轮毫无压力。
+- ⚠️ **聚合脚本必须读全部分片，不能只 glob `*.gz`**：logrotate 是 `compress` + **`delaycompress`** ⇒ 最新一份轮转日志是未压缩的 `*.log.1`。原实现只读 `<base>` 与 `<base>.*.gz`，把 `.log.1` **整个漏掉** ⇒ **每天只统计到 00:00~04:25 那一段（约 20%），跨日轮转后那天的日文件永久冻结**。2026-10-13 实测：10-12 记 41，实际 416 条；`clicks` 里 6 次真实点击也被吞掉。修法：遍历 `"$base".[0-9]*`，`.gz` 走 `zcat`、其余 `cat`（用 `if [ -f "$base" ]` 而非 `[ -f ] && cat`，避免撞 `set -e`）。
+- **存储只有两个文件**（老大 2026-10-13 定）：`baseline.json`（冻结的历史累计）+ `summary.json`（对外累计）。**不存日文件**。
+  - `baseline.json` = `{ as_of, days, downloads, visits, sources, seeded_downloads }`，`as_of` 是**已折叠的最后一天**。
+  - `summary.json` = `baseline` + 最近 `KEEP_DAYS` 天，逐字段相加；`days` 也是两段相加；最近几天的明细内嵌在 `summary.recent`（数组，每天一条，含 `sources` / `filtered_bots`）。
+  - **滑出窗口的那天直接从 nginx 日志重算后折进 baseline**，不经中间产物 —— 窗口 3 天 < 日志 15 天，那天必然还在日志里。
+- **累计下载数带 100 的补偿基线**（老大 2026-10-13 定）：上面那批历史漏计已随 14 天轮转丢失、无法回填，统一加 100 兜底，顺带让页面上「已下载 N 次」（不足 100 不显示）能显出来。**只在 `baseline.json` 首次生成时注入一次**（`SEED_DOWNLOADS=100`），之后就长在 `baseline.downloads` 里、**不每轮再加**（老大二次口径）。`summary.seeded_downloads` 透传该值供报表标注，`sources` 明细保持真实值。
+- 聚合**幂等**：每次跑都按**日志内容**重算保留窗口内出现过的每一天；已折叠的天不会再算。
+- **保留窗口默认 3 天**（`KEEP_DAYS=3`，今天 + 前 2 天）。实测一次聚合 **221 ms**（2026-10-13）。
+  - ⚠️ **窗口起点取「`cutoff`」与「`baseline.as_of` 的次日」二者的较大者** —— 少了这道守卫，放大 `KEEP_DAYS` 回填时窗口会把**已折叠的天**再算一遍，与 baseline **双算**。
+  - **折叠区间 = `[as_of + 1, cutoff - 1]`**；放大 `KEEP_DAYS` 时该区间天然为空，不会重复折叠。
+  - 服务器时区就是 `Asia/Shanghai`（与 nginx 日志的 `+0800` 一致），`date -d "$((KEEP_DAYS-1)) days ago"` 直接取窗口起点，**不需要 TZ 换算**。
+  - **折叠是单向的**：折进 baseline 就回不来。所以「窗口内（3 天）发现的问题」救得回来，超窗就没了 —— 放大 `KEEP_DAYS`（上限 15，= logrotate 的 `rotate 14` 加当前那一份）只扩大**重算**范围，**不能复活已折叠的天**。2026-10-13 实测：`09-26`~`09-28` 是旧脚本（漏读 `.log.1`）留下的低估值，日志已轮转掉，折叠时即固化，**永久无法修正**（那几天 downloads 都是 0，未污染下载数）。
+  - 折叠**能自愈**：把 `baseline.as_of` 人为退回一天并扣掉对应数值，跑一次即自动从日志补回（`as_of` / `days` / `visits` 全部复原）—— 2026-10-13 实测过。
 - ⚠️ **`/data/stats` 与 `/data/downloads/wishfulclaw` 同理，刻意放站点目录之外** —— `deploy site` 是整目录原子替换，放站点里会被清掉。对外由 `location = /stats.json { alias /data/stats/summary.json; expires -1; }` 提供。
 - ⚠️ **这里别用 `add_header Cache-Control`** —— 会吃掉该 location 的安全头（见 snippet 文件头注释），用 `expires -1`。
 

@@ -10,7 +10,11 @@ import type { BuiltinProviderPreset } from './types'
 
 const xiaomiThinkingConfig = {
   bodyParams: { thinking: { type: 'enabled' } },
-  disabledBodyParams: { thinking: { type: 'disabled' } }
+  disabledBodyParams: { thinking: { type: 'disabled' } },
+  // 官方「模型超参」页（docs/zh-CN/api/guidance/model-hyperparameters）：思考模式下
+  // temperature 被服务端强制为推荐默认值 1.0（top_p 同理由服务端强制为 0.95），传入的自定义值
+  // 一律不生效。这里声明约束，与 anthropic 系 preset 的写法保持一致。
+  forceTemperature: 1
 } as const
 
 // MiMo-V2 系列（mimo-v2-pro / mimo-v2-omni / mimo-v2-flash / mimo-v2-tts）已由小米官方于
@@ -30,6 +34,12 @@ const xiaomiThinkingConfig = {
 //     写入 deprecatedModelIds。UltraSpeed 旧价（1.305/2.61/0.0108）是已作废的「3 倍体验价」，
 //     按官方定价页订正为 0.036/4.35/8.7（海外 USD，cache/输入/输出）。
 //     TTS 三款不在下线名单内，保持原样。
+//     思考模式参数按官方 Chat Completions 参数表（docs/zh-CN/api/chat/openai-api）与
+//     「模型超参」页（docs/zh-CN/api/guidance/model-hyperparameters）核对：
+//     thinking.type 取值仅 enabled / disabled，且 v2.6 三款默认即为 enabled；
+//     思考下 temperature / top_p 均不支持自定义，服务端强制为 1.0 / 0.95；
+//     最大输出只认 max_completion_tokens（默认值与上限同为 131072，v2.5 为 32768）；
+//     response_format 仅支持 text；tool_choice 传非 auto 值会被后端移除。
 const xiaomiTextModels: AIModelConfig[] = [
   {
     id: 'mimo-v2.6-pro',

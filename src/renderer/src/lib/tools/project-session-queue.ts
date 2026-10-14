@@ -16,18 +16,25 @@
  * tool (`project/stop-session-run`) that goes through the same `cancelStream` the
  * UI stop button uses.
  *
- * Stopping freezes the queue along the way (`cancelStream` pauses dispatch, and the
- * aborted loop end pauses it again) — that is the user-facing "stop means the queue
- * waits for me" rule, but it has no automatic way out. `project/resume-session-queue`
- * is the PM-side equivalent of the「继续」button in the queue panel: it lifts the
- * pause so the queued messages run again.
+ * Stopping freezes the queue along the way (`cancelStream` pauses dispatch). This tool
+ * deliberately leaves it frozen — the PM stops a turn in order to decide what happens
+ * next, so the queue waits until `project/resume-session-queue` (or a new message) says
+ * otherwise.
+ *
+ * Note the UI stop button is **not** equivalent: it takes the same `cancelStream`, but
+ * since S-192 it unfreezes and dispatches the next queued message on its own. Do not
+ * describe the two as doing the same thing — that claim used to live here and in the
+ * stop tool's reply, and it went stale the moment S-192 landed.
+ *
+ * `project/resume-session-queue` is the PM-side counterpart of the「继续」button in the
+ * queue panel: it lifts the pause so the queued messages run again.
  */
 
 import { useChatStore } from '@renderer/stores/chat-store'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import {
   clearPendingSessionMessages,
-  dispatchNextQueuedMessageForSession,
+  dispatchQueuedMessageWithReplay,
   getPendingSessionMessages,
   hasActiveSessionRunForSession,
   isPendingSessionDispatchPaused,
@@ -227,8 +234,7 @@ export async function handleProjectStopSessionRun(params: unknown): Promise<Sess
       `Stopped the running turn of session "${sessionId}". ` +
       (queued > 0
         ? `${queued} queued message(s) are kept, but their dispatch is now paused — ` +
-          'exactly what happens when the user presses stop in the UI. ' +
-          'Call resume_session_queue to let them run, or send the session a new message. '
+          'call resume_session_queue to let them run, or send the session a new message. '
         : 'The queue was empty. ') +
       'You can send the session a new message now.'
   }
@@ -284,17 +290,25 @@ export async function handleProjectResumeSessionQueue(params: unknown): Promise<
     }
   }
 
-  const dispatched = dispatchNextQueuedMessageForSession(sessionId)
+  // S-202：`dispatchNextQueuedMessageForSession` 的 `true` 只表示「已受理排期」，真正的出队
+  // 发生在 50ms 定时器里，而且停止一轮连着送来的多个收尾事件都可能落在放行之后把队列重新
+  // 冻上。回执必须由**真实结果**决定，竞态也由这里自己重放盖过 —— 别让 PM 去按第二次。
+  const outcome = await dispatchQueuedMessageWithReplay(sessionId)
+  const count = getPendingSessionMessages(sessionId).length
   return {
     success: true,
     sessionId,
     found: true,
-    hasActiveRun: false,
+    hasActiveRun: hasActiveSessionRunForSession(sessionId),
     dispatchPaused: isPendingSessionDispatchPaused(sessionId),
-    count: queued,
-    result: dispatched
-      ? `Resumed session "${sessionId}": dispatching its ${queued} queued message(s) now.`
-      : `Session "${sessionId}" is no longer paused, but dispatching its ${queued} queued message(s) ` +
-        'could not start right now. Call get_session_queue to check the queue state.'
+    count,
+    result:
+      outcome === 'dispatched'
+        ? `Resumed session "${sessionId}": its ${queued} queued message(s) are released and dispatch has started.`
+        : outcome === 'paused'
+          ? `Resumed session "${sessionId}", but its queue kept getting paused again — retried 3 times ` +
+            `and all ${queued} message(s) are still waiting. Call get_session_queue for the current state.`
+          : `Session "${sessionId}" is no longer paused, but dispatching its ${queued} queued message(s) ` +
+            'could not start right now. Call get_session_queue to check the queue state.'
   }
 }

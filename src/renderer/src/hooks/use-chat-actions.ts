@@ -84,6 +84,17 @@ const _sendMessageHandlers = new Set<SendMessageHandler>()
 const _startingSessionSends = new Set<string>()
 const _dispatchingPendingSessions = new Set<string>()
 const _pausedPendingSessionDispatch = new Set<string>()
+// 「队列已被显式放行」的戳（S-202）。UI 停止按钮的自动续（`stopStreaming`）、PM 的
+// `resume_session_queue`、队列面板的「继续」都在解冻那一刻盖一个。
+//
+// 为什么需要它：停止一轮时先**同步**冻结队列，而 Worker 收尾的 `loop_end(reason='aborted')`
+// 要等异步 import 回来才补冻（`chat-store/index.ts` 的 loop_end 分支）—— 那次补冻会落在
+// 放行**之后**，把刚解冻的队列重新冻上，且不再有出口（自动派发路径一律传
+// `resumePaused=false`，被这个标记挡住）。实机表现就是「resume 返回 dispatching now，
+// 队列却仍是 paused + 满员，必须 resume 两次」。
+//
+// 冻结与放行是同一份状态，按「谁更晚谁说了算」定：迟到的补冻遇到更晚的放行戳就让位。
+const _explicitDispatchResumeAt = new Map<string, number>()
 
 export function useChatActions() {
   const sendMessage = useChatStore((s) => s.sendMessage)
@@ -103,6 +114,14 @@ export function useChatActions() {
         hasActiveSessionRunForSession(targetSessionId) ||
         (!queuedDispatch && hasPendingSessionMessagesForSession(targetSessionId))
       ) {
+        if (queuedDispatch) {
+          // S-202：队列派发走到这里 = 排期已返回 true、会话却又忙了 —— 调用方据此报
+          // 「dispatching now」，队列却原地不动。记一条，别让它无声无息。
+          console.warn(
+            '[ChatActions] Queued dispatch refused: the session already has an active run',
+            targetSessionId
+          )
+        }
         if (!queuedDispatch) enqueuePendingSessionMessage(request, targetSessionId)
         return false
       }
@@ -842,10 +861,39 @@ export function isPendingSessionDispatchPaused(sessionId: string): boolean {
   return _pausedPendingSessionDispatch.has(sessionId)
 }
 
-export function pausePendingSessionDispatch(sessionId: string): void {
+/**
+ * 冻结队列的自动派发（S-188 第三刀）。
+ *
+ * @param opts.interruptedLoop 调用方是「中止那一轮的迟到收尾」（`loop_end(aborted/error)`）。
+ * 这类补冻发生在**放行之后**，只是把停止瞬间已经冻好的状态再冻一遍；若这期间已经有人显式
+ * 放行过（UI 停止按钮的自动续 / PM 的 `resume_session_queue`），就说明用户或 PM 已经确认过，
+ * 这次补冻必须让位 —— 否则队列被冻上且再没有出口（S-202）。
+ */
+export function pausePendingSessionDispatch(
+  sessionId: string,
+  opts?: { interruptedLoop?: boolean }
+): void {
+  if (opts?.interruptedLoop && _explicitDispatchResumeAt.has(sessionId)) {
+    // 显式放行（UI 停止按钮的自动续 / PM 的 resume_session_queue）之后，这一轮的收尾补冻
+    // 要**全部**让位。注意这里**不消费**戳：取消一轮会连着送来多个收尾事件（写错误卡片的
+    // `error` 一条 + `loop_end(aborted)` 一条），消费掉第一个，第二个就会把队列冻回去 ——
+    // 表现就是「resume 一次不生效、必须按两次」。戳一直留到「真的派发成功」或「下一次普通冻结」。
+    console.warn(
+      '[ChatActions] Ignored a late interrupted-loop pause: the queue was explicitly resumed after it',
+      sessionId
+    )
+    return
+  }
   if ((_pendingMessages.get(sessionId)?.length ?? 0) === 0) return
   if (_pausedPendingSessionDispatch.has(sessionId)) return
   _pausedPendingSessionDispatch.add(sessionId)
+  // 重新冻上 ⇒ 上一轮的放行戳作废（否则下一次自然 error 中止会被它误挡）。
+  _explicitDispatchResumeAt.delete(sessionId)
+  console.warn(
+    '[ChatActions] Queue dispatch paused',
+    sessionId,
+    opts?.interruptedLoop ? '(interrupted loop)' : '(plain)'
+  )
   notifyPendingSessionMessageListeners()
 }
 
@@ -865,10 +913,26 @@ export function pausePendingSessionDispatch(sessionId: string): void {
  * @returns 会话此前是否确实处于冻结状态。
  */
 export function resumePendingSessionDispatch(sessionId: string): boolean {
-  if (!_pausedPendingSessionDispatch.has(sessionId)) return false
+  const wasPaused = _pausedPendingSessionDispatch.has(sessionId)
   _pausedPendingSessionDispatch.delete(sessionId)
+  // 无条件盖戳：调用方表达的是「显式放行」这个意图，无论此刻有没有冻上，之后的收尾补冻
+  // 都该让位。只在「确实冻着」时才盖的话，停止那一刻的冻结稍晚一点到达（pause 走的是
+  // 异步 import），这次放行就落了空，队列随后被收尾补冻重新冻上。
+  _explicitDispatchResumeAt.set(sessionId, Date.now())
   notifyPendingSessionMessageListeners()
-  return true
+  return wasPaused
+}
+
+/**
+ * 该会话是否处在「已被显式放行、但还没兑现」的状态（S-202）。
+ *
+ * 收尾事件（`loop_end(aborted/error)` / 写错误卡片的 `error`）用它区分两种处境：
+ * 没有放行意图 ⇒ 这是「停完先确认」，照旧冻住队列；有放行意图 ⇒ 这是「放行之后
+ * 该跑的下一轮还没跑起来」（放行时那一轮尚未收敛，派发被它挡下了），得补一次派发，
+ * 否则队列就停在这儿没人管。
+ */
+export function isDispatchExplicitlyResumed(sessionId: string): boolean {
+  return _explicitDispatchResumeAt.has(sessionId)
 }
 
 export function removePendingSessionMessage(sessionId: string, messageId: string): boolean {
@@ -899,6 +963,7 @@ export function dispatchNextQueuedMessageForSession(
   if (_pausedPendingSessionDispatch.has(sessionId)) {
     if (!resumePaused || hasActiveSessionRunForSession(sessionId)) return false
     _pausedPendingSessionDispatch.delete(sessionId)
+    _explicitDispatchResumeAt.set(sessionId, Date.now())
     notifyPendingSessionMessageListeners()
   }
   if (hasActiveSessionRunForSession(sessionId)) return false
@@ -915,7 +980,13 @@ export function dispatchNextQueuedMessageForSession(
   setTimeout(async () => {
     let retryAfterDelay = false
     try {
-      if (_pausedPendingSessionDispatch.has(sessionId)) return
+      if (_pausedPendingSessionDispatch.has(sessionId)) {
+        // S-202：以前这里是裸 return。排期在 `:914` 就已返回 true，调用方（`resume_session_queue`、
+        // 停止按钮）据此报「dispatching now」，而队列在这里被静默挡下 —— 回执与真实状态对不上账，
+        // 查起来毫无线索。留一条痕迹，至少能看见「排期落空」。
+        console.warn('[ChatActions] Queued dispatch skipped: the queue was paused again after scheduling', sessionId)
+        return
+      }
       if (hasActiveSessionRunForSession(sessionId)) {
         retryAfterDelay = true
         return
@@ -939,6 +1010,13 @@ export function dispatchNextQueuedMessageForSession(
       // 未受理才暂停（保留队列头等重试）；入队属已受理（S-177 起 sendMessage 返 true），
       // 出队前 :875 / :890 已确认不忙，正常不会走到入队分支。
       if (!started) {
+        // S-202：这条同样是「排期在 :914 已返回 true、这里却被挡下」的路径，且它会顺手
+        // 清掉放行戳。发消息方为什么没收下（忙 / 无 sessionId / 无可用 provider-model）由
+        // handleSendMessage 自己打日志，这里只标记「队列又被冻上了」。
+        console.warn(
+          '[ChatActions] Queued dispatch was not accepted by the send path; re-freezing the queue',
+          sessionId
+        )
         pausePendingSessionDispatch(sessionId)
         return
       }
@@ -947,6 +1025,9 @@ export function dispatchNextQueuedMessageForSession(
         const remaining = current.slice(1)
         if (remaining.length > 0) _pendingMessages.set(sessionId, remaining)
         else _pendingMessages.delete(sessionId)
+        // 显式放行的意图到此兑现（队头真的出队了）—— 撤掉戳，之后这一轮的自然收尾
+        // 该照常冻队列（例如下一条跑起来又出错）。
+        _explicitDispatchResumeAt.delete(sessionId)
         notifyPendingSessionMessageListeners()
       }
     } catch (error) {
@@ -965,6 +1046,46 @@ export function dispatchNextQueuedMessageForSession(
     }
   }, 50)
   return true
+}
+
+/**
+ * 把队列里的下一条真正推出去，排期落空就自己重放（S-202）。
+ *
+ * `dispatchNextQueuedMessageForSession` 返回 `true` 只是「已受理排期」，真正的出队发生在
+ * 50ms 定时器里；而且停止一轮会**连着**送来多个收尾事件（写错误卡片的 `error` 一条 +
+ * `loop_end(aborted)` 一条），它们都可能落在放行之后，把刚解冻的队列重新冻上。结果就是
+ * 「resume 一次不生效、必须按两次」—— 这是竞态，不该甩给调用方去重按，这里自己重放。
+ *
+ * 幂等：重放时队列头还没被消费，重新排期不会重复发同一条消息。
+ *
+ * @returns `dispatched` 队头已出队；`paused` 重放额度用尽仍被冻着；`stalled` 没被冻但也没动。
+ */
+export async function dispatchQueuedMessageWithReplay(
+  sessionId: string,
+  maxReplays = 3
+): Promise<'dispatched' | 'paused' | 'stalled'> {
+  const queuedBefore = _pendingMessages.get(sessionId)?.length ?? 0
+  if (queuedBefore === 0) return 'dispatched'
+
+  let sawPaused = false
+  for (let round = 0; round <= maxReplays; round += 1) {
+    dispatchNextQueuedMessageForSession(sessionId)
+    // 正常情况 50ms 定时器 + 一次 sendMessage 就会把队头摘掉；给足 600ms 再下结论。
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      if ((_pendingMessages.get(sessionId)?.length ?? 0) < queuedBefore) return 'dispatched'
+      if (_pausedPendingSessionDispatch.has(sessionId)) {
+        sawPaused = true
+        break
+      }
+    }
+    if (!sawPaused || round === maxReplays) break
+    // 又被冻上了：解冻再排一次。收尾事件一轮最多两条，重放几次就能盖过它。
+    resumePendingSessionDispatch(sessionId)
+  }
+
+  if ((_pendingMessages.get(sessionId)?.length ?? 0) < queuedBefore) return 'dispatched'
+  return sawPaused ? 'paused' : 'stalled'
 }
 
 export function hasActiveSessionRunForSession(sessionId: string): boolean {

@@ -243,7 +243,14 @@ internal static partial class AgentLoop
     {
         var textLength = assistantText.Length;
         var reasoningLength = reasoningContent?.Length ?? 0;
-        if (!string.IsNullOrWhiteSpace(assistantText) || toolCalls.Count > 0)
+        // S-209：有思考也算「有输出」。有的模型（GLM-5.3-flash 实测）正常报结束、
+        // 正文为空，但内容全落在思考里 —— 那不是空响应，把它当故障抛出去等于把一次
+        // 可救的回复变成失败。真正无输出的形态是「正文空 + 无工具调用 + 思考也空」，
+        // 日志实证（09-10 ~ 10-13 共 16 条 empty turn）里只有 2 条属于后者，
+        // 且都是 iter-29 已处理的空流（hasUsage=False）。
+        // 有思考但没正文的**催办**不在这里做 —— 这里只放宽判定，催办在 AgentLoop 里。
+        if (!string.IsNullOrWhiteSpace(assistantText) || toolCalls.Count > 0 ||
+            !string.IsNullOrWhiteSpace(reasoningContent))
         {
             return;
         }

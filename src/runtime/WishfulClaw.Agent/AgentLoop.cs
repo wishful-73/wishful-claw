@@ -455,6 +455,19 @@ internal static partial class AgentLoop
             // ── Check for tool calls ──
             if (turn.ToolCalls.Count == 0)
             {
+                // S-209：只出思考、不吐正文也不调工具就报结束（GLM-5.3-flash 实测）——
+                // 直接放过去就是一条静默的空回复。发一次临时提醒再催一轮，上限 2 次；
+                // 额度用尽后照常收尾。催办发生在 iteration_end 之前，因为它并没有真结束。
+                if (string.IsNullOrWhiteSpace(turn.AssistantMessage.Text) &&
+                    !string.IsNullOrWhiteSpace(turn.AssistantMessage.ReasoningContent) &&
+                    state.TryScheduleEmptyTurnNudge(MaxEmptyTurnNudges))
+                {
+                    WorkerLog.Warn(
+                        "provider turn produced reasoning only; nudging for a real answer " +
+                        $"attempt={state.EmptyTurnNudgeCount}/{MaxEmptyTurnNudges}");
+                    continue;
+                }
+
                 await AgentRuntimeTools.EmitAsync(
                     state, context,
                     new AgentRuntimeStreamEvent("iteration_end", StopReason: turn.StopReason));
@@ -630,6 +643,10 @@ internal static partial class AgentLoop
 
         // 子代理的轮次提醒（iter-31 S-53）。仅子代理生效，主会话不受影响。
         wireConversation = InjectSubAgentTurnReminder(parameters, wireConversation, iteration);
+
+        // 空回复催办（iter-40 S-209）。上一轮只出思考、没正文也没工具调用时置上的标记，
+        // 在这里兑现成一条临时 user 提醒。同样走临时副本。
+        wireConversation = InjectEmptyTurnNudge(state, wireConversation);
 
         if (providerType == "anthropic")
         {

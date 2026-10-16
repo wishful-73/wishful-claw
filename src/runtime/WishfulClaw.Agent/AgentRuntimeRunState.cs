@@ -83,6 +83,30 @@ public sealed class AgentRuntimeRunState : IDisposable
     public string? PendingMemoryRecall { get; set; }
 
     /// <summary>
+    /// S-209：待注入的「空回复催办」标记。上一轮只出思考、既没正文也没工具调用时由
+    /// AgentLoop 置上，下一轮构造 provider 消息时以临时副本注入一次，随即消费掉。
+    ///
+    /// 为什么不追加真消息：提醒会落库、进 durable conversation，还会污染下一轮压缩的
+    /// 摘要输入（摘要的身份判定靠消息形状），代价远大于收益。
+    /// </summary>
+    public bool PendingEmptyTurnNudge { get; set; }
+
+    /// <summary>S-209：本 run 已经催办过几次（上限见 <c>AgentLoop.MaxEmptyTurnNudges</c>）。</summary>
+    public int EmptyTurnNudgeCount { get; set; }
+
+    /// <summary>
+    /// S-209：申请一次催办。额度用尽返回 false —— 这时必须放它正常收尾，
+    /// 绝不无限重试。
+    /// </summary>
+    public bool TryScheduleEmptyTurnNudge(int maxNudges)
+    {
+        if (EmptyTurnNudgeCount >= maxNudges) return false;
+        EmptyTurnNudgeCount++;
+        PendingEmptyTurnNudge = true;
+        return true;
+    }
+
+    /// <summary>
     /// Optional callback invoked for every event when SuppressTransportEvents is true.
     /// The SubAgentExecutor uses this to collect text/tool events from the child loop.
     /// </summary>

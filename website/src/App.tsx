@@ -18,7 +18,7 @@ export default function App() {
   return (
     <>
       <SiteHeader />
-      <main>
+      <main className="flex-1">
         <Hero />
         <ValueLadder />
         <Features />

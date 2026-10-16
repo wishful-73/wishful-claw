@@ -73,6 +73,17 @@ html {
   display: none;
 }
 
+/* 页面容器撑满视口 + 纵向 flex（S-203，2026-10-16）：sticky footer 布局。
+   高分辨率屏上内容不满一屏时，<footer> 会紧跟在 <main> 之后、悬在视口中间；
+   容器撑满 100vh，三个带页脚的页面各自给 <main> 挂 flex-1 吃掉剩余高度，页脚就被顶到底。
+   内容超过一屏时 flex-1 不起作用，行为与修前完全一致。
+   `/go` 中转页无页脚、自身已 min-h-screen 居中，在 flex column 里会被拉伸填满，居中不变。 */
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 body {
   background-color: var(--color-paper);
   color: var(--color-ink-950);

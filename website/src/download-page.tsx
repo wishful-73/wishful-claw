@@ -16,7 +16,7 @@ export default function DownloadPage() {
           平台按钮直接居中摆，不再套卡片；版本行与 GitHub 外链并成按钮下方一行注脚。
           原卡片的问题是三行里两行「一句话 + 七百多像素空白」，且卡片居中（x=88）与标题 / 四步（x=56）错位。
           四步区仍是通栏左对齐，与上半的居中英雄区各归各的层级。 */}
-      <main className="w-full px-6 py-20 sm:px-10 lg:px-14">
+      <main className="w-full flex-1 px-6 py-20 sm:px-10 lg:px-14">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-4xl font-semibold tracking-tight text-ink-950">
             下载<span className="text-accent">{BRAND.name}</span>

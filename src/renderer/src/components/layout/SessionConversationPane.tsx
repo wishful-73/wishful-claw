@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitCompare, Maximize2, Minimize2, FolderOpen, MoreHorizontal, RotateCcw, Pencil, SquareTerminal } from 'lucide-react'
+import { GitCompare, Maximize2, Minimize2, FolderOpen, MoreHorizontal, RotateCcw, Pencil, Eraser, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -34,6 +34,7 @@ export function SessionConversationPane({
     s.sessions.find((sess) => sess.id === resolvedSessionId)
   )
   const resetSessionUsageStats = useChatStore((s) => s.resetSessionUsageStats)
+  const clearSessionMessages = useChatStore((s) => s.clearSessionMessages)
   const renameSession = useChatStore((s) => s.renameSession)
   const { sendMessage, stopStreaming } = useChatActions()
   const isStreaming = useChatStore((s) =>
@@ -99,6 +100,24 @@ export function SessionConversationPane({
     if (!ok) return
     await resetSessionUsageStats(resolvedSessionId)
   }, [resolvedSessionId, resetSessionUsageStats, t])
+
+  // S-204：浮窗「更多」补「清空会话」入口 —— 与左侧会话右键的「清空消息」同名同义，
+  // 都走 store 的 clearSessionMessages（落库删消息，切走切回不再复活）。删消息不可逆，带二次确认。
+  const handleClearSession = useCallback(async () => {
+    if (!resolvedSessionId) return
+    const ok = await confirm({
+      title: t('sidebar.clearSessionConfirmTitle', {
+        defaultValue: "Clear this session's messages?"
+      }),
+      description: t('sidebar.clearSessionConfirmDesc', {
+        title: session?.title ?? '',
+        defaultValue: 'Every message will be permanently deleted. This cannot be undone.'
+      }),
+      variant: 'destructive'
+    })
+    if (!ok) return
+    clearSessionMessages(resolvedSessionId)
+  }, [resolvedSessionId, session, clearSessionMessages, t])
 
   const handleRename = useCallback(() => {
     if (!resolvedSessionId || !session) return
@@ -270,6 +289,10 @@ export function SessionConversationPane({
                 <DropdownMenuItem onClick={handleResetUsageStats} className="text-destructive">
                   <RotateCcw className="mr-2 size-4" />
                   {t('sidebar.resetUsageStats', { defaultValue: 'Reset token usage' })}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleClearSession} className="text-destructive">
+                  <Eraser className="mr-2 size-4" />
+                  {t('sidebar.clearSession', { defaultValue: 'Clear messages' })}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

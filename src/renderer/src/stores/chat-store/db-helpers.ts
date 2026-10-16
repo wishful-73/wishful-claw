@@ -621,9 +621,13 @@ export async function dbDeleteMessage(sessionId: string, messageId: string): Pro
 
 /**
  * Clear all messages for a session.
+ *
+ * S-204：返回 worker 的 success，供调用方区分「删干净了」与「被拒了」——
+ * 这是用户点过的不可逆动作，失败不能静默吞掉（口径同 dbResetSessionUsageStats）。
  */
-export async function dbClearMessages(sessionId: string): Promise<void> {
-  await window.api.workerRequest('db/messages-clear', { sessionId })
+export async function dbClearMessages(sessionId: string): Promise<{ success: boolean }> {
+  const result = await window.api.workerRequest<{ success: boolean }>('db/messages-clear', { sessionId })
+  return { success: !!result?.success }
 }
 
 /**

@@ -356,6 +356,7 @@ All relative paths should be resolved against this folder. Use this as the defau
 ## Sandbox mode
 Sandbox mode is on for this run. Paths passed to file and search tools must resolve inside the session's working directories; calls outside are rejected before they run.
 You must not use a command line to reach outside those directories — the check covers tool arguments, not command contents.
+If the sandbox blocks a path that genuinely is one the user wants you to reach, call the RequestSandboxElevation tool to ask the user to temporarily turn the sandbox off for 1 hour; it only takes effect after the user approves.
 """;
     }
 

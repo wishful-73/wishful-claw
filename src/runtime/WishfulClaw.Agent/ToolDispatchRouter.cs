@@ -45,6 +45,15 @@ public static class ToolDispatchRouter
             return (message, true, null);
         }
 
+        // Sandbox elevation is an interactive reverse-request too: a background run has
+        // nobody to approve it, so it must not sit waiting on a prompt nobody can answer.
+        if (AgentRuntimeSandboxElevationExecutor.IsSandboxElevationTool(toolCall.Name) &&
+            JsonHelpers.GetBool(state.Parameters, "nonInteractive", false))
+        {
+            const string message = "This is a background scheduled task and cannot wait for user approval. Continue without requesting sandbox elevation.";
+            return (message, true, null);
+        }
+
         // AskUserQuestion: route to renderer via reverse-request
         if (AgentRuntimeAskUserExecutor.IsAskUserTool(toolCall.Name))
         {
@@ -64,6 +73,29 @@ public static class ToolDispatchRouter
             catch (Exception ex)
             {
                 toolOutput = $"AskUser tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
+        // Sandbox elevation: reverse-request to the renderer (desktop dialog / channel text
+        // approval). Same family as AskUser, so it stays next to it — before the Desktop branch.
+        else if (AgentRuntimeSandboxElevationExecutor.IsSandboxElevationTool(toolCall.Name))
+        {
+            try
+            {
+                var result = await AgentRuntimeSandboxElevationExecutor.ExecuteAsync(
+                toolCall, state.Parameters, context, state.CancellationToken);
+                toolOutput = result.Content.ValueKind == JsonValueKind.String
+                ? result.Content.GetString() ?? string.Empty
+                : result.Content.ToString();
+                isToolError = result.IsError;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                toolOutput = $"Sandbox elevation tool execution failed: {ex.Message}";
                 isToolError = true;
             }
         }

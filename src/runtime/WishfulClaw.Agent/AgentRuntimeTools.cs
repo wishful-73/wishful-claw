@@ -356,6 +356,27 @@ public static class AgentRuntimeTools
         return WorkerResponse.Json(new ClearSessionResult(true, sessionId), AgentRuntimeJsonContext.Default.ClearSessionResult);
     }
 
+    /// <summary>
+    /// Clears the S-207 temporary sandbox elevation immediately. Called by the renderer's
+    /// "restore" button on the sandbox chip (via main → <c>sandbox/clear-elevation</c>).
+    /// The elevation also expires on its own after an hour; this is the manual path.
+    ///
+    /// The result is a plain <c>{"cleared": true}</c> written by hand rather than a
+    /// source-generated record: the shape is trivial and has no consumer that reads a
+    /// typed contract, so paying for a new JsonContext entry here would be all cost.
+    /// </summary>
+    public static WorkerResponse ClearSandboxElevation(JsonElement parameters)
+    {
+        Tools.SandboxElevationStore.Clear();
+        WorkerLog.Info("sandbox elevation cleared by user");
+        return WorkerResponse.FromWriter(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteBoolean("cleared", true);
+            writer.WriteEndObject();
+        });
+    }
+
     // ── Reverse response (from renderer tool execution) ──
 
     public static WorkerResponse ReverseResponse(JsonElement parameters)

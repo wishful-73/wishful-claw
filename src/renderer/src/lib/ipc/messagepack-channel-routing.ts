@@ -71,6 +71,8 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'openai-audio:transcribe',
   'openai-audio:speech',
   'agent:drain-sub-agent-notifications',
+  // S-207：沙箱临时豁免的「立即恢复」按钮，必须走到 Worker 才能清掉进程级豁免。
+  'sandbox:clear-elevation',
   'agent:changes:list-session',
   'agent:changes:get',
   'agent:changes:diff-content',

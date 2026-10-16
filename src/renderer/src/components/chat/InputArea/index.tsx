@@ -37,6 +37,8 @@ import { useImageAttachments } from './use-image-attachments'
 import { useQueuedMessages } from './use-queued-messages'
 import { usePromptOptimizer } from './use-prompt-optimizer'
 import { QueuedMessagesPanel } from './queued-messages-panel'
+// S-207：沙箱临时关闭倒计时 chip（无豁免时不渲染）。
+import { SandboxElevationChip } from './sandbox-elevation-chip'
 import { ImagePreviewStrip } from './image-preview-strip'
 import { InputAreaBanners } from './input-area-banners'
 import { ComposerToolbar } from './composer-toolbar'
@@ -324,6 +326,8 @@ export function InputArea({
       )}
 
       <SessionTodoPanel projectScoped={projectScoped} draftSessionId={draftSessionId} className={composerWidthClass} />
+
+      {draftSessionId && <SandboxElevationChip />}
 
       <div className={composerWidthClass}>
         <div

@@ -44,9 +44,19 @@ public static class PathBoundary
     /// <summary>
     /// 沙箱总开关。存在于 run params（渲染端设置页的「沙箱模式」，默认开）。
     /// 老的调用方不带这个字段时按「开」处理，与设置页的默认值一致。
+    ///
+    /// S-207：开关为真**且**没有临时豁免时才算开启。豁免由用户在批准
+    /// <c>RequestSandboxElevation</c> 后写入 <see cref="SandboxElevationStore"/>，固定 1 小时，
+    /// 到期自动失效。这里刻意只改「开关判定」，不动 <see cref="ResolveRoots"/> /
+    /// <see cref="IsInsideAnyRoot"/> 那条边界链路 —— 提权是一条独立链路，越权放行是靠
+    /// 整个开关短路实现，而不是往边界里插例外。
+    ///
+    /// 覆盖面：<c>ResolvePolicy</c>（被 <c>ToolCallProcessor</c> 与
+    /// <c>AgentRuntimeUseCapabilityExecutor</c> 调用）与 <c>AgentLoop</c> 构造系统提示词时都经
+    /// <see cref="IsEnabled"/>，所以豁免对这些路径**全部**自动生效，无需各自再判一次。
     /// </summary>
     public static bool IsEnabled(JsonElement parameters)
-        => JsonHelpers.GetBool(parameters, "sandboxEnabled", true);
+        => JsonHelpers.GetBool(parameters, "sandboxEnabled", true) && !SandboxElevationStore.IsActive();
 
     /// <summary>
     /// 算出本次运行允许的根目录集合：会话对应的项目根 + 本实例数据根（<see cref="WithDataRoot"/>）。
@@ -248,6 +258,9 @@ public static class PathBoundary
     /// <summary>
     /// 越界文案。要说清三件事：被拒的路径、允许的根、用户能怎么办 —— agent 会把这句
     /// 原样读给自己看，缺了出路它只会反复重试同一条路径。
+    ///
+    /// S-207 追加一条出路：这条路径确实在用户的允许范围内、只是被沙箱拦住时，agent 可以调用
+    /// <c>RequestSandboxElevation</c> 请用户批准临时关闭沙箱 1 小时（批准后才生效）。
     /// </summary>
     public static string BuildViolationMessage(string resolvedPath, IReadOnlyList<string> roots)
     {
@@ -256,7 +269,10 @@ public static class PathBoundary
             $"Sandbox: \"{resolvedPath}\" is outside the allowed working directories ({allowed}). " +
             "The sandbox setting is on, so tools cannot touch paths outside those directories. " +
             "Pick a path inside an allowed directory, or turn the sandbox off in Settings, " +
-            "or add the directory as a project working folder.";
+            "or add the directory as a project working folder. " +
+            "If this path really is one the user wants you to reach, call the RequestSandboxElevation " +
+            "tool to ask the user to temporarily turn the sandbox off for 1 hour (it only takes effect " +
+            "after the user approves).";
     }
 
     /// <summary>规范化到绝对路径并去掉尾部分隔符（根目录如 C:\ 保持不变）。</summary>

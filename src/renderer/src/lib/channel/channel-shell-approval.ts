@@ -66,7 +66,16 @@ export function resolvePendingChannelShellApproval(sessionId: string, content: s
 }
 
 /** The prompt shown in the channel, including how to answer and the deadline. */
-export function buildShellApprovalPrompt(toolName: string, summary: string): string {
+export function buildShellApprovalPrompt(
+  toolName: string,
+  summary: string,
+  options?: { prompt?: string }
+): string {
+  // S-207: 非命令类的审批（如申请临时关闭沙箱）自带整段文案 —— 「请求执行命令」那套
+  // 措辞套上去只会误导用户。传了 prompt 就原样用它，不传维持原行为（既有调用方不变）。
+  if (options?.prompt) {
+    return options.prompt
+  }
   const detail = summary ? `\n\n${summary}` : ''
   return (
     `Agent 请求执行命令（${toolName}），需要你确认：${detail}\n\n` +
@@ -81,6 +90,12 @@ export interface ChannelShellApprovalRequest {
   summary: string
   /** Sends text back to the channel. Injected so this module stays store-free. */
   send: (message: string) => Promise<void>
+  /**
+   * Optional override for the whole prompt shown in the channel. Used by callers whose
+   * request is not a shell command (S-207 sandbox elevation). Omitted ⇒ the default
+   * command-approval wording.
+   */
+  prompt?: string
 }
 
 /**
@@ -92,7 +107,7 @@ export interface ChannelShellApprovalRequest {
 export function requestChannelShellApproval(
   request: ChannelShellApprovalRequest
 ): Promise<boolean> {
-  const { sessionId, toolCallId, toolName, summary, send } = request
+  const { sessionId, toolCallId, toolName, summary, send, prompt } = request
 
   // At most one pending approval per session. The Worker already serializes
   // gated calls, so this only guards against a stale entry surviving a restart.
@@ -121,7 +136,7 @@ export function requestChannelShellApproval(
       timeout
     })
 
-    void send(buildShellApprovalPrompt(toolName, summary))
+    void send(buildShellApprovalPrompt(toolName, summary, prompt ? { prompt } : undefined))
   })
 }
 

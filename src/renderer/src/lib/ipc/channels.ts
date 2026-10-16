@@ -76,6 +76,9 @@ export const IPC = {
   AGENT_CHANGES_UNDO_RUN: 'agent:changes:undo-run',
   AGENT_CHANGES_UNDO_FILE: 'agent:changes:undo-file',
 
+  // Sandbox elevation (S-207) — 渲染端「立即恢复沙箱」→ main → Worker（清掉进程级豁免）
+  SANDBOX_CLEAR_ELEVATION: 'sandbox:clear-elevation',
+
   // Process Management
   PROCESS_SPAWN: 'process:spawn',
   PROCESS_KILL: 'process:kill',

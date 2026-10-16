@@ -36,6 +36,7 @@ public sealed class ToolModule : IWorkerModule
         IToolProvider[] providers =
         [
             new Providers.AskUserToolProvider(),
+            new Providers.SandboxElevationToolProvider(),
             new Providers.BrowserToolProvider(),
             new Providers.ChannelPluginToolProvider(),
             new Providers.CodeGraphToolProvider(),

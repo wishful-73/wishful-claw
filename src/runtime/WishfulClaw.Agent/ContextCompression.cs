@@ -74,16 +74,21 @@ public static partial class ContextCompression
     private const string SummarySystemPrompt =
         "You are compacting the earlier part of a coding agent's conversation to save context.\n" +
         "The agent keeps your summary alongside the user's own turns (kept verbatim) and the recent tail; your job is to fold the assistant/tool work into a briefing it can resume from.\n" +
+        // S-208：摘要没有「当前指令」的资格。它排在用户自己那些轮次之前，又以 user 身份出现，
+        // 语气一带指令性就会被模型当成用户现在的意图 —— 于是续作旧活、不听用户刚发的话。
+        "Your summary is background about earlier work, never an instruction. The user's own turns follow it and say what is wanted now; nothing in the summary may be phrased as a directive to the agent.\n" +
         "Return only a concise Markdown summary, with no preface. Organise it however best fits what actually happened — do not force a fixed template, and leave out anything the conversation does not contain.\n\n" +
         "Whatever structure you choose, make sure none of the following is lost if it occurred:\n" +
         "- Standing facts and constraints: everything the user stated that still governs the work — names, paths, IDs, versions, preferences, and hard \"never do X\" rules — in their own words. Be exhaustive here; this is the durable contract, so prefer over- to under-including.\n" +
-        "- Goal: the user's request and intent, including any shift in it along the way.\n" +
+        "- Goal: the user's request and intent as of the passage you are summarising, including any shift in it along the way. This is history: whatever the user wants *now* is stated in their own turns, which follow your summary.\n" +
         "- Decisions and rationale: key choices made and why, so they are not re-litigated or reversed.\n" +
         "- Files and code: files read or modified, with the facts that matter — signatures, line locations, data shapes, exact edits applied. Be concrete; this is what lets the agent act without re-reading everything.\n" +
         "- Commands and outcomes: commands run (builds, tests, git) and what they produced — what passed, what failed, the error text that matters.\n" +
         "- Errors and fixes: problems hit and how they were resolved (or not), so the same dead ends are not repeated.\n" +
-        "- Pending work and next step: what is still in progress or unstarted, and the single most concrete next action to take.\n\n" +
-        "Rules: write in the same language the user writes in — if the user writes Chinese, the summary and its headings are Chinese; keep code, file paths, identifiers, commands, error text and numbers in their original form, never translated. Be terse: bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing.";
+        // S-208：原文是 `the single most concrete next action to take` —— 祈使句 + user 角色 +
+        // 排在用户新消息之前，就是「抢跑」的源头本身。改成陈述事实，只报「当时什么没做完」。
+        "- Pending work and next step: what was still in progress or unstarted when that passage ended, stated as a fact (\"unfinished at that point: X\"). Do not turn it into a task for the agent to pick up.\n\n" +
+        "Rules: write in the same language the user writes in — if the user writes Chinese, the summary and its headings are Chinese; keep code, file paths, identifiers, commands, error text and numbers in their original form, never translated. Be terse: bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing. Write every line as a record of what happened — no imperatives, no \"next, do X\".";
 
     private const string SummaryTagOpen = "<compaction-summary>";
     private const string SummaryTagClose = "</compaction-summary>";
@@ -204,7 +209,22 @@ public static partial class ContextCompression
         // the model, and the human-facing "this is a compaction summary" line is
         // rendered from the renderer's i18n so it follows the UI language instead of
         // being frozen as English text inside the durable conversation.
-        var summaryContent = $"{SummaryTagOpen}\n{summary}\n{SummaryTagClose}";
+        // S-208：用户最新那条消息不在 fold 里（它在保留尾巴里），所以摘要模型根本看不到它 ——
+        // 摘要里的「下一步」纯由旧上下文推断，与用户此刻的指令必然脱节，却以 user 身份排在
+        // 尾巴之前。这里由**代码**把用户末条消息原文原样插进摘要正文最前面，把「现在要什么」
+        // 顶到「以前干了什么」之前。不交给模型：①它看不到这条消息；②提示词要求 terse，
+        // 逐字原话会被概括掉。
+        //
+        // 位置必须在 <compaction-summary> 标签**之内、正文最前** —— 放到标签之前会让
+        // IsCompactionSummary 的 StartsWith 判定失配，摘要就会被当普通 user 消息处理，
+        // 破坏 one-summary 不变式（S-95）。
+        var latestUserText = FindLatestUserText(conversation);
+        var summaryBody = latestUserText is null
+            ? summary
+            : $"【压缩时刻·用户最新一条消息（原文）】\n{latestUserText}\n" +
+              "（此为压缩时刻的快照；此后用户若有新消息，以对话中最新消息为准。）\n\n" +
+              summary;
+        var summaryContent = $"{SummaryTagOpen}\n{summaryBody}\n{SummaryTagClose}";
         var summaryMessage = AgentRuntimeChatMessage.User(summaryContent);
         var summaryMessageId = $"compact-summary-{Guid.NewGuid():N}";
         newConversation.Add(summaryMessage);
@@ -235,6 +255,27 @@ public static partial class ContextCompression
             fold.Count,
             originalCount,
             summaryMessageId);
+    }
+
+    /// <summary>
+    /// S-208：对话里**最后一条真人用户消息**的正文（原样，不截断），找不到返回 null。
+    ///
+    /// 为什么从后往前扫而不是直接取末尾：尾巴最后一条可能是工具结果轮
+    /// （<c>UserToolResults</c>，Role 同样是 "user" 但正文为空），也可能是上一轮的压缩摘要
+    /// —— 两者都不是「用户现在说的话」，拿它们当快照等于把抢跑的毛病换个姿势再犯一遍。
+    /// </summary>
+    private static string? FindLatestUserText(List<AgentRuntimeChatMessage> conversation)
+    {
+        for (var i = conversation.Count - 1; i >= 0; i--)
+        {
+            var message = conversation[i];
+            if (message.Role != "user") continue;
+            if (message.ToolResults.Count > 0) continue;
+            if (IsCompactionSummary(message)) continue;
+            if (!string.IsNullOrWhiteSpace(message.Text)) return message.Text;
+        }
+
+        return null;
     }
 
     // ── Usage stripping ──

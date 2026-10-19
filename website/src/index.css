@@ -387,63 +387,80 @@ body {
   }
 }
 
-/* ── 首屏背景层（S-206，2026-10-16）────────────────────────────────────
+/* ── 背景动画层（S-206，2026-10-16）────────────────────────────────────
    动机：首屏原本是静态纸面 + 一道文字扫光，观感偏素（老大 2026-10-15 11:38 指定
    参考 astra-gate.si 的首屏背景动画）。这层就是来接那道扫光的班的。
 
-   三条自觉约束（对应需求文档 §五 的裁定 1 / 2 / 3）：
-     ① 技术走 CSS + SVG：不上 canvas、不引依赖。参考站是常驻 rAF、实测每秒约 4300 次
-        绘制调用；纯装饰不值这个代价。SVG 描边 + transform 走 GPU 合成，零 JS，
-        也与我们既有的 .reveal 同属 CSS 动画，风格统一。
-     ② 配色只用自有纸面 + 琥珀：不照搬参考站的冷调蓝紫渐变 —— 那会跟 2026-09-21 定下的
-        reasonix.io 浅色纸面风打架，也违反「单一强调色」这条既有约束。
-     ③ 强度压到「能感觉到在动、读文案完全不受干扰」：首屏是转化面，背景只是氛围。
+   现行形态分两层，各管一件事 —— **两层不同轨**，一层整站、一层只首屏：
+     ① .site-mist —— 极淡的琥珀色雾，两团 radial-gradient 缓慢缩放位移（「呼吸」），纯 CSS。
+        **整站**：钉在视口上，首页 / 下载页 / 指引页都挂（老大 2026-10-19：「整个站点都要，
+        不仅仅是首屏，也不仅仅是首页」）。
+     ② .hero-converge —— 一束束拖尾从外沿螺旋收向主 CTA 按钮（「万剑归宗」），一层 canvas，
+        实现在 sections/converge-streams.tsx，挂在 **hero 内部**、`absolute inset-0`：
+        只管**首屏那一块**（老大 2026-10-19 10:30：「这个光束可以就集中在首屏么，不是整个首页」；
+        当天更早的「整页全局背景」口径就此作废，雾那一层不受影响）。
+        它天然只在首页 —— 别的页面没有 hero，也就没有 [data-converge-target]。
 
-   形态：一层极淡的琥珀色雾（两团 radial-gradient，缓慢缩放位移、形成「呼吸」）
-   + 两层细描边线稿（SVG 弧线，反向缓慢漂移）。
+   §返工记录（2026-10-19）：初版是「色雾 + 两层平行漂移的线稿（.hero-aurora-lines）」，强度先压得
+   过低（老大「感受不到」），上调数值后老大第二次否 —— 问题不在强度而在形态：平行漂移的线不朝任何
+   点收，静态一帧就是几根淡弧线。老大指定参考站的「都汇集到中心元素上」。读参考站源码后确认它是
+   常驻 rAF 的 canvas 拖尾粒子（极坐标收束 + 逐帧加速 + 14 帧尾迹），纯 CSS/SVG 复刻不出螺旋与尾迹，
+   故撤掉那两层线稿与配套 keyframes（aurora-drift / aurora-drift-rev），改用 canvas 收束层。
+   第三次要求：顶栏要透出动画、且整页都要有 ⇒ 收束层由「hero 内 absolute」改为「视口级 fixed」，
+   同时顶栏底色撤掉（见 components/site-header.tsx）。
+   第四次要求：暖色雾也要全站 ⇒ 同步由「hero 内 absolute」改为「视口级 fixed」，并挂到三张页面
+   （见 components/site-mist.tsx）。
+   第五次要求（10:30，**只针对收束层**）：光束收回首屏 ⇒ 它从「视口级 fixed」搬回 hero 内 absolute。
+   注意这次只回滚了一半 —— 雾继续整站 fixed，第四次的要求仍然有效。
+   ⇒ S-206 §五 裁定 ①「技术走 CSS + SVG，不上 canvas」就地作废：本仓现允许**唯一一处** canvas，
+   就是收束层；其余动画（.reveal / .dl-shine / 色雾）仍是 CSS，不引任何依赖。
 
-   层级与交互（同参考站做法）：整层 absolute inset-0 + 负 z-index + pointer-events: none，
-   并在 hero.tsx 的 section 上配 isolation: isolate —— 负 z 层只有先建立堆叠上下文，
-   才会落在「区块背景之上、文字之下」，否则会沉到 body 纸面以下，整层看不见。
-   底部渐隐（mask-image）：让它在下一区块前自然收掉，不切出一条硬边。 */
-.hero-aurora {
+   配色：初版锁「自有纸面 + 琥珀 + 深墨」，明确不照搬参考站的冷调蓝紫（那会跟 2026-09-21 定下的
+   reasonix.io 浅色纸面风打架，也违反「单一强调色」约束）。2026-10-19 10:27 老大放开 ——「不需要跟着
+   暖色光谱走，紫色 蓝色 绿色这些都可以要」⇒ 收束层改用整圈色相（13 档，见 converge-streams.tsx 的
+   PALETTE）。⚠️ 放开范围**只限这一层**：页面本体仍是纸面 + 单一强调色。
+
+   层级（同参考站做法）：负 z-index + pointer-events: none，落在「body 纸面之上、页面内容之下」。
+   两层再分先后：雾在下（-11）、收束在上（-10），线条压在暖底上。
+   ⚠️ 负 z 层要生效，从它到根之间不能有会截断/抬升的祖先（transform / filter / opacity < 1 等）；
+   雾挂在页面根（`#root`，只有 flex 布局，不建堆叠上下文）⇒ 沉到纸面之上；收束层挂在 hero 内，
+   靠 hero 自己的 `isolate` 就地建堆叠上下文 ⇒ 沉到 hero 文字之下、仍浮在雾上。
+   雾不再用 mask 做底部渐隐：渐隐是「区块交界」的概念，固定层没有下一条边可收，
+   而页面底部的页脚本身就是不透明底色，自然收口。 */
+.site-mist {
+  position: fixed;
+  inset: 0;
+  z-index: -11;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 收束层：**只盖首屏那一块**（hero 内 absolute；父级 hero 有 isolate，z-index -10 落在 hero
+   文字之下、body 纸面之上）。canvas 量的是**父级**尺寸 + 找 [data-converge-target] 当收敛点，
+   所以它是「随 hero 大小」的，不再量视口。
+   ⚠️ 2026-10-19 10:30 之前它是视口级 fixed（整页背景），按老大要求收回首屏。 */
+.hero-converge {
   position: absolute;
   inset: 0;
   z-index: -10;
-  overflow: hidden;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 72%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 72%, transparent 100%);
 }
 
-/* 色雾：两团极低透明度的琥珀，各自缓慢缩放 + 位移。透明度刻意压在 12% 以下
-   —— 再高在纸面上就显脏（首屏是阅读面，不是视觉主角）。 */
-.hero-aurora::before {
+/* 色雾：两团琥珀，各自缓慢缩放 + 位移。初版压在 12% 以下结果「感受不到」，2026-10-19 上调到
+   24% / 18%（见文件头 §返工记录）。现在两团改成一左上一下右：这层从首屏底变成整站底之后，
+   两团都堆在上半屏的话，滚动到中后段就只剩纸白（老大要的是「整个站点都要」）。
+   强度比首屏那时各降 2 个点（22% / 16%）—— 覆盖面从 492px 涨到整屏且常驻，等效浓度更高。
+   ⚠️ 咖啡色系上到 30% 就会显脏（页面是阅读面，不是视觉主角），别再往上推。 */
+.site-mist::before {
   content: '';
   position: absolute;
-  inset: -20% -10% 0 -10%;
+  inset: -15%;
   background:
-    radial-gradient(38% 46% at 22% 34%, color-mix(in srgb, var(--color-accent) 12%, transparent) 0%, transparent 70%),
-    radial-gradient(42% 50% at 78% 26%, color-mix(in srgb, var(--color-accent) 9%, transparent) 0%, transparent 72%);
-  animation: aurora-breathe 26s ease-in-out infinite alternate;
-}
-
-/* 线稿：细描边、无填充、朝向随机的一组弧线（路径画在 hero.tsx 的内联 SVG 里）。
-   第一层用深墨，只负责「有东西在缓缓移动」；第二层用琥珀，淡一点、方向相反。 */
-.hero-aurora-lines {
-  position: absolute;
-  inset: -6%;
-  width: 112%;
-  height: 112%;
-  color: var(--color-ink-900);
-  opacity: 0.055;
-  animation: aurora-drift 46s ease-in-out infinite alternate;
-}
-
-.hero-aurora-lines-2 {
-  color: var(--color-accent);
-  opacity: 0.07;
-  animation: aurora-drift-rev 62s ease-in-out infinite alternate;
+    radial-gradient(42% 40% at 18% 22%, color-mix(in srgb, var(--color-accent) 22%, transparent) 0%, transparent 70%),
+    radial-gradient(44% 44% at 82% 72%, color-mix(in srgb, var(--color-accent) 16%, transparent) 0%, transparent 72%);
+  animation: aurora-breathe 20s ease-in-out infinite alternate;
 }
 
 @keyframes aurora-breathe {
@@ -451,36 +468,17 @@ body {
     transform: scale(1) translate3d(0, 0, 0);
   }
   to {
-    transform: scale(1.08) translate3d(1.6%, -1.2%, 0);
+    transform: scale(1.14) translate3d(2.4%, -1.8%, 0);
   }
 }
 
-@keyframes aurora-drift {
-  from {
-    transform: translate3d(-1.2%, 0.8%, 0);
-  }
-  to {
-    transform: translate3d(1.4%, -1.6%, 0);
-  }
-}
-
-@keyframes aurora-drift-rev {
-  from {
-    transform: translate3d(1.2%, -0.6%, 0);
-  }
-  to {
-    transform: translate3d(-1.4%, 1.2%, 0);
-  }
-}
-
-/* 系统开了「减少动态效果」：背景层整个停住 —— 静态仍保留那层极淡的色雾与线，不是一片空白。
+/* 系统开了「减少动态效果」：色雾停住（静态仍保留暖底色，不是一片空白）；
+   收束层是 canvas，在 converge-streams.tsx 里直接判断 matchMedia 后一帧都不画。
    2026-10-16（S-206 §5.1）：原首屏文字扫光（.shine / .shine-muted / .hero-shine）已随本需求
    整体撤掉 —— 它的原始动机是「静态页面太素」，背景动画接了这个班。
    ⚠️ 下载按钮的 .dl-shine / .dl-current 不在此列，照旧保留（见文件后半段）。 */
 @media (prefers-reduced-motion: reduce) {
-  .hero-aurora::before,
-  .hero-aurora-lines,
-  .hero-aurora-lines-2 {
+  .site-mist::before {
     animation: none;
   }
 }

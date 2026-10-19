@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { SiteHeader } from './site-header'
+import { SiteMist } from './site-mist'
 import { SiteFooter } from '../sections/site-footer'
 import { useActiveHeading } from '../lib/use-active-heading'
 import type { NavGroup } from '../lib/doc-nav'
@@ -43,6 +44,8 @@ export function DocPage(props: {
 
   return (
     <>
+      {/* 站点背景雾：指引页与后续所有走 DocPage 的文档页共用（老大 2026-10-19：雾要整站铺） */}
+      <SiteMist />
       <SiteHeader />
       {/* 宽度对齐首页（ui.tsx 的 Section / SiteHeader / SiteFooter 同款）：去掉 max-w-6xl 的居中收束，
           改成与首页一致的 w-full + px-6 sm:px-10 lg:px-14 —— 2026-09-24 老大：指引页跟首页宽度不搭。 */}

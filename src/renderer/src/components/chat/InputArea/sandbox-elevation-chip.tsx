@@ -1,17 +1,24 @@
-// S-207：沙箱临时关闭的倒计时 chip（输入框上方一条）。
+// S-207：沙箱临时关闭的倒计时 chip。
 //
 // 只在有未到期豁免时出现：显示还剩多少分钟 + 一个「恢复」按钮。
 // 数据源是渲染端 sandbox-elevation-store（批准时写入到期时刻），本组件只负责刷新倒计时；
 // 真正的放行判定在 Worker 侧（SandboxElevationStore），点「恢复」会同时清掉两边。
+//
+// 位置由调用方决定（className）：现在挂在聊天窗左上角，输入框上方只留真正需要动手的东西。
 
 import * as React from 'react'
 import { ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
+import { cn } from '@renderer/lib/utils'
 import { useSandboxElevationStore } from '@renderer/stores/sandbox-elevation-store'
 
-export function SandboxElevationChip(): React.JSX.Element | null {
+/**
+ * className 只用来定位（绝对定位 + z-index），组件自己只负责胶囊外观 —— 与右上角
+ * 会话操作块同一套视觉语言（半透明底 + 模糊 + 细边），看着是一族东西。
+ */
+export function SandboxElevationChip({ className }: { className?: string }): React.JSX.Element | null {
   const untilMs = useSandboxElevationStore((s) => s.untilMs)
   const clear = useSandboxElevationStore((s) => s.clear)
 
@@ -40,8 +47,13 @@ export function SandboxElevationChip(): React.JSX.Element | null {
   }
 
   return (
-    <div className="mx-5 mb-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
-      <ShieldAlert className="size-3 shrink-0" />
+    <div
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur-sm',
+        className
+      )}
+    >
+      <ShieldAlert className="size-3.5 shrink-0 text-amber-500" />
       <span className="tabular-nums">沙箱已临时关闭 · 剩 {minutes} 分钟</span>
       <button
         type="button"

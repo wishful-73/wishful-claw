@@ -83,6 +83,11 @@ internal static class AgentRuntimeSandboxElevationExecutor
     {
         return WorkerJsonHelper.BuildJsonElement(writer =>
         {
+            // BuildJsonElement 只负责建 writer，不给外壳：这里必须自己成对写
+            // StartObject/EndObject，否则第一个 token 就是属性名，Utf8JsonWriter 直接抛
+            // "Cannot write a JSON property ... as the first JSON token"（AOT 裁剪后资源串
+            // 丢失，只剩 CannotWritePropertyWithinArray 这个键名，极难认）。
+            writer.WriteStartObject();
             writer.WriteString("toolUseId", call.Id);
             WriteNullableString(writer, "sessionId", JsonHelpers.GetString(parameters, "sessionId"));
             WriteNullableString(writer, "runId", JsonHelpers.GetString(parameters, "runId"));
@@ -91,6 +96,7 @@ internal static class AgentRuntimeSandboxElevationExecutor
             {
                 writer.WriteBoolean("channelSession", true);
             }
+            writer.WriteEndObject();
         });
     }
 

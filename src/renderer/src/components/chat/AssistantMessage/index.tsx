@@ -418,6 +418,7 @@ export function AssistantMessage({
         sessionId={sessionId}
         trackedChangeByToolUseId={trackedChangeByToolUseId}
         canEditGeneratedImages={canEditGeneratedImages}
+        runEnd={meta?.runEnd}
         t={t}
       />
     )

@@ -83,7 +83,14 @@ export interface RequestDebugInfoWire {
   bodyBytes?: number
 }
 
-export type LoopEndReasonWire = 'completed' | 'max_iterations' | 'aborted' | 'error'
+// `user_cancelled` 是 aborted 的细分：用户按了停止（agent/cancel 带 CancelReason "user"）。
+// 取消原因是要落库的数据（消息 meta.runEnd），不是文案，所以放在协议里定死（iter-40 S-210）。
+export type LoopEndReasonWire =
+  | 'completed'
+  | 'max_iterations'
+  | 'aborted'
+  | 'user_cancelled'
+  | 'error'
 
 // ---- Event union ----
 
@@ -92,7 +99,15 @@ export type AgentStreamEvent =
   | { type: 'loop_start' }
   | { type: 'iteration_start'; iteration: number }
   | { type: 'iteration_end'; stopReason: string; toolResults?: ToolResultWire[] }
-  | { type: 'loop_end'; reason: LoopEndReasonWire; messages?: unknown[] }
+  // `errorType` / `statusCode` 只在 reason = 'error' 时有值：同一份成因既挂在 error 事件上，
+  // 也挂在 loop_end 上，渲染端才能把它写进消息 meta 并在重载后照实显示（iter-40 S-210）。
+  | {
+      type: 'loop_end'
+      reason: LoopEndReasonWire
+      errorType?: string
+      statusCode?: number
+      messages?: unknown[]
+    }
   // Text phase annotation (marks text before tool calls as planning)
   | { type: 'text_phase'; reason: 'pre_tool' }
   // Streaming deltas

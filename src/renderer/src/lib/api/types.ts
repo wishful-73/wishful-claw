@@ -14,6 +14,7 @@ import type {
   RequestOverrides,
   ImageGenerationStreamConfig
 } from '@shared/types/provider'
+import type { LoopEndReasonWire } from '@shared/agent-stream-protocol'
 // Re-export shared provider types so WishfulClaw imports (`@renderer/lib/api/types`) work.
 export type {
   ProviderType,
@@ -381,12 +382,29 @@ export interface MessageRequestModelMeta {
   modelIcon?: string | null
 }
 
+/**
+ * 这一轮怎么结束的（iter-40 S-210）—— 落库数据，不是文案。
+ *
+ * 由 worker 的 `loop_end` 事件带来，渲染端在收尾时写进 assistant 消息的
+ * `meta.runEnd`，重载后照实显示；缺失（老消息 / 没收到事件）= 不知道，不编。
+ */
+export interface MessageRunEndMeta {
+  reason: LoopEndReasonWire
+  /** reason = 'error' 时 Worker 报的异常类型（如 HttpRequestException / TimeoutException）。 */
+  errorType?: string
+  /** reason = 'error' 时能归因到 HTTP 应答的状态码。 */
+  statusCode?: number
+  /** 收尾时刻（渲染端时钟）。 */
+  at?: number
+}
+
 export interface MessageMeta {
   compactBoundary?: CompactBoundaryMeta
   compactSummary?: CompactSummaryMeta
   selectedFileReads?: SelectedFileReadsMeta
   compressionStatus?: CompressionStatusMeta
   requestModel?: MessageRequestModelMeta
+  runEnd?: MessageRunEndMeta
   cronTaskId?: string
   cronRunId?: string
 }

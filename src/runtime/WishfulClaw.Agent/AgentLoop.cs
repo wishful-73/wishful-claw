@@ -292,7 +292,7 @@ internal static partial class AgentLoop
             // ── Cancellation check ──
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -321,7 +321,7 @@ internal static partial class AgentLoop
                     errorDriven: false);
                 if (compression.Status == LoopCompressionStatus.Cancelled)
                 {
-                    await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                    await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                     return;
                 }
                 if (compression.Status == LoopCompressionStatus.Compressed)
@@ -349,7 +349,7 @@ internal static partial class AgentLoop
 
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -405,7 +405,7 @@ internal static partial class AgentLoop
                         errorDriven: true);
                     if (compression.Status == LoopCompressionStatus.Cancelled)
                     {
-                        await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                        await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                         return;
                     }
                     if (compression.Status != LoopCompressionStatus.Compressed ||
@@ -539,7 +539,7 @@ internal static partial class AgentLoop
 
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -554,7 +554,7 @@ internal static partial class AgentLoop
         // 真实结束原因（正常跑完 / 撞轮次上限）。写回 state 之后 SubAgentExecutor
         // 上报的 StopReason 才有值 —— 此前它恒为 null，被轮次掐断的 run 在 UI 上
         // 与正常干完的长得一模一样（iter-31 S-53）。
-        var loopEndReason = state.StopReason ?? (completed ? "completed" : "max_iterations");
+        var loopEndReason = state.StopReason ?? (completed ? AgentLoopEndReasons.Completed : AgentLoopEndReasons.MaxIterations);
         state.RecordStopReason(loopEndReason);
 
         await EmitLoopEndAsync(
@@ -576,11 +576,27 @@ internal static partial class AgentLoop
         string reason,
         List<AgentRuntimeChatMessage>? conversation = null,
         bool isSubAgentLoop = false,
-        bool isGoalSubAgentLoop = false)
+        bool isGoalSubAgentLoop = false,
+        string? errorType = null,
+        int? statusCode = null)
     {
+        // S-210：取消不该只有一个名字。用户点停止、父 run 收尾、会话被替换都从
+        // 同一条 aborted 出口走，渲染端分不清谁按的；CancelReason 是唯一还留着
+        // 「谁取消了它」的地方（agent/cancel 传的就是 "user"），RequestStop 则直接
+        // 把 "user" 塞进 StopReason。两种口径都在这里归一，落库端才拿得到可据实
+        // 显示的原因。
+        if (reason == "user" || (reason == AgentLoopEndReasons.Aborted && state.CancelReason == "user"))
+        {
+            reason = AgentLoopEndReasons.UserCancelled;
+        }
+
         await AgentRuntimeTools.EmitAsync(
             state, context,
-            new AgentRuntimeStreamEvent("loop_end", Reason: reason));
+            new AgentRuntimeStreamEvent(
+                "loop_end",
+                Reason: reason,
+                ErrorType: errorType,
+                StatusCode: statusCode));
 
         // Timeline instrumentation (S-25.4): sub-agent run termination.
         if (isSubAgentLoop || isGoalSubAgentLoop)

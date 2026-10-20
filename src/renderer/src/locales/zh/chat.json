@@ -1277,6 +1277,19 @@
     "editImage": "编辑图片",
     "maskEditImage": "蒙版编辑",
     "executionPaused": "任务暂告一段落",
+    "runEnd": {
+      "userCancelled": "你中止了这一轮",
+      "aborted": "这一轮被中断了",
+      "maxIterations": "这一轮到了迭代上限，停在这里",
+      "timeout": "请求超时，这一轮中断了",
+      "network": "网络中断，这一轮没跑完",
+      "auth": "服务商拒绝请求（{{status}}）",
+      "rateLimited": "服务商限流（{{status}}）",
+      "providerError": "服务商返回错误（{{status}}）",
+      "rejected": "请求被拒绝（{{status}}）",
+      "error": "出错中断，详见上方错误信息",
+      "stopped": "这一轮已结束（{{reason}}）"
+    },
     "maskBrush": "画笔",
     "imageEditPrompt": "描述要修改的内容"
   },

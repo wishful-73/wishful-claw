@@ -1,9 +1,15 @@
 // Main content renderer: handles string, empty, and block-by-block rendering
+//
+// 500 行豁免（2026-10-20 实测 533 行）：这个文件就是「一条 assistant 消息怎么画」的
+// 单一渲染分派器 —— 文本 / 思考 / 工具 / 图片 / 编排 / 过程折叠全按 block 类型走同一张
+// 表，共用一个 renderItem 与同一套 folding 判定。拆成多个文件只会把一个 switch 切成
+// 几个互相 import 的碎片，判定口径立刻分叉（iter-40 S-210 的回填逻辑就依赖这个
+// 单点）。依据 AGENTS.md §大文件拆分 第 5 条第 1 类（单一职责分派器）。
 
 import * as React from 'react'
 import { Eraser, Pencil } from 'lucide-react'
 import { ScaleIn } from '@renderer/components/animate-ui'
-import type { ContentBlock } from '@renderer/lib/api/types'
+import type { ContentBlock, MessageRunEndMeta } from '@renderer/lib/api/types'
 import type { ToolCallState } from '@renderer/lib/agent/types'
 import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
@@ -33,6 +39,7 @@ import { ToolBlockRenderer } from './tool-block-renderer'
 import type { ToolBlockRendererProps } from './tool-block-renderer'
 import { ExecutionProcessBlock } from './execution-process-block'
 import { buildProcessSummary, splitProcessAndFinal } from './process-summary'
+import { resolveRunEndLabel } from '@renderer/lib/agent/run-end-label'
 
 export interface ContentRendererProps {
   content: string | ContentBlock[]
@@ -67,6 +74,8 @@ export interface ContentRendererProps {
   sessionId?: string | null
   trackedChangeByToolUseId: Map<string, AgentRunFileChange>
   canEditGeneratedImages: boolean
+  /** 这一轮怎么结束的（落库数据）；缺失 = 不知道，按旧文案兜底。 */
+  runEnd?: MessageRunEndMeta | null
   t: TFunction
 }
 
@@ -99,6 +108,7 @@ export function ContentRenderer({
   sessionId,
   trackedChangeByToolUseId,
   canEditGeneratedImages,
+  runEnd,
   t
 }: ContentRendererProps): React.JSX.Element {
   const openImageEditor = useImageEditStore((s) => s.openEditor)
@@ -322,6 +332,12 @@ export function ContentRenderer({
   const thinkingBlockCount = normalizedContent?.filter((b) => b.type === 'thinking').length ?? 0
   const processSummary = buildProcessSummary(toolExecutionOutline, thinkingBlockCount, t)
 
+  // 结束原因照实显示（S-210）：数据来自消息 meta.runEnd，没有就一个字都不说。
+  const runEndLabel = isStreaming || renderMode === 'transcript' ? null : resolveRunEndLabel(runEnd)
+  const runEndText = runEndLabel
+    ? t(runEndLabel.key, { ...runEndLabel.params, defaultValue: runEndLabel.fallback })
+    : null
+
   /** `trailing` marks the last rendered item, which is where the cursor belongs. */
   const renderItem = (item: AssistantRenderItem, trailing = false): React.JSX.Element | null => {
     if (item.kind === 'block') {
@@ -498,9 +514,15 @@ export function ContentRenderer({
       )}
       {finalItems.length > 0 ? (
         finalItems.map((item, index) => renderItem(item, index === finalItems.length - 1))
-      ) : hasProcessContent && !isStreaming && renderMode !== 'transcript' ? (
+      ) : hasProcessContent && !isStreaming && renderMode !== 'transcript' && !runEndText ? (
+        // 老消息没有 runEnd（那会儿还没落库这个数据）—— 只能沿用旧文案，不编原因。
         <div className={MD_CLASS}>
           <p className="text-muted-foreground">{t('assistantMessage.executionPaused', { defaultValue: '任务暂告一段落' })}</p>
+        </div>
+      ) : null}
+      {runEndText ? (
+        <div className={MD_CLASS}>
+          <p className="text-muted-foreground">{runEndText}</p>
         </div>
       ) : null}
       {shouldShowImageGeneratingLoader && (

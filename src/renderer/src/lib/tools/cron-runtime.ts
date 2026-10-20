@@ -1,3 +1,9 @@
+// 500 行豁免（2026-10-20 实测 621 行）：定时任务触发后的**一条完整流水线** —— 解析
+// provider → 建 run → 落库 → 在会话里跑 → 等交卷 → 投递结果给渠道。每一步的入参都
+// 是上一步的产物（`CronFiredEvent` / `CronRunResult`），拆文件只会让这条链在模块边界
+// 上断成六七段、状态传参变成公开 API。依据 AGENTS.md §大文件拆分 第 5 条第 1 类
+// （单一职责流水线）。
+
 import type { AIProvider } from '@shared/types/provider'
 import type { AgentEvent } from '@renderer/lib/agent/types'
 import type { ProviderConfig, ToolDefinition, UnifiedMessage } from '@renderer/lib/api/types'
@@ -514,8 +520,10 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
       if (eventRecord.type === 'tool_call_start') result.toolCallCount += 1
       if (eventRecord.type === 'error') throw eventRecord.error
       if (eventRecord.type === 'loop_end') {
-        if (eventRecord.reason === 'aborted') result.status = 'aborted'
-        else if (eventRecord.reason === 'error') result.status = 'error'
+        // 用户按停止后 Worker 报的是 user_cancelled（S-210），对定时任务同样是「没跑完」。
+        if (eventRecord.reason === 'aborted' || eventRecord.reason === 'user_cancelled') {
+          result.status = 'aborted'
+        } else if (eventRecord.reason === 'error') result.status = 'error'
         else result.status = 'success'
       }
       if (eventRecord.type === 'iteration_end' || eventRecord.type === 'message_end') {

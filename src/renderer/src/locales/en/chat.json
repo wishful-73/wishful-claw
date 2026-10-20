@@ -1278,6 +1278,19 @@
     "editImage": "Edit image",
     "maskEditImage": "Mask edit",
     "executionPaused": "Task paused for now",
+    "runEnd": {
+      "userCancelled": "You stopped this turn",
+      "aborted": "This turn was interrupted",
+      "maxIterations": "This turn hit the iteration limit and stopped here",
+      "timeout": "The request timed out and the turn was cut off",
+      "network": "The network dropped and this turn did not finish",
+      "auth": "The provider rejected the request ({{status}})",
+      "rateLimited": "The provider rate-limited the request ({{status}})",
+      "providerError": "The provider returned an error ({{status}})",
+      "rejected": "The request was rejected ({{status}})",
+      "error": "The turn ended with an error — see the details above",
+      "stopped": "This turn ended ({{reason}})"
+    },
     "maskBrush": "Brush",
     "imageEditPrompt": "Describe the change"
   },

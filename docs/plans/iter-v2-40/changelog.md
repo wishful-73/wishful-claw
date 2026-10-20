@@ -105,3 +105,82 @@
   - **定案**：「**先白嫖，再干活**」**直接采纳**（§7.2 由 △ 转 ✅）。
   - **★ 准则放宽（说服力 > 端庄）**：「**总要说些现在的人爱听的，而不是我们之前纯介绍**」⇒ **允许用当下流行的口语 / 网络词**，判据是「**人爱听**」，**不是「正式」**；**红线只有 §四-2 那两条（不写成程序员工具 / 不碰瓷大厂）+ 合规面（不虚假宣传）**，**不自行扩大红线范围**。已补入 `S-205.md` §四 写作准则**第 5 条**。
   - **文档**：`S-205.md` §7.4 改为「**✅ 可用（定案）**」+ §7.2 表格转 ✅ + §四 加第 5 条 + §八 状态行去掉「白嫖待定」字样。
+
+## 2026-10-19 —— 官网首屏收尾定案（S-205 / S-206）+ S-207 真机验证与验证期修复
+
+### 官网侧：S-205 / S-206 收尾定案（提交 `502b1c5f`，11:51）
+
+> 这一轮先在另一会话推进，**模型调用超时**，转到本会话继续。老大当时逐条给的口径如下，**六处改写了 `S-205.md` / `S-206.md` / `plan.md` 里已写的定案**，特此记账 —— 阶段六验证必须按本节判据，不能照旧稿判「不合格」。
+
+- **11:20** **首屏主标题改写**（老大原话：「**你说一句，它去把活干完** 这个标题改成 **你提需求，它跑全程**」）。⇒ 逆转 S-205 原定案「首屏主标题按裁定不动」（`plan.md:34`）。
+- **11:24** **首屏描述最后一句调整 + 价格表述整体移出首屏**（老大原话：「首屏描述 最后一句需要调整一下 —— 装完就能用，不花钱：问问题、搜本地文件、快捷启动软件、剪贴板增强。它跑在你自己的电脑上，真动手：读写文件、执行命令、开浏览器、操作桌面软件。要它干重活，接一家服务商——接上之后，你提需求，它跑全程。」「**不想在首屏介绍上还在纠结价格，下面的不花钱已经够了**」）。⇒ 首屏只留「装完就能用，不花钱」一句，重度层的费用口径全部下沉到价值阶梯。
+- **11:26** **重度层文案重写**（老大原话：「重度层 **软件不收费，花费透明** …… 这个文案也需要调整」⇒ 定稿「服务商自己选，Key 自己填，费用直接付给服务商；内置用量统计，账单看得见」）。
+- **11:28** **价值阶梯三列费用统一上色**（老大原话：「不花钱，也能用起来 这里的重度层 **软件不收费，花费透明** 这句话跟前面的 **完全不花钱** 一样 都给上颜色啊，不知道还以为心虚呢」）。⇒ 逆转 S-205 原定案「不改配色」（`S-205.md:97` §六-1）：三列费用统一琥珀，重度层不再单独降灰。
+- **11:30** **背景动画铺开**（老大原话：「本地跑起来 我看看效果」⇒ 看过之后定案）。落地 = ① 整站暖色雾 `site-mist` 挂三张页面；② 首屏光束收束层 `converge-streams`（**canvas**，注释写明「纯 CSS/SVG 做不出螺旋与尾迹」，逆转 S-206 §五「技术路线 CSS+SVG」）；③ 顶栏首屏透明、滚动后回玻璃底（逆转 `S-206.md:63` §4.2-3「不动 SiteHeader」）。**「只 Hero」随之收窄为「收束层只首屏、雾层整站」**。
+- **11:32** **发布范围**（老大原话：「发布官网，**只是发布官网哈**」）⇒ 本次只发官网，不含软件包。
+- **11:51** 提交 `502b1c5f`「首屏文案调整与整站背景动画层铺开」，10 个文件 / +377 −113。
+
+### 软件侧：S-207 真机验证与验证期修复
+
+- **19:55** **S-207 真机一跑就挂：`CannotWritePropertyWithinArray, None`**（老大原话：「我给你说的意思就是让你改啊，我正在进行测试」）。现象：调用 `RequestSandboxElevation` 15 ms 内失败，弹窗不出现。**根因**：`SandboxElevationExecutor.BuildRequest` 用 `WorkerJsonHelper.BuildJsonElement(writer => …)` 时**漏写 `WriteStartObject()` / `WriteEndObject()`**，第一个 token 就是属性名，`Utf8JsonWriter` 抛 `InvalidOperationException`；发布包 AOT 剪掉 System.Text.Json 的资源串，消息退化成「资源键 + 参数」，日志里只剩 `CannotWritePropertyWithinArray, None`。用 net10.0 临时探针复现出原报错原文（探针用后即删）；旁证：全仓 40+ 处 `BuildJsonElement` 调用点里只有这一处漏外壳。**⇒ 缺外壳必抛，S-207 的反向请求链路此前从未真正跑通过。** 修法：`BuildRequest` 首尾补 `WriteStartObject()` / `WriteEndObject()` + 注释说明外壳要自己写；`WishfulClaw.Agent` 单项目构建 0 警告 0 错误。
+- **20:00** **S-207 端到端真机通过**（老大原话：「S207 刚刚测试通过了，但是临时关闭生效以后 显示的提示条位置不太对 1.放左上角 2.边距怎么自己乱来了，没有跟其它的合拍」）。越界 → 指路语 → 模型调用 → 独立弹窗 → 批准 → 进程级豁免生效，**整条链路第一次真机跑通**。
+- **20:01** **提示条改挂聊天窗左上角**（老大原话：「放到聊天窗左上角，现在输入框上方需要显示的东西太多了」）。`SandboxElevationChip` 撤出 `InputArea/index.tsx`（原先插在 `SessionTodoPanel` 之后），改挂 `SessionConversationPane.tsx` 消息区左上角 `absolute left-3 top-3 z-30`，与右上角悬浮操作块同一套边距 / 层级；组件加 `className` 参数，只负责胶囊外观。**已知取舍**：① 可能与第一条消息顶部重叠；② 浮动聊天窗（设置页小窗）不再显示该提示。
+- **20:06** **文档状态同步**（老大原话：「目前都测试过了，你更新一下文档状态」）—— `S-207.md`：页顶状态改 **已实施 + 真机验证通过（2026-10-19）**；§9.4-1 由「端到端手点未做」改记已通并列仍未验子项；§9.4-2 记 chip 两轮落点变化；新增 **§9.5 验证期缺陷与修复**（请求包序列化 / 提示条位置各一条）；§9.1 文件表同步（chip 67 行、`SessionConversationPane.tsx` 新挂载点、`SandboxElevationExecutor.cs` 修复）。`plan.md`：加 2026-10-19 当前状态段、S-207 行状态同步。
+- **S-207 仍未验**：1 小时自然到期自动消失、点「恢复」后 Worker 侧清零再越界被拦、渠道文字往返观感。
+
+## 2026-10-20 —— S-208 补充裁定（时间 + 执行状态 + 数据/显示分层）
+
+- **08:21** **老大提两个场景之分**（原话：「S-208 消息 和摘要的数据有携带时间没有。我担心的效果如下，用户发送了一条消息，5分钟后触发了压缩，这时候 agent 正常判断是以摘要为准了，因为已经过去执行过多轮了。虽然 208 的首要目的是 用户发送消息 立即触发压缩，导致用户消息比重被无限降低。**这是两种不同的场景**」）。
+  **查证结论**：`AgentRuntimeChatMessage`（`Models/ConversationModels.cs:17-25`）**无任何时间字段**，DB 的 `MessageEntity.CreatedAt` 转进 agent 上下文即丢；摘要提示词（`ContextCompression.cs:74-91`）与 `RenderTranscript`（`ContextCompression.Transcript.cs:62-103`）也都不含时间。**唯一现成时间源**是 `InjectTransientPrefix`（`AgentLoop.Helpers.cs:344-351`）永久前置进用户消息的 `<current_time>` 块。⇒ 模型手里有「那条消息几点发的」，**没有「现在几点」**，算不出间隔。
+- **08:26** **老大给方案**（原话：「我的方案很简单就是这里加上时间 用户的消息时间 以及压缩时刻的时间」）。评估后补充：**光加时间分不开场景 B 内部的两种** —— 08:05 发话→08:05:20 答完→08:10 压缩（差 5 分钟，已交卷，该降级）与 08:05 发话→跑 10 分钟测试→08:15 压缩（差 10 分钟，仍在跑，绝不能降级），量级一样、结论相反。⇒ **时间 + 执行状态一起给**，状态按结构判定（那条消息之后有没有 `ToolUses.Count == 0` 的最终答复）。
+- **08:28** **快照不能撤**（老大原话：「问题是压缩后 用户的消息也会不见了，上下文里面只有压缩摘要了」）。复核四种情况后认账：自动压缩尾巴预算内 `minKeep = 2` 保住最后 2 条（`ContextCompression.cs:470`）；已执行若干轮后滑出预算的会被切；**单条超 `MaxPinnedFirstUserTokens = 1500` 的消息直接归 fold**（`:54`、`:440-450`、`:498`）；**手动压缩 `preserveTail: false` 整条尾巴不保**（`:386`）。⇒ 摘要里的快照是后两条路的**唯一载体**，**不做「场景 B 就不加快照」的减法**。首版 §2.3 / §5.1 里「新消息永远在尾巴里」的断言就此**收窄**。
+- **08:31** **★ 通用口径：数据 + 显示分层**（老大原话：「正常应该是数据+显示。给用户渲染的是显示。发给 agent 的是拼接后的数据+显示」，并明确嫌我「绕 `StripInjectedBlocks` 剥来剥去」太复杂）。
+  ⇒ **既要模型读得懂、又要卡片干净，正确解法不是在字符串上擦，是分层**：
+  - **数据**：`AgentRuntimeChatMessage` 加 `OriginalText`（干净原文）与 `SentAt`（发送时刻），由 `InjectTransientPrefix` 盖戳时落。
+  - **显示**：时间 / 状态进 `meta.compactSummary` 结构化字段，渲染端读 meta（沿用 `meta.summarizerFailed` 既有模式），不解析正文。
+  - **发给 agent**：正文仍是拼接结果（原话 + 时间 + 状态 + 摘要）。
+  **本条口径适用于后续所有需求**，不只 S-208。
+- **实施落地**：4 个后端文件（`ConversationModels.cs` / `AgentLoop.Helpers.cs` / `ContextCompression.cs` / `ContextCompression.TokenEstimation.cs`）+ 2 个渲染端文件（`lib/agent/context-compression.ts` / `lib/api/types.ts`）。门禁 `dotnet build` 0/0、TS 三配置 0 错、`npm test` 72/72。详见 `requirements/S-208.md` §5.7 + §九。
+
+## 2026-10-20 —— 阶段五审查（第二轮）与收尾修复
+
+第二轮审查范围 `00dcf7db..96c8fa3d`，两支线各审一遍：官网面 ❌ 0 / ⚠️ 12，软件面 ❌ 1 / ⚠️ 8。全文见 `review_report.md` 第二节。
+
+### 软件面
+
+- **B1（唯一必修，❌）** **快照剥离按空行切块 ⇒ 用户消息含空行就漏字**。`getCompactSummaryDisplayText` 靠「逐块看前缀」剥 S-208 的快照块，而 `splitCompactSummaryBlocks` 正是按空行切的：用户粘多段文本时，块 1 是「第二段」⇒ 不以前缀开头 ⇒ 循环停下 ⇒ 后半段 + 整块压缩时刻一起漏回卡片。单段能过纯属块数巧合。
+  ⇒ 改用 Worker 写死的收束句 `以上为压缩时刻的快照；此后用户若再有消息，以对话中最新消息为准。` 作结束锚点，一次剥到位；认不出锚点就原样返回（旧摘要没有这一段，猜位置截断会吃正文）。
+  ⇒ 顺带把显示链路拆出 `src/renderer/src/lib/agent/context-compression-display.ts`：纯模块、不 import IPC —— 原文件顶层依赖 `agent-bridge-streaming`，这正是该函数长期零覆盖的原因。主函数改名 `getCompactSummaryDisplayTextWith(message, t)`，`t` 由调用方注入。
+  ⇒ 新增 `tests/compaction-snapshot-display/`（script `test:compaction-snapshot-display`，esbuild + node，同 `test:token-format` 形态），**10 用例全过**，含「多段用户消息不漏字」「多段原文 + 多段摘要」「旧摘要无快照原样返回」。
+- **3.1 S-208 显示面补落地**：裁定 3 的 `compactedAt` / `latestUserSentAt` / `latestUserState` 此前全仓只有类型声明，卡片零消费。⇒ `ContextCompressionMessage.tsx` 展开区加「压缩时刻 / 用户发言时刻 / 当时状态」三行，`LATEST_USER_STATE_KEYS` 把 Worker 中文字面量映射到 i18n 键；zh/en `agent.json` 各补 6 键。
+- **09:58 真机回看后调整**（老大原话：「这个当时正在执行中是什么东西」→ 讲清口径后「按照这个调整下」）：**卡片删掉第三段，只留「压缩于 / 你上次发言」两个时刻**。理由 = 状态记的是压缩那一刻的事实，卡片不随 run 跑完更新，答完仍写「正在执行中」像在骗人；它存在的意义是给模型区分「正在跑的活」与「刚下的指令」，用户自己知道自己在干什么。落地 = 渲染端去掉 `latestUserState` 与 `LATEST_USER_STATE_KEYS` 映射，zh/en 各删 4 键；**数据面不动**（`meta.compactSummary.latestUserState` 与摘要正文的【压缩时刻】块照旧给模型）。门禁 typecheck 0 错 / `npm test` 73/73（i18n-coverage 过）。
+- **3.2 批准侧补审计**：`SandboxElevationStore.Grant()` 无日志而「恢复」有。⇒ `SandboxElevationExecutor` 批准后记 `session / run / until / reason`。
+- **3.3 沙箱状态与提示词口径拉平**：提示词按 run 开头构建（`sandboxEnabled` 进 cacheKey），批准后仍写「沙箱开着」，与 `PathBoundary.IsEnabled` 实时豁免打架。⇒ 新建 `AgentLoop.SandboxTransition.cs`，每轮 provider 调用前比对实时状态，变了才注入一条临时提示（不落库、不进 durable conversation，同 `InjectSessionTodo` 手法）。
+- **3.4 `BuildJsonElement` 约定补进文档**：`WorkerResponse.cs:146-149` `<remarks>` 写明「回调拥有整个文档形状，本助手不替你开 object/array；不给外壳会在首个属性名抛 `InvalidOperationException`，AOT 裁剪后退化成 `CannotWritePropertyWithinArray, None`」；`JsonHelpers` 套件加「回调只写属性名必须抛」用例（24→28）；`SandboxElevationExecutor.BuildRequest` 改 `internal` + `SandboxPath` 套件加形状用例（14→20）。
+- **3.5 沙箱审批文案 i18n**：弹窗 / 渠道 summary / 倒计时 / 恢复 toast 全硬编码中文，「1 小时」三处独立硬编码。⇒ 统一走 `agent` 命名空间 `sandboxElevation` 段（zh/en 各 11 键）；时长由 `SANDBOX_ELEVATION_DURATION_MS` 推、审批超时由 `SHELL_APPROVAL_TIMEOUT_MS` 推；`grantLocal(_approved: boolean)` 的未用参数去掉。
+- **3.6 S-209 空轮不落库**：`conversation.Add(turn.AssistantMessage)` 早于催办判定 ⇒ 催办 2 次留 2–3 条 `Text == ""` 的 assistant 落库。⇒ 判定块前移，空轮直接 `continue`，真实产出（正式答复 / 带工具调用）在判定之后统一写入。
+- **3.8 超长文件拆分与豁免头**：`ContextCompression.cs` 1056 行无豁免头。⇒ 快照逻辑抽到 `ContextCompression.UserSnapshot.cs`（111 行），主文件降到 **936 行**并补豁免头；`ToolDispatchRouter.cs` 豁免头 573 → **633**（实测）；`AgentLoop.cs` 补豁免头（**755**）。
+
+### 官网面
+
+- **⚠️1 定案被逆转但 changelog 零记录** ⇒ 本文件上一节补 6 条（首屏主标题 / 删价格表述 / 重度层改口径 / 三列统一上色 / 动画铺开 / 只发官网）。
+- **⚠️2 README 与官网 hero 不同源**（违反 S-205 判据 2）⇒ `README.md:4-5` 改「你提需求，它跑全程」+ 与 `site.ts` 同源简介行。
+- **⚠️7 注释漂移** ⇒ `converge-streams.tsx` 三处、`advantages.tsx`、`App.tsx` 共五处按当前实现重写。
+- **⚠️11 `S-205.md:297` 数字漂移** ⇒ 按实测改为「3 行注释」「`site.ts` 13 处」。
+- **⚠️6/⚠️7 渲染开销** ⇒ `converge-streams.tsx` 加 `IntersectionObserver`（滚出视口即 `stop()`）、`ResizeObserver` 加尺寸守卫、每帧模板字符串改按 `(颜色, alpha 档)` 缓存。
+- **未动（等老大拍板）**：⚠️3 `site.ts:61`「搜本地文件」实况需另装 Everything；⚠️4「它跑全程」是否贴近禁写的「全自动无人值守」；⚠️5 README `✨`/`💾`/`❓` 三节开场是否同步新调性。
+- **未动（观感参数）**：⚠️8 粒子下限 36、⚠️9 `color-mix()` 无 `@supports` 降级、⚠️10 `site-header` backdrop-filter 瞬切、⚠️12 标点排版 + `index.css` 695 行超标 —— 改的是观感，等真机看完再定。
+
+### 门禁（修复后实测）
+
+`dotnet build src\runtime\WishfulClaw.sln` 0 警告 0 错误 / `dotnet build tests\WishfulClaw.Tests.sln` 0/0 / `npm run typecheck` 退出 0 / `npm test` **73/73** / `cd website; npm run build` 退出 0。
+
+### 收尾刀之后的补做：500 行豁免头（老大 09:16 追问「文件超限处理了没」）
+
+第一轮审查 W7 报了 4 个文件无有效豁免头，收尾刀只补了 C# 三个，`session-slice.ts` 漏了、`index.css` 与 `types.ts` 也没算进去。复核本迭代**改动过**的越线文件实际是 **7 个**，全部补齐（详见 `review_report.md` §W7 处置结果）：
+
+- `session-slice.ts` 1103 / `db-helpers.ts` 712 / `types.ts` 525 / `index.css` 699 —— 补豁免头（分别按「高度内聚 store」「高度内聚」「单一数据对象」「同质数据」）。
+- `ContextCompression.cs` 豁免头原写 936 实际 **949** —— 订正（当时是按预估值写的）。
+- `AgentLoop.cs` 豁免头挂在 `namespace` 之后，不算文件头 ⇒ 移到第 1 行，755 实测相符。
+- `ToolDispatchRouter.cs` 633 相符，未动。
+- **tech-debt 记账**：`session-slice.ts`（按职责拆 slice 组合）、`db-helpers.ts`（按表拆四模块）需要改多个调用方 import，留给专门拆分需求。

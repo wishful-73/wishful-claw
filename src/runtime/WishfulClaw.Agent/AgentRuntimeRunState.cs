@@ -95,6 +95,16 @@ public sealed class AgentRuntimeRunState : IDisposable
     public int EmptyTurnNudgeCount { get; set; }
 
     /// <summary>
+    /// S-207：系统提示词里写着的沙箱状态。
+    ///
+    /// 提示词在 run 开头构建、进了 cacheKey，不会再改；而用户批准「临时关闭」是一次
+    /// run 进行中就能发生的事，于是模型读到的口径和 PathBoundary 的实时判定会打架
+    /// —— 提示词说「在沙箱里」，实际放行；或反过来。每轮 provider 调用前比对一次，
+    /// 变了就注入一条临时提示把口径拉平（<c>AgentLoop.SandboxTransition</c>）。
+    /// </summary>
+    public bool SandboxEnabledInPrompt { get; set; }
+
+    /// <summary>
     /// S-209：申请一次催办。额度用尽返回 false —— 这时必须放它正常收尾，
     /// 绝不无限重试。
     /// </summary>

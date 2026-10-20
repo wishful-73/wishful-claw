@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-20 实测 712 行）：22 个围绕同一套 `workerRequest` 通道的 DB 薄封装，
+// 共享 `SessionUsageStatsRow` 等类型与同一条初始化/错误约定；拆开只会让每个调用方 import
+// 四五个模块。豁免依据：AGENTS.md §大文件拆分 第 5 条第 2 类（高度内聚）。
+
 import type { Session, Project, ChatMessage } from './types'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
 import { useSettingsStore } from '@renderer/stores/settings-store'

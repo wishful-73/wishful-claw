@@ -25,6 +25,21 @@
     "divider": "Context compressed",
     "dividerWithCount": "Context compressed · {{count}} earlier messages summarized",
     "summaryFallbackWarning": "Summary generation failed; fallback summary used and context remains compressed",
-    "mechanicalFoldDigest": "{{messageCount}} earlier messages were folded here to free context, but the automatic summary was unavailable."
+    "mechanicalFoldDigest": "{{messageCount}} earlier messages were folded here to free context, but the automatic summary was unavailable.",
+    "summaryCompactedAt": "Compacted {{time}}",
+    "summaryLatestUserAt": "Your last message {{time}}"
+  },
+  "sandboxElevation": {
+    "dialogTitle": "Turn sandbox mode off temporarily?",
+    "dialogConfirm": "Turn off ({{hours}} h)",
+    "dialogCancel": "Keep it on",
+    "dialogDescription": "The agent wants to reach paths outside the working directories and is asking you to turn sandbox mode off for a while. For the next {{hours}} hour it will reach outside the working directories in every session on this machine. It switches back on automatically when the hour is up, and you can switch it back on at any time.",
+    "dialogDescriptionWithReason": "The agent wants to reach paths outside the working directories and is asking you to turn sandbox mode off for a while. For the next {{hours}} hour it will reach outside the working directories in every session on this machine. It switches back on automatically when the hour is up, and you can switch it back on at any time.\n\nReason given: {{reason}}",
+    "channelSummary": "The agent wants to reach paths outside the working directories and needs you to turn sandbox mode off.",
+    "channelSummaryWithReason": "The agent wants to reach paths outside the working directories. Reason given: {{reason}}",
+    "channelPrompt": "The agent is asking to turn sandbox mode off temporarily (RequestSandboxElevation). It needs your confirmation:\n\n{{summary}}\n\nFor the next {{hours}} hour it will reach outside the working directories in every session on this machine. It switches back on automatically when the hour is up, and you can switch it back on at any time.\n\nReply \"yes\" to allow it, or \"no\" to keep sandbox mode on. No reply within {{minutes}} minutes counts as a rejection.",
+    "chipRemaining": "Sandbox is off · {{minutes}} min left",
+    "chipRestore": "Restore",
+    "restoredToast": "Sandbox mode restored"
   }
 }

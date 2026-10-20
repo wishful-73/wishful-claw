@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.JsonHelpersRegressionTests;
@@ -12,6 +13,7 @@ internal static class Program
         try
         {
             RunBoolParsingSuite();
+            RunJsonWriterEnvelopeSuite();
             Console.WriteLine($"JsonHelpers regression checks passed: {_passed}");
             return 0;
         }
@@ -63,6 +65,45 @@ internal static class Program
         // A resolvable value ignores the fallback entirely.
         AssertTrue(GetBool("""{"a":"true"}""", "a", true), "explicit true ignores fallback");
         AssertFalse(GetBool("""{"a":"false"}""", "a", false), "explicit false ignores fallback");
+    }
+
+    /// <summary>
+    /// S-207：BuildJsonElement 只建 writer，不给外壳。忘写 StartObject 的回调会在第一个
+    /// 属性名上抛 InvalidOperationException；真机 AOT 打包后这条信息退化成
+    /// 「CannotWritePropertyWithinArray, None」，认不出是哪个调用点。这里把这条约定钉住。
+    /// </summary>
+    private static void RunJsonWriterEnvelopeSuite()
+    {
+        var threw = false;
+        try
+        {
+            WorkerJsonHelper.BuildJsonElement(writer => writer.WriteString("a", "b"));
+        }
+        catch (InvalidOperationException)
+        {
+            threw = true;
+        }
+
+        Assert(threw, "a callback that starts with a property name must throw");
+
+        var withEnvelope = WorkerJsonHelper.BuildJsonElement(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteString("a", "b");
+            writer.WriteEndObject();
+        });
+        Assert(withEnvelope.ValueKind == JsonValueKind.Object, "an enveloped callback builds an object");
+        Assert(
+            withEnvelope.TryGetProperty("a", out var value) && value.GetString() == "b",
+            "the enveloped callback keeps its payload");
+
+        var arrayEnvelope = WorkerJsonHelper.BuildJsonElement(writer =>
+        {
+            writer.WriteStartArray();
+            writer.WriteStringValue("x");
+            writer.WriteEndArray();
+        });
+        Assert(arrayEnvelope.ValueKind == JsonValueKind.Array, "an array pair builds an array");
     }
 
     private static bool GetBool(string json, string name, bool fallback)

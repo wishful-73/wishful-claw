@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-// 整页背景层「万剑归宗」：一束束细拖尾螺旋收向主 CTA（立即下载）。
+// 整站背景层「万剑归宗」（2026-10-19 10:30 收回首屏，只覆盖 hero 那一块）：一束束细拖尾螺旋收向主 CTA（立即下载）。
 //
 // 2026-10-19（老大第二次返工）：前两版是「色雾 + 平行漂移的线稿」，老大都否了 —— 平行漂移不朝任何点收。
 // 他指定参考 astra-gate.si 的「都汇集到中心元素上」。读参考站源码后确认：它是常驻 rAF 的 canvas，
@@ -52,7 +52,7 @@ const END_RADIUS = 48
 // ⚠️ 两条要知道的：① 10:30 画布由整屏缩回首屏后，同样的 36 束摊在更小的面积上 ⇒ 单位密度比老大
 // 认可那一刻（整屏 36 束）更高，嫌密就把此值再往上加；② 它仍是「按面积」的：大屏的 hero 更大，
 // 会涨上去（2560 宽的 hero ≈ 138 束、4K 撞 220 上限）。要各处恒定 36 束，就直接去掉这个乘法。
-// 粒子数 = 视口面积 / 这个值 ⇒ 视口多大都是同样的疏密。
+// 粒子数 = hero 面积 / 这个值，再夹到 [36, 220] ⇒ 不是等比疏密（下限会兜住小屏、上限会封住 4K）。
 const AREA_PER_STREAK = 26000
 
 type Streak = {
@@ -87,6 +87,11 @@ export function ConvergeStreams() {
     let raf = 0
     let running = false
     let targetDirty = true
+    // 两个独立的「该不该画」条件：页面可见、canvas 在视口内。任一为假就停机 ——
+    // 只看 document.hidden 的话，读者滚到下面的区块，首屏这层还在满速跑（首屏高度约一屏，
+    // 往下滑两下它就整块离场了）。条件分开存，免得两个监听器互相覆盖对方的状态。
+    let pageVisible = !document.hidden
+    let inView = true
 
     const spawn = (initial: boolean): Streak => ({
       angle: Math.random() * Math.PI * 2,
@@ -119,11 +124,14 @@ export function ConvergeStreams() {
       targetDirty = false
     }
 
-    // 场 = 视口（canvas 是 fixed inset-0，量它自己等于量视口）。
+    // 场 = canvas 自己的盒子（10:30 起是 hero 内的 absolute 层，不再是 fixed inset-0 的视口）。
     // 纵向按 0.72 压缩 = 把矩形场拉成一个扁椭圆，粒子起步时不会在竖直方向甩太远。
     const measureField = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       const box = canvas.getBoundingClientRect()
+      // 尺寸没变就别重建整场：ResizeObserver 会因字体换挡、滚动条出现这类与画布无关的变化
+      // 触发回调，每回调一次就把粒子打回起点，看着像动画自己抽了一下。
+      const resized = box.width !== width || box.height !== height
       width = box.width
       height = box.height
       canvas.width = Math.round(width * dpr)
@@ -139,12 +147,29 @@ export function ConvergeStreams() {
       ]
       fieldRadius = Math.max(...corners.map(([x, y]) => Math.hypot(x - centerX, (y - centerY) / 0.72)))
 
+      if (!resized && streaks.length > 0) return
+
       count = clamp(Math.round((width * height) / AREA_PER_STREAK), 36, 220)
       streaks = Array.from({ length: count }, () => {
         const streak = spawn(true)
         seedTrail(streak)
         return streak
       })
+    }
+
+    // 每个（颜色, alpha 档位）的颜色串只拼一次。白底上半透明笔画一帧 200 多束，
+    // 每束都要一个形如 `rgb(234 88 12 / 0.42)` 的字符串 —— 逐帧现拼纯属白烧 CPU。
+    // alpha 量化到 1/50 档：人眼看不出一档的差别，缓存命中率却从「几乎不中」变成「几乎全中」。
+    const strokeStrings = new Map<string, string>()
+    const strokeString = (rgb: string, alpha: number): string => {
+      const bucket = Math.round(alpha * 50) / 50
+      const key = `${rgb}|${bucket}`
+      let value = strokeStrings.get(key)
+      if (value === undefined) {
+        value = `rgb(${rgb} / ${bucket})`
+        strokeStrings.set(key, value)
+      }
+      return value
     }
 
     // 一帧的绘制单独拎出来：既能被 rAF 循环调用，也能在不可见环境里被同步调一次
@@ -180,8 +205,8 @@ export function ConvergeStreams() {
         const head = streak.trail[0]
         const tail = streak.trail[streak.trail.length - 1]
         const gradient = ctx.createLinearGradient(head[0], head[1], tail[0], tail[1])
-        gradient.addColorStop(0, `rgb(${stroke.rgb} / 0)`)
-        gradient.addColorStop(1, `rgb(${stroke.rgb} / ${alpha})`)
+        gradient.addColorStop(0, strokeString(stroke.rgb, 0))
+        gradient.addColorStop(1, strokeString(stroke.rgb, alpha))
         ctx.strokeStyle = gradient
         ctx.beginPath()
         ctx.moveTo(head[0], head[1])
@@ -198,7 +223,7 @@ export function ConvergeStreams() {
     }
 
     const start = () => {
-      if (running) return
+      if (running || document.hidden || !inView) return
       running = true
       raf = requestAnimationFrame(loop)
     }
@@ -209,7 +234,21 @@ export function ConvergeStreams() {
     }
 
     // 浏览器把不可见页面挂起时别空转（内置浏览器面板里 rAF 实测 2.5s 零回调，留着只是耗电）
-    const onVisibilityChange = () => (document.hidden ? stop() : start())
+    const onVisibilityChange = () => {
+      pageVisible = !document.hidden
+      if (pageVisible) start()
+      else stop()
+    }
+
+    // 滚出首屏就停：IntersectionObserver 只在跨过边界时回调一次，比 scroll 监听便宜得多。
+    const intersection = new IntersectionObserver(
+      ([entry]) => {
+        inView = entry?.isIntersecting ?? false
+        if (inView && pageVisible) start()
+        else stop()
+      },
+      { threshold: 0 }
+    )
 
     const observer = new ResizeObserver(() => {
       measureField()
@@ -220,6 +259,7 @@ export function ConvergeStreams() {
     render()
     start()
     observer.observe(canvas)
+    intersection.observe(canvas)
     document.addEventListener('visibilitychange', onVisibilityChange)
     // 首屏层不跟滚动走（按钮和 canvas 同在一个 hero 里，相对位置不变）⇒ 不需要 scroll 监听，
     // 那点「每滚一帧就量一次按钮」的开销也省掉。但**字体换掉**会让按钮在 hero 内挪位、而 canvas
@@ -231,6 +271,7 @@ export function ConvergeStreams() {
     return () => {
       stop()
       observer.disconnect()
+      intersection.disconnect()
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [])

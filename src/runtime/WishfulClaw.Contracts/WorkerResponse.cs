@@ -146,6 +146,19 @@ public static class WorkerJsonHelper
     /// <summary>
     /// Builds a JsonElement using Utf8JsonWriter - AOT-safe (no reflection).
     /// </summary>
+    /// <remarks>
+    /// The callback owns the *entire* document shape — this helper builds the writer and
+    /// nothing else. It does NOT open an object or an array for you, so a callback that
+    /// starts with <c>writer.WriteString(...)</c> or <c>writer.WritePropertyName(...)</c>
+    /// throws <c>InvalidOperationException</c>: a property name cannot be the first token of
+    /// a document. Always bracket the body with <c>WriteStartObject()</c> /
+    /// <c>WriteEndObject()</c> (or the array pair) when you mean to build an object.
+    ///
+    /// In a published AOT build the framework's resource strings are trimmed away, so that
+    /// exception degrades to <c>CannotWritePropertyWithinArray, None</c> — which names
+    /// neither the offending method nor the cause. If you see that message, look for a
+    /// callback here that forgot its wrapper.
+    /// </remarks>
     public static JsonElement BuildJsonElement(Action<Utf8JsonWriter> write)
     {
         var buffer = new ArrayBufferWriter<byte>();

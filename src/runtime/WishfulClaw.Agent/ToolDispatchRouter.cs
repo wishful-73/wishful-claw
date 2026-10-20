@@ -1,4 +1,5 @@
-// 500-line exemption (573 lines as of 2026-09-22, before this iteration's Terminal branch). This is
+// 500-line exemption (633 lines as of 2026-10-20, up from 573 on 2026-09-22 as tool families
+// kept landing). This is
 // one ordered if/else chain, not a grab-bag: the order of the branches IS the routing contract (an
 // earlier branch wins, so the admission checks must stay above the generic ones), and every branch is
 // three lines of delegate-and-catch. Splitting it would spread a single decision table across files

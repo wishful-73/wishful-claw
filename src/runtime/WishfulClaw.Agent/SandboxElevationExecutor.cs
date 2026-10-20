@@ -53,7 +53,14 @@ internal static class AgentRuntimeSandboxElevationExecutor
             response.TryGetProperty("approved", out var approved) &&
             approved.ValueKind == JsonValueKind.True)
         {
-            SandboxElevationStore.Grant();
+            var until = SandboxElevationStore.Grant();
+            // 审计：放行是安全面的关键动作，必须留痕（"恢复"方向 AgentRuntimeTools 里已经记了，
+            // 只记撤销不记放行等于漏掉最该看的那一条）。
+            WorkerLog.Info(
+                $"sandbox elevation granted: session={JsonHelpers.GetString(parameters, "sessionId") ?? "-"} " +
+                $"run={JsonHelpers.GetString(parameters, "runId") ?? "-"} " +
+                $"until={DateTimeOffset.FromUnixTimeMilliseconds(until).ToLocalTime():yyyy-MM-dd HH:mm:ss} " +
+                $"reason={JsonHelpers.GetString(parameters, "reason") ?? "-"}");
             var remaining = SandboxElevationStore.RemainingMinutes();
             var granted = $"The user approved temporarily turning sandbox mode off for 1 hour " +
                 $"(about {remaining} minute(s) left). You can now access paths outside the working directories " +
@@ -79,7 +86,12 @@ internal static class AgentRuntimeSandboxElevationExecutor
     /// 渲染端拿不到 run params。用 Utf8JsonWriter 手写而不是 <c>JsonSerializer</c>：
     /// 匿名类型经反射序列化在 AOT 打包下不可靠，本项目一律走 writer。
     /// </summary>
-    private static JsonElement BuildRequest(AgentRuntimeNativeToolCall call, JsonElement parameters)
+    /// <remarks>
+    /// <c>internal</c> 而非 <c>private</c>：请求包的形状本身就是这条工具最容易出错的地方
+    /// （S-207 真机报错 <c>CannotWritePropertyWithinArray</c>，根因是漏了 StartObject/EndObject），
+    /// 得让回归套件能直接断言它。
+    /// </remarks>
+    internal static JsonElement BuildRequest(AgentRuntimeNativeToolCall call, JsonElement parameters)
     {
         return WorkerJsonHelper.BuildJsonElement(writer =>
         {

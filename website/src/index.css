@@ -1,3 +1,7 @@
+/* 500 行豁免（2026-10-20 实测 699 行）：设计 token（@theme）+ 本站配套组件类，同质样式表；
+   Tailwind v4 的 @import / @plugin 顺序参与 cascade，拆文件会动到顺序。组件级样式已按区块分组。
+   豁免依据：AGENTS.md §大文件拆分 第 5 条第 1 类（同质数据）。 */
+
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 

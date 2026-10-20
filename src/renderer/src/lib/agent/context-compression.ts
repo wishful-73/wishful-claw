@@ -41,35 +41,31 @@ export {
   shouldCompress,
   shouldPreCompress,
 } from './context-compression-config'
-import { CompressionResult, LEGACY_SUMMARY_PREFIXES } from './context-compression-config'
+import { CompressionResult } from './context-compression-config'
+import {
+  getCompactSummaryDisplayTextWith,
+  isCompactArtifactMessage,
+  isCompactBoundaryMessage,
+  isCompactSummaryLikeMessage,
+  isCompactSummaryMessage,
+} from './context-compression-display'
 
-export function isCompactBoundaryMessage(message: UnifiedMessage): boolean {
-  return message.role === 'system' && !!message.meta?.compactBoundary
-}
-
-export function isCompactSummaryMessage(message: UnifiedMessage): boolean {
-  return message.role === 'user' && !!message.meta?.compactSummary
-}
-
-export function isLegacyCompactSummaryMessage(message: UnifiedMessage): boolean {
-  if (message.role !== 'user' || typeof message.content !== 'string') return false
-  const content = message.content.trim()
-  return LEGACY_SUMMARY_PREFIXES.some((prefix) => content.startsWith(prefix))
-}
-
-export function isCompactSummaryLikeMessage(message: UnifiedMessage): boolean {
-  return isCompactSummaryMessage(message) || isLegacyCompactSummaryMessage(message)
-}
+// 摘要消息的识别与展示链路住在 context-compression-display.ts：那边是纯函数，
+// 不 import IPC，能被 node 侧单测直接覆盖（本文件顶层依赖 agent-bridge-streaming）。
+export {
+  extractUnifiedMessageText,
+  isCompactArtifactMessage,
+  isCompactBoundaryMessage,
+  isCompactSummaryLikeMessage,
+  isCompactSummaryMessage,
+  isLegacyCompactSummaryMessage,
+} from './context-compression-display'
 
 export interface ActiveCompactArtifacts {
   boundaryId: string | null
   boundaryIndex: number
   summaryId: string | null
   summaryIndex: number
-}
-
-export function isCompactArtifactMessage(message: UnifiedMessage): boolean {
-  return isCompactBoundaryMessage(message) || isCompactSummaryLikeMessage(message)
 }
 
 function findCompactSummaryIndexAfterBoundary(
@@ -128,116 +124,8 @@ export function resolveActiveCompactArtifacts(
   return active
 }
 
-export function extractUnifiedMessageText(message?: UnifiedMessage | null): string {
-  if (!message) return ''
-  if (typeof message.content === 'string') return message.content.trim()
-  if (!Array.isArray(message.content)) return ''
-  return message.content
-    .filter((block) => block.type === 'text')
-    .map((block) => (block.type === 'text' ? block.text : ''))
-    .join('\n')
-    .trim()
-}
-
-function stripCompactionSummaryTags(text: string): string {
-  return text
-    .replace(/^\s*<compaction-summary>\s*/i, '')
-    .replace(/\s*<\/compaction-summary>\s*$/i, '')
-    // Legacy sessions still carry this English intro inside the durable conversation.
-    // Current Worker output omits it, so the wrapper text can come from i18n instead.
-    .replace(/^Summary of earlier conversation \(older messages were compacted to save context\):\s*/i, '')
-    .trim()
-}
-
-function splitCompactSummaryBlocks(text: string): string[] {
-  return stripCompactionSummaryTags(text)
-    .replace(/\r\n?/g, '\n')
-    .split(/\n\s*\n+/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-}
-
-function isCompactSummaryTitleBlock(block: string): boolean {
-  const trimmed = block.trim()
-  if (!trimmed) return false
-  if (LEGACY_SUMMARY_PREFIXES.some((prefix) => trimmed.startsWith(prefix))) {
-    return true
-  }
-  if (!/^\[[^\]\n]+]$/.test(trimmed)) {
-    return false
-  }
-  return (
-    /summary|compressed|compacted|memory/i.test(trimmed) ||
-    /[\u4e0a\u4e0b\u6587\u6458\u8981\u538b\u7f29]/u.test(trimmed)
-  )
-}
-
-function isCompactSummaryIntroBlock(block: string): boolean {
-  const normalized = block.replace(/\s+/g, ' ').trim()
-  if (!normalized || normalized.length > 320) {
-    return false
-  }
-  return [
-    /this session is being continued/i,
-    /continued from a previous conversation/i,
-    /the following summary covers/i,
-    /recent messages are preserved/i,
-    /\u672c\u6b21\u4f1a\u8bdd.*\u7ee7\u7eed/u,
-    /\u4ee5\u4e0b\u6458\u8981.*\u6d88\u606f/u,
-    /\u8fd1\u671f\u6d88\u606f.*\u4fdd\u7559/u
-  ].some((pattern) => pattern.test(normalized))
-}
-
-/**
- * S-208：压缩时刻「用户消息 + 压缩时刻/执行进度」快照块的前缀。
- * 这块是给模型交代「用户最后说了什么、什么时候说的、跑到哪一步了」的，
- * 每块都以固定中文前缀起头（Worker 侧 BuildLatestUserSnapshotBlock 写死）。
- */
-const LATEST_USER_SNAPSHOT_PREFIXES = ['\u3010\u7528\u6237\u6d88\u606f', '\u3010\u538b\u7f29\u65f6\u523b'] as const
-
-function isLatestUserSnapshotBlock(block: string): boolean {
-  const trimmed = block.trim()
-  return LATEST_USER_SNAPSHOT_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
-}
-
 export function getCompactSummaryDisplayText(message: UnifiedMessage): string {
-  const meta = message.meta?.compactSummary
-  if (meta?.summarizerFailed) {
-    // A mechanical-fold digest is model-facing English prose baked into the durable
-    // conversation. The UI shows the localized equivalent instead; the stored text
-    // stays untouched, so the interface language never degrades what the model reads.
-    return i18n.t('contextCompression.mechanicalFoldDigest', {
-      ns: 'agent',
-      messageCount: meta.messagesSummarized ?? 0,
-      defaultValue:
-        '{{messageCount}} earlier messages were folded here to free context, but the automatic summary was unavailable.'
-    })
-  }
-
-  const text = stripCompactionSummaryTags(extractUnifiedMessageText(message))
-  if (!text || !isCompactSummaryLikeMessage(message)) {
-    return text
-  }
-
-  const blocks = splitCompactSummaryBlocks(text)
-  if (blocks.length === 0) {
-    return text
-  }
-
-  let startIndex = 0
-  if (isCompactSummaryTitleBlock(blocks[startIndex]!)) {
-    startIndex += 1
-  }
-  if (startIndex < blocks.length - 1 && isCompactSummaryIntroBlock(blocks[startIndex]!)) {
-    startIndex += 1
-  }
-  // S-208：模型面的用户消息快照不进卡片 —— 用户当然知道自己刚说了什么。
-  // 保留最后一块不跳，避免整段被跳空后退回带快照的原文。
-  while (startIndex < blocks.length - 1 && isLatestUserSnapshotBlock(blocks[startIndex]!)) {
-    startIndex += 1
-  }
-
-  return blocks.slice(startIndex).join('\n\n').trim() || text
+  return getCompactSummaryDisplayTextWith(message, (key, options) => i18n.t(key, options))
 }
 
 export function mergeCompressedMessagesIntoConversation(

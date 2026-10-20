@@ -4,6 +4,12 @@
 > 分支 `dev/v2-iter-40` 已从 `main`（base `a3b966d5` = tag `v0.2.39`，39 收尾合并点）切出。
 > 本文件 = 迭代总览（目标 / 需求索引 / 刀序 / 门禁基线）；需求正文见 `requirements/`，裁定流水见 `changelog.md`。
 
+**当前状态（2026-10-20 阶段五第二轮审查完成）：❌ 1 项已修 + ⚠️ 20 项已处置 / 记账。** 第二轮覆盖 `00dcf7db..96c8fa3d`，官网面与软件面各审一遍：官网 ❌ 0 / ⚠️ 12，软件 ❌ 1 / ⚠️ 8。**唯一必修 B1** —— 压缩卡片的快照剥离按空行切块，用户消息一含空行（粘多段文本）就漏字；已改用 Worker 写死的收束句作锚点，并把显示链路拆成不 import IPC 的纯模块（它此前零覆盖正是因为顶层依赖 `agent-bridge-streaming`），新增回归套件 10 用例。软件侧另修 3.1 显示层漏做 / 3.2 批准无审计 / 3.3 提示词与实际沙箱状态打架 / 3.5 审批文案未走 i18n / 3.6 催办空轮落库 / 3.8 超长文件拆分与豁免头；官网侧补 changelog 定案记录、README 首屏同源、注释漂移、`converge-streams` 渲染开销。**仍是三处待老大拍板**：`site.ts:61`「搜本地文件」口径、「它跑全程」是否贴禁写的「全自动无人值守」、README 三节开场是否同调。全文见 `review_report.md` 第二节。
+
+**当前状态（2026-10-20 08:40）：S-208 按老大补充裁定修订完成，全部门禁通过。** 首版只覆盖「用户刚发消息就撞上压缩」；老大 08:21 指出**另一种时机**（发完消息跑了几分钟才压缩，此时该以摘要为准，而不是把老指令当当前指令）。修法在首版基础上补三件：①快照带**用户消息时刻 + 压缩时刻**；②带**执行状态三值**（未开始 / 执行中 / 已答复），按「那条消息之后有没有交卷的 assistant 轮」判定，不靠时间差推算；③**数据 + 显示分层** —— 原文存 `OriginalText`、时刻存 `SentAt`、显示信息进 `meta.compactSummary`，不在字符串上剥。**同时确认快照不能撤**：单条超 1500 token 的消息和手动压缩路径下，尾巴里没有原文，摘要是唯一载体。门禁 `dotnet build` 0/0、TS 三配置 0 错、`npm test` 72/72。**至此 7 条需求的实施全部完成**，S-208 真机压缩验证并入阶段六。见 `requirements/S-208.md` §5.7 + §九。
+
+**当前状态（2026-10-19 20:00）：S-207 真机跑通端到端链路（老大原话「S207 刚刚测试通过了」）。** 越界 → 指路语 → 模型调用 `RequestSandboxElevation` → 独立弹窗 → 批准 → 进程级豁免生效，**这条反向请求链路本次才第一次真正跑通**。验证期暴露并修掉两处缺陷：① `SandboxElevationExecutor.BuildRequest` 漏写 `WriteStartObject()` / `WriteEndObject()`，AOT 剪裁后报 `CannotWritePropertyWithinArray, None`；② 倒计时提示条从输入框上方改挂**聊天窗左上角**（`SessionConversationPane.tsx`，`left-3 top-3 z-30`，与右上角悬浮操作块对称）—— 输入框上方已堆了目标条 / 待办面板 / 压缩条 / 队列 slot 四条，老大原话「现在输入框上方需要显示的东西太多了」。**S-207 仍未验的子项**：1 小时自然到期自动消失、点「恢复」后越界回拦、渠道文字往返观感。缺陷与修复记账见 `requirements/S-207.md` §9.4 / §9.5。
+
 **当前状态（2026-10-16 晚间）：老大已下「根据开发工作流开始推进 40 迭代下的需求」指令（实施态），7 条需求（S-203 ~ S-209）按刀序实施中。** 已登记 7 条：S-203 官网页脚不贴底 / S-204 清空会话不落库 + 补浮窗入口 / S-205 官网与 README 文案重写 / S-206 官网首屏背景动画 / S-207 沙箱越界新增「申请临时关闭沙箱」工具 / S-208 压缩抢跑 / S-209 GLM 空响应。**S-203 / S-204 / S-205 / S-206 / S-207 / S-208 / S-209 全部已实施（7/7），待阶段五审查 + 阶段六真机验证。** **官网侧 3 条（S-203 / S-205 / S-206）为独立轨道、零软件改动，可单独发一波、不必等软件 0.2.40。** S-204 四点裁定、S-205 五项裁定、S-207 六项实现细节、S-208 修法（A）、S-209 修法（判定收窄 + 提醒催一轮）均已落定；S-206 冲突处置已定（08:58：保动画、扫光让步）。
 
 ---
@@ -27,11 +33,11 @@
 |---|---|---|---|
 | S-203 | 官网页脚（含备案条）在高分辨率屏幕上不贴底 | **已实施**（10-14 17:33 登记，10-16 实施完成；定性 **bug**）；官网 build 0 错，视觉验收并入阶段六；**官网侧，独立于软件版本** | [S-203.md](requirements/S-203.md) |
 | S-204 | 「清空会话」只清内存不删库（切走再切回消息与上下文全回来）+ 补右侧浮窗入口 | **已实施**（10-15 08:20 登记，10-16 实施完成；定性 **bug + 体验优化**）；四点裁定已落；`typecheck` 0 错 / `npm test` 72/72，真机验收并入阶段六；**软件侧**，端点已存在、零后端改动 | [S-204.md](requirements/S-204.md) |
-| S-205 | 官网与 README 文案「太中规中矩、没诱惑力」（允许适当标题党，重写对外描述） | **已实施**（10-15 09:48 登记，10-16 实施完成；定性 **体验优化**）；唯一源 `site.ts` 改 7 处 + README 改 3 处，**两处既有红线违规一并清掉**（碰瓷 Codex / Cursor / Claude Code），**首屏主标题按裁定不动**；官网 build 0 错，视觉验收并入阶段六；**官网侧 + 仓库根，零软件改动** | [S-205.md](requirements/S-205.md) |
-| S-206 | 官网首屏加背景动画（参考 `astra-gate.si`） | **已实施**（10-15 11:38 登记，10-16 实施完成；定性 **体验优化**）；§五 六项均按建议定案（CSS+SVG / 自有纸面+琥珀 / 极低对比 / 只 Hero / reduced-motion 关掉 / S-205 先落）；**冲突处置按 08:58 口径执行：保动画、扫光让步** —— 首屏文字扫光（`.shine` / `.shine-muted` / `.hero-shine` + `data-text`）已整体撤掉，下载按钮 `.dl-shine` / `.dl-current` 与 `reveal` 未动；官网 build 0 错 + 浏览器实测判据全过（`color-mix` 解析、三层关键帧、无残留、无横滚），视觉验收并入阶段六；**官网侧，零软件改动** | [S-206.md](requirements/S-206.md) |
-| S-207 | 沙箱模式下越界访问 ⇒ **新增「申请临时关闭沙箱」工具（无参数）**（agent 主动申请，沙箱临时关 1 小时；**YOLO 之上，不豁免**；**桌面弹窗 / 渠道文字审批**） | **已实施**（10-15 17:56 登记、10-16 实施完成，**10-16 08:28 订正实现路线为「新增工具 + 独立弹窗」**、**08:34 定渠道走文字审批**、**08:48 定「工具无参数」「越界文案加指路」**、**08:53 六项实现细节已自主定案**，定性 **体验优化**）；形态照抄 `AskUserQuestion`、渠道复用 `channel-shell-approval` 链路，机制均已逐行坐实；**无待上呈项**；**原沙箱边界逻辑零改动**，越界文案仅加一句；落地 = **新建 6 / 修改 15**（无参工具 `RequestSandboxElevation` + 独立反向请求 + **进程级 1 小时豁免** + 桌面弹窗 / 渠道文字审批 + 倒计时 chip + 手动恢复）；子 agent 与后台自动化**不给**该工具；门禁 `dotnet build` 0/0、`typecheck` 0 错、`npm test` 72/72；**端到端手点留阶段六** | [S-207.md](requirements/S-207.md) |
-| S-208 | 压缩抢跑 —— 用户发新消息刚好撞上自动压缩，agent 注意力被压缩摘要带跑、不执行用户末条消息 | **已实施**（10-16 登记并实施完成，定性 **bug**）；根因链已坐实；修法 **A** 全落地 = 提示词侧软约束（`SummarySystemPrompt` 四处措辞，删掉 `the single most concrete next action to take`）+ **代码侧把用户末条消息原文拼进摘要正文最前、且落在 `<compaction-summary>` 标签之内**（`FindLatestUserText` 跳过工具结果轮与上轮摘要，不截断）；标签首位不变式保住，渲染端零改动；`dotnet build` 0 警告 0 错误；**软件侧** | [S-208.md](requirements/S-208.md) |
-| S-209 | GLM-5.3 / 5.3-Flash「结束但无内容」 ⇒ `openai-chat returned no usable assistant output (stopReason=stop, textLength=0, toolCalls=0)` | **已实施**（10-16 登记并实施完成，定性 **bug**）；形态由本机 16 条日志**实证收敛**；修法落地 = ①`EnsureProviderTurnHasOutput` 判定收窄（thinking-only 也算有输出）②`AgentLoop` 在 `ToolCalls.Count == 0` 分支最前拦「正文空 + 有思考 + 有额度」⇒ 置标记 + `continue` ③临时副本注入 `EmptyTurnNudge` 提醒催一轮 ④上限 2 次（`TryScheduleEmptyTurnNudge`）；提醒不落库、聊天窗不可见；真·空流仍走 iter-29 重试链；`dotnet build` 0 警告 0 错误；**§5.3（GLM 内置清单）未做，留待定**；**软件侧** | [S-209.md](requirements/S-209.md) |
+| S-205 | 官网与 README 文案「太中规中矩、没诱惑力」（允许适当标题党，重写对外描述） | **已实施 + 10-19 收尾定案**（10-15 09:48 登记，10-16 实施完成，**10-19 老大逐条给稿重写首屏**，定性 **体验优化**）；唯一源 `site.ts` 累计改 **13 处** + README 改 5 处，**两处既有红线违规一并清掉**（碰瓷 Codex / Cursor / Claude Code）；**10-19 逆转两处旧定案**：①主标题改「你提需求，它跑全程」（原「按裁定不动」）②价值阶梯三列费用统一上色（原「不改配色」）；首屏价格表述整体下沉到价值阶梯；**10-20 审查后补** README 首屏同源；官网 build 0 错，视觉验收并入阶段六；见 [S-205.md](requirements/S-205.md) §十 | [S-205.md](requirements/S-205.md) |
+| S-206 | 官网首屏加背景动画（参考 `astra-gate.si`） | **已实施 + 10-19 收尾定案**（10-15 11:38 登记，10-16 实施完成，**10-19 看过效果后重定**，定性 **体验优化**）；**10-19 改写三项定案**：①技术路线 **CSS+SVG → canvas**（螺旋与尾迹 CSS 做不出来）②「只 Hero」→ **收束层只首屏、雾层整站**③顶栏从「不动」改为**首屏透明、滚动回玻璃底**；配色仍守纸面 + 琥珀；**冲突处置按 08:58 口径：保动画、扫光让步** —— 首屏文字扫光（`.shine` / `.shine-muted` / `.hero-shine` + `data-text`）整体撤掉，下载按钮 `.dl-shine` / `.dl-current` 与 `reveal` 未动；**10-20 审查补** `converge-streams.tsx` 渲染开销（`IntersectionObserver` 滚出视口即停、`ResizeObserver` 尺寸守卫、每帧模板串改按颜色 + alpha 档缓存）；官网 build 0 错，视觉验收并入阶段六；见 [S-206.md](requirements/S-206.md) §十 | [S-206.md](requirements/S-206.md) |
+| S-207 | 沙箱模式下越界访问 ⇒ **新增「申请临时关闭沙箱」工具（无参数）**（agent 主动申请，沙箱临时关 1 小时；**YOLO 之上，不豁免**；**桌面弹窗 / 渠道文字审批**） | **已实施**（10-15 17:56 登记、10-16 实施完成，**10-16 08:28 订正实现路线为「新增工具 + 独立弹窗」**、**08:34 定渠道走文字审批**、**08:48 定「工具无参数」「越界文案加指路」**、**08:53 六项实现细节已自主定案**，定性 **体验优化**）；形态照抄 `AskUserQuestion`、渠道复用 `channel-shell-approval` 链路，机制均已逐行坐实；**无待上呈项**；**原沙箱边界逻辑零改动**，越界文案仅加一句；落地 = **新建 6 / 修改 15**（无参工具 `RequestSandboxElevation` + 独立反向请求 + **进程级 1 小时豁免** + 桌面弹窗 / 渠道文字审批 + 倒计时 chip + 手动恢复）；子 agent 与后台自动化**不给**该工具；门禁 `dotnet build` 0/0、`typecheck` 0 错、`npm test` 72/72；**端到端手点已通过（10-19）**，验证期修掉请求包序列化缺陷 + 提示条改挂聊天窗左上角，见 [S-207.md](requirements/S-207.md) §9.5；**10-20 审查补**批准侧审计日志、提示词与实时沙箱状态比对（`AgentLoop.SandboxTransition.cs`）、审批文案 i18n，见 §9.6 | [S-207.md](requirements/S-207.md) |
+| S-208 | 压缩抢跑 —— 用户发新消息刚好撞上自动压缩，agent 注意力被压缩摘要带跑、不执行用户末条消息 | **已实施 + 修订**（10-16 登记并实施完成，**10-20 按老大补充裁定修订**，定性 **bug**）；根因链已坐实；修法 **A** 全落地 = 提示词侧软约束（`SummarySystemPrompt` 四处措辞，删掉 `the single most concrete next action to take`）+ **代码侧把用户末条消息原话拼进摘要正文最前、且落在 `<compaction-summary>` 标签之内**；**10-20 补三件**：①快照带**用户消息时刻 + 压缩时刻**（`MM-dd HH:mm`）②带**执行状态**三值（未开始 / 执行中 / 已答复，按结构判定而非时间推算，解决「刚发话就压缩」与「跑几分钟后压缩」两种时机语义相反的问题）③按**数据 + 显示分层**落地 —— 原文存 `AgentRuntimeChatMessage.OriginalText`、时刻存 `SentAt`，显示信息进 `meta.compactSummary`，卡片跳过只给模型看的快照块；标签首位不变式保住；门禁 `dotnet build` 0/0、TS 三配置 0 错、`npm test` 72/72；**10-20 审查修** B1（快照剥离按块判定 ⇒ 用户消息含空行就漏字 ⇒ 改收束句锚点 + 拆纯模块 + 10 用例回归）并补上显示层（卡片「压缩时刻 / 用户发言时刻」两行 —— 第三段「当时状态」09:58 老大拍掉，只留给模型），`npm test` **73/73**，见 §9.6 / §9.7；**软件侧**，真机压缩验证归阶段六 | [S-208.md](requirements/S-208.md) |
+| S-209 | GLM-5.3 / 5.3-Flash「结束但无内容」 ⇒ `openai-chat returned no usable assistant output (stopReason=stop, textLength=0, toolCalls=0)` | **已实施**（10-16 登记并实施完成，定性 **bug**）；形态由本机 16 条日志**实证收敛**；修法落地 = ①`EnsureProviderTurnHasOutput` 判定收窄（thinking-only 也算有输出）②`AgentLoop` 在 `ToolCalls.Count == 0` 分支最前拦「正文空 + 有思考 + 有额度」⇒ 置标记 + `continue` ③临时副本注入 `EmptyTurnNudge` 提醒催一轮 ④上限 2 次（`TryScheduleEmptyTurnNudge`）；提醒不落库、聊天窗不可见；真·空流仍走 iter-29 重试链；`dotnet build` 0 警告 0 错误；**§5.3（GLM 内置清单）未做，留待定**；**10-20 审查补**催办轮次不再落库（写入挪到催办判定之后，空轮直接 `continue`），见 §8.5；**软件侧** | [S-209.md](requirements/S-209.md) |
 
 ## 三、刀序
 
@@ -42,11 +48,11 @@
 
 ## 四、门禁基线
 
-沿用 39 收尾时的四道（**本迭代尚未复跑**，开刀前确认）：
+沿用 39 收尾时的四道，**本迭代已复跑（2026-10-20 阶段五第二轮修复后）**：
 
-- `npm run typecheck` 0 错误
-- `npm test` **72/72**（TS + C#）
-- `dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误
+- `npm run typecheck` 0 错误（node + web）
+- `npm test` **73/73**（TS + C#；较 39 基线多出 `test:compaction-snapshot-display` 一套，另 JsonHelpers 24→28、SandboxPath 14→20）
+- `dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误（`tests/WishfulClaw.Tests.sln` 同）
 - `cd website; npm run build` 0 错
 
 ## 五、裁定汇总
@@ -59,3 +65,18 @@
 - **S-202 同类点 5 处是否扩面**（39 审查 ⚠️2.2~2.6）：`SubAgentExecutor.cs:272-284` / `SubAgentExecutor.Background.cs:138-157` / `GoalOrchestratorOwnedRun.cs:100-113` / `AgentLoop.ContextCompression.cs:199-222` / `GoalSubAgentExecutor.cs:58-66`。**老大 2026-10-14 17:28「暂时不管」。**
 - **39 补充轮审查 ⚠️ 2 条**留裁定（S-191 ⚠️-1 多会话孤儿收敛、S-195 ⚠️-1 空转卡）。
 - **`release-workflow.md` §二 版本号处数出入**：文中写「共 4 处」，39 收尾实际只改 3 处（`package.json` / `package-lock.json` 2 行 / `README.md`）。若表里确有第 4 处需补改。
+
+### 6.1 阶段五第二轮审查遗留（**待老大拍板，未动**）
+
+| # | 事项 | 现状 / 待定原因 |
+|---|---|---|
+| 1 | `site.ts:61`「搜本地文件」 | 实况需另装 Everything（`src/main/lib/everything-search.ts:4-10`），风险是「装了没搜到」。属对外口径，不由我改 |
+| 2 | 「你提需求，它跑全程」 | 老大 10-19 已点这句，但它贴近 §四-3 禁写的「全自动无人值守」。红线段落归属由老大定 |
+| 3 | README `✨` / `💾` / `❓` 三节开场 | 首屏已同源，三节开场仍是旧调性；是否按新调性重写需确认范围 |
+| 4 | 观感参数：粒子下限 36、`color-mix()` 降级、`backdrop-filter` 瞬切 | 见 `S-206.md` §10.6，等真机看完再定 |
+
+### 6.2 tech-debt（已记账，不在本迭代动）
+
+- `stores/chat-store/session-slice.ts`（1103 行）：按「会话生命周期 / 消息读写 / 用量统计」拆成 slice 组合，与 S-204 的清除链路天然对齐。当前已挂豁免头（高度内聚 store）。
+- `stores/chat-store/db-helpers.ts`（712 行）：22 个同构 `workerRequest` 薄封装，按 session / message / project / usage 拆四模块。当前已挂豁免头。
+- 两者都要改多个调用方 import，单独立需求做。

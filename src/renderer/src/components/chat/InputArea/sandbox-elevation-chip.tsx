@@ -7,6 +7,7 @@
 // 位置由调用方决定（className）：现在挂在聊天窗左上角，输入框上方只留真正需要动手的东西。
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
@@ -19,6 +20,7 @@ import { useSandboxElevationStore } from '@renderer/stores/sandbox-elevation-sto
  * 会话操作块同一套视觉语言（半透明底 + 模糊 + 细边），看着是一族东西。
  */
 export function SandboxElevationChip({ className }: { className?: string }): React.JSX.Element | null {
+  const { t } = useTranslation('agent')
   const untilMs = useSandboxElevationStore((s) => s.untilMs)
   const clear = useSandboxElevationStore((s) => s.clear)
 
@@ -43,7 +45,7 @@ export function SandboxElevationChip({ className }: { className?: string }): Rea
     void ipcClient.invoke(IPC.SANDBOX_CLEAR_ELEVATION, {}).catch((error) => {
       console.error('[SandboxElevation] Failed to clear worker elevation:', error)
     })
-    toast.success('已恢复沙箱模式')
+    toast.success(t('sandboxElevation.restoredToast', { defaultValue: '已恢复沙箱模式' }))
   }
 
   return (
@@ -54,13 +56,15 @@ export function SandboxElevationChip({ className }: { className?: string }): Rea
       )}
     >
       <ShieldAlert className="size-3.5 shrink-0 text-amber-500" />
-      <span className="tabular-nums">沙箱已临时关闭 · 剩 {minutes} 分钟</span>
+      <span className="tabular-nums">
+        {t('sandboxElevation.chipRemaining', { defaultValue: '沙箱已临时关闭 · 剩 {{minutes}} 分钟', minutes })}
+      </span>
       <button
         type="button"
         onClick={handleRestore}
         className="shrink-0 rounded px-1 font-medium text-foreground underline-offset-2 hover:underline"
       >
-        恢复
+        {t('sandboxElevation.chipRestore', { defaultValue: '恢复' })}
       </button>
     </div>
   )

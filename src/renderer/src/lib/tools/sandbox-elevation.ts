@@ -12,14 +12,27 @@
  */
 
 import { confirm } from '@renderer/components/ui/confirm-dialog'
+import i18n from '@renderer/locales'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
-import { requestChannelShellApproval } from '@renderer/lib/channel/channel-shell-approval'
+import {
+  requestChannelShellApproval,
+  SHELL_APPROVAL_TIMEOUT_MS
+} from '@renderer/lib/channel/channel-shell-approval'
 import {
   SANDBOX_ELEVATION_DURATION_MS,
   useSandboxElevationStore
 } from '@renderer/stores/sandbox-elevation-store'
+
+/** 豁免时长与审批超时的分钟数——文案里的数字全部从这里推，不写字面量。 */
+const ELEVATION_HOURS = SANDBOX_ELEVATION_DURATION_MS / (60 * 60 * 1000)
+const APPROVAL_TIMEOUT_MINUTES = SHELL_APPROVAL_TIMEOUT_MS / (60 * 1000)
+
+/** 文案统一走 i18n（`agent` 命名空间的 sandboxElevation 段）。 */
+function tr(key: string, options: Record<string, unknown> = {}): string {
+  return i18n.t(`sandboxElevation.${key}`, { ns: 'agent', ...options })
+}
 
 /** Worker 侧带过来的字段，与 AgentRuntimeSandboxElevationExecutor.BuildRequest 对齐。 */
 export interface SandboxElevationRequest {
@@ -48,17 +61,20 @@ export async function handleSandboxElevationRequest(
   }
 
   const approved = await confirm({
-    title: '请求临时关闭沙箱模式',
+    title: tr('dialogTitle', { defaultValue: '请求临时关闭沙箱模式' }),
     description: buildDesktopDescription(reason),
-    confirmLabel: '临时关闭（1 小时）',
-    cancelLabel: '保持开启',
+    confirmLabel: tr('dialogConfirm', {
+      defaultValue: '临时关闭（{{hours}} 小时）',
+      hours: ELEVATION_HOURS
+    }),
+    cancelLabel: tr('dialogCancel', { defaultValue: '保持开启' }),
     variant: 'warning',
     // 并发弹窗按到达顺序展示（与工具卡片顺序一致）。
     sequence: Date.now()
   })
 
   if (approved) {
-    grantLocal(approved)
+    grantLocal()
   }
   return { approved }
 }
@@ -78,8 +94,13 @@ async function handleChannelRequest(input: {
   }
 
   const summary = reason
-    ? `Agent 想访问工作目录外的路径。理由：${reason}`
-    : 'Agent 想访问工作目录外的路径，需要你批准临时关闭沙箱模式。'
+    ? tr('channelSummaryWithReason', {
+        defaultValue: 'Agent 想访问工作目录外的路径。理由：{{reason}}',
+        reason
+      })
+    : tr('channelSummary', {
+        defaultValue: 'Agent 想访问工作目录外的路径，需要你批准临时关闭沙箱模式。'
+      })
 
   const approved = await requestChannelShellApproval({
     sessionId,
@@ -101,7 +122,7 @@ async function handleChannelRequest(input: {
   })
 
   if (approved) {
-    grantLocal(approved)
+    grantLocal()
   }
   return { approved }
 }
@@ -110,23 +131,37 @@ async function handleChannelRequest(input: {
  * 写本地到期时刻。商店状态只是倒计时 UI（渠道会话本就不显示那条 chip，写了也无害），
  * 真正的放行以 Worker 侧的批准结果为准。
  */
-function grantLocal(_approved: boolean): void {
+function grantLocal(): void {
   useSandboxElevationStore.getState().grant(Date.now() + SANDBOX_ELEVATION_DURATION_MS)
 }
 
 function buildDesktopDescription(reason: string): string {
-  const base =
-    'Agent 想访问工作目录之外的路径，请批准临时关闭沙箱模式。' +
-    '批准后 1 小时内，本机所有会话都可以访问工作目录之外的路径；到期自动恢复，你也可以随时手动恢复。'
-  return reason ? `${base}\n\n理由：${reason}` : base
+  return reason
+    ? tr('dialogDescriptionWithReason', {
+        defaultValue:
+          'Agent 想访问工作目录之外的路径，请批准临时关闭沙箱模式。' +
+          '批准后 {{hours}} 小时内，本机所有会话都可以访问工作目录之外的路径；到期自动恢复，你也可以随时手动恢复。\n\n理由：{{reason}}',
+        hours: ELEVATION_HOURS,
+        reason
+      })
+    : tr('dialogDescription', {
+        defaultValue:
+          'Agent 想访问工作目录之外的路径，请批准临时关闭沙箱模式。' +
+          '批准后 {{hours}} 小时内，本机所有会话都可以访问工作目录之外的路径；到期自动恢复，你也可以随时手动恢复。',
+        hours: ELEVATION_HOURS
+      })
 }
 
 function buildChannelPrompt(summary: string): string {
-  return (
-    `Agent 请求临时关闭沙箱模式（RequestSandboxElevation），需要你确认：\n\n${summary}\n\n` +
-    '批准后 1 小时内，本机所有会话都可以访问工作目录之外的路径；到期自动恢复，也可随时手动恢复。\n\n' +
-    '回复「同意」批准，回复「拒绝」保持开启。10 分钟内未回复将按拒绝处理。'
-  )
+  return tr('channelPrompt', {
+    defaultValue:
+      'Agent 请求临时关闭沙箱模式（RequestSandboxElevation），需要你确认：\n\n{{summary}}\n\n' +
+      '批准后 {{hours}} 小时内，本机所有会话都可以访问工作目录之外的路径；到期自动恢复，也可随时手动恢复。\n\n' +
+      '回复「同意」批准，回复「拒绝」保持开启。{{minutes}} 分钟内未回复将按拒绝处理。',
+    summary,
+    hours: ELEVATION_HOURS,
+    minutes: APPROVAL_TIMEOUT_MINUTES
+  })
 }
 
 function firstNonEmptyString(...values: unknown[]): string {

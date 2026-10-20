@@ -32,6 +32,16 @@
 - ⇒ **最短链条 = 38（修）→ 39（验 38）→ 40（验 39）** ⇒ **`1.0.0` 最早落在 40**；若 40 期间验出 39 的修复有问题，再顺延。
 - ⇒ **39 迭代必须发布 `0.2.39`** —— 它的作用不只是修自身 bug，还是**把 38 的修复推到实机、形成可验证升级链**的必经一环。
 
+**✅ 验证结果（2026-10-14，39 发布当天）：`0.2.38` 客户端升 `0.2.39` 这一跳已实跑，38 的三项待验修复全部验到** ——
+
+| 38 的修复 | 实机结果 |
+|---|---|
+| 「差分下载无进度」（`electron-builder.yml` 加 `useMultipleRangeRequest: false`） | ✅ **进度正常** —— 老大原话「38升级39已经真机测试 进度这些都有了，不再是未知」；38 `changelog.md` 记的「机器 B 全程进度与大小未知」状态**终结** |
+| 「已下载却装不上」（安装闸门改判盘上事实） | ✅ **未出现异常**（安装流程正常，原缺陷未复现） |
+| 「更新说明兜底拉取」（`latest.yml` 不带 `releaseNotes`，客户端按自己那版去清单同目录拉 `release-notes-0.2.39.md`） | ✅ **更新说明看到了** |
+
+⇒ **验证链条的「39 验 38」一环闭环。**（38 的第四项「差分失效走全量」在 38 期间已修复并实测 —— blockmap 保留 5 版 + 补传 0.2.36 —— **不属本跳待验项**。）
+
 **需求清单**：已登记 **21 条，21 条全部纳入 39**（S-182 ~ S-202，逐条状态见 §二；登记与裁定流水见 §五 / `changelog.md`）。
 
 **范围口径（老大 2026-10-09 17:41 —— ⚠️ 措辞已由 2026-10-12 12:37 修订，见下条）**：
@@ -376,3 +386,33 @@
 3. **38 的更新链路修复需在 39 发布后实升验证** —— 「下载进度显示」「下载完成可重启安装」「说明兜底拉取」是 38 才修/才加的能力，拿 0.2.37 客户端看不出来；**0.2.39 一发布，用 0.2.38 客户端实升一次**即为最好的端到端验证。
 4. **文档欠账 3 笔** —— ✅ **2026-10-14 全部已清**（38 `progress` 的 `- Commit:` 回填 `2c925c88`；38 `changelog.md` 里 `21591cfc` 的定性订正；`docs/iteration-plan.md` 补废弃标记）。**本轮另清两笔**：**压缩比口径**（`−26.5%` 系「基线字符 + CRLF」与「归一 LF 字符」**混算** ⇒ 同口径 **−23.0%**，已订正 4 处文档；S-185 的 **commit message 仍留原口径**，改它需重写迭代 hash 链、代价大于收益）与 **`docs/prompt-authoring.md` 的 CodeGraph「vendored 上游」假事实**（老大 11:54「会误导 那就改」）。**均攒在收尾刀，不单独提交。**
 5. **备选待议（老大提过、未描述细节）**：知识库的沙箱 Write bug；微信消息分析。是否纳入 39 待定。
+
+## 七、发布记录（2026-10-14）
+
+按 `docs/release-workflow.md` 收尾，**主链路全绿**：
+
+| 步骤 | 结果 |
+|---|---|
+| §四 4.1 打包 | ✅ 三件产出：`wishful-claw-0.2.39-setup.exe`(108.3 MB) / `latest.yml`(356 B) / `…blockmap`(116.0 KB) |
+| §四 4.2 官网下载目录 | ✅ `deploy.mjs installer` EXIT=0，四件成套上传 + 逐件 sha512 校验通过；blockmap 保留 0.2.36~0.2.39 |
+| §四 4.3 GitHub Release | ✅ `v0.2.39` 已建、`draft=false` / `prerelease=false`、`isLatest=true` |
+| §四 4.4 上传资产 | ⚠️ **首轮漏做（资产数 0），2026-10-14 17:43 老大指出后补做** —— 见下 |
+| §五 进度文档 | ✅ `docs/PROGRESS.md` 已增 `v2-iter-39` 行；`docs/progress/v2-iter-39.md` 已建 |
+| §六 核验（官网侧） | ✅ `latest.yml` 线上 `version: 0.2.39`；setup / blockmap / release-notes 全 200 |
+| §六 核验（GitHub 侧） | ✅ 补做后三件资产 `state=uploaded`；`latest.yml` 与 setup.exe 逐项对上（`version` / `path` / `files[].url` / `size` 113603743 / `sha512` 实测一致） |
+| §七 清理本地产物 | ⏳ 未做 —— `release/` 仍留 `wishful-claw-0.2.38-setup.exe`(108.4 MB) 等旧版，待确认 |
+
+**§4.4 漏做与补做（2026-10-14 17:43 ~ 17:50）** —— 首轮收尾只走了 4.2 / 4.3，**没走 4.4**，Release 建出来是空壳（`asset count = 0`），§六 的「GitHub 侧资产核验」也跟着没做。老大发现后按 §4.4 原文补传：
+
+```bash
+gh release upload v0.2.39 --repo wishful-73/wishful-claw \
+  "release/wishful-claw-0.2.39-setup.exe" "release/latest.yml" --clobber   # EXIT=0
+gh release upload v0.2.39 --repo wishful-73/wishful-claw \
+  "release/wishful-claw-0.2.39-setup.exe.blockmap" --clobber               # EXIT=0
+```
+
+补做后三件资产 `state=uploaded`，`latest.yml` 与 setup.exe 的 `sha512`（`Miyx3DH7…B+Yg==`）实测一致；`gh release download v0.2.39 --pattern latest.yml` 下载成功、内容与本地逐字相同。
+
+> **教训（写进流程）**：§4.3 建 Release 与 §4.4 传资产是**两步**，建完 Release 不等于发布完成 —— 空 Release 在页面上看着「已发布」，实际没有包可下。**核验必须落到 `asset count` 与逐项对账上，不能只看 Release 存在。**
+>
+> **环境备注**：本次 `curl` 直连 `github.com/releases/download/...` 返回 `000`（HTTP/2 被 reset），但 `curl --http1.1` 返 **206**、`gh` 全程正常 —— **判可达性别只看一次 curl**。上传走 `api.github.com` / `uploads.github.com` 直连可用，未开代理。

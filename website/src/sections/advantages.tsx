@@ -1,7 +1,7 @@
 import { advantages } from '../content/site'
 import { Reveal, Section } from '../components/ui'
 
-// 两类按 content/site.ts 内既定顺序呈现：门槛低（lead）→ 好看
+// 按 content/site.ts 内既定顺序呈现（当前三组：门槛低 → 好看 → 省心）—— 本组件是通用渲染，分组数量只由数据决定。
 // 2026-09-23（老大）：优势区不再配图（全页配图太密）——「好看」那条的界面大图撤掉后，
 // 全组都没 image 字段了，原先条件渲染配图的那段随之删除，AssetPlaceholder 也不再引入。
 export function Advantages() {

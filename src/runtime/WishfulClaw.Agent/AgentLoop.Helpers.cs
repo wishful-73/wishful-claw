@@ -348,7 +348,16 @@ internal static partial class AgentLoop
                 parts.Append(now.ToString("dddd"));
                 parts.Append(")\n</current_time>\n\n");
 
-                conversation[i] = msg with { Text = parts.ToString() + msg.Text };
+                conversation[i] = msg with
+                {
+                    Text = parts.ToString() + msg.Text,
+                    // S-208：原话与附加块分开放 —— Text 是发给模型的拼接结果，
+                    // OriginalText 只留用户自己的话，SentAt 记这条消息的时刻。
+                    // 压缩摘要取「用户说了什么、什么时候说的」读这两个字段，
+                    // 不必再回头从 Text 里剥 <current_time> / <memory-*> 块。
+                    OriginalText = msg.OriginalText ?? msg.Text,
+                    SentAt = msg.SentAt ?? now,
+                };
                 return;
             }
         }

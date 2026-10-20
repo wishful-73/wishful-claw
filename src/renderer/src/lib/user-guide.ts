@@ -5,17 +5,11 @@ export const WEBSITE_URL = 'https://wishful-claw.work'
 export const WEBSITE_HOST = WEBSITE_URL.replace(/^https?:\/\//, '')
 
 /**
- * Points at the site's own guide rather than a pinned GitHub blob: the published
- * guide is rendered from the website copy, so a released build always reads the
- * guide that shipped with it. The repo-side `docs/user-guide.md` is no longer
- * maintained (S-160) — do not reintroduce a link to it here.
+ * One outbound link is enough: the site's own guide lives at `/guide`, and the site
+ * header already links to it (S-214 removed the duplicate entry from the About page —
+ * do not add a second in-app entry point here). The repo-side `docs/user-guide.md` is
+ * no longer maintained (S-160) — do not reintroduce a link to it either.
  */
-export const USER_GUIDE_URL = `${WEBSITE_URL}/guide`
-
-export function openUserGuide(): void {
-  void window.api.invoke<void>('shell:openExternal', USER_GUIDE_URL)
-}
-
 export function openWebsite(): void {
   void window.api.invoke<void>('shell:openExternal', WEBSITE_URL)
 }

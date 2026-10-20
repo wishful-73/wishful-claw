@@ -67,7 +67,7 @@
     },
     "about": {
       "label": "About",
-      "desc": "Product intro, user guide and app updates"
+      "desc": "Product intro, website and app updates"
     },
     "groups": {
       "general": "General",
@@ -865,15 +865,9 @@
     },
     "website": {
       "label": "Website",
-      "desc": "Downloads, user guide and release notes",
+      "desc": "User guide and release notes live on the site; downloads too",
       "team": "Developed and maintained by the Wishful team",
       "open": "Visit website"
-    },
-    "guide": {
-      "label": "User Guide",
-      "desc": "Full feature walkthrough and getting-started tutorial, opened in your browser",
-      "hint": "The entry always points at the newest guide; old links keep working.",
-      "open": "View guide"
     },
     "updater": {
       "label": "App Updates",

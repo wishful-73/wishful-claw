@@ -26,6 +26,7 @@
     "test:run-end-display": "esbuild tests/run-end-display/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/run-end-display/out/program.cjs && node tests/run-end-display/out/program.cjs",
     "test:inbound-content": "esbuild tests/inbound-content/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/inbound-content/out/program.cjs && node tests/inbound-content/out/program.cjs",
     "test:qq-attachments": "esbuild tests/qq-attachments/program.ts --bundle --platform=node --format=cjs --outfile=tests/qq-attachments/out/program.cjs && node tests/qq-attachments/out/program.cjs",
+    "test:dingtalk-msgtype": "esbuild tests/dingtalk-msgtype/program.ts --bundle --platform=node --format=cjs --outfile=tests/dingtalk-msgtype/out/program.cjs && node tests/dingtalk-msgtype/out/program.cjs",
     "test:channel-cancel-commands": "esbuild tests/channel-cancel-commands/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-cancel-commands/out/program.cjs && node tests/channel-cancel-commands/out/program.cjs",
     "test:updater-release-notes": "esbuild tests/updater-release-notes/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-release-notes/out/program.cjs && node tests/updater-release-notes/out/program.cjs",
     "test:updater-state": "esbuild tests/updater-state/program.ts --bundle --platform=node --format=cjs --outfile=tests/updater-state/out/program.cjs && node tests/updater-state/out/program.cjs",

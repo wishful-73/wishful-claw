@@ -19,6 +19,7 @@ import type {
 } from '../../channel-types'
 import { BasePluginService } from '../../base-plugin-service'
 import { DingTalkApi } from './dingtalk-api'
+import { resolveDingTalkIncomingContent } from './parse-message'
 
 interface WebhookEntry {
   url: string
@@ -161,20 +162,13 @@ export class DingTalkService extends BasePluginService {
       return
     }
 
-    // Extract message content
-    const text = payload.text as Record<string, string> | undefined
-    let content = ''
-    if (text?.content) {
-      try {
-        const parsed = JSON.parse(text.content)
-        content = parsed.content ?? text.content
-      } catch {
-        content = text.content
-      }
-    }
+    // 按 msgtype 分派：以前只解 text.content，图片 / 文件 / 富文本解析出空串就被丢掉，
+    // 聊天窗里连占位符都没有（S-213）。未知类型也要落一条占位符。
+    const resolved = resolveDingTalkIncomingContent(payload)
+    if (!resolved) return
 
     // Strip leading whitespace (DingTalk prepends a space after @mention)
-    content = content.trim()
+    const content = resolved.content.trim()
     if (!content) return
 
     const timestamp = payload.createAt ? parseInt(String(payload.createAt), 10) : Date.now()
@@ -211,6 +205,7 @@ export class DingTalkService extends BasePluginService {
       content,
       messageId: String(payload.msgId ?? ''),
       timestamp,
+      msgType: resolved.msgType,
       chatType: payload.conversationType === '1' ? 'p2p' : 'group',
       chatName: String(payload.conversationTitle ?? '')
     }

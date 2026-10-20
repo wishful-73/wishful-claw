@@ -3,6 +3,12 @@
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
  * Modified by the Wishful 心相 team for Wishful Claw.
+ *
+ * 500 行豁免（2026-10-20 实测 546 行，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+ * 一个渠道服务实例的全部状态都在这一个类里 —— 网关连接、心跳、重连退避、会话续传、
+ * 消息收发、入站图片下载。拆出去任何一段都要把 `ws` / `sessionId` / `lastSeq` /
+ * `reconnectAttempt` 这批私有状态搬成公开 API，等于把「一条长连接的一生」撕成几段，
+ * 排查断线问题反而更难。逻辑高度内聚，故整体豁免。
  */
 
 import WebSocket from 'ws'
@@ -11,11 +17,13 @@ import { INTENT_LEVELS, RECONNECT_DELAYS, INVALID_SESSION_RECONNECT_DELAY, parse
 import type {
   ChannelEvent,
   ChannelGroup,
+  ChannelIncomingMessageData,
   ChannelInstance,
   ChannelMessage,
   MessagingChannelService
 } from '../../channel-types'
 import { QQApi, parseQQChatId } from './qq-api'
+import { downloadQQImageRefs } from './download-media'
 import { decodeQQReplyReference, parseQQWsMessage } from './parse-ws-message'
 import { clearSession, loadSession, saveSession } from './session-store'
 import type { QQGatewayPayload } from './qq-config'
@@ -146,6 +154,39 @@ export class QQService implements MessagingChannelService {
     void extra
     const normalized = state === 'error' ? 'error' : state === 'stopped' ? 'stopped' : 'running'
     this.emit('status_change', normalized)
+  }
+
+  /**
+   * 入站图片：解析层只把地址带出来（`mediaRefs`），这里在 emit 之前即时下载成 base64。
+   * QQ 附件地址带时效签名，晚一步就只剩 403；下载失败降级成占位符文案，绝不吞整条消息。
+   */
+  private async attachInboundImages(
+    message: ChannelIncomingMessageData
+  ): Promise<ChannelIncomingMessageData> {
+    const refs = message.mediaRefs
+    if (!refs?.length) {
+      if (message.mediaRefs) delete message.mediaRefs
+      return message
+    }
+
+    const { images, failures } = await downloadQQImageRefs(refs)
+
+    // mediaRefs 是瞬态字段，下载完就清掉，别让它跟着消息进 IPC / DB
+    delete message.mediaRefs
+    if (images.length > 0) {
+      message.images = images
+    }
+
+    if (failures.length > 0) {
+      console.warn(
+        `[qq-bot:${this.pluginId}] Failed to download inbound image: ${failures.join('; ')}`
+      )
+      if (images.length === 0) {
+        message.content = `[User sent an image but download failed: ${failures[0]}]`
+      }
+    }
+
+    return message
   }
 
   private getSessionStoreKey(): string {
@@ -361,15 +402,15 @@ export class QQService implements MessagingChannelService {
         return
     }
 
-    const parsed = parseQQWsMessage(raw)
-    if (!parsed) {
+    const incoming = parseQQWsMessage(raw)
+    if (!incoming) {
       if (payload.op === 0 && payload.t) {
         console.warn(`[qq-bot:${this.pluginId}] Ignored dispatch event: ${payload.t}`)
       }
       return
     }
 
-    this.emit('incoming_message', parsed)
+    this.emit('incoming_message', await this.attachInboundImages(incoming))
   }
 
   private async handleHello(payload: QQGatewayPayload): Promise<void> {

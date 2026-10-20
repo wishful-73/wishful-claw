@@ -68,6 +68,64 @@ function describeAttachments(attachments: unknown): string {
   return '[User sent an attachment]'
 }
 
+/** 单条消息最多下载几张图：再多 base64 撑爆 WS 与 DB，多出来的只留占位符 */
+export const QQ_MAX_INBOUND_IMAGES = 5
+
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp)$/i
+
+interface QQAttachmentLike {
+  url?: unknown
+  content_type?: unknown
+  filename?: unknown
+}
+
+function pickImageRef(attachment: QQAttachmentLike): {
+  url: string
+  contentType?: string
+  fileName?: string
+} | null {
+  const url = typeof attachment.url === 'string' ? attachment.url.trim() : ''
+  if (!url) return null
+
+  const contentType =
+    typeof attachment.content_type === 'string' ? attachment.content_type.trim().toLowerCase() : ''
+  const fileName = typeof attachment.filename === 'string' ? attachment.filename.trim() : ''
+
+  // 类型明确且不是图片 ⇒ 不是本条要的（音频 / 视频 / 文件仍走占位符文案）
+  if (contentType) {
+    if (!contentType.startsWith('image/')) return null
+  } else if (!fileName || !IMAGE_EXTENSIONS.test(fileName)) {
+    // 既没 content_type 也没有能判定的文件名 ⇒ 不猜，交给占位符
+    return null
+  }
+
+  return {
+    url,
+    contentType: contentType || undefined,
+    fileName: fileName || undefined
+  }
+}
+
+/**
+ * 把 QQ 事件里的 `attachments` 映射成待下载的图片地址。
+ * 解析层保持纯同步：这里只挑地址，真正下载在 qq-service 的 emit 之前。
+ */
+export function collectQQImageRefs(
+  attachments: unknown
+): ChannelIncomingMessageData['mediaRefs'] {
+  if (!Array.isArray(attachments) || attachments.length === 0) return undefined
+
+  const refs: NonNullable<ChannelIncomingMessageData['mediaRefs']> = []
+  for (const item of attachments) {
+    if (refs.length >= QQ_MAX_INBOUND_IMAGES) break
+    if (!item || typeof item !== 'object') continue
+    const ref = pickImageRef(item as QQAttachmentLike)
+    if (ref) refs.push(ref)
+  }
+
+  return refs.length > 0 ? refs : undefined
+}
+
 function stripLeadingMentions(content: string): string {
   return content
     .replace(/^(?:<@!?[^>]+>\s*)+/, '')
@@ -83,7 +141,7 @@ function normalizeContent(content: unknown, attachments?: unknown): string {
 
 function buildIncomingMessage(data: ChannelIncomingMessageData): ChannelIncomingMessageData | null {
   if (!data.chatId || !data.messageId) return null
-  if (!data.content && !data.images?.length && !data.audio) return null
+  if (!data.content && !data.images?.length && !data.audio && !data.mediaRefs?.length) return null
   return data
 }
 
@@ -104,6 +162,7 @@ export function parseQQWsMessage(raw: string): ChannelIncomingMessageData | null
           senderId,
           senderName: senderId,
           content: normalizeContent(event.content, event.attachments),
+          mediaRefs: collectQQImageRefs(event.attachments),
           messageId: encodeQQReplyReference(chatId, rawMessageId),
           timestamp: normalizeTimestamp(event.timestamp),
           chatType: 'p2p',
@@ -122,6 +181,7 @@ export function parseQQWsMessage(raw: string): ChannelIncomingMessageData | null
           senderId,
           senderName: senderId,
           content: normalizeContent(event.content, event.attachments),
+          mediaRefs: collectQQImageRefs(event.attachments),
           messageId: encodeQQReplyReference(chatId, rawMessageId),
           timestamp: normalizeTimestamp(event.timestamp),
           chatType: 'group',
@@ -144,6 +204,7 @@ export function parseQQWsMessage(raw: string): ChannelIncomingMessageData | null
           senderId: String(author.id ?? ''),
           senderName,
           content: normalizeContent(event.content, event.attachments),
+          mediaRefs: collectQQImageRefs(event.attachments),
           messageId: encodeQQReplyReference(chatId, rawMessageId),
           timestamp: normalizeTimestamp(event.timestamp),
           chatType: 'group',
@@ -164,6 +225,7 @@ export function parseQQWsMessage(raw: string): ChannelIncomingMessageData | null
           senderId: String(author.id ?? ''),
           senderName: String(author.username ?? author.id ?? ''),
           content: normalizeContent(event.content, event.attachments),
+          mediaRefs: collectQQImageRefs(event.attachments),
           messageId: encodeQQReplyReference(chatId, rawMessageId),
           timestamp: normalizeTimestamp(event.timestamp),
           chatType: 'p2p',

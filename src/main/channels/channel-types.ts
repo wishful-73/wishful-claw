@@ -107,6 +107,11 @@ export interface ChannelIncomingMessageData {
   images?: Array<{ base64: string; mediaType: string }>
   /** Audio attachment metadata (download via platform API) */
   audio?: { fileKey: string; fileName?: string; mediaType?: string; durationMs?: number }
+  /**
+   * 入站媒体的待下载地址（解析层填，服务层下载后转 images / audio 并清空）。
+   * 瞬态字段：只在主进程内活一次，绝不能落库，也不该出现在渲染端。
+   */
+  mediaRefs?: Array<{ url: string; contentType?: string; fileName?: string }>
   /** Original message type from the platform (e.g. text, image, file) */
   msgType?: string
   /** Resolved chat/group name from the platform */

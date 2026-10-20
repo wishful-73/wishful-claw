@@ -184,3 +184,66 @@
 - `AgentLoop.cs` 豁免头挂在 `namespace` 之后，不算文件头 ⇒ 移到第 1 行，755 实测相符。
 - `ToolDispatchRouter.cs` 633 相符，未动。
 - **tech-debt 记账**：`session-slice.ts`（按职责拆 slice 组合）、`db-helpers.ts`（按表拆四模块）需要改多个调用方 import，留给专门拆分需求。
+
+### 10:03 登记 S-210：折叠收尾要显示真实原因
+
+- 老大原话：「目前我们聊天窗 在用户终止执行或者 触发压缩后，之前的执行过程会折叠 并且显示一个固定值 任务暂告一段落 作为总结。这个我希望登记一个需求，能实际显示是用户取消执行，触发压缩等实际情况」。
+- 定性 **体验优化**，软件侧，预计零后端改动。**本轮只登记，不动代码。**
+- 排查坐实：显示点 `content-renderer.tsx:501-505` 写死 `assistantMessage.executionPaused`；原因是**中间层没有落点** —— `MessageMeta`（`lib/api/types.ts:384-392`）无结束原因字段，`loop_end.reason` 只用于通知与队列收尾、用完即弃，落库也无此字段。
+- 修法方向：`MessageMeta` 加 `runEnd: { reason, at }`（`db-helpers.ts` 整体展开 `meta` ⇒ 零 DB schema 改动），显示侧 reason → i18n 键抽成**不 import IPC 的纯函数**（B1 教训），`executionPaused` 保留作老消息兜底。
+- **§六 三问待实施前答**：①压缩场景究竟命中「压缩轮无正文」还是「重建窗口后正文被移出」，必须真机复现；②`aborted` 是否区分「点停止」与「插消息打断」（默认不区分，区分要加 Worker 侧 reason 值）；③文案是否带步数（默认不加，折叠块标题已显示工具数）。
+
+### 10:07 登记 S-211：渠道入站图片被丢在渲染端边界
+
+- 老大原话：「渠道入站图片不保留 … 微信渠道发图，Agent 拿不到图片内容，只收到占位符 … 之前我们只处理了聊天窗发送图片，渠道发送的现在也有这个问题」。
+- 定性 **bug**，软件侧，零 Worker 改动。
+- **根因钉死（不是回归）**：上游微信 / 飞书**都下载了图片**（`weixin-service.ts:390-414` / `feishu-service.ts:194`），`auto-reply.ts:251-257` 也把 `images` 带进了 task payload；断在 `use-channel-auto-reply.ts:255-258` —— `sendMessage` 只收到字符串 `content`，**`task.images` 全文件只在第 48 行类型声明里出现过，从未被读取** ⇒ DB `content` 是占位符、`meta` 长度为 0、无文件落盘，与老大实测完全对得上。聊天窗走 `ImageBlock`（`types.ts:100-112`）所以能用。
+- 主修 = 拼 `ImageBlock` 走既有多模态链路，渲染 / 落库 / 模型三侧零新造。老大提的「落盘记路径」「取入站附件能力」不解决本 bug（属另一层优化），单独排。
+- **§五 三问**：①base64 直入 `meta` 的 DB 膨胀现在处理还是记 tech-debt（默认后者）②QQ 是否一并补下载（`parse-ws-message.ts:65` 连下载都没做，默认一并补）③`task.audio` 同为死负载是否一并查（默认不碰）。
+- **历史两条消息不可回补** —— 图片字节在内存里已销毁。
+
+### 10:22 S-210 根因重定：不是「不读结束原因」，是聊天窗把正文吞了
+
+- 老大 10:14 原话：「210 的问题需要排查，这个是聊天窗口的显示」。
+- **重查方法**：拿正式库 `~/.wishful-claw/index.db` 最近 800 条 assistant，按渲染链逐步复刻 —— `meta.segments` → `buildChatMessageContent` → `renderItems` → `splitProcessAndFinal`，统计哪些会落到「`finalItems` 空 + 有工具」分支。
+- **实测结论**：**会显示灰字 83 条，83 条全部在 DB 里都有正文（text 列非空）**。首版登记的「这轮没说话所以显示固定值」不成立。
+- **真凶**：`components/chat/AssistantMessage/process-summary.ts:144-182` 的切分口径 —— 从尾部跳过 text/image，遇到第一个过程项就切，于是**只有「最后一个过程项之后的文字」算最终答复**。消息以 `tool_use` / `thinking` / `tool_result` 结尾时切点落在末尾，**整条消息的所有文字被归进 `processItems` 折进过程块**，外面没正文，`content-renderer.tsx:499-505` 用固定灰字兜底。
+- **为什么「中止 / 压缩」时最明显**：中止时最后一步几乎总是工具调用（没有收尾文字）⇒ 必然命中。**与结束原因无因果** —— 结束原因只是另一个可改进点。
+- **为什么刷新也不好**：落库消息 `meta.content` 为数组的 **0 条**，全靠 `meta.segments`；`buildChatMessageContent:43-53` 在每个 `tool_use` 段后补一个内联 `tool_result` 块，它天然成为切点 ⇒ 重新加载照样命中。
+- **修法拆两半**：①情况 A（83/83）= `finalItems` 空但过程里有 text ⇒ 回填最后一段连续 text 当正文，**不再显示任何「暂告一段落」**；②情况 B（真·一个字没说）⇒ 才显示结束原因，按 `runEnd.reason` 分文案（`MessageMeta` 加字段，零 DB schema 改动）。探针留在 `.wishful-claw/notes/probe-s210-display.js`（已被 gitignore）。
+
+
+### 10:10 渠道拆分：S-211 收敛为共用断点，另立 S-212（QQ）/ S-213（钉钉）
+
+- 老大原话：「所有渠道的都需要，可以不同渠道登记不同的需求」。
+- **全量核查 8 个 provider** 后的结论：有入站实现的只有 **4 个**（微信 / 飞书 / QQ / 钉钉）；**Discord / Telegram / 企业微信 / WhatsApp 是纯发送桩**（只有 `sendMessage` / `getGroupMessages` 空实现，连 `incoming_message` 都不发）⇒ 它们的「入站图片」是伪命题，该补的是入站本身，属另一类需求，**本轮未登记，待老大定**。
+- **S-211 收敛**：只做渲染端共用断点（`use-channel-auto-reply.ts:255-258` 不消费 `task.images`），一次修好**微信 + 飞书**（两者都已在服务层下载成 base64）。原 §五.2「QQ 一并补」作废，改指 S-212。
+- **S-212（QQ）**：`qq/parse-ws-message.ts:57-69` 只读 `content_type` 挑占位符文案，`attachments[].url` 丢弃，从不下载。修法 = 解析层填瞬态 `mediaRefs`（保持纯同步、可单测）+ `qq-service.ts:364-372` emit 前下载成 base64，形状照抄微信；URL 有时效必须即时下。
+- **S-213（钉钉）**：比 QQ 更彻底 —— `dingtalk-service.ts:160-178` 只解 `payload.text.content`，**`msgtype` 在钉钉 provider 里从未被读取**，图片消息解析出空串后被 `:178 if (!content) return` **静默丢弃**（不是占位符，是消息整个消失）；`dingtalk-api.ts` 也无媒体下载方法。修法 = 按 `msgtype` 分派（未知类型也出占位符）+ 新增 `downloadMedia`；**实施前必须先实测下载接口权限**。
+- 三条互不越界：后两条只负责把 `images` 填好，渲染端消费统一归 S-211。**Worker 侧三条全零改动。**
+
+### 10:52 后 登记 S-214：设置页「关于」删掉重复的「使用指引」板块
+
+- 老大原话：「设置页的关于，里面的使用指引板块删掉，访问官网实际上就能去查看指引，官网的描述需要改一下」。
+- 定性 **体验优化**，软件侧（渲染端），零 Worker 改动。**本轮只登记，不动代码。**
+- **重复性坐实**：设置页「关于」的 `官网` 与 `使用指引` 两块指向**同一站点的两个 path** —— `openWebsite()` → `https://wishful-claw.work`，`openUserGuide()` → `${WEBSITE_URL}/guide`；而官网站点顶栏第一项就是「使用指引」（`website/src/content/site.ts:75`）⇒ 设置页这块是重复入口，两个外形一样的按钮并排放着纯噪音。成因是 S-160 把指引从仓库 `docs/user-guide.md` 迁到官网 `/guide` 时为老用户留的一键入口，迁完没人回看。
+- **删点**：`components/settings/SettingsPage.tsx:355-369` 整个 `SettingsSection id="sec-about-guide"`。
+- **描述改动（本需求的价值点）**：少一个按钮不能让人觉得指引没了 ⇒ 把「官网」区块描述改成指引入口，`about.website.desc` 由「下载安装包、查看使用指引与更新日志」改为把「使用指引」放句首的写法（zh / en 同步）。另 `settings.nav.about.desc` 原写「产品介绍、使用指引与应用更新」，板块删后是对不存在内容的承诺，默认改成「产品介绍、官网与应用更新」。
+- **死代码**：全量 grep 后 `openUserGuide` / `USER_GUIDE_URL` 引用点仅 `user-guide.ts:13,15` + `SettingsPage.tsx:19,364` ⇒ 删板块后零调用，一并删；`WEBSITE_URL` / `WEBSITE_HOST` / `openWebsite` 保留。`:7-12` 那段「指引指向官网而非 GitHub blob」的注释结论搬进 `openWebsite` 注释，防止以后又把入口加回来。
+- **官网侧不动**：`/guide` 正文（`guide-page.tsx` eyebrow / title / description）、`guide-nav.ts`、`user-guide.md`、顶栏「使用指引」全部保留。
+- **§五.1 待确认一句**：「官网的描述需要改一下」按**设置页「关于 → 官网」区块描述**理解（主口径，`settings.json:868` zh/en）；备选口径是官网 `/guide` 首屏 `description`（`guide-page.tsx:43`）。**两者差一个文件，实施时确认一句即可，不影响其余改动。**
+
+### 2026-10-20 阶段二~四：按 `docs/dev-workflow.md` 推进 S-210 ~ S-214（五刀落地）
+
+- **开工前核实**：工作区未提交改动逐文件看过，S-210 那批（`run-end-label.ts` / `AgentLoopEndReasons.cs` / `tests/run-end-display`）是**完成态**（代码 + 协议 + 落库 + 渲染 + 专项测试齐全），非半成品。
+- **刀 1 `7f58cb7c` S-210** —— `feat(chat): 折叠收尾照实显示这一轮的结束原因`，16 文件 +494 −25。提交前补两处 500 行豁免头：`content-renderer.tsx`（实测 533 行，单一渲染分派器）、`lib/tools/cron-runtime.ts`（实测 621 行，单一职责流水线）。`test:run-end-display` 通过、`typecheck` 0 错、`dotnet build` 两套 sln 0/0。
+- **刀 2 `38e61a3d` S-214** —— 删 `sec-about-guide` 整块；`about.website.desc` zh「使用指引与更新日志都在官网上，安装包也从这里下」/ en 同步；`nav.about.desc` 去「使用指引」；删 `openUserGuide` / `USER_GUIDE_URL` 与 `about.guide.*`。**§五.1 按「设置页关于 → 官网区块描述」口径实施，官网 `/guide` 首屏未动**（备选口径仍待老大一句话确认）。
+- **刀 3 `91fbbd7f` S-211** —— 新增 `lib/channel/inbound-content.ts`：无图原样返回字符串（零行为变化），有图拼 `[text, image…]`；`use-channel-auto-reply.ts` 消费 `task.images`。新增 `tests/inbound-content`。
+- **刀 4 `49a27335` S-212** —— `ChannelIncomingMessageData` 加瞬态 `mediaRefs`；`parse-ws-message` 带出图片地址（最多前 5 张，类型判不出按扩展名、再判不出不猜）；新增 `qq/download-media.ts`（协议相对地址补 https、拒非 http 与内网地址、魔数嗅探、15s 超时 / 单张 10MB、逐张降级）；`qq-service` emit 前下载，全失败改写为 `download failed` 占位符。新增 `tests/qq-attachments`。
+- **刀 5 `cf6e7649` S-213（解析层）** —— 新增 `dingtalk/parse-message.ts`：text / picture / file / voice / richText 分派，老版塞在 `text.content` 的结构化 JSON 转占位符，**未知类型也落占位符**（这才是「消息整个消失」的真修法）。新增 `tests/dingtalk-msgtype`。
+- **S-213 下载层未做，卡 §五.1**：本地两份 `plugins.json`（`~/.wishful-claw`、`~/.wishful-claw-dev`）里钉钉 `appKey` / `appSecret` 均为空串、渠道 `enabled: false`，`downloadCode` 也需真实入站消息才产生 ⇒ **权限实测无法进行**，按派单口径不硬写，等老大给凭证后再接 `downloadMedia`。
+- **门禁实测（本轮）**：`npm run typecheck` 0 错；`npm test` **77/77**（新增 `test:inbound-content` / `test:qq-attachments` / `test:dingtalk-msgtype` 三套）；`dotnet build` 两套 sln 各 0 警告 0 错误；`cd website; npm run build` 0 错。
+
+
+
+

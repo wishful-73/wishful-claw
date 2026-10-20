@@ -30,6 +30,7 @@ import {
   isChannelReplyTextDelta
 } from '@renderer/lib/channel/channel-reply-event-policy'
 import { resolvePendingChannelShellApproval } from '@renderer/lib/channel/channel-shell-approval'
+import { buildInboundUserContent } from '@renderer/lib/channel/inbound-content'
 
 // ── Types ──
 
@@ -252,9 +253,14 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
   //    assistant messages to the store before the first await. We split
   //    the call so we can sync messageCount / messagesLoaded right after.
   try {
+    // S-211：入站图片是 `task.images` 带上来的 base64，此前从未被消费 —— 只把
+    // content 字符串交出去，模型就只看到 `[User sent an image]`。有图时拼成与聊天窗
+    // 同构的块数组（`[text, image…]`），模型 / 落库 / 渲染三侧都走既有链路。
+    const userContent = buildInboundUserContent(content, task.images)
+
     const sendPromise = useChatStore.getState().sendMessage({
       provider,
-      messages: [{ role: 'user', content }],
+      messages: [{ role: 'user', content: userContent }],
       sessionId,
       workingFolder: session.scope === 'project' ? session.workingFolder : undefined,
       sshConnectionId: session.scope === 'project' ? session.sshConnectionId : undefined,

@@ -16,6 +16,8 @@ export interface AssistantMessageProps {
   updatedAt?: number
   /** 整轮总耗时（ms）。只有被压缩切分过的消息才带 —— 分段后每段只报自己那一截。 */
   totalElapsedMs?: number
+  /** 压缩切分时这段的位置；`before` = 压缩卡片之前那半截，这一轮还没结束。 */
+  fragmentPosition?: 'before' | 'after'
   usage?: TokenUsage
   toolResults?: Map<string, { content: ToolResultContent; isError?: boolean }>
   liveToolCallMap?: Map<string, ToolCallState> | null

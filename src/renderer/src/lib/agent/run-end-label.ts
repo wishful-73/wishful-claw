@@ -113,3 +113,19 @@ export function resolveRunEndLabel(
       }
   }
 }
+
+/**
+ * 压缩会把一条 assistant 消息劈成 `before` / `after` 两段，但 `meta.runEnd` 只有一份
+ * —— 它记的是**整条消息**怎么收尾的，只属于末段。
+ *
+ * 前半截（`before`）这一轮并没有结束，读 runEnd 就是错报：中断那轮两段都会说
+ * 「你中止了这一轮」，而前半截其实只是被压缩卡片截断了（S-210 验证期，2026-10-21）。
+ * ⇒ 前半截一律拿不到 runEnd，由调用方显示「上下文已压缩，执行继续」。
+ */
+export function resolveFragmentRunEnd(
+  runEnd: MessageRunEndMeta | null | undefined,
+  fragmentPosition: 'before' | 'after' | undefined
+): MessageRunEndMeta | null {
+  if (fragmentPosition === 'before') return null
+  return runEnd ?? null
+}

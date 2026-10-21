@@ -209,6 +209,8 @@ function MessageItemInner({
             updatedAt={effectiveMessage.updatedAt}
             // 被压缩切分的消息，末段还要报整轮总耗时（片段信息挂在渲染项上，不在消息里）。
             totalElapsedMs={item?.kind === 'message' ? item.fragment?.totalElapsedMs : undefined}
+            // 前半截没有收尾正文，尾部提示得据实说「上下文已压缩」，不能说「任务暂告一段落」。
+            fragmentPosition={item?.kind === 'message' ? item.fragment?.position : undefined}
             renderMode={renderMode}
             orchestrationRun={orchestrationRun}
             hiddenToolUseIds={hiddenToolUseIds}

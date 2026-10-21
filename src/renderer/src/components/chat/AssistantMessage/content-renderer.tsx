@@ -30,6 +30,7 @@ import { getLiveOutputCursorClass } from '@renderer/lib/live-output-animation'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useImageEditStore } from '@renderer/stores/image-edit-store'
 import type { AssistantRenderItem, ThinkSegment } from './types'
+import type { MessageFragmentPosition } from '../renderable-chat-items'
 import { MARKDOWN_WRAPPER_CLASS as MD_CLASS } from './types'
 import { parseThinkTags, stripThinkTags } from './think-parser'
 import { shouldShowTrailingCursor } from './live-cursor'
@@ -76,6 +77,11 @@ export interface ContentRendererProps {
   canEditGeneratedImages: boolean
   /** 这一轮怎么结束的（落库数据）；缺失 = 不知道，按旧文案兜底。 */
   runEnd?: MessageRunEndMeta | null
+  /**
+   * 压缩把一条 assistant 消息劈成两段时，这段是劈出来的哪一截。
+   * `before` = 压缩卡片之前那半截，这一轮并没有结束，尾部提示不能说「任务暂告一段落」。
+   */
+  fragmentPosition?: MessageFragmentPosition
   t: TFunction
 }
 
@@ -109,6 +115,7 @@ export function ContentRenderer({
   trackedChangeByToolUseId,
   canEditGeneratedImages,
   runEnd,
+  fragmentPosition,
   t
 }: ContentRendererProps): React.JSX.Element {
   const openImageEditor = useImageEditStore((s) => s.openEditor)
@@ -325,8 +332,10 @@ export function ContentRenderer({
 
   // Split items into process (thinking/tool_use) and final output (text/image).
   // hasProcessContent is true only when there are tool calls — thinking-only won't collapse.
-  const { processItems, finalItems, hasProcessContent } =
-    splitProcessAndFinal(renderItems, normalizedContent)
+  const { processItems, finalItems, hasProcessContent } = splitProcessAndFinal(
+    renderItems,
+    normalizedContent
+  )
 
   // Count thinking blocks for summary
   const thinkingBlockCount = normalizedContent?.filter((b) => b.type === 'thinking').length ?? 0
@@ -515,9 +524,17 @@ export function ContentRenderer({
       {finalItems.length > 0 ? (
         finalItems.map((item, index) => renderItem(item, index === finalItems.length - 1))
       ) : hasProcessContent && !isStreaming && renderMode !== 'transcript' && !runEndText ? (
-        // 老消息没有 runEnd（那会儿还没落库这个数据）—— 只能沿用旧文案，不编原因。
+        // 折叠块外面没正文时补一句，说明「为什么这儿没正文」：
+        // - `before` 分片 = 压缩卡片把这一轮劈成两半，前半截本来就没有收尾正文，任务没结束；
+        // - 其余 = 老消息没有 runEnd（那会儿还没落库这个数据），只能沿用旧文案，不编原因。
         <div className={MD_CLASS}>
-          <p className="text-muted-foreground">{t('assistantMessage.executionPaused', { defaultValue: '任务暂告一段落' })}</p>
+          <p className="text-muted-foreground">
+            {fragmentPosition === 'before'
+              ? t('assistantMessage.contextCompacted', {
+                  defaultValue: '上下文已压缩，执行继续'
+                })
+              : t('assistantMessage.executionPaused', { defaultValue: '任务暂告一段落' })}
+          </p>
         </div>
       ) : null}
       {runEndText ? (

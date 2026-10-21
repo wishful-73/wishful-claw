@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Copy, ChevronsDownUp, ChevronsUpDown, Ellipsis, Volume2, Share2, GitFork } from 'lucide-react'
-import type { RequestDebugInfo } from '@renderer/lib/api/types'
+import type { MessageRunEndMeta, RequestDebugInfo } from '@renderer/lib/api/types'
 import type { MemoryRecallInfo } from '@renderer/stores/chat-store/types'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -27,6 +27,11 @@ export interface ActionBarProps {
   msgId?: string
   createdAt?: number
   updatedAt?: number
+  /**
+   * 这一轮怎么结束的（含收尾时刻 `at`）。中断 / 报错那一轮没有 `updatedAt`，
+   * 靠 `at` 才亮得出结束时间与耗时（S-215）。
+   */
+  runEnd?: MessageRunEndMeta | null
   /** 整轮总耗时（ms）。只有被压缩切分过的消息才有：分段后每段只报自己那一截。 */
   totalElapsedMs?: number
   devMode: boolean
@@ -55,14 +60,18 @@ export function AssistantActionBar({
   completionSummary,
   createdAt,
   updatedAt,
+  runEnd,
   totalElapsedMs,
   t
 }: ActionBarProps): React.JSX.Element {
   // 时间戳只在这一轮跑完后才亮：流式期间显示的是「开始时间」，看着像已经完成。
-  const finishedAt = updatedAt ?? createdAt
-  // 耗时只在两个戳都齐、且结束晚于开始时才算（老消息没有 updatedAt）。
+  // 中断 / 报错那一轮没有 updatedAt，回落 loop_end 的收尾时刻（S-215）——
+  // 少了这一层，那两种情形既没有结束时间也没有耗时。
+  const endAt = updatedAt ?? runEnd?.at ?? null
+  const finishedAt = endAt ?? createdAt
+  // 耗时只在两头都齐、且结束晚于开始时才算（老消息两戳都缺，不给值）。
   const elapsedMs =
-    updatedAt != null && createdAt != null && updatedAt > createdAt ? updatedAt - createdAt : null
+    endAt != null && createdAt != null && endAt > createdAt ? endAt - createdAt : null
 
   const navigateToSession = useUIStore((s) => s.navigateToSession)
   const forkSessionFromMessage = useChatStore((s) => s.forkSessionFromMessage)

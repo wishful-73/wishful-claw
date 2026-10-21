@@ -61,6 +61,9 @@ function getItemFilePath(item: ToolExecutionItem): string | null {
 
 /**
  * Generate a compact summary string from the tool execution outline.
+ *
+ * 只统计过程本身；耗时归操作栏（`action-bar.tsx`）那一处，不在这里重复开一个位置
+ * （iter-40 S-215 纠偏：老大 10-21 09:34「本身我们就有耗时的显示位置，为什么要新加一个位置」）。
  */
 export function buildProcessSummary(
   outline: ToolExecutionOutline | null,
@@ -138,9 +141,11 @@ export function buildProcessSummary(
  * the first "process" item. Items before and including that = process.
  * Items after = final output.
  *
- * When that rule leaves nothing outside the fold (the turn ended on a tool call
- * or a thinking block), the last contiguous run of text blocks is lifted back
- * into the final output — see the S-210 comment below.
+ * 纯切分，不做回填（iter-40 S-210 验证期裁定）：一轮正常收尾时正文本来就在尾部，
+ * 切出来的 finalItems 自然非空；切完 finalItems 为空只发生在「这一轮没说完」的场景
+ * ——用户中断、模型报错、被压缩卡片劈开的前半段。这些情况该据实显示结束原因
+ * （见 `content-renderer.tsx` 的尾部提示），把过程里的文字提出来假装成正文只会
+ * 掩盖真相。
  *
  * hasProcessContent is true only when there are tool calls in the process —
  * thinking-only without tools is too simple to collapse.
@@ -167,48 +172,8 @@ export function splitProcessAndFinal(
     return 0
   })()
 
-  let processItems = items.slice(0, finalOutputStartIndex)
-  let finalItems = items.slice(finalOutputStartIndex)
-
-  // S-210 回填：切点落在数组末尾 = 这一轮以 tool_use / thinking 收尾，于是它说过的
-  // 最后一整段文字全被判成「过程」，折叠块外面一个字都没有。实测（正式库最近 800
-  // 条 assistant）这种消息 83/83 都有正文 —— 把**最后一段连续 text** 提出来当正文，
-  // 外面才显示得出它本来写的话。只有正文为空时才动，正常以文字收尾的消息不受影响。
-  //
-  // 只提 text 这一段、不连它后面的工具：tool-run 一旦进了 finalItems 就会被渲染成
-  // 展开的工具块，挂在正文下面，那才是真的乱。
-  if (finalItems.length === 0) {
-    let lastTextIndex = -1
-    for (let i = items.length - 1; i >= 0; i--) {
-      const item = items[i]
-      const block = item.kind === 'block' ? normalizedContent?.[item.index] : undefined
-      if (block?.type === 'text') {
-        lastTextIndex = i
-        break
-      }
-    }
-
-    if (lastTextIndex >= 0) {
-      let runStart = lastTextIndex
-      while (runStart > 0) {
-        const previous = items[runStart - 1]
-        const previousBlock =
-          previous.kind === 'block' ? normalizedContent?.[previous.index] : undefined
-        if (previousBlock?.type !== 'text') break
-        runStart--
-      }
-      let runEnd = lastTextIndex + 1
-      while (runEnd < items.length) {
-        const next = items[runEnd]
-        const nextBlock = next.kind === 'block' ? normalizedContent?.[next.index] : undefined
-        if (nextBlock?.type !== 'text') break
-        runEnd++
-      }
-
-      finalItems = items.slice(runStart, runEnd)
-      processItems = [...items.slice(0, runStart), ...items.slice(runEnd)]
-    }
-  }
+  const processItems = items.slice(0, finalOutputStartIndex)
+  const finalItems = items.slice(finalOutputStartIndex)
 
   const hasToolCallsInProcess = processItems.some((item) => {
     if (item.kind === 'tool-run') return true

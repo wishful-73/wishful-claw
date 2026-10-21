@@ -30,20 +30,20 @@
 
 当迭代内所有 Plan 都完成后，Agent 输出迭代总结（做了什么、验证结果、遗留问题），然后**停下来等用户确认**。
 
-**用户确认完结后，Agent 执行收尾**（完整流程见 `docs/release-workflow.md`）。`v2-iter-{N}` 只是迭代编号；正式版发布前，产品版本为 `0.2.{N}`，tag 为 `v0.2.{N}`：
+**用户确认完结后，Agent 执行收尾**（完整流程见 `docs/release-workflow.md`）。`v2-iter-{N}` 只是迭代编号；产品版本从 `1.0.0` 起为 `1.0.{N}`，tag 为 `v1.0.{N}`：
 ```bash
-# 0. 更新 package.json 版本为 0.2.{N}，同步 README 版本徽章
+# 0. 更新 package.json 版本为 1.0.{N}，同步 README 版本徽章
 
 # 1. 合并到 main
 git checkout main
 git merge dev/v2-iter-{N} --no-ff -m "merge: v2-iter-{N} - {迭代名称}"
 
 # 2. 打 tag
-git tag -a v0.2.{N} -m "v2-iter-{N}: {迭代名称} - 验证通过"
+git tag -a v1.0.{N} -m "v2-iter-{N}: {迭代名称} - 验证通过"
 
 # 3. 推送远程（需要代理）
 git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin main
-git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin v0.2.{N}
+git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 push origin v1.0.{N}
 
 # 4. 删除本地迭代分支
 git branch -d dev/v2-iter-{N}
@@ -88,7 +88,7 @@ git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 pus
 
 ### MVP v2（v2-iter-1 ~ v2-iter-26）
 
-> MVP v1（迭代一~十五）已全部合并 main。以下为 MVP v2 阶段的迭代拆分，分支命名 `dev/v2-iter-{N}`；`v2-iter-{N}` 仅是迭代编号。正式版发布前，产品版本命名 `0.2.{N}`，tag 命名 `v0.2.{N}`。历史上已存在的旧式 tag 保留，不再用于后续迭代。详细需求见 `docs/mvp-v2.md`。
+> MVP v1（迭代一~十五）已全部合并 main。以下为 MVP v2 阶段的迭代拆分，分支命名 `dev/v2-iter-{N}`；`v2-iter-{N}` 仅是迭代编号，**转正 `1.0.0` 之后分支名照旧**。产品版本从 `1.0.0` 起为 `1.0.{N}`，tag 为 `v1.0.{N}`（`1.0.0` 之前的 `0.2.{N}` 系列已随 `v0.2.39` 结束）。历史上已存在的旧式 tag 保留，不再用于后续迭代。详细需求见 `docs/mvp-v2.md`。
 >
 > `v2-iter-20` ~ `v2-iter-22` 本文档未单列小节（历史上未展开，只作为整段并入「迭代依赖关系」的已完成记录）。
 

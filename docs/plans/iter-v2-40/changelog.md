@@ -244,6 +244,89 @@
 - **S-213 下载层未做，卡 §五.1**：本地两份 `plugins.json`（`~/.wishful-claw`、`~/.wishful-claw-dev`）里钉钉 `appKey` / `appSecret` 均为空串、渠道 `enabled: false`，`downloadCode` 也需真实入站消息才产生 ⇒ **权限实测无法进行**，按派单口径不硬写，等老大给凭证后再接 `downloadMedia`。
 - **门禁实测（本轮）**：`npm run typecheck` 0 错；`npm test` **77/77**（新增 `test:inbound-content` / `test:qq-attachments` / `test:dingtalk-msgtype` 三套）；`dotnet build` 两套 sln 各 0 警告 0 错误；`cd website; npm run build` 0 错。
 
+### 2026-10-21 08:00 之后：S-214 §五.1 定案 + 文档欠账清理（纯文档，不改代码）
+
+- **老大原话（08:00）**：「214 的意思就是 设置页的 关于 之前有使用指引单独的一块区域，实际上使用指引在官网里面，所以删除原使用指引卡片，对官网描述进行一下调整，然后跳转官网就能查看指引了」。
+- **定案**：指**设置页「关于 → 官网」区块描述**（`settings.json:868` 的 `about.website.desc`，zh / en 双份）；官网 `/guide` 首屏 `guide-page.tsx:43` **不动**。⇒ 与已实施的 `38e61a3d` **口径一致，代码零改动**，仅撤掉「备选口径待确认」的尾巴。
+- **欠账清单逐项落账**（此前登记时写、实施后没回填的）：
+  1. `raw-requirements.md` —— S-203 ~ S-209 **七行状态由「待开工」改为实际提交号**，并补验证期事实（S-205 / S-206 补 `502b1c5f`、S-207 补 `b6a95eca` 与端到端手点结论、S-208 补 `96c8fa3d` 三件修订、S-209 标注 §5.3 未做）。
+  2. 需求正文六份 —— `S-206` §五 由「待裁定」改为「已定案」并新增 **§5.2 最终定案表**（技术路线 canvas / 收束层只首屏 + 雾层整站 / 顶栏首屏透明，三项逆原建议）；`S-210` §六、`S-211` ~ `S-213` §五 由「待确认」改为「决策点（已实施 / 卡点）」，逐条标注落地情况；`S-211` §五.3（音频）明确仍挂账；`S-213` §五 三项明确**卡在无凭据**。
+  3. `plan.md` —— §三 刀序表由「计划口径」换成**实际落刀 17 行**（含两处验证期修复刀与一审修复刀 `d08e5a80`）；§五 裁定汇总由「待补」**填实为 12 条需求 × 逐项裁定 + 出处**；§6.1 复核后**两项销账**（`site.ts:61`「搜本地文件」与「你提需求，它跑全程」均系老大 10-19 亲自给稿，口径归属已落地）、两项仍待。
+- **门禁未复跑** —— 本刀零代码改动，沿用 `d08e5a80` / `564d5c2f` 的 77/77 基线。
+- **仍挂**：S-213 下载层（等钉钉 `appKey` / `appSecret` 或真机一张图）、`plan.md` §6.1 第 3、4 项（README 三节开场调性、`S-206` 观感参数）、S-210 折叠块是否保留、阶段六真机验证全项。
+
+### 2026-10-21 09:22 / 09:30：S-210 登记曲解订正 —— 正文回填不是需求，撤掉
+
+- **老大原话（09:22）**：「目前我们聊天窗 在用户终止执行或者 触发压缩后，之前的执行过程会折叠 并且显示一个固定值 任务暂告一段落 作为总结。这个我希望登记一个需求，能实际显示是用户取消执行，触发压缩等实际情况 **这个是我的原话，210 需求登记本身曲解了我的需求**」。
+- **曲解在哪**：原话只要一件事 —— **那句固定总结换成真实情况**；折叠行为本身是现状、不是要改的东西。首版登记（10-20 10:22）先把「正文被吞进折叠块」当成主因，再推出**回填正文**的修法，从头到尾没在回答原话里那件事。那份 83/83 实测**数据是真的**，但它证明的是「这些消息不缺口径、只缺这句话」，不是「该救正文」。
+- **回填为什么站不住**：①典型尾部形态全是「文字在前、工具在后」（`text, tool_use, tool_use` / `tool_use, tool_result, thinking` / `tool_result, tool_use, tool_result`），回填会把工具前的旧话提到所有工具下方，顺序凭空多出一段"收尾"；②执行中尾部永远是刚发出的工具，`finalItems` 每帧为空 ⇒ 回填每帧触发 ⇒ 那段话被钉在渲染顺序最下方，后续工具、思考全叠在它上面（验证期当场暴露）。
+- **最终口径（纯切分，按真实情况显示）**：`completed` 不显示任何结束语 / `user_cancelled`、`aborted`、`max_iterations` 按 reason 出文案 / `error` 按 `errorType` + 状态码细分 / 压缩劈开的前半截（`fragment.position === 'before'`）显示「上下文已压缩，执行继续」/ 无 `runEnd` 的老消息才留旧文案兜底。
+- **代码**：`process-summary.ts` 撤回填、去掉 `isStreaming` 参数、注释改写；`content-renderer.tsx` 尾部提示按 `fragmentPosition` 分流；`types.ts` / `index.tsx` / `MessageItem.tsx` 透传 `fragment.position`；`locales/{zh,en}/chat.json` 补 `contextCompacted`；`tests/run-end-display` 回填用例改为纯切分断言。
+- **文档**：`S-210.md` 按原话**全文重写**（新增 §七「首版走偏与修正」，记下曲解过程与教训）；`plan.md` 顶部补 09:30 状态、10-20 10:22 那条加 ⚠️ 订正标记、§三 刀序表 + §五 裁定汇总 + §6.1 第 5 项同步改；`raw-requirements.md` S-210 行改。
+- **门禁复跑**：`npm run typecheck` 0 错；`npm test` **77/77**；`dotnet build src\runtime\WishfulClaw.sln` 0 警告 0 错误。
+- **教训**：**登记需求时先照着原话拆句子，再去找技术解释。** 首版是先去找「哪里不对劲」，找到一个大问题就当成主因，把原话里真正那句（固定值该换掉）降级成附带项 —— 数据真、方向错。
+
+### 2026-10-21 09:57：S-210 验证期补 —— 压缩前后两段都报「用户中断」
+
+- **老大原话（09:57）**：「正常执行，然后触发了上下文自动压缩，压缩后继续执行，执行到一半，用户点击了中断执行，这时候压缩前和压缩后的 两段折叠块 都显示的是用户中断了执行。我希望第一段显示的是 上下文已压缩，继续执行」。
+- **根因**：压缩把一条 assistant 消息劈成 `before` / `after` 两段，但 **`meta.runEnd` 只有一份**，记的是整条消息怎么收尾的 ⇒ 前半截也在读它，于是把末段的「用户中断」安到了没结束的一段上。
+- **修法**：新增纯函数 `resolveFragmentRunEnd(runEnd, fragmentPosition)`（`lib/agent/run-end-label.ts`）—— `before` 一律返回 `null`；`AssistantMessage/index.tsx` 算一次，**折叠块提示与底部操作栏共用**（前半截的操作栏同样不该亮出结束时刻与耗时）。前半截落到原有分支，显示「上下文已压缩，执行继续」。
+- **测试**：`tests/run-end-display` 新增 §1.5 五条断言（前半截 + 有收尾 ⇒ null / 末段照旧 / 未压缩不受影响 / 前半截 + 无数据 / 无数据不编）。
+- **门禁**：`typecheck` 0 错；`npm test` **77/77**；`dotnet build` 0 警告 0 错误。
+- **文档**：`S-210.md` §三 补组合场景行、§5.3 补「`runEnd` 只属于末段」小节。
+
+### 2026-10-21 10:31：登记 S-216 —— 内置浏览器重载回环 + 无法看 H5
+
+- **老大原话**：「现在内置浏览器 本身有些网页自身是选项卡加载的，结果我们内置浏览器自己又触发了一次刷新，以及内置浏览器有时候是需要去显示 h5 的页面 或者就是需要适配 h5 和 pc 两种的，这种情况下目前无法查看 h5 的样式。需要探索如何解决」。
+- **问题 1 根因已钉死**：`BrowserPanel.tsx:126-129` 的 `useEffect([storedUrl])` 把「当前实际地址」写回「导航目标」`committedUrl`，而 `:449` 的 `<webview src={committedUrl}>` 是受控属性 ⇒ 站内切 tab（hash / query 变）→ `did-navigate-in-page` → `setBrowserUrl` 写 store → `storedUrl` 变 → 回写 `committedUrl` → src 重设 → **整页重新导航**，tab 状态与滚动位置全丢。`FreeChatPage.tsx:201` 用固定 `site.url`，不受影响。
+- **问题 2 现状**：`BrowserPanel.tsx:59-66` 只设 `partition` / `allowpopups` / `useragent`，UA 还是洗白成桌面 Chromium（S-39），且无视口仿真 ⇒ 服务端与前端响应式都判成桌面 ⇒ H5 版没有机会出现。
+- **方案（待老大定）**：问题 1 建议拆语义（`committedUrl` 只由显式导航驱动，切会话靠 `sessionId` / `projectId` 变化同步）；问题 2 建议 UA + CDP `Emulation.setUserAgentOverride` / `setDeviceMetricsOverride`（已核实 Electron **43.2.0**，主进程零 `debugger` 用法，属新增能力）+ 预置 iPhone / Pixel / iPad / 自定义。
+- **风险已记**：debugger 单客户端（与 DevTools 抢连接）、webview 重建后仿真参数失效、移动 UA 可能跳 m 域名、修问题 1 别把会话恢复弄坏。
+- **文档**：新建 `requirements/S-216.md`；`plan.md` 需求索引 + `raw-requirements.md` 各补一行。**本日只登记，未落码。**
+
+### 2026-10-21 10:42：S-216 补「agent 可自行切设备」+ §四 五问全部落定
+
+- **老大原话**：「设备预设 —— iPhone / Pixel / iPad + 自定义  这个是 agent 可以自己切换演示，就跟正常浏览器可以通过 F12 然后切换成 h5 查看一样」。
+- **决策点 3 定案**：设备预设 = iPhone / Pixel / iPad + 自定义；**不是**「H5 / PC」两态开关。
+- **新增能力**：agent 也要能自己切 ⇒ 新增工具 `BrowserSetDevice`（`device` / `width` / `height` / `scale`）。链路四处**缺一不可**：`BrowserToolProvider.cs` 注册 → `AgentRuntimeBrowserExecutor.BrowserToolNames` 白名单 → `browser-native-ui.ts:430-450` switch 分支 → `browser-tool.ts` 占位 definition。**⇒ 本条不再是「零 Worker 改动」。**
+- **其余四问自行定案**（工程细节，不上呈）：①甲（拆两个语义）②乙（UA + CDP 视口仿真，同 F12）④不按站点记、每会话一份设备状态 ⑤一条需求一刀落。
+- **文档**：`S-216.md` 新增 §3.5（agent 链路四处 + 工具参数表）、§四 改为「定案」表、§五 改动面补 Worker 三处；`plan.md` S-216 行重写。
+
+### 2026-10-21 10:49：S-216 问题 2 方案更正 —— 手起 CDP 改为 Electron 原生设备仿真
+
+- **老大提问**：「这个属于优化环节，为什么要走 CDP 呢 我们不是内置的浏览器么」。
+- **核实结论**：原建议**绕了远路**。`<webview>` 是独立 `webContents`，`WebviewTag` 方法集（`electron.d.ts:19631` 起）有 `setUserAgent()` / `getUserAgent()` / `getWebContentsId()`，**无** `enableDeviceEmulation` ⇒ 切 UA 在渲染端能做，切视口必须过主进程。但主进程**不需要** `debugger.attach()` 手发 CDP：Electron 43.2.0 原生有 `webContents.enableDeviceEmulation(parameters)`（`:17930`）/ `disableDeviceEmulation()`（`:17921`），参数接口 `Parameters`（`:22931`）= `screenPosition: 'desktop' | 'mobile'` / `screenSize` / `viewPosition` / `deviceScaleFactor` / `viewSize` / `scale`，就是 F12 设备模式那套。
+- **收益**：删掉风险清单「debugger 单客户端、与 DevTools 抢连接」一条；替换为「`enableDeviceEmulation` 只改视口不改 UA，两者缺一站点就判错」。
+- **文档**：`S-216.md` 改 5 处（§3.3 乙方案行、§3.4 技术前提、§四 定案 2、§五 IPC 行、§六 风险），`plan.md` S-216 行同步。**仍待开工。**
+
+### 2026-10-21 13:30~14:00：S-216 实施并提交 `4eee7638`
+
+- **问题 1（站内切换被强制重载）**：根因 = 面板把「webview 当前地址」和「导航目标」当同一个变量，`src` 受控 ⇒ 站内导航回写成导航目标就自激重载。修法 = 拆 `storedUrl`（页面当前地址，webview 事件回写，只用于显示 / 恢复）与 `committedUrl`（导航目标，只在明确指令下变），判定收进纯函数 `nextCommittedUrl()`，优先级：切会话 / 项目 > `navigationSeq` 递增 > 目标为空 > 复用开关变化 > 保持不动。store 新增 `requestBrowserNavigation`（写 url + 递增序号），`setBrowserUrl` 退回纯回写通道。
+- **问题 2（无法看 H5）**：共享层新建 `src/shared/browser-device-presets.ts`，五档 `pc / iphone（390×844@3）/ pixel（412×915@2.625）/ ipad（820×1180@2）/ custom（320~2560，缺省 390×844@3）`。主进程 `browser:set-device` 按 `webContentsId` 调 `enableDeviceEmulation`。**关键分岔**：视口与 UA 走两条路 —— `dom-ready` 只补视口（可重复、不 reload、不碰 UA），运行时切设备才改 UA + reload 一次（`useragent` 属性只在导航前生效，已加载页必须 `setUserAgent()`）。
+- **agent 可自行切换**：`BrowserSetDevice` 四处接线齐全（`BrowserToolProvider.cs` 注册 + `AgentRuntimeBrowserExecutor` 白名单 + `browser-native-ui.ts` switch + `browser-tool.ts` 占位 definition），执行器 `browser-device-native.ts`。
+- **文件**：新增 8 个（共享预设表、`committed-url.ts`、`apply-browser-device.ts`、`use-browser-device-emulation.ts`、`browser-toolbar.tsx`、`browser-device-picker.tsx`、`browser-device-native.ts`、`tests/browser-device/program.ts`），修改 12 个。
+- **审查修掉的缺陷**：设备选择器 custom 宽高草稿只在挂载时初始化 ⇒ agent 改过尺寸后用户开面板看到旧值；改为 `useEffect([open, customViewport])` 每次打开按 store 重置。
+- **回归套件同步**：`BrowserSurfaceAccessChecks.cs` 期望值 9→10、work run 9→10 / 非 work 6→7。
+- **门禁**：`typecheck` 0 错；`npm test` **78/78**；`dotnet build` 0 警告 0 错误（编译前须先杀 `WishfulClaw.Worker`，否则 dll 被锁）。
+- **真机验收（老大 14:04）**：通过。
+
+### 2026-10-21 14:00~14:30：S-210 验证期 + S-215 合并为一刀 `45e7f861`
+
+- **内容**：`fix(chat): 压缩前半截不读整条收尾，中断那轮补上耗时（S-210 / S-215）`，8 文件 +154 −68。两条需求改的是同一条显示链 —— S-210 负责「这一轮怎么结束的」落库与文案，S-215 复用同一份 `meta.runEnd.at` 算耗时。
+- **S-210 验证期修正**：压缩把一条消息劈成 `before` / `after` 两段，但 `meta.runEnd` 只有一份、记的是整条消息怎么收尾，只属末段；前半截读它就是错报（真机：压缩后继续执行 → 跑到一半中断，两段都说「你中止了这一轮」）。新增 `resolveFragmentRunEnd`，`AssistantMessage` 算一次，折叠块提示与底部操作栏共用。同时撤销首版的正文回填，`splitProcessAndFinal` 保持纯切分。
+- **S-215**：根因 = `elapsedMs` 硬性要求 `updatedAt != null`，中断那轮没有该戳；改为 `endAt = updatedAt ?? runEnd?.at ?? null`。撤销折叠块摘要里新开的耗时位，耗时只留操作栏一处。
+- **★ 提交粒度的定案（老大 14:27）**：「提交有冲突的 合并成一个提交 说明提交了两个需求就行」。本条一开始执意拆成两刀（`df6a54cc` + `3371aacc`），做法是 `git diff --output` 生成补丁、手工裁掉属于另一需求的 hunk 后 `git apply --cached`（PowerShell 管道喂 `git add -p` 会带 BOM 或尾随空格，git 拒收）。老大一句话点明这属于过度较真 —— 文件互相咬合时，**合并一刀、提交信息里把两条需求分开写清楚**即可。已 `reset --soft` 合并为 `45e7f861`，两刀作废。
+- **门禁**：`typecheck` 0 错；`npm test` **78/78**（TS 60 + C# 18）。
+- **真机验收（老大 14:13）**：S-215 通过（中断那轮操作栏亮出结束时刻与耗时，折叠块摘要不带耗时，老消息不编数字）。
+
+### 2026-10-21 14:27：S-213 渠道侧留到发布后验证
+
+- **老大口径**：「渠道的等后续发布实际使用上测试」。
+- **处置**：S-213 本迭代不再推进。解析层 `cf6e7649`（按 `msgtype` 分派、未知类型出占位符、非文本消息不再静默丢弃）已交付；`downloadMedia`（`downloadCode` → 临时 URL → GET）因本地钉钉 `appKey` / `appSecret` 为空、渠道未启用，无凭据实测 §五.1 的下载接口权限，**不写**，留到发布后按真实入站消息验证。
+- **文档**：`S-213.md` 状态行、`raw-requirements.md` 与 `plan.md` 的 S-213 行同步改为「解析层已实施 / 下载层未写，等发布后在实际使用中验证」。
+- **⇒ iter-40 需求侧十条全部收口**，门禁 78/78。
+
+
 
 
 

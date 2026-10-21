@@ -594,8 +594,8 @@ docs/plans/iter-v2-{N}/
 - 分支：dev/v2-iter-{N}（合并后清理）
 - Plan: docs/plans/iter-v2-{N}/plan.md
 - VERDICT: PASS（编译验证 + 用户人工验证）
-- 产品版本: 0.2.{N}
-- Tag: v0.2.{N}
+- 产品版本: 1.0.{N}
+- Tag: v1.0.{N}
 - Commit: {merge commit}
 - 日期: {YYYY-MM-DD}
 - 范围与功能单元：

@@ -4,9 +4,17 @@
 > 分支 `dev/v2-iter-40` 已从 `main`（base `a3b966d5` = tag `v0.2.39`，39 收尾合并点）切出。
 > 本文件 = 迭代总览（目标 / 需求索引 / 刀序 / 门禁基线）；需求正文见 `requirements/`，裁定流水见 `changelog.md`。
 
+**当前状态（2026-10-21 收尾）：iter-40 收尾发布 `v1.0.0`，产品正式转正。** 老大 14:45「首先这个版本需要转换成1.0.0 正式版本号了」+ 14:51「下个版本是1.0.1」⇒ 版本规则改为 **`1.0.{N}` / tag `v1.0.{N}`**，分支名仍走 `dev/v2-iter-{N}`。收尾动作：版本号 4 处升 `1.0.0`（`package.json` / `package-lock.json` 两处 / README 徽章 / `docs/PROGRESS.md` 新增行）；发布规则文档同步（`release-workflow.md` 全篇 `0.2.{N}` → `1.0.{N}`，并修掉 **§7.1 清理正则写死 `0\.2\.` 对 `1.0.0` 匹配不上导致静默不清理**的坑 → 改 `\d+\.\d+\.\d+`；`iteration-plan.md` / `dev-workflow.md` / `AGENTS.md` 同口径）；`roadmap-post-1.0.md` 转正生效。进度明细 `docs/progress/v2-iter-40.md`，release notes `.wishful-claw/notes/release-notes-v1.0.0.md`（一份喂 GitHub 与官网两个发布面）。**14 条需求全部实施完成**（S-213 下载层按老大 14:27 口径留到发布后实测）。
+
+**当前状态（2026-10-21 14:30）：iter-40 需求侧 10 条全部收口，S-213 渠道侧留到发布后实际使用验证。** 刀序：`4eee7638`（S-216 设备模拟 + 站内跳转不再整页重载）/ `45e7f861`（S-210 验证期 + S-215 合并一刀，压缩前半截不读整条收尾、中断那轮补耗时）。S-210 负责「怎么结束的」落库与文案，S-215 复用同一份 `meta.runEnd.at` 算耗时，`resolveFragmentRunEnd` 保证压缩前半截既不读末段收尾、也不亮末段的结束时刻与耗时。**S-213 按老大 14:27 口径**（「渠道的等后续发布实际使用上测试」）不再推进：解析层 `cf6e7649` 已交付，下载层无钉钉凭据可实测，留到发布后按真实入站消息验证。门禁复跑：`typecheck` 0 错 / `npm test` **78/78** / `dotnet build` 0 警告 0 错误。真机：S-216 14:04、S-215 14:13 均通过。
+
+**当前状态（2026-10-21 09:30）：S-210 登记曲解订正 —— 正文回填不是需求，已撤掉。** 老大 09:22 原话：「目前我们聊天窗 在用户终止执行或者 触发压缩后，之前的执行过程会折叠 并且显示一个固定值 任务暂告一段落 作为总结。这个我希望登记一个需求，能实际显示是用户取消执行，触发压缩等实际情况 **这个是我的原话，210 需求登记本身曲解了我的需求**」。⇒ 原话只要一件事：**那句固定总结换成真实情况**；折叠行为本身是现状、不是要改的东西。首版登记（10-20 10:22）先把「正文被吞进折叠块」当成主因、再推出**回填正文**的修法，从头到尾没在回答原话里那件事；那份 83/83 实测数据是真的，但它证明的是「这些消息不缺口径、只缺这句话」。回填站不住的两点：①典型尾部形态全是「文字在前、工具在后」（`text, tool_use, tool_use` 等），回填会把工具前的旧话提到所有工具下方，顺序凭空多出一段"收尾"；②执行中尾部永远是刚发出的工具，`finalItems` 每帧为空 ⇒ 回填每帧触发 ⇒ 那段话被钉在渲染顺序最下方，后续工具、思考全叠在它上面（验证期当场暴露）。**最终口径 = 纯切分，按真实情况显示**：`completed` 不显示任何结束语 / `user_cancelled`、`aborted`、`max_iterations` 按 reason 出文案 / `error` 按 `errorType` + 状态码细分 / 压缩劈开的前半截（`fragment.position === 'before'`）显示「上下文已压缩，执行继续」/ 无 `runEnd` 的老消息才留旧文案兜底。**`S-210.md` 已按原话全文重写**（§七 记下首版走偏与教训）。代码：`splitProcessAndFinal` 撤回填、去掉 `isStreaming` 参数；`fragmentPosition` 从渲染项一路透传到 `ContentRenderer`；补 `contextCompacted` 中英文案。门禁复跑：`typecheck` 0 错 / `npm test` 77/77 / `dotnet build` 0 警告 0 错误。
+
+**当前状态（2026-10-21 08:40）：文档欠账清理 —— S-214 §五.1 定案、七条已实施需求的状态补账、§五裁定汇总补齐。** 老大 08:00 原话：「214 的意思就是 设置页的 关于 之前有使用指引单独的一块区域，实际上使用指引在官网里面，所以删除原使用指引卡片，对官网描述进行一下调整，然后跳转官网就能查看指引了」⇒ 指设置页「关于 → 官网」区块描述 `about.website.desc`，官网 `/guide` 首屏 `guide-page.tsx:43` **不动**，**与已实施的 `38e61a3d` 完全一致，代码零改动**。本刀纯文档：①`raw-requirements.md` 里 S-203~S-209 七行状态由「待开工」改为实际提交号并补验证期事实；②S-206 / S-210 ~ S-214 六份需求正文的状态行与 §五 待裁定区改为定案；③本文件顶部状态头 + §三 刀序表补 S-203~S-209 实际落刀 + §五 裁定汇总由「待补」填实 + §6.1 逐项标注现状。**门禁未复跑**（不改代码，沿用 77/77 基线）。
+
 **当前状态（2026-10-20 10:52 后）：登记第 12 条需求 S-214 —— 设置页「关于」删掉独立的「使用指引」板块。** 老大原话：「设置页的关于，里面的使用指引板块删掉，访问官网实际上就能去查看指引，官网的描述需要改一下」。核查：**「官网」与「使用指引」两块指向同一站点的两个 path**（`openWebsite` → 站点根，`openUserGuide` → `/guide`），而官网站点顶栏第一项就是「使用指引」（`site.ts:75`）⇒ 设置页这块是**重复入口**，两个按钮并排放着纯噪音。修法 = 删 `SettingsPage.tsx:355-369`（`sec-about-guide`）+ **把「官网」区块描述改成指引入口**（「使用指引」放句首，这是本需求的实际价值点：少一个按钮但别让人觉得指引没了）+ 清死代码（`openUserGuide` / `USER_GUIDE_URL` 渲染端仅两处引用，删板块后零调用）+ zh / en 同步删 `about.guide.*`、改 `settings.nav.about.desc`（原文「产品介绍、使用指引与应用更新」会变成对不存在内容的承诺）。**§五.1 待确认一句**：「官网的描述需要改一下」我按**设置页「关于 → 官网」区块的描述**理解；备选口径是官网 `/guide` 首屏 description（`guide-page.tsx:43`），两者差一个文件、不影响其余改动。官网 `/guide` 正文、`guide-nav.ts`、顶栏「使用指引」**一律不动**。**软件侧，零 Worker 改动；本日只登记，不落码。** 见 [S-214.md](requirements/S-214.md)。
 
-**当前状态（2026-10-20 10:22）：S-210 根因重定 —— 不是我首版登记的「不读结束原因」，是聊天窗把正文吞进了折叠块。** 老大 10:14「210 的问题需要排查，这个是聊天窗口的显示」后按渲染链复刻实测（正式库最近 800 条 assistant，`segments → buildChatMessageContent → renderItems → splitProcessAndFinal`）：**会显示灰字 83 条，83 条全部在 DB 里都有正文（text 列非空）**。真凶是 `process-summary.ts:144-182` 的切分口径 —— 只把「最后一个过程项之后的文字」算最终答复，于是**消息以工具 / thinking / tool_result 结尾时，整条消息的文字全被归进 `processItems` 折进过程块**，外面没正文可显示，`content-renderer.tsx:499-505` 拿固定灰字兜底。「中止执行 / 压缩」只是提高命中率的时机（中止时最后一步几乎总是工具），**跟结束原因没有因果**。另查明：落库消息 `meta.content` 数组为 0 条，全靠 `meta.segments`，而 `buildChatMessageContent:43-53` 在每个 `tool_use` 段后补一个 `tool_result` 块 ⇒ **刷新也不会好，一直都在**。⇒ **修法拆两半**：①**情况 A（83/83）**：`finalItems` 为空但过程里有 text 时，把最后一段连续 text 回填成正文，不再显示任何「暂告一段落」；②**情况 B（真·一个字没说）**：才显示结束原因，按 `runEnd.reason` 分文案（`MessageMeta` 加字段，零 schema 改动）。见 [S-210.md](requirements/S-210.md)。
+**当前状态（2026-10-20 10:22，⚠️ 已被 10-21 09:30 订正）：S-210 根因重定 —— 不是我首版登记的「不读结束原因」，是聊天窗把正文吞进了折叠块。** 老大 10:14「210 的问题需要排查，这个是聊天窗口的显示」后按渲染链复刻实测（正式库最近 800 条 assistant，`segments → buildChatMessageContent → renderItems → splitProcessAndFinal`）：**会显示灰字 83 条，83 条全部在 DB 里都有正文（text 列非空）**。真凶是 `process-summary.ts:144-182` 的切分口径 —— 只把「最后一个过程项之后的文字」算最终答复，于是**消息以工具 / thinking / tool_result 结尾时，整条消息的文字全被归进 `processItems` 折进过程块**，外面没正文可显示，`content-renderer.tsx:499-505` 拿固定灰字兜底。「中止执行 / 压缩」只是提高命中率的时机（中止时最后一步几乎总是工具），**跟结束原因没有因果**。另查明：落库消息 `meta.content` 数组为 0 条，全靠 `meta.segments`，而 `buildChatMessageContent:43-53` 在每个 `tool_use` 段后补一个 `tool_result` 块 ⇒ **刷新也不会好，一直都在**。⇒ ~~修法拆两半：①情况 A（83/83）：`finalItems` 为空但过程里有 text 时，把最后一段连续 text 回填成正文，不再显示任何「暂告一段落」；②情况 B（真·一个字没说）：才显示结束原因，按 `runEnd.reason` 分文案（`MessageMeta` 加字段，零 schema 改动）。~~ **本节结论已被推翻：回填不是需求，是登记曲解。见 10-21 09:30 那条。**
 
 **当前状态（2026-10-20 10:10）：渠道入站图片按渠道拆成三条（老大指令「所有渠道的都需要，可以不同渠道登记不同的需求」）。** 全量核查 8 个 provider 后坐实：**有入站实现的只有 4 个渠道** —— 微信、飞书、QQ、钉钉；Discord / Telegram / 企业微信 / WhatsApp **是纯发送桩**（`discord-service.ts` 之类只有 `sendMessage`，连 `incoming_message` 都不发）⇒ 它们的「入站图片」是伪命题，要补的是入站本身，属另一类需求，**未登记**。拆分结论：
 - **S-211**（共用断点）= 渲染端 `use-channel-auto-reply.ts:255-258` 不消费 `task.images`。**微信 / 飞书**均已把图下载成 base64 带上，修这一处两条渠道一起好。
@@ -52,46 +60,67 @@
 | S-207 | 沙箱模式下越界访问 ⇒ **新增「申请临时关闭沙箱」工具（无参数）**（agent 主动申请，沙箱临时关 1 小时；**YOLO 之上，不豁免**；**桌面弹窗 / 渠道文字审批**） | **已实施**（10-15 17:56 登记、10-16 实施完成，**10-16 08:28 订正实现路线为「新增工具 + 独立弹窗」**、**08:34 定渠道走文字审批**、**08:48 定「工具无参数」「越界文案加指路」**、**08:53 六项实现细节已自主定案**，定性 **体验优化**）；形态照抄 `AskUserQuestion`、渠道复用 `channel-shell-approval` 链路，机制均已逐行坐实；**无待上呈项**；**原沙箱边界逻辑零改动**，越界文案仅加一句；落地 = **新建 6 / 修改 15**（无参工具 `RequestSandboxElevation` + 独立反向请求 + **进程级 1 小时豁免** + 桌面弹窗 / 渠道文字审批 + 倒计时 chip + 手动恢复）；子 agent 与后台自动化**不给**该工具；门禁 `dotnet build` 0/0、`typecheck` 0 错、`npm test` 72/72；**端到端手点已通过（10-19）**，验证期修掉请求包序列化缺陷 + 提示条改挂聊天窗左上角，见 [S-207.md](requirements/S-207.md) §9.5；**10-20 审查补**批准侧审计日志、提示词与实时沙箱状态比对（`AgentLoop.SandboxTransition.cs`）、审批文案 i18n，见 §9.6 | [S-207.md](requirements/S-207.md) |
 | S-208 | 压缩抢跑 —— 用户发新消息刚好撞上自动压缩，agent 注意力被压缩摘要带跑、不执行用户末条消息 | **已实施 + 修订**（10-16 登记并实施完成，**10-20 按老大补充裁定修订**，定性 **bug**）；根因链已坐实；修法 **A** 全落地 = 提示词侧软约束（`SummarySystemPrompt` 四处措辞，删掉 `the single most concrete next action to take`）+ **代码侧把用户末条消息原话拼进摘要正文最前、且落在 `<compaction-summary>` 标签之内**；**10-20 补三件**：①快照带**用户消息时刻 + 压缩时刻**（`MM-dd HH:mm`）②带**执行状态**三值（未开始 / 执行中 / 已答复，按结构判定而非时间推算，解决「刚发话就压缩」与「跑几分钟后压缩」两种时机语义相反的问题）③按**数据 + 显示分层**落地 —— 原文存 `AgentRuntimeChatMessage.OriginalText`、时刻存 `SentAt`，显示信息进 `meta.compactSummary`，卡片跳过只给模型看的快照块；标签首位不变式保住；门禁 `dotnet build` 0/0、TS 三配置 0 错、`npm test` 72/72；**10-20 审查修** B1（快照剥离按块判定 ⇒ 用户消息含空行就漏字 ⇒ 改收束句锚点 + 拆纯模块 + 10 用例回归）并补上显示层（卡片「压缩时刻 / 用户发言时刻」两行 —— 第三段「当时状态」09:58 老大拍掉，只留给模型），`npm test` **73/73**，见 §9.6 / §9.7；**软件侧**，真机压缩验证归阶段六 | [S-208.md](requirements/S-208.md) |
 | S-209 | GLM-5.3 / 5.3-Flash「结束但无内容」 ⇒ `openai-chat returned no usable assistant output (stopReason=stop, textLength=0, toolCalls=0)` | **已实施**（10-16 登记并实施完成，定性 **bug**）；形态由本机 16 条日志**实证收敛**；修法落地 = ①`EnsureProviderTurnHasOutput` 判定收窄（thinking-only 也算有输出）②`AgentLoop` 在 `ToolCalls.Count == 0` 分支最前拦「正文空 + 有思考 + 有额度」⇒ 置标记 + `continue` ③临时副本注入 `EmptyTurnNudge` 提醒催一轮 ④上限 2 次（`TryScheduleEmptyTurnNudge`）；提醒不落库、聊天窗不可见；真·空流仍走 iter-29 重试链；`dotnet build` 0 警告 0 错误；**§5.3（GLM 内置清单）未做，留待定**；**10-20 审查补**催办轮次不再落库（写入挪到催办判定之后，空轮直接 `continue`），见 §8.5；**软件侧** | [S-209.md](requirements/S-209.md) |
-| S-210 | 正文被折叠进过程块，外面只剩一句写死的「任务暂告一段落」 | **已实施**（提交 `7f58cb7c`，16 文件 +494 −25；10-20 10:03 登记，**10:22 老大指出「这个是聊天窗口的显示」后重查，根因与首版不同**，定性 **bug**）；实证 = 正式库最近 800 条 assistant 里**会显示灰字 83 条，83 条全都有正文**；真凶 = `process-summary.ts:144-182` 切分口径「只有最后一个过程项之后的文字才算最终答复」⇒ 以工具 / thinking / tool_result 结尾的消息，**整条文字被折进过程块**；`content-renderer.tsx:499-505` 拿灰字兜底；**「中止 / 压缩」只是提高命中率的时机，与结束原因无因果**；刷新也不好（`meta.content` 为 0 条，靠 `segments`，`buildChatMessageContent:43-53` 给每个 tool_use 补 tool_result 块）；修法两半 = ①`finalItems` 空但有 text ⇒ 回填最后一段连续 text，不显示灰字 ②真没文字才按 `runEnd.reason` 分文案（`MessageMeta` 加字段，零 schema 改动）；**软件侧，零 Worker 改动** | [S-210.md](requirements/S-210.md) |
+| S-210 | 折叠块下方的总结写死成「任务暂告一段落」，该按真实结束情况显示 | **已实施**（首版 `7f58cb7c`；**验证期按老大原话修正，撤回正文回填**，2026-10-21）；定性 **bug**（显示层给出与事实不符的总结）；**老大原话**（10-20 10:03）= 用户终止执行 / 触发压缩后过程会折叠并显示固定值，希望「实际显示是用户取消执行、触发压缩等实际情况」⇒ **折叠行为不动，动的是那句总结**；首版把「正文被吞」当主因、推出回填正文（实测 83/83 都有正文，数据真、方向错），回填会把工具前的旧话提到工具下方、执行中还每帧触发把文字钉在最底部 ⇒ **10-21 撤回填，纯切分**；最终口径 = `completed` 不显示 / `user_cancelled`、`aborted`、`max_iterations` 按 reason 出文案 / `error` 按 `errorType` + 状态码细分 / 压缩前半截 `fragment.position === 'before'` 显示「上下文已压缩，执行继续」/ 无 `runEnd` 的老消息才留旧文案兜底；**软件侧，零 Worker 改动** | [S-210.md](requirements/S-210.md) |
 | S-211 | 渠道入站图片不保留（**微信 / 飞书**：渲染端不消费 `task.images`，Agent 只收到占位符） | **已实施**（提交 `91fbbd7f`；10-20 10:07 登记、10:10 收敛范围，定性 **bug**）；根因已钉死 = `use-channel-auto-reply.ts:255-258` 只传字符串 content，**`task.images` 从未被消费**（全文件仅第 48 行类型声明）；上游微信 / 飞书均已下载 base64；**结论「从未实现」，非回归**；主修 = 拼 `ImageBlock` 走聊天窗同一条多模态链路，渲染 / 落库 / 模型三侧零新造；**§五 三问**（base64 入 meta 的 DB 膨胀 / 音频是否一并查）；**软件侧，零 Worker 改动**；历史两条不可回补 | [S-211.md](requirements/S-211.md) |
 | S-212 | **QQ** 渠道入站图片：解析层丢 `attachments[].url`，从未下载 | **已实施**（提交 `49a27335`；10-20 10:10 登记，定性 **bug**）；根因 = `qq/parse-ws-message.ts:57-69` 只读 `content_type` 挑占位符文案，URL 丢弃；`buildIncomingMessage:86` 虽认 `images` 但解析层从不填；修法 = 解析层填瞬态 `mediaRefs`（纯同步可测）+ `qq-service.ts:364-372` emit 前下载成 base64，形状照抄微信；下载失败降级占位符不吞消息；**QQ 附件 URL 有时效，必须即时下载**；单条多附件默认取前 5、上限 10 MB；渲染端归 S-211 | [S-212.md](requirements/S-212.md) |
-| S-213 | **钉钉**渠道入站图片：只解 `text.content`，图片消息整条静默丢弃 | **解析层已实施（`cf6e7649`）/ 下载层待权限实测**（10-20 10:10 登记，定性 **bug**）；根因 = `dingtalk-service.ts:160-178` 只解 `payload.text.content`、`msgtype` 全 provider 从未读取（仅发送侧 `:234` 出现）+ `:178 if (!content) return` ⇒ **非文本消息一律消失**；`dingtalk-api.ts` 无任何媒体下载方法；修法 = 按 `msgtype` 分派（picture / file / voice / richText / 未知出占位符）+ 新增 `downloadMedia`（两步：downloadCode → 临时 URL → GET）；**实施前必须先实测下载接口权限**（§五.1）；渲染端归 S-211 | [S-213.md](requirements/S-213.md) |
-| S-214 | 设置页「关于」里独立的「使用指引」板块删掉，指引统一走官网 | **已实施**（提交 `38e61a3d`；10-20 10:52 后登记，定性 **体验优化**）；现状 = 「官网」与「使用指引」两块是**同一个站点的两个 path**（`openWebsite` → 站点根，`openUserGuide` → `/guide`），而站点顶栏第一项就是「使用指引」（`site.ts:75`）⇒ 重复入口；修法 = 删 `SettingsPage.tsx:355-369` 整块 `sec-about-guide` + 把 `about.website.desc` 改成**指引入口**（把「使用指引」放句首）+ 清死代码（`openUserGuide` / `USER_GUIDE_URL` 渲染端零调用）+ zh/en 同步删 `about.guide.*`、改 `settings.nav.about.desc`；**§五.1 待确认一句**：「官网的描述」指设置页「官网」区块描述（主口径）还是官网 `/guide` 首屏 description（备选），两者差一个文件；官网 `/guide` 正文与顶栏**不动**；**软件侧、零 Worker 改动** | [S-214.md](requirements/S-214.md) |
+| S-213 | **钉钉**渠道入站图片：只解 `text.content`，图片消息整条静默丢弃 | **解析层已实施（`cf6e7649`）/ 下载层未写，等发布后在实际使用中验证**（10-20 10:10 登记，定性 **bug**；老大 10-21 14:27：「渠道的等后续发布实际使用上测试」）；根因 = `dingtalk-service.ts:160-178` 只解 `payload.text.content`、`msgtype` 全 provider 从未读取（仅发送侧 `:234` 出现）+ `:178 if (!content) return` ⇒ **非文本消息一律消失**；`dingtalk-api.ts` 无任何媒体下载方法；修法 = 按 `msgtype` 分派（picture / file / voice / richText / 未知出占位符）+ 新增 `downloadMedia`（两步：downloadCode → 临时 URL → GET）；**实施前必须先实测下载接口权限**（§五.1）；渲染端归 S-211 | [S-213.md](requirements/S-213.md) |
+| S-214 | 设置页「关于」里独立的「使用指引」板块删掉，指引统一走官网 | **已实施**（提交 `38e61a3d`；10-20 10:52 后登记，定性 **体验优化**）；现状 = 「官网」与「使用指引」两块是**同一个站点的两个 path**（`openWebsite` → 站点根，`openUserGuide` → `/guide`），而站点顶栏第一项就是「使用指引」（`site.ts:75`）⇒ 重复入口；修法 = 删 `SettingsPage.tsx:355-369` 整块 `sec-about-guide` + 把 `about.website.desc` 改成**指引入口**（把「使用指引」放句首）+ 清死代码（`openUserGuide` / `USER_GUIDE_URL` 渲染端零调用）+ zh/en 同步删 `about.guide.*`、改 `settings.nav.about.desc`；**§五.1 已定案（10-21 08:00）**：老大原话「删除原使用指引卡片，对官网描述进行一下调整，然后跳转官网就能查看指引了」⇒ 指设置页「官网」区块描述，官网 `/guide` 不动；**软件侧、零 Worker 改动** | [S-214.md](requirements/S-214.md) |
+| S-215 | 中断执行后收起过程块，底部操作栏缺耗时统计 | **已实施并验证通过**（10-21 09:32 单开登记，定性 **bug**，提交 `3371aacc`，14:13 真机通过）；根因 = `action-bar.tsx:64-65` 的 `elapsedMs` **硬性要求 `updatedAt != null`**，而中断那轮没有该戳（`finishedAt` 那行倒是做了 `?? createdAt` 兜底）⇒ 位子在、数字没有；数据本来就有 = S-210 落的 `meta.runEnd.at`；修法 = `endAt = updatedAt ?? runEnd?.at`，结束时刻与耗时都走它；**口径 A**（老大 09:32：中断与正常结束一视同仁，所有跑完的一轮都要有耗时）；**纠偏** = 撤销折叠块摘要里新开的耗时位（老大 09:34「本身我们就有耗时的显示位置，为什么要新加一个位置」），耗时只留操作栏一处；**软件侧、零 Worker 改动** | [S-215.md](requirements/S-215.md) |
+| S-216 | 内置浏览器：站内选项卡切换被强制重载一次；无法查看 H5 版页面 | **已实施并验证通过**（10-21 10:31 登记，定性 **bug + 能力缺失**，提交 `4eee7638`，14:04 真机通过）；**问题 1** 根因已钉死 = `BrowserPanel.tsx:126-129` 的 `useEffect([storedUrl])` 把「当前地址」回写成「导航目标」`committedUrl`，而 `<webview src>` 受控 ⇒ 站内切 tab（hash / query 变）→ `did-navigate-in-page` → 写 store → `storedUrl` 变 → 回写 → src 重设 → **整页重载**（自激回路；`FreeChatPage` 用固定 `site.url`，不受影响）；**问题 2** = 只有洗白桌面 UA + 无视口仿真 ⇒ 站点永远返 PC 版；**§四 定案（10-21 全落）**：①甲（拆两个语义）②乙（UA + Electron 原生 `enableDeviceEmulation`，非手起 CDP `debugger`）③**iPhone / Pixel / iPad + 自定义**（老大 10:42；非「H5/PC」两态开关）④不按站点记、每会话一份状态 ⑤一条需求一刀落；**★ 老大 10:42 补充：agent 也要能自己切**（等同 F12 设备模式）⇒ 新增工具 `BrowserSetDevice`，链路四处缺一不可 = `BrowserToolProvider.cs` 注册 + `AgentRuntimeBrowserExecutor.BrowserToolNames` 白名单 + `browser-native-ui.ts` switch 分支 + `browser-tool.ts` 占位 definition；**实施结果** = 问题 1 拆 `storedUrl`（页面当前地址，双向同步）/ `committedUrl`（导航目标，只由显式指令驱动）两条语义，判定收进纯函数 `nextCommittedUrl()`（优先级：切会话 / 项目 > `navigationSeq` 递增 > 目标为空 > 复用开关变化 > 保持不动），`ensureBrowserTab` 带 url 时一并递增序号；问题 2 走 Electron 原生 `enableDeviceEmulation`，**视口与 UA 分两条路**（`dom-ready` 只补视口、可重复、绝不 reload；运行时切设备才改 UA + reload 一次），五档设备预设落在共享层 `browser-device-presets.ts`，面板工具栏外移为 `browser-toolbar.tsx` / `browser-device-picker.tsx`；**软件侧，含 Worker 工具注册（非零改动）** | [S-216.md](requirements/S-216.md) |
 
 ## 三、刀序
 
-| # | 提交 | 需求 | 类型 | 范围 |
-|---|---|---|---|---|
-| 1 | `fix(website): 官网页脚不贴底` | S-203 | 官网 | `index.css` + 3 个页面组件 |
-| 2 | `fix(chat): 清空会话落库并补浮窗入口` | S-204 | 软件 | `session-slice.ts` + `db-helpers.ts` + `SessionConversationPane.tsx` + 2 语言包 |
-| 3 | `feat(chat): 折叠收尾显示真实结束原因` | S-210 | 软件 | `types.ts` + `chat-store/index.ts` + `content-renderer.tsx` + 新纯函数 + 2 语言包 + 单测 |
-| 4 | `fix(channels): 入站图片送进多模态消息` | S-211 | 软件 | `use-channel-auto-reply.ts` + 新纯函数 + 渠道文案 + 单测（微信 / 飞书一并好） |
-| 5 | `fix(channels): QQ 入站图片补下载` | S-212 | 软件 | `channel-types.ts` + `qq/parse-ws-message.ts` + `qq/qq-service.ts` + 单测 |
-| 6 | `fix(channels): 钉钉按 msgtype 解析并下载入站媒体` | S-213 | 软件 | `dingtalk-service.ts` + `dingtalk-api.ts` + 单测 |
-| 7 | `refactor(settings): 关于页删掉重复的使用指引板块` | S-214 | 软件 | `SettingsPage.tsx` + `user-guide.ts` + 2 语言包 |
+**实际落刀（`a3b966d5..HEAD`，按 `docs/dev-workflow.md` 推进，一需求一提交；验证期小修与审查修复攒成单独一刀）**：
 
-**S-210 ~ S-214 实际落地（2026-10-20 按 `docs/dev-workflow.md` 六阶段推进）**：
-
-| 实际 | 提交 | 需求 | 说明 |
+| # | 提交 | 需求 | 说明 |
 |---|---|---|---|
-| 刀 1 | `7f58cb7c` | S-210 | `feat(chat): 折叠收尾照实显示这一轮的结束原因`，16 文件 +494 −25；补两处 500 行豁免头（`content-renderer.tsx` 533 行、`cron-runtime.ts` 621 行） |
-| 刀 2 | `38e61a3d` | S-214 | `refactor(settings): 关于页删掉重复的使用指引板块`；§五.1 按「设置页官网区块描述」口径实施，官网 `/guide` 未动 |
-| 刀 3 | `91fbbd7f` | S-211 | `fix(channels): 入站图片送进多模态消息`；新增 `lib/channel/inbound-content.ts` + 回归套件 |
-| 刀 4 | `49a27335` | S-212 | `fix(channels): QQ 入站图片补下载`；`channel-types` 加瞬态 `mediaRefs`、新增 `qq/download-media.ts` |
-| 刀 5 | `cf6e7649` | S-213 | `fix(channels): 钉钉按 msgtype 解析，非文本消息不再静默丢弃`；**下载层未做**，卡 §五.1 权限实测（本地钉钉 `appKey` / `appSecret` 为空、渠道未启用） |
+| 1 | `5a9a9b06` | S-203 | `fix(website): 官网页脚在高分辨率屏不贴底` —— `#root` 加 flex 列 + 三处 `<main>` 加 `flex-1` |
+| 2 | `eb8d3cee` | S-204 | `fix(chat): 清空会话真正落库并补浮窗入口` |
+| 3 | `5d0d3a73` | S-205 | `docs(website): 重写官网与 README 对外文案` —— 唯一源 `site.ts` + README，清掉两处既有红线违规 |
+| 4 | `48ba39a9` | S-206 | `feat(website): 首屏加背景动画并撤掉文字扫光` |
+| 5 | `abc62e5b` | S-208 | `fix(agent): 压缩摘要不再抢跑用户新消息` |
+| 6 | `f1c2b9f5` | S-209 | `fix(agent): 思考流空轮不再直接报错，改为催一轮` |
+| 7 | `00dcf7db` | S-207 | `feat(agent): 沙箱越界可申请临时关闭 1 小时` |
+| 8 | `502b1c5f` | S-205 / S-206 | `feat(website): 首屏文案调整与整站背景动画层铺开` —— 老大 10-19 逐条给稿后的收尾（主标题「你提需求，它跑全程」、三列费用统一上色、雾层挂三张页面、顶栏首屏透明） |
+| 9 | `b6a95eca` | S-207 | `fix(agent): 修沙箱申请工具请求包序列化与提示条落点` —— 真机跑通后暴露的两处缺陷 |
+| 10 | `96c8fa3d` | S-208 | `feat(agent): 压缩摘要快照带用户消息时刻与执行进度` —— 老大 10-20 补充裁定后的修订 |
+| 11 | `d08e5a80` | — | `chore(iter-40): 阶段五第二轮审查修复与文档收尾` —— B1（快照剥离按空行切块漏字）+ 软件侧 5 项 + 官网侧 6 项 |
+| 12 | `7f58cb7c` | S-210 | `feat(chat): 折叠收尾照实显示这一轮的结束原因`，16 文件 +494 −25；补两处 500 行豁免头（`content-renderer.tsx` 533 行、`cron-runtime.ts` 621 行） |
+| 13 | `38e61a3d` | S-214 | `refactor(settings): 关于页删掉重复的使用指引板块`；§五.1 按「设置页官网区块描述」口径实施，官网 `/guide` 未动 |
+| 14 | `91fbbd7f` | S-211 | `fix(channels): 入站图片送进多模态消息`；新增 `lib/channel/inbound-content.ts` + 回归套件 |
+| 15 | `49a27335` | S-212 | `fix(channels): QQ 入站图片补下载`；`channel-types` 加瞬态 `mediaRefs`、新增 `qq/download-media.ts` |
+| 16 | `cf6e7649` | S-213 | `fix(channels): 钉钉按 msgtype 解析，非文本消息不再静默丢弃`；**下载层未做**，卡 §五.1 权限实测（本地钉钉 `appKey` / `appSecret` 为空、渠道未启用） |
+| 17 | `4eee7638` | S-216 | `feat(browser): 设备模拟 + 站内跳转不再整页重载`，31 文件 +1336 −104；新增 8 个（共享设备预设表、`committed-url.ts`、`apply-browser-device.ts`、`use-browser-device-emulation.ts`、`browser-toolbar.tsx`、`browser-device-picker.tsx`、`browser-device-native.ts`、`tests/browser-device/program.ts`） |
+| 18 | `45e7f861` | S-210 / S-215 | `fix(chat): 压缩前半截不读整条收尾，中断那轮补上耗时` —— **两条需求合并一刀**（改同一条显示链、文件互相咬合，拆 hunk 得不偿失；老大 10-21 14:27 口径：「提交有冲突的 合并成一个提交 说明提交了两个需求就行」）；8 文件 +154 −68 |
+| 收尾 | `564d5c2f` | — | `chore(iter-40): S-210~S-214 实施收尾与文档落账` |
 
 ## 四、门禁基线
 
-沿用 39 收尾时的四道，**本迭代已复跑（2026-10-20 阶段五第二轮修复后）**：
+沿用 39 收尾时的四道，**本迭代已复跑（2026-10-21 14:15，S-216 / S-210 / S-215 提交后）**：
 
 - `npm run typecheck` 0 错误（node + web）
-- `npm test` **77/77**（TS + C#；较 39 基线多出 `test:compaction-snapshot-display` / `test:inbound-content` / `test:qq-attachments` / `test:dingtalk-msgtype` 四套，另 JsonHelpers 24→28、SandboxPath 14→20）
-- `dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误（`tests/WishfulClaw.Tests.sln` 同）
+- `npm test` **78/78**（TS + C#；较 39 基线多出 `test:compaction-snapshot-display` / `test:inbound-content` / `test:qq-attachments` / `test:dingtalk-msgtype` / `test:browser-device` 五套，另 JsonHelpers 24→28、SandboxPath 14→20；ProviderHeader 浏览器工具数 9→10）
+- `dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误（`tests/WishfulClaw.Tests.sln` 同；**编译前须先杀 `WishfulClaw.Worker` 进程**，否则 dll 被锁报 MSB3027）
 - `cd website; npm run build` 0 错
 
 ## 五、裁定汇总
 
-（待补）
+按需求汇总本迭代已定案的裁定（流水见 `changelog.md`，逐条背景见各需求正文；**只记结论与出处**）：
+
+| 需求 | 裁定 | 出处 |
+|---|---|---|
+| **S-203** | 无裁定项 —— 修法唯一（`#root` 加高度约束 + 三处 `<main>` 加 `flex-1`），`/go` 不受影响 | 10-14 登记时即定 |
+| **S-204** | ①标题**不动** ⇒ 走 `db/messages-clear`（`db/session-reset-conversation` 会重置标题，仅渠道 `/new` 用）②「重置用量统计」**保留**，浮窗两项并存 ③请求明细**不删**（`request_usage_logs` 独立表）④竞态**用 in-flight guard** 处理（模块级 `Set` + 三个入口拦截）；否决「store 方法改 async 由调用方 await」「删完回写内存」 | 10-15 08:25 四点裁定 |
+| **S-205** | ①红线不破（**不写成程序员工具** / **不碰瓷大厂**），只改叙述 ②口语与网络词**可用**（如「白嫖」），不算红线 ③官网与 README **同源** ④只改中文，英文面不动 ⑤`BRAND` 不动 ⑥总原则 = **把「不是什么」全改写成「是什么」** ⑦**10-19 逆转两处旧定案**：主标题改「你提需求，它跑全程」、价值阶梯三列费用统一上色 ⑧首屏**不再谈价格**（上看板下沉到价值阶梯） | 10-15 09:53 / 10-16 09:05 / 10-19 逐条给稿 |
+| **S-206** | ①**保动画、扫光让步**（首屏 `.shine` / `.shine-muted` / `.hero-shine` + `data-text` 全撤，`.dl-shine` / `.dl-current` 与 `reveal` 不在撤销范围）②**技术路线 CSS+SVG → canvas**（螺旋与尾迹 CSS 做不出来）③「只 Hero」→ **收束层只首屏、雾层整站** ④顶栏**首屏透明、滚动回玻璃底** ⑤配色守纸面 + 琥珀 ⑥`reduced-motion` 关掉动画 | 10-16 08:58 / 10-19 看过效果后重定 |
+| **S-207** | ①实现路线 = **新增「申请临时关闭沙箱」工具 + 独立弹窗**，**原沙箱边界逻辑零改动** ②**沙箱在 YOLO 之上，YOLO 不豁免** ③渠道走**文字审批** ④工具**无参数**，越界文案加一句指路 ⑤时限固定 1 小时，倒计时 + 自动恢复 + 手动恢复双通道 ⑥子 agent 与后台自动化**不给**该工具 ⑦提示条挂**聊天窗左上角**（不进输入框上方，那里已堆四条） | 10-16 08:28 / 08:34 / 08:48 / 08:53；10-19 落点调整 |
+| **S-208** | ①修法 **A**：提示词侧软约束 + **代码侧把用户末条消息原话拼进摘要正文最前（落在 `<compaction-summary>` 标签内，不交模型）** ②快照带**用户消息时刻 + 压缩时刻** ③带**执行状态三值**（未开始 / 执行中 / 已答复，按结构判定，不靠时间差推算） ④**数据 + 显示分层**：原文 `OriginalText`、时刻 `SentAt`、显示信息进 `meta.compactSummary` ⑤**快照不能撤**（单条超 1500 token 与手动压缩路径下摘要是唯一载体） ⑥第三段「当时状态」**09:58 拍掉**，只留给模型 | 10-16 定修法 / 10-20 08:21 补充裁定 / 09:58 删减 |
+| **S-209** | 修法 = ①`EnsureProviderTurnHasOutput` 判定收窄（thinking-only 也算有输出）②`ToolCalls.Count == 0` 分支最前拦「正文空 + 有思考 + 有额度」⇒ 置标记 + `continue` ③临时副本注入 `EmptyTurnNudge` 催一轮 ④**上限 2 次**，提醒不落库、聊天窗不可见；**§5.3 GLM 内置清单未做，留待定** | 10-16 定修法 |
+| **S-210** | ①**纯切分，不回填**（10-21 撤回填）②按真实情况显示：`completed` 不显示 / `user_cancelled`、`aborted`、`max_iterations` 按 reason / `error` 按 `errorType` + 状态码细分 / 压缩前半截 `fragment.position === 'before'` ⇒ 「上下文已压缩，执行继续」/ 无 `runEnd` 老消息兜底 ③**折叠行为本身不动**，原话要改的只是那句总结 ④`aborted` 不细分「点停止」与「插消息打断」（细分要改 Worker） | 10-20 10:03 原话；10-21 09:22 订正曲解 |
+| **S-211** | 主修 = 把 `task.images` 拼成 `ImageBlock` 走聊天窗**同一条多模态链路**（渲染 / 落库 / 模型三侧零新造）；「落盘记路径」「取入站附件能力」属另一层优化，**单独排**；历史两条图片**不可回补**（字节已销毁） | 10-20 10:07 / 10:10 |
+| **S-212** | ①解析层填**瞬态** `mediaRefs`（保持纯同步可测）+ 服务层 emit 前下载 ②QQ 附件 URL **有时效，必须即时下载** ③单条多附件**默认取前 5**、单张上限 **10 MB** ④下载失败降级占位符、**不吞消息** | 10-20 10:10 |
+| **S-213** | ①按 `msgtype` 分派（text / picture / file / voice / richText / **未知类型也落占位符**）②`msgType` **原样回传平台原值**，只在小写化后分支 ③**下载层 `downloadCode` → 字节 未写**：需真实入站图片才产生码值，本地 `appKey` / `appSecret` 为空、渠道未启用 ⇒ 权限实测无法进行，**停在此处等老大给凭据** | 10-20 10:10；10-20 实施时受阻 |
+| **S-214** | ①删设置页「关于 → 使用指引」整块 ②「官网」区块描述改成**指引入口**（「使用指引」放句首）③**官网 `/guide` 首屏与正文一律不动** ④清死代码 `openUserGuide` / `USER_GUIDE_URL` + zh/en 同步 | 10-20 10:52 / **10-21 08:00 定案** |
 
 ## 六、遗留项
 
@@ -100,14 +129,15 @@
 - **39 补充轮审查 ⚠️ 2 条**留裁定（S-191 ⚠️-1 多会话孤儿收敛、S-195 ⚠️-1 空转卡）。
 - **`release-workflow.md` §二 版本号处数出入**：文中写「共 4 处」，39 收尾实际只改 3 处（`package.json` / `package-lock.json` 2 行 / `README.md`）。若表里确有第 4 处需补改。
 
-### 6.1 阶段五第二轮审查遗留（**待老大拍板，未动**）
+### 6.1 阶段五第二轮审查遗留（**10-21 复核：两项已由老大的稿子自然销账，两项仍待**）
 
-| # | 事项 | 现状 / 待定原因 |
+| # | 事项 | 现状 |
 |---|---|---|
-| 1 | `site.ts:61`「搜本地文件」 | 实况需另装 Everything（`src/main/lib/everything-search.ts:4-10`），风险是「装了没搜到」。属对外口径，不由我改 |
-| 2 | 「你提需求，它跑全程」 | 老大 10-19 已点这句，但它贴近 §四-3 禁写的「全自动无人值守」。红线段落归属由老大定 |
-| 3 | README `✨` / `💾` / `❓` 三节开场 | 首屏已同源，三节开场仍是旧调性；是否按新调性重写需确认范围 |
-| 4 | 观感参数：粒子下限 36、`color-mix()` 降级、`backdrop-filter` 瞬切 | 见 `S-206.md` §10.6，等真机看完再定 |
+| 1 | `site.ts:61`「搜本地文件」 | **✅ 已销账** —— 该句仍在（`subtitle`），但整段是老大 10-19 亲自给的首屏文案，口径归属已由老大本人落地，不再挂账。实况备注保留：需另装 Everything（`src/main/lib/everything-search.ts:4-10`），风险是「装了没搜到」 |
+| 2 | 「你提需求，它跑全程」 | **✅ 已销账** —— 老大 10-19 亲自把它定为主标题（`502b1c5f`），红线顾虑由老大本人消解，不再由我判定 |
+| 3 | README `✨` / `💾` / `❓` 三节开场 | **仍待定** —— 10-20 审查只补了首屏同源，三节开场仍是旧调性；是否按新调性重写需老大确认范围 |
+| 4 | 观感参数：粒子下限 36、`color-mix()` 降级、`backdrop-filter` 瞬切 | **仍待定** —— 见 `S-206.md` §10.6，等真机看完效果再定（并入阶段六官网验收） |
+| 5 | ~~S-210 正文回填后，过程折叠块是否还留在正文上方~~ | **作废**（10-21 撤回填，本项前提不存在）：现在只有「折叠块 + 真实结束原因」，不存在正文与折叠块并存的观感问题 |
 
 ### 6.2 tech-debt（已记账，不在本迭代动）
 

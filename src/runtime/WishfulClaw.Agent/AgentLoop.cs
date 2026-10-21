@@ -1,3 +1,15 @@
+// 500-line exemption (755 lines as of 2026-10-20). This file is the per-turn orchestration
+// body itself: prompt assembly and its cacheKey, transient-prefix injection, the provider
+// turn, the S-209 empty-turn nudge gate, assistant write-back, tool execution and its
+// guaranteed result pairing, iteration_end bookkeeping, and the stop-reason handoff. The
+// seam between those steps is *order*, not interface — a nudge has to happen before the
+// write-back or an empty turn lands in the durable conversation; tool results have to land
+// even when the run is cancelled or the next request is rejected for unpaired calls. The
+// self-contained pieces have already left into partials (ContextCompression, EmptyTurn,
+// SandboxTransition, Helpers, MemoryRecall, ActionGuards); what remains is the sequence
+// they hang off. Splitting it further would mean passing the whole loop state between
+// files to preserve an ordering that reads fine in one place. See AGENTS.md.
+
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -246,6 +258,10 @@ internal static partial class AgentLoop
         // (Timestamp uses minute-level precision to stay stable within a turn.)
         InjectTransientPrefix(conversation, state);
 
+        // S-207：系统提示词这一轮是按哪个沙箱状态写的。用户批准「临时关闭」可以在 run
+        // 进行中发生，之后每轮用 InjectSandboxTransition 比对实时判定并拉平口径。
+        state.SandboxEnabledInPrompt = Tools.PathBoundary.IsEnabled(parameters);
+
         var requestedMaxIterations = JsonHelpers.GetInt(parameters, "maxIterations", 0); // 0 = unlimited
         // S-132：真子代理 run 不接受轮次上限（definition.MaxTurns 已降级为「轮次提醒点」）。
         // 判据在此自算，不复用 :59-60 的变量 —— 那对变量读的是归一化（:171）之前的参数，
@@ -276,7 +292,7 @@ internal static partial class AgentLoop
             // ── Cancellation check ──
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -305,7 +321,7 @@ internal static partial class AgentLoop
                     errorDriven: false);
                 if (compression.Status == LoopCompressionStatus.Cancelled)
                 {
-                    await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                    await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                     return;
                 }
                 if (compression.Status == LoopCompressionStatus.Compressed)
@@ -333,7 +349,7 @@ internal static partial class AgentLoop
 
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -389,7 +405,7 @@ internal static partial class AgentLoop
                         errorDriven: true);
                     if (compression.Status == LoopCompressionStatus.Cancelled)
                     {
-                        await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                        await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                         return;
                     }
                     if (compression.Status != LoopCompressionStatus.Compressed ||
@@ -432,9 +448,10 @@ internal static partial class AgentLoop
             // Clear transient memory recall after first API call — subsequent
             // iterations within the same turn don't need it re-injected.
             state.PendingMemoryRecall = null;
-            conversation.Add(turn.AssistantMessage);
+            // 这条 assistant 轮先不入账：下面 tool-calls 分支要看它是不是「空轮」，
+            // 是的话既不落库也不该留在会话里（S-209）。真答复和带工具调用的轮次在
+            // 那个 if 之外统一写入。
             var assistantWireMessage = CreateAssistantWireMessage(turn.AssistantMessage, turn.Usage);
-            wireConversation.Add(assistantWireMessage);
 
             if (turn.Usage?.ContextTokens is > 0)
             {
@@ -451,6 +468,28 @@ internal static partial class AgentLoop
                     state, context,
                     new AgentRuntimeStreamEvent("text_phase", Reason: "pre_tool"));
             }
+
+            // ── S-209 空轮催办 ──
+            // 只出思考、不吐正文也不调工具就报结束（GLM-5.3-flash 实测）—— 直接放过去
+            // 就是一条静默的空回复。发一次临时提醒再催一轮，上限 2 次；额度用尽后照常收尾。
+            // 催办发生在 iteration_end 之前，因为它并没有真结束。
+            //
+            // 判定必须放在写入会话之前：这条轮次不是答复，写进 durable conversation 会让
+            // 历史多一条空气泡，也会成为下一轮压缩摘要输入的噪声（催办 2 次就留 2–3 条）。
+            if (turn.ToolCalls.Count == 0 &&
+                string.IsNullOrWhiteSpace(turn.AssistantMessage.Text) &&
+                !string.IsNullOrWhiteSpace(turn.AssistantMessage.ReasoningContent) &&
+                state.TryScheduleEmptyTurnNudge(MaxEmptyTurnNudges))
+            {
+                WorkerLog.Warn(
+                    "provider turn produced reasoning only; nudging for a real answer " +
+                    $"attempt={state.EmptyTurnNudgeCount}/{MaxEmptyTurnNudges}");
+                continue;
+            }
+
+            // 走到这里这条轮次是真实产出（正式答复或带工具调用），才写入会话。
+            conversation.Add(turn.AssistantMessage);
+            wireConversation.Add(assistantWireMessage);
 
             // ── Check for tool calls ──
             if (turn.ToolCalls.Count == 0)
@@ -500,7 +539,7 @@ internal static partial class AgentLoop
 
             if (state.IsCancellationRequested)
             {
-                await EmitLoopEndAsync(state, context, "aborted", isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
+                await EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted, isSubAgentLoop: isSubAgentLoop, isGoalSubAgentLoop: isGoalSubAgentLoop);
                 return;
             }
 
@@ -515,7 +554,7 @@ internal static partial class AgentLoop
         // 真实结束原因（正常跑完 / 撞轮次上限）。写回 state 之后 SubAgentExecutor
         // 上报的 StopReason 才有值 —— 此前它恒为 null，被轮次掐断的 run 在 UI 上
         // 与正常干完的长得一模一样（iter-31 S-53）。
-        var loopEndReason = state.StopReason ?? (completed ? "completed" : "max_iterations");
+        var loopEndReason = state.StopReason ?? (completed ? AgentLoopEndReasons.Completed : AgentLoopEndReasons.MaxIterations);
         state.RecordStopReason(loopEndReason);
 
         await EmitLoopEndAsync(
@@ -537,11 +576,27 @@ internal static partial class AgentLoop
         string reason,
         List<AgentRuntimeChatMessage>? conversation = null,
         bool isSubAgentLoop = false,
-        bool isGoalSubAgentLoop = false)
+        bool isGoalSubAgentLoop = false,
+        string? errorType = null,
+        int? statusCode = null)
     {
+        // S-210：取消不该只有一个名字。用户点停止、父 run 收尾、会话被替换都从
+        // 同一条 aborted 出口走，渲染端分不清谁按的；CancelReason 是唯一还留着
+        // 「谁取消了它」的地方（agent/cancel 传的就是 "user"），RequestStop 则直接
+        // 把 "user" 塞进 StopReason。两种口径都在这里归一，落库端才拿得到可据实
+        // 显示的原因。
+        if (reason == "user" || (reason == AgentLoopEndReasons.Aborted && state.CancelReason == "user"))
+        {
+            reason = AgentLoopEndReasons.UserCancelled;
+        }
+
         await AgentRuntimeTools.EmitAsync(
             state, context,
-            new AgentRuntimeStreamEvent("loop_end", Reason: reason));
+            new AgentRuntimeStreamEvent(
+                "loop_end",
+                Reason: reason,
+                ErrorType: errorType,
+                StatusCode: statusCode));
 
         // Timeline instrumentation (S-25.4): sub-agent run termination.
         if (isSubAgentLoop || isGoalSubAgentLoop)
@@ -630,6 +685,13 @@ internal static partial class AgentLoop
 
         // 子代理的轮次提醒（iter-31 S-53）。仅子代理生效，主会话不受影响。
         wireConversation = InjectSubAgentTurnReminder(parameters, wireConversation, iteration);
+
+        // 空回复催办（iter-40 S-209）。上一轮只出思考、没正文也没工具调用时置上的标记，
+        // 在这里兑现成一条临时 user 提醒。同样走临时副本。
+        wireConversation = InjectEmptyTurnNudge(state, wireConversation);
+
+        // S-207：沙箱状态在 run 进行中被改过（用户批准/恢复正常）时，把提示词口径拉平。
+        wireConversation = InjectSandboxTransition(parameters, wireConversation, state);
 
         if (providerType == "anthropic")
         {

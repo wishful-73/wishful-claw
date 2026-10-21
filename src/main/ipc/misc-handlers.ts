@@ -1,4 +1,4 @@
-import { BrowserWindow, Notification, dialog, shell } from 'electron'
+import { BrowserWindow, Notification, dialog, shell, webContents } from 'electron'
 import * as fs from 'fs'
 import { getNativeWorker } from '../lib/native-worker'
 import { persistImageBuffer } from '../lib/image-persist'
@@ -7,6 +7,11 @@ import { resolveGeneratedImagesDir } from '../lib/generated-image-dir'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { safeSendMessagePackToWindow } from '../window-ipc'
 import { resolveCodeGraphDataRoot } from './codegraph-handlers'
+import {
+  resolveBrowserDeviceViewport,
+  type BrowserDeviceMode,
+  type BrowserDeviceViewport
+} from '../../shared/browser-device-presets'
 
 /**
  * Register miscellaneous IPC handlers:
@@ -240,6 +245,48 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
       return { success: true, status: { reuseEnabled: false, userAgent: '' } }
     }
   )
+
+  // -- Browser device emulation (mobile viewport) --
+  // UA 不在这里改：`Parameters` 没有 UA 字段，UA 由渲染端 `setUserAgent` 负责。
+  type SetDeviceResponse =
+    | { success: true; mode: BrowserDeviceMode; viewport: BrowserDeviceViewport | null }
+    | { success: false; error: string }
+  registerMessagePackHandler<
+    {
+      webContentsId: number
+      mode: BrowserDeviceMode
+      custom?: { width?: number; height?: number } | null
+    },
+    SetDeviceResponse
+  >('browser:set-device', async (args) => {
+    try {
+      const target = webContents.fromId(args.webContentsId)
+      if (!target || target.isDestroyed()) {
+        return { success: false, error: 'Target web contents not found' }
+      }
+
+      const viewport = resolveBrowserDeviceViewport(args.mode, args.custom)
+      if (viewport === null) {
+        target.disableDeviceEmulation()
+      } else {
+        target.enableDeviceEmulation({
+          screenPosition: 'mobile',
+          screenSize: { width: viewport.width, height: viewport.height },
+          viewPosition: { x: 0, y: 0 },
+          viewSize: { width: viewport.width, height: viewport.height },
+          deviceScaleFactor: viewport.deviceScaleFactor,
+          scale: 1
+        })
+      }
+
+      return { success: true, mode: args.mode, viewport }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  })
 
   // -- Image persistence (browser screenshots, generated images) --
   // The write itself lives in `lib/image-persist.ts`, so the main-process

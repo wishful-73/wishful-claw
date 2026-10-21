@@ -17,6 +17,7 @@ import type {
   ImageErrorCode,
   ToolCallExtraContent
 } from '../api/types'
+import type { LoopEndReasonWire } from '@shared/agent-stream-protocol'
 
 // --- Tool Call Runtime State ---
 
@@ -170,7 +171,11 @@ export type AgentEvent =
     }
   | {
       type: 'loop_end'
-      reason: 'completed' | 'max_iterations' | 'aborted' | 'error'
+      // 与共享协议 LoopEndReasonWire 同源：user_cancelled = 用户按了停止（S-210）。
+      reason: LoopEndReasonWire
+      /** reason = 'error' 时的成因，落进消息 meta.runEnd 供重载后据实显示。 */
+      errorType?: string
+      statusCode?: number
       messages?: UnifiedMessage[]
     }
   | {

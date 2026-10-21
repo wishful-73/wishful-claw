@@ -8,6 +8,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using WishfulClaw.Agent;
 using WishfulClaw.Agent.Tools;
 using WishfulClaw.Core.Tools;
 
@@ -100,6 +101,40 @@ finally
         // 临时目录清不掉不影响断言结果。
     }
 }
+
+// ── S-207 回归：RequestSandboxElevation 的请求包形状 ──
+//
+// 真机报错是 CannotWritePropertyWithinArray, None —— BuildJsonElement 只建 writer 不给外壳，
+// BuildRequest 少写了 StartObject/EndObject，第一个 token 就成了属性名。AOT 打包后框架的
+// 资源串被裁掉，异常信息退化成这个谁也看不懂的样子。这里直接断言形状，不等真机。
+var toolCall = new AgentRuntimeNativeToolCall("call-1", "RequestSandboxElevation", default);
+var desktopParameters = JsonDocument
+    .Parse("""{"sessionId":"s-1","runId":"r-1","reason":"write outside the working folder"}""")
+    .RootElement.Clone();
+var desktopRequest = AgentRuntimeSandboxElevationExecutor.BuildRequest(toolCall, desktopParameters);
+
+Check(desktopRequest.ValueKind == JsonValueKind.Object, "elevation request is a JSON object, not a bare property");
+Check(
+    desktopRequest.TryGetProperty("toolUseId", out var toolUseId) && toolUseId.GetString() == "call-1",
+    "elevation request carries toolUseId");
+Check(
+    desktopRequest.TryGetProperty("reason", out var reasonProperty) &&
+    reasonProperty.GetString() == "write outside the working folder",
+    "elevation request carries the model's reason");
+Check(
+    !desktopRequest.TryGetProperty("channelSession", out _),
+    "desktop request omits channelSession entirely");
+
+var channelRequest = AgentRuntimeSandboxElevationExecutor.BuildRequest(
+    toolCall,
+    JsonDocument.Parse("""{"channelSession":true}""").RootElement.Clone());
+Check(
+    channelRequest.TryGetProperty("channelSession", out var channelFlag) &&
+    channelFlag.ValueKind == JsonValueKind.True,
+    "channel request flags channelSession");
+Check(
+    !channelRequest.TryGetProperty("sessionId", out _),
+    "absent optional fields are omitted rather than written as null");
 
 Console.WriteLine($"passed: {passed}, failed: {failed}");
 return failed == 0 ? 0 : 1;

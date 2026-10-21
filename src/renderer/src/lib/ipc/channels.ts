@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -75,6 +75,9 @@ export const IPC = {
   AGENT_CHANGES_DIFF_CONTENT: 'agent:changes:diff-content',
   AGENT_CHANGES_UNDO_RUN: 'agent:changes:undo-run',
   AGENT_CHANGES_UNDO_FILE: 'agent:changes:undo-file',
+
+  // Sandbox elevation (S-207) — 渲染端「立即恢复沙箱」→ main → Worker（清掉进程级豁免）
+  SANDBOX_CLEAR_ELEVATION: 'sandbox:clear-elevation',
 
   // Process Management
   PROCESS_SPAWN: 'process:spawn',
@@ -349,6 +352,7 @@ export const IPC = {
 
   // Built-in Browser
   BROWSER_CLEAR_COOKIES: 'browser:clear-cookies',
+  BROWSER_SET_DEVICE: 'browser:set-device',
   // CodeGraph plugin grammar assets (download-on-enable + dev bypass)
   CODEGRAPH_ASSET_STATUS: 'codegraph:asset-status',
   CODEGRAPH_DOWNLOAD_ASSETS: 'codegraph:download-assets',

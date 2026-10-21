@@ -16,7 +16,7 @@ import { MemorySettingsPanel } from '@renderer/components/settings/MemorySetting
 import { PersonaPanel } from '@renderer/components/settings/PersonaPanel'
 import { cn } from '@renderer/lib/utils'
 import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
-import { openUserGuide, openWebsite, WEBSITE_HOST } from '@renderer/lib/user-guide'
+import { openWebsite, WEBSITE_HOST } from '@renderer/lib/user-guide'
 import { SshPanel } from '@renderer/components/settings/SshPanel'
 import { SkillPanel } from '@renderer/components/settings/skill-panel'
 import { McpPanel } from '@renderer/components/settings/mcp-panel'
@@ -336,7 +336,9 @@ function AboutPanel(): React.JSX.Element {
       <SettingsSection
         id="sec-about-website"
         title={t('about.website.label', { defaultValue: '官网' })}
-        description={t('about.website.desc', { defaultValue: '下载安装包、查看使用指引与更新日志' })}
+        description={t('about.website.desc', {
+          defaultValue: '使用指引与更新日志都在官网上，安装包也从这里下'
+        })}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -348,22 +350,6 @@ function AboutPanel(): React.JSX.Element {
           <Button variant="outline" size="sm" onClick={openWebsite}>
             <ExternalLink className="size-4" />
             {t('about.website.open', { defaultValue: '访问官网' })}
-          </Button>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        id="sec-about-guide"
-        title={t('about.guide.label', { defaultValue: '使用指引' })}
-        description={t('about.guide.desc', { defaultValue: '功能全量说明与上手教程，在浏览器中查看' })}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="min-w-0 text-xs text-muted-foreground">
-            {t('about.guide.hint', { defaultValue: '指引随最新版本更新，旧版本入口不变。' })}
-          </p>
-          <Button variant="outline" size="sm" onClick={openUserGuide}>
-            <ExternalLink className="size-4" />
-            {t('about.guide.open', { defaultValue: '查看指引' })}
           </Button>
         </div>
       </SettingsSection>

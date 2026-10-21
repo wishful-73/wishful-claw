@@ -7,6 +7,7 @@ import { useUIStore } from '../../stores/ui-store'
 import { useChatStore } from '../../stores/chat-store'
 import { encodeStructuredToolResult, encodeToolError } from './tool-result-format'
 import { executeBrowserSearch, WEB_SEARCH_TOOL_NAME } from './browser-search'
+import { executeBrowserSetDevice } from './browser-device-native'
 import type { ToolContext } from './tool-types'
 import {
   HTML_TO_MD_SCRIPT,
@@ -442,6 +443,8 @@ async function runBrowserTool(
       return await executeBrowserScroll(input, ctx)
     case 'BrowserEvaluate':
       return await executeBrowserEvaluate(input, ctx)
+    case 'BrowserSetDevice':
+      return await executeBrowserSetDevice(input, ctx)
     case WEB_SEARCH_TOOL_NAME:
       return await executeBrowserSearch(input, ctx)
     default:

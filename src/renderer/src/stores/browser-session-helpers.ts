@@ -18,6 +18,8 @@ import { useChatStore } from './chat-store'
 
 import type { UIStore } from './ui-store-interface'
 
+import { DEFAULT_BROWSER_DEVICE_MODE, type BrowserDeviceMode } from '@shared/browser-device-presets'
+
 
 
 // ─── Types ───
@@ -50,6 +52,15 @@ export interface BrowserPanelSessionState {
 
   errorInfo: BrowserErrorInfo | null
 
+  /** 设备仿真模式：pc / iphone / pixel / ipad / custom */
+  deviceMode: BrowserDeviceMode
+
+  /** custom 模式的宽高；其余模式为 null */
+  customViewport: { width: number; height: number } | null
+
+  /** 命令式导航请求序号：变化即代表「明确要求 webview 去这个地址」 */
+  navigationSeq: number
+
 }
 
 
@@ -74,7 +85,13 @@ export const DEFAULT_BROWSER_STATE: BrowserPanelSessionState = {
 
   canGoForward: false,
 
-  errorInfo: null
+  errorInfo: null,
+
+  deviceMode: DEFAULT_BROWSER_DEVICE_MODE,
+
+  customViewport: null,
+
+  navigationSeq: 0
 
 }
 

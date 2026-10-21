@@ -2,6 +2,7 @@ import { handleNativeBrowserToolRequest } from '@renderer/lib/tools/browser-nati
 import { handleMcpCapabilityList, handleMcpCapabilityInspect } from '@renderer/lib/tools/mcp-capability-bridge'
 import { handleNativeAskUserRequest } from '@renderer/lib/tools/ask-user-tool'
 import { handleSubAgentApprovalRequest } from '@renderer/lib/tools/sub-agent-approval'
+import { handleSandboxElevationRequest } from '@renderer/lib/tools/sandbox-elevation'
 import { handleNativePlanUiUpdate, handleNativePlanReviewRequest } from '@renderer/lib/tools/plan-native-ui'
 import { handleNativeGoalConfirmRequest } from '@renderer/lib/tools/goal-native-ui'
 import { handleSkillManagementExecute } from '@renderer/lib/tools/skill-management-bridge'
@@ -88,6 +89,18 @@ async function handleRendererToolRequest(payload: RendererToolRequestPayload): P
       // ask-user may wait for explicit user interaction — no extra timeout
       // here; the Main process 60s fallback covers the worst case.
       const result = await handleNativeAskUserRequest(payload.params)
+      await sendRendererToolResponse({
+        requestId: payload.requestId,
+        result
+      })
+      return
+    }
+
+    if (payload.method === 'sandbox/elevation-request') {
+      // S-207: waits for the user to approve/reject the temporary sandbox
+      // elevation — no extra timeout here either; Main's generous
+      // user-interaction timeout covers the worst case.
+      const result = await handleSandboxElevationRequest(payload.params)
       await sendRendererToolResponse({
         requestId: payload.requestId,
         result

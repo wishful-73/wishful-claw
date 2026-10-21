@@ -33,7 +33,9 @@ const USER_INTERACTION_METHODS = new Set([
   'ask-user/request',
   'plan/review-request',
   'goal/confirm-request',
-  'sub-agent:approve-tool'
+  'sub-agent:approve-tool',
+  // S-207:店批 / 渠道文字审批都要等用户裁决，属于同一类交互。
+  'sandbox/elevation-request'
 ])
 
 // Long-running renderer work: no human in the loop, but minutes of compute.
@@ -225,6 +227,8 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
     'project/resume-session-queue',
     'project/stop-session-run',
     'session-follow-up/update',
+    // S-207：申请临时关闭沙箱（桌面弹窗 / 渠道文字审批），渲染端 sandbox-elevation.ts 处理。
+    'sandbox/elevation-request',
     // S-145 §六：C# 侧 Read 没有解码器，视频抽帧必须落到渲染端
     // （`renderer-tool-bridge.ts` 已实现）。漏登记这条时请求会掉进
     // `dispatchReverseRequest`，主进程没有对应 handler ⇒ 当场报错、够不着渲染端。

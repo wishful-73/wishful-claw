@@ -16,11 +16,11 @@
 
 ## 二、版本规则
 
-`v2-iter-{N}` 只是 MVP v2 阶段的**迭代编号**，不是产品主版本号。
+`v2-iter-{N}` 只是**迭代编号**，不是产品主版本号 —— 转正 `1.0.0` 之后分支名**照旧**（`dev/v2-iter-41`、`dev/v2-iter-42`…），对外版本与之无关。
 
-正式版发布前，产品版本统一为 `0.2.{N}`，Git tag 为 `v0.2.{N}`。应用 UI 从 `package.json` 读版本号，README 徽章同步。
+**产品版本从 `1.0.0` 起走 `1.0.{N}`，Git tag 为 `v1.0.{N}`**（`1.0.0` 之前的 `0.2.{N}` 系列已随 `v0.2.39` 结束，见第七节清理口径）。应用 UI 从 `package.json` 读版本号，README 徽章同步。
 
-**收尾第一步就是把版本号升到 `0.2.{N}`，共 4 处**：
+**收尾第一步就是把版本号升到 `1.0.{N}`，共 4 处**：
 
 | 文件 | 位置 |
 |------|------|
@@ -32,7 +32,7 @@
 扫旧版本号找遗漏的口径：
 
 ```
-全仓搜 0.2.NN，排除 node_modules / out / release / dist / .git
+全仓搜 1.0.NN，排除 node_modules / out / release / dist / .git
 ```
 
 逐条判断是**真版本引用**还是**历史文档 / 测试样本**——后者不要动。已知两处「看着像但不是」：
@@ -50,11 +50,11 @@ git checkout main
 git merge dev/v2-iter-{N} --no-ff -m "merge: v2-iter-{N} - {迭代名称}"
 
 # 2. 打 tag（annotated；message 格式见 4.3「tag message 口径」）
-git tag -a v0.2.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
+git tag -a v1.0.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
 
 # 3. 推送远程
 git push origin main
-git push origin v0.2.{N}
+git push origin v1.0.{N}
 
 # 4. 删除本地迭代分支
 git branch -d dev/v2-iter-{N}
@@ -79,11 +79,11 @@ git -c http.proxy=http://127.0.0.1:7897 -c https.proxy=http://127.0.0.1:7897 pus
 
 ```bash
 git log --oneline -3        # main 顶部应是 merge commit
-git rev-list -n 1 v0.2.{N}  # tag 应指向那个 merge commit
+git rev-list -n 1 v1.0.{N}  # tag 应指向那个 merge commit
 git remote -v               # 确认 remote 是 wishful-73/wishful-claw
 ```
 
-> `git rev-parse v0.2.{N}^{commit}` 在 PowerShell 里会炸（`^` 是转义符），用 `git rev-list -n 1`。
+> `git rev-parse v1.0.{N}^{commit}` 在 PowerShell 里会炸（`^` 是转义符），用 `git rev-list -n 1`。
 
 ## 四、发布（官网是更新源，GitHub 是存档）
 
@@ -107,14 +107,14 @@ npm run pack:installer:full   # AOT Worker → 前端打包 → electron-builder
 典型产物：
 
 ```
-release/wishful-claw-0.2.{N}-setup.exe
+release/wishful-claw-1.0.{N}-setup.exe
 release/latest.yml
-release/wishful-claw-0.2.{N}-setup.exe.blockmap
+release/wishful-claw-1.0.{N}-setup.exe.blockmap
 ```
 
 - ⚠️ 打包前确认无残留 WishfulClaw / electron 进程（`tasklist` 检查），否则旧 `release/win-unpacked/` 被锁报 `EBUSY`
 - ⚠️ 若 `win-unpacked/app.asar` 被锁（杀软 / 索引句柄）且杀进程无效，换输出目录绕开：
-  `npx electron-builder --win -c.directories.output=release/v0.2.{N}`
+  `npx electron-builder --win -c.directories.output=release/v1.0.{N}`
 - ⚠️ 若报 `EPERM: operation not permitted, rename 'release\win-unpacked.tmp' -> 'release\win-unpacked'`：
   上一次打包失败留下的 `win-unpacked.tmp` 残留所致。删掉 `release/win-unpacked.tmp` 与 `release/win-unpacked` 后重跑即过。
 - ✅ **更新源已指向官网**（S-129）：`electron-builder.yml` 用 `provider: generic` + `url: https://wishful-claw.work/downloads/`，
@@ -139,15 +139,15 @@ release/wishful-claw-0.2.{N}-setup.exe.blockmap
 ```
 /data/downloads/wishfulclaw/                              ← nginx: https://wishful-claw.work/downloads
 ├── latest.yml
-├── release-notes-0.2.{N}.md                              ← 应用内更新弹窗的说明
-├── wishful-claw-0.2.{N}-setup.exe                        ← 只留当前版
-└── wishful-claw-0.2.{N}-setup.exe.blockmap               ← 最近 5 版都在
+├── release-notes-1.0.{N}.md                              ← 应用内更新弹窗的说明
+├── wishful-claw-1.0.{N}-setup.exe                        ← 只留当前版
+└── wishful-claw-1.0.{N}-setup.exe.blockmap               ← 最近 5 版都在
 ```
 
 **四件必须同目录、成套覆盖。** `latest.yml` 里的 `url` / `path` 都是相对文件名，updater 与站点
 下载按钮一律按「同目录」解析 —— 少任何一个，更新或下载都会 404。
 
-`release-notes-0.2.{N}.md` 是**应用内更新弹窗**的正文（S-175 ②）：清单不带 `releaseNotes` 时，客户端
+`release-notes-1.0.{N}.md` 是**应用内更新弹窗**的正文（S-175 ②）：清单不带 `releaseNotes` 时，客户端
 按自己那一版去清单同目录拉这份同名文件 —— **文件名必须带版本号**，写错版本等于没有。内容与 GitHub
 Release 正文同源，见 4.3「一份真源喂两个发布面」。
 
@@ -201,19 +201,19 @@ curl -s https://wishful-claw.work/downloads/latest.yml | Select-String 'version:
 
 ```bash
 # 1) 先落 /tmp（下载目录是 root 属主）
-scp -i ~/.ssh/wishfulclaw_deploy release/wishful-claw-0.2.{M}-setup.exe.blockmap \
+scp -i ~/.ssh/wishfulclaw_deploy release/wishful-claw-1.0.{M}-setup.exe.blockmap \
     ubuntu@119.45.103.252:/tmp/wc-patch.blockmap
 
 # 2) 归位 + 权限 + 校验
 ssh -i ~/.ssh/wishfulclaw_deploy ubuntu@119.45.103.252 \
-  "sudo mv -f /tmp/wc-patch.blockmap '/data/downloads/wishfulclaw/wishful-claw-0.2.{M}-setup.exe.blockmap' \
-   && sudo chown root:root '/data/downloads/wishfulclaw/wishful-claw-0.2.{M}-setup.exe.blockmap' \
-   && sudo chmod 644 '/data/downloads/wishfulclaw/wishful-claw-0.2.{M}-setup.exe.blockmap' \
-   && sha512sum '/data/downloads/wishfulclaw/wishful-claw-0.2.{M}-setup.exe.blockmap'"
+  "sudo mv -f /tmp/wc-patch.blockmap '/data/downloads/wishfulclaw/wishful-claw-1.0.{M}-setup.exe.blockmap' \
+   && sudo chown root:root '/data/downloads/wishfulclaw/wishful-claw-1.0.{M}-setup.exe.blockmap' \
+   && sudo chmod 644 '/data/downloads/wishfulclaw/wishful-claw-1.0.{M}-setup.exe.blockmap' \
+   && sha512sum '/data/downloads/wishfulclaw/wishful-claw-1.0.{M}-setup.exe.blockmap'"
 
 # 3) 线上确认（sha512 应与本地 Get-FileHash -Algorithm SHA512 一致，且返回 200）
 curl -s -o /dev/null -w '%{http_code}\n' \
-  https://wishful-claw.work/downloads/wishful-claw-0.2.{M}-setup.exe.blockmap
+  https://wishful-claw.work/downloads/wishful-claw-1.0.{M}-setup.exe.blockmap
 ```
 
 历史 blockmap 从哪来：GitHub Release 对应 tag 的资产里那份。
@@ -289,11 +289,11 @@ node scripts/site-stats.mjs --json     # 原样打印 summary.json
 gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝对路径**调用）。
 
 ```bash
-# 先把 notes 写到固定路径：.wishful-claw/notes/release-notes-v0.2.{N}.md（按下面模板写）
-/d/claw/tools/gh/bin/gh.exe release create v0.2.{N} \
+# 先把 notes 写到固定路径：.wishful-claw/notes/release-notes-v1.0.{N}.md（按下面模板写）
+/d/claw/tools/gh/bin/gh.exe release create v1.0.{N} \
   --repo wishful-73/wishful-claw \
-  --title "v0.2.{N}" \
-  --notes-file ".wishful-claw/notes/release-notes-v0.2.{N}.md"
+  --title "v1.0.{N}" \
+  --notes-file ".wishful-claw/notes/release-notes-v1.0.{N}.md"
 ```
 
 - 直连失败加代理前缀：`HTTPS_PROXY=http://127.0.0.1:7897 /d/claw/tools/gh/bin/gh.exe ...`
@@ -303,7 +303,7 @@ gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝
 
 **基准 = v0.2.29 的写法，后续版本一律照此，不要每版换格式。**
 
-写 notes 前先用 `git log v0.2.{N-1}..v0.2.{N} --oneline` 拉一遍本迭代的提交（提交粒度已是一个需求一刀，提交标题可直接当素材）。
+写 notes 前先用 `git log v1.0.{N-1}..v1.0.{N} --oneline` 拉一遍本迭代的提交（提交粒度已是一个需求一刀，提交标题可直接当素材）。
 
 ```markdown
 ## 迭代 {N}
@@ -327,7 +327,7 @@ gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝
 
 **硬规则**：
 
-- 标题固定 `## 迭代 {N}` —— **不写** `v0.2.{N}` 前缀，**不加** `— v2-iter-{N}` 之类的后缀
+- 标题固定 `## 迭代 {N}` —— **不写** `v1.0.{N}` 前缀，**不加** `— v2-iter-{N}` 之类的后缀
 - 正文第一段是**范围概括**，不是标题的重复
 - 小节名固定这三个：`### 新增能力` / `### 修复` / `### 校验`。不要写「新增」「优化」「其它修复」「验证」这类同义变体
 - 条目固定 `- **{名字}（{编号}）** — {说明}`：**编号在括号内跟在名字后面**，不要写成 `- **S-26 名字** —`
@@ -336,7 +336,7 @@ gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝
 
 #### 一份真源喂两个发布面
 
-收尾时写的**那一份** `.wishful-claw/notes/release-notes-v0.2.{N}.md` 同时喂两个面，不另写第二份、不靠人工对齐：
+收尾时写的**那一份** `.wishful-claw/notes/release-notes-v1.0.{N}.md` 同时喂两个面，不另写第二份、不靠人工对齐：
 
 | 面 | 喂法 | 谁读 |
 |---|---|---|
@@ -374,7 +374,7 @@ gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝
 tag message 与 Release notes 分工：**前者一行亮点摘要，后者完整清单**。
 
 ```bash
-git tag -a v0.2.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
+git tag -a v1.0.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
 ```
 
 亮点用 ` + ` 连接，取本迭代最值得说的几件事（3~5 个为宜），不写编号、不写「N 项需求」这种计数。
@@ -383,16 +383,16 @@ git tag -a v0.2.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通�
 
 ```bash
 # setup.exe + latest.yml 必须一起传
-/d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
+/d/claw/tools/gh/bin/gh.exe release upload v1.0.{N} \
   --repo wishful-73/wishful-claw \
-  "release/wishful-claw-0.2.{N}-setup.exe" \
+  "release/wishful-claw-1.0.{N}-setup.exe" \
   "release/latest.yml" \
   --clobber
 
 # .blockmap 若生成，也必须传到同一个 Release
-/d/claw/tools/gh/bin/gh.exe release upload v0.2.{N} \
+/d/claw/tools/gh/bin/gh.exe release upload v1.0.{N} \
   --repo wishful-73/wishful-claw \
-  "release/wishful-claw-0.2.{N}-setup.exe.blockmap" \
+  "release/wishful-claw-1.0.{N}-setup.exe.blockmap" \
   --clobber
 ```
 
@@ -446,33 +446,36 @@ git tag -a v0.2.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通�
 核验通过后，只保留当前版本的三个文件：
 
 ```
-release/wishful-claw-0.2.{N}-setup.exe
-release/wishful-claw-0.2.{N}-setup.exe.blockmap
+release/wishful-claw-1.0.{N}-setup.exe
+release/wishful-claw-1.0.{N}-setup.exe.blockmap
 release/latest.yml
 ```
 
 清掉更早版本：
 
 ```powershell
-$keep = '0.2.{N}'   # 换成刚发布的版本号
+$keep = '1.0.{N}'   # 换成刚发布的版本号
 Get-ChildItem release -File |
-  Where-Object { $_.Name -match '^wishful-claw-0\.2\.\d+-' -and $_.Name -notlike "*$keep*" } |
+  Where-Object { $_.Name -match '^wishful-claw-\d+\.\d+\.\d+-' -and $_.Name -notlike "*$keep*" } |
   Remove-Item -Force
 ```
 
+> ⚠️ **正则不许写死 `0\.2\.`** —— 转正 `1.0.0` 时踩过：`'^wishful-claw-0\.2\.\d+-'` 匹配不上 `wishful-claw-1.0.0-setup.exe`，
+> 清理**静默失效**（不报错、旧包一直堆着）。一律用 `\d+\.\d+\.\d+`，跨大版本无需再改。
+
 > 📌 **实测**：iter-31 收尾时 `release/` 攒了 `0.2.23` ~ `0.2.31` 共 9 个版本、**4.9 GB**；2026-09-18 按本节清理后降到 **521 MB**。
 
-**历史版本目录才是大头，也要一并清** —— 每个 `v0.2.x/` 目录里都躺着一份完整的 `win-unpacked/`（300~570 MB），比根下的安装包还占地方：
+**历史版本目录才是大头，也要一并清** —— 每个旧版本目录（如 `v0.2.31/`）里都躺着一份完整的 `win-unpacked/`（300~570 MB），比根下的安装包还占地方：
 
 ```powershell
-Get-ChildItem release -Directory | Where-Object { $_.Name -match '^v0\.2\.\d+$' } | Remove-Item -Recurse -Force
+Get-ChildItem release -Directory | Where-Object { $_.Name -match '^v\d+\.\d+\.\d+$' } | Remove-Item -Recurse -Force
 ```
 
 清理后 `release/` 应只剩当前版本相关的东西：
 
 | 保留 | 说明 |
 |------|------|
-| `wishful-claw-0.2.{N}-setup.exe` + `.blockmap` | 当前版安装包（本地回滚用） |
+| `wishful-claw-1.0.{N}-setup.exe` + `.blockmap` | 当前版安装包（本地回滚用） |
 | `latest.yml` / `builder-debug.yml` / `builder-effective-config.yaml` | electron-builder 元数据 |
 | `win-unpacked/` | 当前版的解包目录（下次打包会重建，不需要本地回滚的话也可删，再省约 400 MB） |
 | `build/` | **仅当里面是当前版产物**；若是上古残留（如 `wishful-0.2.11.zip`）一并删 |

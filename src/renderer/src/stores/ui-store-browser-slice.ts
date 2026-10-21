@@ -52,5 +52,30 @@ export function createBrowserSlice(set: SetFn, get: GetFn) {
           ...(isActiveBrowserScope(state, scope) ? { browserWebviewRef: ref } : {})
         }
       }),
+
+    // 设备模式与自定义视口一次写完：分两次 set 会让面板的副作用跑两遍。
+    setBrowserDevice: (device: any, sessionId: any, projectId: any) =>
+      get().patchBrowserState(
+        sessionId,
+        { deviceMode: device.mode, customViewport: device.customViewport },
+        projectId
+      ),
+
+    // 命令式导航：递增序号，让 BrowserPanel 把 committedUrl 同步到新地址。
+    // 站内跳转只回写 url、不动序号 —— 那正是「不重载」的前提。
+    requestBrowserNavigation: (url: any, sessionId: any, projectId: any) => {
+      const state = get()
+      const scope = resolvePanelScope(state, sessionId, projectId)
+      const current = getBrowserStateFromMap(
+        state.browserStatesBySession,
+        scope.sessionId,
+        scope.projectId
+      )
+      get().patchBrowserState(
+        sessionId,
+        { url, navigationSeq: (current.navigationSeq ?? 0) + 1 },
+        projectId
+      )
+    },
   }
 }

@@ -75,6 +75,11 @@ export function registerWorkerForwardHandlers(): void {
     'agent:drain-sub-agent-notifications',
     async (args) => getNativeWorker().request('agent/drain-sub-agent-notifications', args)
   )
+  // S-207：用户在输入框 chip 上点「恢复」时，清掉 Worker 进程级的沙箱临时豁免。
+  registerMessagePackHandler<Record<string, unknown>, unknown>(
+    'sandbox:clear-elevation',
+    async () => getNativeWorker().request('sandbox/clear-elevation', {})
+  )
   registerMessagePackHandler<Record<string, unknown>, unknown[]>(
     'db:goal-events:list:msgpack',
     async (args) => getNativeWorker().request('db/goal-events-list', args)

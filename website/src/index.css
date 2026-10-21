@@ -1,3 +1,7 @@
+/* 500 行豁免（2026-10-20 实测 699 行）：设计 token（@theme）+ 本站配套组件类，同质样式表；
+   Tailwind v4 的 @import / @plugin 顺序参与 cascade，拆文件会动到顺序。组件级样式已按区块分组。
+   豁免依据：AGENTS.md §大文件拆分 第 5 条第 1 类（同质数据）。 */
+
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
@@ -71,6 +75,17 @@ html {
 
 .doc-rail::-webkit-scrollbar {
   display: none;
+}
+
+/* 页面容器撑满视口 + 纵向 flex（S-203，2026-10-16）：sticky footer 布局。
+   高分辨率屏上内容不满一屏时，<footer> 会紧跟在 <main> 之后、悬在视口中间；
+   容器撑满 100vh，三个带页脚的页面各自给 <main> 挂 flex-1 吃掉剩余高度，页脚就被顶到底。
+   内容超过一屏时 flex-1 不起作用，行为与修前完全一致。
+   `/go` 中转页无页脚、自身已 min-h-screen 居中，在 flex column 里会被拉伸填满，居中不变。 */
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
 
 body {
@@ -376,109 +391,101 @@ body {
   }
 }
 
-/* 文字闪光（2026-09-23 老大）：底色字里一道高光从左到右扫过。
-   刻意只点几处关键的 —— 满屏都闪就成了霓虹灯，重点也就没了。
-   做法：文字铺成渐变背景 + background-clip: text，再靠 background-position 移动那道高光。
-   底色和高光走两个变量，同一个 `.shine` 就能用在橙字、灰字、深字上。
+/* ── 背景动画层（S-206，2026-10-16）────────────────────────────────────
+   动机：首屏原本是静态纸面 + 一道文字扫光，观感偏素（老大 2026-10-15 11:38 指定
+   参考 astra-gate.si 的首屏背景动画）。这层就是来接那道扫光的班的。
 
-   ⚠️ 背景必须**始终盖满整段文字**，否则没被盖住的那段就是透明（文字凭空消失，实测踩过）。
-   所以背景做成容器的 3 倍宽、并让 position 全程停在 0%~100% 之间：
-     bgW = 3W 时，左边缘 = p% × (W − 3W) = −2W × p%
-     p=100% → 左边缘 −2W，右边缘 +W  ⇒ 盖满
-     p=0%   → 左边缘 0，右边缘 3W    ⇒ 盖满
-   两端都盖满，中间更不可能露白。高光带落在背景正中（50%），
-   于是 p 从 100% 走到 0% 时，高光正好从容器左外侧穿到右外侧。 */
-@supports ((background-clip: text) or (-webkit-background-clip: text)) {
-  .shine {
-    --shine-base: var(--color-ink-950);
-    --shine-hi: var(--color-accent);
-    background-image: linear-gradient(
-      100deg,
-      var(--shine-base) 0%,
-      var(--shine-base) 48%,
-      var(--shine-hi) 50%,
-      var(--shine-base) 52%,
-      var(--shine-base) 100%
-    );
-    background-size: 300% 100%;
-    background-position: 100% center;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    animation: shine-sweep 4s linear infinite;
+   现行形态分两层，各管一件事 —— **两层不同轨**，一层整站、一层只首屏：
+     ① .site-mist —— 极淡的琥珀色雾，两团 radial-gradient 缓慢缩放位移（「呼吸」），纯 CSS。
+        **整站**：钉在视口上，首页 / 下载页 / 指引页都挂（老大 2026-10-19：「整个站点都要，
+        不仅仅是首屏，也不仅仅是首页」）。
+     ② .hero-converge —— 一束束拖尾从外沿螺旋收向主 CTA 按钮（「万剑归宗」），一层 canvas，
+        实现在 sections/converge-streams.tsx，挂在 **hero 内部**、`absolute inset-0`：
+        只管**首屏那一块**（老大 2026-10-19 10:30：「这个光束可以就集中在首屏么，不是整个首页」；
+        当天更早的「整页全局背景」口径就此作废，雾那一层不受影响）。
+        它天然只在首页 —— 别的页面没有 hero，也就没有 [data-converge-target]。
+
+   §返工记录（2026-10-19）：初版是「色雾 + 两层平行漂移的线稿（.hero-aurora-lines）」，强度先压得
+   过低（老大「感受不到」），上调数值后老大第二次否 —— 问题不在强度而在形态：平行漂移的线不朝任何
+   点收，静态一帧就是几根淡弧线。老大指定参考站的「都汇集到中心元素上」。读参考站源码后确认它是
+   常驻 rAF 的 canvas 拖尾粒子（极坐标收束 + 逐帧加速 + 14 帧尾迹），纯 CSS/SVG 复刻不出螺旋与尾迹，
+   故撤掉那两层线稿与配套 keyframes（aurora-drift / aurora-drift-rev），改用 canvas 收束层。
+   第三次要求：顶栏要透出动画、且整页都要有 ⇒ 收束层由「hero 内 absolute」改为「视口级 fixed」，
+   同时顶栏底色撤掉（见 components/site-header.tsx）。
+   第四次要求：暖色雾也要全站 ⇒ 同步由「hero 内 absolute」改为「视口级 fixed」，并挂到三张页面
+   （见 components/site-mist.tsx）。
+   第五次要求（10:30，**只针对收束层**）：光束收回首屏 ⇒ 它从「视口级 fixed」搬回 hero 内 absolute。
+   注意这次只回滚了一半 —— 雾继续整站 fixed，第四次的要求仍然有效。
+   ⇒ S-206 §五 裁定 ①「技术走 CSS + SVG，不上 canvas」就地作废：本仓现允许**唯一一处** canvas，
+   就是收束层；其余动画（.reveal / .dl-shine / 色雾）仍是 CSS，不引任何依赖。
+
+   配色：初版锁「自有纸面 + 琥珀 + 深墨」，明确不照搬参考站的冷调蓝紫（那会跟 2026-09-21 定下的
+   reasonix.io 浅色纸面风打架，也违反「单一强调色」约束）。2026-10-19 10:27 老大放开 ——「不需要跟着
+   暖色光谱走，紫色 蓝色 绿色这些都可以要」⇒ 收束层改用整圈色相（13 档，见 converge-streams.tsx 的
+   PALETTE）。⚠️ 放开范围**只限这一层**：页面本体仍是纸面 + 单一强调色。
+
+   层级（同参考站做法）：负 z-index + pointer-events: none，落在「body 纸面之上、页面内容之下」。
+   两层再分先后：雾在下（-11）、收束在上（-10），线条压在暖底上。
+   ⚠️ 负 z 层要生效，从它到根之间不能有会截断/抬升的祖先（transform / filter / opacity < 1 等）；
+   雾挂在页面根（`#root`，只有 flex 布局，不建堆叠上下文）⇒ 沉到纸面之上；收束层挂在 hero 内，
+   靠 hero 自己的 `isolate` 就地建堆叠上下文 ⇒ 沉到 hero 文字之下、仍浮在雾上。
+   雾不再用 mask 做底部渐隐：渐隐是「区块交界」的概念，固定层没有下一条边可收，
+   而页面底部的页脚本身就是不透明底色，自然收口。 */
+.site-mist {
+  position: fixed;
+  inset: 0;
+  z-index: -11;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 收束层：**只盖首屏那一块**（hero 内 absolute；父级 hero 有 isolate，z-index -10 落在 hero
+   文字之下、body 纸面之上）。canvas 量的是**父级**尺寸 + 找 [data-converge-target] 当收敛点，
+   所以它是「随 hero 大小」的，不再量视口。
+   ⚠️ 2026-10-19 10:30 之前它是视口级 fixed（整页背景），按老大要求收回首屏。 */
+.hero-converge {
+  position: absolute;
+  inset: 0;
+  z-index: -10;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* 色雾：两团琥珀，各自缓慢缩放 + 位移。初版压在 12% 以下结果「感受不到」，2026-10-19 上调到
+   24% / 18%（见文件头 §返工记录）。现在两团改成一左上一下右：这层从首屏底变成整站底之后，
+   两团都堆在上半屏的话，滚动到中后段就只剩纸白（老大要的是「整个站点都要」）。
+   强度比首屏那时各降 2 个点（22% / 16%）—— 覆盖面从 492px 涨到整屏且常驻，等效浓度更高。
+   ⚠️ 咖啡色系上到 30% 就会显脏（页面是阅读面，不是视觉主角），别再往上推。 */
+.site-mist::before {
+  content: '';
+  position: absolute;
+  inset: -15%;
+  background:
+    radial-gradient(42% 40% at 18% 22%, color-mix(in srgb, var(--color-accent) 22%, transparent) 0%, transparent 70%),
+    radial-gradient(44% 44% at 82% 72%, color-mix(in srgb, var(--color-accent) 16%, transparent) 0%, transparent 72%);
+  animation: aurora-breathe 20s ease-in-out infinite alternate;
+}
+
+@keyframes aurora-breathe {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
   }
-
-  /* 灰字：扫过去的是品牌橙，一下就有精神 */
-  .shine-muted {
-    --shine-base: color-mix(in srgb, var(--color-ink-900) 45%, white);
-    --shine-hi: var(--color-accent);
-  }
-
-  /* 首屏大标题：整段「你说一句，它去把活干完」一起扫一道白光。
-     起初只给后半段橙色 span 挂 .shine，光只在「它去把活干完」上走、前半段一动不动
-     —— 老大点了这个。难点是这段有两个底色（深墨 + 橙），两个 span 各挂一个 .shine
-     只能各扫各的，而且各自按自身宽度算速度，快慢还不一样。
-     所以改成让 ::after 复制一份整段文字、只负责"光"：真文字负责颜色，光在同一个坐标系里
-     扫过去，整段才是一整道光。高光用白 —— 深墨字上看得见，橙字上也看得见
-     （在橙字上再扫一道橙光等于没扫）。
-     ⚠️ 整条规则必须待在 @supports 里：不支持 background-clip: text 时，
-     那块白色渐变会被当成普通背景涂满整个标题。 */
-  .hero-shine {
-    position: relative;
-  }
-
-  .hero-shine::after {
-    content: attr(data-text);
-    position: absolute;
-    inset: 0;
-    background-image: linear-gradient(
-      100deg,
-      transparent 0%,
-      transparent 42%,
-      #fff 50%,
-      transparent 58%,
-      transparent 100%
-    );
-    background-size: 300% 100%;
-    background-position: 100% center;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    pointer-events: none;
-    animation: shine-sweep 4s linear infinite;
+  to {
+    transform: scale(1.14) translate3d(2.4%, -1.8%, 0);
   }
 }
 
-/* 2026-09-23 老大「闪光时间间隔太远」：一轮 7s（扫 1.82s + 静 5.18s）→ 4s。
-   关键：**扫过本身的速度没动**。原 7s × 26% = 1.82s，现 4s × 45% = 1.8s —— 光带走得一样快，
-   只是静止段从 5.18s 缩到 2.2s。所以是「来得更勤」，不是「闪得更急」。
-   两端都停在「背景盖满」的位置上，不会露出没背景的那段。 */
-@keyframes shine-sweep {
-  0% {
-    background-position: 100% center;
-  }
-  45% {
-    background-position: 0% center;
-  }
-  100% {
-    background-position: 0% center;
-  }
-}
-
-/* 系统开了「减少动态效果」：退回纯色字，闪都不闪 */
+/* 系统开了「减少动态效果」：色雾停住（静态仍保留暖底色，不是一片空白）；
+   收束层是 canvas，在 converge-streams.tsx 里直接判断 matchMedia 后一帧都不画。
+   2026-10-16（S-206 §5.1）：原首屏文字扫光（.shine / .shine-muted / .hero-shine）已随本需求
+   整体撤掉 —— 它的原始动机是「静态页面太素」，背景动画接了这个班。
+   ⚠️ 下载按钮的 .dl-shine / .dl-current 不在此列，照旧保留（见文件后半段）。 */
 @media (prefers-reduced-motion: reduce) {
-  .shine {
-    background-image: none;
+  .site-mist::before {
     animation: none;
-    color: var(--shine-base);
-  }
-
-  .hero-shine::after {
-    animation: none;
-    opacity: 0;
   }
 }
-
 /* 「不花钱，也能用起来」那三列：三列**自动依次点亮**，不用鼠标去碰
    （2026-09-23 老大：不要移入触发，要自己播）。
    一轮 4.8s，三列各错开 1.6s ⇒ 任一刻只有一列亮着，看完一圈循环回来。

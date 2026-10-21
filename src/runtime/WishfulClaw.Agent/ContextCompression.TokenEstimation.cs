@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using WishfulClaw.Contracts;
@@ -70,13 +70,20 @@ public static partial class ContextCompression
     /// Builds the summary wire message with a stable id and meta.compactSummary so
     /// the chat window, the persistence snapshot and restore all reference the same
     /// artifact (contract: compression-contract.md §4.2).
+    ///
+    /// S-208（2026-10-20）：压缩时刻、用户消息时刻、那条消息的执行进度都以**结构化字段**
+    /// 落进 meta，不让渲染端去解析正文里的快照块 —— 正文是发给模型的拼接结果，meta 才是
+    /// 给人看的那层数据。渲染端沿用 <c>meta.summarizerFailed</c> 的既有模式读它们。
     /// </summary>
     internal static JsonElement CreateSummaryWireMessage(
         string id,
         string content,
         int messagesSummarized,
         bool recentMessagesPreserved,
-        bool summarizerFailed)
+        bool summarizerFailed,
+        DateTimeOffset compactedAt,
+        DateTimeOffset? latestUserSentAt,
+        string? latestUserState)
     {
         var json = WorkerJsonHelper.BuildJsonString(w =>
         {
@@ -84,13 +91,22 @@ public static partial class ContextCompression
             w.WriteString("id", id);
             w.WriteString("role", "user");
             w.WriteString("content", content);
-            w.WriteNumber("createdAt", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            w.WriteNumber("createdAt", compactedAt.ToUnixTimeMilliseconds());
             w.WritePropertyName("meta");
             w.WriteStartObject();
             w.WritePropertyName("compactSummary");
             w.WriteStartObject();
             w.WriteNumber("messagesSummarized", messagesSummarized);
             w.WriteBoolean("recentMessagesPreserved", recentMessagesPreserved);
+            w.WriteNumber("compactedAt", compactedAt.ToUnixTimeMilliseconds());
+            if (latestUserSentAt is { } sentAt)
+            {
+                w.WriteNumber("latestUserSentAt", sentAt.ToUnixTimeMilliseconds());
+            }
+            if (!string.IsNullOrEmpty(latestUserState))
+            {
+                w.WriteString("latestUserState", latestUserState);
+            }
             if (summarizerFailed)
             {
                 w.WriteBoolean("summarizerFailed", true);

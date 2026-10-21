@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-20 实测 712 行）：22 个围绕同一套 `workerRequest` 通道的 DB 薄封装，
+// 共享 `SessionUsageStatsRow` 等类型与同一条初始化/错误约定；拆开只会让每个调用方 import
+// 四五个模块。豁免依据：AGENTS.md §大文件拆分 第 5 条第 2 类（高度内聚）。
+
 import type { Session, Project, ChatMessage } from './types'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -621,9 +625,13 @@ export async function dbDeleteMessage(sessionId: string, messageId: string): Pro
 
 /**
  * Clear all messages for a session.
+ *
+ * S-204：返回 worker 的 success，供调用方区分「删干净了」与「被拒了」——
+ * 这是用户点过的不可逆动作，失败不能静默吞掉（口径同 dbResetSessionUsageStats）。
  */
-export async function dbClearMessages(sessionId: string): Promise<void> {
-  await window.api.workerRequest('db/messages-clear', { sessionId })
+export async function dbClearMessages(sessionId: string): Promise<{ success: boolean }> {
+  const result = await window.api.workerRequest<{ success: boolean }>('db/messages-clear', { sessionId })
+  return { success: !!result?.success }
 }
 
 /**

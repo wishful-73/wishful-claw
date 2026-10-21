@@ -13,6 +13,24 @@ import {
   SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 
+/**
+ * S-208：卡片只显示「压缩于 / 你上次发言」两个时刻。
+ *
+ * 第三段「当时执行到哪一步」（尚未开始 / 正在执行中 / 已答复完毕）**不上卡片** ——
+ * 它记的是压缩那一刻的事实，卡片不会随 run 跑完更新，读起来像「现在仍在执行」；
+ * 而它存在的意义是让模型区分「正在跑的活」与「刚下的指令」，用户自己知道自己在干什么。
+ * 状态仍写在摘要正文的【压缩时刻】块里（`ContextCompression.UserSnapshot.cs`）。
+ */
+function formatStamp(value: number | undefined, language: string): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return ''
+  return new Date(value).toLocaleString(language, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
 function LiveCompressionDraft({
   draft,
   trigger
@@ -62,7 +80,7 @@ export function ContextCompressionMessage({
   draft?: string
   isLive?: boolean
 }): React.JSX.Element | null {
-  const { t } = useTranslation('agent')
+  const { t, i18n } = useTranslation('agent')
   const [expanded, setExpanded] = React.useState(false)
 
   if (isLive) {
@@ -91,7 +109,27 @@ export function ContextCompressionMessage({
           count: summarizedCount
         })
       : t('contextCompression.divider', { defaultValue: 'Context compressed' })
-  const triggerSuffix = effectiveTrigger === 'manual' ? ' · Manual' : ' · Auto'
+  const triggerSuffix =
+    effectiveTrigger === 'manual'
+      ? ` · ${t('contextCompression.triggerManual', { defaultValue: 'Manual' })}`
+      : ` · ${t('contextCompression.triggerAuto', { defaultValue: 'Auto' })}`
+
+  // S-208：压缩时刻与「用户最后发言的时刻」是 meta 里的结构化字段，
+  // 正文里那份是发给模型看的拼接文本，已经被 getCompactSummaryDisplayText 剥掉了。
+  // `meta.latestUserState` 有意不上卡片，理由见文件头的 formatStamp 注释。
+  const compactedAtLabel = formatStamp(meta?.compactedAt, i18n.language)
+  const latestUserAtLabel = formatStamp(meta?.latestUserSentAt, i18n.language)
+  const snapshotBits = [
+    compactedAtLabel
+      ? t('contextCompression.summaryCompactedAt', { defaultValue: 'Compacted {{time}}', time: compactedAtLabel })
+      : '',
+    latestUserAtLabel
+      ? t('contextCompression.summaryLatestUserAt', {
+          defaultValue: 'Your last message {{time}}',
+          time: latestUserAtLabel
+        })
+      : ''
+  ].filter(Boolean)
 
   return (
     <div className="my-4">
@@ -120,6 +158,16 @@ export function ContextCompressionMessage({
       ) : null}
       {expanded ? (
         <div className="mt-2 rounded-md border border-border bg-muted/25 px-3 py-2.5 prose prose-sm max-w-none text-[13px] leading-relaxed text-foreground dark:prose-invert [&_h1]:mb-2 [&_h1]:mt-1 [&_h1]:text-base [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:text-sm [&_li]:my-0.5 [&_p]:my-1.5 [&_pre]:overflow-x-auto">
+          {snapshotBits.length > 0 ? (
+            <div className="not-prose mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 pb-2 text-[11px] text-muted-foreground">
+              {snapshotBits.map((bit, index) => (
+                <span key={bit} className="inline-flex items-center gap-2">
+                  {index > 0 ? <span aria-hidden="true">·</span> : null}
+                  {bit}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <Markdown
             remarkPlugins={MARKDOWN_REMARK_PLUGINS}
             rehypePlugins={MARKDOWN_REHYPE_PLUGINS}

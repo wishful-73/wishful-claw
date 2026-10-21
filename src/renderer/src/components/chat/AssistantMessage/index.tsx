@@ -15,6 +15,7 @@ import {
   getLiveOutputComponentClass
 } from '@renderer/lib/live-output-animation'
 import type { ToolCallState } from '@renderer/lib/agent/types'
+import { resolveFragmentRunEnd } from '@renderer/lib/agent/run-end-label'
 import {
   buildToolExecutionOutline,
   type ToolExecutionRun
@@ -55,6 +56,7 @@ export function AssistantMessage({
   createdAt,
   updatedAt,
   totalElapsedMs,
+  fragmentPosition,
   memoryRecall
 }: AssistantMessageProps): React.JSX.Element {
   const { t } = useTranslation('chat')
@@ -387,6 +389,11 @@ export function AssistantMessage({
     return items
   }, [normalizedContent, toolExecutionOutline])
 
+  // 压缩会把一条消息劈成两段，但 meta.runEnd 只有一份、记的是整条消息的收尾，
+  // 只属于末段。前半截这一轮并没结束，读它就是错报 —— 中断那轮两段都会说
+  // 「你中止了这一轮」（S-210 验证期，2026-10-21）。折叠块提示与底部操作栏共用这一份。
+  const runEnd = resolveFragmentRunEnd(meta?.runEnd, fragmentPosition)
+
   const renderContent = (): React.JSX.Element => {
     return (
       <ContentRenderer
@@ -418,6 +425,8 @@ export function AssistantMessage({
         sessionId={sessionId}
         trackedChangeByToolUseId={trackedChangeByToolUseId}
         canEditGeneratedImages={canEditGeneratedImages}
+        runEnd={runEnd}
+        fragmentPosition={fragmentPosition}
         t={t}
       />
     )
@@ -460,6 +469,7 @@ export function AssistantMessage({
       completionSummary={completionSummary}
       createdAt={createdAt}
       updatedAt={updatedAt}
+      runEnd={runEnd}
       totalElapsedMs={totalElapsedMs}
       t={t}
       memoryRecall={memoryRecall}

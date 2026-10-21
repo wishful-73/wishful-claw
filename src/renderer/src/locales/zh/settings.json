@@ -67,7 +67,7 @@
     },
     "about": {
       "label": "关于",
-      "desc": "产品介绍、使用指引与应用更新"
+      "desc": "产品介绍、官网与应用更新"
     },
     "groups": {
       "general": "基础",
@@ -865,15 +865,9 @@
     },
     "website": {
       "label": "官网",
-      "desc": "下载安装包、查看使用指引与更新日志",
+      "desc": "使用指引与更新日志都在官网上，安装包也从这里下",
       "team": "由心相团队开发与维护",
       "open": "访问官网"
-    },
-    "guide": {
-      "label": "使用指引",
-      "desc": "功能全量说明与上手教程，在浏览器中查看",
-      "hint": "指引始终指向最新版本，旧链接不会失效。",
-      "open": "查看指引"
     },
     "updater": {
       "label": "应用更新",
@@ -948,6 +942,7 @@
       "BrowserClick": "selector",
       "BrowserType": "selector、text、clear、submit",
       "BrowserScroll": "direction、amount",
+      "BrowserSetDevice": "device、width、height",
       "codegraph_explore": "query、projectPath",
       "DesktopScreenshot": "无参数",
       "DesktopClick": "x、y、button、action",

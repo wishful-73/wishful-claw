@@ -43,7 +43,7 @@ import {
   resolveEffectiveContextCapTokens,
   resolveSessionCompressionThreshold
 } from '@renderer/lib/agent/context-compression'
-import type { CompressionStatusMeta, ContentBlock, MessageMeta, UnifiedMessage } from '@renderer/lib/api/types'
+import type { CompressionStatusMeta, ContentBlock, MessageMeta, MessageRunEndMeta, UnifiedMessage } from '@renderer/lib/api/types'
 
 import { dbUpsertMessage, dbUpdateSession, dbDeleteMessage, awaitSessionCreated } from './db-helpers'
 import { getCompressionStatus, trackCompressionStatus } from './compression-status-registry'
@@ -1664,6 +1664,22 @@ export const useChatStore = create<ChatStore>()(
                 // 不重启应用就永远拿不到（iter-29 遗留的 live 消息 fallback）。
                 const finishedAt = Date.now()
 
+                // S-210：结束原因是**数据**，跟着这一轮的消息落库。渲染端只照实显示；
+                // 不带这一笔，重载后就没法说清这轮到底是用户按了停止、网络断了，
+                // 还是到了迭代上限。老消息没有这个字段 = 不知道，不编。
+                const runEnd: MessageRunEndMeta = {
+                  reason: event.reason ?? 'completed',
+                  ...(event.errorType ? { errorType: event.errorType } : {}),
+                  ...(typeof event.statusCode === 'number' ? { statusCode: event.statusCode } : {}),
+                  at: finishedAt
+                }
+
+                const targetMessage = session.messages.find((m) => m.id === envelope.runId)
+
+                if (targetMessage && targetMessage.role === 'assistant') {
+                  targetMessage.meta = { ...(targetMessage.meta ?? {}), runEnd }
+                }
+
                 for (const msg of session.messages) {
 
                   if (msg.isStreaming) {
@@ -1726,6 +1742,7 @@ export const useChatStore = create<ChatStore>()(
               const reason = event.reason ?? 'completed'
               const notifyTitle = reason === 'completed' ? '任务完成'
                 : reason === 'max_iterations' ? '达到迭代上限'
+                : reason === 'user_cancelled' ? '任务已中止'
                 : reason === 'aborted' ? '任务已中断'
                 : reason === 'error' ? '任务出错'
                 : `任务停止: ${reason}`
@@ -1738,7 +1755,13 @@ export const useChatStore = create<ChatStore>()(
               })
             }
 
-            if (event.reason === 'aborted' || event.reason === 'error') {
+            // S-210：user_cancelled 也是「被中止的那一轮」—— 用户按停止同样要先冻队列，
+            // 等停止按钮自己的自动续来放行；漏掉它会让队列直接往下派发。
+            if (
+              event.reason === 'aborted' ||
+              event.reason === 'user_cancelled' ||
+              event.reason === 'error'
+            ) {
               void import('@renderer/hooks/use-chat-actions')
                 // S-202：这一轮是被中止的，它的收尾补冻会落在停止按钮的自动续 / PM 的
                 // resume_session_queue 之后，所以走 interruptedLoop 那条「显式放行优先」的路。

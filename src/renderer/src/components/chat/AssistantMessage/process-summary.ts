@@ -1,4 +1,4 @@
-﻿// process-summary.ts — generate a human-readable summary of the execution process
+// process-summary.ts — generate a human-readable summary of the execution process
 // for display in the collapsed ExecutionProcessBlock header.
 //
 // Example output: "运行了3个命令，查看了2个文件，编辑了1个文件"
@@ -61,6 +61,9 @@ function getItemFilePath(item: ToolExecutionItem): string | null {
 
 /**
  * Generate a compact summary string from the tool execution outline.
+ *
+ * 只统计过程本身；耗时归操作栏（`action-bar.tsx`）那一处，不在这里重复开一个位置
+ * （iter-40 S-215 纠偏：老大 10-21 09:34「本身我们就有耗时的显示位置，为什么要新加一个位置」）。
  */
 export function buildProcessSummary(
   outline: ToolExecutionOutline | null,
@@ -137,6 +140,12 @@ export function buildProcessSummary(
  * From the end, skip text/image/image_error/agent_error blocks to find
  * the first "process" item. Items before and including that = process.
  * Items after = final output.
+ *
+ * 纯切分，不做回填（iter-40 S-210 验证期裁定）：一轮正常收尾时正文本来就在尾部，
+ * 切出来的 finalItems 自然非空；切完 finalItems 为空只发生在「这一轮没说完」的场景
+ * ——用户中断、模型报错、被压缩卡片劈开的前半段。这些情况该据实显示结束原因
+ * （见 `content-renderer.tsx` 的尾部提示），把过程里的文字提出来假装成正文只会
+ * 掩盖真相。
  *
  * hasProcessContent is true only when there are tool calls in the process —
  * thinking-only without tools is too simple to collapse.

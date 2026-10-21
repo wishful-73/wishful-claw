@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitCompare, Maximize2, Minimize2, FolderOpen, MoreHorizontal, RotateCcw, Pencil, SquareTerminal } from 'lucide-react'
+import { GitCompare, Maximize2, Minimize2, FolderOpen, MoreHorizontal, RotateCcw, Pencil, Eraser, SquareTerminal } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import {
   DropdownMenu,
@@ -11,6 +11,8 @@ import {
 } from '@renderer/components/ui/dropdown-menu'
 import { MessageList } from '@renderer/components/chat/MessageList'
 import { InputArea } from '@renderer/components/chat/InputArea'
+// S-207：沙箱临时关闭的倒计时 chip —— 挂在消息区左上角，无豁免时不渲染。
+import { SandboxElevationChip } from '@renderer/components/chat/InputArea/sandbox-elevation-chip'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -34,6 +36,7 @@ export function SessionConversationPane({
     s.sessions.find((sess) => sess.id === resolvedSessionId)
   )
   const resetSessionUsageStats = useChatStore((s) => s.resetSessionUsageStats)
+  const clearSessionMessages = useChatStore((s) => s.clearSessionMessages)
   const renameSession = useChatStore((s) => s.renameSession)
   const { sendMessage, stopStreaming } = useChatActions()
   const isStreaming = useChatStore((s) =>
@@ -99,6 +102,24 @@ export function SessionConversationPane({
     if (!ok) return
     await resetSessionUsageStats(resolvedSessionId)
   }, [resolvedSessionId, resetSessionUsageStats, t])
+
+  // S-204：浮窗「更多」补「清空会话」入口 —— 与左侧会话右键的「清空消息」同名同义，
+  // 都走 store 的 clearSessionMessages（落库删消息，切走切回不再复活）。删消息不可逆，带二次确认。
+  const handleClearSession = useCallback(async () => {
+    if (!resolvedSessionId) return
+    const ok = await confirm({
+      title: t('sidebar.clearSessionConfirmTitle', {
+        defaultValue: "Clear this session's messages?"
+      }),
+      description: t('sidebar.clearSessionConfirmDesc', {
+        title: session?.title ?? '',
+        defaultValue: 'Every message will be permanently deleted. This cannot be undone.'
+      }),
+      variant: 'destructive'
+    })
+    if (!ok) return
+    clearSessionMessages(resolvedSessionId)
+  }, [resolvedSessionId, session, clearSessionMessages, t])
 
   const handleRename = useCallback(() => {
     if (!resolvedSessionId || !session) return
@@ -173,6 +194,11 @@ export function SessionConversationPane({
             fullWidth={conversationFullWidth}
             onEditUserMessage={handleEditUserMessage}
           />
+
+          {/* Sandbox elevation chip — top-left, mirroring the action block on the right.
+              放在这里而不是输入框上方：输入框那一列已经排了 API Key 提醒 / 排队面板 /
+              goal 条 / todo 条，再加一条就把 composer 顶上塞满了。 */}
+          <SandboxElevationChip className="absolute left-3 top-3 z-30" />
 
           {/* Floating vertical session action block */}
           <div className="absolute right-3 top-3 z-30 flex flex-col items-center gap-0.5 rounded-lg border border-border/60 bg-background/70 p-0.5 shadow-sm backdrop-blur-sm">
@@ -270,6 +296,10 @@ export function SessionConversationPane({
                 <DropdownMenuItem onClick={handleResetUsageStats} className="text-destructive">
                   <RotateCcw className="mr-2 size-4" />
                   {t('sidebar.resetUsageStats', { defaultValue: 'Reset token usage' })}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleClearSession} className="text-destructive">
+                  <Eraser className="mr-2 size-4" />
+                  {t('sidebar.clearSession', { defaultValue: 'Clear messages' })}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

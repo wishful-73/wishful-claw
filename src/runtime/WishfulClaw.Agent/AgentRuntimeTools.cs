@@ -278,7 +278,7 @@ public static class AgentRuntimeTools
 
             if (state.IsCancellationRequested)
             {
-                await AgentLoop.EmitLoopEndAsync(state, context, "aborted");
+                await AgentLoop.EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted);
                 return;
             }
 
@@ -286,7 +286,7 @@ public static class AgentRuntimeTools
         }
         catch (OperationCanceledException) when (state.IsCancellationRequested)
         {
-            await AgentLoop.EmitLoopEndAsync(state, context, "aborted");
+            await AgentLoop.EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted);
         }
         catch (Exception ex) when (state.IsCancellationRequested)
         {
@@ -296,12 +296,13 @@ public static class AgentRuntimeTools
             // 错误卡片。取消不是出错，这里按 aborted 收尾（S-202）。
             WorkerLog.Info(
                 $"agent run aborted runId={state.RunId} error={FormatExceptionSummary(ex)}");
-            await AgentLoop.EmitLoopEndAsync(state, context, "aborted");
+            await AgentLoop.EmitLoopEndAsync(state, context, AgentLoopEndReasons.Aborted);
         }
         catch (Exception ex)
         {
             var errorSummary = FormatExceptionSummary(ex);
             WorkerLog.Warn($"agent run failed runId={state.RunId} error={errorSummary}");
+            var statusCode = ex is ProviderHttpException http ? http.StatusCode : (int?)null;
             await EmitAsync(
                 state,
                 context,
@@ -314,10 +315,17 @@ public static class AgentRuntimeTools
                     // decide a quota handover from data, instead of matching the message
                     // text — the message is not a dedicated channel and tool output ends
                     // up in it too.
-                    StatusCode: ex is ProviderHttpException http ? http.StatusCode : null,
+                    StatusCode: statusCode,
                     Details: errorSummary,
                     StackTrace: ex.StackTrace));
-            await AgentLoop.EmitLoopEndAsync(state, context, "error");
+            // S-210：loop_end 也带上成因 —— 渲染端要把「网络中断 / 服务商限流 / 超时」
+            // 落进消息 meta 并据实显示，光有一条 error 事件（重启后不再重放）做不到。
+            await AgentLoop.EmitLoopEndAsync(
+                state,
+                context,
+                AgentLoopEndReasons.Error,
+                errorType: ex.GetType().Name,
+                statusCode: statusCode);
         }
         finally
         {
@@ -354,6 +362,27 @@ public static class AgentRuntimeTools
         SessionConversationManager.Remove(sessionId);
         WorkerLog.Info($"agent session cleared sessionId={FormatLogValue(sessionId)}");
         return WorkerResponse.Json(new ClearSessionResult(true, sessionId), AgentRuntimeJsonContext.Default.ClearSessionResult);
+    }
+
+    /// <summary>
+    /// Clears the S-207 temporary sandbox elevation immediately. Called by the renderer's
+    /// "restore" button on the sandbox chip (via main → <c>sandbox/clear-elevation</c>).
+    /// The elevation also expires on its own after an hour; this is the manual path.
+    ///
+    /// The result is a plain <c>{"cleared": true}</c> written by hand rather than a
+    /// source-generated record: the shape is trivial and has no consumer that reads a
+    /// typed contract, so paying for a new JsonContext entry here would be all cost.
+    /// </summary>
+    public static WorkerResponse ClearSandboxElevation(JsonElement parameters)
+    {
+        Tools.SandboxElevationStore.Clear();
+        WorkerLog.Info("sandbox elevation cleared by user");
+        return WorkerResponse.FromWriter(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteBoolean("cleared", true);
+            writer.WriteEndObject();
+        });
     }
 
     // ── Reverse response (from renderer tool execution) ──

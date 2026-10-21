@@ -1,8 +1,8 @@
 <p align="center">
   <h1 align="center">Wishful Claw</h1>
   <p align="center">
-    <strong>桌面 AI Agent 工作台 — 有记忆、有人格、能动手</strong><br>
-    用一句自然语言交代任务，它在你自己的电脑上读写文件、执行命令、搜索代码、操作浏览器。
+    <strong>你提需求，它跑全程</strong><br>
+    装完就能用，不花钱；它跑在你自己的电脑上，真动手：读写文件、执行命令、开浏览器、操作桌面软件 —— 有记忆、有人格。
   </p>
 </p>
 
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.2.39-orange" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.0.0-orange" alt="Version">
   <img src="https://img.shields.io/badge/Platform-Windows-blue" alt="Windows">
   <img src="https://img.shields.io/badge/.NET-11-blue" alt=".NET">
   <img src="https://img.shields.io/badge/Electron-43-blue" alt="Electron">
@@ -28,7 +28,7 @@
 ## 🚀 快速上手
 
 1. 到 **[官网下载页](https://wishful-claw.work/download)** 或 [GitHub Releases](https://github.com/wishful-73/wishful-claw/releases/latest) 下载 `wishful-claw-x.y.z-setup.exe`，双击安装（无需另装运行时）。
-2. 打开后进入 **设置 → AI 服务商**，选一家模型服务商，填入你自己的 API Key，点测试连通性并设为当前使用。还没决定用哪家？可以先跳过 —— [不花 Token 也能用](#-不花-token-也能用) 里那几项不用 Key 就能跑。
+2. 打开后进入 **设置 → AI 服务商**，选一家模型服务商，填入你自己的 API Key，点测试连通性并设为当前使用。还没决定用哪家？可以先跳过 —— [一分钱不花，先白嫖起来](#-一分钱不花先白嫖起来) 里那几项不用 Key 就能跑。
 3. 回到主界面，新建一个项目指向你的代码目录，把任务说出来。第一次建议打开**计划模式**，先看它的方案再放它动手。
 
 完整上手步骤、每一项能力的用法和排查方法都在 **[官网使用指引](https://wishful-claw.work/guide)** 里（应用内点顶栏的问号图标也能打开）。
@@ -79,9 +79,9 @@ Agent 干活时你可以随时插话：消息进队列，等当前这轮结束�
 
 - **右侧面板** —— 执行过程、文件树、预览、浏览器、终端、会话摘要、变更审阅，一屏看清 Agent 做了什么
 
-### 🆓 不花 Token 也能用
+### 🆓 一分钱不花，先白嫖起来
 
-还没配 API Key，或者想省着点用，这三项照样跑得起来：
+一个 Key 都不用配，这三项照样能用：
 
 - **免费对话** —— 应用内直连 DeepSeek、Kimi、智谱清言、豆包、腾讯元宝等**网页版**对话，登录你自己的账号就行，不走 API、不消耗额度
 - **快速启动器** —— `Alt + Space` 唤起，输入几个字符启动程序或打开应用内页面，支持词首字母缩写
@@ -140,6 +140,6 @@ Agent 干活时你可以随时插话：消息进队列，等当前这轮结束�
 
 <div align="center">
 
-自用项目，慢慢打磨。
+心之所向，心想事成 —— 装一个，看看它能替你干多少活。
 
 </div>

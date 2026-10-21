@@ -32,7 +32,7 @@ internal static class BrowserSurfaceAccessChecks
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert(browserTools.Length == 9, $"all 9 browser tools are registered under category browser (found {browserTools.Length})");
+        Assert(browserTools.Length == 10, $"all 10 browser tools are registered under category browser (found {browserTools.Length})");
 
         RunNeverInjectedDirectlySuite(registry, browserTools);
         RunProxySideSuite(registry, browserTools);
@@ -63,8 +63,8 @@ internal static class BrowserSurfaceAccessChecks
 
     /// <summary>
     /// The ruling's second half: reachable through the proxy is still reachable, and vetoed there too
-    /// for the runs nobody is watching. The counts mirror the tools' own grants — the six read-only
-    /// ones everywhere, the three that click and type only in a work run.
+    /// for the runs nobody is watching. The counts mirror the tools' own grants — the seven available
+    /// everywhere, the three that click and type only in a work run.
     /// </summary>
     private static void RunProxySideSuite(ToolRegistry registry, string[] browserTools)
     {
@@ -87,7 +87,7 @@ internal static class BrowserSurfaceAccessChecks
             }
 
             var workRun = scenario.Context.CollaborationMode == "cowork";
-            var expected = workRun ? 9 : 6;
+            var expected = workRun ? 10 : 7;
             Assert(proxied.Length == expected,
                 $"{scenario.Name} sees {proxied.Length} browser tools through use_capability, expected {expected}");
             Assert(proxied.Contains("BrowserNavigate", StringComparer.Ordinal)

@@ -25,6 +25,21 @@
     "divider": "上下文已压缩",
     "dividerWithCount": "上下文已压缩 · 已总结较早的 {{count}} 条消息",
     "summaryFallbackWarning": "摘要生成失败，已使用回退摘要；上下文仍已压缩",
-    "mechanicalFoldDigest": "较早的 {{messageCount}} 条消息已在此处折叠以释放上下文，但自动摘要不可用。"
+    "mechanicalFoldDigest": "较早的 {{messageCount}} 条消息已在此处折叠以释放上下文，但自动摘要不可用。",
+    "summaryCompactedAt": "压缩于 {{time}}",
+    "summaryLatestUserAt": "你上次发言 {{time}}"
+  },
+  "sandboxElevation": {
+    "dialogTitle": "请求临时关闭沙箱模式",
+    "dialogConfirm": "临时关闭（{{hours}} 小时）",
+    "dialogCancel": "保持开启",
+    "dialogDescription": "Agent 想访问工作目录之外的路径，请批准临时关闭沙箱模式。批准后 {{hours}} 小时内，本机所有会话都可以访问工作目录之外的路径；到期自动恢复，你也可以随时手动恢复。",
+    "dialogDescriptionWithReason": "Agent 想访问工作目录之外的路径，请批准临时关闭沙箱模式。批准后 {{hours}} 小时内，本机所有会话都可以访问工作目录之外的路径；到期自动恢复，你也可以随时手动恢复。\n\n理由：{{reason}}",
+    "channelSummary": "Agent 想访问工作目录外的路径，需要你批准临时关闭沙箱模式。",
+    "channelSummaryWithReason": "Agent 想访问工作目录外的路径。理由：{{reason}}",
+    "channelPrompt": "Agent 请求临时关闭沙箱模式（RequestSandboxElevation），需要你确认：\n\n{{summary}}\n\n批准后 {{hours}} 小时内，本机所有会话都可以访问工作目录之外的路径；到期自动恢复，也可随时手动恢复。\n\n回复「同意」批准，回复「拒绝」保持开启。{{minutes}} 分钟内未回复将按拒绝处理。",
+    "chipRemaining": "沙箱已临时关闭 · 剩 {{minutes}} 分钟",
+    "chipRestore": "恢复",
+    "restoredToast": "已恢复沙箱模式"
   }
 }

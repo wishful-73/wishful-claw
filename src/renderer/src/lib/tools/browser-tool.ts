@@ -230,6 +230,40 @@ const browserEvaluateHandler: ToolHandler = {
   execute: async () => nativeOnlyBrowserResult('BrowserEvaluate')
 }
 
+const browserSetDeviceHandler: ToolHandler = {
+  definition: {
+    name: 'BrowserSetDevice',
+    description:
+      'Switch the built-in browser between desktop and mobile device modes.\n\n' +
+      'Usage:\n' +
+      '- "pc" restores the normal desktop browser (clears emulation).\n' +
+      '- "iphone" / "pixel" / "ipad" apply the preset viewport, device scale factor and mobile user agent.\n' +
+      '- "custom" uses the explicit width/height (320–2560 px); DPR is fixed.\n' +
+      '- The page is reloaded once after switching, because the user agent only changes for subsequent navigations.\n' +
+      '- Use this to check how a site renders on mobile, or to reach mobile-only layouts and menus.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        device: {
+          type: 'string',
+          enum: ['pc', 'iphone', 'pixel', 'ipad', 'custom'],
+          description: 'Target device mode. Use "pc" to turn emulation off.'
+        },
+        width: {
+          type: 'number',
+          description: 'Custom viewport width in CSS pixels. Only used when device is "custom".'
+        },
+        height: {
+          type: 'number',
+          description: 'Custom viewport height in CSS pixels. Only used when device is "custom".'
+        }
+      },
+      required: ['device']
+    }
+  },
+  execute: async () => nativeOnlyBrowserResult('BrowserSetDevice')
+}
+
 const ALL_HANDLERS: ToolHandler[] = [
   browserNavigateHandler,
   browserGetContentHandler,
@@ -238,7 +272,8 @@ const ALL_HANDLERS: ToolHandler[] = [
   browserClickHandler,
   browserTypeHandler,
   browserScrollHandler,
-  browserEvaluateHandler
+  browserEvaluateHandler,
+  browserSetDeviceHandler
 ]
 
 let _browserToolRegistered = false

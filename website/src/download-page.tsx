@@ -1,4 +1,5 @@
 import { SiteHeader } from './components/site-header'
+import { SiteMist } from './components/site-mist'
 import { SiteFooter } from './sections/site-footer'
 import { DownloadButtons } from './components/download-buttons'
 import { useReleaseManifest } from './lib/site-data'
@@ -11,12 +12,15 @@ export default function DownloadPage() {
   const downloads = stats?.downloads
   return (
     <>
+      {/* 站点背景雾：三张页面都要（老大 2026-10-19），页面根上挂一次即可。
+          下载页不放收束层 —— 收敛点是主 CTA，这儿没有，铺上来只会往视口中心乱收。 */}
+      <SiteMist />
       <SiteHeader />
       {/* 下载区拆卡改居中（2026-09-24 方案 A，参考 mimo.xiaomimimo.com/desktop）：
           平台按钮直接居中摆，不再套卡片；版本行与 GitHub 外链并成按钮下方一行注脚。
           原卡片的问题是三行里两行「一句话 + 七百多像素空白」，且卡片居中（x=88）与标题 / 四步（x=56）错位。
           四步区仍是通栏左对齐，与上半的居中英雄区各归各的层级。 */}
-      <main className="w-full px-6 py-20 sm:px-10 lg:px-14">
+      <main className="w-full flex-1 px-6 py-20 sm:px-10 lg:px-14">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-4xl font-semibold tracking-tight text-ink-950">
             下载<span className="text-accent">{BRAND.name}</span>

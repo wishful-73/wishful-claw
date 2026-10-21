@@ -32,6 +32,7 @@ public static class AgentRuntimeBrowserExecutor
         "BrowserType",
         "BrowserScroll",
         "BrowserEvaluate",
+        "BrowserSetDevice",
         "WebSearch"
     };
 

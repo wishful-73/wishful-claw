@@ -1,13 +1,25 @@
+// 500 行豁免（2026-10-20 实测 1103 行）：单一 zustand store slice —— `SessionSlice` 接口与它的
+// 实现是同一次声明，80 余个方法共享 set/get/immer 的同一份状态，拆开会把「谁改了会话状态」
+// 摊到多个文件里。豁免依据：AGENTS.md §大文件拆分 第 5 条第 2 类（高度内聚的 store / hook）。
+
 import { nanoid } from 'nanoid'
 import type { StateCreator } from 'zustand'
 import type { Session, CreateSessionOptions, ChatMessage } from './types'
 import type { TokenUsage } from '@renderer/lib/api/types'
-import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats, dbResetSessionUsageStats, dbUpsertMessage } from './db-helpers'
+import { dbCreateSession, dbDeleteSession, dbUpdateSession, dbGetMessageCount, dbUpdateProject, dbListMessagesByTurns, dbGetSessionUsageStats, dbResetSessionUsageStats, dbUpsertMessage, dbClearMessages } from './db-helpers'
 import type { SessionUsageStatsRow } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
 import { clampSessionCompressionThreshold } from '@renderer/lib/agent/context-compression-config'
 import { useSettingsStore } from '@renderer/stores/settings-store'
+
+// S-204：会话「清空」的 in-flight guard。
+//
+// 清空 = 内存置空 + 异步删库。删库落定之前，任何回读（loadRecentSessionMessages /
+// fetchOlderMessages / loadMessageWindowAround）都可能把 DB 里还没删掉的旧消息倒灌回内存，
+// 让刚清空的会话当场复活；上下文也会在首次发送时从 DB 懒重建回来。
+// 删除在途期间挡掉回读即可：落定后 DB 已干净，回读拿到的就是空 —— 两头都对上。
+const clearingSessions = new Set<string>()
 
 // T-3: 运行时驻留会话的内存窗口收缩。
 //
@@ -475,6 +487,15 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   },
 
   clearSessionMessages: (sessionId) => {
+    // S-204：清空要真的落库。旧实现只清渲染层内存 + 调 agent/clear-session（那只清 worker
+    // 内存里的会话上下文），messages 表一条没删 —— 于是
+    //   ①切走再切回，loadRecentSessionMessages 从 DB 原样拉回消息；
+    //   ②首次发送时 worker 会话被懒重建（见 loadRecentSessionMessages 尾部注释），上下文也从 DB 建了回来。
+    // 现在补上 db/messages-clear（事务内删 messages + detach 压缩快照）。
+    // 走 messages-clear 而非 session-reset-conversation：后者会把标题重置为 "New Conversation"，
+    // 而 S-204 裁定 1 = 标题不动。
+    // guard 必须先于 set：挡掉「清空 → 删库落定」之间发生的任何回读。
+    clearingSessions.add(sessionId)
     set((state) => {
       const session = state.sessions.find((s) => s.id === sessionId)
       if (session) {
@@ -489,6 +510,22 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
         session.updatedAt = Date.now()
       }
     })
+    void dbClearMessages(sessionId)
+      .then(({ success }) => {
+        if (!success) {
+          // 不静默失败：worker 返回的 success=false 进不了 catch，而这是用户点过的不可逆
+          // 动作 —— 至少要留下一条线索。口径同 resetSessionUsageStats。
+          console.warn('[DB] clearSessionMessages rejected by worker:', sessionId)
+        }
+      })
+      .catch((err) => {
+        console.warn('[DB] clearSessionMessages failed:', err)
+      })
+      .finally(() => {
+        // 删库落定（成功或失败）后解除 guard：DB 此时要么已干净、要么保持原样，
+        // 后续回读无论如何都是「以 DB 为准」的正确行为。
+        clearingSessions.delete(sessionId)
+      })
     void window.api.workerRequest("agent/clear-session", { sessionId })
     // Clearing the conversation also drops its session-scoped agent Todos
     // (DB rows are removed via db:tasks:delete-by-session inside the store).
@@ -895,6 +932,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   },
 
   loadRecentSessionMessages: async (sessionId, _force, _limit) => {
+    // S-204：清空会话的删库在途期间挡掉回读 —— 否则会把 DB 里尚未删掉的旧消息灌回内存。
+    if (clearingSessions.has(sessionId)) return
     const state = get()
     const session = state.sessions.find((s) => s.id === sessionId)
     if (!session) return
@@ -976,6 +1015,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   },
 
   fetchOlderMessages: async (sessionId, _limit) => {
+    // S-204：同 loadRecentSessionMessages，删库在途期间挡掉回读。
+    if (clearingSessions.has(sessionId)) return { messages: [], rangeStart: 0, hasMore: false, totalTurns: 0 }
     const state = get()
     const session = state.sessions.find((s) => s.id === sessionId)
     if (!session) return { messages: [], rangeStart: 0, hasMore: false, totalTurns: 0 }
@@ -1011,6 +1052,8 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
   },
 
   loadMessageWindowAround: async (sessionId, options, _windowSize) => {
+    // S-204：同 loadRecentSessionMessages，删库在途期间挡掉回读。
+    if (clearingSessions.has(sessionId)) return
     const state = get()
     const session = state.sessions.find((s) => s.id === sessionId)
     if (!session) return

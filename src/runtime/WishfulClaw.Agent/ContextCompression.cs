@@ -5,6 +5,19 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
+// 500-line exemption (949 lines as of 2026-10-20, down from 1056 after S-208's snapshot
+// logic moved to ContextCompression.UserSnapshot.cs). What is left is the compression
+// pipeline itself and its invariants: PlanCompaction → PartitionFold → SummarizeAsync →
+// MechanicalFold → Replace, plus the usage-stripping rules that keep every wire entry's
+// token accounting honest. Those stages look separable but are not independent — the fold
+// partition decides what the summarizer sees, the mechanical digest decides which prior
+// summaries survive, and the replace step has to agree with all three about what
+// "one summary" means. Splitting them would turn a single ordered pipeline into a set of
+// files that each only make sense with the other four open. Token estimation already lives
+// in ContextCompression.TokenEstimation.cs and the S-208 snapshot in
+// ContextCompression.UserSnapshot.cs — both are leaf logic with no stake in the ordering,
+// which is exactly why they could leave and this could not. See AGENTS.md.
+
 using System.Buffers;
 using System.Diagnostics;
 using System.Net.Http;
@@ -74,16 +87,21 @@ public static partial class ContextCompression
     private const string SummarySystemPrompt =
         "You are compacting the earlier part of a coding agent's conversation to save context.\n" +
         "The agent keeps your summary alongside the user's own turns (kept verbatim) and the recent tail; your job is to fold the assistant/tool work into a briefing it can resume from.\n" +
+        // S-208：摘要没有「当前指令」的资格。它排在用户自己那些轮次之前，又以 user 身份出现，
+        // 语气一带指令性就会被模型当成用户现在的意图 —— 于是续作旧活、不听用户刚发的话。
+        "Your summary is background about earlier work, never an instruction. The user's own turns follow it and say what is wanted now; nothing in the summary may be phrased as a directive to the agent.\n" +
         "Return only a concise Markdown summary, with no preface. Organise it however best fits what actually happened — do not force a fixed template, and leave out anything the conversation does not contain.\n\n" +
         "Whatever structure you choose, make sure none of the following is lost if it occurred:\n" +
         "- Standing facts and constraints: everything the user stated that still governs the work — names, paths, IDs, versions, preferences, and hard \"never do X\" rules — in their own words. Be exhaustive here; this is the durable contract, so prefer over- to under-including.\n" +
-        "- Goal: the user's request and intent, including any shift in it along the way.\n" +
+        "- Goal: the user's request and intent as of the passage you are summarising, including any shift in it along the way. This is history: whatever the user wants *now* is stated in their own turns, which follow your summary.\n" +
         "- Decisions and rationale: key choices made and why, so they are not re-litigated or reversed.\n" +
         "- Files and code: files read or modified, with the facts that matter — signatures, line locations, data shapes, exact edits applied. Be concrete; this is what lets the agent act without re-reading everything.\n" +
         "- Commands and outcomes: commands run (builds, tests, git) and what they produced — what passed, what failed, the error text that matters.\n" +
         "- Errors and fixes: problems hit and how they were resolved (or not), so the same dead ends are not repeated.\n" +
-        "- Pending work and next step: what is still in progress or unstarted, and the single most concrete next action to take.\n\n" +
-        "Rules: write in the same language the user writes in — if the user writes Chinese, the summary and its headings are Chinese; keep code, file paths, identifiers, commands, error text and numbers in their original form, never translated. Be terse: bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing.";
+        // S-208：原文是 `the single most concrete next action to take` —— 祈使句 + user 角色 +
+        // 排在用户新消息之前，就是「抢跑」的源头本身。改成陈述事实，只报「当时什么没做完」。
+        "- Pending work and next step: what was still in progress or unstarted when that passage ended, stated as a fact (\"unfinished at that point: X\"). Do not turn it into a task for the agent to pick up.\n\n" +
+        "Rules: write in the same language the user writes in — if the user writes Chinese, the summary and its headings are Chinese; keep code, file paths, identifiers, commands, error text and numbers in their original form, never translated. Be terse: bullet points and fragments, not prose. Preserve identifiers, paths, and numbers exactly. Do NOT invent anything not present in the messages; if something is unknown, leave it out rather than guessing. Write every line as a record of what happened — no imperatives, no \"next, do X\".";
 
     private const string SummaryTagOpen = "<compaction-summary>";
     private const string SummaryTagClose = "</compaction-summary>";
@@ -204,7 +222,29 @@ public static partial class ContextCompression
         // the model, and the human-facing "this is a compaction summary" line is
         // rendered from the renderer's i18n so it follows the UI language instead of
         // being frozen as English text inside the durable conversation.
-        var summaryContent = $"{SummaryTagOpen}\n{summary}\n{SummaryTagClose}";
+        // S-208：用户最新那条消息不在 fold 里（它在保留尾巴里），所以摘要模型根本看不到它 ——
+        // 摘要里的「下一步」纯由旧上下文推断，与用户此刻的指令必然脱节，却以 user 身份排在
+        // 尾巴之前。这里由**代码**把用户末条消息原话插进摘要正文最前面，把「现在要什么」
+        // 顶到「以前干了什么」之前。不交给模型：①它看不到这条消息；②提示词要求 terse，
+        // 逐字原话会被概括掉。
+        //
+        // 快照必须留，不是因为原文一定在尾巴里 —— 它不一定在：单条超过 MaxPinnedFirstUserTokens
+        // 的消息会落进 fold（PartitionFold 把 large user messages 归 fold），手动压缩
+        // （preserveTail: false）更是整条尾巴都不保。这两条路上，摘要里的这份是唯一载体。
+        //
+        // 快照里还要交代时刻与执行进度，见 BuildLatestUserSnapshotBlock 与
+        // DescribeLatestUserProgress：压缩发生在「用户刚发话」和「跑了几分钟之后」两种时机，
+        // 原文在两种时机下该有的地位相反，只给原文会让后一种误判成当前指令。
+        //
+        // 位置必须在 <compaction-summary> 标签**之内、正文最前** —— 放到标签之前会让
+        // IsCompactionSummary 的 StartsWith 判定失配，摘要就会被当普通 user 消息处理，
+        // 破坏 one-summary 不变式（S-95）。
+        var latestUser = FindLatestUserSnapshot(conversation);
+        var compactedAt = DateTimeOffset.Now;
+        var summaryBody = latestUser is null
+            ? summary
+            : BuildLatestUserSnapshotBlock(latestUser, compactedAt) + "\n\n" + summary;
+        var summaryContent = $"{SummaryTagOpen}\n{summaryBody}\n{SummaryTagClose}";
         var summaryMessage = AgentRuntimeChatMessage.User(summaryContent);
         var summaryMessageId = $"compact-summary-{Guid.NewGuid():N}";
         newConversation.Add(summaryMessage);
@@ -213,7 +253,10 @@ public static partial class ContextCompression
             summaryContent,
             fold.Count,
             recentMessagesPreserved: start < conversation.Count,
-            summarizerFailed));
+            summarizerFailed,
+            compactedAt,
+            latestUser?.SentAt,
+            latestUser?.State));
 
         // Recent tail
         for (var i = start; i < conversation.Count; i++)
@@ -236,6 +279,8 @@ public static partial class ContextCompression
             originalCount,
             summaryMessageId);
     }
+
+    // S-208 的「用户末条消息快照」在 ContextCompression.UserSnapshot.cs（分部类）。
 
     // ── Usage stripping ──
 

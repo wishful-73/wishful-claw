@@ -25,12 +25,15 @@ export function ValueLadder() {
                 实测 1079 视口下三列各 287px ⇒ 全部 ≤2 行；宽屏（1900 上下）各 570px 左右
                 ⇒ 三段都回到 1 行，且文字自己撑满列宽，不会再显得「隔着一大片」。 */}
             <div className="mt-6 grid gap-x-6 gap-y-5 sm:grid-cols-3">
-              {valueLadder.tiers.map((tier, i) => (
+              {valueLadder.tiers.map((tier) => (
                 // `tier` 类的样式（三列自动依次点亮、顶上那条线走一道橙光）在 index.css
                 <div key={tier.name} className="tier border-t border-ink-700 pt-4">
                   <div className="flex flex-wrap items-baseline gap-2">
                     <span className="text-sm font-semibold text-ink-950">{tier.name}</span>
-                    <span className={`text-xs font-medium ${i === 2 ? 'text-ink-900/55' : 'text-accent'}`}>{tier.cost}</span>
+                    {/* 2026-10-19（老大）：费用这块三列**统一琥珀色** —— 原先只有重度层被降成灰
+                        （`text-ink-900/55`），跟前两列的「完全不花钱 / 免费额度内不花钱」不一致，
+                        读起来像在替「要花钱」心虚。这里权重相同，就是「三层都不收软件的钱」。 */}
+                    <span className="text-xs font-medium text-accent">{tier.cost}</span>
                   </div>
                   <p className="mt-1.5 text-[13px] leading-relaxed text-ink-900/60">{tier.detail}</p>
                 </div>

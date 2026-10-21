@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-20 实测 525 行）：37 个 `interface` / `type` 的纯类型表，无逻辑，属同一套
+// 统一 API 类型系统的同质声明；拆开只会让「某个字段属于哪个类型」变成翻文件。
+// 豁免依据：AGENTS.md §大文件拆分 第 5 条第 1 类（单一数据对象 / 同质数据）。
+
 // ===== Unified API Type System =====
 // Import types locally for use in this file
 import type {
@@ -10,6 +14,7 @@ import type {
   RequestOverrides,
   ImageGenerationStreamConfig
 } from '@shared/types/provider'
+import type { LoopEndReasonWire } from '@shared/agent-stream-protocol'
 // Re-export shared provider types so WishfulClaw imports (`@renderer/lib/api/types`) work.
 export type {
   ProviderType,
@@ -276,6 +281,15 @@ export interface CompactSummaryMeta {
   operationId?: string
   /** True when the LLM summarizer failed and a mechanical fallback digest was used. */
   summarizerFailed?: boolean
+  /**
+   * S-208：压缩落刀的时刻（epoch ms），与正文里「【压缩时刻 · …】」那行同源。
+   * 正文是发给模型的拼接结果，这几个字段才是给显示层的结构化数据。
+   */
+  compactedAt?: number
+  /** S-208：被快照进摘要的那条用户消息的发送时刻（epoch ms）。取不到时缺省。 */
+  latestUserSentAt?: number
+  /** S-208：压缩那一刻那条用户消息的执行进度。见 `LatestUserState` 取值。 */
+  latestUserState?: LatestUserState
   displayAnchor?: {
     assistantMessageId: string
     afterContentBlockCount: number
@@ -284,6 +298,15 @@ export interface CompactSummaryMeta {
   /** 与 `CompactBoundaryMeta.cutAt` 同义（同一刀的两个工件各存一份）。 */
   cutAt?: number
 }
+
+/**
+ * S-208：压缩快照里那条用户消息在落刀时刻的执行进度。
+ * 值由 Worker 侧按对话结构判定（后面有没有交卷的 assistant 轮），不是时间推算。
+ */
+export type LatestUserState =
+  | '\u7528\u6237\u6d88\u606f\u5c1a\u672a\u5f00\u59cb\u6267\u884c'
+  | '\u7528\u6237\u6d88\u606f\u6b63\u5728\u6267\u884c\u4e2d'
+  | '\u7528\u6237\u6d88\u606f\u5df2\u7b54\u590d\u5b8c\u6bd5'
 
 export type CompressionStatusState =
   | 'compressing'
@@ -359,12 +382,29 @@ export interface MessageRequestModelMeta {
   modelIcon?: string | null
 }
 
+/**
+ * 这一轮怎么结束的（iter-40 S-210）—— 落库数据，不是文案。
+ *
+ * 由 worker 的 `loop_end` 事件带来，渲染端在收尾时写进 assistant 消息的
+ * `meta.runEnd`，重载后照实显示；缺失（老消息 / 没收到事件）= 不知道，不编。
+ */
+export interface MessageRunEndMeta {
+  reason: LoopEndReasonWire
+  /** reason = 'error' 时 Worker 报的异常类型（如 HttpRequestException / TimeoutException）。 */
+  errorType?: string
+  /** reason = 'error' 时能归因到 HTTP 应答的状态码。 */
+  statusCode?: number
+  /** 收尾时刻（渲染端时钟）。 */
+  at?: number
+}
+
 export interface MessageMeta {
   compactBoundary?: CompactBoundaryMeta
   compactSummary?: CompactSummaryMeta
   selectedFileReads?: SelectedFileReadsMeta
   compressionStatus?: CompressionStatusMeta
   requestModel?: MessageRequestModelMeta
+  runEnd?: MessageRunEndMeta
   cronTaskId?: string
   cronRunId?: string
 }

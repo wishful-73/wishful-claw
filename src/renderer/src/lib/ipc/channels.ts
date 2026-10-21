@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -352,6 +352,7 @@ export const IPC = {
 
   // Built-in Browser
   BROWSER_CLEAR_COOKIES: 'browser:clear-cookies',
+  BROWSER_SET_DEVICE: 'browser:set-device',
   // CodeGraph plugin grammar assets (download-on-enable + dev bypass)
   CODEGRAPH_ASSET_STATUS: 'codegraph:asset-status',
   CODEGRAPH_DOWNLOAD_ASSETS: 'codegraph:download-assets',

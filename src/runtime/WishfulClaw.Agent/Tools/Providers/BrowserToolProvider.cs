@@ -109,6 +109,20 @@ public sealed class BrowserToolProvider : IToolProvider
             excludedScopes: ToolVisibilityScopes.UnattendedRoles));
 
         registry.Register(new ToolDefinitionPlaceholder(
+            "BrowserSetDevice",
+            "Switch the built-in browser between desktop and mobile device modes (pc / iphone / pixel / ipad / custom). The page reloads once after switching.",
+            BrowserToolSchema.CreateObjectSchema(
+                new Dictionary<string, JsonElement>
+                {
+                    ["device"] = BrowserToolSchema.CreateStringProperty("Target device mode: pc (turn emulation off), iphone, pixel, ipad or custom."),
+                    ["width"] = BrowserToolSchema.CreateNumberProperty("Custom viewport width in CSS pixels (320-2560). Only used when device is custom."),
+                    ["height"] = BrowserToolSchema.CreateNumberProperty("Custom viewport height in CSS pixels (320-2560). Only used when device is custom.")
+                },
+                new[] { "device" }),
+            visibleScopes: ToolVisibilityScopes.Everywhere,
+            excludedScopes: ToolVisibilityScopes.UnattendedRoles));
+
+        registry.Register(new ToolDefinitionPlaceholder(
             "WebSearch",
             "Multi-engine aggregated web search. No API key required; auto-detects the query intent, queries the matching engines in parallel, then deduplicates and interleaves the hits. The enabled engine set and intent routing are configured in Settings.",
             BrowserToolSchema.CreateObjectSchema(

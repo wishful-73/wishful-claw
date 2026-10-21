@@ -942,6 +942,7 @@
       "BrowserClick": "selector",
       "BrowserType": "selector, text, clear, submit",
       "BrowserScroll": "direction, amount",
+      "BrowserSetDevice": "device, width, height",
       "codegraph_explore": "query, projectPath",
       "DesktopScreenshot": "no arguments",
       "DesktopClick": "x, y, button, action",

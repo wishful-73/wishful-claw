@@ -43,16 +43,16 @@ export function SkillPanel(): React.JSX.Element {
   const [editContent, setEditContent] = useState<string | null>(null)
 
   const browserUrl = useUIStore((s) => s.getBrowserState(SKILL_MARKET_SESSION_ID, null).url)
-  const setBrowserUrl = useUIStore((s) => s.setBrowserUrl)
+  const requestBrowserNavigation = useUIStore((s) => s.requestBrowserNavigation)
 
   const floatingChat = useFloatingChatSession()
 
   useEffect(() => {
     loadSkills()
     if (!browserUrl) {
-      setBrowserUrl(SKILLHUB_URL, SKILL_MARKET_SESSION_ID, null)
+      requestBrowserNavigation(SKILLHUB_URL, SKILL_MARKET_SESSION_ID, null)
     }
-  }, [loadSkills, browserUrl, setBrowserUrl])
+  }, [loadSkills, browserUrl, requestBrowserNavigation])
 
   const handleChatMessageSent = useCallback(() => {
     setTimeout(() => loadSkills(), 3000)

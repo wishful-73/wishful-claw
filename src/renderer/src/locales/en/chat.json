@@ -834,6 +834,9 @@
       "BrowserScroll": {
         "title": "Browser Scroll"
       },
+      "BrowserSetDevice": {
+        "title": "Browser Device Emulation"
+      },
       "fields": {
         "title": "Title",
         "url": "URL",
@@ -1278,6 +1281,7 @@
     "editImage": "Edit image",
     "maskEditImage": "Mask edit",
     "executionPaused": "Task paused for now",
+    "contextCompacted": "Context compacted, this turn continues",
     "runEnd": {
       "userCancelled": "You stopped this turn",
       "aborted": "This turn was interrupted",

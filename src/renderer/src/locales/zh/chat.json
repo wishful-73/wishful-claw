@@ -834,6 +834,9 @@
       "BrowserScroll": {
         "title": "浏览器滚动"
       },
+      "BrowserSetDevice": {
+        "title": "浏览器设备模拟"
+      },
       "fields": {
         "title": "标题",
         "url": "URL",
@@ -1277,6 +1280,7 @@
     "editImage": "编辑图片",
     "maskEditImage": "蒙版编辑",
     "executionPaused": "任务暂告一段落",
+    "contextCompacted": "上下文已压缩，执行继续",
     "runEnd": {
       "userCancelled": "你中止了这一轮",
       "aborted": "这一轮被中断了",

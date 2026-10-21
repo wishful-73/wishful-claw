@@ -617,7 +617,18 @@
     "stop": "Stop",
     "go": "Go",
     "urlPlaceholder": "Enter URL or search...",
-    "blockedByRules": "Blocked by browser access rules"
+    "blockedByRules": "Blocked by browser access rules",
+    "device": {
+      "title": "Device emulation",
+      "pc": "Desktop (PC)",
+      "iphone": "iPhone",
+      "pixel": "Pixel",
+      "ipad": "iPad",
+      "custom": "Custom size",
+      "width": "Width",
+      "height": "Height",
+      "customHint": "Range {{min}}–{{max}} px"
+    }
   },
   "preview": {
     "openFile": "Open file",

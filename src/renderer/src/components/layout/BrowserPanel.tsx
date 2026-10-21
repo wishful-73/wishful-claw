@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { ArrowLeft, ArrowRight, RefreshCw, Square, Globe, AlertCircle } from 'lucide-react'
+import { Globe, AlertCircle } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -15,11 +15,16 @@ import {
   isWebviewConnected,
   type MaybePromise
 } from '@renderer/lib/browser/webview-helpers'
+import { isSameBrowserUrl, nextCommittedUrl } from '@renderer/lib/browser/committed-url'
+import { forgetBrowserDeviceState } from '@renderer/lib/browser/apply-browser-device'
 import { useTranslation } from 'react-i18next'
 import {
   BUILTIN_BROWSER_PARTITION,
   stripElectronFromUserAgent
 } from '@shared/browser-plugin'
+import { resolveBrowserDeviceViewport } from '@shared/browser-device-presets'
+import { BrowserToolbar } from './browser-toolbar'
+import { useBrowserDeviceEmulation } from './use-browser-device-emulation'
 
 export function BrowserPanel({
   sessionId = null,
@@ -31,6 +36,11 @@ export function BrowserPanel({
   const { t } = useTranslation('layout')
 
   const storedUrl = useUIStore((s) => s.getBrowserState(sessionId, projectId).url)
+  const navigationSeq = useUIStore((s) => s.getBrowserState(sessionId, projectId).navigationSeq)
+  const deviceMode = useUIStore((s) => s.getBrowserState(sessionId, projectId).deviceMode)
+  const customViewport = useUIStore((s) => s.getBrowserState(sessionId, projectId).customViewport)
+  const setBrowserDevice = useUIStore((s) => s.setBrowserDevice)
+  const requestBrowserNavigation = useUIStore((s) => s.requestBrowserNavigation)
   const setBrowserUrl = useUIStore((s) => s.setBrowserUrl)
   const loading = useUIStore((s) => s.getBrowserState(sessionId, projectId).loading)
   const setBrowserLoading = useUIStore((s) => s.setBrowserLoading)
@@ -56,13 +66,24 @@ export function BrowserPanel({
   )
   const webviewRef = useRef<Electron.WebviewTag | null>(null)
   const initialBrowserUserDataReuseEnabledRef = useRef(browserUserDataReuseEnabled)
+
+  // 设备仿真：切换设备时改 UA → 补视口 → 重载；dom-ready 时只补视口（不重载）。
+  const { syncOnReady, reapply } = useBrowserDeviceEmulation({
+    webviewRef,
+    mode: deviceMode,
+    customViewport,
+    desktopUserAgent: runtimeBrowserUserAgent
+  })
+  // prop 只管「新元素首次导航前」的身份；运行时切换设备由 setUserAgent 负责。
+  const deviceViewport = resolveBrowserDeviceViewport(deviceMode, customViewport)
+  const effectiveUserAgent = deviceViewport?.userAgent ?? runtimeBrowserUserAgent
   const webviewSessionProps: Pick<
     React.ComponentProps<'webview'>,
     'partition' | 'allowpopups' | 'useragent'
   > = {
     ...(runtimeBrowserUserDataReuseEnabled ? {} : { partition: BUILTIN_BROWSER_PARTITION }),
     allowpopups: true,
-    ...(runtimeBrowserUserAgent ? { useragent: runtimeBrowserUserAgent } : {})
+    ...(effectiveUserAgent ? { useragent: effectiveUserAgent } : {})
   }
 
   useEffect(() => {
@@ -123,10 +144,36 @@ export function BrowserPanel({
     [handleWebviewOperationError]
   )
 
+  // 「导航目标」与「页面当前地址」是两条独立的线：
+  //   storedUrl  —— 页面当前地址（webview 事件回写，只用于显示与恢复）
+  //   committedUrl —— 导航目标（只在明确指令下变化）
+  // 站内跳转若也回写成导航目标，就会触发整页重载 —— nextCommittedUrl 负责挡住。
+  const prevNavigationSeqRef = useRef(navigationSeq)
+  const prevScopeRef = useRef({ sessionId, projectId })
+  const prevReuseModeRef = useRef(runtimeBrowserUserDataReuseEnabled)
+
   useEffect(() => {
+    const scopeChanged =
+      prevScopeRef.current.sessionId !== sessionId || prevScopeRef.current.projectId !== projectId
+    const reuseModeChanged = prevReuseModeRef.current !== runtimeBrowserUserDataReuseEnabled
+    prevScopeRef.current = { sessionId, projectId }
+    prevReuseModeRef.current = runtimeBrowserUserDataReuseEnabled
+
+    const prevNavigationSeq = prevNavigationSeqRef.current
+    prevNavigationSeqRef.current = navigationSeq
+
+    setCommittedUrl((prev) =>
+      nextCommittedUrl({
+        prev,
+        storedUrl,
+        navigationSeq,
+        prevNavigationSeq,
+        scopeChanged,
+        reuseModeChanged
+      })
+    )
     setInputUrl(storedUrl)
-    setCommittedUrl(storedUrl)
-  }, [storedUrl])
+  }, [storedUrl, navigationSeq, sessionId, projectId, runtimeBrowserUserDataReuseEnabled])
 
   const blockNavigation = useCallback(
     (url: string, reason?: string): void => {
@@ -155,36 +202,29 @@ export function BrowserPanel({
   )
 
   const navigate = useCallback(
-    (url: string): void => {
-      const normalized = normalizeBrowserUrl(url)
+    (rawUrl: string): void => {
+      const normalized = normalizeBrowserUrl(rawUrl)
       if (!normalized) return
       setInputUrl(normalized)
       if (!canNavigateTo(normalized)) return
-      setCommittedUrl(normalized)
-      setBrowserUrl(normalized, sessionId, projectId)
       setBrowserErrorInfo(null, sessionId, projectId)
-      const wv = webviewRef.current
-      if (isWebviewConnected(wv)) {
-        try {
-          wv.src = normalized
-        } catch (error) {
-          handleWebviewOperationError('navigate', error)
-        }
+      if (isSameBrowserUrl(normalized, storedUrl)) {
+        // 同址再回车 ⇒ 显式重载（序号变但 committedUrl 不变，React 会 bail out）
+        runWebviewCommand('navigate', (wv) => wv.reload())
+        return
       }
+      requestBrowserNavigation(normalized, sessionId, projectId)
     },
     [
       canNavigateTo,
-      handleWebviewOperationError,
       projectId,
+      requestBrowserNavigation,
+      runWebviewCommand,
       sessionId,
       setBrowserErrorInfo,
-      setBrowserUrl
+      storedUrl
     ]
   )
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key === 'Enter') navigate(inputUrl)
-  }
 
   const updateNavState = useCallback(() => {
     const wv = webviewRef.current
@@ -230,7 +270,11 @@ export function BrowserPanel({
     setBrowserWebviewRef,
     updateNavState,
     sessionId,
-    projectId
+    projectId,
+    deviceMode,
+    customViewport,
+    desktopUserAgent: runtimeBrowserUserAgent,
+    syncOnReady
   })
   latestRef.current = {
     canNavigateTo,
@@ -243,7 +287,11 @@ export function BrowserPanel({
     setBrowserWebviewRef,
     updateNavState,
     sessionId,
-    projectId
+    projectId,
+    deviceMode,
+    customViewport,
+    desktopUserAgent: runtimeBrowserUserAgent,
+    syncOnReady
   }
 
   const webviewCleanupRef = useRef<(() => void) | null>(null)
@@ -339,6 +387,12 @@ export function BrowserPanel({
       }, 500)
     }
 
+    // dom-ready 每次导航都会触发：这里只补视口仿真，绝不 reload ——
+    // 一旦在此 reload，就和「重新加载后的 dom-ready」互相激发，变成无限重载。
+    const onDomReady = (): void => {
+      latestRef.current.syncOnReady(wv)
+    }
+
     wv.addEventListener('did-start-loading', onStartLoading)
     wv.addEventListener('did-stop-loading', onStopLoading)
     wv.addEventListener('did-navigate', onNavigate as EventListener)
@@ -348,6 +402,7 @@ export function BrowserPanel({
     wv.addEventListener('will-navigate', onWillNavigate as EventListener)
     wv.addEventListener('new-window', onNewWindow as EventListener)
     wv.addEventListener('render-process-gone', onRenderProcessGone as EventListener)
+    wv.addEventListener('dom-ready', onDomReady)
 
     webviewCleanupRef.current = () => {
       wv.removeEventListener('did-start-loading', onStartLoading)
@@ -359,76 +414,42 @@ export function BrowserPanel({
       wv.removeEventListener('will-navigate', onWillNavigate as EventListener)
       wv.removeEventListener('new-window', onNewWindow as EventListener)
       wv.removeEventListener('render-process-gone', onRenderProcessGone as EventListener)
+      wv.removeEventListener('dom-ready', onDomReady)
+      // webview 重建后 guest 进程 id 会变，旧的在途占位必须清掉，防止 id 复用误命中
+      forgetBrowserDeviceState(wv)
     }
   }, [])
 
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/50 px-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6"
-          onClick={() => runWebviewCommand('go back', (wv) => wv.goBack())}
-          disabled={!canGoBack}
-          title={t('browser.back')}
-        >
-          <ArrowLeft className="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-6"
-          onClick={() => runWebviewCommand('go forward', (wv) => wv.goForward())}
-          disabled={!canGoForward}
-          title={t('browser.forward')}
-        >
-          <ArrowRight className="size-3.5" />
-        </Button>
-        {loading ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            onClick={() => runWebviewCommand('stop loading', (wv) => wv.stop())}
-            title={t('browser.stop')}
-          >
-            <Square className="size-3" />
-          </Button>
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6"
-            onClick={() => runWebviewCommand('refresh', (wv) => wv.reload())}
-            title={t('browser.refresh')}
-          >
-            <RefreshCw className="size-3.5" />
-          </Button>
-        )}
-
-        <div className="flex flex-1 items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-2 h-6">
-          <Globe className="size-3 shrink-0 text-muted-foreground" />
-          <input
-            className="flex-1 bg-transparent text-[11px] outline-none placeholder:text-muted-foreground"
-            value={inputUrl}
-            onChange={(e) => setInputUrl(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={t('browser.urlPlaceholder')}
-            spellCheck={false}
-          />
-        </div>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-[11px]"
-          onClick={() => navigate(inputUrl)}
-        >
-          {t('browser.go')}
-        </Button>
-      </div>
+      <BrowserToolbar
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        loading={loading}
+        inputUrl={inputUrl}
+        onInputChange={setInputUrl}
+        onInputCommit={() => navigate(inputUrl)}
+        onBack={() => runWebviewCommand('go back', (wv) => wv.goBack())}
+        onForward={() => runWebviewCommand('go forward', (wv) => wv.goForward())}
+        onStop={() => runWebviewCommand('stop loading', (wv) => wv.stop())}
+        onReload={() => runWebviewCommand('refresh', (wv) => wv.reload())}
+        onGo={() => navigate(inputUrl)}
+        deviceMode={deviceMode}
+        customViewport={customViewport}
+        onDeviceChange={(next) => {
+          setBrowserDevice(next, sessionId, projectId)
+          // 重复点同一设备：store 值没变 ⇒ hook 的 effect 不会触发，必须显式重放，
+          // 否则「再点一次没反应」。
+          if (
+            next.mode === deviceMode &&
+            (next.customViewport?.width ?? null) === (customViewport?.width ?? null) &&
+            (next.customViewport?.height ?? null) === (customViewport?.height ?? null)
+          ) {
+            reapply()
+          }
+        }}
+      />
 
       {/* Loading bar */}
       {loading && (

@@ -1,3 +1,8 @@
+/*
+ * 豁免（AGENTS.md 第 5 条第 2 类「高度内聚的 store」）：573 行，超 500 行硬线。
+ * 理由：这是 UI store 的唯一聚合入口 —— 浏览器 / 预览 / 标签页等 slice 在此合并，
+ * 共享同一份 set/get 与派生状态；拆开会让 slice 之间靠外部传参通信，排查更绕。
+ */
 import { create } from 'zustand'
 import {
   LEFT_SIDEBAR_DEFAULT_WIDTH,
@@ -9,7 +14,7 @@ import {
 } from '@renderer/components/layout/right-panel-defs'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { resolveSessionProjectId } from '@renderer/lib/session-context'
-import { updateBrowserStateForSession } from './browser-session-helpers'
+import { getBrowserStateFromMap, updateBrowserStateForSession } from './browser-session-helpers'
 import { createPreviewPanelSlice } from './preview-panel-slice'
 import { activatePreviewTab } from './preview-panel-helpers'
 import { createBrowserSlice } from './ui-store-browser-slice'
@@ -532,7 +537,19 @@ export const useUIStore = create<UIStore>((set, get) => ({
         resolvedSessionId,
         {
           errorInfo: null,
-          ...(url !== undefined ? { url } : {})
+          // 外部打开 / 命令式打开必须递增 navigationSeq：BrowserPanel 靠它判断
+          // 「该把 webview 同步到这个新地址」；站内跳转只回写 url、不碰序号。
+          ...(url !== undefined
+            ? {
+                url,
+                navigationSeq:
+                  (getBrowserStateFromMap(
+                    state.browserStatesBySession,
+                    resolvedSessionId,
+                    projectId
+                  ).navigationSeq ?? 0) + 1
+              }
+            : {})
         },
         projectId
       )

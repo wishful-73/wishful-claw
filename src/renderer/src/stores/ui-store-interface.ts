@@ -14,6 +14,7 @@ import type {
   SettingsTab
 } from './ui-types'
 import type { BrowserErrorInfo, BrowserPanelSessionState } from './browser-session-helpers'
+import type { BrowserDeviceMode } from '../../../shared/browser-device-presets'
 import type { PreviewPanelState, PreviewPanelTab, OpenDiffParams } from './preview-panel-helpers'
 import type { ProviderFallbackCandidate } from '../../../shared/types/provider'
 
@@ -197,6 +198,18 @@ export interface UIStore {
   getBrowserState: (sessionId?: string | null, projectId?: string | null) => BrowserPanelSessionState
   patchBrowserState: (sessionId: string | null | undefined, patch: Partial<BrowserPanelSessionState>, projectId?: string | null) => void
   setBrowserWebviewRef: (ref: React.RefObject<Electron.WebviewTag | null> | null, sessionId?: string | null, projectId?: string | null) => void
+  /** 一次性写入设备模式与自定义视口（避免两次 set 触发两次副作用） */
+  setBrowserDevice: (
+    device: { mode: BrowserDeviceMode; customViewport: { width: number; height: number } | null },
+    sessionId?: string | null,
+    projectId?: string | null
+  ) => void
+  /** 命令式导航：写地址并递增序号，让已挂载的 webview 跳过去 */
+  requestBrowserNavigation: (
+    url: string,
+    sessionId?: string | null,
+    projectId?: string | null
+  ) => void
 
   // Selected files
   selectedFiles: string[]

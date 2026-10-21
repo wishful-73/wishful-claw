@@ -19,6 +19,7 @@ export const BROWSER_SNAPSHOT_TOOL_NAME = 'BrowserSnapshot' as const
 export const BROWSER_CLICK_TOOL_NAME = 'BrowserClick' as const
 export const BROWSER_TYPE_TOOL_NAME = 'BrowserType' as const
 export const BROWSER_SCROLL_TOOL_NAME = 'BrowserScroll' as const
+export const BROWSER_SET_DEVICE_TOOL_NAME = 'BrowserSetDevice' as const
 export const DESKTOP_SCREENSHOT_TOOL_NAME = 'DesktopScreenshot' as const
 export const DESKTOP_CLICK_TOOL_NAME = 'DesktopClick' as const
 export const DESKTOP_TYPE_TOOL_NAME = 'DesktopType' as const
@@ -40,6 +41,7 @@ export type AppPluginToolName =
   | typeof BROWSER_CLICK_TOOL_NAME
   | typeof BROWSER_TYPE_TOOL_NAME
   | typeof BROWSER_SCROLL_TOOL_NAME
+  | typeof BROWSER_SET_DEVICE_TOOL_NAME
   | typeof DESKTOP_SCREENSHOT_TOOL_NAME
   | typeof DESKTOP_CLICK_TOOL_NAME
   | typeof DESKTOP_TYPE_TOOL_NAME
@@ -87,7 +89,8 @@ export const APP_PLUGIN_DESCRIPTORS: AppPluginDescriptor[] = [
       BROWSER_SNAPSHOT_TOOL_NAME,
       BROWSER_CLICK_TOOL_NAME,
       BROWSER_TYPE_TOOL_NAME,
-      BROWSER_SCROLL_TOOL_NAME
+      BROWSER_SCROLL_TOOL_NAME,
+      BROWSER_SET_DEVICE_TOOL_NAME
     ],
     requiresModelConfig: false
   },

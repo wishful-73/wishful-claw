@@ -617,7 +617,18 @@
     "stop": "停止",
     "go": "前往",
     "urlPlaceholder": "输入网址或搜索...",
-    "blockedByRules": "被浏览器访问规则阻止"
+    "blockedByRules": "被浏览器访问规则阻止",
+    "device": {
+      "title": "设备模拟",
+      "pc": "桌面（PC）",
+      "iphone": "iPhone",
+      "pixel": "Pixel",
+      "ipad": "iPad",
+      "custom": "自定义尺寸",
+      "width": "宽度",
+      "height": "高度",
+      "customHint": "范围 {{min}}–{{max}} px"
+    }
   },
   "preview": {
     "openFile": "打开文件",

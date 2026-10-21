@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   DownloadCloud,
@@ -42,6 +42,7 @@ import {
   BROWSER_PLUGIN_ID,
   BROWSER_SCREENSHOT_TOOL_NAME,
   BROWSER_SCROLL_TOOL_NAME,
+  BROWSER_SET_DEVICE_TOOL_NAME,
   BROWSER_SNAPSHOT_TOOL_NAME,
   BROWSER_TYPE_TOOL_NAME,
   DESKTOP_CLICK_TOOL_NAME,
@@ -107,6 +108,7 @@ const TOOL_ARG_LABELS: Record<AppPluginToolName, string[]> = {
   [BROWSER_CLICK_TOOL_NAME]: ['selector'],
   [BROWSER_TYPE_TOOL_NAME]: ['selector', 'text', 'clear', 'submit'],
   [BROWSER_SCROLL_TOOL_NAME]: ['direction', 'amount'],
+  [BROWSER_SET_DEVICE_TOOL_NAME]: ['device', 'width', 'height'],
   [DESKTOP_SCREENSHOT_TOOL_NAME]: ['no args'],
   [DESKTOP_CLICK_TOOL_NAME]: ['x', 'y', 'button', 'action'],
   [DESKTOP_TYPE_TOOL_NAME]: ['text', 'key', 'hotkey'],

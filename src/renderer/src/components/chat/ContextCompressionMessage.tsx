@@ -7,6 +7,7 @@ import {
   getCompactSummaryDisplayText,
   isCompactSummaryLikeMessage
 } from '@renderer/lib/agent/context-compression'
+import { formatChatTime } from '@renderer/lib/utils/chat-time'
 import {
   MARKDOWN_REHYPE_PLUGINS,
   MARKDOWN_REMARK_PLUGINS,
@@ -20,16 +21,10 @@ import {
  * 它记的是压缩那一刻的事实，卡片不会随 run 跑完更新，读起来像「现在仍在执行」；
  * 而它存在的意义是让模型区分「正在跑的活」与「刚下的指令」，用户自己知道自己在干什么。
  * 状态仍写在摘要正文的【压缩时刻】块里（`ContextCompression.UserSnapshot.cs`）。
+ *
+ * S-222：时刻格式改走 `formatChatTime`（当天只给 `HH:MM`，跨天才补日期）。
+ * 原来的本地 `formatStamp` 恒带日期、分隔符还随 locale 变（`10/22` vs `10-22`），已删。
  */
-function formatStamp(value: number | undefined, language: string): string {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return ''
-  return new Date(value).toLocaleString(language, {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
 
 function LiveCompressionDraft({
   draft,
@@ -80,7 +75,7 @@ export function ContextCompressionMessage({
   draft?: string
   isLive?: boolean
 }): React.JSX.Element | null {
-  const { t, i18n } = useTranslation('agent')
+  const { t } = useTranslation('agent')
   const [expanded, setExpanded] = React.useState(false)
 
   if (isLive) {
@@ -116,9 +111,9 @@ export function ContextCompressionMessage({
 
   // S-208：压缩时刻与「用户最后发言的时刻」是 meta 里的结构化字段，
   // 正文里那份是发给模型看的拼接文本，已经被 getCompactSummaryDisplayText 剥掉了。
-  // `meta.latestUserState` 有意不上卡片，理由见文件头的 formatStamp 注释。
-  const compactedAtLabel = formatStamp(meta?.compactedAt, i18n.language)
-  const latestUserAtLabel = formatStamp(meta?.latestUserSentAt, i18n.language)
+  // `meta.latestUserState` 有意不上卡片，理由见文件头 S-208 注释。
+  const compactedAtLabel = formatChatTime(meta?.compactedAt)
+  const latestUserAtLabel = formatChatTime(meta?.latestUserSentAt)
   const snapshotBits = [
     compactedAtLabel
       ? t('contextCompression.summaryCompactedAt', { defaultValue: 'Compacted {{time}}', time: compactedAtLabel })

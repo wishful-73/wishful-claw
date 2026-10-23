@@ -1,5 +1,6 @@
 import { SiteHeader } from './components/site-header'
 import { SiteMist } from './components/site-mist'
+import { SectionRail } from './components/section-rail'
 import { Hero } from './sections/hero'
 import { Advantages } from './sections/advantages'
 import { ValueLadder } from './sections/value-ladder'
@@ -22,7 +23,12 @@ export default function App() {
   return (
     <>
       <SiteMist />
+      {/* S-221：首页页内导航要的第一项「概览」—— 零高锚点，落点是真正的 scrollY = 0。
+          不放 hero.tsx（它是裸 <section>、没有 scroll-mt，挂上去落点同样是 0，但把锚点放这里
+          能保证它先于任何区块，Hero 结构以后怎么改都不受影响）。 */}
+      <span id="top" aria-hidden="true" className="block h-0" />
       <SiteHeader />
+      <SectionRail />
       <main className="flex-1">
         <Hero />
         <ValueLadder />

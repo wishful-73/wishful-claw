@@ -1,4 +1,5 @@
 using WishfulClaw.Core.Tools;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent.Tools.Providers;
 
@@ -105,7 +106,7 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
             "reply, then update_dispatch when the outcome is clear. For plain questions or follow-ups " +
             "without tracking, use send_session_message instead. If the work needs a written brief or " +
             "notes, say so in the instruction and have the target session keep them under " +
-            "`.wishful-claw/notes/` in its project, not loose in the project tree.",
+            $"`{WishfulClawDataDir.ProjectDirName}/notes/` in its project, not loose in the project tree.",
             ToolSchemaBuilder.Object(
                 new Dictionary<string, System.Text.Json.JsonElement>
                 {

@@ -5,6 +5,9 @@
 **审查方式**：只读（`git show` + 读文件 + 读 `node_modules` 里的 electron-builder 模板）。未改任何源文件，未执行 `commit / reset / checkout`，未跑编译。
 **结论计数**：❌ 8 / ⚠️ 22 / ✅ 29（共 59 项）
 
+> **本文件是跨需求总表。** 单需求的审查切面见 [`plan-s217/review_report.md`](plan-s217/review_report.md)、[`plan-s219/review_report.md`](plan-s219/review_report.md)、[`plan-s220/review_report.md`](plan-s220/review_report.md)；S-218 未单开，第四节即其切面。
+> 编号 **1-59 全局唯一**，切面按编号回引本文件，不另起编号 —— 避免两处结论漂移。
+
 ---
 
 ## 阻断
@@ -161,3 +164,20 @@
 - ⚠️ 15（工具层中英混排）、⚠️ 25/31/32/33/38/42/45/47/48/50/52/53 —— 均属体验与健壮性改进，不阻断；`S-218.md §10.3` 已登记为缺口。
 - ⚠️ 20（`installer.nsh` 变量声明依赖 `oneClick:false` + 未设 `perMachine`）、⚠️ 22（宏名大小写依赖 + 缺真机 `electron-builder --win`）—— 归入真机验证清单。
 - ⚠️ 5（硬刷新重放 POST）—— 原 `reload()` 同样重放，非本需求引入。
+
+---
+
+## 八、S-223 dev 实例项目级数据目录隔离（2026-10-23）
+
+**审查切面**：[`plan-s223/review_report.md`](plan-s223/review_report.md)（编号 1-23 在该文件内唯一）
+
+**结论**：❌ 2 → 修复后 **0**；⚠️ 6（3 条设计取舍 + 3 条已知边界）；✅ 15。门禁全绿（`typecheck` node/web 各 0 错、`dotnet build` 0 警告 0 错误、`npm test` **80/80**）。
+
+**两条 ❌ 都是「编译和 grep 都拦不住」的类型**，与阶段三第三轮 ❌F 的预测一致：
+
+| ❌ | 条款 | 处置 |
+|---|---|---|
+| 1 | `GlobalTaskToolsProvider.cs:108` 只补 `$` 未换字面量 —— 编译通过，但模型仍收到写死的生产目录名 | **已修**，切换成 `{WishfulClawDataDir.ProjectDirName}` 占位 |
+| 2 | `project-archive-helpers.ts:42` 换了 import 没换常量 —— `TS2304` | **已修**，由 `tsc -p tsconfig.web.json` 抓出 |
+
+**未修（有意）**：`ProjectDirName` 不缓存（每次读环境块字典查找，与路径拼接同量级）；SSH 远程项目读不到历史记忆（不污染生产，已在 `docs/data-storage.md` 登记边界）；辅助窗口不带 `additionalArguments`（当前不 import 项目路径模块，已在模块头注释点名）。

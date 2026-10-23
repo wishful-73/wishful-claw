@@ -4,7 +4,7 @@ import { join } from 'path'
 import { getCodeGraphAssetStatus } from '../lib/codegraph-assets'
 import { getNativeWorker } from '../lib/native-worker'
 import { readPersistedSettings } from '../lib/settings-store'
-import { resolveDataPath } from '../lib/data-dir'
+import { resolveDataPath, resolveProjectDirName } from '../lib/data-dir'
 import { WISHFUL_CLAW_DATA_DIR_NAME } from '../../shared/data-dir'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
 
@@ -168,7 +168,7 @@ export function resolveCodeGraphDataRoot(
   }
   if (!workingFolder) return undefined
   try {
-    const dataRoot = join(workingFolder, WISHFUL_CLAW_DATA_DIR_NAME, 'codegraph')
+    const dataRoot = join(workingFolder, resolveProjectDirName(), 'codegraph')
     // Writable check: the root must exist as a directory. Creating
     // .wishful-claw/codegraph happens lazily on the worker side at DB open.
     if (!existsSync(workingFolder) || !statSync(workingFolder).isDirectory()) {

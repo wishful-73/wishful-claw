@@ -1,4 +1,5 @@
 using WishfulClaw.Contracts;
+using WishfulClaw.Infrastructure.Storage;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -15,17 +16,17 @@ public static class GoalFileTools
 
     public static string GetGoalFilePath(string workingFolder, string goalId)
     {
-        return Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "goals", $"{goalId}.md");
+        return Path.Combine(WishfulClawDataDir.ProjectRoot(workingFolder), "goals", $"{goalId}.md");
     }
 
     public static string GetGoalStateFilePath(string workingFolder, string goalId)
     {
-        return Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "goals", $"{goalId}.state.json");
+        return Path.Combine(WishfulClawDataDir.ProjectRoot(workingFolder), "goals", $"{goalId}.state.json");
     }
 
     private static string EnsureGoalDirectory(string workingFolder)
     {
-        var dir = Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "goals");
+        var dir = Path.Combine(WishfulClawDataDir.ProjectRoot(workingFolder), "goals");
         Directory.CreateDirectory(dir);
         return dir;
     }

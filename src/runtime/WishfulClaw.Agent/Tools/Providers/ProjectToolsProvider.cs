@@ -1,4 +1,5 @@
 using WishfulClaw.Core.Tools;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent.Tools.Providers;
 
@@ -29,7 +30,7 @@ public sealed class ProjectToolsProvider : IToolProvider
         // get_project_details: Get project details including sessions and task status
         registry.Register(new ToolDefinitionPlaceholder(
             "get_project_details",
-            "Get project details (session list, task status). Reads .wishful-claw/project-status.md for a summary; if missing or stale, the response includes a statusUpdateTemplate to send via send_session_message.",
+            $"Get project details (session list, task status). Reads {WishfulClawDataDir.ProjectDirName}/project-status.md for a summary; if missing or stale, the response includes a statusUpdateTemplate to send via send_session_message.",
             ToolSchemaBuilder.Object(
                 new Dictionary<string, System.Text.Json.JsonElement>
                 {

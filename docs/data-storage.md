@@ -25,12 +25,14 @@
 
 ### 项目工作区
 
-项目本身注册在 SQLite 中，记录项目名和工作区路径。项目级文件放在工作区路径下的 `.wishful-claw/`：
+项目本身注册在 SQLite 中，记录项目名和工作区路径。项目级文件放在工作区路径下的 `.wishful-claw/`。
+
+**目录名按运行态区分**（S-223）：打包版用 `.wishful-claw/`，开发实例用 `.wishful-claw-dev/`，开发时跑出来的计划、笔记、状态不会写进正式项目的那份目录。判定只做一次 —— 主进程按 `app.isPackaged` 定值，经环境变量 `WISHFULCLAW_PROJECT_DIR` 下发给 Worker，经 BrowserWindow `additionalArguments` 下发给渲染进程；该变量有值时优先采用。全局目录（`~/.wishful-claw/` 与 `~/.wishful-claw-dev/`）口径不变。
 
 ```
 {项目工作区路径}/
 ├── 用户的项目代码...
-└── .wishful-claw/
+└── .wishful-claw/                # 开发实例为 .wishful-claw-dev/
     ├── SOUL.md                     # 项目人格（覆盖全局）
     ├── MEMORY.md                   # 项目记忆
     ├── memory/
@@ -44,6 +46,8 @@
 ```
 
 任务以 Markdown 文件形式存储，记录任务描述、状态、进度、执行记录。助手通过读写这些文件来发布任务和跟踪进度。
+
+**SSH 远程项目的边界**：目录名区分只对本地工作区生效。开发实例连 SSH 项目时，远端去找的是 `.wishful-claw-dev/`（远端只有生产的 `.wishful-claw/`），因此读不到远端历史记忆；写入也落在远端 `-dev` 目录，不碰生产数据。这是有意取舍 —— 开发实例本来就只用于本地临时测试。
 
 ## SQLite 用途
 
@@ -63,7 +67,7 @@
 SQLite（index.db）
 ├── 项目注册表 ──→ 记录项目名 + 工作区路径
 │       │
-│       └──→ {工作区路径}/.wishful-claw/  ← 项目级记忆/人格文件
+│       └──→ {工作区路径}/.wishful-claw/  ← 项目级记忆/人格文件（开发实例为 .wishful-claw-dev/）
 │
 ├── 会话/消息表 ← 按项目关联，实时写入
 │
@@ -71,7 +75,7 @@ SQLite（index.db）
 
 记忆文件（Markdown，source of truth）
   全局: ~/.wishful-claw/MEMORY.md + memory/*
-  项目: {工作区路径}/.wishful-claw/MEMORY.md + memory/*
+  项目: {工作区路径}/.wishful-claw/MEMORY.md + memory/*（开发实例为 .wishful-claw-dev/）
          │
          └── 同步 ──→ FTS 索引表（可重建）
 ```

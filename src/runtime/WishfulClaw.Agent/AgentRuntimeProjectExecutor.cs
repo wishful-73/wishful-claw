@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-23 实测 613 行，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+// 项目执行器是一条会话从收指令到写 project-status 的完整链路 —— 状态模板生成、
+// 快照读取、任务派发共用同一份 project / session 上下文与 DB 连接。拆出去要把
+// 这批 DB 句柄与 run 上下文搬成公开 API，排查「状态为什么不更新」反而更难。
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -138,7 +142,7 @@ public static partial class AgentRuntimeProjectExecutor
 
             if (!string.IsNullOrEmpty(project.WorkingFolder))
             {
-                var statusFilePath = Path.Combine(project.WorkingFolder, WishfulClawPaths.DataDirName, "project-status.md");
+                var statusFilePath = Path.Combine(WishfulClawDataDir.ProjectRoot(project.WorkingFolder), "project-status.md");
                 if (File.Exists(statusFilePath))
                 {
                     taskStatus = File.ReadAllText(statusFilePath);
@@ -596,7 +600,7 @@ public static partial class AgentRuntimeProjectExecutor
     private static string GenerateStatusUpdateTemplate(string projectName, string workingFolder)
     {
         return $"Please organize the current task status for project **{projectName}** " +
-            $"and write a clean summary to `.wishful-claw/project-status.md` in the working directory.\n\n" +
+            $"and write a clean summary to `{WishfulClawDataDir.ProjectDirName}/project-status.md` in the working directory.\n\n" +
             "The status file should include:\n" +
             "- **Active tasks**: what's currently being worked on\n" +
             "- **Recent changes**: what was done recently\n" +
@@ -604,6 +608,6 @@ public static partial class AgentRuntimeProjectExecutor
             "- **Blockers**: any issues that need attention\n\n" +
             "Please review the current conversation history, plans, and goals to produce " +
             "an accurate and up-to-date summary. Write the file in Markdown format " +
-            $"at `{workingFolder}/.wishful-claw/project-status.md`.";
+            $"at `{workingFolder}/{WishfulClawDataDir.ProjectDirName}/project-status.md`.";
     }
 }

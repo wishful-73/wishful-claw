@@ -2,7 +2,7 @@ import { BrowserWindow, Notification, dialog, shell, webContents } from 'electro
 import * as fs from 'fs'
 import { getNativeWorker } from '../lib/native-worker'
 import { persistImageBuffer } from '../lib/image-persist'
-import { resolveDataDir } from '../lib/data-dir'
+import { resolveDataDir, resolveProjectDirName } from '../lib/data-dir'
 import { resolveGeneratedImagesDir } from '../lib/generated-image-dir'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { safeSendMessagePackToWindow } from '../window-ipc'
@@ -320,7 +320,8 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
               projectId: args.projectId,
               sshConnectionId: args.sshConnectionId
             },
-            resolveDataDir()
+            resolveDataDir(),
+            resolveProjectDirName()
           )
         })
         return {

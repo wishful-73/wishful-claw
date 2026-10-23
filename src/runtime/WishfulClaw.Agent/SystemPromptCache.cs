@@ -91,7 +91,7 @@ public static class SystemPromptCache
         {
             var globalDir = WishfulClawDataDir.Resolve("personas", personaId);
             var dir = !string.IsNullOrWhiteSpace(workingFolder)
-                ? Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "personas", personaId)
+                ? Path.Combine(WishfulClawDataDir.ProjectRoot(workingFolder), "personas", personaId)
                 : globalDir;
 
             long latest = 0;

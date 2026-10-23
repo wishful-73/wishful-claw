@@ -1,4 +1,4 @@
-﻿using WishfulClaw.Contracts;
+using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
 
@@ -6,7 +6,7 @@ namespace WishfulClaw.Persona;
 
 /// <summary>
 /// Reads and writes persona .md files from the global library (~/.wishful-claw/personas/)
-/// or project library ({workingFolder}/.wishful-claw/personas/).
+/// or project library ({workingFolder}/{project data dir}/personas/, see WishfulClawDataDir.ProjectDirName).
 /// Built-in presets are served by <see cref="PersonaPresetService"/>.
 /// </summary>
 public sealed class PersonaStore
@@ -31,7 +31,7 @@ public sealed class PersonaStore
     {
         var root = string.IsNullOrWhiteSpace(workingFolder)
             ? WishfulClawDataDir.Root
-            : Path.Combine(workingFolder, WishfulClawPaths.DataDirName);
+            : WishfulClawDataDir.ProjectRoot(workingFolder);
 
         return Path.Combine(root, PersonaFileLayout.PersonasDirectoryName);
     }

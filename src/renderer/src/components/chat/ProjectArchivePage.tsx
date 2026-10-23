@@ -21,6 +21,7 @@ import { usePersonaStore } from '@renderer/stores/persona-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { cn } from '@renderer/lib/utils'
+import { WISHFUL_CLAW_DATA_DIR_NAME } from '@shared/data-dir'
 
 import {
   type ArchiveTabId,
@@ -79,7 +80,7 @@ export function ProjectArchivePage(): React.JSX.Element {
     if (isSshProject) {
       const home = getHomeDir()
       if (!home || !activeProjectId) return ''
-      return joinFsPath(home, WISHFUL_CLAW_DIR, 'projects', activeProjectId)
+      return joinFsPath(home, WISHFUL_CLAW_DATA_DIR_NAME, 'projects', activeProjectId)
     }
     if (!activeProject?.workingFolder) return ''
     return joinFsPath(activeProject.workingFolder, WISHFUL_CLAW_DIR)

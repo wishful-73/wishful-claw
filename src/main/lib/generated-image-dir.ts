@@ -46,7 +46,8 @@ export interface GeneratedImageScope {
  */
 export function resolveGeneratedImagesDir(
   input: GeneratedImageScope = {},
-  dataRoot: string
+  dataRoot: string,
+  projectDirName: string = WISHFUL_CLAW_DATA_DIR_NAME
 ): string {
   if (input.scope === 'project') {
     const sshConnectionId = input.sshConnectionId?.trim()
@@ -58,7 +59,7 @@ export function resolveGeneratedImagesDir(
         return join(dataRoot, 'projects', projectId, GENERATED_IMAGES_SUBDIR)
       }
     } else if (workingFolder) {
-      return join(workingFolder, WISHFUL_CLAW_DATA_DIR_NAME, GENERATED_IMAGES_SUBDIR)
+      return join(workingFolder, projectDirName, GENERATED_IMAGES_SUBDIR)
     }
   }
 

@@ -1,4 +1,4 @@
-﻿using WishfulClaw.Contracts;
+using WishfulClaw.Contracts;
 using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Workspace.Memory;
@@ -6,7 +6,7 @@ namespace WishfulClaw.Workspace.Memory;
 /// <summary>
 /// Resolves file paths for memory storage based on scope.
 /// Global scope: ~/.wishful-claw/
-/// Local project scope: {workingFolder}/.wishful-claw/
+/// Local project scope: {workingFolder}/{project data dir}/ (.wishful-claw packaged, .wishful-claw-dev in dev)
 /// SSH project scope: ~/.wishful-claw/projects/{projectId}/
 /// </summary>
 public static class MemoryPathResolver
@@ -49,7 +49,8 @@ public static class MemoryPathResolver
             return fullRoot;
         }
 
-        // Local project scope: "project:{workingFolder}" → {workingFolder}/.wishful-claw/
+        // Local project scope: "project:{workingFolder}" → {workingFolder}/{project data dir}/
+        // (.wishful-claw packaged, .wishful-claw-dev in dev — see WishfulClawDataDir.ProjectDirName)
         if (scope.StartsWith("project:", StringComparison.OrdinalIgnoreCase))
         {
             var workingFolder = scope["project:".Length..];
@@ -62,7 +63,7 @@ public static class MemoryPathResolver
             {
                 throw new ArgumentException($"Invalid local project scope: {scope}", nameof(scope));
             }
-            return Path.Combine(Path.GetFullPath(workingFolder), WishfulClawPaths.DataDirName);
+            return WishfulClawDataDir.ProjectRoot(Path.GetFullPath(workingFolder));
         }
 
         return GlobalRoot;

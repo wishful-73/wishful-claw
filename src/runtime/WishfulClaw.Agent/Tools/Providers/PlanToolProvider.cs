@@ -1,6 +1,7 @@
 using WishfulClaw.Agent.Tools;
 using System.Text.Json;
 using WishfulClaw.Core.Tools;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent.Tools.Providers;
 
@@ -62,7 +63,7 @@ public sealed class PlanToolProvider : IToolProvider
         registry.Register(new ToolDefinitionPlaceholder(
             "UpdatePlanStep",
             "Update the status of a step in the current plan. Call this during plan execution to track progress. " +
-            "The plan state file (.wishful-claw/plans/{planId}.state.json) is updated in real-time and can be read by external tools.",
+            $"The plan state file ({WishfulClawDataDir.ProjectDirName}/plans/{{planId}}.state.json) is updated in real-time and can be read by external tools.",
             ToolSchemaBuilder.Object(stepProps, stepRequired),
             availableModes: ["normal"],
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly,

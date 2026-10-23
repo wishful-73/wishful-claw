@@ -1,7 +1,12 @@
+// 500 行豁免（2026-10-23 实测 550 行，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+// 全局任务执行器六个工具共用一个调度状态机 —— 任务 CRUD、dispatch 记录、
+// 反向消息投递、看板事件广播彼此紧耦合，拆开要把 dispatch 上下文与 DB 句柄
+// 搬成公开 API，反而更难追踪一条派活到底走到哪一步。
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -223,7 +228,7 @@ public static class AgentRuntimeGlobalTaskExecutor
                 $"{instruction}\n\n" +
                 "This work request was dispatched by the global agent. Decide yourself how to execute it " +
                 "(including whether to create your own temporary Todos). Any notes or briefs you write " +
-                "for it belong in `.wishful-claw/notes/`, not loose in the project tree. When you finish, " +
+                $"for it belong in `{WishfulClawDataDir.ProjectDirName}/notes/`, not loose in the project tree. When you finish, " +
                 "get blocked, or need to ask the global agent a follow-up question, report back via the " +
                 "`use_capability` tool: action=\"call\", capability_id=\"builtin:reply_global_dispatch\", and pass " +
                 $"{{\"dispatchId\": \"{dispatchId}\", \"report\": \"<your result or question>\", \"status\": \"in_progress | completed | blocked\"}} " +

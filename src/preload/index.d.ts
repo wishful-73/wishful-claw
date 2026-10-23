@@ -4,6 +4,8 @@ declare global {
   interface Window {
     electron: ElectronAPI
     api: {
+      /** 项目级数据目录名（S-223）；辅助窗口不带该参数时为 undefined。 */
+      projectDirName?: string
       ping: () => Promise<{ ok: boolean; pid: number }>
       invoke: <T = unknown>(channel: string, payload: unknown) => Promise<T>
       workerRequest: <T = unknown>(method: string, params?: unknown) => Promise<T>

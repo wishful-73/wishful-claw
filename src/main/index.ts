@@ -7,8 +7,9 @@ import appIcon from '../../resources/icon-256.png?asset'
 
 import { latchNativeWorkerShutdown } from './lib/native-worker'
 import { logError, logWarn, logInfo, logDebug, installGlobalExceptionHandlers, readRecentLogs, listLogFiles, readLogFile, cleanupOldLogFiles } from './lib/logger'
-import { resolveDataPath } from './lib/data-dir'
+import { resolveDataPath, resolveProjectDirName } from './lib/data-dir'
 import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '../shared/data-dir'
+import { WISHFULCLAW_PROJECT_DIR_ENV } from '../shared/project-dir'
 import type { LogCleanupResult, LogFileContent, LogFileInfo } from '../shared/logging'
 import { registerMessagePackHandler } from './ipc/messagepack-handler'
 import { registerAiProviderHandlers } from './ipc/ai-provider-handlers'
@@ -84,6 +85,14 @@ let tray: Tray | null = null
 let isQuiting = false
 
 /**
+ * 项目级数据目录名（S-223）。主进程算一次：回写环境变量让 Worker 子进程继承，
+ * 再作为 additionalArguments 交给渲染进程 —— 三端必须拿到同一个字符串，
+ * 各自判定 `app.isPackaged` 会在 `npm start`（未打包但跑产物）下分叉。
+ */
+const projectDirName = resolveProjectDirName()
+process.env[WISHFULCLAW_PROJECT_DIR_ENV] = projectDirName
+
+/**
  * Resolved once: `process.argv` cannot change after boot, so re-reading it in
  * every window callback would just re-derive the same value.
  */
@@ -109,7 +118,9 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      webviewTag: true
+      webviewTag: true,
+      // 项目级数据目录名交给渲染进程（S-223），preload 解析后挂到 window.api
+      additionalArguments: [`--wishful-project-dir=${projectDirName}`]
     }
   })
 

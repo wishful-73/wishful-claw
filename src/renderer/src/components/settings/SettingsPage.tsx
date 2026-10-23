@@ -1,10 +1,11 @@
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3, Bot, Globe } from 'lucide-react'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3, Bot, Globe, UserCheck } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
 import { useUIStore, type SettingsTab } from '@renderer/stores/ui-store'
 import { ProviderPanel } from '@renderer/components/settings/ProviderPanel'
+import { ProviderAuthPanel } from '@renderer/components/settings/ProviderAuthPanel'
 import { ProviderCompletionSettingsPanel } from '@renderer/components/settings/ProviderCompletionSettingsPanel'
 import { PluginPanel } from '@renderer/components/settings/PluginPanel'
 import { ExtensionPanel } from '@renderer/components/settings/ExtensionPanel'
@@ -87,6 +88,7 @@ function SettingsPage(): React.JSX.Element {
       label: t('tabs.groups.aiService'),
       items: [
         { id: 'provider', icon: <Server className="size-4" />, label: t('tabs.provider.label') },
+        { id: 'providerAuth', icon: <UserCheck className="size-4" />, label: t('tabs.providerAuth.label', { defaultValue: '授权 AI 服务商' }) },
         { id: 'modelManagement', icon: <Bot className="size-4" />, label: t('tabs.modelManagement.label') },
         { id: 'runtime', icon: <Gauge className="size-4" />, label: t('tabs.runtime.label') },
         { id: 'memory', icon: <Brain className="size-4" />, label: t('tabs.memory.label', { defaultValue: '记忆' }) },
@@ -189,6 +191,10 @@ function SettingsPage(): React.JSX.Element {
             {settingsTab === 'provider' ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ProviderPanel />
+              </div>
+            ) : settingsTab === 'providerAuth' ? (
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <ProviderAuthPanel />
               </div>
             ) : settingsTab === 'modelManagement' ? (
               <div className="flex-1 overflow-y-auto">

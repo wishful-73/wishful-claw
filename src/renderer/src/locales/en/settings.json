@@ -53,6 +53,10 @@
       "label": "AI Providers",
       "desc": "Configure API keys, base URLs, test connectivity"
     },
+    "providerAuth": {
+      "label": "Authorized AI Providers",
+      "desc": "Sign in with your own account and use your existing plan quota"
+    },
     "modelManagement": {
       "label": "Model Management",
       "desc": "Manage providers and models for auxiliary requests and image generation"
@@ -264,6 +268,25 @@
     "requestMaxRetriesNoLimit": "Unlimited",
     "requestMaxRetriesCount": "{{count}} attempts",
     "requestMaxRetriesHint": "Default: 10 attempts. Applies to all providers."
+  },
+  "providerAuth": {
+    "connected": "Connected",
+    "waiting": "Waiting for browser sign-in…",
+    "cancel": "Cancel",
+    "checkin": "Check in",
+    "reauthorize": "Reauthorize",
+    "disconnect": "Disconnect",
+    "signIn": "Sign in",
+    "autoCheckin": "Daily check-in",
+    "autoCheckinHint": "Claims once a day while the app is running. You can still check in manually when it is off.",
+    "signInSuccess": "Connected: {{account}}",
+    "disconnectDone": "Disconnected",
+    "checkinClaimed": "Checked in: +{{credit}} credits, {{streak}}-day streak",
+    "checkinDone": "Already checked in today ({{credit}} credits today, {{streak}}-day streak)",
+    "checkinCaptcha": "The provider requires a human verification. Please check in on their website.",
+    "checkinFailed": "Check-in failed",
+    "description": "Sign in with your own account and use your existing plan quota — no API key needed.",
+    "empty": "No providers support account sign-in yet."
   },
   "provider": {
     "list": {

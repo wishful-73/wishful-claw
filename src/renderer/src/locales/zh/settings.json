@@ -53,6 +53,10 @@
       "label": "AI 服务商",
       "desc": "配置 API Key、Base URL，测试连通性"
     },
+    "providerAuth": {
+      "label": "授权 AI 服务商",
+      "desc": "用你自己的账号登录，消耗已有套餐额度"
+    },
     "modelManagement": {
       "label": "模型管理",
       "desc": "管理辅助请求与图片生成使用的服务商和模型"
@@ -264,6 +268,25 @@
     "requestMaxRetriesNoLimit": "无限",
     "requestMaxRetriesCount": "{{count}} 次",
     "requestMaxRetriesHint": "默认：10 次，适用于所有服务商。"
+  },
+  "providerAuth": {
+    "connected": "已连接",
+    "waiting": "等待浏览器登录…",
+    "cancel": "取消",
+    "checkin": "签到",
+    "reauthorize": "重新授权",
+    "disconnect": "断开",
+    "signIn": "登录",
+    "autoCheckin": "自动签到",
+    "autoCheckinHint": "应用运行时每天自动领一次；关掉后仍可手动签到。",
+    "signInSuccess": "已连接：{{account}}",
+    "disconnectDone": "已断开",
+    "checkinClaimed": "签到成功：+{{credit}} 额度，连续 {{streak}} 天",
+    "checkinDone": "今天已经签过了（今日 {{credit}} 额度，连续 {{streak}} 天）",
+    "checkinCaptcha": "服务商要求人机验证，请到官网手动签到。",
+    "checkinFailed": "签到失败",
+    "description": "用你自己的账号登录，消耗你已有的套餐额度，不需要填写 API Key。",
+    "empty": "暂无支持账号登录的服务商。"
   },
   "provider": {
     "list": {

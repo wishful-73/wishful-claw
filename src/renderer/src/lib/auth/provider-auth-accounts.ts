@@ -4,6 +4,7 @@ import type {
 } from '@renderer/lib/api/types'
 import { buildAccountProjectionPatch, buildOAuthProviderPatch, finalizeOAuthToken, upsertAccountInList } from './provider-auth'
 import { refreshOAuthFlow } from './oauth'
+import { refreshWorkBuddyToken } from './workbuddy-signin'
 import { exchangeCopilotToken, isCopilotProvider, resolveCopilotApiKey, syncCopilotQuota } from './copilot'
 import { findAccountById, getAccountsArray, getProviderById, pickUsableAccount, resolveOAuthConfig, setProviderAuth } from './provider-auth-utils'
 
@@ -18,7 +19,10 @@ export async function refreshProviderOAuth(
   const provider = getProviderById(providerId)
   if (!provider || provider.authMode !== 'oauth') return false
   const config = resolveOAuthConfig(provider)
-  if (!config || !config.tokenUrl || !config.clientId) return false
+  if (!config) return false
+  // server_poll 服务商（WorkBuddy）没有 clientId，凭 refreshToken 换新 token
+  const serverPoll = config.flowType === 'server_poll'
+  if (!serverPoll && (!config.tokenUrl || !config.clientId)) return false
 
   const targetId = accountId ?? provider.activeAccountId
   const target = targetId ? findAccountById(provider, targetId) : undefined
@@ -29,7 +33,9 @@ export async function refreshProviderOAuth(
     if (!current?.refreshToken) return false
     const expiresAt = current.expiresAt ?? 0
     if (!force && expiresAt && expiresAt - Date.now() > REFRESH_SKEW_MS) return true
-    const next = await refreshOAuthFlow(config, current.refreshToken, current.deviceId)
+    const next = serverPoll
+      ? await refreshWorkBuddyToken(provider, current)
+      : await refreshOAuthFlow(config, current.refreshToken, current.deviceId)
     const mergedToken: OAuthToken = {
       ...current,
       ...next,
@@ -50,7 +56,9 @@ export async function refreshProviderOAuth(
   if (!current?.refreshToken) return false
   const expiresAt = current.expiresAt ?? 0
   if (!force && expiresAt && expiresAt - Date.now() > REFRESH_SKEW_MS) return true
-  const next = await refreshOAuthFlow(config, current.refreshToken, current.deviceId)
+  const next = serverPoll
+    ? await refreshWorkBuddyToken(provider, current)
+    : await refreshOAuthFlow(config, current.refreshToken, current.deviceId)
   const mergedToken: OAuthToken = {
     ...current,
     ...next,

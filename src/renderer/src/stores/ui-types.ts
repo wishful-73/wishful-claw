@@ -57,6 +57,7 @@ export interface RightPanelTabInstance {
 
 export type SettingsTab =
   | 'provider'
+  | 'providerAuth'
   | 'modelManagement'
   | 'runtime'
   | 'memory'
@@ -78,6 +79,7 @@ export type SettingsTab =
 
 const SETTINGS_TABS: ReadonlySet<string> = new Set<SettingsTab>([
   'provider',
+  'providerAuth',
   'modelManagement',
   'runtime',
   'memory',

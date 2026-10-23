@@ -31,6 +31,7 @@ import { registerBuiltInChannelProviders } from './channels/register-providers'
 import { registerChannelHandlers, autoStartChannels } from './ipc/channel-handlers'
 import { registerQuickLauncher } from './quick-launcher'
 import { registerClipboardEnhancer } from './clipboard-enhancer'
+import { startWorkbuddyCheckinScheduler } from './lib/workbuddy-checkin-scheduler'
 import { setPluginManager } from './channels/auto-reply'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import { setMainWindow } from './main-window-registry'
@@ -313,6 +314,9 @@ registerCodeGraphHandlers()
   registerChannelHandlers(channelManager)
   setPluginManager(channelManager)
   logInfo('main', 'Channel system initialized')
+
+  // 每日签到（WorkBuddy）：静默跑在主进程，窗口是否打开都不影响
+  startWorkbuddyCheckinScheduler()
 
   registerMessagePackHandler<unknown, unknown[]>(
     'agents:list',

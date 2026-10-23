@@ -67,3 +67,36 @@
 - 老大：「根据工作流推进，缺步骤的补充文档，还有其它登记的需求一起也推进了」
 - 判为**实施态**：补 `plan.md` / `changelog.md`（`PROGRESS.md` 留到收尾），四条需求依次推进。
 - 刀序：S-220 → S-219 → S-217 → S-218。
+
+### 09:59 · 全迭代 · 补流程产物（老大指出跳了工作流）
+
+- 老大：「查看 agents.md 找到工作流，你之前做的那些需求跳流程了，补一下」
+- 实情：四条需求直接进了实施，**阶段一（探索态）无产物、阶段三（合规检查）与阶段五（独立审查）未做**，`plan-s218/` 只有事后补写的 `plan.md`。
+- 补做：`exploration_findings.md`（新建，六条需求勘察结论汇总）、`plan-s218/compliance_report.md`、`review_report.md`、`plan-s218/verification_report.md`（重写）。
+- **阶段五审查判 ❌ 8 条**，全部必修 —— 详见 `review_report.md`。最重的一条是 S-219 锁范围错了。
+
+### 10:20 · S-219 · 锁范围从「只锁写」提到「读 → 改 → 写」事务级
+
+- 审查 ❌1/❌2：首版 `WriteGates` 只包住 `WriteAndFlushAsync`，而 `Edit` 的读（`FileEditTool.cs:55`）在锁外 ⇒ 并发 Edit 各读旧内容、后写整文件覆盖，**改动静默丢失**。
+- 这比修复前更糟：原来第二个写者报 `IO_SharingViolation_File`，用户知道重试；加锁后两个都「成功」，只是丢了一处改动。
+- 修：`ToolHelpers.WithWriteGateAsync`（无返回值 + 泛型两个重载），`WriteAndFlushAsync` 改薄封装，`WriteWithSharingRetryAsync` 提为 `internal` 供锁内落盘（锁内不得再调 `WriteAndFlushAsync`，同路径会自锁死）。三个读改写工具整段入锁：`FileEditTool` / `MemoryHotWriteTool` / `AgentRuntimeNotebookEditExecutor`。`FileWriteTool` 是纯覆盖写，不需要改。
+- 实施过程中真机复现两次 `IO_SharingViolation_File`（并发两个 `Edit` 打同一文件）—— 因为运行中的生产实例加载的仍是修复前二进制，这反过来印证了旧行为「报错不丢数据」。
+
+### 10:35 · S-218 · 三项必修（风险口径 + token 续期 + expiresAt）
+
+- ❌4 §5.1：`ProviderAuthPanel.tsx` 面板顶部写死风险块（非官方接入 / 腾讯可限制账号 / 勾选确认），未勾选时「登录」按钮 `disabled`。**不折叠**，直接放在页面上。
+- ❌5 §5.2：服务商名后加琥珀色「第三方」角标，与「已连接」绿标视觉区分。
+- ❌6 自动签到无续期：主进程加 `tokenStale`（到期前 5 分钟）/ `expiresAtOf` / `renewTokenIfStale`，签到前先续期并**回写 provider store**（否则下一 tick 又读旧 token），`pressCheckin` 改为接收 `accessToken` 参数。原来过夜后 8:00 必 401 且当天彻底放弃。
+- ❌7 `expiresAt` 解析：渲染端抽 `resolveExpiresAt`（先认绝对 `expiresAt`，10 位当秒、13 位当毫秒；再认 `expiresIn`/`expires_in`/`expires`），两处调用点统一；主进程同口径。原来只认 `expiresIn` ⇒ 回 `expiresAt` 时落成 `undefined` ⇒ `if (expiresAt && …)` 短路 ⇒ 永久不续期。
+- i18n 补 6 键（`thirdParty` / `riskTitle` / `riskUnofficial` / `riskRestrict` / `riskAcknowledge` / `riskRequired`），zh/en 各一份。
+
+### 10:45 · 全迭代 · 500 行豁免（本轮改动过的越线文件 2 个）
+
+- `BrowserPanel.tsx` 515 行、`shared/types/provider.ts` 505 行，原先都只有普通文件头注释，补 500 行豁免头。
+- 分类：`BrowserPanel` 第 5 条第 3 类（单一组件，拆出去要搬 `navigationSeq` / `committedUrl` 等 state）；`provider.ts` 第 5 条第 1 类（同质类型表）。
+- 行数实测与注释一致。
+
+### 10:50 · 全迭代 · 第二轮门禁复跑
+
+- `npx tsc --noEmit` web / node 双配置 **0 错**；`dotnet build src\runtime\WishfulClaw.sln` **0 警告 0 错误**；`npm test` **78/78**；`cd website; npm run build` **0 错误**。
+- 真机验证仍未做（四条需求全部待老大补），S-218 真实账号链路未跑。

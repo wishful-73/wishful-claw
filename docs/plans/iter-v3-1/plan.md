@@ -11,20 +11,24 @@
 
 | 编号 | 标题 | 状态 | 明细 |
 |---|---|---|---|
-| S-217 | 更新安装沿用历史安装范围与安装路径 | 待实施 | [S-217](requirements/S-217.md) |
-| S-218 | WorkBuddy 账号接入（A 形态 · 复用用户已有套餐额度） | 待实施 | [S-218](requirements/S-218.md) |
-| S-219 | 文件写入工具并发冲突（同 turn 多次编辑同一文件报 SharingViolation） | 待实施 | [S-219](requirements/S-219.md) |
-| S-220 | 内置浏览器按地址导航后仍加载旧页面（刷新按钮改硬刷新） | **已实施** | [S-220](requirements/S-220.md) |
+| S-217 | 更新安装沿用历史安装范围与安装路径 | **已实施**（真机待验） | [S-217](requirements/S-217.md) |
+| S-218 | WorkBuddy 账号接入（A 形态 · 复用用户已有套餐额度） | **已实施**（缺口见 §10.3，真账号待验） | [S-218](requirements/S-218.md) |
+| S-219 | 文件写入工具并发冲突（同 turn 多次编辑同一文件报 SharingViolation） | **已实施**（真机待验） | [S-219](requirements/S-219.md) |
+| S-220 | 内置浏览器按地址导航后仍加载旧页面（刷新按钮改硬刷新） | **已实施**（真机待验） | [S-220](requirements/S-220.md) |
+| S-221 | 官网右侧悬浮联动导航 | 已登记，**未实施** | [S-221](requirements/S-221.md) |
+| S-222 | 聊天窗时间显示（HH:MM，跨天补日期） | 已登记，**未实施** | [S-222](requirements/S-222.md) |
 
 ## 三、刀序（一需求一刀）
 
-| # | 需求 | 提交类型 | 说明 |
+**实际落刀**（四条需求各一刀，另加一轮阶段五审查修复）：
+
+| # | commit | 需求 | 说明 |
 |---|---|---|---|
-| 1 | S-220 | `fix(browser)` | 三处 `reload()` → `reloadIgnoringCache()`，一行级改动，先落 |
-| 2 | S-219 | `fix(tools)` | `WriteAndFlushAsync` 路径锁 + 退避重试，独立于其它需求 |
-| 3 | S-217 | `fix(installer)` | NSIS `customInstallMode` 钩子，只影响安装包，与代码运行时无关 |
-| 4 | S-218 | `feat(provider)` | 体量最大，放最后；失败不阻塞前三条 |
-| — | 收尾 | `fix(迭代1)` | 审查 + 验证修复调整，本迭代最后一刀 |
+| 1 | `9342316f` | S-220 | `fix(browser)` 三处 `reload()` → `reloadIgnoringCache()` |
+| 2 | `7af2f77c` | S-219 | `fix(tools)` 路径锁 + 退避重试 |
+| 3 | `5b92bed3` | S-217 | `fix(installer)` NSIS `customInstallMode` 钩子 |
+| 4 | `bbcb140b` | S-218 | `feat(provider)` WorkBuddy 接入（17 文件；含 i18n 补键 amend） |
+| 5 | 待落 | 收尾 | `fix(迭代1)` 阶段五审查 8 条 ❌ 修复 + 流程产物补齐 |
 
 **依赖关系**：四条互不交叉（S-218 与 S-217/S-219/S-220 零文件重叠）。S-218 若做不完，可整体移出本迭代而不影响出包。
 

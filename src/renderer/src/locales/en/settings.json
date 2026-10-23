@@ -286,7 +286,13 @@
     "checkinCaptcha": "The provider requires a human verification. Please check in on their website.",
     "checkinFailed": "Check-in failed",
     "description": "Sign in with your own account and use your existing plan quota — no API key needed.",
-    "empty": "No providers support account sign-in yet."
+    "empty": "No providers support account sign-in yet.",
+    "thirdParty": "Third-party",
+    "riskTitle": "Before you connect",
+    "riskUnofficial": "This is an unofficial integration that uses your own account quota.",
+    "riskRestrict": "Tencent may flag abnormal usage and restrict your account.",
+    "riskAcknowledge": "I understand the risks above and still want to connect.",
+    "riskRequired": "Tick the acknowledgement above first"
   },
   "provider": {
     "list": {

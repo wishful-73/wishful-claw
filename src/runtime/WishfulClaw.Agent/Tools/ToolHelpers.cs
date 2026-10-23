@@ -166,13 +166,32 @@ internal static class ToolHelpers
     ///
     /// 并发：整段「读 BOM 状态 → 写 → flush」都在路径锁内，调用方不需要自己排队（S-219）。
     /// </summary>
-    public static async Task WriteAndFlushAsync(string path, string content, CancellationToken cancellationToken)
+    public static Task WriteAndFlushAsync(string path, string content, CancellationToken cancellationToken)
+        => WithWriteGateAsync(
+            path,
+            () => WriteWithSharingRetryAsync(path, content, cancellationToken),
+            cancellationToken);
+
+    /// <summary>
+    /// 把「读 → 改 → 写」整段纳入同一把路径锁（S-219），无返回值版本。
+    ///
+    /// 只锁写入挡不住丢更新：两个 Edit 各自读到同一份旧内容，再串行整文件覆盖，
+    /// 后写胜出、先写的改动静默消失 —— 这比原来报 SharingViolation 更糟。
+    /// 所以凡是「先读再改再写」的工具，都必须把整段包进来，而不是只调 <see cref="WriteAndFlushAsync"/>。
+    ///
+    /// <b>不要在 action 内再调 <see cref="WriteAndFlushAsync"/></b> —— 同一路径会自锁死；
+    /// 锁内落盘用 <see cref="WriteWithSharingRetryAsync"/>。
+    /// </summary>
+    internal static async Task WithWriteGateAsync(
+        string path,
+        Func<Task> action,
+        CancellationToken cancellationToken)
     {
         var gate = WriteGates.GetOrAdd(Path.GetFullPath(path), static _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await WriteWithSharingRetryAsync(path, content, cancellationToken).ConfigureAwait(false);
+            await action().ConfigureAwait(false);
         }
         finally
         {
@@ -180,11 +199,28 @@ internal static class ToolHelpers
         }
     }
 
+    /// <summary>同 <see cref="WithWriteGateAsync"/>，带返回值的版本（读改写工具要往外交 ToolResult）。</summary>
+    internal static async Task<T> WithWriteGateAsync<T>(
+        string path,
+        Func<Task<T>> action,
+        CancellationToken cancellationToken)
+    {
+        var result = default(T)!;
+        await WithWriteGateAsync(
+            path,
+            async () => result = await action().ConfigureAwait(false),
+            cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
     /// <summary>
     /// 真正落盘。撞到共享冲突时按 <see cref="WriteSharingRetryDelaysMs"/> 退避重试，
     /// 重试耗尽后抛可读错误 —— raw「IO_SharingViolation_File」对用户和模型都没有信息量。
+    ///
+    /// 本方法<b>不取路径锁</b>：调用方要么经 <see cref="WriteAndFlushAsync"/>（已持锁），
+    /// 要么已经在 <see cref="WithWriteGateAsync{T}"/> 里（读改写工具），锁内再取会自锁死。
     /// </summary>
-    private static async Task WriteWithSharingRetryAsync(
+    internal static async Task WriteWithSharingRetryAsync(
         string path,
         string content,
         CancellationToken cancellationToken)

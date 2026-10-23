@@ -286,7 +286,13 @@
     "checkinCaptcha": "服务商要求人机验证，请到官网手动签到。",
     "checkinFailed": "签到失败",
     "description": "用你自己的账号登录，消耗你已有的套餐额度，不需要填写 API Key。",
-    "empty": "暂无支持账号登录的服务商。"
+    "empty": "暂无支持账号登录的服务商。",
+    "thirdParty": "第三方",
+    "riskTitle": "接入前请确认",
+    "riskUnofficial": "这是非官方接入，用的是你自己账号的额度。",
+    "riskRestrict": "腾讯有权判定异常并限制你的账号。",
+    "riskAcknowledge": "我已了解上述风险，仍要连接。",
+    "riskRequired": "请先勾选确认上述风险"
   },
   "provider": {
     "list": {

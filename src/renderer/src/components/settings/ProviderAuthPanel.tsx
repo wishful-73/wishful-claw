@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CalendarCheck, Loader2, LogIn, LogOut, UserCheck } from 'lucide-react'
+import { CalendarCheck, Loader2, LogIn, LogOut, ShieldAlert, UserCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
 import { Switch } from '@renderer/components/ui/switch'
@@ -32,6 +32,7 @@ function ProviderAuthCard({
   provider,
   busy,
   checkinBusy,
+  signInDisabled,
   onSignIn,
   onCancel,
   onDisconnect,
@@ -41,6 +42,7 @@ function ProviderAuthCard({
   provider: AIProvider
   busy: boolean
   checkinBusy: boolean
+  signInDisabled: boolean
   onSignIn: (provider: AIProvider) => void
   onCancel: () => void
   onDisconnect: (provider: AIProvider) => void
@@ -58,6 +60,10 @@ function ProviderAuthCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{provider.name}</span>
+            {/* §5.2：第三方接入与官方 API Key 服务商视觉分开 —— 用户看到「免费」时必须同时看到「有风险」 */}
+            <span className="shrink-0 rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+              {t('providerAuth.thirdParty', { defaultValue: '第三方' })}
+            </span>
             {connected ? (
               <span className="shrink-0 rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                 {t('providerAuth.connected', { defaultValue: '已连接' })}
@@ -115,7 +121,13 @@ function ProviderAuthCard({
             </Button>
           </div>
         ) : (
-          <Button size="sm" className="h-8 shrink-0 gap-1.5 px-3 text-xs" onClick={() => onSignIn(provider)}>
+          <Button
+            size="sm"
+            className="h-8 shrink-0 gap-1.5 px-3 text-xs"
+            disabled={signInDisabled}
+            title={signInDisabled ? t('providerAuth.riskRequired', { defaultValue: '请先勾选确认上述风险' }) : undefined}
+            onClick={() => onSignIn(provider)}
+          >
             <LogIn className="size-3.5" />
             {t('providerAuth.signIn', { defaultValue: '登录' })}
           </Button>
@@ -150,6 +162,8 @@ function ProviderAuthPanel(): React.JSX.Element {
   const providers = useProviderStore((s) => s.providers)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [checkinBusyId, setCheckinBusyId] = useState<string | null>(null)
+  // §5.1：接入前必须勾选确认，未勾选时登录按钮不可点
+  const [riskAccepted, setRiskAccepted] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   const targets = useMemo(() => providers.filter(isServerPollProvider), [providers])
@@ -249,6 +263,35 @@ function ProviderAuthPanel(): React.JSX.Element {
           </p>
         </header>
 
+        {/* §5.1 三层提示：写死在面板上、不得折叠隐藏；缺勾选不算尽责 */}
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                {t('providerAuth.riskTitle', { defaultValue: '接入前请确认' })}
+              </p>
+              <ul className="mt-1.5 space-y-1 text-[11px] leading-relaxed text-muted-foreground">
+                <li>
+                  · {t('providerAuth.riskUnofficial', { defaultValue: '这是非官方接入，用的是你自己账号的额度。' })}
+                </li>
+                <li>
+                  · {t('providerAuth.riskRestrict', { defaultValue: '腾讯有权判定异常并限制你的账号。' })}
+                </li>
+              </ul>
+              <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-[11px] text-foreground">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-amber-600"
+                  checked={riskAccepted}
+                  onChange={(event) => setRiskAccepted(event.target.checked)}
+                />
+                {t('providerAuth.riskAcknowledge', { defaultValue: '我已了解上述风险，仍要连接。' })}
+              </label>
+            </div>
+          </div>
+        </div>
+
         {targets.length === 0 ? (
           <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
             {t('providerAuth.empty', { defaultValue: '暂无支持账号登录的服务商。' })}
@@ -261,6 +304,7 @@ function ProviderAuthPanel(): React.JSX.Element {
                 provider={provider}
                 busy={busyId === provider.id}
                 checkinBusy={checkinBusyId === provider.id}
+                signInDisabled={!riskAccepted}
                 onSignIn={(target) => void handleSignIn(target)}
                 onCancel={handleCancel}
                 onDisconnect={handleDisconnect}

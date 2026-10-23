@@ -269,8 +269,7 @@ export async function signInWithWorkBuddy(
   const uid = textOf(who.uid)
   const enterpriseId = await resolveEnterpriseId(config, accessToken, domain, who)
 
-  const expiresIn = Number(tokenData.expiresIn ?? tokenData.expires_in)
-  const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0 ? Date.now() + expiresIn * 1000 : undefined
+  const expiresAt = resolveExpiresAt(tokenData as Record<string, unknown>)
 
   // 账号显示名：昵称 → 手机号 → uid → 站点名
   const displayName =
@@ -289,6 +288,26 @@ export async function signInWithWorkBuddy(
       domain: domain || undefined
     }
   }
+}
+
+/**
+ * 解析 token 到期时刻（S-218 §3）。
+ *
+ * 参考实现先认绝对时刻 `expiresAt`，再认相对秒 `expiresIn` —— 服务端两种都出现过。
+ * 只认 `expiresIn` 时，若这次回来的是 `expiresAt`，`expiresAt` 会落成 undefined，
+ * 而 `provider-auth-accounts.ts` 的两处续期判定都是 `if (expiresAt && …)`，
+ * 整条短路 ⇒ 一小时后全链路 401 且不会自愈。所以这里必须两种都认。
+ *
+ * 秒级时间戳（10 位）转毫秒，已经是毫秒的（13 位）原样用。
+ */
+function resolveExpiresAt(source: Record<string, unknown>, fallback?: number): number | undefined {
+  const absolute = Number(source.expiresAt)
+  if (Number.isFinite(absolute) && absolute > 0) {
+    return absolute < 1e12 ? absolute * 1000 : absolute
+  }
+  const relative = Number(source.expiresIn ?? source.expires_in ?? source.expires)
+  if (Number.isFinite(relative) && relative > 0) return Date.now() + relative * 1000
+  return fallback
 }
 
 /**
@@ -321,9 +340,7 @@ export async function refreshWorkBuddyToken(
   const accessToken = textOf(got.accessToken)
   if (!accessToken) throw new Error('刷新没有返回新的 accessToken')
 
-  const expiresIn = Number(got.expiresIn ?? got.expires_in)
-  const expiresAt =
-    Number.isFinite(expiresIn) && expiresIn > 0 ? Date.now() + expiresIn * 1000 : token.expiresAt
+  const expiresAt = resolveExpiresAt(got as Record<string, unknown>, token.expiresAt)
 
   return {
     ...token,

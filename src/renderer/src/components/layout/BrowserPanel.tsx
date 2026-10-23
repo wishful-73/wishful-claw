@@ -209,8 +209,9 @@ export function BrowserPanel({
       if (!canNavigateTo(normalized)) return
       setBrowserErrorInfo(null, sessionId, projectId)
       if (isSameBrowserUrl(normalized, storedUrl)) {
-        // 同址再回车 ⇒ 显式重载（序号变但 committedUrl 不变，React 会 bail out）
-        runWebviewCommand('navigate', (wv) => wv.reload())
+        // 同址再回车 ⇒ 显式重载（序号变但 committedUrl 不变，React 会 bail out）。
+        // 与刷新按钮同一意图，同样走硬刷新（S-220）。
+        runWebviewCommand('navigate', (wv) => wv.reloadIgnoringCache())
         return
       }
       requestBrowserNavigation(normalized, sessionId, projectId)
@@ -433,7 +434,10 @@ export function BrowserPanel({
         onBack={() => runWebviewCommand('go back', (wv) => wv.goBack())}
         onForward={() => runWebviewCommand('go forward', (wv) => wv.goForward())}
         onStop={() => runWebviewCommand('stop loading', (wv) => wv.stop())}
-        onReload={() => runWebviewCommand('refresh', (wv) => wv.reload())}
+        // 硬刷新：本地开发服务器常只给 Last-Modified、不给 Cache-Control，
+        // reload() 走条件请求会停在 304，拿到的仍是旧版本（S-220）。刷新按钮的
+        // 语义就是「我要最新的」，这里直接绕过缓存，并让服务器返回的新内容覆盖旧缓存。
+        onReload={() => runWebviewCommand('refresh', (wv) => wv.reloadIgnoringCache())}
         onGo={() => navigate(inputUrl)}
         deviceMode={deviceMode}
         customViewport={customViewport}
@@ -487,7 +491,8 @@ export function BrowserPanel({
                 size="sm"
                 onClick={() => {
                   setBrowserErrorInfo(null, sessionId, projectId)
-                  runWebviewCommand('retry load', (wv) => wv.reload())
+                  // 加载失败常因缓存脏，重试同样绕缓存（S-220）。
+                  runWebviewCommand('retry load', (wv) => wv.reloadIgnoringCache())
                 }}
               >
                 {t('rightPanel.browserRetry')}

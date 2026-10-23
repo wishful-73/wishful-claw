@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -127,6 +128,31 @@ internal static class ToolHelpers
     }
 
     /// <summary>
+    /// 按路径串行化的写入门（S-219）。
+    ///
+    /// 同一文件被并发写入时必须排队：同一个 turn 里并发发出多个 Edit 打同一个文件时，
+    /// 第一个拿到写句柄，其余全部撞 Win32 <c>ERROR_SHARING_VIOLATION</c>(32)，
+    /// 表现为 <c>IO_SharingViolation_File</c>。这不是外部程序造成的，是我们自己撞自己。
+    ///
+    /// 键用<b>规范化绝对路径</b>，比较器 <see cref="StringComparer.OrdinalIgnoreCase"/> ——
+    /// Windows 文件系统不区分大小写，用默认比较器会让 <c>A.md</c> 与 <c>a.md</c> 各拿一把锁，
+    /// 绕过互斥。条目数受沙箱约束有上限，且每项极小，不做清理。
+    ///
+    /// 锁的粒度是「每路径一把」，不是全局一把 —— 写不同文件必须仍然并行。
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> WriteGates =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Win32 ERROR_SHARING_VIOLATION：别的进程/句柄正占着这个文件。</summary>
+    private const int ErrorSharingViolation = 32;
+
+    /// <summary>Win32 ERROR_LOCK_VIOLATION：文件区域被区域锁占住。</summary>
+    private const int ErrorLockViolation = 33;
+
+    /// <summary>共享冲突的退避间隔（毫秒）。只覆盖真实外部占用场景，进程内并发由 <see cref="WriteGates"/> 挡住。</summary>
+    private static readonly int[] WriteSharingRetryDelaysMs = [50, 100, 200, 400];
+
+    /// <summary>
     /// Writes text to a file and flushes to disk immediately.
     /// Uses FileStream with Flush(true) to ensure subsequent reads
     /// always see the updated content (fixes Edit->Read cache issue).
@@ -137,8 +163,51 @@ internal static class ToolHelpers
     /// 例外 —— 它们保留目标文件原本的状态（原本没有也不补）。
     ///
     /// 注意：这里只能靠 FileStream 手写 preamble —— <c>Encoding.UTF8.GetBytes</c> 不产 BOM。
+    ///
+    /// 并发：整段「读 BOM 状态 → 写 → flush」都在路径锁内，调用方不需要自己排队（S-219）。
     /// </summary>
     public static async Task WriteAndFlushAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        var gate = WriteGates.GetOrAdd(Path.GetFullPath(path), static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await WriteWithSharingRetryAsync(path, content, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 真正落盘。撞到共享冲突时按 <see cref="WriteSharingRetryDelaysMs"/> 退避重试，
+    /// 重试耗尽后抛可读错误 —— raw「IO_SharingViolation_File」对用户和模型都没有信息量。
+    /// </summary>
+    private static async Task WriteWithSharingRetryAsync(
+        string path,
+        string content,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await WriteOnceAsync(path, content, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (IOException ex) when (IsSharingViolation(ex) && attempt < WriteSharingRetryDelaysMs.Length)
+            {
+                await Task.Delay(WriteSharingRetryDelaysMs[attempt], cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException ex) when (IsSharingViolation(ex))
+            {
+                throw new IOException(BuildSharingViolationMessage(path), ex);
+            }
+        }
+    }
+
+    private static async Task WriteOnceAsync(string path, string content, CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
@@ -148,6 +217,10 @@ internal static class ToolHelpers
 
         var keepBom = IsBomSensitiveScript(path) && await HasUtf8BomAsync(path, cancellationToken);
 
+        // FileShare.Read 是刻意的：它挡住「外部程序在我们写入时并发修改」这一类真实风险。
+        // 千万不要为了绕开共享冲突把它放宽成 FileShare.ReadWrite —— 那样两个 Edit 会各自
+        // 基于旧内容做替换，后者整文件覆盖前者，前者的改动静默消失（比报错更糟）。
+        // 进程内并发由 WriteGates 解决，外部占用由退避重试解决（S-219）。
         await using var fs = new FileStream(
             path,
             FileMode.Create,
@@ -165,6 +238,18 @@ internal static class ToolHelpers
         await fs.WriteAsync(bytes.AsMemory(0, bytes.Length), cancellationToken);
         await fs.FlushAsync(cancellationToken);
         fs.Flush(true);
+    }
+
+    /// <summary>HResult 的低 16 位就是 Win32 错误码，据此判定共享/锁冲突。</summary>
+    private static bool IsSharingViolation(IOException ex)
+    {
+        var code = ex.HResult & 0xFFFF;
+        return code is ErrorSharingViolation or ErrorLockViolation;
+    }
+
+    private static string BuildSharingViolationMessage(string path)
+    {
+        return $"文件被其它程序占用，无法写入：{path}。可能是编辑器、同步盘或杀毒软件正在使用它，稍后重试。";
     }
 
     /// <summary>UTF-8 BOM 的三字节序列。</summary>

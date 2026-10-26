@@ -17,8 +17,9 @@ public sealed record AgentRuntimeProviderTurnResult(
 /// <remarks>
 /// S-208（2026-10-20）把「数据」和「发给模型的拼接结果」拆成两个字段：
 /// <see cref="Text"/> 是真正写进对话、发给 provider 的那份，可能被
-/// <c>InjectTransientPrefix</c> 前置了 <c>&lt;current_time&gt;</c> /
-/// <c>&lt;memory-recall&gt;</c> / <c>&lt;memory-update&gt;</c> 这些运行时附加块；
+/// <c>InjectTransientPrefix</c> 在**尾部**附加了 <c>&lt;current_time&gt;</c> /
+/// <c>&lt;memory-recall&gt;</c> / <c>&lt;memory-update&gt;</c> 这些运行时附加块
+/// （S-231 起由前置改为后置，好让「取首条 user 做标题」的第三方网关读到用户原话）；
 /// <see cref="OriginalText"/> 永远只装用户自己的话。下游要「用户到底说了什么」
 /// 就读后者，不必再去剥字符串。
 /// </remarks>

@@ -39,12 +39,12 @@ internal static partial class AgentLoop
                 return;
 
             // S-92: the latest user message carries transient blocks that
-            // InjectTransientPrefix (and this method, when it injects) prepended —
+            // InjectTransientPrefix (and this method, when it injects) appended —
             // <memory-recall> / <memory-update> / <current_time>. Recall must run on
             // the user's own words: the block tags, the injected note list and the
             // timestamp otherwise eat the refiner's variant budget. Only the search
             // query is stripped — the conversation text is left untouched (the
-            // <current_time> guard in InjectTransientPrefix depends on it).
+            // <current_time> Contains guard in InjectTransientPrefix depends on it).
             var recallQuery = StripInjectedBlocks(userMessage);
             if (string.IsNullOrWhiteSpace(recallQuery))
                 return;
@@ -106,14 +106,14 @@ internal static partial class AgentLoop
                 var recallBlock = $"<memory-recall>\n{injected}\n</memory-recall>\n\n";
                 state.PendingMemoryRecall = recallBlock;
                 
-                // Inject directly into the conversation's last user message,
-                // BEFORE the <current_time> block that InjectTransientPrefix added.
+                // Append to the conversation's last user message, AFTER the <current_time>
+                // block that InjectTransientPrefix already added (S-231: blocks go last).
                 var injectedIntoConversation = false;
                 for (var i = conversation.Count - 1; i >= 0; i--)
                 {
                     if (conversation[i].Role == "user" && conversation[i].ToolResults.Count == 0)
                     {
-                        conversation[i] = conversation[i] with { Text = recallBlock + conversation[i].Text };
+                        conversation[i] = conversation[i] with { Text = AppendTransientBlock(conversation[i].Text, recallBlock) };
                         injectedIntoConversation = true;
                         break;
                     }
@@ -162,17 +162,20 @@ internal static partial class AgentLoop
 
     /// <summary>
     /// Tags of the transient blocks that <see cref="InjectTransientPrefix"/> and the
-    /// recall pass prepend to the latest user message.
+    /// recall pass append to the latest user message.
     /// </summary>
     private static readonly string[] InjectedBlockTags = { "memory-recall", "memory-update", "current_time" };
 
     /// <summary>
-    /// Strips the transient prefix blocks (<c>&lt;memory-recall&gt;</c>,
+    /// Strips the transient blocks (<c>&lt;memory-recall&gt;</c>,
     /// <c>&lt;memory-update&gt;</c>, <c>&lt;current_time&gt;</c>) from a user message so
     /// recall searches the user's own words — the tags, the injected note list and the
-    /// timestamp otherwise consume the refiner's variant budget (S-92). An unterminated
-    /// block is dropped to the end of the text. Text without any block is returned
-    /// unchanged.
+    /// timestamp otherwise consume the refiner's variant budget (S-92). Position-agnostic:
+    /// blocks are found by tag and removed wherever they sit (head or tail), since S-231
+    /// moved them to the end while older in-memory messages still carry them in front.
+    /// An unterminated block is dropped to the end of the text. Text without any block or
+    /// angle bracket is returned verbatim (no trimming); once the stripping path is taken,
+    /// surrounding whitespace is trimmed off the result.
     /// </summary>
     internal static string StripInjectedBlocks(string text)
     {

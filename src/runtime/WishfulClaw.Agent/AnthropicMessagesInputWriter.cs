@@ -123,9 +123,10 @@ internal static partial class AnthropicMessagesProvider
             var isLastReal = i == count - 1;
 
             // Memory recall, memory-update notes, and timestamp are already
-            // injected into the conversation message by InjectTransientPrefix
-            // and TryInjectMemoryRecallAsync. No write-time suffix injection
-            // here - doing so would double-inject memory content.
+            // appended to the TAIL of the conversation message by
+            // InjectTransientPrefix and TryInjectMemoryRecallAsync (S-231: tail,
+            // was head before). No write-time suffix injection here - doing so
+            // would double-inject memory content.
             var msg = messagesToWrite[i];
 
             WriteSingleMessage(writer, msg, isLastReal);

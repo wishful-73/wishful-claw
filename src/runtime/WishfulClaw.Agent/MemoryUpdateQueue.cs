@@ -7,8 +7,10 @@ namespace WishfulClaw.Agent;
 ///
 /// Design follows Reasonix's memory.Queue pattern: when a memory tool writes
 /// mid-session, it queues a short note. On the next AgentLoop turn, the notes
-/// are drained and injected as a &lt;memory-update&gt; block into the user message
-/// prefix — NOT into the system prompt — so the cache-stable prefix is preserved.
+/// are drained and appended as a &lt;memory-update&gt; block to the TAIL of the user
+/// message — NOT into the system prompt — so the cache-stable prefix is preserved.
+/// (S-231: tail, not head — third-party gateways derive the conversation title
+/// from the first user message.)
 ///
 /// The memory content in the cached system prompt stays stale for the rest of
 /// this session; the turn-tail note bridges the gap. On the next session,

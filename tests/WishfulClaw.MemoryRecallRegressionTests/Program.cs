@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent;
+using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Workspace.Memory;
 using WishfulClaw.TestSupport;
@@ -22,6 +24,7 @@ internal static class Program
             RunSessionDeduplicationSuite();
             RunRecallFilteringSuite();
             RunInjectedBlockStrippingSuite();
+            RunTransientBlockPlacementSuite();
             RunTimeFilterSuite();
             Console.WriteLine($"Memory recall regression checks passed: {_passed}");
             return 0;
@@ -281,6 +284,159 @@ internal static class Program
         var stripped = AgentLoop.StripInjectedBlocks(recall + update + time + userText);
         Assert(!stripped.Contains("2026-09-19", StringComparison.Ordinal), "timestamp no longer reaches the recall query");
         Assert(stripped.Contains(userText, StringComparison.Ordinal), "user keywords survive stripping");
+    }
+
+    /// <summary>
+    /// S-231：运行时附加块必须落在用户原话「之后」，否则取首条 user 消息做会话标题的第三方网关
+    /// （WorkBuddy 国内版 / 国际版）会把 &lt;current_time&gt; 当标题。
+    /// 本套件同时锁方向（helper 单元）、锁形状（组合层直调注入）、锁出站请求体（真实 builder）。
+    /// </summary>
+    private static void RunTransientBlockPlacementSuite()
+    {
+        const string userText = "帮我看看今天的安排";
+        const string timeBlock = "<current_time>\n2026-10-26 15:30 +08:00 (星期一)\n</current_time>\n\n";
+        const string timeTrimmed = "<current_time>\n2026-10-26 15:30 +08:00 (星期一)\n</current_time>";
+        const string recall = "<memory-recall>\n- memory #7: compression notes\n</memory-recall>\n\n";
+
+        // 3a-2：helper 单元 —— 两处拼接点（InjectTransientPrefix / 召回追加）共用这一个实现，
+        // 方向由它锁死。InjectTransientPrefix 本身是 internal、可直接调（见 3a）；
+        // 真正测不到的只有 private 的 TryInjectMemoryRecallAsync，它的拼接点由 helper 单测 + 3e 间接锁。
+        AssertEqual(userText + "\n\n" + timeTrimmed, AgentLoop.AppendTransientBlock(userText, timeBlock),
+            "helper appends the block after the user text and trims the block's trailing newlines");
+        AssertEqual(timeTrimmed, AgentLoop.AppendTransientBlock("", timeBlock),
+            "helper emits the block alone for empty text (no leading blank line)");
+        AssertEqual(timeTrimmed, AgentLoop.AppendTransientBlock("   ", timeBlock),
+            "helper treats whitespace-only text as empty");
+        AssertEqual(userText + "  \n\n" + timeTrimmed, AgentLoop.AppendTransientBlock(userText + "  ", timeBlock),
+            "helper preserves the user's own trailing whitespace");
+
+        // 3c：剥离层必须能吃尾部形状（StripInjectedBlocks 内部 Trim，看不出空行，空行由 3a 锁）。
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(userText + "\n\n" + timeTrimmed),
+            "strips a time block that sits after the user text");
+        AssertEqual(userText, AgentLoop.StripInjectedBlocks(userText + "\n\n" + recall.TrimEnd() + "\n\n" + timeTrimmed),
+            "strips recall + time blocks that sit after the user text");
+
+        // 3a / 3b：组合层 —— 直调注入，锁住真实落进会话的形状。
+        using var state = new AgentRuntimeRunState("run-s231", "sess-s231");
+
+        var conv = new List<AgentRuntimeChatMessage> { AgentRuntimeChatMessage.User(userText) };
+        AgentLoop.InjectTransientPrefix(conv, state);
+        var injected = conv[^1].Text;
+        Assert(injected.StartsWith(userText, StringComparison.Ordinal),
+            "injected text starts with the user's own words");
+        Assert(!injected.StartsWith('\n'), "injected text does not start with a blank line");
+        Assert(!injected.EndsWith('\n'), "injected text does not end with a blank line");
+        Assert(injected.Contains(userText + "\n\n<current_time>", StringComparison.Ordinal),
+            "exactly one blank line separates the user text from the block");
+        AssertEqual(userText, conv[^1].OriginalText, "OriginalText keeps the user's own words");
+        Assert(conv[^1].SentAt is not null, "SentAt is stamped on injection");
+
+        var convBlank = new List<AgentRuntimeChatMessage> { AgentRuntimeChatMessage.User("   ") };
+        AgentLoop.InjectTransientPrefix(convBlank, state);
+        Assert(!convBlank[^1].Text.StartsWith('\n'), "whitespace-only text yields no leading blank line");
+        Assert(!convBlank[^1].Text.EndsWith('\n'), "whitespace-only text yields no trailing blank line");
+        Assert(convBlank[^1].Text.Contains("<current_time>", StringComparison.Ordinal),
+            "whitespace-only text still receives the timestamp block");
+
+        using var parametersDoc = JsonDocument.Parse("{}");
+        using var providerDoc = JsonDocument.Parse("{\"model\":\"test-model\"}");
+
+        string Body(List<AgentRuntimeChatMessage> conversation) =>
+            OpenAIChatProvider.BuildRequestBodyForTests(
+                parametersDoc.RootElement, providerDoc.RootElement, conversation,
+                Array.Empty<ToolDefinition>(), state);
+
+        // 3d：真实出站请求体 —— 「服务端取首条 user 做标题」的端到端等价物。
+        var bodyFirstUser = FirstUserContent(Body(conv));
+        Assert(bodyFirstUser.StartsWith(userText, StringComparison.Ordinal),
+            "outgoing request: first user message starts with the user's own words");
+
+        // 3e：召回轮也要后置（recall 不能被塞回头部）。
+        const string recallRoundText = "召回轮原话";
+        state.PendingMemoryRecall = recall;
+        var convRecall = new List<AgentRuntimeChatMessage> { AgentRuntimeChatMessage.User(recallRoundText) };
+        AgentLoop.InjectTransientPrefix(convRecall, state);
+        state.PendingMemoryRecall = null;
+        var recallInjected = convRecall[^1].Text;
+        Assert(recallInjected.StartsWith(recallRoundText, StringComparison.Ordinal),
+            "recall round: text starts with the user's own words");
+        Assert(recallInjected.IndexOf("<memory-recall>", StringComparison.Ordinal)
+               > recallInjected.IndexOf(recallRoundText, StringComparison.Ordinal),
+            "recall round: the recall block sits after the user's own words");
+
+        // 3e-2：召回轮的出站请求体也要满足「首条 user 以原话开头」（需求验收 3 的可自动化部分）。
+        var recallBody = FirstUserContent(Body(convRecall));
+        Assert(recallBody.StartsWith(recallRoundText, StringComparison.Ordinal),
+            "outgoing request: recall round still starts with the user's own words");
+        Assert(recallBody.IndexOf("<memory-recall>", StringComparison.Ordinal)
+               > recallBody.IndexOf(recallRoundText, StringComparison.Ordinal),
+            "outgoing request: the recall block sits after the user's own words");
+
+        // 3f：第二轮注入不得触碰历史段字节（前缀缓存稳定）。
+        var round1FirstUser = FirstUserContent(Body(conv));
+        var convRound2 = new List<AgentRuntimeChatMessage>(conv)
+        {
+            new("assistant", "好的", [], []),
+            AgentRuntimeChatMessage.User("第二轮原话"),
+        };
+        AgentLoop.InjectTransientPrefix(convRound2, state);
+        var round2Body = Body(convRound2);
+        AssertEqual(round1FirstUser, FirstUserContent(round2Body),
+            "second round leaves the first user message byte-identical (prefix cache stable)");
+        Assert(!FirstUserContent(round2Body).Contains("第二轮原话", StringComparison.Ordinal),
+            "second round does not rewrite the history segment");
+
+        // 3f-2：守卫幂等 —— 二次注入不得叠块（Contains 守卫是唯一防线，必须被测到）。
+        var beforeReentry = conv[^1].Text;
+        AgentLoop.InjectTransientPrefix(conv, state);
+        AssertEqual(beforeReentry, conv[^1].Text, "re-entry does not stack a second block");
+        AssertEqual(1, CountOccurrences(beforeReentry, "<current_time>"),
+            "exactly one timestamp block survives re-entry");
+
+        // 3f-3：<memory-update> 块也要后置 —— 本需求搬了三个块，不能只测其中两个。
+        MemoryUpdateQueue.Enqueue("sess-s231-update", "- memory #9 added");
+        using var updateState = new AgentRuntimeRunState("run-s231-update", "sess-s231-update");
+        const string updateRoundText = "记忆更新轮原话";
+        var convUpdate = new List<AgentRuntimeChatMessage> { AgentRuntimeChatMessage.User(updateRoundText) };
+        AgentLoop.InjectTransientPrefix(convUpdate, updateState);
+        var updateText = convUpdate[^1].Text;
+        Assert(updateText.StartsWith(updateRoundText, StringComparison.Ordinal),
+            "memory-update round: text starts with the user's own words");
+        Assert(updateText.Contains(updateRoundText + "\n\n<memory-update>", StringComparison.Ordinal),
+            "memory-update block is appended right after the user's own words");
+        Assert(!updateText.EndsWith('\n'), "memory-update round: no trailing blank line");
+        Assert(updateText.IndexOf("<memory-update>", StringComparison.Ordinal)
+               < updateText.IndexOf("<current_time>", StringComparison.Ordinal),
+            "memory-update block keeps its position ahead of the timestamp block");
+    }
+
+    private static int CountOccurrences(string text, string token)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = text.IndexOf(token, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += token.Length;
+        }
+
+        return count;
+    }
+
+    /// <summary>取请求体里第一条 <c>role == "user"</c> 的 content（不是 messages[0]，system 可能先行）。</summary>
+    private static string FirstUserContent(string requestBody)
+    {
+        using var doc = JsonDocument.Parse(requestBody);
+        foreach (var message in doc.RootElement.GetProperty("messages").EnumerateArray())
+        {
+            if (message.TryGetProperty("role", out var role)
+                && string.Equals(role.GetString(), "user", StringComparison.Ordinal))
+            {
+                return message.GetProperty("content").GetString() ?? string.Empty;
+            }
+        }
+
+        throw new InvalidOperationException("request body contains no user message");
     }
 
     private static MemorySearchResult Hit(long id, string scope, string content) => new()

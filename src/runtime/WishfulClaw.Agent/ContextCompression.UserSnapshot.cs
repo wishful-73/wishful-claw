@@ -56,7 +56,8 @@ public static partial class ContextCompression
             if (IsCompactionSummary(message)) continue;
 
             // 有这个字段就读它：OriginalText 是 InjectTransientPrefix 盖戳时留下的干净原文。
-            // 恢复链路的历史消息没有它（那些行落库时就带着运行时块），退回剥一次 ——
+            // 恢复链路 / 旧版本内存里的消息可能没有它（注入块本就不落库，见 S-231 §4.4；
+            // 这里只是防御性兜底），退回剥一次 ——
             // StripInjectedBlocks 是 S-92 为「召回要跑在用户自己的话上」写的现成实现。
             var text = message.OriginalText ?? AgentLoop.StripInjectedBlocks(message.Text);
             if (string.IsNullOrWhiteSpace(text)) continue;

@@ -206,10 +206,14 @@ internal static class ToolHelpers
         CancellationToken cancellationToken)
     {
         var result = default(T)!;
-        await WithWriteGateAsync(
-            path,
-            async () => result = await action().ConfigureAwait(false),
-            cancellationToken).ConfigureAwait(false);
+
+        // 委托类型必须显式声明成 Func<Task>，不能靠 lambda 推断。
+        // 写成表达式体 lambda（async () => result = await action()）时，"result = ..." 是赋值
+        // 表达式、有值，因此被推断成 Func<Task<T>> ⇒ 重载决议选中本方法自己 ⇒ 一进来就无限
+        // 递归，约 2043 层后栈溢出打死整个 worker。真机表现不是报错而是 run 永久卡在「执行中」
+        // （worker 崩溃后被自动重启，tool_result 永远等不到）。2026-10-26 实测踩到。
+        Func<Task> body = async () => { result = await action().ConfigureAwait(false); };
+        await WithWriteGateAsync(path, body, cancellationToken).ConfigureAwait(false);
         return result;
     }
 

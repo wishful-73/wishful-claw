@@ -67,7 +67,11 @@ export function Section(props: {
 // 1 原在 Hero，2026-09-23 移交给「它能干什么 → 真干活」（首屏大图压着下一块太突兀）。
 // 11 / 12 / 13（免费对话 / 快捷启动 / 剪贴板增强）为同日新到位：
 // 11 是全屏图，12 / 13 是浮窗/面板类小图（尺寸 1688×1050 / 1842×1251，非 2520×1608 全屏规格）。
-const assetSources: Record<number, string> = {
+//
+// 2026-10-26（S-227）：改成 `export` —— 「它能干什么」板块的 banner 形态要自己渲染 `<img>`
+// （绝对定位铺满 + object-cover + 按需挂载），塞进下面的 AssetPlaceholder 会把它变成万能组件。
+// 占位兜底逻辑仍留在组件里，别的板块照旧用 AssetPlaceholder。
+export const assetSources: Record<number, string> = {
   1: './screenshots/home1.png', // 主界面（聊天 + 侧栏）
   2: './screenshots/models.png', // 服务商设置页
   3: './screenshots/statistics.png', // 用量统计页

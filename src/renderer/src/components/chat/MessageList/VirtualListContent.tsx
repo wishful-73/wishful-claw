@@ -2,6 +2,7 @@ import * as React from 'react'
 import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AssistantReplyRail } from './AssistantReplyRail'
+import { RenderDensityToggle } from './RenderDensityToggle'
 import { MessageRow } from './MessageRow'
 import {
   getMessageColumnClass,
@@ -304,6 +305,8 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
         activeMessageIds={activeAssistantRailMessageIds}
         onJump={handleJumpToAssistantMessage}
       />
+
+      <RenderDensityToggle />
 
       <AnimatePresence>
         {!isAtBottom && (

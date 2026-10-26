@@ -996,6 +996,11 @@
     "pendingRetryTitle": "Reconnecting to the model",
     "pendingTeamTitle": "Coordinating teammates",
     "scrollToBottom": "Scroll to bottom",
+    "renderDensity": {
+      "open": "Adjust timeline detail",
+      "title": "Timeline Detail",
+      "desc": "Choose how much activity the timeline shows. Messages are always visible."
+    },
     "userLocator": {
       "title": "User messages",
       "jumpLabel": "Jump to user message {{index}}: {{preview}}",

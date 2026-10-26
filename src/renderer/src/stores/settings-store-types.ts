@@ -34,6 +34,18 @@ export interface FreeChatSite {
 }
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type LiveOutputAnimationStyle = 'agile' | 'elegant'
+
+/**
+ * 聊天窗时间轴渲染详细度（S-225）。
+ *
+ * - `text`    纯文本：只看消息，过程层（工具 / 思考 / 子 Agent）执行中也折叠
+ * - `compact` 紧凑（默认）：执行中展开、结束折叠 —— 与 1.0.1 线上行为等价
+ * - `detail`  详情：过程层全展开，跑完也不收
+ *
+ * 三档都只控「过程层」，正文消息始终显示；错误与待审批项恒展开。
+ * 矩阵本体在 `components/chat/render-density.ts`，这里只放类型。
+ */
+export type ChatRenderDensity = 'text' | 'compact' | 'detail'
 export type OnboardingLanguage = AppLanguage
 export type ShellExecutionEndpoint =
   | 'auto'

@@ -996,6 +996,11 @@
     "pendingRetryTitle": "正在重新连接模型",
     "pendingTeamTitle": "正在协调队友",
     "scrollToBottom": "滚动到底部",
+    "renderDensity": {
+      "open": "调整时间轴详细程度",
+      "title": "时间轴详细信息",
+      "desc": "选择时间轴上显示的活动量。消息始终可见。"
+    },
     "userLocator": {
       "title": "用户消息",
       "jumpLabel": "跳转到第 {{index}} 条用户消息：{{preview}}",

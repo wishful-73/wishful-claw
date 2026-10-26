@@ -1,9 +1,15 @@
+// 500 行豁免（2026-10-26 实测 516 行）：文件变更卡的 diff 预览 / 落盘快照 / 撤销
+// 三条链路读的是同一份 `trackedChange` 与同一份折叠态，拆开就得把 tracked 再拷贝一遍，
+// 而撤销按钮的可见性又依赖 diff 是否可渲染 —— 判定跨文件必然对不齐。
+// 依据 AGENTS.md §大文件拆分 第 5 条第 1 类（单一呈现单元，状态机不可切）。
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { useAgentStore } from '@renderer/stores/agent-store'
+import { deriveFileChangeCollapsed } from './render-density'
+import { useDensityOverride, useDensityPolicy } from './use-density-override'
 import { MONO_FONT } from '@renderer/lib/constants'
 import { Button } from '@renderer/components/ui/button'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
@@ -31,7 +37,11 @@ export function FileChangeCard({
   const isActive = status === 'streaming' || status === 'running' || status === 'pending_approval'
   const isRealtimeWrite =
     name === 'Write' && !trackedChange && (status === 'streaming' || status === 'running')
-  const [collapsed, setCollapsed] = React.useState(!forceOpen)
+  // S-225：默认折叠态由全局档位派生（纯文本 / 紧凑折叠，详情展开）；手动开合在本档内有效。
+  const { density } = useDensityPolicy()
+  const [collapsed, setCollapsed] = useDensityOverride<boolean>(() =>
+    deriveFileChangeCollapsed(density, forceOpen)
+  )
   const undoFileChange = useAgentStore((state) => state.undoFileChange)
   const [isUndoingFile, setIsUndoingFile] = React.useState(false)
 

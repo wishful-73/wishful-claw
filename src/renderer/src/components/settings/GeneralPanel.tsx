@@ -26,6 +26,7 @@ import { PresetCard } from './general-preset-card'
 import { SettingsSection } from './settings-primitives'
 import { Slider } from '@renderer/components/ui/slider'
 import { isSpeechSupported, speakMessage, stopSpeaking } from '@renderer/lib/speech'
+import { CHAT_RENDER_DENSITIES } from '@renderer/components/chat/render-density'
 
 const FONT_OPTIONS = [
   { label: '__default__', value: '__default__' },
@@ -66,6 +67,12 @@ function GeneralPanel(): React.JSX.Element {
   // 老配置里没有这两个键时兜底，避免渲染 undefined。
   const speechRate = settings.speechRate ?? 1
   const speechPitch = settings.speechPitch ?? 1
+
+  // S-225：滑块刻度索引。来路不明的值（旧配置 / 手改 JSON）按「紧凑」落位。
+  const renderDensityIndex = Math.max(
+    0,
+    CHAT_RENDER_DENSITIES.indexOf(settings.chatRenderDensity ?? 'compact')
+  )
 
   // S-139：试听。念的是当前这一屏的值，改完立刻就能听效果，不必先存。
   const speechReady = isSpeechSupported()
@@ -250,6 +257,53 @@ function GeneralPanel(): React.JSX.Element {
               {t('general.reset')}
             </button>
           </div>
+        </div>
+
+        {/* Chat render density (S-225) —— 三档，只控过程层，消息始终可见 */}
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs font-medium">
+              {t('general.appearance.renderDensity.label')}
+            </label>
+            <p className="text-xs text-muted-foreground">
+              {t('general.appearance.renderDensity.desc')}
+            </p>
+          </div>
+          <Slider
+            min={0}
+            max={CHAT_RENDER_DENSITIES.length - 1}
+            step={1}
+            value={[renderDensityIndex]}
+            onValueChange={([value]) =>
+              settings.updateSettings({
+                chatRenderDensity:
+                  CHAT_RENDER_DENSITIES[
+                    Math.min(Math.max(Math.round(value), 0), CHAT_RENDER_DENSITIES.length - 1)
+                  ]
+              })
+            }
+            className="max-w-lg flex-1"
+          />
+          <div className="flex max-w-lg items-center justify-between">
+            {CHAT_RENDER_DENSITIES.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => settings.updateSettings({ chatRenderDensity: item })}
+                className={cn(
+                  'text-[11px] transition-colors',
+                  item === settings.chatRenderDensity
+                    ? 'font-medium text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {t(`general.appearance.renderDensity.options.${item}.name`)}
+              </button>
+            ))}
+          </div>
+          <p className="max-w-lg text-xs text-muted-foreground">
+            {t(`general.appearance.renderDensity.options.${settings.chatRenderDensity}.desc`)}
+          </p>
         </div>
       </SettingsSection>
 

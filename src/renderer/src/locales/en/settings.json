@@ -175,6 +175,24 @@
       },
       "fontOptions": {
         "default": "System Default"
+      },
+      "renderDensity": {
+        "label": "Timeline Detail",
+        "desc": "Choose how much activity the timeline shows. Messages are always visible.",
+        "options": {
+          "text": {
+            "name": "Text only",
+            "desc": "Messages only. Running tools, thinking and sub-agents stay collapsed."
+          },
+          "compact": {
+            "name": "Compact",
+            "desc": "Expand activity while it runs, collapse when done. Tools are grouped, thinking is folded."
+          },
+          "detail": {
+            "name": "Detail",
+            "desc": "Show command output and file edits, list sub-agents separately, and keep everything open when done."
+          }
+        }
       }
     },
     "speech": {

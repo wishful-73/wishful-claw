@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-26 实测 524 行）：整张卡由同一份 `tracked` 子 Agent 状态驱动 ——
+// 排队/运行/结束三态换文案、耗时、token、工具清单、报告展开全读同一批字段，
+// 拆开要跨文件传六个字段并各自兜一次 undefined，得不偿失。
+// 依据 AGENTS.md §大文件拆分 第 5 条第 1 类（单一呈现单元）。
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
@@ -17,6 +21,8 @@ import {
   resolveSubAgentApproval
 } from '@renderer/lib/tools/sub-agent-approval'
 import { useAgentStore } from '@renderer/stores/agent-store'
+import { deriveSubAgentExpanded } from './render-density'
+import { useDensityOverride, useDensityPolicy } from './use-density-override'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@renderer/components/ui/hover-card'
 import { cn } from '@renderer/lib/utils'
@@ -306,22 +312,25 @@ function SubAgentCardInner({
 
 
 
-    // Work sub-agents (foreground) expand by default; background stay collapsed.
-  const [isExpanded, setIsExpanded] = React.useState(!isBackground)
+  // S-225：展开态由全局档位派生 —— 前台子 Agent 紧凑/详情档进行中展开、结束后收起，
+  // 纯文本档全程收起；后台子 Agent 三档一律收起（它不是过程细节，是不该占视线）。
+  const { density } = useDensityPolicy()
+  const [isExpanded, setIsExpanded, resetExpanded] = useDensityOverride<boolean>(() =>
+    deriveSubAgentExpanded(density, isRunning, isBackground)
+  )
 
-  // Auto-collapse foreground sub-agent cards when execution completes
+  // 开跑 / 收尾这两个迁移点撤掉本档内的手动覆盖，回落到该档默认值
   const wasRunningRef = React.useRef(false)
   React.useEffect(() => {
     if (isBackground) return
     if (isRunning) {
       wasRunningRef.current = true
-      if (!isExpanded) setIsExpanded(true)
+      resetExpanded()
     } else if (wasRunningRef.current) {
-      // Sub-agent just finished — auto-collapse
       wasRunningRef.current = false
-      setIsExpanded(false)
+      resetExpanded()
     }
-  }, [isBackground, isRunning, isExpanded])
+  }, [isBackground, isRunning, resetExpanded])
 
   const elapsed = tracked
     ? (tracked.completedAt ?? (tracked.isRunning ? now : tracked.startedAt)) - tracked.startedAt

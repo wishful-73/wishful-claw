@@ -155,7 +155,9 @@ export function AssistantReplyRail({
   }
 
   return (
-    <div className="pointer-events-none absolute bottom-5 right-4 top-5 z-20 hidden md:block">
+    // top-12 而不是 top-5：正上方那 28px 留给 S-225 的渲染档位齿轮钮（RenderDensityToggle），
+    // 两者同一条竖线上、各自独立，齿轮不压 marker。
+    <div className="pointer-events-none absolute bottom-5 right-4 top-12 z-20 hidden md:block">
       <div className="pointer-events-none relative h-full w-[min(320px,calc(100vw-3rem))]">
         {previewItem && previewCopy ? (
           <div

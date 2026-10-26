@@ -236,6 +236,15 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   ) {
     state.liveOutputAnimationStyle = 'agile'
   }
+  // S-225：三档之外的任何值（含旧配置里的 undefined）一律回落「紧凑」—— 那是 1.0.1 的线上行为，
+  // 存量用户升级后观感零变化。
+  if (
+    state.chatRenderDensity !== 'text' &&
+    state.chatRenderDensity !== 'compact' &&
+    state.chatRenderDensity !== 'detail'
+  ) {
+    state.chatRenderDensity = 'compact'
+  }
   if (state.toolbarCollapsedByDefault === undefined) {
     state.toolbarCollapsedByDefault = false
   }

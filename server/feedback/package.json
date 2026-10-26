@@ -1,0 +1,17 @@
+{
+  "name": "wishfulclaw-feedback",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "官网用户反馈服务（提交 / 审核 / 公开列表）—— 需求 S-226",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node app.mjs",
+    "cli": "node cli.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  }
+}

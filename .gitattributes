@@ -1,0 +1,15 @@
+# 仓库 core.autocrlf 是 true（Windows 工作区），默认行为是：
+#   入库转 LF、检出转 CRLF。
+#
+# 对 .sh 这一条必须破例 —— 检出成 CRLF 的 bash 脚本 scp 到服务器后第一行就是
+# `#!/usr/bin/env bash\r`，执行时报 `$'\r': command not found` 或 exec format error。
+# 这类故障看起来像「服务器环境有问题」，其实死在本地工作区。
+#
+# 新增其他需要在 Linux 上直接执行的脚本（.sh / .service 不含此问题）时，
+# 把扩展名加到这里，并跑一次 `git add --renormalize <文件>`。
+*.sh text eol=lf
+
+# 部署到 Linux 的配置同上：nginx 的 conf 与 systemd 的 service 单元带 CRLF 会被
+# 自己的解析器噎到（systemd 会直接拒绝执行）。只限 deploy/ 下的副本，不动其他同名文件。
+deploy/**/*.conf    text eol=lf
+deploy/**/*.service text eol=lf

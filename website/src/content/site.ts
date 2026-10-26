@@ -91,7 +91,9 @@ export const sectionRail = [
   { id: 'advantages', label: '为什么是它' }, // = advantages.title
   { id: 'download', label: '下载' }, // 截短：该块标题是 `${BRAND.name}` 拼出的「下载心相」
   { id: 'quick-start', label: '四步开始' }, // = quickStart.title
-  { id: 'faq', label: '常见问题' } // = faq.title
+  { id: 'faq', label: '常见问题' }, // = faq.title
+  // S-226：反馈区挂在 FAQ 之后、页脚之前 —— 顺序必须与 App.tsx 一致，否则高亮错位
+  { id: 'feedback', label: '反馈' } // = feedback.eyebrow
 ] as const
 
 // 竞争优势：按「门槛低 / 好看」两类呈现，门槛低打头（2026-09-20 定稿三类；2026-09-21 S-124 删掉「自由」整类）
@@ -296,3 +298,52 @@ export const footer = {
   police: '川公网安备51080202020186号',
   policeUrl: 'https://beian.mps.gov.cn/#/query/webSearch?code=51080202020186'
 }
+
+// S-226：反馈区文案。
+//
+// 口径（2026-10-26 老大）：
+//  · 「只要审核过的就公开」—— 所以这里的说明必须让用户知道**提交不等于展示**，
+//    不然第二天没看到自己的条目会以为丢了。
+//  · 不提 GitHub issue 是替代品 —— 这块存在的意义就是「不用注册账号也能提」。
+//  · contact 属个人信息：必须写明「仅用于回复，不公开」，且不强制填。
+export const feedback = {
+  eyebrow: '反馈',
+  title: '缺什么、坏在哪，直接说',
+  intro: `提需求、报 Bug 都行，不用注册账号。审核通过的会挂在这块，做完了打勾 —— 所以提交后没立刻出现是正常的。`,
+  openFeature: '提一个需求',
+  openBug: '报一个 Bug',
+  listTitle: '大家提的，和已经做过的事',
+  /** 列表默认展示条数，超出折叠（不做详情页，就地展开） */
+  visibleCount: 6,
+  more: '看全部',
+  less: '收起',
+  todoLabel: '待办',
+  doneLabel: '已做',
+  /** 类型徽章。与服务端 type 值一一对应，不是给用户填的选项 */
+  typeLabel: { bug: 'Bug', feature: '需求' } as const,
+  // Dialog
+  dialog: {
+    featureTitle: '提一个需求',
+    bugTitle: '报一个 Bug',
+    featureHint: '想要它多会做什么？一句话说清就行。',
+    bugHint: '复现步骤、你期望的结果、实际发生的结果 —— 有多少写多少。',
+    titleLabel: '一句话概括',
+    titlePlaceholder: '比如：希望支持拖拽调整侧栏宽度',
+    contentLabel: '详细说说',
+    contentPlaceholder: '越具体越好，但不用凑字数。',
+    contactLabel: '联系方式（可不填）',
+    contactPlaceholder: '邮箱或微信，方便追问细节',
+    // 个人信息最小化：这行字是合规底线，别为了版面删掉
+    contactHint: '只在需要追问时联系你，不会公开，也不会拿去做别的。',
+    submit: '提交',
+    submitting: '提交中…',
+    cancel: '取消',
+    successTitle: '收到了',
+    successBody: '审核通过后会出现在下面的列表里。做完了会打勾。',
+    again: '再提一条',
+    close: '关闭',
+    failed: '没提交成功',
+    requiredError: '标题和内容都得填'
+  }
+}
+

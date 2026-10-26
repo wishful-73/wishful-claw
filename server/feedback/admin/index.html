@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>反馈审核 · WishfulClaw</title>
+<!--
+  反馈审核页（需求 S-226 §9.2）。
+
+  单文件、无框架、无构建，由服务进程直接返回（不放进 website/public/ ——
+  `deploy site` 是整目录原子替换，放站点里迟早被顺手删掉）。
+
+  ⚠️ 安全底线：反馈的 title / content / contact / page 全是**用户输入**，
+     本页一律用 textContent 渲染，**绝不用 innerHTML 拼用户内容**。
+     这个页面在 basic auth 后面，但「反正是后台」不是 XSS 的免罪证 ——
+     后台被 XSS 等于审核权限被拿走。
+-->
+<style>
+  :root {
+    --ink-950: #1b1e24;
+    --ink-900: #33373f;
+    --ink-700: #e4e7ec;
+    --ink-800: #f6f7f9;
+    --accent: #ea580c;
+    --danger: #b42318;
+    --ok: #067647;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: var(--ink-950);
+    background: var(--ink-800);
+  }
+  header { margin-bottom: 16px; }
+  h1 { margin: 0 0 4px; font-size: 18px; }
+  .sub { color: var(--ink-900); opacity: .6; font-size: 12px; }
+
+  /* 状态标签 */
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 20px; }
+  nav button {
+    padding: 6px 12px; border: 1px solid var(--ink-700); border-radius: 8px;
+    background: #fff; color: var(--ink-900); cursor: pointer; font-size: 13px;
+  }
+  nav button[aria-current="true"] { background: var(--ink-950); border-color: var(--ink-950); color: #fff; }
+  nav button b { font-weight: 600; margin-left: 4px; }
+
+  /* 卡片 */
+  .card {
+    background: #fff; border: 1px solid var(--ink-700); border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .type {
+    font-size: 11px; padding: 1px 6px; border-radius: 5px; font-weight: 600;
+    background: #fef3c7; color: #92400e;
+  }
+  .type.feature { background: #dbeafe; color: #1e40af; }
+  .title { font-weight: 600; font-size: 15px; }
+  .meta { font-size: 12px; color: var(--ink-900); opacity: .55; }
+  .content {
+    margin: 8px 0 0; white-space: pre-wrap; word-break: break-word;
+    color: var(--ink-900); font-size: 13px;
+  }
+  .contact { margin-top: 6px; font-size: 12px; color: var(--danger); }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; align-items: center; }
+  .actions button {
+    padding: 4px 10px; border: 1px solid var(--ink-700); border-radius: 7px;
+    background: #fff; cursor: pointer; font-size: 12px; color: var(--ink-900);
+  }
+  .actions button:hover { background: var(--ink-800); }
+  .actions button[disabled] { opacity: .35; cursor: default; }
+  .actions button.done { color: var(--ok); border-color: #abefc6; }
+  .actions button.reject { color: var(--danger); border-color: #fecdca; }
+
+  .note { margin-top: 10px; }
+  .note label { display: block; font-size: 12px; color: var(--ink-900); opacity: .6; margin-bottom: 4px; }
+  .note input {
+    width: 100%; padding: 6px 9px; border: 1px solid var(--ink-700); border-radius: 7px;
+    font: inherit; font-size: 13px;
+  }
+  .note input:focus { outline: 2px solid rgb(234 88 12 / .25); border-color: var(--accent); }
+
+  .empty { padding: 40px; text-align: center; color: var(--ink-900); opacity: .5; }
+  .err { padding: 12px 16px; border-radius: 10px; background: #fef3f2; color: var(--danger); margin-bottom: 12px; }
+  .flash {
+    position: fixed; right: 20px; bottom: 20px; padding: 8px 14px; border-radius: 8px;
+    background: var(--ink-950); color: #fff; font-size: 13px; opacity: 0; transition: opacity .18s;
+    pointer-events: none;
+  }
+  .flash.show { opacity: .92; }
+</style>
+</head>
+<body>
+<header>
+  <h1>反馈审核</h1>
+  <p class="sub" id="sub">加载中…</p>
+</header>
+
+<nav id="tabs"></nav>
+<main id="list"></main>
+<div class="flash" id="flash"></div>
+
+<script>
+  // 状态展示顺序与文案；与 server/feedback/lib/status.mjs 的 ALL_STATUSES 一致
+  const STATUSES = [
+    { key: '', label: '全部' },
+    { key: 'pending', label: '待审' },
+    { key: 'todo', label: '待办' },
+    { key: 'done', label: '已做' },
+    { key: 'rejected', label: '驳回' }
+  ];
+  const STATUS_LABEL = { pending: '待审', todo: '待办', done: '已做', rejected: '驳回' };
+
+  const el = {
+    tabs: document.getElementById('tabs'),
+    list: document.getElementById('list'),
+    sub: document.getElementById('sub'),
+    flash: document.getElementById('flash')
+  };
+
+  let current = '';
+  let items = [];
+  let stats = {};
+  let recent24h = 0;
+
+  function flash(msg) {
+    el.flash.textContent = msg;
+    el.flash.classList.add('show');
+    clearTimeout(flash._t);
+    flash._t = setTimeout(() => el.flash.classList.remove('show'), 1600);
+  }
+
+  async function req(path, init) {
+    const res = await fetch(path, { cache: 'no-store', ...init });
+    const body = await res.json();
+    if (body.code !== 0) throw new Error(body.msg || '请求失败');
+    return body.data;
+  }
+
+  async function load() {
+    try {
+      const q = current ? '?status=' + encodeURIComponent(current) : '';
+      const data = await req('api/list' + q);
+      items = data.items || [];
+      stats = data.stats || {};
+      recent24h = data.recent24h || 0;
+      renderTabs();
+      renderList();
+      el.sub.textContent = `共 ${stats.total || 0} 条 · 最近 24 小时新增 ${recent24h} 条`;
+    } catch (e) {
+      el.list.replaceChildren(box('err', '读取失败：' + e.message));
+      el.sub.textContent = '读取失败';
+    }
+  }
+
+  function box(cls, text) {
+    const d = document.createElement('div');
+    d.className = cls;
+    d.textContent = text; // 永远 textContent
+    return d;
+  }
+
+  function renderTabs() {
+    el.tabs.replaceChildren();
+    for (const s of STATUSES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const name = document.createElement('span');
+      name.textContent = s.label;
+      b.append(name);
+      const n = s.key ? stats[s.key] || 0 : stats.total || 0;
+      const count = document.createElement('b');
+      count.textContent = String(n);
+      b.append(count);
+      if (s.key === current) b.setAttribute('aria-current', 'true');
+      b.onclick = () => {
+        current = s.key;
+        load();
+      };
+      el.tabs.append(b);
+    }
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function renderList() {
+    el.list.replaceChildren();
+    if (!items.length) {
+      el.list.append(box('empty', current ? '这个状态下还没有条目' : '还没有任何反馈'));
+      return;
+    }
+    for (const item of items) el.list.append(card(item));
+  }
+
+  function card(item) {
+    const wrap = document.createElement('article');
+    wrap.className = 'card';
+
+    // 首行：类型 + 标题 + 当前状态 + 时间
+    const row = document.createElement('div');
+    row.className = 'row';
+    const type = document.createElement('span');
+    type.className = 'type' + (item.type === 'feature' ? ' feature' : '');
+    type.textContent = item.type === 'feature' ? '需求' : 'Bug';
+    const title = document.createElement('span');
+    title.className = 'title';
+    title.textContent = item.title;
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = `#${item.id} · ${STATUS_LABEL[item.status] || item.status} · ${fmtTime(item.created_at)}${item.page ? ' · ' + item.page : ''}`;
+    row.append(type, title, meta);
+
+    // 正文（纯文本，pre-wrap）
+    const content = document.createElement('p');
+    content.className = 'content';
+    content.textContent = item.content;
+
+    wrap.append(row, content);
+
+    if (item.contact) {
+      const c = document.createElement('div');
+      c.className = 'contact';
+      c.textContent = '联系方式：' + item.contact; // 永不公开，只在这里给老大看
+      wrap.append(c);
+    }
+
+    wrap.append(actions(item));
+    wrap.append(noteInput(item));
+    return wrap;
+  }
+
+  function actions(item) {
+    const bar = document.createElement('div');
+    bar.className = 'actions';
+    for (const [status, label, cls] of [
+      ['pending', '待审', ''],
+      ['todo', '待办', ''],
+      ['done', '已做', 'done'],
+      ['rejected', '驳回', 'reject']
+    ]) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      if (cls) b.className = cls;
+      if (status === item.status) b.disabled = true;
+      b.onclick = () => changeStatus(item.id, status, b);
+      bar.append(b);
+    }
+    return bar;
+  }
+
+  async function changeStatus(id, status, btn) {
+    btn.disabled = true;
+    try {
+      await req('api/set', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        // by=owner：这个页面是老大在用（basic auth 只有他一个人的口令）。
+        // CLI 那条通道才是 by=assistant。
+        body: JSON.stringify({ ids: [id], status, by: 'owner' })
+      });
+      flash('已改为' + STATUS_LABEL[status]);
+      await load();
+    } catch (e) {
+      btn.disabled = false;
+      flash('失败：' + e.message);
+    }
+  }
+
+  function noteInput(item) {
+    const wrap = document.createElement('div');
+    wrap.className = 'note';
+    const label = document.createElement('label');
+    label.textContent = '内部备注（驳回理由 / 并入哪条 / 修在哪个版本，永不公开）';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 1000;
+    input.placeholder = '写完点别处即保存';
+    input.value = item.review_note || '';
+    const id = 'note-' + item.id;
+    input.id = id;
+    label.setAttribute('for', id);
+    // 失焦即存；值没变就不发请求
+    let saved = input.value;
+    input.onblur = async () => {
+      if (input.value === saved) return;
+      try {
+        await req('api/note', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id: item.id, note: input.value })
+        });
+        saved = input.value;
+        flash('备注已保存');
+      } catch (e) {
+        flash('备注保存失败：' + e.message);
+      }
+    };
+    wrap.append(label, input);
+    return wrap;
+  }
+
+  load();
+</script>
+</body>
+</html>

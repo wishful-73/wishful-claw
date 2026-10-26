@@ -25,6 +25,7 @@ import { registerMcpHandlers, shutdownMcp } from './ipc/mcp-handlers'
 import { registerVideoHandlers } from './ipc/video-handlers'
 import { registerExtensionHandlers } from './ipc/extension-handlers'
 import { registerWebFetchHandlers } from './ipc/web-fetch-handlers'
+import { registerApiRequestHandlers } from './ipc/api-request-handler'
 import { registerSshHandlers, cleanupSshHandlers } from './ipc/ssh-handlers'
 import { registerSkillHandlers } from './ipc/skill-handlers'
 import { registerSshFsHandlers } from './ipc/ssh-fs-handlers'
@@ -313,6 +314,7 @@ if (!gotTheLock) {
   registerVideoHandlers()
   registerExtensionHandlers()
 registerWebFetchHandlers()
+registerApiRequestHandlers()
 registerCodeGraphHandlers()
 
   // ── Worker forwarders (agent-history / db / goal) ──

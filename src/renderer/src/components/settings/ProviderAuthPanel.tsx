@@ -9,11 +9,12 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CalendarCheck, Loader2, LogIn, LogOut, ShieldAlert, UserCheck } from 'lucide-react'
+import { CalendarCheck, Loader2, LogIn, LogOut, ShieldAlert, ShieldCheck, UserCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
 import { Switch } from '@renderer/components/ui/switch'
 import { useProviderStore } from '@renderer/stores/provider-store'
+import { useSettingsStore } from '@renderer/stores/settings-store'
 import { signInWithWorkBuddy } from '@renderer/lib/auth/workbuddy-signin'
 import { pressCheckin } from '@renderer/lib/auth/workbuddy-checkin'
 import { buildOAuthProviderPatch, disconnectProviderOAuth } from '@renderer/lib/auth/provider-auth'
@@ -37,7 +38,8 @@ function ProviderAuthCard({
   onCancel,
   onDisconnect,
   onCheckin,
-  onToggleAutoCheckin
+  onToggleAutoCheckin,
+  onToggleEnabled
 }: {
   provider: AIProvider
   busy: boolean
@@ -48,6 +50,7 @@ function ProviderAuthCard({
   onDisconnect: (provider: AIProvider) => void
   onCheckin: (provider: AIProvider) => void
   onToggleAutoCheckin: (provider: AIProvider, enabled: boolean) => void
+  onToggleEnabled: (provider: AIProvider, enabled: boolean) => void
 }): React.JSX.Element {
   const { t } = useTranslation('settings')
   const connected = Boolean(provider.oauth?.accessToken)
@@ -141,23 +144,42 @@ function ProviderAuthCard({
       </div>
 
       {connected ? (
-        <div className="flex items-center justify-between gap-4 border-t px-4 py-2.5">
-          <div className="min-w-0">
-            <div className="text-xs font-medium">
-              {t('providerAuth.autoCheckin', { defaultValue: '自动签到' })}
+        <>
+          {/* 启用开关放在登录之后：登录成功的下一步就是「能选到它的模型」。
+              以前只有「服务商」页有开关，用户在这张卡上看不到入口。 */}
+          <div className="flex items-center justify-between gap-4 border-t px-4 py-2.5">
+            <div className="min-w-0">
+              <div className="text-xs font-medium">
+                {t('providerAuth.enable', { defaultValue: '启用' })}
+              </div>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                {t('providerAuth.enableHint', { defaultValue: '关掉后不会出现在模型选择器里。' })}
+              </p>
             </div>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-              {t('providerAuth.autoCheckinHint', {
-                defaultValue: '应用运行时每天自动领一次；关掉后仍可手动签到。'
-              })}
-            </p>
+            <Switch
+              size="sm"
+              checked={provider.enabled}
+              onCheckedChange={(next) => onToggleEnabled(provider, next)}
+            />
           </div>
-          <Switch
-            size="sm"
-            checked={autoCheckin}
-            onCheckedChange={(next) => onToggleAutoCheckin(provider, next)}
-          />
-        </div>
+          <div className="flex items-center justify-between gap-4 border-t px-4 py-2.5">
+            <div className="min-w-0">
+              <div className="text-xs font-medium">
+                {t('providerAuth.autoCheckin', { defaultValue: '自动签到' })}
+              </div>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                {t('providerAuth.autoCheckinHint', {
+                  defaultValue: '应用运行时每天自动领一次；关掉后仍可手动签到。'
+                })}
+              </p>
+            </div>
+            <Switch
+              size="sm"
+              checked={autoCheckin}
+              onCheckedChange={(next) => onToggleAutoCheckin(provider, next)}
+            />
+          </div>
+        </>
       ) : null}
     </div>
   )
@@ -166,10 +188,13 @@ function ProviderAuthCard({
 function ProviderAuthPanel(): React.JSX.Element {
   const { t } = useTranslation('settings')
   const providers = useProviderStore((s) => s.providers)
+  const updateProvider = useProviderStore((s) => s.updateProvider)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [checkinBusyId, setCheckinBusyId] = useState<string | null>(null)
-  // §5.1：接入前必须勾选确认，未勾选时登录按钮不可点
-  const [riskAccepted, setRiskAccepted] = useState(false)
+  // §5.1：接入前必须勾选确认，未勾选时登录按钮不可点。
+  // 勾选状态跟 settings 一起落盘 —— 提示条一直留着，但用户勾过一次就不用再勾第二次。
+  const riskAccepted = useSettingsStore((s) => s.providerAuthRiskAccepted)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
   const abortRef = useRef<AbortController | null>(null)
 
   const targets = useMemo(() => providers.filter(isServerPollProvider), [providers])
@@ -184,7 +209,15 @@ function ProviderAuthPanel(): React.JSX.Element {
     setBusyId(provider.id)
     try {
       const { token } = await signInWithWorkBuddy(provider, controller.signal)
-      setProviderAuth(provider.id, buildOAuthProviderPatch(provider, token))
+      setProviderAuth(provider.id, {
+        ...buildOAuthProviderPatch(provider, token),
+        // S-229: 登录成功的下一步必然是用它。内置 OAuth 预设投影出来 `enabled: false`
+        // （createProviderFromPreset 的 `preset.defaultEnabled ?? false`，WorkBuddy 两个
+        // build 都没写 defaultEnabled），不在这里打开，模型选择器的
+        // isProviderAvailableForModelSelection 第一道 `if (!provider.enabled)` 就把它筛掉，
+        // 用户看到的是「登录成功但选不到模型」。
+        enabled: true
+      })
       toast.success(
         t('providerAuth.signInSuccess', {
           defaultValue: '已连接：{{account}}',
@@ -285,15 +318,21 @@ function ProviderAuthPanel(): React.JSX.Element {
                   · {t('providerAuth.riskRestrict', { defaultValue: '腾讯有权判定异常并限制你的账号。' })}
                 </li>
               </ul>
-              <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-[11px] text-foreground">
-                <input
-                  type="checkbox"
-                  className="size-3.5 accent-amber-600"
-                  checked={riskAccepted}
-                  onChange={(event) => setRiskAccepted(event.target.checked)}
-                />
-                {t('providerAuth.riskAcknowledge', { defaultValue: '我已了解上述风险，仍要连接。' })}
-              </label>
+              {riskAccepted ? (
+                <p className="mt-2.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <ShieldCheck className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  {t('providerAuth.riskAccepted', { defaultValue: '已确认，不再重复询问。' })}
+                </p>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2.5 h-7 gap-1.5 border-amber-600/40 px-2.5 text-[11px] text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+                  onClick={() => updateSettings({ providerAuthRiskAccepted: true })}
+                >
+                  {t('providerAuth.riskAcknowledge', { defaultValue: '我已了解上述风险，仍要连接。' })}
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -316,6 +355,7 @@ function ProviderAuthPanel(): React.JSX.Element {
                 onDisconnect={handleDisconnect}
                 onCheckin={(target) => void handleCheckin(target)}
                 onToggleAutoCheckin={handleToggleAutoCheckin}
+                onToggleEnabled={(target, enabled) => updateProvider(target.id, { enabled })}
               />
             ))}
           </div>

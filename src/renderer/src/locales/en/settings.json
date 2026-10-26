@@ -279,6 +279,8 @@
     "signIn": "Sign in",
     "autoCheckin": "Daily check-in",
     "autoCheckinHint": "Claims once a day while the app is running. You can still check in manually when it is off.",
+    "enable": "Enabled",
+    "enableHint": "When on, it appears in the model picker and under Enabled on the AI Providers page — it is the same switch in both places.",
     "signInSuccess": "Connected: {{account}}",
     "disconnectDone": "Disconnected",
     "checkinClaimed": "Checked in: +{{credit}} credits, {{streak}}-day streak",
@@ -292,7 +294,8 @@
     "riskUnofficial": "This is an unofficial integration that uses your own account quota.",
     "riskRestrict": "Tencent may flag abnormal usage and restrict your account.",
     "riskAcknowledge": "I understand the risks above and still want to connect.",
-    "riskRequired": "Tick the acknowledgement above first"
+    "riskAccepted": "Acknowledged — you won't be asked again.",
+    "riskRequired": "Confirm the notice above first"
   },
   "provider": {
     "list": {

@@ -279,6 +279,8 @@
     "signIn": "登录",
     "autoCheckin": "自动签到",
     "autoCheckinHint": "应用运行时每天自动领一次；关掉后仍可手动签到。",
+    "enable": "启用",
+    "enableHint": "启用后出现在模型选择器，并在「AI 服务商」页归入已启用；两处是同一个开关。",
     "signInSuccess": "已连接：{{account}}",
     "disconnectDone": "已断开",
     "checkinClaimed": "签到成功：+{{credit}} 额度，连续 {{streak}} 天",
@@ -292,7 +294,8 @@
     "riskUnofficial": "这是非官方接入，用的是你自己账号的额度。",
     "riskRestrict": "腾讯有权判定异常并限制你的账号。",
     "riskAcknowledge": "我已了解上述风险，仍要连接。",
-    "riskRequired": "请先勾选确认上述风险"
+    "riskAccepted": "已确认，不再重复询问。",
+    "riskRequired": "请先确认上述风险"
   },
   "provider": {
     "list": {

@@ -1,9 +1,11 @@
 import { BrowserWindow, Notification, dialog, shell, webContents } from 'electron'
 import * as fs from 'fs'
+import { join } from 'path'
 import { getNativeWorker } from '../lib/native-worker'
 import { persistImageBuffer } from '../lib/image-persist'
 import { resolveDataDir, resolveProjectDirName } from '../lib/data-dir'
 import { resolveGeneratedImagesDir } from '../lib/generated-image-dir'
+import { chatImageFileNameFromBuffer, resolveChatImageDir } from '../lib/chat-image-dir'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { safeSendMessagePackToWindow } from '../window-ipc'
 import { resolveCodeGraphDataRoot } from './codegraph-handlers'
@@ -334,4 +336,47 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
       }
     }
   )
+
+  // S-224：聊天图片落盘。DB 里只留 filePath，字节留在磁盘上；
+  // 文件名取内容哈希，同一张图重复发送天然去重。
+  registerMessagePackHandler<
+    { data?: string; mediaType?: string },
+    { filePath?: string; mediaType?: string; error?: string }
+  >('image:persist-chat', async (args) => {
+    try {
+      if (typeof args.data !== 'string' || !args.data.trim()) {
+        return { error: 'Missing image data' }
+      }
+      const mediaType = args.mediaType || 'image/png'
+      // 一次解码：既算哈希又写盘，避免 20 MB 图解两遍。
+      const buffer = Buffer.from(args.data, 'base64')
+      if (buffer.length === 0) {
+        return { error: 'Empty image data' }
+      }
+      const dir = resolveChatImageDir(resolveDataDir(), new Date())
+      await fs.promises.mkdir(dir, { recursive: true })
+      const filePath = join(dir, chatImageFileNameFromBuffer(buffer, mediaType))
+      // 同哈希即同一张图，已存在且非空就复用。
+      // 注意必须校验尺寸：上次写到一半被打断会留下 0 字节文件，若只判 existsSync
+      // 就会把它当成品永久固化 —— 而落库那边已按 filePath 剥掉 base64，无法自愈。
+      if (!(await isNonEmptyFile(filePath))) {
+        // 先写临时文件再改名，保证最终路径上要么没有、要么是完整内容。
+        const tmpPath = `${filePath}.${Date.now()}.tmp`
+        await fs.promises.writeFile(tmpPath, buffer)
+        await fs.promises.rename(tmpPath, filePath)
+      }
+      return { filePath, mediaType }
+    } catch (err) {
+      return { error: String(err) }
+    }
+  })
+}
+
+async function isNonEmptyFile(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.promises.stat(filePath)
+    return stat.isFile() && stat.size > 0
+  } catch {
+    return false
+  }
 }

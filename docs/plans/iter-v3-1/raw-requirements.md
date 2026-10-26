@@ -12,6 +12,7 @@
 | S-221 | 官网首页右侧悬浮联动导航（板块锚点） | 已实施（阶段六 PASS，待观感过目） | [S-221](requirements/S-221.md) · [plan-s221](plan-s221/plan.md) |
 | S-222 | 聊天窗内时间统一为时分 HH:MM，跨天补日期 | 已实施（真机待验） | [S-222](requirements/S-222.md) · [plan-s222](plan-s222/plan.md) |
 | S-223 | dev 实例的项目级数据目录与生产隔离（`.wishful-claw-dev`） | 已实施（阶段六 PASS，真机待验） | [S-223](requirements/S-223.md) · [plan-s223](plan-s223/plan.md) |
+| S-224 | 聊天图片落盘存储（按日期分桶），DB 只存路径 | 已实施（阶段六 PARTIAL，真机待验） | [S-224](requirements/S-224.md) · [plan-s224](plan-s224/plan.md) |
 
 ## 候选池
 

@@ -8,6 +8,7 @@ import appIcon from '../../resources/icon-256.png?asset'
 import { latchNativeWorkerShutdown } from './lib/native-worker'
 import { logError, logWarn, logInfo, logDebug, installGlobalExceptionHandlers, readRecentLogs, listLogFiles, readLogFile, cleanupOldLogFiles } from './lib/logger'
 import { resolveDataPath, resolveProjectDirName } from './lib/data-dir'
+import { prepareLocalMediaScheme, registerLocalMediaProtocol } from './lib/local-media-protocol'
 import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '../shared/data-dir'
 import { WISHFULCLAW_PROJECT_DIR_ENV } from '../shared/project-dir'
 import type { LogCleanupResult, LogFileContent, LogFileInfo } from '../shared/logging'
@@ -247,6 +248,9 @@ app.setName(appDisplayName)
 
 app.setPath('userData', resolveDataPath('electron-user-data'))
 
+// oc-media 协议权限必须在 app ready 前声明（S-224）
+prepareLocalMediaScheme()
+
 // 单实例锁：双击 exe 时聚焦已有窗口，不启动新进程
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
@@ -259,6 +263,7 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(() => {
+  registerLocalMediaProtocol()
   installGlobalExceptionHandlers()
   // Seed the log level from the unified settings before anything else logs.
   initializeLogLevelFromSettings()

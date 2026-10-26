@@ -16,12 +16,25 @@
 ├── IDENTITY.md                     # 全局身份
 ├── USER.md                         # 全局用户画像
 ├── MEMORY.md                       # 全局活跃记忆
+├── images/
+│   └── 2026-10/                    # 聊天图片，按月分桶（S-224）
 ├── memory/
 │   ├── topics/                     # 主题记忆
 │   ├── dormant/                    # 休眠记忆
 │   └── archive/                    # 归档记忆
 └── index.db                        # SQLite（全局唯一）
 ```
+
+**聊天图片按日期分桶**（S-224）：`{全局目录}/images/{yyyy-MM}/{sha256 前 16 位}.{ext}`，例如
+`~/.wishful-claw/images/2026-10/9f2c1a7b3e5d4c60.png`。
+
+- 文件名取**解码后字节**的 sha256 前 16 位 + 按 mime 推的扩展名 ⇒ 同一张图重复发送天然去重，磁盘只有一份。
+- 月目录按**写入时刻的本地时间**取 `yyyy-MM`；同一张图跨月各发一次会存两份，月级粒度下可接受。
+- 库里只存 `filePath`：`messages.meta` 的 `content` / `segments` / `toolCalls` 三处容器在序列化时都会剥掉
+  `source.data`，只留路径与 mediaType。内存里的消息仍带 base64，本轮请求不受影响。
+- 显示走 `oc-media://` 自定义协议（`src/main/lib/local-media-protocol.ts`，扩展名白名单 + host 校验）；
+  编辑重发时由渲染端读盘还原成 base64。
+- 存量记录不迁移：老消息仍是内联 base64，两种形状渲染端都支持。
 
 ### 项目工作区
 

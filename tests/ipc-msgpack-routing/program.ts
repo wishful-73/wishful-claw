@@ -53,6 +53,7 @@ const PRELOAD_BINARY_ONLY = new Set([
   'file-search:icons',
   'file-search:query',
   'file-search:take-initial-keyword',
+  'image:persist-chat',
   'launcher:add-custom-app',
   'launcher:clear-es-exe',
   'launcher:clear-everything-exe',

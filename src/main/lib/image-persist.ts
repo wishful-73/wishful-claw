@@ -14,26 +14,12 @@ import * as fs from 'fs'
 import { dirname, extname, isAbsolute, join, normalize, resolve } from 'path'
 import { resolveDataDir } from './data-dir'
 import { resolveGeneratedImagesDir, type GeneratedImageScope } from './generated-image-dir'
+import { KNOWN_IMAGE_EXTENSIONS, guessExtensionFromMimeType } from './image-extension'
 
 export type { GeneratedImageScope }
 
-/** Extensions we will write to. Anything else gets the media-type extension appended. */
-const KNOWN_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'])
-
-export function guessExtensionFromMimeType(mediaType?: string): string {
-  switch ((mediaType || '').toLowerCase()) {
-    case 'image/jpeg':
-      return '.jpg'
-    case 'image/webp':
-      return '.webp'
-    case 'image/gif':
-      return '.gif'
-    case 'image/bmp':
-      return '.bmp'
-    default:
-      return '.png'
-  }
-}
+// 这两个从 `image-extension.ts` 搬来，仍从这里 re-export —— 既有调用方路径不变。
+export { KNOWN_IMAGE_EXTENSIONS, guessExtensionFromMimeType }
 
 export interface PersistImageOptions {
   /**

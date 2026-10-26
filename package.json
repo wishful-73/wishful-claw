@@ -82,6 +82,9 @@
     "test:compaction-snapshot-display": "esbuild tests/compaction-snapshot-display/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/compaction-snapshot-display/out/program.cjs && node tests/compaction-snapshot-display/out/program.cjs",
     "test:composer-status-elapsed": "esbuild tests/composer-status-elapsed/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/composer-status-elapsed/out/program.cjs && node tests/composer-status-elapsed/out/program.cjs",
     "test:project-dir": "esbuild tests/project-dir/program.ts --bundle --platform=node --format=cjs --outfile=tests/project-dir/out/program.cjs && node tests/project-dir/out/program.cjs",
+    "test:local-media-url": "esbuild tests/local-media-url/program.ts --bundle --platform=node --format=cjs --outfile=tests/local-media-url/out/program.cjs && node tests/local-media-url/out/program.cjs",
+    "test:chat-image-dir": "esbuild tests/chat-image-dir/program.ts --bundle --platform=node --format=cjs --outfile=tests/chat-image-dir/out/program.cjs && node tests/chat-image-dir/out/program.cjs",
+    "test:image-payload": "esbuild tests/image-payload/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-payload/out/program.cjs && node tests/image-payload/out/program.cjs",
   "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },
   "dependencies": {

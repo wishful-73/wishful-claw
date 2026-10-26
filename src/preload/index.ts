@@ -93,7 +93,17 @@ const api = {
 
   // Read recent log lines from today's log file
   readLogs: (maxLines?: number): Promise<string> =>
-    invokeMessagePackBinary<string>('log:read', { maxLines: maxLines ?? 500 })
+    invokeMessagePackBinary<string>('log:read', { maxLines: maxLines ?? 500 }),
+
+  /**
+   * S-224：把聊天图片落盘到 `{dataRoot}/images/{yyyy-MM}/`，返回磁盘路径。
+   * 落库只留 `filePath`，字节不再进 DB。失败时返回 `error`，调用方降级为内联 base64。
+   */
+  persistChatImage: (args: {
+    data: string
+    mediaType?: string
+  }): Promise<{ filePath?: string; mediaType?: string; error?: string }> =>
+    invokeMessagePackBinary('image:persist-chat', args)
 }
 
 if (process.contextIsolated) {

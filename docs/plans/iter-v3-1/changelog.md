@@ -100,3 +100,52 @@
 
 - `npx tsc --noEmit` web / node 双配置 **0 错**；`dotnet build src\runtime\WishfulClaw.sln` **0 警告 0 错误**；`npm test` **78/78**；`cd website; npm run build` **0 错误**。
 - 真机验证仍未做（四条需求全部待老大补），S-218 真实账号链路未跑。
+
+### 11:05 · 全迭代 · 三条需求的阶段二/三/五/六产物补齐
+
+- 老大：「你只补了一个需求的，其它做的也一并都补上流程」
+- 实情：09:59 那轮只给 S-218 开了 `plan-s218/`（含 plan / 合规 / 审查 / 验证），S-217 / S-219 / S-220 只有 `requirements/` 正文与迭代级总表，**单需求目录缺四份**。
+- 补做：`plan-s217/`、`plan-s219/`、`plan-s220/` 各四份（`plan.md` / `compliance_report.md` / `review_report.md` / `verification_report.md`）。
+- **按需求回溯检查，查出三条规划态的问题，全部保留在文档里**：
+  - **S-219 ❌1**：§5 明写「读 → 改 → 写整段入锁」，但步骤表只写到 `WriteAndFlushAsync` 加锁，三个读改写调用方无人认领 ⇒ 阶段五判「核心目标未达成」。**方案对、步骤没承接**，这是本轮最该记的一条。
+  - **S-220 ❌2**：首版把根因判成「`reload()` 吃缓存」，上 session 层拦截 + 导航重构；实测早已证明刷新正常，一行替换即可。教训是**写方案前没做一分钟对照实验**。
+  - **S-217 ⚠️3**：钩子逻辑正确，但漏了「已双装机器」与「构建配置依赖」两条边界；另缺真实 `electron-builder --win` 打包（宏是否真被插入无证据）。
+- 三条需求的验证结论均为 **PARTIAL**：编译 / 类型门禁全过，真机行为全部未验。
+- 产物挂载：`plan.md §二` 需求索引加「六阶段产物」列；`raw-requirements.md` 补 plan-s 链接、S-218 状态由「实施中」改为「已实施（缺口 §10.3，真账号待验）」。
+- **大文件行数实测复核**（`Measure-Object -Line` 不计空行，会低估）：`BrowserPanel.tsx` 515（豁免头一致）、`shared/types/provider.ts` 505（一致）、`ToolHelpers.cs` 342、`FileEditTool.cs` 134、`MemoryHotWriteTool.cs` 227、`build/installer.nsh` 16。
+
+### 11:14 · S-221 · 六阶段全程走完（阶段三三轮 / 阶段五 ❌0）
+
+- **阶段三三轮**：首轮 ❌1 / ⚠️6 → 二轮 ❌2 → **三轮 ❌0 / ⚠️6 / ✅11，判定可进入阶段四**。三轮拉锯的核心只有两条：① `frame` 不复位会让高亮冻在首帧（伪代码漏了「声明 / 复位 / 首帧」三要素）；② 需求正文的口径必须跟 plan 一起改，否则「按需求实现」会写出不合验收的代码。
+- **阶段三最值钱的一条**（第三轮 ⚠️-新2）：`[writing-mode:vertical-rl]` 下块流方向是**右→左**，裸 `<li>` 会排成 7 列「书脊」≈110px 宽、压进正文 ≈70px；必须给 `ul` 显式 `flex`（**`flex-col` 同样错**，仍走块轴）。这条写进 plan §十 后，实施一次到位。
+- **阶段四实施**：`section-rail.tsx` 新建 100 行、`site.ts` +15（`sectionRail` 常量）、`App.tsx` +6（零高 `#top` + 挂载）。`hero.tsx` / `index.css` 零改动。
+- **阶段五 ❌0 / ⚠️6 / ✅18**，判定可进入阶段六。其中**唯一行为缺陷已修**：只订阅 `scroll` / `resize`，features 切 tab、手风琴展开、图片加载都会移动板块边界却不发 `scroll` ⇒ 高亮停在旧值；补 `ResizeObserver(document.body)` 复用同一 rAF（步骤 9b）。
+- **行数记账翻车一次**：PowerShell `(Get-Content f).Count` 对无 BOM 的 UTF-8 文件数出 **86**，实际 **100**（`split('\n')` 得 101 行含末尾空行）。**以后核行数只信 node `split` 或 `[IO.File]::ReadAllLines().Count`，别用 `Get-Content`** —— 这与 10:23 记的「`Measure-Object -Line` 不计空行」是两个坑。
+- **行号漂移**：`site.ts` 插入 15 行后，全部既有引用 +15（`:176→:191`、`:84→:99`、`:218→:233`、`:242→:257`、`:150→:165`）；`App.tsx` 区块 `:27-33` → `:33-39`。plan 与需求正文已同步，并在 plan §二 加了一句「日后按符号名 grep，别信数字」。
+
+### 11:35 · S-222 · 六阶段全程走完（阶段五 ❌0 / 阶段六 PARTIAL）
+
+- **阶段四实施**（提交 `455eb8db`）：新增 `lib/utils/chat-time.ts`（35 行）+ `tests/chat-time/program.ts`（24 assertions）+ `package.json:55` 挂 `test:chat-time`；三处落点统一 —— `chat/UserMessage.tsx:244`、`chat/AssistantMessage/action-bar.tsx:19/:159-171`、`chat/ContextCompressionMessage.tsx`。
+- **规则**：今日只 `HH:MM`，非今日 `MM-DD HH:MM`，跨年 `YYYY-MM-DD HH:MM`，无效值返回空串由调用方决定不渲染。活动面板 / 会话列表 / 用量明细三处**不动**（有回归断言）。
+- **阶段五 ❌0 / ⚠️6 / ✅18**，六条 ⚠️ 全部收口：
+  - ⚠️1（唯一行为缺陷）：`action-bar` 在「时刻无效且无耗时」时仍渲染空 `<p>`（留 6px）⇒ 渲染判据由 `finishedAt != null` 改为 `timeLine` 非空，计算提到组件顶层。
+  - ⚠️3 / ⚠️4 / ⚠️6：测试补齐跨午夜只取一次 `now`、锁住「去年同月同日不能漏年份」的变异、补 `now` 非法断言（22 → 24 assertions）。
+  - ⚠️2 / ⚠️5：卡片字符串层与英文面口径写进 `S-222.md §9` 与验证报告，属**明示取舍**而非遗漏。
+- **阶段六 PARTIAL**：`npm run typecheck` 0 错、`npm test` **79/79**、`node tests/chat-time/out/program.cjs` 24 assertions 全过；真机步骤 11-12（消息流 / 压缩卡片）待老大过目。
+- **预期副作用**（决策 3 的后果，已记录）：英文面时刻 `09:55 AM` → `09:55`；压缩卡片分隔符原本随 locale 变（`10/22`），现固定 `10-22`。
+
+---
+
+## 2026-10-26
+
+### 16:25 · 全迭代 · 收尾（11 条需求归档 + 版本号升 1.0.1）
+
+- **本迭代实到 11 条**：S-217 / S-218 / S-219 / S-220 / S-221 / S-222 / S-223 / S-224 / S-228 / S-229 / S-231。提交序列（`main..dev/v3-iter-1`）：
+  `6c66de97` 代际切 v3 · `9342316f` S-220 · `7af2f77c` + `5fc0a6f0` S-219 · `5b92bed3` S-217 · `bbcb140b` S-218 · `402a109d` 阶段五审查 8 条 ❌ 修复 + 流程产物 · `455eb8db` S-222 · `ed7bf907` S-221 · `498d83a1` S-223 · `fb7b5beb` S-224 · `a6bdf221` S-228 · `add11d00` S-229 · `b2a2f1c0` S-231 · `d0b60bfb` S-218 补刀。
+- **S-218 补刀**（`d0b60bfb`）：`lib/auth/*` 从 OpenCowork 移植时就调 `api:request`，但主进程从未注册 handler（2026-08-27 审计 `5faa16ba` 当死代码从 messagepack 白名单删掉）⇒ 每次落到裸 `ipcRenderer.invoke` 抛 `No handler registered`。新建 `src/main/ipc/api-request-handler.ts`（163 行）走 Chromium `net.request`，继承系统代理与证书策略，`useSystemProxy === false` 时强制 direct。风险确认从 checkbox 改为一次性 `Button`（确认后锁存、无取消入口）。
+- **S-223 / S-224 / S-228 / S-229 / S-231 五条补做并归档**：dev 实例项目级目录改 `.wishful-claw-dev`（不迁移历史数据）；聊天图片落盘 `{dataRoot}/images/yyyy-MM/`、DB 只存路径；官网右下角回顶按钮；OAuth 预设投影补齐 10 个协议字段；运行时附加块（`<current_time>` / `<memory-*>`）改为后置。
+- **S-230 Qoder 接入未做** —— 缺契约（端点 / 鉴权头 / 额度形态均无资料），不硬编，单列下个迭代。
+- **门禁复跑全绿**：`npx tsc --noEmit` 三配置 0 错；`npm test` **83/83**；`dotnet build src\runtime\WishfulClaw.sln` 0 警告 0 错误；`cd website; npm run build` 0 错（358ms）。
+- **版本号 1.0.0 → 1.0.1**：`package.json:3`、`package-lock.json` 两处（顶层 `version` 与 `packages[""].version`）、`README.md:19` 徽章。`AGENTS.md` 里出现的 `1.0.0` 是规则叙述与历史记录，不动。
+- **文档归档**：`PROGRESS.md` 新增「v3 迭代（正式版）」小节 + `v3-iter-1` 行；新建 `docs/progress/v3-iter-1.md`；`plan.md §二` 需求索引补齐 S-224 / S-228 / S-229 / S-231 四行并刷新全部状态列。
+- **遗留**：S-231 标题仍可能被截到附加块（第三方按长度截取，首段已干净）、S-217 待真机装包验、S-220 硬刷新待真机复验、S-224 落盘路径与 DB 一致性待真机验、`release/` 里 0.2.38 及更早产物待清理。

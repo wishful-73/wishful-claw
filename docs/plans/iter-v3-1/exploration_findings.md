@@ -3,6 +3,7 @@
 > 阶段一「探索态」产物：**只读**勘察结论汇总。逐需求细节见 `requirements/S-{NNN}.md` §3「代码链路」。
 > 勘察时间：2026-10-22；补录：2026-10-23（本轮跳流程，事后补齐）。
 > 分支 `dev/v3-iter-1`（base = `6c66de97`）。
+> **产物分布**：阶段一只有本文件 —— 迭代级一份、按需求分节，不按 `plan-s{NNN}/` 再拆（拆开是六份重复结论）。阶段二 / 三 / 五 / 六按需求落在 `plan-s{217,218,219,220}/`，索引见 `plan.md §二`；阶段五另有跨需求总表 `review_report.md`。
 
 ## 一、勘察范围
 
@@ -94,6 +95,20 @@ HKLM\Software\cfc79f30-8748-54f5-ad78-ed9ba15bc986
 - 现状不一致：消息行 `09:55`（无日期）、压缩卡片 `10-23 09:55`（**今天也带日期**）
 - 自拍板口径：跨天按**自然日**判；年份只在跨年出现（`09:55` / `10-22 23:41` / `2025-12-31 23:41`）；固定 24 小时制；单点落 `lib/utils/chat-time.ts`
 - 明确范围外：活动面板（带秒是有意的）、左栏会话列表、用量明细、定时任务日历、目标会话视图、工具定位日志、文件搜索；**耗时（时长）不算本需求**
+
+### 2.7 S-223 —— dev 项目级数据目录隔离（**仅勘察，未实施**）
+
+- **全局侧早已隔离**：`main/lib/data-dir.ts:14-17` 按 `app.isPackaged` 分 `~/.wishful-claw` / `~/.wishful-claw-dev`；`native-worker.ts:185` 注入 `WISHFULCLAW_DATA_DIR` 给 C# worker；`PathBoundary.cs:184` 注释已写明这条链
+- **缺口只在项目级**：`WishfulClawPaths.cs:5` 与 `data-dir.ts:1` 都是硬编码常量 `.wishful-claw`，dev 与生产写同一目录
+- 项目级引用实测 **约 11 处 C#**（Agent / Persona / Workspace，以 `plan-s223/plan.md` 步骤 3 的表为准）+ **5 处 TS**（2 处 main、3 处 renderer）；**另有 5 处是全局路径，不能跟着改**
+- **★ 阶段三审查挖出的漏网（首轮勘察没看到）**：项目级目录名不只写在代码里，还**硬编码在给模型的文案里**，共 **7 处裸字符串 `.wishful-claw`**（`Get-ChildItem -Recurse -Filter *.cs src\runtime` 非注释命中恰好这 7 行 + `WishfulClawPaths.cs:5` 常量）：
+  - 3 处已是插值串：`AgentRuntimeProjectExecutor.cs:599`、`:607`、`PromptBuilder.cs:339`
+  - 4 处是普通字面量（**必须先补 `$` 才能插值**）：`ProjectToolsProvider.cs:32`、`GlobalTaskToolsProvider.cs:108`、`AgentRuntimeGlobalTaskExecutor.cs:226`、`PlanToolProvider.cs:65`
+  - 只改常量不改这 7 处 ⇒ `dotnet build` 全绿、grep 全绿，但模型被指示去写**生产目录**。**门禁拦不住，只能靠逐行回读**
+  - `PlanToolProvider.cs:65` 还含字面 `{planId}`，加 `$` 后须写 `{{planId}}`，否则 CS0103
+- 分层已核：Workspace / Persona / Agent 均引用 Infrastructure ⇒ 解析入口可放 `WishfulClawDataDir`；**CodeGraph 不引用**，它那处本就是全局路径，正好不用动
+- 两个真陷阱：①`WISHFUL_CLAW_DIR` 被 `ProjectArchivePage.tsx` 的全局（`:82`）与项目级（`:85`）两种用途共用；②`generated-image-dir.ts` 被单测直接 import，不能引入 electron 依赖（同理 `main/lib/data-dir.ts:1` 有 electron import，判定逻辑必须拆到 `shared/` 才能单测）
+- **第三个陷阱（首轮没看到）**：`npm start`（`electron-vite preview`）跑的是构建产物但未打包 —— main 判 dev、renderer 若自己用 `import.meta.env?.DEV` 会判 prod ⇒ 项目被反向污染。故 renderer 不得自行判定，值由主进程经 preload 下发
 
 ## 三、勘察方法与证据
 

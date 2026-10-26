@@ -1,12 +1,12 @@
 # v3-iter-1：正式版第一迭代 —— 更新链路、账号接入与体验收口
 
-- 状态：已完成，待合并 main
-- 分支：dev/v3-iter-1（合并后清理）
+- 状态：已完成，已合并 main 并发布
+- 分支：dev/v3-iter-1（已删除）
 - Plan: docs/plans/iter-v3-1/plan.md
 - VERDICT: PASS（编译验证 + 用户人工验证）
 - 产品版本: 1.0.1
 - Tag: v1.0.1
-- Commit: merge: v3-iter-1 → main（= tag `v1.0.1` 指向的提交；`git rev-list -n 1 v1.0.1` 可查）
+- Commit: `43d1bbdc` merge: v3-iter-1 → main（= tag `v1.0.1` 指向的提交；`git rev-list -n 1 v1.0.1` 可查）
 - 日期: 2026-10-26
 - 迭代定位：v3 代际第一个迭代（产品 `1.0.0` 已转正，本迭代起代际编号改 `v3`、产品版本走 `1.0.{N}`）。以缺陷修复与接入为主，无主打新功能。
 - 范围与功能单元（**登记 11 条 / 实施 11 条**）：
@@ -31,4 +31,9 @@
   - **S-230 Qoder 接入未做** —— 缺契约，单列下个迭代
   - `providerAuthRiskAccepted` 一旦确认无撤销入口（设计如此）；需重置时只能删设置字段
   - `release/` 里 0.2.38 及更早的本地产物待按发布 SOP 第七节清理
-- 发布：`1.0.0 → 1.0.1` 常规增量；官网下载目录三件套（`setup.exe` / `.blockmap` / `latest.yml`）必须成套上传，`latest.yml` 的 `version` 与本次一致。
+- 发布：`1.0.0 → 1.0.1` 常规增量，2026-10-26 两个发布面均已上线 ——
+  - **官网站点**：`node scripts/deploy.mjs site` 重建并替换，四路径（`/` `/download` `/guide` `/downloads/latest.yml`）全 200；新 chunk `back-to-top-CGUV-09h.js` / `section-rail` 指纹与本地构建一致（含 S-221 悬浮导航、S-228 回顶）
+  - **官网下载目录**：`deploy.mjs installer` 四件成套（exe 108.4 MB + blockmap + latest.yml + `release-notes-1.0.1.md`），逐件 sha512 校验通过；blockmap 保 5 版（0.2.37 ~ 1.0.1）全部 200
+  - **GitHub Release**：`v1.0.1`（Latest，draft=false / prerelease=false），三件资产 state=uploaded，exe 113640987 B 与清单 `size` 一致、本地实算 sha512 与清单逐字相同
+  - **本地清理**：`release/` 删掉 0.2.38 / 0.2.39 / 1.0.0 六个旧件（历史版均在 GitHub 有存档），只剩 1.0.1 三件 + `win-unpacked/`，总占用 523 MB
+  - **证书**：剩余 56 天（到期 2026-12-22）

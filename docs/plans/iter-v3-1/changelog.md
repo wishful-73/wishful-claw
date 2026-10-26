@@ -149,3 +149,14 @@
 - **版本号 1.0.0 → 1.0.1**：`package.json:3`、`package-lock.json` 两处（顶层 `version` 与 `packages[""].version`）、`README.md:19` 徽章。`AGENTS.md` 里出现的 `1.0.0` 是规则叙述与历史记录，不动。
 - **文档归档**：`PROGRESS.md` 新增「v3 迭代（正式版）」小节 + `v3-iter-1` 行；新建 `docs/progress/v3-iter-1.md`；`plan.md §二` 需求索引补齐 S-224 / S-228 / S-229 / S-231 四行并刷新全部状态列。
 - **遗留**：S-231 标题仍可能被截到附加块（第三方按长度截取，首段已干净）、S-217 待真机装包验、S-220 硬刷新待真机复验、S-224 落盘路径与 DB 一致性待真机验、`release/` 里 0.2.38 及更早产物待清理。
+
+### 16:40 · 全迭代 · 发布 1.0.1（官网先发，软件随后）
+
+- **官网先单独发一次**（老大 16:23 要求）：本迭代官网侧有 S-221 悬浮导航与 S-228 回顶两处真实改动 ⇒ 走 `deploy.mjs site`（默认带构建）。构建 274ms，2.4 MB 上传，服务器侧 `mv` 原子替换。抽查四路径全 200，证书剩 56 天。
+- **新指纹核验**：线上首页引用 `back-to-top-CGUV-09h.js` / `src-Bs2wKFwP.js` / `index-DwL4IOkZ.js`，与本地构建产物一致，三个 chunk 单独 GET 均 200 —— 确认新内容真上线，不是旧缓存骗人。
+- **git 收尾**：`main` 无分叉（`main..dev` 16 刀、`dev..main` 0 刀）⇒ `--no-ff` 合并得 `43d1bbdc`，打 annotated tag `v1.0.1`，直连推送 `main` + tag 均成功（未启用代理），删本地 `dev/v3-iter-1`。
+- **打包**：`npm run pack:installer:full` 157 s，产出 `wishful-claw-1.0.1-setup.exe` 108.38 MB + blockmap。`app-update.yml` 确认 `provider: generic` → `https://wishful-claw.work/downloads/`；`latest.yml` 无 `releaseNotes` 字段（0.2.39 起的正常态）。
+- **下载目录**：四件 108.5 MB 一次上传，逐件 sha512 校验通过，blockmap 自动保 5 版。
+- **GitHub Release**：`gh release create` + 三件资产上传，`--json` 直读会坏（PowerShell 流带 BOM），改重定向后解析；确认 `isLatest` = v1.0.1、三件 state=uploaded。
+- **核验一条容易翻车的**：`curl -o NUL` 查 108 MB 的 exe 会把整个包下下来（第一次核验就是这么超时的）—— 大文件一律 `-I` 只取状态码。
+- **清理**：`release/` 删 0.2.38 / 0.2.39 / 1.0.0 六件（三个版本在 GitHub 均有 Release 存档），只剩 1.0.1 三件 + `win-unpacked/`，523 MB。`.wishful-claw/notes/` 删 19 个一次性草稿（提交消息、探针、测试视频），只留 release-notes 系列与设计稿。

@@ -151,8 +151,13 @@ async function sendTokenRequest(
   headers: Record<string, string>,
   deviceId?: string
 ): Promise<OAuthToken> {
+  const tokenUrl = config.tokenUrl
+  if (!tokenUrl) {
+    throw new Error('OAuth config missing tokenUrl')
+  }
+
   const { statusCode, data, rawBody } = await requestOAuthJson({
-    url: config.tokenUrl,
+    url: tokenUrl,
     body,
     headers,
     useSystemProxy: config.useSystemProxy

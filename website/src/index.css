@@ -27,6 +27,16 @@ html {
   color-scheme: light;
 }
 
+/* 减少动态效果：全站锚点跳转（含 S-228 的「回到顶部」）一律瞬间完成。
+   ⚠️ 别指望 JS 里传 scrollTo({ behavior: 'auto' }) 能兜住 —— `auto` 的语义是「按元素
+   computed 的 scroll-behavior 走」，等于没写，照样平滑。要瞬间只能从 CSS 这一层把
+   smooth 摘掉。只影响开了该偏好的用户，普通用户行为不变。 */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
 /* 滚动条：系统默认 15px 灰条在纸面底色上很脏。细到 8px、轨道透明，滑块**静置就带品牌色**
    （淡橙，白底上看得见但不抢内容），hover 才加深。
    ⚠️ 标准属性 scrollbar-width / scrollbar-color 只能圈给 Firefox：Chromium 121+ 一旦识别它们，

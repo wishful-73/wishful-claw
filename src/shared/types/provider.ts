@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-26 实测 513 行）：30 余个 `export type` / `export interface` 的纯类型声明表，
+// 覆盖 provider 预设、OAuth 契约、渠道、模型配置、回退链，全是同质声明、无逻辑；
+// 拆开只会让「某个字段属于哪个类型」变成翻文件。豁免依据：AGENTS.md §大文件拆分 第 5 条第 1 类（单一数据对象 / 同质数据）。
+
 /**
  * Provider core type definitions.
  * Shared between renderer, preload, and main process.
@@ -108,13 +112,15 @@ export interface ProviderUiConfig {
 
 // ─── OAuth ───
 
-export type OAuthFlowType = 'authorization_code' | 'device_code'
+export type OAuthFlowType = 'authorization_code' | 'device_code' | 'server_poll'
 export type OAuthRequestMode = 'form' | 'json'
 
 export interface OAuthConfig {
-  authorizeUrl: string
-  tokenUrl: string
-  clientId: string
+  /** authorization_code flow only; server_poll mints its URL via {@link stateUrl} */
+  authorizeUrl?: string
+  tokenUrl?: string
+  /** authorization_code / device_code only; server_poll signs in without a client registration */
+  clientId?: string
   clientIdLocked?: boolean
   scope?: string
   flowType?: OAuthFlowType
@@ -140,6 +146,30 @@ export interface OAuthConfig {
   redirectPort?: number
   extraParams?: Record<string, string>
   usePkce?: boolean
+
+  // ─── server_poll flow ───
+  // The provider mints a state + sign-in URL server-side, the user signs in in a
+  // browser, and we poll for a token and then for the account. No redirect URI,
+  // no client registration, no PKCE.
+
+  /** POST endpoint that answers `{ state, authUrl }` */
+  stateUrl?: string
+  /** Polled for the account once the token lands */
+  accountUrl?: string
+  /** Refresh endpoint for server_poll tokens; absent means the sign-in cannot be renewed */
+  refreshUrl?: string
+  /** Account list endpoint, used to pick the enterprise id for a non-personal account */
+  accountsUrl?: string
+  /** Platform value sent as the `platform` query of {@link stateUrl} */
+  platform?: string
+  /** Poll interval in ms; defaults to 1000 */
+  pollIntervalMs?: number
+  /** Overall sign-in timeout in ms; defaults to 300000 (5 min) */
+  pollTimeoutMs?: number
+  /** Extra query params appended to {@link stateUrl} */
+  stateQuery?: Record<string, string>
+  /** Headers sent with the `state` mint request (e.g. the provider's X-No-* suppressors) */
+  stateRequestHeaders?: Record<string, string>
 }
 
 export interface OAuthToken {
@@ -159,6 +189,22 @@ export interface OAuthToken {
   copilotChatEnabled?: boolean
   copilotSku?: string
   copilotTelemetry?: string
+
+  // ─── WorkBuddy server_poll flow ───
+  // The plugin API signs every request with the account's own uid, domain and
+  // enterprise; they arrive with the sign-in and have to survive in storage.
+
+  /** Account uid, sent as `X-User-Id` */
+  uid?: string
+  /** Enterprise (team) id, sent as `X-Enterprise-Id` and `X-Tenant-Id`. Empty for a personal account. */
+  enterpriseId?: string
+  /** Account-bound API domain, sent as `X-Domain` */
+  domain?: string
+  /**
+   * Daily check-in runs on its own while the app is open. Default on —
+   * only an explicit `false` turns it off.
+   */
+  autoCheckin?: boolean
 }
 
 export interface AccountRateLimit {
@@ -300,6 +346,12 @@ export interface AIProvider {
   baseUrl: string
   /** Optional official website for this provider */
   homepage?: string
+  /**
+   * Optional one-line qualifier shown under the provider name (e.g. 国内版 / 国际版).
+   * Preset-owned display text, same contract as `homepage`: refreshed from the preset
+   * on every reconciliation, never edited in the UI.
+   */
+  tagline?: string
   enabled: boolean
   models: AIModelConfig[]
   builtinId?: string
@@ -418,6 +470,8 @@ export interface BuiltinProviderPreset {
   defaultEnabled?: boolean
   requiresApiKey?: boolean
   homepage: string
+  /** Optional one-line qualifier shown under the provider name in the UI (e.g. 国内版 / 国际版) */
+  tagline?: string
   /** Link for users to create/manage API keys */
   apiKeyUrl?: string
   /** Whether to route API requests via the system proxy */

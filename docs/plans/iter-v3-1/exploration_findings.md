@@ -1,0 +1,131 @@
+# v3-iter-1 探索态勘察记录（阶段一）
+
+> 阶段一「探索态」产物：**只读**勘察结论汇总。逐需求细节见 `requirements/S-{NNN}.md` §3「代码链路」。
+> 勘察时间：2026-10-22；补录：2026-10-23（本轮跳流程，事后补齐）。
+> 分支 `dev/v3-iter-1`（base = `6c66de97`）。
+> **产物分布**：阶段一只有本文件 —— 迭代级一份、按需求分节，不按 `plan-s{NNN}/` 再拆（拆开是六份重复结论）。阶段二 / 三 / 五 / 六按需求落在 `plan-s{217,218,219,220}/`，索引见 `plan.md §二`；阶段五另有跨需求总表 `review_report.md`。
+
+## 一、勘察范围
+
+| 编号 | 需求 | 定性 | 勘察深度 |
+|---|---|---|---|
+| S-217 | 更新安装沿用历史安装范围与安装路径 | 缺陷（安装器） | 注册表实测 + NSIS 模板通读 |
+| S-218 | WorkBuddy 账号接入（A 形态） | 新功能 | 第三方逆向源码对照 + 端点契约整理 |
+| S-219 | 文件写入工具并发冲突 | 缺陷（工具健壮性） | 单一写入出口定位 + 调用面清点 |
+| S-220 | 内置浏览器按地址导航后仍加载旧页面 | 缺陷（缓存策略） | 两条导航路径对比 + 真机复现 |
+| S-221 | 官网右侧悬浮联动导航 | 体验增强 | 页面结构与板块 id 清点（**未实施**） |
+| S-222 | 聊天窗时间显示（HH:MM，跨天补日期） | 体验增强 | 时刻渲染点清点（**未实施**） |
+
+## 二、逐需求勘察结论
+
+### 2.1 S-217 —— 安装路径沿用
+
+**根因已定位，且危害比登记时判断的更重。**
+
+| 子现象 | 确定性 | 说明 |
+|---|---|---|
+| A：「为所有用户 / 仅当前用户」页每次出现 | **确定** | NSIS 模板行为，范围页无可跳过依据 |
+| B：改选范围后路径回落到该范围默认值，旧安装残留 | **确定** | 代码链路完整 |
+| C：未改选也回落默认路径 | **未确认** | 静态勘测未找到断裂点，需真机装包实测 |
+
+**关键发现：安装目录与运行数据是两套位置。**
+
+- 安装目录：`C:\Program Files\WishfulClaw`（per-machine）/ `%LocalAppData%\Programs\Wishful Claw`（per-user）
+- 运行数据：`%USERPROFILE%\.wishful-claw`（`index.db` / `data.db` / `config.json` /…），由 `WishfulClawDataDir.cs:15-17` 固定按 `UserProfile`，**不随安装路径变化**
+- Electron userData：`%USERPROFILE%\.wishful-claw\electron-user-data`（`src/main/index.ts:236`）
+
+⇒ 现象 B 的真实危害不是多占磁盘，而是**双安装并发打开同一份 589 MB SQLite（WAL）**，存在写坏数据的风险。这条把「沿用历史路径」从体验优化提到数据安全层面。
+
+**实测样本**（本机 per-machine）：
+
+```
+HKLM\Software\cfc79f30-8748-54f5-ad78-ed9ba15bc986
+  InstallLocation = C:\Program Files\WishfulClaw
+卸载项 UninstallString = "...\Uninstall WishfulClaw.exe" /allusers
+```
+
+`/allusers` 后缀可作为历史安装范围的判据来源。模板注释 `installer.nsh:77`、`:89` 印证「electron always uses per user app data」。
+
+### 2.2 S-218 —— WorkBuddy 账号接入
+
+**性质：新增功能，端点契约全部来自第三方逆向源码，参考实现自标「未对真账号验证」。**
+
+- 形态裁定为 **A：复用用户已有套餐额度**（老大 2026-10-22 拍板），不做多账号池、不做 Anthropic 旁路
+- 双版契约（国内 / 国际）字段差异已勘察；**国际版签到端点未实测**
+- 风险处置：首版按契约实现 + 请求失败翻译兜底；登录 / 对话 / 签到 / 续期四条链路须真账号联调
+- 签到自动化口径经三次收敛：**跟随真实对话**方案被撤销（10-22 16:09）⇒ **定时器**方案成立，北京时间 08:00 后按日期做种子取 1~10 分钟，**静默**发送（不做显式提示，16:09 明确）
+- 授权界面独立成 tab（`tabs.providerAuth`），不塞进现有设置页
+
+**勘察结论**：可实施面 = 类型定义 + 预设 + 登录链路 + 授权页 + 签到定时器 + 令牌续期 + 签到开关。不可验证面 = 真账号行为。
+
+### 2.3 S-219 —— 文件写入并发冲突
+
+**根因单一且确定：`FileShare.Read`。**
+
+- 唯一写入出口：`src/runtime/WishfulClaw.Agent/Tools/ToolHelpers.cs:141-168` `WriteAndFlushAsync`，`FileShare.Read` 意味着「我持写句柄期间不允许别人写」
+- 第二个写者 ⇒ `IOException`，`HResult` = 32（`ERROR_SHARING_VIOLATION`），消息 `IO_SharingViolation_File`
+- **缺陷面覆盖全部写类工具**，不止 `Edit`：`FileEditTool.cs:85`、`FileWriteTool.cs:61`、`MemoryHotWriteTool.cs:63/:71`、`AgentRuntimeNotebookEditExecutor.cs:99`
+- `FileEditTool` 的读改写（`:55` 读 → `:75-77` 替换 → `:85` 回写）**非原子**，读与写之间无锁、无版本校验
+
+**复现记录**：同 turn 并发 4 个 `Edit` 打同一文件，2 个失败；累计 5 次。无外部进程参与，纯自己撞自己。失败不破坏文件内容。
+
+### 2.4 S-220 —— 内置浏览器旧缓存
+
+**根因：两条导航路径底层调用不同。**
+
+| 路径 | 入口 | 底层 |
+|---|---|---|
+| 命令式导航 | 地址栏回车 → `navigate()` → `setCommittedUrl` → `<webview src>` 变化 | Electron `loadURL` |
+| 刷新 | 工具栏 `onReload`（`BrowserPanel.tsx:436`）→ `runWebviewCommand('refresh', …)` | `reload()` |
+
+真机实测三行对照：刷新 ✓ 新内容 / 手输地址 ✗ 旧内容 / 系统浏览器 ✓ 新内容。⇒ 只有命令式导航命中旧缓存。
+
+**口径收敛**：初版登记猜「改 session 缓存策略 / 重构导航」（已撤），17:52 收敛为**只把工具栏刷新做成强制绕过缓存**（`reloadIgnoringCache()`），三处 `reload()` 一行级改动。
+
+### 2.5 S-221 —— 官网悬浮联动导航（**仅勘察，未实施**）
+
+- 官网 Home 首页依赖下拉浏览，缺右侧常驻导航
+- 七个大板块中 **仅 Hero 缺 `id`**（其余 6 个已有），需补 `id="top"` 兼作回顶
+- 锚点定位用 `IntersectionObserver`，取「视口上部 30% 最靠上」的板块
+- `<lg` 断点隐藏，不做进度条
+
+### 2.6 S-222 —— 聊天窗时间显示（**仅勘察，未实施**）
+
+- 全站仅**三处**时刻渲染：`chat/UserMessage.tsx:243`、助手消息结束行、压缩卡片 `ContextCompressionMessage.tsx` `formatStamp`
+- 现状不一致：消息行 `09:55`（无日期）、压缩卡片 `10-23 09:55`（**今天也带日期**）
+- 自拍板口径：跨天按**自然日**判；年份只在跨年出现（`09:55` / `10-22 23:41` / `2025-12-31 23:41`）；固定 24 小时制；单点落 `lib/utils/chat-time.ts`
+- 明确范围外：活动面板（带秒是有意的）、左栏会话列表、用量明细、定时任务日历、目标会话视图、工具定位日志、文件搜索；**耗时（时长）不算本需求**
+
+### 2.7 S-223 —— dev 项目级数据目录隔离（**仅勘察，未实施**）
+
+- **全局侧早已隔离**：`main/lib/data-dir.ts:14-17` 按 `app.isPackaged` 分 `~/.wishful-claw` / `~/.wishful-claw-dev`；`native-worker.ts:185` 注入 `WISHFULCLAW_DATA_DIR` 给 C# worker；`PathBoundary.cs:184` 注释已写明这条链
+- **缺口只在项目级**：`WishfulClawPaths.cs:5` 与 `data-dir.ts:1` 都是硬编码常量 `.wishful-claw`，dev 与生产写同一目录
+- 项目级引用实测 **约 11 处 C#**（Agent / Persona / Workspace，以 `plan-s223/plan.md` 步骤 3 的表为准）+ **5 处 TS**（2 处 main、3 处 renderer）；**另有 5 处是全局路径，不能跟着改**
+- **★ 阶段三审查挖出的漏网（首轮勘察没看到）**：项目级目录名不只写在代码里，还**硬编码在给模型的文案里**，共 **7 处裸字符串 `.wishful-claw`**（`Get-ChildItem -Recurse -Filter *.cs src\runtime` 非注释命中恰好这 7 行 + `WishfulClawPaths.cs:5` 常量）：
+  - 3 处已是插值串：`AgentRuntimeProjectExecutor.cs:599`、`:607`、`PromptBuilder.cs:339`
+  - 4 处是普通字面量（**必须先补 `$` 才能插值**）：`ProjectToolsProvider.cs:32`、`GlobalTaskToolsProvider.cs:108`、`AgentRuntimeGlobalTaskExecutor.cs:226`、`PlanToolProvider.cs:65`
+  - 只改常量不改这 7 处 ⇒ `dotnet build` 全绿、grep 全绿，但模型被指示去写**生产目录**。**门禁拦不住，只能靠逐行回读**
+  - `PlanToolProvider.cs:65` 还含字面 `{planId}`，加 `$` 后须写 `{{planId}}`，否则 CS0103
+- 分层已核：Workspace / Persona / Agent 均引用 Infrastructure ⇒ 解析入口可放 `WishfulClawDataDir`；**CodeGraph 不引用**，它那处本就是全局路径，正好不用动
+- 两个真陷阱：①`WISHFUL_CLAW_DIR` 被 `ProjectArchivePage.tsx` 的全局（`:82`）与项目级（`:85`）两种用途共用；②`generated-image-dir.ts` 被单测直接 import，不能引入 electron 依赖（同理 `main/lib/data-dir.ts:1` 有 electron import，判定逻辑必须拆到 `shared/` 才能单测）
+- **第三个陷阱（首轮没看到）**：`npm start`（`electron-vite preview`）跑的是构建产物但未打包 —— main 判 dev、renderer 若自己用 `import.meta.env?.DEV` 会判 prod ⇒ 项目被反向污染。故 renderer 不得自行判定，值由主进程经 preload 下发
+
+## 三、勘察方法与证据
+
+| 手段 | 用于 |
+|---|---|
+| 注册表实查（`reg query`） | S-217 InstallLocation / UninstallString 判据 |
+| 单一出口回溯（grep 全部调用点） | S-219 缺陷面清点（4 工具 5 处调用） |
+| 真机复现（本地 dev server + 内置浏览器） | S-220 三行对照表 |
+| 第三方源码对照 | S-218 端点契约（**非权威，需真账号验证**） |
+| 断点清点（全部时刻渲染点） | S-222 范围收敛到三处 |
+
+## 四、未确认项（带进后续阶段）
+
+| # | 未确认项 | 归属 | 处置 |
+|---|---|---|---|
+| 1 | S-217 现象 C 是否真实存在 | 真机 | 迭代收尾前装包按 §8 六场景实测 |
+| 2 | S-218 四条链路真实行为 | 真账号 | 需老大提供小号实跑 |
+| 3 | S-218 国际版签到端点 | 真账号 | 首版按同一抽象接入，单独开关 |
+| 4 | S-219 跨进程写入 | 设计取舍 | 已在 §6 写明「不追求跨进程文件锁」，靠退避重试兜 |
+| 5 | 双安装并发写 `index.db` 的实际后果 | 数据安全 | S-217 落地方案即规避手段 |

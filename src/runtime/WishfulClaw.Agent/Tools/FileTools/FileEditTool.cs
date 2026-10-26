@@ -52,51 +52,56 @@ public sealed class FileEditTool : IToolExecutor
 
         try
         {
-            var originalContent = await File.ReadAllTextAsync(path, Encoding.UTF8, context.CancellationToken);
-            var content = originalContent;
-
-            // Normalize line endings for matching
-            var normalizedOld = oldString.Replace("\r\n", "\n").Replace('\r', '\n');
-            var normalizedContent = content.Replace("\r\n", "\n").Replace('\r', '\n');
-
-            var occurrences = CountOccurrences(normalizedContent, normalizedOld);
-            if (occurrences == 0)
+            // 读 → 改 → 写整段进同一把路径锁（S-219）。只锁写入挡不住丢更新：
+            // 两个并发 Edit 会各自读到同一份旧内容，再串行整文件覆盖，后写胜出、先写静默消失。
+            return await WithWriteGateAsync(path, async () =>
             {
-                return new ToolResult($"String to replace not found in file.\nString: {oldString}", true);
-            }
-            if (!replaceAll && occurrences > 1)
-            {
-                return new ToolResult(
-                    $"Found {occurrences} matches of the string to replace, but replace_all is false. " +
-                    $"To replace all occurrences, set replace_all to true. To replace only one occurrence, provide more surrounding context.\nString: {oldString}",
-                    true);
-            }
+                var originalContent = await File.ReadAllTextAsync(path, Encoding.UTF8, context.CancellationToken);
+                var content = originalContent;
 
-            var updated = replaceAll
-                ? normalizedContent.Replace(normalizedOld, newString, StringComparison.Ordinal)
-                : ReplaceFirst(normalizedContent, normalizedOld, newString);
+                // Normalize line endings for matching
+                var normalizedOld = oldString.Replace("\r\n", "\n").Replace('\r', '\n');
+                var normalizedContent = content.Replace("\r\n", "\n").Replace('\r', '\n');
 
-            // Preserve original line ending style
-            if (content.Contains("\r\n"))
-            {
-                updated = updated.Replace("\n", "\r\n");
-            }
+                var occurrences = CountOccurrences(normalizedContent, normalizedOld);
+                if (occurrences == 0)
+                {
+                    return new ToolResult($"String to replace not found in file.\nString: {oldString}", true);
+                }
+                if (!replaceAll && occurrences > 1)
+                {
+                    return new ToolResult(
+                        $"Found {occurrences} matches of the string to replace, but replace_all is false. " +
+                        $"To replace all occurrences, set replace_all to true. To replace only one occurrence, provide more surrounding context.\nString: {oldString}",
+                        true);
+                }
 
-            await WriteAndFlushAsync(path, updated, context.CancellationToken);
+                var updated = replaceAll
+                    ? normalizedContent.Replace(normalizedOld, newString, StringComparison.Ordinal)
+                    : ReplaceFirst(normalizedContent, normalizedOld, newString);
 
-            // Record change for tracking/rollback
-            if (!string.IsNullOrEmpty(context.RunId))
-            {
-                AgentChangeTools.RecordChange(
-                    context.RunId,
-                    context.SessionId,
-                    path,
-                    beforeExists: true,
-                    beforeText: originalContent,
-                    afterText: updated);
-            }
+                // Preserve original line ending style
+                if (content.Contains("\r\n"))
+                {
+                    updated = updated.Replace("\n", "\r\n");
+                }
 
-            return new ToolResult($"{{\"success\":true,\"path\":\"{EscapeJson(path)}\",\"replaceAll\":{replaceAll.ToString().ToLowerInvariant()}}}");
+                await WriteWithSharingRetryAsync(path, updated, context.CancellationToken);
+
+                // Record change for tracking/rollback
+                if (!string.IsNullOrEmpty(context.RunId))
+                {
+                    AgentChangeTools.RecordChange(
+                        context.RunId,
+                        context.SessionId,
+                        path,
+                        beforeExists: true,
+                        beforeText: originalContent,
+                        afterText: updated);
+                }
+
+                return new ToolResult($"{{\"success\":true,\"path\":\"{EscapeJson(path)}\",\"replaceAll\":{replaceAll.ToString().ToLowerInvariant()}}}");
+            }, context.CancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -37,6 +37,7 @@ import { stepfunPreset, stepfunPlanPreset } from '@renderer/stores/providers/ste
 import { togetherPreset } from '@renderer/stores/providers/together'
 import { codexOAuthPreset } from '@renderer/stores/providers/codex-oauth'
 import { copilotOAuthPreset } from '@renderer/stores/providers/copilot-oauth'
+import { workbuddyPreset, workbuddyAiPreset } from '@renderer/stores/providers/workbuddy'
 import { sensenovaPreset } from '@renderer/stores/providers/sensenova'
 import { agnesPreset } from '@renderer/stores/providers/agnes'
 import type { BuiltinProviderPreset } from '@renderer/stores/providers/types'
@@ -87,5 +88,7 @@ export const builtinProviderPresets: BuiltinProviderPreset[] = [
   sensenovaPreset,
   agnesPreset,
   codexOAuthPreset,
-  copilotOAuthPreset
+  copilotOAuthPreset,
+  workbuddyPreset,
+  workbuddyAiPreset
 ]

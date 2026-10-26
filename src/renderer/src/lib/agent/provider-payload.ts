@@ -109,6 +109,17 @@ export function buildProviderPayload(
     userAgent: resolveProviderUserAgent(provider.userAgent),
     requestOverrides: modelConfig?.requestOverrides ?? provider.requestOverrides,
     cacheTtl: modelConfig?.cacheTtl ?? provider.cacheTtl,
-    responseSummary: modelConfig?.responseSummary
+    responseSummary: modelConfig?.responseSummary,
+
+    // server_poll 服务商（WorkBuddy）的账号身份：请求要带 X-User-Id / X-Domain /
+    // X-Enterprise-Id / X-Tenant-Id，缺了服务端会按个人账号甚至匿名答。只传这三个，
+    // token 本身已经在 apiKey 里，refreshToken 后端用不到。
+    oauthAccount: provider.oauth
+      ? {
+          uid: provider.oauth.uid,
+          enterpriseId: provider.oauth.enterpriseId,
+          domain: provider.oauth.domain
+        }
+      : undefined
   }
 }

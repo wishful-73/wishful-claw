@@ -335,7 +335,7 @@ public sealed class FileReadTool : IToolExecutor
             writer.WriteString("mediaType", mediaType);
             writer.WriteString("data", data);
             // 路径必须带：渲染端按它重新 hydrate 出图像（visual-context），
-            // DB 侧也按它把 base64 换成 [image: <path> …] 占位（S-145 §3.3）。
+            // DB 侧按它剥掉 base64、只留路径（serializeMessage → stripImagePayloads，S-224）。
             writer.WriteString("filePath", path);
             writer.WriteEndObject();
             writer.WriteEndObject();

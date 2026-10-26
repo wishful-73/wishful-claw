@@ -1,13 +1,13 @@
 import { IPC } from '@renderer/lib/ipc/channels'
+import { PROJECT_DATA_DIR_NAME } from '@renderer/lib/project-data-dir'
 import type { IPCClient } from '@renderer/lib/tools/tool-types'
-import { WISHFUL_CLAW_DATA_DIR_NAME } from '@shared/data-dir'
 
 interface ReadTextFileResult {
   content?: string
   error?: string
 }
 
-export const PROJECT_MEMORY_DIRNAME = WISHFUL_CLAW_DATA_DIR_NAME
+export const PROJECT_MEMORY_DIRNAME = PROJECT_DATA_DIR_NAME
 
 export type SessionMemoryScope = 'main' | 'shared' | 'channel'
 export type ProjectMemoryPathSource = 'wishful-claw-dir'

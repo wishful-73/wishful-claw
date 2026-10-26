@@ -3,6 +3,10 @@
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
  * Modified by the Wishful 心相 team for Wishful Claw.
+ *
+ * 500 行豁免（2026-10-23 实测 562 行，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+ * plan 执行器 = 计划文件读写 + 步骤状态推进 + 与 AgentLoop 的 run 上下文交互，
+ * 三者围绕同一份 planId 状态机；拆开要把 state 读写与回调搬成公开 API，得不偿失。
  */
 
 using System.Collections.Concurrent;
@@ -11,6 +15,7 @@ using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -155,7 +160,7 @@ Do NOT write implementation code during planning. You can read files, write/edit
         // Ensure plan directory + file exist
         try
         {
-            var planDir = Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "plans");
+            var planDir = Path.Combine(WishfulClawDataDir.ProjectRoot(workingFolder), "plans");
             Directory.CreateDirectory(planDir);
             if (!File.Exists(planFilePath))
             {

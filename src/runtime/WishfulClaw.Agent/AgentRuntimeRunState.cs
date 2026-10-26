@@ -71,14 +71,15 @@ public sealed class AgentRuntimeRunState : IDisposable
 
     /// <summary>
     /// Memory-update notes drained at the start of this turn.
-    /// Injected into the last user message by InjectTransientPrefix, becoming
-    /// part of the permanent conversation history.
+    /// Appended to the tail of the last user message by InjectTransientPrefix (S-231).
+    /// In-memory only — the wire conversation that gets persisted never carries
+    /// injected blocks.
     /// </summary>
     public List<string> PendingMemoryNotes { get; set; } = [];
 
     /// <summary>
-    /// Memory-recall block injected into the last user message before the
-    /// timestamp prefix. Becomes part of the permanent conversation history.
+    /// Memory-recall block appended to the last user message, after the timestamp
+    /// block (S-231). In-memory only, like the notes above.
     /// </summary>
     public string? PendingMemoryRecall { get; set; }
 

@@ -141,11 +141,12 @@ internal static partial class OpenAIChatProvider
                 }
 
                 // Memory recall, memory-update notes, and timestamp are already
-                // injected into the conversation message by InjectTransientPrefix
-                // and TryInjectMemoryRecallAsync (called before/at iteration 1 of
-                // the agent loop). No write-time suffix injection here - doing so
-                // would double-inject memory content and break byte consistency
-                // between the stored conversation and the API request.
+                // appended to the TAIL of the conversation message by
+                // InjectTransientPrefix and TryInjectMemoryRecallAsync (called
+                // before/at iteration 1 of the agent loop). No write-time suffix
+                // injection here - doing so would double-inject memory content and
+                // break byte consistency between the stored conversation and the
+                // API request. (S-231: tail since 2026-10-26, was head before.)
 
                 writer.WriteStartObject();
                 writer.WriteString("role", "user");

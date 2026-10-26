@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-26 实测 1128 行，含本头 4 行）：聊天 action 层，发送 / 中断 / 排队插话 /
+// 手动压缩 / 计划实施与修订共用同一套 store 选择器、`agentBridge` 请求约定和模块级队列状态
+// （`_pendingMessages`、`_pausedPendingSessionDispatch`），彼此互相调用；拆开会制造循环依赖并
+// 把上下文割裂到十几个文件。豁免依据：AGENTS.md §大文件拆分 第 5 条第 2 类（高度内聚的 hook）。
 import { useCallback, useEffect } from 'react'
 import {
   useChatStore,
@@ -17,7 +21,10 @@ import { resolveSendModel } from '@renderer/lib/send-model-resolution'
 import { getCachedTools, fetchToolDefinitions } from '@renderer/lib/tools/tool-cache'
 import { compressMessages } from '@renderer/lib/agent/context-compression'
 import type { CompressionStatusMeta, ContentBlock, ProviderConfig, UnifiedMessage } from '@renderer/lib/api/types'
-import { imageAttachmentToContentBlock, type ImageAttachment } from '@renderer/lib/image-attachments'
+import { imageAttachmentToContentBlock, hydrateImageAttachmentsFromFilePaths, type ImageAttachment, type ReadBinaryFileFn } from '@renderer/lib/image-attachments'
+import { attachChatImagePaths } from '@renderer/lib/image-persist-chat'
+import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { IPC } from '@renderer/lib/ipc/channels'
 import { getCompactSummaryDisplayText, isCompactSummaryLikeMessage } from '@renderer/lib/agent/context-compression'
 import { buildSelectedFileContext } from '@renderer/lib/agent/selected-file-context'
 import { expandPastedBlocks } from '@renderer/lib/select-file-tags'
@@ -29,6 +36,15 @@ import {
   CODEGRAPH_INDEX_STATUS_METHOD,
   resolveCodegraphEnabled
 } from '@renderer/lib/agent/codegraph-availability'
+
+// S-224：历史图片附件读回 base64 的唯一入口。
+// 判据（读不到就丢弃并 warn）在 hydrateImageAttachmentsFromFilePaths 里，
+// 这里只负责把 IPC 包成它要的函数形状 —— 别在调用点内联一份。
+const readBinaryFileViaIpc: ReadBinaryFileFn = (filePath) =>
+  ipcClient.invoke(IPC.FS_READ_FILE_BINARY, { path: filePath }) as Promise<{
+    data?: string
+    error?: string
+  }>
 
 // 索引探测：一次 codegraph/index-status RPC，只认 indexed === true。
 // 动态 import 是为了不让 Electron IPC 依赖链被静态拉进本模块。
@@ -211,7 +227,24 @@ export function useChatActions() {
         : typeof text !== 'string' && Array.isArray(text.images)
           ? text.images as ImageAttachment[]
           : []
-      const imageBlocks: ContentBlock[] = imageAttachments.map(imageAttachmentToContentBlock)
+      // S-224：历史消息编辑重发时附件只剩 filePath（dataUrl 是 oc-media://），
+      // 先读回 base64 —— 否则会被当成 url 型附件发出去，模型拿不到图。
+      const hydratedAttachments = await hydrateImageAttachmentsFromFilePaths(
+        imageAttachments,
+        readBinaryFileViaIpc
+      )
+      // S-224：图片全部读不回来（文件被删 / 权限失效）而文本又是空的，
+      // 发出去就是一条空白消息 + 一次莫名其妙的模型响应，直接拦下。
+      if (imageAttachments.length > 0 && hydratedAttachments.length === 0 && !messageText.trim()) {
+        console.warn('[use-chat-actions] 图片全部失效且无文本，放弃发送')
+        return false
+      }
+      // S-224：先落盘拿 filePath，base64 仍留在块里供本次请求使用，
+      // 落库时由 serializeMessage 剥掉 data 只留路径。
+      const imageBlocks: ContentBlock[] = await attachChatImagePaths(
+        hydratedAttachments.map(imageAttachmentToContentBlock),
+        (args) => window.api.persistChatImage(args)
+      )
 
       // Resolve thinking config from the model definition
       const modelConfig = activeProvider.models.find((m: any) => m.id === modelId)

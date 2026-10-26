@@ -1,4 +1,4 @@
-﻿using WishfulClaw.Contracts;
+using WishfulClaw.Contracts;
 
 namespace WishfulClaw.Infrastructure.Storage;
 
@@ -27,8 +27,29 @@ public static class WishfulClawDataDir
     }
 
     /// <summary>
-    /// The project-local data directory — <c>{workingFolder}/.wishful-claw</c> — created on first use
+    /// 项目级数据目录名（S-223）。打包版是 <c>.wishful-claw</c>，dev 实例是 <c>.wishful-claw-dev</c>，
+    /// 由主进程算好后经环境变量注入，避免 worker 自己判 <c>app.isPackaged</c>（它看不到）。
+    /// 与全局的 <see cref="Root"/> 无关 —— 那个永远带 <c>-dev</c> 后缀的是用户目录，不是这里。
+    /// </summary>
+    public static string ProjectDirName
+    {
+        get
+        {
+            var configured = Environment.GetEnvironmentVariable(WishfulClawPaths.ProjectDirEnvVar)?.Trim();
+            return string.IsNullOrEmpty(configured) ? WishfulClawPaths.DataDirName : configured;
+        }
+    }
+
+    /// <summary>项目级数据目录的完整路径：<c>{workingFolder}/{ProjectDirName}</c>。</summary>
+    public static string ProjectRoot(string workingFolder) =>
+        Path.Combine(workingFolder, ProjectDirName);
+
+    /// <summary>
+    /// The project-local data directory — <c>{workingFolder}/{ProjectDirName}</c> — created on first use
     /// and hidden on Windows. Returns the directory so callers can combine their own subfolder onto it.
+    ///
+    /// 打包版是 <c>.wishful-claw</c>，dev 实例是 <c>.wishful-claw-dev</c>（见 <see cref="ProjectDirName"/>），
+    /// 这样开发时跑出来的状态不会写进用户正式项目的那份目录。
     ///
     /// Hidden matters because this directory sits inside the user's own repository: a visible
     /// <c>.wishful-claw</c> among their sources reads as clutter, and what the agent keeps in it
@@ -41,7 +62,7 @@ public static class WishfulClawDataDir
     /// </summary>
     public static string EnsureProjectRoot(string workingFolder)
     {
-        var root = Path.Combine(workingFolder, WishfulClawPaths.DataDirName);
+        var root = ProjectRoot(workingFolder);
         Directory.CreateDirectory(root);
         HideOnWindows(root);
         return root;

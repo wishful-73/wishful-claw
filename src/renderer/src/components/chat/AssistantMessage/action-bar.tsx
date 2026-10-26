@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { formatDurationMs } from '@renderer/lib/format-duration'
+import { formatChatTime } from '@renderer/lib/utils/chat-time'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { isSpeechSupported, speakMessage } from '@renderer/lib/speech'
 
@@ -72,6 +73,18 @@ export function AssistantActionBar({
   // 耗时只在两头都齐、且结束晚于开始时才算（老消息两戳都缺，不给值）。
   const elapsedMs =
     endAt != null && createdAt != null && endAt > createdAt ? endAt - createdAt : null
+
+  // 结束行只在真有东西可显示时才渲染。判据用「拼出来非空」而不是「finishedAt 非 null」——
+  // 时刻无效且两段耗时都缺时，前者不留 6px 空段落，后者会。
+  const timeLine = [
+    formatChatTime(finishedAt),
+    elapsedMs != null ? formatDurationMs(elapsedMs) : '',
+    totalElapsedMs != null
+      ? t('messageActions.elapsedTotal', { duration: formatDurationMs(totalElapsedMs) })
+      : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   const navigateToSession = useUIStore((s) => s.navigateToSession)
   const forkSessionFromMessage = useChatStore((s) => s.forkSessionFromMessage)
@@ -155,13 +168,8 @@ export function AssistantActionBar({
           </>
         )}
         {/* 结束时间和耗时都只在跑完后才亮；被压缩切分过的消息，末段再多报一个整轮总耗时 */}
-        {!isStreaming && finishedAt != null && (
-          <p className="mt-1.5 text-[10px] text-muted-foreground/50 tabular-nums">
-            {new Date(finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            {elapsedMs != null && ` · ${formatDurationMs(elapsedMs)}`}
-            {totalElapsedMs != null &&
-              ` · ${t('messageActions.elapsedTotal', { duration: formatDurationMs(totalElapsedMs) })}`}
-          </p>
+        {!isStreaming && timeLine && (
+          <p className="mt-1.5 text-[10px] text-muted-foreground/50 tabular-nums">{timeLine}</p>
         )}
         {!isStreaming &&
           (plainText || (isLiveMode && sessionId && msgId) || (devMode && debugInfo)) && (

@@ -13,6 +13,7 @@ using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -23,7 +24,7 @@ public static partial class AgentRuntimePlanExecutor
 {
     private static string GetPlanFilePath(string workingFolder, string planId)
     {
-        return Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "plans", $"{planId}.md");
+        return Path.Combine(WishfulClawDataDir.ProjectRoot(workingFolder), "plans", $"{planId}.md");
     }
 
     private static string GetStateFilePath(string planFilePath)

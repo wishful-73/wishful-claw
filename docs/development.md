@@ -132,7 +132,7 @@ npm run dev
 | `npm run build:worker` | 编译 .NET Worker |
 | `npm run pack:installer:full` | AOT Worker + 前端 + electron-builder NSIS 安装包 |
 
-> **数据目录：** 生产 `~/.wishful-claw/`，开发态 `~/.wishful-claw-dev/` — SQLite 数据库、全局记忆/人格文件、日志
+> **数据目录：** 全局生产 `~/.wishful-claw/`，开发态 `~/.wishful-claw-dev/` — SQLite 数据库、全局记忆/人格文件、日志；项目级同源区分，生产 `{工作区}/.wishful-claw/`，开发态 `{工作区}/.wishful-claw-dev/`（`WISHFULCLAW_PROJECT_DIR` 可覆盖，见 `data-storage.md`）
 
 ### 编译验证口径
 

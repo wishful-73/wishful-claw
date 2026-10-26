@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogTitle } from '@renderer/components/ui/dial
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@renderer/components/ui/dropdown-menu'
 import { Pencil, Check, Copy, Ellipsis, Volume2, Share2, ChevronsUpDown, ChevronsDownUp, CornerDownRight } from 'lucide-react'
 import { formatTokens } from '@renderer/lib/format-tokens'
+import { formatChatTime } from '@renderer/lib/utils/chat-time'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { isSpeechSupported, speakMessage } from '@renderer/lib/speech'
 import { useMemoizedTokens } from '@renderer/hooks/use-estimated-tokens'
@@ -240,7 +241,7 @@ export function UserMessage({
         )}
         {!compact && createdAt && (
           <p className="mt-1 pr-1 text-right text-[10px] text-muted-foreground/50 tabular-nums">
-            {new Date(createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {formatChatTime(createdAt)}
           </p>
         )}
         {!compact && expandedText.length > 50 && (

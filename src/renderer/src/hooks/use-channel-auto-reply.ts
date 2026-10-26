@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-26 实测 560 行，含本头 4 行）：渠道自动回复的整条链路——IPC 事件订阅、
+// 会话与渠道绑定校验、provider 装载、流式回复缓冲、入站内容落库与回填，全部围绕同一份
+// `activeAutoReplies` 模块状态流转；拆开会把一次投递的生命周期切成互不相关的几段。
+// 豁免依据：AGENTS.md §大文件拆分 第 5 条第 2 类（高度内聚的 hook）。
 /**
  * Channel Auto-Reply Hook
  *
@@ -31,6 +35,7 @@ import {
 } from '@renderer/lib/channel/channel-reply-event-policy'
 import { resolvePendingChannelShellApproval } from '@renderer/lib/channel/channel-shell-approval'
 import { buildInboundUserContent } from '@renderer/lib/channel/inbound-content'
+import { attachChatImagePaths } from '@renderer/lib/image-persist-chat'
 
 // ── Types ──
 
@@ -256,7 +261,12 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     // S-211：入站图片是 `task.images` 带上来的 base64，此前从未被消费 —— 只把
     // content 字符串交出去，模型就只看到 `[User sent an image]`。有图时拼成与聊天窗
     // 同构的块数组（`[text, image…]`），模型 / 落库 / 渲染三侧都走既有链路。
-    const userContent = buildInboundUserContent(content, task.images)
+    // S-224：入站图片与聊天窗同口径 —— 先落盘拿路径，base64 留给本次请求。
+    const builtContent = buildInboundUserContent(content, task.images)
+    const userContent =
+      typeof builtContent === 'string'
+        ? builtContent
+        : await attachChatImagePaths(builtContent, (args) => window.api.persistChatImage(args))
 
     const sendPromise = useChatStore.getState().sendMessage({
       provider,

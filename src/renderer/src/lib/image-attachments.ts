@@ -6,6 +6,7 @@
  */
 
 import { nanoid } from 'nanoid'
+import { filePathToMediaUrl } from './local-media-url'
 import type { ContentBlock, ImageBlock, UnifiedMessage } from './api/types'
 import {
   parseSystemCommandTag,
@@ -17,6 +18,8 @@ export interface ImageAttachment {
   id: string
   dataUrl: string
   mediaType: string
+  /** S-224：图片落盘后的磁盘路径。只剩路径的附件靠它 hydrate 回 base64。 */
+  filePath?: string
 }
 
 export interface EditableUserMessageDraft {
@@ -63,7 +66,19 @@ export function imageBlockToAttachment(image: ImageBlock): ImageAttachment | nul
     return {
       id: nanoid(),
       dataUrl: `data:${mediaType};base64,${image.source.data}`,
-      mediaType
+      mediaType,
+      ...(image.source.filePath ? { filePath: image.source.filePath } : {})
+    }
+  }
+
+  // S-224：落库时 base64 被剥掉、只剩 filePath。预览走 oc-media 协议，
+  // 真正发给模型前由 `hydrateImageAttachmentsFromFilePaths` 读回字节。
+  if (image.source.filePath) {
+    return {
+      id: nanoid(),
+      dataUrl: filePathToMediaUrl(image.source.filePath),
+      mediaType: normalizeImageMediaType(image),
+      filePath: image.source.filePath
     }
   }
 
@@ -102,6 +117,46 @@ export function imageAttachmentToContentBlock(image: ImageAttachment): ImageBloc
       url: image.dataUrl
     }
   }
+}
+
+export type ReadBinaryFileFn = (filePath: string) => Promise<{ data?: string; error?: string }>
+
+/**
+ * S-224：把只剩 `filePath` 的附件读回 base64。
+ *
+ * 落库剥掉 `data` 之后，历史消息「编辑重发」拿到的是 `oc-media://` 地址；
+ * 主进程三处请求构建器只认 `source.data`，不读回来就整块丢图。
+ * 读不回来的图直接丢弃（记一条 warn），不阻断发送。
+ */
+export async function hydrateImageAttachmentsFromFilePaths(
+  images: ImageAttachment[],
+  readBinary: ReadBinaryFileFn
+): Promise<ImageAttachment[]> {
+  const hydrated: ImageAttachment[] = []
+
+  for (const image of images) {
+    const needsHydrate = Boolean(image.filePath) && image.dataUrl.startsWith('oc-media://')
+    if (!needsHydrate) {
+      hydrated.push(image)
+      continue
+    }
+
+    try {
+      const result = await readBinary(image.filePath as string)
+      if (!result?.data) {
+        console.warn(
+          '[image-attachments] 读回图片失败，已丢弃此图',
+          result?.error ?? image.filePath
+        )
+        continue
+      }
+      hydrated.push({ ...image, dataUrl: `data:${image.mediaType};base64,${result.data}` })
+    } catch (error) {
+      console.warn('[image-attachments] 读回图片异常，已丢弃此图', error)
+    }
+  }
+
+  return hydrated
 }
 
 export function stripSystemReminders(text: string): string {
@@ -203,7 +258,10 @@ export function areImageAttachmentsEqual(
     if (
       leftImage.id !== rightImage.id ||
       leftImage.dataUrl !== rightImage.dataUrl ||
-      leftImage.mediaType !== rightImage.mediaType
+      leftImage.mediaType !== rightImage.mediaType ||
+      // 必须比 filePath：同一张图「还没落盘 → 已落盘」是两次不同状态，
+      // 若判为相等，调用方会跳过落盘，落库时就留下一个既没路径又有 base64 的块。
+      leftImage.filePath !== rightImage.filePath
     ) {
       return false
     }

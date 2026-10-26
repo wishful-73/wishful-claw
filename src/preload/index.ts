@@ -1,4 +1,4 @@
-﻿import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import {
   decodeMessagePackPayload,
@@ -32,7 +32,22 @@ function onMessagePackEvent<T = unknown>(
   }
 }
 
+const PROJECT_DIR_ARG_PREFIX = '--wishful-project-dir='
+
+/**
+ * 项目级数据目录名由主进程算好后经 additionalArguments 传下来（S-223）。
+ * 解析不到就是 undefined —— 兜底只在 renderer 的 project-data-dir.ts 做一次，
+ * 因为快速启动、剪贴板增强这两个辅助窗口不带该参数。
+ */
+function readProjectDirName(): string | undefined {
+  const arg = process.argv.find((value) => value.startsWith(PROJECT_DIR_ARG_PREFIX))
+  const value = arg?.slice(PROJECT_DIR_ARG_PREFIX.length).trim()
+  return value ? value : undefined
+}
+
 const api = {
+  /** 项目级数据目录名（S-223）：打包版 .wishful-claw，dev 实例 .wishful-claw-dev。 */
+  projectDirName: readProjectDirName(),
   ping: () => invokeMessagePackBinary<{ ok: boolean; pid: number }>('worker/ping', {}),
 
   // Generic IPC invoke — used by IPC state storage for provider persistence
@@ -78,7 +93,17 @@ const api = {
 
   // Read recent log lines from today's log file
   readLogs: (maxLines?: number): Promise<string> =>
-    invokeMessagePackBinary<string>('log:read', { maxLines: maxLines ?? 500 })
+    invokeMessagePackBinary<string>('log:read', { maxLines: maxLines ?? 500 }),
+
+  /**
+   * S-224：把聊天图片落盘到 `{dataRoot}/images/{yyyy-MM}/`，返回磁盘路径。
+   * 落库只留 `filePath`，字节不再进 DB。失败时返回 `error`，调用方降级为内联 base64。
+   */
+  persistChatImage: (args: {
+    data: string
+    mediaType?: string
+  }): Promise<{ filePath?: string; mediaType?: string; error?: string }> =>
+    invokeMessagePackBinary('image:persist-chat', args)
 }
 
 if (process.contextIsolated) {

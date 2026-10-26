@@ -285,21 +285,20 @@ internal static partial class AgentLoop
     // ── Transient injection helpers ──
 
     /// <summary>
-    /// Injects current timestamp as a transient prefix to the last user message.
-    /// This stays OUT of the system prompt to preserve prefix cache stability.
-    /// The agent gets fresh time context every turn without churning the cached prefix.
-    /// Design follows Reasonix's transient turn-injection pattern.
-    /// </summary>
-    /// <summary>
-    /// Injects timestamp + memory-update notes into the LAST user message
-    /// in the conversation. This modifies the SessionConversation's live list
-    /// directly — the timestamp becomes part of the permanent history, so
-    /// every subsequent turn sees byte-identical historical messages.
-    /// 
-    /// Key insight: the timestamp is injected ONCE when the user message
-    /// arrives, and never changes after that. The next turn's user message
-    /// gets its own timestamp. Historical messages keep their original
-    /// timestamps unchanged → prefix cache stable.
+    /// Appends the timestamp + memory-update notes to the TAIL of the LAST user message
+    /// in the conversation. This modifies the SessionConversation's live list directly
+    /// (never the wire list that gets persisted) — the blocks stay in-memory only and
+    /// disappear on restart.
+    ///
+    /// S-231 (2026-10-26): the blocks used to be PREPENDED. They now go last so that
+    /// third-party gateways which derive the conversation title from the first user
+    /// message (WorkBuddy domestic / international) read the user's own words. The method
+    /// name keeps its historical "Prefix" for call-site stability.
+    ///
+    /// Key insight: the timestamp is injected ONCE when the user message arrives, and
+    /// never changes after that. The next turn's user message gets its own timestamp.
+    /// Historical messages keep their original bytes → prefix cache stable. The blocks
+    /// stay OUT of the system prompt for the same reason.
     /// </summary>
     internal static void InjectTransientPrefix(List<AgentRuntimeChatMessage> conversation, AgentRuntimeRunState state)
     {
@@ -311,9 +310,11 @@ internal static partial class AgentLoop
                 var msg = conversation[i];
                 
                 // Skip if already injected (e.g. re-entry on retry).
-                // Use Contains instead of StartsWith because memory recall /
-                // memory-update prefixes are prepended BEFORE <current_time>,
-                // so the tag may not be at position 0 on messages injected with memory context.
+                // Use Contains instead of StartsWith: the transient blocks are appended to the
+                // END of the message (S-231), so <current_time> is never at position 0 anyway —
+                // StartsWith would miss every injected message.
+                // NOTE: this early return skips the Drain below on purpose — queued memory
+                // notes then ride along to the next turn instead of being delivered twice.
                 if (msg.Text.Contains("<current_time>", StringComparison.Ordinal))
                     return;
 
@@ -350,7 +351,7 @@ internal static partial class AgentLoop
 
                 conversation[i] = msg with
                 {
-                    Text = parts.ToString() + msg.Text,
+                    Text = AppendTransientBlock(msg.Text, parts.ToString()),
                     // S-208：原话与附加块分开放 —— Text 是发给模型的拼接结果，
                     // OriginalText 只留用户自己的话，SentAt 记这条消息的时刻。
                     // 压缩摘要取「用户说了什么、什么时候说的」读这两个字段，
@@ -364,5 +365,32 @@ internal static partial class AgentLoop
 
         // No user message found — still drain memory queue
         state.PendingMemoryNotes = MemoryUpdateQueue.Drain(state.SessionId ?? "");
+    }
+
+    /// <summary>
+    /// Appends a runtime block to the END of the user's own text.
+    /// <para>
+    /// S-231: blocks must sit AFTER the user's words — third-party gateways that derive the
+    /// conversation title from the first user message (WorkBuddy domestic / international)
+    /// otherwise show "&lt;current_time&gt;…" as the title.
+    /// </para>
+    /// <para>
+    /// Empty / whitespace-only text (pure-image messages) yields the block alone, never a
+    /// leading blank line. The block's own trailing blank lines are trimmed; the user's
+    /// trailing whitespace is preserved verbatim. The separator is always exactly two
+    /// newlines, so text that already ends with a newline gains no extra folding.
+    /// </para>
+    /// <para>
+    /// NOT idempotent: calling it twice with the same block appends it twice. Callers are
+    /// responsible for not re-injecting (the <c>Contains</c> guard in
+    /// <see cref="InjectTransientPrefix"/> is what enforces that).
+    /// </para>
+    /// </summary>
+    internal static string AppendTransientBlock(string? text, string block)
+    {
+        if (string.IsNullOrEmpty(block)) return text ?? string.Empty;
+
+        var blocks = block.TrimEnd();
+        return string.IsNullOrWhiteSpace(text) ? blocks : text + "\n\n" + blocks;
     }
 }

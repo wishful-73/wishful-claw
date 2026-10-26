@@ -1,9 +1,10 @@
-// 500 行豁免（2026-10-20 实测 712 行）：22 个围绕同一套 `workerRequest` 通道的 DB 薄封装，
+// 500 行豁免（2026-10-20 立，2026-10-26 实测 714 行）：22 个围绕同一套 `workerRequest` 通道的 DB 薄封装，
 // 共享 `SessionUsageStatsRow` 等类型与同一条初始化/错误约定；拆开只会让每个调用方 import
 // 四五个模块。豁免依据：AGENTS.md §大文件拆分 第 5 条第 2 类（高度内聚）。
 
 import type { Session, Project, ChatMessage } from './types'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
+import { stripImagePayloads } from '@renderer/lib/image-payload'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { isCompressionOperationKnown } from './compression-status-registry'
 
@@ -127,11 +128,12 @@ function serializeMessage(msg: ChatMessage, sortOrder: number): {
 } {
   const meta: Record<string, unknown> = {}
   if (msg.thinking) meta.thinking = msg.thinking
-  if (msg.toolCalls && msg.toolCalls.length > 0) meta.toolCalls = msg.toolCalls
-  if (msg.segments && msg.segments.length > 0) meta.segments = msg.segments
+  // S-224：图片字节已落盘，库里只留 filePath —— 三处会带块结构的容器都要过一遍。
+  if (msg.toolCalls && msg.toolCalls.length > 0) meta.toolCalls = stripImagePayloads(msg.toolCalls)
+  if (msg.segments && msg.segments.length > 0) meta.segments = stripImagePayloads(msg.segments)
   if (msg.error) meta.error = msg.error
   if (msg.preToolPhase) meta.preToolPhase = msg.preToolPhase
-  if (msg.content) meta.content = msg.content
+  if (msg.content) meta.content = stripImagePayloads(msg.content)
   if (msg.meta) Object.assign(meta, msg.meta)
 
   return {

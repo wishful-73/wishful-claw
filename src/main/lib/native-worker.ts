@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-23 实测 594 行，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+// Worker 子进程的一生都在这一个模块 —— 拉起、命名管道握手、请求路由与取消、
+// 崩溃重启退避、退出清理。这些逻辑共享同一个 ChildProcess 与 rpc 在途表，
+// 拆开等于把「一个子进程」切成几段，排查挂起/重连要来回跳文件。
 // Electron types available via electron-vite/node
 import { spawn, type ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
@@ -10,7 +14,8 @@ import { logError, logWarn } from './logger'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
 import { readPersistedSettings, SETTINGS_STORAGE_KEY } from './settings-store'
 import { resolveCodeGraphGrammarsDir } from './codegraph-assets'
-import { resolveDataDir } from './data-dir'
+import { resolveDataDir, resolveProjectDirName } from './data-dir'
+import { WISHFULCLAW_PROJECT_DIR_ENV } from '../../shared/project-dir'
 
 const DEFAULT_TIMEOUT_MS = 60_000
 const CONNECT_TIMEOUT_MS = 10_000
@@ -183,7 +188,8 @@ class NativeWorkerManager {
     const workerEnv: NodeJS.ProcessEnv = {
       ...process.env,
       WISHFULCLAW_DATA_DIR: resolvedDataDir,
-      CODEGRAPH_HOME: path.join(resolvedDataDir, 'codegraph')
+      CODEGRAPH_HOME: path.join(resolvedDataDir, 'codegraph'),
+      [WISHFULCLAW_PROJECT_DIR_ENV]: resolveProjectDirName()
     }
     console.log('[Worker] data directory', resolvedDataDir)
     // Propagate the main process's log level so the Worker matches dev/prod

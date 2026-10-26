@@ -39,39 +39,44 @@ public sealed class MemoryHotWriteTool : IToolExecutor
         var scope = MemoryToolHelpers.ResolveScope(context);
         var path = MemoryPathResolver.GetMemoryFilePath(scope);
 
-        // Ensure file exists
-        if (!File.Exists(path))
+        // 读 → 改 → 写整段进同一把路径锁（S-219）：热记忆是全局单文件，并发写同一节时
+        // 只锁写入会让后写整文件覆盖先写，前面的改动静默消失。
+        return await WithWriteGateAsync(path, async () =>
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            // 不带 Encoding 参数 = 无 BOM（iter-32 S-80），与 WriteAndFlushAsync 的写法保持一致。
-            await File.WriteAllTextAsync(path, "# Long-Term Memory\n", context.CancellationToken);
-        }
+            // Ensure file exists
+            if (!File.Exists(path))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                // 不带 Encoding 参数 = 无 BOM（iter-32 S-80），与 WriteWithSharingRetryAsync 的写法保持一致。
+                await File.WriteAllTextAsync(path, "# Long-Term Memory\n", context.CancellationToken);
+            }
 
-        var fileContent = await File.ReadAllTextAsync(path, Encoding.UTF8, context.CancellationToken);
+            var fileContent = await File.ReadAllTextAsync(path, Encoding.UTF8, context.CancellationToken);
 
-        // 历史粘连文件的兜底。iter-32 S-86 把「删节吃空行」的缺陷 3 修掉之后，粘连不再新产生，
-        // 但存量文件里可能已经有了，所以这一段继续留着。
-        fileContent = NormalizeGluedHeadings(fileContent);
+            // 历史粘连文件的兜底。iter-32 S-86 把「删节吃空行」的缺陷 3 修掉之后，粘连不再新产生，
+            // 但存量文件里可能已经有了，所以这一段继续留着。
+            fileContent = NormalizeGluedHeadings(fileContent);
 
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            // Delete section
-            var (updated, found) = DeleteSection(fileContent, section!);
-            if (!found)
-                return new ToolResult($"Section '{section}' not found in hot memory (scope={scope}).", true);
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                // Delete section
+                var (updated, found) = DeleteSection(fileContent, section!);
+                if (!found)
+                    return new ToolResult($"Section '{section}' not found in hot memory (scope={scope}).", true);
 
-            await WriteAndFlushAsync(path, updated, context.CancellationToken);
+                await WriteWithSharingRetryAsync(path, updated, context.CancellationToken);
+                MemoryUpdateQueue.Enqueue(context.SessionId ?? "",
+                    $"Hot memory section '{section}' was deleted (scope={scope}). Disregard its content still shown in the cached memory until next session.");
+                return new ToolResult($"Section '{section}' deleted from hot memory (scope={scope}).");
+            }
+
+            // Upsert section
+            fileContent = UpsertSection(fileContent, section!, content!);
+            await WriteWithSharingRetryAsync(path, fileContent, context.CancellationToken);
             MemoryUpdateQueue.Enqueue(context.SessionId ?? "",
-                $"Hot memory section '{section}' was deleted (scope={scope}). Disregard its content still shown in the cached memory until next session.");
-            return new ToolResult($"Section '{section}' deleted from hot memory (scope={scope}).");
-        }
-
-        // Upsert section
-        fileContent = UpsertSection(fileContent, section!, content!);
-        await WriteAndFlushAsync(path, fileContent, context.CancellationToken);
-        MemoryUpdateQueue.Enqueue(context.SessionId ?? "",
-            $"Hot memory section '{section}' was written/updated (scope={scope}). Current content:\n{content!.Trim()}");
-        return new ToolResult($"Section '{section}' written to hot memory (scope={scope}).");
+                $"Hot memory section '{section}' was written/updated (scope={scope}). Current content:\n{content!.Trim()}");
+            return new ToolResult($"Section '{section}' written to hot memory (scope={scope}).");
+        }, context.CancellationToken);
     }
 
     /// <summary>

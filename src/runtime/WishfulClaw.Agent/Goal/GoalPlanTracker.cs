@@ -1,6 +1,7 @@
 using System.Text;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
 
 namespace WishfulClaw.Agent;
 
@@ -25,7 +26,7 @@ public static class GoalPlanTracker
 
     public static string GetPlanDir(string workingFolder, string goalId)
     {
-        return Path.Combine(workingFolder, WishfulClawPaths.DataDirName, "goals", goalId, "plans");
+        return Path.Combine(WishfulClawDataDir.ProjectRoot(workingFolder), "goals", goalId, "plans");
     }
 
     public static string GetPlanFilePath(string workingFolder, string goalId, string planId)

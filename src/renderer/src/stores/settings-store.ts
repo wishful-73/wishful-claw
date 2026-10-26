@@ -177,6 +177,9 @@ interface SettingsStore {
   defaultSoulTemplateId: string
   defaultPersonaId: string
   conversationGuideSeen: boolean
+  /** 授权第三方 AI 服务商前的风险确认。「接入前请确认」勾过一次就一直算数，
+   *  否则每次开面板都要重新勾 —— 提示条留着，勾选状态记住。 */
+  providerAuthRiskAccepted: boolean
   memoryUseMemories: boolean
   memoryScopeMode: MemoryScopeMode
   memoryMaxRolloutsPerStartup: number
@@ -334,6 +337,7 @@ export const useSettingsStore = create<SettingsStore>()(
       defaultSoulTemplateId: '',
       defaultPersonaId: '',
       conversationGuideSeen: false,
+      providerAuthRiskAccepted: false,
       memoryUseMemories: true,
       memoryScopeMode: 'hybrid',
       memoryMaxRolloutsPerStartup: 8,
@@ -505,6 +509,7 @@ export const useSettingsStore = create<SettingsStore>()(
         defaultSoulTemplateId: state.defaultSoulTemplateId,
         defaultPersonaId: state.defaultPersonaId,
         conversationGuideSeen: state.conversationGuideSeen,
+        providerAuthRiskAccepted: state.providerAuthRiskAccepted,
         memoryUseMemories: state.memoryUseMemories,
         memoryScopeMode: 'hybrid' as const,
         memoryMaxRolloutsPerStartup: state.memoryMaxRolloutsPerStartup,

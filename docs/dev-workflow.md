@@ -334,7 +334,7 @@ tests/WishfulClaw.GoalRegressionTests/bin/Debug/net11.0/WishfulClaw.GoalRegressi
 **任务**：
 - 探测项目当前结构、已有代码、依赖状态
 - 阅读相关参考项目源码（路径见 AGENTS.md）
-- 确认当前迭代目标（见 `docs/plans/iter-v2-{N}/plan.md` 的「一、目标」）
+- 确认当前迭代目标（见 `docs/plans/iter-v3-{M}/plan.md` 的「一、目标」）
 
 **Git 操作**：无（只读阶段）
 
@@ -353,7 +353,7 @@ tests/WishfulClaw.GoalRegressionTests/bin/Debug/net11.0/WishfulClaw.GoalRegressi
 
 **步骤**：
 1. 创建 `docs/plans/plan_XXX/`
-2. 读取相关规范文档（AGENTS.md / docs/data-storage.md / docs/mvp-scope.md）与本迭代计划（`docs/plans/iter-v2-{N}/plan.md`）
+2. 读取相关规范文档（AGENTS.md / docs/data-storage.md / docs/mvp-scope.md）与本迭代计划（`docs/plans/iter-v3-{M}/plan.md`）
 3. 写 `plan.md`，包含：
    - 任务目标
    - 步骤清单（每步带验证检查点）
@@ -518,12 +518,12 @@ git checkout -- <该步涉及的文件>
 
 **跨迭代（全局索引）**：迭代索引统一收敛在 `docs/PROGRESS.md`（每迭代一行），明细见下方「进度文档结构」节。
 
-> **`docs/iteration-plan.md` 与 `docs/iterations/` 已废弃**：v2-iter-27 起迭代正文全部落在 `docs/plans/iter-v2-{N}/`，这两个位置自 iter-34 后停更，仅存历史归档，**新迭代不再写、也不再引用**。
+> **`docs/iteration-plan.md` 与 `docs/iterations/` 已废弃**：v2-iter-27 起迭代正文全部落在 `docs/plans/iter-v2-{N}/`（**v3 代际起为 `docs/plans/iter-v3-{M}/`**，历史目录不改名），这两个位置自 iter-34 后停更，仅存历史归档，**新迭代不再写、也不再引用**。
 
 **单个迭代：**
 
 ```
-docs/plans/iter-v2-{N}/
+docs/plans/iter-v3-{M}/
 ├── plan.md                  # 迭代总览（≤150 行）：目标 / 需求索引 / 刀序 / 门禁基线
 ├── raw-requirements.md      # 需求清单（≤150 行）：一行一需求，链到 requirements/
 ├── requirements/
@@ -579,20 +579,20 @@ docs/plans/iter-v2-{N}/
 ## 进度文档结构（PROGRESS.md + docs/progress/）
 
 - `docs/PROGRESS.md` — 总览：每个迭代一行（迭代号 + Tag + 日期 + 简述），链接到明细文件
-- `docs/progress/v2-iter-{N}.md` — 迭代明细：状态、分支、Plan、VERDICT、Tag、Commit、日期、范围、验证、遗留
+- `docs/progress/v3-iter-{M}.md` — 迭代明细：状态、分支、Plan、VERDICT、Tag、Commit、日期、范围、验证、遗留
 
 迭代收尾时两步：
 
 1. `docs/PROGRESS.md` 对应表格新增一行
-2. 创建 `docs/progress/v2-iter-{N}.md` 明细
+2. 创建 `docs/progress/v3-iter-{M}.md` 明细
 
 明细文件格式：
 
 ```markdown
-# v2-iter-{N}：{迭代标题}
+# v3-iter-{M}：{迭代标题}
 - 状态：已完成，已合并 main
-- 分支：dev/v2-iter-{N}（合并后清理）
-- Plan: docs/plans/iter-v2-{N}/plan.md
+- 分支：dev/v3-iter-{M}（合并后清理）
+- Plan: docs/plans/iter-v3-{M}/plan.md
 - VERDICT: PASS（编译验证 + 用户人工验证）
 - 产品版本: 1.0.{N}
 - Tag: v1.0.{N}

@@ -79,6 +79,21 @@ export const nav = [
   { label: 'FAQ', href: './#faq', external: false }
 ]
 
+// 首页页内导航（S-221）：右侧常驻竖排文字块，7 项与首页 7 个锚点一一对应。
+// **顺序必须与 App.tsx 的区块顺序一致** —— 联动靠「阈值线以上最后一个」顺序扫描并 break，
+// 顺序错一项高亮就会错位（这就是它放在这里、而不散进组件的原因：改文案只改这里）。
+// `top` 不是板块，是 App.tsx 里 Hero 之前的零高锚点，承担「回到页面顶部」。
+// 文案口径：能照抄板块标题就照抄（4 项），竖排过高才截短（2 项），Hero 无标题自拟（1 项）。
+export const sectionRail = [
+  { id: 'top', label: '开始' },
+  { id: 'value-ladder', label: '不花钱' }, // 截短：原文「不花钱，也能用起来」10 字竖排过长
+  { id: 'features', label: '它能干什么' }, // = features.title
+  { id: 'advantages', label: '为什么是它' }, // = advantages.title
+  { id: 'download', label: '下载' }, // 截短：该块标题是 `${BRAND.name}` 拼出的「下载心相」
+  { id: 'quick-start', label: '四步开始' }, // = quickStart.title
+  { id: 'faq', label: '常见问题' } // = faq.title
+] as const
+
 // 竞争优势：按「门槛低 / 好看」两类呈现，门槛低打头（2026-09-20 定稿三类；2026-09-21 S-124 删掉「自由」整类）
 export const advantages = {
   title: '为什么是它',

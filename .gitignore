@@ -72,4 +72,5 @@ electron.vite.config.*.mjs
 \"stderr.txt\"  
 \"stdout.txt\" 
 .wishful-claw/*
+.wishful-claw-dev/*
 .workbuddy-ai/*

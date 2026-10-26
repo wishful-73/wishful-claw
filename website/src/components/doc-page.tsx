@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { SiteHeader } from './site-header'
 import { SiteMist } from './site-mist'
+import { BackToTop } from './back-to-top'
 import { SiteFooter } from '../sections/site-footer'
 import { useActiveHeading } from '../lib/use-active-heading'
 import type { NavGroup } from '../lib/doc-nav'
@@ -100,6 +101,8 @@ export function DocPage(props: {
         </div>
       </main>
       <SiteFooter />
+      {/* S-228：与首页一致，浮动控件挂在 main 之后 ⇒ 两页 Tab 顺序相同 */}
+      <BackToTop />
     </>
   )
 }

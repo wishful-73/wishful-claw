@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
+using WishfulClaw.Infrastructure.Storage;
 using WishfulClaw.Workspace.Memory;
 
 namespace WishfulClaw.Persona;
@@ -238,7 +239,8 @@ Runtime: **WishfulClaw** — a desktop AI agent application.
         }
         else if (!string.IsNullOrWhiteSpace(workingFolder))
         {
-            // Local project: memory stored under {workingFolder}/.wishful-claw/
+            // Local project: memory stored under {workingFolder}/{project data dir}/ (.wishful-claw
+    // when packaged, .wishful-claw-dev for a dev instance — see WishfulClawDataDir.ProjectDirName)
             scope = $"project:{workingFolder}";
         }
         else
@@ -336,7 +338,7 @@ Runtime: **WishfulClaw** — a desktop AI agent application.
 ## Project
 - Working Folder: `{workingFolder}`
 All relative paths should be resolved against this folder. Use this as the default cwd for terminal commands run via the Bash tool.
-- Scratch notes, briefs and other temporary documents belong in `.wishful-claw/notes/`, not loose in the project tree.
+- Scratch notes, briefs and other temporary documents belong in `{WishfulClawDataDir.ProjectDirName}/notes/`, not loose in the project tree.
 """;
     }
 

@@ -16,7 +16,9 @@
 
 ## 二、版本规则
 
-`v2-iter-{N}` 只是**迭代编号**，不是产品主版本号 —— 转正 `1.0.0` 之后分支名**照旧**（`dev/v2-iter-41`、`dev/v2-iter-42`…），对外版本与之无关。
+迭代编号与产品版本是**两条独立序列**：`v3-iter-{M}` 只是迭代编号，不是产品主版本号，对外版本与之无关。
+
+**迭代代际与产品主版本对齐**（2026-10-21 定）：`v1` = MVP 迭代 1~15，`v2` = MVP v2 迭代 1~40（止于 `v1.0.0` 转正），**`v3` = 正式版**，自 `v1.0.1` 起（`dev/v3-iter-1`、`dev/v3-iter-2`…）。**换代际的判据是产品主版本进位** —— 产品进 `2.x` 即开 `v4`。序号格式**不补零**（`v3-iter-1`，不写 `v3-iter-01`），与 v1 / v2 历史保持同一格式。
 
 **产品版本从 `1.0.0` 起走 `1.0.{N}`，Git tag 为 `v1.0.{N}`**（`1.0.0` 之前的 `0.2.{N}` 系列已随 `v0.2.39` 结束，见第七节清理口径）。应用 UI 从 `package.json` 读版本号，README 徽章同步。
 
@@ -44,24 +46,27 @@
 
 ```bash
 # 0. 更新产品版本（见上节）+ 写好进度文档（见第五节）
+#    {M} = 迭代序号（v3 起从 1 计）　{N} = 产品版本序号 —— 两条序列，别混用
 
 # 1. 合并到 main（--no-ff 保留迭代合并点）
 git checkout main
-git merge dev/v2-iter-{N} --no-ff -m "merge: v2-iter-{N} - {迭代名称}"
+git merge dev/v3-iter-{M} --no-ff -m "merge: v3-iter-{M} - {迭代名称}"
 
 # 2. 打 tag（annotated；message 格式见 4.3「tag message 口径」）
-git tag -a v1.0.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
+git tag -a v1.0.{N} -m "v3-iter-{M}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
 
 # 3. 推送远程
 git push origin main
 git push origin v1.0.{N}
 
 # 4. 删除本地迭代分支
-git branch -d dev/v2-iter-{N}
+git branch -d dev/v3-iter-{M}
 
 # 5. 删除远程迭代分支（如果之前 push 过）
-git push origin --delete dev/v2-iter-{N}
+git push origin --delete dev/v3-iter-{M}
 ```
+
+> 起点映射：`v3-iter-1` ↔ `v1.0.1`（`v1.0.0` 是 v2 代际最后一版，对应 `v2-iter-40`）。版本线连续时两个数字恰好相同，一旦跳版本（如 `1.0.5` 之后直接 `1.1.0`）就分叉 —— 各按自己的序列走，不要拿一个推另一个。
 
 **推送：优先直连，失败再走代理**
 
@@ -327,7 +332,7 @@ gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝
 
 **硬规则**：
 
-- 标题固定 `## 迭代 {N}` —— **不写** `v1.0.{N}` 前缀，**不加** `— v2-iter-{N}` 之类的后缀
+- 标题固定 `## 迭代 {M}` —— **不写** `v1.0.{N}` 前缀，**不加** `— v3-iter-{M}` 之类的后缀
 - 正文第一段是**范围概括**，不是标题的重复
 - 小节名固定这三个：`### 新增能力` / `### 修复` / `### 校验`。不要写「新增」「优化」「其它修复」「验证」这类同义变体
 - 条目固定 `- **{名字}（{编号}）** — {说明}`：**编号在括号内跟在名字后面**，不要写成 `- **S-26 名字** —`
@@ -356,7 +361,7 @@ gh CLI 在固定路径 `D:\claw\tools\gh\bin\gh.exe`（**不在 PATH，必须绝
 tag message 与 Release notes 分工：**前者一行亮点摘要，后者完整清单**。
 
 ```bash
-git tag -a v1.0.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
+git tag -a v1.0.{N} -m "v3-iter-{M}: {亮点1 + 亮点2 + 亮点3} - 验证通过"
 ```
 
 亮点用 ` + ` 连接，取本迭代最值得说的几件事（3~5 个为宜），不写编号、不写「N 项需求」这种计数。
@@ -388,7 +393,7 @@ git tag -a v1.0.{N} -m "v2-iter-{N}: {亮点1 + 亮点2 + 亮点3} - 验证通�
 收尾时两步：
 
 1. `docs/PROGRESS.md` — 总览表格新增一行（迭代号 + Tag + 日期 + 简述），链接到明细
-2. `docs/progress/v2-iter-{N}.md` — 新建明细
+2. `docs/progress/v3-iter-{M}.md` — 新建明细
 
 明细格式见 `docs/dev-workflow.md`「进度文档结构」。
 
@@ -474,7 +479,7 @@ Get-ChildItem release -Directory | Where-Object { $_.Name -match '^v\d+\.\d+\.\d
 ```bash
 git checkout main
 git pull origin main
-git checkout -b dev/v2-iter-{N+1}
+git checkout -b dev/v3-iter-{M+1}
 ```
 
 > 新分支**必须从最新 main 拆出**，禁止从旧迭代分支拆 —— 否则会缺前序迭代的变更，导致编译错误或功能缺失。

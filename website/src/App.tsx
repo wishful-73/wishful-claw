@@ -1,6 +1,7 @@
 import { SiteHeader } from './components/site-header'
 import { SiteMist } from './components/site-mist'
 import { SectionRail } from './components/section-rail'
+import { BackToTop } from './components/back-to-top'
 import { Hero } from './sections/hero'
 import { Advantages } from './sections/advantages'
 import { ValueLadder } from './sections/value-ladder'
@@ -23,7 +24,7 @@ export default function App() {
   return (
     <>
       <SiteMist />
-      {/* S-221：首页页内导航要的第一项「概览」—— 零高锚点，落点是真正的 scrollY = 0。
+      {/* S-221：首页页内导航要的第一项「开始」—— 零高锚点，落点是真正的 scrollY = 0。
           不放 hero.tsx（它是裸 <section>、没有 scroll-mt，挂上去落点同样是 0，但把锚点放这里
           能保证它先于任何区块，Hero 结构以后怎么改都不受影响）。 */}
       <span id="top" aria-hidden="true" className="block h-0" />
@@ -39,6 +40,8 @@ export default function App() {
         <Faq />
       </main>
       <SiteFooter />
+      {/* S-228：浮动控件统一挂在 main 之后，两页的 Tab 顺序才一致（都是最后一个可聚焦元素） */}
+      <BackToTop />
     </>
   )
 }

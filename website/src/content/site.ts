@@ -85,7 +85,7 @@ export const nav = [
 // `top` 不是板块，是 App.tsx 里 Hero 之前的零高锚点，承担「回到页面顶部」。
 // 文案口径：能照抄板块标题就照抄（4 项），竖排过高才截短（2 项），Hero 无标题自拟（1 项）。
 export const sectionRail = [
-  { id: 'top', label: '概览' },
+  { id: 'top', label: '开始' },
   { id: 'value-ladder', label: '不花钱' }, // 截短：原文「不花钱，也能用起来」10 字竖排过长
   { id: 'features', label: '它能干什么' }, // = features.title
   { id: 'advantages', label: '为什么是它' }, // = advantages.title

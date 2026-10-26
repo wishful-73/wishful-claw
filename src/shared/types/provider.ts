@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-23 实测 505 行）：30 余个 `export type` / `export interface` 的纯类型声明表，
+// 500 行豁免（2026-10-26 实测 513 行）：30 余个 `export type` / `export interface` 的纯类型声明表，
 // 覆盖 provider 预设、OAuth 契约、渠道、模型配置、回退链，全是同质声明、无逻辑；
 // 拆开只会让「某个字段属于哪个类型」变成翻文件。豁免依据：AGENTS.md §大文件拆分 第 5 条第 1 类（单一数据对象 / 同质数据）。
 
@@ -346,6 +346,12 @@ export interface AIProvider {
   baseUrl: string
   /** Optional official website for this provider */
   homepage?: string
+  /**
+   * Optional one-line qualifier shown under the provider name (e.g. 国内版 / 国际版).
+   * Preset-owned display text, same contract as `homepage`: refreshed from the preset
+   * on every reconciliation, never edited in the UI.
+   */
+  tagline?: string
   enabled: boolean
   models: AIModelConfig[]
   builtinId?: string
@@ -464,6 +470,8 @@ export interface BuiltinProviderPreset {
   defaultEnabled?: boolean
   requiresApiKey?: boolean
   homepage: string
+  /** Optional one-line qualifier shown under the provider name in the UI (e.g. 国内版 / 国际版) */
+  tagline?: string
   /** Link for users to create/manage API keys */
   apiKeyUrl?: string
   /** Whether to route API requests via the system proxy */

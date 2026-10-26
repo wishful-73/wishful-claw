@@ -389,6 +389,12 @@ export function isProviderAuthReady(provider: AIProvider | null | undefined): bo
   if (authMode === 'apiKey') {
     return provider.requiresApiKey === false || provider.apiKey.trim().length > 0
   }
+  // S-229: 投影补上 `authMode` 之后，OAuth 服务商才会真的带着 `authMode: 'oauth'` 走这里。
+  // 这条分支以前恒 false —— 唯一的后果被虚拟投影的 `undefined` 掩盖了，登录过的
+  // WorkBuddy 会从此在模型选择器里消失。判据与授权页一致：有任一账号的 accessToken 即可用。
+  if (authMode === 'oauth') {
+    return Boolean(provider.oauth?.accessToken) || (provider.oauthAccounts?.length ?? 0) > 0
+  }
   return false
 }
 

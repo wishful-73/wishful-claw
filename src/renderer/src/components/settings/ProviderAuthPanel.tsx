@@ -53,6 +53,12 @@ function ProviderAuthCard({
   const connected = Boolean(provider.oauth?.accessToken)
   const accountLabel = accountLabelOf(provider)
   const autoCheckin = provider.oauth?.autoCheckin !== false
+  // S-229 §2.4：只有 server_poll 通道有签到接口，别给将来放宽收录的服务商渲染一个点了必报错的按钮
+  const canCheckin = provider.oauthConfig?.flowType === 'server_poll'
+  // S-229：预设名不动，靠 tagline（国内版 / 国际版）区分 —— 两个 build 同名时用户分不出该登哪个
+  const subtitle = connected && accountLabel
+    ? accountLabel
+    : [provider.tagline, provider.homepage].filter(Boolean).join(' · ')
 
   return (
     <div className="rounded-lg border bg-background">
@@ -70,9 +76,7 @@ function ProviderAuthCard({
               </span>
             ) : null}
           </div>
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            {connected && accountLabel ? accountLabel : provider.homepage}
-          </div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</div>
         </div>
 
         {busy ? (
@@ -87,20 +91,22 @@ function ProviderAuthCard({
           </div>
         ) : connected ? (
           <div className="flex shrink-0 items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 px-2.5 text-xs"
-              disabled={checkinBusy}
-              onClick={() => onCheckin(provider)}
-            >
-              {checkinBusy ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <CalendarCheck className="size-3.5" />
-              )}
-              {t('providerAuth.checkin', { defaultValue: '签到' })}
-            </Button>
+            {canCheckin ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5 px-2.5 text-xs"
+                disabled={checkinBusy}
+                onClick={() => onCheckin(provider)}
+              >
+                {checkinBusy ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <CalendarCheck className="size-3.5" />
+                )}
+                {t('providerAuth.checkin', { defaultValue: '签到' })}
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="outline"

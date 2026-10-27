@@ -616,6 +616,10 @@
     "refresh": "刷新",
     "stop": "停止",
     "go": "前往",
+    "clearCache": "清除浏览数据（不影响登录）",
+    "clearCacheDone": "浏览数据已清除，页面已重新加载",
+    "clearCacheFailed": "清除浏览数据失败：{{error}}",
+    "clearCacheUnavailable": "浏览器还没准备好，请稍后再试",
     "urlPlaceholder": "输入网址或搜索...",
     "blockedByRules": "被浏览器访问规则阻止",
     "device": {

@@ -616,6 +616,10 @@
     "refresh": "Refresh",
     "stop": "Stop",
     "go": "Go",
+    "clearCache": "Clear browsing data (keeps you signed in)",
+    "clearCacheDone": "Browsing data cleared, page reloaded",
+    "clearCacheFailed": "Could not clear browsing data: {{error}}",
+    "clearCacheUnavailable": "The browser is not ready yet, try again in a moment",
     "urlPlaceholder": "Enter URL or search...",
     "blockedByRules": "Blocked by browser access rules",
     "device": {

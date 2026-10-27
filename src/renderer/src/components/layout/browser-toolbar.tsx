@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, RefreshCw, Square, Globe } from 'lucide-react'
+import { ArrowLeft, ArrowRight, RefreshCw, Square, Globe, Eraser, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
 import type { BrowserDeviceMode } from '@shared/browser-device-presets'
@@ -16,6 +16,9 @@ export interface BrowserToolbarProps {
   onStop: () => void
   onReload: () => void
   onGo: () => void
+  /** S-235：清 HTTP + 字节码缓存并重载。`clearing` 期间按钮转圈且禁用，防连点。 */
+  clearing: boolean
+  onClearCache: () => void
   deviceMode: BrowserDeviceMode
   customViewport: { width: number; height: number } | null
   onDeviceChange: (next: {
@@ -36,6 +39,8 @@ export function BrowserToolbar({
   onStop,
   onReload,
   onGo,
+  clearing,
+  onClearCache,
   deviceMode,
   customViewport,
   onDeviceChange
@@ -102,6 +107,23 @@ export function BrowserToolbar({
 
       <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={onGo}>
         {t('browser.go')}
+      </Button>
+
+      {/* 清缓存放在「动作」这一组里，紧挨页面导航：用户遇到「页面还是旧的」时第一反应
+          是在这个工具栏上找，不是去设置页翻。窄面板下地址栏是 flex-1，会先让位。 */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-6"
+        onClick={onClearCache}
+        disabled={clearing}
+        title={t('browser.clearCache')}
+      >
+        {clearing ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <Eraser className="size-3.5" />
+        )}
       </Button>
 
       <BrowserDevicePicker

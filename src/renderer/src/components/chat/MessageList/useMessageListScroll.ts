@@ -38,6 +38,7 @@ import {
   shouldReclaim,
   type FloorTracker
 } from './scroll-watermark'
+import { startScrollJitterProbe } from './scroll-jitter-probe'
 
 export interface MessageListScrollInput {
   activeSessionId: string | null
@@ -212,6 +213,34 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     }
     return { bottom, tailMounted }
   }, [])
+
+  // S-233 诊断探针（2026-10-27，**仅 DEV 构建**，生产包被 tree-shake）。
+  //
+  // 静态穷举到这里撞墙了：跟随分支里的写点最小也是 216px（提前量补位），装不下老大报的
+  // 「几像素抖动」，所以必须实测「到底是谁在动」。探针只读不写，自动把采样落进主进程日志，
+  // 事后直接从 ~/.wishful-claw/logs 里读，不需要老大做任何操作。
+  const isSessionOutputtingRef = React.useRef(isSessionOutputting)
+  isSessionOutputtingRef.current = isSessionOutputting
+  React.useEffect(() => {
+    if (!import.meta.env.DEV) return
+    return startScrollJitterProbe(() => {
+      const list = listRef.current
+      const content = virtualContentRef.current
+      if (!list || !content) return null
+      const measured = measureContentBottom()
+      return {
+        t: Math.round(window.performance.now()),
+        st: list.scrollTop,
+        sh: list.scrollHeight,
+        ch: list.clientHeight,
+        mh: content.style.minHeight,
+        rb: measured.bottom,
+        tail: measured.tailMounted,
+        rows: virtualRowCountRef.current,
+        out: isSessionOutputtingRef.current
+      }
+    })
+  }, [measureContentBottom])
 
   // S-176 真机反馈（2026-10-09）：两个「没人来判」的补位定时器。
   //

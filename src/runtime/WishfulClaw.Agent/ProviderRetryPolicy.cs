@@ -224,14 +224,26 @@ public static partial class ProviderRetryPolicy
         return configured.Value;
     }
 
-    private static bool IsRetryableStatus(int statusCode)
+    internal static bool IsRetryableStatus(int statusCode)
     {
-        // 400 is intentionally retryable: several providers misbehave and
-        // return 400 for transient conditions (overload, hidden rate limits,
-        // momentary context hiccups) that succeed on retry. User-confirmed
-        // design (audit M30 retracted 2026-08-28) — do not tighten this
-        // back to "429/5xx only" without a product decision.
-        return statusCode is 400 or 429 || statusCode >= 500;
+        // 400 曾经是可重试的（audit M30，2026-08-28 撤销收紧）：当时有服务商把「过载 /
+        // 隐式限流」报成 400，靠盲目重试救回来过几次。
+        //
+        // 2026-10-27 老大推翻了这个决定 —— 两个事实把它否掉了：
+        //   1. 现在的渠道限流一律回 429。商汤 token plan 实测（body code:"8" /
+        //      "429003"，HTTP 429），并发 10 个撞出来的 13 次限流全是 429，一次 400 都没有。
+        //   2. 日志里 74 条 400 全是真错误，且一直在白烧：MissingSessionID 从
+        //      attempt=1/20 一路烧到 20/20、后段每次间隔 60 秒；`unknown field "thinking"`
+        //      重试 6 次、请求体一个字没变；reasoning_content 缺回传也是同样的错重发。
+        //      每次都是十几分钟 + 十几次请求费，最后还是同样的失败。
+        //
+        // 400 里真正值得「修完再发一次」的几种情形，本来就不走这条盲目重试路径，
+        // 各有专项处置，由 AgentLoop 的错误驱动分支接：
+        //   · 上下文超限       → ContextCompression（压缩后重发）
+        //   · 工具配对错       → ToolPairingErrors（先修配对，再重发）
+        //   · 不吃图像输入     → ImageInputErrors（剥掉图，再重发）
+        // 所以收紧到这里不会误伤它们。要加回 400，先看这三条是不是又长出了第四种。
+        return statusCode == 429 || statusCode >= 500;
     }
 
     /// <summary>

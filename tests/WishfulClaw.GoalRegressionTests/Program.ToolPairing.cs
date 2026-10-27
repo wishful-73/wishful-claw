@@ -51,7 +51,8 @@ internal static partial class Program
                 new Exception("agent run failed", new InvalidOperationException(OpenAiActual))),
             "pairing error is recognised through InnerException");
 
-        // 反面：不许把该走重试的 400 或无关错误截走
+        // 反面：不许把「不属于配对」的 400 截走（自 S-237 起 400 已不进重试，
+        // 这类报文直接报错给用户，由压缩 / 图像降级等专项分支各管一段）
         Assert(!ToolPairingErrors.IsToolPairingError(new Exception(
                 "OpenAI-compatible chat request failed HTTP 400: context_length_exceeded")),
             "context overflow is not a pairing error");

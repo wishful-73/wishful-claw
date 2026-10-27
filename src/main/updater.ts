@@ -225,6 +225,12 @@ function announceUpdateAvailable(version: string, inlineNotes: string, silent: b
       return ''
     })
     .then((releaseNotes) => {
+      // 先回写状态，再推事件（S-234）。事件只到得了「正开着的那次通报」，而二次打开弹窗走的是
+      // `refreshStatus()` → 状态快照 —— 只喂事件的话，那份说明在第一次关闭弹窗时就没了。
+      // 补拉失败时 releaseNotes 是 ''，applyReleaseNotes 直接拒写，不会把已有内容清空。
+      if (updaterState().applyReleaseNotes(version, releaseNotes)) {
+        logInfo('main', `Updater stored release notes for ${version}`)
+      }
       const payload: UpdateAvailablePayload = {
         currentVersion: currentVersion(),
         newVersion: version,

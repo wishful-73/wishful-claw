@@ -62,6 +62,7 @@ export interface UpdaterStateCoordinator {
   snapshot(): UpdateStateSnapshot
   beginCheck(): boolean
   applyAvailable(input: UpdateAvailableInput): boolean
+  applyReleaseNotes(version: string, notes: string): boolean
   applyNotAvailable(): boolean
   beginDownload(expectedVersion: string): number
   applyProgress(operationId: number, input: UpdateProgressInput): boolean
@@ -178,6 +179,26 @@ export function createUpdaterStateCoordinator(
         startedAt: null,
         finishedAt: null
       }
+      return true
+    },
+
+    /**
+     * Fill in the release notes once the website copy arrives (S-234). Does not touch the phase,
+     * the progress, or `availableVersion` — it writes one field.
+     *
+     * Why this exists: the notes have two sources, and only the asynchronous one ever has content
+     * (the manifest stopped carrying `releaseNotes` in 0.2.39). The async result used to go into an
+     * event and nowhere else, so every path that reads the snapshot — reopening the dialog calls
+     * `refreshStatus()` first — saw an empty string.
+     *
+     * The version guard matters: a slow fetch can land after the next check has already offered a
+     * different version, and stale notes under a new version number read as a lie.
+     */
+    applyReleaseNotes(version: string, notes: string): boolean {
+      if (!notes) return false
+      if (state.availableVersion !== version) return false
+      if (state.releaseNotes === notes) return false
+      state = { ...state, releaseNotes: notes }
       return true
     },
 

@@ -319,9 +319,37 @@ tests/WishfulClaw.GoalRegressionTests/bin/Debug/net11.0/WishfulClaw.GoalRegressi
 |---|---|
 | 阶段四（执行态，每步 Mini 验证） | 相关的那几个；改动面大就直接全量（36 秒） |
 | 阶段六（验证态） | **必须全量**，结果作为验证报告的证据 |
+| push 前（自动，不用管） | 钩子跑 `typecheck` + TS 侧；纯文档 push 自动跳过 |
 | 迭代收尾 | 全量跑一遍，再合 main |
 
 **加新测试**：C# 在 `tests/` 下建 `WishfulClaw.<名字>RegressionTests` 工程并注册进 `tests/WishfulClaw.Tests.sln`；TS 在 `tests/<名字>/program.ts` 写脚本，并在 `package.json` 加 `test:<名字>`。两处都会被 `npm test` 自动收进来 —— **不需要改 `scripts/run-tests.mjs`**。
+
+---
+
+## 提交前自动把关（pre-push + CI）
+
+**结论：不用再手动敲 `npm run typecheck` 和 `npm test -- --ts-only`，push 时自动跑。** 想手动跑就 `npm run ci:checks`。
+
+两层，同一个判据：
+
+| 层 | 触发 | 跑什么 | 失败后果 |
+|---|---|---|---|
+| 本地钩子 `.git/hooks/pre-push` | `git push` | `scripts/ci-checks.mjs` | push 被拦，代码出不了本机 |
+| GitHub Actions `.github/workflows/ci.yml` | push 到 `main` / `dev/**`、PR 到 `main` | 同一个脚本 | 远程红叉（本地被 `--no-verify` 绕过时兜底） |
+
+**为什么钉 push 不钉 commit**：一次门禁实测 **38 秒**（typecheck 22.7 s + TS 侧 15.2 s / 67 套件）。一天十几刀 commit、一两次 push —— 钉 commit 前每天白花十几分钟，钉 push 前只花几十秒。
+
+**钩子怎么装**：`npm install` 后由 `prepare` 自动装。换机器、钩子被清、或想确认状态，跑 `npm run setup:hooks`。`.git/hooks` 不受版本控制，所以钩子本体只是几行薄壳，逻辑全在 `scripts/ci-checks.mjs`（入库）。
+
+**纯文档 push 跳过**：改动全部命中 `docs/` · `*.md` · `.wishful-claw/` · `.gitignore` · `.gitattributes` · `LICENSE` 时直接放行。判定方向是**白名单**，认不出来就跑 —— 宁可多花 38 秒也不能漏。要强制跑：`CI_FORCE=1 git push`。
+
+**绕过**：`git push --no-verify`。只在远程 CI 兜得住、且确实等不及时用；当常规手段就等于没守。
+
+**C# 侧不进 CI**：`tests/WishfulClaw.Tests.sln` 要 .NET 11 预览版 SDK，GitHub runner 没有。C# 回归仍在本地 `npm test` 全量跑，阶段六与收尾照旧必须全量。
+
+**加检查步骤**：改 `scripts/ci-checks.mjs` 的 `STEPS` 数组，本地与 CI 一起生效，别只在 yml 里加。
+
+**没引 husky 的理由**：为两个钩子加依赖不值当，且 husky 会接管 `core.hooksPath`，把 `.git/hooks` 里已有的东西（本机就有 Qoder 装的 `post-commit` / `post-checkout` 追踪钩子）一并挤掉。
 
 ---
 

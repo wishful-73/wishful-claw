@@ -5,6 +5,9 @@
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
   "scripts": {
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "setup:hooks": "node scripts/install-git-hooks.mjs",
+    "ci:checks": "node scripts/ci-checks.mjs",
     "dev": "electron-vite dev",
     "dev:full": "dotnet build src/runtime/WishfulClaw.sln && electron-vite dev",
     "build:worker": "dotnet build src/runtime/WishfulClaw.sln",

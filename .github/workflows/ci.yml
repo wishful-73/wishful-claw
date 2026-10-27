@@ -1,0 +1,41 @@
+# 远程兜底：本地 pre-push 钩子挡住绝大多数，但 `--no-verify`、网页端直接提交
+# 都能绕过去，所以这里再守一道。判据与本地同一个脚本，不会跑偏。
+#
+# 只跑 TS 侧：C# 回归要 .NET 11 预览版 SDK，runner 上没有。C# 仍在本地
+# `npm test` 全量跑，阶段六与迭代收尾照旧必须全量。
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'dev/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: typecheck + TS tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # typecheck 只用到 electron 的 .d.ts，不需要那 100 MB 二进制
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 与 @types/node ^22 对齐，别让 runner 跑出本地没有的 API
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: node scripts/ci-checks.mjs

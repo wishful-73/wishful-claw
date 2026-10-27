@@ -20,6 +20,7 @@ import {
   collapseRetryDelay,
   createFloorTracker,
   observeFloor,
+  observeGrowthOnly,
   resolveGapTarget,
   resolveReclaimPlan,
   shrinkProbeDelay,
@@ -135,6 +136,61 @@ eq(shouldRefloor(1000, 1000 - shrinkEpsilon, 0, 999), true, '幅度刚好达到�
 eq(shouldRefloor(0, 400, 0, 999), false, '尚未起算（floor=0）不下压')
 eq(shouldRefloor(1000, 0, 0, 999), false, '无测量不下压')
 eq(shouldRefloor(1000, Number.NaN, 0, 999), false, 'NaN 不下压')
+
+// ── S-233：observeGrowthOnly（尾部行未挂载 = 测量盲区，只升不降） ────────
+//
+// 场景来源：虚拟列表尾部跑出 overscan 后，getRealContentBottom() 只剩「最后一个
+// 已挂载行的底」，比真实内容底少一整行甚至几行。这个偏低会持续到滚动位置改变为止，
+// 远超 observeFloor 的 48ms 阈值 —— 用时长阈值挡不住，一采信就把 floor 压到假值，
+// 随后的「整屏悬空」救援会把视口一次拽走几百像素。
+eq(
+  observeGrowthOnly({ floor: 1000, lowSince: null }, 700).floor,
+  1000,
+  '盲区偏低不采信：floor 保持不动'
+)
+eq(
+  observeGrowthOnly({ floor: 1000, lowSince: 0 }, 700).lowSince,
+  null,
+  '盲区偏低必须清掉 lowSince（否则残留起点会让下一次观测立刻误采信）'
+)
+eq(
+  observeGrowthOnly(createFloorTracker(), 500).floor,
+  500,
+  '盲区里的上抬仍然立即采信'
+)
+eq(
+  observeGrowthOnly({ floor: 1000, lowSince: 0 }, 1200).floor,
+  1200,
+  '上抬压过偏低状态'
+)
+eq(
+  observeGrowthOnly({ floor: 1000, lowSince: 0 }, 1200).lowSince,
+  null,
+  '上抬把偏低状态清零'
+)
+eq(observeGrowthOnly({ floor: 900, lowSince: 0 }, 0).floor, 900, '盲区无测量时保留上次下界')
+eq(observeGrowthOnly({ floor: 900, lowSince: 0 }, Number.NaN).floor, 900, '盲区 NaN 保留上次下界')
+eq(observeGrowthOnly({ floor: 900, lowSince: 0 }, -5).floor, 900, '盲区负值保留上次下界')
+
+const growthInput = { floor: 800, lowSince: 0 }
+const growthSnapshot = { ...growthInput }
+observeGrowthOnly(growthInput, 400)
+eq(growthInput.floor, growthSnapshot.floor, 'observeGrowthOnly 不修改入参 floor')
+eq(growthInput.lowSince, growthSnapshot.lowSince, 'observeGrowthOnly 不修改入参 lowSince')
+
+// 关键回归：盲区偏低绝对不能走到「采信」那一步。若这里返回 700，说明盲区被当成
+// 真收缩，floor 落到假值 —— 那正是逐帧拽视口的燃料。
+const blindZone = observeGrowthOnly({ floor: 1000, lowSince: 0 }, 700)
+check(blindZone.floor !== 700, '盲区偏低不会污染下界')
+
+// 时序模拟：可信观测记下起点 → 进入盲区 → 时间早已超过 refloorHoldMs → 仍未采信
+let blindSeq = observeFloor(createFloorTracker(), 1000, 0)
+blindSeq = observeFloor(blindSeq, 700, 0)
+eq(blindSeq.lowSince, 0, '可信帧记下偏低起点')
+blindSeq = observeGrowthOnly(blindSeq, 700)
+eq(blindSeq.lowSince, null, '进入盲区后起点被清空')
+blindSeq = observeGrowthOnly(blindSeq, 700)
+eq(blindSeq.floor, 1000, '盲区持续多久都不采信（时长阈值在这里本就无效）')
 
 // ── 留白基准 / 上限：min(CHUNK, 半屏, maxGap) ────────────────────────────
 const CHUNK = 240

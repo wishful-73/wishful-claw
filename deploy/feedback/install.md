@@ -23,27 +23,63 @@
 
 ```bash
 node -v          # 需要 >= 20（服务器实测 v22.22.1）
-sqlite3 --version || sudo apt install -y sqlite3    # 运维查库要用，服务本身不依赖 CLI
+sqlite3 --version || sudo apt-get install -y sqlite3
+# 服务进程本身不依赖 sqlite3 CLI，但**备份脚本依赖**（sqlite3 .backup）。
+# 不装的话每天 04:17 的备份会失败 —— 2026-10-27 首次部署就踩了，已装 3.45.1。
 ```
 
-## 2. 上传代码
+## 2. 上传代码与依赖（一条命令）
 
-在**本地**仓库根跑（`scripts/` 被 gitignore，别指望 rsync 整个仓库）：
+日常发布**不用手工 scp** —— `deploy.mjs site` 会把 `server/feedback/` 一起发上去：
+
+```bash
+node scripts/deploy.mjs site            # 构建官网 + 同步反馈服务 + 重启 + 自检
+node scripts/deploy.mjs site --no-api   # 只发静态站，不动服务
+```
+
+脚本做的（都可重复跑，幂等）：
+
+1. 本地打 tar（排除 `node_modules`）→ scp 到 `/tmp`
+2. 远端 `rsync -a --delete` 覆盖代码 —— `node_modules` / `*.db*` / `*.log` / `.htpasswd` / `backup.sh` 一律不动
+3. `package.json` 的 sha256 变了（或从没装过依赖）才 `npm install --omit=dev`
+4. 写 systemd 单元 → `daemon-reload` → `enable` → `restart`
+5. 写 logrotate、备份 cron（crontab 里 grep -v 去重，不会攒出两条）
+6. `curl 127.0.0.1:7860/api/health` 自检 + 检查 nginx 是否已贴 `/api/` 片段
+
+**首次跑额外做**：建 `/data/services/wishfulclaw-feedback`、生成管理口令（见 §4，只打印一次）。
+**nginx 片段不自动改**（改错一个字符整站挂）—— 缺了脚本会明确提示，按 §6 手工贴。
+
+<details>
+<summary>手工上传（脚本不通时的兜底）</summary>
 
 ```bash
 cd server/feedback
 scp -i ~/.ssh/wishfulclaw_deploy -r \
-  app.mjs cli.mjs package.json lib admin \
+  app.mjs cli.mjs package.json package-lock.json lib admin \
   ubuntu@119.45.103.252:/data/services/wishfulclaw-feedback/app/
 ```
-
-然后服务器上装依赖（`better-sqlite3` 首次会编译，编译链已实测齐全）：
 
 ```bash
 cd /data/services/wishfulclaw-feedback/app
 npm install --omit=dev
 node -e "import('better-sqlite3').then(m=>console.log('driver ok', typeof m.default))"
 ```
+</details>
+
+## 2.1 本地开发
+
+官网本地也是一条命令（前端 + 反馈服务，数据落 `.wishful-claw-dev/feedback/`，与 dev 实例隔离目录同源）：
+
+```bash
+cd website
+npm run dev                  # 前端 5280 + 反馈服务 7860
+npm run dev -- --web-only    # 只前端（不改反馈那块够用）
+npm run dev:api              # 只反馈服务
+npm run preview              # 预览构建产物 + 反馈服务
+```
+
+对外只有一个地址 `http://localhost:5280/`，`/api` 由 vite 代理转给 7860（`vite.config.ts` 的 `apiProxy`）。
+7860 已被占用时脚本会**复用**现有服务，不重复起第二份。
 
 ## 3. 先手动跑一次，确认能起
 
@@ -65,18 +101,31 @@ curl -s http://127.0.0.1:7860/api/health
 
 用户名固定 **`alwy`**（老大 2026-10-26 17:17 指定，不用 `admin` 这种通用名）。
 
+> `deploy.mjs site` 首次跑会**自动生成**这份口令（用 `openssl passwd -apr1`，不依赖 apache2-utils），
+> 只在日志里打印一次；文件已存在就绝不覆盖。
+> 下面是手工兜底 / 主动改密码时用。
+
 ```bash
 sudo apt install -y apache2-utils          # 提供 htpasswd
 # 密码用 24 位随机串，别用可猜的
 PASS=$(openssl rand -base64 18 | tr -d '/+=' | cut -c1-24)
 htpasswd -c -b /data/services/wishfulclaw-feedback/.htpasswd alwy "$PASS"
-chmod 600 /data/services/wishfulclaw-feedback/.htpasswd
+
+# ⚠️ 属主必须是 root:www-data、权限 640。
+# 曾经写成 chmod 600 + ubuntu 属主，结果 nginx worker 读不到，管理页直接 500：
+#   [crit] open() "/data/services/wishfulclaw-feedback/.htpasswd" failed (13: Permission denied)
+sudo chown root:www-data /data/services/wishfulclaw-feedback/.htpasswd
+sudo chmod 640 /data/services/wishfulclaw-feedback/.htpasswd
+
 echo "用户名 alwy  密码 $PASS"     # ← 抄进会话给老大，然后不要留在任何文件里
 ```
 
 `.htpasswd` 天然支持多行，心相运营站点复用时直接 `htpasswd -b 同一个文件 另一个用户名 密码`。
 
 ## 5. systemd
+
+> `deploy.mjs site` 每次都会覆盖这个单元文件并 `restart`，不用手工 cp。
+> 下面是从零手装时的步骤。
 
 ```bash
 sudo cp wishfulclaw-feedback.service /etc/systemd/system/
@@ -90,12 +139,17 @@ tail -n 5 /data/services/wishfulclaw-feedback/feedback.log
 
 ## 6. nginx
 
-把 `nginx-location.conf` 里的两个 `location` 贴进 `wishful-claw.work` 的 server 块
+把 `nginx-location.conf` 里的两个 `location`（实际是三段：`^~ /api/`、`= /admin/feedback` 跳转、
+`^~ /admin/feedback/`）贴进 `wishful-claw.work` 的 **443 server 块**
 （**不要动静态站原有的 location**），然后：
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+> 2026-10-27 已在服务器上贴好（改动落在 `/etc/nginx/sites-available/wishfulclaw` 的 443 块，
+> 改前备份为 `wishfulclaw.bak-<时间戳>`）。验收：`/api/health` 200、管理页无口令 401、
+> 带口令 200、不带尾斜杠 301。脚本 `deploy.mjs site` 只**检测**是否已贴，不会自动改这一段。
 
 ## 7. 日志轮转 + 备份
 

@@ -4,9 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node dev.mjs",
+    "dev:web": "vite",
+    "dev:api": "node dev.mjs --api-only",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "preview": "node dev.mjs --preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

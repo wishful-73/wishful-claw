@@ -1,13 +1,20 @@
 /**
- * 首页反馈区（需求 S-226 §8.3）—— 「待办 / 已做」公开列表 + 两个提交入口。
+ * 首页反馈区（需求 S-226 §8.3）—— 「待办 / 已做」公开列表 + 一个提交入口。
  *
  * 关于「空态整段不渲染」的边界，这里分得比站点统计更细：
  *   · **列表**拿不到 ⇒ 列表整段不出现（同 `site-stats` 口径：不显示 0、不显示「暂无」）
- *   · **标题与两个提交按钮**始终在 ⇒ 那是这个区块存在的理由。
+ *   · **标题与提交按钮**始终在 ⇒ 那是这个区块存在的理由。
  *     列表是「结果展示」，提交是「功能本身」；功能不该因为读接口挂了而消失。
  *
  * 正文**纯文本渲染**（`whitespace-pre-wrap`），全程 textContent 路径，
  * 不碰 `dangerouslySetInnerHTML` —— XSS 面为零（§11 已拍板）。
+ *
+ * 2026-10-27 老大两条调整：
+ *   1. **不再用 `mx-auto max-w-3xl` 收窄居中** —— 大屏上提示文两侧各空出几百 px
+ *      （1071px 视口实测两侧各 96px，1920px 屏会更夸张）。全站口径是「铺满屏宽、
+ *      只留内边距」（`ui.tsx` 的 Section 注释），这块当年是漏网的例外。
+ *   2. **两个按钮合成一个** —— 「提需求 / 报 Bug」的真实区分挪进弹窗，由用户现选。
+ *      进门分两个按钮 = 让用户先做一次我们才知道答案的选择题。
  */
 
 import { useState } from 'react'
@@ -15,11 +22,11 @@ import { useState } from 'react'
 import { FeedbackDialog } from '../components/feedback-dialog'
 import { Reveal, Section } from '../components/ui'
 import { feedback as copy } from '../content/site'
-import { useFeedbackList, type FbEntry, type FbType } from '../lib/feedback'
+import { useFeedbackList, type FbEntry } from '../lib/feedback'
 
 export function Feedback() {
   const items = useFeedbackList()
-  const [openType, setOpenType] = useState<FbType | null>(null)
+  const [open, setOpen] = useState(false)
   const [showAll, setShowAll] = useState(false)
 
   const visible = items ? (showAll ? items : items.slice(0, copy.visibleCount)) : []
@@ -28,23 +35,16 @@ export function Feedback() {
   return (
     <Section id="feedback" eyebrow={copy.eyebrow} title={copy.title}>
       <Reveal>
-        <div className="mx-auto max-w-3xl">
+        <div>
           <p className="text-base leading-relaxed text-ink-900/65">{copy.intro}</p>
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-6">
             <button
               type="button"
-              onClick={() => setOpenType('feature')}
+              onClick={() => setOpen(true)}
               className="rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-soft"
             >
-              {copy.openFeature}
-            </button>
-            <button
-              type="button"
-              onClick={() => setOpenType('bug')}
-              className="rounded-lg border border-ink-700 px-5 py-2.5 text-sm font-medium text-ink-900 transition-colors hover:bg-paper-soft"
-            >
-              {copy.openBug}
+              {copy.open}
             </button>
           </div>
 
@@ -75,7 +75,7 @@ export function Feedback() {
         </div>
       </Reveal>
 
-      {openType && <FeedbackDialog type={openType} onClose={() => setOpenType(null)} />}
+      {open && <FeedbackDialog onClose={() => setOpen(false)} />}
     </Section>
   )
 }

@@ -2,7 +2,6 @@ import * as React from 'react'
 import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AssistantReplyRail } from './AssistantReplyRail'
-import { RenderDensityToggle } from './RenderDensityToggle'
 import { MessageRow } from './MessageRow'
 import {
   getMessageColumnClass,
@@ -306,7 +305,8 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
         onJump={handleJumpToAssistantMessage}
       />
 
-      <RenderDensityToggle />
+      {/* 渲染档位快捷入口已移到右上角会话操作块内（S-225）：
+          挂在这里会被那块 `right-3 top-3 z-30` 整个盖住，见 RenderDensityToggle 文件头。 */}
 
       <AnimatePresence>
         {!isAtBottom && (

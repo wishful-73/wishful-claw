@@ -259,16 +259,16 @@ function GeneralPanel(): React.JSX.Element {
           </div>
         </div>
 
-        {/* Chat render density (S-225) —— 三档，只控过程层，消息始终可见 */}
+      </SettingsSection>
+
+      {/* Chat render density (S-225) —— 三档，只控过程层，消息始终可见。
+          2026-10-27 老大：塞在「外观」里找不到（还是问 dev 实例才知道），拆成独立卡片块。 */}
+      <SettingsSection
+        id="sec-general-render-density"
+        title={t('general.renderDensity.label')}
+        description={t('general.renderDensity.desc')}
+      >
         <div className="space-y-2">
-          <div>
-            <label className="text-xs font-medium">
-              {t('general.appearance.renderDensity.label')}
-            </label>
-            <p className="text-xs text-muted-foreground">
-              {t('general.appearance.renderDensity.desc')}
-            </p>
-          </div>
           <Slider
             min={0}
             max={CHAT_RENDER_DENSITIES.length - 1}
@@ -297,12 +297,12 @@ function GeneralPanel(): React.JSX.Element {
                     : 'text-muted-foreground hover:text-foreground'
                 )}
               >
-                {t(`general.appearance.renderDensity.options.${item}.name`)}
+                {t(`general.renderDensity.options.${item}.name`)}
               </button>
             ))}
           </div>
           <p className="max-w-lg text-xs text-muted-foreground">
-            {t(`general.appearance.renderDensity.options.${settings.chatRenderDensity}.desc`)}
+            {t(`general.renderDensity.options.${settings.chatRenderDensity}.desc`)}
           </p>
         </div>
       </SettingsSection>

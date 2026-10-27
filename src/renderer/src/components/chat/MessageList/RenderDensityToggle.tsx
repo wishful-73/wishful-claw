@@ -3,14 +3,20 @@
  *
  * 与设置页那处改的是**同一个全局值**（`chatRenderDensity`），这里只是离手边近一点的通道。
  *
- * 落点选在助手回复导轨正上方而不是输入框上方 —— 老大 2026-10-26 上午明确说过
- * 「输入框上方需要显示的东西太多了」，再往那塞就是添乱。导轨本身只在 `items >= 2`
- * 时才渲染，所以本组件独立挂载，任何会话里都能用。
+ * 落点演进（这里栽过两次，别再走回头路）：
+ *   1. 最早挂 `MessageList` 里，`absolute right-3 top-2 z-20` —— **被右上角会话操作块整个盖住**
+ *      （`SessionConversationPane.tsx:204` 那块是 `right-3 top-3 z-30`，位置几乎重合）。
+ *   2. 2026-10-27 我以为是图标不够显眼，把滑杆换成齿轮、去掉 60% 透明度 —— **没解决遮挡**。
+ *      老大又报「在聊天窗没找到地方」，才定位到真因是层级 + 位置撞车。
+ *   3. 现在：**按钮直接并进右上角那块操作集合**，弹层从竖直条左侧弹出。
+ *      新增浮层必然要跟已有的抢位置，而这块本来就是会话级操作的集合，渲染档位属于同一类。
+ *
+ * 之所以不塞到输入框上方：老大 2026-10-26 明确说过「输入框上方需要显示的东西太多了」。
  */
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, SlidersHorizontal } from 'lucide-react'
+import { Check, Settings2 } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import {
@@ -24,63 +30,63 @@ export function RenderDensityToggle(): React.JSX.Element {
   const { t } = useTranslation('chat')
   const chatRenderDensity = useSettingsStore((s) => s.chatRenderDensity)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const label = t('messageList.renderDensity.open')
 
   return (
-    <div className="pointer-events-none absolute right-3 top-2 z-20 hidden md:block">
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label={t('messageList.renderDensity.open')}
-            title={t('messageList.renderDensity.open')}
-            className="pointer-events-auto flex size-7 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted/40 hover:text-foreground dark:hover:bg-white/[0.06]"
-          >
-            <SlidersHorizontal className="size-3.5" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="end" side="bottom" className="w-64 p-1.5">
-          <div className="px-2 pb-1.5 pt-1">
-            <div className="text-xs font-medium">{t('messageList.renderDensity.title')}</div>
-            <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-              {t('messageList.renderDensity.desc')}
-            </div>
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          title={label}
+          className="flex size-7 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Settings2 className="size-4" />
+        </button>
+      </PopoverTrigger>
+      {/* side="left"：本组件住在贴着右边缘的竖直条里，向左右都不够位，必须往左弹 */}
+      <PopoverContent align="start" side="left" className="w-64 p-1.5">
+        <div className="px-2 pb-1.5 pt-1">
+          <div className="text-xs font-medium">{t('messageList.renderDensity.title')}</div>
+          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+            {t('messageList.renderDensity.desc')}
           </div>
-          <div className="space-y-0.5">
-            {CHAT_RENDER_DENSITIES.map((item) => {
-              const active = item === chatRenderDensity
-              return (
-                <button
-                  key={item}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => updateSettings({ chatRenderDensity: item })}
-                  className={cn(
-                    'w-full rounded-md px-2 py-1.5 text-left transition-colors',
-                    active
-                      ? 'bg-muted/60 dark:bg-white/[0.07]'
-                      : 'hover:bg-muted/40 dark:hover:bg-white/[0.05]'
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={cn(
-                        'text-xs',
-                        active ? 'font-medium text-foreground' : 'text-foreground/80'
-                      )}
-                    >
-                      {t(`general.appearance.renderDensity.options.${item}.name`, { ns: 'settings' })}
-                    </span>
-                    {active ? <Check className="size-3 shrink-0 text-primary" /> : null}
-                  </div>
-                  <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                    {t(`general.appearance.renderDensity.options.${item}.desc`, { ns: 'settings' })}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </PopoverContent>
-      </Popover>
-    </div>
+        </div>
+        <div className="space-y-0.5">
+          {CHAT_RENDER_DENSITIES.map((item) => {
+            const active = item === chatRenderDensity
+            return (
+              <button
+                key={item}
+                type="button"
+                aria-pressed={active}
+                onClick={() => updateSettings({ chatRenderDensity: item })}
+                className={cn(
+                  'w-full rounded-md px-2 py-1.5 text-left transition-colors',
+                  active
+                    ? 'bg-muted/60 dark:bg-white/[0.07]'
+                    : 'hover:bg-muted/40 dark:hover:bg-white/[0.05]'
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={cn(
+                      'text-xs',
+                      active ? 'font-medium text-foreground' : 'text-foreground/80'
+                    )}
+                  >
+                    {t(`general.renderDensity.options.${item}.name`, { ns: 'settings' })}
+                  </span>
+                  {active ? <Check className="size-3 shrink-0 text-primary" /> : null}
+                </div>
+                <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                  {t(`general.renderDensity.options.${item}.desc`, { ns: 'settings' })}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

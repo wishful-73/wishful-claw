@@ -175,23 +175,23 @@
       },
       "fontOptions": {
         "default": "系统默认"
-      },
-      "renderDensity": {
-        "label": "时间轴详细信息",
-        "desc": "选择时间轴上显示的活动量。消息始终可见。",
-        "options": {
-          "text": {
-            "name": "纯文本",
-            "desc": "只看消息。执行中的工具、思考和子 Agent 也一并收起。"
-          },
-          "compact": {
-            "name": "紧凑",
-            "desc": "执行中展开过程，跑完自动收起；工具分组显示，思考内容折叠。"
-          },
-          "detail": {
-            "name": "详情",
-            "desc": "展开命令输出和文件改动，子 Agent 单独显示，跑完也不收起。"
-          }
+      }
+    },
+    "renderDensity": {
+      "label": "时间轴详细信息",
+      "desc": "选择时间轴上显示的活动量。消息始终可见。",
+      "options": {
+        "text": {
+          "name": "纯文本",
+          "desc": "只看消息。执行中的工具、思考和子 Agent 也一并收起。"
+        },
+        "compact": {
+          "name": "紧凑",
+          "desc": "执行中展开过程，跑完自动收起；工具分组显示，思考内容折叠。"
+        },
+        "detail": {
+          "name": "详情",
+          "desc": "展开命令输出和文件改动，子 Agent 单独显示，跑完也不收起。"
         }
       }
     },
@@ -1629,6 +1629,8 @@
     "theme": "主题",
     "presets": "配色预设",
     "appearance": "外观",
+    "renderDensity": "时间轴详细信息",
+    "speech": "朗读",
     "timeout": "请求超时",
     "retries": "重试策略",
     "compression": "上下文压缩",

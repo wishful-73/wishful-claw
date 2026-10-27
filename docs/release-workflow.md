@@ -176,9 +176,15 @@ Release 正文同源，见 4.3「一份真源喂两个发布面」。
 
 ```bash
 node scripts/deploy.mjs installer   # 更新下载目录（四件：exe + blockmap + latest.yml + 更新说明）
-node scripts/deploy.mjs site        # 官网自身内容有改动时才发 —— 发版不需要
+node scripts/deploy.mjs site        # 官网自身内容有改动时才发 —— 发版不需要；**默认连带反馈服务**
 node scripts/deploy.mjs cert        # 查证书状态
 ```
+
+> `site` 的完整动作（S-226 起）：构建 → 打包 dist → 上传 → 服务器侧整目录原子替换 →
+> **同步反馈服务代码并重启 `wishfulclaw-feedback`** → 抽查五路径（含 `/api/health`）→ 报证书。
+> 只发静态站不带服务：`site --no-api`。
+> 服务端没装过时同一条命令会顺手建起来（目录、管理口令、systemd 单元、logrotate、备份 cron）；
+> nginx 的 `/api/` 片段**不自动改**（改错一个字符整站挂），缺了会明确提示贴哪一段。
 
 > **发版不重建官网**（2026-09-23 定）：站点前端是**运行时**读 `./downloads/latest.yml`，下载按钮
 > 与版本号都由此而来，所以只换下载目录里的三件就生效。`installer` 动作**不碰官网**；仅当官网

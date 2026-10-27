@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, CSSProperties } from 'react'
 import { features } from '../content/site'
 import { assetSources, Reveal, Section } from '../components/ui'
 
@@ -22,8 +22,26 @@ import { assetSources, Reveal, Section } from '../components/ui'
 // §图片一律 object-cover：素材尺寸不统一（2520×1608 全屏 / 1688×1050 浮窗 / 1226×1263 竖版微信），
 //   舞台钉死 2520/1608 才不会切换时跳高。竖版那张（微信遥控）会被裁掉上下 —— 不为一张图引特殊分支，
 //   真机上看着别扭再单独调。
+//
+// §高度为什么要钳（2026-10-27 老大：「banner 的高度超出了一屏」→「可以用 vw vh 去给高宽，还有需要居中」）：
+//   `Section` 是通栏的（ui.tsx 去掉了 max-w-5xl 收束），所以只按比例算时舞台高度 = 视口宽 ÷ 1.567：
+//   1920 屏 1808÷1.567 ≈ 1154px，加顶栏 57 + 区块标题约 112 + 指示点 22 直接破屏，2560 屏更到 1562px。
+//   **比例本身没错，错在分母是宽度而不是高度。**
+//   现在反过来定：先框死可用高度（100vh 减掉顶栏 / 标题 / 指示点 / 余量 = 18rem），
+//   再按 2520/1608 反推宽度上限，`mx-auto` 居中。
+//   ⇒ 图**完整显示、不裁上下**，超宽屏两侧留白；窄屏仍然吃满 100% 宽，不套这个上限。
+//   ⚠️ Tailwind 任意值里的 calc 必须用下划线代替空格，写成 `calc(100vh-18rem)` 是无效 CSS。
+//   ⚠️ 注释里别写完整类名 —— Tailwind 连注释一起扫，扫到就在产物里多生成一条规则。
 const SLIDE_RATIO = '2520 / 1608' // 与真机截图同比例：切换时舞台高度不跳
+const SLIDE_RATIO_NUM = 1.567 // 上面这个比例的数值形态，给宽度上限的 calc 用（CSS calc 别写 2520/1608，老浏览器不认）
 const AUTOPLAY_MS = 3500 // 2026-09-23 老大「切换有点慢」：5s → 3.5s，沿用
+
+// 舞台的宽高策略：宽度上限由可用高度反推（见文件头 §高度为什么要钳）。
+// 比例走 CSS 变量传给 className 里的 calc —— 只留一个来源，改 SLIDE_RATIO 时那行不用跟着改。
+const stageStyle = {
+  aspectRatio: SLIDE_RATIO,
+  '--slide-ratio': SLIDE_RATIO_NUM
+} as CSSProperties
 
 export function Features() {
   const items = features.items
@@ -109,10 +127,11 @@ export function Features() {
           onBlur={() => setFocused(false)}
           className="group/carousel rounded-[13px] outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2"
         >
-          {/* 图区：八张叠放，靠 opacity 交叉淡入淡出 */}
+          {/* 图区：八张叠放，靠 opacity 交叉淡入淡出。
+              `mx-auto` + sm 断点的宽度上限是「不超一屏」的唯一实现点，别删 —— 见文件头 §高度为什么要钳 */}
           <div
-            className="relative overflow-hidden rounded-[13px] border border-ink-700 bg-paper-soft"
-            style={{ aspectRatio: SLIDE_RATIO }}
+            className="relative mx-auto w-full overflow-hidden rounded-[13px] border border-ink-700 bg-paper-soft sm:w-[min(100%,calc((100vh_-_18rem)*var(--slide-ratio)))]"
+            style={stageStyle}
           >
             {items.map((it, i) => {
               const src = assetSources[it.image.assetNo]

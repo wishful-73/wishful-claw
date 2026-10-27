@@ -155,8 +155,9 @@ export function AssistantReplyRail({
   }
 
   return (
-    // top-12 而不是 top-5：正上方那 28px 留给 S-225 的渲染档位齿轮钮（RenderDensityToggle），
-    // 两者同一条竖线上、各自独立，齿轮不压 marker。
+    // top-12 而不是 top-5：正上方那 28px 留给右上角会话操作块里最下面那颗按钮
+    // （该块 `right-3 top-3 z-30`，绝对定位，会盖住本条导轨的顶部）。S-225 的渲染档位钮
+    // 现在也在那块里，不再单独占这条竖线，见 RenderDensityToggle 文件头。
     <div className="pointer-events-none absolute bottom-5 right-4 top-12 z-20 hidden md:block">
       <div className="pointer-events-none relative h-full w-[min(320px,calc(100vw-3rem))]">
         {previewItem && previewCopy ? (

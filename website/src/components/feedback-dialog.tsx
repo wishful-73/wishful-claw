@@ -9,6 +9,10 @@
  *
  * ⚠️ 提交成功后**不刷新列表**：新条目是 `pending`，本来就不在公开集里。
  * 不是漏了刷新。
+ *
+ * 2026-10-27 老大：入口只剩一个，**类型在表单里现选**（需求 / Bug）——
+ * 选哪一类是我们该问的，不该让用户点按钮时先做一道选择题。
+ * 类型默认「需求」，切换只改副标题提示，不动已填内容。
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -20,11 +24,14 @@ import { submitFeedback, type FbType } from '../lib/feedback'
 
 type Phase = 'form' | 'sending' | 'done'
 
-export function FeedbackDialog(props: { type: FbType; onClose: () => void }) {
+const TYPES: FbType[] = ['feature', 'bug']
+
+export function FeedbackDialog(props: { onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const titleRef = useRef<HTMLInputElement>(null)
 
   const [phase, setPhase] = useState<Phase>('form')
+  const [type, setType] = useState<FbType>('feature')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [contact, setContact] = useState('')
@@ -32,7 +39,7 @@ export function FeedbackDialog(props: { type: FbType; onClose: () => void }) {
   const [website, setWebsite] = useState('')
   const [error, setError] = useState('')
 
-  const isFeature = props.type === 'feature'
+  const isFeature = type === 'feature'
   const c = copy.dialog
 
   useEffect(() => {
@@ -68,7 +75,7 @@ export function FeedbackDialog(props: { type: FbType; onClose: () => void }) {
     setPhase('sending')
     try {
       const r = await submitFeedback({
-        type: props.type,
+        type,
         title,
         content,
         contact,
@@ -140,10 +147,36 @@ export function FeedbackDialog(props: { type: FbType; onClose: () => void }) {
           </div>
         ) : (
           <form onSubmit={onSubmit}>
-            <h2 className="text-lg font-semibold">{isFeature ? c.featureTitle : c.bugTitle}</h2>
+            <h2 className="text-lg font-semibold">{c.title}</h2>
             <p className="mt-1 text-sm text-ink-900/55">{isFeature ? c.featureHint : c.bugHint}</p>
 
-            <label htmlFor="fb-title" className="mt-5 block text-xs font-semibold text-ink-900/70">
+            {/* 类型：分段按钮。两个选项都是「要提交什么」的答案，所以放在最上面 */}
+            <div className="mt-5">
+              <span className="block text-xs font-semibold text-ink-900/70">{c.typeLabel}</span>
+              <div
+                role="group"
+                aria-label={c.typeLabel}
+                className="mt-1.5 inline-flex rounded-lg border border-ink-700 p-0.5"
+              >
+                {TYPES.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    aria-pressed={type === t}
+                    onClick={() => setType(t)}
+                    className={
+                      type === t
+                        ? 'rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white'
+                        : 'rounded-md px-4 py-1.5 text-sm font-medium text-ink-900/70 transition-colors hover:bg-paper-soft'
+                    }
+                  >
+                    {t === 'feature' ? c.typeFeature : c.typeBug}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label htmlFor="fb-title" className="mt-4 block text-xs font-semibold text-ink-900/70">
               {c.titleLabel}
             </label>
             <input

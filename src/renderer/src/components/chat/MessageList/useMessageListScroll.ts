@@ -485,12 +485,41 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
 
 
   // ── shouldAdjustScrollPositionOnItemSizeChange ──────────────────
+  // S-233（2026-10-27）：**贴底时一律不让虚拟列表插手**。
+  //
+  // 这个钩子一放行，TanStack 就自己写 scrollTop：virtual-core 的 resizeItem 走
+  // `applyScrollAdjustment(delta)` → `_scrollToOffset(scrollOffset + delta)`。
+  // 它**绕过本 hook 的全部守卫** —— 不看水位线、不看提前量留白、不看贴底姿态；
+  // 而且它只写滚动位置、不改内容高度，于是 `scrollHeight` 与内容底一动不动，
+  // 探针和所有基于几何的判定**都看不见这次位移**。
+  //
+  // 2026-10-27 那份 DEV 探针日志里的「sh 恒 995、rb 恒 994.5、mh 已空、st 却从
+  // 172.7 掉到 72.7 并停住」就是它：流式结束后 `autoScrollMode` 切成 `off` ⇒
+  // `canAutoScroll()` 变 false（原判据唯一那道闸全开），尾行重测的 delta 被原样
+  // 写成位移；随后没有任何调用会把它写回，视口就永久露底 100px。
+  // 这也解释「偶发、只在流式刚结束时、一滚就停」：重测时机取决于内容组合，
+  // 而用户一滚，锚点行整个移出视口，`item.end < scrollOffset` 不再成立。
+  //
+  // 判据从「canAutoScroll()」加宽到「视口底边已到达内容底」：跟随姿态下尺寸变化的
+  // 位移由本 hook 自己按 gapTarget 处理，virtualizer 再叠一次 delta 就是双重位移，
+  // 方向还可能相反。用户在上方阅读时（视口底边够不到内容底）仍放行原逻辑。
   const shouldAdjustScrollPositionOnItemSizeChange = React.useCallback(
     (item: { end: number }, _delta: number, instance: { scrollOffset: number | null }): boolean => {
       if (canAutoScroll()) return false
       // 加载历史消息期间不让虚拟列表调整 scrollTop，由 loadOlderMessages
       // 的 scrollHeight 差值补偿统一处理。
       if (isLoadingOlderMessagesRef.current) return false
+      const ref = listRef.current
+      if (ref) {
+        // 水位线激活时内容底可信（留白姿态下视口底边落在内容底之下，同样算贴底）。
+        const contentBottom = realContentBottomRef.current
+        if (contentBottom > 0 && ref.scrollTop + ref.clientHeight >= contentBottom - 2) {
+          return false
+        }
+        // 水位线已撤（contentBottom 可能是上一轮的残留，不足为凭）：退化用物理贴底。
+        const maxOffset = ref.scrollHeight - ref.clientHeight
+        if (ref.scrollTop >= maxOffset - 2) return false
+      }
       const scrollOffset = instance.scrollOffset ?? 0
       return item.end < scrollOffset
     },
@@ -837,7 +866,24 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       // 先落到真底：撤销 min-height 之后它仍是合法位置，撤销帧不再产生任何位移，
       // 而 GAP 姿态收掉的 80px 也退化成一次单向、可预期的贴底动作。
       const ref = listRef.current
-      const realBottom = measureContentBottom().bottom
+      // S-233（2026-10-27）：与输出分支同一口径 —— 必须过 tracker，不能拿裸实测值落位。
+      //
+      // 这是**口径补齐**，不是某次抖动的成因：同一函数里三处调用点，另外两处（:302 / :299）
+      // 都带了 tailMounted 分流，只有这里漏了。尾部行未挂载时实测底是「最后一个已挂载行的
+      // 底」，少一整行甚至几行，裸用它算出的 target 会把视口往前拽；走 tracker 后这种帧
+      // 只升不降（floor 保持真底），可信帧才按 observeFloor 采信。
+      //
+      // 实测口径见 2026-10-27 17:45 那份 DEV 探针日志：该次抖动期间 `tail=1`、`rb` 恒为
+      // 994.5，尾部行**一直挂着**，所以它解释不了那次位移 —— 真凶仍未定位，见 S-233 §11。
+      const measured = measureContentBottom()
+      streamingBottomTrackerRef.current = measured.tailMounted
+        ? observeFloor(
+            streamingBottomTrackerRef.current,
+            measured.bottom,
+            window.performance.now()
+          )
+        : observeGrowthOnly(streamingBottomTrackerRef.current, measured.bottom)
+      const realBottom = streamingBottomTrackerRef.current.floor
       if (ref && realBottom > 0) {
         const target = Math.max(0, realBottom - ref.clientHeight)
         if (Math.abs(ref.scrollTop - target) > 1) {

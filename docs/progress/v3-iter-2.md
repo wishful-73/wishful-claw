@@ -6,7 +6,7 @@
 - VERDICT: PASS（编译验证 + 用户真机验证）
 - 产品版本: 1.0.2
 - Tag: v1.0.2
-- Commit: `（收尾后补：merge 提交 hash）`
+- Commit: `e404ae17` merge: v3-iter-2 → main（= tag `v1.0.2` 指向的提交；tag 对象 `213a13dc`）
 - 日期: 2026-10-27
 - 迭代定位：两条线并行，互不重叠 —— 软件侧把散落在各组件里的展开 / 折叠策略收敛成一个可调旋钮；官网侧第一次引入**写操作**（用户反馈提交 + 审核 + 展示），并把「它能干什么」从 tab 切到 banner。
 - 范围与功能单元（**登记 6 条 / 实施 3 条**）：
@@ -28,6 +28,11 @@
   - `release/` 里 0.2.38 及更早的本地产物待按发布 SOP 第七节清理
 - 发布：`1.0.1 → 1.0.2` 常规增量，2026-10-27 两个发布面 ——
   - **官网站点**：`node scripts/deploy.mjs site` 重建并替换（含反馈服务同步重启），四路径（`/` `/download` `/guide` `/downloads/latest.yml`）+ `/api/health` 全 200
-  - **官网下载目录**：`deploy.mjs installer` 四件成套（exe + blockmap + latest.yml + `release-notes-1.0.2.md`），逐件 sha512 校验通过；blockmap 保 5 版
-  - **GitHub Release**：`v1.0.2`，三件资产 state=uploaded
-  - **证书**：剩余 56 天（到期 2026-12-22）
+  - **官网下载目录**：`deploy.mjs installer` 四件成套，逐件 sha512 与本地实算一致 —— exe `adc549ac…` / blockmap `9e6f6363…` / latest.yml `049c0dba…` / `release-notes-1.0.2.md` `ecbfbe56…`；blockmap 保 5 版（0.2.38 / 0.2.39 / 1.0.0 / 1.0.1 / 1.0.2）线上全 200
+  - **线上清单核验**：`/downloads/latest.yml` 返回 `version: 1.0.2`、`size: 113644710`，与本地 exe 字节数一致；`/downloads/release-notes-1.0.2.md` 200
+  - **GitHub Release**：`v1.0.2`（draft=false / prerelease=false），三件资产 state=uploaded —— exe 113644710 B、blockmap 118887 B、latest.yml 353 B
+  - **证书**：剩余 55 天（到期 2026-12-22）
+- 发布踩坑（留在工程记忆里，别再撞）：
+  - `electron-builder` 报 `EPERM: rename 'release\win-unpacked.tmp' -> 'release\win-unpacked'` —— 不是进程占用（当时 `release/` 下无进程），是解压后重命名被瞬时句柄（杀软扫描临时目录）挡住。**清掉 `release/win-unpacked.tmp` 重跑即可**，不用杀进程。
+  - `Invoke-WebRequest` 在本机核验线上路径时抛 `NullReferenceException`，同一时刻 `curl.exe` 全 200 —— 核验一律用 `curl.exe`，别把 PowerShell 的 IWR 故障当线上故障。
+  - PowerShell 里 `git rev-parse 'v1.0.2^{commit}'` 必须**用单引号**：`^` 被 PowerShell 当转义符吃掉，会静默返回 `v1.0.2^`（= merge 的第一父）而非 tag 指向的提交。

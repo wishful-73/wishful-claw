@@ -1,0 +1,33 @@
+# v3-iter-2：聊天窗渲染密度收敛 + 官网从纯静态迈出第一步
+
+- 状态：已完成，已合并 main 并发布
+- 分支：dev/v3-iter-2（已删除）
+- Plan: docs/plans/iter-v3-2/plan.md
+- VERDICT: PASS（编译验证 + 用户真机验证）
+- 产品版本: 1.0.2
+- Tag: v1.0.2
+- Commit: `（收尾后补：merge 提交 hash）`
+- 日期: 2026-10-27
+- 迭代定位：两条线并行，互不重叠 —— 软件侧把散落在各组件里的展开 / 折叠策略收敛成一个可调旋钮；官网侧第一次引入**写操作**（用户反馈提交 + 审核 + 展示），并把「它能干什么」从 tab 切到 banner。
+- 范围与功能单元（**登记 6 条 / 实施 3 条**）：
+  - S-225 聊天窗时间轴渲染详细度三档（`text` 纯文本 / `compact` 紧凑 / `detail` 详述，默认 `compact` 与 1.0.1 线上行为逐像素等价）—— 判定逻辑抽成纯模块 `components/chat/render-density.ts`（不 import React、不读 store，可 node 直跑单测）；手动开合用带档位标记的 override，切档自动失效（不靠 `key` 重挂载，避免丢滚动位置与流式池）。全局入口在「设置 · 常规」独立卡片块，聊天窗入口在右上角会话操作块（`d40c7c5c` + 三轮真机调整，见 `2dfc8399`）
+  - S-226 官网用户反馈登记：提交 · 后台审核 · 首页展示 —— 官网首个后端服务（`server/feedback`，node + better-sqlite3），systemd 单元 `wishfulclaw-feedback` 监听 `127.0.0.1:7860`，nginx 把 `/api/` 反代过去、`/admin/feedback/` 走 basic auth（用户名 `alwy`）；数据落 `/data/services/wishfulclaw-feedback/`（DB + WAL + 日志），每日 04:17 `sqlite3 .backup` 备份；提交含蜜罐字段与限流，公开集只含 `pending` 以外的审核结果，正文纯文本渲染（不碰 `dangerouslySetInnerHTML`）。`deploy.mjs site` 默认连带同步服务并重启（`c774d3aa`）
+  - S-227 官网「它能干什么」板块改为 banner 切换（去掉左侧 tab）—— 舞台高度原本按视口**宽**÷1.567 算（1920 屏 ≈1154px / 2560 屏 ≈1562px，直接破屏），改为先框 `100vh - 18rem` 再反推宽度上限 + `mx-auto` 居中：图完整显示不裁上下，超宽屏两侧留白，窄屏仍吃满 100%（`49dffe76` + 高度钳制，见 `2dfc8399`）
+- 工程收口：
+  - `8adf0caa` push 前自动跑类型检查与 TS 回归，不再靠手动敲（`.github/workflows` + 本地钩子）
+  - 官网本地从「两个服务、两个端口」收敛成一条命令：`website/dev.mjs` 起 vite 5280 + 反馈服务 7860，`/api` 由 vite 代理转发，对外只有 `http://localhost:5280/`；7860 被占用时复用现有服务，不重复起第二份
+- 结转（2026-10-27 10:35）：S-230（Qoder 接入，仍缺契约）/ S-233（聊天窗抖动复发，未开工）/ S-234（更新弹窗「更新说明」二次打开变空白，根因已定位）→ **v3-iter-3**；S-232（密钥脱敏）**无限期搁置**，编号保留不回收。
+- 验证：`npm run typecheck`（node / web 两配置）0 错误；`npm test` **85/85**（TS 套件 + C# 18 套件，含新增 `test:feedback-api` 111 条断言）；`dotnet build src/runtime/WishfulClaw.sln` 0 警告 0 错误；官网 `cd website; npm run build` 0 错（371ms）。老大真机已过：S-225 三档切换与入口、S-226 反馈提交与弹窗居中、S-227 banner 高度与切换、设置页导航锚点。
+  - ⚠️ `dotnet build` 跑时本机有运行中实例（PID 29460）锁住 `src/runtime/WishfulClaw.Worker/bin/Debug`，改用 `--artifacts-path` 重定向输出等价完成，**未杀实例**；构建完临时目录已删。
+- 遗留：
+  - **S-225 「纯文本」档的执行中表现未单独确认** —— 默认档与线上等价已对拍，但 `text` 档在工具高频输出时是否有滚动抖动未真机走过
+  - **S-226 反馈服务的运营面只有 CLI** —— `node cli.mjs list / set / note` 管审核与状态，管理页只读；等量上来再考虑给管理页加操作按钮
+  - **S-226 限流与蜜罐的实际拦截效果未压测** —— 逻辑就位（`$remote_addr` 覆盖写 + 取最后一段，防 `X-Forwarded-For` 伪造），但没有真实攻击样本验证
+  - **S-227 超宽屏两侧留白是刻意取舍** —— 1920 屏各 283px、2560 屏各 321px，老大未表态是否接受留白；不追求「铺满」是因为图的完整显示优先
+  - **CI 从未在远端真跑过** —— `8adf0caa` 的 workflow 需首次 push 后确认首跑结果
+  - `release/` 里 0.2.38 及更早的本地产物待按发布 SOP 第七节清理
+- 发布：`1.0.1 → 1.0.2` 常规增量，2026-10-27 两个发布面 ——
+  - **官网站点**：`node scripts/deploy.mjs site` 重建并替换（含反馈服务同步重启），四路径（`/` `/download` `/guide` `/downloads/latest.yml`）+ `/api/health` 全 200
+  - **官网下载目录**：`deploy.mjs installer` 四件成套（exe + blockmap + latest.yml + `release-notes-1.0.2.md`），逐件 sha512 校验通过；blockmap 保 5 版
+  - **GitHub Release**：`v1.0.2`，三件资产 state=uploaded
+  - **证书**：剩余 56 天（到期 2026-12-22）

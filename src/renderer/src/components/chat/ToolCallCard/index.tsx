@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { MONO_FONT } from '@renderer/lib/constants'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { isMcpTool, parseMcpToolName } from '@renderer/lib/mcp/mcp-tools'
 import { parseExtensionToolResult } from '@renderer/lib/extensions/extension-result'
@@ -194,9 +195,8 @@ function ToolCallCardInner({
     !!(input.content || input.content_preview)
   const elapsed = (() => {
     if (!startedAt || !completedAt) return null
-    const diffMs = completedAt - startedAt
-    if (diffMs < 1000) return `${Math.round(diffMs)}ms`
-    return `${(diffMs / 1000).toFixed(1)}s`
+    // S-245：耗时的写法统一由 `formatDurationMs` 定义（秒档不带小数），别在这里另写一套。
+    return formatDurationMs(completedAt - startedAt)
   })()
   // Cache elapsed so it persists even after liveToolCall is cleaned up
   const elapsedCacheRef = React.useRef<string | null>(null)

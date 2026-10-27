@@ -11,6 +11,7 @@ import {
 } from '@renderer/components/ui/dropdown-menu'
 import { cn } from '@renderer/lib/utils'
 import { formatTokens } from '@renderer/lib/format-tokens'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { sourceLabel } from './UsagePanelParts'
 import {
   HttpStatusInput,
@@ -124,8 +125,8 @@ function formatTime(ms: number): string {
 
 function formatDuration(ms: number | null | undefined): string {
   if (ms == null || !Number.isFinite(ms)) return '—'
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  return `${(ms / 1000).toFixed(1)}s`
+  // S-245：耗时唯一口径在 `@renderer/lib/format-duration`（秒档不带小数）。
+  return formatDurationMs(ms)
 }
 
 export const DETAIL_PAGE_SIZE_MIN = 10

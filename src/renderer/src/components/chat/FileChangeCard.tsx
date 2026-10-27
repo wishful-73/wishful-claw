@@ -11,6 +11,7 @@ import { useAgentStore } from '@renderer/stores/agent-store'
 import { deriveFileChangeCollapsed } from './render-density'
 import { useDensityOverride, useDensityPolicy } from './use-density-override'
 import { MONO_FONT } from '@renderer/lib/constants'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { Button } from '@renderer/components/ui/button'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { type FileChangeCardProps, type CompactActionOp, shortPath, fileName, snapshotText, canRenderInlineSnapshot, resolveEditPayload, resolveWritePayload, hasPendingEditPreviewContent, resolveEditSummaryDiff, trackedStatusLabelKey, trackedTransportLabelKey, trackedStatusTone, trackedStatusDotTone } from './FileChangeCard/utils'
@@ -48,11 +49,8 @@ export function FileChangeCard({
   const filePath = String(input.file_path ?? input.path ?? '')
   const elapsed =
     startedAt && completedAt
-      ? (() => {
-          const diffMs = completedAt - startedAt
-          if (diffMs < 1000) return `${Math.round(diffMs)}ms`
-          return `${(diffMs / 1000).toFixed(1)}s`
-        })()
+      ? // S-245：统一走 formatDurationMs，秒档不带小数
+        formatDurationMs(completedAt - startedAt)
       : null
   const outputStr = typeof output === 'string' ? output : undefined
   const isFileActionable = trackedChange?.status === 'open'

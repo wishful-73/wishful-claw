@@ -76,8 +76,10 @@ export async function handleStats(ctx: CommandContext, args: string): Promise<Co
     if (stats.totalDurationMs > 0) {
       const totalSec = stats.totalDurationMs / 1000
       const tps = totalSec > 0 ? totalTokens / totalSec : 0
+      // S-245：耗时读数不带小数。主进程引不到渲染端的 format-duration（不同进程 / 不同模块图），
+      // 口径就地照抄：< 60s 取整到秒，>= 60s 取整到分钟。
       lines.push(
-        `⏱️ Total Time: ${totalSec < 60 ? `${totalSec.toFixed(1)}s` : `${(totalSec / 60).toFixed(1)}min`}`
+        `⏱️ Total Time: ${totalSec < 60 ? `${Math.round(totalSec)}s` : `${Math.round(totalSec / 60)}min`}`
       )
       lines.push(`⚡ TPS: ${tps.toFixed(1)}`)
     }

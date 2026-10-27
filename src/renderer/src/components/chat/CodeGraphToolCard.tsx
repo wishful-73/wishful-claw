@@ -18,6 +18,7 @@ import {
   SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { useUIStore } from '@renderer/stores/ui-store'
 import type { CompactToolHeaderModel } from './CompactToolCallHeader'
 import { CompactToolCallHeader } from './CompactToolCallHeader'
@@ -160,8 +161,8 @@ function toolActionKey(name: string): string {
 
 function elapsedLabel(startedAt?: number, completedAt?: number): string | null {
   if (typeof startedAt !== 'number' || typeof completedAt !== 'number') return null
-  const seconds = Math.max(0, completedAt - startedAt) / 1000
-  return `${seconds.toFixed(1)}s`
+  // S-245：统一走 formatDurationMs —— 原来这里连 ms 档都没有，会出 `0.4s` 这种读数。
+  return formatDurationMs(Math.max(0, completedAt - startedAt))
 }
 
 function statusLabel(

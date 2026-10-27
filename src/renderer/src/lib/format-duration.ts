@@ -10,9 +10,11 @@ export function formatDurationMs(ms: number): string {
 
   const totalSeconds = ms / 1000
   if (totalSeconds < 60) {
-    const digits = totalSeconds >= 10 ? 0 : 1
-    // toFixed 会产出 "1.0" / "10.0" 这类无意义的小数尾巴，掐掉。
-    return `${totalSeconds.toFixed(digits).replace(/\.0+$/, '')}s`
+    // S-245（2026-10-27 老大：「耗时里面 s 出现了 7.3s 这种格式 1.1s 这种 我希望不要有小数」）：
+    // 秒档一律取整。小数读数对「这件事做了多久」没有任何价值，只让人多看一眼小数点。
+    // ms 档保留整数毫秒 —— 1s 以下仍有精度，`340ms` 不会被吞成 `0s`。
+    // 取整用四舍五入（不是截断），与原有 `toFixed(0)` 语义一致。
+    return `${Math.round(totalSeconds)}s`
   }
 
   const totalMinutes = Math.floor(totalSeconds / 60)
@@ -26,7 +28,8 @@ export function formatDurationMs(ms: number): string {
     return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`
   }
 
-  const secondsText = seconds.toFixed(seconds >= 10 ? 0 : 1).replace(/\.0+$/, '')
+  // 分钟档的秒部分同样取整（S-245）：1m23s，不出 1m23.4s。
+  const secondsText = String(Math.round(seconds))
   // 整分不写秒：1m，而不是 1m0s。
   return secondsText === '0' ? `${totalMinutes}m` : `${totalMinutes}m${secondsText}s`
 }

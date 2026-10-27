@@ -3,6 +3,7 @@
 import type { ContentBlock, ToolResultContent } from '@renderer/lib/api/types'
 import type { ToolCallState, ToolCallStatus } from '@renderer/lib/agent/types'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { isMcpTool } from '@renderer/lib/mcp/mcp-tools'
 import {
   isHiddenExecutionToolName,
@@ -11,9 +12,8 @@ import {
 import type { ToolCallRenderState, BashArtifactEntry } from './types'
 
 export function formatRetryDelay(delayMs: number): string {
-  if (delayMs < 1000) return `${delayMs}ms`
-  if (delayMs < 10_000) return `${(delayMs / 1000).toFixed(1)}s`
-  return `${Math.round(delayMs / 1000)}s`
+  // S-245：秒档不带小数 —— 统一走 formatDurationMs（ms 档保精度，1s 以上取整）。
+  return formatDurationMs(delayMs)
 }
 
 export function resolveToolCallStatus(
@@ -339,6 +339,10 @@ export function formatTokenMetric(value: number): string {
 }
 
 export function formatPreciseDurationMs(ms: number): string {
+  // S-245 有意**不**收敛到 formatDurationMs：本函数唯一的调用点是
+  // `use-completion-summary.ts` 的 TTFT（首字延迟）。那是**性能指标不是耗时读数** ——
+  // 1.2s 与 1.8s 的差别对排查有意义，取整就把信号抹平了。
+  // 口径分界：这件事做了多久 → 取整（formatDurationMs）；快不快 → 保留精度（本函数）。
   if (ms < 1000) return `${Math.round(ms)}ms`
   const seconds = ms / 1000
   if (seconds < 60) return `${seconds.toFixed(1)}s`

@@ -75,12 +75,22 @@ function testMillisecondBand(): void {
 }
 
 function testSecondBand(): void {
-  eq(formatDurationMs(1000), '1s', '整秒不写小数')
-  eq(formatDurationMs(1500), '1.5s', '1.5s')
-  eq(formatDurationMs(6200), '6.2s', '6.2s')
-  eq(formatDurationMs(9999), '10s', '四舍五入后的 .0 尾巴也要掐掉')
+  // S-245（2026-10-27 老大：「s 出现了 7.3s 这种格式 1.1s 这种 我希望不要有小数」）：
+  // 秒档一律取整，四舍五入。**这几条是这次改动的主要断言** —— 原来的 1.5s / 6.2s 必须变成 2s / 6s。
+  eq(formatDurationMs(1000), '1s', '整秒')
+  eq(formatDurationMs(1100), '1s', '1.1s → 1s（老大点名的那个格式）')
+  eq(formatDurationMs(1500), '2s', '1.5s → 2s（四舍五入，不是截断）')
+  eq(formatDurationMs(6200), '6s', '6.2s → 6s')
+  eq(formatDurationMs(7300), '7s', '7.3s → 7s（老大截图里那个）')
+  eq(formatDurationMs(9999), '10s', '9.999s → 10s')
   eq(formatDurationMs(10_000), '10s', '10s')
   eq(formatDurationMs(15_000), '15s', '15s')
+  eq(formatDurationMs(59_400), '59s', '秒档上沿')
+  // 反向：秒档不许再出现小数点 —— 逐值扫一遍，漏一个就红。
+  for (const ms of [1010, 1234, 1999, 2345, 5678, 6001, 12_345, 45_678]) {
+    const out = formatDurationMs(ms)
+    eq(out.includes('.'), false, `${ms}ms 的读数不许带小数点，实际：${out}`)
+  }
 }
 
 function testMinuteBand(): void {
@@ -90,6 +100,11 @@ function testMinuteBand(): void {
   eq(formatDurationMs(90_000), '1m30s', '1m30s')
   eq(formatDurationMs(514_000), '8m34s', '实测那轮 514s')
   eq(formatDurationMs(3_599_000), '59m59s', '分钟档上沿')
+  // S-245：分钟档的秒部分同样取整（原来会出 1m23.4s）。
+  eq(formatDurationMs(83_400), '1m23s', '1m23.4s → 1m23s')
+  eq(formatDurationMs(61_600), '1m2s', '1m1.6s → 1m2s（四舍五入）')
+  eq(formatDurationMs(119_600), '1m60s', '既有瑕疵原样保留：59.6s 进位成 60s（本次只去小数，不动进位）')
+  eq(formatDurationMs(83_400).includes('.'), false, '分钟档读数不许带小数点')
 }
 
 function testHourBand(): void {

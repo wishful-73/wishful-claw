@@ -96,7 +96,9 @@ function testSameScaleAsActionBar(): void {
 
 function testUnitLadder(): void {
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 999 }), '999ms', '亚秒段')
-  eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 1_234 }), '1.2s', '秒段保留一位小数')
+  // S-245（2026-10-27）：秒段不再保留小数 —— 原来这里是 '1.2s'。
+  eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 1_234 }), '1s', '秒段取整')
+  eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 1_600 }), '2s', '秒段四舍五入')
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 12_000 }), '12s', '≥10s 转整数')
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 60_000 }), '1m', '整分不写秒')
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 65_000 }), '1m5s', '分+秒')

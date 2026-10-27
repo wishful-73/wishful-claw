@@ -9,6 +9,7 @@ import { Brain, ChevronDown, ChevronRight, FileText, ScrollText, icons } from 'l
 
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { formatTokens, getBillableTotalTokens } from '@renderer/lib/format-tokens'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { parseSubAgentMeta } from '@renderer/lib/agent/sub-agents/create-tool'
 import { subAgentRegistry } from '@renderer/lib/agent/sub-agents/registry'
 import {
@@ -54,10 +55,8 @@ function getSubAgentIcon(agentName: string): React.ReactNode {
 }
 
 function formatElapsed(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  const secs = ms / 1000
-  if (secs < 60) return `${secs.toFixed(1)}s`
-  return `${Math.floor(secs / 60)}m${Math.round(secs % 60)}s`
+  // S-245：与工具卡 / 操作栏同一口径，别在这里另写一套（原来秒档带 1 位小数）。
+  return formatDurationMs(ms)
 }
 
 function extractToolResultText(content?: ToolResultContent): string {

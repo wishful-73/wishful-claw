@@ -106,6 +106,19 @@ public sealed class AgentRuntimeRunState : IDisposable
     public bool SandboxEnabledInPrompt { get; set; }
 
     /// <summary>
+    /// S-236（档 2）：本 run 已确认上游不吃图像输入，之后每次组包都剥掉 image 块。
+    ///
+    /// 为什么不直接剥 <c>conversation</c>：那是 <c>SessionConversation</c> 的**活引用**
+    /// （<c>GetConversation()</c> 返回 <c>_conversation</c> 本体），在它上面删块等于改持久历史
+    /// —— 用户切回会话会发现图没了。所以标记放这里，剥的永远是
+    /// <c>ExecuteTurnAsync</c> 每轮现造的临时副本（wire conversation）。
+    ///
+    /// 与 <see cref="ImageVisionMemory"/> 的分工：这个是 **run 级**（撞了一次立刻止血），
+    /// 那个是 **进程级 + 落盘**（下次不用再白撞一次）。
+    /// </summary>
+    public bool SuppressImagesForModel { get; set; }
+
+    /// <summary>
     /// S-209：申请一次催办。额度用尽返回 false —— 这时必须放它正常收尾，
     /// 绝不无限重试。
     /// </summary>

@@ -35,6 +35,12 @@ internal static partial class AgentLoop
     private const int ContextCompressionAutoBufferTokens = 13_000;
     private const int MaxOverflowCompressionAttemptsPerRun = 2;
     private const int MaxToolPairingRepairAttemptsPerRun = 2;
+    /// <summary>
+    /// S-236（档 2）：一次 run 里最多剥图降级几次。1 次足够 —— 剥完这一轮就没有 image 块了，
+    /// 再撞同一个错说明问题不在图上（留给正常报错）。留到 2 只为兜住「本轮之后工具又读了新图」
+    /// 这种边角：模型在被拒后会改用 Read 重读，第二次仍然失败才算真不可用。
+    /// </summary>
+    private const int MaxImageStripAttemptsPerRun = 2;
 
     /// <summary>
     /// Main execution loop. Called by AgentRuntimeTools.ExecuteRunAsync.
@@ -281,6 +287,7 @@ internal static partial class AgentLoop
         var overflowCompressionAttempts = 0;
         var overflowCompressionPendingVerification = false;
         var toolPairingRepairAttempts = 0;
+        var imageStripAttempts = 0;
 
         WorkerLog.Debug(
             $"agent loop start provider={providerType} " +
@@ -442,6 +449,46 @@ internal static partial class AgentLoop
                         $"{MaxToolPairingRepairAttemptsPerRun} error={ex.Message}");
                     conversation = sessionConv.GetConversation();
                     wireConversation = sessionConv.GetWireConversation();
+                }
+                catch (Exception ex) when (
+                    ex is not OperationCanceledException &&
+                    imageStripAttempts < MaxImageStripAttemptsPerRun &&
+                    ImageInputErrors.IsImageUnsupportedError(ex))
+                {
+                    // S-236（档 2）：上游说「这个模型不吃图像输入」。
+                    //
+                    // 两道闸必须先过，否则会把别的 400 误吞成图像问题：
+                    //  ① 本 run 已经降过一次还撞同一个错 ⇒ 问题不在图上，原样抛；
+                    //  ② 这轮压根没有 image 块可剥 ⇒ 同样不是图的问题，原样抛。
+                    // 过了这两道才值得剥图重发 —— 那一次重试才是有意义的。
+                    if (state.SuppressImagesForModel || !ConversationHasImageBlocks(conversation))
+                    {
+                        throw;
+                    }
+
+                    imageStripAttempts++;
+                    state.SuppressImagesForModel = true;
+
+                    var unsupportedProviderId = JsonHelpers.GetString(provider, "id");
+                    var unsupportedModelId = JsonHelpers.GetString(provider, "model");
+                    // 记住实测结果：下次这个 (provider, model) 直接在组包时剥图，
+                    // 不用再白烧一次带图的往返。失败也不影响主流程（记不住就多撞一次）。
+                    ImageVisionMemory.RememberUnsupported(unsupportedProviderId, unsupportedModelId);
+
+                    WorkerLog.Warn(
+                        $"agent provider turn rejected image input; stripping image blocks and retrying " +
+                        $"runId={state.RunId} provider={unsupportedProviderId ?? "?"} " +
+                        $"model={unsupportedModelId ?? "?"} attempt={imageStripAttempts}/" +
+                        $"{MaxImageStripAttemptsPerRun} error={ex.Message}");
+
+                    await AgentRuntimeTools.EmitAsync(
+                        state,
+                        context,
+                        new AgentRuntimeStreamEvent(
+                            "image_input_unsupported",
+                            Reason: "stripped",
+                            Attempt: imageStripAttempts,
+                            MaxAttempts: MaxImageStripAttemptsPerRun));
                 }
             }
 
@@ -692,6 +739,11 @@ internal static partial class AgentLoop
 
         // S-207：沙箱状态在 run 进行中被改过（用户批准/恢复正常）时，把提示词口径拉平。
         wireConversation = InjectSandboxTransition(parameters, wireConversation, state);
+
+        // S-236（档 2）：已知这个模型不吃图像输入时，把 image 块从**临时副本**里剥掉。
+        // 只剥这份，不碰 conversation —— 后者是会话的活引用，删块等于改用户历史。
+        // 两种触发来源：本 run 刚撞过一次（state 标记），或以前撞过并记住了（落盘的记忆表）。
+        wireConversation = StripImagesWhenModelCannotSee(provider, wireConversation, state);
 
         if (providerType == "anthropic")
         {

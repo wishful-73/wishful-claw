@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { toast } from 'sonner'
+import i18n from 'i18next'
 
 import { immer } from 'zustand/middleware/immer'
 
@@ -194,18 +196,14 @@ let _scheduleStreamDeltaFlush: () => void = () => {}
 
 
 
-// S-145：Read 读图要知道「当前模型是否支持图像输入」—— 非视觉模型收到 image 块会被上游拒。
-// 查不到模型就返回 true（不降级）：宁可把图送出去让上游报错，也不要静默吞掉像素让模型猜内容。
-async function resolveSessionSupportsVision(modelId: string | null): Promise<boolean> {
-  if (!modelId) return true
-  const { useProviderStore, modelSupportsVision } = await import('@renderer/stores/provider-store')
-  const { providers } = useProviderStore.getState()
-  for (const provider of providers) {
-    const model = provider.models?.find((item) => item.id === modelId)
-    if (model) return modelSupportsVision(model)
-  }
-  return true
-}
+// S-236（2026-10-27）：这里原本有一个 `resolveSessionSupportsVision(modelId)`，它按 modelId
+// 在**全部** provider 里找第一个同名模型来推断「能不能读图」。两个毛病：
+// ①跨 provider 串号 —— 同一个 `glm-5.3` 在 bigmodel / opencode-go / workbuddy 两家之间
+//   标法不一（false/false/true/false），命中谁全看 providers 数组顺序，于是同一个模型
+//   有时能读图有时不能（就是「多次出现」的现场）；②它和贴图路径（`use-input-area-selectors.ts`
+//   先按 providerId 定位再找 model）是**两套解析**，两条路能得出相反结论 ——
+//   那正是「截图能识图、Read 不能」的机械原因。
+// 改法不是把这套修准，是**让它消失**：这个值已经不参与任何判断（见 sendMessage 里的说明）。
 
 // Use immer middleware so set((state) => { state.x = y }) works
 
@@ -465,12 +463,12 @@ export const useChatStore = create<ChatStore>()(
           recallSettings.contextCompressionThreshold
         )
 
-        // S-145：Read 读图同款盖章 —— 非视觉模型只回路径与尺寸，不产出 image 块。
-        // 放这里而不是六个透传点：漏传一处的表现很隐蔽（某条路径下 Read 图要么静默吞掉、
-        // 要么把 image 块送给不支持它的模型换来一个 400）。
-        workerParams.supportsVision = await resolveSessionSupportsVision(
-          typeof workerParams.provider?.model === 'string' ? workerParams.provider.model : null
-        )
+        // S-236（2026-10-27）：**不再盖 supportsVision**。
+        // 原来的盖章链是「按 modelId 在全部 provider 里找第一个同名模型 → 拿它的
+        // supportsVision」，跨 provider 串号（同一个 glm-5.3 在四个渠道里标法不一），
+        // 于是出现「截图能识图、Read 不能」的自相矛盾现场。
+        // 现在这个值不参与任何判断：C# 侧 ToolExecutionContext.SupportsVision 默认 true，
+        // 渲染端不传即放行；上游真不支持图像时由 ImageInputErrors 剥图重试（档 2）。
 
         const result = await window.api.workerRequest<{ started: boolean; runId: string }>(
 
@@ -1820,6 +1818,17 @@ export const useChatStore = create<ChatStore>()(
 
             break
 
+          }
+
+          case 'image_input_unsupported': {
+            // S-236 档 2：上游明确拒了图像输入，Worker 已剥图重发。旧版这里是静默
+            // 不附图，用户看不出少给了东西 —— 这条提示就是补上那点静默。
+            // `id` 让同一会话的重复提示合并，不刷屏。
+            toast.warning(i18n.t('chat:assistantMessage.imageInputUnsupported'), {
+              description: i18n.t('chat:assistantMessage.imageInputUnsupportedDetail'),
+              id: `image-input-unsupported:${targetSessionId}`
+            })
+            break
           }
 
 

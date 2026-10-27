@@ -1,4 +1,4 @@
-﻿// Image attachment callbacks for InputArea
+// Image attachment callbacks for InputArea
 // State remains in the main component; this hook provides callbacks only
 
 import * as React from 'react'
@@ -14,7 +14,12 @@ import { IPC } from '@renderer/lib/ipc/channels'
 import { getImageMediaTypeForPath, createImageAttachmentId } from './utils'
 
 export interface UseImageAttachmentsOptions {
-  supportsVision: boolean
+  /**
+   * S-236：保留但**不再参与判断**。图片一律按图片处理 —— 这张本地能力表追不上新模型、
+   * 反代渠道与用户自定义模型，也不该替模型说「你不行」。上游真不支持时由
+   * `ImageInputErrors` 认出来剥图重试（档 2）。字段留着是为了不动上层调用签名。
+   */
+  supportsVision?: boolean
   t: TFunction
   addFilesToEditor: (filePaths: string[], selection?: { start: number; end: number }) => void
   setAttachedImages: React.Dispatch<React.SetStateAction<ImageAttachment[]>>
@@ -23,7 +28,7 @@ export interface UseImageAttachmentsOptions {
 }
 
 export function useImageAttachments(opts: UseImageAttachmentsOptions) {
-  const { supportsVision, t, addFilesToEditor, setAttachedImages, setPreviewImage, setPendingImageReads } = opts
+  const { t, addFilesToEditor, setAttachedImages, setPreviewImage, setPendingImageReads } = opts
 
   const addImages = React.useCallback(async (files: File[]) => {
     if (files.length === 0) return
@@ -108,9 +113,11 @@ export function useImageAttachments(opts: UseImageAttachmentsOptions) {
       )
       if (result.canceled || paths.length === 0) return
 
-      const imagePaths = supportsVision
-        ? paths.filter((filePath) => Boolean(getImageMediaTypeForPath(filePath)))
-        : []
+      // S-236（2026-10-27）：不再按 supportsVision 把图片降级成文件引用。
+      // 那张能力表追不上新模型 / 反代渠道 / 用户自定义模型，也压不住跨 provider 同名 id 的串号，
+      // 结果就是「同一张图，贴进来能看、Read 不能」。现在一律按图片处理，能不能收由上游回答；
+      // 上游回「不支持图像」时由 ImageInputErrors 认出来剥图重试（档 2）。
+      const imagePaths = paths.filter((filePath) => Boolean(getImageMediaTypeForPath(filePath)))
       const filePaths = paths.filter((filePath) => !imagePaths.includes(filePath))
       const imageFallbackPaths: string[] = []
 
@@ -141,7 +148,7 @@ export function useImageAttachments(opts: UseImageAttachmentsOptions) {
       console.error('[InputArea] Failed to attach media:', error)
       toast.error(t('input.attachMediaFailed'))
     }
-  }, [addFilesToEditor, readImagePathAsAttachment, setAttachedImages, setPendingImageReads, supportsVision, t])
+  }, [addFilesToEditor, readImagePathAsAttachment, setAttachedImages, setPendingImageReads, t])
 
   return {
     addImages,

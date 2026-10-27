@@ -135,6 +135,10 @@ public static partial class ProviderRetryPolicy
                 // 白白烧掉几次往返。它交给 AgentLoop 的错误驱动分支 —— 先修配对，
                 // 再重发同一请求，那一次重试才是有意义的。
                 !ToolPairingErrors.IsToolPairingError(ex) &&
+                // S-236（档 2）同理：上游说「不吃图像输入」时，原样重试只会把同一批图
+                // 再送 N 次、再被拒 N 次 —— 纯烧钱烧延迟。剥掉图之后那一次重发才有意义，
+                // 所以它交给 AgentLoop 的图像降级分支（剥图 → 记住 → 重发）。
+                !ImageInputErrors.IsImageUnsupportedError(ex) &&
                 (isUnlimited || retryAttempt < maxAttempts) &&
                 !state.IsCancellationRequested)
             {

@@ -96,13 +96,16 @@ try
         Check(source.GetProperty("filePath").GetString() == png, "image keeps the file path");
     }
 
-    // ── 降级 1：非 vision 模型 ──
+    // ── S-236：非 vision 模型照常附图（配置不许替模型说「你不行」） ──
+    // 旧行为是「判 false 就只回路径与尺寸，像素不附」，那张本地能力表追不上新模型/反代渠道/
+    // 用户自定义模型，还会跨 provider 同名 id 串号，于是出现「截图能识图、Read 不能」。
+    // 现在一律附像素，能不能收由上游回答；上游真不支持时由 ImageInputErrors 剥图重试（档 2）。
     var blind = await tool.ExecuteAsync(
         Input(png),
         new ToolExecutionContext(WorkingFolder: root, SupportsVision: false));
-    Check(blind.ContentBlocks is null, "non-vision read carries no image block");
-    Check(blind.Content.Contains("not marked as vision-capable", StringComparison.Ordinal),
-        "non-vision read explains why there are no pixels");
+    Check(blind.ContentBlocks is not null, "S-236: a model marked non-vision still gets the pixels");
+    Check(!blind.Content.Contains("not marked as vision-capable", StringComparison.Ordinal),
+        "S-236: the old 'not marked as vision-capable' refusal is gone");
 
     // ── 降级 2：超过内联上限 ──
     var oversized = Path.Combine(root, "huge.png");

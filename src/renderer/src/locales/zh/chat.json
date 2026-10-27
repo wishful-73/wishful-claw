@@ -1201,6 +1201,8 @@
     "thinkingStatus": "正在思考中...",
     "retryingRequest": "请求重试中",
     "retryingRequestDetail": "第 {{attempt}} / {{maxAttempts}} 次重试",
+    "imageInputUnsupported": "该模型不支持图像输入",
+    "imageInputUnsupportedDetail": "已自动改为只发送文件信息（路径、尺寸、格式），本轮继续执行。想让它真正看图，去设置里换一个支持读图的模型。",
     "streamingText": "流式输出正文",
     "activeTools": "{{count}} 个工具运行中",
     "toolExecutions": "{{count}} 个工具执行",

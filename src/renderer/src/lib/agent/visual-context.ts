@@ -30,7 +30,12 @@ export interface VisualContextInjectionOptions {
   ipc: {
     invoke(channel: string, args?: unknown): Promise<unknown>
   }
-  supportsVision: boolean
+  /**
+   * S-236：保留但**不再参与判断**。视觉上下文一律尝试附图 —— 本地能力表追不上
+   * 新模型 / 反代渠道 / 用户自定义模型，也不该替模型说「你不行」。
+   * 上游真不支持时由 C# 侧 `ImageInputErrors` 剥图重试（档 2）。字段留着是为了不动调用方签名。
+   */
+  supportsVision?: boolean
   maxArtifacts?: number
   recentMessageLimit?: number
 }
@@ -312,8 +317,7 @@ function formatArtifactLine(artifact: VisualArtifactReference, index: number): s
 
 function buildVisualContextText(
   artifacts: VisualArtifactReference[],
-  imageBlocks: ImageBlock[],
-  supportsVision: boolean
+  imageBlocks: ImageBlock[]
 ): string {
   const lines = [
     '<system-reminder>',
@@ -321,13 +325,16 @@ function buildVisualContextText(
     ...artifacts.map(formatArtifactLine)
   ]
 
-  if (supportsVision && imageBlocks.length > 0) {
+  // S-236：文案只在「图到底附上了没有」上分叉，不再拿本地能力表说事。
+  // 以前这里写「This model is not marked as vision-capable」—— 那是把一张会过期的
+  // 配置表当成事实告诉模型，而图其实根本没试过就丢了。
+  if (imageBlocks.length > 0) {
     lines.push(
       'The corresponding image blocks are attached after this note. Use them directly when the user refers to the recent/generated/screenshot image.'
     )
   } else {
     lines.push(
-      'This model is not marked as vision-capable or the image data could not be attached. Use the listed file paths/URLs as references; when file tools are available, call Read on a file path before visual reconstruction or QA.'
+      'The image data could not be attached for this turn. Use the listed file paths/URLs as references; when file tools are available, call Read on a file path before visual reconstruction or QA.'
     )
   }
 
@@ -361,12 +368,12 @@ export async function applyRecentVisualContext(
   const userText = getMessageText(lastUserMessage)
   if (!shouldInjectVisualContext({ messages, lastUserIndex, userText })) return messages
 
-  const imageBlocks = options.supportsVision
-    ? await hydrateImagesForVision(artifacts, options.ipc)
-    : []
+  // S-236：不再按 supportsVision 决定附不附图 —— 一律尝试 hydrate。
+  // 能不能收由上游回答；真不支持时 C# 侧 ImageInputErrors 剥图重试（档 2）。
+  const imageBlocks = await hydrateImagesForVision(artifacts, options.ipc)
   const contextBlock: ContentBlock = {
     type: 'text',
-    text: buildVisualContextText(artifacts, imageBlocks, options.supportsVision)
+    text: buildVisualContextText(artifacts, imageBlocks)
   }
   const nextContent = [...toContentBlocks(lastUserMessage.content), contextBlock, ...imageBlocks]
 

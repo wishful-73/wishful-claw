@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-26 实测 597 行）：全局设置的单一真源。类型接口、默认值、persist
+// 白名单三区必须能在同一个文件里上下对着看 —— 新增一个设置项要同时落三处，拆开之后
+// 「加了个键但漏了 persist」这类错误只能靠线上丢配置才发现。
+// 依据 AGENTS.md §大文件拆分 第 5 条第 1 类（单一真源，拆开即失真）。
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { ProviderType, ReasoningEffortLevel } from '../lib/api/types'
@@ -25,7 +29,7 @@ import {
   DEFAULT_PERMISSION_POLICY,
   type PermissionPolicy
 } from '../../../shared/permission-policy'
-import { type ModelBinding, type CodexConfig, type FreeChatSite, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampGlobalContextCapTokens, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
+import { type ChatRenderDensity, type ModelBinding, type CodexConfig, type FreeChatSite, type MemoryOrganizationThinkingMode, type ClarifyPlanModeAutoSwitchTarget, type RecentWorkingTarget, type FileDiffViewMode, type LiveOutputAnimationStyle, type ShellExecutionEndpoint, type MainModelSelectionMode, type ProjectSessionDefaultCollaborationMode, type CoworkDefaultPermissionMode, type MemoryScopeMode, type MemoryOrganizationSchedule, type ProjectDefaultDirectoryMode, type BrowserSearchSettings, type LegacyWebSearchSettings, DEFAULT_THEME_MODE, DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_CONCURRENT_SUB_AGENTS, DEFAULT_MAX_TOOL_CALLS_PER_TURN, DEFAULT_MAX_RESIDENT_TURNS, DEFAULT_GLOBAL_CONTEXT_CAP_TOKENS, DEFAULT_SHELL_EXECUTION_ENDPOINT, createDefaultProviderFallback, createDefaultCodexConfig, normalizeShellExecutionEndpoint, sanitizeRecentWorkingTargets, clampMaxConcurrentSubAgents, clampMaxParallelToolCalls, clampMaxToolCallsPerTurn, clampMaxResidentTurns, clampGlobalContextCapTokens, clampRequestMaxRetries, normalizeProviderFallback } from './settings-store-types'
 import type { ProviderFallbackConfig } from '../../../shared/types/provider'
 import { DEFAULT_BROWSER_SEARCH_SETTINGS } from '@renderer/lib/tools/browser-search/engines'
 import { DEFAULT_LOG_LEVEL, normalizeLogLevel, type LogLevel } from '../../../shared/logging'
@@ -42,6 +46,7 @@ export const DEFAULT_FREE_CHAT_SITES: FreeChatSite[] = [
 
 // Re-export types for consumers
 export type {
+  ChatRenderDensity,
   ClarifyPlanModeAutoSwitchTarget,
   CodexConfig,
   FileDiffViewMode,
@@ -213,6 +218,8 @@ interface SettingsStore {
   fontSize: number
   animationsEnabled: boolean
   liveOutputAnimationStyle: LiveOutputAnimationStyle
+  /** 聊天窗时间轴渲染详细度（S-225）：只控过程层（工具 / 思考 / 子 Agent），正文消息恒显示。 */
+  chatRenderDensity: ChatRenderDensity
   toolbarCollapsedByDefault: boolean
   leftSidebarWidth: number
   /** Chat column fills the whole conversation panel instead of the 820px cap. */
@@ -371,6 +378,7 @@ export const useSettingsStore = create<SettingsStore>()(
       fontSize: 16,
       animationsEnabled: true,
       liveOutputAnimationStyle: 'agile',
+      chatRenderDensity: 'compact',
       toolbarCollapsedByDefault: false,
       leftSidebarWidth: LEFT_SIDEBAR_DEFAULT_WIDTH,
       conversationPanelFullWidth: false,
@@ -540,6 +548,7 @@ export const useSettingsStore = create<SettingsStore>()(
         fontSize: state.fontSize,
         animationsEnabled: state.animationsEnabled,
         liveOutputAnimationStyle: state.liveOutputAnimationStyle,
+        chatRenderDensity: state.chatRenderDensity,
         toolbarCollapsedByDefault: state.toolbarCollapsedByDefault,
         leftSidebarWidth: clampLeftSidebarWidth(state.leftSidebarWidth),
         conversationPanelFullWidth: state.conversationPanelFullWidth,

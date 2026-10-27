@@ -1,0 +1,43 @@
+# S-226：反馈服务 systemd 单元
+#
+# 装到 /etc/systemd/system/wishfulclaw-feedback.service
+# 代码就在数据目录下的 app/ 里（同一处管理，省得两个地方对版本）：
+#   /data/services/wishfulclaw-feedback/app/         ← 本仓库 server/feedback/ 的内容
+#   /data/services/wishfulclaw-feedback/feedback.db  ← 数据
+#
+# 单实例足够（4 核 7.6 G，读多写少）。不要开多份：限流是进程内 Map，
+# 多进程各算各的等于把「每小时 5 条」放大成「每小时 5×N 条」。
+
+[Unit]
+Description=WishfulClaw feedback service
+Documentation=file:///data/services/wishfulclaw-feedback/app/install.md
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/data/services/wishfulclaw-feedback/app
+
+Environment=WC_FEEDBACK_DIR=/data/services/wishfulclaw-feedback
+Environment=WC_FEEDBACK_PORT=7860
+Environment=NODE_ENV=production
+
+ExecStart=/usr/bin/node app.mjs
+Restart=always
+RestartSec=3
+
+# 日志直接追加到文件（配 logrotate 的 copytruncate）。
+# 不用 journald：这条服务的日志要能被我自己 grep，混进 journal 反而难找。
+StandardOutput=append:/data/services/wishfulclaw-feedback/feedback.log
+StandardError=inherit
+
+# ── 加固（都是无成本项，能开就开）──
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/data/services/wishfulclaw-feedback
+
+[Install]
+WantedBy=multi-user.target

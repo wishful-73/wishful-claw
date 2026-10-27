@@ -60,6 +60,8 @@ scripts/*
 !scripts/zip-release.mjs
 !scripts/run-tests.mjs
 !scripts/site-stats.mjs
+!scripts/ci-checks.mjs
+!scripts/install-git-hooks.mjs
 .kb-update/
 
 # Local scratch

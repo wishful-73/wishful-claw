@@ -1,6 +1,6 @@
 // Main content renderer: handles string, empty, and block-by-block rendering
 //
-// 500 行豁免（2026-10-20 实测 533 行）：这个文件就是「一条 assistant 消息怎么画」的
+// 500 行豁免（2026-10-26 实测 584 行）：这个文件就是「一条 assistant 消息怎么画」的
 // 单一渲染分派器 —— 文本 / 思考 / 工具 / 图片 / 编排 / 过程折叠全按 block 类型走同一张
 // 表，共用一个 renderItem 与同一套 folding 判定。拆成多个文件只会把一个 switch 切成
 // 几个互相 import 的碎片，判定口径立刻分叉（iter-40 S-210 的回填逻辑就依赖这个
@@ -15,8 +15,11 @@ import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
 import type { TFunction } from 'i18next'
 import {
-  buildToolExecutionOutline, type ToolExecutionRun
+  buildToolExecutionOutline,
+  type ToolExecutionItem,
+  type ToolExecutionRun
 } from '../execution-outline'
+import { shouldPinOutsideCollapsedRun } from '../render-density'
 import { ThinkingBlock } from '../ThinkingBlock'
 import { CollapsibleHeightPanel } from '../CollapsibleHeightPanel'
 import { WebSearchBlock } from '../WebSearchBlock'
@@ -292,9 +295,31 @@ export function ContentRenderer({
         const block = normalizedContent[item.blockIndex]
         if (!block || block.type !== 'tool_use') return null
 
-        return <ToolBlockRenderer key={`${run.id}:${toolUseId}`} block={block} blockIndex={item.blockIndex} {...toolBlockProps} />
+        return {
+          item,
+          node: (
+            <ToolBlockRenderer
+              key={`${run.id}:${toolUseId}`}
+              block={block}
+              blockIndex={item.blockIndex}
+              {...toolBlockProps}
+            />
+          )
+        }
       })
-      .filter((node): node is React.JSX.Element => !!node)
+      .filter(
+        (entry): entry is { item: ToolExecutionItem; node: React.JSX.Element } => !!entry
+      )
+
+    // S-225 §8：折叠态下 attention / force 项必须露在折叠面板之外 —— 档位不得藏错误。
+    // 否则「纯文本」档里一个失败的 Edit 会跟着面板一起沉下去，用户只看到「运行了 N 个工具」。
+    const pinnedTools = renderedTools.filter((entry) =>
+      shouldPinOutsideCollapsedRun(collapsed, entry.item.visibility)
+    )
+    const panelTools =
+      pinnedTools.length > 0
+        ? renderedTools.filter((entry) => !pinnedTools.includes(entry))
+        : renderedTools
 
     if (!run.showToggle && renderedTools.length === 0) return null
 
@@ -310,6 +335,9 @@ export function ContentRenderer({
             onClick={() => toggleToolRunCollapsed(run)}
           />
         ) : null}
+        {pinnedTools.length > 0 ? (
+          <div className="space-y-2">{pinnedTools.map((entry) => entry.node)}</div>
+        ) : null}
         {run.showToggle ? (
           <CollapsibleHeightPanel open={!collapsed} className="overflow-hidden">
             {/* R-10.3: 展开且非流式（定格态手动展开）时封顶 70vh 出内部滚动条 */}
@@ -320,11 +348,11 @@ export function ContentRenderer({
                   : 'space-y-2'
               }
             >
-              {renderedTools}
+              {panelTools.map((entry) => entry.node)}
             </div>
           </CollapsibleHeightPanel>
         ) : (
-          renderedTools
+          panelTools.map((entry) => entry.node)
         )}
       </React.Fragment>
     )

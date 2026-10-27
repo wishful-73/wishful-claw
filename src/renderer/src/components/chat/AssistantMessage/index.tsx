@@ -7,6 +7,7 @@ import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import { useShallow } from 'zustand/react/shallow'
 import type { ContentBlock } from '@renderer/lib/api/types'
 import { useSettingsStore } from '@renderer/stores/settings-store'
+import type { ChatRenderDensity } from '@renderer/stores/settings-store-types'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { useProviderStore } from '@renderer/stores/provider-store'
 import { useMemoizedTokens } from '@renderer/hooks/use-estimated-tokens'
@@ -62,6 +63,8 @@ export function AssistantMessage({
   const { t } = useTranslation('chat')
   const devMode = useSettingsStore((s) => s.devMode)
   const liveOutputAnimationStyle = useSettingsStore((s) => s.liveOutputAnimationStyle)
+  // S-225：渲染档位。工具 run 的折叠默认值由它派生，切换后连同手动覆盖一起失效。
+  const renderDensity = useSettingsStore((s) => s.chatRenderDensity)
   const liveComponentClassName = isStreaming
     ? getLiveOutputComponentClass(liveOutputAnimationStyle)
     : ''
@@ -257,6 +260,7 @@ export function AssistantMessage({
         toolResults,
         liveToolCallMap: effectiveLiveToolCallMap,
         hiddenToolUseIds: outlineHiddenToolUseIds,
+        density: renderDensity,
         t
       }),
     [
@@ -264,6 +268,7 @@ export function AssistantMessage({
       normalizedContent,
       isStreaming,
       outlineHiddenToolUseIds,
+      renderDensity,
       t,
       toolResults
     ]
@@ -296,35 +301,41 @@ export function AssistantMessage({
   ])
   const [toolRunCollapseState, setToolRunCollapseState] = useState<{
     msgId?: string
+    /** S-225：覆盖只在写入时的那一档内有效，切档后整批作废（回到该档派生值）。 */
+    density?: ChatRenderDensity
     collapsedByRunId: Record<string, boolean>
   }>({
     msgId,
+    density: renderDensity,
     collapsedByRunId: {}
   })
+  const hasToolRunOverride =
+    toolRunCollapseState.msgId === msgId && toolRunCollapseState.density === renderDensity
   const getToolRunCollapsed = useCallback(
     (run: ToolExecutionRun): boolean => {
-      if (toolRunCollapseState.msgId !== msgId) return run.defaultCollapsed
+      if (!hasToolRunOverride) return run.defaultCollapsed
       return toolRunCollapseState.collapsedByRunId[run.id] ?? run.defaultCollapsed
     },
-    [msgId, toolRunCollapseState]
+    [hasToolRunOverride, toolRunCollapseState]
   )
   const toggleToolRunCollapsed = useCallback(
     (run: ToolExecutionRun): void => {
       setToolRunCollapseState((current) => {
-        const currentCollapsed =
-          current.msgId === msgId
-            ? (current.collapsedByRunId[run.id] ?? run.defaultCollapsed)
-            : run.defaultCollapsed
+        const overrideActive = current.msgId === msgId && current.density === renderDensity
+        const currentCollapsed = overrideActive
+          ? (current.collapsedByRunId[run.id] ?? run.defaultCollapsed)
+          : run.defaultCollapsed
         return {
           msgId,
+          density: renderDensity,
           collapsedByRunId: {
-            ...(current.msgId === msgId ? current.collapsedByRunId : {}),
+            ...(overrideActive ? current.collapsedByRunId : {}),
             [run.id]: !currentCollapsed
           }
         }
       })
     },
-    [msgId]
+    [msgId, renderDensity]
   )
   const hasStructuredThinkingBlocks = useMemo(
     () => normalizedContent?.some((block) => block.type === 'thinking') ?? false,

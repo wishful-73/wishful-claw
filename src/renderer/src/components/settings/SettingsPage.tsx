@@ -38,7 +38,9 @@ const GENERAL_ANCHORS: SectionAnchor[] = [
   { id: 'sec-general-language', label: 'anchorNav.language' },
   { id: 'sec-general-theme', label: 'anchorNav.theme' },
   { id: 'sec-general-preset', label: 'anchorNav.presets' },
-  { id: 'sec-general-appearance', label: 'anchorNav.appearance' }
+  { id: 'sec-general-appearance', label: 'anchorNav.appearance' },
+  { id: 'sec-general-render-density', label: 'anchorNav.renderDensity' },
+  { id: 'sec-general-speech', label: 'anchorNav.speech' }
 ]
 
 const RUNTIME_ANCHORS: SectionAnchor[] = [

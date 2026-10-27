@@ -1,3 +1,8 @@
+// 500 行豁免（2026-10-26 实测 586 行）：这是「一张工具卡怎么画」的单一呈现单元 ——
+// 头部状态 / 输入渲染 / 输出分派 / 展开态判定四处共用同一份 open 状态与同一批 props。
+// 尤其 S-225 之后，「这张卡默认开还是关」由 open + 档位派生 + 用户覆盖三方合成，
+// 拆成两个文件就必须把 open 的读写和 useEffect 门控跨文件传，判定口径立刻分叉。
+// 依据 AGENTS.md §大文件拆分 第 5 条第 1 类（单一呈现单元，状态机不可切）。
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, CheckCircle2, XCircle } from 'lucide-react'
@@ -7,6 +12,8 @@ import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-form
 import { isMcpTool, parseMcpToolName } from '@renderer/lib/mcp/mcp-tools'
 import { parseExtensionToolResult } from '@renderer/lib/extensions/extension-result'
 import { inputSummary } from '../tool-call-summary'
+import { deriveToolOutputOpen } from '../render-density'
+import { useDensityOverride, useDensityPolicy } from '../use-density-override'
 import { CollapsibleHeightPanel } from '../CollapsibleHeightPanel'
 import { ExtensionToolResultCard } from '../ExtensionToolResultCard'
 import { CompactToolCallHeader } from '../CompactToolCallHeader'
@@ -72,8 +79,10 @@ function ToolCallCardInner({
         : null
   const hasVisualOutput = hasImageBlocks(output)
   const isReadTextTool = name === 'Read' && !hasVisualOutput
-  const [open, setOpen] = React.useState(
-    forceOpen || isLiveCommandTool || hasVisualOutput
+  const { density, policy } = useDensityPolicy()
+  // S-225：默认展开态由全局档位派生；手动开合写在 override 里，切档自动失效。
+  const [open, setOpen] = useDensityOverride<boolean>(() =>
+    deriveToolOutputOpen(density, { forceOpen, hasVisualOutput, isLiveCommand: isLiveCommandTool })
   )
   const [readTextOutputRevealed, setReadTextOutputRevealed] = React.useState(false)
   const prevIsActiveRef = React.useRef(isActive)
@@ -110,7 +119,8 @@ function ToolCallCardInner({
       return
     }
     if (wasLiveCommandToolRef.current) {
-      setOpen(false)
+      // S-225：只有「不默认展开输出」的档位才在命令收尾时收起；详情档保持摊开。
+      if (!policy.toolOutputOpen) setOpen(false)
       wasLiveCommandToolRef.current = false
       prevIsActiveRef.current = isActive
       return
@@ -123,7 +133,7 @@ function ToolCallCardInner({
       wasLiveCommandToolRef.current = isLiveCommandTool
       return
     }
-    if (prevIsActiveRef.current && !isActive) {
+    if (prevIsActiveRef.current && !isActive && !policy.toolOutputOpen) {
       setOpen(false)
     }
     prevIsActiveRef.current = isActive
@@ -134,6 +144,7 @@ function ToolCallCardInner({
     isActive,
     isLiveCommandTool,
     isReadTextTool,
+    policy.toolOutputOpen,
     readTextOutputRevealed
   ])
   const outputText = React.useMemo(() => outputAsString(output), [output])

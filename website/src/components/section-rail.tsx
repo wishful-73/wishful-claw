@@ -57,7 +57,7 @@ export function SectionRail() {
       if (!frame) frame = requestAnimationFrame(compute)
     }
 
-    // 布局变化不发 scroll 事件：features 切 tab、quick-start 手风琴展开、图片加载完成都会推移
+    // 布局变化不发 scroll 事件：features 换 banner、quick-start 手风琴展开、图片加载完成都会推移
     // 后面板块的边界，只订阅 scroll 的话高亮会停在旧值，直到用户自己滚一下才纠正。
     // 观察 body：内容高于视口时 body 高 = 内容高，任一块变高变矮都会触发；内容不足一屏时页面本就不可滚，高亮恒为第一项。
     const ro = new ResizeObserver(onScroll)

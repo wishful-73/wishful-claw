@@ -14,6 +14,8 @@ import { isBrowserToolName } from '@renderer/lib/app-plugin/browser-tool-names'
 import { isDesktopControlToolName } from '@renderer/lib/app-plugin/desktop-routing'
 import { isMcpTool } from '@renderer/lib/mcp/mcp-tools'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import type { ChatRenderDensity } from '@renderer/stores/settings-store-types'
+import { deriveToolRunCollapsed } from './render-density'
 import { inputSummary } from './tool-call-summary'
 
 export type ToolExecutionVisibility = 'hidden' | 'ordinary' | 'force'
@@ -94,6 +96,8 @@ interface BuildToolExecutionOutlineOptions {
   boundaryAfterBlockIndices?: Set<number>
   boundaryAfterToolUseIds?: Set<string>
   hiddenToolUseIds?: Set<string>
+  /** S-225 渲染档位。缺省按 compact（= 1.0.1 线上行为），既有调用点不传也安全。 */
+  density?: ChatRenderDensity
   t: TranslationFn
 }
 
@@ -269,6 +273,7 @@ export function buildToolExecutionOutline({
   boundaryAfterBlockIndices,
   boundaryAfterToolUseIds,
   hiddenToolUseIds,
+  density = 'compact',
   t
 }: BuildToolExecutionOutlineOptions): ToolExecutionOutline {
   const items: ToolExecutionItem[] = []
@@ -311,7 +316,11 @@ export function buildToolExecutionOutline({
         activeCount: activeItems.length,
         totalItemCount: visibleItems.length,
         ordinaryItemCount: ordinaryRunItemIds.length,
-        defaultCollapsed: ordinaryRunItemIds.length > 0 && activeItems.length === 0,
+        defaultCollapsed: deriveToolRunCollapsed(
+          density,
+          ordinaryRunItemIds.length,
+          activeItems.length
+        ),
         showToggle: ordinaryRunItemIds.length > 0,
         activeSummary: activeItem ? buildActiveSummary(activeItem, t) : null
       }
@@ -427,7 +436,7 @@ export function buildToolExecutionOutline({
     activeCount: activeItems.length,
     totalItemCount,
     ordinaryItemCount: ordinaryItemIds.length,
-    defaultCollapsed: ordinaryItemIds.length > 0 && activeItems.length === 0,
+    defaultCollapsed: deriveToolRunCollapsed(density, ordinaryItemIds.length, activeItems.length),
     showToggle: ordinaryItemIds.length > 0,
     activeSummary
   }

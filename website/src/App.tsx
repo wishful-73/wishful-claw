@@ -9,6 +9,7 @@ import { Features } from './sections/features'
 import { DownloadCta } from './sections/download-cta'
 import { QuickStart } from './sections/quick-start'
 import { Faq } from './sections/faq'
+import { Feedback } from './sections/feedback'
 import { SiteFooter } from './sections/site-footer'
 
 // 区块顺序（2026-09-23 老大：功能展示与优势区互换 → S-127 方案 A 微调）：
@@ -38,6 +39,7 @@ export default function App() {
         <DownloadCta />
         <QuickStart />
         <Faq />
+        <Feedback />
       </main>
       <SiteFooter />
       {/* S-228：浮动控件统一挂在 main 之后，两页的 Tab 顺序才一致（都是最后一个可聚焦元素） */}

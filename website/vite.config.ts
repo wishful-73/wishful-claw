@@ -13,6 +13,13 @@ const PAGES = ['download', 'guide', 'go'] as const
 const DEV_PORT = 5280
 const PREVIEW_PORT = 5281
 
+// 反馈服务联调（S-226）：线上由 nginx 把 /api/ 反代到 127.0.0.1:7860
+// （deploy/feedback/nginx-location.conf），本地没有 nginx 这一层，
+// dev / preview 各挂一份等价代理，前端那句 `./api/feedback` 一个字不用改。
+// 后端没起也不影响页面：拿不到数据就整段不渲染（src/lib/feedback.ts 文件头）。
+const FEEDBACK_API = 'http://127.0.0.1:7860'
+const apiProxy = { '/api': { target: FEEDBACK_API, changeOrigin: false } }
+
 function rewriteCleanUrls(middlewares: Connect.Server): void {
   middlewares.use((req, _res, next) => {
     const url = req.url ?? ''
@@ -34,8 +41,8 @@ export default defineConfig({
   // 原第四个入口 changelog 已删（老大 2026-09-23：官网不留更新日志，入口一律跳 GitHub）。
   // 第五个入口 go 是下载中转页（S-186，2026-10-10）：下载按钮先到它，再由页面跳加速站。
   appType: 'mpa',
-  server: { port: DEV_PORT, strictPort: true },
-  preview: { port: PREVIEW_PORT, strictPort: true },
+  server: { port: DEV_PORT, strictPort: true, proxy: apiProxy },
+  preview: { port: PREVIEW_PORT, strictPort: true, proxy: apiProxy },
   plugins: [
     react(),
     tailwindcss(),

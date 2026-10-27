@@ -29,6 +29,8 @@ import { isWebUrl } from '@renderer/lib/preview/web-url'
 import { WebUrlCode } from './AssistantMessage/WebUrlCode'
 import { useStreamingRenderPool } from '@renderer/hooks/use-typewriter'
 import { CollapsibleHeightPanel } from './CollapsibleHeightPanel'
+import { deriveThinkingCollapsed } from './render-density'
+import { useDensityOverride, useDensityPolicy } from './use-density-override'
 
 /**
  * 思考区滚动提前量（px）：滚动条先一步拉到底，在内容底之下垫出这么一段空白。
@@ -63,20 +65,22 @@ export const ThinkingBlock = memo(function ThinkingBlock({
     ? getLiveOutputComponentClass(liveOutputAnimationStyle)
     : ''
   const hasThinkingContent = thinking.trim().length > 0
-  const defaultCollapsed = !isThinking && hasThinkingContent
-
-  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+  // S-225：默认折叠态由全局档位派生（纯文本执行中也折叠 / 紧凑执行中展开 / 详情恒展开）。
+  const { density, policy } = useDensityPolicy()
+  const [collapsed, setCollapsed, resetCollapsed] = useDensityOverride<boolean>(() =>
+    deriveThinkingCollapsed(density, isThinking, hasThinkingContent)
+  )
   const [liveElapsed, setLiveElapsed] = useState(0)
   const contentRef = useRef<HTMLDivElement>(null)
 
-  // Auto-collapse when thinking transitions from active to completed
+  // 思考从进行中转为结束时，撤掉本档内的手动覆盖，回落到该档的「结束态」默认值
   const prevIsThinkingRef = useRef(isThinking)
   useEffect(() => {
     if (prevIsThinkingRef.current && !isThinking) {
-      setCollapsed(true)
+      resetCollapsed()
     }
     prevIsThinkingRef.current = isThinking
-  }, [isThinking])
+  }, [isThinking, resetCollapsed])
 
   // Live timer while thinking
   useEffect(() => {
@@ -107,7 +111,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
     return null
   }
 
-  const expanded = isThinking || (hasThinkingContent && !collapsed)
+  const expanded = hasThinkingContent ? !collapsed : isThinking
   const compactLanguage = normalizeLanguageCode(i18n.language)
 
   // Compute duration label from persisted timestamps
@@ -139,7 +143,9 @@ export const ThinkingBlock = memo(function ThinkingBlock({
     <div className={`my-4 min-w-0${liveComponentClassName ? ` ${liveComponentClassName}` : ''}`}>
       <button
         onClick={() => {
-          if (isThinking) return
+          // 执行中默认展开的档位不允许收起（沿用旧行为，避免流式抖动）；
+          // 执行中默认折叠的档位（纯文本）允许点开看。
+          if (isThinking && policy.thinkingOpenWhileActive) return
           setCollapsed((v) => !v)
         }}
         title={durationLabel}

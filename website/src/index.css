@@ -707,3 +707,21 @@ body {
     opacity: 0;
   }
 }
+
+/* S-226：反馈提交 Dialog 的定位与遮罩。
+   ⚠️ `margin: auto` 必须显式写回 —— 原生 <dialog> 的居中全靠 UA 样式里的
+   `margin: auto` 配 `inset: 0`，而 Tailwind v4 preflight 的 `*` 规则把 margin 清零
+   （作者样式表压过 UA 样式表），不补这一条弹窗就贴视口左上角。
+   别删，也别改成 flex 居中 —— modal dialog 居中后 UA 的
+   `max-height: calc(100% - 6px - 2em)` + `overflow: auto` 才继续生效，
+   表单在 375px 窄屏上靠它内部滚动。 */
+.fb-dialog {
+  margin: auto;
+}
+
+/* 遮罩。Tailwind 的 `backdrop:` 变体作用于 backdrop-filter，不是 `::backdrop` 伪元素，
+   这一条只能手写。不用 backdrop-filter: blur —— 它会给本来就轻的弹窗加一层合成层，
+   在集显机器上滚背景反而卡。 */
+.fb-dialog::backdrop {
+  background: rgb(27 30 36 / 0.45);
+}

@@ -13,6 +13,7 @@ import { MessageList } from '@renderer/components/chat/MessageList'
 import { InputArea } from '@renderer/components/chat/InputArea'
 // S-207：沙箱临时关闭的倒计时 chip —— 挂在消息区左上角，无豁免时不渲染。
 import { SandboxElevationChip } from '@renderer/components/chat/InputArea/sandbox-elevation-chip'
+import { RenderDensityToggle } from '@renderer/components/chat/MessageList/RenderDensityToggle'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -278,6 +279,10 @@ export function SessionConversationPane({
                   : t('layout.widenChat', { defaultValue: 'Widen chat area' })}
               </TooltipContent>
             </Tooltip>
+
+            {/* 渲染详细度快捷入口（S-225）—— 并进本块而不是另挂浮层：
+                单独 absolute 定位会被本块的 z-30 盖住，见 RenderDensityToggle 文件头。 */}
+            <RenderDensityToggle />
 
             <div className="my-0.5 h-px w-4 bg-border/60" />
 

@@ -7,7 +7,12 @@
 // exercised by eye on a dev instance.
 
 import assert from 'node:assert/strict'
-import { buildPinnedTurnPreview, selectPinnedMedia } from '../../src/renderer/src/lib/pinned-turn-preview'
+import {
+  buildPinnedTurnPreview,
+  MEDIA_LINE_BUDGET_PX,
+  measurePinnedMediaLine,
+  selectPinnedMedia
+} from '../../src/renderer/src/lib/pinned-turn-preview'
 import {
   createPastedBlockTag,
   createSelectFileTag
@@ -88,9 +93,11 @@ eq(empty.text, '', 'empty message has no text')
 eq(empty.chips.length, 0, 'empty message has no chips')
 check(!empty.hasContent, 'empty message falls back to the empty state')
 
-// ── Media line slot budget (S-255 审查补刀) ─────────────────────────────
-// 缩略图与芯片共用 4 个槽位：早先各给 3 个，媒体行最宽约 410px，窄窗口下
-// `overflow-hidden` 裁掉的正是 `+N` —— 「还有内容」的唯一提示先消失。
+// ── Media line width budget (S-255 审查补刀 · 第二轮) ────────────────────
+// 槽位必须按「宽度」分配，不能按元素个数：缩略图 28px、芯片最宽 110px，
+// 「4 个元素」在不同配比下从 238px 到 402px 不等。曾经最坏的一档正是
+// 「1 图 + 3 芯」= 402px —— 而容器是 overflow-hidden，第一个被裁掉的就是
+// `+N` 徽标，也就是「还有内容」的唯一提示。
 function chipsOf(count: number) {
   return Array.from({ length: count }, (_, i) => ({
     kind: 'file' as const,
@@ -105,32 +112,47 @@ function fakeImages(count: number) {
   }))
 }
 
+// 每一种「图片数 × 芯片充足」的配比都必须装进预算，这条是真正的守门断言。
+for (let imageCount = 0; imageCount <= 8; imageCount += 1) {
+  const selection = selectPinnedMedia(fakeImages(imageCount), chipsOf(8))
+  const width = measurePinnedMediaLine(selection)
+  check(
+    width <= MEDIA_LINE_BUDGET_PX,
+    `${imageCount} image(s) + chips fits the media line budget (${width}px <= ${MEDIA_LINE_BUDGET_PX}px)`
+  )
+  check(selection.chips.length >= 1, `${imageCount} image(s) still leave at least one chip slot`)
+}
+
 const noMedia = selectPinnedMedia([], [])
 eq(noMedia.thumbnails.length + noMedia.chips.length, 0, 'no media selects nothing')
 eq(noMedia.overflow, 0, 'no media has no overflow')
 
 const chipsOnly = selectPinnedMedia([], chipsOf(5))
-eq(chipsOnly.chips.length, 3, 'chips alone use up to three slots')
+eq(chipsOnly.chips.length, 3, 'chips alone use three slots — the widest shape we accept')
 eq(chipsOnly.overflow, 2, 'chips alone fold the rest into overflow')
 
 const imagesOnly = selectPinnedMedia(fakeImages(5), [])
 eq(imagesOnly.thumbnails.length, 3, 'images alone use up to three slots')
+eq(imagesOnly.chips.length, 0, 'images alone keep no chip slot they cannot use')
 eq(imagesOnly.overflow, 2, 'images alone fold the rest into overflow')
 
-const mixedMedia = selectPinnedMedia(fakeImages(3), chipsOf(5))
-eq(mixedMedia.thumbnails.length, 3, 'three images keep all three thumbnails')
-eq(mixedMedia.chips.length, 1, 'chips take whatever slots are left')
-eq(mixedMedia.overflow, 4, 'overflow counts both merged sources')
+// 「贴一张截图 + 粘两段代码 + 引用一个文件」—— 最常见的拼图方式，也是回归的现场。
+const mixedMedia = selectPinnedMedia(fakeImages(1), chipsOf(5))
+eq(mixedMedia.thumbnails.length, 1, 'the single image is kept')
+eq(mixedMedia.chips.length, 2, 'one image leaves room for two chips, not three')
+eq(mixedMedia.overflow, 3, 'overflow counts both merged sources')
+check(
+  measurePinnedMediaLine(mixedMedia) < 300,
+  'one image + two chips stays under 300px — the 402px shape must not come back'
+)
 
-const oneImage = selectPinnedMedia(fakeImages(1), chipsOf(5))
-eq(oneImage.chips.length, 3, 'one image leaves three chip slots')
-eq(oneImage.overflow, 2, 'overflow stays consistent')
+const threeImages = selectPinnedMedia(fakeImages(3), chipsOf(5))
+eq(threeImages.thumbnails.length, 3, 'three images keep all three thumbnails')
+eq(threeImages.chips.length, 2, 'three images still leave two chip slots')
+eq(threeImages.overflow, 3, 'overflow stays consistent')
 
 const worstCase = selectPinnedMedia(fakeImages(10), chipsOf(10))
-check(
-  worstCase.thumbnails.length + worstCase.chips.length <= 4,
-  'the media line never exceeds four elements'
-)
-eq(worstCase.overflow, 16, 'worst case reports every hidden item')
+check(worstCase.overflow > 0, 'worst case reports hidden content')
+eq(worstCase.overflow, 20 - worstCase.thumbnails.length - worstCase.chips.length, 'worst case overflow arithmetic holds')
 
 console.log(`pinned turn preview checks passed: ${checks}`)

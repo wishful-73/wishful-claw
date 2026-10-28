@@ -118,6 +118,11 @@ function FileSearchWindow(): React.JSX.Element {
       setSearching(true)
       setError(null)
       setSelectedIndex(0)
+      // 每次新查询都先归零「正在启动 Everything」。这个态只有主进程推送能置回，而那条
+      // `done` 推送在窗口正在加载 / 刚 reload 时会被 `safeSendMessagePackToWindow` **静默
+      // 丢掉**（它返回 false 没人看）。一旦丢了，`launchingEverything` 就永久停在 true，
+      // 结果是「正在启动」的转圈和空态同屏并存。查询入口重置它，丢失最多影响一次查询。
+      setLaunchingEverything(false)
 
       try {
         const result = await window.api.invoke<EsSearchResult>('file-search:query', {

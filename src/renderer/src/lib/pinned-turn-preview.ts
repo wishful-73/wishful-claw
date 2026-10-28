@@ -89,11 +89,24 @@ export function buildPinnedTurnPreview(content: UnifiedMessage['content']): Pinn
   }
 }
 
-/** How many media slots the bar can show before it has to fold the rest into `+N`. */
+/**
+ * The media line's width budget, in px, from `PinnedTurnBar.tsx`'s real CSS.
+ *
+ * These have to track the classes there: a thumbnail is `size-7` (28) + `gap-1` (4), a chip is
+ * `max-w-[110px]` (110) + `gap-1` (4), and the `+N` badge is ~28 + `gap-1` (4).
+ *
+ * 400 is the widest line we accept, and it is not arbitrary: "no images + 3 chips" is the
+ * widest shape the old implementation ever produced (342 + 28 = 370) and it was never reported
+ * as clipped, so keeping it is safe. Everything else must fit inside the same budget.
+ */
+export const MEDIA_LINE_BUDGET_PX = 400
+const THUMBNAIL_SLOT_PX = 32
+const CHIP_SLOT_PX = 114
+const OVERFLOW_BADGE_PX = 32
+
+/** Never show more than this many of either kind, whatever the budget would allow. */
 const MAX_THUMBNAILS = 3
 const MAX_CHIPS = 3
-/** Total elements allowed on the single media line — thumbnails and chips share the budget. */
-const MAX_MEDIA_SLOTS = 4
 
 export interface PinnedMediaSelection<T> {
   thumbnails: ImageAttachment[]
@@ -101,20 +114,32 @@ export interface PinnedMediaSelection<T> {
   overflow: number
 }
 
+/** Estimated rendered width of one selection — only exists so the regression suite can assert it. */
+export function measurePinnedMediaLine(selection: PinnedMediaSelection<unknown>): number {
+  const elements = selection.thumbnails.length * THUMBNAIL_SLOT_PX + selection.chips.length * CHIP_SLOT_PX
+  return selection.overflow > 0 ? elements + OVERFLOW_BADGE_PX : Math.max(0, elements - 4)
+}
+
 /**
  * Pick what fits on the one media line the bar is allowed (R-10.5 keeps it to one line).
  *
- * Thumbnails and chips share a fixed slot budget rather than getting one each: with both
- * generous the line ran ~410px wide and `overflow-hidden` clipped the `+N` badge — the only
- * hint that content was missing — on any narrow window. Four slots keeps the worst case
- * under ~300px while still showing something of every kind that is present.
+ * The budget is spent by **width**, not by element count. Sizing it by count was the original
+ * bug: thumbnails are 28px and chips up to 110px, so "4 elements" ranged from 238px to 402px
+ * depending on the mix — and the worst case was exactly "1 image + 3 chips", the most common
+ * way to compose a message (screenshot + pasted code + a referenced file). That shape ran
+ * 402px against `overflow-hidden`, which clips from the right, so the first thing lost was the
+ * `+N` badge — the only hint that content was missing.
+ *
+ * `Math.max(1, …)` because a chip is the informative half of a message; a lone thumbnail plus
+ * `+N` says far less than one chip plus `+N`.
  *
  * Generic over the chip shape so the bar can hand in its own list (slash commands included)
  * while the regression suite uses the plain `PinnedChip`.
  */
 export function selectPinnedMedia<T>(images: ImageAttachment[], chips: T[]): PinnedMediaSelection<T> {
   const thumbnails = images.slice(0, MAX_THUMBNAILS)
-  const chipSlots = Math.max(1, Math.min(MAX_CHIPS, MAX_MEDIA_SLOTS - thumbnails.length))
+  const budgetForChips = MEDIA_LINE_BUDGET_PX - OVERFLOW_BADGE_PX - thumbnails.length * THUMBNAIL_SLOT_PX
+  const chipSlots = Math.max(1, Math.min(MAX_CHIPS, Math.floor(budgetForChips / CHIP_SLOT_PX)))
   const visibleChips = chips.slice(0, chipSlots)
   return {
     thumbnails,

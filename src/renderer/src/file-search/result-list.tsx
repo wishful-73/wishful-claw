@@ -50,7 +50,9 @@ export function ResultList({
   onOpenHit: (hit: FileHit, reveal: boolean) => Promise<void>
   onFailureAction: (action: FileSearchFailureAction) => Promise<void>
 }): React.JSX.Element {
-  const showEmpty = !error && hits.length === 0 && !searching
+  // `!launchingEverything` —— 转圈那条（下方）和空态是同屏渲染的，状态一瞬间不同步就会
+  // 出现「正在启动 Everything」和「输入关键词开始搜索」并排。宁可这半秒什么都不说。
+  const showEmpty = !error && hits.length === 0 && !searching && !launchingEverything
 
   return (
     <div ref={listRef} className="min-w-0 flex-1 overflow-y-auto py-1">

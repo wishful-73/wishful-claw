@@ -58,8 +58,8 @@
 
 | 编号 | 标题 | 覆盖 | 状态 | 明细 |
 |---|---|---|---|---|
-| S-249 | main 进程拆分（6 个） | `clipboard-enhancer` 648 / `priority-shortcuts` 889 / `quick-launcher` 2205 / `updater` 696 / `cron-reverse-handler` 760 / `lib/es-search` 590 | **未开工** | [S-249](requirements/S-249.md) |
-| S-250 | 渲染端拆分（11 个） | 组件 10（`AppPluginPanel` 901 / `SkillsMenu` 721 / `search-dialog` 633 / `WorkingFolderSelectorDialog` 627 / `GoalHistoryPanel` 651 / `structured-input` 596 / `SessionSummaryPanel` 597 / `UsagePanelParts` 582 / `PreviewPanel` 524 / `BrowserToolCard` 504）+ `memory-organization` 639 | **未开工** | [S-250](requirements/S-250.md) |
+| S-249 | main 进程拆分（6 个） | `clipboard-enhancer` 648 / `priority-shortcuts` 889 / `quick-launcher` 2205 / `updater` 696 / `cron-reverse-handler` 760 / `lib/es-search` 590 | **已完成** | [S-249](requirements/S-249.md) |
+| S-250 | 渲染端拆分（11 个） | 组件 10（`AppPluginPanel` 901 / `SkillsMenu` 721 / `search-dialog` 633 / `WorkingFolderSelectorDialog` 627 / `GoalHistoryPanel` 651 / `structured-input` 596 / `SessionSummaryPanel` 597 / `UsagePanelParts` 582 / `PreviewPanel` 524 / `BrowserToolCard` 504）+ `memory-organization` 639 | **已完成** | [S-250](requirements/S-250.md) |
 | S-251 | runtime C# 拆分（13 个） | `MessagePackJsonWriter` 877 / `SessionRestoreTools` 784 / `DbClient` 781 / `ToolCallProcessor` 648 / `OpenAIChatProvider` 632 / `AgentRuntimeGoalExecutor` 617 / `GoalOrchestratorLoop` 595 / `DbSessionTools` 586 / `GoalOrchestratorLifecycle` 576 / `GoalOrchestratorAdaptive` 557 / `AgentRuntimeDesktopExecutor` 531 / `SubAgentExecutor` 518 / `SessionConversation` 507 | **已完成**（`1f95f0c8`） | [S-251](requirements/S-251.md) |
 | S-252 | 测试入口与发布脚本拆分（9 个） | `CompactionSnapshot` 1562 / `updater-state/program` 1152 / `SessionTaskCascade` 663 / `renderable-chat-items` 660 / `CronRegressionTests` 643 / `GoalRegressionTests` 641 / `updater-state/download-progress` 560 / `provider-presets` 558 / `scripts/deploy.mjs` 754 | **已完成** | [S-252](requirements/S-252.md) |
 
@@ -157,12 +157,14 @@
 
 **本迭代实际交付 6 条**：S-236 / S-237 / S-234 / S-235 / S-245 / S-246 —— 全部代码完成且真机验过（09:48 老大「基本都测过了」）。另有 S-233 的根因修复（`36aca60e` / `d8a00a3b`）与探针取证后摘除、S-248 的完整勘测。
 
-**10-28 10:12 追加 4 条**（大文件拆分清欠 39 个）：
+**10-28 10:12 追加 4 条**（大文件拆分清欠 39 个）—— **全部完成**：
 
-- **已完成 2 条**：**S-251**（runtime C# 13 个，刀 `1f95f0c8`）/ **S-252**（测试入口 8 + 发布脚本 1，9/9 完成，`scripts/deploy.mjs` 754 → 6 件且不入库）
-- **未开工 2 条**：**S-249**（main 进程 6 个）/ **S-250**（渲染端 11 个）—— 顺延 v3-iter-4
+- **S-249**（main 进程 6 个）：4 拆 + 2 标注豁免（`clipboard-enhancer` / `updater` 属第 5 条第 3 类），`quick-launcher` 2205 → 48 + 12 件
+- **S-250**（渲染端 11 个）：11/11 全拆，零豁免；同批摘除 S-233 的 DEV 抖动探针
+- **S-251**（runtime C# 13 个）：全走 `partial class` 方法级平移，刀 `1f95f0c8`
+- **S-252**（测试入口 8 + 发布脚本 1）：9/9 完成，`scripts/deploy.mjs` 754 → 6 件
 
-交付判据见各需求单 §4。
+全仓终态复扫：**78 个超标文件 ⇒ 豁免 76 / 待拆分 0 / 未标 0**（含 CodeGraph 26 个，10:05 裁定不拆、后续剥离为独立插件项目）。交付判据见各需求单 §4。
 
 **S-246 的验收口径**（老大 09:48 校正，重要）：验收点是 **「源头不再产生脏块」**，不是「已脏的会话能被救回来」⇒ 不需要专门构造脏图会话做真机复验。修法本身就是三道闸门挡住入包 + `ReadImage` 只描述不内联，脏块根本没有生成路径。
 

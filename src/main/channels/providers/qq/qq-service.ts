@@ -4,7 +4,7 @@
  * Licensed under the Apache License, Version 2.0 (the "License").
  * Modified by the Wishful 心相 team for Wishful Claw.
  *
- * 500 行豁免（2026-10-20 实测 546 行，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+ * 500 行豁免（2026-10-28 实测 552 行，AGENTS.md §大文件拆分 第 5 条第 3 类）：
  * 一个渠道服务实例的全部状态都在这一个类里 —— 网关连接、心跳、重连退避、会话续传、
  * 消息收发、入站图片下载。拆出去任何一段都要把 `ws` / `sessionId` / `lastSeq` /
  * `reconnectAttempt` 这批私有状态搬成公开 API，等于把「一条长连接的一生」撕成几段，

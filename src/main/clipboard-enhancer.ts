@@ -1,3 +1,14 @@
+// 500 行豁免（2026-10-28 实测 648 行）：九个模块级可变变量被四块代码交叉读写，拆完必须新增中间层。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆得动但代价显著大于收益）。
+// 实质证据（2026-10-28 逐行核过）：`history`(34) 有 8 处整体赋值 + 2 处原地 `unshift`（301/320），
+// 写它的三方互不隶属 —— 持久化(157/210/499)、捕获(300/319)、IPC(408/456/474)；`config`(35) 由
+// 启动加载(629) 与 IPC update-config(490) 共同赋值；`lastClipboardText`/`lastClipboardImageHash`/
+// `lastImagePollAt` 由捕获(267/274/311/333) 与 IPC(397/398/401) 双写；`previousForegroundWindow`/
+// `previousFocusWindow`/`openedWithAlt` 由窗口(566/605) 与 IPC(389) 双写、由 hide(526-530) 读。
+// 拆开只能二选一：①`export let` 跨模块只读，8 处赋值全改成 setter，而赋值与 `unshift` 原地修改混用
+// ⇒ 必改逻辑，违反第 9 条零行为改动；②造一个 state 容器对象 + 访问器层 ⇒ 新增中间层，且每次读写
+// 都多一跳，排查时反而更绕。故维持单文件。
+
 /**
  * Clipboard Enhancer — ditto-style clipboard history.
  *

@@ -208,13 +208,26 @@ internal static partial class OpenAIResponsesProvider
         writer.WriteEndObject();
     }
 
+    /// <summary>
+    /// 把 base64 图像块拼成 <c>data:</c> URL；上游收不了的格式返回 null，块被丢掉（S-246）。
+    /// 判据与 OpenAI chat 那处同源，统一走
+    /// <see cref="ProviderContentHelpers.ResolveSupportedImageMediaType"/> —— 两条协议不许各写一份。
+    /// </summary>
     private static string? BuildBase64ImageUrl(JsonElement source)
     {
         var data = JsonHelpers.GetString(source, "data");
         if (string.IsNullOrWhiteSpace(data)) return null;
-        var mediaType = JsonHelpers.GetString(source, "mediaType") ??
-            ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ??
-            "image/png";
+
+        var declared = JsonHelpers.GetString(source, "mediaType");
+        var mediaType = ProviderContentHelpers.ResolveSupportedImageMediaType(data, declared);
+        if (mediaType is null)
+        {
+            WorkerLog.Warn(
+                $"image block dropped before responses turn: unsupported media type " +
+                $"(declared={declared ?? "?"}, detected={ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ?? "unknown"})");
+            return null;
+        }
+
         return $"data:{mediaType};base64,{ProviderContentHelpers.StripDataUrlPrefix(data)}";
     }
 
@@ -253,22 +266,12 @@ internal static partial class OpenAIResponsesProvider
         writer.WriteEndObject();
     }
 
-    /// <summary>True when a tool result's content array carries a usable image (S-145).</summary>
-    private static bool HasToolImage(JsonElement content)
-    {
-        if (content.ValueKind != JsonValueKind.Array) return false;
-        foreach (var block in content.EnumerateArray())
-        {
-            if (JsonHelpers.GetString(block, "type") != "image") continue;
-            if (!block.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object) continue;
-            var isUrl = JsonHelpers.GetString(source, "type") == "url";
-            var present = isUrl
-                ? !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))
-                : !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data"));
-            if (present) return true;
-        }
-        return false;
-    }
+    /// <summary>
+    /// True when a tool result's content array carries a usable image (S-145)。
+    /// S-246 起判据改为「放得出去」—— 见 <see cref="ProviderContentHelpers.HasUsableImageBlock"/>。
+    /// </summary>
+    private static bool HasToolImage(JsonElement content) =>
+        ProviderContentHelpers.HasUsableImageBlock(content);
 
     /// <summary>Writes a tool result's content array as Responses input parts (S-145).</summary>
     private static void WriteToolOutputParts(Utf8JsonWriter writer, JsonElement content)

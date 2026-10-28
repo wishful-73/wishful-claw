@@ -37,6 +37,11 @@ try
     Check(ImageFileProbe.MediaTypeFor("a.webp") == "image/webp", ".webp maps to image/webp");
     Check(ImageFileProbe.MediaTypeFor("a.gif") == "image/gif", ".gif maps to image/gif");
     Check(ImageFileProbe.MediaTypeFor("a.bmp") == "image/bmp", ".bmp maps to image/bmp");
+    // S-246 补刀：认不出就会掉进文本分支，二进制被当 UTF-8 读成乱码。
+    Check(ImageFileProbe.MediaTypeFor("a.ico") == "image/x-icon", ".ico maps to image/x-icon (S-246 补刀)");
+    Check(ImageFileProbe.MediaTypeFor("a.ICO") == "image/x-icon", "uppercase .ICO maps to image/x-icon");
+    Check(ImageFileProbe.MediaTypeFor("a.tif") == "image/tiff", ".tif maps to image/tiff (S-246 补刀)");
+    Check(ImageFileProbe.MediaTypeFor("a.tiff") == "image/tiff", ".tiff maps to image/tiff");
     Check(ImageFileProbe.MediaTypeFor("a.svg") is null, "svg stays out of scope");
     Check(!ImageFileProbe.IsImagePath("notes.txt"), "txt is not an image");
 
@@ -55,6 +60,17 @@ try
     File.WriteAllBytes(bmp, BuildBmp(33, 17));
     Check(ImageFileProbe.TryReadSize(bmp, out var bmpW, out var bmpH) && bmpW == 33 && bmpH == 17,
         "bmp size parsed (33x17)");
+
+    var ico = Path.Combine(root, "app.ico");
+    File.WriteAllBytes(ico, BuildIco(16, 16));
+    Check(ImageFileProbe.TryReadSize(ico, out var icoW, out var icoH) && icoW == 16 && icoH == 16,
+        "ico size parsed from the first directory entry (16x16)");
+
+    // ICO 用 0 表示 256 —— 这是格式里唯一表达 256 的办法，别读成 0。
+    var icoLarge = Path.Combine(root, "app-large.ico");
+    File.WriteAllBytes(icoLarge, BuildIco(0, 0));
+    Check(ImageFileProbe.TryReadSize(icoLarge, out var icoLW, out var icoLH) && icoLW == 256 && icoLH == 256,
+        "ico byte 0 means 256, not zero");
 
     var jpeg = Path.Combine(root, "photo.jpg");
     File.WriteAllBytes(jpeg, BuildJpeg(200, 100));
@@ -95,6 +111,36 @@ try
         // 路径必须在：渲染端按它 hydrate，DB 侧按它把 base64 换成占位。
         Check(source.GetProperty("filePath").GetString() == png, "image keeps the file path");
     }
+
+    // ── S-246：上游不收的格式不内联像素 ──
+    // bmp 能读尺寸、能认出格式，但 OpenAI 兼容通道只收 png/jpeg/webp/gif。
+    // 修复前这里会内联 `data:image/bmp;base64,…`，上游回 400 unsupported image，
+    // 而那个块留在会话历史里每轮重发 ⇒ 整个会话卡死。现在只回一行元信息。
+    var bmpRead = await tool.ExecuteAsync(Input(bmp), new ToolExecutionContext(WorkingFolder: root));
+    Check(bmpRead.ContentBlocks is null, "S-246: bmp carries no image block");
+    Check(!bmpRead.IsError, "S-246: bmp read is not an error");
+    Check(bmpRead.Content.Contains("image/bmp", StringComparison.Ordinal),
+        "S-246: bmp read still reports the real format");
+    Check(bmpRead.Content.Contains("only accept png/jpeg/webp/gif", StringComparison.Ordinal),
+        "S-246: bmp read explains why the pixels were dropped");
+    Check(!bmpRead.Content.Contains("inline limit", StringComparison.Ordinal),
+        "S-246: bmp refusal is not confused with the size limit");
+
+    // S-246 补刀：.ico 原先不在这张表里，于是被当文本读 —— 模型既看不到图，
+    // 还吃进一屏乱码。现在走同一个闸门：无 image 块 + 一行元信息。
+    var icoRead = await tool.ExecuteAsync(Input(ico), new ToolExecutionContext(WorkingFolder: root));
+    Check(icoRead.ContentBlocks is null, "S-246 补刀: ico carries no image block");
+    Check(!icoRead.IsError, "S-246 补刀: ico read is not an error");
+    Check(icoRead.Content.StartsWith("Read image:", StringComparison.Ordinal),
+        "S-246 补刀: ico goes through the image branch, not the text branch");
+    Check(icoRead.Content.Contains("image/x-icon", StringComparison.Ordinal),
+        "S-246 补刀: ico reports its real format");
+    Check(icoRead.Content.Contains("16x16", StringComparison.Ordinal),
+        "S-246 补刀: ico reports its size");
+    Check(icoRead.Content.Contains("only accept png/jpeg/webp/gif", StringComparison.Ordinal),
+        "S-246 补刀: ico explains why the pixels were dropped");
+    Check(!icoRead.Content.Contains('\uFFFD'),
+        "S-246 补刀: ico is not decoded as text (no replacement chars)");
 
     // ── S-236：非 vision 模型照常附图（配置不许替模型说「你不行」） ──
     // 旧行为是「判 false 就只回路径与尺寸，像素不附」，那张本地能力表追不上新模型/反代渠道/
@@ -184,6 +230,17 @@ static byte[] BuildBmp(int width, int height)
     buffer[1] = (byte)'M';
     BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(18, 4), width);
     BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(22, 4), height);
+    return buffer;
+}
+
+// ICO: 6 字节头（reserved=0, type=1, 图像数）+ 首个目录项（宽高各 1 字节，0 表示 256）。
+static byte[] BuildIco(int width, int height)
+{
+    var buffer = new byte[22];
+    buffer[2] = 1;                       // type = icon
+    buffer[4] = 1;                       // 1 帧
+    buffer[6] = (byte)(width & 0xFF);
+    buffer[7] = (byte)(height & 0xFF);
     return buffer;
 }
 

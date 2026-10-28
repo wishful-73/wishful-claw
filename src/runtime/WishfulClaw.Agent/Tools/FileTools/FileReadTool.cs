@@ -47,7 +47,7 @@ public sealed class FileReadTool : IToolExecutor
 
 
 
-    public string Description => "Read the contents of a file. Supports line range via offset and limit parameters. Returns content with line numbers. Image files (.png/.jpg/.jpeg/.webp/.gif/.bmp) are returned as an image you can see directly. Video files (.mp4/.webm/.mov/.mkv/.avi/.ogv/.m4v/...) are sampled into a few frames spread across their duration and returned as images. offset/limit do not apply to images or videos.";
+    public string Description => "Read the contents of a file. Supports line range via offset and limit parameters. Returns content with line numbers. Image files (.png/.jpg/.jpeg/.webp/.gif) are returned as an image you can see directly; .bmp/.tiff/.ico are described by path, size and format only, because upstream model APIs do not accept them — convert them to png/jpeg first if the pixels matter. .svg is read as text. Video files (.mp4/.webm/.mov/.mkv/.avi/.ogv/.m4v/...) are sampled into a few frames spread across their duration and returned as images. offset/limit do not apply to images or videos.";
 
 
 
@@ -189,6 +189,21 @@ public sealed class FileReadTool : IToolExecutor
         var hasSize = ImageFileProbe.TryReadSize(path, out var width, out var height);
         var sizeText = hasSize ? $"{width}x{height}" : "size unavailable";
         var byteLength = new FileInfo(path).Length;
+
+        // S-246：上游不收的格式（bmp / tiff …）不内联像素，只回一行元信息。
+        //
+        // 不这样做的话，一张 bmp 就会给请求体塞进 `data:image/bmp;base64,…` ——
+        // OpenAI 系只收 png/jpeg/webp/gif，必然回 400 `unsupported image`，
+        // 而那个块留在会话历史里每轮重发，整个会话在清空历史前不可用。
+        // 组包层（ProviderContentHelpers.ResolveSupportedImageMediaType）是最后一道闸，
+        // 这里先拦一次：省掉一次白烧的往返，也让模型立刻知道「要转格式」。
+        if (!ProviderContentHelpers.SupportedImageMediaTypes.Contains(mediaType))
+        {
+            return new ToolResult(
+                $"Read image: {path} ({sizeText}, {mediaType}). " +
+                "Upstream model APIs only accept png/jpeg/webp/gif, so the pixels were not attached. " +
+                "Convert the file to png or jpeg first if you need to see it.");
+        }
 
         if (byteLength > MaxInlineImageBytes)
         {

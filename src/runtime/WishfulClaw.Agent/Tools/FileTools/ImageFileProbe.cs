@@ -21,7 +21,18 @@ internal static class ImageFileProbe
 
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
-    /// <summary>按扩展名判断是不是本工具认的图像；不是则返回 null。</summary>
+    /// <summary>
+    /// 按扩展名判断是不是本工具认的图像；不是则返回 null。
+    ///
+    /// **这张表的语义是「这是图像文件」，不是「上游收这张图」。** 两者必须分开：
+    /// 这里认出来的格式会走 <c>FileReadTool.ReadImage</c>，由那道闸门按上游白名单决定
+    /// 附不附像素；认不出来的会掉进普通文本分支，被 <c>StreamReader</c> 当 UTF-8 逐行读 ——
+    /// 一个二进制图标变成一屏 `�PNG���` 乱码塞进上下文（S-246 补刀：.ico 原先就是这么坏的）。
+    ///
+    /// 所以「上游不收」的格式（bmp / tiff / ico）更要在这张表里：认出来才能走对分支、
+    /// 才能只回一行元信息。唯一刻意不列的是 .svg —— 它是文本，让模型读源码比给一行
+    /// 「格式不接受」有用得多。
+    /// </summary>
     public static string? MediaTypeFor(string path)
     {
         var extension = Path.GetExtension(path).ToLowerInvariant();
@@ -32,6 +43,8 @@ internal static class ImageFileProbe
             ".webp" => "image/webp",
             ".gif" => "image/gif",
             ".bmp" => "image/bmp",
+            ".ico" => "image/x-icon",
+            ".tif" or ".tiff" => "image/tiff",
             _ => null
         };
     }
@@ -57,6 +70,9 @@ internal static class ImageFileProbe
             if (head.Length >= 10 && (head[..6].SequenceEqual("GIF87a"u8) || head[..6].SequenceEqual("GIF89a"u8)))
                 return TryReadGifSize(head, out width, out height);
             if (head.Length >= 26 && head[0] == (byte)'B' && head[1] == (byte)'M') return TryReadBmpSize(head, out width, out height);
+            if (head.Length >= 8 && head[0] == 0 && head[1] == 0 && head[2] == 1 && head[3] == 0
+                && (head[4] | (head[5] << 8)) > 0)
+                return TryReadIcoSize(head, out width, out height);
             if (head.Length >= 4 && head[0] == 0xFF && head[1] == 0xD8) return TryReadJpegSize(head, out width, out height);
             if (head.Length >= 30 && head[..4].SequenceEqual("RIFF"u8) && head[8..12].SequenceEqual("WEBP"u8))
                 return TryReadWebpSize(head, out width, out height);
@@ -67,6 +83,18 @@ internal static class ImageFileProbe
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// ICO/CUR: 6 字节头（reserved=0、type=1 表示图标、图像数）之后是目录项，
+    /// 首个目录项的宽高各占 1 字节，**0 表示 256**（这是 ICO 格式里唯一表达 256 的办法）。
+    /// 只取第一帧尺寸：图标是多尺寸打包，给模型「16x16」比给「尺寸未知」有用。
+    /// </summary>
+    private static bool TryReadIcoSize(ReadOnlySpan<byte> head, out int width, out int height)
+    {
+        width = head[6] == 0 ? 256 : head[6];
+        height = head[7] == 0 ? 256 : head[7];
+        return width > 0 && height > 0;
     }
 
     /// <summary>PNG: 8 字节签名 + IHDR（宽高各 4 字节大端，起点固定）。</summary>

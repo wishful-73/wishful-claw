@@ -270,34 +270,39 @@ internal static partial class OpenAIChatProvider
         writer.WriteEndArray();
     }
 
+    /// <summary>
+    /// 把 base64 图像块拼成 <c>data:</c> URL；**上游收不了的格式返回 null，块被丢掉**（S-246）。
+    ///
+    /// 修复前这里的取法是 `mediaType ?? 嗅探 ?? "image/png"` —— 声明永远优先，
+    /// 嗅探只是兜底，且兜不住 gif。于是 bmp / svg 这类块被原样发出去，上游回
+    /// 400 `unsupported image`，而那个块在会话历史里每轮重发 ⇒ 会话永久不可用。
+    /// 现在换成 <see cref="ProviderContentHelpers.ResolveSupportedImageMediaType"/>：
+    /// 嗅探优先，白名单收口，出不去就丢块（<c>ReadImage</c> 的文本行还在，模型不瞎）。
+    /// </summary>
     private static string? BuildBase64ImageUrl(JsonElement source)
     {
         var data = JsonHelpers.GetString(source, "data");
         if (string.IsNullOrWhiteSpace(data)) return null;
-        var mediaType = JsonHelpers.GetString(source, "mediaType") ??
-            ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ??
-            "image/png";
+
+        var declared = JsonHelpers.GetString(source, "mediaType");
+        var mediaType = ProviderContentHelpers.ResolveSupportedImageMediaType(data, declared);
+        if (mediaType is null)
+        {
+            WorkerLog.Warn(
+                $"image block dropped before provider turn: unsupported media type " +
+                $"(declared={declared ?? "?"}, detected={ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ?? "unknown"})");
+            return null;
+        }
+
         return $"data:{mediaType};base64,{ProviderContentHelpers.StripDataUrlPrefix(data)}";
     }
 
     /// <summary>
-    /// True when a tool result's content array actually carries a usable image (S-145).
+    /// True when a tool result's content array actually carries a usable image (S-145)。
+    /// S-246 起判据改为「放得出去」—— 见 <see cref="ProviderContentHelpers.HasUsableImageBlock"/>。
     /// </summary>
-    private static bool HasImageBlock(JsonElement content)
-    {
-        if (content.ValueKind != JsonValueKind.Array) return false;
-        foreach (var block in content.EnumerateArray())
-        {
-            if (JsonHelpers.GetString(block, "type") != "image") continue;
-            if (!block.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object) continue;
-            var isUrl = JsonHelpers.GetString(source, "type") == "url";
-            var present = isUrl
-                ? !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))
-                : !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data"));
-            if (present) return true;
-        }
-        return false;
-    }
+    private static bool HasImageBlock(JsonElement content) =>
+        ProviderContentHelpers.HasUsableImageBlock(content);
 
     /// <summary>
     /// Writes a tool result's content array as OpenAI chat parts (text + image_url), dropping

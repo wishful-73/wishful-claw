@@ -80,9 +80,19 @@ function testGuardClauses(): void {
 // 状态栏走 table 的每一步都必须等于 `formatDurationMs(now − startedAt)` ——
 // 这正是操作栏算 `updatedAt − createdAt` 之后喂给 formatDurationMs 的同一个式子。
 // 锁死这条 ⇒ 走字末值必然与跑完后亮出的数字衔接，不会跳字。
+//
+// S-254（2026-10-28）：亚秒段是**唯一**的分叉点 —— 操作栏照样出 `340ms`，
+// 状态栏不出数（老大口径「输入框左上角状态栏不需要毫秒」）。1s 以上仍必须逐字相同。
 
 function testSameScaleAsActionBar(): void {
-  const cases = [1, 999, 1_000, 1_234, 12_000, 59_999, 60_000, 65_000, 599_000, 3_600_000, 3_725_000]
+  for (const delta of [1, 340, 999]) {
+    eq(
+      resolveRunningElapsedLabel({ startedAt: T0, now: T0 + delta }),
+      null,
+      `Δt=${delta}ms 亚秒段状态栏不出数（S-254），别闪 340ms`
+    )
+  }
+  const cases = [1_000, 1_234, 12_000, 59_999, 60_000, 65_000, 599_000, 3_600_000, 3_725_000, 90_061_000]
   for (const delta of cases) {
     eq(
       resolveRunningElapsedLabel({ startedAt: T0, now: T0 + delta }),
@@ -95,14 +105,38 @@ function testSameScaleAsActionBar(): void {
 // ── 3. 单位阶梯（防止有人换掉 formatter 导致观感跳档） ────────────────────────
 
 function testUnitLadder(): void {
-  eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 999 }), '999ms', '亚秒段')
+  // 亚秒段：状态栏不出数，格式化函数本身仍保留 ms（工具调用要它）。
+  eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 999 }), null, '亚秒段状态栏不出数')
+  eq(formatDurationMs(999), '999ms', '亚秒段（工具调用档）仍出 ms')
   // S-245（2026-10-27）：秒段不再保留小数 —— 原来这里是 '1.2s'。
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 1_234 }), '1s', '秒段取整')
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 1_600 }), '2s', '秒段四舍五入')
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 12_000 }), '12s', '≥10s 转整数')
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 60_000 }), '1m', '整分不写秒')
   eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 65_000 }), '1m5s', '分+秒')
-  eq(resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 3_725_000 }), '1h2m', '小时段')
+  // S-254（2026-10-28）：小时档必须带秒 —— 老大的原话是「到1小时以后 出现的是时分 没有看到秒」。
+  eq(
+    resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 3_725_000 }),
+    '1h2m5s',
+    '小时段带秒（3 725 000ms = 1h2m5s；原来只到 1h2m）'
+  )
+  eq(
+    resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 3_600_000 }),
+    '1h',
+    '整点不写分钟/秒'
+  )
+  eq(
+    resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 90_061_000 }),
+    '1d1h1m1s',
+    '天档（新增），25h 不写成 25h'
+  )
+  eq(
+    resolveRunningElapsedLabel({ startedAt: T0, now: T0 + 172_800_000 }),
+    '2d',
+    '整天只写天'
+  )
+  // 取整只发生一次：59m59.6s 折上去是 1h，不该出 1h59m60s 这种怪读数。
+  eq(formatDurationMs(3_599_600), '1h', '取整只在毫秒层做一次')
 }
 
 // ── 4. 口径只有一份实现，且只被状态栏消费 ─────────────────────────────────────

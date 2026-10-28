@@ -49,6 +49,7 @@
 | S-247 | 内存占用异常偏高，但当时并无实际负载 | **顺延下个迭代**（2026-10-28 08:57 登记，09:00 老大定「本迭代不做，留给下个迭代」⇒ v3-iter-4 / 1.0.4 首条候选；**无根因、无量化口径** —— 全仓零内存采样，`worker/memory` 端点存在但零调用。第一阶段交付「看得见」，见 S-247 §5） | [S-247](requirements/S-247.md) |
 | S-253 | 文件搜索失败只说一句「没有在运行」—— 该拉起的不拉起，该引导的不引导 | **已完成**（2026-10-28，7 文件）：`EsFailure` 摘出 `not-installed`、`EsSearchResult` 加 `autostartAttempted`、拉起前后推 `file-search:status` 过程态、新增 `file-search:redetect` 通道、渲染端 `fileSearchFailureView` 出文案 + 按钮组（去下载 / 重新检测 / 重试）。门禁 typecheck 0 错、`npm test` 87/87（首轮被 `ipc-msgpack-routing` 抓到新通道未登记，已补白名单）。**真机验收 3 条未做**（要动本机 Everything 安装） | [S-253](requirements/S-253.md) |
 | S-248 | 纯文本档换形态 —— 过程层降级为行式文本 | **顺延下个迭代**（2026-10-28 09:41 登记 ⇒ v3-iter-4 / 1.0.4；**S-225 的返工补丁**。S-225 的 8 个 policy 字段全是布尔，`text` 档只是「默认折叠、形态仍是卡片」；本需求补「渲染形态」这根轴，参照物 = `SubAgentStepList` 的行式文本。报错只上红字不显示摘要、耗时挂行尾、子 agent 一行禁点、**切换档位必须完整可逆**） | [S-248](requirements/S-248.md) |
+| S-254 | 耗时读数补「天」并让秒常驻；亚秒只留给工具调用 | **已完成**（2026-10-28，1 源码 + 2 测试）：`formatDurationMs` 单位链重写为 `d/h/m/s`（取整只在毫秒层做一次）、`resolveRunningElapsedLabel` 在 `<1s` 时不出数。门禁 typecheck 0 错、`npm test` 87/87（首轮 `message-timestamp` 两条旧阶梯断言随之调整 —— 其中 `1m60s` 那个既有瑕疵被顺手修掉了）。**1 小时以上的走表未真机验** | [S-254](requirements/S-254.md) |
 
 ### 2.3 轨道 C：大文件拆分清欠（4 条，2026-10-28 10:12 新增）
 

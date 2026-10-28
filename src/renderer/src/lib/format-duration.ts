@@ -6,32 +6,25 @@
  */
 
 export function formatDurationMs(ms: number): string {
-  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`
+  const total = Number.isFinite(ms) ? Math.max(0, Math.round(ms)) : 0
+  if (total < 1000) return `${total}ms`
 
-  const totalSeconds = ms / 1000
-  if (totalSeconds < 60) {
-    // S-245（2026-10-27 老大：「耗时里面 s 出现了 7.3s 这种格式 1.1s 这种 我希望不要有小数」）：
-    // 秒档一律取整。小数读数对「这件事做了多久」没有任何价值，只让人多看一眼小数点。
-    // ms 档保留整数毫秒 —— 1s 以下仍有精度，`340ms` 不会被吞成 `0s`。
-    // 取整用四舍五入（不是截断），与原有 `toFixed(0)` 语义一致。
-    return `${Math.round(totalSeconds)}s`
-  }
+  // S-254（2026-10-28）：先一次性取整到秒，再按 d/h/m/s 拆位。
+  // 拆完再对秒取整会出 `1h59m60s` 这种怪读数 —— 取整只能发生一次。
+  const totalSeconds = Math.round(total / 1000)
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
 
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds - totalMinutes * 60
-
-  // 小时档：超过 60 分钟改写成 1h30m，避免出现 90m0s 这种读数。
-  if (totalMinutes >= 60) {
-    const hours = Math.floor(totalMinutes / 60)
-    const minutes = totalMinutes - hours * 60
-    // 整点不写分钟：1h，而不是 1h0m。
-    return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`
-  }
-
-  // 分钟档的秒部分同样取整（S-245）：1m23s，不出 1m23.4s。
-  const secondsText = String(Math.round(seconds))
-  // 整分不写秒：1m，而不是 1m0s。
-  return secondsText === '0' ? `${totalMinutes}m` : `${totalMinutes}m${secondsText}s`
+  // 「有值就显示」：某位是 0 就跳过（1h 不写 1h0m0s）。秒位同理 —— 走表每秒一跳，
+  // 秒真是 0 的那一跳只持续一秒，下一跳就回来了，不值得为它补位。
+  let text = ''
+  if (days > 0) text += `${days}d`
+  if (hours > 0) text += `${hours}h`
+  if (minutes > 0) text += `${minutes}m`
+  if (seconds > 0) text += `${seconds}s`
+  return text
 }
 
 /**
@@ -60,5 +53,10 @@ export function resolveRunningElapsedLabel(params: {
   const { startedAt, now, disabled = false } = params
   if (disabled || startedAt == null) return null
   if (!Number.isFinite(startedAt) || !Number.isFinite(now) || now <= startedAt) return null
-  return formatDurationMs(now - startedAt)
+  const elapsed = now - startedAt
+  // S-254（2026-10-28 老大：「毫秒只在工具调用上有，输入框左上角状态栏不需要毫秒」）：
+  // 不足 1 秒**不出数**，而不是报 `0s` —— 挂载首帧的 `42ms` 没有信息量还闪一下。
+  // 与上面「宁可没有，不可报 0」是同一条线。
+  if (elapsed < 1000) return null
+  return formatDurationMs(elapsed)
 }

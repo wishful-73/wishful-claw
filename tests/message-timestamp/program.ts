@@ -103,7 +103,9 @@ function testMinuteBand(): void {
   // S-245：分钟档的秒部分同样取整（原来会出 1m23.4s）。
   eq(formatDurationMs(83_400), '1m23s', '1m23.4s → 1m23s')
   eq(formatDurationMs(61_600), '1m2s', '1m1.6s → 1m2s（四舍五入）')
-  eq(formatDurationMs(119_600), '1m60s', '既有瑕疵原样保留：59.6s 进位成 60s（本次只去小数，不动进位）')
+  // S-254（2026-10-28）：取整只在毫秒层发生一次 ⇒ 119.6s 直接就是 2m。
+  // 原来这里钉的是「1m60s」这个既有瑕疵（秒部分二次四舍五入），换个拆位算法顺手修掉了。
+  eq(formatDurationMs(119_600), '2m', '119.6s → 2m（不再出 1m60s）')
   eq(formatDurationMs(83_400).includes('.'), false, '分钟档读数不许带小数点')
 }
 
@@ -112,7 +114,12 @@ function testHourBand(): void {
   eq(formatDurationMs(3_600_000), '1h', '整点不写分钟')
   eq(formatDurationMs(5_400_000), '1h30m', '90 分钟不再读作 90m0s')
   eq(formatDurationMs(7_500_000), '2h5m', '125 分钟')
-  eq(formatDurationMs(86_400_000), '24h', '24 小时')
+  // S-254（2026-10-28）：小时档补回秒，天档新增。
+  eq(formatDurationMs(3_725_000), '1h2m5s', '小时档带秒（原来只到 1h2m）')
+  eq(formatDurationMs(3_661_000), '1h1m1s', '时分秒全有')
+  eq(formatDurationMs(86_400_000), '1d', '满 24 小时折成 1d（原来写 24h）')
+  eq(formatDurationMs(90_061_000), '1d1h1m1s', '天档')
+  eq(formatDurationMs(172_800_000), '2d', '整天只写天')
 }
 
 const tests: Array<[string, () => void]> = [

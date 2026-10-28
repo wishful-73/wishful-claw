@@ -64,6 +64,9 @@ export function buildPinnedTurnPreview(content: UnifiedMessage['content']): Pinn
   const chips: PinnedChip[] = []
   const textParts: string[] = []
 
+  // 依赖 parseSelectFileText 的「text 段首尾相接」性质：段是原文的连续切片，
+  // 所以 join('') 无损，不会吃字也不会凭空加分隔符。（tests/pinned-turn-preview
+  // 的 '读一下  谢谢' 断言就是这条性质的守门 —— 摘掉芯片后留下的是双空格。）
   for (const segment of parseSelectFileText(rawText)) {
     if (segment.type === 'text') {
       if (segment.text) textParts.push(segment.text)
@@ -73,7 +76,6 @@ export function buildPinnedTurnPreview(content: UnifiedMessage['content']): Pinn
     if (chip) chips.push(chip)
   }
 
-  // 各 text 段原样接起来（段内的换行已经带着），芯片不再以标签形式出现在正文里。
   const text = textParts.join('').trim()
 
   return {
@@ -84,5 +86,39 @@ export function buildPinnedTurnPreview(content: UnifiedMessage['content']): Pinn
     titleText: selectFileTextToPlainText(expandPastedBlocks(rawText)).trim(),
     hasContent:
       text.length > 0 || draft.images.length > 0 || chips.length > 0 || Boolean(draft.command)
+  }
+}
+
+/** How many media slots the bar can show before it has to fold the rest into `+N`. */
+const MAX_THUMBNAILS = 3
+const MAX_CHIPS = 3
+/** Total elements allowed on the single media line — thumbnails and chips share the budget. */
+const MAX_MEDIA_SLOTS = 4
+
+export interface PinnedMediaSelection<T> {
+  thumbnails: ImageAttachment[]
+  chips: T[]
+  overflow: number
+}
+
+/**
+ * Pick what fits on the one media line the bar is allowed (R-10.5 keeps it to one line).
+ *
+ * Thumbnails and chips share a fixed slot budget rather than getting one each: with both
+ * generous the line ran ~410px wide and `overflow-hidden` clipped the `+N` badge — the only
+ * hint that content was missing — on any narrow window. Four slots keeps the worst case
+ * under ~300px while still showing something of every kind that is present.
+ *
+ * Generic over the chip shape so the bar can hand in its own list (slash commands included)
+ * while the regression suite uses the plain `PinnedChip`.
+ */
+export function selectPinnedMedia<T>(images: ImageAttachment[], chips: T[]): PinnedMediaSelection<T> {
+  const thumbnails = images.slice(0, MAX_THUMBNAILS)
+  const chipSlots = Math.max(1, Math.min(MAX_CHIPS, MAX_MEDIA_SLOTS - thumbnails.length))
+  const visibleChips = chips.slice(0, chipSlots)
+  return {
+    thumbnails,
+    chips: visibleChips,
+    overflow: images.length + chips.length - thumbnails.length - visibleChips.length
   }
 }

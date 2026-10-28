@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28 实测 532 行）：同质纯函数集合：把 messages 归一化为渲染项，全部是同一类无状态映射函数。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 1 类（单一数据对象）。
+
 import type {
   CompactBoundaryMeta,
   UnifiedMessage

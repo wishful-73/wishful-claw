@@ -213,13 +213,21 @@ export function buildPastedBlockLabel(text: string): string {
   return translateOr('input.pastedBlock.label', { ns: 'chat' }, '粘贴')
 }
 
-/** S-257: paste size in "字" units, switching to 万字 above ten thousand. */
+/**
+ * S-257: paste size below ten thousand, in whole characters ("400 字" / "400 chars").
+ * Above that the locale decides the unit — zh uses 万 (10⁴) and en uses k (10³), so both
+ * numbers are passed and each locale picks the one that matches its own unit.
+ */
 function formatPastedBlockSize(chars: number): string {
   if (chars >= 10000) {
     const wan = (chars / 10000).toFixed(1).replace(/\.0$/, '')
-    return translateOr('input.pastedBlock.sizeWan', { ns: 'chat', wan }, `${wan} 万字`)
+    const kchars = (chars / 1000).toFixed(1).replace(/\.0$/, '')
+    return translateOr(
+      'input.pastedBlock.sizeWan',
+      { ns: 'chat', wan, kchars, chars: String(chars) },
+      `${wan} 万字`
+    )
   }
-  // 传字符串而不是 number：i18next 会对 number 走 Intl 格式化，千分位因环境而异。
   return translateOr(
     'input.pastedBlock.sizeChars',
     { ns: 'chat', chars: String(chars) },

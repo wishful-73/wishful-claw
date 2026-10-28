@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28 实测 537 行）：agent-store 的类型声明集合（同质 interface / type），无运行时代码。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 1 类（单一数据对象）。
+
 import type { LoopEndReason, RequestRetryState, ToolCallState } from '../../lib/agent/types'
 
 import type { SubAgentEvent } from '../../lib/agent/sub-agents/types'

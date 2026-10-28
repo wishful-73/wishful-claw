@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28 实测 659 行）：单一 zustand store：仓库列表、状态、提交历史、分支四组查询共享同一份 git IPC 状态与刷新时序，拆成多个 store 会出现互相等待刷新。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 2 类（高度内聚的 store / hook）。
+
 import { create } from 'zustand'
 import { toast } from 'sonner'
 import { IPC } from '@renderer/lib/ipc/channels'

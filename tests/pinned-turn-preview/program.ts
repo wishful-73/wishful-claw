@@ -7,7 +7,7 @@
 // exercised by eye on a dev instance.
 
 import assert from 'node:assert/strict'
-import { buildPinnedTurnPreview } from '../../src/renderer/src/lib/pinned-turn-preview'
+import { buildPinnedTurnPreview, selectPinnedMedia } from '../../src/renderer/src/lib/pinned-turn-preview'
 import {
   createPastedBlockTag,
   createSelectFileTag
@@ -62,6 +62,8 @@ eq(
 check(!withPaste.titleText.includes('<pasted-block>'), 'hover title never leaks raw markup')
 
 // ── Selected file becomes a chip showing just the file name ──────────────
+// 注：`'读一下  谢谢'` 的双空格是「把芯片从文本里摘掉」的副产物，不是设计上的期望。
+// 聊天窗内联 badge 也是这个表现，故两边一致；将来若要折叠成单空格，这两条要同步改。
 const fileTag = createSelectFileTag('D:\\work\\deep\\report.md')
 const withFile = buildPinnedTurnPreview(`读一下 ${fileTag} 谢谢`)
 eq(withFile.text, '读一下  谢谢', 'file tag is removed from the caption text')
@@ -85,5 +87,50 @@ const empty = buildPinnedTurnPreview('')
 eq(empty.text, '', 'empty message has no text')
 eq(empty.chips.length, 0, 'empty message has no chips')
 check(!empty.hasContent, 'empty message falls back to the empty state')
+
+// ── Media line slot budget (S-255 审查补刀) ─────────────────────────────
+// 缩略图与芯片共用 4 个槽位：早先各给 3 个，媒体行最宽约 410px，窄窗口下
+// `overflow-hidden` 裁掉的正是 `+N` —— 「还有内容」的唯一提示先消失。
+function chipsOf(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    kind: 'file' as const,
+    label: `f${i}.md`
+  }))
+}
+function fakeImages(count: number) {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `img${i}`,
+    dataUrl: `data:image/png;base64,AAAA${i}`,
+    mediaType: 'image/png'
+  }))
+}
+
+const noMedia = selectPinnedMedia([], [])
+eq(noMedia.thumbnails.length + noMedia.chips.length, 0, 'no media selects nothing')
+eq(noMedia.overflow, 0, 'no media has no overflow')
+
+const chipsOnly = selectPinnedMedia([], chipsOf(5))
+eq(chipsOnly.chips.length, 3, 'chips alone use up to three slots')
+eq(chipsOnly.overflow, 2, 'chips alone fold the rest into overflow')
+
+const imagesOnly = selectPinnedMedia(fakeImages(5), [])
+eq(imagesOnly.thumbnails.length, 3, 'images alone use up to three slots')
+eq(imagesOnly.overflow, 2, 'images alone fold the rest into overflow')
+
+const mixedMedia = selectPinnedMedia(fakeImages(3), chipsOf(5))
+eq(mixedMedia.thumbnails.length, 3, 'three images keep all three thumbnails')
+eq(mixedMedia.chips.length, 1, 'chips take whatever slots are left')
+eq(mixedMedia.overflow, 4, 'overflow counts both merged sources')
+
+const oneImage = selectPinnedMedia(fakeImages(1), chipsOf(5))
+eq(oneImage.chips.length, 3, 'one image leaves three chip slots')
+eq(oneImage.overflow, 2, 'overflow stays consistent')
+
+const worstCase = selectPinnedMedia(fakeImages(10), chipsOf(10))
+check(
+  worstCase.thumbnails.length + worstCase.chips.length <= 4,
+  'the media line never exceeds four elements'
+)
+eq(worstCase.overflow, 16, 'worst case reports every hidden item')
 
 console.log(`pinned turn preview checks passed: ${checks}`)

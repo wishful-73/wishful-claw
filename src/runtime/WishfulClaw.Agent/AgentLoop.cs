@@ -1,4 +1,4 @@
-// 500-line exemption (755 lines as of 2026-10-20). This file is the per-turn orchestration
+// 500-line exemption (823 lines as of 2026-10-28). This file is the per-turn orchestration
 // body itself: prompt assembly and its cacheKey, transient-prefix injection, the provider
 // turn, the S-209 empty-turn nudge gate, assistant write-back, tool execution and its
 // guaranteed result pairing, iteration_end bookkeeping, and the stop-reason handoff. The

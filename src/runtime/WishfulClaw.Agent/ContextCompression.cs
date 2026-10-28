@@ -5,7 +5,7 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
-// 500-line exemption (949 lines as of 2026-10-20, down from 1056 after S-208's snapshot
+// 500-line exemption (949 lines as of 2026-10-28, down from 1056 after S-208's snapshot
 // logic moved to ContextCompression.UserSnapshot.cs). What is left is the compression
 // pipeline itself and its invariants: PlanCompaction → PartitionFold → SummarizeAsync →
 // MechanicalFold → Replace, plus the usage-stripping rules that keep every wire entry's

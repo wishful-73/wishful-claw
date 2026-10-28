@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ClipboardPaste, FileCode2, Puzzle, Terminal, type LucideIcon } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import type { PinnedChipKind } from '@renderer/lib/pinned-turn-preview'
-import { buildPinnedTurnPreview } from '@renderer/lib/pinned-turn-preview'
+import { buildPinnedTurnPreview, selectPinnedMedia } from '@renderer/lib/pinned-turn-preview'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import { USER_MESSAGE_BUBBLE_CLASS } from '../user-message-helpers'
 
@@ -17,8 +17,6 @@ import { USER_MESSAGE_BUBBLE_CLASS } from '../user-message-helpers'
  * interactive — the whole bar is one button that jumps back to the message.
  */
 
-const MAX_THUMBNAILS = 3
-const MAX_CHIPS = 3
 const TITLE_TEXT_LIMIT = 400
 
 interface BarChip {
@@ -54,19 +52,19 @@ interface PinnedTurnBarProps {
 }
 
 export function PinnedTurnBar({ message, onJump }: PinnedTurnBarProps): React.JSX.Element {
-  const { t } = useTranslation('chat')
-  const preview = React.useMemo(() => buildPinnedTurnPreview(message.content), [message.content])
+  const { t, i18n } = useTranslation('chat')
+  // 芯片文案（尤其是粘贴块的「N 字」）由 `translateOr` 现算，所以要跟着语言变 ——
+  // message.content 不变时 memo 不会重算，必须把当前语言也放进依赖。
+  const preview = React.useMemo(
+    () => buildPinnedTurnPreview(message.content),
+    [message.content, i18n.language]
+  )
 
-  const thumbnails = preview.images.slice(0, MAX_THUMBNAILS)
   const chips: BarChip[] = [
     ...(preview.command ? [{ kind: 'command' as const, label: `/${preview.command.name}` }] : []),
     ...preview.chips
   ]
-  // 缩略图占位后给芯片少留一格，一行最多五个元素，超出的折成 +N。
-  const visibleChips = chips.slice(0, thumbnails.length > 0 ? MAX_CHIPS - 1 : MAX_CHIPS)
-  const visibleMediaCount = thumbnails.length + visibleChips.length
-  const totalMediaCount = preview.images.length + chips.length
-  const overflow = totalMediaCount - visibleMediaCount
+  const media = selectPinnedMedia(preview.images, chips)
 
   const title = [
     preview.command ? `/${preview.command.name}` : '',
@@ -92,9 +90,12 @@ export function PinnedTurnBar({ message, onJump }: PinnedTurnBarProps): React.JS
         'ml-auto block w-fit max-w-full cursor-pointer text-left text-sm leading-snug'
       )}
     >
-      {visibleMediaCount > 0 && (
-        <div className="mb-1 flex flex-nowrap items-center gap-1 overflow-hidden pl-0.5">
-          {thumbnails.map((image) => (
+      {(media.thumbnails.length > 0 || media.chips.length > 0) && (
+        // `<span>` 而不是 `<div>`：整块外层是 `<button>`，它的 content model 只允许
+        // phrasing content，`div` 会被 HTML 校验与部分 a11y 工具判非法。`flex` 让
+        // display 照旧，视觉零变化。
+        <span className="mb-1 flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden pl-0.5">
+          {media.thumbnails.map((image) => (
             <img
               key={image.id}
               src={image.dataUrl}
@@ -103,13 +104,13 @@ export function PinnedTurnBar({ message, onJump }: PinnedTurnBarProps): React.JS
               className="size-7 shrink-0 rounded border border-border/60 object-cover"
             />
           ))}
-          {visibleChips.map((chip, index) => {
+          {media.chips.map((chip, index) => {
             const Icon = CHIP_ICON[chip.kind]
             return (
               <span
                 key={`${chip.kind}-${index}-${chip.label}`}
                 className={cn(
-                  'inline-flex max-w-[140px] shrink-0 items-center gap-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
+                  'inline-flex max-w-[110px] shrink-0 items-center gap-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
                   CHIP_TONE[chip.kind]
                 )}
               >
@@ -118,8 +119,8 @@ export function PinnedTurnBar({ message, onJump }: PinnedTurnBarProps): React.JS
               </span>
             )
           })}
-          {overflow > 0 && <OverflowBadge count={overflow} />}
-        </div>
+          {media.overflow > 0 && <OverflowBadge count={media.overflow} />}
+        </span>
       )}
       {preview.text ? (
         <span className="line-clamp-2 whitespace-pre-wrap break-words">{preview.text}</span>

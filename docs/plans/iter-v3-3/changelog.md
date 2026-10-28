@@ -68,3 +68,43 @@
 | 3 | 新测试项目要不要建 | **建**（`WishfulClaw.ImageInputRegressionTests`，33 断言） | 判据 10「无关 400 不许被截走」是这条链最容易被后人改坏的地方，且**一半断言是「不许匹配」**——漏匹配只多一次报错，误匹配会白烧一次往返还把能读图的模型记成瞎的 |
 
 **同时纠正了两条旧断言的错**：`ReadImage` / `ReadVideo` 回归里原本断言「non-vision 模型读图不附像素」，那正是本 bug 的行为，改成断言照常附像素。
+
+### 09:41 · 登记 S-248：纯文本档换形态（S-225 返工）
+
+> 「这个就只是渲染方式变了，如果用户这个时候切换渲染方式还是能又回到现在的模式的」
+
+**S-225 的偏差定位**：`render-density.ts` 的 `ChatRenderDensityPolicy` 8 个字段**全是布尔**，`text` 档只是把开合全设成收起 ⇒ **形态没换，仍是卡片**。缺的是「渲染形态」这根轴。
+
+| # | 裁定 | 来源 |
+|---|---|---|
+| 1 | 折叠条**保留复用**，只换壳里的渲染 | 老大 09:38 |
+| 2 | 参照物 = `SubAgentStepList` 的行式文本（状态字符 + 中文描述），复用 `generateStepDescription` | 老大 09:37 |
+| 3 | 纯文本档**不可点**：无 chevron、无输出区、**不弹右侧面板** | 老大 09:34 / 09:37 |
+| 4 | 报错**只上红字，不显示错误摘要** —— 「错误丢了就丢了」 | 老大 09:40 |
+| 5 | 耗时 / `+3 -1` **挂行尾浅色小字**（结果不是过程细节，复用 S-245 的 `formatDurationMs`） | 讨论推定，老大未异议 |
+| 6 | 子 agent 卡 text 档一行、禁点、不弹面板 | 与第 3 条同源 |
+| 7 | **切换档位必须完整可逆** —— text 只影响渲染不影响数据，切回来输出/diff/截图/待审批全部完好 | 老大 09:41 |
+
+**不降级的白名单**（降成一行字功能就没了）：`AskUserQuestion` / `SubmitPlanReview` / `create_goal` / 任意 `pending_approval` / widget / 生成图片 / 浏览器截图 / Bash 附件。判定口径复用 `deriveToolOutputOpen` 已有的 `forceOpen || hasVisualOutput || isLiveCommand`，不新造第二套。
+
+**归属**：v3-iter-3 登记，**v3-iter-4（1.0.4）实施**，本迭代不动码。
+
+### 14:23 · 推进 S-253 / S-255 / S-257 三条并接完审查
+
+`S-257`（`e4779c97`）、`S-255`（`59bf75f5`）、`S-253`（`337be9b7`）三刀落地。S-253 此前只有需求单写着「已完成」、代码一直没提交，顺带被审查抓到 `main.tsx` 因它涨到 515 行触了 §大文件硬线 ⇒ 拆出 `result-list.tsx`(185)，全仓复扫回到 78 / 豁免 78 / 未标 0。
+
+**审查（子 agent，47 工具调用 / 24 轮）判 PARTIAL，1 条实质缺陷 + 多条口径问题，逐条处置：**
+
+| # | 问题 | 处置 |
+|---|---|---|
+| 1 | `en/chat.json` 的 `sizeWan` 写成 `"{{wan}}k chars"` —— 万(10⁴) 配 k(10³)，**1.2 万字显示成 "1.2k chars"**，差 10 倍 | 改成 `{{kchars}}k chars`，`formatPastedBlockSize` 同时传 `wan` 与 `kchars`，各 locale 取自己单位 |
+| 2 | 粘 chip 的 memo 缺 `i18n.language` 依赖，切中英不刷新 | 补依赖 |
+| 3 | `<div>` 嵌在 `<button>` 里（非法 phrasing content） | 改 `<span>`，`flex` 已改 display，视觉零变化 |
+| 4 | 缩略图与芯片**各**给 3 个槽位 ⇒ 媒体行最宽约 410px，`flex-nowrap + overflow-hidden + 全 shrink-0` 下先被裁掉的是 `+N`，即「还有内容」的唯一提示 | 新出纯函数 `selectPinnedMedia`，**共用 4 个槽位**（有图时图优先），并补 5 种极端断言 |
+| 5 | 空态文案「（图片/附件消息）」已过时（纯图片现在走缩略图，只有真空才落空态） | 改「（空消息）」/ `(empty message)` |
+| 6 | 吸附条显 basename、聊天窗显全路径，顺序也不同 —— 刻意但没记档 | 写进 S-255.md §7.4，注明验收不要按「一致」判 |
+| 7 | S-255.md §7.4② 对 `hasEditableDraftContent` 的判断有误（它判的是带标签的 `draft.text`，返回 true） | 订正为「真正好处是不必重复推导 draft」 |
+| 8 | S-257.md §4 示例写 `3,200 字`，实现按老大原话不加千分位 | 示例改 `3200 字` 并注明 |
+| 9 | `tests/i18n-coverage` 只扫 `t(`，`translateOr` 的 key **结构性不被校验** —— 缺陷 1 正是从这里漏过去的 | 正则加 `translateOr` 分支；只调 `translateOr` 的纯 helper 文件也纳入（它们必带 `ns`，无需声明）。**变异验证**：删掉 zh 的 `sizeWan` 立即报 missing，还原即通过 |
+
+门禁：typecheck 三配置 0 错 / `npm test` **88/88**（`select-file-tags` 18→28 断言、`pinned-turn-preview` 28→41 断言）。**三条需求的真机验收一条都还没走**（S-253 六条、S-255 六条、S-257 五条）。

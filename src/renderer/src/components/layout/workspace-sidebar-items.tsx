@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28 实测 561 行）：条目渲染与条目操作（重命名 / 删除 / 固定 / 拖拽）共用同一批 6 个 state 与 12 个回调，且操作目标随时切换；拆开需要在父子之间反复同步当前操作对象。
+// 拆出去必须新增 props 链或 context 才能跑通，这个中间层本身就是新的排查成本。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GitBranch, Plus, Pin, Trash2, Pencil, Folder, FolderOpen, Eraser, Copy, Archive, Loader2 } from 'lucide-react'

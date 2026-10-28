@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28 实测 603 行）：4 个 state 与 6 个 ref 构成同一套滚动定位体系（容器 ref、列表项 ref 表、搜索框 ref、键盘导航索引）；拆开后 ref 与索引要在组件之间透传，定位逻辑会被切碎。
+// 拆出去必须新增 props 链或 context 才能跑通，这个中间层本身就是新的排查成本。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {

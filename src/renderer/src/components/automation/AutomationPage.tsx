@@ -1,4 +1,7 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+// 500 行豁免（2026-10-28 实测 580 行）：列表、表单弹窗与运行记录围绕同一份 12 个 state、10 个回调联动（loading / 错误 / 刷新 / 当前任务）；拆开需把整包状态上提或建 context。
+// 拆出去必须新增 props 链或 context 才能跑通，这个中间层本身就是新的排查成本。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   CalendarClock,

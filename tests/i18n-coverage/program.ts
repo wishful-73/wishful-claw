@@ -116,15 +116,24 @@ for (const file of sourceFiles(sourceRoot)) {
     const prefix = match[2].match(/keyPrefix:\s*['"]([^'"]+)['"]/)
     if (prefix) prefixes.push(prefix[1])
   }
-  if (declared.length === 0) continue
+  // A file that only calls `translateOr` has no `useTranslation` declaration but still carries
+  // statically checkable keys — those callsites always pass `ns` explicitly, so they need no
+  // declaration to be verifiable.
+  if (declared.length === 0 && !source.includes('translateOr(')) continue
   const candidates = [...new Set([...declared, COMMON])]
 
-  // `t('key')` / `t("key")`. Template literals are skipped: they are built at runtime and
-  // cannot be checked statically. So is anything preceded by a dot — that is a different
-  // i18n instance (`i18next.t`), with its own namespace rules.
+  // `t('key')` / `t("key")` / `translateOr('key', …)`. Template literals are skipped: they are
+  // built at runtime and cannot be checked statically. So is anything preceded by a dot — that
+  // is a different i18n instance (`i18next.t`), with its own namespace rules.
+  // `translateOr` needs its own alternative rather than being swept up by `t(`: it is called
+  // outside React (pure helpers, chip builders), so it always spells out `ns` and never has a
+  // `useTranslation` declaration — without this branch every such key was structurally
+  // unverifiable, which is exactly how the en/zh unit mismatch slipped through.
   // The options span lines in practice (`{\n  ns: 'settings',`), so the tail has to reach
   // past the closing paren of the next line rather than stopping at the newline.
-  for (const match of source.matchAll(/(?:^|[^\w.$])t\(\s*(['"])([^'"\n]+)\1([^)]*)/g)) {
+  for (const match of source.matchAll(
+    /(?:^|[^\w.$])(?:t|translateOr)\(\s*(['"])([^'"\n]+)\1([^)]*)/g
+  )) {
     const raw = match[2]
     if (!raw || raw.includes('${')) continue
 

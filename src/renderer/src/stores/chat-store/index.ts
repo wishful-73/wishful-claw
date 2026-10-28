@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28 实测 2468 行）：zustand store 聚合入口：切片组合、agent 流式事件分发与跨 store 同步都在同一次 create() 里声明，拆开要把 stream handler、set/get 与切片类型全部重挂，排查「谁改了会话状态」会散到多文件。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 2 类（高度内聚的 store / hook）。
+
 import { create } from 'zustand'
 import { toast } from 'sonner'
 import i18n from 'i18next'

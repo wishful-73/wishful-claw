@@ -7,6 +7,8 @@
 // this suite locks down.
 
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   createPastedBlockTag,
   createSelectFileTag,
@@ -134,5 +136,29 @@ eq(
   'wan unit keeps one decimal'
 )
 eq(describePastedBlockLabel(''), '\u7c98\u8d34 \u00b7 0 \u5b57', 'empty body reports zero')
+
+// ── S-257 审查补刀：英文侧不能把「万」当「千」 ─────────────────────────────
+// `sizeWan` 在 zh 里插的是 万（10^4）档的 `wan`，en 里插的必须是千（10^3）档的
+// `kchars`。当初把同一个 `wan` 塞进 "{{wan}}k chars"，1.2 万字会显示成 1.2k chars
+// —— 差十倍，且 fallback 断言与 i18n key 对齐都抓不到。这条直接读 locale 文件锁住。
+const zhChat = JSON.parse(
+  readFileSync(join(process.cwd(), 'src/renderer/src/locales/zh/chat.json'), 'utf8')
+) as { input: { pastedBlock: Record<string, string> } }
+const enChat = JSON.parse(
+  readFileSync(join(process.cwd(), 'src/renderer/src/locales/en/chat.json'), 'utf8')
+) as { input: { pastedBlock: Record<string, string> } }
+
+check(
+  zhChat.input.pastedBlock.sizeWan.includes('{{wan}}'),
+  'zh sizeWan interpolates the wan (10^4) number'
+)
+check(
+  enChat.input.pastedBlock.sizeWan.includes('{{kchars}}'),
+  'en sizeWan interpolates kchars (10^3), not the wan number'
+)
+check(
+  !enChat.input.pastedBlock.sizeWan.includes('{{wan}}'),
+  'en sizeWan must not interpolate a 10^4 value into a k-suffixed string'
+)
 
 console.log(`select-file tag checks passed: ${checks}`)

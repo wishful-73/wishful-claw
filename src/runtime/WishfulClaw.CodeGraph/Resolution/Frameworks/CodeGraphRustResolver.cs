@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-28 实测 828 行）：CodeGraph 子系统计划整体剥离为独立项目、
+// 以插件形式引用，剥离前不拆分（2026-10-28 老大裁定）—— 拆了迁移时还要拼回去，纯属白做。
+// 豁免依据：项目负责人裁定 —— 待剥离子系统不适用本仓 500 行拆分线。
+
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;

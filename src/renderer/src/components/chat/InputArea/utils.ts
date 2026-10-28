@@ -43,6 +43,9 @@ export function formatRuntimeThroughput(value: number): string {
 
 export function formatRuntimeTtft(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return '0s'
+  // S-254 有意**不**收敛到 `formatDurationMs`：TTFT 是**性能指标不是耗时读数**，`1.2s` 与 `1.8s`
+  // 的差别对排查有意义，取整会把信号抹平。同一分界见 `AssistantMessage/utils.ts` 的
+  // `formatPreciseDurationMs` —— 后人别顺手"统一"掉。
   if (ms < 10_000) return `${(ms / 1000).toFixed(2)}s`
   return formatDurationMs(ms)
 }

@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28 实测 621 行）：同质纯函数 / 常量 / 类型集合（从 memory-automation 已拆出的公共部分），无编排逻辑。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 1 类（单一数据对象）。
+
 // Pure utility functions, constants, and types extracted from memory-automation.ts
 
 import { runSidecarTextRequest } from '@renderer/lib/ipc/agent-bridge'

@@ -206,6 +206,7 @@
     "drawLabel": "绘图",
     "automationLabel": "自动化",
     "extensionsLabel": "扩展",
+    "extensionViewNotReady": "「{{name}}」的窗口能力还没接上，下个版本可用",
     "expand": "展开侧边栏",
     "projects": "项目",
     "conversations": "对话",

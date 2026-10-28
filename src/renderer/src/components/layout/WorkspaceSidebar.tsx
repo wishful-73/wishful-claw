@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuLabel } from '@renderer/components/ui/dropdown-menu'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore, type Session } from '@renderer/stores/chat-store'
+import { useExtensionStore } from '@renderer/stores/extension-store'
 import { cn } from '@renderer/lib/utils'
 import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
 import { toast } from 'sonner'
@@ -218,6 +219,44 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     { id: 'taskboard', icon: <SquareKanban className="size-4" />, label: t('sidebar.taskBoardLabel', { defaultValue: 'Task Board' }), onClick: openTaskBoardPage }
   ]
 
+  // ─── 插件视图入口（S-240）───
+  // 硬编码三项保留原地不动（内置功能），manifest 声明的视图**追加**在下方，按 nav.order 排序。
+  // 来源是 extension-store 里「已启用」插件的 manifest.views，停用即消失。
+  const extensionInstances = useExtensionStore((s) => s.extensions)
+  const manifestViewItems = useMemo(() => {
+    const items: { id: string; icon: React.ReactNode; label: string; order: number; onClick: () => void }[] = []
+    for (const extension of extensionInstances) {
+      if (!extension.enabled) continue
+      for (const view of extension.manifest.views ?? []) {
+        items.push({
+          id: `${extension.id}:${view.id}`,
+          icon: <Plug className="size-4" />,
+          label: view.nav?.label || view.title,
+          order: view.nav?.order ?? 100,
+          onClick: () =>
+            toast.info(
+              t('sidebar.extensionViewNotReady', {
+                defaultValue: '「{{name}}」的窗口能力还没接上，下个版本可用',
+                name: view.nav?.label || view.title
+              })
+            )
+        })
+      }
+    }
+    // 同 order 时按 id 兜底，保证跨插件顺序稳定（不依赖 locale 比较）
+    return items.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+  }, [extensionInstances, t])
+
+  const allExtensionItems = [
+    ...extensionItems,
+    ...manifestViewItems.map((item) => ({
+      id: item.id,
+      icon: item.icon,
+      label: item.label,
+      onClick: item.onClick
+    }))
+  ]
+
   // 按当前视口收窄：右栏 RightPanel 一直这么做，左栏此前是裸用存值，
   // 于是把窗口拖窄后聊天窗会被挤到 CHAT_MIN_WIDTH 以下。
   // 只收渲染值、不回写 store，窗口拉回来能自动恢复。
@@ -284,7 +323,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
             onPointerDownOutside={(e) => e.preventDefault()}
             onInteractOutside={(e) => e.preventDefault()}
           >
-            {extensionItems.map((ext) => (
+            {allExtensionItems.map((ext) => (
               <DropdownMenuItem
                 key={ext.id}
                 onSelect={() => {

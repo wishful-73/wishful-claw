@@ -120,3 +120,15 @@ export function classifyEsFailure(code: number | null, stderr: string): EsFailur
   }
   return 'search-failed'
 }
+
+/**
+ * `Everything.exe -startup` 的退出码算不算「自动拉起明确失败」（S-253 补刀的补刀）。
+ *
+ * 单独抽出来是因为这条判据反直觉，且错了会直接变成用户看到的一句假话：`-startup` 的官方语义是
+ * 「已在运行就什么都不做」⇒ **Everything 本来就在跑时它会立刻以 0 退出**，那一刻的真实含义是
+ * 「没事要干」，不是「启动失败」。判据必须收在 `!== 0`，不能放宽成「非 null 即失败」
+ * （`classifyEsFailure` 里 `code === null` 归 `spawn-failed` 是另一码事，那是 es.exe 自己没起来）。
+ */
+export function isEverythingAutostartFailure(code: number | null): boolean {
+  return code !== 0
+}

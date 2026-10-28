@@ -92,17 +92,45 @@ export function buildPinnedTurnPreview(content: UnifiedMessage['content']): Pinn
 /**
  * The media line's width budget, in px, from `PinnedTurnBar.tsx`'s real CSS.
  *
- * These have to track the classes there: a thumbnail is `size-7` (28) + `gap-1` (4), a chip is
- * `max-w-[110px]` (110) + `gap-1` (4), and the `+N` badge is ~28 + `gap-1` (4).
+ * Everything below is derived from the classes in that file, not the other way round — the
+ * regression suite asserts against this, so a constant that disagrees with the CSS makes the
+ * whole suite meaningless.
+ *
+ * `pl-0.5` (0.125rem), `size-7` (1.75rem) and `gap-1` (0.25rem) are **rem**, so they scale with
+ * the root font size; `max-w-[110px]` and `text-[11px]` are **fixed px**. The settings page lets
+ * the root size go 12–20, so "fits" has to hold at every step of that range, not just at 16.
+ * Sizing this purely in px constants was the first version's mistake: it read 356 for a line
+ * that really renders 381 at root 20, i.e. it would have passed a budget it should have failed.
  *
  * 400 is the widest line we accept, and it is not arbitrary: "no images + 3 chips" is the
  * widest shape the old implementation ever produced (342 + 28 = 370) and it was never reported
- * as clipped, so keeping it is safe. Everything else must fit inside the same budget.
+ * as clipped, so keeping it is safe. The worst shape the *current* selector can emit is
+ * "3 images + 2 chips + badge": pl 2.5 + 3×35 + 2×110 + 5 gaps×5 + badge 37 = **389.5** at root
+ * 20 (360 at root 16) — inside 400 at both ends, but the headroom is only 10.5px, so neither the
+ * font-size ceiling nor the badge width has room to grow. The suite pins both numbers.
  */
 export const MEDIA_LINE_BUDGET_PX = 400
-const THUMBNAIL_SLOT_PX = 32
+
+/** Chip slot for budget arithmetic: its `max-w-[110px]` plus one `gap-1` at root 16. */
 const CHIP_SLOT_PX = 114
+/** Thumbnail slot for budget arithmetic: its `size-7` plus one `gap-1` at root 16. */
+const THUMBNAIL_SLOT_PX = 32
+/** `+N` badge plus one `gap-1` at root 16. */
 const OVERFLOW_BADGE_PX = 32
+
+// The same geometry expressed the way the CSS is written (rem relative to the root size), used
+// only by `measurePinnedMediaLine`. `PL_REM` is the container's `pl-0.5`.
+const PL_REM = 0.125
+const THUMBNAIL_REM = 1.75
+const GAP_REM = 0.25
+const CHIP_MAX_PX = 110
+// `+N` badge: `border` on both sides, `px-1.5` on both sides, and the `+N` glyphs at `text-[11px]`
+// (fixed px). Two digits is the realistic width — `+15` at 11px runs ≈19.3px with letter-spacing,
+// so 20 is the honest figure; over-estimating only makes the assertion stricter, which is the safe
+// direction.
+const BADGE_BORDER_PX = 2
+const BADGE_PADDING_REM = 0.375
+const BADGE_TEXT_PX = 20
 
 /** Never show more than this many of either kind, whatever the budget would allow. */
 const MAX_THUMBNAILS = 3
@@ -114,10 +142,41 @@ export interface PinnedMediaSelection<T> {
   overflow: number
 }
 
-/** Estimated rendered width of one selection — only exists so the regression suite can assert it. */
-export function measurePinnedMediaLine(selection: PinnedMediaSelection<unknown>): number {
-  const elements = selection.thumbnails.length * THUMBNAIL_SLOT_PX + selection.chips.length * CHIP_SLOT_PX
-  return selection.overflow > 0 ? elements + OVERFLOW_BADGE_PX : Math.max(0, elements - 4)
+/**
+ * Rendered width of one selection, in px — only exists so the regression suite can assert it.
+ *
+ * This is the real flex geometry from `PinnedTurnBar.tsx`: the row is
+ * `pl + Σ items + gaps × gap`, where `gaps` is the number of adjacent pairs actually rendered —
+ * **the `+N` badge is one of those items**, it sits in the same flex container and eats its own
+ * gap. So with a badge there are `items` gaps, without one `items − 1`. Forgetting the badge's gap
+ * made this read 4px wide at root 16 and 5px at root 20 — the same direction of error (a ruler that
+ * under-reports) as the first version, which is exactly what this function exists to prevent.
+ *
+ * The previous version approximated the row as `Σ slot widths ± 4`, which was wrong in both
+ * directions — it read 174 for a 159.5px line at root 12 and 356 for a 381px line at root 20.
+ * Pass the root font size in, because three of the four dimensions are rem and therefore move
+ * with it.
+ */
+export function measurePinnedMediaLine(
+  selection: PinnedMediaSelection<unknown>,
+  rootFontSizePx = 16
+): number {
+  const items = selection.thumbnails.length + selection.chips.length
+  // The row itself is only rendered when there is at least one item, so zero items is zero width.
+  if (items === 0) return 0
+
+  const r = rootFontSizePx
+  const hasBadge = selection.overflow > 0
+  // Items on the line: thumbnails + chips + the badge when it shows. Gaps sit *between* them.
+  const itemsOnLine = hasBadge ? items + 1 : items
+  let width = PL_REM * r
+  width += selection.thumbnails.length * THUMBNAIL_REM * r
+  width += selection.chips.length * CHIP_MAX_PX
+  width += (itemsOnLine - 1) * GAP_REM * r
+  if (hasBadge) {
+    width += BADGE_BORDER_PX + BADGE_PADDING_REM * 2 * r + BADGE_TEXT_PX
+  }
+  return width
 }
 
 /**
@@ -132,6 +191,13 @@ export function measurePinnedMediaLine(selection: PinnedMediaSelection<unknown>)
  *
  * `Math.max(1, …)` because a chip is the informative half of a message; a lone thumbnail plus
  * `+N` says far less than one chip plus `+N`.
+ *
+ * The slot constants are quoted at root 16 while the real line grows with the root font size, so
+ * this deliberately over-allocates at large sizes and under-allocates at small ones. That is fine
+ * because the result is re-measured by `measurePinnedMediaLine` at every root size in
+ * `settings.fontSize`'s range: the selector's worst output ("3 images + 2 chips + badge") is 381.5
+ * at root 20, still inside the 400 budget. If the budget ever tightens, that pair has to be
+ * re-derived together — they are two halves of one constraint.
  *
  * Generic over the chip shape so the bar can hand in its own list (slash commands included)
  * while the regression suite uses the plain `PinnedChip`.

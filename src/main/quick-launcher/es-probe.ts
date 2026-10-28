@@ -26,6 +26,7 @@ import {
   getEsKnownDirCandidates,
   isEsExecutableName,
   isEsVersionInfoHit,
+  isEverythingAutostartFailure,
   parseEsJson,
   parseEsPathLines,
   pickEsCandidate,
@@ -87,6 +88,16 @@ let esProbeCache: { at: number; status: EsStatus; deep: boolean } | null = null
 
 /** 上次自动拉起 Everything 的时刻（0 = 从没起过），用于 `EVERYTHING_AUTOSTART_COOLDOWN_MS` 冷却。 */
 let everythingAutostartAt = 0
+
+/**
+ * 上一次自动拉起是否**明确失败**（S-253 真机补刀的补刀，2026-10-28 dev 审查）。
+ *
+ * 冷却窗口内不会再 spawn，若此时把 `autostartFailed` 当成本轮新判定（false），就会出现
+ * 「spawn 硬失败 ⇒ 界面说『启动失败，查权限』⇒ 用户点重试 ⇒ 1 秒内落在冷却窗口 ⇒ 界面改口
+ * 说『索引还没读完，等一等』」。同一件事两句相反的结论，比说错更让人困惑 —— 所以冷却窗口内
+ * **沿用上一次的判定**。
+ */
+let lastAutostartFailed = false
 
 export function invalidateEsProbe(): void {
   esProbeCache = null
@@ -356,6 +367,8 @@ export async function startEverythingAndRetry(
   let autostartFailed = false
   if (now - everythingAutostartAt > EVERYTHING_AUTOSTART_COOLDOWN_MS) {
     everythingAutostartAt = now
+    // 新起一轮，判定从头来过（上一次的结论只对上一次那个进程有意义）。
+    lastAutostartFailed = false
     try {
       const child = spawn(everythingExe, ['-startup'], {
         detached: true,
@@ -364,21 +377,28 @@ export async function startEverythingAndRetry(
       })
       child.on('error', (error) => {
         autostartFailed = true
+        lastAutostartFailed = true
         console.warn(`[QuickLauncher] Failed to start Everything: ${error.message}`)
       })
       // `-startup` 的官方语义是「正在运行就什么都不做」⇒ 已有实例时它会立刻以 **0** 退出，
       // 这不算失败（Everything 本来就在跑，只是 IPC 还没通）。只有非 0 退出才是真失败。
       child.on('exit', (code) => {
-        if (code !== 0) {
+        if (isEverythingAutostartFailure(code)) {
           autostartFailed = true
+          lastAutostartFailed = true
           console.warn(`[QuickLauncher] Everything exited with code ${code}`)
         }
       })
       child.unref()
     } catch (error) {
       autostartFailed = true
+      lastAutostartFailed = true
       console.warn(`[QuickLauncher] Failed to start Everything: ${String(error)}`)
     }
+  } else {
+    // 冷却窗口内不重起 ⇒ 没有新的事实可依据，沿用上一次的判定。这里若当成「本轮没失败」，
+    // 用户点重试就会看到文案从「启动失败」变回「等一等」—— 同一件事两句相反的结论。
+    autostartFailed = lastAutostartFailed
   }
 
   const deadline = now + EVERYTHING_AUTOSTART_WAIT_MS

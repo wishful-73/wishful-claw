@@ -112,15 +112,19 @@ function fakeImages(count: number) {
   }))
 }
 
-// 每一种「图片数 × 芯片充足」的配比都必须装进预算，这条是真正的守门断言。
-for (let imageCount = 0; imageCount <= 8; imageCount += 1) {
-  const selection = selectPinnedMedia(fakeImages(imageCount), chipsOf(8))
-  const width = measurePinnedMediaLine(selection)
-  check(
-    width <= MEDIA_LINE_BUDGET_PX,
-    `${imageCount} image(s) + chips fits the media line budget (${width}px <= ${MEDIA_LINE_BUDGET_PX}px)`
-  )
-  check(selection.chips.length >= 1, `${imageCount} image(s) still leave at least one chip slot`)
+// 每一种「图片数 × 芯片充足」的配比，都要在 `settings.fontSize` 允许的**每一档**根字号下装进预算。
+// 行宽里 `pl-0.5` / `size-7` / `gap-1` 都是 rem，随根字号放大，只有芯片 `max-w-[110px]` 是固定
+// px —— 所以「在 16 下量一次」不成立：同一形状在根字号 20 下比 16 宽约 7%，正好吃掉预算余量。
+for (const rootFontSizePx of [12, 14, 16, 20]) {
+  for (let imageCount = 0; imageCount <= 8; imageCount += 1) {
+    const selection = selectPinnedMedia(fakeImages(imageCount), chipsOf(8))
+    const width = measurePinnedMediaLine(selection, rootFontSizePx)
+    check(
+      width <= MEDIA_LINE_BUDGET_PX,
+      `${imageCount} image(s) + chips fits at root ${rootFontSizePx}px (${width}px <= ${MEDIA_LINE_BUDGET_PX}px)`
+    )
+    check(selection.chips.length >= 1, `${imageCount} image(s) still leave at least one chip slot`)
+  }
 }
 
 const noMedia = selectPinnedMedia([], [])
@@ -150,6 +154,36 @@ const threeImages = selectPinnedMedia(fakeImages(3), chipsOf(5))
 eq(threeImages.thumbnails.length, 3, 'three images keep all three thumbnails')
 eq(threeImages.chips.length, 2, 'three images still leave two chip slots')
 eq(threeImages.overflow, 3, 'overflow stays consistent')
+
+// `overflow === 0` 的形态。上面所有配比都喂了 5~8 个芯片而 MAX_CHIPS 只有 3，所以徽章恒在，
+// 「没有徽章」那一半公式此前**一次都没执行过** —— 尺子的一半是空跑，就测不出尺子歪。
+// 无徽章时行宽 = pl + Σ元素 + (n−1)×gap，没有徽章宽、也没有末尾 gap。
+const singleThumb = { thumbnails: fakeImages(1), chips: [], overflow: 0 }
+eq(
+  measurePinnedMediaLine(singleThumb, 16),
+  30,
+  'a lone thumbnail is pl(2) + size-7(28), with no trailing gap'
+)
+const singleChip = { thumbnails: [], chips: chipsOf(1), overflow: 0 }
+eq(measurePinnedMediaLine(singleChip, 16), 112, 'a lone chip is pl(2) + max-w(110), with no trailing gap')
+const noOverflowMix = { thumbnails: fakeImages(1), chips: chipsOf(1), overflow: 0 }
+check(
+  measurePinnedMediaLine(noOverflowMix, 16) < measurePinnedMediaLine(mixedMedia, 16),
+  'the same shape without a badge must measure narrower — the badge only exists when overflow > 0'
+)
+eq(measurePinnedMediaLine({ thumbnails: [], chips: [], overflow: 0 }, 16), 0, 'an empty row is zero wide')
+
+// 最坏形状的**绝对读数**，与 `pinned-turn-preview.ts` 常量块注释里那两个数字逐字对应。
+// 只写 `< 400` 是不够的：那种断言容忍 40px 的低估，而低估正是这把尺子历史上两次出错的
+// 方向（第一次漏 pl 与量纲，第二次漏徽标自己占的那个 gap —— 4px/5px，刚好在 `< 400` 里
+// 看不出来）。钉绝对值，谁再动公式或常量都会立刻炸。
+const worstShape = { thumbnails: fakeImages(3), chips: chipsOf(2), overflow: 5 }
+eq(measurePinnedMediaLine(worstShape, 16), 360, 'worst shape at root 16: pl+3 thumbs+2 chips+5 gaps+badge')
+eq(
+  measurePinnedMediaLine(worstShape, 20),
+  389.5,
+  'worst shape at root 20 is 389.5 — only 10.5px of headroom under the 400 budget'
+)
 
 const worstCase = selectPinnedMedia(fakeImages(10), chipsOf(10))
 check(worstCase.overflow > 0, 'worst case reports hidden content')

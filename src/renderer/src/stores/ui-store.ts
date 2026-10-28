@@ -573,6 +573,12 @@ export const useUIStore = create<UIStore>((set, get) => ({
       // 拦截放在 store 而不是各调用点：调用点会继续长（新工具、新事件），判据只写一遍才不漏。
       // 拿不到 sessionId 时会回落成当前作用域 ⇒ 判为前台，这是有意的：没有归属信息的调用宁可
       // 显式打开，也不要静默（静默失败更难排查）。
+      // 早退分支**刻意不写激活 tab**（`activateRightPanelTab` 只在下面那条 return 里调）。
+      // `rightPanelActiveTabIds` 是 per-scope 的，写进去不影响当前视图，但会覆盖用户在那个
+      // 会话里**自己选过**的 tab —— 后台 agent 的导航不该替用户改焦点，否则他在 B 里手动切到
+      // 任务面板，被后台导航一次就弹走一次。代价：切过去时按 RightPanel 的 `?? tabs[0]` 回落到
+      // 第一个 tab，浏览器 tab 在、只是没被选中。这个取舍是定的，不是漏写 —— 要「切过去自动
+      // 选中刚打开的那个」，得另加状态区分「用户选的」与「agent 选的」，不值当。
       if (!isRightPanelScopeActive(state, resolvedSessionId)) {
         return {
           rightPanelTabs,

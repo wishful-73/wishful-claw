@@ -25,6 +25,7 @@ import {
   activateRightPanelTab,
   closeRightPanelScope,
   hasRightPanelTabsInScope,
+  isRightPanelScopeActive,
   resolveRightPanelSessionId,
   scopedRightPanelTabId
 } from './right-panel-scope'
@@ -554,6 +555,25 @@ export const useUIStore = create<UIStore>((set, get) => ({
         projectId
       )
       if (options?.background) {
+        return {
+          rightPanelTabs,
+          ...browserStatePatch
+        }
+      }
+      // S-259：只有「用户当前正在看的那个作用域」才允许把面板掀开。
+      // 此前这里无条件 rightPanelOpen: true —— 后台会话（别的会话的 agent 调 BrowserNavigate、
+      // 团队事件等）也会把用户面前的面板拉开，而内容层按 scope 分区、当前 scope 里没有这个
+      // tab，于是出现「面板撑开 + 一片空白」，切过去又被 prepareSessionSwitch 收掉。
+      //
+      // 判据用 isRightPanelScopeActive（只看 sessionId，与 tab 归属桶同源），**不用**
+      // isActiveBrowserScope：后者把 projectId 也纳入比较，而「面板开不开」取决于内容层会不会
+      // 画出这个 tab，内容层只认 sessionId ⇒ 两把尺子换着用，在 projectId 一侧拿不到的边界上
+      // 会判出「你在别的 scope」，前台也被锁死不展开，比原 bug 更难查。
+      //
+      // 拦截放在 store 而不是各调用点：调用点会继续长（新工具、新事件），判据只写一遍才不漏。
+      // 拿不到 sessionId 时会回落成当前作用域 ⇒ 判为前台，这是有意的：没有归属信息的调用宁可
+      // 显式打开，也不要静默（静默失败更难排查）。
+      if (!isRightPanelScopeActive(state, resolvedSessionId)) {
         return {
           rightPanelTabs,
           ...browserStatePatch

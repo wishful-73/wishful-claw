@@ -10,6 +10,7 @@ import type { ToolDefinition } from '../../api/types'
 import { teamEvents } from './events'
 import { useTeamStore } from '../../../stores/team-store'
 import { useUIStore } from '../../../stores/ui-store'
+import { isRightPanelScopeActive } from '../../../stores/right-panel-scope'
 import { useChatStore } from '../../../stores/chat-store'
 import { teamCreateTool } from './tools/team-create'
 import { sendMessageTool } from './tools/send-message'
@@ -49,8 +50,12 @@ export function registerTeamTools(): void {
 
     if (event.type === 'team_start') {
       const ui = useUIStore.getState()
-      ui.setRightPanelOpen(true)
-      ui.setRightPanelTab('team')
+      // S-259：后台会话起团队时不许掀开用户面前的面板。判据收口在
+      // isRightPanelScopeActive（与浏览器工具同一套），见 right-panel-scope.ts。
+      if (isRightPanelScopeActive(ui, sessionId)) {
+        ui.setRightPanelOpen(true)
+        ui.setRightPanelTab('team')
+      }
     }
   })
 

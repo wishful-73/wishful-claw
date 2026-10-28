@@ -99,3 +99,24 @@ export function hasRightPanelTabsInScope(
   const scopeId = rightPanelTabScopeId(sessionId)
   return tabs.some((tab) => rightPanelTabScope(tab) === scopeId)
 }
+
+/**
+ * S-259：这个会话是不是用户当前正在看的那个作用域。
+ *
+ * agent 侧（浏览器工具、团队事件）在「打开右侧面板」之前必须先问一次：只有属于当前
+ * 作用域的调用才允许改变面板开合。否则就是「后台会话执行 → 用户面前的面板被掀开且
+ * 一片空白」—— 因为内容层按 scope 过滤，当前 scope 里根本没有那个 tab。
+ *
+ * 判据刻意收口在这一个函数：四个调用点各写一遍的话，漏掉一处就长回同一个 bug。
+ * `sessionId` 为空时按前台处理（resolveRightPanelSessionId 会回落成当前作用域）——
+ * 没有归属信息的调用宁可显式打开，也不要静默，静默失败比多开一次面板难查得多。
+ */
+export function isRightPanelScopeActive(
+  state: Pick<UIStore, 'activeScopedSessionId'>,
+  sessionId?: string | null
+): boolean {
+  return (
+    rightPanelTabScopeId(resolveRightPanelSessionId(state, sessionId)) ===
+    rightPanelTabScopeId(resolveRightPanelSessionId(state))
+  )
+}

@@ -90,6 +90,7 @@
     "test:local-media-url": "esbuild tests/local-media-url/program.ts --bundle --platform=node --format=cjs --outfile=tests/local-media-url/out/program.cjs && node tests/local-media-url/out/program.cjs",
     "test:chat-image-dir": "esbuild tests/chat-image-dir/program.ts --bundle --platform=node --format=cjs --outfile=tests/chat-image-dir/out/program.cjs && node tests/chat-image-dir/out/program.cjs",
     "test:image-payload": "esbuild tests/image-payload/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-payload/out/program.cjs && node tests/image-payload/out/program.cjs",
+    "test:right-panel-scope": "esbuild tests/right-panel-scope/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@renderer/stores/chat-store=./tests/right-panel-scope/stubs/chat-store.ts --outfile=tests/right-panel-scope/out/program.cjs && node tests/right-panel-scope/out/program.cjs",
     "test:feedback-api": "node tests/feedback-api/program.mjs",
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\""
   },

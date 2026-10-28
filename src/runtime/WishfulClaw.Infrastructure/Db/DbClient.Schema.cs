@@ -1,0 +1,467 @@
+using System.Text.Json;
+using Microsoft.Data.Sqlite;
+using WishfulClaw.Core.Protocol;
+using WishfulClaw.Infrastructure.Storage;
+
+namespace WishfulClaw.Infrastructure.Db;
+
+/// <summary>
+/// Hand-written schema bootstrap: CREATE TABLE / indexes / FTS5 virtual table / sync triggers.
+/// Replaces SqlSugar CodeFirst. Split out of DbClient.Initialize per AGENTS.md 大文件拆分
+/// (2026-10-28); the DDL bodies are moved verbatim.
+/// </summary>
+public static partial class DbClient
+{
+    /// <summary>
+    /// Create all tables, indexes, FTS5 table and triggers (idempotent, IF NOT EXISTS).
+    /// Requires <see cref="_db"/> to be set by the caller.
+    /// </summary>
+    private static void CreateSchema()
+    {
+        // ── Create tables (hand-written DDL, replaces SqlSugar CodeFirst) ──
+        var tableSqls = new[]
+        {
+            @"CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                working_folder TEXT,
+                ssh_connection_id TEXT,
+                plugin_id TEXT,
+                pinned INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                icon TEXT,
+                mode TEXT NOT NULL DEFAULT 'chat',
+                scope TEXT,
+                collaboration_mode TEXT,
+                permission_mode TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                project_id TEXT,
+                working_folder TEXT,
+                ssh_connection_id TEXT,
+                plan_id TEXT,
+                pinned INTEGER NOT NULL DEFAULT 0,
+                plugin_id TEXT,
+                plugin_type TEXT,
+                channel_route_key TEXT,
+                external_chat_id TEXT,
+                external_chat_type TEXT,
+                provider_id TEXT,
+                model_id TEXT,
+                model_selection_mode TEXT NOT NULL DEFAULT 'inherit',
+                persona_id TEXT,
+                current_snapshot_id TEXT,
+                context_revision INTEGER NOT NULL DEFAULT 0
+            );",
+            @"CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
+                meta TEXT,
+                created_at INTEGER NOT NULL,
+                usage TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );",
+            @"CREATE TABLE IF NOT EXISTS sub_agent_runs (
+                tool_use_id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL,
+                agent_name TEXT NOT NULL DEFAULT '',
+                data TEXT NOT NULL DEFAULT '',
+                started_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                success INTEGER
+            );",
+            @"CREATE TABLE IF NOT EXISTS ssh_connections (
+                id TEXT PRIMARY KEY NOT NULL,
+                group_id TEXT,
+                name TEXT NOT NULL DEFAULT '',
+                host TEXT NOT NULL DEFAULT '',
+                port INTEGER NOT NULL DEFAULT 22,
+                username TEXT NOT NULL DEFAULT '',
+                auth_type TEXT NOT NULL DEFAULT 'password',
+                encrypted_password TEXT,
+                private_key_path TEXT,
+                encrypted_passphrase TEXT,
+                startup_command TEXT,
+                default_directory TEXT,
+                keep_alive_interval INTEGER NOT NULL DEFAULT 60,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                last_connected_at INTEGER,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE TABLE IF NOT EXISTS plans (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'drafting',
+                file_path TEXT,
+                content TEXT,
+                spec_json TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE TABLE IF NOT EXISTS goals (
+                goal_id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL,
+                project_id TEXT,
+                objective TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'active',
+                token_budget INTEGER,
+                tokens_used INTEGER NOT NULL DEFAULT 0,
+                time_used_seconds INTEGER NOT NULL DEFAULT 0,
+                plans_json TEXT,
+                plan_count INTEGER NOT NULL DEFAULT 0,
+                completed_plan_count INTEGER NOT NULL DEFAULT 0,
+                current_plan_index INTEGER NOT NULL DEFAULT -1,
+                working_folder TEXT,
+                model_config_json TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE TABLE IF NOT EXISTS goal_plan_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                goal_id TEXT NOT NULL,
+                plan_id TEXT NOT NULL,
+                original_plan_id TEXT,
+                plan_title TEXT,
+                round INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'executing',
+                description TEXT,
+                steps_json TEXT,
+                summary TEXT,
+                evaluation_reasoning TEXT,
+                evaluation_satisfied INTEGER,
+                adjusted INTEGER NOT NULL DEFAULT 0,
+                started_at INTEGER NOT NULL,
+                finished_at INTEGER
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_goal_plan_tasks_goal_round " +
+            "ON goal_plan_tasks(goal_id, round);",
+            @"CREATE TABLE IF NOT EXISTS goal_plans (
+                plan_id TEXT PRIMARY KEY NOT NULL,
+                goal_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                ordinal INTEGER NOT NULL DEFAULT 0,
+                original_plan_id TEXT,
+                title TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                content_json TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                result_summary TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                started_at INTEGER,
+                completed_at INTEGER
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_goal_plans_goal_ordinal ON goal_plans(goal_id, ordinal);",
+            @"CREATE TABLE IF NOT EXISTS goal_tasks (
+                task_id TEXT PRIMARY KEY NOT NULL,
+                goal_id TEXT NOT NULL,
+                plan_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                ordinal INTEGER NOT NULL DEFAULT 0,
+                title TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                content_json TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                result_summary TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                started_at INTEGER,
+                completed_at INTEGER
+            );",
+            @"CREATE UNIQUE INDEX IF NOT EXISTS ux_goal_tasks_plan_ordinal ON goal_tasks(plan_id, ordinal);",
+            @"CREATE INDEX IF NOT EXISTS ix_goal_tasks_goal_plan ON goal_tasks(goal_id, plan_id, ordinal);", 
+            @"CREATE TABLE IF NOT EXISTS goal_execution_runs (
+                attempt_id TEXT PRIMARY KEY NOT NULL,
+                goal_id TEXT NOT NULL,
+                plan_id TEXT,
+                task_id TEXT,
+                attempt_no INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'executing',
+                summary TEXT,
+                error TEXT,
+                started_at INTEGER NOT NULL,
+                finished_at INTEGER
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_goal_execution_runs_task ON goal_execution_runs(task_id, attempt_no);", 
+            @"CREATE TABLE IF NOT EXISTS cron_runs (
+                run_id TEXT PRIMARY KEY NOT NULL,
+                cron_id TEXT NOT NULL,
+                session_id TEXT,
+                fire_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',
+                summary TEXT,
+                error TEXT,
+                tool_call_count INTEGER NOT NULL DEFAULT 0,
+                started_at INTEGER NOT NULL,
+                finished_at INTEGER
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_cron_runs_cron_started ON cron_runs(cron_id, started_at DESC);",
+            @"CREATE INDEX IF NOT EXISTS ix_cron_runs_session_started ON cron_runs(session_id, started_at DESC);",
+            @"CREATE TABLE IF NOT EXISTS goal_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                goal_id TEXT,
+                event_type TEXT NOT NULL,
+                message TEXT,
+                metadata_json TEXT,
+                created_at INTEGER NOT NULL
+            );",
+            @"CREATE TABLE IF NOT EXISTS memory_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope TEXT NOT NULL DEFAULT 'global',
+                title TEXT,
+                content TEXT NOT NULL DEFAULT '',
+                priority TEXT NOT NULL DEFAULT 'standard',
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE TABLE IF NOT EXISTS memory_archive (
+                id TEXT PRIMARY KEY NOT NULL,
+                scope TEXT NOT NULL DEFAULT 'global',
+                key TEXT NOT NULL DEFAULT '',
+                title TEXT,
+                content TEXT NOT NULL DEFAULT '',
+                priority TEXT NOT NULL DEFAULT 'standard',
+                created_at INTEGER NOT NULL,
+                archived_at INTEGER NOT NULL
+            );",
+            @"CREATE TABLE IF NOT EXISTS session_compaction_snapshots (
+                snapshot_id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                ""trigger"" TEXT NOT NULL,
+                wire_conversation TEXT NOT NULL,
+                compact_artifacts TEXT NOT NULL,
+                summary_message TEXT,
+                summary_text TEXT,
+                through_created_at INTEGER NOT NULL,
+                through_sort_order INTEGER NOT NULL,
+                original_count INTEGER NOT NULL,
+                new_count INTEGER NOT NULL,
+                messages_summarized INTEGER NOT NULL,
+                summarizer_failed INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+
+            @"CREATE TABLE IF NOT EXISTS cron_tasks (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                session_id TEXT,
+                scope TEXT NOT NULL DEFAULT 'global',
+                project_id TEXT,
+                schedule_json TEXT NOT NULL DEFAULT '{}',
+                prompt TEXT NOT NULL DEFAULT '',
+                agent_id TEXT,
+                model TEXT,
+                thinking_enabled INTEGER,
+                reasoning_effort TEXT,
+                working_folder TEXT,
+                delivery_mode TEXT NOT NULL DEFAULT 'desktop',
+                output_mode TEXT NOT NULL DEFAULT 'new_session',
+                reuse_session_id TEXT,
+                run_mode TEXT NOT NULL DEFAULT 'background',
+                delivery_target TEXT,
+                plugin_id TEXT,
+                plugin_type TEXT,
+                plugin_chat_id TEXT,
+                delete_after_run INTEGER NOT NULL DEFAULT 0,
+                max_iterations INTEGER NOT NULL DEFAULT 15,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                deleted_at INTEGER,
+                last_fired_at INTEGER,
+                last_run_at INTEGER,
+                last_run_status TEXT,
+                last_run_summary TEXT,
+                last_error TEXT,
+                fire_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL,
+                plan_id TEXT,
+                subject TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                active_form TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                owner TEXT,
+                blocks TEXT DEFAULT '[]',
+                blocked_by TEXT DEFAULT '[]',
+                metadata TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_tasks_session ON tasks(session_id);",
+            @"CREATE INDEX IF NOT EXISTS ix_tasks_plan ON tasks(plan_id);",
+            @"CREATE TABLE IF NOT EXISTS session_follow_ups (
+                id TEXT PRIMARY KEY NOT NULL,
+                todo_id TEXT NOT NULL,
+                source_session_id TEXT NOT NULL,
+                target_session_id TEXT NOT NULL,
+                follow_up_at INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'waiting',
+                query_instruction TEXT NOT NULL DEFAULT '',
+                last_query_result TEXT,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                claim_token TEXT,
+                claimed_at INTEGER,
+                plugin_id TEXT,
+                plugin_type TEXT,
+                plugin_chat_id TEXT,
+                notification_key TEXT NOT NULL,
+                desktop_notified_at INTEGER,
+                channel_notified_at INTEGER,
+                completed_at INTEGER,
+                cancelled_at INTEGER,
+                last_error TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE UNIQUE INDEX IF NOT EXISTS ux_session_follow_ups_notification ON session_follow_ups(notification_key);",
+            @"CREATE INDEX IF NOT EXISTS ix_session_follow_ups_source ON session_follow_ups(source_session_id, created_at DESC);",
+            @"CREATE INDEX IF NOT EXISTS ix_session_follow_ups_schedule ON session_follow_ups(status, follow_up_at);",
+            @"CREATE INDEX IF NOT EXISTS ix_session_follow_ups_todo ON session_follow_ups(todo_id);",
+            @"CREATE TABLE IF NOT EXISTS global_tasks (
+                id TEXT PRIMARY KEY NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                priority TEXT NOT NULL DEFAULT 'normal',
+                tags TEXT NOT NULL DEFAULT '[]',
+                due_at INTEGER,
+                archived INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_global_tasks_status ON global_tasks(status);",
+            @"CREATE INDEX IF NOT EXISTS ix_global_tasks_archived ON global_tasks(archived);",
+            @"CREATE TABLE IF NOT EXISTS global_task_dispatches (
+                id TEXT PRIMARY KEY NOT NULL,
+                global_task_id TEXT NOT NULL,
+                project_id TEXT,
+                session_id TEXT NOT NULL,
+                source_session_id TEXT,
+                kind TEXT NOT NULL DEFAULT 'message',
+                instruction TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                latest_report TEXT,
+                error TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                completed_at INTEGER
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_task ON global_task_dispatches(global_task_id);",
+            @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_session ON global_task_dispatches(session_id);",
+            // ── Request-level usage log (#1, iteration 28) ──
+            // One row per HTTP request attempt (success or failure), written by the
+            // AgentLoop main path via ProviderRetryPolicy. Auxiliary chains that skip
+            // that retry policy write one terminal row via AuxiliaryUsageLog instead.
+            @"CREATE TABLE IF NOT EXISTS request_usage_logs (
+                id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT,
+                runtime_role TEXT,
+                scope TEXT,
+                collaboration_mode TEXT,
+                provider_id TEXT,
+                provider_type TEXT,
+                model_id TEXT,
+                status TEXT NOT NULL DEFAULT 'success',
+                error_kind TEXT,
+                error_message TEXT,
+                http_status_code INTEGER,
+                attempt_index INTEGER NOT NULL DEFAULT 1,
+                total_attempts INTEGER,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                billable_input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+                reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+                input_cost REAL,
+                output_cost REAL,
+                cache_creation_cost REAL,
+                cache_hit_cost REAL,
+                total_cost_usd REAL,
+                started_at INTEGER NOT NULL,
+                completed_at INTEGER,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                ttft_ms INTEGER,
+                tps REAL,
+                switched_from_provider_id TEXT
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_request_usage_started ON request_usage_logs(started_at DESC);",
+            @"CREATE INDEX IF NOT EXISTS ix_request_usage_model ON request_usage_logs(model_id);",
+            @"CREATE INDEX IF NOT EXISTS ix_request_usage_status ON request_usage_logs(status);",
+            @"CREATE INDEX IF NOT EXISTS ix_request_usage_session ON request_usage_logs(session_id);",
+            // ── Agent timeline events (S-25, iteration 29) ──
+            // One row per decision-level agent action (task dispatch/report, todo
+            // transitions, cron firings, sub-agent runs). session_id is nullable:
+            // rows with NULL are app-level events visible across sessions.
+            @"CREATE TABLE IF NOT EXISTS agent_timeline_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                project_id TEXT,
+                event_type TEXT NOT NULL,
+                message TEXT,
+                metadata_json TEXT,
+                created_at INTEGER NOT NULL
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_timeline_session_created ON agent_timeline_events(session_id, created_at DESC);",
+            @"CREATE INDEX IF NOT EXISTS ix_timeline_project_created ON agent_timeline_events(project_id, created_at DESC);",
+            @"CREATE INDEX IF NOT EXISTS ix_timeline_created ON agent_timeline_events(created_at);"
+        };
+
+        foreach (var sql in tableSqls)
+        {
+            _db!.Execute(sql);
+        }
+        WorkerLog.Info($"DbClient: {tableSqls.Length} DDL statements applied (tables + indexes)");
+
+        // ── FTS5 virtual table (external content + trigram tokenizer) ──
+        WorkerLog.Info("DbClient: creating memory_fts virtual table (external content)");
+        _db!.Execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(" +
+            "title, content, content='memory_entries', content_rowid='id', tokenize='trigram');");
+        WorkerLog.Info("DbClient: memory_fts virtual table ready");
+
+        // ── FTS5 sync triggers ──
+        var triggerSqls = new[]
+        {
+            "CREATE TRIGGER IF NOT EXISTS memory_entries_ai AFTER INSERT ON memory_entries BEGIN " +
+            "INSERT INTO memory_fts(rowid, title, content) " +
+            "VALUES (new.id, COALESCE(new.title, ''), new.content); END;",
+            "CREATE TRIGGER IF NOT EXISTS memory_entries_ad AFTER DELETE ON memory_entries BEGIN " +
+            "INSERT INTO memory_fts(memory_fts, title, content) " +
+            "VALUES ('delete', COALESCE(old.title, ''), old.content); END;",
+            "CREATE TRIGGER IF NOT EXISTS memory_entries_au_del AFTER UPDATE ON memory_entries BEGIN " +
+            "INSERT INTO memory_fts(memory_fts, title, content) " +
+            "VALUES ('delete', COALESCE(old.title, ''), old.content); END;",
+            "CREATE TRIGGER IF NOT EXISTS memory_entries_au_ins AFTER UPDATE ON memory_entries BEGIN " +
+            "INSERT INTO memory_fts(rowid, title, content) " +
+            "VALUES (new.id, COALESCE(new.title, ''), new.content); END;"
+        };
+        WorkerLog.Info($"DbClient: creating {triggerSqls.Length} FTS triggers");
+        foreach (var tsql in triggerSqls)
+        {
+            _db!.Execute(tsql);
+        }
+        WorkerLog.Info("DbClient: all triggers created successfully");
+    }
+}

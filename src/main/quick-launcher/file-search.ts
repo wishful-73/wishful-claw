@@ -96,6 +96,9 @@ export async function countFileResults(request: {
   category?: EsCategory
 }): Promise<number | null> {
   const status = await getEsStatus()
+  // 与 `executeFileQuery` 的 `not-installed` **有意不同**，不是漏改：总数是辅助读数，
+  // 拿不到就不显示（`{ total: null }` 由渲染端吃掉），不该为此在界面上再开一套失败 UI。
+  // 真正的失败引导只在主取数那条路上做一次。
   if (!status.ready || !status.exePath) return null
 
   const args = buildEsCountArgs(request.keyword ?? '', request.category ?? 'all')
@@ -133,8 +136,16 @@ export async function executeFileQuery(request: EsQueryRequest): Promise<EsSearc
   // 拉起最多等 3 秒，界面不能干停在「搜到一半」—— 推一条过程态让它说「正在启动 Everything」。
   if (result.failure === 'not-running') {
     notifyFileSearchStatus('starting-everything')
-    result = await startEverythingAndRetry(exePath, request, result)
-    notifyFileSearchStatus('done')
+    // 过程态**必须**配 finally 收回：`startEverythingAndRetry` 里两处 await 都可能抛
+    // （探本体走 `getEverythingStatus`、轮询走 `enqueueEsSearch`，后者会把 task 的 reject 原样透传）。
+    // 抛了不收回 ⇒ 渲染端永久停在「正在启动 Everything」—— 那是一句永远不会兑现的承诺，
+    // 比转圈更糟：用户不会想到去点按钮。（dev 实例 2026-10-28 审查发现的）
+    // 异常仍照常往上冒：渲染端 invoke 的 catch 会把它落成「搜索失败」，不在这儿吞。
+    try {
+      result = await startEverythingAndRetry(exePath, request, result)
+    } finally {
+      notifyFileSearchStatus('done')
+    }
   }
   return result
 }

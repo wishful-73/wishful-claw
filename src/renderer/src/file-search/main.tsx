@@ -17,17 +17,14 @@
 import '../assets/main.css'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ExternalLink, FileText, Folder, FolderOpen, Loader2, Search } from 'lucide-react'
+import { Loader2, Search } from 'lucide-react'
 import { syncThemeFromSettings } from '../lib/theme-sync'
 import {
   DEFAULT_ES_SORT,
   ES_CATEGORIES,
   ES_SORT_OPTIONS,
-  FILE_SEARCH_FAILURE_ACTION_LABELS,
   FILE_SEARCH_PAGE_SIZE,
   fileSearchFailureView,
-  formatHitSize,
-  formatHitTime,
   type EsCategory,
   type EsSearchResult,
   type EsSort,
@@ -35,6 +32,7 @@ import {
   type FileSearchFailureAction,
   type FileSearchFailureView
 } from '../lib/file-search-shared'
+import { ResultList } from './result-list'
 
 /** 防抖窗口。es.exe 单次取数实测 ~130ms，250ms 足够把连打收敛成一次。 */
 const FILE_SEARCH_DEBOUNCE_MS = 250
@@ -323,8 +321,6 @@ function FileSearchWindow(): React.JSX.Element {
     })
   }, [])
 
-  const showEmpty = !error && hits.length === 0 && !searching
-
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       {/* 顶部：标识 + 搜索框（置顶 / 关闭交给系统标题栏，不再自绘） */}
@@ -373,113 +369,21 @@ function FileSearchWindow(): React.JSX.Element {
           })}
         </nav>
 
-        {/* 结果列表 */}
-        <div ref={listRef} className="min-w-0 flex-1 overflow-y-auto py-1">
-          {error && (
-            <div className="px-4 py-3">
-              <p className="text-xs text-destructive">{error.text}</p>
-              {error.actions.length > 0 && (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {error.actions.map((action) => (
-                    <button
-                      key={action}
-                      onClick={() => void handleFailureAction(action)}
-                      className={
-                        'rounded-md border px-2.5 py-1 text-[11px] transition-colors ' +
-                        (action === 'download'
-                          ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20'
-                          : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground')
-                      }
-                    >
-                      {FILE_SEARCH_FAILURE_ACTION_LABELS[action]}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {!error && searching && hits.length === 0 && (
-            <div className="flex h-40 flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              {launchingEverything ? 'Everything 没在运行，正在替你启动...' : '搜索中...'}
-            </div>
-          )}
-
-          {showEmpty && (
-            <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
-              {debouncedKeyword.trim() || category !== 'all' ? '没有匹配的文件' : '输入关键词开始搜索'}
-            </div>
-          )}
-
-          {hits.map((hit, index) => {
-            const iconSrc = icons[hit.fullPath]
-            const active = index === selectedIndex
-            return (
-              <div
-                key={hit.fullPath}
-                data-hit-index={index}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onDoubleClick={() => void openHit(hit, false)}
-                title={hit.fullPath}
-                className={
-                  'group flex cursor-default items-center gap-3 px-3 py-1.5 transition-colors ' +
-                  (active ? 'bg-accent' : 'hover:bg-accent/50')
-                }
-              >
-                <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted/60">
-                  {iconSrc ? (
-                    <img src={iconSrc} alt="" className="size-5 object-contain" />
-                  ) : hit.isDir ? (
-                    <Folder className="size-4 text-muted-foreground" />
-                  ) : (
-                    <FileText className="size-4 text-muted-foreground" />
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-foreground">{hit.name}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">{hit.dir}</p>
-                </div>
-
-                <div className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground tabular-nums">
-                  {hit.size !== null && <p>{formatHitSize(hit.size)}</p>}
-                  {hit.mtime !== null && <p>{formatHitTime(hit.mtime)}</p>}
-                </div>
-
-                {/* 两个动作按钮：默认动作是「打开所在位置」，双击行本身才是打开文件 */}
-                <div
-                  className={
-                    'flex shrink-0 items-center gap-1 transition-opacity ' +
-                    (active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')
-                  }
-                >
-                  <button
-                    onClick={() => void openHit(hit, true)}
-                    title="打开所在位置"
-                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                  >
-                    <FolderOpen className="size-3.5" />
-                  </button>
-                  <button
-                    onClick={() => void openHit(hit, false)}
-                    title="打开文件"
-                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                  >
-                    <ExternalLink className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-
-          {loadingMore && (
-            <div className="flex items-center justify-center gap-2 py-2 text-[11px] text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
-              加载中...
-            </div>
-          )}
-        </div>
+        <ResultList
+          hits={hits}
+          icons={icons}
+          error={error}
+          searching={searching}
+          launchingEverything={launchingEverything}
+          loadingMore={loadingMore}
+          selectedIndex={selectedIndex}
+          keyword={debouncedKeyword}
+          category={category}
+          listRef={listRef}
+          onSelectIndex={setSelectedIndex}
+          onOpenHit={openHit}
+          onFailureAction={handleFailureAction}
+        />
       </div>
 
       {/* 底栏：排序 + 结果总数（总数读不到就退化成「已加载 N 条」，不编数字） */}

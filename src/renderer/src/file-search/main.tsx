@@ -118,11 +118,6 @@ function FileSearchWindow(): React.JSX.Element {
       setSearching(true)
       setError(null)
       setSelectedIndex(0)
-      // 每次新查询都先归零「正在启动 Everything」。这个态只有主进程推送能置回，而那条
-      // `done` 推送在窗口正在加载 / 刚 reload 时会被 `safeSendMessagePackToWindow` **静默
-      // 丢掉**（它返回 false 没人看）。一旦丢了，`launchingEverything` 就永久停在 true，
-      // 结果是「正在启动」的转圈和空态同屏并存。查询入口重置它，丢失最多影响一次查询。
-      setLaunchingEverything(false)
 
       try {
         const result = await window.api.invoke<EsSearchResult>('file-search:query', {
@@ -151,6 +146,19 @@ function FileSearchWindow(): React.JSX.Element {
         if (token === tokenRef.current) {
           busyRef.current = false
           setSearching(false)
+          // 在**查询结束**侧归零「正在启动 Everything」，不在查询入口。
+          //
+          // 这个态只有主进程推送能置回，而那条 `done` 推送在窗口正在加载 / 刚 reload 时会被
+          // `safeSendMessagePackToWindow` **静默丢掉**（返回 false，没人检查）⇒ 丢了就永久停在
+          // true，转圈与空态同屏。所以必须有个不依赖推送的兜底。
+          //
+          // 兜底只能放这里：`startEverythingAndRetry` 是在这条 invoke 里 await 完成的，
+          // `done` 也在它的 finally 里发（`file-search.ts:145-148`）⇒ **查询返回就意味着启动流程
+          // 已经结束**，此处清零安全。放在查询入口则会在启动进行中把状态抹掉：es-probe 缓存 TTL
+          // 30 秒、Everything 启动只要几秒，期间每敲一个字都会发新查询，而串行队列又让新查询等在
+          // 旧查询后面 —— 界面上「正在启动 Everything」会被反复打回「搜索中...」再跳回来
+          // （dev 实例 2026-10-28 审查第二轮·按真实时序反算发现）。
+          setLaunchingEverything(false)
         }
       }
 

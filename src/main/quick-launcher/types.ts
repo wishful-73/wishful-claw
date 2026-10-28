@@ -110,6 +110,16 @@ export interface EsSearchResult {
    * 拉起成功时结果是 `ok`，不会带着这个字段出现在 `not-running` 里。
    */
   autostartAttempted?: boolean
+  /**
+   * 拉起**明确失败**（spawn 报错，或进程非 0 退出），不只是「还没就绪」（S-253 真机补刀）。
+   *
+   * 为什么必须跟 `autostartAttempted` 分开：Everything 冷启动要读索引，几秒到十几秒都可能，
+   * 这段时间「拉起来了但 IPC 还没通」是**正常过程**，用户该等；而 spawn 被 UAC 拒 / 映像损坏
+   * 是**已经失败**，等多久都没用。原来两者合成一句「多半是安装损坏，或需要管理员权限」，
+   * 结果把「正在初始化」也报成坏了 —— 2026-10-28 真机就是这么误报的（Everything 进程
+   * 15:53:48 被我们拉起、当时就在跑，es.exe 119ms 正常返回，界面却说「它没起来」）。
+   */
+  autostartFailed?: boolean
 }
 
 /**

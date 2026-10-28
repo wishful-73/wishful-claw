@@ -68,10 +68,11 @@ const ES_OUT_FILENAME = 'es-search-out.json'
 /**
  * Everything 未运行时的自动拉起（S-155 调整②）：起进程后**等 IPC 上线**的总预算与轮询间隔。
  *
- * 冷启动 Everything 要读索引，几百毫秒到两三秒是正常的；轮询直接拿用户那次搜索重试，不额外探测
- * （省一次无用查询，命中那一次的结果本身就是最终结果）。
+ * 冷启动 Everything 要读索引，几百毫秒到两三秒是常见的，但**索引大时十几秒也有** —— 2026-10-28
+ * 真机实测：`-startup` 拉起后 3 秒轮询到点，进程在但 IPC 还没通，于是被报成「安装损坏」。
+ * 8 秒覆盖绝大多数冷启动；等待期间界面显示「正在启动 Everything」，不是干等。
  */
-const EVERYTHING_AUTOSTART_WAIT_MS = 3000
+const EVERYTHING_AUTOSTART_WAIT_MS = 8000
 const EVERYTHING_AUTOSTART_POLL_MS = 250
 
 /**
@@ -337,7 +338,8 @@ export function delay(ms: number): Promise<void> {
  *   ③ 轮询重试**用户这次搜索本身**，直到失败分类不再是 `not-running`（IPC 上线了）或超预算。
  *
  * 边界（写进 S-155.md 待实测项）：Everything 若配置成需要提权才能索引，这一步会弹 UAC —— 用户
- * 允许即正常；不允许则重试到超时，如实回 `not-running`。
+ * 允许即正常；不允许则 spawn 直接失败、`autostartFailed` 置真，UI 说「启动失败」而不是「等一等」
+ * （2026-10-28 真机补刀：这两件事原来被合成一句，把「索引还在读」也报成了「安装损坏」）。
  */
 export async function startEverythingAndRetry(
   esExePath: string,
@@ -349,6 +351,9 @@ export async function startEverythingAndRetry(
   if (!everything.ready || !everythingExe) return firstResult
 
   const now = Date.now()
+  // spawn **明确失败**的标记（S-253 真机补刀）：与「起来了但还没就绪」分开。
+  // 只有 UAC 拒绝 / 映像损坏 / 缺依赖才置真 —— 那时等满预算是白等，提前收手。
+  let autostartFailed = false
   if (now - everythingAutostartAt > EVERYTHING_AUTOSTART_COOLDOWN_MS) {
     everythingAutostartAt = now
     try {
@@ -357,23 +362,37 @@ export async function startEverythingAndRetry(
         stdio: 'ignore',
         windowsHide: true
       })
-      child.on('error', (error) =>
+      child.on('error', (error) => {
+        autostartFailed = true
         console.warn(`[QuickLauncher] Failed to start Everything: ${error.message}`)
-      )
+      })
+      // `-startup` 的官方语义是「正在运行就什么都不做」⇒ 已有实例时它会立刻以 **0** 退出，
+      // 这不算失败（Everything 本来就在跑，只是 IPC 还没通）。只有非 0 退出才是真失败。
+      child.on('exit', (code) => {
+        if (code !== 0) {
+          autostartFailed = true
+          console.warn(`[QuickLauncher] Everything exited with code ${code}`)
+        }
+      })
       child.unref()
     } catch (error) {
+      autostartFailed = true
       console.warn(`[QuickLauncher] Failed to start Everything: ${String(error)}`)
     }
   }
 
   const deadline = now + EVERYTHING_AUTOSTART_WAIT_MS
   let result = firstResult
-  while (result.failure === 'not-running' && Date.now() < deadline) {
+  while (result.failure === 'not-running' && !autostartFailed && Date.now() < deadline) {
     await delay(EVERYTHING_AUTOSTART_POLL_MS)
     result = await enqueueEsSearch(() => runEsSearch(esExePath, request))
   }
   // 拉过了还是 `not-running`：得让 UI 知道「已经替你起过一次」，能说「拉不起来」而不是无限「正在启动」。
   // 上面那条 `!everything.ready` 的早退（本体没探到 = 多半没装）**不带**这个标记 ——
   // 那是 S-253 的 B 情况，UI 该走下载引导。
-  return result.failure === 'not-running' ? { ...result, autostartAttempted: true } : result
+  //
+  // `autostartFailed` 决定 UI 说哪一句：没置真 = 进程活着但索引还没读完（该等一下再搜），
+  // 置真 = spawn 就失败了（该查权限 / 重装）。这一区分就是 2026-10-28 真机误报的修法 ——
+  // 当时 Everything 明明在跑，却因为 3 秒超时报了「它没起来 / 多半是安装损坏」。
+  return result.failure === 'not-running' ? { ...result, autostartAttempted: true, autostartFailed } : result
 }

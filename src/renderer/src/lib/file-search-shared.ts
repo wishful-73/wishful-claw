@@ -60,6 +60,8 @@ export interface EsSearchResult {
   error?: string
   /** 主进程已经替他自动拉过一次 Everything 本体，还是没起来（S-253）。 */
   autostartAttempted?: boolean
+  /** 拉起**明确失败**（spawn 报错 / 非 0 退出），而不只是「还没就绪」（S-253 真机补刀）。 */
+  autostartFailed?: boolean
 }
 
 /** 一页取多少条（与主进程 `ES_PAGE_SIZE` 同步）。 */
@@ -113,7 +115,8 @@ export interface FileSearchFailureView {
  * 三种情况必须**互斥**地说清，不能再混成一句「软件没有运行」：
  *   ① 没装（`not-installed`，或 es.exe 在但本体探不到 = `not-running` 且没自动拉起过）⇒ 引导去下载；
  *   ② 装了没启动 ⇒ 主进程已经替他拉（`es-probe.startEverythingAndRetry`），这里不给按钮，
- *      只在拉不起来后（`autostartAttempted`）如实说「拉过了没成」并给重试；
+ *      只在拉不起来后（`autostartAttempted`）如实说「拉过了没成」并给重试；**其中还要再分**
+ *      「索引还没读完（等一等）」和「spawn 就失败了（查权限 / 重装）」—— 见 `autostartFailed`；
  *   ③ 起了没连上 / es.exe 路径失效（`spawn-failed`）⇒ 重新检测。
  *
  * 不甩 exit code 这种内部细节，但要说清「下一步能做什么」。
@@ -127,14 +130,27 @@ export function fileSearchFailureView(result: EsSearchResult): FileSearchFailure
       }
     case 'not-running':
       // 没有 `autostartAttempted` = 连本体路径都没探到，跟「没装」是一件事，别让用户对着「重试」按到底。
-      return result.autostartAttempted
+      if (!result.autostartAttempted) {
+        return {
+          text: '没找到 Everything 本体。装上它就能搜本地文件，装完点「重新检测」即可。',
+          actions: ['download', 'redetect']
+        }
+      }
+      // 拉起过还连不上，两种原因，**处置方式不同**，所以必须分开说（S-253 真机补刀）：
+      //   `autostartFailed` ⇒ spawn 就失败（UAC 拒绝 / 映像损坏），等多久都没用；
+      //   否则 ⇒ 进程活着、索引还没读完。这是最常见的一种，原来被错报成「安装损坏」。
+      //
+      // 为什么敢肯定「exe 存在」：能走到这里说明 `getEverythingStatus()` 探到了本体路径
+      // （`es-probe.ts` 里探不到会早退、不带 `autostartAttempted`）⇒ 文件在，谈「安装损坏」
+      // 本来就不成立，只能说「启动没成功」。
+      return result.autostartFailed
         ? {
-            text: '已经替你启动过 Everything，但它没起来。多半是安装损坏，或它需要管理员权限才能索引。',
-            actions: ['retry']
+            text: 'Everything 启动失败（多半是被权限拦住了，或安装已损坏）。可以先手动打开一次 Everything 看看它能不能正常启动，再回来重试。',
+            actions: ['retry', 'redetect']
           }
         : {
-            text: '没找到 Everything 本体。装上它就能搜本地文件，装完点「重新检测」即可。',
-            actions: ['download', 'redetect']
+            text: 'Everything 已经启动了，但索引还没读完，所以暂时搜不了。索引大的话要等十几秒，稍等一下再搜一次。',
+            actions: ['retry']
           }
     case 'spawn-failed':
       return {

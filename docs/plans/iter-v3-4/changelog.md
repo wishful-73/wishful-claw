@@ -18,3 +18,106 @@
 v3-iter-3 收尾写的承接清单只列了 8 条，**S-260（浏览器保活池上限 2）漏列** —— 而需求单本身写明「归属 v3-iter-4」「随 S-247 内存治理同批」，老大 16:22 也定过「有两个活着就行了」。
 
 ⇒ 已补进 `plan.md` §2.1，并加显式提醒。**清单口径以 `plan.md` §二 为准：9 条承接。**
+
+### 17:46 · 阶段一探查完成，纠正 S-207 误记
+
+两份只读探查均交付（插件基座 67 次调用 / 资源治理与渲染 193 次调用），结论落 `exploration_findings.md` §四、§五。
+
+**必须记一笔的错**：v3-iter-3 收尾把「S-207 沙箱提权 `CannotWritePropertyWithinArray`」列进「遗留未排查」，**实际它早在 2026-10-20 就修完并真机验证通过**：
+
+- 修复提交 `b6a95eca`（`fix(agent): 修沙箱申请工具请求包序列化与提示条落点（S-207）`）
+- `S-207.md:3` 状态行：「已完成（阶段五审查修复 + 真机验证通过，2026-10-20）」
+- `S-207.md:349-350` 已写全根因：`SandboxElevationExecutor.BuildRequest` 漏写 `WriteStartObject()` / `WriteEndObject()`，首 token 即属性名 ⇒ `Utf8JsonWriter` 抛 `InvalidOperationException`；AOT 裁掉资源串后退化成 `CannotWritePropertyWithinArray, None`
+- 旁证：`src/runtime` 全量扫同类写法 **0 残留**
+
+⇒ `raw-requirements.md` §三 已订正为「早已修复，无需再做」，**本迭代不为它安排刀序**。
+
+另一条 Goal `KeyNotFoundException` 订正为「需一次运行时抓栈才能定案」：Goal 目录内 `GetProperty` 与字典读索引器**均无直接抛点**，嫌疑在 Goal 之外被它调用的层；且 17:31 复跑 `npm test` 89/89 全过（含 Goal 335 断言），当前 HEAD 不复现。
+
+### 17:57 · 10 条待决问题全部拍定
+
+老大回「根据你的建议来」⇒ 授权按技术判断拍板。细则见 `exploration_findings.md` §七，此处只记口径：
+
+| # | 事项 | 拍定 |
+|---|---|---|
+| 1 | 零工具插件 | **允许**，放宽为「tools / views 至少一项」 |
+| 2 | 资产落盘根 | `~/.wishful-claw/plugin-assets/` |
+| 3 | 卸载 partition 删不掉 | 两段式：本次 `clearStorageData`，下次启动补删 |
+| 4 | S-256 改测试契约 | **允许**。那两处「no step cap」是把现状固化成需求，不是产品意图。**同刀必须一起修根因 B**（长段落无空行 / 未闭合 fence ⇒ tail 永不 settle），只加步长上限卡死照旧 |
+| 5 | S-260 口径 | **全局上限 2**；满了**拒绝新开 + 结构化告知 agent**；**不做 LRU**（会踢掉用户正在看的页面，比拒绝更糟）。依据是老大原话「有两个活着就行了，要是能提示 agent 已经有两个是最好的」 |
+| 6 | S-248 text 档形态 | **完全不渲染工具卡片**，降级纯文本行；**折叠保留**；错误行红色。依据是老大原话「不呈现组件了，也不能点开组件查看，类似子 agent 卡片里面的显示方式」 |
+| 7 | S-243 系统音混入自身播放 | **接受**，不做「录制期间静音自身」。Windows loopback 无按进程排除 API；主场景是听会议 / 听别人说话，此时本程序不播放 |
+| 8 | S-243 是否引原生 WASAPI | **不引入**。Electron 43 官方 `Streams.audio: 'loopback'` 已声明 Windows 支持，为未发生的假设引 native 依赖不值。实测失败则麦克风先交付、系统音挂账 |
+| 9 | S-247 消费形态 | 状态面板常驻数字 + 超阈值写日志；轮询 5 s |
+| 10 | Goal `KeyNotFoundException` | **本迭代不做**。当前 HEAD 89/89 不复现，无稳定复现路径的抓栈是浪费；维持挂账，复发即抓 |
+
+### 18:15 · 第 0 刀闭环 + 第 1 刀（S-240）代码完成
+
+**第 0 刀（S-243 探路，只测不改码）已闭环。** 探针在 `.wishful-claw/notes/s243-probe/`（独立 `userData`，跑完删数据目录、脚本留给第 4 刀复用），`electron exit=0`。四条实测结论：
+
+| # | 结论 | 影响 |
+|---|---|---|
+| 1 | **纯音频 `getDisplayMedia({audio:true})` 不可用** —— 抛 `AbortError: Invalid capture constraints`，`setDisplayMediaRequestHandler` 根本没被调到 | 必须先要 video、拿到后丢掉 video track。**硬约束，不是优化** |
+| 2 | `callback({ video, audio: 'loopback' })` 生效，能采到系统混音；设备枚举 7 个、audioInputs 3 | 不需要原生 WASAPI |
+| 3 | loopback 与麦克风实测都是 **48 000 Hz / 1 ch** | 只需重采样到 16 kHz，不需声道下混；但实现必须按 `track.getSettings()` 动态取值，不能写死单声道 |
+| 4 | 整机混音必然混入本程序自身播放 | 17:57 已拍「接受」，真出问题再单独立需求 |
+
+**第 1 刀（S-240 清单扩展与导轨入口）代码完成。** 改动 9 个文件 + 新增 1 个测试套件：
+
+- 契约 `src/shared/extension-types.ts`：`ExtensionViewDefinition` / `ExtensionAssetDefinition`；`ExtensionManifest` 加 `views?` / `assets?`
+- C# 四个模块：`ExtensionModels.cs`（`Views` / `Assets`）、`ExtensionManifestHelpers.cs`（`ViewIdRegex`）、`ExtensionManifestReader.cs`（`ReadViews` / `ReadAssets`，`ReadTools` 放宽）、`ExtensionManifestNormalizer.cs`（**真阻断点**：`NormalizeViews` / `NormalizeAssets` + 「至少一项」抛错 + 白名单显式输出）
+- 渲染端 `WorkspaceSidebar.tsx`：manifest 视图**追加**在硬编码三项下方，按 `nav.order` 排序、同序按 `id` 兜底
+- locale `zh` / `en` `layout.json`：补 `sidebar.extensionViewNotReady` —— **门禁抓到的欠账**，侧栏引用了未定义的 key，`test:i18n-coverage` 直接红
+- 新增 `tests/WishfulClaw.ExtensionManifestRegressionTests`（已进 `WishfulClaw.Tests.sln`，13 条断言）
+
+**门禁：`npm test` 89 → 90/90**，typecheck exit 0，`dotnet build` 0 警告 0 错误。
+
+**两条纪律写进 `S-240.md` §4.2**：归一化输出是白名单，漏写字段等于渲染端永远看不见；「至少一项」必须抛错，否则 `ListExtensionsCore` 的 catch 会让插件静默消失。
+
+**待验**：点入口的提示 / 停用消失 / 卸载无残留 —— UI 行为，自动化覆盖不到，需真机。
+
+
+**S-243 不确定性大幅下降**：`Streams.audio?: 'loopback' | 'loopbackWithMute'` 在 `electron.d.ts:23668-23674`，注释原文「currently only supported on Windows」⇒ 官方能力，不需要原生模块。第 0 刀只剩三点实测（纯音频 `getDisplayMedia` 是否获批 / 整机混音必含自身 / 48k stereo → 16k mono 下混）。
+
+### 20:40 · 登记 S-261 —— 图像块 400 自愈缺失（S-246 下半段）
+
+老大 20:29 指令「把上个迭代『读取图片 400』的 bug 继续登记到当前迭代」。**这不是重复登记**：S-246 自己 §3.2 写明「次因：这个 400 认不出来，也没有自愈路径」，§5 判据 2 在 §7 被标「退化为兜底」；而 `plan.md` §四 表里 S-246 的验收口径又被校正成「源头不产生脏块，不是脏会话能救回来」⇒ 下半段等于被放下了，本条把它提为硬判据。
+
+勘察出**两处根因**（读码定案，正文见 `requirements/S-261.md` §三）：
+
+| # | 根因 | 位置 |
+|---|---|---|
+| A | marker 表缺上游原文 `unsupported image`（表里只有 `does not support image`，`unsupported` 与 `does not support` 词形不同，匹配不上）⇒ 自愈链路**进不去** | `ImageInputErrors.cs:24-44` |
+| B | `source.type === 'url'` 的 image 块**绕过** S-246 白名单闸 —— 同一个语义两份判据，base64 那半有闸、url 那半零闸 | `OpenAIChatRequestBuilder.cs:253-256`、`AnthropicMessagesInputWriter.cs:331-338`、`ProviderContentHelpers.cs:238-245` |
+
+**现场诚实交代**：事发在老大**家里 PC** 的打包版实例（`C:\Users\Administrator\.wishful-claw`）。本机 `~/.wishful-claw/logs/`（生产）与 `~/.wishful-claw-dev/logs/`（dev）三条日志精确检索 `HTTP 400` / `statusCode=400` / `unsupported image` / `image[0]` / `ImageInput` —— **零命中**。所以结论全部来自读码，不是猜。**浏览器截图链路已排除干净**：`capturePage().toDataURL()` 恒输出 PNG → `{type:'base64', mediaType:'image/png'}`，走的是有闸那条路，不会 400。
+
+**附带事实（改正知识库留档的时效性）**：`ProviderRetryPolicy.cs:246` 自 2026-10-27 起 `IsRetryableStatus` 已收紧为 `429 || >=500`，**400 不再重试**。⇒ 现在的现场比知识库记的那次**更快死**（不再白烧 20 次往返，每轮立刻失败），但脏块依然永留历史，「这个会话废了」的体感不变。
+
+**定案四条**：
+
+1. **剥离粒度 = 只剥 image 块**，不剥整轮、不动历史不动 DB。依据：text 段仍在（模型照旧知道读了哪个文件、多大、什么格式）；`AgentLoop.ImageInput.cs:21-23` 红线；剥整轮会吃掉用户消息里的文字。
+2. **识别口径 = 两层**。第一层结构化优先：给 url 形态补上 `ResolveSupportedImageMediaType` 闸，从源头掐掉 400（零文案依赖）；第二层文案兜底：marker 补 `unsupported image` 等真实原文形态。
+3. **重发一次**，仍撞同一个错即原样抛出走正常报错，不静默吞。
+4. **提示**并进既有 i18n 键 `chat:assistantMessage.imageInputUnsupported` 扩写，zh / en 双语，不新造键。
+
+**红线**：S-236 判据 10 的两道闸（`AgentLoop.cs:464` —— 本轮无图可剥 / 本 run 已剥过一次 ⇒ 原样抛）**不许动**。marker 加得越多，越依赖这两道闸兜底。
+
+### 20:55 · 刀 1b（S-261）代码 + 自动化回归完成，commit `bda3bca4`
+
+11 文件 +460/−30。四处改动：
+
+| # | 文件 | 改动 |
+|---|---|---|
+| 1 | `ImageInputErrors.cs`（66 → 82 行） | marker 表补 `unsupported image` / `image format is not supported` / `image is not supported` / `invalid image` / `图片格式不支持` / `图像格式不支持`，并把「为什么敢放宽」写进注释（两道闸兜底） |
+| 2 | `ProviderContentHelpers.cs`（289 → 353 行） | 新增 `SendableImageUrl(JsonElement, bool warn)`：http(s) 放行、`data:…;base64,` 交回 `ResolveSupportedImageMediaType`（与 base64 **同源判据**）、其余 scheme 直接丢 + Warn；`HasUsableImageBlock` 的 url 分支改成调它 |
+| 3 | `OpenAIChatRequestBuilder.cs` / `AnthropicMessagesInputWriter.cs`（494 / 495 行） | url 分支由「非空即透传」改为过 `SendableImageUrl`。**两个文件原本都正好 494 行，加注释就会破 500 红线** ⇒ 判据全部下沉到 `ProviderContentHelpers`，writer 只替换表达式，净增 0 / +1 行 |
+| 4 | `locales/{zh,en}/chat.json` | `imageInputUnsupported` / `…Detail` 扩写，同时覆盖「格式不支持」与「模型不读图」两种成因 |
+
+**回滚锚点做成了回归断言**：`tests/WishfulClaw.ImageInputRegressionTests/Program.cs` 新增 20 条，其中第一条直接把现场原句
+`.messages[477].image[0]: You have uploaded an unsupported image …` 灌进 `IsImageUnsupportedError` 断言必须为 true —— 修复前它返回 false。另有 6 条「无关 400 不许被吞」的反向断言守 S-236 判据 10，以及 8 条 url / data URL 闸门断言。
+
+**门禁**：`typecheck` exit 0；`npm test` **90/90**（套件数不变，ImageInput 断言 33 → 53）；`dotnet build` runtime + tests 两套 sln 均 **0 警告 0 错误**；`website build` exit 0。
+
+**待验（真机）**：判据 2 / 5 / 6 —— 造一个「历史带 url 形态非白名单图」的会话，看提示 toast 是否出现、后续轮次能否继续、切回会话原图是否还在。
+

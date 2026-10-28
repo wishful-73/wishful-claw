@@ -250,9 +250,9 @@ internal static partial class OpenAIChatProvider
                 continue;
             }
 
-            var sourceType = JsonHelpers.GetString(source, "type");
-            var imageUrl = sourceType == "url"
-                ? JsonHelpers.GetString(source, "url")
+            // S-261：url 形态与 base64 走同源判据，不再无条件透传。
+            var imageUrl = JsonHelpers.GetString(source, "type") == "url"
+                ? ProviderContentHelpers.SendableImageUrl(source)
                 : BuildBase64ImageUrl(source);
             if (string.IsNullOrWhiteSpace(imageUrl))
             {

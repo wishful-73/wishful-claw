@@ -330,7 +330,8 @@ internal static partial class AnthropicMessagesProvider
 
             if (JsonHelpers.GetString(source, "type") == "url")
             {
-                if (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url")))
+                // S-261：url 形态此前零闸，与 base64 那套判据不同源。
+                if (ProviderContentHelpers.SendableImageUrl(source) is not null)
                 {
                     writableBlocks.Add(block);
                 }

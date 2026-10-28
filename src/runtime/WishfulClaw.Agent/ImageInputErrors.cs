@@ -29,6 +29,19 @@ internal static class ImageInputErrors
         "image input is not supported",
         // 覆盖 does not support image / images / image input / image content
         "does not support image",
+        // S-261：上游对「格式不收」的原文形态。现场原句是
+        //   `.messages[477].image[0]: You have uploaded an unsupported image ...`
+        // 它与上面 `does not support image` **词形不同**（un**supported** ≠ does not support），
+        // 修复前一条都匹配不上 ⇒ 剥图自愈进不去，脏块留历史每轮 400，会话废掉。
+        //
+        // 这条比其它 marker 宽，敢放的理由是**判据有两道闸兜底**（AgentLoop.cs:464）：
+        //   ①本 run 已剥过一次还撞同一个错 ⇒ 原样抛；②本轮压根没有 image 块可剥 ⇒ 原样抛。
+        // 也就是「宽匹配」最多多剥一次图，不会把无关 400 吞成图像问题（S-236 判据 10 红线）。
+        "unsupported image",
+        // 同族的其它原文形态
+        "image format is not supported",
+        "image is not supported",
+        "invalid image",
         // DeepSeek / serde 系：content 里的 image_url variant 直接被反序列化拒掉
         // 注意原文用反引号包住标识符，正反两种引号都列上
         "unknown variant `image_url`",
@@ -40,7 +53,10 @@ internal static class ImageInputErrors
         "不支持图片",
         "不支持图像",
         "不支持多模态",
-        "不支持视觉"
+        "不支持视觉",
+        // S-261：中文侧「格式不收」的语序与上面相反，单独列
+        "图片格式不支持",
+        "图像格式不支持"
     ];
 
     internal static bool IsImageUnsupportedError(Exception exception)

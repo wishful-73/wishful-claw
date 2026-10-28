@@ -208,6 +208,69 @@ public static class ProviderContentHelpers
         return declared is not null && SupportedImageMediaTypes.Contains(declared) ? declared : null;
     }
 
+    /// <summary>
+    /// url 形态 image 块的出门判据（S-261）：上游**自己拿得到这张图**才返回 url，否则 null。
+    ///
+    /// 为什么需要这一道 —— S-246 的白名单闸只覆盖 base64 形态。`source.type == "url"` 在
+    /// <c>OpenAIChatRequestBuilder</c> 与 <c>AnthropicMessagesInputWriter</c> 里都是直接透传：
+    /// 同一个语义（「这张图能不能出门」）长了两份判据，base64 那半有闸、url 那半零闸。
+    /// 而渲染端 <c>visual-context.ts:272</c> 确实会把历史里 url 形态的块原样注入。
+    /// 一张 <c>file:///</c> / <c>oc-media://</c> 的图送到上游必然换回 400 `unsupported image`，
+    /// 块又留在历史里每轮重发 ⇒ 整个会话在清空历史前不可用。
+    ///
+    /// 判据只看三点，不需要猜渠道：http(s) 放行（上游可拉）；`data:…;base64,` 交回
+    /// <see cref="ResolveSupportedImageMediaType"/>（嗅探优先 + 白名单），与 base64 块**同源判据**；
+    /// 其余 scheme 上游一律解析不了，丢。
+    /// </summary>
+    /// <param name="imageSource">image 块的 <c>source</c> 对象。</param>
+    /// <param name="warn">丢弃时是否写日志。<c>HasUsableImageBlock</c> 这类探测调用传 false，避免重复告警。</param>
+    public static string? SendableImageUrl(JsonElement imageSource, bool warn = true)
+    {
+        if (imageSource.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var url = JsonHelpers.GetString(imageSource, "url")?.Trim();
+        if (string.IsNullOrEmpty(url))
+        {
+            return null;
+        }
+
+        if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return url;
+        }
+
+        // `data:image/png;base64,AAAA…` —— 字节就在 url 里，按 base64 那套判。
+        const string base64Marker = ";base64,";
+        var marker = url.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+            ? url.IndexOf(base64Marker, StringComparison.OrdinalIgnoreCase)
+            : -1;
+        if (marker > 5)
+        {
+            var declared = url[5..marker];
+            var base64 = url[(marker + base64Marker.Length)..];
+            if (ResolveSupportedImageMediaType(base64, declared) is not null)
+            {
+                return url;
+            }
+        }
+
+        if (warn)
+        {
+            // 只回显 scheme：data: 的载荷可能很长，日志里不能带。
+            var colon = url.IndexOf(':');
+            var scheme = colon > 0 && colon <= 12 ? url[..(colon + 1)] : "(none)";
+            WorkerLog.Warn(
+                $"image block dropped before provider turn: unsendable image url " +
+                $"(scheme={scheme}); the block stays in history but no longer reaches the wire");
+        }
+
+        return null;
+    }
+
     // ── Tool result helpers ──
 
     /// <summary>
@@ -237,7 +300,8 @@ public static class ProviderContentHelpers
 
             if (JsonHelpers.GetString(source, "type") == "url")
             {
-                if (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url")))
+                // S-261：与组包闸同源 —— url 非空不等于「能出门」。
+                if (SendableImageUrl(source, warn: false) is not null)
                 {
                     return true;
                 }

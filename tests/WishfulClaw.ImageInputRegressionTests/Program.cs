@@ -11,6 +11,7 @@
 
 using System;
 using System.IO;
+using System.Text.Json;
 using WishfulClaw.Agent;
 
 // 记忆会落盘到全局数据目录；先指到临时目录，别污染真实的 ~/.wishful-claw
@@ -121,6 +122,75 @@ if (File.Exists(memoryFile))
     Check(raw.Contains("openai:gpt-4o", StringComparison.Ordinal), "persisted json contains the memory key");
     Check(!raw.Contains(":gpt-5", StringComparison.Ordinal), "persisted json has no half-identity entry");
 }
+
+// ── 六、S-261：上游「格式不收」的原文形态必须认得出，且 url 形态要补闸 ──
+
+// 现场原句（知识库 2026-10-27 留档）。修复前 marker 表里没有这一句的任何形态 ——
+// `does not support image` 与 `un supported image` 词形不同，一条都匹配不上，
+// 于是自愈链路进不去、脏块留历史每轮 400、整个会话废掉。**这条断言就是本 bug 的回归锚点。**
+const string liveReportedImage400 =
+    ".messages[477].image[0]: You have uploaded an unsupported image. " +
+    "Please upload a supported image type (webp/png/jpeg/gif).";
+Check(ImageInputErrors.IsImageUnsupportedError(new Exception(liveReportedImage400)),
+    "S-261: the live 'unsupported image' 400 is recognised");
+
+Check(ImageInputErrors.IsImageUnsupportedError(new Exception("unsupported image format: image/svg+xml")),
+    "S-261: unsupported image format is recognised");
+Check(ImageInputErrors.IsImageUnsupportedError(new Exception("image format is not supported")),
+    "S-261: image format is not supported is recognised");
+Check(ImageInputErrors.IsImageUnsupportedError(new Exception("图片格式不支持，请上传 png 或 jpeg")),
+    "S-261: chinese format-rejection wording is recognised");
+
+// 放宽 marker 的代价必须由「无关 400 不被吞」这条守住（S-236 判据 10 红线）
+foreach (var unrelated in new[]
+         {
+             "model not found: gpt-4o-ultra",
+             "missing field: messages",
+             "tools[0].function.name is invalid",
+             "context_length_exceeded",
+             "unsupported parameter: temperature",
+             "invalid api key"
+         })
+{
+    Check(!ImageInputErrors.IsImageUnsupportedError(new Exception(unrelated)),
+        $"S-261: unrelated 400 is not swallowed ({unrelated})");
+}
+
+// url 形态此前零闸（S-246 盲点）：上游自己拿不到的 scheme 必须丢，http(s) 放行。
+JsonElement UrlSource(string url) =>
+    JsonDocument.Parse(JsonSerializer.Serialize(new { type = "url", url })).RootElement;
+
+Check(ProviderContentHelpers.SendableImageUrl(UrlSource("https://example.com/a.png"), warn: false) is not null,
+    "S-261: https image url is sendable");
+Check(ProviderContentHelpers.SendableImageUrl(UrlSource("http://example.com/a.png"), warn: false) is not null,
+    "S-261: http image url is sendable");
+Check(ProviderContentHelpers.SendableImageUrl(UrlSource("file:///C:/tmp/shot.png"), warn: false) is null,
+    "S-261: file:// image url is dropped (upstream cannot fetch it)");
+Check(ProviderContentHelpers.SendableImageUrl(UrlSource("oc-media://local/C%3A%5Ctmp%5Cshot.png"), warn: false) is null,
+    "S-261: oc-media:// image url is dropped");
+Check(ProviderContentHelpers.SendableImageUrl(UrlSource("blob:https://example.com/abc"), warn: false) is null,
+    "S-261: blob: image url is dropped");
+Check(ProviderContentHelpers.SendableImageUrl(UrlSource("./relative/shot.png"), warn: false) is null,
+    "S-261: bare path is dropped");
+
+// data: URL 交回 base64 那套同源判据 —— 合法 png 放行，svg 按白名单丢
+const string pngDataUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+Check(ProviderContentHelpers.SendableImageUrl(UrlSource(pngDataUrl), warn: false) is not null,
+    "S-261: data url carrying png is sendable");
+var svgDataUrl = "data:image/svg+xml;base64," +
+                 Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"));
+Check(ProviderContentHelpers.SendableImageUrl(UrlSource(svgDataUrl), warn: false) is null,
+    "S-261: data url carrying svg is dropped by the whitelist");
+
+// 与 HasUsableImageBlock 同源：url 非空不等于「有可用图」，
+// 否则调用方会写出一条只有 text 的 parts 数组，把 400 从「图不合法」换成「内容不合法」。
+Check(!ProviderContentHelpers.HasUsableImageBlock(JsonDocument.Parse(
+        """[{"type":"image","source":{"type":"url","url":"file:///C:/tmp/shot.png"}}]""").RootElement),
+    "S-261: file:// url block does not count as a usable image");
+Check(ProviderContentHelpers.HasUsableImageBlock(JsonDocument.Parse(
+        """[{"type":"image","source":{"type":"url","url":"https://example.com/a.png"}}]""").RootElement),
+    "S-261: https url block still counts as a usable image");
 
 Console.WriteLine($"passed: {passed}, failed: {failed}");
 

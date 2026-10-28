@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：contenteditable 编辑器的 selection / IME / undo 三层强耦合在同一 DOM 节点上，拆子组件需把 ref、选区与撤销栈整体透传。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
+
 import * as React from 'react'
 import { cn } from '@renderer/lib/utils'
 import { type FileAwareEditorHandle, type FileAwareEditorProps, renderDocument, isSameDocument, parseDomToDocument, getSelectionOffsets, setSelectionFromPoint, setSelectionOffsets, editorDocumentToPlainText } from './file-aware-editor-utils'

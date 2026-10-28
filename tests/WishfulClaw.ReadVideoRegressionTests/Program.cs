@@ -132,16 +132,17 @@ try
     Check(noExtractor.Content.Contains("not available in this run", StringComparison.Ordinal),
         "no extractor explains why nothing was extracted");
 
-    // ── 降级 2：非 vision 模型 ──
+    // ── S-236：非 vision 模型照常抽帧附图（与图像分支同一套口径） ──
+    // 同一张本地能力表不该在图片和视频两条路上给出相反结论，所以拦截一并摘掉。
     var blind = await tool.ExecuteAsync(
         Input(video),
         new ToolExecutionContext(
             WorkingFolder: root,
             SupportsVision: false,
             VideoFrameExtractor: (_, _) => Task.FromResult(new VideoFrameExtraction(frames, 5, 1920, 1080))));
-    Check(blind.ContentBlocks is null, "non-vision video read carries no image block");
-    Check(blind.Content.Contains("not marked as vision-capable", StringComparison.Ordinal),
-        "non-vision video read explains why there are no frames");
+    Check(blind.ContentBlocks is not null, "S-236: a model marked non-vision still gets video frames");
+    Check(!blind.Content.Contains("not marked as vision-capable", StringComparison.Ordinal),
+        "S-236: the old 'not marked as vision-capable' refusal is gone");
 
     // ── 降级 3：超过体积上限（抽帧前就拒绝，不该白搬） ──
     var oversized = Path.Combine(root, "huge.mp4");

@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：12 个 state 与 13 个派生 memo 全部围绕同一份 git 状态，状态区 / 提交表单 / 历史三块子视图读同一批派生值；拆开要么重复推导，要么把 memo 结果整包透传。
+// 拆出去必须新增 props 链或 context 才能跑通，这个中间层本身就是新的排查成本。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
 import * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'

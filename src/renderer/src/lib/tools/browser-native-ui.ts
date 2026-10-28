@@ -88,7 +88,9 @@ async function executeBrowserNavigate(
     if (!url || typeof url !== 'string') throw new Error('"url" is required for goto')
     url = normalizeBrowserUrl(url)
     assertBrowserAccess(url)
-    // Reveal the browser panel so the user can see the page being loaded.
+    // 面板要不要掀开由 store 判（S-259）：只有「用户当前正在看的那个会话」才开，
+    // 后台会话静默建 tab。判据在 ui-store.ts 的 ensureBrowserTab 里收口一次，
+    // 这里不要自己再判 —— 四处各写一遍必漏，漏掉的那处就是下一次「面板莫名弹开 + 空白」。
     useUIStore.getState().openBrowserTab(url, ctx.sessionId)
     // Wait for the webview element to mount and register its ref.
     const webview = await waitForWebview(ctx, 10000)

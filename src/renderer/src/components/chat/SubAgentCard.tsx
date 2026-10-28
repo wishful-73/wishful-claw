@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-26 实测 524 行）：整张卡由同一份 `tracked` 子 Agent 状态驱动 ——
+// 500 行豁免（2026-10-28，行数以实际为准）：整张卡由同一份 `tracked` 子 Agent 状态驱动 ——
 // 排队/运行/结束三态换文案、耗时、token、工具清单、报告展开全读同一批字段，
 // 拆开要跨文件传六个字段并各自兜一次 undefined，得不偿失。
 // 依据 AGENTS.md §大文件拆分 第 5 条第 1 类（单一呈现单元）。
@@ -9,6 +9,7 @@ import { Brain, ChevronDown, ChevronRight, FileText, ScrollText, icons } from 'l
 
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { formatTokens, getBillableTotalTokens } from '@renderer/lib/format-tokens'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { parseSubAgentMeta } from '@renderer/lib/agent/sub-agents/create-tool'
 import { subAgentRegistry } from '@renderer/lib/agent/sub-agents/registry'
 import {
@@ -54,10 +55,8 @@ function getSubAgentIcon(agentName: string): React.ReactNode {
 }
 
 function formatElapsed(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  const secs = ms / 1000
-  if (secs < 60) return `${secs.toFixed(1)}s`
-  return `${Math.floor(secs / 60)}m${Math.round(secs % 60)}s`
+  // S-245：与工具卡 / 操作栏同一口径，别在这里另写一套（原来秒档带 1 位小数）。
+  return formatDurationMs(ms)
 }
 
 function extractToolResultText(content?: ToolResultContent): string {

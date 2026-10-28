@@ -1,3 +1,14 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：一个更新器单例的整套可变状态，拆完无人能独占所有权。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆得动但代价显著大于收益）。
+// 实质证据（2026-10-28 逐行核过）：文件级 11 个可变绑定构成同一个状态机 —— `updater`(62) /
+// `initializePromise`(63) / `checkPromise`(64) / `periodicRecheckTimer`(65) / `checkIsPeriodic`(70) /
+// `downloadGate`(71) / `installGate`(72) / `options`(73) / `coordinator`(74) / `activeOperationId`(75) /
+// `lastProgressLogAt`(76)，写入点横跨 286/519/523/577-580/613/615/654/682，横跨初始化、检查、下载、
+// 安装、周期重查五个阶段，没有一个阶段能只拿一半。拆开只能二选一：①把 11 个绑定全挪进一个 state
+// 容器，所有读写经访问器 ⇒ 新增中间层，每处状态变更多一跳，排查更难；②按阶段拆文件但仍互相 import
+// 对方的 state ⇒ 循环依赖。故维持单文件（对外导出的 `initializeUpdater` / `requestUpdateCheck` /
+// `requestUpdateDownload` / `requestUpdateInstall` / `getUpdateStatus` 保持不动）。
+
 import { app, BrowserWindow } from 'electron'
 import { logError, logInfo, logWarn } from './lib/logger'
 import { readPersistedSettings } from './lib/settings-store'
@@ -225,6 +236,12 @@ function announceUpdateAvailable(version: string, inlineNotes: string, silent: b
       return ''
     })
     .then((releaseNotes) => {
+      // 先回写状态，再推事件（S-234）。事件只到得了「正开着的那次通报」，而二次打开弹窗走的是
+      // `refreshStatus()` → 状态快照 —— 只喂事件的话，那份说明在第一次关闭弹窗时就没了。
+      // 补拉失败时 releaseNotes 是 ''，applyReleaseNotes 直接拒写，不会把已有内容清空。
+      if (updaterState().applyReleaseNotes(version, releaseNotes)) {
+        logInfo('main', `Updater stored release notes for ${version}`)
+      }
       const payload: UpdateAvailablePayload = {
         currentVersion: currentVersion(),
         newVersion: version,

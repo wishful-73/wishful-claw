@@ -11,8 +11,9 @@ namespace WishfulClaw.Agent;
 /// tool_use / tool_result），所以按特征串并集匹配，不锚定某一家。
 ///
 /// 判定刻意保守：只认「明确在讲配对」的文案。其它 400 一律不匹配 ——
-/// 它们要继续走 ProviderRetryPolicy 的重试（400 可重试是有意设计，见
-/// ProviderRetryPolicy.IsRetryableStatus），不能被这里截走。
+/// 自 S-237（2026-10-27）起 400 本身已不进重试（`ProviderRetryPolicy.IsRetryableStatus`
+/// 只认 429 / 5xx），所以这里截不走的那些 400 会直接报错给用户；
+/// 而这里认出来的，走 AgentLoop 的配对修复分支修完再发一次。
 /// </summary>
 internal static class ToolPairingErrors
 {

@@ -49,6 +49,7 @@ import {
   isEsExecutableName,
   isEsSortKey,
   isEsVersionInfoHit,
+  isEverythingAutostartFailure,
   parseEsJson,
   parseEsPathLines,
   parseEsResultCount,
@@ -388,5 +389,14 @@ eq(
   '2023-01-05 09:07',
   '个位数月/日/时/分要补零'
 )
+
+// ── 自动拉起 Everything 的失败判定（S-253 真机补刀的补刀，2026-10-28 收尾）─────────
+// `-startup` 撞到已在运行的实例会**立刻以 0 退出** —— 那是「没事要干」，不是失败。把判据放宽
+// 成「非 null 即失败」会把「Everything 本来就在跑」报成「启动失败」，正是 10-28 那次误报的同类。
+// 钉住 0，谁哪天把它「顺手简化」成 `code !== null` 都会立刻炸在这里。
+eq(isEverythingAutostartFailure(0), false, 'exit 0 是「已在运行、没事要干」，不是失败')
+eq(isEverythingAutostartFailure(1), true, '非 0 退出才是真失败')
+eq(isEverythingAutostartFailure(-1073741515), true, '缺 DLL 的异常终止码也算失败（取反后仍非 0）')
+eq(isEverythingAutostartFailure(null), true, 'code 为 null = 进程根本没起来，也算失败')
 
 console.log(`es-search checks passed (${checks} assertions).`)

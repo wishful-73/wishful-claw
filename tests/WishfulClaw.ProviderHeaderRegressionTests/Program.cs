@@ -21,6 +21,7 @@ internal static class Program
             ProviderCompletionResolutionChecks.Run();
             AuxiliaryHeaderChecks.Run();
             MainChainHeaderChecks.Run();
+            RetryStatusChecks.Run();
             Console.WriteLine("Provider header regression checks passed.");
             return 0;
         }

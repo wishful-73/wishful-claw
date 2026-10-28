@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：单一 zustand slice：子 agent transcript 的增量合并、trim 与 usage 汇总共享同一份 immer draft，拆开会割裂 transcript 时序。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 2 类（高度内聚的 store / hook）。
+
 import type { StateCreator } from 'zustand'
 import type { AgentStore } from '../types'
 import { emitAgentRuntimeSync, isAgentRuntimeSyncSuppressed } from '../../../lib/agent-runtime-sync'

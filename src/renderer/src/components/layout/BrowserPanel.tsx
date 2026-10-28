@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-23 实测 515 行）：内置浏览器面板是**单一组件** —— 地址栏、`<webview>` 命令桥、
+// 500 行豁免（2026-10-28，行数以实际为准）：内置浏览器面板是**单一组件** —— 地址栏、`<webview>` 命令桥、
 // 导航序号（`navigationSeq` / `committedUrl`）、下载与权限提示全部共享同一份组件内 state；
 // 拆出去每块都要搬 state 并加一层 props 透传，排查反而更难。豁免依据：AGENTS.md §大文件拆分 第 5 条第 3 类（拆分需大量 props 透传或 state 搬运的组件）。
 
@@ -21,6 +21,8 @@ import {
 } from '@renderer/lib/browser/webview-helpers'
 import { isSameBrowserUrl, nextCommittedUrl } from '@renderer/lib/browser/committed-url'
 import { forgetBrowserDeviceState } from '@renderer/lib/browser/apply-browser-device'
+import { clearBrowserCache } from '@renderer/lib/browser/clear-browser-cache'
+import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import {
   BUILTIN_BROWSER_PARTITION,
@@ -147,6 +149,37 @@ export function BrowserPanel({
     },
     [handleWebviewOperationError]
   )
+
+  /**
+   * 清除浏览数据（S-235）：清 HTTP + 字节码缓存，然后绕过缓存重载。
+   *
+   * `clearingRef` 才是防连点的闸，`clearing` 只负责让按钮转圈 —— `setClearing` 是异步的，
+   * 同一帧内连点三下时后两次仍会读到旧 state。清缓存是异步 IO，放过去就是三次重载。
+   */
+  const clearingRef = useRef(false)
+  const [clearing, setClearing] = useState(false)
+  const handleClearCache = useCallback(async (): Promise<void> => {
+    if (clearingRef.current) return
+    const wv = webviewRef.current
+    if (!isWebviewConnected(wv)) {
+      toast.error(t('browser.clearCacheUnavailable'))
+      return
+    }
+
+    clearingRef.current = true
+    setClearing(true)
+    try {
+      const result = await clearBrowserCache(wv)
+      if (result.ok) {
+        toast.success(t('browser.clearCacheDone'))
+      } else {
+        toast.error(t('browser.clearCacheFailed', { error: result.error }))
+      }
+    } finally {
+      clearingRef.current = false
+      setClearing(false)
+    }
+  }, [t])
 
   // 「导航目标」与「页面当前地址」是两条独立的线：
   //   storedUrl  —— 页面当前地址（webview 事件回写，只用于显示与恢复）
@@ -443,6 +476,8 @@ export function BrowserPanel({
         // 语义就是「我要最新的」，这里直接绕过缓存，并让服务器返回的新内容覆盖旧缓存。
         onReload={() => runWebviewCommand('refresh', (wv) => wv.reloadIgnoringCache())}
         onGo={() => navigate(inputUrl)}
+        clearing={clearing}
+        onClearCache={() => void handleClearCache()}
         deviceMode={deviceMode}
         customViewport={customViewport}
         onDeviceChange={(next) => {

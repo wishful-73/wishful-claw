@@ -155,6 +155,12 @@ export type AgentStreamEvent =
       webSearchSources?: { url?: string; title?: string }[]
     }
   | { type: 'request_retry'; attempt: number; maxAttempts: number; delayMs: number; statusCode?: number; reason: string }
+  // S-236 档 2：上游明确回「这个模型不吃图像输入」（表现为 400），Worker 已剥掉
+  // 本轮所有 image 块并在下一次 attempt 重发。渲染端据此告诉用户「图没送进去」——
+  // 旧版是静默不附图，用户看不出少给了东西，这正是那个 bug 最伤人的地方。
+  // `reason` 目前恒为 'stripped'，留字段是为了以后加「记忆命中、直接不发图」时
+  // 不必再改协议。
+  | { type: 'image_input_unsupported'; reason: string; attempt?: number; maxAttempts?: number }
   // Error
   // `statusCode` is set when the failure came from an HTTP reply the Worker could
   // attribute (e.g. a `ProviderHttpException` that outlived its retries). It lets the

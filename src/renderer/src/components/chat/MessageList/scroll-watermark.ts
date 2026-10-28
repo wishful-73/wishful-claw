@@ -119,6 +119,33 @@ export function observeFloor(
 }
 
 /**
+ * S-233（2026-10-27）：**只升不降**的观测 —— 「实测底不可信」时专用。
+ *
+ * 什么时候不可信：`getRealContentBottom()` 只遍历**已挂载**的行，尾部行一旦跑出
+ * 虚拟器的 overscan 范围，实测底就掉到「最后一个已挂载行」的底 —— 比真实内容底少
+ * 一整行甚至几行。此时它不是内容底，是**测量盲区**。
+ *
+ * 为什么不能靠 `observeFloor` 的时长阈值挡：S-176 的注释写着「噪声是**一帧往返**
+ * （≈16ms），48ms 要连续 3 帧偏低才可能误认」。这个前提对挂载缺失不成立 ——
+ * 盲区会**持续到滚动位置改变为止**，远不止 3 帧。于是 `lowSince` 一到 48ms 就被采信，
+ * floor 被压到假值，跟随目标跟着骤降 ⇒ 视口被拽动 ⇒ 一滚就又挂载回尾部 ⇒
+ * 实测底回升 ⇒ floor 上抬 ⇒ 再拽回。**自持极限环，不需要任何新内容。**
+ *
+ * 这也是「多轮之后才出现、不是一开始就跳」的机械解释：行数少时全部行都在 overscan
+ * 内、尾部永远挂载，盲区根本不存在；行数一多，尾部才可能缺席。
+ *
+ * 与 `observeFloor` 的两点差别：
+ * 1. 偏低**不采信**（floor 保持不动）；
+ * 2. `lowSince` **必须清空** —— 否则不可信期之前记的起点会残留在那里，等下一次
+ *    可信观测时 `shouldRefloor` 立刻判为「已经等够了」而误采信。
+ */
+export function observeGrowthOnly(tracker: FloorTracker, raw: number): FloorTracker {
+  if (!(raw > 0)) return tracker
+  if (raw > tracker.floor) return { floor: raw, lowSince: null }
+  return { floor: tracker.floor, lowSince: null }
+}
+
+/**
  * 留白基准（= 视口底边停在内容底下方多远），**同时就是留白上限**。
  *
  * 三个上限取最小：`chunk`（提前量块）、半屏（视口矮时 240 可能不止半屏）、`maxGap`

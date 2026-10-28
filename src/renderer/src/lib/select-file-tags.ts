@@ -213,6 +213,53 @@ export function buildPastedBlockLabel(text: string): string {
   return translateOr('input.pastedBlock.label', { ns: 'chat' }, '粘贴')
 }
 
+/**
+ * S-257: paste size below ten thousand, in whole characters ("400 字" / "400 chars").
+ * Above that the locale decides the unit — zh uses 万 (10⁴) and en uses k (10³), so both
+ * numbers are passed and each locale picks the one that matches its own unit.
+ */
+function formatPastedBlockSize(chars: number): string {
+  if (chars >= 10000) {
+    const wan = (chars / 10000).toFixed(1).replace(/\.0$/, '')
+    const kchars = (chars / 1000).toFixed(1).replace(/\.0$/, '')
+    return translateOr(
+      'input.pastedBlock.sizeWan',
+      { ns: 'chat', wan, kchars, chars: String(chars) },
+      `${wan} 万字`
+    )
+  }
+  return translateOr(
+    'input.pastedBlock.sizeChars',
+    { ns: 'chat', chars: String(chars) },
+    `${chars} 字`
+  )
+}
+
+/**
+ * S-257: label for a collapsed paste **at render time**, including the character
+ * count ("粘贴 · 42 行 · 3200 字").
+ *
+ * Why a second function instead of extending `buildPastedBlockLabel`: that one
+ * runs when the paste is captured and its output is frozen into the
+ * `<pasted-block>` payload's `label`. Rendering straight from `pastedText` means
+ * pastes stored before this change (and any future wording tweak) show up
+ * correctly without migrating a single row. Trailing whitespace is dropped — the
+ * editor appends a newline that the user never typed.
+ */
+export function describePastedBlockLabel(text: string): string {
+  const body = text.replace(/\s+$/, '')
+  const size = formatPastedBlockSize(body.length)
+  const lines = body.split(/\r?\n/).length
+  if (lines > 1) {
+    return translateOr(
+      'input.pastedBlock.labelWithLinesAndChars',
+      { ns: 'chat', lines, size },
+      `粘贴 · ${lines} 行 · ${size}`
+    )
+  }
+  return translateOr('input.pastedBlock.labelWithChars', { ns: 'chat', size }, `粘贴 · ${size}`)
+}
+
 function parsePastedBlockPayload(value: string): PastedBlockPayload | null {
   try {
     const parsed = JSON.parse(decodeTagText(value)) as Partial<PastedBlockPayload>

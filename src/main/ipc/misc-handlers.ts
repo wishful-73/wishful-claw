@@ -290,6 +290,40 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
     }
   })
 
+  // -- Browser cache clearing (S-235) --
+  //
+  // 取的是「这个 webview 真正在用的 session」，不是「按设置判该清哪个 partition」。
+  // 后者在当前代码下有一半概率清错对象：`browser:emulation-status` 是 stub，设置里写着
+  // 复用、运行时被打回 false，真身始终是 `persist:wishfulclaw-browser`。按 id 拿 session
+  // 不管那道 stub bug 修没修、用户在设置里选了什么，结果都对。
+  //
+  // 只清两级缓存，不碰 `clearStorageData` —— 那会把所有站点的登录态一起抹掉，
+  // 那是「重置浏览器」，不是「清缓存」。
+  registerMessagePackHandler<
+    { webContentsId: number },
+    { success: true } | { success: false; error: string }
+  >('browser:clear-cache', async (args) => {
+    try {
+      const target = webContents.fromId(args.webContentsId)
+      if (!target || target.isDestroyed()) {
+        return { success: false, error: 'Target web contents not found' }
+      }
+
+      const browserSession = target.session
+      await browserSession.clearCache()
+      // 字节码缓存单独清：本地改了很多版还加载旧结构，最直接的嫌疑就是它。
+      // 不传 urls 表示清全部。
+      await browserSession.clearCodeCaches({})
+
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+  })
+
   // -- Image persistence (browser screenshots, generated images) --
   // The write itself lives in `lib/image-persist.ts`, so the main-process
   // `window:capture-self` reverse-request can reuse the exact same rules.

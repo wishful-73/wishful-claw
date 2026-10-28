@@ -1,6 +1,6 @@
 // Main content renderer: handles string, empty, and block-by-block rendering
 //
-// 500 行豁免（2026-10-26 实测 584 行）：这个文件就是「一条 assistant 消息怎么画」的
+// 500 行豁免（2026-10-28，行数以实际为准）：这个文件就是「一条 assistant 消息怎么画」的
 // 单一渲染分派器 —— 文本 / 思考 / 工具 / 图片 / 编排 / 过程折叠全按 block 类型走同一张
 // 表，共用一个 renderItem 与同一套 folding 判定。拆成多个文件只会把一个 switch 切成
 // 几个互相 import 的碎片，判定口径立刻分叉（iter-40 S-210 的回填逻辑就依赖这个

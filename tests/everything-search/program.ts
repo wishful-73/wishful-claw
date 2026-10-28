@@ -45,6 +45,7 @@ import {
   sanitizeEverythingCandidates,
   shouldScanIntoDirectory
 } from '../../src/main/lib/everything-search'
+import { fileSearchFailureView } from '../../src/renderer/src/lib/file-search-shared'
 
 let checks = 0
 
@@ -453,6 +454,76 @@ deepEq(buildEverythingSearchArgs('a"b'), ['-search', 'a"b'], '引号不做转义
 eq(buildEverythingSearchArgs(''), null, '空关键词不启动 Everything')
 eq(buildEverythingSearchArgs('     '), null, '纯空白同理')
 eq(buildEverythingSearchArgs(null as unknown as string), null, 'null 入参也不炸')
+
+// ── 失败文案：拉起超时 ≠ 拉起失败（S-253 真机补刀）────────────────────────────
+//
+// 这是 2026-10-28 真机误报的现场：Everything 明明被我们拉起来了、当时就在跑、es.exe 119ms
+// 正常返回，界面却说「已经替你启动过 Everything，但它没起来。多半是安装损坏」。
+// 根因是主进程只等 3 秒就放弃，而渲染端把「还没就绪」和「spawn 失败」说成同一句话。
+//
+// 断言钉的是**用户看得见的后果**：两种情况下文案必须不同，且「还在初始化」那句不能
+// 说成「坏了」——因为能走到这里就证明 exe 存在，「安装损坏」逻辑上不成立。
+
+const notRunningTimeout = fileSearchFailureView({
+  ok: false,
+  hits: [],
+  failure: 'not-running',
+  autostartAttempted: true
+})
+const notRunningSpawnFailed = fileSearchFailureView({
+  ok: false,
+  hits: [],
+  failure: 'not-running',
+  autostartAttempted: true,
+  autostartFailed: true
+})
+
+check(
+  notRunningTimeout.text !== notRunningSpawnFailed.text,
+  '「索引还没读完」和「启动失败」必须是两句不同的话，不能合成一句'
+)
+check(
+  !notRunningTimeout.text.includes('损坏'),
+  '没判定 spawn 失败时不许说「安装损坏」—— exe 已探到，这个结论不成立'
+)
+check(
+  notRunningTimeout.text.includes('稍等'),
+  '「还没就绪」的文案要给可执行动作：等一下再搜'
+)
+check(
+  notRunningSpawnFailed.text.includes('损坏') || notRunningSpawnFailed.text.includes('权限'),
+  '真判定为启动失败时才给出「权限 / 损坏」这类排查方向'
+)
+deepEq(notRunningTimeout.actions, ['retry'], '还没就绪：只需要再搜一次')
+deepEq(
+  notRunningSpawnFailed.actions,
+  ['retry', 'redetect'],
+  '启动失败：除了重试，还要能重新检测（用户可能刚改了安装路径）'
+)
+
+// 没探到本体 ⇒ 走下载引导，跟「拉起过没成」是两件事。
+const noEverythingFound = fileSearchFailureView({ ok: false, hits: [], failure: 'not-running' })
+deepEq(noEverythingFound.actions, ['download', 'redetect'], '本体没探到 ⇒ 引导下载，别只给重试')
+
+const notInstalled = fileSearchFailureView({ ok: false, hits: [], failure: 'not-installed' })
+deepEq(notInstalled.actions, ['download', 'redetect'], 'es.exe 缺失 ⇒ 同样是下载引导')
+check(notInstalled.text.includes('es.exe'), '「没装」文案要点名缺的是 es.exe，用户才知道去搜什么')
+
+const spawnFailed = fileSearchFailureView({ ok: false, hits: [], failure: 'spawn-failed' })
+deepEq(spawnFailed.actions, ['redetect'], 'es.exe 路径失效 ⇒ 重新检测（不是重试同一个死路径）')
+
+// 每个分支都必须有话说、有按钮可点 —— 空文案或空动作等于把用户卡死。
+for (const failure of [
+  'not-installed',
+  'not-running',
+  'spawn-failed',
+  'bad-output',
+  'search-failed'
+] as const) {
+  const view = fileSearchFailureView({ ok: false, hits: [], failure })
+  check(view.text.trim().length > 0, `${failure}：必须给一句人话，不能空白`)
+  check(view.actions.length > 0, `${failure}：必须给至少一个能点的下一步`)
+}
 
 // ── 汇总 ──────────────────────────────────────────────────────────────────
 

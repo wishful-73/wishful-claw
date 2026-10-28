@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-26 实测 586 行）：这是「一张工具卡怎么画」的单一呈现单元 ——
+// 500 行豁免（2026-10-28，行数以实际为准）：这是「一张工具卡怎么画」的单一呈现单元 ——
 // 头部状态 / 输入渲染 / 输出分派 / 展开态判定四处共用同一份 open 状态与同一批 props。
 // 尤其 S-225 之后，「这张卡默认开还是关」由 open + 档位派生 + 用户覆盖三方合成，
 // 拆成两个文件就必须把 open 的读写和 useEffect 门控跨文件传，判定口径立刻分叉。
@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { MONO_FONT } from '@renderer/lib/constants'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { isMcpTool, parseMcpToolName } from '@renderer/lib/mcp/mcp-tools'
 import { parseExtensionToolResult } from '@renderer/lib/extensions/extension-result'
@@ -194,9 +195,8 @@ function ToolCallCardInner({
     !!(input.content || input.content_preview)
   const elapsed = (() => {
     if (!startedAt || !completedAt) return null
-    const diffMs = completedAt - startedAt
-    if (diffMs < 1000) return `${Math.round(diffMs)}ms`
-    return `${(diffMs / 1000).toFixed(1)}s`
+    // S-245：耗时的写法统一由 `formatDurationMs` 定义（秒档不带小数），别在这里另写一套。
+    return formatDurationMs(completedAt - startedAt)
   })()
   // Cache elapsed so it persists even after liveToolCall is cleaned up
   const elapsedCacheRef = React.useRef<string | null>(null)

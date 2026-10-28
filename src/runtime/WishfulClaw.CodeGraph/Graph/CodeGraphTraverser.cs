@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：CodeGraph 子系统计划整体剥离为独立项目、
+// 以插件形式引用，剥离前不拆分（2026-10-28 老大裁定）—— 拆了迁移时还要拼回去，纯属白做。
+// 豁免依据：项目负责人裁定 —— 待剥离子系统不适用本仓 500 行拆分线。
+
 // Graph traversal algorithms ≙ CodeGraph TS `graph/traversal.ts` (GraphTraverser).
 // BFS/DFS over the code knowledge graph plus the derived call-graph / type-hierarchy /
 // impact / path / usage queries. Consumes CodeGraphStore's read surface exactly

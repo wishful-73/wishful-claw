@@ -6,29 +6,25 @@
  */
 
 export function formatDurationMs(ms: number): string {
-  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`
+  const total = Number.isFinite(ms) ? Math.max(0, Math.round(ms)) : 0
+  if (total < 1000) return `${total}ms`
 
-  const totalSeconds = ms / 1000
-  if (totalSeconds < 60) {
-    const digits = totalSeconds >= 10 ? 0 : 1
-    // toFixed 会产出 "1.0" / "10.0" 这类无意义的小数尾巴，掐掉。
-    return `${totalSeconds.toFixed(digits).replace(/\.0+$/, '')}s`
-  }
+  // S-254（2026-10-28）：先一次性取整到秒，再按 d/h/m/s 拆位。
+  // 拆完再对秒取整会出 `1h59m60s` 这种怪读数 —— 取整只能发生一次。
+  const totalSeconds = Math.round(total / 1000)
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
 
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds - totalMinutes * 60
-
-  // 小时档：超过 60 分钟改写成 1h30m，避免出现 90m0s 这种读数。
-  if (totalMinutes >= 60) {
-    const hours = Math.floor(totalMinutes / 60)
-    const minutes = totalMinutes - hours * 60
-    // 整点不写分钟：1h，而不是 1h0m。
-    return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`
-  }
-
-  const secondsText = seconds.toFixed(seconds >= 10 ? 0 : 1).replace(/\.0+$/, '')
-  // 整分不写秒：1m，而不是 1m0s。
-  return secondsText === '0' ? `${totalMinutes}m` : `${totalMinutes}m${secondsText}s`
+  // 「有值就显示」：某位是 0 就跳过（1h 不写 1h0m0s）。秒位同理 —— 走表每秒一跳，
+  // 秒真是 0 的那一跳只持续一秒，下一跳就回来了，不值得为它补位。
+  let text = ''
+  if (days > 0) text += `${days}d`
+  if (hours > 0) text += `${hours}h`
+  if (minutes > 0) text += `${minutes}m`
+  if (seconds > 0) text += `${seconds}s`
+  return text
 }
 
 /**
@@ -57,5 +53,10 @@ export function resolveRunningElapsedLabel(params: {
   const { startedAt, now, disabled = false } = params
   if (disabled || startedAt == null) return null
   if (!Number.isFinite(startedAt) || !Number.isFinite(now) || now <= startedAt) return null
-  return formatDurationMs(now - startedAt)
+  const elapsed = now - startedAt
+  // S-254（2026-10-28 老大：「毫秒只在工具调用上有，输入框左上角状态栏不需要毫秒」）：
+  // 不足 1 秒**不出数**，而不是报 `0s` —— 挂载首帧的 `42ms` 没有信息量还闪一下。
+  // 与上面「宁可没有，不可报 0」是同一条线。
+  if (elapsed < 1000) return null
+  return formatDurationMs(elapsed)
 }

@@ -1,5 +1,5 @@
 /*
- * 豁免（AGENTS.md 第 5 条第 2 类「高度内聚的 store」）：573 行，超 500 行硬线。
+ * 豁免（AGENTS.md 第 5 条第 2 类「高度内聚的 store」）：行数以实际为准，超 500 行硬线。
  * 理由：这是 UI store 的唯一聚合入口 —— 浏览器 / 预览 / 标签页等 slice 在此合并，
  * 共享同一份 set/get 与派生状态；拆开会让 slice 之间靠外部传参通信，排查更绕。
  */
@@ -25,6 +25,7 @@ import {
   activateRightPanelTab,
   closeRightPanelScope,
   hasRightPanelTabsInScope,
+  isRightPanelScopeActive,
   resolveRightPanelSessionId,
   scopedRightPanelTabId
 } from './right-panel-scope'
@@ -554,6 +555,31 @@ export const useUIStore = create<UIStore>((set, get) => ({
         projectId
       )
       if (options?.background) {
+        return {
+          rightPanelTabs,
+          ...browserStatePatch
+        }
+      }
+      // S-259：只有「用户当前正在看的那个作用域」才允许把面板掀开。
+      // 此前这里无条件 rightPanelOpen: true —— 后台会话（别的会话的 agent 调 BrowserNavigate、
+      // 团队事件等）也会把用户面前的面板拉开，而内容层按 scope 分区、当前 scope 里没有这个
+      // tab，于是出现「面板撑开 + 一片空白」，切过去又被 prepareSessionSwitch 收掉。
+      //
+      // 判据用 isRightPanelScopeActive（只看 sessionId，与 tab 归属桶同源），**不用**
+      // isActiveBrowserScope：后者把 projectId 也纳入比较，而「面板开不开」取决于内容层会不会
+      // 画出这个 tab，内容层只认 sessionId ⇒ 两把尺子换着用，在 projectId 一侧拿不到的边界上
+      // 会判出「你在别的 scope」，前台也被锁死不展开，比原 bug 更难查。
+      //
+      // 拦截放在 store 而不是各调用点：调用点会继续长（新工具、新事件），判据只写一遍才不漏。
+      // 拿不到 sessionId 时会回落成当前作用域 ⇒ 判为前台，这是有意的：没有归属信息的调用宁可
+      // 显式打开，也不要静默（静默失败更难排查）。
+      // 早退分支**刻意不写激活 tab**（`activateRightPanelTab` 只在下面那条 return 里调）。
+      // `rightPanelActiveTabIds` 是 per-scope 的，写进去不影响当前视图，但会覆盖用户在那个
+      // 会话里**自己选过**的 tab —— 后台 agent 的导航不该替用户改焦点，否则他在 B 里手动切到
+      // 任务面板，被后台导航一次就弹走一次。代价：切过去时按 RightPanel 的 `?? tabs[0]` 回落到
+      // 第一个 tab，浏览器 tab 在、只是没被选中。这个取舍是定的，不是漏写 —— 要「切过去自动
+      // 选中刚打开的那个」，得另加状态区分「用户选的」与「agent 选的」，不值当。
+      if (!isRightPanelScopeActive(state, resolvedSessionId)) {
         return {
           rightPanelTabs,
           ...browserStatePatch

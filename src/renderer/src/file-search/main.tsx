@@ -17,21 +17,22 @@
 import '../assets/main.css'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ExternalLink, FileText, Folder, FolderOpen, Loader2, Search } from 'lucide-react'
+import { Loader2, Search } from 'lucide-react'
 import { syncThemeFromSettings } from '../lib/theme-sync'
 import {
   DEFAULT_ES_SORT,
   ES_CATEGORIES,
   ES_SORT_OPTIONS,
   FILE_SEARCH_PAGE_SIZE,
-  fileSearchFailureText,
-  formatHitSize,
-  formatHitTime,
+  fileSearchFailureView,
   type EsCategory,
   type EsSearchResult,
   type EsSort,
-  type FileHit
+  type FileHit,
+  type FileSearchFailureAction,
+  type FileSearchFailureView
 } from '../lib/file-search-shared'
+import { ResultList } from './result-list'
 
 /** 防抖窗口。es.exe 单次取数实测 ~130ms，250ms 足够把连打收敛成一次。 */
 const FILE_SEARCH_DEBOUNCE_MS = 250
@@ -49,7 +50,9 @@ function FileSearchWindow(): React.JSX.Element {
   const [icons, setIcons] = useState<Record<string, string | null>>({})
   const [searching, setSearching] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<FileSearchFailureView | null>(null)
+  /** 主进程正在替用户拉起 Everything 本体（S-253）—— 这时不该显示「搜索中」，要说清在等什么。 */
+  const [launchingEverything, setLaunchingEverything] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -113,7 +116,7 @@ function FileSearchWindow(): React.JSX.Element {
       const token = (tokenRef.current += 1)
       busyRef.current = true
       setSearching(true)
-      setError('')
+      setError(null)
       setSelectedIndex(0)
 
       try {
@@ -129,7 +132,7 @@ function FileSearchWindow(): React.JSX.Element {
         if (!result?.ok) {
           setHits([])
           hasMoreRef.current = false
-          setError(fileSearchFailureText(result ?? { ok: false, hits: [] }))
+          setError(fileSearchFailureView(result ?? { ok: false, hits: [] }))
           return
         }
         setHits(result.hits)
@@ -138,11 +141,24 @@ function FileSearchWindow(): React.JSX.Element {
         if (token !== tokenRef.current) return
         setHits([])
         hasMoreRef.current = false
-        setError('搜索失败')
+        setError(fileSearchFailureView({ ok: false, hits: [], failure: 'search-failed' }))
       } finally {
         if (token === tokenRef.current) {
           busyRef.current = false
           setSearching(false)
+          // 在**查询结束**侧归零「正在启动 Everything」，不在查询入口。
+          //
+          // 这个态只有主进程推送能置回，而那条 `done` 推送在窗口正在加载 / 刚 reload 时会被
+          // `safeSendMessagePackToWindow` **静默丢掉**（返回 false，没人检查）⇒ 丢了就永久停在
+          // true，转圈与空态同屏。所以必须有个不依赖推送的兜底。
+          //
+          // 兜底只能放这里：`startEverythingAndRetry` 是在这条 invoke 里 await 完成的，
+          // `done` 也在它的 finally 里发（`file-search.ts:145-148`）⇒ **查询返回就意味着启动流程
+          // 已经结束**，此处清零安全。放在查询入口则会在启动进行中把状态抹掉：es-probe 缓存 TTL
+          // 30 秒、Everything 启动只要几秒，期间每敲一个字都会发新查询，而串行队列又让新查询等在
+          // 旧查询后面 —— 界面上「正在启动 Everything」会被反复打回「搜索中...」再跳回来
+          // （dev 实例 2026-10-28 审查第二轮·按真实时序反算发现）。
+          setLaunchingEverything(false)
         }
       }
 
@@ -161,6 +177,39 @@ function FileSearchWindow(): React.JSX.Element {
     },
     []
   )
+
+  /**
+   * 失败提示上的按钮（S-253）。三个动作各自的语义见 `fileSearchFailureView`。
+   *
+   * 「重新检测」先清提示、露出转圈再重探 —— 深扫一次盘要几秒，按钮看着没反应用户会连点。
+   */
+  const handleFailureAction = useCallback(
+    async (action: FileSearchFailureAction): Promise<void> => {
+      if (action === 'download') {
+        void window.api.invoke('launcher:open-everything-download', null)
+        return
+      }
+      if (action === 'redetect') {
+        setError(null)
+        setSearching(true)
+        try {
+          await window.api.invoke('file-search:redetect', null)
+        } catch {
+          // 重探自己失败也照常再搜一次 —— 结果会照实报错，不在这儿吞掉信息。
+        }
+      }
+      const current = queryRef.current
+      await runFirstPage(current.keyword, current.category, current.sort)
+    },
+    [runFirstPage]
+  )
+
+  // 主进程自动拉起 Everything 时的过程态（S-253）：拉起来最多等 3 秒，界面得说清在等什么。
+  useEffect(() => {
+    return window.api.on<{ phase?: string }>('file-search:status', (payload) => {
+      setLaunchingEverything(payload?.phase === 'starting-everything')
+    })
+  }, [])
 
   /** 续取下一页（滚动到底时触发）。 */
   const loadMore = useCallback(async (): Promise<void> => {
@@ -285,8 +334,6 @@ function FileSearchWindow(): React.JSX.Element {
     })
   }, [])
 
-  const showEmpty = !error && hits.length === 0 && !searching
-
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       {/* 顶部：标识 + 搜索框（置顶 / 关闭交给系统标题栏，不再自绘） */}
@@ -335,91 +382,21 @@ function FileSearchWindow(): React.JSX.Element {
           })}
         </nav>
 
-        {/* 结果列表 */}
-        <div ref={listRef} className="min-w-0 flex-1 overflow-y-auto py-1">
-          {error && <div className="px-4 py-3 text-xs text-destructive">{error}</div>}
-
-          {!error && searching && hits.length === 0 && (
-            <div className="flex h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              搜索中...
-            </div>
-          )}
-
-          {showEmpty && (
-            <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
-              {debouncedKeyword.trim() || category !== 'all' ? '没有匹配的文件' : '输入关键词开始搜索'}
-            </div>
-          )}
-
-          {hits.map((hit, index) => {
-            const iconSrc = icons[hit.fullPath]
-            const active = index === selectedIndex
-            return (
-              <div
-                key={hit.fullPath}
-                data-hit-index={index}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onDoubleClick={() => void openHit(hit, false)}
-                title={hit.fullPath}
-                className={
-                  'group flex cursor-default items-center gap-3 px-3 py-1.5 transition-colors ' +
-                  (active ? 'bg-accent' : 'hover:bg-accent/50')
-                }
-              >
-                <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted/60">
-                  {iconSrc ? (
-                    <img src={iconSrc} alt="" className="size-5 object-contain" />
-                  ) : hit.isDir ? (
-                    <Folder className="size-4 text-muted-foreground" />
-                  ) : (
-                    <FileText className="size-4 text-muted-foreground" />
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-foreground">{hit.name}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">{hit.dir}</p>
-                </div>
-
-                <div className="shrink-0 text-right text-[11px] leading-tight text-muted-foreground tabular-nums">
-                  {hit.size !== null && <p>{formatHitSize(hit.size)}</p>}
-                  {hit.mtime !== null && <p>{formatHitTime(hit.mtime)}</p>}
-                </div>
-
-                {/* 两个动作按钮：默认动作是「打开所在位置」，双击行本身才是打开文件 */}
-                <div
-                  className={
-                    'flex shrink-0 items-center gap-1 transition-opacity ' +
-                    (active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')
-                  }
-                >
-                  <button
-                    onClick={() => void openHit(hit, true)}
-                    title="打开所在位置"
-                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                  >
-                    <FolderOpen className="size-3.5" />
-                  </button>
-                  <button
-                    onClick={() => void openHit(hit, false)}
-                    title="打开文件"
-                    className="rounded p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                  >
-                    <ExternalLink className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-
-          {loadingMore && (
-            <div className="flex items-center justify-center gap-2 py-2 text-[11px] text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
-              加载中...
-            </div>
-          )}
-        </div>
+        <ResultList
+          hits={hits}
+          icons={icons}
+          error={error}
+          searching={searching}
+          launchingEverything={launchingEverything}
+          loadingMore={loadingMore}
+          selectedIndex={selectedIndex}
+          keyword={debouncedKeyword}
+          category={category}
+          listRef={listRef}
+          onSelectIndex={setSelectedIndex}
+          onOpenHit={openHit}
+          onFailureAction={handleFailureAction}
+        />
       </div>
 
       {/* 底栏：排序 + 结果总数（总数读不到就退化成「已加载 N 条」，不编数字） */}

@@ -56,8 +56,12 @@ export interface FileHit {
 export interface EsSearchResult {
   ok: boolean
   hits: FileHit[]
-  failure?: 'not-running' | 'spawn-failed' | 'bad-output' | 'search-failed'
+  failure?: 'not-installed' | 'not-running' | 'spawn-failed' | 'bad-output' | 'search-failed'
   error?: string
+  /** 主进程已经替他自动拉过一次 Everything 本体，还是没起来（S-253）。 */
+  autostartAttempted?: boolean
+  /** 拉起**明确失败**（spawn 报错 / 非 0 退出），而不只是「还没就绪」（S-253 真机补刀）。 */
+  autostartFailed?: boolean
 }
 
 /** 一页取多少条（与主进程 `ES_PAGE_SIZE` 同步）。 */
@@ -91,18 +95,86 @@ export const ES_SORT_OPTIONS: ReadonlyArray<{ id: string; label: string; sort: E
   { id: 'size-asc', label: '按大小升序', sort: { key: 'size', order: 'ascending' } }
 ]
 
-/** 取数失败 → 给用户看的话。不甩 exit code 这种内部细节，但说清「下一步能做什么」。 */
-export function fileSearchFailureText(result: EsSearchResult): string {
+/**
+ * 失败时界面上该给的下一步（S-253）。**只有这三种**，别再加 —— 每一种都得是一个用户真能点的动作：
+ * - `download`：打开 Everything 官方下载页；
+ * - `redetect`：作废探测缓存重找一遍（用户刚装好 / 刚换了路径）；
+ * - `retry`：同一个请求再打一次（网络抖动 / 拉起超时）。
+ */
+export type FileSearchFailureAction = 'download' | 'redetect' | 'retry'
+
+/** 失败提示：一句实话 + 一个能点的下一步。 */
+export interface FileSearchFailureView {
+  text: string
+  actions: FileSearchFailureAction[]
+}
+
+/**
+ * 取数失败 → 给用户看的话 + 下一步按钮（S-253）。
+ *
+ * 三种情况必须**互斥**地说清，不能再混成一句「软件没有运行」：
+ *   ① 没装（`not-installed`，或 es.exe 在但本体探不到 = `not-running` 且没自动拉起过）⇒ 引导去下载；
+ *   ② 装了没启动 ⇒ 主进程已经替他拉（`es-probe.startEverythingAndRetry`），这里不给按钮，
+ *      只在拉不起来后（`autostartAttempted`）如实说「拉过了没成」并给重试；**其中还要再分**
+ *      「索引还没读完（等一等）」和「spawn 就失败了（查权限 / 重装）」—— 见 `autostartFailed`；
+ *   ③ 起了没连上 / es.exe 路径失效（`spawn-failed`）⇒ 重新检测。
+ *
+ * 不甩 exit code 这种内部细节，但要说清「下一步能做什么」。
+ */
+export function fileSearchFailureView(result: EsSearchResult): FileSearchFailureView {
   switch (result.failure) {
+    case 'not-installed':
+      return {
+        text: '没找到文件搜索组件（es.exe）。装上 Everything 就能搜本地文件，装完点「重新检测」即可，不用重启我们。',
+        actions: ['download', 'redetect']
+      }
     case 'not-running':
-      return 'Everything 没有在运行，先启动它再搜'
+      // 没有 `autostartAttempted` = 连本体路径都没探到，跟「没装」是一件事，别让用户对着「重试」按到底。
+      if (!result.autostartAttempted) {
+        return {
+          text: '没找到 Everything 本体。装上它就能搜本地文件，装完点「重新检测」即可。',
+          actions: ['download', 'redetect']
+        }
+      }
+      // 拉起过还连不上，两种原因，**处置方式不同**，所以必须分开说（S-253 真机补刀）：
+      //   `autostartFailed` ⇒ spawn 就失败（UAC 拒绝 / 映像损坏），等多久都没用；
+      //   否则 ⇒ 进程活着、索引还没读完。这是最常见的一种，原来被错报成「安装损坏」。
+      //
+      // 为什么敢肯定「exe 存在」：能走到这里说明 `getEverythingStatus()` 探到了本体路径
+      // （`es-probe.ts` 里探不到会早退、不带 `autostartAttempted`）⇒ 文件在，谈「安装损坏」
+      // 本来就不成立，只能说「启动没成功」。
+      return result.autostartFailed
+        ? {
+            text: 'Everything 启动失败（多半是被权限拦住了，或安装已损坏）。可以先手动打开一次 Everything 看看它能不能正常启动，再回来重试。',
+            actions: ['retry', 'redetect']
+          }
+        : {
+            text: 'Everything 已经启动了，但索引还没读完，所以暂时搜不了。索引大的话要等十几秒，稍等一下再搜一次。',
+            actions: ['retry']
+          }
     case 'spawn-failed':
-      return 'es.exe 启动失败，可能路径已失效（设置里可以重新检测）'
+      return {
+        text: 'es.exe 启动失败，路径可能已经失效（换盘 / 卸载过）。重新检测一次就能重新找到它。',
+        actions: ['redetect']
+      }
     case 'bad-output':
-      return 'es.exe 的输出无法解析，换个关键词试试'
+      return {
+        text: 'es.exe 的输出无法解析，换个关键词试试。',
+        actions: ['retry']
+      }
     default:
-      return `搜索失败：${result.error ?? '未知原因'}`
+      return {
+        text: `搜索失败：${result.error ?? '未知原因'}`,
+        actions: ['retry']
+      }
   }
+}
+
+/** 按钮文案（`fileSearchFailureView` 的配套，只这一处用）。 */
+export const FILE_SEARCH_FAILURE_ACTION_LABELS: Record<FileSearchFailureAction, string> = {
+  download: '去下载 Everything',
+  redetect: '我已装好，重新检测',
+  retry: '重试'
 }
 
 /** 字节数 → 人类可读（`432.6 KB`）。目录（`null`）返回空串。 */

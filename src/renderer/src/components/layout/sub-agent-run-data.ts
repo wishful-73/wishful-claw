@@ -17,12 +17,9 @@ export const EMPTY_SESSION_MESSAGES: UnifiedMessage[] = []
 
 export type SubAgentPanelFilter = 'all' | 'running' | 'completed' | 'today'
 
-export function formatElapsed(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  const secs = ms / 1000
-  if (secs < 60) return `${secs.toFixed(1)}s`
-  return `${Math.floor(secs / 60)}m${Math.round(secs % 60)}s`
-}
+// S-245（2026-10-27）：这里原有的 `formatElapsed` 删掉了 —— 全仓零调用（`SubAgentsPanel` 只用本文件的
+// `EMPTY_SESSION_MESSAGES` / `mergeSessionSubAgents`，耗时读的是它自己那份 i18n 版），却又是一份带小数的
+// 重复实现。留着它就是等着被复制第三份。耗时的唯一口径是 `@renderer/lib/format-duration`。
 
 export function formatDateTime(ts: number | null | undefined): string {
   if (!ts) return '-'

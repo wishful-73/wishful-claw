@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-26 实测 516 行）：文件变更卡的 diff 预览 / 落盘快照 / 撤销
+// 500 行豁免（2026-10-28，行数以实际为准）：文件变更卡的 diff 预览 / 落盘快照 / 撤销
 // 三条链路读的是同一份 `trackedChange` 与同一份折叠态，拆开就得把 tracked 再拷贝一遍，
 // 而撤销按钮的可见性又依赖 diff 是否可渲染 —— 判定跨文件必然对不齐。
 // 依据 AGENTS.md §大文件拆分 第 5 条第 1 类（单一呈现单元，状态机不可切）。
@@ -11,6 +11,7 @@ import { useAgentStore } from '@renderer/stores/agent-store'
 import { deriveFileChangeCollapsed } from './render-density'
 import { useDensityOverride, useDensityPolicy } from './use-density-override'
 import { MONO_FONT } from '@renderer/lib/constants'
+import { formatDurationMs } from '@renderer/lib/format-duration'
 import { Button } from '@renderer/components/ui/button'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { type FileChangeCardProps, type CompactActionOp, shortPath, fileName, snapshotText, canRenderInlineSnapshot, resolveEditPayload, resolveWritePayload, hasPendingEditPreviewContent, resolveEditSummaryDiff, trackedStatusLabelKey, trackedTransportLabelKey, trackedStatusTone, trackedStatusDotTone } from './FileChangeCard/utils'
@@ -48,11 +49,8 @@ export function FileChangeCard({
   const filePath = String(input.file_path ?? input.path ?? '')
   const elapsed =
     startedAt && completedAt
-      ? (() => {
-          const diffMs = completedAt - startedAt
-          if (diffMs < 1000) return `${Math.round(diffMs)}ms`
-          return `${(diffMs / 1000).toFixed(1)}s`
-        })()
+      ? // S-245：统一走 formatDurationMs，秒档不带小数
+        formatDurationMs(completedAt - startedAt)
       : null
   const outputStr = typeof output === 'string' ? output : undefined
   const isFileActionable = trackedChange?.status === 'open'

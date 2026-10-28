@@ -166,9 +166,18 @@ async function runDeviceSwitch(
   return { ok: true, viewport: emulation.viewport }
 }
 
-type ReloadResult = { ok: true } | { ok: false; error: string }
+export type ReloadResult = { ok: true } | { ok: false; error: string }
 
-function reloadAndWait(webview: Electron.WebviewTag): Promise<ReloadResult> {
+/**
+ * 触发一次导航并等它落定。
+ *
+ * `ignoreCache` 走 `reloadIgnoringCache()` —— S-235 清完缓存后必须这么载：用户点「清除浏览数据」
+ * 的语义就是「我要全新的」，条件请求停在 304 会让整个动作看起来没发生。
+ */
+export function reloadAndWait(
+  webview: Electron.WebviewTag,
+  options: { ignoreCache?: boolean } = {}
+): Promise<ReloadResult> {
   return new Promise<ReloadResult>((resolve) => {
     let settled = false
 
@@ -197,7 +206,8 @@ function reloadAndWait(webview: Electron.WebviewTag): Promise<ReloadResult> {
     webview.addEventListener('did-fail-load', onFail as EventListener)
 
     try {
-      webview.reload()
+      if (options.ignoreCache) webview.reloadIgnoringCache()
+      else webview.reload()
     } catch (error) {
       finish({ ok: false, error: describeError(error) })
     }

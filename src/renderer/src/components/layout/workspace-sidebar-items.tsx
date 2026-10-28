@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：条目渲染与条目操作（重命名 / 删除 / 固定 / 拖拽）共用同一批 6 个 state 与 12 个回调，且操作目标随时切换；拆开需要在父子之间反复同步当前操作对象。
+// 拆出去必须新增 props 链或 context 才能跑通，这个中间层本身就是新的排查成本。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GitBranch, Plus, Pin, Trash2, Pencil, Folder, FolderOpen, Eraser, Copy, Archive, Loader2 } from 'lucide-react'
@@ -174,10 +177,24 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps): R
     deleteSession(session.id)
   }, [session.id, session.title, deleteSession, t])
 
-  const handleClear = useCallback(() => {
+  // S-258：与右侧悬浮块 ⋯ 菜单的「清空会话」同名同义 —— 都走 clearSessionMessages
+  // （落库删消息，切走切回不复活）。删消息不可逆，必须二次确认；函数体与
+  // SessionConversationPane.tsx 的 handleClearSession 逐行对齐，两处不许再分叉。
+  const handleClear = useCallback(async () => {
+    const ok = await confirm({
+      title: t('sidebar.clearSessionConfirmTitle', {
+        defaultValue: "Clear this session's messages?"
+      }),
+      description: t('sidebar.clearSessionConfirmDesc', {
+        title: session.title,
+        defaultValue: 'Every message will be permanently deleted. This cannot be undone.'
+      }),
+      variant: 'destructive'
+    })
+    if (!ok) return
     clearSessionMessages(session.id)
-    toast.success(t('sidebar.conversationCleared', { defaultValue: 'Conversation cleared' }))
-  }, [session.id, clearSessionMessages, t])
+    toast.success(t('sidebar.conversationCleared', { defaultValue: 'Session cleared' }))
+  }, [session.id, session.title, clearSessionMessages, t])
 
   const handleDuplicate = useCallback(() => {
     const newId = duplicateSession(session.id)
@@ -245,7 +262,7 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps): R
         <ContextMenuSeparator />
         <ContextMenuItem onClick={handleClear}>
           <Eraser className="mr-2 size-3.5" />
-          {t('sidebar.clearMessages', { defaultValue: 'Clear messages' })}
+          {t('sidebar.clearSession', { defaultValue: 'Clear session' })}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleDelete} className="text-destructive">
           <Trash2 className="mr-2 size-3.5" />

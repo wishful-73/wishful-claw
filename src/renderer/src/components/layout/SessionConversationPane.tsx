@@ -304,7 +304,7 @@ export function SessionConversationPane({
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleClearSession} className="text-destructive">
                   <Eraser className="mr-2 size-4" />
-                  {t('sidebar.clearSession', { defaultValue: 'Clear messages' })}
+                  {t('sidebar.clearSession', { defaultValue: 'Clear session' })}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：单一滚动 hook：虚拟列表区间计算、跟随底部、程序化滚动守卫与流式增量补位共享同一份 ref 与阈值表，拆开会把「何时该滚」的判定散到多个文件，排查抖动类问题将无从下手。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 2 类（高度内聚的 store / hook）。
+
 import * as React from 'react'
 import { flushSync } from 'react-dom'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
@@ -31,6 +34,7 @@ import {
   collapseRetryDelay,
   createFloorTracker,
   observeFloor,
+  observeGrowthOnly,
   resolveGapTarget,
   resolveReclaimPlan,
   shrinkProbeDelay,
@@ -95,6 +99,12 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   } = input
 
   const virtualRowCount = rows.length + (hasLoadOlderRow ? 1 : 0)
+
+  // S-233：虚拟行总数转一手 ref —— measureContentBottom 需要它判「尾部行是否挂载」，
+  // 但那个回调必须保持恒定的身份（它被 bottom-anchor effect 与 ResizeObserver 的依赖
+  // 数组引用，身份一变就重建观察器）。读 ref 即可拿到最新值，不必让回调跟着重建。
+  const virtualRowCountRef = React.useRef(virtualRowCount)
+  virtualRowCountRef.current = virtualRowCount
 
   // ── Refs ────────────────────────────────────────────────────────
   const listRef = React.useRef<HTMLDivElement | null>(null)
@@ -179,16 +189,31 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   // 不能当地面真值——d0eb6bdd 的教训。行是绝对定位 + translateY，offsetTop
   // 不含 transform，必须用 getBoundingClientRect 取各行真实底边的最大值，
   // 该值与 scrollTop 同坐标系，可直接参与贴底/悬空计算。
-  const getRealContentBottom = React.useCallback((): number => {
+  // S-233（2026-10-27）：**同时**给出「尾部行是否挂载」。
+  //
+  // 只返回 bottom 是不够的 —— 行是虚拟化的，`content.children` 只含已挂载的行。
+  // 尾部跑出 overscan 时，这里的 bottom 是「最后一个已挂载行的底」，比真实内容底
+  // 少一整行甚至几行，此时它不是内容底而是**测量盲区**。调用方必须知道这一点，
+  // 否则会把盲区当成真收缩采信（见 scroll-watermark.ts 的 observeGrowthOnly）。
+  const measureContentBottom = React.useCallback((): {
+    bottom: number
+    tailMounted: boolean
+  } => {
     const content = virtualContentRef.current
-    if (!content || content.children.length === 0) return 0
-    const contentTop = content.getBoundingClientRect().top
-    let bottom = 0
-    for (const child of content.children) {
-      const childBottom = (child as HTMLElement).getBoundingClientRect().bottom - contentTop
-      if (childBottom > bottom) bottom = childBottom
+    if (!content || content.children.length === 0) {
+      return { bottom: 0, tailMounted: false }
     }
-    return bottom
+    const contentTop = content.getBoundingClientRect().top
+    const tailIndex = virtualRowCountRef.current - 1
+    let bottom = 0
+    let tailMounted = false
+    for (const child of content.children) {
+      const el = child as HTMLElement
+      const childBottom = el.getBoundingClientRect().bottom - contentTop
+      if (childBottom > bottom) bottom = childBottom
+      if (!tailMounted && Number(el.dataset.index) === tailIndex) tailMounted = true
+    }
+    return { bottom, tailMounted }
   }, [])
 
   // S-176 真机反馈（2026-10-09）：两个「没人来判」的补位定时器。
@@ -241,11 +266,14 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
         // S-176：**总是**观测（不再只在上抬时）—— 时间制判定下重复观测幂等，
         // 而「偏低起点」恰恰要在内容底第一次变低那一刻记下；只在上抬时观测就永远记不到起点。
         const now = window.performance.now()
-        streamingBottomTrackerRef.current = observeFloor(
-          streamingBottomTrackerRef.current,
-          getRealContentBottom(),
-          now
-        )
+        // S-233（2026-10-27）：尾部行未挂载时，实测底只是「最后一个已挂载行的底」，
+        // 比真实内容底少一整行甚至几行 —— 它是盲区，不是收缩。这种帧一律不采信回落
+        // （只升不降），否则 floor 被压到假值，下面 :274 的「整屏悬空」会把视口一次
+        // 拽走几百像素，紧接着一滚尾部又挂载回来、floor 抬回、再拽 —— 极限环。
+        const measured = measureContentBottom()
+        streamingBottomTrackerRef.current = measured.tailMounted
+          ? observeFloor(streamingBottomTrackerRef.current, measured.bottom, now)
+          : observeGrowthOnly(streamingBottomTrackerRef.current, measured.bottom)
         // 偏低未确认 ⇒ 排一次自驱动重判：动画停下又没有新内容时，没有别的调用会来喂帧。
         scheduleShrinkProbe()
         const realBottom = streamingBottomTrackerRef.current.floor
@@ -328,7 +356,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     },
     [
       applyMinHeight,
-      getRealContentBottom,
+      measureContentBottom,
       markProgrammaticScroll,
       rows.length,
       scheduleReclaimRetry,
@@ -431,12 +459,41 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
 
 
   // ── shouldAdjustScrollPositionOnItemSizeChange ──────────────────
+  // S-233（2026-10-27）：**贴底时一律不让虚拟列表插手**。
+  //
+  // 这个钩子一放行，TanStack 就自己写 scrollTop：virtual-core 的 resizeItem 走
+  // `applyScrollAdjustment(delta)` → `_scrollToOffset(scrollOffset + delta)`。
+  // 它**绕过本 hook 的全部守卫** —— 不看水位线、不看提前量留白、不看贴底姿态；
+  // 而且它只写滚动位置、不改内容高度，于是 `scrollHeight` 与内容底一动不动，
+  // 探针和所有基于几何的判定**都看不见这次位移**。
+  //
+  // 2026-10-27 那份 DEV 探针日志里的「sh 恒 995、rb 恒 994.5、mh 已空、st 却从
+  // 172.7 掉到 72.7 并停住」就是它：流式结束后 `autoScrollMode` 切成 `off` ⇒
+  // `canAutoScroll()` 变 false（原判据唯一那道闸全开），尾行重测的 delta 被原样
+  // 写成位移；随后没有任何调用会把它写回，视口就永久露底 100px。
+  // 这也解释「偶发、只在流式刚结束时、一滚就停」：重测时机取决于内容组合，
+  // 而用户一滚，锚点行整个移出视口，`item.end < scrollOffset` 不再成立。
+  //
+  // 判据从「canAutoScroll()」加宽到「视口底边已到达内容底」：跟随姿态下尺寸变化的
+  // 位移由本 hook 自己按 gapTarget 处理，virtualizer 再叠一次 delta 就是双重位移，
+  // 方向还可能相反。用户在上方阅读时（视口底边够不到内容底）仍放行原逻辑。
   const shouldAdjustScrollPositionOnItemSizeChange = React.useCallback(
     (item: { end: number }, _delta: number, instance: { scrollOffset: number | null }): boolean => {
       if (canAutoScroll()) return false
       // 加载历史消息期间不让虚拟列表调整 scrollTop，由 loadOlderMessages
       // 的 scrollHeight 差值补偿统一处理。
       if (isLoadingOlderMessagesRef.current) return false
+      const ref = listRef.current
+      if (ref) {
+        // 水位线激活时内容底可信（留白姿态下视口底边落在内容底之下，同样算贴底）。
+        const contentBottom = realContentBottomRef.current
+        if (contentBottom > 0 && ref.scrollTop + ref.clientHeight >= contentBottom - 2) {
+          return false
+        }
+        // 水位线已撤（contentBottom 可能是上一轮的残留，不足为凭）：退化用物理贴底。
+        const maxOffset = ref.scrollHeight - ref.clientHeight
+        if (ref.scrollTop >= maxOffset - 2) return false
+      }
       const scrollOffset = instance.scrollOffset ?? 0
       return item.end < scrollOffset
     },
@@ -743,11 +800,16 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       // 一份实测量，内容底骤降时一边抬水位线一边不抬，min-height 与跟随目标互相追，同样是抖源。
       // S-176：判定改时间制之后**两处都可以喂**（同一时刻重复观测幂等）。本 effect 只在 re-render
       // 后跑 —— 折叠动画停下、又没有新内容到达时就没人喂帧，所以另有 scheduleShrinkProbe 补位。
-      streamingBottomTrackerRef.current = observeFloor(
-        streamingBottomTrackerRef.current,
-        getRealContentBottom(),
-        window.performance.now()
-      )
+      // S-233（2026-10-27）：与 scrollToBottomImmediate 同一口径 —— 尾部行未挂载的帧
+      // 只升不降。两处共用同一个 tracker，口径必须一致，否则一边采信一边不采信照样打架。
+      const measured = measureContentBottom()
+      streamingBottomTrackerRef.current = measured.tailMounted
+        ? observeFloor(
+            streamingBottomTrackerRef.current,
+            measured.bottom,
+            window.performance.now()
+          )
+        : observeGrowthOnly(streamingBottomTrackerRef.current, measured.bottom)
       scheduleShrinkProbe()
       const realBottom = streamingBottomTrackerRef.current.floor
       if (realBottom > 0) {
@@ -778,7 +840,24 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
       // 先落到真底：撤销 min-height 之后它仍是合法位置，撤销帧不再产生任何位移，
       // 而 GAP 姿态收掉的 80px 也退化成一次单向、可预期的贴底动作。
       const ref = listRef.current
-      const realBottom = getRealContentBottom()
+      // S-233（2026-10-27）：与输出分支同一口径 —— 必须过 tracker，不能拿裸实测值落位。
+      //
+      // 这是**口径补齐**，不是某次抖动的成因：同一函数里三处调用点，另外两处（:302 / :299）
+      // 都带了 tailMounted 分流，只有这里漏了。尾部行未挂载时实测底是「最后一个已挂载行的
+      // 底」，少一整行甚至几行，裸用它算出的 target 会把视口往前拽；走 tracker 后这种帧
+      // 只升不降（floor 保持真底），可信帧才按 observeFloor 采信。
+      //
+      // 实测口径见 2026-10-27 17:45 那份 DEV 探针日志：该次抖动期间 `tail=1`、`rb` 恒为
+      // 994.5，尾部行**一直挂着**，所以它解释不了那次位移 —— 真凶仍未定位，见 S-233 §11。
+      const measured = measureContentBottom()
+      streamingBottomTrackerRef.current = measured.tailMounted
+        ? observeFloor(
+            streamingBottomTrackerRef.current,
+            measured.bottom,
+            window.performance.now()
+          )
+        : observeGrowthOnly(streamingBottomTrackerRef.current, measured.bottom)
+      const realBottom = streamingBottomTrackerRef.current.floor
       if (ref && realBottom > 0) {
         const target = Math.max(0, realBottom - ref.clientHeight)
         if (Math.abs(ref.scrollTop - target) > 1) {
@@ -802,7 +881,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     }
     if (!canAutoScroll() && !isAtBottom) return
     scrollToBottomImmediate()
-  }, [canAutoScroll, getRealContentBottom, isAtBottom, isSessionOutputting, scheduleShrinkProbe, scrollToBottomImmediate, virtualListTotalSize])
+  }, [canAutoScroll, measureContentBottom, isAtBottom, isSessionOutputting, scheduleShrinkProbe, scrollToBottomImmediate, virtualListTotalSize])
 
   // ── Pinned overlay sync on anchor/layout changes ────────────────
   React.useEffect(() => {

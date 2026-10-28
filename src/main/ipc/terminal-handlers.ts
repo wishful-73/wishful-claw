@@ -6,7 +6,7 @@
  */
 
 /*
- * 500-line exemption: 512 lines as of 2026-09-22 (before this iteration's sessionId/projectId
+ * 500-line exemption: 684 lines as of 2026-10-28 (before this iteration's sessionId/projectId
  * fields). This is the node-pty session store and nothing else — the session map, its output/exit
  * bookkeeping, the owner-window routing and the IPC surface that mutates it all share one lifetime,
  * and the map is deliberately module-private so nothing outside this file can hold a session. Moving

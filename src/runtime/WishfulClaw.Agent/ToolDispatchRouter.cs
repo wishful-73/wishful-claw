@@ -1,4 +1,4 @@
-// 500-line exemption (633 lines as of 2026-10-20, up from 573 on 2026-09-22 as tool families
+// 500-line exemption (line count per this file as of 2026-10-28, up from before 2026-09-22 as tool families
 // kept landing). This is
 // one ordered if/else chain, not a grab-bag: the order of the branches IS the routing contract (an
 // earlier branch wins, so the admission checks must stay above the generic ones), and every branch is

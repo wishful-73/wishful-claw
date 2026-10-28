@@ -321,16 +321,41 @@ internal static partial class AnthropicMessagesProvider
                 continue;
             }
 
-            if (type == "image" &&
-                block.TryGetProperty("source", out var source) &&
-                source.ValueKind == JsonValueKind.Object &&
-                ((JsonHelpers.GetString(source, "type") == "url" &&
-                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
-                 (JsonHelpers.GetString(source, "type") != "url" &&
-                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            if (type != "image" ||
+                !block.TryGetProperty("source", out var source) ||
+                source.ValueKind != JsonValueKind.Object)
             {
-                writableBlocks.Add(block);
+                continue;
             }
+
+            if (JsonHelpers.GetString(source, "type") == "url")
+            {
+                if (!string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url")))
+                {
+                    writableBlocks.Add(block);
+                }
+                continue;
+            }
+
+            var data = JsonHelpers.GetString(source, "data");
+            if (string.IsNullOrWhiteSpace(data))
+            {
+                continue;
+            }
+
+            // S-246：上游收不了的格式（bmp / svg / tiff …）在这里就不进 wire。
+            // 判据见 ProviderContentHelpers.ResolveSupportedImageMediaType：嗅探优先、白名单收口。
+            // 拦在**过滤阶段**而不是写入阶段，是为了让 cache_control 的「最后一块」落在真正写出去的块上。
+            var declared = JsonHelpers.GetString(source, "mediaType");
+            if (ProviderContentHelpers.ResolveSupportedImageMediaType(data, declared) is null)
+            {
+                WorkerLog.Warn(
+                    $"image block dropped before anthropic turn: unsupported media type " +
+                    $"(declared={declared ?? "?"}, detected={ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ?? "unknown"})");
+                continue;
+            }
+
+            writableBlocks.Add(block);
         }
 
         writer.WriteStartArray();
@@ -367,15 +392,18 @@ internal static partial class AnthropicMessagesProvider
             {
                 var data = JsonHelpers.GetString(source, "data");
                 if (string.IsNullOrWhiteSpace(data)) continue;
+
+                // 过滤阶段已过闸；这里取同一个判据，不另写一份兜底（S-246）。
+                var mediaType = ProviderContentHelpers.ResolveSupportedImageMediaType(
+                    data,
+                    JsonHelpers.GetString(source, "mediaType"));
+                if (mediaType is null) continue;
+
                 writer.WriteString("type", "image");
                 writer.WritePropertyName("source");
                 writer.WriteStartObject();
                 writer.WriteString("type", "base64");
-                writer.WriteString(
-                    "media_type",
-                    JsonHelpers.GetString(source, "mediaType") ??
-                    ProviderContentHelpers.DetectImageMediaTypeFromBase64(data) ??
-                    "image/png");
+                writer.WriteString("media_type", mediaType);
                 writer.WriteString("data", ProviderContentHelpers.StripDataUrlPrefix(data));
                 writer.WriteEndObject();
             }

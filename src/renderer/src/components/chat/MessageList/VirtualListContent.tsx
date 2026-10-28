@@ -3,6 +3,7 @@ import { ArrowDown } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { AssistantReplyRail } from './AssistantReplyRail'
 import { MessageRow } from './MessageRow'
+import { PinnedTurnBar } from './PinnedTurnBar'
 import {
   getMessageColumnClass,
   mergeHiddenToolUseIds,
@@ -12,8 +13,6 @@ import {
   type MessageListRow,
   type MessageListProps
 } from './utils'
-import { extractEditableUserMessageDraft } from '@renderer/lib/image-attachments'
-import { USER_MESSAGE_BUBBLE_CLASS } from '../user-message-helpers'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
 import type { RequestRetryState } from '@renderer/lib/agent/types'
 import type { OrchestrationRunStore } from '@renderer/lib/orchestration/build-runs'
@@ -98,15 +97,10 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     onEditUserMessage
   } = props
 
-  // R-10.5: 吸附卡改为紧凑指示条——不再全量渲染 UserMessage（长粘贴会把
-  // 窗口占满）。只取纯文本，两行截断，悬浮 title 看全文，点击跳回消息本体。
-  const pinnedPreviewText = React.useMemo(() => {
-    if (!pinnedTurnMessage) return ''
-    return extractEditableUserMessageDraft(pinnedTurnMessage.content).text.replace(
-      /\r\n?/g,
-      '\n'
-    )
-  }, [pinnedTurnMessage])
+  // S-255: 吸附卡改成复合预览（图片 / 粘贴块 / 选中文件 / 命令 + 两行文本），
+  // 组件内部的 memo 负责解析，这里只需要「消息是否换了一条」来做高度重测。
+  // R-10.5 的「紧凑、不展开、不占满窗口」由 PinnedTurnBar 自己守着。
+  const pinnedTurnMessageId = pinnedTurnMessage?.id ?? null
 
   // T-9: 吸附卡是浮在内容区顶部之上（absolute overlay），首行需要让出它的高度，
   // 否则顶部第一条消息被遮住。卡高走 ResizeObserver —— 两行截断时高度随内容变化。
@@ -124,7 +118,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
     const observer = new ResizeObserver(measure)
     observer.observe(el)
     return () => observer.disconnect()
-  }, [pinnedPreviewText, isPinnedTurnOverlayVisible])
+  }, [pinnedTurnMessageId, isPinnedTurnOverlayVisible])
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
@@ -273,22 +267,7 @@ export function VirtualListContent(props: VirtualListContentProps): React.JSX.El
             transition={animationsEnabled ? { duration: 0.15, ease: 'easeOut' } : { duration: 0 }}
           >
             <div className={getMessageColumnClass(fullWidth)}>
-              <button
-                type="button"
-                onClick={onJumpToPinnedMessage}
-                title={pinnedPreviewText || undefined}
-                className={`${USER_MESSAGE_BUBBLE_CLASS} ml-auto block w-fit max-w-full cursor-pointer text-left text-sm leading-snug`}
-              >
-                {pinnedPreviewText ? (
-                  <span className="line-clamp-2 whitespace-pre-wrap break-words">
-                    {pinnedPreviewText}
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">
-                    {t('messageList.pinnedTurnEmpty')}
-                  </span>
-                )}
-              </button>
+              <PinnedTurnBar message={pinnedTurnMessage} onJump={onJumpToPinnedMessage} />
             </div>
             {/* R-10.1: 底部渐隐遮罩——吸附卡是不透明底色，向下渐隐融入消息流 */}
             <div

@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：模型表单的字段校验与 provider 联动耦合，拆开需透传 form state 与错误映射。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
+
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'

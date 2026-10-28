@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：OpenRouter provider preset 的模型目录表（价格 / 上下文 / deprecatedModelIds），内容同质。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 1 类（单一数据对象）。
+
 /*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet

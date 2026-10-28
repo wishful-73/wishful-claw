@@ -8,6 +8,7 @@
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useTeamStore } from '@renderer/stores/team-store'
 import { useUIStore } from '@renderer/stores/ui-store'
+import { isRightPanelScopeActive } from '@renderer/stores/right-panel-scope'
 import { removeTeamLimiter } from '../sub-agents/create-tool'
 import { abortAllTeammates } from './team-native-control'
 import type { TeamRuntimeSnapshot } from '../../../../../shared/team-runtime-types'
@@ -42,8 +43,12 @@ export async function handleNativeTeamUiUpdate(params: unknown): Promise<NativeT
     useTeamStore.getState().syncRuntimeSnapshot(record.snapshot, sessionId)
     if (record.openPanel === true) {
       const ui = useUIStore.getState()
-      ui.setRightPanelOpen(true)
-      ui.setRightPanelTab('team')
+      // S-259：与 register.ts 的 team_start 同一判据 —— 后台会话的团队快照
+      // 不许掀开用户面前的面板（会撑开一片空白，因为内容按会话作用域过滤）。
+      if (isRightPanelScopeActive(ui, sessionId)) {
+        ui.setRightPanelOpen(true)
+        ui.setRightPanelTab('team')
+      }
     }
     return { ok: true }
   }

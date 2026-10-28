@@ -47,7 +47,7 @@ public sealed class FileReadTool : IToolExecutor
 
 
 
-    public string Description => "Read the contents of a file. Supports line range via offset and limit parameters. Returns content with line numbers. Image files (.png/.jpg/.jpeg/.webp/.gif/.bmp) are returned as an image you can see directly. Video files (.mp4/.webm/.mov/.mkv/.avi/.ogv/.m4v/...) are sampled into a few frames spread across their duration and returned as images. offset/limit do not apply to images or videos.";
+    public string Description => "Read the contents of a file. Supports line range via offset and limit parameters. Returns content with line numbers. Image files (.png/.jpg/.jpeg/.webp/.gif) are returned as an image you can see directly; .bmp/.tiff/.ico are described by path, size and format only, because upstream model APIs do not accept them — convert them to png/jpeg first if the pixels matter. .svg is read as text. Video files (.mp4/.webm/.mov/.mkv/.avi/.ogv/.m4v/...) are sampled into a few frames spread across their duration and returned as images. offset/limit do not apply to images or videos.";
 
 
 
@@ -99,7 +99,7 @@ public sealed class FileReadTool : IToolExecutor
         var imageMediaType = ImageFileProbe.MediaTypeFor(path);
         if (imageMediaType is not null)
         {
-            return ReadImage(path, imageMediaType, context.SupportsVision);
+            return ReadImage(path, imageMediaType);
         }
 
         // S-145 §六: 视频走抽帧分支 —— 解码器只在渲染端，帧靠反向请求取回来。
@@ -176,20 +176,33 @@ public sealed class FileReadTool : IToolExecutor
     /// 图像分支（S-145）：产出 [text, image] content 数组。文本那行说清「读到的是哪张图、多大、
     /// 什么格式」并给事件/日志当摘要，图像块才是模型看到的像素。
     ///
-    /// 两种降级都退回纯文本，但都要说明为什么没有像素 —— 静默降级会让模型以为这张图是空的，
-    /// 然后开始猜内容，比直接说「没看到」糟糕得多。
+    /// S-236（2026-10-27）：**不再看 supportsVision 拒图**。那张本地能力表追不上新模型、反代渠道、
+    /// 用户自定义模型，也压不住跨 provider 同名 id 的串号（同一个 glm-5.3 在四个渠道里标法不一），
+    /// 于是「截图能识图、Read 不能」这种自相矛盾的现场反复出现。
+    /// 现在一律附像素，能不能收由上游回答；上游若回「不支持图像」，
+    /// <c>ImageInputErrors</c> 认出来后在 AgentLoop 剥图重试（档 2）。
+    ///
+    /// 唯一还留着的降级是「文件太大」，那是传输与计费边界，不是能力判断。
     /// </summary>
-    private static ToolResult ReadImage(string path, string mediaType, bool supportsVision)
+    private static ToolResult ReadImage(string path, string mediaType)
     {
         var hasSize = ImageFileProbe.TryReadSize(path, out var width, out var height);
         var sizeText = hasSize ? $"{width}x{height}" : "size unavailable";
         var byteLength = new FileInfo(path).Length;
 
-        if (!supportsVision)
+        // S-246：上游不收的格式（bmp / tiff …）不内联像素，只回一行元信息。
+        //
+        // 不这样做的话，一张 bmp 就会给请求体塞进 `data:image/bmp;base64,…` ——
+        // OpenAI 系只收 png/jpeg/webp/gif，必然回 400 `unsupported image`，
+        // 而那个块留在会话历史里每轮重发，整个会话在清空历史前不可用。
+        // 组包层（ProviderContentHelpers.ResolveSupportedImageMediaType）是最后一道闸，
+        // 这里先拦一次：省掉一次白烧的往返，也让模型立刻知道「要转格式」。
+        if (!ProviderContentHelpers.SupportedImageMediaTypes.Contains(mediaType))
         {
             return new ToolResult(
                 $"Read image: {path} ({sizeText}, {mediaType}). " +
-                "The current model is not marked as vision-capable, so the pixels were not attached.");
+                "Upstream model APIs only accept png/jpeg/webp/gif, so the pixels were not attached. " +
+                "Convert the file to png or jpeg first if you need to see it.");
         }
 
         if (byteLength > MaxInlineImageBytes)
@@ -211,8 +224,11 @@ public sealed class FileReadTool : IToolExecutor
     /// 为什么要抽帧而不是把视频给模型：本条链路（以及当前所有 provider 协议）只认图像块，
     /// 没有视频输入通道。抽帧是唯一能让模型「看见」视频内容的办法。
     ///
-    /// 四种降级全都退回纯文本，并且都必须说清原因（不支持视觉 / 没有抽帧通路 / 文件超限 /
+    /// 三种降级全都退回纯文本，并且都必须说清原因（没有抽帧通路 / 文件超限 /
     /// 渲染端抽帧失败）—— 让模型以为看过了是比看不到更坏的结果。
+    ///
+    /// S-236：与图像分支同批摘掉 <c>SupportsVision</c> 拦截 —— 同一张能力表不该在两条路上
+    /// 得出相反结论。剩下两道都是真实边界（通路缺失、体积超限），保留。
     /// </summary>
     private static async Task<ToolResult> ReadVideoAsync(
         string path,
@@ -221,13 +237,6 @@ public sealed class FileReadTool : IToolExecutor
     {
         var byteLength = new FileInfo(path).Length;
         var sizeText = FormatMegabytes(byteLength);
-
-        if (!context.SupportsVision)
-        {
-            return new ToolResult(
-                $"Read video: {path} ({sizeText}, {mediaType}). " +
-                "The current model is not marked as vision-capable, so frames were not extracted.");
-        }
 
         if (context.VideoFrameExtractor is null)
         {

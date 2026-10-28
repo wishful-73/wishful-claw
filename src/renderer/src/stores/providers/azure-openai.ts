@@ -1,3 +1,6 @@
+// 500 行豁免（2026-10-28，行数以实际为准）：Azure OpenAI provider preset 模型配置表。
+// 豁免依据：AGENTS.md 大文件拆分 第 5 条第 1 类（单一数据对象）。
+
 /*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet

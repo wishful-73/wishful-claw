@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import {
   createPastedBlockTag,
   createSelectFileTag,
+  describePastedBlockLabel,
   expandPastedBlocks,
   parseSelectFileText,
   selectFileTextToPlainText
@@ -97,5 +98,41 @@ eq(
 
 // ── Idempotence on already-expanded text ──────────────────────────────────
 eq(expandPastedBlocks(body), body, 'expanding twice is a no-op')
+
+// ── S-257: render-time chip caption carries the character count ───────────
+// `describePastedBlockLabel` is computed from the verbatim body, not from the
+// frozen `label` in the payload, so the count must survive any caption wording.
+// i18n is not initialised in this suite ⇒ every assertion reads the zh fallback.
+eq(
+  describePastedBlockLabel('a'.repeat(400)),
+  '\u7c98\u8d34 \u00b7 400 \u5b57',
+  'single-line paste shows only the character count'
+)
+eq(
+  describePastedBlockLabel('one\ntwo\nthree'),
+  '\u7c98\u8d34 \u00b7 3 \u884c \u00b7 13 \u5b57',
+  'multi-line paste shows lines and characters'
+)
+eq(
+  describePastedBlockLabel('abc\n'),
+  '\u7c98\u8d34 \u00b7 3 \u5b57',
+  'trailing newline appended by the editor is not counted'
+)
+eq(
+  describePastedBlockLabel('a'.repeat(9999)),
+  `\u7c98\u8d34 \u00b7 9999 \u5b57`,
+  'under ten thousand stays in plain characters'
+)
+eq(
+  describePastedBlockLabel('a'.repeat(10000)),
+  '\u7c98\u8d34 \u00b7 1 \u4e07\u5b57',
+  'ten thousand switches to the wan unit with no trailing .0'
+)
+eq(
+  describePastedBlockLabel('a'.repeat(12345)),
+  '\u7c98\u8d34 \u00b7 1.2 \u4e07\u5b57',
+  'wan unit keeps one decimal'
+)
+eq(describePastedBlockLabel(''), '\u7c98\u8d34 \u00b7 0 \u5b57', 'empty body reports zero')
 
 console.log(`select-file tag checks passed: ${checks}`)

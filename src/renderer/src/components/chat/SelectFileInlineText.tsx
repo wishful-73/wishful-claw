@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronUp, ClipboardPaste, FileCode2, Puzzle } from 'lucide-react'
 import { Badge } from '@renderer/components/ui/badge'
 import { cn } from '@renderer/lib/utils'
-import { parseSelectFileText } from '@renderer/lib/select-file-tags'
+import { describePastedBlockLabel, parseSelectFileText } from '@renderer/lib/select-file-tags'
 
 interface SelectFileInlineTextProps {
   text: string
@@ -56,7 +56,9 @@ export function SelectFileInlineText({
                 className="mx-0.5 inline-flex max-w-full items-center gap-1 overflow-hidden rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 align-baseline text-[12px] font-medium text-amber-700 transition-colors hover:bg-amber-500/20 dark:text-amber-300"
               >
                 <ClipboardPaste className="size-3 shrink-0" />
-                <span className="truncate">{segment.label}</span>
+                {/* S-257: 按 pastedText 现算字数，不读 payload 里冻结的 label，
+                    这样 S-257 之前粘贴的消息也能显示字数。 */}
+                <span className="truncate">{describePastedBlockLabel(segment.pastedText ?? '')}</span>
                 {expanded ? (
                   <ChevronUp className="size-3 shrink-0" />
                 ) : (

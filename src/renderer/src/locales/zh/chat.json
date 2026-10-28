@@ -238,6 +238,10 @@
     "pastedBlock": {
       "label": "粘贴",
       "labelWithLines": "粘贴 · {{lines}} 行",
+      "labelWithChars": "粘贴 · {{size}}",
+      "labelWithLinesAndChars": "粘贴 · {{lines}} 行 · {{size}}",
+      "sizeChars": "{{chars}} 字",
+      "sizeWan": "{{wan}} 万字",
       "expand": "展开",
       "expandTitle": "展开为原文",
       "collapse": "收起",

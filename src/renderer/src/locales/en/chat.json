@@ -238,6 +238,10 @@
     "pastedBlock": {
       "label": "Pasted",
       "labelWithLines": "Pasted · {{lines}} lines",
+      "labelWithChars": "Pasted · {{size}}",
+      "labelWithLinesAndChars": "Pasted · {{lines}} lines · {{size}}",
+      "sizeChars": "{{chars}} chars",
+      "sizeWan": "{{wan}}k chars",
       "expand": "Expand",
       "expandTitle": "Expand to full text",
       "collapse": "Collapse",

@@ -1,5 +1,6 @@
 import { cn } from '@renderer/lib/utils'
 import { translateOr } from '@renderer/lib/i18n-text'
+import { describePastedBlockLabel } from '@renderer/lib/select-file-tags'
 import type {
   EditorFileNode,
   EditorPastedBlockNode,
@@ -150,7 +151,10 @@ export function buildPastedChip(
 
   const label = document.createElement('span')
   label.className = 'truncate max-w-[240px]'
-  label.textContent = node.label
+  // S-257: 按 node.text 现算字数（含行数），不读 node.label —— 后者是粘贴时
+  // 固化进 payload 的旧口径，历史消息里没有字数。`data-label` 仍写原值，保证
+  // DOM→document 回读时 payload 内容不被显示口径污染。
+  label.textContent = describePastedBlockLabel(node.text)
 
   wrapper.append(icon, label)
 

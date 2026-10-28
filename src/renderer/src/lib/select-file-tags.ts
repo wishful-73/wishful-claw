@@ -213,6 +213,45 @@ export function buildPastedBlockLabel(text: string): string {
   return translateOr('input.pastedBlock.label', { ns: 'chat' }, '粘贴')
 }
 
+/** S-257: paste size in "字" units, switching to 万字 above ten thousand. */
+function formatPastedBlockSize(chars: number): string {
+  if (chars >= 10000) {
+    const wan = (chars / 10000).toFixed(1).replace(/\.0$/, '')
+    return translateOr('input.pastedBlock.sizeWan', { ns: 'chat', wan }, `${wan} 万字`)
+  }
+  // 传字符串而不是 number：i18next 会对 number 走 Intl 格式化，千分位因环境而异。
+  return translateOr(
+    'input.pastedBlock.sizeChars',
+    { ns: 'chat', chars: String(chars) },
+    `${chars} 字`
+  )
+}
+
+/**
+ * S-257: label for a collapsed paste **at render time**, including the character
+ * count ("粘贴 · 42 行 · 3200 字").
+ *
+ * Why a second function instead of extending `buildPastedBlockLabel`: that one
+ * runs when the paste is captured and its output is frozen into the
+ * `<pasted-block>` payload's `label`. Rendering straight from `pastedText` means
+ * pastes stored before this change (and any future wording tweak) show up
+ * correctly without migrating a single row. Trailing whitespace is dropped — the
+ * editor appends a newline that the user never typed.
+ */
+export function describePastedBlockLabel(text: string): string {
+  const body = text.replace(/\s+$/, '')
+  const size = formatPastedBlockSize(body.length)
+  const lines = body.split(/\r?\n/).length
+  if (lines > 1) {
+    return translateOr(
+      'input.pastedBlock.labelWithLinesAndChars',
+      { ns: 'chat', lines, size },
+      `粘贴 · ${lines} 行 · ${size}`
+    )
+  }
+  return translateOr('input.pastedBlock.labelWithChars', { ns: 'chat', size }, `粘贴 · ${size}`)
+}
+
 function parsePastedBlockPayload(value: string): PastedBlockPayload | null {
   try {
     const parsed = JSON.parse(decodeTagText(value)) as Partial<PastedBlockPayload>

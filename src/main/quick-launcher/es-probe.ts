@@ -372,5 +372,8 @@ export async function startEverythingAndRetry(
     await delay(EVERYTHING_AUTOSTART_POLL_MS)
     result = await enqueueEsSearch(() => runEsSearch(esExePath, request))
   }
-  return result
+  // 拉过了还是 `not-running`：得让 UI 知道「已经替你起过一次」，能说「拉不起来」而不是无限「正在启动」。
+  // 上面那条 `!everything.ready` 的早退（本体没探到 = 多半没装）**不带**这个标记 ——
+  // 那是 S-253 的 B 情况，UI 该走下载引导。
+  return result.failure === 'not-running' ? { ...result, autostartAttempted: true } : result
 }

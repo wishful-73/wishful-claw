@@ -76,12 +76,14 @@ export interface FileHit {
 /**
  * 取数失败的分类（**不含「无结果」** —— 那是成功，只是列表为空）。
  *
- * - `not-running`：Everything 本体没在跑（es.exe 的 exit 8），我们只能让他去开 Everything；
- * - `spawn-failed`：es.exe 压根没起来（路径失效 / 权限）⇒ 调用方应回探测；
+ * - `not-installed`：**压根没探到 es.exe**（S-253 从 `spawn-failed` 里摘出来）。跟「路径失效」
+ *   分开，因为用户该做的事完全不同：这里要引导去装 Everything / 配 es.exe，那里只要重新检测；
+ * - `not-running`：Everything 本体没在跑（es.exe 的 exit 8），我们会自动拉起他（S-155 调整②）；
+ * - `spawn-failed`：es.exe 探到了却起不来（路径失效 / 权限）⇒ 调用方应回探测；
  * - `bad-output`：起来了但吐的不是合法 JSON；
  * - `search-failed`：其它非零退出。
  */
-export type EsFailure = 'not-running' | 'spawn-failed' | 'bad-output' | 'search-failed'
+export type EsFailure = 'not-installed' | 'not-running' | 'spawn-failed' | 'bad-output' | 'search-failed'
 
 /**
  * `-sort` 的键（实测通过的七个，见 `../es-search.ts` 头注 ⑦）。

@@ -103,6 +103,13 @@ export interface EsSearchResult {
   hits: FileHit[]
   failure?: EsFailure
   error?: string
+  /**
+   * 已经替他自动拉过一次 Everything 本体，**还是没起来**（S-253）。
+   *
+   * 渲染端靠这个把「我们正在启动，稍等」和「拉过了，没成」分开说：后者要给「重试」。
+   * 拉起成功时结果是 `ok`，不会带着这个字段出现在 `not-running` 里。
+   */
+  autostartAttempted?: boolean
 }
 
 /**

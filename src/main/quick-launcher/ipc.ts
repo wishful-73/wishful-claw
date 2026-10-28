@@ -260,6 +260,18 @@ export function registerLauncherIpc(): void {
   )
 
   /**
+   * 「我已装好，重新检测」（S-253）。
+   *
+   * 两个探测缓存都得作废：`es.exe` 就装在 Everything 目录里，只作废其中一个会拿着旧结论继续报错，
+   * 用户点了按钮还是那句「没找到」。返回重探后的 es 状态，界面据此决定要不要再搜一次。
+   */
+  registerMessagePackHandler<void, EsStatus>('file-search:redetect', async () => {
+    invalidateEsProbe()
+    invalidateEverythingProbe()
+    return getEsStatus(true)
+  })
+
+  /**
    * 渲染端挂载后来取一次初始关键词（取完即清空）。
    *
    * 这是**首次开窗唯一可靠**的带词通道：`file-search:init` 那条是推的，推的时候渲染端还没挂上

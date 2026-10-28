@@ -114,7 +114,10 @@ export async function countFileResults(request: {
 export async function executeFileQuery(request: EsQueryRequest): Promise<EsSearchResult> {
   const status = await getEsStatus()
   if (!status.ready || !status.exePath) {
-    return { ok: false, hits: [], failure: 'spawn-failed', error: 'es-not-ready' }
+    // S-253：**压根没探到 es.exe**，跟「探到了但起不来」分开报。两者用户该做的事不一样：
+    // 这里要引导去装 Everything，那里只要重新检测。原来一律回 `spawn-failed` + `es-not-ready`，
+    // 界面只能给一行灰字，用户看着就是「软件没有运行」然后没有下文。
+    return { ok: false, hits: [], failure: 'not-installed', error: 'es-not-found' }
   }
 
   const exePath = status.exePath
@@ -127,10 +130,19 @@ export async function executeFileQuery(request: EsQueryRequest): Promise<EsSearc
   }
 
   // Everything 没在跑 ⇒ 替他拉起来再重试（S-155 调整②），别让用户自己去找。
+  // 拉起最多等 3 秒，界面不能干停在「搜到一半」—— 推一条过程态让它说「正在启动 Everything」。
   if (result.failure === 'not-running') {
+    notifyFileSearchStatus('starting-everything')
     result = await startEverythingAndRetry(exePath, request, result)
+    notifyFileSearchStatus('done')
   }
   return result
+}
+
+/** 给独立窗推一条过程态（S-253）。窗没开 / 已销毁就静默丢弃 —— 过程态不该有任何副作用。 */
+function notifyFileSearchStatus(phase: 'starting-everything' | 'done'): void {
+  if (!fileSearchWindow || fileSearchWindow.isDestroyed()) return
+  safeSendMessagePackToWindow(fileSearchWindow, 'file-search:status', { phase })
 }
 
 /** 单个路径的文件图标（data URL）。取不到回 `null`，界面退化成通用图标，不能因此丢整行。 */

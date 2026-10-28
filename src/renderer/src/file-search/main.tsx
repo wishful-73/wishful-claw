@@ -23,14 +23,17 @@ import {
   DEFAULT_ES_SORT,
   ES_CATEGORIES,
   ES_SORT_OPTIONS,
+  FILE_SEARCH_FAILURE_ACTION_LABELS,
   FILE_SEARCH_PAGE_SIZE,
-  fileSearchFailureText,
+  fileSearchFailureView,
   formatHitSize,
   formatHitTime,
   type EsCategory,
   type EsSearchResult,
   type EsSort,
-  type FileHit
+  type FileHit,
+  type FileSearchFailureAction,
+  type FileSearchFailureView
 } from '../lib/file-search-shared'
 
 /** 防抖窗口。es.exe 单次取数实测 ~130ms，250ms 足够把连打收敛成一次。 */
@@ -49,7 +52,9 @@ function FileSearchWindow(): React.JSX.Element {
   const [icons, setIcons] = useState<Record<string, string | null>>({})
   const [searching, setSearching] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<FileSearchFailureView | null>(null)
+  /** 主进程正在替用户拉起 Everything 本体（S-253）—— 这时不该显示「搜索中」，要说清在等什么。 */
+  const [launchingEverything, setLaunchingEverything] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -113,7 +118,7 @@ function FileSearchWindow(): React.JSX.Element {
       const token = (tokenRef.current += 1)
       busyRef.current = true
       setSearching(true)
-      setError('')
+      setError(null)
       setSelectedIndex(0)
 
       try {
@@ -129,7 +134,7 @@ function FileSearchWindow(): React.JSX.Element {
         if (!result?.ok) {
           setHits([])
           hasMoreRef.current = false
-          setError(fileSearchFailureText(result ?? { ok: false, hits: [] }))
+          setError(fileSearchFailureView(result ?? { ok: false, hits: [] }))
           return
         }
         setHits(result.hits)
@@ -138,7 +143,7 @@ function FileSearchWindow(): React.JSX.Element {
         if (token !== tokenRef.current) return
         setHits([])
         hasMoreRef.current = false
-        setError('搜索失败')
+        setError(fileSearchFailureView({ ok: false, hits: [], failure: 'search-failed' }))
       } finally {
         if (token === tokenRef.current) {
           busyRef.current = false
@@ -161,6 +166,39 @@ function FileSearchWindow(): React.JSX.Element {
     },
     []
   )
+
+  /**
+   * 失败提示上的按钮（S-253）。三个动作各自的语义见 `fileSearchFailureView`。
+   *
+   * 「重新检测」先清提示、露出转圈再重探 —— 深扫一次盘要几秒，按钮看着没反应用户会连点。
+   */
+  const handleFailureAction = useCallback(
+    async (action: FileSearchFailureAction): Promise<void> => {
+      if (action === 'download') {
+        void window.api.invoke('launcher:open-everything-download', null)
+        return
+      }
+      if (action === 'redetect') {
+        setError(null)
+        setSearching(true)
+        try {
+          await window.api.invoke('file-search:redetect', null)
+        } catch {
+          // 重探自己失败也照常再搜一次 —— 结果会照实报错，不在这儿吞掉信息。
+        }
+      }
+      const current = queryRef.current
+      await runFirstPage(current.keyword, current.category, current.sort)
+    },
+    [runFirstPage]
+  )
+
+  // 主进程自动拉起 Everything 时的过程态（S-253）：拉起来最多等 3 秒，界面得说清在等什么。
+  useEffect(() => {
+    return window.api.on<{ phase?: string }>('file-search:status', (payload) => {
+      setLaunchingEverything(payload?.phase === 'starting-everything')
+    })
+  }, [])
 
   /** 续取下一页（滚动到底时触发）。 */
   const loadMore = useCallback(async (): Promise<void> => {
@@ -337,12 +375,34 @@ function FileSearchWindow(): React.JSX.Element {
 
         {/* 结果列表 */}
         <div ref={listRef} className="min-w-0 flex-1 overflow-y-auto py-1">
-          {error && <div className="px-4 py-3 text-xs text-destructive">{error}</div>}
+          {error && (
+            <div className="px-4 py-3">
+              <p className="text-xs text-destructive">{error.text}</p>
+              {error.actions.length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {error.actions.map((action) => (
+                    <button
+                      key={action}
+                      onClick={() => void handleFailureAction(action)}
+                      className={
+                        'rounded-md border px-2.5 py-1 text-[11px] transition-colors ' +
+                        (action === 'download'
+                          ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20'
+                          : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground')
+                      }
+                    >
+                      {FILE_SEARCH_FAILURE_ACTION_LABELS[action]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {!error && searching && hits.length === 0 && (
-            <div className="flex h-40 items-center justify-center gap-2 text-xs text-muted-foreground">
+            <div className="flex h-40 flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
-              搜索中...
+              {launchingEverything ? 'Everything 没在运行，正在替你启动...' : '搜索中...'}
             </div>
           )}
 

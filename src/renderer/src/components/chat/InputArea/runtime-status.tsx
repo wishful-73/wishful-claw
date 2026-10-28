@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-28 实测 657 行）：状态条内 token / 成本 / TPS / TTFT 与流式指示共享同一组派生指标，拆开需透传整包 metrics 与阈值判定。
+// 500 行豁免（2026-10-28，行数以实际为准）：状态条内 token / 成本 / TPS / TTFT 与流式指示共享同一组派生指标，拆开需透传整包 metrics 与阈值判定。
 // 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
 
 // Runtime status bar: token/cost/TPS/TTFT metrics + streaming status indicator

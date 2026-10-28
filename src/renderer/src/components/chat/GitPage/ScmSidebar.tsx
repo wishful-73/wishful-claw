@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-28 实测 669 行）：整块是 props 驱动的纯展示面板 —— 49 行 prop 声明、零内部 state，数据与回调全部由 GitPage 传入；拆成子块后这些 props 仍要从 GitPage 一层层转下来，多出的只是中转层。
+// 500 行豁免（2026-10-28，行数以实际为准）：整块是 props 驱动的纯展示面板 —— 49 行 prop 声明、零内部 state，数据与回调全部由 GitPage 传入；拆成子块后这些 props 仍要从 GitPage 一层层转下来，多出的只是中转层。
 // 拆出去必须新增 props 链或 context 才能跑通，这个中间层本身就是新的排查成本。
 // 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
 import * as React from 'react'

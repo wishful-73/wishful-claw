@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-28 实测 607 行）：表单 state 密集（调度类型、模型与提示词联动），拆成子组件需透传全部 form state 与校验器。
+// 500 行豁免（2026-10-28，行数以实际为准）：表单 state 密集（调度类型、模型与提示词联动），拆成子组件需透传全部 form state 与校验器。
 // 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
 
 import { useCallback, useEffect, useMemo, useState } from 'react'

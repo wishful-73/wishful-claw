@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-28 实测 1103 行）：单一 zustand store slice —— `SessionSlice` 接口与它的
+// 500 行豁免（2026-10-28，行数以实际为准）：单一 zustand store slice —— `SessionSlice` 接口与它的
 // 实现是同一次声明，80 余个方法共享 set/get/immer 的同一份状态，拆开会把「谁改了会话状态」
 // 摊到多个文件里。豁免依据：AGENTS.md §大文件拆分 第 5 条第 2 类（高度内聚的 store / hook）。
 

@@ -1,4 +1,4 @@
-// 500 行豁免（2026-10-28 实测 507 行）：环形进度与压缩阈值 Popover 共享同一份上下文用量 state，拆开需透传用量与阈值两层状态。
+// 500 行豁免（2026-10-28，行数以实际为准）：环形进度与压缩阈值 Popover 共享同一份上下文用量 state，拆开需透传用量与阈值两层状态。
 // 豁免依据：AGENTS.md 大文件拆分 第 5 条第 3 类（拆分后需大量 props 透传或 state 搬运的组件）。
 
 // Context ring: circular progress indicator for context window usage

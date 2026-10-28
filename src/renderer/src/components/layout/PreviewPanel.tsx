@@ -1,53 +1,29 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  FileOutput,
-  FolderOpen,
-  Globe,
-  PanelRightClose,
-  Plus,
-  RefreshCw,
-  X
-} from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import { Button } from '@renderer/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@renderer/components/ui/dropdown-menu'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useUIStore, type PreviewPanelTab } from '@renderer/stores/ui-store'
 import { useFileWatcher } from '@renderer/hooks/use-file-watcher'
-import { viewerRegistry } from '@renderer/lib/preview/viewer-registry'
 import { isBrowserPreviewFilePath, localPathToFileUrl } from '@renderer/lib/preview/local-target'
 import { openWebUrl } from '@renderer/lib/preview/web-url'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
-import {
-  createMarkdownComponents,
-  MARKDOWN_REHYPE_PLUGINS,
-  MARKDOWN_REMARK_PLUGINS
-} from '@renderer/lib/preview/viewers/markdown-components'
 import { BROWSER_PLUGIN_ID } from '@renderer/lib/app-plugin/types'
-import { cn } from '@renderer/lib/utils'
-
-const MonacoDiffEditor = lazy(() =>
-  import('@renderer/components/editor/MonacoDiffEditor').then((m) => ({
-    default: m.MonacoDiffEditor
-  }))
-)
-
 import { createSelectFileToken } from '@renderer/lib/select-file-tags'
 import { composerEvents } from '@renderer/lib/composer-events'
-import { breadcrumbParts, isExternalUrl, shouldReadPreviewText, tabTitle, tabPathTitle, TabIcon } from './preview-utils'
+import {
+  breadcrumbParts,
+  isExternalUrl,
+  shouldReadPreviewText,
+  tabTitle
+} from './preview-utils'
 import { usePreviewSave } from './use-preview-save'
 import { PreviewToolbar } from './preview-toolbar'
 import { PreviewSaveDialog } from './preview-save-dialog'
+import { PreviewContent } from './preview/content'
+import { PreviewEmptyState, PreviewTabStrip } from './preview/tab-strip'
+
 export function PreviewPanel({
   embedded = false,
   showTabStrip = !embedded
@@ -100,8 +76,6 @@ export function PreviewPanel({
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const diffModifiedValue =
     activeTab && isDiff ? (activeTab.draftContent ?? activeTab.diffModified ?? '') : ''
-  const viewerDef = activeTab ? viewerRegistry.getByType(activeTab.viewerType) : undefined
-  const ViewerComponent = viewerDef?.component
   const [copied, setCopied] = useState(false)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null)
@@ -287,37 +261,11 @@ export function PreviewPanel({
 
   if (!activeTab) {
     return (
-      <div className="flex h-full min-h-0 flex-col bg-background">
-        {showTabStrip ? (
-          <div className="flex h-10 shrink-0 items-center justify-end border-b border-border/50 px-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-7">
-                  <Plus className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onSelect={() => void handleOpenLocalFiles()}>
-                  <FolderOpen className="size-4" />
-                  {t('preview.openFile', { defaultValue: 'Open file' })}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground"
-              onClick={() => setRightPanelOpen(false)}
-              title={t('rightPanelAction.closePanel', { defaultValue: 'Close panel' })}
-            >
-              <PanelRightClose className="size-4" />
-            </Button>
-          </div>
-        ) : null}
-        <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-          {t('rightPanel.previewEmpty', { defaultValue: 'No preview content' })}
-        </div>
-      </div>
+      <PreviewEmptyState
+        showTabStrip={showTabStrip}
+        onOpenLocalFiles={handleOpenLocalFiles}
+        onClosePanel={() => setRightPanelOpen(false)}
+      />
     )
   }
 
@@ -335,87 +283,17 @@ export function PreviewPanel({
       {isDragging && !embedded && <div className="absolute inset-0 z-10" />}
 
       {showTabStrip ? (
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/50 bg-background px-1">
-          <div className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto pt-1">
-            {tabs.map((tab: any) => {
-              const active = tab.id === activeTab.id
-              return (
-                <div
-                  key={tab.id}
-                  className={cn(
-                    'group flex h-8 min-w-0 max-w-48 shrink-0 items-center gap-1.5 rounded-t-md border border-transparent px-2 text-left text-xs transition-colors',
-                    active
-                      ? 'border-border/70 border-b-background bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                  )}
-                  title={tabPathTitle(tab)}
-                >
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                    onClick={() => setActivePreviewTab(tab.id)}
-                  >
-                    <TabIcon tab={tab} />
-                    <span className="min-w-0 truncate">{tabTitle(tab)}</span>
-                    {tab.modified && (
-                      <span
-                        className="size-1.5 shrink-0 rounded-full bg-amber-500"
-                        title={t('preview.modified')}
-                      />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="ml-0.5 rounded p-0.5 opacity-60 transition-opacity hover:bg-muted hover:opacity-100"
-                    title={t('action.close', { ns: 'common' })}
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                      requestCloseTab(tab)
-                    }}
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-7 shrink-0">
-                <Plus className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={() => void handleOpenLocalFiles()}>
-                <FolderOpen className="size-4" />
-                {t('preview.openFile', { defaultValue: 'Open file' })}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {browserPluginEnabled && (
-                <DropdownMenuItem onSelect={() => setRightPanelTab('browser')}>
-                  <Globe className="size-4" />
-                  {t('rightPanel.browser')}
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onSelect={() => setRightPanelTab('artifacts')}>
-                <FileOutput className="size-4" />
-                {t('rightPanel.artifacts')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-            onClick={() => setRightPanelOpen(false)}
-            title={t('rightPanelAction.closePanel', { defaultValue: 'Close panel' })}
-          >
-            <PanelRightClose className="size-4" />
-          </Button>
-        </div>
+        <PreviewTabStrip
+          tabs={tabs}
+          activeTabId={activeTab.id}
+          browserPluginEnabled={browserPluginEnabled}
+          onSelectTab={setActivePreviewTab}
+          onRequestClose={requestCloseTab}
+          onOpenLocalFiles={handleOpenLocalFiles}
+          onOpenBrowser={() => setRightPanelTab('browser')}
+          onOpenArtifacts={() => setRightPanelTab('artifacts')}
+          onClosePanel={() => setRightPanelOpen(false)}
+        />
       ) : null}
 
       <PreviewToolbar
@@ -441,73 +319,19 @@ export function PreviewPanel({
           {fileReadError}
         </div>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {isDiff ? (
-          <Suspense
-            fallback={
-              <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
-                <RefreshCw className="size-4 animate-spin" />
-                Loading preview...
-              </div>
-            }
-          >
-            <MonacoDiffEditor
-              filePath={activeTab.filePath}
-              original={activeTab.diffOriginal ?? ''}
-              modified={diffModifiedValue}
-              language={activeTab.diffLanguage}
-              modifiedEditable={Boolean(activeTab.diffModifiedEditable)}
-              renderSideBySide={diffViewMode !== 'inline'}
-              isBinary={Boolean(activeTab.diffIsBinary)}
-              onModifiedChange={handleContentChange}
-              onSave={handleSave}
-            />
-          </Suspense>
-        ) : isMarkdown ? (
-          <div className="size-full overflow-y-auto p-6">
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              <ReactMarkdown
-                remarkPlugins={MARKDOWN_REMARK_PLUGINS}
-                rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
-                components={createMarkdownComponents()}
-              >
-                {activeTab.markdownContent || ''}
-              </ReactMarkdown>
-            </div>
-          </div>
-        ) : fileLoading && !activeTab.modified ? (
-          <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
-            <RefreshCw className="size-4 animate-spin" />
-            Loading preview...
-          </div>
-        ) : ViewerComponent ? (
-          <Suspense
-            fallback={
-              <div className="flex size-full items-center justify-center gap-2 text-sm text-muted-foreground">
-                <RefreshCw className="size-4 animate-spin" />
-                Loading preview...
-              </div>
-            }
-          >
-            <ViewerComponent
-              filePath={activeTab.filePath}
-              content={content}
-              viewMode={activeTab.viewMode}
-              onContentChange={handleContentChange}
-              onSave={handleSave}
-              sshConnectionId={activeTab.sshConnectionId}
-              initialLine={activeTab.targetLine}
-              initialColumn={activeTab.targetColumn}
-              initialPositionKey={activeTab.targetPositionKey}
-              fileVersion={fileVersion}
-            />
-          </Suspense>
-        ) : (
-          <div className="flex size-full items-center justify-center text-sm text-muted-foreground">
-            {t('preview.noViewer')}
-          </div>
-        )}
-      </div>
+
+      <PreviewContent
+        activeTab={activeTab}
+        isDiff={isDiff}
+        isMarkdown={isMarkdown}
+        fileLoading={fileLoading}
+        content={content}
+        diffModifiedValue={diffModifiedValue}
+        diffViewMode={diffViewMode}
+        fileVersion={fileVersion}
+        onContentChange={handleContentChange}
+        onSave={handleSave}
+      />
 
       <PreviewSaveDialog
         open={showSaveDialog}

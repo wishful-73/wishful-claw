@@ -37,8 +37,8 @@ export function ClearConversationDialog({
           size="icon-sm"
           className="composer-control rounded-lg"
           data-tone="danger"
-          aria-label={t('input.clearConversation')}
-          title={t('input.clearConversation')}
+          aria-label={t('sidebar.clearSession', { ns: 'layout', defaultValue: 'Clear session' })}
+          title={t('sidebar.clearSession', { ns: 'layout', defaultValue: 'Clear session' })}
         >
           <Trash2 className="size-3.5" />
         </Button>

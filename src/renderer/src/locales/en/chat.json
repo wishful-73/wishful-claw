@@ -119,7 +119,6 @@
     "browseDefaultDirectory": "Browse",
     "defaultProjectDirectoryFallback": "Fallback: system Documents directory",
     "systemDefaultLocation": "System default",
-    "clearConversation": "Clear conversation",
     "clearConfirmTitle": "Clear all messages?",
     "clearConfirmDesc": "This will remove all messages in this conversation. This action cannot be undone.",
     "panelTitle": "Context usage",
@@ -345,7 +344,7 @@
           "A project works like a workspace and can store its name, working folder, SSH connection, and default model.",
           "Each project can contain many sessions, and sessions support create, rename, pin, delete, and mode switching.",
           "Session search matches both titles and loaded message content, while older sessions collapse into history.",
-          "Right-click a project or session to export, duplicate, clear messages, or change folders."
+          "Right-click a project or session to export, duplicate, clear a session, or change folders."
         ]
       },
       "composer": {

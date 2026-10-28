@@ -177,10 +177,24 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps): R
     deleteSession(session.id)
   }, [session.id, session.title, deleteSession, t])
 
-  const handleClear = useCallback(() => {
+  // S-258：与右侧悬浮块 ⋯ 菜单的「清空会话」同名同义 —— 都走 clearSessionMessages
+  // （落库删消息，切走切回不复活）。删消息不可逆，必须二次确认；函数体与
+  // SessionConversationPane.tsx 的 handleClearSession 逐行对齐，两处不许再分叉。
+  const handleClear = useCallback(async () => {
+    const ok = await confirm({
+      title: t('sidebar.clearSessionConfirmTitle', {
+        defaultValue: "Clear this session's messages?"
+      }),
+      description: t('sidebar.clearSessionConfirmDesc', {
+        title: session.title,
+        defaultValue: 'Every message will be permanently deleted. This cannot be undone.'
+      }),
+      variant: 'destructive'
+    })
+    if (!ok) return
     clearSessionMessages(session.id)
-    toast.success(t('sidebar.conversationCleared', { defaultValue: 'Conversation cleared' }))
-  }, [session.id, clearSessionMessages, t])
+    toast.success(t('sidebar.conversationCleared', { defaultValue: 'Session cleared' }))
+  }, [session.id, session.title, clearSessionMessages, t])
 
   const handleDuplicate = useCallback(() => {
     const newId = duplicateSession(session.id)
@@ -248,7 +262,7 @@ export function SessionItem({ session, isActive, onClick }: SessionItemProps): R
         <ContextMenuSeparator />
         <ContextMenuItem onClick={handleClear}>
           <Eraser className="mr-2 size-3.5" />
-          {t('sidebar.clearMessages', { defaultValue: 'Clear messages' })}
+          {t('sidebar.clearSession', { defaultValue: 'Clear session' })}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleDelete} className="text-destructive">
           <Trash2 className="mr-2 size-3.5" />

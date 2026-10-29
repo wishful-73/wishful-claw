@@ -12,6 +12,10 @@
  *      新增浮层必然要跟已有的抢位置，而这块本来就是会话级操作的集合，渲染档位属于同一类。
  *
  * 之所以不塞到输入框上方：老大 2026-10-26 明确说过「输入框上方需要显示的东西太多了」。
+ *
+ *   4. 2026-10-29 老大又说这块「打开以后呈现的内容太多了」—— 弹层里每档两行（名字 + 描述），
+ *      三档就是 6 行，还顶着一条总述。改成**只列档位名，描述挂 title**（本项目 `ui/tooltip`
+ *      就是原生 title 的包装，别为此引入 Radix）。
  */
 
 import * as React from 'react'
@@ -45,11 +49,11 @@ export function RenderDensityToggle(): React.JSX.Element {
         </button>
       </PopoverTrigger>
       {/* side="left"：本组件住在贴着右边缘的竖直条里，向左右都不够位，必须往左弹 */}
-      <PopoverContent align="start" side="left" className="w-64 p-1.5">
-        <div className="px-2 pb-1.5 pt-1">
-          <div className="text-xs font-medium">{t('messageList.renderDensity.title')}</div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-            {t('messageList.renderDensity.desc')}
+      <PopoverContent align="start" side="left" className="w-40 p-1.5">
+        <div className="px-2 pb-1 pt-1">
+          {/* 总述挂 title：弹层常驻的只留标题一行，说明都在 hover 里 */}
+          <div className="text-xs font-medium" title={t('messageList.renderDensity.desc')}>
+            {t('messageList.renderDensity.title')}
           </div>
         </div>
         <div className="space-y-0.5">
@@ -60,6 +64,7 @@ export function RenderDensityToggle(): React.JSX.Element {
                 key={item}
                 type="button"
                 aria-pressed={active}
+                title={t(`general.renderDensity.options.${item}.desc`, { ns: 'settings' })}
                 onClick={() => updateSettings({ chatRenderDensity: item })}
                 className={cn(
                   'w-full rounded-md px-2 py-1.5 text-left transition-colors',
@@ -78,9 +83,6 @@ export function RenderDensityToggle(): React.JSX.Element {
                     {t(`general.renderDensity.options.${item}.name`, { ns: 'settings' })}
                   </span>
                   {active ? <Check className="size-3 shrink-0 text-primary" /> : null}
-                </div>
-                <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                  {t(`general.renderDensity.options.${item}.desc`, { ns: 'settings' })}
                 </div>
               </button>
             )

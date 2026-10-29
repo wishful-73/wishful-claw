@@ -185,8 +185,8 @@
       "desc": "Choose how much activity the timeline shows. Messages are always visible.",
       "options": {
         "text": {
-          "name": "Text only",
-          "desc": "Messages only. Running tools, thinking and sub-agents stay collapsed."
+          "name": "Minimal",
+          "desc": "Tools, thinking and sub-agents appear only as text lines — no expansion while running, same once finished."
         },
         "compact": {
           "name": "Compact",

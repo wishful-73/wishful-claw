@@ -111,6 +111,9 @@
     "logs": {
       "label": "Logs"
     },
+    "diagnostics": {
+      "label": "Diagnostics"
+    },
     "usage": {
       "label": "Usage",
       "desc": "Requests, tokens and cost from per-request logs"
@@ -1987,6 +1990,27 @@
       "none": "No log files to delete",
       "previewCleared": "The previewed log file has been deleted",
       "failed": "Cleanup failed: {{error}}"
+    }
+  },
+  "diagnostics": {
+    "title": "Resources & Diagnostics",
+    "subtitle": "Memory used by each process. Refreshes every 5 seconds; the same numbers go to the log every 5 minutes.",
+    "refresh": "Refresh",
+    "total": "Total working set",
+    "capturedAt": "Sampled {{time}}",
+    "loading": "Reading…",
+    "colRole": "Process",
+    "colWorkingSet": "Working set",
+    "colPeak": "Peak",
+    "hint": "Web pages inside the browser view and memory held by the graphics driver are not listed here — those depend on the page and the system. To see when usage started to grow, check the memory lines in the log.",
+    "workerManaged": "Managed {{value}} · Heap {{heap}} · Fragmented {{frag}}",
+    "kind": {
+      "main": "Main",
+      "renderer": "Renderer",
+      "gpu": "GPU",
+      "utility": "Utility",
+      "other": "Other",
+      "worker": "Worker"
     }
   }
 }

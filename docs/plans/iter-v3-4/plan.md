@@ -3,7 +3,7 @@
 > 分支：`dev/v3-iter-4`（base = `58136a9f`，= v1.0.3 收尾合并点，即最新 `main`；tag `v1.0.3` → `58136a9f`）。执行期内只 commit，**不 push**。
 > 产品版本：`1.0.4`（开工时 `package.json` 是 `1.0.3`，收尾时改），tag `v1.0.4`。
 > 状态：**阶段一勘察已完成（2026-10-28 17:57）**，10 条待决问题**全部拍定**（见 `exploration_findings.md` §七），§七 刀序已确认。
-> 进度：**第 0 / 1 / 1b~1g / 2 / 3 / 3b / 4 / 5 刀代码 + 自动化回归已完成（截至 2026-10-29 15:10），全部真机待验**；`npm test` 95/95、`npm run typecheck` 0 错。剩余 4 刀：S-247 / S-260 / S-248 / S-256。
+> 进度：**第 0 / 1 / 1b~1g / 2 / 3 / 3b / 4 / 5 / 6 刀代码 + 自动化回归已完成（截至 2026-10-29 16:05），全部真机待验**；`npm test` 96/96、`npm run typecheck` 0 错。剩余 3 刀：S-260 / S-248 / S-256。
 > 追加（2026-10-28 20:40）：**登记 S-261**（图像块 400 自愈缺失，S-246 下半段），承接条数 **9 → 10**，插入为刀 **1b**。
 > 追加（2026-10-29 08:24）：**登记 S-262**（400 请求级拒绝的自愈与告知，通用兜底），承接条数 **10 → 11**，插入为刀 **1c**。
 > 追加（2026-10-29 09:07）：**登记 S-263**（侧栏收起即崩，hooks 排在 early return 之后，S-240 回归），承接条数 **11 → 12**，插入为刀 **1d**。
@@ -155,7 +155,7 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 | 3b | S-269 | **插在刀 3 之后**，理由三条：①**线上真缺陷、用户可见** —— 老大自己 10-29 一天撞了五波，所有长会话用户都会撞，不是待验功能；②改动面集中且与插件线**零交集**（`ContextCompression.cs` + `ProviderRetryPolicy.cs` 抽 `internal` + 两个渲染端文案 + locale），可以随时插；③它和 1b~1g 同属一条主线 —— **上游拒绝之后怎么收场**：1b/c 管 400、1e/f 管别让脏数据出门，本条管 429 要按人家说的等。**排在这里而不是更早**的理由：它改的是 provider 重试判据（`ComputeDelayMs` 加参数），刀 1c / 1g 的回归基座必须在位，否则 429 分流一改会把 400 那条线的断言搅乱 |
 | 4 | S-243 **落地** | 照第 0 刀结论写；**不引入原生 WASAPI**，不通则麦克风先交付、系统音挂账 |
 | 5 | S-244 | 依赖 S-240，验证依赖 S-241；收口整条基座，用假插件跑通五条 |
-| 6 | S-247 | 内存治理第一步「看得见」；**消费形态已拍**：状态面板常驻数字 + 超阈值写日志，轮询 5 s |
+| 6 | S-247 | 内存治理第一步「看得见」；**消费形态已拍**：状态面板常驻数字 + 超阈值写日志，轮询 5 s。**落地时改为设置页「关于 → 资源与诊断」页签**（场景是事后复盘与用户报障，不是实时盯；采样与日志不依赖面板打开），理由见 `S-247.md` §9.2 |
 | 7 | S-260 | 随 S-247 同批；**已拍**：全局上限 2、满了拒绝新开并结构化告知 agent、**不做 LRU** |
 | 8 | S-248 | 纯渲染形态改造，与后端无关，独立一刀。**已拍**：`text` 档完全不渲染工具卡片、折叠保留、错误行红色 |
 | 9 | S-256 | 放最后是因为它牵动流式渲染主链路。**已拍**：允许改 `tests/streaming-render-pool/program.ts:57,68` 的「不设步长上限」契约，**且必须同刀修根因 B**（tail 永不 settle） |
@@ -177,7 +177,7 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 | 3b | S-269 | **代码 + 自动化回归已完成（2026-10-29 11:20）** —— ①`ProviderRetryPolicy.ComputeDelayMs` 提 `internal` + 加 `maxBackoffMs` 参数；②`ContextCompression` 新增 `SummaryFailureAction` / `SummaryFailurePolicy` / `ResolveSummaryFailurePolicy` 纯函数，`SummarizeAsync` 三个 `catch` 收成一个按 policy 分流（429/5xx 原样重发、只有 `context_length_exceeded` 才砍预算、真 400 直接放弃）；③非 2xx 改抛 `ProviderHttpException`，保住状态码与 `Retry-After`；④失败原因（`rate_limited` / `server_error` / `timeout` / `context_overflow` / `other`）透传进 `context_compressed` 事件，渲染端按档位给文案，不再一律说「摘要生成不可用」。新建 `SummarizerRetryChecks.cs`，**24 断言**锁判据 2/3/4/7。`npm test` 93/93。**判据 1（mock 端点看真实等待间隔）与判据 5 的真机部分待老大验**（见 S-269 §八） |
 | 4 | S-243 落地 | **代码 + 自动化回归已完成（2026-10-29 14:05）** —— 新增 4 个文件（`plugin-audio-wav` 纯 node 可测 / `plugin-audio` electron 侧 loopback 与落盘 / `plugin-audio-handlers` 四动作 + 分段广播 / 渲染端 `audio-recorder`），preload 挂 `window.api.audio`，四条通道进 MessagePack 白名单。`test:plugin-audio` **46 断言**（44 字节头逐字段、17 s 按 5 s 切段得 5/5/5/2、空录音不建文件、`segmentSeconds:0` 整段一文件）。`npm test` **94/94**。真机四条待验（麦克风 / 系统内录 / both 混音 / 电平），见 `S-243.md` §8.3 |
 | 5 | S-244 | **代码 + 自动化回归已完成（2026-10-29 15:10）** —— ①`extension:remove` 顺序钉死：停用收进程 → 关窗口 → 清 session 分区 → C# 删目录/state/KV；清理失败只回 `cleanupWarnings` 不影响卸载结果；②新增 `plugin-cleanup-rules`（id/分区名纯判据，与 C# 正则一字不差）+ `plugin-cleanup`（clearStorageData + clearCache + 删分区目录），`plugin-window.ts` 改为共用同一判据不再自己拼字面量；③安装前确认弹窗（读 `extension.json` 摘要 + 目录表体积 + 按 id 记住勾选）；④「已下载运行文件」独立清理区（单向删除 + 全部清理）。`test:plugin-cleanup` **96 断言**（含 19 个必须拒绝的 id）。`npm test` **95/95**。**纠 §3.2 旧结论**：KV/secret 其实 C# 早就清了，本号真正缺的只有 session 分区。真机八条待验（见 S-244 §8.5） |
-| 6 | S-247 | 待开工 |
+| 6 | S-247 | **代码 + 自动化回归已完成（2026-10-29 16:05）** —— `memory-shape`（纯函数：类型映射 / KB→字节 / 合计 / 阈值 / 告警去重）+ `memory-monitor`（`app.getAppMetrics()` + 早就存在但没人调的 `worker/memory`，5 s 采样、5 分钟落日志、超阈值 Warn 同 pid 10 分钟去重）+ `diagnostics:memory` 单动作 IPC + 设置页「关于 → 资源与诊断」页签。`test:memory-monitor` **36 断言**（钉单位 / 类型映射 / 阈值边界三类「不抛异常只会说谎」的坑）。`npm test` **96/96**。**一处偏差须老大确认**：plan §7 原拍「状态面板常驻数字」，实际做成设置页页签 —— 场景是事后复盘与用户报障，不是实时盯；采样与日志不依赖面板是否打开。`RuntimeStatusPanel` 占位原样未动。真机四条待验（见 `S-247.md` §9.5） |
 | 7 | S-260 | 待开工 |
 | 8 | S-248 | 待开工 |
 | 9 | S-256 | 待开工 |

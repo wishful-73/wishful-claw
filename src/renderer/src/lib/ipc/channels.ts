@@ -129,6 +129,7 @@ export const IPC = {
   PLUGIN_ASSET_VERIFY: 'plugin-asset:verify',
   PLUGIN_ASSET_REMOVE: 'plugin-asset:remove',
   PLUGIN_ASSET_PROGRESS: 'plugin-asset:progress',
+  DIAGNOSTICS_MEMORY: 'diagnostics:memory',
 
   // SOUL Market
   SOULS_BUILTIN_LIST: 'souls:builtin-list',

@@ -208,6 +208,8 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'plugin-audio:start',
   'plugin-audio:append',
   'plugin-audio:stop',
+  // 诊断（S-247）—— 内存快照，只读
+  'diagnostics:memory',
   'mcp:list',
   'mcp:add',
   'mcp:update',

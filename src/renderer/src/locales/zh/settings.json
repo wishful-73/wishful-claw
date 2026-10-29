@@ -111,6 +111,9 @@
     "logs": {
       "label": "日志"
     },
+    "diagnostics": {
+      "label": "资源与诊断"
+    },
     "usage": {
       "label": "用量统计",
       "desc": "按模型请求记录统计请求次数、token 与成本"
@@ -1987,6 +1990,27 @@
       "none": "没有需要清理的日志文件",
       "previewCleared": "当前预览的日志文件已被删除",
       "failed": "清理失败：{{error}}"
+    }
+  },
+  "diagnostics": {
+    "title": "资源与诊断",
+    "subtitle": "当前各进程的内存占用。每 5 秒刷新，同一批数字每 5 分钟写进日志。",
+    "refresh": "刷新",
+    "total": "合计工作集",
+    "capturedAt": "取样 {{time}}",
+    "loading": "正在读取…",
+    "colRole": "进程",
+    "colWorkingSet": "工作集",
+    "colPeak": "峰值",
+    "hint": "浏览器视图里的网页、以及显卡驱动自己占的内存不在这里 —— 那些由页面和系统决定。要复盘「什么时候开始涨」，请看日志里的 memory 行。",
+    "workerManaged": "托管堆 {{value}} · 堆 {{heap}} · 碎片 {{frag}}",
+    "kind": {
+      "main": "主进程",
+      "renderer": "渲染进程",
+      "gpu": "GPU",
+      "utility": "工具进程",
+      "other": "其它",
+      "worker": "Worker"
     }
   }
 }

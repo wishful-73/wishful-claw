@@ -500,3 +500,22 @@ OpenAI summarization HTTP TooManyRequests:
 
 **欠账**：判据 1~8 全在 UI 侧，要拿一个真插件目录走一遍；Windows 上 `clearStorageData` 之后删分区目录仍可能被 Electron 握住，已用 warning 兜底，若真机复现再补启动清扫。
 
+## 2026-10-29 16:05 · 刀 6 交付 —— S-247 内存观测「看得见」
+
+**只做观测，不做优化**（S-247 §7 一条没碰：不定时 GC、不杀渲染进程、不设上限）。
+
+**做了什么**（细节见 `S-247.md` §9）：
+
+- `app.getAppMetrics()` 一次拿全主 / 渲染 / GPU / utility —— 分别采样口径会不一致，越算越糊涂。Worker 走它早就写好、但全仓零调用的 `worker/memory`。
+- 5 s 采样、5 分钟落一组日志（`memory role=... pid=... ws=...MB`），单进程 ≥ 1.5 GB 或 Worker 托管堆 ≥ 800 MB 追加一条 `memory high`，同 pid 10 分钟去重 —— 去重不是省事，是不让「内存高」这种持续状态把 5 分钟一组的采样日志淹掉。
+- 设置页「关于 → 资源与诊断」：合计 / 取样时间 / 每进程一行 / Worker 托管堆·堆·碎片 / 超阈值标红。**只读**，没有「清理内存」按钮 —— 给按钮只会让人以为问题解决了。
+- 单位只换算一次：`getAppMetrics` 报 KB，`buildProcessRows` 换成字节，渲染端不再除一遍。两处换算就是两处可能写错。
+
+**一处偏差须老大确认**：plan §7 原拍「状态面板常驻数字」，落地做成设置页页签。理由：这条需求的场景是事后复盘与用户报障，不是实时盯；面板打开与否不影响采样与日志。`RuntimeStatusPanel` 占位原样未动。
+
+**测试**：新建 `tests/memory-monitor`，**36 条断言**。钉的不是「数字对不对」，是三类**不会抛异常只会说谎**的地方：KB→字节、`Browser` 才是主进程 / `Tab` 是渲染进程、告警阈值边界与去重窗口。`npm test` **96/96**（此前 95/95），`npm run typecheck` 0 错。
+
+**顺带记一笔**：`logger` 的 `source` 只允许 `main / renderer / worker / ipc`，最初写了 `memory` 直接被 typecheck 拒 —— 改成 `source=main` + 消息前缀 `memory`。
+
+**欠账**：真机四条待验（面板数字会动 / Worker 三数齐全 / 日志有 memory 行 / 截图可定位进程），见 `S-247.md` §9.5。
+

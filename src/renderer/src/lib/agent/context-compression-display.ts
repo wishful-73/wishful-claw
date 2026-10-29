@@ -6,7 +6,7 @@
 //      这段逻辑全是字符串处理，跟 IPC 毫无关系，拆出来直接 `import` 就能断言。
 //   2. **有 bug 需要锁**：S-208 的快照剥离第一版是「按空行切块 + 逐块看前缀」，
 //      用户原话里一有空行就会漏字（见 stripLatestUserSnapshot 注释）。
-import type { UnifiedMessage } from '../api/types'
+import type { SummarizerFailureReason, UnifiedMessage } from '../api/types'
 import { LEGACY_SUMMARY_PREFIXES } from './context-compression-config'
 
 // ── 摘要消息识别 ──
@@ -132,6 +132,81 @@ function stripLatestUserSnapshot(text: string): string {
     return text
   }
   return head.slice(at + LATEST_USER_SNAPSHOT_TERMINATOR.length).trim()
+}
+
+/**
+ * S-269：摘要降级的文案分档。
+ *
+ * 「摘要生成不可用」在渠道限流时是**错误结论** —— 摘要器本身好好的，是上游用
+ * 429 把我们挡回来了（实测原文 `retry shortly (after 29 s)`）。这里按 worker 带回
+ * 来的 reason 选文案，认不出的才落回兜底那句。
+ *
+ * 返回 key + 英文 defaultValue，调用方直接丢给 `t()`，与项目里其它 i18n 文案同构。
+ */
+export function getSummarizerFallbackCopy(
+  reason: SummarizerFailureReason | null | undefined
+): { key: string; defaultValue: string } {
+  switch (reason) {
+    case 'rate_limited':
+      return {
+        key: 'contextCompression.summarizerRateLimited',
+        defaultValue:
+          'Provider is rate-limiting this channel; fallback summary used and the summarizer will retry later'
+      }
+    case 'server_error':
+      return {
+        key: 'contextCompression.summarizerServerError',
+        defaultValue: 'Provider is temporarily unavailable; fallback summary used'
+      }
+    case 'timeout':
+      return {
+        key: 'contextCompression.summarizerTimeout',
+        defaultValue: 'Summarizer timed out; fallback summary used'
+      }
+    case 'context_overflow':
+      return {
+        key: 'contextCompression.summarizerContextOverflow',
+        defaultValue: 'Folded context exceeded the summarizer window; fallback summary used'
+      }
+    default:
+      return {
+        key: 'contextCompression.summarizerFailed',
+        defaultValue: 'Fallback summary used (summarizer unavailable)'
+      }
+  }
+}
+
+/**
+ * S-269：具体原因短句。只在能识别出原因时返回 —— 认不出就返回 null，让调用方
+ * 不要再补一句「摘要不可用」与主警告重复。
+ */
+export function getSummarizerFailureReasonCopy(
+  reason: SummarizerFailureReason | null | undefined
+): { key: string; defaultValue: string } | null {
+  switch (reason) {
+    case 'rate_limited':
+      return {
+        key: 'contextCompression.summarizerReasonRateLimited',
+        defaultValue: 'Cause: channel rate limit — the summarizer retries on its own'
+      }
+    case 'server_error':
+      return {
+        key: 'contextCompression.summarizerReasonServerError',
+        defaultValue: 'Cause: provider temporarily unavailable'
+      }
+    case 'timeout':
+      return {
+        key: 'contextCompression.summarizerReasonTimeout',
+        defaultValue: 'Cause: summarizer request timed out'
+      }
+    case 'context_overflow':
+      return {
+        key: 'contextCompression.summarizerReasonContextOverflow',
+        defaultValue: 'Cause: folded context exceeded the summarizer window'
+      }
+    default:
+      return null
+  }
 }
 
 /**

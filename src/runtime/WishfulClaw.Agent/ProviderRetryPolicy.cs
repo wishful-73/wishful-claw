@@ -251,17 +251,26 @@ public static partial class ProviderRetryPolicy
     /// Attempt 1: 500ms + jitter(0-250ms) = 500-750ms
     /// Attempt 2: 1000ms + jitter = 1000-1250ms
     /// Attempt 3: 2000ms + jitter = 2000-2250ms
-    /// ...capped at MaxBackoffMs (15s).
-    /// If Retry-After is provided, it takes precedence (capped at MaxRetryAfterMs).
+    /// ...capped at <paramref name="maxBackoffMs"/> (default MaxBackoffMs = 15s).
+    /// If Retry-After is provided, it takes precedence (capped at MaxRetryAfterMs,
+    /// then again at <paramref name="maxBackoffMs"/>).
     /// Attempts beyond SlowRetryThreshold retry at a fixed 1-minute interval.
     /// </summary>
-    private static int ComputeDelayMs(int attempt, TimeSpan? retryAfter)
+    /// <remarks>
+    /// S-269: the ceiling is a parameter because the 15 s default is tuned for the
+    /// main provider turn (10 attempts, so clamping a 29 s Retry-After to 15 s still
+    /// gets several shots). The summarizer only gets 3 attempts — clamping there
+    /// means every retry lands inside the same admission window and the whole pass
+    /// degrades to a mechanical fold. Pass a larger ceiling when the caller has few
+    /// attempts to spend.
+    /// </remarks>
+    internal static int ComputeDelayMs(int attempt, TimeSpan? retryAfter, int maxBackoffMs = MaxBackoffMs)
     {
         // Honor Retry-After header if present
         if (retryAfter is { } ra)
         {
             var raMs = (int)Math.Clamp(ra.TotalMilliseconds, 0, MaxRetryAfterMs);
-            if (raMs > 0) return Math.Min(raMs, MaxBackoffMs);
+            if (raMs > 0) return Math.Min(raMs, maxBackoffMs);
         }
 
         // Beyond SlowRetryThreshold the provider is rate-limiting on its own

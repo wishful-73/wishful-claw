@@ -101,6 +101,10 @@ internal static partial class AgentLoop
             var newConversation = outcome.Conversation;
             var newWireConversation = outcome.WireConversation;
             var summarizerFailed = outcome.SummarizerFailed;
+            // S-269: carry *why* the summarizer fell back, so the renderer can say
+            // "the channel is throttling us" instead of "the summarizer is unavailable".
+            var summarizerFailureReason = outcome.SummarizerFailureReason;
+            var summarizerFailureDetail = outcome.SummarizerFailureDetail;
             var messagesSummarized = outcome.MessagesSummarized;
             var compactArtifacts = ContextCompression.BuildCompactArtifacts(outcome, "auto", preTokens);
             // S-95: "did it shrink?" is measured in tokens, not message count — folding two
@@ -186,11 +190,16 @@ internal static partial class AgentLoop
                     EstimatedNewTokens: ContextCompression.EstimateMessagesTokens(newConversation),
                     SummarizerFailed: summarizerFailed,
                     MessagesSummarized: messagesSummarized > 0 ? messagesSummarized : null,
+                    // S-269: reason + upstream detail reach the renderer, so the fallback
+                    // banner can name the real cause instead of blaming the summarizer.
+                    SummarizerFailureReason: summarizerFailed ? summarizerFailureReason : null,
+                    CompressionError: summarizerFailed ? summarizerFailureDetail : null,
                     CompactArtifacts: compactArtifacts));
             WorkerLog.Info(
                 $"agent context compression runId={state.RunId} " +
                 $"original={originalCount} compressed={newWireConversation.Count} " +
-                $"summarizerFailed={summarizerFailed}");
+                $"summarizerFailed={summarizerFailed}" +
+                (summarizerFailed ? $" reason={summarizerFailureReason ?? "unknown"}" : string.Empty));
             return new LoopCompressionAttempt(
                 LoopCompressionStatus.Compressed,
                 conversation,

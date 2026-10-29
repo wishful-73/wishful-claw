@@ -7,6 +7,7 @@ import {
   getCompactSummaryDisplayText,
   isCompactSummaryLikeMessage
 } from '@renderer/lib/agent/context-compression'
+import { getSummarizerFailureReasonCopy } from '@renderer/lib/agent/context-compression-display'
 import { formatChatTime } from '@renderer/lib/utils/chat-time'
 import {
   MARKDOWN_REHYPE_PLUGINS,
@@ -91,6 +92,10 @@ export function ContextCompressionMessage({
   if (!content) return null
 
   const meta = effectiveMessage.meta?.compactSummary
+  // S-269: 识别得出原因时补一句实话，认不出就不补（免得与主警告重复）。
+  const summarizerReasonCopy = meta?.summarizerFailed
+    ? getSummarizerFailureReasonCopy(meta.summarizerFailureReason)
+    : null
   const effectiveBoundary = boundary ?? effectiveMessage.meta?.compactBoundary
   const effectiveTrigger = trigger ?? effectiveBoundary?.trigger ?? 'auto'
   const summarizedCount = effectiveBoundary?.messagesSummarized ?? meta?.messagesSummarized ?? 0
@@ -144,11 +149,19 @@ export function ContextCompressionMessage({
         <div className="h-px flex-1 bg-gradient-to-l from-transparent to-amber-500/40" />
       </div>
       {meta?.summarizerFailed ? (
-        <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-amber-700 dark:text-amber-300">
-          <AlertTriangle className="size-3" />
-          {t('contextCompression.summaryFallbackWarning', {
-            defaultValue: 'Summary generation failed; fallback summary used and context remains compressed'
-          })}
+        <div className="mt-2 flex flex-col items-center gap-1 text-[10px] text-amber-700 dark:text-amber-300">
+          <div className="flex items-center justify-center gap-1">
+            <AlertTriangle className="size-3" />
+            {t('contextCompression.summaryFallbackWarning', {
+              defaultValue:
+                'Summary generation failed; fallback summary used and context remains compressed'
+            })}
+          </div>
+          {summarizerReasonCopy ? (
+            <span className="text-muted-foreground">
+              {t(summarizerReasonCopy.key, { defaultValue: summarizerReasonCopy.defaultValue })}
+            </span>
+          ) : null}
         </div>
       ) : null}
       {expanded ? (

@@ -410,3 +410,58 @@ S-261 验收清单第 3 条要求拿 `2026-10-28-请求错误导出.txt` 的 18 
 ### 五、真机待验
 
 `S-242.md` §5.1 九条对应表。两条主动挂账：**插件视图内的空状态（§4.6 层 3）** 与 **装插件那一刻的体积提示（层 2，属 S-244 安装确认弹窗）** —— 前者要等有真插件视图，后者要等 S-244 那刀。
+## 2026-10-29 11:02 · 登记 S-269 —— 摘要请求 429 重试窗口错配
+
+> 老大原话：「多次压缩的时候压缩失败了，摘要生成失败，已使用回退摘要 —— 这个是什么原因呢」。**本轮只登记，不动代码。**
+
+### 一、根因（日志坐实，不是推断）
+
+生产实例 `~/.wishful-claw/logs/` 五波失败（10-28 20:31 / 10-29 09:25 / 10:08 / 10:24 / 10:42）全是同一条：
+
+```
+OpenAI summarization HTTP TooManyRequests:
+{"error":{"message":"Upstream request failed: [ttft_admission_refused]
+  the cell is at capacity; retry shortly (after 29 s)"}}
+```
+
+上游是**容量准入拒绝**，明确说了等 3~39 秒。而 `ContextCompression.cs:598-601` 的退避是 `1500ms * (1 << attempt)` ⇒ 1.5s / 3s，三次尝试写入时间 `10:08:20 → 10:08:22 → 10:08:26`，**整根重试链只活 6 秒**，全部落在同一个拒绝窗口 ⇒ 等于一次都没真正重试。
+
+### 二、为什么这场失败会被翻译成「摘要器不可用」
+
+三次失败 ⇒ `MechanicalFoldDigest` 零信息占位 ⇒ `AgentLoop.ContextCompression.cs:115-123` 再截断并置 `SummarizerFailed` ⇒ 渲染端 `contextCompression.summarizerFailed` = 「摘要生成不可用，已使用回退摘要」。**用户拿到的结论是错的**：摘要器好好的，渠道在限流。
+
+### 三、一处自我更正（先说清楚，免得后面跟着错）
+
+我先前说「truncate 路径不打水印 ⇒ 几分钟重来一遍」，**读错了**：`AgentLoop.ContextCompression.cs:172` 的 `ResetCompactionWatermark` 对两条路径都执行。10:08 / 10:24 / 10:42 三波是会话在 135k~143k tokens 区间持续增长、反复顶到 144k 触发线，**不是水印缺陷**。S-269 **不含**水印改动。
+
+### 四、五条修法（同刀）
+
+| # | 做什么 | 为什么 |
+|---|---|---|
+| A | 摘要调用非 2xx 改抛 `ProviderHttpException` | 该类早就带 `StatusCode` + `RetryAfter`（`ProviderRetryPolicy.cs:20-49`），现在却被丢掉 |
+| B | `ComputeDelayMs` 提到 `internal` 并加 `maxBackoffMs` 参数 | 现有 `Math.Min(raMs, MaxBackoffMs)` 会把「等 29 秒」压成 15 秒，3 次机会不够覆盖 |
+| C | 按失败类型分流：429/5xx 重试且**不砍预算**；context-window 超限才递减；真 400 不重试 | 递减 400k→200k→100k 是为输入超长设计的，对限流毫无意义 |
+| D | 降级文案按原因分档（限流 / 超时 / 其它） | 「摘要器不可用」是错误结论 |
+| E | 原因透传进 `CompressionError` | 渲染端全仓 grep `compressionError` **零命中**，故障原因从没到过用户眼前 |
+
+**核心判断：不造第二套退避。** 摘要请求是整条 provider 调用链里唯一绕开 `ProviderRetryPolicy` 的地方，而那边的判据（429/≥500、honor `Retry-After`、指数退避 + jitter）都是现成的。
+
+### 五、文档落点
+
+`requirements/S-269.md`（新建）/ `plan.md` §2.4 + §七 刀序 3b + §7.1（承接 **15 → 16**）/ `raw-requirements.md` §一二。
+
+## 2026-10-29 11:20 · 刀 3b 交付 —— S-269 摘要请求按上游要求等
+
+**改了什么**（细节见 `S-269.md` §八）：
+
+- `ProviderRetryPolicy.ComputeDelayMs` 提 `internal` + 新增 `maxBackoffMs` 参数（默认仍 15 s，主 turn 零变化）；摘要侧传 45 s，`Retry-After: 29` 不再被压成 15 s。
+- `ContextCompression` 新增三个类型：`SummaryFailureAction`、`SummaryFailurePolicy`、`ResolveSummaryFailurePolicy(Exception)`。`SummarizeAsync` 原来三个 `catch` 收成一个，按 policy 分流 —— **429 原样重发并按上游时间等**，只有 `context_length_exceeded` 才砍预算，真 400 一次都不重试。
+- 非 2xx 从裸 `InvalidOperationException` 改抛 `ProviderHttpException.CreateAsync(...)`，状态码与 `Retry-After` 一起带走。
+- 失败原因（`rate_limited` / `server_error` / `timeout` / `context_overflow` / `empty_output` / `other`）经 `context_compressed` 事件到渲染端，文案按档位分：限流就说「服务商繁忙」，不再一律说「摘要生成不可用」。
+- 日志统一成 `attempt failed attempt=N action=X reason=Y budget=Z error=…`，一行看全判定。
+
+**为什么「抽纯函数」不算加戏**：判据 7 明确要求「覆盖判据 1~4 的纯函数部分（退避计算 / 重试分类 / 预算不递减）」。分类散在三个 `catch when` 过滤器里，测试根本够不着；收成一个返回 policy 的函数后，`ShrinkBudget` 成了唯一动输入的 action，于是「429 的 action ≠ ShrinkBudget」这一条断言就等价于「限流不砍预算」，比 mock 一整个 HTTP 端点便宜也稳。
+
+**测试**：新建 `tests/WishfulClaw.CompactionSnapshotRegressionTests/SummarizerRetryChecks.cs`，24 条断言。`npm run typecheck` 0 错、`npm test` **93/93**、`dotnet build WishfulClaw.Agent.csproj` 0 警告 0 错误。
+
+**欠账**：判据 1 要一个恒返 429 + `Retry-After: 3` 的 mock 端点看真实间隔，判据 5 要在真会话里看「服务商繁忙」文案 —— 两条都等老大真机；`ContextCompression.cs` 的 500 行豁免头已按规矩重盖时间戳与行数（1108，2026-10-29），不重新审。

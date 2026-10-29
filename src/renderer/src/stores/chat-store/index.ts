@@ -738,6 +738,14 @@ export const useChatStore = create<ChatStore>()(
             estimatedNewTokens?: number
             compressionStatus?: 'compressed' | 'skipped' | 'failed' | 'blocked' | 'cancelled'
             summarizerFailed?: boolean
+            /** S-269: worker-side fallback reason, mirrored from the stream event. */
+            summarizerFailureReason?:
+              | 'rate_limited'
+              | 'server_error'
+              | 'timeout'
+              | 'context_overflow'
+              | 'empty_output'
+              | 'other'
             messagesSummarized?: number
             error?: string
             compactArtifacts?: UnifiedMessage[]
@@ -807,6 +815,9 @@ export const useChatStore = create<ChatStore>()(
                 ? { messagesSummarized: compressionEvent.messagesSummarized }
                 : {}),
               ...(compressionEvent.summarizerFailed ? { summarizerFailed: true } : {}),
+              ...(compressionEvent.summarizerFailureReason
+                ? { summarizerFailureReason: compressionEvent.summarizerFailureReason }
+                : {}),
               ...(compressionEvent.error ? { error: compressionEvent.error } : {}),
               ...(summaryText ? { summaryText } : {}),
               ...(summaryArtifact ? { summaryMessageId: summaryArtifact.id } : {}),

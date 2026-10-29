@@ -5,7 +5,10 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
-// 500-line exemption (line count per this file as of 2026-10-28, down from earlier S-208's snapshot
+// 500-line exemption (line count 1108 as of 2026-10-29, up from 2026-10-28 because S-269
+// added the summarizer failure policy next to its retry loop; the exemption is re-stamped
+// rather than re-reviewed, per the standing rule — treat the current file length as
+// authoritative). Down from earlier S-208's snapshot
 // logic moved to ContextCompression.UserSnapshot.cs). What is left is the compression
 // pipeline itself and its invariants: PlanCompaction → PartitionFold → SummarizeAsync →
 // MechanicalFold → Replace, plus the usage-stripping rules that keep every wire entry's
@@ -68,8 +71,90 @@ public static partial class ContextCompression
     private const double PinnedFirstUserWindowFrac = 0.15;
     private const int SummaryInputBaseCharBudget = 400_000;
     private const int SummaryMaxAttempts = 3;
-    private const int SummaryRetryDelayMs = 1_500;
     private const int SummaryMaxOutputTokens = 8_192;
+
+    // S-269: the summarizer honours Retry-After, but with its own ceiling. The shared
+    // ProviderRetryPolicy cap is 15 s, tuned for the 10-attempt main provider turn —
+    // clamping a 29 s Retry-After to 15 s there still leaves several shots. The
+    // summarizer only gets 3, so clamping means every retry lands inside the same
+    // upstream admission window and the whole pass degrades to a mechanical fold.
+    // internal 是为可测：回归套件要断言摘要器的上限确实高于主 turn 的 15 s。
+    internal const int SummaryMaxBackoffMs = 45_000;
+
+    // S-269: upstream can answer "retry shortly (after N s)" in the body with no
+    // Retry-After header — `ttft_admission_refused` does exactly that. 30 s sits in
+    // the middle of the observed 3~39 s spread; the old fixed 1.5 s burned all three
+    // attempts inside one window.
+    internal const int SummaryRateLimitFallbackMs = 30_000;
+
+    // S-269 failure reasons, carried to the renderer so the fallback can say *why*
+    // instead of claiming the summarizer is unavailable when the channel is throttling.
+    internal const string SummarizerFailureRateLimited = "rate_limited";
+    internal const string SummarizerFailureServerError = "server_error";
+    internal const string SummarizerFailureTimeout = "timeout";
+    internal const string SummarizerFailureContextOverflow = "context_overflow";
+    internal const string SummarizerFailureEmptyOutput = "empty_output";
+    internal const string SummarizerFailureOther = "other";
+
+    /// <summary>
+    /// S-269: what a failed summarizer attempt means — wait and resend, shrink the
+    /// input, retry quickly, or give up.
+    /// </summary>
+    internal enum SummaryFailureAction
+    {
+        /// <summary>429 / 5xx: honour the upstream's own schedule, resend the same payload.</summary>
+        WaitUpstream,
+        /// <summary>Genuine context-window overflow: shrink the input, retry at once.</summary>
+        ShrinkBudget,
+        /// <summary>Empty output or timeout: short backoff, same payload — the provider hiccupped.</summary>
+        RetryShortly,
+        /// <summary>Real 400 / unparseable body / unsupported provider: resending cannot help.</summary>
+        GiveUp
+    }
+
+    /// <summary>S-269: the decision <see cref="ResolveSummaryFailurePolicy"/> reaches for one failure.</summary>
+    internal readonly record struct SummaryFailurePolicy(
+        SummaryFailureAction Action,
+        string Reason,
+        string? Detail,
+        TimeSpan? Wait = null);
+
+    /// <summary>
+    /// S-269: the single place that maps an exception to a retry decision. Pulled out of
+    /// <see cref="SummarizeAsync"/> so the regression suite can assert the mapping —
+    /// above all that a 429 never shrinks the input budget and a real 400 is never
+    /// retried — without standing up an HTTP mock.
+    /// </summary>
+    internal static SummaryFailurePolicy ResolveSummaryFailurePolicy(Exception ex)
+    {
+        // Checked first: a rate-limited request must keep its payload. Shrinking the
+        // input on a 429 throws away the very attempt the upstream just asked us to
+        // repeat, and used to burn all three shots inside one admission window.
+        if (ex is ProviderHttpException httpEx && ProviderRetryPolicy.IsRetryableStatus(httpEx.StatusCode))
+        {
+            return new SummaryFailurePolicy(
+                SummaryFailureAction.WaitUpstream,
+                httpEx.StatusCode == 429 ? SummarizerFailureRateLimited : SummarizerFailureServerError,
+                TruncateDetail(httpEx.Message),
+                httpEx.RetryAfter ?? TimeSpan.FromMilliseconds(SummaryRateLimitFallbackMs));
+        }
+
+        // Genuine input-too-long: this is what the decreasing budget was designed for.
+        // An overflow usually arrives as a 400, which IsRetryableStatus already refuses,
+        // so the two branches never compete.
+        if (IsContextWindowExceededError(ex))
+        {
+            return new SummaryFailurePolicy(
+                SummaryFailureAction.ShrinkBudget,
+                SummarizerFailureContextOverflow,
+                TruncateDetail(ex.Message));
+        }
+
+        return new SummaryFailurePolicy(
+            SummaryFailureAction.GiveUp,
+            SummarizerFailureOther,
+            TruncateDetail($"{ex.GetType().Name}: {ex.Message}"));
+    }
 
     // Long summaries routinely exceed two minutes, so the wait window matches the
     // OpenCowork bound; the HttpClient timeout stays slightly above it so the CTS —
@@ -120,7 +205,9 @@ public static partial class ContextCompression
         bool SummarizerFailed,
         int MessagesSummarized,
         int OriginalCount,
-        string? SummaryMessageId);
+        string? SummaryMessageId,
+        string? SummarizerFailureReason = null,
+        string? SummarizerFailureDetail = null);
 
     /// <summary>
     /// Compacts the conversation: summarizes the foldable middle, keeps pinned prefix and recent tail.
@@ -164,10 +251,14 @@ public static partial class ContextCompression
 
         // Summarize the foldable region
         string summary;
-        var summarizerFailed = false;
+        string? summarizerFailure = null;
+        string? summarizerFailureDetail = null;
         try
         {
-            summary = await SummarizeAsync(fold, provider, context, cancellationToken, sessionId, onSummaryDelta);
+            var result = await SummarizeAsync(fold, provider, context, cancellationToken, sessionId, onSummaryDelta);
+            summary = result.Summary ?? MechanicalFoldDigest(fold.Count);
+            summarizerFailure = result.FailureReason;
+            summarizerFailureDetail = result.FailureDetail;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -177,14 +268,17 @@ public static partial class ContextCompression
             // (token requested) is rethrown below.
             WorkerLog.Warn("context compression summarization timed out; falling back to mechanical fold");
             summary = MechanicalFoldDigest(fold.Count);
-            summarizerFailed = true;
+            summarizerFailure = SummarizerFailureTimeout;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            WorkerLog.Warn($"context compression LLM summarization failed after all input budgets: {ex.GetType().Name}: {ex.Message}");
+            WorkerLog.Warn($"context compression LLM summarization failed unexpectedly: {ex.GetType().Name}: {ex.Message}");
             summary = MechanicalFoldDigest(fold.Count);
-            summarizerFailed = true;
+            summarizerFailure = SummarizerFailureOther;
+            summarizerFailureDetail = $"{ex.GetType().Name}: {ex.Message}";
         }
+
+        var summarizerFailed = summarizerFailure is not null;
 
         // Build the compacted conversation
         var newConversation = new List<AgentRuntimeChatMessage>();
@@ -268,7 +362,8 @@ public static partial class ContextCompression
         WorkerLog.Info(
             $"context compression completed: original={conversation.Count} " +
             $"folded={fold.Count} kept={survivors} summary={summary.Length}chars " +
-            $"result={newConversation.Count} summarizerFailed={summarizerFailed}");
+            $"result={newConversation.Count} summarizerFailed={summarizerFailed}" +
+            (summarizerFailure is null ? string.Empty : $" reason={summarizerFailure}"));
 
         return new CompactionOutcome(
             newConversation,
@@ -277,7 +372,9 @@ public static partial class ContextCompression
             summarizerFailed,
             fold.Count,
             originalCount,
-            summaryMessageId);
+            summaryMessageId,
+            summarizerFailure,
+            summarizerFailureDetail);
     }
 
     // S-208 的「用户末条消息快照」在 ContextCompression.UserSnapshot.cs（分部类）。
@@ -531,9 +628,29 @@ public static partial class ContextCompression
     // ── Summarization ──
 
     /// <summary>
+    /// Outcome of one summarization pass. <c>Summary</c> is null when every attempt
+    /// failed; <c>FailureReason</c> then carries one of the SummarizerFailure* tokens so
+    /// the caller can tell "the channel throttled us" apart from "the summarizer is
+    /// broken" — the fallback copy used to claim the latter for both (S-269).
+    /// </summary>
+    private sealed record SummaryAttemptResult(string? Summary, string? FailureReason, string? FailureDetail);
+
+    /// <summary>
     /// Calls the provider's LLM (no tools) to distill the foldable region into a structured briefing.
     /// </summary>
-    private static async Task<string> SummarizeAsync(
+    /// <remarks>
+    /// S-269: the retry loop used to treat every failure the same — fixed 1.5 s / 3 s
+    /// backoff plus a smaller input budget each round. Against a 429 that is exactly
+    /// backwards: the upstream said "retry shortly (after 29 s)" and we came back 1.5 s
+    /// later with a *different* payload, burning all three attempts inside one admission
+    /// window. Now each failure class picks its own response:
+    /// · 429 / 5xx → wait what the upstream asked for (Retry-After, 30 s fallback), same payload
+    /// · context-window overflow → shrink the input, retry immediately (that is what the
+    ///   shrinking was for in the first place)
+    /// · empty output → short backoff and retry (provider hiccup)
+    /// · everything else (real 400, unparseable body) → stop, the same request will fail again
+    /// </remarks>
+    private static async Task<SummaryAttemptResult> SummarizeAsync(
         List<AgentRuntimeChatMessage> fold,
         JsonElement provider,
         IWorkerRequestContext context,
@@ -542,12 +659,14 @@ public static partial class ContextCompression
         Func<string, ValueTask>? onSummaryDelta)
     {
         var providerType = JsonHelpers.GetString(provider, "type") ?? string.Empty;
-        Exception? lastError = null;
+        var budgetShift = 0; // only context-window overflow shrinks the input
+        string? lastReason = null;
+        string? lastDetail = null;
 
         for (var attempt = 0; attempt < SummaryMaxAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var charBudget = SummaryInputBaseCharBudget >> attempt;
+            var charBudget = SummaryInputBaseCharBudget >> Math.Min(budgetShift, 12);
             var requestBody = BuildSummaryRequestBody(fold, charBudget);
             var attemptDeltas = onSummaryDelta is null ? null : new List<string>();
             Func<string, ValueTask>? attemptDelta = onSummaryDelta is null
@@ -557,6 +676,8 @@ public static partial class ContextCompression
                     attemptDeltas!.Add(text);
                     return ValueTask.CompletedTask;
                 };
+            var delayMs = 0;
+
             try
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -569,40 +690,78 @@ public static partial class ContextCompression
                     _ => throw new InvalidOperationException($"Unsupported provider for summarization: {providerType}")
                 };
 
-                if (string.IsNullOrWhiteSpace(summary))
-                    throw new InvalidOperationException("Summarizer returned empty output");
-
-                if (onSummaryDelta is not null && attemptDeltas is not null)
+                if (!string.IsNullOrWhiteSpace(summary))
                 {
-                    foreach (var delta in attemptDeltas)
+                    if (onSummaryDelta is not null && attemptDeltas is not null)
                     {
-                        await onSummaryDelta(delta);
+                        foreach (var delta in attemptDeltas)
+                        {
+                            await onSummaryDelta(delta);
+                        }
                     }
+
+                    return new SummaryAttemptResult(summary.Trim(), null, null);
                 }
 
-                return summary.Trim();
+                lastReason = SummarizerFailureEmptyOutput;
+                lastDetail = "summarizer returned empty output";
+                delayMs = ProviderRetryPolicy.ComputeDelayMs(attempt + 1, null, SummaryMaxBackoffMs);
+                WorkerLog.Warn($"context compression attempt returned empty output attempt={attempt + 1} budget={charBudget}");
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                lastError = new TimeoutException($"Context compression summarizer timed out at input budget {charBudget} characters.");
+                lastReason = SummarizerFailureTimeout;
+                lastDetail = $"summarizer timed out at input budget {charBudget} characters";
+                delayMs = ProviderRetryPolicy.ComputeDelayMs(attempt + 1, null, SummaryMaxBackoffMs);
                 WorkerLog.Warn($"context compression attempt timed out attempt={attempt + 1} inputChars={requestBody.Length}");
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                lastError = ex;
+                var policy = ResolveSummaryFailurePolicy(ex);
+                lastReason = policy.Reason;
+                lastDetail = policy.Detail;
                 WorkerLog.Warn(
-                    $"context compression attempt failed attempt={attempt + 1} budget={charBudget} " +
-                    $"overflow={IsContextWindowExceededError(ex)} error={ex.GetType().Name}: {ex.Message}");
+                    $"context compression attempt failed attempt={attempt + 1} action={policy.Action} " +
+                    $"reason={policy.Reason} budget={charBudget} " +
+                    $"error={ex.GetType().Name}: {ex.Message}");
+
+                switch (policy.Action)
+                {
+                    case SummaryFailureAction.GiveUp:
+                        return new SummaryAttemptResult(null, policy.Reason, policy.Detail);
+                    case SummaryFailureAction.ShrinkBudget:
+                        budgetShift++;
+                        delayMs = 0;
+                        break;
+                    case SummaryFailureAction.WaitUpstream:
+                        delayMs = ProviderRetryPolicy.ComputeDelayMs(
+                            attempt + 1,
+                            policy.Wait ?? TimeSpan.FromMilliseconds(SummaryRateLimitFallbackMs),
+                            SummaryMaxBackoffMs);
+                        break;
+                    default:
+                        delayMs = ProviderRetryPolicy.ComputeDelayMs(attempt + 1, null, SummaryMaxBackoffMs);
+                        break;
+                }
             }
 
-            if (attempt + 1 < SummaryMaxAttempts &&
-                (lastError is null || !IsContextWindowExceededError(lastError)))
+            if (attempt + 1 < SummaryMaxAttempts)
             {
-                await Task.Delay(SummaryRetryDelayMs * (1 << attempt), cancellationToken);
+                await Task.Delay(delayMs, cancellationToken);
             }
         }
 
-        throw lastError ?? new InvalidOperationException("Summarizer returned empty output");
+        WorkerLog.Warn(
+            $"context compression LLM summarization failed after {SummaryMaxAttempts} attempts " +
+            $"reason={lastReason ?? SummarizerFailureOther} detail={lastDetail}");
+        return new SummaryAttemptResult(null, lastReason ?? SummarizerFailureOther, lastDetail);
+    }
+
+    private static string TruncateDetail(string? detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail)) return string.Empty;
+        var trimmed = detail.Trim();
+        return trimmed.Length <= 300 ? trimmed : trimmed[..300] + "…";
     }
 
     /// <summary>
@@ -708,8 +867,11 @@ public static partial class ContextCompression
             ct);
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException($"Anthropic summarization HTTP {response.StatusCode}: {errorBody}");
+            // S-269: throw the typed exception so the retry loop can see the status code
+            // and the Retry-After header. The old plain InvalidOperationException threw
+            // both away, which is why a 429 with "retry after 29 s" looked exactly like a
+            // dead summarizer.
+            throw await ProviderHttpException.CreateAsync("Anthropic summarization", response, ct);
         }
 
         if (onSummaryDelta is null)
@@ -845,8 +1007,8 @@ public static partial class ContextCompression
             ct);
         if (!response.IsSuccessStatusCode)
         {
-            var errorBody = await response.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException($"OpenAI summarization HTTP {response.StatusCode}: {errorBody}");
+            // S-269: see the Anthropic counterpart — keep the status code and Retry-After.
+            throw await ProviderHttpException.CreateAsync("OpenAI summarization", response, ct);
         }
 
         if (onSummaryDelta is null)

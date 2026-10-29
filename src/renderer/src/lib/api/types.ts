@@ -281,6 +281,8 @@ export interface CompactSummaryMeta {
   operationId?: string
   /** True when the LLM summarizer failed and a mechanical fallback digest was used. */
   summarizerFailed?: boolean
+  /** S-269: why it failed — drives which fallback banner the chat renders. */
+  summarizerFailureReason?: SummarizerFailureReason
   /**
    * S-208：压缩落刀的时刻（epoch ms），与正文里「【压缩时刻 · …】」那行同源。
    * 正文是发给模型的拼接结果，这几个字段才是给显示层的结构化数据。
@@ -316,6 +318,23 @@ export type CompressionStatusState =
   | 'blocked'
   | 'cancelled'
 
+/**
+ * S-269: why the summarizer fell back to a mechanical digest.
+ *
+ * Mirrors the `SummarizerFailureReason` field on the worker's `context_compressed`
+ * event. `rate_limited` and `server_error` mean the provider refused the request
+ * (429 / 5xx) — the summarizer itself is fine, so the UI must not claim it is
+ * unavailable. `context_overflow` means the folded region was too large; the rest
+ * are genuine summarizer-side failures.
+ */
+export type SummarizerFailureReason =
+  | 'rate_limited'
+  | 'server_error'
+  | 'timeout'
+  | 'context_overflow'
+  | 'empty_output'
+  | 'other'
+
 export interface CompressionStatusMeta {
   /** Stable key shared by started and terminal updates for one compression operation. */
   operationId?: string
@@ -332,6 +351,8 @@ export interface CompressionStatusMeta {
   messagesSummarized?: number
   /** True when the LLM summarizer failed and a mechanical fallback digest was used. */
   summarizerFailed?: boolean
+  /** S-269: why it failed — drives which fallback banner the chat renders. */
+  summarizerFailureReason?: SummarizerFailureReason
   /** Final safe error/reason shown for failed, blocked, skipped, or cancelled operations. */
   error?: string
   /** Complete summary text copied from the compact summary artifact for card expansion. */

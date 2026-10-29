@@ -9,6 +9,7 @@
 > 追加（2026-10-29 09:07）：**登记 S-263**（侧栏收起即崩，hooks 排在 early return 之后，S-240 回归），承接条数 **11 → 12**，插入为刀 **1d**。
 > 追加（2026-10-29 09:32）：**登记 S-264**（脏图源头治理 —— 宁可标读图失败，也不把脏图送上上游），承接条数 **12 → 13**，插入为刀 **1e**，**发布前必须做完**（它同时消掉「一张脏图把模型永久标瞎」这个不可逆副作用）；同批**登记 S-265**（裸 body 400 归因不明）**移交下迭代**，不占承接、不占刀序，见 §2.5。
 > 追加（2026-10-29 10:40）：**dev 第 6 轮审查补正，插入刀 1g**。S-264 / S-266 判决「真机生效」，但有 3 件事必须回去补（① Responses 用户消息路径漏 url 闸；② 容器完整性只活在 Read 工具里；③ S-262 一次性消费没动），另加 1 个产品级缺陷。**登记 S-267**（截图成功但页面是白的）随本刀交付，承接条数 **14 → 15**；**登记 S-268**（`DesktopScreenshot` 的 `path` 无效）**移交下迭代**，不占承接、不占刀序，见 §2.5。
+> 追加（2026-10-29 11:02）：**登记 S-269**（摘要请求 429 重试窗口错配 ⇒ 降级成「摘要器不可用」），承接条数 **15 → 16**，插入为刀 **3b**（紧跟 S-242 之后）。生产实例日志坐实根因，不是猜的；**本迭代做**，理由见 §七 刀 3b。
 
 ## 一、从哪里来
 
@@ -32,9 +33,9 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 | S-260 | 内置浏览器保活池 —— 上限 2 个会话，满了要明确告诉 agent | **待开工**（2026-10-28 16:22 老大定「有两个活着就行了，要是能提示 agent 已经有两个是最好的」⇒ 顺延本迭代，随 S-247 内存治理同批。不是「限制功能」，是**给常驻资源划上限 + 让 agent 知道边界在哪**） | [S-260](../iter-v3-3/requirements/S-260.md) |
 
 > ⚠️ S-260 在 v3-iter-3 收尾的承接清单里**漏列过**（只写了 8 条），17:24 拆分支时补回。
-> **清单口径以本表为准：15 条承接**（9 条 + 20:40 登记的 S-261 + 29 日 08:24 登记的 S-262 + 29 日 09:07 登记的 S-263 + 29 日 09:32 登记的 S-264 + 29 日 09:50 登记的 S-266 + 29 日 10:40 登记的 S-267，见 §2.4）。
+> **清单口径以本表为准：16 条承接**（9 条 + 20:40 登记的 S-261 + 29 日 08:24 登记的 S-262 + 29 日 09:07 登记的 S-263 + 29 日 09:32 登记的 S-264 + 29 日 09:50 登记的 S-266 + 29 日 10:40 登记的 S-267 + 29 日 11:02 登记的 S-269，见 §2.4）。
 
-### 2.4 本迭代新登记（6 条）
+### 2.4 本迭代新登记（7 条）
 
 | 编号 | 标题 | 状态 | 明细 |
 |---|---|---|---|
@@ -44,6 +45,7 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 | S-264 | 脏图源头治理 —— 宁可标读图失败，也不把脏图送上上游 | **已交付（刀 1e + 刀 1g 收口）**，dev 第 6 轮**真机判决「生效」**：造 7 张坏图全拦住，仓里 40 张真图全量跑判据**零误杀**，8 轮截图读图 + 113k tokens 上下文 + 历史 8 张图，日志 `400 / unsupported image / image block dropped` 零命中。老大原话「读图工具如果读到没有图，可以直接标读图失败么？而不是把脏图丢上去」。**S-236 / S-246 / S-261 的收口**：前三者都在修「撞了 400 之后怎么收场」，本条改「根本不让脏图出门」。勘察坐实**魔数判据全写好了、结论被三处丢掉**，真正漏水口是 `ProviderContentHelpers.ResolveSupportedImageMediaType:201-208` —— 嗅探认不出时**回落信任声明的格式**，而「脏图」的定义恰恰就是嗅探认不出。**三层一起改**（工具层签名校验 / 组包层去回落 / 脏图不写 `ImageVisionMemory`），缺一层就漏：真实日志 18 条图像 400 里 **10 条在微信渠道会话**，不经过 `FileReadTool`。**判据拆四档**，只有「认不出」才标失败，扩展名骗人要按真实格式纠正 | [S-264](requirements/S-264.md) |
 | S-266 | 没写完的图 —— 签名合法但容器不完整，照样内联出门 | **已交付（刀 1f + 刀 1g 收口）**，dev 第 6 轮**真机判决「生效」**：7 张坏图全拦、40 张真图零误杀。**刀 1g 把覆盖边界补完** —— 判据原先是 `path` 形态，只有 `Read` 工具能用；而现场 18 条图像 400 里 **13 条在微信渠道**，那条路的图从来不是 agent 读出来的，是渲染层注入的历史块，组包时才第一次见到字节。拆成 `JudgeContainer(head, tail, totalLength, mediaType)` 共用判据 + `HasCompleteContainerInBase64` 入口（只解头部 16 字符与尾部一个窗口，不解全量），接进 `ProviderContentHelpers.IsSendableImageBlock` 的 base64 分支。**S-264 的第五档，不是重复需求**：S-264 修「认不出是什么格式」，本条修「认得出、但文件没写完」—— 签名在文件开头，截断在文件末尾，前者的判据天生够不着后者。现场（下载一半的截图 / 中断的保存 / 拷一半的 U 盘文件）头 8 字节完全合法 ⇒ 过完四档一路内联 ⇒ 400 `invalid image` ⇒ 坏块留历史每轮重发，与 S-246 同一现场、换了触发条件。**不做解码**（PNG 要 inflate、JPEG 要熵解码，AOT 体积与攻击面不划算），改看**容器尾部结束标记**：PNG 的 IEND 定值 / JPEG 的 EOI / GIF 的 trailer / WebP 的 RIFF 声明长度，只读头 + 尾 64 字节，常数级 I/O。判据刻意宽松（漏检代价是一次 400 有 S-262 兜底，误杀代价是模型彻底看不到好图） | [S-266](requirements/S-266.md) |
 | S-267 | 截图成功但页面是白的 —— 工具报告成功，实际什么都没画 | **已交付（刀 1g，2026-10-29 10:40）**，真机待验。用 `file://` 打开未构建的 Vite 外壳时，`.tsx` 不转译 ⇒ 页面全白，但 `BrowserNavigate` 报 `success: true`、`BrowserGetContent` 拿回正确标题、`BrowserScreenshot` 返回干净的纯白 PNG，日志里的 `ERR_ABORTED` 只落在 subresource 上、`did-fail-load` 不触发 ⇒ **agent 拿到白图以为看到了，照着白图去改壳子，全程零报错**。判据两个条件同时成立才警告（视口抽样近全白 **且** DOM 几乎没元素、无可见文本），宁可漏报不许误报；**不改 `isError`** —— 截图确实成功了，模型需要的是一条「你看到的是空的」，不是一次假失败 | [S-267](requirements/S-267.md) |
+| S-269 | 摘要请求被 429 拒绝，6 秒内重试三次全撞墙 —— 降级成「摘要器不可用」 | **已交付（刀 3b，2026-10-29 11:20）**，真机待验。生产实例日志五波全是 `ttft_admission_refused ... retry shortly (after 3~39 s)`，而我们 `SummaryRetryDelayMs=1500` 的退避只给 1.5s / 3s ⇒ 三次机会全落在同一个拒绝窗口。**摘要请求是整条 provider 链里唯一绕开 `ProviderRetryPolicy` 的地方** —— 自建静态 `HttpClient`（`:50-55`）、自建退避、非 2xx 时丢掉 `Retry-After` 头（`:846-850` / `:710-713`），而 `ProviderHttpException`（带 StatusCode + RetryAfter）与 `IsRetryableStatus` 早就写好。五条修法：A 改抛 `ProviderHttpException` / B 复用 `ComputeDelayMs` 并加 `maxBackoffMs` 参数（现有 `Math.Min(raMs, MaxBackoffMs)` 会把 29 秒压成 15 秒）/ C 429 不递减输入预算、真 400 不重试 / D 降级文案按原因分档 / E 原因透传进 `CompressionError`。**不含水印改动**（§三 更正） | [S-269](requirements/S-269.md) |
 
 ### 2.5 移交下迭代（2 条，不占承接、不占刀序）
 
@@ -150,6 +152,7 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 | 1g | S-261 / S-262 / S-266 补正 + S-267 | **dev 第 6 轮审查的回头刀，插在 1f 之后**。1b~1f 全部判决「真机生效」，但 dev 点出三处「修了却没修完」：① S-261 的 url 闸最后一次没补到 `OpenAIResponsesInputWriter` 的用户消息路径；② S-266 的判据只活在 `Read` 工具里，而真实日志 13/18 条走微信渠道、根本不经过它；③ S-262 的一次性消费上一轮就点名、这轮仍未动。三处**都不是新需求，是同一条线的收口** —— 分开做会把同一份判据改三遍。S-267 顺路带上：它和 S-264/266 同一个病根（坏数据包装成好东西发出去），改动面在渲染端、零交集。**排在这里的理由**：再往后拖，1b~1f 的「已完成」就会变成假状态 |
 | 2 | S-241 | 依赖 S-240；同时是 S-244 的验证前提 |
 | 3 | S-242 | 依赖 S-240，与 S-241 改的文件不重叠。落盘根 `~/.wishful-claw/plugin-assets/` |
+| 3b | S-269 | **插在刀 3 之后**，理由三条：①**线上真缺陷、用户可见** —— 老大自己 10-29 一天撞了五波，所有长会话用户都会撞，不是待验功能；②改动面集中且与插件线**零交集**（`ContextCompression.cs` + `ProviderRetryPolicy.cs` 抽 `internal` + 两个渲染端文案 + locale），可以随时插；③它和 1b~1g 同属一条主线 —— **上游拒绝之后怎么收场**：1b/c 管 400、1e/f 管别让脏数据出门，本条管 429 要按人家说的等。**排在这里而不是更早**的理由：它改的是 provider 重试判据（`ComputeDelayMs` 加参数），刀 1c / 1g 的回归基座必须在位，否则 429 分流一改会把 400 那条线的断言搅乱 |
 | 4 | S-243 **落地** | 照第 0 刀结论写；**不引入原生 WASAPI**，不通则麦克风先交付、系统音挂账 |
 | 5 | S-244 | 依赖 S-240，验证依赖 S-241；收口整条基座，用假插件跑通五条 |
 | 6 | S-247 | 内存治理第一步「看得见」；**消费形态已拍**：状态面板常驻数字 + 超阈值写日志，轮询 5 s |
@@ -171,6 +174,7 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 | 1g | S-261 / S-262 / S-266 补正 + S-267 | **已完成（2026-10-29 10:40）** —— ①`ProviderContentHelpers.IsSendableImageBlock` 作为单块判据，Responses 的 `HasImageContent` / 组包过滤 / 两处裸透传（Responses + chat 的 tool result 路径）全部改走它；②`ImageFileProbe` 拆出 `JudgeContainer` 共用判据 + `HasCompleteContainerInBase64` 入口（只解头部 16 字符与尾部窗口），接进 base64 分支；③S-262 改成按 `ToolUseId` 记死、撑满整个 run（新增 `ProviderRejectionToolUseIds` + `ProviderRejectionRegistrationPending`，`ReplaceMarkedToolResults` 替掉 `ReplaceTrailingToolResults`）；④新建 `browser-screenshot-blank.ts`（白图抽样 + DOM 探针），`executeBrowserScreenshot` 尾部拼警告。断言：`ImageInput` 53 → 62、`ReadImage` 70 → 77、`ProviderRejection` 39 → 43、`ImageMediaGate` 38（素材修正）。真机待验（见 S-261 / S-262 / S-266 / S-267 各自的验收清单） |
 | 2 | S-241 | **代码 + 自动化回归已完成（2026-10-29 11:40）** —— 新增主进程 4 个文件（`plugin-window` / `plugin-view-rules` / `plugin-lifecycle` / `plugin-view-handlers`）+ index 注册 + 渲染端 channels / routing / 侧栏真开窗 + locale 两条。`plugin-view-rules` 套件 22 断言。**门禁抓到一条真缺陷**：四个 channel 漏进 `MESSAGEPACK_INVOKE_CHANNELS`，`test:ipc-msgpack-routing` 直接拒（typecheck 抓不到）。真机 7 条待验（见 S-241 §8.4），夹具 `fixtures/fake-plugin/` |
 | 3 | S-242 | **代码 + 自动化回归已完成（2026-10-29 13:20）** —— 主进程下载器（状态机 / 多源回退 / Range 续传 / 流式 sha256 / 并发闸门 2 / 取消保留 `.part`）+ 七个 IPC 动作 + 进度广播 + 渲染端资产区（卡片 compact + 详情带进度条）+ shared 契约。`plugin-assets` 套件 **38 断言**（本地 http server 真下载）。真机九条待验（见 `S-242.md` §5.1），层 3 空状态与层 2 安装前体积提示分别挂给真插件视图与 S-244 |
+| 3b | S-269 | **代码 + 自动化回归已完成（2026-10-29 11:20）** —— ①`ProviderRetryPolicy.ComputeDelayMs` 提 `internal` + 加 `maxBackoffMs` 参数；②`ContextCompression` 新增 `SummaryFailureAction` / `SummaryFailurePolicy` / `ResolveSummaryFailurePolicy` 纯函数，`SummarizeAsync` 三个 `catch` 收成一个按 policy 分流（429/5xx 原样重发、只有 `context_length_exceeded` 才砍预算、真 400 直接放弃）；③非 2xx 改抛 `ProviderHttpException`，保住状态码与 `Retry-After`；④失败原因（`rate_limited` / `server_error` / `timeout` / `context_overflow` / `other`）透传进 `context_compressed` 事件，渲染端按档位给文案，不再一律说「摘要生成不可用」。新建 `SummarizerRetryChecks.cs`，**24 断言**锁判据 2/3/4/7。`npm test` 93/93。**判据 1（mock 端点看真实等待间隔）与判据 5 的真机部分待老大验**（见 S-269 §八） |
 | 4 | S-243 落地 | 待开工 |
 | 5 | S-244 | 待开工 |
 | 6 | S-247 | 待开工 |

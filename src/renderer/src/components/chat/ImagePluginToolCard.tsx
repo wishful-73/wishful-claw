@@ -24,6 +24,8 @@ import {
   type ImageGenerateRetryState
 } from '@renderer/lib/app-plugin/image-tool-retry'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { IMAGE_GENERATE_TOOL_NAME } from '@renderer/lib/app-plugin/types'
+import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
 import { Button } from '@renderer/components/ui/button'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
@@ -162,6 +164,11 @@ export function ImagePluginToolCard({
   const hasError =
     !isAwaitingRetry &&
     (status === 'error' || status === 'canceled' || (!!parsedError && images.length === 0))
+  // S-270：这个卡片原来把工具名写死成 `ImageGenerate`，不查表，中文环境下也露英文。
+  const displayToolName = useMemo(
+    () => resolveToolDisplayName(IMAGE_GENERATE_TOOL_NAME, t),
+    [t]
+  )
   const [collapsed, setCollapsed] = useState(!forceOpen)
 
   useEffect(() => {
@@ -222,7 +229,7 @@ export function ImagePluginToolCard({
         </span>
         <span className="shrink-0 text-muted-foreground/55">image</span>
         <span className="shrink-0 text-muted-foreground/40">&gt;</span>
-        <span className="shrink-0 font-mono font-medium text-foreground/82">ImageGenerate</span>
+        <span className="shrink-0 font-medium text-foreground/82">{displayToolName}</span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground/60">({promptSummary})</span>
         <span className="hidden shrink-0 rounded-full border border-border/55 bg-background/70 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground sm:inline-flex dark:bg-white/[0.035]">
           {t('toolCall.imagePlugin.countValue', { count: requestedCount })}

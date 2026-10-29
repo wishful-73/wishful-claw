@@ -592,3 +592,19 @@ OpenAI summarization HTTP TooManyRequests:
 **顺手修的**：`package.json` 里刀 9 加的 `test:streaming-render-pool` 少了 4 空格缩进，该处还有 1 个 bareLF，一并归一。
 
 **真机待验**：四处（工具卡 / 折叠条 / 文件变更行 / 纯文本行）都不再露 camelCase；MCP 与插件工具走兜底；切 `en` 同样干净。清单见 `S-270.md` §8.6。
+
+## 2026-10-29 14:45 · 刀 10 补正 —— S-270 漏了 C# 侧 61 个第一方工具
+
+**dev 第 7 轮审查给的两张「兜底卡」是活证据**：`CronList` 与 `SubAgentStatus` 在聊天窗显示成「工具 · CronList」，不是 bug 回归，是 S-270 交付缺口 —— 中文表把 C# 侧定义的第一方工具整片漏了。
+
+**我的闸当时扫不到它们**，这是设计漏洞不是疏忽：第一版只扫 `src/renderer/src` 的 TS 常量（`*_TOOL_NAME`），而 cron / goal / 全局任务 / 项目 / 团队 / 插件 / 飞书 / 微信 / 子代理 / `Terminal` / `Monitor` / `ExitPlanMode` 这些工具**全部在 C# 里声明**，一条闸都没看着。
+
+**实际缺口比 dev 说的 17 个更大**：全量扫 C# 侧两种声明方式（`ToolDefinitionPlaceholder("X", ...)` 注册 + `public string Name => "X"` 的 `IToolExecutor` 实现），`Tools/` 目录下共 **97 个**第一方工具，**62 个没有中文标签**（含 `Terminal`；`SubAgentStatus` / `SubAgentDetail` 是需求 §4.1 点名要补的）。
+
+**补法**：`permission.toolLabels` 61 → **124 条**（zh/en 逐条对齐），按族分组：定时任务 6 / 目标 6 / 全局任务与派发 7 / 项目与会话 11 / 团队 4 / 子代理 2 / 消息渠道通用 8 / 飞书 12 / 微信 2 / 其它 4。
+
+**测试加固（本条真正的收获）**：`tests/tool-labels-coverage` 加第 3 条断言 —— 扫 C# 侧 `Tools/` 目录的工具名反查表，**扫不到 ≥ 90 个就判判据失效**。判据只认 `Tools/` 路径：Module / Resolver 也有 `public string Name => "git"` 这类同名属性，不限定会把模块名当工具名（实测污染 47 个）。
+
+**闸有效性做了反向验证**：临时删掉 `CronList` 那条标签跑测试 → 变红；恢复后内容逐字节一致、`bareLF=0`。
+
+**门禁**：`npm run test:tool-labels-coverage` 10/10、`npm test -- --ts-only` **77/77**、`npm run typecheck` 三配置 0 错。

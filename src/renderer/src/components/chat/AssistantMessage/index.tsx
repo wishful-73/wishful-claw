@@ -424,6 +424,7 @@ export function AssistantMessage({
         imageGenerationTiming={imageGenerationTiming}
         generatingImagePreview={generatingImagePreview as { source: { type: string; data?: string; mediaType?: string; url?: string; filePath?: string } } | null | undefined}
         toolExecutionOutline={toolExecutionOutline}
+        renderDensity={renderDensity}
         toolRunSummaryById={toolRunSummaryById}
         getToolRunCollapsed={getToolRunCollapsed}
         toggleToolRunCollapsed={toggleToolRunCollapsed}

@@ -18,10 +18,12 @@ import {
   deriveThinkingCollapsed,
   deriveToolOutputOpen,
   deriveToolRunCollapsed,
+  deriveProcessRenderForm,
   getDensityPolicy,
   isChatRenderDensity,
   normalizeChatRenderDensity,
-  shouldPinOutsideCollapsedRun
+  shouldPinOutsideCollapsedRun,
+  shouldRenderToolAsLine
 } from '../../src/renderer/src/components/chat/render-density'
 
 const tests: Array<[string, () => void]> = []
@@ -229,8 +231,117 @@ test('compact 档必须与 1.0.1 旧行为逐条等价', () => {
   }
 })
 
-function main(): void {
-  for (const [name, run] of tests) {
+// ── S-248：形态轴（card / line） ──
+
+test('只有 text 档换形态，compact / detail 一个像素不动', () => {
+  assert.equal(deriveProcessRenderForm('text'), 'line')
+  assert.equal(deriveProcessRenderForm('compact'), 'card')
+  assert.equal(deriveProcessRenderForm('detail'), 'card')
+})
+
+test('text 档：普通工具降级成行', () => {
+  for (const name of ['Read', 'Edit', 'Write', 'Bash', 'PowerShell', 'Grep', 'Glob', 'mcp__x__y']) {
+    assert.equal(
+      shouldRenderToolAsLine({
+        density: 'text',
+        toolName: name,
+        status: 'completed',
+        requiresApproval: false,
+        hasVisualResult: false,
+        keepAsCardToolNames: new Set<string>()
+      }),
+      true,
+      name
+    )
+  }
+})
+
+test('compact / detail 档一律不降级', () => {
+  for (const density of ['compact', 'detail'] as const) {
+    assert.equal(
+      shouldRenderToolAsLine({
+        density,
+        toolName: 'Read',
+        status: 'completed',
+        requiresApproval: false,
+        hasVisualResult: false,
+        keepAsCardToolNames: new Set<string>()
+      }),
+      false,
+      density
+    )
+  }
+})
+
+test('text 档也不降级：交互类 / 输出即结果 / 待审批', () => {
+  const keep = new Set(['AskUserQuestion', 'SubmitPlanReview', 'create_goal'])
+  // 交互类 —— 一行字点不了
+  for (const name of keep) {
+    assert.equal(
+      shouldRenderToolAsLine({
+        density: 'text',
+        toolName: name,
+        status: 'completed',
+        requiresApproval: false,
+        hasVisualResult: false,
+        keepAsCardToolNames: keep
+      }),
+      false,
+      name
+    )
+  }
+  // 输出即结果 —— 藏起来等于没做
+  assert.equal(
+    shouldRenderToolAsLine({
+      density: 'text',
+      toolName: 'Read',
+      status: 'completed',
+      requiresApproval: false,
+      hasVisualResult: true,
+      keepAsCardToolNames: keep
+    }),
+    false
+  )
+  // 待审批 —— 安全底线，不能只剩一行字
+  assert.equal(
+    shouldRenderToolAsLine({
+      density: 'text',
+      toolName: 'Bash',
+      status: 'pending_approval',
+      requiresApproval: true,
+      hasVisualResult: false,
+      keepAsCardToolNames: keep
+    }),
+    false
+  )
+  assert.equal(
+    shouldRenderToolAsLine({
+      density: 'text',
+      toolName: 'Bash',
+      status: 'running',
+      requiresApproval: true,
+      hasVisualResult: false,
+      keepAsCardToolNames: keep
+    }),
+    false
+  )
+})
+
+test('text 档错误照样降级（错误靠红字表达，不靠浮出卡片）', () => {
+  assert.equal(
+    shouldRenderToolAsLine({
+      density: 'text',
+      toolName: 'Edit',
+      status: 'error',
+      requiresApproval: false,
+      hasVisualResult: false,
+      keepAsCardToolNames: new Set<string>()
+    }),
+    true
+  )
+})
+
+function main(): void {  for (const [name, run] of tests) {
     run()
     console.log(`PASS: ${name}`)
   }

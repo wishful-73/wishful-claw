@@ -171,4 +171,29 @@ v3-iter-3 收尾写的承接清单只列了 8 条，**S-260（浏览器保活池
 
 **未完成**：真机验收（S-262 §6 清单）。commit hash 由收尾刀统一订正（amend 前为 `1bede63c`）。
 
+### 09:07 · 登记 S-263（侧栏收起即崩），刀 1d
+
+**来历**：老大 09:02「dev 我让它复现昨天 400 的过程，现在页面渲染已经炸了，你能看下 dev 的日志不」。查 `~/.wishful-claw-dev/logs/2026-10-29.log` 定位到 `09:01:33 Rendered fewer hooks than expected` @ `WorkspaceSidebar`（componentStack 指向 `WorkspaceSidebar.tsx:39:17`，整棵侧栏被 ErrorBoundary 兜走）。老大 09:07 定「单开一个登记」⇒ 立 **S-263**，编号排在 S-262 之后。
+
+**代码先于登记落地**：修复是 09:0x 先做的（当时按「看日志 + 修 bug」推进），09:07 才补登记。所以本条流水的时间戳是登记时刻，不是修复时刻 —— 记清楚免得以后按时间线追责时对不上。
+
+**根因**：`WorkspaceSidebar.tsx` 的 `if (!leftSidebarOpen) return null` 排在 `useExtensionStore` / `manifestViewItems` 两个 hook **之前**。两个 hook 是 S-240 追加的（它加在文件末尾、紧挨 `extensionItems` 数组，而那个数组本来就在 early return 之后）。⇒ 侧栏展开跑 N+2 个 hook、收起跑 N 个，React 一比对数量就抛错。**侧栏一收就必崩**，与「复现 400」无关 —— 老大当时正是收起了侧栏。
+
+**为什么前面所有门禁都没抓到**（写清楚，免得以为门禁白跑）：
+
+| 门禁 | 为什么抓不到 |
+|---|---|
+| typecheck | TS 不管 hook 调用顺序 |
+| `npm test` 渲染端套件 | 全是纯函数 / store 断言，不挂载组件 |
+| **eslint** | **项目根本没装**（无 `.eslintrc*` / `eslint.config.*` / 依赖 / `lint` 脚本）。`react-hooks/rules-of-hooks` 就是为这个缺陷存在的规则 |
+| S-240 真机清单 | 只列了「点入口提示 / 停用消失 / 卸载无残留」，没有「收起侧栏」 |
+
+**修法**：early return 后移到全部 hook 之后（不动 hook 位置，免得打散「插件视图入口」小节的注释与逻辑），原位留警告注释写明后果；顺带补 500 行豁免头（文件 511 行无豁免，S-240 加插件入口时就已超限）。511 → 521 行。
+
+**全仓同款扫描**：项目无 eslint，于是按「同缩进层级、遇函数边界即停」写了一次性判据扫 `src/renderer/src` 全部 `.tsx` ⇒ `NO VIOLATIONS`。**口径如实记**：第一版按「return 之后出现任何 hook」判，误报两百多条全是跨函数假阳性，收紧到同缩进才可用；本质是文本匹配，不是 AST。**真要根治得装 `eslint-plugin-react-hooks`** —— 那是工具链级决定，单开评估，本条不动（写进 S-263 §八）。
+
+**附带查实的事实**：当天全日志**零条 400**（`HTTP 400` / `provider_request_rejected` 均无命中），三条 ERROR 全是这条渲染崩溃加一条 `allowpopups` 属性警告；worker 侧最后心跳 `09:02:17 inputTokens=44938`（阈值 144000，远未触发压缩）⇒ **400 复现没走到**，不是没记录，是没发生。老大要知道这条，否则会以为 S-262 已验。
+
+**未完成**：真机 5 条判据（S-263 §五）—— 其中「反复收展 10 次」和「收起状态下有流式输出」是复现本缺陷最直接的动作。
+
 

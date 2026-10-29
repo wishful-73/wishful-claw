@@ -1,3 +1,7 @@
+// 500 行豁免（2026-10-29，行数以实际为准，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+// 单组件同时承载「导航按钮 / 会话与项目树 / 插件视图入口 / 拖拽调宽 / 搜索弹窗」五块，
+// 全部共享同一组 store 派生值与本地展开态（展开集合、排序模式、悬停定时器）。拆出去要
+// 跨文件传十几个 props 并新增中间层，反而更难追踪状态来源 —— 代价值得，收益不足。
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { useTranslation } from 'react-i18next'
@@ -189,11 +193,6 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     [createProject, t]
   )
 
-  // Collapsed state: completely hidden, use TitleBar button to expand
-  if (!leftSidebarOpen) {
-    return null
-  }
-
   // ─── Nav items (top buttons) ───
   const navItems: NavButtonItem[] = [
     {
@@ -246,6 +245,17 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     // 同 order 时按 id 兜底，保证跨插件顺序稳定（不依赖 locale 比较）
     return items.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
   }, [extensionInstances, t])
+
+  // Collapsed state: completely hidden, use TitleBar button to expand
+  //
+  // ⚠️ 这句必须留在**所有 hook 调用之后**。它一度排在 extensionInstances /
+  // manifestViewItems 两个 hook 前面（S-240 把插件入口追加到文件末尾，正好落在
+  // 这句后面），于是侧栏一收起就少执行两个 hook ⇒ React 抛
+  // "Rendered fewer hooks than expected"、整棵侧栏被 ErrorBoundary 兜走，
+  // 页面直接白掉。新增 hook 时往上面放，不要往这里之后加。
+  if (!leftSidebarOpen) {
+    return null
+  }
 
   const allExtensionItems = [
     ...extensionItems,

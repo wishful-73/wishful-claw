@@ -6,10 +6,25 @@
  */
 
 import type { ToolResultContent } from '@renderer/lib/api/types'
+import {
+  DESKTOP_CLICK_TOOL_NAME,
+  DESKTOP_SCREENSHOT_TOOL_NAME,
+  DESKTOP_SCROLL_TOOL_NAME,
+  DESKTOP_TYPE_TOOL_NAME,
+  DESKTOP_WAIT_TOOL_NAME
+} from '@renderer/lib/app-plugin/types'
 import { coerceAskUserQuestions } from '@renderer/lib/tools/ask-user-tool'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 
 const COMMAND_TOOL_NAMES = new Set(['Bash', 'Shell', 'PowerShell'])
+
+const DESKTOP_ACTION_TOOL_NAMES = new Set<string>([
+  DESKTOP_SCREENSHOT_TOOL_NAME,
+  DESKTOP_CLICK_TOOL_NAME,
+  DESKTOP_TYPE_TOOL_NAME,
+  DESKTOP_SCROLL_TOOL_NAME,
+  DESKTOP_WAIT_TOOL_NAME
+])
 
 export type SearchToolSummary = {
   kind: 'glob' | 'grep'
@@ -223,6 +238,40 @@ function summarizeLsInput(input: Record<string, unknown>, outputText?: string): 
   return pathSummary ? truncateSummary(`${pathSummary} — ${preview}`) : preview
 }
 
+/**
+ * 桌面操作的行摘要。
+ *
+ * 2026-10-29 15:46 老大在极简档看到桌面截图渲染成一张卡，展开只有
+ * 「输入 {"require_active_window": false}」。截图本身不再出卡之后，这一行就得自己把
+ * 有用的信息说清楚 —— 否则兜底分支会取「第一个入参的值」，截图那条正好是 `false`。
+ */
+function summarizeDesktopAction(
+  name: string,
+  input: Record<string, unknown>,
+  outputText?: string
+): string {
+  if (name === DESKTOP_SCREENSHOT_TOOL_NAME) {
+    // 尺寸只有输出里那句「Captured desktop screenshot 1920x1080 across 2 display(s).」有
+    const size = outputText?.match(/(\d+)\s*[x×]\s*(\d+)/)
+    return size ? `${size[1]}×${size[2]}` : 'desktop'
+  }
+  if (name === DESKTOP_CLICK_TOOL_NAME) {
+    const action = typeof input.action === 'string' ? input.action : 'click'
+    return `${action} (${String(input.x ?? '?')}, ${String(input.y ?? '?')})`
+  }
+  if (name === DESKTOP_TYPE_TOOL_NAME) {
+    const text = typeof input.text === 'string' ? input.text : ''
+    if (text) return truncateSummary(text, 40)
+    const key = typeof input.key === 'string' ? input.key : ''
+    if (key) return key
+    return Array.isArray(input.hotkey) ? input.hotkey.join('+') : 'type'
+  }
+  if (name === DESKTOP_SCROLL_TOOL_NAME) {
+    return `(${String(input.scrollX ?? 0)}, ${String(input.scrollY ?? 0)})`
+  }
+  return `${String(input.delayMs ?? 0)}ms`
+}
+
 export function inputSummary(
   name: string,
   input: Record<string, unknown>,
@@ -233,6 +282,7 @@ export function inputSummary(
     return typeof skillName === 'string' ? skillName.trim() : ''
   }
   if (COMMAND_TOOL_NAMES.has(name)) return summarizeBashInput(input, outputText)
+  if (DESKTOP_ACTION_TOOL_NAMES.has(name)) return summarizeDesktopAction(name, input, outputText)
   if (name === 'LS') return summarizeLsInput(input, outputText)
   if (['Read', 'Write', 'SavePlan'].includes(name)) {
     const preview =

@@ -40,18 +40,22 @@ import {
 } from './utils'
 
 /**
- * S-248：这些工具在纯文本档也不降级成一行 —— 它们的存在形式就是卡片。
+ * S-248：这些工具在极简档也不降级成一行 —— 它们的存在形式就是卡片。
  *
  * 交互类（答题 / 审批 / 目标确认）一行字点不了，功能直接消失；
- * 子 agent / 团队事件 / 生成图 / widget / 桌面截图，输出本身就是结果或者有展开内容。
+ * 子 agent / 团队事件 / 生成图 / widget，输出本身就是结果或者有展开内容。
+ *
+ * **桌面截图不在这个名单里**（2026-10-29 15:46 老大报「极简模式还是个卡片，
+ * 卡片内容对我来说没什么意义」）。当初把它算作「输出即结果」是想让图露出来，
+ * 但整屏截图拍的是用户桌面，极简档的语义是「只看消息」—— 一张随时会变的实时
+ * 画面糊在消息流中间，比一行「1920×1080」更烦人。要看图切紧凑或详情档。
  */
 export const PROCESS_LINE_CARD_ONLY_TOOL_NAMES: ReadonlySet<string> = new Set<string>([
   ...INTERACTIVE_TOOL_NAMES,
   TASK_TOOL_NAME,
   ...TEAM_TOOL_NAMES,
   IMAGE_GENERATE_TOOL_NAME,
-  'visualize_show_widget',
-  DESKTOP_SCREENSHOT_TOOL_NAME
+  'visualize_show_widget'
 ])
 
 export interface ToolBlockRendererProps {
@@ -120,7 +124,6 @@ export function ToolBlockRenderer({
       hasVisualResult:
         block.name === IMAGE_GENERATE_TOOL_NAME ||
         block.name === 'visualize_show_widget' ||
-        block.name === DESKTOP_SCREENSHOT_TOOL_NAME ||
         (isBrowserToolName(block.name) &&
           (block.input as { action?: string }).action === 'screenshot') ||
         !!decodeBashArtifacts(toolOutput),

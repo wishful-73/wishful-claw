@@ -23,6 +23,7 @@ import type { ImageBlock, TextBlock, ToolResultContent } from '@renderer/lib/api
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import { ImagePreview } from './ImagePreview'
+import { useDensityPolicy } from './use-density-override'
 
 interface DesktopActionToolCardProps {
   name: string
@@ -104,6 +105,12 @@ export function DesktopActionToolCard({
       notes: output.filter((block): block is TextBlock => block.type === 'text')
     }
   }, [output])
+
+  // 2026-10-29 15:46：老大在极简档展开这张卡，只看到「输入 {"require_active_window": false}」——
+  // 桌面工具的入参对用户几乎永远没有意义（截图那条本身就是空的）。原始入参只在详情档露出，
+  // 紧凑 / 极简档靠标题行的 summary 说明这次做了什么。
+  const { density } = useDensityPolicy()
+  const showRawInput = density === 'detail'
 
   const summary = (() => {
     if (name === 'DesktopScreenshot') {
@@ -265,14 +272,16 @@ export function DesktopActionToolCard({
                 </div>
               ) : null}
 
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {t('toolCall.desktop.input')}
-                </p>
-                <pre className="overflow-x-auto rounded-lg bg-muted/20 px-3 py-2 text-xs text-foreground whitespace-pre-wrap break-words">
-                  {JSON.stringify(input, null, 2)}
-                </pre>
-              </div>
+              {showRawInput ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t('toolCall.desktop.input')}
+                  </p>
+                  <pre className="overflow-x-auto rounded-lg bg-muted/20 px-3 py-2 text-xs text-foreground whitespace-pre-wrap break-words">
+                    {JSON.stringify(input, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
 
               {jsonOutput ? (
                 <div className="space-y-2">

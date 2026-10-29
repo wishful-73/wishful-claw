@@ -321,14 +321,17 @@ export function ContentRenderer({
     //
     // S-248：纯文本档里错误已经降级成红行了（老大 2026-10-28 09:40「错误丢了就丢了」），
     // 再浮出来就又是一张卡片壳 —— 所以这一档只浮出**仍然必须是卡片**的项（答题 / 子 agent /
-    // 生成图 / 桌面截图），其余留在面板里当行。
+    // 生成图），其余留在面板里当行。
+    //
+    // 2026-10-29 15:46 去掉 `category === 'desktop'`：桌面操作本身不是「必须卡片」，
+    // 老大在极简档里看到的就是被这一句拎出来的那张截图卡。现在它们跟其它工具一样进折叠块，
+    // 一行「桌面截图 · 1920×1080」就够。
     const processForm = deriveProcessRenderForm(renderDensity)
     const pinnedTools = renderedTools.filter(
       (entry) =>
         shouldPinOutsideCollapsedRun(collapsed, entry.item.visibility) &&
         (processForm === 'card' ||
           PROCESS_LINE_CARD_ONLY_TOOL_NAMES.has(entry.item.name) ||
-          entry.item.category === 'desktop' ||
           entry.item.category === 'interactive')
     )
     const panelTools =

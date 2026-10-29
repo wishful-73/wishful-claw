@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FolderOpen, FolderPlus, Puzzle, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
@@ -11,6 +11,7 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { refreshExtensionTools } from '@renderer/lib/extensions/extension-tools'
 import { useExtensionStore } from '@renderer/stores/extension-store'
+import { ExtensionAssets } from './extension-assets'
 import type { ExtensionInstance } from '../../../../shared/extension-types'
 
 function ExtensionDetail({
@@ -90,6 +91,9 @@ function ExtensionDetail({
           ))}
         </div>
       ) : null}
+      {(extension.manifest.assets ?? []).length > 0 ? (
+        <ExtensionAssets assets={extension.manifest.assets ?? []} />
+      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => void save()} disabled={saving}><Save className="mr-2 size-3.5" />保存配置</Button>
         <Button size="sm" variant="outline" onClick={() => void openExtensionFolder(extension.id)}><FolderOpen className="mr-2 size-3.5" />打开目录</Button>
@@ -154,6 +158,9 @@ export function ExtensionPanel(): React.JSX.Element {
                   <div className="min-w-0 flex-1"><h3 className="truncate font-medium">{extension.manifest.name}</h3><p className="truncate text-xs text-muted-foreground">{extension.id} · v{extension.manifest.version}</p></div>
                 </div>
                 {extension.manifest.description ? <p className="mt-3 line-clamp-2 text-sm text-muted-foreground">{extension.manifest.description}</p> : null}
+                {(extension.manifest.assets ?? []).length > 0 ? (
+                  <ExtensionAssets assets={extension.manifest.assets ?? []} compact />
+                ) : null}
               </button>
               <div className="mt-3 flex items-center justify-between border-t pt-3"><span className="text-xs text-muted-foreground">{extension.manifest.tools.length} 个工具</span><Switch checked={extension.enabled} onCheckedChange={(enabled) => void toggle(extension, enabled)} /></div>
             </section>

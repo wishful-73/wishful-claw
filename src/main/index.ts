@@ -25,6 +25,7 @@ import { registerMcpHandlers, shutdownMcp } from './ipc/mcp-handlers'
 import { registerVideoHandlers } from './ipc/video-handlers'
 import { registerExtensionHandlers } from './ipc/extension-handlers'
 import { registerPluginViewHandlers } from './ipc/plugin-view-handlers'
+import { registerPluginAssetHandlers } from './ipc/plugin-asset-handlers'
 import { registerPluginLifecycle } from './plugins/plugin-lifecycle'
 import { registerWebFetchHandlers } from './ipc/web-fetch-handlers'
 import { registerApiRequestHandlers } from './ipc/api-request-handler'
@@ -316,6 +317,8 @@ if (!gotTheLock) {
   registerVideoHandlers()
   registerExtensionHandlers()
   registerPluginViewHandlers()
+  // 插件资产下载器（S-242）：目录 / 状态 / 下载 / 取消 / 校验 / 删除
+  registerPluginAssetHandlers()
   // 插件视图的 idle 回收与退出 pid 树回收（S-241）—— 第一个插件窗口打开之前装好
   registerPluginLifecycle()
 registerWebFetchHandlers()

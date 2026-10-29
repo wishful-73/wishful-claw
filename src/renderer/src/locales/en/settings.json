@@ -1769,7 +1769,22 @@
     "removed": "Extension removed",
     "installed": "Extension installed",
     "title": "Custom Extensions",
-    "subtitle": "Install and manage local extensions that provide tools and components for the agent."
+    "subtitle": "Install and manage local extensions that provide tools and components for the agent.",
+    "assets": {
+      "title": "Runtime files",
+      "hint": "Managed by the app, shared across extensions, and never deleted when an extension is removed.",
+      "stateUnknown": "Unsupported asset (not in this app build)",
+      "stateReady": "Ready",
+      "stateAbsent": "Not downloaded",
+      "stateDownloading": "Downloading",
+      "stateVerifying": "Verifying",
+      "stateFailed": "Download failed",
+      "needDownload": "{{size}} to download",
+      "download": "Download",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "cancelHint": "Downloaded bytes are kept so the next attempt resumes."
+    }
   },
   "channel": {
     "status": {

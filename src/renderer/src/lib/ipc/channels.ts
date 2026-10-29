@@ -120,6 +120,16 @@ export const IPC = {
   PLUGIN_VIEW_LIST: 'plugin-view:list',
   PLUGIN_VIEW_STATUS: 'plugin-view:status',
 
+  // Plugin asset downloader (S-242)
+  PLUGIN_ASSET_CATALOG: 'plugin-asset:catalog',
+  PLUGIN_ASSET_STATUS: 'plugin-asset:status',
+  PLUGIN_ASSET_STATUS_OF: 'plugin-asset:status-of',
+  PLUGIN_ASSET_DOWNLOAD: 'plugin-asset:download',
+  PLUGIN_ASSET_CANCEL: 'plugin-asset:cancel',
+  PLUGIN_ASSET_VERIFY: 'plugin-asset:verify',
+  PLUGIN_ASSET_REMOVE: 'plugin-asset:remove',
+  PLUGIN_ASSET_PROGRESS: 'plugin-asset:progress',
+
   // SOUL Market
   SOULS_BUILTIN_LIST: 'souls:builtin-list',
   SOULS_MARKET_LIST: 'souls:market-list',

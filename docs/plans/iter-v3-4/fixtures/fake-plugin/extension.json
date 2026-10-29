@@ -4,6 +4,10 @@
   "name": "假插件（基座验收）",
   "version": "0.0.1",
   "description": "插件基座真机验收用的最小插件：一个独立窗口，窗口内可直接验证权限全开、崩溃自愈与 pid 树回收。",
+  "assets": [
+    { "id": "demo/logo.png" },
+    { "id": "demo/not-in-catalog" }
+  ],
   "views": [
     {
       "id": "console",

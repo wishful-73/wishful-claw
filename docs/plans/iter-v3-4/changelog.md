@@ -368,3 +368,45 @@ S-261 验收清单第 3 条要求拿 `2026-10-28-请求错误导出.txt` 的 18 
 ### 六、真机待验
 
 §5 七条逐条对应见 `S-241.md` §8.4。两条主动挂账：**空闲回收**（15 分钟真机等不起，只有纯判据覆盖）、**`persist:plugin-<id>` 分区隔离**（要两个插件才看得出，交给 S-244 五条全通验证）。
+
+## 2026-10-29 13:20 · 刀 3 —— S-242 插件资产下载器落地
+
+**做了什么**：把「插件声明资产 id → 用户点下载 → 校验就绪 → 插件拿绝对路径」这条链打通，落在主进程 + 设置页两层。资产**不进插件目录**，统一落 `{dataRoot}/plugin-assets/`，多插件共用、插件换版不重下、卸载插件不删（删是 S-244 的独立入口）。
+
+### 一、落点
+
+| 文件 | 内容 |
+|---|---|
+| 新增 `src/shared/plugin-asset-types.ts`（97 行） | 两端共用的契约：`PluginAssetState` / `PluginAssetStatus` / `PluginAssetProgressEvent` / `PluginAssetPublicInfo` + `formatAssetSize`。**刻意不含 url / sha256** |
+| 新增 `src/main/plugins/plugin-assets.ts`（~490 行） | 状态机 / 多源回退 / Range 续传 / 流式 sha256 / 节流推送 / 单源退避重试 / 并发闸门 / 取消保留 `.part` |
+| `src/main/plugins/plugin-asset-catalog.ts` | 加 `toPublicAssetInfo`（目录表 → 渲染端投影，剥掉 url / 哈希）；`formatAssetSize` 迁到 shared 供两端共用 |
+| 新增 `src/main/ipc/plugin-asset-handlers.ts`（95 行） | 七个动作 `catalog` / `status` / `status-of` / `download` / `cancel` / `verify` / `remove` + 进度事件 `plugin-asset:progress` 广播 |
+| `src/main/index.ts` | 注册 `registerPluginAssetHandlers()` |
+| 新增 `src/renderer/src/lib/plugins/plugin-assets.ts`（57 行） | 渲染端封装：查状态 / 下载 / 取消 / 校验 / 订阅进度 |
+| 新增 `src/renderer/src/components/settings/extension-assets.tsx`（~240 行） | 资产区：状态徽章 + 体积 + 进度条 + 下载 / 取消 / 重试；`compact` 版给卡片用 |
+| `ExtensionPanel.tsx` | 卡片挂 `compact`（未就绪才显示），详情页挂完整版 |
+| `channels.ts` / `messagepack-channel-routing.ts` | 七个 invoke channel + 一个事件 channel |
+| `locales/{zh,en}/settings.json` | `extension.assets.*` 十二条 |
+| `tests/plugin-assets/program.ts` | 新增套件 **38 断言**（本地 http server 跑真下载） |
+| `fixtures/fake-plugin/extension.json` | 声明 `demo/logo.png`（真条目）+ `demo/not-in-catalog`（未知 id，验验收第 7 条） |
+
+### 二、四个刻意的选择
+
+1. **`status` 只查存在性 + 大小，不重算 sha256。** 这是需求 §4.4 明写的判据：每次开面板都全量校验，用户看到的是几秒卡顿。代价是「同大小篡改」看不出来 —— 所以另有显式 `verify`，单测第 ⑦⑧ 条把这两面都钉住了。
+2. **渲染端拿不到 url 与 sha256。** 目录表是主程序独占的：给了渲染进程地址等于给它一条绕过主进程直接下载的路，而那条路上没有任何校验。
+3. **取消 ≠ 失败。** 取消回 `absent` 且保留 `.part`，失败才记 `failed` 并清 `.part`（坏字节留到下次只会更糟）。用户点两次取消等于重下，是这里最容易写错的地方。
+4. **进度节流放在 manager 里，不放 IPC 层。** ≥ 200 ms 或 ≥ 5% 才推；下载 500 MB 时不节流会推上万个事件，渲染端直接卡死。状态类事件（verifying / ready / failed）一律强推，不节流。
+
+### 三、单测为什么值得写（六条都是「错了不报错」）
+
+断点续传没续上 → 只是从 0 重来；校验失败落了 ready → 投毒文件冒充官方资产；多源不回退 → 主源一挂全国下不动；取消删 `.part` → 点两次取消重下；并发不限 → 十个资产一起拉，用户以为软件死了；status 全量哈希 → 面板卡三秒。本地 http server 覆盖：全新下载 / 续传（断言 `Range: bytes=N-`）/ sha 不符 / 404 回退 / 取消后重下 / 三路并发峰值 2 / 未知 id / 不支持 Range 的源整下重来。
+
+**并发那条第一版写错了**：按服务端 TCP 连接数断言，把「数据已下完、连接还没 close」的几十毫秒算成第三路，误报。改成看 `runningCount`（槽位占用）才测对 —— 顺带给 manager 加了只读 `runningCount`，设置页以后能显示「正在下载 N 项」。
+
+### 四、门禁
+
+`npm run typecheck` exit 0（node + web 三配置）/ `npm test` **93/93**（TS 71 + C# 22，新增 `plugin-assets` 一条）/ C# 侧本刀零改动，`dotnet build tests.sln` 沿 1g 的 0 警告 0 错误。
+
+### 五、真机待验
+
+`S-242.md` §5.1 九条对应表。两条主动挂账：**插件视图内的空状态（§4.6 层 3）** 与 **装插件那一刻的体积提示（层 2，属 S-244 安装确认弹窗）** —— 前者要等有真插件视图，后者要等 S-244 那刀。

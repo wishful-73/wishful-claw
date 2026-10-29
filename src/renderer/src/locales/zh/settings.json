@@ -1908,7 +1908,22 @@
     "removed": "扩展已移除",
     "installed": "扩展已安装",
     "title": "自定义扩展",
-    "subtitle": "安装和管理为 Agent 提供工具与组件的本地扩展。"
+    "subtitle": "安装和管理为 Agent 提供工具与组件的本地扩展。",
+    "assets": {
+      "title": "运行文件",
+      "hint": "这些文件由主程序托管，装一次多个插件共用，卸载插件不会删除。",
+      "stateUnknown": "未知资产（主程序不支持）",
+      "stateReady": "已就绪",
+      "stateAbsent": "未就绪",
+      "stateDownloading": "下载中",
+      "stateVerifying": "校验中",
+      "stateFailed": "下载失败",
+      "needDownload": "需下载 {{size}}",
+      "download": "下载",
+      "cancel": "取消",
+      "retry": "重试",
+      "cancelHint": "已下载的部分会保留，下次接着下。"
+    }
   },
   "logsPage": {
     "level": {

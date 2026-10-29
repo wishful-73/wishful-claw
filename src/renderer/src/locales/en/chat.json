@@ -632,7 +632,45 @@
       "memory_search": "Search",
       "memory_append": "Append",
       "memory_update": "Update",
-      "discover_tools": "Discover Tools"
+      "discover_tools": "Discover Tools",
+      "NotebookEdit": "Edit Notebook",
+      "SavePlan": "Save Plan",
+      "EnterPlanMode": "Enter Plan Mode",
+      "SubmitPlanReview": "Submit Plan for Review",
+      "UpdatePlanStep": "Update Plan Step",
+      "Shell": "Shell Command",
+      "PowerShell": "PowerShell Command",
+      "WebFetch": "Fetch Web Page",
+      "WebSearch": "Search the Web",
+      "BrowserNavigate": "Open URL",
+      "BrowserGetContent": "Read Page Content",
+      "BrowserClick": "Click Page",
+      "BrowserType": "Type Text",
+      "BrowserScroll": "Scroll Page",
+      "BrowserScreenshot": "Screenshot Page",
+      "BrowserSnapshot": "Page Snapshot",
+      "BrowserSetDevice": "Switch Device",
+      "BrowserEvaluate": "Run Page Script",
+      "DesktopScreenshot": "Desktop Screenshot",
+      "DesktopClick": "Desktop Click",
+      "DesktopType": "Desktop Type",
+      "DesktopScroll": "Desktop Scroll",
+      "DesktopWait": "Wait",
+      "CaptureAppWindow": "Capture Window",
+      "codegraph_explore": "Code graph · Explore",
+      "create_goal": "Create Goal",
+      "get_goal": "Get Goal",
+      "update_goal": "Update Goal",
+      "update_goal_progress": "Update Goal Progress",
+      "AskUserQuestion": "Ask You",
+      "Notify": "Notify",
+      "RequestSandboxElevation": "Request Sandbox Elevation",
+      "Task": "Spawn Sub-agent",
+      "ImageGenerate": "Generate Image",
+      "SaveImage": "Save Image",
+      "visualize_show_widget": "Show Visualization",
+      "use_capability": "Call Capability",
+      "CronRuns": "Cron Run History"
     }
   },
   "toolCall": {
@@ -864,7 +902,13 @@
       }
     },
     "canceled": "Canceled",
-    "noResult": "No tool result available"
+    "noResult": "No tool result available",
+    "unknownToolLabel": "Unknown tool",
+    "genericToolLabel": "Tool · {{name}}",
+    "codegraphToolLabel": "Code graph · {{action}}",
+    "codegraphAction": {
+      "explore": "Explore"
+    }
   },
   "subAgent": {
     "label": "subAgent",

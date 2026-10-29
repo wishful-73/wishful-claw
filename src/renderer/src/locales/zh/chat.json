@@ -632,7 +632,45 @@
       "memory_search": "搜索",
       "memory_append": "追加",
       "memory_update": "更新",
-      "discover_tools": "发现工具"
+      "discover_tools": "发现工具",
+      "NotebookEdit": "编辑笔记本",
+      "SavePlan": "保存计划",
+      "EnterPlanMode": "进入计划模式",
+      "SubmitPlanReview": "提交计划待确认",
+      "UpdatePlanStep": "更新计划步骤",
+      "Shell": "Shell 命令",
+      "PowerShell": "PowerShell 命令",
+      "WebFetch": "读取网页",
+      "WebSearch": "搜索网页",
+      "BrowserNavigate": "打开网址",
+      "BrowserGetContent": "读取页面内容",
+      "BrowserClick": "点击页面",
+      "BrowserType": "输入文本",
+      "BrowserScroll": "滚动页面",
+      "BrowserScreenshot": "页面截图",
+      "BrowserSnapshot": "页面快照",
+      "BrowserSetDevice": "切换设备",
+      "BrowserEvaluate": "执行页面脚本",
+      "DesktopScreenshot": "桌面截图",
+      "DesktopClick": "桌面点击",
+      "DesktopType": "桌面输入",
+      "DesktopScroll": "桌面滚动",
+      "DesktopWait": "等待",
+      "CaptureAppWindow": "窗口截图",
+      "codegraph_explore": "代码图谱 · 探索",
+      "create_goal": "新建目标",
+      "get_goal": "查看目标",
+      "update_goal": "更新目标",
+      "update_goal_progress": "更新目标进度",
+      "AskUserQuestion": "向你确认",
+      "Notify": "提醒",
+      "RequestSandboxElevation": "申请关闭沙箱",
+      "Task": "派发子任务",
+      "ImageGenerate": "生成图片",
+      "SaveImage": "保存图片",
+      "visualize_show_widget": "生成可视化",
+      "use_capability": "调用能力",
+      "CronRuns": "定时任务记录"
     }
   },
   "toolCall": {
@@ -864,7 +902,13 @@
       }
     },
     "canceled": "已取消",
-    "noResult": "暂无工具结果"
+    "noResult": "暂无工具结果",
+    "unknownToolLabel": "未知工具",
+    "genericToolLabel": "工具 · {{name}}",
+    "codegraphToolLabel": "代码图谱 · {{action}}",
+    "codegraphAction": {
+      "explore": "探索"
+    }
   },
   "subAgent": {
     "label": "子代理",

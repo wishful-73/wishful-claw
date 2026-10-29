@@ -1,5 +1,5 @@
 /**
- * 浏览器工具卡的图标与兜底标题映射。
+ * 浏览器工具卡的图标映射。
  *
  * S-250 从 `BrowserToolCard.tsx` 搬出，判断分支逐条平移。
  */
@@ -16,7 +16,6 @@ import {
 import {
   BROWSER_CLICK_TOOL_NAME,
   BROWSER_GET_CONTENT_TOOL_NAME,
-  BROWSER_NAVIGATE_TOOL_NAME,
   BROWSER_SCREENSHOT_TOOL_NAME,
   BROWSER_SCROLL_TOOL_NAME,
   BROWSER_SNAPSHOT_TOOL_NAME,
@@ -33,13 +32,5 @@ export function getToolIcon(name: string): React.JSX.Element {
   return <Globe2 className="size-3.5" />
 }
 
-export function fallbackTitle(name: string): string {
-  if (name === BROWSER_NAVIGATE_TOOL_NAME) return 'Browser Navigate'
-  if (name === BROWSER_GET_CONTENT_TOOL_NAME) return 'Browser Content'
-  if (name === BROWSER_SCREENSHOT_TOOL_NAME) return 'Browser Screenshot'
-  if (name === BROWSER_SNAPSHOT_TOOL_NAME) return 'Browser Snapshot'
-  if (name === BROWSER_CLICK_TOOL_NAME) return 'Browser Click'
-  if (name === BROWSER_TYPE_TOOL_NAME) return 'Browser Type'
-  if (name === BROWSER_SCROLL_TOOL_NAME) return 'Browser Scroll'
-  return name
-}
+// S-270：`fallbackTitle()` 已删除 —— 它末行 `return name` 会把裸 camelCase 顶到标题上，
+// 兜底统一改走 `resolveToolDisplayName()`。

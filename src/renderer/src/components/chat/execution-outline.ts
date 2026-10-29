@@ -14,6 +14,7 @@ import { isBrowserToolName } from '@renderer/lib/app-plugin/browser-tool-names'
 import { isDesktopControlToolName } from '@renderer/lib/app-plugin/desktop-routing'
 import { isMcpTool } from '@renderer/lib/mcp/mcp-tools'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import type { ChatRenderDensity } from '@renderer/stores/settings-store-types'
 import { deriveToolRunCollapsed } from './render-density'
 import { inputSummary } from './tool-call-summary'
@@ -239,7 +240,8 @@ function getToolVisibility(category: ToolExecutionCategory): ToolExecutionVisibi
 function buildActiveSummary(item: ToolExecutionItem, t: TranslationFn): string | null {
   if (!item.isActive) return null
 
-  const tool = t(`permission.toolLabels.${item.name}`, { defaultValue: item.name })
+  // S-270：走统一出口，缺中文标签时兜底成「工具 · 原名」，不再裸回退 camelCase。
+  const tool = resolveToolDisplayName(item.name, t)
   const detail = item.summary ? `: ${item.summary}` : ''
 
   if (item.status === 'pending_approval' || item.requiresApproval) {

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { deriveFileChangeCollapsed } from './render-density'
 import { useDensityOverride, useDensityPolicy } from './use-density-override'
@@ -33,6 +34,8 @@ export function FileChangeCard({
   forceOpen = false
 }: FileChangeCardProps): React.JSX.Element {
   const { t } = useTranslation('chat')
+  // S-270：工具名不再直接渲染原始 `name`（`Write` / `Edit` / `SavePlan` 露英文）。
+  const displayToolName = React.useMemo(() => resolveToolDisplayName(name, t), [name, t])
   const resolvedEdit = React.useMemo(() => resolveEditPayload(input), [input])
   const resolvedWrite = React.useMemo(() => resolveWritePayload(input), [input])
   const isActive = status === 'streaming' || status === 'running' || status === 'pending_approval'
@@ -261,7 +264,9 @@ export function FileChangeCard({
             </span>
             <span className="shrink-0 text-muted-foreground/55">files</span>
             <span className="shrink-0 text-muted-foreground/40">&gt;</span>
-            <span className="shrink-0 font-mono font-medium text-foreground/82">{name}</span>
+            <span className="shrink-0 font-mono font-medium text-foreground/82">
+              {displayToolName}
+            </span>
             <span className="min-w-0 flex-1 truncate text-muted-foreground/60">
               (
               {filePath ? (

@@ -567,3 +567,28 @@ OpenAI summarization HTTP TooManyRequests:
 
 **欠账**：真机四条待验（3 会话只挂 2 / lease 期间不消失 / 拒绝文案带两者信息 / 关 tab 立即释放 + 5 分钟空闲回收），见 `S-260.md` §9.3。
 
+## 2026-10-29 14:20 · 刀 10 交付 —— S-270 工具名统一出口
+
+老大 13:56 报「后续处理了很多新工具，聊天窗里直接显示英文名称，看着不舒服，很多用户也看不懂」；14:03 追加「这些需要进本迭代」，并拍了两处口径：**兜底用「工具 · 原名」**、**`en` 侧一并友好化**。
+
+**根因不是「忘了一条」，是机制上就没有防漏**，三层叠在一起：
+
+1. `permission.toolLabels` 只有 **23 条**，清一色 OpenCowork 迁移期那批；之后每个迭代新增的浏览器 / 桌面 / codegraph / 目标 / 交互类工具**一个都没补**。
+2. 渲染点是 `t(key, { defaultValue: name })` —— 缺 key 静默回退英文原名，**没有告警、没有兜底、没有测试**。
+3. `FileChangeCard:264` 和 S-248 新增的 `ProcessTextLine` **根本不查表**，直接渲染原始 `name`。
+
+⇒ 只补表会留一半窟窿，三件套一起做才收得干净：**补到 61 条 + 统一出口 `resolveToolDisplayName` + 防漏回归**。
+
+**统一出口的链路**：历史别名归一（`normalizeToolName`，`BrowserSearch` → `WebSearch`）→ 查表 → MCP（`mcp__srv__tool` → `Tool`）→ `codegraph_` 前缀族（「代码图谱 · 探索」）→ 兜底「工具 · 原名」。**任何一环都不再裸回退 camelCase / snake_case。**
+
+未命中判据不依赖 i18next 配置（`returnNull` / `parseMissingKeyHandler` 都没设）：缺 key 时逐级 fallback 到 `en`、再到 `fallbackNS: common`，全落空后**返回 key 本身** —— 「返回值等于 key」就是确定的未命中信号。
+
+**顺手收掉的一个同类旧兜底**：`BrowserToolCard/icons.tsx` 的 `fallbackTitle()` 末行是 `return name`，新浏览器工具（如 `BrowserEvaluate`）照样露英文。整个函数删掉，改走统一出口。`DesktopActionToolCard` 的 `t(\`toolCall.desktop.${name}.title\`)` **连 defaultValue 都没有**，缺 key 会把 `toolCall.desktop.Xxx.title` 原文顶上去，一并补。
+
+**防漏测试（本条最值钱的部分）**：新建 `tests/tool-labels-coverage`，9 条断言。与既有 `test:i18n-coverage` **互补而非重复** —— 后者静态扫 `t('字面量')`，而工具名取键是动态拼接（`t(\`permission.toolLabels.${name}\`)`），**静态扫天生扫不到**，这正是漏了 38 条却一路静默的原因。新测试反过来：扫代码里声明的工具名常量（实测 47 个），反查 locale 表。第 2 条以后就是闸 —— **新增工具常量忘了补中文，`npm test` 直接红**。
+
+**门禁**：`npm test` **99/99**（新增 1 条）、`npm run typecheck` 三配置 0 错。
+
+**顺手修的**：`package.json` 里刀 9 加的 `test:streaming-render-pool` 少了 4 空格缩进，该处还有 1 个 bareLF，一并归一。
+
+**真机待验**：四处（工具卡 / 折叠条 / 文件变更行 / 纯文本行）都不再露 camelCase；MCP 与插件工具走兜底；切 `en` 同样干净。清单见 `S-270.md` §8.6。

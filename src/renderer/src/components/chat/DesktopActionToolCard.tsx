@@ -21,6 +21,7 @@ import {
 import type { ToolCallStatus } from '@renderer/lib/agent/types'
 import type { ImageBlock, TextBlock, ToolResultContent } from '@renderer/lib/api/types'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import { ImagePreview } from './ImagePreview'
 
 interface DesktopActionToolCardProps {
@@ -159,7 +160,12 @@ export function DesktopActionToolCard({
             {getToolIcon(name)}
           </motion.span>
           <div>
-            <p className="text-sm font-medium">{t(`toolCall.desktop.${name}.title`)}</p>
+            {/* S-270：原来没有 defaultValue，缺 key 会直接把 `toolCall.desktop.Xxx.title` 顶上去。 */}
+            <p className="text-sm font-medium">
+              {t(`toolCall.desktop.${name}.title`, {
+                defaultValue: resolveToolDisplayName(name, t)
+              })}
+            </p>
             <motion.p
               key={`${name}-${status}-${hasError ? 'error' : 'ok'}`}
               initial={{ opacity: 0, y: 4 }}

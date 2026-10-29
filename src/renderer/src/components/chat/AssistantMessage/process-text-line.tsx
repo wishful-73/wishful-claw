@@ -8,11 +8,13 @@
 // 错误详情留在卡片档里看。
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@renderer/lib/utils'
 import { formatDurationMs } from '@renderer/lib/format-duration'
 import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import { getStepStatusColor, getStepStatusIcon } from '@renderer/lib/agent/sub-agents/step-descriptions'
 import { resolveEditPayload, resolveEditSummaryDiff } from '../FileChangeCard/utils'
+import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 
 export interface ProcessTextLineProps {
   name: string
@@ -45,6 +47,9 @@ export function ProcessTextLine({
   input,
   trackedChange
 }: ProcessTextLineProps): React.JSX.Element {
+  const { t } = useTranslation('chat')
+  // S-270：纯文本档同样不许露原始工具名（`Read` / `BrowserNavigate` / …）。
+  const toolName = React.useMemo(() => resolveToolDisplayName(name, t), [name, t])
   const glyphStatus = normalizeGlyphStatus(status, hasError)
   const failed = glyphStatus === 'error'
   const running = glyphStatus === 'running'
@@ -74,16 +79,16 @@ export function ProcessTextLine({
         {getStepStatusIcon(glyphStatus)}
       </span>
       <span className={cn('shrink-0 text-muted-foreground', failed && 'text-destructive/70')}>
-        {name}
+        {toolName}
       </span>
       <span
         className={cn(
           'min-w-0 flex-1 truncate',
           failed ? 'text-destructive' : 'text-foreground/70'
         )}
-        title={summary || name}
+        title={summary || toolName}
       >
-        {summary || name}
+        {summary || toolName}
       </span>
       {durationMs != null && !running ? (
         <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">

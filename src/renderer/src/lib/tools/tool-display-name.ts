@@ -1,0 +1,82 @@
+import { isMcpTool, parseMcpToolName } from '@renderer/lib/mcp/mcp-tools'
+import { normalizeToolName } from './tool-name-aliases'
+
+/**
+ * S-270 —— 工具名的**唯一**显示出口。
+ *
+ * 改这个文件之前先读 `docs/plans/iter-v3-4/requirements/S-270.md`。
+ *
+ * 问题不是「某次忘了一条」，而是机制上的三处漏洞：
+ *  1. `permission.toolLabels` 停在 OpenCowork 迁移期那批（23 条），之后每个迭代新增的
+ *     浏览器 / 桌面 / codegraph / 目标 / 交互类工具**一个都没补**；
+ *  2. 渲染点是 `t(key, { defaultValue: name })` —— key 缺失静默回退英文原名，
+ *     没有告警、没有兜底、没有测试，于是「漏登记」这件事永远沉默；
+ *  3. `FileChangeCard` 与 `ProcessTextLine` 根本不查表，直接渲染原始 `name`。
+ *
+ * 所以这里做三件事：**先归一化历史别名 → 查表 → 表里没有就结构化兜底**，
+ * 绝不再把 `BrowserNavigate` / `codegraph_explore` 这种裸 camelCase / snake_case
+ * 丢到用户脸上。`tests/tool-labels-coverage` 钉住第 1 条，兜底托住第 2、3 条。
+ */
+
+/** 与 `execution-outline.ts` 的 `TranslationFn` 同形；须是绑定 `chat` 命名空间的 `t`。 */
+export type ToolTranslateFn = (key: string, options?: Record<string, unknown>) => string
+
+const TOOL_LABEL_KEY_PREFIX = 'permission.toolLabels.'
+const CODEGRAPH_TOOL_PREFIX = 'codegraph_'
+
+/**
+ * 读取 `permission.toolLabels.<name>`；**缺失时返回 null**。
+ *
+ * 判据不依赖 i18next 的 `returnNull` / `parseMissingKeyHandler` 配置：缺 key 时
+ * i18next 逐级 fallback（当前语言 → `en` → `fallbackNS: common`），全部落空后
+ * 返回 key 本身。所以「返回值等于 key」就是确定的未命中信号。
+ */
+function readToolLabel(t: ToolTranslateFn, toolName: string): string | null {
+  const key = TOOL_LABEL_KEY_PREFIX + toolName
+  const value = t(key)
+  if (!value || value === key) return null
+  return value
+}
+
+/**
+ * `mcp__<server>__<tool>` → 把 tool 部分拆词首字母大写。
+ * 从 `ToolCallCard/index.tsx` 搬进来 —— 它是「工具名显示」的一部分，
+ * 留在卡片里会让其它显示点（折叠条、文件变更行、纯文本行）各写一套。
+ */
+function formatMcpToolDisplayName(name: string): string {
+  const parsed = parseMcpToolName(name)
+  const toolName = parsed?.toolName ?? name
+  const label = toolName
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .join(' ')
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : toolName
+}
+
+/**
+ * 解析工具显示名。**任何工具名都必须经过这里**，不要再在组件里直接渲染 `name`。
+ *
+ * 顺序：历史别名归一 → i18n 表 → MCP → codegraph 前缀族 → 通用兜底。
+ * 「通用兜底」的文案是「工具 · 原名」（老大 2026-10-29 拍的口径）——
+ * 比假装认识它更诚实，也比裸 `FooBarTool` 可读。
+ */
+export function resolveToolDisplayName(name: string, t: ToolTranslateFn): string {
+  const normalized = normalizeToolName(name)
+  if (!normalized) return t('toolCall.unknownToolLabel', { defaultValue: '未知工具' })
+
+  const labelled = readToolLabel(t, normalized)
+  if (labelled) return labelled
+
+  if (isMcpTool(normalized)) return formatMcpToolDisplayName(normalized)
+
+  if (normalized.startsWith(CODEGRAPH_TOOL_PREFIX)) {
+    const action = normalized.slice(CODEGRAPH_TOOL_PREFIX.length)
+    const actionLabel = t(`toolCall.codegraphAction.${action}`, { defaultValue: action })
+    return t('toolCall.codegraphToolLabel', {
+      action: actionLabel,
+      defaultValue: '代码图谱 · {{action}}'
+    })
+  }
+
+  return t('toolCall.genericToolLabel', { name: normalized, defaultValue: '工具 · {{name}}' })
+}

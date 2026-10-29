@@ -10,6 +10,7 @@
  * Runs in the main process as a reverse-request from the Worker.
  */
 
+import { screen } from 'electron'
 import { getMainWindow } from '../../main-window-registry'
 import { persistImageBuffer } from '../../lib/image-persist'
 
@@ -27,6 +28,16 @@ export interface WindowCaptureResult {
   filePath?: string
   width?: number
   height?: number
+  /**
+   * 窗口内容区在**屏幕**上的位置，单位 DIP（`getContentBounds()` 的坐标系）。
+   *
+   * S-272 ①：以前只回尺寸不回位置，模型拿这张图完全没法换算成屏幕坐标 —— 它知道按钮
+   * 「在窗口里的哪儿」，却不知道窗口「在屏幕的哪儿」，`DesktopClick` 据此永远点不准。
+   * 点击要的是物理像素 ⇒ 同一条报文里给 scaleFactor，让模型自己乘。
+   */
+  bounds?: { x: number; y: number; width: number; height: number }
+  /** 窗口所在显示器的缩放比。物理像素 = DIP × scaleFactor。 */
+  scaleFactor?: number
   error?: string
 }
 
@@ -63,11 +74,20 @@ export async function handleWindowCaptureSelf(
 
     const size = image.getSize()
     const png = image.toPNG()
+    const contentBounds = win.getContentBounds()
+    const display = screen.getDisplayMatching(contentBounds)
     const result: WindowCaptureResult = {
       success: true,
       data: png.toString('base64'),
       width: size.width,
-      height: size.height
+      height: size.height,
+      bounds: {
+        x: contentBounds.x,
+        y: contentBounds.y,
+        width: contentBounds.width,
+        height: contentBounds.height
+      },
+      scaleFactor: display.scaleFactor > 0 ? display.scaleFactor : 1
     }
 
     const target = typeof typed.targetPath === 'string' ? typed.targetPath.trim() : ''

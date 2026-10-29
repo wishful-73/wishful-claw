@@ -190,6 +190,11 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'extension:storage-set',
   'extension:storage-delete',
   'extension:aggregate-info',
+  // 插件视图（S-241）—— 主进程用 registerMessagePackHandler 注册，不分类就调不到
+  'plugin-view:open',
+  'plugin-view:close',
+  'plugin-view:list',
+  'plugin-view:status',
   'mcp:list',
   'mcp:add',
   'mcp:update',

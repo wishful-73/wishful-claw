@@ -328,3 +328,43 @@ dev 连续两轮点名同一处：注入一次就把 `PendingProviderRejectionRe
 ### 六、判据 3（「真实日志逐条不再复现」）仍欠
 
 S-261 验收清单第 3 条要求拿 `2026-10-28-请求错误导出.txt` 的 18 条逐条复验，目前只验了新造的坏图。**欠着不是忘了，是那条需要真机 + 家里那台机器的原图**，留给老大迭代收尾前跑一次。
+
+## 2026-10-29 11:40 · 刀 2 —— S-241 插件视图独立窗口落地
+
+**做了什么**：S-240 声明的 `views[]` 从「点了弹一句『下个版本可用』」变成真开独立窗口，并把进程生命周期管住。
+
+### 一、落点
+
+| 文件 | 内容 |
+|---|---|
+| 新增 `src/main/plugins/plugin-window.ts`（307 行） | 开窗 / 重开 / 销毁 / 崩溃处理 / 注册表 |
+| 新增 `src/main/plugins/plugin-view-rules.ts`（54 行） | **比需求 §4.3 多拆的一层**：两条纯判据，零 electron 依赖，可单测 |
+| 新增 `src/main/plugins/plugin-lifecycle.ts`（97 行） | 空闲回收 + 退出时 pid 树回收 |
+| 新增 `src/main/ipc/plugin-view-handlers.ts`（45 行） | `plugin-view:open` / `close` / `list` / `status` |
+| `src/main/index.ts` | 注册四个 handler + `registerPluginLifecycle()` |
+| `channels.ts` / `messagepack-channel-routing.ts` | 四个 channel 常量 + 分类 |
+| `WorkspaceSidebar.tsx` | 占位 toast 换成真开窗，失败分「崩溃循环 / 其它」 |
+| `locales/{zh,en}/layout.json` | 删 `extensionViewNotReady`（占位期的死 key），换 `extensionViewOpenFailed` / `extensionViewCrashLoop` |
+| `tests/plugin-view-rules/program.ts` | 新增套件 **22 断言** |
+
+### 二、三个刻意选择
+
+1. **渲染端只传 id，不传 entry / 尺寸。** 标题、尺寸、加载哪个 html 都由主进程自己 `extension/list` 查。让渲染端传 entry 看着少一次请求，但那等于让渲染端决定主进程加载哪个本地文件 —— 权限全开不该从这扇门漏出去。
+2. **越界判据自己解析 `.` / `..`，不依赖调用方 resolve。** 多一个调用点漏 resolve，这条闸就等于不存在；`fake-plugin-bar` 那种同前缀兄弟目录靠「必须带分隔符」挡住。
+3. **崩溃计数按时间窗淘汰，不按累计次数。** 一分钟三次 = 循环，必须停手；两分钟两次 = 偶发，必须允许重开 —— 按累计数算，一次显卡驱动抖动就把插件永久废掉。
+
+### 三、门禁抓到一条真缺陷（值得记）
+
+`test:ipc-msgpack-routing` **直接拒了本刀**：四个 channel 用 `registerMessagePackHandler` 注册、却没加进 `MESSAGEPACK_INVOKE_CHANNELS` ⇒ 渲染端 `invoke` 走非 msgpack 路径 ⇒ 主进程回 `No handler registered`。**typecheck 抓不到**（两边都对，就是接不上），只有这个套件会喊。已补分类，该套件 153 断言 / 300 channel 全绿。
+
+### 四、验收夹具
+
+新增 `docs/plans/iter-v3-4/fixtures/fake-plugin/`（`extension.json` + `view/index.html`）：900×680 独立窗口，页面里直接显示 Node 版本 / `require('fs')` 可用性 / 本进程 pid，另有「拉起 ping 子进程」与「让本窗口崩溃」两个按钮。**S-242 / S-244 的验收也用它**，不止本条。
+
+### 五、门禁
+
+`npm run typecheck` exit 0（node + web）/ `npm test` **92/92**（新增 `plugin-view-rules` 一条）/ 本刀无 C# 改动，沿用 10:40 的 `dotnet build` 0 警告 0 错误。
+
+### 六、真机待验
+
+§5 七条逐条对应见 `S-241.md` §8.4。两条主动挂账：**空闲回收**（15 分钟真机等不起，只有纯判据覆盖）、**`persist:plugin-<id>` 分区隔离**（要两个插件才看得出，交给 S-244 五条全通验证）。

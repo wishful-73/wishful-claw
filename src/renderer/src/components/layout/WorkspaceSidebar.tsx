@@ -4,6 +4,7 @@
 // 跨文件传十几个 props 并新增中间层，反而更难追踪状态来源 —— 代价值得，收益不足。
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { IPC } from '@renderer/lib/ipc/channels'
 import { useTranslation } from 'react-i18next'
 import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3, Globe, RotateCw } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
@@ -218,10 +219,33 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     { id: 'taskboard', icon: <SquareKanban className="size-4" />, label: t('sidebar.taskBoardLabel', { defaultValue: 'Task Board' }), onClick: openTaskBoardPage }
   ]
 
-  // ─── 插件视图入口（S-240）───
+  // ─── 插件视图入口（S-240 入口 / S-241 真开窗）───
   // 硬编码三项保留原地不动（内置功能），manifest 声明的视图**追加**在下方，按 nav.order 排序。
   // 来源是 extension-store 里「已启用」插件的 manifest.views，停用即消失。
+  //
+  // 点击只传 id：标题、尺寸、加载哪个 html 全由主进程自己查清单。
+  // 让渲染端把 entry 路径传上去看着少一次请求，但那等于让渲染端决定主进程加载哪个本地文件。
   const extensionInstances = useExtensionStore((s) => s.extensions)
+  const openPluginView = useCallback(
+    async (pluginId: string, viewId: string): Promise<void> => {
+      const result = (await ipcClient.invoke(IPC.PLUGIN_VIEW_OPEN, {
+        pluginId,
+        viewId
+      })) as { success: boolean; error?: string; crashLoop?: boolean } | null | undefined
+      if (result?.success) return
+      if (result?.crashLoop) {
+        toast.error(t('sidebar.extensionViewCrashLoop', { defaultValue: '插件窗口反复崩溃，已停止重开' }))
+        return
+      }
+      toast.error(
+        t('sidebar.extensionViewOpenFailed', {
+          defaultValue: '窗口打不开：{{reason}}',
+          reason: result?.error ?? 'unknown error'
+        })
+      )
+    },
+    [t]
+  )
   const manifestViewItems = useMemo(() => {
     const items: { id: string; icon: React.ReactNode; label: string; order: number; onClick: () => void }[] = []
     for (const extension of extensionInstances) {
@@ -232,19 +256,15 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
           icon: <Plug className="size-4" />,
           label: view.nav?.label || view.title,
           order: view.nav?.order ?? 100,
-          onClick: () =>
-            toast.info(
-              t('sidebar.extensionViewNotReady', {
-                defaultValue: '「{{name}}」的窗口能力还没接上，下个版本可用',
-                name: view.nav?.label || view.title
-              })
-            )
+          onClick: () => {
+            void openPluginView(extension.id, view.id)
+          }
         })
       }
     }
     // 同 order 时按 id 兜底，保证跨插件顺序稳定（不依赖 locale 比较）
     return items.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
-  }, [extensionInstances, t])
+  }, [extensionInstances, openPluginView])
 
   // Collapsed state: completely hidden, use TitleBar button to expand
   //

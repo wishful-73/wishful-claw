@@ -114,6 +114,12 @@ export const IPC = {
   EXTENSION_STORAGE_DELETE: 'extension:storage-delete',
   EXTENSION_AGGREGATE_INFO: 'extension:aggregate-info',
 
+  // Plugin views (S-241)
+  PLUGIN_VIEW_OPEN: 'plugin-view:open',
+  PLUGIN_VIEW_CLOSE: 'plugin-view:close',
+  PLUGIN_VIEW_LIST: 'plugin-view:list',
+  PLUGIN_VIEW_STATUS: 'plugin-view:status',
+
   // SOUL Market
   SOULS_BUILTIN_LIST: 'souls:builtin-list',
   SOULS_MARKET_LIST: 'souls:market-list',

@@ -24,6 +24,8 @@ import { registerAgentChangeHandlers } from './ipc/agent-change-handlers'
 import { registerMcpHandlers, shutdownMcp } from './ipc/mcp-handlers'
 import { registerVideoHandlers } from './ipc/video-handlers'
 import { registerExtensionHandlers } from './ipc/extension-handlers'
+import { registerPluginViewHandlers } from './ipc/plugin-view-handlers'
+import { registerPluginLifecycle } from './plugins/plugin-lifecycle'
 import { registerWebFetchHandlers } from './ipc/web-fetch-handlers'
 import { registerApiRequestHandlers } from './ipc/api-request-handler'
 import { registerSshHandlers, cleanupSshHandlers } from './ipc/ssh-handlers'
@@ -313,6 +315,9 @@ if (!gotTheLock) {
   registerSessionFollowUpHandlers({ getMainWindow: () => mainWindow })
   registerVideoHandlers()
   registerExtensionHandlers()
+  registerPluginViewHandlers()
+  // 插件视图的 idle 回收与退出 pid 树回收（S-241）—— 第一个插件窗口打开之前装好
+  registerPluginLifecycle()
 registerWebFetchHandlers()
 registerApiRequestHandlers()
 registerCodeGraphHandlers()

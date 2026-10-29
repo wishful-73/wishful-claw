@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "fake-plugin",
+  "name": "假插件（基座验收）",
+  "version": "0.0.1",
+  "description": "插件基座真机验收用的最小插件：一个独立窗口，窗口内可直接验证权限全开、崩溃自愈与 pid 树回收。",
+  "views": [
+    {
+      "id": "console",
+      "title": "假插件窗口",
+      "entry": "view/index.html",
+      "mode": "window",
+      "nav": {
+        "label": "假插件",
+        "order": 200
+      },
+      "window": {
+        "width": 900,
+        "height": 680,
+        "minWidth": 600,
+        "minHeight": 480
+      }
+    }
+  ]
+}

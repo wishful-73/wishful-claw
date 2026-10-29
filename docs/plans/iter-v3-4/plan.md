@@ -118,6 +118,10 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 
 > 刀 1g 期间修掉一个**自己造成的**红灯：`ImageMediaGate` 的 `goodContent` 用的是 14 字节的 PNG 头（签名 + IHDR，**没有 IEND**），S-264 之后容器完整性判据一接上组包层就把它拦了。那是对的 —— 素材本身发不出去 —— 已换成完整的 1×1 PNG。
 
+**2026-10-29 11:40 刀 2 后复跑**：`npm run typecheck` exit 0（node + web），`npm test` **92/92**（新增 `plugin-view-rules` 套件 22 断言）。本刀无 C# 改动，`dotnet build` 沿用 10:40 的 0 警告 0 错误。⇒ **门禁 92/92**。
+
+> 刀 2 期间门禁抓出一条真缺陷：新增的四个 `plugin-view:*` channel 忘了进 `MESSAGEPACK_INVOKE_CHANNELS`，`test:ipc-msgpack-routing` 直接拒 —— **typecheck 抓不到这类错**（两边都对，就是接不上）。
+
 > 修构建命令：根目录没有 `.sln`，只有 `tests\WishfulClaw.Tests.sln`。上面 §五 开头那条写的 `src\runtime\WishfulClaw.sln` 实际不存在（`MSB1009`），以本条为准。
 
 跑之前确认过：`bin\Debug` 下无 `WishfulClaw.Worker.exe`、无开发用 `electron.exe`（只有打包版 `C:\Program Files\WishfulClaw\` 的 worker，按约定不碰）。
@@ -165,7 +169,7 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 | 1e | S-264 | **代码 + 自动化回归已完成（2026-10-29 09:55）** —— 三层一起落地：`ImageFileProbe.DetectMediaTypeFromFile` 签名判据、`FileReadTool.ReadImage` 四档分流、`ProviderContentHelpers.ResolveSupportedImageMediaType` 去掉回落、`AgentLoop` 脏图不写 `ImageVisionMemory`。**顺带修正欠账**：`ImageMediaGate` 套件三条断言仍停在「嗅探不出 ⇒ 信任声明」的旧口径（S-264 改实现时没跟着改），已改为「一律丢块」并补一条 null 声明覆盖。真机待验（见 S-264 §六） |
 | 1f | S-266 | **代码 + 自动化回归已完成（2026-10-29 09:50）** —— `ImageFileProbe.HasCompleteContainer`（PNG IEND / JPEG EOI / GIF trailer / WebP RIFF 长度）+ `FileReadTool.ReadImage` 第五档。`ReadImage` 套件 40 → 70 条断言（新增最小 PNG 编码器，stored deflate + CRC32 + Adler-32），`ReadVideo` 76 条全绿。真机待验（见 S-266 §六） |
 | 1g | S-261 / S-262 / S-266 补正 + S-267 | **已完成（2026-10-29 10:40）** —— ①`ProviderContentHelpers.IsSendableImageBlock` 作为单块判据，Responses 的 `HasImageContent` / 组包过滤 / 两处裸透传（Responses + chat 的 tool result 路径）全部改走它；②`ImageFileProbe` 拆出 `JudgeContainer` 共用判据 + `HasCompleteContainerInBase64` 入口（只解头部 16 字符与尾部窗口），接进 base64 分支；③S-262 改成按 `ToolUseId` 记死、撑满整个 run（新增 `ProviderRejectionToolUseIds` + `ProviderRejectionRegistrationPending`，`ReplaceMarkedToolResults` 替掉 `ReplaceTrailingToolResults`）；④新建 `browser-screenshot-blank.ts`（白图抽样 + DOM 探针），`executeBrowserScreenshot` 尾部拼警告。断言：`ImageInput` 53 → 62、`ReadImage` 70 → 77、`ProviderRejection` 39 → 43、`ImageMediaGate` 38（素材修正）。真机待验（见 S-261 / S-262 / S-266 / S-267 各自的验收清单） |
-| 2 | S-241 | 待开工 |
+| 2 | S-241 | **代码 + 自动化回归已完成（2026-10-29 11:40）** —— 新增主进程 4 个文件（`plugin-window` / `plugin-view-rules` / `plugin-lifecycle` / `plugin-view-handlers`）+ index 注册 + 渲染端 channels / routing / 侧栏真开窗 + locale 两条。`plugin-view-rules` 套件 22 断言。**门禁抓到一条真缺陷**：四个 channel 漏进 `MESSAGEPACK_INVOKE_CHANNELS`，`test:ipc-msgpack-routing` 直接拒（typecheck 抓不到）。真机 7 条待验（见 S-241 §8.4），夹具 `fixtures/fake-plugin/` |
 | 3 | S-242 | 待开工 |
 | 4 | S-243 落地 | 待开工 |
 | 5 | S-244 | 待开工 |

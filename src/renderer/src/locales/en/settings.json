@@ -1784,7 +1784,29 @@
       "cancel": "Cancel",
       "retry": "Retry",
       "cancelHint": "Downloaded bytes are kept so the next attempt resumes."
-    }
+    },
+    "install": {
+      "title": "Install extension",
+      "providerBy": "Provided by {{id}} · third-party",
+      "canRun": "This extension can access your files, programs and data, and can run programs on your computer.",
+      "canRunTools": "This extension adds tools for the Agent, and can access your files and programs.",
+      "assetsHint": "About {{size}} of runtime files will need a separate download (nothing downloads automatically).",
+      "sourceHint": "Make sure you trust where it came from.",
+      "confirm": "I understand, install anyway",
+      "cancel": "Cancel",
+      "submit": "Install"
+    },
+    "storage": {
+      "title": "Downloaded runtime files",
+      "hint": "These files are managed by the host app and shared across extensions; uninstalling does not remove them.",
+      "loading": "Measuring…",
+      "total": "{{size}} total",
+      "removeAll": "Clear all",
+      "removeConfirm": "Delete this runtime file? Extensions using it will stop working.",
+      "removeAllConfirm": "Delete all downloaded runtime files? Extensions using them will stop working.",
+      "removed": "Deleted"
+    },
+    "removeCleanupPending": "Extension removed. Some cache files were in use and will be cleaned up on next start."
   },
   "channel": {
     "status": {

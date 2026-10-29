@@ -1923,7 +1923,29 @@
       "cancel": "取消",
       "retry": "重试",
       "cancelHint": "已下载的部分会保留，下次接着下。"
-    }
+    },
+    "install": {
+      "title": "安装插件",
+      "providerBy": "由 {{id}} 提供 · 第三方",
+      "canRun": "此插件可访问你的文件、程序与数据，并可在你电脑上运行程序。",
+      "canRunTools": "此插件会为 Agent 增加工具，可访问你的文件与程序。",
+      "assetsHint": "需额外下载运行文件约 {{size}}（安装后再点下载，不会自动下）。",
+      "sourceHint": "请确认来源可信。",
+      "confirm": "我已了解，仍要安装",
+      "cancel": "取消",
+      "submit": "安装"
+    },
+    "storage": {
+      "title": "已下载的运行文件",
+      "hint": "这些文件由主程序托管，多个插件共用，卸载插件不会删除。",
+      "loading": "正在统计…",
+      "total": "共 {{size}}",
+      "removeAll": "全部清理",
+      "removeConfirm": "确定删除这个运行文件？正在使用它的插件将无法运行。",
+      "removeAllConfirm": "确定删除全部已下载的运行文件？正在使用它们的插件将无法运行。",
+      "removed": "已删除"
+    },
+    "removeCleanupPending": "扩展已移除，部分缓存文件被占用，重启后自动清理。"
   },
   "logsPage": {
     "level": {

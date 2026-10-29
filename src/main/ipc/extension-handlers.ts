@@ -17,10 +17,17 @@ import {
   unsyncExtensionResources,
   type ExtensionAggregateInfo
 } from './extension-plugin-sync'
+import { clearPluginSessionData } from '../plugins/plugin-cleanup'
+import { closePluginView } from '../plugins/plugin-window'
 
 type MutationResult = {
   success: boolean
   error?: string
+  /**
+   * 卸载时清理不干净的原因（S-244）。主流程照样算成功 —— 插件已经删了，
+   * 用一条「重启后自动收尾」提示把残留交给用户知情，比让卸载按钮报错更有用。
+   */
+  cleanupWarnings?: string[]
 }
 
 type ExtensionUpdateArgs = {
@@ -106,8 +113,14 @@ export function registerExtensionHandlers(): void {
     'extension:remove',
     async (args) => {
       const id = getExtensionId(args)
+      // 顺序钉死（S-244 §4.2）：停用并收子进程 → 关插件窗口 → 清 session 分区 →
+      // 交给 C# 删插件目录 / state / KV / secret。窗口先关再清分区，否则渲染进程
+      // 还在往同一个分区写 localStorage，清完立刻又长回来。
       await unsyncExtensionResources(id, getMcpManager())
-      return await nativeExtensionRequest<MutationResult>('extension/remove', { id })
+      closePluginView(id)
+      const cleanupWarnings = await clearPluginSessionData(id)
+      const result = await nativeExtensionRequest<MutationResult>('extension/remove', { id })
+      return cleanupWarnings.length > 0 ? { ...result, cleanupWarnings } : result
     }
   )
 

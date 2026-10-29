@@ -10,8 +10,16 @@ import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { refreshExtensionTools } from '@renderer/lib/extensions/extension-tools'
+import {
+  acknowledgeExtensionInstall,
+  isInstallAcknowledged,
+  readExtensionInstallPreview,
+  type ExtensionInstallPreview
+} from '@renderer/lib/extensions/extension-install-guard'
 import { useExtensionStore } from '@renderer/stores/extension-store'
 import { ExtensionAssets } from './extension-assets'
+import { ExtensionInstallDialog } from './extension-install-dialog'
+import { PluginAssetsStorage } from './plugin-assets-storage'
 import type { ExtensionInstance } from '../../../../shared/extension-types'
 
 function ExtensionDetail({
@@ -54,6 +62,11 @@ function ExtensionDetail({
     if (!result.success) {
       toast.error(result.error ?? '移除扩展失败')
       return
+    }
+    if (result.cleanupWarnings && result.cleanupWarnings.length > 0) {
+      toast.warning(t('extension.removeCleanupPending', {
+        defaultValue: '扩展已移除，部分缓存文件被占用，重启后自动清理。'
+      }))
     }
     await refreshExtensionTools()
     onClose()
@@ -111,21 +124,58 @@ export function ExtensionPanel(): React.JSX.Element {
   const installFromFolder = useExtensionStore((state) => state.installFromFolder)
   const updateExtension = useExtensionStore((state) => state.updateExtension)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [preview, setPreview] = useState<ExtensionInstallPreview | null>(null)
+  const [pendingPath, setPendingPath] = useState<string | null>(null)
+  const [installing, setInstalling] = useState(false)
 
   useEffect(() => { void loadExtensions() }, [loadExtensions])
 
   const selected = extensions.find((extension) => extension.id === selectedId) ?? null
 
+  const runInstall = async (sourcePath: string): Promise<void> => {
+    setInstalling(true)
+    try {
+      const installed = await installFromFolder(sourcePath)
+      if (!installed.success) {
+        toast.error(installed.error ?? '安装扩展失败')
+        return
+      }
+      await refreshExtensionTools()
+      toast.success(t('extension.installed', { defaultValue: '扩展已安装' }))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setInstalling(false)
+    }
+  }
+
   const install = async (): Promise<void> => {
     const result = (await ipcClient.invoke(IPC.FS_SELECT_FOLDER)) as { canceled?: boolean; path?: string }
     if (result.canceled || !result.path) return
-    const installed = await installFromFolder(result.path)
-    if (!installed.success) {
-      toast.error(installed.error ?? '安装扩展失败')
+
+    let next: ExtensionInstallPreview
+    try {
+      next = await readExtensionInstallPreview(result.path)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
       return
     }
-    await refreshExtensionTools()
-    toast.success(t('extension.installed', { defaultValue: '扩展已安装' }))
+    // 勾过一次就不再问（S-244 §4.1）—— 同一个插件更新也认这条，避免每次都拦一下
+    if (isInstallAcknowledged(next.id)) {
+      await runInstall(result.path)
+      return
+    }
+    setPendingPath(result.path)
+    setPreview(next)
+  }
+
+  const confirmInstall = async (): Promise<void> => {
+    if (!pendingPath || !preview) return
+    acknowledgeExtensionInstall(preview.id)
+    const target = pendingPath
+    setPreview(null)
+    setPendingPath(null)
+    await runInstall(target)
   }
 
   const toggle = async (extension: ExtensionInstance, enabled: boolean): Promise<void> => {
@@ -167,7 +217,14 @@ export function ExtensionPanel(): React.JSX.Element {
           ))}
         </div>
       )}
+        <PluginAssetsStorage />
       </div>
+      <ExtensionInstallDialog
+        preview={preview}
+        pending={installing}
+        onCancel={() => { setPreview(null); setPendingPath(null) }}
+        onConfirm={() => void confirmInstall()}
+      />
     </div>
   )
 }

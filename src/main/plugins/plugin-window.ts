@@ -18,6 +18,7 @@ import type { ExtensionInstance, ExtensionViewDefinition } from '../../shared/ex
 import { logError, logInfo, logWarn } from '../lib/logger'
 import { nativeExtensionRequest } from '../ipc/extension-native-bridge'
 import { isEntryInsideRoot, pruneCrashStamps, shouldStopReopening } from './plugin-view-rules'
+import { pluginPartitionName } from './plugin-cleanup-rules'
 
 /** 缺省窗口尺寸 —— 老大 14:03 定案 1100×760，清单里的 views[].window 可覆盖。 */
 const DEFAULT_WIDTH = 1100
@@ -176,6 +177,10 @@ export async function openPluginView(args: PluginViewOpenArgs): Promise<PluginVi
   }
 
   try {
+    // 分区名与卸载清理共用同一判据（S-244）：两处各写一遍字面量，早晚会漂
+    const partition = pluginPartitionName(pluginId)
+    if (!partition) return { success: false, error: 'invalid pluginId' }
+
     const view = await readViewDefinition(pluginId, viewId)
     const { abs } = await resolveViewEntry(pluginId, view)
 
@@ -194,7 +199,7 @@ export async function openPluginView(args: PluginViewOpenArgs): Promise<PluginVi
         contextIsolation: false,
         sandbox: false,
         // 只给自己保留登录态与缓存，绝不与主窗口或其它插件共用分区
-        partition: `persist:plugin-${pluginId}`
+        partition
       }
     })
 

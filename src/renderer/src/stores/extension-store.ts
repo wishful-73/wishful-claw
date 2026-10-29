@@ -42,7 +42,12 @@ interface ExtensionStore {
     patch: { enabled?: boolean; config?: Record<string, string> }
   ) => Promise<{ success: boolean; error?: string; syncWarnings?: string[] }>
   getAggregateInfo: (id: string) => Promise<ExtensionAggregateInfo | null>
-  removeExtension: (id: string) => Promise<{ success: boolean; error?: string }>
+  removeExtension: (id: string) => Promise<{
+    success: boolean
+    error?: string
+    /** 清理没做干净的原因（S-244）：分区目录被占用之类，不影响卸载结果 */
+    cleanupWarnings?: string[]
+  }>
   openExtensionFolder: (id: string) => Promise<{ success: boolean; error?: string }>
   toggleActiveExtension: (id: string, projectId?: string | null) => void
   clearActiveExtensions: (projectId?: string | null) => void
@@ -150,6 +155,7 @@ export const useExtensionStore = create<ExtensionStore>()(
         const result = (await ipcClient.invoke(IPC.EXTENSION_REMOVE, id)) as {
           success: boolean
           error?: string
+          cleanupWarnings?: string[]
         }
         await get().loadExtensions()
         if (result.success) {

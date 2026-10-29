@@ -10,6 +10,7 @@ import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type {
   PluginAssetProgressEvent,
+  PluginAssetPublicInfo,
   PluginAssetStatus
 } from '@shared/plugin-asset-types'
 
@@ -26,6 +27,20 @@ export async function fetchAssetStatuses(ids: string[]): Promise<PluginAssetStat
   if (ids.length === 0) return []
   const result = await ipcClient.invoke(IPC.PLUGIN_ASSET_STATUS_OF, ids)
   return Array.isArray(result) ? (result as PluginAssetStatus[]) : []
+}
+
+/**
+ * 主程序内置目录表（S-242）。渲染端只能拿到 id / 名称 / 用途 / 体积 ——
+ * URL 与 sha256 留在主进程，插件看不见。
+ */
+export async function fetchAssetCatalog(): Promise<PluginAssetPublicInfo[]> {
+  const result = await ipcClient.invoke(IPC.PLUGIN_ASSET_CATALOG)
+  return Array.isArray(result) ? (result as PluginAssetPublicInfo[]) : []
+}
+
+/** 删掉一个已下载的资产（S-244：卸载不删共享资产，删除只能从这里来）。 */
+export async function removeAsset(id: string): Promise<{ removed: boolean }> {
+  return (await ipcClient.invoke(IPC.PLUGIN_ASSET_REMOVE, id)) as { removed: boolean }
 }
 
 export async function downloadAsset(id: string): Promise<PluginAssetStatus> {

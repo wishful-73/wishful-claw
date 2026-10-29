@@ -3,7 +3,7 @@
 > 分支：`dev/v3-iter-4`（base = `58136a9f`，= v1.0.3 收尾合并点，即最新 `main`；tag `v1.0.3` → `58136a9f`）。执行期内只 commit，**不 push**。
 > 产品版本：`1.0.4`（开工时 `package.json` 是 `1.0.3`，收尾时改），tag `v1.0.4`。
 > 状态：**阶段一勘察已完成（2026-10-28 17:57）**，10 条待决问题**全部拍定**（见 `exploration_findings.md` §七），§七 刀序已确认。
-> 进度：**第 0 / 1 / 1b~1g / 2 / 3 / 3b / 4 刀代码 + 自动化回归已完成（截至 2026-10-29 14:05），全部真机待验**；`npm test` 94/94、`npm run typecheck` 0 错。剩余 5 刀：S-244 / S-247 / S-260 / S-248 / S-256。
+> 进度：**第 0 / 1 / 1b~1g / 2 / 3 / 3b / 4 / 5 刀代码 + 自动化回归已完成（截至 2026-10-29 15:10），全部真机待验**；`npm test` 95/95、`npm run typecheck` 0 错。剩余 4 刀：S-247 / S-260 / S-248 / S-256。
 > 追加（2026-10-28 20:40）：**登记 S-261**（图像块 400 自愈缺失，S-246 下半段），承接条数 **9 → 10**，插入为刀 **1b**。
 > 追加（2026-10-29 08:24）：**登记 S-262**（400 请求级拒绝的自愈与告知，通用兜底），承接条数 **10 → 11**，插入为刀 **1c**。
 > 追加（2026-10-29 09:07）：**登记 S-263**（侧栏收起即崩，hooks 排在 early return 之后，S-240 回归），承接条数 **11 → 12**，插入为刀 **1d**。
@@ -176,7 +176,7 @@ v3-iter-3（1.0.3）收尾时，老大 2026-10-28 09:44 定：**「没有做的�
 | 3 | S-242 | **代码 + 自动化回归已完成（2026-10-29 13:20）** —— 主进程下载器（状态机 / 多源回退 / Range 续传 / 流式 sha256 / 并发闸门 2 / 取消保留 `.part`）+ 七个 IPC 动作 + 进度广播 + 渲染端资产区（卡片 compact + 详情带进度条）+ shared 契约。`plugin-assets` 套件 **38 断言**（本地 http server 真下载）。真机九条待验（见 `S-242.md` §5.1），层 3 空状态与层 2 安装前体积提示分别挂给真插件视图与 S-244 |
 | 3b | S-269 | **代码 + 自动化回归已完成（2026-10-29 11:20）** —— ①`ProviderRetryPolicy.ComputeDelayMs` 提 `internal` + 加 `maxBackoffMs` 参数；②`ContextCompression` 新增 `SummaryFailureAction` / `SummaryFailurePolicy` / `ResolveSummaryFailurePolicy` 纯函数，`SummarizeAsync` 三个 `catch` 收成一个按 policy 分流（429/5xx 原样重发、只有 `context_length_exceeded` 才砍预算、真 400 直接放弃）；③非 2xx 改抛 `ProviderHttpException`，保住状态码与 `Retry-After`；④失败原因（`rate_limited` / `server_error` / `timeout` / `context_overflow` / `other`）透传进 `context_compressed` 事件，渲染端按档位给文案，不再一律说「摘要生成不可用」。新建 `SummarizerRetryChecks.cs`，**24 断言**锁判据 2/3/4/7。`npm test` 93/93。**判据 1（mock 端点看真实等待间隔）与判据 5 的真机部分待老大验**（见 S-269 §八） |
 | 4 | S-243 落地 | **代码 + 自动化回归已完成（2026-10-29 14:05）** —— 新增 4 个文件（`plugin-audio-wav` 纯 node 可测 / `plugin-audio` electron 侧 loopback 与落盘 / `plugin-audio-handlers` 四动作 + 分段广播 / 渲染端 `audio-recorder`），preload 挂 `window.api.audio`，四条通道进 MessagePack 白名单。`test:plugin-audio` **46 断言**（44 字节头逐字段、17 s 按 5 s 切段得 5/5/5/2、空录音不建文件、`segmentSeconds:0` 整段一文件）。`npm test` **94/94**。真机四条待验（麦克风 / 系统内录 / both 混音 / 电平），见 `S-243.md` §8.3 |
-| 5 | S-244 | 待开工 |
+| 5 | S-244 | **代码 + 自动化回归已完成（2026-10-29 15:10）** —— ①`extension:remove` 顺序钉死：停用收进程 → 关窗口 → 清 session 分区 → C# 删目录/state/KV；清理失败只回 `cleanupWarnings` 不影响卸载结果；②新增 `plugin-cleanup-rules`（id/分区名纯判据，与 C# 正则一字不差）+ `plugin-cleanup`（clearStorageData + clearCache + 删分区目录），`plugin-window.ts` 改为共用同一判据不再自己拼字面量；③安装前确认弹窗（读 `extension.json` 摘要 + 目录表体积 + 按 id 记住勾选）；④「已下载运行文件」独立清理区（单向删除 + 全部清理）。`test:plugin-cleanup` **96 断言**（含 19 个必须拒绝的 id）。`npm test` **95/95**。**纠 §3.2 旧结论**：KV/secret 其实 C# 早就清了，本号真正缺的只有 session 分区。真机八条待验（见 S-244 §8.5） |
 | 6 | S-247 | 待开工 |
 | 7 | S-260 | 待开工 |
 | 8 | S-248 | 待开工 |

@@ -483,3 +483,20 @@ OpenAI summarization HTTP TooManyRequests:
 **测试**：新建 `tests/plugin-audio`，46 条断言 —— 44 字节头逐字段（含两个长度字段与 `byteRate` / `blockAlign`）、17 s 按 5 s 切段得 5/5/5/2 且帧数不重不漏、空录音不建文件、短录音保留精确长度、`segmentSeconds: 0` 整段一文件。`npm test` **94/94**、`npm run typecheck` 0 错。
 
 **欠账**：麦克风 / 系统内录 / both 混音 / 电平四条要真机（第 0 刀用 440 Hz 探针验过 loopback 通，本刀是端到端复核）；`segmentSeconds` 缺省 30 在 IPC 层与 `SegmentingWriter` 各一份，将来改要一起改。
+
+## 2026-10-29 15:10 · 刀 5 交付 —— S-244 安装确认与卸载清理
+
+**先纠一处旧结论**：S-244 §3.2 原来写「卸载不清理私有 KV」——实读 C# 不成立。`ExtensionManifestStore.cs:140-186` 早就把插件目录、state、KV 命名空间、manifest 声明过的 secret 全清了。本号真正缺的只有 **session 分区**（S-241 才出现，C# 不知道它存在）。
+
+**做了什么**（细节见 `S-244.md` §8）：
+
+- `extension:remove` 顺序钉死：停用收子进程 → 关插件窗口 → 清 session 分区 → C# 删目录/state/KV。窗口必须排在清分区之前，否则渲染进程还在往同一个分区写 localStorage，清完立刻长回来。
+- 新增 `plugin-cleanup-rules.ts`（纯判据：`isValidExtensionId` / `pluginPartitionName` / `pluginPartitionDirName`，正则与 C# `ExtensionIdRegex` 一字不差）+ `plugin-cleanup.ts`（`clearStorageData` + `clearCache` + 删 `{userData}/Partitions/plugin-<id>`）。清理不抛错，失败只回 `cleanupWarnings`，卸载照样算成功 —— 一个锁住的 Cookie 文件不该留下「列表里有、目录删一半」的脏状态。
+- `plugin-window.ts:197` 原来自己拼 `persist:plugin-${pluginId}` 字面量，改调 `pluginPartitionName` 共用判据。两处各写一遍早晚会漂，漂的那一次就是删错目录。
+- 安装确认（**不采用** §4.3 设想的「后端加 confirm 参数」）：确认是用户看不看懂的事，拦在主进程只会让两套文案同时要维护。改成渲染端安装前先读 `<folder>/extension.json` 摘要 → 资产 id 去目录表算体积（查不到的不计入，宁可少报不编数字）→ 弹窗（按 `views` 有无分两套「它会碰什么」文案、资产行无资产时整行不出现、不勾禁用安装）→ 按插件 id 记在 localStorage，同一插件更新不再问。
+- 「已下载的运行文件」独立清理区（S-244 §6 风险 5 的落点）：只列已就绪的资产，单项删 + 全部清理，都走 confirm。卸载不删共享资产，那就必须有个看得见删得掉的地方。
+
+**测试**：新建 `tests/plugin-cleanup`，**96 条断言**。重点不在「拼得对」，而在**什么情况必须拒绝**：19 个必须拒绝的 id（`../evil`、`C:\temp`、长度越界、空格、点、`.`／`-` 开头、unicode……），拒绝即不删。另有「只要被接受，产物里不许出现 `..` / `/` / `\`」的最后一道门。`npm test` **95/95**、`npm run typecheck` 0 错。
+
+**欠账**：判据 1~8 全在 UI 侧，要拿一个真插件目录走一遍；Windows 上 `clearStorageData` 之后删分区目录仍可能被 Electron 握住，已用 warning 兜底，若真机复现再补启动清扫。
+

@@ -14,7 +14,7 @@ import { useAgentStore } from '@renderer/stores/agent-store'
 import type { RuntimeStatusView, ComposerRuntimeStatusProps } from './types'
 import { collectRuntimeOutputSnapshot } from './utils'
 import { resolveRunningElapsedLabel } from '@renderer/lib/format-duration'
-import { resolveProxyStatusName } from '@renderer/lib/agent/use-capability-proxy'
+import { resolveStatusToolName } from '@renderer/lib/tools/tool-display-name'
 
 export function ComposerStatusIndicator({
   sessionId,
@@ -79,11 +79,13 @@ export function ComposerStatusIndicator({
         sessionStatus: sessionId ? (s.runningSessions[sessionId] ?? null) : null,
         retryAttempt: sessionId ? (s.sessionRequestRetryState[sessionId]?.attempt ?? null) : null,
         retryMaxAttempts: sessionId ? (s.sessionRequestRetryState[sessionId]?.maxAttempts ?? null) : null,
-        activeToolName: resolveProxyStatusName(activeTool?.name, activeTool?.input),
-        pendingApprovalToolName: resolveProxyStatusName(
-          pendingApprovalTool?.name,
-          pendingApprovalTool?.input
-        ),
+        // S-270：这里只取**原始**工具名 + 入参。中文名要过 `resolveToolDisplayName`，
+        // 而那需要组件作用域的 `t`；能力代理的解析又要等 args 到齐 —— 都留到下面的
+        // `useMemo` 里做（见 `resolveStatusToolName`）。
+        activeToolName: activeTool?.name ?? null,
+        activeToolInput: activeTool?.input,
+        pendingApprovalToolName: pendingApprovalTool?.name ?? null,
+        pendingApprovalToolInput: pendingApprovalTool?.input,
         activeSubAgentCount
       }
     })
@@ -93,6 +95,21 @@ export function ComposerStatusIndicator({
     hasTextOutput: live.hasTextOutput
   }
   const outputTokens = 0 // Not needed for status view; only used for metrics
+
+  // S-270 第六个漏点：状态栏以前只过 `resolveProxyStatusName`，非代理工具原样露英文名。
+  const activeToolLabel = React.useMemo(
+    () => resolveStatusToolName(agentRuntime.activeToolName, agentRuntime.activeToolInput, t),
+    [agentRuntime.activeToolName, agentRuntime.activeToolInput, t]
+  )
+  const pendingApprovalToolLabel = React.useMemo(
+    () =>
+      resolveStatusToolName(
+        agentRuntime.pendingApprovalToolName,
+        agentRuntime.pendingApprovalToolInput,
+        t
+      ),
+    [agentRuntime.pendingApprovalToolName, agentRuntime.pendingApprovalToolInput, t]
+  )
 
   // iter-39 S-197：状态栏动态耗时。起点 = 当前流式消息的 createdAt（本轮 run 开跑时刻），
   // 每秒 tick 一次；run 一结束 streamingStartedAt 变 null ⇒ 立即收起，**不做保留**。
@@ -141,11 +158,11 @@ export function ComposerStatusIndicator({
         spin: contextCompressionStatus === 'compressing'
       }
     }
-    if (agentRuntime.pendingApprovalToolName) {
+    if (pendingApprovalToolLabel) {
       return {
         text: t('input.runtimeStatus.awaitingApproval', {
           defaultValue: 'Awaiting approval: {{tool}}',
-          tool: agentRuntime.pendingApprovalToolName
+          tool: pendingApprovalToolLabel
         }),
         Icon: ShieldAlert,
         className: 'text-amber-500/90 dark:text-amber-300/90'
@@ -175,11 +192,11 @@ export function ComposerStatusIndicator({
         className: 'text-violet-500/80 dark:text-violet-300/80'
       }
     }
-    if (agentRuntime.activeToolName) {
+    if (activeToolLabel) {
       return {
         text: t('input.runtimeStatus.runningTool', {
           defaultValue: 'Running {{tool}}',
-          tool: agentRuntime.activeToolName
+          tool: activeToolLabel
         }),
         Icon: Wrench,
         className: 'text-sky-500/85 dark:text-sky-300/85'
@@ -225,8 +242,8 @@ export function ComposerStatusIndicator({
     }
   }, [
     agentRuntime.activeSubAgentCount,
-    agentRuntime.activeToolName,
-    agentRuntime.pendingApprovalToolName,
+    activeToolLabel,
+    pendingApprovalToolLabel,
     agentRuntime.retryAttempt,
     agentRuntime.retryMaxAttempts,
     agentRuntime.sessionStatus,

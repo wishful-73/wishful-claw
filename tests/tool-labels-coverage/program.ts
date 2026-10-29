@@ -17,7 +17,10 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 
 import { normalizeToolName } from '../../src/renderer/src/lib/tools/tool-name-aliases'
-import { resolveToolDisplayName } from '../../src/renderer/src/lib/tools/tool-display-name'
+import {
+  resolveStatusToolName,
+  resolveToolDisplayName
+} from '../../src/renderer/src/lib/tools/tool-display-name'
 
 const repoRoot = path.resolve(__dirname, '../../..')
 const sourceRoot = path.join(repoRoot, 'src/renderer/src')
@@ -240,6 +243,53 @@ test('表里没有的工具兜底成「工具 · 原名」，绝不裸回退', (
 
 test('空工具名不炸', () => {
   assert.equal(resolveToolDisplayName('', fakeT), '未知工具')
+})
+
+/*
+ * 第六个漏点（老大 2026-10-29 16:53：「输入框左上角状态栏使用工具的时候显示的是工具英文名称」）。
+ *
+ * 状态栏以前只调 `resolveProxyStatusName()` —— 它的职责只是把 `use_capability` 拆回被代理的
+ * 真实工具，**对非代理工具原样返回**。所以卡片 / 折叠条 / 文件变更行全中文化了，状态栏还在念
+ * `BrowserNavigate`。这组断言把「状态栏也必须过统一出口」钉住：任何人把
+ * `resolveStatusToolName` 换回裸名，这里立刻红。
+ */
+test('状态栏工具名也走统一出口（非代理工具不再露英文）', () => {
+  assert.equal(resolveStatusToolName('Read', undefined, fakeT), '读取文件')
+  assert.equal(resolveStatusToolName('BrowserNavigate', undefined, fakeT), '打开网址')
+  assert.equal(resolveStatusToolName('DesktopScreenshot', undefined, fakeT), '桌面截图')
+  assert.equal(resolveStatusToolName('RequestSandboxElevation', undefined, fakeT), '申请关闭沙箱')
+  // 表里没有的也不能裸回退
+  assert.equal(resolveStatusToolName('SomeBrandNewTool', undefined, fakeT), '工具 · SomeBrandNewTool')
+  assert.equal(resolveStatusToolName(null, undefined, fakeT), null)
+})
+
+test('状态栏先拆能力代理、再过统一出口', () => {
+  // builtin:ToolName → 真实工具名 → 中文
+  assert.equal(
+    resolveStatusToolName(
+      'use_capability',
+      { action: 'call', capability_id: 'builtin:BrowserNavigate' },
+      fakeT
+    ),
+    '打开网址'
+  )
+  // mcp-tool:server/tool → mcp__server__tool → 拆词大写
+  const mcpLabel = resolveStatusToolName(
+    'use_capability',
+    { action: 'call', capability_id: 'mcp-tool:my_server/do_thing' },
+    fakeT
+  )
+  assert.equal(mcpLabel, 'Do thing')
+  assert.ok(!String(mcpLabel).includes('mcp__'), String(mcpLabel))
+  // skill:<id> 是能力 id、不是工具名 ⇒ 保持原样（与接入前一致）
+  assert.equal(
+    resolveStatusToolName(
+      'use_capability',
+      { action: 'call', capability_id: 'skill:commit' },
+      fakeT
+    ),
+    'skill:commit'
+  )
 })
 
 function main(): void {

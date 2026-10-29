@@ -1318,6 +1318,7 @@
     "streamingText": "streaming text",
     "activeTools": "{{count}} active tools",
     "toolExecutions": "{{count}} tool executions",
+    "toolRunFailed": "{{count}} failed",
     "completionFinished": "Completed",
     "metricTokens": "Tokens",
     "metricCost": "Cost",

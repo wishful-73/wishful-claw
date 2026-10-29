@@ -17,7 +17,7 @@ import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-form
 import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import type { ChatRenderDensity } from '@renderer/stores/settings-store-types'
 import { deriveToolRunCollapsed } from './render-density'
-import { inputSummary } from './tool-call-summary'
+import { inputSummary } from '@renderer/components/chat/tool-call-summary'
 
 export type ToolExecutionVisibility = 'hidden' | 'ordinary' | 'force'
 
@@ -64,6 +64,8 @@ export interface ToolExecutionRun {
   activeCount: number
   totalItemCount: number
   ordinaryItemCount: number
+  /** S-271：run 内失败项数（折叠头据此出红色徽章，替代「把失败卡拎到面板外」）。 */
+  failedCount: number
   defaultCollapsed: boolean
   showToggle: boolean
   activeSummary: string | null
@@ -191,15 +193,22 @@ function resolveToolStatus(
 
 function getToolCategory(options: {
   name: string
-  hasError: boolean
   status: ToolCallStatus | 'completed'
   requiresApproval: boolean
 }): ToolExecutionCategory {
-  const { name, hasError, status, requiresApproval } = options
+  const { name, status, requiresApproval } = options
   if (HIDDEN_TOOL_NAMES.has(name)) return 'hidden'
 
-  // Errors and approval requests always need user attention regardless of tool type
-  if (hasError || status === 'pending_approval' || requiresApproval) {
+  // S-271：错误不再单独把一项拉出折叠块。
+  //
+  // S-225 §8 的原意是「档位不得藏错误」，它的做法是 hasError ⇒ attention ⇒ force
+  // ⇒ 渲染在折叠面板外。问题在于「渲染在面板外」会把一次失败从一段连续调用里硬拔出来，
+  // 视觉上等于把连续操作劈成两段 —— 失败越少，劈得越突兀。
+  // 现在改由 run 级的 `failedCount` 在折叠头给出信号（红色徽章 + 图标变红），
+  // 错误本身仍然在面板里以错误态渲染，既不藏也不劈。
+  //
+  // 仍然必须露在面板外的只有「用户此刻必须做点什么」的两类：待审批 / 需要批准。
+  if (status === 'pending_approval' || requiresApproval) {
     return 'attention'
   }
 
@@ -308,6 +317,8 @@ export function buildToolExecutionOutline({
         .map((item) => item.toolUseId)
       const activeItems = visibleItems.filter((item) => item.isActive)
       const activeItem = activeItems[activeItems.length - 1]
+      // S-271：失败信号收在 run 上 —— 只数可见项，hidden 的失败用户本来也看不见。
+      const failedCount = visibleItems.filter((item) => item.hasError).length
       const run: ToolExecutionRun = {
         id: `tool-run:${visibleItems[0].toolUseId}`,
         startBlockIndex: pendingRun.startBlockIndex,
@@ -318,6 +329,7 @@ export function buildToolExecutionOutline({
         activeCount: activeItems.length,
         totalItemCount: visibleItems.length,
         ordinaryItemCount: ordinaryRunItemIds.length,
+        failedCount,
         defaultCollapsed: deriveToolRunCollapsed(
           density,
           ordinaryRunItemIds.length,
@@ -367,7 +379,6 @@ export function buildToolExecutionOutline({
     const requiresApproval = liveToolCall?.requiresApproval === true
     const category = getToolCategory({
       name: block.name,
-      hasError,
       status,
       requiresApproval
     })

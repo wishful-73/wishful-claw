@@ -347,6 +347,12 @@ export function ContentRenderer({
             detail={detail}
             collapsible={run.showToggle}
             expanded={!collapsed}
+            failedCount={run.failedCount}
+            failedLabel={
+              run.failedCount > 0
+                ? t('assistantMessage.toolRunFailed', { count: run.failedCount })
+                : undefined
+            }
             onClick={() => toggleToolRunCollapsed(run)}
           />
         ) : null}

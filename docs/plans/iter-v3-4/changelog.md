@@ -608,3 +608,77 @@ OpenAI summarization HTTP TooManyRequests:
 **闸有效性做了反向验证**：临时删掉 `CronList` 那条标签跑测试 → 变红；恢复后内容逐字节一致、`bareLF=0`。
 
 **门禁**：`npm run test:tool-labels-coverage` 10/10、`npm test -- --ts-only` **77/77**、`npm run typecheck` 三配置 0 错。
+
+## 2026-10-29 15:00 · 登记 S-271（失败工具跳出折叠块），移交下迭代
+
+**登记，不动码。** 归属 v3-iter-5，不占本迭代承接、不占刀序。
+
+老大原话：「我们正常连续的工具调用 会折叠收起到工具调用下，但是如果某个工具调用报错或者失败了，就不会被折叠进去，感觉是偶然情况，并不是一定」。
+
+**核完代码，不是偶然 —— 是「刻意设计 + 三条判据不同步」四层叠出来的：**
+
+| # | 机制 | 位置 | 效果 |
+|---|---|---|---|
+| ① | `hasError` 一律判 `attention` ⇒ `visibility = force` ⇒ 渲染在折叠面板**外面** | `execution-outline.ts:201-204` / `:227-238` / `content-renderer.tsx:353-357` | **这就是老大看到的现象本身**，S-225 §8 定的口径（「档位不得藏错误」） |
+| ② | `hasError` 第四个来源 `hasStructuredOutputError` 靠**嗅探输出文本** | `execution-outline.ts:361-365` / `:166-179` | 失败写在纯文本里、`isError` 没置位 ⇒ `hasError=false` ⇒ 照常折进去 |
+| ③ | `canceled` 在白名单工具于 `:209-212` 就归类完，走不到 `:221` | `execution-outline.ts:209-223` | 取消的 `Read` 折进去、取消的未知工具跳出来 |
+| ④ | `pinnedTools` 额外要求 `processForm === 'card'` | `content-renderer.tsx:329-332` | **卡片档跳出来、纯文本档折进面板当红行** —— 切档位表现就变 |
+
+②③④ 各自都能单独解释「有时候跳、有时候不跳」，叠起来就成了老大说的「偶然」。真正的**稳定性缺陷在 ①**：它每次都跳，只是跳的条件被 ② 和 ④ 挡住了。
+
+**建议方案 A**（写进需求单 §四）：`hasError` 不再单独决定 `force`（只保留 `pending_approval` / `requiresApproval` 判 attention），`ToolExecutionRun` 加 `failedCount`，折叠头出红色失败徽章、点开定位第一个失败项。
+否决 B（只统一判据 —— 治飘不治跳）与 C（pin 但降级成一行 —— 多一套行形态，纯文本档本来就是行）。
+
+**为什么移交下迭代**：改的是 S-225 §8 的一条已验收口径，收尾期插刀要连带重跑 S-225 三档 + S-248 纯文本档两套真机验收，收益不抵风险。
+
+**顺带记两条判据盲区（以后别踩）**：
+
+- `force` 项**仍在 run 内**（`execution-outline.ts:406` 无条件 `push`）—— 所以「折叠块的边界」没坏，坏的是渲染时把 force 项拎到面板外。谁要改都别去动 run 切分逻辑。
+- `components/chat/ToolCallGroup.tsx`（163 行）**全仓无人引用**，OpenCowork 迁移残留。做折叠相关改动时容易误以为它是入口，实际入口是 `execution-outline.ts` + `content-renderer.tsx` 的 `renderToolRun`。
+
+## 2026-10-29 16:10 · 刀 11 交付：S-271 失败的工具调用不再跳出折叠块
+
+**改判记录**：本条 15:00 登记时按「收尾期插刀要连带重跑 S-225 三档 + S-248 纯文本档两套真机验收」移交下迭代；15:40 老大拍板「方案 A，本迭代做」—— 拍板后重新估了改动面：只动渲染层一条判据 + run 级一个计数 + 折叠头一个徽章，**不碰后端、不碰流式渲染主链路**，且验收当场就能在聊天窗看到一个折叠块，不需要专门造真机场景。承接条数 17 → 18，插为刀 11。
+
+### 口径变更（S-225 §8 的一半）
+
+S-225 §8 原文「档位不得藏错误」，实现方式是把 `hasError` 一律判 `attention` ⇒ `force` ⇒ 渲染在折叠面板**外面**。本条把实现方式换掉，**不换意图**：
+
+- 失败项留在 run 里，跟着折叠块一起收；
+- 折叠头出红色「M 个失败」徽章（`XCircle` + 计数），折叠态下失败**依然有可见信号**；
+- 展开后失败项本身仍是错误态（`ToolBlockRenderer` 未动）。
+- **仍必须露在面板外的两类一项没放开**：`pending_approval` / `requiresApproval` —— 用户此刻必须做点什么，藏了就卡死。
+
+### 交付内容
+
+| 文件 | 改动 |
+|---|---|
+| `components/chat/execution-outline.ts` | `getToolCategory` 去掉 `hasError` 入参与分支；`ToolExecutionRun` 加 `failedCount`（只数可见项 —— hidden 的失败用户本来也看不见）；run 构建处计数 |
+| `components/chat/AssistantMessage/ui-buttons.tsx` | `GenerationProcessLine` 收 `failedCount` / `failedLabel`，折叠头追加红色徽章，无失败不渲染 |
+| `components/chat/AssistantMessage/content-renderer.tsx` | 传 `run.failedCount` + `t('assistantMessage.toolRunFailed')` |
+| `locales/zh/chat.json` / `locales/en/chat.json` | `assistantMessage.toolRunFailed` = `"{{count}} 个失败"` / `"{{count}} failed"` |
+| `tests/tool-run-folding/`（新建） | 6 组 12 条断言 + 两个桩，见下 |
+
+同一文件里把 `inputSummary` 的 import 由相对路径改成 `@renderer/components/chat/tool-call-summary` —— 与本文件其余 import 风格一致（它本来只有这一行用相对），同时也是回归套件能 alias 它的前提。
+
+### 回归套件 `npm run test:tool-run-folding`
+
+12 条断言：一个 run 不断裂、失败项归类为 ordinary、折叠态不 pin、无失败不出徽章、纯文本结构化失败计入、hidden 不计入、待审批仍 pin、交互类仍 pin、子 agent / 生成图 / 桌面截图仍 force、失败与取消归类一致、三档 run 结构一致、普通成功 run 也不 pin。
+
+**两个桩（`tests/tool-run-folding/stubs/`）**，都是「真实模块在 node 下加载即炸」逼出来的，不是图省事：
+
+- `settings-store.ts` —— `execution-outline` → `tool-result-format` → `settings-store` → i18n → `locales/index.ts`，而那里用 vite 专有的 `import.meta.glob`。被测路径只读 `toolResultFormat`，且 `decodeStructuredToolResult` 是「先 JSON 再 TOON」逐次尝试、与该设置无关。
+- `tool-call-summary.ts` —— `execution-outline` → `tool-call-summary` → `ask-user-tool`，后者拖着 i18n / `chat-store` / `background-session-store`。摘要文案不属本套件判据。
+
+加桩后 bundle 由 2.7 mb 降到 83 kb。
+
+**闸有效性反向验证**：把 `hasError` 判据临时注回 `attention` 分支 ⇒ 断言「折叠态下失败项不 pin 出去」变红（`actual ['t3'] / expected []`）；撤销后逐字节恢复、12/12 复绿。这条闸不是空转。
+
+### 门禁
+
+`npm run test:tool-run-folding` 12/12 · `npm test` **100/100** · `npm run typecheck:web` 0 错。
+
+### 未做
+
+真机验收（`S-271.md` §六 第 4 项）：连续 5 次 Read 中间一次读不存在文件 → 折叠成一个块 + 徽章 → 切纯文本档再看 → 再验一次取消执行。
+

@@ -1319,6 +1319,7 @@
     "streamingText": "流式输出正文",
     "activeTools": "{{count}} 个工具运行中",
     "toolExecutions": "{{count}} 个工具执行",
+    "toolRunFailed": "{{count}} 个失败",
     "completionFinished": "已完成",
     "metricTokens": "Token",
     "metricCost": "费用",

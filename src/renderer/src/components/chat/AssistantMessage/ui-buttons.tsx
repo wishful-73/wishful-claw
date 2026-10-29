@@ -4,7 +4,7 @@ import * as React from 'react'
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Copy, Check, ChevronDown, ChevronRight, Bug, Loader2, CheckCircle2
+  Copy, Check, ChevronDown, ChevronRight, Bug, Loader2, CheckCircle2, XCircle
 } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { useSettingsStore } from '@renderer/stores/settings-store'
@@ -224,6 +224,8 @@ export function GenerationProcessLine({
   detail,
   expanded,
   collapsible = false,
+  failedCount = 0,
+  failedLabel,
   onClick
 }: {
   active: boolean
@@ -231,8 +233,12 @@ export function GenerationProcessLine({
   detail?: string | null
   expanded?: boolean
   collapsible?: boolean
+  /** S-271：run 内失败项数。> 0 时图标变红并出红色徽章 —— 失败不再靠「把卡拎到面板外」提示。 */
+  failedCount?: number
+  failedLabel?: string
   onClick?: () => void
 }): React.JSX.Element {
+  const hasFailure = failedCount > 0
   const content = (
     <>
       <span
@@ -240,10 +246,18 @@ export function GenerationProcessLine({
           'flex size-5 shrink-0 items-center justify-center rounded-full border bg-transparent',
           active
             ? 'border-sky-500/25 text-sky-600 dark:text-sky-300'
-            : 'border-lime-500/25 text-lime-600 dark:text-lime-400'
+            : hasFailure
+              ? 'border-destructive/30 text-destructive'
+              : 'border-lime-500/25 text-lime-600 dark:text-lime-400'
         )}
       >
-        {active ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
+        {active ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : hasFailure ? (
+          <XCircle className="size-3" />
+        ) : (
+          <CheckCircle2 className="size-3" />
+        )}
       </span>
       <span className="shrink-0 font-mono font-medium text-foreground/82">{label}</span>
       {detail ? (
@@ -251,6 +265,11 @@ export function GenerationProcessLine({
       ) : (
         <span className="min-w-0 flex-1" />
       )}
+      {hasFailure && failedLabel ? (
+        <span className="shrink-0 rounded-full bg-destructive/10 px-1.5 py-px text-[11px] font-medium text-destructive">
+          {failedLabel}
+        </span>
+      ) : null}
       {collapsible ? (
         expanded ? (
           <ChevronDown className="size-3 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-foreground" />

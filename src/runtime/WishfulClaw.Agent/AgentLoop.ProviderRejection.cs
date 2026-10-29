@@ -7,8 +7,8 @@ namespace WishfulClaw.Agent;
 /// 400 各有专项分支（见 <c>AgentLoop</c> 的 catch 链），认不出的那些过去一律直接抛 —— run
 /// 当场终止，模型全程不知道自己上一步做错了什么，用户看到的是一个看起来废掉的会话。
 ///
-/// 本文件的动作只有一句：**把本轮最后一条工具结果换成「这次结果被上游拒绝」**，然后让上层
-/// 重发。它一石二鸟：
+/// 本文件的动作只有一句：**把被上游拒过的那批工具结果换成「这次结果被上游拒绝」，并且撑满整个
+/// run**，然后让上层重发。它一石二鸟：
 /// <list type="bullet">
 /// <item><b>告知</b> —— 模型下一轮在对话里就看到「我上一步失败了 + 原文」，自己决定换工具、
 /// 换参数，还是直接告诉用户；</item>
@@ -16,6 +16,10 @@ namespace WishfulClaw.Agent;
 /// </list>
 ///
 /// 只追加一条提醒治不了根（坏数据还在，必再 400），所以这里必须替换而不是旁白。
+///
+/// **替换要撑满整个 run，不能只注入一轮。** 触发 400 的工具结果在报错前就已写回 durable
+/// conversation，而 wire 副本每轮重建 —— 只换一轮，下一轮原文原样回来，同一 400 再来一次，
+/// 指纹去重命中后直接抛，会话照样废。按 `ToolUseId` 记死它才治得彻底。
 ///
 /// **替换只发生在临时副本上。** 注入走 <c>ExecuteTurnAsync</c> 每轮现造的 wire conversation，
 /// 与 <c>InjectSessionTodo</c> / <c>InjectEmptyTurnNudge</c> / <c>InjectSandboxTransition</c>
@@ -91,54 +95,90 @@ internal static partial class AgentLoop
     }
 
     /// <summary>
-    /// 有待注入的拒绝报文时，把本轮最后一条工具结果换成拒绝说明（临时副本）。
-    /// 消费标记：同一次拒绝只注入一轮。
+    /// 把被标记的工具结果换成拒绝说明（临时副本）。
     ///
-    /// <c>internal</c> 同 <see cref="CanRecoverFromProviderRejection"/>：替换语义（只换最后一条、
-    /// `ToolUseId` 不变、`IsError` 置真）是回归锚点。</summary>
+    /// **替换撑满整个 run，不再只注入一轮。** 只注入一轮的话，下一轮 wire 副本从 durable
+    /// conversation 重建，原文原样回来 → 同一 400 → 指纹去重命中 → 抛，会话照样废。
+    /// 详见 <see cref="AgentRuntimeRunState.ProviderRejectionToolUseIds"/>。
+    ///
+    /// <c>internal</c> 同 <see cref="CanRecoverFromProviderRejection"/>：替换语义（`ToolUseId`
+    /// 一个字不许动、`IsError` 置真）是回归锚点。
+    /// </summary>
     internal static List<AgentRuntimeChatMessage> InjectProviderRejectionNotice(
         AgentRuntimeRunState state,
         List<AgentRuntimeChatMessage> conversation)
     {
-        var report = state.PendingProviderRejectionReport;
-        if (string.IsNullOrEmpty(report)) return conversation;
+        // 刚撞完 400：把发出去的那一批工具结果登记为「已死」，之后每轮都换掉它们。
+        if (state.ProviderRejectionRegistrationPending)
+        {
+            state.ProviderRejectionRegistrationPending = false;
+            var index = FindTrailingToolResultIndex(conversation);
+            if (index >= 0)
+            {
+                foreach (var result in conversation[index].ToolResults)
+                {
+                    if (!string.IsNullOrEmpty(result.ToolUseId))
+                    {
+                        state.ProviderRejectionToolUseIds.Add(result.ToolUseId);
+                    }
+                }
+            }
+        }
 
-        state.PendingProviderRejectionReport = null;
-        return ReplaceTrailingToolResults(conversation, RejectedToolResultHeader + report);
+        var report = state.PendingProviderRejectionReport;
+        if (string.IsNullOrEmpty(report) || state.ProviderRejectionToolUseIds.Count == 0)
+        {
+            return conversation;
+        }
+
+        return ReplaceMarkedToolResults(
+            state.ProviderRejectionToolUseIds, conversation, RejectedToolResultHeader + report);
     }
 
     /// <summary>
-    /// 把**最后一条带工具结果**的消息里的每条结果换成 <paramref name="replacement"/>。
+    /// 把所有被标记的工具结果换成 <paramref name="replacement"/> —— 不限条数、不限轮次、不看位置。
     ///
-    /// 选最后一条而不是全部：一轮里可能有十几条工具结果，只有最新那批是本轮刚产生的。
-    /// 全换会把模型前几轮辛苦拿到的信息一并抹掉，比不修还糟。
+    /// 与只替换「最后一条带工具结果的消息」的区别：重发成功后模型会继续调工具，等坏数据再回到
+    /// 报文里时，它早就不是最后一条了。按 id 认人，位置怎么变都换得掉。
+    /// 没命中任何 id 时原样返回同一个列表实例，调用方可以靠引用相等判断「没动过」。
     /// </summary>
-    private static List<AgentRuntimeChatMessage> ReplaceTrailingToolResults(
+    private static List<AgentRuntimeChatMessage> ReplaceMarkedToolResults(
+        IReadOnlySet<string> toolUseIds,
         List<AgentRuntimeChatMessage> conversation,
         string replacement)
     {
-        var index = FindTrailingToolResultIndex(conversation);
-        if (index < 0) return conversation;
+        List<AgentRuntimeChatMessage>? updated = null;
 
-        var message = conversation[index];
-        var replaced = new List<AgentRuntimeToolResult>(message.ToolResults.Count);
-        foreach (var result in message.ToolResults)
-        {
-            // ToolUseId 原样保留 —— 换了或丢了就是配对错。
-            replaced.Add(result with
-            {
-                Content = AgentRuntimeProviderSupport.CreateStringElement(replacement),
-                IsError = true
-            });
-        }
-
-        var updated = new List<AgentRuntimeChatMessage>(conversation.Count);
         for (var i = 0; i < conversation.Count; i++)
         {
-            updated.Add(i == index ? message with { ToolResults = replaced } : conversation[i]);
+            var message = conversation[i];
+            if (message.ToolResults.Count == 0) continue;
+
+            List<AgentRuntimeToolResult>? replaced = null;
+            for (var j = 0; j < message.ToolResults.Count; j++)
+            {
+                var result = message.ToolResults[j];
+                if (string.IsNullOrEmpty(result.ToolUseId) || !toolUseIds.Contains(result.ToolUseId))
+                {
+                    continue;
+                }
+
+                replaced ??= new List<AgentRuntimeToolResult>(message.ToolResults);
+                // ToolUseId 原样保留 —— 换了或丢了就是配对错。
+                replaced[j] = result with
+                {
+                    Content = AgentRuntimeProviderSupport.CreateStringElement(replacement),
+                    IsError = true
+                };
+            }
+
+            if (replaced is null) continue;
+
+            updated ??= new List<AgentRuntimeChatMessage>(conversation);
+            updated[i] = message with { ToolResults = replaced };
         }
 
-        return updated;
+        return updated ?? conversation;
     }
 
     /// <summary>这份对话里有没有可替换的工具结果（安全阀 3 的判据）。</summary>

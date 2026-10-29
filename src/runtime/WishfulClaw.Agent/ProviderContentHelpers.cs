@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using WishfulClaw.Agent.Tools.FileTools;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Agent;
@@ -302,38 +303,70 @@ public static class ProviderContentHelpers
 
         foreach (var block in content.EnumerateArray())
         {
-            if (JsonHelpers.GetString(block, "type") != "image")
-            {
-                continue;
-            }
-            if (!block.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object)
-            {
-                continue;
-            }
-
-            if (JsonHelpers.GetString(source, "type") == "url")
-            {
-                // S-261：与组包闸同源 —— url 非空不等于「能出门」。
-                if (SendableImageUrl(source, warn: false) is not null)
-                {
-                    return true;
-                }
-                continue;
-            }
-
-            var data = JsonHelpers.GetString(source, "data");
-            if (string.IsNullOrWhiteSpace(data))
-            {
-                continue;
-            }
-
-            if (ResolveSupportedImageMediaType(data, JsonHelpers.GetString(source, "mediaType")) is not null)
+            if (IsSendableImageBlock(block, warn: false))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 单个 content block 是不是**放得出去**的图像块（S-264）。
+    ///
+    /// 这是「这张图能不能出门」的唯一判据，三条协议、三个位置共用：
+    /// 探测要不要走多模态分支、组包时丢不丢这个块、tool result 里算不算「有图」。
+    /// S-261 曾把 url 闸补进 chat 与 Anthropic 两条协议，却漏了 Responses 的用户消息路径 ——
+    /// 那条路自己写了一份「url 非空」的旧判据，于是 `file:///` 图照样出门换回 400。
+    /// 判据搬到这里以后，再不会有哪个调用点漏掉。
+    /// </summary>
+    /// <param name="block">content 数组里的单个块。</param>
+    /// <param name="warn">url 被丢弃时是否写日志；探测调用传 false，避免同一张图重复告警。</param>
+    public static bool IsSendableImageBlock(JsonElement block, bool warn = false)
+    {
+        if (JsonHelpers.GetString(block, "type") != "image")
+        {
+            return false;
+        }
+        if (!block.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (JsonHelpers.GetString(source, "type") == "url")
+        {
+            // url 非空不等于「能出门」：file:/// 、oc-media:// 上游一律解析不了。
+            return SendableImageUrl(source, warn) is not null;
+        }
+
+        var data = JsonHelpers.GetString(source, "data");
+        if (string.IsNullOrWhiteSpace(data))
+        {
+            return false;
+        }
+
+        var mediaType = ResolveSupportedImageMediaType(data, JsonHelpers.GetString(source, "mediaType"));
+        if (mediaType is null)
+        {
+            return false;
+        }
+
+        // S-264：格式对但字节没写完（下载到一半的截图、被中断的保存）一样出不了门 ——
+        // 上游回 400 `invalid image`，坏块留在历史里每轮重发。判据与 Read 工具同源
+        // （ImageFileProbe.JudgeContainer），只是入口从 path 换成 base64。
+        if (!ImageFileProbe.HasCompleteContainerInBase64(data, mediaType))
+        {
+            if (warn)
+            {
+                WorkerLog.Warn(
+                    $"image block dropped before provider turn: container incomplete " +
+                    $"(media={mediaType}, base64Chars={data.Length})");
+            }
+            return false;
+        }
+
+        return true;
     }
 
     public static string ToolResultToString(JsonElement content)

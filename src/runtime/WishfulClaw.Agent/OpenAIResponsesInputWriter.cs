@@ -135,13 +135,9 @@ internal static partial class OpenAIResponsesProvider
         if (contentBlocks is null) return false;
         foreach (var block in contentBlocks)
         {
-            if (JsonHelpers.GetString(block, "type") == "image" &&
-                block.TryGetProperty("source", out var source) &&
-                source.ValueKind == JsonValueKind.Object &&
-                ((JsonHelpers.GetString(source, "type") == "url" &&
-                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
-                 (JsonHelpers.GetString(source, "type") == "base64" &&
-                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            // S-264：判据统一走 ProviderContentHelpers —— 这里曾自写一份「url 非空」的旧闸，
+            // 于是 file:/// 、oc-media:// 的脏 url 在用户消息路径上裸透传。
+            if (ProviderContentHelpers.IsSendableImageBlock(block))
             {
                 return true;
             }
@@ -162,13 +158,7 @@ internal static partial class OpenAIResponsesProvider
                 writableBlocks.Add(block);
                 continue;
             }
-            if (type == "image" &&
-                block.TryGetProperty("source", out var source) &&
-                source.ValueKind == JsonValueKind.Object &&
-                ((JsonHelpers.GetString(source, "type") == "url" &&
-                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "url"))) ||
-                 (JsonHelpers.GetString(source, "type") == "base64" &&
-                  !string.IsNullOrWhiteSpace(JsonHelpers.GetString(source, "data")))))
+            if (type == "image" && ProviderContentHelpers.IsSendableImageBlock(block))
             {
                 writableBlocks.Add(block);
             }
@@ -195,7 +185,7 @@ internal static partial class OpenAIResponsesProvider
             var source = block.GetProperty("source");
             var sourceType = JsonHelpers.GetString(source, "type");
             var imageUrl = sourceType == "url"
-                ? JsonHelpers.GetString(source, "url")
+                ? ProviderContentHelpers.SendableImageUrl(source)
                 : BuildBase64ImageUrl(source);
             if (string.IsNullOrWhiteSpace(imageUrl)) continue;
 
@@ -297,7 +287,7 @@ internal static partial class OpenAIResponsesProvider
             }
 
             var imageUrl = JsonHelpers.GetString(source, "type") == "url"
-                ? JsonHelpers.GetString(source, "url")
+                ? ProviderContentHelpers.SendableImageUrl(source)
                 : BuildBase64ImageUrl(source);
             if (string.IsNullOrWhiteSpace(imageUrl)) continue;
 

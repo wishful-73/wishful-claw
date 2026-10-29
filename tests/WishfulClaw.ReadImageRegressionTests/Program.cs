@@ -245,6 +245,30 @@ try
     var closedWebpRead = await tool.ExecuteAsync(Input(webp), new ToolExecutionContext(WorkingFolder: root));
     Check(!closedWebpRead.IsError, "S-266: a complete webp is not an error");
     Check(closedWebpRead.ContentBlocks is not null, "S-266: a complete webp keeps its pixels");
+
+    // ── S-264：同一判据的 base64 入口（组包层在用）──
+    // Read 工具走 path；渲染层注入的历史块只以 base64 出现，组包时才是第一次见到字节。
+    // 现场 18 条图像 400 里 13 条走微信渠道 —— 那条路根本不经过 Read 工具。
+    var realPngB64 = Convert.ToBase64String(realPngBytes);
+    Check(ImageFileProbe.HasCompleteContainerInBase64(realPngB64, "image/png"),
+        "S-264: complete png base64 passes the container check");
+    Check(!ImageFileProbe.HasCompleteContainerInBase64(Convert.ToBase64String(realPngBytes[..^12]), "image/png"),
+        "S-264: truncated png base64 is rejected (the wechat path)");
+    Check(ImageFileProbe.HasCompleteContainerInBase64(Convert.ToBase64String(ClosedJpeg()), "image/jpeg"),
+        "S-264: complete jpeg base64 passes");
+    Check(!ImageFileProbe.HasCompleteContainerInBase64(Convert.ToBase64String(ClosedJpeg()[..^2]), "image/jpeg"),
+        "S-264: truncated jpeg base64 is rejected");
+    Check(!ImageFileProbe.HasCompleteContainerInBase64(Convert.ToBase64String(ClosedGif(7, 5)[..^1]), "image/gif"),
+        "S-264: truncated gif base64 is rejected");
+
+    // 渲染层存的是整条 data URL，前缀必须能剥掉。
+    Check(ImageFileProbe.HasCompleteContainerInBase64("data:image/png;base64," + realPngB64, "image/png"),
+        "S-264: data URL prefix is stripped before the check");
+
+    // 尾部追加字节仍算完整 —— 与 path 版同一容忍度，不许两版各有一套。
+    var trailingPngBytes = realPngBytes.Concat(new byte[8]).ToArray();
+    Check(ImageFileProbe.HasCompleteContainerInBase64(Convert.ToBase64String(trailingPngBytes), "image/png"),
+        "S-264: png base64 with trailing bytes is still complete");
 }
 finally
 {

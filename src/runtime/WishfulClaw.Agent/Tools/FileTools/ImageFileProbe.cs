@@ -123,22 +123,14 @@ internal static class ImageFileProbe
     {
         try
         {
-            var length = new FileInfo(path).Length;
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var length = stream.Length;
             if (length < 16) return false;
 
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var head = ReadWindow(stream, 0, (int)Math.Min(length, 16));
+            var tail = ReadWindow(stream, Math.Max(0, length - TailBytes), (int)Math.Min(length, TailBytes));
 
-            return mediaType switch
-            {
-                // IEND 之后不允许有数据（规范严格），只留 16 字节余量给追加元信息的编辑器。
-                "image/png" => HasTrailerInTail(stream, length, PngEndChunk, tolerance: 16),
-                // JPEG 尾部追加比 PNG 常见（缩略图 / 水印 / MPF），放宽一档。
-                "image/jpeg" => HasTrailerInTail(stream, length, [0xFF, 0xD9], tolerance: 32),
-                // GIF trailer 是单字节，容忍放宽就会撞上压缩数据里的普通 0x3B，必须收紧。
-                "image/gif" => HasTrailerInTail(stream, length, [0x3B], tolerance: 2),
-                "image/webp" => HasWebpDeclaredLength(stream, length),
-                _ => true
-            };
+            return JudgeContainer(head, tail, length, mediaType);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -149,18 +141,76 @@ internal static class ImageFileProbe
     }
 
     /// <summary>
-    /// 在文件尾部窗口里找结束标记，且要求它离末尾不超过 <paramref name="tolerance"/> 字节
+    /// base64 载荷版的容器完整性判定（S-264）。
+    ///
+    /// 为什么必须有这一版：S-266 把判据做成了 <c>path</c> 形态，于是只有 Read 工具能用。
+    /// 而现场 18 条图像 400 里 13 条走微信渠道 —— 那条路的图从来不是 agent 用 Read 读出来的，
+    /// 是渲染层注入的历史块，组包时才第一次见到字节。判据得活在**组包层**，
+    /// 否则修完 Read 路径只治了一半，需求却已经关了。
+    ///
+    /// 只解头部 16 字符和尾部一个窗口，不解全量：一张 4 MB 的图不该为了看一眼尾巴就整段解码。
+    /// 解不开（非标准 base64、长度不是 4 的倍数）一律放行，交给上游 400 + S-262 兜底 ——
+    /// 与 path 版「读不到就不拦」是同一个取舍。
+    /// </summary>
+    public static bool HasCompleteContainerInBase64(string? base64, string mediaType)
+    {
+        try
+        {
+            var data = ProviderContentHelpers.StripDataUrlPrefix(base64);
+            if (string.IsNullOrEmpty(data) || data.Length < 24) return false;
+
+            // 总字节数只需精确到「WebP 声明的长度够不够」，padding 修正一下就够。
+            var totalLength = (long)data.Length / 4 * 3;
+            if (data.EndsWith("==", StringComparison.Ordinal)) totalLength -= 2;
+            else if (data.EndsWith('=')) totalLength -= 1;
+
+            var head = Convert.FromBase64String(data[..16]);
+
+            // 尾部窗口：TailBytes 字节要 4/3 倍字符，先取整再对齐到 4 字符边界（多读几个字节无害）。
+            var tailStart = Math.Max(0, data.Length - (TailBytes / 3 + 1) * 4);
+            tailStart -= tailStart % 4;
+            var tail = Convert.FromBase64String(data[tailStart..]);
+
+            return JudgeContainer(head, tail, totalLength, mediaType);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>判据本体：头部 + 尾部窗口 + 总长 ⇒ 容器写完了没有。path 版与 base64 版共用这一份。</summary>
+    private static bool JudgeContainer(
+        ReadOnlySpan<byte> head, ReadOnlySpan<byte> tail, long totalLength, string mediaType)
+    {
+        return mediaType switch
+        {
+            // IEND 之后不允许有数据（规范严格），只留 16 字节余量给追加元信息的编辑器。
+            "image/png" => HasTrailerInTail(tail, PngEndChunk, tolerance: 16),
+            // JPEG 尾部追加比 PNG 常见（缩略图 / 水印 / MPF），放宽一档。
+            "image/jpeg" => HasTrailerInTail(tail, [0xFF, 0xD9], tolerance: 32),
+            // GIF trailer 是单字节，容忍放宽就会撞上压缩数据里的普通 0x3B，必须收紧。
+            "image/gif" => HasTrailerInTail(tail, [0x3B], tolerance: 2),
+            "image/webp" => HasWebpDeclaredLength(head, totalLength),
+            _ => true
+        };
+    }
+
+    /// <summary>从流里读一段固定窗口；偏移与长度由调用方裁到可用范围内。</summary>
+    private static byte[] ReadWindow(FileStream stream, long offset, int count)
+    {
+        var buffer = new byte[count];
+        stream.Seek(offset, SeekOrigin.Begin);
+        stream.ReadExactly(buffer);
+        return buffer;
+    }
+
+    /// <summary>
+    /// 在尾部窗口里找结束标记，且要求它离末尾不超过 <paramref name="tolerance"/> 字节
     /// （即：标记之后最多追加了这么多字节）。
     /// </summary>
-    private static bool HasTrailerInTail(FileStream stream, long length, ReadOnlySpan<byte> trailer, int tolerance)
+    private static bool HasTrailerInTail(ReadOnlySpan<byte> tail, ReadOnlySpan<byte> trailer, int tolerance)
     {
-        var window = (int)Math.Min(length, TailBytes);
-        var buffer = new byte[window];
-        stream.Seek(length - window, SeekOrigin.Begin);
-        stream.ReadExactly(buffer);
-
-        var tail = buffer.AsSpan();
-
         // 从后往前找：只有最后一个命中才是真正的结束标记，压缩数据里可能恰好出现同样的字节。
         for (var i = tail.Length - trailer.Length; i >= 0; i--)
         {
@@ -172,17 +222,14 @@ internal static class ImageFileProbe
     }
 
     /// <summary>WebP: RIFF 头声明的容器长度（偏移 4，不含前 8 字节本身）必须够到文件末尾。</summary>
-    private static bool HasWebpDeclaredLength(FileStream stream, long length)
+    private static bool HasWebpDeclaredLength(ReadOnlySpan<byte> head, long totalLength)
     {
-        var head = new byte[12];
-        stream.Seek(0, SeekOrigin.Begin);
-        stream.ReadExactly(head);
+        if (head.Length < 12) return false;
+        if (!head[..4].SequenceEqual("RIFF"u8) || !head[8..12].SequenceEqual("WEBP"u8)) return false;
 
-        if (!head.AsSpan(0, 4).SequenceEqual("RIFF"u8) || !head.AsSpan(8, 4).SequenceEqual("WEBP"u8)) return false;
-
-        var declared = BinaryPrimitives.ReadUInt32LittleEndian(head.AsSpan(4, 4));
+        var declared = BinaryPrimitives.ReadUInt32LittleEndian(head[4..8]);
         // 声明长度 + 8 字节头 = 容器应有的大小；写全了才够到文件末尾（允许尾部追加数据）。
-        return declared >= 12 && 8L + declared <= length;
+        return declared >= 12 && 8L + declared <= totalLength;
     }
 
     /// <summary>读像素尺寸；格式不认或头不完整时返回 false（width/height 置 0）。</summary>

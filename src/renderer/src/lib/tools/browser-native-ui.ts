@@ -25,6 +25,7 @@ import {
   parseWebviewJson,
   extractBase64ImageData
 } from './browser-webview-helpers'
+import { detectBlankScreenshotWarning } from './browser-screenshot-blank'
 
 type NativeBrowserToolResponse = {
   content: ToolResultContent
@@ -252,11 +253,16 @@ async function executeBrowserScreenshot(
       ...(persisted?.filePath ? { filePath: persisted.filePath } : {})
     }
   }
+  // 缺陷 A：截图成功但页面什么都没画（未构建的 SPA 被 file:// 打开）时，
+  // agent 会拿着一张白图以为看到了。加一句警告，失败一律静默。
+  const blankWarning = await detectBlankScreenshotWarning(webview, nativeImage)
   return [
     image,
     {
       type: 'text',
-      text: `Screenshot captured: ${size.width}x${size.height}px - ${useUIStore.getState().getBrowserState(ctx.sessionId).url}`
+      text:
+        `Screenshot captured: ${size.width}x${size.height}px - ${useUIStore.getState().getBrowserState(ctx.sessionId).url}` +
+        (blankWarning ? `\n${blankWarning}` : '')
     }
   ]
 }

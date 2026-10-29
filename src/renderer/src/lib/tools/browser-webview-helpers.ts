@@ -12,6 +12,8 @@ type ElectronWebview = Electron.WebviewTag
 export interface NativeImageLike {
   isEmpty(): boolean
   toDataURL(): string
+  /** BGRA 像素，每像素 4 字节。缺陷 A 的「白图检测」只靠它，不解 PNG。 */
+  toBitmap(): Uint8Array
   getSize(): { width: number; height: number }
 }
 

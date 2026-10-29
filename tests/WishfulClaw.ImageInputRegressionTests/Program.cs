@@ -192,6 +192,44 @@ Check(ProviderContentHelpers.HasUsableImageBlock(JsonDocument.Parse(
         """[{"type":"image","source":{"type":"url","url":"https://example.com/a.png"}}]""").RootElement),
     "S-261: https url block still counts as a usable image");
 
+// ── 七、S-264：判据上移成「单块」版本，三条协议共用一个 ──
+// Responses 用户消息路径此前自写了一份「url 非空」的旧闸（HasImageContent 与组包过滤各一份），
+// 于是 file:/// 、oc-media:// 的脏 url 在那条路上裸透传回 400。判据收进
+// ProviderContentHelpers.IsSendableImageBlock 后，这里逐条钉住它。
+JsonElement ImageBlock(string sourceJson) =>
+    JsonDocument.Parse("{\"type\":\"image\",\"source\":" + sourceJson + "}").RootElement;
+
+Check(ProviderContentHelpers.IsSendableImageBlock(ImageBlock("""{"type":"url","url":"https://example.com/a.png"}""")),
+    "S-264: https image block is sendable");
+Check(!ProviderContentHelpers.IsSendableImageBlock(ImageBlock("""{"type":"url","url":"file:///C:/tmp/shot.png"}""")),
+    "S-264: file:// image block is not sendable (responses user path used to leak it)");
+Check(!ProviderContentHelpers.IsSendableImageBlock(
+        ImageBlock("""{"type":"url","url":"oc-media://local/C%3A%5Ctmp%5Cshot.png"}""")),
+    "S-264: oc-media:// image block is not sendable");
+Check(!ProviderContentHelpers.IsSendableImageBlock(ImageBlock("""{"type":"url","url":""}""")),
+    "S-264: empty url image block is not sendable");
+Check(ProviderContentHelpers.IsSendableImageBlock(
+        ImageBlock("{\"type\":\"base64\",\"mediaType\":\"image/png\",\"data\":\"" +
+                   pngDataUrl[(pngDataUrl.IndexOf(";base64,", StringComparison.Ordinal) + 8)..] + "\"}")),
+    "S-264: base64 image block is sendable");
+Check(!ProviderContentHelpers.IsSendableImageBlock(ImageBlock("""{"type":"base64","data":""}""")),
+    "S-264: empty base64 image block is not sendable");
+
+// 容器完整性判据必须真的接在组包闸上：格式对、字节没写完的图同样出不了门。
+var pngPayload = pngDataUrl[(pngDataUrl.IndexOf(";base64,", StringComparison.Ordinal) + 8)..];
+var truncatedPngBlock = ImageBlock(
+    "{\"type\":\"base64\",\"mediaType\":\"image/png\",\"data\":\"" +
+    Convert.ToBase64String(Convert.FromBase64String(pngPayload)[..^12]) + "\"}");
+Check(!ProviderContentHelpers.IsSendableImageBlock(truncatedPngBlock),
+    "S-264: truncated base64 image block is not sendable");
+Check(!ProviderContentHelpers.IsSendableImageBlock(JsonDocument.Parse("""{"type":"text","text":"hi"}""").RootElement),
+    "S-264: text block is never a sendable image");
+
+// 混合 content：好文本 + 坏 url ⇒ 不算「有图」，调用方不能走多模态分支写出空 parts。
+Check(!ProviderContentHelpers.HasUsableImageBlock(JsonDocument.Parse(
+        """[{"type":"text","text":"看看这张"},{"type":"image","source":{"type":"url","url":"file:///C:/tmp/shot.png"}}]""").RootElement),
+    "S-264: text plus bad url does not count as a usable image");
+
 Console.WriteLine($"passed: {passed}, failed: {failed}");
 
 try

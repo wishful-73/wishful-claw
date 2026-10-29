@@ -106,7 +106,7 @@ var plainConversation = new List<AgentRuntimeChatMessage>
 Check(ReferenceEquals(AgentLoop.InjectProviderRejectionNotice(state, plainConversation), plainConversation),
     "no pending rejection -> conversation returned untouched");
 
-state.PendingProviderRejectionReport = "HTTP 400: tool result too large";
+state.RecordProviderRejectionRecovery("HTTP 400: tool result too large", "fp-1");
 var conversation = new List<AgentRuntimeChatMessage>
 {
     AgentRuntimeChatMessage.User("hello"),
@@ -118,8 +118,8 @@ var injected = AgentLoop.InjectProviderRejectionNotice(state, conversation);
 
 Check(injected.Count == conversation.Count,
     "replacement keeps the message count (deleting would break tool pairing)");
-Check(state.PendingProviderRejectionReport is null,
-    "pending report is consumed after one injection");
+Check(state.PendingProviderRejectionReport is not null,
+    "S-262: the report is not consumed — the bad result comes back on the next round");
 Check(ReferenceEquals(injected[0], conversation[0]),
     "earlier messages are passed through by reference, not rewritten");
 Check(injected[2].ToolResults[0].ToolUseId == "call-1",
@@ -132,6 +132,27 @@ Check((injected[2].ToolResults[0].Content.GetString() ?? string.Empty)
 Check((conversation[2].ToolResults[0].Content.GetString() ?? string.Empty) == "original content",
     "the source list is untouched (replacement happens on the temporary copy only)");
 
+// S-262 补正：下一轮组包从 durable conversation 重建，坏数据原样回来 —— 必须还换得掉，
+// 否则同一 400 再来一次、指纹去重直接抛，会话照样废。
+var nextRound = new List<AgentRuntimeChatMessage>
+{
+    AgentRuntimeChatMessage.User("hello"),
+    Assistant("let me read that file"),
+    ToolResults("call-1", "original content"),      // 同一 id 的坏结果，还在报文里
+    Assistant("a different approach then"),
+    ToolResults("call-2", "fresh content")          // 下一轮新的工具结果
+};
+var injectedNextRound = AgentLoop.InjectProviderRejectionNotice(state, nextRound);
+Check((injectedNextRound[2].ToolResults[0].Content.GetString() ?? string.Empty)
+        .Contains("tool result too large", StringComparison.Ordinal),
+    "S-262: the dead result is still replaced on a later round");
+Check(injectedNextRound[2].ToolResults[0].IsError == true,
+    "S-262: the dead result stays marked as an error on a later round");
+Check((injectedNextRound[4].ToolResults[0].Content.GetString() ?? string.Empty) == "fresh content",
+    "S-262: fresh tool results from later rounds are left alone");
+Check(ReferenceEquals(nextRound[2], injectedNextRound[2]) == false,
+    "S-262: later-round replacement still happens on the temporary copy");
+
 // 只换最后一条带结果的：一轮里可能堆了十几条，全换会把前几轮拿到的信息一并抹掉。
 var twoRounds = new List<AgentRuntimeChatMessage>
 {
@@ -139,10 +160,8 @@ var twoRounds = new List<AgentRuntimeChatMessage>
     Assistant("ok"),
     ToolResults("call-new", "new content")
 };
-var stateTwoRounds = new AgentRuntimeRunState("run-2", "sess-2")
-{
-    PendingProviderRejectionReport = "HTTP 400: boom"
-};
+var stateTwoRounds = new AgentRuntimeRunState("run-2", "sess-2");
+stateTwoRounds.RecordProviderRejectionRecovery("HTTP 400: boom", "fp-2");
 var injectedTwoRounds = AgentLoop.InjectProviderRejectionNotice(stateTwoRounds, twoRounds);
 Check((injectedTwoRounds[0].ToolResults[0].Content.GetString() ?? string.Empty) == "old content",
     "only the trailing tool result is replaced, earlier rounds survive");
@@ -159,10 +178,8 @@ var batch = new List<AgentRuntimeChatMessage>
         new AgentRuntimeToolResult("call-b", AgentRuntimeProviderSupport.CreateStringElement("b"), null)
     ])
 };
-var stateBatch = new AgentRuntimeRunState("run-3", "sess-3")
-{
-    PendingProviderRejectionReport = "HTTP 400: batch rejected"
-};
+var stateBatch = new AgentRuntimeRunState("run-3", "sess-3");
+stateBatch.RecordProviderRejectionRecovery("HTTP 400: batch rejected", "fp-3");
 var injectedBatch = AgentLoop.InjectProviderRejectionNotice(stateBatch, batch);
 Check(injectedBatch[0].ToolResults.Count == 2 &&
       injectedBatch[0].ToolResults[0].ToolUseId == "call-a" &&

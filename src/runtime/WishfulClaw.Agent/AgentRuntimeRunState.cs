@@ -119,14 +119,40 @@ public sealed class AgentRuntimeRunState : IDisposable
     public bool SuppressImagesForModel { get; set; }
 
     /// <summary>
-    /// S-262：待注入的「上一次请求被上游 400 拒绝」报文。
+    /// S-262：待注入的「上一次请求被上游 400 拒绝」报文正文。
     ///
-    /// 置上之后，下一次构造 provider 消息时由 <c>InjectProviderRejectionNotice</c>
-    /// （<c>AgentLoop.ProviderRejection.cs</c>）在**临时副本**上把本轮最后一条工具结果
-    /// 换成拒绝说明，随即消费掉。不落库 —— 理由与 <see cref="PendingEmptyTurnNudge"/> 相同：
-    /// 写进 durable conversation 会污染历史，也会成为下一轮压缩摘要的噪声。
+    /// 置上之后，<c>InjectProviderRejectionNotice</c>（<c>AgentLoop.ProviderRejection.cs</c>）
+    /// 在**临时副本**上把被标记的工具结果换成这份说明。不落库 —— 理由与
+    /// <see cref="PendingEmptyTurnNudge"/> 相同：写进 durable conversation 会污染历史，
+    /// 也会成为下一轮压缩摘要的噪声。
+    ///
+    /// **本身不负责生命周期。** 换哪些结果由 <see cref="ProviderRejectionToolUseIds"/> 决定，
+    /// 这里只管「换成什么」。
     /// </summary>
     public string? PendingProviderRejectionReport { get; set; }
+
+    /// <summary>
+    /// S-262 补正：本 run 里死掉的工具结果 id —— 它们的原文已被上游 400 判过，之后每轮组包
+    /// 都要换成拒绝说明，**直到 run 结束都不撤销**。
+    ///
+    /// 为什么不能只替换一轮：触发 400 的工具结果在报错前就已经由 <c>AgentLoop</c> 的 finally
+    /// 写回 durable conversation（只增不减），而 <c>ExecuteTurnAsync</c> 每轮都从它重建 wire 副本。
+    /// 于是下一轮读到的是**原文**，同一份坏数据原样重发 → 同一 400 → 指纹去重命中 → 抛，
+    /// 会话照样废掉。一次性消费等于只买到半次自愈。
+    ///
+    /// 为什么按 id 记而不是「再替换一次最后一条」：重发成功后模型会继续调工具，
+    /// 等坏数据再回到报文里时，它早就不是最后一条了。
+    /// </summary>
+    internal HashSet<string> ProviderRejectionToolUseIds { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// S-262 补正：下一次组包时先把「当前最后一批工具结果」的 id 收进
+    /// <see cref="ProviderRejectionToolUseIds"/>。
+    ///
+    /// 由 <see cref="RecordProviderRejectionRecovery"/> 置上 —— 那一刻才知道是哪一批数据惹的祸
+    /// （catch 里拿不到组包副本，只有 durable conversation）。
+    /// </summary>
+    internal bool ProviderRejectionRegistrationPending { get; set; }
 
     /// <summary>
     /// S-262：本 run 已经尝试过几次「替换工具结果后重发」。
@@ -141,8 +167,8 @@ public sealed class AgentRuntimeRunState : IDisposable
     public string? LastProviderRejectionFingerprint { get; set; }
 
     /// <summary>
-    /// S-262：记一次恢复尝试并挂上待注入报文。调用方必须先用
-    /// <c>AgentLoop.CanRecoverFromProviderRejection</c> 判定过额度与指纹 ——
+    /// S-262：记一次恢复尝试、挂上待注入报文，并把「下一次组包时登记坏结果」的开关打开。
+    /// 调用方必须先用 <c>AgentLoop.CanRecoverFromProviderRejection</c> 判定过额度与指纹 ——
     /// 这里只负责落账，不重复把关。
     /// </summary>
     internal void RecordProviderRejectionRecovery(string report, string fingerprint)
@@ -150,6 +176,9 @@ public sealed class AgentRuntimeRunState : IDisposable
         ProviderRejectionRecoveryCount++;
         LastProviderRejectionFingerprint = fingerprint;
         PendingProviderRejectionReport = report;
+        // 请求已经带着这一批工具结果发出去了，可见 catch 里手上没有组包副本；
+        // 登记动作推迟到下一次组包 —— 那时才拿得到「最后一批工具结果」的 id。
+        ProviderRejectionRegistrationPending = true;
     }
 
     /// <summary>

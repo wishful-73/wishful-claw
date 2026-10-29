@@ -331,7 +331,7 @@ internal static partial class OpenAIChatProvider
             }
 
             var imageUrl = JsonHelpers.GetString(source, "type") == "url"
-                ? JsonHelpers.GetString(source, "url")
+                ? ProviderContentHelpers.SendableImageUrl(source)
                 : BuildBase64ImageUrl(source);
             if (string.IsNullOrWhiteSpace(imageUrl)) continue;
 

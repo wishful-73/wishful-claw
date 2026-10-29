@@ -123,11 +123,16 @@ static JsonElement ContentOf(object payload)
     return document.RootElement.Clone();
 }
 
+// 「放得出去」的图必须**真完整**：S-264 起容器完整性进了组包闸，
+// 上面那个 14 字节的 `png` 只有签名 + IHDR、没有 IEND，本来就该被拦。
+const string completePng =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 var goodContent = ContentOf(new object[]
 {
-    new { type = "text", text = "Read image: a.png (2x2, image/png)" },
+    new { type = "text", text = "Read image: a.png (1x1, image/png)" },
     new { type = "image", source = new Dictionary<string, string>
-        { ["type"] = "base64", ["mediaType"] = "image/png", ["data"] = png } }
+        { ["type"] = "base64", ["mediaType"] = "image/png", ["data"] = completePng } }
 });
 var dirtyContent = ContentOf(new object[]
 {

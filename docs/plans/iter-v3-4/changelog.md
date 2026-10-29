@@ -268,3 +268,63 @@ BMP / TIFF / ICO 不判（本来就不内联像素）。从后往前找最后一
 **门禁**：`npm run typecheck` exit 0（node + web）/ `npm test` **91/91** / `dotnet build tests\WishfulClaw.Tests.sln` 0 警告 0 错误。改动文件行数：`FileReadTool.cs` 446、`ImageFileProbe.cs` 335、`ReadImage` 套件 469，全部在 500 行内。
 
 **真机待验**：S-264 §六（造 `foo.png` 装 jpg 内容 / `bar.png` 装 html）+ S-266 §六（造一张截断 PNG 用 Read 读，确认模型收到「读图失败」而不是 400）。
+
+## 2026-10-29 10:40 · 刀 1g —— dev 第 6 轮审查的回头刀（S-261 / S-262 / S-266 补正 + S-267）
+
+**起因**：dev 第 6 轮（`review-feedback-round6.md`）判决 1b~1f **全部真机生效** —— S-261 零 400、S-264 零误杀、S-266 七张坏图全拦、S-262 引擎侧 43 条断言全绿。**判决是真的，缺陷也是真的**：dev 同时点出三处「修了却没修完」，都是**同一条线上漏掉的调用点**，不是新需求。
+
+### 一、S-261 补正：判据第三条协议没接上
+
+刀 1b 把 url 闸补进了 chat（`:253`）和 Anthropic，**漏了 Responses 的用户消息路径** —— 那里自己写着两份「url 非空」的旧判据：`OpenAIResponsesInputWriter.HasImageContent` 与 `WriteResponsesMultimodalMessage` 的内联过滤。于是 `file:///D:/x.png`、`oc-media://…` 这类**根本没填**的引用，在 Responses 上照旧裸透传。
+
+顺带发现 chat 的 `:333`（tool result 路径）与 Responses `:289` 是同一个遗漏 —— 刀 1b 只改用户消息那处，没改工具结果那处。
+
+**收口方式**：`ProviderContentHelpers.IsSendableImageBlock(block, warn)` 作为**单块判据**（非图块 `⇒ true`；url 块逐字复用 S-261 的本地绝对路径判据；base64 块走 S-264+S-266 的嗅探 + 容器完整性），三处协议、五个调用点全部改走它。**理由**：这个问题已经因为「每个调用点写一份」错了两次，再修一次只会错第三次。
+
+`ImageInput` 套件 53 → 62 条断言。裸透传那条用「渗透法」验：214 个坏 url 逐条喂，断言**没有任何坏块能到线上**。
+
+### 二、S-266 补正：判据只活在 Read 工具里
+
+dev 坐实 `HasCompleteContainer(string path, …)` 全仓**只有 `FileReadTool.cs:273` 一个调用点**，且只有 path 版 —— 没有 base64 版。而真实日志 18 条图像 400 里 **13 条在微信渠道**：那条路的图从来不是 agent 读出来的，是渲染层注入的历史块，**组包时才第一次见到字节**。
+
+只修 Read 路径 = 治了一半就关需求。**修法**：
+
+| 层 | 改动 |
+|---|---|
+| 判据本体 | 抽成 `JudgeContainer(head, tail, totalLength, mediaType)`，path 版与 base64 版**共用一份** |
+| 新入口 | `HasCompleteContainerInBase64(string?, mediaType)` —— **只解头部 16 字符与尾部一个窗口**，不解全量（4 MB 的图不该为看尾巴整段解码）；解不开一律放行，与 path 版「读不到就不拦」同一取舍 |
+| 接线 | 接进 `IsSendableImageBlock` 的 base64 分支 ⇒ 「能不能出门」只有一处答案 |
+
+`ReadImage` 套件 70 → 77 条断言（逐格式正反例 + data URL 前缀剥离 + 尾部追加容忍）。
+
+**当初选 A 不选 B**（B = 文档里写明「只管 Read 这条路」）：A 成本很低，B 会让下次翻文档的人以为治过了。
+
+### 三、S-262 补正：替换只活一轮
+
+dev 连续两轮点名同一处：注入一次就把 `PendingProviderRejectionReport` 置 null，下一轮 `ExecuteTurnAsync` 从 durable conversation 重建 wire 副本时，**坏数据原样回来** ⇒ 同一 400 再来 ⇒ 指纹去重命中 ⇒ 抛。**会话照样废**。
+
+**修法**：不再按「最后一条带工具结果的消息」替换，改成**按 `ToolUseId` 认人**。
+
+| 新增/改动 | 作用 |
+|---|---|
+| `AgentRuntimeRunState.ProviderRejectionToolUseIds`（HashSet） | 记死哪几份坏数据，**整个 run 有效** |
+| `AgentRuntimeRunState.ProviderRejectionRegistrationPending` | 登记开关 —— catch 里拿不到组包副本，只能先置标记、下一轮组包时按标记认人 |
+| `ReplaceMarkedToolResults`（替掉 `ReplaceTrailingToolResults`） | 遍历**全部**消息、命中 id 就换。位置变了也换得掉 —— 重发成功后模型继续调工具，坏数据很快就不再是最后一条 |
+
+上限 2 与指纹去重**不变**：修好之后同一份坏数据不会再 400，去重不会误伤。`ProviderRejection` 套件 39 → 43 断言（新增「坏数据移到中间仍被替换」与「未登记的 `ToolUseId` 不动」）。
+
+### 四、S-267：`browser_screenshot` 白图静默成功
+
+与 S-264 / S-266 同一个病根 —— **坏数据包装成好东西发出去** —— 只是这次的坏数据是我们自己造的。浏览器侧截到全白（无容器 / 撞 preload 沙箱 / 页面没画完）时，工具照旧返回成功 + 一段 base64 图，模型拿去推理，最终表现为 400 或幻觉。
+
+**修法**：新建 `browser-screenshot-blank.ts`（白图抽样 + DOM 探针），`executeBrowserScreenshot` 尾部拼警告文本。**不阻断**（白图有时真是用户要的），只在结果里说清楚。
+
+### 五、门禁
+
+`npm test` **91/91**（`ImageInput` 62 / `ImageMediaGate` 38 / `ProviderRejection` 43 / `ReadImage` 77 全绿）/ `npm run typecheck` exit 0 / `dotnet build` 两个 sln 均 0 警告 0 错误。
+
+**修掉一个自己造成的红灯**：`ImageMediaGate` 的 `goodContent` 用的是 14 字节 PNG 头（签名 + IHDR，**没有 IEND**）。S-264 之后容器完整性判据一接上组包层就把它拦了 —— 那是对的（素材本身发不出去），已换成完整 1×1 PNG。
+
+### 六、判据 3（「真实日志逐条不再复现」）仍欠
+
+S-261 验收清单第 3 条要求拿 `2026-10-28-请求错误导出.txt` 的 18 条逐条复验，目前只验了新造的坏图。**欠着不是忘了，是那条需要真机 + 家里那台机器的原图**，留给老大迭代收尾前跑一次。

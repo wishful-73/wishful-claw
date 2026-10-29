@@ -11,8 +11,10 @@
 > 追加（2026-10-29 10:40）：**登记 S-267**，承接条数 **14 → 15**（见 §1.2），随刀 1g 交付；同批**登记 S-268**，**移交下迭代**（见 §1.3），不占承接。
 > 追加（2026-10-29 11:02）：**登记 S-269**（摘要请求 429 重试窗口错配），承接条数 **15 → 16**（见 §1.2），插入为刀 3b。根因已由生产实例日志坐实，**本迭代做**。
 > 追加（2026-10-29 13:56）：**登记 S-270**（新工具在聊天窗显示英文名），承接条数 **16 → 17**（见 §1.2），插入为刀 10 —— 14:03 老大拍板「这些需要进本迭代」。
+> 追加（2026-10-29 15:40）：**登记 S-271**（失败的工具调用会从折叠块里跳出来），承接条数 **17 → 18**（见 §1.2），插入为刀 11。
+> 追加（2026-10-29 15:53）：**登记 S-272**（桌面坐标算不出来），承接条数 **18 → 19**（见 §1.2），**第一段随刀 12 交付，第二段移交 v3-iter-5**；同批**登记 S-273**（UI Automation 元素点击），**移交下迭代**（见 §1.3），不占承接。
 
-## 一、承接需求（十七条）
+## 一、承接需求（十九条）
 
 来源：v3-iter-3（1.0.3）收尾时老大 2026-10-28 09:44 定「没有做的需求都移入下个迭代」。
 
@@ -52,14 +54,18 @@
 | S-266 | 没写完的图 —— 签名合法但容器不完整，照样内联出门 | 2026-10-29 09:50 登记。**S-264 的第五档，不是重复需求**：S-264 修「认不出是什么格式」，本条修「认得出、但文件没写完」—— 签名在文件开头、截断在文件末尾，前者的判据天生够不着后者。**不做解码**（四套解码器对 AOT 体积与攻击面不划算），改看容器尾部结束标记（PNG IEND / JPEG EOI / GIF trailer / WebP RIFF 长度），只读头 + 尾 64 字节。判据刻意宽松：漏检代价是一次 400（S-262 兜底），误杀代价是模型彻底看不到好图 | [S-266](requirements/S-266.md) |
 | S-267 | 截图成功但页面是白的 —— 工具报告成功，实际什么都没画 | 2026-10-29 10:40 登记，来源 dev 第 6 轮审查。`file://` 打开未构建的 Vite 外壳时 `.tsx` 不转译 ⇒ 页面全白，但 `BrowserNavigate` 报成功、`BrowserGetContent` 拿回正确标题、`BrowserScreenshot` 返回干净纯白 PNG，`did-fail-load` 不触发 ⇒ **agent 照白图去改壳子，全程零报错**。与 S-264 / S-266 同病根（坏数据包装成好东西发出去），只是数据是我们自己造的。判据两个条件同时成立才警告（视口抽样近全白 **且** DOM 几乎没元素、无可见文本），**不改 `isError`** | [S-267](requirements/S-267.md) |
 | S-269 | 摘要请求被 429 拒绝，6 秒内重试三次全撞墙 —— 降级成「摘要器不可用」 | 2026-10-29 11:02 登记，**已交付（刀 3b，11:20）**，真机待验。生产实例日志坐实：五波失败全是 `ttft_admission_refused ... retry shortly (after 3~39 s)`，而上游要求等 3~39 秒时我们只在 1.5s / 3s 后重试，三次全落在同一拒绝窗口里。**摘要请求是整条 provider 链里唯一绕开 `ProviderRetryPolicy` 的地方**（自建静态 `HttpClient` + 自建退避 + 丢掉 `Retry-After` 头），而 `ProviderHttpException` / `IsRetryableStatus` 早就写好。修法五条：改抛 `ProviderHttpException` / 复用 `ComputeDelayMs`（加 `maxBackoffMs` 参数，别让 29 秒被压成 15 秒）/ 429 不砍输入预算 / 降级文案分档 / 原因透传。**不含水印改动**（§三 更正：truncate 路径也 Reset 水印，三波重触发是会话自然长回阈值） | [S-269](requirements/S-269.md) |
-| S-270 | 新工具在聊天窗显示英文名 —— 中文标签表停在 OpenCowork 迁移期 | 2026-10-29 13:56 登记，**已交付（刀 10，14:20）**。`permission.toolLabels` 只有 23 条、全是迁移期那批；渲染点 `t(key, { defaultValue: name })` 缺 key 静默回退英文原名，机制上没有防漏；`FileChangeCard` 与 `ProcessTextLine` 干脆不查表。三件套：补到 61 条（zh/en 对齐）+ 统一出口 `resolveToolDisplayName`（别名归一 / MCP / codegraph 前缀族 / 兜底「工具 · 原名」）+ `test:tool-labels-coverage`。见 [requirements/S-270.md](requirements/S-270.md) |
+| S-270 | 新工具在聊天窗显示英文名 —— 中文标签表停在 OpenCowork 迁移期 | 2026-10-29 13:56 登记，**已交付（刀 10，14:20）**。`permission.toolLabels` 只有 23 条、全是迁移期那批；渲染点 `t(key, { defaultValue: name })` 缺 key 静默回退英文原名，机制上没有防漏；`FileChangeCard` 与 `ProcessTextLine` 干脆不查表。三件套：补到 **124 条**（zh/en 对齐，含 C# 侧 61 个第一方工具）+ 统一出口 `resolveToolDisplayName`（别名归一 / MCP / codegraph 前缀族 / 兜底「工具 · 原名」）+ `test:tool-labels-coverage`。**刀 10 补正之二（16:53）**：输入框状态栏两处只调了 `resolveProxyStatusName()`（只拆 `use_capability`、非代理工具原样返回）⇒ 平时跑工具露英文名，补 `resolveStatusToolName()` 接上统一出口。见 [requirements/S-270.md](requirements/S-270.md) |
+| S-271 | 失败的工具调用会从折叠块里跳出来 —— 三处判据不同步 | 2026-10-29 15:00 登记、15:40 老大拍板进本迭代，**已交付（刀 11，16:10）**。实为 S-225 §8「档位不得藏错误」的刻意口径 + 三条判据不同步叠加，**不是偶然**。方案 A：`hasError` 不再单独决定 `force`，`ToolExecutionRun` 加 `failedCount`，折叠头出红色「M 个失败」徽章。见 [requirements/S-271.md](requirements/S-271.md) |
+| S-272 | 桌面坐标算不出来 —— 截图不给参照系，模型只能对着图瞎猜 | 2026-10-29 15:53 登记，**第一段随刀 12 交付**（元数据补全 + DPI 判定修复），**第二段移交 v3-iter-5**（相对坐标 / 网格 / 窗口枚举）。老大原话「它不知道怎么去点击坐标」。四层原因：截图不含窗口矩形；`originX/originY` 主进程算了但 C# 编码丢掉；工具描述不说是哪个坐标系；`isPointInsideDesktop` 拿 DIP 边界校验物理像素坐标 ⇒ 高 DPI 屏右半边点不动。见 [requirements/S-272.md](requirements/S-272.md) |
 
-### 1.3 移交下迭代（二条，不占承接、不占刀序）
+### 1.3 移交下迭代（三条，不占承接、不占刀序）
 
 | 编号 | 标题 | 状态 | 明细 |
 |---|---|---|---|
 | S-265 | 裸 body 400 —— 上游只回 `{"model":"xxx"}`，30~52 秒慢拒绝，归因不明 | 2026-10-29 09:32 登记。家里电脑真实日志 14 条，全在会话 `Uy5QPV02…`、全打同一渠道 `zuLcBxL9…`。报文只有 model 名、无 `error` 结构 ⇒ 无法定位字段。**与 S-264 / S-261 不是同一个 bug**。S-262 已保证不钉死会话，代价是每次多烧一次 30~52 秒请求。下一迭代先做取证（对照上下文 token 上限 + 直连上游看是否渠道丢信息）再定性 | [S-265](requirements/S-265.md) |
 | S-268 | `DesktopScreenshot` 的 `path` 参数完全无效 | 2026-10-29 10:40 登记，来源 dev 第 6 轮审查。`ExecuteScreenshotAsync` 的请求体是空对象，除 `delayMs` 一个字段都没读 ⇒ `path` 从未被解析；而 `CaptureAppWindow` 认真解析并落盘。两个工具调用姿势一样、行为差一半 ⇒ 模型以为存了、下一轮 Read 一个不存在的文件。**比报错更糟：假成功让它继续往下走** | [S-268](requirements/S-268.md) |
+| S-273 | 桌面操作别算坐标了 —— 用 UI Automation 直接找元素 | 2026-10-29 15:53 登记。**S-272 的换路径版**：前者把「看图算坐标」的误差压小，本条干脆不算 —— `DesktopQueryElements` 读元素树（`name` / `controlType` / `rect`），`DesktopClick({ window, element })` 取矩形中心点。Chromium / Electron 会把 DOM 可访问性树暴露给 Windows UIA，**我们自己的页面完全可点**。只作增强路径，不替代坐标路径（第三方原生应用覆盖度参差）。开工前四件待查：主进程有没有 `setAccessibilitySupportEnabled`、DOM 到 UIA `Name` 的映射、AOT 下 `IUIAutomation` 互操作、混合 DPI 下 `BoundingRectangle` 的坐标系 | [S-273](requirements/S-273.md) |
+| S-274 | 长文本流式时渲染进程涨到 4.3 GB 并崩溃 —— scrollTop 被 clamp 绕过「已钉底」守卫 | 2026-10-29 17:50 登记，来源 dev 实例日志 `~/.wishful-claw-dev/logs/2026-10-29.log`（生产实例日志与之分家）。17:20:45 `memory type=Tab ws=4360MB peak=4833MB`，17:20~17:34 连报 6 次 `Maximum update depth exceeded`。栈精确指向 `useMessageListScroll.ts`：跟随目标 `realBottom + gapTarget - clientHeight` 里的 gapTarget 是提前量（最多 240px），大于容器底部 padding ⇒ 尾部行未挂载那帧 `scrollHeight` 撑不住 ⇒ 浏览器 clamp 写入值（写 1000 读回 760）⇒ `Math.abs(scrollTop - bottom) <= 1` 守卫永远不成立 ⇒ 每帧写 scrollTop → scroll 事件 → setIsAtBottom → layout effect → 再写。三需求叠加才发作（S-256 把流式拉长到几十秒 + S-233 的 observeGrowthOnly 让 floor 与可滚范围脱钩 + S-176 的 gapTarget）。修法：四处写入点先夹进可滚范围、守卫改对夹取后的值比较。闸 103 → 110 条。见 [S-274](requirements/S-274.md) |
 
 ## 二、挂账与阻塞（两条，不占刀序）
 

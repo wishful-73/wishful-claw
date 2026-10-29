@@ -609,6 +609,27 @@ OpenAI summarization HTTP TooManyRequests:
 
 **门禁**：`npm run test:tool-labels-coverage` 10/10、`npm test -- --ts-only` **77/77**、`npm run typecheck` 三配置 0 错。
 
+## 2026-10-29 14:55 · S-266 文档补刀 1g 收口（dev round6 §2.2 的结论反了）
+
+**dev 第 6 轮建议的是 B 方案**：接受「校验只在 `Read` 路径」这个现状，但在需求文档里明写一行「渠道直传截断图不在自动化覆盖内」。
+提议本身没错，错在它记录的那个事实已经作废 —— round6 写于 10:04，**刀 1g 是 10:40**，而刀 1g 走的正是 round6 推荐的 A 方案：
+判据下沉到 `ProviderContentHelpers.IsSendableImageBlock` 的 base64 分支（`:358`），那是所有出站图像的唯一放行判据。
+照 B 写会把「已覆盖」记成「未覆盖」，等于主动在文档里埋一个假边界。
+
+**所以补的不是那一行，是需求单里没跟上的三处**：
+
+| 位置 | 原文状态（停在刀 1f） | 补正后 |
+|---|---|---|
+| §四 交付内容 | 三行，只有 `HasCompleteContainer(path)` + `ReadImage` 第五档 | 八行，补「判据层 `JudgeContainer` 共用」「`HasCompleteContainerInBase64` 入口」「组包层 `IsSendableImageBlock`」「`ImageInput` 套件」，每行标刀次 |
+| §四 补充段 | 无覆盖边界说明 | 新增「覆盖边界（刀 1g 后）」，并点明**仍不覆盖 `type: "url"` 远程图块**（判据只看本地拿得到字节） |
+| §五 判据 | 8 条，全是 `Read` 路径 | 补第 9 条（base64 形态同样受判，判据不许只有 `path` 入口有）、第 10 条（不解全量、带 `data:` 前缀也判得对） |
+| §六 待验 | 2 行，且 `ReadImage` 数字停在 70 | 4 行：判据 1-8 / 9-10 分开、Read 真机标**已过**、**渠道直传标「未验」**并写清验法 |
+
+**数字全部当场跑过，没按记忆写**：`ReadImage` **77 passed / 0 failed**、`ImageInput` **62 passed / 0 failed**。
+
+**这条留给自己的教训**：审查报告有时效性。dev 的观察成立，结论依赖它当时的代码快照；对着旧快照抄结论会把修好的东西记成没修。
+处理审查意见时先核现状再动文档 —— 与刀 1g 同一轮里，我自己也差点把「已修」写成「待补」。
+
 ## 2026-10-29 15:00 · 登记 S-271（失败工具跳出折叠块），移交下迭代
 
 **登记，不动码。** 归属 v3-iter-5，不占本迭代承接、不占刀序。
@@ -682,3 +703,155 @@ S-225 §8 原文「档位不得藏错误」，实现方式是把 `hasError` 一�
 
 真机验收（`S-271.md` §六 第 4 项）：连续 5 次 Read 中间一次读不存在文件 → 折叠成一个块 + 徽章 → 切纯文本档再看 → 再验一次取消执行。
 
+## 2026-10-29 15:46 · 极简档里的桌面截图不再出卡（S-248 一处例外收窄）
+
+老大原话：「当使用桌面截图的时候，实际上还是显示的是个卡片，虽然是极简模式，而且卡片的内容对我来说没什么意义，输出的是 输入 `{"require_active_window": false}`」。
+
+**为什么极简档还有卡**：`content-renderer.tsx` 的 `pinnedTools` 判据里有 `entry.item.category === 'desktop'`，加上截图还在 `PROCESS_LINE_CARD_ONLY_TOOL_NAMES` 里 ⇒ 形态已经是行，但桌面工具被单独拎出折叠面板、按卡片渲染。S-248 当初给截图开例外，理由是「输出即结果，藏起来等于没做」；实际体验相反 —— 整屏截图拍的是用户桌面，一张随时会变的实时画面糊在消息流中间，比一行「1920×1080」烦人得多。
+
+四处改动：
+
+| 文件 | 改动 |
+|---|---|
+| `content-renderer.tsx:326-333` | `pinnedTools` 去掉 `entry.item.category === 'desktop'`，桌面操作与其它工具一样留在折叠块 |
+| `tool-block-renderer.tsx` | `PROCESS_LINE_CARD_ONLY_TOOL_NAMES` 去掉 `DESKTOP_SCREENSHOT_TOOL_NAME`；`hasVisualResult` 同步去掉截图 |
+| `tool-call-summary.ts` | 新增 `summarizeDesktopAction()`，桌面五件套各有摘要（截图 `1920×1080` / 点击 `click (512, 384)` / 输入文本前 40 字 / 滚动 `(0, -600)` / 等待 `800ms`）。原本走兜底「取第一个入参的值」，截图那条正好是 `require_active_window: false` ⇒ 行上显示 `false` |
+| `DesktopActionToolCard.tsx` | 原始入参块只在 `density === 'detail'` 显示，紧凑 / 极简档不再露出「输入 { JSON }」 |
+
+**口径变更**：S-248「输出即结果不降级」里点名过桌面截图，本次收窄 —— 保留的例外只剩交互类（答题 / 审批 / 目标）、子 agent、团队事件、生成图、widget，它们的共同点是「一行字点不了，功能会消失」。改完 `test:render-density` 19/19 仍全绿（该套件用本地 `keep` 集合，不引用生产常量）。
+
+### 门禁
+
+`typecheck:web` 0 错 · `npm test` 100/100 · `test:render-density` 19/19 · `test:tool-run-folding` 12/12。四个文件 CRLF / bareLF=0 / 无 BOM。
+
+### 未做
+
+未提交，攒收尾刀。真机待验：极简档跑一次桌面操作，确认只剩文字行。
+
+---
+
+## 2026-10-29 15:53 · 登记 S-272 / S-273（桌面坐标两条线），刀 12 交付 S-272 第一段
+
+老大原话：「我今天尝试让 dev 实例点击自己的页面进行测试，它先进行了桌面截图，然后后面是点击，最后进行的窗口截图，遇到一个问题就是它不知道怎么去点击坐标」。紧接着 15:55：「我希望的是做全，如果复杂的话可以先登记，然后下个迭代去推进」。
+
+**不是模型笨，是没给参照系。** 六处代码事实：
+
+1. `CreateAppWindowCaptureContent`（`Encoding.cs:69-99`）只回 `WxH`，**不含窗口在屏幕上的位置** ⇒ dev 最后一步拿着这张图，永远算不出屏幕坐标。这是卡住的直接原因。
+2. `captureDesktopScreenshot()` 算了 `originX` / `originY` / `displayCount`，C# 编码时只用 `width` / `height` ⇒ 前两项丢在半路（多屏、负坐标屏时模型不知道图对应哪块）。
+3. `ExecuteScreenshotAsync` 的请求体是 `CreateJsonObject(_ => { })`，从图里拿不到任何参照。
+4. `DesktopToolProvider` 写 `Absolute X coordinate` —— 不说是哪个坐标系。模型看到的是上游缩放过的图，它按眼里的像素报数。
+5. **`isPointInsideDesktop()` 拿 DIP 边界校验物理像素坐标** —— robotjs 的 `SetCursorPos` 要物理像素。150% 屏、1920×1080 逻辑（物理 2880×1620）下，`(2000,800)` 完全合法却被判 outside ⇒ **右半边点不动**。`docs/plans/iter-v2-23/plan-aux-window-placement/plan.md:28` 早就写过这条规矩，只是当年只约束了辅助窗口那条线。
+6. 截图只有整屏一张，搜索空间 2560×1440。
+
+### 分两段
+
+**第一段 · 本迭代（刀 12）**
+
+| 文件 | 改动 |
+|---|---|
+| `desktop-control.ts` | `DesktopScreenshotResult` 加 `scaleFactor` + `displays[]`（每块屏的物理矩形）；`captureDesktopScreenshot()` 填上；新增 `toPhysicalRect()` / `getDesktopPhysicalBounds()` / `describeDesktopBounds()`，`isPointInsideDesktop()` 改按物理像素边界判；两处越界报错带边界数值 |
+| `window-capture-handler.ts` | `WindowCaptureResult` 加 `bounds`（`getContentBounds()`，DIP）+ `scaleFactor`，用 `screen.getDisplayMatching()` 取窗口所在屏的缩放比 |
+| `AgentRuntimeDesktopExecutor.Encoding.cs` | 新增 `DescribeScreenshot()` / `DescribeDisplays()` / `DescribeAppWindowCapture()` / `FormatScale()`；截图文本补 `origin` / `scale` / 每块屏矩形，窗口文本补 DIP 矩形与「× scale 后的屏幕像素」，末尾给模型直接指令：「坐标就是这张图里的像素，不要重新缩放」 |
+| `DesktopToolProvider.cs` | `DesktopScreenshot` / `DesktopClick` / `DesktopScroll` / `CaptureAppWindow` 四段描述改成「以最近一次截图的原点为参照，单位是那张图的像素」；`CaptureAppWindow` 明写会回报窗口位置 |
+
+`toPhysicalRect()` 优先用 Electron 43 运行时的 `screen.dipToScreenRect`（类型未声明 ⇒ 能力检测），不可用时按 `bounds × scaleFactor` 回退。回退分支在混合 DPI 多屏下不精确，已记进 `S-272.md` §五 待查。
+
+**第二段 · 移交 v3-iter-5**（`S-272.md` §四）：相对坐标 `{x: 0.62, y: 0.28}`（根治「模型看的图被缩过」）、`DesktopScreenshot({ grid: true })` 画网格刻度、`DesktopListWindows` + `DesktopScreenshot({ window })` 按窗口截图。
+
+**S-273 · 移交 v3-iter-5**：换路径，不算坐标 —— `DesktopQueryElements` 读 UIA 元素树（`name` / `controlType` / `rect`），`DesktopClick({ window, element })` 取矩形中心。Chromium / Electron 把 DOM 可访问性树暴露给 Windows UIA，我们自己的页面完全可点。只作增强路径，不替代坐标路径（第三方原生应用覆盖度参差）。开工前四件待查已写在需求单 §四。
+
+### 门禁
+
+`npm run typecheck`（node + web）0 错 · `npm test` 100/100 · `test:render-density` 19/19 · `test:tool-run-folding` 12/12 · `test:tool-labels-coverage` 10/10 · `dotnet build WishfulClaw.Agent.csproj` 0 警告 0 错误。改动的四个源文件 CRLF / bareLF=0 / 无 BOM。
+
+### 未做
+
+真机验收：高 DPI 屏（150%）点右下角不报 outside；截图文本能在聊天窗看到 origin / scale / displays；`CaptureAppWindow` 文本含窗口矩形。都未提交，攒收尾刀。
+
+## 2026-10-29 16:53 · S-270 刀 10 补正之二 —— 输入框状态栏的第六个漏点
+
+老大原话：「我们聊天窗的输入框左上角有个状态栏显示，这里现在也是一样的问题，使用工具的时候显示的是工具英文名称」。
+
+**不是没做，是那一处从来没接过统一出口。** 两个状态栏变体（`composer-status-indicator.tsx:82-83` 精简条、`runtime-status.tsx:226-227` 完整面板）都在 zustand selector 里调 **`resolveProxyStatusName()`** —— 那函数的唯一职责是把 `use_capability` 拆回它代理的真实工具（`builtin:Read` → `Read`、`mcp-tool:s/t` → `mcp__s__t`），**对非代理工具原样返回**。刀 10 把卡片、折叠条、文件变更行、纯文本行、桌面 / 浏览器 / codegraph 卡全接上了 `resolveToolDisplayName`，唯独状态栏没接 ⇒ 平时跑工具显示 `BrowserNavigate` / `FileEdit` / `DesktopScreenshot` 原文。
+
+这恰好印证 S-270 §2.2 的判断：**缺了不会报错，所以一直没人发现**。防漏测试扫的是「代码里声明的工具名有没有中文表」，扫不到「某个显示点没查表」—— 判据的固有盲区。
+
+### 改法
+
+`src/renderer/src/lib/tools/tool-display-name.ts` 新增 `resolveStatusToolName(name, input, t)`：
+
+1. 先 `resolveProxyStatusName()` 拆能力代理（**顺序不能反** —— 反过来 `use_capability` 会被查成「调用能力」，用户永远看不到真实工具）；
+2. 再过 `resolveToolDisplayName()`（查表 / MCP 拆词 / codegraph 前缀族 / 兜底）；
+3. `skill:<id>` 保持原样（能力 id 不是工具名，与接入前一致，记入挂账）。
+
+两个组件的 selector 改成只取**原始** `name` + `input`（新增 `activeToolInput` / `pendingApprovalToolInput`，`!showStatus` 分支同步补 `undefined`），中文名在组件 `useMemo` 里算 —— `t` 在组件作用域，且能力代理要等 args 到齐。`statusView` 的依赖列表同步换成 label。
+
+### 测试加固（11 → 12 条）
+
+新增两条断言直接钉 `resolveStatusToolName`：
+
+- `状态栏工具名也走统一出口` —— `Read` → 读取文件、`BrowserNavigate` → 打开网址、`DesktopScreenshot` → 桌面截图、`RequestSandboxElevation` → 申请关闭沙箱、未知 → 「工具 · 原名」、`null` → `null`。
+- `状态栏先拆能力代理、再过统一出口` —— `builtin:BrowserNavigate` → 打开网址、`mcp-tool:my_server/do_thing` → `Do thing`、`skill:commit` → 原样。
+
+**闸有效性反向验证**：实现临时改成 `return resolved`（退回接入前的行为）⇒ 立刻红，`actual: 'Read' / expected: '读取文件'`；逐字节恢复后 12/12 复绿。
+
+### 门禁
+
+`test:tool-labels-coverage` **12/12** · `npm test` **100/100** · `test:render-density` 19/19 · `test:tool-run-folding` 12/12 · `npm run typecheck`（node + web）0 错。四个改动文件 CRLF / bareLF=0 / 无 BOM。
+
+### 未做
+
+- **挂账**：`skill:<id>` 显示成 `skill:commit`（能力 id，`commit` 翻不动）—— 要做需先定口径（「技能 · commit」？还是走 `Skill` 标签 + 参数）。
+- 真机待验五条（`S-270.md` §8.9）：状态栏跑 `BrowserNavigate` 显示「打开网址」、待审批显示「等待批准：申请关闭沙箱」、能力代理不被查成「调用能力」、两处状态面板文案一致。
+- 未提交，攒收尾刀。
+
+## 2026-10-29 17:50 · 登记并交付 S-274（刀 13）—— 长文本流式撞爆 React 嵌套更新上限
+
+老大原话：「之前几次测试就已经比较卡了，我以为是内存占用问题，就是在长文本输出修复以后开始测试开始，基本都比较卡」，附 `[renderer:LOG] Uncaught Error: Maximum update depth exceeded`。
+
+### 一、先排除，再定位
+
+按顺序排掉三条常见的：
+
+1. **不是内存泄漏。** 渲染进程确实涨到 4.3 GB（`memory type=Tab ws=4360.4MB peak=4832.9MB`），但那是「每帧自激重渲染」的**结果**，不是原因 —— 报错停下来的那一帧之后内存就不再涨。
+2. **不是 selector 抖动。** 全仓脚本扫「返回新对象却没 `useShallow`」⇒ **0 命中**。
+3. **不是 hook 依赖写错。** `use-typewriter` / `use-streaming-markdown-blocks` 是纯计算不 setState；两个状态栏的 `setInterval` 依赖是 `createdAt` 字符串，稳。
+
+日志落点值得记一笔：渲染端 console 不单独落盘，只经主进程 `index.ts:165` 转发；真正的证据在主进程 memory 采样行 + 紧跟的 ERROR 行。而 **dev 实例的日志在 `~/.wishful-claw-dev/logs/`**，跟生产 `~/.wishful-claw/logs/` 分家（`data-dir.ts:11-18`）—— 我第一眼看的是生产那份，2150 行干净得可疑，白跑一趟。
+
+### 二、根因（栈帧直指文件）
+
+栈：`dispatchSetState` ← `useMessageListScroll.ts:246` / `:270` / `:276`（vite 转换后行号，文件确定）。
+
+链条：
+
+1. 跟随目标 `bottom = realBottom + gapTarget - clientHeight`，`gapTarget` 是**提前量**（最多 240px），比容器底部 padding 大得多；
+2. 尾部行未挂载那一帧（`tailMounted=false`）`scrollHeight` 撑不住 `bottom` ⇒ 写 `scrollTop` 时浏览器 clamp（写 1000 读回 760）；
+3. 于是 `Math.abs(ref.scrollTop - bottom) <= 1` **恒不成立**，那道注释里写着的「已钉底就不重复滚」的守卫被穿透；
+4. 每帧写 scrollTop → 派发 scroll → `handleListScroll` → `setIsAtBottom` → layout effect → 再写 ⇒ 撞 React 50 层嵌套上限。
+
+**为什么偏偏现在发作**：S-256 把长文本流式的时长从「一瞬」拉到几十秒（以前循环来不及跑几轮就静止了）+ S-233 的 `observeGrowthOnly` 让 floor 只升不降、与真实可滚范围脱钩 + S-176 的 gapTarget。三者叠起来才成为常态。
+
+### 三、改法：只夹写入没用，必须同时夹判据
+
+- `scroll-watermark.ts` 新增纯函数 `clampScrollTop(value, scrollHeight, clientHeight)`；
+- `useMessageListScroll.ts` 四处写入点全部先夹：悬空救援 `:293` / 回收计划 `:320` / 跟随落位 `:352` / 撤水位线 `:866`；
+- **`:361` 那道「已钉底」守卫改成比较夹取后的值** —— 这是本条的关键。只夹写入、判据还拿未夹的值比，clamp 条件照样永远真，循环照跑。我第一版就只夹写入，靠反向验证才揪出来。
+
+### 四、闸与反向验证
+
+`tests/scroll-watermark` **103 → 110** 条（新增 7 条：夹取 / 幂等 / 内容不满一屏返 0 / 负数返 0 / 超范围目标夹到 maxScrollTop 等）。
+
+反向验证：把 `clampScrollTop` 临时改成 `return Math.max(0, value)` ⇒ 红 `AssertionError: 超范围目标夹到 maxScrollTop（实际 640）`，恢复后 110/110 复绿。
+
+门禁：`npm test` **100/100** · `typecheck` 0 错 · `test:render-density` 19/19 · `test:tool-run-folding` 12/12。
+
+### 五、与 S-233 的关系（别混）
+
+S-233（挂账的视觉抖动）同文件同链路，但**根因不同**，本条修好不代表 S-233 解决。S-233 的观察窗口仍按原判据补盲区，不因本条提前重开。
+
+### 六、未做
+
+- 真机待验 6 条（`S-274.md` §七）：长文本流式不再涨到 4.3 GB、不再报 `Maximum update depth exceeded`、正常跟随 / 回收 / 悬空救援仍贴底。
+- **「卡」的另一半仍在**：S-256 只限了单帧步长（1600 字符），长文积压时仍是 30fps 持续全量重渲染。建议加「跳尾」（`poolSize` 超 3200 字符直接把 `renderedLength` 推到 `targetLength - 1600`，只对尾巴做追赶动画），**待老大拍板**，未做。
+- 未提交，攒收尾刀。

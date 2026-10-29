@@ -206,6 +206,30 @@ export function resolveReclaimPlan(
 }
 
 /**
+ * 2026-10-29 崩溃修复：把目标滚动位置夹进可滚范围。
+ *
+ * 跟随 / 回收 / 救援三处写出的目标都是 `realBottom + gapTarget - clientHeight`，而
+ * `gapTarget` 是提前量（最多 `STREAMING_BOTTOM_FOLLOW_CHUNK` = 240px），**远大于**内容
+ * 容器底部 padding。虚拟列表尾部行未挂载时（长文本流式的高频帧）`scrollHeight` 撑不到
+ * 这个目标，浏览器会把写入值 clamp 到 `maxScrollTop` —— 写 1000 读回 760。
+ *
+ * 于是 `scrollToBottomImmediate` 里那道「已钉底就返回」的
+ * `Math.abs(scrollTop - bottom) <= 1` 守卫**永远判不成立**：每帧都写 scrollTop → 派发
+ * scroll 事件 → `syncBottomState` 里 `setIsAtBottom` → bottom-anchor layout effect 再跑
+ * → 再写。真机表现是渲染进程涨到 4.3GB（2026-10-29 17:20 `memory type=Tab ws=4360MB`），
+ * 最后撞 React 的 50 层嵌套上限报 `Maximum update depth exceeded`。
+ *
+ * 夹取之后写进去与读回来一致，守卫恢复有效。可滚范围足够时它是 no-op，行为不变。
+ */
+export function clampScrollTop(
+  value: number,
+  scrollHeight: number,
+  clientHeight: number
+): number {
+  return Math.min(Math.max(0, value), Math.max(0, scrollHeight - clientHeight))
+}
+
+/**
  * 偏低但还没确认 ⇒ 还要等多久（ms）再判一次；否则 `null`（不必排）。
  *
  * 治的是「等下一次调用」：判定改时间制之后仍然需要**有人来判**，而 bottom-anchor effect

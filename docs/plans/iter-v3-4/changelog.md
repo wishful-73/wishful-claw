@@ -465,3 +465,21 @@ OpenAI summarization HTTP TooManyRequests:
 **测试**：新建 `tests/WishfulClaw.CompactionSnapshotRegressionTests/SummarizerRetryChecks.cs`，24 条断言。`npm run typecheck` 0 错、`npm test` **93/93**、`dotnet build WishfulClaw.Agent.csproj` 0 警告 0 错误。
 
 **欠账**：判据 1 要一个恒返 429 + `Retry-After: 3` 的 mock 端点看真实间隔，判据 5 要在真会话里看「服务商繁忙」文案 —— 两条都等老大真机；`ContextCompression.cs` 的 500 行豁免头已按规矩重盖时间戳与行数（1108，2026-10-29），不重新审。
+
+## 2026-10-29 14:05 · 刀 4 交付 —— S-243 录音采集基座
+
+**做了什么**（细节见 `S-243.md` §8）：
+
+- `plugin-audio-wav.ts`（纯 node，能直接跑回归）：44 字节 RIFF/WAVE 头、`WavWriter` 先占位后回填两个长度字段、`SegmentingWriter` 按 `segmentSeconds` 整帧切段，余量带到下一块。
+- `plugin-audio.ts`：`installDisplayMediaHandler` 走 `callback({ video, audio: 'loopback' })` 拿系统音（拿不到源就 `callback({})` 明确拒绝，不挂死）；`AudioRecorderRegistry` 管会话 → 目录 → 分段 writer，落盘 `{dataRoot}/audio/{sessionId}/`。
+- `plugin-audio-handlers.ts`：`sources` / `start` / `append` / `stop` 四动作 + `plugin-audio:segment` 广播。
+- 渲染端 `audio-recorder.ts`：麦克风 / 系统内录 / both，`AudioContext({ sampleRate: 16000, channelCount: 1 })` 做重采样，写链串行化（IPC 异步，乱序 append 会让音频前后颠倒）。
+- preload 挂 `window.api.audio`；四条通道进 MessagePack 白名单。
+
+**为什么不给插件视图包一层 API**：插件窗口 `nodeIntegration: true` / `contextIsolation: false`（`plugin-window.ts:193-195`），插件本来就能自己开流，再包一层纯属多余。真正需要统一入口的是主窗口那侧的「能听」面板。
+
+**两条实测约束写进代码**：①纯音频 `getDisplayMedia({audio:true})` 抛 `AbortError`，必须先要 video 再 `stop()` 掉 video track 并 `removeTrack`；②loopback 与麦克风实测都是 48 kHz / 1 ch，但实现按 `track.getSettings()` 动态取值，不写死单声道。
+
+**测试**：新建 `tests/plugin-audio`，46 条断言 —— 44 字节头逐字段（含两个长度字段与 `byteRate` / `blockAlign`）、17 s 按 5 s 切段得 5/5/5/2 且帧数不重不漏、空录音不建文件、短录音保留精确长度、`segmentSeconds: 0` 整段一文件。`npm test` **94/94**、`npm run typecheck` 0 错。
+
+**欠账**：麦克风 / 系统内录 / both 混音 / 电平四条要真机（第 0 刀用 440 Hz 探针验过 loopback 通，本刀是端到端复核）；`segmentSeconds` 缺省 30 在 IPC 层与 `SegmentingWriter` 各一份，将来改要一起改。

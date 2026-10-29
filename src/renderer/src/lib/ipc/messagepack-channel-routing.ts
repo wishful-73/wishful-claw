@@ -203,6 +203,11 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'plugin-asset:cancel',
   'plugin-asset:verify',
   'plugin-asset:remove',
+  // 插件录音采集（S-243）—— 同上；PCM 字节也走二进制桥，不走裸 ipcRenderer
+  'plugin-audio:sources',
+  'plugin-audio:start',
+  'plugin-audio:append',
+  'plugin-audio:stop',
   'mcp:list',
   'mcp:add',
   'mcp:update',

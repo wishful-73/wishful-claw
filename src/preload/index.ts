@@ -103,7 +103,26 @@ const api = {
     data: string
     mediaType?: string
   }): Promise<{ filePath?: string; mediaType?: string; error?: string }> =>
-    invokeMessagePackBinary('image:persist-chat', args)
+    invokeMessagePackBinary('image:persist-chat', args),
+
+  /**
+   * S-243：录音采集。采集与重采样都在渲染端做完（`AudioContext({ sampleRate,
+   * channelCount })` 由浏览器做，不引入 resampler 依赖），主进程只负责按段写 wav。
+   * 段落落盘进度走 `on('plugin-audio:segment')`。
+   */
+  audio: {
+    sources: (): Promise<{ id: string; name: string; kind: 'system' }[]> =>
+      invokeMessagePackBinary('plugin-audio:sources', {}),
+    start: (options: {
+      format: { sampleRate: number; channels: number }
+      segmentSeconds?: number
+    }): Promise<{ sessionId: string; directory: string }> =>
+      invokeMessagePackBinary('plugin-audio:start', options),
+    append: (sessionId: string, bytes: Uint8Array): Promise<{ segments: string[] }> =>
+      invokeMessagePackBinary('plugin-audio:append', { sessionId, bytes }),
+    stop: (sessionId: string): Promise<{ wavPaths: string[] }> =>
+      invokeMessagePackBinary('plugin-audio:stop', { sessionId })
+  }
 }
 
 if (process.contextIsolated) {

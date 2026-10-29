@@ -31,6 +31,20 @@ declare global {
       teamRuntimeUpdateMember: (args: Record<string, unknown>) => Promise<{ success: true }>
       teamRuntimeUpdateManifest: (args: Record<string, unknown>) => Promise<{ success: true }>
       shell: { openExternal: (url: string) => Promise<void>; showItemInFolder: (path: string) => Promise<void> }
+      /**
+       * S-243：录音采集。采集与重采样在渲染端（`AudioContext({ sampleRate: 16000,
+       * channelCount: 1 })`），主进程只落 wav。分段缺省 30 s，每落满一段经
+       * `on('plugin-audio:segment')` 推送 `{ sessionId, path }`。
+       */
+      audio: {
+        sources: () => Promise<{ id: string; name: string; kind: 'system' }[]>
+        start: (options: {
+          format: { sampleRate: number; channels: number }
+          segmentSeconds?: number
+        }) => Promise<{ sessionId: string; directory: string }>
+        append: (sessionId: string, bytes: Uint8Array) => Promise<{ segments: string[] }>
+        stop: (sessionId: string) => Promise<{ wavPaths: string[] }>
+      }
       teamRuntimeConsumeMessages: <T = unknown[]>(args: Record<string, unknown>) => Promise<T>
     }
   }

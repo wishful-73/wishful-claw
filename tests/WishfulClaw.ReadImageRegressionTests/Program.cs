@@ -46,8 +46,10 @@ try
     Check(!ImageFileProbe.IsImagePath("notes.txt"), "txt is not an image");
 
     // ── 尺寸解析：每种格式一条最小头 ──
+    // S-266 起这张图必须是**真 PNG**：`png` 同时喂给 Read 工具（内联断言），
+    // 而工具层现在会验尾部 IEND，只有头部 IHDR 的假图会被判「没写完」。
     var png = Path.Combine(root, "shot.png");
-    File.WriteAllBytes(png, BuildPng(24, 12));
+    File.WriteAllBytes(png, BuildRealPng(24, 12));
     Check(ImageFileProbe.TryReadSize(png, out var pngW, out var pngH) && pngW == 24 && pngH == 12,
         "png size parsed (24x12)");
 
@@ -178,6 +180,71 @@ try
         new ToolExecutionContext(WorkingFolder: root));
     Check(missing.IsError, "missing image file is an error");
     Check(missing.ContentBlocks is null, "missing image file has no content blocks");
+
+    // ── S-266：签名合法但没写完 —— 判读图失败，不许内联 ──
+    // 签名在文件开头，截断的文件照样合法，所以档 4「认不出签名」天生够不着这一类：
+    // 修复前它会过白名单、被贴上 image/png 送上游，换回 400 invalid image，
+    // 坏块留在历史里每轮重发 —— 和 S-246 同一个现场，只是触发条件从「格式不收」变成「数据不全」。
+    var realPngBytes = BuildRealPng(24, 12);
+    var halfPng = Path.Combine(root, "half.png");
+    File.WriteAllBytes(halfPng, realPngBytes[..^12]);         // 砍掉 12 字节 IEND 块
+    var halfPngRead = await tool.ExecuteAsync(Input(halfPng), new ToolExecutionContext(WorkingFolder: root));
+    Check(halfPngRead.IsError, "S-266: truncated png is an error");
+    Check(halfPngRead.ContentBlocks is null, "S-266: truncated png carries no image block");
+    Check(halfPngRead.Content.Contains("end marker is missing", StringComparison.Ordinal),
+        "S-266: truncated png reports the missing end marker");
+    Check(!halfPngRead.Content.Contains("signature not recognized", StringComparison.Ordinal),
+        "S-266: a truncated file is not confused with an unrecognized signature");
+
+    // 头还在、尺寸也读得出的截断图同样要拦 —— 尺寸解析成功不等于文件完整。
+    Check(ImageFileProbe.TryReadSize(halfPng, out var halfW, out var halfH) && halfW == 24 && halfH == 12,
+        "S-266: truncated png still has a readable header (that is why it slipped through)");
+
+    // 截断的 jpeg / gif 走同一条判据。
+    var halfJpeg = Path.Combine(root, "half.jpg");
+    File.WriteAllBytes(halfJpeg, ClosedJpeg()[..^2]);          // 砍掉 EOI（FF D9）
+    var halfJpegRead = await tool.ExecuteAsync(Input(halfJpeg), new ToolExecutionContext(WorkingFolder: root));
+    Check(halfJpegRead.IsError, "S-266: truncated jpeg is an error");
+    Check(halfJpegRead.ContentBlocks is null, "S-266: truncated jpeg carries no image block");
+
+    var halfGif = Path.Combine(root, "half.gif");
+    File.WriteAllBytes(halfGif, ClosedGif(7, 5)[..^1]);        // 砍掉 trailer（0x3B）
+    var halfGifRead = await tool.ExecuteAsync(Input(halfGif), new ToolExecutionContext(WorkingFolder: root));
+    Check(halfGifRead.IsError, "S-266: truncated gif is an error");
+    Check(halfGifRead.ContentBlocks is null, "S-266: truncated gif carries no image block");
+
+    // 空文件（0 字节）：一个字节的图都没有，同样不能用「认不出」以外的方式放行。
+    var empty = Path.Combine(root, "empty.png");
+    File.WriteAllBytes(empty, []);
+    var emptyRead = await tool.ExecuteAsync(Input(empty), new ToolExecutionContext(WorkingFolder: root));
+    Check(emptyRead.IsError, "S-266: zero-byte image is an error");
+    Check(emptyRead.ContentBlocks is null, "S-266: zero-byte image carries no image block");
+
+    // ── S-266 反例：完整的容器一个字都不许误伤 ──
+    // 判据写宽了等于把看图能力砍掉，所以这几种「完整但非典型」的图必须照样内联。
+    var closedPng = Path.Combine(root, "closed.png");
+    File.WriteAllBytes(closedPng, realPngBytes);
+    var closedPngRead = await tool.ExecuteAsync(Input(closedPng), new ToolExecutionContext(WorkingFolder: root));
+    Check(!closedPngRead.IsError, "S-266: a complete png is not an error");
+    Check(closedPngRead.ContentBlocks is not null, "S-266: a complete png keeps its pixels");
+
+    // IEND 之后追加了私有数据（某些编辑器会这么干）仍算完整。
+    var trailingPng = Path.Combine(root, "trailing.png");
+    File.WriteAllBytes(trailingPng, [.. realPngBytes, .. new byte[8]]);
+    var trailingPngRead = await tool.ExecuteAsync(Input(trailingPng), new ToolExecutionContext(WorkingFolder: root));
+    Check(!trailingPngRead.IsError, "S-266: png with trailing bytes after IEND is still accepted");
+    Check(trailingPngRead.ContentBlocks is not null, "S-266: png with trailing bytes keeps its pixels");
+
+    var closedGif = Path.Combine(root, "closed.gif");
+    File.WriteAllBytes(closedGif, ClosedGif(7, 5));
+    var closedGifRead = await tool.ExecuteAsync(Input(closedGif), new ToolExecutionContext(WorkingFolder: root));
+    Check(!closedGifRead.IsError, "S-266: a complete gif is not an error");
+    Check(closedGifRead.ContentBlocks is not null, "S-266: a complete gif keeps its pixels");
+
+    // WebP 用 RIFF 声明长度判定，不靠尾部标记 —— 声明值对得上就算完整。
+    var closedWebpRead = await tool.ExecuteAsync(Input(webp), new ToolExecutionContext(WorkingFolder: root));
+    Check(!closedWebpRead.IsError, "S-266: a complete webp is not an error");
+    Check(closedWebpRead.ContentBlocks is not null, "S-266: a complete webp keeps its pixels");
 }
 finally
 {
@@ -201,6 +268,7 @@ static JsonElement Input(string path)
 }
 
 // PNG: 8 字节签名 + IHDR 长度/类型 + 宽高（大端）。
+// 只造头，**不是**合法 PNG —— 只用于验证"尺寸解析"，别拿它喂 Read 工具的完整性判定。
 static byte[] BuildPng(int width, int height)
 {
     var buffer = new byte[33];
@@ -279,5 +347,123 @@ static byte[] BuildWebpVp8x(int width, int height)
     buffer[27] = (byte)(h & 0xFF);
     buffer[28] = (byte)((h >> 8) & 0xFF);
     buffer[29] = (byte)((h >> 16) & 0xFF);
+    return buffer;
+}
+
+// ── S-266 素材：真正**完整**的容器 ──
+// 上面那些"造头"的工厂只够骗过尺寸解析；容器完整性按尾部结束标记判，
+// 所以下面这几个才带 IEND / EOI / trailer，才有资格断言"完整图不许误伤"。
+
+// 最小合法 PNG：签名 + IHDR + IDAT（stored deflate，不压缩）+ IEND。
+// 自己编码而不是内嵌 base64，是为了让尺寸可参数化、坏图可精确截断。
+static byte[] BuildRealPng(int width, int height)
+{
+    var raw = new byte[height * (1 + width * 3)];   // 每行 1 字节 filter(=0) + RGB
+
+    var ihdr = new byte[13];
+    BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(0, 4), width);
+    BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(4, 4), height);
+    ihdr[8] = 8;    // 位深
+    ihdr[9] = 2;    // 色彩类型 RGB
+    ihdr[10] = 0;   // 压缩方法
+    ihdr[11] = 0;   // 滤波方法
+    ihdr[12] = 0;   // 非隔行
+
+    using var stream = new MemoryStream();
+    stream.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    WritePngChunk(stream, "IHDR", ihdr);
+    WritePngChunk(stream, "IDAT", ZlibStored(raw));
+    WritePngChunk(stream, "IEND", []);
+    return stream.ToArray();
+}
+
+static void WritePngChunk(Stream stream, string type, byte[] data)
+{
+    var length = new byte[4];
+    BinaryPrimitives.WriteInt32BigEndian(length, data.Length);
+    stream.Write(length);
+
+    var typeBytes = Encoding.ASCII.GetBytes(type);
+    stream.Write(typeBytes);
+    stream.Write(data);
+
+    var crcInput = new byte[typeBytes.Length + data.Length];
+    typeBytes.CopyTo(crcInput, 0);
+    data.CopyTo(crcInput, typeBytes.Length);
+
+    var crc = new byte[4];
+    BinaryPrimitives.WriteUInt32BigEndian(crc, Crc32(crcInput));
+    stream.Write(crc);
+}
+
+// zlib 容器 + 只用 stored（不压缩）的 deflate 块 + Adler-32 校验。
+// 够生成合法 PNG 即可，不追求压缩率。
+static byte[] ZlibStored(byte[] raw)
+{
+    using var stream = new MemoryStream();
+    stream.WriteByte(0x78);   // CMF: deflate, 32K 窗口
+    stream.WriteByte(0x01);   // FLG: 无字典，最快
+
+    var offset = 0;
+    do
+    {
+        var size = Math.Min(65535, raw.Length - offset);
+        var isFinal = offset + size >= raw.Length;
+        stream.WriteByte((byte)(isFinal ? 1 : 0));          // BFINAL + BTYPE=00（stored）
+        stream.WriteByte((byte)(size & 0xFF));
+        stream.WriteByte((byte)(size >> 8));
+        stream.WriteByte((byte)(~size & 0xFF));
+        stream.WriteByte((byte)((~size >> 8) & 0xFF));
+        stream.Write(raw, offset, size);
+        offset += size;
+    }
+    while (offset < raw.Length);
+
+    uint a = 1, b = 0;
+    foreach (var value in raw)
+    {
+        a = (a + value) % 65521;
+        b = (b + a) % 65521;
+    }
+    var adler = (b << 16) | a;
+    stream.WriteByte((byte)(adler >> 24));
+    stream.WriteByte((byte)(adler >> 16));
+    stream.WriteByte((byte)(adler >> 8));
+    stream.WriteByte((byte)adler);
+
+    return stream.ToArray();
+}
+
+static uint Crc32(byte[] data)
+{
+    var crc = 0xFFFFFFFFu;
+    foreach (var value in data)
+    {
+        crc ^= value;
+        for (var bit = 0; bit < 8; bit++)
+        {
+            crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+// 带 EOI 的最小 JPEG：SOI + SOF0（只为尺寸可读）+ EOI。数据段不是真熵编码，
+// 但尾部标记齐全 —— S-266 判的就是这个。
+static byte[] ClosedJpeg()
+{
+    var buffer = new byte[28];
+    BuildJpeg(200, 100).CopyTo(buffer, 0);
+    buffer[26] = 0xFF;
+    buffer[27] = 0xD9;   // EOI
+    return buffer;
+}
+
+// 带 trailer 的最小 GIF：GIF89a + 逻辑屏幕描述符 + ... + 0x3B。
+static byte[] ClosedGif(int width, int height)
+{
+    var buffer = new byte[20];
+    BuildGif(width, height).CopyTo(buffer, 0);
+    buffer[19] = 0x3B;   // trailer
     return buffer;
 }

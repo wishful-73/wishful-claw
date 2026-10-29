@@ -196,4 +196,75 @@ v3-iter-3 收尾写的承接清单只列了 8 条，**S-260（浏览器保活池
 
 **未完成**：真机 5 条判据（S-263 §五）—— 其中「反复收展 10 次」和「收起状态下有流式输出」是复现本缺陷最直接的动作。
 
+### 09:32 · 登记 S-264（脏图源头治理，刀 1e）+ S-265（裸 body 400，移交下迭代）
 
+**来历**：老大 09:25 给出家里电脑的 `2026-10-28-请求错误导出.txt`（`C:\Users\Administrator\.wishful-claw\index.db` → `request_usage_logs` 直查，条件 `status<>'success' AND started_at >= 2026-10-27`），并说「刚刚 dev 上没有复现成功」。09:30 提出方向「读图工具如果读到没有图，可以直接标读图失败么？而不是把脏图丢上去」。09:32「根据你的推荐来 登记然后按照工作流推进吧」⇒ 立 **S-264**（本轮做，刀 1e）+ **S-265**（移交下迭代）。
+
+**真实日志（33 条失败，三种形态）**：
+
+| 形态 | 条数 | 报文 | 会话 |
+|---|---|---|---|
+| 图像 400 | 18 | `.messages[N].image[0]: You have uploaded an unsupported image` | 微信:老郑 10 / 1zwmBISgkW 8 |
+| 裸 body 400 | 14 | `{"model":"deepseek-flash"}` / `{"model":"deepseek-v4.1-flash"}` | Uy5QPV02 14 |
+| 502 | 1 | `远程主机强迫关闭了一个现有的连接` | Uy5QPV02 |
+
+坏图全在历史深处：`.messages[477]`（7）、`.messages[33]`（8）、`.messages[207]`（2）、`.messages[40]`（1）。
+
+**对 S-262 的校验（结论：判据正确，不用改）**：catch 链顺序 配对（`AgentLoop.cs:430`）→ 剥图（`:453`）→ 兜底（`:493`），图像 400 不会被抢；`StripImagesWhenModelCannotSee` 遍历**整条** wire conversation，历史 477 条那种坏图也剥得掉，第二道闸 `ConversationHasImageBlocks` 同口径；裸 body 400 的指纹归一后是 `openaicompatiblechatrequestfailedhttpmodeldeepseekflash`，第二次同错必被拦。**顺带回答老大 08:52 那问**：`request_usage_logs` 只落 `error_message`（报文全文），**不落请求体** —— 33 条完整报文在手，零条请求参数。
+
+**dev 不复现的原因**：图像线已被 S-261 治好（`unsupported image` marker + 全量剥图），要复现只能人工造脏图。不是没修好，是修好了。
+
+**勘察坐实的关键事实（这是本条的立论）**：魔数判据其实**全写好了**，结论被三处丢掉 ——
+
+| 位置 | 判据 | 结论怎么用了 |
+|---|---|---|
+| `ImageFileProbe.MediaTypeFor` | 纯看扩展名 | `.png` ⇒ `image/png`，不管内容 |
+| `ImageFileProbe.TryReadSize` | **读头做魔数校验** | 只取尺寸，`false` 只写「size unavailable」，图照发（类注释 `:15` 明写） |
+| `ProviderContentHelpers.ResolveSupportedImageMediaType:201-208` | **嗅探 + 白名单** | 嗅探认不出时**回落信任声明** |
+
+第三处是漏水口。「脏图」的定义就是 `DetectImageMediaTypeFromBase64` 返回 `null`（文件头不符合任何已知格式），而这一刻代码选择信任声明 ⇒ 损坏 / 半截 / 非图内容全被贴上 `image/png` 送上上游换 400。
+
+**定案（老大 09:32 拍「按你的推荐来」）**：三层一起改，判据拆四档，**发布前必须做完**。
+
+- 四档：有效且扩展名对 ⇒ 发；有效但扩展名骗人 ⇒ **按真实格式纠正后发**（不判失败，否则误报）；有效 bmp/tiff/ico ⇒ 保持 S-246 的文本降级；**认不出 ⇒ 标读图失败，不附像素**。
+- 三层：工具层签名校验 / 组包层去回落 / 脏图不写 `ImageVisionMemory`。缺一层就漏 —— 真实日志 18 条图像 400 里 **10 条在微信渠道会话**，根本不经过 `FileReadTool`。
+- 两个坑写进需求单：①不能拿 `TryReadSize` 返回 false 当脏图判据（只读 4 KB 找 JPEG SOF，大 EXIF 的合法 JPEG 会被误杀），只判签名；②`AgentLoop.cs:464` 两道闸（S-236 判据 10 红线）一个字不许动。
+
+**发布前必须做完的真理由**：`ImageVisionMemory` 是**落盘永久**的（`image-vision-unsupported.json`，全文只有 `IsKnownUnsupported` / `RememberUnsupported` / `GetRememberedAt`，**无清除、无 TTL、无 UI 入口**），而 `unsupported image`（S-261 加的 marker）与「模型不吃图」共用同一个 catch 块（`AgentLoop.cs:453-492`）⇒ **一张脏图把能看图的模型永久标瞎，不可逆**。老大自己的现场就是反证：「我截图发消息，实际上是能识图的，结果它自己读取就不行了」。S-236 档 2 的动机是「不让本地表替模型决定能不能看图」，现在变成「让一张脏图替模型决定以后永远不能看图」—— 反向复发。不带这个修复发 1.0.4，等于把不可逆的坑推给所有用户。
+
+**S-265 移交下迭代**：裸 body 400 共 14 条，报文只有 model 名、无 `error` 结构，30~52 秒慢拒绝，无法定位字段。**与 S-264 / S-261 不是同一个 bug**，合并处理必错。S-262 已保证它不钉死会话（替换工具结果重发一次 + 指纹去重后抛），代价是每次多烧一次 30~52 秒请求 —— 可接受，不是缺陷。下一迭代先取证（对照 `input_tokens` vs `context_cap_tokens`、直连上游看是否渠道丢信息）再定性。
+
+**顺带确认的正面事实**：10-28 那批 400 全是 `attempt=1 / total_attempts=1`，而 10-27 那批是 `attempt 1..9` ⇒ **S-245「400 不重试」在 1.0.3 已生效**，不再白烧 20 次往返。
+
+### 09:55 · 交付 S-264（刀 1e）+ S-266（刀 1f）—— 脏图这条线收干净，并修正 S-264 遗留的测试口径欠账
+
+**来历**：老大 09:30 提出「读图工具如果读到没有图，可以直接标读图失败么？而不是把脏图丢上去」，09:32 拍「根据你的推荐来 登记然后按照工作流推进吧」。09:32 立 S-264（刀 1e），实施过程中发现它有一处判据天生够不着，09:50 补立 S-266（刀 1f）。
+
+**为什么一刀不够**：S-264 的判据是「按文件头签名判」，而**签名在文件开头、截断发生在文件末尾**。下载到一半的截图、被中断的保存、拷一半的 U 盘文件 —— 头 8 字节完全合法，于是四档全部放行、一路内联出去 ⇒ 400 `invalid image` ⇒ 坏块留历史每轮重发。与 S-246 同一现场，只是触发条件从「格式不收」换成「数据不全」。
+
+**S-266 的判据选择**：不走「解码试试」（PNG 要 inflate + 反滤波，JPEG 要熵解码，四套解码器对 AOT 体积和攻击面都不划算），改看**容器尾部结束标记**，只读头 + 尾 64 字节：
+
+| 格式 | 结束标记 | 之后容忍追加 |
+|---|---|---|
+| PNG | IEND 定值 12 字节（含 CRC） | 16 字节 |
+| JPEG | EOI（`FF D9`） | 32 字节 |
+| GIF | trailer（`0x3B`） | 2 字节（单字节标记，放宽就撞压缩数据） |
+| WebP | RIFF 头声明的长度（偏移 4，uint32 LE） | 不适用 |
+
+BMP / TIFF / ICO 不判（本来就不内联像素）。从后往前找最后一个命中（压缩数据里可能恰好出现同样字节）。**代价刻意不对称**：漏检代价是上游 400 一次（S-262 兜底），误杀代价是模型彻底看不到一张好图，所以宁松不宁紧。
+
+**交付范围**：
+
+| 层 | 位置 | 改动 |
+|---|---|---|
+| 探测层 | `ImageFileProbe.HasCompleteContainer` | 新增，四种容器尾部校验，判定出错时返回「不拦」 |
+| 工具层 | `FileReadTool.ReadImage` | 新增第五档，排在「超限」之后、「内联」之前（超限的图反正不出门，报「太大」比报「坏了」更有行动指引） |
+| 测试 | `ReadImage` 套件 | 新增最小 PNG 编码器（stored deflate + CRC32 + Adler-32），40 → 70 断言；`ReadVideo` 76 断言全绿 |
+
+**顺手修掉的欠账（S-264 自己留下的）**：`ImageMediaGate` 套件有三条断言停在旧口径 —— `junk` 字节 + 声明 `image/png` 应「回落信任声明」，而 S-264 已把实现改成「嗅探不出 ⇒ 一律丢块」。实现改了、测试没跟着改，`npm test` 因此红着。已改为断言丢块，并补一条 `declared=null` 覆盖，套件头注释同步补第四类口径。**这条不是我这刀引起的**，是 1e 的回归缺口，但门禁红着没法收尾，所以同批修掉。
+
+**顺带纠正的文档事实**：根目录没有 `.sln`，只有 `tests\WishfulClaw.Tests.sln`；§五 开头那条 `dotnet build src\runtime\WishfulClaw.sln` 实际不存在（`MSB1009`），已在 §五 补注。
+
+**门禁**：`npm run typecheck` exit 0（node + web）/ `npm test` **91/91** / `dotnet build tests\WishfulClaw.Tests.sln` 0 警告 0 错误。改动文件行数：`FileReadTool.cs` 446、`ImageFileProbe.cs` 335、`ReadImage` 套件 469，全部在 500 行内。
+
+**真机待验**：S-264 §六（造 `foo.png` 装 jpg 内容 / `bar.png` 装 html）+ S-266 §六（造一张截断 PNG 用 Read 读，确认模型收到「读图失败」而不是 400）。

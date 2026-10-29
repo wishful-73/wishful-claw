@@ -471,9 +471,31 @@ internal static partial class AgentLoop
 
                     var unsupportedProviderId = JsonHelpers.GetString(provider, "id");
                     var unsupportedModelId = JsonHelpers.GetString(provider, "model");
-                    // 记住实测结果：下次这个 (provider, model) 直接在组包时剥图，
-                    // 不用再白烧一次带图的往返。失败也不影响主流程（记不住就多撞一次）。
-                    ImageVisionMemory.RememberUnsupported(unsupportedProviderId, unsupportedModelId);
+
+                    // S-264：**脏图触发的剥图不写永久记忆。**
+                    //
+                    // ImageVisionMemory 是落盘永久、无解封路径的（只有 IsKnownUnsupported /
+                    // RememberUnsupported / GetRememberedAt，没有清除、没有 TTL、没有 UI 入口）。
+                    // 把「这张图坏了」记成「这个模型永远不能看图」是不可逆的误伤 —— 用户之后
+                    // 发正常 png 截图也会被剥掉，而且想恢复只能手动删 json 文件。
+                    //
+                    // 判据方向刻意保守（见 ImageInputErrors.IsImageDataRejection）：只有
+                    // 「命中脏图 marker 且一条能力 marker 都没命中」才豁免，认不出照旧记 ——
+                    // 多撞一次 400 只是慢，误记成瞎的是不可逆的。
+                    if (ImageInputErrors.IsImageDataRejection(ex))
+                    {
+                        WorkerLog.Warn(
+                            $"agent provider turn rejected a specific image's bytes; " +
+                            $"stripping without recording the model as vision-less " +
+                            $"runId={state.RunId} provider={unsupportedProviderId ?? "?"} " +
+                            $"model={unsupportedModelId ?? "?"}");
+                    }
+                    else
+                    {
+                        // 记住实测结果：下次这个 (provider, model) 直接在组包时剥图，
+                        // 不用再白烧一次带图的往返。失败也不影响主流程（记不住就多撞一次）。
+                        ImageVisionMemory.RememberUnsupported(unsupportedProviderId, unsupportedModelId);
+                    }
 
                     WorkerLog.Warn(
                         $"agent provider turn rejected image input; stripping image blocks and retrying " +

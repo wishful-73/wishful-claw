@@ -183,8 +183,8 @@ public static class ProviderContentHelpers
     /// 顺序是「事实优先于声明」：
     /// <list type="number">
     /// <item>嗅探出真实格式 ⇒ 以嗅探为准（声明的 bmp 字节被标成 png，这里按 bmp 判，随后被白名单拦下）；</item>
-    /// <item>嗅探不出（极小/非常规字节）⇒ 才看声明，且必须落在白名单内；</item>
-    /// <item>都不成立 ⇒ 返回 <c>null</c>，调用方丢块。</item>
+    /// <item>**嗅探不出 ⇒ 一律丢块**（S-264 收严；修前这里回落信任声明，见方法内注释）；</item>
+    /// <item>嗅探出但不在白名单 ⇒ 同样丢块。</item>
     /// </list>
     ///
     /// 返回 <c>null</c> 不等于「图没了」：<c>FileReadTool.ReadImage</c> 产出的
@@ -204,8 +204,21 @@ public static class ProviderContentHelpers
             return SupportedImageMediaTypes.Contains(detected) ? detected : null;
         }
 
+        // S-264：**嗅探认不出 ⇒ 不再信任声明。**
+        //
+        // 修前这里回落到 declared，理由是「怕嗅探漏掉不认识的合法格式」。但那恰恰是脏图的通道：
+        // 损坏 / 半截写入 / 非图像内容 / 未列的新格式，全部返回 null，于是全部被贴上声明的
+        // `image/png` 送上上游，换回 400 `unsupported image`。真实现场（10-27～10-28）18 条
+        // 图像 400 里 **10 条在微信渠道会话**，根本不经过 FileReadTool —— 只改工具层治不住。
+        //
+        // 收严不误杀白名单格式：`DetectImageMediaTypeFromBase64` 认 png/jpeg/webp/gif 全部四种
+        // （外加 bmp/tiff/ico/svg），覆盖面**不小于**白名单。所以「声明是白名单格式、嗅探却
+        // 认不出」只可能是「字节根本不是那四种」—— 它就是脏图，丢它是对的。
         var declared = NormalizeDeclaredMediaType(declaredMediaType);
-        return declared is not null && SupportedImageMediaTypes.Contains(declared) ? declared : null;
+        WorkerLog.Warn(
+            $"image block dropped before provider turn: unrecognizable image bytes " +
+            $"(declared={declared ?? "(none)"}); the block stays in history but no longer reaches the wire");
+        return null;
     }
 
     /// <summary>

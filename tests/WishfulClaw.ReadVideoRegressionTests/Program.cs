@@ -196,7 +196,11 @@ try
     Check(textResult.Content.Contains("hello", StringComparison.Ordinal), "plain text content is returned");
 
     var imageFile = Path.Combine(root, "shot.png");
-    File.WriteAllBytes(imageFile, BuildPng(24, 12));
+    // S-266 起 Read 会验容器尾部，只有 IHDR 的假头会被判「没写完」。
+    // 这里补一个合法 IEND 块，让这条断言继续只考「有没有被视频分支截胡」这一件事
+    // —— 素材本身仍不是可解码的 PNG，别拿它测解码。
+    File.WriteAllBytes(imageFile,
+        [.. BuildPng(24, 12), .. new byte[] { 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82 }]);
     var imageResult = await tool.ExecuteAsync(
         Input(imageFile),
         new ToolExecutionContext(

@@ -17,6 +17,7 @@ import {
 } from './browser-scripts'
 import {
   type NativeImageLike,
+  acquireBrowserLease,
   ensureAttachedWebview,
   requireWebview,
   runWebviewCommand,
@@ -92,7 +93,9 @@ async function executeBrowserNavigate(
     // 面板要不要掀开由 store 判（S-259）：只有「用户当前正在看的那个会话」才开，
     // 后台会话静默建 tab。判据在 ui-store.ts 的 ensureBrowserTab 里收口一次，
     // 这里不要自己再判 —— 四处各写一遍必漏，漏掉的那处就是下一次「面板莫名弹开 + 空白」。
-    useUIStore.getState().openBrowserTab(url, ctx.sessionId)
+    useUIStore
+      .getState()
+      .openBrowserTab(url, ctx.sessionId, undefined, { keepAliveExplicit: false })
     // Wait for the webview element to mount and register its ref.
     const webview = await waitForWebview(ctx, 10000)
     if (!webview) {
@@ -467,6 +470,9 @@ export async function handleNativeBrowserToolRequest(
   const toolName = typeof record.toolName === 'string' ? record.toolName : ''
   const input = normalizeRecord(record.input)
   const ctx = createToolContext(record)
+  // S-260：整个工具执行期间钉住该会话的浏览器名额（思考间隙不算空闲，
+  // 但工具正在跑的时候它绝不能被回收）。
+  const releaseBrowserLease = acquireBrowserLease(ctx.sessionId)
 
   try {
     return {
@@ -483,5 +489,7 @@ export async function handleNativeBrowserToolRequest(
       isError: true,
       error: message
     }
+  } finally {
+    releaseBrowserLease()
   }
 }

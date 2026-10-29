@@ -133,8 +133,30 @@ function extractBase64ImageData(dataUrl: string): { data: string; mediaType: str
   }
 }
 
+/**
+ * S-260：一次浏览器工具调用期间把该会话的保活名额「钉住」。
+ *
+ * 返回的释放函数必须在 finally 里调 —— 漏了就是名额泄漏，池再也腾不出来。
+ * 拿不到名额时**不阻止**本次调用：已有挂载的 webview 照样能用，真正需要新挂载时
+ * `ensureAttachedWebview` 会给出「谁占着、怎么办」的说明。
+ */
+function acquireBrowserLease(sessionId?: string | null): () => void {
+  try {
+    useUIStore.getState().beginBrowserLease(sessionId)
+  } catch {
+    return () => {}
+  }
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    useUIStore.getState().endBrowserLease(sessionId)
+  }
+}
+
 export {
   type ElectronWebview,
+  acquireBrowserLease,
   getWebview,
   requireWebview,
   runWebviewCommand,

@@ -55,6 +55,7 @@
     "test:plugin-assets": "esbuild tests/plugin-assets/program.ts --bundle --platform=node --format=cjs --outfile=tests/plugin-assets/out/program.cjs && node tests/plugin-assets/out/program.cjs",
     "test:plugin-audio": "esbuild tests/plugin-audio/program.ts --bundle --platform=node --format=cjs --outfile=tests/plugin-audio/out/program.cjs && node tests/plugin-audio/out/program.cjs",
     "test:plugin-cleanup": "esbuild tests/plugin-cleanup/program.ts --bundle --platform=node --format=cjs --outfile=tests/plugin-cleanup/out/program.cjs && node tests/plugin-cleanup/out/program.cjs",
+    "test:browser-keepalive": "esbuild tests/browser-keepalive/program.ts --bundle --platform=node --format=cjs --outfile=tests/browser-keepalive/out/program.cjs && node tests/browser-keepalive/out/program.cjs",
     "test:memory-monitor": "esbuild tests/memory-monitor/program.ts --bundle --platform=node --format=cjs --outfile=tests/memory-monitor/out/program.cjs && node tests/memory-monitor/out/program.cjs",
     "test:channel-shell-approval": "esbuild tests/channel-shell-approval/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-shell-approval/out/program.cjs && node tests/channel-shell-approval/out/program.cjs",
     "test:browser-user-agent": "esbuild tests/browser-user-agent/program.ts --bundle --platform=node --format=cjs --outfile=tests/browser-user-agent/out/program.cjs && node tests/browser-user-agent/out/program.cjs",

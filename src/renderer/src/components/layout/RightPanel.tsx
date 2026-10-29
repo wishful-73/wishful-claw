@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { useUIStore, type RightPanelTabInstance } from '@renderer/stores/ui-store'
+import { Button } from '@renderer/components/ui/button'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { BROWSER_PLUGIN_ID } from '@renderer/lib/app-plugin/types'
@@ -21,6 +22,7 @@ import { GoalHistoryPanel } from '@renderer/components/goal/GoalHistoryPanel'
 import { TimelinePanel } from '@renderer/components/timeline/TimelinePanel'
 import { RIGHT_PANEL_DEFAULT_WIDTH, clampRightPanelWidth } from './right-panel-defs'
 import {
+  GLOBAL_TAB_SCOPE_ID,
   readActiveRightPanelTabId,
   rightPanelTabScope,
   rightPanelTabScopeId
@@ -41,6 +43,10 @@ export function RightPanel(): React.JSX.Element {
   const ensureActivityTab = useUIStore((state) => state.ensureActivityTab)
   const ensureBrowserTab = useUIStore((state) => state.ensureBrowserTab)
   const ensureFilesTab = useUIStore((state) => state.ensureFilesTab)
+  const ensureBrowserKeepAlive = useUIStore((state) => state.ensureBrowserKeepAlive)
+  const touchBrowserKeepAlive = useUIStore((state) => state.touchBrowserKeepAlive)
+  const evictIdleBrowserKeepAlive = useUIStore((state) => state.evictIdleBrowserKeepAlive)
+  const browserKeepAliveBySession = useUIStore((state) => state.browserKeepAliveBySession)
   const activeScopedSessionId = useUIStore((state) => state.activeScopedSessionId)
 
   const activeProjectId = useChatStore((state) => {
@@ -110,13 +116,55 @@ export function RightPanel(): React.JSX.Element {
   // The browser webview stays mounted whenever a browser tab exists and the plugin
   // is enabled — independent of whether the panel is open. This lets agent-driven
   // browser tools keep working in the background even while the panel is collapsed.
-  // 每个 Browser tab 都拥有独立且稳定的 BrowserPanel 实例。切换会话只改变
-  // 哪个实例可见，不会因为当前会话变化而卸载原会话的 webview。
-  const browserTabs = rightPanelTabs.filter((tab: any) => tab.kind === 'browser')
-  const browserTabAlive = browserTabs.length > 0
-
+  //
+  // S-260：挂载名单改由**保活池**决定，不再按 tab 全量 map。每个 webview 是独立
+  // renderer 进程（80~150 MB），会话开得越多常驻越高 —— 所以池的上限是 2，
+  // 淘汰顺序与「满了怎么告诉 agent」收口在 lib/browser/browser-keepalive.ts。
+  const keepAliveScopeIds = useMemo(
+    () => Object.keys(browserKeepAliveBySession ?? {}),
+    [browserKeepAliveBySession]
+  )
+  const browserTabScopeIds = useMemo(
+    () =>
+      new Set(
+        rightPanelTabs
+          .filter((tab: any) => tab.kind === 'browser')
+          .map((tab: any) => rightPanelTabScopeId(tab.sessionId ?? null))
+      ),
+    [rightPanelTabs]
+  )
   const activeTab = rightPanelOpen ? selectedTab : undefined
   const browserVisible = rightPanelOpen && activeTab?.kind === 'browser'
+  /** 当前作用域有 browser tab，但名额没拿到（池满且一个都不许动 / 被空闲回收过） */
+  const browserScopeAttached = Boolean(browserKeepAliveBySession?.[panelScopeId])
+  const browserScopeNeedsAttach = browserVisible && browserTabScopeIds.has(panelScopeId)
+  const browserScopeBlocked = browserScopeNeedsAttach && !browserScopeAttached
+
+  // 切到某个会话且它的 browser tab 是激活项时才申请名额 —— 不能一进会话就占位，
+  // 那样「随便点几个会话」就把池挤满了。
+  useEffect(() => {
+    if (!browserScopeNeedsAttach || browserScopeAttached) return
+    ensureBrowserKeepAlive(panelSessionId, { explicit: true, projectId: activeProjectId })
+  }, [
+    browserScopeNeedsAttach,
+    browserScopeAttached,
+    panelSessionId,
+    activeProjectId,
+    ensureBrowserKeepAlive
+  ])
+
+  // 空闲回收：不需要用户任何操作，也不需要面板打开 —— 挂着的 webview 一样占内存。
+  useEffect(() => {
+    const timer = window.setInterval(() => evictIdleBrowserKeepAlive(), 30_000)
+    return () => window.clearInterval(timer)
+  }, [evictIdleBrowserKeepAlive])
+
+  // 用户真的在看这个浏览器 ⇒ 续期。只续期不入池：否则「点几下会话」就把名额占满了。
+  // 依赖故意不含 keepAlive 本身 —— 那样每次续期都会再跑一遍，白转一圈。
+  useEffect(() => {
+    if (browserVisible) touchBrowserKeepAlive(panelSessionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browserVisible, panelSessionId])
 
   // Files panel stays mounted to preserve tree state (expanded folders, scroll)
   // across tab switches — same persistent-layer approach as the browser panel.
@@ -274,26 +322,49 @@ export function RightPanel(): React.JSX.Element {
           </>
         ) : null}
 
-        {/* Persistent browser layer: mounted whenever a browser tab exists so the
-            webview keeps running even when the panel is closed or another tab is
-            active. When hidden it stays in the DOM (webview connected) but
-            non-interactive and transparent. */}
-        {browserTabAlive
-          ? browserTabs.map((tab: any) => {
-              const visible = browserVisible && activeTab?.id === tab.id
-              return (
-                <div
-                  key={tab.id}
-                  className={cn(
-                    'absolute inset-x-0 bottom-0 top-10',
-                    visible ? 'z-10 opacity-100' : 'pointer-events-none -z-10 opacity-0'
-                  )}
-                >
-                  <BrowserPanel sessionId={tab.sessionId ?? null} projectId={tab.projectId ?? null} />
-                </div>
-              )
-            })
-          : null}
+        {/* Persistent browser layer: only pool members are mounted (S-260, cap 2).
+            A hidden member stays in the DOM (webview connected) but non-interactive
+            and transparent, so agent tools keep working after the panel closes. */}
+        {keepAliveScopeIds.map((scopeId) => {
+          const entry = browserKeepAliveBySession?.[scopeId]
+          const sessionId = scopeId === GLOBAL_TAB_SCOPE_ID ? null : scopeId
+          const visible = browserVisible && scopeId === panelScopeId
+          return (
+            <div
+              key={scopeId}
+              className={cn(
+                'absolute inset-x-0 bottom-0 top-10',
+                visible ? 'z-10 opacity-100' : 'pointer-events-none -z-10 opacity-0'
+              )}
+            >
+              <BrowserPanel sessionId={sessionId} projectId={entry?.projectId ?? null} />
+            </div>
+          )
+        })}
+
+        {/* 名额没拿到时不许留一片空白 —— 用户看不出来是「满了」还是「坏了」。 */}
+        {browserScopeBlocked ? (
+          <div className="absolute inset-x-0 bottom-0 top-10 z-10 flex items-center justify-center p-6">
+            <div className="max-w-sm space-y-3 rounded-lg border border-border bg-card p-4 text-center">
+              <p className="text-sm font-medium">{t('rightPanel.browserPoolFull.title')}</p>
+              <p className="text-xs text-muted-foreground">
+                {t('rightPanel.browserPoolFull.description')}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  ensureBrowserKeepAlive(panelSessionId, {
+                    explicit: true,
+                    projectId: activeProjectId
+                  })
+                }
+              >
+                {t('rightPanel.browserPoolFull.action')}
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Persistent files layer: mounted whenever a files tab exists so the
             file tree state (expanded folders, scroll position) survives tab

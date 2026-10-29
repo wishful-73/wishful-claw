@@ -499,6 +499,11 @@
     "timeline": "时间线",
     "browserLoadFailed": "页面加载失败",
     "browserRetry": "重试",
+    "browserPoolFull": {
+      "title": "浏览器保活已满",
+      "description": "已经有两个会话的浏览器在后台运行（上限 2）。在此处打开会释放最久未用的那个。",
+      "action": "在此处打开"
+    },
     "browserEmptyState": "输入网址开始浏览",
     "openFile": "打开文件",
     "preview": "预览",

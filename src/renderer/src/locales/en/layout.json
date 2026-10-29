@@ -499,6 +499,11 @@
     "timeline": "Timeline",
     "browserLoadFailed": "Failed to load page",
     "browserRetry": "Retry",
+    "browserPoolFull": {
+      "title": "Browser session limit reached",
+      "description": "Two other sessions already keep a browser running (limit 2). Opening one here releases the least recently used.",
+      "action": "Open here"
+    },
     "browserEmptyState": "Enter a URL to start browsing",
     "openFile": "Open file",
     "preview": "Preview",

@@ -161,6 +161,21 @@ export type AgentStreamEvent =
   // `reason` 目前恒为 'stripped'，留字段是为了以后加「记忆命中、直接不发图」时
   // 不必再改协议。
   | { type: 'image_input_unsupported'; reason: string; attempt?: number; maxAttempts?: number }
+  // S-262：认不出原因的请求级 HTTP 400。Worker 把**本轮最后一条工具结果**换成了拒绝说明
+  // 并重发了同一条请求 —— 会话没有断，模型下一轮看得到自己上一步被拒的原文。
+  //
+  // 与 `image_input_unsupported` 的区别：那条是「上游不吃图，我们把图剥了」的专项归因，
+  // 这一条是三条专项（超限压缩 / 配对修复 / 剥图）都没接住之后的兜底，因此
+  // `reason` 目前恒为 'tool_result_replaced'。
+  // `message` 是截断到 500 字的**上游原文**，直接展示给用户看的，不做二次解释。
+  | {
+      type: 'provider_request_rejected'
+      reason: string
+      attempt?: number
+      maxAttempts?: number
+      statusCode?: number
+      message?: string
+    }
   // Error
   // `statusCode` is set when the failure came from an HTTP reply the Worker could
   // attribute (e.g. a `ProviderHttpException` that outlived its retries). It lets the

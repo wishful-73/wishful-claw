@@ -119,6 +119,40 @@ public sealed class AgentRuntimeRunState : IDisposable
     public bool SuppressImagesForModel { get; set; }
 
     /// <summary>
+    /// S-262：待注入的「上一次请求被上游 400 拒绝」报文。
+    ///
+    /// 置上之后，下一次构造 provider 消息时由 <c>InjectProviderRejectionNotice</c>
+    /// （<c>AgentLoop.ProviderRejection.cs</c>）在**临时副本**上把本轮最后一条工具结果
+    /// 换成拒绝说明，随即消费掉。不落库 —— 理由与 <see cref="PendingEmptyTurnNudge"/> 相同：
+    /// 写进 durable conversation 会污染历史，也会成为下一轮压缩摘要的噪声。
+    /// </summary>
+    public string? PendingProviderRejectionReport { get; set; }
+
+    /// <summary>
+    /// S-262：本 run 已经尝试过几次「替换工具结果后重发」。
+    /// 上限见 <c>AgentLoop.MaxProviderRejectionRecoveriesPerRun</c>。
+    /// </summary>
+    public int ProviderRejectionRecoveryCount { get; set; }
+
+    /// <summary>
+    /// S-262：上一次尝试过的报文指纹（见 <c>ProviderRejectionErrors.Fingerprint</c>）。
+    /// 与当前指纹相同即判定「改了也没用」，立刻抛错，不再烧请求。
+    /// </summary>
+    public string? LastProviderRejectionFingerprint { get; set; }
+
+    /// <summary>
+    /// S-262：记一次恢复尝试并挂上待注入报文。调用方必须先用
+    /// <c>AgentLoop.CanRecoverFromProviderRejection</c> 判定过额度与指纹 ——
+    /// 这里只负责落账，不重复把关。
+    /// </summary>
+    internal void RecordProviderRejectionRecovery(string report, string fingerprint)
+    {
+        ProviderRejectionRecoveryCount++;
+        LastProviderRejectionFingerprint = fingerprint;
+        PendingProviderRejectionReport = report;
+    }
+
+    /// <summary>
     /// S-209：申请一次催办。额度用尽返回 false —— 这时必须放它正常收尾，
     /// 绝不无限重试。
     /// </summary>

@@ -103,7 +103,9 @@ v3-iter-3 收尾写的承接清单只列了 8 条，**S-260（浏览器保活池
 
 **红线**：S-236 判据 10 的两道闸（`AgentLoop.cs:464` —— 本轮无图可剥 / 本 run 已剥过一次 ⇒ 原样抛）**不许动**。marker 加得越多，越依赖这两道闸兜底。
 
-### 20:55 · 刀 1b（S-261）代码 + 自动化回归完成，commit `bda3bca4`
+### 20:55 · 刀 1b（S-261）代码 + 自动化回归完成，commit `fd386222`
+
+> 订正（2026-10-29 08:24）：这条原先记的是 `bda3bca4`。该提交随后用 `git commit --amend` 把三处文档状态行并了进来，**最终落库 hash 是 `fd386222`**（14 文件 +460/−30）。以本行为准。
 
 11 文件 +460/−30。四处改动：
 
@@ -120,4 +122,53 @@ v3-iter-3 收尾写的承接清单只列了 8 条，**S-260（浏览器保活池
 **门禁**：`typecheck` exit 0；`npm test` **90/90**（套件数不变，ImageInput 断言 33 → 53）；`dotnet build` runtime + tests 两套 sln 均 **0 警告 0 错误**；`website build` exit 0。
 
 **待验（真机）**：判据 2 / 5 / 6 —— 造一个「历史带 url 形态非白名单图」的会话，看提示 toast 是否出现、后续轮次能否继续、切回会话原图是否还在。
+
+## 2026-10-29
+
+### 08:24 · 登记 S-262 —— 400 请求级拒绝的自愈与告知（通用兜底）
+
+老大三句口述：「不只是图片，只要是 400 的请求，收到以后就把之前的请求文调整一下，然后告知报错了」／「能收集并且告知 agent 上一步操作 400 了，但是又不会直接卡死直接导致 agent 中断执行」／「根据你的推荐 开始推进」。
+
+**这不是 S-261 的重复**。S-261 只覆盖 image 块；本条是**认不出原因的 400 的最后一道保险**，catch 分支挂在图像 / 配对 / 超限三条**之后**。
+
+**勘察结论**：
+
+| # | 事实 |
+|---|---|
+| 1 | `AgentLoop.cs:375-493` 的 while + catch 链本来就是「改请求文再重发」的成熟骨架，已有超限压缩 / 配对修复 / 剥图三个分支 |
+| 2 | 「告知模型」有三份现成先例：`InjectSessionTodo` / `InjectEmptyTurnNudge`（S-209）/ `InjectSandboxTransition`（S-207），清一色临时副本、不落库 |
+| 3 | 300 行注入链在 `ExecuteTurnAsync` 内部（`:731-746`）从 `conversation` 派生 `wireConversation` ⇒ **唯一合法落点是再挂一个注入函数**，改 `conversation` 等于改用户历史 |
+| 4 | 三条 provider 主链路**全部**走 `ProviderHttpException.CreateAsync`，异常带 `StatusCode` ⇒ 判据可写 `== 400`，**零文案依赖** |
+| 5 | 工具结果内部表示是 `role="user"` + `ToolResults`，替换只能换 `Content` / `IsError`，**`ToolUseId` 必须原样保留**，否则立刻制造配对错 |
+
+**定案**：认不出的 400 → 把本轮**最后一条工具结果**替换成「本次结果被上游拒绝（HTTP 400）：<报文>，请换一种方式」+ `IsError=true` → 重发。
+
+理由是它一石二鸟：**既告知了模型**（下一轮它在对话里看到自己上一步失败），**又真修好了请求文**（坏数据从本轮消失，重发可能成功）。只追加一条提醒治不了根 —— 坏数据还在，必再 400。
+
+**三道安全阀**（直接对治 2026-10-27 撤掉 400 重试的教训）：
+
+1. **上限 2** —— `MaxProviderRejectionRecoveriesPerRun = 2`，一个 run 最多修两个**不同**的问题；真正的防火墙是指纹去重，额度只决定「最多能修几个」；
+2. **报文指纹去重** —— 归一化后取前 120 字做指纹，重发后撞同一指纹立刻抛，不等额度用完；
+3. **必须有可替换对象** —— 本轮一条工具结果都没有就不进这个分支（坏数据是用户消息，我们无权替它删）⇒ 直接抛。
+
+**⚠️ 口径变更必须记住**：S-236 判据 10 原文是「无关 400 不被降级路径截走」。本条**会截走所有剩余 400**，与字面冲突。但判据 10 的**本意**是「不许静默吞掉无关 400」，而本条显式 emit 事件、显式告知模型、显式提示用户、显式写日志 —— 不吞、不静默，最坏结果只是**多花一次请求**然后照原样报错。`AgentLoop.cs:464` 那两行（S-236 两道闸）一个字不动。
+
+**已知代价**：认不出的 400（模型名不存在 / key 错 / 渠道 schema 变更）会多花一次请求才报出来。老大已拍接受。
+
+**不做**（防蔓延）：不解析报文里 `messages[N]` 索引去精确定位坏消息（索引经压缩 / 剥图 / 配对修复后与 UI 对不上，猜错会改坏历史）；不动 `ProviderRetryPolicy.IsRetryableStatus`；不做历史性脏数据的通用清理。
+
+### 09:10 · 刀 1c 实施完成（S-262）
+
+**交付物**：新建 `ProviderRejectionErrors.cs`（判据 / 取料 / 指纹）+ `AgentLoop.ProviderRejection.cs`（额度常量、`CanRecoverFromProviderRejection`、`InjectProviderRejectionNotice`）；`AgentLoop.cs` catch 链尾加兜底分支、`wireConversation` 派生后追加注入；`AgentRuntimeRunState` 加三个状态字段（不落库，与 `PendingEmptyTurnNudge` 同）；协议加 `provider_request_rejected` 事件（`agent-stream-protocol.ts` + `stream-event-adapter.ts` 透传）；渲染端 toast 合并提示 + zh/en 文案。
+
+**实施中改了一个口径：额度 1 → 2。** 理由：一个长 run 里可能先后撞上两个**不同**的 400（指纹不同），各修一次是合理的；且真正的防火墙是**指纹去重**（同一指纹只试一次），额度只决定「最多能修几个不同的问题」，改成 2 不扩大浪费上界。同步订正了 `S-262.md:27`、`S-262.md:135`、`plan.md` §2.4 三处写「上限 1」的笔误 —— 需求单 §4.3 正文本来就是 2，是登记时的笔误没散干净。
+
+**回归**：新建 `tests/WishfulClaw.ProviderRejectionRegressionTests`，39 条断言。其中一半是「不许认」的断言（429 / 5xx / 401 / 普通异常 / 图像 400 都不能被兜底吞掉）—— 因为兜底分支判的是「是不是 400」，图像 / 配对 / 超限的 400 **同样满足它**，它们没被吞靠的是 catch 链**书写顺序**而非判据互斥，所以把顺序契约一并钉进断言。
+
+**门禁**：`npm test` **91/91**（C# 套件 22 个，新增 ProviderRejection 39 assertions）；`npm run typecheck` 三配置 0 错；`dotnet build tests/WishfulClaw.Tests.sln` 0 警告 0 错误；官网 build 0 错。
+
+**顺带修掉的 TS 缺口**：`chat-store` 里消费 `provider_request_rejected` 时协议联合类型没这个事件名，typecheck 直接报 TS2678 —— 补了协议定义与 adapter 透传才过。这条记一笔：**新增流事件必须同时改 `src/shared/agent-stream-protocol.ts`，否则渲染端 switch 编不过**。
+
+**未完成**：真机验收（S-262 §6 清单）。commit hash 由收尾刀统一订正（amend 前为 `1bede63c`）。
+
 

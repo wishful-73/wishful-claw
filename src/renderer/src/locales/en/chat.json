@@ -1206,6 +1206,8 @@
     "retryingRequestDetail": "Attempt {{attempt}} / {{maxAttempts}}",
     "imageInputUnsupported": "The image could not reach the model",
     "imageInputUnsupportedDetail": "The model rejected this image — either the format is unsupported or the model cannot read images at all. Only the file reference (path, size, type) was sent, and the turn continued. Convert it to PNG or JPEG and try again, or pick a vision-capable model in settings.",
+    "providerRequestRejected": "The previous request was rejected upstream (HTTP 400)",
+    "providerRequestRejectedDetail": "The failing step's result was discarded and the request was retried, so the turn took a moment longer and the session continued. If this keeps happening, check the raw upstream message in request details.",
     "streamingText": "streaming text",
     "activeTools": "{{count}} active tools",
     "toolExecutions": "{{count}} tool executions",

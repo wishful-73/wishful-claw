@@ -37,6 +37,7 @@ export function toAgentEvent(e: AgentStreamEvent): AgentEvent | null {
     case 'tool_use_args_delta':
     case 'request_retry':
     case 'image_input_unsupported':
+    case 'provider_request_rejected':
       return e as AgentEvent
 
     case 'thinking_encrypted':

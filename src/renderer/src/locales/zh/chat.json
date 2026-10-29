@@ -1207,6 +1207,8 @@
     "retryingRequestDetail": "第 {{attempt}} / {{maxAttempts}} 次重试",
     "imageInputUnsupported": "图像未能送达模型",
     "imageInputUnsupportedDetail": "模型拒收了这张图 —— 格式不支持，或该模型不具备读图能力。已自动改为只发送文件信息（路径、尺寸、格式），本轮继续执行。转成 PNG 或 JPEG 后重发，或去设置里换一个支持读图的模型。",
+    "providerRequestRejected": "上一次请求被上游拒绝（HTTP 400）",
+    "providerRequestRejectedDetail": "已把出问题的那一步结果作废并重新请求，所以慢了一拍，会话继续。若反复出现，去请求明细里看上游原文。",
     "streamingText": "流式输出正文",
     "activeTools": "{{count}} 个工具运行中",
     "toolExecutions": "{{count}} 个工具执行",

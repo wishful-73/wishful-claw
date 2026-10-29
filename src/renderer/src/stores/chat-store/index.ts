@@ -1834,6 +1834,19 @@ export const useChatStore = create<ChatStore>()(
             break
           }
 
+          case 'provider_request_rejected': {
+            // S-262：认不出原因的 HTTP 400。Worker 已把本轮最后一条工具结果换成拒绝说明
+            // 并重发 —— 会话没有断，模型也知道自己上一步被拒了。
+            //
+            // 这条提示的作用是让用户知道「刚才那一下不是白挨的」：为什么慢了一拍、
+            // 为什么模型换了个工具。同一会话合并，避免多轮连撞时刷屏。
+            toast.warning(i18n.t('chat:assistantMessage.providerRequestRejected'), {
+              description: i18n.t('chat:assistantMessage.providerRequestRejectedDetail'),
+              id: `provider-request-rejected:${targetSessionId}`
+            })
+            break
+          }
+
 
 
           case 'request_debug': {

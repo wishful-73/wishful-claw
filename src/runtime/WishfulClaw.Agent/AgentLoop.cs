@@ -490,6 +490,42 @@ internal static partial class AgentLoop
                             Attempt: imageStripAttempts,
                             MaxAttempts: MaxImageStripAttemptsPerRun));
                 }
+                catch (Exception ex) when (
+                    ex is not OperationCanceledException &&
+                    ProviderRejectionErrors.IsRequestRejected(ex) &&
+                    CanRecoverFromProviderRejection(state, conversation, ex))
+                {
+                    // S-262：请求级 400 —— 前面三条专项（超限压缩 / 配对修复 / 剥图）都没接住。
+                    //
+                    // 过去这里直接抛，run 当场终止，模型全程不知道自己上一步做错了什么，
+                    // 用户看到的是一个看起来废掉的会话。现在改成：把**本轮最后一条工具结果**
+                    // 换成拒绝说明，再发一次 —— 模型因此知道「我上一步失败了 + 原文」，
+                    // 而坏数据也从本轮请求里消失了，重发有可能真的成功。
+                    //
+                    // 只旁白一条提醒治不了根（坏数据还在，必再 400），所以必须是替换。
+                    // 三道安全阀在 CanRecoverFromProviderRejection 里：额度未用尽 / 指纹不同 /
+                    // 本轮确有工具结果可替换。
+                    var rejectionReport = ProviderRejectionErrors.Describe(ex);
+                    var rejectionFingerprint = ProviderRejectionErrors.Fingerprint(rejectionReport);
+                    state.RecordProviderRejectionRecovery(rejectionReport, rejectionFingerprint);
+
+                    WorkerLog.Warn(
+                        $"agent provider turn rejected the request body; replacing trailing tool results " +
+                        $"and retrying runId={state.RunId} " +
+                        $"attempt={state.ProviderRejectionRecoveryCount}/{MaxProviderRejectionRecoveriesPerRun} " +
+                        $"error={ex.Message}");
+
+                    await AgentRuntimeTools.EmitAsync(
+                        state,
+                        context,
+                        new AgentRuntimeStreamEvent(
+                            "provider_request_rejected",
+                            Reason: "tool_result_replaced",
+                            Attempt: state.ProviderRejectionRecoveryCount,
+                            MaxAttempts: MaxProviderRejectionRecoveriesPerRun,
+                            StatusCode: ProviderRejectionErrors.RejectedStatusCode,
+                            Message: rejectionReport));
+                }
             }
 
             // Clear transient memory recall after first API call — subsequent
@@ -744,6 +780,10 @@ internal static partial class AgentLoop
         // 只剥这份，不碰 conversation —— 后者是会话的活引用，删块等于改用户历史。
         // 两种触发来源：本 run 刚撞过一次（state 标记），或以前撞过并记住了（落盘的记忆表）。
         wireConversation = StripImagesWhenModelCannotSee(provider, wireConversation, state);
+
+        // S-262：上一次请求被上游 400 拒绝过 → 把本轮最后一条工具结果换成拒绝说明。
+        // 仍然只动临时副本：切回会话后用户看到的原始结果还在。
+        wireConversation = InjectProviderRejectionNotice(state, wireConversation);
 
         if (providerType == "anthropic")
         {

@@ -54,18 +54,26 @@ for (const [style, config] of Object.entries(RENDER_POOL_CONFIG)) {
     previous = step
   }
 
-  // ── No fixed-rate floor, no step cap ───────────────────────────────────
-  // The old implementation capped small pools at the typewriter rate (~8 chars/frame at
-  // 220 chars/s) and large ones at maxStepChars (3600). Both must be gone.
+  // ── 无固定速率下限；单帧有绝对上限（S-256） ──────────────────────────
+  // 老实现小池受打字机速率钳制（220 字符/秒 ≈ 8 字符/帧）、大池受 3600 的步长上限钳制，
+  // 这两条都必须不存在。但 iter-29 T-15「完全取消上限」在 2026-10-29 被反向修正：
+  // 积压一百万字符时比例公式会算出五十万字符/帧，一帧钉死主线程 ⇒ 整页像截图。
+  // 新契约 = min(比例步长, maxStepChars)。
   eq(
     getCatchupStep(1_000, config),
     Math.ceil(1_000 / config.catchupFrames),
     `${style}: a 1k backlog is drained proportionally, not rate-capped`
   )
+  check(config.maxStepChars > 0, `${style}: the per-frame step cap is set`)
   eq(
     getCatchupStep(1_000_000, config),
-    Math.ceil(1_000_000 / config.catchupFrames),
-    `${style}: a huge backlog is drained proportionally, not step-capped`
+    config.maxStepChars,
+    `${style}: a huge backlog is step-capped, not drained in one frame`
+  )
+  // 上限不能小气：按基础帧间隔折成速率，仍要远高于模型输出速度（每秒 3 万字符）
+  check(
+    (config.maxStepChars * 1_000) / config.frameIntervalMs >= 30_000,
+    `${style}: the step cap still outruns any model output rate`
   )
 
   // ── Bounded drain: a 10k burst finishes in well under a second of frames ──
@@ -137,10 +145,10 @@ for (const [style, config] of Object.entries(RENDER_POOL_CONFIG)) {
   check(mid < config.maxFrameIntervalMs, `${style}: mid pressure is not yet saturated`)
 
   // 步长公式不受 S-149 影响 —— 只放宽帧频，不动排空比例（iter-29 T-15 的结论保持）
-  for (const pool of [10, 2_500, 100_000]) {
+  for (const pool of [10, 500, 100_000]) {
     eq(
       getCatchupStep(pool, config),
-      Math.ceil(pool / config.catchupFrames),
+      Math.min(Math.ceil(pool / config.catchupFrames), config.maxStepChars),
       `${style}: the catch-up step is untouched by the interval stretch (pool=${pool})`
     )
   }

@@ -24,6 +24,18 @@ interface RenderPoolConfig {
   pressurePoolSize: number
   /** S-149：压力拉满时允许放到的最长帧间隔（ms）。 */
   maxFrameIntervalMs: number
+  /**
+   * S-256（2026-10-29）：单帧最多喂多少字符进解析器。
+   *
+   * **这是 iter-29 T-15 的反向修正** —— T-15 当年为了「长思考能追上上游」取消了步长上限，
+   * 结果积压一百万字符时单帧就要排五十万字符：markdown 解析 + React commit + layout/paint
+   * 串行做完，主线程被连续占满，整页像截图一样静止、停止按钮点下去几分钟才生效（S-149 §7.4
+   * 就写明「要真消除得上流式期间限制单帧渲染的文本量，未做、等口径」，这就是那个口径）。
+   *
+   * 取值按「够快追得上，又不至于卡住一帧」：1600 字符 / 32ms ≈ 每秒 5 万字符，仍远高于
+   * 模型输出速度，正常流式永远追得上，只有异常积压才会慢下来。
+   */
+  maxStepChars: number
 }
 
 export const RENDER_POOL_CONFIG: Record<LiveOutputAnimationStyle, RenderPoolConfig> = {
@@ -31,13 +43,15 @@ export const RENDER_POOL_CONFIG: Record<LiveOutputAnimationStyle, RenderPoolConf
     catchupFrames: 2,
     frameIntervalMs: 32,
     pressurePoolSize: 2_000,
-    maxFrameIntervalMs: 64
+    maxFrameIntervalMs: 64,
+    maxStepChars: 1_600
   },
   elegant: {
     catchupFrames: 3,
     frameIntervalMs: 36,
     pressurePoolSize: 1_500,
-    maxFrameIntervalMs: 72
+    maxFrameIntervalMs: 72,
+    maxStepChars: 1_200
   }
 }
 
@@ -60,10 +74,16 @@ export const RENDER_POOL_CONFIG: Record<LiveOutputAnimationStyle, RenderPoolConf
  * scales with the response length.
  *
  * A larger K reads as more gradual, at the cost of a longer tail; a smaller K is punchier.
+ *
+ * **S-256 追加：单帧还有绝对上限 `maxStepChars`。** 纯比例公式在积压极深时会算出天文数字
+ * 的步长（100 万字符 ⇒ 50 万字符/帧），一帧就把主线程钉死 —— 那正是「整页像截图一样静止」
+ * 的成因。所以取 `min(比例步长, maxStepChars)`：比例保证不卡顿、上限保证不卡死。
  */
 export function getCatchupStep(poolSize: number, config: RenderPoolConfig): number {
   if (poolSize <= 0) return 0
-  return Math.max(1, Math.ceil(poolSize / config.catchupFrames))
+  const proportional = Math.ceil(poolSize / config.catchupFrames)
+  const cap = config.maxStepChars > 0 ? config.maxStepChars : proportional
+  return Math.max(1, Math.min(proportional, cap))
 }
 
 /**

@@ -5,21 +5,17 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
-// 500-line exemption (line count 1108 as of 2026-10-29, up from 2026-10-28 because S-269
-// added the summarizer failure policy next to its retry loop; the exemption is re-stamped
-// rather than re-reviewed, per the standing rule — treat the current file length as
-// authoritative). Down from earlier S-208's snapshot
-// logic moved to ContextCompression.UserSnapshot.cs). What is left is the compression
-// pipeline itself and its invariants: PlanCompaction → PartitionFold → SummarizeAsync →
-// MechanicalFold → Replace, plus the usage-stripping rules that keep every wire entry's
-// token accounting honest. Those stages look separable but are not independent — the fold
-// partition decides what the summarizer sees, the mechanical digest decides which prior
-// summaries survive, and the replace step has to agree with all three about what
-// "one summary" means. Splitting them would turn a single ordered pipeline into a set of
-// files that each only make sense with the other four open. Token estimation already lives
-// in ContextCompression.TokenEstimation.cs and the S-208 snapshot in
-// ContextCompression.UserSnapshot.cs — both are leaf logic with no stake in the ordering,
-// which is exactly why they could leave and this could not. See AGENTS.md.
+// 500-line exemption（1124 行 as of 2026-10-30；以实际行数为准，不因行数变动重新复核）。
+// 豁免理由不变：what is left is the compression pipeline itself and its invariants —
+// PlanCompaction → PartitionFold → SummarizeAsync → MechanicalFold → Replace, plus the
+// usage-stripping rules that keep every wire entry's token accounting honest. Those stages
+// look separable but are not independent — the fold partition decides what the summarizer
+// sees, the mechanical digest decides which prior summaries survive, and the replace step
+// has to agree with all three about what "one summary" means. Splitting them would turn a
+// single ordered pipeline into a set of files that each only make sense with the other four
+// open. Leaf logic that has no stake in the ordering already lives elsewhere:
+// ContextCompression.TokenEstimation.cs（估算）、ContextCompression.UserSnapshot.cs（S-208
+// 快照）、ContextCompression.ImagePlaceholder.cs（S-275 图片占位化）。See AGENTS.md.
 
 using System.Buffers;
 using System.Diagnostics;
@@ -353,10 +349,23 @@ public static partial class ContextCompression
             latestUser?.State));
 
         // Recent tail
+        //
+        // S-275：尾部里单条就超预算的消息，其图片块在这里就地占位化。两侧一起改，
+        // 少改一边都不治本 —— conversation 侧决定「下一轮还算不算超」，wire 侧决定
+        // 「上游真实收到多少」。运行的典型现场是「一对 tool_use + tool_result」被
+        // minKeep=2 无条件保下，24 万字符的截图原样抬过 16384 的预算。
+        var tailBudget = TailBudgetTokens(provider);
         for (var i = start; i < conversation.Count; i++)
         {
-            newConversation.Add(conversation[i]);
-            newWireConversation.Add(StripUsage(wireConversation[i]));
+            var tailMessage = PlaceholdOversizedImageResults(conversation[i], tailBudget);
+            var tailWire = StripUsage(wireConversation[i]);
+            if (!ReferenceEquals(tailMessage, conversation[i]))
+            {
+                tailWire = PlaceholdWireMessageImages(tailWire);
+            }
+
+            newConversation.Add(tailMessage);
+            newWireConversation.Add(tailWire);
         }
 
         WorkerLog.Info(
@@ -488,10 +497,9 @@ public static partial class ContextCompression
         }
         else if (contextLength > 0)
         {
-            var budget = DefaultTailTokens;
-            var maxByWin = (int)(contextLength * 0.5); // defaultCompactTarget
-            if (maxByWin < budget) budget = maxByWin;
-            start = TailStart(conversation, head, budget);
+            // S-275：预算不再就地算 —— TailBudgetTokens 是唯一出口，下面 CompactAsync
+            // 判断「哪条消息的图该占位」读的是同一个数，两处分开写迟早漂移。
+            start = TailStart(conversation, head, TailBudgetTokens(provider));
         }
         else
         {

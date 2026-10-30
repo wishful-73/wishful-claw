@@ -138,6 +138,7 @@ v3-iter-4（1.0.4）收尾时，老大 2026-10-30 定「承接 15 条」。
 - 超过 500 行的文件必须有豁免头，**豁免注释不写死行数**，写「行数以实际为准」。
 - 文档改动攒进结尾那一刀。
 - **`.sln` 是两套，不是一套**：`src\runtime\WishfulClaw.sln`（运行时）+ `tests\WishfulClaw.Tests.sln`（测试）。根目录没有 `.sln`。开工时本文件原写「只有 tests 那套」，实测两套都要编，刀 0 已订正。
+- **数文件行数只认 `(Get-Content $p).Count`（或 `[System.IO.File]::ReadAllLines($p).Count`），禁止用 `Measure-Object -Line`** —— 后者数的是**非空行**，会少报。实例：`weixin-service.ts` 真实 **443 行**，`Measure-Object -Line` 报 **398**（少 45 个空行），2026-10-30 因此把正确值改错并写进了 `bugs.md`，同一份文件被改了两次。**行号引用一律以 `ReadAllLines().Count` 与逐行内容双证。**
 
 ## 五、文档状态
 

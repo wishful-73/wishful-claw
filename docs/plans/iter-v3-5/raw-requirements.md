@@ -78,9 +78,9 @@
 
 **根因：投递层全程没有 messageId 去重，而微信渠道的传输语义是 at-least-once。**
 
-`src/main/channels/providers/weixin/weixin-service.ts`（**398 行**，微信用**长轮询**不是 WS）：
+`src/main/channels/providers/weixin/weixin-service.ts`（**443 行**，微信用**长轮询**不是 WS）：
 
-1. **`handleIncomingMessage` 没有任何去重表**（`:346` 起至文件尾 `:398`）。`messageId` 在 `:366` 算出来后，**只被用作 `messageReplyMeta` 的 Map key**（`:378`），从不参与「这条我处理过没有」的判定。⇒ 服务端重放同一批消息，就会**重复 emit `incoming_message`**，上层照单全收、重复入库、重复触发回复。
+1. **`handleIncomingMessage` 没有任何去重表**（`:346-435`）。`messageId` 在 `:366` 算出来后，**只被用作 `messageReplyMeta` 的 Map key**（`:378`），从不参与「这条我处理过没有」的判定。⇒ 服务端重放同一批消息，就会**重复 emit `incoming_message`**，上层照单全收、重复入库、重复触发回复。
 2. **两条必然产生重放的重试路径**：
    - `request_timeout`（`AbortError`）⇒ `:322-324` 只 `console.warn` + **2 秒后带着旧的 `syncBuf` 重试**（`syncBuf` 仅在成功响应后更新，`:267-268`）。长轮询下「服务端已推进游标、客户端没收到响应」时，这是**结构性 at-least-once**，不是偶发。
    - `session_timeout` ⇒ `:306-308` `resetPollingCursor()` 把 `syncBuf` 清空（`:235-238`）。清空后从服务端重新同步，历史消息会再来一遍。

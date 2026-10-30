@@ -211,3 +211,15 @@
 
 真机判据 9、10 未跑（窗口矩形一致性、全链路自己截屏点输入框）。
 
+
+### 22:05 · 刀 8（S-273）未动工 —— 原方案撞 AOT，改判待拍板
+
+先查需求单 §四 的四个待查项，结论把方案本身否掉了：
+
+1. **主进程没开可访问性**（全仓 `setAccessibilitySupportEnabled` 零命中），要开才有我们自己的 a11y 树 —— 而 Chromium 一开就为渲染进程构建完整树，这是上一个迭代花整轮压下去的内存问题的正对面。
+2. **`IUIAutomation` 在本项目里是最贵的那条路**：`WishfulClaw.Worker` 是 `PublishAot=true`，`WishfulClaw.Agent` 被它引用 ⇒ Agent 内所有代码必须 AOT 安全；`System.Windows.Automation` 属 WindowsDesktop SDK，AOT 下不可用；剩下只能手写 `IUIAutomation` 的 COM vtable。而全仓 `ComImport` / `GeneratedComInterface` **一个先例都没有** —— 几十个成员顺序错一位就是运行时崩，且崩在打包产物里，不在测试里。
+3. 但查出一条好消息：桌面操作**本来就在主进程 TS 侧执行**（`native-agent-runtime.ts:147-180`），C# 只做工具定义与结果编码 ⇒ 任何「从窗口里问出元素」的实现都可以纯 TS 落地，零 AOT 风险。
+
+**更要紧的是原始诉求用不着 UIA**：老大提这条的场景是「让 dev 实例点自己的页面」，那是我们自己的 Electron 窗口 —— 主进程已经拿得到 `webContents`，挂 CDP 取 `Accessibility.getFullAXTree` 就是 Chromium 给出的精确矩形，还不用开全局 a11y 开关。
+
+已在 S-273 §七 写死待查结论、§八 给出段 A（自家窗口走 CDP）/ 段 B（第三方走 `EnumChildWindows`）两个候选与代价，**三个问题要老大定**：拆不拆、接不接受「只覆盖 Chromium 系」、愿不愿意为此开全局可访问性。不自作主张，跳过刀 8 去做刀 9。

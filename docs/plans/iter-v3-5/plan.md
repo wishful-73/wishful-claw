@@ -133,7 +133,7 @@ v3-iter-4（1.0.4）收尾时，老大 2026-10-30 定「承接 15 条」。
 | 5 | S-288 | **✅ 已交付**。图片浮层换 `ImageViewer`。与刀 4 同属图片链路，刀 4 修「送达」、本条修「查看」，同一批真机验收 |
 | 6 | S-268 | **✅ 已交付**。`DesktopScreenshot` 补 `path`。**排在桌面操作最前**：它和 S-272 第二段改的是同一批工具（`DesktopToolProvider` / `AgentRuntimeDesktopExecutor`），先把「假成功」修掉，第二段加参数时模型不会继续被骗 |
 | 7 | S-272 第二段 | **✅ 已交付**。`grid` / `window` / 相对坐标三个参数全部落地，另加 `DesktopListWindows`。第一段已让模型知道「坐标就是这张图里的像素」，但点得准不准仍取决于它自己估 —— 第二段才真正给参照系。紧接刀 6 |
-| 8 | S-273 | UI Automation 换路径。**依赖刀 7 的 `DesktopListWindows`**（`DesktopClick({ window, element })` 要先能枚举窗口）。作增强路径，不替代坐标路径 |
+| 8 | S-273 | **⛔ 卡住待拍板，未动工**。原方案（`IUIAutomation`）撞两个硬约束：Agent 被 `PublishAot` 的 Worker 引用 ⇒ 只能手写 COM vtable（全仓零先例）；且要先开全局可访问性，与上一迭代刚压下去的内存问题冲突。已给两个替代方案，详见 S-273 §七/§八 |
 | 9 | S-278 | **通信三连的打底刀**。给 `send-session-message` 补 meta 通道、协议说明移出正文、收敛两份漂移的实现。S-279 / S-280 全依赖它 |
 | 10 | S-279 | 扩 `kind`（`gm_` 前缀 + `hidden_from_board`）。**必须紧跟刀 9**：复用同一套 meta 形状，分开做要把同一个协议改两遍 |
 | 11 | S-280 | 确定性归档。**三连的收口**：核心判据「这一轮是不是在干这个 dispatch」直接用刀 9 的 meta。三条硬规矩在需求单里写死 |

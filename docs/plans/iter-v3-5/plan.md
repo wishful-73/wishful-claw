@@ -3,7 +3,7 @@
 > 分支：`dev/v3-iter-5`（base = `3f27090d`，= v1.0.4 收尾合并点，即最新 `main`；tag `v1.0.4` → `3f27090d`）。执行期内只 commit，**不 push**。
 > 产品版本：`1.0.5`（开工时 `package.json` 是 `1.0.4`，收尾时改），tag `v1.0.5`。
 > 状态：**迭代已建立（2026-10-30 20:25）**，承接 15 条 + 挂账 2 条；知识库三条已核对完毕（结论见 [raw-requirements.md](raw-requirements.md) §三）。**刀序见 §六**，其中 S-285 / S-277 两条要动 schema、**开工前必须老大拍板**。
-> 进度（2026-10-31 00:10）：**刀 8 / 9 / 10 已交付**（S-278 第一段、S-279、S-280），刀 7 卡住待拍板，刀 11 / 12 只出方案已完成。门禁实测：`npm run typecheck` 两配置 0 错、`npm test` **112/112**、`dotnet build src/runtime/WishfulClaw.sln` **0 警告 0 错误**、新增 `WishfulClaw.DispatchRouterRegressionTests` **72/72**。
+> 进度（2026-10-30 23:5x）：**刀 0~16 已交付**，刀 7 已拍板后落地；S-291 拍板延至 v3-iter-6，S-292 登记占位不实施。门禁实测：`npm run typecheck` 两配置 0 错、`npm test` **114/114**（亲跑，含断言计数口径说明见 §四）、`dotnet build src/runtime/WishfulClaw.sln` **0 警告 0 错误**、`WishfulClaw.DispatchRouterRegressionTests` **72/72**。**知识库欠账已于 2026-10-30 23:5x 清完**（S-292 登记 + 两条老 bug 归档 + 重复投递改状态，见 §三）。
 > 前置：v1.0.4 已发布（官网四件套 + GitHub Release 三资产，双面核验全绿），tag 已推远程。
 
 ## 一、从哪里来
@@ -106,6 +106,31 @@ v3-iter-4（1.0.4）收尾时，老大 2026-10-30 定「承接 15 条」。
 | `dotnet build src\runtime\WishfulClaw.sln` | 0 警告 0 错误 |
 | `dotnet build tests\WishfulClaw.Tests.sln` | 0 警告 0 错误 |
 | `node scripts/ci-checks.mjs` | **81/81 通过** |
+
+**收尾前实测（2026-10-30 23:5x，老郑亲跑）**：
+
+| 命令 | 结果 |
+|---|---|
+| `npm test` | **114/114 通过**（105 → 114，新增 S-285 parts 与 S-276 回归等套件） |
+
+> **⚠️ 断言计数口径（写进回执别混着报）**：`npm test` 汇总行的 `114/114` 是**套件数**，不是断言数。部分套件**没有实现断言上报**，输出里只有 `ok <名字> <耗时>`、不带 `N assertions` —— 实测有 7 个：`DispatchRouter` / `MessageParts` / `ProviderHeader` / `RealUserTurn` / `StreamSegment` / `TerminalTool` / `ToolConcurrency`。这些套件的断言数只能靠数源码（如 MessageParts 42 条），**门禁不汇总、也不能当成门禁抓到的数字引用**。`test:desktop-ax-elements`（35 条）是独立命令，同样不在 `npm test` 汇总内。要消除这个口径差得给这些套件补断言上报，属代码改动，**本迭代不做**。
+
+### 4.1 `WishfulClaw.sln` vs `WishfulClaw.slnx` —— 门禁编哪个（2026-10-30 实测钉死）
+
+**结论：门禁以 `src/runtime/WishfulClaw.sln` 为准。** `.slnx` 保留但**不再维护**，不作为门禁入口。
+
+实测事实（老郑亲跑，两个都编过）：
+
+| 项 | `.sln` | `.slnx` |
+|---|---|---|
+| 文件时间 | **2026-09-15** | 2026-07-24（**更早**，是遗留不是新版） |
+| 显式列出的项目 | **8 个全列** | 只有 4 个：Contracts / Core / Worker / Workspace |
+| 实际编译产物 | 8 个 dll | **也是 8 个 dll** |
+| 结果 | 0 警告 0 错误 | 0 警告 0 错误 |
+
+**为什么 `.slnx` 只列 4 个却能编出 8 个**：`WishfulClaw.Worker.csproj:24-30` 直接 `ProjectReference` 了其余 **7 个**项目（Contracts / Core / Agent / Persona / Workspace / Infrastructure / CodeGraph），MSBuild 顺着传递引用把它们全编了。所以**产物等价，但机制脆弱** —— 一旦将来新增一个「不被 Worker 引用」的项目（独立 CLI、独立测试宿主、工具项目），`.slnx` 会**静默漏编**，而 `.sln` 不会。
+
+**为什么不删 `.slnx`**：删除属仓库结构调整，不在收尾范围。此处只钉死「门禁走 `.sln`」，并留一句：**要清理的话，删 `.slnx` 而不是删 `.sln`**（`.slnx` 才是那个没跟上的）。
 
 **规矩**：
 

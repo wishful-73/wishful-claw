@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import type { UsageBucket } from '../usage-panel-types'
-import { formatBucketLabel, type UsageModelSeries } from './format'
+import { type UsageModelSeries } from './format'
 import {
   CHART_PADDING,
   ChartLegend,
@@ -76,23 +76,24 @@ export function UsageLineChart({
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
               />
-              {item.buckets.map((bucket, bucketIndex) => (
+              {/*
+                S-289：圆点只在光标所在的这一列出现。
+                未交互时不画点 —— 系列数 × 桶数（默认 24 桶 × 3~5 个模型就是 72~120 个）
+                会缀满整张图，而 r=2.5 正好等于 strokeWidth，读起来像一串珠子而不是趋势线。
+                原先每点的 <title> 一并删掉：ChartTooltip 是列级的，hover 时已经把这一列
+                所有系列的数据摆出来了，两份提示会同时弹出、互相遮挡。
+              */}
+              {hoveredBucket != null && item.buckets[hoveredBucket] && (
                 <circle
-                  key={`${item.providerId ?? 'unknown'}-${item.modelId}-${bucket.bucketStart}`}
-                  cx={xOf(bucketIndex)}
-                  cy={yOf(bucket.requestCount)}
-                  r={hoveredBucket === bucketIndex ? '4' : '2.5'}
+                  cx={xOf(hoveredBucket)}
+                  cy={yOf(item.buckets[hoveredBucket].requestCount)}
+                  r="4"
                   fill={modelColor(seriesIndex)}
-                  opacity={hoveredBucket === bucketIndex ? 1 : 0.72}
-                  stroke={hoveredBucket === bucketIndex ? 'var(--background)' : undefined}
-                  strokeWidth={hoveredBucket === bucketIndex ? 1.5 : undefined}
+                  stroke="var(--background)"
+                  strokeWidth={1.5}
                   vectorEffect="non-scaling-stroke"
-                >
-                  <title>
-                    {`${modelSeriesLabel(item)} · ${formatBucketLabel(bucket.bucketStart, interval)} · ${bucket.requestCount} 次请求`}
-                  </title>
-                </circle>
-              ))}
+                />
+              )}
             </g>
           )
         })}

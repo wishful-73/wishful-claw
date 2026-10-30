@@ -32,7 +32,7 @@ v3-iter-4（1.0.4）收尾时，老大 2026-10-30 定「承接 15 条」。
 |---|---|---|---|
 | S-290 | 截图经能力代理调用时 image 块被 32 KB 截断 | **✅ 已交付**（刀 4） | 落库出口与送模型出口不是同一份内容。方案 A：按「输出里存在带 `filePath` 的 image 块」短路豁免 —— 判内容不判工具名。实施：整份 `return output`（与字面「只截文本块」有偏差，理由见 §8.1）+ 新套件 13 断言 | [S-290](../iter-v3-4/requirements/S-290.md) |
 | S-288 | 聊天窗图片点开不能放大 | **✅ 已交付**（刀 5） | 浮层拆成 `ImageLightbox.tsx` 并换 `ImageViewer`（缩放/旋转/拖拽/复制），自己补下载；顺带修 `sm:max-w-lg` 压掉 `max-w-[95vw]` 的真因（浮层一直只有 512px 宽）。缩略加 `max-h-[320px]`。新套件 13 断言 | [S-288](../iter-v3-4/requirements/S-288.md) |
-| S-268 | `DesktopScreenshot` 的 `path` 参数完全无效 | **待开工** | 假成功比报错更糟。补 `path` 支持（照抄 `CaptureAppWindow`） | [S-268](../iter-v3-4/requirements/S-268.md) |
+| S-268 | `DesktopScreenshot` 的 `path` 参数完全无效 | **✅ 已交付**（刀 6） | 假成功比报错更糟。查清后发现 `persistImageBuffer` 早就支持 `targetPath`，缺的只是透传；抽出 `ResolveCaptureTargetPath` 两处共用，描述与 `CaptureAppWindow` 对齐。新套件 14 断言 | [S-268](../iter-v3-4/requirements/S-268.md) |
 
 ### 2.3 桌面操作（2 条）
 
@@ -131,7 +131,7 @@ v3-iter-4（1.0.4）收尾时，老大 2026-10-30 定「承接 15 条」。
 | 3 | S-286 | **✅ 已交付**。单文件正则锚定。**排在这里**：它与刀 2 都在「显示层说假话」这条线上（S-286 报错尺寸、S-289 视觉噪声），连着做能一次把「极简档过程行」的显示质量收干净 |
 | 4 | S-290 | **✅ 已交付**。C# `OutputLimit` 短路豁免，**判内容不判工具名**。排在图片链路最前：它决定模型这一轮到底看不看得见图，后面 S-288 的验收（图能不能放大）也依赖它先把图完整送到 |
 | 5 | S-288 | **✅ 已交付**。图片浮层换 `ImageViewer`。与刀 4 同属图片链路，刀 4 修「送达」、本条修「查看」，同一批真机验收 |
-| 6 | S-268 | `DesktopScreenshot` 补 `path`。**排在桌面操作最前**：它和 S-272 第二段改的是同一批工具（`DesktopToolProvider` / `AgentRuntimeDesktopExecutor`），先把「假成功」修掉，第二段加参数时模型不会继续被骗 |
+| 6 | S-268 | **✅ 已交付**。`DesktopScreenshot` 补 `path`。**排在桌面操作最前**：它和 S-272 第二段改的是同一批工具（`DesktopToolProvider` / `AgentRuntimeDesktopExecutor`），先把「假成功」修掉，第二段加参数时模型不会继续被骗 |
 | 7 | S-272 第二段 | **本迭代参数面最大的一条**：`grid` / `window` / 相对坐标三个参数，随机化风险高。第一段已让模型知道「坐标就是这张图里的像素」，但点得准不准仍取决于它自己估 —— 第二段才真正给参照系。紧接刀 6 |
 | 8 | S-273 | UI Automation 换路径。**依赖刀 7 的 `DesktopListWindows`**（`DesktopClick({ window, element })` 要先能枚举窗口）。作增强路径，不替代坐标路径 |
 | 9 | S-278 | **通信三连的打底刀**。给 `send-session-message` 补 meta 通道、协议说明移出正文、收敛两份漂移的实现。S-279 / S-280 全依赖它 |

@@ -203,7 +203,9 @@ function describeDesktopBounds(): string {
   return `(${bounds.minX},${bounds.minY})-(${bounds.maxX},${bounds.maxY})`
 }
 
-export async function captureDesktopScreenshot(): Promise<DesktopScreenshotResult> {
+export async function captureDesktopScreenshot(
+  targetPath?: string
+): Promise<DesktopScreenshotResult> {
   try {
     const primaryDisplay = screen.getPrimaryDisplay()
     const allDisplays = screen.getAllDisplays()
@@ -228,7 +230,9 @@ export async function captureDesktopScreenshot(): Promise<DesktopScreenshotResul
 
     // S-283：落盘。base64 照旧随报文返回（模型要看得见图），但**同时**留一份在
     // 数据目录 —— 按内容哈希命名，同一帧重复捕获落到同一个文件，不涨盘。
+    // S-268：`targetPath` 是模型显式要的位置（worker 侧已解析成绝对路径），给了就以它为准。
     const persisted = persistImageBuffer(pngBuffer, 'image/png', {
+      targetPath,
       defaultDir: resolveScreenshotDir(resolveDataDir(), new Date()),
       fileName: screenshotFileNameFromBuffer(pngBuffer)
     })

@@ -169,3 +169,22 @@
 门禁：typecheck 0 错 / `npm test` **108/108** / 两套 sln 0 警告 0 错误 / `ci-checks` 全过。
 
 真机 §九 5 条未跑。
+
+### 22:20 · 刀 6 收刀 —— S-268 截图的 `path` 一直是死的
+
+**以为要补落盘，实际只缺一个透传。** `persistImageBuffer`（`src/main/lib/image-persist.ts:59`）早就支持 `targetPath`，`CaptureAppWindow` 一直在用；`DesktopScreenshot` 这条链从 `AgentRuntimeDesktopExecutor` 到 `native-agent-runtime.ts` 再到 `captureDesktopScreenshot()` 三处都没把 `path` 往下带 —— 模型填了、工具回包说成功、文件落在默认目录。**假成功比报错更糟**，它会让模型以为图已经在指定位置，接着去读就扑空。
+
+改动比登记时估的小：抽出 `ResolveCaptureTargetPath(requestedPath, workingFolder)` 两处共用（原来 8 行内联在 `ExecuteAppWindowCaptureAsync` 里），补一层参数透传，描述跟 `CaptureAppWindow` 口径对齐。顺手把 `delayMs` 的 "Capped at 5000" 写进描述 —— 代码早就有 clamp，描述里一直没说。
+
+**不新增沙箱审批**：`CaptureAppWindow` 落盘从来没经过审批，给截图单独加一道只有它才有的关卡没有道理。§五 这条待查项结论就是「不用」。
+
+**实施中撞到一个真边界，且当场被测试咬住。** 第一版用 `string.IsNullOrEmpty` 判空：`path = "   "` 不是空串 ⇒ `Path.Combine(baseDir, "   ")` ⇒ Windows 吃掉尾部空格 ⇒ **解析结果等于工作目录本身**。于是「工作目录」被当成目标文件路径。测试第 10 条直接红，改 `IsNullOrWhiteSpace`。
+
+调用点其实已经 `.Trim()` 过，现实中撞不到 —— 但这正是把判据写进纯函数的价值：以后谁新加调用点忘了 Trim，函数自己扛住。
+
+新门禁 `tests/WishfulClaw.CaptureTargetPathRegressionTests` **14 断言**，反向验证两次都红（`baseDir` 写死 cwd ⇒ 相对路径断言红；判空退回 `IsNullOrEmpty` ⇒ 纯空白断言红）。
+
+门禁：typecheck 0 错 / `npm test` **109/109** / 两套 sln 0 警告 0 错误 / `ci-checks` 全过。
+
+真机 §九 5 条未跑。
+

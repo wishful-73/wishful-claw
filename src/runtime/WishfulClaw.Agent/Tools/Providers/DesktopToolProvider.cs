@@ -20,9 +20,13 @@ public sealed class DesktopToolProvider : IToolProvider
             "The returned text states the image size, its origin, the display scale factor and every display's rectangle — those numbers are the " +
             "coordinate frame for DesktopClick/DesktopScroll. Coordinates are pixel positions in the returned image, which is never rescaled. " +
             "Every capture is also saved to the data directory; the text reports that path, so you can Read it again later instead of re-capturing " +
-            "a desktop that has since changed.",
+            "a desktop that has since changed. Pass `path` only to choose a different location.",
             ToolSchemaBuilder.Object(
-                new() { ["delayMs"] = ToolSchemaBuilder.Number("Optional delay in milliseconds before capturing.") }),
+                new()
+                {
+                    ["path"] = ToolSchemaBuilder.String("Where to write the PNG. Relative paths resolve against the working folder; absolute paths are used as-is. A missing image extension is appended. Example: \"docs/images/desktop.png\"."),
+                    ["delayMs"] = ToolSchemaBuilder.Number("Optional delay in milliseconds before capturing. Capped at 5000.")
+                }),
             availableModes: ["normal", "goal", "global"],
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 

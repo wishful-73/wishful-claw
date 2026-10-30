@@ -74,7 +74,7 @@ public static partial class AgentRuntimeDesktopExecutor
     {
         return call.Name switch
         {
-            "DesktopScreenshot" => await ExecuteScreenshotAsync(call.Input, context, cancellationToken),
+            "DesktopScreenshot" => await ExecuteScreenshotAsync(call.Input, context, workingFolder, cancellationToken),
             "DesktopClick" => await ExecuteClickAsync(call.Input, context, cancellationToken),
             "DesktopType" => await ExecuteTypeAsync(call.Input, context, cancellationToken),
             "DesktopScroll" => await ExecuteScrollAsync(call.Input, context, cancellationToken),
@@ -84,21 +84,35 @@ public static partial class AgentRuntimeDesktopExecutor
         };
     }
 
+    /// <summary>
+    /// Screenshot the whole desktop and optionally write it to a caller-chosen path.
+    ///
+    /// S-268：`path` 以前是被**静默忽略**的 —— 工具照报成功，文件却没落到模型说的位置，
+    /// 模型下一轮去 Read 就扑空。比直接报错更糟：报错它会换招，假成功它继续往下走。
+    /// 路径解析规则与 <see cref="ExecuteAppWindowCaptureAsync"/> 完全一致（相对路径按会话
+    /// workingFolder 解析，因为主进程 cwd 是程序目录），两处必须同形状，别再分叉。
+    /// </summary>
     private static async Task<RendererToolResult> ExecuteScreenshotAsync(
         JsonElement input,
         IWorkerRequestContext context,
+        string? workingFolder,
         CancellationToken cancellationToken)
     {
+        var requestedPath = JsonHelpers.GetString(input, "path")?.Trim();
         var delayMs = Math.Clamp(JsonHelpers.GetInt(input, "delayMs", 0), 0, 5_000);
         if (delayMs > 0)
         {
             await Task.Delay(delayMs, cancellationToken);
         }
 
+        var targetPath = ResolveCaptureTargetPath(requestedPath, workingFolder);
+
         var response = await InvokeMainAsync(
             context, "desktop:screenshot:capture",
-            CreateJsonObject(_ => { }), cancellationToken);
-
+            CreateJsonObject(writer =>
+            {
+                if (targetPath is not null) writer.WriteString("targetPath", targetPath);
+            }), cancellationToken);
         var data = JsonHelpers.GetString(response, "data");
         if (!JsonHelpers.GetBool(response, "success", false) || string.IsNullOrEmpty(data))
         {
@@ -126,16 +140,7 @@ public static partial class AgentRuntimeDesktopExecutor
         var requestedPath = JsonHelpers.GetString(input, "path")?.Trim();
         var delayMs = Math.Clamp(JsonHelpers.GetInt(input, "delayMs", 0), 0, 5_000);
 
-        string? targetPath = null;
-        if (!string.IsNullOrEmpty(requestedPath))
-        {
-            var baseDir = string.IsNullOrWhiteSpace(workingFolder)
-                ? Environment.CurrentDirectory
-                : workingFolder;
-            targetPath = Path.IsPathRooted(requestedPath)
-                ? Path.GetFullPath(requestedPath)
-                : Path.GetFullPath(Path.Combine(baseDir, requestedPath));
-        }
+        var targetPath = ResolveCaptureTargetPath(requestedPath, workingFolder);
 
         var response = await InvokeMainAsync(
             context, "window:capture-self",
@@ -154,6 +159,31 @@ public static partial class AgentRuntimeDesktopExecutor
         }
 
         return new RendererToolResult(CreateAppWindowCaptureContent(response, data), false, null);
+    }
+
+    /// <summary>
+    /// 把模型给的 `path` 解析成绝对路径 —— `DesktopScreenshot` 与 `CaptureAppWindow` 共用。
+    ///
+    /// **为什么必须在 worker 侧解析**：主进程的 cwd 是程序安装目录，把相对路径原样递下去，
+    /// 文件会落在用户完全想不到的地方。
+    ///
+    /// 返回 `null` 表示「模型没指定位置」，调用方就不传 `targetPath`，主进程退回默认数据目录。
+    /// 空串与纯空白一律当没传 —— 否则 `<工作目录>` 本身会被当成目标文件路径。
+    /// </summary>
+    internal static string? ResolveCaptureTargetPath(string? requestedPath, string? workingFolder)
+    {
+        if (string.IsNullOrWhiteSpace(requestedPath))
+        {
+            return null;
+        }
+
+        var baseDir = string.IsNullOrWhiteSpace(workingFolder)
+            ? Environment.CurrentDirectory
+            : workingFolder;
+
+        return Path.IsPathRooted(requestedPath)
+            ? Path.GetFullPath(requestedPath)
+            : Path.GetFullPath(Path.Combine(baseDir, requestedPath));
     }
 
     private static async Task<RendererToolResult> ExecuteClickAsync(

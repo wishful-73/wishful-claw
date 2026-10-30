@@ -155,7 +155,10 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
       const params = request.params as Record<string, unknown> | undefined
       switch (method) {
         case DESKTOP_SCREENSHOT_CAPTURE:
-          result = await captureDesktopScreenshot()
+          // S-268：`path` 由 worker 解析成绝对路径后以 targetPath 传下来。
+          result = await captureDesktopScreenshot(
+            typeof params?.targetPath === 'string' ? params.targetPath : undefined
+          )
           break
         case DESKTOP_INPUT_CLICK:
           result = desktopInputClick(params as unknown as Parameters<typeof desktopInputClick>[0])

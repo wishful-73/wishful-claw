@@ -107,7 +107,8 @@
     "test:clean": "node -e \"require('fs').rmSync('.wishful-claw/tmp',{recursive:true,force:true});console.log('cleaned .wishful-claw/tmp')\"",
     "test:screenshot-dir": "esbuild tests/screenshot-dir/program.ts --bundle --platform=node --format=cjs --outfile=tests/screenshot-dir/out/program.cjs && node tests/screenshot-dir/out/program.cjs",
     "test:image-lightbox": "esbuild tests/image-lightbox/program.ts --bundle --platform=node --format=cjs --outfile=tests/image-lightbox/out/program.cjs && node tests/image-lightbox/out/program.cjs",
-    "test:screenshot-grid": "esbuild tests/screenshot-grid/program.ts --bundle --platform=node --format=cjs --outfile=tests/screenshot-grid/out/program.cjs && node tests/screenshot-grid/out/program.cjs"
+    "test:screenshot-grid": "esbuild tests/screenshot-grid/program.ts --bundle --platform=node --format=cjs --outfile=tests/screenshot-grid/out/program.cjs && node tests/screenshot-grid/out/program.cjs",
+    "test:global-dispatch-meta": "esbuild tests/global-dispatch-meta/program.ts --bundle --platform=node --format=cjs --alias:@renderer/lib/project-data-dir=./tests/global-dispatch-meta/stubs/project-data-dir.ts --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/global-dispatch-meta/out/program.cjs && node tests/global-dispatch-meta/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

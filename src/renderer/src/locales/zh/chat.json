@@ -1290,6 +1290,8 @@
     "removeImage": "移除图片",
     "imagePreview": "图片预览",
     "selectedFileReadsTitle": "已读文件",
+    "globalDispatchWorkRequest": "全局任务",
+    "globalDispatchMessage": "来自全局会话",
     "selectedFileReadLines": "已读 {{count}} 行",
     "selectedFileReadTruncated": "已读前 {{count}} 行",
     "selectedFileReadSkipped": "路径引用",

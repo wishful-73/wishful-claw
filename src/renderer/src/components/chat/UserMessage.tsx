@@ -30,7 +30,7 @@ interface UserMessageProps {
   onEdit?: (messageId: string, draft: EditableUserMessageDraft) => void
 }
 import { ActionIconButton, UserSkillBadge, parseUserSkillDirective, USER_MESSAGE_WIDTH_CLASS, USER_MESSAGE_BUBBLE_CLASS } from './user-message-helpers'
-import { UserSelectedFileReadsView, UserImageAttachmentView, copyImageSourceToClipboard } from './user-message-views'
+import { UserSelectedFileReadsView, UserImageAttachmentView, GlobalDispatchBadge, copyImageSourceToClipboard } from './user-message-views'
 
 export function UserMessage({
   messageId,
@@ -168,6 +168,7 @@ export function UserMessage({
           </div>
         ) : (
           <div className={`${USER_MESSAGE_BUBBLE_CLASS} ml-auto w-fit max-w-full`}>
+            <GlobalDispatchBadge meta={meta?.globalDispatch} />
             {command && <SystemCommandCard command={command} />}
             {skillDirective && <UserSkillBadge name={skillDirective.name} />}
             {displayText && (

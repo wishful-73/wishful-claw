@@ -223,3 +223,20 @@
 **更要紧的是原始诉求用不着 UIA**：老大提这条的场景是「让 dev 实例点自己的页面」，那是我们自己的 Electron 窗口 —— 主进程已经拿得到 `webContents`，挂 CDP 取 `Accessibility.getFullAXTree` 就是 Chromium 给出的精确矩形，还不用开全局 a11y 开关。
 
 已在 S-273 §七 写死待查结论、§八 给出段 A（自家窗口走 CDP）/ 段 B（第三方走 `EnumChildWindows`）两个候选与代价，**三个问题要老大定**：拆不拆、接不接受「只覆盖 Chromium 系」、愿不愿意为此开全局可访问性。不自作主张，跳过刀 8 去做刀 9。
+
+### 22:47 · 刀 9 收刀 —— S-278 第一段（派活消息不再是裸文本）
+
+要治的是两个**都不会报错**的毛病：协议说明（给模型看的英文指引）被当成消息正文落库，用户读到一整段指令；同一套措辞两份实现已经漂移，一份教 `use_capability` 代理调法、一份教直接调工具。
+
+1. **正文拆两份**。`AgentRuntimeGlobalTaskExecutor.SendWorkRequestAsync` 把 wire 文本（带 `dispatch_id` / `global_task_id` / 回执指引）与 display 文本（只有 `instruction`）分开，反向请求多送 `displayContent`；渲染端 `sendMessage` 只在两者不同时才用 `userMessageText`，老路径字节级不变。
+2. **措辞收敛成一个源**。新建 `lib/tools/global-work-request.ts` 作渲染端唯一措辞源，删掉 `task-board-store.ts` 里本地那份 `buildWorkRequestContent`。C# 与 TS 跨语言共用不了函数（同 S-276 的判据），只能两边各写一份 + 互相指名。
+3. **meta 通道**。`MessageMeta.globalDispatch`（`dispatchId` / `globalTaskId` / `kind` / `globalTaskTitle?`）落 `messages.meta`，**不进 Worker**。任务标题是**派发那一刻的快照**，任务改名不改写历史消息。
+4. **渲染端出来路徽章**。`GlobalDispatchBadge`：`work_request` 写「全局任务」、普通沟通写「来自全局会话」，后面挂任务标题；标题拿不到退化成 `dispatchId`（至少还能回溯是哪一次派发）。中英双语键补齐。
+
+**回执卡片不在本刀**：S-278 原文里「项目下会话对全局任务回执」那一半依赖 S-280 的回执通道（回执怎么确定性归档），先做会半好。已在 plan.md 标「第一段完成」。
+
+新套件 `tests/global-dispatch-meta`（**25 checks**），其中第 8~10 条是**源码闸**：读 `AgentRuntimeGlobalTaskExecutor.cs` 断言两边同时具备 `builtin:reply_global_dispatch` / `displayContent` / `globalDispatch` / `globalTaskTitle`，且都没有旧措辞。跨语言钉不住行为，就钉「两份实现不漂移」这件事本身。
+
+**反向验证两次都红**：① 把 `displayContent` 改成 wire 文本 ⇒ `displayContent 必须严格等于 instruction`；② 把 C# 的 `builtin:` 前缀去掉 ⇒ `C# 的派活文本必须也指向 builtin:reply_global_dispatch`。还原后 25 通过。
+
+门禁：两套 sln 0 警告 0 错误 / `typecheck` 两配置 0 错 / `npm test` **111/111** / `ci-checks` **85/85** 通过。

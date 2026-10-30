@@ -11,6 +11,7 @@
 
 import { create } from 'zustand'
 import { handleProjectSendSessionMessage } from '@renderer/lib/tools/project-send-message'
+import { buildWorkRequestDelivery } from '@renderer/lib/tools/global-work-request'
 import {
   newDispatchId,
   newGlobalTaskId,
@@ -21,7 +22,6 @@ import {
   type GlobalTaskStatus,
   type GlobalMutationResult
 } from '@renderer/components/taskboard/task-board-types'
-import { PROJECT_DATA_DIR_NAME } from '@renderer/lib/project-data-dir'
 
 export interface TaskCreateInput {
   title: string
@@ -94,18 +94,13 @@ function mutationError(result: unknown, fallback: string): string {
   return fallback
 }
 
-/** Work request content — mirrors AgentRuntimeGlobalTaskExecutor.SendWorkRequestAsync. */
-function buildWorkRequestContent(dispatchId: string, taskId: string, instruction: string): string {
-  return (
-    `[GLOBAL AGENT WORK REQUEST] dispatch_id=${dispatchId} global_task_id=${taskId}\n\n` +
-    `${instruction}\n\n` +
-    'This work request was dispatched by the global agent (Task Board). Decide yourself how to ' +
-    'execute it (including whether to create your own temporary Todos). Any notes or briefs you ' +
-    `write for it belong in \`${PROJECT_DATA_DIR_NAME}/notes/\`, not loose in the project tree. When you finish, ` +
-    'get blocked, or need to ask the global agent a follow-up question, call the reply_global_dispatch ' +
-    `tool with dispatchId '${dispatchId}' so the global agent can track the outcome.`
-  )
-}
+/**
+ * Work request content — 措辞搬到 `lib/tools/global-work-request.ts`（iter-v3-5 S-278）。
+ *
+ * 以前这里与 C# 的 `AgentRuntimeGlobalTaskExecutor.SendWorkRequestAsync` 各写一份，
+ * 已经漂移（一边教 `use_capability` 代理调法、一边教直接调工具）。现在渲染端只有
+ * 一个措辞源，C# 那份由 `tests/global-dispatch-meta` 的源码闸钉住。
+ */
 
 export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
   tasks: [],
@@ -247,13 +242,18 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       }
 
       // 2. Deliver through the existing sendMessage pipeline.
-      const content =
+      //    S-278：wire 文本（含协议说明）与落库文本分开，并把 dispatch 身份写进 meta，
+      //    渲染端才认得出「这不是用户自己说的话」。任务标题取自看板当前快照。
+      const taskTitle = get().tasks.find((task) => task.id === input.taskId)?.title
+      const payload =
         input.kind === 'work_request'
-          ? buildWorkRequestContent(dispatchId, input.taskId, input.instruction)
-          : input.instruction
+          ? buildWorkRequestDelivery(dispatchId, input.taskId, input.instruction, taskTitle)
+          : { content: input.instruction, displayContent: undefined, meta: undefined }
       const delivery = await handleProjectSendSessionMessage({
         sessionId: input.sessionId,
-        content,
+        content: payload.content,
+        displayContent: payload.displayContent,
+        meta: payload.meta,
         workingFolder: input.workingFolder ?? undefined,
         projectId: input.projectId ?? undefined
       })

@@ -40,10 +40,25 @@ import type {
   SessionFollowUpMutationResult,
   SessionFollowUpRequest
 } from '@shared/types/session-follow-up'
+import type { MessageMeta } from '@renderer/lib/api/types'
 
 interface SendSessionMessageParams {
   sessionId: string
   content: string
+  /**
+   * 落库 + 气泡上给人看的文本（iter-v3-5 S-278）。省略时等于 `content`。
+   *
+   * **为什么需要两个字段**：派活消息的 wire 文本里带着一段给模型看的协议说明
+   * （「用 use_capability 回执…」），那段不该出现在聊天窗。`content` 走
+   * `messages`，`displayContent` 走 `sendMessage` 的 `userMessageText`
+   * （只落库、只做气泡摘要，不进 Worker）。
+   */
+  displayContent?: string
+  /**
+   * 结构化标记，直接进消息 meta（iter-v3-5 S-278）。
+   * 渲染端凭 `meta.globalDispatch` 认出这是派活而不是用户自己说的话。
+   */
+  meta?: MessageMeta
   workingFolder?: string
   projectId?: string
   /**
@@ -65,7 +80,7 @@ interface SendSessionMessageResult {
 export async function handleProjectSendSessionMessage(
   params: unknown
 ): Promise<SendSessionMessageResult> {
-  const { sessionId, content, workingFolder, projectId, sessionMode, followUp } = params as SendSessionMessageParams
+  const { sessionId, content, displayContent, meta, workingFolder, projectId, sessionMode, followUp } = params as SendSessionMessageParams
 
   if (!sessionId || !content) {
     return { success: false, error: 'Missing required fields: sessionId, content' }
@@ -210,6 +225,10 @@ export async function handleProjectSendSessionMessage(
       provider,
       messages: [{ role: 'user', content }],
       sessionId,
+      // S-278：`content` 进 messages（模型看），`userMessageText` 只落库（人看）。
+      // 两者相同时不传，保持老路径字节级一致。
+      ...(displayContent && displayContent !== content ? { userMessageText: displayContent } : {}),
+      ...(meta ? { meta } : {}),
       workingFolder: effectiveWorkingFolder || undefined,
       sshConnectionId: targetSession.scope === 'project' ? targetSession.sshConnectionId ?? undefined : undefined,
       projectId: effectiveProjectId || undefined,

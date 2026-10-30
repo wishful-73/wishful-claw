@@ -234,13 +234,34 @@ public static class AgentRuntimeGlobalTaskExecutor
                 $"{{\"dispatchId\": \"{dispatchId}\", \"report\": \"<your result or question>\", \"status\": \"in_progress | completed | blocked\"}} " +
                 "inside `arguments`, so the global agent can track the outcome.";
 
+            // S-278（v3-iter-5）：**给模型看的和给人看的分开**。
+            // `content` 是整条 wire 文本（含上面那段协议说明），模型必须看到它才可能回执；
+            // `displayContent` 只落库给人看 —— 协议说明不该出现在聊天窗里。
+            // 以前两者是同一个字符串，于是用户读到一整段英文指令。
+            // `meta.globalDispatch` 让渲染端能按 dispatchId 认出来做成卡片，而不是靠正则
+            // 嗅探 `[GLOBAL AGENT WORK REQUEST]`（S-208 定的口径：结构化字段进 meta）。
+            // meta / displayContent 都只服务渲染端，`sendMessage` 会在发 Worker 前删掉它们。
+            var globalTaskTitle = TryReadGlobalTaskTitle(globalTaskId);
+
             var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
             {
                 w.WriteStartObject();
                 w.WriteString("sessionId", sessionId);
                 w.WriteString("content", content);
+                w.WriteString("displayContent", instruction);
                 w.WriteString("workingFolder", string.Empty);
                 w.WriteString("projectId", projectId ?? string.Empty);
+                w.WritePropertyName("meta");
+                w.WriteStartObject();
+                w.WritePropertyName("globalDispatch");
+                w.WriteStartObject();
+                w.WriteString("dispatchId", dispatchId);
+                w.WriteString("globalTaskId", globalTaskId);
+                w.WriteString("kind", GlobalTaskDispatchKindValues.WorkRequest);
+                if (!string.IsNullOrEmpty(globalTaskTitle))
+                    w.WriteString("globalTaskTitle", globalTaskTitle);
+                w.WriteEndObject();
+                w.WriteEndObject();
                 w.WriteEndObject();
             });
 
@@ -392,6 +413,40 @@ public static class AgentRuntimeGlobalTaskExecutor
         catch (Exception ex)
         {
             WorkerLog.Error($"MarkDispatchFailed({dispatchId}) failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 全局任务标题的快照（S-278）：派发那一刻的标题写进消息 meta，任务后来改名
+    /// 不改历史消息的显示 —— 卡片上的「来自哪个任务」应当是当时的事实。
+    /// 读不到就返回 null，卡片退化成只显示 dispatchId，不影响投递。
+    /// </summary>
+    private static string? TryReadGlobalTaskTitle(string globalTaskId)
+    {
+        try
+        {
+            var getParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("id", globalTaskId);
+                w.WriteEndObject();
+            });
+            var response = DbGlobalTaskTools.Get(getParams);
+            if (!TryDbResult(response, out var result, out _)) return null;
+            if (result.ValueKind == JsonValueKind.Object
+                && result.TryGetProperty("task", out var task)
+                && task.ValueKind == JsonValueKind.Object
+                && task.TryGetProperty("title", out var title)
+                && title.ValueKind == JsonValueKind.String)
+            {
+                return title.GetString();
+            }
+            return null;
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Error($"TryReadGlobalTaskTitle({globalTaskId}) failed: {ex.Message}");
+            return null;
         }
     }
 

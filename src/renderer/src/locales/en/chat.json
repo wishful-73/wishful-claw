@@ -1290,6 +1290,8 @@
     "removeImage": "Remove image",
     "imagePreview": "Image preview",
     "selectedFileReadsTitle": "Read files",
+    "globalDispatchWorkRequest": "Global task",
+    "globalDispatchMessage": "From global session",
     "selectedFileReadLines": "Read {{count}} lines",
     "selectedFileReadTruncated": "Read first {{count}} lines",
     "selectedFileReadSkipped": "Path reference",

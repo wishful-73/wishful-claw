@@ -142,7 +142,57 @@ checkEqual(stripImagePayloads(null), null, 'null 原样返回')
   )
 }
 
-// ─── 5. 纯函数 + 序列化产物无 base64 头 ───
+// ─── 6. 字符串化 JSON：库里 99% 字节的来路（S-284） ───
+//
+// 工具结果的 output 不是数组，是**被上游 stringify 过一层**的文本
+// （截图结果是 `[{"type":"image","source":{...,"data":"…"}}]`）。
+// 旧实现遇到 string 原样返回，于是里面的 image 块从头到尾没被看见。
+
+{
+  // 真实形态：数组串，image 块带 filePath，后面跟一个 text 块。
+  const stringified = JSON.stringify([
+    imageBlock('C:\\shots\\a.png'),
+    { type: 'text', text: 'Saved to C:\\shots\\a.png' }
+  ])
+
+  const output = stripImagePayloads({ output: stringified }) as { output: string }
+
+  checkEqual(typeof output.output, 'string', '字符串化 JSON 仍是字符串，类型不变')
+  checkEqual(output.output.includes(TINY_BASE64), false, '删掉字符串化 JSON 里的 base64 载荷')
+  checkEqual(output.output.includes('C:\\\\shots\\\\a.png'), true, 'filePath 留在字符串里')
+
+  const reparsed = JSON.parse(output.output) as Array<{ type: string; text?: string }>
+  checkEqual(reparsed.length, 2, '剥完仍是结构完整的 JSON，块数不变')
+  checkEqual(reparsed[1].text, 'Saved to C:\\shots\\a.png', 'text 块内容不被破坏')
+}
+
+{
+  // 安全断言：字符串里没有 filePath ⇒ 一个字节都不许动。
+  const stringified = JSON.stringify([imageBlock(undefined)])
+  const output = stripImagePayloads({ output: stringified }) as { output: string }
+  checkEqual(output.output.includes(TINY_BASE64), true, '字符串化 JSON 里没 filePath 时不许剥')
+}
+
+{
+  // 廉价判据：不是 JSON 容器、或压根没提 image 的字符，原样返回。
+  checkEqual(
+    stripImagePayloads('look, there is an "image" here'),
+    'look, there is an "image" here',
+    '首字符不是 [/{ 的字符串不尝试解析'
+  )
+
+  const noImageJson = JSON.stringify({ exitCode: 0, stdout: 'all good', stderr: '' })
+  const output = stripImagePayloads({ output: noImageJson }) as { output: string }
+  checkEqual(output.output, noImageJson, '不含 image 的 JSON 串一个字符都不变')
+}
+
+{
+  // 畸形 JSON：解析失败必须安静退回原文，不能把写库主路径炸掉。
+  const broken = '{ "type": "image", ...truncated'
+  checkEqual(stripImagePayloads(broken), broken, '畸形 JSON 不抛、原样返回')
+}
+
+// ─── 7. 纯函数 + 序列化产物无 base64 头 ───
 
 {
   const original = { content: [imageBlock('C:\\keep.png')] }

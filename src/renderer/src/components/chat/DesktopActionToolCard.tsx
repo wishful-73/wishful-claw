@@ -22,6 +22,7 @@ import type { ToolCallStatus } from '@renderer/lib/agent/types'
 import type { ImageBlock, TextBlock, ToolResultContent } from '@renderer/lib/api/types'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
+import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
 import { ImagePreview } from './ImagePreview'
 import { useDensityPolicy } from './use-density-override'
 
@@ -255,10 +256,8 @@ export function DesktopActionToolCard({
                     {t('toolCall.desktop.screenshot.preview')}
                   </p>
                   {images.map((image, index) => {
-                    const src =
-                      image.source.type === 'base64' && image.source.data
-                        ? `data:${image.source.mediaType || 'image/png'};base64,${image.source.data}`
-                        : (image.source.url ?? '')
+                    // S-284：落库副本里 base64 会被剥掉，重开会话只剩 filePath。
+                    const src = resolveImageBlockSource(image)?.src ?? ''
                     if (!src && !image.source.filePath) return null
                     return (
                       <ImagePreview

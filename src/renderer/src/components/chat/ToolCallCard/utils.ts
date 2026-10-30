@@ -1,4 +1,5 @@
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
 import type { ImageBlock, ToolResultContent } from '@renderer/lib/api/types'
 import type {
   ToolCallCardProps,
@@ -89,10 +90,9 @@ export function hasImageBlocks(output: ToolResultContent | undefined): boolean {
 }
 
 export function getImageBlockPreviewSrc(image: ImageBlock): string {
-  if (image.source.type === 'base64' && image.source.data) {
-    return `data:${image.source.mediaType || 'image/png'};base64,${image.source.data}`
-  }
-  return image.source.url ?? ''
+  // S-284：统一走 resolveImageBlockSource —— 落库时 base64 会被剥掉，重开会话
+  // 之后只剩 filePath，这里必须能兜底成 oc-media:// ，否则历史截图全是空白。
+  return resolveImageBlockSource(image)?.src ?? ''
 }
 
 // ── Error detection ──

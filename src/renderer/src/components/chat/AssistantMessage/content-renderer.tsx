@@ -31,6 +31,8 @@ import { ImageGenerationErrorCard } from '../ImageGenerationErrorCard'
 import { AgentErrorCard } from '../AgentErrorCard'
 import { OrchestrationBlock } from '../OrchestrationBlock'
 import { imageBlockToAttachment } from '@renderer/lib/image-attachments'
+import { filePathToMediaUrl } from '@renderer/lib/local-media-url'
+import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
 import { getLiveOutputCursorClass } from '@renderer/lib/live-output-animation'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useImageEditStore } from '@renderer/stores/image-edit-store'
@@ -155,10 +157,15 @@ export function ContentRenderer({
   const hasEmptyContent =
     (typeof content === 'string' && content.length === 0) ||
     (Array.isArray(normalizedContent) && normalizedContent.length === 0)
-  const generatingImagePreviewSrc =
-    generatingImagePreview?.source.type === 'base64' && generatingImagePreview.source.data
-      ? `data:${generatingImagePreview.source.mediaType || 'image/png'};base64,${generatingImagePreview.source.data}`
-      : (generatingImagePreview?.source.url ?? '')
+  const generatingImagePreviewSrc = (() => {
+    const source = generatingImagePreview?.source
+    if (!source) return ''
+    if (source.type === 'base64' && source.data) {
+      return `data:${source.mediaType || 'image/png'};base64,${source.data}`
+    }
+    // S-284：base64 落库时被剥掉，重开会话只剩 filePath，这里必须兜底成 oc-media://。
+    return source.url ?? (source.filePath ? filePathToMediaUrl(source.filePath) : '')
+  })()
   if (shouldShowImageGeneratingLoader && hasEmptyContent) {
     return (
       <div className={liveComponentClassName || undefined}>
@@ -480,10 +487,7 @@ export function ContentRenderer({
         }
         case 'image': {
           const imgBlock = block as Extract<ContentBlock, { type: 'image' }>
-          const imgSrc =
-            imgBlock.source.type === 'base64' && imgBlock.source.data
-              ? `data:${imgBlock.source.mediaType || 'image/png'};base64,${imgBlock.source.data}`
-              : (imgBlock.source.url ?? '')
+          const imgSrc = resolveImageBlockSource(imgBlock)?.src ?? ''
           if (!imgSrc && !imgBlock.source.filePath) return null
           const editableImage = imageBlockToAttachment(imgBlock)
           const actions =

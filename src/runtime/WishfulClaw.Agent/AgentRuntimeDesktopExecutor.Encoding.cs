@@ -36,6 +36,11 @@ public static partial class AgentRuntimeDesktopExecutor
 
     private static JsonElement CreateScreenshotContent(JsonElement response, string data)
     {
+        // S-284：落盘路径必须进 image block 的 source，不能只写在文字行里。
+        // 渲染层剥 base64 的条件是「source.filePath 非空」—— 路径只存在于 text 块时，
+        // 剥离器看不见它，那张图就以 base64 形态一字不落进了 messages.meta。
+        var filePath = JsonHelpers.GetString(response, "filePath");
+
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
         {
@@ -47,6 +52,10 @@ public static partial class AgentRuntimeDesktopExecutor
             writer.WriteString("type", "base64");
             writer.WriteString("mediaType", JsonHelpers.GetString(response, "mediaType") ?? "image/png");
             writer.WriteString("data", data);
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                writer.WriteString("filePath", filePath);
+            }
             writer.WriteEndObject();
             writer.WriteEndObject();
             writer.WriteStartObject();
@@ -157,6 +166,11 @@ public static partial class AgentRuntimeDesktopExecutor
             writer.WriteString("type", "base64");
             writer.WriteString("mediaType", "image/png");
             writer.WriteString("data", data);
+            // S-284：同 CreateScreenshotContent —— 路径必须进 source，剥离器才认得出来。
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                writer.WriteString("filePath", filePath);
+            }
             writer.WriteEndObject();
             writer.WriteEndObject();
             writer.WriteStartObject();

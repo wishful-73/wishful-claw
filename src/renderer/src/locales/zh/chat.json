@@ -653,6 +653,7 @@
       "BrowserEvaluate": "执行页面脚本",
       "DesktopScreenshot": "桌面截图",
       "DesktopListWindows": "列出窗口",
+      "DesktopQueryElements": "查找界面元素",
       "DesktopClick": "桌面点击",
       "DesktopType": "桌面输入",
       "DesktopScroll": "桌面滚动",
@@ -856,6 +857,9 @@
       },
       "DesktopListWindows": {
         "title": "列出窗口"
+      },
+      "DesktopQueryElements": {
+        "title": "查找界面元素"
       },
       "DesktopClick": {
         "title": "桌面点击"

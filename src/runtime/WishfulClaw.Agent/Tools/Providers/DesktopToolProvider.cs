@@ -49,6 +49,26 @@ public sealed class DesktopToolProvider : IToolProvider
             visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
+            "DesktopQueryElements",
+            "List the interactive elements of this app's OWN window with their exact screen rectangles — no screenshot needed. " +
+            "Every item carries name, role, enabled and a centre point that you can pass straight into DesktopClick. " +
+            "Use it whenever the target is this app's UI (buttons, inputs, list items, tabs): it removes the guesswork of reading " +
+            "coordinates off a screenshot. Pass `expect` with the name you are looking for to get suggestions back when nothing matches. " +
+            "LIMITS: only this app's window is reachable. Other applications have no web contents, so this tool cannot see them — " +
+            "for those, call DesktopListWindows and click with relative coordinates.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["expect"] = ToolSchemaBuilder.String("Optional: the element name you are looking for. When nothing matches, the reply lists the closest names instead."),
+                    ["nameFilter"] = ToolSchemaBuilder.String("Optional case-insensitive substring filter on element names."),
+                    ["roles"] = ToolSchemaBuilder.ArraySchema("Optional role filter, e.g. [\"button\", \"textbox\", \"link\"].", ToolSchemaBuilder.String("Role name.")),
+                    ["maxDepth"] = ToolSchemaBuilder.Number("Tree depth limit. Default 8."),
+                    ["maxElements"] = ToolSchemaBuilder.Number("Maximum elements returned. Default 120.")
+                }),
+            availableModes: ["normal", "goal", "global"],
+            visibleScopes: ToolVisibilityScopes.WorkRunsOnly));
+
+        registry.Register(new ToolDefinitionPlaceholder(
             "CaptureAppWindow",
             "Capture a screenshot of the Wishful Claw window itself — not the whole desktop. Use it when you need an image of this app's own UI, for example to illustrate a guide or to show the user what a panel looks like. Prefer it over DesktopScreenshot whenever the subject is this app: it never includes unrelated windows, so the result needs no cleanup. The returned text also states where the window sits on screen (DIP and pixels), so you can turn an offset you measured in the image into a DesktopClick coordinate. The PNG is always saved to the data directory and the text reports that path; pass `path` only to choose a different location.",
             ToolSchemaBuilder.Object(

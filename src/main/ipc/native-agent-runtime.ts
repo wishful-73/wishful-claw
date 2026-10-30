@@ -19,6 +19,11 @@ import {
   DESKTOP_INPUT_TYPE,
   DESKTOP_INPUT_SCROLL
 } from './desktop-control'
+import {
+  queryDesktopElements,
+  DESKTOP_QUERY_ELEMENTS,
+  type QueryElementsParams
+} from './desktop-elements'
 import { isMainProcessMethod, dispatchReverseRequest } from './reverse-handlers'
 import type { PhysicalRect } from '../lib/desktop-screen'
 import { getMainWindow } from '../main-window-registry'
@@ -149,7 +154,8 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
     DESKTOP_SCREENSHOT_CAPTURE,
     DESKTOP_INPUT_CLICK,
     DESKTOP_INPUT_TYPE,
-    DESKTOP_INPUT_SCROLL
+    DESKTOP_INPUT_SCROLL,
+    DESKTOP_QUERY_ELEMENTS
   ])
 
   if (desktopMethods.has(method)) {
@@ -175,6 +181,11 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
           break
         case DESKTOP_INPUT_SCROLL:
           result = desktopInputScroll(params as unknown as Parameters<typeof desktopInputScroll>[0])
+          break
+        case DESKTOP_QUERY_ELEMENTS:
+          // S-273 段 A：只覆盖自家窗口。第三方应用拿不到 webContents，走的是
+          // DesktopListWindows + 相对坐标那条路，这里直接报错不猜。
+          result = await queryDesktopElements((params ?? {}) as QueryElementsParams)
           break
         default:
           result = { success: false, error: `Unknown desktop method: ${method}` }

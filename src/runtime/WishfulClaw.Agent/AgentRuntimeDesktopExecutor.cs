@@ -28,6 +28,7 @@ public static partial class AgentRuntimeDesktopExecutor
     {
         "DesktopScreenshot",
         "DesktopListWindows",
+        "DesktopQueryElements",
         "DesktopClick",
         "DesktopType",
         "DesktopScroll",
@@ -77,6 +78,7 @@ public static partial class AgentRuntimeDesktopExecutor
         {
             "DesktopScreenshot" => await ExecuteScreenshotAsync(call.Input, context, workingFolder, cancellationToken),
             "DesktopListWindows" => ExecuteListWindows(call.Input),
+            "DesktopQueryElements" => await ExecuteQueryElementsAsync(call.Input, context, cancellationToken),
             "DesktopClick" => await ExecuteClickAsync(call.Input, context, cancellationToken),
             "DesktopType" => await ExecuteTypeAsync(call.Input, context, cancellationToken),
             "DesktopScroll" => await ExecuteScrollAsync(call.Input, context, cancellationToken),
@@ -84,6 +86,66 @@ public static partial class AgentRuntimeDesktopExecutor
             "CaptureAppWindow" => await ExecuteAppWindowCaptureAsync(call.Input, context, workingFolder, cancellationToken),
             _ => StringResult(EncodeError($"Unsupported desktop tool: {call.Name}"), true)
         };
+    }
+
+    /// <summary>
+    /// `DesktopQueryElements` —— 问自家窗口「这个按钮在哪」（S-273 段 A）。
+    ///
+    /// **只覆盖本应用自己的窗口**：主进程靠 `webContents.debugger` 挂 CDP 读 Chromium 的
+    /// 可访问性树，元素矩形由浏览器给出，模型不用再看图数像素。第三方应用没有
+    /// `webContents`，这条路走不通 —— 主进程直接报错并把模型引回 `DesktopListWindows`
+    /// + 相对坐标，这里原样透传，不猜也不降级成「假成功」。
+    ///
+    /// **报文形状由主进程定**（`elements` / `candidates` / `frameNote`），这里整段转发而不是
+    /// 重新编码 —— 两处各拼一遍必然分叉，S-276 的四处判据就是这么走散的。
+    /// </summary>
+    private static async Task<RendererToolResult> ExecuteQueryElementsAsync(
+        JsonElement input,
+        IWorkerRequestContext context,
+        CancellationToken cancellationToken)
+    {
+        var expect = JsonHelpers.GetString(input, "expect")?.Trim();
+        var nameFilter = JsonHelpers.GetString(input, "nameFilter")?.Trim();
+        var roles = JsonHelpers.GetStringArray(input, "roles");
+        var maxDepth = Math.Clamp(JsonHelpers.GetInt(input, "maxDepth", 8), 1, 32);
+        var maxElements = Math.Clamp(JsonHelpers.GetInt(input, "maxElements", 120), 1, 500);
+
+        var response = await InvokeMainAsync(
+            context, "desktop:query:elements",
+            CreateJsonObject(writer =>
+            {
+                if (!string.IsNullOrEmpty(expect)) writer.WriteString("expect", expect);
+                if (!string.IsNullOrEmpty(nameFilter)) writer.WriteString("nameFilter", nameFilter);
+                if (roles.Length > 0)
+                {
+                    writer.WritePropertyName("roles");
+                    writer.WriteStartArray();
+                    foreach (var role in roles)
+                    {
+                        writer.WriteStringValue(role);
+                    }
+                    writer.WriteEndArray();
+                }
+                writer.WriteNumber("maxDepth", maxDepth);
+                writer.WriteNumber("maxElements", maxElements);
+            }), cancellationToken);
+
+        if (response.ValueKind != JsonValueKind.Object)
+        {
+            return StringResult(
+                EncodeError("The main process returned no element tree for the app window."), true);
+        }
+
+        if (!JsonHelpers.GetBool(response, "success", false))
+        {
+            return StringResult(
+                EncodeError(
+                    JsonHelpers.GetString(response, "error") ??
+                    "Failed to query the app window's elements."),
+                true);
+        }
+
+        return StringResult(response.GetRawText());
     }
 
     /// <summary>

@@ -653,6 +653,7 @@
       "BrowserEvaluate": "Run Page Script",
       "DesktopScreenshot": "Desktop Screenshot",
       "DesktopListWindows": "List Windows",
+      "DesktopQueryElements": "Query Elements",
       "DesktopClick": "Desktop Click",
       "DesktopType": "Desktop Type",
       "DesktopScroll": "Desktop Scroll",
@@ -856,6 +857,9 @@
       },
       "DesktopListWindows": {
         "title": "List Windows"
+      },
+      "DesktopQueryElements": {
+        "title": "Query Elements"
       },
       "DesktopClick": {
         "title": "Desktop Click"

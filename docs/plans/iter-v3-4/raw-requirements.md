@@ -13,8 +13,10 @@
 > 追加（2026-10-29 13:56）：**登记 S-270**（新工具在聊天窗显示英文名），承接条数 **16 → 17**（见 §1.2），插入为刀 10 —— 14:03 老大拍板「这些需要进本迭代」。
 > 追加（2026-10-29 15:40）：**登记 S-271**（失败的工具调用会从折叠块里跳出来），承接条数 **17 → 18**（见 §1.2），插入为刀 11。
 > 追加（2026-10-29 15:53）：**登记 S-272**（桌面坐标算不出来），承接条数 **18 → 19**（见 §1.2），**第一段随刀 12 交付，第二段移交 v3-iter-5**；同批**登记 S-273**（UI Automation 元素点击），**移交下迭代**（见 §1.3），不占承接。
+> 追加（2026-10-29 18:15）：**登记 S-275 / S-276**（压缩对图片无效 / 最近 N 轮把压缩摘要当用户轮），承接条数 **19 → 21**（见 §1.2），分别为刀 16、刀 17。**此处补记 —— 当时漏写了顶部追加行。**
+> 追加（2026-10-30 11:29）：**登记 S-283**（截图落盘返回路径），承接条数 **21 → 22**（见 §1.2），插入为刀 15，**是 S-275 的硬前置** —— 压缩占位文案里那句「可重新 Read 查看」要靠它才成立。
 
-## 一、承接需求（十九条）
+## 一、承接需求（二十二条）
 
 来源：v3-iter-3（1.0.3）收尾时老大 2026-10-28 09:44 定「没有做的需求都移入下个迭代」。
 
@@ -43,7 +45,7 @@
 | S-256 | 模型输出超长文本时整页像截图一样静止 | 待开工。症状与 iter-v2-36 **S-149** 逐字重合，S-149 §7.4 当年写明「未做、等口径」。**开工前要先拍 A/B 口径** | [S-256](../iter-v3-3/requirements/S-256.md) |
 | S-260 | 内置浏览器保活池 —— 上限 2 个会话，满了要明确告诉 agent | 待开工。随 S-247 内存治理同批 | [S-260](../iter-v3-3/requirements/S-260.md) |
 
-### 1.2 本迭代新登记（八条）
+### 1.2 本迭代新登记（十三条）
 
 | 编号 | 标题 | 状态 | 明细 |
 |---|---|---|---|
@@ -57,8 +59,11 @@
 | S-270 | 新工具在聊天窗显示英文名 —— 中文标签表停在 OpenCowork 迁移期 | 2026-10-29 13:56 登记，**已交付（刀 10，14:20）**。`permission.toolLabels` 只有 23 条、全是迁移期那批；渲染点 `t(key, { defaultValue: name })` 缺 key 静默回退英文原名，机制上没有防漏；`FileChangeCard` 与 `ProcessTextLine` 干脆不查表。三件套：补到 **124 条**（zh/en 对齐，含 C# 侧 61 个第一方工具）+ 统一出口 `resolveToolDisplayName`（别名归一 / MCP / codegraph 前缀族 / 兜底「工具 · 原名」）+ `test:tool-labels-coverage`。**刀 10 补正之二（16:53）**：输入框状态栏两处只调了 `resolveProxyStatusName()`（只拆 `use_capability`、非代理工具原样返回）⇒ 平时跑工具露英文名，补 `resolveStatusToolName()` 接上统一出口。见 [requirements/S-270.md](requirements/S-270.md) |
 | S-271 | 失败的工具调用会从折叠块里跳出来 —— 三处判据不同步 | 2026-10-29 15:00 登记、15:40 老大拍板进本迭代，**已交付（刀 11，16:10）**。实为 S-225 §8「档位不得藏错误」的刻意口径 + 三条判据不同步叠加，**不是偶然**。方案 A：`hasError` 不再单独决定 `force`，`ToolExecutionRun` 加 `failedCount`，折叠头出红色「M 个失败」徽章。见 [requirements/S-271.md](requirements/S-271.md) |
 | S-272 | 桌面坐标算不出来 —— 截图不给参照系，模型只能对着图瞎猜 | 2026-10-29 15:53 登记，**第一段随刀 12 交付**（元数据补全 + DPI 判定修复），**第二段移交 v3-iter-5**（相对坐标 / 网格 / 窗口枚举）。老大原话「它不知道怎么去点击坐标」。四层原因：截图不含窗口矩形；`originX/originY` 主进程算了但 C# 编码丢掉；工具描述不说是哪个坐标系；`isPointInsideDesktop` 拿 DIP 边界校验物理像素坐标 ⇒ 高 DPI 屏右半边点不动。见 [requirements/S-272.md](requirements/S-272.md) |
+| S-275 | 压缩对图片工具结果无效 —— 24 万字符 base64 钉在保留尾部，压完 3 分钟又超 | 2026-10-29 18:10 登记，**待老大拍板**（建议本迭代）。会话 `9yXnLPAM…` 50 分钟连压 9 次，`DIAG` 行 16 条非 skip、峰值 `inputTokens=503539`。根因：`ContextCompression.cs:557-583` `TailStart` 的 `minKeep = 2` 让尾部两条**不参与** 16384 token 预算判断，而一次 Read 截图正好产生 `tool_use` + `tool_result` 两条 ⇒ 243496 字符的 base64 原样钉在 wire 尾部。建议方案 A：压缩前把超预算的 `image` block 占位化成 `[图片已省略：xxx.png 1680×1120，可重新 Read]`。见 [S-275](requirements/S-275.md) |
+| S-276 | 聊天窗「最近 N 轮」把压缩摘要当成用户轮 —— 打开会话满屏「任务暂告一段落」 | 2026-10-29 18:05 登记，**待老大拍板**（建议本迭代）。库里 141 条消息全在（真实用户 51 / 摘要 20 / 助手 50 / 边界 20），但三处判据都用 `role = 'user'` 数轮次：`session-slice.ts:77-90`、`DbMessageToolsQueries.cs:75-77/84/93`。实测首次加载 `turns=5` ⇒ 拉回 10 条**全是压缩卡、真实用户 0 条**。修法：统一 `isRealUserTurn`（`role=user` 且无 `meta.compactSummary`），三处同口径。见 [S-276](requirements/S-276.md) |
+| S-283 | 桌面截图 / 窗口截图落盘返回路径 —— 图不再只活在内存里 | 2026-10-30 11:29 登记，11:36 老大拍板进本迭代，**已交付（刀 15）**。方案 A：**落盘 + 路径写进文字行 + image block 照旧保留** —— 本轮**不省上下文**，省靠 S-275；本条只是把「以后能省」的前提铺好 | [S-283](requirements/S-283.md) |
 
-### 1.3 移交下迭代（三条，不占承接、不占刀序）
+### 1.3 移交下迭代（八条，不占承接、不占刀序）
 
 | 编号 | 标题 | 状态 | 明细 |
 |---|---|---|---|
@@ -66,6 +71,10 @@
 | S-268 | `DesktopScreenshot` 的 `path` 参数完全无效 | 2026-10-29 10:40 登记，来源 dev 第 6 轮审查。`ExecuteScreenshotAsync` 的请求体是空对象，除 `delayMs` 一个字段都没读 ⇒ `path` 从未被解析；而 `CaptureAppWindow` 认真解析并落盘。两个工具调用姿势一样、行为差一半 ⇒ 模型以为存了、下一轮 Read 一个不存在的文件。**比报错更糟：假成功让它继续往下走** | [S-268](requirements/S-268.md) |
 | S-273 | 桌面操作别算坐标了 —— 用 UI Automation 直接找元素 | 2026-10-29 15:53 登记。**S-272 的换路径版**：前者把「看图算坐标」的误差压小，本条干脆不算 —— `DesktopQueryElements` 读元素树（`name` / `controlType` / `rect`），`DesktopClick({ window, element })` 取矩形中心点。Chromium / Electron 会把 DOM 可访问性树暴露给 Windows UIA，**我们自己的页面完全可点**。只作增强路径，不替代坐标路径（第三方原生应用覆盖度参差）。开工前四件待查：主进程有没有 `setAccessibilitySupportEnabled`、DOM 到 UIA `Name` 的映射、AOT 下 `IUIAutomation` 互操作、混合 DPI 下 `BoundingRectangle` 的坐标系 | [S-273](requirements/S-273.md) |
 | S-274 | 长文本流式时渲染进程涨到 4.3 GB 并崩溃 —— scrollTop 被 clamp 绕过「已钉底」守卫 | 2026-10-29 17:50 登记，来源 dev 实例日志 `~/.wishful-claw-dev/logs/2026-10-29.log`（生产实例日志与之分家）。17:20:45 `memory type=Tab ws=4360MB peak=4833MB`，17:20~17:34 连报 6 次 `Maximum update depth exceeded`。栈精确指向 `useMessageListScroll.ts`：跟随目标 `realBottom + gapTarget - clientHeight` 里的 gapTarget 是提前量（最多 240px），大于容器底部 padding ⇒ 尾部行未挂载那帧 `scrollHeight` 撑不住 ⇒ 浏览器 clamp 写入值（写 1000 读回 760）⇒ `Math.abs(scrollTop - bottom) <= 1` 守卫永远不成立 ⇒ 每帧写 scrollTop → scroll 事件 → setIsAtBottom → layout effect → 再写。三需求叠加才发作（S-256 把流式拉长到几十秒 + S-233 的 observeGrowthOnly 让 floor 与可滚范围脱钩 + S-176 的 gapTarget）。修法：四处写入点先夹进可滚范围、守卫改对夹取后的值比较。闸 103 → 110 条。见 [S-274](requirements/S-274.md) |
+| S-277 | 压缩产物在 `messages` 表永久累积 —— 一个会话一天攒 20 张「任务暂告一段落」 | 2026-10-29 18:15 登记，**下一迭代**（v3-iter-5）。同一会话实测 21 个快照 / 20 对消息行，占全部消息 14%。wire 侧是对的（旧摘要一律折进折叠区，one-summary invariant），错的是持久化与渲染从不清理。三个方案待拍：A 加 `superseded_by` 只展开最新一对（可与 S-276 的 `is_artifact` 列合并成一次迁移）/ B 删旧行（破坏溯源）/ C 纯渲染端合并（零迁移，但窗口仍被占名额）。见 [S-277](requirements/S-277.md) |
+| S-278 | 全局会话发给项目会话的消息是裸文本 —— 希望识别出来渲染成组件 | 2026-10-30 08:19 登记，**下一迭代**（v3-iter-5）。项目会话里看到的是一条 `role=user` 纯文本，正文是 `[GLOBAL AGENT WORK REQUEST] dispatch_id=…` + 一段给模型看的英文协议说明，**用户全看得见**。根因：`project/send-session-message` 走 `chatStore.sendMessage()` 完全模拟用户输入（文件头注释自述 *fully simulating a user action*），只传 `content`、无 meta，渲染端只能嗅探正文前缀；dispatch 记录与这条消息**没有 id 级关联**。附带：同一段协议文本有两份实现（C# `AgentRuntimeGlobalTaskExecutor.cs:233-235` vs 渲染端 `task-board-store.ts` `buildWorkRequestContent`，注释自称 mirrors），**措辞已漂移**。推荐方案 A：meta 带 `dispatchId`/`globalTaskId`/`kind`/任务标题，协议说明移出消息正文。见 [S-278](requirements/S-278.md) |
+| S-279 | 普通消息（`send_session_message`）发出去就没法回 —— 需要轻量回执 | 2026-10-30 08:19 登记，**下一迭代**（v3-iter-5）。`send_work_request` 有 dispatch 记录能回执，`send_session_message` **裸 content 无任何标识**（`AgentRuntimeProjectExecutor.cs:274-328`），而 `reply_global_dispatch` 的 `dispatchId` 是必填 ⇒ 普通问答回不了。现有 `followUp` 是反方向定时追问（`delayMs>=1000`），救不了。方案：普通消息也建轻量 dispatch（`kind=message`，建议 `gm_` 前缀），复用同一个回执工具（**不拆两个**，S-270 的教训是出口越少越好），默认 `hidden_from_board`。见 [S-279](requirements/S-279.md) |
+| S-280 | 全局任务的回执不能只靠 agent 自觉 —— 需要确定性的归档机制 | 2026-10-30 08:19 登记，**下一迭代**（v3-iter-5）。`reply_global_dispatch` 是可选工具，模型会漏：①协议说明写在消息正文里，长会话一压缩就没了（正被 S-275/S-276 放大）；②活干长了收尾忘了；③不觉得这算「汇报」；④这轮压根不是在做这件事。**把状态正确押在模型自觉上本身就是设计缺陷**（同 S-267/S-268 病根）。方案三层：投递态 → `loop_start`/`loop_end` 事件驱动执行态 → 归档分**显式 / 隐式**。三条硬规矩：显式覆盖隐式、隐式必须标明「未显式回复」不许伪装成完成、自动归档只写 dispatch 记录不塞消息。核心难点是「这一轮是不是在干这个 dispatch」—— 推荐借 S-278 的 meta 做强判据，先落地可用中判据 + 三条收窄。见 [S-280](requirements/S-280.md) |
 
 ## 二、挂账与阻塞（两条，不占刀序）
 

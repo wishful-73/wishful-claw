@@ -18,7 +18,9 @@ public sealed class DesktopToolProvider : IToolProvider
             "DesktopScreenshot",
             "Capture a full desktop screenshot and return it to the agent. Use before mouse or keyboard actions when screen state matters. " +
             "The returned text states the image size, its origin, the display scale factor and every display's rectangle — those numbers are the " +
-            "coordinate frame for DesktopClick/DesktopScroll. Coordinates are pixel positions in the returned image, which is never rescaled.",
+            "coordinate frame for DesktopClick/DesktopScroll. Coordinates are pixel positions in the returned image, which is never rescaled. " +
+            "Every capture is also saved to the data directory; the text reports that path, so you can Read it again later instead of re-capturing " +
+            "a desktop that has since changed.",
             ToolSchemaBuilder.Object(
                 new() { ["delayMs"] = ToolSchemaBuilder.Number("Optional delay in milliseconds before capturing.") }),
             availableModes: ["normal", "goal", "global"],
@@ -26,7 +28,7 @@ public sealed class DesktopToolProvider : IToolProvider
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CaptureAppWindow",
-            "Capture a screenshot of the Wishful Claw window itself — not the whole desktop. Use it when you need an image of this app's own UI, for example to illustrate a guide or to show the user what a panel looks like. Prefer it over DesktopScreenshot whenever the subject is this app: it never includes unrelated windows, so the result needs no cleanup. The returned text also states where the window sits on screen (DIP and pixels), so you can turn an offset you measured in the image into a DesktopClick coordinate. Pass `path` to write the PNG to disk; without it you receive the image but nothing is saved.",
+            "Capture a screenshot of the Wishful Claw window itself — not the whole desktop. Use it when you need an image of this app's own UI, for example to illustrate a guide or to show the user what a panel looks like. Prefer it over DesktopScreenshot whenever the subject is this app: it never includes unrelated windows, so the result needs no cleanup. The returned text also states where the window sits on screen (DIP and pixels), so you can turn an offset you measured in the image into a DesktopClick coordinate. The PNG is always saved to the data directory and the text reports that path; pass `path` only to choose a different location.",
             ToolSchemaBuilder.Object(
                 new()
                 {

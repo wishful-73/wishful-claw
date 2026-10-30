@@ -13,6 +13,8 @@
 import { screen } from 'electron'
 import { getMainWindow } from '../../main-window-registry'
 import { persistImageBuffer } from '../../lib/image-persist'
+import { resolveDataDir } from '../../lib/data-dir'
+import { resolveScreenshotDir, screenshotFileNameFromBuffer } from '../../lib/screenshot-dir'
 
 export interface WindowCaptureParams {
   /** Optional settle time before capturing, so an animation can finish. */
@@ -91,13 +93,15 @@ export async function handleWindowCaptureSelf(
     }
 
     const target = typeof typed.targetPath === 'string' ? typed.targetPath.trim() : ''
-    if (target) {
-      const persisted = persistImageBuffer(png, 'image/png', {
-        targetPath: target,
-        baseDir: typed.baseDir
-      })
-      result.filePath = persisted.filePath
-    }
+    // S-283：没指定落点也要落地。以前只有给了 `path` 才写盘，而压缩把 image 块
+    // 占位化之后模型只能靠路径回读 —— 图不在盘上，那句「可重新 Read 查看」就是假的。
+    const persisted = persistImageBuffer(png, 'image/png', {
+      targetPath: target || undefined,
+      baseDir: typed.baseDir,
+      defaultDir: resolveScreenshotDir(resolveDataDir(), new Date()),
+      fileName: screenshotFileNameFromBuffer(png)
+    })
+    result.filePath = persisted.filePath
 
     return result
   } catch (error) {

@@ -7,6 +7,9 @@
 
 import { desktopCapturer, screen } from 'electron'
 import { createRequire } from 'module'
+import { persistImageBuffer } from '../lib/image-persist'
+import { resolveDataDir } from '../lib/data-dir'
+import { resolveScreenshotDir, screenshotFileNameFromBuffer } from '../lib/screenshot-dir'
 
 export const DESKTOP_SCREENSHOT_CAPTURE = 'desktop:screenshot:capture'
 export const DESKTOP_INPUT_CLICK = 'desktop:input:click'
@@ -27,6 +30,13 @@ export interface DesktopScreenshotResult {
   displays?: DesktopDisplayInfo[]
   mediaType?: string
   data?: string
+  /**
+   * 这张截图落盘后的绝对路径（S-283）。
+   *
+   * 以前一个字节都不留盘，历史消息里的图想再看只能重新截 —— 而桌面早不是当时
+   * 的样子。落盘之后，压缩把 image 块占位化（S-275）时模型还能按这条路径回读。
+   */
+  filePath?: string
 }
 
 export interface DesktopDisplayInfo {
@@ -216,9 +226,17 @@ export async function captureDesktopScreenshot(): Promise<DesktopScreenshotResul
     const pngBuffer = primarySource.thumbnail.toPNG()
     const actualSize = primarySource.thumbnail.getSize()
 
+    // S-283：落盘。base64 照旧随报文返回（模型要看得见图），但**同时**留一份在
+    // 数据目录 —— 按内容哈希命名，同一帧重复捕获落到同一个文件，不涨盘。
+    const persisted = persistImageBuffer(pngBuffer, 'image/png', {
+      defaultDir: resolveScreenshotDir(resolveDataDir(), new Date()),
+      fileName: screenshotFileNameFromBuffer(pngBuffer)
+    })
+
     return {
       success: true,
       data: pngBuffer.toString('base64'),
+      filePath: persisted.filePath,
       width: actualSize.width,
       height: actualSize.height,
       originX: primaryDisplay.bounds.x,

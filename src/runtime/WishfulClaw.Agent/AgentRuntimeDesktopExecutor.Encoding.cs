@@ -86,7 +86,18 @@ public static partial class AgentRuntimeDesktopExecutor
             text += $": {displays}";
         }
 
-        return text + ". Click coordinates are pixel positions in THIS image — do not rescale them.";
+        text += ". Click coordinates are pixel positions in THIS image — do not rescale them.";
+
+        // S-283：落盘路径必须说出来。压缩把 image 块占位化（S-275）之后，模型唯一
+        // 能拿到这张图的途径就是回读这个路径 —— 不给它，占位文案那句「可重新 Read
+        // 查看」就是空话。
+        var filePath = JsonHelpers.GetString(response, "filePath");
+        if (!string.IsNullOrEmpty(filePath))
+        {
+            text += $" Saved to {filePath}.";
+        }
+
+        return text;
     }
 
     private static string DescribeDisplays(JsonElement response)
@@ -187,8 +198,10 @@ public static partial class AgentRuntimeDesktopExecutor
             text += ". DesktopClick takes screen pixels: screen position = window pixel origin + offset in this image.";
         }
 
+        // S-283：落盘已改成默认行为，所以「没给 path」不再是没写盘的原因 ——
+        // 还留在这句上说明写盘本身失败了，别让模型误以为是自己没传参数。
         return string.IsNullOrEmpty(filePath)
-            ? text + " No `path` was given, so nothing was written to disk."
+            ? text + " Nothing was written to disk."
             : text + $" Saved to {filePath}.";
     }
 

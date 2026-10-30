@@ -149,3 +149,23 @@
 门禁：typecheck 0 错 / `npm test` **107/107** / 两套 sln 0 警告 0 错误 / `ci-checks` **82/82 通过**。
 
 真机 §九 5 条未跑（第一轮就能看图 / 日志不再 `truncatedBytes=32768` / 落库 meta 仍小 / 纯文本网页照旧截断 / spill 目录不可写时仍能看图）。
+
+### 21:40 · 刀 5 收刀 —— S-288 图片点开不能放大
+
+`ImagePreview.tsx` 436 → **365 行**，浮层搬进新文件 `ImageLightbox.tsx`（171 行），两个都在 500 行内、不用豁免头。有 `filePath` 走 `Dialog` + `ImageViewer`（缩放 0.25~5 / 旋转 / 最大化 / 复制 / 拖拽），没 `filePath` 保留原 `object-contain`。
+
+按 §四 倾向 ②：**没给 `ImageViewer` 加 `src` 入参**。另两处入口都用 `filePath`，加覆盖源要连带改它们的取图与 canvas 复制（`oc-media://` 有 taint 风险）。而「缩略看得见、浮层读不到」这个组合不会出现 —— 缩略本身就走 `oc-media://`。
+
+`ImageViewer` 没有下载，浮层自己补一个按钮（`right-12` 让开内置关闭 X），复用原 `handleDownload`，四条能力才齐。
+
+**顺带挖出真因，得单独记一笔**：`DialogContent` 自带 `sm:max-w-lg`，Tailwind 变体优先级高于裸工具类 ⇒ `LocalImagePreviewDialog` 那句 `max-w-[95vw]` **在 ≥640px 视口一直无效**，浮层长期只有 512px 宽。这不是「图能不能缩放」的问题，是「盒子本身就这么小」。两处都补 `sm:max-w-[95vw]`。属于需求单 §五 候选 3 的入口，但根因一致，不修等于没解决。
+
+缩略加 `max-h-[320px]`，`aspectRatio` 保留（去掉就是 S-233 那类抖）。横图 341px 压到 320、左右留 16px 底色 —— 不裁切。
+
+新门禁 `tests/image-lightbox` **13 断言**，源码闸（纯 className 缺陷抽不出纯函数，先例 `tests/data-dir` 的行序闸）。反面验证：删掉 `sm:max-w-[95vw]` ⇒ 红，加回复绿。
+
+**又踩了同一个坑**：反向验证时用 `(Get-Content -Raw) -replace | Set-Content` 改 `.tsx` —— PS 5.1 按 ANSI 解码 ⇒ 中文注释整片乱码，`-Encoding UTF8` 又加 BOM，整个文件重写才复原。规矩升级成硬约束：**任何文本文件都不用 PowerShell 做读改写**（见 S-290 §8.5 同款记录）。
+
+门禁：typecheck 0 错 / `npm test` **108/108** / 两套 sln 0 警告 0 错误 / `ci-checks` 全过。
+
+真机 §九 5 条未跑。

@@ -5,10 +5,10 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
-import { useCallback, useState, type ReactNode } from 'react'
-import { X, Download, Copy, Check } from 'lucide-react'
-import { motion, AnimatePresence } from 'motion/react'
+import { useCallback, useState } from 'react'
+import { Download, Copy, Check } from 'lucide-react'
 import { toast } from 'sonner'
+import { ImageLightbox, type ImagePreviewAction } from './ImageLightbox'
 import { IPC } from '@renderer/lib/ipc/channels'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { writeBase64ImageToClipboard } from '@renderer/lib/utils/image-clipboard'
@@ -25,6 +25,8 @@ import {
   type ImageDimensions
 } from './use-image-display-src'
 
+export type { ImagePreviewAction }
+
 interface ImagePreviewProps {
   src: string
   alt?: string
@@ -38,13 +40,6 @@ interface ImagePreviewProps {
    * content) do not need the extra chrome.
    */
   quickActions?: boolean
-}
-
-export interface ImagePreviewAction {
-  key: string
-  label: string
-  icon: ReactNode
-  onClick: () => void
 }
 
 function getFileName(filePath: string): string {
@@ -296,9 +291,10 @@ export function ImagePreview({
 
   return (
     <>
-      {/* Thumbnail */}
+      {/* Thumbnail —— 宽高都给上限：`max-w-lg` 单独存在时竖图会算出 ~910px 高，
+          一条消息就吃掉大半屏（S-288 §3.2）。`aspectRatio` 保留，加载前后高度一致不抖。 */}
       <div
-        className="relative max-w-lg overflow-hidden rounded-lg border border-border/50 transition-colors group hover:border-primary/50"
+        className="relative max-h-[320px] max-w-lg overflow-hidden rounded-lg border border-border/50 bg-muted/10 transition-colors group hover:border-primary/50"
         style={
           imageDimensions
             ? { aspectRatio: `${imageDimensions.width} / ${imageDimensions.height}` }
@@ -331,7 +327,7 @@ export function ImagePreview({
           <img
             src={effectiveSrc}
             alt={alt}
-            className="block w-full h-auto"
+            className="block h-full w-full object-contain"
             loading="lazy"
             onLoad={handleImageLoad}
             {...(imageDimensions
@@ -350,87 +346,19 @@ export function ImagePreview({
         </div>
       </div>
 
-      {/* Full screen preview */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 pb-12 pt-16"
-            onClick={() => setIsOpen(false)}
-          >
-            {/* Toolbar */}
-            <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
-              {actions.map((action) => (
-                <button
-                  key={action.key}
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    action.onClick()
-                  }}
-                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
-                  title={action.label}
-                  aria-label={action.label}
-                >
-                  {action.icon}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleCopy()
-                }}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
-                title="Copy to clipboard"
-              >
-                {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleDownload()
-                }}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
-                title="Download"
-              >
-                <Download className="size-5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setIsOpen(false)
-                }}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
-                title="Close"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            {/* Image */}
-            <motion.img
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.9 }}
-              src={effectiveSrc}
-              alt={alt}
-              className="h-full w-full object-contain"
-              onLoad={handleImageLoad}
-              onClick={(e) => e.stopPropagation()}
-            />
-
-            {/* Close hint */}
-            <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 text-sm text-white/60">
-              Click outside to close
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Full screen preview —— 盘上有路径就走 ImageViewer（可缩放），否则等比塞满 */}
+      <ImageLightbox
+        open={isOpen}
+        src={effectiveSrc}
+        alt={alt}
+        filePath={filePath}
+        actions={actions}
+        copied={copied}
+        onClose={() => setIsOpen(false)}
+        onCopy={() => void handleCopy()}
+        onDownload={() => void handleDownload()}
+        onImageLoad={handleImageLoad}
+      />
     </>
   )
 }

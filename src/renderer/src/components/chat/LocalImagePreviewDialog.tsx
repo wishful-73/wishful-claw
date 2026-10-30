@@ -22,7 +22,9 @@ export function LocalImagePreviewDialog(): React.JSX.Element | null {
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : close())}>
-      <DialogContent className="flex h-[90vh] w-[95vw] max-w-[95vw] flex-col p-4">
+      {/* `sm:max-w-[95vw]` 不能省：`DialogContent` 自带 `sm:max-w-lg`，变体优先级高于裸
+          `max-w-[95vw]` —— 只写后者时 ≥640px 视口会被压回 512px 宽，图放不大（S-288）。 */}
+      <DialogContent className="flex h-[90vh] w-[95vw] max-w-[95vw] flex-col p-4 sm:max-w-[95vw]">
         <DialogHeader className="sr-only">
           <DialogTitle>{fileName}</DialogTitle>
         </DialogHeader>

@@ -129,6 +129,14 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/global-task-dispatches-update", DbGlobalTaskDispatchTools.Update);
         context.Register("db/global-task-dispatches-cancel", DbGlobalTaskDispatchTools.Cancel);
 
+        // ── Global Message Dispatches (S-279: plain-message dispatch records) ──
+        // 与任务派活分开一张表：普通消息没有 global_task_id 可挂，而任务表的该列是 NOT NULL。
+        context.Register("db/global-message-dispatches-list", DbGlobalMessageDispatchTools.List);
+        context.Register("db/global-message-dispatches-get", DbGlobalMessageDispatchTools.Get);
+        context.Register("db/global-message-dispatches-create", DbGlobalMessageDispatchTools.Create);
+        context.Register("db/global-message-dispatches-update", DbGlobalMessageDispatchTools.Update);
+        context.Register("db/global-message-dispatches-cancel", DbGlobalMessageDispatchTools.Cancel);
+
         // ── Goals ──
         context.Register("db/goals-list", DbGoalTools.List);
         context.Register("db/goals-list-page", DbGoalTools.ListPage);

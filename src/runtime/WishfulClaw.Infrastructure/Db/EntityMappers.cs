@@ -141,6 +141,28 @@ public static class EntityMappers
         CompletedAt = r.GetNullableInt64("completed_at")
     };
 
+    /// <summary>
+    /// S-279：<c>global_message_dispatches</c> 的 mapper。这张表**没有** global_task_id 与 kind
+    /// 两列（普通消息派活不挂全局任务），所以这两项填常量 —— 复用同一个
+    /// <see cref="GlobalTaskDispatchEntity"/> 是为了让两张表共用一个状态机与一套 DTO。
+    /// </summary>
+    public static GlobalTaskDispatchEntity MapGlobalMessageDispatch(SqliteDataReader r) => new()
+    {
+        Id = r.GetString("id"),
+        GlobalTaskId = string.Empty,
+        ProjectId = r.GetNullableString("project_id"),
+        SessionId = r.GetString("session_id"),
+        SourceSessionId = r.GetNullableString("source_session_id"),
+        Kind = GlobalTaskDispatchKindValues.Message,
+        Instruction = r.GetString("instruction"),
+        Status = r.GetString("status"),
+        LatestReport = r.GetNullableString("latest_report"),
+        Error = r.GetNullableString("error"),
+        CreatedAt = r.GetInt64("created_at"),
+        UpdatedAt = r.GetInt64("updated_at"),
+        CompletedAt = r.GetNullableInt64("completed_at")
+    };
+
     public static CompactionSnapshotEntity MapCompactionSnapshot(SqliteDataReader r) => new()
     {
         SnapshotId = r.GetString("snapshot_id"),

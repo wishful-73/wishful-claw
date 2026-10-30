@@ -22,6 +22,14 @@ public static class GlobalTaskDispatchStatusValues
     public const string Acknowledged = "acknowledged";
     public const string InProgress = "in_progress";
     public const string Completed = "completed";
+
+    /// <summary>
+    /// S-280（v3-iter-5）：目标会话跑完了但**没有**显式回执，由我们归档层代标。
+    /// 与 <see cref="Completed"/> 必须区分开 —— 卡片上要写明「未显式回复」，
+    /// 不许把隐式完成伪装成显式完成。
+    /// </summary>
+    public const string CompletedImplicit = "completed_implicit";
+
     public const string Blocked = "blocked";
     public const string Failed = "failed";
     public const string Cancelled = "cancelled";

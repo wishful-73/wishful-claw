@@ -287,6 +287,39 @@ public static partial class AgentRuntimeProjectExecutor
             if (hasFollowUp && string.IsNullOrWhiteSpace(sourceSessionId))
                 throw new InvalidOperationException("A source session is required for follow-up tracking");
 
+            // S-279（v3-iter-5）：普通消息派活也要有记录。
+            //
+            // 以前 send_session_message 从不建 dispatch —— 全局会话「就地问一句 / 催一下」
+            // 发完就没了，没有任何可追踪的凭据，S-280 的自动回执也就无处落笔。
+            //
+            // 与 send_work_request 的关键差别：**不往 wire 正文里塞协议说明**。
+            // 普通消息的 content 就是用户原话，塞一段英文回执协议会直接出现在目标会话里，
+            // 正是 S-278 刚拆开的那件事。所以这里只带 meta.globalDispatch 让渲染端认出来，
+            // 回执靠 S-280 的归档层代标 completed_implicit（目标会话跑完但没显式回执）。
+            //
+            // sourceSessionId 必非空：send_session_message 属 ToolVisibilityScopes.GlobalSideOnly，
+            // 只有全局会话拿得到它，所以回执永远有地方可回。
+            string? messageDispatchId = null;
+            if (!string.IsNullOrWhiteSpace(sourceSessionId))
+            {
+                messageDispatchId = DispatchTableRouter.NewMessageDispatchId();
+                var createParams = WorkerJsonHelper.BuildJsonElement(w =>
+                {
+                    w.WriteStartObject();
+                    w.WriteString("id", messageDispatchId);
+                    w.WriteString("sessionId", sessionId);
+                    if (!string.IsNullOrEmpty(projectId))
+                        w.WriteString("projectId", projectId);
+                    w.WriteString("sourceSessionId", sourceSessionId);
+                    w.WriteString("instruction", content);
+                    w.WriteString("status", GlobalTaskDispatchStatusValues.Pending);
+                    w.WriteEndObject();
+                });
+                var createResponse = DbGlobalMessageDispatchTools.Create(createParams);
+                if (!TryReadDispatchMutation(createResponse, out var createError))
+                    return EncodeError(createError ?? "Failed to create message dispatch record");
+            }
+
             // Build reverse request params
             var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
             {
@@ -295,6 +328,19 @@ public static partial class AgentRuntimeProjectExecutor
                 w.WriteString("content", content);
                 w.WriteString("workingFolder", workingFolder ?? string.Empty);
                 w.WriteString("projectId", projectId ?? string.Empty);
+                if (messageDispatchId is not null)
+                {
+                    // 普通消息没有「给人看的版本」与「给模型看的版本」之分，两者都是原话；
+                    // displayContent 省略，渲染端按 content 显示。meta 只用来做卡片标识。
+                    w.WritePropertyName("meta");
+                    w.WriteStartObject();
+                    w.WritePropertyName("globalDispatch");
+                    w.WriteStartObject();
+                    w.WriteString("dispatchId", messageDispatchId);
+                    w.WriteString("kind", GlobalTaskDispatchKindValues.Message);
+                    w.WriteEndObject();
+                    w.WriteEndObject();
+                }
                 if (hasFollowUp)
                 {
                     w.WritePropertyName("followUp");
@@ -580,6 +626,32 @@ public static partial class AgentRuntimeProjectExecutor
 
         var message = JsonHelpers.GetString(result, "result")?.Trim();
         return string.IsNullOrEmpty(message) ? successFallback : message;
+    }
+
+    /// <summary>
+    /// S-279：校验 Db*DispatchTools 的 WorkerResponse —— 外层 <c>error</c> 或内层
+    /// <c>{ success: false, error }</c> 都算失败。建派活记录失败必须报错，不许静默
+    /// 发消息（否则 S-280 的自动回执会去改一条不存在的记录）。
+    /// </summary>
+    private static bool TryReadDispatchMutation(WorkerResponse response, out string? error)
+    {
+        using var document = JsonDocument.Parse(response.ToJsonBytes(null));
+        var root = document.RootElement;
+        if (root.TryGetProperty("error", out var envelopeError))
+        {
+            error = envelopeError.GetString();
+            return false;
+        }
+        var result = root.GetProperty("result");
+        if (result.ValueKind == JsonValueKind.Object
+            && result.TryGetProperty("success", out var success)
+            && !success.GetBoolean())
+        {
+            error = result.TryGetProperty("error", out var resultError) ? resultError.GetString() : "operation failed";
+            return false;
+        }
+        error = null;
+        return true;
     }
 
     private static string EncodeError(string message)

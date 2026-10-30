@@ -28,6 +28,7 @@
     "acknowledged": "Acknowledged",
     "in_progress": "In progress",
     "completed": "Completed",
+    "completed_implicit": "No explicit reply",
     "blocked": "Blocked",
     "failed": "Delivery failed",
     "cancelled": "Cancelled"

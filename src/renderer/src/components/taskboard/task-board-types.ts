@@ -13,6 +13,9 @@ export type GlobalDispatchStatus =
   | 'acknowledged'
   | 'in_progress'
   | 'completed'
+  // S-280：会话结束时代替 agent 归档，**不是** agent 显式回复。
+  // 必须与 'completed' 分开：卡片要如实写「未显式回复」，不许伪装成显式完成。
+  | 'completed_implicit'
   | 'blocked'
   | 'failed'
   | 'cancelled'
@@ -32,6 +35,7 @@ export const GLOBAL_DISPATCH_STATUSES: GlobalDispatchStatus[] = [
   'acknowledged',
   'in_progress',
   'completed',
+  'completed_implicit',
   'blocked',
   'failed',
   'cancelled'

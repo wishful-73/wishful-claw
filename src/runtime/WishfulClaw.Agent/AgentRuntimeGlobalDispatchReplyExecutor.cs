@@ -14,13 +14,6 @@ namespace WishfulClaw.Agent;
 /// </summary>
 public static class AgentRuntimeGlobalDispatchReplyExecutor
 {
-    private static readonly HashSet<string> AllowedReplyStatuses = new(StringComparer.Ordinal)
-    {
-        GlobalTaskDispatchStatusValues.InProgress,
-        GlobalTaskDispatchStatusValues.Completed,
-        GlobalTaskDispatchStatusValues.Blocked
-    };
-
     // Serialize the read/check/write/delivery sequence so concurrent retries in
     // this worker cannot both notify the source session.
     private static readonly SemaphoreSlim ReplyGate = new(1, 1);
@@ -70,15 +63,12 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                 w.WriteString("id", dispatchId);
                 w.WriteEndObject();
             });
-            var getResponse = DbGlobalTaskDispatchTools.Get(getParams);
+            var getResponse = ReadDispatchRow(dispatchId, getParams);
             if (!TryGetDispatch(getResponse, out var dispatch, out var getError))
                 return EncodeError(getError ?? "Dispatch not found");
 
-            var currentStatus = dispatch.GetProperty("status").GetString() ?? string.Empty;
-            var currentReport = dispatch.TryGetProperty("latest_report", out var latestReport)
-                && latestReport.ValueKind == JsonValueKind.String
-                ? latestReport.GetString()
-                : null;
+            var currentStatus = DispatchStatusMachine.ReadStatus(dispatch);
+            var currentReport = DispatchStatusMachine.ReadLatestReport(dispatch);
             var callerSessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
             var targetSessionId = dispatch.GetProperty("session_id").GetString()?.Trim();
             if (string.IsNullOrEmpty(callerSessionId) ||
@@ -87,24 +77,20 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                 return EncodeError("Dispatch reply is only allowed from its target session.");
             }
 
-            // 2. Resolve the new status: explicit value wins; otherwise an
-            // untouched (pending/sent) dispatch becomes acknowledged.
+            // 2. 状态决议走公共层 DispatchStatusMachine（两张派活表共用一份，不复制粘贴）。
             string newStatus;
-            if (!string.IsNullOrEmpty(requestedStatus))
+            try
             {
-                if (!AllowedReplyStatuses.Contains(requestedStatus))
-                    return EncodeError("status must be one of: in_progress / completed / blocked");
-                newStatus = requestedStatus;
+                newStatus = DispatchStatusMachine.ResolveExplicitReply(currentStatus, requestedStatus);
             }
-            else
+            catch (InvalidOperationException ex)
             {
-                newStatus = currentStatus is GlobalTaskDispatchStatusValues.Pending
-                    or GlobalTaskDispatchStatusValues.Sent
-                    ? GlobalTaskDispatchStatusValues.Acknowledged
-                    : currentStatus;
+                return EncodeError(ex.Message);
             }
 
-            if (currentStatus == GlobalTaskDispatchStatusValues.Completed ||
+            // S-280 铁律：**显式永远覆盖隐式**。completed_implicit 不是终态，
+            // 目标会话事后补一条显式回执必须能改写它 —— 所以这里只拦真正的终态。
+            if (DispatchStatusMachine.IsTerminal(currentStatus) ||
                 (string.Equals(currentStatus, newStatus, StringComparison.Ordinal) &&
                  string.Equals(currentReport, report, StringComparison.Ordinal)))
             {
@@ -125,7 +111,7 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                 w.WriteEndObject();
                 w.WriteEndObject();
             });
-            var updateResponse = DbGlobalTaskDispatchTools.Update(patch);
+            var updateResponse = UpdateDispatchRow(dispatchId, patch);
             if (!TryDbMutationOk(updateResponse, out var updateError))
                 return EncodeError(updateError ?? "Failed to record the dispatch reply");
 
@@ -218,6 +204,24 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
     }
 
     // ─── Helpers ───
+
+    /// <summary>
+    /// S-279：回执入口按 id 前缀分表查 —— <c>gm_</c> 走普通消息派活表，其余走任务派活表。
+    /// 路由规则只在 <see cref="DispatchTableRouter"/> 里写一份，这里不重复判断前缀。
+    /// </summary>
+    private static WorkerResponse ReadDispatchRow(string dispatchId, JsonElement getParams)
+    {
+        return DispatchTableRouter.IsMessageDispatch(dispatchId)
+            ? DbGlobalMessageDispatchTools.Get(getParams)
+            : DbGlobalTaskDispatchTools.Get(getParams);
+    }
+
+    private static WorkerResponse UpdateDispatchRow(string dispatchId, JsonElement patchParams)
+    {
+        return DispatchTableRouter.IsMessageDispatch(dispatchId)
+            ? DbGlobalMessageDispatchTools.Update(patchParams)
+            : DbGlobalTaskDispatchTools.Update(patchParams);
+    }
 
     /// <summary>Parses the DbGlobalTaskDispatchTools.Get envelope into the snake_case dispatch row.</summary>
     private static bool TryGetDispatch(WorkerResponse response, out JsonElement dispatch, out string? error)

@@ -278,4 +278,59 @@
 
 结论：本迭代不动工，S-265 保持「待查」。缺的两份证据拿到之前，任何实现都是猜。
 
+### 2026-10-30 · **S-281 撤销**（原刀 1）+ 刀序整体重排
+
+老大拍板：**撤销，不是顺延** —— 没有可做的工作。需求单保留供溯源，顶部已加「已撤销（2026-10-30）」，§九 的核实结论原样留着。
+
+**全仓 30 处 `backdrop-blur` 逐处走完的结论**（这是这一刀唯一有价值的产出，别再有人重走一遍）：
+
+| 归类 | 处数 | 背后有没有真内容 | 处置 |
+|---|---|---|---|
+| 弹层 / 浮层 / Popover（`ModelSettingsPopover`、`SubAgentCard`、`ChangeReviewSheet`、`context-menu`、`dropdown-menu`、`orchestration-member-strip` 等） | 约 18 | **有**，浮在内容之上 | 保留 |
+| 吸顶条 / 标题栏（`TitleBar`、`SettingsPage`、`SplashPage`、`PersonaSelectPage`、`branch-panel`、`AutoFallbackChain`、`ModelSwitcher`） | 约 8 | **有**，滚动时下方内容从它背后穿过 | 保留 |
+| 小面积元素（`VirtualListContent` 的滚动到底部按钮、`sandbox-elevation-chip`、`widget-output`、`chart-primitives` 的 tooltip） | 约 4 | **有**，且面积小、成本低 | 保留 |
+| 透明浮窗根容器（**`clipboard/main.tsx` ×2**） | 2 | **有**（窗口 `transparent: true`） | 保留 —— **本条原本要删的就是它，实际不能删** |
+
+**没有一处是压在不透明底上的无效模糊。** 需求单 §三 描述的那类「纯烧管线」在当前代码里不存在。
+
+**流程教训**（比这条需求本身值钱）：这条是「grep 到匹配就下结论、没打开文件确认是哪个入口」的产物。路径少写 `clipboard/` 一段，结论就从「透明浮窗的必要模糊」翻转成「主窗口的无效模糊」。同类登记以后**必须先 `Read` 命中的那一行再定性**。
+
+**刀号重排**：S-281 出表后整体前移一位。旧 0 不变，旧 2→新 1、旧 3→新 2、旧 4→新 3、旧 5→新 4、旧 6→新 5、旧 7→新 6、旧 8→新 7、旧 9→新 8、旧 10→新 9、旧 11→新 10、旧 12→新 11、旧 13→新 12、旧 14→新 13。**本文件上面那些历史记录用的是旧刀号**，不再回改（改了反而对不上当时的提交信息）。
+
+**挂账口径同时定死**：S-230 / S-233 都**待专门迭代**，不占本迭代刀序，收尾时也不清账。
+
+
+### 2026-10-31 00:10 · 刀 9 / 刀 10 收刀 —— S-279 + S-280（通信三连的收口）
+
+> 刀号按 §「S-281 撤销」重排后的口径：**S-279 = 刀 9、S-280 = 刀 10**（旧号分别是 10 / 11）。本文件上方历史记录仍是旧号，不回改。
+
+老大拍板走 **C 方案**：普通消息另建一张表，而不是去放宽 `global_task_dispatches.global_task_id` 的 `NOT NULL`。理由是数据安全 —— 那张表是任务板唯一数据源，为一条约束重建它，赌的是看板数据不丢。
+
+**S-279（刀 9）—— 普通消息也有回执通道了**
+
+1. **建表零迁移**。`DbClient.Schema.cs` 新增 `global_message_dispatches`（`CREATE TABLE IF NOT EXISTS` + 两个索引），老库启动自动建、一条数据不搬。`global_task_dispatches` **一个字节没动**。注释里写明「为什么不复用」：`global_task_id` 是 `NOT NULL`。
+2. **分表路由只有一处**。新建 `DispatchTableRouter`：`gm_` 前缀 → 消息表，否则任务表。前缀常量只此一处，别处不许再写 `"gm_"` 字面量 —— 理由和 S-276 那轮「四处判据各写各的」一样：复制粘贴出去，两边迟早漂移。
+3. **状态机抽公共层**。`DispatchStatusMachine` 一张表一份语义、两张表共用：`IsTerminal` / `AcceptsExplicitReply` / `ResolveExplicitReply` / `ShouldMarkImplicitCompletion` / `CanCancel`。`DbGlobalMessageDispatchTools` 的 `List` / `Get` / `Create` / `Update` / `Cancel` 全部走它。
+4. **回执不拆两个工具**。`reply_global_dispatch` 仍是唯一入口，按 `dispatchId` 前缀分表。S-270 的教训是出口越少越好。
+
+新套件 `tests/WishfulClaw.DispatchRouterRegressionTests`（真 sqlite 跑，不是 mock）。**幂等用子进程验**：`DbClient.Initialize` 有幂等早退，同进程测不出二次启动，只能起子进程再开一次库。反向验证：把建表改成 `CREATE TABLE`（去掉 `IF NOT EXISTS`）⇒ `a second boot against the same db succeeds` 当场红，报 `table global_message_dispatches already exists`。
+
+**S-280（刀 10）—— 回执不再押在 agent 自觉上**
+
+归档层 `DispatchArchive.ArchiveImplicitCompletions(sessionId)` 在 `AgentLoop.EmitLoopEndAsync` 收口，**一个入口覆盖两张表**。三条硬规矩逐条落地：
+
+- **①显式永远覆盖隐式**：`completed_implicit` **不算终态**，`IsTerminal` 与 `IsImplicitCompletion` 刻意分开写，防止有人图省事把它并进终态集合。
+- **②隐式必须标明「未显式回复」，不许伪装成完成**：`latest_report` 写标记；任务板状态徽章加 `completed_implicit`，配色**刻意用中性灰而不是绿色** —— 绿色会让人以为 agent 真交回了结果，正是要防的那种伪装。
+- **③自动归档只写 dispatch 记录，不塞消息**。
+
+**顺手修掉一个真缺陷（不是新功能）**：`ResolveExplicitReply` 原先把 `completed_implicit` 和 `pending` / `sent` 一起返回 `acknowledged` —— 已经跑完、只是没回执的记录，补一条不带 `status` 的回执反而**退回「刚确认收到」**，是降级，与「显式永远覆盖隐式」正好相反。改成：`completed_implicit` + 裸回执 ⇒ `completed`。
+
+反向验证：把这条修复退回旧逻辑 ⇒ **3 条断言当场红**（`an explicit reply without a status upgrades completed_implicit to completed` / `a bare late reply resolves to completed, not acknowledged (got acknowledged)` / `the dispatch ends up completed after the late reply (got acknowledged)`）。还原后全绿。
+
+**一条我自己拍错的断言**：初版写了 `completed_implicit cannot be cancelled`，跑出来红。想清楚后改的是断言、不是实现 —— 取消是**人的显式动作**，不会把「未回执」伪装成「已完成」；反过来禁掉取消，全局会话就会有一张「未显式回复」的卡片永久挂着，既清不掉也关不掉。
+
+门禁：`npm run typecheck` 两配置 **0 错** / `npm test` **112/112** / `dotnet build src/runtime/WishfulClaw.sln` **0 警告 0 错误** / `WishfulClaw.DispatchRouterRegressionTests` **72/72**（退出码 0）。
+
+
+
 

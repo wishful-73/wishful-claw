@@ -240,3 +240,22 @@
 **反向验证两次都红**：① 把 `displayContent` 改成 wire 文本 ⇒ `displayContent 必须严格等于 instruction`；② 把 C# 的 `builtin:` 前缀去掉 ⇒ `C# 的派活文本必须也指向 builtin:reply_global_dispatch`。还原后 25 通过。
 
 门禁：两套 sln 0 警告 0 错误 / `typecheck` 两配置 0 错 / `npm test` **111/111** / `ci-checks` **85/85** 通过。
+
+### 23:10 · 刀 10（S-279）未动工 —— 卡在一条 NOT NULL，改判待拍板
+
+先查需求单 §四 的前提，一半是好消息一半是坏消息。
+
+**好消息**：`kind` 这条线其实早就铺好了 —— `GlobalTaskDispatchKindValues` 里 `Message` / `WorkRequest` 两个值都在，`kind` 列默认值就是 `'message'`，`Create` 也早就校验 `kind must be 'message' or 'work_request'`。所谓「扩 `kind`」是零改动。真正没做的是**`send_session_message` 从来不建记录**。
+
+**坏消息**：`global_task_dispatches.global_task_id` 是 `NOT NULL`，`Create` 也把 `globalTaskId` 列必填且要校验任务存在。而需求单 §四 写的「绑全局任务可选（就地问一句）」要的就是它可为空 —— 三个走法全都超出零迁移：
+
+- **A** 重建表放宽约束：这张表是任务板的唯一数据源，迁移写错就是看板数据丢失。拿数据安全换一条约束，不划算。
+- **B** 必绑任务：「就地问一句 / 催一下」这个原始场景直接没了，价值砍一半。
+- **C（推荐）** 普通消息另建 `global_message_dispatches`，`CREATE TABLE IF NOT EXISTS` 纯增量、老库自动建、零数据搬运；回执按 `gm_` 前缀分表查。代价是两套状态机，但那是**确定的、局部的**代价，A 的是**不确定的、全局的**。
+
+顺带一条：C 方案下 §五 第 1 条的 `hidden_from_board` 天然不需要 —— 普通消息根本不在看板那张表里。
+
+**刀 11（S-280）跟着卡**：核心判据用刀 9 的 meta、不依赖本条，但三条硬规矩在 C 下要覆盖两张表，先做只覆盖 `work_request` 就是「同一个协议改两遍」。不自作主张，停在这里等 A/B/C 拍板。
+
+至此刀序里**能做的已经做完**：刀 0/2/3/4/5/6/7/9 交付，刀 1/8/10/11/12/13 卡拍板，刀 14 待勘察。
+

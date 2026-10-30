@@ -61,6 +61,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.ProviderRejecti
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.CompactionImagePlaceholderRegressionTests", "WishfulClaw.CompactionImagePlaceholderRegressionTests\WishfulClaw.CompactionImagePlaceholderRegressionTests.csproj", "{1467E553-3A2D-4C3A-9004-E4586FD3507B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.RealUserTurnRegressionTests", "WishfulClaw.RealUserTurnRegressionTests\WishfulClaw.RealUserTurnRegressionTests.csproj", "{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -419,6 +421,18 @@ Global
 		{1467E553-3A2D-4C3A-9004-E4586FD3507B}.Release|x64.Build.0 = Release|Any CPU
 		{1467E553-3A2D-4C3A-9004-E4586FD3507B}.Release|x86.ActiveCfg = Release|Any CPU
 		{1467E553-3A2D-4C3A-9004-E4586FD3507B}.Release|x86.Build.0 = Release|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Debug|x64.Build.0 = Debug|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Debug|x86.Build.0 = Debug|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Release|x64.ActiveCfg = Release|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Release|x64.Build.0 = Release|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Release|x86.ActiveCfg = Release|Any CPU
+		{9E94FD34-1F0B-4A53-91ED-E137E0AB50AA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

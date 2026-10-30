@@ -11,6 +11,8 @@ import type { SessionUsageStatsRow } from './db-helpers'
 import { removeSessionInputDraft } from '@renderer/lib/input-drafts'
 import { normalizeSessionContext, resolveSessionProjectId } from '@renderer/lib/session-context'
 import { clampSessionCompressionThreshold } from '@renderer/lib/agent/context-compression-config'
+// S-276：轮次窗口收缩的纯函数实现（轮次只数真实用户消息，压缩摘要卡不吃名额）。
+import { trimMessagesToRecentTurns } from '@renderer/lib/agent/turn-window'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 
 // S-204：会话「清空」的 in-flight guard。
@@ -68,25 +70,6 @@ const ZERO_USAGE_BASELINE: TokenUsage = {
   cacheCreationTokens: 0,
   reasoningTokens: 0,
   totalDurationMs: 0
-}
-
-/**
- * 保留最近 `maxTurns` 轮，返回应保留的尾部切片与被裁掉的头部长度。
- * 不足 `maxTurns` 轮（或刚好从第 0 条开始）时原样返回，`removed` 为 0。
- */
-function trimMessagesToRecentTurns<T extends { role: string }>(
-  messages: T[],
-  maxTurns: number
-): { messages: T[]; removed: number } {
-  let userSeen = 0
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role !== 'user') continue
-    userSeen += 1
-    if (userSeen < maxTurns) continue
-    if (index === 0) return { messages, removed: 0 }
-    return { messages: messages.slice(index), removed: index }
-  }
-  return { messages, removed: 0 }
 }
 
 export interface SessionSlice {

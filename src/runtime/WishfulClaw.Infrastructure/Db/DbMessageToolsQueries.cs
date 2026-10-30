@@ -14,6 +14,26 @@ namespace WishfulClaw.Infrastructure.Db;
 
 public static partial class DbMessageTools
 {
+    // ─── S-276：真实用户轮的唯一判据 ───
+
+    /// <summary>
+    /// 会话轮次的判定：<c>role = 'user'</c> 且不是压缩摘要卡。
+    ///
+    /// 压缩摘要写库时 <c>role</c> 也是 <c>'user'</c>（<c>ContextCompression.TokenEstimation.cs</c>
+    /// 的 <c>CreateSummaryWireMessage</c> —— 为的是让模型把摘要当成用户陈述来读），
+    /// 但它在语义上不是用户发的话。这里数轮次的四处 SQL 都曾只看 <c>role</c>，
+    /// 于是一个压缩过 20 次的会话会把「最近 5 轮」的 5 个名额全让给摘要卡，
+    /// 真实消息一条都进不了窗口（S-276）。
+    ///
+    /// 走 <c>meta LIKE</c> 而不是加 <c>is_artifact</c> 列：加列要迁移旧库，收益不抵风险
+    /// （S-276 §七-2 定案）。
+    ///
+    /// 渲染层同口径见 <c>src/renderer/src/lib/agent/context-compression-display.ts</c> 的
+    /// <c>isRealUserTurn</c>：跨语言共用不了函数，改一处必须同步另一处，两侧都有单测钉住。
+    /// </summary>
+    private const string RealUserTurnPredicate =
+        "role = 'user' AND (meta IS NULL OR meta NOT LIKE '%compactSummary%')";
+
     // ─── Query ───
 
     public static WorkerResponse List(JsonElement parameters)
@@ -70,10 +90,11 @@ public static partial class DbMessageTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            // Total conversation turns (user messages) — lets the UI show the
+            // Total conversation turns (real user messages) — lets the UI show the
             // loaded/total range without an extra round trip.
+            // S-276: 压缩摘要卡不算轮次，否则分母虚高（实测 71 对 51）。
             var totalTurns = db.QueryScalar<int>(
-                "SELECT COUNT(*) FROM messages WHERE session_id = @sid AND role = 'user'",
+                $"SELECT COUNT(*) FROM messages WHERE session_id = @sid AND {RealUserTurnPredicate}",
                 new SqliteParameter("@sid", sessionId));
 
             // Step 1: Find the created_at of the N most recent user messages before beforeCreatedAt
@@ -81,7 +102,7 @@ public static partial class DbMessageTools
             if (beforeCreatedAt.HasValue)
             {
                 userTimestamps = db.Query(
-                    "SELECT created_at FROM messages WHERE session_id = @sid AND role = 'user' AND created_at < @before ORDER BY created_at DESC LIMIT @turns",
+                    $"SELECT created_at FROM messages WHERE session_id = @sid AND {RealUserTurnPredicate} AND created_at < @before ORDER BY created_at DESC LIMIT @turns",
                     (r) => r.GetInt64(0),
                     new SqliteParameter("@sid", sessionId),
                     new SqliteParameter("@before", beforeCreatedAt.Value),
@@ -90,7 +111,7 @@ public static partial class DbMessageTools
             else
             {
                 userTimestamps = db.Query(
-                    "SELECT created_at FROM messages WHERE session_id = @sid AND role = 'user' ORDER BY created_at DESC LIMIT @turns",
+                    $"SELECT created_at FROM messages WHERE session_id = @sid AND {RealUserTurnPredicate} ORDER BY created_at DESC LIMIT @turns",
                     (r) => r.GetInt64(0),
                     new SqliteParameter("@sid", sessionId),
                     new SqliteParameter("@turns", turns));
@@ -120,9 +141,9 @@ public static partial class DbMessageTools
                     new SqliteParameter("@sid", sessionId),
                     new SqliteParameter("@rangeStart", rangeStart));
 
-            // Step 4: Check if there are more user messages before rangeStart
+            // Step 4: Check if there are more real user messages before rangeStart
             var hasMore = db.QueryScalar<int>(
-                "SELECT COUNT(*) FROM messages WHERE session_id = @sid AND role = 'user' AND created_at < @rangeStart",
+                $"SELECT COUNT(*) FROM messages WHERE session_id = @sid AND {RealUserTurnPredicate} AND created_at < @rangeStart",
                 new SqliteParameter("@sid", sessionId),
                 new SqliteParameter("@rangeStart", rangeStart)) > 0;
 

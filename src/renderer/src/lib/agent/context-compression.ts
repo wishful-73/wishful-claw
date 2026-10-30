@@ -59,6 +59,7 @@ export {
   isCompactSummaryLikeMessage,
   isCompactSummaryMessage,
   isLegacyCompactSummaryMessage,
+  isRealUserTurn,
 } from './context-compression-display'
 
 export interface ActiveCompactArtifacts {

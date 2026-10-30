@@ -19,14 +19,46 @@ export function isCompactSummaryMessage(message: UnifiedMessage): boolean {
   return message.role === 'user' && !!message.meta?.compactSummary
 }
 
+/**
+ * 老会话里的摘要卡没有 `meta.compactSummary`，只有正文前缀。
+ *
+ * 参数收窄到「role + content 两个字段」，是因为 S-276 的 `isRealUserTurn` 要拿它判
+ * `ChatMessage`（`stores/chat-store/types.ts`，正文在 `content`，可能为 undefined），
+ * 而 `UnifiedMessage` 只是它的一种形态。两处必须同一套前缀判据。
+ */
+function matchesLegacySummaryPrefix(role: string, content: unknown): boolean {
+  if (role !== 'user' || typeof content !== 'string') return false
+  const trimmed = content.trim()
+  return LEGACY_SUMMARY_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
+}
+
 export function isLegacyCompactSummaryMessage(message: UnifiedMessage): boolean {
-  if (message.role !== 'user' || typeof message.content !== 'string') return false
-  const content = message.content.trim()
-  return LEGACY_SUMMARY_PREFIXES.some((prefix) => content.startsWith(prefix))
+  return matchesLegacySummaryPrefix(message.role, message.content)
 }
 
 export function isCompactSummaryLikeMessage(message: UnifiedMessage): boolean {
   return isCompactSummaryMessage(message) || isLegacyCompactSummaryMessage(message)
+}
+
+/**
+ * 「真实用户轮」的唯一判据 —— 数轮次的地方一律走它，不要直接比 `role === 'user'`。
+ *
+ * 压缩摘要卡写库时 `role` 也是 `'user'`（worker `CreateSummaryWireMessage` 刻意如此，
+ * 让模型把摘要当用户陈述读），但它在语义上不是用户发的话。只看 `role` 的轮次计数
+ * 会让摘要卡吃掉名额：一个压缩过 20 次的会话，「最近 5 轮」的 5 个名额全给卡，
+ * 真实消息一条都进不了窗口（S-276 实测症状）。
+ *
+ * worker 侧同口径见 `DbMessageToolsQueries.cs` 的 `RealUserTurnPredicate`（SQL 常量，
+ * 跨语言共用不了函数）。**改一处必须同步另一处**，两侧各有单测钉住。
+ */
+export function isRealUserTurn(message: {
+  role: string
+  content?: unknown
+  meta?: { compactSummary?: unknown } | null
+}): boolean {
+  if (message.role !== 'user') return false
+  if (message.meta?.compactSummary) return false
+  return !matchesLegacySummaryPrefix(message.role, message.content)
 }
 
 export function isCompactArtifactMessage(message: UnifiedMessage): boolean {

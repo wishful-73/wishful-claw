@@ -1,4 +1,5 @@
 import { app, BrowserWindow, shell, Tray, Menu, nativeImage } from 'electron'
+import { mkdirSync } from 'fs'
 import { join } from 'path'
 
 // 用 Vite ?asset 导入图标，构建时自动复制到 out/main/，路径始终正确
@@ -254,7 +255,15 @@ function createTray(): void {
 const appDisplayName = app.isPackaged ? WISHFUL_CLAW_DISPLAY_NAME : WISHFUL_CLAW_DEV_DISPLAY_NAME
 app.setName(appDisplayName)
 
-app.setPath('userData', resolveDataPath('electron-user-data'))
+// S-282：userData 目录必须先建出来。`resolveDataPath` 只拼路径不落盘，而 Chromium 在
+// requestSingleInstanceLock() 阶段就要往这个路径下写 SingletonLock —— 父目录不存在就直接
+// 退出（process_singleton_win.cc:446，Error code 3 = ERROR_PATH_NOT_FOUND），且退出早于
+// 日志初始化，用户看到的就是「双击了没反应」，一个字都查不到。
+// recursive 一把把 `WISHFULCLAW_DATA_DIR` 指向的新数据目录本身也建出来（它可能完全不存在）。
+// 建目录放在调用点、不进 resolveDataDir —— 解析不该有副作用。顺序不能动：必须早于单实例锁。
+const userDataPath = resolveDataPath('electron-user-data')
+mkdirSync(userDataPath, { recursive: true })
+app.setPath('userData', userDataPath)
 
 // oc-media 协议权限必须在 app ready 前声明（S-224）
 prepareLocalMediaScheme()

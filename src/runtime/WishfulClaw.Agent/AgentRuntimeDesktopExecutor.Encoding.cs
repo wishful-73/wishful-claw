@@ -86,8 +86,13 @@ public static partial class AgentRuntimeDesktopExecutor
         var displayCount = JsonHelpers.GetInt(response, "displayCount", 1);
 
         var scalePart = scaleFactor.HasValue ? $", scale {FormatScale(scaleFactor.Value)}" : string.Empty;
-        var text = $"Captured desktop screenshot {width}x{height} (origin {originX},{originY}{scalePart}) " +
-                   $"across {displayCount} display(s)";
+        // S-272 第二段 · D：按窗口截图时先说清「这是哪个窗口」，否则模型会把它当成整屏，
+        // 量出来的偏移就整体偏了窗口原点那么多。
+        var windowTitle = JsonHelpers.GetString(response, "windowTitle");
+        var text = string.IsNullOrEmpty(windowTitle)
+            ? $"Captured desktop screenshot {width}x{height} (origin {originX},{originY}{scalePart}) " +
+              $"across {displayCount} display(s)"
+            : $"Captured window \"{windowTitle}\" {width}x{height} (origin {originX},{originY}{scalePart})";
 
         var displays = DescribeDisplays(response);
         if (!string.IsNullOrEmpty(displays))
@@ -96,6 +101,23 @@ public static partial class AgentRuntimeDesktopExecutor
         }
 
         text += ". Click coordinates are pixel positions in THIS image — do not rescale them.";
+
+        // S-272 第二段 · B/C：把「可以报 0~1」和「有刻度可数」这两件事说出来 —— 模型不知道
+        // 有这个能力时，只会继续在整屏上目测。
+        if (JsonHelpers.GetBool(response, "gridApplied", false))
+        {
+            text += " A reference grid is drawn on this image with labelled ticks every 200px.";
+        }
+        text += " DesktopClick also accepts 0~1 relative coordinates (e.g. x:0.62, y:0.28) measured in this image.";
+
+        // 系统把 4K×2 的截图压过（`thumbnailSize` 有上限）时，图上的像素不再是物理像素，
+        // 绝对坐标会按比例偏 —— 这正是相对坐标存在的理由，得明说。
+        var imageScale = JsonHelpers.GetDoubleNullable(response, "imageScale");
+        if (imageScale.HasValue && Math.Abs(imageScale.Value - 1) > 0.01)
+        {
+            text += $" Warning: the system downscaled this image to {FormatScale(imageScale.Value)} of physical pixels — " +
+                    "prefer relative coordinates here.";
+        }
 
         // S-283：落盘路径必须说出来。压缩把 image 块占位化（S-275）之后，模型唯一
         // 能拿到这张图的途径就是回读这个路径 —— 不给它，占位文案那句「可重新 Read

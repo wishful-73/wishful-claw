@@ -27,6 +27,7 @@ public static partial class AgentRuntimeDesktopExecutor
     private static readonly HashSet<string> DesktopToolNames = new(StringComparer.Ordinal)
     {
         "DesktopScreenshot",
+        "DesktopListWindows",
         "DesktopClick",
         "DesktopType",
         "DesktopScroll",
@@ -75,6 +76,7 @@ public static partial class AgentRuntimeDesktopExecutor
         return call.Name switch
         {
             "DesktopScreenshot" => await ExecuteScreenshotAsync(call.Input, context, workingFolder, cancellationToken),
+            "DesktopListWindows" => ExecuteListWindows(call.Input),
             "DesktopClick" => await ExecuteClickAsync(call.Input, context, cancellationToken),
             "DesktopType" => await ExecuteTypeAsync(call.Input, context, cancellationToken),
             "DesktopScroll" => await ExecuteScrollAsync(call.Input, context, cancellationToken),
@@ -105,13 +107,38 @@ public static partial class AgentRuntimeDesktopExecutor
             await Task.Delay(delayMs, cancellationToken);
         }
 
+        // S-272 第二段 · D：`window` 只截那一个窗口。标题在 worker 侧解析 —— 枚举别的进程的
+        // 窗口是 Win32 的活，主进程干不了。
+        var windowKeyword = JsonHelpers.GetString(input, "window")?.Trim();
+        DesktopWindowEntry? windowMatch = null;
+        if (!string.IsNullOrEmpty(windowKeyword))
+        {
+            if (!TryResolveWindowTarget(windowKeyword, out windowMatch, out var windowError))
+            {
+                return windowError ?? StringResult(
+                    EncodeError($"No visible window matches \"{windowKeyword}\"."), true);
+            }
+        }
+
         var targetPath = ResolveCaptureTargetPath(requestedPath, workingFolder);
+        var grid = JsonHelpers.GetBool(input, "grid", false);
 
         var response = await InvokeMainAsync(
             context, "desktop:screenshot:capture",
             CreateJsonObject(writer =>
             {
                 if (targetPath is not null) writer.WriteString("targetPath", targetPath);
+                if (grid) writer.WriteBoolean("grid", true);
+                if (windowMatch is not null)
+                {
+                    writer.WriteString("windowTitle", windowMatch.Title);
+                    writer.WriteStartObject("windowRect");
+                    writer.WriteNumber("x", windowMatch.X);
+                    writer.WriteNumber("y", windowMatch.Y);
+                    writer.WriteNumber("width", windowMatch.Width);
+                    writer.WriteNumber("height", windowMatch.Height);
+                    writer.WriteEndObject();
+                }
             }), cancellationToken);
         var data = JsonHelpers.GetString(response, "data");
         if (!JsonHelpers.GetBool(response, "success", false) || string.IsNullOrEmpty(data))
@@ -229,6 +256,9 @@ public static partial class AgentRuntimeDesktopExecutor
         var resultY = JsonHelpers.GetDoubleNullable(response, "y") ?? y.Value;
         var resultButton = JsonHelpers.GetString(response, "button") ?? button;
         var resultAction = JsonHelpers.GetString(response, "action") ?? action;
+        // S-272 第二段：0~1 的相对坐标由主进程换算，这里只把「换算后的绝对点」如实回报 ——
+        // 模型需要知道它说的「图里 62% 处」最后落在屏幕哪个像素。
+        var relative = JsonHelpers.GetBool(response, "relative", false);
         return StringResult(EncodeJsonObject(writer =>
         {
             writer.WriteBoolean("success", true);
@@ -236,7 +266,11 @@ public static partial class AgentRuntimeDesktopExecutor
             writer.WriteNumber("y", resultY);
             writer.WriteString("button", resultButton);
             writer.WriteString("action", resultAction);
-            writer.WriteString("message", $"Desktop {resultAction} executed at ({resultX}, {resultY}) with {resultButton} button.");
+            writer.WriteBoolean("relative", relative);
+            writer.WriteString("message",
+                relative
+                    ? $"Desktop {resultAction} executed at screen ({Math.Round(resultX)}, {Math.Round(resultY)}) with {resultButton} button, resolved from the relative position ({x.Value}, {y.Value}) in the last screenshot."
+                    : $"Desktop {resultAction} executed at ({resultX}, {resultY}) with {resultButton} button.");
         }));
     }
 

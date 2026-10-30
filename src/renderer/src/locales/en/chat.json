@@ -652,6 +652,7 @@
       "BrowserSetDevice": "Switch Device",
       "BrowserEvaluate": "Run Page Script",
       "DesktopScreenshot": "Desktop Screenshot",
+      "DesktopListWindows": "List Windows",
       "DesktopClick": "Desktop Click",
       "DesktopType": "Desktop Type",
       "DesktopScroll": "Desktop Scroll",
@@ -852,6 +853,9 @@
       "notes": "Notes",
       "DesktopScreenshot": {
         "title": "Desktop Screenshot"
+      },
+      "DesktopListWindows": {
+        "title": "List Windows"
       },
       "DesktopClick": {
         "title": "Desktop Click"

@@ -9,15 +9,18 @@ import {
 } from '../../shared/messagepack/binary-ipc'
 import {
   captureDesktopScreenshot,
+  DESKTOP_SCREENSHOT_CAPTURE
+} from './desktop-screenshot'
+import {
   desktopInputClick,
   desktopInputType,
   desktopInputScroll,
-  DESKTOP_SCREENSHOT_CAPTURE,
   DESKTOP_INPUT_CLICK,
   DESKTOP_INPUT_TYPE,
   DESKTOP_INPUT_SCROLL
 } from './desktop-control'
 import { isMainProcessMethod, dispatchReverseRequest } from './reverse-handlers'
+import type { PhysicalRect } from '../lib/desktop-screen'
 import { getMainWindow } from '../main-window-registry'
 import { logWarn } from '../lib/logger'
 
@@ -156,9 +159,13 @@ async function handleReverseRequest(request: RendererToolRequest): Promise<void>
       switch (method) {
         case DESKTOP_SCREENSHOT_CAPTURE:
           // S-268：`path` 由 worker 解析成绝对路径后以 targetPath 传下来。
-          result = await captureDesktopScreenshot(
-            typeof params?.targetPath === 'string' ? params.targetPath : undefined
-          )
+          // S-272 第二段：`grid` 叠参照网格，`windowRect` 只截该窗口（worker 枚举出的矩形）。
+          result = await captureDesktopScreenshot({
+            targetPath: typeof params?.targetPath === 'string' ? params.targetPath : undefined,
+            grid: params?.grid === true,
+            windowRect: readWindowRect(params?.windowRect),
+            windowTitle: typeof params?.windowTitle === 'string' ? params.windowTitle : undefined
+          })
           break
         case DESKTOP_INPUT_CLICK:
           result = desktopInputClick(params as unknown as Parameters<typeof desktopInputClick>[0])
@@ -339,4 +346,22 @@ async function sendReverseResponse(
         }`
       )
     })
+}
+
+/**
+ * 读 worker 传来的窗口矩形（S-272 第二段 · D）。
+ *
+ * 形状不对就当没传 —— 拒掉整次截图，比拿一个 `NaN` 去 `crop()` 强：后者会抛在 electron
+ * 内部，模型看到的是「截图失败」而不是「你的窗口矩形有问题」。
+ */
+function readWindowRect(value: unknown): PhysicalRect | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const x = Number(raw.x)
+  const y = Number(raw.y)
+  const width = Number(raw.width)
+  const height = Number(raw.height)
+  if (![x, y, width, height].every((item) => Number.isFinite(item))) return null
+  if (width <= 0 || height <= 0) return null
+  return { x, y, width, height }
 }

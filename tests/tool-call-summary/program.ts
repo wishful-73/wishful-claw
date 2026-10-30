@@ -106,4 +106,30 @@ check(
   'Bash 输出里的 `8x5` 不许被渲染成尺寸样式'
 )
 
+// 10. S-272 第二段：窗口截图换了文案前缀（`Captured window "标题" WxH`），两种都得认。
+//     标题要拼进摘要 —— 「2520×1680」在一堆截图里认不出是哪张。
+check(
+  inputSummary(SCREENSHOT, {}, 'Captured window "记事本 - 未命名" 800x600 · saved to D:\\x.png') ===
+    '800×600 记事本 - 未命名',
+  '窗口截图必须解析尺寸并带上窗口标题'
+)
+
+// 11. 窗口标题里的反斜杠、冒号、空格不算干扰（真实标题就是 `记事本 - C:\Users\x\a.txt`）
+check(
+  inputSummary(SCREENSHOT, {}, 'Captured window "a.txt - 记事本" 1280x720') ===
+    '1280×720 a.txt - 记事本',
+  '窗口标题含空格与点号时必须完整解析'
+)
+
+// 12. 新工具 DesktopListWindows 的摘要：带过滤词时「过滤词 → 条数」，不带时只给条数
+check(
+  inputSummary('DesktopListWindows', {}, '{"success":true,"count":12,"windows":[]}') === '12 windows',
+  'DesktopListWindows 无过滤词时摘要必须是条数'
+)
+check(
+  inputSummary('DesktopListWindows', { match: 'chrome' }, '{"success":true,"count":3,"windows":[]}') ===
+    'chrome → 3',
+  'DesktopListWindows 带过滤词时摘要必须带过滤词'
+)
+
 console.log(`tool-call-summary: ${checks} checks passed`)

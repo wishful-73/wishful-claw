@@ -21,6 +21,7 @@ export const BROWSER_TYPE_TOOL_NAME = 'BrowserType' as const
 export const BROWSER_SCROLL_TOOL_NAME = 'BrowserScroll' as const
 export const BROWSER_SET_DEVICE_TOOL_NAME = 'BrowserSetDevice' as const
 export const DESKTOP_SCREENSHOT_TOOL_NAME = 'DesktopScreenshot' as const
+export const DESKTOP_LIST_WINDOWS_TOOL_NAME = 'DesktopListWindows' as const
 export const DESKTOP_CLICK_TOOL_NAME = 'DesktopClick' as const
 export const DESKTOP_TYPE_TOOL_NAME = 'DesktopType' as const
 export const DESKTOP_SCROLL_TOOL_NAME = 'DesktopScroll' as const
@@ -43,6 +44,7 @@ export type AppPluginToolName =
   | typeof BROWSER_SCROLL_TOOL_NAME
   | typeof BROWSER_SET_DEVICE_TOOL_NAME
   | typeof DESKTOP_SCREENSHOT_TOOL_NAME
+  | typeof DESKTOP_LIST_WINDOWS_TOOL_NAME
   | typeof DESKTOP_CLICK_TOOL_NAME
   | typeof DESKTOP_TYPE_TOOL_NAME
   | typeof DESKTOP_SCROLL_TOOL_NAME
@@ -99,6 +101,7 @@ export const APP_PLUGIN_DESCRIPTORS: AppPluginDescriptor[] = [
     builtin: true,
     toolNames: [
       DESKTOP_SCREENSHOT_TOOL_NAME,
+      DESKTOP_LIST_WINDOWS_TOOL_NAME,
       DESKTOP_CLICK_TOOL_NAME,
       DESKTOP_TYPE_TOOL_NAME,
       DESKTOP_SCROLL_TOOL_NAME,

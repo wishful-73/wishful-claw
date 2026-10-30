@@ -188,3 +188,26 @@
 
 真机 §九 5 条未跑。
 
+### 21:53 · 刀 7 收刀 —— S-272 第二段（相对坐标 / 截图网格 / 窗口枚举）
+
+**刀 6 修的是「假成功」，这一刀修的是「成功但点偏」。** 模型看的是被上游缩过的图，报出来的像素数天然不等于 PNG 的像素 —— 这个偏差靠描述怎么写都消不掉，只能给它参照系。
+
+**三件落地**：
+
+- **相对坐标**：`DesktopClick({ x: 0.62, y: 0.28 })` 现在按「最近一次截图的实际尺寸 + 图片原点」换算。判据钉在纯函数 `resolveCoordinatePair`（`src/main/lib/desktop-coordinate.ts`）：两个值都在 0~1 且**至少一个不是整数**才算相对。整数仍按绝对像素解释，向后兼容。特意写了 `{x:0, y:0.5}` 这一条 —— 最自然的「左边中点」写法，判据写歪一点就会退化成屏幕左上角，而现象只是「点偏了」，日志里查不出来。
+- **截图网格**：`DesktopScreenshot({ grid: true })` 在原图上画淡灰网格、每 200px 一条、边缘标刻度。**自己写像素循环，不建离屏窗口用 canvas**：离屏 `BrowserWindow` 要走 GPU、要处理 DPI 与 `capturePage()` 的尺寸语义（`getSize()` 是 DIP 还是物理像素至今没定论），为几条线开一个窗口不划算。灰是三通道同权混合 ⇒ BGRA / RGBA 不用判平台。
+- **窗口枚举 + 按窗口截图**：新工具 `DesktopListWindows({ match? })` 给 `title / className / processId / rect`；`DesktopScreenshot({ window: "记事本" })` 按标题子串选窗口、按物理像素裁剪，文本前缀换成 `Captured window "标题" WxH`。把搜索空间从 2560×1440 缩到一个窗口。
+
+**顺手拆了文件**：`desktop-control.ts` 395 行、截图与输入两条线混在一起，这轮 `grid` / `window` 一进来必然破 500 行。截整条线挪到 `src/main/ipc/desktop-screenshot.ts`，`desktop-control.ts` 退回纯输入模块；`toPhysicalRect` / `isPointInsideDesktop` 抽到 `src/main/lib/desktop-screen.ts` 两处共用 —— 否则就是「截图 import 输入模块」的怪形状。
+
+**新门禁** `tests/screenshot-grid` **23 断言**（网格线位 / 入参不被污染 / 尺寸非法原样返回 / 相对与绝对的分界 / NaN 与 Infinity 不许流进点击）。反向验证做了一次：相对判据从 `||` 改成 `&&` ⇒ `{x:0, y:0.5}` 那条当场红。
+`tests/tool-call-summary` 补 4 条（窗口截图带标题、标题含空格点号、`DesktopListWindows` 带/不带过滤词）。
+
+极简档不另开分支：桌面类工具本来就走「一行文本摘要」的降级，新工具进 `DESKTOP_ACTION_TOOL_NAMES` 即可，摘要由 `summarizeDesktopAction` 出。
+
+**已知残留**：`DesktopListWindows` 会把最小化窗口也列出来（矩形是 `-32000`），模型可能对着屏幕外算坐标。归因清楚、改动面一处，**留 v3-iter-6**，不在这轮收尾期发散。
+
+门禁：typecheck 0 错 / `npm test` **110/110** / 两套 sln 0 警告 0 错误 / `ci-checks` 84/84。
+
+真机判据 9、10 未跑（窗口矩形一致性、全链路自己截屏点输入框）。
+

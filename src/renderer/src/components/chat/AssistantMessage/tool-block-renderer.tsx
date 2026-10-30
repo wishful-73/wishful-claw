@@ -29,8 +29,8 @@ import { DesktopActionToolCard } from '../DesktopActionToolCard'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
 import {
-  DESKTOP_CLICK_TOOL_NAME, DESKTOP_SCREENSHOT_TOOL_NAME, DESKTOP_SCROLL_TOOL_NAME,
-  DESKTOP_TYPE_TOOL_NAME, DESKTOP_WAIT_TOOL_NAME, IMAGE_GENERATE_TOOL_NAME
+  DESKTOP_CLICK_TOOL_NAME, DESKTOP_LIST_WINDOWS_TOOL_NAME, DESKTOP_SCREENSHOT_TOOL_NAME,
+  DESKTOP_SCROLL_TOOL_NAME, DESKTOP_TYPE_TOOL_NAME, DESKTOP_WAIT_TOOL_NAME, IMAGE_GENERATE_TOOL_NAME
 } from '@renderer/lib/app-plugin/types'
 import { isBrowserToolName } from '@renderer/lib/app-plugin/browser-tool-names'
 import {
@@ -320,6 +320,7 @@ export function ToolBlockRenderer({
   }
   if (
     block.name === DESKTOP_SCREENSHOT_TOOL_NAME ||
+    block.name === DESKTOP_LIST_WINDOWS_TOOL_NAME ||
     block.name === DESKTOP_CLICK_TOOL_NAME ||
     block.name === DESKTOP_TYPE_TOOL_NAME ||
     block.name === DESKTOP_SCROLL_TOOL_NAME ||

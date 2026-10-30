@@ -8,6 +8,7 @@
 import type { ToolResultContent } from '@renderer/lib/api/types'
 import {
   DESKTOP_CLICK_TOOL_NAME,
+  DESKTOP_LIST_WINDOWS_TOOL_NAME,
   DESKTOP_SCREENSHOT_TOOL_NAME,
   DESKTOP_SCROLL_TOOL_NAME,
   DESKTOP_TYPE_TOOL_NAME,
@@ -20,6 +21,7 @@ const COMMAND_TOOL_NAMES = new Set(['Bash', 'Shell', 'PowerShell'])
 
 const DESKTOP_ACTION_TOOL_NAMES = new Set<string>([
   DESKTOP_SCREENSHOT_TOOL_NAME,
+  DESKTOP_LIST_WINDOWS_TOOL_NAME,
   DESKTOP_CLICK_TOOL_NAME,
   DESKTOP_TYPE_TOOL_NAME,
   DESKTOP_SCROLL_TOOL_NAME,
@@ -264,9 +266,23 @@ function summarizeDesktopAction(
      * **改它必须同步这里** —— 同 S-276「同一判据分散在多处各写各的」那个教训。
      * base64 字符集不含空格，这个短语不可能藏在 data 里，锚定即安全。
      * S-283 之前的老格式「Captured desktop screenshot 1920x1080 across …」同一个前缀，一并覆盖。
+     * S-272 第二段起按窗口截图会换前缀（`Captured window "标题" WxH`），两种都认。
      */
-    const size = outputText?.match(/Captured desktop screenshot\s+(\d+)\s*x\s*(\d+)/i)
-    return size ? `${size[1]}×${size[2]}` : 'desktop'
+    const size = outputText?.match(
+      /Captured (?:desktop screenshot|window\s+"[^"]*")\s+(\d+)\s*x\s*(\d+)/i
+    )
+    if (!size) return 'desktop'
+    const windowTitle = outputText?.match(/Captured window\s+"([^"]*)"/i)
+    return windowTitle ? `${size[1]}×${size[2]} ${windowTitle[1]}` : `${size[1]}×${size[2]}`
+  }
+  if (name === DESKTOP_LIST_WINDOWS_TOOL_NAME) {
+    // 输出是 JSON（`{"success":true,"count":N,"windows":[...]}`），只取条数 —— 极简档一行
+    // 放不下窗口清单，用户想知道的是「列出了几个」，不是「列了哪些」。
+    const countMatch = outputText?.match(/"count"\s*:\s*(\d+)/)
+    const count = countMatch ? countMatch[1] : null
+    const filter = typeof input.match === 'string' && input.match ? input.match : ''
+    if (filter) return count === null ? filter : `${filter} → ${count}`
+    return count === null ? 'list windows' : `${count} windows`
   }
   if (name === DESKTOP_CLICK_TOOL_NAME) {
     const action = typeof input.action === 'string' ? input.action : 'click'

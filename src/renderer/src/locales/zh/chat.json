@@ -652,6 +652,7 @@
       "BrowserSetDevice": "切换设备",
       "BrowserEvaluate": "执行页面脚本",
       "DesktopScreenshot": "桌面截图",
+      "DesktopListWindows": "列出窗口",
       "DesktopClick": "桌面点击",
       "DesktopType": "桌面输入",
       "DesktopScroll": "桌面滚动",
@@ -852,6 +853,9 @@
       "notes": "补充说明",
       "DesktopScreenshot": {
         "title": "桌面截图"
+      },
+      "DesktopListWindows": {
+        "title": "列出窗口"
       },
       "DesktopClick": {
         "title": "桌面点击"

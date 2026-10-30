@@ -24,7 +24,7 @@ v3-iter-4（1.0.4）收尾时，老大 2026-10-30 定「承接 15 条」。
 | S-282 | `WISHFULCLAW_DATA_DIR` 指向全新目录时首次启动静默退出 | **✅ 已交付（刀 0）** | 阻断级，实测连踩两次。`resolveDataPath` 只拼不建 ⇒ `SingletonLock` 父目录不存在 ⇒ 进程直接退出，**连日志都没建出来**。修法 `mkdirSync(..., { recursive: true })`，必须在 `requestSingleInstanceLock()` 之前。附加：决定逻辑抽成纯函数 `pickDataDir` 以可单测，新增 `tests/data-dir`（17 断言，含源码行序闸）。**真机 §六 1/2 待老大走** | [S-282](../iter-v3-4/requirements/S-282.md) |
 | S-281 | 主窗口根容器全窗 `backdrop-blur-xl`，而窗口不透明 | **⛔ 前提不成立，待拍板** | **刀 1 未动工**。需求单路径少写一段：`src/renderer/src/main.tsx` 全文仅 10 行入口、无 JSX，真正带 `backdrop-blur-xl` 的是 **`clipboard/main.tsx:196/:302`** —— 剪贴板浮窗（窗口 `transparent: true`），正是 §八 说要保护的对象。主窗口 `App.tsx → MainLayout` 全链无 `backdrop-blur`。全仓 30 处逐处核完，**无一处压在不透明底上**。建议撤销，见 [S-281 §九](../iter-v3-4/requirements/S-281.md) | [S-281](../iter-v3-4/requirements/S-281.md) |
 | S-289 | 折线图未 hover 时圆点太大太抢戏 | **✅ 已交付（刀 2）** | 按方案 A：整批 `buckets.map` 改成只画 `hoveredBucket` 那一列。连带去掉 `formatBucketLabel` 的死 import（删点即塌一处）。无新增套件（需求单 §五 预先裁定），真机 4 条待老大走 | [S-289](../iter-v3-4/requirements/S-289.md) |
-| S-286 | 桌面截图尺寸摘要取自 base64 ⇒ 极简档显示 `8×5` | **待开工** | 真 bug，已实测复现。正则撞 base64 随机字节。修法：锚定 `Captured desktop screenshot (\d+)x(\d+)` + 大结构化串零解析短路 | [S-286](../iter-v3-4/requirements/S-286.md) |
+| S-286 | 桌面截图尺寸摘要取自 base64 ⇒ 极简档显示 `8×5` | **✅ 已交付（刀 3）** | 真 bug，已实测复现。正则撞 base64 随机字节。修法：锚定 `Captured desktop screenshot (\d+)x(\d+)`（加 `/i`）+ 摘要专用短路 `outputTextForSummary`（**没动 `outputAsString`** —— 它还被结构化错误嗅探用着，短路会废掉那处判据）。新增 `tests/tool-call-summary` 11 断言，含诱饵在首位的守卫；反向验证：退回裸正则当场红 | [S-286](../iter-v3-4/requirements/S-286.md) |
 
 ### 2.2 图片与截图链路（3 条）
 
@@ -128,7 +128,7 @@ v3-iter-4（1.0.4）收尾时，老大 2026-10-30 定「承接 15 条」。
 | 0 | S-282 | **✅ 已交付**。**排第一的唯一理由：它是「起不来」级别**。`WISHFULCLAW_DATA_DIR` 指向新目录就静默退出、连日志都没有 —— 后面所有真机验证都可能需要换数据目录（S-223 工作区隔离的基础），先把它通了。改动 5 行、单文件、与任何线零交集 |
 | 1 | S-281 | **⛔ 前提不成立，跳过待拍板**。原排位理由（吃 CPU/GPU、流式卡顿放大器）在代码里找不到对应物 —— 主窗口根本没有 `backdrop-blur`。详见 S-281 §九 |
 | 2 | S-289 | **✅ 已交付**。纯视觉、单文件、零风险。与刀 1 同在渲染层，可以在同一次真机里一起看 |
-| 3 | S-286 | 单文件正则锚定。**排在这里**：它与刀 2 都在「显示层说假话」这条线上（S-286 报错尺寸、S-289 视觉噪声），连着做能一次把「极简档过程行」的显示质量收干净 |
+| 3 | S-286 | **✅ 已交付**。单文件正则锚定。**排在这里**：它与刀 2 都在「显示层说假话」这条线上（S-286 报错尺寸、S-289 视觉噪声），连着做能一次把「极简档过程行」的显示质量收干净 |
 | 4 | S-290 | C# `OutputLimit` 短路豁免，**判内容不判工具名**。排在图片链路最前：它决定模型这一轮到底看不看得见图，后面 S-288 的验收（图能不能放大）也依赖它先把图完整送到 |
 | 5 | S-288 | 图片浮层换 `ImageViewer`。与刀 4 同属图片链路，刀 4 修「送达」、本条修「查看」，同一批真机验收 |
 | 6 | S-268 | `DesktopScreenshot` 补 `path`。**排在桌面操作最前**：它和 S-272 第二段改的是同一批工具（`DesktopToolProvider` / `AgentRuntimeDesktopExecutor`），先把「假成功」修掉，第二段加参数时模型不会继续被骗 |

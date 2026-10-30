@@ -251,8 +251,21 @@ function summarizeDesktopAction(
   outputText?: string
 ): string {
   if (name === DESKTOP_SCREENSHOT_TOOL_NAME) {
-    // 尺寸只有输出里那句「Captured desktop screenshot 1920x1080 across 2 display(s).」有
-    const size = outputText?.match(/(\d+)\s*[x×]\s*(\d+)/)
+    /*
+     * S-286：尺寸只能从「Captured desktop screenshot WxH」这句里取，**不能用裸的
+     * `(\d+)x(\d+)` 取第一个命中**。
+     *
+     * 当轮 output 是一段字符串化的 content 数组，image 块排在最前、里面是约 658 KB
+     * 的 base64 —— 裸正则先撞上的是 base64 的随机字节（实测命中 `8x5`，而真实尺寸是
+     * 2520×1680，那么小的数不可能是任何屏幕）。落库后 data 被剥掉，正则才落到那句
+     * text 上，所以现象是「重开这个会话就对了」。
+     *
+     * 锚点文案由 C# 的 DescribeScreenshot 拼（`AgentRuntimeDesktopExecutor.Encoding.cs`），
+     * **改它必须同步这里** —— 同 S-276「同一判据分散在多处各写各的」那个教训。
+     * base64 字符集不含空格，这个短语不可能藏在 data 里，锚定即安全。
+     * S-283 之前的老格式「Captured desktop screenshot 1920x1080 across …」同一个前缀，一并覆盖。
+     */
+    const size = outputText?.match(/Captured desktop screenshot\s+(\d+)\s*x\s*(\d+)/i)
     return size ? `${size[1]}×${size[2]}` : 'desktop'
   }
   if (name === DESKTOP_CLICK_TOOL_NAME) {

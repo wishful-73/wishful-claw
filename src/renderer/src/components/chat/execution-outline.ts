@@ -9,7 +9,7 @@ import type { ContentBlock, ToolResultContent } from '@renderer/lib/api/types'
 import type { ToolCallState, ToolCallStatus } from '@renderer/lib/agent/types'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
-import { IMAGE_GENERATE_TOOL_NAME } from '@renderer/lib/app-plugin/types'
+import { IMAGE_GENERATE_TOOL_NAME, DESKTOP_SCREENSHOT_TOOL_NAME } from '@renderer/lib/app-plugin/types'
 import { isBrowserToolName } from '@renderer/lib/app-plugin/browser-tool-names'
 import { isDesktopControlToolName } from '@renderer/lib/app-plugin/desktop-routing'
 import { isMcpTool } from '@renderer/lib/mcp/mcp-tools'
@@ -159,6 +159,48 @@ function outputAsString(output: ToolResultContent | undefined): string | undefin
     .filter((block) => block.type === 'text')
     .map((block) => (block.type === 'text' ? block.text : ''))
   return texts.join('\n') || undefined
+}
+
+/**
+ * S-286：喂给 `inputSummary` 的 output 文本（**只给摘要用**，别拿它去解析错误）。
+ *
+ * 摘要是「一行说清发生了什么」，只该看小且像人话的输出。截图类工具的 output 是一段
+ * 字符串化的 content 数组，image 块里塞着几百 KB base64 —— 让 `inputSummary` 在上面
+ * 跑正则等于大海捞针，命中什么全看运气（S-286 就是这么撞出个 `8×5` 的）。
+ *
+ * 两处**必须豁免**，别「顺手统一」掉：
+ *
+ * 1. **桌面截图** —— 它的尺寸就写在那段 text 里，必须拿原串；取对尺寸是
+ *    `summarizeDesktopAction` 里那条锚定正则的活。
+ * 2. **Bash / Shell / PowerShell** —— 它们的输出本身就是结构化 JSON
+ *    （`{"exitCode":0,…}`），摘要要从里面取退出码和错误，短路等于丢信息。
+ *
+ * 判据刻意廉价、**不做 JSON.parse**：`inputSummary` 挂在渲染热路径上
+ * （`ToolCallGroup` / `ToolCallCard` / 本文件三处都调），6 MB 串 parse 一次 30~60 ms。
+ * 只用「长度 + 开头两字符 + 是否含 `"base64"`」三个零成本判断。
+ *
+ * ⚠️ 这条判据对**现有分支没有可观察效果**（读 output 的三个分支：桌面截图豁免、
+ * 命令行豁免、`LS` 的输出是文件名列表）。它是给「将来新增一个读 output 的工具摘要」
+ * 留的护栏 —— 到时候不必再去查 base64 撞正则这个坑。
+ */
+const OVERSIZED_STRUCTURED_MIN_LENGTH = 4096
+
+function isOversizedStructuredPayload(text: string): boolean {
+  if (text.length <= OVERSIZED_STRUCTURED_MIN_LENGTH) return false
+  const head = text.slice(0, 2)
+  if (head !== '[{' && head !== '{"') return false
+  return text.includes('"base64"')
+}
+
+function outputTextForSummary(
+  name: string,
+  output: ToolResultContent | undefined
+): string | undefined {
+  const text = outputAsString(output)
+  if (text === undefined) return undefined
+  if (name === DESKTOP_SCREENSHOT_TOOL_NAME) return text
+  if (COMMAND_TOOL_NAMES.has(name)) return text
+  return isOversizedStructuredPayload(text) ? undefined : text
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -384,7 +426,7 @@ export function buildToolExecutionOutline({
     })
     const visibility = hiddenToolUseIds?.has(block.id) ? 'hidden' : getToolVisibility(category)
     const isActive = status === 'streaming' || status === 'running' || status === 'pending_approval'
-    const summary = inputSummary(block.name, input, outputAsString(output))
+    const summary = inputSummary(block.name, input, outputTextForSummary(block.name, output))
     const item: ToolExecutionItem = {
       toolUseId: block.id,
       name: block.name,

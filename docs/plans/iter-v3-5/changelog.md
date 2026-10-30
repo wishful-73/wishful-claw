@@ -109,3 +109,25 @@
 门禁：`typecheck:web` 0 错 / `npm test` **105/105** / `ci-checks` **81/81 通过**。
 
 真机 4 条未跑（不碰图无点 / 横向移动只有一列有点 / 移出全消失 / 切柱状图再切回无残留）。
+
+### 21:25 · 刀 3 收刀 —— S-286 截图尺寸显示 `8×5`
+
+4.1 主修：裸 `(\d+)x(\d+)` 换成锚定 `Captured desktop screenshot\s+(\d+)\s*x\s*(\d+)`，加 `/i`（文案由 C# 拼，大小写不该决定成败）。base64 字符集不含空格，`Captured desktop screenshot` 这个短语不可能藏在 `data` 里，锚定即安全。
+
+4.2 补刀**和需求单的字面写法有偏差，得记一笔**：需求单说「在 `outputAsString` 加短路」，但 `outputAsString` 有两个调用点 —— `hasStructuredOutputError` 要拿原串 `decodeStructuredToolResult` 找 `success:false` / `exitCode!==0`。在那儿短路等于顺手废掉 S-262 一线留下的结构化错误嗅探。所以改成新增**摘要专用**的 `outputTextForSummary()`，`outputAsString` 一字未动。
+
+两处豁免：桌面截图（要原串取尺寸）、Bash/Shell/PowerShell（输出本身就是结构化 JSON，摘要要从里面取退出码和首行错误）。
+
+判据也比需求单多一条：`长度>4096` + `开头 [{ 或 {"` + **`含 "base64"`**。第三条是我加的 —— 否则任何 4 KB 以上的普通 JSON 输出都被短路，误伤面比收益大。
+
+**4.2 老实说对现有分支没有可观察效果**：读 output 的三个分支里桌面截图和命令行都豁免了，`LS` 输出是文件名列表。它是给将来新增工具摘要留的护栏，注释里写明，不冒充成修了什么。
+
+新门禁 `tests/tool-call-summary`，**11 断言**。`tool-call-summary` 为 `coerceAskUserQuestions` 引了 `ask-user-tool`，后者拖 `locales`（`import.meta.glob`）⇒ node 下炸，照 `tool-run-folding` 先例加 `stubs/ask-user-tool.ts` 顶掉。
+
+**踩到一次自己的期望错误**：第 9 条我按「Bash 摘要只读入参」写，实际 `summarizeBashInput` 有输出时会拼「命令 — 首行」，红了一次。改成真正要守的东西（Bash 输出里的 `8x5` 不许被渲染成尺寸样式）。
+
+**反向验证**：锚定正则退回裸正则 ⇒ `桌面截图摘要必须取文案里的 2520×1680，不能被 base64 里的 8x5 带跑` 当场红，撤销后复绿。
+
+门禁：typecheck 0 错 / `npm test` **106/106** / 两套 sln 0 警告 0 错误 / `ci-checks` 全过。
+
+真机 §六 4 条未跑。

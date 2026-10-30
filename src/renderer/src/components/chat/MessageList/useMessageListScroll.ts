@@ -443,6 +443,24 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     return changed
   }, [])
 
+  // S-274 续（2026-10-30）：rail 重测节流 —— 掐断「写 scrollTop ⇒ 重测 ⇒ 重渲染 ⇒
+  // 再布局 ⇒ 再写 scrollTop」这条自持环。
+  //
+  // 流式中尾部行每帧都在长，`measureVisibleMessageHeights()` 因此**每帧**返回
+  // `changed = true`；它驱动的 `assistantRailMeasureVersion` 进了 `useMessageListData`
+  // 的依赖，会让 `buildAssistantRailLayout` 与整条消息列表每帧重算 + 重渲染。
+  // 而跟随 / 回收 / 救援三处写 `scrollTop` 都会派发 scroll 事件 → `handleListScroll`
+  // → `requestAssistantRailSync` → 再测 → 版本再 +1，**不需要任何新内容就能自持**。
+  //
+  // 真机表现（2026-10-30 08:27~08:31）：执行中渲染进程 3 分钟从 0.3GB 涨到 1.3GB，
+  // 发送键与会话列表的转圈控件持续上下跳动。极简模式治不了它 —— 极简减的是每条
+  // 消息的 DOM 量，条数与重渲染**频率**都不变。
+  //
+  // rail 是视觉辅助，150ms 一次足够；尾调用保证被节流挡掉的最后一次测量不丢。
+  const ASSISTANT_RAIL_MEASURE_THROTTLE_MS = 150
+  const lastRailMeasureAtRef = React.useRef(0)
+  const railMeasureTimerRef = React.useRef<number | null>(null)
+
   const setActiveAssistantRailIds = React.useCallback((nextIds: Set<string>) => {
     setActiveAssistantRailMessageIds((previousIds) =>
       areStringSetsEqual(previousIds, nextIds) ? previousIds : nextIds
@@ -457,7 +475,20 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     }
     const didMeasure = measureVisibleMessageHeights()
     if (didMeasure) {
-      setAssistantRailMeasureVersion((version) => version + 1)
+      // 见 ASSISTANT_RAIL_MEASURE_THROTTLE_MS 处的注释：不加这道闸就是每帧一次全列表重渲染。
+      const now = window.performance.now()
+      const sinceLast = now - lastRailMeasureAtRef.current
+      if (sinceLast >= ASSISTANT_RAIL_MEASURE_THROTTLE_MS) {
+        lastRailMeasureAtRef.current = now
+        setAssistantRailMeasureVersion((version) => version + 1)
+      } else if (railMeasureTimerRef.current === null) {
+        // 尾调用：最后一次测量被挡掉时补一次，衬线不丢（否则 rail 会停在旧 state）。
+        railMeasureTimerRef.current = window.setTimeout(() => {
+          railMeasureTimerRef.current = null
+          lastRailMeasureAtRef.current = window.performance.now()
+          setAssistantRailMeasureVersion((version) => version + 1)
+        }, ASSISTANT_RAIL_MEASURE_THROTTLE_MS - sinceLast)
+      }
     }
     const containerRect = ref.getBoundingClientRect()
     const nextActiveIds = new Set<string>()
@@ -691,6 +722,11 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     // scrolling to the top never fetches anything by itself.
     syncBottomState()
     syncPinnedTurnOverlay()
+    // 同 ASSISTANT_RAIL_MEASURE_THROTTLE_MS 处的注释：跟随 / 回收 / 救援写 scrollTop
+    // 会派发 scroll 事件，此时同步 rail **既无意义**（用户没在滚）**又最贵**
+    // （流式中必然触发重测）。程序化滚动的位移由那三处自己按几何处理，
+    // rail 位置在滚动停下后由下一次真实滚动或尾调用补上。
+    if (window.performance.now() < programmaticScrollUntilRef.current) return
     requestAssistantRailSync()
   }, [requestAssistantRailSync, syncBottomState, syncPinnedTurnOverlay])
 
@@ -935,6 +971,8 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     return () => {
       if (initialTailReleaseFrameRef.current !== null) window.clearTimeout(initialTailReleaseFrameRef.current as unknown as number)
       if (scheduledAssistantRailSyncRef.current !== null) window.cancelAnimationFrame(scheduledAssistantRailSyncRef.current)
+      // S-274 续：rail 重测的尾调用定时器同样不能活过组件。
+      if (railMeasureTimerRef.current !== null) window.clearTimeout(railMeasureTimerRef.current)
       if (highlightedMessageTimerRef.current !== null) window.clearTimeout(highlightedMessageTimerRef.current)
       // S-176：两个补位定时器不能活过组件（回调会碰已卸载的 DOM）。
       if (shrinkProbeTimerRef.current !== null) window.clearTimeout(shrinkProbeTimerRef.current)

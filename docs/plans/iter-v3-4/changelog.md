@@ -805,6 +805,22 @@ S-225 §8 原文「档位不得藏错误」，实现方式是把 `hasError` 一�
 - 真机待验五条（`S-270.md` §8.9）：状态栏跑 `BrowserNavigate` 显示「打开网址」、待审批显示「等待批准：申请关闭沙箱」、能力代理不被查成「调用能力」、两处状态面板文案一致。
 - 未提交，攒收尾刀。
 
+## 2026-10-29 17:53 · 两处口径收紧（不占刀）—— S-248 例外收窄 + S-225 弹层只列档位名
+
+真机测试中当场发现的两处，各自只动渲染层一处、无新增判据，故不设刀号，随刀 13 / 14 一并提交。
+
+### `9d4c2152` · 极简档的桌面操作只留文字行
+
+极简档里 `DesktopScreenshot` 仍出一张卡，而卡片内容对用户没意义 —— 正文就一行 `{"require_active_window": false}`。老大原话：「当使用桌面截图的时候，实际上还是显示的是个卡片，虽然是极简模式，而且卡片的内容对我来说没什么意义」。**S-248「白名单不降级」的例外清单收窄**：桌面类工具在极简档一律走 `ProcessTextLine`，不出卡。
+
+> 这是 S-248 三条硬约束里第一条（白名单不降级）的**主动例外**，理由是桌面工具的入参本身就是给模型的、给人看没价值。不违反约束原意 —— 约束防的是「把有信息量的卡片降成文本」。
+
+### `d88d6a31` · 渲染详细度弹层只列档位名
+
+三档弹层里每档下面挂一段描述，整齐度差、弹层被撑高。改为只列档位名，描述挂 `title`（悬停看）。动三处：`RenderDensityToggle.tsx` + `locales/{zh,en}/settings.json`。
+
+**同批口径记一笔**：极简档「管观感不管速度」—— 上一轮把它当性能方案推荐给老大是判断错误，真相是极简只减每条消息的 DOM 量，**条数与重渲染频率都不变**（刀 14 的真机数据坐实）。设置页说明文字待收尾一并改。
+
 ## 2026-10-29 17:50 · 登记并交付 S-274（刀 13）—— 长文本流式撞爆 React 嵌套更新上限
 
 老大原话：「之前几次测试就已经比较卡了，我以为是内存占用问题，就是在长文本输出修复以后开始测试开始，基本都比较卡」，附 `[renderer:LOG] Uncaught Error: Maximum update depth exceeded`。
@@ -855,3 +871,624 @@ S-233（挂账的视觉抖动）同文件同链路，但**根因不同**，本�
 - 真机待验 6 条（`S-274.md` §七）：长文本流式不再涨到 4.3 GB、不再报 `Maximum update depth exceeded`、正常跟随 / 回收 / 悬空救援仍贴底。
 - **「卡」的另一半仍在**：S-256 只限了单帧步长（1600 字符），长文积压时仍是 30fps 持续全量重渲染。建议加「跳尾」（`poolSize` 超 3200 字符直接把 `renderedLength` 推到 `targetLength - 1600`，只对尾巴做追赶动画），**待老大拍板**，未做。
 - 未提交，攒收尾刀。
+## 2026-10-29 18:20 · 登记 S-275 / S-276 / S-277 —— 压缩链路三连（老大报「上个会话全是压缩记录」）
+
+**老大原话（17:53）**：「我刚刚在 dev 新建了一个会话进行测试，因为我发现上一个会话居然全是压缩记录，用户消息其它的都看不到」。（18:00）「能看出来是什么原因导致的么」。
+
+**结论先说**：消息一条都没丢。库里 141 条全在（真实用户 51 / 压缩摘要 20 / 助手 50 / 边界 20）。坏的是**两处独立缺陷串成一条链**，外加一个长期累积问题。
+
+---
+
+### S-275 · 压缩对图片工具结果无效
+
+**实锤（dev 库 `~/.wishful-claw-dev/index.db`，会话 `9yXnLPAM00ea6qAXu6qPp`）**：
+
+- 2026-10-29 16:40~17:31 的 **50 分钟里连压 9 次**，间隔 2~6 分钟；
+- 日志 `context compression DIAG` 非 skip 行 16 条，峰值 `inputTokens=503539`，其余在 144204~162441 徘徊（触发线 144000）；
+- 21 个快照里，29 日那批 wire 是 **250~441 KB**，同期没图的快照只有 7~26 KB；
+- 最后一个快照（54 条消息）按字符排序：`[53] user 243496 字符`，内容就是 `Read image: …(1680x1120, image/png)` + `{"type":"image","source":{"type":"base64",…}}`。**index 53 就是最后一条**。
+
+**根因**：`ContextCompression.cs:557-583` 的 `TailStart` ——
+
+```csharp
+var minKeep = 2;                                   // 最后 2 条无条件保留
+...
+if (conversation.Count - i > minKeep && acc + tok > budgetTokens)
+    break;                                         // 预算只在 minKeep 之外生效
+```
+
+`DefaultTailTokens = 16384`（`:65`），但 `minKeep` 那两条**不参与预算判断**。而一次 Read 截图恰好产生 `assistant(tool_use)` + `user(tool_result)` **两条**，正好占满名额。`EstimateTextTokens`（`TokenEstimation.cs:45-51`）返回 `Math.Max(len/4, len)` = 243496 ⇒ 单条估值是尾部预算的 **15 倍**，被原样抬过去。
+
+于是：压掉几千 token 历史 → 摘要 300~5000 字符 → 24 万 token 的图不动 → 下一轮仍超 → **立刻再压**。图换一张就再压一轮，时间点与 6 张截图完全对应。
+
+**建议方案 A**（待拍板）：压缩前把超预算的 `image` block 占位化成 `[图片已省略：xxx.png 1680×1120，可重新 Read 查看]`，只留原有文本行。语义不丢、体积降三个数量级，只动一个纯函数，可做反向验证。
+
+> 起草时我先写成「按条数保留」，读到 `DefaultTailTokens` 才发现尾部是**按 token 预算**裁的 —— 那个判断是错的，已推翻。真正问题是 `minKeep` 的例外条款，不是预算本身。
+
+### S-276 · 「最近 N 轮」把压缩摘要当成用户轮
+
+三个「数轮次」的地方都只看 `role`，而摘要卡的 `role` 就是 `user`（`TokenEstimation.cs:78-120`，为的是让模型当用户陈述读）：
+
+| # | 位置 | 代码 |
+|---|---|---|
+| 1 | `session-slice.ts:77-90` | `if (messages[index]?.role !== 'user') continue` |
+| 2 | `DbMessageToolsQueries.cs:84 / :93` | `WHERE role = 'user' ORDER BY created_at DESC LIMIT @turns` |
+| 3 | `DbMessageToolsQueries.cs:75-77` | `COUNT(*) … AND role = 'user'` ⇒ `totalTurns` 71（实际 51） |
+
+**实测窗口**：
+
+| 窗口 | 起点 | 加载 | 真实用户 | 压缩摘要 |
+|---|---|---|---|---|
+| `turns=5`（首次加载默认，`session-slice.ts:973`） | 17:11:53 | 10 条 | **0** | **5** |
+| `turns=15` | 15:36:39 | 30 条 | 6 | 9 |
+
+最近 8 个 `role=user` 里最后 5 个**全是摘要**，`turns=5` 正好落在那一段 —— 屏幕上就是五张「任务暂告一段落」。
+
+**修法**：统一 `isRealUserTurn`（`role=user` 且无 `meta.compactSummary`），三处同口径；卡照常返回但不占名额。三处不同步会重演 S-271 的教训。
+
+### S-277 · 压缩产物在 `messages` 表永久累积（移交 v3-iter-5）
+
+同一会话 21 个快照 / 20 对消息行，占全部消息 14%。wire 侧是对的（旧摘要一律折进折叠区，one-summary invariant 没破），错的是**持久化与渲染从不清理**。三方案待拍：A 加 `superseded_by` 只展开最新一对（可与 S-276 的 `is_artifact` 列合成一次迁移）/ B 删旧行（破坏溯源）/ C 纯渲染端合并（零迁移，但窗口仍被占名额）。**不删快照表** —— 那是唯一证据链。
+
+---
+
+### 影响与后续
+
+- **S-275 是 S-276 的放大器**：以前压缩一天 1~2 次，20 张卡不存在；现在 50 分钟 9 次，卡把窗口淹掉。两条建议一起做，分开做会各自半好。
+- **S-277 不占本迭代**：三个方案要么改 schema、要么动分页口径，收尾期插不进去。
+- 归属待老大拍板：进本迭代则承接 19 → **22 条**（S-274 本就没计入口径行，已一并补正）；移交则两条一起挪进 §2.5。
+
+### 只改文档，未动代码
+
+本轮是**登记**：新建 `requirements/S-275.md`、`S-276.md`、`S-277.md`；`raw-requirements.md` 增三行（§1.2 两条、§1.3 一条，标题计数一并修准：八条→十二条、三条→五条）；`plan.md` 增头注 + §2.4 两行 + §2.5 一行，并把「19 条承接」补正为 **20 条**（原口径漏了已交付的 S-274）。工作量在取证：两个只读脚本 `.wishful-claw/notes/dev-db-wire.js`（既有）与 `dev-db-window2.js`（新建）。
+
+## 2026-10-30 08:30 · 登记 S-278 / S-279 / S-280 —— 全局会话 ↔ 项目会话通信三连（全部移交 v3-iter-5）
+
+**老大原话（08:19，一次给三条）**：
+
+1. 「全局会话发送消息给项目会话，这个消息我希望能识别并且渲染成组件，包括全局任务下发，项目下会话对全局任务回执。」
+2. 「全局会话发送的常规消息也要有可以回复的方式，因为现在是渲染成卡片了，所以可以携带一些参数过去，项目下会话回复的时候只需要拿到卡片标识之类的就能直接回复，不需要操心那么多参数。」
+3. 「全局会话下发的全局任务，有时候项目下会话做完以后不进行回执，这个需要不依赖 agent 本身做回执，得我们想想其它办法。」
+
+**先说结论**：三条不是三个独立需求，是**一条链的三段**。① 缺结构化通道，② 缺回执入口，③ 缺确定性归档。② 和 ③ 都得靠 ① 的 meta 才能做对。
+
+---
+
+### 现状（读码确认，行号都在）
+
+| 工具 | 有 dispatch 记录 | 能回执 |
+|---|---|---|
+| `send_work_request` | 有（`gd_xxx`，`AgentRuntimeGlobalTaskExecutor.cs:200`） | 能 |
+| `send_session_message` | **没有** | **不能** |
+
+**投递机制**：`send_work_request` 拼一段文本（`AgentRuntimeGlobalTaskExecutor.cs:226-235`）
+
+```
+[GLOBAL AGENT WORK REQUEST] dispatch_id=gd_… global_task_id=gt_…
+
+<instruction>
+
+This work request was dispatched by the global agent. …report back via the `use_capability` tool…
+```
+
+然后走反向请求 `project/send-session-message`；渲染端 handler（`lib/tools/project-send-message.ts`）拿到 `{ sessionId, content }`，直接 `chatStore.sendMessage()` —— **文件头注释自己写着 *fully simulating a user action***。
+
+所以目标会话里就是一条 `role=user` 的纯文本消息，**给模型看的英文协议说明用户全看得见**，没有卡片、没有来源、没有状态、点不回全局任务。
+
+### 三个根因
+
+1. **无结构化信息**：只传 `content`，渲染端只能嗅探 `[GLOBAL AGENT WORK REQUEST]` 前缀 —— 这正是 S-208 早就定过口径要避免的（结构化字段进 meta，别解析正文）。
+2. **普通消息没有 id**：`SendSessionMessageAsync`（`AgentRuntimeProjectExecutor.cs:274-328`）裸传 content，而 `reply_global_dispatch` 的 `dispatchId` 是**必填**（`GlobalDispatchReplyToolProvider.cs:28-36`）⇒ 想回也回不了。现有 `followUp` 是**反方向**的定时追问，救不了。
+3. **回执是可选的工具调用**：模型可以不调。四个会漏的原因里最要命的是第一条 —— **那段协议说明写在消息正文里，长会话一压缩就没了**，而 S-275 / S-276 正在放大压缩。
+
+### 附带发现：同一段协议文本有两份实现，已经漂移
+
+| 位置 | 措辞 |
+|---|---|
+| C# `AgentRuntimeGlobalTaskExecutor.cs:233-235` | 走 `use_capability` → `capability_id="builtin:reply_global_dispatch"` |
+| 渲染端 `task-board-store.ts` `buildWorkRequestContent()` | 「call the `reply_global_dispatch` tool」（注释自称 *mirrors*） |
+
+同一个动作，一份教模型「用代理调」，一份教「直接调」。两份都在用（任务板派发走渲染端那份，全局 agent 派发走 C# 那份）。
+
+---
+
+### 三条的需求口径
+
+**S-278（打底）** —— 反向请求加 meta（`dispatchId` / `globalTaskId` / `kind` / 任务标题），`sendMessage` 落库带 meta，渲染端按 `dispatchId` 出卡片；**协议说明移出消息正文**（进 `meta.modelHint` 或不落库只拼 wire）。老的派发消息不做兼容层。
+
+**S-279** —— 普通消息也建轻量 dispatch（`kind=message`，建议 `gm_` 前缀），复用**同一个**回执工具（不拆两个，S-270 的教训是出口越少越好），默认 `hidden_from_board`；`report` 允许为空（只是「收到」）。只允许一层回执，不许套娃。
+
+**S-280** —— 三层归档：投递态（已有）→ 执行态（`loop_start` 转 `in_progress`，`loop_end` 触发归档）→ 归档分**显式 / 隐式**。三条硬规矩：
+
+1. 显式覆盖隐式，反向不许；
+2. **隐式不许伪装成完成** —— 卡片必须写明「本轮已结束 · 未显式回复」，跟 S-267 同一个原则；
+3. 自动归档只写 dispatch 记录，不往全局会话塞消息。
+
+**核心难点**是「这一轮是不是在干这个 dispatch」，现有信号里**没有答案**。推荐借 S-278 的 meta 做强判据（worker 每轮能看到「本会话有未回执 dispatch」）；先落地版本用中判据（投递时间后的首个 `loop_end`）+ 三条收窄，等 meta 到位再换。
+
+### 依赖顺序
+
+```
+S-278（meta 通道） → S-279（kind 扩展） → S-280（强判据）
+```
+
+拆开做会各自半好：S-279 没有 meta 就得靠 `gm_` 前缀嗅探正文，S-280 没有 meta 就只能用假阳性率高的中判据。
+
+### 只改文档
+
+新建 `requirements/S-278.md` / `S-279.md` / `S-280.md`；`raw-requirements.md` §1.3 增三行（五条 → 八条）；`plan.md` 增头注 + §2.5 三行（4 条 → 7 条）。**不改代码、不提交。**
+
+## 2026-10-30 08:41 · 刀 14 —— 渲染进程执行中内存暴涨（S-274 续），`e174bd6d`
+
+老大 08:26：「我们刚做了极简模式，现在也用的是极简模式，本身是为了解决卡的问题，你现在反向优化了？」08:30：「我一直以为我们的渲染是异步的，只会渲染最新输出的消息呢，怎么会导致消息列表全部重新渲染呢」。
+
+### 根因（不需要任何新内容就能自持的环）
+
+```
+流式中尾部行每帧在长
+  ⇒ measureVisibleMessageHeights() 每帧返回 changed = true
+  ⇒ assistantRailMeasureVersion 每帧 +1
+  ⇒ 它进了 useMessageListData 的依赖
+  ⇒ buildAssistantRailLayout + 整条消息列表每帧重算 + 重渲染
+  ⇒ 跟随 / 回收 / 救援三处写 scrollTop
+  ⇒ 派发 scroll 事件 → handleListScroll → requestAssistantRailSync → 再测
+  ⇒ 版本再 +1（回到第 3 步）
+```
+
+**真机表现**：执行中 3 分钟 0.3 GB → 1.3 GB；发送键与会话列表的转圈控件持续上下跳动（老大 17:41 报的「转圈都上下跳动」就是这个，当时归因成内存不够，方向错了）。
+
+### 为什么极简档治不了
+
+极简减的是**每条消息的 DOM 量**，条数与**重渲染频率**都不变。这条纠正了「极简＝性能方案」的口径 —— 上一轮把它当性能手段推荐给老大，是判断错误。
+
+### 修法（三处，`+39/−1`，单文件 `useMessageListScroll.ts`）
+
+1. `ASSISTANT_RAIL_MEASURE_THROTTLE_MS = 150` 节流 + **尾调用**补最后一次（否则被挡掉的那次测量不生效，rail 停在旧 state）；
+2. 程序化滚动窗口内（`programmaticScrollUntilRef`）直接跳过 rail 同步 —— 用户没在滚，同步既无意义又最贵；
+3. 尾调用定时器随组件卸载清理，不许活过组件。
+
+**实测 3.85 GB → 1.3 GB，保留。**
+
+## 2026-10-30 11:05 · 内存问题定性：dev 加载方式固有，不是产品缺陷（撤销「必须回滚」）
+
+同一天上午老大三次加压：「现在内存都到 2G 了，这个问题不解决，本迭代就必须回滚了」。决定回滚前先做三档对照，结果是**产品代码没退化**。
+
+| 实例 | renderer WS | 时长 | 加载方式 |
+|---|---|---|---|
+| dev（vite dev server） | **1256 MB**（横盘至 1279） | 启动 5 分钟即到位 | 78.5 MB 未压缩预构建依赖 + 871 个未压缩模块（5.85 MB 源码）+ 全量 inline sourcemap |
+| preview（构建产物） | **180～204 → 240 MB** | 45 s～5 min | 走 `out/renderer`，`file://` |
+| 生产 1.0.3 | **337 → 650 MB** | 10-29 16:52 起持续 17 小时 | 打包 asar，bundle 45 MB |
+
+- **上涨形态**：启动 5 分钟内一次性 +500～700 MB（首屏成本），之后只在渲染活动时涨；**空闲 30 分钟 ±2% 零增长**（pid 21272：1256 → 1237 / 1242 / 1242 / 1387 / 1363 / 1279）。涨上去 Chromium 不归还。
+- **组件数据**：JS 堆 ~100 MB（peak 234.9 / 294.8）、DOM 节点 1430～1640、`dataUrlImgs = 0`、图片 1 张 1.6 MB、正文 5.8 万字符 —— 差异全在 V8 堆外，不是渲染层漏。
+- **结论**：卡与内存均为 **dev 加载方式固有**，本迭代无需回滚。老大 10:56 复测 preview 后认可：「我测完了，肉眼观测来看，确实预览版没有问题」。
+- **口径落定**：**验收一律走 `npx electron-vite preview --skipBuild`**，dev 内存数值不具判据价值。
+
+### 排查中三条被自己数据推翻的判断（记下来别再犯）
+
+1. **监听器累积泄露 → 错**：`listeners` 335 → 537 → **7559** → 437 → 408 是波动，自建审计账本 net 恒为 263；`chips.ts` 10 add / 0 remove 已排除（临时节点）。
+2. **闲聊也泄漏 → 错**：空闲 30 分钟零增长。
+3. **产品代码退化 → 错**：preview 对照直接证伪。
+
+### 排查中的失误（都是环境层，与产品无关）
+
+- 只筛 `electron.exe` 漏掉生产进程名 **`WishfulClaw.exe`**，误判「生产没开」。
+- 硬编码 `C:\Users\Administrator`，实际 **`C:\Users\龚翼`** ⇒ `process_singleton_win.cc:446 Lock file can not be created! Error code: 3`。
+- `git checkout --` 里把 `MessageList.tsx` 写成 `chat/MessageList/MessageList.tsx`（真实位置 `components/chat/MessageList.tsx`），整条命令静默失效。
+- **CDP `Memory.startSampling` 在 Windows 返回空 profile**（连报 6 次 `renderer alloc profile empty`）—— native 分配栈这条路不通。
+- `npm start`（= `electron-vite preview`）会白 build 一遍（52 s）、且仍缺目录 ⇒ 用 `--skipBuild`。
+
+### 代码状态
+
+- **保留**刀 14 的 `e174bd6d`（实测有效）。
+- **A 方案（删 rail 测量账本 5 文件）放弃**：动机（监听器累积）被证伪，且删账本后导轨 marker 从实测退化为估算 —— 拿精度换一个不存在的收益。
+- **已 `git checkout --` 撤销**：`App.tsx`、`main.tsx`、`MessageList.tsx`、`locator-utils.ts`、`useMessageListData.ts`、`useMessageListScroll.ts`（排查期临时改动）、`utils.ts`、`memory-monitor.ts`、`main/index.ts`；**已删**：`hooks/use-memory-diagnostics.ts`、`lib/listener-audit.ts`。
+
+## 2026-10-30 11:23 · 收尾审查：交付核对 + 七处文档欠账补齐
+
+老大 11:07：「你先审查一下本迭代做的事情是否都做完了，以及移交下个迭代做的是否已经迁移完毕」。
+
+### 交付核对：20 条，与清单一致
+
+| 分组 | 条数 | 结果 |
+|---|---|---|
+| §2.1 资源治理（S-247 / 248 / 256 / 260） | 4 | 全交付 |
+| §2.2 插件基座（S-240 ~ S-244） | 5 | 全交付 |
+| §2.4 本迭代新登记 | 13 | **11 交付 / S-275·S-276 未做（待拍板）** |
+| §2.3 挂账（S-233 / S-230） | 2 | 按约定不动 |
+
+S-275 / S-276 代码侧 grep 验过，**确实零实施**（无图片占位化、无 `isRealUserTurn`）。
+
+### 九处欠账（本次全改）
+
+1. `plan.md` §2.1 **S-247 状态写「待开工」** —— 实际刀 6 早交付，唯一一条状态与事实相反的。
+2. `S-270.md` **归属写「下一迭代（v3-iter-5）」** —— 实际刀 10 已交付 + 两次补正；按字面算移交该是 10 条。
+3. `S-271.md` **归属写「刀 10」** —— 实际刀 11，刀号串位（刀 10 是 S-270）。
+4. **刀 14 全仓零记录** —— §7.1 止于刀 13、changelog 无一条，而它是本迭代最大一次性能修复。
+5. **§五 门禁基线停在刀 2 的 92/92** —— 刀 3b ~ 11 七次复跑没回写，实际 100/100，收尾最容易拿错基线。
+6. **`plan.md` 进度行**停在「截至 10-29 14:20、99/99、刀序已走完」—— 之后刀 11 ~ 14 + 整场内存排查一个字没进。
+7. **§2.5 漏了 S-272 第二段** —— 归属行明写移交 v3-iter-5，九条清单里没有它。
+8. **§二 子章节顺序错乱**（HEAD 里就是）：`2.1 → 2.4 → 2.5 → 2.2 → 2.3 → 2.6`。按章节切片重排为 `2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.6`，行数 264 不变、字符多重集逐字符校验一致（纯换序）。
+9. **`S-270.md` 每行以 `\r\r\n`（双 CR）结尾** —— 275 行，**全仓唯一一个**，历史遗留。已规整为 `\r\n`；正文用「去掉全部 `\r`/`\n` 后逐字符比对」验过一字未改。**这个坏行尾本轮把助手坑了三次**：`Edit` 写回后整份被撑开 274 行空行、`git show` 经 PowerShell 重定向又被转成裸 LF 骗过一次；最终靠字节级替换才做干净。以后碰到大 diff 先跑 `git diff --numstat --ignore-space-at-eol` 分辨「内容差异」与「行尾噪音」。
+
+> 未动的另 94 个异常文件：`docs/plans/iter-v2-19 ~ v2-28` 的 BOM、`.plan/`、`.agents/`、`.workbuddy-ai/`、`docs/progress/` 的裸 LF —— 全是历史迭代遗留，不在本迭代范围，**不动**。本迭代目录现已全部干净。
+
+### 迁移状态：未完毕
+
+`docs/plans/iter-v3-5/` **目录尚不存在**。移交条目目前只有「需求单归属行 + `plan.md` §2.5 一行摘要」，**没有下迭代的承接表、刀序、优先级**。按 v3-iter-3 → v3-iter-4 的先例（收尾写清单、拆分支建目录），现状流程上没错，但「已迁移完毕」不成立 —— 真正到位＝下迭代能直接开工。
+
+### 注释乱码（10-30 11:16 老大报，dev 审查时发现）
+
+三处文件、共 **78 个 U+FFFD**（字节 `EF BF BD`）的真实落地，全在注释里：
+
+| 文件 | U+FFFD | 坏行 | 引入提交 |
+|---|---|---|---|
+| `src/renderer/src/lib/tools/tool-display-name.ts` | 73 | 30（共 111 行） | `7212dbc5`（10-29 17:52，S-270 补正之二） |
+| `src/runtime/WishfulClaw.Agent/Tools/FileTools/ImageFileProbe.cs` | 4 | 1 | `9abf2283`（10-28，S-246） |
+| `docs/plans/iter-v3-3/requirements/S-246.md` | 1 | 1 | 同上 |
+
+**成因**：不是编码判断错，也不是存成了 GBK —— 是**源码里真的写了裸控制字节**。`ImageFileProbe.cs` 描述 PNG 魔数时贴了原始的 `89 50 4E 47 0D 0A 1A 0A`；`tool-display-name.ts` 里的中文标点（`——`、`→`、`「」`）在某个非 UTF-8 编码管线上被逐字节替换成了 U+FFFD。同文件 L105 早就用转义写法 `\x89PNG` 描述同一个魔数，那才是正确范式。
+
+**修法**：整行精确替换 —— 每处坏行在文件内唯一，命中 1 次就换、命中 ≠1 就跳过并告警，绝不模糊匹配。
+
+- TS 侧：**30/30 行**替换。前 18 行以干净版 `9e593749` 为准逐行抄回；状态栏那段（L88 ~ L99，是该提交之后新写的）原文已不可考，按语义逐句还原。
+- C# 与文档：统一改成转义写法 `\x89PNG`，与 `ImageFileProbe.cs` L105 的既有写法对齐。
+
+**验证**：全仓兜底扫描（`.ts/.tsx/.js/.mjs/.cs/.json/.css/.scss/.html/.yml/.md/.txt` 等，跳过 `node_modules`/`out`/`release`/`.git` 等）U+FFFD **归零**；`npm run typecheck` 0 错；含 `ImageFileProbe.cs` 的 csproj build **0 警告 0 错误**；`npm test` **100/100**。diff 为纯行替换（`30 + 1 + 1` 行，零增删），无任何结构改动。
+
+
+#### B 层：em dash 被 GBK 误读 —— 4 处，且**不是纯注释**
+
+`鈥?` —— UTF-8 的 `—`（`E2 80 94`）被按 GBK 解码：`E2 80` → `鈥`，`94` 单字节无映射 → `?`。
+
+| 文件 | 行 | 性质 |
+|---|---|---|
+| `MemoryTools/MemoryAppendTool.cs` | 44 | 工具 Description 字符串 |
+| `MemoryTools/MemoryHotReadTool.cs` | 21 / 37 | 注释 + Description 字符串 |
+| `MemoryTools/MemorySearchTool.cs` | 47 | 工具 Description 字符串 |
+
+后三处**会直接发给模型**——在此之前模型读到的一直是 `call this tool 鈥?verbal acknowledgment` 这种坏字。全部还原成 ` — `。
+
+**A 层扫描盖不住这类**：`鈥` 是合法汉字，不是替换符，`EF BF BD` 判据扫不到。补了强信号扫描器（`鈥` / `锛` / `銆` 等 GBK 残渣前导字，**单字即报**），全仓复扫 **0 处**。
+
+> 排查中一度以为 `src/main/lib/data-dir.ts:26` 也有乱码 —— 那是 **PowerShell 用 GBK 回显 UTF-8** 的假象，node 按 UTF-8 读出来是干净的。判断编码问题一律用 node 读字节，别信控制台。
+> 复现时又踩同一个坑：`node -e` 内联脚本里的**反引号会被 PowerShell 吃掉**（`Expected a semicolon`），必须落到 `.js` 文件再跑 —— 与之前 `git log --format=%ad` 里 `%ad is not recognized` 同源。这条记住：**PowerShell 下只要脚本里带反引号或 `%`，一律落文件。**
+
+---
+
+## 2026-10-30 11:42 · 刀 15 · S-283 截图落盘并回传路径，图不再只活在内存里
+
+**一句话**：截图此前只有内存里那一份 base64 —— 进消息 `meta` 会胖、进压缩预算会爆，而模型想「再看一眼」只能重新截一次。落盘之后图才有身份（路径），压缩占位、重新 Read、重开会话显示全都得挂在这个路径上。
+
+### 根因
+
+`captureDesktopScreenshot` 与 `captureAppWindowCapture` 的 `targetPath` 一直是**可选的空分支**：不给路径就不写盘，只在返回值里塞 base64。于是「落盘」这件事在整条链路上根本不存在 —— 这也直接决定了刀 16（压缩占位文案写「可重新 Read 查看」）与刀 18（剥 base64）**必须先有盘上那份**才能成立。
+
+### 改动
+
+| 文件 | 改了什么 |
+|---|---|
+| `src/main/lib/screenshot-dir.ts`（新增） | `formatScreenshotMonth` / `screenshotFileNameFromBuffer` / `resolveScreenshotDir` 三个纯函数，**零 electron 依赖**（因此 node 侧可测）。落点 `{dataRoot}/screenshots/{yyyy-MM}/{sha256 前 16}.png`，按内容哈希命名 ⇒ 同一张图重复截不会堆文件 |
+| `src/main/lib/image-persist.ts` | 落盘入口加可选 `fileName`，不传沿用旧行为 |
+| `src/main/ipc/desktop-control.ts` | `captureDesktopScreenshot` 的 `targetPath` 为空分支改成**默认落盘**，返回值带 `filePath` |
+| `.../reverse-handlers/window-capture-handler.ts` | 同上，窗口截图同待遇 |
+| `AgentRuntimeDesktopExecutor.Encoding.cs` | `DescribeScreenshot` 补 `Saved to {path}` 一行，`DescribeAppWindowCapture` 删掉「没给 path 就不写盘」的旧口径 |
+| `DesktopToolProvider.cs` | 四段工具描述同步改口径 |
+
+### 测试
+
+新建 `tests/screenshot-dir`，**16 断言**：月份格式（跨年、补零）、文件名取自内容哈希前 16、同内容同月同名、目录拼接不依赖 `app.getPath`。`npm test` **101/101** · `typecheck` 两配置 0 错 · `dotnet build` 0 警告 0 错误。
+
+### 真机待验（4 条）
+
+截一次桌面 → 盘上出现 `screenshots/{yyyy-MM}/*.png` → 工具文本行有 `Saved to …` → 同日重截不产生重复文件。
+
+---
+
+## 2026-10-30 11:52 · 刀 16 · S-275 大图不再钉死保留尾部，超预算的 image 块就地占位
+
+**一句话**：压缩算 token 时把 base64 的**字符数**当成了 token 数 —— 一张截图 24 万字符 ≈ 24 万 token，是 16384 预算的 15 倍，而 `minKeep = 2` 又让尾部那两条绕开预算。于是「压完 3 分钟又超」，50 分钟连压 9 次。
+
+### 根因（两条叠加）
+
+1. **`TailStart` 的 `minKeep = 2`**：尾部至少保留两条原文，绕开 16384 的 token 预算。
+2. **一次 Read 截图正好产生「`tool_use` + `tool_result`」两条** ⇒ 243,496 字符的 base64 原样钉在 wire 尾部，预算形同虚设。
+
+dev 库日志实锤：`9yXnLPAM…` 会话 16:40~17:31 连压 **9 次**，间隔 2~6 分钟，每次压完 `inputTokens` 仍在 14.4 万触发线之上。
+
+### 改动
+
+新增 `src/runtime/WishfulClaw.Agent/ContextCompression.ImagePlaceholder.cs`（274 行）：
+
+- `TailBudgetTokens` 作为尾部预算的**唯一出口**，`PlanCompaction` 与 `CompactAsync` 读同一个数（此前两处各算一遍）；
+- `PlaceholdOversizedImageResults`（conversation 侧，降估算）与 `PlaceholdWireMessageImages`（wire 侧，降上游真实 token）**成对调用** —— 只降一侧就是「本地看着小了、发上去还是爆」；
+- `PlaceholdImageBlocks` 逐块重建保序，**不拆 `tool_use` / `tool_result` 配对**（拆了上游直接 400）。
+
+### 测试
+
+新建 `CompactionImagePlaceholder` 套件，**26 断言**，含幂等性与「一块 base64 都不许漏」。
+
+**测试抓到真 bug**：第一版「遇到图才建列表」把第一张图之前的 `text` 块全丢了 —— 两条断言当场红。这正是纯函数化 + 真数据断言的价值，靠真机看是看不出来的。
+
+`npm test` **102/102** · `typecheck` 0 错 · `dotnet build` 0 警告 0 错误。
+
+### 真机待验（4 条，见 `S-275.md`）
+
+压一次之后 token 真正落到触发线以下 ⇒ 不再连环压缩；压缩卡里图位置显示占位而不是空白；占位文案与实际能力一致（刀 15 落地后才成立）。
+
+---
+
+## 2026-10-30 12:04 · 刀 17 · S-276 最近 N 轮只数真实用户消息，压缩摘要卡不再挤占窗口名额
+
+**一句话**：消息一条没丢 —— 是「数轮次」的判据把压缩摘要卡当成了用户消息。卡越多，真话被挤出窗口越彻底。
+
+### 根因（四处，比登记时多一处）
+
+所有「最近 5 轮」类判据都用 `role = 'user'` 认用户消息，而**压缩摘要的 `role` 就是 `user`**（`meta.compactSummary` 才标出它是卡）。首次加载 `turns=5` 拉回 10 条**全是卡、真实用户 0 条**；状态栏分母跟着虚高（71 而不是 51）。
+
+四处：渲染层 `trimMessagesToRecentTurns`、worker `totalTurns`、窗口起点两个分支、`hasMore`。登记时只找到三处，第四处是实施时全仓复扫补上的。
+
+### 改动
+
+| 侧 | 改了什么 |
+|---|---|
+| 渲染层 | 新增 `isRealUserTurn`（`context-compression-display.ts`，纯函数）；`trimMessagesToRecentTurns` **从 store 搬到 `lib/agent/turn-window.ts`** —— store 一 import 就把 zustand + IPC 拖进来、node 跑不了，不搬就只测得了判据、测不到「窗口里到底有没有人话」。`session-slice.ts` 改为引用，删本地实现 |
+| worker | `DbMessageToolsQueries.cs` 抽 `RealUserTurnPredicate` 常量，四处 SQL 全改走它 |
+| 共用判据 | `isLegacyCompactSummaryMessage` 收窄为 `matchesLegacySummaryPrefix(role, content)`，供两处复用 |
+
+**跨语言共用不了函数** ⇒ 两侧各自实现 + 各配一套回归，注释互相指名。**不加 `is_artifact` 列**（老大定案）：走 `meta LIKE`，零迁移。
+
+### 测试
+
+- `tests/real-user-turn`：**10 断言**，含主症「尾部 5 张卡不能把真实消息挤出 turns=5」与对照「卡不被顺手过滤掉」；
+- C# `WishfulClaw.RealUserTurnRegressionTests`：**21 断言**，真 sqlite 跑 `ListByTurns`，覆盖分母 / 窗口 / 分页 `hasMore` / 全卡会话四组。
+
+**反向验证**：谓词临时退回 `role = 'user'` ⇒ `assertion failed: totalTurns 只数真实用户消息 (expected 6, actual 14)` 当场红，撤销后 21/21 复绿。
+
+`npm test` **104/104** · `typecheck` 两配置 0 错 · `dotnet build` 0 警告 0 错误。
+
+### 已知残留（写进 `S-276.md` §九）
+
+`LEGACY_SUMMARY_PREFIXES` 那批**老摘要卡没有 `meta`**，SQL 认不出，只在渲染层兜底。彻底解决应做数据回填（可与 S-277 合并排期），**不是往 SQL 里堆三个 LIKE 变体**。
+
+### 刻意不做
+
+压缩卡在窗口里的配额（「最多 2 对、其余折叠」）—— 那是新的展示设计，不是修判据；S-277 落地后卡的数量自然下来。
+
+### 真机待验（3 条，见 `S-276.md` §十）
+
+打开会话 `9yXnLPAM00ea6qAXu6qPp` 首屏必须见 17:06 那条真话 / 加载更早不多出空页 / 状态栏分母显示 51 不是 71。
+
+---
+
+## 2026-10-30 14:50 · 刀 18 · S-284 图片块补 `filePath`，让「已落盘的那份」真正被剥掉
+
+**一句话**：截图落了盘，可剥 base64 的剥离器从头到尾没看见路径 —— 那头链两头都铺好了，中间少一个字段。
+
+### 根因（三条，缺一不可）
+
+1. **写入方没填 `filePath`**。`stripImagePayloads` 的剥离条件是「`type === 'image'` 且 `source.filePath` 非空且 `'data' in source`」—— 这个安全条件是 S-224 定的（没有路径的块一旦被剥，图就彻底没了），本身没错；错的是 `CreateScreenshotContent` 与 `CreateAppWindowCaptureContent` 从来没往 `source` 里写过 `filePath`。后者甚至已经在 `:145` 把 `filePath` 取到了，只用在文字描述里。
+2. **`output` 是字符串化的 JSON**。工具结果的 `output` 不是数组，是被上游 `stringify` 过一层的文本（`"[{\"type\":\"image\",\"source\":{…}}]"`）。`stripNode` 遇到 string 直接原样返回 —— **连里面的 image 块都没看见**，所以就算补了 `filePath` 也剥不动。
+3. 两处叠加，效果是「库里 99% 的字节原地不动」：单条 meta 14,496 KB，图片 base64 占 13,238 KB（同一张图在 `toolCalls` 与 `segments` 各存一份）。
+
+### 改动
+
+| 文件 | 改了什么 |
+|---|---|
+| `AgentRuntimeDesktopExecutor.Encoding.cs` | `CreateScreenshotContent` 取 `response.filePath` 写进 `source`；`CreateAppWindowCaptureContent` 同样一段。**`data` 一个字节不动** —— 模型这一轮还要看图，剥的是落库副本 |
+| `src/renderer/src/lib/image-payload.ts` | 新增 `stripStringifiedJson`，`stripNode` 遇 string 不再直接返回。三道廉价判据（长度 ≥ 32、首字符 `[`/`{`、含 `"image"`）命中才 `JSON.parse` → 剥 → `stringify`，解析失败原样返回 |
+| `src/renderer/src/lib/tools/image-block-source.ts` | `src` 加 `filePath` 兜底 → `filePathToMediaUrl()`（`oc-media://local/<encoded>`）。剥掉 `data` 之后重开会话只有路径，这里是唯一的显示出口 |
+| `ToolCallCard/utils.ts` · `BrowserToolCard.tsx` · `DesktopActionToolCard.tsx` · `content-renderer.tsx` | 四处内联拼 `data:` 全部收敛到统一入口 |
+
+判据用 `"image"` 而不是 `"base64"`：要剥的块靠 `type === 'image'` 认，而字符串里出现 `"base64"` 反而可能是 thinking 正文在讨论 base64（库里真有）。判别错了的代价只是白 parse 一次。
+
+### 实测（真库那条 `wc-agent-1793264773464-cz0mvm`）
+
+给 32 个 image 块补上 `filePath` 后跑剥离：
+
+```
+14.34 MB  →  1.41 MB     降幅 90.2%
+image 块总数 32，仍带 data 的 0
+```
+
+产物里残留 6 处 `iVBORw0KGgo` / 2 处 `;base64,` **全在 thinking 文本里** —— 是模型自己讨论 base64 时引用的字面量，不是图片载荷，不该动。
+
+剩下 1.41 MB 是纯文本 output（836 KB）+ thinking 两份（272 KB）+ 结构开销，归 S-285（拆 `message_parts` 表）。
+
+### 测试
+
+- `tests/image-payload`：27 → **42 断言**。新增字符串化 JSON 六组，其中「**没有 filePath 的字符串化 JSON 一个字节都不许动**」是安全断言，优先级高于正向断言。
+- `tests/image-block-source`：15 → **16**。原来那条「只有 filePath 时 src 为空串，靠 filePath 回读」**正是本需求要推翻的契约**，改写为「兜底成 `oc-media://`」，并补「剥空的块不得产出 `data:` URL」「url 存在时不被 filePath 顶掉」。
+- 闸做过反向验证：把 `stripNode` 的 string 分支退回 `return node` ⇒ 字符串化 JSON 那六条当场红。
+
+`npm test` **104/104** · `npm run typecheck` 两配置 0 错 · `dotnet build` 0 警告 0 错误。
+
+### 已知边界
+
+**存量旧数据剥不掉。** 10-30 之前进库的 meta 里 `source` 没有 `filePath`，剥离条件仍不满足 ⇒ 那些会话不会瘦下来，旧会话 `9yXnLPAM…` 首屏仍是 32.6 MB。治存量只能靠回填或迁移脚本，另立，不在本条范围。
+
+### 真机待验（3 条，见 `S-284.md` §九）
+
+截一次桌面 → 新消息 meta 不再有 6 MB 级 base64 → 重开会话截图能正常显示。
+
+---
+
+## 2026-10-30 16:48 · 文档欠账清理（收尾前置，零代码改动）
+
+老大 16:48：「嗯 你先处理文档欠账」。**只动文档，代码一行为零。**
+
+### 补：changelog 缺刀 15 / 16 / 17 三节
+
+刀 15 ~ 17 之前**全仓零记录** —— 三条都只活在各需求文档与 `plan.md` 的表格行里，changelog 从「刀 14」直接跳到「刀 18」。已按提交时间补齐三节（11:42 / 11:52 / 12:04），含根因、改动表、测试数与真机待验项。
+
+顺带记两条以前只在会话里说过、没落文档的事实：
+
+- **刀 16 的测试抓到真 bug**：第一版「遇到图才建列表」把第一张图之前的 `text` 块全丢了。纯函数化 + 真数据断言的价值 —— 这个错靠真机永远看不出来。
+- **刀 17 是四处判据，不是登记时的三处**：第四处（`hasMore`）是实施时全仓复扫补上的，`plan.md` §7.1 有记，changelog 现在也有了。
+
+### 修：`plan.md` 五处
+
+| # | 欠账 | 订正 |
+|---|---|---|
+| 1 | §2.4 表头「14 条」 | → **15 条**（S-284 插入后没改表头） |
+| 2 | §五 门禁基线停在刀 14 的 100/100 | 补刀 15 / 16 / 17 / 18 四行（101 → 102 → 104 → 104），最终值改 **104/104**，并记 16:48 的 typecheck 复核 |
+| 3 | §七 刀序表刀 16 **重复两行** + 刀 13 排在刀 12 前面 | 合并重复行、按依赖对调 12 / 13 |
+| 4 | §七 刀序表里刀 16 / 17 / 18 三行写成了**进度口径**（§7.1 的活） | 收敛回「为什么排在这」；进度留在 §7.1。**刀 16 原本在 §7.1 里整行缺失**，已补 |
+| 5 | §7.1 顺序 `…13 → 17 → 15 → 18` | 重排为 `…13 → 14 → 15 → 16 → 17 → 18` |
+
+### 修：`raw-requirements.md` 六处（账最多的一份）
+
+| # | 欠账 | 订正 |
+|---|---|---|
+| 1 | **S-274 被误列入 §1.3「移交下迭代」** | 它是本迭代刀 13 + 刀 14 交付的，已移回 §1.2 并补交付状态。这条错得最实 —— 按字面读，刀 13 白做了 |
+| 2 | §1.2 标题「十三条」 | → **十五条**（补 S-274 归位 + S-284） |
+| 3 | §1.3 标题「八条」 | → **十二条**（移出 S-274，补 S-281 / S-282 / S-285 / S-286 / S-288） |
+| 4 | §一 标题「承接需求（二十二条）」 | → **二十四条**，并加一行口径说明「= 插件基座 5 + 资源治理 4 + 本迭代新登记 15」，与 `plan.md` §2 对齐 |
+| 5 | 顶部追加行停在 10-30 11:29 | 补 11:05（S-281/282）、14:32（S-284/285）、15:10（S-286/288 + **S-287 空号说明**）三段 |
+| 6 | §四 门禁基线停在刀 2 的 92/92 | 补齐到 104/104 完整推进链 + 16:48 复核 |
+
+### 修：五份需求文档的归属行
+
+| 文档 | 原来写的 | 实际 |
+|---|---|---|
+| `S-274.md` | 「v3-iter-4 交付」（无状态） | 刀 13 + 刀 14 续，`e174bd6d`，实测 3.85 GB → 1.3 GB |
+| `S-275.md` | **「待老大拍板」** | 刀 16 已交付 `45ed198f` —— 10-29 18:20 §七 刀序就拍定了，这行一直是旧的 |
+| `S-276.md` | 有交付无 hash | 补 `840d99e9` |
+| `S-283.md` | 「本迭代 · 刀 15」（无状态） | 已交付 `3b6e02a9`，真机 4 条待验 |
+| `S-284.md` | 「本迭代」（无状态） | 已交付 `3d948561`，真机 3 条待验 |
+
+### 格式
+
+十份文件统一走 `fix-crlf-s286-288.js` 复核：**裸 LF = 0 / BOM = false / U+FFFD = 0**，全部 CRLF。`npm run typecheck` 两配置 exit 0、0 错。
+
+> 未动：`S-246.md`（iter-v3-3 目录）与 `S-270.md` / `S-271.md` 的工作区改动 —— 那三份是前几次迭代内提交时的正常修订，不是本轮的账。
+
+---
+
+## 2026-10-30 16:55 · 登记 S-289（用量折线图不 hover 时圆点抢戏），移交 v3-iter-5
+
+老大 16:55：「用量统计的**曲线图，未选中时，也就是鼠标没有移上去之前的圆点太大了，有点抢戏**，未 hover 时**没有圆点都是可以的**。」
+
+**登记，不动码。** 移交 v3-iter-5，不占承接、不占刀序。
+
+### 根因三条（不是「半径调小就行」）
+
+`line-chart.tsx:79-95` 给「每个系列 × 每个时间桶」**无条件**渲染 `<circle>`：
+
+| # | 因素 | 效果 |
+|---|---|---|
+| 1 | 非 hover 也画 | 点数 = 系列数 × 时间桶数。默认 24 小时 + 3 个模型 = **72 个点**；一天 24 桶 × 5 模型 = 120 个 |
+| 2 | `r=2.5` | 折线 `strokeWidth` 也是 2.5 ⇒ **点的直径正好等于线宽**，读起来像一串珠子不是一条趋势线 |
+| 3 | `opacity=0.72` | 半透明拼成片，比实心更容易糊成带子 |
+
+**顺带发现一处冗余**：每个 circle 上的 `<title>`（`:91-93`）是多余的 —— `ChartTooltip` 是**列级**的（`chart-primitives.tsx:109`，传 `bucket` + 全部 `series`），hover 时这一列所有系列的数据已经摆出来了。删点可连同 `<title>` 一起删，不丢信息；否则原生 tooltip 与我们自己的浮层会同时弹出、互相遮挡。
+
+### 方案 A（登记采纳）
+
+未 hover 只画 `path`；hover 只给那一列画点，`r=4` + 实心 + `stroke=var(--background)` 的高亮样式**原样保留** —— 视觉反馈一点没减，代码量反而减少（删 list 渲染 + 三条三元表达式）。
+
+**B（不推荐）**：只把 `r` 调小 —— 点数问题、`<title>` 双弹层问题都不解，只是把「抢戏」变成「脏」。
+
+### 明确不做
+
+- **`preserveAspectRatio="none"` 的椭圆变形**：`chart-primitives.tsx:241-245` 记着这个坑，但 `useMeasuredSize` 让 viewBox 与容器 1:1，只在首帧（`FALLBACK_SIZE 800×320`）或 resize 那一帧短暂拉伸。改它属于图表坐标系改造，与本条无关。
+- **不新增测试套件**：JSX 条件渲染，没有值得抽的纯判据 —— 抽出 `shouldRenderDot()` 只会造一个一次性导出，与 S-270「出口越少越好」的教训相反。验收靠真机 4 条 + `typecheck`。
+
+### 账目变动
+
+`plan.md` §2.5 由 13 → **14 条**、`raw-requirements.md` §1.3 由 12 → **13 条**，承接清单（24 条）不变。需求号 **S-289**。
+
+## 2026-10-30 19:30 · 登记 S-290（截图 image 块被 32 KB 截断）
+
+**来源**：验 S-283 / S-284 的真机截图时，看 dev 日志撞见一行不该有的东西：
+
+```
+19:24:38.398 [worker] agent tool output truncated
+  runId=wc-agent-1793359476027-uf70aq  tool=use_capability
+  originalBytes=712499  truncatedBytes=32768
+```
+
+同一轮库里落的是**干净数据** —— 这两个事实放在一起，说明落库与送模型拿的不是同一份内容。顺着查，两个出口分开摆着：
+
+| 行 | 去处 | 变量 | 结果 |
+|---|---|---|---|
+| `ToolCallProcessor.cs:389` | `tool_call_result` 事件 → 落库 | `toolOutput`（完整 712,499 B） | S-284 正常剥 `data`，meta 10,909 B |
+| `:412` | 交给模型（provider 报文） | `truncatedOutput`（32,768 B） | 砍断的 JSON 文本，图不可用 |
+
+**根因**：`ApplyToolOutputLimit`（`OutputLimit.cs:81-99`）的豁免名单只有 `use_capability` 的 `list`/`inspect` 与 `Read`。截图是 `builtin:DesktopScreenshot` 经代理调用，两头不沾 ⇒ 走 `SpillToolOutput`，内联只留 head 16 KB + 提示 + tail 16 KB。**被截断的是 JSON 文本不是结构**，head 里是半截 base64、tail 里是尾巴和 `filePath`。模型这轮拿到的不是 image 块。
+
+`ToolCallProcessor.cs:410-412` 那句注释（「结构化 content 优先，文本截断对 base64 图像块没有意义也不该动它」）**写得没错，但只有 `Read` 有 `toolContentBlocks`** —— 截图走的是 `??` 右边。
+
+### 不是回归
+
+截断逻辑早于 S-283，`MaxToolOutputBytes = 32 * 1024` 是既有常量。让这件事显形的是 S-283 方案 A 的假设 —— `S-283.md:55` 写着「落盘 + 路径写进文本行 + **image block 照旧保留**，本轮不省」。实际是**省了、也废了**。
+
+### 现场实测（两侧都成立，不矛盾）
+
+dev 库 `wc-agent-1793359476027-uf70aq`：落库 output 459 字符、`data.length = 0`、`filePath` 有值、整条 meta 10,909 B（原始 712,499 B，剥掉 98.5%）。S-283 落盘 + 文本行 `Saved to`、S-284 补 `filePath` + 剥 `data` —— **三项全部生效**。
+
+功能没断：agent 下一轮自己 `Read` 盘上那份（`Read` 读图走 `toolContentBlocks`，不吃截断），拿到 2520×1680。代价是**每次截图多一次往返**，且第一轮它据一个坏块做判断。
+
+### 方案（推荐 A）
+
+在 `ApplyToolOutputLimit` 最前面按「输出里存在带 `filePath` 的 image 块」短路豁免 —— **判内容不判工具名**，将来谁返回图都自动免疫。判据选「带 `filePath`」而不是「含 `"type":"image"`」：只有带路径的才保证「截掉也能从盘上取回」，没有路径的 image 块（用户粘贴图）一旦放行就是纯吃上下文，该截还得截。
+
+**成本要认**：豁免后这 700 KB 真进 wire，本轮不再省 —— 这正是 S-283 方案 A 原本的设计，省 wire 那一刀是 S-275，不靠截断。
+
+**B（不推荐）**：把 `DesktopScreenshot` 加进工具名白名单 —— 枚举当契约维护，漏一个即静默降级（S-270 的教训）。
+**C（留作以后重构方向）**：让截图工具改返回 `toolContentBlocks`，最干净但动 `ToolDispatchRouter` 返回契约，超出本条范围。
+
+### 明确不做
+
+- 不修 `SpillToolOutput` 本身（超大文本输出落盘是对的，只动 image 块）；
+- 不动 `TruncateToolOutput`（`Read` 走它，`Read` 有 `toolContentBlocks` 兜着）；
+- 不按 `mediaType` 白名单扩面（视频 / PDF 不管）；
+- 与 S-286 分开：本条让模型能看图，但「尺寸摘要撞 base64 正则」那条 bug 独立存在。
+
+### 另有一条更危险的分支（19:37 补记）
+
+`SpillToolOutput` 失败会退到 `TruncateToolOutput`（`OutputLimit.cs:131`）。两条路的差别不在截断本身，在**模型知不知道**：
+
+| 路径 | 模型看到 | 能否自救 |
+|---|---|---|
+| spill 成功（19:24 实测） | head + `[tool output too large: … saved to <路径> — <取回提示>]` + tail | 能 —— 提示里给了路径，模型当场 `Read` |
+| spill 失败（`:131`） | head + `[truncated N of 712499 UTF-8 bytes — rerun with narrower args]` + tail | **不能** —— 「用更窄的参数重跑」对截图毫无意义，也没路径可读 |
+
+模型 19:24 的原话可以作证：*"The screenshot was captured but **the base64 was spilled**. I have the filePath: … Let me read it."* —— 它是靠 spill 提示里的路径自救的，`spill failed` 那条没有这根绳子。
+
+触发条件是磁盘满 / 会话目录权限 / spill 目录被清。概率低，但命中即是**静默错误**：模型可能对着半张残图直接下结论（照残图算点击坐标），我们这边只留一行 `spill failed` 的 warn。方案 A 的短路排在 `SpillToolOutput` 之前，顺带把这个分支一起消掉 —— 验收加了第 5 条专门验这个顺序。
+
+### 账目变动
+
+`plan.md` §2.5 由 14 → **15 条**、`raw-requirements.md` §1.3 由 13 → **14 条**，承接清单（24 条）不变、刀序不动。需求号 **S-290**。
+
+**本迭代不修**：老大 19:30 原话「登记到下个迭代吧，当前迭代越弄越久，有种尾大不掉的感觉了」。
+
+### 19:45 · 迭代收尾 —— 产品版本 1.0.4，24 条全交付
+
+按 `docs/release-workflow.md` 走。本节记「收尾做了什么 + 门禁 + 账目」，发布过程见 §七。
+
+**① 版本号四处**：`package.json`、`package-lock.json`（顶层 `version` 与 `packages[""].version` **两处**，漏一处下次 `npm ci` 就会悄悄改回来）、`README.md` 徽章。全仓再扫一遍残留：命中的 `1.0.32767`、`1.1.0.38` 是假阳性；`docs/progress/v3-iter-3.md` 等历史文档里的 `1.0.3` **按原样保留** —— 那是上一版的真实记录，跟着改就是把历史改成假的。
+
+**② 进度文档**：新建 `docs/progress/v3-iter-4.md` 明细；`docs/PROGRESS.md` 的 v3 段新增一行（该段倒序，最新压在最上面）。
+
+**③ 门禁复跑**：`npm run typecheck`（node + web）0 错 / `npm test` 104/104 / `dotnet build tests/WishfulClaw.Tests.sln` 0 警告 0 错误 / `node scripts/ci-checks.mjs` 全过。改动只有文档与四个版本号字段，理论上不动门禁，但收尾这一刀的门禁**必须自己跑一遍** —— 「上一刀是绿的」不能当证据，这是本迭代被 S-274 教会的规矩。
+
+**④ 账目**：承接 **24 条**全部实施，刀序 0 ~ 18 共 **26 刀**（含 1b ~ 1g、3b 这几把插刀），累计 **30 个提交**。
+
+| 块 | 条数 | 编号 |
+|---|---|---|
+| 插件基座 | 5 | S-240 / S-241 / S-242 / S-243 / S-244 |
+| 400 与图片链路 | 12 | S-261 / S-262 / S-263 / S-264 / S-266 / S-267 / S-269 / S-275 / S-276 / S-283 / S-284 |
+| 渲染形态与性能 | 7 | S-247 / S-248 / S-256 / S-260 / S-270 / S-271 / S-274 |
+
+（400 与图片链路一行写 11 个编号：S-267 是 1g 顺路带上的，不单独占刀；S-272 只做第一段，第二段移入下个迭代，两条都已在明细里逐条写清。）
+
+**⑤ 移交 v3-iter-5（15 条）**：S-265 / S-268 / S-273 / S-277 / S-278 / S-279 / S-280 / S-281 / S-282 / S-285 / S-286 / S-288 / S-289 / S-290 + S-272 第二段。
+
+**⑥ 不作数的三条**：S-233 抖动仍未关闭（缺陷成立、频率低、与 S-274 根因不同）；S-230 Qoder 缺契约阻塞；插件线的真机验收要等真插件落地，本迭代按「基座已交付」放行，不写「已验证」。
+
+**收尾时最该记住的一条**：这个迭代开工时的自我定位是「插件基座 + 存量修准」，实际花在「怎么收场」上的刀数远多于预期 —— 上游拒绝之后不许把会话打死（S-261 / S-262 / S-269）、坏数据不许出门（S-264 / S-266 / S-267）、超预算的东西不许进上下文（S-275 / S-276 / S-284）。三条加起来，是同一个判断：**agent 的健壮性不取决于它多聪明，取决于它拿到坏东西时还能不能继续走。**
+
+
+

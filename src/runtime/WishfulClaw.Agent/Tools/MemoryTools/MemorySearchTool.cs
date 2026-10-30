@@ -44,7 +44,7 @@ public sealed class MemorySearchTool : IToolExecutor
 
         "Uses fast FTS index first; falls back to LIKE scan if no results. " +
 
-        "Results include entry id 鈥?use memory_update to modify entries.";
+        "Results include entry id — use memory_update to modify entries.";
 
 
 

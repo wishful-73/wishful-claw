@@ -316,6 +316,10 @@ public static partial class ExtensionManifestStore
     [GeneratedRegex("^[A-Za-z][A-Za-z0-9_-]{0,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex ToolNameRegex();
 
+    // 插件视图 id（S-240）—— 与 tool name 同一套字符规则，便于和 `view:<id>` 之类的键拼接
+    [GeneratedRegex("^[A-Za-z][A-Za-z0-9_-]{0,63}$", RegexOptions.CultureInvariant)]
+    private static partial Regex ViewIdRegex();
+
     private readonly record struct ExtensionState(
         bool Enabled,
         IReadOnlyDictionary<string, string> Config);

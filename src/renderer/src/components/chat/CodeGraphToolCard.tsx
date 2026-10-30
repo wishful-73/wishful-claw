@@ -18,6 +18,7 @@ import {
   SAFE_LINK_COMPONENTS
 } from '@renderer/lib/preview/viewers/markdown-components'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import { formatDurationMs } from '@renderer/lib/format-duration'
 import { useUIStore } from '@renderer/stores/ui-store'
 import type { CompactToolHeaderModel } from './CompactToolCallHeader'
@@ -300,7 +301,7 @@ export function CodeGraphToolCard({
       .filter(Boolean)
       .join(' · '),
     badges,
-    title: [query, projectPath].filter(Boolean).join('\n') || name
+    title: [query, projectPath].filter(Boolean).join('\n') || resolveToolDisplayName(name, t)
   }
 
   const handleOpenFile = (ref: CodeGraphFileRef): void => {

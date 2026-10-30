@@ -17,6 +17,7 @@ import {
 } from './browser-scripts'
 import {
   type NativeImageLike,
+  acquireBrowserLease,
   ensureAttachedWebview,
   requireWebview,
   runWebviewCommand,
@@ -25,6 +26,7 @@ import {
   parseWebviewJson,
   extractBase64ImageData
 } from './browser-webview-helpers'
+import { detectBlankScreenshotWarning } from './browser-screenshot-blank'
 
 type NativeBrowserToolResponse = {
   content: ToolResultContent
@@ -91,7 +93,9 @@ async function executeBrowserNavigate(
     // 面板要不要掀开由 store 判（S-259）：只有「用户当前正在看的那个会话」才开，
     // 后台会话静默建 tab。判据在 ui-store.ts 的 ensureBrowserTab 里收口一次，
     // 这里不要自己再判 —— 四处各写一遍必漏，漏掉的那处就是下一次「面板莫名弹开 + 空白」。
-    useUIStore.getState().openBrowserTab(url, ctx.sessionId)
+    useUIStore
+      .getState()
+      .openBrowserTab(url, ctx.sessionId, undefined, { keepAliveExplicit: false })
     // Wait for the webview element to mount and register its ref.
     const webview = await waitForWebview(ctx, 10000)
     if (!webview) {
@@ -252,11 +256,16 @@ async function executeBrowserScreenshot(
       ...(persisted?.filePath ? { filePath: persisted.filePath } : {})
     }
   }
+  // 缺陷 A：截图成功但页面什么都没画（未构建的 SPA 被 file:// 打开）时，
+  // agent 会拿着一张白图以为看到了。加一句警告，失败一律静默。
+  const blankWarning = await detectBlankScreenshotWarning(webview, nativeImage)
   return [
     image,
     {
       type: 'text',
-      text: `Screenshot captured: ${size.width}x${size.height}px - ${useUIStore.getState().getBrowserState(ctx.sessionId).url}`
+      text:
+        `Screenshot captured: ${size.width}x${size.height}px - ${useUIStore.getState().getBrowserState(ctx.sessionId).url}` +
+        (blankWarning ? `\n${blankWarning}` : '')
     }
   ]
 }
@@ -461,6 +470,9 @@ export async function handleNativeBrowserToolRequest(
   const toolName = typeof record.toolName === 'string' ? record.toolName : ''
   const input = normalizeRecord(record.input)
   const ctx = createToolContext(record)
+  // S-260：整个工具执行期间钉住该会话的浏览器名额（思考间隙不算空闲，
+  // 但工具正在跑的时候它绝不能被回收）。
+  const releaseBrowserLease = acquireBrowserLease(ctx.sessionId)
 
   try {
     return {
@@ -477,5 +489,7 @@ export async function handleNativeBrowserToolRequest(
       isError: true,
       error: message
     }
+  } finally {
+    releaseBrowserLease()
   }
 }

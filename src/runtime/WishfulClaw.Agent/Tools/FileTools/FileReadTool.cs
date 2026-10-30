@@ -12,6 +12,7 @@ using System.Text.Json;
 
 using System.Threading.Tasks;
 
+using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 
 
@@ -183,6 +184,20 @@ public sealed class FileReadTool : IToolExecutor
     /// <c>ImageInputErrors</c> 认出来后在 AgentLoop 剥图重试（档 2）。
     ///
     /// 唯一还留着的降级是「文件太大」，那是传输与计费边界，不是能力判断。
+    ///
+    /// S-264（2026-10-29）：**按真实签名判，不信扩展名。** 修前这条路径只看扩展名：
+    /// `foo.png` 里装着 svg / html / 半截数据时，`MediaTypeFor` 照样给 `image/png`，
+    /// 过完白名单闸就贴上标签送上游，换回 400 `unsupported image`，坏块留历史每轮重发。
+    /// 现在先问 <see cref="ImageFileProbe.DetectMediaTypeFromFile"/>「字节实际是什么」，
+    /// 按五档分流 —— 只有「认不出」才判读图失败，扩展名骗人要按真实格式**纠正**后照发
+    /// （用户截图后手动改名是常事，报「读图失败」才是误报）。
+    ///
+    /// S-266（2026-10-29）：补上第五档「签名对但没写完」。签名在文件开头，截断的文件照样合法，
+    /// 所以前一档判据天生够不着它 —— 这类脏图以前一路内联出去再换 400，
+    /// 现在由 <see cref="ImageFileProbe.HasCompleteContainer"/> 按尾部结束标记拦下，判读图失败。
+    ///
+    /// 判据只认签名不认尺寸：`TryReadSize` 返回 false 只代表「SOF 不在前 4 KB」，
+    /// 一张带大 EXIF 的合法 JPEG 就会落到那里 —— 拿它当脏图判据必误杀。
     /// </summary>
     private static ToolResult ReadImage(string path, string mediaType)
     {
@@ -190,11 +205,44 @@ public sealed class FileReadTool : IToolExecutor
         var sizeText = hasSize ? $"{width}x{height}" : "size unavailable";
         var byteLength = new FileInfo(path).Length;
 
-        // S-246：上游不收的格式（bmp / tiff …）不内联像素，只回一行元信息。
+        var detected = ImageFileProbe.DetectMediaTypeFromFile(path);
+
+        // ── 档 4（认不出）—— 损坏 / 半截 / 根本不是图，判读图失败 ──
         //
-        // 不这样做的话，一张 bmp 就会给请求体塞进 `data:image/bmp;base64,…` ——
-        // OpenAI 系只收 png/jpeg/webp/gif，必然回 400 `unsupported image`，
-        // 而那个块留在会话历史里每轮重发，整个会话在清空历史前不可用。
+        // 这一档必须失败。把这样的字节贴上 image/png 送上去只会换回 400
+        // `unsupported image`，而那个坏块会留在历史里每轮重发（S-246 / S-261 的现场）。
+        // 说「读不了」比让模型以为自己看过这张图好得多。
+        if (detected is null)
+        {
+            WorkerLog.Warn(
+                $"read image rejected: no recognizable image signature (path={path} " +
+                $"declared={mediaType} bytes={byteLength})");
+
+            return new ToolResult(
+                $"Read image failed: {path} ({sizeText}). " +
+                "The file does not start with any recognizable image signature " +
+                "(png / jpeg / webp / gif / bmp / tiff / ico / svg), so no pixels were attached. " +
+                "It is most likely corrupted, truncated, or not an image file at all. " +
+                "Verify the file, or convert it to png or jpeg and read it again.",
+                true,
+                "image signature not recognized");
+        }
+
+        // ── 档 2（扩展名骗人）—— 按真实格式纠正后照发，不判失败 ──
+        var declared = mediaType;
+        if (!string.Equals(detected, declared, StringComparison.OrdinalIgnoreCase))
+        {
+            mediaType = detected;
+            WorkerLog.Debug(
+                $"read image media type corrected from extension " +
+                $"(path={path} declared={declared} detected={detected})");
+        }
+
+        // ── 档 3（上游不收）—— bmp / tiff / ico 只回元信息 ──
+        //
+        // S-246 的既有行为不变。不这样做的话，一张 bmp 就会给请求体塞进
+        // `data:image/bmp;base64,…` —— OpenAI 系只收 png/jpeg/webp/gif，必然回 400，
+        // 块留历史每轮重发，会话在清空历史前不可用。
         // 组包层（ProviderContentHelpers.ResolveSupportedImageMediaType）是最后一道闸，
         // 这里先拦一次：省掉一次白烧的往返，也让模型立刻知道「要转格式」。
         if (!ProviderContentHelpers.SupportedImageMediaTypes.Contains(mediaType))
@@ -213,6 +261,31 @@ public sealed class FileReadTool : IToolExecutor
                 "inline limit, so the pixels were not attached. Ask the user for a downscaled copy.");
         }
 
+        // ── 档 5（签名对但没写完）—— 判读图失败 ──
+        //
+        // S-266：前四档都拦不住这一种 —— 下载到一半的截图、被中断的保存、拷贝到一半的 U 盘文件。
+        // 它们的头 8 字节完全合法，所以档 4 认得出格式、档 3 也让它过白名单，最终内联出去，
+        // 上游回 400 `invalid image`，坏块留在历史里每轮重发 —— 和 S-246 是同一个现场，
+        // 只是触发条件从「格式不收」换成了「数据不全」。
+        //
+        // 这里不把它降级成「只回路径」：截断的图本来就没有可用像素，
+        // 让模型以为「看过但没收获」比直接说「这张图是坏的，去重新弄一张」更糟。
+        if (!ImageFileProbe.HasCompleteContainer(path, mediaType))
+        {
+            WorkerLog.Warn(
+                $"read image rejected: container incomplete (path={path} media={mediaType} bytes={byteLength})");
+
+            return new ToolResult(
+                $"Read image failed: {path} ({sizeText}, {mediaType}). " +
+                "The file has a valid image header but is incomplete — its end marker is missing, " +
+                "so the pixels were not attached. It was most likely truncated by an interrupted " +
+                "download, save, or copy. Fetch the file again (or re-take the screenshot), " +
+                "then read it again.",
+                true,
+                "image container incomplete");
+        }
+
+        // ── 档 1（有效且格式可用）—— 照常附像素 ──
         var data = Convert.ToBase64String(File.ReadAllBytes(path));
         var summary = $"Read image: {path} ({sizeText}, {mediaType})";
         return new ToolResult(summary, false, null, BuildImageContent(summary, path, mediaType, data));

@@ -27,6 +27,7 @@ import {
   hasRightPanelTabsInScope,
   isRightPanelScopeActive,
   resolveRightPanelSessionId,
+  rightPanelTabScopeId,
   scopedRightPanelTabId
 } from './right-panel-scope'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
@@ -224,8 +225,27 @@ export const useUIStore = create<UIStore>((set, get) => ({
       return
     }
     const tabs = state.rightPanelTabs.filter((t: any) => t.id !== tabId)
+    // S-260：关掉某作用域**最后一个** browser tab 就把名额还给保活池 —— 用户关 tab
+    // 的意思就是不要了，继续挂着 webview 只是白占一个 renderer 进程。
+    const closedScopeId = rightPanelTabScopeId(tab?.sessionId ?? null)
+    const scopeStillHasBrowserTab = tabs.some(
+      (t: any) => t.kind === 'browser' && rightPanelTabScopeId(t.sessionId ?? null) === closedScopeId
+    )
+    const releaseKeepAlive =
+      tab?.kind === 'browser' &&
+      !scopeStillHasBrowserTab &&
+      Boolean(state.browserKeepAliveBySession?.[closedScopeId])
     set({
       rightPanelTabs: tabs,
+      ...(releaseKeepAlive
+        ? {
+            browserKeepAliveBySession: Object.fromEntries(
+              Object.entries(state.browserKeepAliveBySession).filter(
+                ([scopeId]) => scopeId !== closedScopeId
+              )
+            )
+          }
+        : {}),
       // 重算的是**被关闭 tab 自己那个作用域**的激活项
       ...closeRightPanelScope(state, tab?.sessionId ?? null, tabId, state.rightPanelTabs),
       // 收起判据看的是**当前展示的作用域**：否则「A 关完最后一个 tab 但 B 还有
@@ -394,6 +414,8 @@ export const useUIStore = create<UIStore>((set, get) => ({
   // Browser panel (session-scoped)
   browserStatesBySession: {},
   browserWebviewRefsBySession: {},
+  browserKeepAliveBySession: {},
+  browserLeasesBySession: {},
   browserUrl: '',
   setBrowserUrl: (url: any, sessionId: any, projectId: any) =>
     set((state: any) => updateBrowserStateForSession(state, sessionId, { url }, projectId)),

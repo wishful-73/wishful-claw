@@ -27,6 +27,8 @@ internal static partial class Program
             SummaryRollingChecks.Run();
             // iter-37 S-161: a compaction product must not carry pre-compaction usage.
             UsageStripChecks.Run();
+            // v3-iter-4 S-269: summarizer backoff honours Retry-After, failures classify.
+            SummarizerRetryChecks.Run();
 
             if (args.Length == 2)
                 return RunChildMode(args[0], args[1]);

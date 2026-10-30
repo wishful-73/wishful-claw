@@ -326,6 +326,66 @@ tests/WishfulClaw.GoalRegressionTests/bin/Debug/net11.0/WishfulClaw.GoalRegressi
 
 ---
 
+## 新增工具的红线（S-270 教训）
+
+**背景**：工具中文名表停在 OpenCowork 迁移期那批（23 条），之后十几个迭代新增的浏览器 / 桌面 / codegraph / 目标 / 交互类工具**一个都没补**，界面上一直露 `BrowserNavigate` 这种裸 camelCase。**之所以一直没人发现，是因为漏了不报错** —— 渲染点是 `t(key, { defaultValue: name })`，key 缺失静默回退英文原名。
+
+横跨十几个迭代的静默漏，靠「下次注意」治不了。三条规矩：
+
+### 1. 工具名只有一个出口
+
+显示工具名的任何地方，一律走 `resolveToolDisplayName(name, t)`（`src/renderer/src/lib/tools/tool-display-name.ts`）。
+
+**禁止**：
+
+| 写法 | 为什么不行 |
+|---|---|
+| `{name}` 直接渲染 | 裸英文。`FileChangeCard` 与 `ProcessTextLine` 原来就这么干的 |
+| ``t(`permission.toolLabels.${name}`, { defaultValue: name })`` | 缺 key 静默回退英文 —— **38 条漏登记的藏身处** |
+| ``t(`toolCall.xxx.${name}.title`)`` 不给 defaultValue | 缺 key 把 `toolCall.xxx.Foo.title` 原文顶上去 |
+| 组件里自写 `fallbackTitle()` 之类的兜底 | 末行往往 `return name`，等于又开一个后门（`BrowserToolCard` 就是） |
+
+### 2. 新增工具必做四件事
+
+1. `locales/zh/chat.json` 与 `locales/en/chat.json` 的 `permission.toolLabels` **各补一条**；中文不许混英文（`PowerShell` / `Shell` / `MCP` / `URL` / `AI` / `API` / `SSH` 白名单除外）。**C# 侧新增工具同样要补** —— 工具名除了 TS 常量，还可能是 `ToolDefinitionPlaceholder("X", ...)` 或 `public string Name => "X"`，两处都在扫描范围内。
+2. 有专用卡片的，卡片标题兜底同样换成 `resolveToolDisplayName`，别再自己写一套映射。
+3. 带新前缀族的（像 `codegraph_*`），在 `tool-display-name.ts` 加一个分支 + 动作词表，**别让它落到通用兜底**。
+4. `npm run test:tool-labels-coverage` 必须绿。
+
+**边界**：这一条只管**我们自己写进源码的常驻工具** —— 也就是源码里存在 `*_TOOL_NAME` / `*_TOOL_NAMES` 常量、随版本一起发布的那批。第三方插件、MCP 服务器带来的工具是**运行时数据**，不进表、不受这条约束，见下面 §2.1。
+
+### 2.1 第三方插件与 MCP：不进表，走兜底
+
+| 来源 | 工具名从哪来 | 显示方式 | 要不要补 locale |
+|---|---|---|---|
+| 内置 App 插件（浏览器 / 桌面 / 图像 / codegraph） | 源码常量 | 中文标签 | **要** —— 测试闸就管这批 |
+| MCP 服务器 | `mcp__{server}__{tool}` | 拆词首字母大写 | 不要 |
+| 第三方 / 自定义插件 | 运行时字符串 | 「工具 · 原名」 | 不要（也补不了） |
+
+**测试闸扫的是源码里的常量字面量，运行时字符串永远扫不到 —— 这是有意的。** 反过来设计（拿 locale 表去反查所有工具名）会让「用户装了个插件」把 CI 弄红，等于用闸锁死自己的扩展性。
+
+所以装第三方插件不会受限：工具名不认识的走 `resolveToolDisplayName` 的兜底，界面显示「工具 · 原名」，`npm test` 一个字都不会报。
+
+**将来若要插件自带中文名**：那是插件 manifest 里的显示名字段 + 运行时透传，**别往 locale 表里塞** —— 静态表装不下动态内容，塞了必漏。
+
+### 3. 三道闸各管什么（别以为有前两道就够了）
+
+| 闸 | 扫什么 | 漏在哪 |
+|---|---|---|
+| `tsc` | 类型 | 完全管不到文案 |
+| `test:i18n-coverage` | 代码里 `t('字面量')` 的 key | **扫不到动态拼接的 key** —— 工具名正是 `${name}` 这种 |
+| `test:tool-labels-coverage` | **TS 侧常量 + C# 侧 `Tools/` 的注册与 `IToolExecutor`**，反查 locale 表 | 只管「声明」；运行时才出现的名字（第三方插件 / MCP）靠兜底 |
+
+**新工具常量忘了补中文 ⇒ 第三道闸直接红。** 这是唯一一条不依赖人记性的防线，别为省 0.3 秒跳过它。
+
+### 4. 推广到所有「显示名」类改动
+
+同一类坑不止工具名：**任何「枚举 + 查表 + `defaultValue` 静默兜底」的结构都是同一个形状**（模型名、渠道名、状态标签、插件显示名…）。
+
+写这类代码时先自问一句：**漏一条会不会静默变成英文或 key 原文？** 会，就配一个反查测试，别只补数据。
+
+---
+
 ## 提交前自动把关（pre-push + CI）
 
 **结论：不用再手动敲 `npm run typecheck` 和 `npm test -- --ts-only`，push 时自动跑。** 想手动跑就 `npm run ci:checks`。

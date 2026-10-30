@@ -206,6 +206,8 @@
     "drawLabel": "绘图",
     "automationLabel": "自动化",
     "extensionsLabel": "扩展",
+    "extensionViewOpenFailed": "窗口打不开：{{reason}}",
+    "extensionViewCrashLoop": "插件窗口反复崩溃，已停止重开",
     "expand": "展开侧边栏",
     "projects": "项目",
     "conversations": "对话",
@@ -497,6 +499,11 @@
     "timeline": "时间线",
     "browserLoadFailed": "页面加载失败",
     "browserRetry": "重试",
+    "browserPoolFull": {
+      "title": "浏览器保活已满",
+      "description": "已经有两个会话的浏览器在后台运行（上限 2）。在此处打开会释放最久未用的那个。",
+      "action": "在此处打开"
+    },
     "browserEmptyState": "输入网址开始浏览",
     "openFile": "打开文件",
     "preview": "预览",

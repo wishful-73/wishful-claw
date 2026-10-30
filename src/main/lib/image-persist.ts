@@ -34,6 +34,14 @@ export interface PersistImageOptions {
    * back to the data root's own `image/` folder.
    */
   defaultDir?: string
+  /**
+   * File name (no directory) used when there is no `targetPath`. Omitted ⇒ the
+   * old `{timestamp}-{uuid}` name.
+   *
+   * Added for S-283: screenshots are named by content hash so the same frame
+   * captured twice lands on the same file instead of eating the disk.
+   */
+  fileName?: string
 }
 
 export interface PersistImageResult {
@@ -61,7 +69,8 @@ export function persistImageBuffer(
       ? options.defaultDir.trim()
       : resolveGeneratedImagesDir({}, resolveDataDir())
     fs.mkdirSync(dir, { recursive: true })
-    const filePath = join(dir, `${Date.now()}-${randomUUID()}${extension}`)
+    const name = options.fileName?.trim() || `${Date.now()}-${randomUUID()}${extension}`
+    const filePath = join(dir, name)
     fs.writeFileSync(filePath, buffer)
     return { filePath, mediaType }
   }

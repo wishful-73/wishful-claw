@@ -1,11 +1,17 @@
+// 500 行豁免（2026-10-29，行数以实际为准，AGENTS.md §大文件拆分 第 5 条第 3 类）：
+// 单组件同时承载「导航按钮 / 会话与项目树 / 插件视图入口 / 拖拽调宽 / 搜索弹窗」五块，
+// 全部共享同一组 store 派生值与本地展开态（展开集合、排序模式、悬停定时器）。拆出去要
+// 跨文件传十几个 props 并新增中间层，反而更难追踪状态来源 —— 代价值得，收益不足。
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
+import { IPC } from '@renderer/lib/ipc/channels'
 import { useTranslation } from 'react-i18next'
 import { MessageSquare, Settings, Plus, Search, ChevronRight, Image, CalendarDays, ArrowDownAZ, ListFilter, SquareKanban, Plug, Clock3, Globe, RotateCw } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuLabel } from '@renderer/components/ui/dropdown-menu'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore, type Session } from '@renderer/stores/chat-store'
+import { useExtensionStore } from '@renderer/stores/extension-store'
 import { cn } from '@renderer/lib/utils'
 import { APP_VERSION_LABEL } from '@renderer/lib/app-version'
 import { toast } from 'sonner'
@@ -188,11 +194,6 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     [createProject, t]
   )
 
-  // Collapsed state: completely hidden, use TitleBar button to expand
-  if (!leftSidebarOpen) {
-    return null
-  }
-
   // ─── Nav items (top buttons) ───
   const navItems: NavButtonItem[] = [
     {
@@ -216,6 +217,74 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     { id: 'draw', icon: <Image className="size-4" />, label: t('sidebar.drawLabel', { defaultValue: 'Draw' }), onClick: openDrawPage },
     { id: 'automation', icon: <Clock3 className="size-4" />, label: t('sidebar.automationLabel', { defaultValue: 'Automation' }), onClick: openTasksPage },
     { id: 'taskboard', icon: <SquareKanban className="size-4" />, label: t('sidebar.taskBoardLabel', { defaultValue: 'Task Board' }), onClick: openTaskBoardPage }
+  ]
+
+  // ─── 插件视图入口（S-240 入口 / S-241 真开窗）───
+  // 硬编码三项保留原地不动（内置功能），manifest 声明的视图**追加**在下方，按 nav.order 排序。
+  // 来源是 extension-store 里「已启用」插件的 manifest.views，停用即消失。
+  //
+  // 点击只传 id：标题、尺寸、加载哪个 html 全由主进程自己查清单。
+  // 让渲染端把 entry 路径传上去看着少一次请求，但那等于让渲染端决定主进程加载哪个本地文件。
+  const extensionInstances = useExtensionStore((s) => s.extensions)
+  const openPluginView = useCallback(
+    async (pluginId: string, viewId: string): Promise<void> => {
+      const result = (await ipcClient.invoke(IPC.PLUGIN_VIEW_OPEN, {
+        pluginId,
+        viewId
+      })) as { success: boolean; error?: string; crashLoop?: boolean } | null | undefined
+      if (result?.success) return
+      if (result?.crashLoop) {
+        toast.error(t('sidebar.extensionViewCrashLoop', { defaultValue: '插件窗口反复崩溃，已停止重开' }))
+        return
+      }
+      toast.error(
+        t('sidebar.extensionViewOpenFailed', {
+          defaultValue: '窗口打不开：{{reason}}',
+          reason: result?.error ?? 'unknown error'
+        })
+      )
+    },
+    [t]
+  )
+  const manifestViewItems = useMemo(() => {
+    const items: { id: string; icon: React.ReactNode; label: string; order: number; onClick: () => void }[] = []
+    for (const extension of extensionInstances) {
+      if (!extension.enabled) continue
+      for (const view of extension.manifest.views ?? []) {
+        items.push({
+          id: `${extension.id}:${view.id}`,
+          icon: <Plug className="size-4" />,
+          label: view.nav?.label || view.title,
+          order: view.nav?.order ?? 100,
+          onClick: () => {
+            void openPluginView(extension.id, view.id)
+          }
+        })
+      }
+    }
+    // 同 order 时按 id 兜底，保证跨插件顺序稳定（不依赖 locale 比较）
+    return items.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+  }, [extensionInstances, openPluginView])
+
+  // Collapsed state: completely hidden, use TitleBar button to expand
+  //
+  // ⚠️ 这句必须留在**所有 hook 调用之后**。它一度排在 extensionInstances /
+  // manifestViewItems 两个 hook 前面（S-240 把插件入口追加到文件末尾，正好落在
+  // 这句后面），于是侧栏一收起就少执行两个 hook ⇒ React 抛
+  // "Rendered fewer hooks than expected"、整棵侧栏被 ErrorBoundary 兜走，
+  // 页面直接白掉。新增 hook 时往上面放，不要往这里之后加。
+  if (!leftSidebarOpen) {
+    return null
+  }
+
+  const allExtensionItems = [
+    ...extensionItems,
+    ...manifestViewItems.map((item) => ({
+      id: item.id,
+      icon: item.icon,
+      label: item.label,
+      onClick: item.onClick
+    }))
   ]
 
   // 按当前视口收窄：右栏 RightPanel 一直这么做，左栏此前是裸用存值，
@@ -284,7 +353,7 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
             onPointerDownOutside={(e) => e.preventDefault()}
             onInteractOutside={(e) => e.preventDefault()}
           >
-            {extensionItems.map((ext) => (
+            {allExtensionItems.map((ext) => (
               <DropdownMenuItem
                 key={ext.id}
                 onSelect={() => {

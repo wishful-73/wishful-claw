@@ -50,10 +50,14 @@ public static partial class ExtensionManifestStore
         var configSchema = ReadConfigSchema(root);
         var networkPermissions = ReadNetworkPermissions(root);
         var tools = ReadTools(root);
-        if (tools.Count == 0)
+        var views = ReadViews(root, extensionPath);
+        // S-240：插件可以「只声明视图、不声明任何工具」（纯 UI 插件），所以不再要求 tools 非空，
+        // 但两者至少要有一项 —— 否则这个插件装进来什么也做不了。
+        if (tools.Count == 0 && views.Count == 0)
         {
-            throw new InvalidOperationException("extension must define at least one supported tool");
+            throw new InvalidOperationException("extension must define at least one tool or view");
         }
+        var assets = ReadAssets(root);
         if (tools.Any(static tool => tool.Kind == "js") &&
             ReadString(root, "entry").Trim().Length == 0)
         {
@@ -67,7 +71,117 @@ public static partial class ExtensionManifestStore
             version,
             configSchema,
             networkPermissions,
-            tools);
+            tools,
+            views,
+            assets);
+    }
+
+    /// <summary>
+    /// 校验插件内的相对路径（视图 / 渲染器 / 组件的 entry）。防「读到自己目录外」。
+    /// 这里只做路径合法性，不要求文件存在 —— 声明阶段允许先写清单后放文件。
+    /// </summary>
+    private static string ValidateManifestEntry(string extensionDir, string entry, string context)
+    {
+        var normalized = entry.Trim().Replace('\\', '/');
+        if (normalized.Length == 0)
+        {
+            throw new InvalidOperationException($"{context} entry is required");
+        }
+        if (Path.IsPathRooted(normalized) || normalized.StartsWith('/') || normalized.Contains(':'))
+        {
+            throw new InvalidOperationException($"{context} entry must be a relative path");
+        }
+
+        var rootFull = Path.GetFullPath(extensionDir);
+        var rootPrefix = rootFull.EndsWith(Path.DirectorySeparatorChar)
+            ? rootFull
+            : rootFull + Path.DirectorySeparatorChar;
+        var targetFull = Path.GetFullPath(Path.Combine(rootFull, normalized));
+        if (!targetFull.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"{context} entry must stay inside the extension directory");
+        }
+
+        return normalized;
+    }
+
+    /// <summary>解析 `views[]`（S-240）。`id` 在插件内唯一，`navOrder` 缺省 100。</summary>
+    private static List<NativeExtensionViewDefinition> ReadViews(JsonElement root, string extensionDir)
+    {
+        var views = new List<NativeExtensionViewDefinition>();
+        if (!root.TryGetProperty("views", out var viewsElement) || viewsElement.ValueKind != JsonValueKind.Array)
+        {
+            return views;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in viewsElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var id = ReadString(item, "id").Trim();
+            if (!ViewIdRegex().IsMatch(id))
+            {
+                throw new InvalidOperationException("invalid extension view id");
+            }
+            if (!seen.Add(id))
+            {
+                throw new InvalidOperationException($"duplicate view id: {id}");
+            }
+
+            var title = ReadString(item, "title").Trim();
+            if (title.Length == 0)
+            {
+                title = id;
+            }
+
+            var entry = ValidateManifestEntry(extensionDir, ReadString(item, "entry"), $"view \"{id}\"");
+            var navOrder = 100;
+            if (item.TryGetProperty("nav", out var nav) && nav.ValueKind == JsonValueKind.Object)
+            {
+                navOrder = ReadInt(nav, "order", 100);
+            }
+
+            views.Add(new NativeExtensionViewDefinition(id, title, entry, navOrder));
+        }
+
+        return views;
+    }
+
+    /// <summary>解析 `assets[]`（S-240）。只有 id 与 optional，URL 归主程序内置表。</summary>
+    private static List<NativeExtensionAssetDefinition> ReadAssets(JsonElement root)
+    {
+        var assets = new List<NativeExtensionAssetDefinition>();
+        if (!root.TryGetProperty("assets", out var assetsElement) || assetsElement.ValueKind != JsonValueKind.Array)
+        {
+            return assets;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in assetsElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var id = ReadString(item, "id").Trim();
+            if (id.Length == 0)
+            {
+                throw new InvalidOperationException("extension asset id is required");
+            }
+            if (!seen.Add(id))
+            {
+                throw new InvalidOperationException($"duplicate asset id: {id}");
+            }
+
+            assets.Add(new NativeExtensionAssetDefinition(id, ReadBool(item, "optional", false)));
+        }
+
+        return assets;
     }
 
     private static List<NativeExtensionConfigField> ReadConfigSchema(JsonElement root)
@@ -132,9 +246,11 @@ public static partial class ExtensionManifestStore
 
     private static List<NativeExtensionToolDefinition> ReadTools(JsonElement root)
     {
+        // S-240：tools 可以整体省略（纯 UI 插件）。「至少一项」的校验上移到 ReadManifest，
+        // 那里能同时看到 views，不会把只有视图的插件误杀。
         if (!root.TryGetProperty("tools", out var toolsElement) || toolsElement.ValueKind != JsonValueKind.Array)
         {
-            throw new InvalidOperationException("extension must define at least one tool");
+            return [];
         }
 
         var tools = new List<NativeExtensionToolDefinition>();

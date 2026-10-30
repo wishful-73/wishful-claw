@@ -24,6 +24,13 @@ import { registerAgentChangeHandlers } from './ipc/agent-change-handlers'
 import { registerMcpHandlers, shutdownMcp } from './ipc/mcp-handlers'
 import { registerVideoHandlers } from './ipc/video-handlers'
 import { registerExtensionHandlers } from './ipc/extension-handlers'
+import { registerPluginViewHandlers } from './ipc/plugin-view-handlers'
+import { registerPluginAssetHandlers } from './ipc/plugin-asset-handlers'
+import { registerPluginAudioHandlers } from './ipc/plugin-audio-handlers'
+import { registerDiagnosticsHandlers } from './ipc/diagnostics-handlers'
+import { startMemoryMonitor } from './diagnostics/memory-monitor'
+import { installDisplayMediaHandler } from './plugins/plugin-audio'
+import { registerPluginLifecycle } from './plugins/plugin-lifecycle'
 import { registerWebFetchHandlers } from './ipc/web-fetch-handlers'
 import { registerApiRequestHandlers } from './ipc/api-request-handler'
 import { registerSshHandlers, cleanupSshHandlers } from './ipc/ssh-handlers'
@@ -313,6 +320,17 @@ if (!gotTheLock) {
   registerSessionFollowUpHandlers({ getMainWindow: () => mainWindow })
   registerVideoHandlers()
   registerExtensionHandlers()
+  registerPluginViewHandlers()
+  // 插件资产下载器（S-242）：目录 / 状态 / 下载 / 取消 / 校验 / 删除
+  registerPluginAssetHandlers()
+  // 插件录音采集（S-243）：loopback 授权 + 系统声音源 + 按段落盘
+  installDisplayMediaHandler()
+  registerPluginAudioHandlers()
+  // 插件视图的 idle 回收与退出 pid 树回收（S-241）—— 第一个插件窗口打开之前装好
+  registerPluginLifecycle()
+  // 内存观测（S-247）：先开采样与周期日志，再挂读取端 —— 用户第一次打开诊断页就有数
+  startMemoryMonitor()
+  registerDiagnosticsHandlers()
 registerWebFetchHandlers()
 registerApiRequestHandlers()
 registerCodeGraphHandlers()

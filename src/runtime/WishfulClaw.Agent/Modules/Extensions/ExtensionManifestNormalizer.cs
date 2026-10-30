@@ -18,10 +18,10 @@ public static partial class ExtensionManifestStore
     {
         var manifestPath = Path.Combine(extensionDir, ExtensionManifestFileName);
         using var document = JsonDocument.Parse(File.ReadAllBytes(manifestPath));
-        return NormalizeManifestNode(document.RootElement);
+        return NormalizeManifestNode(document.RootElement, extensionDir);
     }
 
-    private static JsonObject NormalizeManifestNode(JsonElement root)
+    private static JsonObject NormalizeManifestNode(JsonElement root, string extensionDir)
     {
         if (root.ValueKind != JsonValueKind.Object)
         {
@@ -51,9 +51,13 @@ public static partial class ExtensionManifestStore
         }
 
         var tools = NormalizeTools(root);
-        if (tools.Count == 0)
+        var views = NormalizeViews(root, extensionDir);
+        // S-240：放宽为零工具插件合法（纯 UI 插件只声明 views），但两者不能都空。
+        // 注意这里必须抛错而不是放过 —— ListExtensionsCore 的 catch 只记 Warn 后 continue，
+        // 放过一个什么都没有的插件等于让它静默消失，用户装了看不见。
+        if (tools.Count == 0 && views.Count == 0)
         {
-            throw new InvalidOperationException("extension must define at least one tool");
+            throw new InvalidOperationException("extension must define at least one tool or view");
         }
         var entry = ReadOptionalString(root, "entry");
         if (ToolsContainKind(tools, "js") && string.IsNullOrWhiteSpace(entry))
@@ -69,6 +73,16 @@ public static partial class ExtensionManifestStore
             ["version"] = version,
             ["tools"] = tools
         };
+
+        if (views.Count > 0)
+        {
+            manifest["views"] = views;
+        }
+        var assets = NormalizeAssets(root);
+        if (assets.Count > 0)
+        {
+            manifest["assets"] = assets;
+        }
 
         if (ReadOptionalString(root, "description") is { Length: > 0 } description)
         {
@@ -158,9 +172,10 @@ public static partial class ExtensionManifestStore
 
     private static JsonArray NormalizeTools(JsonElement root)
     {
+        // S-240：tools 允许整体省略（纯 UI 插件）。「至少一项」在 NormalizeManifestNode 里统一判。
         if (!root.TryGetProperty("tools", out var toolsElement) || toolsElement.ValueKind != JsonValueKind.Array)
         {
-            throw new InvalidOperationException("extension must define at least one tool");
+            return new JsonArray();
         }
 
         var result = new JsonArray();
@@ -391,6 +406,130 @@ public static partial class ExtensionManifestStore
             result.Add((JsonNode?)component);
         }
         return result;
+    }
+
+    /// <summary>
+    /// 归一 `views[]`（S-240）。**这是本迭代最容易漏的一处**：白名单不输出，渲染端就永远看不到
+    /// （`extension/list` 返回的就是这个 JsonObject，不是原文件）。
+    /// </summary>
+    private static JsonArray NormalizeViews(JsonElement root, string extensionDir)
+    {
+        var result = new JsonArray();
+        if (!root.TryGetProperty("views", out var viewsElement) || viewsElement.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in viewsElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var viewId = ReadString(item, "id").Trim();
+            if (!ViewIdRegex().IsMatch(viewId))
+            {
+                throw new InvalidOperationException("invalid extension view id");
+            }
+            if (!seen.Add(viewId))
+            {
+                throw new InvalidOperationException($"duplicate view id: {viewId}");
+            }
+
+            var title = ReadString(item, "title").Trim();
+            if (title.Length == 0)
+            {
+                title = viewId;
+            }
+
+            var view = new JsonObject
+            {
+                ["id"] = viewId,
+                ["title"] = title,
+                ["entry"] = ValidateManifestEntry(
+                    extensionDir, ReadString(item, "entry"), $"view \"{viewId}\""),
+                // 本迭代只有独立窗口；panel 要动 activeNavItem 那套陈旧路由，不碰。
+                ["mode"] = "window"
+            };
+
+            if (item.TryGetProperty("nav", out var nav) && nav.ValueKind == JsonValueKind.Object)
+            {
+                var navNode = new JsonObject { ["order"] = ReadInt(nav, "order", 100) };
+                AddOptionalString(navNode, nav, "label");
+                view["nav"] = navNode;
+            }
+
+            if (item.TryGetProperty("window", out var window) && window.ValueKind == JsonValueKind.Object)
+            {
+                var windowNode = new JsonObject();
+                AddOptionalPositiveInt(windowNode, window, "width");
+                AddOptionalPositiveInt(windowNode, window, "height");
+                AddOptionalPositiveInt(windowNode, window, "minWidth");
+                AddOptionalPositiveInt(windowNode, window, "minHeight");
+                if (window.TryGetProperty("resizable", out var resizable) &&
+                    resizable.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                {
+                    windowNode["resizable"] = resizable.GetBoolean();
+                }
+                if (windowNode.Count > 0)
+                {
+                    view["window"] = windowNode;
+                }
+            }
+
+            result.Add((JsonNode?)view);
+        }
+        return result;
+    }
+
+    /// <summary>归一 `assets[]`（S-240）。只有 id 与 optional，URL / 体积 / 哈希归主程序内置表。</summary>
+    private static JsonArray NormalizeAssets(JsonElement root)
+    {
+        var result = new JsonArray();
+        if (!root.TryGetProperty("assets", out var assetsElement) || assetsElement.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in assetsElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var assetId = ReadString(item, "id").Trim();
+            if (assetId.Length == 0)
+            {
+                throw new InvalidOperationException("extension asset id is required");
+            }
+            if (!seen.Add(assetId))
+            {
+                throw new InvalidOperationException($"duplicate asset id: {assetId}");
+            }
+
+            var asset = new JsonObject { ["id"] = assetId };
+            if (ReadBool(item, "optional", false))
+            {
+                asset["optional"] = true;
+            }
+            result.Add((JsonNode?)asset);
+        }
+        return result;
+    }
+
+    private static void AddOptionalPositiveInt(JsonObject target, JsonElement source, string name)
+    {
+        if (source.TryGetProperty(name, out var value) &&
+            value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt32(out var number) &&
+            number > 0)
+        {
+            target[name] = number;
+        }
     }
 
 }

@@ -1,5 +1,6 @@
 import type {
   AIModelConfig,
+  SummarizerFailureReason,
 } from '../api/types'
 
 export interface CompressionConfig {
@@ -27,6 +28,8 @@ export interface CompressionResult {
   reason?: string
   trigger?: 'auto' | 'manual'
   summarizerFailed?: boolean
+  /** S-269: why the summarizer fell back — see `SummarizerFailureReason`. */
+  summarizerFailureReason?: SummarizerFailureReason
   /** Worker-side token estimate of the conversation before compression. */
   estimatedPreTokens?: number
   /** Worker-side token estimate of the compressed conversation. */

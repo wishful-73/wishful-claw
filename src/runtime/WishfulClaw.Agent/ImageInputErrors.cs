@@ -21,7 +21,37 @@ namespace WishfulClaw.Agent;
 /// </summary>
 internal static class ImageInputErrors
 {
-    private static readonly string[] Markers =
+    /// <summary>
+    /// **「这张图坏了」** 的原文形态（S-264 拆出）。
+    ///
+    /// 与 <see cref="CapabilityMarkers"/> 的区别是这条线的全部要害：模型可能**有**视觉能力，
+    /// 只是这一张图它解析不了。S-261 的现场原文 `You have uploaded an unsupported image`
+    /// （语序是「你上传的不受支持的图像」）属于这一类 —— 不是「模型不支持图像输入」。
+    ///
+    /// 分开的理由不在剥图（两类都该剥），在**记忆**：`ImageVisionMemory` 是落盘永久、
+    /// 无解封路径的，把「这张图坏了」记成「这个模型永远不能看图」是不可逆的误伤。
+    /// </summary>
+    private static readonly string[] DataRejectionMarkers =
+    [
+        // S-261 现场原句：`.messages[477].image[0]: You have uploaded an unsupported image ...`
+        "unsupported image",
+        "invalid image",
+        "image is not valid",
+        "image format is not supported",
+        "unsupported image format",
+        // 中文侧「格式不收」，语序与能力类的「不支持图片」相反
+        "图片格式不支持",
+        "图像格式不支持"
+    ];
+
+    /// <summary>
+    /// **「模型没有视觉能力」** 的原文形态。
+    ///
+    /// 只有这一种才配写进 <see cref="ImageVisionMemory"/> —— 它是真的能力边界，
+    /// 下次不用再白送一遍图。判据刻意保守：认不出归哪一类就不写，宁可多撞一次 400，
+    /// 也不能把能看图的模型记成瞎的。
+    /// </summary>
+    private static readonly string[] CapabilityMarkers =
     [
         // OpenAI 及兼容中转：明确点名 image_url 这个内容类型
         "image_url is only supported",
@@ -29,6 +59,7 @@ internal static class ImageInputErrors
         "image input is not supported",
         // 覆盖 does not support image / images / image input / image content
         "does not support image",
+        "image is not supported",
         // DeepSeek / serde 系：content 里的 image_url variant 直接被反序列化拒掉
         // 注意原文用反引号包住标识符，正反两种引号都列上
         "unknown variant `image_url`",
@@ -43,7 +74,29 @@ internal static class ImageInputErrors
         "不支持视觉"
     ];
 
+    /// <summary>
+    /// 上游因为图像而拒绝请求 —— **两类都算**。剥图行为对两类是一样的，所以这里不区分。
+    /// </summary>
     internal static bool IsImageUnsupportedError(Exception exception)
+    {
+        return MatchesAny(exception, DataRejectionMarkers) ||
+               MatchesAny(exception, CapabilityMarkers);
+    }
+
+    /// <summary>
+    /// 这次拒绝是**「图本身有问题」**（S-264）：命中脏图 marker，且没有任何能力 marker。
+    ///
+    /// 刻意要求「能力 marker 一条都没命中」才返回 true —— 两条都命中时无法判断是哪种，
+    /// 按旧行为（写记忆）处理。这个方向的选择理由是代价不对称：多撞一次 400 只是慢，
+    /// 误记成瞎的是**不可逆**的。
+    /// </summary>
+    internal static bool IsImageDataRejection(Exception exception)
+    {
+        return MatchesAny(exception, DataRejectionMarkers) &&
+               !MatchesAny(exception, CapabilityMarkers);
+    }
+
+    private static bool MatchesAny(Exception exception, string[] markers)
     {
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
@@ -52,7 +105,7 @@ internal static class ImageInputErrors
                 continue;
             }
 
-            foreach (var marker in Markers)
+            foreach (var marker in markers)
             {
                 if (current.Message.Contains(marker, StringComparison.OrdinalIgnoreCase))
                 {

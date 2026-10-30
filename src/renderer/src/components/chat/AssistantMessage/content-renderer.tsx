@@ -11,6 +11,7 @@ import { Eraser, Pencil } from 'lucide-react'
 import { ScaleIn } from '@renderer/components/animate-ui'
 import type { ContentBlock, MessageRunEndMeta } from '@renderer/lib/api/types'
 import type { ToolCallState } from '@renderer/lib/agent/types'
+import type { ChatRenderDensity } from '@renderer/stores/settings-store-types'
 import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import type { OrchestrationRun } from '@renderer/lib/orchestration/types'
 import type { TFunction } from 'i18next'
@@ -19,7 +20,8 @@ import {
   type ToolExecutionItem,
   type ToolExecutionRun
 } from '../execution-outline'
-import { shouldPinOutsideCollapsedRun } from '../render-density'
+import { deriveProcessRenderForm, shouldPinOutsideCollapsedRun } from '../render-density'
+import { PROCESS_LINE_CARD_ONLY_TOOL_NAMES } from './tool-block-renderer'
 import { ThinkingBlock } from '../ThinkingBlock'
 import { CollapsibleHeightPanel } from '../CollapsibleHeightPanel'
 import { WebSearchBlock } from '../WebSearchBlock'
@@ -29,6 +31,8 @@ import { ImageGenerationErrorCard } from '../ImageGenerationErrorCard'
 import { AgentErrorCard } from '../AgentErrorCard'
 import { OrchestrationBlock } from '../OrchestrationBlock'
 import { imageBlockToAttachment } from '@renderer/lib/image-attachments'
+import { filePathToMediaUrl } from '@renderer/lib/local-media-url'
+import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
 import { getLiveOutputCursorClass } from '@renderer/lib/live-output-animation'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { useImageEditStore } from '@renderer/stores/image-edit-store'
@@ -66,6 +70,8 @@ export interface ContentRendererProps {
     }
   } | null
   toolExecutionOutline: ReturnType<typeof buildToolExecutionOutline>
+  /** 当前渲染档位（S-248：决定过程层是卡片还是文本行） */
+  renderDensity: ChatRenderDensity
   toolRunSummaryById: Map<string, string>
   getToolRunCollapsed: (run: ToolExecutionRun) => boolean
   toggleToolRunCollapsed: (run: ToolExecutionRun) => void
@@ -105,6 +111,7 @@ export function ContentRenderer({
   imageGenerationTiming,
   generatingImagePreview,
   toolExecutionOutline,
+  renderDensity,
   toolRunSummaryById,
   getToolRunCollapsed,
   toggleToolRunCollapsed,
@@ -150,10 +157,15 @@ export function ContentRenderer({
   const hasEmptyContent =
     (typeof content === 'string' && content.length === 0) ||
     (Array.isArray(normalizedContent) && normalizedContent.length === 0)
-  const generatingImagePreviewSrc =
-    generatingImagePreview?.source.type === 'base64' && generatingImagePreview.source.data
-      ? `data:${generatingImagePreview.source.mediaType || 'image/png'};base64,${generatingImagePreview.source.data}`
-      : (generatingImagePreview?.source.url ?? '')
+  const generatingImagePreviewSrc = (() => {
+    const source = generatingImagePreview?.source
+    if (!source) return ''
+    if (source.type === 'base64' && source.data) {
+      return `data:${source.mediaType || 'image/png'};base64,${source.data}`
+    }
+    // S-284：base64 落库时被剥掉，重开会话只剩 filePath，这里必须兜底成 oc-media://。
+    return source.url ?? (source.filePath ? filePathToMediaUrl(source.filePath) : '')
+  })()
   if (shouldShowImageGeneratingLoader && hasEmptyContent) {
     return (
       <div className={liveComponentClassName || undefined}>
@@ -313,8 +325,21 @@ export function ContentRenderer({
 
     // S-225 §8：折叠态下 attention / force 项必须露在折叠面板之外 —— 档位不得藏错误。
     // 否则「纯文本」档里一个失败的 Edit 会跟着面板一起沉下去，用户只看到「运行了 N 个工具」。
-    const pinnedTools = renderedTools.filter((entry) =>
-      shouldPinOutsideCollapsedRun(collapsed, entry.item.visibility)
+    //
+    // S-248：纯文本档里错误已经降级成红行了（老大 2026-10-28 09:40「错误丢了就丢了」），
+    // 再浮出来就又是一张卡片壳 —— 所以这一档只浮出**仍然必须是卡片**的项（答题 / 子 agent /
+    // 生成图），其余留在面板里当行。
+    //
+    // 2026-10-29 15:46 去掉 `category === 'desktop'`：桌面操作本身不是「必须卡片」，
+    // 老大在极简档里看到的就是被这一句拎出来的那张截图卡。现在它们跟其它工具一样进折叠块，
+    // 一行「桌面截图 · 1920×1080」就够。
+    const processForm = deriveProcessRenderForm(renderDensity)
+    const pinnedTools = renderedTools.filter(
+      (entry) =>
+        shouldPinOutsideCollapsedRun(collapsed, entry.item.visibility) &&
+        (processForm === 'card' ||
+          PROCESS_LINE_CARD_ONLY_TOOL_NAMES.has(entry.item.name) ||
+          entry.item.category === 'interactive')
     )
     const panelTools =
       pinnedTools.length > 0
@@ -332,11 +357,19 @@ export function ContentRenderer({
             detail={detail}
             collapsible={run.showToggle}
             expanded={!collapsed}
+            failedCount={run.failedCount}
+            failedLabel={
+              run.failedCount > 0
+                ? t('assistantMessage.toolRunFailed', { count: run.failedCount })
+                : undefined
+            }
             onClick={() => toggleToolRunCollapsed(run)}
           />
         ) : null}
         {pinnedTools.length > 0 ? (
-          <div className="space-y-2">{pinnedTools.map((entry) => entry.node)}</div>
+          <div className={processForm === 'line' ? 'space-y-0' : 'space-y-2'}>
+            {pinnedTools.map((entry) => entry.node)}
+          </div>
         ) : null}
         {run.showToggle ? (
           <CollapsibleHeightPanel open={!collapsed} className="overflow-hidden">
@@ -344,8 +377,10 @@ export function ContentRenderer({
             <div
               className={
                 !collapsed && !isStreaming
-                  ? 'max-h-[70vh] space-y-2 overflow-y-auto'
-                  : 'space-y-2'
+                  ? `max-h-[70vh] overflow-y-auto ${processForm === 'line' ? 'space-y-0' : 'space-y-2'}`
+                  : processForm === 'line'
+                    ? 'space-y-0'
+                    : 'space-y-2'
               }
             >
               {panelTools.map((entry) => entry.node)}
@@ -452,10 +487,7 @@ export function ContentRenderer({
         }
         case 'image': {
           const imgBlock = block as Extract<ContentBlock, { type: 'image' }>
-          const imgSrc =
-            imgBlock.source.type === 'base64' && imgBlock.source.data
-              ? `data:${imgBlock.source.mediaType || 'image/png'};base64,${imgBlock.source.data}`
-              : (imgBlock.source.url ?? '')
+          const imgSrc = resolveImageBlockSource(imgBlock)?.src ?? ''
           if (!imgSrc && !imgBlock.source.filePath) return null
           const editableImage = imageBlockToAttachment(imgBlock)
           const actions =

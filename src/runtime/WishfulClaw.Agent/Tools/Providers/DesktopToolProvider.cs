@@ -16,7 +16,11 @@ public sealed class DesktopToolProvider : IToolProvider
     {
         registry.Register(new ToolDefinitionPlaceholder(
             "DesktopScreenshot",
-            "Capture a full desktop screenshot and return it to the agent. Use before mouse or keyboard actions when screen state matters.",
+            "Capture a full desktop screenshot and return it to the agent. Use before mouse or keyboard actions when screen state matters. " +
+            "The returned text states the image size, its origin, the display scale factor and every display's rectangle — those numbers are the " +
+            "coordinate frame for DesktopClick/DesktopScroll. Coordinates are pixel positions in the returned image, which is never rescaled. " +
+            "Every capture is also saved to the data directory; the text reports that path, so you can Read it again later instead of re-capturing " +
+            "a desktop that has since changed.",
             ToolSchemaBuilder.Object(
                 new() { ["delayMs"] = ToolSchemaBuilder.Number("Optional delay in milliseconds before capturing.") }),
             availableModes: ["normal", "goal", "global"],
@@ -24,7 +28,7 @@ public sealed class DesktopToolProvider : IToolProvider
 
         registry.Register(new ToolDefinitionPlaceholder(
             "CaptureAppWindow",
-            "Capture a screenshot of the Wishful Claw window itself — not the whole desktop. Use it when you need an image of this app's own UI, for example to illustrate a guide or to show the user what a panel looks like. Prefer it over DesktopScreenshot whenever the subject is this app: it never includes unrelated windows, so the result needs no cleanup. Pass `path` to write the PNG to disk; without it you receive the image but nothing is saved.",
+            "Capture a screenshot of the Wishful Claw window itself — not the whole desktop. Use it when you need an image of this app's own UI, for example to illustrate a guide or to show the user what a panel looks like. Prefer it over DesktopScreenshot whenever the subject is this app: it never includes unrelated windows, so the result needs no cleanup. The returned text also states where the window sits on screen (DIP and pixels), so you can turn an offset you measured in the image into a DesktopClick coordinate. The PNG is always saved to the data directory and the text reports that path; pass `path` only to choose a different location.",
             ToolSchemaBuilder.Object(
                 new()
                 {
@@ -36,12 +40,14 @@ public sealed class DesktopToolProvider : IToolProvider
 
         registry.Register(new ToolDefinitionPlaceholder(
             "DesktopClick",
-            "Click a desktop coordinate. Supports left/right/middle button with click, double_click, down, or up actions.",
+            "Click a desktop coordinate. Supports left/right/middle button with click, double_click, down, or up actions. " +
+            "x/y are screen pixels, in the same frame as the most recent screenshot: start from the image origin reported by " +
+            "DesktopScreenshot or CaptureAppWindow, then add the offset you measured in that image.",
             ToolSchemaBuilder.Object(
                 new()
                 {
-                    ["x"] = ToolSchemaBuilder.Number("Absolute X coordinate."),
-                    ["y"] = ToolSchemaBuilder.Number("Absolute Y coordinate."),
+                    ["x"] = ToolSchemaBuilder.Number("Absolute screen X in pixels, measured in the last screenshot's coordinate frame."),
+                    ["y"] = ToolSchemaBuilder.Number("Absolute screen Y in pixels, measured in the last screenshot's coordinate frame."),
                     ["button"] = ToolSchemaBuilder.String("Mouse button: left, right, or middle."),
                     ["action"] = ToolSchemaBuilder.String("Mouse action: click, double_click, down, or up.")
                 },
@@ -68,8 +74,8 @@ public sealed class DesktopToolProvider : IToolProvider
             ToolSchemaBuilder.Object(
                 new()
                 {
-                    ["x"] = ToolSchemaBuilder.Number("Optional X coordinate before scrolling."),
-                    ["y"] = ToolSchemaBuilder.Number("Optional Y coordinate before scrolling."),
+                    ["x"] = ToolSchemaBuilder.Number("Optional screen X in pixels before scrolling, same frame as the last screenshot."),
+                    ["y"] = ToolSchemaBuilder.Number("Optional screen Y in pixels before scrolling, same frame as the last screenshot."),
                     ["scrollX"] = ToolSchemaBuilder.Number("Horizontal scroll delta. Defaults to 0."),
                     ["scrollY"] = ToolSchemaBuilder.Number("Vertical scroll delta.")
                 }),

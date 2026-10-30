@@ -14,7 +14,9 @@ import type { ImageBlock, TextBlock, ToolResultContent } from '@renderer/lib/api
 import type { CompactToolHeaderModel } from './CompactToolCallHeader'
 import { CompactToolCallHeader } from './CompactToolCallHeader'
 import { ImagePreview } from './ImagePreview'
-import { fallbackTitle, getToolIcon } from './BrowserToolCard/icons'
+import { getToolIcon } from './BrowserToolCard/icons'
+import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
+import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
 import {
   PREVIEW_LIMIT,
   buildSummary,
@@ -81,7 +83,11 @@ export function BrowserToolCard({
   const mainPreview = getMainPreview(name, jsonOutput)
   const resultRows = getResultRows(name, jsonOutput)
   const rawOutput = typeof output === 'string' && !jsonOutput && !parsedError ? output : ''
-  const title = t(`toolCall.browser.${name}.title`, { defaultValue: fallbackTitle(name) })
+  // S-270：`fallbackTitle` 末行原来是 `return name`，于是新浏览器工具（如 BrowserEvaluate）
+  // 直接把裸 camelCase 顶上去。统一出口后兜底成「工具 · 原名」。
+  const title = t(`toolCall.browser.${name}.title`, {
+    defaultValue: resolveToolDisplayName(name, t)
+  })
   const badges: CompactToolHeaderModel['badges'] = []
 
   if (images.length > 0) {
@@ -164,10 +170,8 @@ export function BrowserToolCard({
                     })}
                   </p>
                   {images.map((image, index) => {
-                    const src =
-                      image.source.type === 'base64' && image.source.data
-                        ? `data:${image.source.mediaType || 'image/png'};base64,${image.source.data}`
-                        : (image.source.url ?? '')
+                    // S-284：落库副本里 base64 会被剥掉，重开会话只剩 filePath。
+                    const src = resolveImageBlockSource(image)?.src ?? ''
                     if (!src && !image.source.filePath) return null
                     return (
                       <ImagePreview

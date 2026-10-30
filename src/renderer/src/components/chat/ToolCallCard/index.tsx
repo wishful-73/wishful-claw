@@ -10,7 +10,8 @@ import { cn } from '@renderer/lib/utils'
 import { MONO_FONT } from '@renderer/lib/constants'
 import { formatDurationMs } from '@renderer/lib/format-duration'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
-import { isMcpTool, parseMcpToolName } from '@renderer/lib/mcp/mcp-tools'
+import { isMcpTool } from '@renderer/lib/mcp/mcp-tools'
+import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import { parseExtensionToolResult } from '@renderer/lib/extensions/extension-result'
 import { inputSummary } from '../tool-call-summary'
 import { deriveToolOutputOpen } from '../render-density'
@@ -45,16 +46,6 @@ import {
   getToolNamespace,
   hasFocusedExpandedOutput
 } from './compact-header'
-
-function formatMcpToolDisplayName(name: string): string {
-  const parsed = parseMcpToolName(name)
-  const toolName = parsed?.toolName ?? name
-  const label = toolName
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .join(' ')
-  return label ? label.charAt(0).toUpperCase() + label.slice(1) : toolName
-}
 
 function ToolCallCardInner({
   toolUseId,
@@ -157,13 +148,9 @@ function ToolCallCardInner({
     () => inputSummary(name, input, outputText),
     [input, name, outputText]
   )
-  const displayName = React.useMemo(
-    () =>
-      isMcpTool(name)
-        ? formatMcpToolDisplayName(name)
-        : t(`permission.toolLabels.${name}`, { defaultValue: name }),
-    [name, t]
-  )
+  // S-270：工具名的唯一显示出口，不要再写 `t(\`permission.toolLabels.${name}\`, …)` ——
+  // 那种写法缺 key 时静默回退英文原名，正是新工具一律露英文的根因。
+  const displayName = React.useMemo(() => resolveToolDisplayName(name, t), [name, t])
   const headerSummary = React.useMemo(() => {
     if (name !== 'TodoTaskList' && name !== 'TaskList') return summary
     if (!outputText) return null

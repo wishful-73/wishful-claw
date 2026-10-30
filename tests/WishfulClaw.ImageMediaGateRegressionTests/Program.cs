@@ -5,6 +5,10 @@
 //   · 声明与事实冲突时，事实赢 —— 否则「bmp 字节标成 png」照样出门；
 //   · 白名单内的四种不许误伤 —— 拦宽了等于把看图能力也砍了。
 //
+// S-264 追加第四类：**嗅探不出时不许回落信任声明**。工具层（S-266 的容器完整性、
+// S-264 的签名判定）只覆盖走 FileReadTool 的路径；粘贴、渠道消息里的图不经过那层，
+// 所以组包层这道闸是最后一关，这里的口径松一档，脏图就从渠道漏出去。
+//
 // 约定：失败断言打 FAIL，最后一行打 "passed: N, failed: M"，非零退出码表示失败
 // （scripts/run-tests.mjs 按退出码判定，按 "passed: N" 取计数）。
 
@@ -75,13 +79,20 @@ Check(ProviderContentHelpers.ResolveSupportedImageMediaType(gif, null) == "image
     "gif passes the gate (修复前 gif 嗅不出、会被贴成 png 发出去)");
 Check(ProviderContentHelpers.ResolveSupportedImageMediaType(webp, "image/webp") == "image/webp", "webp passes");
 
-// 嗅不出 ⇒ 才信声明，且声明必须在白名单内
-Check(ProviderContentHelpers.ResolveSupportedImageMediaType(junk, "image/png") == "image/png",
-    "unrecognised bytes fall back to a whitelisted declared type");
-Check(ProviderContentHelpers.ResolveSupportedImageMediaType(junk, "IMAGE/JPG") == "image/jpeg",
-    "declared image/jpg is normalised to image/jpeg");
-Check(ProviderContentHelpers.ResolveSupportedImageMediaType(junk, "image/png; charset=binary") == "image/png",
-    "declared mime parameters are trimmed");
+// 嗅不出 ⇒ 一律丢块（S-264 收严；修前这里回落到声明的白名单类型）。
+//
+// 这条口径改过，别按直觉改回去：回落信任声明的理由曾是「怕嗅探漏掉不认识的合法格式」，
+// 但那恰恰是脏图的通道 —— 损坏 / 半截写入 / 非图像内容全部返回 null，于是全部被贴上
+// 声明的 image/png 出门。白名单四种格式嗅探全认得出，覆盖面不小于白名单，所以
+// 「声明是白名单格式、嗅探却认不出」只可能是「字节根本不是那四种」。
+Check(ProviderContentHelpers.ResolveSupportedImageMediaType(junk, "image/png") is null,
+    "unrecognised bytes with a whitelisted declared type are still dropped (S-264)");
+Check(ProviderContentHelpers.ResolveSupportedImageMediaType(junk, "IMAGE/JPG") is null,
+    "declared type normalisation does not change the drop (S-264)");
+Check(ProviderContentHelpers.ResolveSupportedImageMediaType(junk, "image/png; charset=binary") is null,
+    "declared mime parameters do not change the drop (S-264)");
+Check(ProviderContentHelpers.ResolveSupportedImageMediaType(junk, null) is null,
+    "unrecognised bytes with no declared type are dropped (S-264)");
 
 // ── 三、闸门：该拦的必须拦住（这是本需求的核心） ──
 
@@ -112,11 +123,16 @@ static JsonElement ContentOf(object payload)
     return document.RootElement.Clone();
 }
 
+// 「放得出去」的图必须**真完整**：S-264 起容器完整性进了组包闸，
+// 上面那个 14 字节的 `png` 只有签名 + IHDR、没有 IEND，本来就该被拦。
+const string completePng =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 var goodContent = ContentOf(new object[]
 {
-    new { type = "text", text = "Read image: a.png (2x2, image/png)" },
+    new { type = "text", text = "Read image: a.png (1x1, image/png)" },
     new { type = "image", source = new Dictionary<string, string>
-        { ["type"] = "base64", ["mediaType"] = "image/png", ["data"] = png } }
+        { ["type"] = "base64", ["mediaType"] = "image/png", ["data"] = completePng } }
 });
 var dirtyContent = ContentOf(new object[]
 {

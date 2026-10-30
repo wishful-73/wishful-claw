@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>假插件窗口</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 28px;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      p.hint {
+        margin: 0 0 20px;
+        opacity: 0.65;
+        font-size: 13px;
+      }
+      table {
+        border-collapse: collapse;
+        margin-bottom: 20px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 4px 18px 4px 0;
+        vertical-align: top;
+      }
+      th {
+        font-weight: 600;
+        white-space: nowrap;
+        opacity: 0.7;
+      }
+      code {
+        font-family: Consolas, monospace;
+      }
+      button {
+        margin: 0 8px 8px 0;
+        padding: 7px 14px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #log {
+        margin-top: 12px;
+        padding: 12px;
+        max-height: 220px;
+        overflow: auto;
+        border-radius: 6px;
+        background: rgba(127, 127, 127, 0.12);
+        font-family: Consolas, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>假插件窗口</h1>
+    <p class="hint">
+      插件基座验收用（S-241）。这个页面不在主窗口里 —— 它跑在独立的 BrowserWindow 中，
+      权限按交付口径全开。
+    </p>
+
+    <table>
+      <tr>
+        <th>Node 版本</th>
+        <td id="node">检测中…</td>
+      </tr>
+      <tr>
+        <th>require('fs')</th>
+        <td id="require">检测中…</td>
+      </tr>
+      <tr>
+        <th>数据目录可读</th>
+        <td id="fs-read">检测中…</td>
+      </tr>
+      <tr>
+        <th>本进程 pid</th>
+        <td id="pid">检测中…</td>
+      </tr>
+    </table>
+
+    <button id="spawn">拉起一个 ping 子进程</button>
+    <button id="crash">让本窗口崩溃（process.crash）</button>
+    <div id="log">事件日志会打在这里。</div>
+
+    <script>
+      // contextIsolation / sandbox 都关着，所以下面的 require 是全局的
+      const log = (message) => {
+        const box = document.getElementById('log')
+        const stamp = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+        box.textContent += '\n' + stamp + ' ' + message
+        box.scrollTop = box.scrollHeight
+      }
+
+      document.getElementById('node').textContent = process.versions.node
+      document.getElementById('pid').textContent = String(process.pid)
+
+      try {
+        const fs = require('fs')
+        document.getElementById('require').textContent = '可用'
+        // 能读到自己 ⇒ 证明不是只放开了 API 名字，是真的能摸文件系统
+        const here = __dirname + '/index.html'
+        const size = fs.statSync(here).size
+        document.getElementById('fs-read').textContent = '可用（index.html ' + size + ' 字节）'
+      } catch (error) {
+        document.getElementById('require').textContent = '不可用：' + error.message
+        document.getElementById('fs-read').textContent = '不可用'
+      }
+
+      document.getElementById('spawn').addEventListener('click', () => {
+        try {
+          const { spawn } = require('child_process')
+          const child = spawn('ping', ['-t', '127.0.0.1'], { windowsHide: true })
+          log('已拉起 ping，pid=' + child.pid + '（主程序退出后它必须消失）')
+        } catch (error) {
+          log('拉起失败：' + error.message)
+        }
+      })
+
+      document.getElementById('crash').addEventListener('click', () => {
+        log('即将崩溃 —— 主程序不应受影响，入口仍可再点开')
+        setTimeout(() => process.crash(), 200)
+      })
+
+      log('页面已加载')
+    </script>
+  </body>
+</html>

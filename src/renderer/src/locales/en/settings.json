@@ -111,6 +111,9 @@
     "logs": {
       "label": "Logs"
     },
+    "diagnostics": {
+      "label": "Diagnostics"
+    },
     "usage": {
       "label": "Usage",
       "desc": "Requests, tokens and cost from per-request logs"
@@ -182,8 +185,8 @@
       "desc": "Choose how much activity the timeline shows. Messages are always visible.",
       "options": {
         "text": {
-          "name": "Text only",
-          "desc": "Messages only. Running tools, thinking and sub-agents stay collapsed."
+          "name": "Minimal",
+          "desc": "Tools, thinking and sub-agents appear only as text lines — no expansion while running, same once finished."
         },
         "compact": {
           "name": "Compact",
@@ -1769,7 +1772,44 @@
     "removed": "Extension removed",
     "installed": "Extension installed",
     "title": "Custom Extensions",
-    "subtitle": "Install and manage local extensions that provide tools and components for the agent."
+    "subtitle": "Install and manage local extensions that provide tools and components for the agent.",
+    "assets": {
+      "title": "Runtime files",
+      "hint": "Managed by the app, shared across extensions, and never deleted when an extension is removed.",
+      "stateUnknown": "Unsupported asset (not in this app build)",
+      "stateReady": "Ready",
+      "stateAbsent": "Not downloaded",
+      "stateDownloading": "Downloading",
+      "stateVerifying": "Verifying",
+      "stateFailed": "Download failed",
+      "needDownload": "{{size}} to download",
+      "download": "Download",
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "cancelHint": "Downloaded bytes are kept so the next attempt resumes."
+    },
+    "install": {
+      "title": "Install extension",
+      "providerBy": "Provided by {{id}} · third-party",
+      "canRun": "This extension can access your files, programs and data, and can run programs on your computer.",
+      "canRunTools": "This extension adds tools for the Agent, and can access your files and programs.",
+      "assetsHint": "About {{size}} of runtime files will need a separate download (nothing downloads automatically).",
+      "sourceHint": "Make sure you trust where it came from.",
+      "confirm": "I understand, install anyway",
+      "cancel": "Cancel",
+      "submit": "Install"
+    },
+    "storage": {
+      "title": "Downloaded runtime files",
+      "hint": "These files are managed by the host app and shared across extensions; uninstalling does not remove them.",
+      "loading": "Measuring…",
+      "total": "{{size}} total",
+      "removeAll": "Clear all",
+      "removeConfirm": "Delete this runtime file? Extensions using it will stop working.",
+      "removeAllConfirm": "Delete all downloaded runtime files? Extensions using them will stop working.",
+      "removed": "Deleted"
+    },
+    "removeCleanupPending": "Extension removed. Some cache files were in use and will be cleaned up on next start."
   },
   "channel": {
     "status": {
@@ -1950,6 +1990,27 @@
       "none": "No log files to delete",
       "previewCleared": "The previewed log file has been deleted",
       "failed": "Cleanup failed: {{error}}"
+    }
+  },
+  "diagnostics": {
+    "title": "Resources & Diagnostics",
+    "subtitle": "Memory used by each process. Refreshes every 5 seconds; the same numbers go to the log every 5 minutes.",
+    "refresh": "Refresh",
+    "total": "Total working set",
+    "capturedAt": "Sampled {{time}}",
+    "loading": "Reading…",
+    "colRole": "Process",
+    "colWorkingSet": "Working set",
+    "colPeak": "Peak",
+    "hint": "Web pages inside the browser view and memory held by the graphics driver are not listed here — those depend on the page and the system. To see when usage started to grow, check the memory lines in the log.",
+    "workerManaged": "Managed {{value}} · Heap {{heap}} · Fragmented {{frag}}",
+    "kind": {
+      "main": "Main",
+      "renderer": "Renderer",
+      "gpu": "GPU",
+      "utility": "Utility",
+      "other": "Other",
+      "worker": "Worker"
     }
   }
 }

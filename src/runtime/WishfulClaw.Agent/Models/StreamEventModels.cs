@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace WishfulClaw.Agent;
 
@@ -51,6 +51,11 @@ public sealed record AgentRuntimeStreamEvent(
     int? EstimatedNewTokens = null,
     bool? SummarizerFailed = null,
     int? MessagesSummarized = null,
+    // S-269: why the summarizer fell back — "rate_limited" / "server_error" /
+    // "timeout" / "context_overflow" / "empty_output" / "other". Null means it
+    // succeeded. The renderer needs this to stop telling the user the summarizer
+    // is unavailable when the channel is merely throttling us.
+    string? SummarizerFailureReason = null,
     string? CompressionError = null,
     JsonElement[]? Messages = null,
     JsonElement[]? CompactArtifacts = null,

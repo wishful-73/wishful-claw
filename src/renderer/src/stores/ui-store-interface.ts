@@ -211,6 +211,30 @@ export interface UIStore {
     projectId?: string | null
   ) => void
 
+  /**
+   * S-260 浏览器保活池：scopeId → 最后活跃时间。
+   * 键存在 = 该会话的 BrowserPanel 正挂载（webview 活着）。常驻上限 2。
+   */
+  browserKeepAliveBySession: Record<
+    string,
+    { lastAccessAt: number; projectId?: string | null } | undefined
+  >
+  /** S-260：agent 正在用某会话浏览器的引用计数，> 0 的绝不被淘汰。 */
+  browserLeasesBySession: Record<string, number | undefined>
+  /** 申请保活名额。池满且无可淘汰项时抛错，错误文案可直接转述给用户。 */
+  ensureBrowserKeepAlive: (
+    sessionId?: string | null,
+    options?: { explicit?: boolean; projectId?: string | null }
+  ) => void
+  /** agent 开始用浏览器：占名额 + 计数。 */
+  beginBrowserLease: (sessionId?: string | null) => void
+  /** agent 用完：释放计数（名额仍留着，等空闲回收）。 */
+  endBrowserLease: (sessionId?: string | null) => void
+  /** 用户在该会话里操作了浏览器：只续期，不入池。 */
+  touchBrowserKeepAlive: (sessionId?: string | null) => void
+  /** 卸掉「不可见 + 无 lease + 空闲超时」的挂载。 */
+  evictIdleBrowserKeepAlive: () => void
+
   // Selected files
   selectedFiles: string[]
   setSelectedFiles: (files: string[]) => void
@@ -298,6 +322,6 @@ export interface UIStore {
     url?: string,
     sessionId?: string | null,
     projectId?: string | null,
-    options?: { background?: boolean }
+    options?: { background?: boolean; keepAliveExplicit?: boolean }
   ) => void
 }

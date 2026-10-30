@@ -10,8 +10,11 @@
  * Runs in the main process as a reverse-request from the Worker.
  */
 
+import { screen } from 'electron'
 import { getMainWindow } from '../../main-window-registry'
 import { persistImageBuffer } from '../../lib/image-persist'
+import { resolveDataDir } from '../../lib/data-dir'
+import { resolveScreenshotDir, screenshotFileNameFromBuffer } from '../../lib/screenshot-dir'
 
 export interface WindowCaptureParams {
   /** Optional settle time before capturing, so an animation can finish. */
@@ -27,6 +30,16 @@ export interface WindowCaptureResult {
   filePath?: string
   width?: number
   height?: number
+  /**
+   * 窗口内容区在**屏幕**上的位置，单位 DIP（`getContentBounds()` 的坐标系）。
+   *
+   * S-272 ①：以前只回尺寸不回位置，模型拿这张图完全没法换算成屏幕坐标 —— 它知道按钮
+   * 「在窗口里的哪儿」，却不知道窗口「在屏幕的哪儿」，`DesktopClick` 据此永远点不准。
+   * 点击要的是物理像素 ⇒ 同一条报文里给 scaleFactor，让模型自己乘。
+   */
+  bounds?: { x: number; y: number; width: number; height: number }
+  /** 窗口所在显示器的缩放比。物理像素 = DIP × scaleFactor。 */
+  scaleFactor?: number
   error?: string
 }
 
@@ -63,21 +76,32 @@ export async function handleWindowCaptureSelf(
 
     const size = image.getSize()
     const png = image.toPNG()
+    const contentBounds = win.getContentBounds()
+    const display = screen.getDisplayMatching(contentBounds)
     const result: WindowCaptureResult = {
       success: true,
       data: png.toString('base64'),
       width: size.width,
-      height: size.height
+      height: size.height,
+      bounds: {
+        x: contentBounds.x,
+        y: contentBounds.y,
+        width: contentBounds.width,
+        height: contentBounds.height
+      },
+      scaleFactor: display.scaleFactor > 0 ? display.scaleFactor : 1
     }
 
     const target = typeof typed.targetPath === 'string' ? typed.targetPath.trim() : ''
-    if (target) {
-      const persisted = persistImageBuffer(png, 'image/png', {
-        targetPath: target,
-        baseDir: typed.baseDir
-      })
-      result.filePath = persisted.filePath
-    }
+    // S-283：没指定落点也要落地。以前只有给了 `path` 才写盘，而压缩把 image 块
+    // 占位化之后模型只能靠路径回读 —— 图不在盘上，那句「可重新 Read 查看」就是假的。
+    const persisted = persistImageBuffer(png, 'image/png', {
+      targetPath: target || undefined,
+      baseDir: typed.baseDir,
+      defaultDir: resolveScreenshotDir(resolveDataDir(), new Date()),
+      fileName: screenshotFileNameFromBuffer(png)
+    })
+    result.filePath = persisted.filePath
 
     return result
   } catch (error) {

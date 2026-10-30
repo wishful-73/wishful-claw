@@ -171,3 +171,57 @@ export function deriveFileChangeCollapsed(density: ChatRenderDensity, forceOpen:
 export function shouldPinOutsideCollapsedRun(collapsed: boolean, visibility: string): boolean {
   return collapsed && visibility === 'force'
 }
+
+// ── S-248：第二根轴 —— 形态 ──
+//
+// S-225 只做了「开合深度」，纯文本档照样是一屏带边框的卡片壳，只是全收起了。
+// 老大要的是**换形态**：壳整个不存在，过程降级成文本行，且点不动。
+
+/** 过程层的存在形态。`card` = 现有卡片；`line` = 一行一条的纯文本。 */
+export type ChatProcessRenderForm = 'card' | 'line'
+
+/**
+ * 这一档用哪种形态。
+ *
+ * **只有 `text` 换形态**：`compact` 是 1.0.1 线上等价形态、`detail` 是全摊开，
+ * 两档一个像素都不许动（S-248 §7）。档位切回去形态立刻还原 —— 形态只由档位算出来，
+ * 不落任何状态，所以「可逆」是天然成立的。
+ */
+export function deriveProcessRenderForm(density: ChatRenderDensity): ChatProcessRenderForm {
+  return density === 'text' ? 'line' : 'card'
+}
+
+/**
+ * 这次工具调用能不能降级成一行文本。
+ *
+ * 判定顺序就是优先级，每一步都对应一条不能让步的理由：
+ *
+ * 1. 不是 `line` 档 → 一律卡片（保持线上等价形态）；
+ * 2. **交互类工具**（答题 / 审批 / 目标确认 / widget）→ 卡片：一行字点不了，功能直接没了；
+ * 3. **输出即结果**（生成图 / 截图 / 命令附件）→ 卡片：结果就是那几张图，藏起来等于没做；
+ * 4. **待审批** → 卡片：沙箱授权、危险操作授权不能只有一行字，这是安全底线；
+ * 5. 其余 → 降级。
+ *
+ * 注意**错误不拦**：老大 2026-10-28 09:40 定「错误丢了就丢了，文字行显示红色就行」。
+ * 所以失败的工具也是一行，只是状态字符是 `✗`、文字是红字（见 `ProcessTextLine`）。
+ *
+ * `keepAsCardToolNames` 由调用方传（`INTERACTIVE_TOOL_NAMES` 等），本文件不 import
+ * 任何工具名常量 —— 那会把组件依赖链拉进来，纯函数就没法在 node 里跑了。
+ */
+export function shouldRenderToolAsLine(params: {
+  density: ChatRenderDensity
+  toolName: string
+  /** 工具调用状态（`execution-outline` 的 `ToolExecutionItem.status`） */
+  status: string
+  requiresApproval: boolean
+  /** 输出本身就是可视结果（图片 / widget / 截图 / 命令附件） */
+  hasVisualResult: boolean
+  keepAsCardToolNames: ReadonlySet<string>
+}): boolean {
+  if (deriveProcessRenderForm(params.density) !== 'line') return false
+  if (params.keepAsCardToolNames.has(params.toolName)) return false
+  if (params.hasVisualResult) return false
+  if (params.requiresApproval || params.status === 'pending_approval') return false
+  return true
+}
+

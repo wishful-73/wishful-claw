@@ -15,7 +15,7 @@ import { cn } from '@renderer/lib/utils'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useAgentStore } from '@renderer/stores/agent-store'
 import { useProviderStore } from '@renderer/stores/provider-store'
-import { resolveProxyStatusName } from '@renderer/lib/agent/use-capability-proxy'
+import { resolveStatusToolName } from '@renderer/lib/tools/tool-display-name'
 import {
   calculateCost, calculateCostBreakdown, estimateTokens,
   formatCacheHitRate, formatCost,
@@ -189,7 +189,9 @@ export function ComposerRuntimeStatus({
           retryAttempt: null,
           retryMaxAttempts: null,
           activeToolName: null,
+          activeToolInput: undefined,
           pendingApprovalToolName: null,
+          pendingApprovalToolInput: undefined,
           activeSubAgentCount: 0
         }
       }
@@ -219,15 +221,15 @@ export function ComposerRuntimeStatus({
         retryMaxAttempts: targetSessionId
           ? (s.sessionRequestRetryState[targetSessionId]?.maxAttempts ?? null)
           : null,
-        // A use_capability proxy is shown as the tool it stands in for. Resolved
-        // here rather than trusting the stored name: tool_use_streaming_start
-        // creates the entry before args arrive, so its name is still the raw
-        // proxy name at that point.
-        activeToolName: resolveProxyStatusName(activeTool?.name, activeTool?.input),
-        pendingApprovalToolName: resolveProxyStatusName(
-          pendingApprovalTool?.name,
-          pendingApprovalTool?.input
-        ),
+        // A use_capability proxy is shown as the tool it stands in for. The raw
+        // name is kept here (not resolved) because resolving also needs the
+        // component-scoped `t` — `resolveStatusToolName()` does both steps in the
+        // `useMemo` below. Also: tool_use_streaming_start creates the entry before
+        // args arrive, so the name is still the raw proxy name at that point.
+        activeToolName: activeTool?.name ?? null,
+        activeToolInput: activeTool?.input,
+        pendingApprovalToolName: pendingApprovalTool?.name ?? null,
+        pendingApprovalToolInput: pendingApprovalTool?.input,
         activeSubAgentCount
       }
     })
@@ -237,6 +239,20 @@ export function ComposerRuntimeStatus({
     hasActiveThinking: live.snapshotHasActiveThinking,
     hasTextOutput: live.snapshotHasTextOutput
   }
+  // S-270 第六个漏点：状态面板以前只过 `resolveProxyStatusName`，非代理工具原样露英文名。
+  const activeToolLabel = React.useMemo(
+    () => resolveStatusToolName(agentRuntime.activeToolName, agentRuntime.activeToolInput, t),
+    [agentRuntime.activeToolName, agentRuntime.activeToolInput, t]
+  )
+  const pendingApprovalToolLabel = React.useMemo(
+    () =>
+      resolveStatusToolName(
+        agentRuntime.pendingApprovalToolName,
+        agentRuntime.pendingApprovalToolInput,
+        t
+      ),
+    [agentRuntime.pendingApprovalToolName, agentRuntime.pendingApprovalToolInput, t]
+  )
   const estimatedOutputTokens = React.useMemo(
     () => estimateTokens(outputSnapshot.text),
     [outputSnapshot.text]
@@ -362,11 +378,11 @@ export function ComposerRuntimeStatus({
         spin: contextCompressionStatus === 'compressing'
       }
     }
-    if (agentRuntime.pendingApprovalToolName) {
+    if (pendingApprovalToolLabel) {
       return {
         text: t('input.runtimeStatus.awaitingApproval', {
           defaultValue: 'Awaiting approval: {{tool}}',
-          tool: agentRuntime.pendingApprovalToolName
+          tool: pendingApprovalToolLabel
         }),
         Icon: ShieldAlert,
         className: 'text-amber-500/90 dark:text-amber-300/90'
@@ -396,11 +412,11 @@ export function ComposerRuntimeStatus({
         className: 'text-violet-500/80 dark:text-violet-300/80'
       }
     }
-    if (agentRuntime.activeToolName) {
+    if (activeToolLabel) {
       return {
         text: t('input.runtimeStatus.runningTool', {
           defaultValue: 'Running {{tool}}',
-          tool: agentRuntime.activeToolName
+          tool: activeToolLabel
         }),
         Icon: Wrench,
         className: 'text-sky-500/85 dark:text-sky-300/85'
@@ -446,8 +462,8 @@ export function ComposerRuntimeStatus({
     }
   }, [
     agentRuntime.activeSubAgentCount,
-    agentRuntime.activeToolName,
-    agentRuntime.pendingApprovalToolName,
+    activeToolLabel,
+    pendingApprovalToolLabel,
     agentRuntime.retryAttempt,
     agentRuntime.retryMaxAttempts,
     agentRuntime.sessionStatus,

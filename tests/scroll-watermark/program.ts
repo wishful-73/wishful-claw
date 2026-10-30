@@ -19,6 +19,7 @@ import assert from 'node:assert/strict'
 import {
   collapseRetryDelay,
   createFloorTracker,
+  clampScrollTop,
   observeFloor,
   observeGrowthOnly,
   resolveGapTarget,
@@ -310,6 +311,50 @@ check(!isCollapseCoolingDown(admitCollapse(createCollapseGate(), 500), 499), '�
 check(
   shouldReclaim(600, gapTarget) && !isCollapseCoolingDown({ lastCollapseAt: Number.NaN }, 1_000),
   '时钟异常时该收的还是要收，绝不永久锁死'
+)
+
+// ── 2026-10-29 崩溃：超范围跟随目标被浏览器 clamp，绕过「已钉底」守卫 ──────────
+//
+// 真机症状：长文本流式时渲染进程涨到 4.3GB，最后报 "Maximum update depth exceeded"。
+// 链条：跟随目标 realBottom + gapTarget - clientHeight 里的 gapTarget 是提前量（最多
+// 240px），比容器底部 padding 大得多 → scrollHeight 撑不住 → 写入被 clamp 到
+// maxScrollTop → 读回值比目标小 → `Math.abs(scrollTop - bottom) <= 1` 永远判不成立
+// → 每帧写 scrollTop → scroll 事件 → setIsAtBottom → layout effect → 再写。
+
+const simScrollHeight = 1200
+const simClientHeight = 800
+const simMaxScrollTop = simScrollHeight - simClientHeight // 400
+const overshootTarget = 640 // = realBottom + gapTarget - clientHeight 的典型超范围值
+
+// 未夹取时：写 640，浏览器只认 400，差 240 ⇒ 守卫 `<= 1` 不成立 ⇒ 继续写。
+const unclampedReadBack = Math.min(overshootTarget, simMaxScrollTop)
+check(
+  Math.abs(unclampedReadBack - overshootTarget) > 1,
+  '复现：未夹取的目标读回来与目标本身差 > 1（守卫失效的根因）'
+)
+
+// 夹取之后：写进去 == 读回来 ⇒ 守卫成立 ⇒ 循环终止。
+const clamped = clampScrollTop(overshootTarget, simScrollHeight, simClientHeight)
+check(clamped === simMaxScrollTop, `超范围目标夹到 maxScrollTop（实际 ${clamped}）`)
+check(
+  Math.abs(clamped - clamped) <= 1,
+  '夹取后「已钉底」守卫必然成立（写进去就是读回来的值）'
+)
+check(
+  clampScrollTop(clamped, simScrollHeight, simClientHeight) === clamped,
+  '夹取幂等 —— 重入一次不会再把值改小（循环不会靠夹取自己挪位置）'
+)
+
+// 范围内必须 no-op：否则「提前量跟随」就被夹没了（正常流式的观感不能变）。
+check(
+  clampScrollTop(320, simScrollHeight, simClientHeight) === 320,
+  '可滚范围内的目标原样保留（提前量跟随不被夹掉）'
+)
+check(clampScrollTop(0, simScrollHeight, simClientHeight) === 0, '0 保持 0')
+check(clampScrollTop(-50, simScrollHeight, simClientHeight) === 0, '负值夹到 0，不出负滚动位置')
+check(
+  clampScrollTop(300, 500, 800) === 0,
+  '内容不满一屏（scrollHeight < clientHeight）时恒为 0，不出负数上限'
 )
 
 console.log(`scroll watermark checks passed: ${checks}`)

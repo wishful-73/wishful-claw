@@ -34,6 +34,7 @@ import {
   collapseRetryDelay,
   createFloorTracker,
   observeFloor,
+  clampScrollTop as clampScrollTopValue,
   observeGrowthOnly,
   resolveGapTarget,
   resolveReclaimPlan,
@@ -147,6 +148,19 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
   const applyMinHeight = React.useCallback((height: number) => {
     const el = virtualContentRef.current
     if (el) el.style.minHeight = height > 0 ? `${height}px` : ''
+  }, [])
+  // 2026-10-29 崩溃修复：**写入 scrollTop 一律先夹进可滚范围**。
+  //
+  // 判据与理由见 `scroll-watermark.ts` 的 `clampScrollTop` —— 核心是：跟随目标
+  // `realBottom + gapTarget - clientHeight` 里的 gapTarget 是提前量（最多 240px），
+  // 比容器底部 padding 大得多；`scrollHeight` 撑不住时浏览器会 clamp 写入值，
+  // 写 1000 读回 760，下面 `:361` 那道「已钉底就返回」的 `<= 1` 守卫从此永远判不成立，
+  // 每帧写 scrollTop → scroll 事件 → setIsAtBottom → layout effect → 再写，
+  // 渲染进程涨到 4.3GB、最后报 "Maximum update depth exceeded"（真机日志 2026-10-29 17:20）。
+  const clampScrollTop = React.useCallback((value: number): number => {
+    const ref = listRef.current
+    if (!ref) return Math.max(0, value)
+    return clampScrollTopValue(value, ref.scrollHeight, ref.clientHeight)
   }, [])
   // 内容底 DOM 真值缓存（getRealContentBottom 的最近一次结果）。scroll 事件
   // 频率高，syncBottomState 用缓存判定即可，80px 阈值下毫秒级滞后无感。
@@ -290,7 +304,9 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
             // 紧接着那一串跟随回收要被压掉，否则「救一次 + 补几次」又是一次拉锯。
             collapseGateRef.current = admitCollapse(collapseGateRef.current, now)
             markProgrammaticScroll()
-            ref.scrollTop = followTarget
+            // 2026-10-29：救援目标同样可能超过可滚范围（水位线此刻还没压）——
+            // 不夹取的话读回来比目标小，下一帧又判「悬空」，救援自己变成循环。
+            ref.scrollTop = clampScrollTop(followTarget)
             return
           }
           // 非钉底（用户在上方阅读）：不补、不回收、也不压水位线 —— 拽了就是抢用户的位置。
@@ -317,7 +333,9 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
             // 流式结束那一帧早就这么干了（见下面的撤水位线分支），本需求只是把它搬进流式中途。
             const plan = resolveReclaimPlan(realBottom, gapTarget, ref.clientHeight)
             markProgrammaticScroll()
-            ref.scrollTop = plan.scrollTop
+            // 2026-10-29：plan.scrollTop = realBottom + gapTarget - clientHeight，与跟随目标同值，
+            // 是四处写入点里最容易超范围的一处 —— 必须夹（见 clampScrollTop）。
+            ref.scrollTop = clampScrollTop(plan.scrollTop)
             if (plan.minHeight < contentHeightWatermarkRef.current) {
               contentHeightWatermarkRef.current = plan.minHeight
               applyMinHeight(plan.minHeight)
@@ -337,11 +355,15 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
           bottom = followTarget
         }
       }
-      // Already pinned: re-writing scrollTop would dispatch another scroll
-      // event, whose handler sets state and re-runs the auto-scroll layout
-      // effects — that cycle is what React reports as "Maximum update depth
-      // exceeded".
-      if (Math.abs(ref.scrollTop - bottom) <= 1) return
+          // Already pinned: re-writing scrollTop would dispatch another scroll
+          // event, whose handler sets state and re-runs the auto-scroll layout
+          // effects — that cycle is what React reports as "Maximum update depth
+          // exceeded".
+          //
+          // 2026-10-29：**先夹再比**。超范围的 bottom 会被浏览器 clamp，拿未夹取的值
+          // 去比就永远判不成「已钉底」（见 clampScrollTop 的注释）。
+          bottom = clampScrollTop(bottom)
+          if (Math.abs(ref.scrollTop - bottom) <= 1) return
       // S-150：向小（回收）方向的位移才记账开冷却；向大（贴底 / 补提前量）永远放行 ——
       // 内容长出去不跟才是真问题，那不叫抖动。
       if (bottom < ref.scrollTop) {
@@ -356,6 +378,7 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     },
     [
       applyMinHeight,
+      clampScrollTop,
       measureContentBottom,
       markProgrammaticScroll,
       rows.length,
@@ -420,6 +443,24 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     return changed
   }, [])
 
+  // S-274 续（2026-10-30）：rail 重测节流 —— 掐断「写 scrollTop ⇒ 重测 ⇒ 重渲染 ⇒
+  // 再布局 ⇒ 再写 scrollTop」这条自持环。
+  //
+  // 流式中尾部行每帧都在长，`measureVisibleMessageHeights()` 因此**每帧**返回
+  // `changed = true`；它驱动的 `assistantRailMeasureVersion` 进了 `useMessageListData`
+  // 的依赖，会让 `buildAssistantRailLayout` 与整条消息列表每帧重算 + 重渲染。
+  // 而跟随 / 回收 / 救援三处写 `scrollTop` 都会派发 scroll 事件 → `handleListScroll`
+  // → `requestAssistantRailSync` → 再测 → 版本再 +1，**不需要任何新内容就能自持**。
+  //
+  // 真机表现（2026-10-30 08:27~08:31）：执行中渲染进程 3 分钟从 0.3GB 涨到 1.3GB，
+  // 发送键与会话列表的转圈控件持续上下跳动。极简模式治不了它 —— 极简减的是每条
+  // 消息的 DOM 量，条数与重渲染**频率**都不变。
+  //
+  // rail 是视觉辅助，150ms 一次足够；尾调用保证被节流挡掉的最后一次测量不丢。
+  const ASSISTANT_RAIL_MEASURE_THROTTLE_MS = 150
+  const lastRailMeasureAtRef = React.useRef(0)
+  const railMeasureTimerRef = React.useRef<number | null>(null)
+
   const setActiveAssistantRailIds = React.useCallback((nextIds: Set<string>) => {
     setActiveAssistantRailMessageIds((previousIds) =>
       areStringSetsEqual(previousIds, nextIds) ? previousIds : nextIds
@@ -434,7 +475,20 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     }
     const didMeasure = measureVisibleMessageHeights()
     if (didMeasure) {
-      setAssistantRailMeasureVersion((version) => version + 1)
+      // 见 ASSISTANT_RAIL_MEASURE_THROTTLE_MS 处的注释：不加这道闸就是每帧一次全列表重渲染。
+      const now = window.performance.now()
+      const sinceLast = now - lastRailMeasureAtRef.current
+      if (sinceLast >= ASSISTANT_RAIL_MEASURE_THROTTLE_MS) {
+        lastRailMeasureAtRef.current = now
+        setAssistantRailMeasureVersion((version) => version + 1)
+      } else if (railMeasureTimerRef.current === null) {
+        // 尾调用：最后一次测量被挡掉时补一次，衬线不丢（否则 rail 会停在旧 state）。
+        railMeasureTimerRef.current = window.setTimeout(() => {
+          railMeasureTimerRef.current = null
+          lastRailMeasureAtRef.current = window.performance.now()
+          setAssistantRailMeasureVersion((version) => version + 1)
+        }, ASSISTANT_RAIL_MEASURE_THROTTLE_MS - sinceLast)
+      }
     }
     const containerRect = ref.getBoundingClientRect()
     const nextActiveIds = new Set<string>()
@@ -668,6 +722,11 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     // scrolling to the top never fetches anything by itself.
     syncBottomState()
     syncPinnedTurnOverlay()
+    // 同 ASSISTANT_RAIL_MEASURE_THROTTLE_MS 处的注释：跟随 / 回收 / 救援写 scrollTop
+    // 会派发 scroll 事件，此时同步 rail **既无意义**（用户没在滚）**又最贵**
+    // （流式中必然触发重测）。程序化滚动的位移由那三处自己按几何处理，
+    // rail 位置在滚动停下后由下一次真实滚动或尾调用补上。
+    if (window.performance.now() < programmaticScrollUntilRef.current) return
     requestAssistantRailSync()
   }, [requestAssistantRailSync, syncBottomState, syncPinnedTurnOverlay])
 
@@ -862,7 +921,8 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
         const target = Math.max(0, realBottom - ref.clientHeight)
         if (Math.abs(ref.scrollTop - target) > 1) {
           markProgrammaticScroll()
-          ref.scrollTop = target
+          // 2026-10-29：同一个 clamp 口径（这里的水位线正要撤，scrollHeight 可能比目标小）。
+          ref.scrollTop = clampScrollTop(target)
         }
       }
       contentHeightWatermarkRef.current = 0
@@ -911,6 +971,8 @@ export function useMessageListScroll(input: MessageListScrollInput): MessageList
     return () => {
       if (initialTailReleaseFrameRef.current !== null) window.clearTimeout(initialTailReleaseFrameRef.current as unknown as number)
       if (scheduledAssistantRailSyncRef.current !== null) window.cancelAnimationFrame(scheduledAssistantRailSyncRef.current)
+      // S-274 续：rail 重测的尾调用定时器同样不能活过组件。
+      if (railMeasureTimerRef.current !== null) window.clearTimeout(railMeasureTimerRef.current)
       if (highlightedMessageTimerRef.current !== null) window.clearTimeout(highlightedMessageTimerRef.current)
       // S-176：两个补位定时器不能活过组件（回调会碰已卸载的 DOM）。
       if (shrinkProbeTimerRef.current !== null) window.clearTimeout(shrinkProbeTimerRef.current)

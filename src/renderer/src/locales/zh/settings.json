@@ -111,6 +111,9 @@
     "logs": {
       "label": "日志"
     },
+    "diagnostics": {
+      "label": "资源与诊断"
+    },
     "usage": {
       "label": "用量统计",
       "desc": "按模型请求记录统计请求次数、token 与成本"
@@ -182,8 +185,8 @@
       "desc": "选择时间轴上显示的活动量。消息始终可见。",
       "options": {
         "text": {
-          "name": "纯文本",
-          "desc": "只看消息。执行中的工具、思考和子 Agent 也一并收起。"
+          "name": "极简",
+          "desc": "工具、思考和子 Agent 都只显示成文字行 —— 执行中不展开，跑完也不变。"
         },
         "compact": {
           "name": "紧凑",
@@ -1908,7 +1911,44 @@
     "removed": "扩展已移除",
     "installed": "扩展已安装",
     "title": "自定义扩展",
-    "subtitle": "安装和管理为 Agent 提供工具与组件的本地扩展。"
+    "subtitle": "安装和管理为 Agent 提供工具与组件的本地扩展。",
+    "assets": {
+      "title": "运行文件",
+      "hint": "这些文件由主程序托管，装一次多个插件共用，卸载插件不会删除。",
+      "stateUnknown": "未知资产（主程序不支持）",
+      "stateReady": "已就绪",
+      "stateAbsent": "未就绪",
+      "stateDownloading": "下载中",
+      "stateVerifying": "校验中",
+      "stateFailed": "下载失败",
+      "needDownload": "需下载 {{size}}",
+      "download": "下载",
+      "cancel": "取消",
+      "retry": "重试",
+      "cancelHint": "已下载的部分会保留，下次接着下。"
+    },
+    "install": {
+      "title": "安装插件",
+      "providerBy": "由 {{id}} 提供 · 第三方",
+      "canRun": "此插件可访问你的文件、程序与数据，并可在你电脑上运行程序。",
+      "canRunTools": "此插件会为 Agent 增加工具，可访问你的文件与程序。",
+      "assetsHint": "需额外下载运行文件约 {{size}}（安装后再点下载，不会自动下）。",
+      "sourceHint": "请确认来源可信。",
+      "confirm": "我已了解，仍要安装",
+      "cancel": "取消",
+      "submit": "安装"
+    },
+    "storage": {
+      "title": "已下载的运行文件",
+      "hint": "这些文件由主程序托管，多个插件共用，卸载插件不会删除。",
+      "loading": "正在统计…",
+      "total": "共 {{size}}",
+      "removeAll": "全部清理",
+      "removeConfirm": "确定删除这个运行文件？正在使用它的插件将无法运行。",
+      "removeAllConfirm": "确定删除全部已下载的运行文件？正在使用它们的插件将无法运行。",
+      "removed": "已删除"
+    },
+    "removeCleanupPending": "扩展已移除，部分缓存文件被占用，重启后自动清理。"
   },
   "logsPage": {
     "level": {
@@ -1950,6 +1990,27 @@
       "none": "没有需要清理的日志文件",
       "previewCleared": "当前预览的日志文件已被删除",
       "failed": "清理失败：{{error}}"
+    }
+  },
+  "diagnostics": {
+    "title": "资源与诊断",
+    "subtitle": "当前各进程的内存占用。每 5 秒刷新，同一批数字每 5 分钟写进日志。",
+    "refresh": "刷新",
+    "total": "合计工作集",
+    "capturedAt": "取样 {{time}}",
+    "loading": "正在读取…",
+    "colRole": "进程",
+    "colWorkingSet": "工作集",
+    "colPeak": "峰值",
+    "hint": "浏览器视图里的网页、以及显卡驱动自己占的内存不在这里 —— 那些由页面和系统决定。要复盘「什么时候开始涨」，请看日志里的 memory 行。",
+    "workerManaged": "托管堆 {{value}} · 堆 {{heap}} · 碎片 {{frag}}",
+    "kind": {
+      "main": "主进程",
+      "renderer": "渲染进程",
+      "gpu": "GPU",
+      "utility": "工具进程",
+      "other": "其它",
+      "worker": "Worker"
     }
   }
 }

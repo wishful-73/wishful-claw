@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 import { useLiveCompressionStore } from '@renderer/stores/live-compression-store'
 import type { UnifiedMessage } from '@renderer/lib/api/types'
+import { getSummarizerFallbackCopy } from '@renderer/lib/agent/context-compression-display'
 import { ContextCompressionMessage } from './ContextCompressionMessage'
 
 /**
@@ -47,7 +48,10 @@ export function CompressionStatusMessage({
         compactSummary: {
           messagesSummarized: status.messagesSummarized ?? 0,
           recentMessagesPreserved: true,
-          ...(status.summarizerFailed ? { summarizerFailed: true } : {})
+          ...(status.summarizerFailed ? { summarizerFailed: true } : {}),
+          ...(status.summarizerFailureReason
+            ? { summarizerFailureReason: status.summarizerFailureReason }
+            : {})
         }
       }
     }
@@ -91,6 +95,10 @@ export function CompressionStatusMessage({
     )
   }
 
+  // S-269: name the real cause — a throttled channel is not a dead summarizer.
+  const summarizerFallbackCopy = status.summarizerFailed
+    ? getSummarizerFallbackCopy(status.summarizerFailureReason)
+    : null
   const tokenFormatter = new Intl.NumberFormat()
   return (
     <div className="my-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border bg-muted/25 px-3 py-2 text-[12px]">
@@ -130,11 +138,9 @@ export function CompressionStatusMessage({
           })}
         </span>
       ) : null}
-      {status.summarizerFailed ? (
+      {summarizerFallbackCopy ? (
         <span className="text-[11px] text-amber-600 dark:text-amber-400">
-          {t('contextCompression.summarizerFailed', {
-            defaultValue: 'Fallback summary used (summarizer unavailable)'
-          })}
+          {t(summarizerFallbackCopy.key, { defaultValue: summarizerFallbackCopy.defaultValue })}
         </span>
       ) : null}
       {status.error ? <span className="text-[11px] text-muted-foreground">{status.error}</span> : null}

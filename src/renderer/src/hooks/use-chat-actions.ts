@@ -725,6 +725,9 @@ export async function compressSessionContext(sessionId: string): Promise<ManualC
           ? { messagesSummarized: result.messagesSummarized }
           : {}),
         ...(result.summarizerFailed ? { summarizerFailed: true } : {}),
+        ...(result.summarizerFailureReason
+          ? { summarizerFailureReason: result.summarizerFailureReason }
+          : {}),
         ...(summaryArtifact
           ? {
               summaryText: getCompactSummaryDisplayText(summaryArtifact).trim(),

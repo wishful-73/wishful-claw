@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3, Bot, Globe, UserCheck } from 'lucide-react'
+import { ArrowLeft, Server, Info, Settings, User, MessageCircle, Puzzle, Cable, Keyboard, Gauge, Brain, ScrollText, BarChart3, Bot, Globe, UserCheck, Activity } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { WindowControls } from '@renderer/components/layout/WindowControls'
@@ -9,6 +9,7 @@ import { ProviderAuthPanel } from '@renderer/components/settings/ProviderAuthPan
 import { ProviderCompletionSettingsPanel } from '@renderer/components/settings/ProviderCompletionSettingsPanel'
 import { PluginPanel } from '@renderer/components/settings/PluginPanel'
 import { ExtensionPanel } from '@renderer/components/settings/ExtensionPanel'
+import { DiagnosticsPanel } from '@renderer/components/settings/DiagnosticsPanel'
 import { AppPluginPanel } from '@renderer/components/settings/AppPluginPanel'
 import { WebSearchPanel } from '@renderer/components/settings/WebSearchPanel'
 import { GeneralPanel } from '@renderer/components/settings/GeneralPanel'
@@ -117,6 +118,7 @@ function SettingsPage(): React.JSX.Element {
       label: t('tabs.groups.about'),
       items: [
         { id: 'logs', icon: <ScrollText className="size-4" />, label: t('tabs.logs.label', { defaultValue: '日志' }) },
+        { id: 'diagnostics', icon: <Activity className="size-4" />, label: t('tabs.diagnostics.label', { defaultValue: '资源与诊断' }) },
         { id: 'about', icon: <Info className="size-4" />, label: t('tabs.about.label') }
       ]
     }
@@ -274,6 +276,8 @@ function SettingsPage(): React.JSX.Element {
               </div>
             ) : settingsTab === 'logs' ? (
               <LogsPanel />
+            ) : settingsTab === 'diagnostics' ? (
+              <DiagnosticsPanel />
             ) : settingsTab === 'usage' ? (
               <UsagePanel />
             ) : (

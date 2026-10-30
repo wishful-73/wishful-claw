@@ -70,7 +70,15 @@ public static class DbMessageParts
     /// ⇒ <b>同一个 toolCallId 永远映射到同一个 seq</b>，状态更新走
     /// <c>INSERT OR REPLACE (message_id, seq)</c> 原地覆盖单行，不会漂成两行。</para>
     ///
-    /// <para>上限：iteration 到 2,147,483 轮，ordinal 到 99（同轮 99 个并行工具已远超实际）。</para>
+    /// <para><b>上限不是 99，是 799</b>：<c>kindOrder * 100 + ordinal</c> 最大 299，撞上下一轮
+    /// 的 thinking（<c>(iteration+1) * 1000 + 0</c>）发生在 <c>ordinal = 800</c>。
+    /// 这里 clamp 到 99 是<b>保守取值</b>——同一轮 99 个并行工具已远超实际观测，
+    /// 不是编码的硬边界。真要突破 99，把 clamp 上限提到 799 即可，编码本身不用动。</para>
+    ///
+    /// <para><b>clamp 的代价（别踩）</b>：超过 99 的 ordinal 会被压到 99，
+    /// 于是两个不同工具拿到同一个 seq，<c>INSERT OR REPLACE</c> 会静默吞掉一段。
+    /// 缺 <c>iteration</c> 的老段因此不能走这条（会共用第 1 轮的 ordinal 计数），
+    /// 走 <see cref="EncodeFallbackSeq"/> 的负区间。</para>
     /// </summary>
     public static long EncodeSeq(int iteration, string kind, int ordinal)
     {
@@ -78,6 +86,30 @@ public static class DbMessageParts
         var safeOrdinal = Math.Clamp(ordinal, 0, 99);
         return (long)safeIteration * 1000L + KindOrder(kind) * 100L + safeOrdinal;
     }
+
+    /// <summary>
+    /// 段没有合法 <c>iteration</c> 时的保序兜底 seq —— <b>负区间</b>。
+    ///
+    /// <para>取值 <c>FallbackSeqBase + arrayIndex</c>，<c>FallbackSeqBase = -1_000_000_000</c>：
+    /// 全部真实段的 seq 都 <c>&gt;= 0</c>，所以缺 iteration 的段整体排在它们之前，
+    /// 内部按 segments 数组的原始先后保序。</para>
+    ///
+    /// <para><b>为什么不用 iteration = 0 或 1 了事</b>：那会把老段塞进真实轮次的区间，
+    /// 与真实第 N 轮的 ordinal 计数互相顶撞；撞满 clamp 后 seq 重复，
+    /// <c>INSERT OR REPLACE</c> 直接覆盖掉一段，信息静默丢失。</para>
+    ///
+    /// <para><b>已知取舍（混排坏数据）</b>：一条消息里若有段带 iteration、有段不带，
+    /// 缺的那些会全部排到最前面，整体顺序与原始数组未必一致。真实数据里
+    /// <c>stream-segments.ts</c> 建段必带 iteration，全缺或全有是常态；
+    /// 混排只可能是历史脏数据，此时「不丢 + 内部保序」优先于「绝对时序正确」。</para>
+    /// </summary>
+    public static long EncodeFallbackSeq(int arrayIndex)
+    {
+        return FallbackSeqBase + arrayIndex;
+    }
+
+    /// <summary>保序兜底 seq 的区间起点，见 <see cref="EncodeFallbackSeq"/>。</summary>
+    private const long FallbackSeqBase = -1_000_000_000L;
 
     /// <summary>一行 parts（读出来的形状）。</summary>
     public readonly record struct PartRow(long Seq, string Kind, string Payload);
@@ -188,20 +220,32 @@ public static class DbMessageParts
     /// <summary>
     /// 从 segments 数组生成 parts。ordinal 按「同 iteration 同 kind 的出现序号」分配 ——
     /// thinking/text 恒为 0，tool_use 按到达序递增，与 <c>EncodeSeq</c> 的稳定性前提一致。
+    ///
+    /// <para><b>缺 iteration 的段</b>走 <see cref="EncodeFallbackSeq"/>（负区间），
+    /// 且<b>不参与 ordinal 计数</b>——否则会和真实第 1 轮抢同一个 key。</para>
     /// </summary>
     private static List<PartRow> PartsFromSegments(JsonElement segmentsEl)
     {
         var parts = new List<PartRow>();
         var ordinals = new Dictionary<(int, string), int>();
+        var arrayIndex = 0;
 
         foreach (var seg in segmentsEl.EnumerateArray())
         {
+            var index = arrayIndex++;
             if (seg.ValueKind != JsonValueKind.Object) continue;
 
             var kind = ReadString(seg, "type");
             if (kind is not (Kinds.Thinking or Kinds.Text or Kinds.ToolUse)) continue;
 
-            var iteration = ReadInt(seg, "iteration", 1);
+            // iteration 必须是正数才算合法。0 / 负数 / 缺失 / 非数字 ⇒ 老脏数据，走兜底。
+            var iteration = ReadInt(seg, "iteration", 0);
+            if (iteration <= 0)
+            {
+                parts.Add(new PartRow(EncodeFallbackSeq(index), kind, seg.GetRawText()));
+                continue;
+            }
+
             var key = (iteration, kind);
             var ordinal = ordinals.TryGetValue(key, out var seen) ? seen : 0;
             ordinals[key] = ordinal + 1;
@@ -209,19 +253,26 @@ public static class DbMessageParts
             parts.Add(new PartRow(EncodeSeq(iteration, kind, ordinal), kind, seg.GetRawText()));
         }
 
+        // 兜底段 seq 是负数、正常段是正数 ⇒ 兜底段天然排在前，符合 EncodeFallbackSeq 的约定。
         return parts;
     }
 
     /// <summary>
     /// 只有 toolCalls、没有 segments 的老数据：造出等价的 tool_use 段，保住信息不丢。
+    ///
+    /// <para><b>seq 走保序兜底（负区间），不走 <c>EncodeSeq(1, ...)</c></b>：
+    /// 老消息的工具调用次数可以远超 99（实测一条 148 次），而 <c>EncodeSeq</c> 会把
+    /// ordinal clamp 到 99 ⇒ 第 100 个之后全部撞同一个 seq ⇒ <c>INSERT OR REPLACE</c>
+    /// 静默吞段。这条路径本来就没有轮次信息，数组顺序就是唯一时序，兜底正合适。</para>
     /// </summary>
     private static List<PartRow> PartsFromToolCalls(JsonElement toolCallsEl)
     {
         var parts = new List<PartRow>();
-        var ordinal = 0;
+        var arrayIndex = 0;
 
         foreach (var call in toolCallsEl.EnumerateArray())
         {
+            var index = arrayIndex++;
             if (call.ValueKind != JsonValueKind.Object) continue;
 
             var buffer = new ArrayBufferWriter<byte>();
@@ -232,7 +283,10 @@ public static class DbMessageParts
             {
                 writer.WriteStartObject();
                 writer.WriteString("type", Kinds.ToolUse);
-                writer.WriteNumber("iteration", 1);
+                // 0 = 轮次未知（老数据只有 toolCalls，没有轮次信息）。真实轮次从 1 起，不会混。
+                // 渲染端 ContentSegment.iteration 是必填 number，写 0 保持形状不破；
+                // 唯一的消费者 InputArea/utils.ts:167 用 (seg.iteration ?? 1)，走不到 0 这条。
+                writer.WriteNumber("iteration", 0);
                 WriteIfPresent(writer, "toolCallId", call, "id");
                 WriteIfPresent(writer, "toolName", call, "name");
                 WriteRawIfPresent(writer, "input", call, "input");
@@ -245,10 +299,9 @@ public static class DbMessageParts
             }
 
             parts.Add(new PartRow(
-                EncodeSeq(1, Kinds.ToolUse, ordinal),
+                EncodeFallbackSeq(index),
                 Kinds.ToolUse,
                 Encoding.UTF8.GetString(buffer.WrittenSpan)));
-            ordinal++;
         }
 
         return parts;
@@ -356,6 +409,13 @@ public static class DbMessageParts
     /// <summary>
     /// 把 parts 合并回 meta —— 对外形状仍是 <c>{ toolCalls, segments, thinking }</c>，
     /// 渲染层零改动（S-285 §4.3）。
+    ///
+    /// <para><b>本方法只按 <c>parts</c> 的入参顺序写回，不解析 seq 的任何数字含义。</b>
+    /// seq 的编码（<see cref="EncodeSeq"/>）是渲染端的时序规则，C# 只在
+    /// 「迁移老 meta」这一条路径上造 seq（<see cref="SplitMeta"/>），正常写入由 TS 侧算。
+    /// 读回来时 <see cref="LoadParts"/> 已 <c>ORDER BY seq</c>，这里顺序即时序 ——
+    /// 若在这里按 kind 分组或解读 iteration，就等于把渲染端的规则复制一份到 C#，
+    /// 重演 S-276「四处判据各写各的」的坑。</para>
     ///
     /// <para>没有 parts 的消息原样返回 meta（老格式走这条）。</para>
     /// </summary>

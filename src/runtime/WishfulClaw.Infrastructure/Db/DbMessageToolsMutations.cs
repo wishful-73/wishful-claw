@@ -162,6 +162,12 @@ public static partial class DbMessageTools
             }
             if (patch.TryGetProperty("meta", out var metaEl))
             {
+                // ⚠️ 本端点写 meta 是「整行覆盖」，且**不碰 message_parts**。
+                // 新格式消息的块结构在 parts 里，读侧 MergePartsIntoMeta 会用 parts 覆盖
+                // meta 里的 segments/toolCalls —— 所以通过这里写进 meta 的块结构会被静默吞掉。
+                // 当前渲染端零调用（grep `messages-update` 只有 DbModule 注册），属死端点；
+                // 将来真要启用，必须改成与 Upsert 同一套分流：HasBlockStructure ⇒ 原样，
+                // 否则 SplitMeta + WriteParts。别直接拿它回写 segments。
                 current.Meta = metaEl.ValueKind == JsonValueKind.String
                     ? DbProjectTools.NormalizeOptional(metaEl.GetString())
                     : null;

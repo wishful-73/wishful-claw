@@ -81,6 +81,21 @@ public static partial class ToolCallProcessor
     internal static string ApplyToolOutputLimit(
         AgentRuntimeNativeToolCall toolCall, string output, string? sessionId = null)
     {
+        // S-290：带 filePath 的 image 块是**结构化载荷**，截断它等于把图砍成半截。
+        // 截断后模型拿到的不是 image 块，而是一段砍断的 JSON 文本（PNG 只剩 16 KB），
+        // 解不出来还得再 Read 一次盘上文件补看 —— 每次截图白多一次模型往返，
+        // 而第一轮它已经据一个坏块做过判断了。
+        //
+        // 判据**看内容不看工具名**：谁将来返回带路径的图都自动豁免，不靠名单维护（S-270）。
+        // 豁免排在 SpillToolOutput 之前，顺带把「spill 失败 → 退回无提示截断」那条
+        // 静默错误分支一起消掉（带 filePath 的块压根不走 spill）。
+        //
+        // 代价要认：这几百 KB 真的进 wire，本轮不省 —— 这正是 S-283 方案 A 原本的设计
+        // （「本轮不省」）。真正省 wire 的那一刀是 S-275（压缩时把 image 换成路径占位），
+        // 不靠在这里截断。别为了「省」把它加回来。
+        if (HasRecoverableImageBlock(output))
+            return output;
+
         if (AgentRuntimeUseCapabilityExecutor.IsUseCapabilityTool(toolCall.Name))
         {
             var action = (JsonHelpers.GetString(toolCall.Input, "action") ?? string.Empty)
@@ -96,6 +111,39 @@ public static partial class ToolCallProcessor
             return TruncateToolOutput(output);
 
         return SpillToolOutput(toolCall.Name, output, sessionId);
+    }
+
+    /// <summary>
+    /// S-290：输出里是否存在「带 filePath 的 image 块」。
+    ///
+    /// **为什么要求 filePath** —— 只有带路径的才保证「就算不进 wire，也能从盘上取回」，
+    /// 放行它是安全交易。没有路径的 image 块（用户粘贴的图、外部来源）一旦豁免就是纯吃
+    /// 上下文，该截还得截。
+    ///
+    /// **为什么不解析 JSON** —— 这个函数挂在**每一次**工具返回上，而命中的是少数；
+    /// 为它 parse 一个 700 KB 的串不值。两次子串扫描够用。
+    ///
+    /// 判据认的是紧凑 JSON（`"type":"image"`，无空格）—— 上游 `JsonSerializer` 默认不缩进。
+    /// 万一哪天开了缩进，这里判不中 ⇒ 退回原来的截断 / 落盘，是「行为变差」不是「行为出错」，
+    /// 可以接受；真要改，动手前先看 `AgentRuntimeDesktopExecutor` 那边是不是还紧凑。
+    /// </summary>
+    private static bool HasRecoverableImageBlock(string output)
+    {
+        // 最短的合法形态也远长于这个长度，先挡掉空串和碎片
+        if (output.Length < 32)
+            return false;
+
+        if (output.IndexOf("\"type\":\"image\"", StringComparison.Ordinal) < 0)
+            return false;
+
+        const string filePathKey = "\"filePath\":\"";
+        var pathAt = output.IndexOf(filePathKey, StringComparison.Ordinal);
+        if (pathAt < 0)
+            return false;
+
+        // `"filePath":""`（S-284 剥掉 data 后的落库形态）不算 —— 值为空的路径取不回任何东西
+        var valueAt = pathAt + filePathKey.Length;
+        return valueAt < output.Length && output[valueAt] != '"';
     }
 
     private static bool IsRetrievalTool(string toolName)

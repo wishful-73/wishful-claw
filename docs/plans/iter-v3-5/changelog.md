@@ -131,3 +131,21 @@
 门禁：typecheck 0 错 / `npm test` **106/106** / 两套 sln 0 警告 0 错误 / `ci-checks` 全过。
 
 真机 §六 4 条未跑。
+
+### 21:12 · 刀 4 收刀 —— S-290 截图 image 块被 32 KB 截断
+
+`ApplyToolOutputLimit` 最前面加 `if (HasRecoverableImageBlock(output)) return output;`。**整份放行，不是需求单 §四 写的「只截文本块」** —— 拆块要 `JSON.parse` 700 KB 再序列化回去，而这个函数挂在每一次工具返回上；要截的那段“文本块”本身就是一行尺寸摘要，几百字节，截它没收益。结论一致，路径更短。将来真出现「图 + 几十 KB 文本」再补真拆块（§8.1）。
+
+判据两次子串扫描、不解析 JSON：`len>=32` → 含 `"type":"image"` → 含 `"filePath":"` → **值非空**。`"filePath":""`（S-284 剥 data 后的落库形态）不算，空路径取不回任何东西。判据**看内容不看工具名**，`use_capability` 代理 / 直接调 `DesktopScreenshot` / `Read` 三条都豁免。
+
+**顺手消掉一条静默错误分支**：豁免排在 `SpillToolOutput` 之前 ⇒ 带 `filePath` 的块压根不走 spill ⇒ 「spill 失败 → 退回无提示截断」那条路对图片不再存在。
+
+新门禁 `tests/WishfulClaw.ToolOutputLimitRegressionTests` **13 断言**（`InternalsVisibleTo` + `dotnet sln add`，`run-tests.mjs` 按目录名自动发现）。里面 4 条是反证 —— 空路径不豁免、无路径不豁免、200 KB 纯文本照旧限流、小/空输出原样返回。
+
+**反向验证**：守卫末句改 `return false` ⇒ 红 `带 filePath 的 image 块必须原样放行（原 700197 字符，实得 32754）`，与真机日志 `originalBytes=712499 truncatedBytes=32768` 同形。
+
+**踩了个大坑，写进 §8.4**：`Copy-Item` 还原备份**保留源 mtime** ⇒ 比编译产物旧 ⇒ MSBuild 不重编 ⇒ 跑的还是反向验证那份坏 dll。更迷惑的是中途顺手用 PS `Set-Content` 改 C# 源码，PS 5.1 默认 ANSI 把 spill notice 的 `—` 写坏，导致那份坏 dll 把 `Goal` 套件一起带红（`the spill notice exposes a locator between the expected markers`），一度以为是连带缺陷。规矩：① 还原后 touch；② 改 C# 源码禁用 `Set-Content`。
+
+门禁：typecheck 0 错 / `npm test` **107/107** / 两套 sln 0 警告 0 错误 / `ci-checks` **82/82 通过**。
+
+真机 §九 5 条未跑（第一轮就能看图 / 日志不再 `truncatedBytes=32768` / 落库 meta 仍小 / 纯文本网页照旧截断 / spill 目录不可写时仍能看图）。

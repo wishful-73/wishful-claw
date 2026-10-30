@@ -54,10 +54,15 @@ public static partial class DbMessageTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            foreach (var msg in messages)
+            // S-285：一个事务里批量插入 —— 每条消息都要连 message_parts 一起写，
+            // 逐条开事务会把批量导入退化成 N 次提交。
+            db.ExecuteInTransaction((conn, tx) =>
             {
-                InsertMessage(db, msg);
-            }
+                foreach (var msg in messages)
+                {
+                    InsertMessage(db, conn, tx, msg);
+                }
+            });
 
             var bySession = messages.GroupBy(m => m.SessionId);
             foreach (var grp in bySession)
@@ -88,20 +93,35 @@ public static partial class DbMessageTools
 
             if (existing is not null)
             {
+                // S-285 分流判据：库里这一行自己的 meta 是否已带块结构。
+                // 有 ⇒ 老格式，整行原样写回，一个字节不变，parts 一行不碰。
+                // 无 ⇒ 新格式，块结构剥进 message_parts，meta 只留非块字段。
+                var keepLegacy = DbMessageParts.HasBlockStructure(existing.Meta);
+                var (metaToWrite, parts) = keepLegacy
+                    ? (message.Meta, (IReadOnlyList<DbMessageParts.PartRow>)[])
+                    : DbMessageParts.SplitMeta(message.Meta, message.CreatedAt);
+
                 // updated_at is stamped by the worker clock on every rewrite — this is
                 // what the renderer shows as an assistant reply's display time.
-                db.Execute(
-                    "UPDATE messages SET session_id = @sid, role = @role, content = @content, " +
-                    "meta = @meta, created_at = @ca, updated_at = @ua, usage = @usage, sort_order = @so WHERE id = @id",
-                    new SqliteParameter("@sid", message.SessionId),
-                    new SqliteParameter("@role", message.Role),
-                    new SqliteParameter("@content", message.Content),
-                    new SqliteParameter("@meta", (object?)message.Meta ?? DBNull.Value),
-                    new SqliteParameter("@ca", message.CreatedAt),
-                    new SqliteParameter("@ua", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
-                    new SqliteParameter("@usage", (object?)message.Usage ?? DBNull.Value),
-                    new SqliteParameter("@so", message.SortOrder),
-                    new SqliteParameter("@id", message.Id));
+                db.ExecuteInTransaction((conn, tx) =>
+                {
+                    db.Execute(conn, tx,
+                        "UPDATE messages SET session_id = @sid, role = @role, content = @content, " +
+                        "meta = @meta, created_at = @ca, updated_at = @ua, usage = @usage, sort_order = @so WHERE id = @id",
+                        new SqliteParameter("@sid", message.SessionId),
+                        new SqliteParameter("@role", message.Role),
+                        new SqliteParameter("@content", message.Content),
+                        new SqliteParameter("@meta", (object?)metaToWrite ?? DBNull.Value),
+                        new SqliteParameter("@ca", message.CreatedAt),
+                        new SqliteParameter("@ua", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+                        new SqliteParameter("@usage", (object?)message.Usage ?? DBNull.Value),
+                        new SqliteParameter("@so", message.SortOrder),
+                        new SqliteParameter("@id", message.Id));
+
+                    // 单行 INSERT OR REPLACE (message_id, seq) —— 状态更新原地覆盖，绝不追加新行。
+                    // 老格式时 parts 为空，WriteParts 直接返回。
+                    DbMessageParts.WriteParts(conn, tx, message.Id, parts, message.CreatedAt);
+                });
             }
             else
             {
@@ -178,6 +198,9 @@ public static partial class DbMessageTools
 
             db.ExecuteInTransaction((conn, tx) =>
             {
+                // S-285：parts 表不存 session_id（避免两份真相），靠 messages 子查询定位。
+                // ⇒ 必须在 DELETE messages 之前清，否则子查询已空，parts 变孤儿。
+                DbMessageParts.DeleteForSession(conn, tx, sessionId);
                 db.Execute(conn, tx, "DELETE FROM messages WHERE session_id = @sid", new SqliteParameter("@sid", sessionId));
                 DbCompactionSnapshotStore.DetachForSession(db, conn, tx, sessionId);
             });
@@ -199,10 +222,16 @@ public static partial class DbMessageTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            var deleted = db.Execute(
-                "DELETE FROM messages WHERE session_id = @sid AND id = @mid",
-                new SqliteParameter("@sid", sessionId),
-                new SqliteParameter("@mid", messageId));
+            var deleted = 0;
+            db.ExecuteInTransaction((conn, tx) =>
+            {
+                // S-285：显式清 parts（不加 FK，见 §8.5）。先清后删，避免留下孤儿行。
+                DbMessageParts.DeleteForMessage(conn, tx, messageId);
+                deleted = db.Execute(conn, tx,
+                    "DELETE FROM messages WHERE session_id = @sid AND id = @mid",
+                    new SqliteParameter("@sid", sessionId),
+                    new SqliteParameter("@mid", messageId));
+            });
 
             if (deleted > 0)
             {

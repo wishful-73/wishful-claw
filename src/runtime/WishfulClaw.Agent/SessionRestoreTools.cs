@@ -233,6 +233,9 @@ internal static partial class SessionRestoreTools
                 new SqliteParameter("@sid", sessionId),
                 new SqliteParameter("@snapshotCreatedAt", snapshot.CreatedAt));
 
+            // S-285：块结构在 parts 表里，必须在过滤/合成之前合并回 meta。
+            AttachPartsToEntities(db, incremental);
+
             // Tool-call ids already covered by a stored tool_result row
             // (legacy split format) — suppresses duplicate synthesized results.
             var filteredIncremental = incremental
@@ -257,6 +260,9 @@ internal static partial class SessionRestoreTools
             {
                 return new SessionRestoreCoreResult(wireMessages, [], false);
             }
+
+            // S-285：同增量分支 —— 块结构合并回 meta，否则合成不出 tool_result。
+            AttachPartsToEntities(db, entities);
 
             var filteredEntities = entities
                 .Where(entity => !IsChatOnlyArtifact(entity))

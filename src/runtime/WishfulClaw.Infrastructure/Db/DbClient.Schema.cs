@@ -69,6 +69,27 @@ public static partial class DbClient
                 usage TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0
             );",
+            // S-285：助手消息的块结构（thinking / text / tool_use）拆出独立表，工具调用改为
+            // 「按 seq 单行覆盖」而不是「整条 meta 重新 stringify 后整行 upsert」。
+            //
+            // 老库自动建表：CREATE TABLE IF NOT EXISTS ⇒ 零迁移、零 ALTER、零数据搬运。
+            // 反向验证（tests 里钉住）：把它改成不带 IF NOT EXISTS，第二次启动必须炸。
+            //
+            // 刻意不加 FK 到 messages.id：DbService 已开 PRAGMA foreign_keys = ON，加了隐式级联
+            // 会让「删一条消息」静默带走它的全部 parts —— 一旦有 bug 误删 messages 行就不可恢复。
+            // 删除走显式清（与 sub_agent_runs 等表一致），多一步但好排查（S-285 §8.5）。
+            //
+            // WITHOUT ROWID：行直接存在 (message_id, seq) 主键 B-tree 里，
+            // 「message_id 等值 + seq 有序前缀扫描」正好命中，不需要额外索引（§8.2）。
+            // 代价是不能用 rowid / AUTOINCREMENT —— 本条不需要自增，seq 是业务序号。
+            @"CREATE TABLE IF NOT EXISTS message_parts (
+                message_id TEXT NOT NULL,
+                seq INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (message_id, seq)
+            ) WITHOUT ROWID;",
             @"CREATE TABLE IF NOT EXISTS sub_agent_runs (
                 tool_use_id TEXT PRIMARY KEY NOT NULL,
                 session_id TEXT NOT NULL,

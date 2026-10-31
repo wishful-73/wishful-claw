@@ -1,13 +1,14 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Check, X, Copy, FileText, AlertCircle, ArrowDownRight } from 'lucide-react'
+import { Check, X, Copy, FileText, AlertCircle, ArrowDownRight, ArrowUpRight } from 'lucide-react'
 import {
   writeImageBlobToClipboard,
   writeImageDataUrlToClipboard
 } from '@renderer/lib/utils/image-clipboard'
 import type {
   GlobalDispatchMeta,
+  GlobalDispatchReplyMeta,
   SelectedFileReadsMeta
 } from '@renderer/lib/api/types'
 import { type ImageAttachment } from '@renderer/lib/image-attachments'
@@ -56,6 +57,52 @@ export function GlobalDispatchBadge({
           title={meta.dispatchId}
         >
           {meta.dispatchId}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 派活回执的来路标记（iter-v3-5 S-279 收尾，2026-10-31）。
+ *
+ * 回执以前是纯文本，正文开头带 `[GLOBAL DISPATCH REPLY] dispatch_id=… status=…`，
+ * 落在全局会话聊天窗里看不出这是「回执」，只看到一坨协议。现在结构化字段进了
+ * `meta.globalDispatchReply`，这里把它还原成「谁回的 / 什么状态」两枚小标记，
+ * 正文只剩回执内容本身。
+ */
+export function GlobalDispatchReplyBadge({
+  meta
+}: {
+  meta?: GlobalDispatchReplyMeta
+}): React.JSX.Element | null {
+  const { t } = useTranslation('chat')
+  if (!meta) return null
+
+  const statusLabel =
+    meta.status === 'completed'
+      ? t('userMessage.globalDispatchReplyCompleted', { defaultValue: 'Completed' })
+      : meta.status === 'blocked'
+        ? t('userMessage.globalDispatchReplyBlocked', { defaultValue: 'Blocked' })
+        : meta.status === 'in_progress'
+          ? t('userMessage.globalDispatchReplyInProgress', { defaultValue: 'In progress' })
+          : null
+
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] leading-none">
+      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-1 font-medium text-emerald-600 dark:text-emerald-400">
+        <ArrowUpRight className="size-3 shrink-0" />
+        {t('userMessage.globalDispatchReply', { defaultValue: 'Reply from project' })}
+      </span>
+      <span
+        className="max-w-[14rem] truncate rounded-md border border-border/60 bg-background/45 px-1.5 py-1 font-mono text-[10px] text-muted-foreground"
+        title={meta.fromSessionId}
+      >
+        {meta.fromSessionId}
+      </span>
+      {statusLabel && (
+        <span className="rounded-md border border-border/60 bg-background/45 px-1.5 py-1 text-muted-foreground">
+          {statusLabel}
         </span>
       )}
     </div>

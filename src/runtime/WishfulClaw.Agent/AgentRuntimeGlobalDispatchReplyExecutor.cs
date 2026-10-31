@@ -156,6 +156,21 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                     w.WriteStartObject();
                     w.WriteString("sessionId", sourceSessionId);
                     w.WriteString("content", content);
+                    // S-279 收尾（2026-10-31）：回执在全局会话里也得是卡片。
+                    // `content` 那串协议头（dispatch_id / from_session / status）是给模型
+                    // 定位用的，落到聊天窗就是一段污染 —— 正文走 `displayContent`，
+                    // 结构化字段进 `meta.globalDispatchReply` 供渲染端做徽章（S-278 同一机制）。
+                    w.WriteString("displayContent", report);
+                    w.WritePropertyName("meta");
+                    w.WriteStartObject();
+                    w.WritePropertyName("globalDispatchReply");
+                    w.WriteStartObject();
+                    w.WriteString("dispatchId", dispatchId);
+                    w.WriteString("globalTaskId", globalTaskId);
+                    w.WriteString("fromSessionId", fromSessionId);
+                    w.WriteString("status", newStatus);
+                    w.WriteEndObject();
+                    w.WriteEndObject();
                     w.WriteString("workingFolder", string.Empty);
                     w.WriteString("projectId", string.Empty);
                     // The source session is the global agent's own session —

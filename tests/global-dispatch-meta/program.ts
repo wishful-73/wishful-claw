@@ -145,4 +145,74 @@ check(
   'displayContent 等于 content 时必须不传，保持老路径不变'
 )
 
+// ── 源码闸：S-279 收尾（普通消息回执 + 回执卡片化） ────────────────────
+//
+// 这一组防的是「跨语言半成品」：wire 侧改了、工具描述没改 ⇒ 模型不知道能回执；
+// 回执写回了、渲染端没认 meta ⇒ 界面上一坨裸协议文本。
+// 每一处都不报错，只有真机看着别扭才发现，所以逐个钉。
+
+const readOrEmpty = (relativePath: string): string => {
+  try {
+    return readFileSync(join(repoRoot, relativePath), 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+// 12. 工具描述必须承认普通消息也能回执，且不许留着禁令
+const replyToolSource = readOrEmpty(
+  'src/runtime/WishfulClaw.Agent/Tools/Providers/GlobalDispatchReplyToolProvider.cs'
+)
+check(replyToolSource.length > 0, '必须读到 GlobalDispatchReplyToolProvider.cs')
+check(
+  replyToolSource.includes('[GLOBAL SESSION MESSAGE]'),
+  '工具描述必须提到 [GLOBAL SESSION MESSAGE]（普通消息的 dispatch_id 来源）'
+)
+check(
+  !replyToolSource.includes('Do not use it for ordinary user messages'),
+  '工具描述不许残留「不要用于普通消息」的禁令 —— 那会让模型结构上拒绝回执'
+)
+
+// 13. 回执反向请求必须带 displayContent + 结构化 meta
+const replyExecSource = readOrEmpty(
+  'src/runtime/WishfulClaw.Agent/AgentRuntimeGlobalDispatchReplyExecutor.cs'
+)
+check(replyExecSource.length > 0, '必须读到 AgentRuntimeGlobalDispatchReplyExecutor.cs')
+check(
+  replyExecSource.includes('"displayContent"'),
+  '回执反向请求必须带 displayContent（否则全局会话收到的是协议文本）'
+)
+check(
+  replyExecSource.includes('"globalDispatchReply"'),
+  '回执反向请求必须带 meta.globalDispatchReply（否则渲染端认不出这是回执）'
+)
+
+// 14. 项目执行器必须走 BuildSessionMessageWireText，不许直接把原话塞 content
+const projectExecSource = readOrEmpty(
+  'src/runtime/WishfulClaw.Agent/AgentRuntimeProjectExecutor.cs'
+)
+check(projectExecSource.length > 0, '必须读到 AgentRuntimeProjectExecutor.cs')
+check(
+  projectExecSource.includes('BuildSessionMessageWireText'),
+  '项目执行器投递普通消息时必须调用 BuildSessionMessageWireText'
+)
+
+// 15. 渲染端必须有回执徽章，且真的挂到用户消息上
+const viewsSource = readOrEmpty('src/renderer/src/components/chat/user-message-views.tsx')
+check(
+  viewsSource.includes('GlobalDispatchReplyBadge'),
+  'user-message-views.tsx 必须导出 GlobalDispatchReplyBadge'
+)
+const userMessageSource = readOrEmpty('src/renderer/src/components/chat/UserMessage.tsx')
+check(
+  userMessageSource.includes('<GlobalDispatchReplyBadge'),
+  'UserMessage.tsx 必须渲染 GlobalDispatchReplyBadge'
+)
+
+// 16. 两套语言都得有键，否则英文面会掉出原始 key
+const zhChat = readOrEmpty('src/renderer/src/locales/zh/chat.json')
+const enChat = readOrEmpty('src/renderer/src/locales/en/chat.json')
+check(zhChat.includes('globalDispatchReply'), 'zh/chat.json 缺 globalDispatchReply 键')
+check(enChat.includes('globalDispatchReply'), 'en/chat.json 缺 globalDispatchReply 键')
+
 console.log(`global-dispatch-meta: ${checks} checks passed`)

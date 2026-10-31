@@ -292,10 +292,16 @@ public static partial class AgentRuntimeProjectExecutor
             // 以前 send_session_message 从不建 dispatch —— 全局会话「就地问一句 / 催一下」
             // 发完就没了，没有任何可追踪的凭据，S-280 的自动回执也就无处落笔。
             //
-            // 与 send_work_request 的关键差别：**不往 wire 正文里塞协议说明**。
-            // 普通消息的 content 就是用户原话，塞一段英文回执协议会直接出现在目标会话里，
-            // 正是 S-278 刚拆开的那件事。所以这里只带 meta.globalDispatch 让渲染端认出来，
-            // 回执靠 S-280 的归档层代标 completed_implicit（目标会话跑完但没显式回执）。
+            // ⚠️ 2026-10-31 订正（真机验收暴露）：初版**不往 wire 里塞协议说明**，理由是
+            // 「普通消息的 content 就是用户原话，塞英文回执协议会直接出现在目标会话里，
+            // 正是 S-278 刚拆开的那件事」。**这个前提是错的** —— S-278 拆开的恰恰是
+            // 「给模型看的 `content`」与「给人看的 `displayContent`」两个字段
+            // （`send_work_request` 用的就是这一套，见 AgentRuntimeGlobalTaskExecutor）。
+            // 不塞的后果：目标会话 agent 的上下文里没有 dispatchId，而
+            // `reply_global_dispatch` 的 dispatchId 是必填 ⇒ **结构上不可能显式回执**，
+            // 只能靠归档层代标 completed_implicit，全局会话永远拿不到对方说了什么。
+            // 所以这里照 `send_work_request` 的写法：`content` 追加一句轻量回执指引，
+            // `displayContent` 保持原话，聊天窗不受污染。
             //
             // sourceSessionId 必非空：send_session_message 属 ToolVisibilityScopes.GlobalSideOnly，
             // 只有全局会话拿得到它，所以回执永远有地方可回。
@@ -321,17 +327,25 @@ public static partial class AgentRuntimeProjectExecutor
             }
 
             // Build reverse request params
+            //
+            // S-279 订正：有 dispatch 时 wire 走「模型看 `content` / 人看 `displayContent`」，
+            // 与 send_work_request 同一条路径（S-278 的机制）。没有 dispatch（无源会话）
+            // 时两个字段都不加，保持老路径字节级一致。
+            var wireContent = messageDispatchId is null
+                ? content
+                : BuildSessionMessageWireText(messageDispatchId, content);
+
             var reverseParams = WorkerJsonHelper.BuildJsonElement(w =>
             {
                 w.WriteStartObject();
                 w.WriteString("sessionId", sessionId);
-                w.WriteString("content", content);
+                w.WriteString("content", wireContent);
                 w.WriteString("workingFolder", workingFolder ?? string.Empty);
                 w.WriteString("projectId", projectId ?? string.Empty);
                 if (messageDispatchId is not null)
                 {
-                    // 普通消息没有「给人看的版本」与「给模型看的版本」之分，两者都是原话；
-                    // displayContent 省略，渲染端按 content 显示。meta 只用来做卡片标识。
+                    // 聊天窗显示原话；协议指引只在 wire 正文里，不进 displayContent。
+                    w.WriteString("displayContent", content);
                     w.WritePropertyName("meta");
                     w.WriteStartObject();
                     w.WritePropertyName("globalDispatch");
@@ -378,6 +392,31 @@ public static partial class AgentRuntimeProjectExecutor
         {
             return EncodeError($"Failed to send session message: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// S-279（v3-iter-5 收尾）：普通消息的 wire 正文 —— 原话 + 一句回执指引。
+    ///
+    /// 与 <c>send_work_request</c> 的 <c>[GLOBAL AGENT WORK REQUEST]</c> 同一思路，但刻意更短：
+    /// 普通消息多半是「问一句 / 催一下」，不需要整段执行规范。指引只解决一件事 ——
+    /// 让目标会话 agent 拿到 <c>dispatchId</c>，否则 <c>reply_global_dispatch</c> 的必填项凑不齐。
+    ///
+    /// 这段**只进 <c>content</c>**（模型看），聊天窗显示的是 <c>displayContent</c>（原话），
+    /// 所以不会污染界面（S-278 的机制）。
+    ///
+    /// <c>internal</c> 而非 <c>private</c>：<c>WishfulClaw.SessionMessageWireRegressionTests</c>
+    /// 要断言真字符串。这条链的缺陷（wire 里没 dispatch_id ⇒ 模型结构上回不了）不报错、
+    /// 不抛异常，只有真跑一遍才看得出来，所以必须有断言钉住。
+    /// </summary>
+    internal static string BuildSessionMessageWireText(string dispatchId, string content)
+    {
+        return $"[GLOBAL SESSION MESSAGE] dispatch_id={dispatchId}\n\n" +
+            $"{content}\n\n" +
+            "This message was sent by the global agent (the project manager), not by the user. " +
+            "If it asks you something or you need to report back, reply via the `use_capability` tool: " +
+            "action=\"call\", capability_id=\"builtin:reply_global_dispatch\", with " +
+            $"{{\"dispatchId\": \"{dispatchId}\", \"report\": \"<your answer>\", \"status\": \"completed\"}} " +
+            "inside `arguments`. Skip the reply if it was purely informational and needs no answer.";
     }
 
     private static async Task<string> UpdateSessionFollowUpAsync(

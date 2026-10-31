@@ -331,6 +331,26 @@
 
 门禁：`npm run typecheck` 两配置 **0 错** / `npm test` **112/112** / `dotnet build src/runtime/WishfulClaw.sln` **0 警告 0 错误** / `WishfulClaw.DispatchRouterRegressionTests` **72/72**（退出码 0）。
 
+### 2026-10-31 · 刀 17 收刀 —— S-279 补 A 方案 + 回执卡片化（真机验收暴露的真缺口）
+
+刀 9/10 收刀后跑真机验收，判据 2 写了 `status='completed'`，跑出来是 `completed_implicit`。**这不是判据写错，是需求没达成**：`AgentRuntimeProjectExecutor.cs` 投递普通消息时**不往 wire 正文塞协议说明**（原注释写着「回执靠 S-280 归档层代标」），于是目标会话的 agent 上下文里只有原话、没有 `dispatchId`；而 `reply_global_dispatch` 的 `dispatchId` 是必填，工具描述还写着「**Do not use it for ordinary user messages**」。**结构上不可能回执。** 验收里那次补显式回执成功，是我从库里查 id 手动调的。
+
+老大拍板：**「可以照抄 `send_work_request` 那套」**，同时提了第二个诉求：**「回执的消息没有渲染卡片，看不出来是回执，显示非常污染」**。所以一刀做两件。
+
+1. **wire 带身份，界面不带协议**。`AgentRuntimeProjectExecutor` 新增 `BuildSessionMessageWireText`：`content` = `[GLOBAL SESSION MESSAGE] dispatch_id=…` + 原话 + 一句轻量回执指引，`displayContent` = 原话。这是 S-278 那套机制的复用，没有新造概念。**刻意比 `[GLOBAL AGENT WORK REQUEST]` 短得多** —— 派活要带整套执行规范，普通消息多半只是「问一句 / 催一下」，塞长文既挤上下文又带偏语气；前缀也另起一个，免得模型把一句问话当派活执行。`dispatchId` 为 `null` 时两个字段都不加，老路径字节级不变。
+2. **工具描述解禁**。`GlobalDispatchReplyToolProvider` 的类注释与 description 改为同时覆盖 `[GLOBAL AGENT WORK REQUEST]` 与 `[GLOBAL SESSION MESSAGE]`，删掉那条禁令。工具描述是最硬的一层引导 —— wire 改了、描述没改，模型照样会拒绝回执。
+3. **回执卡片化**。`AgentRuntimeGlobalDispatchReplyExecutor` 的反向请求补 `displayContent`（纯回执正文）+ `meta.globalDispatchReply`；`types.ts` 加 `GlobalDispatchReplyMeta`，`user-message-views.tsx` 加 `GlobalDispatchReplyBadge`（「项目会话回执」+ 状态两枚小标记），`UserMessage.tsx` 挂上，zh/en 各补 4 个键。
+
+**回归：为什么必须开一个独立 C# 项目**。这条缺陷**不报错、不抛异常** —— wire 里没 `dispatch_id` 时消息照发、会话照跑、状态照标，刀 9 那 4 条 SQL 判据（id 前缀、`source_session_id` 非空、不串表、重启仍在）**全绿**，只有「全局会话到底收没收到回答」是空的。所以只能断言真字符串：`BuildSessionMessageWireText` 从 `private` 放开到 `internal`，靠 csproj 的 `InternalsVisibleTo`，新建 `tests/WishfulClaw.SessionMessageWireRegressionTests`（11 断言，已登记进 `tests/WishfulClaw.Tests.sln`）。TS 源码闸只能防措辞漂移，防不了「函数被改成返回原话」。
+
+TS 侧把 `global-dispatch-meta` 从 25 条扩到 **37 条**，新增 12 条钉住工具描述 / 回执 executor / 渲染徽章 / 两套 i18n —— 防的是「跨语言半成品」：wire 改了工具描述没改，模型不知道能回执；回执写回了渲染端没认 meta，界面上一坨裸协议文本。
+
+**反向验证**：把 `BuildSessionMessageWireText` 退回 `return content;` ⇒ **7 条红、exit=1**（无 `dispatch_id`、无前缀、无回执指引、无 Skip 说明全中）。断言不是空转。
+
+门禁：`npm run typecheck` 两配置 **0 错** / `npm test` **115/115**（原 114 + SessionMessageWire） / `node scripts/ci-checks.mjs` **86/86** / `dotnet build src\runtime\WishfulClaw.sln` 与 `tests\WishfulClaw.Tests.sln` 各 **0 警告 0 错误**。
+
+真机核对表随之改口径：操作 6 的「常态终态是 `completed_implicit`」是**旧行为**的说明，留着当历史依据，但判据改成「回一句则 `completed`，纯通知则 `completed_implicit`」；新增**操作 9**（真回执 + 卡片化，2 条）与**操作 10**（纯通知不硬回执，1 条）。
+
 
 
 

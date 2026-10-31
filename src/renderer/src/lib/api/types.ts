@@ -446,6 +446,29 @@ export interface GlobalDispatchMeta {
   globalTaskTitle?: string
 }
 
+/**
+ * 派活回执标记（iter-v3-5 S-279 收尾，2026-10-31）。
+ *
+ * **存在的理由**：回执以前是纯文本投递，正文开头带一串
+ * `[GLOBAL DISPATCH REPLY] dispatch_id=… global_task_id=… from_session=… status=…`。
+ * 那串是给模型定位用的，却整段落在全局会话的聊天窗里 —— 看不出这是「回执」，
+ * 只看到一坨协议。S-278 已经定下「结构化字段进 meta、正文只给人看」，
+ * 回执是同一套东西的另一半（派活有 `globalDispatch`，回执有 `globalDispatchReply`）。
+ *
+ * 落库位置：`messages.meta.globalDispatchReply`，由 Worker 投递时写入。
+ * 与 `globalDispatch` 一样**不进 Worker 请求**（`sendMessage` 发前 delete 掉）。
+ */
+export interface GlobalDispatchReplyMeta {
+  /** 被回执的那条 dispatch（`gd_` 或 `gm_` 前缀）。 */
+  dispatchId: string
+  /** 绑定的全局任务；普通消息派活没有任务，可能是空串。 */
+  globalTaskId?: string
+  /** 回执方 —— 项目会话 id。 */
+  fromSessionId: string
+  /** 回执方声明的状态：`completed` / `in_progress` / `blocked`。 */
+  status: string
+}
+
 export interface MessageMeta {
   compactBoundary?: CompactBoundaryMeta
   compactSummary?: CompactSummaryMeta
@@ -456,6 +479,7 @@ export interface MessageMeta {
   cronTaskId?: string
   cronRunId?: string
   globalDispatch?: GlobalDispatchMeta
+  globalDispatchReply?: GlobalDispatchReplyMeta
 }
 
 export interface UnifiedMessage {

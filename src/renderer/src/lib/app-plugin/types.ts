@@ -27,6 +27,16 @@ export const DESKTOP_TYPE_TOOL_NAME = 'DesktopType' as const
 export const DESKTOP_SCROLL_TOOL_NAME = 'DesktopScroll' as const
 export const DESKTOP_WAIT_TOOL_NAME = 'DesktopWait' as const
 
+/**
+ * S-294（2026-10-31）：后端 `AgentRuntimeDesktopExecutor.DesktopToolNames` 含 `CaptureAppWindow`
+ * （它借用桌面 transport 回主进程截本应用自己的窗口），但**桌面控制插件的 toolNames 里没有它**
+ * —— 所以它不是一个 app-plugin 工具，故意不进下面的 `AppPluginToolName` 联合类型。
+ *
+ * 只给渲染层当路由判据用：以前 `tool-block-renderer` 的桌面 if 只列了 6 个，它掉进通用卡片
+ * 按裸 JSON 文本渲染，紧凑档也一样。
+ */
+export const DESKTOP_CAPTURE_WINDOW_TOOL_NAME = 'CaptureAppWindow' as const
+
 export type AppPluginId =
   | typeof IMAGE_PLUGIN_ID
   | typeof BROWSER_PLUGIN_ID

@@ -29,8 +29,9 @@ import { DesktopActionToolCard } from '../DesktopActionToolCard'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
 import {
-  DESKTOP_CLICK_TOOL_NAME, DESKTOP_LIST_WINDOWS_TOOL_NAME, DESKTOP_SCREENSHOT_TOOL_NAME,
-  DESKTOP_SCROLL_TOOL_NAME, DESKTOP_TYPE_TOOL_NAME, DESKTOP_WAIT_TOOL_NAME, IMAGE_GENERATE_TOOL_NAME
+  DESKTOP_CAPTURE_WINDOW_TOOL_NAME, DESKTOP_CLICK_TOOL_NAME, DESKTOP_LIST_WINDOWS_TOOL_NAME,
+  DESKTOP_SCREENSHOT_TOOL_NAME, DESKTOP_SCROLL_TOOL_NAME, DESKTOP_TYPE_TOOL_NAME,
+  DESKTOP_WAIT_TOOL_NAME, IMAGE_GENERATE_TOOL_NAME
 } from '@renderer/lib/app-plugin/types'
 import { isBrowserToolName } from '@renderer/lib/app-plugin/browser-tool-names'
 import {
@@ -320,6 +321,9 @@ export function ToolBlockRenderer({
   }
   if (
     block.name === DESKTOP_SCREENSHOT_TOOL_NAME ||
+    // S-294：CaptureAppWindow 与桌面截图返回同形（image + text），只是借用桌面 transport
+    // 截本应用自己的窗口。以前漏在这条 if 外面，掉进通用卡片按裸 JSON 文本渲染。
+    block.name === DESKTOP_CAPTURE_WINDOW_TOOL_NAME ||
     block.name === DESKTOP_LIST_WINDOWS_TOOL_NAME ||
     block.name === DESKTOP_CLICK_TOOL_NAME ||
     block.name === DESKTOP_TYPE_TOOL_NAME ||

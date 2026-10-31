@@ -166,7 +166,10 @@ public static class AgentRuntimeGlobalDispatchReplyExecutor
                     w.WritePropertyName("globalDispatchReply");
                     w.WriteStartObject();
                     w.WriteString("dispatchId", dispatchId);
-                    w.WriteString("globalTaskId", globalTaskId);
+                    // 普通消息（`gm_`）不绑任务，这一列是空串。空值就不写字段 ——
+                    // 与 `globalDispatch` 那边的口径一致（可选字段宁可缺席，不要落 `""`，
+                    // 否则渲染端拿到 `globalTaskId: ""` 得额外判一次 falsy）。
+                    if (!string.IsNullOrEmpty(globalTaskId)) w.WriteString("globalTaskId", globalTaskId);
                     w.WriteString("fromSessionId", fromSessionId);
                     w.WriteString("status", newStatus);
                     w.WriteEndObject();

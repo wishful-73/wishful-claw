@@ -351,6 +351,16 @@ TS 侧把 `global-dispatch-meta` 从 25 条扩到 **37 条**，新增 12 条钉�
 
 真机核对表随之改口径：操作 6 的「常态终态是 `completed_implicit`」是**旧行为**的说明，留着当历史依据，但判据改成「回一句则 `completed`，纯通知则 `completed_implicit`」；新增**操作 9**（真回执 + 卡片化，2 条）与**操作 10**（纯通知不硬回执，1 条）。
 
+**真机结果（2026-10-31 10:28，dev 实例跑 `8e1c68f8`，老郑独立查库复核）**：操作 9 ✅、操作 10 ✅。
+
+- 操作 9：`gm_dacc866442ac4251b167f01f58df7de7` ⇒ `status=completed`、`latest_report="现在是 2026-10-31 10:25:39，星期六上午（+08:00）。"` —— **模型自己调 `reply_global_dispatch`**，不是归档层代填，也不是人工补。回执消息 `user_1793413651401` 的 `content` 是纯正文、`meta` 顶层键只有 `globalDispatchReply`。
+- 操作 10：`gm_cb38d5475f6144ea805cc1a2ff44f537`（「知道了，你先忙。」）⇒ `completed_implicit` + `（未显式回复）`，模型没为一句通知硬造回执。
+- **新旧同表对照**：`user_1793412101264` / `user_1793412128330`（刀 17 之前）是 `[GLOBAL DISPATCH REPLY] dispatch_id=…` 裸文本 + `meta=NULL`；`user_1793413651401` 是纯正文 + 结构化 meta。同一张表并存，分界看得见。
+
+**一条假阳性**：全库 `meta LIKE '%globalDispatchReply%'` 命中 14 条，13 条是 assistant 消息 —— 命中的是 **thinking 文本**里提到的这个词（顶层键只有 `thinking/preToolPhase/runEnd`），不是字段泄漏。渲染端读字段本身，不受影响。这种「关键词搜索撞上正文」的坑，S-285 那轮也踩过一次（`includes('toolCalls')` 撞 thinking 正文）。
+
+**附带微调**：普通消息（`gm_`）不绑任务，`global_task_id` 是空串，原先 `meta.globalDispatchReply.globalTaskId` 落 `""`。功能无害，但与 `globalDispatch` 那边「传 `undefined` 就不带该字段」的口径不一致 ⇒ 改成空则不带。这种不一致不会报错，只会在某次「`!== undefined` 就当成绑了任务」的代码里炸一次。
+
 
 
 

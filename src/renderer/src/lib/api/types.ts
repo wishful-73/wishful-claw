@@ -461,7 +461,7 @@ export interface GlobalDispatchMeta {
 export interface GlobalDispatchReplyMeta {
   /** 被回执的那条 dispatch（`gd_` 或 `gm_` 前缀）。 */
   dispatchId: string
-  /** 绑定的全局任务；普通消息派活没有任务，可能是空串。 */
+  /** 绑定的全局任务；**普通消息（`gm_`）不绑任务，该字段缺席**（不落空串，与 `globalDispatch` 口径一致）。 */
   globalTaskId?: string
   /** 回执方 —— 项目会话 id。 */
   fromSessionId: string

@@ -8,9 +8,9 @@ import { useBackgroundSessionStore } from '@renderer/stores/background-session-s
  * Strip any <think>...</think> markers streamed by providers that wrap thinking in pseudo-tags.
  * Mirrors the chat-store helper so buffered writes share the same sanitization.
  */
-export function stripThinkTagMarkers(text: string): string {
-  return text.replace(/<\s*\/?\s*think\s*>/gi, '')
-}
+// S-247：实现搬到纯模块 `lib/agent/think-tags.ts` —— 本文件的值 import 链会拖进
+// store，那份实现因此没法被 node 单测。对外 API 不变。
+export { stripThinkTagMarkers } from './think-tags'
 
 export function upsertBufferedToolUse(blocks: ContentBlock[], toolUse: ToolUseBlock): void {
   const existingIndex = blocks.findIndex(

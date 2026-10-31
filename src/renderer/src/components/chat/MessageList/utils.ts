@@ -12,6 +12,10 @@ import type { RequestRetryState } from '@renderer/lib/agent/types'
 import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { buildChatMessageContent } from '@renderer/lib/agent/chat-message-blocks'
+import {
+  getChatMessageConversionSignature,
+  getMessageSignature
+} from '@renderer/lib/agent/message-conversion-signature'
 
 
 export interface MessageListProps {
@@ -434,34 +438,13 @@ const perMessageConversionCache = new WeakMap<object, { signature: string; conve
  * 几十 KB 临时字符串，分配完立刻丢弃。实测 24 秒内 JS 堆从 142MB 涨到 858MB
  * （`renderer probe heap`），主要就是它。
  *
- * 改成逐条轻量签名：只取决定 `convertChatMessagesToUnified` 输出的那几个字段。
- * 流式是追加，`text.length` 必变；历史加载会换 `id`；工具结果改 `toolCalls`
- * 或 `error` 的长度；`updatedAt` 在轮次收尾时盖章。
+ * 判据本身搬到了 `lib/agent/message-conversion-signature.ts`：它是「缓存会不会漏判」
+ * 的唯一凭据，必须能被 node 直接单测，而这个文件的值 import 链会把 IPC / zustand
+ * 拖进 node（`window is not defined`）—— 和 S-276 把 `trimMessagesToRecentTurns`
+ * 搬进 `lib/agent/turn-window.ts` 是同一个理由。
  *
- * 已知盲区：**等长替换**（长度相同）会漏判。当前所有写入路径都不产生这种变更 ——
- * 真出现时加内容 hash，别退回 stringify。
- *
- * ⚠️ 不要为了缩小盲区在这里读文本内容（`charCodeAt` / `slice` / `includes`）。
- * `text` 是流式拼接出来的 ConsString，`length` 是 O(1)，但任何读字符的操作都会
- * 强制 V8 把整条 rope flatten 成连续字符串 —— 长回复下每帧复制上百 KB，
- * 实测 32 秒堆涨 425MB 就是这么来的（S-247 §17）。
+ * ⚠️ 改判据必须连 `tests/message-signature` 一起改。
  */
-function getMessageSignature(msg: Record<string, unknown>): string {
-  const text = (msg.text as string) ?? ''
-  const thinking = msg.thinking as string | undefined
-  const toolCalls = msg.toolCalls as unknown[] | undefined
-  const error = typeof msg.error === 'string' ? msg.error : ''
-  return `${msg.id as string}:${text.length}:${thinking?.length ?? 0}:${toolCalls?.length ?? 0}:${error.length}:${(msg.updatedAt as number) ?? 0}`
-}
-
-function getChatMessageConversionSignature(messages: readonly unknown[]): string {
-  const parts: string[] = []
-  for (const raw of messages) {
-    parts.push(getMessageSignature(raw as Record<string, unknown>))
-  }
-  return parts.join('|')
-}
-
 export function convertChatMessagesToUnified(messages: readonly unknown[]): UnifiedMessage[] {
   const signature = getChatMessageConversionSignature(messages)
   const cached = chatMessageConversionCache.get(messages)

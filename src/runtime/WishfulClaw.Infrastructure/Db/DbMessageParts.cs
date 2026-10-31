@@ -310,8 +310,20 @@ public static class DbMessageParts
     // ─── 写入 ───
 
     /// <summary>
-    /// 把 parts 写进库。<b>逐行 <c>INSERT OR REPLACE</c></b> —— 同一 (message_id, seq)
-    /// 原地覆盖，绝不追加新行（S-285 §4.4 选项 A）。
+    /// 把 parts 写进库。<b>整条消息先删后写</b>（S-285 §4.4 选项 A + S-247 复审补刀）。
+    ///
+    /// <para>只 <c>INSERT OR REPLACE</c> 是不够的：<see cref="SplitMeta"/> 每次都按当前 meta
+    /// <b>全量重算</b> seq 集合，而集合只会因为「段被合并 / 被裁掉」而变小。变小时旧行不会被
+    /// 覆盖，<see cref="MergePartsIntoMeta"/> 又把库里所有行都当活段读回 —— 同一段就会在
+    /// meta.segments 里出现两遍。f0f9ccaf 修的是同一根因的另一半（undo clamp 吞段），
+    /// 这半一直没补。</para>
+    ///
+    /// <para>选「先删再写」而不是「算差集删」：本函数本来每次就把所有行全量写一遍
+    /// （没变的行也走 <c>REPLACE</c>），增量只有一条 DELETE，逻辑不用猜，也不会因为
+    /// seq 拼参超过 SQLite 的 999 参数上限。</para>
+    ///
+    /// <para><c>parts</c> 为空时只删不插 —— 那代表当前 meta 里已经没有块结构（<see cref="SplitMeta"/>
+    /// 的空返回），旧行留着就是幽灵段。老格式消息本就没有 parts 行，DELETE 空转无害。</para>
     /// </summary>
     public static void WriteParts(
         SqliteConnection conn,
@@ -320,6 +332,14 @@ public static class DbMessageParts
         IReadOnlyList<PartRow> parts,
         long createdAt)
     {
+        using (var del = conn.CreateCommand())
+        {
+            del.Transaction = tx;
+            del.CommandText = "DELETE FROM message_parts WHERE message_id = @mid";
+            del.Parameters.Add(new SqliteParameter("@mid", messageId));
+            del.ExecuteNonQuery();
+        }
+
         if (parts.Count == 0) return;
 
         using var cmd = conn.CreateCommand();

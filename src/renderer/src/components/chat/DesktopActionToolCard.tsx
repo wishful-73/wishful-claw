@@ -292,22 +292,6 @@ export function DesktopActionToolCard({
                   </pre>
                 </div>
               ) : null}
-
-              {notes.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {t('toolCall.desktop.notes')}
-                  </p>
-                  {notes.map((note, index) => (
-                    <p
-                      key={`${note.text}-${index}`}
-                      className="rounded-lg bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-words"
-                    >
-                      {note.text}
-                    </p>
-                  ))}
-                </div>
-              ) : null}
             </div>
           </motion.div>
         ) : null}

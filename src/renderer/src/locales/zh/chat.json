@@ -851,7 +851,6 @@
       "executing": "正在执行桌面操作...",
       "input": "输入",
       "output": "输出",
-      "notes": "补充说明",
       "DesktopScreenshot": {
         "title": "桌面截图"
       },

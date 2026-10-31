@@ -851,7 +851,6 @@
       "executing": "Executing desktop action...",
       "input": "Input",
       "output": "Output",
-      "notes": "Notes",
       "DesktopScreenshot": {
         "title": "Desktop Screenshot"
       },

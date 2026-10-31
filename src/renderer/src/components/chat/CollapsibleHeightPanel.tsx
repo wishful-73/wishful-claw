@@ -92,16 +92,26 @@ export function CollapsibleHeightPanel({
     }
   }, [enabled, open, applyHeight])
 
-  // After CSS transition ends, switch to 'auto' when open so content can resize
-  const handleTransitionEnd = React.useCallback(() => {
-    if (!enabled) return
-    if (open) {
-      applyHeight('auto')
-    } else {
-      // Fully collapsed - unmount
-      setMounted(false)
-    }
-  }, [enabled, open, applyHeight])
+  // After CSS transition ends, switch to 'auto' when open so content can resize.
+  //
+  // S-247（2026-10-31）：`transitionend` **会冒泡**。面板里装的卡片到处是
+  // `transition-colors` / `transition-shadow` / `transition-opacity`（鼠标划过就触发），
+  // 以前不辨来源，收起动画进行中（`mounted` 仍为 true）时，子元素任何一次 transition
+  // 结束都会冒泡到这里 → 提前 `setMounted(false)` → 高度从「正在收」突变成 0。
+  // 症状就是聊天窗抖动，且「并没有组件正在回收高度」。只认面板自己那一次。
+  const handleTransitionEnd = React.useCallback(
+    (event: React.TransitionEvent<HTMLDivElement>) => {
+      if (!enabled) return
+      if (event.target !== event.currentTarget) return
+      if (open) {
+        applyHeight('auto')
+      } else {
+        // Fully collapsed - unmount
+        setMounted(false)
+      }
+    },
+    [enabled, open, applyHeight]
+  )
 
   // Keep height in sync when content changes while open
   React.useLayoutEffect(() => {

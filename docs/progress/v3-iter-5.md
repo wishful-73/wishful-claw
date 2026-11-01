@@ -89,4 +89,18 @@
 
 ## 发布
 
-待补（收尾后另落一刀）。
+**2026-11-01 18:45 打包 / 18:52 双面上线。**
+
+| 项 | 值 |
+|---|---|
+| 安装包 | `release/wishful-claw-1.0.5-setup.exe`（113,813,662 B） |
+| blockmap | `release/wishful-claw-1.0.5-setup.exe.blockmap`（118,726 B） |
+| sha512 | `jmgT/NOmXpBhA0n71uNQ2Rj0/pkGzsDiy98gL+pJ3pWmQ7IpejpW5hwSmVlxmBK4+ZjwizOHr4bv8J4DUcDOAA==` |
+| 更新源 | `https://wishful-claw.work/downloads/`（`app-update.yml` 已核对） |
+
+- **官网下载目录（更新源，必做）**：`node scripts/deploy.mjs installer` 上传四件（exe + blockmap + `latest.yml` + `release-notes-1.0.5.md`），远端落位后**逐件 sha512 校验通过**；`latest.yml` 的 `version: 1.0.5` 与本地一致。blockmap 保留 5 版（1.0.1 ~ 1.0.5），逐版 `curl -I` 均 **200**。
+- **GitHub Release（存档）**：`v1.0.5` 三资产 `uploaded`、`draft=false`、`prerelease=false`、**Latest**。`latest.yml` 与实际 exe 逐项对账：`version` / `path` / `files[].url` / `size` / `sha512` 全中（sha512 用 `Get-FileHash -Algorithm SHA512` 转 base64 现算比对）。
+- **官网本迭代零改动**（`git diff --stat 3f27090d..HEAD -- website` 为空）⇒ **未重发站点**，只换下载目录。站点前端运行时读 `latest.yml`，下载按钮与版本号自动跟上。
+- 证书剩余 **50 天**（到期 2026-12-22），自动续期 timer 正常。
+- **§七 清理本地产物未做**：`release/` 仍留 1.0.3 / 1.0.4 的 exe + blockmap 作回滚备份，**待老大定**再删。
+

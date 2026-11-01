@@ -39,8 +39,16 @@ const INDENTED_LINE_RE = /^[ \t]/
  * ``` / $$ 块。这时 tail = 全文累积，`MarkdownContent` 每帧全量重解析 + 重建整棵树。
  *
  * 8000 字符是「一屏多一点」的量级 —— 比它小的 tail 全量重解析还撑得住，比它大的就必须切。
+ *
+ * **S-247 追加（2026-11-01）：8000 撑不住，收到 2000。**
+ * CDP 实测（`Performance.getMetrics` + `process.memoryUsage()`）：流式期间
+ * `RecalcStyle` 稳在 46~60/s（每帧一次），renderer 的 `native`（rss − heapTotal − external）
+ * 以 10.9 MB/s 增长、一轮任务 +937MB 且不回落；同一时刻 JS 堆只有 56MB、DOM 仅 1176 节点、
+ * 布局对象 1070 —— 说明开销不在 JS 也不在 DOM 数量，而在「每帧把 tail 整段重新解析成 DOM」
+ * 产生的短命 C++ 对象（ComputedStyle / LayoutObject / LayoutUnit），释放后回 PartitionAlloc
+ * 空闲链表、不还操作系统。tail 越小，单帧重建的子树越小，这条曲线就越平。
  */
-export const MAX_TAIL_CHARS = 8_000
+export const MAX_TAIL_CHARS = 2_000
 
 /** 硬切时至少保留这么多字符给下一段，避免在尾部反复切出碎片块。 */
 const MIN_HARD_CUT = 400

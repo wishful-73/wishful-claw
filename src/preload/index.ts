@@ -91,6 +91,33 @@ const api = {
   log: (payload: { level: string; message: string; stack?: string; extra?: Record<string, unknown> }): Promise<void> =>
     invokeMessagePackBinary<void>('log:write', payload),
 
+  /**
+   * S-247 §13.4（E 维度）：渲染进程内存构成。
+   *
+   * `process.memoryUsage()` 只有 preload 拿得到（渲染端 `nodeIntegration: false`）。
+   * 同步返回纯对象，走 contextBridge 序列化，不占 IPC 通道。
+   *
+   * 存在的唯一理由：进程 WS 与 V8 堆之间有 ~1GB 缺口，`usedJSHeapSize` 不统计
+   * `external`（ArrayBuffer / TypedArray 的 backing store），而流式事件每个都走一次
+   * MessagePack 解码 —— 那里是 ArrayBuffer 的主要产地。
+   */
+  getProcessMemory: (): {
+    rss: number
+    heapTotal: number
+    heapUsed: number
+    external: number
+    arrayBuffers: number
+  } => {
+    const m = process.memoryUsage()
+    return {
+      rss: m.rss,
+      heapTotal: m.heapTotal,
+      heapUsed: m.heapUsed,
+      external: m.external ?? 0,
+      arrayBuffers: m.arrayBuffers ?? 0
+    }
+  },
+
   // Read recent log lines from today's log file
   readLogs: (maxLines?: number): Promise<string> =>
     invokeMessagePackBinary<string>('log:read', { maxLines: maxLines ?? 500 }),

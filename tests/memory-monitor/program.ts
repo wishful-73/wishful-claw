@@ -14,6 +14,7 @@ import {
   exceedsProcessThreshold,
   exceedsWorkerThreshold,
   mapProcessKind,
+  mapWorkerMemory,
   shouldWarn,
   sumWorkingSet,
   WARN_PROCESS_WORKING_SET_BYTES,
@@ -102,10 +103,62 @@ function checkWarnDedupe(): void {
   assert(map.get(100) === 1_000_000 + WARN_DEDUPE_MS, 'the map records the moment we actually warned')
 }
 
+/**
+ * S-247 §19.6：Worker 回包字段名。
+ *
+ * C# 侧 `WishfulClawJsonContext` 是 `JsonKnownNamingPolicy.CamelCase`，回包字段为
+ * `pid` / `managedBytes` / …。上一版按 PascalCase 读 `raw.Pid`，每个字段都是
+ * `undefined`，`Number(undefined ?? 0)` = 0 —— Worker 内存从上线起**一直记 0**，
+ * 563 MB 的真实占用从没进过日志。这条断言就是钉死它。
+ */
+function checkWorkerMemoryMapping(): void {
+  const camel = mapWorkerMemory({
+    success: true,
+    pid: 25772,
+    managedBytes: 590_000_000,
+    heapBytes: 400_000_000,
+    fragmentedBytes: 12_000_000,
+    workingSetBytes: 590_558_000,
+    error: null
+  })
+  assert(camel !== null, 'camelCase payload is parsed')
+  assert(camel!.pid === 25772, 'pid comes from the camelCase field')
+  assert(camel!.managedBytes === 590_000_000, 'managedBytes comes from the camelCase field')
+  assert(camel!.heapBytes === 400_000_000, 'heapBytes comes from the camelCase field')
+  assert(camel!.fragmentedBytes === 12_000_000, 'fragmentedBytes comes from the camelCase field')
+  assert(camel!.workingSetBytes === 590_558_000, 'workingSetBytes comes from the camelCase field')
+
+  // 这条是回归本体：PascalCase 回包必须解析不出来，而不是悄悄变成一行 0。
+  assert(
+    mapWorkerMemory({ Success: true, Pid: 25772, ManagedBytes: 590_000_000 }) === null,
+    'PascalCase payload must not silently become a row of zeros'
+  )
+
+  assert(mapWorkerMemory({ success: false, pid: 1 }) === null, 'success:false is a failed capture')
+  assert(mapWorkerMemory({ success: true, pid: 0 }) === null, 'pid 0 means "not measured", not a real process')
+  assert(mapWorkerMemory({ success: true }) === null, 'missing pid means "not measured"')
+  assert(mapWorkerMemory(null) === null, 'null payload is a failed capture')
+  assert(mapWorkerMemory('nope') === null, 'non-object payload is a failed capture')
+
+  const guarded = mapWorkerMemory({
+    pid: 7,
+    managedBytes: -1,
+    heapBytes: 'abc',
+    fragmentedBytes: Number.NaN,
+    workingSetBytes: 1024
+  })
+  assert(guarded !== null, 'a row with bad numbers is still a row')
+  assert(guarded!.managedBytes === 0, 'negative becomes 0, never negative')
+  assert(guarded!.heapBytes === 0, 'non-numeric becomes 0, never NaN')
+  assert(guarded!.fragmentedBytes === 0, 'NaN becomes 0, never NaN')
+  assert(guarded!.workingSetBytes === 1024, 'good numbers survive')
+}
+
 checkKindMapping()
 checkRowBuilding()
 checkTotals()
 checkThresholds()
 checkWarnDedupe()
+checkWorkerMemoryMapping()
 
 console.log(`memory-monitor: ${assertions} assertions passed`)

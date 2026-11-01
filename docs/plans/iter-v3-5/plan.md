@@ -6,6 +6,8 @@
 > 进度（2026-10-30 23:5x）：**刀 0~16 已交付**，刀 7 已拍板后落地；S-291 拍板延至 v3-iter-6，S-292 登记占位不实施。门禁实测：`npm run typecheck` 两配置 0 错、`npm test` **114/114**（亲跑，含断言计数口径说明见 §四）、`dotnet build src/runtime/WishfulClaw.sln` **0 警告 0 错误**、`WishfulClaw.DispatchRouterRegressionTests` **72/72**。**知识库欠账已于 2026-10-30 23:5x 清完**（S-292 登记 + 两条老 bug 归档 + 重复投递改状态，见 §三）。
 > 进度（2026-10-31 收尾）：**刀 0~17 全部交付**。刀 17 = S-279 **A 方案**（普通消息 wire 带 `dispatchId`）+ 回执卡片化，老大 2026-10-31 拍板「照抄 `send_work_request` 那套」。新增 C# 回归 `tests/WishfulClaw.SessionMessageWireRegressionTests`（11 断言，反向验证 7 条红）与 TS 源码闸 12 条（`global-dispatch-meta` 25→37）。门禁：typecheck 两配置 0 错 ｜ `npm test` **115/115** ｜ `node scripts/ci-checks.mjs` **86/86** ｜ 两个 sln 各 **0 警告 0 错误**。真机核对表新增**操作 9 / 10**（回执卡片化 + Skip 指引）。
 > 前置：v1.0.4 已发布（官网四件套 + GitHub Release 三资产，双面核验全绿），tag 已推远程。
+>
+> **收尾（2026-11-01）**：**本迭代已完结并发布 v1.0.5**。刀序 0~17 全部走完（刀 7 / 12 / 13 分别以「段 A 交付 / 只出方案 / 只勘察」收口）。收尾轮另交付三条：**S-294**（截图卡片显示图、剥掉给模型看的说明）、**S-247 收口**（定性「不是泄漏是每帧重做」+ 三处每帧重建修复 + 探针全删）、**S-297**（搜索框关闭态短路，A/B 0.14 vs 0.34 MB/s）。门禁实测：`npm run typecheck` 两配置 **0 错** ｜ `npm test` **119/119** ｜ 两套 sln 各 **0 警告 0 错误** ｜ `node scripts/ci-checks.mjs` **90/90**。明细见 [docs/progress/v3-iter-5.md](../../progress/v3-iter-5.md)。
 
 ## 一、从哪里来
 

@@ -361,6 +361,74 @@ TS 侧把 `global-dispatch-meta` 从 25 条扩到 **37 条**，新增 12 条钉�
 
 **附带微调**：普通消息（`gm_`）不绑任务，`global_task_id` 是空串，原先 `meta.globalDispatchReply.globalTaskId` 落 `""`。功能无害，但与 `globalDispatch` 那边「传 `undefined` 就不带该字段」的口径不一致 ⇒ 改成空则不带。这种不一致不会报错，只会在某次「`!== undefined` 就当成绑了任务」的代码里炸一次。
 
+### 2026-10-31 · S-294 收尾三刀 —— 截图卡片该显示图，不该显示给模型看的说明
+
+老大原话：「桌面截图卡片右侧显示的是 `？x ?`，点开卡片折叠内容屁都没有」「窗口截图更过分，紧凑模式下都还是纯文本没有卡片」。
+
+三刀收口：
+
+1. **卡片按真实 output 形状解析**。output 是**字符串化的 content 数组**，旧代码只认对象形态 ⇒ 解析空 ⇒ `? × ?`。改成字符串先 `JSON.parse`，失败原样返回；窗口截图补进路由（`DESKTOP_ACTION_TOOL_NAMES` 漏了它，所以紧凑档连卡片都没有）。
+2. **`result` 优先于 `input`**。`input` 里只有 `{"require_active_window": false}` 这种入参，对用户零信息量。
+3. **给模型看的坐标说明不再展示给用户**。`Captured desktop screenshot 2520x1680 (origin 0,0, scale 1.5) across 1 display(s)… Click coordinates are pixel positions in THIS image…` 这段是写给模型的，用户看的是图。数据留着，展示层剥掉。
+
+顺带把工具结果里的 base64 也剥了（`stripStringifiedJson`，三道廉价判据、解析失败原样返回）—— 这一条与 S-247 的内存线同源。
+
+### 2026-11-01 · S-247 收口 —— 不是内存泄漏，是「每帧重做」
+
+**定性先说**：跑完能还，峰值→平台实测还了 311 MB（renderer 1038 → 727 MB）。生产构建 5 分钟末值 172.6 MB / 峰值 252.6 MB，按真实流式速率换算 ≈0.09 MB/s ⇒ 落「<50 MB 正常成本」档。**不要再往「找泄漏」的方向挖。**
+
+归因拿到的两个硬数（都在 S-247 §21.5）：
+
+1. **`MessageRow` 的 `React.memo` 是有效的** —— `stream` 行 324 次（每帧一次），`a0..a9` 与真实会话消息各 1 次。「所有行重渲」这个假设被推翻。
+2. **组件 inclusive 全 <1%**（`MessageListInner` 0.1%、`AssistantMessage` 0.0%），大头是 `(idle) 46.7%` / `(program) 24.8%`。
+
+**拿不到的也说清楚**：17 KB/帧的分配归因**没拿到** —— `HeapProfiler` 采样只采到 1.7 MB（1.1 KB/帧），差一个量级（只留存活对象，churn 被回收）。这条不许拿推断补位。
+
+修的三处每帧重建：渲染链签名、`message_parts` 先删后写、think 标签工具抽纯模块。S-297 见下一条。
+
+### 2026-11-01 · S-297 收尾补刀 —— 搜索框关着也每帧重建会话列表
+
+A/B 摘订阅法（口径同 S-247 §21.3）：dev nomount 90 行场景 baseline 0.38 MB/s，摘 `search-dialog` 后 **0.16**，占残量 **58%**；同款 `DispatchDialog.tsx:54` 实测 ≈0（噪声内，不修）。
+
+修法：`recent-sessions.ts` 里 `buildRecentSessionsSignature(sessions, activeSessionId)`（单次遍历取 top-5，不 sort / 不 slice）+ 关闭态短路。**真实修复 A/B：0.14 vs 0.34 MB/s**，贡献 0.20 —— 与摘订阅法的 0.22 互相印证。
+
+**为什么必须单独成文件**：判据一 import store 就把 zustand + IPC 拖进来，node 下跑不了 —— 与 S-276 把 `trimMessagesToRecentTurns` 搬去 `lib/agent/turn-window.ts` 是同一个理由。S-297 的签名单独成文件，才测得到「关闭态到底有没有短路」。
+
+反向验证两条都红：①签名去掉 `title`；②签名不截断 top-5。撤销后复绿。
+
+### 2026-11-01 · 探针与后门清理
+
+老大从 10-31 骂到 11-01 的事：探针加了一堆、没一个解决问题。定性拿到之后**全部删干净**：
+
+- 删 `src/renderer/src/__repro-harness.temp.ts`、`src/renderer/src/lib/diagnostics/renderer-memory-probe.ts`（−93 行）
+- `src/renderer/src/main.tsx` 回到 9 行，无 dev-only import
+- 重新 `npm run build` 后扫 `out/renderer/assets/*.js` 的 `__harness|__repro-harness|startRendererMemoryProbe` ⇒ **0 命中**
+- 全扫 `src` / `tests` / `scripts` 的 `__harness|__repro|renderer-memory-probe|startRendererMemoryProbe|__AB_|__PROBE|__TEMP` ⇒ **0 命中**
+- diff 新增行扫 `console.log|debugger|TODO|FIXME` ⇒ **0 命中**
+
+**留下的只有结论，不留探针。**
+
+### 2026-11-01 · 迭代收尾
+
+**收尾审查抓到一处真污染**：`package.json` 的 `description` 变成 `Wishful Claw - Agent 缂栫▼杞欢` —— PowerShell `Set-Content` 按 ANSI 写 UTF-8 的老坑，与 S-288 / S-290 记的是同一个。已按字节还原（`E7 BC 96 E7 A8 8B E8 BD AF E4 BB B6`）。全仓复扫 `缂|锛|銆|鈥|鐨|鏂|鍜` 等 GBK 残渣前导字：`src` **0 处**，`docs` 仅 iter-v3-4 changelog 里三处**引用事故本身**的文本，不是污染。
+
+**门禁（收尾实测）**：
+
+| 命令 | 结果 |
+|---|---|
+| `npm run typecheck`（node + web） | **0 错** |
+| `npm test` | **119/119** |
+| `dotnet build src\runtime\WishfulClaw.sln` | **0 警告 0 错误** |
+| `dotnet build tests\WishfulClaw.Tests.sln` | **0 警告 0 错误** |
+| `node scripts/ci-checks.mjs` | **90/90 通过** |
+
+**版本号四处**：`package.json` / `package-lock.json`（顶层 + `packages[""]`）/ `README.md` 徽章 / `docs/PROGRESS.md` 新增一行。全仓 `1.0.4` 残留只剩依赖包自身版本（`extract-zip` / `call-bound` / `fault` / `globalthis`）与历史文档，**都不动**。
+
+**官网本迭代零改动** ⇒ 发版只走 `installer`，不重发站点。
+
+**最终账**：承接 15 条，实施 12 条（S-282 / S-289 / S-286 / S-290 / S-288 / S-268 / S-272② / S-273 段 A / S-278 / S-279 / S-280 / S-285）+ 本迭代新登记并实施 2 条（S-294 / S-297）+ 跨迭代收口 1 条（S-247）；撤销 1 条（S-281）；只出方案 / 只勘察 2 条（S-277 / S-265）；移交 v3-iter-6 六条（S-277 / S-291 / S-293 / S-295 / S-296 + S-265）；挂账 2 条（S-233 / S-230）。
+
+
 
 
 

@@ -29,8 +29,9 @@ import { DesktopActionToolCard } from '../DesktopActionToolCard'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
 import {
-  DESKTOP_CLICK_TOOL_NAME, DESKTOP_SCREENSHOT_TOOL_NAME, DESKTOP_SCROLL_TOOL_NAME,
-  DESKTOP_TYPE_TOOL_NAME, DESKTOP_WAIT_TOOL_NAME, IMAGE_GENERATE_TOOL_NAME
+  DESKTOP_CAPTURE_WINDOW_TOOL_NAME, DESKTOP_CLICK_TOOL_NAME, DESKTOP_LIST_WINDOWS_TOOL_NAME,
+  DESKTOP_SCREENSHOT_TOOL_NAME, DESKTOP_SCROLL_TOOL_NAME, DESKTOP_TYPE_TOOL_NAME,
+  DESKTOP_WAIT_TOOL_NAME, IMAGE_GENERATE_TOOL_NAME
 } from '@renderer/lib/app-plugin/types'
 import { isBrowserToolName } from '@renderer/lib/app-plugin/browser-tool-names'
 import {
@@ -320,6 +321,10 @@ export function ToolBlockRenderer({
   }
   if (
     block.name === DESKTOP_SCREENSHOT_TOOL_NAME ||
+    // S-294：CaptureAppWindow 与桌面截图返回同形（image + text），只是借用桌面 transport
+    // 截本应用自己的窗口。以前漏在这条 if 外面，掉进通用卡片按裸 JSON 文本渲染。
+    block.name === DESKTOP_CAPTURE_WINDOW_TOOL_NAME ||
+    block.name === DESKTOP_LIST_WINDOWS_TOOL_NAME ||
     block.name === DESKTOP_CLICK_TOOL_NAME ||
     block.name === DESKTOP_TYPE_TOOL_NAME ||
     block.name === DESKTOP_SCROLL_TOOL_NAME ||
@@ -329,12 +334,16 @@ export function ToolBlockRenderer({
     const liveTc = effectiveLiveToolCallMap?.get(block.id)
     const statusValue =
       executionItem?.status ?? resolveToolCallStatus(isStreaming, liveTc, result)
+    // S-294：output **必须 result 优先**，与 utils.ts 的 buildToolCallRenderState 一致。
+    // 落库那份是剥过 base64 的完整 JSON（截图约 0.6 KB，可直接解析成块数组）；live 那份
+    // 带着完整 base64（670 KB+），过 IPC 会被截断，JSON 一断就解不出图片块 —— 症状是
+    // 卡片右上角 `? × ?`、点开空白。这里原来 live 优先，等于把最坏的那份喂给解码器。
     return (
       <ScaleIn className={liveScaleInClassName}>
         <DesktopActionToolCard
           name={block.name}
           input={block.input}
-          output={liveTc?.output ?? result?.content}
+          output={result?.content ?? liveTc?.output}
           status={statusValue}
           error={liveTc?.error}
           forceOpen={executionItem?.forceExpanded}

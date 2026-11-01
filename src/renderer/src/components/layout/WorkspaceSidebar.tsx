@@ -20,6 +20,7 @@ import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '@share
 
 // ─── Helpers ───
 import { SessionItem, ProjectItem, sortProjects, sortSessions, readProjectSortMode, writeProjectSortMode, PROJECT_SORT_MODES, type ProjectSortMode } from './workspace-sidebar-items'
+import { buildSidebarSessionsSignature } from './sidebar-sessions-signature'
 import { ResizeHandle, renderNavItem, renderSplitNavItem, NavButtonItem } from './workspace-sidebar-nav'
 import { SearchDialog } from './search-dialog'
 import { clampLeftSidebarWidth } from './right-panel-defs'
@@ -43,7 +44,21 @@ export function WorkspaceSidebar(): React.JSX.Element | null {
     return () => { mounted = false }
   }, [])
 
-  const sessions = useChatStore((s) => s.sessions)
+  // S-247：**不要直接订 `s.sessions` 数组。**
+  // store 走 immer，`appendTextDelta` 一帧就会把 sessions / session / messages / message
+  // 整条路径换成新引用 —— 直接订数组意味着每个流式帧侧栏 36 个会话全部重渲染，
+  // 连同右键菜单 / 下拉 / Tooltip 一起重建。DOM 一个节点都不变，纯粹产垃圾，
+  // 实测 0 卡片、0 DOM 变化下仍能涨到 3~4 MB/s。
+  // 侧栏只关心元数据，订签名即可：签名不变就不换引用。
+  // 签名只覆盖侧栏**真读**的 5 个字段（id / title / pinned / updatedAt / projectId），
+  // 字段清单与「为什么别的字段不进」都在 sidebar-sessions-signature.ts 里，
+  // 且有回归测试盯着 —— 加字段忘了分类会直接红。
+  const sessionsSignature = useChatStore((s) => buildSidebarSessionsSignature(s.sessions))
+  const sessions = useMemo(
+    () => useChatStore.getState().sessions,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionsSignature]
+  )
 
   const projects = useChatStore((s) => s.projects)
   const setActiveProjectHome = useChatStore((s) => s.setActiveProjectHome)

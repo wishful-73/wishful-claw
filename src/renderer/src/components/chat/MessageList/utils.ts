@@ -12,6 +12,10 @@ import type { RequestRetryState } from '@renderer/lib/agent/types'
 import type { EditableUserMessageDraft } from '@renderer/lib/image-attachments'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { buildChatMessageContent } from '@renderer/lib/agent/chat-message-blocks'
+import {
+  getChatMessageConversionSignature,
+  getMessageSignature
+} from '@renderer/lib/agent/message-conversion-signature'
 
 
 export interface MessageListProps {
@@ -424,10 +428,23 @@ type ChatMessageConversionCacheEntry = {
 
 export const chatMessageConversionCache = new WeakMap<readonly unknown[], ChatMessageConversionCacheEntry>()
 
-function getChatMessageConversionSignature(messages: readonly unknown[]): string {
-  return JSON.stringify(messages) ?? ''
-}
+// S-247：单条 ChatMessage → 它转换出的 UnifiedMessage。key 用原始对象（WeakMap，
+// 消息被移除时自动释放）。store 原地改字段不换引用，所以命中后还要比 signature。
+const perMessageConversionCache = new WeakMap<object, { signature: string; converted: UnifiedMessage }>()
 
+/**
+ * S-247（2026-10-31）：流式期间**每个 token** 都会走到这里。原来的实现是
+ * `JSON.stringify(messages)` —— 把整个消息数组序列化一遍，12 条消息每帧产出
+ * 几十 KB 临时字符串，分配完立刻丢弃。实测 24 秒内 JS 堆从 142MB 涨到 858MB
+ * （`renderer probe heap`），主要就是它。
+ *
+ * 判据本身搬到了 `lib/agent/message-conversion-signature.ts`：它是「缓存会不会漏判」
+ * 的唯一凭据，必须能被 node 直接单测，而这个文件的值 import 链会把 IPC / zustand
+ * 拖进 node（`window is not defined`）—— 和 S-276 把 `trimMessagesToRecentTurns`
+ * 搬进 `lib/agent/turn-window.ts` 是同一个理由。
+ *
+ * ⚠️ 改判据必须连 `tests/message-signature` 一起改。
+ */
 export function convertChatMessagesToUnified(messages: readonly unknown[]): UnifiedMessage[] {
   const signature = getChatMessageConversionSignature(messages)
   const cached = chatMessageConversionCache.get(messages)
@@ -435,64 +452,77 @@ export function convertChatMessagesToUnified(messages: readonly unknown[]): Unif
 
   const converted = messages.map((raw) => {
     const msg = raw as Record<string, unknown>
-    const role = msg.role as UnifiedMessage['role']
-    const text = (msg.text as string) ?? ''
-    const thinking = msg.thinking as string | undefined
-    const toolCalls = msg.toolCalls as Array<Record<string, unknown>> | undefined
-    const blocks = buildChatMessageContent(msg)
-
-    const result: UnifiedMessage = {
-      id: msg.id as string,
-      role,
-      content: blocks,
-      createdAt: (msg.createdAt as number) ?? Date.now()
-    }
-
-    if (msg.usage) result.usage = msg.usage as UnifiedMessage['usage']
-    if (msg.debugInfo) result.debugInfo = msg.debugInfo as UnifiedMessage['debugInfo']
-    if (msg.meta) result.meta = msg.meta as UnifiedMessage['meta']
-    if (msg.preToolPhase) result.preToolPhase = true
-    if (msg.memoryRecall) result.memoryRecall = msg.memoryRecall as UnifiedMessage['memoryRecall']
-    // updatedAt 是「这一轮跑完」的时刻（live 走 loop_end 回写，历史走 Worker 盖章的
-    // updated_at）。这里不搬它，消费方就只能回落 createdAt，看到的是开始时间。
-    if (typeof msg.updatedAt === 'number') result.updatedAt = msg.updatedAt
-    // Use text length as revision so structural signature changes when
-    // streaming text grows (buildStructuralSignature uses _revision).
-    // This ensures renderableMessageIds is rebuilt when assistant text
-    // goes from empty to non-empty. The recall outcome is included so the
-    // memoized row re-renders the moment the recall banner data arrives.
-    const recallFingerprint = msg.memoryRecall
-      ? 1 + ((msg.memoryRecall as { hits?: string[] }).hits?.length ?? 0)
-      : 0
-    const errorText = typeof msg.error === 'string' ? msg.error : ''
-    result._revision = (text.length) + (thinking?.length ?? 0) + (toolCalls?.length ?? 0) + recallFingerprint + errorText.length
-    if (errorText) {
-      const errorBlock: ContentBlock = {
-        type: 'agent_error',
-        code: 'runtime_error',
-        message: errorText
-      }
-      if (Array.isArray(result.content)) {
-        const existingErrorIndex = result.content.findIndex((block) => block.type === 'agent_error')
-        if (existingErrorIndex >= 0) {
-          result.content = result.content.map((block, index) =>
-            index === existingErrorIndex ? errorBlock : block
-          )
-        } else {
-          result.content = [...result.content, errorBlock]
-        }
-      } else if (result.content) {
-        result.content = [{ type: 'text', text: result.content }, errorBlock]
-      } else {
-        result.content = [errorBlock]
-      }
-    }
-
+    // S-247：逐条复用。store 是原地改 `msg.text`，对象引用不变，所以必须靠
+    // getMessageSignature 判断内容有没有变，变了才重跑 buildChatMessageContent。
+    // 没有这层缓存时，12 条消息每帧全量重建 content blocks（含每个工具卡片
+    // 的 block 对象），是堆里第二个大头。
+    const sig = getMessageSignature(msg)
+    const hit = perMessageConversionCache.get(msg as object)
+    if (hit && hit.signature === sig) return hit.converted
+    const result = convertOneMessage(msg)
+    perMessageConversionCache.set(msg as object, { signature: sig, converted: result })
     return result
   })
 
   chatMessageConversionCache.set(messages, { signature, converted })
   return converted
+}
+
+function convertOneMessage(msg: Record<string, unknown>): UnifiedMessage {
+  const role = msg.role as UnifiedMessage['role']
+  const text = (msg.text as string) ?? ''
+  const thinking = msg.thinking as string | undefined
+  const toolCalls = msg.toolCalls as Array<Record<string, unknown>> | undefined
+  const blocks = buildChatMessageContent(msg)
+
+  const result: UnifiedMessage = {
+    id: msg.id as string,
+    role,
+    content: blocks,
+    createdAt: (msg.createdAt as number) ?? Date.now()
+  }
+
+  if (msg.usage) result.usage = msg.usage as UnifiedMessage['usage']
+  if (msg.debugInfo) result.debugInfo = msg.debugInfo as UnifiedMessage['debugInfo']
+  if (msg.meta) result.meta = msg.meta as UnifiedMessage['meta']
+  if (msg.preToolPhase) result.preToolPhase = true
+  if (msg.memoryRecall) result.memoryRecall = msg.memoryRecall as UnifiedMessage['memoryRecall']
+  // updatedAt 是「这一轮跑完」的时刻（live 走 loop_end 回写，历史走 Worker 盖章的
+  // updated_at）。这里不搬它，消费方就只能回落 createdAt，看到的是开始时间。
+  if (typeof msg.updatedAt === 'number') result.updatedAt = msg.updatedAt
+  // Use text length as revision so structural signature changes when
+  // streaming text grows (buildStructuralSignature uses _revision).
+  // This ensures renderableMessageIds is rebuilt when assistant text
+  // goes from empty to non-empty. The recall outcome is included so the
+  // memoized row re-renders the moment the recall banner data arrives.
+  const recallFingerprint = msg.memoryRecall
+    ? 1 + ((msg.memoryRecall as { hits?: string[] }).hits?.length ?? 0)
+    : 0
+  const errorText = typeof msg.error === 'string' ? msg.error : ''
+  result._revision = (text.length) + (thinking?.length ?? 0) + (toolCalls?.length ?? 0) + recallFingerprint + errorText.length
+  if (errorText) {
+    const errorBlock: ContentBlock = {
+      type: 'agent_error',
+      code: 'runtime_error',
+      message: errorText
+    }
+    if (Array.isArray(result.content)) {
+      const existingErrorIndex = result.content.findIndex((block) => block.type === 'agent_error')
+      if (existingErrorIndex >= 0) {
+        result.content = result.content.map((block, index) =>
+          index === existingErrorIndex ? errorBlock : block
+        )
+      } else {
+        result.content = [...result.content, errorBlock]
+      }
+    } else if (result.content) {
+      result.content = [{ type: 'text', text: result.content }, errorBlock]
+    } else {
+      result.content = [errorBlock]
+    }
+  }
+
+  return result
 }
 
 export function selectMessageListSession(
@@ -584,9 +614,61 @@ export function getOrchestrationRunSignature(
 }
 void getOrchestrationRunSignature
 
+/**
+ * S-247（2026-10-31）：`renderableMessages` 每帧都被 `map` 成新对象，所以
+ * `prev.item === next.item` 在流式期间恒为 false —— 12 行全部重渲染。
+ * 改成按语义比较：转换层逐条复用后，没变的消息 `item.message` 引用相同，
+ * 只让真正变化的那一行（通常是正在流式的 assistant）重渲染。
+ */
+function areRenderableItemsEqual(prev: RenderableChatItem, next: RenderableChatItem): boolean {
+  if (prev === next) return true
+  if (prev.kind !== next.kind) return false
+
+  if (prev.kind === 'message' && next.kind === 'message') {
+    return (
+      prev.message === next.message &&
+      prev.displayId === next.displayId &&
+      prev.messageId === next.messageId &&
+      prev.originMessageId === next.originMessageId &&
+      prev.isLastUserMessage === next.isLastUserMessage &&
+      prev.isLastAssistantMessage === next.isLastAssistantMessage &&
+      prev.fragment?.position === next.fragment?.position &&
+      prev.fragment?.operationId === next.fragment?.operationId &&
+      prev.fragment?.totalElapsedMs === next.fragment?.totalElapsedMs
+    )
+  }
+
+  if (prev.kind === 'context-compression' && next.kind === 'context-compression') {
+    return (
+      prev.id === next.id &&
+      prev.messageId === next.messageId &&
+      prev.summary === next.summary &&
+      prev.boundary === next.boundary &&
+      prev.operationId === next.operationId &&
+      prev.trigger === next.trigger
+    )
+  }
+
+  if (prev.kind === 'live-compression' && next.kind === 'live-compression') {
+    return (
+      prev.id === next.id &&
+      prev.messageId === next.messageId &&
+      prev.sessionId === next.sessionId &&
+      prev.operationId === next.operationId &&
+      prev.trigger === next.trigger &&
+      prev.draft === next.draft &&
+      prev.startedAt === next.startedAt &&
+      prev.attempt === next.attempt &&
+      prev.maxAttempts === next.maxAttempts
+    )
+  }
+
+  return false
+}
+
 export function areMessageRowPropsEqual(prev: MessageRowProps, next: MessageRowProps): boolean {
   return (
-    prev.item === next.item &&
+    areRenderableItemsEqual(prev.item, next.item) &&
     prev.sessionId === next.sessionId &&
     areStringArraysEqual(prev.sessionAssistantMessageIds, next.sessionAssistantMessageIds) &&
     areStringArraysEqual(prev.sessionToolUseIds, next.sessionToolUseIds) &&

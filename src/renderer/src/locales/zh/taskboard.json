@@ -28,6 +28,7 @@
     "acknowledged": "已确认",
     "in_progress": "处理中",
     "completed": "已完成",
+    "completed_implicit": "未显式回复",
     "blocked": "受阻",
     "failed": "投递失败",
     "cancelled": "已取消"

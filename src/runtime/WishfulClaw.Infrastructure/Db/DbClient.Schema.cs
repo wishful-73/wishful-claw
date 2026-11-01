@@ -69,6 +69,27 @@ public static partial class DbClient
                 usage TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0
             );",
+            // S-285：助手消息的块结构（thinking / text / tool_use）拆出独立表，工具调用改为
+            // 「按 seq 单行覆盖」而不是「整条 meta 重新 stringify 后整行 upsert」。
+            //
+            // 老库自动建表：CREATE TABLE IF NOT EXISTS ⇒ 零迁移、零 ALTER、零数据搬运。
+            // 反向验证（tests 里钉住）：把它改成不带 IF NOT EXISTS，第二次启动必须炸。
+            //
+            // 刻意不加 FK 到 messages.id：DbService 已开 PRAGMA foreign_keys = ON，加了隐式级联
+            // 会让「删一条消息」静默带走它的全部 parts —— 一旦有 bug 误删 messages 行就不可恢复。
+            // 删除走显式清（与 sub_agent_runs 等表一致），多一步但好排查（S-285 §8.5）。
+            //
+            // WITHOUT ROWID：行直接存在 (message_id, seq) 主键 B-tree 里，
+            // 「message_id 等值 + seq 有序前缀扫描」正好命中，不需要额外索引（§8.2）。
+            // 代价是不能用 rowid / AUTOINCREMENT —— 本条不需要自增，seq 是业务序号。
+            @"CREATE TABLE IF NOT EXISTS message_parts (
+                message_id TEXT NOT NULL,
+                seq INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (message_id, seq)
+            ) WITHOUT ROWID;",
             @"CREATE TABLE IF NOT EXISTS sub_agent_runs (
                 tool_use_id TEXT PRIMARY KEY NOT NULL,
                 session_id TEXT NOT NULL,
@@ -369,6 +390,29 @@ public static partial class DbClient
             );",
             @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_task ON global_task_dispatches(global_task_id);",
             @"CREATE INDEX IF NOT EXISTS ix_global_dispatches_session ON global_task_dispatches(session_id);",
+            // ── S-279（v3-iter-5）：普通消息派活记录 ──
+            // 为什么另建一张表而不是复用 global_task_dispatches：后者的 global_task_id 是
+            // NOT NULL 且 Create 会校验任务存在 —— 普通消息（「就地问一句 / 催一下」）根本
+            // 没有全局任务可挂。要么把 NOT NULL 放开（拿任务板唯一数据源去赌约束），要么
+            // 砍掉这个场景。选确定的代价：两张表、两套状态机、一个公共层。
+            //
+            // 纯增量：CREATE TABLE IF NOT EXISTS，老库启动自动建，零数据搬运，
+            // global_task_dispatches 一个字节不动。
+            @"CREATE TABLE IF NOT EXISTS global_message_dispatches (
+                id TEXT PRIMARY KEY NOT NULL,
+                project_id TEXT,
+                session_id TEXT NOT NULL,
+                source_session_id TEXT,
+                instruction TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                latest_report TEXT,
+                error TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                completed_at INTEGER
+            );",
+            @"CREATE INDEX IF NOT EXISTS ix_global_message_dispatches_session ON global_message_dispatches(session_id);",
+            @"CREATE INDEX IF NOT EXISTS ix_global_message_dispatches_source ON global_message_dispatches(source_session_id);",
             // ── Request-level usage log (#1, iteration 28) ──
             // One row per HTTP request attempt (success or failure), written by the
             // AgentLoop main path via ProviderRetryPolicy. Auxiliary chains that skip

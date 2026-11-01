@@ -652,6 +652,8 @@
       "BrowserSetDevice": "Switch Device",
       "BrowserEvaluate": "Run Page Script",
       "DesktopScreenshot": "Desktop Screenshot",
+      "DesktopListWindows": "List Windows",
+      "DesktopQueryElements": "Query Elements",
       "DesktopClick": "Desktop Click",
       "DesktopType": "Desktop Type",
       "DesktopScroll": "Desktop Scroll",
@@ -849,9 +851,14 @@
       "executing": "Executing desktop action...",
       "input": "Input",
       "output": "Output",
-      "notes": "Notes",
       "DesktopScreenshot": {
         "title": "Desktop Screenshot"
+      },
+      "DesktopListWindows": {
+        "title": "List Windows"
+      },
+      "DesktopQueryElements": {
+        "title": "Query Elements"
       },
       "DesktopClick": {
         "title": "Desktop Click"
@@ -1286,6 +1293,12 @@
     "removeImage": "Remove image",
     "imagePreview": "Image preview",
     "selectedFileReadsTitle": "Read files",
+    "globalDispatchWorkRequest": "Global task",
+    "globalDispatchMessage": "From global session",
+    "globalDispatchReply": "Reply from project",
+    "globalDispatchReplyCompleted": "Completed",
+    "globalDispatchReplyBlocked": "Blocked",
+    "globalDispatchReplyInProgress": "In progress",
     "selectedFileReadLines": "Read {{count}} lines",
     "selectedFileReadTruncated": "Read first {{count}} lines",
     "selectedFileReadSkipped": "Path reference",

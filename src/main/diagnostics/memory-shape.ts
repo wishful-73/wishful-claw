@@ -75,6 +75,40 @@ export function exceedsProcessThreshold(bytes: number): boolean {
   return bytes >= WARN_PROCESS_WORKING_SET_BYTES
 }
 
+/**
+ * Worker `worker/memory` 的原始回包 → 结构化行（S-247 §19.6）。
+ *
+ * **为什么必须有这个函数**：C# 侧 `WishfulClawJsonContext` 用的是
+ * `JsonKnownNamingPolicy.CamelCase`（`WishfulClawJsonContext.cs:14`），回包字段是
+ * `pid` / `managedBytes` / …；而这里原先按 PascalCase 读 `raw.Pid`，每个字段都
+ * `undefined` ⇒ `Number(undefined ?? 0)` = 0。结果 Worker 内存从上线起**一直记 0**，
+ * 563MB 的真实占用从没进过日志。这种错不报错、不崩、只是数字悄悄变假，
+ * 所以映射单独拆成纯函数，配回归测试钉住字段名。
+ *
+ * `pid <= 0` 判为「没量到」返回 null，而不是返回一行全 0 的假数据 —— 假数据比缺数据更坏。
+ */
+export function mapWorkerMemory(raw: unknown): WorkerMemoryRow | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  if (r.success === false) return null
+
+  const pid = toNonNegativeNumber(r.pid)
+  if (pid <= 0) return null
+
+  return {
+    pid,
+    managedBytes: toNonNegativeNumber(r.managedBytes),
+    heapBytes: toNonNegativeNumber(r.heapBytes),
+    fragmentedBytes: toNonNegativeNumber(r.fragmentedBytes),
+    workingSetBytes: toNonNegativeNumber(r.workingSetBytes)
+  }
+}
+
+function toNonNegativeNumber(value: unknown): number {
+  const n = Number(value ?? 0)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
 export function exceedsWorkerThreshold(managedBytes: number): boolean {
   return managedBytes >= WARN_WORKER_MANAGED_BYTES
 }

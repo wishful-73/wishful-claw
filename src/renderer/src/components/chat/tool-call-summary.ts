@@ -8,6 +8,7 @@
 import type { ToolResultContent } from '@renderer/lib/api/types'
 import {
   DESKTOP_CLICK_TOOL_NAME,
+  DESKTOP_LIST_WINDOWS_TOOL_NAME,
   DESKTOP_SCREENSHOT_TOOL_NAME,
   DESKTOP_SCROLL_TOOL_NAME,
   DESKTOP_TYPE_TOOL_NAME,
@@ -20,6 +21,7 @@ const COMMAND_TOOL_NAMES = new Set(['Bash', 'Shell', 'PowerShell'])
 
 const DESKTOP_ACTION_TOOL_NAMES = new Set<string>([
   DESKTOP_SCREENSHOT_TOOL_NAME,
+  DESKTOP_LIST_WINDOWS_TOOL_NAME,
   DESKTOP_CLICK_TOOL_NAME,
   DESKTOP_TYPE_TOOL_NAME,
   DESKTOP_SCROLL_TOOL_NAME,
@@ -251,9 +253,36 @@ function summarizeDesktopAction(
   outputText?: string
 ): string {
   if (name === DESKTOP_SCREENSHOT_TOOL_NAME) {
-    // 尺寸只有输出里那句「Captured desktop screenshot 1920x1080 across 2 display(s).」有
-    const size = outputText?.match(/(\d+)\s*[x×]\s*(\d+)/)
-    return size ? `${size[1]}×${size[2]}` : 'desktop'
+    /*
+     * S-286：尺寸只能从「Captured desktop screenshot WxH」这句里取，**不能用裸的
+     * `(\d+)x(\d+)` 取第一个命中**。
+     *
+     * 当轮 output 是一段字符串化的 content 数组，image 块排在最前、里面是约 658 KB
+     * 的 base64 —— 裸正则先撞上的是 base64 的随机字节（实测命中 `8x5`，而真实尺寸是
+     * 2520×1680，那么小的数不可能是任何屏幕）。落库后 data 被剥掉，正则才落到那句
+     * text 上，所以现象是「重开这个会话就对了」。
+     *
+     * 锚点文案由 C# 的 DescribeScreenshot 拼（`AgentRuntimeDesktopExecutor.Encoding.cs`），
+     * **改它必须同步这里** —— 同 S-276「同一判据分散在多处各写各的」那个教训。
+     * base64 字符集不含空格，这个短语不可能藏在 data 里，锚定即安全。
+     * S-283 之前的老格式「Captured desktop screenshot 1920x1080 across …」同一个前缀，一并覆盖。
+     * S-272 第二段起按窗口截图会换前缀（`Captured window "标题" WxH`），两种都认。
+     */
+    const size = outputText?.match(
+      /Captured (?:desktop screenshot|window\s+"[^"]*")\s+(\d+)\s*x\s*(\d+)/i
+    )
+    if (!size) return 'desktop'
+    const windowTitle = outputText?.match(/Captured window\s+"([^"]*)"/i)
+    return windowTitle ? `${size[1]}×${size[2]} ${windowTitle[1]}` : `${size[1]}×${size[2]}`
+  }
+  if (name === DESKTOP_LIST_WINDOWS_TOOL_NAME) {
+    // 输出是 JSON（`{"success":true,"count":N,"windows":[...]}`），只取条数 —— 极简档一行
+    // 放不下窗口清单，用户想知道的是「列出了几个」，不是「列了哪些」。
+    const countMatch = outputText?.match(/"count"\s*:\s*(\d+)/)
+    const count = countMatch ? countMatch[1] : null
+    const filter = typeof input.match === 'string' && input.match ? input.match : ''
+    if (filter) return count === null ? filter : `${filter} → ${count}`
+    return count === null ? 'list windows' : `${count} windows`
   }
   if (name === DESKTOP_CLICK_TOOL_NAME) {
     const action = typeof input.action === 'string' ? input.action : 'click'

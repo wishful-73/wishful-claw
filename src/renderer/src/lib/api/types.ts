@@ -419,6 +419,56 @@ export interface MessageRunEndMeta {
   at?: number
 }
 
+/**
+ * 全局会话 ⇄ 项目会话的派发/回执标记（iter-v3-5 S-278）。
+ *
+ * **存在的理由**：派活和回执以前都是裸文本，渲染端只能靠正则嗅探
+ * `[GLOBAL AGENT WORK REQUEST]` 才认得出「这条不是用户说的话」。S-208 已经把
+ * 「结构化字段进 meta、正文只给人看」定成口径，这里是同一套东西的延续。
+ *
+ * 落库位置：`messages.meta.globalDispatch`。只有 `sendMessage` 会写它，
+ * 且它**不进 Worker**（`sendMessage` 发请求前 delete 掉）—— 模型看的是消息正文，
+ * 不是这里。
+ */
+export interface GlobalDispatchMeta {
+  /** `global_task_dispatches.id`，渲染端拿它 join 状态。 */
+  dispatchId: string
+  globalTaskId: string
+  /**
+   * `work_request` = 全局会话派活；`message` = 普通沟通。与 DB 的
+   * `GlobalTaskDispatchKindValues` 同值域，别另起一套。
+   */
+  kind: 'work_request' | 'message'
+  /**
+   * 派发那一刻的任务标题快照。任务后来改名**不改**历史消息 —— 卡片上写的
+   * 应当是当时的事实。缺失（老消息 / 任务已被删）时卡片只显示 id。
+   */
+  globalTaskTitle?: string
+}
+
+/**
+ * 派活回执标记（iter-v3-5 S-279 收尾，2026-10-31）。
+ *
+ * **存在的理由**：回执以前是纯文本投递，正文开头带一串
+ * `[GLOBAL DISPATCH REPLY] dispatch_id=… global_task_id=… from_session=… status=…`。
+ * 那串是给模型定位用的，却整段落在全局会话的聊天窗里 —— 看不出这是「回执」，
+ * 只看到一坨协议。S-278 已经定下「结构化字段进 meta、正文只给人看」，
+ * 回执是同一套东西的另一半（派活有 `globalDispatch`，回执有 `globalDispatchReply`）。
+ *
+ * 落库位置：`messages.meta.globalDispatchReply`，由 Worker 投递时写入。
+ * 与 `globalDispatch` 一样**不进 Worker 请求**（`sendMessage` 发前 delete 掉）。
+ */
+export interface GlobalDispatchReplyMeta {
+  /** 被回执的那条 dispatch（`gd_` 或 `gm_` 前缀）。 */
+  dispatchId: string
+  /** 绑定的全局任务；**普通消息（`gm_`）不绑任务，该字段缺席**（不落空串，与 `globalDispatch` 口径一致）。 */
+  globalTaskId?: string
+  /** 回执方 —— 项目会话 id。 */
+  fromSessionId: string
+  /** 回执方声明的状态：`completed` / `in_progress` / `blocked`。 */
+  status: string
+}
+
 export interface MessageMeta {
   compactBoundary?: CompactBoundaryMeta
   compactSummary?: CompactSummaryMeta
@@ -428,6 +478,8 @@ export interface MessageMeta {
   runEnd?: MessageRunEndMeta
   cronTaskId?: string
   cronRunId?: string
+  globalDispatch?: GlobalDispatchMeta
+  globalDispatchReply?: GlobalDispatchReplyMeta
 }
 
 export interface UnifiedMessage {

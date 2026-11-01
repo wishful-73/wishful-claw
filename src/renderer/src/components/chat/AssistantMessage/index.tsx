@@ -161,8 +161,11 @@ export function AssistantMessage({
     [content]
   )
   const normalizedContent = useMemo(
-    () => (Array.isArray(content) ? normalizeStructuredBlocks(content) : null),
-    [content]
+    () =>
+      Array.isArray(content)
+        ? normalizeStructuredBlocks(content, { streaming: !!isStreaming })
+        : null,
+    [content, isStreaming]
   )
   const messageToolUseIds = useMemo(() => {
     if (!normalizedContent) return []

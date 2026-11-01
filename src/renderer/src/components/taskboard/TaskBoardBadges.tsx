@@ -29,6 +29,9 @@ const DISPATCH_STATUS_CLASSES: Record<GlobalDispatchStatus, string> = {
   acknowledged: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400',
   in_progress: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
   completed: 'bg-green-500/15 text-green-600 dark:text-green-400',
+  // S-280：会话结束时归档出来的「未显式回复」。刻意用中性灰而非绿色 ——
+  // 绿色会让人以为 agent 真的交回了结果，这正是老大要求不许出现的那种伪装。
+  completed_implicit: 'bg-slate-500/15 text-slate-600 dark:text-slate-400',
   blocked: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
   failed: 'bg-red-500/15 text-red-600 dark:text-red-400',
   cancelled: 'bg-muted text-muted-foreground line-through'

@@ -39,7 +39,7 @@ import { useImageEditStore } from '@renderer/stores/image-edit-store'
 import type { AssistantRenderItem, ThinkSegment } from './types'
 import type { MessageFragmentPosition } from '../renderable-chat-items'
 import { MARKDOWN_WRAPPER_CLASS as MD_CLASS } from './types'
-import { parseThinkTags, stripThinkTags } from './think-parser'
+import { parseThinkTags } from './think-parser'
 import { shouldShowTrailingCursor } from './live-cursor'
 import { StreamingMarkdownContent } from './markdown-renderer'
 import { ModelThinkingIndicator, GenerationProcessLine } from './ui-buttons'
@@ -427,12 +427,13 @@ export function ContentRenderer({
           )
         case 'text': {
           if (hasStructuredThinkingBlocks) {
-            const visibleText = stripThinkTags(block.text)
-            if (!visibleText.trim()) return null
+            // S-247（2026-10-31）：normalizeStructuredBlocks 已按同一判据 strip 过，
+            // 这里再 strip 一次会让同一段 ConsString 每帧多 flatten 一遍。
+            if (!block.text) return null
             return (
               <div key={item.index} className={MD_CLASS}>
                 <StreamingMarkdownContent
-                  text={visibleText}
+                  text={block.text}
                   isStreaming={!!isStreaming && item.index === lastStructuredTextIdx}
                 />
                 {trailing ? trailingCursor : null}

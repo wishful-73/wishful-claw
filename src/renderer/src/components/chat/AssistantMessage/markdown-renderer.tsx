@@ -485,7 +485,9 @@ export function StreamingMarkdownContent({
         {blocks.settled.map((block, index) => (
           <MarkdownContent key={index} text={block} isStreaming={false} />
         ))}
-        {blocks.tail.trim() ? <MarkdownContent text={blocks.tail} isStreaming={false} /> : null}
+        {blocks.tail.trim() ? (
+          <div className="whitespace-pre-wrap break-words leading-relaxed">{blocks.tail}</div>
+        ) : null}
       </div>
     )
   }

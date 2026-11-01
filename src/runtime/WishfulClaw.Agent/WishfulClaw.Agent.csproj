@@ -30,6 +30,9 @@
     <InternalsVisibleTo Include="WishfulClaw.ImageInputRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.ProviderRejectionRegressionTests" />
     <InternalsVisibleTo Include="WishfulClaw.CompactionImagePlaceholderRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.ToolOutputLimitRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.CaptureTargetPathRegressionTests" />
+    <InternalsVisibleTo Include="WishfulClaw.SessionMessageWireRegressionTests" />
   </ItemGroup>
 
 </Project>

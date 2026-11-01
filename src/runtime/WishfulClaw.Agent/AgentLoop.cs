@@ -715,6 +715,24 @@ internal static partial class AgentLoop
                 null,
                 DbAgentTimelineTools.Metadata(("run_id", state.RunId), ("mode", mode), ("reason", reason)));
         }
+        else if (reason == AgentLoopEndReasons.Completed)
+        {
+            // S-280（v3-iter-5）：目标会话**正常跑完**一轮，把它名下还没显式回执的派活
+            // 归档成 completed_implicit。一把覆盖两张表（gd_ / gm_），状态判据只写一份。
+            //
+            // 只在 Completed 时做：用户取消 / 中断 / 报错时目标会话并没有干完，那些记录
+            // 该留在 pending 让全局会话看到「还没回执」，不许伪造成完成。
+            //
+            // 幂等：ShouldMarkImplicitCompletion 对 completed_implicit 返回 false，
+            // 所以同一条记录不会被重复归档，重复调用也不会多写一行。
+            var archivedDispatches = DispatchArchive.ArchiveImplicitCompletions(state.SessionId);
+            if (archivedDispatches > 0)
+            {
+                WorkerLog.Info(
+                    $"DispatchArchive: archived {archivedDispatches} dispatch record(s) " +
+                    $"as completed_implicit for session={state.SessionId}");
+            }
+        }
 
         // Notification is handled by the renderer on loop_end event.
         // The renderer checks window focus before deciding to notify.

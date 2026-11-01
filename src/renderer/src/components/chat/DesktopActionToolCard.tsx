@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
 import {
+  AppWindow,
   ChevronDown,
   Keyboard,
   Loader2,
@@ -19,8 +20,12 @@ import {
   TriangleAlert
 } from 'lucide-react'
 import type { ToolCallStatus } from '@renderer/lib/agent/types'
-import type { ImageBlock, TextBlock, ToolResultContent } from '@renderer/lib/api/types'
+import type { ToolResultContent } from '@renderer/lib/api/types'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import {
+  resolveScreenshotDimensions,
+  splitDesktopToolBlocks
+} from '@renderer/lib/tools/desktop-tool-blocks'
 import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import { resolveImageBlockSource } from '@renderer/lib/tools/image-block-source'
 import { ImagePreview } from './ImagePreview'
@@ -67,6 +72,8 @@ function parseStructuredOutput(
 
 function getToolIcon(name: string): React.JSX.Element {
   if (name === 'DesktopScreenshot') return <Monitor className="size-4" />
+  // S-294：窗口截图拍的是本应用自己的窗口，用 AppWindow 跟整屏截图区分开。
+  if (name === 'CaptureAppWindow') return <AppWindow className="size-4" />
   if (name === 'DesktopClick') return <MousePointerClick className="size-4" />
   if (name === 'DesktopScroll') return <MoveVertical className="size-4" />
   if (name === 'DesktopWait') return <Clock3 className="size-4" />
@@ -96,16 +103,10 @@ export function DesktopActionToolCard({
     if (forceOpen) setCollapsed(false)
   }, [forceOpen, isRunning])
 
-  const { images, notes } = useMemo(() => {
-    if (!Array.isArray(output)) {
-      return { images: [] as ImageBlock[], notes: [] as TextBlock[] }
-    }
-
-    return {
-      images: output.filter((block): block is ImageBlock => block.type === 'image'),
-      notes: output.filter((block): block is TextBlock => block.type === 'text')
-    }
-  }, [output])
+  const { images, notes } = useMemo(
+    () => splitDesktopToolBlocks(output, decodeStructuredToolResult),
+    [output]
+  )
 
   // 2026-10-29 15:46：老大在极简档展开这张卡，只看到「输入 {"require_active_window": false}」——
   // 桌面工具的入参对用户几乎永远没有意义（截图那条本身就是空的）。原始入参只在详情档露出，
@@ -114,11 +115,10 @@ export function DesktopActionToolCard({
   const showRawInput = density === 'detail'
 
   const summary = (() => {
-    if (name === 'DesktopScreenshot') {
-      return t('toolCall.desktop.screenshot.summary', {
-        width: notes[0]?.text.match(/(\d+)x(\d+)/)?.[1] ?? '?',
-        height: notes[0]?.text.match(/(\d+)x(\d+)/)?.[2] ?? '?'
-      })
+    // S-294：CaptureAppWindow 的备注开头是 `Captured the Wishful Claw window (WxH)`，
+    // 与桌面截图同形的「图片尺寸」在前，同一个正则直接能取到，复用同一条文案。
+    if (name === 'DesktopScreenshot' || name === 'CaptureAppWindow') {
+      return t('toolCall.desktop.screenshot.summary', resolveScreenshotDimensions(notes))
     }
     if (name === 'DesktopClick') {
       return t('toolCall.desktop.click.summary', {
@@ -290,22 +290,6 @@ export function DesktopActionToolCard({
                   <pre className="overflow-x-auto rounded-lg bg-muted/20 px-3 py-2 text-xs text-foreground whitespace-pre-wrap break-words">
                     {JSON.stringify(jsonOutput, null, 2)}
                   </pre>
-                </div>
-              ) : null}
-
-              {notes.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {t('toolCall.desktop.notes')}
-                  </p>
-                  {notes.map((note, index) => (
-                    <p
-                      key={`${note.text}-${index}`}
-                      className="rounded-lg bg-muted/20 px-3 py-2 text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap break-words"
-                    >
-                      {note.text}
-                    </p>
-                  ))}
                 </div>
               ) : null}
             </div>

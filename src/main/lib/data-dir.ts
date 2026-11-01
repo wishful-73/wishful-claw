@@ -1,21 +1,18 @@
 import { app } from 'electron'
 import { homedir } from 'os'
 import { join, resolve } from 'path'
-import {
-  WISHFUL_CLAW_DATA_DIR_NAME,
-  WISHFULCLAW_DATA_DIR_ENV
-} from '../../shared/data-dir'
+import { pickDataDir, WISHFULCLAW_DATA_DIR_ENV } from '../../shared/data-dir'
 import { WISHFULCLAW_PROJECT_DIR_ENV, pickProjectDirName } from '../../shared/project-dir'
 
-/** Resolve the application-owned global data root once for every main-process caller. */
+/**
+ * Resolve the application-owned global data root once for every main-process caller.
+ *
+ * S-282：决定「用哪个目录」的那一步抽到了 `pickDataDir`（纯函数、不碰 electron，可直接单测）；
+ * 这里只负责把决定落成绝对路径 —— 环境变量是完整路径语义，默认值只是目录名、拼到 home 下。
+ */
 export function resolveDataDir(): string {
-  const configured = process.env[WISHFULCLAW_DATA_DIR_ENV]?.trim()
-  if (configured) return resolve(configured)
-
-  const directoryName = app.isPackaged
-    ? WISHFUL_CLAW_DATA_DIR_NAME
-    : `${WISHFUL_CLAW_DATA_DIR_NAME}-dev`
-  return join(homedir(), directoryName)
+  const decision = pickDataDir(process.env[WISHFULCLAW_DATA_DIR_ENV], app.isPackaged)
+  return decision.fromEnv ? resolve(decision.value) : join(homedir(), decision.value)
 }
 
 export function resolveDataPath(...segments: string[]): string {

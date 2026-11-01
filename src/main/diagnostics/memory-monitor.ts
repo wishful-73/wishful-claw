@@ -25,6 +25,7 @@ import {
   buildProcessRows,
   exceedsProcessThreshold,
   exceedsWorkerThreshold,
+  mapWorkerMemory,
   shouldWarn,
   sumWorkingSet,
   WARN_PROCESS_WORKING_SET_BYTES
@@ -42,27 +43,11 @@ export const MEMORY_SAMPLE_INTERVAL_MS = 5_000
 /** 落日志间隔（5 分钟）—— 低频是为了不淹掉真正有用的日志。 */
 export const MEMORY_LOG_INTERVAL_MS = 5 * 60_000
 
-interface RawWorkerMemory {
-  Success?: boolean
-  Pid?: number
-  ManagedBytes?: number
-  HeapBytes?: number
-  FragmentedBytes?: number
-  WorkingSetBytes?: number
-  Error?: string | null
-}
-
 async function captureWorkerMemory(): Promise<WorkerMemoryRow | null> {
   try {
-    const raw = await getNativeWorker().request<RawWorkerMemory>('worker/memory', {}, 5_000)
-    if (!raw || raw.Success === false) return null
-    return {
-      pid: Number(raw.Pid ?? 0),
-      managedBytes: Number(raw.ManagedBytes ?? 0),
-      heapBytes: Number(raw.HeapBytes ?? 0),
-      fragmentedBytes: Number(raw.FragmentedBytes ?? 0),
-      workingSetBytes: Number(raw.WorkingSetBytes ?? 0)
-    }
+    const raw = await getNativeWorker().request<unknown>('worker/memory', {}, 5_000)
+    // 字段名映射在 memory-shape 里（camelCase），并负责把「全 0」判成 null
+    return mapWorkerMemory(raw)
   } catch {
     return null
   }

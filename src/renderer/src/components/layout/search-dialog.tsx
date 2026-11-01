@@ -9,12 +9,20 @@ import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { QuickActions } from './search-dialog/quick-actions'
 import { SearchResults } from './search-dialog/search-results'
+import {
+  buildRecentSessionsSignature,
+  selectRecentSessions,
+  type RecentSessionItem
+} from './search-dialog/recent-sessions'
 import type { MessageSearchHit, SearchDialogProps } from './search-dialog/types'
 
 export type { MessageSearchHit, SearchDialogProps } from './search-dialog/types'
 
 const SEARCH_DEBOUNCE_MS = 200
 const SEARCH_LIMIT = 50
+
+/** 关闭态复用的常量空数组：保证 `recentSessions` 引用稳定，不让下游白重渲。 */
+const EMPTY_RECENT_SESSIONS: RecentSessionItem[] = []
 
 export function SearchDialog({ open, onOpenChange }: SearchDialogProps): React.JSX.Element {
   const { t } = useTranslation('layout')
@@ -36,8 +44,13 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps): React.J
   const setActiveProjectHome = useChatStore((s) => s.setActiveProjectHome)
   const setMode = useUIStore((s) => s.setMode)
 
-  const sessions = useChatStore((s) => s.sessions)
-  const activeSessionId = useChatStore((s) => s.activeSessionId)
+  // S-297：原来这里是 `useChatStore((s) => s.sessions)` —— 宽订阅。搜索框常驻应用壳，
+  // 流式每帧换 `sessions` 引用 ⇒ 本组件每帧重渲 + 每帧对全部会话 filter/sort/slice，
+  // 跟对话框开没开无关（S-247 §21.3 实测：dev 下这一处占残量 58%，0.38 → 0.16 MB/s）。
+  // 现在：关着时 selector 直接返回常量 ''（零计算），开着才按 top-5 签名重算。
+  const recentSessionsSignature = useChatStore((s) =>
+    open ? buildRecentSessionsSignature(s.sessions, s.activeSessionId) : ''
+  )
 
   const isDark = useMemo(() => {
     // simple check — same approach as TitleBar
@@ -135,15 +148,12 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps): React.J
     navigateToHome()
   }, [setActiveProjectHome, setMode, navigateToHome])
 
-  // Recent sessions (top 5, excluding active)
-  const recentSessions = useMemo(
-    () =>
-      sessions
-        .filter((s) => s.id !== activeSessionId)
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 5),
-    [sessions, activeSessionId]
-  )
+  // Recent sessions (top 5, excluding active) —— 只在打开时才真算
+  const recentSessions = useMemo(() => {
+    if (!open) return EMPTY_RECENT_SESSIONS
+    const state = useChatStore.getState()
+    return selectRecentSessions(state.sessions, state.activeSessionId)
+  }, [open, recentSessionsSignature])
 
   const hasQuery = query.trim().length > 0
 

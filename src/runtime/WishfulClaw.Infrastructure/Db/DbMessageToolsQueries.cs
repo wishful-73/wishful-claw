@@ -147,7 +147,8 @@ public static partial class DbMessageTools
                 new SqliteParameter("@sid", sessionId),
                 new SqliteParameter("@rangeStart", rangeStart)) > 0;
 
-            var rows = messages.Select(MessageRow.FromEntity).ToList();
+            // S-285：块结构合并回 meta。窗口内消息数由 turns 锁定，parts 查询量固定。
+            var rows = ToRowsWithParts(db, messages);
             return WorkerResponse.Json(
                 new MessageListByTurnsResult(true, rows, rangeStart, hasMore, null, totalTurns),
                 InfrastructureJsonContext.Default.MessageListByTurnsResult);

@@ -18,21 +18,66 @@ public static partial class DbMessageTools
     // Query methods (List/ListPage/ListLocator/ListByTurns/SearchContent) are in DbMessageToolsQueries.cs
     // Mutation methods (Add/AddBatch/Upsert/Update/Clear/Delete/Count) are in DbMessageToolsMutations.cs
 
+    /// <summary>
+    /// 插入一条消息（自带事务）。块结构按 S-285 拆进 <c>message_parts</c>。
+    /// </summary>
     internal static void InsertMessage(DbService db, MessageEntity message)
     {
-        db.Execute(
+        db.ExecuteInTransaction((conn, tx) => InsertMessage(db, conn, tx, message));
+    }
+
+    /// <summary>
+    /// 在调用方的事务里插入一条消息 —— 批量写（<c>AddBatch</c>）走这条，避免 N 条消息开 N 个事务。
+    ///
+    /// <para>S-285：新插入的行一律走新格式。老格式的判据是「<b>库里这一行自己的 meta 已带块结构</b>」
+    /// （<see cref="DbMessageParts.HasBlockStructure"/>），新插入不可能命中，所以直接拆。</para>
+    /// </summary>
+    internal static void InsertMessage(
+        DbService db,
+        SqliteConnection conn,
+        SqliteTransaction tx,
+        MessageEntity message)
+    {
+        var (meta, parts) = DbMessageParts.SplitMeta(message.Meta, message.CreatedAt);
+
+        db.Execute(conn, tx,
             "INSERT INTO messages (id, session_id, role, content, meta, created_at, updated_at, usage, sort_order) " +
             "VALUES (@id, @sid, @role, @content, @meta, @ca, @ua, @usage, @so)",
             new SqliteParameter("@id", message.Id),
             new SqliteParameter("@sid", message.SessionId),
             new SqliteParameter("@role", message.Role),
             new SqliteParameter("@content", message.Content),
-            new SqliteParameter("@meta", (object?)message.Meta ?? DBNull.Value),
+            new SqliteParameter("@meta", (object?)meta ?? DBNull.Value),
             new SqliteParameter("@ca", message.CreatedAt),
             // Fresh insert: updated_at starts equal to created_at.
             new SqliteParameter("@ua", message.UpdatedAt ?? message.CreatedAt),
             new SqliteParameter("@usage", (object?)message.Usage ?? DBNull.Value),
             new SqliteParameter("@so", message.SortOrder));
+
+        DbMessageParts.WriteParts(conn, tx, message.Id, parts, message.CreatedAt);
+    }
+
+    /// <summary>
+    /// S-285：实体行 → 对外 DTO 时，把 <c>message_parts</c> 合并回 <c>meta</c>。
+    ///
+    /// <para>对外形状仍是 <c>{ toolCalls, segments, thinking }</c>，<b>渲染层零改动</b>（§4.3）。
+    /// 老格式消息在 parts 表里没有行，<c>Meta</c> 原样返回，行为逐字节不变。</para>
+    /// </summary>
+    internal static List<MessageRow> ToRowsWithParts(DbService db, List<MessageEntity> entities)
+    {
+        var rows = entities.Select(MessageRow.FromEntity).ToList();
+        if (entities.Count == 0) return rows;
+
+        var partsMap = DbMessageParts.LoadParts(db, entities.Select(e => e.Id).ToList());
+        if (partsMap.Count == 0) return rows;
+
+        for (var i = 0; i < entities.Count; i++)
+        {
+            if (!partsMap.TryGetValue(entities[i].Id, out var parts)) continue;
+            rows[i].Meta = DbMessageParts.MergePartsIntoMeta(rows[i].Meta, parts);
+        }
+
+        return rows;
     }
 
     private static WorkerResponse ReadRows(JsonElement parameters, string? role, bool paged)
@@ -66,7 +111,8 @@ public static partial class DbMessageTools
             }
 
             var entities = db.Query(sql, EntityMappers.MapMessage, [.. paramList]);
-            var rows = entities.Select(MessageRow.FromEntity).ToList();
+            // S-285：块结构合并回 meta，对外形状不变。
+            var rows = ToRowsWithParts(db, entities);
 
             return WorkerResponse.Json(rows, InfrastructureJsonContext.Default.ListMessageRow);
         }

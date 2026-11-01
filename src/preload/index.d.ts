@@ -17,6 +17,14 @@ declare global {
       openFolderDialog: () => Promise<{ folderPath: string | null; canceled: boolean }>
       /** Write a log entry to the log file (forwarded to main process). */
       log: (payload: { level: string; message: string; stack?: string; extra?: Record<string, unknown> }) => Promise<void>
+      /** S-247：渲染进程内存构成（E 维度），单位字节。 */
+      getProcessMemory: () => {
+        rss: number
+        heapTotal: number
+        heapUsed: number
+        external: number
+        arrayBuffers: number
+      }
       /** Read recent log lines from today's log file. */
       readLogs: (maxLines?: number) => Promise<string>
       /** S-224：聊天图片落盘，返回 `{ dataRoot }/images/{yyyy-MM}/` 下的磁盘路径。 */

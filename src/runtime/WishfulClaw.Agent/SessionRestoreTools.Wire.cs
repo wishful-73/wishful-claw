@@ -15,6 +15,33 @@ namespace WishfulClaw.Agent;
 internal static partial class SessionRestoreTools
 {
     /// <summary>
+    /// S-285：把 <c>message_parts</c> 合并回 <c>entity.Meta</c>。
+    ///
+    /// <para><b>这是「压缩/恢复读侧不能漏」的真正落点。</b>新格式消息的 toolCalls / segments
+    /// 存在 parts 表里，meta 里已经没有它们 —— 不合并的话，
+    /// <see cref="SynthesizeToolResultsWireMessage"/> 与 <see cref="ReadToolCallIds"/>
+    /// 都会读到空，崩溃恢复后上下文里的工具结果整段丢失（模型看到 tool_use 没有对应结果，
+    /// 直接请求非法）。</para>
+    ///
+    /// <para>老格式消息在 parts 表里没有行，<c>Meta</c> 原样不动，行为逐字节不变。</para>
+    ///
+    /// <para>必须在 <c>IsChatOnlyArtifact</c> 过滤之前调用 —— 那个判据也读 meta。</para>
+    /// </summary>
+    private static void AttachPartsToEntities(DbService db, List<MessageEntity> entities)
+    {
+        if (entities.Count == 0) return;
+
+        var partsMap = DbMessageParts.LoadParts(db, entities.Select(e => e.Id).ToList());
+        if (partsMap.Count == 0) return;
+
+        foreach (var entity in entities)
+        {
+            if (!partsMap.TryGetValue(entity.Id, out var parts)) continue;
+            entity.Meta = DbMessageParts.MergePartsIntoMeta(entity.Meta, parts);
+        }
+    }
+
+    /// <summary>
     /// Append the wire message(es) for one DB entity, reconciling tool results:
     /// an assistant row with tool calls also emits a synthesized user tool_result
     /// message so every restored tool_use block is paired with a result, exactly

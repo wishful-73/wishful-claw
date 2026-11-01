@@ -52,6 +52,7 @@ import type { CompressionStatusMeta, ContentBlock, MessageMeta, MessageRunEndMet
 
 import { dbUpsertMessage, dbUpdateSession, dbDeleteMessage, awaitSessionCreated } from './db-helpers'
 import { getCompressionStatus, trackCompressionStatus } from './compression-status-registry'
+import { stripImagePayloads } from '@renderer/lib/image-payload'
 
 import { setLastDebugInfo } from '@renderer/lib/debug-store'
 
@@ -1517,11 +1518,20 @@ export const useChatStore = create<ChatStore>()(
 
             const resultStatus = event.toolCall.status === 'error' ? 'error' : 'completed'
 
+            // S-247：worker 推的 `output` 里，截图工具的 image 块带着**完整 base64**
+            // （一张 2520x1680 的 PNG ≈ 670 KB 字符串）。worker 侧必须留着给模型看图，
+            // 但渲染层不需要 —— 落盘后 `filePath` 就在同一个 source 里，`oc-media://` 直接
+            // 能加载。以前这份 base64 原样进了 store，于是它同时挂在这条消息的
+            // `toolCalls` 和 `segments` 两处，并且 `DesktopActionToolCard` 的 useMemo 每次
+            // 依赖变化都要对它 `JSON.parse` 一遍。
+            // 这里剥一次、三处赋值共用 —— 后面三处原本都指向同一个字符串，剥完一起变瘦。
+            const strippedOutput = stripImagePayloads(event.toolCall.output)
+
             useAgentStore.getState().updateToolCall(event.toolCall.id, {
 
               status: resultStatus,
 
-              output: event.toolCall.output,
+              output: strippedOutput,
 
               error: event.toolCall.error,
 
@@ -1547,7 +1557,7 @@ export const useChatStore = create<ChatStore>()(
 
                       tc.status = resultStatus
 
-                      tc.output = event.toolCall.output
+                      tc.output = strippedOutput
 
                       tc.error = event.toolCall.error
 
@@ -1565,7 +1575,7 @@ export const useChatStore = create<ChatStore>()(
 
                       seg.status = resultStatus
 
-                      seg.output = event.toolCall.output
+                      seg.output = strippedOutput
 
                       seg.error = event.toolCall.error
 

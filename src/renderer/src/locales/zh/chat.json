@@ -652,6 +652,8 @@
       "BrowserSetDevice": "切换设备",
       "BrowserEvaluate": "执行页面脚本",
       "DesktopScreenshot": "桌面截图",
+      "DesktopListWindows": "列出窗口",
+      "DesktopQueryElements": "查找界面元素",
       "DesktopClick": "桌面点击",
       "DesktopType": "桌面输入",
       "DesktopScroll": "桌面滚动",
@@ -849,9 +851,14 @@
       "executing": "正在执行桌面操作...",
       "input": "输入",
       "output": "输出",
-      "notes": "补充说明",
       "DesktopScreenshot": {
         "title": "桌面截图"
+      },
+      "DesktopListWindows": {
+        "title": "列出窗口"
+      },
+      "DesktopQueryElements": {
+        "title": "查找界面元素"
       },
       "DesktopClick": {
         "title": "桌面点击"
@@ -1286,6 +1293,12 @@
     "removeImage": "移除图片",
     "imagePreview": "图片预览",
     "selectedFileReadsTitle": "已读文件",
+    "globalDispatchWorkRequest": "全局任务",
+    "globalDispatchMessage": "来自全局会话",
+    "globalDispatchReply": "项目会话回执",
+    "globalDispatchReplyCompleted": "已完成",
+    "globalDispatchReplyBlocked": "受阻",
+    "globalDispatchReplyInProgress": "进行中",
     "selectedFileReadLines": "已读 {{count}} 行",
     "selectedFileReadTruncated": "已读前 {{count}} 行",
     "selectedFileReadSkipped": "路径引用",

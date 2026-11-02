@@ -49,7 +49,7 @@
 
 | 编号 | 标题 | 状态 | 明细 |
 |---|---|---|---|
-| S-295 | Electron → Avalonia 技术路线评估 | **口径变更：本迭代做原型实验** | 老大 2026-10-31 给的参考案例（Astra Gate：350M → 50M）是网关控制台，UI 只有几页；我们是 874 个渲染层文件 + 内置 Chromium `<webview>` + 740 个 C# worker 文件的 agent 客户端，业务逻辑本来就在 .NET 里。⚠️ **前提已由 S-247 收口推翻一半** —— 实测「跑完能还 311 MB」，1.3 GB 峰值不是 Electron 固有开销。**2026-11-01 20:11 老大改口径**：「需要在这个迭代，新开文件夹进行尝试哦」⇒ 从「只出报告」改成**真做一个可运行原型**，落点 `experiments/avalonia-shell/`（不进任何现有构建）。详见原文件 §九 | [S-295](../iter-v3-5/requirements/S-295.md) |
+| S-295 | Electron → Avalonia 技术路线评估 | **✅ 已交付（11-02 刀 8）：结论「不建议迁」** | 原型 `experiments/avalonia-shell/`（net10.0 + Avalonia 11.3.2）实测：空窗口工作集 Debug 197.7 / Release 187.4 / **AOT 156.2** / **软件渲染 96.9** MB；私有字节软件渲染 **43.7 MB** ≈ Astra Gate 报的 50 MB ⇒ **那是「软件渲染 + 私有字节」口径**，与我们的 GPU + 工作集不可比。S-247 实测 Electron renderer 稳态 150~200 MB，**Avalonia 空壳同量级** ⇒ 874 个渲染层文件重写后最乐观持平，**收益被壳的基线吃光**。§六 中间路线（Avalonia + WebView2）同样出局 —— WebView2 就是 Chromium，还要重写 IPC 与浏览器控制层。完整数据见 `experiments/avalonia-shell/README.md` | [S-295](../iter-v3-5/requirements/S-295.md) |
 
 ## 二、挂账 / 阻塞（三条，不占刀序）
 

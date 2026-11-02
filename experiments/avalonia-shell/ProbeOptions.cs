@@ -10,7 +10,13 @@ internal enum ProbeStage
     Text,
 
     /// <summary>一张 2520×1680 的图 —— 与我们截图工具产出的尺寸一致。</summary>
-    Image
+    Image,
+
+    /// <summary>
+    /// 完整聊天场景：虚拟化消息列表 + 段落 + 代码块 + 工具卡 + 图片。
+    /// 空窗口只说明壳的基线，说明不了换壳能不能治内存 —— 这个阶段才是真对比。
+    /// </summary>
+    Chat
 }
 
 internal sealed class ProbeOptions
@@ -35,6 +41,12 @@ internal sealed class ProbeOptions
     /// </summary>
     public bool SoftwareRendering { get; private init; }
 
+    /// <summary>Chat 阶段造多少条历史消息。默认 200 —— 大致是重度用户一两天的量。</summary>
+    public int MessageCount { get; private init; } = 200;
+
+    /// <summary>Chat 阶段是否开流式追加。静态历史量的是「加载后常驻」，流式量的是「边跑边涨」。</summary>
+    public bool Streaming { get; private init; }
+
     public static ProbeOptions Parse(string[] args)
     {
         var stage = ProbeStage.Empty;
@@ -43,6 +55,8 @@ internal sealed class ProbeOptions
         var width = 1440;
         var height = 900;
         var software = false;
+        var messageCount = 200;
+        var streaming = false;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -57,6 +71,7 @@ internal sealed class ProbeOptions
                         "empty" => ProbeStage.Empty,
                         "text" => ProbeStage.Text,
                         "image" => ProbeStage.Image,
+                        "chat" => ProbeStage.Chat,
                         _ => throw new ArgumentException($"unknown stage: {next}")
                     };
                     i++;
@@ -80,6 +95,13 @@ internal sealed class ProbeOptions
                 case "--software":
                     software = true;
                     break;
+                case "--messages" when next is not null:
+                    messageCount = Math.Clamp(int.Parse(next), 1, 5000);
+                    i++;
+                    break;
+                case "--stream":
+                    streaming = true;
+                    break;
             }
         }
 
@@ -90,7 +112,9 @@ internal sealed class ProbeOptions
             ReportPath = report,
             Width = width,
             Height = height,
-            SoftwareRendering = software
+            SoftwareRendering = software,
+            MessageCount = messageCount,
+            Streaming = streaming
         };
     }
 }

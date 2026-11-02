@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _streamTimer;
     private StackPanel? _streamPanel;
     private int _streamLines;
+    private Action? _stopChatStream;
 
     public MainWindow()
     {
@@ -38,6 +39,9 @@ public partial class MainWindow : Window
         _countdown = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _countdown.Tick += OnCountdownTick;
         _countdown.Start();
+
+        // 手动关窗时也要把流式定时器停掉，否则它继续往已拆掉的视觉树上加段落。
+        Closed += (_, _) => _stopChatStream?.Invoke();
     }
 
     private TimeSpan _remaining => TimeSpan.FromSeconds(_options.Seconds);
@@ -49,6 +53,7 @@ public partial class MainWindow : Window
 
         _countdown.Stop();
         _streamTimer.Stop();
+        _stopChatStream?.Invoke();
 
         var report = _probe.Finish();
         var line = MemoryProbe.FormatReport(report);
@@ -94,6 +99,10 @@ public partial class MainWindow : Window
 
             case ProbeStage.Image:
                 BuildImageStage();
+                break;
+
+            case ProbeStage.Chat:
+                BuildChatStage();
                 break;
         }
     }
@@ -172,5 +181,38 @@ public partial class MainWindow : Window
         };
 
         ContentHost.Children.Add(image);
+    }
+
+    /// <summary>
+    /// 完整聊天场景。这是整份评估里唯一有对比价值的一组数 ——
+    /// 空窗口只说明壳的基线，而换壳到底值不值，取决于「一条真实消息画出来要多少钱」。
+    /// </summary>
+    private void BuildChatStage()
+    {
+        var messages = ChatScenario.BuildHistory(_options.MessageCount);
+
+        // 缩略图走「PNG 落盘 → 解码 → 显示」，跟真实场景一致。
+        // 直接喂内存位图会把解码那份开销漏掉，内存会量偏。
+        Bitmap? thumbnail = null;
+        if (messages.Exists(m => m.HasImage))
+        {
+            var thumbPath = Path.Combine(Path.GetTempPath(), "wishfulclaw-avalonia-probe-thumb.png");
+            ScreenshotFixture.EnsurePng(thumbPath, 840, 560);
+            thumbnail = new Bitmap(thumbPath);
+        }
+
+        var scroller = ChatScenario.BuildView(messages, thumbnail);
+        ContentHost.Children.Add(scroller);
+
+        // 落到底部 —— 真实聊天窗打开就是最新的在最下面，量的是这个状态。
+        // 要等首次布局完成，否则 ScrollToEnd 拿到的 extent 还是 0。
+        Dispatcher.UIThread.Post(() => scroller.ScrollToEnd(), DispatcherPriority.Loaded);
+
+        if (!_options.Streaming) return;
+
+        var target = messages.LastOrDefault(m => !m.IsUser);
+        if (target is null) return;
+
+        _stopChatStream = ChatScenario.StartStreaming(target, () => scroller.ScrollToEnd());
     }
 }

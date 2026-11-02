@@ -224,6 +224,21 @@ public static partial class ProviderRetryPolicy
         return configured.Value;
     }
 
+    /// <summary>
+    /// S-304: transport-layer failures worth retrying. Two <b>unrelated</b> exception
+    /// types cover them — <see cref="HttpRequestException"/> (send / connect failures)
+    /// and <see cref="HttpIOException"/> ("the response ended prematurely", i.e.
+    /// <c>HttpRequestError.ResponseEnded</c>). HttpIOException derives from
+    /// <see cref="IOException"/>, NOT from HttpRequestException.
+    ///
+    /// Kept in one place on purpose: the three call sites (both streaming providers and
+    /// <c>ProviderCompletionService</c>) each used to spell out HttpRequestException
+    /// only, which is exactly how a mid-stream disconnect slipped past every retry path
+    /// and killed a run that had been working for twenty minutes.
+    /// </summary>
+    internal static bool IsRetryableTransportError(Exception ex) =>
+        ex is HttpRequestException or HttpIOException;
+
     internal static bool IsRetryableStatus(int statusCode)
     {
         // 400 曾经是可重试的（audit M30，2026-08-28 撤销收紧）：当时有服务商把「过载 /

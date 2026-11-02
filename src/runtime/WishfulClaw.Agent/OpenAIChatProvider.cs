@@ -89,15 +89,28 @@ internal static partial class OpenAIChatProvider
                 value => finalStopReason = value,
                 value => nativeFinishReason = value);
         }
-        catch (HttpRequestException ex) when (
-            !state.CancellationToken.IsCancellationRequested &&
-            assistantText.Length == 0 &&
-            reasoningContent.Length == 0 &&
-            toolCalls.Count == 0 &&
-            toolBuffers.Count == 0)
+        // S-304: a stream that dies mid-flight does NOT throw HttpRequestException —
+        // .NET raises HttpIOException (HttpRequestError.ResponseEnded, surfaced as
+        // "net_http_invalid_response_premature_eof (ResponseEnded)"). The two types
+        // are unrelated (HttpIOException derives from IOException), so the old catch
+        // never fired and a single network blip killed the whole run.
+        //
+        // The "nothing emitted yet" guard is gone on purpose: a run that has been
+        // working for twenty minutes must not die because the upstream dropped the
+        // socket. Whatever already reached the UI stays there as an interrupted
+        // segment; the retry re-runs this whole method, opens a fresh text block and
+        // its output lands as a new segment. Nothing is duplicated or rewritten.
+        catch (Exception ex) when (
+            ProviderRetryPolicy.IsRetryableTransportError(ex) &&
+            !state.CancellationToken.IsCancellationRequested)
         {
+            // Close a thinking block the interrupted stream left open, so the
+            // renderer stops showing it as still streaming.
+            await StreamSegmentBoundary.EmitAsync(state, context, boundary.AtEnd());
             WorkerLog.Warn(
                 $"openai-chat connection failure, retrying runId={state.RunId} " +
+                $"emittedChars={assistantText.Length + reasoningContent.Length} " +
+                $"completedToolCalls={toolCalls.Count} pendingToolBuffers={toolBuffers.Count} " +
                 $"error={ex.GetBaseException().Message}");
             throw new ProviderHttpException(
                 "OpenAI-compatible chat",

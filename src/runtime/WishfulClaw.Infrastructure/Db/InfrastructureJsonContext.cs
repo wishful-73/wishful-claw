@@ -43,7 +43,6 @@ namespace WishfulClaw.Infrastructure;
 [JsonSerializable(typeof(GoalLedgerSnapshot))]
 [JsonSerializable(typeof(GoalLedgerFindResult))]
 [JsonSerializable(typeof(GoalPlanSnapshotMutationResult))]
-[JsonSerializable(typeof(MessageCompactResult))]
 [JsonSerializable(typeof(MessageCountResult))]
 [JsonSerializable(typeof(MessageDeleteResult))]
 [JsonSerializable(typeof(MessageMutationResult))]

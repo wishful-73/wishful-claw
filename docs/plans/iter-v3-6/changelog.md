@@ -698,6 +698,31 @@ checkTrue(SCREENSHOTS_SUBDIR !== CHAT_IMAGES_SUBDIR, '截图目录必须与聊�
 3. 把某个任务的项目改成「全局」⇒ 项目会话立刻查不到
 4. 老库升级（判据 5）：拿 1.0.5 的 `index.db` 副本启动 ⇒ 列自动补、老任务全 NULL、任务板正常
 
+## 2026-11-02 · 刀 4 交付：S-292 删掉渠道 `/compress`
+
+### 为什么不是「让它真压」
+
+界面按钮那条链是真压缩：`compressSessionContext` → worker `agent/compress-context` → `AgentRuntimeContextCompressionTools.CompressAsync`。渠道命令走的是另一条：`db/messages-compact-session` → `DbMessageCompactTools.CompactSession`，而它的 `TryCompactMessageContent` 只认 `content` 是 **JSON 数组**；S-285 之后 `content` 是纯文本 ⇒ 全部跳过 ⇒ `compacted = 0` ⇒ 回一句假话「Context is already compact.」。
+
+要让命令真压，得在 main 进程重建 provider payload —— 但 `resolveSendModel` + `buildProviderPayload` 的唯一真源在渲染层，搬到 main 就是**双真源**。而且渠道压缩是长耗时 LLM 调用、没有进度反馈，渠道里等一分钟不吭声比没有这个命令更糟。
+
+⇒ **删命令**。`messages-compact-session` 的调用方只有这个命令和它自己的注册，`MessageCompactResult` 无测试覆盖 ⇒ 一并删掉，不留死代码。
+
+### 改动面
+
+`plugin-command-handlers.ts`（函数体 + 接口 + help 一行）、`plugin-commands.ts`（import + 注册）、`DbMessageCompactTools.cs`（`CompactSession` + 三个 compaction 辅助 + 两个失效 using，**保留 `UsageStats`**）、`DbModule.cs`（注册）、`MessageEntity.cs`（记录定义）、两个 JsonContext（序列化注册）、`DbMessageToolsMutations.cs`（尾注释）。
+
+### 门禁
+
+`npm run typecheck` 三配置 **0 错** ｜ `npm test` **119/119** ｜ `dotnet build src\runtime\WishfulClaw.sln` **0 警告 0 错误**。
+
+### 真机验收待做（需要老大）
+
+1. 渠道发 `/help` ⇒ 列表里没有 `/compress`
+2. 渠道发 `/compress` ⇒ 按未知命令处理，不再回假话
+3. 界面「压缩会话」按钮行为不变（仍真压缩）
+4. 会话「用量统计」仍正常
+
 
 
 

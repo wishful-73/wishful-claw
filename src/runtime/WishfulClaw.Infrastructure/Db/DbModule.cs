@@ -53,7 +53,6 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-clear", DbMessageTools.Clear);
         context.Register("db/messages-delete", DbMessageTools.Delete);
         context.Register("db/messages-count", DbMessageTools.Count);
-        context.Register("db/messages-compact-session", DbMessageCompactTools.CompactSession);
         context.Register("db/messages-usage-stats", DbMessageCompactTools.UsageStats);
         context.Register("db/messages-search-content", DbMessageTools.SearchContent);
 

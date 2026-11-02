@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Plugin Command System — dispatcher & public API.
  *
  * Handles slash commands sent by users through messaging plugins.
@@ -15,7 +15,6 @@ import {
   handleNew,
   handleInit,
   handleStatus,
-  handleCompress,
   handleStats
 } from './plugin-command-handlers'
 import { stripLeadingAtMention } from './channel-cancel-commands'
@@ -32,7 +31,6 @@ commands.set('help', handleHelp)
 commands.set('new', handleNew)
 commands.set('init', handleInit)
 commands.set('status', handleStatus)
-commands.set('compress', handleCompress)
 commands.set('stats', handleStats)
 
 // ── Utilities ──

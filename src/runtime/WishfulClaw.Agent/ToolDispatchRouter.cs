@@ -542,6 +542,21 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
+        // S-301: the agent reading back the user's own messages in this session.
+        else if (AgentRuntimeSessionHistoryExecutor.IsSessionHistoryTool(toolCall.Name))
+        {
+            try
+            {
+                toolOutput = AgentRuntimeSessionHistoryExecutor.Execute(toolCall.Input, state.Parameters);
+                isToolError = IsJsonError(toolOutput);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                toolOutput = $"Session history tool execution failed: {ex.Message}";
+                isToolError = true;
+            }
+        }
         else if (SubAgentExecutor.IsTaskTool(toolCall.Name))
         {
             try

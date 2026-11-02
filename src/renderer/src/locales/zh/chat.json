@@ -692,6 +692,7 @@
       "update_dispatch": "更新派发记录",
       "list_global_dispatches": "派发记录列表",
       "list_project_tasks": "本项目任务列表",
+      "list_user_messages": "本会话用户发言",
       "reply_global_dispatch": "回复全局派发",
       "create_project": "新建项目",
       "list_projects": "项目列表",

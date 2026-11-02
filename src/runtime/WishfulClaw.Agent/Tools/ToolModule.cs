@@ -51,6 +51,7 @@ public sealed class ToolModule : IWorkerModule
             new Providers.PlanToolProvider(),
             new Providers.PluginToolProvider(),
             new Providers.ProjectToolsProvider(),
+            new Providers.SessionHistoryToolProvider(),
             new Providers.SkillManagementToolProvider(),
             new Providers.SkillToolProvider(),
             new Providers.SshToolProvider(),

@@ -784,6 +784,49 @@ hook 依赖 electron IPC，node 下起不来。判据抽到 `lib/channel/run-rep
 2. 正常定时任务 ⇒ 推的仍是本次结果
 3. 连发两次、第二次零文本 ⇒ 不会把第一次的内容再推一遍
 
+---
+
+## 2026-11-02 · 刀 7 · S-301 agent 回看当前会话的用户发言
+
+### 为什么需要它
+
+工作模式是「全局 PM 统管、项目会话少参与」。全局会话跑得越久压缩越多，用户早期说过的话就彻底离开上下文，PM 于是重复问已经定过的事。现在没有任何工具能把那些话捞回来 —— `SessionRestoreTools.RestoreFromDb` 只在懒重建时用，模型不能主动触发。
+
+### 只做三件事
+
+`list_user_messages(date?, limit?)`：不传 `date` 回最近 `limit` 条；传 `date` 回那一天的全部（本地时区切日）。只回 `role='user'` 的精简投影。老大明确否掉三个方向 —— **不跨会话**、**不做关键词搜索**、**不做 query 语义检索**。
+
+`ListByTurns` 不能直接当工具：它返回整轮全部内容（含 assistant 正文、工具块、思考流），单轮可能上万 token，塞进 agent 上下文是自杀。所以新端点是**并列新增**的 `db/messages-list-user`，`ListByTurns` 一字未动（前端历史加载依赖它）。
+
+### 唯一的安全边界：sessionId 不许模型传
+
+工具侧现有惯例是模型传 `sessionId`（`ProjectToolsProvider` 六处、`AgentRuntimeContextCompressionTools` 都是）。**本工具刻意不沿用** —— 让模型传 sessionId 等于把「能不能读别的会话」交给模型判断，全局 PM 一旦传了项目会话 id 就绕开了「只当前会话」的约定。
+
+`ExecuteRunAsync` 已把 run state 的 `SessionId` 注入 `state.Parameters`，executor 只读 `parameters.sessionId`。测试反向验证：模型在入参里塞 `sessionId="session-other"` ⇒ 读不到另一会话的私货，仍读 run 参数那个会话。
+
+### 时区是本条最容易错的地方
+
+`created_at` 是 unix 毫秒，Db 层此前零日期解析先例。`TryParseExact("yyyy-MM-dd")` 出来是 `Kind=Unspecified`，直接 `ToUniversalTime()` 会按机器本地解释两次，切日出偏移。正确写法是 `SpecifyKind(parsed, Local)` 后按本地取当日 `[00:00, 24:00)`。
+
+测试造一条「本地 07:30」的消息按当天日期查 —— 东半球按 UTC 切日会把它算到前一天，这条判据会红。反向也钉了：本地偏移为正时，昨天**必须**查不到它，防以后有人把两边边界都放宽成「±1 天」糊过去。
+
+### 附件摘要是必须的
+
+PM 看到「你看看这个」完全不知道在说什么。所以图片从 `meta.content` 数 `type=image` ⇒ `"图片 ×1"`；粘贴块把正文里的 `<pasted-block>{json}</pasted-block>` 按 `payload.text` 计字数、展开成 `[粘贴 · N 字]` 占位（标签本身是渲染层 chip 形态，不能原样喂给模型）。
+
+### 日期格式不静默兜底
+
+模型可能传 `2026/11/02` 或 `11-02`。`TryParseExact` 失败必须返回带 `YYYY-MM-DD` 字样的错误，让模型自己纠正 —— 静默当成今天是最坏的选项。
+
+### 门禁
+
+`npm run typecheck` **0 错** ｜ `npm test` **121/121**（新增 `SessionHistory` 套件，真库端到端；`tool-labels-coverage` 12 断言 / `i18n-coverage` 2 断言均绿）｜ `dotnet build` 两套 sln **0 警告 0 错误**。
+
+### 真机验收待做
+
+全局 PM 里问「我昨天说过什么」⇒ 应调 `list_user_messages` 并答出原文。本刀只保证 DB 层与执行器层的判据，跨模型行为需要老大机器上跑。
+
+
 
 
 

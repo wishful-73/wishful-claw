@@ -692,6 +692,7 @@
       "update_dispatch": "Update Dispatch",
       "list_global_dispatches": "List Dispatches",
       "list_project_tasks": "List Project Tasks",
+      "list_user_messages": "List User Messages In Session",
       "reply_global_dispatch": "Reply to Dispatch",
       "create_project": "Create Project",
       "list_projects": "List Projects",

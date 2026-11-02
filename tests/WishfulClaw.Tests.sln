@@ -71,6 +71,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.DispatchRouterR
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.SessionMessageWireRegressionTests", "WishfulClaw.SessionMessageWireRegressionTests\WishfulClaw.SessionMessageWireRegressionTests.csproj", "{618685B7-BB7C-4E7E-8719-84AA0AA6F2D1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WishfulClaw.SessionHistoryRegressionTests", "WishfulClaw.SessionHistoryRegressionTests\WishfulClaw.SessionHistoryRegressionTests.csproj", "{A233DB4B-B41F-4F54-AEC1-8C9502087348}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -489,6 +491,18 @@ Global
 		{618685B7-BB7C-4E7E-8719-84AA0AA6F2D1}.Release|x64.Build.0 = Release|Any CPU
 		{618685B7-BB7C-4E7E-8719-84AA0AA6F2D1}.Release|x86.ActiveCfg = Release|Any CPU
 		{618685B7-BB7C-4E7E-8719-84AA0AA6F2D1}.Release|x86.Build.0 = Release|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Debug|x64.Build.0 = Debug|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Debug|x86.Build.0 = Debug|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Release|x64.ActiveCfg = Release|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Release|x64.Build.0 = Release|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Release|x86.ActiveCfg = Release|Any CPU
+		{A233DB4B-B41F-4F54-AEC1-8C9502087348}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

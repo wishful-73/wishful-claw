@@ -35,8 +35,14 @@ const mediaUrl = filePathToMediaUrl
 
 // ─── 1. 正常解析与还原 ───
 
-const windowsPath = 'C:\\Users\\me\\.wishful-claw\\images\\2026-10\\9f2c1a7b3e5d4c60.png'
-checkEqual(parseMediaUrlPath(mediaUrl(windowsPath)), windowsPath, 'Windows 路径往返一致')
+// 盘符路径只在 Windows 上成立：`parseMediaUrlPath` 里的 `isAbsolute` 来自平台
+// `path`，POSIX 会把 `C:\...` 判成相对路径而直接返回 null。CI 跑在
+// ubuntu-latest，所以这类断言必须按平台隔离 —— 否则红的是测试自身的平台假设，
+// 不是被测代码。
+if (process.platform === 'win32') {
+  const windowsPath = 'C:\\Users\\me\\.wishful-claw\\images\\2026-10\\9f2c1a7b3e5d4c60.png'
+  checkEqual(parseMediaUrlPath(mediaUrl(windowsPath)), windowsPath, 'Windows 路径往返一致')
+}
 
 const spacedPath = '/home/me/My Pictures/a b.png'
 checkEqual(parseMediaUrlPath(mediaUrl(spacedPath)), spacedPath, '含空格路径往返一致')
@@ -66,12 +72,17 @@ checkEqual(
   null,
   '含 .. 段拒绝'
 )
-checkEqual(
-  parseMediaUrlPath(`${LOCAL_MEDIA_SCHEME}://local/${encodeURIComponent('C:\\a\\..\\b.png')}`),
-  null,
-  'Windows 反斜杠 .. 段同样拒绝'
-)
-checkEqual(parseMediaUrlPath(mediaUrl('\\\\server\\share\\a.png')), null, 'UNC 路径拒绝')
+// 这两条同样只在 Windows 上有意义：POSIX 下 `C:\a\..\b.png` 和
+// `\\server\share\a.png` 都不是绝对路径，会在 `isAbsolute` 那一关就返回 null，
+// 根本走不到「`..` 段」和「UNC」的判定 —— 断言虽然还是绿的，测的却不是那两条规则。
+if (process.platform === 'win32') {
+  checkEqual(
+    parseMediaUrlPath(`${LOCAL_MEDIA_SCHEME}://local/${encodeURIComponent('C:\\a\\..\\b.png')}`),
+    null,
+    'Windows 反斜杠 .. 段同样拒绝'
+  )
+  checkEqual(parseMediaUrlPath(mediaUrl('\\\\server\\share\\a.png')), null, 'UNC 路径拒绝')
+}
 checkEqual(parseMediaUrlPath(mediaUrl('//server/share/a.png')), null, '正斜杠 UNC 也拒绝')
 
 // ─── 3. 扩展名白名单 ───

@@ -24,7 +24,7 @@ import { useChatStore } from '@renderer/stores/chat-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { IPC } from '@renderer/lib/ipc/channels'
 import type { AgentStreamEvent } from '../../../shared/agent-stream-protocol'
-import type { ChatMessage } from '@renderer/stores/chat-store/types'
+import { pickRunReplyText } from '@renderer/lib/channel/run-reply-window'
 import { dbGetSession } from '@renderer/stores/chat-store/db-helpers'
 import { normalizeSessionContext } from '@renderer/lib/session-context'
 import { buildProviderPayload } from '@renderer/lib/agent/provider-payload'
@@ -86,6 +86,14 @@ interface ActiveAutoReply {
   sentReplyCount: number
   successfulReplyCount: number
   failedReplyCount: number
+  /**
+   * S-291：本次运行开始前会话里已有的消息数。
+   *
+   * 兜底逻辑「本次没流式输出就取最后一条 assistant 消息」原先扫的是**整条会话历史** ——
+   * 本轮零文本时会一路翻到上一轮、甚至昨晚那条，把历史内容当本次结果推给渠道。
+   * 记下基线后兜底只看 `slice(baselineMessageCount)`：本次区间内没文本，就老实说没文本。
+   */
+  baselineMessageCount: number
   onComplete?: (result: ExternalChannelReplyResult) => void
 }
 
@@ -114,8 +122,15 @@ export function registerExternalChannelReply(
     sentReplyCount: 0,
     successfulReplyCount: 0,
     failedReplyCount: 0,
+    baselineMessageCount: countSessionMessages(sessionId),
     onComplete
   })
+}
+
+/** S-291：注册回复时记下「本次运行开始前已有多少条消息」，兜底只在这个区间里找。 */
+function countSessionMessages(sessionId: string): number {
+  const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
+  return session?.messages.length ?? 0
 }
 
 /** Unregister without sending (used when the run fails before starting). */
@@ -247,7 +262,8 @@ async function handleSessionTask(task: SessionTaskPayload): Promise<boolean> {
     replySendChain: Promise.resolve(),
     sentReplyCount: 0,
     successfulReplyCount: 0,
-    failedReplyCount: 0
+    failedReplyCount: 0,
+    baselineMessageCount: countSessionMessages(sessionId)
   })
 
   // 5. Call sendMessage to trigger the Agent Loop
@@ -379,20 +395,14 @@ async function sendAgentReply(sessionId: string): Promise<void> {
   flushAutoReplyText(sessionId)
 
   // If no streamed segment was observed, fall back to the completed assistant message.
+  // S-291：只在**本次运行区间**里找 —— 扫整条历史会在本轮零文本时捞到上一轮的内容。
   if (autoReply.sentReplyCount === 0) {
-    const store = useChatStore.getState()
-    const session = store.sessions.find((s) => s.id === sessionId)
-    let finalText = ''
-    if (session) {
-      for (let i = session.messages.length - 1; i >= 0; i--) {
-        const msg = session.messages[i]
-        if (msg.role === 'assistant' && !msg.isStreaming) {
-          finalText = msg.text || extractTextFromContent(msg)
-          if (finalText) break
-        }
-      }
-    }
-    enqueueChannelReply(autoReply, finalText)
+    const session = useChatStore.getState().sessions.find((s) => s.id === sessionId)
+    const finalText = session
+      ? pickRunReplyText(session.messages, autoReply.baselineMessageCount)
+      : ''
+    // 本次区间内也没有文本 ⇒ 说清楚，绝不把历史当成本次结果推出去。
+    enqueueChannelReply(autoReply, finalText || emptyReplyNotice())
   }
 
   await autoReply.replySendChain
@@ -411,16 +421,17 @@ async function sendAgentReply(sessionId: string): Promise<void> {
   await completeChannelTaskId(autoReply.channelTaskId)
 }
 
-function extractTextFromContent(msg: ChatMessage): string {
-  if (!msg.content) return ''
-  if (typeof msg.content === 'string') return msg.content
-  if (Array.isArray(msg.content)) {
-    return msg.content
-      .filter((b) => b.type === 'text')
-      .map((b) => ('text' in b ? b.text ?? '' : ''))
-      .join('')
-  }
-  return ''
+/**
+ * S-291：本轮确实没有任何可回复文本时的说明。
+ *
+ * 以前这种情况会一路翻历史捞上一条推出去，用户看到的是「重复的旧内容」；现在老实说清楚，
+ * 用户才知道该去软件里看执行过程（多半是轮次掐断或纯工具调用）。
+ */
+function emptyReplyNotice(): string {
+  const isEn = useSettingsStore.getState().language === 'en'
+  return isEn
+    ? 'The run finished without producing any text to reply with.'
+    : '本轮执行结束，没有产生可回复的文本输出。'
 }
 
 async function completeChannelTaskId(taskId?: string): Promise<void> {

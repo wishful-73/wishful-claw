@@ -754,6 +754,36 @@ checkTrue(SCREENSHOTS_SUBDIR !== CHAT_IMAGES_SUBDIR, '截图目录必须与聊�
 3. 再加 `WISHFULCLAW_ALLOW_SHARED_DATA_DIR=1` ⇒ 正常启动 + 一条 warn
 4. 打包版不受影响
 
+## 2026-11-02 · 刀 6 交付：S-291 渠道回执不再推历史
+
+### 根因是「兜底扫整条会话」
+
+`sentReplyCount === 0` 时的兜底是「从 `session.messages` 末尾倒序找最后一条 assistant」，而且 `if (finalText) break` —— 空消息会被跳过，所以本轮零文本时**必然**捞到上一轮那条。定时任务 15 轮掐断正好制造「本轮零文本」，于是早上 9 点维护推的是昨晚的内容。
+
+### 修法是记基线，不是加判断
+
+`ActiveAutoReply` 加 `baselineMessageCount`，在**注册回执时**（`sendMessage` 之前）记下已有消息数。兜底只看 `slice(baseline)`。这一条同时治好 `cron-runtime.ts` 的 `result.summary`（同一形状的兜底）。
+
+区间内也没有文本 ⇒ 回一句明确说明。**说清楚比推历史强**：用户看到「本轮执行结束，没有产生可回复的文本输出」至少知道该去软件里看执行过程。
+
+### 一处刻意的保守
+
+基线超出当前长度（消息被清空 / 重载过）时当空区间处理，返回空串。宁可这一轮少推一条，也不冒「把历史当本次结果」的风险 —— 那正是这条缺陷的现场。测试里把这条钉成断言，防以后有人「顺手放宽」。
+
+### 抽纯函数的原因
+
+hook 依赖 electron IPC，node 下起不来。判据抽到 `lib/channel/run-reply-window.ts`，新增 `test:run-reply-window` 9 条断言。
+
+### 门禁
+
+`npm run typecheck` 三配置 **0 错** ｜ `npm test` **120/120**（新增 1 套件）｜ `dotnet build` **0 警告 0 错误** ｜ `ci-checks` **91/91**。
+
+### 真机验收待做（需要微信凭证 + 白天）
+
+1. 定时任务轮次设 2、纯工具调用后停 ⇒ 收到「本轮执行结束，没有产生可回复的文本输出。」，不是历史
+2. 正常定时任务 ⇒ 推的仍是本次结果
+3. 连发两次、第二次零文本 ⇒ 不会把第一次的内容再推一遍
+
 
 
 

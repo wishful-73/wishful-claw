@@ -114,7 +114,8 @@
     "test:global-dispatch-meta": "esbuild tests/global-dispatch-meta/program.ts --bundle --platform=node --format=cjs --alias:@renderer/lib/project-data-dir=./tests/global-dispatch-meta/stubs/project-data-dir.ts --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/global-dispatch-meta/out/program.cjs && node tests/global-dispatch-meta/out/program.cjs",
     "test:message-signature": "esbuild tests/message-signature/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/message-signature/out/program.cjs && node tests/message-signature/out/program.cjs",
     "test:search-recent-sessions": "esbuild tests/search-recent-sessions/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --outfile=tests/search-recent-sessions/out/program.cjs && node tests/search-recent-sessions/out/program.cjs",
-    "test:sidebar-session-signature": "esbuild tests/sidebar-session-signature/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/sidebar-session-signature/out/program.cjs && node tests/sidebar-session-signature/out/program.cjs"
+    "test:sidebar-session-signature": "esbuild tests/sidebar-session-signature/program.ts --bundle --platform=node --format=cjs --alias:@renderer=./src/renderer/src --alias:@shared=./src/shared --outfile=tests/sidebar-session-signature/out/program.cjs && node tests/sidebar-session-signature/out/program.cjs",
+    "test:run-reply-window": "esbuild tests/run-reply-window/program.ts --bundle --platform=node --format=cjs --outfile=tests/run-reply-window/out/program.cjs && node tests/run-reply-window/out/program.cjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

@@ -41,7 +41,7 @@ for (const [name, source] of [
   const contents = source.match(/<DialogContent[\s\S]*?>/g) ?? []
   check(contents.length === 1, `${name} 里应当只有一个 DialogContent（实得 ${contents.length}）`)
   check(
-    contents[0].includes('sm:max-w-[95vw]'),
+    contents[0]?.includes('sm:max-w-[95vw]') === true,
     `${name} 的 DialogContent 必须写 sm:max-w-[95vw] —— 否则内置 sm:max-w-lg 会在 ≥640px 视口把浮层压回 512px`
   )
 }

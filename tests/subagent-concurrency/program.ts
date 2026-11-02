@@ -87,7 +87,7 @@ function endEvent(toolUseId: string, name = 'code-reviewer'): SubAgentEvent {
 async function main(): Promise<void> {
   // store 的静态依赖链会经 ipc-client / agent-runtime-sync 拿 window.electron，
   // node 下没有；persist 中间件要 localStorage。垫空壳只为让模块图能加载。
-  const g = globalThis as typeof globalThis & {
+  const g = globalThis as unknown as {
     window: unknown
     localStorage: unknown
   }

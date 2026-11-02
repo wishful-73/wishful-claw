@@ -7,7 +7,9 @@ import { check, checkPreset, dynamicPresetIds, expectedNewPresetIds } from './ch
 export function runRegistrySuite(): void {
   const ids = builtinProviderPresets.map((preset) => preset.builtinId)
   const uniqueIds = new Set(ids)
-  const expectedNewPresetSet = new Set(expectedNewPresetIds)
+  // expectedNewPresetIds 是 `as const` 数组，直接 new Set 会得到字面量联合的 Set，
+  // 而 preset.builtinId 声明成 string —— 显式标 Set<string> 才能按 string 查。
+  const expectedNewPresetSet = new Set<string>(expectedNewPresetIds)
   check(uniqueIds.size === ids.length, 'all registered builtinIds are unique')
   for (const preset of builtinProviderPresets) {
     checkPreset(preset, expectedNewPresetSet.has(preset.builtinId) && !dynamicPresetIds.has(preset.builtinId))

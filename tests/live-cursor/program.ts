@@ -22,7 +22,7 @@ function check(condition: unknown, message: string): asserts condition {
 }
 
 const think = (closed: boolean): { type: string; closed: boolean } => ({ type: 'think', closed })
-const text = (): { type: string } => ({ type: 'text' })
+const text = (): { type: string } => ({ type: 'text' });
 
 // ── While thinking: the block owns the cursor ────────────────────────────────
 {

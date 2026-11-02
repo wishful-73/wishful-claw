@@ -2,7 +2,6 @@
 // 拆分自 program.ts（S-252，2026-10-28），断言本体逐字平移。
 import assert from 'node:assert/strict'
 import {
-  checks,
   check,
   NEXT_VERSION,
   createHarness,

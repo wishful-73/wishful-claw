@@ -10,7 +10,7 @@ import {
   resetProviderToPreset
 } from '../../src/renderer/src/stores/provider-materialization'
 import type { AIProvider } from '../../src/shared/types/provider'
-import { check, checks } from './checks'
+import { check } from './checks'
 
 export function runLegacyUpgradeSuite(): void {
   // ─── R-9: the whole upgrade path, new install and pre-R-9 legacy config ───
@@ -53,7 +53,7 @@ export function runLegacyUpgradeSuite(): void {
     const custom: AIProvider = {
       id: 'nanoid-custom-relay',
       name: 'My relay',
-      type: 'openai',
+      type: 'openai-chat',
       apiKey: 'sk-relay',
       baseUrl: 'https://relay.example/v1',
       enabled: true,
@@ -315,11 +315,12 @@ export function runLegacyUpgradeSuite(): void {
       resetProviderToPreset({
         id: 'nanoid-custom',
         name: 'My relay',
-        type: 'openai',
+        type: 'openai-chat',
         apiKey: '',
         baseUrl: 'https://relay.example/v1',
         enabled: true,
-        models: []
+        models: [],
+        createdAt: 0
       }) === null,
       'R-9 a custom provider has no preset to reset to'
     )

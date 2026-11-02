@@ -124,8 +124,11 @@ checkEqual(stripImagePayloads(null), null, 'null 原样返回')
 
   const output = stripImagePayloads(msg) as typeof msg
 
-  checkEqual('data' in output.content[1].source, false, 'content 容器：data 被剥')
-  checkEqual(output.content[1].source.filePath, 'C:\\a.png', 'content 容器：filePath 保留')
+  // `imageBlock()` 的返回类型是 unknown（测试里故意允许构造畸形块），这里断言成 ImageBlock
+  // 只为读 source.filePath，断言的正确性由上面「data 被剥」那条兜。
+  const strippedImage = output.content[1] as unknown as ImageBlock
+  checkEqual('data' in strippedImage.source, false, 'content 容器：data 被剥')
+  checkEqual(strippedImage.source.filePath, 'C:\\a.png', 'content 容器：filePath 保留')
 
   checkTrue(
     JSON.stringify(output.segments).includes('C:\\\\b.png') ||

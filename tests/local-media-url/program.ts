@@ -15,7 +15,6 @@
 import assert from 'node:assert/strict'
 import {
   ALLOWED_MEDIA_EXTENSIONS,
-  LOCAL_MEDIA_HOST,
   LOCAL_MEDIA_SCHEME,
   guessMediaTypeFromPath,
   isAllowedMediaPath,

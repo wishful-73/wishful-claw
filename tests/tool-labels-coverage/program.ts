@@ -90,7 +90,7 @@ function collectDeclaredToolNames(): Map<string, string> {
   for (const file of walkFiles(sourceRoot)) {
     const source = fs.readFileSync(file, 'utf8')
     for (const match of source.matchAll(declRe)) {
-      const [, varName, body] = match
+      const [, , body] = match
       for (const literal of body.matchAll(/'([^'\r\n]{1,64})'/g)) {
         const name = literal[1]
         // 工具名特征：含大写字母或下划线。纯小写单词多半是分类值（'hidden' / 'custom'）。

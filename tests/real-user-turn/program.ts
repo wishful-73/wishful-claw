@@ -35,7 +35,9 @@ function assistant(text: string): TurnCountableMessage {
 
 /** 压缩边界：role 是 'system'、内容为空 —— 本来就不该被当成用户轮。 */
 function boundary(): TurnCountableMessage {
-  return { role: 'system', content: '', meta: { compactBoundary: {} } }
+  // `TurnCountableMessage['meta']` 只声明了 compactSummary，这里要构造的是另一种边界卡；
+  // 断言只为让这个畸形形状进得来，本用例断言的是「role=system 且内容为空」不被算成用户轮。
+  return { role: 'system', content: '', meta: { compactBoundary: {} } as unknown as TurnCountableMessage['meta'] }
 }
 
 const cases: Array<[string, () => void]> = [

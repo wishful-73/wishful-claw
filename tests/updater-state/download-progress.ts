@@ -2,7 +2,7 @@
 // 拆分自原单文件 download-progress.ts（S-252，2026-10-28），断言本体逐字平移。
 
 import assert from 'node:assert/strict'
-import { NO_UPDATE_OPERATION_ID } from '../../src/shared/updater/types'
+import { NO_UPDATE_OPERATION_ID, type UpdateStateSnapshot } from '../../src/shared/updater/types'
 import { observeDownload, pickProgressSnapshot } from '../../src/main/updater-state'
 import { createUpdateProgressFormatter } from '../../src/renderer/src/components/updater/update-progress'
 import {

@@ -22,11 +22,6 @@ import {
 
 let checks = 0
 
-function check(condition: boolean, description: string): void {
-  checks += 1
-  assert.ok(condition, description)
-}
-
 function checkEqual<T>(actual: T, expected: T, description: string): void {
   checks += 1
   assert.equal(actual, expected, `${description}（期望 ${String(expected)}，实得 ${String(actual)}）`)

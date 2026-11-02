@@ -9,7 +9,6 @@ import {
   createHarness,
   reachAvailable
 } from './harness'
-import { createGateHarness } from './gate-harness'
 
 export interface GateHarness {
   coordinator: UpdaterStateCoordinator

@@ -54,7 +54,7 @@ function provider(
 const candidate = (providerId: string, modelId: string): ProviderFallbackCandidate => ({
   providerId,
   modelId
-})
+});
 
 // ── Which chain applies ──────────────────────────────────────────────────────
 {

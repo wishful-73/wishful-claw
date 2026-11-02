@@ -134,7 +134,7 @@ const tests: Array<[string, () => void]> = [
 ]
 
 async function main(): Promise<void> {
-  ;(globalThis as typeof globalThis & { window: unknown }).window = {
+  ;(globalThis as unknown as { window: unknown }).window = {
     electron: {
       ipcRenderer: {
         invoke: async () => undefined,

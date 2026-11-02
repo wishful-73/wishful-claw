@@ -31,3 +31,68 @@ export function pickDataDir(envValue: string | undefined, isPackaged: boolean): 
   if (configured) return { fromEnv: true, value: configured }
   return { fromEnv: false, value: dataDirName(isPackaged) }
 }
+
+/**
+ * 逃生舱（S-293）：明知有污染风险、仍要用那份库调试时设 `1`，block 降级为 warn。
+ * 不给这个开关，唯一的选择就是「去改代码」，那比显式放行更难查。
+ */
+export const WISHFULCLAW_ALLOW_SHARED_DATA_DIR_ENV = 'WISHFULCLAW_ALLOW_SHARED_DATA_DIR'
+
+/** 目标数据目录的探测结果 —— 由主进程用 `fs` 探完传进来（shared 层不能碰 `node:fs`）。 */
+export interface DataDirProbe {
+  /** 目标目录是否已存在 */
+  exists: boolean
+  /** 目标目录里是否已有 `index.db` */
+  hasDatabase: boolean
+}
+
+export type DataDirRiskLevel = 'ok' | 'warn' | 'block'
+
+export interface DataDirRisk {
+  level: DataDirRiskLevel
+  /** 给日志 / 弹窗用的说明；`ok` 时为 `null`。 */
+  reason: string | null
+}
+
+/** 取路径末段目录名，不引 `node:path`（本模块同时被 `tsconfig.web.json` 编译）。 */
+function lastSegment(value: string): string {
+  const parts = value.split(/[\\/]+/).filter((part) => part.length > 0)
+  return parts.length > 0 ? parts[parts.length - 1] : ''
+}
+
+/**
+ * 非打包构建是否会污染一份已有的生产库（S-293）。
+ *
+ * 为什么只在「显式配置」时判：非打包构建的**默认**目录是 `.wishful-claw-dev`，
+ * 那里有 `index.db` 是它自己写的，拦它等于拦掉正常开发。
+ *
+ * 两级：
+ * - **block** —— 显式指向的目录末段就是生产目录名（`.wishful-claw`）且已有库。这是
+ *   「拿生产库开发」，没有任何合理解释，直接拒绝启动。
+ * - **warn** —— 显式指向其它已存在且带库的目录。可能是用户自己的第二份库，放行但记日志。
+ */
+export function assessDataDirRisk(
+  decision: DataDirDecision,
+  isPackaged: boolean,
+  probe: DataDirProbe
+): DataDirRisk {
+  if (isPackaged) return { level: 'ok', reason: null }
+  if (!decision.fromEnv) return { level: 'ok', reason: null }
+  if (!probe.exists || !probe.hasDatabase) return { level: 'ok', reason: null }
+
+  const target = lastSegment(decision.value)
+  if (target === WISHFUL_CLAW_DATA_DIR_NAME) {
+    return {
+      level: 'block',
+      reason:
+        `非打包构建把数据目录指向了生产库「${decision.value}」。` +
+        `启动会按开发版的 DDL 改这份库的 schema。` +
+        `如确需如此，设 ${WISHFULCLAW_ALLOW_SHARED_DATA_DIR_ENV}=1 放行。`
+    }
+  }
+
+  return {
+    level: 'warn',
+    reason: `非打包构建的数据目录「${decision.value}」里已有一份 index.db，确认它不是你不想动的那份库。`
+  }
+}

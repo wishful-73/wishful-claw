@@ -1,7 +1,15 @@
 import { app } from 'electron'
+import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { join, resolve } from 'path'
-import { pickDataDir, WISHFULCLAW_DATA_DIR_ENV } from '../../shared/data-dir'
+import {
+  assessDataDirRisk,
+  pickDataDir,
+  WISHFULCLAW_ALLOW_SHARED_DATA_DIR_ENV,
+  WISHFULCLAW_DATA_DIR_ENV,
+  type DataDirProbe,
+  type DataDirRisk
+} from '../../shared/data-dir'
 import { WISHFULCLAW_PROJECT_DIR_ENV, pickProjectDirName } from '../../shared/project-dir'
 
 /**
@@ -17,6 +25,31 @@ export function resolveDataDir(): string {
 
 export function resolveDataPath(...segments: string[]): string {
   return join(resolveDataDir(), ...segments)
+}
+
+/**
+ * S-293：启动前探一次「这个数据目录会不会改到一份已有的生产库」。
+ *
+ * 判据在 `assessDataDirRisk`（纯函数、可单测），这里只负责 fs 探测 —— `shared` 层
+ * 同时被 `tsconfig.web.json` 编译，引 `node:fs` 会挂。
+ *
+ * 只在启动序列调用一次：每次 `resolveDataDir()` 都探盘没有意义，而且弹窗只该弹一次。
+ */
+export function inspectDataDirRisk(): DataDirRisk {
+  const decision = pickDataDir(process.env[WISHFULCLAW_DATA_DIR_ENV], app.isPackaged)
+  const dir = decision.fromEnv ? resolve(decision.value) : join(homedir(), decision.value)
+  const probe: DataDirProbe = {
+    exists: existsSync(dir),
+    hasDatabase: existsSync(join(dir, 'index.db'))
+  }
+  const risk = assessDataDirRisk(decision, app.isPackaged, probe)
+  if (
+    risk.level === 'block' &&
+    process.env[WISHFULCLAW_ALLOW_SHARED_DATA_DIR_ENV]?.trim() === '1'
+  ) {
+    return { level: 'warn', reason: `${risk.reason ?? ''}（已由逃生舱放行）` }
+  }
+  return risk
 }
 
 /**

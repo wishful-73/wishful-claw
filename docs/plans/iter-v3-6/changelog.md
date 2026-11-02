@@ -723,6 +723,37 @@ checkTrue(SCREENSHOTS_SUBDIR !== CHAT_IMAGES_SUBDIR, '截图目录必须与聊�
 3. 界面「压缩会话」按钮行为不变（仍真压缩）
 4. 会话「用量统计」仍正常
 
+## 2026-11-02 · 刀 5 交付：S-293 非打包构建不再能改生产库
+
+### 判据只能在「显式配置」时生效
+
+拦「非打包构建指向已有库」会把正常开发一起拦掉 —— dev 默认目录 `.wishful-claw-dev` 里当然有 `index.db`，那是它自己写的。所以判据的第一道闸是 `decision.fromEnv`：只有**显式**把 `WISHFULCLAW_DATA_DIR` 指到某处才判。
+
+第二道闸是目录末段名：`.wishful-claw` ⇒ **block**（拿生产库开发，没有合理解释）；其它已存在带库的目录 ⇒ **warn**（可能是用户自己的第二份库，我们无权拒绝）。
+
+### 为什么拆成纯函数 + 探盘两半
+
+`shared/data-dir.ts` 同时被 `tsconfig.web.json` 编译，引 `node:fs` 会挂。所以探测（`existsSync`）留在 `main/lib/data-dir.ts`，判据（`assessDataDirRisk`）留 shared，用 `DataDirProbe { exists, hasDatabase }` 传进去 —— 判据因此可单测，不需要真造库。
+
+### 逃生舱
+
+`WISHFULCLAW_ALLOW_SHARED_DATA_DIR=1` 把 block 降为 warn。不给这个开关，唯一的选择是改代码，比显式放行更难查；而 block 的说明文字里直接写了这个变量名，看到弹窗的人当场就知道怎么放行。
+
+### 顺序
+
+判据放在 `mkdirSync` / `app.setPath` / `requestSingleInstanceLock` **全部之前**。单实例锁一拿到，Worker 后面随时能把 schema 改掉，那时再判已经晚了。
+
+### 门禁
+
+`npm run typecheck` 三配置 **0 错** ｜ `npm test` **119/119**（`data-dir` 17 → **25** 断言）｜ 两套 sln **0 警告 0 错误** ｜ `ci-checks` **90/90**。
+
+### 真机验收待做（需要老大）
+
+1. dev 正常启动（不设 `WISHFULCLAW_DATA_DIR`）⇒ 无弹窗无告警
+2. `WISHFULCLAW_DATA_DIR=<家目录>\.wishful-claw` 启动 dev ⇒ 弹错误框并退出
+3. 再加 `WISHFULCLAW_ALLOW_SHARED_DATA_DIR=1` ⇒ 正常启动 + 一条 warn
+4. 打包版不受影响
+
 
 
 

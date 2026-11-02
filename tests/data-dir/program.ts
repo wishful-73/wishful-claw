@@ -16,7 +16,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { dataDirName, pickDataDir } from '../../src/shared/data-dir'
+import { assessDataDirRisk, dataDirName, pickDataDir } from '../../src/shared/data-dir'
 
 let checks = 0
 
@@ -86,5 +86,58 @@ const lockAt = indexSrc.indexOf('app.requestSingleInstanceLock()')
 check(mkdirAt > -1, 'index.ts 必须先建 userData 目录（S-282）')
 check(setPathAt > -1 && mkdirAt < setPathAt, 'mkdirSync 必须排在 app.setPath 之前')
 check(lockAt > -1 && setPathAt < lockAt, 'app.setPath 必须排在 app.requestSingleInstanceLock 之前')
+
+// 10. S-293：非打包构建会不会改到一份已有的生产库。
+//     判据是纯函数（fs 探测在主进程做），这里把四种组合钉死。
+const liveDb = { exists: true, hasDatabase: true }
+const emptyDir = { exists: true, hasDatabase: false }
+const missingDir = { exists: false, hasDatabase: false }
+
+// 10.1 打包版用自己的库天经地义
+check(
+  assessDataDirRisk({ fromEnv: true, value: 'D:\\data\\.wishful-claw' }, true, liveDb).level === 'ok',
+  '打包版指向已有库必须是 ok（生产实例就是用自己的库）'
+)
+
+// 10.2 dev 默认目录里有 index.db 是它自己写的 —— 拦它等于拦掉正常开发
+check(
+  assessDataDirRisk({ fromEnv: false, value: '.wishful-claw-dev' }, false, liveDb).level === 'ok',
+  '非打包 + 默认目录必须是 ok，不看探盘结果'
+)
+
+// 10.3 目录不存在 / 没有库 ⇒ 新建，没有污染可言
+check(
+  assessDataDirRisk({ fromEnv: true, value: 'D:\\claw\\alt-data' }, false, missingDir).level === 'ok',
+  '显式指向不存在的目录必须是 ok'
+)
+check(
+  assessDataDirRisk({ fromEnv: true, value: 'D:\\claw\\alt-data' }, false, emptyDir).level === 'ok',
+  '显式指向空目录必须是 ok'
+)
+
+// 10.4 核心判据：非打包 + 显式 + 已有库 + 末段就是生产目录名 ⇒ 拦
+const blocked = assessDataDirRisk(
+  { fromEnv: true, value: 'C:\\Users\\me\\.wishful-claw' },
+  false,
+  liveDb
+)
+check(blocked.level === 'block', '非打包指向已有生产库必须 block')
+check(
+  (blocked.reason ?? '').includes('WISHFULCLAW_ALLOW_SHARED_DATA_DIR'),
+  'block 的说明里必须给出逃生舱，否则只能去改代码'
+)
+
+// 10.5 尾部分隔符不能把末段判断打掉（`...\.wishful-claw\` 也算生产目录）
+check(
+  assessDataDirRisk({ fromEnv: true, value: 'C:\\Users\\me\\.wishful-claw\\' }, false, liveDb).level ===
+    'block',
+  '末尾带分隔符时仍必须认出生产目录名'
+)
+
+// 10.6 显式指向别的已有库 ⇒ 只告警，不拦（可能是用户自己的第二份库）
+check(
+  assessDataDirRisk({ fromEnv: true, value: 'D:\\claw\\alt-data' }, false, liveDb).level === 'warn',
+  '非生产目录名的已有库必须 warn 而不是 block'
+)
 
 console.log(`data-dir: ${checks} checks passed`)

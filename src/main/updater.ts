@@ -10,11 +10,18 @@
 // `requestUpdateDownload` / `requestUpdateInstall` / `getUpdateStatus` 保持不动）。
 
 import { app, BrowserWindow } from 'electron'
+import { join } from 'node:path'
 import { logError, logInfo, logWarn } from './lib/logger'
 import { readPersistedSettings } from './lib/settings-store'
 import { getUpdateDistributionInfo } from './lib/distribution'
 import { classifyUpdaterError } from './lib/updater-error-format'
-import { fetchReleaseNotes, resolvePublishUrl } from './lib/release-notes'
+import {
+  RELEASE_NOTES_CACHE_FILE,
+  fetchReleaseNotesWithRetry,
+  readReleaseNotesCache,
+  resolvePublishUrl,
+  writeReleaseNotesCache
+} from './lib/release-notes'
 import { safeSendMessagePackToWindow } from './window-ipc'
 import {
   createUpdateDownloadGate,
@@ -203,9 +210,13 @@ function formatReleaseNotes(notes: unknown): string {
 }
 
 /**
- * 说明的两级来源：清单内联优先 —— 本次发布走这条，行为一字不改；清单不带就去官网拉
- * `release-notes-<版本>.md`。真源地址从 electron-builder 写进包里的 `app-update.yml` 读，
- * 不在代码里手写域名（多写一份 URL 就多一处能对不上的地方）。拉不到就是空态。
+ * 说明的两级来源：清单内联优先 —— 本次发布走这条，行为一字不改；清单不带就先读盘缓存，
+ * 再退到官网拉 `release-notes-<版本>.md`。真源地址从 electron-builder 写进包里的
+ * `app-update.yml` 读，不在代码里手写域名（多写一份 URL 就多一处能对不上的地方）。
+ *
+ * 缓存与重试是 S-298 的修法：说明只有一个异步来源，而 `fetchReleaseNotes` 把超时 / 404 /
+ * 网络错误全吞成空串 —— 原来一次失败，本次更新周期内说明就永远是空的。缓存让同版本第二次
+ * 打开弹窗不再依赖网络，重试吃掉瞬时抖动。
  */
 async function resolveReleaseNotes(version: string, inlineNotes: string): Promise<string> {
   if (inlineNotes) return inlineNotes
@@ -215,7 +226,14 @@ async function resolveReleaseNotes(version: string, inlineNotes: string): Promis
     appRoot: app.getAppPath()
   })
   if (!publishUrl) return ''
-  return fetchReleaseNotes({ publishUrl, version })
+
+  const cachePath = join(app.getPath('userData'), RELEASE_NOTES_CACHE_FILE)
+  const cached = readReleaseNotesCache(cachePath, version)
+  if (cached) return cached
+
+  const notes = await fetchReleaseNotesWithRetry({ publishUrl, version })
+  if (notes) writeReleaseNotesCache(cachePath, version, notes)
+  return notes
 }
 
 /**

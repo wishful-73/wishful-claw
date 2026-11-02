@@ -73,3 +73,59 @@ check('back-fill leaves the phase and the progress alone', () => {
     'writing the same body twice is a no-op'
   )
 })
+
+// -------------------------------------------------- a re-check keeps the notes it already has (S-298)
+//
+// The manifest has carried no `releaseNotes` since 0.2.39, so `update-available` arrives with '' on
+// every ordinary check. Writing that unconditionally wiped the fetched copy, and the only way back
+// was one best-effort fetch — so a single timeout left the dialog empty for the rest of the cycle,
+// which is exactly what "re-open the dialog and the notes are gone" looked like.
+
+check('a repeat check of the same offer keeps the fetched notes', () => {
+  const coordinator = createHarness().coordinator
+  assert.equal(coordinator.beginCheck(), true)
+  assert.equal(coordinator.applyAvailable({ newVersion: NEXT_VERSION, releaseNotes: '' }), true)
+  assert.equal(coordinator.applyReleaseNotes(NEXT_VERSION, '## 1.0.6'), true)
+
+  assert.equal(coordinator.beginCheck(), true, 'a periodic re-check is accepted')
+  assert.equal(
+    coordinator.applyAvailable({ newVersion: NEXT_VERSION, releaseNotes: '' }),
+    true,
+    'the same offer is still an offer'
+  )
+  assert.equal(
+    coordinator.snapshot().releaseNotes,
+    '## 1.0.6',
+    'the same version carries the same notes — an empty re-check must not erase them'
+  )
+})
+
+check('a new offer never inherits the previous release notes', () => {
+  const coordinator = createHarness().coordinator
+  reachAvailable(coordinator)
+  assert.equal(coordinator.applyReleaseNotes(NEXT_VERSION, '## 0.2.26'), true)
+
+  assert.equal(coordinator.beginCheck(), true)
+  assert.equal(
+    coordinator.applyAvailable({ newVersion: '0.2.27', releaseNotes: '' }),
+    true,
+    'a newer version is a new offer'
+  )
+  assert.equal(
+    coordinator.snapshot().releaseNotes,
+    '',
+    "the previous release's notes must not appear under a new version"
+  )
+})
+
+check('inline notes still win over whatever was there', () => {
+  const coordinator = createHarness().coordinator
+  reachAvailable(coordinator)
+
+  assert.equal(coordinator.beginCheck(), true)
+  assert.equal(
+    coordinator.applyAvailable({ newVersion: NEXT_VERSION, releaseNotes: '## inline' }),
+    true
+  )
+  assert.equal(coordinator.snapshot().releaseNotes, '## inline')
+})

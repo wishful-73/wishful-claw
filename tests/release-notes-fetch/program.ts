@@ -11,16 +11,20 @@
  */
 
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   DEV_UPDATE_CONFIG_FILE,
   PACKAGED_UPDATE_CONFIG_FILE,
   buildReleaseNotesUrl,
   fetchReleaseNotes,
+  fetchReleaseNotesWithRetry,
   parsePublishUrl,
+  readReleaseNotesCache,
   releaseNotesFileName,
-  resolvePublishUrl
+  resolvePublishUrl,
+  writeReleaseNotesCache
 } from '../../src/main/lib/release-notes'
 
 let checks = 0
@@ -200,6 +204,99 @@ async function main(): Promise<void> {
     '空地址返回空串'
   )
   check(neverCalled.urls.length === 0 && noBase.urls.length === 0, '拼不出 URL 时不发请求')
+
+  // ─── 6. 落盘缓存（S-298）：同版本才有资格复用，坏文件只是未命中 ───
+
+  const dir = mkdtempSync(join(tmpdir(), 'wc-release-notes-'))
+  const cachePath = join(dir, 'release-notes-cache.json')
+
+  check(readReleaseNotesCache(cachePath, '0.2.38') === '', '没有缓存文件 ⇒ 未命中')
+
+  writeReleaseNotesCache(cachePath, '0.2.38', '## 0.2.38 的说明')
+  check(
+    readReleaseNotesCache(cachePath, '0.2.38') === '## 0.2.38 的说明',
+    '写进去的同版本说明读得回来'
+  )
+  check(
+    readReleaseNotesCache(cachePath, '0.2.39') === '',
+    '版本对不上 ⇒ 未命中，绝不把上一版说明当本版'
+  )
+
+  writeFileSync(cachePath, '{ 这不是 JSON', 'utf8')
+  check(readReleaseNotesCache(cachePath, '0.2.38') === '', '坏文件 ⇒ 未命中，不抛异常')
+
+  writeFileSync(cachePath, JSON.stringify({ version: '0.2.38', notes: 42 }), 'utf8')
+  check(readReleaseNotesCache(cachePath, '0.2.38') === '', 'notes 不是字符串 ⇒ 未命中')
+
+  writeFileSync(cachePath, JSON.stringify({ version: '0.2.38', notes: '  \n ' }), 'utf8')
+  check(readReleaseNotesCache(cachePath, '0.2.38') === '', '空白文档 ⇒ 未命中')
+
+  writeFileSync(cachePath, JSON.stringify({ version: '0.2.38', notes: '## 覆盖前' }), 'utf8')
+  writeReleaseNotesCache(cachePath, '0.2.38', '')
+  check(
+    readReleaseNotesCache(cachePath, '0.2.38') === '## 覆盖前',
+    '空说明不落盘 —— 一次失败不能把已有缓存擦掉'
+  )
+
+  // ─── 7. 重试（S-298）：一次瞬时失败不该等于「本版没有说明」 ───
+
+  let attempts = 0
+  const flaky = (async () => {
+    attempts += 1
+    if (attempts === 1) throw new Error('ECONNRESET')
+    return responseFor('## 第二次成功', `${BASE}release-notes-0.2.38.md`) as unknown as Response
+  }) as unknown as typeof fetch
+  check(
+    (await fetchReleaseNotesWithRetry({
+      publishUrl: BASE,
+      version: '0.2.38',
+      fetchImpl: flaky,
+      sleep: async () => {}
+    })) === '## 第二次成功',
+    '第一次网络错、第二次成功 ⇒ 拿到说明'
+  )
+  check(attempts === 2, '恰好重试一次')
+
+  attempts = 0
+  const alwaysDown = (async () => {
+    attempts += 1
+    throw new Error('ECONNREFUSED')
+  }) as unknown as typeof fetch
+  check(
+    (await fetchReleaseNotesWithRetry({
+      publishUrl: BASE,
+      version: '0.2.38',
+      fetchImpl: alwaysDown,
+      sleep: async () => {}
+    })) === '',
+    '两次都失败 ⇒ 仍是空串（空态，不是错误）'
+  )
+  check(attempts === 2, '失败也只重试一次，不无限打')
+
+  let hitAttempts = 0
+  const firstHit = (async () => {
+    hitAttempts += 1
+    return responseFor('## 一次就中', `${BASE}release-notes-0.2.38.md`) as unknown as Response
+  }) as unknown as typeof fetch
+  await fetchReleaseNotesWithRetry({
+    publishUrl: BASE,
+    version: '0.2.38',
+    fetchImpl: firstHit,
+    sleep: async () => {}
+  })
+  check(hitAttempts === 1, '第一次就成功 ⇒ 不重试')
+
+  let sleptMs = -1
+  await fetchReleaseNotesWithRetry({
+    publishUrl: BASE,
+    version: '0.2.38',
+    fetchImpl: alwaysDown,
+    retryDelayMs: 250,
+    sleep: async (ms) => {
+      sleptMs = ms
+    }
+  })
+  check(sleptMs === 250, '重试前按配置等待')
 
   console.log(`release-notes-fetch: ${checks} checks passed`)
 }

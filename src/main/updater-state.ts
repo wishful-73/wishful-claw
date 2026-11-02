@@ -94,6 +94,29 @@ function isUsableMetric(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
+/**
+ * What `releaseNotes` becomes when `update-available` fires (S-298).
+ *
+ * The manifest stopped carrying `releaseNotes` in 0.2.39, so this input is an empty string on every
+ * ordinary check and the notes live only in the asynchronously fetched website copy. Writing it
+ * unconditionally meant "every re-check wipes the notes, then one best-effort fetch has to win them
+ * back" — a single network hiccup left the dialog empty for the rest of that update cycle.
+ *
+ *   - non-empty input        → write it (a real note always wins)
+ *   - empty input, same ver  → keep what we have (a repeat check of the same offer tells us nothing new)
+ *   - empty input, new ver   → clear (the previous release's notes must never appear under a new version)
+ */
+function resolveReleaseNotesOnAvailable(
+  previousVersion: string | null,
+  previousNotes: string,
+  nextVersion: string,
+  nextNotes: string
+): string {
+  if (nextNotes) return nextNotes
+  if (previousVersion === nextVersion) return previousNotes
+  return ''
+}
+
 export function createUpdaterStateCoordinator(
   options: UpdaterStateOptions
 ): UpdaterStateCoordinator {
@@ -161,6 +184,10 @@ export function createUpdaterStateCoordinator(
     applyAvailable(input: UpdateAvailableInput): boolean {
       if (!input.newVersion) return false
       if (!transition('available')) return false
+      // Read after `transition`: it only swaps the phase, so these are still the previous offer's
+      // values — exactly what the notes guard has to compare against.
+      const previousVersion = state.availableVersion
+      const previousNotes = state.releaseNotes
       // A declared size of 0 is not a usable baseline, so it stays unknown rather than posing as a
       // real observation.
       const declared = input.declaredInstallerSize
@@ -168,7 +195,12 @@ export function createUpdaterStateCoordinator(
         ...state,
         availableVersion: input.newVersion,
         downloadedVersion: null,
-        releaseNotes: input.releaseNotes,
+        releaseNotes: resolveReleaseNotesOnAvailable(
+          previousVersion,
+          previousNotes,
+          input.newVersion,
+          input.releaseNotes
+        ),
         expectedVersion: null,
         error: null,
         percent: null,

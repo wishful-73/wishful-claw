@@ -425,7 +425,9 @@ async function runInSession(runEvent: CronFiredEvent, result: CronRunResult): Pr
       collaborationMode: targetSession.collaborationMode,
       runtimeRole: 'sessionAgent',
       usageSource: 'automationSession',
-      maxIterations: runEvent.maxIterations && runEvent.maxIterations > 0 ? runEvent.maxIterations : 15,
+      // S-299：0 = 不限轮次，必须原样传下去。原来这里把 0 翻译成 15，
+      // 于是「把轮次设成 0」看起来改了却没生效 —— 这正是「默认不限」落不了地的根因。
+      maxIterations: runEvent.maxIterations && runEvent.maxIterations > 0 ? runEvent.maxIterations : 0,
       forceApproval: false,
       permissionMode: targetSession.permissionMode,
       nonInteractive: true,
@@ -501,7 +503,9 @@ async function executeCron(event: CronFiredEvent): Promise<void> {
       collaborationMode: runEvent.scope === 'project' ? 'cowork' : 'chat',
       runtimeRole: 'automation',
       usageSource: 'automationBackground',
-      maxIterations: runEvent.maxIterations && runEvent.maxIterations > 0 ? runEvent.maxIterations : 15,
+      // S-299：0 = 不限轮次，必须原样传下去。原来这里把 0 翻译成 15，
+      // 于是「把轮次设成 0」看起来改了却没生效 —— 这正是「默认不限」落不了地的根因。
+      maxIterations: runEvent.maxIterations && runEvent.maxIterations > 0 ? runEvent.maxIterations : 0,
       forceApproval: false,
       permissionMode: 'fullAccess',
       sessionMode: 'normal',

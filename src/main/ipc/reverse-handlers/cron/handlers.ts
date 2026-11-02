@@ -18,6 +18,7 @@ import {
   validateSchedule
 } from './scheduling'
 import { cronRunLock, generateId, jobs, nextRunTimes } from './state'
+import { DEFAULT_MAX_ITERATIONS } from './types'
 import type { CronJob, CronSchedule } from './types'
 
 export async function handleCronAdd(params: Record<string, unknown>): Promise<unknown> {
@@ -58,7 +59,7 @@ export async function handleCronAdd(params: Record<string, unknown>): Promise<un
     pluginType: params.pluginType as string | undefined,
     pluginChatId: params.pluginChatId as string | undefined,
     deleteAfterRun: (params.deleteAfterRun as boolean | undefined) ?? (schedule!.kind === 'at'),
-    maxIterations: (params.maxIterations as number | undefined) ?? 15,
+    maxIterations: (params.maxIterations as number | undefined) ?? DEFAULT_MAX_ITERATIONS,
     enabled: true,
     deletedAt: null,
     lastFiredAt: null,

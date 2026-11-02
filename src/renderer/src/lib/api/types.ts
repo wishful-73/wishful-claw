@@ -415,6 +415,15 @@ export interface MessageRunEndMeta {
   errorType?: string
   /** reason = 'error' 时能归因到 HTTP 应答的状态码。 */
   statusCode?: number
+  /**
+   * S-299：这一轮跑到第几轮（1-based）。只在 `loop_end` 时由 worker 带出，
+   * 用来把「到了迭代上限」说成「已跑 15 轮」。
+   */
+  iterations?: number
+  /** S-299：这一轮总共跑了多久（毫秒），同样来自 `loop_end`。 */
+  elapsedMs?: number
+  /** S-299：最后一个发起调用的工具名。null / 缺失 = 这一轮没调过工具。 */
+  lastTool?: string
   /** 收尾时刻（渲染端时钟）。 */
   at?: number
 }

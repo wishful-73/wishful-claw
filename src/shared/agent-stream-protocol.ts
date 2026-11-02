@@ -106,6 +106,12 @@ export type AgentStreamEvent =
       reason: LoopEndReasonWire
       errorType?: string
       statusCode?: number
+      // S-299：撞轮次上限时要说清「跑了几轮、跑了多久、卡在哪个工具上」。
+      // 只报一句「到了迭代上限」等于什么都没说 —— 用户看不出是跑飞了还是任务本来就大。
+      // 三个字段只在 loop_end 出现，缺失 = worker 没带（老消息），渲染端按无数据兜底。
+      iteration?: number
+      elapsedMs?: number
+      toolName?: string
       messages?: unknown[]
     }
   // Text phase annotation (marks text before tool calls as planning)

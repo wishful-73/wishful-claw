@@ -301,7 +301,7 @@ public static partial class DbClient
                 plugin_type TEXT,
                 plugin_chat_id TEXT,
                 delete_after_run INTEGER NOT NULL DEFAULT 0,
-                max_iterations INTEGER NOT NULL DEFAULT 15,
+                max_iterations INTEGER NOT NULL DEFAULT 0,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 deleted_at INTEGER,
                 last_fired_at INTEGER,

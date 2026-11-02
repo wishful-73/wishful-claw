@@ -32,6 +32,63 @@ function statusParams(statusCode: number): Record<string, string | number> {
   return { status: statusCode }
 }
 
+/**
+ * 毫秒 → 「38 秒 / 42 分钟 / 1 小时 12 分钟」。
+ *
+ * 刻意不带小数（老大 2026-10-19 提过：耗时里的 `7.3s` 这种小数不要），
+ * 也不显示「0 秒」这种噪音 —— 不足 1 秒一律算 1 秒。
+ */
+export function formatRunDuration(elapsedMs: number): string {
+  const totalSeconds = Math.max(1, Math.round(elapsedMs / 1000))
+  if (totalSeconds < 60) return `${totalSeconds} 秒`
+
+  const totalMinutes = Math.round(totalSeconds / 60)
+  if (totalMinutes < 60) return `${totalMinutes} 分钟`
+
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes === 0 ? `${hours} 小时` : `${hours} 小时 ${minutes} 分钟`
+}
+
+/**
+ * 撞轮次上限时的话。**有实测数据就说实测数据** —— 只报「到了迭代上限」等于没说：
+ * 用户看不出是跑飞了还是任务本来就大（S-299）。
+ *
+ * 数据缺失（老消息 / worker 没带）就退回旧文案，不编造轮次和耗时。
+ */
+function describeMaxIterations(runEnd: MessageRunEndMeta): RunEndLabelDescriptor {
+  const { iterations, elapsedMs, lastTool } = runEnd
+  const hasStats =
+    typeof iterations === 'number' && iterations > 0 &&
+    typeof elapsedMs === 'number' && elapsedMs >= 0
+
+  if (!hasStats) {
+    return {
+      key: 'assistantMessage.runEnd.maxIterations',
+      fallback: '这一轮到了迭代上限，停在这里'
+    }
+  }
+
+  const params: Record<string, string | number> = {
+    iterations,
+    duration: formatRunDuration(elapsedMs)
+  }
+
+  if (lastTool) {
+    return {
+      key: 'assistantMessage.runEnd.maxIterationsWithTool',
+      fallback: `这一轮到了迭代上限（${iterations} 轮，${params.duration}），停在这里。最后一步：${lastTool}`,
+      params: { ...params, tool: lastTool }
+    }
+  }
+
+  return {
+    key: 'assistantMessage.runEnd.maxIterationsWithStats',
+    fallback: `这一轮到了迭代上限（${iterations} 轮，${params.duration}），停在这里`,
+    params
+  }
+}
+
 function describeError(runEnd: MessageRunEndMeta): RunEndLabelDescriptor | null {
   const { errorType, statusCode } = runEnd
 
@@ -98,10 +155,7 @@ export function resolveRunEndLabel(
     case 'aborted':
       return { key: 'assistantMessage.runEnd.aborted', fallback: '这一轮被中断了' }
     case 'max_iterations':
-      return {
-        key: 'assistantMessage.runEnd.maxIterations',
-        fallback: '这一轮到了迭代上限，停在这里'
-      }
+      return describeMaxIterations(runEnd)
     case 'error':
       return describeError(runEnd)
     default:

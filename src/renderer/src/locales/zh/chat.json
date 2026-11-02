@@ -1419,6 +1419,8 @@
       "userCancelled": "你中止了这一轮",
       "aborted": "这一轮被中断了",
       "maxIterations": "这一轮到了迭代上限，停在这里",
+      "maxIterationsWithStats": "这一轮到了迭代上限（{{iterations}} 轮，{{duration}}），停在这里",
+      "maxIterationsWithTool": "这一轮到了迭代上限（{{iterations}} 轮，{{duration}}），停在这里。最后一步：{{tool}}",
       "timeout": "请求超时，这一轮中断了",
       "network": "网络中断，这一轮没跑完",
       "auth": "服务商拒绝请求（{{status}}）",

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
@@ -24,6 +24,7 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 import { toast } from 'sonner'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import type { CronJobView } from './cron-job-view'
+import { DEFAULT_MAX_ITERATIONS } from './cron-job-view'
 
 export interface CronJobFormValues {
   name: string
@@ -60,7 +61,7 @@ const EMPTY_FORM: CronJobFormValues = {
   agentId: '',
   model: '',
   workingFolder: '',
-  maxIterations: 15,
+  maxIterations: DEFAULT_MAX_ITERATIONS,
   deleteAfterRun: false,
   deliveryMode: 'desktop',
   deliveryTarget: '',
@@ -85,7 +86,7 @@ function jobToForm(job: CronJobView): CronJobFormValues {
     agentId: job.agentId ?? '',
     model: job.model ?? '',
     workingFolder: job.workingFolder ?? '',
-    maxIterations: job.maxIterations || 15,
+    maxIterations: job.maxIterations ?? DEFAULT_MAX_ITERATIONS,
     deleteAfterRun: Boolean(job.deleteAfterRun),
     deliveryMode:
       job.pluginId ? 'plugin' : ((job.deliveryMode as CronJobFormValues['deliveryMode']) ?? 'desktop'),
@@ -179,7 +180,7 @@ export function CronJobFormDialog({
         prompt: values.prompt.trim(),
         deliveryMode: values.deliveryMode,
         deleteAfterRun: values.deleteAfterRun,
-        maxIterations: values.maxIterations > 0 ? values.maxIterations : 15
+        maxIterations: values.maxIterations > 0 ? values.maxIterations : DEFAULT_MAX_ITERATIONS
       }
       if (values.agentId.trim()) payload.agentId = values.agentId.trim()
       if (values.model.trim()) payload.model = values.model.trim()
@@ -368,11 +369,14 @@ export function CronJobFormDialog({
               <span className="text-sm font-medium">{t('automation.maxIterations')}</span>
               <Input
                 type="number"
-                min={1}
+                min={0}
                 className="w-20"
                 value={values.maxIterations}
                 onChange={(e) => patch({ maxIterations: Number(e.target.value) })}
               />
+              <span className="text-xs text-muted-foreground">
+                {t('automation.maxIterationsHint')}
+              </span>
             </label>
             <label className="flex items-center gap-2">
               <Switch

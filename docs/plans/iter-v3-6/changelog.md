@@ -574,6 +574,92 @@ checkTrue(SCREENSHOTS_SUBDIR !== CHAT_IMAGES_SUBDIR, '截图目录必须与聊�
 - `docs/plans/iter-v3-5/requirements/S-296.md`：状态行改「✅ 已完成」+ 新增 §4.7 实施记录（错误分类表、真缺陷、判据三态）
 - 本文件
 
+---
+
+## 2026-11-02 10:0x · 刀 2 交付：S-299 定时任务默认不限轮次
+
+### 为什么这条不能只改 UI 默认值
+
+需求文档 §2.1 的 7 处硬编码里，真正致命的是第 6、7 两处（`cron-runtime.ts` 的 `> 0 ? ... : 15`）—— 它们把「0 = 不限」**反向**解释成「0 = 没填 = 15」。只在 UI 上把默认值改成 0，填进去的 0 会被这两行改回 15，用户看到的是「改了但没生效」。
+
+所以这一刀必须**从 UI 一路贯通到 worker**，中间任何一层把 0 吃掉，整条链就是假的。
+
+### 一共 12 处，分三层
+
+| 层 | 位置 | 改前 → 改后 |
+|---|---|---|
+| worker | `cron-runtime.ts:428` / `:504` | `: 15` → `: 0`（注释说明为什么 0 必须原样传） |
+| 主进程 | `cron/db.ts:36`（落库） / `:71`（读库） | `?? 15` → `?? DEFAULT_MAX_ITERATIONS` |
+| 主进程 | `cron/handlers.ts:61`（创建入口） | 同上 |
+| 主进程 | `cron/scheduling.ts:153`（派发） | 同上 |
+| C# | `DbCronTools.cs:312`（agent 建任务） | `GetInt(..., 15)` → `GetInt(..., 0)` |
+| C# | `DbCronModels.cs:32`（模型默认值） | `= 15` → `= 0` |
+| C# | `DbClient.Schema.cs:304`（建表） | `DEFAULT 15` → `DEFAULT 0` |
+| C# | `DbClient.Migrations.cs:107`（加列） | `DEFAULT 15` → `DEFAULT 0` |
+| C# | `CronToolProvider.cs:115`（schema 描述） | "Defaults to 15." → "Defaults to 0 (unlimited)." |
+| 渲染端 | `cron-job-view.ts:83`（读库兜底） | `?? 15` → `?? DEFAULT_MAX_ITERATIONS` |
+| 渲染端 | `CronJobFormDialog.tsx:63/88/182` | 表单默认值 / 编辑回填 / 提交兜底 |
+| 渲染端 | `AutomationTaskFormDialog.tsx:331` | `?? 15` → `?? DEFAULT_MAX_ITERATIONS` |
+
+**默认值统一走常量**：主进程 `cron/types.ts` 和渲染端 `cron-job-view.ts` 各定义一个 `DEFAULT_MAX_ITERATIONS = 0`。两个 bundle 不能共享模块，靠注释对齐同值 —— 这比在 12 处各写一个字面量 `0` 强，至少下次改只改两处。
+
+### UI：终于有说明文字了
+
+`CronJobFormDialog.tsx` 的输入框原来是 `min={1}` —— **用户连 0 都填不进去**，想「不限」都没有入口。现在：
+
+- `min={0}`
+- 框后加一行 `automation.maxIterationsHint`：「0 或留空 = 不限轮次」（中英双份）
+
+老大原话「做任务到一半停住了，我还不知道原因」—— 界面上确实一个字都没说，不是他的问题。
+
+### §4.3 撞上限时带上下文（验收判据 3 要求）
+
+原本文案只有一句「这一轮到了迭代上限，停在这里」，**只有结果没有上下文**：不说第几轮、跑了多久、卡在哪个工具上。
+
+数据链路：
+
+| 步 | 改动 |
+|---|---|
+| `AgentRuntimeRunState` | 加 `IterationCount` / `LastToolName` 两个属性 |
+| `AgentLoop.cs` 循环头 | 每轮 `state.IterationCount = iteration` |
+| `AgentLoop.cs` 工具执行前 | `state.LastToolName = turn.ToolCalls[^1].Name`（并行时取最后一个，通常就是卡住那个） |
+| `AgentRuntimeStreamEvent` | 加 `int? ElapsedMs` |
+| `AgentStreamMessagePackEmitter` | 写 `elapsedMs` + 计数 |
+| `EmitLoopEndAsync` | 用 `state.StartedAt` 算耗时，三个值一起带进 `loop_end` |
+| `agent-stream-protocol.ts` | `loop_end` 事件加 `iteration?` / `elapsedMs?` / `toolName?` |
+| `chat-store/index.ts` | 落 `meta.runEnd` 时带上这三个（缺失不写） |
+| `run-end-label.ts` | 新增 `describeMaxIterations()` + `formatRunDuration()` |
+| locale | 加 `maxIterationsWithStats` / `maxIterationsWithTool` 中英各两条 |
+
+**为什么走 state 而不是给 `EmitLoopEndAsync` 加参数**：它一共 9 个调用点（5 处在 `AgentLoop`，4 处在 `AgentRuntimeTools`）。加参数要改 9 处签名，而这三个值天然属于「这次 run 的状态」—— 放 state 上零签名改动，且 `AgentRuntimeTools` 那 4 处也自动拿到正确值。
+
+**文案不编数据**：`iterations` / `elapsedMs` 缺失（老消息、worker 没带）就退回旧文案，不显示「0 轮（0 秒）」。
+
+耗时格式化刻意**不带小数**（老大 2026-10-19 提过 `7.3s` 这种不要），不足 1 秒算 1 秒。
+
+### 一个测试跟着改
+
+`tests/WishfulClaw.CronRegressionTests/Program.Suites.cs:85` 断言「legacy row receives iteration default」= **15**，改成 **0**。
+
+这条测的是「列原本不存在、迁移时补上」的那一行 —— 它该拿产品默认值，不是猜出来的 15。**已有 15 的老行不回填**（§五.5），crud 套件仍然覆盖那条路径。
+
+### 门禁
+
+| 项 | 结果 |
+|---|---|
+| `npm run typecheck` | 三配置 0 错 |
+| `npm test` | **119/119**（改前 118/119，Cron 红） |
+| `dotnet build src/runtime/WishfulClaw.sln` | 0 警告 0 错误 |
+| `dotnet build tests/WishfulClaw.Tests.sln` | 0 警告 0 错误 |
+
+### 真机验收待做（需要老大）
+
+1. 新建定时任务不改设置 ⇒ 落库 `max_iterations = 0`（可用 `list_cron_tasks` 或 DB 查）
+2. 造一个需要 20+ 轮的任务 ⇒ 不被掐断
+3. 手动设 5 ⇒ 第 5 轮停下，提示带「5 轮」和耗时
+4. 手动填 0 ⇒ 仍然不限（回归 §2.1 第 6、7 两处的反向解释）
+5. 老任务（库里已是 15）行为不变
+
 
 
 

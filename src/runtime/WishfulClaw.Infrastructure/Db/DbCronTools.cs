@@ -309,7 +309,9 @@ public static class DbCronTools
             PluginType = GetNullableString(parameters, "pluginType"),
             PluginChatId = GetNullableString(parameters, "pluginChatId"),
             DeleteAfterRun = GetBool(parameters, "deleteAfterRun", false),
-            MaxIterations = GetInt(parameters, "maxIterations", 15),
+            // S-299：0 = 不限轮次，与 AgentLoop 的 `0 = unlimited` 同语义。
+            // 原来这里兜 15，agent 建任务时就被硬塞了一个猜出来的上限。
+            MaxIterations = GetInt(parameters, "maxIterations", 0),
             Enabled = GetBool(parameters, "enabled", true),
             CreatedAt = now,
             UpdatedAt = now

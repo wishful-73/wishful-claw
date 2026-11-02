@@ -34,6 +34,7 @@ import { useProviderStore } from '@renderer/stores/provider-store'
 import { useSettingsStore } from '@renderer/stores/settings-store'
 import { AutomationModelSelector } from './AutomationModelSelector'
 import type { CronJobView } from './cron-job-view'
+import { DEFAULT_MAX_ITERATIONS } from './cron-job-view'
 
 type AutomationScope = 'global' | 'project'
 type AutomationOutputMode = 'none' | 'new_session' | 'reuse_session' | 'bot'
@@ -328,7 +329,7 @@ export function AutomationTaskFormDialog({
         pluginType: values.outputMode === 'bot' ? selectedBotTarget?.channel.type ?? null : null,
         pluginChatId: values.outputMode === 'bot' ? selectedBotTarget?.chatId ?? null : null,
         deleteAfterRun: values.frequency === 'once',
-        maxIterations: editingJob?.maxIterations ?? templateJob?.maxIterations ?? 15
+        maxIterations: editingJob?.maxIterations ?? templateJob?.maxIterations ?? DEFAULT_MAX_ITERATIONS
       }
       const method = editingJob ? 'cron:update' : 'cron:add'
       const params = editingJob ? { jobId: editingJob.id, patch: payload } : payload

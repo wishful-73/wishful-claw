@@ -104,7 +104,7 @@ public static partial class DbClient
         EnsureColumn("cron_tasks", "plugin_type", "TEXT");
         EnsureColumn("cron_tasks", "plugin_chat_id", "TEXT");
         EnsureColumn("cron_tasks", "delete_after_run", "INTEGER NOT NULL DEFAULT 0");
-        EnsureColumn("cron_tasks", "max_iterations", "INTEGER NOT NULL DEFAULT 15");
+        EnsureColumn("cron_tasks", "max_iterations", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("cron_tasks", "enabled", "INTEGER NOT NULL DEFAULT 1");
         EnsureColumn("cron_tasks", "deleted_at", "INTEGER");
         EnsureColumn("cron_tasks", "last_fired_at", "INTEGER");

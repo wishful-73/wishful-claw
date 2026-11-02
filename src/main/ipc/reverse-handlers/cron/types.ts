@@ -13,6 +13,18 @@ export interface CronSchedule {
   tz?: string
 }
 
+/**
+ * 定时任务轮次上限的默认值。**0 = 不限**，与主聊天（`use-chat-actions.ts` 的
+ * `maxIterations: 0`）以及 `AgentLoop.cs` 的 `0 = unlimited` 保持同一语义。
+ *
+ * S-299：原来这里散落着五处 `?? 15`，把「0 = 不限」反向解释成「0 = 没填 = 15」，
+ * 于是用户改成不限却看起来没生效。默认值统一收在这个常量里，改一处即可。
+ *
+ * ⚠️ 不要用「填个更大的数字」来「放宽」——轮次跟任务复杂度没有比例关系，
+ * 同样的 15 轮可能是 20 秒也可能是 45 分钟，它当不了护栏。
+ */
+export const DEFAULT_MAX_ITERATIONS = 0
+
 export interface CronJob {
   id: string
   name: string

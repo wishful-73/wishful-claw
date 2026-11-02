@@ -78,4 +78,7 @@ public sealed record AgentRuntimeStreamEvent(
     string? UsageSource = null,
     // Memory recall visibility (memory_recall events)
     int? RecallCount = null,
-    string[]? RecallHits = null);
+    string[]? RecallHits = null,
+    // S-299: how long this run took, carried on loop_end so the renderer can say
+    // 「已跑 15 轮（42 分钟）」instead of a bare 「到了迭代上限」.
+    int? ElapsedMs = null);

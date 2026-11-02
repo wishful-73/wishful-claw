@@ -1420,6 +1420,8 @@
       "userCancelled": "You stopped this turn",
       "aborted": "This turn was interrupted",
       "maxIterations": "This turn hit the iteration limit and stopped here",
+      "maxIterationsWithStats": "This turn hit the iteration limit ({{iterations}} iterations, {{duration}}) and stopped here",
+      "maxIterationsWithTool": "This turn hit the iteration limit ({{iterations}} iterations, {{duration}}) and stopped here. Last step: {{tool}}",
       "timeout": "The request timed out and the turn was cut off",
       "network": "The network dropped and this turn did not finish",
       "auth": "The provider rejected the request ({{status}})",

@@ -296,6 +296,10 @@ internal static partial class AgentLoop
 
         for (var iteration = 1; !hasIterationLimit || iteration <= requestedMaxIterations; iteration++)
         {
+            // S-299：撞上限时要说清「跑了几轮」。这个值只在 loop_end 用得上，
+            // 每轮覆盖一次，循环退出后仍然拿得到最后一次的值。
+            state.IterationCount = iteration;
+
             // ── Cancellation check ──
             if (state.IsCancellationRequested)
             {
@@ -630,6 +634,12 @@ internal static partial class AgentLoop
             // 写回要早于下面的取消检查 —— 取消后会话里也必须成对。
             var toolResults = new List<AgentRuntimeToolResult>();
             List<AgentRuntimeToolResult> pairedResults = [];
+            // S-299：撞上限时告诉用户「最后一步在干什么」。取本轮最后一个调用的名字 ——
+            // 多个并行调用时，最后那个通常就是把它卡住的那个。
+            if (turn.ToolCalls.Count > 0)
+            {
+                state.LastToolName = turn.ToolCalls[^1].Name;
+            }
             try
             {
                 toolResults = await ToolCallProcessor.ExecuteAsync(
@@ -695,13 +705,24 @@ internal static partial class AgentLoop
             reason = AgentLoopEndReasons.UserCancelled;
         }
 
+        // S-299：撞上限时只报「到了迭代上限」等于没说。把实测数据带出去，
+        // 渲染端拼成「已跑 15 轮（42 分钟），最后一步：编辑 src/xxx.ts」。
+        // 这三个值对其它结束原因同样成立，一并带上，渲染端按需取用。
+        var elapsedMs = Math.Clamp(
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - state.StartedAt,
+            0,
+            int.MaxValue);
+
         await AgentRuntimeTools.EmitAsync(
             state, context,
             new AgentRuntimeStreamEvent(
                 "loop_end",
                 Reason: reason,
                 ErrorType: errorType,
-                StatusCode: statusCode));
+                StatusCode: statusCode,
+                Iteration: state.IterationCount > 0 ? state.IterationCount : null,
+                ToolName: state.LastToolName,
+                ElapsedMs: (int)elapsedMs));
 
         // Timeline instrumentation (S-25.4): sub-agent run termination.
         if (isSubAgentLoop || isGoalSubAgentLoop)

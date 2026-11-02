@@ -32,6 +32,10 @@ import {
   type GlobalTaskRow
 } from './task-board-types'
 import { useTaskBoardStore } from '@renderer/stores/task-board-store'
+import { useChatStore } from '@renderer/stores/chat-store'
+
+/** Sentinel for the "no project" option — Radix Select cannot carry an empty value. */
+const NO_PROJECT = '__none__'
 
 interface TaskFormDialogProps {
   open: boolean
@@ -57,12 +61,14 @@ export function TaskFormDialog({
   const { t } = useTranslation('taskboard')
   const createTask = useTaskBoardStore((s) => s.createTask)
   const updateTask = useTaskBoardStore((s) => s.updateTask)
+  const projects = useChatStore((s) => s.projects)
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<GlobalTaskPriority>('normal')
   const [tagsText, setTagsText] = useState('')
   const [dueAtText, setDueAtText] = useState('')
+  const [projectId, setProjectId] = useState<string>(NO_PROJECT)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -72,6 +78,7 @@ export function TaskFormDialog({
     setPriority(editingTask?.priority ?? 'normal')
     setTagsText(editingTask ? parseTags(editingTask.tags).join(', ') : '')
     setDueAtText(editingTask?.due_at ? formatLocalDateTime(editingTask.due_at) : '')
+    setProjectId(editingTask?.project_id ?? NO_PROJECT)
     setSaving(false)
   }, [open, editingTask])
 
@@ -86,6 +93,9 @@ export function TaskFormDialog({
       .map((tag) => tag.trim())
       .filter((tag) => tag.length > 0)
     const dueAt = dueAtText ? new Date(dueAtText).getTime() : null
+    // S-300: NO_PROJECT means "belongs to no project" — an empty string, which the
+    // worker treats as "clear the owning project".
+    const resolvedProjectId = projectId === NO_PROJECT ? '' : projectId
 
     setSaving(true)
     try {
@@ -95,7 +105,8 @@ export function TaskFormDialog({
           description: description.trim(),
           priority,
           tags,
-          dueAt
+          dueAt,
+          projectId: resolvedProjectId
         })
         if (ok) {
           toast.success(t('dialog.saved'))
@@ -110,7 +121,8 @@ export function TaskFormDialog({
           description: description.trim(),
           priority,
           tags,
-          dueAt
+          dueAt,
+          projectId: resolvedProjectId
         })
         if (taskId) {
           toast.success(t('dialog.created'))
@@ -123,7 +135,7 @@ export function TaskFormDialog({
     } finally {
       setSaving(false)
     }
-  }, [title, description, priority, tagsText, dueAtText, editingTask, createTask, updateTask, t, onOpenChange, onSaved])
+  }, [title, description, priority, tagsText, dueAtText, projectId, editingTask, createTask, updateTask, t, onOpenChange, onSaved])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -177,6 +189,24 @@ export function TaskFormDialog({
                 onChange={(e) => setDueAtText(e.target.value)}
               />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm text-muted-foreground">{t('field.project')}</label>
+            <Select value={projectId} onValueChange={setProjectId}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_PROJECT}>{t('field.projectGlobal')}</SelectItem>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground/70">{t('field.projectHint')}</p>
           </div>
 
           <div className="flex flex-col gap-1.5">

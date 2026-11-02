@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Task Board detail pane — selected global task info plus its permanent
  * dispatch records. Global task status (left select) and dispatch status
  * (per-row badges) are separate concepts and rendered distinctly. The pane
@@ -139,6 +139,12 @@ export function TaskDetailPane({ task, onEdit, onDispatch, onChanged }: TaskDeta
         <div className="flex flex-wrap items-center gap-2">
           <TaskStatusBadge status={task.status} />
           <PriorityBadge priority={task.priority} />
+          {task.project_id ? (
+            <span className="text-xs text-muted-foreground">
+              {t('detail.owningProject')}:{' '}
+              {projects.find((p) => p.id === task.project_id)?.name ?? t('detail.unknownProject')}
+            </span>
+          ) : null}
           {task.due_at ? (
             <span className="text-xs text-muted-foreground">
               {t('detail.dueAt')}: {new Date(task.due_at).toLocaleString()}

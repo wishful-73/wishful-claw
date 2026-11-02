@@ -69,6 +69,9 @@ public static partial class DbClient
         EnsureColumn("projects", "ssh_connection_id", "TEXT");
         EnsureColumn("projects", "plugin_id", "TEXT");
         EnsureColumn("global_task_dispatches", "source_session_id", "TEXT");
+        // S-300: an optional owning project on the task itself. Old rows stay NULL = a pure
+        // global task, which is the only thing an old row can honestly mean — no backfill.
+        EnsureColumn("global_tasks", "project_id", "TEXT");
         EnsureColumn("messages", "usage", "TEXT");
         EnsureColumn("messages", "sort_order", "INTEGER");
         // Nullable on purpose: legacy rows keep NULL and the UI falls back to created_at.

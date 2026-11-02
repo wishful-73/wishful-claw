@@ -30,6 +30,8 @@ export interface TaskCreateInput {
   priority?: GlobalTaskPriority
   tags?: string[]
   dueAt?: number | null
+  /** S-300: owning project. Omit for a pure global task. */
+  projectId?: string | null
 }
 
 export interface TaskPatch {
@@ -39,6 +41,8 @@ export interface TaskPatch {
   priority?: GlobalTaskPriority
   tags?: string[]
   dueAt?: number | null
+  /** S-300: null/empty hangs the task back on the global board. */
+  projectId?: string | null
   /** false restores a task from the archived view. */
   archived?: boolean
 }
@@ -143,7 +147,10 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
         status: input.status ?? 'pending',
         priority: input.priority ?? 'normal',
         tags: input.tags ?? [],
-        dueAt: input.dueAt ?? undefined
+        dueAt: input.dueAt ?? undefined,
+        // S-300: omitted keeps the task global. The worker treats an empty string as
+        // "no project" too, so passing it through unchanged is safe.
+        projectId: input.projectId ?? undefined
       })
       if (!isMutationOk(result)) {
         console.error('[TaskBoard] create failed:', mutationError(result, 'unknown error'))
@@ -165,6 +172,9 @@ export const useTaskBoardStore = create<TaskBoardStore>((set, get) => ({
       if (patch.priority !== undefined) updatePatch.priority = patch.priority
       if (patch.tags !== undefined) updatePatch.tags = patch.tags
       if (patch.dueAt !== undefined) updatePatch.dueAt = patch.dueAt
+      // S-300: null/empty clears the owning project — the worker needs the field present
+      // to tell "clear it" apart from "don't touch it".
+      if (patch.projectId !== undefined) updatePatch.projectId = patch.projectId ?? ''
       if (patch.archived !== undefined) updatePatch.archived = patch.archived
 
       const result = await window.api.workerRequest<GlobalMutationResult>('db/global-tasks-update', {

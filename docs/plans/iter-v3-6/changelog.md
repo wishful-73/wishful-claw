@@ -660,6 +660,45 @@ checkTrue(SCREENSHOTS_SUBDIR !== CHAT_IMAGES_SUBDIR, '截图目录必须与聊�
 4. 手动填 0 ⇒ 仍然不限（回归 §2.1 第 6、7 两处的反向解释）
 5. 老任务（库里已是 15）行为不变
 
+---
+
+## 2026-11-02 11:0x · 刀 3 交付：S-300 全局任务可挂项目
+
+### 边界只认库，不认模型
+
+`projectId` 一律从 `sessions.project_id` 读（`ResolveCurrentProjectId`），模型传进来的 `projectId` **直接无视**。这不是洁癖：`list_project_tasks` 是项目侧的读入口，一旦让模型传参，A 项目会话就能读到 B 项目的任务 —— 这是本需求唯一不能破的线。
+
+测试里专门留了一条「模型传别的项目 id」的断言（`model-supplied projectId is ignored; the session record wins`），把这条线钉成回归。
+
+### 为什么不复用 `GlobalSideAndWorkRuns`
+
+那个 grant 含 `*:cowork@*`，项目 cowork 会话也会命中 —— 于是全局工具漏进项目会话。新开 `ToolVisibilityScopes.ProjectSideOnly = ["project:*@*"]`，与 `GlobalSideOnly` 对称。**刻意不用 `*:cowork@*`**：全局侧那节的注释本来就是「deliberately not `*:cowork@*`」，这里是它的镜像。
+
+### 一处静默坑
+
+`DbGlobalTaskTools` 里的 `GlobalTaskSelect` 是**写死的列清单**。加列后只改 DDL 不改这行，`MapGlobalTask` 读不到值会**静默返回 null**，不报错 —— 判据 2（A 看得到、B 看不到）正是兜这个的。
+
+### 空值语义
+
+`projectId` 的空串与 `null` 都表示「挂回全局」（`update_global_task` 的 patch 支持显式传空串摘除）。查询侧则用独立的 `unassignedOnly` 标志表达「不挂项目的」，不让空串一词二义。
+
+### 门禁
+
+| 项 | 结果 |
+|---|---|
+| `npm run typecheck` | 三配置 0 错 |
+| `npm test` | **119/119**（SessionTaskCascade 断言 230 → 248） |
+| `dotnet build src/runtime/WishfulClaw.sln` | 0 警告 0 错误 |
+| `dotnet build tests/WishfulClaw.Tests.sln` | 0 警告 0 错误 |
+
+### 真机验收待做（需要老大）
+
+1. 任务板新建任务选项目 ⇒ 卡片显示归属项目标签
+2. 项目会话里让 agent 调 `list_project_tasks` ⇒ 只出本项目的
+3. 把某个任务的项目改成「全局」⇒ 项目会话立刻查不到
+4. 老库升级（判据 5）：拿 1.0.5 的 `index.db` 副本启动 ⇒ 列自动补、老任务全 NULL、任务板正常
+
+
 
 
 

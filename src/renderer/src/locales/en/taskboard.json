@@ -45,7 +45,10 @@
     "priority": "Priority",
     "dueAt": "Due date",
     "tags": "Tags",
-    "tagsPlaceholder": "Comma separated, e.g. release, product"
+    "tagsPlaceholder": "Comma separated, e.g. release, product",
+    "project": "Project",
+    "projectGlobal": "No project (global only)",
+    "projectHint": "Assigned tasks become readable by that project's sessions; the task board still lists them."
   },
   "dialog": {
     "createTitle": "New global task",
@@ -75,7 +78,9 @@
     "archived": "Archived",
     "restored": "Restored",
     "updateFailed": "Update failed",
-    "sessionMissing": "(session deleted)"
+    "sessionMissing": "(session deleted)",
+    "unknownProject": "Unknown project",
+    "owningProject": "Project"
   },
   "dispatch": {
     "title": "Send to a project session",

@@ -3,6 +3,7 @@
 // 反向消息投递、看板事件广播彼此紧耦合，拆开要把 dispatch 上下文与 DB 句柄
 // 搬成公开 API，反而更难追踪一条派活到底走到哪一步。
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
@@ -23,7 +24,10 @@ public static class AgentRuntimeGlobalTaskExecutor
     private static readonly HashSet<string> GlobalTaskToolNames = new(StringComparer.Ordinal)
     {
         "list_global_tasks", "create_global_task", "update_global_task",
-        "list_global_dispatches", "send_work_request", "update_dispatch"
+        "list_global_dispatches", "send_work_request", "update_dispatch",
+        // S-300: the project side's read-only view of what was assigned to it. Same family,
+        // opposite direction — it lives here so one file holds both ends of the boundary.
+        "list_project_tasks"
     };
 
     public static bool IsGlobalTaskTool(string toolName)
@@ -40,6 +44,7 @@ public static class AgentRuntimeGlobalTaskExecutor
         return call.Name switch
         {
             "list_global_tasks" => ListGlobalTasks(call.Input, parameters),
+            "list_project_tasks" => ListProjectTasks(call.Input, parameters),
             "create_global_task" => await CreateGlobalTaskAsync(call.Input, parameters, context),
             "update_global_task" => await UpdateGlobalTaskAsync(call.Input, parameters, context),
             "list_global_dispatches" => ListGlobalDispatches(call.Input, parameters),
@@ -60,6 +65,10 @@ public static class AgentRuntimeGlobalTaskExecutor
                 w.WriteStartObject();
                 CopyStringProperty(input, w, "status");
                 CopyStringProperty(input, w, "keyword");
+                // S-300: which project owns the task is a filter, and "belongs to no project"
+                // is its own flag — an empty projectId must not mean two different things.
+                CopyStringProperty(input, w, "projectId");
+                CopyBooleanProperty(input, w, "unassignedOnly");
                 CopyBooleanProperty(input, w, "includeArchived");
                 w.WriteEndObject();
             });
@@ -70,6 +79,55 @@ public static class AgentRuntimeGlobalTaskExecutor
         {
             return EncodeError($"Failed to list global tasks: {ex.Message}");
         }
+    }
+
+    // ── list_project_tasks (S-300, read-only) ──
+
+    private static string ListProjectTasks(JsonElement input, JsonElement parameters)
+    {
+        try
+        {
+            // The hard boundary: the project comes from the session record, never from the
+            // model. A model-supplied projectId would let one project read another's tasks,
+            // and that is the only thing this feature must not allow.
+            var projectId = ResolveCurrentProjectId(parameters);
+            if (string.IsNullOrEmpty(projectId))
+                return EncodeError("This session does not belong to a project, so it has no project tasks.");
+
+            var dbParams = WorkerJsonHelper.BuildJsonElement(w =>
+            {
+                w.WriteStartObject();
+                w.WriteString("projectId", projectId);
+                CopyStringProperty(input, w, "status");
+                CopyStringProperty(input, w, "keyword");
+                CopyBooleanProperty(input, w, "includeArchived");
+                w.WriteEndObject();
+            });
+            var response = DbGlobalTaskTools.List(dbParams);
+            return ForwardDbResult(response);
+        }
+        catch (Exception ex)
+        {
+            return EncodeError($"Failed to list project tasks: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The project this run belongs to, read from <c>sessions.project_id</c>.
+    /// Deliberately not inferred from <c>workingFolder</c> — two projects may share one folder
+    /// (several projects inside a single repo), so the folder does not identify the project.
+    /// </summary>
+    private static string? ResolveCurrentProjectId(JsonElement parameters)
+    {
+        var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+        if (string.IsNullOrEmpty(sessionId)) return null;
+
+        DbClient.EnsureInitialized(parameters);
+        var db = DbClient.GetClient(parameters);
+        var projectId = db.QueryScalar<string?>(
+            "SELECT project_id FROM sessions WHERE id = @id",
+            new SqliteParameter("@id", sessionId));
+        return string.IsNullOrWhiteSpace(projectId) ? null : projectId;
     }
 
     // ── create_global_task ──
@@ -92,6 +150,8 @@ public static class AgentRuntimeGlobalTaskExecutor
                 CopyStringProperty(input, w, "priority");
                 CopyProperty(input, w, "tags");
                 CopyNumberProperty(input, w, "dueAt");
+                // S-300: optional owning project. Absent = a pure global task.
+                CopyStringProperty(input, w, "projectId");
                 w.WriteEndObject();
             });
 

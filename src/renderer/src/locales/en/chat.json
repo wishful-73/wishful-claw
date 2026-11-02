@@ -691,6 +691,7 @@
       "send_work_request": "Send Work Request",
       "update_dispatch": "Update Dispatch",
       "list_global_dispatches": "List Dispatches",
+      "list_project_tasks": "List Project Tasks",
       "reply_global_dispatch": "Reply to Dispatch",
       "create_project": "Create Project",
       "list_projects": "List Projects",

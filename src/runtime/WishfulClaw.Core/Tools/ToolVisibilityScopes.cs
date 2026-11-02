@@ -48,6 +48,14 @@ public static class ToolVisibilityScopes
     public static readonly string[] GlobalSideOnly = ["global:*@*"];
 
     /// <summary>
+    /// Project-side-only tools: reading what the global side assigned to <i>this</i> project
+    /// (S-300 <c>list_project_tasks</c>). The mirror image of <see cref="GlobalSideOnly"/> —
+    /// deliberately not <c>*:cowork@*</c>, because a global work run has no project to read
+    /// and the tool would sit in its table returning an empty list forever.
+    /// </summary>
+    public static readonly string[] ProjectSideOnly = ["project:*@*"];
+
+    /// <summary>
     /// Tools whose whole point is a human reacting: an answer dialog, a rendered widget. Visible in
     /// every desktop run, absent from a channel, where the only reply surface is plain text and a
     /// dialog would hang the run waiting for a click nobody can make.

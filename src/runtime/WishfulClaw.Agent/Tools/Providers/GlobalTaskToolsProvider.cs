@@ -18,7 +18,7 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
         // list_global_tasks: List the global agent's own tasks
         registry.Register(new ToolDefinitionPlaceholder(
             "list_global_tasks",
-            "List your global tasks (title, status, priority, tags, due date, archived flag). " +
+            "List your global tasks (title, status, priority, tags, due date, owning project, archived flag). " +
             "Archived tasks are hidden unless includeArchived is true. Never returns session-internal Todos.",
             ToolSchemaBuilder.Object(
                 new Dictionary<string, System.Text.Json.JsonElement>
@@ -27,6 +27,10 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                         "Optional status filter: pending / in_progress / blocked / completed / cancelled."),
                     ["keyword"] = ToolSchemaBuilder.String(
                         "Optional keyword filter matched against title and description."),
+                    ["projectId"] = ToolSchemaBuilder.String(
+                        "Optional owning-project filter. Only tasks assigned to that project are returned."),
+                    ["unassignedOnly"] = ToolSchemaBuilder.Boolean(
+                        "Only return tasks that belong to no project (pure global tasks). Ignored when projectId is set."),
                     ["includeArchived"] = ToolSchemaBuilder.Boolean(
                         "Include archived tasks. Defaults to false.")
                 },
@@ -38,6 +42,7 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
         registry.Register(new ToolDefinitionPlaceholder(
             "create_global_task",
             "Create a global task for a cross-project goal or follow-up item. Returns the new task id. " +
+            "Pass projectId to also make it visible to that project's sessions. " +
             "Global tasks are never deleted, only archived.",
             ToolSchemaBuilder.Object(
                 new Dictionary<string, System.Text.Json.JsonElement>
@@ -47,7 +52,10 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                     ["priority"] = ToolSchemaBuilder.String(
                         "Optional priority: low / normal / high / urgent. Defaults to normal."),
                     ["tags"] = ToolSchemaBuilder.ArraySchema("Optional list of tags."),
-                    ["dueAt"] = ToolSchemaBuilder.Number("Optional due date (unix milliseconds).")
+                    ["dueAt"] = ToolSchemaBuilder.Number("Optional due date (unix milliseconds)."),
+                    ["projectId"] = ToolSchemaBuilder.String(
+                        "Optional project id this task belongs to. Omit to keep it a pure global task. " +
+                        "The task still shows on your own task board either way.")
                 },
                 ["title"]),
                 availableModes: new[] { "global" },
@@ -56,7 +64,7 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
         // update_global_task: Update status/priority/tags/etc. or archive
         registry.Register(new ToolDefinitionPlaceholder(
             "update_global_task",
-            "Update a global task's fields (title, description, status, priority, tags, dueAt) " +
+            "Update a global task's fields (title, description, status, priority, tags, dueAt, projectId) " +
             "or archive it with archived=true. There is no delete operation for global tasks.",
             ToolSchemaBuilder.Object(
                 new Dictionary<string, System.Text.Json.JsonElement>
@@ -73,12 +81,34 @@ public sealed class GlobalTaskToolsProvider : IToolProvider
                                 "New priority: low / normal / high / urgent."),
                             ["tags"] = ToolSchemaBuilder.ArraySchema("Replacement tag list."),
                             ["dueAt"] = ToolSchemaBuilder.Number("New due date (unix milliseconds)."),
+                            ["projectId"] = ToolSchemaBuilder.String(
+                                "Owning project id. Pass null or an empty string to hang the task back on the global board."),
                             ["archived"] = ToolSchemaBuilder.Boolean("Archive the task (true). Global tasks are never deleted.")
                         })
                 },
                 ["taskId", "patch"]),
                 availableModes: new[] { "global" },
                 visibleScopes: ToolVisibilityScopes.GlobalSideAndWorkRuns));
+
+        // list_project_tasks: the project side reading what the global side assigned to it
+        registry.Register(new ToolDefinitionPlaceholder(
+            "list_project_tasks",
+            "List the global tasks assigned to THIS project (title, description, status, priority, tags, due date). " +
+            "Read-only: this project cannot change a global task's state — report back to the global agent instead. " +
+            "Tasks that belong to no project are not included.",
+            ToolSchemaBuilder.Object(
+                new Dictionary<string, System.Text.Json.JsonElement>
+                {
+                    ["status"] = ToolSchemaBuilder.String(
+                        "Optional status filter: pending / in_progress / blocked / completed / cancelled."),
+                    ["keyword"] = ToolSchemaBuilder.String(
+                        "Optional keyword filter matched against title and description."),
+                    ["includeArchived"] = ToolSchemaBuilder.Boolean(
+                        "Include archived tasks. Defaults to false.")
+                },
+                []),
+                availableModes: null,
+                visibleScopes: ToolVisibilityScopes.ProjectSideOnly));
 
         // list_global_dispatches: List dispatch records
         registry.Register(new ToolDefinitionPlaceholder(

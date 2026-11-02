@@ -41,6 +41,13 @@ public class GlobalTaskEntity
 
     public int Archived { get; set; }
 
+    /// <summary>
+    /// S-300: optional owning project. NULL = a pure global task (visible only to the global
+    /// side); set = the task also shows up in that project's own read-only task list.
+    /// A property, not a move — the global board still lists it.
+    /// </summary>
+    public string? ProjectId { get; set; }
+
     public long CreatedAt { get; set; }
 
     public long UpdatedAt { get; set; }
@@ -67,6 +74,10 @@ public sealed class GlobalTaskRow
 
     public int Archived { get; set; }
 
+    /// <summary>S-300: owning project id, or null for a pure global task.</summary>
+    [JsonPropertyName("project_id")]
+    public string? ProjectId { get; set; }
+
     [JsonPropertyName("created_at")]
     public long CreatedAt { get; set; }
 
@@ -83,6 +94,7 @@ public sealed class GlobalTaskRow
         Tags = e.Tags,
         DueAt = e.DueAt,
         Archived = e.Archived,
+        ProjectId = e.ProjectId,
         CreatedAt = e.CreatedAt,
         UpdatedAt = e.UpdatedAt
     };

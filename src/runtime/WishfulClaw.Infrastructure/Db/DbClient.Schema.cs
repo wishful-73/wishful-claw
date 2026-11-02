@@ -368,11 +368,15 @@ public static partial class DbClient
                 tags TEXT NOT NULL DEFAULT '[]',
                 due_at INTEGER,
                 archived INTEGER NOT NULL DEFAULT 0,
+                -- S-300: optional owning project. NULL = a pure global task, which is the
+                -- only meaning an old row can honestly have — nothing is backfilled.
+                project_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );",
             @"CREATE INDEX IF NOT EXISTS ix_global_tasks_status ON global_tasks(status);",
             @"CREATE INDEX IF NOT EXISTS ix_global_tasks_archived ON global_tasks(archived);",
+            @"CREATE INDEX IF NOT EXISTS ix_global_tasks_project ON global_tasks(project_id);",
             @"CREATE TABLE IF NOT EXISTS global_task_dispatches (
                 id TEXT PRIMARY KEY NOT NULL,
                 global_task_id TEXT NOT NULL,

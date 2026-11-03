@@ -390,6 +390,8 @@ tests/WishfulClaw.GoalRegressionTests/bin/Debug/net11.0/WishfulClaw.GoalRegressi
 
 **结论：不用再手动敲 `npm run typecheck` 和 `npm test -- --ts-only`，push 时自动跑。** 想手动跑就 `npm run ci:checks`。
 
+**⚠️ 交付门禁清单里也不要再列 `ci-checks`。** 交付门禁只有三条：`npm run typecheck` + `npm test` + `dotnet build`（两套 sln）。`ci-checks` 内部就是前两条的子集，并列写进交付清单等于 typecheck 与 TS 测试各跑两遍，白烧约 38 秒，而且会让「119/119」和「90/90」看着像两套独立判据（实际 90 是 119 里的 TS 部分）。这条 2026-11-03 栽过一次，别再犯。
+
 两层，同一个判据：
 
 | 层 | 触发 | 跑什么 | 失败后果 |

@@ -764,6 +764,42 @@ checkTrue(SCREENSHOTS_SUBDIR !== CHAT_IMAGES_SUBDIR, '截图目录必须与聊�
 
 `ActiveAutoReply` 加 `baselineMessageCount`，在**注册回执时**（`sendMessage` 之前）记下已有消息数。兜底只看 `slice(baseline)`。这一条同时治好 `cron-runtime.ts` 的 `result.summary`（同一形状的兜底）。
 
+## 2026-11-03 · S-300 老库升级回归修复：补列必须早于引用它的 DDL
+
+### 现象
+
+拿老 `index.db`（1.0.5 时期）启动 dev ⇒ `SqliteException: no such column: project_id`，
+`DbClient.CreateSchema()` 整体失败，cron 恢复 / 会话列表 / sub-agent 索引全部报错，界面读不出数据。
+
+### 是 S-300 自己引入的，不是历史问题
+
+S-300 给 `global_tasks` 加了 `project_id` 并建索引 `ix_global_tasks_project ON global_tasks(project_id)`。
+需求文档 §2.6 当时判断「加一行 `EnsureColumn` 即可，老库启动自动补列」，**这个判断是错的**：
+
+- `DbClient.Initialize()` 的顺序是 `CreateSchema()` → `RunMigrations()`
+- 索引语句在 `CreateSchema()` 的 DDL 数组里，而 `EnsureColumn("global_tasks", ...)` 在 `RunMigrations()`
+- `CREATE TABLE IF NOT EXISTS` 不给已存在的表补列 ⇒ 老库建这条索引时直接炸
+
+S-300 的验收判据 5（「拿 1.0.5 的 `index.db` 副本启动」）当时挂着没做，缺陷因此漏到本次真机验收才暴露。
+
+### 修法
+
+`DbClient.Schema.cs` 在 DDL 循环**之前**补列，`EnsureColumn` 对不存在的表自行忽略，新库不受影响：
+
+```csharp
+EnsureColumn("global_tasks", "project_id", "TEXT");
+EnsureColumn("agent_timeline_events", "project_id", "TEXT");  // S-25 时期的库同样缺，同一个坑
+```
+
+### 验证
+
+`52 DDL statements applied` → `migrations completed` → `initialization completed successfully`，无报错。
+
+### 口径
+
+以后再加「新列 + 索引」时，**索引语句与 `EnsureColumn` 的先后关系必须一起想** ——
+`EnsureColumn` 能补列，但补的时机必须早于任何引用该列的 DDL。已在 `S-300.md` §2.6 就地订正。
+
 区间内也没有文本 ⇒ 回一句明确说明。**说清楚比推历史强**：用户看到「本轮执行结束，没有产生可回复的文本输出」至少知道该去软件里看执行过程。
 
 ### 一处刻意的保守
@@ -876,6 +912,465 @@ PM 看到「你看看这个」完全不知道在说什么。所以图片从 `met
 ### 一个刻意的取舍
 
 没有单独出一份「评估报告」文件。§五 那七条大纲里，第 1/2/3/7 条已经由实测回答，第 4/5/6 条（WebView2 能力、874 文件人日、发布链成本）都不影响结论 —— **光是壳的基线就把收益吃光了**。再写一份报告只是把同一件事换个地方说一遍。
+
+---
+
+## 2026-11-02 · S-295 补测 · 完整场景 / 发布形态 / WebView2
+
+老大两条追问，都改了口径：① 空窗口说明不了问题，要**完整聊天界面**的数；② 框架依赖能不能 AOT。
+
+### 完整聊天场景（新增 `ChatScenario.cs` + `ChatMessage.cs`）
+
+`--stage chat --messages N [--stream]`。单条助手消息按真实密度造：4~6 段正文（每段 100~260 字）+ 30% 代码块 + 60% 工具卡 + 每 7 条一张 840×560 图（PNG 落盘再解码）。列表走 `ItemsControl` + `VirtualizingStackPanel`，对齐我们 Electron 侧的虚拟列表。
+
+| 场景 | 工作集 | 峰值 | 私有字节 | 托管堆 |
+|---|---|---|---|---|
+| **AOT · 200 条静态** | **154.0** | 165.6 | 118.3 | 5.3 |
+| **AOT · 200 条流式** | **213.6** | 217.6 | 177.0 | 32.9 |
+| JIT · 200 条静态 | 200.4 | 220.2 | 129.1 | 7.4 |
+| JIT · 200 条流式 | 261.6 | 269.4 | 185.9 | 31.9 |
+| JIT · 500 条静态 | 190.0 | 208.3 | 125.6 | 5.7 |
+
+三个读数：**AOT 静态 154.0 ≈ 空窗口 156.2**（完整界面几乎不额外占内存）；**500 条比 200 条还低 10 MB**（常驻与条数无关，虚拟化守住）；**流式才花钱**（+60 MB，托管堆 5.3 → 32.9）。
+
+### 三种发布形态（win-x64 实测）
+
+| 形态 | 体积 | 文件数 |
+|---|---|---|
+| 框架依赖 | 23.2 MB | 32 |
+| self-contained JIT | 99.7 MB | 218 |
+| **self-contained AOT** | **32.0 MB** | **4** |
+
+AOT 压缩后 **12.6 MB**。**踩坑记录**：早先量的「框架依赖 124.8 MB」是错的 —— 没指定 `-r win-x64` 时 publish 把各平台原生库全带上，指定 RID 后是 23.2 MB。
+
+### NETSDK1102：Avalonia 支持 AOT，「框架依赖 + AOT」不能叠加
+
+`--self-contained false -p:PublishAot=true` 实测报 `error NETSDK1102: 所选发布配置不支持优化程序集的大小。请确保你发布的是独立应用。`
+
+**不是能力问题，是概念冲突** —— AOT 产物按定义就不依赖 .NET 运行时，它自己必然是 self-contained。§11.3 那两行 AOT 数据就是 AOT 版跑出来的，Avalonia 的 AOT 完全可用。
+
+真成本在**代码 AOT 友好性**：原型上 `JsonSerializer.Serialize` 踩 IL2026 反射裁剪，报告写不出来，改手写拼接才通。
+
+### WebView2 实测：25 个进程，它就是 Chromium
+
+本机 WebView2 运行时在跑，直接量：browser(main) ×4 / renderer ×5 / gpu-process ×4 / utility ×8 / crashpad ×4，**合计 1015.5 MB**（多宿主叠加口径，非单实例；按最大一组推算单实例约 290 MB，这个数是推算不是实测）。
+
+**进程模型与 Electron 一模一样。** 方式一只省掉 Electron 主进程那 220 MB，代价是引入 Avalonia 壳 154 MB。
+
+### 依赖盘点：坎不在文件数，在生态
+
+渲染层实测 **878 文件 / 152,171 行**（components 431/81,528、lib 298/36,498、stores 128/29,550）。59 个运行时依赖里 **7 类在 Avalonia 侧没有等价物**：Markdown 全家桶（react-markdown + remark-gfm + rehype-raw/sanitize + remark-math + katex）、代码高亮 + Monaco、xterm 终端、mermaid、react-pdf、radix-ui/cmdk/sonner/motion/tailwind、zustand + immer。
+
+**最要命的是第一行 —— 那是消息正文**，正是聊天窗渲染成本的大头。所以纯 XAML 方案在我们产品里几乎不可能是「纯」的，现实形态是 **A′：XAML UI + WebView2 只渲染正文**。
+
+### 方案账
+
+| 方案 | 壳 | worker | 合计 | 对比现状 |
+|---|---|---|---|---|
+| 现状 Electron（实测） | 1006.8 | 319.7 | **1326.5** | — |
+| B：Avalonia + WebView2 全量 | ~748 | 319.7 | ~1068 | −19% |
+| A：纯 XAML（理论） | 213.6 | 319.7 | 533.6 | −60% |
+| **A′：XAML + WebView2 正文（现实）** | ~250 | 319.7 | **~860** | **−35%** |
+
+### 结论修正（不是推翻）
+
+「不建议迁移」维持，但理由换成三条：① **内存缺陷与壳无关**（压缩卡片超长文本一次布局炸的，换壳照样炸）；② **修完缺陷后收益缩水**（renderer 主窗口 389.7 MB 里有多少是缺陷撑的还不知道）；③ **纯 XAML 的 60% 是理论值，现实是 35%**，为 35% 重写 15.2 万行且要先自建 Markdown 渲染器 / 终端 / Mermaid，投入产出不成立。
+
+**体积这条账是干净的**：108.5 MB → 12.6 MB，砍 88%。但体积不是现在的痛点，内存才是。
+
+### 待裁定
+
+老大已表态「24 小时跑也没关系、额度用不完」，成本不构成否决理由。真正分歧在「A 能拿 60% 还是 35%」，可以量：原型加 `--stage chat-webview`，Avalonia 壳 + WebView2 加载一条真实消息 HTML，量常驻内存。**等老大拍板再做。**
+
+---
+
+## 2026-11-02 13:5x · 刀 1 交付：S-298 更新说明不再被重复检查抹掉（`3008dc35`）
+
+### 根因是一条「无条件写」
+
+`latest.yml` 自 0.2.39 起不带 `releaseNotes`，所以 `update-available` 每次都以**空串**到达。`updater-state.ts` 的 `applyAvailable` 却无条件写进快照 ⇒ **每次检查先把已有的说明清空**，再靠一次 best-effort 的官网拉取赌回来。那一次拉取 5 s 超时、没有重试、没有缓存、所有 miss 全吞成空串 —— 一次抖动就等于「本轮更新周期内说明永远空白」。用户看到的就是「第一次有、第二次没了」。
+
+渲染层 `UpdateDialog.tsx:142` 是「有内容就渲染」，没问题；问题全在状态源。
+
+### 三处改动
+
+| 层 | 位置 | 改法 |
+|---|---|---|
+| 状态机 | `updater-state.ts` `applyAvailable` | 抽 `resolveReleaseNotesOnAvailable`：非空写入 → **同版本空串保留原文** → 换版本才清空 |
+| 拉取 | `lib/release-notes.ts` | 新增 `fetchReleaseNotesWithRetry`（恰好一次重试，`retryDelayMs` 可注入）+ `readReleaseNotesCache` / `writeReleaseNotesCache` |
+| 编排 | `updater.ts` `resolveReleaseNotes` | 内联说明 > 盘上缓存（同版本才用）> 官网拉取；**拉到了才落盘** |
+
+**为什么换版本必须清空**：旧版说明挂在新版本号下就是谎报，和 `releaseNotesFileName` 带版本号是同一条立场。
+
+**为什么空说明不落盘**：一次失败不能把已有缓存擦掉，否则缓存反而放大了缺陷。
+
+**缓存按版本号校验**：坏文件、缺字段、`notes` 非字符串、纯空白 —— 一律视为未命中，不抛异常。缓存只是省一次网络，不该变成新的失败点。
+
+### 判据（新增 7 条，全部反向验证过）
+
+| 判据 | 反向验证 |
+|---|---|
+| 同版本空串不覆盖已有说明 | 改回无条件写入 ⇒ 红 |
+| 换版本必清（不继承旧版说明） | 改成「总是保留」⇒ 红 |
+| 内联说明仍然优先 | — |
+| 坏缓存 / 版本不符 / notes 非字符串 / 空白 ⇒ 未命中 | — |
+| 空说明不落盘 | — |
+| 首次失败第二次成功 ⇒ 拿到说明，恰好 2 次请求 | — |
+| 两次都失败 ⇒ 空串且只重试一次；首次成功不重试 | 去掉 `if (first) return` ⇒ 红 |
+
+### 门禁
+
+`typecheck` 三配置 0 错 / `npm test` **121/121**（原 119 + 本轮 2 套新增断言）/ `ci-checks` **91/91** / `dotnet build` 两套 sln 各 0 警告 0 错误。
+
+### 真机验收口径
+
+需要一个**清单不带 releaseNotes** 的真实发布版本才能复现原路径。验收动作：检查更新 → 看到说明 → 开始下载 → 后台下载 → 等 30 s 以上 → 再点开 ⇒ 说明仍在。断网后再重复一次 ⇒ 说明仍从缓存出来。**本迭代不做打包，随 v1.0.6 发布后验。**
+
+## 2026-11-02 15:2x · 刀 9 · S-302 Monaco 瘦身 —— 原方案是空转，真根因是全量导入
+
+### 原方案删完，产物一动不动
+
+按需求文档 §四 动手：删掉 `setup.ts` 里 json / css / html / ts 四条 `?worker` import，删掉 `getWorker` 里对应四个分支，删掉 TS compilerOptions / diagnosticsOptions。
+
+`npm run typecheck` 绿、`npm run build` 绿 —— 然后 `out/renderer` **仍是 45.92 MB / 213 文件**，`ts.worker` 12.63 MB、`css.worker` 1.78、`html.worker` 1.18、`json.worker` 0.80 **一个不少**。
+
+先排除了「旧残留」这个可能：`Remove-Item out\renderer -Recurse -Force` 后重建，结果不变（electron-vite 的 renderer root 是 `src/renderer`、outDir 在 root 外，vite 不自动 emptyOutDir，这个坑先踩掉了）。
+
+### 真根因：monaco 包内自己 spawn 的 worker，Vite 无条件打包
+
+产物内反查（`cssMode-*.js` / `htmlMode-*.js` / `jsonMode-*.js` / `tsMode-*.js` / `setup-*.js`）定位到两处包内代码：
+
+- `monaco-editor/esm/vs/language/*/workerManager.js` 里写死 `new Worker(new URL('ts.worker.js', import.meta.url), { type: "module" })`。Vite 静态识别 `new URL(..., import.meta.url)` 后**无条件打包**，与本项目是否 import 该 worker 毫无关系；
+- `monaco-editor/esm/vs/editor/editor.main.js` 无条件 import 四个 `monaco.contribution.js`，把上面四条 workerManager 全拉进依赖图。
+
+而 `setup.ts:9` 的 `import * as localMonaco from 'monaco-editor'` 正是 `editor.main.js`。**⇒ 不换入口，删多少条 `?worker` import 都是空转。**
+
+这条也推翻了需求文档 §七 的判断（原写「按需导入易踩坑，本迭代不做」）—— 它就是唯一解，而且不踩坑。
+
+### 换入口
+
+```ts
+import * as localMonaco from 'monaco-editor/esm/vs/editor/editor.api'
+import 'monaco-editor/esm/vs/editor/editor.all'
+import 'monaco-editor/esm/vs/basic-languages/_.contribution'
+import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
+```
+
+`editor.api` 是编辑器 API 本体（自带 `internal/initialize`），`editor.all` 是编辑器全部 contrib（查找替换 / 折叠 / 多光标 / codicon 样式）**不含任何语言服务**，`basic-languages/_.contribution` 注册 90+ 种 monarch 语法定义（主线程懒加载，不需要 worker）。
+
+顺手清掉早已无引用的 `RENDERER_GLOBALS_D_TS` 死代码常量（4505 → 820 字节）。
+
+`editorRemoteLanguageServiceEnabled` **保留** —— 它只管 model URI 的 scheme（`in-memory:` vs `ssh:`，见 `lib/monaco/workspace.ts` 的 `createModelUri`），与内置语言服务 worker 无关，删了会误伤 SSH 工作区。
+
+### 实测
+
+| 指标 | 改动前 | 改动后 | 变化 |
+|---|---|---|---|
+| `out/renderer` | 45.92 MB / 213 文件 | **28.59 MB / 123 文件** | **−17.33 MB / −90 文件** |
+| `ts.worker` | 12.63 MB | 消失 | ✅ |
+| `css.worker` | 1.78 MB | 消失 | ✅ |
+| `html.worker` | 1.18 MB | 消失 | ✅ |
+| `json.worker` | 0.80 MB | 消失 | ✅ |
+| `editor.worker` | 0.52 MB | 0.52 MB | 保留（编辑器自身要） |
+| `setup-*.js` | 6.81 MB | 6.81 MB | **不变** |
+
+判据是「≥16.39 MB 消失」，实际回收 17.33 MB。
+
+### 一个要记的预期修正
+
+需求文档 §七 以为「按需导入能再砍 setup 那 6.99 MB 的一部分」——**错了**。`editor.all` + `basic-languages` 的体积与原全量导入基本一致，`setup-*.js` 一分没少。**收益全部来自四个 worker（16.39 MB）+ 随之消失的 mode / 语言服务 split chunk（约 0.94 MB）。**
+
+按需导入省的是 worker，不是 setup。这条以后别再算错账。
+
+### 功能退化（已写进文档 §八）
+
+用户编辑 `.ts` / `.json` / `.css` / `.html` 时**失去智能提示**（补全、类型检查、悬停、格式化），**保留语法高亮** —— 产物内 `tokenizer` 命中 137 处，monarch 定义齐全。
+
+影响面很小：`CodeEditor` 只被 `lib/preview/viewers/` 的 fallback / html / markdown / svg 四个 viewer 引用（文件预览面板），`MonacoDiffEditor` 只有 `layout/preview/content.tsx:21` 一个 `lazy()` 引用。都是看文件、不是写项目。
+
+### 门禁
+
+`typecheck` 三配置 0 错 / `npm test` **121/121** / `ci-checks` **91/91**。
+
+格式：`setup.ts` CRLF 39 / 裸 LF 0 / 无 BOM；`S-302.md` 新增文件已由裸 LF 124 转 CRLF 124 / 裸 LF 0。
+
+### 真机验收待做
+
+dev 实例打开一个 `.ts` 文件（高亮在、无 worker 404）、改一行保存、再开 diff 看增删行。**本迭代不打包，安装包体积收益随 v1.0.6 实测。**
+
+## 2026-11-02 16:2x · 刀 11 · S-304 流式断连不再整轮作废
+
+### 老大给的现象
+
+`net_http_invalid_response_premature_eof (ResponseEnded)`，问「这个是超时了么？超时我希望走重试呀」。
+
+生产日志坐实（`2026-11-02.log:1190`）：
+
+```text
+[WARN] agent run failed runId=wc-agent-1793602557526-633g5c
+       error=HttpIOException: net_http_invalid_response_premature_eof (ResponseEnded)
+```
+
+同一个 run 15:12 就在跑 Bash 工具（输出截断 69,585 → 32,767 B），15:32 还在做压缩检查，15:35:38 断流 —— **已经跑了二十多分钟、多轮工具**。中间零条 `request_retry`。
+
+### 不是超时
+
+超时走的是另一条路，而且早就在重试：
+
+| 超时类型 | 抛出位置 | 转成 |
+|---|---|---|
+| 首字节超时 | `AgentRuntimeRequestTimeout.cs:72` | `TimeoutException` |
+| 流空闲超时 | `AgentRuntimeRequestTimeout.cs:108` | `TimeoutException` |
+
+`ProviderRetryPolicy.cs:101-130` catch `TimeoutException` → 退避 + `request_retry` 事件。
+
+`HttpIOException` 是 `ReadLineAsync` 读到对端关连接，不是 `OperationCanceledException`，压根不走那条。
+
+### 真根因：三处 catch 认错类型
+
+| 位置 | 原来只 catch |
+|---|---|
+| `OpenAIChatProvider.cs:92` | `HttpRequestException` |
+| `AnthropicMessagesProvider.cs:126` | `HttpRequestException` |
+| `ProviderCompletionService.cs:111` | `HttpRequestException` |
+
+而 **`HttpIOException : IOException`，与 `HttpRequestException` 无继承关系**（.NET 8 引入，项目 `net11.0`）⇒ 一个都捕不到，异常直接冒泡成 `agent run failed`。
+
+全仓 `catch (IOException` 只有 6 处，全是文件 IO（写共享冲突 / 数据目录 / 媒体文件），无一处覆盖网络流。
+
+**同属传输层故障，一个能重试一个不能 —— 是实现漏了一类异常，不是设计选择。定性 bug。**
+
+### 老大把方案从三条里拉回一条
+
+我原来列了 A（如实报错）/ B（UI 替换）/ C（问用户）三条待拍板。老大 16:06：
+
+> 感觉你想复杂了，报错了那一段就算中断报错呗，新的输出走新的呀
+
+**⇒ 不需要替换语义，也不需要新交互态。** 而且这在架构上天然成立：`ProviderRetryPolicy.ExecuteAsync` 的循环体是**完整一次 provider 请求**，重试会重跑整个方法 —— 新 `StreamSegmentBoundary`、新 `assistantText`、新 `text_start` ⇒ renderer 开新段落。已输出的半截既不被追加也不被改写。
+
+### 改动
+
+1. **判定收进纯函数**（新增 `ProviderRetryPolicy.IsRetryableTransportError`）：
+
+```csharp
+internal static bool IsRetryableTransportError(Exception ex) =>
+    ex is HttpRequestException or HttpIOException;
+```
+
+三处调用点全改用它。**正是因为三处各写各的才会漏**，收成一处后将来加第三类只改这里。
+
+2. **去掉「零输出」守卫**（两个流式 provider）。原守卫要求正文 / 思考 / 工具调用全为空才重试 —— 老大裁定后只保留「用户取消不重试」。一个跑了二十分钟的 run 不能因为掉一次 socket 就整轮作废。
+
+3. **抛前 `boundary.AtEnd()`**，把断流时仍开着的 thinking 块收尾，否则渲染端会一直显示它在流式输出。
+
+**不做**：新事件（`request_retry` 已经够提示）、UI 替换（工具副作用已发生，边界判不准）、catch 裸 `IOException`（误伤文件 IO）、续写协议。
+
+### 门禁
+
+新增 `tests/WishfulClaw.ProviderHeaderRegressionTests/TransportRetryChecks.cs`，9 条判据：
+
+- `ResponseEnded` / `InvalidResponse` / 带 inner 的 `HttpIOException` / `HttpRequestException` ⇒ 可重试
+- 裸 `IOException` / `OperationCanceledException` / `InvalidOperationException` ⇒ **不可**重试
+- 类型关系固化：`HttpIOException` 不是 `HttpRequestException` 子类、是 `IOException` 子类
+
+**反向验证（已执行）**：判定改回只认 `HttpRequestException` ⇒ `EXIT=1`，红的正是 `Assertion failed: ResponseEnded (the production failure) is retryable`；改回后 `EXIT=0`。
+
+`typecheck` 三配置 0 错 / `npm test` **121/121** / `ci-checks` **91/91** / `dotnet build` 两套 sln 各 0 警告 0 错误。
+
+### 测不到的部分（如实记）
+
+`OpenAIChatProvider.Http` / `AnthropicMessagesProvider.Http` 都是 `private static readonly HttpClient`，**不可注入** ⇒ 没法 mock 一次真断流做端到端单测。单测钉的是判定函数，端到端靠真机：
+
+1. 长任务中途断网 ⇒ 状态栏「重试中」，随后继续输出
+2. 断流前半截内容留着，重试后是新段落，不重复不覆盖
+3. 断流时开着的 thinking 块会被收尾，不转圈
+
+## 2026-11-02 17:1x · CI 修复 · 两个 Windows 专属测试按平台隔离
+
+### 老大给的线索
+
+「GitHub 一直有邮件提示我去拉取 kodaclaw 上游失败，实际上我们现在不用再管 kodaclaw 了」。
+
+查下来是**两件事**：
+
+1. **`wishful-73/koda-claw`** 的 `Mirror — Sync third-party images to ACR` 每周一定时跑（`cron "0 2 * * 1"`），往阿里云 ACR 推 `searxng/searxng:latest`。失败原因 `##[error]Username and password required` —— `secrets.ALIYUN_REGISTRY_USER/PASSWORD` 失效，从 2026-06-08 到 11-02 共 22 次一次没成功。**已 `gh workflow disable 263024272`**（`disabled_manually`），下周一不再跑。不是「拉上游」，是往 ACR 推镜像登录失败。
+2. **`wishful-claw` 自己的 CI 从 10-27 起每次 push `main` / `dev/**` 全红** —— 这条才是持续噪音，而且意味着 `ci.yml` 那句「远程兜底…这里再守一道」已经空转五天。
+
+### 根因：把 Windows 语义当成了跨平台语义
+
+`88/90 通过，2 个失败` —— 固定是这两个：
+
+| 测试 | 平台假设 | POSIX 上的实际结果 |
+|---|---|---|
+| `local-media-url` | `parseMediaUrlPath` 的 `isAbsolute` 来自平台 `path` | `C:\Users\me\...png` 被判成相对路径 ⇒ 返回 `null` ⇒ 往返断言必红 |
+| `everything-search` | 去重断言期望值混了字面量与 `join` 产物 | `join('C:\Program Files\Everything', 'Everything.exe')` ⇒ `...Everything/Everything.exe`（正斜杠），与 DisplayIcon 字面量不相等 ⇒ 去重失效 ⇒ 多一条 |
+
+顺带发现 `local-media-url` 里还有两条**假绿**：`C:\a\..\b.png` 的「`..` 段拒绝」与 `\\server\share\a.png` 的「UNC 拒绝」，在 POSIX 上都在 `isAbsolute` 那关就返回 `null`，**根本没走到被测的那两条规则**。一并隔离。
+
+### 修法（老大选 A：平台隔离，不改实现）
+
+三处 Windows 专属断言用 `process.platform === 'win32'` 包住：
+
+- `tests/local-media-url/program.ts` —— 盘符往返 + 反斜杠 `..` 段 + 反斜杠 UNC（3 条）
+- `tests/everything-search/program.ts` —— 同路径去重那条 `deepEq`（1 条）
+
+**不改成平台无关**：在 POSIX 上接受 `C:\` 路径本身就是错的行为。
+
+与分隔符无关的断言照常跑 —— 「不取无关条目」「UninstallString 不作为候选」「正斜杠 UNC 拒绝」「非 Windows 没有常见安装位」全部保留。
+
+### 验证：Windows 上没法真跑 Linux，于是模拟 POSIX 语义
+
+`path` 在 Node 启动时就已加载，`Object.defineProperty(process, 'platform')` 改不动它。改用拦截 `Module._load`，把 `require('path')` 换成 `path.posix`，同时伪装 `process.platform = 'linux'`，再把测试用 esbuild 打包成 cjs 跑：
+
+```text
+[sim] platform = linux | path.sep = "/"
+everything-search: 106 checks passed
+oc-media 解析与白名单检查通过（41 项断言）。
+```
+
+| 测试 | Windows | POSIX 模拟 |
+|---|---|---|
+| `local-media-url` | 44 项 | **41 项**（隔离 3） |
+| `everything-search` | 107 项 | **106 项**（隔离 1） |
+
+**反向验证（已执行）**：`git checkout --` 退回修复前版本跑同一模拟 ⇒ 两个都 `AssertionError`，报错文本与 CI 日志逐字一致：
+
+- `AssertionError: Windows 路径往返一致（期望 C:\Users\me\.wishful-claw\images\2026-10\9f2c1a7b3e5d4c60.png，实得 null）`
+- `AssertionError: 只取 Everything 卸载项：DisplayIcon 优先，InstallLocation 补两种命名，同路径去重，非 Everything 条目一律不取`
+
+### 门禁
+
+`typecheck` 三配置 0 错 / `npm test` **121/121** / `ci-checks` **91/91**。commit `b21dd17c`。
+
+### 真实验证（2026-11-02 17:17，push `dev/v3-iter-6`）
+
+老大说「推吧，反正是为了测试」，于是把 13 个提交推上去，Actions 在真正的 `ubuntu-latest` 上跑了一遍：
+
+```text
+run 41419445280 · CI · dev/v3-iter-6 · conclusion = success
+  ok   test:everything-search                          0.1s
+  ok   test:local-media-url                            0.0s
+  91/91 通过
+  == 门禁通过 ==
+```
+
+**从 10-27 起连续五天全红的 CI，第一次是真绿的。** 之前那个 `ci.yml` 的「远程兜底」现在真的在兜底了。
+
+首次真机核验顺带确认了另一件事：本地 `pre-push` 钩子会先跑 typecheck（42.5s）+ TS 全量（22.9s），过了才让推 —— 所以进到远程的提交本来就是绿的，Actions 是第二道。
+
+---
+
+## 2026-11-03 代码图谱插件：徽章状态自相矛盾 + dev 拆掉 NuGet 缓存回落
+
+### 老大真机验收报的两条
+
+> 「列表显示的待下载 我点到详情就变成已启用了，而且没找到地方清除还原啥的」
+
+### 根因一：`null` 被当成 `false`，不是两个面板读错了字段
+
+`AppPluginPanel.tsx:186` 原来只在**选中代码图谱**时才拉资产状态：
+
+```ts
+useEffect(() => {
+  if (selectedPluginId !== CODEGRAPH_PLUGIN_ID) return
+  void refreshCodegraphAsset()
+}, [selectedPluginId])
+```
+
+`codegraphAsset` 初值 `null` ⇒ 列表算 `Boolean(null?.runtimeReady ?? null?.ready)` = `false` ⇒ 徽章「待下载」。点进详情触发拉取，真状态回来 ⇒ 变「已启用」。**同一个东西两种说法，是拉取时机问题，不是判据分叉。**
+
+修法：`getPluginState` 的 `isCodeGraphReady` 类型改 `boolean | null`，`null` 返回新增的 `'checking'` 态（徽章「检测中」灰），并把 `useEffect` 改成挂载即拉。
+
+### 根因二：dev 从 NuGet 缓存读语法库，生产没有 —— 两套行为
+
+`resolveCodeGraphGrammarsDir()` 原先有一档 dev 专用回落：`~/.nuget/packages/treesitter.dotnet/1.3.0/runtimes/win-x64/native`（实测 31 文件 / **68.31 MB** / 30 个语法库）。后果是 dev 永远「已就绪」，**「待下载 → 下载 → 移除」这条链路在 dev 上根本验不到**。
+
+老大拍板：**dev 直接忽略缓存，不要环境变量开关。** 拆两处，拆一处不够：
+
+| 位置 | 处置 |
+|---|---|
+| `resolveCodeGraphGrammarsDir()` | 删 dev 分支，只剩 override → 插件数据目录 → 随包目录 |
+| `findGrammarDiagnosticDir()` | 删 `...(isDevBuild() ? [devNugetDir] : [])` —— **这处不删等于没改**，`??` 会把它捞回来 |
+| `getDevNugetGrammarsDir()` / `currentRid()` / `os` import / `TREE_SITTER_NUGET_PACKAGE` / `TREE_SITTER_NUGET_VERSION` | 全删，成了死代码 |
+
+连带修：`native-worker.ts:210` 注释「or the NuGet cache in dev」作废；`codegraph-asset-section.tsx` 的「开发环境 grammar 已就绪」绿框条件从 `isDev && grammarsReady` 改成 `grammarSource === 'dev'`（否则 dev 装了插件也会误显示）。
+
+**`~/.nuget/packages/treesitter.dotnet` 那 68 MB 不动** —— 主仓 0 个 csproj 引用它，但独立仓 `wishful-claw-codegraph` 的 csproj 有 `<PackageReference>`，删了那边编译要重下。
+
+### 新增「重新检测」
+
+状态原来只在挂载和装卸后各拉一次，没有手动刷新入口。`CodegraphAssetSection` 标题行右侧加按钮，`onChanged` 签名改 `() => void | Promise<void>` 以便 await 时转圈。
+
+### 关于「找不到清除还原」
+
+**不是缺功能，是本来没东西可清**：`C:\Users\龚翼\.wishful-claw-dev\plugins\codegraph` 与 `D:\claw\wishful-claw\plugins\codegraph` 都不存在 ⇒ 从没下载过资产 ⇒ `pluginGrammarsReady = false` ⇒ 移除按钮按 `codegraph-asset-section.tsx:191` 的设计不渲染。拆掉 NuGet 回落后，dev 会如实显示「待下载」，「移除语言包」只在真下载过之后出现。
+
+### 门禁
+
+`npm run typecheck` 三配置 **0 错** / `npm test` **120/120**。（纯渲染层 + 主进程 TS，无 C# 改动，未动两套 sln。）
+
+### 待真机验收 4 步
+
+① 无插件时徽章=待下载 / 详情=未安装 → ② 点「下载代码图谱」装 9.7 MB 后=已启用 → ③ 出现「移除语言包」，点掉回待下载 → ④「重新检测」能就地重算。
+
+## S-303 代码图谱剥离为可选插件（2026-11-03，`45e6665b`）
+
+主仓不再随包背 tree-sitter 原生语法库。整个 `src/runtime/WishfulClaw.CodeGraph/`
+迁到独立仓 `wishful-73/wishful-claw-codegraph`（public；AOT 引擎 `bin/codegraph.exe`
+9.56 MB + 18 种语言语法库，tag `codegraph-v1`），主仓只留一条插件配置 + 下载通道。
+
+**这一刀的账**：252 文件，+1112 / **−62372**。删掉的主体是原生 `.dll`（grammars），
+其余是随之作废的程序集、sln 引用、`publish-aot-worker` 的拷贝步骤和老测试。
+
+**为什么做**：语法库是 18 个语言的 tree-sitter 原生库，跟着安装包走意味着每个用户都
+为「可能一辈子不用的语言」付体积。改成按需下载后，资产包 `codegraph-win-x64.zip` =
+10,133,006 字节（9.66 MiB），点一下装到 `{dataDir}/plugins/codegraph/`。
+
+### 三个实测踩到的坑
+
+**① EPERM：卸载永远删不掉**
+`codegraph.exe` 是内置 MCP server 的 **stdio 子进程**，进程活着时 Windows 锁住 exe 和
+dll。原来的顺序是「先删目录、最后才重连」—— 反了，必然 EPERM。改成
+`manager.remove` → `disconnectBuiltinCodeGraph()` → `removeDirWithRetry()`
+（EPERM/EBUSY 5 次退避）。fs 的 `force: true` 只管「文件不存在」，管不了「文件被锁」。
+
+**② 阶段文案永远收不到**
+`codegraph:download-progress` 用 `safeSendMessagePackToAllWindows` 广播，落点是
+`…:msgpack`；但 `MESSAGEPACK_EVENT_CHANNELS` 里只有 `codegraph:index-progress`，
+渲染端 `ipcClient.on` 因此走裸通道 ⇒「正在下载 / 正在解压 / 正在连引擎」三段文案全死，
+只剩字节进度条在动。该文件本身是裸 `ipcMain.handle` 注册（invoke 一直正常），
+唯独广播这条借了 msgpack 桥，两边没对上。
+
+**③ 切走再切回：进度没了，还能再点一次**
+`CodegraphAssetSection` 条件渲染，切插件即卸载，`busy`/`transfer` 全丢；主进程还在下，
+切回来退回「下载」按钮，再点就是同一个 `.part` 开第二条下载。改成主进程持有安装态
+（模块级 `installPromise` + `asset-status` 返回 `installing`），重复调用返回同一个 promise。
+
+### 顺带修的判据错误
+
+`runtimeReady = workerReady && grammarsReady`，而 `workerReady =
+resolveNativeWorkerPath() != null` 恒为 true —— 剥离后引擎已独立，「语法库在盘上、
+引擎没装」会被判成**已就绪**：徽章绿着，MCP 面板里却没有 `builtin-codegraph`。
+改成 `engineReady = fs.existsSync(resolveCodeGraphEnginePath())`。
+
+同时删掉 `native-worker.ts` 里两处已在 C# 侧无消费者的注入（`CODEGRAPH_HOME`、
+`WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR`，grep 全仓 `.cs` 结果为空）—— 引擎自己按
+`{AppContext.BaseDirectory}/grammars` 找语法库。
+
+### 未修（判定不修）
+
+`ipc-msgpack-routing` 的扫描器只认 `register*MessagePackHandler`，不认
+`safeSendMessagePackTo*` 广播路径，坑② 才漏过 120/120。但广播有 30+ 处字面量调用，
+其中 8 个发给独立窗口（`clipboard:history-updated`、`file-search:status`、
+`launcher:reset` 等），本就不该进主窗口的 EVENT 列表 —— 硬扫会立刻误报，要压住得写
+一张又长又脆的白名单。改为在两处代码注释里钉住约定，不加扫描器。
+
+### 门禁
+
+`npm run typecheck` 三配置 **0 错** / `npm test` **120/120** / `tests\WishfulClaw.Tests.sln`
+**0 警告 0 错误**。`src\runtime\WishfulClaw.sln` 编译阶段 0 错、0 警告；复制阶段被正在
+运行的 dev worker 锁住 `bin\Debug\net11.0\*.dll` 报 MSB3021/MSB3027，非代码问题，
+关掉 dev 后复跑即可。
 
 
 

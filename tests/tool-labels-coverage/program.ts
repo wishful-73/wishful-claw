@@ -224,12 +224,6 @@ test('历史别名归一后再查表（BrowserSearch → WebSearch）', () => {
   assert.equal(resolveToolDisplayName('BrowserSearch', fakeT), '搜索网页')
 })
 
-test('codegraph 前缀族显示成「代码图谱 · 动作」，不做裸回退', () => {
-  assert.equal(resolveToolDisplayName('codegraph_explore', fakeT), '代码图谱 · 探索')
-  const unknownAction = resolveToolDisplayName('codegraph_bogus_action', fakeT)
-  assert.ok(unknownAction.startsWith('代码图谱 · '), unknownAction)
-})
-
 test('MCP 工具拆词大写，不显示 mcp__ 原文', () => {
   const label = resolveToolDisplayName('mcp__my_server__do_thing', fakeT)
   assert.equal(label, 'Do thing')

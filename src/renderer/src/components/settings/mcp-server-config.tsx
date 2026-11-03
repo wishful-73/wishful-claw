@@ -41,6 +41,9 @@ export function McpServerConfig({
   const resources = serverResources[server.id] ?? []
   const prompts = serverPrompts[server.id] ?? []
   const error = serverErrors[server.id]
+  // 内置 server（如代码图谱）随插件资产存亡，不提供删除；重装/移除走插件面板。
+  // 前缀是 `builtin-` 而不是 `builtin:` —— 冒号会让 mcp__{server}__{tool} 变成非法函数名。
+  const isBuiltin = server.id.startsWith('builtin-')
 
   const [connecting, setConnecting] = useState(false)
 
@@ -114,13 +117,19 @@ export function McpServerConfig({
           <p className="text-xs text-muted-foreground">{TRANSPORT_LABELS[server.transport] ?? server.transport}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            className="inline-flex items-center justify-center size-7 rounded-md text-destructive hover:text-destructive hover:bg-destructive/10 transition-colors"
-            onClick={handleDelete}
-            title={t('mcp.deleteServer', { defaultValue: 'Delete' })}
-          >
-            <Trash2 className="size-3.5" />
-          </button>
+          {isBuiltin ? (
+            <span className="rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground">
+              {t('mcp.builtinBadge', { defaultValue: '内置' })}
+            </span>
+          ) : (
+            <button
+              className="inline-flex items-center justify-center size-7 rounded-md text-destructive hover:text-destructive hover:bg-destructive/10 transition-colors"
+              onClick={handleDelete}
+              title={t('mcp.deleteServer', { defaultValue: 'Delete' })}
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          )}
           <Switch checked={server.enabled} onCheckedChange={handleToggleEnabled} />
         </div>
       </div>

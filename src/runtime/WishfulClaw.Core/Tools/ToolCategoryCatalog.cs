@@ -45,7 +45,6 @@ public static class ToolCategoryCatalog
         new("capability", 70, "list, inspect and call MCP servers, skills and plugins through one proxy"),
 
         // Code and project understanding.
-        new("codegraph", 80, "query the indexed code graph for symbols, references and impact"),
         new("project", 90, "inspect projects and drive their sessions"),
 
         // Information from outside the workspace.
@@ -86,13 +85,11 @@ public static class ToolCategoryCatalog
     /// core category may opt out, and a core-category tool added later is core until declared.
     ///
     /// Membership here is a category's eligibility for direct injection, not a promise that it
-    /// shows up: a run-level switch can still veto an individual tool. <c>codegraph</c> is the
-    /// first such member — eligible for direct injection, listed only when the CodeGraph plugin
-    /// is on and the project actually has an index.
+    /// shows up: a run-level switch can still veto an individual tool.
     /// </summary>
     public static IReadOnlyList<string> Core { get; } =
     [
-        "file", "search", "shell", "todo", "memory", "plan", "capability", "codegraph",
+        "file", "search", "shell", "todo", "memory", "plan", "capability",
     ];
 
     // OrdinalIgnoreCase is kept on purpose: every category in the repo is lowercase kebab today,

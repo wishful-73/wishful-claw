@@ -34,7 +34,6 @@ import {
   listDir
 } from './project-archive-helpers'
 import { PersonaFilePreview } from './PersonaFilePreview'
-import { CodeGraphProjectIndexSection } from './codegraph-project-index'
 import ProjectMemoryFileTab from './ProjectMemoryFileTab'
 import ProjectMemoryLibraryTab from './ProjectMemoryLibraryTab'
 
@@ -320,11 +319,6 @@ export function ProjectArchivePage(): React.JSX.Element {
               {tCommon('action.refresh', { defaultValue: 'Refresh' })}
             </Button>
           </div>
-        </div>
-
-        {/* ── Code graph (per-project index) ── */}
-        <div className="shrink-0 pb-4">
-          <CodeGraphProjectIndexSection />
         </div>
 
         {/* ── Tab bar ── */}

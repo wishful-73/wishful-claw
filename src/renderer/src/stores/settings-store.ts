@@ -250,12 +250,6 @@ interface SettingsStore {
   // provider in use hits a quota / rate limit. Off unless the user opts in.
   providerFallback: ProviderFallbackConfig
 
-  // CodeGraph Settings (opt-in standalone sidecar; default off)
-  codegraphEnabled: boolean
-  // Register the full 8-tool CodeGraph surface for agents (default: explore only,
-  // matching upstream's DEFAULT_MCP_TOOLS)
-  codegraphFullToolSurface: boolean
-
   // Network Settings
   systemProxyUrl: string
 
@@ -400,10 +394,6 @@ export const useSettingsStore = create<SettingsStore>()(
 
       // Provider fallback (iter-29 / S-21)
       providerFallback: createDefaultProviderFallback(),
-
-      // CodeGraph Settings (opt-in standalone sidecar; default off)
-      codegraphEnabled: false,
-      codegraphFullToolSurface: false,
 
       // Network Settings
       systemProxyUrl: '',
@@ -564,9 +554,6 @@ export const useSettingsStore = create<SettingsStore>()(
         ),
         requestMaxRetries: clampRequestMaxRetries(state.requestMaxRetries),
         providerFallback: normalizeProviderFallback(state.providerFallback),
-        // CodeGraph Settings
-        codegraphEnabled: state.codegraphEnabled,
-        codegraphFullToolSurface: state.codegraphFullToolSurface,
         // Network Settings
         systemProxyUrl: state.systemProxyUrl,
         // Logging Settings

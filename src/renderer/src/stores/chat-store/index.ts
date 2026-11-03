@@ -107,8 +107,6 @@ export interface AgentActions {
 
     systemPrompt?: string
 
-    codegraphEnabled?: boolean
-
     workingFolder?: string
 
     maxIterations?: number

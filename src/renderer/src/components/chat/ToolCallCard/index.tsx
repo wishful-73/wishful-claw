@@ -35,7 +35,6 @@ import { BashOutputBlock } from './output-blocks/bash-output'
 import { GrepOutputBlock, GlobOutputBlock, LSOutputBlock } from './output-blocks/search-output'
 import {
   ImageOutputBlock,
-  MarkdownOutputBlock,
   OutputBlock,
   ReadOutputBlock
 } from './output-blocks/text-output'
@@ -510,17 +509,12 @@ function ToolCallCardInner({
             )}
             {shouldRenderOutputPanels &&
               output &&
-              name.startsWith('codegraph_') &&
-              outputText && <MarkdownOutputBlock output={outputText} />}
-            {shouldRenderOutputPanels &&
-              output &&
               name.startsWith('memory_') &&
               !(status === 'streaming' || status === 'running') &&
               outputText && <MemoryOutputBlock name={name} input={input} output={outputText} />}
             {shouldRenderOutputPanels &&
               output &&
               !extensionToolResult &&
-              !name.startsWith('codegraph_') &&
               !name.startsWith('memory_') &&
               ![
                 'Read',

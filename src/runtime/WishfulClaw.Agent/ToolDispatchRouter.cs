@@ -270,22 +270,6 @@ public static class ToolDispatchRouter
                 isToolError = true;
             }
         }
-        // CodeGraph: reverse-request to Main process
-        else if (AgentRuntimeCodeGraphExecutor.IsCodeGraphTool(toolCall.Name))
-        {
-            try
-            {
-                toolOutput = await AgentRuntimeCodeGraphExecutor.ExecuteAsync(
-                toolCall, state.Parameters, context, state.CancellationToken);
-                isToolError = IsJsonError(toolOutput);
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                toolOutput = $"CodeGraph tool execution failed: {ex.Message}";
-                isToolError = true;
-            }
-        }
         // MCP: reverse-request to Main/renderer
         else if (AgentRuntimeMcpExecutor.IsMcpTool(toolCall.Name))
         {

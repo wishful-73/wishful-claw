@@ -125,7 +125,9 @@ export const APP_PLUGIN_DESCRIPTORS: AppPluginDescriptor[] = [
     builtin: true,
     toolNames: [CODEGRAPH_EXPLORE_TOOL_NAME],
     requiresModelConfig: false,
-    // Opt-in and disabled by default; language grammars ship with the app.
-    requiresDownload: false
+    // 方案 B（2026-11-03）：引擎与语言包合成一个包，不随安装包发布，首次使用按需下载。
+    // 必须为 true——否则 getPluginState 永远判成 ready，界面不提示「需要下载」，
+    // 用户根本找不到安装入口。
+    requiresDownload: true
   }
 ]

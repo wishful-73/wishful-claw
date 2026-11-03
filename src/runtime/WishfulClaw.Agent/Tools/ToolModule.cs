@@ -39,7 +39,6 @@ public sealed class ToolModule : IWorkerModule
             new Providers.SandboxElevationToolProvider(),
             new Providers.BrowserToolProvider(),
             new Providers.ChannelPluginToolProvider(),
-            new Providers.CodeGraphToolProvider(),
             new Providers.CodeCompatibleToolProvider(),
             new Providers.CronToolProvider(),
             new Providers.DesktopToolProvider(),

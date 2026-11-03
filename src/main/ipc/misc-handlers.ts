@@ -8,7 +8,6 @@ import { resolveGeneratedImagesDir } from '../lib/generated-image-dir'
 import { chatImageFileNameFromBuffer, resolveChatImageDir } from '../lib/chat-image-dir'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { safeSendMessagePackToWindow } from '../window-ipc'
-import { resolveCodeGraphDataRoot } from './codegraph-handlers'
 import {
   resolveBrowserDeviceViewport,
   type BrowserDeviceMode,
@@ -55,27 +54,11 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
   )
 
   // Generic worker request forwarder: renderer calls window.api.workerRequest(method, params)
-  // and main forwards to the worker via named pipe IPC. codegraph/* methods get the
-  // project-local dataRoot injected here (same routing as the agent reverse path),
-  // so every caller — archive page, explore tool, prompt hook — shares one storage.
+  // and main forwards to the worker via named pipe IPC.
   registerMessagePackHandler<{ method: string; params?: unknown; timeoutMs?: number }, unknown>(
     'worker:request',
     async (args) => {
       const worker = getNativeWorker()
-      const params = (args.params ?? {}) as Record<string, unknown>
-      if (args.method.startsWith('codegraph/')) {
-        const dataRoot = resolveCodeGraphDataRoot(
-          typeof params.workingFolder === 'string'
-            ? params.workingFolder
-            : typeof params.projectPath === 'string'
-              ? params.projectPath
-              : undefined,
-          params.dataRoot
-        )
-        if (dataRoot && params.dataRoot === undefined) {
-          params.dataRoot = dataRoot
-        }
-      }
       return worker.request(args.method, args.params ?? {}, args.timeoutMs)
     }
   )
@@ -88,20 +71,6 @@ export function registerMiscHandlers(getMainWindow: () => BrowserWindow | null):
     unknown
   >('worker:request:with-id', async (args) => {
     const worker = getNativeWorker()
-    const params = (args.params ?? {}) as Record<string, unknown>
-    if (args.method.startsWith('codegraph/')) {
-      const dataRoot = resolveCodeGraphDataRoot(
-        typeof params.workingFolder === 'string'
-          ? params.workingFolder
-          : typeof params.projectPath === 'string'
-            ? params.projectPath
-            : undefined,
-        params.dataRoot
-      )
-      if (dataRoot && params.dataRoot === undefined) {
-        params.dataRoot = dataRoot
-      }
-    }
     return worker.request(args.method, args.params ?? {}, args.timeoutMs, args.cancelId)
   })
 

@@ -476,6 +476,13 @@ public static partial class DbClient
             @"CREATE INDEX IF NOT EXISTS ix_timeline_created ON agent_timeline_events(created_at);"
         };
 
+        // 旧库的 global_tasks / agent_timeline_events 建表时没有 project_id 列，而
+        // CREATE TABLE IF NOT EXISTS 不会给已存在的表补列 —— 下面的索引硬引用它，
+        // 不先补这一列，旧库会在建索引这一步整体初始化失败（RunMigrations 排在这之后，
+        // 救不了场）。表不存在时该调用自行忽略。
+        EnsureColumn("global_tasks", "project_id", "TEXT");
+        EnsureColumn("agent_timeline_events", "project_id", "TEXT");
+
         foreach (var sql in tableSqls)
         {
             _db!.Execute(sql);

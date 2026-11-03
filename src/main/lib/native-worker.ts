@@ -207,8 +207,10 @@ class NativeWorkerManager {
     } catch { /* ignore — settings file may not exist yet */ }
 
     // CodeGraph: point the worker at the resolved tree-sitter grammars dir
-    // (bundled beside the worker, or the NuGet cache in dev). A null result
-    // leaves the worker on its own <binary>/grammars fallback.
+    // (downloaded plugin payload, or bundled beside the worker on legacy installs).
+    // A null result leaves the worker on its own <binary>/grammars fallback —
+    // with no downloaded assets that dir is absent too, so the engine reports
+    // "not installed" instead of silently borrowing the dev machine's NuGet cache.
     try {
       const grammarsDir = resolveCodeGraphGrammarsDir()
       if (grammarsDir) {
@@ -477,7 +479,9 @@ class NativeWorkerManager {
     this.pending.clear()
     this.cancelKeys.clear()
   }
+
 }
+
 
 function createFrame(payload: Uint8Array): Buffer {
   const header = Buffer.allocUnsafe(FRAME_HEADER_BYTES)

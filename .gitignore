@@ -62,6 +62,7 @@ scripts/*
 !scripts/site-stats.mjs
 !scripts/ci-checks.mjs
 !scripts/install-git-hooks.mjs
+!scripts/pack-codegraph-plugin.mjs
 .kb-update/
 
 # Local scratch

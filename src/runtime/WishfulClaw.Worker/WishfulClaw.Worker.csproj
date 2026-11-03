@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -27,7 +27,6 @@
     <ProjectReference Include="..\WishfulClaw.Persona\WishfulClaw.Persona.csproj" />
     <ProjectReference Include="..\WishfulClaw.Workspace\WishfulClaw.Workspace.csproj" />
     <ProjectReference Include="..\WishfulClaw.Infrastructure\WishfulClaw.Infrastructure.csproj" />
-    <ProjectReference Include="..\WishfulClaw.CodeGraph\WishfulClaw.CodeGraph.csproj" />
   </ItemGroup>
 
 </Project>

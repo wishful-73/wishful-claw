@@ -38,7 +38,6 @@ internal static class VisibilitySnapshotDump
             new AskUserToolProvider(),
             new BrowserToolProvider(),
             new ChannelPluginToolProvider(),
-            new CodeGraphToolProvider(),
             new CodeCompatibleToolProvider(),
             new CronToolProvider(),
             new DesktopToolProvider(),

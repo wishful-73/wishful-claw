@@ -24,7 +24,6 @@ internal static class ToolDeclarationChecks
         RunUncategorizedPassesThroughSuite();
         RunCapabilityCatalogSuite();
         RunCoreCategoryReachableSuite();
-        CodeGraphGateChecks.Run();
         RunDeclarationCensusSuite();
     }
 

@@ -20,8 +20,10 @@ import { getNativeWorker, resolveNativeWorkerPath } from './native-worker'
 // 而生产除非用户下载插件包就不可用 —— 两套行为，dev 上根本验不到「待下载 → 下载 →
 // 移除」这条链路。现在 dev 与生产同一条路径：没下载就是没装。
 //
-// The worker loads its grammars from WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR (injected
-// when the worker spawns); this module resolves that directory and reports status.
+// The engine is a standalone AOT exe (MCP stdio server) that resolves its own
+// grammars from `{AppContext.BaseDirectory}/grammars` — i.e. `plugins/codegraph/bin/
+// grammars`. Nothing is injected into the worker any more (S-303); this module only
+// resolves paths and reports installation status to the UI.
 // ---------------------------------------------------------------------------
 
 /** Plugin id shared with the renderer's app-plugin store and the IPC handlers. */
@@ -64,7 +66,7 @@ const GRAMMAR_LANGUAGES = new Map(
 
 export type CodeGraphAssetDiagnostic =
   | 'ready'
-  | 'worker-missing'
+  | 'engine-missing'
   | 'grammar-directory-missing'
   | 'core-library-missing'
   | 'language-grammars-missing'
@@ -73,7 +75,6 @@ export type CodeGraphAssetDiagnostic =
 
 export interface CodeGraphAssetStatus {
   isDev: boolean
-  workerReady: boolean
   workerRunning: boolean
   grammarsReady: boolean
   ready: boolean
@@ -82,6 +83,11 @@ export interface CodeGraphAssetStatus {
   grammarCount: number
   /** Explicit replacement for the ambiguous legacy `ready` field. */
   runtimeReady: boolean
+  /**
+   * S-303: 独立引擎 `plugins/codegraph/bin/codegraph.exe` 在盘上。以前没这个字段，
+   * 就绪判定借用的是主 worker 二进制路径 —— 那个恒为真，等于没检查引擎。
+   */
+  engineReady: boolean
   coreLibraryReady: boolean
   availableGrammars: string[]
   missingGrammars: string[]
@@ -212,8 +218,10 @@ export function resolveCodeGraphGrammarsDir(): string | null {
 
 export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
   const isDev = isDevBuild()
-  // Source-merged: CodeGraph ships inside the main worker binary.
-  const workerReady = resolveNativeWorkerPath() != null
+  // 引擎文件本身在不在。以前就绪条件只有 workerReady && grammarsReady，而 workerReady
+  // 恒为 true，于是「语法库在盘上、引擎没装」会被判成已就绪：徽章显示「已就绪」，
+  // 而 MCP 面板里根本没有 builtin-codegraph 这个 server，工具一个都调不到。
+  const engineReady = fs.existsSync(resolveCodeGraphEnginePath())
   // When no usable directory resolves, retain an existing candidate for precise
   // diagnostics (for example, a directory containing only a zero-byte runtime).
   const grammarsDir = resolveCodeGraphGrammarsDir() ?? findGrammarDiagnosticDir()
@@ -236,7 +244,7 @@ export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
     .sort()
   const grammarCount = availableGrammars.length
   const grammarsReady = inspection.coreLibraryReady && grammarCount > 0
-  const runtimeReady = workerReady && grammarsReady
+  const runtimeReady = engineReady && grammarsReady
   const override = process.env.WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR?.trim()
   const grammarSource: CodeGraphAssetStatus['grammarSource'] = !grammarsDir
     ? 'none'
@@ -247,8 +255,8 @@ export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
         : getBundledGrammarCandidates().includes(grammarsDir)
           ? 'bundled'
           : 'dev'
-  const diagnostic: CodeGraphAssetDiagnostic = !workerReady
-    ? 'worker-missing'
+  const diagnostic: CodeGraphAssetDiagnostic = !engineReady
+    ? 'engine-missing'
     : !grammarsDir
       ? 'grammar-directory-missing'
       : !inspection.coreLibraryReady
@@ -262,7 +270,6 @@ export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
               : 'ready'
   return {
     isDev,
-    workerReady,
     workerRunning: getNativeWorker().isRunning,
     grammarsReady,
     // `ready` is retained for existing renderers and external IPC consumers.
@@ -270,6 +277,7 @@ export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
     grammarsDir,
     grammarCount,
     runtimeReady,
+    engineReady,
     coreLibraryReady: inspection.coreLibraryReady,
     availableGrammars,
     missingGrammars,

@@ -76,7 +76,16 @@ function readServers(): McpServerConfig[] {
   const persisted = loadPersistedServers()
   const builtins = builtinServers(persisted)
   const builtinIds = new Set(builtins.map((s) => s.id))
-  return [...builtins, ...persisted.filter((s) => !builtinIds.has(s.id))]
+  // 内置项的开关覆盖记录永远只经 builtinServers() 消费，绝不能当用户自建 server 漏出去。
+  // 不能只靠 builtinIds 过滤：引擎没装时 builtinServers() 直接返回 []，集合为空，
+  // 那条 `{ id: 'builtin-codegraph', command: '' }` 就会以普通条目出现在面板里 ——
+  // 没有内置徽章、可删、点连接是空 command。
+  return [
+    ...builtins,
+    ...persisted.filter(
+      (s) => s.id !== BUILTIN_CODEGRAPH_SERVER_ID && !builtinIds.has(s.id)
+    )
+  ]
 }
 
 function writeServers(servers: McpServerConfig[]): void {

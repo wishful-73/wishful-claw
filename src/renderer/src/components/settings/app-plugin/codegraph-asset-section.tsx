@@ -246,9 +246,10 @@ export function CodegraphAssetSection({
           框里，上下分成两个操作区，看着乱。 */}
       <div className="flex flex-wrap items-center gap-2">
         {runtimeReady ? null : installButton}
-        {/* 「开发环境」一档只在语法库真的来自 dev 专用源时才提 —— 2026-11-03 起 dev
-            不再回落 NuGet 缓存，装了插件就是普通「已就绪」，走下面那条分支。 */}
-        {runtimeReady && codegraphAsset?.pluginGrammarsReady ? removeButton : null}
+        {/* 只要盘上有东西就允许移除。以前挂在 runtimeReady 上，于是「引擎在、语法库
+            校验不过」这种装坏了的状态既显示未安装、又点不到移除，用户只能重复下载
+            覆盖，清不掉那份坏的。 */}
+        {runtimeReady || codegraphAsset?.pluginGrammarsReady ? removeButton : null}
         <button
           type="button"
           disabled={rechecking || busy !== null}
@@ -334,8 +335,8 @@ export function CodegraphAssetSection({
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          {codegraphAsset && !codegraphAsset.workerReady
-            ? t('plugin.codegraph.workerMissing')
+          {codegraphAsset && !codegraphAsset.engineReady
+            ? t('plugin.codegraph.engineMissing')
             : t('plugin.codegraph.assetsNotInstalled', {
                 defaultValue:
                   'The language pack is not installed yet. Code graph and symbol navigation need it.'

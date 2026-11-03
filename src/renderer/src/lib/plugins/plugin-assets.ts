@@ -47,6 +47,26 @@ export async function downloadAsset(id: string): Promise<PluginAssetStatus> {
   return (await ipcClient.invoke(IPC.PLUGIN_ASSET_DOWNLOAD, id)) as PluginAssetStatus
 }
 
+/** 代码图谱资产 id —— 删除时连带解压产物，见 removeAssetFully。 */
+export const CODEGRAPH_ASSET_ID = 'codegraph/win-x64.zip'
+
+/**
+ * 删除一个已下载的运行文件，语义与插件面板里的「移除」保持一致。
+ *
+ * 代码图谱是特例：`removeAsset` 只删 `plugin-assets/` 下的 zip，解压出来的引擎和
+ * 语法库（`plugins/codegraph/`，约 54 MB）原样留着；而引擎是内置 MCP server 的
+ * stdio 子进程，进程活着时 Windows 锁着 exe，必须先断连再删。所以走主进程的
+ * `codegraph:remove-assets`。不特判的话，用户在通用「已下载运行文件」里点删除会
+ * 看到「已删除、字节归零」，回头插件照常能用。
+ */
+export async function removeAssetFully(id: string): Promise<void> {
+  if (id === CODEGRAPH_ASSET_ID) {
+    await ipcClient.invoke(IPC.CODEGRAPH_REMOVE_ASSETS)
+    return
+  }
+  await removeAsset(id)
+}
+
 export async function cancelAsset(id: string): Promise<{ cancelled: boolean }> {
   return (await ipcClient.invoke(IPC.PLUGIN_ASSET_CANCEL, id)) as { cancelled: boolean }
 }

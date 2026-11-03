@@ -10,7 +10,6 @@ import {
   BROWSER_SET_DEVICE_TOOL_NAME,
   BROWSER_SNAPSHOT_TOOL_NAME,
   BROWSER_TYPE_TOOL_NAME,
-  CODEGRAPH_EXPLORE_TOOL_NAME,
   CODEGRAPH_PLUGIN_ID,
   DESKTOP_CLICK_TOOL_NAME,
   DESKTOP_CONTROL_PLUGIN_ID,
@@ -29,7 +28,6 @@ import {
 } from '@renderer/lib/app-plugin/types'
 
 export const TOOL_ARG_LABELS: Record<AppPluginToolName, string[]> = {
-  [CODEGRAPH_EXPLORE_TOOL_NAME]: ['query', 'projectPath'],
   [IMAGE_GENERATE_TOOL_NAME]: ['prompt', 'count', 'reference_images', 'size', 'quality'],
   [BROWSER_NAVIGATE_TOOL_NAME]: ['url', 'action'],
   [BROWSER_GET_CONTENT_TOOL_NAME]: ['selector', 'type'],

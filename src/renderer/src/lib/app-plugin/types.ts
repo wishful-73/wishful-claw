@@ -10,7 +10,6 @@ export const BROWSER_PLUGIN_ID = 'browser' as const
 export const DESKTOP_CONTROL_PLUGIN_ID = 'desktop-control' as const
 export const CODEGRAPH_PLUGIN_ID = 'codegraph' as const
 
-export const CODEGRAPH_EXPLORE_TOOL_NAME = 'codegraph_explore' as const
 export const IMAGE_GENERATE_TOOL_NAME = 'ImageGenerate' as const
 export const BROWSER_NAVIGATE_TOOL_NAME = 'BrowserNavigate' as const
 export const BROWSER_GET_CONTENT_TOOL_NAME = 'BrowserGetContent' as const
@@ -43,7 +42,6 @@ export type AppPluginId =
   | typeof DESKTOP_CONTROL_PLUGIN_ID
   | typeof CODEGRAPH_PLUGIN_ID
 export type AppPluginToolName =
-  | typeof CODEGRAPH_EXPLORE_TOOL_NAME
   | typeof IMAGE_GENERATE_TOOL_NAME
   | typeof BROWSER_NAVIGATE_TOOL_NAME
   | typeof BROWSER_GET_CONTENT_TOOL_NAME
@@ -123,7 +121,10 @@ export const APP_PLUGIN_DESCRIPTORS: AppPluginDescriptor[] = [
   {
     id: CODEGRAPH_PLUGIN_ID,
     builtin: true,
-    toolNames: [CODEGRAPH_EXPLORE_TOOL_NAME],
+    // 代码图谱的工具由引擎自己的 MCP server 暴露（`mcp-tool:builtin-codegraph/<name>`），
+    // 不归 app-plugin 门面管，所以这里没有可列的固定工具名。以前写死的
+    // `codegraph_explore` 在 S-303 之后已不存在，界面会把一个死名字当工具展示出来。
+    toolNames: [],
     requiresModelConfig: false,
     // 方案 B（2026-11-03）：引擎与语言包合成一个包，不随安装包发布，首次使用按需下载。
     // 必须为 true——否则 getPluginState 永远判成 ready，界面不提示「需要下载」，

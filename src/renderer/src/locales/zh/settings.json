@@ -1060,7 +1060,7 @@
       "invalidFiles": "无效 grammar 文件：{{files}}",
       "unrecognizedGrammars": "未识别 grammar：{{grammars}}",
       "missingLanguages": "缺少语言：{{languages}}",
-      "workerMissing": "CodeGraph Worker 不可用，请检查应用安装内容。",
+      "engineMissing": "代码图谱引擎不可用，请在这里重新下载插件。",
       "coreLibraryMissing": "内置 tree-sitter runtime 缺失或无效。",
       "languageGrammarsMissing": "语言包尚未安装。",
       "invalidGrammarPackage": "语言包文件无效。",

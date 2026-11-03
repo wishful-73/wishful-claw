@@ -1060,7 +1060,7 @@
       "invalidFiles": "Invalid grammar files: {{files}}",
       "unrecognizedGrammars": "Unrecognized grammars: {{grammars}}",
       "missingLanguages": "Missing languages: {{languages}}",
-      "workerMissing": "CodeGraph Worker is unavailable. Check the application installation.",
+      "engineMissing": "The CodeGraph engine is unavailable. Download the plugin again here.",
       "coreLibraryMissing": "The built-in tree-sitter runtime is missing or invalid.",
       "languageGrammarsMissing": "The language pack is not installed.",
       "invalidGrammarPackage": "The language pack files are invalid.",

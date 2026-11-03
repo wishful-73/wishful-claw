@@ -403,6 +403,10 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'fs:file-changed',
   'fs:dir-changed',
   'codegraph:index-progress',
+  // S-303 装卸阶段（下载 / 解压 / 连引擎）。主进程用 safeSendMessagePackToAllWindows
+  // 广播，落点是 `codegraph:download-progress:msgpack`；不登记在这里，渲染端
+  // ipcClient.on 会走裸 ipcRenderer.on，阶段文案永远收不到。
+  'codegraph:download-progress',
   'shell:started',
   'shell:output',
   'process:output',

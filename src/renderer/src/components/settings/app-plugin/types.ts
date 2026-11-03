@@ -7,9 +7,10 @@ export interface CgAssetStatus {
   version?: string | null
   error?: string | null
   runtimeReady?: boolean
+  /** S-303: 独立引擎 `plugins/codegraph/bin/codegraph.exe` 在盘上。 */
+  engineReady?: boolean
   ready?: boolean
   workerRunning?: boolean
-  workerReady?: boolean
   grammarsDir?: string | null
   isDev?: boolean
   grammarsReady?: boolean

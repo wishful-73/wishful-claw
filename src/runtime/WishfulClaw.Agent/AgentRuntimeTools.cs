@@ -145,6 +145,52 @@ public static class AgentRuntimeTools
         return WorkerResponse.Json(new AgentRuntimeCancelResult(true, runId), AgentRuntimeJsonContext.Default.AgentRuntimeCancelResult);
     }
 
+    /// <summary>
+    /// S-308：按 toolUseId 真正停掉一个子 agent（前台或后台）。
+    ///
+    /// 渲染端右侧 SubAgents 面板的停止按钮调的就是本方法 —— 在此之前后端从未实现过它，
+    /// 前端点了只会拿到「no handler」；而 <c>BackgroundSubAgentRegistry.Cancel</c> 只改状态、
+    /// 不中断执行。两条加起来就是「界面说有停止，实际停不下来」。
+    ///
+    /// 返回 cancelled=false 必须如实反映「没停到」，不能为了让界面好看而报成功 ——
+    /// 状态与实际不符正是 S-308 登记的那类缺陷。
+    /// </summary>
+    public static WorkerResponse CancelSubAgent(JsonElement parameters)
+    {
+        var toolUseId = JsonHelpers.GetString(parameters, "toolUseId")?.Trim();
+        if (string.IsNullOrEmpty(toolUseId))
+        {
+            return WorkerResponse.Error("toolUseId is required.");
+        }
+
+        // 跨会话误停防护：渲染端手上能拿到别的会话的 toolUseId，但「停」只在自己会话内成立。
+        // sessionId 缺省（工具侧 / 老调用）不拦，避免把正常请求挡掉。
+        var sessionId = JsonHelpers.GetString(parameters, "sessionId")?.Trim();
+        var record = BackgroundSubAgentRegistry.Get(toolUseId);
+        if (record is not null &&
+            !string.IsNullOrEmpty(sessionId) &&
+            !string.IsNullOrEmpty(record.SessionId) &&
+            !string.Equals(record.SessionId, sessionId, StringComparison.Ordinal))
+        {
+            return WorkerResponse.Error("toolUseId does not belong to this session.");
+        }
+
+        var stopped = SubAgentRunControl.TryStop(toolUseId, "user");
+        var status = record?.Status.ToString().ToLowerInvariant() ?? "unknown";
+        WorkerLog.Info(
+            $"sub-agent stop requested toolUseId={FormatLogValue(toolUseId)} " +
+            $"stopped={stopped} status={status}");
+
+        return WorkerResponse.FromWriter(writer =>
+        {
+            writer.WriteStartObject();
+            writer.WriteBoolean("cancelled", stopped);
+            writer.WriteNumber("count", stopped ? 1 : 0);
+            writer.WriteString("status", status);
+            writer.WriteEndObject();
+        });
+    }
+
     public static WorkerResponse RequestStop(JsonElement parameters)
     {
         var runId = JsonHelpers.GetString(parameters, "runId")?.Trim();

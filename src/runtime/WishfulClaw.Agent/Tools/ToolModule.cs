@@ -159,6 +159,9 @@ public sealed class ToolModule : IWorkerModule
         registry.Register(new SubAgentStatusTool(), "task");
         registry.Register(new SubAgentDetailTool(), "task");
 
+        // S-308：真正停掉子 agent（此前只有查，没有停；后台子 agent 父 run 结束后无路可停）
+        registry.Register(new SubAgentStopTool(), "task");
+
         // Memory tools (category: "memory" — included in chat/coding presets)
         var memorySearch = new MemoryFtsService();
         registry.Register(new MemoryHotReadTool(), "memory");

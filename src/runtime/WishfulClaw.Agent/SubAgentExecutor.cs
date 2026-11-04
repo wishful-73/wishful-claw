@@ -120,6 +120,10 @@ public static partial class SubAgentExecutor
         childState.EventObserver = collector.ObserveAsync;
         childState.ReplaceParameters(childParameters);
 
+        // S-308：前台子 agent 本来被父 run 的 CancellationToken 覆盖，但那只解决「连坐」，
+        // 解决不了「单独停这一个」。登记一条自己的停止句柄，两条通路并存。
+        SubAgentRunControl.Register(toolCallId, childState);
+
         using var parentCancellationRegistration = parentState.CancellationToken.Register(
             static state => ((AgentRuntimeRunState)state!).Cancel("parent"),
             childState);
@@ -161,6 +165,8 @@ public static partial class SubAgentExecutor
         }
         finally
         {
+            // S-308：注销必须在 Dispose() 之前（见 SubAgentRunControl 的说明）。
+            SubAgentRunControl.Unregister(toolCallId);
             // The sub-agent conversation is isolated under its runId (see
             // AgentLoop); remove it so isolated conversations don't leak.
             SessionConversationManager.Remove($"__subagent__{childRunId}");
@@ -183,7 +189,7 @@ public static partial class SubAgentExecutor
         // Update registry with final state
         if (subAgentError && childState.IsCancellationRequested)
         {
-            BackgroundSubAgentRegistry.Cancel(toolCallId);
+            BackgroundSubAgentRegistry.MarkCancelled(toolCallId);
         }
         else if (subAgentError)
         {

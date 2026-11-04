@@ -998,6 +998,7 @@
     "aborted": "aborted",
     "done": "done",
     "queued": "Queued",
+    "viewDetail": "View details",
     "background": "Background",
     "synthesizing": "Synthesizing report…",
     "doneSynthesized": "Done (synthesized)",

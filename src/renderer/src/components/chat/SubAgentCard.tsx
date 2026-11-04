@@ -413,19 +413,18 @@ function SubAgentCardInner({
     >
       {/* Header row — click toggles expand/collapse.
           S-308：这里原本是个 <button>，现在改成 role=button 的 div —— header 右侧要放停止按钮，
-          而 button 里套 button 是无效 HTML（点停止会连带触发外层）。键盘行为手工补回来。 */}
+          而 button 里套 button 是无效 HTML（点停止会连带触发外层）。键盘行为手工补回来。
+          S-310：行点击**只**切展开，不再顺手打开右侧面板 —— 打开详情走 header 右侧的显式文字入口。 */}
       <div
         role="button"
         tabIndex={0}
         onClick={() => {
           if (hasSteps) setIsExpanded((v) => !v)
-          handleOpenPanel()
         }}
         onKeyDown={(e) => {
           if (e.key !== 'Enter' && e.key !== ' ') return
           e.preventDefault()
           if (hasSteps) setIsExpanded((v) => !v)
-          handleOpenPanel()
         }}
         title={metaText}
         className={cn(
@@ -508,6 +507,26 @@ function SubAgentCardInner({
             <Square className="size-2.5 fill-current" />
           </span>
         ) : null}
+
+        {/* S-310：打开右侧详情的显式入口 —— 纯文字，不抢展开/收起那一行点击。
+            内层要 stopPropagation，否则会连带触发 header 的展开切换。 */}
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleOpenPanel()
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return
+            e.preventDefault()
+            e.stopPropagation()
+            handleOpenPanel()
+          }}
+          className="shrink-0 cursor-pointer whitespace-nowrap rounded px-1 text-[11px] text-muted-foreground/55 transition-colors hover:text-foreground/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/45"
+        >
+          {t('subAgent.viewDetail', { defaultValue: 'View details' })}
+        </span>
 
         <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground/65">
           <span

@@ -42,8 +42,12 @@ internal static class Program
 
     private static void TiersArePinned()
     {
+        // shell 档的基准是工具自己的 DefaultTimeoutMs（600 s）+ 30 s 宽限。
+        // 曾经写成独立的 180 s，注释却写「Shell 默认就声明了 600 s」——
+        // 模型不传 timeout 入参时（常态）所有 shell 命令被 180 s 误杀。
         var bash = ToolCallTimeout.Resolve(Call("Bash"));
-        Same("shell 档上限 180 s", 180d, bash.Limit!.Value.TotalSeconds);
+        Same("shell 档上限 = 工具默认 600 s + 宽限 30 s", 630d, bash.Limit!.Value.TotalSeconds);
+        Check("shell 档不得低于工具自带超时", bash.Limit!.Value.TotalSeconds >= 600d);
         Same("shell 档语义是失败", ToolCallTimeout.Kind.Failure, bash.Kind);
 
         var read = ToolCallTimeout.Resolve(Call("Read"));
@@ -53,13 +57,14 @@ internal static class Program
         Same("未分档工具兜底 600 s", 600d, write.Limit!.Value.TotalSeconds);
 
         var terminal = ToolCallTimeout.Resolve(Call("Terminal"));
-        Same("Terminal 归 shell 档", 180d, terminal.Limit!.Value.TotalSeconds);
+        Same("Terminal 归 shell 档", 630d, terminal.Limit!.Value.TotalSeconds);
     }
 
     private static void DeclaredTimeoutWins()
     {
         var longer = ToolCallTimeout.Resolve(Call("Bash", """{"timeout":1200000}"""));
-        Same("工具声明更长时以声明为准（max）", 1200000d / 1000d, longer.Limit!.Value.TotalSeconds);
+        Same("工具声明更长时以声明为准（max），外层再晚宽限一步",
+            1230d, longer.Limit!.Value.TotalSeconds);
 
         var shorter = ToolCallTimeout.Resolve(Call("Read", """{"timeout":5000}"""));
         Same("工具声明更短时不降低档位（max）", 60d, shorter.Limit!.Value.TotalSeconds);

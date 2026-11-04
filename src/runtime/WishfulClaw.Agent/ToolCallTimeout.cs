@@ -27,8 +27,28 @@ internal static class ToolCallTimeout
     /// <summary>读 / 查 / 列 / 搜索类。</summary>
     internal static readonly TimeSpan ReadOnlyLimit = TimeSpan.FromSeconds(60);
 
-    /// <summary>shell / 终端。与壳调 worker 的既有 180 s 对齐，好记。</summary>
-    internal static readonly TimeSpan ShellLimit = TimeSpan.FromSeconds(180);
+    /// <summary>
+    /// shell / 终端。
+    ///
+    /// 基准必须取工具自己的默认超时（<see cref="Tools.ShellTools.ShellExecuteTool.DefaultTimeoutMs"/>），
+    /// 不能再写死一个独立的数字：模型自主调用时通常**不传** <c>timeout</c> 入参，
+    /// 而 <see cref="MaxWithDeclared"/> 只能读到入参 JSON —— 那里是空的，于是会回落到
+    /// 本类的分档值。最初的 180 s 就是这么来的，且注释写的是「Shell 默认就声明了 600 s」，
+    /// 与实现自相矛盾。实测后果：本迭代的门禁命令 <c>dotnet build</c> / <c>npm run build</c>
+    /// 一过 3 分钟就被判超时，工具还在跑、结果被丢弃，模型收到「已放弃」后可能重跑一遍。
+    ///
+    /// 加上调用处的 <see cref="GraceMs"/>（见 <see cref="Resolve"/> 的 shell 分支）的用意：
+    /// 工具自己在 600 s 到点会 Kill 进程树并返回 exitCode 124，让**工具先报自己的超时原因**；
+    /// 外层只比它晚一步，负责收尾「工具压根没返回」那种情形（例如卡在读流那两行）。
+    /// </summary>
+    internal static readonly TimeSpan ShellLimit =
+        TimeSpan.FromMilliseconds(Tools.ShellTools.ShellExecuteTool.DefaultTimeoutMs);
+
+    /// <summary>
+    /// 外层兜底比工具自带超时晚多久。只用于「工具有自己的超时机制」的档位。
+    /// </summary>
+    internal const int GraceMs = 30_000;
+
 
     /// <summary>等人（提问 / 审批 / 计划评审）。</summary>
     internal static readonly TimeSpan HumanWaitLimit = TimeSpan.FromSeconds(300);
@@ -106,8 +126,9 @@ internal static class ToolCallTimeout
 
         if (ShellTools.Contains(name))
         {
-            // 工具自带超时优先：Shell / SSH 默认就声明了 600 s，别用 180 s 去误杀。
-            return new Decision(MaxWithDeclared(toolCall.Input, ShellLimit), Kind.Failure);
+            // 基准已经是工具自己的默认超时（见 ShellLimit），所以模型不传入参时
+            // 也落在 600 s 而不是被误杀；模型显式传入更长的值则跟着它走。
+            return new Decision(MaxWithDeclared(toolCall.Input, ShellLimit, GraceMs), Kind.Failure);
         }
 
         if (ReadOnlyTools.Contains(name))
@@ -121,13 +142,23 @@ internal static class ToolCallTimeout
     /// <summary>
     /// 工具在自己的入参里声明了 <c>timeout</c>（毫秒）时以它为准 —— 这是
     /// §4.2.2 第 1 条「工具自带超时优先」的落地方式。
+    ///
+    /// <paramref name="graceMs"/> 只给「工具自己有超时机制」的档位（shell）用：
+    /// 外层要晚于工具一步，让工具先报自己的原因。其余档位的工具没有自带超时，
+    /// 早一步断开反而更好，不传即为 0。
     /// </summary>
-    private static TimeSpan MaxWithDeclared(JsonElement input, TimeSpan tierLimit)
+    private static TimeSpan MaxWithDeclared(JsonElement input, TimeSpan tierLimit, int graceMs = 0)
     {
         var declaredMs = JsonHelpers.GetInt(input, "timeout", 0);
-        if (declaredMs <= 0) return tierLimit;
-        var declared = TimeSpan.FromMilliseconds(declaredMs);
-        return declared > tierLimit ? declared : tierLimit;
+
+        var effective = tierLimit;
+        if (declaredMs > 0)
+        {
+            var declared = TimeSpan.FromMilliseconds(declaredMs);
+            if (declared > effective) effective = declared;
+        }
+
+        return graceMs > 0 ? effective + TimeSpan.FromMilliseconds(graceMs) : effective;
     }
 
     /// <summary>

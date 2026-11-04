@@ -89,7 +89,7 @@ export function MainLayout(): React.JSX.Element {
   // 报成一个占位尺寸（本机实测 1680×1072 → **144×18**），恢复时再报回来。按这个读数
   // 跑判定，左侧栏必然被当成「聊天窗只剩 144px」收掉；而恢复只算变宽、判定不跑，
   // 于是左栏再也回不来 —— 外观就是「切走一次再回来，面板像被重新初始化过」。
-  // 壳的窗口下限是 900（`src/main/index.ts:116`）/ 960（Tauri `min_inner_size`），
+  // 壳的窗口下限是 900（`src/main/index.ts:116` 的 `minWidth`），
   // 低于一半的宽度不可能是用户拖出来的真实视口，直接跳过判定。
   const MIN_REAL_VIEWPORT_WIDTH = 480
   useEffect(() => {

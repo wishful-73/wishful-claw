@@ -1372,6 +1372,25 @@ resolveNativeWorkerPath() != null` 恒为 true —— 剥离后引擎已独立�
 运行的 dev worker 锁住 `bin\Debug\net11.0\*.dll` 报 MSB3021/MSB3027，非代码问题，
 关掉 dev 后复跑即可。
 
+## 2026-11-04 收尾 · v3-iter-6 审查与验证
+
+**范围口径**：本迭代在册 23 条编号 —— 交付 18 条 / 移交 3 条（S-305、S-313、S-314）/ 否决 1 条方向（S-295 换壳，原型已交付）/ 撤销 3 条（S-265、S-277、原拟 S-299）。S-306 Tauri 换壳整体移交私有仓 `wishful-73/wishful-work`，主仓尝试已删。
+
+**门禁从两条变三条**：S-296 落地后 `typecheck` ＝ node + web + test 三配置串行。此前 100 多个测试套件从没被 `tsc` 编译过，`npm test` 走 esbuild 只剥类型 —— 断言写错会恒真。
+
+**收尾实测（三条，不含 ci-checks）**：
+
+- `npm run typecheck` 三配置 **0 错误**（42.4 s）
+- `npm test` **122/122**（82.6 s）
+- `dotnet build src\runtime\WishfulClaw.sln -t:Rebuild` **0 警告 0 错误**
+- `dotnet build tests\WishfulClaw.Tests.sln -t:Rebuild` **0 警告 0 错误**
+
+**口径修正**：`dotnet build` 不带 `-t:Rebuild` 时 1.5 s 就跑完，读到的是 `obj/` 缓存 —— 收尾验收一律 Rebuild，否则「0 警告」没意义。上面 1370 行那条 `MSB3021 / MSB3027` 是 dev worker 锁住 `bin\Debug` 造成的，收尾时 dev 未运行，两套 sln 均干净通过。
+
+**待真机验收移交 v3-7**：S-308 跨 run 停止与 CTS 不泄漏（派停 20 次）、S-309 §4.3 UI 弱提示与 §4.4「卡住时仍能收消息」、S-310 / S-311 / S-312 三条交互改动、S-303 真机 4 步（装 / 停 / 卸 / 重装）。
+
+**版本**：`1.0.5` → `1.0.6`（`package.json` / `package-lock.json` 两处 / `README.md` 徽章；`site/website/package-lock.json` 是官网独立包，不动）。
+
 
 
 

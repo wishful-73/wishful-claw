@@ -249,7 +249,7 @@ public static partial class SubAgentExecutor
         string agentName,
         string toolCallId)
     {
-        return new SubAgentRunCollector
+        var collector = new SubAgentRunCollector
         {
             ForwardEvent = async (evt) =>
             {
@@ -300,6 +300,15 @@ public static partial class SubAgentExecutor
                 }
             }
         };
+
+        // 进度实时通道：`SubAgentStatus` 在子 agent 运行期间必须能报出「动了几次」，
+        // 不能等 ExecuteLoopAsync 整个跑完才更新一次 —— 否则运行中恒为 0/0，
+        // 查询方会把正在跑的子 agent 判成「还没启动」。
+        collector.ProgressChanged = () => BackgroundSubAgentRegistry.UpdateProgress(
+            toolCallId, collector.ToolCallCount, collector.Iterations,
+            BuildToolCallEntries(collector.ToolCallSummaries));
+
+        return collector;
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 
 namespace WishfulClaw.Agent;
 
@@ -24,6 +24,18 @@ public sealed class SubAgentRunCollector
     /// with sub_agent_ prefix and emit to the parent stream.
     /// </summary>
     public Func<AgentRuntimeStreamEvent, ValueTask>? ForwardEvent { get; set; }
+
+    /// <summary>
+    /// 进度快照回调：<c>tool_call_start</c> / <c>tool_call_result</c> / <c>iteration_start</c>
+    /// 时各触发一次。
+    ///
+    /// 存在的理由：`BackgroundSubAgentRegistry.UpdateProgress` 原先只在
+    /// `ExecuteLoopAsync` **整个返回之后**调用一次 —— 于是 `SubAgentStatus` 在子 agent
+    /// 运行期间永远报 `Tool calls: 0 / Iterations: 0`。实测过：系统进程表里 `Start-Sleep`
+    /// 明明在跑，状态工具却说 0 次；这会让调用方（尤其是人）误判成「还没启动」。
+    /// 这里补的就是那条实时通道，只挂这三类低频事件，不挂 text_delta。
+    /// </summary>
+    public Action? ProgressChanged { get; set; }
 
     public async ValueTask ObserveAsync(AgentRuntimeStreamEvent evt)
     {
@@ -63,6 +75,7 @@ public sealed class SubAgentRunCollector
                 await ForwardAsync(new AgentRuntimeStreamEvent(
                     "sub_agent_tool_call",
                     ToolCall: evt.ToolCall));
+                ProgressChanged?.Invoke();
                 break;
 
             case "tool_call_result":
@@ -80,6 +93,7 @@ public sealed class SubAgentRunCollector
                 await ForwardAsync(new AgentRuntimeStreamEvent(
                     "sub_agent_tool_call",
                     ToolCall: evt.ToolCall));
+                ProgressChanged?.Invoke();
                 break;
 
             case "iteration_start":
@@ -90,6 +104,7 @@ public sealed class SubAgentRunCollector
                 await ForwardAsync(new AgentRuntimeStreamEvent(
                     "sub_agent_iteration",
                     Iteration: evt.Iteration));
+                ProgressChanged?.Invoke();
                 break;
 
             case "tool_use_streaming_start":

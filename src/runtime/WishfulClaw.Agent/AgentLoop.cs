@@ -240,7 +240,9 @@ internal static partial class AgentLoop
                 personaId, workingFolder, language, userRules, sshConnectionId, projectId, sessionMode,
                 JsonHelpers.GetString(parameters, "pluginId"),
                 JsonHelpers.GetString(parameters, "externalChatId"),
-                sandboxEnabled);
+                sandboxEnabled,
+                // S-313 §6.6：热记忆默认只给指针，全文注入是回退口子 —— 两种模式必须分开成键。
+                JsonHelpers.GetBool(parameters, "memoryFullInjection", false));
             var builtPrompt = SystemPromptCache.GetOrBuild(cacheKey, () =>
                 PromptBuilder.Build(
                     PromptProfile.Main, provider, parameters, personaId, workingFolder, language, userRules,

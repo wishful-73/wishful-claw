@@ -65,16 +65,22 @@ public sealed class MemoryHotWriteTool : IToolExecutor
                     return new ToolResult($"Section '{section}' not found in hot memory (scope={scope}).", true);
 
                 await WriteWithSharingRetryAsync(path, updated, context.CancellationToken);
+                // S-313 §6.6：提示里已经不再携带热记忆全文（默认只给一行路径指针），
+                // 所以这里没有「缓存里的旧内容」可提醒了 —— 那句 "Disregard its content still
+                // shown in the cached memory" 在指针模式下已经变成假事实。
                 MemoryUpdateQueue.Enqueue(context.SessionId ?? "",
-                    $"Hot memory section '{section}' was deleted (scope={scope}). Disregard its content still shown in the cached memory until next session.");
+                    $"Hot memory section '{section}' was deleted (scope={scope}).");
                 return new ToolResult($"Section '{section}' deleted from hot memory (scope={scope}).");
             }
 
             // Upsert section
             fileContent = UpsertSection(fileContent, section!, content!);
             await WriteWithSharingRetryAsync(path, fileContent, context.CancellationToken);
+            // 「写入即注入」：提示里不再有热记忆全文，所以这一段内容必须随工具结果回到上下文（尾部，
+            // 不碰前缀）。同时给出完整文件路径 —— 别的段落不在这里，需要时自己去 Read。
             MemoryUpdateQueue.Enqueue(context.SessionId ?? "",
-                $"Hot memory section '{section}' was written/updated (scope={scope}). Current content:\n{content!.Trim()}");
+                $"Hot memory section '{section}' was written/updated (scope={scope}). Current content:\n{content!.Trim()}\n" +
+                $"(Full hot memory is at {path} — Read it if you need the sections not shown here.)");
             return new ToolResult($"Section '{section}' written to hot memory (scope={scope}).");
         }, context.CancellationToken);
     }

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
+using WishfulClaw.Workspace.Memory;
 
 namespace WishfulClaw.Agent;
 
@@ -59,7 +60,8 @@ public static class SystemPromptCache
         string? sessionMode = null,
         string? pluginId = null,
         string? externalChatId = null,
-        bool sandboxEnabled = true)
+        bool sandboxEnabled = true,
+        bool memoryFullInjection = false)
     {
         return string.Join('|',
             personaId ?? string.Empty,
@@ -72,7 +74,38 @@ public static class SystemPromptCache
             pluginId ?? string.Empty,
             externalChatId ?? string.Empty,
             sandboxEnabled ? "sandbox" : "nosandbox",
-            GetPersonaFingerprint(personaId, workingFolder));
+            // S-313 §6.6：两种模式产出的提示完全不同（全文 vs 一行指针），必须各自成键，
+            // 否则切换开关后会命中另一种模式的旧提示。
+            memoryFullInjection ? "memfull" : "memptr",
+            GetPersonaFingerprint(personaId, workingFolder),
+            memoryFullInjection
+                ? GetMemoryFingerprint(sshConnectionId, projectId, workingFolder)
+                : string.Empty);
+    }
+
+    /// <summary>
+    /// S-314：MEMORY.md 的 mtime，**只在全文注入模式下才进 key**。
+    ///
+    /// 指针模式里提示不含记忆内容，把 mtime 放进去只会让前缀在内容没变时白白重建 ——
+    /// 拿缓存命中率换一个不存在的收益。全文模式下它是必需的：上面那段注释早就写着
+    /// 「memory hot-writes rebuild on the next session too」，可在此之前 key 里根本没有
+    /// MEMORY.md，那句话从来没成立过，跨会话一直读到的是旧快照。
+    /// </summary>
+    private static string GetMemoryFingerprint(string? sshConnectionId, string? projectId, string? workingFolder)
+    {
+        try
+        {
+            var scope = MemoryPathResolver.ResolveScope(sshConnectionId, projectId, workingFolder);
+            var path = MemoryPathResolver.GetMemoryFilePath(scope);
+            return File.Exists(path)
+                ? File.GetLastWriteTimeUtc(path).Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : string.Empty;
+        }
+        catch (Exception ex)
+        {
+            WorkerLog.Debug($"SystemPromptCache: memory fingerprint failed: {ex.Message}");
+            return string.Empty;
+        }
     }
 
     /// <summary>

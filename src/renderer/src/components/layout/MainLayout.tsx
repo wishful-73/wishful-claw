@@ -84,11 +84,21 @@ export function MainLayout(): React.JSX.Element {
   // （左 370 + 右 370）时把窗口拖到 900，聊天窗只剩 160 —— 破了 CHAT_MIN_WIDTH 的底线，
   // 而所有 width 值都没人质疑过。这里补一手：只在**变窄**时重跑判定（变宽不动，
   // 收掉的面板不会自动弹回 —— 与「拖宽就把面板拉回来」是两回事，需要用户自己点开）。
+  //
+  // 但「变窄」不等于「用户把窗口拖小了」：窗口**最小化 / 隐藏**时 WebView2 会把视口
+  // 报成一个占位尺寸（本机实测 1680×1072 → **144×18**），恢复时再报回来。按这个读数
+  // 跑判定，左侧栏必然被当成「聊天窗只剩 144px」收掉；而恢复只算变宽、判定不跑，
+  // 于是左栏再也回不来 —— 外观就是「切走一次再回来，面板像被重新初始化过」。
+  // 壳的窗口下限是 900（`src/main/index.ts:116`）/ 960（Tauri `min_inner_size`），
+  // 低于一半的宽度不可能是用户拖出来的真实视口，直接跳过判定。
+  const MIN_REAL_VIEWPORT_WIDTH = 480
   useEffect(() => {
     let lastWidth = window.innerWidth
     const onResize = (): void => {
       const width = window.innerWidth
-      if (width < lastWidth) useUIStore.getState().enforceViewportWidthGuard()
+      if (width >= MIN_REAL_VIEWPORT_WIDTH && width < lastWidth) {
+        useUIStore.getState().enforceViewportWidthGuard()
+      }
       lastWidth = width
     }
     window.addEventListener('resize', onResize)

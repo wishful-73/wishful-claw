@@ -90,7 +90,7 @@ function collectDeclaredToolNames(): Map<string, string> {
   for (const file of walkFiles(sourceRoot)) {
     const source = fs.readFileSync(file, 'utf8')
     for (const match of source.matchAll(declRe)) {
-      const [, varName, body] = match
+      const [, , body] = match
       for (const literal of body.matchAll(/'([^'\r\n]{1,64})'/g)) {
         const name = literal[1]
         // 工具名特征：含大写字母或下划线。纯小写单词多半是分类值（'hidden' / 'custom'）。
@@ -222,12 +222,6 @@ test('resolveToolDisplayName 命中表里的中文', () => {
 
 test('历史别名归一后再查表（BrowserSearch → WebSearch）', () => {
   assert.equal(resolveToolDisplayName('BrowserSearch', fakeT), '搜索网页')
-})
-
-test('codegraph 前缀族显示成「代码图谱 · 动作」，不做裸回退', () => {
-  assert.equal(resolveToolDisplayName('codegraph_explore', fakeT), '代码图谱 · 探索')
-  const unknownAction = resolveToolDisplayName('codegraph_bogus_action', fakeT)
-  assert.ok(unknownAction.startsWith('代码图谱 · '), unknownAction)
 })
 
 test('MCP 工具拆词大写，不显示 mcp__ 原文', () => {

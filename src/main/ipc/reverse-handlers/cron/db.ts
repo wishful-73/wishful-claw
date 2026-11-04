@@ -8,6 +8,7 @@
 
 import { getNativeWorker } from '../../../lib/native-worker'
 import { jobs } from './state'
+import { DEFAULT_MAX_ITERATIONS } from './types'
 import type { CronJob, CronSchedule } from './types'
 
 export function toDbArgs(job: CronJob): Record<string, unknown> {
@@ -33,7 +34,7 @@ export function toDbArgs(job: CronJob): Record<string, unknown> {
     pluginType: job.pluginType,
     pluginChatId: job.pluginChatId,
     deleteAfterRun: job.deleteAfterRun ?? false,
-    maxIterations: job.maxIterations ?? 15,
+    maxIterations: job.maxIterations ?? DEFAULT_MAX_ITERATIONS,
     enabled: job.enabled
   }
 }
@@ -68,7 +69,7 @@ export function fromDbRow(row: Record<string, unknown>): CronJob {
     pluginType: row.plugin_type as string | undefined ?? row.pluginType as string | undefined,
     pluginChatId: row.plugin_chat_id as string | undefined ?? row.pluginChatId as string | undefined,
     deleteAfterRun: Boolean(row.delete_after_run ?? row.deleteAfterRun),
-    maxIterations: Number(row.max_iterations ?? row.maxIterations ?? 15),
+    maxIterations: Number(row.max_iterations ?? row.maxIterations ?? DEFAULT_MAX_ITERATIONS),
     enabled: Boolean(row.enabled),
     deletedAt: row.deleted_at as number | null ?? row.deletedAt as number | null,
     lastFiredAt: row.last_fired_at as number | null ?? row.lastFiredAt as number | null,

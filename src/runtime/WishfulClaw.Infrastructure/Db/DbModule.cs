@@ -46,6 +46,8 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-list-page", DbMessageTools.ListPage);
         context.Register("db/messages-list-locator", DbMessageTools.ListLocator);
         context.Register("db/messages-list-by-turns", DbMessageTools.ListByTurns);
+        // S-301: 用户侧历史发言的精简投影（给 agent 回看用，与上面分页加载是两条路）
+        context.Register("db/messages-list-user", DbMessageTools.ListUserMessages);
         context.Register("db/messages-add", DbMessageTools.Add);
         context.Register("db/messages-add-batch", DbMessageTools.AddBatch);
         context.Register("db/messages-upsert", DbMessageTools.Upsert);
@@ -53,7 +55,6 @@ public sealed class DbModule : IWorkerModule
         context.Register("db/messages-clear", DbMessageTools.Clear);
         context.Register("db/messages-delete", DbMessageTools.Delete);
         context.Register("db/messages-count", DbMessageTools.Count);
-        context.Register("db/messages-compact-session", DbMessageCompactTools.CompactSession);
         context.Register("db/messages-usage-stats", DbMessageCompactTools.UsageStats);
         context.Register("db/messages-search-content", DbMessageTools.SearchContent);
 

@@ -40,8 +40,13 @@ function broadcastProgress(event: PluginAssetProgressEvent): void {
   }
 }
 
-/** 懒建单例：共享资产根是 `{dataRoot}/plugin-assets`。 */
-function getManager(): PluginAssetManager {
+/**
+ * 懒建单例：共享资产根是 `{dataRoot}/plugin-assets`。
+ *
+ * 导出给 CodeGraph 复用（S-303）：语言包是一份 zip 资产，交给同一个 manager 下载，
+ * 才共享续传 / 多源 / 并发闸门 —— 另建实例会在同一个 `.part` 上互相踩。
+ */
+export function getPluginAssetManager(): PluginAssetManager {
   if (!manager) {
     manager = new PluginAssetManager({
       rootDir: resolveDataPath('plugin-assets'),
@@ -64,33 +69,33 @@ export function registerPluginAssetHandlers(): void {
 
   registerMessagePackHandler<string | { id?: string }, PluginAssetStatus>(
     'plugin-asset:status',
-    async (args) => getManager().status(readId(args))
+    async (args) => getPluginAssetManager().status(readId(args))
   )
 
   registerMessagePackHandler<string[] | { ids?: string[] }, PluginAssetStatus[]>(
     'plugin-asset:status-of',
-    async (args) => getManager().statusOf(Array.isArray(args) ? args : (args?.ids ?? []))
+    async (args) => getPluginAssetManager().statusOf(Array.isArray(args) ? args : (args?.ids ?? []))
   )
 
   registerMessagePackHandler<string | { id?: string }, PluginAssetStatus>(
     'plugin-asset:download',
-    async (args) => getManager().download(readId(args))
+    async (args) => getPluginAssetManager().download(readId(args))
   )
 
   registerMessagePackHandler<string | { id?: string }, { cancelled: boolean }>(
     'plugin-asset:cancel',
-    async (args) => ({ cancelled: getManager().cancel(readId(args)) })
+    async (args) => ({ cancelled: getPluginAssetManager().cancel(readId(args)) })
   )
 
   registerMessagePackHandler<string | { id?: string }, PluginAssetStatus>(
     'plugin-asset:verify',
-    async (args) => getManager().verify(readId(args))
+    async (args) => getPluginAssetManager().verify(readId(args))
   )
 
   registerMessagePackHandler<string | { id?: string }, { removed: boolean }>(
     'plugin-asset:remove',
     async (args) => {
-      await getManager().remove(readId(args))
+      await getPluginAssetManager().remove(readId(args))
       return { removed: true }
     }
   )

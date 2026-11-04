@@ -8,15 +8,6 @@
 import { registerTaskTools } from './todo-tool'
 import { registerFsTools } from './fs-tool'
 import { registerSearchTools } from './search-tool'
-import {
-  registerCodeGraphExploreTool,
-  unregisterCodeGraphExploreTool,
-  isCodeGraphExploreToolRegistered,
-  registerCodeGraphFullSurface,
-  unregisterCodeGraphFullSurface,
-  isCodeGraphFullSurfaceRegistered
-} from './codegraph-tool'
-import { useSettingsStore } from '../../stores/settings-store'
 import { registerBashTools } from './bash-tool'
 import { registerTeamTools } from '../agent/teams/register'
 import { registerWidgetTools } from './widget-tool'
@@ -40,8 +31,6 @@ export async function registerAllTools(): Promise<void> {
   registerTaskTools()
   registerFsTools()
   registerSearchTools()
-  // Note: codegraph_explore is NOT registered here — it's registered/unregistered
-  // dynamically based on the codegraphEnabled setting (see codegraph-tool.ts)
   registerBashTools()
   registerWidgetTools()
   registerAskUserTools()
@@ -71,25 +60,6 @@ export async function registerAllTools(): Promise<void> {
 
   // Plugin tools are registered/unregistered dynamically via channel-store toggle
   // They are NOT registered here — see plugin-tools.ts registerPluginTools/unregisterPluginTools
-}
-
-export function updateCodeGraphToolRegistration(enabled: boolean): void {
-  const isRegistered = isCodeGraphExploreToolRegistered()
-  if (enabled && !isRegistered) {
-    registerCodeGraphExploreTool()
-  } else if (!enabled && isRegistered) {
-    unregisterCodeGraphExploreTool()
-  }
-
-  // Full 8-tool surface (M7-W3): opt-in via settings.codegraphFullToolSurface;
-  // the worker's tools-list shapes what actually registers (tiny-repo gating,
-  // allowlist). Fire-and-forget — registration failure keeps explore-only.
-  const wantFull = enabled && useSettingsStore.getState().codegraphFullToolSurface
-  if (wantFull && !isCodeGraphFullSurfaceRegistered()) {
-    void registerCodeGraphFullSurface()
-  } else if (!wantFull && isCodeGraphFullSurfaceRegistered()) {
-    unregisterCodeGraphFullSurface()
-  }
 }
 
 export { ensureRequestToolCatalogFresh, refreshDynamicToolCatalog } from './dynamic-tool-catalog'

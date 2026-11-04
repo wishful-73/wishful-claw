@@ -49,7 +49,9 @@ function makeBatcher(overrides: { flushMs?: number; maxBufferSize?: number } = {
   batcher.push('run-1', 'sess-1', text('你'))
   batcher.push('run-1', 'sess-1', text('好'))
   batcher.push('run-1', 'sess-1', text('啊'))
-  check(envelopes.length === 0, 'deltas stay buffered until the frame timer fires')
+  // `check` 是 `asserts condition`，直接写 `envelopes.length === 0` 会把 length 收窄成字面量 0，
+  // 后面 `=== 1` 就被判成恒假（TS2367）。cast 成 number 断掉这条收窄路径，断言语义不变。
+  check((envelopes.length as number) === 0, 'deltas stay buffered until the frame timer fires')
 
   batcher.flushRun('run-1')
   check(envelopes.length === 1, 'three deltas collapse into a single envelope')
@@ -162,7 +164,7 @@ function makeBatcher(overrides: { flushMs?: number; maxBufferSize?: number } = {
   const { batcher, envelopes } = makeBatcher({ maxBufferSize: 10 })
 
   batcher.push('run-1', 'sess-1', text('123456789'))
-  check(envelopes.length === 0, 'below the cap nothing is flushed early')
+  check((envelopes.length as number) === 0, 'below the cap nothing is flushed early')
 
   batcher.push('run-1', 'sess-1', text('0123456789'))
   check(envelopes.length === 1, 'crossing maxBufferSize flushes immediately')
@@ -223,7 +225,7 @@ async function verifyTimerFlush(): Promise<void> {
   batcher.setHandler((envelope) => envelopes.push(envelope))
 
   batcher.push('run-1', 'sess-1', text('hi'))
-  check(envelopes.length === 0, 'nothing is pushed before the frame elapses')
+  check((envelopes.length as number) === 0, 'nothing is pushed before the frame elapses')
 
   await new Promise<void>((resolve) => setTimeout(resolve, 60))
   check(envelopes.length === 1, 'the frame timer flushes on its own')

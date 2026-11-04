@@ -13,7 +13,6 @@ import { app } from 'electron'
 import { logError, logWarn } from './logger'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
 import { readPersistedSettings, SETTINGS_STORAGE_KEY } from './settings-store'
-import { resolveCodeGraphGrammarsDir } from './codegraph-assets'
 import { resolveDataDir, resolveProjectDirName } from './data-dir'
 import { WISHFULCLAW_PROJECT_DIR_ENV } from '../../shared/project-dir'
 
@@ -188,7 +187,6 @@ class NativeWorkerManager {
     const workerEnv: NodeJS.ProcessEnv = {
       ...process.env,
       WISHFULCLAW_DATA_DIR: resolvedDataDir,
-      CODEGRAPH_HOME: path.join(resolvedDataDir, 'codegraph'),
       [WISHFULCLAW_PROJECT_DIR_ENV]: resolveProjectDirName()
     }
     console.log('[Worker] data directory', resolvedDataDir)
@@ -206,15 +204,10 @@ class NativeWorkerManager {
       }
     } catch { /* ignore — settings file may not exist yet */ }
 
-    // CodeGraph: point the worker at the resolved tree-sitter grammars dir
-    // (bundled beside the worker, or the NuGet cache in dev). A null result
-    // leaves the worker on its own <binary>/grammars fallback.
-    try {
-      const grammarsDir = resolveCodeGraphGrammarsDir()
-      if (grammarsDir) {
-        workerEnv.WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR = grammarsDir
-      }
-    } catch { /* ignore — grammars are optional for boot */ }
+    // CodeGraph 不再往 worker 注入任何东西（S-303）：引擎已是独立 AOT exe
+    // （MCP stdio server），语法库由它自己按 `{AppContext.BaseDirectory}/grammars`
+    // 即 `plugins/codegraph/bin/grammars` 查找。以前这里注入的 CODEGRAPH_HOME 与
+    // WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR 在 C# 侧已经没有任何消费者。
 
     const child = spawn(workerPath, ['--ipc', endpoint], {
       cwd: path.dirname(workerPath),
@@ -477,7 +470,9 @@ class NativeWorkerManager {
     this.pending.clear()
     this.cancelKeys.clear()
   }
+
 }
+
 
 function createFrame(payload: Uint8Array): Buffer {
   const header = Buffer.allocUnsafe(FRAME_HEADER_BYTES)

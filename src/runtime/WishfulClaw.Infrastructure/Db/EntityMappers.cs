@@ -120,6 +120,7 @@ public static class EntityMappers
         Tags = r.GetNullableString("tags") ?? "[]",
         DueAt = r.GetNullableInt64("due_at"),
         Archived = r.GetInt32("archived"),
+        ProjectId = r.GetNullableString("project_id"),
         CreatedAt = r.GetInt64("created_at"),
         UpdatedAt = r.GetInt64("updated_at")
     };

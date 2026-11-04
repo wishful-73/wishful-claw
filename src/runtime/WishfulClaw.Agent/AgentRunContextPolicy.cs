@@ -128,11 +128,20 @@ internal static class AgentRunContextPolicy
     /// <summary>
     /// Global feature opt-ins that veto a tool for a whole run, whatever its own declarations say.
     ///
-    /// CodeGraph is the only entry. Its switch is resolved on the renderer, where both halves live:
-    /// the plugin state and the index probe. The value that arrives here therefore already means
-    /// "plugin on AND this project has an index", so a project that was never indexed never sees
-    /// the tool on any surface. Web search used to be gated the same way; that gate went with the
-    /// provider-API chain it guarded (iter-29 / S-23).
+    /// Run-level feature switch: a tool whose *availability* depends on a run-scoped state
+    /// (plugin on + this project has an index) is filtered here before any declaration check.
+    ///
+    /// **Current state (S-303, 2026-11-03): this predicate has no live subject in this repo.**
+    /// CodeGraph was split out into `wishful-claw-codegraph` and now reaches the agent as an MCP
+    /// tool (`mcp__builtin-codegraph__*`), so nothing here starts with `codegraph_` any more, and
+    /// the renderer no longer sends `codegraphEnabled` at all — the value therefore defaults to
+    /// false and this returns true for every registered tool.
+    ///
+    /// Kept on purpose: it is the shared entry point for *any* opt-in tool, and the admission
+    /// chain below calls it first. Deleting it would re-open the hole documented in iter-v2-31
+    /// ("core-ifying an opt-in tool puts an unusable tool straight into the tool table").
+    /// Do not read the stale true/false as a CodeGraph switch — the gate lives in the plugin
+    /// asset state now.
     /// </summary>
     public static bool IsRunEnabledTool(AgentRunContext context, string toolName) =>
         !toolName.StartsWith("codegraph_", StringComparison.Ordinal) || context.CodegraphEnabled;

@@ -5,7 +5,7 @@ import { getToolStatusDescriptionKey, TOOL_ARG_LABELS } from './meta'
 interface ToolStatusSectionProps {
   selectedDescriptor: AppPluginDescriptor
   selectedPluginId: string
-  activeState: 'disabled' | 'not_ready' | 'ready'
+  activeState: 'disabled' | 'checking' | 'not_ready' | 'ready'
 }
 
 export function ToolStatusSection({

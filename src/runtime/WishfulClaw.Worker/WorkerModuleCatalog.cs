@@ -47,8 +47,6 @@ public static class WorkerModuleCatalog
         new ExtensionModule(),
         new SkillModule(),
         new WebFetchModule(),
-        new GoalModule(),
-        // CodeGraph（vendored，全局命名空间 + internal，经 InternalsVisibleTo 可见）
-        new CodeGraphModule()
+        new GoalModule()
     ];
 }

@@ -52,6 +52,8 @@ export interface GlobalTaskRow {
   tags: string
   due_at: number | null
   archived: number
+  /** S-300: owning project id, or null for a pure global task. */
+  project_id: string | null
   created_at: number
   updated_at: number
 }

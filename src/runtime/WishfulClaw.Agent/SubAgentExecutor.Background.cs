@@ -35,6 +35,11 @@ public static partial class SubAgentExecutor
         childState.EventObserver = collector.ObserveAsync;
         childState.ReplaceParameters(childParameters);
 
+        // S-308：登记一条与父 run 生命周期无关的停止句柄。父 run 结束时会 dispose 下面那个
+        // 取消联动注册 —— 那是唯一原有的取消通路，而 background 的全部价值恰恰是「活得比父
+        // run 长」，于是孤儿无路可停。这条登记就是补上那条路（SubAgentStop / 渲染端停止按钮）。
+        SubAgentRunControl.Register(toolCallId, childState);
+
         // Register parent cancellation → child cancellation. SA-2: keep the
         // registration and dispose it in the background task's finally — a
         // dropped registration leaves the callback on the parent token after
@@ -137,7 +142,7 @@ public static partial class SubAgentExecutor
             }
             catch (OperationCanceledException) when (childState.IsCancellationRequested)
             {
-                BackgroundSubAgentRegistry.Cancel(toolCallId);
+                BackgroundSubAgentRegistry.MarkCancelled(toolCallId);
 
                 await AgentRuntimeTools.EmitAsync(
                     parentState, context,
@@ -192,6 +197,10 @@ public static partial class SubAgentExecutor
                 // SA-2: detach the parent-cancellation callback before the
                 // child state dies (see registration comment above).
                 try { cancellationRegistration.Dispose(); } catch { }
+                // S-308：停止句柄必须在 state.Dispose() **之前**注销 —— 之后再 Cancel 会被
+                // AgentRuntimeRunState.Cancel 自己吞掉，一条「其实已经停了」的登记会被当成
+                // 可停目标。顺序反了就是新一类状态与实际不符。
+                SubAgentRunControl.Unregister(toolCallId);
                 // The sub-agent conversation is isolated under its runId (see
                 // AgentLoop); remove it so isolated conversations don't leak.
                 SessionConversationManager.Remove($"__subagent__{childRunId}");

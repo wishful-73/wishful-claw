@@ -15,7 +15,6 @@ import {
   handleTerminalStop
 } from './terminal-reverse-handler'
 import { handleWindowCaptureSelf } from './window-capture-handler'
-import { handleCodeGraphTool } from '../codegraph-handlers'
 import { executeMcpToolFromMain, readMcpResourceFromMain } from '../mcp-handlers'
 import {
   executePluginAction,
@@ -31,7 +30,6 @@ type ReverseHandler = (params: Record<string, unknown>) => Promise<unknown>
 const directHandlers = new Map<string, ReverseHandler>([
   ['image:generate', (p) => handleImageGenerate(p)],
   ['window:capture-self', (p) => handleWindowCaptureSelf(p)],
-  ['codegraph:tool', (p) => handleCodeGraphTool(p)],
   ['mcp:call-tool', (p) => executeMcpToolFromMain(p as { serverId: string; toolName: string; args: Record<string, unknown> })],
   ['mcp:read-resource', (p) => readMcpResourceFromMain(p as { serverId: string; uri?: string; resourceName?: string })],
   ['ssh:exec', async (p) => {

@@ -17,6 +17,7 @@ import { Button } from '@renderer/components/ui/button'
 import { confirm } from '@renderer/components/ui/confirm-dialog'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@renderer/components/ui/hover-card'
 import { cn } from '@renderer/lib/utils'
+import { formatCommitDay, formatCommitTime } from '@renderer/lib/utils/commit-time'
 import { useGitStore, type GitBranchItem } from '@renderer/stores/git-store'
 import { COMMIT_GRAPH_LIMIT } from '@renderer/stores/git-store-types'
 import { CommitGraphSvg } from './commit-graph'
@@ -283,6 +284,12 @@ function SectionHeader({
   )
 }
 
+/**
+ * `--date=iso` 给的是 `2026-11-03 15:41:07 +0800`。
+ * 行内只放月-日：面板窄，塞完整时间会把提交说明挤没。
+ * 跨年时补两位年份，否则「11-03」在两年之间无法区分。
+ * 格式化口径见 `lib/utils/commit-time.ts`。
+ */
 function CommitGraphList({ layout }: { layout: CommitGraphLayout }): React.JSX.Element {
   // 节点画在 SVG 里、提交说明在兄弟容器里，两者只能靠共享状态联动：
   // hover 任一侧都要把这一行标出来，否则用户分不清哪个节点对应哪条说明。
@@ -310,6 +317,9 @@ function CommitGraphList({ layout }: { layout: CommitGraphLayout }): React.JSX.E
                 {row.commit.refs.map((ref) => (
                   <RefBadge key={ref} value={ref} />
                 ))}
+                <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground/70">
+                  {formatCommitDay(row.commit.date)}
+                </span>
                 <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                   {row.commit.shortHash}
                 </span>
@@ -320,7 +330,14 @@ function CommitGraphList({ layout }: { layout: CommitGraphLayout }): React.JSX.E
               align="start"
               className="w-auto max-w-md break-words p-2 text-xs leading-relaxed"
             >
-              {row.commit.subject}
+              <div className="font-medium">{row.commit.subject}</div>
+              <div className="mt-1 text-muted-foreground">
+                {/* 时间解析失败时不能留一个孤零零的「作者 ·」 */}
+                {[row.commit.author, formatCommitTime(row.commit.date)].filter(Boolean).join(' · ')}
+              </div>
+              <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                {row.commit.hash}
+              </div>
             </HoverCardContent>
           </HoverCard>
         ))}

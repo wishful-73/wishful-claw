@@ -10,7 +10,6 @@ import {
   BROWSER_SET_DEVICE_TOOL_NAME,
   BROWSER_SNAPSHOT_TOOL_NAME,
   BROWSER_TYPE_TOOL_NAME,
-  CODEGRAPH_EXPLORE_TOOL_NAME,
   CODEGRAPH_PLUGIN_ID,
   DESKTOP_CLICK_TOOL_NAME,
   DESKTOP_CONTROL_PLUGIN_ID,
@@ -29,7 +28,6 @@ import {
 } from '@renderer/lib/app-plugin/types'
 
 export const TOOL_ARG_LABELS: Record<AppPluginToolName, string[]> = {
-  [CODEGRAPH_EXPLORE_TOOL_NAME]: ['query', 'projectPath'],
   [IMAGE_GENERATE_TOOL_NAME]: ['prompt', 'count', 'reference_images', 'size', 'quality'],
   [BROWSER_NAVIGATE_TOOL_NAME]: ['url', 'action'],
   [BROWSER_GET_CONTENT_TOOL_NAME]: ['selector', 'type'],
@@ -97,12 +95,21 @@ export function getPluginState(options: {
   descriptor: AppPluginDescriptor
   pluginEnabled: boolean
   isResolvedImageModelReady: boolean
-  isCodeGraphReady: boolean
-}): 'disabled' | 'not_ready' | 'ready' {
+  /**
+   * 资产就绪态。`null` = 状态还没从主进程拉回来。
+   *
+   * 必须与 `false` 分开：以前 `null` 被当成 `false`，列表首屏把「还没检测」
+   * 显示成「待下载」，点进详情拉回真状态又变「已启用」—— 同一样东西两种说法。
+   */
+  isCodeGraphReady: boolean | null
+}): 'disabled' | 'checking' | 'not_ready' | 'ready' {
   const { descriptor, pluginEnabled, isResolvedImageModelReady, isCodeGraphReady } = options
   if (!pluginEnabled) return 'disabled'
   if (descriptor.requiresModelConfig && !isResolvedImageModelReady) return 'not_ready'
-  if (descriptor.requiresDownload && !isCodeGraphReady) return 'not_ready'
+  if (descriptor.requiresDownload) {
+    if (isCodeGraphReady === null) return 'checking'
+    if (!isCodeGraphReady) return 'not_ready'
+  }
   return 'ready'
 }
 

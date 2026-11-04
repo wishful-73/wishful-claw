@@ -140,12 +140,6 @@ export function migrateSettings(persisted: unknown, version: number): Record<str
   } else {
     state.logLevel = normalizeLogLevel(state.logLevel)
   }
-  if (state.codegraphEnabled === undefined) {
-    state.codegraphEnabled = false
-  }
-  if (state.codegraphFullToolSurface === undefined) {
-    state.codegraphFullToolSurface = false
-  }
   if (
     typeof state.contextCompressionThreshold !== 'number' ||
     !Number.isFinite(state.contextCompressionThreshold)

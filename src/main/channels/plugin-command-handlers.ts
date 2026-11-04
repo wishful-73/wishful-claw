@@ -41,13 +41,6 @@ export type CommandHandler = (
 
 // ── Native Result Interfaces ──
 
-interface NativeMessageCompactResult {
-  success: boolean
-  totalMessages: number
-  compacted: number
-  error?: string | null
-}
-
 interface NativeSessionResetResult {
   success: boolean
   deletedMessages: number
@@ -211,7 +204,6 @@ export function handleHelp(ctx: CommandContext, args: string): CommandResult {
     '/init [args...] — Initialize AGENTS/SOUL/USER/MEMORY and analyze project to update AGENTS.md',
     '/status    — Show current status information',
     '/stats     — Show token usage statistics',
-    '/compress  — Compress context (clear stale tool results and thinking blocks)',
     '',
     '💡 Use @bot + command in group chats, e.g. "@Bot /help"',
     'Send a message directly to chat with the AI assistant.'
@@ -382,47 +374,6 @@ export async function handleStatus(ctx: CommandContext, args: string): Promise<C
 
   return { handled: true, reply: lines.join('\n') }
 }
-
-export async function handleCompress(ctx: CommandContext, args: string): Promise<CommandResult> {
-  void args
-  if (!ctx.sessionId) {
-    return { handled: true, reply: 'No active session found.' }
-  }
-
-  try {
-    const result = await getNativeWorker().request<NativeMessageCompactResult>(
-      'db/messages-compact-session',
-      { sessionId: ctx.sessionId },
-      120_000
-    )
-    if (!result.success) {
-      throw new Error(result.error || 'Native message compaction failed')
-    }
-
-    if (result.totalMessages < 6) {
-      return { handled: true, reply: 'Too few messages to compress.' }
-    }
-
-    if (result.compacted === 0) {
-      return { handled: true, reply: 'Context is already compact.' }
-    }
-
-    console.log(
-      `[PluginCommand] Compacted ${result.compacted} messages in session ${ctx.sessionId}`
-    )
-    return {
-      handled: true,
-      reply: `✅ Context compressed, cleaned ${result.compacted} messages (stale tool results and thinking blocks cleared). Compressed ${result.compacted} messages.`
-    }
-  } catch (err) {
-    console.error('[PluginCommand] Failed to compress context:', err)
-    return {
-      handled: true,
-      reply: '❌ Compression failed. Please try again.'
-    }
-  }
-}
-
 
 import { handleStats, buildInitAgentPrompt } from './plugin-command-stats'
 

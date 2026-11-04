@@ -39,7 +39,6 @@ public sealed class ToolModule : IWorkerModule
             new Providers.SandboxElevationToolProvider(),
             new Providers.BrowserToolProvider(),
             new Providers.ChannelPluginToolProvider(),
-            new Providers.CodeGraphToolProvider(),
             new Providers.CodeCompatibleToolProvider(),
             new Providers.CronToolProvider(),
             new Providers.DesktopToolProvider(),
@@ -51,6 +50,7 @@ public sealed class ToolModule : IWorkerModule
             new Providers.PlanToolProvider(),
             new Providers.PluginToolProvider(),
             new Providers.ProjectToolsProvider(),
+            new Providers.SessionHistoryToolProvider(),
             new Providers.SkillManagementToolProvider(),
             new Providers.SkillToolProvider(),
             new Providers.SshToolProvider(),
@@ -158,6 +158,9 @@ public sealed class ToolModule : IWorkerModule
         // Sub-agent status and detail query tools
         registry.Register(new SubAgentStatusTool(), "task");
         registry.Register(new SubAgentDetailTool(), "task");
+
+        // S-308：真正停掉子 agent（此前只有查，没有停；后台子 agent 父 run 结束后无路可停）
+        registry.Register(new SubAgentStopTool(), "task");
 
         // Memory tools (category: "memory" — included in chat/coding presets)
         var memorySearch = new MemoryFtsService();

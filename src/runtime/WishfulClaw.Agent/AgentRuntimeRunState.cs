@@ -205,6 +205,20 @@ public sealed class AgentRuntimeRunState : IDisposable
     public string? StopReason { get; private set; }
 
     /// <summary>
+    /// S-299：本轮已经跑到第几轮（1-based），以及最后一个发起调用的工具名。
+    ///
+    /// 存在的理由只有一个：撞轮次上限时，光说「到了迭代上限」等于什么都没说 ——
+    /// 用户看不出是跑飞了还是任务本来就大。这两个值由 AgentLoop 每轮更新，
+    /// EmitLoopEndAsync 原样带进 loop_end 事件，渲染端拼成「已跑 15 轮（42 分钟）」。
+    ///
+    /// 只在 loop_end 时有意义；运行中的进度以 iteration_start 事件为准。
+    /// </summary>
+    public int IterationCount { get; set; }
+
+    /// <summary>见 <see cref="IterationCount"/>。null = 这一轮还没调用过工具。</summary>
+    public string? LastToolName { get; set; }
+
+    /// <summary>
     /// The reason of the first Cancel call (diagnostics only). Later cancels
     /// still propagate but do not overwrite the original reason.
     /// </summary>

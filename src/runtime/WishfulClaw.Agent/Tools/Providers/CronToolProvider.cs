@@ -112,7 +112,7 @@ public sealed class CronToolProvider : IToolProvider
         ["pluginType"] = ToolSchemaBuilder.String("Messaging plugin type, such as feishu or weixin."),
         ["pluginChatId"] = ToolSchemaBuilder.String("Chat ID for plugin delivery."),
         ["deleteAfterRun"] = ToolSchemaBuilder.Boolean("Archive the task after its run completes. Defaults to true for kind=at."),
-        ["maxIterations"] = ToolSchemaBuilder.Integer("Maximum Agent loop iterations. Defaults to 15.")
+        ["maxIterations"] = ToolSchemaBuilder.Integer("Maximum Agent loop iterations. Defaults to 0 (unlimited).")
     };
 
     private static Dictionary<string, System.Text.Json.JsonElement> UpdateProperties(

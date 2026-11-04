@@ -176,6 +176,15 @@ export type AgentEvent =
       /** reason = 'error' 时的成因，落进消息 meta.runEnd 供重载后据实显示。 */
       errorType?: string
       statusCode?: number
+      /**
+       * S-299：跑到第几轮。worker 只在 loop_end 带，用来把「到了迭代上限」
+       * 说成「已跑 15 轮（42 分钟）」。
+       */
+      iteration?: number
+      /** S-299：这一轮总耗时（毫秒），同上。 */
+      elapsedMs?: number
+      /** S-299：最后发起调用的工具名，同上。缺失 = 这一轮没调过工具。 */
+      toolName?: string
       messages?: UnifiedMessage[]
     }
   | {

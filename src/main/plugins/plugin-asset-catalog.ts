@@ -57,6 +57,41 @@ const CATALOG: PluginAssetCatalogEntry[] = [
     size: 472158,
     sha256: 'e1c78216baed078fe5507bf3b350b93a0cb9546768c0da3405020752c05999cd',
     urls: ['https://wishful-claw.work/logo.png']
+  },
+  {
+    id: 'codegraph/win-x64.zip',
+    name: '代码图谱',
+    desc: '代码图谱引擎与语言包（18 种语言），装完即可索引项目、做符号导航与影响分析。',
+    kind: 'binary',
+    // 实测 2026-11-03，GitHub Release `codegraph-v1` 挂在**代码图谱独立仓**
+    // `wishful-73/wishful-claw-codegraph`（纯资产 release，独立 tag 不跟主版本走）。
+    // **匿名**下载（不带任何 Authorization）：HTTP 302 → 200 / 10133006 字节 / sha256 对阵一致。
+    //
+    // 包内（引擎与语言包**合一**，2026-11-03 老大定方案 B：代码图谱整体走插件资产下载）：
+    //   bin/codegraph.exe       AOT 单文件引擎（MCP stdio server）      9.56 MB
+    //   bin/e_sqlite3.dll       SQLite 原生库                            1.89 MB
+    //   bin/grammars/*.dll      tree-sitter 运行时 + 18 个语言 grammar   42.54 MB
+    //   未压缩 53.99 MB → 压缩 9.66 MB（原生代码压缩率约 5.6:1）
+    //
+    // ⚠️ grammars 必须挂在 bin/ 下，不能与 bin/ 平级：引擎的
+    //    CodeGraphNativeLibraryResolver.ProbeDirs() 查找顺序是
+    //    WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR → {AppContext.BaseDirectory}/grammars → BaseDirectory，
+    //    而 BaseDirectory 就是 bin/，所以 bin/grammars 不传环境变量也能命中。
+    //
+    // 实测索引（解压产物真跑）：200 文件 / 4462 节点 / 10533 边 / 3027 ms ⇒ 18 个 grammar 全部加载成功。
+    //
+    // 注：GitHub 会把仓库里唯一的正式 release 强行当作 /releases/latest，
+    // make_latest:false 拦不住。但更新弹窗的「查看发布页」指向**主仓**的 latest
+    // （wishful-73/wishful-claw），与本仓无关，因此无影响。
+    // 仓库必须保持 public —— 私有仓的 release 资产匿名请求一律 404，客户端拿不到。
+    //
+    // 旧的 `codegraph/grammars-win-x64.zip`（纯语言包 / grammars-v1）已废弃：引擎当时还在安装包里，
+    // 只有语言包需要下载；现在两者合一，不再有消费者。
+    size: 10133006,
+    sha256: '90c4babfb020408fb5098f6a1b010c85c058ae19a034ea06542a8a791d510ff8',
+    urls: [
+      'https://github.com/wishful-73/wishful-claw-codegraph/releases/download/codegraph-v1/codegraph-win-x64.zip'
+    ]
   }
 ]
 

@@ -18,7 +18,6 @@ import {
   reachDownloaded
 } from '../harness'
 import { createGateHarness } from '../gate-harness'
-import { createInstallHarness } from '../install-harness'
 
 // ---------------------------------------------------------------- download gate
 

@@ -23,11 +23,6 @@ import { __setChannelState } from './stubs/channel-store'
 
 let checks = 0
 
-function check(condition: unknown, message: string): asserts condition {
-  checks++
-  assert.ok(condition, message)
-}
-
 function eq(actual: unknown, expected: unknown, message: string): void {
   checks++
   assert.deepStrictEqual(actual, expected, `${message} (got ${JSON.stringify(actual)})`)

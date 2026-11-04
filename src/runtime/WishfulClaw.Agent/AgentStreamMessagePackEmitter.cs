@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -104,6 +104,8 @@ public static class AgentStreamMessagePackEmitter
         // Memory recall visibility
         WriteOptionalInt(writer, "recallCount", streamEvent.RecallCount);
         WriteOptionalStringArray(writer, "recallHits", streamEvent.RecallHits);
+        // S-299: run duration on loop_end
+        WriteOptionalInt(writer, "elapsedMs", streamEvent.ElapsedMs);
     }
 
     private static int CountEventProperties(AgentRuntimeStreamEvent streamEvent)
@@ -158,6 +160,8 @@ public static class AgentStreamMessagePackEmitter
         // Memory recall visibility
         if (streamEvent.RecallCount.HasValue) count++;
         if (streamEvent.RecallHits is not null) count++;
+        // S-299: run duration, carried on loop_end
+        if (streamEvent.ElapsedMs.HasValue) count++;
         return count;
     }
 

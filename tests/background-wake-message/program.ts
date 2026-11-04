@@ -38,7 +38,7 @@ function userMessage(content: unknown): UnifiedMessage {
 async function main(): Promise<void> {
   // 静态依赖链会经 context-compression 拉进 Electron IPC client，node 下没有 window。
   // 照 tests/renderable-chat-items 的做法垫一个空壳，只为让模块图能加载。
-  ;(globalThis as typeof globalThis & { window: unknown }).window = {
+  ;(globalThis as unknown as { window: unknown }).window = {
     electron: {
       ipcRenderer: {
         invoke: async () => undefined,

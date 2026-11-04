@@ -5,7 +5,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
-import { Brain, ChevronDown, ChevronRight, FileText, ScrollText, icons } from 'lucide-react'
+import { Brain, ChevronDown, ChevronRight, FileText, ScrollText, Square, icons } from 'lucide-react'
 
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
 import { formatTokens, getBillableTotalTokens } from '@renderer/lib/format-tokens'
@@ -26,6 +26,7 @@ import { deriveSubAgentExpanded } from './render-density'
 import { useDensityOverride, useDensityPolicy } from './use-density-override'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@renderer/components/ui/hover-card'
+import { agentBridge } from '@renderer/lib/ipc/agent-bridge'
 import { cn } from '@renderer/lib/utils'
 import type { ToolResultContent } from '@renderer/lib/api/types'
 import type { ToolCallState } from '@renderer/lib/agent/types'
@@ -410,16 +411,24 @@ function SubAgentCardInner({
         isError && 'border-destructive/20 hover:border-destructive/35'
       )}
     >
-      {/* Header row — click toggles expand/collapse */}
-      <button
-        type="button"
+      {/* Header row — click toggles expand/collapse.
+          S-308：这里原本是个 <button>，现在改成 role=button 的 div —— header 右侧要放停止按钮，
+          而 button 里套 button 是无效 HTML（点停止会连带触发外层）。键盘行为手工补回来。
+          S-310：行点击**只**切展开，不再顺手打开右侧面板 —— 打开详情走 header 右侧的显式文字入口。 */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => {
           if (hasSteps) setIsExpanded((v) => !v)
-          handleOpenPanel()
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return
+          e.preventDefault()
+          if (hasSteps) setIsExpanded((v) => !v)
         }}
         title={metaText}
         className={cn(
-          'flex w-full min-w-0 items-center gap-2 px-1.5 py-1.5 text-left text-[12px] transition-colors duration-200',
+          'flex w-full min-w-0 cursor-pointer items-center gap-2 px-1.5 py-1.5 text-left text-[12px] transition-colors duration-200',
           'hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/45 dark:hover:bg-white/[0.035]',
           isError && 'hover:bg-destructive/[0.035]',
         )}
@@ -467,6 +476,58 @@ function SubAgentCardInner({
           </span>
         </span>
 
+        {/* S-308：运行中 / 排队中才有停止入口。此前一张子 agent 卡一旦跑起来，
+            父 run 结束后就再也没有办法让它停下（唯一手段是杀进程）。 */}
+        {isRunning || isQueued ? (
+          <span
+            role="button"
+            tabIndex={0}
+            title={t('subAgent.stop', { defaultValue: 'Stop this sub-agent' })}
+            aria-label={t('subAgent.stop', { defaultValue: 'Stop this sub-agent' })}
+            onClick={(e) => {
+              e.stopPropagation()
+              void agentBridge
+                .cancelSubAgent(toolUseId, sessionId ?? undefined)
+                .catch((error) => {
+                  console.warn('[SubAgentCard] cancel sub-agent failed:', error)
+                })
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return
+              e.preventDefault()
+              e.stopPropagation()
+              void agentBridge
+                .cancelSubAgent(toolUseId, sessionId ?? undefined)
+                .catch((error) => {
+                  console.warn('[SubAgentCard] cancel sub-agent failed:', error)
+                })
+            }}
+            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/45 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/45"
+          >
+            <Square className="size-2.5 fill-current" />
+          </span>
+        ) : null}
+
+        {/* S-310：打开右侧详情的显式入口 —— 纯文字，不抢展开/收起那一行点击。
+            内层要 stopPropagation，否则会连带触发 header 的展开切换。 */}
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleOpenPanel()
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return
+            e.preventDefault()
+            e.stopPropagation()
+            handleOpenPanel()
+          }}
+          className="shrink-0 cursor-pointer whitespace-nowrap rounded px-1 text-[11px] text-muted-foreground/55 transition-colors hover:text-foreground/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/45"
+        >
+          {t('subAgent.viewDetail', { defaultValue: 'View details' })}
+        </span>
+
         <span className="flex shrink-0 items-center gap-1.5 text-[10px] text-muted-foreground/65">
           <span
             className={cn(
@@ -483,7 +544,7 @@ function SubAgentCardInner({
             <span className="tabular-nums text-muted-foreground/55">{formatElapsed(elapsed)}</span>
           ) : null}
         </span>
-      </button>
+      </div>
 
       {/* Expanded step list */}
       <AnimatePresence initial={false}>

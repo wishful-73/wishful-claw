@@ -5,7 +5,6 @@ import {
   type UpdaterStateCoordinator
 } from '../../src/main/updater-state'
 import { createHarness } from './harness'
-import { createInstallHarness } from './install-harness'
 
 export interface InstallHarness {
   coordinator: UpdaterStateCoordinator

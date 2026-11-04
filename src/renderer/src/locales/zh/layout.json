@@ -429,7 +429,8 @@
       "cancel": "取消",
       "save": "保存"
     },
-    "maxIterations": "最大迭代次数"
+    "maxIterations": "最大迭代次数",
+    "maxIterationsHint": "0 或留空 = 不限轮次"
   },
   "layout": {
     "noSessionSelected": "未选择会话",

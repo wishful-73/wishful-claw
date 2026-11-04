@@ -25,7 +25,7 @@ import {
 
 let checks = 0
 
-function check(description: string, run: () => void): void {
+function check(_description: string, run: () => void): void {
   run()
   checks++
 }

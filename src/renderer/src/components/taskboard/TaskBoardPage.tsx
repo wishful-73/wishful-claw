@@ -18,6 +18,7 @@ import {
   SelectValue
 } from '@renderer/components/ui/select'
 import { useTaskBoardStore } from '@renderer/stores/task-board-store'
+import { useChatStore } from '@renderer/stores/chat-store'
 import { ipcClient } from '@renderer/lib/ipc/ipc-client'
 import { IPC } from '@renderer/lib/ipc/channels'
 import {
@@ -42,6 +43,7 @@ export function TaskBoardPage(): React.JSX.Element {
   const selectedTaskId = useTaskBoardStore((s) => s.selectedTaskId)
   const selectTask = useTaskBoardStore((s) => s.selectTask)
   const loadTasks = useTaskBoardStore((s) => s.loadTasks)
+  const projects = useChatStore((s) => s.projects)
 
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -207,6 +209,11 @@ export function TaskBoardPage(): React.JSX.Element {
                   <span className="flex flex-wrap items-center gap-1.5">
                     <TaskStatusBadge status={task.status} />
                     <PriorityBadge priority={task.priority} />
+                    {task.project_id ? (
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        {projects.find((p) => p.id === task.project_id)?.name ?? t('detail.unknownProject')}
+                      </span>
+                    ) : null}
                   </span>
                   {task.due_at ? (
                     <span className="text-[11px] text-muted-foreground">

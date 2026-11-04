@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -29,7 +29,8 @@ public sealed class CronEntity
     public string? PluginType { get; set; }
     public string? PluginChatId { get; set; }
     public bool DeleteAfterRun { get; set; }
-    public int MaxIterations { get; set; } = 15;
+    // S-299：0 = 不限轮次。原来默认 15 是猜出来的上限，跟任务复杂度没有比例关系。
+    public int MaxIterations { get; set; } = 0;
     public bool Enabled { get; set; } = true;
     public long? DeletedAt { get; set; }
     public long? LastFiredAt { get; set; }

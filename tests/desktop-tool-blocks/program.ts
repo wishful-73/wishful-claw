@@ -22,7 +22,7 @@ import {
   resolveScreenshotDimensions,
   splitDesktopToolBlocks
 } from '../../src/renderer/src/lib/tools/desktop-tool-blocks'
-import type { TextBlock } from '../../src/renderer/src/lib/api/types'
+import type { ImageBlock, TextBlock } from '../../src/renderer/src/lib/api/types'
 
 let checks = 0
 
@@ -42,7 +42,7 @@ function decodeJson(text: string): unknown {
 
 // ─── 1. 数组直接过 ───
 
-const inlineArray = [
+const inlineArray: Array<TextBlock | ImageBlock> = [
   { type: 'image', source: { type: 'base64', data: 'AAA', mediaType: 'image/png', filePath: 'D:/tmp/a.png' } },
   { type: 'text', text: 'Captured desktop screenshot 2520x1680 (origin 0,0)' }
 ]
@@ -96,10 +96,12 @@ const mixed = splitDesktopToolBlocks(
   [
     { type: 'text', text: 'first note' },
     { type: 'image', source: { type: 'base64', data: 'ONE', filePath: 'D:/tmp/1.png' } },
+    // 故意混入一个既不是 image 也不是 text 的块：这条断言的职责就是证明它不会被收进来。
+    // 类型系统上它当然不合法，所以整体断言成块数组 —— 断言本身仍会真的执行。
     { type: 'tool_use', id: 'x', name: 'Whatever' },
     { type: 'image', source: { type: 'base64', data: 'TWO', filePath: 'D:/tmp/2.png' } },
     { type: 'text', text: 'second note' }
-  ],
+  ] as unknown as Array<TextBlock | ImageBlock>,
   decodeJson
 )
 checkEqual(mixed.images.length, 2, '混合：只数出 2 张图')

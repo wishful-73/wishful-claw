@@ -163,7 +163,13 @@ public static class BackgroundSubAgentRegistry
         }
     }
 
-    public static void Cancel(string toolUseId)
+    /// <summary>
+    /// S-308：**只记账，不中断执行**。名字原来叫 Cancel，会让人以为调用它就等于停下 ——
+    /// 实际它只把状态改成 Cancelled。真正的删除入口是
+    /// <see cref="SubAgentRunControl.TryStop"/>（停执行体）；本方法是执行体确实停下之后的收敛。
+    /// 现有调用点都在 catch (OperationCanceledException) 里，位置正确，别拿它当发起取消的入口。
+    /// </summary>
+    public static void MarkCancelled(string toolUseId)
     {
         if (_records.TryGetValue(toolUseId, out var existing))
         {

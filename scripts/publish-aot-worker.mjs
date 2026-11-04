@@ -1,9 +1,8 @@
-﻿// AOT Worker 编译脚本
+// AOT Worker 编译脚本
 // 自动检测 VS Build Tools 路径，初始化 C++ 环境，然后执行 dotnet publish AOT
 import { execSync } from 'child_process'
-import { existsSync, rmSync, mkdirSync, copyFileSync, readFileSync } from 'fs'
+import { existsSync, rmSync } from 'fs'
 import { join, dirname } from 'path'
-import { homedir } from 'os'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -83,49 +82,21 @@ if (existsSync(workerDir)) {
   console.log('[AOT Worker] 已删除 .pdb 调试符号文件')
 }
 
-// CodeGraph：把 tree-sitter grammar DLL 复制到 worker 旁的 grammars 目录
-// （主进程 codegraph-assets.ts 打包模式按 <workerDir>/codegraph-worker/grammars 解析；
-// 只复制 manifest 声明的 grammar + 核心运行时，未识别文件会触发资产诊断告警）
-function bundleCodeGraphGrammars() {
-  const manifest = JSON.parse(
-    readFileSync(join(projectRoot, 'src/shared/codegraph-grammars.json'), 'utf8')
-  )
-  const rid = 'win-x64' // 与上方 publish 的 -r 参数保持一致
-  const nugetNativeDir = join(
-    homedir(),
-    '.nuget',
-    'packages',
-    manifest.source.package.toLowerCase(),
-    manifest.source.version,
-    'runtimes',
-    rid,
-    'native'
-  )
-  if (!existsSync(nugetNativeDir)) {
-    console.error(`[AOT Worker] [错误] 未找到 NuGet 缓存目录: ${nugetNativeDir}`)
-    console.error('[AOT Worker] 请先执行 dotnet restore src/runtime/WishfulClaw.CodeGraph')
-    process.exit(1)
-  }
-
+// S-303：CodeGraph 的语言包（tree-sitter 原生 grammar，18 个 dll 共 42.5 MB）不再随安装包发布。
+// 用户在「设置 → 应用与插件 → 代码图谱」点「下载语言包」时，主进程会把同一批 dll 下到
+// {dataDir}/plugins/codegraph/grammars；codegraph-assets.ts 的目录候选顺序里它排在 bundled 之前。
+// 这里改做反向动作：清掉历史上捆进 resources/worker 的残留，否则 electron-builder 会把旧 dll 又扫进包。
+function pruneBundledCodeGraphGrammars() {
   const grammarsDir = join(projectRoot, 'resources/worker/codegraph-worker/grammars')
-  mkdirSync(grammarsDir, { recursive: true })
-
-  // 核心运行时 + manifest 中的语言 grammar（Windows 命名：<library>.dll）
-  const libraryNames = [manifest.runtime.library, ...manifest.grammars.map((g) => g.library)]
-  let copied = 0
-  for (const library of libraryNames) {
-    const sourceFile = join(nugetNativeDir, `${library}.dll`)
-    if (!existsSync(sourceFile)) {
-      console.error(`[AOT Worker] [错误] 缺少 grammar 文件: ${sourceFile}`)
-      process.exit(1)
-    }
-    copyFileSync(sourceFile, join(grammarsDir, `${library}.dll`))
-    copied += 1
+  if (!existsSync(grammarsDir)) {
+    console.log('[AOT Worker] 无随包 CodeGraph grammars，跳过清理')
+    return
   }
-  console.log(`[AOT Worker] 已捆绑 ${copied} 个 CodeGraph grammar 到 ${grammarsDir}`)
+  rmSync(grammarsDir, { recursive: true, force: true })
+  console.log(`[AOT Worker] 已移除随包 CodeGraph grammars：${grammarsDir}（改为按需下载）`)
 }
 
-bundleCodeGraphGrammars()
+pruneBundledCodeGraphGrammars()
 
 // 显示产物
 const result = execSync(`dir "${workerDir}\\WishfulClaw.Worker.exe"`, { shell: 'C:\\Windows\\System32\\cmd.exe' }).toString()

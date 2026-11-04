@@ -1,4 +1,4 @@
-﻿import { toolRegistry } from '@renderer/lib/agent/tool-registry'
+import { toolRegistry } from '@renderer/lib/agent/tool-registry'
 import { useAppPluginStore } from '@renderer/stores/app-plugin-store'
 import { imageGenerateTool } from './image-tool'
 import {
@@ -6,14 +6,6 @@ import {
   unregisterBrowserTool,
   isBrowserToolRegistered
 } from '@renderer/lib/tools/browser-tool'
-import {
-  registerCodeGraphExploreTool,
-  unregisterCodeGraphExploreTool,
-  isCodeGraphExploreToolRegistered,
-  registerCodeGraphFullSurface,
-  unregisterCodeGraphFullSurface,
-  isCodeGraphFullSurfaceRegistered
-} from '@renderer/lib/tools/codegraph-tool'
 import { CODEGRAPH_PLUGIN_ID } from './types'
 
 let imageToolRegistered = false
@@ -35,22 +27,10 @@ export function updateAppPluginToolRegistration(): void {
 
   if (store.isBrowserToolAvailable()) registerBrowserTool()
   else if (isBrowserToolRegistered()) unregisterBrowserTool()
-
-  const codeGraphEnabled = store.isCodeGraphToolAvailable()
-  if (codeGraphEnabled && !isCodeGraphExploreToolRegistered()) registerCodeGraphExploreTool()
-  else if (!codeGraphEnabled && isCodeGraphExploreToolRegistered()) unregisterCodeGraphExploreTool()
-
-  const fullSurface = codeGraphEnabled
-  if (fullSurface && !isCodeGraphFullSurfaceRegistered()) void registerCodeGraphFullSurface()
-  else if (!fullSurface && isCodeGraphFullSurfaceRegistered()) unregisterCodeGraphFullSurface()
 }
 
 export function isAppPluginToolsRegistered(): boolean {
-  return (
-    imageToolRegistered ||
-    isBrowserToolRegistered() ||
-    isCodeGraphExploreToolRegistered()
-  )
+  return imageToolRegistered || isBrowserToolRegistered()
 }
 
 export { CODEGRAPH_PLUGIN_ID }

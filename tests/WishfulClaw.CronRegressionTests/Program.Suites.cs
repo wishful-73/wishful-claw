@@ -82,7 +82,10 @@ internal static partial class Program
         Assert(migrated.GetProperty("success").GetBoolean(), "legacy row remains queryable");
         AssertEqual("desktop", migrated.GetProperty("cron").GetProperty("delivery_mode").GetString(),
             "legacy row receives delivery default");
-        AssertEqual(15, migrated.GetProperty("cron").GetProperty("max_iterations").GetInt32(),
+        // S-299：加列默认值从 15 改成 0（0 = 不限）。这里测的是「列原本不存在、
+        // 迁移时补上」的那一行 —— 它拿到的应该是产品默认值，不是猜出来的 15。
+        // 已经有 15 的老行不回填（见下一条 crud 套件），用户自己改才变。
+        AssertEqual(0, migrated.GetProperty("cron").GetProperty("max_iterations").GetInt32(),
             "legacy row receives iteration default");
         Assert(IsMissingOrNull(migrated.GetProperty("cron"), "thinking_enabled"),
             "legacy row keeps thinking override unspecified");

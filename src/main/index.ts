@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage } from 'electron'
 import { mkdirSync } from 'fs'
 import { join } from 'path'
 
@@ -8,7 +8,7 @@ import appIcon from '../../resources/icon-256.png?asset'
 
 import { latchNativeWorkerShutdown } from './lib/native-worker'
 import { logError, logWarn, logInfo, logDebug, installGlobalExceptionHandlers, readRecentLogs, listLogFiles, readLogFile, cleanupOldLogFiles } from './lib/logger'
-import { resolveDataPath, resolveProjectDirName } from './lib/data-dir'
+import { inspectDataDirRisk, resolveDataPath, resolveProjectDirName } from './lib/data-dir'
 import { prepareLocalMediaScheme, registerLocalMediaProtocol } from './lib/local-media-protocol'
 import { WISHFUL_CLAW_DISPLAY_NAME, WISHFUL_CLAW_DEV_DISPLAY_NAME } from '../shared/data-dir'
 import { WISHFULCLAW_PROJECT_DIR_ENV } from '../shared/project-dir'
@@ -254,6 +254,18 @@ function createTray(): void {
 
 const appDisplayName = app.isPackaged ? WISHFUL_CLAW_DISPLAY_NAME : WISHFUL_CLAW_DEV_DISPLAY_NAME
 app.setName(appDisplayName)
+
+// S-293：非打包构建显式把数据目录指向一份已有的生产库时，启动会按开发版 DDL 改它的 schema。
+// 判据是纯函数（`assessDataDirRisk`），这里只做「拦不拦」的决定。必须在建目录 / 单实例锁之前 ——
+// 一旦单实例锁拿到，Worker 就可能在后面任意时刻把 schema 改掉。
+const dataDirRisk = inspectDataDirRisk()
+if (dataDirRisk.level === 'block') {
+  dialog.showErrorBox('数据目录指向了生产库', `${dataDirRisk.reason ?? ''}\n\nWishfulClaw 已停止启动。`)
+  app.exit(1)
+  throw new Error(`[data-dir] ${dataDirRisk.reason ?? 'blocked'}`)
+} else if (dataDirRisk.level === 'warn') {
+  console.warn(`[data-dir] ${dataDirRisk.reason ?? ''}`)
+}
 
 // S-282：userData 目录必须先建出来。`resolveDataPath` 只拼路径不落盘，而 Chromium 在
 // requestSingleInstanceLock() 阶段就要往这个路径下写 SingletonLock —— 父目录不存在就直接

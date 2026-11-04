@@ -23,6 +23,8 @@ public sealed class AgentRuntimeModule : IWorkerModule
         context.Register("agent/run", AgentRuntimeTools.RunAsync);
         context.Register("agent/configure-runtime", AgentRuntimeTools.ConfigureRuntime);
         context.Register("agent/cancel", AgentRuntimeTools.Cancel);
+        // S-308：按 toolUseId 停掉单个子 agent（渲染端右侧面板停止按钮的落点）
+        context.Register("agent/cancel-subagent", AgentRuntimeTools.CancelSubAgent);
         context.Register("agent/request-stop", AgentRuntimeTools.RequestStop);
         context.Register("agent/append-messages", AgentRuntimeTools.AppendMessages);
         context.Register("agent/drain-sub-agent-notifications", AgentRuntimeTools.DrainSubAgentNotifications);

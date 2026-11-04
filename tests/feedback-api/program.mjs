@@ -14,8 +14,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { CODE, CODE_MSG } from '../../server/feedback/lib/codes.mjs'
-import { validateSubmit, LIMITS, TYPES } from '../../server/feedback/lib/validate.mjs'
+import { CODE, CODE_MSG } from '../../site/feedback/app/lib/codes.mjs'
+import { validateSubmit, LIMITS, TYPES } from '../../site/feedback/app/lib/validate.mjs'
 import {
   ALL_STATUSES,
   PUBLIC_STATUSES,
@@ -24,8 +24,8 @@ import {
   isPublicStatus,
   isValidStatus,
   normalizeStatus
-} from '../../server/feedback/lib/status.mjs'
-import { createRateLimiter } from '../../server/feedback/lib/rate-limit.mjs'
+} from '../../site/feedback/app/lib/status.mjs'
+import { createRateLimiter } from '../../site/feedback/app/lib/rate-limit.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '../..')
@@ -71,7 +71,7 @@ function eq(actual, expected, label) {
 // ② 前端码表副本必须与服务端一致 —— 不同步就会「前端按 A 判断、后端按 B 返回」
 // ─────────────────────────────────────────────────────────────────────────────
 {
-  const tsPath = resolve(ROOT, 'website/src/lib/api-codes.ts')
+  const tsPath = resolve(ROOT, 'site/website/src/lib/api-codes.ts')
   const text = readFileSync(tsPath, 'utf8')
   // 抓 `  NAME: 12345,` 形态（注释掉的 30001 不会命中，因为它前面没有 `NAME:` 直接跟数字）
   for (const [name, n] of Object.entries(CODE)) {

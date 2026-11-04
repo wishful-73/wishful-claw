@@ -13,7 +13,10 @@ public sealed partial class ShellExecuteTool : IToolExecutor
 
 {
 
-    private const int DefaultTimeoutMs = 600_000;   // 10 minutes
+    // 改成 public：ToolCallTimeout（S-309）的外层兜底要以它为基准。这两个数值必须
+    // 是同一个来源，否则「工具自带超时优先」在模型不传 timeout 时会失效 —— 见
+    // ToolCallTimeout.ShellLimit 的注释（S-309 实施记录 §P1 误杀修复）。
+    public const int DefaultTimeoutMs = 600_000;   // 10 minutes
 
     private const int MaxTimeoutMs = 3_600_000;      // 1 hour
 

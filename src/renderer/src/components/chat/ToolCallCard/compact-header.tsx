@@ -1,5 +1,5 @@
 import type React from 'react'
-import { Waypoints, FileCode, Trash2, ListTodo, CalendarClock, Bell, HelpCircle, Code2, Globe2, MousePointerClick, Keyboard, ScrollText, Camera, Monitor, SquareTerminal, LogIn, LogOut, FileText, Target, Database, Box, Search, FolderTree } from 'lucide-react'
+import { FileCode, Trash2, ListTodo, CalendarClock, Bell, HelpCircle, Code2, Globe2, MousePointerClick, Keyboard, ScrollText, Camera, Monitor, SquareTerminal, LogIn, LogOut, FileText, Target, Database, Box, Search, FolderTree } from 'lucide-react'
 import type { ToolResultContent } from '@renderer/lib/api/types'
 import { type CompactToolHeaderBadge, type CompactToolHeaderModel } from '../CompactToolCallHeader'
 import type { ToolCallCardProps } from './types'
@@ -163,25 +163,6 @@ export function buildCompactToolHeaderModel({
       secondary: description || undefined,
       badges,
       title: command || summary || displayName
-    }
-  }
-
-  if (name.startsWith('codegraph_')) {
-    const query = compactWhitespace(getStringInput(input, ['query', 'symbol', 'file']))
-    const projectPath = getStringInput(input, ['projectPath', 'workingFolder'])
-    const badges: CompactToolHeaderBadge[] = []
-    if (outputText) {
-      badges.push({
-        label: t('toolCall.outputLineCount', { count: outputText.split('\n').length }),
-        tone: 'blue'
-      })
-    }
-    return {
-      icon: <Waypoints className="size-3.5" />,
-      primary: query || summary || t('toolCall.receivingArgs'),
-      secondary: projectPath ? pathFileName(projectPath) || projectPath : undefined,
-      badges,
-      title: [query, projectPath].filter(Boolean).join('\n') || displayName
     }
   }
 

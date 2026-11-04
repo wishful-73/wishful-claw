@@ -271,5 +271,5 @@ public static partial class DbMessageTools
         }
     }
 
-    // NOTE: CompactSession and UsageStats are in DbMessageCompactTools.cs
+    // NOTE: UsageStats is in DbMessageCompactTools.cs
 }

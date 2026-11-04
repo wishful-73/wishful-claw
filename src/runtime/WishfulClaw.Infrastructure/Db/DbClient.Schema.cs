@@ -301,7 +301,7 @@ public static partial class DbClient
                 plugin_type TEXT,
                 plugin_chat_id TEXT,
                 delete_after_run INTEGER NOT NULL DEFAULT 0,
-                max_iterations INTEGER NOT NULL DEFAULT 15,
+                max_iterations INTEGER NOT NULL DEFAULT 0,
                 enabled INTEGER NOT NULL DEFAULT 1,
                 deleted_at INTEGER,
                 last_fired_at INTEGER,
@@ -368,11 +368,15 @@ public static partial class DbClient
                 tags TEXT NOT NULL DEFAULT '[]',
                 due_at INTEGER,
                 archived INTEGER NOT NULL DEFAULT 0,
+                -- S-300: optional owning project. NULL = a pure global task, which is the
+                -- only meaning an old row can honestly have — nothing is backfilled.
+                project_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             );",
             @"CREATE INDEX IF NOT EXISTS ix_global_tasks_status ON global_tasks(status);",
             @"CREATE INDEX IF NOT EXISTS ix_global_tasks_archived ON global_tasks(archived);",
+            @"CREATE INDEX IF NOT EXISTS ix_global_tasks_project ON global_tasks(project_id);",
             @"CREATE TABLE IF NOT EXISTS global_task_dispatches (
                 id TEXT PRIMARY KEY NOT NULL,
                 global_task_id TEXT NOT NULL,
@@ -471,6 +475,13 @@ public static partial class DbClient
             @"CREATE INDEX IF NOT EXISTS ix_timeline_project_created ON agent_timeline_events(project_id, created_at DESC);",
             @"CREATE INDEX IF NOT EXISTS ix_timeline_created ON agent_timeline_events(created_at);"
         };
+
+        // 旧库的 global_tasks / agent_timeline_events 建表时没有 project_id 列，而
+        // CREATE TABLE IF NOT EXISTS 不会给已存在的表补列 —— 下面的索引硬引用它，
+        // 不先补这一列，旧库会在建索引这一步整体初始化失败（RunMigrations 排在这之后，
+        // 救不了场）。表不存在时该调用自行忽略。
+        EnsureColumn("global_tasks", "project_id", "TEXT");
+        EnsureColumn("agent_timeline_events", "project_id", "TEXT");
 
         foreach (var sql in tableSqls)
         {

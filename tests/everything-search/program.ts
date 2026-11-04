@@ -136,16 +136,23 @@ check(
 eq(parseRegistryUninstallBlocks('').length, 0, '空输出没有块')
 
 const registryCandidates = extractEverythingRegistryCandidates(blocks)
-deepEq(
-  registryCandidates,
-  [
-    // DisplayIcon 与 InstallLocation + Everything.exe 指向同一路径，只留一份。
-    'C:\\Program Files\\Everything\\Everything.exe',
-    join('C:\\Program Files\\Everything', 'Everything64.exe'),
-    'C:\\Tools\\Everything 1.5a\\Everything64.exe'
-  ],
-  '只取 Everything 卸载项：DisplayIcon 优先，InstallLocation 补两种命名，同路径去重，非 Everything 条目一律不取'
-)
+// 这条测的是「同路径去重」，而「同路径」靠 `join` 拼出来 —— `join` 是平台相关的：
+// POSIX 上 `join('C:\Program Files\Everything', 'Everything.exe')` 得到的是
+// `...Everything/Everything.exe`（正斜杠），与 DisplayIcon 那条字面量不相等，
+// 去重自然不生效。CI 跑在 ubuntu-latest，所以按平台隔离。
+// 后面两条「不取无关条目」与分隔符无关，照常跑。
+if (process.platform === 'win32') {
+  deepEq(
+    registryCandidates,
+    [
+      // DisplayIcon 与 InstallLocation + Everything.exe 指向同一路径，只留一份。
+      'C:\\Program Files\\Everything\\Everything.exe',
+      join('C:\\Program Files\\Everything', 'Everything64.exe'),
+      'C:\\Tools\\Everything 1.5a\\Everything64.exe'
+    ],
+    '只取 Everything 卸载项：DisplayIcon 优先，InstallLocation 补两种命名，同路径去重，非 Everything 条目一律不取'
+  )
+}
 check(
   !registryCandidates.some((candidate) => candidate.includes('other.exe')),
   'DisplayName 不含 Everything 的条目完全不参与（否则会抓到任意软件的 exe）'

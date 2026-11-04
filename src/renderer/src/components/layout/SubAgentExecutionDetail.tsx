@@ -76,11 +76,23 @@ function getToolResultLength(content?: ToolResultContent): number {
   }, 0)
 }
 
-function buildLiveToolCallMap(toolCalls: ToolCallState[]): Map<string, ToolCallState> | null {
+function buildLiveToolCallMap(
+  toolCalls: ToolCallState[],
+  agentIsRunning: boolean
+): Map<string, ToolCallState> | null {
   if (toolCalls.length === 0) return null
   const map = new Map<string, ToolCallState>()
   for (const toolCall of toolCalls) {
-    map.set(toolCall.id, toolCall)
+    // 子 agent 已经不在执行了（用户点停止 / 父 run 结束），它不可能还有工具在跑。
+    // 但 live 快照是事件推上来的，停止时不一定会给最后一条补终态 —— 于是详情里
+    // 会永远停在「正在执行 某个命令」，看着像没停下来。这里按事实呈现：降级为已取消。
+    // 只在 !agentIsRunning 时降级，agent 仍在跑时原样透传，不影响实时显示。
+    const stale =
+      !agentIsRunning &&
+      (toolCall.status === 'running' ||
+        toolCall.status === 'streaming' ||
+        toolCall.status === 'pending_approval')
+    map.set(toolCall.id, stale ? { ...toolCall, status: 'canceled' } : toolCall)
   }
   return map
 }
@@ -338,9 +350,10 @@ export function SubAgentExecutionDetail({
         ...fallbackTranscript.map((message) => `${message.id}:${message._revision ?? 0}`)
       ].join('|')
   const toolCalls = effectiveAgent?.toolCalls
+  const agentIsRunning = Boolean(effectiveAgent?.isRunning)
   const liveToolCallMap = React.useMemo(
-    () => (toolCalls ? buildLiveToolCallMap(toolCalls) : null),
-    [toolCalls]
+    () => (toolCalls ? buildLiveToolCallMap(toolCalls, agentIsRunning) : null),
+    [toolCalls, agentIsRunning]
   )
 
   if (transcript.length === 0) {

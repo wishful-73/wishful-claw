@@ -232,4 +232,119 @@ internal static partial class Program
         Assert(!registry.IsAvailableInMode("reply_global_dispatch", "global"),
             "reply tool hidden from the global agent itself");
     }
+
+    // ─── Suite: S-300 project-side global task scope ───
+
+    /// <summary>
+    /// S-300 的判据 1~3 落成断言：项目会话只能看到**自己项目**的全局任务。
+    ///
+    /// 这条边界只有一个守点 —— projectId 从 <c>sessions.project_id</c> 推导，模型传什么都不算。
+    /// 所以这里特意在最后一个断言里让模型传一个**别的项目**的 projectId，期望它被无视。
+    /// </summary>
+    private static async Task RunProjectTaskScopeSuiteAsync(string dbPath)
+    {
+        ExpectNoError(DbProjectTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "p-scope-a");
+            w.WriteString("name", "Scope A");
+        })), "scope project A created");
+        ExpectNoError(DbProjectTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "p-scope-b");
+            w.WriteString("name", "Scope B");
+        })), "scope project B created");
+        CreateSession(dbPath, "s-scope-a", title: "Scope A Session", projectId: "p-scope-a");
+        CreateSession(dbPath, "s-scope-b", title: "Scope B Session", projectId: "p-scope-b");
+        CreateSession(dbPath, "s-scope-global", title: "Scope Global Session", projectId: null);
+
+        ExpectNoError(DbGlobalTaskTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gt-scope-a");
+            w.WriteString("title", "Scope task A");
+            w.WriteString("projectId", "p-scope-a");
+        })), "scope task A created");
+        ExpectNoError(DbGlobalTaskTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gt-scope-b");
+            w.WriteString("title", "Scope task B");
+            w.WriteString("projectId", "p-scope-b");
+        })), "scope task B created");
+        ExpectNoError(DbGlobalTaskTools.Create(Params(dbPath, w =>
+        {
+            w.WriteString("id", "gt-scope-none");
+            w.WriteString("title", "Scope task global");
+        })), "scope task with no project created");
+
+        // 判据 2：A 项目会话只看得到 A 的任务
+        var idsA = await ListProjectTaskIdsAsync(dbPath, "s-scope-a", extra: null);
+        Assert(idsA.Contains("gt-scope-a"), "project A session sees its own task");
+        Assert(!idsA.Contains("gt-scope-b"), "project A session cannot see project B's task");
+        Assert(!idsA.Contains("gt-scope-none"), "project A session cannot see unassigned global tasks");
+
+        // 判据 1：不挂项目的任务只对全局侧可见
+        var idsB = await ListProjectTaskIdsAsync(dbPath, "s-scope-b", extra: null);
+        Assert(idsB.Contains("gt-scope-b"), "project B session sees its own task");
+        Assert(!idsB.Contains("gt-scope-a"), "project B session cannot see project A's task");
+
+        // 判据 4 的正向守卫：模型传别的项目的 projectId 必须被无视
+        var idsASpoofed = await ListProjectTaskIdsAsync(dbPath, "s-scope-a", extra: "p-scope-b");
+        Assert(idsASpoofed.Contains("gt-scope-a") && !idsASpoofed.Contains("gt-scope-b"),
+            "model-supplied projectId is ignored; the session record wins");
+
+        // 全局会话（无项目）没有项目任务可看，必须直接报错而不是返回全量
+        var globalJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("list_project_tasks", _ => { }),
+            Params(dbPath, w => w.WriteString("sessionId", "s-scope-global")), null!, CancellationToken.None);
+        using (var document = JsonDocument.Parse(globalJson))
+        {
+            Assert(document.RootElement.TryGetProperty("error", out _),
+                "session without a project gets an error, not the whole board");
+        }
+
+        // 判据 3：置空 projectId ⇒ 任务挂回全局，A 项目会话立刻看不到
+        var detachJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("update_global_task", w =>
+            {
+                w.WriteString("taskId", "gt-scope-a");
+                w.WritePropertyName("patch");
+                w.WriteStartObject();
+                w.WriteString("projectId", "");
+                w.WriteEndObject();
+            }),
+            Params(dbPath, w => w.WriteString("sessionId", "s-scope-global")), null!, CancellationToken.None);
+        Assert(JsonDocument.Parse(detachJson).RootElement.GetProperty("success").GetBoolean(),
+            "clearing projectId succeeds");
+        var idsAAfterDetach = await ListProjectTaskIdsAsync(dbPath, "s-scope-a", extra: null);
+        Assert(!idsAAfterDetach.Contains("gt-scope-a"),
+            "task disappears from the project session once detached");
+        var globalListJson = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("list_global_tasks", w => w.WriteString("keyword", "Scope task A")),
+            Params(dbPath, w => w.WriteString("sessionId", "s-scope-global")), null!, CancellationToken.None);
+        Assert(globalListJson.Contains("gt-scope-a"),
+            "detached task is still visible on the global board");
+    }
+
+    /// <summary>
+    /// 跑一次 <c>list_project_tasks</c>，返回结果里的任务 id 集合。
+    /// <paramref name="extra"/> 非空时把它当模型传的 <c>projectId</c> 塞进入参，用来验证它被无视。
+    /// </summary>
+    private static async Task<HashSet<string>> ListProjectTaskIdsAsync(
+        string dbPath, string sessionId, string? extra)
+    {
+        var json = await AgentRuntimeGlobalTaskExecutor.ExecuteAsync(
+            ToolCall("list_project_tasks", w =>
+            {
+                if (extra is not null) w.WriteString("projectId", extra);
+            }),
+            Params(dbPath, w => w.WriteString("sessionId", sessionId)), null!, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Array) return new HashSet<string>();
+        return root.EnumerateArray()
+            .Select(row => row.TryGetProperty("id", out var id) ? id.GetString() : null)
+            .Where(id => id is not null)
+            .Select(id => id!)
+            .ToHashSet(StringComparer.Ordinal);
+    }
 }

@@ -107,8 +107,6 @@ export interface AgentActions {
 
     systemPrompt?: string
 
-    codegraphEnabled?: boolean
-
     workingFolder?: string
 
     maxIterations?: number
@@ -1693,6 +1691,12 @@ export const useChatStore = create<ChatStore>()(
                   reason: event.reason ?? 'completed',
                   ...(event.errorType ? { errorType: event.errorType } : {}),
                   ...(typeof event.statusCode === 'number' ? { statusCode: event.statusCode } : {}),
+                  // S-299：撞上限时要说清跑了几轮、跑了多久、卡在哪个工具上。
+                  // worker 只在 loop_end 带这三个值，缺失就不写 —— 老消息 / 其它出口
+                  // 拿不到数据时保持「不知道」，渲染端按无数据兜底。
+                  ...(typeof event.iteration === 'number' ? { iterations: event.iteration } : {}),
+                  ...(typeof event.elapsedMs === 'number' ? { elapsedMs: event.elapsedMs } : {}),
+                  ...(event.toolName ? { lastTool: event.toolName } : {}),
                   at: finishedAt
                 }
 

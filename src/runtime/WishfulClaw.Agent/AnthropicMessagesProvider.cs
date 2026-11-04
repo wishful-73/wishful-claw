@@ -123,13 +123,24 @@ internal static partial class AnthropicMessagesProvider
             await StreamSegmentBoundary.EmitAsync(state, context, parseState.Boundaries.AtEnd());
             await FlushPendingToolCallsAsync(parseState, state, context);
         }
-        catch (HttpRequestException ex) when (
-            !state.CancellationToken.IsCancellationRequested &&
-            parseState.AssistantText.Length == 0 &&
-            parseState.ToolCalls.Count == 0)
+        // S-304: same gap as OpenAIChatProvider — a stream that dies mid-flight raises
+        // HttpIOException (HttpRequestError.ResponseEnded), which is unrelated to
+        // HttpRequestException, so this catch never fired and the run died outright.
+        // The "nothing emitted yet" guard is gone on purpose: partial output stays in
+        // the UI as an interrupted segment, the retry re-runs this method and its
+        // output opens a fresh block, so nothing is duplicated or rewritten.
+        catch (Exception ex) when (
+            ProviderRetryPolicy.IsRetryableTransportError(ex) &&
+            !state.CancellationToken.IsCancellationRequested)
         {
+            // Close a thinking block the interrupted stream left open (mirrors the
+            // normal end-of-stream path just above).
+            await StreamSegmentBoundary.EmitAsync(state, context, parseState.Boundaries.AtEnd());
             WorkerLog.Warn(
                 $"anthropic connection failure, retrying runId={state.RunId} " +
+                $"emittedChars={parseState.AssistantText.Length} " +
+                $"completedToolCalls={parseState.ToolCalls.Count} " +
+                $"pendingToolBuffers={parseState.ToolBuffers.Count} " +
                 $"error={ex.GetBaseException().Message}");
             throw new ProviderHttpException(
                 "Anthropic Messages",

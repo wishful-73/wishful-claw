@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -13,8 +13,10 @@ namespace WishfulClaw.Infrastructure.Db;
 /// </summary>
 public static class DbGlobalTaskTools
 {
+    // S-300: project_id is part of the select list. Missing it here would make MapGlobalTask
+    // silently read null for every row — the column exists but nobody sees it, and no error.
     private const string GlobalTaskSelect =
-        "SELECT id, title, description, status, priority, tags, due_at, archived, created_at, updated_at FROM global_tasks";
+        "SELECT id, title, description, status, priority, tags, due_at, archived, project_id, created_at, updated_at FROM global_tasks";
 
     public static WorkerResponse List(JsonElement parameters)
     {
@@ -26,6 +28,10 @@ public static class DbGlobalTaskTools
             var includeArchived = GetBool(parameters, "includeArchived");
             var status = GetString(parameters, "status");
             var keyword = GetString(parameters, "keyword");
+            var projectId = GetString(parameters, "projectId");
+            // S-300: "only tasks that belong to no project" — a separate flag rather than a
+            // magic projectId value, so an empty string never means two different things.
+            var unassignedOnly = GetBool(parameters, "unassignedOnly");
 
             var sql = $"{GlobalTaskSelect} WHERE 1=1";
             var sqlParams = new List<SqliteParameter>();
@@ -42,6 +48,15 @@ public static class DbGlobalTaskTools
             {
                 sql += " AND (title LIKE @kw OR description LIKE @kw)";
                 sqlParams.Add(new SqliteParameter("@kw", $"%{keyword}%"));
+            }
+            if (!string.IsNullOrEmpty(projectId))
+            {
+                sql += " AND project_id = @projectId";
+                sqlParams.Add(new SqliteParameter("@projectId", projectId));
+            }
+            else if (unassignedOnly)
+            {
+                sql += " AND project_id IS NULL";
             }
             sql += " ORDER BY archived ASC, updated_at DESC";
 
@@ -82,9 +97,10 @@ public static class DbGlobalTaskTools
             var db = DbClient.GetClient(parameters);
 
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var projectId = GetString(parameters, "projectId");
             var changed = db.Execute(
-                "INSERT INTO global_tasks (id, title, description, status, priority, tags, due_at, archived, created_at, updated_at) VALUES " +
-                "(@id, @title, @description, @status, @priority, @tags, @dueAt, 0, @createdAt, @updatedAt)",
+                "INSERT INTO global_tasks (id, title, description, status, priority, tags, due_at, archived, project_id, created_at, updated_at) VALUES " +
+                "(@id, @title, @description, @status, @priority, @tags, @dueAt, 0, @projectId, @createdAt, @updatedAt)",
                 new SqliteParameter("@id", id),
                 new SqliteParameter("@title", title),
                 new SqliteParameter("@description", GetString(parameters, "description") ?? ""),
@@ -92,6 +108,7 @@ public static class DbGlobalTaskTools
                 new SqliteParameter("@priority", GetString(parameters, "priority") ?? GlobalTaskPriorityValues.Normal),
                 new SqliteParameter("@tags", RawArrayText(parameters, "tags")),
                 new SqliteParameter("@dueAt", (object?)GetNullableLong(parameters, "dueAt") ?? DBNull.Value),
+                new SqliteParameter("@projectId", string.IsNullOrEmpty(projectId) ? DBNull.Value : projectId),
                 new SqliteParameter("@createdAt", GetLong(parameters, "createdAt", now)),
                 new SqliteParameter("@updatedAt", GetLong(parameters, "updatedAt", now)));
 
@@ -123,7 +140,7 @@ public static class DbGlobalTaskTools
 
             var changed = db.Execute(
                 "UPDATE global_tasks SET title = @title, description = @description, status = @status, priority = @priority, " +
-                "tags = @tags, due_at = @dueAt, archived = @archived, updated_at = @ua WHERE id = @id",
+                "tags = @tags, due_at = @dueAt, archived = @archived, project_id = @projectId, updated_at = @ua WHERE id = @id",
                 new SqliteParameter("@title", entity.Title),
                 new SqliteParameter("@description", entity.Description),
                 new SqliteParameter("@status", entity.Status),
@@ -131,6 +148,7 @@ public static class DbGlobalTaskTools
                 new SqliteParameter("@tags", entity.Tags),
                 new SqliteParameter("@dueAt", (object?)entity.DueAt ?? DBNull.Value),
                 new SqliteParameter("@archived", entity.Archived),
+                new SqliteParameter("@projectId", (object?)entity.ProjectId ?? DBNull.Value),
                 new SqliteParameter("@ua", entity.UpdatedAt),
                 new SqliteParameter("@id", id));
 
@@ -188,6 +206,15 @@ public static class DbGlobalTaskTools
             && archived.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
             entity.Archived = archived.ValueKind == JsonValueKind.True ? 1 : 0;
+        }
+        // S-300: an explicit null or an empty string both mean "hang it back on the global
+        // board" — the difference between "not mentioned" and "cleared" has to survive,
+        // otherwise there is no way to unassign a task once it was assigned.
+        if (patch.TryGetProperty("projectId", out var projectId)
+            && projectId.ValueKind is JsonValueKind.String or JsonValueKind.Null)
+        {
+            var value = projectId.ValueKind == JsonValueKind.String ? projectId.GetString()?.Trim() : null;
+            entity.ProjectId = string.IsNullOrEmpty(value) ? null : value;
         }
         if (patch.TryGetProperty("updatedAt", out var updatedAt) && updatedAt.ValueKind == JsonValueKind.Number)
             entity.UpdatedAt = updatedAt.GetInt64();

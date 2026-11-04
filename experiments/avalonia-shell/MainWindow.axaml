@@ -1,0 +1,22 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="WishfulClaw.AvaloniaProbe.MainWindow"
+        Title="WishfulClaw Avalonia Probe (S-295)"
+        Width="1440" Height="900"
+        Background="#1B1B1F">
+
+  <Grid RowDefinitions="Auto,*" Margin="0">
+    <!-- 顶部一行状态：跑哪个阶段、已经跑了多久、当前工作集。 -->
+    <Border Grid.Row="0" Background="#26262B" Padding="16,10">
+      <TextBlock x:Name="StatusText"
+                 Foreground="#D6D6DB"
+                 FontFamily="Consolas,Menlo,monospace"
+                 FontSize="13"
+                 Text="booting" />
+    </Border>
+
+    <!-- 内容区：三态共用，只有这个 Grid 的子元素不同。 -->
+    <Grid Grid.Row="1" x:Name="ContentHost" Margin="16" />
+  </Grid>
+
+</Window>

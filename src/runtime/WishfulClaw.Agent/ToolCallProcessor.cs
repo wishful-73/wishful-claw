@@ -297,12 +297,18 @@ public static partial class ToolCallProcessor
                     aw.WriteEndObject();
                 }
                 using var approvalDoc = JsonDocument.Parse(approvalParams.WrittenMemory);
-                var approvalResult = await AgentRuntimeReverseRequests.RequestAsync(
-                    context, "sub-agent:approve-tool", approvalDoc.RootElement.Clone(),
+                // S-309：审批是「等人」的一种，必须有上限。超时的安全默认是「未获批准」，
+                // 绝不是放行 —— 也因为如此，等待本身走竞速：到点就不等了，过期的答复丢弃。
+                var (racedApproval, approvalTimedOut, _) = await ToolCallTimeout.RaceAsync(
+                    AgentRuntimeReverseRequests.RequestAsync(
+                        context, "sub-agent:approve-tool", approvalDoc.RootElement.Clone(),
+                        state.CancellationToken),
+                    ToolCallTimeout.HumanWaitLimit,
                     state.CancellationToken);
 
                 var approved = false;
-                if (approvalResult.ValueKind == JsonValueKind.Object &&
+                if (!approvalTimedOut && racedApproval is { } approvalResult &&
+                    approvalResult.ValueKind == JsonValueKind.Object &&
                     approvalResult.TryGetProperty("approved", out var approvedVal) &&
                     approvedVal.ValueKind == JsonValueKind.True)
                 {
@@ -316,10 +322,21 @@ public static partial class ToolCallProcessor
                     // this step. Without this it assumes success and plans the
                     // next action (e.g. deleting a file the rejected edit was
                     // supposed to create) on a false premise.
-                    var rejectMsg =
-                        $"[USER REJECTED] The user declined to run {displayName}. " +
-                        "This tool call did NOT execute. Do not assume any effect from it. " +
-                        "Ask the user how to proceed or adjust your plan before retrying.";
+                    //
+                    // S-309：超时没答 ≠ 用户拒绝。文案必须能区分，否则模型会去问
+                    // 「你为什么拒绝」，而用户压根没看到这个弹窗。
+                    var rejectMsg = approvalTimedOut
+                        ? ToolCallTimeout.Message(
+                            ToolCallTimeout.Kind.NotApproved, displayName, ToolCallTimeout.HumanWaitLimit)
+                        : $"[USER REJECTED] The user declined to run {displayName}. " +
+                          "This tool call did NOT execute. Do not assume any effect from it. " +
+                          "Ask the user how to proceed or adjust your plan before retrying.";
+                    if (approvalTimedOut)
+                    {
+                        WorkerLog.Warn(
+                            $"agent approval timed out runId={state.RunId} tool={displayName} id={toolCall.Id} " +
+                            $"limitMs={(long)ToolCallTimeout.HumanWaitLimit.TotalMilliseconds} — treated as not approved");
+                    }
                     var rejectAt = AgentLoop.NowMs();
                     await AgentRuntimeTools.EmitAsync(
                         state, context,
@@ -362,8 +379,10 @@ public static partial class ToolCallProcessor
             }
 
             // Dispatch to the appropriate executor
-            var (toolOutput, isToolError, toolContentBlocks) = await ToolDispatchRouter.DispatchAsync(
-                toolCall, state, context, registry, workingFolder, projectId, sshConnectionId, sandbox);
+            // S-309: 走「到点必回」的竞速版，而不是直接 await —— 落档见 ToolCallTimeout。
+            var (toolOutput, isToolError, toolContentBlocks) = await DispatchWithTimeoutAsync(
+                toolCall, state, context, registry, workingFolder, projectId, sshConnectionId, sandbox,
+                ToolCallTimeout.Resolve(toolCall));
 
             // When this call went through user approval, tell the LLM explicitly:
             // it paused here waiting for the user, and the user allowed this step.

@@ -352,6 +352,21 @@ export function SubAgentsPanel({
               <ArrowLeft className="size-3" />
               {t('subAgentsPanel.backToList', { defaultValue: 'Back to SubAgents' })}
             </button>
+            {/* S-308：详情态原本没有任何停止入口 —— 列表里 hover 才出现的按钮在详情页看不见。 */}
+            {selectedAgent.isRunning || selectedAgent.isQueued ? (
+              <>
+                <span className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => stopAgent(selectedAgent)}
+                  className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  title={t('subAgentsPanel.stop', { defaultValue: 'Stop' })}
+                >
+                  <Square className="size-3 fill-current" />
+                  {t('subAgentsPanel.stop', { defaultValue: 'Stop' })}
+                </button>
+              </>
+            ) : null}
           </div>
           <div className="min-h-0 flex-1">
             <SubAgentExecutionDetail

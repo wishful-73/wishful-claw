@@ -21,7 +21,7 @@ import {
 } from '../../src/renderer/src/lib/browser/browser-keepalive'
 
 let assertions = 0
-function assert(condition: boolean, message: string): void {
+function assert(condition: unknown, message: string): asserts condition {
   assertions += 1
   if (!condition) throw new Error(message)
 }

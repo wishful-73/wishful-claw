@@ -108,9 +108,12 @@ public static class ProviderCompletionService
                     resolved, usageSource, false, startedAt, "Request timed out (180s)", totalAttempts: attempt);
                 return Fail("Request timed out (180s)");
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex) when (ProviderRetryPolicy.IsRetryableTransportError(ex))
             {
-                // Transient network errors are also worth retrying.
+                // Transient network errors are also worth retrying. S-304:
+                // HttpIOException (ResponseEnded / InvalidResponse) derives from
+                // IOException, not from HttpRequestException, so it used to escape
+                // this loop and fail the auxiliary call on the first blip.
                 lastError = $"{ex.GetType().Name}: {ex.Message}";
             }
 

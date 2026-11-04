@@ -23,7 +23,6 @@ import { normalizeToolName } from './tool-name-aliases'
 export type ToolTranslateFn = (key: string, options?: Record<string, unknown>) => string
 
 const TOOL_LABEL_KEY_PREFIX = 'permission.toolLabels.'
-const CODEGRAPH_TOOL_PREFIX = 'codegraph_'
 
 /**
  * 读取 `permission.toolLabels.<name>`；**缺失时返回 null**。
@@ -69,15 +68,6 @@ export function resolveToolDisplayName(name: string, t: ToolTranslateFn): string
   if (labelled) return labelled
 
   if (isMcpTool(normalized)) return formatMcpToolDisplayName(normalized)
-
-  if (normalized.startsWith(CODEGRAPH_TOOL_PREFIX)) {
-    const action = normalized.slice(CODEGRAPH_TOOL_PREFIX.length)
-    const actionLabel = t(`toolCall.codegraphAction.${action}`, { defaultValue: action })
-    return t('toolCall.codegraphToolLabel', {
-      action: actionLabel,
-      defaultValue: '代码图谱 · {{action}}'
-    })
-  }
 
   return t('toolCall.genericToolLabel', { name: normalized, defaultValue: '工具 · {{name}}' })
 }

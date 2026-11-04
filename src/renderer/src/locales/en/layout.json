@@ -429,7 +429,8 @@
       "cancel": "Cancel",
       "save": "Save"
     },
-    "maxIterations": "Max iterations"
+    "maxIterations": "Max iterations",
+    "maxIterationsHint": "0 or empty = unlimited"
   },
   "layout": {
     "noSessionSelected": "No session selected",

@@ -10,11 +10,6 @@ import { channelAccountLabel } from '../../src/renderer/src/components/settings/
 
 let checks = 0
 
-function check(condition: unknown, message: string): asserts condition {
-  checks++
-  assert.ok(condition, message)
-}
-
 function eq(actual: unknown, expected: unknown, message: string): void {
   checks++
   assert.deepStrictEqual(actual, expected, `${message} (got ${JSON.stringify(actual)})`)

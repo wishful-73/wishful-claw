@@ -62,6 +62,7 @@ scripts/*
 !scripts/site-stats.mjs
 !scripts/ci-checks.mjs
 !scripts/install-git-hooks.mjs
+!scripts/pack-codegraph-plugin.mjs
 .kb-update/
 
 # Local scratch
@@ -76,3 +77,9 @@ electron.vite.config.*.mjs
 .wishful-claw/*
 .wishful-claw-dev/*
 .workbuddy-ai/*
+
+# experiments/ 下的原型：源码入库（不然老大拉不到、数字也复现不了），构建产物不入库
+experiments/**/bin/
+experiments/**/obj/
+experiments/**/publish-aot/
+experiments/**/.probe/

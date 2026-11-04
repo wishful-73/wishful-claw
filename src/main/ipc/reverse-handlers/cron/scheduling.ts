@@ -23,6 +23,7 @@ import {
   FIRE_RETRY_DELAY_MS,
   MAX_FIRE_RETRIES
 } from './state'
+import { DEFAULT_MAX_ITERATIONS } from './types'
 import type { CronJob, CronSchedule } from './types'
 
 let restorePromise: Promise<void> | null = null
@@ -150,7 +151,7 @@ export function buildFirePayload(job: CronJob, fireId: string, firedAt: number):
     pluginId: job.pluginId,
     pluginType: job.pluginType,
     pluginChatId: job.pluginChatId,
-    maxIterations: job.maxIterations ?? 15
+    maxIterations: job.maxIterations ?? DEFAULT_MAX_ITERATIONS
   }
 }
 

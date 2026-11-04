@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Switch } from '@renderer/components/ui/switch'
 import { Separator } from '@renderer/components/ui/separator'
 import {
   isProviderAvailableForModelSelection,
@@ -100,7 +99,9 @@ export function AppPluginPanel(): React.JSX.Element {
       visibleDescriptors[0],
     pluginEnabled: Boolean(selectedPlugin?.enabled),
     isResolvedImageModelReady,
-    isCodeGraphReady: Boolean(codegraphAsset?.runtimeReady ?? codegraphAsset?.ready)
+    isCodeGraphReady: codegraphAsset
+      ? Boolean(codegraphAsset.runtimeReady ?? codegraphAsset.ready)
+      : null
   })
 
   useEffect(() => {
@@ -183,11 +184,14 @@ export function AppPluginPanel(): React.JSX.Element {
     }
   }
 
+  // 徽章一进面板就得是真实状态。以前只在选中「代码图谱」时才拉，列表首屏拿到的是
+  // null，被 getPluginState 当成「未安装」显示「待下载」；点进详情拉回真实状态又变
+  // 「已启用」—— 同一个东西两种说法（2026-11-03 老大真机验收发现）。
+  // 拉取很轻（一次 IPC + 读目录），挂载即拉；安装/移除后由 onChanged 再拉一次。
   useEffect(() => {
-    if (selectedPluginId !== CODEGRAPH_PLUGIN_ID) return
     void refreshCodegraphAsset()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPluginId])
+  }, [])
 
   const handlePluginEnabledChange = (checked: boolean): void => {
     if (!pluginStoreHydrated || !selectedPlugin || checked === selectedPlugin.enabled) return
@@ -206,6 +210,10 @@ export function AppPluginPanel(): React.JSX.Element {
           projectPlugins={projectPlugins}
           selectedPluginId={selectedPluginId}
           onSelect={setSelectedPluginId}
+          isCodeGraphReady={
+            codegraphAsset ? Boolean(codegraphAsset.runtimeReady ?? codegraphAsset.ready) : null
+          }
+          isResolvedImageModelReady={isResolvedImageModelReady}
         />
       </div>
 
@@ -228,17 +236,51 @@ export function AppPluginPanel(): React.JSX.Element {
               </div>
             </div>
 
+            {/* 开关改成按钮。原来一个打开着的 Switch 在「资产未安装」时照旧亮着，用户以为
+                插件正在跑；「用户愿意启用」和「插件真的可用」是两件事，只有按钮 + 状态文案
+                分得清（2026-11-03 老大真机验收：「都没安装呢，默认是启动状态」）。 */}
             <section className="rounded-xl border bg-muted/10 p-4">
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium">{t('plugin.enable')}</p>
-                  <p className="text-xs text-muted-foreground">{t('plugin.enableDesc')}</p>
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-medium">
+                    {activeState === 'ready'
+                      ? t('plugin.enabled')
+                      : activeState === 'checking'
+                        ? t('plugin.checking')
+                        : activeState === 'not_ready'
+                          ? selectedDescriptor.requiresModelConfig
+                            ? t('plugin.needsModel')
+                            : t('plugin.stateNotInstalled')
+                          : t('plugin.enable')}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {activeState === 'ready'
+                      ? t('plugin.enableDescReady')
+                      : activeState === 'checking'
+                        ? t('plugin.enableDescChecking')
+                        : activeState === 'not_ready'
+                          ? selectedDescriptor.requiresModelConfig
+                            ? t('plugin.enableDescNeedsModel')
+                            : t('plugin.enableDescNeedsAssets')
+                          : t('plugin.enableDesc')}
+                  </p>
                 </div>
-                <Switch
-                  checked={selectedPlugin.enabled}
-                  disabled={!pluginStoreHydrated}
-                  onCheckedChange={handlePluginEnabledChange}
-                />
+                <button
+                  type="button"
+                  disabled={
+                    !pluginStoreHydrated ||
+                    activeState === 'checking' ||
+                    activeState === 'not_ready'
+                  }
+                  onClick={() => handlePluginEnabledChange(!selectedPlugin.enabled)}
+                  className={
+                    activeState === 'ready'
+                      ? 'shrink-0 rounded-md border px-3 py-1.5 text-xs text-muted-foreground disabled:opacity-50'
+                      : 'shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50'
+                  }
+                >
+                  {activeState === 'ready' ? t('plugin.stop') : t('plugin.start')}
+                </button>
               </div>
             </section>
 
@@ -253,7 +295,10 @@ export function AppPluginPanel(): React.JSX.Element {
             ) : null}
 
             {selectedDescriptor.id === CODEGRAPH_PLUGIN_ID ? (
-              <CodegraphAssetSection codegraphAsset={codegraphAsset} />
+              <CodegraphAssetSection
+                codegraphAsset={codegraphAsset}
+                onChanged={() => refreshCodegraphAsset()}
+              />
             ) : null}
 
             {selectedPlugin.id === BROWSER_PLUGIN_ID ? (

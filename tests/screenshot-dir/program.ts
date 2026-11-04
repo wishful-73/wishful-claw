@@ -102,8 +102,10 @@ checkEqual(
   '目录 = dataRoot/screenshots/yyyy-MM'
 )
 checkEqual(SCREENSHOTS_SUBDIR, 'screenshots', '子目录名固定 screenshots')
+// 两侧都是字面量类型，直接写 `A !== B` 会被 tsc 判为恒真（TS2367）—— 断言看着在验，
+// 其实什么都没验。改成比较运行值，将来两个常量撞成同一个名字时这条会真的变红。
 checkTrue(
-  SCREENSHOTS_SUBDIR !== CHAT_IMAGES_SUBDIR,
+  new Set([SCREENSHOTS_SUBDIR, CHAT_IMAGES_SUBDIR]).size === 2,
   '截图目录必须与聊天图片目录分家（一个是工具产物、一个是用户资产）'
 )
 

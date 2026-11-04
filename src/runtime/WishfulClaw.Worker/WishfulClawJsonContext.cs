@@ -41,7 +41,6 @@ namespace WishfulClaw.Worker;
 [JsonSerializable(typeof(MessageMutationResult))]
 [JsonSerializable(typeof(MessageDeleteResult))]
 [JsonSerializable(typeof(MessageCountResult))]
-[JsonSerializable(typeof(MessageCompactResult))]
 [JsonSerializable(typeof(MessageUsageStatsResult))]
 [JsonSerializable(typeof(MessageRow))]
 [JsonSerializable(typeof(SshConnectionFindResult))]

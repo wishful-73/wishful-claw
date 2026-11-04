@@ -77,6 +77,7 @@ internal static partial class Program
                 RunGlobalToolProviderSuite();
                 RunChannelToolProviderSuite();
                 await RunGlobalTaskExecutorSuiteAsync(dbPath);
+                await RunProjectTaskScopeSuiteAsync(dbPath);
                 await RunDispatchProtocolSuiteAsync(dbPath);
                 RunDeleteBySessionSuite(dbPath, db);
                 await RunCreateSessionInsertSuiteAsync(dbPath, db);
@@ -288,7 +289,7 @@ internal static partial class Program
         var registry = new ToolRegistry();
         new GlobalTaskToolsProvider().RegisterTools(registry);
         var definitions = registry.GetToolDefinitions();
-        AssertEqual(6, definitions.Count, "global task provider registers 6 tools");
+        AssertEqual(7, definitions.Count, "global task provider registers 7 tools");
 
         var expected = new HashSet<string>
         {
@@ -297,12 +298,21 @@ internal static partial class Program
         };
         foreach (var definition in definitions)
         {
+            // S-300: list_project_tasks is the project side's read-only view, so it is the
+            // one tool here that must NOT be global-mode-only — its boundary is the run
+            // scope (project:*@*), not the session mode. Asserting it here keeps the
+            // "everything in this provider is global-only" habit from silently spreading.
+            if (definition.Name == "list_project_tasks") continue;
+
             Assert(expected.Contains(definition.Name), $"registered global tool name: {definition.Name}");
             Assert(registry.IsAvailableInMode(definition.Name, "global"),
                 $"{definition.Name} is available in global mode");
             Assert(!registry.IsAvailableInMode(definition.Name, "normal"),
                 $"{definition.Name} is hidden in normal mode");
         }
+
+        Assert(definitions.Any(d => d.Name == "list_project_tasks"),
+            "list_project_tasks is registered");
     }
 
     // ─── Suite: Channel tool provider mode availability ───

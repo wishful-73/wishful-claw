@@ -1,25 +1,62 @@
 import { app } from 'electron'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import grammarManifest from '../../shared/codegraph-grammars.json'
+import { resolveDataPath } from './data-dir'
 import { getNativeWorker, resolveNativeWorkerPath } from './native-worker'
 
 // ---------------------------------------------------------------------------
-// CodeGraph grammar assets (bundled only — no online download).
+// CodeGraph grammar assets (S-303: on-demand download, no longer bundled).
 //
-// Packaged builds ship their RID-specific tree-sitter libraries beside the worker
-// (resources/worker/codegraph-worker/grammars). In development, the NuGet cache of
-// TreeSitter.DotNet remains a fallback.
+// The tree-sitter grammar libraries are ~42.5 MB of native code that most users
+// never touch, so packaged builds stop shipping them. They live in the app data
+// dir (`plugins/codegraph/bin/grammars`) and are fetched by the user from Settings.
 //
-// The worker loads its grammars from WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR (injected
-// when the worker spawns); this module resolves that directory and reports status.
+// Resolution order: explicit env override > downloaded plugin dir > bundled dir
+// (legacy installs — honoured so an in-place upgrade keeps working).
+//
+// ⚠️ 没有「dev 回落到 TreeSitter.DotNet NuGet 缓存」这一档了（2026-11-03 老大定）。
+// 以前 `npm run dev` 会从 ~/.nuget/packages 直接读语法库，dev 永远显示「已就绪」，
+// 而生产除非用户下载插件包就不可用 —— 两套行为，dev 上根本验不到「待下载 → 下载 →
+// 移除」这条链路。现在 dev 与生产同一条路径：没下载就是没装。
+//
+// The engine is a standalone AOT exe (MCP stdio server) that resolves its own
+// grammars from `{AppContext.BaseDirectory}/grammars` — i.e. `plugins/codegraph/bin/
+// grammars`. Nothing is injected into the worker any more (S-303); this module only
+// resolves paths and reports installation status to the UI.
 // ---------------------------------------------------------------------------
+
+/** Plugin id shared with the renderer's app-plugin store and the IPC handlers. */
+export const CODEGRAPH_PLUGIN_ID = 'codegraph'
+
+/** Where downloaded plugin payloads live: `{dataDir}/plugins/codegraph`. */
+export function resolveCodeGraphPluginDir(): string {
+  return resolveDataPath('plugins', CODEGRAPH_PLUGIN_ID)
+}
+
+/**
+ * Grammar libraries, inside the downloaded plugin payload (方案 B).
+ *
+ * 包结构固定为 `bin/codegraph.exe` + `bin/e_sqlite3.dll` + `bin/grammars/*.dll`，
+ * grammars 必须挂在 `bin/` 下 —— 引擎的 CodeGraphNativeLibraryResolver.ProbeDirs()
+ * 按 `{AppContext.BaseDirectory}/grammars` 查找，而 BaseDirectory 就是 `bin/`，
+ * 所以不传环境变量也能命中。
+ */
+export function resolveCodeGraphPluginGrammarsDir(): string {
+  return path.join(resolveCodeGraphPluginDir(), 'bin', 'grammars')
+}
+
+/** 引擎可执行文件：`{dataDir}/plugins/codegraph/bin/codegraph.exe`。 */
+export function resolveCodeGraphEnginePath(): string {
+  return path.join(
+    resolveCodeGraphPluginDir(),
+    'bin',
+    process.platform === 'win32' ? 'codegraph.exe' : 'codegraph'
+  )
+}
 
 const TREE_SITTER_LIB_RE = /^(?:lib)?(tree-sitter(?:-[a-z0-9-]+)?)\.(?:dylib|so|dll)$/i
 const TREE_SITTER_CORE_LIBRARY = grammarManifest.runtime.library.toLowerCase()
-const TREE_SITTER_NUGET_PACKAGE = grammarManifest.source.package.toLowerCase()
-const TREE_SITTER_NUGET_VERSION = grammarManifest.source.version
 const GRAMMAR_LANGUAGES = new Map(
   grammarManifest.grammars.map((grammar) => [
     grammar.library.toLowerCase(),
@@ -29,7 +66,7 @@ const GRAMMAR_LANGUAGES = new Map(
 
 export type CodeGraphAssetDiagnostic =
   | 'ready'
-  | 'worker-missing'
+  | 'engine-missing'
   | 'grammar-directory-missing'
   | 'core-library-missing'
   | 'language-grammars-missing'
@@ -38,7 +75,6 @@ export type CodeGraphAssetDiagnostic =
 
 export interface CodeGraphAssetStatus {
   isDev: boolean
-  workerReady: boolean
   workerRunning: boolean
   grammarsReady: boolean
   ready: boolean
@@ -47,6 +83,11 @@ export interface CodeGraphAssetStatus {
   grammarCount: number
   /** Explicit replacement for the ambiguous legacy `ready` field. */
   runtimeReady: boolean
+  /**
+   * S-303: 独立引擎 `plugins/codegraph/bin/codegraph.exe` 在盘上。以前没这个字段，
+   * 就绪判定借用的是主 worker 二进制路径 —— 那个恒为真，等于没检查引擎。
+   */
+  engineReady: boolean
   coreLibraryReady: boolean
   availableGrammars: string[]
   missingGrammars: string[]
@@ -54,37 +95,16 @@ export interface CodeGraphAssetStatus {
   missingLanguages: string[]
   unrecognizedGrammars: string[]
   invalidGrammarFiles: string[]
-  grammarSource: 'override' | 'bundled' | 'dev' | 'none'
+  grammarSource: 'override' | 'plugin' | 'bundled' | 'dev' | 'none'
+  /** S-303: the user-downloaded grammar set is present and loadable. */
+  pluginGrammarsReady: boolean
+  /** Where downloads land — `{dataDir}/plugins/codegraph/bin/grammars`. */
+  pluginGrammarsDir: string
   diagnostic: CodeGraphAssetDiagnostic
 }
 
 function isDevBuild(): boolean {
   return !app.isPackaged
-}
-
-function currentRid(): string {
-  const p = process.platform
-  const a = process.arch
-  if (p === 'darwin') return a === 'arm64' ? 'osx-arm64' : 'osx-x64'
-  if (p === 'win32') return a === 'arm64' ? 'win-arm64' : 'win-x64'
-  if (p === 'linux') return a === 'arm64' ? 'linux-arm64' : 'linux-x64'
-  return `${p}-${a}`
-}
-
-// A dev-only fallback: the TreeSitter.DotNet NuGet native dir has the bootstrap
-// grammars (TS/JS/Python/Go/Java/C#/Rust/C/C++/PHP/Ruby/Scala/Bash/Haskell/Julia/Razor).
-function getDevNugetGrammarsDir(): string | null {
-  const dir = path.join(
-    os.homedir(),
-    '.nuget',
-    'packages',
-    TREE_SITTER_NUGET_PACKAGE,
-    TREE_SITTER_NUGET_VERSION,
-    'runtimes',
-    currentRid(),
-    'native'
-  )
-  return dirHasGrammars(dir) ? dir : null
 }
 
 // `resources/**` is unpacked by electron-builder, so resolving relative to the
@@ -117,21 +137,7 @@ function directoryExists(dir: string | null | undefined): dir is string {
 
 function findGrammarDiagnosticDir(): string | null {
   const override = process.env.WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR?.trim()
-  const devNugetDir = path.join(
-    os.homedir(),
-    '.nuget',
-    'packages',
-    TREE_SITTER_NUGET_PACKAGE,
-    TREE_SITTER_NUGET_VERSION,
-    'runtimes',
-    currentRid(),
-    'native'
-  )
-  const candidates = [
-    override,
-    ...getBundledGrammarCandidates(),
-    ...(isDevBuild() ? [devNugetDir] : [])
-  ]
+  const candidates = [override, resolveCodeGraphPluginGrammarsDir(), ...getBundledGrammarCandidates()]
   return candidates.find(directoryExists) ?? null
 }
 
@@ -193,26 +199,29 @@ function inspectGrammarDir(dir: string | null | undefined): GrammarDirectoryInsp
 
 // The directory the worker should load grammars from. Priority:
 //   1. explicit WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR override
-//   2. the RID-specific set bundled beside the worker
-//   3. (dev only) the TreeSitter.DotNet NuGet native dir
+//   2. grammars the user downloaded into the plugin data dir (S-303)
+//   3. the RID-specific set bundled beside the worker (legacy installs)
+//
+// dev 构建走同一条路 —— 没有 NuGet 缓存兜底，没下载就是没装。
 export function resolveCodeGraphGrammarsDir(): string | null {
   const override = process.env.WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR?.trim()
   if (override && dirHasGrammars(override)) return override
 
+  const plugin = resolveCodeGraphPluginGrammarsDir()
+  if (dirHasGrammars(plugin)) return plugin
+
   const bundled = getBundledGrammarsDir()
   if (bundled) return bundled
 
-  if (isDevBuild()) {
-    const dev = getDevNugetGrammarsDir()
-    if (dev) return dev
-  }
   return null
 }
 
 export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
   const isDev = isDevBuild()
-  // Source-merged: CodeGraph ships inside the main worker binary.
-  const workerReady = resolveNativeWorkerPath() != null
+  // 引擎文件本身在不在。以前就绪条件只有 workerReady && grammarsReady，而 workerReady
+  // 恒为 true，于是「语法库在盘上、引擎没装」会被判成已就绪：徽章显示「已就绪」，
+  // 而 MCP 面板里根本没有 builtin-codegraph 这个 server，工具一个都调不到。
+  const engineReady = fs.existsSync(resolveCodeGraphEnginePath())
   // When no usable directory resolves, retain an existing candidate for precise
   // diagnostics (for example, a directory containing only a zero-byte runtime).
   const grammarsDir = resolveCodeGraphGrammarsDir() ?? findGrammarDiagnosticDir()
@@ -235,17 +244,19 @@ export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
     .sort()
   const grammarCount = availableGrammars.length
   const grammarsReady = inspection.coreLibraryReady && grammarCount > 0
-  const runtimeReady = workerReady && grammarsReady
+  const runtimeReady = engineReady && grammarsReady
   const override = process.env.WISHFULCLAW_CODEGRAPH_GRAMMARS_DIR?.trim()
   const grammarSource: CodeGraphAssetStatus['grammarSource'] = !grammarsDir
     ? 'none'
     : override === grammarsDir
       ? 'override'
-      : getBundledGrammarCandidates().includes(grammarsDir)
-        ? 'bundled'
-        : 'dev'
-  const diagnostic: CodeGraphAssetDiagnostic = !workerReady
-    ? 'worker-missing'
+      : grammarsDir === resolveCodeGraphPluginGrammarsDir()
+        ? 'plugin'
+        : getBundledGrammarCandidates().includes(grammarsDir)
+          ? 'bundled'
+          : 'dev'
+  const diagnostic: CodeGraphAssetDiagnostic = !engineReady
+    ? 'engine-missing'
     : !grammarsDir
       ? 'grammar-directory-missing'
       : !inspection.coreLibraryReady
@@ -259,7 +270,6 @@ export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
               : 'ready'
   return {
     isDev,
-    workerReady,
     workerRunning: getNativeWorker().isRunning,
     grammarsReady,
     // `ready` is retained for existing renderers and external IPC consumers.
@@ -267,6 +277,7 @@ export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
     grammarsDir,
     grammarCount,
     runtimeReady,
+    engineReady,
     coreLibraryReady: inspection.coreLibraryReady,
     availableGrammars,
     missingGrammars,
@@ -275,6 +286,8 @@ export function getCodeGraphAssetStatus(): CodeGraphAssetStatus {
     unrecognizedGrammars,
     invalidGrammarFiles: inspection.invalidFiles,
     grammarSource,
+    pluginGrammarsReady: dirHasGrammars(resolveCodeGraphPluginGrammarsDir()),
+    pluginGrammarsDir: resolveCodeGraphPluginGrammarsDir(),
     diagnostic
   }
 }

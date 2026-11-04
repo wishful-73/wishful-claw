@@ -24,7 +24,6 @@ import { TeamEventCard } from '../TeamEventCard'
 import { OrchestrationBlock } from '../OrchestrationBlock'
 import { ImagePluginToolCard } from '../ImagePluginToolCard'
 import { BrowserToolCard } from '../BrowserToolCard'
-import { CodeGraphToolCard } from '../CodeGraphToolCard'
 import { DesktopActionToolCard } from '../DesktopActionToolCard'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
 import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
@@ -292,28 +291,6 @@ export function ToolBlockRenderer({
           output={toolCallState.output}
           status={toolCallState.status}
           error={toolCallState.error}
-          forceOpen={executionItem?.forceExpanded}
-        />
-      </ScaleIn>
-    )
-  }
-  if (block.name.startsWith('codegraph_')) {
-    const toolCallState = buildToolCallRenderState(block, {
-      isStreaming,
-      toolResults,
-      liveToolCallMap: effectiveLiveToolCallMap,
-      executionItem
-    })
-    return (
-      <ScaleIn className={liveScaleInClassName}>
-        <CodeGraphToolCard
-          name={toolCallState.name}
-          input={toolCallState.input}
-          output={toolCallState.output}
-          status={toolCallState.status}
-          error={toolCallState.error}
-          startedAt={toolCallState.startedAt}
-          completedAt={toolCallState.completedAt}
           forceOpen={executionItem?.forceExpanded}
         />
       </ScaleIn>

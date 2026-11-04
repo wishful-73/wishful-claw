@@ -1,4 +1,14 @@
-﻿import type { ReasoningEffortLevel } from '@shared/types/provider'
+import type { ReasoningEffortLevel } from '@shared/types/provider'
+
+/**
+ * 定时任务轮次上限的默认值。**0 = 不限**。
+ *
+ * S-299：原来这个默认值在渲染端散落成四处 `15`（表单默认值、编辑回填、提交兜底、
+ * 读库兜底），而 worker 侧又把 0 反向翻译回 15，导致「改成不限」看起来没生效。
+ * 现在统一走这一个常量，且与主进程 `cron/types.ts` 的 `DEFAULT_MAX_ITERATIONS`
+ * 保持同值 —— 两个 bundle 不能共享模块，靠注释对齐。
+ */
+export const DEFAULT_MAX_ITERATIONS = 0
 
 export interface CronScheduleView {
   kind: 'at' | 'every' | 'cron'
@@ -80,7 +90,7 @@ export function asCronJob(value: unknown): CronJobView | null {
     pluginType: record.pluginType as string | null | undefined ?? record.plugin_type as string | null | undefined,
     pluginChatId: record.pluginChatId as string | null | undefined ?? record.plugin_chat_id as string | null | undefined,
     deleteAfterRun: Boolean(record.deleteAfterRun),
-    maxIterations: Number(record.maxIterations ?? 15),
+    maxIterations: Number(record.maxIterations ?? DEFAULT_MAX_ITERATIONS),
     enabled: Boolean(record.enabled),
     deletedAt: (record.deletedAt as number | null) ?? null,
     lastFiredAt: (record.lastFiredAt as number | null) ?? null,

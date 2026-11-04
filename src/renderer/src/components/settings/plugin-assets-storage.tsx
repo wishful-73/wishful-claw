@@ -19,7 +19,7 @@ import {
   fetchAssetStatuses,
   formatAssetSize,
   onAssetProgress,
-  removeAsset,
+  removeAssetFully,
   type PluginAssetPublicInfo,
   type PluginAssetStatus
 } from '@renderer/lib/plugins/plugin-assets'
@@ -92,7 +92,7 @@ export function PluginAssetsStorage(): React.JSX.Element | null {
     if (!ok) return
     setBusy(target.id)
     try {
-      await removeAsset(target.id)
+      await removeAssetFully(target.id)
       setStatuses((prev) => ({
         ...prev,
         [target.id]: { ...prev[target.id], id: target.id, state: 'absent', receivedBytes: 0 }
@@ -119,7 +119,7 @@ export function PluginAssetsStorage(): React.JSX.Element | null {
     if (!ok) return
     setBusy('*')
     try {
-      for (const entry of ready) await removeAsset(entry.id)
+      for (const entry of ready) await removeAssetFully(entry.id)
       await refresh()
       toast.success(t('extension.storage.removed', { defaultValue: '已删除' }))
     } catch (error) {

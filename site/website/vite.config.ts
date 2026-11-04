@@ -14,7 +14,7 @@ const DEV_PORT = 5280
 const PREVIEW_PORT = 5281
 
 // 反馈服务联调（S-226）：线上由 nginx 把 /api/ 反代到 127.0.0.1:7860
-// （deploy/feedback/nginx-location.conf），本地没有 nginx 这一层，
+// （site/feedback/deploy/nginx-location.conf），本地没有 nginx 这一层，
 // dev / preview 各挂一份等价代理，前端那句 `./api/feedback` 一个字不用改。
 // 后端没起也不影响页面：拿不到数据就整段不渲染（src/lib/feedback.ts 文件头）。
 const FEEDBACK_API = 'http://127.0.0.1:7860'

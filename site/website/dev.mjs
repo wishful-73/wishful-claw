@@ -3,7 +3,7 @@
  * 官网本地一键启动：前端 + 反馈服务（S-226）
  * ============================================================================
  *
- * 用法（在 website/ 下）：
+ * 用法（在 site/website/ 下）：
  *   npm run dev                 前端 + 反馈服务
  *   npm run dev -- --web-only   只前端（不改反馈那块时够用）
  *   npm run dev:api             只反馈服务
@@ -134,7 +134,7 @@ async function startApi() {
 
 function startWeb() {
   if (!existsSync(VITE_BIN)) {
-    console.error(`\n✗ 找不到 ${VITE_BIN} —— 先在 website/ 下跑 npm install`)
+    console.error(`\n✗ 找不到 ${VITE_BIN} —— 先在 site/website/ 下跑 npm install`)
     shutdown(1)
     return
   }

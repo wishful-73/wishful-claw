@@ -1,7 +1,23 @@
 # 反馈服务部署（S-226）
 
-> 从零到能用。命令都在服务器上跑（`ssh -i ~/.ssh/wishfulclaw_deploy ubuntu@119.45.103.252`）。
-> 本文件随 `deploy/feedback/` 一起入库，和代码同版本 —— 别在别处另写一份。
+> 从零到能用。命令都在服务器上跑（`ssh wishfulclaw` —— 别名怎么配见 §0.1）。
+> 本文件随 `site/feedback/deploy/` 一起入库，和代码同版本 —— 别在别处另写一份。
+
+## 0.1 服务器地址不进仓库
+
+本仓是公开仓，所以这份文档里**不写服务器地址**，只用 SSH 别名 `wishfulclaw`。
+本机 `~/.ssh/config` 里配一次即可（`<服务器地址>` 自己填，别提交）：
+
+```
+Host wishfulclaw
+    HostName <服务器地址>
+    User ubuntu
+    IdentityFile ~/.ssh/wishfulclaw_deploy
+    ServerAliveInterval 30
+```
+
+配好之后 `ssh wishfulclaw`、`scp ... wishfulclaw:/path`、`scripts/deploy/lib.mjs` 的 `ssh()`
+全都走这一个别名，换机器只改本机 config。
 
 ## 0. 为什么服务不在站点目录里
 
@@ -30,7 +46,7 @@ sqlite3 --version || sudo apt-get install -y sqlite3
 
 ## 2. 上传代码与依赖（一条命令）
 
-日常发布**不用手工 scp** —— `deploy.mjs site` 会把 `server/feedback/` 一起发上去：
+日常发布**不用手工 scp** —— `deploy.mjs site` 会把 `site/feedback/app/` 一起发上去：
 
 ```bash
 node scripts/deploy.mjs site            # 构建官网 + 同步反馈服务 + 重启 + 自检
@@ -53,10 +69,10 @@ node scripts/deploy.mjs site --no-api   # 只发静态站，不动服务
 <summary>手工上传（脚本不通时的兜底）</summary>
 
 ```bash
-cd server/feedback
-scp -i ~/.ssh/wishfulclaw_deploy -r \
+cd site/feedback/app
+scp -r \
   app.mjs cli.mjs package.json package-lock.json lib admin \
-  ubuntu@119.45.103.252:/data/services/wishfulclaw-feedback/app/
+  wishfulclaw:/data/services/wishfulclaw-feedback/app/
 ```
 
 ```bash
@@ -71,7 +87,7 @@ node -e "import('better-sqlite3').then(m=>console.log('driver ok', typeof m.defa
 官网本地也是一条命令（前端 + 反馈服务，数据落 `.wishful-claw-dev/feedback/`，与 dev 实例隔离目录同源）：
 
 ```bash
-cd website
+cd site/website
 npm run dev                  # 前端 5280 + 反馈服务 7860
 npm run dev -- --web-only    # 只前端（不改反馈那块够用）
 npm run dev:api              # 只反馈服务

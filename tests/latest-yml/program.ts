@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import {
   parseReleaseManifest,
   releaseFileUrl
-} from '../../website/src/lib/latest-yml'
+} from '../../site/website/src/lib/latest-yml'
 
 let checks = 0
 

@@ -82,4 +82,20 @@
 
 ## 发布
 
-**待发布。** 本迭代收尾只做代码合并与 tag，安装包构建与双面发布（官网下载目录四件套 + GitHub Release 三资产）按 `docs/release-workflow.md` 单独执行，完成后补进本节。
+**2026-11-04 16:44 打包 / 16:46 双面核验全部通过。**
+
+| 项 | 值 |
+|---|---|
+| 安装包 | `release/wishful-claw-1.0.6-setup.exe`（107,419,380 B / 102.44 MB） |
+| blockmap | `release/wishful-claw-1.0.6-setup.exe.blockmap`（112,530 B） |
+| sha512 | `qByD2p68n80gTAWirJwAtYwTqe80wnbDGQNoUl32tz3JTrAXuC1EfRhTW7q1fvwQQSkEaezp35cJSsJVcgx9IQ==` |
+| 更新源 | `https://wishful-claw.work/downloads/`（包内 `app-update.yml` 已核对：`provider: generic` + 同址） |
+
+- **体积对比**：1.0.5 = 113,813,662 B → 1.0.6 = 107,419,380 B，**收了 6,394,282 B（约 6.1 MB）**。S-302 的 Monaco 瘦身与 S-303 的 CodeGraph 剥离一起体现在这里。
+- **官网下载目录（更新源，必做）**：`node scripts/deploy.mjs installer` 上传四件（exe + blockmap + `latest.yml` + `release-notes-1.0.6.md`），服务器侧落位后**逐件 sha512 校验通过**；blockmap 保留 5 版（1.0.2 ~ 1.0.6 各一份，最新 112,530 B）；`.exe` 只留当前版。
+- **线上抽查全 200**：`/downloads/latest.yml`（内容与本地产物逐字段一致：`version: 1.0.6` / `size: 107419380` / 同一 sha512）、`/downloads/wishful-claw-1.0.6-setup.exe`、`/downloads/release-notes-1.0.6.md`。
+- **GitHub Release（存档）**：`v1.0.6` 三资产齐全（`latest.yml` / `setup.exe` / `setup.exe.blockmap`），`draft=false`、`prerelease=false`、**Latest**。正文即 `.wishful-claw/notes/release-notes-v1.0.6.md`（一份真源同时喂应用内弹窗，未另写第二份）。
+- **官网本迭代零改动** ⇒ **未重发站点**，只换下载目录。站点前端运行时读 `latest.yml`，下载按钮与版本号自动跟上。
+- 证书剩余 **47 天**（到期 2026-12-22）。
+- **§七 清理本地产物未做**：`release/` 仍留 1.0.3 / 1.0.4 / 1.0.5 的 exe + blockmap 作回滚备份，**待老大定**再删。
+- **`experiments/webview-airspace/` 已按老大指示删除**（199.9 MB）。删前先清了两条孤儿进程（vite PID 21404 / esbuild 29424），否则 `vite.err` 被占用删不掉。`experiments/` 现只剩 `avalonia-shell/`（已入库）。

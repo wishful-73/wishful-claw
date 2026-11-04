@@ -17,7 +17,7 @@ namespace WishfulClaw.Persona;
 /// - Character budget truncation (WithCharacterBudget)
 /// - Profile distinction (Main vs Bootstrap)
 /// </summary>
-public static class PromptBuilder
+public static partial class PromptBuilder
 {
     /// <summary>
     /// Character budget for persona context documents.
@@ -56,6 +56,12 @@ public static class PromptBuilder
         if (!string.IsNullOrWhiteSpace(workingFolder))
         {
             parts.Add(BuildProjectContext(workingFolder, JsonHelpers.GetString(parameters, "sshConnectionId")));
+            // S-313：只给指针，规范正文不进上下文。文件不在就一个字都不提。
+            var workflowPointer = BuildWorkflowPointer(workingFolder);
+            if (workflowPointer is not null)
+            {
+                parts.Add(workflowPointer);
+            }
         }
 
         // ── Sandbox (iter-32 S-79) — same priority tier as the folder rules above ──

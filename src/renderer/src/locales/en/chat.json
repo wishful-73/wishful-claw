@@ -156,6 +156,10 @@
     },
     "sendTooltip": "Send (Enter)",
     "stopTooltip": "Stop (Esc)",
+    "stopping": "Stopping…",
+    "stoppingTooltip": "Stop requested; waiting for the run to wind down",
+    "stopFailed": "Still running",
+    "stopFailedTooltip": "Stop was requested but the run is still going — click to retry",
     "optimizePrompt": "Optimize prompt",
     "optimizing": "Optimizing...",
     "selectOptimizedPrompt": "Select an optimized version:",
@@ -778,6 +782,7 @@
     "lineDelta": "-{{old}} / +{{next}} lines",
     "charDelta": "-{{old}} / +{{next}} chars",
     "hiddenLivePayload": "Detailed Write/Edit content stays hidden until the tool finishes.",
+    "stalledHint": "possibly stuck",
     "widget": {
       "rendering": "Rendering widget...",
       "renderingWithChars": "Rendering widget ({{chars}} chars)...",

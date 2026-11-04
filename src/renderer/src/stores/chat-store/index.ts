@@ -70,6 +70,16 @@ import { useAgentStore } from '@renderer/stores/agent-store'
 // completes, the tasks table is the source of truth — refresh the task store.
 const NATIVE_TASK_TOOL_NAMES = new Set(['TodoTaskCreate', 'TodoTaskGet', 'TodoTaskUpdate', 'TodoTaskList'])
 
+/**
+ * 停止请求的软超时（S-309 §4.3）。
+ *
+ * `agent/cancel` 走的是到 worker 的命名管道请求，worker 卡死时它可能**永不返回**。
+ * 而 `stopStreaming` 正是在 `await cancelStream()` 之后才解冻队列、派发下一条 ——
+ * 一条不返回的请求就能把整条队列一起冻住。到点就照常做本地清理；worker 那边到底
+ * 停没停由停止按钮的反馈自证，不靠这条 await 假装已经停了。
+ */
+const CANCEL_REQUEST_TIMEOUT_MS = 3_000
+
 
 
 export type { Session, Project, ChatMessage, SessionMode, SessionScope, CollaborationMode, PermissionMode, CreateSessionOptions, SessionPromptSnapshot, ToolCallInfo, SessionModelSelectionMode } from './types'
@@ -562,7 +572,13 @@ export const useChatStore = create<ChatStore>()(
 
       try {
 
-        await window.api.workerRequest('agent/cancel', { runId })
+        // S-309 §4.3：带软超时，worker 卡死时不把「解冻队列」这一步一起拖死。
+        await Promise.race([
+          window.api.workerRequest('agent/cancel', { runId }),
+          new Promise<void>((resolve) => {
+            window.setTimeout(resolve, CANCEL_REQUEST_TIMEOUT_MS)
+          })
+        ])
 
       } catch {
 

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Send, FolderOpen } from 'lucide-react'
+import { Send, FolderOpen, AlertTriangle } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
@@ -12,6 +12,7 @@ import { ContextRing } from './context-ring'
 import { ReadOnlyModelBadge } from './badges'
 import { PermissionControl } from './permission-control'
 import { ClearConversationDialog } from './clear-conversation-dialog'
+import { useStopRequestState } from './use-stop-request'
 import type { MessageRequestModelMeta } from '@renderer/lib/api/types'
 
 interface ComposerToolbarProps {
@@ -159,6 +160,17 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
   // 只有输入框为空时才是「终止」。
   const hasSendableContent = Boolean(finalSerializedText.trim()) || attachedImagesCount > 0
   const isStopAction = isStreaming && !hasSendableContent
+  // S-309 §4.3 第 3 条：停止要有回执。点了先显示「停止中」，5 秒还没停下来就说明
+  // 这一下没停住 —— 以前点下去界面毫无变化，用户分不清是停了自己没看见，还是压根没停。
+  const { state: stopState, requestStop } = useStopRequestState({ isStreaming, onStop })
+  const stopFailed = isStopAction && stopState === 'failed'
+  const stopPending = isStopAction && stopState === 'stopping'
+
+  const stopTooltip = stopFailed
+    ? t('input.stopFailedTooltip')
+    : stopPending
+      ? t('input.stoppingTooltip')
+      : t('input.stopTooltip')
 
   const sendControl = (
     <Tooltip>
@@ -167,27 +179,34 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
           size="default"
           className="composer-send rounded-xl px-3.5 transition-[filter,box-shadow] duration-200"
           data-composer-variant={composerVariant}
-          data-tone={isStopAction ? 'warning' : undefined}
+          data-tone={isStopAction ? (stopFailed ? 'danger' : 'warning') : undefined}
           onMouseDown={(event) => {
             event.preventDefault()
           }}
-          onClick={isStopAction ? () => onStop?.() : onSend}
+          onClick={isStopAction ? requestStop : onSend}
           disabled={
             isStopAction
-              ? false
+              ? stopPending
               : !hasSendableContent ||
                 disabled ||
                 needsWorkingFolder ||
                 pendingImageReads > 0 ||
                 isOptimizingLocked
           }
-          aria-label={isStopAction ? t('input.stopTooltip') : t('input.sendTooltip')}
+          aria-label={isStopAction ? stopTooltip : t('input.sendTooltip')}
         >
           {isStopAction ? (
-            <>
-              <Spinner className="mr-1.5 size-3.5" />
-              <span>{t('action.stop', { ns: 'common' })}</span>
-            </>
+            stopFailed ? (
+              <>
+                <AlertTriangle className="mr-1.5 size-3.5" />
+                <span>{t('input.stopFailed')}</span>
+              </>
+            ) : (
+              <>
+                <Spinner className="mr-1.5 size-3.5" />
+                <span>{stopPending ? t('input.stopping') : t('action.stop', { ns: 'common' })}</span>
+              </>
+            )
           ) : (
             <>
               <span>{t(draftSessionId ? 'action.send' : 'action.start', { ns: 'common' })}</span>
@@ -197,7 +216,7 @@ export function ComposerToolbar(props: ComposerToolbarProps) {
         </Button>
       </TooltipTrigger>
       <TooltipContent>
-        {isStopAction ? t('input.stopTooltip') : t('input.sendTooltip')}
+        {isStopAction ? stopTooltip : t('input.sendTooltip')}
       </TooltipContent>
     </Tooltip>
   )

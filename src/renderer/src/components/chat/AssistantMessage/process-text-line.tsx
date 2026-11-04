@@ -15,6 +15,7 @@ import type { AgentRunFileChange } from '@renderer/stores/agent-store'
 import { getStepStatusColor, getStepStatusIcon } from '@renderer/lib/agent/sub-agents/step-descriptions'
 import { resolveEditPayload, resolveEditSummaryDiff } from '../FileChangeCard/utils'
 import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
+import { useLiveElapsed } from '../use-live-elapsed'
 
 export interface ProcessTextLineProps {
   name: string
@@ -59,6 +60,16 @@ export function ProcessTextLine({
       ? completedAt - startedAt
       : null
 
+  // S-309 §4.3：跑的过程中也要能看出「等了多久」。以前这里只在 `!running` 时才出耗时，
+  // 于是真正卡住的时候恰好什么都不显示。纯文本档是日常那一档，这条最要紧：超过阈值
+  // 就把耗时染成琥珀并加一句弱提示，跟卡片档同一个口径（共用 `useLiveElapsed`）。
+  const live = useLiveElapsed({ running, startedAt })
+  // 定稿耗时优先，其次走表值。
+  const shownDuration = durationMs != null && !running ? formatDurationMs(durationMs) : live.elapsed
+  const stalledLabel = live.stalled
+    ? t('toolCall.stalledHint', { defaultValue: 'possibly stuck' })
+    : null
+
   // diff 行数只在文件变更行上算，且只在有落盘快照时算 —— 其余工具不付这份代价。
   const diffStat = React.useMemo(() => {
     if (!trackedChange || !input) return null
@@ -90,9 +101,15 @@ export function ProcessTextLine({
       >
         {summary || toolName}
       </span>
-      {durationMs != null && !running ? (
-        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">
-          {formatDurationMs(durationMs)}
+      {shownDuration ? (
+        <span
+          className={cn(
+            'shrink-0 text-[11px] tabular-nums',
+            live.stalled ? 'text-amber-500/85 dark:text-amber-300/80' : 'text-muted-foreground/70'
+          )}
+        >
+          {shownDuration}
+          {stalledLabel ? ` · ${stalledLabel}` : null}
         </span>
       ) : null}
       {diffStat ? (

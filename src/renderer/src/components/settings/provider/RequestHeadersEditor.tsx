@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 
@@ -35,6 +36,22 @@ const toRows = (headers: Record<string, string> | undefined): HeaderRow[] =>
     value
   }))
 
+/** Rows that pass validation, as the object the store persists. */
+const toHeaders = (rows: HeaderRow[], errors: Record<string, string>): Record<string, string> => {
+  const headers: Record<string, string> = {}
+  for (const row of rows) {
+    const name = row.name.trim()
+    if (name && !errors[row.id]) headers[name] = row.value
+  }
+  return headers
+}
+
+const sameHeaders = (a: Record<string, string>, b: Record<string, string>): boolean => {
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) return false
+  return keys.every((key) => b[key] === a[key])
+}
+
 export interface RequestHeadersEditorProps {
   headers: Record<string, string> | undefined
   onChange: (headers: Record<string, string>) => void
@@ -43,10 +60,17 @@ export interface RequestHeadersEditorProps {
 /**
  * Key/value editor for extra provider request headers.
  *
- * The parent owns the committed object; this component keeps a local draft so a
- * row can sit half-typed (blank name) without being dropped mid-edit. Only rows
- * that pass validation are committed — invalid ones stay visible with an inline
- * error. Remount it with `key={provider.id}` when the edited provider changes.
+ * Two states, unlike every other field in the provider panel (S-317): this is a
+ * *group* of structured entries, and a half-applied group is worse than a
+ * delayed one — one wrong `User-Agent` is enough to get 403 from a provider.
+ * So edits stay in a local draft and only reach the store on 保存.
+ *
+ * Invalid rows block the save as a whole instead of being skipped while the rest
+ * are committed, which is what the previous one-keystroke-per-save version did:
+ * the user saw a red row and assumed nothing was persisted.
+ *
+ * Remount it with `key={provider.id}` when the edited provider changes — the
+ * draft is intentionally discarded then.
  */
 export function RequestHeadersEditor({
   headers,
@@ -54,7 +78,7 @@ export function RequestHeadersEditor({
 }: RequestHeadersEditorProps): React.JSX.Element {
   const { t: ts } = useTranslation('settings')
   const [rows, setRows] = useState<HeaderRow[]>(() => toRows(headers))
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [saved, setSaved] = useState<Record<string, string>>(() => ({ ...(headers ?? {}) }))
   const nextId = useRef(rows.length)
 
   const validate = (row: HeaderRow, all: HeaderRow[]): string | null => {
@@ -77,34 +101,42 @@ export function RequestHeadersEditor({
     return null
   }
 
-  const commit = (next: HeaderRow[]): void => {
-    setRows(next)
-    const nextErrors: Record<string, string> = {}
-    const committed: Record<string, string> = {}
-    for (const row of next) {
-      const error = validate(row, next)
-      if (error) {
-        nextErrors[row.id] = error
-        continue
-      }
-      const name = row.name.trim()
-      if (name) committed[name] = row.value
-    }
-    setErrors(nextErrors)
-    onChange(committed)
+  // Derived rather than stored: a row can be fixed without an extra commit, and
+  // there is no window where the error map lags behind the rows.
+  const errors: Record<string, string> = {}
+  for (const row of rows) {
+    const error = validate(row, rows)
+    if (error) errors[row.id] = error
   }
 
+  const draft = toHeaders(rows, errors)
+  const hasErrors = Object.keys(errors).length > 0
+  const dirty = !sameHeaders(draft, saved)
+
   const patchRow = (id: string, patch: Partial<HeaderRow>): void => {
-    commit(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)))
+    setRows(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)))
   }
 
   const addRow = (): void => {
     nextId.current += 1
-    commit([...rows, { id: `h${nextId.current}`, name: '', value: '' }])
+    setRows([...rows, { id: `h${nextId.current}`, name: '', value: '' }])
   }
 
   const removeRow = (id: string): void => {
-    commit(rows.filter((row) => row.id !== id))
+    setRows(rows.filter((row) => row.id !== id))
+  }
+
+  const handleSave = (): void => {
+    if (hasErrors || !dirty) return
+    onChange(draft)
+    setSaved(draft)
+    toast.success(
+      ts('provider.config.requestHeaders.saved', { defaultValue: '请求头已保存' })
+    )
+  }
+
+  const handleCancel = (): void => {
+    setRows(toRows(saved))
   }
 
   return (
@@ -153,21 +185,47 @@ export function RequestHeadersEditor({
         ))}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addRow}>
           <Plus className="mr-1 size-3" />
           {ts('provider.config.requestHeaders.add', { defaultValue: '添加请求头' })}
         </Button>
-        <p className="text-[11px] text-muted-foreground">
-          {ts('provider.config.requestHeaders.hint', {
-            // Passed through literally: i18next would otherwise treat these as
-            // missing interpolations and warn on every render.
-            sessionId: '{{sessionId}}',
-            model: '{{model}}',
-            defaultValue: '值支持 {{sessionId}} 与 {{model}} 占位符，发送时自动替换为真实值'
-          })}
-        </p>
+        <Button
+          size="sm"
+          className="h-7 text-xs"
+          onClick={handleSave}
+          disabled={!dirty || hasErrors}
+        >
+          {ts('provider.config.requestHeaders.save', { defaultValue: '保存' })}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={handleCancel}
+          disabled={!dirty}
+        >
+          {ts('provider.config.requestHeaders.cancel', { defaultValue: '取消' })}
+        </Button>
+        {dirty ? (
+          <span className="text-[11px] text-amber-600 dark:text-amber-500">
+            {ts('provider.config.requestHeaders.unsaved', { defaultValue: '未保存' })}
+          </span>
+        ) : null}
       </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        {ts('provider.config.requestHeaders.hint', {
+          // Passed through literally: i18next would otherwise treat these as
+          // missing interpolations and warn on every render.
+          sessionId: '{{sessionId}}',
+          model: '{{model}}',
+          organization: '{{organization}}',
+          project: '{{project}}',
+          defaultValue:
+            '值支持 {{sessionId}} / {{model}} / {{organization}} / {{project}} 占位符；变量为空时该请求头不发送'
+        })}
+      </p>
     </div>
   )
 }

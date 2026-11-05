@@ -370,10 +370,14 @@
         "namePlaceholder": "请求头名称",
         "valuePlaceholder": "值",
         "empty": "尚未添加额外请求头",
-        "hint": "值支持 {{sessionId}} 与 {{model}} 占位符，发送时自动替换为真实值",
+        "hint": "值支持 {{sessionId}} / {{model}} / {{organization}} / {{project}} 占位符；变量为空时该请求头不发送",
         "invalidName": "请求头名称只能包含字母、数字与 ! # $ % & ' * + . ^ _ ` | ~ -",
         "reserved": "{{name}} 由客户端托管，不能覆盖",
-        "duplicate": "请求头名称重复"
+        "duplicate": "请求头名称重复",
+        "save": "保存",
+        "cancel": "取消",
+        "unsaved": "未保存",
+        "saved": "请求头已保存"
       },
       "cacheTtl": "缓存 TTL",
       "cacheTtlHint": "Anthropic 缓存生存时间，模型级配置可覆盖",

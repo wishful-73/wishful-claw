@@ -3,11 +3,12 @@
 > 拆分于 2026-11-05 14:49（老大「开新迭代」）。来源 = v3-iter-7 收尾移交 + 该迭代挂账结转。
 > 本文件只列清单与依据，刀序见 [plan.md](plan.md)。
 
-## 一、本迭代实施（1 条）
+## 一、本迭代实施（2 条）
 
 | 编号 | 标题 | 现状 / 依据 | 正文 |
 |---|---|---|---|
-| S-318 | **公开版剔除「订阅额度 OAuth 冒充」（5 个 preset）** —— 合规清理 | v3-iter-7 唯一移交项。老大 11-05 09:47「workbuddy 是一个风险点，如果我去抖音推广大家使用，有这个功能的话，会被腾讯这些直接告」+ 09:5x「页面 ai 授权服务商也需要删掉才对啊」+ 10:12「统一都需要处理。不过可以丢到下个迭代单独处理」。**5 个 preset**：`workbuddy` / `workbuddy-ai`（`server_poll` + 6 个 `X-IDE-*` 头）/ `codex-oauth`（`codex_cli_rs/0.144.5` UA + `chatgpt.com/backend-api`）/ `copilot-oauth`（`GitHubCopilotChat/0.26.7` + `copilot_internal/v2/token`）/ `moonshot-coding`（`KimiCLI/1.49.0` + 客户端白名单）。**保留 `moonshotPreset`（API Key 版，`moonshot.ts:123`）**。四个坑已实读确认：①「授权 AI 服务商」整页只收 `server_poll` ⇒ 可整页删、不影响其它 OAuth ②`reconcileProviders:224-229` 对同 preset 第二三条记录原样保留 ⇒ 僵尸记录需显式剔除名单 ③`lib/auth/provider-auth.ts` **不是纯 OAuth**，含多账号轮转，被 pet / translate 用 ⇒ 不能整目录删 ④靠「preset 不存在」隐式清理不可靠 | [../iter-v3-7/requirements/S-318.md](../iter-v3-7/requirements/S-318.md) |
+| S-321 | **清理从 OpenCowork 搬来但从未接通的死代码（宠物 / 翻译 / 通道残留）** | 2026-11-05 14:56 老大「登记吧」。触发点：S-318 刀 2 原写「`lib/auth/` 不能整目录删，宠物和翻译在用多账号轮转」，老大反问「宠物不要，翻译是什么？」⇒ 核实后**两者都是死代码**，前提不成立。**宠物 1261 行**（`lib/pet/` 7 文件 + 4 个 `pet-*-store.ts`）：`src/main` 零命中、渲染层零组件 import、无资源目录。**翻译约 790 行**（`translate-store` / `translate-service` / `translate-agent-service`）：`useTranslateStore` 零消费者。**另 12 条通道白名单残留**（`messagepack-channel-routing.ts:17-27, :400-402`）指向不存在的 handler，`NavItem` 的 `'translate'`（`ui-types.ts:13`）与两组 locale key 同样无消费点。五处唯一外部依赖都是 `ensureProviderAuthReady` 一个函数 ⇒ **删完之后 S-318 刀 2 可以从「摘 OAuth 留多账号轮转」简化成「整目录清」** | [requirements/S-321.md](requirements/S-321.md) |
+| S-318 | **公开版剔除「订阅额度 OAuth 冒充」（5 个 preset）** —— 合规清理 | v3-iter-7 唯一移交项。老大 11-05 09:47「workbuddy 是一个风险点，如果我去抖音推广大家使用，有这个功能的话，会被腾讯这些直接告」+ 09:5x「页面 ai 授权服务商也需要删掉才对啊」+ 10:12「统一都需要处理。不过可以丢到下个迭代单独处理」。**5 个 preset**：`workbuddy` / `workbuddy-ai`（`server_poll` + 6 个 `X-IDE-*` 头）/ `codex-oauth`（`codex_cli_rs/0.144.5` UA + `chatgpt.com/backend-api`）/ `copilot-oauth`（`GitHubCopilotChat/0.26.7` + `copilot_internal/v2/token`）/ `moonshot-coding`（`KimiCLI/1.49.0` + 客户端白名单）。**保留 `moonshotPreset`（API Key 版，`moonshot.ts:123`）**。四个坑已实读确认：①「授权 AI 服务商」整页只收 `server_poll` ⇒ 可整页删、不影响其它 OAuth ②`reconcileProviders:224-229` 对同 preset 第二三条记录原样保留 ⇒ 僵尸记录需显式剔除名单 ③`lib/auth/provider-auth.ts` **不是纯 OAuth**，含多账号轮转 —— **但消费者是 S-321 要删的死代码** ⇒ S-321 先行后此顾虑消失 ④靠「preset 不存在」隐式清理不可靠 | [../iter-v3-7/requirements/S-318.md](../iter-v3-7/requirements/S-318.md) |
 
 ## 二、挂账 / 阻塞（四条，不占刀序）
 

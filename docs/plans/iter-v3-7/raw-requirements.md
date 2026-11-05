@@ -3,7 +3,7 @@
 > 拆分于 2026-11-04 17:1x。来源 = v3-iter-6 收尾移交 + 该迭代「已实施待真机验收」六条。
 > 本文件只列清单与依据，刀序见 [plan.md](plan.md)。
 
-## 一、本迭代实施（4 条）
+## 一、本迭代实施（6 条）
 
 | 编号 | 标题 | 现状 / 依据 | 正文 |
 |---|---|---|---|
@@ -11,6 +11,8 @@
 | S-313 | 把「开发工作流 + 迭代文档 + 计划」做成产品能力，产出落项目 `.wishful-claw/` | 五项已定：①目录名 `.wishful-claw/workflow/`（`plans` / `goals` 已被占用）②注入**指针式**，新建项目复制一份模板、系统提示只提一句路径，**读不读由 AGENTS.md 决定**，软件侧零开关零 UI ③本仓 `docs/` 一字不动 ④本期只做核心三件 ⑤热记忆同构改造（§6.6） | [requirements/S-313.md](requirements/S-313.md) |
 | S-314 | 热记忆变更后系统提示不重建，提示里长期是过期快照 | 三条实测证据：`SystemPromptCache.cs:46-47` 注释承诺刷新，但 `GetPersonaFingerprint`（`:83-124`）只扫 personas 目录 ⇒ MEMORY.md 没进 cacheKey；`Invalidate` / `Clear` 全仓 0 调用 ⇒ 实际是「worker 重启才重建」。根因结构性：「内容新」与「前缀缓存命中」在「塞全文」这个结构下天然互斥 | [requirements/S-314.md](requirements/S-314.md) |
 | S-315 | 连续工具调用时，工具 run 折叠块每个工具都开合一次 | 老大 11-05 08:35 报「一个工具调用就展开，这个工具结束就收起，下一个继续展开，频率太高」。根因：`deriveToolRunCollapsed`（`render-density.ts:102-110`）拿 `activeCount > 0` 一个三目当开关，而 `compact`（**默认档**）两值恰好是 `false` / `true` ⇒ 每完成一个工具就收一次。**只有默认档抖**，`text` 恒收、`detail` 恒展 | [requirements/S-315.md](requirements/S-315.md) |
+| S-316 | 内置服务商请求头仍是 C# 硬编码，没走 `requestOverrides.headers` | 老大 11-05 10:30「内置的服务商很多还是代码上硬编码，而不是通过自定义请求头数据的形式配置」。数据化通道**早就在**（`requestOverrides.headers` + `{{sessionId}}` / `{{model}}` 模板 + `Remove` 后 `Add` 覆盖 + 空值跳过），但 42 个预设只有 3 个用上；`ProviderHttpHeaders.cs` 里还写死 5 组头。顺带查出 `ApplyOAuthAccount`（`:120-140`）在 `ApplyHttpHeaderOverrides` **之后**执行且无 `Contains` 检查 ⇒ 用户配同名头会被**追加成双值** | [requirements/S-316.md](requirements/S-316.md) |
+| S-317 | 请求头编辑器没有「编辑态 / 已保存态」 | 老大 11-05 10:30「编辑了请求头以后不知道是否保存了」。现状每敲一个字符 → `patchRow` → `commit` → `updateProvider` 即落库，界面零反馈；校验失败还「跳过非法行、把其余行照常提交」。同面板 API Key 有 `onBlur` + toast 反馈，请求头什么都没有 | [requirements/S-317.md](requirements/S-317.md) |
 
 ## 二、承接上一迭代的真机验收（6 条，**已实施未验收**）
 

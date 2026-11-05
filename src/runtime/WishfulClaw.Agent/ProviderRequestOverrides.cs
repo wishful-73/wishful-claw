@@ -71,8 +71,6 @@ public static class ProviderRequestOverrides
             return;
         }
 
-        var sessionId = JsonHelpers.GetString(provider, "sessionId") ?? string.Empty;
-        var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         foreach (var property in headers.EnumerateObject())
         {
             if (property.Value.ValueKind != JsonValueKind.String ||
@@ -81,7 +79,7 @@ public static class ProviderRequestOverrides
                 continue;
             }
 
-            var value = ResolveHeaderTemplate(property.Value.GetString() ?? string.Empty, sessionId, model);
+            var value = ResolveHeaderTemplate(property.Value.GetString() ?? string.Empty, provider);
             if (value.Length == 0)
             {
                 continue;
@@ -104,8 +102,6 @@ public static class ProviderRequestOverrides
             return;
         }
 
-        var sessionId = JsonHelpers.GetString(provider, "sessionId") ?? string.Empty;
-        var model = JsonHelpers.GetString(provider, "model") ?? string.Empty;
         foreach (var property in overrideHeaders.EnumerateObject())
         {
             if (property.Value.ValueKind != JsonValueKind.String ||
@@ -114,7 +110,7 @@ public static class ProviderRequestOverrides
                 continue;
             }
 
-            var value = ResolveHeaderTemplate(property.Value.GetString() ?? string.Empty, sessionId, model);
+            var value = ResolveHeaderTemplate(property.Value.GetString() ?? string.Empty, provider);
             if (value.Length == 0)
             {
                 continue;
@@ -123,15 +119,37 @@ public static class ProviderRequestOverrides
         }
     }
 
-    public static string ResolveHeaderTemplate(string value, string sessionId, string model)
+    /// <summary>
+    /// Expands the placeholders a header value may contain. Every placeholder
+    /// resolves against a scalar field of the provider payload, so the set is
+    /// extensible without threading another parameter through the call chain
+    /// (S-316: <c>organization</c> / <c>project</c> were added this way).
+    ///
+    /// An unknown or empty field expands to an empty string, which makes the
+    /// caller's <c>Length == 0</c> check drop the header entirely — a preset can
+    /// therefore declare <c>OpenAI-Organization: {{organization}}</c>
+    /// unconditionally and pay nothing when the user never set one.
+    /// </summary>
+    public static string ResolveHeaderTemplate(string value, JsonElement provider)
     {
-        return value
-            .Replace("{{sessionId}}", sessionId, StringComparison.Ordinal)
-            .Replace("{{ sessionId }}", sessionId, StringComparison.Ordinal)
-            .Replace("{{model}}", model, StringComparison.Ordinal)
-            .Replace("{{ model }}", model, StringComparison.Ordinal)
-            .Trim();
+        if (!value.Contains("{{", StringComparison.Ordinal))
+        {
+            return value.Trim();
+        }
+
+        foreach (var field in TemplateFields)
+        {
+            var resolved = JsonHelpers.GetString(provider, field) ?? string.Empty;
+            value = value
+                .Replace($"{{{{{field}}}}}", resolved, StringComparison.Ordinal)
+                .Replace($"{{{{ {field} }}}}", resolved, StringComparison.Ordinal);
+        }
+
+        return value.Trim();
     }
+
+    /// <summary>Provider fields a header value may reference as <c>{{name}}</c>.</summary>
+    private static readonly string[] TemplateFields = ["sessionId", "model", "organization", "project"];
 
     public static bool IsSensitiveHeader(string name)
     {

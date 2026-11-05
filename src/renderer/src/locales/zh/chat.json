@@ -156,6 +156,10 @@
     },
     "sendTooltip": "发送 (Enter)",
     "stopTooltip": "停止 (Esc)",
+    "stopping": "停止中…",
+    "stoppingTooltip": "已发出停止请求，正在等执行体收尾",
+    "stopFailed": "未停住",
+    "stopFailedTooltip": "停止请求已发出，但任务仍在执行 —— 可以再点一次",
     "optimizePrompt": "优化提示词",
     "optimizing": "优化中...",
     "selectOptimizedPrompt": "选择一个优化版本：",
@@ -778,6 +782,7 @@
     "lineDelta": "-{{old}} / +{{next}} 行",
     "charDelta": "-{{old}} / +{{next}} 字符",
     "hiddenLivePayload": "详细的 Write/Edit 内容会在工具完成后显示。",
+    "stalledHint": "可能已卡住",
     "widget": {
       "rendering": "正在渲染组件...",
       "renderingWithChars": "正在渲染组件（{{chars}} 字符）...",

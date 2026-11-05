@@ -502,5 +502,12 @@ export const opencodeGoPreset: BuiltinProviderPreset = {
   homepage: 'https://opencode.ai/zh/go',
   apiKeyUrl: 'https://opencode.ai/auth',
   defaultModel: 'deepseek-v4-flash',
+  // S-316：路由头从 C# 硬编码搬到这里，用户现在能在「额外请求头」里看见并改。
+  // `{{sessionId}}` 由 ProviderRequestOverrides.ResolveHeaderTemplate 在发送时替换。
+  // 老 provider 记录里没有这一条（记录是预设的快照），ProviderHttpHeaders
+  // .ApplyOpenCodeSession 仍兜底注入，行为不变。
+  requestOverrides: {
+    headers: { 'x-opencode-session': '{{sessionId}}' }
+  },
   defaultModels: chatModels.map((model) => ({ ...model, enabled: true }))
 }

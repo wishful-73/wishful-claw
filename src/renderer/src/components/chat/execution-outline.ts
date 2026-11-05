@@ -8,13 +8,6 @@
 import type { ContentBlock, ToolResultContent } from '@renderer/lib/api/types'
 import type { ToolCallState, ToolCallStatus } from '@renderer/lib/agent/types'
 import { TASK_TOOL_NAME } from '@renderer/lib/agent/sub-agents/create-tool'
-import { TEAM_TOOL_NAMES } from '@renderer/lib/agent/teams/register'
-import { IMAGE_GENERATE_TOOL_NAME, DESKTOP_SCREENSHOT_TOOL_NAME } from '@renderer/lib/app-plugin/types'
-import { isBrowserToolName } from '@renderer/lib/app-plugin/browser-tool-names'
-import { isDesktopControlToolName } from '@renderer/lib/app-plugin/desktop-routing'
-import { isMcpTool } from '@renderer/lib/mcp/mcp-tools'
-import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
-import { resolveToolDisplayName } from '@renderer/lib/tools/tool-display-name'
 import type { ChatRenderDensity } from '@renderer/stores/settings-store-types'
 import { deriveToolRunCollapsed } from './render-density'
 import { inputSummary } from '@renderer/components/chat/tool-call-summary'
@@ -66,6 +59,14 @@ export interface ToolExecutionRun {
   ordinaryItemCount: number
   /** S-271：run 内失败项数（折叠头据此出红色徽章，替代「把失败卡拎到面板外」）。 */
   failedCount: number
+  /**
+   * S-315：这一段是否已经**真的结束**（后面渲染出了下一段输出/思考，或整条消息已结束）。
+   *
+   * 与 `activeCount === 0` 不是一回事：工具之间那个「上一个跑完、下一个还没来」的
+   * 小空隙里 `activeCount` 也是 0，但这一段并没有结束。拿 `activeCount` 当折叠判据，
+   * 就是让折叠块每完成一个工具收放一次。
+   */
+  sealed: boolean
   defaultCollapsed: boolean
   showToggle: boolean
   activeSummary: string | null
@@ -87,9 +88,9 @@ export interface ToolExecutionOutline {
   activeSummary: string | null
 }
 
-type ToolResultEntry = { content: ToolResultContent; isError?: boolean }
+export type ToolResultEntry = { content: ToolResultContent; isError?: boolean }
 
-type TranslationFn = (key: string, options?: Record<string, unknown>) => string
+export type TranslationFn = (key: string, options?: Record<string, unknown>) => string
 
 interface BuildToolExecutionOutlineOptions {
   blocks: ContentBlock[] | null
@@ -104,219 +105,23 @@ interface BuildToolExecutionOutlineOptions {
   t: TranslationFn
 }
 
-const COMMAND_TOOL_NAMES = new Set(['Bash', 'Shell', 'PowerShell'])
-const HIDDEN_TOOL_NAMES = new Set([
-  'TodoTaskCreate', 'TodoTaskGet', 'TodoTaskUpdate', 'TodoTaskList',
-  // Legacy names for old persisted transcripts.
-  'TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList',
-  // Plan step tracking is internal -- not user-facing
-  'UpdatePlanStep',
-  // Memory tools are internal agent operations — not user-facing
-  'memory_hot_read', 'memory_hot_write',
-  'memory_append', 'memory_update', 'memory_search',
-  // Capability proxy: successfully resolved calls are re-emitted with the real
-  // tool name; an unresolved use_capability card is noise, so hide it.
-  'use_capability',
-])
-const ORDINARY_CONTEXT_TOOL_NAMES = new Set([
-  'Read',
-  'Grep',
-  'Glob',
-  'LS',
-  'WebFetch',
-  'WebSearch',
-  'BrowserSearch',
-])
-const FILE_CHANGE_TOOL_NAMES = new Set(['Write', 'Edit', 'Delete', 'NotebookEdit', 'SavePlan'])
-export const INTERACTIVE_TOOL_NAMES = new Set([
-  'AskUserQuestion',
-  'EnterPlanMode',
-  'SubmitPlanReview',
-  'Notify'
-])
+// S-315：分类判据（工具名 → 类别 → 可见性）已拆到 execution-outline.classify.ts，
+// 主文件只留「怎么切分段、怎么算折叠」的算法。这里保留同名转出，调用点不用改。
+export {
+  isHiddenExecutionToolName,
+  isOrdinaryContextToolName,
+  isCommandToolName,
+  INTERACTIVE_TOOL_NAMES
+} from './execution-outline.classify'
 
-export function isHiddenExecutionToolName(name: string): boolean {
-  return HIDDEN_TOOL_NAMES.has(name)
-}
-
-export function isOrdinaryContextToolName(name: string): boolean {
-  return (
-    ORDINARY_CONTEXT_TOOL_NAMES.has(name) ||
-    COMMAND_TOOL_NAMES.has(name) ||
-    FILE_CHANGE_TOOL_NAMES.has(name) ||
-    isMcpTool(name)
-  )
-}
-
-export function isCommandToolName(name: string): boolean {
-  return COMMAND_TOOL_NAMES.has(name)
-}
-
-function outputAsString(output: ToolResultContent | undefined): string | undefined {
-  if (output === undefined) return undefined
-  if (typeof output === 'string') return output
-  const texts = output
-    .filter((block) => block.type === 'text')
-    .map((block) => (block.type === 'text' ? block.text : ''))
-  return texts.join('\n') || undefined
-}
-
-/**
- * S-286：喂给 `inputSummary` 的 output 文本（**只给摘要用**，别拿它去解析错误）。
- *
- * 摘要是「一行说清发生了什么」，只该看小且像人话的输出。截图类工具的 output 是一段
- * 字符串化的 content 数组，image 块里塞着几百 KB base64 —— 让 `inputSummary` 在上面
- * 跑正则等于大海捞针，命中什么全看运气（S-286 就是这么撞出个 `8×5` 的）。
- *
- * 两处**必须豁免**，别「顺手统一」掉：
- *
- * 1. **桌面截图** —— 它的尺寸就写在那段 text 里，必须拿原串；取对尺寸是
- *    `summarizeDesktopAction` 里那条锚定正则的活。
- * 2. **Bash / Shell / PowerShell** —— 它们的输出本身就是结构化 JSON
- *    （`{"exitCode":0,…}`），摘要要从里面取退出码和错误，短路等于丢信息。
- *
- * 判据刻意廉价、**不做 JSON.parse**：`inputSummary` 挂在渲染热路径上
- * （`ToolCallGroup` / `ToolCallCard` / 本文件三处都调），6 MB 串 parse 一次 30~60 ms。
- * 只用「长度 + 开头两字符 + 是否含 `"base64"`」三个零成本判断。
- *
- * ⚠️ 这条判据对**现有分支没有可观察效果**（读 output 的三个分支：桌面截图豁免、
- * 命令行豁免、`LS` 的输出是文件名列表）。它是给「将来新增一个读 output 的工具摘要」
- * 留的护栏 —— 到时候不必再去查 base64 撞正则这个坑。
- */
-const OVERSIZED_STRUCTURED_MIN_LENGTH = 4096
-
-function isOversizedStructuredPayload(text: string): boolean {
-  if (text.length <= OVERSIZED_STRUCTURED_MIN_LENGTH) return false
-  const head = text.slice(0, 2)
-  if (head !== '[{' && head !== '{"') return false
-  return text.includes('"base64"')
-}
-
-function outputTextForSummary(
-  name: string,
-  output: ToolResultContent | undefined
-): string | undefined {
-  const text = outputAsString(output)
-  if (text === undefined) return undefined
-  if (name === DESKTOP_SCREENSHOT_TOOL_NAME) return text
-  if (COMMAND_TOOL_NAMES.has(name)) return text
-  return isOversizedStructuredPayload(text) ? undefined : text
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-function hasStructuredOutputError(name: string, output: ToolResultContent | undefined): boolean {
-  const text = outputAsString(output)?.trim()
-  if (!text) return false
-
-  const decoded = decodeStructuredToolResult(text)
-  if (!isRecord(decoded)) return false
-
-  if (decoded.success === false) return true
-  if (typeof decoded.error === 'string' && decoded.error.trim()) return true
-
-  return (
-    COMMAND_TOOL_NAMES.has(name) && typeof decoded.exitCode === 'number' && decoded.exitCode !== 0
-  )
-}
-
-function resolveToolStatus(
-  isStreaming: boolean | undefined,
-  liveToolCall: ToolCallState | undefined,
-  result: ToolResultEntry | undefined
-): ToolCallStatus | 'completed' {
-  if (result?.isError) return 'error'
-  if (liveToolCall?.status) return liveToolCall.status
-  if (!result) return isStreaming ? 'streaming' : 'canceled'
-  return 'completed'
-}
-
-function getToolCategory(options: {
-  name: string
-  status: ToolCallStatus | 'completed'
-  requiresApproval: boolean
-}): ToolExecutionCategory {
-  const { name, status, requiresApproval } = options
-  if (HIDDEN_TOOL_NAMES.has(name)) return 'hidden'
-
-  // S-271：错误不再单独把一项拉出折叠块。
-  //
-  // S-225 §8 的原意是「档位不得藏错误」，它的做法是 hasError ⇒ attention ⇒ force
-  // ⇒ 渲染在折叠面板外。问题在于「渲染在面板外」会把一次失败从一段连续调用里硬拔出来，
-  // 视觉上等于把连续操作劈成两段 —— 失败越少，劈得越突兀。
-  // 现在改由 run 级的 `failedCount` 在折叠头给出信号（红色徽章 + 图标变红），
-  // 错误本身仍然在面板里以错误态渲染，既不藏也不劈。
-  //
-  // 仍然必须露在面板外的只有「用户此刻必须做点什么」的两类：待审批 / 需要批准。
-  if (status === 'pending_approval' || requiresApproval) {
-    return 'attention'
-  }
-
-  // Classify by tool name first — ordinary context/command/file-change tools keep
-  // their category even while running/streaming, so they stay grouped in a
-  // collapsible run during concurrent execution instead of showing individually.
-  if (isMcpTool(name)) return 'mcp'
-  if (ORDINARY_CONTEXT_TOOL_NAMES.has(name)) return 'context'
-  if (FILE_CHANGE_TOOL_NAMES.has(name)) return 'file-change'
-  if (COMMAND_TOOL_NAMES.has(name)) return 'command'
-  if (isBrowserToolName(name)) return 'browser'
-  if (isDesktopControlToolName(name)) return 'desktop'
-  if (INTERACTIVE_TOOL_NAMES.has(name)) return 'interactive'
-  if (name === TASK_TOOL_NAME || TEAM_TOOL_NAMES.has(name)) return 'orchestration'
-  if (name === IMAGE_GENERATE_TOOL_NAME || name === 'visualize_show_widget') return 'visual'
-  if (name === 'Skill') return 'skill'
-
-  // For non-ordinary (unknown) tools, running/streaming/canceled still needs attention
-  if (status === 'streaming' || status === 'running' || status === 'canceled') {
-    return 'attention'
-  }
-  return 'unknown'
-}
-
-function getToolVisibility(category: ToolExecutionCategory): ToolExecutionVisibility {
-  if (category === 'hidden') return 'hidden'
-  if (
-    category === 'context' ||
-    category === 'mcp' ||
-    category === 'command' ||
-    category === 'file-change'
-  ) {
-    return 'ordinary'
-  }
-  return 'force'
-}
-
-function buildActiveSummary(item: ToolExecutionItem, t: TranslationFn): string | null {
-  if (!item.isActive) return null
-
-  // S-270：走统一出口，缺中文标签时兜底成「工具 · 原名」，不再裸回退 camelCase。
-  const tool = resolveToolDisplayName(item.name, t)
-  const detail = item.summary ? `: ${item.summary}` : ''
-
-  if (item.status === 'pending_approval' || item.requiresApproval) {
-    return t('executionOutline.awaitingApproval', {
-      tool,
-      detail,
-      defaultValue: 'Awaiting approval: {{tool}}{{detail}}'
-    })
-  }
-
-  if (item.status === 'streaming') {
-    return t('executionOutline.receiving', {
-      tool,
-      detail,
-      defaultValue: 'Receiving {{tool}}{{detail}}'
-    })
-  }
-
-  return t('executionOutline.running', {
-    tool,
-    detail,
-    defaultValue: 'Running {{tool}}{{detail}}'
-  })
-}
+import {
+  buildActiveSummary,
+  getToolCategory,
+  getToolVisibility,
+  hasStructuredOutputError,
+  outputTextForSummary,
+  resolveToolStatus
+} from './execution-outline.classify'
 
 export function buildToolExecutionOutline({
   blocks,
@@ -342,7 +147,15 @@ export function buildToolExecutionOutline({
     itemIds: string[]
   } | null = null
 
-  const closePendingRun = (): void => {
+  /**
+   * 收掉当前这一段连续工具调用。
+   *
+   * `sealed` 由调用方给出（S-315）：只有「后面真的出现了其它内容」或「整条消息已结束」
+   * 才算这一段结束。**唯一**不算结束的是「流还没跑完时的兜底收尾」—— 那时这一段随时
+   * 可能还有新工具进来。子 agent 卡片的隔离、强制分段都属于「后面已经有东西了」，
+   * 一律算结束（早先这里判反了，含失败项的长段跑完也折不起来）。
+   */
+  const closePendingRun = (sealed: boolean): void => {
     if (!pendingRun) return
 
     const runItems = pendingRun.itemIds
@@ -372,10 +185,11 @@ export function buildToolExecutionOutline({
         totalItemCount: visibleItems.length,
         ordinaryItemCount: ordinaryRunItemIds.length,
         failedCount,
+        sealed,
         defaultCollapsed: deriveToolRunCollapsed(
           density,
           ordinaryRunItemIds.length,
-          activeItems.length
+          sealed
         ),
         showToggle: ordinaryRunItemIds.length > 0,
         activeSummary: activeItem ? buildActiveSummary(activeItem, t) : null
@@ -392,7 +206,8 @@ export function buildToolExecutionOutline({
   for (let blockIndex = 0; blockIndex < (blocks?.length ?? 0); blockIndex += 1) {
     const block = blocks?.[blockIndex]
     if (!block || (block.type !== 'tool_use' && block.type !== 'tool_result')) {
-      closePendingRun()
+      // 这就是「下一段输出或思考来了」—— 唯一真正的封口信号（S-315）。
+      closePendingRun(true)
       continue
     }
     // tool_result blocks are inline results appended after their tool_use;
@@ -404,7 +219,11 @@ export function buildToolExecutionOutline({
     // A Task owns a visible SubAgent card at this exact content position. Isolate it from
     // adjacent ordinary tools so a collapsed Read/Edit run can never hide or move the card.
     const isSubAgentTask = block.name === TASK_TOOL_NAME
-    if (isSubAgentTask) closePendingRun()
+    // S-315 修正：这**是**封口信号，不是「只为摆位置」。
+    // 子 agent 卡本身就是这一段之后渲染出来的东西，前一段到这里已经结束了；
+    // 之前传 false，等于把「后面明明已经有内容」的段落标记成未结束 —— 紧凑档据此
+    // 保持展开，于是含失败项的连续工具段跑完也收不起来（S-315 现场复现见单测）。
+    if (isSubAgentTask) closePendingRun(true)
 
     const result = toolResults?.get(block.id)
     const liveToolCall = liveToolCallMap?.get(block.id)
@@ -469,11 +288,14 @@ export function buildToolExecutionOutline({
       boundaryAfterToolUseIds?.has(block.id) ||
       boundaryAfterBlockIndices?.has(blockIndex)
     ) {
-      closePendingRun()
+      // 同上：强制分段是「这个位置之后另起一段」的显式声明，前一段同样已经结束。
+      closePendingRun(true)
     }
   }
 
-  closePendingRun()
+  // 流还没结束时兜底收尾，这一段随时可能有新工具进来 ⇒ 未封口；
+  // 流已结束则这就是最后一段，可以收起（S-315）。
+  closePendingRun(!isStreaming)
 
   const activeItems = items.filter((item) => item.visibility !== 'hidden' && item.isActive)
   const activeItem = activeItems[activeItems.length - 1]
@@ -491,7 +313,7 @@ export function buildToolExecutionOutline({
     activeCount: activeItems.length,
     totalItemCount,
     ordinaryItemCount: ordinaryItemIds.length,
-    defaultCollapsed: deriveToolRunCollapsed(density, ordinaryItemIds.length, activeItems.length),
+    defaultCollapsed: deriveToolRunCollapsed(density, ordinaryItemIds.length, !isStreaming),
     showToggle: ordinaryItemIds.length > 0,
     activeSummary
   }

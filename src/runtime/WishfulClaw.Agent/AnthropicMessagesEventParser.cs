@@ -164,7 +164,8 @@ internal static partial class AnthropicMessagesProvider
         if (deltaType == "thinking_delta")
         {
             var thinking = JsonHelpers.GetString(delta, "thinking") ?? string.Empty;
-            if (thinking.Length > 0)
+            // S-319：空白 thinking 既不显示也不构成语义边界，放行会切断连续工具调用的折叠链。
+            if (!string.IsNullOrWhiteSpace(thinking))
             {
                 await AgentRuntimeTools.EmitAsync(
                     state, context,

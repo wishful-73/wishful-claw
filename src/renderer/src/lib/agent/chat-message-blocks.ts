@@ -29,7 +29,9 @@ export function buildChatMessageContent(
   if (segments && segments.length > 0) {
     for (const seg of segments) {
       const segType = seg.type as string
-      if (segType === 'thinking' && seg.thinking) {
+      // S-319：只认有明文的思考。库里已有的空白 thinking（模型返回的纯空格）不建块 ——
+      // 它不显示，却会打断连续工具调用的折叠。加密思考同样不建块：回传走后端，与渲染无关。
+      if (segType === 'thinking' && String(seg.thinking ?? '').trim()) {
         blocks.push({ type: 'thinking', thinking: seg.thinking as string, startedAt: seg.startedAt as number | undefined, completedAt: seg.completedAt as number | undefined })
       } else if (segType === 'text' && seg.text) {
         blocks.push({ type: 'text', text: seg.text as string })
@@ -57,8 +59,10 @@ export function buildChatMessageContent(
   }
 
   // Fallback: old format without temporal ordering
-  if (thinking) {
-    blocks.push({ type: 'thinking', thinking })
+  // S-319：与上面的 segments 分支同一判据，空白思考不建块。
+  const legacyThinking = thinking ?? ''
+  if (legacyThinking.trim()) {
+    blocks.push({ type: 'thinking', thinking: legacyThinking })
   }
 
   if (text) {

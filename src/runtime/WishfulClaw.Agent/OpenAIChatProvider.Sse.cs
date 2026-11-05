@@ -172,7 +172,8 @@ internal static partial class OpenAIChatProvider
             AppendReasoningDetails(delta, reasoningDetails);
             var reasoning = AgentLoop.ReadString(delta, "reasoning_content") ??
                 AgentLoop.ReadString(delta, "reasoning");
-            if (!string.IsNullOrEmpty(reasoning))
+            // S-319：同 OpenAIChatProvider.cs，空白 reasoning 不显示也不构成语义边界。
+            if (!string.IsNullOrWhiteSpace(reasoning))
             {
                 reasoningContent.Append(reasoning);
                 markFirstTokenMs(AgentLoop.ElapsedMs(startedAt));

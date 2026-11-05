@@ -98,15 +98,28 @@ export function getDensityPolicy(density: ChatRenderDensity): ChatRenderDensityP
  * `ordinaryCount === 0` 的 run 没有可折叠内容（只有 force / attention 项），
  * 本来就不出折叠条，恒返回 false —— 这个判断必须在这里，不然 text 档会把
  * 单独的报错卡也包进一个没有标题的空壳里。
+ *
+ * S-315：判据从「有没有工具在跑」换成「这一段是不是已经结束」。
+ *
+ * 原来的写法是 `activeCount > 0 ? runCollapseWhileActive : runCollapseWhenDone`，
+ * `activeCount` 在连续调用时是 `1 → 0 → 1 → 0` 跳的 —— 每个工具开始展一次、
+ * 结束收一次。紧凑档的两值恰好是 `false` / `true`，所以它一抖一个准。
+ *
+ * 现在的语义：只有**后面已经渲染出下一段输出或思考**（或者整条消息已经结束）
+ * 才算这一段结束，才允许按 `runCollapseWhenDone` 收起来。工具之间的小空隙不算。
+ *
+ * 三档取值一个字没改，行为变化只发生在「跑完了但还没往下走」这个瞬间：
+ * text 档两值都是 true（照旧收起），detail 档两值都是 false（照旧摊开），
+ * 受影响的只有紧凑档 —— 而它正是原来抖的那一档。
  */
 export function deriveToolRunCollapsed(
   density: ChatRenderDensity,
   ordinaryCount: number,
-  activeCount: number
+  sealed: boolean
 ): boolean {
   if (ordinaryCount <= 0) return false
   const policy = getDensityPolicy(density)
-  return activeCount > 0 ? policy.runCollapseWhileActive : policy.runCollapseWhenDone
+  return sealed ? policy.runCollapseWhenDone : policy.runCollapseWhileActive
 }
 
 /**

@@ -242,7 +242,9 @@ internal static partial class OpenAIChatProvider
             AppendReasoningDetails(message, reasoningDetails);
             var reasoning = AgentLoop.ReadString(message, "reasoning_content") ??
                 AgentLoop.ReadString(message, "reasoning");
-            if (!string.IsNullOrEmpty(reasoning))
+            // S-319：模型在不需要思考的轮次会返回纯空白的 reasoning_content。
+            // 它既不显示也不构成语义边界，却会在渲染端建一个空 thinking 块、把连续工具调用切成多段。
+            if (!string.IsNullOrWhiteSpace(reasoning))
             {
                 reasoningContent.Append(reasoning);
                 markFirstTokenMs(AgentLoop.ElapsedMs(startedAt));

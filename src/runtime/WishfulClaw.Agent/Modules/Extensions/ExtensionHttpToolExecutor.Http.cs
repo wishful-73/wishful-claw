@@ -99,6 +99,12 @@ public static partial class ExtensionHttpToolExecutor
             writer.WriteString("text", result.Text);
             writer.WritePropertyName("data");
             WriteExtensionToolData(writer, result.Response);
+            // S-305：插件把 UI 声明放在响应体里，主进程统一提升到顶层 —— 渲染端只认顶层 ui。
+            if (TryReadExtensionUi(result.Response, out var ui))
+            {
+                writer.WritePropertyName("ui");
+                ui.WriteTo(writer);
+            }
             writer.WriteEndObject();
         }
         return Encoding.UTF8.GetString(stream.ToArray());
@@ -141,6 +147,30 @@ public static partial class ExtensionHttpToolExecutor
             writer.WriteStringValue(response.Text);
         }
         writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// S-305：插件在响应体里放 <c>ui</c> 对象（必须带 kind），主进程把它提升到顶层。
+    /// 只认这一种约定 —— 放在 body 其它位置对渲染端就只是业务数据，不会变成渲染指令。
+    /// </summary>
+    private static bool TryReadExtensionUi(ExtensionFetchResponse response, out JsonElement ui)
+    {
+        ui = default;
+        if (!response.Json.HasValue)
+        {
+            return false;
+        }
+
+        var root = response.Json.Value;
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("ui", out var candidate)
+            || candidate.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        ui = candidate.Clone();
+        return true;
     }
 
     private static bool IsNetworkAllowed(NativeExtensionManifest manifest, string targetUrl)

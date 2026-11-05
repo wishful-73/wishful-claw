@@ -1,0 +1,59 @@
+# v3-iter-7（产品 1.0.7）—— 承接清单与刀序
+
+> 分支：`dev/v3-iter-7`（base = `b6e37eed`，= v1.0.6 发布记录提交，即最新 `main`；tag `v1.0.6` → `6c0c5149`）。执行期内只 commit，**不 push**。
+> 产品版本：`1.0.7`（开工时 `package.json` 仍是 `1.0.6`，收尾时改），tag `v1.0.7`。
+> 状态：**已完成**（2026-11-05 14:31 老大发起收尾）。刀 1 ~ 刀 7 全部落地，刀 4 / 刀 6 各追加一次补刀（`c2b8a89a` / `2364a78b`）；刀 0 六条按「dev 实例反复测过」收口，未单独逐条走完的已在 `docs/progress/v3-iter-7.md` 显式标注。[S-318](requirements/S-318.md)「公开版剔除订阅额度 OAuth 冒充（5 个 preset）」老大 10:12 已拍板：**统一处理、移交 v3-iter-8 单独做**，不在本迭代）。
+> 门禁基线（**2026-11-05 收尾实测**）：`npm run typecheck` **三配置 0 错**（node + web + test）｜ `npm test` **125/125**｜ `dotnet build tests/WishfulClaw.Tests.sln -t:Rebuild` **0 警告 0 错误**；`src/runtime/WishfulClaw.sln -t:Rebuild` **0 错误 / 2 警告**，两条警告都是已挂账的 [S-320](requirements/S-320.md)（`NU1903`，同一包重复计数），不是本迭代引入。
+> 前置：v1.0.6 已双面发布（官网下载目录四件套 + GitHub Release 三资产，逐项对账全绿）。
+> `node scripts/ci-checks.mjs` **不是第四道判据**：它内部就跑 `typecheck` + `npm test -- --ts-only`（当时 TS 侧是上一条的子集），已钉在 pre-push 钩子与 GitHub Actions 上。**交付时只跑上面三条**，并列等于 typecheck 与 TS 测试各烧两遍。
+
+## 一、本迭代的定位
+
+v3-iter-6 修的是「把正确性押在某个不会报错的地方」。这一迭代处理的是**同一病灶的前一步：东西已经造好了，但没人把它接上去。**
+
+- **S-305** —— 6 种渲染器（card / table / form / chart / html / component）、iframe 沙箱、高度协商**全部完工**，唯独最后一道闸 `parseExtensionToolResult`（`extension-result.ts:4-6`）无条件 `return null` ⇒ 一张插件卡片都渲染不出来。`__wishfulClawExtensionResult` 全仓只在类型定义里出现过一次，主进程零产出。
+- **S-313** —— 开发工作流这套方法论在本仓已经跑了 60 个迭代，成熟度不是问题；但产品侧零落地：新建项目**不落任何模板**（`initializeWorkspaceMemoryFiles` 只在渠道 `/init` 命令里被调用），agent 换到别的项目就没有这套规矩。
+- **S-314** —— `SystemPromptCache` 的 `Invalidate` / `Clear` **全仓 0 处调用**，是死代码；MEMORY.md 压根没进 cacheKey ⇒ 热记忆在提示里永远是 worker 启动那一刻的快照。
+
+三条的共同点：**修法都不是「写出新东西」，而是「把已经写好的东西接通」。** 所以本迭代的验证重点不是功能覆盖，是**接通之后真的走了一遍**——这也正是刀 0 存在的理由。
+
+## 二、刀序
+
+| 刀 | 需求 | 为什么排这里 | 前置 / 风险 |
+|---|---|---|---|
+| **0** | **上一迭代六条真机验收** —— S-303 / S-308 / S-309 / S-310 / S-311 / S-312 | **不是写代码，是结账。** 这六条在 v3-iter-6 已实施、自动化全绿，但「用户实际看到什么」没走完。**它们的教训直接约束本迭代**：S-305 交出去之前必须走一遍真机，否则就是再造一条「已实施待验收」。验收暴露的缺陷**插队到刀 1 之前** | S-303：装 / 停 / 卸 / 重装 4 步；S-308：跨 run 停止 + 派停 20 次 CTS 不泄漏；S-309：§4.3 前两条**已于 11-04 17:30 落地**（实时耗时 + 2 分钟「可能已卡住」，纯前端，见 [S-309.md](../iter-v3-6/requirements/S-309.md) §4.3 落地），**剩第 3 条「停止按钮反馈」** + §4.4「卡住时仍能收消息」+ §4.2.4「ask-user 超时后用户再答，答案被丢弃」；S-310 / S-311 / S-312 各自交互 |
+| **1** | **S-305** 插件卡片渲染通道是死的（✅ 11-04 已落地，见 [S-305.md](../iter-v3-6/requirements/S-305.md) §七） | 三条实施项里**唯一有外部依赖面**的一条（插件生态）——越早接通，后面写插件的人越早能自测。而且它是纯增量：现有工具卡片路径一字不动 | 开工先看**渲染器注册表是不是也被死代码侵蚀过**（6 种渲染器都已完成 ≠ 都可达）。主进程要新增 `__wishfulClawExtensionResult` 产出点，零兼容负担。老大 11-03 09:12 已定「CodeGraph 先走普通工具卡片」，本条不因此扩张 |
+| **2** | **S-313（a）** 工作流目录 + 模板 + 指针式注入（§6.1 ~ §6.5） | 先落「新建项目会有这套文件、系统提示提一句路径」—— 这一刀**不动提示前缀**，纯新增文件加一行指针，风险最低，可以先用它验「指针式 agent 到底读不读」 | 迁移坑：`.gitignore:77` 把 `.wishful-claw/*` 整体忽略，60 个迭代目录搬进去会全部失去版本化 ⇒ 先开白名单。目录名 `.wishful-claw/workflow/`（`plans` 被计划模式占、`goals` 被 goal 占） |
+| **3** | **S-313（b）+ S-314** 热记忆指针化（§6.6） | **必须与刀 2 分开。** 刀 2 是「加一个文件」，刀 3 是「把 MEMORY.md 全文从前缀里挪走」——动的是 prompt 最前面那 6,000 字符预算，缓存命中率直接受影响。合成一刀就分不清效果是「新增文件」还是「前缀变化」带来的 | S-314 本条**不写修法**，它是刀 3 的验收依据：不重启 worker 跨会话可见 + 前缀不回退 + 无额外每轮往返。**必须能独立回滚**（留「热记忆全文注入」回退开关）。⚠️ 修好也治不了「全局 PM 忘事」—— 那是 scope 隔离，另有需求 |
+| **4** | **S-315** 连续工具调用时工具 run 折叠块反复开合（抖动源**之一**） | **纯判定修正，改动面最小**，但落在**默认档**（`compact`）—— 绝大多数用户看到的就是它。排在三条实施项之后，避免插进 S-313 两刀之间、把「新增文件 vs 前缀变化」的对照搅浑。老大 11-05 08:35 明确判为「导致窗体抖动的来源之一」 | 只改**收起时机**（`activeCount` → `sealed`）：**不碰**三档 policy 取值、不碰 `CollapsibleHeightPanel`、不碰动画。`text` / `detail` 两档行为必须零变化。⚠️ 治不了 S-233（另一条路径，仍挂账），见 [requirements/S-315.md](requirements/S-315.md) §七 |
+| **5** | **S-316** 内置服务商请求头仍是 C# 硬编码，没走 `requestOverrides.headers`（含 `ApplyOAuthAccount` 双值缺陷） | 数据化通道（`requestOverrides.headers` + `{{sessionId}}` / `{{model}}` 模板 + 覆盖语义 + 空值跳过）**全部早就在**，只有 3 个预设用上了，剩下 5 组头还写死在 `ProviderHttpHeaders.cs`。又是「零件全在，线没接」。与 S-317 拆开的理由：本条动 C# header 链（所有服务商 chat / responses / anthropic / 压缩 / 辅助全走它），S-317 纯前端 | 老数据兼容靠「C# 兜底 + `Contains` 检查」：新 provider 由预设带头（可见可改），老 provider 无该头时兜底照旧生效 ⇒ 行为零变化。⚠️ **不删**兜底路径，删了就丢头。`oauthAccount` 四头 / `User-Agent` / 协议必需头明确不搬，理由见 [requirements/S-316.md](requirements/S-316.md) §四 |
+| **6** | **S-317** 请求头编辑器没有「编辑态 / 已保存态」 | 现状每敲一个字符就 `updateProvider` 落库，界面零反馈；校验失败还「跳过非法行、存其余」。用户不知道存没存 = 老大原话。排在刀 5 之后：先让三个头进表，再让它好改 | 纯渲染层，可独立回滚。改「编辑 → 保存」两态，**只此一个 section 两态**，其它设置项仍即时保存（单值字段立即生效更顺手，且 apiKey 的 `onBlur` 还兼着拉模型）。不做切走确认（`key` 重挂载拦不住，靠 `未保存` 文字提示） |
+| **7** | **S-319** 空白 thinking 打断工具链（连续工具调用被切成多个折叠块） | 老大 11-05 10:46 在 S-315 落地后仍看到「三个工具三个块」。**与刀 4 是同一观感链路上的两处不同判据**：刀 4 管「run 算出之后收不收」，本条管「run 算的时候切不切」。根因是模型返回 `reasoning_content = " "`（纯空格），四处源头判据全判空串不判空白 ⇒ 建一个看不见的 thinking 块 ⇒ 被 `execution-outline.ts:207` 当成封口信号。排在刀 6 之后：它只动源头四行判据 + 渲染层两处 trim，风险最低，且不依赖前面任何一刀 | 四处源头（`OpenAIChatProvider.cs:245` / `OpenAIChatProvider.Sse.cs:175` / `AnthropicMessagesEventParser.cs:167` / `OpenAIResponsesEventParser.cs:61`）+ 渲染层第二道闸（`session-runtime-router.ts:200`）+ 读取侧（`chat-message-blocks.ts:32`）。**不碰**分段判据、不碰入库链路、不碰加密思考路径。老大两次纠正的裁定见 [requirements/S-319.md](requirements/S-319.md) §三。✅ 已落地：7 处改动 + `tool-run-folding` 新增判据 8 三条（退回判据即失败，`actual 3 / expected 0`）⇒ 门禁 typecheck 三配置 0 错 / `npm test` 125/125 / 主 sln 0 错误 0 自有警告；§五 五条真机验收未跑 |
+| — | **挂账四条** S-233 / S-230 / S-273 段 B / **S-320**（.NET 11 SDK 升级，消 NU1903 Brotli 告警 —— **零暴露，等 GA**） | **不占刀序** | 见 [raw-requirements.md](raw-requirements.md) §三 |
+
+## 三、开工前必须拍板的事
+
+**没有阻塞项。** 三条此前标「待定」的按下述口径定死，直接开工：
+
+| # | 事项 | 采用 |
+|---|---|---|
+| 1 | S-313 §6.5「本期只做核心三件」此前标「暂定」 | **按核心三件走**：规范正文 + 迭代目录 + 需求单 + 三套模板；`iterations` / `progress` / `reviews` 留可选模板。老大 16:07 已定「本仓后续都走新模式」，最小范围就是它 |
+| 2 | `.gitignore:77` 把 `.wishful-claw/*` 整体忽略 | **执行期开白名单**，只放行 `workflow/` 相关；不动既有 `MEMORY.md` / `plans/` / `goals/` 的忽略规则 |
+| 3 | S-305 要在主进程新增产出点 | **直接做**，零兼容负担的新增，不需要为「会不会影响现有工具卡片」再问一句 |
+
+## 四、门禁与口径
+
+- 每次交付跑**三条**：`npm run typecheck`（node + web + test 三配置）、`npm test`、`dotnet build`（两套 sln，`-t:Rebuild`）。
+- **不列 `node scripts/ci-checks.mjs`** —— 理由同上，push 时钩子自动跑。
+- 新增判据一律做**反向验证**（把实现改回错误版本必须变红）。
+- 真机口径（老大定）：dev 实例上反复跑过的即「dev 实测通过」，不列打勾清单；但**「已实施未验收」必须在文档里显式标出**，不许含糊成「已完成」。
+- 格式：新增与大改文件 CRLF / UTF-8 无 BOM / 裸 LF = 0。
+- 读写中文文档一律 `[IO.File]::ReadAllText($p,[Text.Encoding]::UTF8)` / `WriteAllText` + `UTF8Encoding($false)`；不用 PowerShell 做读改写中转。
+- 官网本迭代**预计零改动** ⇒ 发版只走 `installer`，不重发站点。
+
+## 五、文档
+
+- [raw-requirements.md](raw-requirements.md) —— 需求清单（含挂账、候选池、**本轮核对掉的**，防重复登记）
+- [changelog.md](changelog.md) —— 裁定与口径流水（按日期追加）
+- `requirements/` —— 本迭代需求正文：S-313 / S-314 已在此；**S-305 正文留在 [../iter-v3-6/requirements/S-305.md](../iter-v3-6/requirements/S-305.md)**（v3-6 登记时就在那里，按「老需求正文不搬家」原则链回，不复制第二份）
+- 老需求正文一律链回原目录，不搬家

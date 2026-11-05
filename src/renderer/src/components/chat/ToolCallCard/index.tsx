@@ -16,6 +16,7 @@ import { parseExtensionToolResult } from '@renderer/lib/extensions/extension-res
 import { inputSummary } from '../tool-call-summary'
 import { deriveToolOutputOpen } from '../render-density'
 import { useDensityOverride, useDensityPolicy } from '../use-density-override'
+import { useLiveElapsed } from '../use-live-elapsed'
 import { CollapsibleHeightPanel } from '../CollapsibleHeightPanel'
 import { ExtensionToolResultCard } from '../ExtensionToolResultCard'
 import { CompactToolCallHeader } from '../CompactToolCallHeader'
@@ -184,11 +185,22 @@ function ToolCallCardInner({
     // S-245：耗时的写法统一由 `formatDurationMs` 定义（秒档不带小数），别在这里另写一套。
     return formatDurationMs(completedAt - startedAt)
   })()
+  // S-309 §4.3：执行中的工具要能自证「在等」还是「卡住」。此前 `elapsed` 必须等
+  // `completedAt` 落地才算得出来，跑的过程中卡片上没有任何时间读数 —— 十六小时
+  // 冻结那次，用户看到的就是一张永远停在「执行中」的卡。走表口径与纯文本档共用
+  // 一份实现（`useLiveElapsed`），别在这里另写一套区间。
+  const live = useLiveElapsed({ running: isProcessing, startedAt })
+  const isStalled = live.stalled
+  const stalledLabel = isStalled
+    ? t('toolCall.stalledHint', { defaultValue: 'possibly stuck' })
+    : null
   // Cache elapsed so it persists even after liveToolCall is cleaned up
   const elapsedCacheRef = React.useRef<string | null>(null)
   if (elapsed) {
     elapsedCacheRef.current = elapsed
   }
+  // 三处显示点共用一份：定稿耗时优先，其次走表值，最后用缓存。
+  const elapsedText = elapsed ?? live.elapsed ?? elapsedCacheRef.current
   const isMcpToolCall = isMcpTool(name)
   const useCompactToolHeader = COMPACT_BUILTIN_TOOL_NAMES.has(name)
   const compactHeader = React.useMemo(() => {
@@ -262,7 +274,9 @@ function ToolCallCardInner({
             statusLabel={compactStatus}
             hasError={compactHeaderError}
             errorTitle={displayError ?? outputError ?? t('error.label')}
-            elapsed={elapsed ?? elapsedCacheRef.current}
+            elapsed={elapsedText}
+            stalled={isStalled}
+            stalledLabel={stalledLabel}
             open={open}
           />
         ) : isMcpToolCall ? (
@@ -285,8 +299,16 @@ function ToolCallCardInner({
             ) : (
               <span className="min-w-0 flex-1" />
             )}
-            {(elapsed ?? elapsedCacheRef.current) && (
-              <span className="text-[10px] tabular-nums text-muted-foreground/55">{elapsed ?? elapsedCacheRef.current}</span>
+            {elapsedText && (
+              <span
+                className={cn(
+                  'text-[10px] tabular-nums',
+                  isStalled ? 'text-amber-500/85 dark:text-amber-300/80' : 'text-muted-foreground/55'
+                )}
+              >
+                {elapsedText}
+                {stalledLabel ? ` · ${stalledLabel}` : null}
+              </span>
             )}
             <ChevronDown
               className={cn(
@@ -339,8 +361,16 @@ function ToolCallCardInner({
                 {headerSummary}
               </span>
             )}
-            {(elapsed ?? elapsedCacheRef.current) && (
-              <span className="text-[10px] tabular-nums text-muted-foreground/55">{elapsed ?? elapsedCacheRef.current}</span>
+            {elapsedText && (
+              <span
+                className={cn(
+                  'text-[10px] tabular-nums',
+                  isStalled ? 'text-amber-500/85 dark:text-amber-300/80' : 'text-muted-foreground/55'
+                )}
+              >
+                {elapsedText}
+                {stalledLabel ? ` · ${stalledLabel}` : null}
+              </span>
             )}
             <ChevronDown
               className={cn(

@@ -11,6 +11,8 @@
  *   4. 卡片型工具（子 agent / 生成图 / 桌面截图 / 交互类）仍然露在面板外；
  *   5. 失败与取消表现一致，不再按工具种类分流；
  *   6. 三档渲染档位下 run 结构一致（失败不许因换档而改变是否折叠进去）。
+ *   7. S-315：连续调用时这一段只在**真的结束**后收起 —— 工具之间的小空隙不算结束。
+ *      判据是 `run.sealed`（后面出现了输出/思考，或整条消息已结束），不是 `activeCount`。
  *
  * 纯函数测试：只喂 blocks + toolResults，不碰 React。
  */
@@ -25,6 +27,7 @@ import {
 } from '../../src/renderer/src/components/chat/execution-outline'
 import { TASK_TOOL_NAME } from '../../src/renderer/src/lib/agent/sub-agents/create-tool'
 import { IMAGE_GENERATE_TOOL_NAME, DESKTOP_SCREENSHOT_TOOL_NAME } from '../../src/renderer/src/lib/app-plugin/types'
+import { buildChatMessageContent } from '../../src/renderer/src/lib/agent/chat-message-blocks'
 import {
   deriveProcessRenderForm,
   shouldPinOutsideCollapsedRun
@@ -60,16 +63,24 @@ function errOutput(text = 'File not found'): { content: ToolResultContent; isErr
 }
 
 interface BuildArgs {
-  blocks: ToolUseBlock[]
+  blocks: ContentBlock[]
   results?: Map<string, { content: ToolResultContent; isError?: boolean }>
   density?: ChatRenderDensity
   liveToolCallMap?: Map<string, never>
+  /** S-315：未封口判定依赖「流是否还在继续」，默认真实渲染里最常见的「已经跑完」。 */
+  isStreaming?: boolean
 }
 
-function build({ blocks, results, density = 'compact', liveToolCallMap }: BuildArgs): ToolExecutionOutline {
+function build({
+  blocks,
+  results,
+  density = 'compact',
+  liveToolCallMap,
+  isStreaming = false
+}: BuildArgs): ToolExecutionOutline {
   return buildToolExecutionOutline({
     blocks: blocks as unknown as ContentBlock[],
-    isStreaming: false,
+    isStreaming,
     toolResults: results,
     liveToolCallMap,
     boundaryAfterBlockIndices: undefined,
@@ -133,6 +144,158 @@ test('连续 5 次 Read、第 3 次失败 ⇒ 仍是一个 run，failedCount 为
   assert.equal(run.failedCount, 1)
   assert.deepEqual(run.forceVisibleItemIds, [], '失败项不许进 force 列表')
   assert.equal(run.showToggle, true, '有 ordinary 项就该能折叠')
+})
+
+// ── 判据 7（S-315）：连续调用只开合一次 ──
+
+test('S-315：第一个工具跑完、后面还有工具 ⇒ run 不切开也不收起', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' }),
+    toolUse('t3', 'Read', { file_path: 'c.txt' })
+  ]
+  // t1 已有结果、t2/t3 还没有 —— 这就是老大看到的「上一个结束了、下一个还没来」
+  const outline = build({
+    blocks,
+    results: new Map([['t1', okOutput()]]),
+    isStreaming: true
+  })
+
+  assert.equal(outline.runs.length, 1, '工具之间的小空隙不许把 run 切开')
+  const run = outline.runs[0]
+  assert.equal(run.activeCount, 2, 't2 / t3 仍在跑')
+  assert.equal(run.sealed, false, '流还在继续且没有后续输出 ⇒ 未封口')
+  assert.equal(run.defaultCollapsed, false, '紧凑档：不许在这里收起')
+})
+
+test('S-315：全部跑完但流还在继续 ⇒ 仍未封口，保持展开（不抖的关键）', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' })
+  ]
+  const outline = build({
+    blocks,
+    results: new Map([
+      ['t1', okOutput()],
+      ['t2', okOutput()]
+    ]),
+    isStreaming: true
+  })
+  const run = outline.runs[0]
+
+  assert.equal(run.activeCount, 0, '这一刻确实没有工具在跑')
+  assert.equal(run.sealed, false, '但这一段没结束 —— 下一个工具随时会来')
+  assert.equal(run.defaultCollapsed, false, 'S-315 的核心：跑完 ≠ 收起')
+})
+
+test('S-315：出现下一段输出 ⇒ 这一段封口，紧凑档收起', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' }),
+    { type: 'text', text: '读完了，下面是结论' }
+  ]
+  const outline = build({
+    blocks: blocks as unknown as ContentBlock[],
+    results: new Map([
+      ['t1', okOutput()],
+      ['t2', okOutput()]
+    ]),
+    isStreaming: true
+  })
+
+  assert.equal(outline.runs.length, 1)
+  const run = outline.runs[0]
+  assert.equal(run.sealed, true, '后面渲染出了文本 ⇒ 封口')
+  assert.equal(run.defaultCollapsed, true, '紧凑档封口后收起')
+})
+
+test('S-315：流结束 ⇒ 最后一段封口，紧凑档收起', () => {
+  const outline = build({
+    blocks: [toolUse('t1', 'Read', { file_path: 'a.txt' })],
+    results: new Map([['t1', okOutput()]]),
+    isStreaming: false
+  })
+  const run = outline.runs[0]
+
+  assert.equal(run.sealed, true)
+  assert.equal(run.defaultCollapsed, true)
+})
+
+test('S-315：Task 边界切开的前一段必须封口 —— 含失败项也照样收起', () => {
+  // 现场（dev 库 11/5 11:27）：一长串连续工具里有一次 Grep 超时，紧跟着两个 Task。
+  // 之前 Task 处用 sealed=false 收尾，这一段跑完仍判「未结束」，紧凑档永远展不开折。
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Grep', { pattern: 'x' }),
+    toolUse('t3', 'Read', { file_path: 'b.txt' }),
+    toolUse('sub1', TASK_TOOL_NAME, { prompt: 'sub' })
+  ]
+  const outline = build({
+    blocks: blocks as unknown as ContentBlock[],
+    results: new Map([
+      ['t1', okOutput()],
+      ['t2', errOutput('[TOOL TIMEOUT] Grep did not return within 1 min')],
+      ['t3', okOutput()],
+      ['sub1', okOutput('Background sub-agent started.')]
+    ]),
+    isStreaming: false
+  })
+
+  assert.equal(outline.runs.length, 2, 'Task 前后各成一段')
+  const before = outline.runs[0]
+  assert.equal(before.totalItemCount, 3)
+  assert.equal(before.failedCount, 1)
+  assert.equal(before.sealed, true, '子 agent 卡就是这一段之后的内容 ⇒ 这一段已结束')
+  assert.equal(before.defaultCollapsed, true, '紧凑档：跑完必须收起（失败由折叠头徽章露出）')
+
+  const task = outline.runs[1]
+  assert.equal(task.showToggle, false, 'Task 卡自身不折叠，必须始终可见')
+  assert.equal(task.defaultCollapsed, false)
+})
+
+test('S-315：Task 之后再来工具 ⇒ 另起一段，不并回前一长段', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('sub1', TASK_TOOL_NAME, { prompt: 'sub' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' }),
+    { type: 'text', text: '都读完了' }
+  ]
+  const outline = build({
+    blocks: blocks as unknown as ContentBlock[],
+    results: new Map([
+      ['t1', okOutput()],
+      ['sub1', okOutput('started')],
+      ['t2', okOutput()]
+    ]),
+    isStreaming: false
+  })
+
+  assert.equal(outline.runs.length, 3, 'toolA / Task / toolB 各成一段')
+  assert.deepEqual(
+    outline.runs.map((run) => run.totalItemCount),
+    [1, 1, 1]
+  )
+  assert.equal(outline.runs[0].defaultCollapsed, true, 'Task 之前那段已封口')
+  assert.equal(outline.runs[2].defaultCollapsed, true, 'Task 之后那段由尾部 text 封口')
+})
+
+test('S-315：text / detail 两档不受封口影响（回归）', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' })
+  ]
+  const results = new Map([
+    ['t1', okOutput()],
+    ['t2', okOutput()]
+  ])
+
+  for (const isStreaming of [true, false]) {
+    const text = build({ blocks, results, isStreaming, density: 'text' }).runs[0]
+    assert.equal(text.defaultCollapsed, true, `text/${isStreaming}`)
+
+    const detail = build({ blocks, results, isStreaming, density: 'detail' }).runs[0]
+    assert.equal(detail.defaultCollapsed, false, `detail/${isStreaming}`)
+  }
 })
 
 test('失败的 Read 本身仍是 ordinary —— 不再被 hasError 抢成 attention', () => {
@@ -306,6 +469,61 @@ test('普通成功的 run 也不 pin（回归：别把 force 判据改松）', (
     results: new Map([['t1', okOutput()], ['t2', okOutput()]])
   })
   assert.equal(pinsOutOfCollapsedRun(outline, 't1', 'compact'), false)
+})
+
+// ── 判据 8：S-319 空白思考不打断工具链 ──
+
+/**
+ * 现场：模型在「本轮不需要思考」时返回的 reasoning_content 是纯空格，不是空串。
+ * 它会建出一个用户看不见的 thinking 块，却照样切断 run —— 连续三次工具调用被切成三个折叠块。
+ * 修法在源头掐掉空白思考（provider 解析 / 实时流 / 落库回读三处），这里钉死渲染层的结果：
+ * 空白思考不建块 ⇒ 不切段；有明文的思考照旧切段。
+ */
+function storedBlocks(segments: Array<Record<string, unknown>>): ContentBlock[] {
+  const blocks = buildChatMessageContent({ segments })
+  assert.ok(Array.isArray(blocks), 'segments 分支应返回块数组')
+  return blocks as ContentBlock[]
+}
+
+function countThinking(blocks: ContentBlock[]): number {
+  return blocks.filter((b) => b.type === 'thinking').length
+}
+
+test('空白思考不建块：连续工具调用折成一个 run（S-319 现场）', () => {
+  const blocks = storedBlocks([
+    { type: 'text', text: 'BuildSendableImageUrl 内部已经判断过 shape。' },
+    { type: 'tool_use', toolCallId: 't1', toolName: 'Edit', input: {}, status: 'completed', output: 'ok' },
+    { type: 'thinking', thinking: ' ' },
+    { type: 'tool_use', toolCallId: 't2', toolName: 'Bash', input: {}, status: 'completed', output: 'ok' },
+    { type: 'thinking', thinking: '   ' },
+    { type: 'tool_use', toolCallId: 't3', toolName: 'Bash', input: {}, status: 'error', output: 'exit 1' },
+    { type: 'thinking', thinking: ' ' },
+    { type: 'text', text: '没有变化。' }
+  ])
+  assert.equal(countThinking(blocks), 0, '空白思考不许建块')
+  const outline = build({ blocks })
+  assert.equal(outline.runs.length, 1, '三次工具调用应折成一个折叠块')
+  assert.equal(outline.runs[0].totalItemCount, 3)
+})
+
+test('有明文的思考照旧切段（判据没被改松）', () => {
+  const blocks = storedBlocks([
+    { type: 'tool_use', toolCallId: 't1', toolName: 'Read', input: {}, status: 'completed', output: 'ok' },
+    { type: 'thinking', thinking: '先确认这个文件是不是真的缺字段。' },
+    { type: 'tool_use', toolCallId: 't2', toolName: 'Read', input: {}, status: 'completed', output: 'ok' }
+  ])
+  assert.equal(countThinking(blocks), 1)
+  const outline = build({ blocks })
+  assert.equal(outline.runs.length, 2)
+})
+
+test('老格式 fallback：空白 thinking 同样不建块，明文照旧', () => {
+  const blank = buildChatMessageContent({ text: '干完了。', thinking: '   ' })
+  assert.ok(Array.isArray(blank))
+  assert.equal(countThinking(blank as ContentBlock[]), 0)
+  const withText = buildChatMessageContent({ text: '干完了。', thinking: '想一下。' })
+  assert.ok(Array.isArray(withText))
+  assert.equal(countThinking(withText as ContentBlock[]), 1)
 })
 
 function main(): void {

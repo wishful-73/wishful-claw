@@ -28,6 +28,9 @@ interface CompactToolCallHeaderProps {
   hasError: boolean
   errorTitle?: string | null
   elapsed: string | null
+  /** S-309 §4.3：执行中已超出提示阈值 —— 只换颜色并追加后缀，不改布局。 */
+  stalled?: boolean
+  stalledLabel?: string | null
   open: boolean
 }
 
@@ -107,6 +110,8 @@ export function CompactToolCallHeader({
   hasError,
   errorTitle,
   elapsed,
+  stalled = false,
+  stalledLabel = null,
   open
 }: CompactToolCallHeaderProps): React.JSX.Element {
   const hasLifecycleGlyph =
@@ -199,7 +204,15 @@ export function CompactToolCallHeader({
         />
       ) : null}
       {elapsed ? (
-        <span className="shrink-0 text-[9px] tabular-nums text-muted-foreground/60">{elapsed}</span>
+        <span
+          className={cn(
+            'shrink-0 text-[9px] tabular-nums',
+            stalled ? 'text-amber-500/85 dark:text-amber-300/80' : 'text-muted-foreground/60'
+          )}
+        >
+          {elapsed}
+          {stalledLabel ? ` · ${stalledLabel}` : null}
+        </span>
       ) : null}
       {open ? (
         <ChevronDown className="size-3 shrink-0 text-muted-foreground/60" />

@@ -16,4 +16,16 @@
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
+  <!--
+    S-313：新建项目时落到 <项目>/.wishful-claw/workflow/ 的规范正文与模板。
+    嵌进程序集而不是放 resources/：worker 是独立发布的 exe，拿不到 Electron 的
+    resourcesPath；嵌入资源跟着程序集走，打包/绿色版/AOT 都是同一份。
+    逻辑名固定成 Workflow.<文件名>，由 WorkflowTemplateWriter 按同一个规则反查。
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Workflow\Templates\*.md">
+      <LogicalName>Workflow.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

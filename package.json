@@ -1,6 +1,6 @@
 {
   "name": "wishful-claw",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Wishful Claw - Agent 编程软件",
   "author": "Wishful Claw",
   "main": "./out/main/index.js",
@@ -56,6 +56,7 @@
     "test:channel-reply-event-policy": "esbuild tests/channel-reply-event-policy/program.ts --bundle --platform=node --format=cjs --outfile=tests/channel-reply-event-policy/out/program.cjs && node tests/channel-reply-event-policy/out/program.cjs",
     "test:ipc-msgpack-routing": "esbuild tests/ipc-msgpack-routing/program.ts --bundle --platform=node --format=cjs --outfile=tests/ipc-msgpack-routing/out/program.cjs && node tests/ipc-msgpack-routing/out/program.cjs",
     "test:plugin-view-rules": "esbuild tests/plugin-view-rules/program.ts --bundle --platform=node --format=cjs --outfile=tests/plugin-view-rules/out/program.cjs && node tests/plugin-view-rules/out/program.cjs",
+    "test:extension-tool-result": "esbuild tests/extension-tool-result/program.ts --bundle --platform=node --format=cjs --outfile=tests/extension-tool-result/out/program.cjs && node tests/extension-tool-result/out/program.cjs",
     "test:plugin-assets": "esbuild tests/plugin-assets/program.ts --bundle --platform=node --format=cjs --outfile=tests/plugin-assets/out/program.cjs && node tests/plugin-assets/out/program.cjs",
     "test:plugin-audio": "esbuild tests/plugin-audio/program.ts --bundle --platform=node --format=cjs --outfile=tests/plugin-audio/out/program.cjs && node tests/plugin-audio/out/program.cjs",
     "test:plugin-cleanup": "esbuild tests/plugin-cleanup/program.ts --bundle --platform=node --format=cjs --outfile=tests/plugin-cleanup/out/program.cjs && node tests/plugin-cleanup/out/program.cjs",

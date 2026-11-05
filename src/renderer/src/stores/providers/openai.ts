@@ -33,6 +33,15 @@ export const openaiPreset: BuiltinProviderPreset = {
     'dall-e-2',
     'dall-e-3'
   ],
+  // S-316：组织 / 项目头从 C# 硬编码搬到预设，用户现在能在「额外请求头」里看见并改。
+  // 两个占位符解析成空串时整条头不发（ProviderRequestOverrides 的空值分支），
+  // 所以默认行为与改动前完全一致 —— 没填 organization 就不会带这个头。
+  requestOverrides: {
+    headers: {
+      'OpenAI-Organization': '{{organization}}',
+      'OpenAI-Project': '{{project}}'
+    }
+  },
   defaultModels: [
     // GPT-6 Astra（2026-09 官方新旗舰：$10/$50，1.05M 上下文，128K 输出）
     {

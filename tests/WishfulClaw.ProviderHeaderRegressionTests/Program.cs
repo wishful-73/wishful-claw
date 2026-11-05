@@ -23,6 +23,7 @@ internal static class Program
             MainChainHeaderChecks.Run();
             RetryStatusChecks.Run();
             TransportRetryChecks.Run();
+            TemplateHeaderChecks.Run();
             Console.WriteLine("Provider header regression checks passed.");
             return 0;
         }

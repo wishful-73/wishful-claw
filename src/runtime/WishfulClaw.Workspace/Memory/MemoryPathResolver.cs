@@ -70,6 +70,37 @@ public static class MemoryPathResolver
     }
 
     /// <summary>
+    /// S-314：scope 判定收敛到这里 —— 以前它在 <c>PromptBuilder.BuildMemoryContext</c> 里内联，
+    /// 于是「拼提示」和「算 cacheKey」要各写一遍，两处一旦分叉，缓存键就会跟提示内容脱钩，
+    /// 表现为改过的记忆永远读不到。判定只看三个入口参数，不依赖 JSON。
+    /// </summary>
+    /// <param name="sshConnectionId">SSH 项目才有；有 projectId 时优先用它当 scope id。</param>
+    /// <param name="projectId">SSH 项目的稳定 id。</param>
+    /// <param name="workingFolder">本地项目的工作目录。</param>
+    public static string ResolveScope(
+        string? sshConnectionId,
+        string? projectId,
+        string? workingFolder)
+    {
+        if (!string.IsNullOrWhiteSpace(sshConnectionId))
+        {
+            // SSH project: memory stored locally under ~/.wishful-claw/projects/{id}/
+            // Use projectId if available, otherwise fall back to sshConnectionId
+            var scopeId = !string.IsNullOrWhiteSpace(projectId) ? projectId : sshConnectionId;
+            return $"project:ssh:{scopeId}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(workingFolder))
+        {
+            // Local project: memory stored under {workingFolder}/{project data dir}/ (.wishful-claw
+            // when packaged, .wishful-claw-dev for a dev instance — see WishfulClawDataDir.ProjectDirName)
+            return $"project:{workingFolder}";
+        }
+
+        return "global";
+    }
+
+    /// <summary>
     /// Get the MEMORY.md file path for a scope.
     /// </summary>
     public static string GetMemoryFilePath(string? scope) =>

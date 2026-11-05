@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -11,6 +11,7 @@ using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
+using WishfulClaw.Infrastructure.Workflow;
 
 namespace WishfulClaw.Infrastructure.Db;
 
@@ -103,6 +104,9 @@ public static class DbProjectTools
         if (workingFolder is not null && sshConnectionId is null)
         {
             Directory.CreateDirectory(workingFolder);
+            // S-313：顺手把通用开发工作流规范与三套模板放进 <项目>/.wishful-claw/workflow/。
+            // 幂等（已存在的文件不覆盖）且不阻塞（写失败只记日志）—— 建项目是本体，这是附赠。
+            WorkflowTemplateWriter.Ensure(workingFolder);
         }
 
         DbClient.EnsureInitialized(parameters);

@@ -83,21 +83,22 @@ test('三档矩阵逐字段快照', () => {
 
 test('工具 run：没有可折叠的 ordinary 项时恒不折叠', () => {
   for (const density of CHAT_RENDER_DENSITIES) {
-    assert.equal(deriveToolRunCollapsed(density, 0, 0), false, density)
-    assert.equal(deriveToolRunCollapsed(density, 0, 1), false, density)
+    assert.equal(deriveToolRunCollapsed(density, 0, false), false, density)
+    assert.equal(deriveToolRunCollapsed(density, 0, true), false, density)
   }
 })
 
-test('工具 run：三档 × 执行中/已结束', () => {
-  // 纯文本：执行中也收
-  assert.equal(deriveToolRunCollapsed('text', 2, 1), true)
-  assert.equal(deriveToolRunCollapsed('text', 2, 0), true)
-  // 紧凑：执行中摊开、结束收起
-  assert.equal(deriveToolRunCollapsed('compact', 2, 1), false)
-  assert.equal(deriveToolRunCollapsed('compact', 2, 0), true)
+test('工具 run：三档 × 未封口/已封口', () => {
+  // 纯文本：过程层一律收起，封不封口都收
+  assert.equal(deriveToolRunCollapsed('text', 2, false), true)
+  assert.equal(deriveToolRunCollapsed('text', 2, true), true)
+  // 紧凑（S-315）：这一段还没结束就摊开，封口后才收
+  // —— 连续调用时不再「每个工具收放一次」
+  assert.equal(deriveToolRunCollapsed('compact', 2, false), false)
+  assert.equal(deriveToolRunCollapsed('compact', 2, true), true)
   // 详情：全程摊开
-  assert.equal(deriveToolRunCollapsed('detail', 2, 1), false)
-  assert.equal(deriveToolRunCollapsed('detail', 2, 0), false)
+  assert.equal(deriveToolRunCollapsed('detail', 2, false), false)
+  assert.equal(deriveToolRunCollapsed('detail', 2, true), false)
 })
 
 test('思考块：三档 × 进行中/已结束/无内容', () => {
@@ -193,14 +194,7 @@ test('折叠态下 force 项提到面板外，ordinary 项不外提', () => {
   assert.equal(shouldPinOutsideCollapsedRun(false, 'ordinary'), false)
 })
 
-test('compact 档必须与 1.0.1 旧行为逐条等价', () => {
-  // 旧：run.defaultCollapsed = ordinary > 0 && active == 0
-  for (const ordinary of [0, 1, 3]) {
-    for (const active of [0, 1, 2]) {
-      const legacy = ordinary > 0 && active === 0
-      assert.equal(deriveToolRunCollapsed('compact', ordinary, active), legacy, `${ordinary}/${active}`)
-    }
-  }
+test('compact 档：thinking / 子 Agent 仍与 1.0.1 旧行为逐条等价（S-315 只动 run）', () => {
   // 旧：thinking defaultCollapsed = !isThinking && hasContent
   for (const isThinking of [true, false]) {
     for (const hasContent of [true, false]) {
@@ -228,6 +222,31 @@ test('compact 档必须与 1.0.1 旧行为逐条等价', () => {
         )
       }
     }
+  }
+})
+
+// ── S-315：紧凑档的 run 收起时机脱离 activeCount ──
+
+test('S-315：紧凑档只在封口后收起，跑完但未封口保持展开', () => {
+  // 旧行为（1.0.1）是 `ordinary > 0 && active === 0` ⇒ 收起。
+  // 「active === 0」会把「上一个工具跑完、下一个还没来」这个小空隙也算成结束，
+  // 于是连续调用时每个工具收放一次。新行为只认 sealed。
+  for (const ordinary of [0, 1, 3]) {
+    for (const sealed of [true, false]) {
+      const expected = ordinary > 0 && sealed
+      assert.equal(
+        deriveToolRunCollapsed('compact', ordinary, sealed),
+        expected,
+        `${ordinary}/${sealed}`
+      )
+    }
+  }
+})
+
+test('S-315：text / detail 两档不受封口影响（回归）', () => {
+  for (const sealed of [true, false]) {
+    assert.equal(deriveToolRunCollapsed('text', 2, sealed), true, `text/${sealed}`)
+    assert.equal(deriveToolRunCollapsed('detail', 2, sealed), false, `detail/${sealed}`)
   }
 })
 

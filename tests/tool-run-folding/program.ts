@@ -11,6 +11,8 @@
  *   4. 卡片型工具（子 agent / 生成图 / 桌面截图 / 交互类）仍然露在面板外；
  *   5. 失败与取消表现一致，不再按工具种类分流；
  *   6. 三档渲染档位下 run 结构一致（失败不许因换档而改变是否折叠进去）。
+ *   7. S-315：连续调用时这一段只在**真的结束**后收起 —— 工具之间的小空隙不算结束。
+ *      判据是 `run.sealed`（后面出现了输出/思考，或整条消息已结束），不是 `activeCount`。
  *
  * 纯函数测试：只喂 blocks + toolResults，不碰 React。
  */
@@ -60,16 +62,24 @@ function errOutput(text = 'File not found'): { content: ToolResultContent; isErr
 }
 
 interface BuildArgs {
-  blocks: ToolUseBlock[]
+  blocks: ContentBlock[]
   results?: Map<string, { content: ToolResultContent; isError?: boolean }>
   density?: ChatRenderDensity
   liveToolCallMap?: Map<string, never>
+  /** S-315：未封口判定依赖「流是否还在继续」，默认真实渲染里最常见的「已经跑完」。 */
+  isStreaming?: boolean
 }
 
-function build({ blocks, results, density = 'compact', liveToolCallMap }: BuildArgs): ToolExecutionOutline {
+function build({
+  blocks,
+  results,
+  density = 'compact',
+  liveToolCallMap,
+  isStreaming = false
+}: BuildArgs): ToolExecutionOutline {
   return buildToolExecutionOutline({
     blocks: blocks as unknown as ContentBlock[],
-    isStreaming: false,
+    isStreaming,
     toolResults: results,
     liveToolCallMap,
     boundaryAfterBlockIndices: undefined,
@@ -133,6 +143,100 @@ test('连续 5 次 Read、第 3 次失败 ⇒ 仍是一个 run，failedCount 为
   assert.equal(run.failedCount, 1)
   assert.deepEqual(run.forceVisibleItemIds, [], '失败项不许进 force 列表')
   assert.equal(run.showToggle, true, '有 ordinary 项就该能折叠')
+})
+
+// ── 判据 7（S-315）：连续调用只开合一次 ──
+
+test('S-315：第一个工具跑完、后面还有工具 ⇒ run 不切开也不收起', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' }),
+    toolUse('t3', 'Read', { file_path: 'c.txt' })
+  ]
+  // t1 已有结果、t2/t3 还没有 —— 这就是老大看到的「上一个结束了、下一个还没来」
+  const outline = build({
+    blocks,
+    results: new Map([['t1', okOutput()]]),
+    isStreaming: true
+  })
+
+  assert.equal(outline.runs.length, 1, '工具之间的小空隙不许把 run 切开')
+  const run = outline.runs[0]
+  assert.equal(run.activeCount, 2, 't2 / t3 仍在跑')
+  assert.equal(run.sealed, false, '流还在继续且没有后续输出 ⇒ 未封口')
+  assert.equal(run.defaultCollapsed, false, '紧凑档：不许在这里收起')
+})
+
+test('S-315：全部跑完但流还在继续 ⇒ 仍未封口，保持展开（不抖的关键）', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' })
+  ]
+  const outline = build({
+    blocks,
+    results: new Map([
+      ['t1', okOutput()],
+      ['t2', okOutput()]
+    ]),
+    isStreaming: true
+  })
+  const run = outline.runs[0]
+
+  assert.equal(run.activeCount, 0, '这一刻确实没有工具在跑')
+  assert.equal(run.sealed, false, '但这一段没结束 —— 下一个工具随时会来')
+  assert.equal(run.defaultCollapsed, false, 'S-315 的核心：跑完 ≠ 收起')
+})
+
+test('S-315：出现下一段输出 ⇒ 这一段封口，紧凑档收起', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' }),
+    { type: 'text', text: '读完了，下面是结论' }
+  ]
+  const outline = build({
+    blocks: blocks as unknown as ContentBlock[],
+    results: new Map([
+      ['t1', okOutput()],
+      ['t2', okOutput()]
+    ]),
+    isStreaming: true
+  })
+
+  assert.equal(outline.runs.length, 1)
+  const run = outline.runs[0]
+  assert.equal(run.sealed, true, '后面渲染出了文本 ⇒ 封口')
+  assert.equal(run.defaultCollapsed, true, '紧凑档封口后收起')
+})
+
+test('S-315：流结束 ⇒ 最后一段封口，紧凑档收起', () => {
+  const outline = build({
+    blocks: [toolUse('t1', 'Read', { file_path: 'a.txt' })],
+    results: new Map([['t1', okOutput()]]),
+    isStreaming: false
+  })
+  const run = outline.runs[0]
+
+  assert.equal(run.sealed, true)
+  assert.equal(run.defaultCollapsed, true)
+})
+
+test('S-315：text / detail 两档不受封口影响（回归）', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' })
+  ]
+  const results = new Map([
+    ['t1', okOutput()],
+    ['t2', okOutput()]
+  ])
+
+  for (const isStreaming of [true, false]) {
+    const text = build({ blocks, results, isStreaming, density: 'text' }).runs[0]
+    assert.equal(text.defaultCollapsed, true, `text/${isStreaming}`)
+
+    const detail = build({ blocks, results, isStreaming, density: 'detail' }).runs[0]
+    assert.equal(detail.defaultCollapsed, false, `detail/${isStreaming}`)
+  }
 })
 
 test('失败的 Read 本身仍是 ordinary —— 不再被 hasError 抢成 attention', () => {

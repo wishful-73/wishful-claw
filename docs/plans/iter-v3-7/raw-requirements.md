@@ -3,13 +3,14 @@
 > 拆分于 2026-11-04 17:1x。来源 = v3-iter-6 收尾移交 + 该迭代「已实施待真机验收」六条。
 > 本文件只列清单与依据，刀序见 [plan.md](plan.md)。
 
-## 一、本迭代实施（3 条）
+## 一、本迭代实施（4 条）
 
 | 编号 | 标题 | 现状 / 依据 | 正文 |
 |---|---|---|---|
 | S-305 | 插件卡片渲染通道是死的 | 6 种渲染器 + iframe 沙箱 + 高度协商**全部完工**，总闸没合：`parseExtensionToolResult`（`extension-result.ts:4-6`）无条件 `return null`；`__wishfulClawExtensionResult` 全仓只在类型定义里出现一次、主进程零产出 ⇒ 插件卡片一张都出不来。老大 2026-11-03 09:12「登记一个需求，这个需求暂时不在本迭代处理」，并定「CodeGraph 先走普通工具卡片」（MCP `content:[{type:'text'}]`，零改动） | [../iter-v3-6/requirements/S-305.md](../iter-v3-6/requirements/S-305.md) |
 | S-313 | 把「开发工作流 + 迭代文档 + 计划」做成产品能力，产出落项目 `.wishful-claw/` | 五项已定：①目录名 `.wishful-claw/workflow/`（`plans` / `goals` 已被占用）②注入**指针式**，新建项目复制一份模板、系统提示只提一句路径，**读不读由 AGENTS.md 决定**，软件侧零开关零 UI ③本仓 `docs/` 一字不动 ④本期只做核心三件 ⑤热记忆同构改造（§6.6） | [requirements/S-313.md](requirements/S-313.md) |
 | S-314 | 热记忆变更后系统提示不重建，提示里长期是过期快照 | 三条实测证据：`SystemPromptCache.cs:46-47` 注释承诺刷新，但 `GetPersonaFingerprint`（`:83-124`）只扫 personas 目录 ⇒ MEMORY.md 没进 cacheKey；`Invalidate` / `Clear` 全仓 0 调用 ⇒ 实际是「worker 重启才重建」。根因结构性：「内容新」与「前缀缓存命中」在「塞全文」这个结构下天然互斥 | [requirements/S-314.md](requirements/S-314.md) |
+| S-315 | 连续工具调用时，工具 run 折叠块每个工具都开合一次 | 老大 11-05 08:35 报「一个工具调用就展开，这个工具结束就收起，下一个继续展开，频率太高」。根因：`deriveToolRunCollapsed`（`render-density.ts:102-110`）拿 `activeCount > 0` 一个三目当开关，而 `compact`（**默认档**）两值恰好是 `false` / `true` ⇒ 每完成一个工具就收一次。**只有默认档抖**，`text` 恒收、`detail` 恒展 | [requirements/S-315.md](requirements/S-315.md) |
 
 ## 二、承接上一迭代的真机验收（6 条，**已实施未验收**）
 

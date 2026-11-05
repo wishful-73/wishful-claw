@@ -2,7 +2,7 @@
 
 > 分支：`dev/v3-iter-8`（base = `86166fd4`，= v1.0.7 发布记录提交，即最新 `main`；tag `v1.0.7` → `02ae848b`）。执行期内只 commit，**不 push**。
 > 产品版本：`1.0.8`（开工时 `package.json` 是 `1.0.7`，收尾时改），tag `v1.0.8`。
-> 状态：**已拆分，未开工**（2026-11-05 14:49 老大「开新迭代」；14:56 追加 S-321 插为刀 0；15:04 追加内存三条；15:14 内存三条从一张合单拆为 **S-322 / S-323 / S-324** 三个独立编号 —— 老大：「你刚刚直接登记三个也行啊 突然搞个abc干啥」）。
+> 状态：**实施中**（2026-11-05 14:49 老大「开新迭代」；14:56 追加 S-321 插为刀 0；15:04 追加内存三条；15:14 内存三条从一张合单拆为 **S-322 / S-323 / S-324** 三个独立编号 —— 老大：「你刚刚直接登记三个也行啊 突然搞个abc干啥」；S-327 刀 9~15 已于 18:2x 全部落地）。
 > 门禁基线（沿用 v3-iter-7 收尾实测）：`npm run typecheck` 三配置 0 错｜`npm test` **125/125**｜`dotnet build` 两套 sln（`-t:Rebuild`）—— 主 sln 2 警告（均为已挂账 S-320 的 `NU1903`）/ 0 错误，测试 sln 0/0。
 > 前置：v1.0.7 已双面发布，是**最后一个带 WorkBuddy 的公开版**。
 
@@ -56,24 +56,49 @@
 
 | 编号 | 一句话 | 性质 | 归属 |
 |---|---|---|---|
-| **S-325** | 章程指向了不存在的项目：`AGENTS.md:25` 与 `docs/project-structure.md:30-31`、`:56` 仍把 `WishfulClaw.CodeGraph` 当 vendored 项目写，它早已在 S-303 剥离为插件 | **修文档**（零代码） | **本迭代可做** |
-| **S-326** | 分层职责条款与实现打架：`AGENTS.md:92` 说 Worker「只保留进程入口与模块注册」，实际 `MemoryModule` 两文件 512 行真实现；`AGENTS.md:56` 把 33 个 `Db*Tools`（8,204 行）算作 Infrastructure 职责，`:59` 又说该层目的是让 Tools 迁出 | **二选一裁定** | **待老大拍板 A/B** |
-| **S-327** | Agent 根目录平铺 **140** 个 `.cs`，章程只承认 6 类，其中 `AgentRuntime*` 执行器 **52** 个 + 其它杂项 **17** 个（占 49%）它完全没提 | **纯结构重构** | **下个迭代** |
+| **S-325** | 章程指向了不存在的项目：`AGENTS.md:25` 与 `docs/project-structure.md:30-31`、`:56` 仍把 `WishfulClaw.CodeGraph` 当 vendored 项目写，它早已在 S-303 剥离为插件 | **修文档**（零代码） | **✅ 已实施**（commit `9a4acfeb`） |
+| **S-326** | 分层职责条款与实现打架：`AGENTS.md:92` 说 Worker「只保留进程入口与模块注册」，实际 `MemoryModule` 两文件 512 行真实现；`AGENTS.md:56` 把 33 个 `Db*Tools`（8,204 行）算作 Infrastructure 职责，`:59` 又说该层目的是让 Tools 迁出 | **二选一裁定** | **✅ 16:47 裁定 A+C，已实施**（commit `9a4acfeb`） |
+| **S-327** | Agent 根目录平铺 **140** 个 `.cs`，章程只承认 6 类，其中 `AgentRuntime*` 执行器 **52** 个 + 其它杂项 **17** 个（占 49%）它完全没提 | **纯结构重构** | **✅ 已实施**（刀 9~15，`06f52e13`…`8bd42ab0`，根目录 140 → **24**） |
 
-**S-325 顺带包含两条零风险清理**：`AGENTS.md:81` 的 Agent 依赖清单漏写 `Workspace`（实际 9 个文件 `using WishfulClaw.Workspace.Memory`，靠 Persona 传递才编过）；`Infrastructure/Memory/` 与 `Agent/tmp/agent-verify-*` 是空目录残留。
+**S-325 顺带包含两条零风险清理**：`AGENTS.md:81` 的 Agent 依赖清单漏写 `Workspace`（实际 **10** 个文件 `using WishfulClaw.Workspace`，靠 Persona 传递才编过 —— 登记时写 9 个，实施时实测 10 个）；`Infrastructure/Memory/` 与 `Agent/tmp/agent-verify-*` 是空目录残留。
 
 **S-326 为什么是裁定项而不是缺陷**：`Db*Tools` 迁进 Agent 会让 Agent 从「依赖 Infrastructure 抽象」退化成「直接压在 33 个具体类和表结构上」 —— 耦合会**加深**而不是减弱。我的建议是**选 A（改章程并写清判据）**，理由与 A/B 代价对比见 [S-326 §四-§六](requirements/S-326.md)。
 
-**S-327 为什么不能塞本迭代**：140 个文件的 `namespace` 搬迁会污染 `git blame`，与刀 6~8 的内存修复混在一起出问题时无法归因。结构重构应当作独立迭代的唯一主题，崩了能整体回滚。
+### S-327 刀序（本迭代，**17:03 裁定**）
+
+> 原判断「不能塞本迭代」已推翻 —— 老大 17:03「当前迭代做，主要是当前迭代才拆分出来不久，今天下午才开始的」。复核：原论据只有「刀 0~8 已满」，属排期偏好而非技术障碍；搬迁的真实风险由「一刀一簇 + 每刀独立 commit + 可单独 revert」控制，与放哪个迭代无关。
+
+| 刀 | 建目录 | 移入 | 文件数 | 结果 |
+|---|---|---|---|---|
+| **9** | `Executors/` | 全部 `AgentRuntime*` ＋ 2 个伪装 partial | **54** | ✅ `06f52e13` · 140 → 86 |
+| **10** | `Llm/` | `OpenAI*` / `Anthropic*` / `Provider*` | 23 | ✅ `e6a55181` · 86 → 63 |
+| **11** | `SubAgents/` | `SubAgent*` + `BackgroundSubAgent*` | 14 | ✅ `94410801` · 63 → 49 |
+| **12** | `Compression/` | `ContextCompression*` | 8 | ✅ `331eb43e` · 49 → 41 |
+| **13** | `Sessions/` | `Session*` | 5 | ✅ `bd02143a` · 41 → 36 |
+| **14** | `Protocol/` `Results/` `Images/` `Desktop/` | StreamSegmentBoundary / MessagePackEmitter / ApiUserAgent；`Aot*`×3；`Image*`×2；DesktopWindowLocator + SandboxElevationExecutor | 10 | ✅ `6d23bd6f` · 36 → 26 |
+| **15** | 归位收口 | `RequestDebugBodyTrimmer`→`Protocol/`、`SystemPromptCache`→`Llm/`；其余杂项与 AgentLoop 同生命周期留根 | 2 | ✅ `8bd42ab0` · 26 → **24** |
+
+**三处与预算的偏差（详见 [S-327 §5.1](requirements/S-327.md)）：**
+
+- 刀 9 是 **54** 不是 52 —— `AskUserAnswerBuilder` / `AskUserCoercion` 文件名不带前缀，实声明 `partial class AgentRuntimeAskUserExecutor`，不同搬会把 partial 劈成两个命名空间的同名类
+- 刀 14 的 `Protocol/` 是 **3** 不是 4 —— `ConversationCodec.cs` 实声明 `partial class AgentLoop`，搬走等于拆 AgentLoop，已退回根目录；`Results/` 是 3 不是 4，登记表把 `AotProjectResultTypes` 重复计了一次
+- 刀 14 把原计划的四个目录**合并成一刀**：四簇互不相关且各自编译收敛要跑 40~160 错，分四刀的时间成本远超收益。回滚粒度变成「四目录一起」，可接受
+
+**两条硬约束**（详见 [S-327 §五](requirements/S-327.md)）：
+
+- 模型 Provider 目录叫 **`Llm/`**，不能叫 `Providers/` —— `Agent/Tools/Providers/` 已被 25 个**工具**提供者占用，`project-structure.md:56` 已专门写过「⚠️ 别混」
+- 只 `git mv` + 改 `namespace`，**不改文件名、不改逻辑**。看到顺手能优化的记下来另开单 —— 掺进搬迁里就分不清编译错误是搬迁错还是改动错
+
+**引用基线（17:05 实测，开工前必读）**：C# 侧 `AgentRuntime` 命中涉及 **Agent 内 165 文件 / Worker 4 / tests 27 / 其它 2**，登记单原估「61 个测试文件」**低估 3 倍**。原因是 C# 命名空间只沿父链查找 —— `WishfulClaw.Agent.Tools` 向上找的是 `WishfulClaw.Agent`，**不会**找到兄弟 `WishfulClaw.Agent.Executors`，所以连原本就在 `WishfulClaw.Agent` 下的文件也要补 using。前端 101 处命中**全是同名无关**（`registerNativeAgentRuntimeHandlers`、局部变量 `agentRuntime`），**一行不改**。明细见 [S-327 §八](requirements/S-327.md)。
 
 ## 三、开工前必须拍板的事
 
-**两条**。第 1 条不阻塞开工；第 2 条是 S-326 的裁定，**不影响刀 6~8（已实施）**，只决定 S-326 自己怎么落。
+**一条**。不阻塞开工。原第 2 条（S-326 A/B）已于 16:47 裁定，见下表。
 
 | # | 事项 | 怎么定 |
 |---|---|---|
 | 1 | 僵尸记录：**剔除** vs **保留但隐藏** | 取决于悬空 `providerId` 回落路径验不验得通 —— 验通即剔除，验不通即隐藏。**实施时先验再定，不用回头问** |
-| 2 | S-326：A1 `MemoryModule` 512 行、A2 33 个 `Db*Tools` 8,204 行 —— **改章程承认** 还是 **迁代码** | 我的建议是 **A（改章程）**，核心理由：迁 `Db*Tools` 进 Agent 会让 Agent 直接耦合表结构，耦合是加深不是减弱。代价对比见 [S-326 §四](requirements/S-326.md)。**需老大拍板才动** |
+| 2 | ~~S-326：改章程承认 还是 迁代码~~ **已裁定** | **✅ 16:47 裁定 A + C 并实施**（commit `9a4acfeb`）：A = 章程写清 `Db*Tools` 判据；C = 补 `DbMemoryTools`，把 15 处手写 SQL 收成 1 处。**原「只需 A」的建议被推翻** —— 做完 C 之后 A1 那条指控自己就消解了，不是靠改章程绕过去 |
 
 > 原先第二条「宠物 / 翻译用到的多账号轮转还剩多少真实用途」**已作废** —— S-321 核实后两者都是死代码，OAuth 摘完 `provider-auth.ts` 直接整目录清，不存在「还剩多少用途」这个问题。
 
@@ -103,4 +128,4 @@
 - [raw-requirements.md](raw-requirements.md) —— 清单（实施 / 挂账 / 候选池 / 订正记录）
 - [changelog.md](changelog.md) —— 裁定与口径流水（按日期追加）
 - 需求正文：[S-321](requirements/S-321.md)（本迭代新建，含三处残留的实读证据）；内存三条 [S-322](requirements/S-322.md)（会话驻留淘汰，治根）/ [S-323](requirements/S-323.md)（`request_debug` 白推）/ [S-324](requirements/S-324.md)（base64 前缀重复复制），均本迭代新建、均含主仓实读行号；[S-318](../iter-v3-7/requirements/S-318.md) —— **留在原目录不搬家**（v3-iter-7 登记时就在那里）
-- 分层体检三条（本迭代 16:40 登记）：[S-325](requirements/S-325.md)（章程指向不存在的项目 + 空目录）/ [S-326](requirements/S-326.md)（Worker 薄层与 `Db*Tools` 归置，待裁定）/ [S-327](requirements/S-327.md)（Agent 根目录 140 文件归位，下个迭代）
+- 分层体检三条（本迭代 16:40 登记）：[S-325](requirements/S-325.md)（章程指向不存在的项目 + 空目录）/ [S-326](requirements/S-326.md)（Worker 薄层与 `Db*Tools` 归置，待裁定）/ [S-327](requirements/S-327.md)（Agent 根目录 140 文件归位，✅ 已完成）

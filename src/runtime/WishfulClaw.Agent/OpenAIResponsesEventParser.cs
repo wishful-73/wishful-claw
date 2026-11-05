@@ -58,7 +58,9 @@ internal static partial class OpenAIResponsesProvider
 
             case "response.reasoning_summary_text.delta":
             case "response.reasoning_summary_text.done":
-                if ((JsonHelpers.GetString(root, "delta") ?? JsonHelpers.GetString(root, "text")) is { Length: > 0 } thinking)
+                // S-319：空白 thinking 同理不 emit —— 它不显示，却会切断连续工具调用的折叠链。
+                if ((JsonHelpers.GetString(root, "delta") ?? JsonHelpers.GetString(root, "text")) is { } thinking &&
+                    !string.IsNullOrWhiteSpace(thinking))
                 {
                     MarkFirstToken(parseState, startedAt);
                     parseState.EmittedThinkingDelta = true;

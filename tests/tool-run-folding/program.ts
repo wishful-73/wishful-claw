@@ -27,6 +27,7 @@ import {
 } from '../../src/renderer/src/components/chat/execution-outline'
 import { TASK_TOOL_NAME } from '../../src/renderer/src/lib/agent/sub-agents/create-tool'
 import { IMAGE_GENERATE_TOOL_NAME, DESKTOP_SCREENSHOT_TOOL_NAME } from '../../src/renderer/src/lib/app-plugin/types'
+import { buildChatMessageContent } from '../../src/renderer/src/lib/agent/chat-message-blocks'
 import {
   deriveProcessRenderForm,
   shouldPinOutsideCollapsedRun
@@ -410,6 +411,61 @@ test('普通成功的 run 也不 pin（回归：别把 force 判据改松）', (
     results: new Map([['t1', okOutput()], ['t2', okOutput()]])
   })
   assert.equal(pinsOutOfCollapsedRun(outline, 't1', 'compact'), false)
+})
+
+// ── 判据 8：S-319 空白思考不打断工具链 ──
+
+/**
+ * 现场：模型在「本轮不需要思考」时返回的 reasoning_content 是纯空格，不是空串。
+ * 它会建出一个用户看不见的 thinking 块，却照样切断 run —— 连续三次工具调用被切成三个折叠块。
+ * 修法在源头掐掉空白思考（provider 解析 / 实时流 / 落库回读三处），这里钉死渲染层的结果：
+ * 空白思考不建块 ⇒ 不切段；有明文的思考照旧切段。
+ */
+function storedBlocks(segments: Array<Record<string, unknown>>): ContentBlock[] {
+  const blocks = buildChatMessageContent({ segments })
+  assert.ok(Array.isArray(blocks), 'segments 分支应返回块数组')
+  return blocks as ContentBlock[]
+}
+
+function countThinking(blocks: ContentBlock[]): number {
+  return blocks.filter((b) => b.type === 'thinking').length
+}
+
+test('空白思考不建块：连续工具调用折成一个 run（S-319 现场）', () => {
+  const blocks = storedBlocks([
+    { type: 'text', text: 'BuildSendableImageUrl 内部已经判断过 shape。' },
+    { type: 'tool_use', toolCallId: 't1', toolName: 'Edit', input: {}, status: 'completed', output: 'ok' },
+    { type: 'thinking', thinking: ' ' },
+    { type: 'tool_use', toolCallId: 't2', toolName: 'Bash', input: {}, status: 'completed', output: 'ok' },
+    { type: 'thinking', thinking: '   ' },
+    { type: 'tool_use', toolCallId: 't3', toolName: 'Bash', input: {}, status: 'error', output: 'exit 1' },
+    { type: 'thinking', thinking: ' ' },
+    { type: 'text', text: '没有变化。' }
+  ])
+  assert.equal(countThinking(blocks), 0, '空白思考不许建块')
+  const outline = build({ blocks })
+  assert.equal(outline.runs.length, 1, '三次工具调用应折成一个折叠块')
+  assert.equal(outline.runs[0].totalItemCount, 3)
+})
+
+test('有明文的思考照旧切段（判据没被改松）', () => {
+  const blocks = storedBlocks([
+    { type: 'tool_use', toolCallId: 't1', toolName: 'Read', input: {}, status: 'completed', output: 'ok' },
+    { type: 'thinking', thinking: '先确认这个文件是不是真的缺字段。' },
+    { type: 'tool_use', toolCallId: 't2', toolName: 'Read', input: {}, status: 'completed', output: 'ok' }
+  ])
+  assert.equal(countThinking(blocks), 1)
+  const outline = build({ blocks })
+  assert.equal(outline.runs.length, 2)
+})
+
+test('老格式 fallback：空白 thinking 同样不建块，明文照旧', () => {
+  const blank = buildChatMessageContent({ text: '干完了。', thinking: '   ' })
+  assert.ok(Array.isArray(blank))
+  assert.equal(countThinking(blank as ContentBlock[]), 0)
+  const withText = buildChatMessageContent({ text: '干完了。', thinking: '想一下。' })
+  assert.ok(Array.isArray(withText))
+  assert.equal(countThinking(withText as ContentBlock[]), 1)
 })
 
 function main(): void {

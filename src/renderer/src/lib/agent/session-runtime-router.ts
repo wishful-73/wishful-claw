@@ -197,7 +197,9 @@ export function appendRuntimeThinkingDelta(
   thinking: string
 ): void {
   const cleanedThinking = stripThinkTagMarkers(thinking)
-  if (!cleanedThinking) return
+  // S-319：纯空白的思考不建块 —— 它在界面上根本不显示，却会让 execution-outline
+  // 把连续的工具调用当成「下一段思考来了」而切成多个折叠块。
+  if (!cleanedThinking.trim()) return
   emitSessionRuntimeSync({
     kind: 'append_thinking_delta',
     sessionId,

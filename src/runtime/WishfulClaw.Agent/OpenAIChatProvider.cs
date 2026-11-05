@@ -42,13 +42,13 @@ internal static partial class OpenAIChatProvider
 
         var debugHeaders = BuildDebugHeaders(provider, state.SessionId);
 
-        // Emit request_debug event
+        // Emit request_debug event（S-323：载荷先裁再推，实际请求仍用原 body）
         await AgentRuntimeTools.EmitAsync(
             state, context,
             new AgentRuntimeStreamEvent(
                 "request_debug",
                 DebugInfo: new AgentRuntimeRequestDebugInfo(
-                    url, "POST", debugHeaders, body,
+                    url, "POST", debugHeaders, RequestDebugBodyTrimmer.Trim(body),
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                     JsonHelpers.GetString(provider, "providerId"),
                     JsonHelpers.GetString(provider, "providerBuiltinId"),

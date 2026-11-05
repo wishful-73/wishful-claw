@@ -219,7 +219,7 @@ internal static partial class OpenAIResponsesProvider
                     requestUrl,
                     "POST",
                     debugHeaders,
-                    body,
+                    RequestDebugBodyTrimmer.Trim(body),
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                     JsonHelpers.GetString(provider, "providerId"),
                     JsonHelpers.GetString(provider, "providerBuiltinId"),

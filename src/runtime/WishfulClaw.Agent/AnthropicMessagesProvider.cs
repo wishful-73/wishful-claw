@@ -53,7 +53,7 @@ internal static partial class AnthropicMessagesProvider
             new AgentRuntimeStreamEvent(
                 "request_debug",
                 DebugInfo: new AgentRuntimeRequestDebugInfo(
-                    url, "POST", BuildDebugHeaders(provider), body,
+                    url, "POST", BuildDebugHeaders(provider), RequestDebugBodyTrimmer.Trim(body),
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                     JsonHelpers.GetString(provider, "providerId"),
                     JsonHelpers.GetString(provider, "providerBuiltinId"),

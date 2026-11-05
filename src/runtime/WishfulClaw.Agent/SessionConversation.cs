@@ -25,6 +25,12 @@ public sealed class SessionConversation
     private int _compactionWatermark;
 
     /// <summary>
+    /// Last access timestamp on the monotonic tick clock (S-322). Read by
+    /// <see cref="SessionConversationManager"/> to decide eviction; see <see cref="Touch"/>.
+    /// </summary>
+    private long _lastAccessTick = Environment.TickCount64;
+
+    /// <summary>
     /// Message count at the last successfully applied compaction. Prevents the
     /// same compressed conversation from re-entering compaction immediately while
     /// still allowing a later turn to compact newly appended data.
@@ -113,6 +119,28 @@ public sealed class SessionConversation
         Interlocked.Exchange(ref _sessCacheHit, 0);
         Interlocked.Exchange(ref _sessCacheMiss, 0);
     }
+
+    /// <summary>
+    /// Marks one access (S-322). Every caller that obtains this conversation from
+    /// <see cref="SessionConversationManager"/> must go through it, because eviction
+    /// reads this timestamp — an untouched entry looks idle and gets dropped.
+    /// </summary>
+    public void Touch()
+        => Volatile.Write(ref _lastAccessTick, Environment.TickCount64);
+
+    /// <summary>
+    /// Milliseconds since the last <see cref="Touch"/>. Uses the monotonic tick clock so a
+    /// wall-clock correction (or a laptop waking from sleep) can neither fake nor mask idleness.
+    /// </summary>
+    public long IdleMilliseconds
+        => Environment.TickCount64 - Volatile.Read(ref _lastAccessTick);
+
+    /// <summary>
+    /// Test seam: pretend the last access happened <paramref name="idle"/> ago, so the
+    /// eviction path can be exercised without waiting two hours (S-322 acceptance #2/#3).
+    /// </summary>
+    internal void ForceIdleForTests(TimeSpan idle)
+        => Volatile.Write(ref _lastAccessTick, Environment.TickCount64 - (long)idle.TotalMilliseconds);
 
     /// <summary>
     /// Number of wire messages currently stored.

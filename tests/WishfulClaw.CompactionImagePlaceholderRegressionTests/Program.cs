@@ -14,6 +14,7 @@
 
 using System;
 using System.Text.Json;
+using WishfulClaw.Agent.Compression;
 using WishfulClaw.Agent;
 
 var passed = 0;

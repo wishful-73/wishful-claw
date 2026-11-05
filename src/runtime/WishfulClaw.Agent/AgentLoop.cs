@@ -11,6 +11,7 @@
 // files to preserve an ordering that reads fine in one place. See AGENTS.md.
 
 using System.Text.Json;
+using WishfulClaw.Agent.Compression;
 using WishfulClaw.Agent.Llm;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;

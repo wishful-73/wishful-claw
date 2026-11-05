@@ -7,6 +7,7 @@
 
 using System.Net;
 using System.Text.Json;
+using WishfulClaw.Agent.Compression;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Agent.Executors;

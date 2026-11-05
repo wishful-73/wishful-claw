@@ -26,7 +26,7 @@ using WishfulClaw.Agent.Llm;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Compression;
 
 /// <summary>
 /// LLM-based context compression, inspired by Reasonix's compact.go.

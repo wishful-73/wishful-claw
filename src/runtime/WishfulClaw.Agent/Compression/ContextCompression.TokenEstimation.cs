@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Compression;
 
 /// <summary>
 /// Token estimation utilities for context compression.

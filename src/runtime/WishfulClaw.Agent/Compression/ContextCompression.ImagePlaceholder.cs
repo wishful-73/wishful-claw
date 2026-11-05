@@ -5,7 +5,7 @@ using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Compression;
 
 /// <summary>
 /// S-275（2026-10-30）：压缩时把保留尾部里「大得离谱」的图片块就地换成一行占位文本。

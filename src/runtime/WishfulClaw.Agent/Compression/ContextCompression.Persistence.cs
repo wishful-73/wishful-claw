@@ -1,9 +1,9 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Compression;
 
 /// <summary>
 /// Persists the compression result as the session's durable compaction snapshot so a

@@ -1,7 +1,7 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using WishfulClaw.Contracts;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Compression;
 
 /// <summary>
 /// Builds the chat-display artifacts (compact boundary + summary message) for a

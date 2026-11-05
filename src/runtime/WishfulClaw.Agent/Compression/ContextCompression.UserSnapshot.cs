@@ -1,4 +1,4 @@
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Compression;
 
 /// <summary>
 /// ContextCompression 的快照分部类（S-208）：压缩时把「用户最后说了什么、什么时候说的、

@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using WishfulClaw.Agent.Compression;
 using WishfulClaw.Agent.Executors;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;

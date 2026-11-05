@@ -1,4 +1,4 @@
-﻿namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Compression;
 
 public static partial class ContextCompression
 {

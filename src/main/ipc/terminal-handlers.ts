@@ -6,11 +6,11 @@
  */
 
 /*
- * 500-line exemption: 684 lines as of 2026-10-28 (before this iteration's sessionId/projectId
- * fields). This is the node-pty session store and nothing else — the session map, its output/exit
- * bookkeeping, the owner-window routing and the IPC surface that mutates it all share one lifetime,
- * and the map is deliberately module-private so nothing outside this file can hold a session. Moving
- * the handlers out would mean exporting the map. See AGENTS.md.
+ * 500 行豁免（2026-10-28，行数以实际为准，AGENTS.md §大文件拆分 第 5 条第 4 类「拆得动但代价大于收益」）：
+ * 这一整个文件就是 node-pty 的会话存储，没有别的。会话 Map、输出/退出记账、按发起窗口的路由、
+ * 以及改动这份 Map 的 IPC 表面，共用同一个生命周期；而 Map 是刻意保持模块私有的 —— 一旦把
+ * handler 拆出去，就必须把 Map 导出，等于给「谁能持有会话」这件事新开一个跨文件的口子，
+ * 而拆出来的两侧仍要反向 import 回来。代价的实质就是这层导出。
  */
 
 import { BrowserWindow, type WebContents } from 'electron'

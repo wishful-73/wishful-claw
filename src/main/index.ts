@@ -1,3 +1,11 @@
+/**
+ * 超标待拆分（2026-11-05，行数以实际为准，AGENTS.md §大文件拆分 第 7 条）。
+ * 现状：主进程装配入口，混了三件事 —— 窗口创建（`createWindow` / `showUpdateDetails`）、
+ * 托盘与菜单（`getTrayIcon` / `createTray`）、应用生命周期与 IPC 注册清单（`app.on(...)` 与各 `register*Handlers`）。
+ * 拆分方向：`main-window-create.ts` / `main-tray.ts` / `main-lifecycle.ts`，由本文件按现有顺序调用。
+ * 未随本轮动：ready 前的顺序约束（数据目录 → 单实例锁 → 协议注册）与窗口 / tray 单例引用要一并搬，
+ * 而启动路径刚在 v1.0.4~v1.0.8 验收过，改动挪到下个迭代单独走。
+ */
 import { app, BrowserWindow, dialog, shell, Tray, Menu, nativeImage } from 'electron'
 import { mkdirSync } from 'fs'
 import { join } from 'path'

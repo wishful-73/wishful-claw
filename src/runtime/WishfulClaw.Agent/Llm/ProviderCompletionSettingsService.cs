@@ -4,7 +4,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 public static class ProviderCompletionSettingsService
 {

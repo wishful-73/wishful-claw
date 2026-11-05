@@ -9,7 +9,7 @@ using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Agent.Executors;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// HTTP send and SSE stream reading: provider stream reader, SSE line parsing, delta processing, upstream failure detection. Split out per AGENTS.md 大文件拆分 (2026-10-28), bodies moved verbatim.

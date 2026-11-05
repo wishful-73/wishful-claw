@@ -3,7 +3,7 @@ using System.Text.Json;
 using WishfulClaw.Agent.Tools.FileTools;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// Image and tool result content helpers.

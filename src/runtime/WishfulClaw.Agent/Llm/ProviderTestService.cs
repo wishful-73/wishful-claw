@@ -6,7 +6,7 @@ using WishfulClaw.Agent.Executors;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// Provider connectivity test and model list fetching.

@@ -12,7 +12,7 @@ using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// Request body builder for the OpenAI Responses API provider.

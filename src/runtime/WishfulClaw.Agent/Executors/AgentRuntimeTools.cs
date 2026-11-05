@@ -8,6 +8,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 

@@ -12,6 +12,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 
 // 记忆会落盘到全局数据目录；先指到临时目录，别污染真实的 ~/.wishful-claw

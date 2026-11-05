@@ -13,6 +13,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using WishfulClaw.Agent.Executors;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 
 var passed = 0;

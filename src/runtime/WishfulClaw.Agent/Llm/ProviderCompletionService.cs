@@ -7,7 +7,7 @@ using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
 using WishfulClaw.Infrastructure.Db;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// Single-shot provider completion for auxiliary flows (prompt optimizer, etc.).

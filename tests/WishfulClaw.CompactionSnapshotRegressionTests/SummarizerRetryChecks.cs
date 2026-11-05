@@ -1,4 +1,5 @@
 using System.Net;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 
 namespace WishfulClaw.CompactionSnapshotRegressionTests;

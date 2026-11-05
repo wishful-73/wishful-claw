@@ -15,6 +15,7 @@
 using System;
 using System.Text;
 using System.Text.Json;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 
 var passed = 0;

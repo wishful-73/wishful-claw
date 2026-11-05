@@ -9,7 +9,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// Reasoning-details accumulation (OpenRouter streaming fragments) and its private accumulator. Split out per AGENTS.md 大文件拆分 (2026-10-28), bodies moved verbatim.

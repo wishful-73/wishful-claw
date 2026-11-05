@@ -4,7 +4,7 @@ using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Infrastructure.Storage;
 using WishfulClaw.Agent.Executors;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// Request-level usage logging hook (#1, iteration 28).

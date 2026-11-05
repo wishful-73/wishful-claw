@@ -3,6 +3,7 @@ using System;
 using System.Buffers.Binary;
 
 using System.IO;
+using WishfulClaw.Agent.Llm;
 
 namespace WishfulClaw.Agent.Tools.FileTools;
 

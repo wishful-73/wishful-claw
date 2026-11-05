@@ -2,7 +2,7 @@ using System.Net.Http;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// The single definition point for the provider header chain: the streaming

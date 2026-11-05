@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Text.Json;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Agent.Executors;
 

@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.Json;
+using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 
 namespace WishfulClaw.ProviderHeaderRegressionTests;

@@ -15,7 +15,7 @@ using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Http;
 using WishfulClaw.Agent.Executors;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// OpenAI Responses API provider (openai-responses protocol).

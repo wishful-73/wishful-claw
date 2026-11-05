@@ -2,7 +2,7 @@ using System.Net.Http;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// HTTP header and body override utilities for provider requests.

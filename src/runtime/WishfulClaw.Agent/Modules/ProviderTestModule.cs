@@ -1,4 +1,5 @@
-﻿using WishfulClaw.Contracts;
+using WishfulClaw.Agent.Llm;
+using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Agent;

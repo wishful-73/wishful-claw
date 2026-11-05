@@ -1,4 +1,4 @@
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// Thrown when the provider completes a turn successfully (HTTP 200) but returns

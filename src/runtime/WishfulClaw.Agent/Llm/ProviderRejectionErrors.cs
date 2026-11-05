@@ -1,4 +1,4 @@
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// 识别上游因「请求体本身有问题」而拒绝的错误（S-262）。

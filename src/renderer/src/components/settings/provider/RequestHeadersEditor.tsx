@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -52,6 +52,9 @@ const sameHeaders = (a: Record<string, string>, b: Record<string, string>): bool
   return keys.every((key) => b[key] === a[key])
 }
 
+/** 名称与值都空着的新增行 —— 保存时丢掉，免得留一行永远显示不出来的空壳。 */
+const isEmptyRow = (row: HeaderRow): boolean => !row.name.trim() && !row.value.trim()
+
 export interface RequestHeadersEditorProps {
   headers: Record<string, string> | undefined
   onChange: (headers: Record<string, string>) => void
@@ -69,6 +72,10 @@ export interface RequestHeadersEditorProps {
  * are committed, which is what the previous one-keystroke-per-save version did:
  * the user saw a red row and assumed nothing was persisted.
  *
+ * 2026-11-05（老大口径）：每行**默认是纯文字**，不再是常驻输入框 —— 双击这一行、
+ * 或点行尾的铅笔按钮才变输入框，保存/取消后整组回到纯文字。「编辑形态」与「已保存
+ * 形态」在视觉上必须能一眼分开，否则用户不知道刚才那下到底存没存。
+ *
  * Remount it with `key={provider.id}` when the edited provider changes — the
  * draft is intentionally discarded then.
  */
@@ -79,11 +86,20 @@ export function RequestHeadersEditor({
   const { t: ts } = useTranslation('settings')
   const [rows, setRows] = useState<HeaderRow[]>(() => toRows(headers))
   const [saved, setSaved] = useState<Record<string, string>>(() => ({ ...(headers ?? {}) }))
+  /** 正在编辑的那些行。空集合 = 整组都是纯文字（默认形态）。 */
+  const [editingIds, setEditingIds] = useState<Set<string>>(() => new Set<string>())
   const nextId = useRef(rows.length)
+  const isEditingAny = editingIds.size > 0
 
   const validate = (row: HeaderRow, all: HeaderRow[]): string | null => {
     const name = row.name.trim()
-    if (!name) return null
+    if (!name) {
+      // 完全空的新行不报错（刚点「添加」就是这个状态）；有值没名称才拦。
+      if (!row.value.trim()) return null
+      return ts('provider.config.requestHeaders.nameRequired', {
+        defaultValue: '请填写请求头名称'
+      })
+    }
     if (!HEADER_NAME_PATTERN.test(name)) {
       return ts('provider.config.requestHeaders.invalidName', {
         defaultValue: '请求头名称只能包含字母、数字与 ! # $ % & \' * + . ^ _ ` | ~ -'
@@ -117,19 +133,38 @@ export function RequestHeadersEditor({
     setRows(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)))
   }
 
+  const startEdit = (id: string): void => {
+    setEditingIds((current) => new Set(current).add(id))
+  }
+
+  const stopEditingAll = (): void => {
+    setEditingIds(new Set<string>())
+  }
+
   const addRow = (): void => {
     nextId.current += 1
-    setRows([...rows, { id: `h${nextId.current}`, name: '', value: '' }])
+    const id = `h${nextId.current}`
+    setRows([...rows, { id, name: '', value: '' }])
+    // 新行没有内容，纯文字形态什么也显示不出来 ⇒ 直接给输入框。
+    startEdit(id)
   }
 
   const removeRow = (id: string): void => {
     setRows(rows.filter((row) => row.id !== id))
+    setEditingIds((current) => {
+      if (!current.has(id)) return current
+      const next = new Set(current)
+      next.delete(id)
+      return next
+    })
   }
 
   const handleSave = (): void => {
     if (hasErrors || !dirty) return
     onChange(draft)
     setSaved(draft)
+    setRows(rows.filter((row) => !isEmptyRow(row)))
+    stopEditingAll()
     toast.success(
       ts('provider.config.requestHeaders.saved', { defaultValue: '请求头已保存' })
     )
@@ -137,6 +172,7 @@ export function RequestHeadersEditor({
 
   const handleCancel = (): void => {
     setRows(toRows(saved))
+    stopEditingAll()
   }
 
   return (
@@ -148,41 +184,85 @@ export function RequestHeadersEditor({
       ) : null}
 
       <div className="space-y-1.5">
-        {rows.map((row) => (
-          <div key={row.id}>
-            <div className="flex items-center gap-1.5">
-              <Input
-                value={row.name}
-                onChange={(e) => patchRow(row.id, { name: e.target.value })}
-                placeholder={ts('provider.config.requestHeaders.namePlaceholder', {
-                  defaultValue: '请求头名称'
-                })}
-                className="h-7 w-2/5 text-xs"
-                aria-invalid={errors[row.id] ? true : undefined}
-              />
-              <Input
-                value={row.value}
-                onChange={(e) => patchRow(row.id, { value: e.target.value })}
-                placeholder={ts('provider.config.requestHeaders.valuePlaceholder', {
-                  defaultValue: '值'
-                })}
-                className="h-7 flex-1 text-xs"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
-                onClick={() => removeRow(row.id)}
-                title={ts('common.remove', { defaultValue: '移除' })}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
+        {rows.map((row) => {
+          const editing = editingIds.has(row.id)
+          return (
+            <div key={row.id}>
+              <div className="flex items-center gap-1.5">
+                {editing ? (
+                  <>
+                    <Input
+                      value={row.name}
+                      onChange={(e) => patchRow(row.id, { name: e.target.value })}
+                      placeholder={ts('provider.config.requestHeaders.namePlaceholder', {
+                        defaultValue: '请求头名称'
+                      })}
+                      className="h-7 w-2/5 text-xs"
+                      aria-invalid={errors[row.id] ? true : undefined}
+                      autoFocus
+                    />
+                    <Input
+                      value={row.value}
+                      onChange={(e) => patchRow(row.id, { value: e.target.value })}
+                      placeholder={ts('provider.config.requestHeaders.valuePlaceholder', {
+                        defaultValue: '值'
+                      })}
+                      className="h-7 flex-1 text-xs"
+                    />
+                  </>
+                ) : (
+                  // 已保存形态：纯文字。双击整行或点右侧铅笔才进编辑。
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    title={ts('provider.config.requestHeaders.editHint', {
+                      defaultValue: '双击编辑'
+                    })}
+                    onDoubleClick={() => startEdit(row.id)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      startEdit(row.id)
+                    }}
+                    className="flex h-7 min-w-0 flex-1 cursor-text items-center gap-2 rounded px-1.5 text-xs hover:bg-muted/50"
+                  >
+                    <span className="shrink-0 font-medium">{row.name}</span>
+                    <span className="truncate text-muted-foreground">
+                      {row.value ||
+                        ts('provider.config.requestHeaders.emptyValue', { defaultValue: '（空）' })}
+                    </span>
+                  </div>
+                )}
+                {editing ? (
+                  // 占位，让删除按钮在两种形态之间不横移。
+                  <span className="size-7 shrink-0" aria-hidden />
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 shrink-0 text-muted-foreground"
+                    onClick={() => startEdit(row.id)}
+                    title={ts('provider.config.requestHeaders.edit', { defaultValue: '编辑' })}
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeRow(row.id)}
+                  title={ts('common.remove', { defaultValue: '移除' })}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+              {errors[row.id] ? (
+                <p className="mt-1 text-[11px] text-destructive">{errors[row.id]}</p>
+              ) : null}
             </div>
-            {errors[row.id] ? (
-              <p className="mt-1 text-[11px] text-destructive">{errors[row.id]}</p>
-            ) : null}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -203,7 +283,8 @@ export function RequestHeadersEditor({
           size="sm"
           className="h-7 text-xs"
           onClick={handleCancel}
-          disabled={!dirty}
+          // 只切进编辑、没改内容时 dirty 仍是 false —— 这时也得能退出编辑形态。
+          disabled={!dirty && !isEditingAny}
         >
           {ts('provider.config.requestHeaders.cancel', { defaultValue: '取消' })}
         </Button>

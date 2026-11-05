@@ -2,7 +2,7 @@ using System.Buffers;
 using System.Text;
 using System.Text.Json;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Protocol;
 
 /// <summary>
 /// `request_debug` 载荷裁剪（S-323）。

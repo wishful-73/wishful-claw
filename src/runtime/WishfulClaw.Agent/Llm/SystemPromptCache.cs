@@ -4,7 +4,7 @@ using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
 using WishfulClaw.Workspace.Memory;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Llm;
 
 /// <summary>
 /// Caches built system prompts by input parameters.

@@ -10,7 +10,6 @@ export type NavItem =
   | 'souls'
   | 'sync'
   | 'draw'
-  | 'translate'
   | 'tasks'
   | 'codegraph'
 

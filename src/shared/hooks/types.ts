@@ -73,8 +73,6 @@ export const HOOK_SESSION_START_SOURCE = {
 export const HOOK_RUN_SOURCE = {
   chat: 'chat',
   pluginAutoReply: 'plugin_auto_reply',
-  pet: 'pet',
-  translation: 'translation',
   cron: 'cron',
   continue: 'continue',
   agentBridge: 'agent_bridge'

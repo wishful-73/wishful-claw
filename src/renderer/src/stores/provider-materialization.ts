@@ -199,7 +199,7 @@ export function reconcileProviders(persisted: AIProvider[]): ProviderReconciliat
     const existing = persistedByBuiltinId.get(preset.builtinId)
     // R-9.C.8: NEVER re-key an existing record to `preset.builtinId`. Provider ids are
     // persisted outside this store — chat sessions in SQLite, app-plugin-store,
-    // pet-agent-store, channel-store, settings-store org/translation models, cron
+    // channel-store, settings-store org models, cron
     // agentId, OAuth bindings — and none of those can be remapped from here.
     // Re-keying would dangle all of them. Stable builtinId applies to records created
     // from R-9 on; legacy records keep the id they already have.

@@ -42,17 +42,38 @@
 > **刀 1~5 的删除边界（老大 2026-11-05 15:19「318 正常通过apikey请求的不删哈」）**：`builtinProviderPresets` 共 48 个，**只删 5 个** —— `workbuddy` / `workbuddy-ai` / `codex-oauth` / `copilot-oauth` / `moonshot-coding`（`authMode: 'oauth'` + `requiresApiKey: false`，即**走只内置于官方客户端的 OAuth 通道**）。**其余 43 个一个字段都不改**，含 `moonshot`（API Key 版，与 `moonshot-coding` 同文件）、`qwen-coding` / `minimax-coding` / `baidu-coding` / `bigmodel-coding` / `xiaomi-coding` / `stepfun-plan`（套餐端点但凭自己的 Key）、`ollama` / `lmstudio`（`requiresApiKey: false` 但本地无冒充）。明细见 [S-318 §3B.0](../iter-v3-7/requirements/S-318.md)。
 >
 > **判据落点**：**病灶是「授权通道」，不是「额度归属」**（老大 15:26「workbuddy也是拿自己的账号额度，只是说是冒充workbuddy客户端去请求他们的模型」）。这 5 个用的都是**用户自己的账号、自己付的套餐**，错在走**只内置于官方客户端的 OAuth 通道**、冒充该客户端身份 —— 绕开了厂商「只允许官方客户端使用」的限制。UA 仿冒只是手段，**不是合规指标**（老大 15:23「ua冒名很正常，有些服务商限定了只允许哪些cli调用」），`qwen-coding` 就仿 `claude-cli` 且正常保留。别只看 `requiresApiKey: false` 就开删（`ollama` / `lmstudio` 也命中这个字段）。两种仿冒的区别见 S-318 §3B.0 附。
+| 刀 | 需求 | 做什么 | 前置 / 风险 |
+|---|---|---|---|
 | **6** | **S-324** —— `StripDataUrlPrefix` span 化 | `ProviderContentHelpers` 加 `TryStripDataUrlPrefixSpan(ReadOnlySpan<char>, out ReadOnlySpan<char>, out string?)`；`DetectImageMediaTypeFromBase64`（`:62`）与 `ImageFileProbe.HasCompleteContainerInBase64`（`:159`）改用它，**去掉那个整串复制的 `Trim()`**；**保留 string 版**给三处真正要产 string 的调用点（`:408` / `:297` / `:221`） | 纯性能、**判据不变**。排在刀 8 前是为了先建立「改动不改行为」的信心。五种输入（png / jpeg / 无前缀 / 空串 / 带空白）新旧结果须逐字节一致 |
 | **7** | **S-323** —— `request_debug` 结构化裁剪 | 新增 `RequestDebugBodyTrimmer`（超 8 KB 的字符串值换占位、非法 JSON 退回硬截断、短 body 走快速路径），三个 provider 全接入：`OpenAIChatProvider.cs:46` / `AnthropicMessagesProvider.cs:54` / `OpenAIResponsesProvider.cs:217` | **不能硬截断** —— 调试面板要 `JSON.parse`，截断变非法 JSON 等于用「看不见」换「不卡」。主仓渲染层上限本就是 4 KB（`debug-store.ts:20-22`）⇒ 截到 8 KB 不损失可视化。**三个 provider 漏一处不算完成** |
 | **8** | **S-322** —— 会话闲置淘汰（**治根**） | `SessionConversationManager` 补两条闸：闲置 **2h** 淘汰 + 常驻上限 **8 条**（超额按最久未访问砍）；`SessionConversation` 加 `Touch()` 记最后访问时刻 | **唯一治「只涨不降」的一刀，也风险最高**（淘汰错＝用户上下文没了）⇒ 放最后动。安全性靠 `AgentLoop.cs:83-89`：`MessageCount == 0` 时从 DB 懒恢复。唯一会丢的是 status bar 的 cache hit/miss 累积计数 ⇒ 展示指标，归零不算 bug（验收须显式确认） |
 
+## 二·补 分层体检三条（S-325 / S-326 / S-327）
+
+> 老大 11-05 16:36「你看下我们项目立项是规划的分层结构这些，现在是不是有很多违反了，如果有给我列出来」⇒ 16:40「先登记」。**本条只登记，未动任何代码。**
+
+**先说结论**：七层**依赖方向零违规** —— `src/runtime` 七个子项目的 `ProjectReference` 矩阵里没有一条逆向依赖（`Agent` 不引 `Worker`、`Workspace` 不引 `Persona`、`Core` 只引 `Contracts`）。违规全部落在「层内该放什么」与「章程本身过期」两类。
+
+| 编号 | 一句话 | 性质 | 归属 |
+|---|---|---|---|
+| **S-325** | 章程指向了不存在的项目：`AGENTS.md:25` 与 `docs/project-structure.md:30-31`、`:56` 仍把 `WishfulClaw.CodeGraph` 当 vendored 项目写，它早已在 S-303 剥离为插件 | **修文档**（零代码） | **本迭代可做** |
+| **S-326** | 分层职责条款与实现打架：`AGENTS.md:92` 说 Worker「只保留进程入口与模块注册」，实际 `MemoryModule` 两文件 512 行真实现；`AGENTS.md:56` 把 33 个 `Db*Tools`（8,204 行）算作 Infrastructure 职责，`:59` 又说该层目的是让 Tools 迁出 | **二选一裁定** | **待老大拍板 A/B** |
+| **S-327** | Agent 根目录平铺 **140** 个 `.cs`，章程只承认 6 类，其中 `AgentRuntime*` 执行器 **52** 个 + 其它杂项 **17** 个（占 49%）它完全没提 | **纯结构重构** | **下个迭代** |
+
+**S-325 顺带包含两条零风险清理**：`AGENTS.md:81` 的 Agent 依赖清单漏写 `Workspace`（实际 9 个文件 `using WishfulClaw.Workspace.Memory`，靠 Persona 传递才编过）；`Infrastructure/Memory/` 与 `Agent/tmp/agent-verify-*` 是空目录残留。
+
+**S-326 为什么是裁定项而不是缺陷**：`Db*Tools` 迁进 Agent 会让 Agent 从「依赖 Infrastructure 抽象」退化成「直接压在 33 个具体类和表结构上」 —— 耦合会**加深**而不是减弱。我的建议是**选 A（改章程并写清判据）**，理由与 A/B 代价对比见 [S-326 §四-§六](requirements/S-326.md)。
+
+**S-327 为什么不能塞本迭代**：140 个文件的 `namespace` 搬迁会污染 `git blame`，与刀 6~8 的内存修复混在一起出问题时无法归因。结构重构应当作独立迭代的唯一主题，崩了能整体回滚。
+
 ## 三、开工前必须拍板的事
 
-**只剩一条**，且不阻塞开工：
+**两条**。第 1 条不阻塞开工；第 2 条是 S-326 的裁定，**不影响刀 6~8（已实施）**，只决定 S-326 自己怎么落。
 
 | # | 事项 | 怎么定 |
 |---|---|---|
 | 1 | 僵尸记录：**剔除** vs **保留但隐藏** | 取决于悬空 `providerId` 回落路径验不验得通 —— 验通即剔除，验不通即隐藏。**实施时先验再定，不用回头问** |
+| 2 | S-326：A1 `MemoryModule` 512 行、A2 33 个 `Db*Tools` 8,204 行 —— **改章程承认** 还是 **迁代码** | 我的建议是 **A（改章程）**，核心理由：迁 `Db*Tools` 进 Agent 会让 Agent 直接耦合表结构，耦合是加深不是减弱。代价对比见 [S-326 §四](requirements/S-326.md)。**需老大拍板才动** |
 
 > 原先第二条「宠物 / 翻译用到的多账号轮转还剩多少真实用途」**已作废** —— S-321 核实后两者都是死代码，OAuth 摘完 `provider-auth.ts` 直接整目录清，不存在「还剩多少用途」这个问题。
 
@@ -82,3 +103,4 @@
 - [raw-requirements.md](raw-requirements.md) —— 清单（实施 / 挂账 / 候选池 / 订正记录）
 - [changelog.md](changelog.md) —— 裁定与口径流水（按日期追加）
 - 需求正文：[S-321](requirements/S-321.md)（本迭代新建，含三处残留的实读证据）；内存三条 [S-322](requirements/S-322.md)（会话驻留淘汰，治根）/ [S-323](requirements/S-323.md)（`request_debug` 白推）/ [S-324](requirements/S-324.md)（base64 前缀重复复制），均本迭代新建、均含主仓实读行号；[S-318](../iter-v3-7/requirements/S-318.md) —— **留在原目录不搬家**（v3-iter-7 登记时就在那里）
+- 分层体检三条（本迭代 16:40 登记）：[S-325](requirements/S-325.md)（章程指向不存在的项目 + 空目录）/ [S-326](requirements/S-326.md)（Worker 薄层与 `Db*Tools` 归置，待裁定）/ [S-327](requirements/S-327.md)（Agent 根目录 140 文件归位，下个迭代）

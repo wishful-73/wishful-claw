@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.Data.Sqlite;
 using WishfulClaw.Contracts;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Workspace.Memory;
@@ -39,25 +38,10 @@ internal sealed partial class MemoryModule
 
         return RunAsync(() =>
         {
-            var db = DbClient.GetClient();
-            var scopeClause = scope is null
-                ? ""
-                : $" AND scope = '{EscapeSql(scope)}'";
-            var statusClause = status == "cold"
-                ? "status IN ('cold', 'deprecated')"
-                : "status = @status";
-            var entries = new List<MemoryEntryRow>();
-            using (var reader = db.ExecuteReader(
-                       "SELECT id, scope, title, content, priority, status, updated_at FROM memory_entries " +
-                       $"WHERE {statusClause}{scopeClause} ORDER BY updated_at DESC, id DESC LIMIT @limit",
-                       new SqliteParameter("@status", status),
-                       new SqliteParameter("@limit", limit)))
-            {
-                while (reader.Read())
-                {
-                    entries.Add(ReadEntryRow(reader));
-                }
-            }
+            var statuses = status == "cold" ? new[] { "cold", "deprecated" } : new[] { status! };
+            var entries = DbMemoryTools.ListByStatus(scope, statuses, limit)
+                .Select(ToEntryRow)
+                .ToList();
             return Task.FromResult(WorkerResponse.Json(
                 new MemoryEntriesByStatusResponse(entries),
                 WishfulClawJsonContext.Default.MemoryEntriesByStatusResponse));
@@ -92,52 +76,19 @@ internal sealed partial class MemoryModule
 
         return RunAsync(() =>
         {
-            var db = DbClient.GetClient();
-            var scopeClause = scope is null
-                ? ""
-                : $" AND scope = '{EscapeSql(scope)}'";
-            var direction = descending ? "DESC" : "ASC";
-            var entries = new List<MemoryEntryRow>();
-            using (var reader = db.ExecuteReader(
-                       "SELECT id, scope, title, content, priority, status, updated_at FROM memory_entries " +
-                       $"WHERE 1 = 1{scopeClause}{timeClause.Sql} " +
-                       $"ORDER BY updated_at {direction}, id {direction} LIMIT @limit OFFSET @offset",
-                       [new SqliteParameter("@limit", limit), new SqliteParameter("@offset", offset), .. timeClause.Parameters]))
-            {
-                while (reader.Read())
-                {
-                    entries.Add(ReadEntryRow(reader));
-                }
-            }
-
+            var entries = DbMemoryTools.ListPaged(scope, timeClause, descending, limit, offset)
+                .Select(ToEntryRow)
+                .ToList();
             return Task.FromResult(WorkerResponse.Json(
-                new MemoryEntriesResponse(entries, CountScope(db, scope, timeClause)),
+                new MemoryEntriesResponse(entries, DbMemoryTools.CountPaged(scope, timeClause)),
                 WishfulClawJsonContext.Default.MemoryEntriesResponse));
         });
     }
 
     /// <summary>
-    /// 同 scope 的总条数。**必须带上同一个 <paramref name="timeClause"/>** —— 少了它，
-    /// 「共 N 条 / 第 X 页」会按全量算，翻到区间内最后一页就露白了（S-98 在相邻处踩过）。
+    /// 实体 → 响应 DTO。`MemoryEntryRow` 定义在 Workspace，Db 层的 API 只进出
+    /// `MemoryEntryEntity`，这个转换留在端点这一层。
     /// </summary>
-    private static int CountScope(DbService db, string? scope, MemoryTimeClause timeClause)
-    {
-        var scopeClause = scope is null ? "" : $" AND scope = '{EscapeSql(scope)}'";
-        using var reader = db.ExecuteReader(
-            $"SELECT COUNT(*) FROM memory_entries WHERE 1 = 1{scopeClause}{timeClause.Sql}",
-            timeClause.Parameters.ToArray());
-        return reader.Read() ? (int)reader.GetInt64(0) : 0;
-    }
-
-    private static MemoryEntryRow ReadEntryRow(SqliteDataReader reader)
-    {
-        var id = reader.GetInt64(reader.GetOrdinal("id"));
-        var entryScope = reader.GetString("scope");
-        var title = reader.IsDBNull(reader.GetOrdinal("title")) ? null : reader.GetString("title");
-        var content = reader.IsDBNull(reader.GetOrdinal("content")) ? "" : reader.GetString("content");
-        var priority = reader.GetString("priority");
-        var entryStatus = reader.GetString("status");
-        var updatedAt = reader.IsDBNull(reader.GetOrdinal("updated_at")) ? 0 : reader.GetInt64("updated_at");
-        return new MemoryEntryRow(id, entryScope, title, content, priority, entryStatus, updatedAt);
-    }
+    private static MemoryEntryRow ToEntryRow(MemoryEntryEntity entry) =>
+        new(entry.Id, entry.Scope, entry.Title, entry.Content, entry.Priority, entry.Status, entry.UpdatedAt);
 }

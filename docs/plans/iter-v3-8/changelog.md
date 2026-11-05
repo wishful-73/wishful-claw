@@ -30,3 +30,24 @@
 - **顺带订正 S-318 §3B.2 的原判**：原文写「`lib/auth/` 不能整目录删，宠物和翻译在用多账号轮转」⇒ 15:21 全仓 grep 复核，`lib/auth` 之外的 import 只有 5 条，全部落在 S-321 死代码（`translate-store` + `lib/pet` ×3）与 A 段整页删（`ProviderAuthPanel` ×3）里 ⇒ **该目录零 API Key 路径引用，刀 0 之后可整目录删**。原判是「看 import 就下结论」的又一次翻版。
 - **两边已漂移，禁止整文件覆盖**：私有仓从主仓全量搬出后，主仓仍有改动（S-284 等）。S-322 的每条改动都必须按需求单 §三 的实读行号逐点改 —— `ProviderContentHelpers.cs` 私有仓已到 479 行以上，主仓结构未必一致。
 - **顺手记一条异常信号**：`2026-11-05.log` 里出现 `role=main type=wishful-claw-shell.exe`，那是私有仓 Tauri 壳的 T-044 bug（dev 壳读到正式库）污染进来的。**主仓日志里出现非 `wishful-claw.exe` 的 `role=main` 可以当异常信号用。**
+- **内存三条全部落地（刀 6 → 7 → 8，`ebfdad75` / `48223ea5` / `11994318`），刀序按登记时的「最安全先做」执行完毕。**
+- **刀 6 = S-324**：`ProviderContentHelpers` 加 `StripDataUrlPrefixSpan`（零分配 span 版），`DetectImageMediaTypeFromBase64` 与 `ImageFileProbe.HasCompleteContainerInBase64` 不再整串复制 + 双次 `Replace`。判据逐字不变，`ImageMediaGateRegressionTests` 扩到 53 条（新增 15 条 span/string 逐字节比对）。
+- **刀 7 = S-323**：新增 `RequestDebugBodyTrimmer` —— **不做字符串截断**（截断会把 JSON 变非法，调试面板 `JSON.parse` 直接失败，等于用「看不见」换「不卡」），改结构化裁剪：解析 → 超长字符串值换占位 → 重新序列化。阈值全部对齐渲染层自身上限而非拍脑袋：body ≤ 8 KB 不裁（= `MAX_PERSISTED_DEBUG_BODY_CHARS`）、单值 ≤ 1,024 字符、数组 ≤ 64 项、非法 JSON 退回硬截断。实测 **11,983,135 → 2,695 字符，24 ms**，与需求单里记的渲染层驻留量 2,695 一字不差。三个 provider 全接入，**只改 `DebugInfo` 入参，实际 HTTP 请求仍用原 body**。
+- **刀 8 = S-322（治根那一条）**：`SessionConversation` 记最后访问时刻（单调 `TickCount64`，系统时间校正与休眠唤醒都骗不过它），`GetOrCreate` / `TryGet` 都 `Touch()` 后跑两条闸 —— 闲置 2h 淘汰 + 常驻上限 8 条按最久未访问砍。触发本轮 `GetOrCreate` 的 key 永不作废。淘汰只是移除引用，下次取会话得到空会话，正好命中 `AgentLoop` 已有的「`MessageCount == 0` ⇒ 从 DB 懒恢复」，所以淘汰本身是安全的。淘汰打 `WorkerLog.Info`（`reason=idle|capacity` + `idleMinutes` + `messages` + `resident` + `key`），真机验收直接看日志。
+- **一处刻意的取舍**：`TryGet` 也 `Touch()`。否则「用得很频繁但只走 `TryGet`」的会话会一直显得闲置，被砍在调用方脚下 —— 这种 bug 只在埋点日志里看得出来，写进回归里钉住。
+- **一处没做的复杂度**：容量淘汰理论上会误伤「正在跑、但本轮之后已有 8 个会话被访问」的会话。桌面场景并发活跃会话数远低于 8，因此**不引入租约计数**（那要改 `AgentLoop` 等全部调用点）；风险与前提写在提交信息里，真出问题再补。
+- **门禁基线（本迭代最新）**：`npm run typecheck` 三配置 0 错；`npm test` **127/127**（新增 RequestDebugTrim 24 断言 + SessionEviction 18 断言）；`dotnet build` runtime sln 0 错 2 警告（仅 NU1903 ILCompiler，已挂账 S-320）、tests sln 0 警告 0 错误。
+- **欠账**：S-322 验收 #1 的「`managed` 必须回落」是运行时行为，只能真机看 —— 留给 dev 实例实测，代码侧断言只能证明「淘汰确实发生、重建确实为空」。
+
+## 2026-11-05 16:40 · 分层体检登记（老大「先登记」）
+
+- **只登记，未动一行代码。** 新开三条：**S-325 / S-326 / S-327**，均已写需求单，已挂进 `plan.md` §二·补 与 `raw-requirements.md` §五。
+- **体检结论先说好的那半**：七层**依赖方向零违规**。`src/runtime` 七个子项目的 `ProjectReference` 矩阵里没有一条逆向依赖 —— `Agent` 不引 `Worker`、`Workspace` 不引 `Persona`、`Core` 只引 `Contracts`。违规全部落在「层内该放什么」和「章程过期」两类，一条都不是接线接错了。
+- **S-325 是事实性错误，不需要裁定**：`WishfulClaw.CodeGraph` 早在 S-303 就剥离成独立仓 + MCP 插件了，但 `AGENTS.md:25`、`docs/project-structure.md:30-31`、`:56` 三处还当它是 vendored 项目写。这两份文档是「东西在哪」的索引 —— 照它去找一个不存在的目录，白花时间之后会开始怀疑整份文档。**顺带两条零风险清理**：`AGENTS.md:81` 的 Agent 依赖清单漏 `Workspace`（9 个文件实际 `using WishfulClaw.Workspace.Memory`，靠 `Persona → Workspace` 传递才编过；按方向图这条边**合法**，但隐式传递有实害 —— Persona 哪天不引 Workspace，Agent 会莫名其妙编不过，而改 Persona 的人不会想到会连坐）；`Infrastructure/Memory/` 和 `Agent/tmp/agent-verify-*` 是空目录残留。
+- **⚠️ S-325 里专门标了一条防误删**：`src/main/lib/codegraph-assets.ts`、`src/main/ipc/codegraph-handlers.ts` 里那些 `CodeGraph` 字样**不是残留**，是 S-303 剥离后的正常形态（插件资产按需下载引擎与语言包）。改章程时容易顺手把它们也清了。
+- **S-326 是裁定项，不能自己拍**：两处章程与实现正面冲突。**A1** `AGENTS.md:92` 写 Worker「只保留进程入口与模块注册，其余已迁入 Agent/Infrastructure」，实际 `MemoryModule` 两文件 512 行是真实现（文件读取 + SQLite 分页 + 业务常量 500，注释里还写着这个 500 是因为渲染层同步窗口 —— 已经业务耦合了）；而 `docs/project-structure.md:51` 同一件事写的是「注册**与实现**」，**两份文档互相打架**。**A2** `AGENTS.md:56` 把 33 个 `Db*Tools` 算作 Infrastructure 职责，`:59` 又说这层的目的是「使 Tools / Modules 能迁出到 Agent 层」—— 同一节自相矛盾，所以它既没迁也没人说不该在这。
+- **S-326 我的判断是选 A（改章程）**，理由不是「不想搬」：`Db*Tools` 那 8,204 行与 Entity / Schema 强耦合，搬进 Agent 会让 Agent 从「依赖 Infrastructure 的抽象」退化成「直接压在 33 个具体类和表结构上」——**耦合是加深，不是减弱**。真正该做的是把判据写清楚：**与 schema 强耦合 ⇒ 留 Infrastructure；纯业务语义、只经抽象访问 ⇒ 放 Agent**。有了判据，以后新加表工具至少有人能问一句「这个是不是该放 Agent」。
+- **S-327 值得真动，但必须独立迭代**：Agent 根目录平铺 140 个 `.cs`，`AGENTS.md:54` 只承认 6 类，而 `AgentRuntime*` 执行器 52 个 + 其它杂项 17 个（共 49%）它完全没提。最要命的是命名高度相似 —— `TaskExecutor` / `TaskExecutor.Codec` / `TaskExecutor.Db`、`GoalExecutor.Mutation` / `GoalExecutorJson` / `GoalOrchestratorModels` 散在四处，每次改这块都要在一屏 140 个文件里按前缀扫。
+- **⚠️ S-327 里钉了一个踩过的坑**：模型 Provider 的新目录**不能叫 `Providers/`** —— `Agent/Tools/Providers/` 已经存在（25 个**工具提供者**：AskUser / Browser / Cron / Desktop / Ssh / Web / Widget…），`docs/project-structure.md:56` 专门写过一句「⚠️ 别混」，说明这坑踩过一次。建议叫 `Llm/`。
+- **为什么不塞本迭代**：140 个文件改 `namespace` 会污染 `git blame`，跟刀 6~8 的内存修复混在一个迭代里，出问题时无法判断是哪一刀引入的。结构重构应当是独立迭代的唯一主题，崩了能整体回滚。
+- **顺手修的排版瑕疵**：`plan.md` 的刀 6~8 三行原先被两个引用块打断在表头之外，GFM 渲染时会把「刀」那一行当成新表格的表头 ⇒ 补了一次表头。改的是渲染结果，不动语义。

@@ -22,7 +22,9 @@ OpenCowork 的代码经迁移和重构后已成为 WishfulClaw 的一部分；�
 
 ## 项目结构（7 层架构）
 
-7 个项目已落地（Contracts / Core / Infrastructure / Workspace / Persona / Agent / Worker）；另有 `src/runtime/WishfulClaw.CodeGraph` vendored 项目（不参与 7 层依赖链，仅被 Worker 引用）。
+7 个项目已落地（Contracts / Core / Infrastructure / Workspace / Persona / Agent / Worker），`src/runtime/` 下没有第八个。
+
+> CodeGraph 引擎已于 v3-iter-6（S-303）剥离为独立仓库 `wishful-claw-codegraph`，以 **MCP 插件**形态接入（引擎与语言包按需下载到本机数据目录），不再 vendored 进本仓。`src/` 里仍在的 `codegraph-*` 代码是**插件资产下载器**，是剥离后的正常形态，不要删。
 
 - **目录地图**（哪层有哪些子目录、东西在哪）：[`docs/project-structure.md`](docs/project-structure.md)。那份文档**只写到「层 → 子目录 → 一句话职责」**，不列文件名与文件数 —— 统计写死必然过期，要看实际结构直接查代码树，别在这里再抄一份
 - **依赖规则与各层职责禁忌**（什么能依赖什么、该放什么）：见下面「分层约定」
@@ -53,10 +55,14 @@ Agent 通用框架，不含任何业务逻辑。
 - **依赖** Contracts + Core
 - **不依赖** Workspace / Persona / Agent / Worker
 - 包含：
-  - **Db**：DbClient + Entities + Db*Tools — SQLite 持久化
+  - **Db**：DbClient + Entities + Db\*Tools — SQLite 持久化
+  - **判据**：某张表的 `INSERT` / `UPDATE` / `DELETE` 只应出现在本层的 `Db*Tools`。上层要写表就调这里的方法，不要另写一份 SQL
+  - **为什么**：同一张表两处各写一份 SQL，改表结构得改两处；漏一处**不编译报错**，运行时静默失效。实例（S-326）：`memory_entries` 曾在 5 个文件 15 处手写 SQL、横跨 3 个程序集，`MemoryModule` 与 `MemoryAppendTool` 的 INSERT 一字不差
+  - **例外**：检索型 SQL（FTS5 `MATCH` 打分、多表 JOIN）留在业务层 —— 它承载检索语义而非表访问。`MemoryFtsService` 是当前唯一例外
   - **Storage**：ConfigStore + ProviderStore + JsonFileNodeCache — JSON 配置文件读写
   - **Http**：WorkerHttpClientFactory — HTTP 客户端工厂
 - 目的：解耦 Worker 对基础设施的直接依赖，使 Tools / Modules 能迁出到 Agent 层
+- **端点在 Worker 不算违规**：`Modules/` 只做「参数解析 → 调下层 → 组响应」。真正违规的是**在端点上手写 SQL 或放业务逻辑**，位置本身不是问题
 
 ### 4. Workspace 层（WishfulClaw.Workspace）
 
@@ -78,7 +84,8 @@ Agent 通用框架，不含任何业务逻辑。
 
 Agent 运行时核心业务逻辑。
 
-- **依赖** Contracts + Core + Infrastructure + Persona
+- **依赖** Contracts + Core + Infrastructure + Persona + Workspace
+  - ⚠️ Workspace 是**经 Persona 传递**可见的，`WishfulClaw.Agent.csproj` 里没有它的 `ProjectReference`。10 个文件在用（`AgentLoop.MemoryRecall.cs` / `SystemPromptCache.cs` / `ToolModuleState.cs` / `Tools/ToolModule.cs` + `Tools/MemoryTools/` 6 个）⇒ 动 Persona 的引用清单会连坐 Agent，别只看 Agent 自己的 csproj 就下手
 - **不依赖** Worker
 - 包含：AgentLoop / Provider 实现 / 工具执行器 / 上下文压缩 / SubAgent / SessionConversation / Tools（FileTools / SearchTools / ShellTools / MemoryTools / Providers / AgentChanges）
 
@@ -89,7 +96,8 @@ Agent 运行时核心业务逻辑。
 - **依赖** Agent + Persona + Workspace + Core + Contracts + Infrastructure
 - 负责模块注册、依赖注入、进程生命周期
 - 被 Electron Main 进程拉起
-- 只保留进程入口与模块注册（Program / WorkerHost / WorkerModuleCatalog），其余已迁入 Agent / Infrastructure
+- 只保留进程入口与模块注册（Program / WorkerHost / WorkerModuleCatalog）
+- `Modules/` 下留 6 个薄端点文件（Config / Goal / Memory + Entries / Provider / System）：只做参数解析 → 调下层 → 组响应，不写 SQL、不放业务逻辑
 
 ### 依赖方向（严格单向）
 

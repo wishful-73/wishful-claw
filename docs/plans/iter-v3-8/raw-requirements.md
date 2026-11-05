@@ -1,6 +1,6 @@
 # v3-iter-8 需求清单
 
-> 拆分于 2026-11-05 14:49（老大「开新迭代」）。来源 = **v3-iter-7 收尾移交 1 条（S-318）** + 本迭代新登记 4 条（S-321 / S-322 / S-323 / S-324）。
+> 拆分于 2026-11-05 14:49（老大「开新迭代」）。来源 = **v3-iter-7 收尾移交 1 条（S-318）** + 本迭代新登记 4 条（S-321 / S-322 / S-323 / S-324）+ **16:40 分层体检登记 3 条（S-325 / S-326 / S-327，见 §五）**。
 > 本文件只列清单与依据，刀序见 [plan.md](plan.md)。
 
 ## 一、本迭代实施（5 条）
@@ -41,3 +41,16 @@
 | S-305 | 「已实施，待真机验收」 | 「✅ 已实施，随 v1.0.7 发布；CodeGraph 已实测装了 / 停了」 | v3-iter-7 raw §二·B 已按 dev 实测口径收口 |
 
 > **没核实的不要假装核过**：v3-iter-1 ~ v3-iter-5 里有一批需求单（S-217 ~ S-260 中的多数）本就没写状态行，本次**未逐条核实是否已实施**，因此不作为本迭代待办池的依据。真要用，先按「打开文件确认闸在哪一层」复核 —— 这是 S-281 / S-277 / S-265 三次错法的共同教训：**没打开文件就下结论，下个迭代会为一条不存在的缺陷排一刀**。
+
+## 五、分层体检登记（2026-11-05 16:40，**只登记，未动代码**）
+
+> 老大 11-05 16:36「你看下我们项目立项是规划的分层结构这些，现在是不是有很多违反了，如果有给我列出来」⇒ 16:40「先登记」。
+> **前提结论**：七层**依赖方向零违规**（`Agent` 不引 `Worker`、`Workspace` 不引 `Persona`、`Core` 只引 `Contracts`）。以下三条全是「层内职责」与「章程过期」，不是逆向依赖。
+
+| 编号 | 标题 | 性质 / 归属 | 实测依据 |
+|---|---|---|---|
+| S-325 | **章程指向了一个不存在的项目** —— 分层文档与实际结构脱节 | **修文档，零代码**；**本迭代可做**（不占刀序，10 分钟） | `WishfulClaw.CodeGraph` 已在 v3-iter-6（**S-303**）剥离为独立仓 + MCP 插件，`src/runtime/` 下已无该项目。但 `AGENTS.md:25`、`docs/project-structure.md:30-31`、`:56` 三处仍当它 vendored 写。**另含**：`AGENTS.md:81` 的 Agent 依赖清单漏 `Workspace`（实际 9 个文件 `using WishfulClaw.Workspace.Memory`，靠 `Persona → Workspace` 传递才编过；按方向图这条边**合法**，是清单漏写，且隐式传递有实害 —— Persona 哪天不引 Workspace 会连坐 Agent 编译不过）；空目录残留 `Infrastructure/Memory/` + `Agent/tmp/agent-verify-*`。**⚠️ 别误删**：`src/main/lib/codegraph-assets.ts` 等是插件资产下载器，正常功能 |
+| S-326 | **分层职责条款与实际实现打架** —— 改章程还是迁代码 | **二选一裁定**；**待老大拍板** | **A1**：`AGENTS.md:92` 写 Worker「只保留进程入口与模块注册，其余已迁入 Agent/Infrastructure」，实际 `Modules/MemoryModule.cs` 378 + `.Entries.cs` 134 = **512 行真实现**（`File.ReadAllText` / `MemoryPathResolver` / SQLite 分页 / 业务常量 `MaxEntriesLimit=500`，注释还写着「500 而非 200 是因为渲染层同步窗口」⇒ 已业务耦合）；且 `docs/project-structure.md:51` 写「模块注册**与实现**」⇒ **两份文档互相打架**。对照 `GoalModule.cs` 235 行是薄转发，合规。**A2**：`AGENTS.md:56` 把 33 个 `Db*Tools`（**8,204 行**，占 Infrastructure 14,783 行的 55%）算作本层职责，`:59` 又说本层目的是「使 Tools / Modules 能迁出到 Agent」⇒ **同节自相矛盾**。判据：`Db/` 占该层 92%，而同层 `Http/` 只 47 行、`Storage/` 1,055 行 —— 后两者才是「通用能力」的样子。**我的建议选 A（改章程 + 写清判据）**，理由：迁 `Db*Tools` 进 Agent 会让 Agent 直接压在表和 Entity 上，**耦合加深不是减弱** |
+| S-327 | **Agent 根目录平铺 140 个 `.cs`** —— 章程只认 6 类，其中 52 个它没提过 | **纯结构重构**（只挪不改）；**建议下个迭代** | 实测分布：`AgentRuntime*` 执行器 **52**（`ProjectExecutor` 650 / `GlobalTaskExecutor` 606 / `PlanExecutor` 495 / `Tools` 463 / `DesktopExecutor` 444 + `.Encoding` 292 + `.Windows` 262 …）、模型 Provider 23、SubAgent 12、AgentLoop 11、`Tool*` 10、ContextCompression 8、Session 5、AskUser 2、**其它杂项 17**（`AgentStreamMessagePackEmitter` 389 / `ConversationCodec` 297 / `BackgroundSubAgentRegistry` 292 …）。`AGENTS.md:54` 只承认 6 类 ⇒ **69 个（49%）无归属**。**⚠️ 新目录不能叫 `Providers/`** —— `Agent/Tools/Providers/` 已存在（25 个**工具提供者**），`docs/project-structure.md:56` 专门写过「别混」，建议叫 `Llm/`。**不能塞本迭代**：140 文件改 namespace 会污染 `git blame`，与刀 6~8 的内存修复混在一起出问题无法归因 |
+
+

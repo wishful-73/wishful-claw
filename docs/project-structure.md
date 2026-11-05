@@ -27,8 +27,6 @@ wishful-claw/
 ```
 src/runtime/
 ├── WishfulClaw.sln
-├── WishfulClaw.CodeGraph/                # 0. CodeGraph 引擎（vendored 自 github.com/AIDotNet/CodeGraph；
-│                                         #    不参与 7 层依赖链，仅被 Worker 引用）
 ├── WishfulClaw.Contracts/                # 1. 接口契约（纯接口，无实现）
 ├── WishfulClaw.Core/                     # 2. Agent 通用框架（不含业务逻辑）
 │   ├── Protocol/                         #   通信协议（MessagePack 编解码、流式事件、Worker 分发）
@@ -48,12 +46,12 @@ src/runtime/
 │   ├── Modules/                          #   业务模块（Git / Skills / Extensions / Channels / Video / Media / OpenAIAudio）
 │   └── Tools/                            #   工具实现（AgentChanges / FileTools / MemoryTools / Providers / SearchTools / ShellTools）
 └── WishfulClaw.Worker/                   # 7. 进程入口（薄层 IPC 宿主）
-    └── Modules/                          #   模块注册与实现（Config / Memory / Goal / Provider / System / AgentChanges）
+    └── Modules/                          #   薄端点（Config / Memory + Entries / Goal / Provider / System）
 ```
 
 **`WishfulClaw.Agent/` 根目录**（不属于上面任何子目录的那些）平铺着：Agent Loop（partial 拆分）、上下文压缩、工具调用与分派、子 Agent、会话状态，以及**模型 Provider 实现**（Anthropic Messages / OpenAI Chat / OpenAI Responses）。
 
-> ⚠️ 别混：`Agent/Tools/Providers/` 是**工具**提供者（AskUser / Browser / Cron / CodeGraph…），与模型 Provider 不是一回事。
+> ⚠️ 别混：`Agent/Tools/Providers/` 是**工具**提供者（AskUser / Browser / Cron / Desktop…），与模型 Provider 不是一回事。CodeGraph 已剥离为独立仓库的 MCP 插件（S-303），不在这个目录里。
 
 ## 自己查实际结构
 

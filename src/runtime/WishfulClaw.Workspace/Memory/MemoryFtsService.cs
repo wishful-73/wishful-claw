@@ -13,21 +13,9 @@ public sealed class MemoryFtsService : IMemorySearch, IMemoryReheat
             return Task.FromResult(0);
         ct.ThrowIfCancellationRequested();
 
-        var db = DbClient.GetClient();
-        var idParams = new SqliteParameter[ids.Count];
-        var placeholders = new string[ids.Count];
-        for (var i = 0; i < ids.Count; i++)
-        {
-            placeholders[i] = $"@id{i}";
-            idParams[i] = new SqliteParameter($"@id{i}", ids[i]);
-        }
-        var sql =
-            "UPDATE memory_entries SET " +
-            "status = CASE status WHEN 'warm' THEN 'active' WHEN 'cold' THEN 'warm' ELSE status END, " +
-            "updated_at = @ua " +
-            $"WHERE id IN ({string.Join(",", placeholders)}) AND status IN ('warm', 'cold')";
-        var affected = db.Execute(sql, idParams.Append(new SqliteParameter("@ua", DateTimeOffset.UtcNow.ToUnixTimeSeconds())).ToArray());
-        return Task.FromResult(affected);
+        // 行级状态变更走 DbMemoryTools（S-326）。检索逻辑留本类，表访问收归 Db 层 ——
+        // 这条 UPDATE 原先与 Worker 的 memory/batch-status 各自维护一份「提升状态」的语义。
+        return Task.FromResult(DbMemoryTools.Reheat(ids));
     }
 
     public Task<IReadOnlyList<MemorySearchResult>> SearchAsync(

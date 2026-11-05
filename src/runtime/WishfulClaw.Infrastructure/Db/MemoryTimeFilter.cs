@@ -1,6 +1,6 @@
 using Microsoft.Data.Sqlite;
 
-namespace WishfulClaw.Workspace.Memory;
+namespace WishfulClaw.Infrastructure.Db;
 
 /// <summary>
 /// 「按修改时间筛选」的 SQL 条件构造（iter-33 S-101）。

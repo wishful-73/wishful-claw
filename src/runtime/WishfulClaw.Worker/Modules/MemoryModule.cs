@@ -5,7 +5,6 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Workspace.Memory;
 using WishfulClaw.Agent.Tools;
 using WishfulClaw.Agent;
-using Microsoft.Data.Sqlite;
 using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.Worker.Modules;
@@ -46,10 +45,8 @@ internal sealed partial class MemoryModule : IWorkerModule
                 // Count "## " headings at line start
                 hotCount = content.Split('\n').Count(l => l.StartsWith("## "));
             }
-            var db = DbClient.GetClient();
-            var scopeClause = $" AND scope = '{EscapeSql(scope)}'";
-            var warmCount = CountStatus(db, $"SELECT COUNT(*) FROM memory_entries WHERE status = 'warm'{scopeClause}");
-            var coldCount = CountStatus(db, $"SELECT COUNT(*) FROM memory_entries WHERE status IN ('cold', 'deprecated'){scopeClause}");
+            var warmCount = DbMemoryTools.CountByStatus(scope, "warm");
+            var coldCount = DbMemoryTools.CountByStatus(scope, "cold", "deprecated");
             return Task.FromResult(WorkerResponse.Json(new MemoryStats
             {
                 HotCount = hotCount,
@@ -128,7 +125,6 @@ internal sealed partial class MemoryModule : IWorkerModule
         var priorityStr = GetString(parameters, "priority") ?? "standard";
         return RunAsync(() =>
         {
-            var db = DbClient.GetClient();
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var entry = new MemoryEntryEntity
             {
@@ -140,16 +136,7 @@ internal sealed partial class MemoryModule : IWorkerModule
                 CreatedAt = now,
                 UpdatedAt = now
             };
-            var id = db.ExecuteReturnIdentity(
-                "INSERT INTO memory_entries (scope, title, content, priority, status, created_at, updated_at) " +
-                "VALUES (@scope, @title, @content, @priority, @status, @ca, @ua)",
-                new SqliteParameter("@scope", entry.Scope),
-                new SqliteParameter("@title", (object?)entry.Title ?? DBNull.Value),
-                new SqliteParameter("@content", entry.Content),
-                new SqliteParameter("@priority", entry.Priority),
-                new SqliteParameter("@status", entry.Status),
-                new SqliteParameter("@ca", entry.CreatedAt),
-                new SqliteParameter("@ua", entry.UpdatedAt));
+            var id = DbMemoryTools.Insert(entry);
             return Task.FromResult(WorkerResponse.Json(new MemoryMutationResult(true, Id: id), WishfulClawJsonContext.Default.MemoryMutationResult));
         });
     }
@@ -162,10 +149,7 @@ internal sealed partial class MemoryModule : IWorkerModule
         var status = GetString(parameters, "status");
         return RunAsync(() =>
         {
-            var db = DbClient.GetClient();
-            var entry = db.QueryFirstOrDefault(
-                "SELECT * FROM memory_entries WHERE id = @id",
-                EntityMappers.MapMemoryEntry, new SqliteParameter("@id", id));
+            var entry = DbMemoryTools.GetById(id);
             if (entry is null)
                 return Task.FromResult(WorkerResponse.Json(new SimpleOkResult(false, Error: "Entry not found"), WishfulClawJsonContext.Default.SimpleOkResult));
 
@@ -173,15 +157,7 @@ internal sealed partial class MemoryModule : IWorkerModule
             if (priority is not null) entry.Priority = priority.ToLowerInvariant();
             if (status is not null) entry.Status = status.ToLowerInvariant();
             entry.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            db.Execute(
-                "UPDATE memory_entries SET title = @title, content = @content, priority = @priority, " +
-                "status = @status, updated_at = @ua WHERE id = @id",
-                new SqliteParameter("@title", (object?)entry.Title ?? DBNull.Value),
-                new SqliteParameter("@content", entry.Content),
-                new SqliteParameter("@priority", entry.Priority),
-                new SqliteParameter("@status", entry.Status),
-                new SqliteParameter("@ua", entry.UpdatedAt),
-                new SqliteParameter("@id", id));
+            DbMemoryTools.Update(entry);
             return Task.FromResult(WorkerResponse.Json(new SimpleOkResult(true), WishfulClawJsonContext.Default.SimpleOkResult));
         });
     }
@@ -207,36 +183,21 @@ internal sealed partial class MemoryModule : IWorkerModule
 
         return RunAsync(() =>
         {
-            var db = DbClient.GetClient();
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var scopeClause = scope is null
-                ? ""
-                : $" AND scope = '{EscapeSql(scope)}'";
             var candidates = new List<MemoryDemotionCandidate>();
-            using (var reader = db.ExecuteReader(
-                       "SELECT id, scope, title, priority, status, updated_at FROM memory_entries " +
-                       $"WHERE priority <> 'permanent' AND status IN ('active', 'warm'){scopeClause}"))
+            foreach (var entry in DbMemoryTools.ListDemotionCandidates(scope))
             {
-                while (reader.Read())
+                var (warmDays, coldDays) = entry.Priority switch
                 {
-                    var id = reader.GetInt64(reader.GetOrdinal("id"));
-                    var entryScope = reader.GetString("scope");
-                    var title = reader.IsDBNull(reader.GetOrdinal("title")) ? null : reader.GetString("title");
-                    var priority = reader.GetString("priority");
-                    var status = reader.GetString("status");
-                    var updatedAt = reader.IsDBNull(reader.GetOrdinal("updated_at")) ? 0 : reader.GetInt64(reader.GetOrdinal("updated_at"));
-                    var (warmDays, coldDays) = priority switch
-                    {
-                        "ephemeral" => (warmEphemeral, coldEphemeral),
-                        "lasting" => (warmLasting, coldLasting),
-                        _ => (warmStandard, coldStandard)
-                    };
-                    var idleDays = (now - updatedAt) / 86400.0;
-                    if (status == "active" && idleDays >= warmDays)
-                        candidates.Add(new(id, entryScope, title, priority, status, updatedAt, "warm"));
-                    else if (status == "warm" && idleDays >= coldDays)
-                        candidates.Add(new(id, entryScope, title, priority, status, updatedAt, "cold"));
-                }
+                    "ephemeral" => (warmEphemeral, coldEphemeral),
+                    "lasting" => (warmLasting, coldLasting),
+                    _ => (warmStandard, coldStandard)
+                };
+                var idleDays = (now - entry.UpdatedAt) / 86400.0;
+                if (entry.Status == "active" && idleDays >= warmDays)
+                    candidates.Add(new(entry.Id, entry.Scope, entry.Title, entry.Priority, entry.Status, entry.UpdatedAt, "warm"));
+                else if (entry.Status == "warm" && idleDays >= coldDays)
+                    candidates.Add(new(entry.Id, entry.Scope, entry.Title, entry.Priority, entry.Status, entry.UpdatedAt, "cold"));
             }
             return Task.FromResult(WorkerResponse.Json(
                 new MemoryDemotionCandidatesResponse(candidates),
@@ -264,32 +225,12 @@ internal sealed partial class MemoryModule : IWorkerModule
 
         return RunAsync(() =>
         {
-            var db = DbClient.GetClient();
-            var idParams = ids.Select((value, index) => new SqliteParameter($"@id{index}", value)).ToArray();
-            var inList = string.Join(",", ids.Select((_, index) => $"@id{index}"));
-            var scopeClause = scope is null
-                ? ""
-                : $" AND scope = '{EscapeSql(scope)}'";
-            var sql = touch
-                ? $"UPDATE memory_entries SET status = @status, updated_at = @ua WHERE id IN ({inList}){scopeClause}"
-                : $"UPDATE memory_entries SET status = @status WHERE id IN ({inList}){scopeClause}";
-            var allParams = touch
-                ? idParams.Append(new SqliteParameter("@status", status)).Append(new SqliteParameter("@ua", DateTimeOffset.UtcNow.ToUnixTimeSeconds())).ToArray()
-                : idParams.Append(new SqliteParameter("@status", status)).ToArray();
-            var affected = db.Execute(sql, allParams);
+            var affected = DbMemoryTools.BatchSetStatus(ids, status!, scope, touch);
             return Task.FromResult(WorkerResponse.Json(new MemoryBatchStatusResult(true, affected), WishfulClawJsonContext.Default.MemoryBatchStatusResult));
         });
     }
 
     // ── Helpers ──
-
-    private static int CountStatus(DbService db, string sql)
-    {
-        using var reader = db.ExecuteReader(sql);
-        return reader.Read() ? (int)reader.GetInt64(0) : 0;
-    }
-
-    private static string EscapeSql(string s) => s.Replace("'", "''", StringComparison.Ordinal);
 
     private static List<long> GetLongArray(JsonElement element, string name)
     {

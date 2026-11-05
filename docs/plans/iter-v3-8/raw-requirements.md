@@ -3,12 +3,13 @@
 > 拆分于 2026-11-05 14:49（老大「开新迭代」）。来源 = v3-iter-7 收尾移交 + 该迭代挂账结转。
 > 本文件只列清单与依据，刀序见 [plan.md](plan.md)。
 
-## 一、本迭代实施（2 条）
+## 一、本迭代实施（3 条）
 
 | 编号 | 标题 | 现状 / 依据 | 正文 |
 |---|---|---|---|
 | S-321 | **清理从 OpenCowork 搬来但从未接通的死代码（宠物 / 翻译 / 通道残留）** | 2026-11-05 14:56 老大「登记吧」。触发点：S-318 刀 2 原写「`lib/auth/` 不能整目录删，宠物和翻译在用多账号轮转」，老大反问「宠物不要，翻译是什么？」⇒ 核实后**两者都是死代码**，前提不成立。**宠物 1261 行**（`lib/pet/` 7 文件 + 4 个 `pet-*-store.ts`）：`src/main` 零命中、渲染层零组件 import、无资源目录。**翻译约 790 行**（`translate-store` / `translate-service` / `translate-agent-service`）：`useTranslateStore` 零消费者。**另 12 条通道白名单残留**（`messagepack-channel-routing.ts:17-27, :400-402`）指向不存在的 handler，`NavItem` 的 `'translate'`（`ui-types.ts:13`）与两组 locale key 同样无消费点。五处唯一外部依赖都是 `ensureProviderAuthReady` 一个函数 ⇒ **删完之后 S-318 刀 2 可以从「摘 OAuth 留多账号轮转」简化成「整目录清」** | [requirements/S-321.md](requirements/S-321.md) |
 | S-318 | **公开版剔除「订阅额度 OAuth 冒充」（5 个 preset）** —— 合规清理 | v3-iter-7 唯一移交项。老大 11-05 09:47「workbuddy 是一个风险点，如果我去抖音推广大家使用，有这个功能的话，会被腾讯这些直接告」+ 09:5x「页面 ai 授权服务商也需要删掉才对啊」+ 10:12「统一都需要处理。不过可以丢到下个迭代单独处理」。**5 个 preset**：`workbuddy` / `workbuddy-ai`（`server_poll` + 6 个 `X-IDE-*` 头）/ `codex-oauth`（`codex_cli_rs/0.144.5` UA + `chatgpt.com/backend-api`）/ `copilot-oauth`（`GitHubCopilotChat/0.26.7` + `copilot_internal/v2/token`）/ `moonshot-coding`（`KimiCLI/1.49.0` + 客户端白名单）。**保留 `moonshotPreset`（API Key 版，`moonshot.ts:123`）**。四个坑已实读确认：①「授权 AI 服务商」整页只收 `server_poll` ⇒ 可整页删、不影响其它 OAuth ②`reconcileProviders:224-229` 对同 preset 第二三条记录原样保留 ⇒ 僵尸记录需显式剔除名单 ③`lib/auth/provider-auth.ts` **不是纯 OAuth**，含多账号轮转 —— **但消费者是 S-321 要删的死代码** ⇒ S-321 先行后此顾虑消失 ④靠「preset 不存在」隐式清理不可靠 | [../iter-v3-7/requirements/S-318.md](../iter-v3-7/requirements/S-318.md) |
+| S-322 | **内存治本三条：会话驻留淘汰 / `request_debug` 白推 / base64 前缀重复复制** | 2026-11-05 15:04 老大「登记吧」（调研 `D:\claw\wishful-work` 私有仓的内存专项后）。**主仓日志实证**：`2026-11-05.log` 连续 51 条 `memory high role=worker managed=1060.8→1062.9MB`，同时刻 `renderer ws=256.2MB` ⇒ **worker 是 renderer 的 4 倍**；`managed` 浮动 ±3 MB、`heap` 几乎不动、`frag` 仅 15.8 MB ⇒ **稳态数据，不是线性泄漏**。**三条根因**：①**A 段** `SessionConversationManager`（主仓 73 行）只有 `GetOrCreate`/`TryGet`/`Remove`/`ClearAll`，**零闲置淘汰、零容量上限**，而类注释「entries are removed on session switch」是错的 —— `Remove` 只在删会话 / subagent / goal 三处调；`SessionConversation.cs:22` 的 `List<JsonElement> _wireConversation` 常驻持有完整 base64 ⇒ 发过消息的会话永不退出，多会话累加即 GB 级 ②**B 段** `OpenAIChatProvider.cs:46-55`（三个 provider 同构）每轮每重试把**完整 body** 塞进 `request_debug`，而渲染层 `debug-store.ts:20-22` 上限只有 **4 KB** ⇒ 99.97% 生成即丢弃，中间还全走 MessagePack + pipe + base64 + JSON ③**C 段** `ProviderContentHelpers.cs:44-49` 的 `StripDataUrlPrefix` 是 string 版，`:62` 与 `ImageFileProbe.cs:159` 两处热路径都用整串，**`Trim()` 把 600 KB 复制一遍只为看前 64 字符**，且 `:62` 上叠了两次。私有仓实测组包放大 **5.13x**（UTF-16 口径；拿字符数当字节数是 10.26x，差整一倍）。**已证伪、别再试**：改 GC 模式 / 换 AOT / dev-vs-prod / 换 Tauri（WebView2 占 72%）/ `totalJSHeapSize` 涨 = 泄漏 | [requirements/S-322.md](requirements/S-322.md) |
 
 ## 二、挂账 / 阻塞（四条，不占刀序）
 

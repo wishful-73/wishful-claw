@@ -21,5 +21,9 @@
 - **刀序随之重排为 6/7/8（S-324 → S-323 → S-322）**，理由两条：① 最安全的先做（S-324 判据不变），先建立「改动不改行为」的信心 ② 治根的 S-322 风险最高（淘汰错＝用户上下文没了）⇒ 放最后动。原「6a 在最前」的意图保留，只是编号理顺了。
 - **为什么该拆**：一个需求单对应一次可独立验收、可独立回滚的改动，是这轮迭代一路在守的口径（S-316 / S-317 / S-305 的账就是合单写法留下的）。合单里写 A/B/C，日后溯源要翻整篇找段落，**编号是唯一的检索键**。
 - **教训**：登记时图省事合并，等于把「未来溯源成本」记在自己账上。**凡是能各自独立回滚的，就该各自编号。**
+- **15:19 老大补边界：「318 正常通过apikey请求的不删哈」。** 15:20 按 `export const xxxPreset` 切块扫全部 48 个 builtin preset（`authMode` / `requiresApiKey` / `userAgent` / `serverPollOAuth` / `defaultBaseUrl`），确认**只有 5 个**同时命中「OAuth 订阅额度 + 冒充客户端 UA」，与登记一致：`workbuddy` / `workbuddy-ai` / `codex-oauth` / `copilot-oauth` / `moonshot-coding`。**其余 43 个走用户自己的 API Key，一个字段都不改。**
+- **扫描顺带堵住两个误删口子**：① `ollama` / `lmstudio` 也是 `requiresApiKey: false`，但走 localhost、无冒充 ⇒ **别只看这一个字段就开删**，判据必须两条同时命中 ② `qwen-coding` / `minimax-coding` / `baidu-coding` / `bigmodel-coding` / `xiaomi-coding` / `stepfun-plan` 打的是厂商 coding / plan 端点，看着像「套餐」，实际凭用户自己的 Key ⇒ 留。
+- **新发现一条待定（未列进删除名单）**：`qwen-coding` 的 `userAgent: 'claude-cli/2.1.71 (external, cli)'`（`qwen.ts:11`）+ `type: 'anthropic'` + `coding.dashscope.aliyuncs.com/apps/anthropic` —— **凭自己的 Key 冒名 Claude Code CLI**。按「API Key 不删」口径保留，但冒充事实存在，是否处理待老大定，本需求不擅动。
+- **顺带订正 S-318 §3B.2 的原判**：原文写「`lib/auth/` 不能整目录删，宠物和翻译在用多账号轮转」⇒ 15:21 全仓 grep 复核，`lib/auth` 之外的 import 只有 5 条，全部落在 S-321 死代码（`translate-store` + `lib/pet` ×3）与 A 段整页删（`ProviderAuthPanel` ×3）里 ⇒ **该目录零 API Key 路径引用，刀 0 之后可整目录删**。原判是「看 import 就下结论」的又一次翻版。
 - **两边已漂移，禁止整文件覆盖**：私有仓从主仓全量搬出后，主仓仍有改动（S-284 等）。S-322 的每条改动都必须按需求单 §三 的实读行号逐点改 —— `ProviderContentHelpers.cs` 私有仓已到 479 行以上，主仓结构未必一致。
 - **顺手记一条异常信号**：`2026-11-05.log` 里出现 `role=main type=wishful-claw-shell.exe`，那是私有仓 Tauri 壳的 T-044 bug（dev 壳读到正式库）污染进来的。**主仓日志里出现非 `wishful-claw.exe` 的 `role=main` 可以当异常信号用。**

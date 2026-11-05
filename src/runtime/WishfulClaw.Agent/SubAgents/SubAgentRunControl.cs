@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 
 using WishfulClaw.Agent.Executors;
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// S-308：toolUseId → 子 agent 自己的 run state。给外部一条真正能中断执行的通路

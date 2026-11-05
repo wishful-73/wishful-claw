@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// Tracks sub-agent execution state so the main agent can query

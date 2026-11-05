@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Text.Json;
+using WishfulClaw.Agent.SubAgents;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
@@ -152,7 +153,7 @@ public sealed class ToolModule : IWorkerModule
 
         // Sub-agent Task tool — load agent definitions from disk into registry first,
         // then construct TaskTool so its description/schema reflect available agent types.
-        Agent.SubAgentRegistry.LoadFromDisk();
+        SubAgentRegistry.LoadFromDisk();
         registry.Register(new TaskTool(), "task");
 
         // Sub-agent status and detail query tools

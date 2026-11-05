@@ -13,7 +13,7 @@ using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Agent.Executors;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// Sub-agent event emission (queued/dequeued/started) and goal-activity forwarding. Split out per AGENTS.md 大文件拆分 (2026-10-28), bodies moved verbatim.

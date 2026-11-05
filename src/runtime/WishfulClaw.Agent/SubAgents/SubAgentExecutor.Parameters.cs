@@ -4,7 +4,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 public static partial class SubAgentExecutor
 {

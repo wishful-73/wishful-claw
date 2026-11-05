@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// Collects text events from a sub-agent's event stream and forwards

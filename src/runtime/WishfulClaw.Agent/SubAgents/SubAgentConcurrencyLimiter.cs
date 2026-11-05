@@ -1,6 +1,6 @@
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// Process-wide FIFO limiter for sub-agent executions. Capacity is configured by

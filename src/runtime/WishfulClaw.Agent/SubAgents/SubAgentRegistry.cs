@@ -1,7 +1,7 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using WishfulClaw.Core.Protocol;
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// In-memory registry for SubAgent definitions.

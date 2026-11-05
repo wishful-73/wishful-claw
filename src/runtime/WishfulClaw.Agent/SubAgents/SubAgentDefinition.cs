@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// Static definition of a sub-agent, loaded from ~/.wishful-claw/agents/*.md files.

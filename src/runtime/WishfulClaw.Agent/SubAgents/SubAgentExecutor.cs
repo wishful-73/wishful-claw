@@ -13,7 +13,7 @@ using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Agent.Executors;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// Executes sub-agent (Task) tool calls.

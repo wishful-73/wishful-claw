@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WishfulClaw.Agent.SubAgents;
 using WishfulClaw.Agent;
 
 namespace WishfulClaw.GoalRegressionTests;

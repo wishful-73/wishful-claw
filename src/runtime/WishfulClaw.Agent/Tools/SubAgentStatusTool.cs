@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WishfulClaw.Agent.SubAgents;
 using WishfulClaw.Core.Tools;
 
 namespace WishfulClaw.Agent.Tools;
@@ -49,8 +50,8 @@ public sealed class SubAgentStatusTool : IToolExecutor
             var listAll = string.Equals(scope?.Trim(), "all", StringComparison.OrdinalIgnoreCase);
 
             var all = listAll
-                ? Agent.BackgroundSubAgentRegistry.GetAll()
-                : Agent.BackgroundSubAgentRegistry.GetForSession(context.SessionId);
+                ? BackgroundSubAgentRegistry.GetAll()
+                : BackgroundSubAgentRegistry.GetForSession(context.SessionId);
             if (all.Count == 0)
             {
                 return Task.FromResult(new ToolResult(
@@ -63,12 +64,12 @@ public sealed class SubAgentStatusTool : IToolExecutor
             var lines = new List<string> { $"Sub-Agents ({all.Count}, {scopeLabel}):" };
             foreach (var r in all)
             {
-                lines.Add($"  {Agent.BackgroundSubAgentRegistry.FormatBrief(r)}");
+                lines.Add($"  {BackgroundSubAgentRegistry.FormatBrief(r)}");
             }
             return Task.FromResult(new ToolResult(string.Join("\n", lines)));
         }
 
-        var record = Agent.BackgroundSubAgentRegistry.Get(toolUseId!);
+        var record = BackgroundSubAgentRegistry.Get(toolUseId!);
         if (record is null)
         {
             return Task.FromResult(new ToolResult(
@@ -76,7 +77,7 @@ public sealed class SubAgentStatusTool : IToolExecutor
         }
 
         return Task.FromResult(new ToolResult(
-            Agent.BackgroundSubAgentRegistry.FormatStatusInfo(record)));
+            BackgroundSubAgentRegistry.FormatStatusInfo(record)));
     }
 }
 
@@ -117,7 +118,7 @@ public sealed class SubAgentDetailTool : IToolExecutor
                 "SubAgentDetail requires a 'toolUseId' parameter.", true));
         }
 
-        var record = Agent.BackgroundSubAgentRegistry.Get(toolUseId!);
+        var record = BackgroundSubAgentRegistry.Get(toolUseId!);
         if (record is null)
         {
             return Task.FromResult(new ToolResult(
@@ -125,6 +126,6 @@ public sealed class SubAgentDetailTool : IToolExecutor
         }
 
         return Task.FromResult(new ToolResult(
-            Agent.BackgroundSubAgentRegistry.FormatDetail(record)));
+            BackgroundSubAgentRegistry.FormatDetail(record)));
     }
 }

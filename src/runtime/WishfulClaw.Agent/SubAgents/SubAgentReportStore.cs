@@ -11,7 +11,7 @@ using Microsoft.Data.Sqlite;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.SubAgents;
 
 /// <summary>
 /// 把子 agent 的最终报告写进 sub_agent_runs.data.finalOutput（S-36）。

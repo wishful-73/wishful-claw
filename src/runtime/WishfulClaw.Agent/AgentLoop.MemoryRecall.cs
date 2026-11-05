@@ -4,6 +4,7 @@ using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Workspace.Memory;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

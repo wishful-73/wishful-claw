@@ -3,6 +3,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Agent;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;

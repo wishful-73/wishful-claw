@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

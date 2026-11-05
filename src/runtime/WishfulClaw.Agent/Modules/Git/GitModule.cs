@@ -7,6 +7,7 @@
 
 using System.Text.Json.Serialization.Metadata;
 ﻿using System.Text.Json;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Contracts;
 
 namespace WishfulClaw.Agent.Modules.Git;

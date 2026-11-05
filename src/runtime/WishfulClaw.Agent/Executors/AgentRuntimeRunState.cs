@@ -1,0 +1,345 @@
+using System.Collections.Concurrent;
+using System.Text.Json;
+
+namespace WishfulClaw.Agent.Executors;
+
+/// <summary>
+/// Per-run state: cancellation, message queue, seq counter.
+/// Each agent run gets its own instance, disposed when the run finalizes.
+/// </summary>
+public sealed class AgentRuntimeRunState : IDisposable
+{
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly ConcurrentQueue<JsonElement> _queuedMessages = new();
+    private readonly object _messageQueueSync = new();
+    private long _seq;
+    private int _queuedMessageCount;
+    private int _stopRequested;
+    private bool _messageQueueClosed;
+    private string? _cancelReason;
+
+    public AgentRuntimeRunState(string runId, string sessionId)
+    {
+        RunId = runId;
+        SessionId = sessionId;
+        StartedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    }
+
+    public string RunId { get; }
+    public string SessionId { get; }
+    public long StartedAt { get; }
+    public JsonElement Parameters { get; private set; }
+    public CancellationToken CancellationToken => _cancellation.Token;
+
+    /// <summary>
+    /// When true, events emitted via EmitAsync are NOT sent to the frontend.
+    /// Used by sub-agents: the parent executor captures events via EventObserver
+    /// and selectively forwards them to the parent's stream.
+    /// </summary>
+    public bool SuppressTransportEvents { get; set; }
+
+    /// <summary>
+    /// When set, this run is a Goal-orchestrated plan execution. Sub-agent
+    /// events forwarded to the parent stream are additionally tagged with this
+    /// context (emitted as "goal_activity") so the Goal panel can render a
+    /// live activity feed for the executing plan.
+    /// </summary>
+    public GoalEventContext? GoalEventContext { get; set; }
+
+    /// <summary>
+    /// Host-side evidence sink for Goal-orchestrated sub-agent runs. The
+    /// SubAgentExecutor appends each child tool call's observable facts
+    /// (tool name, key argument, success) here so the orchestrator can hand
+    /// the evaluator host-observed receipts alongside the model's own report —
+    /// evaluation then checks claims against what actually ran (inspired by
+    /// DeepSeek-Reasonix's evidence ledger).
+    /// </summary>
+    public GoalTaskEvidence? GoalEvidenceSink { get; set; }
+
+    /// <summary>
+    /// Identifies the source of usage events: "executor", "subagent", "compaction", etc.
+    /// Default is "executor". Set by the caller before executing a provider turn.
+    /// </summary>
+    public string UsageSource { get; set; } = "executor";
+
+    /// <summary>
+    /// The session conversation for this run. Set by AgentLoop before executing
+    /// provider turns so that providers can read session-level cache counters
+    /// and attach them to message_end events.
+    /// </summary>
+    public SessionConversation? SessionConversation { get; set; }
+
+    /// <summary>
+    /// Memory-update notes drained at the start of this turn.
+    /// Appended to the tail of the last user message by InjectTransientPrefix (S-231).
+    /// In-memory only — the wire conversation that gets persisted never carries
+    /// injected blocks.
+    /// </summary>
+    public List<string> PendingMemoryNotes { get; set; } = [];
+
+    /// <summary>
+    /// Memory-recall block appended to the last user message, after the timestamp
+    /// block (S-231). In-memory only, like the notes above.
+    /// </summary>
+    public string? PendingMemoryRecall { get; set; }
+
+    /// <summary>
+    /// S-209：待注入的「空回复催办」标记。上一轮只出思考、既没正文也没工具调用时由
+    /// AgentLoop 置上，下一轮构造 provider 消息时以临时副本注入一次，随即消费掉。
+    ///
+    /// 为什么不追加真消息：提醒会落库、进 durable conversation，还会污染下一轮压缩的
+    /// 摘要输入（摘要的身份判定靠消息形状），代价远大于收益。
+    /// </summary>
+    public bool PendingEmptyTurnNudge { get; set; }
+
+    /// <summary>S-209：本 run 已经催办过几次（上限见 <c>AgentLoop.MaxEmptyTurnNudges</c>）。</summary>
+    public int EmptyTurnNudgeCount { get; set; }
+
+    /// <summary>
+    /// S-207：系统提示词里写着的沙箱状态。
+    ///
+    /// 提示词在 run 开头构建、进了 cacheKey，不会再改；而用户批准「临时关闭」是一次
+    /// run 进行中就能发生的事，于是模型读到的口径和 PathBoundary 的实时判定会打架
+    /// —— 提示词说「在沙箱里」，实际放行；或反过来。每轮 provider 调用前比对一次，
+    /// 变了就注入一条临时提示把口径拉平（<c>AgentLoop.SandboxTransition</c>）。
+    /// </summary>
+    public bool SandboxEnabledInPrompt { get; set; }
+
+    /// <summary>
+    /// S-236（档 2）：本 run 已确认上游不吃图像输入，之后每次组包都剥掉 image 块。
+    ///
+    /// 为什么不直接剥 <c>conversation</c>：那是 <c>SessionConversation</c> 的**活引用**
+    /// （<c>GetConversation()</c> 返回 <c>_conversation</c> 本体），在它上面删块等于改持久历史
+    /// —— 用户切回会话会发现图没了。所以标记放这里，剥的永远是
+    /// <c>ExecuteTurnAsync</c> 每轮现造的临时副本（wire conversation）。
+    ///
+    /// 与 <see cref="ImageVisionMemory"/> 的分工：这个是 **run 级**（撞了一次立刻止血），
+    /// 那个是 **进程级 + 落盘**（下次不用再白撞一次）。
+    /// </summary>
+    public bool SuppressImagesForModel { get; set; }
+
+    /// <summary>
+    /// S-262：待注入的「上一次请求被上游 400 拒绝」报文正文。
+    ///
+    /// 置上之后，<c>InjectProviderRejectionNotice</c>（<c>AgentLoop.ProviderRejection.cs</c>）
+    /// 在**临时副本**上把被标记的工具结果换成这份说明。不落库 —— 理由与
+    /// <see cref="PendingEmptyTurnNudge"/> 相同：写进 durable conversation 会污染历史，
+    /// 也会成为下一轮压缩摘要的噪声。
+    ///
+    /// **本身不负责生命周期。** 换哪些结果由 <see cref="ProviderRejectionToolUseIds"/> 决定，
+    /// 这里只管「换成什么」。
+    /// </summary>
+    public string? PendingProviderRejectionReport { get; set; }
+
+    /// <summary>
+    /// S-262 补正：本 run 里死掉的工具结果 id —— 它们的原文已被上游 400 判过，之后每轮组包
+    /// 都要换成拒绝说明，**直到 run 结束都不撤销**。
+    ///
+    /// 为什么不能只替换一轮：触发 400 的工具结果在报错前就已经由 <c>AgentLoop</c> 的 finally
+    /// 写回 durable conversation（只增不减），而 <c>ExecuteTurnAsync</c> 每轮都从它重建 wire 副本。
+    /// 于是下一轮读到的是**原文**，同一份坏数据原样重发 → 同一 400 → 指纹去重命中 → 抛，
+    /// 会话照样废掉。一次性消费等于只买到半次自愈。
+    ///
+    /// 为什么按 id 记而不是「再替换一次最后一条」：重发成功后模型会继续调工具，
+    /// 等坏数据再回到报文里时，它早就不是最后一条了。
+    /// </summary>
+    internal HashSet<string> ProviderRejectionToolUseIds { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// S-262 补正：下一次组包时先把「当前最后一批工具结果」的 id 收进
+    /// <see cref="ProviderRejectionToolUseIds"/>。
+    ///
+    /// 由 <see cref="RecordProviderRejectionRecovery"/> 置上 —— 那一刻才知道是哪一批数据惹的祸
+    /// （catch 里拿不到组包副本，只有 durable conversation）。
+    /// </summary>
+    internal bool ProviderRejectionRegistrationPending { get; set; }
+
+    /// <summary>
+    /// S-262：本 run 已经尝试过几次「替换工具结果后重发」。
+    /// 上限见 <c>AgentLoop.MaxProviderRejectionRecoveriesPerRun</c>。
+    /// </summary>
+    public int ProviderRejectionRecoveryCount { get; set; }
+
+    /// <summary>
+    /// S-262：上一次尝试过的报文指纹（见 <c>ProviderRejectionErrors.Fingerprint</c>）。
+    /// 与当前指纹相同即判定「改了也没用」，立刻抛错，不再烧请求。
+    /// </summary>
+    public string? LastProviderRejectionFingerprint { get; set; }
+
+    /// <summary>
+    /// S-262：记一次恢复尝试、挂上待注入报文，并把「下一次组包时登记坏结果」的开关打开。
+    /// 调用方必须先用 <c>AgentLoop.CanRecoverFromProviderRejection</c> 判定过额度与指纹 ——
+    /// 这里只负责落账，不重复把关。
+    /// </summary>
+    internal void RecordProviderRejectionRecovery(string report, string fingerprint)
+    {
+        ProviderRejectionRecoveryCount++;
+        LastProviderRejectionFingerprint = fingerprint;
+        PendingProviderRejectionReport = report;
+        // 请求已经带着这一批工具结果发出去了，可见 catch 里手上没有组包副本；
+        // 登记动作推迟到下一次组包 —— 那时才拿得到「最后一批工具结果」的 id。
+        ProviderRejectionRegistrationPending = true;
+    }
+
+    /// <summary>
+    /// S-209：申请一次催办。额度用尽返回 false —— 这时必须放它正常收尾，
+    /// 绝不无限重试。
+    /// </summary>
+    public bool TryScheduleEmptyTurnNudge(int maxNudges)
+    {
+        if (EmptyTurnNudgeCount >= maxNudges) return false;
+        EmptyTurnNudgeCount++;
+        PendingEmptyTurnNudge = true;
+        return true;
+    }
+
+    /// <summary>
+    /// Optional callback invoked for every event when SuppressTransportEvents is true.
+    /// The SubAgentExecutor uses this to collect text/tool events from the child loop.
+    /// </summary>
+    public Func<AgentRuntimeStreamEvent, ValueTask>? EventObserver { get; set; }
+
+    public int QueuedMessageCount => Volatile.Read(ref _queuedMessageCount);
+    public bool IsCancellationRequested => _cancellation.IsCancellationRequested;
+    public bool IsStopRequested => Volatile.Read(ref _stopRequested) != 0;
+    public string? StopReason { get; private set; }
+
+    /// <summary>
+    /// S-299：本轮已经跑到第几轮（1-based），以及最后一个发起调用的工具名。
+    ///
+    /// 存在的理由只有一个：撞轮次上限时，光说「到了迭代上限」等于什么都没说 ——
+    /// 用户看不出是跑飞了还是任务本来就大。这两个值由 AgentLoop 每轮更新，
+    /// EmitLoopEndAsync 原样带进 loop_end 事件，渲染端拼成「已跑 15 轮（42 分钟）」。
+    ///
+    /// 只在 loop_end 时有意义；运行中的进度以 iteration_start 事件为准。
+    /// </summary>
+    public int IterationCount { get; set; }
+
+    /// <summary>见 <see cref="IterationCount"/>。null = 这一轮还没调用过工具。</summary>
+    public string? LastToolName { get; set; }
+
+    /// <summary>
+    /// The reason of the first Cancel call (diagnostics only). Later cancels
+    /// still propagate but do not overwrite the original reason.
+    /// </summary>
+    public string? CancelReason => Volatile.Read(ref _cancelReason);
+
+    public void ReplaceParameters(JsonElement parameters)
+    {
+        Parameters = parameters;
+    }
+
+    public long NextSeq()
+    {
+        return Interlocked.Increment(ref _seq);
+    }
+
+    public int EnqueueMessages(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object ||
+            !parameters.TryGetProperty("messages", out var messages) ||
+            messages.ValueKind != JsonValueKind.Array)
+        {
+            return 0;
+        }
+
+        lock (_messageQueueSync)
+        {
+            if (_messageQueueClosed)
+            {
+                return 0;
+            }
+
+            var count = 0;
+            foreach (var message in messages.EnumerateArray())
+            {
+                if (message.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+                _queuedMessages.Enqueue(message.Clone());
+                count++;
+            }
+
+            if (count > 0)
+            {
+                Interlocked.Add(ref _queuedMessageCount, count);
+            }
+            return count;
+        }
+    }
+
+    public List<JsonElement> DrainQueuedMessages()
+    {
+        lock (_messageQueueSync)
+        {
+            var messages = new List<JsonElement>();
+            while (_queuedMessages.TryDequeue(out var message))
+            {
+                messages.Add(message);
+            }
+            if (messages.Count > 0)
+            {
+                Interlocked.Add(ref _queuedMessageCount, -messages.Count);
+            }
+            return messages;
+        }
+    }
+
+    public bool TryCloseMessageQueueIfEmpty()
+    {
+        lock (_messageQueueSync)
+        {
+            if (QueuedMessageCount > 0)
+            {
+                return false;
+            }
+            _messageQueueClosed = true;
+            return true;
+        }
+    }
+
+    public void Cancel(string reason)
+    {
+        Interlocked.CompareExchange(
+            ref _cancelReason,
+            string.IsNullOrWhiteSpace(reason) ? "cancelled" : reason,
+            null);
+        try
+        {
+            _cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Run state already disposed (e.g. a parent cancel callback fired
+            // after the child run finalized); nothing left to cancel.
+        }
+    }
+
+    public void RequestStop(string reason)
+    {
+        StopReason = string.IsNullOrWhiteSpace(reason) ? "completed" : reason;
+        Interlocked.Exchange(ref _stopRequested, 1);
+    }
+
+    /// <summary>
+    /// 记录本次 run 的结束原因，仅在尚未设置时写入（iter-31 S-53）。
+    ///
+    /// AgentLoop 的循环退出之后才算得出真实原因（正常跑完 / 撞轮次上限），此前它只把
+    /// 这个原因喂给了 loop_end 事件、没有落到 state 上 —— 于是 SubAgentExecutor 上报的
+    /// StopReason 永远是 null，UI 里「被掐断的 run」和「干完的 run」长得一模一样。
+    /// </summary>
+    internal void RecordStopReason(string reason)
+    {
+        StopReason ??= string.IsNullOrWhiteSpace(reason) ? "completed" : reason;
+    }
+
+    public void Dispose()
+    {
+        lock (_messageQueueSync)
+        {
+            _messageQueueClosed = true;
+        }
+        _cancellation.Dispose();
+    }
+}

@@ -101,6 +101,7 @@ const csPath = join(
   'src',
   'runtime',
   'WishfulClaw.Agent',
+  'Executors',
   'AgentRuntimeGlobalTaskExecutor.cs'
 )
 let csSource = ''
@@ -175,7 +176,7 @@ check(
 
 // 13. 回执反向请求必须带 displayContent + 结构化 meta
 const replyExecSource = readOrEmpty(
-  'src/runtime/WishfulClaw.Agent/AgentRuntimeGlobalDispatchReplyExecutor.cs'
+  'src/runtime/WishfulClaw.Agent/Executors/AgentRuntimeGlobalDispatchReplyExecutor.cs'
 )
 check(replyExecSource.length > 0, '必须读到 AgentRuntimeGlobalDispatchReplyExecutor.cs')
 check(
@@ -189,7 +190,7 @@ check(
 
 // 14. 项目执行器必须走 BuildSessionMessageWireText，不许直接把原话塞 content
 const projectExecSource = readOrEmpty(
-  'src/runtime/WishfulClaw.Agent/AgentRuntimeProjectExecutor.cs'
+  'src/runtime/WishfulClaw.Agent/Executors/AgentRuntimeProjectExecutor.cs'
 )
 check(projectExecSource.length > 0, '必须读到 AgentRuntimeProjectExecutor.cs')
 check(

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Agent;
 using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Db;

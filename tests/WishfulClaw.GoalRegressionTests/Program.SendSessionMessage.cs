@@ -1,6 +1,7 @@
 using System.Text.Json;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Contracts;
-using static WishfulClaw.Agent.AgentRuntimeProjectExecutor;
+using static WishfulClaw.Agent.Executors.AgentRuntimeProjectExecutor;
 
 namespace WishfulClaw.GoalRegressionTests;
 

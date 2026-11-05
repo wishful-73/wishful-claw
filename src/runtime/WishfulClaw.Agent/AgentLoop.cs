@@ -17,6 +17,7 @@ using WishfulClaw.Core.Tools;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Infrastructure.Storage;
 using WishfulClaw.Persona;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

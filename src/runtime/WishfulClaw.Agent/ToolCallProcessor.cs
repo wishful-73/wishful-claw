@@ -5,6 +5,7 @@ using WishfulClaw.Agent.Tools;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

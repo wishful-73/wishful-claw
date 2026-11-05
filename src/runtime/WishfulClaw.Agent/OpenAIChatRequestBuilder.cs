@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

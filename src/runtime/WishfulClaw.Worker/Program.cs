@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json.Serialization.Metadata;
 using WishfulClaw.Contracts;
 using WishfulClaw.Agent;
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Worker;
 

@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
+using WishfulClaw.Agent.Executors;
 
 namespace WishfulClaw.Agent;
 

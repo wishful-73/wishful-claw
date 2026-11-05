@@ -8,6 +8,7 @@
  * 本套件钉的就是这个共用函数 —— 它是「文件到底落在哪」的唯一判据。
  */
 
+using WishfulClaw.Agent.Executors;
 using WishfulClaw.Agent;
 
 namespace WishfulClaw.CaptureTargetPathRegressionTests;

@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Net;
 using WishfulClaw.Agent.Compression;
 using WishfulClaw.Agent.Executors;
+using WishfulClaw.Agent.Images;
 using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 

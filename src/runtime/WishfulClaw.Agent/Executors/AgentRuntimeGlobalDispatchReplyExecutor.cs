@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WishfulClaw.Agent.Results;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;

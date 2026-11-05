@@ -8,7 +8,7 @@
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Protocol;
 
 /// <summary>
 /// Simplified User-Agent resolver for API requests.

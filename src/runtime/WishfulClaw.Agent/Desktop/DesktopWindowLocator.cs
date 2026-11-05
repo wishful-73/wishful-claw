@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Desktop;
 
 /// <summary>
 /// 一个可见顶层窗口（S-272 第二段 · D）。

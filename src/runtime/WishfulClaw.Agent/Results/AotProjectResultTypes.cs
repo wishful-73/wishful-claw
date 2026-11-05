@@ -1,4 +1,4 @@
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Results;
 
 // AOT-safe record types for AgentRuntimeProjectExecutor results.
 // All properties use PascalCase; JsonOptions with CamelCase naming policy

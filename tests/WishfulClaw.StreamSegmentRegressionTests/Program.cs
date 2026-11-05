@@ -1,3 +1,4 @@
+using WishfulClaw.Agent.Protocol;
 using WishfulClaw.Agent;
 
 namespace WishfulClaw.StreamSegmentRegressionTests;

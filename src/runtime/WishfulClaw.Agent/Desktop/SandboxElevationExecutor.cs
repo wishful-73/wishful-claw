@@ -4,7 +4,7 @@ using WishfulClaw.Core.Protocol;
 using WishfulClaw.Agent.Tools;
 using WishfulClaw.Agent.Executors;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Desktop;
 
 /// <summary>
 /// RequestSandboxElevation 执行器（S-207）：agent 主动申请「临时关闭沙箱模式」。

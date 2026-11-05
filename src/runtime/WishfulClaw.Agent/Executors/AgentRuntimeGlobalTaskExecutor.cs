@@ -4,6 +4,7 @@
 // 搬成公开 API，反而更难追踪一条派活到底走到哪一步。
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using WishfulClaw.Agent.Results;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;

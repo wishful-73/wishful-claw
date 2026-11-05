@@ -1,4 +1,4 @@
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Images;
 
 /// <summary>
 /// 识别上游因「这个模型不吃图像输入」而拒绝请求的错误（S-236 档 2）。

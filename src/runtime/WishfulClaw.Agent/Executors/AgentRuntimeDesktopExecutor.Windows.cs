@@ -16,6 +16,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using WishfulClaw.Agent.Desktop;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 

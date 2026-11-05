@@ -3,7 +3,7 @@ using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Storage;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Images;
 
 /// <summary>
 /// S-236 档 2 的「记住」：某个 (provider, model) 经**真实请求**撞出过「不吃图像输入」，

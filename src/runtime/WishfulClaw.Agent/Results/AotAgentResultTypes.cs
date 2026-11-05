@@ -1,6 +1,6 @@
-﻿using WishfulClaw.Contracts;
+using WishfulClaw.Contracts;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Results;
 
 /// <summary>
 /// Session/Goal related result types for AOT-safe serialization.

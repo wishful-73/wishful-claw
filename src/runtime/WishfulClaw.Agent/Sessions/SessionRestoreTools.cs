@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using WishfulClaw.Agent.Compression;
 using WishfulClaw.Agent.Executors;
+using WishfulClaw.Agent.Results;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;

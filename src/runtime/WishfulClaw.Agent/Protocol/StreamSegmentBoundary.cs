@@ -2,7 +2,7 @@ using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Agent.Executors;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Protocol;
 
 /// <summary>
 /// S-142: emits the explicit block boundaries the renderer needs in order to tell

@@ -3,6 +3,7 @@
 // 快照读取、任务派发共用同一份 project / session 上下文与 DB 连接。拆出去要把
 // 这批 DB 句柄与 run 上下文搬成公开 API，排查「状态为什么不更新」反而更难。
 using System.Text.Json;
+using WishfulClaw.Agent.Results;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;

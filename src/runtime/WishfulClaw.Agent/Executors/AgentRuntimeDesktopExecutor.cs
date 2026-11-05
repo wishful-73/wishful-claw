@@ -7,6 +7,7 @@
 
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using WishfulClaw.Agent.Desktop;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 

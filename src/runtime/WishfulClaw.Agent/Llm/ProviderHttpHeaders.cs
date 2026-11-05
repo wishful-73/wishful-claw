@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Text.Json;
+using WishfulClaw.Agent.Protocol;
 using WishfulClaw.Core.Protocol;
 
 namespace WishfulClaw.Agent.Llm;

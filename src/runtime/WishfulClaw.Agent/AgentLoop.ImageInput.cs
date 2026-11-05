@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WishfulClaw.Agent.Images;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Agent.Executors;
 

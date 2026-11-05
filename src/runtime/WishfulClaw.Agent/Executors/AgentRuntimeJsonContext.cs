@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using WishfulClaw.Agent.Llm;
+using WishfulClaw.Agent.Results;
 using WishfulClaw.Contracts;
 using WishfulClaw.Agent.Modules.Git;
 using WishfulClaw.Agent.Modules.Extensions;

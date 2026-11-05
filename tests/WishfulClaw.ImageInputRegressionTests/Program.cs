@@ -12,6 +12,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using WishfulClaw.Agent.Images;
 using WishfulClaw.Agent.Llm;
 using WishfulClaw.Agent;
 

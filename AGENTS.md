@@ -279,6 +279,21 @@ Agent 的工作分两种状态，边界由老大的话决定，不由 agent 推�
 - **禁止从旧分支拆分支**：如果上一个分支未合并 main，新分支会缺少前序迭代的代码变更，导致编译错误或功能缺失
 - **标准流程**：`git checkout main` → `git pull origin main` → `git checkout -b dev/v3-iter-{M}` → 开发（**只 commit，不 push**）→ 确认收尾 → 合并 main → 打 tag → `push main + tags` → 删除分支 → 下一个迭代从 main 重新拆出
 
+### 口令表
+
+**老大的一句话就是触发词 —— 不需要他每次都点名文档。** 命中下表就按对应文档整套执行，不问、不讨价、不回头要文件路径：
+
+| 口令（原话口径） | 读哪份 | 执行到什么程度 |
+|---|---|---|
+| 「根据开发工作流推进」/「按工作流推进」 | `docs/dev-workflow.md` | 六阶段全套：登记 → 方案 → 实施 → 门禁 → 文档 → 提交。**一个需求一刀，做完不停等**，只在真阻塞或有方向性分歧时抬头 |
+| 「进行 xxx 迭代收尾」 | `docs/release-workflow.md` | **整套**：§二升版本号 → §三 git（合并 / tag / 推送 / 删分支）→ §四发布（打包 + 官网下载目录 + GitHub Release）→ §五进度文档 → §六核验 → §七清理。**含发布，不是停在 tag** |
+| 「拆分新迭代」/「开新迭代」 | `docs/dev-workflow.md`「分支管理」+ `docs/iteration-plan.md` | 从**最新 main** 拆 `dev/v3-iter-{M+1}`、建 `docs/plans/iter-v3-{M+1}/`（plan / raw-requirements / changelog / requirements），登台账 |
+| 「登记一个需求 / bug」 | `docs/dev-workflow.md` 登记节 | 新建 `requirements/S-{n}.md` + 清单加一行。**只登记不动手**；编号由老大给，发现的缺陷先报、等裁定 |
+| 「审查一下 / 全面审查」 | `docs/dev-workflow.md` 审查阶段 | 读代码 + 跑门禁 + 出结论，**审查本身算真机验收的一环**，发现的问题按「补正实施缺陷」处理，不擅自新开编号 |
+| 「先聊聊 / 讨论一下」 | —— | 只读代码、出方案、给 diff 预览。**不改代码、不提交**，补充口径 ≠ 拍板开工 |
+
+> 拿不准是讨论还是开工 —— 按讨论处理，回一句问。这条优先于上表任何一行。
+
 ### 迭代收尾与发布
 
 **完整流程见 `docs/release-workflow.md`**（触发条件 / 版本规则 / 版本号改动清单 / git 收尾步骤 / 进度文档 / GitHub Release 发布 / 发布后核验，全在那份文档；本节不再维护副本）。

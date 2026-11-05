@@ -2,9 +2,9 @@
 
 > 分支：`dev/v3-iter-7`（base = `b6e37eed`，= v1.0.6 发布记录提交，即最新 `main`；tag `v1.0.6` → `6c0c5149`）。执行期内只 commit，**不 push**。
 > 产品版本：`1.0.7`（开工时 `package.json` 仍是 `1.0.6`，收尾时改），tag `v1.0.7`。
-> 状态：**进行中**（2026-11-05 10:30 更新：刀 1 / 刀 2 / 刀 3 已落地，刀 4 / 刀 5 / 刀 6 待开工）。
+> 状态：**已完成**（2026-11-05 14:31 老大发起收尾）。刀 1 ~ 刀 7 全部落地，刀 4 / 刀 6 各追加一次补刀（`c2b8a89a` / `2364a78b`）；刀 0 六条按「dev 实例反复测过」收口，未单独逐条走完的已在 `docs/progress/v3-iter-7.md` 显式标注。[S-318](requirements/S-318.md)「公开版剔除订阅额度 OAuth 冒充（5 个 preset）」老大 10:12 已拍板：**统一处理、移交 v3-iter-8 单独做**，不在本迭代）。
+> 门禁基线（**2026-11-05 收尾实测**）：`npm run typecheck` **三配置 0 错**（node + web + test）｜ `npm test` **125/125**｜ `dotnet build tests/WishfulClaw.Tests.sln -t:Rebuild` **0 警告 0 错误**；`src/runtime/WishfulClaw.sln -t:Rebuild` **0 错误 / 2 警告**，两条警告都是已挂账的 [S-320](requirements/S-320.md)（`NU1903`，同一包重复计数），不是本迭代引入。
 > 前置：v1.0.6 已双面发布（官网下载目录四件套 + GitHub Release 三资产，逐项对账全绿）。
-> 门禁基线（沿用 2026-11-04 v3-iter-6 收尾实测）：`npm run typecheck` **三配置 0 错**（node + web + test，42.4 s）｜ `npm test` **122/122**（82.6 s）｜ `dotnet build` 两套 sln 各 **0 警告 0 错误**（均 `-t:Rebuild` 口径）。
 > `node scripts/ci-checks.mjs` **不是第四道判据**：它内部就跑 `typecheck` + `npm test -- --ts-only`（当时 TS 侧是上一条的子集），已钉在 pre-push 钩子与 GitHub Actions 上。**交付时只跑上面三条**，并列等于 typecheck 与 TS 测试各烧两遍。
 
 ## 一、本迭代的定位
@@ -28,7 +28,8 @@ v3-iter-6 修的是「把正确性押在某个不会报错的地方」。这一�
 | **4** | **S-315** 连续工具调用时工具 run 折叠块反复开合（抖动源**之一**） | **纯判定修正，改动面最小**，但落在**默认档**（`compact`）—— 绝大多数用户看到的就是它。排在三条实施项之后，避免插进 S-313 两刀之间、把「新增文件 vs 前缀变化」的对照搅浑。老大 11-05 08:35 明确判为「导致窗体抖动的来源之一」 | 只改**收起时机**（`activeCount` → `sealed`）：**不碰**三档 policy 取值、不碰 `CollapsibleHeightPanel`、不碰动画。`text` / `detail` 两档行为必须零变化。⚠️ 治不了 S-233（另一条路径，仍挂账），见 [requirements/S-315.md](requirements/S-315.md) §七 |
 | **5** | **S-316** 内置服务商请求头仍是 C# 硬编码，没走 `requestOverrides.headers`（含 `ApplyOAuthAccount` 双值缺陷） | 数据化通道（`requestOverrides.headers` + `{{sessionId}}` / `{{model}}` 模板 + 覆盖语义 + 空值跳过）**全部早就在**，只有 3 个预设用上了，剩下 5 组头还写死在 `ProviderHttpHeaders.cs`。又是「零件全在，线没接」。与 S-317 拆开的理由：本条动 C# header 链（所有服务商 chat / responses / anthropic / 压缩 / 辅助全走它），S-317 纯前端 | 老数据兼容靠「C# 兜底 + `Contains` 检查」：新 provider 由预设带头（可见可改），老 provider 无该头时兜底照旧生效 ⇒ 行为零变化。⚠️ **不删**兜底路径，删了就丢头。`oauthAccount` 四头 / `User-Agent` / 协议必需头明确不搬，理由见 [requirements/S-316.md](requirements/S-316.md) §四 |
 | **6** | **S-317** 请求头编辑器没有「编辑态 / 已保存态」 | 现状每敲一个字符就 `updateProvider` 落库，界面零反馈；校验失败还「跳过非法行、存其余」。用户不知道存没存 = 老大原话。排在刀 5 之后：先让三个头进表，再让它好改 | 纯渲染层，可独立回滚。改「编辑 → 保存」两态，**只此一个 section 两态**，其它设置项仍即时保存（单值字段立即生效更顺手，且 apiKey 的 `onBlur` 还兼着拉模型）。不做切走确认（`key` 重挂载拦不住，靠 `未保存` 文字提示） |
-| — | **挂账三条** S-233 / S-230 / S-273 段 B | **不占刀序** | 见 [raw-requirements.md](raw-requirements.md) §三 |
+| **7** | **S-319** 空白 thinking 打断工具链（连续工具调用被切成多个折叠块） | 老大 11-05 10:46 在 S-315 落地后仍看到「三个工具三个块」。**与刀 4 是同一观感链路上的两处不同判据**：刀 4 管「run 算出之后收不收」，本条管「run 算的时候切不切」。根因是模型返回 `reasoning_content = " "`（纯空格），四处源头判据全判空串不判空白 ⇒ 建一个看不见的 thinking 块 ⇒ 被 `execution-outline.ts:207` 当成封口信号。排在刀 6 之后：它只动源头四行判据 + 渲染层两处 trim，风险最低，且不依赖前面任何一刀 | 四处源头（`OpenAIChatProvider.cs:245` / `OpenAIChatProvider.Sse.cs:175` / `AnthropicMessagesEventParser.cs:167` / `OpenAIResponsesEventParser.cs:61`）+ 渲染层第二道闸（`session-runtime-router.ts:200`）+ 读取侧（`chat-message-blocks.ts:32`）。**不碰**分段判据、不碰入库链路、不碰加密思考路径。老大两次纠正的裁定见 [requirements/S-319.md](requirements/S-319.md) §三。✅ 已落地：7 处改动 + `tool-run-folding` 新增判据 8 三条（退回判据即失败，`actual 3 / expected 0`）⇒ 门禁 typecheck 三配置 0 错 / `npm test` 125/125 / 主 sln 0 错误 0 自有警告；§五 五条真机验收未跑 |
+| — | **挂账四条** S-233 / S-230 / S-273 段 B / **S-320**（.NET 11 SDK 升级，消 NU1903 Brotli 告警 —— **零暴露，等 GA**） | **不占刀序** | 见 [raw-requirements.md](raw-requirements.md) §三 |
 
 ## 三、开工前必须拍板的事
 

@@ -5,6 +5,7 @@
  * Modified by the Wishful 心相 team for Wishful Claw.
  */
 
+using WishfulClaw.Agent.Sessions;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 

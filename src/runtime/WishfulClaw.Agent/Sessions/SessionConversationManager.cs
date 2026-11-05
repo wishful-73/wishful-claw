@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Sessions;
 
 /// <summary>
 /// Static registry mapping sessionId → <see cref="SessionConversation"/>.

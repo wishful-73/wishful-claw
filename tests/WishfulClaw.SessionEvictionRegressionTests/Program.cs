@@ -8,6 +8,7 @@
 
 using System;
 using System.Text.Json;
+using WishfulClaw.Agent.Sessions;
 using WishfulClaw.Agent;
 
 var passed = 0;

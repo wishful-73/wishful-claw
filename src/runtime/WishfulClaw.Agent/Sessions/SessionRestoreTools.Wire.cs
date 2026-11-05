@@ -8,7 +8,7 @@ using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Infrastructure.Db;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Sessions;
 
 /// <summary>
 /// Wire-message reconstruction on restore: entity to wire message, tool-result synthesis and pairing, chat-only artifact filtering. Split out per AGENTS.md 大文件拆分 (2026-10-28), bodies moved verbatim.

@@ -9,7 +9,7 @@ using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Infrastructure.Db;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Sessions;
 
 /// <summary>
 /// Result of the DB restore core (<see cref="SessionRestoreTools.RestoreFromDb"/>):

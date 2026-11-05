@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using WishfulClaw.Agent.Sessions;
 
 namespace WishfulClaw.Agent.Executors;
 

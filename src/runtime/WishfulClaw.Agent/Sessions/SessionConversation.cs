@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Sessions;
 
 /// <summary>
 /// Per-session conversation state manager.

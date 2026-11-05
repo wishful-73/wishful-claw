@@ -7,7 +7,7 @@ using WishfulClaw.Core.Protocol;
 using Microsoft.Data.Sqlite;
 using WishfulClaw.Infrastructure.Db;
 
-namespace WishfulClaw.Agent;
+namespace WishfulClaw.Agent.Sessions;
 
 /// <summary>
 /// Collapsed long-paste chip expansion on restore. Split out per AGENTS.md 大文件拆分 (2026-10-28), bodies moved verbatim.

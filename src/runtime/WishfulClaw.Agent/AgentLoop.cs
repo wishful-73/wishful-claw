@@ -13,6 +13,7 @@
 using System.Text.Json;
 using WishfulClaw.Agent.Compression;
 using WishfulClaw.Agent.Llm;
+using WishfulClaw.Agent.Sessions;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Core.Tools;

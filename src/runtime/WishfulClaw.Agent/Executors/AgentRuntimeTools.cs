@@ -9,6 +9,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using WishfulClaw.Agent.Llm;
+using WishfulClaw.Agent.Sessions;
 using WishfulClaw.Agent.SubAgents;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;

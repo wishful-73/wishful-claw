@@ -394,12 +394,8 @@ export function isProviderAuthReady(provider: AIProvider | null | undefined): bo
   if (authMode === 'apiKey') {
     return provider.requiresApiKey === false || provider.apiKey.trim().length > 0
   }
-  // S-229: 投影补上 `authMode` 之后，OAuth 服务商才会真的带着 `authMode: 'oauth'` 走这里。
-  // 这条分支以前恒 false —— 唯一的后果被虚拟投影的 `undefined` 掩盖了，登录过的
-  // OAuth 服务商会从此在模型选择器里消失。判据与登录入口一致：有任一账号的 accessToken 即可用。
-  if (authMode === 'oauth') {
-    return Boolean(provider.oauth?.accessToken) || (provider.oauthAccounts?.length ?? 0) > 0
-  }
+  // S-318：OAuth 授权链已整体下线，只剩 apiKey / channel 两种模式；
+  // channel 走渠道凭据，不参与模型选择判定。
   return false
 }
 

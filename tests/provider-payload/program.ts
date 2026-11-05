@@ -149,11 +149,11 @@ const WORKER_READ_KEYS = [
 // ── F-8 sibling: the custom User-Agent ────────────────────────────────────────
 {
   const custom = buildProviderPayload(
-    makeProvider({ models: [makeModel()], userAgent: 'GitHubCopilotChat/0.26.7' }),
+    makeProvider({ models: [makeModel()], userAgent: 'CustomAgent/0.26.7' }),
     'model-1',
     makeSettings()
   )
-  eq(custom.userAgent, 'GitHubCopilotChat/0.26.7', 'a configured User-Agent is passed through')
+  eq(custom.userAgent, 'CustomAgent/0.26.7', 'a configured User-Agent is passed through')
 
   // The placeholder values presets carry mean "use the app default", not "send this".
   const placeholder = buildProviderPayload(

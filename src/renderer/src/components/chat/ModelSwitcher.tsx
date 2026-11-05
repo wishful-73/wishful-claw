@@ -15,7 +15,6 @@ import {
 } from '@renderer/stores/settings-store'
 import { useChatStore } from '@renderer/stores/chat-store'
 import { useChannelStore } from '@renderer/stores/channel-store'
-import { useQuotaStore } from '@renderer/stores/quota-store'
 
 import { useTranslation } from 'react-i18next'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
@@ -32,7 +31,6 @@ import { type ProviderGroup, type ModelSwitcherSessionSnapshot, selectModel, sel
 import { AutoFallbackChain } from './ModelSwitcher/AutoFallbackChain'
 import { ModelCapabilityTags, ModelHoverDetails } from './ModelSwitcher/model-info'
 import { ModelSettingsPopover } from './ModelSwitcher/ModelSettingsPopover'
-import { CodexQuotaIndicator, CopilotQuotaIndicator } from './ModelSwitcher/QuotaIndicators'
 
 /**
  * Sentinel used in `selectedProviderId` for the `auto` row. Its right-hand panel holds
@@ -82,7 +80,6 @@ export function ModelSwitcher({
       }
     })
   )
-  const quotaByKey = useQuotaStore((s) => s.quotaByKey)
   const fallbackActiveSessionId = useChatStore((s) => s.activeSessionId)
   const activeSessionId = sessionId !== undefined ? sessionId : fallbackActiveSessionId
   const activeSession = useChatStore(
@@ -167,26 +164,6 @@ export function ModelSwitcher({
     : displayModelId && displayModel?.name && displayModel.name !== displayModelId
       ? displayModelId
       : null
-
-  const codexQuota = useMemo(() => {
-    if (!displayProvider || displayProvider.builtinId !== 'codex-oauth') return null
-    const quota =
-      quotaByKey[displayProvider.id] ||
-      (displayProvider.builtinId ? quotaByKey[displayProvider.builtinId] : undefined) ||
-      quotaByKey['codex'] ||
-      null
-    return quota?.type === 'codex' ? quota : null
-  }, [displayProvider, quotaByKey])
-
-  const copilotQuota = useMemo(() => {
-    if (!displayProvider || displayProvider.builtinId !== 'copilot-oauth') return null
-    const quota =
-      quotaByKey[displayProvider.id] ||
-      (displayProvider.builtinId ? quotaByKey[displayProvider.builtinId] : undefined) ||
-      quotaByKey['copilot'] ||
-      null
-    return quota?.type === 'copilot' ? quota : null
-  }, [displayProvider, quotaByKey])
 
   const groups = useMemo<ProviderGroup[]>(() => {
     if (!open) return []
@@ -583,9 +560,6 @@ export function ModelSwitcher({
         </PopoverContent>
       </Popover>
 
-      {/* Quota Indicators */}
-      {codexQuota && <CodexQuotaIndicator quota={codexQuota} tSettings={tSettings} />}
-      {copilotQuota && <CopilotQuotaIndicator quota={copilotQuota as any} tSettings={tSettings} />}
       {/* Settings / Thinking trigger — ModelSettingsPopover renders a brain icon
           with effort label for thinking-capable models, or a gear icon otherwise */}
       <ModelSettingsPopover

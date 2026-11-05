@@ -10,9 +10,9 @@
 // `provider-materialization.ts` 的 REMOVED_BUILTIN_IDS 必须留着那几个 builtinId
 // 才能把老数据里的僵尸记录剔掉，那是清理痕迹，不是病灶。
 //
-// 分批：B 段三家（codex / copilot / moonshot 套餐）随刀 2 删，届时把
-// `codex_cli_rs` / `GitHubCopilotChat` / `KimiCLI` / `chatgpt.com/backend-api/codex` /
-// `api.githubcopilot.com` / `api.kimi.com/coding` 加进来。
+// 分刀已完成：刀 1 收 WorkBuddy 一系（X-IDE-* / X-Agent-* / X-Product /
+// copilot.tencent.com / workbuddy.ai），刀 2 收订阅额度 OAuth 三家
+// （codex / copilot / moonshot 套餐）。
 const FORBIDDEN_MARKERS = [
   'X-IDE-Name',
   'X-IDE-Type',
@@ -21,7 +21,13 @@ const FORBIDDEN_MARKERS = [
   'X-Agent-Intent',
   'X-Agent-Purpose',
   'copilot.tencent.com',
-  'workbuddy.ai'
+  'workbuddy.ai',
+  'codex_cli_rs',
+  'GitHubCopilotChat',
+  'KimiCLI',
+  'chatgpt.com/backend-api/codex',
+  'api.githubcopilot.com',
+  'api.kimi.com/coding'
 ]
 
 function findMarkers(buffer, markers) {

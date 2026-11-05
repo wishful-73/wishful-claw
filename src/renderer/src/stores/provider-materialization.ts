@@ -19,25 +19,21 @@ function clonePlain<T>(value: T): T {
 /**
  * S-229: protocol fields the projection used to drop.
  *
- * They are what makes an account-based provider work at all: `authMode` + `oauthConfig`
- * decide whether sign-in / token refresh can run, while `userAgent` and
- * `requestOverrides` carry the headers the endpoint rejects requests without.
- * Records written before
- * R-9 kept them because they were persisted whole; projections only started dropping
- * them when R-9 replaced the whole record with this function's return value.
+ * `userAgent` and `requestOverrides` carry the headers an endpoint rejects requests
+ * without; `channelConfig` decides whether channel auth can run. Records written
+ * before R-9 kept them because they were persisted whole; projections only started
+ * dropping them when R-9 replaced the whole record with this function's return value.
  *
  * 这份清单是**唯一来源**：投影与「已物化记录补缺」都读它，免得两处手抄字段名漂移。
  */
 function protocolFieldsOf(preset: BuiltinProviderPreset): Partial<AIProvider> {
   return {
     ...(preset.authMode !== undefined ? { authMode: preset.authMode } : {}),
-    ...(preset.oauthConfig ? { oauthConfig: clonePlain(preset.oauthConfig) } : {}),
     ...(preset.channelConfig ? { channelConfig: clonePlain(preset.channelConfig) } : {}),
     ...(preset.userAgent !== undefined ? { userAgent: preset.userAgent } : {}),
     ...(preset.useSystemProxy !== undefined ? { useSystemProxy: preset.useSystemProxy } : {}),
     ...(preset.requestOverrides ? { requestOverrides: clonePlain(preset.requestOverrides) } : {}),
     ...(preset.instructionsPrompt !== undefined ? { instructionsPrompt: preset.instructionsPrompt } : {}),
-    ...(preset.ui ? { ui: clonePlain(preset.ui) } : {}),
     ...(preset.websocketUrl !== undefined ? { websocketUrl: preset.websocketUrl } : {}),
     ...(preset.websocketMode !== undefined ? { websocketMode: preset.websocketMode } : {})
   }
@@ -84,12 +80,10 @@ export function createProviderFromPreset(preset: BuiltinProviderPreset): AIProvi
 /**
  * S-229: fill protocol fields a persisted builtin record is missing.
  *
- * Only ever adds what is `undefined` — a value the user owns, or an `accessToken` /
- * `oauthAccounts` already stored on the record, is never overwritten (those live on
- * `oauth`, not on `oauthConfig`; the latter only carries endpoints). This is what
- * repairs the records that were materialized from a projection and then written to
- * disk: sign-in shipped after R-9, so anyone who signed in before this fix has a record
- * has a record with `authMode` / `oauthConfig` / `userAgent` / `useSystemProxy` missing.
+ * Only ever adds what is `undefined` — anything the user owns is never overwritten.
+ * This is what repairs the records that were materialized from a projection and then
+ * written to disk: they can be missing `userAgent` / `useSystemProxy` /
+ * `requestOverrides` that the preset still carries.
  *
  * 字段清单来自 `protocolFieldsOf`，与投影共用同一份来源。
  */
@@ -120,7 +114,7 @@ export function materializeRecord<T extends AIProvider>(provider: T): T {
  * to being a virtual projection. Deliberately conservative — keeping one costs a few
  * KB of stale JSON, dropping one wrongly loses a user's configuration forever.
  * The `requiresApiKey === false` guard covers presets that never carry a key
- * (codex-oauth / copilot-oauth / lmstudio / ollama / moonshot-coding).
+ * (lmstudio / ollama).
  */
 export function isUnownedBuiltin(provider: AIProvider): boolean {
   if (!provider.builtinId || provider.virtual) return false
@@ -142,7 +136,7 @@ export function shouldPersist(provider: AIProvider): boolean {
 /**
  * R-9.6: project a builtin back to its factory defaults.
  *
- * The id is deliberately preserved — sessions, plugins, cron tasks and OAuth bindings
+ * The id is deliberately preserved — sessions, plugins, cron tasks and channel bindings
  * all reference provider ids, and a "reset to factory" is not an invitation to break
  * every one of them. Returns null when the provider is not a known builtin.
  */
@@ -185,11 +179,15 @@ export interface ProviderReconciliation {
  * 悬空引用的兜底在 `ensureBuiltinPresets`（拨正 activeProviderId）与
  * `getActiveProvider`（运行时回落）里，两者配合才能保证会话照常发得出去。
  *
- * 分批：刀 1 只收 A 段两家；B 段三家（`codex-oauth` / `copilot-oauth` /
- * `moonshot-coding`）的 preset 还在册，此时剔除会让仍在用的记录凭空消失，
- * 所以等它们随刀 2 一起删时再补进来。
+ * 分刀：刀 1 收 A 段两家，刀 2 收 B 段三家，此后这份清单即全部已下线的内置服务商。
  */
-const REMOVED_BUILTIN_IDS = new Set(['workbuddy', 'workbuddy-ai'])
+const REMOVED_BUILTIN_IDS = new Set([
+  'workbuddy',
+  'workbuddy-ai',
+  'codex-oauth',
+  'copilot-oauth',
+  'moonshot-coding'
+])
 
 export function reconcileProviders(persisted: AIProvider[]): ProviderReconciliation {
   const persistedByBuiltinId = new Map<string, AIProvider>()
@@ -219,12 +217,12 @@ export function reconcileProviders(persisted: AIProvider[]): ProviderReconciliat
     // R-9.C.8: NEVER re-key an existing record to `preset.builtinId`. Provider ids are
     // persisted outside this store — chat sessions in SQLite, app-plugin-store,
     // channel-store, settings-store org models, cron
-    // agentId, OAuth bindings — and none of those can be remapped from here.
+    // agentId, channel bindings — and none of those can be remapped from here.
     // Re-keying would dangle all of them. Stable builtinId applies to records created
     // from R-9 on; legacy records keep the id they already have.
     // `homepage` 与 `tagline` 只读展示字段：内置 provider 在 UI 里不可编辑（是链接不是输入框），
     // 所以跟 preset 走、每次重投影都刷新，其余字段原样保留。
-    // S-229：协议字段（authMode / oauthConfig / userAgent / requestOverrides / ui）只补缺失、
+    // S-229：协议字段（authMode / userAgent / requestOverrides 等）只补缺失、
     // 不覆盖 —— 已物化记录里可能有用户自己的 token 或改动。
     providers.push(
       existing

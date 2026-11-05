@@ -10,10 +10,6 @@ import { useTheme } from 'next-themes'
 
 const ICON_BASE = 'https://unpkg.com/@lobehub/icons-static-png@1.83.0'
 
-const iconUrlMap: Record<string, string> = {
-  'copilot-oauth': 'https://github.githubassets.com/favicons/favicon.png'
-}
-
 const providerIconSlugMap: Record<string, string> = {
   openai: 'openai',
   anthropic: 'anthropic',
@@ -23,7 +19,6 @@ const providerIconSlugMap: Record<string, string> = {
   ollama: 'ollama',
   'azure-openai': 'azureai',
   moonshot: 'moonshot',
-  'moonshot-coding': 'moonshot',
   longcat: 'longcat',
   qwen: 'qwen',
   'qwen-coding': 'qwen',
@@ -33,8 +28,6 @@ const providerIconSlugMap: Record<string, string> = {
   minimax: 'minimax',
   siliconflow: 'siliconcloud',
   'gitee-ai': 'giteeai',
-  'codex-oauth': 'openai',
-  'copilot-oauth': 'github',
   xiaomi: 'xiaomimimo',
   'xiaomi-coding': 'xiaomimimo',
   'bigmodel-coding': 'chatglm',
@@ -201,8 +194,6 @@ export function ProviderIcon({
   className?: string
 }): React.JSX.Element {
   const variant = useIconVariant()
-  const customUrl = builtinId ? iconUrlMap[builtinId] : undefined
-  if (customUrl) return <StaticIcon src={customUrl} size={size} className={className} />
   const slug = builtinId ? providerIconSlugMap[builtinId] : undefined
   const url = slug ? getIconUrl(slug, variant) : undefined
   if (url) return <StaticIcon src={url} size={size} className={className} />

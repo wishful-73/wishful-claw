@@ -163,10 +163,6 @@ const MESSAGEPACK_INVOKE_CHANNELS = new Set<string>([
   'image:persist-generated',
   'image:download',
   'image:create-gif-from-grid',
-  // 登录链路（`lib/auth/`）的通用 HTTP 出口。
-  // 它必须有 handler（src/main/ipc/api-request-handler.ts）且必须留在本白名单：
-  // 白名单外会落到裸 ipcRenderer.invoke，而主进程只注册了 `:msgpack` 通道。
-  'api:request',
   'web:fetch',
   'web:fetch-rendered',
   'extension:read-asset',
@@ -429,7 +425,6 @@ const MESSAGEPACK_EVENT_CHANNELS = new Set<string>([
   'goal:event-added',
   'goal:run-state',
   'goal:continue-requested',
-  'api:quota-update',
   'api:account-rate-limited',
   'sidecar:lifecycle',
   'update:available',

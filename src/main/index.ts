@@ -33,7 +33,6 @@ import { startMemoryMonitor } from './diagnostics/memory-monitor'
 import { installDisplayMediaHandler } from './plugins/plugin-audio'
 import { registerPluginLifecycle } from './plugins/plugin-lifecycle'
 import { registerWebFetchHandlers } from './ipc/web-fetch-handlers'
-import { registerApiRequestHandlers } from './ipc/api-request-handler'
 import { registerSshHandlers, cleanupSshHandlers } from './ipc/ssh-handlers'
 import { registerSkillHandlers } from './ipc/skill-handlers'
 import { registerSshFsHandlers } from './ipc/ssh-fs-handlers'
@@ -352,7 +351,6 @@ if (!gotTheLock) {
   startMemoryMonitor()
   registerDiagnosticsHandlers()
 registerWebFetchHandlers()
-registerApiRequestHandlers()
 registerCodeGraphHandlers()
 
   // ── Worker forwarders (agent-history / db / goal) ──

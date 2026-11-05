@@ -64,4 +64,21 @@
 
 ## 发布
 
-> 打包与双面核验结果见 main 上的「发布记录」提交，本文档只记迭代内容。
+**2026-11-05 14:45 打包 / 14:47 双面核验全部通过。**
+
+| 项 | 值 |
+|---|---|
+| 安装包 | `release/wishful-claw-1.0.7-setup.exe`（107,427,894 B / 102.45 MB；比 1.0.6 大 8,514 B） |
+| blockmap | `release/wishful-claw-1.0.7-setup.exe.blockmap`（112,033 B） |
+| latest.yml | 353 B；`sha512` 与 setup.exe 实际 sha512 逐位一致、`size` 一致 |
+| 官网下载目录（更新源） | 四件套上传，逐件 sha512 校验通过；`.exe` 只留当前版，`.blockmap` 保留 1.0.3 ~ 1.0.7 五版 |
+| GitHub Release（存档） | <https://github.com/wishful-73/wishful-claw/releases/tag/v1.0.7> —— 三资产 `state=uploaded`，`draft=false` / `prerelease=false` / 是 Latest；Release 上的 `latest.yml` 与本地逐字节一致 |
+| 更新说明 | `release-notes-1.0.7.md` 已在清单同目录（清单不带 `releaseNotes` 属正常态） |
+| 官网自身内容 | **本迭代零改动 ⇒ 未重发站点**，只跑 `installer` |
+| 证书 | 剩余 46 天（2026-12-22 到期） |
+| 本地清理 | `release/` 删掉 1.0.3 ~ 1.0.6 共 **428.4 MB**（545.2 → 116.8 MB）；`.wishful-claw/notes/` 删本轮探针与核验中间文件，只留发布说明 |
+
+上线抽查（curl 实测，全部 **206**）：`latest.yml` / `setup.exe` / `setup.exe.blockmap` / `release-notes-1.0.7.md` 与 1.0.3 ~ 1.0.6 的 blockmap 均可达，`latest.yml` 里 `version: 1.0.7`。
+
+**未做**：端到端「拿 1.0.6 的包实际跑一次 `checkForUpdates()`」——要在装机环境里跑，留给老大真机确认。
+

@@ -151,8 +151,9 @@ export function buildToolExecutionOutline({
    * 收掉当前这一段连续工具调用。
    *
    * `sealed` 由调用方给出（S-315）：只有「后面真的出现了其它内容」或「整条消息已结束」
-   * 才算这一段结束。子 agent 卡片的隔离、流未结束时的兜底收尾都不算 —— 那只是把 run
-   * 切开、让子 agent 卡站在正确的位置，之后随时可能还有工具进来。
+   * 才算这一段结束。**唯一**不算结束的是「流还没跑完时的兜底收尾」—— 那时这一段随时
+   * 可能还有新工具进来。子 agent 卡片的隔离、强制分段都属于「后面已经有东西了」，
+   * 一律算结束（早先这里判反了，含失败项的长段跑完也折不起来）。
    */
   const closePendingRun = (sealed: boolean): void => {
     if (!pendingRun) return
@@ -218,8 +219,11 @@ export function buildToolExecutionOutline({
     // A Task owns a visible SubAgent card at this exact content position. Isolate it from
     // adjacent ordinary tools so a collapsed Read/Edit run can never hide or move the card.
     const isSubAgentTask = block.name === TASK_TOOL_NAME
-    // 只是为了让子 agent 卡站在正确的位置，不等于这一段结束了（S-315）。
-    if (isSubAgentTask) closePendingRun(false)
+    // S-315 修正：这**是**封口信号，不是「只为摆位置」。
+    // 子 agent 卡本身就是这一段之后渲染出来的东西，前一段到这里已经结束了；
+    // 之前传 false，等于把「后面明明已经有内容」的段落标记成未结束 —— 紧凑档据此
+    // 保持展开，于是含失败项的连续工具段跑完也收不起来（S-315 现场复现见单测）。
+    if (isSubAgentTask) closePendingRun(true)
 
     const result = toolResults?.get(block.id)
     const liveToolCall = liveToolCallMap?.get(block.id)
@@ -284,8 +288,8 @@ export function buildToolExecutionOutline({
       boundaryAfterToolUseIds?.has(block.id) ||
       boundaryAfterBlockIndices?.has(blockIndex)
     ) {
-      // 强制分段同理：切开不等于结束（S-315）。
-      closePendingRun(false)
+      // 同上：强制分段是「这个位置之后另起一段」的显式声明，前一段同样已经结束。
+      closePendingRun(true)
     }
   }
 

@@ -221,6 +221,64 @@ test('S-315：流结束 ⇒ 最后一段封口，紧凑档收起', () => {
   assert.equal(run.defaultCollapsed, true)
 })
 
+test('S-315：Task 边界切开的前一段必须封口 —— 含失败项也照样收起', () => {
+  // 现场（dev 库 11/5 11:27）：一长串连续工具里有一次 Grep 超时，紧跟着两个 Task。
+  // 之前 Task 处用 sealed=false 收尾，这一段跑完仍判「未结束」，紧凑档永远展不开折。
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('t2', 'Grep', { pattern: 'x' }),
+    toolUse('t3', 'Read', { file_path: 'b.txt' }),
+    toolUse('sub1', TASK_TOOL_NAME, { prompt: 'sub' })
+  ]
+  const outline = build({
+    blocks: blocks as unknown as ContentBlock[],
+    results: new Map([
+      ['t1', okOutput()],
+      ['t2', errOutput('[TOOL TIMEOUT] Grep did not return within 1 min')],
+      ['t3', okOutput()],
+      ['sub1', okOutput('Background sub-agent started.')]
+    ]),
+    isStreaming: false
+  })
+
+  assert.equal(outline.runs.length, 2, 'Task 前后各成一段')
+  const before = outline.runs[0]
+  assert.equal(before.totalItemCount, 3)
+  assert.equal(before.failedCount, 1)
+  assert.equal(before.sealed, true, '子 agent 卡就是这一段之后的内容 ⇒ 这一段已结束')
+  assert.equal(before.defaultCollapsed, true, '紧凑档：跑完必须收起（失败由折叠头徽章露出）')
+
+  const task = outline.runs[1]
+  assert.equal(task.showToggle, false, 'Task 卡自身不折叠，必须始终可见')
+  assert.equal(task.defaultCollapsed, false)
+})
+
+test('S-315：Task 之后再来工具 ⇒ 另起一段，不并回前一长段', () => {
+  const blocks = [
+    toolUse('t1', 'Read', { file_path: 'a.txt' }),
+    toolUse('sub1', TASK_TOOL_NAME, { prompt: 'sub' }),
+    toolUse('t2', 'Read', { file_path: 'b.txt' }),
+    { type: 'text', text: '都读完了' }
+  ]
+  const outline = build({
+    blocks: blocks as unknown as ContentBlock[],
+    results: new Map([
+      ['t1', okOutput()],
+      ['sub1', okOutput('started')],
+      ['t2', okOutput()]
+    ]),
+    isStreaming: false
+  })
+
+  assert.equal(outline.runs.length, 3, 'toolA / Task / toolB 各成一段')
+  assert.deepEqual(
+    outline.runs.map((run) => run.totalItemCount),
+    [1, 1, 1]
+  )
+  assert.equal(outline.runs[0].defaultCollapsed, true, 'Task 之前那段已封口')
+  assert.equal(outline.runs[2].defaultCollapsed, true, 'Task 之后那段由尾部 text 封口')
+})
+
 test('S-315：text / detail 两档不受封口影响（回归）', () => {
   const blocks = [
     toolUse('t1', 'Read', { file_path: 'a.txt' }),

@@ -288,7 +288,7 @@ internal static class Program
 
     /// <summary>
     /// S-231：运行时附加块必须落在用户原话「之后」，否则取首条 user 消息做会话标题的第三方网关
-    /// （WorkBuddy 国内版 / 国际版）会把 &lt;current_time&gt; 当标题。
+    /// 会把 &lt;current_time&gt; 当标题。
     /// 本套件同时锁方向（helper 单元）、锁形状（组合层直调注入）、锁出站请求体（真实 builder）。
     /// </summary>
     private static void RunTransientBlockPlacementSuite()

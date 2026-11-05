@@ -189,22 +189,6 @@ export interface OAuthToken {
   copilotChatEnabled?: boolean
   copilotSku?: string
   copilotTelemetry?: string
-
-  // ─── WorkBuddy server_poll flow ───
-  // The plugin API signs every request with the account's own uid, domain and
-  // enterprise; they arrive with the sign-in and have to survive in storage.
-
-  /** Account uid, sent as `X-User-Id` */
-  uid?: string
-  /** Enterprise (team) id, sent as `X-Enterprise-Id` and `X-Tenant-Id`. Empty for a personal account. */
-  enterpriseId?: string
-  /** Account-bound API domain, sent as `X-Domain` */
-  domain?: string
-  /**
-   * Daily check-in runs on its own while the app is open. Default on —
-   * only an explicit `false` turns it off.
-   */
-  autoCheckin?: boolean
 }
 
 export interface AccountRateLimit {

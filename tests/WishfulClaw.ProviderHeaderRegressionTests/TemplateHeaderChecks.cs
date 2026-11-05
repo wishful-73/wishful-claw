@@ -10,7 +10,7 @@ namespace WishfulClaw.ProviderHeaderRegressionTests;
 ///
 /// 走 <see cref="OpenAIChatProvider.ApplyHeaders"/> 而不是直接调
 /// <c>ProviderRequestOverrides</c>，因为这里要钉的死角是**注入顺序**：
-/// <c>ApplyOAuthAccount</c> 跑在 <c>ApplyHttpHeaderOverrides</c> 之后，而
+/// 内置注入跑在 <c>ApplyHttpHeaderOverrides</c> 之后，而
 /// <c>TryAddWithoutValidation</c> 对已存在的头是追加第二个值，不是替换。
 /// </summary>
 internal static class TemplateHeaderChecks
@@ -20,7 +20,6 @@ internal static class TemplateHeaderChecks
         TemplateExpandsOrganizationAndProject();
         EmptyTemplateDropsTheHeader();
         UnknownPlaceholderIsLeftUntouched();
-        UserHeaderBeatsOAuthAccount();
         DebugMirrorIsCaseInsensitive();
     }
 
@@ -78,45 +77,21 @@ internal static class TemplateHeaderChecks
         AssertValue(request, "X-Custom", "prefix-{{unknown}}-suffix", "unknown placeholders survive verbatim");
     }
 
-    private static void UserHeaderBeatsOAuthAccount()
-    {
-        var account = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
-        {
-            ["uid"] = "uid-from-login",
-            ["domain"] = "corp.example",
-            ["enterpriseId"] = "ent-1"
-        });
-
-        var provider = BuildProvider(
-            new Dictionary<string, string> { ["X-User-Id"] = "user-typed" },
-            oauthAccount: account);
-
-        using var request = NewRequest();
-        OpenAIChatProvider.ApplyHeaders(request, provider, "secret-key", null);
-
-        // 「一个值」本身就是判据：双值会渲染成 "user-typed | uid-from-login"。
-        AssertValue(request, "X-User-Id", "user-typed", "a user-typed X-User-Id is not appended to by the login identity");
-        AssertValue(request, "X-Domain", "corp.example", "headers the user did not touch still come from the login identity");
-    }
-
     private static void DebugMirrorIsCaseInsensitive()
     {
-        var account = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
-        {
-            ["uid"] = "uid-from-login"
-        });
-
+        // HasHeaderKey 大小写不敏感：用户手配 `x-opencode-session` 时，内置注入不能
+        // 再写一个值进去，debug 镜像里也必须只出现一次。
         var provider = BuildProvider(
-            new Dictionary<string, string> { ["x-user-id"] = "user-typed" },
-            oauthAccount: account);
+            new Dictionary<string, string> { ["x-opencode-session"] = "user-typed" },
+            providerBuiltinId: "opencode-go");
 
-        var debug = OpenAIChatProvider.BuildDebugHeaders(provider, null);
+        var debug = OpenAIChatProvider.BuildDebugHeaders(provider, "session-abc");
 
         var matches = debug.Keys
-            .Where(key => string.Equals(key, "X-User-Id", StringComparison.OrdinalIgnoreCase))
+            .Where(key => string.Equals(key, "x-opencode-session", StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        Assert(matches.Length == 1, "debug view lists the identity header exactly once regardless of casing");
-        Assert(debug[matches[0]] == "user-typed", "debug view shows the user's value, not the account's");
+        Assert(matches.Length == 1, "debug view lists the injected header exactly once regardless of casing");
+        Assert(debug[matches[0]] == "user-typed", "debug view shows the user's value, not the injected one");
     }
 
     // ── helpers ──
@@ -130,13 +105,13 @@ internal static class TemplateHeaderChecks
         Dictionary<string, string>? overrideHeaders = null,
         string? organization = null,
         string? project = null,
-        JsonElement? oauthAccount = null)
+        string providerBuiltinId = "openai")
     {
         var provider = new Dictionary<string, object?>
         {
             ["apiKey"] = "secret-key",
             ["userAgent"] = "test-agent",
-            ["providerBuiltinId"] = "openai",
+            ["providerBuiltinId"] = providerBuiltinId,
             ["sessionId"] = "session-abc",
             ["model"] = "gpt-test"
         };
@@ -147,10 +122,6 @@ internal static class TemplateHeaderChecks
         if (project is not null)
         {
             provider["project"] = project;
-        }
-        if (oauthAccount is not null)
-        {
-            provider["oauthAccount"] = oauthAccount.Value;
         }
         if (overrideHeaders is not null)
         {

@@ -20,9 +20,9 @@ function clonePlain<T>(value: T): T {
  * S-229: protocol fields the projection used to drop.
  *
  * They are what makes an account-based provider work at all: `authMode` + `oauthConfig`
- * decide whether the provider shows up in「授权 AI 服务商」and whether sign-in / token
- * refresh can run, while `userAgent` and `requestOverrides` carry the headers the
- * endpoint rejects requests without (WorkBuddy answers 10085). Records written before
+ * decide whether sign-in / token refresh can run, while `userAgent` and
+ * `requestOverrides` carry the headers the endpoint rejects requests without.
+ * Records written before
  * R-9 kept them because they were persisted whole; projections only started dropping
  * them when R-9 replaced the whole record with this function's return value.
  *
@@ -88,7 +88,7 @@ export function createProviderFromPreset(preset: BuiltinProviderPreset): AIProvi
  * `oauthAccounts` already stored on the record, is never overwritten (those live on
  * `oauth`, not on `oauthConfig`; the latter only carries endpoints). This is what
  * repairs the records that were materialized from a projection and then written to
- * disk: WorkBuddy only appeared on 2026-10-25, so anyone who signed in before this fix
+ * disk: sign-in shipped after R-9, so anyone who signed in before this fix has a record
  * has a record with `authMode` / `oauthConfig` / `userAgent` / `useSystemProxy` missing.
  *
  * 字段清单来自 `protocolFieldsOf`，与投影共用同一份来源。
@@ -174,6 +174,23 @@ export interface ProviderReconciliation {
  * - Records written before R-9 have no `virtual` flag, therefore count as real and
  *   survive as-is — no migration, no user data rewritten.
  */
+/**
+ * S-318：公开面移除的 preset（订阅额度 OAuth 冒充）。
+ *
+ * 光靠「preset 不存在就不会被投影」清不干净 —— 同一 preset 的第二、三条记录（官方 +
+ * 中转，见 R-9.C.7）在主循环里拿不到 preset，会走 :224 那条 `preset ? ... : p` 分支
+ * **原样进列表**，变成「名字还在、能选中、token 过期即死」的僵尸服务商。所以按
+ * `builtinId` 显式剔除，连 extraBuiltinRecords 一起丢。
+ *
+ * 悬空引用的兜底在 `ensureBuiltinPresets`（拨正 activeProviderId）与
+ * `getActiveProvider`（运行时回落）里，两者配合才能保证会话照常发得出去。
+ *
+ * 分批：刀 1 只收 A 段两家；B 段三家（`codex-oauth` / `copilot-oauth` /
+ * `moonshot-coding`）的 preset 还在册，此时剔除会让仍在用的记录凭空消失，
+ * 所以等它们随刀 2 一起删时再补进来。
+ */
+const REMOVED_BUILTIN_IDS = new Set(['workbuddy', 'workbuddy-ai'])
+
 export function reconcileProviders(persisted: AIProvider[]): ProviderReconciliation {
   const persistedByBuiltinId = new Map<string, AIProvider>()
   const customProviders: AIProvider[] = []
@@ -182,6 +199,8 @@ export function reconcileProviders(persisted: AIProvider[]): ProviderReconciliat
   // nothing the user created is silently collapsed away.
   const extraBuiltinRecords: AIProvider[] = []
   for (const p of persisted) {
+    // S-318：已移除的 preset，任何一条记录都不进列表（见 REMOVED_BUILTIN_IDS 注释）。
+    if (p.builtinId && REMOVED_BUILTIN_IDS.has(p.builtinId)) continue
     if (!p.builtinId) {
       customProviders.push(p)
       continue

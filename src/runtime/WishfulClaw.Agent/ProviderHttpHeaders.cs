@@ -64,7 +64,6 @@ internal static class ProviderHttpHeaders
         }
 
         ProviderRequestOverrides.ApplyHttpHeaderOverrides(request, provider);
-        ApplyOAuthAccount(request, provider);
         ApplyOpenCodeSession(request, provider, sessionId);
         ApiUserAgent.Ensure(request, provider);
     }
@@ -99,7 +98,6 @@ internal static class ProviderHttpHeaders
         }
 
         ProviderRequestOverrides.ApplyDebugHeaderOverrides(headers, provider);
-        ApplyOAuthAccountDebug(headers, provider);
         ApplyOpenCodeSessionDebug(headers, provider, sessionId);
         ApiUserAgent.EnsureDebug(headers, provider);
     }
@@ -116,87 +114,10 @@ internal static class ProviderHttpHeaders
     }
 
     /// <summary>
-    /// 账号身份头，给 server_poll 服务商（WorkBuddy）。
-    ///
-    /// 这类服务商不按 token 计费，请求要带上「谁在问」：`X-User-Id`、`X-Domain`，
-    /// 以及企业账号的 `X-Enterprise-Id` / `X-Tenant-Id`。缺了这几个，服务端会按
-    /// 个人账号答（拿到的是个人套餐的模型表），或者干脆算作匿名调用。
-    ///
-    /// 值来自前端 payload 的 `oauthAccount`（登录时随 token 一起拿到）。个人账号没有
-    /// enterpriseId，这两个头就不发 —— 与 WorkBuddy 自己的客户端一致。
-    ///
-    /// **值不搬进 `requestOverrides.headers`**（S-316 裁定）：它是运行时登录态而非
-    /// 配置，写进预设等于写死，让用户改只会按别人的账号作答。但**必须让位于用户
-    /// 手配的同名头** —— 本方法跑在 `ApplyHttpHeaderOverrides` 之后，而
-    /// `TryAddWithoutValidation` 对已存在的头是「追加第二个值」不是替换，不加这道
-    /// 检查，用户配的 `X-User-Id` 会实发成 `用户值, 登录值`。
-    /// </summary>
-    private static void ApplyOAuthAccount(HttpRequestMessage request, JsonElement provider)
-    {
-        if (!TryGetOAuthAccount(provider, out var account))
-        {
-            return;
-        }
-
-        if (JsonHelpers.GetString(account, "uid") is { Length: > 0 } uid &&
-            !request.Headers.Contains("X-User-Id"))
-        {
-            request.Headers.TryAddWithoutValidation("X-User-Id", uid);
-        }
-        if (JsonHelpers.GetString(account, "domain") is { Length: > 0 } domain &&
-            !request.Headers.Contains("X-Domain"))
-        {
-            request.Headers.TryAddWithoutValidation("X-Domain", domain);
-        }
-        if (JsonHelpers.GetString(account, "enterpriseId") is { Length: > 0 } enterpriseId)
-        {
-            if (!request.Headers.Contains("X-Enterprise-Id"))
-            {
-                request.Headers.TryAddWithoutValidation("X-Enterprise-Id", enterpriseId);
-            }
-            if (!request.Headers.Contains("X-Tenant-Id"))
-            {
-                request.Headers.TryAddWithoutValidation("X-Tenant-Id", enterpriseId);
-            }
-        }
-    }
-
-    /// <summary>Debug mirror of <see cref="ApplyOAuthAccount"/>.</summary>
-    private static void ApplyOAuthAccountDebug(Dictionary<string, string> headers, JsonElement provider)
-    {
-        if (!TryGetOAuthAccount(provider, out var account))
-        {
-            return;
-        }
-
-        if (JsonHelpers.GetString(account, "uid") is { Length: > 0 } uid &&
-            !HasHeaderKey(headers, "X-User-Id"))
-        {
-            headers["X-User-Id"] = uid;
-        }
-        if (JsonHelpers.GetString(account, "domain") is { Length: > 0 } domain &&
-            !HasHeaderKey(headers, "X-Domain"))
-        {
-            headers["X-Domain"] = domain;
-        }
-        if (JsonHelpers.GetString(account, "enterpriseId") is { Length: > 0 } enterpriseId)
-        {
-            if (!HasHeaderKey(headers, "X-Enterprise-Id"))
-            {
-                headers["X-Enterprise-Id"] = enterpriseId;
-            }
-            if (!HasHeaderKey(headers, "X-Tenant-Id"))
-            {
-                headers["X-Tenant-Id"] = enterpriseId;
-            }
-        }
-    }
-
-    /// <summary>
     /// Case-insensitive lookup for the debug mirror. <see cref="HttpRequestHeaders.Contains(string)"/>
     /// is case-insensitive too, but <see cref="Dictionary{TKey,TValue}"/> is not — without
-    /// this the debug view would list a user's `x-user-id` and the account's
-    /// `X-User-Id` as two separate headers while the wire carried only one.
+    /// this the debug view would list a user's `x-opencode-session` and the built-in
+    /// `X-Opencode-Session` as two separate headers while the wire carried only one.
     /// </summary>
     private static bool HasHeaderKey(Dictionary<string, string> headers, string name)
     {
@@ -208,13 +129,6 @@ internal static class ProviderHttpHeaders
             }
         }
         return false;
-    }
-
-    private static bool TryGetOAuthAccount(JsonElement provider, out JsonElement account)
-    {
-        account = default;
-        return provider.TryGetProperty("oauthAccount", out account) &&
-            account.ValueKind == JsonValueKind.Object;
     }
 
     /// <summary>

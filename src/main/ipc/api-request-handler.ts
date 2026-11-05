@@ -1,10 +1,9 @@
 /*
  * `api:request` —— renderer 侧通用 HTTP 转发通道。
  *
- * 背景：`lib/auth/{oauth,copilot,workbuddy-signin,workbuddy-checkin}.ts` 从
- * OpenCowork 移植时就调用本通道，但主进程一直没有 handler —— 2026-08-27 的审计
- * 5faa16ba 把消息压缩白名单里那行当「无主进程通道的死代码」删掉了，于是每次调用
- * 都落到裸 ipcRenderer.invoke，直接抛
+ * 背景：从 OpenCowork 移植的 OAuth 登录链路（`lib/auth/`）一直调用本通道，但主进程
+ * 一直没有 handler —— 2026-08-27 的审计 5faa16ba 把消息压缩白名单里那行当「无主进程
+ * 通道的死代码」删掉了，于是每次调用都落到裸 ipcRenderer.invoke，直接抛
  * "Error invoking remote method 'api:request': No handler registered"。
  *
  * 这里补上实现：走 Chromium 网络栈（net.request），因此自动继承系统代理与证书

@@ -142,28 +142,27 @@ export function runLegacyUpgradeSuite(): void {
   }
 
   {
-    // S-229: 投影必须带协议字段。少了它们，内置 OAuth 服务商在「授权 AI 服务商」页里
-    // 根本不出现（isServerPollProvider 恒假），登录抛「没有 OAuth 配置」，请求头也缺
-    // userAgent —— 一条链全断。
-    const preset = builtinProviderPresets.find((p) => p.builtinId === 'workbuddy')!
+    // S-229: 投影必须带协议字段。少了它们，内置 OAuth 服务商在设置页里登录会抛
+    // 「没有 OAuth 配置」，请求头也缺 userAgent —— 一条链全断。
+    const preset = builtinProviderPresets.find((p) => p.builtinId === 'copilot-oauth')!
     const projected = createProviderFromPreset(preset)
-    check(projected.authMode === 'oauth', 'S-229 a projection carries authMode, so the auth panel can list it')
-    check(projected.oauthConfig?.flowType === 'server_poll', 'S-229 a projection carries oauthConfig')
+    check(projected.authMode === 'oauth', 'S-229 a projection carries authMode, so the sign-in entry can list it')
+    check(projected.oauthConfig?.flowType === 'device_code', 'S-229 a projection carries oauthConfig')
     check(projected.userAgent === preset.userAgent, 'S-229 a projection carries userAgent')
     check(
-      projected.requestOverrides?.headers?.['X-IDE-Type'] === 'WorkBuddy',
+      projected.requestOverrides?.headers?.['Copilot-Integration-Id'] === 'vscode-chat',
       'S-229 a projection carries requestOverrides headers'
     )
-    check(projected.tagline === '国内版', 'S-229 a projection carries the display tagline')
+    check(projected.name === 'GitHub Copilot (OAuth)', 'S-229 a projection carries the display name')
     check(
       projected.useSystemProxy === preset.useSystemProxy && preset.useSystemProxy === true,
-      'S-229 a projection carries useSystemProxy (WorkBuddy signs in and checks in through the system proxy)'
+      'S-229 a projection carries useSystemProxy (OAuth sign-in goes through the system proxy)'
     )
   }
 
   {
     // S-229: 与 preset 不共享可变对象 —— 投影里改一个 header 不能污染下一个投影。
-    const preset = builtinProviderPresets.find((p) => p.builtinId === 'workbuddy')!
+    const preset = builtinProviderPresets.find((p) => p.builtinId === 'copilot-oauth')!
     const first = createProviderFromPreset(preset)
     check(first.requestOverrides !== preset.requestOverrides, 'S-229 a projection owns its requestOverrides')
     check(
@@ -172,18 +171,18 @@ export function runLegacyUpgradeSuite(): void {
     )
     check(first.oauthConfig !== preset.oauthConfig, 'S-229 a projection owns its oauthConfig')
     check(
-      first.oauthConfig?.stateRequestHeaders !== preset.oauthConfig?.stateRequestHeaders,
+      first.oauthConfig?.tokenRequestHeaders !== preset.oauthConfig?.tokenRequestHeaders,
       'S-229 a projection owns its nested oauth header map'
     )
-    first.requestOverrides!.headers!['X-IDE-Type'] = 'Tampered'
-    first.oauthConfig!.stateRequestHeaders!['X-No-Authorization'] = 'Tampered'
+    first.requestOverrides!.headers!['Copilot-Integration-Id'] = 'Tampered'
+    first.oauthConfig!.tokenRequestHeaders!['Accept'] = 'Tampered'
     const second = createProviderFromPreset(preset)
     check(
-      second.requestOverrides?.headers?.['X-IDE-Type'] === 'WorkBuddy',
+      second.requestOverrides?.headers?.['Copilot-Integration-Id'] === 'vscode-chat',
       'S-229 mutating one projection leaves the next one clean'
     )
     check(
-      second.oauthConfig?.stateRequestHeaders?.['X-No-Authorization'] === 'true',
+      second.oauthConfig?.tokenRequestHeaders?.['Accept'] === 'application/json',
       'S-229 mutating one projection leaves the preset oauth headers clean'
     )
   }
@@ -206,10 +205,10 @@ export function runLegacyUpgradeSuite(): void {
 
   {
     // S-229: 已物化记录缺协议字段（投影落盘的产物）要补齐，但已存的 token 必须留着。
-    const preset = builtinProviderPresets.find((p) => p.builtinId === 'workbuddy')!
+    const preset = builtinProviderPresets.find((p) => p.builtinId === 'copilot-oauth')!
     const broken: AIProvider = {
       ...createProviderFromPreset(preset),
-      id: 'nanoid-broken-workbuddy',
+      id: 'nanoid-broken-oauth',
       oauth: { accessToken: 'tok-keep' }
     }
     delete broken.virtual
@@ -221,26 +220,26 @@ export function runLegacyUpgradeSuite(): void {
     delete broken.ui
 
     const { providers } = reconcileProviders([broken])
-    const repaired = providers.find((p) => p.id === 'nanoid-broken-workbuddy')!
+    const repaired = providers.find((p) => p.id === 'nanoid-broken-oauth')!
     check(repaired.authMode === 'oauth', 'S-229 reconciliation restores a missing authMode')
-    check(repaired.oauthConfig?.flowType === 'server_poll', 'S-229 reconciliation restores a missing oauthConfig')
+    check(repaired.oauthConfig?.flowType === 'device_code', 'S-229 reconciliation restores a missing oauthConfig')
     check(repaired.userAgent === preset.userAgent, 'S-229 reconciliation restores a missing userAgent')
     check(repaired.useSystemProxy === true, 'S-229 reconciliation restores a missing useSystemProxy')
-    check(repaired.ui?.hideOAuthSettings === true, 'S-229 reconciliation restores a missing ui config')
+    check(repaired.ui?.hideOAuthSettings === false, 'S-229 reconciliation restores a missing ui config')
     check(repaired.oauth?.accessToken === 'tok-keep', 'S-229 repairing protocol fields keeps the stored token')
   }
 
   {
     // S-229: 只补缺失、不覆盖 —— 用户自己改过的值原样留着。
-    const preset = builtinProviderPresets.find((p) => p.builtinId === 'workbuddy')!
+    const preset = builtinProviderPresets.find((p) => p.builtinId === 'copilot-oauth')!
     const customized: AIProvider = {
       ...createProviderFromPreset(preset),
       id: 'nanoid-custom-ua',
       userAgent: 'Mine/1.0',
       // 用户显式清空成空串：不能被当成「缺字段」重置回 preset 的值
       instructionsPrompt: '',
-      oauthConfig: { ...preset.oauthConfig, stateUrl: 'https://relay.example/state' },
-      requestOverrides: { headers: { 'X-IDE-Type': 'Mine' } }
+      oauthConfig: { ...preset.oauthConfig, deviceCodeUrl: 'https://relay.example/device' },
+      requestOverrides: { headers: { 'Copilot-Integration-Id': 'Mine' } }
     }
     delete customized.virtual
 
@@ -249,18 +248,18 @@ export function runLegacyUpgradeSuite(): void {
     check(kept.userAgent === 'Mine/1.0', 'S-229 reconciliation never overwrites a present protocol field')
     check(kept.instructionsPrompt === '', 'S-229 an explicitly emptied field stays empty')
     check(
-      kept.oauthConfig?.stateUrl === 'https://relay.example/state',
+      kept.oauthConfig?.deviceCodeUrl === 'https://relay.example/device',
       'S-229 reconciliation never overwrites a user-owned oauthConfig'
     )
     check(
-      kept.requestOverrides?.headers?.['X-IDE-Type'] === 'Mine',
+      kept.requestOverrides?.headers?.['Copilot-Integration-Id'] === 'Mine',
       'S-229 reconciliation never overwrites a user-owned requestOverrides'
     )
   }
 
   {
-    // S-229: 同一预设的「第二条」记录（官方 + 中转）也要补协议字段，否则那条照样进不了授权页。
-    const preset = builtinProviderPresets.find((p) => p.builtinId === 'workbuddy')!
+    // S-229: 同一预设的「第二条」记录（官方 + 中转）也要补协议字段，否则那条照样进不了登录入口。
+    const preset = builtinProviderPresets.find((p) => p.builtinId === 'copilot-oauth')!
     const first: AIProvider = {
       ...createProviderFromPreset(preset),
       id: 'nanoid-official',
@@ -269,7 +268,7 @@ export function runLegacyUpgradeSuite(): void {
     const relay: AIProvider = {
       ...createProviderFromPreset(preset),
       id: 'nanoid-relay',
-      name: 'WorkBuddy (relay)',
+      name: 'Copilot (relay)',
       baseUrl: 'https://relay.example/v2',
       enabled: true
     }
@@ -283,7 +282,7 @@ export function runLegacyUpgradeSuite(): void {
     const relayRepaired = providers.find((p) => p.id === 'nanoid-relay')!
     check(relayRepaired.authMode === 'oauth', 'S-229 a second record of the same preset also gets authMode back')
     check(
-      relayRepaired.oauthConfig?.flowType === 'server_poll',
+      relayRepaired.oauthConfig?.flowType === 'device_code',
       'S-229 a second record of the same preset also gets oauthConfig back'
     )
     check(

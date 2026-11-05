@@ -227,8 +227,22 @@ export function ensureBuiltinPresets(): void {
   // held here and in the stores that reference provider ids stays valid.
   const updates: Partial<ProviderState> = { providers: nextProviders }
 
+  // S-318：preset 被移除后，落盘的 activeProviderId 可能指向已不在列表里的记录。
+  // 不拨正的话 `getActiveProvider()` 返回 null ⇒ 所有 inherit 会话都发不出消息。
+  // 挑选策略与 `deleteProvider` 的既有修复一致：优先 auth-ready 的一家。
+  const activeExists = (id: string | null | undefined): boolean =>
+    !!id && nextProviders.some((p) => p.id === id)
+  let activeId = state.activeProviderId
+  if (!activeExists(activeId) && nextProviders.length > 0) {
+    const picked =
+      nextProviders.find((p) => p.requiresApiKey === false || !!p.apiKey) ?? nextProviders[0]
+    updates.activeProviderId = picked.id
+    activeId = picked.id
+    // 旧 activeModelId 属于已被移除的那家，一并换成新 provider 的默认模型。
+    updates.activeModelId = pickDefaultModel(picked)?.id ?? ''
+  }
+
   // If no active provider is set, pick the first available one
-  const activeId = updates.activeProviderId ?? state.activeProviderId
   if (!activeId && nextProviders.length > 0) {
     const firstProvider = nextProviders[0]
     updates.activeProviderId = firstProvider.id

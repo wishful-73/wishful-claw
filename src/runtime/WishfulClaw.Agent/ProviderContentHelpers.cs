@@ -41,11 +41,30 @@ public static class ProviderContentHelpers
     private static readonly byte[] TiffLittleEndianMagic = [0x49, 0x49, 0x2A, 0x00];
     private static readonly byte[] TiffBigEndianMagic = [0x4D, 0x4D, 0x00, 0x2A];
 
-    public static string StripDataUrlPrefix(string? value)    {
-        var trimmed = value?.Trim() ?? string.Empty;
-        var marker = ";base64,";
-        var markerIndex = trimmed.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        return markerIndex >= 0 ? trimmed[(markerIndex + marker.Length)..] : trimmed;
+    /// <summary>
+    /// 去掉 `data:image/png;base64,` 前缀后的裸 base64 —— **要 string 的调用点用这个**。
+    ///
+    /// 实现委托给 <see cref="StripDataUrlPrefixSpan"/>，两者判据一字不差（S-324 要求
+    /// 五种输入逐字节一致）；本方法只是替调用方把窗口落成 string。
+    /// </summary>
+    public static string StripDataUrlPrefix(string? value) => StripDataUrlPrefixSpan(value).ToString();
+
+    /// <summary>
+    /// <see cref="StripDataUrlPrefix"/> 的零分配版本（S-324）：只在原串上切一段窗口，**不复制整串**。
+    ///
+    /// 为什么需要：一张 600 KB 的图，base64 在 .NET 里是 UTF-16 ⇒ 堆上占 1.2 MB。原来的实现
+    /// 先 `Trim()` 复制一遍、再切片复制一遍，只为了看前 64 字符（格式嗅探）或尾部一个窗口
+    /// （容器完整性）；每张图每轮都在付这笔钱。
+    ///
+    /// 判据与原实现逐字一致：先去掉首尾空白（<c>char.IsWhiteSpace</c>，与 <c>string.Trim</c> 同口径），
+    /// 再找 `;base64,`（忽略大小写），找到就取其后的部分，找不到就是去掉空白后的整段。
+    /// 入参为 <c>null</c> ⇒ 空窗口（原实现返回空串，同义）。
+    /// </summary>
+    public static ReadOnlySpan<char> StripDataUrlPrefixSpan(string? value)
+    {
+        var span = value.AsSpan().Trim();
+        var markerIndex = span.IndexOf(";base64,", StringComparison.OrdinalIgnoreCase);
+        return markerIndex >= 0 ? span[(markerIndex + ";base64,".Length)..] : span;
     }
 
     /// <summary>
@@ -59,7 +78,9 @@ public static class ProviderContentHelpers
     /// 是 S-246 补的 —— 缺了它们，脏块会落进 `?? "image/png"` 的兜底分支，被贴上 png 标签发出去。
     /// </summary>
     public static string? DetectImageMediaTypeFromBase64(string? imageBase64)
-    {        var normalized = StripDataUrlPrefix(imageBase64).Trim();
+    {
+        // S-324：span 版已经在内部修过首尾空白，这里不再 `.Trim()`（原来那一次是在整串上再复制一遍）。
+        var normalized = StripDataUrlPrefixSpan(imageBase64);
         if (normalized.Length < 8)
         {
             return null;
@@ -80,7 +101,12 @@ public static class ProviderContentHelpers
         try
         {
             // base64url 变体（`-` / `_`）先归一回标准字母表，否则 Convert 会抛。
-            var slice = normalized[..take].Replace('-', '+').Replace('_', '/');
+            // S-324：只在 64 字符的头部窗口上分配 —— 原实现是把整串切片再 Replace 两遍。
+            var slice = normalized[..take].ToString();
+            if (slice.AsSpan().IndexOfAny('-', '_') >= 0)
+            {
+                slice = slice.Replace('-', '+').Replace('_', '/');
+            }
             head = Convert.FromBase64String(slice);
         }
         catch (FormatException)

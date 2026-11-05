@@ -164,5 +164,32 @@ Check(ProviderContentHelpers.HasUsableImageBlock(urlContent), "url image block i
 Check(!ProviderContentHelpers.HasUsableImageBlock(budgetEmpty), "block without data is not usable");
 Check(!ProviderContentHelpers.HasUsableImageBlock(textOnly), "text-only content has no image");
 
+// ── 五、S-324：StripDataUrlPrefix 的 span 版与 string 版逐字节一致 ──
+//
+// span 化只改「怎么读」，判据一行不动：先修首尾空白，再找 ";base64,"（忽略大小写），
+// 找到取其后、找不到取整段。两条实现各跑一遍，要求完全相同 —— 以后谁为了「优化」
+// 动了匹配规则（比如改成只认 `data:image/` 开头、或去掉忽略大小写），这条先炸。
+
+var stripCases = new (string? Input, string Expected, string Label)[]
+{
+    ($"data:image/png;base64,{png}", png, "png data url"),
+    ($"data:image/jpeg;base64,{jpeg}", jpeg, "jpeg data url"),
+    (png, png, "bare base64"),
+    ("", "", "empty"),
+    ($"  \t data:image/gif;base64,{gif} \r\n ", gif, "surrounding whitespace"),
+    ("   ", "", "whitespace only"),
+    (null, "", "null"),
+};
+
+foreach (var (input, expected, label) in stripCases)
+{
+    Check(ProviderContentHelpers.StripDataUrlPrefix(input) == expected, $"strip string: {label}");
+    Check(ProviderContentHelpers.StripDataUrlPrefixSpan(input).ToString() == expected, $"strip span: {label}");
+}
+
+// 标记匹配大小写不敏感（`BASE64`）—— 与原实现同口径
+Check(ProviderContentHelpers.StripDataUrlPrefixSpan($"data:image/png;BASE64,{png}").ToString() == png,
+    "marker match is case-insensitive");
+
 Console.WriteLine($"passed: {passed}, failed: {failed}");
 return failed == 0 ? 0 : 1;

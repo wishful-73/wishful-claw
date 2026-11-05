@@ -21,8 +21,11 @@
 - **刀序随之重排为 6/7/8（S-324 → S-323 → S-322）**，理由两条：① 最安全的先做（S-324 判据不变），先建立「改动不改行为」的信心 ② 治根的 S-322 风险最高（淘汰错＝用户上下文没了）⇒ 放最后动。原「6a 在最前」的意图保留，只是编号理顺了。
 - **为什么该拆**：一个需求单对应一次可独立验收、可独立回滚的改动，是这轮迭代一路在守的口径（S-316 / S-317 / S-305 的账就是合单写法留下的）。合单里写 A/B/C，日后溯源要翻整篇找段落，**编号是唯一的检索键**。
 - **教训**：登记时图省事合并，等于把「未来溯源成本」记在自己账上。**凡是能各自独立回滚的，就该各自编号。**
-- **15:19 老大补边界：「318 正常通过apikey请求的不删哈」。** 15:20 按 `export const xxxPreset` 切块扫全部 48 个 builtin preset（`authMode` / `requiresApiKey` / `userAgent` / `serverPollOAuth` / `defaultBaseUrl`），确认**只有 5 个**同时命中「OAuth 订阅额度 + 冒充客户端 UA」，与登记一致：`workbuddy` / `workbuddy-ai` / `codex-oauth` / `copilot-oauth` / `moonshot-coding`。**其余 43 个走用户自己的 API Key，一个字段都不改。**
-- **15:23 老大纠正判据（重要，以后新增 preset 按这条判）：「ua冒名很正常，有些服务商限定了只允许哪些cli调用」。** ⇒ **UA 仿客户端不是病灶，是接入手段** —— 厂商 coding 端点按 UA 做客户端白名单，不改 UA 根本 403。病灶只有一条：**借厂商账号的订阅额度**（`authMode: 'oauth'` + `requiresApiKey: false`）。判据因此收敛为「一条主判据（借额度）+ 一条确认项（冒名标识，用来确认是冒充而非公开授权）」，**UA 不再当合规指标**。`qwen-coding` 仿 `claude-cli` ⇒ 保留不动。
+- **15:26 老大纠正我对病灶的定性（我把理由写错了，判据结论不变）。** 我说的是「借厂商账号的订阅额度」—— 错了。老大原话：「workbuddy也是拿自己的账号额度，只是说是冒充workbuddy客户端去请求他们的模型」。⇒ **这 5 个用的都是用户自己的账号、自己付的套餐，额度归属没问题；错的是「授权通道」** —— 厂商把 OAuth 登录（扫码 `server_poll` / 设备码 `device_code`）只内置于官方客户端，我们冒充 `WorkBuddy/5.5.6` 走进去，等于绕开「只允许官方客户端使用」的限制。
+- **两种仿冒 UA 的区别（写进 S-318 §3B.0 附）**：`qwen-coding` 仿 `claude-cli` 是过端点白名单（DashScope Coding Plan 本身是明码售卖给 CLI/IDE 的产品，API Key 用户自建）⇒ 正常接入；WorkBuddy 这类仿 UA 是**骗过「只给官方客户端签 token」的授权流程** ⇒ 绕开产品授权。**差别在通道是否对外，不在 UA，也不在额度归属。**
+- **判据的代码特征因此仍是 `authMode: 'oauth'` + `requiresApiKey: false`** —— OAuth 正是「客户端内置授权通道」的实现形式，结论不变（还是这 5 个）。
+- **15:19 老大补边界：「318 正常通过apikey请求的不删哈」。** 15:20 按 `export const xxxPreset` 切块扫全部 48 个 builtin preset（`authMode` / `requiresApiKey` / `userAgent` / `serverPollOAuth` / `defaultBaseUrl`），确认**只有 5 个**同时命中，与登记一致：`workbuddy` / `workbuddy-ai` / `codex-oauth` / `copilot-oauth` / `moonshot-coding`。**其余 43 个走用户自己的 API Key，一个字段都不改。**
+- **15:23 老大纠正判据表述：「ua冒名很正常，有些服务商限定了只允许哪些cli调用」。** UA 仿客户端是厂商端点白名单下的正常接入手段，**不是合规指标**。`qwen-coding` 仿 `claude-cli` ⇒ 保留不动。
 - **扫描顺带堵住两个误删口子**：① `ollama` / `lmstudio` 也是 `requiresApiKey: false`，但走 localhost、无冒充 ⇒ **别只看这一个字段就开删** ② `qwen-coding` / `minimax-coding` / `baidu-coding` / `bigmodel-coding` / `xiaomi-coding` / `stepfun-plan` 打的是厂商 coding / plan 端点，看着像「套餐」，实际凭用户自己的 Key ⇒ 留。
 - **顺带订正 S-318 §3B.2 的原判**：原文写「`lib/auth/` 不能整目录删，宠物和翻译在用多账号轮转」⇒ 15:21 全仓 grep 复核，`lib/auth` 之外的 import 只有 5 条，全部落在 S-321 死代码（`translate-store` + `lib/pet` ×3）与 A 段整页删（`ProviderAuthPanel` ×3）里 ⇒ **该目录零 API Key 路径引用，刀 0 之后可整目录删**。原判是「看 import 就下结论」的又一次翻版。
 - **两边已漂移，禁止整文件覆盖**：私有仓从主仓全量搬出后，主仓仍有改动（S-284 等）。S-322 的每条改动都必须按需求单 §三 的实读行号逐点改 —— `ProviderContentHelpers.cs` 私有仓已到 479 行以上，主仓结构未必一致。

@@ -12,7 +12,7 @@
 
 **S-321 清死代码（刀 0）** —— 从 OpenCowork 整目录搬来、只搬到 lib 层没搬 UI 与主进程层的那批：宠物 1261 行、翻译约 790 行、12 条通道白名单残留。它们不只是占地方，还会**误导判断** —— 我自己就踩着它差点给 S-318 写出一套不必要的兼容逻辑。
 
-**S-318 合规清理（刀 1 ~ 刀 5）** —— 公开仓 `wishful-claw` 里有 5 个 preset 做的是同一件事：**拿用户自己的订阅额度、冒充官方客户端身份**去请求厂商的非公开端点。个人违反服务协议最坏是封号；做成产品对外分发是另一个量级 —— 老大 11-05 09:47 原话「如果我去抖音推广大家使用，有这个功能的话，会被腾讯这些直接告」。
+**S-318 合规清理（刀 1 ~ 刀 5）** —— 公开仓 `wishful-claw` 里有 5 个 preset 做的是同一件事：**用用户自己的账号订阅、冒充官方客户端身份**去走厂商只对自家客户端开放的 OAuth 通道。额度是用户自己的，但绕开了「只允许官方客户端使用」的限制。个人违反服务协议最坏是封号；做成产品对外分发是另一个量级 —— 老大 11-05 09:47 原话「如果我去抖音推广大家使用，有这个功能的话，会被腾讯这些直接告」。
 
 已发出的 v1.0.0 ~ v1.0.7 二进制删不掉，只能靠后续版本自然淘汰。本迭代负责的只有一件事：**从 v1.0.8 起公开面干净，且以后修 provider bug 时带不回来。**
 
@@ -39,9 +39,9 @@
 | **4** | **S-318 §五** —— 构建期硬拦截 | 打包脚本在 `electron-builder` 产出后扫 `app.asar` 解包内容 + `resources/`，命中 `WorkBuddy` / `workbuddy` / `X-IDE-Name` / `X-IDE-Version` / `codex_cli_rs` / `GitHubCopilotChat` / `KimiCLI` 任一 ⇒ **构建直接失败** | **必须与删代码同一迭代交付**，否则删了也拦不住下次顺手带回来。只扫源码不算 |
 | **5** | **核验收口** —— 全仓关键字零命中 + 门禁 | `grep` 全仓（源码 + 测试 + 文档 + 打包脚本）确认 7 个关键字零命中；门禁三条全绿；按 S-318 §九 八条验收 | 第 8 条（产物解包 grep）依赖刀 4 的扫描器，可复用 |
 
-> **刀 1~5 的删除边界（老大 2026-11-05 15:19「318 正常通过apikey请求的不删哈」）**：`builtinProviderPresets` 共 48 个，**只删 5 个** —— `workbuddy` / `workbuddy-ai` / `codex-oauth` / `copilot-oauth` / `moonshot-coding`（`authMode: 'oauth'` + `requiresApiKey: false`，即**借厂商账号订阅额度**）。**其余 43 个一个字段都不改**，含 `moonshot`（API Key 版，与 `moonshot-coding` 同文件）、`qwen-coding` / `minimax-coding` / `baidu-coding` / `bigmodel-coding` / `xiaomi-coding` / `stepfun-plan`（套餐端点但凭自己的 Key）、`ollama` / `lmstudio`（`requiresApiKey: false` 但本地无冒充）。明细见 [S-318 §3B.0](../iter-v3-7/requirements/S-318.md)。
+> **刀 1~5 的删除边界（老大 2026-11-05 15:19「318 正常通过apikey请求的不删哈」）**：`builtinProviderPresets` 共 48 个，**只删 5 个** —— `workbuddy` / `workbuddy-ai` / `codex-oauth` / `copilot-oauth` / `moonshot-coding`（`authMode: 'oauth'` + `requiresApiKey: false`，即**走只内置于官方客户端的 OAuth 通道**）。**其余 43 个一个字段都不改**，含 `moonshot`（API Key 版，与 `moonshot-coding` 同文件）、`qwen-coding` / `minimax-coding` / `baidu-coding` / `bigmodel-coding` / `xiaomi-coding` / `stepfun-plan`（套餐端点但凭自己的 Key）、`ollama` / `lmstudio`（`requiresApiKey: false` 但本地无冒充）。明细见 [S-318 §3B.0](../iter-v3-7/requirements/S-318.md)。
 >
-> **判据只认一条主判据**（老大 15:23「ua冒名很正常，有些服务商限定了只允许哪些cli调用」）：**是否借订阅额度**。UA 仿客户端是厂商端点白名单下的正常接入手段（`qwen-coding` 就仿 `claude-cli`），**不是合规指标，不动**。别只看 `requiresApiKey: false` 就开删（`ollama` / `lmstudio` 也命中这个字段）。
+> **判据落点**：**病灶是「授权通道」，不是「额度归属」**（老大 15:26「workbuddy也是拿自己的账号额度，只是说是冒充workbuddy客户端去请求他们的模型」）。这 5 个用的都是**用户自己的账号、自己付的套餐**，错在走**只内置于官方客户端的 OAuth 通道**、冒充该客户端身份 —— 绕开了厂商「只允许官方客户端使用」的限制。UA 仿冒只是手段，**不是合规指标**（老大 15:23「ua冒名很正常，有些服务商限定了只允许哪些cli调用」），`qwen-coding` 就仿 `claude-cli` 且正常保留。别只看 `requiresApiKey: false` 就开删（`ollama` / `lmstudio` 也命中这个字段）。两种仿冒的区别见 S-318 §3B.0 附。
 | **6** | **S-324** —— `StripDataUrlPrefix` span 化 | `ProviderContentHelpers` 加 `TryStripDataUrlPrefixSpan(ReadOnlySpan<char>, out ReadOnlySpan<char>, out string?)`；`DetectImageMediaTypeFromBase64`（`:62`）与 `ImageFileProbe.HasCompleteContainerInBase64`（`:159`）改用它，**去掉那个整串复制的 `Trim()`**；**保留 string 版**给三处真正要产 string 的调用点（`:408` / `:297` / `:221`） | 纯性能、**判据不变**。排在刀 8 前是为了先建立「改动不改行为」的信心。五种输入（png / jpeg / 无前缀 / 空串 / 带空白）新旧结果须逐字节一致 |
 | **7** | **S-323** —— `request_debug` 结构化裁剪 | 新增 `RequestDebugBodyTrimmer`（超 8 KB 的字符串值换占位、非法 JSON 退回硬截断、短 body 走快速路径），三个 provider 全接入：`OpenAIChatProvider.cs:46` / `AnthropicMessagesProvider.cs:54` / `OpenAIResponsesProvider.cs:217` | **不能硬截断** —— 调试面板要 `JSON.parse`，截断变非法 JSON 等于用「看不见」换「不卡」。主仓渲染层上限本就是 4 KB（`debug-store.ts:20-22`）⇒ 截到 8 KB 不损失可视化。**三个 provider 漏一处不算完成** |
 | **8** | **S-322** —— 会话闲置淘汰（**治根**） | `SessionConversationManager` 补两条闸：闲置 **2h** 淘汰 + 常驻上限 **8 条**（超额按最久未访问砍）；`SessionConversation` 加 `Touch()` 记最后访问时刻 | **唯一治「只涨不降」的一刀，也风险最高**（淘汰错＝用户上下文没了）⇒ 放最后动。安全性靠 `AgentLoop.cs:83-89`：`MessageCount == 0` 时从 DB 懒恢复。唯一会丢的是 status bar 的 cache hit/miss 累积计数 ⇒ 展示指标，归零不算 bug（验收须显式确认） |

@@ -244,39 +244,40 @@ public static class GoalOrchestratorMaterialize
             var db = DbClient.GetClient(parameters);
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            // Abort all non-terminal plans (superseded/interrupted rows are terminal too)
-            db.Execute(
-                "UPDATE goal_plans SET status = @status, updated_at = @now, completed_at = @now " +
-                "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN (@complete, @aborted, @superseded, @interrupted)",
-                new Microsoft.Data.Sqlite.SqliteParameter("@status", GoalPlanStatusValues.Aborted),
-                new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
-                new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
-                new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId),
-                new Microsoft.Data.Sqlite.SqliteParameter("@complete", GoalPlanStatusValues.Complete),
-                new Microsoft.Data.Sqlite.SqliteParameter("@aborted", GoalPlanStatusValues.Aborted),
-                new Microsoft.Data.Sqlite.SqliteParameter("@superseded", GoalPlanStatusValues.Superseded),
-                new Microsoft.Data.Sqlite.SqliteParameter("@interrupted", GoalPlanStatusValues.Interrupted));
+            // ⚠️ S-334：三条更新**必须留在这同一个 try 里、按 plans → tasks → runs 的顺序**。
+            // 现状语义是「① 抛异常则 ②③ 不执行」—— 方法注释自称 best-effort，其实不是各自尽力。
+            // 包成一个事务、或拆成三个各自 try，都是**新行为**，不属于这次搬 SQL 的范围，
+            // 真要改另开单并单独验证（S-328 §四：不顺便改语义）。
 
-            // Abort all non-terminal tasks
-            db.Execute(
-                "UPDATE goal_tasks SET status = @status, updated_at = @now, completed_at = @now " +
-                "WHERE goal_id = @gid AND session_id = @sid AND status NOT IN (@complete, @aborted, @interrupted)",
-                new Microsoft.Data.Sqlite.SqliteParameter("@status", GoalPlanStatusValues.Aborted),
-                new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
-                new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
-                new Microsoft.Data.Sqlite.SqliteParameter("@sid", goal.SessionId),
-                new Microsoft.Data.Sqlite.SqliteParameter("@complete", GoalPlanStatusValues.Complete),
-                new Microsoft.Data.Sqlite.SqliteParameter("@aborted", GoalPlanStatusValues.Aborted),
-                new Microsoft.Data.Sqlite.SqliteParameter("@interrupted", GoalPlanStatusValues.Interrupted));
+            // 中止所有非终态 plans（superseded / interrupted 也算终态，所以是四个）
+            DbGoalPlanTools.AbortNonTerminalPlans(
+                db, goal.GoalId, goal.SessionId, GoalPlanStatusValues.Aborted,
+                new[]
+                {
+                    GoalPlanStatusValues.Complete,
+                    GoalPlanStatusValues.Aborted,
+                    GoalPlanStatusValues.Superseded,
+                    GoalPlanStatusValues.Interrupted
+                },
+                now);
 
-            // Mark any executing attempts as interrupted
-            db.Execute(
-                "UPDATE goal_execution_runs SET status = @interrupted, finished_at = @now " +
-                "WHERE goal_id = @gid AND status = @executing",
-                new Microsoft.Data.Sqlite.SqliteParameter("@interrupted", GoalExecutionAttemptStatusValues.Interrupted),
-                new Microsoft.Data.Sqlite.SqliteParameter("@now", now),
-                new Microsoft.Data.Sqlite.SqliteParameter("@gid", goal.GoalId),
-                new Microsoft.Data.Sqlite.SqliteParameter("@executing", GoalExecutionAttemptStatusValues.Executing));
+            // 中止所有非终态 tasks（task 没有 superseded，所以是三个 —— 不是笔误）
+            DbGoalTaskTools.AbortNonTerminalTasks(
+                db, goal.GoalId, goal.SessionId, GoalPlanStatusValues.Aborted,
+                new[]
+                {
+                    GoalPlanStatusValues.Complete,
+                    GoalPlanStatusValues.Aborted,
+                    GoalPlanStatusValues.Interrupted
+                },
+                now);
+
+            // 把还在执行的 attempt 打成 interrupted
+            DbGoalExecutionRunTools.MarkExecutingRunsInterrupted(
+                db, goal.GoalId,
+                GoalExecutionAttemptStatusValues.Executing,
+                GoalExecutionAttemptStatusValues.Interrupted,
+                now);
 
             ReportSuccess();
         }

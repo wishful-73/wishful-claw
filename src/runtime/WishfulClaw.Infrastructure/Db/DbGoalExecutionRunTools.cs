@@ -284,6 +284,32 @@ public static partial class DbGoalExecutionRunTools
         return $"run-{goalId}-{planPart}-{taskPart}-{attemptNo}-{ts}-{suffix:x8}";
     }
 
+    /// <summary>
+    /// 把一个 Goal 下所有「正在执行」的 run 打成中断态（S-334 / 刀 25，从
+    /// <c>GoalOrchestratorMaterialize.AbortSubtree</c> 搬来，SQL 一字未改）。
+    ///
+    /// 与另外两张表的同名方法有两处**故意的不一致**，别改：
+    /// <list type="number">
+    /// <item>条件里**没有 <c>session_id</c>** —— run 表按 goal 唯一，加 session 反而要依赖调用方传对，没收益。</item>
+    /// <item>条件不是「不在终态集合里」，而是**精确等于 executing** —— 只中断真正在跑的，
+    /// 已完成 / 已失败的 run 一个字都不动。</item>
+    /// </list>
+    /// </summary>
+    /// <returns>被中断的行数。</returns>
+    public static int MarkExecutingRunsInterrupted(
+        DbService db,
+        string goalId,
+        string executingStatus,
+        string interruptedStatus,
+        long nowMs) =>
+        db.Execute(
+            "UPDATE goal_execution_runs SET status = @interrupted, finished_at = @now " +
+            "WHERE goal_id = @gid AND status = @executing",
+            DbService.Param("@interrupted", interruptedStatus),
+            DbService.Param("@now", nowMs),
+            DbService.Param("@gid", goalId),
+            DbService.Param("@executing", executingStatus));
+
     private static string? GetString(JsonElement parameters, string name)
     {
         return parameters.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String

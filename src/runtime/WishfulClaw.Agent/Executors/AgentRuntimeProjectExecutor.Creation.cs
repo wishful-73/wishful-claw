@@ -94,9 +94,7 @@ public static partial class AgentRuntimeProjectExecutor
         var target = NormalizeFolder(workingFolder);
         if (target.Length == 0) return null;
 
-        foreach (var candidate in db.Query(
-            "SELECT * FROM projects WHERE working_folder IS NOT NULL AND working_folder <> ''",
-            EntityMappers.MapProject))
+        foreach (var candidate in DbProjectStore.ListForWorkingFolderDedup(db))
         {
             if (string.Equals(
                     NormalizeFolder(candidate.WorkingFolder ?? string.Empty),

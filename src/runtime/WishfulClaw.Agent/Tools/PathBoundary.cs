@@ -1,5 +1,3 @@
-using Microsoft.Data.Sqlite;
-
 using System.IO;
 using System.Text.Json;
 using WishfulClaw.Core.Protocol;
@@ -84,13 +82,7 @@ public static class PathBoundary
         try
         {
             var db = DbClient.GetClient();
-            return WithProjectsParent(
-                db.Query(
-                    "SELECT working_folder FROM projects " +
-                    "WHERE working_folder IS NOT NULL AND working_folder <> '' " +
-                    "AND (ssh_connection_id IS NULL OR ssh_connection_id = '')",
-                    r => r.GetString("working_folder")),
-                parentDirectory);
+            return WithProjectsParent(DbProjectStore.ListSandboxRoots(db), parentDirectory);
         }
         catch (Exception ex)
         {
@@ -122,11 +114,7 @@ public static class PathBoundary
         try
         {
             var db = DbClient.GetClient();
-            var rows = db.Query(
-                "SELECT working_folder FROM projects WHERE id = @id LIMIT 1",
-                r => r.GetString("working_folder"),
-                new SqliteParameter("@id", projectId));
-            return rows.Count > 0 && !string.IsNullOrWhiteSpace(rows[0]) ? rows[0] : null;
+            return DbProjectStore.GetWorkingFolder(db, projectId);
         }
         catch (Exception ex)
         {

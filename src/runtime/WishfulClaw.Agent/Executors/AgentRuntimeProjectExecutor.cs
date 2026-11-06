@@ -71,13 +71,7 @@ public static partial class AgentRuntimeProjectExecutor
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
-            string sql = filter.Length > 0
-                ? "SELECT * FROM projects WHERE name LIKE @filter ORDER BY pinned DESC, updated_at DESC"
-                : "SELECT * FROM projects ORDER BY pinned DESC, updated_at DESC";
-            var filterParam = filter.Length > 0
-                ? new[] { new SqliteParameter("@filter", $"%{filter}%") }
-                : Array.Empty<SqliteParameter>();
-            var entities = db.Query(sql, EntityMappers.MapProject, filterParam);
+            var entities = DbProjectStore.ListAll(db, filter.Length > 0 ? filter : null);
 
             var rows = entities.Select(e =>
             {
@@ -121,8 +115,7 @@ public static partial class AgentRuntimeProjectExecutor
             var db = DbClient.GetClient(parameters);
 
             // Find project
-            var project = db.QueryFirstOrDefault("SELECT * FROM projects WHERE id = @id",
-                EntityMappers.MapProject, new SqliteParameter("@id", projectId));
+            var project = DbProjectStore.GetById(db, projectId);
             if (project is null)
             {
                 return EncodeError($"Project not found: {projectId}");
@@ -211,8 +204,7 @@ public static partial class AgentRuntimeProjectExecutor
             var db = DbClient.GetClient(parameters);
 
             // Find project to get working folder
-            var project = db.QueryFirstOrDefault("SELECT * FROM projects WHERE id = @id",
-                EntityMappers.MapProject, new SqliteParameter("@id", projectId));
+            var project = DbProjectStore.GetById(db, projectId);
             if (project is null)
             {
                 return Task.FromResult(EncodeError($"Project not found: {projectId}"));

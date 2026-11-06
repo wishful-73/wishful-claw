@@ -129,6 +129,14 @@ public static partial class DbMessageTools
             DbClient.EnsureInitialized(parameters);
             var db = DbClient.GetClient(parameters);
 
+            // 无 role、无分页 ⇒ 与 ListForRestore 的全量分支逐字节等价（S-336 薄化）。
+            // 有过滤/分页的是端点自己的对外契约，留在下面，不走 ListForRestore。
+            if (role is null && !paged)
+            {
+                var restored = ListForRestore(db, sessionId, null);
+                return WorkerResponse.Json(ToRowsWithParts(db, restored), InfrastructureJsonContext.Default.ListMessageRow);
+            }
+
             List<SqliteParameter> paramList = [new("@sid", sessionId)];
             string sql;
 

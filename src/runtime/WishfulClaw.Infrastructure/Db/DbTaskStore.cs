@@ -68,27 +68,45 @@ public static class DbTaskStore
             DbService.Param("@sessionId", sessionId));
     }
 
+    /// <summary>
+    /// The one INSERT for <c>tasks</c>. Both overloads share this text and the parameter builder —
+    /// if they each spelled the statement out, a column added to one and not the other would fail
+    /// silently at runtime (S-328 §三 第 3 步：同一份 SQL 只能存在一处).
+    /// </summary>
+    private const string InsertSql =
+        "INSERT INTO tasks (id, session_id, plan_id, subject, description, active_form, status, owner, " +
+        "blocks, blocked_by, metadata, sort_order, created_at, updated_at) VALUES " +
+        "(@id, @sessionId, @planId, @subject, @description, @activeForm, @status, @owner, " +
+        "@blocks, @blockedBy, @metadata, @sortOrder, @createdAt, @updatedAt)";
+
+    private static SqliteParameter[] InsertParams(TaskEntity task) =>
+    [
+        DbService.Param("@id", task.Id),
+        DbService.Param("@sessionId", task.SessionId),
+        DbService.Param("@planId", task.PlanId),
+        DbService.Param("@subject", task.Subject),
+        DbService.Param("@description", task.Description),
+        DbService.Param("@activeForm", task.ActiveForm),
+        DbService.Param("@status", task.Status),
+        DbService.Param("@owner", task.Owner),
+        DbService.Param("@blocks", task.Blocks),
+        DbService.Param("@blockedBy", task.BlockedBy),
+        DbService.Param("@metadata", task.Metadata),
+        DbService.Param("@sortOrder", task.SortOrder),
+        DbService.Param("@createdAt", task.CreatedAt),
+        DbService.Param("@updatedAt", task.UpdatedAt),
+    ];
+
     /// <summary>Insert a fully populated row (all 14 columns).</summary>
-    public static void Insert(DbService db, SqliteConnection conn, SqliteTransaction tx, TaskEntity task) =>
-        db.Execute(conn, tx,
-            "INSERT INTO tasks (id, session_id, plan_id, subject, description, active_form, status, owner, " +
-            "blocks, blocked_by, metadata, sort_order, created_at, updated_at) VALUES " +
-            "(@id, @sessionId, @planId, @subject, @description, @activeForm, @status, @owner, " +
-            "@blocks, @blockedBy, @metadata, @sortOrder, @createdAt, @updatedAt)",
-            DbService.Param("@id", task.Id),
-            DbService.Param("@sessionId", task.SessionId),
-            DbService.Param("@planId", task.PlanId),
-            DbService.Param("@subject", task.Subject),
-            DbService.Param("@description", task.Description),
-            DbService.Param("@activeForm", task.ActiveForm),
-            DbService.Param("@status", task.Status),
-            DbService.Param("@owner", task.Owner),
-            DbService.Param("@blocks", task.Blocks),
-            DbService.Param("@blockedBy", task.BlockedBy),
-            DbService.Param("@metadata", task.Metadata),
-            DbService.Param("@sortOrder", task.SortOrder),
-            DbService.Param("@createdAt", task.CreatedAt),
-            DbService.Param("@updatedAt", task.UpdatedAt));
+    public static int Insert(DbService db, SqliteConnection conn, SqliteTransaction tx, TaskEntity task) =>
+        db.Execute(conn, tx, InsertSql, InsertParams(task));
+
+    /// <summary>
+    /// Insert without an enclosing transaction — the endpoint path (<c>db/tasks/create</c>), where
+    /// the INSERT is the whole operation. Same statement text as the transactional overload.
+    /// </summary>
+    public static int Insert(DbService db, TaskEntity task) =>
+        db.Execute(InsertSql, InsertParams(task));
 
     /// <summary>
     /// Update the mutable half of a row: content, status, owner, dependency ids, metadata.
@@ -98,29 +116,47 @@ public static class DbTaskStore
     /// sort position or birth timestamp on every status flip would corrupt the todo ordering
     /// that the model depends on. Do not "unify" this with a full-row update.
     /// </summary>
-    public static void UpdateRow(DbService db, SqliteConnection conn, SqliteTransaction tx, TaskEntity task) =>
-        db.Execute(conn, tx,
-            "UPDATE tasks SET subject = @subject, description = @description, active_form = @activeForm, " +
-            "status = @status, owner = @owner, blocks = @blocks, blocked_by = @blockedBy, " +
-            "metadata = @metadata, updated_at = @updatedAt WHERE id = @id",
-            DbService.Param("@subject", task.Subject),
-            DbService.Param("@description", task.Description),
-            DbService.Param("@activeForm", task.ActiveForm),
-            DbService.Param("@status", task.Status),
-            DbService.Param("@owner", task.Owner),
-            DbService.Param("@blocks", task.Blocks),
-            DbService.Param("@blockedBy", task.BlockedBy),
-            DbService.Param("@metadata", task.Metadata),
-            DbService.Param("@updatedAt", task.UpdatedAt),
-            DbService.Param("@id", task.Id));
+    private const string UpdateSql =
+        "UPDATE tasks SET subject = @subject, description = @description, active_form = @activeForm, " +
+        "status = @status, owner = @owner, blocks = @blocks, blocked_by = @blockedBy, " +
+        "metadata = @metadata, updated_at = @updatedAt WHERE id = @id";
+
+    private static SqliteParameter[] UpdateParams(TaskEntity task) =>
+    [
+        DbService.Param("@subject", task.Subject),
+        DbService.Param("@description", task.Description),
+        DbService.Param("@activeForm", task.ActiveForm),
+        DbService.Param("@status", task.Status),
+        DbService.Param("@owner", task.Owner),
+        DbService.Param("@blocks", task.Blocks),
+        DbService.Param("@blockedBy", task.BlockedBy),
+        DbService.Param("@metadata", task.Metadata),
+        DbService.Param("@updatedAt", task.UpdatedAt),
+        DbService.Param("@id", task.Id),
+    ];
+
+    public static int UpdateRow(DbService db, SqliteConnection conn, SqliteTransaction tx, TaskEntity task) =>
+        db.Execute(conn, tx, UpdateSql, UpdateParams(task));
+
+    /// <summary>
+    /// Update without an enclosing transaction — the endpoint path (<c>db/tasks/update</c>).
+    /// Same column set as the transactional overload; see the note above on what it must not touch.
+    /// </summary>
+    public static int UpdateRow(DbService db, TaskEntity task) =>
+        db.Execute(UpdateSql, UpdateParams(task));
 
     /// <summary>
     /// Delete one row. Reference cleanup in the surviving rows' <c>blocks</c> / <c>blocked_by</c>
     /// is the caller's job — it needs the parsed id arrays, which this layer does not handle.
     /// </summary>
-    public static void DeleteById(
+    public static int DeleteById(
         DbService db, SqliteConnection conn, SqliteTransaction tx, string taskId) =>
         db.Execute(conn, tx, "DELETE FROM tasks WHERE id = @id", DbService.Param("@id", taskId));
+
+    /// <summary>Delete every task of one session (endpoint <c>db/tasks/delete-by-session</c>).</summary>
+    public static int DeleteBySession(
+        DbService db, SqliteConnection conn, SqliteTransaction tx, string sessionId) =>
+        db.Execute(conn, tx, "DELETE FROM tasks WHERE session_id = @sessionId", DbService.Param("@sessionId", sessionId));
 
     /// <summary>How many tasks a session holds (quota checks).</summary>
     public static int CountBySession(

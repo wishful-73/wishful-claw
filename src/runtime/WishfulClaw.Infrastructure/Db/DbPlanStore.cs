@@ -35,7 +35,7 @@ public static class DbPlanStore
             DbService.Param("@id", planId));
 
     /// <summary>Insert a fully populated row. Nullable text columns are stored as NULL, not "".</summary>
-    public static void Insert(DbService db, PlanEntity plan) =>
+    public static int Insert(DbService db, PlanEntity plan) =>
         db.Execute(
             "INSERT INTO plans (id, session_id, title, status, file_path, content, spec_json, created_at, updated_at) " +
             "VALUES (@id, @sid, @title, @status, @fp, @content, @spec, @ca, @ua)",
@@ -54,7 +54,7 @@ public static class DbPlanStore
     /// creation and never re-sent on a status transition, so it must stay out of this statement —
     /// a full-row update here would clobber the stored body with whatever the caller happens to hold.
     /// </summary>
-    public static void UpdateStatus(
+    public static int UpdateStatus(
         DbService db, string planId, string title, string status, long updatedAt) =>
         db.Execute(
             "UPDATE plans SET title = @title, status = @status, updated_at = @ua WHERE id = @id",
@@ -63,6 +63,6 @@ public static class DbPlanStore
             DbService.Param("@ua", updatedAt),
             DbService.Param("@id", planId));
 
-    public static void DeleteById(DbService db, string planId) =>
+    public static int DeleteById(DbService db, string planId) =>
         db.Execute("DELETE FROM plans WHERE id = @id", DbService.Param("@id", planId));
 }

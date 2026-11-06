@@ -266,7 +266,6 @@ export function ToolBlockRenderer({
     return (
       <ScaleIn className={liveScaleInClassName}>
         <ImagePluginToolCard
-          toolUseId={block.id}
           input={liveTc?.input ?? block.input}
           output={result?.content ?? liveTc?.output}
           status={statusValue}

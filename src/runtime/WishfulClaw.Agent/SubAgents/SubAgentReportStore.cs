@@ -7,7 +7,6 @@
 
 using System.Buffers;
 using System.Text.Json;
-using Microsoft.Data.Sqlite;
 using WishfulClaw.Core.Protocol;
 using WishfulClaw.Infrastructure.Db;
 
@@ -44,31 +43,32 @@ internal static class SubAgentReportStore
         try
         {
             var db = DbClient.GetClient();
-            var existingData = db.QueryScalar<string?>(
-                "SELECT data FROM sub_agent_runs WHERE tool_use_id = @id",
-                new SqliteParameter("@id", toolUseId));
+            var existing = DbSubAgentRunStore.GetByToolUseId(db, toolUseId);
 
-            var mergedData = MergeFinalOutput(existingData, finalOutput, completedAt);
+            // existing 是否为 null 决定走 INSERT 还是 UPDATE，所以它必须严格等于
+            // 「行存不存在」：data 列是 NOT NULL DEFAULT ''，行在就是非 null 实体。
+            // 见 DbSubAgentRunStore 的类型注释。
+            var mergedData = MergeFinalOutput(existing?.Data, finalOutput, completedAt);
 
-            if (existingData is null)
+            if (existing is null)
             {
-                db.Execute(
-                    "INSERT INTO sub_agent_runs (tool_use_id, session_id, agent_name, data, started_at, completed_at, success) " +
-                    "VALUES (@tuid, @sid, @name, @data, @sa, @ca, @suc)",
-                    new SqliteParameter("@tuid", toolUseId),
-                    new SqliteParameter("@sid", sessionId ?? "_unknown"),
-                    new SqliteParameter("@name", agentName),
-                    new SqliteParameter("@data", mergedData),
-                    new SqliteParameter("@sa", completedAt),
-                    new SqliteParameter("@ca", completedAt),
-                    new SqliteParameter("@suc", success ? 1 : 0));
+                DbSubAgentRunStore.Insert(db, new SubAgentRunEntity
+                {
+                    ToolUseId = toolUseId,
+                    // 子 agent 可能在没有 session 的上下文里跑（全局会话派发）；
+                    // 表上 session_id 是 NOT NULL，用哨兵值占位，与端点侧 ParseSubAgentRecord 一致。
+                    SessionId = sessionId ?? "_unknown",
+                    AgentName = agentName,
+                    Data = mergedData,
+                    // 报告落库时「开始时间」没有真实来源，拿完成时间顶上 —— 保持与从前一致。
+                    StartedAt = completedAt,
+                    CompletedAt = completedAt,
+                    Success = success ? 1 : 0
+                });
             }
             else
             {
-                db.Execute(
-                    "UPDATE sub_agent_runs SET data = @data WHERE tool_use_id = @id",
-                    new SqliteParameter("@data", mergedData),
-                    new SqliteParameter("@id", toolUseId));
+                DbSubAgentRunStore.UpdateData(db, toolUseId, mergedData);
             }
         }
         catch (Exception ex)

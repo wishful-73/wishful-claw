@@ -3,7 +3,6 @@ import { BookOpen, GitBranch, User } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@renderer/components/ui/button'
 import { InputArea } from '@renderer/components/chat/InputArea'
-import { ProjectTerminalDock } from '@renderer/components/terminal/ProjectTerminalDock'
 import { WorkingFolderSelectorDialog } from '@renderer/components/chat/WorkingFolderSelectorDialog'
 import { useUIStore } from '@renderer/stores/ui-store'
 import { useChatStore } from '@renderer/stores/chat-store'
@@ -16,7 +15,6 @@ export function ProjectHomePage(): React.JSX.Element {
   const activeProjectId = useChatStore((state) => state.activeProjectId)
   const projects = useChatStore((state) => state.projects)
   const mode = useUIStore((state) => state.mode)
-  const terminalDockOpen = false  // Project home has no session; dock state is session-level now
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null
   const workingFolder = activeProject?.workingFolder
   const sshConnectionId = activeProject?.sshConnectionId
@@ -147,15 +145,6 @@ export function ProjectHomePage(): React.JSX.Element {
           </div>
         </div>
       </div>
-
-      {terminalDockOpen && (workingFolder || sshConnectionId) && (
-        <ProjectTerminalDock
-          projectId={activeProject.id}
-          projectName={activeProject.name}
-          workingFolder={workingFolder ?? null}
-          sshConnectionId={sshConnectionId}
-        />
-      )}
 
       <WorkingFolderSelectorDialog
         open={folderDialogOpen}

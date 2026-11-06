@@ -555,10 +555,6 @@ export async function exitPlanMode(sessionId: string | null): Promise<void> {
   }
 }
 
-export async function sendImplementPlanInNewSession(_projectId: string | null, _planId: string): Promise<void> {
-  // TODO: implement plan execution in new session
-}
-
 // === Additional exports needed by WishfulClaw InputArea ===
 
 export interface PendingSessionMessageItem {

@@ -7,7 +7,6 @@ using WishfulClaw.Agent.Executors;
 using WishfulClaw.Agent.Results;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
-using Microsoft.Data.Sqlite;
 using WishfulClaw.Infrastructure.Db;
 
 namespace WishfulClaw.Agent.Sessions;
@@ -222,19 +221,9 @@ internal static partial class SessionRestoreTools
             }
 
             // Incremental messages: everything created after the snapshot commit time.
-            // The snapshot row's own created_at is a wall clock written once and never
-            // rewritten, so ordinary message saves can never move the boundary. Do not
-            // compare against through_created_at/through_sort_order: sort_order is the
-            // renderer's transcript index (messages.indexOf) and shifts when compression
-            // inserts the boundary+summary pair mid-transcript, which used to raise a
-            // false "invalid_cursor" and block the session permanently.
-            // sort_order stays a pure tie-break inside ORDER BY.
-            var incremental = db.Query(
-                "SELECT * FROM messages WHERE session_id = @sid AND created_at > @snapshotCreatedAt " +
-                "ORDER BY created_at ASC, sort_order ASC",
-                EntityMappers.MapMessage,
-                new SqliteParameter("@sid", sessionId),
-                new SqliteParameter("@snapshotCreatedAt", snapshot.CreatedAt));
+            // 边界语义（为什么只能用快照自己的 created_at、sort_order 为什么不能当过滤条件）
+            // 随 SQL 搬进了 DbMessageTools.ListForRestore 的文档注释。
+            var incremental = DbMessageTools.ListForRestore(db, sessionId, snapshot.CreatedAt);
 
             // S-285：块结构在 parts 表里，必须在过滤/合成之前合并回 meta。
             AttachPartsToEntities(db, incremental);
@@ -255,9 +244,7 @@ internal static partial class SessionRestoreTools
         else
         {
             // Full recovery: load all messages ordered by (created_at, sort_order)
-            var entities = db.Query(
-                "SELECT * FROM messages WHERE session_id = @sid ORDER BY created_at ASC, sort_order ASC",
-                EntityMappers.MapMessage, new SqliteParameter("@sid", sessionId));
+            var entities = DbMessageTools.ListForRestore(db, sessionId, null);
 
             if (entities.Count == 0)
             {

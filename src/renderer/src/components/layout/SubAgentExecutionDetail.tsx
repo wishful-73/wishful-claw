@@ -242,7 +242,9 @@ export function SubAgentExecutionDetail({
   const activeSessionId = useChatStore((s) => s.activeSessionId)
   const resolvedSessionId = sessionId ?? activeSessionId
 
-  // Directly look up agent from store (selectSessionScopedAgentState is still a stub)
+  // 按需直读 store 字段，不走 selectSessionScopedAgentState：这里靠 toolUseId 全局
+  // 唯一直接取单条，那个选择器返回的是整份按会话分组的派生结果，用它得先造一遍
+  // 再从中挑一条，白费。S-342 已把它实装，这不是桩。
   const agentDetail = useAgentStore(
     useShallow((s) => {
       const agent =

@@ -3,7 +3,6 @@
 // 反向消息投递、看板事件广播彼此紧耦合，拆开要把 dispatch 上下文与 DB 句柄
 // 搬成公开 API，反而更难追踪一条派活到底走到哪一步。
 using System.Text.Json;
-using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent.Results;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
@@ -125,10 +124,7 @@ public static class AgentRuntimeGlobalTaskExecutor
 
         DbClient.EnsureInitialized(parameters);
         var db = DbClient.GetClient(parameters);
-        var projectId = db.QueryScalar<string?>(
-            "SELECT project_id FROM sessions WHERE id = @id",
-            new SqliteParameter("@id", sessionId));
-        return string.IsNullOrWhiteSpace(projectId) ? null : projectId;
+        return DbSessionStore.GetProjectId(db, sessionId);
     }
 
     // ── create_global_task ──

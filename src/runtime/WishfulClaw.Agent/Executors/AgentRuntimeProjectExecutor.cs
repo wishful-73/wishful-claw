@@ -6,7 +6,6 @@ using System.Text.Json;
 using WishfulClaw.Agent.Results;
 using WishfulClaw.Contracts;
 using WishfulClaw.Core.Protocol;
-using Microsoft.Data.Sqlite;
 using WishfulClaw.Agent.Tools;
 using WishfulClaw.Infrastructure.Db;
 using WishfulClaw.Infrastructure.Storage;
@@ -75,14 +74,10 @@ public static partial class AgentRuntimeProjectExecutor
 
             var rows = entities.Select(e =>
             {
-                var sessionCount = db.QueryScalar<int>(
-                    "SELECT COUNT(*) FROM sessions WHERE project_id = @id",
-                    new SqliteParameter("@id", e.Id));
+                var sessionCount = DbSessionStore.CountByProject(db, e.Id);
 
-                var activeSessionCount = db.QueryScalar<int>(
-                    "SELECT COUNT(*) FROM sessions WHERE project_id = @id AND updated_at > @cutoff",
-                    new SqliteParameter("@id", e.Id),
-                    new SqliteParameter("@cutoff", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 3600000));
+                var activeSessionCount = DbSessionStore.CountActiveByProject(
+                    db, e.Id, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 3600000);
 
                 return new ProjectListRow(
                     e.Id, e.Name, e.WorkingFolder, sessionCount, activeSessionCount);
@@ -122,9 +117,7 @@ public static partial class AgentRuntimeProjectExecutor
             }
 
             // Get sessions for this project (last 20)
-            var sessions = db.Query(
-                "SELECT * FROM sessions WHERE project_id = @pid ORDER BY updated_at DESC LIMIT 20",
-                EntityMappers.MapSession, new SqliteParameter("@pid", projectId));
+            var sessions = DbSessionStore.ListRecentByProject(db, projectId);
 
             var sessionRows = sessions.Select(s => new SessionListRow(
                 s.Id, s.Title, s.Mode, s.MessageCount, s.CreatedAt, s.UpdatedAt)).ToList();
@@ -230,24 +223,8 @@ public static partial class AgentRuntimeProjectExecutor
                 Pinned = 0
             };
 
-            // model_selection_mode 是 NOT NULL 且无默认值：存量库该列由 SqlSugar 迁移建出，
-            // 只有类型没有 DEFAULT，漏列直接撞 NOT NULL 约束（S-115）。值随 SessionEntity 默认走。
-            // collaboration_mode / permission_mode 的缺省取决于渲染端用户设置（worker 读不到），
-            // 继续留 NULL，由 rowToSession 首次读取时按当前设置归一化回填（S-189）。
-            db.Execute(
-                "INSERT INTO sessions (id, title, mode, scope, created_at, updated_at, message_count, " +
-                "project_id, working_folder, ssh_connection_id, pinned, model_selection_mode) " +
-                "VALUES (@id, @title, @mode, @scope, @ca, @ua, 0, @pid, @wf, @ssh, 0, @msm)",
-                new SqliteParameter("@id", entity.Id),
-                new SqliteParameter("@title", entity.Title),
-                new SqliteParameter("@mode", entity.Mode),
-                new SqliteParameter("@scope", (object?)entity.Scope ?? DBNull.Value),
-                new SqliteParameter("@ca", entity.CreatedAt),
-                new SqliteParameter("@ua", entity.UpdatedAt),
-                new SqliteParameter("@pid", (object?)entity.ProjectId ?? DBNull.Value),
-                new SqliteParameter("@wf", (object?)entity.WorkingFolder ?? DBNull.Value),
-                new SqliteParameter("@ssh", (object?)entity.SshConnectionId ?? DBNull.Value),
-                new SqliteParameter("@msm", entity.ModelSelectionMode));
+            // S-115 / S-189 两条约束的说明随 SQL 搬进了 DbSessionStore.InsertProjectSession。
+            DbSessionStore.InsertProjectSession(db, entity);
 
             var result = JsonSerializer.Serialize(
                 new CreateSessionResult(sessionId, title, projectId, now),

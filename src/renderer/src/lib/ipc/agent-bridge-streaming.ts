@@ -21,7 +21,9 @@ function logOptimizerTrace(level: 'info' | 'warn' | 'error', message: string, da
     console.warn(`[AgentBridge] ${line}`)
     writeLog('warn', `[AgentBridge] ${line}`)
   } else {
-    console.log(`[AgentBridge] ${line}`)
+    // info 级只落文件，不进用户控制台（S-332）：error/warn 双写是为了 DevTools 里也能立刻看见，
+    // info 是纯排查用的 sidecar turn 追踪，没有「必须在控制台看见」的场景。
+    void writeLog('info', `[AgentBridge] ${line}`)
   }
 }
 

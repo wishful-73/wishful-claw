@@ -100,7 +100,6 @@ export function BottomTerminalDock({
       // For SSH projects, don't auto-create a synthetic tab.
       // Real agent SSH output events will create tabs with matching execIds.
       // Just show the placeholder; tabs appear automatically when agent runs commands.
-      console.log('[BottomTerminalDock] SSH project — skipping auto-create, waiting for agent output')
       return
     }
 

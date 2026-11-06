@@ -173,7 +173,6 @@ export function useChatActions() {
       const sshConnectionId = session.scope === 'project'
         ? session.sshConnectionId ?? project?.sshConnectionId ?? undefined
         : undefined
-      console.log('[ChatActions] sshConnectionId:', { session: session?.sshConnectionId, project: project?.sshConnectionId, resolved: sshConnectionId, projectId })
 
       // Backend manages the session conversation (Reasonix pattern).
       // Frontend only sends the new user message; the backend appends

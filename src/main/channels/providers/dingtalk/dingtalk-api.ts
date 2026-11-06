@@ -6,6 +6,7 @@
  */
 
 import * as https from 'https'
+import { logDebug } from '../../../lib/logger'
 
 const BASE_URL = 'https://api.dingtalk.com'
 
@@ -130,7 +131,8 @@ export class DingTalkApi {
     if (!openConversationId) {
       throw new Error(`DingTalk replyMessage missing conversation id for message ${messageId}`)
     }
-    console.log(
+    logDebug(
+      'main',
       `[DingTalkApi] Replying to messageId=${messageId} in conversation ${openConversationId}`
     )
     return this.sendMessage(openConversationId, content)

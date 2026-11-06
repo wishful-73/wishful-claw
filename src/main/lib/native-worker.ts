@@ -10,7 +10,7 @@ import * as net from 'net'
 import * as path from 'path'
 import { decode, encode } from '@msgpack/msgpack'
 import { app } from 'electron'
-import { logError, logWarn } from './logger'
+import { logDebug, logError, logWarn } from './logger'
 import { safeSendMessagePackToAllWindows } from '../window-ipc'
 import { readPersistedSettings, SETTINGS_STORAGE_KEY } from './settings-store'
 import { resolveDataDir, resolveProjectDirName } from './data-dir'
@@ -180,7 +180,7 @@ class NativeWorkerManager {
     }
 
     const endpoint = createEndpoint()
-    console.log('[Worker] spawning', { workerPath, endpoint })
+    logDebug('worker', '[Worker] spawning', { extra: { workerPath, endpoint } })
 
     // Read defaultShell from persisted settings and inject as env var
     const resolvedDataDir = resolveDataDir()
@@ -189,7 +189,7 @@ class NativeWorkerManager {
       WISHFULCLAW_DATA_DIR: resolvedDataDir,
       [WISHFULCLAW_PROJECT_DIR_ENV]: resolveProjectDirName()
     }
-    console.log('[Worker] data directory', resolvedDataDir)
+    logDebug('worker', `[Worker] data directory ${resolvedDataDir}`)
     // Propagate the main process's log level so the Worker matches dev/prod
     // verbosity (main: debug in dev, error when packaged; Worker default: warn).
     if (!workerEnv.WISHFUL_CLAW_LOG_LEVEL) {
@@ -228,7 +228,6 @@ class NativeWorkerManager {
     })
 
     child.on('exit', (code, signal) => {
-      console.log('[Worker] exited', { code, signal })
       logWarn('worker', `Worker exited: code=${code} signal=${signal}`)
       this.closeWorker(new Error(`Worker exited with code ${code}`))
     })
@@ -244,7 +243,7 @@ class NativeWorkerManager {
 
     // Verify connectivity
     await this.request('worker/ping', {}, 10_000)
-    console.log('[Worker] connected', { pid: child.pid })
+    logDebug('worker', '[Worker] connected', { extra: { pid: child.pid } })
 
     // S-191: 曾连上过 ⇒ 本次是重启。补发 reconnected，解除挂起的断连标记，
     // 让渲染端重新同步运行时设置（App.tsx / agent-bridge.ts 的既有订阅此前从无信号）。
@@ -305,7 +304,7 @@ class NativeWorkerManager {
             this.closeWorker(new Error('Worker IPC closed'))
           }
         })
-        console.log('[Worker] socket connected')
+        logDebug('worker', '[Worker] socket connected')
         return
       } catch (err) {
         lastError = err as Error

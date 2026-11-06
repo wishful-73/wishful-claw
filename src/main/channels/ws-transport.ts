@@ -6,6 +6,7 @@
  */
 
 import WebSocket from 'ws'
+import { logInfo } from '../lib/logger'
 
 export interface WsTransportOptions {
   url: string
@@ -77,7 +78,7 @@ export class WebSocketTransport {
         this.reconnectAttempt = 0
         this.onStatusChange('connected')
         this.startHeartbeat()
-        console.log(`[WsTransport] Connected to ${this.url}`)
+        logInfo('main', `[WsTransport] Connected to ${this.url}`)
       })
 
       ws.on('message', (data: WebSocket.Data) => {
@@ -92,7 +93,7 @@ export class WebSocketTransport {
 
       ws.on('close', (code, reason) => {
         if (this.ws !== ws) return
-        console.log(`[WsTransport] Closed: ${code} ${reason.toString()}`)
+        logInfo('main', `[WsTransport] Closed: ${code} ${reason.toString()}`)
         this.stopHeartbeat()
         this.ws = null
         if (!this.intentionalClose && this.shouldReconnect) {
@@ -135,7 +136,7 @@ export class WebSocketTransport {
     )
     this.reconnectAttempt++
     this.onStatusChange('reconnecting')
-    console.log(`[WsTransport] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`)
+    logInfo('main', `[WsTransport] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempt})`)
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null

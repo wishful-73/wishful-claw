@@ -1,6 +1,7 @@
 import { shell } from 'electron'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { getNativeWorker } from '../lib/native-worker'
+import { logInfo } from '../lib/logger'
 
 const SKILLS_NATIVE_TIMEOUT_MS = 120_000
 
@@ -118,5 +119,5 @@ export function registerSkillHandlers(): void {
     async (args) => nativeSkillsRequest('skills/cleanup-temp', args)
   )
 
-  console.log('[Skills] Handlers registered')
+  logInfo('ipc', '[Skills] Handlers registered')
 }

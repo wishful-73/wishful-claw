@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet
  * Licensed under the Apache License, Version 2.0 (the "License").
@@ -13,6 +13,7 @@ import type {
   ChannelWsMessageParser
 } from './channel-types'
 import type { BasePluginService } from './base-plugin-service'
+import { logInfo } from '../lib/logger'
 
 /**
  * ChannelManager — manages channel service lifecycle with a factory registry pattern.
@@ -65,7 +66,7 @@ export class ChannelManager {
       this.statuses.set(instance.id, 'stopped')
       await service.start()
       this.statuses.set(instance.id, 'running')
-      console.log(`[ChannelManager] Started channel: ${instance.name} (${instance.id})`)
+      logInfo('main', `[ChannelManager] Started channel: ${instance.name} (${instance.id})`)
     } catch (err) {
       console.error(`[ChannelManager] Failed to start channel ${instance.id}:`, err)
       this.statuses.set(instance.id, 'error')
@@ -80,7 +81,7 @@ export class ChannelManager {
 
     try {
       await service.stop()
-      console.log(`[ChannelManager] Stopped channel: ${id}`)
+      logInfo('main', `[ChannelManager] Stopped channel: ${id}`)
     } catch (err) {
       console.error(`[ChannelManager] Error stopping channel ${id}:`, err)
     } finally {
@@ -112,6 +113,6 @@ export class ChannelManager {
   async stopAll(): Promise<void> {
     const ids = Array.from(this.services.keys())
     await Promise.allSettled(ids.map((id) => this.stopPlugin(id)))
-    console.log(`[ChannelManager] All channels stopped`)
+    logInfo('main', `[ChannelManager] All channels stopped`)
   }
 }

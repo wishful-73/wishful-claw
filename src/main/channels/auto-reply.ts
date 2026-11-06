@@ -5,6 +5,7 @@ import { safeSendMessagePackToAllWindows } from '../window-ipc'
 import type { ChannelEvent, ChannelInstance, ChannelIncomingMessageData } from './channel-types'
 import type { ChannelManager } from './channel-manager'
 import { isChannelCancelCommand, tryHandleCommand } from './plugin-commands'
+import { logInfo } from '../lib/logger'
 
 interface NativePluginRouteSessionResult {
   success: boolean
@@ -270,7 +271,8 @@ async function handleChannelAutoReplyAsync(event: ChannelEvent, channelTaskId: s
 
     safeSendMessagePackToAllWindows('plugin:session-task', taskPayload)
 
-    console.log(
+    logInfo(
+      'main',
       `[AutoReply] Routed message from ${data.senderName || data.senderId} ` +
         `in chat ${data.chatId} to session ${sessionId}`
     )

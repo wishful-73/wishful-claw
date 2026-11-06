@@ -5,6 +5,7 @@ import { resolveCodeGraphEnginePath } from '../lib/codegraph-assets'
 import { registerMessagePackHandler } from './messagepack-handler'
 import { McpManager } from '../mcp/mcp-manager'
 import type { McpServerConfig } from '../mcp/mcp-types'
+import { logInfo } from '../lib/logger'
 
 // ── Config persistence (JSON file) ──
 
@@ -355,7 +356,7 @@ export function registerMcpHandlers(): void {
     }
   )
 
-  console.log('[MCP] Handlers registered — config file:', CONFIG_FILE)
+  logInfo('ipc', `[MCP] Handlers registered — config file: ${CONFIG_FILE}`)
 }
 
 /**

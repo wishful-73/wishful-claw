@@ -187,7 +187,7 @@ export async function autoStartChannels(channelManager: ChannelManager): Promise
   for (const instance of channels.filter((p) => p.enabled)) {
     try {
       await channelManager.startPlugin(instance, notifyRenderer)
-      console.log(`[Channel Manager] Auto-started: ${instance.name} (${instance.type})`)
+      logInfo('main', `[Channel Manager] Auto-started: ${instance.name} (${instance.type})`)
     } catch (err) {
       console.error(`[Channel Manager] Auto-start failed for ${instance.name}:`, err)
     }

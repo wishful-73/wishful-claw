@@ -160,22 +160,6 @@ export interface CreateSessionOptions {
   activate?: boolean
 }
 
-// ─── Session Prompt Snapshot (placeholder, 迭代七完善) ───
-export interface SessionPromptSnapshot {
-  mode: SessionMode
-  planMode: boolean
-  systemPrompt: string
-  toolDefs: unknown[]
-  projectId?: string
-  workingFolder?: string
-  sshConnectionId?: string | null
-  contextCacheKey?: string
-  systemHash?: string
-  toolsHash?: string
-  toolCount?: number
-  createdAt?: number
-}
-
 export function createRestorableSessionSnapshot(session: Session): Session {
   return {
     id: session.id,

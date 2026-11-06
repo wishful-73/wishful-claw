@@ -112,7 +112,6 @@ export interface SessionSlice {
    * messages.usage），然后重拉一次 baseline，因此重启后依然有效。
    */
   resetSessionUsageStats: (sessionId: string) => Promise<void>
-  clearSessionPromptSnapshot: (sessionId: string) => void
   applyBackgroundSnapshot?: (sessionId: string, snapshot: { patchedMessagesById: Record<string, unknown>; addedMessagesById: Record<string, unknown>; addedMessageIds: string[] }) => void
   togglePinSession: (sessionId: string) => void
   duplicateSession: (sessionId: string) => string | null
@@ -550,10 +549,6 @@ export const createSessionSlice: StateCreator<SessionSlice, [['zustand/immer', n
     } catch (err) {
       console.error('[DB] resetSessionUsageStats failed:', err)
     }
-  },
-
-  clearSessionPromptSnapshot: (_sessionId: string) => {
-    // TODO: stub - clear session prompt snapshot
   },
 
   togglePinSession: (sessionId) => {

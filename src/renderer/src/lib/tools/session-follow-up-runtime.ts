@@ -218,7 +218,6 @@ export async function handleSessionFollowUpUpdate(
         activeForm: undefined,
         updatedAt: Date.now()
       })
-      useChatStore.getState().clearSessionPromptSnapshot(result.followUp.source_session_id)
     }
   }
   return result

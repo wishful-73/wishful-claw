@@ -82,7 +82,7 @@ const CANCEL_REQUEST_TIMEOUT_MS = 3_000
 
 
 
-export type { Session, Project, ChatMessage, SessionMode, SessionScope, CollaborationMode, PermissionMode, CreateSessionOptions, SessionPromptSnapshot, ToolCallInfo, SessionModelSelectionMode } from './types'
+export type { Session, Project, ChatMessage, SessionMode, SessionScope, CollaborationMode, PermissionMode, CreateSessionOptions, ToolCallInfo, SessionModelSelectionMode } from './types'
 
 export type { SessionSlice } from './session-slice'
 
@@ -1643,7 +1643,6 @@ export const useChatStore = create<ChatStore>()(
                 .catch((err) => {
                   console.warn('[chat-store] Failed to refresh session tasks:', err)
                 })
-              get().clearSessionPromptSnapshot(targetSessionId)
             }
 
             break

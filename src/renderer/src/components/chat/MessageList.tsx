@@ -30,7 +30,7 @@ function MessageListInner(props: MessageListProps): React.JSX.Element {
     targetSessionId ? (s.streamingMessages[targetSessionId] ?? null) : null
   )
   const { hasActiveToolCallOutput } = useAgentStore((s) =>
-    selectSessionScopedAgentState(s, targetSessionId, { mode: 'coarse' })
+    selectSessionScopedAgentState(s, targetSessionId)
   )
   const mode = useUIStore((s) => s.mode)
 

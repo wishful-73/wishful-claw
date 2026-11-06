@@ -115,8 +115,7 @@ function countEntries(map: Record<string, SubAgentState>): number {
 
 export function selectSessionScopedAgentState(
   state: AgentStore,
-  sessionId: string | null | undefined,
-  _options?: { mode?: string }
+  sessionId: string | null | undefined
 ): SessionScopedAgentSelection {
   if (!sessionId) return EMPTY_SELECTION
 

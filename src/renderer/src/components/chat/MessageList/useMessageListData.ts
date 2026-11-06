@@ -139,7 +139,7 @@ export function useMessageListData(input: MessageListDataInput): MessageListData
     subAgentHistory,
     isSessionRunning: isAgentSessionRunning,
     hasOrchestrationData: hasAgentOrchestrationData
-  } = useAgentStore((s) => selectSessionScopedAgentState(s, activeSessionId, { mode: 'coarse' }))
+  } = useAgentStore((s) => selectSessionScopedAgentState(s, activeSessionId))
 
   const primarySessionStatus = useAgentStore((s) =>
     activeSessionId ? (s.runningSessions[activeSessionId] ?? null) : null

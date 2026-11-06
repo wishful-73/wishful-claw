@@ -959,7 +959,8 @@
         "scrollY": "Scroll Y",
         "scrollHeight": "Scroll Height",
         "viewport": "Viewport",
-        "elements": "Elements"
+        "elements": "Elements",
+        "device": "Device"
       },
       "summary": {
         "content": "{{type}} · {{count}} chars",
@@ -969,7 +970,10 @@
         "snapshot": "interactive elements",
         "type": "type text",
         "typeSubmit": "{{selector}} · submit",
-        "scrollY": "Y {{value}}"
+        "scrollY": "Y {{value}}",
+        "devicePc": "Desktop",
+        "deviceCustom": "Custom {{width}} × {{height}}",
+        "deviceCustomSize": "Custom"
       }
     },
     "canceled": "Canceled",

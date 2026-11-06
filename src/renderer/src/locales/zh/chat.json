@@ -959,7 +959,8 @@
         "scrollY": "滚动 Y",
         "scrollHeight": "滚动高度",
         "viewport": "视口",
-        "elements": "元素"
+        "elements": "元素",
+        "device": "设备"
       },
       "summary": {
         "content": "{{type}} · {{count}} 字符",
@@ -969,7 +970,10 @@
         "snapshot": "可交互元素",
         "type": "输入文本",
         "typeSubmit": "{{selector}} · 提交",
-        "scrollY": "Y {{value}}"
+        "scrollY": "Y {{value}}",
+        "devicePc": "桌面形态",
+        "deviceCustom": "自定义 {{width}} × {{height}}",
+        "deviceCustomSize": "自定义"
       }
     },
     "canceled": "已取消",

@@ -1,4 +1,11 @@
 /*
+ * 超标待拆分（2026-11-06，行数以实际为准，AGENTS.md §大文件拆分 第 7 条）。
+ * 拆分方向：按职责切成 partial —— 写侧（单行 INSERT OR REPLACE upsert）、
+ * 读侧（parts 合并回 meta 形状）、老格式兼容（meta 里带 segments/toolCalls 的整行原样写回）。
+ * 三条判据互相独立，是最典型的「按职责边界拆」场景。
+ */
+
+/*
  * S-285：助手消息的块结构（thinking / text / tool_use）独立存储。
  *
  * 根因（S-285 §二）：`messages.meta` 是整行覆盖语义，而工具调用在语义上是追加的。

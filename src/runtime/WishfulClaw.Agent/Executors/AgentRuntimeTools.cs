@@ -1,3 +1,11 @@
+// 超标待拆分（2026-11-06，行数以实际为准，AGENTS.md §大文件拆分 第 7 条）。
+// 现状：Agent 层工具执行中枢（Ported from OpenCowork），混了三件事 ——
+// 工具执行与结果整形、EmitAsync 流事件出口、工具清单与并发闸。
+// 拆分方向：`AgentRuntimeTools.Emit.cs`（流事件出口，被 Agent 层几乎每个执行器引用，
+// 边界最清晰）/ `AgentRuntimeTools.Concurrency.cs`（并发闸与取消）/ 本文件只留执行与整形。
+// 未拆原因：只超 25 行，而 `Emit*` 系列是全局热点，搬迁会碰几乎所有执行器的 using，
+// 与刀 23~26 的 SQL 收口同批改动会混在一起无法归因 —— 排在 SQL 收口之后单独走。
+
 /*
  * Ported from OpenCowork.
  * Original: Copyright 2026 AIDotNet

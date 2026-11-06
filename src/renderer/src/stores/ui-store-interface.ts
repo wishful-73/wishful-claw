@@ -75,11 +75,6 @@ export interface UIStore {
   removeRightPanelTabsForSession: (sessionId: string) => void
   rightPanelRailWidth: number
 
-  // Runtime status panel
-  runtimeStatusPanelOpen: boolean
-  toggleRuntimeStatusPanel: () => void
-  setRuntimeStatusPanelOpen: (open: boolean) => void
-
   /**
    * Quota-failover chain for one session, overriding the global default from
    * Settings while this run lasts. `null` clears the override (back to the default).
@@ -270,8 +265,6 @@ export interface UIStore {
   // Hovering state
   isHoveringRightPanel: boolean
   setIsHoveringRightPanel: (hovering: boolean) => void
-  runtimeStatusPanelTriggerHovered: boolean
-  setRuntimeStatusPanelTriggerHovered: (hovering: boolean) => void
 
   // Session-scoped state
   activeScopedSessionId: string | null

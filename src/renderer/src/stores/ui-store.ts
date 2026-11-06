@@ -272,11 +272,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
   },
   rightPanelRailWidth: 48,
 
-  // Runtime status panel
-  runtimeStatusPanelOpen: false,
-  toggleRuntimeStatusPanel: () => set((state: any) => ({ runtimeStatusPanelOpen: !state.runtimeStatusPanelOpen })),
-  setRuntimeStatusPanelOpen: (open: any) => set({ runtimeStatusPanelOpen: open }),
-
   // Per-session quota-failover chain. In-memory on purpose: it belongs with the rest
   // of the per-session runtime state (the attempted-chain map, the auto selection),
   // and it is read through one function — provider-auto-fallback.resolveFallbackCandidates —
@@ -453,8 +448,6 @@ export const useUIStore = create<UIStore>((set, get) => ({
   // Hovering state
   isHoveringRightPanel: false,
   setIsHoveringRightPanel: (hovering: any) => set({ isHoveringRightPanel: hovering }),
-  runtimeStatusPanelTriggerHovered: false,
-  setRuntimeStatusPanelTriggerHovered: (hovering: any) => set({ runtimeStatusPanelTriggerHovered: hovering }),
 
   // Session-scoped state
   activeScopedSessionId: null,

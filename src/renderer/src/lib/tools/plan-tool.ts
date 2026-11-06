@@ -8,10 +8,6 @@ function nativeOnlyPlanResult(toolName: string): string {
   )
 }
 
-export function createPlanModeInlineToolHandlers(): Record<string, ToolHandler> {
-  return {}
-}
-
 const enterPlanModeHandler: ToolHandler = {
   definition: {
     name: 'EnterPlanMode',

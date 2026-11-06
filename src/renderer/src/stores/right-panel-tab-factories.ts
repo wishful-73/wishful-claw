@@ -2,10 +2,6 @@
 
 import type { RightPanelTabInstance } from './ui-types'
 
-
-
-
-
 export function ensureRightPanelTabs(
   tabs: RightPanelTabInstance[] | null | undefined
 ): RightPanelTabInstance[] {

@@ -200,9 +200,10 @@ export async function normalizeQrDisplayUrl(
   return await captureQrElementAsDataUrl(normalized)
 }
 
-// 媒体来源读取已搬到渠道层（`channels/channel-media-source.ts`）—— 渠道服务层要用它，
-// 而渠道层 import IPC 工具会绕成循环依赖。这里 re-export 保持既有调用方不变。
-export { readBinarySource, resolveSourceFileName } from '../../channels/channel-media-source'
+// 媒体来源读取在渠道层：`channels/channel-media-source.ts`。
+// 刀 1 期间这里留过一条 re-export 让调用方零改动；刀 2 把最后两个调用方（飞书、微信的
+// IPC handler）也改走 `service.sendMedia` 之后，re-export 已零引用，删掉 —— 否则它自己
+// 就成了「渠道层代码长在 IPC 层」的新入口。
 
 export async function readPlugins(): Promise<ChannelInstance[]> {
   return await readChannelPlugins()

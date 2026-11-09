@@ -5,11 +5,7 @@
  */
 
 import type { WeixinService } from '../../channels/providers/weixin/weixin-service'
-import {
-  activeChannelManager,
-  registerChannelMessagePackHandler,
-  readBinarySource
-} from './channel-handler-utils'
+import { activeChannelManager, registerChannelMessagePackHandler } from './channel-handler-utils'
 
 export function registerWeixinHandlers(): void {
   registerChannelMessagePackHandler<{
@@ -24,8 +20,11 @@ export function registerWeixinHandlers(): void {
     if (!service) return { error: 'Weixin plugin not running or not found' }
 
     try {
-      const { buffer } = await readBinarySource(args.filePath, 'image.png')
-      const result = await service.sendImage(args.chatId, buffer, args.content)
+      const result = await service.sendMedia(args.chatId, {
+        kind: 'image',
+        source: args.filePath,
+        caption: args.content
+      })
       return { ok: true, messageId: result.messageId }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
@@ -44,8 +43,11 @@ export function registerWeixinHandlers(): void {
     if (!service) return { error: 'Weixin plugin not running or not found' }
 
     try {
-      const { buffer, fileName } = await readBinarySource(args.filePath, 'file')
-      const result = await service.sendFile(args.chatId, buffer, fileName, args.content)
+      const result = await service.sendMedia(args.chatId, {
+        kind: 'file',
+        source: args.filePath,
+        caption: args.content
+      })
       return { ok: true, messageId: result.messageId }
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) }
@@ -68,12 +70,11 @@ export async function executeWeixinChannelTool(
     case 'plugin:weixin:send-image': {
       if (!service) return { error: 'Weixin plugin not running or not found' }
       try {
-        const { buffer } = await readBinarySource(String(args.filePath ?? ''), 'image.png')
-        const result = await service.sendImage(
-          String(args.chatId ?? ''),
-          buffer,
-          typeof args.content === 'string' ? args.content : undefined
-        )
+        const result = await service.sendMedia(String(args.chatId ?? ''), {
+          kind: 'image',
+          source: String(args.filePath ?? ''),
+          caption: typeof args.content === 'string' ? args.content : undefined
+        })
         return { ok: true, messageId: result.messageId }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
@@ -82,13 +83,11 @@ export async function executeWeixinChannelTool(
     case 'plugin:weixin:send-file': {
       if (!service) return { error: 'Weixin plugin not running or not found' }
       try {
-        const { buffer, fileName } = await readBinarySource(String(args.filePath ?? ''), 'file')
-        const result = await service.sendFile(
-          String(args.chatId ?? ''),
-          buffer,
-          fileName,
-          typeof args.content === 'string' ? args.content : undefined
-        )
+        const result = await service.sendMedia(String(args.chatId ?? ''), {
+          kind: 'file',
+          source: String(args.filePath ?? ''),
+          caption: typeof args.content === 'string' ? args.content : undefined
+        })
         return { ok: true, messageId: result.messageId }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }

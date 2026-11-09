@@ -153,6 +153,14 @@ export interface ChannelMediaPayload {
   mimeType?: string
   /** 音频时长（毫秒）—— 部分平台限制时长，由渠道实现自行校验 */
   durationMs?: number
+  /**
+   * 随媒体一起发出的附言（微信的 `text?` 参数就是这个）。
+   *
+   * **渠道支持就带上，不支持就忽略** —— 飞书 `sendImageMessage` / `sendFileMessage`
+   * 只认 `image_key` / `file_key`，要带文字得额外再发一条消息，行为不同，所以飞书忽略它。
+   * 需要「文字必定送达」的调用方请自己另发 `sendMessage`，不要依赖这个字段。
+   */
+  caption?: string
 }
 
 /** Runtime service interface — every messaging channel must implement this */

@@ -237,6 +237,33 @@ export class FeishuMediaApi {
     return { messageId: data.data?.message_id ?? '' }
   }
 
+  /**
+   * Send an audio (voice) message to a chat using a file_key.
+   *
+   * 飞书 `msg_type: 'audio'` 与 `'file'` 的差别**只在 msg_type 这一个字段**，
+   * `content` 同样是 `{ file_key }`。区别在上游：audio 的 file_key 必须是
+   * `uploadFile(..., 'opus')` 传上去的，格式不对飞书会拒。
+   */
+  async sendAudioMessage(chatId: string, fileKey: string): Promise<{ messageId: string }> {
+    const headers = await this.authHeaders()
+    const body = JSON.stringify({
+      receive_id: chatId,
+      msg_type: 'audio',
+      content: JSON.stringify({ file_key: fileKey })
+    })
+    const res = await request(
+      'POST',
+      '/open-apis/im/v1/messages?receive_id_type=chat_id',
+      headers,
+      body
+    )
+    const data = JSON.parse(res.body)
+    if (data.code !== 0) {
+      throw new Error(`Feishu sendAudioMessage failed: ${data.msg}`)
+    }
+    return { messageId: data.data?.message_id ?? '' }
+  }
+
   /** Send an urgent push for a message */
   async sendUrgent(
     messageId: string,

@@ -57,6 +57,27 @@ export function registerFeishuHandlers(): void {
     }
   })
 
+  // Send voice — Feishu only accepts opus; the upload API rejects other formats
+  registerChannelMessagePackHandler<{ pluginId: string; chatId: string; filePath: string }>(
+    'plugin:feishu:send-audio',
+    async (args) => {
+      const service = activeChannelManager?.getService(args.pluginId) as
+        | FeishuService
+        | undefined
+      if (!service?.api) return { error: 'Feishu plugin not running or not found' }
+
+      try {
+        const result = await service.sendMedia(args.chatId, {
+          kind: 'audio',
+          source: args.filePath
+        })
+        return { ok: true, messageId: result.messageId }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
+
   // Send mention
   registerChannelMessagePackHandler<{
     pluginId: string
@@ -334,6 +355,18 @@ export async function executeFeishuChannelTool(
       try {
         const result = await service.sendMedia(String(args.chatId ?? ''), {
           kind: 'file',
+          source: String(args.filePath ?? '')
+        })
+        return { ok: true, messageId: result.messageId }
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    case 'plugin:feishu:send-audio': {
+      if (!service?.api) return { error: 'Feishu plugin not running or not found' }
+      try {
+        const result = await service.sendMedia(String(args.chatId ?? ''), {
+          kind: 'audio',
           source: String(args.filePath ?? '')
         })
         return { ok: true, messageId: result.messageId }

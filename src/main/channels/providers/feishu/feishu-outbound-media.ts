@@ -16,11 +16,15 @@ import { readBinarySource, resolveSourceFileName } from '../../channel-media-sou
 /**
  * 飞书能发出去的形态。
  *
- * `audio` 暂不声明 —— 飞书发语音要 `msg_type: 'audio'`，而现有
- * `sendFileMessage` 硬编码 `msg_type: 'file'`；补 audio 得先真机验过飞书对
- * 语音格式（opus）与时长（通常 60s）的限制。**验完再加，不猜。**
+ * `audio` 走 `msg_type: 'audio'` + `uploadFile(..., 'opus')` —— 飞书只认 **opus**，
+ * 且时长有上限（官方建议 60s 内）。喂别的格式会在 upload 阶段就被拒（`file_type:
+ * 'opus'` 但内容不是 opus），错误信息是飞书侧的，不会静默变成文件消息。
  */
-export const FEISHU_SUPPORTED_MEDIA_KINDS: readonly ChannelMediaKind[] = ['image', 'file']
+export const FEISHU_SUPPORTED_MEDIA_KINDS: readonly ChannelMediaKind[] = [
+  'image',
+  'file',
+  'audio'
+]
 
 type FeishuFileType = 'opus' | 'mp4' | 'pdf' | 'doc' | 'xls' | 'ppt' | 'stream'
 
@@ -62,6 +66,14 @@ export async function sendFeishuMedia(
     const fileName = media.fileName ?? resolveSourceFileName(media.source, fallback)
     const fileKey = await api.media.uploadFile(buffer, fileName, resolveFileType(fileName))
     return await api.media.sendFileMessage(chatId, fileKey)
+  }
+
+  if (media.kind === 'audio') {
+    // 飞书只认 opus；文件名强制 .opus，否则 uploadFile 的 file_type 与扩展名不一致
+    const { buffer } = await readBinarySource(media.source, 'audio.opus')
+    const fileName = media.fileName ?? resolveSourceFileName(media.source, 'audio.opus')
+    const fileKey = await api.media.uploadFile(buffer, fileName, 'opus')
+    return await api.media.sendAudioMessage(chatId, fileKey)
   }
 
   // 走到这里说明 supportedMediaKinds 与实际实现不一致 —— 属于编程错误，不是运行时状况

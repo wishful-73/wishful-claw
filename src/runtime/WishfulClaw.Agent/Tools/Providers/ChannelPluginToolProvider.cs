@@ -31,6 +31,20 @@ public sealed class ChannelPluginToolProvider : IToolProvider
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
+        registry.Register(new ToolDefinitionPlaceholder(
+            "ChannelSendAudio",
+            "Send a voice/audio message to the current channel conversation. The channel is inferred from the current session. " +
+            "If the channel does not support audio the text is sent instead.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the audio file."),
+                    ["durationMs"] = ToolSchemaBuilder.Number("Optional audio duration in milliseconds.")
+                },
+                ["filePath"]),
+            availableModes: ["normal", "goal", "global", "channel"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly));
+
         // ── Feishu messaging ──
         registry.Register(new ToolDefinitionPlaceholder(
             "FeishuSendImage",
@@ -53,6 +67,20 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 {
                     ["chatId"] = chatIdProp,
                     ["filePath"] = ToolSchemaBuilder.String("Local path to the file.")
+                },
+                ["chatId", "filePath"]),
+            availableModes: ["normal", "goal", "global", "channel"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly));
+
+        registry.Register(new ToolDefinitionPlaceholder(
+            "FeishuSendAudio",
+            "Send a voice message to a Feishu chat. Feishu only accepts opus audio (about 60s max); " +
+            "other formats are rejected by the upload API rather than silently downgraded.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["chatId"] = chatIdProp,
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the opus audio file.")
                 },
                 ["chatId", "filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],
@@ -120,6 +148,22 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 {
                     ["chatId"] = chatIdProp,
                     ["filePath"] = ToolSchemaBuilder.String("Local path to the file.")
+                },
+                ["chatId", "filePath"]),
+            availableModes: ["normal", "goal", "global", "channel"],
+            visibleScopes: ToolVisibilityScopes.ChannelOnly));
+
+        registry.Register(new ToolDefinitionPlaceholder(
+            "WeixinSendAudio",
+            "Send a voice message to a WeChat chat. The encode_type is inferred from the file extension " +
+            "(silk / mp3 / amr / speex / ogg / opus / wav / pcm), unknown extensions fall back to silk.",
+            ToolSchemaBuilder.Object(
+                new()
+                {
+                    ["chatId"] = chatIdProp,
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the audio file."),
+                    ["content"] = ToolSchemaBuilder.String("Optional caption sent together with the voice message."),
+                    ["durationMs"] = ToolSchemaBuilder.Number("Optional audio duration in milliseconds.")
                 },
                 ["chatId", "filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],

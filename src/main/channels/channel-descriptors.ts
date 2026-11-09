@@ -19,6 +19,7 @@ const wsRelayField = {
 const COMMON_PLUGIN_TOOLS = [
   'ChannelSendImage',
   'ChannelSendFile',
+  'ChannelSendAudio',
   'PluginSendMessage',
   'PluginReplyMessage',
   'PluginGetGroupMessages',
@@ -31,6 +32,7 @@ const FEISHU_PLUGIN_TOOLS = [
   ...COMMON_PLUGIN_TOOLS,
   'FeishuSendImage',
   'FeishuSendFile',
+  'FeishuSendAudio',
   'FeishuListChatMembers',
   'FeishuAtMember',
   'FeishuSendUrgent',
@@ -43,7 +45,12 @@ const FEISHU_PLUGIN_TOOLS = [
   'FeishuBitableDeleteRecords'
 ]
 
-const WEIXIN_PLUGIN_TOOLS = [...COMMON_PLUGIN_TOOLS, 'WeixinSendImage', 'WeixinSendFile']
+const WEIXIN_PLUGIN_TOOLS = [
+  ...COMMON_PLUGIN_TOOLS,
+  'WeixinSendImage',
+  'WeixinSendFile',
+  'WeixinSendAudio'
+]
 
 /** Built-in channel provider descriptors */
 export const CHANNEL_PROVIDERS: ChannelProviderDescriptor[] = [

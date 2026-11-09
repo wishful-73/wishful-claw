@@ -22,11 +22,13 @@ public static class AgentRuntimeChannelPluginExecutor
 {
     private static readonly HashSet<string> ChannelPluginToolNames = new(StringComparer.Ordinal)
     {
-        "FeishuSendImage", "FeishuSendFile", "FeishuListChatMembers", "FeishuAtMember",
+        "FeishuSendImage", "FeishuSendFile", "FeishuSendAudio",
+        "FeishuListChatMembers", "FeishuAtMember",
         "FeishuSendUrgent", "FeishuBitableListApps", "FeishuBitableListTables",
         "FeishuBitableListFields", "FeishuBitableGetRecords", "FeishuBitableCreateRecords",
         "FeishuBitableUpdateRecords", "FeishuBitableDeleteRecords",
-        "WeixinSendImage", "WeixinSendFile", "ChannelSendImage", "ChannelSendFile"
+        "WeixinSendImage", "WeixinSendFile", "WeixinSendAudio",
+        "ChannelSendImage", "ChannelSendFile", "ChannelSendAudio"
     };
 
     private static readonly JsonWriterOptions WriterOptions = new()
@@ -37,8 +39,8 @@ public static class AgentRuntimeChannelPluginExecutor
     public static bool IsChannelPluginTool(string toolName) => ChannelPluginToolNames.Contains(toolName);
 
     public static bool RequiresApproval(string toolName) =>
-        toolName is "FeishuSendImage" or "FeishuSendFile" or "FeishuAtMember" or
-                     "FeishuSendUrgent" or "WeixinSendImage" or "WeixinSendFile";
+        toolName is "FeishuSendImage" or "FeishuSendFile" or "FeishuSendAudio" or "FeishuAtMember" or
+                     "FeishuSendUrgent" or "WeixinSendImage" or "WeixinSendFile" or "WeixinSendAudio";
 
     public static async Task<string> ExecuteAsync(
         AgentRuntimeNativeToolCall call, JsonElement parameters,
@@ -72,8 +74,11 @@ public static class AgentRuntimeChannelPluginExecutor
             "FeishuSendFile" => ("plugin:feishu:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "file_type", "file_type"); }),
             "WeixinSendImage" => ("plugin:weixin:send-image", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); }),
             "WeixinSendFile" => ("plugin:weixin:send-file", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); }),
+            "WeixinSendAudio" => ("plugin:weixin:send-audio", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); WOpt(w, call, "content", "content"); WOptI(w, call, "durationMs", "durationMs"); }),
+            "FeishuSendAudio" => ("plugin:feishu:send-audio", w => { w.WriteString("chatId", R(call, "chat_id")); w.WriteString("filePath", R(call, "file_path")); }),
             "ChannelSendImage" => ResolveGenericRoute(call, parameters, "image"),
             "ChannelSendFile" => ResolveGenericRoute(call, parameters, "file"),
+            "ChannelSendAudio" => ResolveGenericRoute(call, parameters, "audio"),
             "FeishuListChatMembers" => ("plugin:feishu:list-members", w => { w.WriteString("chatId", R(call, "chat_id")); WOptI(w, call, "page_size", "page_size"); WOpt(w, call, "page_token", "page_token"); }),
             "FeishuAtMember" => ("plugin:feishu:send-mention", w =>
             {

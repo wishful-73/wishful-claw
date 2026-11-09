@@ -1,6 +1,6 @@
 # Plan: S-216 内置浏览器站内切换被强制重载 + 无法查看 H5
 
-> 需求正文：[../../requirements/S-216.md](../../requirements/S-216.md)
+> 需求正文：[../requirements/S-216.md](../requirements/S-216.md)
 > 迭代：iter-v2-40　分支：`dev/v2-iter-40`　状态：**执行中**
 > 版本：v7（2026-10-21，按第六份 [compliance_report.md](compliance_report.md) 的 2 个 ❌ + 9 个 ⚠️ 重写）
 

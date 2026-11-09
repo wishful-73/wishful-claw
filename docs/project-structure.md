@@ -18,7 +18,11 @@ wishful-claw/
 │   ├── shared/                           # 前后端共享类型（TS）
 │   └── runtime/                          # .NET 后端工程
 ├── docs/
-├── scripts/
+├── scripts/                              # 构建 / 打包 / 部署 / 校验脚本（deploy.mjs 不入库，见发布文档）
+├── site/                                 # 站点侧，与桌面端产品代码分开
+│   ├── website/                          #   官网（React + Vite，独立构建与发布）
+│   └── feedback/                         #   用户反馈服务（独立 Node 应用 + 自有 SQLite）
+├── tests/                                # 各专题的独立回归（node 直跑，不进 vitest）
 └── README.md
 ```
 

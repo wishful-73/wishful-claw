@@ -40,9 +40,9 @@ wishful-claw 已有相当完整的子 Agent 基础设施：
 
 | 层 | 组件 | 路径 | 状态 |
 |---|------|------|------|
-| Worker (C#) | SubAgentExecutor | `AgentRuntime/SubAgentExecutor.cs` | 已实现，创建子 AgentLoop，独立迭代 |
-| Worker (C#) | SubAgentRunCollector | `AgentRuntime/SubAgentRunCollector.cs` | 已实现，但只收集最终文本，不转发事件 |
-| Worker (C#) | ToolCallProcessor | `AgentRuntime/ToolCallProcessor.cs` | 已实现，Task 工具识别和并发控制 |
+| Worker (C#) | SubAgentExecutor | `SubAgents/SubAgentExecutor.cs` | 已实现，创建子 AgentLoop，独立迭代 |
+| Worker (C#) | SubAgentRunCollector | `SubAgents/SubAgentRunCollector.cs` | 已实现，但只收集最终文本，不转发事件 |
+| Worker (C#) | ToolCallProcessor | `ToolCallProcessor.cs` | 已实现，Task 工具识别和并发控制 |
 | 前端 Store | sub-agent-slice | `stores/agent-store/slices/sub-agent-slice.ts` | 已实现，处理 8 种子 Agent 事件 |
 | 前端 Store | adapt-sub-agent-event | `stores/chat-store/adapt-sub-agent-event.ts` | 已实现，事件适配 |
 | 前端 UI | SubAgentCard | `components/chat/SubAgentCard.tsx` | 已实现，静态卡片，无实时步骤 |
@@ -85,9 +85,9 @@ childState.SuppressTransportEvents = true;
 
 **修改文件**：
 
-- `src/runtime/WishfulClaw.Worker/AgentRuntime/SubAgentExecutor.cs`
-- `src/runtime/WishfulClaw.Worker/AgentRuntime/SubAgentRunCollector.cs`
-- `src/runtime/WishfulClaw.Worker/AgentRuntime/AgentRuntimeRunState.cs`（可能需要调整事件转发机制）
+- `src/runtime/WishfulClaw.Agent/SubAgents/SubAgentExecutor.cs`
+- `src/runtime/WishfulClaw.Agent/SubAgents/SubAgentRunCollector.cs`
+- `src/runtime/WishfulClaw.Agent/Executors/AgentRuntimeRunState.cs`（可能需要调整事件转发机制）
 
 **事件映射**：
 
@@ -162,8 +162,8 @@ SubAgentCard 步骤列表中，遇到 `pending_approval` 状态的工具调用�
 
 **修改文件**：
 
-- `src/runtime/WishfulClaw.Worker/AgentRuntime/` 下的系统提示词构建逻辑
-- 或 `src/renderer/src/lib/agent/sub-agents/default-system-prompt.ts`
+- `src/runtime/WishfulClaw.Agent/` 下的系统提示词构建逻辑
+- 或 `src/renderer/src/lib/agent/system-prompt.ts`
 
 **引导策略**：
 
@@ -205,8 +205,8 @@ SubAgentCard 步骤列表中，遇到 `pending_approval` 状态的工具调用�
 
 **修改文件**：
 
-- `src/runtime/WishfulClaw.Worker/AgentRuntime/SubAgentRunCollector.cs` — 收集工具调用摘要（工具名 + 关键参数 + 状态）
-- `src/runtime/WishfulClaw.Worker/AgentRuntime/SubAgentExecutor.cs` — 在 `GetFinalOutput()` 或 `BuildResultJson` 中拼接摘要
+- `src/runtime/WishfulClaw.Agent/SubAgents/SubAgentRunCollector.cs` — 收集工具调用摘要（工具名 + 关键参数 + 状态）
+- `src/runtime/WishfulClaw.Agent/SubAgents/SubAgentExecutor.cs` — 在 `GetFinalOutput()` 或 `BuildResultJson` 中拼接摘要
 
 **实现思路**：
 
@@ -225,8 +225,8 @@ SubAgentCard 步骤列表中，遇到 `pending_approval` 状态的工具调用�
 
 **修改文件**：
 
-- `src/runtime/WishfulClaw.Worker/AgentRuntime/SubAgentExecutor.cs` — `BuildChildParameters` 中注入子 Agent 的 system-reminder
-- 或 `src/renderer/src/lib/agent/sub-agents/default-system-prompt.ts` — 默认系统提示词
+- `src/runtime/WishfulClaw.Agent/SubAgents/SubAgentExecutor.cs` — `BuildChildParameters` 中注入子 Agent 的 system-reminder
+- 或 `src/renderer/src/lib/agent/system-prompt.ts` — 默认系统提示词
 
 #### 3.4.3 信息分层
 

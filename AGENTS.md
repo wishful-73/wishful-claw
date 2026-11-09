@@ -88,6 +88,18 @@ Agent 运行时核心业务逻辑。
   - ⚠️ Workspace 是**经 Persona 传递**可见的，`WishfulClaw.Agent.csproj` 里没有它的 `ProjectReference`。10 个文件在用（`AgentLoop.MemoryRecall.cs` / `SystemPromptCache.cs` / `ToolModuleState.cs` / `Tools/ToolModule.cs` + `Tools/MemoryTools/` 6 个）⇒ 动 Persona 的引用清单会连坐 Agent，别只看 Agent 自己的 csproj 就下手
 - **不依赖** Worker
 - 包含：AgentLoop / Provider 实现 / 工具执行器 / 上下文压缩 / SubAgent / SessionConversation / Tools（FileTools / SearchTools / ShellTools / MemoryTools / Providers / AgentChanges）
+- **SQL 判据（硬规则）**：本层**不得出现 SQL 字面量**。表访问一律调 `Infrastructure/Db/` 的强类型方法（`DbTaskStore` / `DbProjectStore` / `DbSessionStore` / `DbSubAgentRunStore` / `DbMessageTools.ListForRestore` …）
+  - 禁止形态：`"SELECT ` / `"INSERT INTO ` / `"UPDATE <表> SET ` / `"DELETE FROM ` / `"CREATE TABLE ` / `"CREATE INDEX `，含 `@"` / `$@"` 前缀，以及 `DbService.MultiLine("SELECT …`
+  - 机器复核（**必须大小写敏感**；`-match` / `Select-String` 默认不区分大小写，会把工具描述里的 `multi-select questions` 当命中）：
+
+    ```powershell
+    Get-ChildItem -Recurse -File -Path src\runtime\WishfulClaw.Agent -Include *.cs |
+      Select-String -CaseSensitive -Pattern '"(SELECT |INSERT INTO |UPDATE [a-z_]+ SET |DELETE FROM |CREATE TABLE |CREATE INDEX )'
+    ```
+
+    命中数必须是 **0**。
+  - 例外：检索型 SQL（FTS5 `MATCH` 打分、多表 JOIN）承载检索语义而非表访问，可留在业务层 —— Agent 层当前**无**例外；将来出现时必须在方法注释里写清理由
+  - **为什么**：S-328 之前 Agent 层有 9 张表、30 处手写 SQL，同一张表两处各一份各自漂移；漏改**不编译报错**，只在运行时静默失效。修完这一族（S-328 / S-333 ~ S-338）才归零，谁再写一条就把这个数字还回去
 
 ### 7. Worker 层（WishfulClaw.Worker）
 
@@ -183,10 +195,12 @@ Worker
 2. **超过 500 行必须拆分** —— 这是硬线，代码审查按此判 ❌
 3. 拆分的目的是出问题时方便排查定位——按职责边界拆，让人一看文件名就知道该去哪找问题
 4. C# 用 partial class，TypeScript 用 export/import 模块化
-5. **只有以下四类可以超 500 行**，且必须在**文件头注释写明豁免理由与豁免日期，行数一律写「行数以实际为准」** —— 否则审查分不清「有意豁免」和「忘了拆」，一律按 ❌ 处理：
+5. **只有以下四类可以超 500 行**（另有第 8 条 locale JSON、第 9 条样式文件的**整类豁免**，不必逐条论证），且必须在**文件头注释写明豁免理由与豁免日期，行数一律写「行数以实际为准」** —— 否则审查分不清「有意豁免」和「忘了拆」，一律按 ❌ 处理：
    - **不要写死具体行数。** 行数每改一次代码就过期，写死它等于给每轮审查派一个「数一遍对不上」的任务，而豁免的依据从来不是行数，是「拆不拆得动」。格式：
      `// 500 行豁免（<日期>，行数以实际为准）：<理由>`
    - 审查时**只判「有没有豁免标记 + 理由成不成立」**，不核对行数；文件确实超 500 行就够条件，行数多少不影响判断。
+   - **中英两种写法都认**：`500 行豁免`（中文，正式格式）与 `500-line exemption`（英文，历史遗留）。**扫全仓复扫时两种都必须认**，只认中文会把英文标记的文件误判成「没标记」—— S-329 就把三个大文件（`AgentLoop.cs` / `ToolDispatchRouter.cs` / `ContextCompression.cs`）报成了欠账，白查一轮。英文写法**不强制迁移成中文**：改注释会污染 `git blame`，收益为零，理由在 S-329 §4.2。
+   - **标记必须落在文件头前 25 行内**，写在文件中间的等于没有。
    - 单一数据对象（如 provider preset 列表、模型配置表）——内容是同质数据，拆了反而难查找
    - 高度内聚的 store / hook ——逻辑紧密耦合，拆开会割裂上下文
    - 拆分后需要大量 props 透传或 state 搬运的组件——拆出去增加了间接层，排查更难
@@ -194,7 +208,8 @@ Worker
 6. **计划剥离的子系统**（vendored 之后独立演进、或准备移出本仓改成插件引用的）经项目负责人裁定可豁免，头注释须写明剥离计划，行数同样写「行数以实际为准」，否则按 ❌ 判
 7. **超 500 行又够不上豁免的，必须在文件头标注「超标待拆分」**：写清拆分方向与登记日期，行数同样写「行数以实际为准」。这不是豁免，是登记欠账 —— 让审查一眼看出「已知未拆」而不是「漏标」
 8. **语言文件（`src/renderer/src/locales/{zh,en}/*.json`）按第 5 条第 1 类豁免处理，且无需头注释** —— JSON 不支持注释，`settings.json` / `chat.json` / `layout.json` 等超 500 行属正常，一律不判 ❌。审查时直接跳过这类文件，不必逐轮复判
-9. 拆分后保持逻辑等价，不改变行为，只改组织结构
+9. **样式文件（`.css` / `.scss` / `.less`）整类豁免，不必逐个论证、审查不判 ❌** —— 500 行条款的目的是**减轻读代码的压力**，不是为凑行数而拆。CSS 没有 import/export 语义，拆成多份只能靠 `@import` 串起来：读样式时先看入口、再跳三四个 `@import` 才能凑齐一条规则的全部来源，**比读单个文件更费劲**；按选择器或组件边界切分也不产生任何代码结构上的排查收益。典型如 `assets/main.css`（Tailwind v4 单一入口：`@import 'tailwindcss'` + `@theme inline` 主题变量 + `@layer components`），拆开还要保 `@import` 顺序与变量作用域。**与第 8 条的 locale JSON 不同，样式文件支持注释，仍要在头部写一行标记**（写法 `/* 500 行豁免（<日期>，行数以实际为准）：<理由> */`），因为样式文件确实会被审查看到，留个标记省得下一轮再当新发现
+10. 拆分后保持逻辑等价，不改变行为，只改组织结构
 
 ### 耦合文件拆分
 

@@ -3,6 +3,7 @@
 import type { ContentBlock, ToolResultContent } from '@renderer/lib/api/types'
 import type { ToolCallState, ToolCallStatus } from '@renderer/lib/agent/types'
 import { decodeStructuredToolResult } from '@renderer/lib/tools/tool-result-format'
+import { reviveImageBlocks } from '@renderer/lib/tools/tool-output-revive'
 import { formatDurationMs } from '@renderer/lib/format-duration'
 import { isMcpTool } from '@renderer/lib/mcp/mcp-tools'
 import {
@@ -93,7 +94,9 @@ export function buildToolCallRenderState(
     toolUseId: block.id,
     name: block.name,
     input: effectiveInput,
-    output: result?.content ?? liveToolCall?.output,
+    // S-351：历史消息的 output 是 JSON 字符串，实时的是数组 —— 不归一化的话，
+    // 同一张截图在执行中能预览、重新加载会话后只剩原文 JSON 文本。
+    output: reviveImageBlocks(result?.content ?? liveToolCall?.output, decodeStructuredToolResult),
     status,
     error: options.executionItem?.error ?? liveToolCall?.error,
     startedAt: liveToolCall?.startedAt,

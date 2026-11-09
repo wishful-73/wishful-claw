@@ -14,6 +14,7 @@ internal static class Program
         {
             RunBoolParsingSuite();
             RunJsonWriterEnvelopeSuite();
+            RunPropertyValueParsingSuite();
             Console.WriteLine($"JsonHelpers regression checks passed: {_passed}");
             return 0;
         }
@@ -104,6 +105,70 @@ internal static class Program
             writer.WriteEndArray();
         });
         Assert(arrayEnvelope.ValueKind == JsonValueKind.Array, "an array pair builds an array");
+    }
+
+    /// <summary>
+    /// S-353：渠道工具的参数名在 schema（驼峰，如 filePath）与路由代码（蛇形，如 file_path）之间打架，
+    /// 而 JsonHelpers 全是 TryGetProperty 精确匹配。修法是在调用侧先做驼峰/蛇形归一，再把**取出来的值**
+    /// 交给 As* 这一族解析。这里钉住 As* 的语义 —— 它一旦变化，「名对了但值丢了」会以另一种方式复发。
+    /// </summary>
+    private static void RunPropertyValueParsingSuite()
+    {
+        using var document = JsonDocument.Parse("""
+            {
+              "s": " hello ",
+              "n": 42,
+              "numText": "42",
+              "b": true,
+              "bText": " FALSE ",
+              "arr": ["a", "b"],
+              "csv": "a, b ,,c",
+              "emptyCsv": "   ",
+              "mixed": ["a", 3, "", "b"],
+              "obj": { "x": 1 }
+            }
+            """);
+        var root = document.RootElement;
+
+        // AsString: 只认字符串，不做 trim（trim 是调用侧的事）。
+        Assert(JsonHelpers.AsString(root.GetProperty("s")) == " hello ", "AsString keeps the raw string");
+        Assert(JsonHelpers.AsString(root.GetProperty("n")) is null, "AsString rejects numbers");
+        Assert(JsonHelpers.AsString(root.GetProperty("b")) is null, "AsString rejects booleans");
+
+        // AsIntNullable: 数字和数字文本都收。
+        Assert(JsonHelpers.AsIntNullable(root.GetProperty("n")) == 42, "AsIntNullable reads a number");
+        Assert(JsonHelpers.AsIntNullable(root.GetProperty("numText")) == 42, "AsIntNullable reads numeric text");
+        Assert(JsonHelpers.AsIntNullable(root.GetProperty("s")) is null, "AsIntNullable rejects non-numeric text");
+        Assert(JsonHelpers.AsIntNullable(root.GetProperty("b")) is null, "AsIntNullable rejects booleans");
+
+        // AsBool: 委托给 ParseBoolText，行为必须与 GetBool 一致。
+        AssertTrue(JsonHelpers.AsBool(root.GetProperty("b"), false), "AsBool reads a native true");
+        AssertFalse(JsonHelpers.AsBool(root.GetProperty("bText"), true), "AsBool reads padded \" FALSE \"");
+        AssertTrue(JsonHelpers.AsBool(root.GetProperty("n"), true), "AsBool falls back on a number");
+
+        // AsStringArray: 数组元素与逗号分隔文本都收，空串与空白元素丢弃（S-353 的 FeishuAtMember 靠这条）。
+        var arr = JsonHelpers.AsStringArray(root.GetProperty("arr"));
+        Assert(arr is ["a", "b"], "AsStringArray reads array elements in order");
+        var csv = JsonHelpers.AsStringArray(root.GetProperty("csv"));
+        Assert(csv is ["a", "b", "c"], "AsStringArray splits comma text and drops empties");
+        Assert(JsonHelpers.AsStringArray(root.GetProperty("emptyCsv")).Length == 0, "AsStringArray drops whitespace-only text");
+        var mixed = JsonHelpers.AsStringArray(root.GetProperty("mixed"));
+        Assert(mixed is ["a", "b"], "AsStringArray drops non-strings and empty entries");
+        Assert(JsonHelpers.AsStringArray(root.GetProperty("obj")).Length == 0, "AsStringArray rejects objects");
+
+        // Get* 必须与 As* 同源 —— 曾经是两份实现，正是它们分叉才养出 S-353。
+        using var one = JsonDocument.Parse("""{"s":" hello ","b":" FALSE ","n":"42","arr":["a","b"]}""");
+        var oneRoot = one.RootElement;
+        Assert(JsonHelpers.GetString(oneRoot, "s") == JsonHelpers.AsString(oneRoot.GetProperty("s")), "GetString delegates to AsString");
+        Assert(
+            JsonHelpers.GetBool(oneRoot, "b", true) == JsonHelpers.AsBool(oneRoot.GetProperty("b"), true),
+            "GetBool delegates to AsBool");
+        Assert(
+            JsonHelpers.GetIntNullable(oneRoot, "n") == JsonHelpers.AsIntNullable(oneRoot.GetProperty("n")),
+            "GetIntNullable delegates to AsIntNullable");
+        Assert(
+            JsonHelpers.GetStringArray(oneRoot, "arr").SequenceEqual(JsonHelpers.AsStringArray(oneRoot.GetProperty("arr"))),
+            "GetStringArray delegates to AsStringArray");
     }
 
     private static bool GetBool(string json, string name, bool fallback)

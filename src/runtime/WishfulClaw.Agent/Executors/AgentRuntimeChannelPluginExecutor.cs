@@ -85,21 +85,21 @@ public static class AgentRuntimeChannelPluginExecutor
                 w.WriteString("chatId", R(call, "chat_id"));
                 w.WriteString("text", R(call, "text"));
                 w.WriteStartArray("userIds");
-                foreach (var uid in JsonHelpers.GetStringArray(call.Input, "user_ids")) w.WriteStringValue(uid);
+                foreach (var uid in RArray(call, "user_ids")) w.WriteStringValue(uid);
                 w.WriteEndArray();
-                w.WriteBoolean("atAll", JsonHelpers.GetBool(call.Input, "at_all", false));
+                w.WriteBoolean("atAll", RBool(call, "at_all", false));
             }),
             "FeishuSendUrgent" => ("plugin:feishu:send-urgent", w =>
             {
                 w.WriteString("messageId", R(call, "message_id"));
                 w.WriteStartArray("userIds");
-                foreach (var uid in JsonHelpers.GetStringArray(call.Input, "user_ids")) w.WriteStringValue(uid);
+                foreach (var uid in RArray(call, "user_ids")) w.WriteStringValue(uid);
                 w.WriteEndArray();
                 w.WriteStartArray("urgentTypes");
-                foreach (var t in JsonHelpers.GetStringArray(call.Input, "urgent_types").Where(x => x is "app" or "sms")) w.WriteStringValue(t);
+                foreach (var t in RArray(call, "urgent_types").Where(x => x is "app" or "sms")) w.WriteStringValue(t);
                 w.WriteEndArray();
             }),
-            "FeishuBitableListApps" => ("plugin:feishu:bitable:list-apps", _ => { }),
+            "FeishuBitableListApps" => ("plugin:feishu:bitable:list-apps", w => WOptI(w, call, "page_size", "page_size")),
             "FeishuBitableListTables" => ("plugin:feishu:bitable:list-tables", w => WReq(w, call, "app_token", "app_token")),
             "FeishuBitableListFields" => ("plugin:feishu:bitable:list-fields", w => { WReq(w, call, "app_token", "app_token"); WReq(w, call, "table_id", "table_id"); }),
             "FeishuBitableGetRecords" => ("plugin:feishu:bitable:get-records", w => { WReq(w, call, "app_token", "app_token"); WReq(w, call, "table_id", "table_id"); WOpt(w, call, "filter", "filter"); WOptI(w, call, "page_size", "page_size"); WOpt(w, call, "page_token", "page_token"); }),
@@ -127,6 +127,7 @@ public static class AgentRuntimeChannelPluginExecutor
                 JsonHelpers.GetString(parameters, "pluginChatId") ?? string.Empty);
             w.WriteString("filePath", R(call, "filePath"));
             WOpt(w, call, "fileType", "fileType");
+            if (kind == "audio") WOptI(w, call, "durationMs", "durationMs");
         });
     }
 
@@ -135,17 +136,46 @@ public static class AgentRuntimeChannelPluginExecutor
         WReq(w, call, "app_token", "app_token");
         WReq(w, call, "table_id", "table_id");
         w.WritePropertyName(arrayName == "record_ids" ? "recordIds" : "records");
-        if (call.Input.TryGetProperty(arrayName, out var arr)) arr.WriteTo(w); else w.WriteStartArray(); w.WriteEndArray();
+        // 原写法 `if (x) A; else B; C;` 里 C 是条件外无条件执行的，命中时会在对象里补一个 WriteEndArray 直接抛异常。
+        if (TryGetProp(call.Input, arrayName, out var array) && array.ValueKind == JsonValueKind.Array)
+        {
+            array.WriteTo(w);
+            return;
+        }
+        w.WriteStartArray();
+        w.WriteEndArray();
     }
 
-    private static string R(AgentRuntimeNativeToolCall call, string name)
+    /// <summary>
+    /// 读入参：先按传入名精确命中，未命中再按驼峰 / 蛇形互换命中。
+    /// </summary>
+    /// <remarks>
+    /// 工具 schema（<c>ChannelPluginToolProvider</c>）用驼峰（<c>filePath</c>），而路由代码历史上一律按蛇形读
+    /// （<c>file_path</c>）。<c>JsonHelpers</c> 全是 <c>TryGetProperty</c> 精确匹配，早先只给必填字符串打了个
+    /// 「名字含下划线才回落驼峰」的补丁（见旧 R），于是可选字段、数字、数组、布尔全都读不到 —— 模型照着
+    /// schema 传了也白传，报错还像是模型没传（S-353）。这里把回落做成唯一入口，下面那些 helper 一律走它，
+    /// 两套命名从此互通。
+    /// </remarks>
+    private static bool TryGetProp(JsonElement input, string name, out JsonElement value)
     {
-        var value = JsonHelpers.GetString(call.Input, name)
-            ?? (name.Contains('_', StringComparison.Ordinal)
-                ? JsonHelpers.GetString(call.Input, ToCamelCase(name))
-                : null);
-        return value?.Trim() ?? string.Empty;
+        if (input.ValueKind == JsonValueKind.Object)
+        {
+            if (input.TryGetProperty(name, out value)) return true;
+            var alternate = name.Contains('_', StringComparison.Ordinal) ? ToCamelCase(name) : ToSnakeCase(name);
+            if (input.TryGetProperty(alternate, out value)) return true;
+        }
+        value = default;
+        return false;
     }
+
+    private static string R(AgentRuntimeNativeToolCall call, string name) =>
+        (TryGetProp(call.Input, name, out var raw) ? JsonHelpers.AsString(raw) : null)?.Trim() ?? string.Empty;
+
+    private static string[] RArray(AgentRuntimeNativeToolCall call, string name) =>
+        TryGetProp(call.Input, name, out var raw) ? JsonHelpers.AsStringArray(raw) : Array.Empty<string>();
+
+    private static bool RBool(AgentRuntimeNativeToolCall call, string name, bool fallback) =>
+        TryGetProp(call.Input, name, out var raw) ? JsonHelpers.AsBool(raw, fallback) : fallback;
 
     private static string ToCamelCase(string name)
     {
@@ -164,18 +194,38 @@ public static class AgentRuntimeChannelPluginExecutor
         return result.ToString();
     }
 
+    private static string ToSnakeCase(string name)
+    {
+        var result = new StringBuilder(name.Length + 4);
+        for (var i = 0; i < name.Length; i++)
+        {
+            var ch = name[i];
+            if (!char.IsUpper(ch))
+            {
+                result.Append(ch);
+                continue;
+            }
+            if (i > 0) result.Append('_');
+            result.Append(char.ToLowerInvariant(ch));
+        }
+        return result.ToString();
+    }
+
     private static void WReq(Utf8JsonWriter w, AgentRuntimeNativeToolCall call, string outName, string inName) =>
         w.WriteString(outName, R(call, inName));
 
     private static void WOpt(Utf8JsonWriter w, AgentRuntimeNativeToolCall call, string outName, string inName)
     {
-        var v = JsonHelpers.GetString(call.Input, inName);
-        if (!string.IsNullOrWhiteSpace(v)) w.WriteString(outName, v);
+        var value = TryGetProp(call.Input, inName, out var raw) ? JsonHelpers.AsString(raw) : null;
+        if (!string.IsNullOrWhiteSpace(value)) w.WriteString(outName, value);
     }
 
     private static void WOptI(Utf8JsonWriter w, AgentRuntimeNativeToolCall call, string outName, string inName)
     {
-        if (JsonHelpers.GetIntNullable(call.Input, inName) is { } v) w.WriteNumber(outName, v);
+        if (TryGetProp(call.Input, inName, out var raw) && JsonHelpers.AsIntNullable(raw) is { } v)
+        {
+            w.WriteNumber(outName, v);
+        }
     }
 
     private static string ReadPluginId(JsonElement input, JsonElement parameters) =>

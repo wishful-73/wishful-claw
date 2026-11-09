@@ -4,29 +4,29 @@ namespace WishfulClaw.Core.Protocol;
 
 public static class JsonHelpers
 {
-    public static string? GetString(JsonElement element, string name)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var property))
-        {
-            return null;
-        }
-        return property.ValueKind == JsonValueKind.String ? property.GetString() : null;
-    }
+    public static string? GetString(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var property)
+            ? AsString(property)
+            : null;
 
-    public static bool GetBool(JsonElement element, string name, bool fallback)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var property))
-        {
-            return fallback;
-        }
-        return property.ValueKind switch
+    /// <summary>把已取出的属性值当字符串读。非字符串返回 null。</summary>
+    public static string? AsString(JsonElement value) =>
+        value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    public static bool GetBool(JsonElement element, string name, bool fallback) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var property)
+            ? AsBool(property, fallback)
+            : fallback;
+
+    /// <summary>把已取出的属性值当布尔读（容忍 "true" / " FALSE " 这类文本）。</summary>
+    public static bool AsBool(JsonElement value, bool fallback) =>
+        value.ValueKind switch
         {
             JsonValueKind.True => true,
             JsonValueKind.False => false,
-            JsonValueKind.String => ParseBoolText(property.GetString(), fallback),
+            JsonValueKind.String => ParseBoolText(value.GetString(), fallback),
             _ => fallback
         };
-    }
 
     /// <summary>
     /// Parses a boolean from its textual form, tolerating surrounding whitespace and casing
@@ -52,19 +52,21 @@ public static class JsonHelpers
         return GetIntNullable(element, name) ?? fallback;
     }
 
-    public static int? GetIntNullable(JsonElement element, string name)
+    public static int? GetIntNullable(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var property)
+            ? AsIntNullable(property)
+            : null;
+
+    /// <summary>把已取出的属性值当整数读（数字或数字文本）。</summary>
+    public static int? AsIntNullable(JsonElement value)
     {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var property))
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number))
         {
-            return null;
+            return number;
         }
-        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var value))
+        if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out number))
         {
-            return value;
-        }
-        if (property.ValueKind == JsonValueKind.String && int.TryParse(property.GetString(), out value))
-        {
-            return value;
+            return number;
         }
         return null;
     }
@@ -108,32 +110,33 @@ public static class JsonHelpers
         return null;
     }
 
-    public static string[] GetStringArray(JsonElement element, string name)
+    public static string[] GetStringArray(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var property)
+            ? AsStringArray(property)
+            : Array.Empty<string>();
+
+    /// <summary>把已取出的属性值当字符串数组读（JSON 数组，或 "a,b" 这类逗号分隔文本；空串元素丢弃）。</summary>
+    public static string[] AsStringArray(JsonElement value)
     {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var property))
+        if (value.ValueKind == JsonValueKind.String)
         {
-            return Array.Empty<string>();
-        }
-
-        if (property.ValueKind == JsonValueKind.String)
-        {
-            var value = property.GetString();
-            return string.IsNullOrWhiteSpace(value)
+            var text = value.GetString();
+            return string.IsNullOrWhiteSpace(text)
                 ? Array.Empty<string>()
-                : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                : text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         }
 
-        if (property.ValueKind != JsonValueKind.Array)
+        if (value.ValueKind != JsonValueKind.Array)
         {
             return Array.Empty<string>();
         }
 
         var values = new List<string>();
-        foreach (var item in property.EnumerateArray())
+        foreach (var item in value.EnumerateArray())
         {
-            if (item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } value)
+            if (item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } text)
             {
-                values.Add(value);
+                values.Add(text);
             }
         }
         return values.ToArray();

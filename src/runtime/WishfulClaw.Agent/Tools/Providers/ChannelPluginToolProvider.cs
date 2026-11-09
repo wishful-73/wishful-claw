@@ -53,9 +53,9 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 new()
                 {
                     ["chatId"] = chatIdProp,
-                    ["imagePath"] = ToolSchemaBuilder.String("Local path to the image file.")
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the image file.")
                 },
-                ["chatId", "imagePath"]),
+                ["chatId", "filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
@@ -88,24 +88,30 @@ public sealed class ChannelPluginToolProvider : IToolProvider
 
         registry.Register(new ToolDefinitionPlaceholder(
             "FeishuListChatMembers",
-            "List members in a Feishu chat.",
+            "List members in a Feishu chat. Page through with pageToken.",
             ToolSchemaBuilder.Object(
-                new() { ["chatId"] = chatIdProp },
+                new()
+                {
+                    ["chatId"] = chatIdProp,
+                    ["pageSize"] = ToolSchemaBuilder.Integer("Page size. Defaults to Feishu's own page size."),
+                    ["pageToken"] = ToolSchemaBuilder.String("Opaque cursor from a previous page.")
+                },
                 ["chatId"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
         registry.Register(new ToolDefinitionPlaceholder(
             "FeishuAtMember",
-            "Mention a specific member in a Feishu message.",
+            "Mention one or more members in a Feishu message.",
             ToolSchemaBuilder.Object(
                 new()
                 {
                     ["chatId"] = chatIdProp,
-                    ["userId"] = ToolSchemaBuilder.String("User ID to mention."),
-                    ["content"] = ToolSchemaBuilder.String("Message content.")
+                    ["userIds"] = ToolSchemaBuilder.ArraySchema("User IDs to mention.", ToolSchemaBuilder.String("User ID.")),
+                    ["text"] = ToolSchemaBuilder.String("Message content."),
+                    ["atAll"] = ToolSchemaBuilder.Boolean("Mention everyone in the chat instead of the listed user IDs.")
                 },
-                ["chatId", "userId", "content"]),
+                ["chatId", "text"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 
@@ -117,7 +123,9 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 {
                     ["messageId"] = ToolSchemaBuilder.String("Message ID to mark as urgent."),
                     ["userIds"] = ToolSchemaBuilder.ArraySchema("User IDs to notify.", ToolSchemaBuilder.String("User ID.")),
-                    ["urgentType"] = ToolSchemaBuilder.String("Urgent type.", ["app", "sms"])
+                    ["urgentTypes"] = ToolSchemaBuilder.ArraySchema(
+                        "Urgent notification kinds, any of app / sms. Defaults to app.",
+                        ToolSchemaBuilder.String("Urgent type.", ["app", "sms"]))
                 },
                 ["messageId"]),
             availableModes: ["normal", "goal", "global", "channel"],
@@ -134,9 +142,9 @@ public sealed class ChannelPluginToolProvider : IToolProvider
                 new()
                 {
                     ["chatId"] = chatIdProp,
-                    ["imagePath"] = ToolSchemaBuilder.String("Local path to the image file.")
+                    ["filePath"] = ToolSchemaBuilder.String("Local path to the image file.")
                 },
-                ["chatId", "imagePath"]),
+                ["chatId", "filePath"]),
             availableModes: ["normal", "goal", "global", "channel"],
             visibleScopes: ToolVisibilityScopes.ChannelOnly));
 

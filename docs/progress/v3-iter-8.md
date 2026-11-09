@@ -71,9 +71,17 @@
 
 | 项 | 值 |
 |---|---|
-| 安装包 | `release/wishful-claw-1.0.8-setup.exe` |
-| blockmap | `release/wishful-claw-1.0.8-setup.exe.blockmap` |
-| 官网下载目录（更新源） | 四件套上传 + sha512 逐件校验 |
-| GitHub Release（存档） | <https://github.com/wishful-73/wishful-claw/releases/tag/v1.0.8> |
+| 安装包 | `release/wishful-claw-1.0.8-setup.exe`（107,448,853 B / 102.47 MB；比 1.0.7 大 20,959 B） |
+| blockmap | `release/wishful-claw-1.0.8-setup.exe.blockmap`（112,720 B） |
+| latest.yml | 353 B；`sha512` 与 setup.exe 实际 sha512 逐位一致、`size` 一致 |
+| 官网下载目录（更新源） | 四件套上传，逐件 sha512 校验通过；`.exe` 只留当前版（1.0.7 的包已 404），`.blockmap` 保留 1.0.4 ~ 1.0.8 五版 |
+| GitHub Release（存档） | <https://github.com/wishful-73/wishful-claw/releases/tag/v1.0.8> —— 三资产 `state=uploaded`，`draft=false` / `prerelease=false` / 是 Latest；Release 上的 `latest.yml` 与本地逐字节一致 |
+| 更新说明 | `release-notes-1.0.8.md` 已在清单同目录（清单不带 `releaseNotes` 属正常态） |
 | 官网自身内容 | **本迭代零改动 ⇒ 未重发站点**，只跑 `installer` |
-| 合规硬拦截 | `afterPack` 冒充扫描通过（14 个关键字，含 `app.asar`） |
+| 合规硬拦截 | `afterPack` 冒充扫描通过（14 个关键字，含 `app.asar` 35.4 MB） |
+| 证书 | 剩余 43 天（2026-12-22 到期） |
+| 本地清理 | `release/` 删掉 1.0.7 的 exe + blockmap 共 **102.6 MB**（672 → 569.4 MB）；`.wishful-claw/notes/` 删 23 个一次性草稿，只留发布说明与审查报告 |
+
+上线抽查（curl 实测，全部 **206**）：`latest.yml` / `setup.exe` / `setup.exe.blockmap` / `release-notes-1.0.8.md` 与 1.0.7 的 blockmap 均可达，`latest.yml` 里 `version: 1.0.8`；1.0.7 的 `.exe` 返回 **404**（按保留策略只留当前版）。
+
+**未做**：端到端「拿 1.0.7 的包实际跑一次 `checkForUpdates()`」—— 要在装机环境里跑，留给老大真机确认。
